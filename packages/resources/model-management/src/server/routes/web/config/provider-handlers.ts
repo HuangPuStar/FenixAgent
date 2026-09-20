@@ -1,5 +1,6 @@
 import type { ActorContext } from "@fenix/platform-sdk";
-import { configError, configSuccess, resolveApiKey, toKeyHint } from "@server/services/config-utils";
+import type { SecretReferenceResolver } from "../../../config-envelope";
+import { configError, configSuccess, toKeyHint } from "../../../config-envelope";
 import type { ProviderRef } from "../../../facades/provider-facade";
 import { getModelManagementModule } from "../../../module-runtime";
 import { invalidateAvailableModelsCache } from "../../../services/available-models-cache";
@@ -22,6 +23,10 @@ import { toWebProviderDetail, toWebProviderListItem } from "./provider-views";
  *
  * `invalidateAvailableModelsCache()` 出现在每个写路径之后：可用模型列表是跨路由共享的按主体缓存，
  * 且写路径无法预知哪些主体会受影响，因此整体清空，见 `../../../services/available-models-cache`。
+ *
+ * 需要 `resolveSecretReference` 的 5 个 handler 把它作为末位参数收下（列表 / 详情 / 保存的 `keyHint`，
+ * 探测两个入口的库中凭据）：密钥引用解析落在宿主一侧，包内不得读 `process.env`（1.3 硬条件 4），
+ * 注入点见 `../../dependencies`。
  */
 
 /** 探测类 handler 的内联凭据参数；配置面板用它实现"先测后存"。 */
@@ -31,15 +36,19 @@ export interface InlineProbeCredentials {
   readonly protocol?: "openai" | "anthropic";
 }
 
-export async function handleProviderList(actor: ActorContext) {
+export async function handleProviderList(actor: ActorContext, resolveSecretReference: SecretReferenceResolver) {
   const { items } = await getModelManagementModule().facade.list(actor);
-  return configSuccess({ providers: items.map(toWebProviderListItem) });
+  return configSuccess({ providers: items.map((item) => toWebProviderListItem(item, resolveSecretReference)) });
 }
 
-export async function handleProviderGet(actor: ActorContext, name: string) {
+export async function handleProviderGet(
+  actor: ActorContext,
+  name: string,
+  resolveSecretReference: SecretReferenceResolver,
+) {
   const detail = await getModelManagementModule().facade.get(actor, name);
   if (!detail) return configError("NOT_FOUND", `Provider '${name}' not found`);
-  return configSuccess(toWebProviderDetail(detail, name));
+  return configSuccess(toWebProviderDetail(detail, name, resolveSecretReference));
 }
 
 /**
@@ -52,7 +61,12 @@ export async function handleProviderGet(actor: ActorContext, name: string) {
  * `protocol` 用 `!== undefined` 判断而不是 `??` 链，否则 `existing.displayName` 为 `null` 时会被
  * 吞成"未提供"。
  */
-export async function handleProviderSet(actor: ActorContext, name: string, data: Record<string, unknown>) {
+export async function handleProviderSet(
+  actor: ActorContext,
+  name: string,
+  data: Record<string, unknown>,
+  resolveSecretReference: SecretReferenceResolver,
+) {
   const { facade } = getModelManagementModule();
   // 读取现有配置只为保留未提交的字段；不存在时按"新建"取值，与迁移前一致。
   const existing = await facade.get(actor, name);
@@ -110,7 +124,7 @@ export async function handleProviderSet(actor: ActorContext, name: string, data:
     id: name,
     name: displayName,
     protocol,
-    keyHint: toKeyHint(apiKey ?? existing?.apiKey),
+    keyHint: toKeyHint(apiKey ?? existing?.apiKey, resolveSecretReference),
   });
 }
 
@@ -130,7 +144,12 @@ export async function handleProviderDelete(actor: ActorContext, name: string) {
  * apiKey 请求任意 URL，非 2xx 时响应体会被截取 200 字符回显——这是一个 SSRF 读取原语。修复需要
  * 出站 URL 策略（内网地址黑名单 / 允许列表），超出任务 1.2 范围，记入 review 文档待单独处置。
  */
-export async function handleFetchModels(actor: ActorContext, name: string, inline?: InlineProbeCredentials) {
+export async function handleFetchModels(
+  actor: ActorContext,
+  name: string,
+  inline: InlineProbeCredentials | undefined,
+  resolveSecretReference: SecretReferenceResolver,
+) {
   const inlineApiKey = typeof inline?.apiKey === "string" ? inline.apiKey : "";
   const inlineBaseUrl = typeof inline?.baseURL === "string" ? inline.baseURL : "";
   const inlineProtocol = inline?.protocol === "anthropic" ? "anthropic" : "openai";
@@ -146,7 +165,7 @@ export async function handleFetchModels(actor: ActorContext, name: string, inlin
     const detail = await getModelManagementModule().facade.getForProbe(actor, { by: "nameOrKey", value: name });
     if (!detail) return configError("NOT_FOUND", `Provider '${name}' not found`);
     target = {
-      apiKey: resolveApiKey(detail.apiKey) ?? "",
+      apiKey: resolveSecretReference(detail.apiKey) ?? "",
       baseUrl: normalizeProviderBaseUrl(detail.baseUrl, detail.protocol),
       protocol: detail.protocol,
     };
@@ -157,7 +176,12 @@ export async function handleFetchModels(actor: ActorContext, name: string, inlin
   );
 }
 
-export async function handleTestModel(actor: ActorContext, name: string, modelId: string) {
+export async function handleTestModel(
+  actor: ActorContext,
+  name: string,
+  modelId: string,
+  resolveSecretReference: SecretReferenceResolver,
+) {
   if (!modelId) return configError("VALIDATION_ERROR", "modelId is required");
 
   const detail = await getModelManagementModule().facade.getForProbe(actor, { by: "nameOrKey", value: name });
@@ -167,7 +191,7 @@ export async function handleTestModel(actor: ActorContext, name: string, modelId
   }
 
   const target = {
-    apiKey: resolveApiKey(detail.apiKey) ?? "",
+    apiKey: resolveSecretReference(detail.apiKey) ?? "",
     baseUrl: normalizeProviderBaseUrl(detail.baseUrl, detail.protocol),
     protocol: detail.protocol,
     modelId,

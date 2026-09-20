@@ -7,8 +7,7 @@
 // 计入 integrity 的 mismatchedItems。userId 哨兵 "__machine__" 不输出。
 
 import type { ExternalRelayConnectionSnapshot } from "@fenix/agent-runtime/server";
-import type { AcpConnectionSnapshot } from "@server/types/store";
-import type { ChatClientSnapshot, KindProvider, Observation, ObserverContext } from "../types";
+import type { AcpConnectionSnapshot, ChatClientSnapshot, KindProvider, Observation, ObserverContext } from "../types";
 
 /** acp-link Provider（模块单例构造时注册到 ObserverService）。 */
 export const acpLinkProvider: KindProvider = {

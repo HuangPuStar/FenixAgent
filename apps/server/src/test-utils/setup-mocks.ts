@@ -5,32 +5,36 @@
 // 所以 getter 必须返回一个惰性包装函数，将 stub 查找延迟到调用时。
 
 import { mock } from "bun:test";
+import { createAgentConfigModuleConfig } from "@fenix/agent-config/server/testing";
 import type { IdentityConfig } from "@fenix/identity/server";
+import { createModelManagementModuleConfig } from "@fenix/model-management/server/testing";
 import {
   getAuthApiStub,
   getAuthHandlerStub,
   getDbStub,
   getModuleConfigStub,
+  hasDbStub,
   hasModuleConfigStub,
   registerModuleConfigBaseline,
   registerStubResetter,
   registerTestIdentityDirectory,
 } from "@fenix/platform-sdk/testing";
-import type * as ActualKnowledgeBaseService from "@fenix/resource-knowledge/server";
+import { createKnowledgeModuleConfig } from "@fenix/resource-knowledge/server/testing";
 import * as actualFileWsCloseLog from "@fenix/resource-machine/file-ws-close-log";
 // file-ws-handler / file-ws-requests 部分 mock 需要保留真实实现（未配置 stub 时回退），见下方注册处
 import * as actualFileWsHandler from "@fenix/resource-machine/file-ws-handler";
 import * as actualFileWsPayload from "@fenix/resource-machine/file-ws-payload";
 import * as actualFileWsRequests from "@fenix/resource-machine/file-ws-requests";
+import { createMachineModuleConfig } from "@fenix/resource-machine/server/testing";
+import { createMemoryModuleConfig } from "@fenix/resource-memory/server/testing";
 import { createSandboxModuleConfig } from "@fenix/resource-sandbox/server/testing";
+import { createSkillModuleConfig } from "@fenix/resource-skill/server/testing";
+import { createWorkflowModuleConfig } from "@fenix/resource-workflow/server/testing";
 import { getConfigPgStub, resetConfigPgStubs } from "./stubs/config-pg-stub";
 import {
   coreBootstrapRegistry,
-  customToolsRegistry,
   fileWsHandlerRegistry,
   getEnvironmentRepoStub,
-  knowledgeBaseServiceRegistry,
-  pgStorageAdapterRegistry,
   registryHeartbeatRegistry,
   registryRegistry,
   resetEnvironmentRepoStub,
@@ -136,6 +140,13 @@ const platformServer = await import("@fenix/platform-sdk/server");
 // 真实实现必须在这里先取到值：`mock.module` 会就地替换模块导出，若在替身里回头调用 `platformServer` 的
 // 同名属性，拿到的就是替身自己（实测表现为栈溢出）。
 const realGetModuleConfig = platformServer.getModuleConfig;
+// 资源包的仓储/服务经平台契约 `getDatabase()` 取 DB 句柄（迁移前读宿主 `db` 导出，由 `getDbStub()` 转发）。
+// 同一条 seam 里一并接上：不接的话包内任何仓储调用都会抛「应用基础设施尚未初始化」（实测：
+// `round19-isolated-repository-boundaries.test.ts` 的机器/任务日志用例、`config-integration.test.ts`
+// 的 Agent 标签投影共 26 项）。回退条件比模块配置多一层：只有用例**登记过** DB 替身（`hasDbStub()`）
+// 才回退——没登记说明该用例不碰 DB，必须原样抛出平台错误，`server-infrastructure.test.ts` 的两条契约
+// 用例正是断言这种情形。
+const realGetDatabase = platformServer.getDatabase;
 mock.module("@fenix/platform-sdk/server", () => ({
   ...platformServer,
   getModuleConfig: <TConfig>(moduleId: string): TConfig => {
@@ -149,11 +160,32 @@ mock.module("@fenix/platform-sdk/server", () => ({
       return getModuleConfigStub<TConfig>(moduleId);
     }
   },
+  getDatabase: <TDatabase>(): TDatabase => {
+    try {
+      return realGetDatabase<TDatabase>();
+    } catch (error) {
+      if (!(error instanceof Error) || !error.message.includes("应用基础设施尚未初始化")) {
+        throw error;
+      }
+      if (!hasDbStub()) throw error;
+      return getDbStub() as TDatabase;
+    }
+  },
 }));
 
-// 沙盒模块配置基线：字段清单与缺省值取自包自身的 `./server/testing`（唯一真相），宿主不另抄一份字段表。
-// 后续资源包按同一形状在此登记自己模块的基线（缺省值取 `apps/server/src/config.ts` 的部署默认值）。
+// 资源模块配置基线：字段清单与缺省值取自包自身的 `./server/testing`（唯一真相），宿主不另抄一份字段表。
+// 登记范围＝宿主测试进程里「请求期会经 `getModuleConfig()` 读自己配置」的全部模块；漏登记一个，该模块的
+// 「路由可达」类宿主用例就会在请求期 500（实测：补齐前 `apps/server/src/__tests__/` 有 33 项因此失败）。
+// 缺省值与 `apps/server/src/config.ts` 的部署默认值一致；两侧一旦分歧，宿主 main.ts 的注入清单与包内
+// `strictObject` 校验会在启动期先失败，不会静默走测试缺省值。
+registerModuleConfigBaseline("agent-config", createAgentConfigModuleConfig());
+registerModuleConfigBaseline("knowledge", createKnowledgeModuleConfig());
+registerModuleConfigBaseline("machine", createMachineModuleConfig());
+registerModuleConfigBaseline("memory", createMemoryModuleConfig());
+registerModuleConfigBaseline("model-management", createModelManagementModuleConfig());
 registerModuleConfigBaseline("sandbox", createSandboxModuleConfig());
+registerModuleConfigBaseline("skill", createSkillModuleConfig());
+registerModuleConfigBaseline("workflow", createWorkflowModuleConfig());
 
 // ── 宿主模块替身的复位登记 ──
 
@@ -251,9 +283,6 @@ mock.module("../../../../db", createDbMock);
 // specifier 区分模块身份时绕过现有 `../db` 测试替身。
 mock.module("@server/db", createDbMock);
 
-// 先注册 DB 替身，再载入会由公开入口触达认证路由的知识库服务，避免真实 DB/auth 初始化循环。
-const actualKnowledgeBaseService: typeof ActualKnowledgeBaseService = await import("@fenix/resource-knowledge/server");
-
 // ── 以下模块按批次添加：只有当所有使用该模块的测试文件都已迁移到 stub 注册表后才能注册 ──
 // 添加前须确认：没有任何未迁移的测试会通过被测代码间接导入这些模块
 //
@@ -280,14 +309,6 @@ mock.module("../../../../packages/agent-runtime/src/server/repositories/environm
   return { environmentRepo: environmentRepoProxy };
 });
 
-mock.module("@fenix/resource-knowledge/server", () => ({
-  ...actualKnowledgeBaseService,
-  listKnowledgeBasesGlobal: (...args: unknown[]) =>
-    knowledgeBaseServiceRegistry.get("listKnowledgeBasesGlobal")(...args),
-  listKnowledgeBasesByTeamId: (...args: unknown[]) =>
-    knowledgeBaseServiceRegistry.get("listKnowledgeBasesByTeamId")(...args),
-}));
-
 const CORE_BOOTSTRAP_KEYS = [
   "getCoreRuntime",
   "initCoreRuntime",
@@ -300,28 +321,14 @@ mock.module("@server/services/core-bootstrap", () =>
   createLazyMock(CORE_BOOTSTRAP_KEYS, (name) => coreBootstrapRegistry.get(name) as AnyFn),
 );
 
-// ── pg-storage-adapter ──
-
-mock.module("../../../../packages/resources/workflow/src/server/services/workflow/pg-storage-adapter", () => ({
-  createPgStorageAdapter: () => {
-    const storageObj: Record<string, unknown> = {};
-    return new Proxy(storageObj, {
-      get: (_target, prop) => {
-        if (typeof prop !== "string") return;
-        return (...args: unknown[]) => pgStorageAdapterRegistry.get(prop)(...args);
-      },
-    });
-  },
-}));
-
-// ── custom-tools ──
-// 提供 getCustomToolsRegistry / initCustomToolsRegistry 的 stub 入口。
-// 路由测试通过 stubCustomTools({ getCustomToolsRegistry: () => fakeRegistry }) 注入数据。
-
-const CUSTOM_TOOLS_KEYS = ["getCustomToolsRegistry", "initCustomToolsRegistry"] as const;
-mock.module("../../../../packages/resources/workflow/src/server/services/workflow/custom-tools", () =>
-  createLazyMock(CUSTOM_TOOLS_KEYS, (name) => customToolsRegistry.get(name) as AnyFn),
-);
+// ── workflow 的 pg-storage-adapter / custom-tools：不在这里安装 ──
+// 这两个模块级导出的替身由 owner 包自持（`packages/resources/workflow/src/server/testing.ts`）。
+// 在 preload 里再按模块路径装一份会**压过**包内替身（Bun 1.3.13 实测：preload 注册的同路径
+// mock 优先于包内后注册的 mock，与「后注册者生效」的直觉相反），后果是包内用例
+// `stubPgStorageAdapter(...)` 写的是包内注册表、真正生效的却是宿主注册表，断言全部落空
+// （workflow-runs 等 32 项因 `listRuns` 返回 undefined 触发响应校验 422）。
+// 上面的 import `@fenix/resource-workflow/server/testing` 已把包内替身装好；宿主用例需要配置时
+// 也从那个子路径导入 `stubPgStorageAdapter` / `stubCustomTools`，与生效的 mock 读写同一个注册表。
 
 // ── file-ws-handler / file-ws-requests（W5a 起）──
 // 部分 mock：isFileWsConnected（handler）与 sendFileOpAndWait（file-ws-requests，

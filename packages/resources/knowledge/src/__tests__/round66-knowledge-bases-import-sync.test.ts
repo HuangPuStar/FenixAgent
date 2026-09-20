@@ -1,14 +1,24 @@
 import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
 import { resetAllStubs } from "@fenix/platform-sdk/testing";
-import { resetConfig, setConfig } from "@server/config";
-import { resetTestAuth, setTestAuth } from "@server/plugins/auth";
 import {
   type KnowledgeBaseRow,
   type KnowledgeResourceRow,
   knowledgeBaseRepo,
   knowledgeResourceRepo,
 } from "../server/repositories/knowledge-base";
-import webKnowledgeBasesRoute from "../server/routes/web/knowledge-bases";
+import { createWebKnowledgeBaseRoutes } from "../server/routes/web/knowledge-bases";
+import { initializeKnowledgeModuleConfig } from "../server/testing";
+import { createStubSessionAuthGuardPlugin } from "./guard-stubs";
+
+/**
+ * 认证上下文由守卫替身写入（真实守卫属宿主，包内不得依赖它构造路由）。
+ * 取值与迁移前 `setTestAuth()` 注入的一致：`{ organizationId: "org-1", userId: "user-1" }`。
+ */
+const AUTH_CONTEXT = { organizationId: "org-1", userId: "user-1" } as const;
+const webKnowledgeBasesRoute = createWebKnowledgeBaseRoutes({
+  authGuardPlugin: createStubSessionAuthGuardPlugin(AUTH_CONTEXT),
+});
+
 import { RagFlowKnowledgeProvider } from "../server/services/knowledge-provider/ragflow";
 import { setKnowledgeProviderForTesting } from "../server/services/knowledge-provider/registry";
 
@@ -99,12 +109,7 @@ const originals = {
 
 describe("知识库导入远端同步分支", () => {
   beforeEach(() => {
-    resetAllStubs();
-    setConfig({ ragflowApiKey: "test-ragflow-key" });
-    setTestAuth({
-      user: { id: "user-1", email: "user-1@example.test", name: "Tester" },
-      authContext: { organizationId: "org-1", userId: "user-1", role: "owner" },
-    });
+    initializeKnowledgeModuleConfig({ ragflowApiKey: "test-ragflow-key" });
     setKnowledgeProviderForTesting(new ImportProvider());
   });
 
@@ -119,8 +124,6 @@ describe("知识库导入远端同步分支", () => {
     knowledgeResourceRepo.listByKnowledgeBase = originals.listResources;
     knowledgeResourceRepo.countByKnowledgeBase = originals.countResources;
     setKnowledgeProviderForTesting(null);
-    resetConfig();
-    resetTestAuth();
     resetAllStubs();
   });
 

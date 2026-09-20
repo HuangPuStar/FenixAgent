@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
-import { setConfig } from "@server/config";
 import type { ImportSkillsConflict, UploadSkillFile } from "../server/services/skill-content";
 import { _deps, importSkillDirectories, resetSkillContentDeps } from "../server/services/skill-content";
+import { initializeSkillModuleConfig } from "../server/testing";
 
 /**
  * 导入的冲突与覆盖语义用例（内容层）。
@@ -69,7 +69,7 @@ function installFs() {
 }
 
 beforeEach(() => {
-  setConfig({ skillDir: root });
+  initializeSkillModuleConfig({ skillDir: root });
 });
 
 afterEach(() => {

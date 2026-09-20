@@ -1,18 +1,18 @@
 import { log } from "@fenix/logger";
 import { getIdentityDirectory } from "@fenix/platform-sdk/server";
-import { db } from "@server/db";
 import { agentConfig, machine, registryEvent } from "@server/db/schema";
-import type { AuthContext } from "@server/plugins/auth";
 import { and, desc, eq, isNull, or, sql } from "drizzle-orm";
+import { getMachineDatabase } from "../db";
 import { writeRegistryEvent } from "../repositories/registry-event";
 import { closeMachineFileWsConnection } from "../transport/file-ws-handler";
+import type { MachineRequestAuth } from "../types/auth";
 import { markSandboxInstanceReadyForMachine } from "./machine-sandbox-projection";
 
 function genId(prefix: string): string {
   return `${prefix}_${crypto.randomUUID().slice(0, 22)}`;
 }
 
-function buildMachineOwnershipConditions(ctx: AuthContext) {
+function buildMachineOwnershipConditions(ctx: MachineRequestAuth) {
   return [
     eq(machine.organizationId, ctx.organizationId),
     or(isNull(machine.userId), eq(machine.userId, ctx.userId)),
@@ -20,7 +20,7 @@ function buildMachineOwnershipConditions(ctx: AuthContext) {
 }
 
 export async function listMachines(
-  ctx: AuthContext,
+  ctx: MachineRequestAuth,
   filters: {
     status?: "online" | "offline";
     type?: "machine" | "sandbox" | "all";
@@ -55,7 +55,7 @@ export async function listMachines(
   const limit = filters.limit ?? 20;
   const offset = filters.offset ?? 0;
 
-  const rows = await db
+  const rows = await getMachineDatabase()
     .select()
     .from(machine)
     .where(where)
@@ -63,16 +63,16 @@ export async function listMachines(
     .limit(limit)
     .offset(offset);
 
-  const countRows = await db.select({ count: sql<number>`count(*)` }).from(machine).where(where);
+  const countRows = await getMachineDatabase().select({ count: sql<number>`count(*)` }).from(machine).where(where);
 
   return { data: rows, total: countRows[0].count };
 }
 
 export async function getMachine(
-  ctx: AuthContext,
+  ctx: MachineRequestAuth,
   id: string,
 ): Promise<(typeof machine.$inferSelect & { recentEvents: (typeof registryEvent.$inferSelect)[] }) | null> {
-  const rows = await db
+  const rows = await getMachineDatabase()
     .select()
     .from(machine)
     .where(
@@ -87,7 +87,7 @@ export async function getMachine(
   const record = rows[0];
   if (!record) return null;
 
-  const events = await db
+  const events = await getMachineDatabase()
     .select()
     .from(registryEvent)
     .where(eq(registryEvent.machineId, id))
@@ -98,11 +98,11 @@ export async function getMachine(
 }
 
 export async function listEvents(
-  ctx: AuthContext,
+  ctx: MachineRequestAuth,
   machineId: string,
   opts: { limit: number; offset: number },
 ): Promise<{ data: (typeof registryEvent.$inferSelect)[]; total: number }> {
-  const machineRows = await db
+  const machineRows = await getMachineDatabase()
     .select()
     .from(machine)
     .where(
@@ -118,7 +118,7 @@ export async function listEvents(
     return { data: [], total: 0 };
   }
 
-  const rows = await db
+  const rows = await getMachineDatabase()
     .select()
     .from(registryEvent)
     .where(eq(registryEvent.machineId, machineId))
@@ -126,7 +126,7 @@ export async function listEvents(
     .limit(opts.limit)
     .offset(opts.offset);
 
-  const countRows = await db
+  const countRows = await getMachineDatabase()
     .select({ count: sql<number>`count(*)` })
     .from(registryEvent)
     .where(eq(registryEvent.machineId, machineId));
@@ -139,7 +139,7 @@ export async function listEvents(
  * 返回 machine id 和包含 RCS_MACHINE_ID + RCS_SECRET 的初始化命令。
  */
 export async function createMachine(
-  ctx: AuthContext,
+  ctx: MachineRequestAuth,
   params: { name: string; labels?: string[]; agentName?: string },
 ): Promise<{ id: string; name: string; status: "pending"; initCommand: string }> {
   const id = genId("mach");
@@ -147,7 +147,7 @@ export async function createMachine(
   const agentName = params.agentName ?? "opencode";
   const labels = params.labels ?? [];
 
-  await db.insert(machine).values({
+  await getMachineDatabase().insert(machine).values({
     id,
     organizationId: ctx.organizationId,
     userId: null,
@@ -188,7 +188,7 @@ export async function createSandboxMachine(params: {
 }): Promise<void> {
   const now = new Date();
 
-  await db.insert(machine).values({
+  await getMachineDatabase().insert(machine).values({
     id: params.id,
     organizationId: params.organizationId,
     userId: params.userId,
@@ -213,7 +213,7 @@ export async function createSandboxMachine(params: {
  * 用于 sandbox 生命周期的补偿清理，机器通常尚未注册运行，仅需删除记录。
  */
 export async function deleteSandboxMachine(id: string): Promise<void> {
-  await db.delete(machine).where(eq(machine.id, id));
+  await getMachineDatabase().delete(machine).where(eq(machine.id, id));
 }
 
 /**
@@ -233,7 +233,7 @@ export async function registerMachine(params: {
   tenantId: string | null;
   machineId: string;
 }): Promise<{ id: string; isNew: boolean }> {
-  const existing = await db
+  const existing = await getMachineDatabase()
     .select({ id: machine.id, status: machine.status })
     .from(machine)
     .where(eq(machine.id, params.machineId))
@@ -255,7 +255,7 @@ export async function registerMachine(params: {
   const eventType = isFirstRegistration ? "register" : "reconnect";
 
   // pending 或 offline → 激活为 online
-  await db
+  await getMachineDatabase()
     .update(machine)
     .set({
       status: "online",
@@ -264,12 +264,14 @@ export async function registerMachine(params: {
     })
     .where(eq(machine.id, params.machineId));
 
-  await db.insert(registryEvent).values({
-    id: genId("evt"),
-    machineId: params.machineId,
-    type: eventType,
-    detail: {},
-  });
+  await getMachineDatabase()
+    .insert(registryEvent)
+    .values({
+      id: genId("evt"),
+      machineId: params.machineId,
+      type: eventType,
+      detail: {},
+    });
 
   await markSandboxInstanceReadyForMachine(params.machineId, now);
   await bindAgentConfigs(params.machineId, params.agentName, params.tenantId);
@@ -277,29 +279,42 @@ export async function registerMachine(params: {
 }
 
 export async function disconnectMachine(machineId: string, reason: string): Promise<void> {
-  await db.update(machine).set({ status: "offline", updatedAt: new Date() }).where(eq(machine.id, machineId));
+  await getMachineDatabase()
+    .update(machine)
+    .set({ status: "offline", updatedAt: new Date() })
+    .where(eq(machine.id, machineId));
 
-  await db.insert(registryEvent).values({
-    id: genId("evt"),
-    machineId,
-    type: "disconnect",
-    detail: { reason },
-  });
+  await getMachineDatabase()
+    .insert(registryEvent)
+    .values({
+      id: genId("evt"),
+      machineId,
+      type: "disconnect",
+      detail: { reason },
+    });
 }
 
 export async function markHeartbeatTimeout(machineId: string): Promise<void> {
-  await db.update(machine).set({ status: "offline", updatedAt: new Date() }).where(eq(machine.id, machineId));
+  await getMachineDatabase()
+    .update(machine)
+    .set({ status: "offline", updatedAt: new Date() })
+    .where(eq(machine.id, machineId));
 
-  await db.insert(registryEvent).values({
-    id: genId("evt"),
-    machineId,
-    type: "heartbeat_timeout",
-    detail: { reason: "heartbeat timeout" },
-  });
+  await getMachineDatabase()
+    .insert(registryEvent)
+    .values({
+      id: genId("evt"),
+      machineId,
+      type: "heartbeat_timeout",
+      detail: { reason: "heartbeat timeout" },
+    });
 }
 
 export async function updateHeartbeat(machineId: string): Promise<void> {
-  await db.update(machine).set({ lastHeartbeatAt: new Date(), updatedAt: new Date() }).where(eq(machine.id, machineId));
+  await getMachineDatabase()
+    .update(machine)
+    .set({ lastHeartbeatAt: new Date(), updatedAt: new Date() })
+    .where(eq(machine.id, machineId));
 }
 
 /**
@@ -307,12 +322,12 @@ export async function updateHeartbeat(machineId: string): Promise<void> {
  * 仅允许组织管理员操作，校验组织归属。
  */
 export async function updateMachine(
-  ctx: AuthContext,
+  ctx: MachineRequestAuth,
   id: string,
   params: { name?: string; labels?: string[]; agentName?: string },
 ): Promise<typeof machine.$inferSelect> {
   const ownershipConditions = buildMachineOwnershipConditions(ctx);
-  const rows = await db
+  const rows = await getMachineDatabase()
     .select()
     .from(machine)
     .where(and(eq(machine.id, id), ...ownershipConditions))
@@ -327,12 +342,12 @@ export async function updateMachine(
   if (params.labels !== undefined) updates.labels = params.labels;
   if (params.agentName !== undefined) updates.agentName = params.agentName;
 
-  await db
+  await getMachineDatabase()
     .update(machine)
     .set(updates)
     .where(and(eq(machine.id, id), ...ownershipConditions));
 
-  const updated = await db
+  const updated = await getMachineDatabase()
     .select()
     .from(machine)
     .where(and(eq(machine.id, id), ...ownershipConditions))
@@ -345,9 +360,9 @@ export async function updateMachine(
  * 1. 在线机器不可删除，避免删除后仍保留活跃连接。
  * 2. 被 Agent 配置或组织默认引擎引用的机器不可删除，避免产生悬空 machineId。
  */
-export async function deleteMachine(ctx: AuthContext, id: string): Promise<{ deleted: true }> {
+export async function deleteMachine(ctx: MachineRequestAuth, id: string): Promise<{ deleted: true }> {
   const ownershipConditions = buildMachineOwnershipConditions(ctx);
-  const rows = await db
+  const rows = await getMachineDatabase()
     .select()
     .from(machine)
     .where(and(eq(machine.id, id), ...ownershipConditions))
@@ -362,7 +377,7 @@ export async function deleteMachine(ctx: AuthContext, id: string): Promise<{ del
     throw new Error(`machine '${id}' is online and cannot be deleted`);
   }
 
-  const referencedAgents = await db
+  const referencedAgents = await getMachineDatabase()
     .select()
     .from(agentConfig)
     .where(and(eq(agentConfig.organizationId, ctx.organizationId), eq(agentConfig.machineId, id)))
@@ -377,7 +392,9 @@ export async function deleteMachine(ctx: AuthContext, id: string): Promise<{ del
     throw new Error(`machine '${id}' is still referenced by organization default engine`);
   }
 
-  await db.delete(machine).where(and(eq(machine.id, id), ...ownershipConditions));
+  await getMachineDatabase()
+    .delete(machine)
+    .where(and(eq(machine.id, id), ...ownershipConditions));
 
   // P0-5（D18）：DB 删除后立即切断退役机器的 file-ws 连接（reject pending + 清索引 + close），
   // 避免机器已删除但 machineFileWsIndex 残留导致 isFileWsConnected 恒真、请求悬挂；
@@ -403,7 +420,7 @@ export async function deleteMachine(ctx: AuthContext, id: string): Promise<{ del
 async function bindAgentConfigs(machineId: string, agentName: string, tenantId: string | null): Promise<void> {
   if (!tenantId) return;
   const conditions = [eq(agentConfig.organizationId, tenantId), eq(agentConfig.name, agentName)];
-  await db
+  await getMachineDatabase()
     .update(agentConfig)
     .set({ machineId, updatedAt: new Date() })
     .where(and(...conditions));
@@ -411,7 +428,7 @@ async function bindAgentConfigs(machineId: string, agentName: string, tenantId: 
 
 /** 服务启动时调用：将所有 online 状态的 machine 重置为 offline（服务重启后 WS 连接均已断开） */
 export async function resetAllMachinesOffline(): Promise<void> {
-  const result = await db
+  const result = await getMachineDatabase()
     .update(machine)
     .set({ status: "offline", updatedAt: new Date() })
     .where(eq(machine.status, "online"));

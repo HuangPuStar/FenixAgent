@@ -1,9 +1,14 @@
 import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
+import type { ActorContext, MemberRole } from "@fenix/platform-sdk";
 import { readJson, resetAllStubs, stubIdentityDirectory } from "@fenix/platform-sdk/testing";
-import { resetTestAuth, setTestAuth } from "@server/plugins/auth";
-import { setTestOrgContext } from "@server/services/org-context";
-import { stubConfigPg } from "@server/test-utils/stubs/config-pg-stub";
 import type { AuthorizedProviderDetail, AuthorizedProviderListItem } from "../server/facades/provider-facade";
+import type {
+  UserModelPreferencesPatch,
+  UserModelPreferencesPort,
+  UserModelPreferencesSnapshot,
+  UserModelPreferencesSubject,
+} from "../server/ports/user-model-preferences";
+import { createWebConfigModelsRoutes } from "../server/routes/web/config/models";
 import {
   AVAILABLE_MODELS_CACHE_TTL_MS,
   invalidateAvailableModelsCache,
@@ -15,26 +20,48 @@ import {
   installModelManagementModule,
   resetModelManagementModuleForTesting,
 } from "../server/testing";
+import { createStubSessionAuthGuardPlugin } from "./guard-stubs";
 
 /**
  * `/web/config/models` 协议层的接缝迁移（决策 D6 + 计划 S5）。
  *
  * 这一层没有自己的授权判断：可用模型列表是 `ProviderFacade.list` + 逐条 `getById` 的**投影**，
  * 每一行的 `scope` / `access` 都取自父 Provider（模型不注册自己的资源类型）。用户偏好里的模型引用
- * 也必须先经 Facade 校验可读。因此用例只替换 Facade 与身份目录替身，断言投影字段、引用校验与
- * 按主体缓存的行为。
+ * 也必须先经 Facade 校验可读。因此用例只替换 Facade、身份目录与偏好端口替身，断言投影字段、引用校验
+ * 与按主体缓存的行为。
+ *
+ * 偏好经 `UserModelPreferencesPort` 注入（迁移前是 `stubConfigPg` 打宿主 `@server/services/config`
+ * 的桩）：端口是包与该表之间的唯一通道，用例直接控制端口行为，不再依赖宿主模块被打桩的位置。
  *
  * 内联凭据、上游探测都在 `/config/providers` 一侧，本文件不覆盖。
  */
 
-const route = (await import("../server/routes/web/config/models")).default;
+/** 当前请求的身份。取值函数而不是固定值：缓存按主体分键，用例需要中途换人。 */
+let currentActor: ActorContext | null = null;
 
-function authenticate(organizationId = "org-1", userId = "user-1", role: "owner" | "member" = "owner") {
-  setTestAuth({
-    user: { id: userId, email: `${userId}@example.test`, name: "Tester" },
-    authContext: { organizationId, userId, role },
-  });
-  setTestOrgContext({ organizationId, userId, role });
+/** 偏好端口的可替换行为；`beforeEach` 复位为"未设置任何偏好"。 */
+let readPreferences: (subject: UserModelPreferencesSubject) => Promise<UserModelPreferencesSnapshot> = async () => ({
+  currentModel: null,
+  smallModel: null,
+  permission: null,
+});
+let writePreferences: (subject: UserModelPreferencesSubject, patch: UserModelPreferencesPatch) => Promise<void> =
+  async () => {};
+
+const route = createWebConfigModelsRoutes({
+  authGuardPlugin: createStubSessionAuthGuardPlugin(() => currentActor),
+  userModelPreferences: {
+    read: (subject) => readPreferences(subject),
+    write: (subject, patch) => writePreferences(subject, patch),
+  } satisfies UserModelPreferencesPort,
+});
+
+function actorFixture(organizationId = "org-1", userId = "user-1", role: MemberRole = "owner"): ActorContext {
+  return { kind: "user", userId, activeOrganizationId: organizationId, memberships: [{ organizationId, role }] };
+}
+
+function authenticate(organizationId = "org-1", userId = "user-1", role: MemberRole = "owner") {
+  currentActor = actorFixture(organizationId, userId, role);
 }
 
 function request(path: string, init?: RequestInit) {
@@ -112,17 +139,14 @@ describe("模型配置 Web 路由", () => {
     invalidateAvailableModelsCache();
     authenticate();
     installFacade({});
-    stubConfigPg({
-      getUserConfig: async () => ({ currentModel: null, smallModel: null, permission: null }),
-      setUserConfig: async () => {},
-    });
+    readPreferences = async () => ({ currentModel: null, smallModel: null, permission: null });
+    writePreferences = async () => {};
   });
 
   afterEach(() => {
     resetModelManagementModuleForTesting();
     invalidateAvailableModelsCache();
-    resetTestAuth();
-    setTestOrgContext(null);
+    currentActor = null;
   });
 
   // 可用列表每行都是 Provider 的投影：模型没有自己的归属与动作，取父 Provider 的一份。
@@ -244,52 +268,54 @@ describe("模型配置 Web 路由", () => {
 
   // 三个字段全空的更新是无意义请求，必须在协议层拒绝而不是静默写一次空配置。
   test("偏好更新未提供任何字段返回 400", async () => {
-    const setUserConfig = mock(async () => {});
-    stubConfigPg({ setUserConfig });
+    const write = mock(async () => {});
+    writePreferences = write;
 
     const response = await json("/config/models", "PUT", {});
 
     expect(response.status).toBe(400);
     expect((await readJson(response)).error.code).toBe("VALIDATION_ERROR");
-    expect(setUserConfig).not.toHaveBeenCalled();
+    expect(write).not.toHaveBeenCalled();
   });
 
   // 引用不可见的 Provider 与引用不存在的 Provider 对调用方是同一个结论：400，且不得写入偏好。
   test("偏好引用不可读的 Provider 返回 400", async () => {
-    const setUserConfig = mock(async () => {});
-    stubConfigPg({ setUserConfig });
+    const write = mock(async () => {});
+    writePreferences = write;
     installFacade({ get: async () => undefined });
 
     const response = await json("/config/models", "PUT", { model: "missing/gpt-4o" });
 
     expect(response.status).toBe(400);
     expect((await readJson(response)).error.message).toContain("missing");
-    expect(setUserConfig).not.toHaveBeenCalled();
+    expect(write).not.toHaveBeenCalled();
   });
 
   // Provider 可读但其下没有该模型同样是不可用引用：不得把悬空引用写进用户偏好。
   test("偏好引用 Provider 下不存在的模型返回 400", async () => {
-    const setUserConfig = mock(async () => {});
-    stubConfigPg({ setUserConfig });
+    const write = mock(async () => {});
+    writePreferences = write;
     installFacade({ get: async () => providerDetail() });
 
     const response = await json("/config/models", "PUT", { model: "demo/nope" });
 
     expect(response.status).toBe(400);
     expect((await readJson(response)).error.code).toBe("VALIDATION_ERROR");
-    expect(setUserConfig).not.toHaveBeenCalled();
+    expect(write).not.toHaveBeenCalled();
   });
 
   // 三段式引用 `orgId/providerId/modelId` 必须按资源键定位 Provider：跨组织同名 Provider 只有资源键能区分。
   test("偏好接受三段式资源键引用并按资源键定位 Provider", async () => {
     const requested: unknown[] = [];
-    const stored: Record<string, unknown>[] = [];
-    stubConfigPg({
-      getUserConfig: async () => ({ currentModel: "org-1/provider-1/gpt-4o", smallModel: null, permission: null }),
-      setUserConfig: async (_subject, value) => {
-        stored.push(value);
-      },
+    const stored: unknown[] = [];
+    readPreferences = async () => ({
+      currentModel: "org-1/provider-1/gpt-4o",
+      smallModel: null,
+      permission: null,
     });
+    writePreferences = async (_subject, patch) => {
+      stored.push(patch);
+    };
     installFacade({
       get: async (actor, nameOrKey) => {
         requested.push({ actor, nameOrKey });

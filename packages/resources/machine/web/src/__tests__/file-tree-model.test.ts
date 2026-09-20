@@ -1,9 +1,9 @@
+// W2.5：文件树模型（解析 / 过滤 / 分区）的宿主实现已上收到 `@fenix/ui-components`，本包经对方**包根入口**
+// 取用——该模型的公开出口只有根 barrel，`web/components/file-tree-model` 这类深路径不在 exports 里
+// （实测 `ResolveMessage: Cannot find module`），因此不得写成深路径；也不再以六级相对路径穿透到
+// `apps/web`（见 §1 静态条件 3）。
 import { describe, expect, test } from "bun:test";
-import {
-  filterFileTree,
-  parsePathsToTree,
-  splitFileTreeSections,
-} from "../../../../../../apps/web/src/components/agent-panel/file-tree-model";
+import { filterFileTree, parsePathsToTree, splitFileTreeSections } from "@fenix/ui-components";
 
 describe("file-tree-model", () => {
   // 搜索命中文件时保留完整祖先链，确保结果仍能在树中定位。

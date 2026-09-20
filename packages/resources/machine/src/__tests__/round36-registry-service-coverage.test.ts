@@ -1,11 +1,12 @@
 import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
 import { resetAllStubs, stubDb } from "@fenix/platform-sdk/testing";
-import type { AuthContext } from "@server/plugins/auth";
+import { initializeMachineModuleConfig } from "../server/testing";
+import type { MachineRequestAuth } from "../server/types/auth";
 
 const registry = await import("@fenix/resource-machine/server");
 
-const owner: AuthContext = { organizationId: "org-a", userId: "user-a", role: "owner" };
-const foreign: AuthContext = { organizationId: "org-b", userId: "user-b", role: "owner" };
+const owner: MachineRequestAuth = { organizationId: "org-a", userId: "user-a", role: "owner" };
+const foreign: MachineRequestAuth = { organizationId: "org-b", userId: "user-b", role: "owner" };
 
 function chain(rows: unknown[]) {
   return {
@@ -42,8 +43,9 @@ function insert(calls: unknown[]) {
   return mock(() => ({ values: async (value: unknown) => calls.push(value) }));
 }
 
+// 初始化基础设施：registry 服务经 getDatabase() 读 DB，未初始化会直接抛错（包内用例不再依赖宿主 preload）
 beforeEach(() => {
-  resetAllStubs();
+  initializeMachineModuleConfig();
 });
 
 afterEach(() => {

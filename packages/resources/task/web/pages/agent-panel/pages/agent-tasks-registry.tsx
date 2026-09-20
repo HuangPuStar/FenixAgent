@@ -1,3 +1,17 @@
+import { Badge } from "@fenix/ui-components/ui/badge";
+import { Button } from "@fenix/ui-components/ui/button";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@fenix/ui-components/ui/dropdown-menu";
+import { Input } from "@fenix/ui-components/ui/input";
+import { Switch } from "@fenix/ui-components/ui/switch";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@fenix/ui-components/ui/table";
+import { NS } from "@fenix/web-runtime/i18n/namespace";
+import type { AgentInfo } from "@fenix/web-runtime/types/config";
 import {
   CheckCircle2,
   ChevronLeft,
@@ -15,21 +29,7 @@ import {
 } from "lucide-react";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
-import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
-import { Input } from "@/components/ui/input";
-import { Switch } from "@/components/ui/switch";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import type { HttpDefinition, TaskV2Info } from "@/src/api/tasks-v2";
-import { NS } from "@/src/i18n";
-import type { AgentInfo } from "@/src/types/config";
+import type { HttpDefinition, TaskV2Info } from "../../../api/tasks-v2";
 import { describeCron } from "../components/CronEditor";
 import { formatTaskRelativeTime } from "./agent-tasks-utils";
 
@@ -214,6 +214,7 @@ function TaskRow({
             disabled={triggering}
             onClick={onTrigger}
             title={t("action.execute")}
+            aria-label={t("action.execute")}
           >
             {triggering ? <Loader2 className="animate-spin" /> : <Play />}
           </Button>
@@ -226,7 +227,8 @@ function TaskRow({
 
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
-              <Button variant="ghost" size="sm" className="h-7 w-7 p-0 [&_svg]:w-3.5">
+              {/* 纯图标触发器：可见文本只有三个点，可访问名只能由 aria-label 提供（title 只作鼠标悬停提示）。 */}
+              <Button variant="ghost" size="sm" className="h-7 w-7 p-0 [&_svg]:w-3.5" aria-label={t("action.more")}>
                 <MoreHorizontal />
               </Button>
             </DropdownMenuTrigger>

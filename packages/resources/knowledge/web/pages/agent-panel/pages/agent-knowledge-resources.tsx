@@ -1,3 +1,7 @@
+import { Button } from "@fenix/ui-components/ui/button";
+import { Switch } from "@fenix/ui-components/ui/switch";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@fenix/ui-components/ui/table";
+import { NS } from "@fenix/web-runtime/i18n/namespace";
 import {
   ExternalLink,
   File,
@@ -12,10 +16,6 @@ import {
 } from "lucide-react";
 import type { RefObject } from "react";
 import { useTranslation } from "react-i18next";
-import { Button } from "@/components/ui/button";
-import { Switch } from "@/components/ui/switch";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { NS } from "@/src/i18n";
 import type { KnowledgeResourceInfo } from "../../../types/knowledge";
 
 interface AgentKnowledgeResourcesProps {
@@ -157,6 +157,7 @@ export function AgentKnowledgeResources(props: AgentKnowledgeResourcesProps) {
                         size="icon-sm"
                         variant="ghost"
                         title={t("preview.btn")}
+                        aria-label={t("preview.btn")}
                         onClick={() => props.onPreview(resource)}
                       >
                         <ExternalLink />
@@ -167,6 +168,7 @@ export function AgentKnowledgeResources(props: AgentKnowledgeResourcesProps) {
                       variant="ghost"
                       className="text-red-500"
                       title={t("actions.delete")}
+                      aria-label={t("actions.delete")}
                       disabled={!props.canManage || props.deletingResourceId === resource.id}
                       onClick={() => props.onDelete(resource)}
                     >

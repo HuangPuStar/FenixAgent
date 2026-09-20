@@ -1,6 +1,5 @@
 import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
 import { resetAllStubs } from "@fenix/platform-sdk/testing";
-import { resetConfig, setConfig } from "@server/config";
 import {
   type KnowledgeBaseRow,
   type KnowledgeResourceRow,
@@ -13,6 +12,7 @@ import {
   refreshKnowledgeResourceStatus,
   setKnowledgeUploadProviderForTesting,
 } from "../server/services/knowledge-upload";
+import { initializeKnowledgeModuleConfig } from "../server/testing";
 
 const NOW = new Date("2026-08-19T00:00:00.000Z");
 
@@ -68,8 +68,7 @@ const originals = {
 
 describe("知识资源上传服务分支", () => {
   beforeEach(() => {
-    resetAllStubs();
-    setConfig({ ragflowApiKey: "test-ragflow-key" });
+    initializeKnowledgeModuleConfig({ ragflowApiKey: "test-ragflow-key" });
   });
 
   afterEach(() => {
@@ -78,7 +77,6 @@ describe("知识资源上传服务分支", () => {
     knowledgeResourceRepo.delete = originals.deleteResource;
     knowledgeResourceRepo.listByKnowledgeBase = originals.listResources;
     setKnowledgeUploadProviderForTesting(null);
-    resetConfig();
     resetAllStubs();
   });
 

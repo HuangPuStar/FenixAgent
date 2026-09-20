@@ -1,4 +1,4 @@
-import type { ProviderInfo, ProviderModel } from "@/src/types/config";
+import type { ProviderInfo, ProviderModel } from "@fenix/web-runtime/types/config";
 import {
   getProviderAccessBadgeKey,
   getProviderDisplayName,

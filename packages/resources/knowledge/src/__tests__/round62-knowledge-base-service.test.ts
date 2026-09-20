@@ -1,5 +1,4 @@
 import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
-import { resetConfig, setConfig } from "@server/config";
 import {
   agentKnowledgeBindingRepo,
   type KnowledgeBaseRow,
@@ -25,6 +24,7 @@ import {
   verifyEmbeddingProvider,
 } from "../server/services/knowledge-base";
 import { RagFlowKnowledgeProvider } from "../server/services/knowledge-provider/ragflow";
+import { initializeKnowledgeModuleConfig } from "../server/testing";
 
 const NOW = new Date("2026-08-19T00:00:00.000Z");
 
@@ -100,7 +100,7 @@ const originals = {
 
 describe("round62 知识库 service 补充覆盖", () => {
   beforeEach(() => {
-    setConfig({ ragflowApiKey: "round62-key" });
+    initializeKnowledgeModuleConfig({ ragflowApiKey: "round62-key" });
   });
 
   afterEach(() => {
@@ -117,7 +117,6 @@ describe("round62 知识库 service 补充覆盖", () => {
     knowledgeResourceRepo.getStatusSummary = originals.resourceSummary;
     agentKnowledgeBindingRepo.deleteByKnowledgeBaseId = originals.bindingsDelete;
     setKnowledgeProviderForTesting(null);
-    resetConfig();
   });
 
   // 空白名称必须在访问仓储和远端前被拒绝。

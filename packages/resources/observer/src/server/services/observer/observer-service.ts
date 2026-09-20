@@ -20,12 +20,11 @@ import {
   listExternalRelayEntries as listExternalRelayEntriesModule,
 } from "@fenix/agent-runtime/server";
 import { getIdentityDirectory } from "@fenix/platform-sdk/server";
-import { findMachineNamesByIds } from "@fenix/resource-machine/server";
-import { config } from "@server/config";
-import type { AcpConnectionSnapshot } from "@server/types/store";
+import { findMachineNamesByIds, getMachineConfig } from "@fenix/resource-machine/server";
 import { acpLinkProvider } from "./providers/acp-link";
 import { buildRelationTree } from "./relation-tree";
 import type {
+  AcpConnectionSnapshot,
   ChatClientSnapshot,
   KindProvider,
   Observation,
@@ -85,7 +84,10 @@ const defaultDeps: ObserverServiceDeps = {
   // 调用时经 preload Proxy 属性访问转发到当前 stub，stub 才能生效（setup-mocks 注释）
   getEnvironment: (id) => environmentRepo.getById(id),
   getAgentConfigById: (id) => getAgentConfigById(id),
-  getDefaultMachineId: () => config.defaultMachineId ?? null,
+  // 兜底 machine 是 Machine 模块的配置字段（`RCS_DEFAULT_MACHINE_ID` 的 owner 在那边），这里读唯一来源
+  // 而不是在观察模块的配置里复制一份同名值：两处各持一份必然漂移。请求时读取——模块加载期宿主可能尚未
+  // 完成基础设施初始化。
+  getDefaultMachineId: () => getMachineConfig().defaultMachineId ?? null,
   getInstanceName: async (instanceUid) => (await agentInstanceRepo.getById(instanceUid))?.name,
   listOrganizationNamesByIds: (ids) => getIdentityDirectory().listOrganizationNames(ids),
   listUserNamesByIds: async (ids) => {

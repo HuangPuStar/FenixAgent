@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, test } from "bun:test";
+import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import {
   type AuthorizedResourceQuery,
   RESOURCE_QUERY_CONSTRAINT_PAYLOAD,
@@ -12,6 +12,7 @@ import {
   createAgentConfigRepository,
   type ScopedAgentConfigRow,
 } from "../server/repositories/agent-config-resource";
+import { initializeAgentConfigModuleConfig } from "../server/testing";
 
 /**
  * AgentConfig 仓储的下推向导（对应计划 S4 的「逐包路由测试 + 下推断言」验收）。
@@ -112,6 +113,12 @@ function businessColumns(input: unknown): string[] {
 }
 
 describe("AgentConfig 仓储下推", () => {
+  beforeEach(() => {
+    // 复位替身并初始化应用基础设施（DB 句柄经转发代理，见 `../server/testing.ts`）：写路径与无授权读
+    // 路径直接打 DB，读路径则注入授权查询端口替身、不需要句柄。
+    initializeAgentConfigModuleConfig();
+  });
+
   afterEach(() => {
     resetAllStubs();
   });

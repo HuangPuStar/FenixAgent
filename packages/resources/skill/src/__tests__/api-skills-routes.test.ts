@@ -1,10 +1,8 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import type { ActorContext } from "@fenix/platform-sdk";
 import { ForbiddenError } from "@fenix/platform-sdk";
-import { readJson, resetAllStubs, stubAuthApi } from "@fenix/platform-sdk/testing";
-import { resetTestAuth, setTestAuth } from "@server/plugins/auth";
-import { setTestOrgContext } from "@server/services/org-context";
-import { stubEnvironmentRepo } from "@server/test-utils/stubs/module-stubs";
+import { readJson } from "@fenix/platform-sdk/testing";
+import { createApiSkillsRoutes } from "../server/routes/api/skills";
 import {
   authorizedSkill,
   authorizedSkillDetail,
@@ -12,23 +10,24 @@ import {
   resetSkillModuleStub,
   testActor,
 } from "./fixtures";
+import { createStubSessionAuthGuardPlugin } from "./guard-stubs";
 
 /**
  * `/api/skills` 协议层用例（对外已发布合同）。
  *
  * 关注两点：一是分页与计数由 Facade/数据库完成（协议层不再内存切片），二是 `resourceAccess` 由
  * `toResourceAccessView` 从 `scope + access.actions` 派生——它是唯一保留旧字段形状的位置（决策 D2）。
+ *
+ * 守卫由工厂注入替身（理由与鉴权覆盖缺口见 `./guard-stubs.ts`）：用例构造两份实例，一份带主体、
+ * 一份不带，后者用来覆盖「已认证但没有组织上下文」的 401 分支。
  */
 
-const apiSkillsRoute = (await import("../server/routes/api/skills")).default;
-
-function authenticate(organizationId = "org-1") {
-  setTestAuth({
-    user: { id: "user-1", email: "user-1@example.test", name: "Tester" },
-    authContext: { organizationId, userId: "user-1", role: "owner" },
-  });
-  setTestOrgContext({ organizationId, userId: "user-1", role: "owner" });
-}
+const apiSkillsRoute = createApiSkillsRoutes({
+  authGuardPlugin: createStubSessionAuthGuardPlugin(testActor()),
+});
+const unauthenticatedApiSkillsRoute = createApiSkillsRoutes({
+  authGuardPlugin: createStubSessionAuthGuardPlugin(null),
+});
 
 function request(path: string, init?: RequestInit) {
   return apiSkillsRoute.handle(new Request(`http://localhost/api/skills${path}`, init));
@@ -45,26 +44,21 @@ function uploadForm(overwrite?: string): FormData {
 
 describe("API Skills Routes", () => {
   beforeEach(() => {
-    resetAllStubs();
     resetSkillModuleStub();
     installSkillModuleStub();
-    authenticate();
   });
 
   afterEach(() => {
-    resetTestAuth();
-    setTestOrgContext(null);
     resetSkillModuleStub();
   });
 
-  // 未认证请求必须在 session 守卫处终止，不能进入资源模块。
+  // 无组织上下文的请求落在路由层 401，且不触碰资源模块（守卫只负责不注入主体）。
   test("未认证列表返回 401", async () => {
-    resetTestAuth();
-    setTestOrgContext(null);
-    stubAuthApi({ getSession: async () => null, verifyApiKey: async () => ({ valid: false }) });
-    stubEnvironmentRepo({ getBySecret: async () => null });
+    const response = await unauthenticatedApiSkillsRoute.handle(
+      new Request("http://localhost/api/skills/", { method: "GET" }),
+    );
 
-    expect((await request("/")).status).toBe(401);
+    expect(response.status).toBe(401);
   });
 
   // 分页与计数下推到 Facade：协议层只把 page/pageSize 换算成 limit/offset，不再内存切片。

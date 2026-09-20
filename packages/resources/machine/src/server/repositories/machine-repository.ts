@@ -1,9 +1,10 @@
-import { db } from "@server/db";
 import { machine } from "@server/db/schema";
 import { eq, inArray } from "drizzle-orm";
+import { getMachineDatabase } from "../db";
 
 /** 查询 Machine 当前是否已由 ACP 注册并处于在线状态。 */
 export async function isMachineOnline(machineId: string): Promise<boolean> {
+  const db = getMachineDatabase();
   const rows = await db.select({ status: machine.status }).from(machine).where(eq(machine.id, machineId)).limit(1);
 
   return rows[0]?.status === "online";
@@ -15,6 +16,7 @@ export async function isMachineOnline(machineId: string): Promise<boolean> {
  */
 export async function findMachineNamesByIds(ids: string[]): Promise<Map<string, string>> {
   if (ids.length === 0) return new Map();
+  const db = getMachineDatabase();
   const rows = await db
     .select({ id: machine.id, name: machine.name, agentName: machine.agentName })
     .from(machine)
@@ -25,7 +27,7 @@ export async function findMachineNamesByIds(ids: string[]): Promise<Map<string, 
 /** 按 machine id 批量查询管理视图所需的状态与心跳信息。 */
 export async function findMachinesBasicInfoByIds(ids: string[]) {
   if (ids.length === 0) return [];
-  return db
+  return getMachineDatabase()
     .select({
       id: machine.id,
       name: machine.name,

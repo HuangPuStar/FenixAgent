@@ -13,7 +13,9 @@ import type { ModuleManifest } from "@fenix/platform-sdk";
  * sandbox → machine，须消除），因此**不得**写进 `dependsOn`：两者同时启用时装配顺序会成环，生成器的
  * 装配依赖反向校验也会拒绝这种编码。
  *
- * 不声明 `create`：模块组合根（`src/module.ts` 的进程级单例）属任务 1.3 W2 切片。
+ * `create`：惰性组合根（`src/module.ts` 的 `createMachineModule()`），模块索引层只 import 本文件，装配期
+ * 再按需加载 `./server` 图——file-ws 连接索引、心跳巡检与事件队列都是进程级单例，装配只能从这一处进入。
+ *
  * 不声明 `contributions` 与 `web`：消费方分别是 §1.5 的宿主挂载与 §1.6 的 WebShell 装配，形状必须与
  * 消费端同时定型；当前宿主按显式调用装配，不形成第二套装配路径。
  */
@@ -22,4 +24,5 @@ export const moduleManifest = {
   kind: "resource",
   dependsOn: ["agent-config"],
   capabilities: ["resource.machine"],
+  create: () => import("./src/module").then((module) => module.createMachineModule()),
 } satisfies ModuleManifest;

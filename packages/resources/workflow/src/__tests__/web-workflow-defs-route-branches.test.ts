@@ -2,10 +2,16 @@ import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { mkdir, rm } from "node:fs/promises";
 import { join } from "node:path";
 import { readJson, resetAllStubs, stubDb } from "@fenix/platform-sdk/testing";
-import { resetTestAuth, setTestAuth } from "@server/plugins/auth";
-import { setTestOrgContext } from "@server/services/org-context";
 
-const workflowDefsRoute = (await import("../server/routes/web/workflow-defs")).default;
+import { createWebWorkflowDefsRoutes } from "../server/routes/web/workflow-defs";
+import { initializeWorkflowModuleConfig } from "../server/testing";
+import { createStubSessionAuthGuard } from "./guard-stubs";
+
+const guard = createStubSessionAuthGuard();
+
+// 路由经工厂构造并注入会话守卫替身：静态条件禁止包内测试依赖宿主 `@server/plugins/auth`，
+// 而 Elysia 的 macro/state 是实例作用域的，守卫必须是构造时传入的同一实例。
+const workflowDefsRoute = createWebWorkflowDefsRoutes({ authGuardPlugin: guard });
 const WORKFLOW_BASE_DIR = join(process.cwd(), ".agents", "workflows");
 const testStoragePath = join(WORKFLOW_BASE_DIR, "org-current", "workflow-1");
 
@@ -22,11 +28,7 @@ function jsonRequest(path: string, body: Record<string, unknown>, method = "POST
 }
 
 function setAuthenticatedOrg(organizationId = "org-current") {
-  setTestAuth({
-    user: { id: "user-1", email: "user@test.com", name: "Tester" },
-    authContext: { organizationId, userId: "user-1", role: "owner" },
-  });
-  setTestOrgContext({ organizationId, userId: "user-1", role: "owner" });
+  guard.setActor({ organizationId, userId: "user-1" });
 }
 
 function queryResult(rows: unknown[]) {
@@ -76,13 +78,12 @@ function trigger(organizationId = "org-current") {
 
 describe("Web Workflow Definition Routes 补充分支", () => {
   beforeEach(() => {
-    resetAllStubs();
+    initializeWorkflowModuleConfig();
     setAuthenticatedOrg();
   });
 
   afterEach(async () => {
-    resetTestAuth();
-    setTestOrgContext(null);
+    guard.setActor(null);
     resetAllStubs();
     await rm(testStoragePath, { recursive: true, force: true });
   });

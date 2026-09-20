@@ -1,5 +1,5 @@
+import { request, unwrap } from "@fenix/web-runtime/api/request";
 import { getAdminKey } from "@fenix/web-runtime/lib/admin-key";
-import { request, unwrap } from "@/src/api/request";
 
 export interface ModelSyncChange {
   modelId: string;

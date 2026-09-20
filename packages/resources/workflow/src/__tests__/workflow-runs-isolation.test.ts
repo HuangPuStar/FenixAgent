@@ -1,34 +1,34 @@
 import { afterEach, beforeEach, describe, expect, mock, spyOn, test } from "bun:test";
-import { readJson, resetAllStubs, stubAuthApi } from "@fenix/platform-sdk/testing";
+import { readJson, resetAllStubs } from "@fenix/platform-sdk/testing";
 import { WorkflowError, WorkflowErrorCode } from "@fenix/workflow-engine";
-import { resetTestAuth, setTestAuth } from "@server/plugins/auth";
-import { setTestOrgContext } from "@server/services/org-context";
+import { createWebWorkflowRunsRoutes } from "../server/routes/web/workflow-runs";
 import { getTeamEngine } from "../server/services/workflow";
+import { initializeWorkflowModuleConfig } from "../server/testing";
+import { createStubSessionAuthGuard } from "./guard-stubs";
 
-const route = (await import("../server/routes/web/workflow-runs")).workflowRunsRoutes;
+const guard = createStubSessionAuthGuard();
+
+// 路由经工厂构造并注入会话守卫替身：静态条件禁止包内测试依赖宿主 `@server/plugins/auth`，
+// 而 Elysia 的 macro/state 是实例作用域的，守卫必须是构造时传入的同一实例。
+const route = createWebWorkflowRunsRoutes({ authGuardPlugin: guard });
 
 function request(path: string, init?: RequestInit) {
   return route.handle(new Request(`http://localhost${path}`, init));
 }
 
 function setAuthenticatedOrg(organizationId: string) {
-  setTestAuth({
-    user: { id: "user-1", email: "user@test.com", name: "Tester" },
-    authContext: { organizationId, userId: "user-1", role: "owner" },
-  });
-  setTestOrgContext({ organizationId, userId: "user-1", role: "owner" });
+  guard.setActor({ organizationId, userId: "user-1" });
 }
 
 describe("Workflow runs routes isolation and state boundaries", () => {
   beforeEach(() => {
-    resetAllStubs();
+    initializeWorkflowModuleConfig();
     setAuthenticatedOrg("org-runs-1");
   });
 
   afterEach(() => {
     mock.restore();
-    resetTestAuth();
-    setTestOrgContext(null);
+    guard.setActor(null);
     resetAllStubs();
   });
 
@@ -126,9 +126,7 @@ describe("Workflow runs routes isolation and state boundaries", () => {
   test("未认证审批返回 401 且不调用 engine", async () => {
     const engine = getTeamEngine("org-runs-1");
     const approveNode = spyOn(engine, "approveNode");
-    resetTestAuth();
-    setTestOrgContext(null);
-    stubAuthApi({ getSession: async () => null });
+    guard.setActor(null);
 
     const response = await request("/workflow-runs/run-approval/approve", {
       method: "POST",

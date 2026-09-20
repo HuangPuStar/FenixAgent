@@ -1,11 +1,16 @@
 import { afterEach, beforeEach, describe, expect, mock, spyOn, test } from "bun:test";
-import { readJson, resetAllStubs, stubAuthApi } from "@fenix/platform-sdk/testing";
+import { readJson, resetAllStubs } from "@fenix/platform-sdk/testing";
 import { type DAGRunResult, WorkflowError, WorkflowErrorCode } from "@fenix/workflow-engine";
-import { resetTestAuth, setTestAuth } from "@server/plugins/auth";
-import { setTestOrgContext } from "@server/services/org-context";
+import { createWebWorkflowEngineRoutes } from "../server/routes/web/workflow-engine";
 import { getTeamEngine } from "../server/services/workflow";
+import { initializeWorkflowModuleConfig } from "../server/testing";
+import { createStubSessionAuthGuard } from "./guard-stubs";
 
-const route = (await import("../server/routes/web/workflow-engine")).default;
+const guard = createStubSessionAuthGuard();
+
+// 路由经工厂构造并注入会话守卫替身：静态条件禁止包内测试依赖宿主 `@server/plugins/auth`，
+// 而 Elysia 的 macro/state 是实例作用域的，守卫必须是构造时传入的同一实例。
+const route = createWebWorkflowEngineRoutes({ authGuardPlugin: guard });
 
 function request(body: Record<string, unknown>) {
   return route.handle(
@@ -18,11 +23,7 @@ function request(body: Record<string, unknown>) {
 }
 
 function setAuthenticatedOrg(organizationId = "org-engine-1", userId = "user-engine-1") {
-  setTestAuth({
-    user: { id: userId, email: `${userId}@test.com`, name: "Workflow Tester" },
-    authContext: { organizationId, userId, role: "owner" },
-  });
-  setTestOrgContext({ organizationId, userId, role: "owner" });
+  guard.setActor({ organizationId, userId });
 }
 
 function runResult(status: DAGRunResult["status"] = "SUCCESS"): DAGRunResult {
@@ -42,14 +43,13 @@ function runResult(status: DAGRunResult["status"] = "SUCCESS"): DAGRunResult {
 
 describe("POST /web/workflow-engine action 分发", () => {
   beforeEach(() => {
-    resetAllStubs();
+    initializeWorkflowModuleConfig();
     setAuthenticatedOrg();
   });
 
   afterEach(() => {
     mock.restore();
-    resetTestAuth();
-    setTestOrgContext(null);
+    guard.setActor(null);
     resetAllStubs();
   });
 
@@ -281,9 +281,8 @@ describe("POST /web/workflow-engine action 分发", () => {
   // 未认证请求必须由认证插件阻断，避免匿名访问任一组织的 engine。
   test("未认证 getPendingApprovals 返回 401 且不调用 engine", async () => {
     const getPendingApprovals = spyOn(getTeamEngine("org-engine-1"), "getPendingApprovals");
-    resetTestAuth();
-    setTestOrgContext(null);
-    stubAuthApi({ getSession: async () => null });
+    guard.setActor(null);
+    guard.setActor(null);
 
     const response = await request({ action: "getPendingApprovals", runId: "run-private" });
 

@@ -2,30 +2,32 @@ import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { access, mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { resetAllStubs } from "@fenix/platform-sdk/testing";
-import { resetTestAuth, setTestAuth } from "@server/plugins/auth";
-import { stubEnvironmentRepo } from "@server/test-utils/stubs/module-stubs";
+import { createWebFsRoutes } from "../server/routes/web/fs";
+import {
+  initializeMachineModuleConfig,
+  lockMachineWorkspaceRoot,
+  stubMachineEnvironmentRecord,
+  unlockMachineWorkspaceRoot,
+} from "../server/testing";
+import { createStubSessionAuthGuardPlugin, resetTestAuth, setTestAuth } from "./guard-stubs";
 
 const ORG_ID = "org-1";
 const USER_ID = "user-1";
 const ENV_ID = "env-1";
 
-// 动态 import 路由模块。environmentRepo 的 mock 是实时 Proxy（setup-mocks.ts），
-// 属性访问总是转发到当前 stub，因此无需在 import 前设置，beforeEach 注入即可。
-const fsRoutes = await import("../routes/web/fs");
+// 路由实例文件级构造一次：会话守卫替身按请求期读取当前会话（setTestAuth 即时生效）；
+// 环境读取经包内句柄替换（stubMachineEnvironmentRecord）按调用时读取，beforeEach 注入即可。
+const fsRoutes = createWebFsRoutes({ authGuardPlugin: createStubSessionAuthGuardPlugin() });
 
 let workspaceRoot: string;
 
 beforeEach(async () => {
-  // resetAllStubs 清除共享 stub（防其他测试文件残留干扰），随后重新注入本测试的环境记录；
-  // 必须在每个用例前设置：全量运行时其他测试文件的 beforeEach 也会调用 resetAllStubs，
-  // 共享的 _environmentRepoStub 可能被清空，不能只在模块顶层设置一次。
-  resetAllStubs();
-  stubEnvironmentRepo({
-    getById: async () => ({ id: ENV_ID, organizationId: ORG_ID, userId: USER_ID }),
-  });
+  // 初始化会先复位全部替身（防其他测试文件残留干扰），再注入本包的模块配置与环境记录；
+  // 必须在每个用例前设置：全量运行时其他测试文件也会复位共享替身，不能只在模块顶层设置一次。
+  initializeMachineModuleConfig();
+  stubMachineEnvironmentRecord({ id: ENV_ID, organizationId: ORG_ID, userId: USER_ID });
   workspaceRoot = await mkdtemp(join(tmpdir(), "fs-upload-escape-"));
-  process.env.WORKSPACE_ROOT = workspaceRoot;
+  await lockMachineWorkspaceRoot(workspaceRoot);
   setTestAuth({
     user: { id: USER_ID, email: "user@fenix.com", name: "user" },
     authContext: { organizationId: ORG_ID, userId: USER_ID, role: "owner" },
@@ -35,6 +37,7 @@ beforeEach(async () => {
 afterEach(async () => {
   resetTestAuth();
   delete process.env.WORKSPACE_ROOT;
+  unlockMachineWorkspaceRoot();
   await rm(workspaceRoot, { recursive: true, force: true });
 });
 
@@ -63,7 +66,7 @@ async function expectMissing(path: string): Promise<void> {
 describe("本地 upload relativePath 越界修复（D16）", () => {
   // 携带 ".." 段的 relativePath 必须整批返回 400，且 workspace 外不得有任何文件落盘。
   test("rejects '..' escape and leaves no file outside workspace", async () => {
-    const response = await fsRoutes.default.handle(buildUploadRequest(["../../evil.txt"]));
+    const response = await fsRoutes.handle(buildUploadRequest(["../../evil.txt"]));
 
     expect(response.status).toBe(400);
     expect((await response.json()) as unknown).toEqual({
@@ -80,7 +83,7 @@ describe("本地 upload relativePath 越界修复（D16）", () => {
 
   // 绝对路径同样属于越界输入，必须整批拒绝。
   test("rejects absolute relativePath", async () => {
-    const response = await fsRoutes.default.handle(buildUploadRequest(["/etc/passwd"]));
+    const response = await fsRoutes.handle(buildUploadRequest(["/etc/passwd"]));
 
     expect(response.status).toBe(400);
     expect((await response.json()) as unknown).toEqual({
@@ -93,7 +96,7 @@ describe("本地 upload relativePath 越界修复（D16）", () => {
 
   // NUL 与控制字符不可出现在路径中，必须整批拒绝。
   test("rejects NUL and control characters", async () => {
-    const response = await fsRoutes.default.handle(buildUploadRequest(["a\u0000b.txt", "c\u001fd.txt"]));
+    const response = await fsRoutes.handle(buildUploadRequest(["a\u0000b.txt", "c\u001fd.txt"]));
 
     expect(response.status).toBe(400);
     expect((await response.json()) as unknown).toEqual({
@@ -106,7 +109,7 @@ describe("本地 upload relativePath 越界修复（D16）", () => {
 
   // 混合批次中只要有一个非法路径，整批拒绝，合法项也不得落盘。
   test("rejects whole batch when any path is invalid", async () => {
-    const response = await fsRoutes.default.handle(buildUploadRequest(["ok.txt", "../evil.txt"]));
+    const response = await fsRoutes.handle(buildUploadRequest(["ok.txt", "../evil.txt"]));
 
     expect(response.status).toBe(400);
     // 合法项 ok.txt 也不得落盘（保持整批原子性）
@@ -115,7 +118,7 @@ describe("本地 upload relativePath 越界修复（D16）", () => {
 
   // 正常相对路径（含目录层级与空格 trim 语义）应照常上传成功，落盘在 workspace 内。
   test("uploads normal relative path successfully", async () => {
-    const response = await fsRoutes.default.handle(buildUploadRequest(["folder/  note.txt"]));
+    const response = await fsRoutes.handle(buildUploadRequest(["folder/  note.txt"]));
 
     expect(response.status).toBe(200);
     const body = (await response.json()) as {
@@ -129,7 +132,7 @@ describe("本地 upload relativePath 越界修复（D16）", () => {
 
   // 未提供 relativePaths 时回退 file.name，既有上传行为不受影响。
   test("falls back to file name when relativePaths is empty", async () => {
-    const response = await fsRoutes.default.handle(buildUploadRequest(undefined, "plain.txt"));
+    const response = await fsRoutes.handle(buildUploadRequest(undefined, "plain.txt"));
 
     expect(response.status).toBe(200);
     expect(await readFile(join(workspaceDir(), "user", "sub", "plain.txt"), "utf-8")).toBe("evil");
@@ -137,7 +140,7 @@ describe("本地 upload relativePath 越界修复（D16）", () => {
 
   // file.name 本身也是不可信输入：multipart filename 可伪造 ../ 段，回退路径同样禁止越界。
   test("rejects '..' escape via file.name fallback", async () => {
-    const response = await fsRoutes.default.handle(buildUploadRequest(undefined, "../../evil.txt"));
+    const response = await fsRoutes.handle(buildUploadRequest(undefined, "../../evil.txt"));
 
     expect(response.status).toBe(400);
     expect((await response.json()) as unknown).toEqual({
@@ -154,7 +157,7 @@ describe("本地 upload relativePath 越界修复（D16）", () => {
 
   // 反斜杠同样视为路径分隔符（防御 Windows 客户端路径），`..` 段一律拒绝。
   test("rejects '..' segments with backslash separators", async () => {
-    const response = await fsRoutes.default.handle(buildUploadRequest(["..\\..\\evil.txt"]));
+    const response = await fsRoutes.handle(buildUploadRequest(["..\\..\\evil.txt"]));
 
     expect(response.status).toBe(400);
     expect((await response.json()) as unknown).toEqual({
@@ -170,7 +173,7 @@ describe("本地 upload relativePath 越界修复（D16）", () => {
     const formData = new FormData();
     formData.append("files", new File(["evil"], "plain.txt"));
     formData.append("relativePaths", "null");
-    const response = await fsRoutes.default.handle(
+    const response = await fsRoutes.handle(
       new Request(`http://localhost/environments/${ENV_ID}/fs/user/sub`, {
         method: "POST",
         body: formData,
@@ -183,7 +186,7 @@ describe("本地 upload relativePath 越界修复（D16）", () => {
 
   // 空文件名无内容可写（回退链末端），必须整批拒绝而不是落到目录写入报 500。
   test("rejects empty file name", async () => {
-    const response = await fsRoutes.default.handle(buildUploadRequest(undefined, ""));
+    const response = await fsRoutes.handle(buildUploadRequest(undefined, ""));
 
     expect(response.status).toBe(400);
     expect((await response.json()) as unknown).toEqual({

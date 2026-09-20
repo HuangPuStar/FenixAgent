@@ -1,21 +1,23 @@
+import { envApi } from "@fenix/agent-runtime/web/api/environments";
+import { AgentCardList } from "@fenix/ui-components/components/AgentCardList";
+import { ConfirmDialog } from "@fenix/ui-components/config/ConfirmDialog";
+import { FormDialog } from "@fenix/ui-components/config/FormDialog";
+import { AppHeader } from "@fenix/ui-components/layout/app-header";
+import { AppPage } from "@fenix/ui-components/layout/app-page";
+import { Badge } from "@fenix/ui-components/ui/badge";
+import { Button } from "@fenix/ui-components/ui/button";
+import { Input } from "@fenix/ui-components/ui/input";
+import { Label } from "@fenix/ui-components/ui/label";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@fenix/ui-components/ui/select";
+import { Skeleton } from "@fenix/ui-components/ui/skeleton";
+import { unwrap } from "@fenix/web-runtime/api/request";
 import { useRequest } from "ahooks";
-import { useState } from "react";
+import { AlertTriangle, RefreshCw } from "lucide-react";
+import { useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
-import { ConfirmDialog } from "@/components/config/ConfirmDialog";
-import { FormDialog } from "@/components/config/FormDialog";
-import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Skeleton } from "@/components/ui/skeleton";
-import { channelApi } from "@/src/api/channels";
-import { envApi } from "@/src/api/environments";
-import { unwrap } from "@/src/api/request";
-import { AppHeader } from "@/src/components/layout/app-header";
-import { AppPage } from "@/src/components/layout/app-page";
-import { AgentCardList } from "@/src/pages/agent-panel/shared/AgentCardList";
+import { channelApi } from "../../../api/channels";
+import { resolveChannelListState } from "../../../lib/channel-list-state";
 
 type ChannelBinding = {
   id: string;
@@ -37,19 +39,31 @@ export function AgentChannelsPage() {
   const [formChatId, setFormChatId] = useState("");
   const [formAgentId, setFormAgentId] = useState("");
 
+  // 当前已渲染的绑定条数镜像：`onError` 用它区分两种失败场景，见下方反馈口径。
+  const bindingCountRef = useRef(0);
+
   // 列表查询：并行拉取通道绑定 + 环境汇总
   const {
     data: listData,
     loading,
+    error,
     refresh,
   } = useRequest(() => Promise.all([unwrap(channelApi.listBindings()), unwrap(envApi.list())]), {
     onError: (err) => {
       console.error("Failed to load channels", err);
-      toast.error(t("loadBindingsFailed"));
+      // 反馈口径：同一次失败只报一次。无数据时页面渲染持久错误页（role="alert" + 重试按钮），
+      // 失败已经可见，再 toast 一次就是重复上报；只有「已有数据后刷新失败」时列表被保留、
+      // 没有持久错误页，必须用 toast 兜底，否则这次刷新失败对用户完全不可见。
+      // 判据与 lib/channel-list-state 的 `error && itemCount === 0` 同源；此处按条数而非按
+      // 渲染分支判断：ahooks 在失败前置 loading 为 true，onError 看到的上一轮分支是 loading。
+      if (bindingCountRef.current > 0) toast.error(t("loadBindingsFailed"));
     },
   });
   const bindings: ChannelBinding[] = Array.isArray(listData?.[0]) ? listData[0] : [];
   const environments: EnvironmentSummary[] = Array.isArray(listData?.[1]) ? listData[1] : [];
+  bindingCountRef.current = bindings.length;
+  // 分支判定见 lib/channel-list-state：失败必须落到持久错误态，不能在列表里显示「暂无绑定」。
+  const listState = resolveChannelListState({ loading, error, itemCount: bindings.length });
 
   // 创建绑定：仅成功时 toast 提示
   const { run: runCreate, loading: formSaving } = useRequest(
@@ -69,10 +83,11 @@ export function AgentChannelsPage() {
     },
   );
 
-  // 删除绑定：静默操作
+  // 删除绑定：成功后 toast 反馈（字典里的 bindingDeleted 在此之前没有消费点）
   const { run: runDelete } = useRequest((id: string) => unwrap(channelApi.deleteBinding({ id })), {
     manual: true,
     onSuccess: () => {
+      toast.success(t("bindingDeleted"));
       setConfirmOpen(false);
       setDeleteTarget(null);
       refresh();
@@ -98,9 +113,9 @@ export function AgentChannelsPage() {
     runCreate(formPlatform, formChatId, formAgentId);
   };
 
-  if (loading) {
+  if (listState === "loading") {
     return (
-      <AppPage>
+      <AppPage busy>
         <div className="mb-3 flex items-start justify-between gap-4">
           <div>
             <Skeleton className="h-[22px] w-28 rounded-md" />
@@ -112,8 +127,36 @@ export function AgentChannelsPage() {
         <div className="space-y-3">
           {Array.from({ length: 5 }).map((_, i) => (
             // Static skeleton placeholders have no domain identifier.
+            // biome-ignore lint/suspicious/noArrayIndexKey: 骨架屏是静态装饰、不重排，索引键不会引起元素错位；源文件位于 apps/web 时未声明 react 依赖、biome 未启用 react 域规则，本包按 T2e 声明 react 后该规则才生效
             <Skeleton key={i} className="h-16 w-full rounded-lg" />
           ))}
+        </div>
+      </AppPage>
+    );
+  }
+
+  // 持久错误态：带 role="alert" 让读屏播报，且绝不落回 AgentCardList 的「暂无绑定」空态。
+  // 鉴权失败（401/403）单独一个分支：重试按钮对「没有权限」没有意义，因此不给。
+  if (listState === "unauthorized" || listState === "error") {
+    return (
+      <AppPage>
+        <div className="flex flex-col items-center justify-center gap-2 py-16 text-center" role="alert">
+          <AlertTriangle className="h-6 w-6 text-text-muted" />
+          {listState === "unauthorized" ? (
+            <>
+              <p className="text-sm font-medium text-text-bright">{t("unauthorized")}</p>
+              <p className="text-xs text-text-muted">{t("unauthorizedHint")}</p>
+            </>
+          ) : (
+            <>
+              <p className="text-sm font-medium text-text-bright">{t("loadBindingsFailed")}</p>
+              <p className="text-xs text-text-muted">{error instanceof Error ? error.message : t("unknownError")}</p>
+              <Button className="mt-2" variant="outline" size="sm" onClick={refresh}>
+                <RefreshCw />
+                {t("retry")}
+              </Button>
+            </>
+          )}
         </div>
       </AppPage>
     );
@@ -138,7 +181,8 @@ export function AgentChannelsPage() {
                   {binding.chatId && <span className="text-xs text-text-muted">({binding.chatId})</span>}
                 </div>
               </div>
-              <div className="flex gap-1.5 opacity-0 group-hover:opacity-100 transition-opacity">
+              {/* group-focus-within：操作只随 hover 显形时，键盘 Tab 到按钮会聚焦一个不可见元素 */}
+              <div className="flex gap-1.5 opacity-0 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100">
                 <Button
                   size="xs"
                   variant="destructive"
@@ -164,8 +208,9 @@ export function AgentChannelsPage() {
       >
         <div className="space-y-4">
           <div>
-            <Label>{t("dialog.platform")}</Label>
+            <Label htmlFor="channel-binding-platform">{t("dialog.platform")}</Label>
             <Input
+              id="channel-binding-platform"
               value={formPlatform}
               onChange={(e) => setFormPlatform(e.target.value)}
               className="mt-1"
@@ -173,13 +218,18 @@ export function AgentChannelsPage() {
             />
           </div>
           <div>
-            <Label>{t("dialog.chatId")}</Label>
-            <Input value={formChatId} onChange={(e) => setFormChatId(e.target.value)} className="mt-1" />
+            <Label htmlFor="channel-binding-chat-id">{t("dialog.chatId")}</Label>
+            <Input
+              id="channel-binding-chat-id"
+              value={formChatId}
+              onChange={(e) => setFormChatId(e.target.value)}
+              className="mt-1"
+            />
           </div>
           <div>
-            <Label>{t("dialog.agent")}</Label>
+            <Label htmlFor="channel-binding-agent">{t("dialog.agent")}</Label>
             <Select value={formAgentId} onValueChange={setFormAgentId}>
-              <SelectTrigger className="mt-1">
+              <SelectTrigger id="channel-binding-agent" className="mt-1">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>

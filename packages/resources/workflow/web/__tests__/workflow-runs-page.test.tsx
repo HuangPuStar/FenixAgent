@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
 import { Window } from "happy-dom";
 import { act, createElement } from "react";
 import { createRoot, type Root } from "react-dom/client";
-import { initializeHappyDomWindow } from "../../../../../apps/web/src/__tests__/happy-dom-window";
+import { initializeHappyDomWindow } from "./happy-dom-window";
 
 // 告知 React 当前为测试环境，消除 act() 警告
 (globalThis as Record<string, unknown>).IS_REACT_ACT_ENVIRONMENT = true;
@@ -49,8 +49,19 @@ const MOCK_TRANSLATIONS: Record<string, string> = {
 };
 
 // ── mock react-i18next ──
+/**
+ * `react-i18next` 替身的跨包并集出口：`useTranslation` 由本文件自带翻译表，
+ * 其余出口给同签名直通版本——bun 1.4.2 下 `mock.module` 的命名空间会被同进程后续文件复用，
+ * 缺少 `I18nextProvider` 会让之后加载的组件（如 identity 的弹窗）在渲染期直接抛错。
+ */
+const REACT_I18NEXT_UNION = {
+  I18nextProvider: ({ children }: { children?: unknown }) => children,
+  initReactI18next: { type: "3rdParty", init: () => {} },
+  Trans: ({ children }: { children?: unknown }) => children,
+};
+
 mock.module("react-i18next", () => ({
-  I18nextProvider: ({ children }: { children: unknown }) => children,
+  ...REACT_I18NEXT_UNION,
   useTranslation: () => ({
     t: (key: string, opts?: Record<string, unknown>) => {
       let result = MOCK_TRANSLATIONS[key] ?? key;
@@ -65,10 +76,15 @@ mock.module("react-i18next", () => ({
 }));
 
 // ── mock sonner toast ──
+// 替身给的是跨包并集（success / error / info / warning / message）：bun 1.4.2 下 `mock.module`
+// 的命名空间会被同进程后续文件复用，只给本用例用到的两个方法会让之后加载的组件取到 undefined。
 mock.module("sonner", () => ({
   toast: {
     error: () => {},
     success: () => {},
+    info: () => {},
+    warning: () => {},
+    message: () => {},
   },
 }));
 

@@ -24,14 +24,20 @@ import type { ModuleManifest } from "@fenix/platform-sdk";
  * 反向边不存在：knowledge 的服务端代码不导入本包，这条边是单边的，不构成装配环；knowledge 注册后
  * 生成器的 `assertDependsOnComplete` 会接管「值导入了已注册资源模块就必须声明」这半边的持续校验。
  *
- * 不声明 `create` / `contributions` / `web` / `envDefinitions`：`create` 指向的模块组合根
- * （`src/module.ts`）属 W2 切片；`contributions` 与 `web` 的消费方分别是 §1.5 的宿主挂载与 §1.6 的
- * WebShell 装配，形状必须与消费端同时定型；本包不读 `process.env`、没有独立部署级变量，
- * `envDefinitions` 归 §1.7 的 env 收敛。
+ * 声明 `create`：指向 `src/module.ts` 的组合根 `createMcpModule()`（W2 落地）。工厂保持惰性——
+ * registry 会被大量位置导入，不能在索引层就把 Drizzle、Elysia 与 MCP SDK 拖进模块图；组合根本身
+ * 需要平台注入（授权、查询端口、身份目录），因此它只补 `id` 并把装配生命周期转出，构造仍由
+ * `src/server/module.ts` 唯一实现（理由见 `src/module.ts`）。
+ *
+ * 不声明 `contributions` / `web` / `envDefinitions`：`contributions` 与 `web` 的消费方分别是
+ * §1.5 的宿主挂载与 §1.6 的 WebShell 装配，形状必须与消费端同时定型；本包不读 `process.env`、
+ * 没有独立部署级变量，`envDefinitions` 归 §1.7 的 env 收敛。
  */
 export const moduleManifest = {
   id: "mcp",
   kind: "resource",
   dependsOn: ["knowledge"],
   capabilities: ["resource.mcp"],
+  // 工厂保持惰性：registry 会被大量位置导入，不能在索引层就把 Drizzle、Elysia 与 MCP SDK 拖进模块图。
+  create: () => import("./src/module").then((module) => module.createMcpModule()),
 } satisfies ModuleManifest;

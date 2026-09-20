@@ -6,14 +6,14 @@
  * 上传使用 FormData，PUT 上传文件到 Skill 目录。
  */
 
-import { request } from "../../../../../apps/web/src/api/request";
+import { request } from "@fenix/web-runtime/api/request";
 import type {
   ResourceAccessView,
   SkillDetail,
   SkillInfo,
   SkillUploadConflictResponse,
   SkillUploadResponse,
-} from "../../../../../apps/web/src/types/config";
+} from "@fenix/web-runtime/types/config";
 
 /** 创建/更新 Skill 所需的 data 载荷 */
 export interface SkillData {

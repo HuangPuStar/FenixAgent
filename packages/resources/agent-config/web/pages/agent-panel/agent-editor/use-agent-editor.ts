@@ -1,22 +1,25 @@
+import { useOrg } from "@fenix/identity/web";
+import { modelApi } from "@fenix/model-management/web";
+import type { KnowledgeBaseInfo } from "@fenix/resource-knowledge/web";
+import { kbApi } from "@fenix/resource-knowledge/web";
+import { registryApi } from "@fenix/resource-machine/web";
+import { isExternalMcp, mcpApi } from "@fenix/resource-mcp/web";
+import { hindsightApi } from "@fenix/resource-memory/web";
 import { sandboxPoolApi } from "@fenix/resource-sandbox/web";
+import {
+  getSkillOptionValue,
+  isExternalSkill,
+  normalizeSkillOptionsPayload,
+  skillConfigApi,
+} from "@fenix/resource-skill/web";
+import { unwrap } from "@fenix/web-runtime/api/request";
+import { dispatchConfigChange } from "@fenix/web-runtime/lib/config-events";
+import type { AgentDetail, ResourceAccessActions, ResourceScopeView } from "@fenix/web-runtime/types/config";
 import { useRequest } from "ahooks";
 import { useCallback, useMemo, useState } from "react";
 import { toast } from "sonner";
-import { agentApi } from "@/src/api/agents";
-import { hindsightApi } from "@/src/api/hindsight";
-import { kbApi } from "@/src/api/knowledge-bases";
-import { mcpApi } from "@/src/api/mcp";
-import { modelApi } from "@/src/api/models";
-import { registryApi } from "@/src/api/registry";
-import { unwrap } from "@/src/api/request";
-import { agentSitesApi } from "@/src/api/sites";
-import { skillConfigApi } from "@/src/api/skills";
-import { useOrg } from "@/src/contexts/OrgContext";
-import { dispatchConfigChange } from "@/src/lib/config-events";
-import { isExternalMcp } from "@/src/lib/mcp-resource-access";
-import { getSkillOptionValue, isExternalSkill, normalizeSkillOptionsPayload } from "@/src/lib/skill-resource-access";
-import type { AgentDetail, ResourceAccessActions, ResourceScopeView } from "@/src/types/config";
-import type { KnowledgeBaseInfo } from "@/src/types/knowledge";
+import { agentApi } from "../../../api/agents";
+import { agentSitesApi } from "../../../api/sites";
 import {
   type AgentEditorOption,
   type AgentEditorValues,

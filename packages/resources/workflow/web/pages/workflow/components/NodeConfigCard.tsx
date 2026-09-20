@@ -1,10 +1,10 @@
+import { Button } from "@fenix/ui-components/ui/button";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@fenix/ui-components/ui/dialog";
+import { Textarea } from "@fenix/ui-components/ui/textarea";
 import type { Node } from "@xyflow/react";
 import { Maximize2 } from "lucide-react";
 import { useCallback, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { Button } from "@/components/ui/button";
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { Textarea } from "@/components/ui/textarea";
 import type { CustomToolInputDef, CustomToolItem } from "../../../api/workflow-defs";
 import type { AgentNodeOption } from "../hooks/useWorkflowMetaAgent";
 import { syncOutputOnRename } from "../preset-utils";
@@ -1141,10 +1141,10 @@ export function NodeConfigCard({
           </p>
           <div className="flex justify-end gap-2 mt-4">
             <Button variant="outline" size="sm" onClick={cancelRename}>
-              {t("common:cancel")}
+              {t("editor.cancel")}
             </Button>
             <Button size="sm" onClick={confirmRename}>
-              {t("common:confirm")}
+              {t("editor.confirm")}
             </Button>
           </div>
         </DialogContent>
@@ -1169,7 +1169,7 @@ export function NodeConfigCard({
           </p>
           <div className="flex justify-end gap-2 mt-4">
             <Button variant="outline" size="sm" onClick={cancelDeleteOutput}>
-              {t("common:cancel")}
+              {t("editor.cancel")}
             </Button>
             <Button size="sm" variant="destructive" onClick={confirmDeleteOutput}>
               {t("editor.delete_output_confirm")}

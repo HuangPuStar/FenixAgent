@@ -1,6 +1,16 @@
+// 本文件守护「授权视图 → 目录/编辑器的模型与 Provider 选项」这条链路，其中 `mapModelOptions` /
+// `mapMcpOptions` 属 agent-config 的编辑域，按跨包规则从对方包根 `@fenix/agent-config/web` 消费。
+//
+// 历史（2026-09-20，已解除）：本链一度整文件 0 断言执行，两个原因都在宿主侧——`apps/web/src/i18n/index.ts`
+// 曾按 observer 的旧布局深链 `web/i18n/{en,zh}/observer.json`（该包已迁到 `web/i18n/locales/**`），以及
+// preload 把 `globalThis.window` 置成 globalThis，触发 `antd-style` 的 SSR 守卫裸调 `matchMedia`。宿主
+// i18n 改指各包 `@fenix/*/web/i18n` 后本链已在无 DOM 的 `bun test` 进程里正常求值：实测本文件与
+// `src/__tests__/agent-editor-model.test.ts` 合计 32 pass / 0 fail。保留这段记述是因为「无 DOM 进程里求值
+// 整棵 UI 链」仍是本文件最脆弱的假设——再出现整文件 0 断言，先查宿主 i18n 与 preload 的加载期副作用，
+// 而不是怀疑断言本身。
 import { describe, expect, test } from "bun:test";
-import { mapMcpOptions, mapModelOptions } from "@/src/pages/agent-panel/agent-editor/agent-editor-model";
-import type { ModelEntry, ProviderInfo } from "@/src/types/config";
+import { mapMcpOptions, mapModelOptions } from "@fenix/agent-config/web";
+import type { ModelEntry, ProviderInfo } from "@fenix/web-runtime/types/config";
 import { buildModelOptions } from "../components/config/ModelConfigDialog";
 import type { ProviderResourceLike } from "../lib/provider-resource-access";
 import {

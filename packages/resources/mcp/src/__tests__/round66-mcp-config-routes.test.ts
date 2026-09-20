@@ -1,26 +1,25 @@
 import { afterEach, beforeEach, describe, expect, spyOn, test } from "bun:test";
 import { NotFoundError } from "@fenix/platform-sdk";
 import { readJson, resetAllStubs } from "@fenix/platform-sdk/testing";
-import { resetTestAuth, setTestAuth } from "@server/plugins/auth";
-import { setTestOrgContext } from "@server/services/org-context";
+import { createWebMcpConfigRoutes } from "../server/routes/web/config/mcp";
 import * as mcpInspector from "../server/services/mcp-inspector";
-import { authorizedServer, installMcpModuleStub, resetMcpModuleStub } from "./fixtures";
+import { authorizedServer, installMcpModuleStub, resetMcpModuleStub, testActor } from "./fixtures";
+import { createStubMcpAuthGuardPlugin } from "./guard-stubs";
 
 /**
  * MCP 配置路由的连接检测用例。
  *
  * 探测本身（MCP 协议握手 / 本地命令可用性）留在协议层，权限与资源解析在 Facade：可写资源的获取
  * 失败（404/403）必须在探测之前终止，避免对无权访问的地址发起出网请求。
+ *
+ * 会话守卫由宿主注入（工厂参数），主体由包内替身控制；不再借宿主 `setTestAuth` 短路认证。
  */
 
-const mcpRoute = (await import("../server/routes/web/config/mcp")).default;
+const guard = createStubMcpAuthGuardPlugin();
+const mcpRoute = createWebMcpConfigRoutes({ authGuardPlugin: guard.plugin });
 
 function authenticate() {
-  setTestAuth({
-    user: { id: "user-1", email: "user-1@example.test", name: "Tester" },
-    authContext: { organizationId: "org-1", userId: "user-1", role: "owner" },
-  });
-  setTestOrgContext({ organizationId: "org-1", userId: "user-1", role: "owner" });
+  guard.setActor(testActor());
 }
 
 function request(path: string, init?: RequestInit) {
@@ -35,8 +34,7 @@ describe("MCP 配置路由补充覆盖", () => {
   });
 
   afterEach(() => {
-    resetTestAuth();
-    setTestOrgContext(null);
+    guard.setActor(null);
     resetMcpModuleStub();
   });
 

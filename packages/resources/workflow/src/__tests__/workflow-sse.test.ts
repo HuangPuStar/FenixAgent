@@ -1,12 +1,17 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { getAllEventBuses, removeEventBus } from "@fenix/agent-runtime/server";
-import { resetAllStubs, stubAuthApi, stubDb } from "@fenix/platform-sdk/testing";
-import { resetTestAuth, setTestAuth } from "@server/plugins/auth";
-import { setTestOrgContext } from "@server/services/org-context";
+import { resetAllStubs, stubDb } from "@fenix/platform-sdk/testing";
+import { createWebWorkflowSseRoutes } from "../server/routes/web/workflow-sse";
 import { publishWorkflowEvent } from "../server/services/workflow/workflow-events";
+import { initializeWorkflowModuleConfig } from "../server/testing";
+import { createStubSessionAuthGuard } from "./guard-stubs";
 
 // workflow-sse 路由模块 — 生产 SSE 事件流端点（原 transport/sse-writer 的 SSE 行为测试迁移至此）
-const route = (await import("../server/routes/web/workflow-sse")).default;
+const guard = createStubSessionAuthGuard();
+
+// 路由经工厂构造并注入会话守卫替身：静态条件禁止包内测试依赖宿主 `@server/plugins/auth`，
+// 而 Elysia 的 macro/state 是实例作用域的，守卫必须是构造时传入的同一实例。
+const route = createWebWorkflowSseRoutes({ authGuardPlugin: guard });
 
 /**
  * 读取 Response 流直到包含目标文本或读满 maxChunks 个数据块。
@@ -55,18 +60,14 @@ function resetEventBuses() {
 
 describe("GET /web/workflow/:workflowId/events (SSE)", () => {
   beforeEach(() => {
-    setTestAuth({
-      user: { id: "user-1", email: "user@test.com", name: "Tester" },
-      authContext: { organizationId: "org-1", userId: "user-1", role: "owner" },
-    });
-    setTestOrgContext({ organizationId: "org-1", userId: "user-1", role: "owner" });
+    initializeWorkflowModuleConfig();
+    guard.setActor({ organizationId: "org-1", userId: "org-1" });
     stubWorkflowDb({ id: "wf-1", organizationId: "org-1" });
     resetEventBuses();
   });
 
   afterEach(() => {
-    resetTestAuth();
-    setTestOrgContext(null);
+    guard.setActor(null);
     resetAllStubs();
     resetEventBuses();
   });
@@ -142,11 +143,10 @@ describe("GET /web/workflow/:workflowId/events (SSE)", () => {
 
   // 认证边界：未登录请求被拒绝
   test("未认证请求返回 401", async () => {
-    resetTestAuth();
-    setTestOrgContext(null);
+    guard.setActor(null);
     // sessionAuth macro 在 _testAuth 为 null 时走真实认证链路，
     // getSession 返回 null 触发 API key fallback，无 key 时最终返回 401
-    stubAuthApi({ getSession: async () => null });
+    guard.setActor(null);
     const res = await route.handle(new Request("http://localhost/workflow/wf-1/events"));
     expect(res.status).toBe(401);
   });

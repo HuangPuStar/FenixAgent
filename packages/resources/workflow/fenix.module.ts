@@ -16,18 +16,19 @@ import type { ModuleManifest } from "@fenix/platform-sdk";
  * 基础类别，在 assembly profile 里是固定槽位（`requireFoundation`），跨类别边由 §2.3 依赖矩阵负责；
  * - `@fenix/workflow-engine` 与 `@fenix/plugin-sdk`（后者在 `agent-chat-transport.ts:26` 仅 `import type`，
  * 编译期擦除）：两者都未注册为模块，写进 `dependsOn` 会被 registry 生成器以「引用了未注册模块」拒绝；
- * - `@server/**`：`src/server/repositories/workflow-def.ts:8` 取 `db`、`src/server/routes/web/workflow-defs.ts:32`
- * 取 `authGuardPlugin` 等宿主内部反向依赖，已由架构台账登记为 `apps-boundary`（owner 1.5）。这类边必须
- * 消除，不能编码成装配依赖——否则两个模块在 profile 里成套启用时装配顺序会因循环失败。
+ * - `@server/db/schema`：`src/**` 生产代码只剩这一条宿主内部依赖（表定义，§5 残留，owner 1.7 迁出），
+ * 它不构成装配依赖；原先的 `@server/db`、`@server/config`、`@server/plugins/auth` 反向依赖已在本任务
+ * 切片内切断（分别改为 `getWorkflowDatabase()`、`getModuleConfig("workflow")`、路由工厂注入守卫）。
  *
- * 不声明 `create`：`getTeamEngine()` 的进程级单例（按 organizationId 缓存 engine + transport）尚未收敛为
- * 模块组合根 `src/module.ts`，工厂入口由 W2 切片落地。不声明 `contributions` / `web` / `envDefinitions`：
- * 前两者的消费方分别是 §1.5 宿主挂载与 §1.6 WebShell 装配，形状必须与消费端同时定型，单方面发明会返工；
- * `envDefinitions` 与 preflight 收敛在任务 1.7。
+ * `create` 指向 `src/module.ts` 的组合根（返回包内既有进程级单例，不新建第二套 engine 缓存）；
+ * 工厂保持惰性：registry 会被大量位置导入，不能在索引层就把 Elysia、Drizzle 与 workflow-engine 拖进模块图。
+ * 不声明 `contributions` / `web` / `envDefinitions`：前两者的消费方分别是 §1.5 宿主挂载与 §1.6 WebShell
+ * 装配，形状必须与消费端同时定型，单方面发明会返工；`envDefinitions` 与 preflight 收敛在任务 1.7。
  */
 export const moduleManifest = {
   id: "workflow",
   kind: "resource",
   dependsOn: [],
   capabilities: ["resource.workflow"],
+  create: () => import("./src/module").then((module) => module.createWorkflowModule()),
 } satisfies ModuleManifest;

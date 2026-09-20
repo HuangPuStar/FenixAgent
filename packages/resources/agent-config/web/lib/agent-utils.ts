@@ -1,0 +1,60 @@
+import type { KnowledgeBaseInfo } from "@fenix/resource-knowledge/web";
+import type { AgentDetail } from "@fenix/web-runtime/types/config";
+
+export function isValidAgentNameInput(name: string): boolean {
+  return (
+    name.length >= 1 &&
+    name.length <= 64 &&
+    !name.includes("--") &&
+    /^[\p{L}0-9][\p{L}0-9 -]*[\p{L}0-9]$|^[\p{L}0-9]$/u.test(name)
+  );
+}
+
+export interface AgentKnowledgeFormState {
+  knowledgeBaseIds: string[];
+  searchFirst: boolean;
+  maxResults: string;
+}
+
+export function getDefaultKnowledgeFormState(): AgentKnowledgeFormState {
+  return {
+    knowledgeBaseIds: [],
+    searchFirst: true,
+    maxResults: "5",
+  };
+}
+
+export function buildKnowledgeFormState(detail: Pick<AgentDetail, "knowledge">): AgentKnowledgeFormState {
+  return {
+    knowledgeBaseIds: detail.knowledge?.knowledgeBaseIds ?? [],
+    searchFirst: detail.knowledge?.policy?.searchFirst ?? true,
+    maxResults: String(detail.knowledge?.policy?.maxResults ?? 5),
+  };
+}
+
+export function filterKnowledgeBaseIds(selectedIds: string[], knowledgeOptions: Pick<KnowledgeBaseInfo, "id">[]) {
+  const validIds = new Set(knowledgeOptions.map((item) => item.id));
+  return selectedIds.filter((id) => validIds.has(id));
+}
+
+export function buildAgentPayload(input: {
+  modelId: string;
+  prompt: string;
+  description: string;
+  knowledge: AgentKnowledgeFormState;
+  engineType?: string;
+}) {
+  return {
+    modelId: input.modelId || undefined,
+    prompt: input.prompt || undefined,
+    description: input.description || undefined,
+    engineType: input.engineType ?? "opencode",
+    knowledge: {
+      knowledgeBaseIds: input.knowledge.knowledgeBaseIds,
+      policy: {
+        searchFirst: input.knowledge.searchFirst,
+        maxResults: Number(input.knowledge.maxResults || 5),
+      },
+    },
+  };
+}

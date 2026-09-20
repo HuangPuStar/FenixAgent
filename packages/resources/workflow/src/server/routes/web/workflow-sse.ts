@@ -5,7 +5,6 @@
  * 接收 workflow 状态变更事件。支持 Last-Event-ID / fromSeqNum 断线重连。
  */
 
-import { authGuardPlugin } from "@server/plugins/auth";
 import Elysia from "elysia";
 import { getWorkflowDef } from "../../repositories/workflow-def";
 import {
@@ -15,115 +14,122 @@ import {
 } from "../../schemas";
 import { getWorkflowEventBus } from "../../services/workflow/workflow-events";
 
-const app = new Elysia({ name: "web-workflow-sse" }).use(authGuardPlugin).model({
-  "workflow-event-stream-params": WorkflowEventStreamParamsSchema,
-  "workflow-event-stream-query": WorkflowEventStreamQuerySchema,
-  "workflow-stream-event-payload": WorkflowStreamEventPayloadSchema,
-});
+import type { WorkflowRouteDependencies } from "../dependencies";
 
-app.get(
-  "/workflow/:workflowId/events",
-  // biome-ignore lint/suspicious/noExplicitAny: Elysia type inference limitation with sessionAuth
-  async ({ request, params, query, error, store }: any) => {
-    const authCtx = store.authContext;
-    if (!authCtx) {
-      return error(401, { success: false, error: { code: "UNAUTHORIZED", message: "No auth context" } });
-    }
+export function createWebWorkflowSseRoutes(deps: WorkflowRouteDependencies) {
+  const app = new Elysia({ name: "web-workflow-sse" }).use(deps.authGuardPlugin).model({
+    "workflow-event-stream-params": WorkflowEventStreamParamsSchema,
+    "workflow-event-stream-query": WorkflowEventStreamQuerySchema,
+    "workflow-stream-event-payload": WorkflowStreamEventPayloadSchema,
+  });
 
-    const workflowId = params.workflowId as string;
-    if (!workflowId) {
-      return error(400, { success: false, error: { code: "VALIDATION_ERROR", message: "workflowId is required" } });
-    }
+  app.get(
+    "/workflow/:workflowId/events",
+    // biome-ignore lint/suspicious/noExplicitAny: Elysia type inference limitation with sessionAuth
+    async ({ request, params, query, error, store }: any) => {
+      const authCtx = store.authContext;
+      if (!authCtx) {
+        return error(401, { success: false, error: { code: "UNAUTHORIZED", message: "No auth context" } });
+      }
 
-    // 多租户关键：校验 workflowId 归属当前 organization，防止跨组织订阅 SSE 事件流
-    const wf = await getWorkflowDef(workflowId, authCtx.organizationId);
-    if (!wf) {
-      return error(404, { success: false, error: { code: "NOT_FOUND", message: "Workflow not found" } });
-    }
+      const workflowId = params.workflowId as string;
+      if (!workflowId) {
+        return error(400, { success: false, error: { code: "VALIDATION_ERROR", message: "workflowId is required" } });
+      }
 
-    const bus = getWorkflowEventBus(workflowId);
+      // 多租户关键：校验 workflowId 归属当前 organization，防止跨组织订阅 SSE 事件流
+      const wf = await getWorkflowDef(workflowId, authCtx.organizationId);
+      if (!wf) {
+        return error(404, { success: false, error: { code: "NOT_FOUND", message: "Workflow not found" } });
+      }
 
-    const lastEventId = request.headers.get("Last-Event-ID");
-    const fromSeq = (query as Record<string, unknown>)?.fromSeqNum;
-    const fromSeqNum = fromSeq ? Number(fromSeq) : lastEventId ? Number(lastEventId) : 0;
+      const bus = getWorkflowEventBus(workflowId);
 
-    const encoder = new TextEncoder();
+      const lastEventId = request.headers.get("Last-Event-ID");
+      const fromSeq = (query as Record<string, unknown>)?.fromSeqNum;
+      const fromSeqNum = fromSeq ? Number(fromSeq) : lastEventId ? Number(lastEventId) : 0;
 
-    const stream = new ReadableStream({
-      start(controller) {
-        controller.enqueue(encoder.encode(": keepalive\n\n"));
+      const encoder = new TextEncoder();
 
-        // 回放历史事件（断线重连）
-        if (fromSeqNum > 0) {
-          const missed = bus.getEventsSince(fromSeqNum);
-          for (const event of missed) {
-            const data = JSON.stringify(event.payload);
-            controller.enqueue(encoder.encode(`id: ${event.seqNum}\nevent: message\ndata: ${data}\n\n`));
+      const stream = new ReadableStream({
+        start(controller) {
+          controller.enqueue(encoder.encode(": keepalive\n\n"));
+
+          // 回放历史事件（断线重连）
+          if (fromSeqNum > 0) {
+            const missed = bus.getEventsSince(fromSeqNum);
+            for (const event of missed) {
+              const data = JSON.stringify(event.payload);
+              controller.enqueue(encoder.encode(`id: ${event.seqNum}\nevent: message\ndata: ${data}\n\n`));
+            }
           }
-        }
 
-        // 订阅新事件
-        const unsub = bus.subscribe((event) => {
-          try {
-            const data = JSON.stringify(event.payload);
-            controller.enqueue(encoder.encode(`id: ${event.seqNum}\nevent: message\ndata: ${data}\n\n`));
-          } catch {
+          // 订阅新事件
+          const unsub = bus.subscribe((event) => {
+            try {
+              const data = JSON.stringify(event.payload);
+              controller.enqueue(encoder.encode(`id: ${event.seqNum}\nevent: message\ndata: ${data}\n\n`));
+            } catch {
+              unsub();
+            }
+          });
+
+          // Keepalive（15s）
+          const keepalive = setInterval(() => {
+            try {
+              controller.enqueue(encoder.encode(": keepalive\n\n"));
+            } catch {
+              clearInterval(keepalive);
+              unsub();
+            }
+          }, 15_000);
+
+          request.signal.addEventListener("abort", () => {
             unsub();
-          }
-        });
-
-        // Keepalive（15s）
-        const keepalive = setInterval(() => {
-          try {
-            controller.enqueue(encoder.encode(": keepalive\n\n"));
-          } catch {
             clearInterval(keepalive);
-            unsub();
-          }
-        }, 15_000);
+            try {
+              controller.close();
+            } catch {
+              // already closed
+            }
+          });
+        },
+      });
 
-        request.signal.addEventListener("abort", () => {
-          unsub();
-          clearInterval(keepalive);
-          try {
-            controller.close();
-          } catch {
-            // already closed
-          }
-        });
-      },
-    });
-
-    return new Response(stream, {
-      headers: {
-        "Content-Type": "text/event-stream",
-        "Cache-Control": "no-cache",
-        Connection: "keep-alive",
-        "X-Accel-Buffering": "no",
-      },
-    });
-  },
-  {
-    sessionAuth: true,
-    params: "workflow-event-stream-params",
-    query: "workflow-event-stream-query",
-    detail: {
-      tags: ["Workflow Engine"],
-      summary: "订阅工作流事件流",
-      description: "通过 SSE 订阅指定工作流的实时事件，支持 `Last-Event-ID` 或 `fromSeqNum` 断线续传。",
-      responses: {
-        200: {
-          description: "SSE 事件流，事件负载为工作流事件对象。",
-          content: {
-            "text/event-stream": {
-              schema: {
-                type: "string",
-                format: "binary",
-              },
-              examples: {
-                event: {
-                  summary: "事件示例",
-                  value: 'id: 12\nevent: message\ndata: {"type":"workflow.run_started","workflowId":"wf_123"}\n\n',
+      return new Response(stream, {
+        headers: {
+          "Content-Type": "text/event-stream",
+          "Cache-Control": "no-cache",
+          Connection: "keep-alive",
+          "X-Accel-Buffering": "no",
+        },
+      });
+    },
+    {
+      sessionAuth: true,
+      params: "workflow-event-stream-params",
+      query: "workflow-event-stream-query",
+      detail: {
+        tags: ["Workflow Engine"],
+        summary: "订阅工作流事件流",
+        description: "通过 SSE 订阅指定工作流的实时事件，支持 `Last-Event-ID` 或 `fromSeqNum` 断线续传。",
+        responses: {
+          200: {
+            description: "SSE 事件流，事件负载为工作流事件对象。",
+            content: {
+              "text/event-stream": {
+                // 字面量必须用 `as const` 钉住：守卫类型刻意放宽为 `AnyElysia`（见 ../dependencies.ts 的理由），
+                // 此时 `app.get` 的 detail 上下文类型不再是精确的 OpenAPI 结构，`type: "string"` 会被推断成
+                // 宽化的 `string` 而报 TS2322。
+                schema: {
+                  type: "string" as const,
+                  format: "binary" as const,
+                },
+                examples: {
+                  event: {
+                    summary: "事件示例",
+                    value: 'id: 12\nevent: message\ndata: {"type":"workflow.run_started","workflowId":"wf_123"}\n\n',
+                  },
                 },
               },
             },
@@ -131,7 +137,7 @@ app.get(
         },
       },
     },
-  },
-);
+  );
 
-export default app;
+  return app;
+}

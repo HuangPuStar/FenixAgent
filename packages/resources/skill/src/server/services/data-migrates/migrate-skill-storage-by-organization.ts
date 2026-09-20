@@ -2,8 +2,7 @@ import { cpSync, existsSync } from "node:fs";
 import { mkdir, rm } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { log, warn } from "@fenix/logger";
-import { db } from "@server/db";
-import { skill } from "@server/db/schema";
+import { listAllSkillOrgAndNameUnscoped } from "../../repositories/skill";
 import { getGlobalSkillsDir } from "../skill-content";
 import { buildSkillArchive, getSkillArchivePath, getSkillSourceDir } from "../skill-fs";
 
@@ -13,13 +12,8 @@ export interface SkillStorageMigrationRow {
 }
 
 export const _deps = {
-  listSkills: async (): Promise<SkillStorageMigrationRow[]> =>
-    db
-      .select({
-        organizationId: skill.organizationId,
-        name: skill.name,
-      })
-      .from(skill),
+  // 行投影由仓储给出：本包对 `skill` 表的查询只允许出现在 repositories/ 下。
+  listSkills: async (): Promise<readonly SkillStorageMigrationRow[]> => listAllSkillOrgAndNameUnscoped(),
   getSkillRoot: (): string => getGlobalSkillsDir(),
   buildSkillArchive,
   log,
@@ -27,13 +21,7 @@ export const _deps = {
 };
 
 export function _resetDeps() {
-  _deps.listSkills = async () =>
-    db
-      .select({
-        organizationId: skill.organizationId,
-        name: skill.name,
-      })
-      .from(skill);
+  _deps.listSkills = async () => listAllSkillOrgAndNameUnscoped();
   _deps.getSkillRoot = () => getGlobalSkillsDir();
   _deps.buildSkillArchive = buildSkillArchive;
   _deps.log = log;

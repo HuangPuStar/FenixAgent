@@ -6,11 +6,11 @@ import type {
   ResourceQueryConstraint,
   ScopedRow,
 } from "@fenix/platform-sdk";
-import { db } from "@server/db";
 import { mcpServer, mcpTool } from "@server/db/schema";
 import { and, eq, type SQL, sql } from "drizzle-orm";
 import type { PgColumn, PgTable } from "drizzle-orm/pg-core";
 import { MCP_SERVER_RESOURCE_TYPE, mcpServerResource } from "../access/mcp-server-resource";
+import { getMcpDatabase } from "../db";
 
 /**
  * MCP Server 的持久化访问层。
@@ -19,8 +19,11 @@ import { MCP_SERVER_RESOURCE_TYPE, mcpServerResource } from "../access/mcp-serve
  * 本包只交出主表、归属列与业务条件，授权谓词、排序与分页由平台实现编译进同一条 SQL。仓储因此
  * 不持有任何组织、角色或 `visibility` 判断，也不解释 `ResourceQueryConstraint` 的内部结构。
  *
- * 写路径（INSERT / UPDATE / DELETE）与 `mcp_tool` 缓存不属于授权范围，直接经 `db` 执行；它们的
- * 权限校验发生在 Facade（`authorize` 之后才调用 Domain Service）。
+ * 写路径（INSERT / UPDATE / DELETE）与 `mcp_tool` 缓存不属于授权范围，直接经 `getMcpDatabase()`
+ * 执行；它们的权限校验发生在 Facade（`authorize` 之后才调用 Domain Service）。
+ *
+ * DB 句柄在每个用到的方法内取（`../db` 的 `getMcpDatabase()`）而不是模块加载期持有：句柄来自宿主
+ * 的基础设施初始化，模块加载早于它就取不到。
  */
 
 export type McpServerRow = typeof mcpServer.$inferSelect;
@@ -162,7 +165,7 @@ export function createMcpServerRepository(query: AuthorizedResourceQuery<McpServ
     },
 
     async insert(input) {
-      const rows = await db
+      const rows = await getMcpDatabase()
         .insert(mcpServer)
         .values({
           name: input.name,
@@ -182,7 +185,7 @@ export function createMcpServerRepository(query: AuthorizedResourceQuery<McpServ
     },
 
     async upsertByOrgAndName(input) {
-      const rows = await db
+      const rows = await getMcpDatabase()
         .insert(mcpServer)
         .values({
           name: input.name,
@@ -209,7 +212,7 @@ export function createMcpServerRepository(query: AuthorizedResourceQuery<McpServ
         updatedAt: new Date(),
       };
       if (input.patch.type !== undefined) patch.type = input.patch.type;
-      const rows = await db
+      const rows = await getMcpDatabase()
         .update(mcpServer)
         .set(patch)
         .where(eq(mcpServer.id, input.resourceId))
@@ -218,7 +221,7 @@ export function createMcpServerRepository(query: AuthorizedResourceQuery<McpServ
     },
 
     async setEnabledById(input) {
-      const rows = await db
+      const rows = await getMcpDatabase()
         .update(mcpServer)
         .set({ enabled: input.enabled, updatedAt: new Date() })
         .where(eq(mcpServer.id, input.resourceId))
@@ -227,12 +230,15 @@ export function createMcpServerRepository(query: AuthorizedResourceQuery<McpServ
     },
 
     async deleteById(input) {
-      const rows = await db.delete(mcpServer).where(eq(mcpServer.id, input.resourceId)).returning({ id: mcpServer.id });
+      const rows = await getMcpDatabase()
+        .delete(mcpServer)
+        .where(eq(mcpServer.id, input.resourceId))
+        .returning({ id: mcpServer.id });
       return rows.length > 0;
     },
 
     async deleteWithTools(input) {
-      return db.transaction(async (tx) => {
+      return getMcpDatabase().transaction(async (tx) => {
         const rows = await tx
           .delete(mcpServer)
           .where(eq(mcpServer.id, input.resourceId))
@@ -245,7 +251,7 @@ export function createMcpServerRepository(query: AuthorizedResourceQuery<McpServ
     },
 
     async countTools(input) {
-      const [row] = await db
+      const [row] = await getMcpDatabase()
         .select({ count: sql<number>`count(*)` })
         .from(mcpTool)
         .where(and(eq(mcpTool.organizationId, input.organizationId), eq(mcpTool.serverName, input.serverName)));
@@ -253,14 +259,14 @@ export function createMcpServerRepository(query: AuthorizedResourceQuery<McpServ
     },
 
     async listTools(input) {
-      return db
+      return getMcpDatabase()
         .select()
         .from(mcpTool)
         .where(and(eq(mcpTool.organizationId, input.organizationId), eq(mcpTool.serverName, input.serverName)));
     },
 
     async replaceTools(input) {
-      await db.transaction(async (tx) => {
+      await getMcpDatabase().transaction(async (tx) => {
         await tx
           .delete(mcpTool)
           .where(and(eq(mcpTool.organizationId, input.organizationId), eq(mcpTool.serverName, input.serverName)));
@@ -281,7 +287,7 @@ export function createMcpServerRepository(query: AuthorizedResourceQuery<McpServ
     },
 
     async deleteTools(input) {
-      await db
+      await getMcpDatabase()
         .delete(mcpTool)
         .where(and(eq(mcpTool.organizationId, input.organizationId), eq(mcpTool.serverName, input.serverName)));
     },

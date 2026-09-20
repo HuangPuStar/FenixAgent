@@ -1,10 +1,5 @@
-import { useRequest } from "ahooks";
-import { Check, LoaderCircle, Search } from "lucide-react";
-import { useEffect, useState } from "react";
-import { useTranslation } from "react-i18next";
-import { toast } from "sonner";
-import { ConfirmDialog } from "@/components/config/ConfirmDialog";
-import { Button } from "@/components/ui/button";
+import { ConfirmDialog } from "@fenix/ui-components/config/ConfirmDialog";
+import { Button } from "@fenix/ui-components/ui/button";
 import {
   Dialog,
   DialogContent,
@@ -12,13 +7,19 @@ import {
   DialogFooter,
   DialogHeader,
   DialogTitle,
-} from "@/components/ui/dialog";
-import { Input } from "@/components/ui/input";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Switch } from "@/components/ui/switch";
-import { providerApi } from "@/src/api/providers";
-import { unwrap } from "@/src/api/request";
-import type { ProviderInfo, ProviderModel } from "@/src/types/config";
+} from "@fenix/ui-components/ui/dialog";
+import { Input } from "@fenix/ui-components/ui/input";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@fenix/ui-components/ui/select";
+import { Switch } from "@fenix/ui-components/ui/switch";
+import { unwrap } from "@fenix/web-runtime/api/request";
+import type { ProviderInfo, ProviderModel } from "@fenix/web-runtime/types/config";
+import { useRequest } from "ahooks";
+import { Check, LoaderCircle, Search } from "lucide-react";
+import { useEffect, useState } from "react";
+import { useTranslation } from "react-i18next";
+import { toast } from "sonner";
+import { providerApi } from "../../../api/providers.ts";
+import { MODELS_NS } from "../../../i18n/namespace";
 import {
   ModelField as Field,
   ModelModalityField as ModalityField,
@@ -50,7 +51,7 @@ interface ProviderEditorDialogProps {
 }
 
 export function ProviderEditorDialog({ target, providers, saving, onClose, onSave }: ProviderEditorDialogProps) {
-  const { t } = useTranslation("models");
+  const { t } = useTranslation(MODELS_NS);
   const editing = target && target.mode !== "create" ? target.provider : null;
   const readOnly = target?.mode === "view";
   const [draft, setDraft] = useState<ProviderDraft>({
@@ -270,7 +271,7 @@ function modelDraft(model?: ProviderModel): ModelDraft {
 }
 
 export function ModelEditorDialog({ target, saving, onClose, onSave }: ModelEditorDialogProps) {
-  const { t } = useTranslation("models");
+  const { t } = useTranslation(MODELS_NS);
   const original = target && "model" in target ? target.model : null;
   const readOnly = target?.mode === "view";
   const [draft, setDraft] = useState<ModelDraft>(() => modelDraft());
@@ -381,7 +382,7 @@ export function DiscoveryDialog({
   onClose: () => void;
   onAdd: (providerKey: string, modelId: string) => void;
 }) {
-  const { t } = useTranslation("models");
+  const { t } = useTranslation(MODELS_NS);
   return (
     <Dialog open={Boolean(state)} onOpenChange={(open) => !open && onClose()}>
       <DialogContent>
@@ -433,7 +434,7 @@ export function ModelDeleteDialogs({
   onDeleteProvider: () => void;
   onDeleteModel: () => void;
 }) {
-  const { t } = useTranslation("models");
+  const { t } = useTranslation(MODELS_NS);
   return (
     <>
       <ConfirmDialog

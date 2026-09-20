@@ -1,12 +1,16 @@
 import { afterEach, beforeEach, describe, expect, mock, spyOn, test } from "bun:test";
-import { readJson, resetAllStubs, stubAuthApi } from "@fenix/platform-sdk/testing";
+import { readJson, resetAllStubs } from "@fenix/platform-sdk/testing";
 import { type DAGRunResult, WorkflowError, WorkflowErrorCode } from "@fenix/workflow-engine";
-import { resetTestAuth, setTestAuth } from "@server/plugins/auth";
-import { setTestOrgContext } from "@server/services/org-context";
-import { stubPgStorageAdapter } from "@server/test-utils/stubs/module-stubs";
+import { createWebWorkflowRunsRoutes } from "../server/routes/web/workflow-runs";
 import { getTeamEngine } from "../server/services/workflow";
+import { initializeWorkflowModuleConfig, stubPgStorageAdapter } from "../server/testing";
+import { createStubSessionAuthGuard } from "./guard-stubs";
 
-const route = (await import("../server/routes/web/workflow-runs")).workflowRunsRoutes;
+const guard = createStubSessionAuthGuard();
+
+// 路由经工厂构造并注入会话守卫替身：静态条件禁止包内测试依赖宿主 `@server/plugins/auth`，
+// 而 Elysia 的 macro/state 是实例作用域的，守卫必须是构造时传入的同一实例。
+const route = createWebWorkflowRunsRoutes({ authGuardPlugin: guard });
 
 function request(path: string, init?: RequestInit) {
   return route.handle(new Request(`http://localhost${path}`, init));
@@ -17,11 +21,7 @@ function post(body: Record<string, unknown>): RequestInit {
 }
 
 function authenticate(organizationId = "org-round40", userId = "user-round40") {
-  setTestAuth({
-    user: { id: userId, email: `${userId}@test.invalid`, name: "Round 40" },
-    authContext: { organizationId, userId, role: "owner" },
-  });
-  setTestOrgContext({ organizationId, userId, role: "owner" });
+  guard.setActor({ organizationId, userId });
 }
 
 function result(runId = "run-result", status: DAGRunResult["status"] = "SUCCESS"): DAGRunResult {
@@ -41,14 +41,13 @@ function result(runId = "run-result", status: DAGRunResult["status"] = "SUCCESS"
 
 describe("Round 40 workflow-runs 路由业务覆盖", () => {
   beforeEach(() => {
-    resetAllStubs();
+    initializeWorkflowModuleConfig();
     authenticate();
   });
 
   afterEach(() => {
     mock.restore();
-    resetTestAuth();
-    setTestOrgContext(null);
+    guard.setActor(null);
     resetAllStubs();
   });
 
@@ -56,9 +55,8 @@ describe("Round 40 workflow-runs 路由业务覆盖", () => {
   test("未认证列表返回 401 且不读取运行记录", async () => {
     const listRuns = mock();
     stubPgStorageAdapter({ listRuns });
-    resetTestAuth();
-    setTestOrgContext(null);
-    stubAuthApi({ getSession: async () => null });
+    guard.setActor(null);
+    guard.setActor(null);
 
     const response = await request("/workflow-runs");
 

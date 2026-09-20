@@ -1,20 +1,22 @@
 import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
-import { readJson, resetAllStubs, stubAuthApi, stubDb } from "@fenix/platform-sdk/testing";
-import { resetTestAuth, setTestAuth } from "@server/plugins/auth";
-import { setTestOrgContext } from "@server/services/org-context";
+import { readJson, resetAllStubs, stubDb } from "@fenix/platform-sdk/testing";
 
-const workflowDefsRoute = (await import("../server/routes/web/workflow-defs")).default;
+import { createWebWorkflowDefsRoutes } from "../server/routes/web/workflow-defs";
+import { initializeWorkflowModuleConfig } from "../server/testing";
+import { createStubSessionAuthGuard } from "./guard-stubs";
+
+const guard = createStubSessionAuthGuard();
+
+// 路由经工厂构造并注入会话守卫替身：静态条件禁止包内测试依赖宿主 `@server/plugins/auth`，
+// 而 Elysia 的 macro/state 是实例作用域的，守卫必须是构造时传入的同一实例。
+const workflowDefsRoute = createWebWorkflowDefsRoutes({ authGuardPlugin: guard });
 
 function request(path: string, init?: RequestInit) {
   return workflowDefsRoute.handle(new Request(`http://localhost${path}`, init));
 }
 
 function setAuthenticatedOrg(organizationId = "org-1") {
-  setTestAuth({
-    user: { id: "user-1", email: "user@test.com", name: "Tester" },
-    authContext: { organizationId, userId: "user-1", role: "owner" },
-  });
-  setTestOrgContext({ organizationId, userId: "user-1", role: "owner" });
+  guard.setActor({ organizationId, userId: "user-1" });
 }
 
 function queryResult(rows: unknown[]) {
@@ -34,21 +36,19 @@ function asJson(value: unknown) {
 
 describe("Web Workflow Definition Routes", () => {
   beforeEach(() => {
-    resetAllStubs();
+    initializeWorkflowModuleConfig();
     setAuthenticatedOrg();
   });
 
   afterEach(() => {
-    resetTestAuth();
-    setTestOrgContext(null);
+    guard.setActor(null);
     resetAllStubs();
   });
 
   // 未认证调用工作流定义列表必须在进入仓储前被认证插件拒绝。
   test("未认证获取工作流列表返回 401", async () => {
-    resetTestAuth();
-    setTestOrgContext(null);
-    stubAuthApi({ getSession: async () => null });
+    guard.setActor(null);
+    guard.setActor(null);
 
     const response = await request("/workflow-defs");
 

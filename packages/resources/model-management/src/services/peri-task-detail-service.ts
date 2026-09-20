@@ -1,6 +1,6 @@
 import { createDeterministicRcsSessionId } from "@fenix/chat-channel";
 import { NotFoundError } from "@fenix/platform-sdk";
-import type { PeriTaskDetail, PeriTaskDetailQuery } from "@server/schemas/peri-task-details";
+import type { PeriTaskDetail, PeriTaskDetailQuery } from "../server/schemas/peri-task-details";
 import type { PeriTaskDetailStore } from "./peri-task-detail-store";
 
 const MAX_PREVIEW_CODE_POINTS = 500;

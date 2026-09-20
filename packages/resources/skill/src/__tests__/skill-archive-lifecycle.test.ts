@@ -1,5 +1,4 @@
 import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
-import { setConfig } from "@server/config";
 import {
   _deps,
   deleteSkillDocument,
@@ -9,6 +8,7 @@ import {
   type UploadSkillFile,
   writeSkillDocument,
 } from "../server/services/skill-content";
+import { initializeSkillModuleConfig } from "../server/testing";
 
 /**
  * Skill 文档内容层用例（`services/skill-content`）。
@@ -64,7 +64,7 @@ function installFs() {
 }
 
 beforeEach(() => {
-  setConfig({ skillDir: root });
+  initializeSkillModuleConfig({ skillDir: root });
 });
 
 afterEach(() => {

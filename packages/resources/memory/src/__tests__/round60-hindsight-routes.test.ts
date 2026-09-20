@@ -1,7 +1,13 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { readJson, resetAllStubs, stubAuthApi, stubIdentityDirectory } from "@fenix/platform-sdk/testing";
-import { webHindsightRoutes as hindsightRoutes } from "@fenix/resource-memory/server";
-import { resetTestAuth, setTestAuth } from "@server/plugins/auth";
+import {
+  initializeTestApplicationInfrastructure,
+  readJson,
+  resetAllStubs,
+  stubIdentityDirectory,
+} from "@fenix/platform-sdk/testing";
+import { createWebHindsightRoutes } from "@fenix/resource-memory/server";
+import { createMemoryModuleConfig } from "../server/testing";
+import { createStubSessionAuthGuardPlugin, type StubHindsightAuthContext } from "./guard-stubs";
 
 type FetchCall = { url: string; init?: RequestInit };
 
@@ -10,6 +16,11 @@ let memberId: string | null = "member-org-a";
 let calls: FetchCall[] = [];
 let upstream: () => Promise<Response> = async () => Response.json({ source: "hindsight" });
 const originalFetchDescriptor = Object.getOwnPropertyDescriptor(globalThis, "fetch");
+
+/** 当前调用方上下文；切组织即切 bank。守卫替身按取值函数读取，故用例可在同一进程内切换。 */
+let authContext: StubHindsightAuthContext = { organizationId: "org-a", userId: "user-a" };
+/** 用例内构造的路由实例：守卫由宿主注入（真实守卫的拒绝路径归宿主用例，见 ./guard-stubs）。 */
+let hindsightRoutes: ReturnType<typeof createWebHindsightRoutes>;
 
 function request(path: string, init?: RequestInit) {
   return hindsightRoutes.handle(new Request(`http://localhost${path}`, init));
@@ -23,13 +34,6 @@ function jsonRequest(path: string, body: unknown) {
   });
 }
 
-function authenticate(organizationId = "org-a") {
-  setTestAuth({
-    user: { id: "user-a", email: "user-a@example.test", name: "测试用户" },
-    authContext: { organizationId, userId: "user-a", role: "member" },
-  });
-}
-
 function latestCall() {
   const call = calls.at(-1);
   expect(call).toBeDefined();
@@ -38,8 +42,11 @@ function latestCall() {
 
 describe("round60 hindsight 路由", () => {
   beforeEach(() => {
+    // 模块配置经生产读取路径注入（`getModuleConfig("memory")`），不再写 process.env。
     resetAllStubs();
-    process.env.HINDSIGHT_MCP_URL = hindsightUrl;
+    initializeTestApplicationInfrastructure({
+      moduleConfigs: { memory: createMemoryModuleConfig({ hindsightMcpUrl: hindsightUrl }) },
+    });
     memberId = "member-org-a";
     calls = [];
     upstream = async () => Response.json({ source: "hindsight" });
@@ -56,35 +63,21 @@ describe("round60 hindsight 路由", () => {
         return upstream();
       },
     });
-    authenticate();
+    authContext = { organizationId: "org-a", userId: "user-a" };
+    hindsightRoutes = createWebHindsightRoutes({
+      authGuardPlugin: createStubSessionAuthGuardPlugin(() => authContext),
+    });
   });
 
   afterEach(() => {
-    resetTestAuth();
     resetAllStubs();
     if (originalFetchDescriptor) Object.defineProperty(globalThis, "fetch", originalFetchDescriptor);
-    delete process.env.HINDSIGHT_MCP_URL;
-  });
-
-  // 未认证的业务读取必须由 sessionAuth 拒绝，且不得访问上游。
-  test("未认证 graph 返回 401", async () => {
-    resetTestAuth();
-    stubAuthApi({ getSession: async () => null, verifyApiKey: async () => ({ valid: false }) });
-    expect((await request("/hindsight/graph")).status).toBe(401);
-    expect(calls).toHaveLength(0);
-  });
-
-  // 未认证的状态查询同样必须拒绝，避免泄露 Hindsight 配置和组织映射。
-  test("未认证 status 返回 401", async () => {
-    resetTestAuth();
-    stubAuthApi({ getSession: async () => null, verifyApiKey: async () => ({ valid: false }) });
-    expect((await request("/hindsight/status")).status).toBe(401);
-    expect(calls).toHaveLength(0);
   });
 
   // 未配置服务时状态接口仍可安全报告禁用。
   test("未配置时 status 返回 disabled", async () => {
-    delete process.env.HINDSIGHT_MCP_URL;
+    resetAllStubs();
+    initializeTestApplicationInfrastructure({ moduleConfigs: { memory: createMemoryModuleConfig() } });
     const body = await (await request("/hindsight/status")).json();
     expect(body).toEqual({ success: true, data: { enabled: false } });
   });
@@ -105,7 +98,7 @@ describe("round60 hindsight 路由", () => {
   // 同一用户切换组织后必须使用该组织对应的独立 bank。
   test("graph 使用切换组织后的 bank", async () => {
     memberId = "member-org-b";
-    authenticate("org-b");
+    authContext = { organizationId: "org-b", userId: "user-a" };
     await request("/hindsight/graph");
     expect(latestCall().url).toBe(`${hindsightUrl}/v1/default/banks/member-org-b/graph`);
   });

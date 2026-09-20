@@ -1,10 +1,3 @@
-import { zodResolver } from "@hookform/resolvers/zod";
-import { AlertTriangle, Check, Cpu, Database, Eye, Layers3, Loader2, RotateCcw, Server, Sparkles } from "lucide-react";
-import { useCallback, useEffect, useRef, useState } from "react";
-import { createPortal } from "react-dom";
-import { type FieldErrors, FormProvider, useForm } from "react-hook-form";
-import { useTranslation } from "react-i18next";
-import { toast } from "sonner";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -14,13 +7,20 @@ import {
   AlertDialogFooter,
   AlertDialogHeader,
   AlertDialogTitle,
-} from "@/components/ui/alert-dialog";
-import { Button } from "@/components/ui/button";
-import { Sheet, SheetContent, SheetDescription, SheetTitle } from "@/components/ui/sheet";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { NS } from "@/src/i18n";
-import { isAgentWritable } from "@/src/lib/agent-resource-access";
-import { isValidAgentNameInput } from "@/src/lib/agent-utils";
+} from "@fenix/ui-components/ui/alert-dialog";
+import { Button } from "@fenix/ui-components/ui/button";
+import { Sheet, SheetContent, SheetDescription, SheetTitle } from "@fenix/ui-components/ui/sheet";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@fenix/ui-components/ui/tabs";
+import { NS } from "@fenix/web-runtime/i18n/namespace";
+import { zodResolver } from "@hookform/resolvers/zod";
+import { AlertTriangle, Check, Cpu, Database, Eye, Layers3, Loader2, RotateCcw, Server, Sparkles } from "lucide-react";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
+import { type FieldErrors, FormProvider, useForm } from "react-hook-form";
+import { useTranslation } from "react-i18next";
+import { toast } from "sonner";
+import { isAgentWritable } from "../../../lib/agent-resource-access";
+import { isValidAgentNameInput } from "../../../lib/agent-utils";
 import { AgentEditorHeader, AgentEditorSummary, AgentTemplatePicker } from "./AgentEditorChrome";
 import { AgentEditorLoadingShell } from "./AgentEditorLoadingShell";
 import { type AgentEditorSection, AgentEditorSections } from "./AgentEditorSections";
@@ -40,7 +40,7 @@ import "./agent-editor-responsive.css";
 import "./agent-editor-form-fields.css";
 import "./agent-editor-form-surfaces.css";
 import "./agent-editor-library.css";
-import "../../../../../../resources/knowledge/web/pages/agent-panel/agent-editor-knowledge.css";
+import "./agent-editor-knowledge.css";
 import "./agent-editor-loading.css";
 import "./agent-editor-form-responsive.css";
 

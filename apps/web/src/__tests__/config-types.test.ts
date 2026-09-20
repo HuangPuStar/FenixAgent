@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import type { AgentInfo, ApiResponse } from "../types/config";
+import type { AgentInfo, ApiResponse } from "@fenix/web-runtime/types/config";
 
 describe("config types", () => {
   test("ApiResponse success structure", () => {
@@ -28,7 +28,7 @@ import type {
   PermissionConfig,
   PermissionObjectConfig,
   RuleBasedPermission,
-} from "../types/config";
+} from "@fenix/web-runtime/types/config";
 
 // ── PermissionConfig 类型编译验证 ──
 

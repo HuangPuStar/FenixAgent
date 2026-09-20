@@ -125,8 +125,9 @@ export {
   McpKnowledgeReadToolInputSchema,
   McpKnowledgeSearchToolInputSchema,
 } from "@fenix/resource-mcp/server/schema";
+// Provider / Model 契约（原宿主 `./config.schema`、`./api-model.schema`）已随任务 1.3 迁入
+// `packages/resources/model-management/src/server/schemas/`，消费方直接从包内 import，本 barrel 不转发。
 // Peri Task
-// `./config.schema` 的 Provider / Model 契约不经本 barrel 转发：资源包直接 import 该文件。
 export {
   type PeriTaskDetail,
   PeriTaskDetailParamsSchema,

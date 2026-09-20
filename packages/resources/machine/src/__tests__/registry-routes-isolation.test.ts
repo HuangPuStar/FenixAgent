@@ -1,9 +1,11 @@
 import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
-import { readJson, resetAllStubs, stubAuthApi } from "@fenix/platform-sdk/testing";
-import { resetTestAuth, setTestAuth } from "@server/plugins/auth";
-import { stubRegistry } from "@server/test-utils/stubs/module-stubs";
+import { readJson, resetAllStubs } from "@fenix/platform-sdk/testing";
+import { createWebRegistryRoutes } from "../server/routes/web/registry";
+import { setRegistryRouteDeps } from "../server/testing";
+import { createStubSessionAuthGuardPlugin, resetTestAuth, setTestAuth } from "./guard-stubs";
 
-const registryRoutes = (await import("../routes/web/registry")).default;
+// 路由实例文件级构造一次：会话守卫替身按请求期读取当前会话（setTestAuth 即时生效）
+const registryRoutes = createWebRegistryRoutes({ authGuardPlugin: createStubSessionAuthGuardPlugin() });
 
 function request(path: string, init?: RequestInit) {
   return registryRoutes.handle(new Request(`http://localhost${path}`, init));
@@ -41,11 +43,12 @@ describe("Registry 路由隔离与认证", () => {
       user: { id: "user-1", email: "user-1@example.test", name: "测试用户" },
       authContext: { organizationId: "org-1", userId: "user-1", role: "member" },
     });
-    stubRegistry({ listMachines, getMachine });
+    setRegistryRouteDeps({ listMachines, getMachine });
   });
 
   afterEach(() => {
     resetTestAuth();
+    setRegistryRouteDeps(null);
     resetAllStubs();
   });
 
@@ -94,10 +97,9 @@ describe("Registry 路由隔离与认证", () => {
     );
   });
 
-  // 未提供会话或 API Key 时，机器列表不得调用服务层并应拒绝请求。
+  // 未认证会话时，机器列表不得调用服务层并应被守卫拒绝在 handler 之前。
   test("GET /registry/machines 未认证时返回 401 且不读取机器数据", async () => {
     resetTestAuth();
-    stubAuthApi({ getSession: async () => null });
 
     const response = await request("/registry/machines");
 

@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import type { UploadSkillSummary } from "@/src/types/config";
+import type { UploadSkillSummary } from "@fenix/web-runtime/types/config";
 import { buildSkillUploadFormData, parseSkillUploadFiles, validateUploadBatch } from "../lib/skill-upload";
 
 function file(path: string): File {

@@ -1,10 +1,10 @@
+import { NS } from "@fenix/web-runtime/i18n/namespace";
 import { Cpu, Globe2, Info, Plug, Server, Sparkles } from "lucide-react";
 import { lazy, Suspense, useId, useState } from "react";
 import { Controller, type UseFormReturn } from "react-hook-form";
 import { useTranslation } from "react-i18next";
-import { NS } from "@/src/i18n";
-import { selectionToValue, valueToSelection } from "@/src/lib/agent-node";
-import { canManageAgentSharing } from "@/src/lib/agent-resource-access";
+import { selectionToValue, valueToSelection } from "../../../lib/agent-node";
+import { canManageAgentSharing } from "../../../lib/agent-resource-access";
 import { AgentKnowledgeSection } from "./AgentKnowledgeSection";
 import { AgentResourcePicker } from "./AgentResourcePicker";
 import { EditorButton, EditorInput, EditorTextarea, Field, Intro, SinglePicker, Toggle } from "./agent-editor-controls";
@@ -19,8 +19,11 @@ type Props = {
   readOnly: boolean;
   onCopyAgentId: () => void;
 };
+// 模型品牌图标由 model-management 拥有：跨包相对路径会把对方内部目录变成事实契约
+// （§2.3「不许穿透到另一个包的 src/**」），因此改走对方的包根 web 出口；懒加载保证
+// `@lobehub/icons` 不进首屏，纯逻辑模块也不会间接加载它（CLAUDE.md 前端边界）。
 const ModelIcon = lazy(() =>
-  import("../../../../../../resources/model-management/web/components/model-icon/ModelIcon").then((module) => ({
+  import("@fenix/model-management/web").then((module) => ({
     default: module.ModelIcon,
   })),
 );

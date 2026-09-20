@@ -256,47 +256,47 @@
       "to": "@fenix/server-app",
       "owner": "1.4",
       "removeWhen": "Environment/Instance/relay 的运行组合收回本包，宿主实现改经 Runtime port 注入",
-      "rationale": "实测 145 处导入 / 63 个文件。63 个文件导入 `@server/db`、`@server/services` 等宿主内部路径，是包→应用反向依赖的最大来源；1.4 定义并使用 Runtime 的公开启动、停止、状态与回收 port 后消除。"
+      "rationale": "实测 105 处导入 / 54 个文件，其中 88 处非表定义（config、test-utils/stubs、plugins/auth、types/store、transport/ws-types 等）。属 1.4 的运行入口与宿主协议收敛范围：宿主收敛为进程入口后本边自然消失。"
     },
     {
       "rule": "apps-boundary",
       "from": "@fenix/resource-machine",
       "to": "@fenix/server-app",
-      "owner": "1.4",
-      "removeWhen": "Machine 只暴露 Runtime 所需的专用公开运行入口，不再读取 `@server/**`",
-      "rationale": "实测 99 处导入 / 43 个文件。43 个文件命中，集中在 remote / file-ws 与实例编排；与 agent-runtime、sandbox 同批，1.4 固定 `agent-runtime → sandbox → machine` 方向时一并处理。"
+      "owner": "1.7",
+      "removeWhen": "表定义迁出（§1.7）后，包不再引用 `@server/**`",
+      "rationale": "实测 7 处导入 / 7 个文件，全部为 `@server/db/schema` 表定义导入。宿主中的资源领域实现已随任务 1.3 迁回包内，残留仅剩表定义；表定义迁出归 §1.7，本条目保留至该步骤完成，不新建通配条目。"
     },
     {
       "rule": "apps-boundary",
       "from": "@fenix/resource-sandbox",
       "to": "@fenix/server-app",
-      "owner": "1.4",
-      "removeWhen": "Sandbox 只暴露 Runtime 所需的专用公开运行入口，不再读取 `@server/**`",
-      "rationale": "实测 23 处导入 / 17 个文件。17 个文件命中；与 machine 同批，属 1.4 的 Machine/Sandbox 公开运行入口收敛范围。"
+      "owner": "1.7",
+      "removeWhen": "表定义迁出（§1.7）后，包不再引用 `@server/**`",
+      "rationale": "实测 9 处导入 / 9 个文件，全部为 `@server/db/schema` 表定义导入。宿主中的资源领域实现已随任务 1.3 迁回包内，残留仅剩表定义；表定义迁出归 §1.7，本条目保留至该步骤完成，不新建通配条目。"
     },
     {
       "rule": "apps-boundary",
       "from": "@fenix/agent-config",
       "to": "@fenix/server-app",
-      "owner": "1.5",
-      "removeWhen": "宿主中残留的资源领域实现迁回包内后，包不再引用 `@server/**`",
-      "rationale": "实测 73 处导入 / 29 个文件。29 个文件命中；1.5 将 apps/server 收敛为进程入口与协议聚合，把其中的资源领域规则、具体业务 service/repository 迁回所属包；依赖方向因此自然消失，而不是靠加一层适配。"
+      "owner": "1.7",
+      "removeWhen": "表定义迁出（§1.7）后，包不再引用 `@server/**`",
+      "rationale": "实测 11 处导入 / 11 个文件，全部为 `@server/db/schema` 表定义导入。宿主中的资源领域实现已随任务 1.3 迁回包内，残留仅剩表定义；表定义迁出归 §1.7，本条目保留至该步骤完成，不新建通配条目。"
     },
     {
       "rule": "apps-boundary",
       "from": "@fenix/resource-workflow",
       "to": "@fenix/server-app",
-      "owner": "1.5",
-      "removeWhen": "宿主中残留的资源领域实现迁回包内后，包不再引用 `@server/**`",
-      "rationale": "实测 77 处导入 / 35 个文件。35 个文件命中，是资源包中最大的 `@server/**` 反向依赖；1.5 将 apps/server 收敛为进程入口与协议聚合，把其中的资源领域规则、具体业务 service/repository 迁回所属包；依赖方向因此自然消失，而不是靠加一层适配。"
+      "owner": "1.7",
+      "removeWhen": "表定义迁出（§1.7）后，包不再引用 `@server/**`",
+      "rationale": "实测 4 处导入 / 4 个文件，全部为 `@server/db/schema` 表定义导入。宿主中的资源领域实现已随任务 1.3 迁回包内，残留仅剩表定义；表定义迁出归 §1.7，本条目保留至该步骤完成，不新建通配条目。"
     },
     {
       "rule": "apps-boundary",
       "from": "@fenix/resource-knowledge",
       "to": "@fenix/server-app",
-      "owner": "1.5",
-      "removeWhen": "宿主中残留的资源领域实现迁回包内后，包不再引用 `@server/**`",
-      "rationale": "实测 46 处导入 / 25 个文件。25 个文件命中；1.5 将 apps/server 收敛为进程入口与协议聚合，把其中的资源领域规则、具体业务 service/repository 迁回所属包；依赖方向因此自然消失，而不是靠加一层适配。"
+      "owner": "1.7",
+      "removeWhen": "表定义迁出（§1.7）后，包不再引用 `@server/**`",
+      "rationale": "实测 1 处导入 / 1 个文件，全部为 `@server/db/schema` 表定义导入。宿主中的资源领域实现已随任务 1.3 迁回包内，残留仅剩表定义；表定义迁出归 §1.7，本条目保留至该步骤完成，不新建通配条目。"
     },
     {
       "rule": "apps-boundary",
@@ -304,7 +304,7 @@
       "to": "@fenix/server-app",
       "owner": "1.5",
       "removeWhen": "宿主中残留的资源领域实现迁回包内后，包不再引用 `@server/**`",
-      "rationale": "实测 38 处导入 / 16 个文件。16 个文件命中；1.5 收敛后 Provider/Model 聚合根整体留在 model-management 包内。"
+      "rationale": "实测 12 处导入 / 9 个文件：6 处表定义（`@server/db/schema`）、4 处宿主 db 模块、2 处宿主 config。模型的持久化与配置解析尚未完全下沉，收敛随 1.5 的宿主协议聚合继续。"
     },
     {
       "rule": "apps-boundary",
@@ -312,55 +312,55 @@
       "to": "@fenix/server-app",
       "owner": "1.5",
       "removeWhen": "宿主中残留的资源领域实现迁回包内后，包不再引用 `@server/**`",
-      "rationale": "实测 33 处导入 / 10 个文件。10 个文件命中；1.5 将 apps/server 收敛为进程入口与协议聚合，把其中的资源领域规则、具体业务 service/repository 迁回所属包；依赖方向因此自然消失，而不是靠加一层适配。"
+      "rationale": "实测 6 处导入 / 6 个文件：5 处表定义（`@server/db/schema`）+ 1 处宿主 auth 插件（宿主协议聚合，属 1.5 范围）。表定义迁出（§1.7）后仅剩后者。"
     },
     {
       "rule": "apps-boundary",
       "from": "@fenix/resource-skill",
       "to": "@fenix/server-app",
-      "owner": "1.5",
-      "removeWhen": "宿主中残留的资源领域实现迁回包内后，包不再引用 `@server/**`",
-      "rationale": "实测 33 处导入 / 16 个文件。16 个文件命中；1.5 将 apps/server 收敛为进程入口与协议聚合，把其中的资源领域规则、具体业务 service/repository 迁回所属包；依赖方向因此自然消失，而不是靠加一层适配。"
+      "owner": "1.7",
+      "removeWhen": "表定义迁出（§1.7）后，包不再引用 `@server/**`",
+      "rationale": "实测 3 处导入 / 3 个文件，全部为 `@server/db/schema` 表定义导入。宿主中的资源领域实现已随任务 1.3 迁回包内，残留仅剩表定义；表定义迁出归 §1.7，本条目保留至该步骤完成，不新建通配条目。"
     },
     {
       "rule": "apps-boundary",
       "from": "@fenix/resource-task",
       "to": "@fenix/server-app",
-      "owner": "1.5",
-      "removeWhen": "宿主中残留的资源领域实现迁回包内后，包不再引用 `@server/**`",
-      "rationale": "实测 15 处导入 / 9 个文件。9 个文件命中；1.5 将 apps/server 收敛为进程入口与协议聚合，把其中的资源领域规则、具体业务 service/repository 迁回所属包；依赖方向因此自然消失，而不是靠加一层适配。"
+      "owner": "1.7",
+      "removeWhen": "表定义迁出（§1.7）后，包不再引用 `@server/**`",
+      "rationale": "实测 6 处导入 / 6 个文件，全部为 `@server/db/schema` 表定义导入。宿主中的资源领域实现已随任务 1.3 迁回包内，残留仅剩表定义；表定义迁出归 §1.7，本条目保留至该步骤完成，不新建通配条目。"
     },
     {
       "rule": "apps-boundary",
       "from": "@fenix/resource-observer",
       "to": "@fenix/server-app",
-      "owner": "1.5",
-      "removeWhen": "宿主中残留的资源领域实现迁回包内后，包不再引用 `@server/**`",
-      "rationale": "实测 14 处导入 / 9 个文件。9 个文件命中；1.5 将 apps/server 收敛为进程入口与协议聚合，把其中的资源领域规则、具体业务 service/repository 迁回所属包；依赖方向因此自然消失，而不是靠加一层适配。"
+      "owner": "1.7",
+      "removeWhen": "表定义迁出（§1.7）后，包不再引用 `@server/**`",
+      "rationale": "实测 1 处导入 / 1 个文件，全部为 `@server/db/schema` 表定义导入。宿主中的资源领域实现已随任务 1.3 迁回包内，残留仅剩表定义；表定义迁出归 §1.7，本条目保留至该步骤完成，不新建通配条目。"
     },
     {
       "rule": "apps-boundary",
       "from": "@fenix/resource-memory",
       "to": "@fenix/server-app",
-      "owner": "1.5",
-      "removeWhen": "宿主中残留的资源领域实现迁回包内后，包不再引用 `@server/**`",
-      "rationale": "实测 13 处导入 / 5 个文件。5 个文件命中；1.5 将 apps/server 收敛为进程入口与协议聚合，把其中的资源领域规则、具体业务 service/repository 迁回所属包；依赖方向因此自然消失，而不是靠加一层适配。"
+      "owner": "1.7",
+      "removeWhen": "表定义迁出（§1.7）后，包不再引用 `@server/**`",
+      "rationale": "实测 1 处导入 / 1 个文件，全部为 `@server/db/schema` 表定义导入。宿主中的资源领域实现已随任务 1.3 迁回包内，残留仅剩表定义；表定义迁出归 §1.7，本条目保留至该步骤完成，不新建通配条目。"
     },
     {
       "rule": "apps-boundary",
       "from": "@fenix/resource-prod-view",
       "to": "@fenix/server-app",
-      "owner": "1.5",
-      "removeWhen": "宿主中残留的资源领域实现迁回包内后，包不再引用 `@server/**`",
-      "rationale": "实测 7 处导入 / 4 个文件。4 个文件命中；1.5 将 apps/server 收敛为进程入口与协议聚合，把其中的资源领域规则、具体业务 service/repository 迁回所属包；依赖方向因此自然消失，而不是靠加一层适配。"
+      "owner": "1.7",
+      "removeWhen": "表定义迁出（§1.7）后，包不再引用 `@server/**`",
+      "rationale": "实测 2 处导入 / 2 个文件，全部为 `@server/db/schema` 表定义导入。宿主中的资源领域实现已随任务 1.3 迁回包内，残留仅剩表定义；表定义迁出归 §1.7，本条目保留至该步骤完成，不新建通配条目。"
     },
     {
       "rule": "apps-boundary",
       "from": "@fenix/resource-channel",
       "to": "@fenix/server-app",
-      "owner": "1.5",
-      "removeWhen": "宿主中残留的资源领域实现迁回包内后，包不再引用 `@server/**`",
-      "rationale": "实测 6 处导入 / 4 个文件。4 个文件命中；1.5 将 apps/server 收敛为进程入口与协议聚合，把其中的资源领域规则、具体业务 service/repository 迁回所属包；依赖方向因此自然消失，而不是靠加一层适配。"
+      "owner": "1.7",
+      "removeWhen": "表定义迁出（§1.7）后，包不再引用 `@server/**`",
+      "rationale": "实测 1 处导入 / 1 个文件，全部为 `@server/db/schema` 表定义导入。宿主中的资源领域实现已随任务 1.3 迁回包内，残留仅剩表定义；表定义迁出归 §1.7，本条目保留至该步骤完成，不新建通配条目。"
     },
     {
       "rule": "apps-boundary",
@@ -368,7 +368,7 @@
       "to": "@fenix/server-app",
       "owner": "1.5",
       "removeWhen": "宿主中残留的资源领域实现迁回包内后，包不再引用 `@server/**`",
-      "rationale": "实测 2 处导入 / 2 个文件。2 个文件命中，位于服务端控制面而非浏览器入口；1.5 将 apps/server 收敛为进程入口与协议聚合，把其中的资源领域规则、具体业务 service/repository 迁回所属包；依赖方向因此自然消失，而不是靠加一层适配。"
+      "rationale": "实测 1 处导入 / 1 个文件（宿主 services/cache）。缓存能力收敛到 platform-sdk 后本边消失，属 1.5 范围。"
     },
     {
       "rule": "special-dependency",
@@ -387,52 +387,52 @@
       "rationale": "§2.3 固定 `sandbox → machine` 单向。仅 1 处，与上一条同批处理。"
     },
     {
+      "rule": "special-dependency",
+      "from": "@fenix/agent-config",
+      "to": "@fenix/identity",
+      "owner": "1.6",
+      "removeWhen": "宿主公开面 / WebShell 收敛后，资源包 web 面的组织与会话上下文改经注入（props 或 port）取得，不再 import `@fenix/identity/web`",
+      "rationale": "§2.3 禁止 resource → platform-impl。实测 1 处 / 1 文件：web/pages/agent-panel/agent-editor/use-agent-editor.ts 的 `useOrg`/`useSession`（取的是宿主同一 context 实例，1.2 已裁决 org/session 上下文由 identity 提供，见 review §6.5）。收敛动作在 §1.6 的 WebShell 边界内完成。"
+    },
+    {
+      "rule": "special-dependency",
+      "from": "@fenix/resource-knowledge",
+      "to": "@fenix/identity",
+      "owner": "1.6",
+      "removeWhen": "宿主公开面 / WebShell 收敛后，资源包 web 面的组织与会话上下文改经注入（props 或 port）取得，不再 import `@fenix/identity/web`",
+      "rationale": "§2.3 禁止 resource → platform-impl。实测 1 处 / 1 文件：web/pages/agent-panel/pages/AgentKnowledgeBasesPage.tsx 的 `useOrg`/`useSession`（取的是宿主同一 context 实例，1.2 已裁决 org/session 上下文由 identity 提供，见 review §6.5）。收敛动作在 §1.6 的 WebShell 边界内完成。"
+    },
+    {
+      "rule": "special-dependency",
+      "from": "@fenix/resource-mcp",
+      "to": "@fenix/identity",
+      "owner": "1.6",
+      "removeWhen": "宿主公开面 / WebShell 收敛后，资源包 web 面的组织与会话上下文改经注入（props 或 port）取得，不再 import `@fenix/identity/web`",
+      "rationale": "§2.3 禁止 resource → platform-impl。实测 1 处 / 1 文件：web/pages/agent-panel/pages/AgentMcpPage.tsx 的 `useOrg`/`useSession`（取的是宿主同一 context 实例，1.2 已裁决 org/session 上下文由 identity 提供，见 review §6.5）。收敛动作在 §1.6 的 WebShell 边界内完成。"
+    },
+    {
+      "rule": "special-dependency",
+      "from": "@fenix/model-management",
+      "to": "@fenix/identity",
+      "owner": "1.6",
+      "removeWhen": "宿主公开面 / WebShell 收敛后，资源包 web 面的组织与会话上下文改经注入（props 或 port）取得，不再 import `@fenix/identity/web`",
+      "rationale": "§2.3 禁止 resource → platform-impl。实测 1 处 / 1 文件：web/pages/agent-panel/pages/AgentModelsPage.tsx 的 `useOrg`/`useSession`（取的是宿主同一 context 实例，1.2 已裁决 org/session 上下文由 identity 提供，见 review §6.5）。收敛动作在 §1.6 的 WebShell 边界内完成。"
+    },
+    {
+      "rule": "special-dependency",
+      "from": "@fenix/resource-skill",
+      "to": "@fenix/identity",
+      "owner": "1.6",
+      "removeWhen": "宿主公开面 / WebShell 收敛后，资源包 web 面的组织与会话上下文改经注入（props 或 port）取得，不再 import `@fenix/identity/web`",
+      "rationale": "§2.3 禁止 resource → platform-impl。实测 1 处 / 1 文件：web/pages/agent-panel/pages/AgentSkillsPage.tsx 的 `useOrg`/`useSession`（取的是宿主同一 context 实例，1.2 已裁决 org/session 上下文由 identity 提供，见 review §6.5）。收敛动作在 §1.6 的 WebShell 边界内完成。"
+    },
+    {
       "rule": "web-package-not-to-app",
       "from": "@fenix/agent-runtime",
       "to": "@fenix/web-app",
       "owner": "1.6",
       "removeWhen": "agent-runtime 的 web contribution 不再引用宿主内部实现，改经 WebShell 公开面或包内自持",
       "rationale": "170 处 / 68 文件，最大的 web 越界面：`@/src/lib`(72)、`@/components/chat`(34)、`@/components/ui`(29)、`@/src/i18n`(12)。chat 渲染与 ai-elements 组件整体属于本包职责，1.6 迁移时随页面一起落入包内 `web/`；共享 UI 经 Shell 的公开面暴露。"
-    },
-    {
-      "rule": "web-package-not-to-app",
-      "from": "@fenix/agent-config",
-      "to": "@fenix/web-app",
-      "owner": "1.6",
-      "removeWhen": "agent-config 的 web contribution 不再引用宿主内部实现，改经 WebShell 公开面或包内自持",
-      "rationale": "87 处 / 24 文件：`@/components/ui`(24)、`@/src/api`(22)、`@/src/lib`(16)、`@/src/i18n`(13)。其中 `@/src/api/{agents,skills,mcp,models,sites}` 与 `@/src/lib/*-resource-access` 是尚未搬离宿主的领域 client，1.6 随页面迁入本包。"
-    },
-    {
-      "rule": "web-package-not-to-app",
-      "from": "@fenix/model-management",
-      "to": "@fenix/web-app",
-      "owner": "1.6",
-      "removeWhen": "model-management 的 web contribution 不再引用宿主内部实现",
-      "rationale": "85 处 / 23 文件：`@/components/ui`(38)、`@/src/types`(15)、`@/src/api`(15)。"
-    },
-    {
-      "rule": "web-package-not-to-app",
-      "from": "@fenix/resource-workflow",
-      "to": "@fenix/web-app",
-      "owner": "1.6",
-      "removeWhen": "workflow 的 web contribution 不再引用宿主内部实现",
-      "rationale": "68 处 / 28 文件：`@/components/ui`(32)、`@/src/api`(16)，另有 `@/src/pages`(5) 与 `@/components/config`(5) 直接引用宿主页面与配置组件。"
-    },
-    {
-      "rule": "web-package-not-to-app",
-      "from": "@fenix/resource-knowledge",
-      "to": "@fenix/web-app",
-      "owner": "1.6",
-      "removeWhen": "knowledge 的 web contribution 不再引用宿主内部实现",
-      "rationale": "62 处 / 11 文件：`@/components/ui`(28)、`@/src/api`(10)、`@/src/i18n`(8)。"
-    },
-    {
-      "rule": "web-package-not-to-app",
-      "from": "@fenix/resource-task",
-      "to": "@fenix/web-app",
-      "owner": "1.6",
-      "removeWhen": "task 的 web contribution 不再引用宿主内部实现",
-      "rationale": "55 处 / 9 文件：`@/components/ui`(26)、`@/src/api`(14)、`@/src/i18n`(7)。"
     },
     {
       "rule": "web-package-not-to-app",
@@ -457,62 +457,6 @@
       "owner": "1.6",
       "removeWhen": "chat-channel 的 web contribution 不再引用宿主内部实现",
       "rationale": "47 处 / 7 文件：`@/components/chat`(14)、`@/src/lib`(13)、`@/src/api`(7)。chat 组件本身是 chat-channel 的职责，1.6 迁移时应整体落入本包 `web/`。"
-    },
-    {
-      "rule": "web-package-not-to-app",
-      "from": "@fenix/resource-memory",
-      "to": "@fenix/web-app",
-      "owner": "1.6",
-      "removeWhen": "memory 的 web contribution 不再引用宿主内部实现",
-      "rationale": "47 处 / 14 文件：`@/components/ui`(26)、`@/src/i18n`(10)、`@/src/api`(8)。"
-    },
-    {
-      "rule": "web-package-not-to-app",
-      "from": "@fenix/resource-prod-view",
-      "to": "@fenix/web-app",
-      "owner": "1.6",
-      "removeWhen": "prod-view 的 web contribution 不再引用宿主内部实现",
-      "rationale": "39 处 / 5 文件：`@/components/ui`(15)、`@/src/api`(11)。"
-    },
-    {
-      "rule": "web-package-not-to-app",
-      "from": "@fenix/resource-observer",
-      "to": "@fenix/web-app",
-      "owner": "1.6",
-      "removeWhen": "observer 的 web contribution 不再引用宿主内部实现",
-      "rationale": "37 处 / 10 文件：`@/components/ui`(22)、`@/src/lib`(9)。"
-    },
-    {
-      "rule": "web-package-not-to-app",
-      "from": "@fenix/resource-skill",
-      "to": "@fenix/web-app",
-      "owner": "1.6",
-      "removeWhen": "skill 的 web contribution 不再引用宿主内部实现",
-      "rationale": "28 处 / 7 文件；其中 4 处是相对路径直接越过 `apps/web/src`（`lib/skill-upload.ts`、`lib/skill-resource-access.ts`、`api/skills.ts`），不是别名形式，迁移时需一并改写。"
-    },
-    {
-      "rule": "web-package-not-to-app",
-      "from": "@fenix/resource-mcp",
-      "to": "@fenix/web-app",
-      "owner": "1.6",
-      "removeWhen": "mcp 的 web contribution 不再引用宿主内部实现",
-      "rationale": "28 处 / 6 文件：`@/components/ui`(8)、`@/src/types`(6)、`@/src/api`(5)。"
-    },
-    {
-      "rule": "web-package-not-to-app",
-      "from": "@fenix/resource-machine",
-      "to": "@fenix/web-app",
-      "owner": "1.6",
-      "removeWhen": "machine 的 web contribution 不再引用宿主内部实现",
-      "rationale": "15 处 / 6 文件，全部是测试文件以相对路径越过 `apps/web/src`（`__tests__/happy-dom-window`、`src/types`、`src/components/agent-panel/*`）；宿主文件树与文件图标组件是 machine 页面的一部分，1.6 迁移时随实现一起落入本包。"
-    },
-    {
-      "rule": "web-package-not-to-app",
-      "from": "@fenix/resource-channel",
-      "to": "@fenix/web-app",
-      "owner": "1.6",
-      "removeWhen": "channel 的 web contribution 不再引用宿主内部实现",
-      "rationale": "15 处 / 2 文件：`@/components/ui`(6)、`@/src/api`(4)。"
     }
   ]
 }

@@ -24,3 +24,4 @@ export * from "./reset-all-stubs";
 export * from "./response";
 export * from "./stub-registry";
 export * from "./test-application-infrastructure";
+export * from "./workspace-root-lock";

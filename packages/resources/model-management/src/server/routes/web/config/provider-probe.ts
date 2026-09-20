@@ -1,4 +1,4 @@
-import { configError, configSuccess } from "@server/services/config-utils";
+import { configError, configSuccess } from "../../../config-envelope";
 
 /**
  * Provider 连通性探测：用给定凭据向上游发起真实请求，验证端点与密钥可用。

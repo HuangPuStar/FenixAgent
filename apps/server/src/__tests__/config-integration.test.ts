@@ -16,7 +16,7 @@ import {
   resetModelManagementModuleForTesting,
 } from "@fenix/model-management/server/testing";
 import { ForbiddenError, NotFoundError } from "@fenix/platform-sdk";
-import { resetAllStubs, stubDb } from "@fenix/platform-sdk/testing";
+import { resetAllStubs, stubDb, stubModuleConfig } from "@fenix/platform-sdk/testing";
 import {
   createStubSkillFacade,
   createStubSkillServerModule,
@@ -132,6 +132,10 @@ describe("Config Route Integration", () => {
     tempSkillDir = join(tmpdir(), `fenix-config-skill-${Date.now()}-${Math.random().toString(16).slice(2)}`);
     mkdirSync(tempSkillDir, { recursive: true });
     setConfig({ baseUrl: "http://rcs.test", skillDir: tempSkillDir });
+    // Skill 路由改经 `getModuleConfig("skill")` 读内容目录与对外地址（CE 阶段 2 任务 1.3 的注入端口），
+    // 用例必须把本用例的临时目录登记到模块配置层：`setConfig()` 只改宿主 config，路由已不读它，
+    // 不登记就会去 `./data/skills` 找归档（下载类用例报 ENOENT → 404）。
+    stubModuleConfig("skill", { skillDir: tempSkillDir, baseUrl: "http://rcs.test" });
     process.env.RCS_API_KEYS = "test-key";
     stubDb({
       select: () => ({

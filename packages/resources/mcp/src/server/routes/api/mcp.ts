@@ -1,6 +1,5 @@
 import type { ActorContext, IdentityDirectory } from "@fenix/platform-sdk";
 import { ApiErrorResponseSchema, AppError, toResourceAccessView } from "@fenix/platform-sdk";
-import { authGuardPlugin } from "@server/plugins/auth";
 import Elysia from "elysia";
 import type { AuthorizedMcpServer } from "../../facades/mcp-server-facade";
 import { getMcpServerModule } from "../../runtime";
@@ -17,6 +16,7 @@ import {
   ApiMcpUpdateBodySchema,
 } from "../../schemas/api-mcp.schema";
 import { type McpServerConfig, parseMcpConfigValue, readMcpServerType } from "../../services/config/mcp-config";
+import type { McpRouteDependencies } from "../dependencies";
 
 /**
  * `/api/mcp` 协议层（对外已发布合同）。
@@ -26,6 +26,10 @@ import { type McpServerConfig, parseMcpConfigValue, readMcpServerType } from "..
  *
  * `resourceAccess` 是**唯一**保留旧字段形状的位置（决策 D2）：它由 `toResourceAccessView` 从
  * `scope + access.actions` 派生，资源包不再各自解释权限。
+ *
+ * 导出的是**路由工厂**而非构造好的实例：`sessionAuth` 宏与 `store.actor` 由宿主守卫写入，Elysia
+ * 的 `macro` / `state` 是实例作用域的，父实例无法向已构造的子实例回填，因此守卫由宿主注入
+ * （`McpRouteDependencies`）。
  */
 
 /**
@@ -132,249 +136,263 @@ function toMcpDetail(
   };
 }
 
-const app = new Elysia({ name: "api-mcp", prefix: "/api/mcp" }).use(authGuardPlugin).model({
-  "api-mcp-list-query": ApiMcpListQuerySchema,
-  "api-mcp-id-params": ApiMcpIdParamsSchema,
-  "api-mcp-create-body": ApiMcpCreateBodySchema,
-  "api-mcp-update-body": ApiMcpUpdateBodySchema,
-  "api-mcp-list-response": ApiMcpListResponseSchema,
-  "api-mcp-detail": ApiMcpDetailSchema,
-  "api-mcp-delete-response": ApiMcpDeleteResponseSchema,
-});
+export function createApiMcpRoutes(deps: McpRouteDependencies) {
+  const app = new Elysia({ name: "api-mcp", prefix: "/api/mcp" }).use(deps.authGuardPlugin).model({
+    "api-mcp-list-query": ApiMcpListQuerySchema,
+    "api-mcp-id-params": ApiMcpIdParamsSchema,
+    "api-mcp-create-body": ApiMcpCreateBodySchema,
+    "api-mcp-update-body": ApiMcpUpdateBodySchema,
+    "api-mcp-list-response": ApiMcpListResponseSchema,
+    "api-mcp-detail": ApiMcpDetailSchema,
+    "api-mcp-delete-response": ApiMcpDeleteResponseSchema,
+  });
 
-app.get(
-  "",
-  // biome-ignore lint/suspicious/noExplicitAny: Elysia 在自定义 response schema 下类型推断不稳定
-  async ({ store, query, error }: any) => {
-    const actor = store.actor as ActorContext | null;
-    if (!actor) {
-      return error(401, { error: { code: "UNAUTHORIZED", message: "请求缺少组织上下文" } });
-    }
-    const { page, pageSize } = query as ApiMcpListQuery;
+  app.get(
+    "",
+    // biome-ignore lint/suspicious/noExplicitAny: Elysia 在自定义 response schema 下类型推断不稳定
+    async ({ store, query, error }: any) => {
+      const actor = store.actor as ActorContext | null;
+      if (!actor) {
+        return error(401, { error: { code: "UNAUTHORIZED", message: "请求缺少组织上下文" } });
+      }
+      const { page, pageSize } = query as ApiMcpListQuery;
 
-    try {
-      const { facade, identity } = getMcpServerModule();
-      const { items, total } = await facade.list(actor, {
-        limit: pageSize,
-        offset: (page - 1) * pageSize,
-      });
-      const organizationNames = await resolveOrganizationNames(
-        identity,
-        items.map((item) => item.scope.organizationId),
-      );
-      return {
-        items: items.map((item) =>
-          toMcpListItem(
-            item,
-            item.toolsCount,
-            actor.activeOrganizationId,
-            organizationNames.get(item.scope.organizationId ?? ""),
+      try {
+        const { facade, identity } = getMcpServerModule();
+        const { items, total } = await facade.list(actor, {
+          limit: pageSize,
+          offset: (page - 1) * pageSize,
+        });
+        const organizationNames = await resolveOrganizationNames(
+          identity,
+          items.map((item) => item.scope.organizationId),
+        );
+        return {
+          items: items.map((item) =>
+            toMcpListItem(
+              item,
+              item.toolsCount,
+              actor.activeOrganizationId,
+              organizationNames.get(item.scope.organizationId ?? ""),
+            ),
           ),
-        ),
-        total,
-        page,
-        pageSize,
-      };
-    } catch (err) {
-      const mapped = mapApiError(err);
-      return error(mapped.status, mapped.body);
-    }
-  },
-  {
-    sessionAuth: true,
-    query: "api-mcp-list-query",
-    response: {
-      200: "api-mcp-list-response",
-      400: ApiErrorResponseSchema,
-      401: ApiErrorResponseSchema,
-      500: ApiErrorResponseSchema,
-    },
-    detail: {
-      tags: ["External MCP"],
-      summary: "获取 MCP Server 列表",
-      description: "返回当前主体可见的 MCP Server 列表，采用稳定分页结构；分页与计数在数据库内完成。",
-    },
-  },
-);
-
-app.get(
-  "/:id",
-  // biome-ignore lint/suspicious/noExplicitAny: Elysia 在自定义 response schema 下类型推断不稳定
-  async ({ store, params, error }: any) => {
-    const actor = store.actor as ActorContext | null;
-    if (!actor) {
-      return error(401, { error: { code: "UNAUTHORIZED", message: "请求缺少组织上下文" } });
-    }
-    const { id } = params as { id: string };
-
-    try {
-      const { facade, identity } = getMcpServerModule();
-      const server = await facade.getById(actor, id);
-      if (!server) {
-        return error(404, { error: { code: "NOT_FOUND", message: `MCP server '${id}' not found` } });
+          total,
+          page,
+          pageSize,
+        };
+      } catch (err) {
+        const mapped = mapApiError(err);
+        return error(mapped.status, mapped.body);
       }
-      const organizationNames = await resolveOrganizationNames(identity, [server.scope.organizationId]);
-      return toMcpDetail(server, actor.activeOrganizationId, organizationNames.get(server.scope.organizationId ?? ""));
-    } catch (err) {
-      const mapped = mapApiError(err);
-      return error(mapped.status, mapped.body);
-    }
-  },
-  {
-    sessionAuth: true,
-    params: "api-mcp-id-params",
-    response: {
-      200: "api-mcp-detail",
-      401: ApiErrorResponseSchema,
-      404: ApiErrorResponseSchema,
-      500: ApiErrorResponseSchema,
     },
-    detail: {
-      tags: ["External MCP"],
-      summary: "获取 MCP Server 详情",
-      description: "按 MCP Server 唯一 ID 返回配置详情。",
+    {
+      sessionAuth: true,
+      query: "api-mcp-list-query",
+      response: {
+        200: "api-mcp-list-response",
+        400: ApiErrorResponseSchema,
+        401: ApiErrorResponseSchema,
+        500: ApiErrorResponseSchema,
+      },
+      detail: {
+        tags: ["External MCP"],
+        summary: "获取 MCP Server 列表",
+        description: "返回当前主体可见的 MCP Server 列表，采用稳定分页结构；分页与计数在数据库内完成。",
+      },
     },
-  },
-);
+  );
 
-app.post(
-  "",
-  // biome-ignore lint/suspicious/noExplicitAny: Elysia 在自定义 response schema 下类型推断不稳定
-  async ({ store, body, error }: any) => {
-    const actor = store.actor as ActorContext | null;
-    if (!actor) {
-      return error(401, { error: { code: "UNAUTHORIZED", message: "请求缺少组织上下文" } });
-    }
-    const payload = body as ApiMcpCreateBody;
-
-    try {
-      const { facade, identity } = getMcpServerModule();
-      const existing = await facade.get(actor, payload.name);
-      if (existing) {
-        return error(409, { error: { code: "CONFLICT", message: `MCP server '${payload.name}' already exists` } });
+  app.get(
+    "/:id",
+    // biome-ignore lint/suspicious/noExplicitAny: Elysia 在自定义 response schema 下类型推断不稳定
+    async ({ store, params, error }: any) => {
+      const actor = store.actor as ActorContext | null;
+      if (!actor) {
+        return error(401, { error: { code: "UNAUTHORIZED", message: "请求缺少组织上下文" } });
       }
+      const { id } = params as { id: string };
 
-      const config = toMcpConfig(payload);
-      const resourceId = await facade.create(actor, {
-        name: payload.name,
-        type: readMcpServerType(config),
-        config,
-        ...(payload.publicReadable === undefined ? {} : { publicReadable: payload.publicReadable }),
-      });
-
-      const detail = await facade.getById(actor, resourceId);
-      if (!detail) {
-        return error(500, { error: { code: "INTERNAL_ERROR", message: "MCP server could not be reloaded" } });
+      try {
+        const { facade, identity } = getMcpServerModule();
+        const server = await facade.getById(actor, id);
+        if (!server) {
+          return error(404, { error: { code: "NOT_FOUND", message: `MCP server '${id}' not found` } });
+        }
+        const organizationNames = await resolveOrganizationNames(identity, [server.scope.organizationId]);
+        return toMcpDetail(
+          server,
+          actor.activeOrganizationId,
+          organizationNames.get(server.scope.organizationId ?? ""),
+        );
+      } catch (err) {
+        const mapped = mapApiError(err);
+        return error(mapped.status, mapped.body);
       }
-      const organizationNames = await resolveOrganizationNames(identity, [detail.scope.organizationId]);
-      return toMcpDetail(detail, actor.activeOrganizationId, organizationNames.get(detail.scope.organizationId ?? ""));
-    } catch (err) {
-      const mapped = mapApiError(err);
-      return error(mapped.status, mapped.body);
-    }
-  },
-  {
-    sessionAuth: true,
-    body: "api-mcp-create-body",
-    response: {
-      200: "api-mcp-detail",
-      400: ApiErrorResponseSchema,
-      401: ApiErrorResponseSchema,
-      409: ApiErrorResponseSchema,
-      500: ApiErrorResponseSchema,
     },
-    detail: {
-      tags: ["External MCP"],
-      summary: "创建 MCP Server",
-      description: "创建一个新的 MCP Server 配置。名称已存在时返回冲突错误。",
+    {
+      sessionAuth: true,
+      params: "api-mcp-id-params",
+      response: {
+        200: "api-mcp-detail",
+        401: ApiErrorResponseSchema,
+        404: ApiErrorResponseSchema,
+        500: ApiErrorResponseSchema,
+      },
+      detail: {
+        tags: ["External MCP"],
+        summary: "获取 MCP Server 详情",
+        description: "按 MCP Server 唯一 ID 返回配置详情。",
+      },
     },
-  },
-);
+  );
 
-app.put(
-  "/:id",
-  // biome-ignore lint/suspicious/noExplicitAny: Elysia 在自定义 response schema 下类型推断不稳定
-  async ({ store, params, body, error }: any) => {
-    const actor = store.actor as ActorContext | null;
-    if (!actor) {
-      return error(401, { error: { code: "UNAUTHORIZED", message: "请求缺少组织上下文" } });
-    }
-    const { id } = params as { id: string };
-    const payload = body as ApiMcpUpdateBody;
-
-    try {
-      const { facade, identity } = getMcpServerModule();
-      // 不可见或无 `update` 动作都会抛出宿主错误类，由 mapApiError 映射为 404 / 403。
-      await facade.updateById(actor, id, toMcpConfig(payload), {
-        ...(payload.publicReadable === undefined ? {} : { publicReadable: payload.publicReadable }),
-      });
-
-      const detail = await facade.getById(actor, id);
-      if (!detail) {
-        return error(500, { error: { code: "INTERNAL_ERROR", message: "MCP server could not be reloaded" } });
+  app.post(
+    "",
+    // biome-ignore lint/suspicious/noExplicitAny: Elysia 在自定义 response schema 下类型推断不稳定
+    async ({ store, body, error }: any) => {
+      const actor = store.actor as ActorContext | null;
+      if (!actor) {
+        return error(401, { error: { code: "UNAUTHORIZED", message: "请求缺少组织上下文" } });
       }
-      const organizationNames = await resolveOrganizationNames(identity, [detail.scope.organizationId]);
-      return toMcpDetail(detail, actor.activeOrganizationId, organizationNames.get(detail.scope.organizationId ?? ""));
-    } catch (err) {
-      const mapped = mapApiError(err);
-      return error(mapped.status, mapped.body);
-    }
-  },
-  {
-    sessionAuth: true,
-    params: "api-mcp-id-params",
-    body: "api-mcp-update-body",
-    response: {
-      200: "api-mcp-detail",
-      400: ApiErrorResponseSchema,
-      401: ApiErrorResponseSchema,
-      403: ApiErrorResponseSchema,
-      404: ApiErrorResponseSchema,
-      500: ApiErrorResponseSchema,
-    },
-    detail: {
-      tags: ["External MCP"],
-      summary: "更新 MCP Server",
-      description: "按 MCP Server 唯一 ID 更新连接配置与共享访问设置。",
-    },
-  },
-);
+      const payload = body as ApiMcpCreateBody;
 
-app.delete(
-  "/:id",
-  // biome-ignore lint/suspicious/noExplicitAny: Elysia 在自定义 response schema 下类型推断不稳定
-  async ({ store, params, error }: any) => {
-    const actor = store.actor as ActorContext | null;
-    if (!actor) {
-      return error(401, { error: { code: "UNAUTHORIZED", message: "请求缺少组织上下文" } });
-    }
-    const { id } = params as { id: string };
+      try {
+        const { facade, identity } = getMcpServerModule();
+        const existing = await facade.get(actor, payload.name);
+        if (existing) {
+          return error(409, { error: { code: "CONFLICT", message: `MCP server '${payload.name}' already exists` } });
+        }
 
-    try {
-      await getMcpServerModule().facade.removeById(actor, id);
-      return { id, deleted: true as const };
-    } catch (err) {
-      // 不可见（404）与可见但无 `delete` 动作（403）都由宿主错误类携带状态码。
-      const mapped = mapApiError(err);
-      return error(mapped.status, mapped.body);
-    }
-  },
-  {
-    sessionAuth: true,
-    params: "api-mcp-id-params",
-    response: {
-      200: "api-mcp-delete-response",
-      401: ApiErrorResponseSchema,
-      403: ApiErrorResponseSchema,
-      404: ApiErrorResponseSchema,
-      500: ApiErrorResponseSchema,
-    },
-    detail: {
-      tags: ["External MCP"],
-      summary: "删除 MCP Server",
-      description: "按 MCP Server 唯一 ID 删除配置。",
-    },
-  },
-);
+        const config = toMcpConfig(payload);
+        const resourceId = await facade.create(actor, {
+          name: payload.name,
+          type: readMcpServerType(config),
+          config,
+          ...(payload.publicReadable === undefined ? {} : { publicReadable: payload.publicReadable }),
+        });
 
-export default app;
+        const detail = await facade.getById(actor, resourceId);
+        if (!detail) {
+          return error(500, { error: { code: "INTERNAL_ERROR", message: "MCP server could not be reloaded" } });
+        }
+        const organizationNames = await resolveOrganizationNames(identity, [detail.scope.organizationId]);
+        return toMcpDetail(
+          detail,
+          actor.activeOrganizationId,
+          organizationNames.get(detail.scope.organizationId ?? ""),
+        );
+      } catch (err) {
+        const mapped = mapApiError(err);
+        return error(mapped.status, mapped.body);
+      }
+    },
+    {
+      sessionAuth: true,
+      body: "api-mcp-create-body",
+      response: {
+        200: "api-mcp-detail",
+        400: ApiErrorResponseSchema,
+        401: ApiErrorResponseSchema,
+        409: ApiErrorResponseSchema,
+        500: ApiErrorResponseSchema,
+      },
+      detail: {
+        tags: ["External MCP"],
+        summary: "创建 MCP Server",
+        description: "创建一个新的 MCP Server 配置。名称已存在时返回冲突错误。",
+      },
+    },
+  );
+
+  app.put(
+    "/:id",
+    // biome-ignore lint/suspicious/noExplicitAny: Elysia 在自定义 response schema 下类型推断不稳定
+    async ({ store, params, body, error }: any) => {
+      const actor = store.actor as ActorContext | null;
+      if (!actor) {
+        return error(401, { error: { code: "UNAUTHORIZED", message: "请求缺少组织上下文" } });
+      }
+      const { id } = params as { id: string };
+      const payload = body as ApiMcpUpdateBody;
+
+      try {
+        const { facade, identity } = getMcpServerModule();
+        // 不可见或无 `update` 动作都会抛出宿主错误类，由 mapApiError 映射为 404 / 403。
+        await facade.updateById(actor, id, toMcpConfig(payload), {
+          ...(payload.publicReadable === undefined ? {} : { publicReadable: payload.publicReadable }),
+        });
+
+        const detail = await facade.getById(actor, id);
+        if (!detail) {
+          return error(500, { error: { code: "INTERNAL_ERROR", message: "MCP server could not be reloaded" } });
+        }
+        const organizationNames = await resolveOrganizationNames(identity, [detail.scope.organizationId]);
+        return toMcpDetail(
+          detail,
+          actor.activeOrganizationId,
+          organizationNames.get(detail.scope.organizationId ?? ""),
+        );
+      } catch (err) {
+        const mapped = mapApiError(err);
+        return error(mapped.status, mapped.body);
+      }
+    },
+    {
+      sessionAuth: true,
+      params: "api-mcp-id-params",
+      body: "api-mcp-update-body",
+      response: {
+        200: "api-mcp-detail",
+        400: ApiErrorResponseSchema,
+        401: ApiErrorResponseSchema,
+        403: ApiErrorResponseSchema,
+        404: ApiErrorResponseSchema,
+        500: ApiErrorResponseSchema,
+      },
+      detail: {
+        tags: ["External MCP"],
+        summary: "更新 MCP Server",
+        description: "按 MCP Server 唯一 ID 更新连接配置与共享访问设置。",
+      },
+    },
+  );
+
+  app.delete(
+    "/:id",
+    // biome-ignore lint/suspicious/noExplicitAny: Elysia 在自定义 response schema 下类型推断不稳定
+    async ({ store, params, error }: any) => {
+      const actor = store.actor as ActorContext | null;
+      if (!actor) {
+        return error(401, { error: { code: "UNAUTHORIZED", message: "请求缺少组织上下文" } });
+      }
+      const { id } = params as { id: string };
+
+      try {
+        await getMcpServerModule().facade.removeById(actor, id);
+        return { id, deleted: true as const };
+      } catch (err) {
+        // 不可见（404）与可见但无 `delete` 动作（403）都由宿主错误类携带状态码。
+        const mapped = mapApiError(err);
+        return error(mapped.status, mapped.body);
+      }
+    },
+    {
+      sessionAuth: true,
+      params: "api-mcp-id-params",
+      response: {
+        200: "api-mcp-delete-response",
+        401: ApiErrorResponseSchema,
+        403: ApiErrorResponseSchema,
+        404: ApiErrorResponseSchema,
+        500: ApiErrorResponseSchema,
+      },
+      detail: {
+        tags: ["External MCP"],
+        summary: "删除 MCP Server",
+        description: "按 MCP Server 唯一 ID 删除配置。",
+      },
+    },
+  );
+
+  return app;
+}

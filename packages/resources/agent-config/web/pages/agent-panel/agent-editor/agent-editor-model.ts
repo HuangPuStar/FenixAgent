@@ -1,9 +1,9 @@
+import { getModelProviderKey, isExternalModelProvider } from "@fenix/model-management/web";
+import type { KnowledgeBaseInfo } from "@fenix/resource-knowledge/web";
+import { getMcpDisplayName, getMcpKey, type McpResourceLike } from "@fenix/resource-mcp/web";
+import type { AgentDetail, ModelEntry, ResourceScopeView } from "@fenix/web-runtime/types/config";
 import { z } from "zod/v4";
-import { type AgentNodeSelection, agentNodeToSelection, selectionToAgentNode } from "@/src/lib/agent-node";
-import { getMcpDisplayName, getMcpKey, type McpResourceLike } from "@/src/lib/mcp-resource-access";
-import { getModelProviderKey, isExternalModelProvider } from "@/src/lib/provider-resource-access";
-import type { AgentDetail, ModelEntry, ResourceScopeView } from "@/src/types/config";
-import type { KnowledgeBaseInfo } from "@/src/types/knowledge";
+import { type AgentNodeSelection, agentNodeToSelection, selectionToAgentNode } from "../../../lib/agent-node";
 
 export interface AgentTemplate {
   id: string;

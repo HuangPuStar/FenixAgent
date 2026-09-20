@@ -5,9 +5,9 @@
  * YAML 内容通过 workflow-fs 读写文件系统，数据库只存路径引用。
  */
 
-import { db } from "@server/db";
 import { workflow, workflowSnapshot, workflowVersion } from "@server/db/schema";
 import { and, desc, eq, sql } from "drizzle-orm";
+import { getWorkflowDatabase } from "../db";
 import {
   buildStoragePath,
   ensureWorkflowDir,
@@ -55,6 +55,7 @@ export async function createWorkflowDef(
   data: { name: string; description?: string },
   baseDir: string = WORKFLOW_BASE_DIR,
 ): Promise<WorkflowDefRow> {
+  const db = getWorkflowDatabase();
   const [row] = await db
     .insert(workflow)
     .values({
@@ -77,6 +78,7 @@ export async function createWorkflowDef(
 
 /** 保存草稿（upsert version=0） */
 export async function saveDraft(workflowId: string, ctx: AuthCtx, yaml: string): Promise<void> {
+  const db = getWorkflowDatabase();
   const [wf] = await db
     .select()
     .from(workflow)
@@ -111,6 +113,7 @@ export async function saveDraft(workflowId: string, ctx: AuthCtx, yaml: string):
 /** 发布版本：复制草稿内容到 v{n}.yaml，更新 latestVersion。
  *  使用事务 + FOR UPDATE 行锁保证并发安全 — 两个用户同时发布不会冲突或拿到相同的 version 号。 */
 export async function publishVersion(workflowId: string, ctx: AuthCtx): Promise<WorkflowVersionRow> {
+  const db = getWorkflowDatabase();
   return db.transaction(async (tx) => {
     // SELECT ... FOR UPDATE 锁定 workflow 行，防止并发 publish 产生重复 version
     const [wf] = await tx
@@ -148,6 +151,7 @@ export async function publishVersion(workflowId: string, ctx: AuthCtx): Promise<
 
 /** 列出工作流（按 updatedAt 降序） */
 export async function listWorkflowDefs(organizationId: string): Promise<WorkflowDefRow[]> {
+  const db = getWorkflowDatabase();
   return db
     .select()
     .from(workflow)
@@ -157,6 +161,7 @@ export async function listWorkflowDefs(organizationId: string): Promise<Workflow
 
 /** 获取单个工作流 */
 export async function getWorkflowDef(workflowId: string, organizationId: string): Promise<WorkflowDefRow | null> {
+  const db = getWorkflowDatabase();
   const [row] = await db
     .select()
     .from(workflow)
@@ -188,6 +193,7 @@ export async function resolveWorkflowExecutionVersion(
 
 /** 获取版本历史列表（不含草稿） */
 export async function getVersions(workflowId: string, organizationId: string): Promise<WorkflowVersionRow[]> {
+  const db = getWorkflowDatabase();
   const wf = await getWorkflowDef(workflowId, organizationId);
   if (!wf) return [];
 
@@ -221,6 +227,7 @@ export async function getVersionYaml(
   version: number,
   optsOrStoragePath?: { organizationId: string; storagePath?: string | null } | string | null | undefined,
 ): Promise<string | null> {
+  const db = getWorkflowDatabase();
   const isOptsObject =
     optsOrStoragePath !== null && typeof optsOrStoragePath === "object" && !Array.isArray(optsOrStoragePath);
   const opts = isOptsObject
@@ -268,6 +275,7 @@ export async function getVersionYaml(
 /** 设置 latest 指针到指定版本（回滚）。
  *  校验 version 必须属于该 workflowId，防止跨工作流误改。 */
 export async function setLatestVersion(workflowId: string, organizationId: string, version: number): Promise<void> {
+  const db = getWorkflowDatabase();
   // 校验 version 归属 workflowId（workflowVersion 表本身没有 organizationId，
   // 但 workflowId 必须属于当前 organizationId 才允许操作）
   const [wf] = await db
@@ -298,6 +306,7 @@ export async function deleteWorkflowDef(
   organizationId: string,
   _baseDir: string = WORKFLOW_BASE_DIR,
 ): Promise<boolean> {
+  const db = getWorkflowDatabase();
   const result = await db
     .delete(workflow)
     .where(and(eq(workflow.id, workflowId), eq(workflow.organizationId, organizationId)))
@@ -322,6 +331,7 @@ export async function updateWorkflowMeta(
   organizationId: string,
   data: { name?: string; description?: string },
 ): Promise<WorkflowDefRow | null> {
+  const db = getWorkflowDatabase();
   const updates: Record<string, unknown> = { updatedAt: new Date() };
   if (data.name !== undefined) updates.name = data.name;
   if (data.description !== undefined) updates.description = data.description;
@@ -336,6 +346,7 @@ export async function updateWorkflowMeta(
 
 /** 扫描文件系统中可恢复的孤立工作流 */
 export async function listRecoverableWorkflows(organizationId: string): Promise<string[]> {
+  const db = getWorkflowDatabase();
   const existing = await db
     .select({ id: workflow.id })
     .from(workflow)
@@ -349,6 +360,7 @@ export async function listRecoverableWorkflows(organizationId: string): Promise<
  *  多租户关键：只读取 `<baseDir>/<organizationId>/<workflowId>/` 路径下的 YAML，
  *  绝不跨组织扫描。 */
 export async function recoverWorkflows(ctx: AuthCtx, workflowIds: string[]): Promise<WorkflowDefRow[]> {
+  const db = getWorkflowDatabase();
   const results: WorkflowDefRow[] = [];
   for (const wid of workflowIds) {
     // 优先用带 organizationId 隔离的新路径；旧数据兼容回退到无 org 的路径
@@ -437,6 +449,7 @@ export async function linkWorkflowSnapshotToWorkflow(
   organizationId: string,
   workflowId: string,
 ): Promise<void> {
+  const db = getWorkflowDatabase();
   await db
     .update(workflowSnapshot)
     .set({ workflowId })

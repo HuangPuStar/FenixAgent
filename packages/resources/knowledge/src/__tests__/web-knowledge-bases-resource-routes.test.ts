@@ -1,14 +1,24 @@
 import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
 import { resetAllStubs } from "@fenix/platform-sdk/testing";
-import { resetConfig, setConfig } from "@server/config";
-import { resetTestAuth, setTestAuth } from "@server/plugins/auth";
 import {
   type KnowledgeBaseRow,
   type KnowledgeResourceRow,
   knowledgeBaseRepo,
   knowledgeResourceRepo,
 } from "../server/repositories/knowledge-base";
-import webKnowledgeBasesRoute from "../server/routes/web/knowledge-bases";
+import { createWebKnowledgeBaseRoutes } from "../server/routes/web/knowledge-bases";
+import { initializeKnowledgeModuleConfig } from "../server/testing";
+import { createStubSessionAuthGuardPlugin } from "./guard-stubs";
+
+/**
+ * 认证上下文由守卫替身写入（真实守卫属宿主，包内不得依赖它构造路由）。
+ * 取值与迁移前 `setTestAuth()` 注入的一致：`{ organizationId: "org-1", userId: "user-1" }`。
+ */
+const AUTH_CONTEXT = { organizationId: "org-1", userId: "user-1" } as const;
+const webKnowledgeBasesRoute = createWebKnowledgeBaseRoutes({
+  authGuardPlugin: createStubSessionAuthGuardPlugin(AUTH_CONTEXT),
+});
+
 import { RagFlowKnowledgeProvider } from "../server/services/knowledge-provider/ragflow";
 import { setKnowledgeProviderForTesting } from "../server/services/knowledge-provider/registry";
 
@@ -55,13 +65,6 @@ function request(path: string, init?: RequestInit) {
   return webKnowledgeBasesRoute.handle(new Request(`http://localhost${path}`, init));
 }
 
-function authenticate(organizationId = "org-1") {
-  setTestAuth({
-    user: { id: "user-1", email: "user-1@example.com", name: "Tester" },
-    authContext: { organizationId, userId: "user-1", role: "owner" },
-  });
-}
-
 class RouteProvider extends RagFlowKnowledgeProvider {
   chunkInput: Parameters<RagFlowKnowledgeProvider["listChunks"]>[0] | null = null;
   switchInput: Parameters<RagFlowKnowledgeProvider["switchChunk"]>[0] | null = null;
@@ -95,8 +98,7 @@ const originals = {
 describe("知识库 Web 路由资源分支", () => {
   beforeEach(() => {
     resetAllStubs();
-    authenticate();
-    setConfig({ ragflowApiKey: "test-ragflow-key" });
+    initializeKnowledgeModuleConfig({ ragflowApiKey: "test-ragflow-key" });
   });
 
   afterEach(() => {
@@ -104,8 +106,6 @@ describe("知识库 Web 路由资源分支", () => {
     knowledgeResourceRepo.getById = originals.getResource;
     knowledgeResourceRepo.update = originals.updateResource;
     setKnowledgeProviderForTesting(null);
-    resetConfig();
-    resetTestAuth();
     resetAllStubs();
   });
 

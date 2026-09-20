@@ -1,23 +1,15 @@
-import {
-  AlertCircle,
-  ChevronLeft,
-  ChevronRight,
-  ChevronsLeft,
-  ChevronsRight,
-  List,
-  RefreshCw,
-  ScatterChart,
-  X,
-} from "lucide-react";
+import { Button } from "@fenix/ui-components/ui/button";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@fenix/ui-components/ui/table";
+import { NS } from "@fenix/web-runtime/i18n/namespace";
+import { ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight, List, RefreshCw, ScatterChart, X } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { Button } from "@/components/ui/button";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { hindsightApi } from "@/src/api/hindsight";
-import { NS } from "@/src/i18n";
+import { hindsightApi } from "../../../api/hindsight";
+import { type HindsightFailure, toHindsightFailure } from "../failure";
 import type { EntityGraphResponse, EntityItem } from "../types";
 import { Constellation } from "./Constellation";
 import { convertHindsightGraphData, type GraphNode } from "./Graph2d";
+import { HindsightFailureNotice } from "./HindsightFailureNotice";
 import { MemoryViewSwitcher } from "./MemoryViewSwitcher";
 
 type ViewMode = "relations" | "list";
@@ -28,15 +20,15 @@ export function EntitiesView() {
   const { t } = useTranslation(NS.HINDSIGHT);
   const [entities, setEntities] = useState<EntityItem[]>([]);
   const [loading, setLoading] = useState(false);
-  const [entitiesError, setEntitiesError] = useState(false);
+  const [entitiesFailure, setEntitiesFailure] = useState<HindsightFailure | null>(null);
   const [selectedEntity, setSelectedEntity] = useState<EntityItem | null>(null);
   const [selectedEntityId, setSelectedEntityId] = useState<string | null>(null);
   const [loadingDetail, setLoadingDetail] = useState(false);
-  const [detailError, setDetailError] = useState(false);
+  const [detailFailure, setDetailFailure] = useState<HindsightFailure | null>(null);
   const [viewMode, setViewMode] = useState<ViewMode>("relations");
   const [graphData, setGraphData] = useState<EntityGraphResponse | null>(null);
   const [graphLoading, setGraphLoading] = useState(false);
-  const [graphError, setGraphError] = useState(false);
+  const [graphFailure, setGraphFailure] = useState<HindsightFailure | null>(null);
   const graphPaneRef = useRef<HTMLDivElement>(null);
   const [graphHeight, setGraphHeight] = useState(1);
 
@@ -49,7 +41,7 @@ export function EntitiesView() {
 
   const loadEntities = useCallback(async (page: number = 1) => {
     setLoading(true);
-    setEntitiesError(false);
+    setEntitiesFailure(null);
     try {
       const pageOffset = (page - 1) * ITEMS_PER_PAGE;
       const result = await hindsightApi.listEntities({
@@ -60,7 +52,7 @@ export function EntitiesView() {
       setTotal(result.total || 0);
     } catch (error) {
       console.error("Failed to load entities:", error);
-      setEntitiesError(true);
+      setEntitiesFailure(toHindsightFailure(error));
     } finally {
       setLoading(false);
     }
@@ -69,14 +61,14 @@ export function EntitiesView() {
   const loadEntityDetail = useCallback(async (entityId: string) => {
     setSelectedEntityId(entityId);
     setLoadingDetail(true);
-    setDetailError(false);
+    setDetailFailure(null);
     try {
       const result = await hindsightApi.getEntity(entityId);
       setSelectedEntity(result);
     } catch (error) {
       console.error("Failed to load entity detail:", error);
       setSelectedEntity(null);
-      setDetailError(true);
+      setDetailFailure(toHindsightFailure(error));
     } finally {
       setLoadingDetail(false);
     }
@@ -90,7 +82,7 @@ export function EntitiesView() {
 
   const loadGraph = useCallback(async () => {
     setGraphLoading(true);
-    setGraphError(false);
+    setGraphFailure(null);
     try {
       const result = await hindsightApi.getEntityGraph({
         limit: 2000,
@@ -99,7 +91,7 @@ export function EntitiesView() {
       setGraphData(result);
     } catch (error) {
       console.error("Failed to load entity graph:", error);
-      setGraphError(true);
+      setGraphFailure(toHindsightFailure(error));
     } finally {
       setGraphLoading(false);
     }
@@ -112,10 +104,10 @@ export function EntitiesView() {
   }, [loadEntities]);
 
   useEffect(() => {
-    if (viewMode === "relations" && !graphData && !graphLoading && !graphError) {
+    if (viewMode === "relations" && !graphData && !graphLoading && !graphFailure) {
       loadGraph();
     }
-  }, [viewMode, graphData, graphLoading, graphError, loadGraph]);
+  }, [viewMode, graphData, graphLoading, graphFailure, loadGraph]);
 
   useEffect(() => {
     const element = graphPaneRef.current;
@@ -228,20 +220,20 @@ export function EntitiesView() {
       {viewMode === "relations" && (
         <div ref={graphPaneRef} className="min-h-0 flex-1 overflow-hidden rounded-lg border border-border">
           {graphLoading ? (
-            <div className="flex items-center justify-center py-20">
+            <div className="flex items-center justify-center py-20" role="status">
               <div className="text-center">
                 <div className="text-4xl mb-2">...</div>
                 <div className="text-sm text-muted-foreground">{t("entitiesView.loadingEntityGraph")}</div>
               </div>
             </div>
-          ) : graphError ? (
+          ) : graphFailure ? (
             <div className="flex flex-col items-center justify-center gap-3 py-20 text-center" role="alert">
-              <AlertCircle className="size-8 text-destructive" />
-              <p className="text-sm font-medium">{t("entitiesView.graphLoadFailed")}</p>
-              <Button variant="outline" size="sm" onClick={() => void loadGraph()}>
-                <RefreshCw className="size-4" />
-                {t("entitiesView.retry")}
-              </Button>
+              <HindsightFailureNotice
+                failure={graphFailure}
+                titleKey="entitiesView.graphLoadFailed"
+                retryKey="entitiesView.retry"
+                onRetry={() => void loadGraph()}
+              />
             </div>
           ) : constellationData.nodes.length > 0 ? (
             <Constellation
@@ -277,20 +269,20 @@ export function EntitiesView() {
       {viewMode === "list" && (
         <div className="min-h-0 min-w-0 flex-1 overflow-auto">
           {loading ? (
-            <div className="flex items-center justify-center py-20">
+            <div className="flex items-center justify-center py-20" role="status">
               <div className="text-center">
                 <div className="text-4xl mb-2">...</div>
                 <div className="text-sm text-muted-foreground">{t("entitiesView.loadingEntities")}</div>
               </div>
             </div>
-          ) : entitiesError ? (
+          ) : entitiesFailure ? (
             <div className="flex flex-col items-center justify-center gap-3 py-20 text-center" role="alert">
-              <AlertCircle className="size-8 text-destructive" />
-              <p className="text-sm font-medium">{t("entitiesView.listLoadFailed")}</p>
-              <Button variant="outline" size="sm" onClick={() => void loadEntities(currentPage)}>
-                <RefreshCw className="size-4" />
-                {t("entitiesView.retry")}
-              </Button>
+              <HindsightFailureNotice
+                failure={entitiesFailure}
+                titleKey="entitiesView.listLoadFailed"
+                retryKey="entitiesView.retry"
+                onRetry={() => void loadEntities(currentPage)}
+              />
             </div>
           ) : entities.length > 0 ? (
             <>
@@ -388,31 +380,30 @@ export function EntitiesView() {
         </div>
       )}
 
-      {selectedEntityId && (loadingDetail || detailError) && (
+      {selectedEntityId && (loadingDetail || detailFailure) && (
         <div
           className="fixed right-4 top-4 z-50 flex w-80 flex-col items-center gap-3 rounded-lg border bg-card p-5 text-center shadow-lg"
-          role={detailError ? "alert" : "status"}
+          role={detailFailure ? "alert" : "status"}
         >
-          {detailError ? (
-            <AlertCircle className="size-8 text-destructive" />
+          {detailFailure ? (
+            <HindsightFailureNotice
+              failure={detailFailure}
+              titleKey="entitiesView.detailLoadFailed"
+              retryKey="entitiesView.retry"
+              onRetry={() => void loadEntityDetail(selectedEntityId)}
+            />
           ) : (
-            <RefreshCw className="size-8 animate-spin" />
-          )}
-          <p className="text-sm font-medium">
-            {detailError ? t("entitiesView.detailLoadFailed") : t("entitiesView.loadingEntityDetail")}
-          </p>
-          {detailError && (
-            <Button variant="outline" size="sm" onClick={() => void loadEntityDetail(selectedEntityId)}>
-              <RefreshCw className="size-4" />
-              {t("entitiesView.retry")}
-            </Button>
+            <>
+              <RefreshCw className="size-8 animate-spin" />
+              <p className="text-sm font-medium">{t("entitiesView.loadingEntityDetail")}</p>
+            </>
           )}
           <Button
             variant="ghost"
             size="sm"
             onClick={() => {
               setSelectedEntityId(null);
-              setDetailError(false);
+              setDetailFailure(null);
             }}
           >
             {t("entitiesView.close")}

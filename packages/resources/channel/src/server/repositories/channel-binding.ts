@@ -1,6 +1,6 @@
-import { db } from "@server/db";
 import { channelBinding } from "@server/db/schema";
 import { and, eq } from "drizzle-orm";
+import { getChannelDatabase } from "../db";
 
 /** ChannelBinding 行类型 */
 export type ChannelBindingRow = typeof channelBinding.$inferSelect;
@@ -12,49 +12,51 @@ export interface IChannelBindingRepo {
   getById(bindingId: string): Promise<ChannelBindingRow | null>;
   create(data: ChannelBindingInsert): Promise<ChannelBindingRow>;
   delete(bindingId: string): Promise<boolean>;
-  findByChannelAndAgent(channelId: string, agentId: string): Promise<ChannelBindingRow | null>;
   update(bindingId: string, data: Partial<ChannelBindingInsert>): Promise<void>;
   listByPlatformAndEnabled(platform: string): Promise<ChannelBindingRow[]>;
 }
 
+/**
+ * ChannelBinding 仓储：本包唯一的通道绑定数据访问点。
+ *
+ * DB 句柄在每个方法内取（`getChannelDatabase()` → `@fenix/platform-sdk/server`），不在模块作用域
+ * 缓存：句柄只能由宿主在基础设施初始化后提供，而平台 registry 会提前导入模块图；同时避免测试里
+ * 提前缓存句柄导致宿主替换替身后读到旧连接（宿主 `@server/db` 导出的对象是模块级单例，无法在
+ * 包内测试中替换）。
+ */
 class PgChannelBindingRepo implements IChannelBindingRepo {
   async list() {
-    return db.select().from(channelBinding);
+    return getChannelDatabase().select().from(channelBinding);
   }
 
   async getById(bindingId: string) {
-    const rows = await db.select().from(channelBinding).where(eq(channelBinding.id, bindingId)).limit(1);
+    const rows = await getChannelDatabase()
+      .select()
+      .from(channelBinding)
+      .where(eq(channelBinding.id, bindingId))
+      .limit(1);
     return rows[0] ?? null;
   }
 
   async create(data: ChannelBindingInsert) {
-    const [row] = await db.insert(channelBinding).values(data).returning();
+    const [row] = await getChannelDatabase().insert(channelBinding).values(data).returning();
     return row;
   }
 
   async delete(bindingId: string): Promise<boolean> {
-    const result = await db
+    const result = await getChannelDatabase()
       .delete(channelBinding)
       .where(eq(channelBinding.id, bindingId))
       .returning({ id: channelBinding.id });
     return result.length > 0;
   }
 
-  async findByChannelAndAgent(channelId: string, agentId: string) {
-    const rows = await db
-      .select()
-      .from(channelBinding)
-      .where(and(eq(channelBinding.id, channelId), eq(channelBinding.agentId, agentId)))
-      .limit(1);
-    return rows[0] ?? null;
-  }
-
   async update(bindingId: string, data: Partial<ChannelBindingInsert>) {
-    await db.update(channelBinding).set(data).where(eq(channelBinding.id, bindingId));
+    await getChannelDatabase().update(channelBinding).set(data).where(eq(channelBinding.id, bindingId));
   }
 
   async listByPlatformAndEnabled(platform: string) {
-    return db
+    return getChannelDatabase()
       .select()
       .from(channelBinding)
       .where(and(eq(channelBinding.platform, platform), eq(channelBinding.enabled, true)));

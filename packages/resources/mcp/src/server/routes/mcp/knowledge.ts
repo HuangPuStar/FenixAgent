@@ -1,4 +1,5 @@
 import { getEnvironmentBySecret } from "@fenix/agent-runtime/server";
+import { ApiErrorResponseSchema } from "@fenix/platform-sdk";
 import {
   getKnowledgeGraphForAgent,
   readKnowledgeResourceForAgent,
@@ -6,7 +7,6 @@ import {
 } from "@fenix/resource-knowledge/server";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { WebStandardStreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/webStandardStreamableHttp.js";
-import { errorResponse } from "@server/plugins/auth";
 import Elysia from "elysia";
 import * as z from "zod/v4";
 import { McpKnowledgeAuthHeadersSchema } from "../../schemas/mcp-knowledge.schema";
@@ -188,21 +188,30 @@ function createKnowledgeMcpServer(environment: {
   return server;
 }
 
-const app = new Elysia({ name: "mcp-knowledge" }).decorate({ error: errorResponse }).model({
+/**
+ * `/mcp/knowledge` 是**整包唯一的模块级单例路由**（非工厂）。
+ *
+ * 与 `/web/config/mcp`、`/api/mcp` 的取舍不同：本端点自带鉴权（`Authorization: Bearer
+ * <environment_secret>` 自解析 environment），既不读 `store`，也不使用 `sessionAuth` 宏，任何宿主
+ * 注入都会是形状噪声，因此不引入依赖接口。错误体走平台统一信封（`ApiErrorResponseSchema`）而
+ * 非宿主 `@server/plugins/auth` 的 `errorResponse` 装饰器——后者是宿主实现，资源包不得依赖；信封
+ * 形状由平台契约给出，本包不自行复制 `z.object({ error })`。
+ */
+const app = new Elysia({ name: "mcp-knowledge" }).model({
   "mcp-knowledge-auth-headers": McpKnowledgeAuthHeadersSchema,
 });
 
 app.all(
   "/mcp/knowledge",
-  async ({ request, error }) => {
+  async ({ request, status }) => {
     const token = getBearerToken(request.headers.get("Authorization") ?? undefined);
     if (!token) {
-      return error(401, { error: { message: "Missing bearer token" } });
+      return status(401, { error: { code: "UNAUTHORIZED", message: "Missing bearer token" } });
     }
 
     const environment = await getEnvironmentBySecret(token);
     if (!environment) {
-      return error(401, { error: { message: "Invalid bearer token" } });
+      return status(401, { error: { code: "UNAUTHORIZED", message: "Invalid bearer token" } });
     }
 
     const transport = new WebStandardStreamableHTTPServerTransport({
@@ -215,6 +224,9 @@ app.all(
   },
   {
     headers: "mcp-knowledge-auth-headers",
+    // 只声明 401：成功路径返回的是 MCP transport 的 `Response`（Elysia 对 `Response` 实例直接透传），
+    // 声明 200 形状既无意义也会与协议入口的真实返回不一致。
+    response: { 401: ApiErrorResponseSchema },
     detail: {
       hide: true,
       tags: ["Knowledge"],

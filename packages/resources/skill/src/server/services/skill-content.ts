@@ -11,7 +11,7 @@
 
 import { error as logError } from "@fenix/logger";
 import { ValidationError } from "@fenix/platform-sdk";
-import { config } from "@server/config";
+import { getSkillConfig } from "../config";
 import type {
   ImportConflictStrategy,
   ImportSkillsConflict,
@@ -91,8 +91,14 @@ export function resetSkillContentDeps(): void {
   Object.assign(_deps.skillFs, defaultSkillFs);
 }
 
+/**
+ * 技能根目录（宿主 `SKILL_DIR` 解析结果）。
+ *
+ * 每次调用都从模块配置读取，不在模块顶层缓存：宿主可能尚未完成
+ * `initializeApplicationInfrastructure()` 就导入本模块，固化值会把导入顺序变成隐式启动依赖。
+ */
 export function getGlobalSkillsDir(): string {
-  return config.skillDir;
+  return getSkillConfig().skillDir;
 }
 
 // ────────────────────────────────────────────

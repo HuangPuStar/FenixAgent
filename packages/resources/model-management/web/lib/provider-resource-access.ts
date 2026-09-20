@@ -1,4 +1,4 @@
-import type { ResourceAccessActions, ResourceScopeView } from "@/src/types/config";
+import type { ResourceAccessActions, ResourceScopeView } from "@fenix/web-runtime/types/config";
 
 /**
  * 前端授权判断的最小输入形状。

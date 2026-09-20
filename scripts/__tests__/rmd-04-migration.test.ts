@@ -1,8 +1,19 @@
 import { describe, expect, test } from "bun:test";
 import { existsSync } from "node:fs";
 
+/**
+ * RMD-04 的获批迁移表，三元组的第三项是**再次搬迁后的现址**（缺省表示未再移动）。
+ *
+ * CE 阶段 2 任务 1.2 把资源包的协议层收敛到 `src/server/`（routes / services / schemas 分层），有 5 项
+ * 因此二次搬迁：旧的目标路径必须为空（不得复活），现址必须存在——与 `rmd-06-migration.test.ts` 记录的
+ * 既有模式一致：中间落点写进历史，而不是把断言删掉或把旧路径当成没问题。
+ */
 const RMD_04_MOVES = [
-  ["src/routes/api/models.ts", "packages/resources/model-management/src/routes/api/models.ts"],
+  [
+    "src/routes/api/models.ts",
+    "packages/resources/model-management/src/routes/api/models.ts",
+    "packages/resources/model-management/src/server/routes/api/models.ts",
+  ],
   // CE 阶段 2 任务 1.2 把资源包的协议层收敛到 `src/server/`（routes / facades / services / repositories
   // 各自分层），`web/config/models.ts` 随之再搬一次；RMD-04 的中间落点不得残留。
   ["src/routes/web/config/models.ts", "packages/resources/model-management/src/server/routes/web/config/models.ts"],
@@ -41,15 +52,34 @@ const RMD_04_MOVES = [
   [
     "web/src/pages/agent-panel/components/EmbeddingModelManager.tsx",
     "packages/resources/model-management/web/src/pages/agent-panel/components/EmbeddingModelManager.tsx",
+    // RMD-04 判定时落在 model-management；W2.5 收尾按「单归属」把组件移入 knowledge（它管的是 RAGFlow
+    // embedding 模型、数据面是 knowledge 路由，且两包当时互引成环）。第二项保留原判定供追溯，第三项是当前落点。
+    "packages/resources/knowledge/web/src/pages/agent-panel/components/EmbeddingModelManager.tsx",
   ],
   [
     "web/src/__tests__/agent-editor-model.test.ts",
     "packages/resources/model-management/web/src/__tests__/agent-editor-model.test.ts",
   ],
-  ["src/services/meta-agent.ts", "packages/resources/agent-config/src/services/meta-agent.ts"],
-  ["src/services/sidebar-config.ts", "packages/resources/agent-config/src/services/sidebar-config.ts"],
-  ["src/schemas/meta-agent.schema.ts", "packages/resources/agent-config/src/schemas/meta-agent.schema.ts"],
-  ["src/routes/web/sidebar-config.ts", "packages/resources/agent-config/src/routes/web/sidebar-config.ts"],
+  [
+    "src/services/meta-agent.ts",
+    "packages/resources/agent-config/src/services/meta-agent.ts",
+    "packages/resources/agent-config/src/server/services/meta-agent.ts",
+  ],
+  [
+    "src/services/sidebar-config.ts",
+    "packages/resources/agent-config/src/services/sidebar-config.ts",
+    "packages/resources/agent-config/src/server/services/sidebar-config.ts",
+  ],
+  [
+    "src/schemas/meta-agent.schema.ts",
+    "packages/resources/agent-config/src/schemas/meta-agent.schema.ts",
+    "packages/resources/agent-config/src/server/schemas/meta-agent.schema.ts",
+  ],
+  [
+    "src/routes/web/sidebar-config.ts",
+    "packages/resources/agent-config/src/routes/web/sidebar-config.ts",
+    "packages/resources/agent-config/src/server/routes/web/sidebar-config.ts",
+  ],
   ...["api-agent-schema", "meta-agent", "sidebar-config-service", "web-sidebar-config-routes"].map((name) => [
     `src/__tests__/${name}.test.ts`,
     `packages/resources/agent-config/src/__tests__/${name}.test.ts`,
@@ -66,9 +96,14 @@ describe("RMD-04 ownership migration", () => {
   // 31 个保留的源文件必须只存在于其指定资源包中，防止旧根路径悄然复活。
   test("removes every legacy source and retains its exact owner target", () => {
     expect(RMD_04_MOVES).toHaveLength(31);
-    for (const [source, target] of RMD_04_MOVES) {
+    for (const [source, rmd04Target, currentTarget] of RMD_04_MOVES) {
       expect(existsSync(source), `legacy source still exists: ${source}`).toBe(false);
-      expect(existsSync(target), `owner target is missing: ${target}`).toBe(true);
+      expect(existsSync(currentTarget ?? rmd04Target), `owner target is missing: ${currentTarget ?? rmd04Target}`).toBe(
+        true,
+      );
+      if (currentTarget !== undefined && currentTarget !== rmd04Target) {
+        expect(existsSync(rmd04Target), `stale RMD-04 target still exists: ${rmd04Target}`).toBe(false);
+      }
     }
   });
 

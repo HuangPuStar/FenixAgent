@@ -1,15 +1,16 @@
 import { MasterKeyGate } from "@fenix/resource-sandbox/web";
+import { Badge } from "@fenix/ui-components/ui/badge";
+import { Button } from "@fenix/ui-components/ui/button";
+import { Card, CardContent, CardHeader, CardTitle } from "@fenix/ui-components/ui/card";
+import { Input } from "@fenix/ui-components/ui/input";
+import { Skeleton } from "@fenix/ui-components/ui/skeleton";
+import { ApiError } from "@fenix/web-runtime/api/request";
 import { clearAdminKey, getAdminKey } from "@fenix/web-runtime/lib/admin-key";
 import { useRequest } from "ahooks";
 import { AlertCircle, Download, FileText, RefreshCw, Search } from "lucide-react";
 import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Input } from "@/components/ui/input";
-import { Skeleton } from "@/components/ui/skeleton";
-import { ApiError } from "@/src/api/request";
+import { toast } from "sonner";
 import {
   downloadSystemLog,
   fetchSystemLogFiles,
@@ -64,6 +65,16 @@ function LogsDashboard({ onAuthFailure }: { onAuthFailure: () => void }) {
       if (error instanceof ApiError && error.code === "UNAUTHORIZED") onAuthFailure();
     },
   });
+  // 下载是浏览器二进制读取（见 api/system-logs.ts 的说明），走 manual 请求只为拿到稳定的
+  // loading 态与错误分类：`run()` 内部接住 rejection，不会像裸 promise 那样变成未处理的 rejection；
+  // 401 与其它调用同样回门，其余失败给一次可见提示（否则点击后界面毫无反应）。
+  const downloadRequest = useRequest(downloadSystemLog, {
+    manual: true,
+    onError: (error) => {
+      if (error instanceof ApiError && error.code === "UNAUTHORIZED") onAuthFailure();
+      else toast.error(t("logs.downloadError"));
+    },
+  });
 
   useEffect(() => {
     if (selectedFile) void searchRequest.runAsync({ file: selectedFile, q: "", errorOnly: false });
@@ -71,6 +82,9 @@ function LogsDashboard({ onAuthFailure }: { onAuthFailure: () => void }) {
 
   const runSearch = () => {
     if (selectedFile) void searchRequest.runAsync({ file: selectedFile, q: query, errorOnly });
+  };
+  const runDownload = () => {
+    if (selectedFile) downloadRequest.run(selectedFile);
   };
   const files = filesRequest.data?.files ?? [];
 
@@ -94,7 +108,21 @@ function LogsDashboard({ onAuthFailure }: { onAuthFailure: () => void }) {
           </CardHeader>
           <CardContent>
             {filesRequest.loading && !filesRequest.data ? (
-              <Skeleton className="h-24 w-full" />
+              <div role="status" aria-busy="true">
+                <Skeleton className="h-24 w-full" />
+                <span className="sr-only">{t("states.loading")}</span>
+              </div>
+            ) : filesRequest.error && !filesRequest.data ? (
+              // 持久错误分支：非 401 的失败（500 等）必须与「目录里没有可读日志」区分开，
+              // 否则服务端故障会被渲染成 empty，用户以为日志就是空的。401 不经此处——它已在
+              // onError 里清 key 回 MasterKeyGate，所以这里给重试而不给「无权限」占位。
+              <div role="alert" className="flex flex-col items-center gap-3 py-6 text-center">
+                <p className="text-sm text-destructive">{t("logs.filesError")}</p>
+                <Button variant="outline" size="sm" onClick={() => filesRequest.refresh()}>
+                  <RefreshCw className="size-3.5" />
+                  {t("states.retry")}
+                </Button>
+              </div>
             ) : files.length === 0 ? (
               <p className="py-6 text-center text-sm text-text-muted">{t("logs.noFiles")}</p>
             ) : (
@@ -140,14 +168,14 @@ function LogsDashboard({ onAuthFailure }: { onAuthFailure: () => void }) {
                 {t("logs.searchButton")}
               </Button>
               {selectedFile && (
-                <Button variant="outline" onClick={() => downloadSystemLog(selectedFile)}>
+                <Button variant="outline" onClick={runDownload} disabled={downloadRequest.loading}>
                   <Download className="size-3.5" />
                   {t("logs.download")}
                 </Button>
               )}
             </div>
             {searchRequest.error ? (
-              <div className="flex items-center gap-2 text-sm text-destructive">
+              <div role="alert" className="flex items-center gap-2 text-sm text-destructive">
                 <AlertCircle className="size-4" />
                 {t("logs.searchError")}
               </div>

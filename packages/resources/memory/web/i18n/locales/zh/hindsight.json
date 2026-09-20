@@ -72,7 +72,8 @@
     "deleteConfirm": "确定要删除这个心理模型吗？",
     "lastRefreshed": "上次刷新",
     "loadFailed": "加载心理模型失败",
-    "deleteFailed": "删除失败"
+    "deleteFailed": "删除失败",
+    "retry": "重试"
   },
   "recall": {
     "query": "查询",
@@ -91,6 +92,10 @@
     "loading": "加载中...",
     "loadFailed": "加载记忆服务状态失败",
     "retry": "重试"
+  },
+  "errors": {
+    "forbiddenTitle": "无权访问该记忆库",
+    "forbiddenHint": "当前账号在所属组织内没有对应的记忆库（bank）映射，因此无法加载数据。重试不会改变结果，请联系管理员核对组织成员映射。"
   },
   "dataView": {
     "loadingMemories": "正在加载记忆...",

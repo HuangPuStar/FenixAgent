@@ -1,10 +1,13 @@
+import { AppHeader } from "@fenix/ui-components/layout/app-header";
+import { Badge } from "@fenix/ui-components/ui/badge";
+import { Button } from "@fenix/ui-components/ui/button";
+import { Input } from "@fenix/ui-components/ui/input";
+import { NS } from "@fenix/web-runtime/i18n/namespace";
 import { Search } from "lucide-react";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
-import { Badge } from "@/components/ui/badge";
-import { Input } from "@/components/ui/input";
-import { AppHeader } from "@/src/components/layout/app-header";
-import { NS } from "@/src/i18n";
+import { MODELS_NS } from "../../../i18n/namespace";
+import { filterVerticalModels } from "../../../lib/vertical-models";
 
 interface VerticalModel {
   id: string;
@@ -98,30 +101,28 @@ const ALL_MODELS: VerticalModel[] = [
 ];
 
 export function VerticalModelsPage() {
-  const { t } = useTranslation(NS.AGENT_PANEL);
+  // 两套命名空间各有 owner：页面标题与侧边栏文案归宿主 `agentPanel`（agent-config 的导航共享同一批键），
+  // 本页新增的搜索/空态文案归本包 `models`。变量名分开是为了让 i18n 归属在调用点上就能看出来。
+  const { t: tPanel } = useTranslation(NS.AGENT_PANEL);
+  const { t } = useTranslation(MODELS_NS);
   const [search, setSearch] = useState("");
 
-  const filtered = ALL_MODELS.filter(
-    (m) =>
-      !search ||
-      m.name.includes(search) ||
-      m.description.includes(search) ||
-      m.tags.some((tag) => tag.includes(search)) ||
-      m.scenes.some((s) => s.includes(search)),
-  );
+  // 检索语义见 web/lib/vertical-models.ts：命中名称、描述、标签或场景任一即保留。
+  const filtered = filterVerticalModels(ALL_MODELS, search);
 
   return (
     <div className="flex flex-col flex-1 h-full overflow-auto">
       <div className="px-8 pt-8 pb-0">
-        <AppHeader title={t("verticalModels")} subtitle={t("verticalModelsSubtitle")} />
+        <AppHeader title={tPanel("verticalModels")} subtitle={tPanel("verticalModelsSubtitle")} />
       </div>
 
       {/* 搜索栏 */}
       <div className="px-8 pt-5 pb-2">
-        <div className="relative max-w-md">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-text-muted" />
+        <div className="relative max-w-md" role="search">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-text-muted" aria-hidden="true" />
           <Input
             className="pl-9"
+            aria-label={t("verticalModels.searchLabel")}
             placeholder="搜索模型名称、描述、标签、场景..."
             value={search}
             onChange={(e) => setSearch(e.target.value)}
@@ -129,9 +130,22 @@ export function VerticalModelsPage() {
         </div>
       </div>
 
-      <div className="px-8 py-4 flex flex-col gap-4 items-center">
+      <div
+        className="px-8 py-4 flex flex-col gap-4 items-center"
+        // 有结果时按列表语义播报；空态下同一容器换成 live region（见下方分支），不叠加 list 角色。
+        role={filtered.length === 0 ? undefined : "list"}
+      >
+        {filtered.length === 0 ? (
+          <div className="flex flex-col items-center gap-3 py-16 text-center" role="status">
+            <p className="text-base font-semibold text-text-primary">{t("verticalModels.emptyTitle")}</p>
+            <p className="text-sm text-text-secondary">{t("verticalModels.emptyDescription")}</p>
+            <Button variant="outline" size="sm" onClick={() => setSearch("")}>
+              {t("verticalModels.clearSearch")}
+            </Button>
+          </div>
+        ) : null}
         {filtered.map((model) => (
-          <div key={model.id} className="rounded-lg border bg-card p-5 max-w-5xl w-full">
+          <div key={model.id} className="rounded-lg border bg-card p-5 max-w-5xl w-full" role="listitem">
             <div className="flex gap-6">
               {/* 左栏 — 头部 + 简介 + 能力 + 场景 */}
               <div className="flex-[1.2] min-w-0">

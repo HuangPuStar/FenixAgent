@@ -5,6 +5,7 @@
 import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
 import { resetAllStubs, stubDb } from "@fenix/platform-sdk/testing";
 import { SchedulerService } from "../server/services/scheduler/index";
+import { resetStubsWithDb } from "./db-stub";
 
 // 任务查询（getById 链：select().from().where().limit()）返回给定行集合
 function stubTaskLookup(rows: unknown[]) {
@@ -25,6 +26,7 @@ describe("SchedulerService stale job cleanup", () => {
   beforeEach(() => {
     // 每次测试新建实例，避免 runningTasks/activeJobs 跨测试泄漏
     scheduler = new SchedulerService();
+    resetStubsWithDb();
   });
 
   afterEach(() => {

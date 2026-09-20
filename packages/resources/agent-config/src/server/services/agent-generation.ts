@@ -1,5 +1,6 @@
 import type { ActorContext } from "@fenix/platform-sdk";
 import OpenAI from "openai";
+import { getAgentConfigConfig } from "../config";
 import { listVisibleSkills } from "./skill-directory";
 
 /** Skill 条目（前端用 name + description 展示，用 id 提交） */
@@ -16,9 +17,21 @@ export interface AgentGenerationResult {
   skills: SkillItem[];
 }
 
-/** 检查生成功能是否已配置（依赖标准 OpenAI 环境变量） */
+/**
+ * 检查生成功能是否已配置。
+ *
+ * 判定依据是宿主下发的模型名（`agentGenerationModel`），不再读运行环境变量：API Key 由 OpenAI SDK
+ * 从环境自行读取，宿主只在 Key 可用时下发模型名，包侧因此不需要（也无法）复刻「Key 是否存在」的判定。
+ */
 export function isGenerationConfigured(): boolean {
-  return !!(process.env.OPENAI_API_KEY && process.env.OPENAI_MODEL);
+  return getAgentConfigConfig().agentGenerationModel !== undefined;
+}
+
+/** 取本次生成使用的模型名；未配置时由调用方先经 {@link isGenerationConfigured} 短路。 */
+function generationModel(): string {
+  const model = getAgentConfigConfig().agentGenerationModel;
+  if (!model) throw new Error("NOT_CONFIGURED");
+  return model;
 }
 
 /** 调用 LLM 生成 Agent 配置 */
@@ -52,7 +65,7 @@ ${skillList || "（暂无可用技能）"}
   let response: OpenAI.Chat.Completions.ChatCompletion;
   try {
     response = await client.chat.completions.create({
-      model: process.env.OPENAI_MODEL!,
+      model: generationModel(),
       messages: [
         { role: "system", content: systemPrompt },
         { role: "user", content: prompt },

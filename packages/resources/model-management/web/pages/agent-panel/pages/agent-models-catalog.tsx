@@ -1,4 +1,13 @@
 import {
+  AgentMasterDetailHeader,
+  AgentMasterDetailWorkspace,
+} from "@fenix/ui-components/components/agent-master-detail-workspace";
+import { AppHeader } from "@fenix/ui-components/layout/app-header";
+import { AppPage } from "@fenix/ui-components/layout/app-page";
+import { Button } from "@fenix/ui-components/ui/button";
+import { Switch } from "@fenix/ui-components/ui/switch";
+import type { ProviderInfo, ProviderModel } from "@fenix/web-runtime/types/config";
+import {
   CheckCircle2,
   ChevronRight,
   CircleOff,
@@ -16,17 +25,8 @@ import {
 } from "lucide-react";
 import type { CSSProperties } from "react";
 import { useTranslation } from "react-i18next";
-import { Button } from "@/components/ui/button";
-import { Switch } from "@/components/ui/switch";
-import { AppHeader } from "@/src/components/layout/app-header";
-import { AppPage } from "@/src/components/layout/app-page";
-import { NS } from "@/src/i18n";
-import {
-  AgentMasterDetailHeader,
-  AgentMasterDetailWorkspace,
-} from "@/src/pages/agent-panel/shared/agent-master-detail-workspace";
-import type { ProviderInfo, ProviderModel } from "@/src/types/config";
 import { ModelIcon } from "../../../components/model-icon/ModelIcon";
+import { MODELS_NS } from "../../../i18n/namespace";
 import { isExternalProvider, isPublicProvider } from "../../../lib/provider-resource-access";
 import type { ModelTestState } from "./agent-models-types";
 import {
@@ -73,7 +73,7 @@ interface ModelsCatalogProps {
 }
 
 export function AgentModelsCatalog(props: ModelsCatalogProps) {
-  const { t } = useTranslation(NS.MODELS);
+  const { t } = useTranslation(MODELS_NS);
   const counts = SCOPES.reduce<Record<ProviderScope, number>>(
     (result, scope) => {
       result[scope] =
@@ -165,7 +165,7 @@ function ProviderIndex({
   activeOrganizationId?: string;
   onSelect: (provider: ProviderInfo) => void;
 }) {
-  const { t } = useTranslation(NS.MODELS);
+  const { t } = useTranslation(MODELS_NS);
   return (
     <aside className="models-provider-index">
       <header>
@@ -222,7 +222,7 @@ function ProviderIndex({
 }
 
 function ProviderDetail(props: ModelsCatalogProps & { provider: ProviderInfo; headerOnly?: boolean }) {
-  const { t } = useTranslation(NS.MODELS);
+  const { t } = useTranslation(MODELS_NS);
   const provider = props.provider;
   const key = getProviderKey(provider);
   const models = props.modelsByProvider[key] ?? [];
@@ -382,7 +382,7 @@ function ModelRow({
   onView: (provider: ProviderInfo, model: ProviderModel) => void;
   onDelete: (provider: ProviderInfo, model: ProviderModel) => void;
 }) {
-  const { t } = useTranslation(NS.MODELS);
+  const { t } = useTranslation(MODELS_NS);
   return (
     <div className="models-model-row">
       <div className="models-model-summary">
@@ -430,7 +430,7 @@ function ModelRow({
 }
 
 function CatalogEmpty({ query }: { query: string }) {
-  const { t } = useTranslation(NS.MODELS);
+  const { t } = useTranslation(MODELS_NS);
   return (
     <div className="models-catalog-empty">
       <FileSearch />

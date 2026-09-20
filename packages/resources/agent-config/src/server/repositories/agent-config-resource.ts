@@ -5,11 +5,11 @@ import type {
   ResourceQueryConstraint,
   ScopedRow,
 } from "@fenix/platform-sdk";
-import { db } from "@server/db";
 import { agentConfig, environment } from "@server/db/schema";
 import { and, asc, desc, eq, type SQL } from "drizzle-orm";
 import type { PgColumn, PgTable } from "drizzle-orm/pg-core";
 import { AGENT_CONFIG_RESOURCE_TYPE, agentConfigResource } from "../access/agent-config-resource";
+import { getAgentConfigDatabase } from "../db";
 
 /**
  * AgentConfig **资源行**的持久化访问层。
@@ -21,7 +21,8 @@ import { AGENT_CONFIG_RESOURCE_TYPE, agentConfigResource } from "../access/agent
  * 主表、归属列与业务条件，授权谓词、排序与分页由平台实现编译进同一条 SQL。仓储因此不持有任何组织、
  * 角色或 `visibility` 判断，也不解释 `ResourceQueryConstraint` 的内部结构。
  *
- * 写路径（INSERT / UPDATE / DELETE）不属于授权范围，直接经 `db` 执行；权限校验发生在 Facade。
+ * 写路径（INSERT / UPDATE / DELETE）不属于授权范围，直接经平台 DB 句柄执行（`getAgentConfigDatabase()`，
+ * 请求期读取，不在模块加载期缓存）；权限校验发生在 Facade。
  */
 
 export type AgentConfigRow = typeof agentConfig.$inferSelect;
@@ -206,7 +207,7 @@ export function createAgentConfigRepository(
 
     async create(input) {
       const set = writeSet(input.data);
-      const rows = await db
+      const rows = await getAgentConfigDatabase()
         .insert(agentConfig)
         .values({
           organizationId: input.organizationId,
@@ -225,7 +226,7 @@ export function createAgentConfigRepository(
     },
 
     async updateById(input) {
-      const rows = await db
+      const rows = await getAgentConfigDatabase()
         .update(agentConfig)
         .set(writeSet(input.data))
         .where(eq(agentConfig.id, input.resourceId))
@@ -234,7 +235,7 @@ export function createAgentConfigRepository(
     },
 
     async removeWithEnvironments(input) {
-      return db.transaction(async (tx) => {
+      return getAgentConfigDatabase().transaction(async (tx) => {
         await tx
           .delete(environment)
           .where(
@@ -249,7 +250,7 @@ export function createAgentConfigRepository(
     },
 
     async listBoundEnvironmentIds(input) {
-      const rows = await db
+      const rows = await getAgentConfigDatabase()
         .select({ id: environment.id })
         .from(environment)
         .where(
@@ -259,12 +260,16 @@ export function createAgentConfigRepository(
     },
 
     async findByIdUnscoped(input) {
-      const rows = await db.select().from(agentConfig).where(eq(agentConfig.id, input.resourceId)).limit(1);
+      const rows = await getAgentConfigDatabase()
+        .select()
+        .from(agentConfig)
+        .where(eq(agentConfig.id, input.resourceId))
+        .limit(1);
       return rows[0];
     },
 
     async findByNameUnscoped(input) {
-      const rows = await db
+      const rows = await getAgentConfigDatabase()
         .select()
         .from(agentConfig)
         .where(and(eq(agentConfig.organizationId, input.organizationId), eq(agentConfig.name, input.name)))

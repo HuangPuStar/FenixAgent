@@ -11,19 +11,11 @@ import {
   uploadRemoteBundle,
   uploadRemoteFile,
 } from "../server/services/agent-sites";
+import { initializeAgentConfigModuleConfig } from "../server/testing";
 
-const ORIGINAL_ENV = {
-  baseUrl: process.env.AGENT_SITES_BASE_URL,
-  masterKey: process.env.AGENT_SITES_MASTER_KEY,
-};
 let originalFetch: typeof fetch;
 let requests: Array<{ url: string; init: RequestInit | undefined }>;
 let responseFactory: () => Response;
-
-function restoreEnv(name: "AGENT_SITES_BASE_URL" | "AGENT_SITES_MASTER_KEY", value: string | undefined) {
-  if (value === undefined) delete process.env[name];
-  else process.env[name] = value;
-}
 
 function successfulJson(data: unknown): Response {
   return new Response(JSON.stringify(data), { status: 200, headers: { "content-type": "application/json" } });
@@ -52,8 +44,11 @@ function capturedHeaders(index = 0): Headers {
 }
 
 beforeEach(() => {
-  process.env.AGENT_SITES_BASE_URL = "https://agent-sites.test";
-  process.env.AGENT_SITES_MASTER_KEY = "test-master-key";
+  // 站点链路配置由宿主注入（迁移前读运行环境变量）：用例经生产读取路径注入同样的值。
+  initializeAgentConfigModuleConfig({
+    agentSitesBaseUrl: "https://agent-sites.test",
+    agentSitesMasterKey: "test-master-key",
+  });
   requests = [];
   responseFactory = () => successfulJson({ data: remoteApp });
   originalFetch = globalThis.fetch;
@@ -66,21 +61,20 @@ beforeEach(() => {
 
 afterEach(() => {
   globalThis.fetch = originalFetch;
-  restoreEnv("AGENT_SITES_BASE_URL", ORIGINAL_ENV.baseUrl);
-  restoreEnv("AGENT_SITES_MASTER_KEY", ORIGINAL_ENV.masterKey);
+  initializeAgentConfigModuleConfig();
 });
 
 describe("agent-sites 隔离客户端边界", () => {
   // 未配置基础地址时必须在发起远程请求前失败。
   test("缺少基础地址拒绝创建远程应用", async () => {
-    delete process.env.AGENT_SITES_BASE_URL;
+    initializeAgentConfigModuleConfig({ agentSitesMasterKey: "test-master-key" });
     await expect(createRemoteApp("演示应用")).rejects.toThrow("AGENT_SITES_BASE_URL not configured");
     expect(requests).toHaveLength(0);
   });
 
   // 未配置主密钥时不得尝试无鉴权调用平台。
   test("缺少主密钥拒绝创建远程应用", async () => {
-    delete process.env.AGENT_SITES_MASTER_KEY;
+    initializeAgentConfigModuleConfig({ agentSitesBaseUrl: "https://agent-sites.test" });
     await expect(createRemoteApp("演示应用")).rejects.toThrow("AGENT_SITES_MASTER_KEY not configured");
     expect(requests).toHaveLength(0);
   });
@@ -92,13 +86,13 @@ describe("agent-sites 隔离客户端边界", () => {
 
   // 缺少基础地址时配置状态必须为不可用。
   test("缺少基础地址报告不可用", () => {
-    delete process.env.AGENT_SITES_BASE_URL;
+    initializeAgentConfigModuleConfig({ agentSitesMasterKey: "test-master-key" });
     expect(isAgentSitesConfigured()).toBe(false);
   });
 
   // 缺少主密钥时配置状态必须为不可用。
   test("缺少主密钥报告不可用", () => {
-    delete process.env.AGENT_SITES_MASTER_KEY;
+    initializeAgentConfigModuleConfig({ agentSitesBaseUrl: "https://agent-sites.test" });
     expect(isAgentSitesConfigured()).toBe(false);
   });
 

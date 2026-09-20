@@ -1,5 +1,11 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { getHermesClient, HermesClient, initHermesClient, resetHermesClient } from "../server/services/hermes-client";
+import {
+  getHermesClient,
+  HermesClient,
+  type HermesClientOptions,
+  initHermesClient,
+  resetHermesClient,
+} from "../server/services/hermes-client";
 
 class FakeWebSocket {
   static instances: FakeWebSocket[] = [];
@@ -40,11 +46,10 @@ class FakeWebSocket {
 }
 
 const originalWebSocket = globalThis.WebSocket;
-const originalPlatforms = process.env.HERMES_PLATFORMS;
 const clients: HermesClient[] = [];
 
-function createConnectedClient(url = "ws://hermes.invalid/messaging") {
-  const client = new HermesClient(url);
+function createConnectedClient(url = "ws://hermes.invalid/messaging", options?: HermesClientOptions) {
+  const client = new HermesClient(url, options);
   clients.push(client);
   void client.start();
   const socket = FakeWebSocket.instances.at(-1);
@@ -57,18 +62,17 @@ function sentMessages(socket: FakeWebSocket) {
   return socket.sent.map((message) => JSON.parse(message) as Record<string, unknown>);
 }
 
+// 平台清单改为构造参数后，本套用例不再读写 `process.env`：环境读取只发生在宿主装配期
+// （`apps/server/src/env.ts`），包内测试通过选项注入配置即可覆盖同样的分支。
 beforeEach(() => {
   FakeWebSocket.instances = [];
   Object.defineProperty(globalThis, "WebSocket", { configurable: true, value: FakeWebSocket });
-  delete process.env.HERMES_PLATFORMS;
 });
 
 afterEach(async () => {
   await resetHermesClient();
   await Promise.all(clients.splice(0).map((client) => client.stop()));
   Object.defineProperty(globalThis, "WebSocket", { configurable: true, value: originalWebSocket });
-  if (originalPlatforms === undefined) delete process.env.HERMES_PLATFORMS;
-  else process.env.HERMES_PLATFORMS = originalPlatforms;
 });
 
 describe("HermesClient 隔离状态、错误与资源释放", () => {
@@ -150,25 +154,30 @@ describe("HermesClient 隔离状态、错误与资源释放", () => {
     expect(sentMessages(socket)[0]?.platforms).toContain("discord");
   });
 
-  // 意图：环境变量平台列表应替代默认列表，隔离部署配置。
-  test("环境变量覆盖默认平台列表", () => {
-    process.env.HERMES_PLATFORMS = " slack, wecom ";
-    const { socket } = createConnectedClient();
+  // 意图：注入的平台清单应替代默认列表，部署方能按租户收窄订阅范围。
+  test("注入平台清单覆盖默认列表", () => {
+    const { socket } = createConnectedClient("ws://hermes.invalid/messaging", { platforms: " slack, wecom " });
     expect(sentMessages(socket)[0]?.platforms).toEqual(["slack", "wecom"]);
   });
 
   // 意图：空白平台项不能进入订阅请求。
-  test("环境变量忽略空白平台项", () => {
-    process.env.HERMES_PLATFORMS = "feishu, , telegram,,";
-    const { socket } = createConnectedClient();
+  test("注入平台清单忽略空白项", () => {
+    const { socket } = createConnectedClient("ws://hermes.invalid/messaging", {
+      platforms: "feishu, , telegram,,",
+    });
     expect(sentMessages(socket)[0]?.platforms).toEqual(["feishu", "telegram"]);
   });
 
-  // 意图：空平台配置不发送无效订阅帧。
+  // 意图：显式配置为空表示不订阅任何平台，此时不得发送无效订阅帧（区别于未配置时用默认清单）。
   test("空平台配置不发送订阅帧", () => {
-    process.env.HERMES_PLATFORMS = " , ";
-    const { socket } = createConnectedClient();
+    const { socket } = createConnectedClient("ws://hermes.invalid/messaging", { platforms: " , " });
     expect(socket.sent).toHaveLength(0);
+  });
+
+  // 意图：空字符串等价于未配置，仍回落默认清单，避免宿主读到空配置时静默丢掉全部渠道。
+  test("空字符串平台配置回落默认清单", () => {
+    const { socket } = createConnectedClient("ws://hermes.invalid/messaging", { platforms: "" });
+    expect(sentMessages(socket)[0]?.platforms).toContain("feishu");
   });
 
   // 意图：离线状态发送消息必须静默丢弃，避免错误写入。
@@ -460,5 +469,16 @@ describe("HermesClient 隔离状态、错误与资源释放", () => {
     const second = initHermesClient("ws://second.invalid/ws");
     clients.push(first, second);
     expect(getHermesClient()?.getStatus().url).toBe("ws://second.invalid/ws");
+  });
+
+  // 意图：宿主装配路径（`initHermesClient(url, { platforms })`）必须把平台配置透传到订阅帧，
+  // 否则部署配置只在直接构造客户端时生效，生产装配会退回默认清单。
+  test("单例初始化透传平台配置", () => {
+    const client = initHermesClient("ws://singleton.invalid/ws", { platforms: "wecom" });
+    clients.push(client);
+    const socket = FakeWebSocket.instances[0];
+    if (!socket) throw new Error("未创建 WebSocket");
+    socket.open();
+    expect(sentMessages(socket)[0]?.platforms).toEqual(["wecom"]);
   });
 });

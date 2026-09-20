@@ -1,10 +1,11 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { resetAllStubs, stubAuthApi, stubDb } from "@fenix/platform-sdk/testing";
-import { resetTestAuth, setTestAuth } from "@server/plugins/auth";
-import { setTestOrgContext } from "@server/services/org-context";
+import { stubDb } from "@fenix/platform-sdk/testing";
 import type { SQL } from "drizzle-orm";
 import { PgDialect } from "drizzle-orm/pg-core";
+import { createWebAgentSitesRoutes } from "../server/routes/web/agent-sites";
+import { initializeAgentConfigModuleConfig } from "../server/testing";
 import { installAgentModuleStub, resetAgentModuleStub, scopedAgent } from "./fixtures";
+import { createStubSessionAuthGuardPlugin, resetTestAuth, setTestAuth } from "./guard-stubs";
 
 /**
  * Agent Sites（`/web/agent-sites`）的路由用例。
@@ -13,9 +14,12 @@ import { installAgentModuleStub, resetAgentModuleStub, scopedAgent } from "./fix
  * 收敛到 AgentConfig 资源模块，因此用模块替身（`service.findRowUnscoped`）表达，不再经配置服务桩。
  * 绑定写入（`addAgentSiteApp` / `removeAgentSiteApp`）是真实实现写 `agent_config_site_app`，用 db 替身
  * 观察写入结果——它是本包私有的绑定表，不属于任何 Facade。
+ *
+ * 认证与配置都经包内接缝（迁移前读宿主 `setTestAuth` / `setTestOrgContext` 与运行环境变量）：主体是平台
+ * `ActorContext`，站点链路配置经模块配置注入（`src/server/testing.ts` 的转发代理同时提供 DB 句柄）。
  */
 
-const route = (await import("../server/routes/web/agent-sites")).default;
+const route = createWebAgentSitesRoutes({ authGuardPlugin: createStubSessionAuthGuardPlugin() });
 
 const appId = "11111111-1111-4111-8111-111111111111";
 const otherAppId = "22222222-2222-4222-8222-222222222222";
@@ -100,11 +104,7 @@ function stubRouteDb() {
 }
 
 function authenticate(role: "owner" | "admin" | "member" = "owner", userId = "user-1", organizationId = "org-1") {
-  setTestAuth({
-    user: { id: userId, email: `${userId}@example.test`, name: "Tester" },
-    authContext: { organizationId, userId, role },
-  });
-  setTestOrgContext({ organizationId, userId, role });
+  setTestAuth({ organizationId, userId, role });
 }
 
 function request(path: string, init?: RequestInit) {
@@ -132,7 +132,11 @@ function remoteResponse(url: string) {
 
 describe("round43 Agent Sites Web 路由", () => {
   beforeEach(() => {
-    resetAllStubs();
+    // 复位替身并初始化应用基础设施：DB 句柄经转发代理、站点链路配置经模块配置（见 `../server/testing.ts`）。
+    initializeAgentConfigModuleConfig({
+      agentSitesBaseUrl: "https://agent-sites.test",
+      agentSitesMasterKey: "test-master-key",
+    });
     resetAgentModuleStub();
     selectResults = [];
     createdValues = undefined;
@@ -141,8 +145,6 @@ describe("round43 Agent Sites Web 路由", () => {
     deletedParams = [];
     boundValues = [];
     requests = [];
-    process.env.AGENT_SITES_BASE_URL = "https://agent-sites.test";
-    process.env.AGENT_SITES_MASTER_KEY = "test-master-key";
     originalFetch = globalThis.fetch;
     const fetchStub = async (input: string | URL | Request, init?: RequestInit): Promise<Response> => {
       const url = input.toString();
@@ -158,14 +160,11 @@ describe("round43 Agent Sites Web 路由", () => {
     resetAgentModuleStub();
     globalThis.fetch = originalFetch;
     resetTestAuth();
-    setTestOrgContext(null);
   });
 
-  // 未认证请求必须在业务处理前被认证守卫拒绝。
+  // 未认证请求必须在业务处理前被认证守卫拒绝（守卫替身未登录即短路，不进入 handler）。
   test("未认证访问列表返回 401", async () => {
     resetTestAuth();
-    setTestOrgContext(null);
-    stubAuthApi({ getSession: async () => null, verifyApiKey: async () => ({ valid: false }) });
     expect((await request("/apps")).status).toBe(401);
   });
 

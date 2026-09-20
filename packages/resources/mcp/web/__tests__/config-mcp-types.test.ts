@@ -1,3 +1,7 @@
+// 说明：这些配置类型（Agent 配置编辑器消费的 MCP 配置 / 列表项 / 详情视图）已随 §1.3 的平台前置
+// 收拢到 `@fenix/web-runtime/types/config`，由 `./types/config` 出口提供；本包不再持有副本。
+// 该导入此前指向已不存在的 `../types/config`（type-only 导入在运行时被擦除，`bun test` 不会报错，
+// 而本文件不在 `typecheck` / `typecheck:web` 的 include 里，故一直未被门禁发现），此处一并修正。
 import { describe, expect, test } from "bun:test";
 import type {
   McpLocalConfig,
@@ -6,7 +10,7 @@ import type {
   McpServerDetail,
   McpServerInfo,
   OpenCodeConfig,
-} from "../types/config";
+} from "@fenix/web-runtime/types/config";
 
 describe("MCP 类型定义", () => {
   test("McpLocalConfig 基本构造", () => {

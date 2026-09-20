@@ -7,24 +7,28 @@ import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { mkdtemp, rename, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { resetAllStubs } from "@fenix/platform-sdk/testing";
-import { setConfig } from "@server/config";
-import { resetTestAuth, setTestAuth } from "@server/plugins/auth";
-import { stubEnvironmentRepo } from "@server/test-utils/stubs/module-stubs";
+import { createStubSessionAuthGuardPlugin, resetTestAuth, setTestAuth } from "../../__tests__/guard-stubs";
+import { createWebFsRoutes } from "../routes/web/fs";
 import {
   computeListFingerprint,
   computeReadFingerprint,
   computeTreeFingerprint,
   resolveWorkspacePath,
 } from "../services/workspace-fs";
+import {
+  initializeMachineModuleConfig,
+  lockMachineWorkspaceRoot,
+  stubMachineEnvironmentRecord,
+  unlockMachineWorkspaceRoot,
+} from "../testing";
 
 const ORG_ID = "org-1";
 const USER_ID = "user-1";
 const ENV_ID = "env-1";
 
-// 动态 import 路由模块。environmentRepo 的 mock 是实时转发（setup-mocks.ts），
-// 属性访问总是转发到当前 stub，beforeEach 注入即可（与 fs-routes-converged 同模式）。
-const fsRoutes = await import("../../routes/web/fs");
+// 路由实例文件级构造一次：会话守卫替身按请求期读取当前会话（setTestAuth 即时生效）；
+// 环境读取经包内句柄替换（stubMachineEnvironmentRecord）按调用时读取，beforeEach 注入即可。
+const fsRoutes = createWebFsRoutes({ authGuardPlugin: createStubSessionAuthGuardPlugin() });
 
 let workspaceRoot: string;
 
@@ -47,30 +51,27 @@ function stubAuth() {
 }
 
 function stubEnvironment() {
-  stubEnvironmentRepo({
-    getById: async () => ({ id: ENV_ID, organizationId: ORG_ID, userId: USER_ID }),
-  });
+  stubMachineEnvironmentRecord({ id: ENV_ID, organizationId: ORG_ID, userId: USER_ID });
 }
 
 /** 直连路由 handle（会话认证由 setTestAuth 注入） */
 function handle(path: string, init?: RequestInit): Promise<Response> {
-  return fsRoutes.default.handle(new Request(`http://localhost/environments/${ENV_ID}${path}`, init));
+  return fsRoutes.handle(new Request(`http://localhost/environments/${ENV_ID}${path}`, init));
 }
 
 beforeEach(async () => {
-  resetAllStubs();
+  initializeMachineModuleConfig();
   stubEnvironment();
   stubAuth();
   workspaceRoot = await mkdtemp(join(tmpdir(), "fs-etag-"));
-  process.env.WORKSPACE_ROOT = workspaceRoot;
-  setConfig({ defaultMachineId: undefined });
+  await lockMachineWorkspaceRoot(workspaceRoot);
 });
 
 afterEach(async () => {
   resetTestAuth();
   delete process.env.WORKSPACE_ROOT;
+  unlockMachineWorkspaceRoot();
   await rm(workspaceRoot, { recursive: true, force: true });
-  setConfig({ defaultMachineId: undefined });
 });
 
 describe("tree 端点 ETag 条件请求", () => {

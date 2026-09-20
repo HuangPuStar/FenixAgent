@@ -1,12 +1,13 @@
 import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
 import { resetAllStubs, stubDb, stubIdentityDirectory } from "@fenix/platform-sdk/testing";
-import type { AuthContext } from "@server/plugins/auth";
 import { writeRegistryEvent } from "../server/repositories/registry-event";
+import { initializeMachineModuleConfig } from "../server/testing";
+import type { MachineRequestAuth } from "../server/types/auth";
 
 // Bun 以独立模块实例加载真实服务实现，同时继续通过既有 stubDb Proxy 隔离所有数据库访问。
 const registry = await import("@fenix/resource-machine/server");
 
-const owner: AuthContext = { organizationId: "org-a", userId: "user-a", role: "owner" };
+const owner: MachineRequestAuth = { organizationId: "org-a", userId: "user-a", role: "owner" };
 
 function limitedRows(rows: unknown[]) {
   return { from: () => ({ where: () => ({ limit: async () => rows }) }) };
@@ -35,8 +36,9 @@ function insertRecorder(writes: unknown[], fail = false) {
   }));
 }
 
+// 初始化基础设施：registry 服务经 getDatabase() 读 DB，未初始化会直接抛错（包内用例不再依赖宿主 preload）
 beforeEach(() => {
-  resetAllStubs();
+  initializeMachineModuleConfig();
 });
 
 afterEach(() => {

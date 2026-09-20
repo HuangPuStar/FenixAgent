@@ -1,13 +1,22 @@
-/** Agent Sites 远程 API 客户端。封装 master key 鉴权 + 错误处理。 */
+import { getAgentConfigConfig } from "../config";
+
+/**
+ * Agent Sites 远程 API 客户端。封装 master key 鉴权 + 错误处理。
+ *
+ * 基址与 master key 来自宿主注入的模块配置（`getAgentConfigConfig()`），不在包内读运行环境变量：
+ * 这两个值是部署知识，包内读环境会让「宿主认为已配置、包认为未配置」的分歧只在 502 里暴露。
+ * 每个请求都重读配置（模块配置是进程级只读值，读取开销可忽略），因此测试可以在不重建路由的情况下
+ * 改变站点链路配置。
+ */
 
 function baseUrl(): string {
-  const url = process.env.AGENT_SITES_BASE_URL;
+  const url = getAgentConfigConfig().agentSitesBaseUrl;
   if (!url) throw new Error("AGENT_SITES_BASE_URL not configured");
   return url;
 }
 
 function masterKey(): string {
-  const key = process.env.AGENT_SITES_MASTER_KEY;
+  const key = getAgentConfigConfig().agentSitesMasterKey;
   if (!key) throw new Error("AGENT_SITES_MASTER_KEY not configured");
   return key;
 }
@@ -244,7 +253,8 @@ export async function proxyToAgentSites(
   }
 }
 
-/** 判断 agent-sites 是否已配置 */
+/** 判断 agent-sites 是否已配置：基址与 master key 都必须由宿主下发。 */
 export function isAgentSitesConfigured(): boolean {
-  return !!process.env.AGENT_SITES_BASE_URL && !!process.env.AGENT_SITES_MASTER_KEY;
+  const { agentSitesBaseUrl, agentSitesMasterKey } = getAgentConfigConfig();
+  return !!agentSitesBaseUrl && !!agentSitesMasterKey;
 }

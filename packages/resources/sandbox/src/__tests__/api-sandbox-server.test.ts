@@ -1,5 +1,8 @@
 import { afterEach, describe, expect, test } from "bun:test";
-import { createApiSandboxServerRoutes, setSandboxServerAdminServiceForTests } from "../routes/api/sandbox-server";
+import {
+  createApiSandboxServerRoutes,
+  setSandboxServerAdminServiceForTests,
+} from "../server/routes/api/sandbox-server";
 import { createStubSystemApiGuardPlugin } from "./guard-stubs";
 
 // 守卫替身按插件名去重，同一文件内共用一个实例，避免 Elysia 静默丢弃后构造的那一份。

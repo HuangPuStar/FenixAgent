@@ -1,9 +1,19 @@
 import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
 import { readJson, resetAllStubs } from "@fenix/platform-sdk/testing";
-import { resetConfig, setConfig } from "@server/config";
-import { resetTestAuth, setTestAuth } from "@server/plugins/auth";
 import { type KnowledgeBaseRow, knowledgeBaseRepo } from "../server/repositories/knowledge-base";
-import webKnowledgeBasesRoute from "../server/routes/web/knowledge-bases";
+import { createWebKnowledgeBaseRoutes } from "../server/routes/web/knowledge-bases";
+import { initializeKnowledgeModuleConfig } from "../server/testing";
+import { createStubSessionAuthGuardPlugin } from "./guard-stubs";
+
+/**
+ * 认证上下文由守卫替身写入（真实守卫属宿主，包内不得依赖它构造路由）。
+ * 取值与迁移前 `setTestAuth()` 注入的一致：`{ organizationId: "org-1", userId: "user-1" }`。
+ */
+const AUTH_CONTEXT = { organizationId: "org-1", userId: "user-1" } as const;
+const webKnowledgeBasesRoute = createWebKnowledgeBaseRoutes({
+  authGuardPlugin: createStubSessionAuthGuardPlugin(AUTH_CONTEXT),
+});
+
 import { RagFlowKnowledgeProvider } from "../server/services/knowledge-provider/ragflow";
 import { setKnowledgeProviderForTesting } from "../server/services/knowledge-provider/registry";
 
@@ -59,24 +69,23 @@ class KnowledgeRouteProvider extends RagFlowKnowledgeProvider {
   }
 }
 
-const originalListByOrganizationId = knowledgeBaseRepo.listByOrganizationId;
+// 用例会替换仓储方法（含 create），必须在 afterEach 逐个复原：bun test 同进程按文件串行，
+// 泄漏的替身会让后续文件的 `stubDb()` 装配被静默绕过（例如 round46 的 create 断言读到本文件的夹具）。
+const originals = {
+  listByOrganizationId: knowledgeBaseRepo.listByOrganizationId,
+  create: knowledgeBaseRepo.create,
+};
 
 describe("知识库最大缺口路由的隔离分支", () => {
   beforeEach(() => {
-    resetAllStubs();
-    setConfig({ ragflowApiKey: "test-ragflow-key" });
-    setTestAuth({
-      user: { id: "user-1", email: "user-1@example.test", name: "Tester" },
-      authContext: { organizationId: "org-1", userId: "user-1", role: "owner" },
-    });
+    initializeKnowledgeModuleConfig({ ragflowApiKey: "test-ragflow-key" });
     setKnowledgeProviderForTesting(new KnowledgeRouteProvider());
   });
 
   afterEach(() => {
-    knowledgeBaseRepo.listByOrganizationId = originalListByOrganizationId;
+    knowledgeBaseRepo.listByOrganizationId = originals.listByOrganizationId;
+    knowledgeBaseRepo.create = originals.create;
     setKnowledgeProviderForTesting(null);
-    resetConfig();
-    resetTestAuth();
     resetAllStubs();
   });
 

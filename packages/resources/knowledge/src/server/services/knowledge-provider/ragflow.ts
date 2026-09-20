@@ -1,4 +1,4 @@
-import { config } from "@server/config";
+import { getKnowledgeConfig } from "../../config";
 import type {
   ConfiguredModelInfo,
   EmbeddingModelOption,
@@ -63,6 +63,7 @@ export class RagFlowKnowledgeProvider implements KnowledgeProvider {
    * 避免把空 Bearer token 发送给上游后再收到难定位的 401。
    */
   private ensureConfigured(apiKeyOverride?: string) {
+    const config = getKnowledgeConfig();
     const apiKey = apiKeyOverride || config.ragflowApiKey;
     if (!apiKey.trim()) {
       throw new Error("RAGFLOW_API_KEY is not configured");
@@ -78,6 +79,7 @@ export class RagFlowKnowledgeProvider implements KnowledgeProvider {
    */
   private async request<T>(path: string, init?: RequestInit, apiKeyOverride?: string): Promise<T> {
     this.ensureConfigured(apiKeyOverride);
+    const config = getKnowledgeConfig();
     const controller = new AbortController();
     const timeoutMs = config.ragflowRequestTimeoutMs;
     const timeout = setTimeout(() => controller.abort(), timeoutMs);
@@ -149,6 +151,7 @@ export class RagFlowKnowledgeProvider implements KnowledgeProvider {
     apiKey?: string;
   }): Promise<{ content: ReadableStream<Uint8Array>; contentType: string; fileName: string } | null> {
     this.ensureConfigured(input.apiKey);
+    const config = getKnowledgeConfig();
     const controller = new AbortController();
     const timeoutMs = config.ragflowRequestTimeoutMs;
     const timeout = setTimeout(() => controller.abort(), timeoutMs);
@@ -1451,11 +1454,12 @@ export class RagFlowKnowledgeProvider implements KnowledgeProvider {
 
 /** Verify RagFlow connectivity. Called at RCS startup. */
 export async function checkRagFlowHealth(): Promise<{ ok: boolean; message: string }> {
+  const { ragflowApiUrl } = getKnowledgeConfig();
   try {
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), 5000);
     // 健康检查不应依赖业务 API key，避免把“服务可达”误判成“鉴权失败也算健康”。
-    const response = await fetch(`${config.ragflowApiUrl}/api/v1/system/healthz`, {
+    const response = await fetch(`${ragflowApiUrl}/api/v1/system/healthz`, {
       signal: controller.signal,
       headers: { "Content-Type": "application/json" },
     });

@@ -1,24 +1,22 @@
 import { afterAll, beforeEach, describe, expect, mock, test } from "bun:test";
-import { resetAllStubs, stubDb } from "@fenix/platform-sdk/testing";
-import type { AuthContext } from "@server/plugins/auth";
-import type { WsConnection } from "@server/transport/ws-types";
+import { stubDb } from "@fenix/platform-sdk/testing";
 import { writeRegistryEvent } from "../server/repositories/registry-event";
+import { initializeMachineModuleConfig } from "../server/testing";
+import type { WsConnection } from "../server/transport/ws-types";
+import type { MachineRequestAuth } from "../server/types/auth";
 
-// registry.ts 被 setup-mocks preload mock（REGISTRY_KEYS），本测试需要真实 deleteMachine 实现：
-// Bun 的模块 mock 按解析后路径匹配，带 query 的 specifier（?real）
-// 会解析为独立实例、绕过 mock 注册表；该实例内部导入的 ../db 仍走 stubDb（Proxy 实时转发），
-// file-ws-handler 不被 preload mock（真实模块），因此"stubDb → deleteMachine → handler 清理"
-// 整条链路均为真实代码。`?real` 仅用于测试入口，生产代码不受影响。
+// 经包根入口取真实的 deleteMachine 与请求发送域实现：本测试要覆盖「stubDb → deleteMachine →
+// file-ws 连接清理与 pending 拒绝」整条真实链路，句柄替换（setRegistryRouteDeps 等）只用于路由层，
+// 这里不经过路由。
 const realRegistry = await import("@fenix/resource-machine/server");
 
-// sendFileOpAndWait 属请求发送域（自 handler 拆至 file-ws-requests，setup-mocks 部分
-// mock——未配置 stub 时回退真实实现），此处动态 import 发起真实 pending
+// sendFileOpAndWait 属请求发送域（自 handler 拆至 file-ws-requests），此处发起真实 pending 请求
 const requests = await import("@fenix/resource-machine/server");
 
 const ORG_ID = "org-1";
 const USER_ID = "user-1";
 
-const authCtx: AuthContext = { organizationId: ORG_ID, userId: USER_ID, role: "owner" };
+const authCtx: MachineRequestAuth = { organizationId: ORG_ID, userId: USER_ID, role: "owner" };
 
 function createMockWs(readyState = 1): WsConnection & { _messages: string[] } {
   const messages: string[] = [];
@@ -67,7 +65,8 @@ function stubDeleteMachineDb(machineRecord: { id: string; status: string }, inse
 }
 
 beforeEach(async () => {
-  resetAllStubs();
+  // 初始化基础设施（真实 deleteMachine / writeRegistryEvent 都要读 DB，未初始化会直接抛错）
+  initializeMachineModuleConfig();
   const handler = await import("@fenix/resource-machine/server");
   handler.closeAllFileWsConnections();
 });

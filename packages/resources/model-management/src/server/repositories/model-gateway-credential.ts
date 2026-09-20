@@ -1,6 +1,17 @@
-import { db } from "@server/db";
 import { modelGatewayCredential } from "@server/db/schema";
 import { and, asc, eq, gt, inArray } from "drizzle-orm";
+import { getModelManagementDatabase } from "../db";
+
+/**
+ * 取本模块的 DB 句柄。
+ *
+ * 包一层而不是 `import { db } from "@server/db"`：句柄只能在宿主完成基础设施初始化之后读取，而这些仓储
+ * 是进程级单例，构造期可能早于 `initializeApplicationInfrastructure()`。名字与 Drizzle 惯例一致，调用点
+ * 读起来与直接使用 `db` 相同。
+ */
+function database() {
+  return getModelManagementDatabase();
+}
 
 export type ModelGatewayCredential = typeof modelGatewayCredential.$inferSelect;
 export type ModelGatewayCredentialStatus = ModelGatewayCredential["status"];
@@ -20,7 +31,7 @@ export type UpsertModelGatewayCredentialInput = ModelGatewayCredentialSubject &
 export async function findModelGatewayCredentialBySubject(
   subject: ModelGatewayCredentialSubject,
 ): Promise<ModelGatewayCredential | null> {
-  const rows = await db
+  const rows = await database()
     .select()
     .from(modelGatewayCredential)
     .where(
@@ -39,7 +50,7 @@ export async function findModelGatewayCredentialBySubject(
 export async function upsertModelGatewayCredential(
   input: UpsertModelGatewayCredentialInput,
 ): Promise<ModelGatewayCredential> {
-  const [created] = await db
+  const [created] = await database()
     .insert(modelGatewayCredential)
     .values(input)
     .onConflictDoNothing({
@@ -63,7 +74,7 @@ export async function updateModelGatewayCredentialStatus(
   id: string,
   status: ModelGatewayCredentialStatus,
 ): Promise<ModelGatewayCredential | null> {
-  const [updated] = await db
+  const [updated] = await database()
     .update(modelGatewayCredential)
     .set({ status, updatedAt: new Date() })
     .where(eq(modelGatewayCredential.id, id))
@@ -73,7 +84,7 @@ export async function updateModelGatewayCredentialStatus(
 
 /** 删除已在远端回收的凭证映射，使恢复授权后的下一次解析可以创建新的 Key。 */
 export async function deleteModelGatewayCredential(id: string): Promise<void> {
-  await db.delete(modelGatewayCredential).where(eq(modelGatewayCredential.id, id));
+  await database().delete(modelGatewayCredential).where(eq(modelGatewayCredential.id, id));
 }
 
 /** 分页读取一个 Gateway Provider 创建的凭证映射，供系统管理员人工核查。 */
@@ -84,14 +95,14 @@ export async function listModelGatewayCredentialsPage(input: {
 }): Promise<{ items: ModelGatewayCredential[]; total: number }> {
   const condition = eq(modelGatewayCredential.gatewayProviderId, input.gatewayProviderId);
   const [items, count] = await Promise.all([
-    db
+    database()
       .select()
       .from(modelGatewayCredential)
       .where(condition)
       .orderBy(asc(modelGatewayCredential.id))
       .limit(input.pageSize)
       .offset((input.page - 1) * input.pageSize),
-    db.$count(modelGatewayCredential, condition),
+    database().$count(modelGatewayCredential, condition),
   ]);
   return { items, total: count };
 }
@@ -99,7 +110,7 @@ export async function listModelGatewayCredentialsPage(input: {
 /** 按主键批量读取管理员明确选择的凭证映射。 */
 export async function findModelGatewayCredentialsByIds(ids: string[]): Promise<ModelGatewayCredential[]> {
   if (ids.length === 0) return [];
-  return db.select().from(modelGatewayCredential).where(inArray(modelGatewayCredential.id, ids));
+  return database().select().from(modelGatewayCredential).where(inArray(modelGatewayCredential.id, ids));
 }
 
 /** 按主键游标扫描凭证映射，默认返回所有状态供调用方决定业务过滤。 */
@@ -117,7 +128,7 @@ export async function listModelGatewayCredentialsAfter(input: {
   if (input.statuses && input.statuses.length > 0) {
     conditions.push(inArray(modelGatewayCredential.status, input.statuses));
   }
-  return db
+  return database()
     .select()
     .from(modelGatewayCredential)
     .where(conditions.length > 0 ? and(...conditions) : undefined)

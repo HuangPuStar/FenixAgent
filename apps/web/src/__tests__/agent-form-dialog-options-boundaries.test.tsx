@@ -1,9 +1,9 @@
 import { describe, expect, test } from "bun:test";
+import type { McpServerInfo, ModelEntry } from "@fenix/web-runtime/types/config";
 import {
   mapMcpOptions,
   mapModelOptions,
 } from "../../../../packages/resources/agent-config/web/pages/agent-panel/agent-editor/agent-editor-model";
-import type { McpServerInfo, ModelEntry } from "../types/config";
 
 /** 共享来源模型的 `/web` 视图字段：归属其他组织且只有读动作。 */
 const sharedModelFields: Partial<ModelEntry> = {

@@ -1,13 +1,16 @@
 import { type AgentNode, getAgentConfigById, resolveAgentNode } from "@fenix/agent-config/server";
-import { environmentRepo } from "@fenix/agent-runtime/server";
 import { AppError } from "@fenix/platform-sdk";
-import { findActiveSandboxInstance, findReadableSandboxPoolById } from "@fenix/resource-sandbox/server";
-import { config } from "@server/config";
-import { db } from "@server/db";
+import {
+  findActiveSandboxInstance,
+  findReadableSandboxPoolById,
+  getSandboxConfig,
+} from "@fenix/resource-sandbox/server";
 import { machine } from "@server/db/schema";
 import { eq } from "drizzle-orm";
-import { isFileWsConnected } from "../transport/file-ws-handler";
-import { type FileOpOptions, sendFileOpAndWait } from "../transport/file-ws-requests";
+import { getMachineConfig } from "../config";
+import { getMachineDatabase } from "../db";
+import { getEnvironmentById } from "../environment-port";
+import { type FileOpOptions, isFileWsConnected, sendFileOpAndWait } from "../transport/file-ws-port";
 
 type RemoteMachineResolutionInput = {
   agentNode: AgentNode | null;
@@ -57,13 +60,15 @@ const REMOTE_ZIP_TIMEOUT_MS = 60_000 + (REMOTE_ZIP_MAX_BYTES / (2 * 1024 * 1024)
  * - 连接正常 → 返回 machineId
  */
 export async function getRemoteMachineId(envId: string): Promise<string | null> {
-  const env = await environmentRepo.getById(envId);
+  const env = await getEnvironmentById(envId);
   if (!env) return null;
   const agentCfg = env.agentConfigId ? await getAgentConfigById(env.agentConfigId) : null;
   const agentNode = agentCfg ? resolveAgentNode(agentCfg) : {};
   const explicitSandboxPoolId = agentNode?.kind === "sandbox" ? agentNode.sandboxPoolId : null;
-  const useDefaultSandbox = agentNode?.kind !== "machine" && !explicitSandboxPoolId && config.sandboxEnabled;
-  const sandboxPoolId = explicitSandboxPoolId ?? (useDefaultSandbox ? config.defaultSandboxPoolId : null);
+  // 沙盒开关与默认池读 Sandbox 模块配置（唯一来源）：同名值不在本包配置里复制一份，两处字段必然漂移。
+  const sandboxConfig = getSandboxConfig();
+  const useDefaultSandbox = agentNode?.kind !== "machine" && !explicitSandboxPoolId && sandboxConfig.sandboxEnabled;
+  const sandboxPoolId = explicitSandboxPoolId ?? (useDefaultSandbox ? sandboxConfig.defaultSandboxPoolId : null);
   const sandboxSelected = Boolean(explicitSandboxPoolId || (useDefaultSandbox && sandboxPoolId));
 
   let sandboxMachineId: string | null = null;
@@ -79,7 +84,7 @@ export async function getRemoteMachineId(envId: string): Promise<string | null> 
     agentNode,
     sandboxMachineId,
     sandboxSelected,
-    defaultMachineId: config.defaultMachineId ?? null,
+    defaultMachineId: getMachineConfig().defaultMachineId ?? null,
   });
 
   // 没有配置 machine → 本地 FS
@@ -87,7 +92,7 @@ export async function getRemoteMachineId(envId: string): Promise<string | null> 
 
   // 存在性校验：machineId 不在 DB machine 表中 → 422（配置错误），
   // 与"存在但未连接"的 503 区分，避免三种根因都归 503 误导排障
-  const rows = await db.select().from(machine).where(eq(machine.id, machineId)).limit(1);
+  const rows = await getMachineDatabase().select().from(machine).where(eq(machine.id, machineId)).limit(1);
   if (rows.length === 0) {
     throw new AppError(`远程机器配置不存在 (machine: ${machineId})，请到管理面检查机器配置`, "config_error", 422);
   }

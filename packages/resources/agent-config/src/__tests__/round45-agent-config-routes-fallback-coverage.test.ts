@@ -1,9 +1,16 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { resetAllStubs, stubDb } from "@fenix/platform-sdk/testing";
-import { resetTestAuth, setTestAuth } from "@server/plugins/auth";
-import { setTestOrgContext } from "@server/services/org-context";
-import { stubConfigPg } from "@server/test-utils/stubs/config-pg-stub";
-import { authorizedAgent, installAgentModuleStub, resetAgentModuleStub } from "./fixtures";
+import { createWebConfigAgentsRoutes } from "../server/routes/web/config/agents";
+import { initializeAgentConfigModuleConfig } from "../server/testing";
+import {
+  authorizedAgent,
+  createTestAgentPreferencesPort,
+  installAgentModuleStub,
+  resetAgentModuleStub,
+  resetAgentPreferences,
+  stubAgentPreferences,
+} from "./fixtures";
+import { createStubSessionAuthGuardPlugin, resetTestAuth, setTestAuth } from "./guard-stubs";
 
 /**
  * 列表读取的兜底行为（S4 接缝迁移）。
@@ -12,7 +19,10 @@ import { authorizedAgent, installAgentModuleStub, resetAgentModuleStub } from ".
  * 返回隔离后的资源与稳定的 ID 兜底标签——展示信息失败不得拖垮业务结果。
  */
 
-const route = (await import("../server/routes/web/config/agents")).default;
+const route = createWebConfigAgentsRoutes({
+  authGuardPlugin: createStubSessionAuthGuardPlugin(),
+  userAgentPreferences: createTestAgentPreferencesPort(),
+});
 
 function request(path: string) {
   return route.handle(new Request(`http://localhost${path}`));
@@ -20,14 +30,11 @@ function request(path: string) {
 
 describe("round45 Agent 配置列表读取兜底", () => {
   beforeEach(() => {
-    resetAllStubs();
+    // 复位替身并初始化应用基础设施（DB 句柄经转发代理，见 `../server/testing.ts`）。
+    initializeAgentConfigModuleConfig();
     resetAgentModuleStub();
-    setTestAuth({
-      user: { id: "user-1", email: "user-1@example.test", name: "Tester" },
-      authContext: { organizationId: "org-1", userId: "user-1", role: "owner" },
-    });
-    setTestOrgContext({ organizationId: "org-1", userId: "user-1", role: "owner" });
-    stubConfigPg({ getUserConfig: async () => ({ defaultAgent: "researcher" }) });
+    setTestAuth({ organizationId: "org-1", userId: "user-1" });
+    stubAgentPreferences({ read: async () => ({ defaultAgent: "researcher" }) });
     installAgentModuleStub({
       facade: {
         list: async () => ({
@@ -62,7 +69,7 @@ describe("round45 Agent 配置列表读取兜底", () => {
   afterEach(() => {
     resetAgentModuleStub();
     resetTestAuth();
-    setTestOrgContext(null);
+    resetAgentPreferences();
     resetAllStubs();
   });
 

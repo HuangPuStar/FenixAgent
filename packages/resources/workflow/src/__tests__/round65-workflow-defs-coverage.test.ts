@@ -1,9 +1,15 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { resetAllStubs, stubDb } from "@fenix/platform-sdk/testing";
-import { resetTestAuth, setTestAuth } from "@server/plugins/auth";
-import { setTestOrgContext } from "@server/services/org-context";
 
-const route = (await import("../server/routes/web/workflow-defs")).default;
+import { createWebWorkflowDefsRoutes } from "../server/routes/web/workflow-defs";
+import { initializeWorkflowModuleConfig } from "../server/testing";
+import { createStubSessionAuthGuard } from "./guard-stubs";
+
+const guard = createStubSessionAuthGuard();
+
+// 路由经工厂构造并注入会话守卫替身：静态条件禁止包内测试依赖宿主 `@server/plugins/auth`，
+// 而 Elysia 的 macro/state 是实例作用域的，守卫必须是构造时传入的同一实例。
+const route = createWebWorkflowDefsRoutes({ authGuardPlugin: guard });
 
 function request(path: string, init?: RequestInit) {
   return route.handle(new Request(`http://localhost${path}`, init));
@@ -18,11 +24,7 @@ function jsonRequest(path: string, body: Record<string, unknown>, method = "POST
 }
 
 function setAuthenticatedOrg(organizationId = "org-round65") {
-  setTestAuth({
-    user: { id: "user-round65", email: "round65@test.com", name: "Round 65" },
-    authContext: { organizationId, userId: "user-round65", role: "owner" },
-  });
-  setTestOrgContext({ organizationId, userId: "user-round65", role: "owner" });
+  guard.setActor({ organizationId, userId: "user-round65" });
 }
 
 function queryResult(rows: unknown[]) {
@@ -72,13 +74,12 @@ function trigger(organizationId = "org-round65") {
 
 describe("workflow-defs 第六十五轮真实路由分支", () => {
   beforeEach(() => {
-    resetAllStubs();
+    initializeWorkflowModuleConfig();
     setAuthenticatedOrg();
   });
 
   afterEach(() => {
-    resetTestAuth();
-    setTestOrgContext(null);
+    guard.setActor(null);
     resetAllStubs();
   });
 

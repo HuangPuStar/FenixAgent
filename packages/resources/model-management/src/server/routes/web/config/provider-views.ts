@@ -1,4 +1,5 @@
-import { toKeyHint } from "@server/services/config-utils";
+import type { SecretReferenceResolver } from "../../../config-envelope";
+import { toKeyHint } from "../../../config-envelope";
 import type { AuthorizedProviderDetail, AuthorizedProviderListItem } from "../../../facades/provider-facade";
 
 /**
@@ -6,10 +7,15 @@ import type { AuthorizedProviderDetail, AuthorizedProviderListItem } from "../..
  *
  * 字段名与迁移前逐字一致；`scope` / `access` 直接透传 Facade 的产物，不做任何改写——它们是当前主体
  * 在这一份资源上的归属与动作事实，前端的"能否编辑"必须由 `access.actions` 判定，不允许另起一套推断。
+ *
+ * `keyHint` 需要解析密钥引用（库里可能是 `{env:NAME}`），解析器由调用方传入：包内不得读 `process.env`。
  */
 
 /** 列表项视图。 */
-export function toWebProviderListItem(provider: AuthorizedProviderListItem) {
+export function toWebProviderListItem(
+  provider: AuthorizedProviderListItem,
+  resolveSecretReference: SecretReferenceResolver,
+) {
   return {
     // TODO(model-gateway): 统一 Provider 列表契约为 id=UUID、name=配置名、displayName=展示名，
     // 并同步迁移仍依赖 id=配置名的配置接口调用方；届时删除 providerId 过渡字段。
@@ -19,7 +25,7 @@ export function toWebProviderListItem(provider: AuthorizedProviderListItem) {
     kind: provider.kind,
     gatewayType: provider.gatewayType,
     protocol: provider.protocol,
-    keyHint: toKeyHint(provider.apiKey),
+    keyHint: toKeyHint(provider.apiKey, resolveSecretReference),
     baseURL: provider.baseUrl ?? null,
     modelCount: provider.modelCount,
     scope: provider.scope,
@@ -34,14 +40,18 @@ export function toWebProviderListItem(provider: AuthorizedProviderListItem) {
  * 子模型不再携带 `providerResourceAccess`：模型的可访问性完全继承 Provider（决策 D6），逐行重复
  * 一份继承来的判定只会制造"两者可能不一致"的假象。
  */
-export function toWebProviderDetail(detail: AuthorizedProviderDetail, label: string) {
+export function toWebProviderDetail(
+  detail: AuthorizedProviderDetail,
+  label: string,
+  resolveSecretReference: SecretReferenceResolver,
+) {
   return {
     id: label,
     name: detail.displayName ?? "",
     kind: detail.kind,
     gatewayType: detail.gatewayType,
     protocol: detail.protocol,
-    keyHint: toKeyHint(detail.apiKey),
+    keyHint: toKeyHint(detail.apiKey, resolveSecretReference),
     baseURL: detail.baseUrl ?? null,
     scope: detail.scope,
     access: detail.access,

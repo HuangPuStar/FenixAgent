@@ -1,47 +1,95 @@
 # @fenix/model-management
 
-Provider / Model 资源聚合根与模型网关（凭据隔离、预算、用量、密钥管理）的唯一 owner。
+Provider / Model 资源聚合根与模型网关（凭据隔离、预算、用量、密钥管理）的 owner：领域服务、仓储、路由工厂、浏览器出口与中英文文案都在本包内。宿主 `apps/server` 与 `apps/web` 只剩装配调用；任务 1.3 的 W2 切片完成了包侧解耦（`@server/*` 只剩表定义、`web/**` 零宿主别名、i18n 自持、路由工厂化）。
 
-## 职责
+本 README 是五段式交付物的一份。文中的「唯一 / 只有 / 全部 / 零」都附实测命令与当次输出，未跑过的结论不写。
+
+## 定位与 owner
 
 - **Provider / Model 聚合根**：`provider` 是本包唯一的授权资源类型（`src/server/access/provider-resource.ts`，决策 D6）：owner / admin 拿 create、update、delete，member 默认只有 read，`public` 只放大读范围、不提升写权限。Model 是 Provider 的子表，不注册独立资源、不建 owner 或 visibility，读写一律先对 Provider 授权（`src/server/facades/provider-facade.ts`）。
-- **组合根**：`createModelManagementServerModule(deps)` 由宿主注入 `AccessControlModule` / `ResourceScopeStore` / `AuthorizedResourceQuery` / `IdentityDirectory`，产出一份实例集（`facade` / `service` / `models` / `repositories`）。`src/server/module-runtime.ts` 装入进程级装配结果：`getModelManagementModule()` 在未装配时直接报错，不静默退化成「资源不存在」。
-- **仓储**：`repositories/provider-resource.ts`、`model-resource.ts`、`model-gateway-credential.ts`。受控读取只交出主表、归属列与业务条件，授权谓词、排序与分页由平台的 `AuthorizedResourceQuery` 编译进同一条 SQL；写路径不属授权范围，校验发生在 Facade。
-- **模型网关**：`src/server/model-gateway/**` 负责 LiteLLM adapter、管理凭据与本地加密密钥、Agent 动态 Key 的签发与吊销、预算和用量聚合。管理凭证或加密密钥缺失时 `createModelGatewayRuntime` 返回 `null`：保留 Provider 初始化能力，Agent Key 与管理操作明确失败，不用空凭证启动、不落明文。
+- **仓储是包内唯一数据访问点**：`src/server/repositories/**` 的 5 个文件（`provider-resource`、`model-resource`、`model-gateway-credential`、`model-sync-lock`、`subject-agent-search`）是 `getModelManagementDatabase()` 的全部调用方。实测 `command grep -rn "getModelManagementDatabase" src | grep -v 'src/server/repositories/' | grep -v 'src/server/db.ts'`（并剔除注释行）→ **0 行**：编排层与服务层不持有事务句柄，跨实例 advisory lock 也在 `repositories/model-sync-lock.ts` 内。句柄在每个方法内取，不在模块加载期持有（加载早于宿主 `initializeApplicationInfrastructure()`）。
+- **组合根**：`src/module.ts` 的 `createModelManagementModule()` 返回进程级单例取值器；`fenix.module.ts` 用动态 `import()` 暴露为惰性描述符（`id` / `kind` / `dependsOn` / `capabilities` 按 W1 裁定值，本切片未动）。平台能力（`AccessControlModule` / `ResourceScopeStore` / `AuthorizedResourceQuery` / `IdentityDirectory`）由宿主经 `createModelManagementServerModule(deps)` 注入后 `installModelManagementModule()` 装入；未装配时 `getModelManagementModule()` 直接报错，不静默退化成「资源不存在」。
+- **模型网关**：`src/server/model-gateway/**` 负责 LiteLLM adapter、管理凭据与本地加密密钥、Agent 动态 Key 的签发与吊销、预算与用量聚合。管理凭证或加密密钥缺失时 `createModelGatewayRuntime` 返回 `null`：保留 Provider 初始化能力，Agent Key 与管理操作明确失败，不用空凭证启动、不落明文。
 - **主体校验端口**：`src/server/ports/subject-verification.ts` 只声明「这个主体还能不能用这个 Agent」的窄契约，实现由宿主注入（`apps/server/src/services/model-gateway-subject-verification.ts`），本包不复制 `agent_config` 的授权判断。
-- **Peri 任务详情**：`src/services/peri-task-detail-{service,store}.ts` 从 Session Doc 读取有界摘要（`createDeterministicRcsSessionId` 定位 Doc、`getPeriTasksMap` 取任务），不接受客户端 locator、不声称摘要是完整 transcript，归属差异一律以 404 隐藏。
+- **Peri 任务详情**：`src/services/peri-task-detail-{service,store}.ts` 从 Session Doc 读取有界摘要（`createDeterministicRcsSessionId` 定位 Doc、`getPeriTasksMap` 取任务），不接受客户端 locator、不声称摘要是完整 transcript，归属差异一律以 404 隐藏。宿主路由 `apps/server/src/routes/web/peri-task-details.ts:3` 经本包 `./server` 入口取这两件能力（该 schema 的归属偏差见「边界残留」）。
+
+## 服务端交付物
+
 - **HTTP 交付物**：`/api/models/providers/**`、`/api/system/model-gateway/*`、`/web/config/providers/**`、`/web/config/models/**`、`/web/model-gateway/:providerId/usage`。
-- **浏览器交付物**：`src/index.ts`（当前也被 `exports["./web"]` 指向）导出 `web/api/*` 客户端、`ModelConfigDialog`、`ModelIcon`、`EmbeddingModelManager`、`AlgorithmsPage` 与纯函数工具；`web/pages/**` 持有网关总览、密钥管理面板、用量页与 Agent 模型页。
+- **路由目录按计划 §2.3 收敛为 `src/server/routes/**`**（10 个文件：5 个路由 + `dependencies.ts` + `provider-handlers.ts` / `provider-probe.ts` / `provider-views.ts` / `web-envelope.ts`），**全部是工厂，零 default export**（实测 `command grep -rn "export default" src/server.ts src/server/routes` → **0 行**）：
 
-## 依赖边界
+```ts
+import {
+  createApiModelsRoutes,
+  createApiSystemModelGatewayRoutes,
+  createWebConfigModelsRoutes,
+  createWebConfigProvidersRoutes,
+  createWebModelGatewayRoutes,
+} from "@fenix/model-management/server";
 
-- 类别 `resources`；唯一装配依赖是 `agent-config`——证据（`src/server/model-gateway/runtime.ts` 值导入 `findAgentConfigNamesByIds`）以及不声明其它边的理由写在 `fenix.module.ts` 的文档注释里，此处不重复。
-- 平台能力只经 `@fenix/platform-sdk` 的窄契约取得：`IdentityDirectory`、`AccessControlModule`、`ResourceScopeStore`、`AuthorizedResourceQuery`、`AppError` / `WebOkSchema` 等；不导入 `@fenix/identity/*`、`@fenix/access-control/*`、`@fenix/agent-runtime/*`。
-- 网关协议经 `@fenix/model-gateway-sdk`（端口与错误类型）与 `@fenix/model-gateway-litellm`（唯一 adapter 实现）；`@fenix/logger` 仅用于错误日志。
-- 跨包复用只走对方公开入口：`@fenix/agent-config/server`、`@fenix/chat-channel` 与其 `/server` 子路径、`@fenix/resource-sandbox/web`（仅浏览器侧复用 `MasterKeyGate` / `SearchableUsageFilter`）。
+const apiModels = createApiModelsRoutes({ authGuardPlugin });
+const apiSystemModelGateway = createApiSystemModelGatewayRoutes({ systemApiGuardPlugin });
+const webModelGateway = createWebModelGatewayRoutes({ authGuardPlugin });
+const webConfigProviders = createWebConfigProvidersRoutes({ authGuardPlugin, resolveSecretReference });
+const webConfigModels = createWebConfigModelsRoutes({ authGuardPlugin, userModelPreferences });
+```
 
-## 守卫由宿主注入
+- **守卫由宿主注入，本包不导出守卫实例**。依赖类型写在 `src/server/routes/dependencies.ts`（只放类型：类型若写在包入口会出现「入口 → 工厂 → 入口」的导入环）。必须注入而不能自建：Elysia 的 `macro` / `state` 是实例作用域的，父实例无法向已构造的子实例回填；守卫必须与宿主的认证解析（含测试 seam 与 active organization 解析）是同一份实例，否则同进程里两套同名实例会被按 plugin `name` 去重，先构造的一方静默生效。`resolveSecretReference`（读 `process.env`）与 `userModelPreferences`（读身份族 `user_config` 表）同理落在宿主一侧——包内 `src/**` 不读环境变量、不直查身份表。
+- **出口形状**：`./server` 是具名再导出（实测 `command grep -cE "^export" src/server.ts` → **30 行**，零 default）；`exports` 六项 `"."` / `"./module"` / `"./server"` / `"./server/testing"` / `"./web"` / `"./web/i18n"` 的目标文件全部存在（逐项 `test -f` 通过）；`src/index.ts` 刻意为 `export {}`，避免服务端侧 `import "@fenix/model-management"` 把 React 页面图拖进模块图。本切片从 `./server` 移除了 `getModelManagementDatabase` / `ModelManagementDatabase`（实测 `command grep -rn "ModelManagementDatabase" packages apps` 除包内仓储与注释外零命中，即无外部消费者），DB 句柄不再是公开面；`src/server/db.ts` 仍是 `./server` 内部（仓储）的取句柄点。
+- **配置**：`getModelManagementConfig()` 经平台契约 `getModuleConfig("model-management")` 取值，并用 `z.strictObject` + `z.ZodType<ModelManagementModuleConfig>` 校验（接口加字段而 schema 没加会在编译期报错；宿主字段改名在运行期以 `unrecognized_keys` 当场失败）。字段清单 8 项来自迁移前实测（模型网关运行时 6 项 + 系统路由 2 项），宿主 config 的其余字段一概不进契约。**宿主注入已落盘**（2026-09-20 复核：`apps/server/src/main.ts:239` 的 `"model-management"` 块给齐 8 项，`modelGatewayAdminKey` / `modelGatewayCredentialEncryptionKey` 未配置时为 `undefined`，包侧据此判定「网关未启用」而不是退化成无鉴权网关）。缺字段的失败路径与「错误不回显密钥值」由 `src/__tests__/module-config.test.ts` 覆盖。
+- **`./server/testing` 子路径**：替身（facade / service / repository / accessControl）与模块配置夹具（`createModelManagementModuleConfig` / `initializeModelManagementModuleConfig`，默认不带任何密钥）。今天的消费方只有包内用例；目标是宿主 `setup-mocks` 与包内共用同一份字段清单，接入属宿主侧 patch（实测 `apps/server/src/test-utils/setup-mocks.ts` 只登记 `identity` 与 `sandbox` 两份基线）。
+- **两个对外路由工厂的协议边界用例**（2026-09-20 补：此前 `/api/models` 与 `/api/system/model-gateway` 零用例）：`src/__tests__/api-models-routes.test.ts`（14 例）与 `src/__tests__/api-system-model-gateway-routes.test.ts`（9 例），装配方式与 `web/config/{models,providers}` 同款——注入 `src/__tests__/guard-stubs.ts` 的守卫替身加模块 / 服务替身，不触碰宿主 `apps/server`。三类协议边界（分页 / 子行定位属于第 4 类，单列在下方）：**认证**（缺主体 / 缺系统 key 时整组端点逐个 401，替身保持未打桩，绕守卫的请求会以「未打桩」抛错失败）、**身份与组织隔离**（`/api/models` 的 body 与 query 不能改写 actor；跨组织不可见一律 404 而非 403——403 会确认资源存在；系统面的 `gatewayProviderId` 由服务层解析，query 同名参数被 schema 剥离）、**凭据不外泄**（Provider 详情 / 列表响应无 `apiKey` 明文；`/keys` 只投影白名单字段，服务返回的 `encryptedCredential` / `apiKey` 不进响应；`/config` 不回显 `modelGatewayAdminKey`；失败分支只回通用文案，不回显可能带密钥的上游正文）。
+  - **「全部端点 401」这条循环的区分力上限（2026-09-20 订正注释）**：`/api/models` 的 10 个 handler 自己就有 `if (!actor) return error(401)`，而守卫替身在未解析出主体时只是把 `null` 写进 `store.actor`、不拒绝请求；**守卫根本没挂上**时该循环同样全绿。它钉的是 401 的响应形状与错误码，「守卫已生效」由新增的**「守卫把会话主体写入 store，列表按该主体身份过滤」**用例单独证明（替身 Facade 按传入 actor 的组织返回不同条目，两次换身份请求各自拿到本组织数据）。`/api/system/model-gateway` 的同类循环靠「服务替身全部未打桩」保持区分力（守卫缺席会以服务抛错失败，而不是 401）。
+  - **子表端点的覆盖**（2026-09-20 补：`GET /providers/:providerId/models` 与 `.../models/:id` 此前只出现在 401 循环里、被 null-actor 短路，从未触达 handler）：新增 5 例覆盖子行分页切片（`total` 为子行全集条数）、越界页返回空 `items` 但保留 `total`、按行 ID 定位详情并投影 `options`、行 ID 不存在时的 404、Provider 不可见时列表与详情的 404；同级还补了 `GET /providers` 自身的分页切片（`total` 为全集条数）。
 
-**本包尚未收敛到该形态**，这是本节要追踪的差异：五个路由文件都是 `export default app`，守卫由包内直接导入取得——`@server/plugins/auth` 的 `authGuardPlugin`（`src/routes/api/models.ts`、`src/server/routes/web/config/{models,providers}.ts`、`src/server/routes/web/model-gateway.ts`）与 `@server/plugins/system-api-auth` 的 `systemApiAuthPlugin`（`src/server/routes/api/system-model-gateway.ts`）。
+## web 面与 i18n
 
-必须改成「工厂 + 守卫注入」的原因与 sandbox 相同：Elysia 的 `macro` / `state` 是实例作用域的，父实例无法向已构造的子实例回填；守卫必须与宿主的认证解析（含 `setTestAuth` 测试 seam 与组织上下文）是同一份实例，否则两份同名实例会被按 plugin `name` 去重，先构造的一方静默生效。
+- **浏览器出口 `web/index.ts` 是唯一公开面**（`exports["./web"]` 的目标，16 条 `^export`）。跨包实测需求（2026-09-20，`command grep -rn "@fenix/model-management" packages apps`）与覆盖情况：
+  - `@fenix/agent-config/web`（`agent-editor/use-agent-editor.ts`、`agent-editor/agent-editor-model.ts`）取 `modelApi`、`getModelProviderKey`、`isExternalModelProvider`，并懒加载 `ModelIcon`；
+  - 宿主路由 `apps/web/src/routes/agent/_panel/algorithms.tsx` 懒加载 `module.AlgorithmsPage`；
+  - 宿主 `apps/server` 侧消费 `./server`（路由工厂、模块运行时、schema）与 `./server/testing`。
+  - `EmbeddingModelManager` 已移入 `@fenix/resource-knowledge/web`，本包不再依赖该包（收敛理由见「已知项」；`@fenix/resource-knowledge` 已从 `package.json` 的 `dependencies` 移除）。
+  资源间引用只经对方包根入口（实测 `command grep -rnE '@fenix/[a-z-]+/(src|web/src)/' src web` → **0 行**）；宿主 `apps/web/vite.config.ts` 里仍有一批 `@/src/api/models` → 本包文件的别名，那是宿主侧装配（§1.6），不构成本包对宿主的依赖。
+- **浏览器安全由值导入图守护**：`web/__tests__/model-management-browser-surface.test.ts` 从 `web/index.ts` 出发递归走值导入图（`@fenix/<pkg>/<subpath>` 经对方 `exports` 解析到真实源文件后继续递归，遍历口径在 `web/__tests__/value-import-graph.ts`），白名单只留 9 条浏览器安全外部依赖（`react` / `react-i18next` / `i18next` / `@tanstack/react-router` 四个 peer，加 `@lobehub/icons` / `ahooks` / `lucide-react` / `recharts` / `sonner` 五个本包 dependencies），workspace 包一律不收录。断言覆盖 `node:*`、`@server/*`、宿主别名 `@/...`、exports 未声明或目标缺失、自我回环、白名单外依赖，并有一条注入本包 `./server` 出口的负例。断言只对**本包文件发出的引用**生效（`ownRefs`）：递归会进入兄弟包源码，它们的问题由各自包内的同款守卫评审。包内 web 零宿主别名（实测 `command grep -rnE 'from "@/' web` → **0 行**）。
+- **i18n 自持**：`web/i18n/{namespace.ts,index.ts,locales/{en,zh}/models.json}`。`MODELS_NS = NS.MODELS = "models"` 取自 `@fenix/web-runtime/i18n/namespace` 的共享 NS 表；`web/i18n` 是独立子路径，宿主注册字典必须走它而不是 `./web` 根入口（宿主 i18n 模块在应用启动时求值，从根入口导入会把整张模型管理页面图拉进首屏 bundle）。字典每语言 **386 个叶子**，由四个来源合成，前三个来源逐键对稳定快照核对（2026-09-20 实测：**0 缺键、0 值差异**，en / zh 各一份）：
+  1. 宿主 `models` 命名空间 `apps/web/src/i18n/locales/{en,zh}/models.json` 的 200 个键整体迁入（消费方只有本包页面：实测全仓除宿主注册行 `apps/web/src/i18n/index.ts:103,131` 外，无第二处 `useTranslation("models")` / `NS.MODELS`）；
+  2. observer 命名空间 `modelGateway.*` 的 171 个键（取值来自快照 `git show HEAD:packages/resources/observer/web/i18n/{en,zh}/observer.json`；observer 侧同批删除并把「不得回流」钉进 `observer-i18n.test.ts:102`）；
+  3. 宿主 `components` 命名空间 `modelConfig.*` 的 6 个键，加两个宿主两语言都缺、组件一直在用（渲染为 key 回显）的键 `modelConfig.updateSuccess` / `modelConfig.updateError`，共 8 个；另有 2 个按本包语义复制字符串的键 `admin.gateAuthFailed` / `admin.loading`（值逐字取自 observer 的 `login.error` / `states.loading`，不整体搬迁那两组）。
+  4. 2026-09-20 的 §1.3 缺口修复新增 5 个状态 / 可访问名键（前三个来源的 381 键不动）：`gateway.forbidden`（401/403 终态文案）与 `verticalModels.{searchLabel,emptyTitle,emptyDescription,clearSearch}`（搜索框可访问名、空态两行文案与「清空搜索」出口）。
+  断言在 `web/__tests__/model-management-i18n.test.ts`（en/zh 键集一致、总量与三组迁入键数量钉死、源码字面量键无缺、模板字面量动态键齐备、命名空间常量与文件名一致、包内页面不引用第三个命名空间）。
+- **JSON 路径保持原样**：`web/i18n/locales/{en,zh}/models.json` 不改名不挪目录——宿主注册按这两个相对路径 import。**切换已落盘**：`apps/web/src/i18n/index.ts:14` 从 `@fenix/model-management/web/i18n` 取 `MODELS_NS` / `modelManagementResources`，`:115,:129` 登记到 `NS.MODELS`，宿主副本 `apps/web/src/i18n/locales/{en,zh}/models.json` 已删除（原「待编排者落盘的宿主 patch」因此只剩兄弟包部分）。
 
-归属：路由工厂化与 `@server/**` 依赖清除同属阶段 2 §1.5 的宿主挂载（本包 W2 切片）；在此之前不再新增第二套装配路径。
+## 边界残留
 
-## 配置与 DB
+1. **表定义仍在宿主（唯一的宿主内部依赖）**：实测 `command grep -rnE 'from "@server/' src | grep -vE ':[0-9]+: *\*'` → **6 行，全部是 `@server/db/schema`**（生产 5 个文件：`server/access/provider-resource.ts`、`repositories/{provider-resource,model-resource,model-gateway-credential,subject-agent-search}.ts`；测试 1 处 `__tests__/model-gateway-schema.test.ts`）。除这一精确路径外包内无任何 `@server/*` 导入。表定义、DDL 与迁移归任务 1.7。
+2. **`agent_config` 的只读投影（跨包直读表的已记录例外）**：`src/server/repositories/subject-agent-search.ts` 在 `/api/system/model-gateway/*` 的系统管理面按组织 / 用户 / 关键字全局分页检索 Agent。表归 `@fenix/agent-config`，而它的 `./server` 入口今天只提供受控 `list`（需要 actor 与 `ResourceQueryConstraint`）与按 ID / 名称定位的函数，没有全局检索，因此本切片把这段查询收进本包仓储、只读、不写对方表、不复制对方的领域规则。移除条件：对方在 `./server` 暴露全局检索后，本文件退化为薄适配层或删除。文本层的 `subject-service.ts` 已不再接触 DB 句柄。
+3. **包内 tsconfig 与宿主别名映射已删除**：原 `packages/resources/model-management/tsconfig.json` 的 `extends` 指向宿主 `apps/web/tsconfig.json`（用向上三级的相对路径，正是计划 §1 静态条件 3 要清零的形态），并映射 `@/...` / `@server/*`（review §6.6 记的「宿主别名映射」）。实测该命令在本包命中删除前 1 行、删除后 **0 行**（该行即本文件被删除前的那条 `extends`）。仓库没有任何门禁使用它（CI 只跑根 `tsc --noEmit` 与 `tsc -p apps/web/tsconfig.json`），故按「删除优于兼容」删除，同时移除随之失效的 `typecheck` 脚本。金样本 sandbox 同样没有 tsconfig。
+4. **需要编排者落盘的宿主 patch**（包切片禁写 `apps/**`、`scripts/**`）：
+   1. `apps/server/src/main.ts:165` 的 `initializeApplicationInfrastructure({ moduleConfigs })` 增加 `"model-management"` 块（`modelGatewayType` / `modelGatewayBaseUrl` / `modelGatewayPublicBaseUrl` / `modelGatewayAdminUiUrl` / `modelGatewayAdminKey` / `modelGatewayCredentialEncryptionKey` / `modelGatewayDefaultUserBudgetUsd` / `modelGatewayDefaultBudgetDuration`，取值来自宿主 `config`）。**2026-09-20 复核：已落地**——`apps/server/src/main.ts:239` 给齐 8 项，启动期不再因缺模块配置抛错。
+   2. `apps/server/src/main.ts:47-48` 改工厂导入并传依赖（`createApiModelsRoutes({ authGuardPlugin })`、`createApiSystemModelGatewayRoutes({ systemApiGuardPlugin })`），同批更新它们的 `.use(...)` 挂载点。**2026-09-20 复核：已落地**（`main.ts:55` 从 `@fenix/model-management/server` 取工厂）。
+   3. `apps/server/src/routes/web/index.ts:7` → `createWebModelGatewayRoutes({ authGuardPlugin })`。**2026-09-20 复核：已落地**。
+   4. `apps/server/src/routes/web/config/index.ts:2` → `createWebConfigModelsRoutes({ authGuardPlugin, userModelPreferences })` 与 `createWebConfigProvidersRoutes({ authGuardPlugin, resolveSecretReference })`。**2026-09-20 复核：已落地**。
+      以上 2–4 是 W2 全波次的同一类改动（同文件里 agent-config / knowledge / machine / mcp / observer / prod-view / skill / task / workflow / channel / memory 的路由也都已改成工厂名），宿主重挂载属 §1.5。复核时 `bunx tsc --noEmit` 与 `bunx tsc -p apps/web/tsconfig.json --noEmit` 均已零输出，原先「全仓 44 条错误里 5 条命中本包旧名」的当次快照不再成立（判据仍是本包目录内 0 条）。
+   5. `apps/web/src/i18n/index.ts`：`:37/51` 的 import 与 `:103/131` 的注册改指 `@fenix/model-management/web/i18n` 的 `modelManagementResources`，随后删除宿主副本 `apps/web/src/i18n/locales/{en,zh}/models.json`（各 200 键，值已逐键核对相同）。**2026-09-20 复核：已完成**——宿主改从 `@fenix/model-management/web/i18n` 取 `MODELS_NS` / `modelManagementResources`（`:14`）并在 `:115,:129` 登记，宿主副本已删除；同文件原先深链 observer 旧布局的第二条阻断也随全包 i18n 出口化一并消失。
+   6. `apps/web/src/i18n/locales/{en,zh}/components.json`：删除 `modelConfig` 组（各 6 键，已迁入本包，键名与值逐条核对相同）。**2026-09-20 复核：仍未落地**——宿主 `components.json:317` 该组还在，而唯一消费方 `web/components/config/ModelConfigDialog.tsx:47` 已改取 `MODELS_NS`，即这 6 键宿主侧已是死键，删除不影响任何界面文案。
+   7. `apps/web/src/routes/admin.tsx:17`：`{ to: "/admin/model-gateway", labelKey: "modelGateway.nav" }` 的 labelKey 现在落在 `models` 命名空间，而该布局用的是 `useTranslation("observer")`（`:30`），需按项指定命名空间，否则该导航项回显 key。**2026-09-20 复核：已落地**（该行已带 `ns: MODELS_NS`）。
+   8. 宿主 schema 收敛：`apps/server/src/schemas/api-model.schema.ts` 与 `config.schema.ts` 已无消费者（实测 `command grep -rn "api-model.schema\|schemas/config.schema" apps packages` 在宿主侧零命中），直接删除；`apps/server/src/schemas/peri-task-details.ts` 仍被 `apps/server/src/routes/web/peri-task-details.ts:11` 按相对路径 import（该路由第 3 行已经从本包取 `createPeriTaskDetailStore` / `getPeriTaskDetail`），两份 schema 内容一致（diff 只差本包多出的文件头注释），需先把该 import 改指 `@fenix/model-management/server` 再删除宿主副本，否则同一份协议会在两处并存。**但 `peri-task-details` 这一份按 W2.5 编排者裁定不在本轮处理**（「`@server/schemas/peri-task-details` → 不在本轮迁移；归属延后到 W4，宿主副本不删」），因此 W3 只删 `api-model.schema.ts` 与 `config.schema.ts`，这份的收敛条件改记 W4。**2026-09-20 复核：前半已落地**（宿主 `apps/server/src/schemas/` 下两份已不在，只剩 `peri-task-details.ts` 与按本包形状重建的 `index.ts`），`peri-task-details` 的迁移仍归 W4。
+   9. `scripts/architecture/exceptions.json` 的三条台账已失真：`:303` 的 `apps-boundary @fenix/model-management → @fenix/server-app` 写着「38 处 / 16 文件」，实测降为 6 行 / 5 文件且全是 `@server/db/schema`（按计划 §5 改 rationale、owner 改 1.7，条目保留）；`:407` 的 `web-package-not-to-app` 写着「85 处 / 23 文件」，实测本包 web 零 `@/`；`:239` 的 `no-cross-package-src:packages/chat-channel`「2 处内部穿透」，实测代码零命中（仅剩原 tsconfig 的映射，已随第 3 条删除）。
+5. **跨包（非 `apps/**`）的连带改动**：`packages/resources/knowledge/web/__tests__/knowledge-browser-surface.test.ts` 钉的跨包入口清单原含 `packages/resources/model-management/web/index.ts`，已在 `EmbeddingModelManager` 收归后移除；同文件白名单与「web 子图不导入本包的 server / module 出口」断言按各自包口径收窄（本包守卫用 `ownRefs` 只查自己发出的引用）。observer 侧 `modelGateway.*` 的删除已由 observer 切片完成并钉进它的 i18n 断言。
+6. **`/web/model-gateway/:providerId/usage` 的错误码语义变化（2026-09-20，§1.3 缺口修复 D1）**：此前该 handler 把一切失败收敛成 400 `MODEL_GATEWAY_ERROR`，而用量页的 forbidden 分支只在 `UNAUTHORIZED` 时成立——于是「Provider 不可见」在页面上走可重试分支，渲染出一个**必然失败**的重试按钮。现在按失败性质二分：Provider 对当前调用者不可见（Facade 读不到行，`ModelGatewayProviderNotVisibleError`）→ **403** 且 `code` 固定为 `UNAUTHORIZED`（前端 `normalizeErrorCode` 只放行这个已知码，自定义码会原样透传，页面就再也匹配不到 forbidden 分支）；其余上游/网关类失败（含 Provider 不是本网关类型、上游不可达）→ 保持 400。
+   - **影响面：仅控制台用量页**。该端点的消费方只有本包页面（实测 `command grep -rn "queryMyModelGatewayUsage" packages apps --exclude-dir=dist --exclude-dir=node_modules` → **3 行**，全部在本包：api 定义 1 行 + `ModelGatewayUsagePage.tsx` 2 行；`apps/**` 零引用，宿主只做挂载）。这是 `/web/*` 内部端点的错误码收敛，不涉及 `/api/*` 稳定契约，也不改响应字段形状。
+   - **理由**：把「确定性的权限结果」与「可能自愈的故障」分开，页面才能对前者不给重试入口（否则用户对着必然失败的按钮反复点击）；顺带修掉了该分支原先 `catch (_cause)` 吞掉诊断上下文、且失败原因不进日志的问题（现在非权限失败按 `logError` 记录）。
+   - **判据**：`src/__tests__/web-model-gateway-usage-route.test.ts`（4 例：不可见→403 且码为 `UNAUTHORIZED`、上游失败→400 且不回显上游正文、非本网关类型→400、query 不能改写被查询用户）与 `web/__tests__/model-gateway-usage-page-states.test.tsx`（2 例：403 不给重试按钮、400 重试后渲染成功态）。
 
-- 不读 `process.env`、不读 `.env`。网关配置统一经 `@server/config`（宿主 `apps/server/src/env.ts` 已校验）读取，且读取点都在 `createModelGatewayRuntime` 调用时：`modelGatewayAdminKey`、`modelGatewayCredentialEncryptionKey`、`modelGatewayBaseUrl`、`modelGatewayAdminUiUrl`、`modelGatewayPublicBaseUrl`、`modelGatewayType`、`modelGatewayDefaultUserBudgetUsd`、`modelGatewayDefaultBudgetDuration`。
-- DB 句柄与表对象仍来自宿主：`import { db } from "@server/db"`，表来自 `@server/db/schema` 的 `provider` / `model` / `model_gateway_credential` / `agent_config`（台账 `apps-boundary`，owner 1.5，38 处 / 16 文件）。
-- 本包自有表为 `provider`、`model`、`model_gateway_credential`；`agent_config` 只是系统路径的只读引用，其资源定义属 `@fenix/agent-config`。
-- 网关凭据经 `model-gateway/credential-cipher.ts` 用本地密钥加密后落库；密钥、明文凭据出现在日志、错误响应或测试 fixture 中都视为缺陷。
+## 已知项
 
-## 边界外的已知项
-
-- **没有 `web/index.ts`**：`package.json` 的 `"./web"` 与 `"."` 当前同指 `./src/index.ts`，是 §1.6 下沉前的临时目标；改指 `./web/index.ts` 与浏览器面收敛同批（W2 切片 / §1.6）。
-- **路由不是工厂**：见上节，归 W2 切片 / §1.5 宿主挂载。
-- **没有 `src/module.ts` 单例**：`fenix.module.ts` 因此不声明 `create`（模块组合根属 W2 切片）；当前宿主显式调用 `createModelManagementServerModule` + `installModelManagementModule`。
-- **表定义仍在宿主**：`provider` / `model` / `model_gateway_credential` / `agent_config` 的 Drizzle 对象与 `db` 句柄都 import 自 `@server/db*`，迁出归 §1.7。
-- **`web/` 文案未自持**：本包没有 `i18n/` 目录；页面经 `react-i18next` 使用宿主的 `models` 命名空间（`apps/web/src/i18n/locales/*/models.json`）与 `@fenix/resource-observer` 的 `observer` 命名空间，文案资源下沉归 §1.6。
-- **`web/src/**` 是残留层级**：`web/src/pages/agent-panel/**` 只剩 `AlgorithmsPage` / `EmbeddingModelManager`，由 `src/index.ts` 直接 re-export，与 `web/pages/**` 并存；W2 下沉时收敛为一层。
-- **`web/**` 仍引用宿主实现**：`@/components/ui`、`@/src/api`、`@/src/types` 等 `@/` 别名导入（台账 `web-package-not-to-app`，owner 1.6，85 处 / 23 文件）。
-- **`@fenix/web-runtime` 已声明未使用**：`package.json` 有该 workspace 依赖，包内无任何导入；接入点应是 §1.6 的 WebShell 装配，接入前不删除也不扩用。
+- **两个测试文件曾因兄弟包 / 宿主的导入期副作用变红（已消解，2026-09-20 复核）**：`web/__tests__/provider-model-resource-access-flow.test.ts` 与 `web/src/__tests__/agent-editor-model.test.ts` 经 `@fenix/agent-config/web` 递归进链，在无 DOM 的 `bun test` 进程里曾整文件 0 断言执行。原因是宿主 i18n 深链 observer 旧布局（`Cannot find module`）与宿主 preload 把 `globalThis.window` 置成 globalThis 后 `antd-style` 的 SSR 守卫裸调 `matchMedia`。宿主 i18n 全面改走各包 `/web/i18n` 出口后两条阻断都不再命中：单跑这两个文件是 **32 pass / 0 fail（74 断言）**，全包 `bun test packages/resources/model-management` 为 **222 pass / 0 fail（30 files）**（2026-09-20 §1.3 缺口修复后复测；修复前基线 210 / 28）。文件头仍留着当时的成因说明，属历史记录。
+- **页面状态由纯逻辑 + 渲染级用例共同守护（2026-09-20 订正）**：`package.json` 仍**未**声明 `happy-dom` / `react-dom`，二者来自仓库根 `devDependencies`（与 prod-view / workflow 的组件用例同一来源，不新增本包依赖面）。所以「`bun test` 进程里无法渲染页面组件」的旧结论不再成立：本包已有渲染级用例 `web/__tests__/model-gateway-usage-page-states.test.tsx`（happy-dom + react-dom/client，模块作用域 `mock.module` 替身 + `afterEach` 调 `mock.restore()`，与 `packages/resources/prod-view/web/__tests__/prod-view-list-states.test.tsx` 同款写法），覆盖用量页「403 不给重试按钮」「400 重试后渲染成功态」。可判定的规则仍尽量提到纯模块再断言：`web/lib/model-gateway-usage.ts` 的 `classifyUsageFailure`（401/403 归一码 `UNAUTHORIZED` 是终态、不给重试 vs 其余失败给重试；服务端为什么返回 403 见「边界残留」第 6 条）与 `web/lib/vertical-models.ts` 的 `filterVerticalModels`（四类字段命中 / 无匹配 → 空态），用例见 `web/__tests__/model-gateway-usage-failure.test.ts` 与 `web/__tests__/vertical-models-filter.test.ts`。**其余页面的渲染分支仍未覆盖**（`role="status"` / `aria-busy` / 空态的「清空搜索」出口等）：仅由 `tsc -p apps/web/tsconfig.json` 与 `model-management-i18n.test.ts` 的「源码字面量 `t("…")` 键必须在字典内」间接守住文案不漏键。移除条件：为其余页面按同一替身写法补渲染级用例。
+- **`/api/system/model-gateway` 的组织隔离没有直接断言（已登记的覆盖缺口，不修）**：该面按设计**不按组织过滤**数据——它由系统 key 把关，可见范围交给服务层按 Fenix 主体解析（`key-management` / `budget` / `subject` 各自的用例覆盖），因此「跨组织模型 / 凭证不可见不可改」在本包的路由用例里没有断言落点：断言它等于给系统管理面补一条它本不该有的组织过滤，方向错误。现有的替代边界覆盖见 `src/__tests__/api-system-model-gateway-routes.test.ts`：整组端点由守卫把关（服务替身全未打桩，守卫缺席即抛错失败）、`gatewayProviderId` 不可由 query 改写（调用方不能把查询指到别的网关 Provider）、`/keys` 只投影白名单字段、失败分支不回显上游正文。移除条件：宿主侧补一条系统管理面的端到端合同用例（真实 DB + 跨组织夹具）后，本条退化为指针。
+- **`web/src/__tests__/agent-editor-model.test.ts` 位置不对**：被测实现属 agent-config（编辑器表单模型），文件落在本包是任务 1.2 按目录整体迁移的残留，归宿应是 agent-config 的 `web/__tests__/`；移动它会同时改两个包的测试面，留待两包同批收敛。
+- **knowledge ↔ model-management 的页面级环（已闭环，2026-09-20）**：原状是 knowledge 的 `AgentKnowledgeBasesPage` 取本包 `EmbeddingModelManager`，而 `EmbeddingModelManager` 又取 `@fenix/resource-knowledge/web` 的 `embeddingModelApi` 与类型，值导入图成环。已按方向一收敛：组件连同它的 api 用法整体移入 `@fenix/resource-knowledge/web`，`@fenix/resource-knowledge` 从本包 `dependencies` 移除，两包之间不再有值导入边。曾短暂尝试过给 knowledge 开 `./web/models` 深层子路径，但那是错的方向——`task/web/__tests__/task-browser-surface.test.ts` 的「兄弟资源包只经包根 web 出口进入」守卫明确禁止深层子路径，该子路径已删除。移除条件：无（收敛后无残留）。
+- **`EmbeddingModelManager` 的归属依据**：它管理的是 RAGFlow 的 embedding 模型（数据面是 knowledge 的路由 `POST /web/knowledgeBases/models`），唯一消费方是 knowledge 的页面，且不依赖本包任何内部模块——归 knowledge 是「资源类型 + 表 + 归属列」口径下的单归属，本包仍保留平台侧 LLM provider / model 注册表与 model gateway。
+- **`web/src/**` 是残留层级**：`web/src/pages/agent-panel/**` 与 `web/src/__tests__/**` 与 `web/pages/**` 并存，`web/index.ts` 同时从两处转出（`AlgorithmDetailDialog`、`AlgorithmsPage`）。收敛前提是宿主路由的懒加载路径一起改，否则会牵动 `apps/web` 装配。
+- **未声明 `manifest.contributions` 与 `manifest.web`**：消费方分别是 §1.5 的宿主挂载（`mountContribution`）与 §1.6 的 WebShell 装配，形状需与消费端同时定型；当前宿主按显式调用装配（路由工厂注入守卫），不形成第二套装配路径。
+- **`dependsOn: ["agent-config"]` 之外的装配面依赖不进 `dependsOn`**：`web/pages/admin/AdminModelGatewayPage.tsx` 值导入 `@fenix/resource-sandbox/web`（`MasterKeyGate` / `SearchableUsageFilter`），属浏览器侧模块依赖（§1.6 的 web 列表）；`src/services/peri-task-detail-store.ts` 值导入 `@fenix/chat-channel` 与其 `/server` 子路径，而该包尚未提供 manifest、不在资源包装配集内——它注册为模块时装配依赖反向校验会强制补上这条边。
+- **仓库级 `tsc` 的当次 44 条错误**：0 条在本包目录内；除宿主重挂载的 5 条（见「边界残留」第 4 条）外，其余分布在 `apps/server/**` 与 `packages/agent-runtime/**`（`AuthContext` / `ActorContext` 迁移未收口的同类问题），非本切片引入，本切片不顺手修。计数随并行切片变动，判据是「`bunx tsc --noEmit | grep packages/resources/model-management` 无输出」。

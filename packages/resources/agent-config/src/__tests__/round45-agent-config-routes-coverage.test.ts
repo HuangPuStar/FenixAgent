@@ -2,10 +2,17 @@ import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { resetAllStubs, stubDb } from "@fenix/platform-sdk/testing";
 import { InvalidKnowledgeBindingError } from "@fenix/resource-knowledge/server";
 import { agentSiteApp, knowledgeBase, machine, mcpServer, model, provider, skill } from "@server/db/schema";
-import { resetTestAuth, setTestAuth } from "@server/plugins/auth";
-import { setTestOrgContext } from "@server/services/org-context";
-import { stubConfigPg } from "@server/test-utils/stubs/config-pg-stub";
-import { authorizedAgent, installAgentModuleStub, resetAgentModuleStub } from "./fixtures";
+import { createWebConfigAgentsRoutes } from "../server/routes/web/config/agents";
+import { initializeAgentConfigModuleConfig } from "../server/testing";
+import {
+  authorizedAgent,
+  createTestAgentPreferencesPort,
+  installAgentModuleStub,
+  resetAgentModuleStub,
+  resetAgentPreferences,
+  stubAgentPreferences,
+} from "./fixtures";
+import { createStubSessionAuthGuardPlugin, resetTestAuth, setTestAuth } from "./guard-stubs";
 
 /**
  * `/web/config/agents` 详情视图的补充覆盖（S4 接缝迁移）。
@@ -15,7 +22,10 @@ import { authorizedAgent, installAgentModuleStub, resetAgentModuleStub } from ".
  * 各自的接缝上，用例不会因为替换了绑定来源而丢掉标签解析的覆盖。
  */
 
-const route = (await import("../server/routes/web/config/agents")).default;
+const route = createWebConfigAgentsRoutes({
+  authGuardPlugin: createStubSessionAuthGuardPlugin(),
+  userAgentPreferences: createTestAgentPreferencesPort(),
+});
 
 function request(path: string) {
   return route.handle(new Request(`http://localhost${path}`));
@@ -64,20 +74,17 @@ function installDbRows(byTable: {
 
 describe("round45 Agent 配置路由补充覆盖", () => {
   beforeEach(() => {
-    resetAllStubs();
+    // 复位替身并初始化应用基础设施（DB 句柄经转发代理，见 `../server/testing.ts`）。
+    initializeAgentConfigModuleConfig();
     resetAgentModuleStub();
-    setTestAuth({
-      user: { id: "user-1", email: "user-1@example.test", name: "Tester" },
-      authContext: { organizationId: "org-1", userId: "user-1", role: "owner" },
-    });
-    setTestOrgContext({ organizationId: "org-1", userId: "user-1", role: "owner" });
-    stubConfigPg({ getUserConfig: async () => ({ defaultAgent: null }) });
+    setTestAuth({ organizationId: "org-1", userId: "user-1" });
+    stubAgentPreferences({});
   });
 
   afterEach(() => {
     resetAgentModuleStub();
     resetTestAuth();
-    setTestOrgContext(null);
+    resetAgentPreferences();
     resetAllStubs();
   });
 

@@ -33,7 +33,13 @@
   "type": { "local": "本地进程", "remote": "远程服务" },
   "status": { "enabled": "已启用", "disabled": "已停用" },
   "actions": { "more": "更多插件操作" },
-  "loadState": { "title": "插件目录加载失败", "retry": "重试" },
+  "loadState": {
+    "title": "插件目录加载失败",
+    "retry": "重试",
+    "loading": "正在加载插件目录",
+    "unauthorizedTitle": "无权查看插件目录",
+    "unauthorizedHint": "当前账号或所在组织已没有 MCP 插件的访问权限。请切换组织，或联系管理员开通权限——重试不会改变授权结果。"
+  },
   "errors": { "sharingUnavailable": "无法管理此插件的共享状态" },
   "column": {
     "name": "名称",
@@ -65,7 +71,9 @@
     "nameImmutable": "名称创建后不可修改",
     "manualTab": "手动配置",
     "jsonTab": "mcp.json 导入",
-    "importAction": "导入"
+    "importAction": "导入",
+    "loadDetailFailed": "无法加载该服务器的配置",
+    "loadDetailFailedHint": "现在保存只会再报一次校验错误。请重试，或关闭弹窗后重新打开。"
   },
   "form": {
     "name": "名称",

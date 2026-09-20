@@ -3,8 +3,8 @@ import { Window } from "happy-dom";
 import { List, Network } from "lucide-react";
 import { act, createElement, useState } from "react";
 import { createRoot } from "react-dom/client";
-import { initializeHappyDomWindow } from "../../../../../apps/web/src/__tests__/happy-dom-window";
 import { MemoryViewSwitcher } from "../pages/hindsight/components/MemoryViewSwitcher";
+import { initializeHappyDomWindow } from "./happy-dom-window";
 
 (globalThis as Record<string, unknown>).IS_REACT_ACT_ENVIRONMENT = true;
 

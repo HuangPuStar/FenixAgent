@@ -1,15 +1,16 @@
-import { AlertCircle, Eye, Fingerprint, Globe, Lightbulb, Network, RefreshCw, Search } from "lucide-react";
+import { WorkbenchPanel } from "@fenix/ui-components/components/WorkbenchPanel";
+import { Input } from "@fenix/ui-components/ui/input";
+import { Skeleton } from "@fenix/ui-components/ui/skeleton";
+import { NS } from "@fenix/web-runtime/i18n/namespace";
+import { Eye, Fingerprint, Globe, Lightbulb, Network, Search } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Skeleton } from "@/components/ui/skeleton";
-import { hindsightApi } from "@/src/api/hindsight";
-import { WorkbenchPanel } from "@/src/components/agent-panel/WorkbenchPanel";
-import { NS } from "@/src/i18n";
+import { hindsightApi } from "../../api/hindsight";
 import { DataView as HindsightDataView } from "./components/DataView";
 import { EntitiesView } from "./components/EntitiesView";
+import { HindsightFailureNotice } from "./components/HindsightFailureNotice";
 import { MentalModelsView } from "./components/MentalModelsView";
+import { type HindsightFailure, toHindsightFailure } from "./failure";
 
 type MemoryPerspective = "world" | "experience" | "observation" | "mental-models" | "entities";
 type FactPerspective = Extract<MemoryPerspective, "world" | "experience" | "observation">;
@@ -60,20 +61,20 @@ export function MemoriesPage() {
   const { t } = useTranslation(NS.HINDSIGHT);
   const [loading, setLoading] = useState(true);
   const [enabled, setEnabled] = useState(false);
-  const [statusError, setStatusError] = useState(false);
+  const [statusFailure, setStatusFailure] = useState<HindsightFailure | null>(null);
   const [perspective, setPerspective] = useState<MemoryPerspective>("world");
   const [searchInput, setSearchInput] = useState("");
   const [searchQuery, setSearchQuery] = useState("");
 
   const loadStatus = useCallback(async () => {
     setLoading(true);
-    setStatusError(false);
+    setStatusFailure(null);
     try {
       const status = await hindsightApi.getStatus();
       setEnabled(status.enabled);
     } catch (error) {
       console.error("Failed to get Hindsight status:", error);
-      setStatusError(true);
+      setStatusFailure(toHindsightFailure(error));
     } finally {
       setLoading(false);
     }
@@ -85,7 +86,11 @@ export function MemoriesPage() {
 
   if (loading) {
     return (
-      <div className="flex h-full min-h-0 flex-col overflow-hidden bg-muted/30 px-4 py-5 text-foreground sm:px-8 sm:py-7">
+      // 骨架屏没有可朗读文本，故用 `aria-busy` 表达「区域正在取数」而不是空挂 role="status"。
+      <div
+        className="flex h-full min-h-0 flex-col overflow-hidden bg-muted/30 px-4 py-5 text-foreground sm:px-8 sm:py-7"
+        aria-busy="true"
+      >
         <div className="mb-4 shrink-0 space-y-2">
           <Skeleton className="h-7 w-28 rounded-md" />
           <Skeleton className="h-3 w-56 rounded-md" />
@@ -98,16 +103,16 @@ export function MemoriesPage() {
     );
   }
 
-  if (statusError) {
+  if (statusFailure) {
     return (
       <div className="grid h-full min-h-0 place-items-center overflow-hidden bg-muted/30 px-4 py-5 text-foreground sm:px-8 sm:py-7">
         <div className="flex flex-col items-center justify-center gap-3 py-16 text-center" role="alert">
-          <AlertCircle className="size-8 text-destructive" />
-          <p className="text-sm font-medium">{t("status.loadFailed")}</p>
-          <Button variant="outline" size="sm" onClick={() => void loadStatus()} disabled={loading}>
-            <RefreshCw className={`size-4 ${loading ? "animate-spin" : ""}`} />
-            {t("status.retry")}
-          </Button>
+          <HindsightFailureNotice
+            failure={statusFailure}
+            titleKey="status.loadFailed"
+            retryKey="status.retry"
+            onRetry={() => void loadStatus()}
+          />
         </div>
       </div>
     );

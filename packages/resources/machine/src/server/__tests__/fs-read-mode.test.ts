@@ -7,17 +7,21 @@ import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { resetAllStubs } from "@fenix/platform-sdk/testing";
-import { setConfig } from "@server/config";
-import { resetTestAuth, setTestAuth } from "@server/plugins/auth";
-import { stubEnvironmentRepo } from "@server/test-utils/stubs/module-stubs";
+import { createStubSessionAuthGuardPlugin, resetTestAuth, setTestAuth } from "../../__tests__/guard-stubs";
+import { createWebFsRoutes } from "../routes/web/fs";
 import { resolveWorkspacePath } from "../services/workspace-fs";
+import {
+  initializeMachineModuleConfig,
+  lockMachineWorkspaceRoot,
+  stubMachineEnvironmentRecord,
+  unlockMachineWorkspaceRoot,
+} from "../testing";
 
 const ORG_ID = "org-1";
 const USER_ID = "user-1";
 const ENV_ID = "env-1";
 
-const fsRoutes = await import("../../routes/web/fs");
+const fsRoutes = createWebFsRoutes({ authGuardPlugin: createStubSessionAuthGuardPlugin() });
 
 let workspaceRoot: string;
 
@@ -35,13 +39,11 @@ function stubAuth() {
 }
 
 function stubEnvironment() {
-  stubEnvironmentRepo({
-    getById: async () => ({ id: ENV_ID, organizationId: ORG_ID, userId: USER_ID }),
-  });
+  stubMachineEnvironmentRecord({ id: ENV_ID, organizationId: ORG_ID, userId: USER_ID });
 }
 
 function handle(path: string, init?: RequestInit): Promise<Response> {
-  return fsRoutes.default.handle(new Request(`http://localhost/environments/${ENV_ID}${path}`, init));
+  return fsRoutes.handle(new Request(`http://localhost/environments/${ENV_ID}${path}`, init));
 }
 
 /** 写入二进制字节文件（绕过文本 API，构造含 NUL 的真实二进制） */
@@ -51,19 +53,18 @@ async function writeBinary(rel: string, bytes: number[]): Promise<void> {
 }
 
 beforeEach(async () => {
-  resetAllStubs();
+  initializeMachineModuleConfig();
   stubEnvironment();
   stubAuth();
   workspaceRoot = await mkdtemp(join(tmpdir(), "fs-read-mode-"));
-  process.env.WORKSPACE_ROOT = workspaceRoot;
-  setConfig({ defaultMachineId: undefined });
+  await lockMachineWorkspaceRoot(workspaceRoot);
 });
 
 afterEach(async () => {
   resetTestAuth();
   delete process.env.WORKSPACE_ROOT;
+  unlockMachineWorkspaceRoot();
   await rm(workspaceRoot, { recursive: true, force: true });
-  setConfig({ defaultMachineId: undefined });
 });
 
 describe("mode=text 显式失败语义", () => {

@@ -9,12 +9,19 @@ import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
 import { mkdtemp, rm, stat } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { resetAllStubs, stubDb } from "@fenix/platform-sdk/testing";
-import { setConfig } from "@server/config";
-import { resetTestAuth, setTestAuth } from "@server/plugins/auth";
-import { stubEnvironmentRepo, stubFileWsHandler } from "@server/test-utils/stubs/module-stubs";
+import { stubDb } from "@fenix/platform-sdk/testing";
+import { createStubSessionAuthGuardPlugin, resetTestAuth, setTestAuth } from "../../__tests__/guard-stubs";
+import { createWebFsRoutes } from "../routes/web/fs";
 import { REMOTE_UPLOAD_LIMIT_MESSAGE } from "../services/file-types";
 import { remoteUploadFiles } from "../services/remote-file-service";
+import {
+  initializeMachineModuleConfig,
+  lockMachineWorkspaceRoot,
+  stubFileWsTransport,
+  stubMachineConfig,
+  stubMachineEnvironmentRecord,
+  unlockMachineWorkspaceRoot,
+} from "../testing";
 
 const ORG_ID = "org-1";
 const USER_ID = "user-1";
@@ -23,31 +30,29 @@ const MACHINE_ID = "mach_1";
 
 const MB = 1024 * 1024;
 
-// 动态 import 路由模块。environmentRepo / file-ws-handler 的 mock 是实时转发
-// （setup-mocks.ts），属性访问总是转发到当前 stub，beforeEach 注入即可。
-const fsRoutes = await import("../../routes/web/fs");
+// 路由实例文件级构造一次：会话守卫替身按请求期读取当前会话（setTestAuth 即时生效）；
+// 环境读取与 file-ws 传输经包内句柄替换（stubMachineEnvironmentRecord / stubFileWsTransport）
+// 按调用时读取，beforeEach 或用例内注入即可。
+const fsRoutes = createWebFsRoutes({ authGuardPlugin: createStubSessionAuthGuardPlugin() });
 
 let workspaceRoot: string;
 
 beforeEach(async () => {
-  resetAllStubs();
-  stubEnvironmentRepo({
-    getById: async () => ({ id: ENV_ID, organizationId: ORG_ID, userId: USER_ID }),
-  });
+  initializeMachineModuleConfig();
+  stubMachineEnvironmentRecord({ id: ENV_ID, organizationId: ORG_ID, userId: USER_ID });
   setTestAuth({
     user: { id: USER_ID, email: "user@fenix.com", name: "user" },
     authContext: { organizationId: ORG_ID, userId: USER_ID, role: "owner" },
   });
   workspaceRoot = await mkdtemp(join(tmpdir(), "fs-upload-limit-"));
-  process.env.WORKSPACE_ROOT = workspaceRoot;
-  setConfig({ defaultMachineId: undefined });
+  await lockMachineWorkspaceRoot(workspaceRoot);
 });
 
 afterEach(async () => {
   resetTestAuth();
   delete process.env.WORKSPACE_ROOT;
+  unlockMachineWorkspaceRoot();
   await rm(workspaceRoot, { recursive: true, force: true });
-  setConfig({ defaultMachineId: undefined });
 });
 
 /** 构造 multipart 上传请求：单个 sizeBytes 大小的文件上传到 user/sub */
@@ -65,7 +70,7 @@ function workspaceDir(): string {
 describe("本地环境（无 machine 配置）", () => {
   // 本地 upload 100MB 上限保持：20MB 文件应成功上传落盘（不受远程 20MB 限制影响）
   test("本地 20MB 上传成功", async () => {
-    const response = await fsRoutes.default.handle(uploadRequest(20 * MB, "big20.bin"));
+    const response = await fsRoutes.handle(uploadRequest(20 * MB, "big20.bin"));
 
     expect(response.status).toBe(200);
     const body = (await response.json()) as { success: boolean; data: { files: Array<{ path: string }> } };
@@ -77,7 +82,7 @@ describe("本地环境（无 machine 配置）", () => {
 
   // 本地超过 100MB 上限必须 413 payload_too_large（本地 100MB 上限保持）
   test("本地 >100MB 上传被拒（413 payload_too_large）", async () => {
-    const response = await fsRoutes.default.handle(uploadRequest(100 * MB + 1, "huge.bin"));
+    const response = await fsRoutes.handle(uploadRequest(100 * MB + 1, "huge.bin"));
 
     expect(response.status).toBe(413);
     expect((await response.json()) as unknown).toEqual({
@@ -94,15 +99,15 @@ describe("远程环境（stub file-ws 在线）", () => {
     stubDb({
       select: () => ({ from: () => ({ where: () => ({ limit: async () => [{ id: MACHINE_ID }] }) }) }),
     });
-    setConfig({ defaultMachineId: MACHINE_ID });
+    stubMachineConfig({ defaultMachineId: MACHINE_ID });
   });
 
   // 远程 >20MB 上传必须 413 + 用户可读文案（能力回退，破坏性契约变更），且不得向机器端发送任何帧
   test("远程 >20MB 上传 → 413 + 文案断言，不发送 file_op", async () => {
     const sendMock = mock(async () => ({ status: "ok", data: { files: [] } }));
-    stubFileWsHandler({ isFileWsConnected: () => true, sendFileOpAndWait: sendMock });
+    stubFileWsTransport({ isFileWsConnected: () => true, sendFileOpAndWait: sendMock });
 
-    const response = await fsRoutes.default.handle(uploadRequest(20 * MB + 1, "over.bin"));
+    const response = await fsRoutes.handle(uploadRequest(20 * MB + 1, "over.bin"));
 
     expect(response.status).toBe(413);
     expect((await response.json()) as unknown).toEqual({
@@ -118,9 +123,9 @@ describe("远程环境（stub file-ws 在线）", () => {
       status: "ok",
       data: { files: [{ name: "big20.bin", path: "user/sub/big20.bin", size: 20 * MB }] },
     }));
-    stubFileWsHandler({ isFileWsConnected: () => true, sendFileOpAndWait: sendMock });
+    stubFileWsTransport({ isFileWsConnected: () => true, sendFileOpAndWait: sendMock });
 
-    const response = await fsRoutes.default.handle(uploadRequest(20 * MB, "big20.bin"));
+    const response = await fsRoutes.handle(uploadRequest(20 * MB, "big20.bin"));
 
     expect(response.status).toBe(200);
     const body = (await response.json()) as { success: boolean; data: { files: Array<{ path: string }> } };
@@ -133,7 +138,7 @@ describe("remoteUploadFiles 发送前防线（base64 反推原大小）", () => 
   // 防线：base64 反推原文件 >20MB 时必须提前抛 413，不产生 ~27MB 大帧
   test("base64 原文件 >20MB 提前抛 413，不调用 sendFileOpAndWait", async () => {
     const sendMock = mock(async () => ({ status: "ok", data: { files: [] } }));
-    stubFileWsHandler({ isFileWsConnected: () => true, sendFileOpAndWait: sendMock });
+    stubFileWsTransport({ isFileWsConnected: () => true, sendFileOpAndWait: sendMock });
 
     const over = Buffer.alloc(20 * MB + 1, 1).toString("base64");
     await expect(
@@ -154,7 +159,7 @@ describe("remoteUploadFiles 发送前防线（base64 反推原大小）", () => 
       status: "ok",
       data: { files: [{ name: "a.txt", path: "a.txt", size: 1 }] },
     }));
-    stubFileWsHandler({ isFileWsConnected: () => true, sendFileOpAndWait: sendMock });
+    stubFileWsTransport({ isFileWsConnected: () => true, sendFileOpAndWait: sendMock });
 
     await expect(
       remoteUploadFiles(MACHINE_ID, ENV_ID, "user", [
@@ -172,7 +177,7 @@ describe("remoteUploadFiles 发送前防线（base64 反推原大小）", () => 
       status: "ok",
       data: { files: [{ name: "big20.bin", path: "user/sub/big20.bin", size: 20 * MB }] },
     }));
-    stubFileWsHandler({ isFileWsConnected: () => true, sendFileOpAndWait: sendMock });
+    stubFileWsTransport({ isFileWsConnected: () => true, sendFileOpAndWait: sendMock });
 
     const exact = Buffer.alloc(20 * MB, 1).toString("base64");
     const result = await remoteUploadFiles(MACHINE_ID, ENV_ID, "user/sub", [

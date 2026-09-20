@@ -5,8 +5,8 @@
  * 后端使用标准 REST 端点（GET/POST/PUT/DELETE），域模块内部抽象为具名方法。
  */
 
-import { request } from "@/src/api/request";
-import type { AgentDetail, AgentInfo, ResourceAccessView } from "@/src/types/config";
+import { request } from "@fenix/web-runtime/api/request";
+import type { AgentDetail, AgentInfo, ResourceAccessView } from "@fenix/web-runtime/types/config";
 
 /** Agent 模板 */
 interface AgentTemplate {
@@ -28,16 +28,22 @@ interface AgentListResult {
   agents: AgentInfo[];
 }
 
-/** 创建/更新响应：授权视图字段随资源一并返回，供保存后立即更新界面状态。 */
-interface AgentSaveResult extends Partial<ResourceAccessView> {
+/**
+ * 创建/更新响应：与后端 `toSaveResult`（`src/server/routes/web/config/agent-route-support.ts`）
+ * 的返回一一对应——名称、资源 id 与授权视图字段（`scope` + `access`）恒返回，供保存后立即更新界面状态。
+ *
+ * 授权视图字段声明为**必填**：写路径的返回不经过部分响应或旧缓存，缺字段只可能是契约漂移，
+ * 按可选声明会让消费点把「后端改了字段名」误读成「本地保守降级」。
+ */
+interface AgentSaveResult extends ResourceAccessView {
+  id: string;
   name: string;
-  id?: string;
   /** 归属组织展示名；身份名录不可用时后端整字段省略。 */
   organizationName?: string;
 }
 
-/** 设置默认 Agent 响应 */
-interface AgentSetDefaultResult extends Partial<ResourceAccessView> {
+/** 设置默认 Agent 响应：与后端 `handleSetDefault` 的返回一一对应（个人资源没有归属组织可展示）。 */
+interface AgentSetDefaultResult extends ResourceAccessView {
   default_agent: string;
   /** 归属组织展示名；身份名录不可用时后端整字段省略。 */
   organizationName?: string;

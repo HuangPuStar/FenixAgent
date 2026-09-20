@@ -8,12 +8,18 @@ import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { resetAllStubs, stubDb } from "@fenix/platform-sdk/testing";
-import { setConfig } from "@server/config";
-import { resetTestAuth, setTestAuth } from "@server/plugins/auth";
-import { stubEnvironmentRepo, stubFileWsHandler } from "@server/test-utils/stubs/module-stubs";
-import { contentDispositionAttachment } from "../../routes/web/fs";
+import { stubDb } from "@fenix/platform-sdk/testing";
+import { createStubSessionAuthGuardPlugin, resetTestAuth, setTestAuth } from "../../__tests__/guard-stubs";
+import { contentDispositionAttachment, createWebFsRoutes } from "../routes/web/fs";
 import { REMOTE_ZIP_LIMIT_MESSAGE } from "../services/remote-file-service";
+import {
+  initializeMachineModuleConfig,
+  lockMachineWorkspaceRoot,
+  stubFileWsTransport,
+  stubMachineConfig,
+  stubMachineEnvironmentRecord,
+  unlockMachineWorkspaceRoot,
+} from "../testing";
 
 const ORG_ID = "org-1";
 const USER_ID = "user-1";
@@ -24,31 +30,29 @@ const MB = 1024 * 1024;
 // 单帧过渡版 zip 超时：60s + 20MB 上限 / 2MB/s 预算（remoteZip 契约，测试断言锁定）
 const REMOTE_ZIP_TIMEOUT_MS = 70_000;
 
-// 动态 import 路由模块。environmentRepo / file-ws-handler 的 mock 是实时转发
-// （setup-mocks.ts），属性访问总是转发到当前 stub，beforeEach 注入即可。
-const fsRoutes = await import("../../routes/web/fs");
+// 路由实例文件级构造一次：会话守卫替身按请求期读取当前会话（setTestAuth 即时生效）；
+// 环境读取与 file-ws 传输经包内句柄替换（stubMachineEnvironmentRecord / stubFileWsTransport）
+// 按调用时读取，beforeEach 或用例内注入即可。
+const fsRoutes = createWebFsRoutes({ authGuardPlugin: createStubSessionAuthGuardPlugin() });
 
 let workspaceRoot: string;
 
 beforeEach(async () => {
-  resetAllStubs();
-  stubEnvironmentRepo({
-    getById: async () => ({ id: ENV_ID, organizationId: ORG_ID, userId: USER_ID }),
-  });
+  initializeMachineModuleConfig();
+  stubMachineEnvironmentRecord({ id: ENV_ID, organizationId: ORG_ID, userId: USER_ID });
   setTestAuth({
     user: { id: USER_ID, email: "user@fenix.com", name: "user" },
     authContext: { organizationId: ORG_ID, userId: USER_ID, role: "owner" },
   });
   workspaceRoot = await mkdtemp(join(tmpdir(), "fs-zip-remote-"));
-  process.env.WORKSPACE_ROOT = workspaceRoot;
-  setConfig({ defaultMachineId: undefined });
+  await lockMachineWorkspaceRoot(workspaceRoot);
 });
 
 afterEach(async () => {
   resetTestAuth();
   delete process.env.WORKSPACE_ROOT;
+  unlockMachineWorkspaceRoot();
   await rm(workspaceRoot, { recursive: true, force: true });
-  setConfig({ defaultMachineId: undefined });
 });
 
 /** 远程 download-zip 请求（path 相对路径，W6 作用域校验落在 user/ 内） */
@@ -72,7 +76,7 @@ describe("远程环境（stub file-ws 在线）", () => {
     stubDb({
       select: () => ({ from: () => ({ where: () => ({ limit: async () => [{ id: MACHINE_ID }] }) }) }),
     });
-    setConfig({ defaultMachineId: MACHINE_ID });
+    stubMachineConfig({ defaultMachineId: MACHINE_ID });
   });
 
   test("zip 单帧回传 → 200 流式转发 + 头正确 + 内容一致", async () => {
@@ -88,9 +92,9 @@ describe("远程环境（stub file-ws 在线）", () => {
         return { status: "ok", data: zipBytes.toString("base64") };
       },
     );
-    stubFileWsHandler({ isFileWsConnected: () => true, sendFileOpAndWait: sendMock });
+    stubFileWsTransport({ isFileWsConnected: () => true, sendFileOpAndWait: sendMock });
 
-    const response = await fsRoutes.default.handle(zipRequest("user"));
+    const response = await fsRoutes.handle(zipRequest("user"));
 
     expect(response.status).toBe(200);
     expect(response.headers.get("Content-Type")).toBe("application/zip");
@@ -103,12 +107,12 @@ describe("远程环境（stub file-ws 在线）", () => {
     // 并携带"建议选择子目录"用户可读文案，不得静默截断返回部分 zip（不完整包对消费者
     // 比失败更糟）
     const oversized = Buffer.alloc(20 * MB + 1, 7).toString("base64");
-    stubFileWsHandler({
+    stubFileWsTransport({
       isFileWsConnected: () => true,
       sendFileOpAndWait: async () => ({ status: "ok", data: oversized }),
     });
 
-    const response = await fsRoutes.default.handle(zipRequest("user"));
+    const response = await fsRoutes.handle(zipRequest("user"));
 
     expect(response.status).toBe(413);
     expect((await response.json()) as unknown).toEqual({
@@ -118,7 +122,7 @@ describe("远程环境（stub file-ws 在线）", () => {
 
   test("机器端结构化超限错误 → HTTP 413", async () => {
     // 机器端在生成过程中发现超限时不再退化成 503；稳定 errorCode/statusCode 跨协议映射。
-    stubFileWsHandler({
+    stubFileWsTransport({
       isFileWsConnected: () => true,
       sendFileOpAndWait: async () => ({
         status: "error",
@@ -128,7 +132,7 @@ describe("远程环境（stub file-ws 在线）", () => {
       }),
     });
 
-    const response = await fsRoutes.default.handle(zipRequest("user"));
+    const response = await fsRoutes.handle(zipRequest("user"));
 
     expect(response.status).toBe(413);
     expect((await response.json()) as unknown).toEqual({
@@ -139,12 +143,12 @@ describe("远程环境（stub file-ws 在线）", () => {
   test("恰好 20MB 边界成功转发", async () => {
     // 边界语义：>20MB 拒绝、恰好 20MB 允许（与 upload 上限判断同构，base64 反推含 padding）
     const zipBytes = Buffer.alloc(20 * MB, 7);
-    stubFileWsHandler({
+    stubFileWsTransport({
       isFileWsConnected: () => true,
       sendFileOpAndWait: async () => ({ status: "ok", data: zipBytes.toString("base64") }),
     });
 
-    const response = await fsRoutes.default.handle(zipRequest("user"));
+    const response = await fsRoutes.handle(zipRequest("user"));
 
     expect(response.status).toBe(200);
     expect(Buffer.from(await response.arrayBuffer()).length).toBe(20 * MB);
@@ -153,12 +157,12 @@ describe("远程环境（stub file-ws 在线）", () => {
   test("机器端 zip 未实现（status error）→ 503 明确错误", async () => {
     // 机器端 zip 操作未上线（外部依赖未完成）：status:"error" 必须映射 503
     // file_service_unavailable 明确错误路径，不得静默回退本地或返回成功
-    stubFileWsHandler({
+    stubFileWsTransport({
       isFileWsConnected: () => true,
       sendFileOpAndWait: async () => ({ status: "error", error: "zip not implemented" }),
     });
 
-    const response = await fsRoutes.default.handle(zipRequest("user"));
+    const response = await fsRoutes.handle(zipRequest("user"));
 
     expect(response.status).toBe(503);
     expect((await response.json()) as unknown).toEqual({

@@ -3,8 +3,24 @@
   "private": true,
   "type": "module",
   "dependencies": {
+    "@fenix/identity": "workspace:*",
     "@fenix/logger": "workspace:*",
-    "@fenix/platform-sdk": "workspace:*"
+    "@fenix/platform-sdk": "workspace:*",
+    "@fenix/ui-components": "workspace:*",
+    "@fenix/web-runtime": "workspace:*",
+    "ahooks": "^3.9.7",
+    "drizzle-orm": "^0.45.2",
+    "elysia": "^1.4.28",
+    "gray-matter": "^4.0.3",
+    "js-yaml": "^5.1.0",
+    "lucide-react": "^1.16.0",
+    "sonner": "^2.0.7",
+    "zod": "^4.4.3"
+  },
+  "peerDependencies": {
+    "i18next": "^26.2.0",
+    "react": "^19.2.6",
+    "react-i18next": "^17.0.8"
   },
   "exports": {
     ".": "./src/index.ts",
@@ -14,6 +30,8 @@
     "./server/content": "./src/server-content.ts",
     "./server/config": "./src/server-config.ts",
     "./server/migration": "./src/server-migration.ts",
-    "./server/testing": "./src/server/testing.ts"
+    "./server/testing": "./src/server/testing.ts",
+    "./web": "./web/index.ts",
+    "./web/i18n": "./web/i18n/index.ts"
   }
 }

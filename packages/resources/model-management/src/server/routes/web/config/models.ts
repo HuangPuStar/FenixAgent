@@ -10,34 +10,30 @@
  * 可用列表由 `buildAvailableList` 从 Provider 列表 + 逐条详情拼出，因此按 `(organizationId, userId)`
  * 缓存 5 分钟；Provider 与 Model 的写路径主动失效。缓存本体在
  * `../../../services/available-models-cache`，与 `/web/config/providers` 共享。
+ *
+ * 路由改为**工厂**：会话守卫与用户偏好端口由宿主注入。偏好存在身份族的 `user_config` 表里（不归本包），
+ * 迁移前的 `@server/services/config/user-config` 深链正是 1.3 要切断的宿主内部依赖，见 `../../dependencies`。
  */
 
 import { type ActorContext, ValidationError, WebErrSchema, WebOkSchema } from "@fenix/platform-sdk";
-import { authGuardPlugin } from "@server/plugins/auth";
+import Elysia from "elysia";
+import * as z from "zod/v4";
+import { configError, configSuccess } from "../../../config-envelope";
+import { getModelManagementModule } from "../../../module-runtime";
+import type { UserModelPreferencesPort } from "../../../ports/user-model-preferences";
 import {
   ModelPreferencesBodySchema,
   ModelPreferencesResponseSchema,
   ModelRefreshResponseSchema,
-} from "@server/schemas/config.schema";
-import type { PermissionConfig } from "@server/services/config/types";
-import { getUserConfig, setUserConfig } from "@server/services/config/user-config";
-import { configError, configSuccess } from "@server/services/config-utils";
-import Elysia from "elysia";
-import * as z from "zod/v4";
-import { getModelManagementModule } from "../../../module-runtime";
+} from "../../../schemas/config.schema";
 import {
   type AvailableModelEntry,
   deleteAvailableModelsCache,
   readAvailableModelsCache,
   writeAvailableModelsCache,
 } from "../../../services/available-models-cache";
+import type { WebConfigModelsRouteDependencies } from "../../dependencies";
 import { safeWebHandler } from "./web-envelope";
-
-const app = new Elysia({ name: "web-config-models" }).use(authGuardPlugin).model({
-  "model-preferences-body": ModelPreferencesBodySchema,
-  "model-preferences-response": ModelPreferencesResponseSchema,
-  "model-refresh-response": ModelRefreshResponseSchema,
-});
 
 /**
  * 用户偏好与可用模型缓存都按组织隔离。
@@ -145,8 +141,8 @@ async function getAvailable(actor: ActorContext, forceRefresh = false): Promise<
   return models;
 }
 
-async function handleGet(actor: ActorContext) {
-  const userConfig = await getUserConfig(subjectOf(actor));
+async function handleGet(actor: ActorContext, preferences: UserModelPreferencesPort) {
+  const userConfig = await preferences.read(subjectOf(actor));
   const available = await getAvailable(actor);
   return configSuccess({
     current: {
@@ -158,7 +154,11 @@ async function handleGet(actor: ActorContext) {
   });
 }
 
-async function handleSet(actor: ActorContext, data: { model?: string; small_model?: string; permission?: unknown }) {
+async function handleSet(
+  actor: ActorContext,
+  data: { model?: string; small_model?: string; permission?: unknown },
+  preferences: UserModelPreferencesPort,
+) {
   if (!data.model && !data.small_model && data.permission === undefined) {
     return configError("VALIDATION_ERROR", "At least one of 'model', 'small_model', or 'permission' is required");
   }
@@ -171,14 +171,15 @@ async function handleSet(actor: ActorContext, data: { model?: string; small_mode
     if (error) return error;
   }
 
-  await setUserConfig(subjectOf(actor), {
+  // `permission` 原样透传：`undefined` 表示本次不改这一项，`null` 表示清空——端口实现据此区分。
+  await preferences.write(subjectOf(actor), {
     currentModel: data.model,
     smallModel: data.small_model,
-    permission: data.permission as PermissionConfig | null,
+    permission: data.permission,
   });
   deleteAvailableModelsCache(subjectOf(actor));
 
-  const userConfig = await getUserConfig(subjectOf(actor));
+  const userConfig = await preferences.read(subjectOf(actor));
   return configSuccess({
     model: userConfig.currentModel ?? null,
     small_model: userConfig.smallModel ?? null,
@@ -191,71 +192,93 @@ async function handleRefresh(actor: ActorContext) {
   return configSuccess({ count: available.length });
 }
 
-// ── RESTful 路由 ──
+/**
+ * 构造 `/web/config/models` 路由。
+ *
+ * 会话守卫与用户偏好端口由宿主注入：前者必须与宿主的认证解析同实例，后者读身份族的 `user_config`
+ * 表（不归本包），见 `../../dependencies`。
+ */
+export function createWebConfigModelsRoutes(deps: WebConfigModelsRouteDependencies) {
+  const { authGuardPlugin, userModelPreferences } = deps;
+  const app = new Elysia({ name: "web-config-models" }).use(authGuardPlugin).model({
+    "model-preferences-body": ModelPreferencesBodySchema,
+    "model-preferences-response": ModelPreferencesResponseSchema,
+    "model-refresh-response": ModelRefreshResponseSchema,
+  });
 
-/** GET /config/models：获取可用模型列表与用户偏好 */
-app.get(
-  "/config/models",
-  safeWebHandler(async (_ctx, actor) => handleGet(actor), { fallbackCode: "CONFIG_READ_ERROR" }),
-  {
-    sessionAuth: true,
-    response: {
-      200: WebOkSchema(z.looseObject({})),
-      400: WebErrSchema,
-      403: WebErrSchema,
-      500: WebErrSchema,
-    },
-    detail: {
-      tags: ["ModelConfig"],
-      summary: "获取可用模型列表与用户偏好",
-      description:
-        "返回当前用户可用的所有模型列表（按 provider 分组）以及用户的当前模型偏好设置，包括主模型、轻量模型和权限配置。",
-    },
-  },
-);
+  // ── RESTful 路由 ──
 
-/** PUT /config/models：更新用户模型偏好 */
-app.put(
-  "/config/models",
-  safeWebHandler(
-    async (ctx, actor) => handleSet(actor, ctx.body as { model?: string; small_model?: string; permission?: unknown }),
-    { fallbackCode: "CONFIG_WRITE_ERROR" },
-  ),
-  {
-    sessionAuth: true,
-    body: "model-preferences-body",
-    response: {
-      200: WebOkSchema(z.looseObject({})),
-      400: WebErrSchema,
-      403: WebErrSchema,
-      500: WebErrSchema,
+  /** GET /config/models：获取可用模型列表与用户偏好 */
+  app.get(
+    "/config/models",
+    safeWebHandler(async (_ctx, actor) => handleGet(actor, userModelPreferences), {
+      fallbackCode: "CONFIG_READ_ERROR",
+    }),
+    {
+      sessionAuth: true,
+      response: {
+        200: WebOkSchema(z.looseObject({})),
+        400: WebErrSchema,
+        403: WebErrSchema,
+        500: WebErrSchema,
+      },
+      detail: {
+        tags: ["ModelConfig"],
+        summary: "获取可用模型列表与用户偏好",
+        description:
+          "返回当前用户可用的所有模型列表（按 provider 分组）以及用户的当前模型偏好设置，包括主模型、轻量模型和权限配置。",
+      },
     },
-    detail: {
-      tags: ["ModelConfig"],
-      summary: "更新用户模型偏好",
-      description: "更新当前用户的主模型、轻量模型和权限偏好。至少提供一个字段。模型引用格式为 provider/modelId。",
-    },
-  },
-);
+  );
 
-/** POST /config/models/refresh：强制刷新可用模型缓存 */
-app.post(
-  "/config/models/refresh",
-  safeWebHandler(async (_ctx, actor) => handleRefresh(actor), { fallbackCode: "CONFIG_READ_ERROR" }),
-  {
-    sessionAuth: true,
-    response: {
-      200: WebOkSchema(z.looseObject({})),
-      400: WebErrSchema,
-      403: WebErrSchema,
-      500: WebErrSchema,
+  /** PUT /config/models：更新用户模型偏好 */
+  app.put(
+    "/config/models",
+    safeWebHandler(
+      async (ctx, actor) =>
+        handleSet(
+          actor,
+          ctx.body as { model?: string; small_model?: string; permission?: unknown },
+          userModelPreferences,
+        ),
+      { fallbackCode: "CONFIG_WRITE_ERROR" },
+    ),
+    {
+      sessionAuth: true,
+      body: "model-preferences-body",
+      response: {
+        200: WebOkSchema(z.looseObject({})),
+        400: WebErrSchema,
+        403: WebErrSchema,
+        500: WebErrSchema,
+      },
+      detail: {
+        tags: ["ModelConfig"],
+        summary: "更新用户模型偏好",
+        description: "更新当前用户的主模型、轻量模型和权限偏好。至少提供一个字段。模型引用格式为 provider/modelId。",
+      },
     },
-    detail: {
-      tags: ["ModelConfig"],
-      summary: "强制刷新可用模型缓存",
-      description: "强制刷新当前用户在本组织的可用模型缓存，绕过 5 分钟 TTL，从 provider 实时拉取最新模型列表。",
-    },
-  },
-);
+  );
 
-export default app;
+  /** POST /config/models/refresh：强制刷新可用模型缓存 */
+  app.post(
+    "/config/models/refresh",
+    safeWebHandler(async (_ctx, actor) => handleRefresh(actor), { fallbackCode: "CONFIG_READ_ERROR" }),
+    {
+      sessionAuth: true,
+      response: {
+        200: WebOkSchema(z.looseObject({})),
+        400: WebErrSchema,
+        403: WebErrSchema,
+        500: WebErrSchema,
+      },
+      detail: {
+        tags: ["ModelConfig"],
+        summary: "强制刷新可用模型缓存",
+        description: "强制刷新当前用户在本组织的可用模型缓存，绕过 5 分钟 TTL，从 provider 实时拉取最新模型列表。",
+      },
+    },
+  );
+
+  return app;
+}

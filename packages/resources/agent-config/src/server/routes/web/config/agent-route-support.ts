@@ -1,9 +1,8 @@
 import type { ActorContext, IdentityDirectory, WebErrSchema } from "@fenix/platform-sdk";
 import { AppError, ConflictError, ForbiddenError, ValidationError } from "@fenix/platform-sdk";
-import { getUserConfig, setUserConfig } from "@server/services/config/user-config";
-import { isValidResourceName } from "@server/services/config-utils";
 import type * as z from "zod/v4";
 import type { AuthorizedAgentConfig } from "../../../facades/agent-config-facade";
+import type { UserAgentPreferencesPort } from "../../../ports/user-agent-preferences";
 import { getAgentConfigModule } from "../../../runtime";
 import {
   AgentMutationBodySchema,
@@ -20,6 +19,7 @@ import { buildAgentRelatedResourceView } from "../../../services/agent-related-r
 import { loadAgentTemplates } from "../../../services/agent-templates";
 import {
   isBuiltInAgent,
+  isValidAgentName,
   normalizeKnowledgeConfig,
   resolveAgentNode,
   toAgentConfigWriteData,
@@ -132,7 +132,8 @@ async function resolveOrganizationName(
  * 用户偏好读写所需的组织维度上下文。
  *
  * `user_config` 按组织一行存储，因此偏好读写只需要组织与用户标识；没有 active organization 时
- * 无法定位该行，返回 null 由调用方转成 401。
+ * 无法定位该行，返回 null 由调用方转成 401。读写本身经宿主注入的
+ * {@link UserAgentPreferencesPort}（该表属身份族，不归本包）。
  */
 function toUserConfigSubject(actor: ActorContext): { organizationId: string; userId: string } | null {
   const organizationId = actor.activeOrganizationId;
@@ -200,8 +201,8 @@ async function toWebAgentItem(
   };
 }
 
-/** 构建 agent 列表视图，并补齐前端展示依赖的资源标签。 */
-async function handleList(actor: ActorContext): Promise<WebHandlerResult> {
+/** 构建 agent 列表视图，并补齐前端展示依赖的资源标签与当前用户的默认 Agent。 */
+async function handleList(actor: ActorContext, preferences: UserAgentPreferencesPort): Promise<WebHandlerResult> {
   const subject = toUserConfigSubject(actor);
   if (!subject) return unauthorized();
 
@@ -211,7 +212,7 @@ async function handleList(actor: ActorContext): Promise<WebHandlerResult> {
     identity,
     items.map((item) => item.scope.organizationId),
   );
-  const userConfig = await getUserConfig(subject);
+  const userConfig = await preferences.read(subject);
   const agents = await Promise.all(
     items.map((item) => toWebAgentItem(item, organizationNames.get(item.scope.organizationId ?? ""))),
   );
@@ -305,7 +306,7 @@ async function handleCreate(
   name: string,
   data: Record<string, unknown>,
 ): Promise<WebHandlerResult> {
-  if (!isValidResourceName(name)) {
+  if (!isValidAgentName(name)) {
     throw new ValidationError("Invalid agent name: must be 1-64 characters (letters, numbers, spaces, single hyphens)");
   }
   const validation = validateAgentData(data);
@@ -365,7 +366,11 @@ async function handleDelete(actor: ActorContext, nameOrKey: string): Promise<Web
 }
 
 /** 设置当前用户的默认 agent。 */
-async function handleSetDefault(actor: ActorContext, nameOrKey: string): Promise<WebHandlerResult> {
+async function handleSetDefault(
+  actor: ActorContext,
+  nameOrKey: string,
+  preferences: UserAgentPreferencesPort,
+): Promise<WebHandlerResult> {
   const subject = toUserConfigSubject(actor);
   if (!subject) return unauthorized();
 
@@ -373,7 +378,7 @@ async function handleSetDefault(actor: ActorContext, nameOrKey: string): Promise
   const agent = await facade.get(actor, nameOrKey);
   if (!agent) return buildWebErrorBody("NOT_FOUND", `Agent '${nameOrKey}' not found`);
 
-  await setUserConfig(subject, { defaultAgent: agent.name });
+  await preferences.write(subject, { defaultAgent: agent.name });
   const organizationName = await resolveOrganizationName(identity, agent.scope.organizationId);
   return {
     success: true,

@@ -1,6 +1,7 @@
 import { getReadableAgentConfigById } from "@fenix/agent-config/server";
 import { AppError } from "@fenix/platform-sdk";
 import type { AuthContext } from "@server/plugins/auth";
+import { toActorContext } from "../../services/actor-context";
 import { type EnvironmentRecord, environmentRepo } from "../repositories/environment";
 import { agentInstanceService } from "./agent-instance-service";
 import { createWebEnvironment } from "./environment-web";
@@ -84,7 +85,7 @@ export async function connectAgentInstance(
   options: AgentInstanceConnectOptions = {},
 ): Promise<AgentInstanceConnectResult> {
   const agent = ensureReadableAgent(
-    (await deps.getReadableAgentConfigById(ctx, agentConfigId)) as AgentConfigRecord | null,
+    (await deps.getReadableAgentConfigById(toActorContext(ctx), agentConfigId)) as AgentConfigRecord | null,
   );
 
   const existingEnvironments = (await deps.listEnvironmentsByOrganizationId(ctx.organizationId)).filter(

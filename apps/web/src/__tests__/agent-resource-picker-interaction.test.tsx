@@ -1,4 +1,5 @@
 import { afterAll, afterEach, describe, expect, test } from "bun:test";
+import { agentResources } from "@fenix/agent-config/web/i18n";
 import { Window } from "happy-dom";
 import { act, useState } from "react";
 import { createRoot, type Root } from "react-dom/client";
@@ -11,7 +12,6 @@ import {
 } from "../../../../packages/resources/agent-config/web/pages/agent-panel/agent-editor/agent-editor-controls";
 import { createAgentEditorDefaults } from "../../../../packages/resources/agent-config/web/pages/agent-panel/agent-editor/agent-editor-model";
 import type { AgentEditorData } from "../../../../packages/resources/agent-config/web/pages/agent-panel/agent-editor/use-agent-editor";
-import agentsEn from "../i18n/locales/en/agents.json";
 import { initializeHappyDomWindow } from "./happy-dom-window";
 
 (globalThis as Record<string, unknown>).IS_REACT_ACT_ENVIRONMENT = true;
@@ -111,7 +111,7 @@ function lookup(dictionary: unknown, path: string): string | undefined {
  * 此时 `t()` 回显 key。两种取值都要能定位到同一个元素，元素缺失或可点击性回归仍会失败。
  */
 function copyCandidates(key: string, values: Record<string, string>): string[] {
-  const template = lookup(agentsEn, key);
+  const template = lookup(agentResources.en, key);
   if (template === undefined) return [key];
   const translated = Object.entries(values).reduce(
     (text, [name, value]) => text.replace(`{{${name}}}`, value),

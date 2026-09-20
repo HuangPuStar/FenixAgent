@@ -1,9 +1,11 @@
 import { describe, expect, test } from "bun:test";
+import { ApiError } from "@fenix/web-runtime/api/request";
 import type { SkillInfo } from "../pages/agent-panel/pages/agent-skills-types";
 import {
   countSkillsByScope,
   filterSkills,
   getSkillFormValidationError,
+  isSkillAccessDenied,
 } from "../pages/agent-panel/pages/agent-skills-utils";
 
 const ACTIVE_ORG_ID = "org-current";
@@ -78,5 +80,23 @@ describe("skill catalog filtering", () => {
   test("searches names, descriptions and organization labels", () => {
     expect(filterSkills(skills, "可信", "all", ACTIVE_ORG_ID).map((skill) => skill.name)).toEqual(["research"]);
     expect(filterSkills(skills, "共享组织", "all", ACTIVE_ORG_ID).map((skill) => skill.name)).toEqual(["review"]);
+  });
+});
+
+describe("isSkillAccessDenied", () => {
+  // 401/403 都是「授权失败」：request 层对无 code 的响应归一为 UNAUTHORIZED，后端 AppError 走 FORBIDDEN，
+  // 漏认任一个都会让无权限用户看到可重试的错误页，重试必然再被拒。
+  test("recognizes both UNAUTHORIZED and FORBIDDEN ApiError codes as access denied", () => {
+    expect(isSkillAccessDenied(new ApiError("请求缺少组织上下文", "UNAUTHORIZED"))).toBe(true);
+    expect(isSkillAccessDenied(new ApiError("当前主体无权查看该资源", "FORBIDDEN"))).toBe(true);
+  });
+
+  // 其余错误是可重试的瞬时故障或调用错误，必须留在通用错误分支，不能被误判为无权限。
+  test("does not treat other ApiError codes or plain errors as access denied", () => {
+    expect(isSkillAccessDenied(new ApiError("boom", "SERVER_ERROR"))).toBe(false);
+    expect(isSkillAccessDenied(new ApiError("offline", "NETWORK_ERROR"))).toBe(false);
+    expect(isSkillAccessDenied(new Error("UNAUTHORIZED"))).toBe(false);
+    expect(isSkillAccessDenied(undefined)).toBe(false);
+    expect(isSkillAccessDenied("FORBIDDEN")).toBe(false);
   });
 });

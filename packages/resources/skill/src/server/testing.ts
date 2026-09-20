@@ -1,17 +1,51 @@
 import type { IdentityDirectory } from "@fenix/platform-sdk";
+import { initializeTestApplicationInfrastructure, resetAllStubs } from "@fenix/platform-sdk/testing";
 import { skillResource } from "./access/skill-resource";
+import type { SkillModuleConfig } from "./config";
 import type { SkillFacadeApi } from "./facades/skill-facade";
 import type { SkillServerModule } from "./module";
 import type { SkillService } from "./services/skill-service";
 import type { SkillSystemApi } from "./services/skill-system";
 
 /**
- * Skill 资源包的测试替身。
+ * Skill 资源包的测试装配入口；不得从生产 `./server` 入口导出。
  *
- * 只供测试使用：协议层测试需要"某个应用方法返回什么"这一最小控制面，不应该为了构造它而装配真实
- * 授权实现、查询编译器、文件系统与数据库。替身默认对未打桩的方法直接抛错——路由调用了用例未预期
- * 的方法时立即暴露，而不是静默返回 undefined 让断言失真。
+ * 两部分：领域替身（协议层用例的最小控制面）与模块配置构造。配置构造放在这里，是为了让宿主测试
+ * （`apps/server/src/test-utils/setup-mocks.ts`）与本包用例共用同一份「必填字段 + 缺省值」：宿主手抄
+ * 一份字段清单、包内再抄一份，漏字段时两侧都不可见。
  */
+
+/**
+ * 构造一份字段齐全的 Skill 模块配置。
+ *
+ * 缺省值取宿主 `apps/server/src/config.ts` 的部署默认值：`SKILL_DIR` 缺省 `./data/skills`
+ * （`resolve()` 之前的取值）、`RCS_BASE_URL` 未设置时回退 `http://localhost:<RCS_PORT 默认 3000>`。
+ * 签名密钥缺省为空列表＝"未配置签名密钥"，与宿主 `RCS_API_KEYS` 未设置时的结论一致（下载 token
+ * 生成失败，而不是退化成无签名）。需要签名的用例显式传入测试密钥，且只在运行期生成，不落源码。
+ *
+ * `skillDir` 缺省是相对路径：需要真实读写内容的用例必须传自己的临时目录，避免往运行目录写数据。
+ */
+export function createSkillModuleConfig(overrides: Partial<SkillModuleConfig> = {}): SkillModuleConfig {
+  return {
+    skillDir: "./data/skills",
+    baseUrl: "http://localhost:3000",
+    downloadTokenSigningKeys: [],
+    ...overrides,
+  };
+}
+
+/**
+ * 复位全部替身后以给定配置初始化应用基础设施。
+ *
+ * 必须经 `initializeTestApplicationInfrastructure` 走生产读取路径（`getModuleConfig("skill")`），
+ * 而不是给模块留测试专用的配置分支；初始化只允许一次，故先复位。
+ */
+export function initializeSkillModuleConfig(overrides: Partial<SkillModuleConfig> = {}): void {
+  resetAllStubs();
+  initializeTestApplicationInfrastructure({
+    moduleConfigs: { skill: createSkillModuleConfig(overrides) },
+  });
+}
 
 /** 未打桩的方法：调用即失败，`never` 返回值可赋给任意方法签名。 */
 function unstubbed(name: string): () => never {

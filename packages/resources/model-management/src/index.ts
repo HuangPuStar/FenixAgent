@@ -1,15 +1,10 @@
 /**
- * 浏览器安全入口；只导出 Provider、Model 与网关的浏览器侧实现。
- * 服务端实现必须经 `@fenix/model-management/server` 使用。
+ * Model-management 的资源包根入口，**刻意为空**。
+ *
+ * 计划 §2.3 的 exports 注记：根入口不得（直接或间接）转出浏览器代码，否则服务端侧任何一次
+ * `import "@fenix/model-management"` 都会把 React 页面图拖进服务端模块图。浏览器能力因此全部落在
+ * `./web`（`web/index.ts`，唯一公开面），服务端能力落在 `./server`（`src/server.ts`），本文件只保留
+ * 「包有根入口且浏览器安全」这一形状（与黄金样本 `packages/resources/sandbox/src/index.ts` 一致）。
  */
 
-export * from "../web/api/model-gateway";
-export * from "../web/api/models";
-export * from "../web/api/providers";
-export { ModelConfigDialog, mergeModelConfigUpdate } from "../web/components/config/ModelConfigDialog";
-export { ModelIcon } from "../web/components/model-icon/ModelIcon";
-export * from "../web/lib/model-config-utils";
-export * from "../web/lib/model-gateway-usage";
-export * from "../web/pages/agent-panel/pages/agent-models-utils";
-export { EmbeddingModelManager } from "../web/src/pages/agent-panel/components/EmbeddingModelManager";
-export { AlgorithmsPage } from "../web/src/pages/agent-panel/pages/AlgorithmsPage";
+export {};

@@ -1,57 +1,54 @@
-// 测试 scheduler/http-executor 的超时检测使用 instanceof Error 而非字符串匹配（兼容 Node.js/Bun）
-// AbortSignal.timeout 在 Bun/Node.js 运行时触发时抛出 DOMException，name 为 "TimeoutError"/"AbortError"
 import { describe, expect, test } from "bun:test";
+import { isTimeoutAbortError } from "../server/services/scheduler/utils";
 
-// 纯函数测试：与 http-executor.ts catch 块中的 isTimeout 检测条件保持一致
-// （executor 的检测为内联逻辑，复制实现做单元测试）
-function isTimeoutError(err: unknown): boolean {
-  return err instanceof Error && (err.name === "TimeoutError" || err.name === "AbortError");
-}
+// http-executor 的超时检测：按 instanceof Error + name 判定，而非字符串匹配消息。
+// AbortSignal.timeout 触发时在 Bun/Node.js 抛出 DOMException 或 Error，name 为 "TimeoutError"/"AbortError"。
+// 直接导入实现而不是复制条件：内联判定（原实现）会让用例复制同一份条件，复制件漂移时用例照样全绿。
 
 describe("timeout detection instanceof Error", () => {
-  // DOMException 的 TimeoutError（Bun 运行时 AbortSignal.timeout 实际抛出类型）
+  // Bun 运行时 AbortSignal.timeout 抛出的 DOMException（name = TimeoutError）必须判为超时。
   test("detects DOMException TimeoutError (Bun runtime)", () => {
     const err = new DOMException("The operation was aborted due to timeout", "TimeoutError");
-    expect(isTimeoutError(err)).toBe(true);
+    expect(isTimeoutAbortError(err)).toBe(true);
   });
 
-  // DOMException 的 AbortError
+  // 调用方主动 abort 产生的 DOMException（name = AbortError）同样归类为超时。
   test("detects DOMException AbortError", () => {
     const err = new DOMException("The operation was aborted", "AbortError");
-    expect(isTimeoutError(err)).toBe(true);
+    expect(isTimeoutAbortError(err)).toBe(true);
   });
 
-  // 普通 Error 且 name 为 TimeoutError（Node.js 运行时）
+  // Node.js 运行时抛的是普通 Error，仅 name 为 TimeoutError，也必须判为超时。
   test("detects plain Error with name TimeoutError (Node.js runtime)", () => {
     const err = new Error("Timeout");
     err.name = "TimeoutError";
-    expect(isTimeoutError(err)).toBe(true);
+    expect(isTimeoutAbortError(err)).toBe(true);
   });
 
-  // 普通 Error 且 name 为 AbortError
+  // 普通 Error 且 name 为 AbortError 时同样判为超时。
   test("detects plain Error with name AbortError", () => {
     const err = new Error("Aborted");
     err.name = "AbortError";
-    expect(isTimeoutError(err)).toBe(true);
+    expect(isTimeoutAbortError(err)).toBe(true);
   });
 
-  // 非 Error 对象不会被误判为超时
+  // 非 Error 的抛出值（字符串/数字/null）不得误判为超时，否则会把网络故障记成超时。
   test("non-Error objects are not detected as timeout", () => {
-    expect(isTimeoutError("string error")).toBe(false);
-    expect(isTimeoutError(42)).toBe(false);
-    expect(isTimeoutError(null)).toBe(false);
-    expect(isTimeoutError(undefined)).toBe(false);
+    expect(isTimeoutAbortError("string error")).toBe(false);
+    expect(isTimeoutAbortError(42)).toBe(false);
+    expect(isTimeoutAbortError(null)).toBe(false);
+    expect(isTimeoutAbortError(undefined)).toBe(false);
   });
 
-  // 普通 Error（无超时 name）不是超时
+  // 无超时 name 的普通 Error 是失败而非超时，两者在运维处置上不同。
   test("generic Error is not detected as timeout", () => {
     const err = new Error("Network error");
-    expect(isTimeoutError(err)).toBe(false);
+    expect(isTimeoutAbortError(err)).toBe(false);
   });
 
-  // TypeError 不是超时
+  // TypeError（如 fetch 解析失败）不得归类为超时。
   test("TypeError is not detected as timeout", () => {
     const err = new TypeError("fetch failed");
-    expect(isTimeoutError(err)).toBe(false);
+    expect(isTimeoutAbortError(err)).toBe(false);
   });
 });

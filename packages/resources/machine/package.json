@@ -9,7 +9,12 @@
     "@fenix/orchestration": "workspace:*",
     "@fenix/platform-sdk": "workspace:*",
     "@fenix/resource-sandbox": "workspace:*",
+    "@fenix/web-runtime": "workspace:*",
     "drizzle-orm": "^0.45.2"
+  },
+  "devDependencies": {
+    "@fenix/resource-mcp": "workspace:*",
+    "@fenix/ui-components": "workspace:*"
   },
   "exports": {
     ".": "./src/index.ts",
@@ -17,6 +22,7 @@
     "./server": "./src/server.ts",
     "./server/schema": "./src/server/schema.ts",
     "./server/testing": "./src/server/testing.ts",
+    "./web": "./web/index.ts",
     "./file-ws-handler": "./src/server/transport/file-ws-handler.ts",
     "./file-ws-close-log": "./src/server/transport/file-ws-close-log.ts",
     "./file-ws-payload": "./src/server/transport/file-ws-payload.ts",

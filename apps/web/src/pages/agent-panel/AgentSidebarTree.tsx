@@ -1,5 +1,6 @@
 import { ensureMetaAgent } from "@fenix/agent-config/web";
 import { useOrg } from "@fenix/identity/web";
+import type { AgentNode, ResourceAccessActions, ResourceScopeView } from "@fenix/web-runtime/types/config";
 import { useRequest } from "ahooks";
 import {
   Bot,
@@ -42,7 +43,6 @@ import {
   isAgentWritable,
 } from "../../lib/agent-resource-access";
 import { dispatchConfigChange, useConfigChangeListener } from "../../lib/config-events";
-import type { AgentNode, ResourceAccessActions, ResourceScopeView } from "../../types/config";
 import type { Environment, EnvironmentInstance } from "../../types/index";
 
 interface AgentConfigItem {

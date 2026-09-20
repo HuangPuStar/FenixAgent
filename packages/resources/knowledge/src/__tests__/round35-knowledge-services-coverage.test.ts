@@ -1,6 +1,5 @@
 import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
 import { resetAllStubs } from "@fenix/platform-sdk/testing";
-import { resetConfig, setConfig } from "@server/config";
 import {
   agentKnowledgeBindingRepo,
   type KnowledgeBaseRow,
@@ -26,6 +25,7 @@ import {
   refreshKnowledgeResourceStatus,
   setKnowledgeUploadProviderForTesting,
 } from "../server/services/knowledge-upload";
+import { initializeKnowledgeModuleConfig } from "../server/testing";
 
 const NOW = new Date("2026-08-19T00:00:00.000Z");
 
@@ -203,8 +203,7 @@ function boundRow(id = "kb-1", remoteId = "remote-kb-1") {
 
 describe("第35轮知识服务真实业务边界", () => {
   beforeEach(() => {
-    resetAllStubs();
-    setConfig({ ragflowApiKey: "test-ragflow-key" });
+    initializeKnowledgeModuleConfig({ ragflowApiKey: "test-ragflow-key" });
   });
 
   afterEach(() => {
@@ -222,7 +221,6 @@ describe("第35轮知识服务真实业务边界", () => {
     agentKnowledgeBindingRepo.listJoinedWithKnowledgeBaseByConfigId = originals.joinedBindings;
     setKnowledgeUploadProviderForTesting(null);
     setKnowledgeRuntimeProviderForTesting(null);
-    resetConfig();
     resetAllStubs();
   });
 

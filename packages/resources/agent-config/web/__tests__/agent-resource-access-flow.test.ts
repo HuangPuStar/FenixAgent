@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, mock, test } from "bun:test";
+import { agentApi } from "../api/agents";
 import {
   type AgentResourceLike,
   canManageAgentSharing,
@@ -7,8 +8,7 @@ import {
   getAgentDisplayName,
   isAgentWritable,
   isExternalAgent,
-} from "@/src/lib/agent-resource-access";
-import { agentApi } from "../api/agents";
+} from "../lib/agent-resource-access";
 
 /** 视图字段子集：仅供用例构造 `/web` 响应形状，断言不依赖未列出的字段。 */
 type AgentViewFields = Pick<AgentResourceLike, "scope" | "access" | "organizationName">;

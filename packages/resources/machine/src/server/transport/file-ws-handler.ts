@@ -8,7 +8,6 @@
 // W7 事件接收在 file-machine-events，W12a 重试/熔断在 file-op-retry。
 
 import { createLogger, error as logError } from "@fenix/logger";
-import type { WsConnection } from "@server/transport/ws-types";
 import {
   broadcastMachineInvalidateAll,
   clearMachineEventState,
@@ -31,6 +30,7 @@ import {
   removePending,
   sendToWs,
 } from "./file-ws-requests";
+import type { WsConnection } from "./ws-types";
 
 const logger = createLogger("transport-file-ws-handler");
 

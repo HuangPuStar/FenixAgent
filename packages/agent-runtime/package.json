@@ -23,6 +23,10 @@
     "./server/orchestration-environment": {
       "types": "./src/server/repositories/environment-orchestration.ts",
       "default": "./src/server/repositories/environment-orchestration.ts"
+    },
+    "./web/api/environments": {
+      "types": "./web/api/environments.ts",
+      "default": "./web/api/environments.ts"
     }
   },
   "scripts": {
@@ -42,6 +46,7 @@
     "@fenix/resource-memory": "workspace:*",
     "@fenix/resource-sandbox": "workspace:*",
     "@fenix/resource-skill": "workspace:*",
+    "@fenix/web-runtime": "workspace:*",
     "acp-link": "workspace:*",
     "drizzle-orm": "^0.45.2",
     "ioredis": "^5.10.1",

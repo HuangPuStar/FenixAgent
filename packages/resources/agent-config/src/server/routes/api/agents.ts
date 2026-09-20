@@ -1,7 +1,6 @@
 import type { ActorContext, IdentityDirectory } from "@fenix/platform-sdk";
 import { ApiErrorResponseSchema, AppError, toResourceAccessView } from "@fenix/platform-sdk";
 import { InvalidKnowledgeBindingError } from "@fenix/resource-knowledge/server";
-import { authGuardPlugin } from "@server/plugins/auth";
 import Elysia from "elysia";
 import type { AuthorizedAgentConfig } from "../../facades/agent-config-facade";
 import { toAgentResourceKey } from "../../facades/agent-config-facade";
@@ -25,6 +24,7 @@ import {
   toAgentConfigWriteData,
   validateAgentData,
 } from "../../services/config/agent-config";
+import type { ApiAgentConfigRouteDependencies } from "../dependencies";
 
 /**
  * `/api/agents` 协议层（对外已发布合同）。
@@ -38,6 +38,9 @@ import {
  * 写路径按资源键（`<activeOrganizationId>/<resourceId>`）定位资源：已发布合同对跨组织资源返回 404，
  * 而按 ID 直读会命中"其他组织公开可读"的资源。资源键把"同组织可见"这一判定交给授权谓词，语义与
  * 迁移前一致。
+ *
+ * 改为工厂（CE 阶段 2 任务 1.3）：会话守卫由宿主注入——Elysia 的 `macro` / `state` 是实例作用域的，
+ * 父实例无法向已构造的子实例回填，守卫必须是宿主装配的那一份实例。
  */
 
 /**
@@ -139,283 +142,285 @@ function activeOrganizationKey(actor: ActorContext): string | null {
   return actor.activeOrganizationId ?? null;
 }
 
-const app = new Elysia({ name: "api-agents", prefix: "/api/agents" }).use(authGuardPlugin).model({
-  "api-agent-list-query": ApiAgentListQuerySchema,
-  "api-agent-id-params": ApiAgentIdParamsSchema,
-  "api-agent-create-body": ApiAgentUpsertBodySchema,
-  "api-agent-update-body": ApiAgentUpdateBodySchema,
-  "api-agent-list-response": ApiAgentListResponseSchema,
-  "api-agent-detail": ApiAgentDetailSchema,
-  "api-agent-delete-response": ApiAgentDeleteResponseSchema,
-});
+export function createApiAgentsRoutes(deps: ApiAgentConfigRouteDependencies) {
+  const app = new Elysia({ name: "api-agents", prefix: "/api/agents" }).use(deps.authGuardPlugin).model({
+    "api-agent-list-query": ApiAgentListQuerySchema,
+    "api-agent-id-params": ApiAgentIdParamsSchema,
+    "api-agent-create-body": ApiAgentUpsertBodySchema,
+    "api-agent-update-body": ApiAgentUpdateBodySchema,
+    "api-agent-list-response": ApiAgentListResponseSchema,
+    "api-agent-detail": ApiAgentDetailSchema,
+    "api-agent-delete-response": ApiAgentDeleteResponseSchema,
+  });
 
-app.get(
-  "",
-  // biome-ignore lint/suspicious/noExplicitAny: Elysia 在自定义 response schema 下类型推断不稳定
-  async ({ store, query, error }: any) => {
-    const actor = store.actor as ActorContext | null;
-    if (!actor) {
-      return error(401, { error: { code: "UNAUTHORIZED", message: "请求缺少组织上下文" } });
-    }
-    const { page, pageSize } = query as ApiAgentListQuery;
+  app.get(
+    "",
+    // biome-ignore lint/suspicious/noExplicitAny: Elysia 在自定义 response schema 下类型推断不稳定
+    async ({ store, query, error }: any) => {
+      const actor = store.actor as ActorContext | null;
+      if (!actor) {
+        return error(401, { error: { code: "UNAUTHORIZED", message: "请求缺少组织上下文" } });
+      }
+      const { page, pageSize } = query as ApiAgentListQuery;
 
-    try {
-      const { facade, identity, associations } = getAgentConfigModule();
-      const { items, total } = await facade.list(actor, { limit: pageSize, offset: (page - 1) * pageSize });
-      const organizationNames = await resolveOrganizationNames(
-        identity,
-        items.map((item) => item.scope.organizationId),
-      );
-      const counts = await Promise.all(items.map((item) => associations.listKnowledgeBindings(item.id)));
-      return {
-        items: items.map((item, index) =>
-          toAgentListItem(
-            item,
-            counts[index]?.length ?? 0,
-            actor.activeOrganizationId,
-            organizationNames.get(item.scope.organizationId ?? ""),
+      try {
+        const { facade, identity, associations } = getAgentConfigModule();
+        const { items, total } = await facade.list(actor, { limit: pageSize, offset: (page - 1) * pageSize });
+        const organizationNames = await resolveOrganizationNames(
+          identity,
+          items.map((item) => item.scope.organizationId),
+        );
+        const counts = await Promise.all(items.map((item) => associations.listKnowledgeBindings(item.id)));
+        return {
+          items: items.map((item, index) =>
+            toAgentListItem(
+              item,
+              counts[index]?.length ?? 0,
+              actor.activeOrganizationId,
+              organizationNames.get(item.scope.organizationId ?? ""),
+            ),
           ),
-        ),
-        total,
-        page,
-        pageSize,
-      };
-    } catch (err) {
-      const mapped = mapApiError(err);
-      return error(mapped.status, mapped.body);
-    }
-  },
-  {
-    sessionAuth: true,
-    query: "api-agent-list-query",
-    response: {
-      200: "api-agent-list-response",
-      400: ApiErrorResponseSchema,
-      401: ApiErrorResponseSchema,
-      403: ApiErrorResponseSchema,
-      500: ApiErrorResponseSchema,
-    },
-    detail: {
-      tags: ["External AgentConfig"],
-      summary: "获取 Agent 配置列表",
-      description:
-        "返回当前调用方可读的 Agent 配置列表，包含当前组织内部资源与外部共享资源；分页与计数在数据库内完成。",
-    },
-  },
-);
-
-app.get(
-  "/:id",
-  // biome-ignore lint/suspicious/noExplicitAny: Elysia 在自定义 response schema 下类型推断不稳定
-  async ({ store, params, error }: any) => {
-    const actor = store.actor as ActorContext | null;
-    if (!actor) {
-      return error(401, { error: { code: "UNAUTHORIZED", message: "请求缺少组织上下文" } });
-    }
-    const { id } = params as { id: string };
-
-    try {
-      const { facade, identity } = getAgentConfigModule();
-      // 详情允许读取其他组织公开的 Agent：按 ID 读即可，写路径才需要限定同组织。
-      const agent = await facade.getById(actor, id);
-      if (!agent) {
-        return error(404, { error: { code: "NOT_FOUND", message: `Agent '${id}' not found` } });
+          total,
+          page,
+          pageSize,
+        };
+      } catch (err) {
+        const mapped = mapApiError(err);
+        return error(mapped.status, mapped.body);
       }
-      const organizationNames = await resolveOrganizationNames(identity, [agent.scope.organizationId]);
-      return await buildAgentDetail(actor, agent, organizationNames.get(agent.scope.organizationId ?? ""));
-    } catch (err) {
-      const mapped = mapApiError(err);
-      return error(mapped.status, mapped.body);
-    }
-  },
-  {
-    sessionAuth: true,
-    params: "api-agent-id-params",
-    response: {
-      200: "api-agent-detail",
-      401: ApiErrorResponseSchema,
-      404: ApiErrorResponseSchema,
-      500: ApiErrorResponseSchema,
     },
-    detail: {
-      tags: ["External AgentConfig"],
-      summary: "获取 Agent 配置详情",
-      description: "按 Agent 配置 ID 返回详情，支持读取当前组织内部资源与外部共享资源。",
+    {
+      sessionAuth: true,
+      query: "api-agent-list-query",
+      response: {
+        200: "api-agent-list-response",
+        400: ApiErrorResponseSchema,
+        401: ApiErrorResponseSchema,
+        403: ApiErrorResponseSchema,
+        500: ApiErrorResponseSchema,
+      },
+      detail: {
+        tags: ["External AgentConfig"],
+        summary: "获取 Agent 配置列表",
+        description:
+          "返回当前调用方可读的 Agent 配置列表，包含当前组织内部资源与外部共享资源；分页与计数在数据库内完成。",
+      },
     },
-  },
-);
+  );
 
-app.post(
-  "",
-  // biome-ignore lint/suspicious/noExplicitAny: Elysia 在自定义 response schema 下类型推断不稳定
-  async ({ store, body, error }: any) => {
-    const actor = store.actor as ActorContext | null;
-    if (!actor) {
-      return error(401, { error: { code: "UNAUTHORIZED", message: "请求缺少组织上下文" } });
-    }
-    const payload = body as ApiAgentUpsertBody;
-    const validationError = validateAgentData(payload as unknown as Record<string, unknown>);
-    if (validationError) {
-      return error(400, { error: { code: "VALIDATION_ERROR", message: validationError } });
-    }
+  app.get(
+    "/:id",
+    // biome-ignore lint/suspicious/noExplicitAny: Elysia 在自定义 response schema 下类型推断不稳定
+    async ({ store, params, error }: any) => {
+      const actor = store.actor as ActorContext | null;
+      if (!actor) {
+        return error(401, { error: { code: "UNAUTHORIZED", message: "请求缺少组织上下文" } });
+      }
+      const { id } = params as { id: string };
 
-    try {
-      const { facade, identity } = getAgentConfigModule();
-      // 同名判定按归属组织：唯一性是 `(organization_id, name)` 约束，其他组织公开的同名 Agent 不构成
-      // 本组织的创建冲突（用可见性判定会让这类合法创建返回 409）。
-      if (await facade.existsInOrganization(actor, payload.name)) {
-        return error(409, { error: { code: "ALREADY_EXISTS", message: `Agent '${payload.name}' already exists` } });
+      try {
+        const { facade, identity } = getAgentConfigModule();
+        // 详情允许读取其他组织公开的 Agent：按 ID 读即可，写路径才需要限定同组织。
+        const agent = await facade.getById(actor, id);
+        if (!agent) {
+          return error(404, { error: { code: "NOT_FOUND", message: `Agent '${id}' not found` } });
+        }
+        const organizationNames = await resolveOrganizationNames(identity, [agent.scope.organizationId]);
+        return await buildAgentDetail(actor, agent, organizationNames.get(agent.scope.organizationId ?? ""));
+      } catch (err) {
+        const mapped = mapApiError(err);
+        return error(mapped.status, mapped.body);
+      }
+    },
+    {
+      sessionAuth: true,
+      params: "api-agent-id-params",
+      response: {
+        200: "api-agent-detail",
+        401: ApiErrorResponseSchema,
+        404: ApiErrorResponseSchema,
+        500: ApiErrorResponseSchema,
+      },
+      detail: {
+        tags: ["External AgentConfig"],
+        summary: "获取 Agent 配置详情",
+        description: "按 Agent 配置 ID 返回详情，支持读取当前组织内部资源与外部共享资源。",
+      },
+    },
+  );
+
+  app.post(
+    "",
+    // biome-ignore lint/suspicious/noExplicitAny: Elysia 在自定义 response schema 下类型推断不稳定
+    async ({ store, body, error }: any) => {
+      const actor = store.actor as ActorContext | null;
+      if (!actor) {
+        return error(401, { error: { code: "UNAUTHORIZED", message: "请求缺少组织上下文" } });
+      }
+      const payload = body as ApiAgentUpsertBody;
+      const validationError = validateAgentData(payload as unknown as Record<string, unknown>);
+      if (validationError) {
+        return error(400, { error: { code: "VALIDATION_ERROR", message: validationError } });
       }
 
-      const agent = await facade.create(actor, {
-        name: payload.name,
-        data: toAgentConfigWriteData(payload as unknown as Record<string, unknown>),
-        ...(payload.publicReadable === undefined ? {} : { publicReadable: payload.publicReadable }),
-      });
-      await applyAgentBindings({
-        agentConfigId: agent.id,
-        request: readAgentBindingRequest(payload as unknown as Record<string, unknown>),
-        actor,
-      });
+      try {
+        const { facade, identity } = getAgentConfigModule();
+        // 同名判定按归属组织：唯一性是 `(organization_id, name)` 约束，其他组织公开的同名 Agent 不构成
+        // 本组织的创建冲突（用可见性判定会让这类合法创建返回 409）。
+        if (await facade.existsInOrganization(actor, payload.name)) {
+          return error(409, { error: { code: "ALREADY_EXISTS", message: `Agent '${payload.name}' already exists` } });
+        }
 
-      const organizationNames = await resolveOrganizationNames(identity, [agent.scope.organizationId]);
-      return await buildAgentDetail(actor, agent, organizationNames.get(agent.scope.organizationId ?? ""));
-    } catch (err) {
-      const mapped = mapApiError(err);
-      return error(mapped.status, mapped.body);
-    }
-  },
-  {
-    sessionAuth: true,
-    body: "api-agent-create-body",
-    response: {
-      200: "api-agent-detail",
-      400: ApiErrorResponseSchema,
-      401: ApiErrorResponseSchema,
-      403: ApiErrorResponseSchema,
-      409: ApiErrorResponseSchema,
-      500: ApiErrorResponseSchema,
-    },
-    detail: {
-      tags: ["External AgentConfig"],
-      summary: "创建 Agent 配置",
-      description: "创建当前组织的 Agent 配置，并按需同步知识库、Skill 与 MCP 关联。",
-    },
-  },
-);
-
-app.put(
-  "/:id",
-  // biome-ignore lint/suspicious/noExplicitAny: Elysia 在自定义 response schema 下类型推断不稳定
-  async ({ store, params, body, error }: any) => {
-    const actor = store.actor as ActorContext | null;
-    if (!actor) {
-      return error(401, { error: { code: "UNAUTHORIZED", message: "请求缺少组织上下文" } });
-    }
-    const organizationId = activeOrganizationKey(actor);
-    if (!organizationId) {
-      return error(401, { error: { code: "UNAUTHORIZED", message: "请求缺少组织上下文" } });
-    }
-    const { id } = params as { id: string };
-    const payload = body as ApiAgentUpdateBody;
-    const validationError = validateAgentData(payload as unknown as Record<string, unknown>);
-    if (validationError) {
-      return error(400, { error: { code: "VALIDATION_ERROR", message: validationError } });
-    }
-
-    try {
-      const { facade, identity } = getAgentConfigModule();
-      // 资源键限定"归属当前组织"：跨组织可读资源的写请求在这里变成 404，与迁移前一致。
-      const agent = await facade.update(
-        actor,
-        toAgentResourceKey(organizationId, id),
-        toAgentConfigWriteData(payload as unknown as Record<string, unknown>),
-        {
+        const agent = await facade.create(actor, {
+          name: payload.name,
+          data: toAgentConfigWriteData(payload as unknown as Record<string, unknown>),
           ...(payload.publicReadable === undefined ? {} : { publicReadable: payload.publicReadable }),
-        },
-      );
-      await applyAgentBindings({
-        agentConfigId: agent.id,
-        request: readAgentBindingRequest(payload as unknown as Record<string, unknown>),
-        actor,
-      });
+        });
+        await applyAgentBindings({
+          agentConfigId: agent.id,
+          request: readAgentBindingRequest(payload as unknown as Record<string, unknown>),
+          actor,
+        });
 
-      const organizationNames = await resolveOrganizationNames(identity, [agent.scope.organizationId]);
-      return await buildAgentDetail(actor, agent, organizationNames.get(agent.scope.organizationId ?? ""));
-    } catch (err) {
-      const mapped = mapApiError(err);
-      return error(mapped.status, mapped.body);
-    }
-  },
-  {
-    sessionAuth: true,
-    params: "api-agent-id-params",
-    body: "api-agent-update-body",
-    response: {
-      200: "api-agent-detail",
-      400: ApiErrorResponseSchema,
-      401: ApiErrorResponseSchema,
-      403: ApiErrorResponseSchema,
-      404: ApiErrorResponseSchema,
-      500: ApiErrorResponseSchema,
-    },
-    detail: {
-      tags: ["External AgentConfig"],
-      summary: "更新 Agent 配置",
-      description: "按 Agent 配置 ID 更新当前组织资源，并在请求包含关联字段时同步知识库、Skill 与 MCP。",
-    },
-  },
-);
-
-app.delete(
-  "/:id",
-  // biome-ignore lint/suspicious/noExplicitAny: Elysia 在自定义 response schema 下类型推断不稳定
-  async ({ store, params, error }: any) => {
-    const actor = store.actor as ActorContext | null;
-    if (!actor) {
-      return error(401, { error: { code: "UNAUTHORIZED", message: "请求缺少组织上下文" } });
-    }
-    const organizationId = activeOrganizationKey(actor);
-    if (!organizationId) {
-      return error(401, { error: { code: "UNAUTHORIZED", message: "请求缺少组织上下文" } });
-    }
-    const { id } = params as { id: string };
-
-    try {
-      const { facade } = getAgentConfigModule();
-      const resourceKey = toAgentResourceKey(organizationId, id);
-      const agent = await facade.get(actor, resourceKey);
-      if (!agent) {
-        return error(404, { error: { code: "NOT_FOUND", message: `Agent '${id}' not found` } });
+        const organizationNames = await resolveOrganizationNames(identity, [agent.scope.organizationId]);
+        return await buildAgentDetail(actor, agent, organizationNames.get(agent.scope.organizationId ?? ""));
+      } catch (err) {
+        const mapped = mapApiError(err);
+        return error(mapped.status, mapped.body);
       }
-      if (isBuiltInAgent(agent.name)) {
-        return error(403, { error: { code: "FORBIDDEN", message: `Cannot delete built-in agent '${agent.name}'` } });
+    },
+    {
+      sessionAuth: true,
+      body: "api-agent-create-body",
+      response: {
+        200: "api-agent-detail",
+        400: ApiErrorResponseSchema,
+        401: ApiErrorResponseSchema,
+        403: ApiErrorResponseSchema,
+        409: ApiErrorResponseSchema,
+        500: ApiErrorResponseSchema,
+      },
+      detail: {
+        tags: ["External AgentConfig"],
+        summary: "创建 Agent 配置",
+        description: "创建当前组织的 Agent 配置，并按需同步知识库、Skill 与 MCP 关联。",
+      },
+    },
+  );
+
+  app.put(
+    "/:id",
+    // biome-ignore lint/suspicious/noExplicitAny: Elysia 在自定义 response schema 下类型推断不稳定
+    async ({ store, params, body, error }: any) => {
+      const actor = store.actor as ActorContext | null;
+      if (!actor) {
+        return error(401, { error: { code: "UNAUTHORIZED", message: "请求缺少组织上下文" } });
+      }
+      const organizationId = activeOrganizationKey(actor);
+      if (!organizationId) {
+        return error(401, { error: { code: "UNAUTHORIZED", message: "请求缺少组织上下文" } });
+      }
+      const { id } = params as { id: string };
+      const payload = body as ApiAgentUpdateBody;
+      const validationError = validateAgentData(payload as unknown as Record<string, unknown>);
+      if (validationError) {
+        return error(400, { error: { code: "VALIDATION_ERROR", message: validationError } });
       }
 
-      await facade.remove(actor, resourceKey);
-      return { id: agent.id, deleted: true as const };
-    } catch (err) {
-      // 可见但无 `delete` 动作（403）由宿主错误类携带状态码；不可见资源在上面的读取处已经成为 404。
-      const mapped = mapApiError(err);
-      return error(mapped.status, mapped.body);
-    }
-  },
-  {
-    sessionAuth: true,
-    params: "api-agent-id-params",
-    response: {
-      200: "api-agent-delete-response",
-      401: ApiErrorResponseSchema,
-      403: ApiErrorResponseSchema,
-      404: ApiErrorResponseSchema,
-      500: ApiErrorResponseSchema,
-    },
-    detail: {
-      tags: ["External AgentConfig"],
-      summary: "删除 Agent 配置",
-      description: "按 Agent 配置 ID 删除当前组织资源；内置 Agent 不允许删除。",
-    },
-  },
-);
+      try {
+        const { facade, identity } = getAgentConfigModule();
+        // 资源键限定"归属当前组织"：跨组织可读资源的写请求在这里变成 404，与迁移前一致。
+        const agent = await facade.update(
+          actor,
+          toAgentResourceKey(organizationId, id),
+          toAgentConfigWriteData(payload as unknown as Record<string, unknown>),
+          {
+            ...(payload.publicReadable === undefined ? {} : { publicReadable: payload.publicReadable }),
+          },
+        );
+        await applyAgentBindings({
+          agentConfigId: agent.id,
+          request: readAgentBindingRequest(payload as unknown as Record<string, unknown>),
+          actor,
+        });
 
-export default app;
+        const organizationNames = await resolveOrganizationNames(identity, [agent.scope.organizationId]);
+        return await buildAgentDetail(actor, agent, organizationNames.get(agent.scope.organizationId ?? ""));
+      } catch (err) {
+        const mapped = mapApiError(err);
+        return error(mapped.status, mapped.body);
+      }
+    },
+    {
+      sessionAuth: true,
+      params: "api-agent-id-params",
+      body: "api-agent-update-body",
+      response: {
+        200: "api-agent-detail",
+        400: ApiErrorResponseSchema,
+        401: ApiErrorResponseSchema,
+        403: ApiErrorResponseSchema,
+        404: ApiErrorResponseSchema,
+        500: ApiErrorResponseSchema,
+      },
+      detail: {
+        tags: ["External AgentConfig"],
+        summary: "更新 Agent 配置",
+        description: "按 Agent 配置 ID 更新当前组织资源，并在请求包含关联字段时同步知识库、Skill 与 MCP。",
+      },
+    },
+  );
+
+  app.delete(
+    "/:id",
+    // biome-ignore lint/suspicious/noExplicitAny: Elysia 在自定义 response schema 下类型推断不稳定
+    async ({ store, params, error }: any) => {
+      const actor = store.actor as ActorContext | null;
+      if (!actor) {
+        return error(401, { error: { code: "UNAUTHORIZED", message: "请求缺少组织上下文" } });
+      }
+      const organizationId = activeOrganizationKey(actor);
+      if (!organizationId) {
+        return error(401, { error: { code: "UNAUTHORIZED", message: "请求缺少组织上下文" } });
+      }
+      const { id } = params as { id: string };
+
+      try {
+        const { facade } = getAgentConfigModule();
+        const resourceKey = toAgentResourceKey(organizationId, id);
+        const agent = await facade.get(actor, resourceKey);
+        if (!agent) {
+          return error(404, { error: { code: "NOT_FOUND", message: `Agent '${id}' not found` } });
+        }
+        if (isBuiltInAgent(agent.name)) {
+          return error(403, { error: { code: "FORBIDDEN", message: `Cannot delete built-in agent '${agent.name}'` } });
+        }
+
+        await facade.remove(actor, resourceKey);
+        return { id: agent.id, deleted: true as const };
+      } catch (err) {
+        // 可见但无 `delete` 动作（403）由宿主错误类携带状态码；不可见资源在上面的读取处已经成为 404。
+        const mapped = mapApiError(err);
+        return error(mapped.status, mapped.body);
+      }
+    },
+    {
+      sessionAuth: true,
+      params: "api-agent-id-params",
+      response: {
+        200: "api-agent-delete-response",
+        401: ApiErrorResponseSchema,
+        403: ApiErrorResponseSchema,
+        404: ApiErrorResponseSchema,
+        500: ApiErrorResponseSchema,
+      },
+      detail: {
+        tags: ["External AgentConfig"],
+        summary: "删除 Agent 配置",
+        description: "按 Agent 配置 ID 删除当前组织资源；内置 Agent 不允许删除。",
+      },
+    },
+  );
+
+  return app;
+}

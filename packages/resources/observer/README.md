@@ -1,49 +1,69 @@
 # @fenix/resource-observer
 
-运行中 ACP 链接的只读观察面、系统日志检索与系统级人员树的唯一 owner。
+运行中 ACP 链接的只读观察面、系统日志检索与系统级人员树的 owner：服务端实现、路由工厂、浏览器出口与文案都在本包内，宿主 `apps/server` 只剩挂载调用——实测 `grep -n "observer" apps/server/src/main.ts` 的 3 处命中全是「导入工厂 + `.use(createApi*Routes({ systemApiGuardPlugin }))` 挂载」（94、96、505 行）。宿主侧 observer 域的旧路径已删 19 条（`src/__tests__/observer-package-contract.test.ts` 的 `HOST_PATHS_REMOVED` 逐条断言 `existsSync === false`），除 1 处表定义残留外本包零宿主内部依赖。
 
-## 职责
+## 定位与 owner
 
 - **Observer 聚合面**：`src/server/services/observer/observer-service.ts` 的 `ObserverService` 维护「kind → Provider」注册表，`tree(kind)` / `list(kind)` 在请求时现场收集并组装；未注册 kind 抛 `ObserverKindNotFoundError`（路由映射 404），`register` / `unregister` 可独立摘除 Provider 回滚。
 - **acp-link Provider**：`providers/acp-link.ts` 只读遍历 acp-ws 连接、external-relay 条目与 chat-relay 客户端三类来源，按 source 归一化 `linkId`（`acp-ws:*` / `external-relay:*` / `chat-relay:*`）。join key 经 environment 权威表回查，对齐失败（env 缺失、machineId 未注册、归属不一致）记 `verified=false` 并进 `integrity.mismatchedItems`；machine 连接的 `__machine__` 哨兵 userId 不外显。
 - **关系树组装**：`relation-tree.ts` 是纯函数（无 IO、无副作用），产出 `byOrg`（org → user → agent → instance；无 instance 归属的叶子挂 `AgentNodeView.leaves`）、`byEntity`（按 machineId 分组）与完整性汇总，逐层排序保证输出可断言。
-- **名称解析**：`names` 字典按角色现场解析——组织与用户经 `IdentityDirectory`、agentConfig 经 agent-config、machine 经 machine、instance 经 `agentInstanceRepo`；缺失 id 不占位（前端回退显示原始 id），结果即用即弃、不缓存。
+- **名称解析**：`names` 字典按角色现场解析——组织与用户经 `IdentityDirectory`、agentConfig 经 agent-config、machine 经 machine、instance 经 `agentInstanceRepo`；缺失 id 不补替身文案（前端回退显示原始 id），结果即用即弃、不缓存。
 - **系统日志**：`system-log-service.ts` 列举日志根目录直属 `.log` 文件、按关键字与 error 条件过滤检索（单文件上限 50 MiB，只保留最近 limit 条）、流式下载。文件名先过 `LOG_FILE_PATTERN`（拒绝 `/`、`\`、NUL）再 `lstat` 要求普通文件，目录与 symlink 一律拒绝。
 - **系统人员树**：`system-people-tree-service.ts` 合并 `IdentityDirectory.listOrganizationsWithMembers()` 与 `agent_config` 表；用户集合取组织成员与 agent owner 的并集，缺 member 行的 owner 仍出现在树上（role 为 null），展示信息一次批量补齐、不在循环里逐行查询。
-- **HTTP 交付物**：`/api/system/observer/acp-link`、`/api/system/logs`（`/`、`/search`、`/download`）、`/api/system/people-tree`；三者均 `systemApiKeyAuth: true`，响应 `{ success, data }` 骨架，错误不泄内部细节。
+- **模块组合根**：`src/module.ts` 的 `createObserverModule()` 返回进程级单例（`id` + `service`）。`fenix.module.ts` 是它的惰性描述符（`create` 用动态 `import()`，避免 registry 索引层把 Elysia、Drizzle 与各来源实现拖进模块图）。
 
-## 依赖边界
+## 服务端交付物
 
-本包属 `resources` 类别，依赖矩阵（`scripts/lib/architecture-boundary-rules.ts`）禁止 `resources → platform-impl`：不导入 `@fenix/identity/*` 与 `@fenix/access-control/*`，身份数据只经 `IdentityDirectory` 窄契约取得。`fenix.module.ts` 的 `dependsOn` 只表达服务端装配依赖，每条都有 `src/**` 值导入证据：
+- **HTTP 交付物**：`/api/system/observer/acp-link`、`/api/system/logs`（`/`、`/search`、`/download`）、`/api/system/people-tree`；三者均 `systemApiKeyAuth: true`，响应 `{ success, data }` 骨架，错误不泄内部细节。路由目录是 `src/server/routes/**`（计划 §2.3 的包内树）：3 个路由文件 + 1 个依赖类型文件，全部以工厂形式导出。
 
-- `agent-config`：`observer-service.ts` 用 `getAgentConfigById` 完成 machine 解析链 `environment.agentConfigId → agentConfig.machineId`，用 `findAgentConfigNamesByIds` 填名称字典。
-- `machine`：同一文件用 `findMachineNamesByIds` 解析 machineId 角色名称；缺名只影响展示，不影响采集。
-- `agent-runtime` 同为值导入（连接快照、`environmentRepo` / `agentInstanceRepo`、延迟加载的 `getChatChannelController`），但它是 profile 固定启用的基础模块，不进资源模块的装配依赖校验范围。
-- `resource-sandbox` 只在 `web/**` 被引用（`MasterKeyGate`、`mergeFlatRows` 等控制台组件）：web 贡献不进服务端装配顺序，其启用由 profile 的 `web` 列表表达，写进 `dependsOn` 等于凭空声明一条服务端不具备的边。
+```ts
+import {
+  createApiSystemLogsRoutes,
+  createApiSystemObserverRoutes,
+  createApiSystemPeopleTreeRoutes,
+} from "@fenix/resource-observer/server";
 
-## 守卫由宿主注入
+const apiSystemLogs = createApiSystemLogsRoutes({ systemApiGuardPlugin: systemApiAuthPlugin });
+```
 
-`systemApiAuthPlugin` **不是**本包的导出。三个路由文件直接 `import { systemApiAuthPlugin } from "@server/plugins/system-api-auth"`，在模块加载期 `new Elysia({ name, prefix })` 并 `export default app`；宿主因此只能按默认导出挂载（`apps/server/src/main.ts` 的 `.use(apiSystemLogsRoutes)`），而不是 sandbox 那种工厂注入形态（`.use(createApiSandboxRoutes({ systemApiGuardPlugin: systemApiAuthPlugin }))`）。
+- **守卫由宿主注入，本包不导出守卫实例**。`systemApiGuardPlugin` 的依赖类型写在 `src/server/routes/dependencies.ts`（只放类型：类型若写在包入口会出现「入口 → 工厂 → 入口」的导入环）。必须注入而不能自建：Elysia 的 `macro` / `state` 是实例作用域的，父实例无法向已构造的子实例回填；三个路由都声明 `systemApiKeyAuth: true`，该 macro 必须与宿主 `systemApiAuthPlugin`（读 `RCS_SYSTEM_API_KEYS`、写 `store.systemAuth`）是同一份实例，否则同一进程会出现两套互不可见的系统认证状态。
+- **出口形状**：`./server` 是具名再导出、没有 default（实测 `grep -cE "^export" src/server.ts` → 12 条：3 个路由工厂 + `createObserverModule` + 依赖类型 + 3 组 schema + 3 个服务 barrel）。测试用 seam（`setObserverServiceDeps` / `setSystemLogServiceForTests` / `setSystemPeopleTreeServiceForTests`）留在定义它的模块文件上，**不进** `./server`——它们不是公共契约，包内用例按相对路径直接引用。
+- **仓储是包内唯一数据访问点**：实测 `grep -rn "getObserverDatabase" src` → 4 条生产代码命中，分布在 `src/server/db.ts`（定义）与 `src/server/repositories/system-people-repository.ts`（3 条：导入、注释、调用）；另 2 条在 `src/__tests__/observer-package-contract.test.ts`（断言本不变量自身的匹配文本与说明）；`src/server/routes/**` 与 `src/server/services/**` 不取 DB 句柄，表对象（`agentConfig`）只在该仓储出现。句柄在函数内取，不在模块加载期持有（加载早于宿主 `initializeApplicationInfrastructure()`）。
+- **配置与环境**：包内不读宿主环境变量（实测 `git grep --untracked -nE "process[.]env" -- src` → 0 条，含测试）；machine 兜底 id 经 `@fenix/resource-machine/server` 的 `getMachineConfig()` 读取（`RCS_DEFAULT_MACHINE_ID` 的 owner 在 machine 模块），不在本包配置里复制同名值。该读取要求宿主注册 `machine` 模块配置，宿主已在 `apps/server/src/main.ts:180-184` 注册（见「边界残留」第 2 条第二个子项）；未注册时 `getMachineConfig()` 抛错而不是退化为 `null`，本包不 try/catch 吞掉——配置缺失必须显式暴露，静默降级会让连接归属悄悄退化成「无 machine」。
+- **DB 句柄类型**：`NodePgDatabase<Record<string, never>>`——刻意不写 `typeof schema`，仓储只做 `select`，不使用 `db.query.*`，因此表定义迁出后这里无需改形状。
 
-直接 import 宿主实例的两点后果：包不能脱离宿主的 `@server` 别名被消费；Elysia 的 `macro` / `state` 是实例作用域的，唯一性如今靠「引用的就是宿主那一份」来维持——同名的第二份实例会被 Elysia 按 plugin `name` 去重，先构造者静默生效。目标形态是「工厂 + 守卫注入」（W2 切片），宿主侧的 `.use(...)` 调用点须同批改为传参。
+## web 面与 i18n
 
-包内测试的替换接缝（不改模块图）：`setObserverServiceDeps()`（部分覆盖采集依赖，传 `null` 恢复默认）、`setSystemLogServiceForTests()`、`setSystemPeopleTreeServiceForTests()`。
+- **浏览器出口**：`web/index.ts` 是 `exports["./web"]` 的目标，包与宿主消费本包浏览器能力的根入口；`./web/i18n` 是只导出语言资源的独立子路径（宿主 i18n 启动期注册），避免把整张控制台页面图拉进首屏 bundle。实测 17 个运行时值导出（`bun -e 'import * as m from ".../web/index.ts"; Object.keys(m)'`）：3 个系统级 API client 的全部导出、3 个 admin 页面（`AdminLogsPage` / `AdminObserverPage` / `AdminPeoplePage`）、4 个被页面复用的展示组件，以及 `OBSERVER_NS` / `observerResources`。
+  - 包外消费面（实测 `grep -rn "@fenix/resource-observer" packages apps`）：`packages/resources/model-management/web/pages/admin/AdminModelGatewayPage.tsx:1` 已取包入口的 `fetchSystemPeopleTree`；宿主 `apps/web/src/routes/admin/{index,logs,people}.tsx` 仍经 `@/src/pages/admin/*` 别名懒加载三个页面（别名在 `apps/web/vite.config.ts` 与根 tsconfig，属共享文件，收敛归 §1.6）；`apps/generated/module-registry.ts:13` 取 `./module`；`apps/server/src/main.ts:96` 取 `./server`。
+  - 4 个展示组件当前无包外消费方（实测 `grep -rn "ObserverFlatTable\|ObserverOrgTree\|ObserverMachineTree\|ObserverIntegrityAlert" apps packages` 只命中本包）：它们按「控制台组合面」导出，供 §1.6 的 WebShell 装配取用；若届时仍无消费方，应连同本节说明一并删除。（注意与服务端 schema 的 `ObserverMachineTree` 同名不同义——后者是从 `./server` 导出的 zod 视图类型，与 `./web` 的组件互不影响。）
+- **浏览器安全由值导入图守护**：`web/__tests__/observer-browser-surface.test.ts` 从 `web/index.ts` 出发递归走值导入图（`@fenix/<pkg>/<subpath>` 经对方 `exports` 解析到真实源文件后继续递归，遍历口径在 `web/__tests__/value-import-graph.ts`），白名单只留浏览器安全外部依赖（宿主提供的 peerDependency 与经 `@fenix/ui-components` 传递进入的无样式原语）。断言覆盖 `node:*`、`@server/*`、宿主别名 `@/src|@/components`、`@fenix/*/src` 深路径、exports 解析失败、未白名单外部库、自我回环、`__tests__` 不进图，并有一条注入本包 `./server` 出口的负例。包内 web 零宿主别名（实测 `grep -rnE 'from "@/' web` → 0 条）。
+- **跨包 web 依赖只有一个**：7 个 web 文件（3 页面 + 4 组件）从 `@fenix/resource-sandbox/web` 取 observer 域的视图工具与组件（`MasterKeyGate`、`mergeFlatRows`、`machineReverseIndex`、`integrityRows`、`name`、`groupYjsSessions`、`sessionTabCounts`、`chatRelayPayload`、`formatClockTime`、`formatDuration` 与 `FlatRow` / `IntegrityRow` / `YjsSessionGroup` 类型）。这批实现语义上属本包、当前寄居沙盒（sandbox 侧记为待 W4 收敛的已知项）；因只出现在 `web/**`，它不进 `dependsOn`（web 贡献不参与服务端装配顺序）。
+- **i18n 自持**：`web/i18n/` 下是 `namespace.ts`、`index.ts` 与 `locales/{en,zh}/observer.json`。命名空间 `OBSERVER_NS = "observer"` 由本包声明（键的最终所在地 = 包的 owner），出口 `observerResources.en/zh` 经子路径 `@fenix/resource-observer/web/i18n` 供宿主注册：宿主 `apps/web/src/i18n/index.ts:19` 已按该子路径取 `OBSERVER_NS` 与 `observerResources`（116/130 行注册），**不再按深层相对路径读 JSON**，路径已从 `web/i18n/{en,zh}/` 迁到 `web/i18n/locales/{en,zh}/` 并随 W3 落盘（见「边界残留」第 6 条）。字典文件名 = `OBSERVER_NS`，由 `web/__tests__/observer-i18n.test.ts` 断言。
+- **键的来源与残留（对 HEAD 快照逐键对比）**：`git show HEAD:packages/resources/observer/web/i18n/{en,zh}/observer.json`（旧布局）各 328 个扁平键；现状 `locales/{en,zh}/observer.json` 各 99 个。相对 HEAD 删除 231 个键 = `modelGateway.*` 171 + `sandbox.*` 60，新增 2 个 = `logs.filesError` / `logs.downloadError`（任务 1.3(6) 的日志页 error 分支与下载失败提示），**两组之外删除 0 个、保留键的值逐字未改**（逐键比对：新增集合恰为上述 2 键，无隐式删除、无改值）。两组的下游：`sandbox.*` 的 60 键里 54 个已逐字存在于 sandbox 包字典（en/zh 各 54，值差异 0），其余 6 个（`cpuCount`、`healthCheckSuccess`、`memoryTotal`、`memoryUsed`、`remoteDiagnosticsError`、`tunnelSuccess`）在全仓 `*.ts`/`*.tsx`/`*.json` 内零消费方，随本次清理一并删除；`modelGateway.*` 的 owner 是 model-management，该包切片已从本包 HEAD 快照重建自持字典（实测 `packages/resources/model-management/web/i18n/locales/{en,zh}/models.json` 各含 171 个 `modelGateway.*` 键），本包只删不留。
+- **JSON 路径已收敛到 `locales/`**：字典从 `web/i18n/{en,zh}/observer.json` 移到 `web/i18n/locales/{en,zh}/observer.json`（与 sandbox / mcp / memory / model-management 同形），旧目录两份文件已整体删除（`git diff --numstat` → `0 396` ×2，新布局两份为新增文件）。宿主 `apps/web/src/i18n/index.ts:19` 的宿主接线已改为经子路径取包内资源出口（不再有指向 JSON 的深层相对导入），改指随 W3 落盘；`src/__tests__/observer-package-contract.test.ts` 与 `web/__tests__/observer-i18n.test.ts` 都断言旧路径不存在，避免两处各留一份后静默漂移。
+- **包内契约测试**：`src/__tests__/observer-package-contract.test.ts` 逐条断言计划 §1 的静态条件（宿主导入白名单、web 零别名、无穿透包外的相对路径、src 不读环境变量、exports 键齐备且目标存在、README 五段式、资源间引用只走公开出口、路由不互相导入 + 数据访问收敛在仓储、宿主旧路径已删）；`web/__tests__/observer-i18n.test.ts` 守护 en/zh 键集一致、`{{var}}` 插值成对出现、源码字面量 `t("key")` 全在字典内（≥60 个）、无 `sandbox.`/`modelGateway.` 回流、模板字面量动态键齐备。
 
-## 配置与 DB
+## 边界残留
 
-- **不读 `process.env`**：日志根目录由 `createSystemLogService(logRoot)` 传入，默认 `resolve(process.cwd(), "logs")`——「进程工作目录」是唯一的环境感知点，且只在调用时求值。
-- **没有 repository 层**：`system-people-tree-service.ts` 直接经 `@server/db` 取宿主 DB 句柄并读 `@server/db/schema` 的 `agentConfig` 表。这是 §1.7 表定义迁出与 W2 边界切断的残留，不是可扩散的写法。
-- 身份数据走 `getIdentityDirectory()`（`@fenix/platform-sdk/server`）的只读投影，本包不持有身份表；手机号等字段按目录契约缺失时为 `null`。
-- Observer 链路零持久化：不挂生命周期事件、不缓存、不写库，输出即用即弃。
-- web 层的 master key 存 sessionStorage（键 `rcs_admin_master_key`），请求时经 `request.ts` 的 `bearerToken` 注入 `Authorization` 头，401 由页面清 key 回门；密钥不进日志。
+包切片按 §4 禁写 `scripts/**`、`apps/**`、`docs/**`，以下由编排者落盘：
 
-## 边界外的已知项
+1. **表定义仍在宿主（唯一的宿主内部依赖）**：实测 `grep -rn "from \"@server/db/schema\"" src web fenix.module.ts` → 1 处 / 1 个文件（`src/server/repositories/system-people-repository.ts:1`）。表定义、DDL 与迁移归任务 1.7；迁出后本包零 `@server/` 依赖，`src/server/db.ts` 的句柄类型无需改动。同一文件的跨包表读取（`agent_config` 的 owner 是 agent-config）随表定义迁出时一并收敛，见「已知项」第三条。
+2. **`apps/server/src/main.ts` 的工厂注入与 machine 配置注册均已落盘**（2026-09-20 实测）：第 93–96 行按 `createApiSystemLogsRoutes, createApiSystemObserverRoutes, createApiSystemPeopleTreeRoutes` 从 `@fenix/resource-observer/server` 具名导入，第 503/505/506 行以 `.use(createApiSystem*Routes({ systemApiGuardPlugin: systemApiAuthPlugin }))` 挂载（`systemApiAuthPlugin` 在同文件 132 行导入）。本包不再导出可直接 `use` 的 route 实例，守卫只能经 options 注入，宿主因此不可能漏装配守卫。
+   - **`moduleConfigs.machine` 已注册**（同文件第 180–184 行，紧接 `identity` 块）：`defaultMachineId` 取 `config.defaultMachineId`（`config.ts:102`）、`fileWsIdentityStrict` 取 `config.fileWsIdentityStrict`（`config.ts:57`）、`fileEventsMaxClients` 取 `config.fileEventsMaxClients`（`config.ts:59`）。三者正是 `MachineModuleConfig` 的契约字段（`packages/resources/machine/src/server/config.ts:17-24`）。此前本 README 记录的「缺 `machine` 条目 → 默认 deps 的 `getMachineConfig()` 抛 `模块 machine 未声明应用基础设施配置` → `/api/system/observer/acp-link` 必然 500」（`src/server/services/observer/observer-service.ts:90` 经默认 deps 走这条路径，包内用例全部注入假 deps 覆盖不到）**该风险已不存在**。字段漏填不会退回运行期 500：`MachineModuleConfigSchema`（同文件第 32 行）是 `strictObject`，缺字段在启动期即抛校验错（fail-fast）。该注册不是 observer 单方需求——machine 自己的 `/web/file-events`（读 `fileEventsMaxClients`）与 file-ws 身份严格模式同样依赖它。
+3. **`scripts/architecture/exceptions.json` 的 observer 条目**：W2 落盘后按 `from` 过滤只剩 `exceptions[38]` 一条 —— `apps-boundary @fenix/resource-observer @fenix/server-app`，`owner` 已是 `1.7`、`rationale` 已是「实测 1 处导入 / 1 个文件，全部为 `@server/db/schema` 表定义导入」，无需再改；原 `web-package-not-to-app @fenix/resource-observer @fenix/web-app` 条目已删除（实测不再存在）。`handwrittenRegistryBaseline` 第 22 行的 `@fenix/resource-observer` 是模块 registry 的基线声明，不随本包改动。台账里另建议给该条补一句组织维度读取（见「已知项」第三条），或在 1.7 收敛后随条目一并删除。
+4. **宿主测试基建**：`apps/server/src/test-utils/observer-fixtures.ts` 已于 W3 删除（当时已无消费方，唯一消费者是本包旧测试）；本包夹具自持于 `src/__tests__/observer-fixtures.ts`（只依赖 `@fenix/agent-runtime/server` 类型与本包服务类型），该旧路径已加入 `src/__tests__/observer-package-contract.test.ts` 的 `HOST_PATHS_REMOVED` 清单。
+5. **`/api/system/logs|observer|people-tree` 的真实守卫合同无测试覆盖**：守卫改为工厂注入后包内只能注入替身（`src/__tests__/guard-stubs.ts` 的 `createStubSystemApiGuardPlugin()`），替身放行不等于合同已验。宿主 `apps/server/src/__tests__/api-system-routes.test.ts` 装配的是 identity 的 `createApiSystemRoutes`，全仓无这三个前缀的 401 用例，归 §1.5 的宿主协议聚合。
+6. **i18n 宿主侧接线已改指完成**（宿主文件属共享 patch，本包只记录实测结果）：
+   - **导入走包出口**：宿主 `apps/web/src/i18n/index.ts:19` 现为 `import { OBSERVER_NS, observerResources } from "@fenix/resource-observer/web/i18n"`，不再有指向 JSON 的深层相对导入；资源在 `packageResources.en/zh` 两张表内分别以 `[OBSERVER_NS]` 键登记（第 116 / 130 行），命名空间列表由 `ns: Object.keys(resources.en)`（第 157 行）导出，因此新增命名空间不会再出现「注册了字典却漏进 `ns` 列表」的静默回退。字面量不再由宿主复制：`NS.OBSERVER` 已从宿主消失，宿主改用各包导出的常量，`OBSERVER_NS = "observer"` 由本包 `web/i18n/namespace.ts` 声明（与 `packages/web-runtime/web/i18n/namespace.ts:15` 的 `OBSERVER: "observer"` 及字典文件名三处一致）。
+   - **迁出键的消费点已按 owner 命名空间取**：`apps/web/src/routes/admin.tsx` 第 22 / 24 行的 `labelKey: "nav"` / `"modelGateway.nav"` 分别带 `ns: SANDBOX_NS` / `ns: MODELS_NS`（第 1–2 行导入），导航项的 `labelKey` 不带 `ns` 时默认落在 observer 命名空间（布局自有的 `admin` / `people.nav` / `logs.nav` 页）。因此「mover 只删除、消费点归宿主」的中间态（标签回显原始 key）在 W3 即已消除，无需追加宿主顺序约束。
+7. **宿主仍留本包域的别名（两份声明，都在共享文件里）**：`apps/web/vite.config.ts`（第 31–35 行）与根 `tsconfig.json`（第 45、52–53 行）各声明一份 `@/src/api/{observer,system-logs,system-people-tree}` → 本包 `web/api/*.ts`。三条**均无消费方**（实测全仓 grep 只剩别名声明本身；页面与 model-management 都改走包入口），是三条死别名。同一对文件还指着 `@/src/pages/admin/{AdminLogsPage,AdminObserverPage,AdminPeoplePage}`（`vite.config.ts:155/159/163`、`tsconfig.json:85/89/90`，3 个 admin 路由在用）。这些别名改走 `@fenix/resource-observer/web` 归 §1.6；本包入口 `web/index.ts` 已 re-export `./api/*` 与页面符号，届时按「入口导出面覆盖消费符号」核对后连同上面的死别名一并删除，避免保留两套解析路径。
+8. **未声明 `manifest.contributions` 与 `manifest.web`**：消费方分别是 §1.5 的宿主挂载（`mountContribution`）与 §1.6 的 WebShell 装配，形状需与消费端同时定型；当前宿主按显式调用装配（路由工厂注入守卫），不形成第二套装配路径。
 
-- **没有浏览器出口**：`package.json` 只有 `.` 与 `./server`，且 `src/index.ts` 是空占位；`web/` 没有 `index.ts`，`./web` 与 `./web/i18n` 未登记。宿主因此按 vite 别名逐文件指向包内路径（`@/src/api/observer`、`@/src/pages/admin/AdminObserverPage` 等），i18n JSON 由 `apps/web/src/i18n/index.ts` 相对深链导入。补出口归 W2 切片，别名收敛归 §1.6。
-- **路由仍是 default export**：工厂化 + 守卫注入归 W2（见上节）。
-- **没有 `src/module.ts` 单例**：`fenix.module.ts` 暂不声明 `create`；`observerService` / `systemLogService` / `systemPeopleTreeService` 目前是各自模块内的进程级单例，组合根归 W2。
-- **`@server/*` 仍是生产代码依赖**：`src/**` 有 9 处导入 / 7 文件（守卫插件、`@server/db`、`@server/db/schema`、`@server/config`、`@server/types/store`）。其中表定义迁出归 §1.7；整条边是台账 `apps-boundary` 条目（owner 1.5，须消除而非编码成装配依赖）。
-- **web 面依赖未声明**：`web/**` 使用 `react` / `react-i18next` / `ahooks` / `lucide-react` / `sonner` 与宿主 `@/components/ui`，`package.json` 未声明这些；`@fenix/web-runtime` 已声明但尚无消费方（T2g 的 admin-key 落点）。接入归 W2。
-- **master key helper 仍在宿主**：唯一实现将迁 `@fenix/web-runtime/web/lib/admin-key.ts`（T2g，存储键逐字不变），本包 6 处引用届时改指。
-- **未声明 `contributions` / `web` / `envDefinitions`**：消费方分别是 §1.5 宿主挂载、§1.6 WebShell 装配与 §1.7 preflight，形状须与消费端同时定型。
-- **包内测试仍导入宿主内部路径**（`@server/test-utils/observer-fixtures`、`@server/test-utils/stubs/module-stubs`、`@server/plugins/auth`）：逐包 `/server/testing` 的边界归 W2。
+## 已知项
+
+- **`web/index.ts` 导出面大于今天的消费面**：4 个展示组件暂无包外消费方（见「web 面与 i18n」），保留理由是与 §1.6 WebShell 装配同批判定；若 §1.6 不需要，连同 README 说明一并删除，避免「顺手导出」变成事实上的公共契约。
+- **observer 域视图工具寄居 sandbox 包**：`mergeFlatRows` / `machineReverseIndex` / `integrityRows` / `name` / `groupYjsSessions` / `sessionTabCounts` / `chatRelayPayload` / 时间格式化与 `FlatRow` / `IntegrityRow` / `YjsSessionGroup` 类型的 owner 应是本包；今天本包 7 个 web 文件经 `@fenix/resource-sandbox/web` 消费。收敛（移到本包 `web/**` 并让 sandbox 改指）归 W4——两个包在 W2 是并行切片，移动会同时改双方的公开面。
+- **`agent_config` 表的跨包直读（§1 条件 8 的边界事项，归 1.7）**：`src/server/repositories/system-people-repository.ts` 的 `listAgentConfigsByOrganization()` 直接查询 `agent_config` 表（`src/server/repositories/system-people-repository.ts:1` 的 `@server/db/schema` 导入 + 该文件的 `select(...).from(agentConfig).where(eq(agentConfig.organizationId, ...))`），而该表的 owner 是 agent-config 包。对端今天没有等价入口：实测 `packages/resources/agent-config/src/server.ts` 与 `.../server/repositories/agent-config.ts` 的公开面只有 `PgAgentConfigRepo`（按 configId 单行读聚合配置）、`agentConfigRepo` 与 `findAgentConfigNamesByIds(ids)`，均非组织维度列举；本包又不许改对端，故本任务内不换接。收敛归任务 1.7（连同表定义迁出）：二选一——agent-config 提供组织维度只读列举 API 后本包改接，或把「organization → agent_config 归属投影」明确划归 observer 的数据所有权并在架构台账标注。今天这条读取在 §1 条件 1 的白名单内（表定义导入），台账条目的 `rationale` / `owner` 见「边界残留」第 3 条。
+- **`observer-service.test.ts` 的 ACP 连接用例带一条既有告警**：`TimeoutNaNWarning: NaN is not a number.`（来自 `packages/agent-runtime/src/server/transport/acp-ws-handler.ts:121`，经未改动的集成用例触发），非本次改动引入，属 agent-runtime 侧的既有行为。
+- **`src/index.ts` 是空再导出**（`export {}`）：与沙盒等包同形，包根只承担「服务端与装配层可安全导入」的位置；浏览器能力在 `./web`、服务端能力在 `./server`，通过包根转出会把两条链混进同一张图。

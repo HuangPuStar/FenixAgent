@@ -3,11 +3,10 @@ import type { GatewayModel, ModelGatewayAdapter } from "@fenix/model-gateway-sdk
 import type { AccessControlModule, ActorContext, ResourceQueryConstraint, SystemTenant } from "@fenix/platform-sdk";
 // 系统托管租户经 platform-sdk 的只读窄契约取得：resource 类别不得依赖 platform-impl（identity）。
 import { getIdentityDirectory } from "@fenix/platform-sdk/server";
-import { db } from "@server/db";
-import { sql } from "drizzle-orm";
 import { providerResource } from "../access/provider-resource";
 import { getModelManagementModule } from "../module-runtime";
 import type { ModelRepository, ModelRow } from "../repositories/model-resource";
+import { withModelSyncLock as defaultModelSyncLock } from "../repositories/model-sync-lock";
 import type { ProviderWriteData } from "../repositories/provider-resource";
 import type { ProviderService } from "../services/provider-service";
 
@@ -28,6 +27,20 @@ import type { ProviderService } from "../services/provider-service";
  */
 
 export const SYSTEM_MODEL_GATEWAY_PROVIDER_NAME = "fenix-model-gateway";
+
+/**
+ * 请求路径上「这个 Provider 对当前调用者不可见」的专用失败。
+ *
+ * 与「网关配置/上游故障」分开成类是有意的语义区分：不可见由授权谓词决定，是**确定性**结果——重试必然
+ * 得到同一答案；上游超时、适配器报错才可能自愈。控制台用量页据此二分（`/web/model-gateway/:providerId/
+ * usage` 把它映射为 403，其余保持 400），否则用户会对着一个永远失败的重试按钮反复点击。
+ */
+export class ModelGatewayProviderNotVisibleError extends Error {
+  constructor(providerId: string) {
+    super(`model gateway provider '${providerId}' is not visible to the caller`);
+    this.name = "ModelGatewayProviderNotVisibleError";
+  }
+}
 
 export interface SystemModelGatewayProviderOptions {
   baseUrl: string;
@@ -100,19 +113,6 @@ function systemActor(tenant: SystemTenant): ActorContext {
   };
 }
 
-/**
- * 使用事务级 advisory lock 串行化模型投影同步。
- *
- * 当前模型写入服务仍使用宿主 db 连接，事务在这里主要负责持有跨实例锁；
- * 具体写入失败会中止后续操作，下一次手动同步可重新对齐投影。
- */
-async function withDatabaseModelSyncLock<T>(fn: () => Promise<T>): Promise<T> {
-  return db.transaction(async (tx) => {
-    await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtextextended('fenix:model-gateway:models', 0))`);
-    return fn();
-  });
-}
-
 export function createSystemModelGatewayProviderService(
   deps: Partial<ProviderServiceDeps> = {},
   options: SystemModelGatewayProviderOptions,
@@ -127,7 +127,8 @@ export function createSystemModelGatewayProviderService(
   const accessControl = () => deps.accessControl ?? getModelManagementModule().accessControl;
   const facade = () => getModelManagementModule().facade;
   const invalidateModelCache = deps.invalidateModelCache ?? (() => {});
-  const withModelSyncLock = deps.withModelSyncLock ?? withDatabaseModelSyncLock;
+  // 缺省锁实现来自仓储层（跨实例 advisory lock）；测试注入可直接放行的替身。
+  const withModelSyncLock = deps.withModelSyncLock ?? defaultModelSyncLock;
 
   /** 系统主体 + 它在该资源上的读取条件；两者必须成对使用，分开获取会让条件对不上主体。 */
   async function systemContext(): Promise<{
@@ -249,10 +250,15 @@ export function createSystemModelGatewayProviderService(
      *
      * 这是**用户请求路径**：授权经 Facade 的受控读取完成，`actor` 必须是真实请求主体（宿主从
      * `store.actor` 注入），不得传系统主体——那会让任何调用者都读得到系统租户的资源。
+     *
+     * 两种失败刻意不同：Facade 读不到行（不存在或超出可见范围）抛
+     * {@link ModelGatewayProviderNotVisibleError}（确定性权限结果，路由映射 403）；读到了行但它不是本
+     * 网关类型抛普通错误（网关配置类故障，路由保持 400）。
      */
     async getProviderForUsage(actor: ActorContext, providerId: string) {
       const provider = await facade().getById(actor, providerId);
-      if (provider?.kind !== "gateway" || provider.gatewayType !== options.gatewayType) {
+      if (!provider) throw new ModelGatewayProviderNotVisibleError(providerId);
+      if (provider.kind !== "gateway" || provider.gatewayType !== options.gatewayType) {
         throw new Error("model gateway provider is unavailable");
       }
       return {

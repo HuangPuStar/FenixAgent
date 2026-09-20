@@ -1,27 +1,25 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import type { ActorContext } from "@fenix/platform-sdk";
 import { AppError, ForbiddenError, NotFoundError } from "@fenix/platform-sdk";
-import { readJson, resetAllStubs, stubAuthApi } from "@fenix/platform-sdk/testing";
-import { resetTestAuth, setTestAuth } from "@server/plugins/auth";
-import { setTestOrgContext } from "@server/services/org-context";
-import { stubEnvironmentRepo } from "@server/test-utils/stubs/module-stubs";
+import { readJson, resetAllStubs } from "@fenix/platform-sdk/testing";
+import { createApiMcpRoutes } from "../server/routes/api/mcp";
 import { authorizedServer, installMcpModuleStub, resetMcpModuleStub, testActor } from "./fixtures";
+import { createStubMcpAuthGuardPlugin } from "./guard-stubs";
 
 /**
  * `/api/mcp` 协议层用例（对外已发布合同）。
  *
  * 关注两点：一是分页与计数由 Facade/数据库完成（协议层不再内存切片），二是 `resourceAccess` 由
  * `toResourceAccessView` 从 `scope + access.actions` 派生——它是唯一保留旧字段形状的位置。
+ *
+ * 会话守卫由宿主注入（工厂参数），主体由包内替身控制；真实守卫的凭据解析不在本文件覆盖范围。
  */
 
-const route = (await import("../server/routes/api/mcp")).default;
+const guard = createStubMcpAuthGuardPlugin();
+const route = createApiMcpRoutes({ authGuardPlugin: guard.plugin });
 
-function authenticate(organizationId = "org-1") {
-  setTestAuth({
-    user: { id: "user-1", email: "user-1@example.test", name: "Tester" },
-    authContext: { organizationId, userId: "user-1", role: "owner" },
-  });
-  setTestOrgContext({ organizationId, userId: "user-1", role: "owner" });
+function authenticate() {
+  guard.setActor(testActor());
 }
 
 function request(path: string, init?: RequestInit) {
@@ -44,19 +42,28 @@ describe("round47 API MCP 路由", () => {
   });
 
   afterEach(() => {
-    resetTestAuth();
-    setTestOrgContext(null);
+    guard.setActor(null);
     resetMcpModuleStub();
   });
 
-  // 未认证请求必须在进入资源模块前被 session 守卫拒绝。
-  test("未认证列表返回 401", async () => {
-    resetTestAuth();
-    setTestOrgContext(null);
-    stubAuthApi({ getSession: async () => null, verifyApiKey: async () => ({ valid: false }) });
-    stubEnvironmentRepo({ getBySecret: async () => null });
+  // 无主体的请求必须被拒，且错误体是平台统一信封（`/api` 的稳定错误形状）。
+  test("缺少主体时列表返回 401 且不调用 Facade", async () => {
+    let called = false;
+    installMcpModuleStub({
+      facade: {
+        list: async () => {
+          called = true;
+          return { items: [], total: 0 };
+        },
+      },
+    });
+    guard.setActor(null);
 
-    expect((await request("/")).status).toBe(401);
+    const response = await request("/");
+
+    expect(response.status).toBe(401);
+    expect(await readJson(response)).toEqual({ error: { code: "UNAUTHORIZED", message: "请求缺少组织上下文" } });
+    expect(called).toBeFalse();
   });
 
   // 分页与计数下推到 Facade：协议层只把 page/pageSize 换算成 limit/offset，不再内存切片。

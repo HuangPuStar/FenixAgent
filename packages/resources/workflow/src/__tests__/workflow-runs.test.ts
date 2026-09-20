@@ -1,12 +1,16 @@
 import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
-import { resetAllStubs, stubAuthApi } from "@fenix/platform-sdk/testing";
-import { resetTestAuth, setTestAuth } from "@server/plugins/auth";
-import { setTestOrgContext } from "@server/services/org-context";
-import { stubPgStorageAdapter } from "@server/test-utils/stubs/module-stubs";
+import { resetAllStubs } from "@fenix/platform-sdk/testing";
+import { createWebWorkflowRunsRoutes } from "../server/routes/web/workflow-runs";
+import { initializeWorkflowModuleConfig, stubPgStorageAdapter } from "../server/testing";
+import { createStubSessionAuthGuard } from "./guard-stubs";
 
 // route 模块导入 — pg-storage-adapter 已在 setup-mocks.ts 中通过 preload mock 注册，
 // stub 行为通过 stubPgStorageAdapter() 在 beforeEach 中配置
-const route = (await import("../server/routes/web/workflow-runs")).workflowRunsRoutes;
+const guard = createStubSessionAuthGuard();
+
+// 路由经工厂构造并注入会话守卫替身：静态条件禁止包内测试依赖宿主 `@server/plugins/auth`，
+// 而 Elysia 的 macro/state 是实例作用域的，守卫必须是构造时传入的同一实例。
+const route = createWebWorkflowRunsRoutes({ authGuardPlugin: guard });
 
 function request(path: string, init?: RequestInit) {
   return route.handle(new Request(`http://localhost${path}`, init));
@@ -16,18 +20,14 @@ describe("GET /web/workflow-runs", () => {
   const mockListRuns = mock();
 
   beforeEach(() => {
-    setTestAuth({
-      user: { id: "user-1", email: "user@test.com", name: "Tester" },
-      authContext: { organizationId: "org-1", userId: "user-1", role: "owner" },
-    });
-    setTestOrgContext({ organizationId: "org-1", userId: "user-1", role: "owner" });
+    initializeWorkflowModuleConfig();
+    guard.setActor({ organizationId: "org-1", userId: "org-1" });
     mockListRuns.mockReset();
     stubPgStorageAdapter({ listRuns: mockListRuns });
   });
 
   afterEach(() => {
-    resetTestAuth();
-    setTestOrgContext(null);
+    guard.setActor(null);
     resetAllStubs();
   });
 
@@ -91,11 +91,10 @@ describe("GET /web/workflow-runs", () => {
 
   // 不设置 auth context，验证返回 401
   test("未设置 auth context 返回 401 未认证", async () => {
-    resetTestAuth();
-    setTestOrgContext(null);
+    guard.setActor(null);
     // sessionAuth macro 在 _testAuth 为 null 时会走真实认证链路，
     // getSession 返回 null 触发 API key fallback，无 key 时最终返回 401
-    stubAuthApi({ getSession: async () => null });
+    guard.setActor(null);
 
     const res = await request("/workflow-runs");
     const json = await res.json();

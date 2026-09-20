@@ -1,7 +1,11 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { resetAllStubs, stubDb } from "@fenix/platform-sdk/testing";
-import { resetTestAuth, setTestAuth } from "@server/plugins/auth";
-import { stubRegistry } from "@server/test-utils/stubs/module-stubs";
+import { createWebRegistryRoutes } from "../server/routes/web/registry";
+import { setRegistryRouteDeps } from "../server/testing";
+import { createStubSessionAuthGuardPlugin, resetTestAuth, setTestAuth } from "./guard-stubs";
+
+// 路由实例文件级构造一次：会话守卫替身按请求期读取当前会话（setTestAuth 即时生效）
+const registryRoutes = createWebRegistryRoutes({ authGuardPlugin: createStubSessionAuthGuardPlugin() });
 
 beforeEach(() => {
   resetAllStubs();
@@ -14,6 +18,7 @@ beforeEach(() => {
 
 afterEach(() => {
   resetTestAuth();
+  setRegistryRouteDeps(null);
 });
 
 describe("registry schema 文件", () => {
@@ -54,27 +59,19 @@ describe("registry schema 文件", () => {
 });
 
 describe("registry 路由文件", () => {
-  test("路由文件默认导出 app", async () => {
-    const mod = await import("../routes/web/registry");
-    expect(mod.default).toBeDefined();
-  });
-
-  test("路由文件导出 Elysia app 并包含 expected 端点", async () => {
-    const mod = await import("../routes/web/registry");
-    expect(mod.default).toBeDefined();
-    expect(typeof mod.default.handle).toBe("function");
+  // 路由以工厂形式装配：返回的 Elysia 实例可被宿主直接挂载（认证守卫由宿主注入）
+  test("路由工厂返回可挂载的 Elysia 实例", () => {
+    expect(typeof registryRoutes.handle).toBe("function");
   });
 
   // 在线机器删除时应返回 409，前端据此提示“先下线或解除引用”。
   test("DELETE /registry/machines/:id maps online conflict to 409", async () => {
-    stubRegistry({
+    setRegistryRouteDeps({
       deleteMachine: async () => {
         throw new Error("machine 'mach-online' is online and cannot be deleted");
       },
     });
-    const mod = await import("../routes/web/registry");
-
-    const response = await mod.default.handle(
+    const response = await registryRoutes.handle(
       new Request("http://localhost/registry/machines/mach-online", {
         method: "DELETE",
       }),
@@ -92,12 +89,10 @@ describe("registry 路由文件", () => {
 
   // 删除成功时返回 deleted=true，供前端刷新列表。
   test("DELETE /registry/machines/:id returns deleted=true", async () => {
-    stubRegistry({
+    setRegistryRouteDeps({
       deleteMachine: async () => ({ deleted: true as const }),
     });
-    const mod = await import("../routes/web/registry");
-
-    const response = await mod.default.handle(
+    const response = await registryRoutes.handle(
       new Request("http://localhost/registry/machines/mach-offline", {
         method: "DELETE",
       }),
@@ -114,14 +109,12 @@ describe("registry 路由文件", () => {
 
   // 非当前组织的机器更新应表现为 not found，避免越权修改。
   test("PATCH /registry/machines/:id maps foreign machine to 404", async () => {
-    stubRegistry({
+    setRegistryRouteDeps({
       updateMachine: async () => {
         throw new Error("machine 'mach-foreign' not found");
       },
     });
-    const mod = await import("../routes/web/registry");
-
-    const response = await mod.default.handle(
+    const response = await registryRoutes.handle(
       new Request("http://localhost/registry/machines/mach-foreign", {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
@@ -141,14 +134,12 @@ describe("registry 路由文件", () => {
 
   // 非当前组织的机器删除应表现为 not found，避免越权删除。
   test("DELETE /registry/machines/:id maps foreign machine to 404", async () => {
-    stubRegistry({
+    setRegistryRouteDeps({
       deleteMachine: async () => {
         throw new Error("machine 'mach-foreign' not found");
       },
     });
-    const mod = await import("../routes/web/registry");
-
-    const response = await mod.default.handle(
+    const response = await registryRoutes.handle(
       new Request("http://localhost/registry/machines/mach-foreign", {
         method: "DELETE",
       }),
@@ -166,14 +157,12 @@ describe("registry 路由文件", () => {
 
   // 公共机器仅允许查看，不允许修改，避免把共享资源当成个人机器编辑。
   test("PATCH /registry/machines/:id maps public machine to 404", async () => {
-    stubRegistry({
+    setRegistryRouteDeps({
       updateMachine: async () => {
         throw new Error("machine 'mach-public' not found");
       },
     });
-    const mod = await import("../routes/web/registry");
-
-    const response = await mod.default.handle(
+    const response = await registryRoutes.handle(
       new Request("http://localhost/registry/machines/mach-public", {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
@@ -193,7 +182,7 @@ describe("registry 路由文件", () => {
 
   // 更新接口返回基础机器信息，不应错误要求 recentEvents。
   test("PATCH /registry/machines/:id accepts machine record response without recentEvents", async () => {
-    stubRegistry({
+    setRegistryRouteDeps({
       updateMachine: async () => ({
         id: "mach-1",
         organizationId: "org-1",
@@ -211,9 +200,7 @@ describe("registry 路由文件", () => {
         updatedAt: new Date("2026-07-30T02:10:00.000Z"),
       }),
     });
-    const mod = await import("../routes/web/registry");
-
-    const response = await mod.default.handle(
+    const response = await registryRoutes.handle(
       new Request("http://localhost/registry/machines/mach-1", {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
@@ -244,21 +231,17 @@ describe("registry 路由文件", () => {
   });
 });
 
-describe("schemas/index.ts 导出 registry", () => {
-  test("schemas index 导出 MachineSchema", async () => {
-    const mod = await import("@server/schemas");
+describe("包入口导出 registry 契约面", () => {
+  // 消费方（宿主 apps/server 与资源包）从包根入口取 schema 与路由工厂；宿主聚合导出是否转发属宿主契约
+  test("server 入口导出 MachineSchema 与 RegistryEventSchema", async () => {
+    const mod = await import("@fenix/resource-machine/server");
     expect(mod.MachineSchema).toBeDefined();
-  });
-
-  test("schemas index 导出 RegistryEventSchema", async () => {
-    const mod = await import("@server/schemas");
     expect(mod.RegistryEventSchema).toBeDefined();
   });
-});
 
-describe("web/index.ts 注册 registry 路由", () => {
-  test("web index 导入 webRegistry", async () => {
-    const mod = await import("@server/routes/web/index");
-    expect(mod.default).toBeDefined();
+  // 宿主装配 registry 路由的唯一入口是工厂函数（守卫注入），不得再有默认导出实例
+  test("server 入口导出 createWebRegistryRoutes 工厂", async () => {
+    const mod = await import("@fenix/resource-machine/server");
+    expect(typeof mod.createWebRegistryRoutes).toBe("function");
   });
 });

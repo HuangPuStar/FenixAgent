@@ -1,5 +1,5 @@
-import { db } from "@server/db";
 import { registryEvent } from "@server/db/schema";
+import { getMachineDatabase } from "../db";
 
 function generateRegistryEventId(): string {
   return `evt_${crypto.randomUUID().slice(0, 22)}`;
@@ -15,6 +15,7 @@ export async function writeRegistryEvent(
   type: string,
   detail: Record<string, unknown>,
 ): Promise<void> {
+  const db = getMachineDatabase();
   await db.insert(registryEvent).values({
     id: generateRegistryEventId(),
     machineId,

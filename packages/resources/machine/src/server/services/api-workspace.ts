@@ -1,8 +1,8 @@
 import { lstat, mkdir, writeFile } from "node:fs/promises";
 import { dirname, isAbsolute, join, normalize, relative, sep } from "node:path";
-import { getOwnedEnvironment } from "@fenix/agent-runtime/server";
 import { AppError } from "@fenix/platform-sdk";
-import type { AuthContext } from "@server/plugins/auth";
+import { getOwnedEnvironment } from "../environment-port";
+import type { MachineRequestAuth } from "../types/auth";
 import { getRemoteMachineId, remoteUploadFiles } from "./remote-file-service";
 import { isUserPath, normalizeUserRoutePath, resolveWorkspacePath } from "./workspace-fs";
 
@@ -15,16 +15,33 @@ type WorkspaceDeps = {
   resolveWorkspacePath: typeof resolveWorkspacePath;
 };
 
-const defaultDeps: WorkspaceDeps = {
-  getOwnedEnvironment,
-  getRemoteMachineId,
-  isUserPath,
-  normalizeUserRoutePath,
-  remoteUploadFiles,
-  resolveWorkspacePath,
-};
+/**
+ * 默认依赖按**调用时**读取模块绑定，不在模块顶层展开成对象字面量。
+ *
+ * 本包处在 `machine → agent-runtime → sandbox → machine` 的既有环上（方向性豁免登记在架构台账，1.4 收敛）。
+ * 从环的另一侧入口进入（`./server/testing`、宿主 preload 里等价于先加载 agent-runtime 的路径）时，本模块会在
+ * `environment-port` 尚未完成初始化时求值，顶层读它的 `const` 导出即抛
+ * `ReferenceError: Cannot access … before initialization`，并且因为宿主 preload 加载本包，全仓 `bun test` 一起失败。
+ * 惰性求值不改变依赖图（台账里的环与方向性豁免条目继续有效），只把读取推迟到调用时刻。
+ */
+function buildDefaultDeps(): WorkspaceDeps {
+  return {
+    getOwnedEnvironment,
+    getRemoteMachineId,
+    isUserPath,
+    normalizeUserRoutePath,
+    remoteUploadFiles,
+    resolveWorkspacePath,
+  };
+}
 
-let deps: WorkspaceDeps = defaultDeps;
+/** 用例登记过的替换值；`null` 表示全量走默认实现。 */
+let overrides: Partial<WorkspaceDeps> | null = null;
+
+/** 本次调用生效的依赖：替换值覆盖默认实现（浅合并，与 `setApiWorkspaceDeps` 的历史语义一致）。 */
+function currentDeps(): WorkspaceDeps {
+  return overrides ? { ...buildDefaultDeps(), ...overrides } : buildDefaultDeps();
+}
 
 /** 上传文件名必须是 workspace 目录内的规范相对路径。 */
 function normalizeUploadRelativePath(value: string): string {
@@ -66,8 +83,8 @@ async function ensureSafeUploadParent(root: string, destination: string): Promis
 /**
  * 测试覆盖 workspace service 依赖，避免路由测试触达真实文件系统和远程节点。
  */
-export function setApiWorkspaceDeps(overrides: Partial<WorkspaceDeps> | null): void {
-  deps = overrides ? { ...defaultDeps, ...overrides } : defaultDeps;
+export function setApiWorkspaceDeps(next: Partial<WorkspaceDeps> | null): void {
+  overrides = next;
 }
 
 export interface WorkspaceFileUploadResult {
@@ -84,10 +101,11 @@ export interface WorkspaceFileUploadResult {
  * 文件语义保持 environment 级共享，而不是 session 私有文件。
  */
 export async function uploadWorkspaceFiles(
-  ctx: AuthContext,
+  ctx: MachineRequestAuth,
   environmentId: string,
   formData: FormData,
 ): Promise<WorkspaceFileUploadResult> {
+  const deps = currentDeps();
   await deps.getOwnedEnvironment(environmentId, ctx.organizationId, ctx.userId);
 
   const files = formData

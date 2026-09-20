@@ -1,10 +1,12 @@
 import { describe, expect, test } from "bun:test";
-import type { McpServerInfo } from "@/src/types/config";
+import { ApiError } from "@fenix/web-runtime/api/request";
+import type { McpServerInfo } from "@fenix/web-runtime/types/config";
 import { getMcpDisplayName } from "../lib/mcp-resource-access";
 import {
   buildMcpPayload,
   countMcpScopes,
   filterMcpServers,
+  isUnauthorizedError,
   McpImportError,
   parseMcpCommand,
   parseMcpJson,
@@ -163,5 +165,20 @@ describe("plugin marketplace filters", () => {
   // 搜索应覆盖名称、说明与传输类型。
   test("searches plugin names and summaries", () => {
     expect(filterMcpServers(servers, "浏览器", "all").map((server) => server.name)).toEqual(["browser-control"]);
+  });
+});
+
+describe("catalog load failure classification", () => {
+  // 401/403 在 request 层归一为 UNAUTHORIZED，页面靠这条判定进入「无权限」分支并去掉重试按钮。
+  test("treats the normalized 401/403 error code as unauthorized", () => {
+    expect(isUnauthorizedError(new ApiError("请求缺少组织上下文", "UNAUTHORIZED"))).toBe(true);
+  });
+
+  // 其他错误码与普通 Error 都不得被当成无权限：误判会让网络/服务端故障丢掉重试入口。
+  test("does not classify other failures as unauthorized", () => {
+    expect(isUnauthorizedError(new ApiError("boom", "SERVER_ERROR"))).toBe(false);
+    expect(isUnauthorizedError(new ApiError("missing", "NOT_FOUND"))).toBe(false);
+    expect(isUnauthorizedError(new Error("UNAUTHORIZED"))).toBe(false);
+    expect(isUnauthorizedError(undefined)).toBe(false);
   });
 });

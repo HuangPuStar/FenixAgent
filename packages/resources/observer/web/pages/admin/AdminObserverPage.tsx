@@ -6,17 +6,17 @@
 // - 覆盖 loading / empty / error / retry 状态。
 
 import { integrityRows, MasterKeyGate, machineReverseIndex, mergeFlatRows } from "@fenix/resource-sandbox/web";
+import { Badge } from "@fenix/ui-components/ui/badge";
+import { Button } from "@fenix/ui-components/ui/button";
+import { Card, CardContent, CardHeader, CardTitle } from "@fenix/ui-components/ui/card";
+import { Skeleton } from "@fenix/ui-components/ui/skeleton";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@fenix/ui-components/ui/tabs";
+import { ApiError } from "@fenix/web-runtime/api/request";
 import { clearAdminKey, getAdminKey } from "@fenix/web-runtime/lib/admin-key";
 import { useRequest } from "ahooks";
 import { LogOut, RefreshCw } from "lucide-react";
 import { useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Skeleton } from "@/components/ui/skeleton";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { ApiError } from "@/src/api/request";
 import { type AcpLinkSnapshot, fetchAcpLinkSnapshot } from "../../api/observer";
 import { ObserverFlatTable } from "./components/ObserverFlatTable";
 import { ObserverIntegrityAlert } from "./components/ObserverIntegrityAlert";

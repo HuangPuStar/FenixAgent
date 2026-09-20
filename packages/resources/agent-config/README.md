@@ -1,44 +1,131 @@
 # @fenix/agent-config
 
-Agent 配置资源行、关联绑定（Skill / MCP / 知识库 / 记忆）与站点应用（Site App）的唯一 owner。
+Agent 配置资源行、关联绑定（Skill / MCP / 知识库 / 记忆）与站点应用（Site App）的 owner。本包目录是
+`agent_config` 与 `agent_site_app` 两张表的读写方、`/web` 与 `/api` 协议面的实现方，以及 agent 编辑器
+/ 站点页面的浏览器实现方。
 
-## 职责
+## 定位与 owner
 
-- **资源行与授权**：`agent_config` 的注册（`src/server/access/agent-config-resource.ts`：归属列在主表，member 默认只有 `read` / `use`，创建、修改、删除与公开受众设置归 owner / admin）、领域服务（`src/server/services/agent-config-service.ts`，不接收 actor）与资源 Facade（`src/server/facades/agent-config-facade.ts`：授权编排 + 停止实例 / 清理绑定 Environment / 重启实例等跨资源副作用）。受控读取的授权谓词由注入的 `AccessControlModule` 编译，仓储不判断组织、角色与 `visibility`。
-- **关联绑定**：`createAgentAssociations()`（`src/server/services/agent-associations.ts`）是五类绑定的统一门面——绑定表分散在各自资源包，路由与 Facade 经它读写，不在协议层散落跨包导入。
-- **站点应用**：`agent_site_app` 仓储（`src/server/repositories/agent-site-app.ts`）、`/agent-sites` 路由、L3 业务前端代理 `/web/site/deploy/:appId/*`（`src/server/routes/agent-sites-proxy.ts`，60s LRU + `/app-xxx/*` 兜底兼容层）与浏览器组件（`SiteFrame` / `SiteTabsBar` / `MountSiteDialog` / `AgentSitesPage`）。
-- **协议交付物**：`/web/config/agents`、`/web/agent-sites`、`/web/sidebar-config`、`/web/agent-generation` 与 `/api/agents`。
-- **系统入口**：`src/server/system-entries.ts` 提供 `getAgentConfigById`（无授权读，供 LaunchSpec 构建 / Observer 展示 / acp-ws 归属解析）与 `getReadableAgentConfigById`（按组织可见性读的迁移期兼容入口）。
-- **meta-agent 托管**：`src/services/meta-agent.ts` 管理 `meta-agent` Environment 生命周期与 `.agents/skills/` 内置 Skill 装载，`syncBuiltinSkillsToSystemAdmin` 供宿主启动同步。
-- **组合根**：`createAgentConfigServerModule(deps)`（`src/server/module.ts`，依赖全部由宿主注入：`accessControl` / `scopeStore` / `authorizedQuery` / `identity`），结果经 `installAgentConfigModule` 装入 `src/server/runtime.ts` 的进程单例，未装配即报错而不静默退化。
-- **浏览器出口**：`src/index.ts` 重导出 `web/api/agents`、`web/api/sites` 与 agent-panel 组件；`src/__tests__/browser-surface.test.ts` 静态守住「不重导出服务端模块」这条边界，完整依赖图由 Vite 生产构建验证。
+- **资源域**：`agent_config`（资源行 + 授权入口）与 `agent_site_app`（站点应用）。受控读取的授权谓词
+  由注入的 `AccessControlModule` 编译，仓储不判断组织、角色与 `visibility`；资源注册在
+  `src/server/access/agent-config-resource.ts`（member 默认只有 `read` / `use`）。
+- **清单与组合根**：`fenix.module.ts` 的 `moduleManifest`（`id: "agent-config"`、`kind: "resource"`、
+  `capabilities: ["resource.agent-config"]`、`create` 惰性），`create()` 指向 `src/module.ts` 的
+  `createAgentConfigModule()`；进程级装配结果由 `src/server/runtime.ts` 持有，
+  `createAgentConfigServerModule(deps)`（`src/server/module.ts`）是唯一组合实现，未装配即报错。
+- **依赖方向**：`dependsOn: ["knowledge","mcp","memory","skill"]`——四条边都由 `src/**` 的值导入证明
+  （绑定表分散在各自资源包），注释逐条列在 `fenix.module.ts`。反向边由消费方声明：machine、
+  model-management、observer 导入本包入口，本包不写这些边。
+- **边界守护**：`src/__tests__/agent-config-source-migration.test.ts` 静态扫描 `src`、`web`、
+  `fenix.module.ts`（含用例）的 import/export 说明符，断言：非表定义的 `@server/*` 导入为零、web 面
+  `@/` 别名为零、穿透包外的相对引用为零、`src` 内环境变量直读为零、跨包不深入对方 `src/**`。
 
-## 依赖边界
+## 服务端交付物
 
-- 本包属 `resources`；`dependsOn: ["knowledge","mcp","memory","skill"]`，四条边都是关联绑定读写带来的成套启用耦合，逐条代码证据见 `fenix.module.ts`。
-- 反方向由对方声明：machine（`remote-file-service.ts` 读 Agent 配置与 AgentNode）、model-management、observer 都导入本包服务端入口；本包不写这些边，写了会反转装配方向。
-- 跨包只经公开子路径（`@fenix/resource-*/server*`），不引用对方 `src/**`；身份展示经 `@fenix/platform-sdk` 的 `IdentityDirectory`，授权经 `AccessControlModule`——本包不 import 任何具体实现。
-- `apps/server` 是唯一合法装配者（装配模块、挂载路由、启动时同步内置 Skill）。
+- **路由工厂**（`src/server/routes/**`，实测 8 个 `create*` 导出；统一为 `createXxxRoutes(deps)` 形态，
+  守卫与认证由宿主注入）：
+  - `/web/config/agents`：`createWebConfigAgentsRoutes`（`src/server/routes/web/config/agents.ts`）
+  - `/web/agent-sites`：`createWebAgentSitesRoutes`（`src/server/routes/web/agent-sites.ts`）
+  - `/web/sidebar-config`：`createWebSidebarConfigRoutes`（`src/server/routes/web/sidebar-config.ts`）
+  - `/web/agent-generation`：`createWebAgentGenerationRoutes`（`src/server/routes/web/agent-generation.ts`）
+  - `/api/agents`：`createApiAgentsRoutes`（`src/server/routes/api/agents.ts`）
+  - 站点前端代理 `/web/site/deploy/:appId/*`：`createAgentSitesProxyRoutes` 与兼容层
+    `createAgentSitesCompatRoutes`（`src/server/routes/agent-sites-proxy.ts`）
+  - Agent ↔ Site 绑定子路由：`createAgentSiteAssociationRoutes`
+    （`src/server/routes/web/agent-site-association-routes.ts`）
+- **注入面**：`src/server/routes/dependencies.ts` 定义 `authGuardPlugin`（宿主会话守卫）与
+  `authenticateRequest`（站点代理的请求级认证）的类型与注入形状；包内不再 import 宿主守卫实现。
+- **领域与应用层**：`src/server/services/agent-config-service.ts`（领域服务，不接收 actor）、
+  `src/server/facades/agent-config-facade.ts`（授权编排 + 停止实例 / 清理绑定 Environment / 重启实例）、
+  `src/server/services/agent-associations.ts`（Skill / MCP / 知识库 / 记忆 / 站点五类绑定的统一门面）、
+  `src/server/repositories/*`（资源行、编排域 `AgentConfigRepo` 的 PG 实现、站点应用）。
+- **模块配置**：`src/server/config.ts` 经 `getModuleConfig("agent-config")` 读取，并用 zod `strictObject`
+  校验四个字段（`hiddenSidebarTabs`、`agentSitesBaseUrl`、`agentSitesMasterKey`、`agentGenerationModel`）。
+  包内不读运行环境变量，值由宿主装配阶段注入。
+- **表定义**：8 个生产文件**真实 import** `@server/db/schema`（另有 2 个用例导入、1 个契约测试自身含该
+  字符串），这是本包唯一允许的宿主导入（迁出归 §1.7）。复核：
+  `grep -rl 'from "@server/db/schema"' packages/resources/agent-config/src --include='*.ts' | grep -v __tests__ | wc -l`
+  → 8；按裸字符串统计为 9，第 9 处是 `src/server/db.ts` 的**文档注释**（不是导入），不计入。
+- **测试基建**：`./server/testing` 提供 `createAgentConfigModuleConfig` /
+  `initializeAgentConfigModuleConfig`（复位替身 + 以模块配置初始化应用基础设施，DB 句柄经转发代理）、
+  Facade / Service / Associations / Identity 替身与模块替身装载器；未打桩的方法调用即失败。
+- **exports**（`package.json`，实测）：`.`、`./module`、`./server`、`./web`、`./web/i18n`、
+  `./server/testing`，以及 4 条过渡子路径 `./server/runtime`、`./server/system-prompt`、
+  `./server/api-agent-schema`、`./server/config`（消费方见「边界残留」）。
 
-## 守卫由宿主注入
+## web 面与 i18n
 
-**目标形状，当前尚未成立**。本包路由仍是直接构造的 Elysia 实例（`export default app`），并在文件内导入宿主守卫 `authGuardPlugin`（`@server/plugins/auth`，生产代码 8 个文件）：`webConfigAgentsRoutes` / `apiAgentsRoutes` / `webAgentSitesRoutes` / `webAgentGenerationRoutes` 经 `.use(authGuardPlugin)` 生效，`agent-sites-proxy.ts` 另用 `authenticateRequest`，`system-entries.ts` 与 `meta-agent.ts` 用 `toActorContext`。
+- **唯一跨包 web 入口**：`web/index.ts`。从它出发的值导入图不含 `node:` 内建、`@server/*` 与宿主别名
+  `@/`，由 `web/__tests__/agent-config-browser-surface.test.ts` 递归守护（含跨包递归与白名单说明）。
+- 导出面覆盖实测消费方：task / prod-view 取 `agentApi`；model-management 的编辑器纯逻辑用例取
+  `agent-editor-model` 的转换与校验 schema；宿主 `AgentSidebarConfig.tsx` 取 `sidebarConfigApi`、宿主
+  `AgentSidebarTree.tsx` 取 `ensureMetaAgent`；workflow 的 `useMetaAgent` 已导出待其改指。
+- **包根导出的 `AgentSidebarConfig` 目前零消费方**（实测）：宿主控制台消费的是它自己的本地副本
+  `apps/web/src/pages/agent-panel/AgentSidebarConfig.tsx`（`AgentSidebar.tsx` 从 `./AgentSidebarConfig`
+  取 `AgentSidebarQuickNav`），二者同源——均为 151 行，仅两处 import 不同（宿主版从包根取
+  `sidebarConfigApi`、`NS` 走宿主别名 `@/src/i18n`；包内版反之）。该副本连同其余宿主↔包同源实现的移除
+  归 §1.6（整体处置口径见 review 文档 §6.9 第 1 条：页面下沉后宿主副本自然消失），宿主侧文件不在本包可写范围。
+- **页面与组件域**：`web/pages/agent-panel/**`（编辑器、`AgentSitesPage`、`agent-sites-catalog`、
+  `AgentSidebarConfig`）、`web/components/agent-panel/**`（`SiteFrame` / `SiteTabsBar` /
+  `MountSiteDialog` / `AgentSitesCard`）、`web/api/**`、`web/hooks/**`、`web/lib/**`。
+- **i18n 自持**：`web/i18n/locales/{en,zh}/agents.json` 各 271 个键，两份键结构一致（实测比对，
+  由 `web/__tests__/agent-i18n.test.ts` 与 `agent-config-browser-surface.test.ts` 守护）；命名空间由
+  `web/i18n/namespace.ts` 给出（`AGENTS_NS`）。宿主在 i18n 初始化时经子路径
+  `@fenix/agent-config/web/i18n` 取 `agentResources.en/zh` 注册——走子路径而不是 `./web` 根入口，避免把
+  整棵编辑器页面图拉进首屏 bundle；未注册时 i18next 回退为 key 回显。
 
-Elysia 的 `macro` / `state` 是实例作用域的，父实例无法向已构造的子实例回填；而守卫必须与宿主的认证解析（含 `setTestAuth` 测试 seam 与组织上下文）是同一份实例，两份同名实例会被按 plugin `name` 去重、先构造的一方静默生效。因此目标形状与黄金样本 `@fenix/resource-sandbox` 一致：路由以**工厂**导出、守卫由宿主注入，`@server/plugins/auth` 导入清零。改造归任务 1.3 W2 切片——现在单方面发明工厂签名会与 §1.5 的宿主挂载形状分叉。
+## 边界残留
 
-## 配置与 DB
+- **表定义**：`@server/db/schema`（8 个生产文件真实 import；按裸字符串统计多出的第 9 处是
+  `src/server/db.ts` 的文档注释，非导入）是本包与宿主的唯一持久化耦合，迁出归任务 1.7。复核命令见
+  「服务端交付物」的表定义条。
+- **过渡 exports 子路径**（消费方实测，收敛到包根归宿主侧改动）：`./server/system-prompt` 被
+  `apps/server/src/config.ts`、`apps/server/src/env.ts` 与 `packages/agent-runtime` 的
+  `launch-spec-builder.ts` 消费；`./server/config` 被宿主 `config-validators` 用例消费；
+  `./server/runtime` 与 `./server/api-agent-schema` 分别由宿主装配与协议 schema 消费方使用。
+- **宿主侧第二份实现（待宿主删除，非本包可写范围）**：`apps/server/src/schemas/sidebar-config.schema.ts`；
+  `apps/server/src/services/config-utils.ts:27` 的 `isValidResourceName`（与包内
+  `src/server/services/config/agent-config.ts:99` 的 `isValidAgentName` 逐字符等价，生产引用已归零，
+  只剩宿主 `round16-*` / `round22-*` 用例引用，删除时须同批改这两条用例）；
+  `apps/web/src/lib/agent-node.ts`、`agent-utils.ts`、`agent-resource-access.ts`（与包内 `web/lib/*`
+  同源、仅导入路径不同，消费方是尚未迁移的宿主页面 `AgentManagementPage` / `AgentSidebarTree` 与其 3 个
+  宿主用例）；`apps/web/src/pages/agent-panel/AgentSidebarConfig.tsx`（同源副本，见「web 面与 i18n」一节）。
+  **已删除**：`apps/web/src/i18n/locales/{en,zh}/agents.json`（键集曾与包内两份文件完全一致）——宿主
+  `apps/web/src/i18n/index.ts` 已改经 `@fenix/agent-config/web/i18n` 子路径注册 `agentResources`，不再
+  持有第二份字典，此项已不是残留。
+- **宿主 `user_config` 的读写**不是本包可删除的副本：本包只声明 `UserAgentPreferencesPort`，实现是宿主
+  `apps/server/src/services/config/user-config.ts` 的 `getUserConfig` / `setUserConfig`，由
+  `apps/server/src/services/resource-module-ports.ts` 适配成端口后注入（`/web/config/agents` 与
+  `/web/config/models` 共用同一张表，只留一组写入语义）。
+- **删除优于兼容**：本包不保留旧路径的 re-export，也不双写；宿主侧残留项的删除与宿主挂载接线同批提交。
 
-- **不读模块配置**：`getModuleConfig` 零调用。`./server/testing` 提供的是模块替身而非配置形状：`createStubAgentConfigFacade` / `createStubAgentConfigService` / `createStubAgentAssociations` / `createStubIdentityDirectory` / `createStubAgentConfigServerModule` 与 `resetAgentConfigModuleForTesting`，未打桩的方法直接抛错，宿主用例（`apps/server/src/__tests__/config-integration.test.ts`）经它注入。
-- **运行时 env 仍由 `process.env` 直读**：`AGENT_SITES_BASE_URL` / `AGENT_SITES_MASTER_KEY`（`src/server/services/agent-sites.ts`）、`OPENAI_API_KEY` / `OPENAI_MODEL`（`src/server/services/agent-generation.ts`）、`APP_HIDDEN_SIDEBAR_TABS`（`src/services/sidebar-config.ts`）。
-- **DB**：`agent_config` / `agent_site_app` / `environment` 等表从 `@server/db/schema` 导入（含仓储与两个 `@server/db` 直连的站点路由支持文件）。受控读取的谓词由平台查询编译器下推，写路径直接经 `db` 执行、授权在 Facade 完成。
-- `src/server/repositories/agent-config.ts` 与资源行仓储职责分开：前者是编排域 `AgentConfigRepo` 的 PG 实现，一次 JOIN 返回内嵌 skills / mcpServers / knowledgeBases 的扁平聚合。
+## 已知项
 
-## 边界外的已知项
-
-- **没有 `web/index.ts`**：`exports["./web"]` 指向 `./src/index.ts`（与 `"."` 同一文件，即浏览器入口）。正确形状是 `./web → ./web/index.ts`（sandbox 已切换）；归 W2 切片。
-- **路由非工厂形态**：见上节，`@server/plugins/auth` 生产残留 8 文件；归 W2 切片，宿主侧接线归 §1.5。
-- **没有 `src/module.ts`**：registry 驱动的模块工厂入口缺席，模块组合根是 `src/server/module.ts` 的 `createAgentConfigServerModule` + `src/server/runtime.ts` 的手工单例；归 W2 切片。
-- **表定义仍导入 `@server/db/schema`**：本包生产代码共 17 个文件导入 `@server/*`（auth 8、db 8，其余为宿主 config-utils / user-config / sidebar-config schema），表定义迁出归 §1.7。
-- **env 未收敛**：`process.env` 直读与 `envDefinitions` 的宿主登记归 §1.7。
-- **web 侧宿主别名**：`@/src/**`、`@/components/**` 89 处，另有浏览器侧 `@fenix/resource-sandbox/web` 1 处；归 §1.6（`web-package-not-to-app`）。
-- **未声明 `contributions` / `web` manifest 字段**：形状须与 §1.5 宿主挂载、§1.6 WebShell 装配同时定稿。
+- **删除链路的实例清理覆盖不完整**：`AgentConfigFacade.remove` 经动态 import 调用 agent-runtime 的
+  `stopInstancesForEnvironments`，其内部 `getCoreRuntime()` 直读宿主 `@server/services/core-bootstrap`，
+  唯一接缝是宿主 `stubCoreBootstrap`——按 §6.2 该替身归属 agent-runtime 的 `/server/testing`（尚未就绪），
+  包内因此只能覆盖「无绑定 Environment」的分支，见 `src/__tests__/agent-config-delete-stops-instances.test.ts`
+  的接缝说明。清理链路本体已由 `packages/agent-runtime/src/__tests__/orchestration-instance-cleanup-isolation.test.ts`
+  覆盖；Facade 接线的用例随 agent-runtime `/server/testing` 就绪后恢复（登记在共享补丁与待办清单）。
+- **宿主侧启动同步的覆盖缺口**：`meta-agent` 的内置 Skill 启动编排（宿主 `apps/server/src/services/sync-builtin.ts`）
+  原由本包的 `meta-agent` 用例覆盖，因宿主依赖被切出包内，其等价覆盖需在宿主侧补齐（随 W3）。
+- **模块配置字段暂由宿主直接提供**（`moduleConfigs["agent-config"]`），未走模块 `envDefinitions`；
+  声明、校验与 preflight 收敛归任务 1.7。
+- **§1.3(3) 的后半段「生成已授权 LaunchSpec 再调 Runtime port」本任务未实现**：Facade 只覆盖 CRUD 与
+  `restartInstances`（后者校验 `use` 动作，成员默认具备），不产出 LaunchSpec；agent 的启动/运行路径由
+  `@fenix/agent-runtime` 自行读取 `agent_config` 构建启动输入（`orchestration-bootstrap.ts` 经
+  `agentConfigRepo`、`launch-spec-builder.ts` 直读表），**不经 ActorContext、不校验 `use` 动作**。
+  影响面：启动期授权未经过本包 Facade，agent 配置读取尚未收敛为窄契约。该项归 **§1.4**
+  （架构台账 `agent-runtime-not-to-resources` 的 `@fenix/agent-runtime → @fenix/agent-config` 条目 owner
+  已是 1.4）。移除条件：`removeWhen` =「agent 配置读取收敛为 port 注入」——agent-runtime 改为经 Runtime
+  port 接收已授权的启动输入后，本包 Facade 补上 `use` 授权与 LaunchSpec 生成，本条目同批删除。
+- **（2026-09-20 复核已解除）本包 web 面在 `bun test` 中的求值失败，原因为宿主 i18n 旧深链**：宿主
+  `apps/web/src/i18n/index.ts` 原先按各包旧布局深链 `web/i18n/{en,zh}/*.json`，经 `@fenix/identity/web`
+  的 `OrgContext.tsx`（走宿主别名 `@/src/i18n`）把失效路径拉进本包值导入图，令 `@fenix/agent-config/web`
+  在无 DOM 的 `bun test` 进程里 import 期即 `Cannot find module`。宿主改经 `@fenix/<pkg>/web/i18n` 子路径
+  登记后该链已恢复：实测消费方用例
+  `packages/resources/model-management/web/src/__tests__/agent-editor-model.test.ts` 13 pass / 0 fail
+  （该文件头部记录了同一结论）。仅存的深链是 `@fenix/identity` 的 `apikey` / `orgs` 字典（纯 JSON 相对
+  导入，可正常求值），属该包的 i18n 出口债（review 文档 §6.9 第 4 条），不构成本包阻塞。
+- **包内不装配 access-control / identity**：`createAgentConfigModule()` 返回已装入的装配结果入口，
+  由宿主注入授权与身份目录；registry 装配落地时应改为从 `context.modules` 取实例（§1.5）。

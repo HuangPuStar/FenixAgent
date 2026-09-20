@@ -9,7 +9,13 @@ import {
   setExternalRelayDeps,
 } from "@fenix/agent-runtime/server";
 import { resetAllStubs } from "@fenix/platform-sdk/testing";
-import type { AuthContext } from "@server/plugins/auth";
+import {
+  buildRelationTree,
+  type Observation,
+  ObserverKindNotFoundError,
+  observerService,
+  setObserverServiceDeps,
+} from "../server/services/observer";
 import {
   createRelayHandle,
   createWs,
@@ -20,15 +26,8 @@ import {
   makeFakeDeps,
   makeRelay,
   makeSpawnedInstance,
-} from "@server/test-utils/observer-fixtures";
-import { stubEnvironmentRepo } from "@server/test-utils/stubs/module-stubs";
-import {
-  buildRelationTree,
-  type Observation,
-  ObserverKindNotFoundError,
-  observerService,
-  setObserverServiceDeps,
-} from "../server/services/observer";
+  type TestAuthContext,
+} from "./observer-fixtures";
 
 describe("observer-service", () => {
   beforeEach(() => {
@@ -99,9 +98,9 @@ describe("observer-service", () => {
       makeFakeDeps({
         listAcpWsConnections: () => [makeAcpWsLocal()],
         getDefaultMachineId: () => "mach_default",
+        getEnvironment: async () => makeEnv(),
       }),
     );
-    stubEnvironmentRepo({ getById: async () => makeEnv() });
 
     const obs = (await observerService.list("acp-link"))[0];
     expect(obs.entityIds).toEqual([
@@ -114,7 +113,13 @@ describe("observer-service", () => {
     expect(obs.verified).toBe(true);
 
     // env.agentConfigId 为 null → agentConfigId 角色省略（identify 前不占位）
-    stubEnvironmentRepo({ getById: async () => makeEnv({ agentConfigId: null }) });
+    setObserverServiceDeps(
+      makeFakeDeps({
+        listAcpWsConnections: () => [makeAcpWsLocal()],
+        getDefaultMachineId: () => "mach_default",
+        getEnvironment: async () => makeEnv({ agentConfigId: null }),
+      }),
+    );
     const obsNoCfg = (await observerService.list("acp-link"))[0];
     expect(obsNoCfg.entityIds.some((entry) => entry.role === "agentConfigId")).toBe(false);
     expect(obsNoCfg.entityIds.some((entry) => entry.role === "organizationId")).toBe(true);
@@ -126,9 +131,9 @@ describe("observer-service", () => {
       makeFakeDeps({
         listAcpWsConnections: () => [makeAcpWsLocal()],
         getDefaultMachineId: () => "mach_default",
+        getEnvironment: async () => undefined,
       }),
     );
-    stubEnvironmentRepo({ getById: async () => undefined });
 
     const obs = (await observerService.list("acp-link"))[0];
     expect(obs.entityIds.some((entry) => entry.role === "organizationId")).toBe(false);
@@ -143,8 +148,12 @@ describe("observer-service", () => {
 
   // 归属校验：本地链接 userId 与 env 权威值不一致时关系自证失败，verified=false
   test("本地 acp-link userId 不一致 → verified=false", async () => {
-    setObserverServiceDeps(makeFakeDeps({ listAcpWsConnections: () => [makeAcpWsLocal({ userId: "user-2" })] }));
-    stubEnvironmentRepo({ getById: async () => makeEnv({ userId: "user-1" }) });
+    setObserverServiceDeps(
+      makeFakeDeps({
+        listAcpWsConnections: () => [makeAcpWsLocal({ userId: "user-2" })],
+        getEnvironment: async () => makeEnv({ userId: "user-1" }),
+      }),
+    );
 
     const obs = (await observerService.list("acp-link"))[0];
     expect(obs.verified).toBe(false);
@@ -156,9 +165,9 @@ describe("observer-service", () => {
       makeFakeDeps({
         listExternalRelayEntries: () => [makeRelay()],
         getAgentConfigById: async () => ({ machineId: "mach_1" }),
+        getEnvironment: async () => makeEnv(),
       }),
     );
-    stubEnvironmentRepo({ getById: async () => makeEnv() });
 
     const obs = (await observerService.list("acp-link"))[0];
     expect(obs.id).toBe("external-relay:ext_relay_1");
@@ -178,9 +187,9 @@ describe("observer-service", () => {
       makeFakeDeps({
         listExternalRelayEntries: () => [makeRelay({ organizationId: "org-x", userId: "user-x" })],
         getAgentConfigById: async () => ({ machineId: "mach_1" }),
+        getEnvironment: async () => makeEnv(),
       }),
     );
-    stubEnvironmentRepo({ getById: async () => makeEnv() });
     const badObs = (await observerService.list("acp-link"))[0];
     expect(badObs.verified).toBe(false);
   });
@@ -191,9 +200,9 @@ describe("observer-service", () => {
       makeFakeDeps({
         listChatClients: () => [makeChat()],
         getAgentConfigById: async () => ({ machineId: "mach_1" }),
+        getEnvironment: async () => makeEnv(),
       }),
     );
-    stubEnvironmentRepo({ getById: async () => makeEnv() });
 
     const obs = (await observerService.list("acp-link"))[0];
     expect(obs.id).toBe("chat-relay:yjs_1");
@@ -212,23 +221,22 @@ describe("observer-service", () => {
       makeFakeDeps({
         listChatClients: () => [makeChat({ acpSessionId: null })],
         getAgentConfigById: async () => ({ machineId: "mach_1" }),
+        getEnvironment: async () => makeEnv(),
       }),
     );
-    stubEnvironmentRepo({ getById: async () => makeEnv() });
     const obsNoSession = (await observerService.list("acp-link"))[0];
     expect(obsNoSession.payload?.acpSessionId).toBeUndefined();
   });
 
   // machine 归属解析链：agentConfig.machineId 优先 → RCS_DEFAULT_MACHINE_ID 兜底 → 两者皆无则省略
   test("machine 解析链：agentConfig.machineId → default → 省略", async () => {
-    stubEnvironmentRepo({ getById: async () => makeEnv() });
-
     // agentConfig.machineId 优先于 default
     setObserverServiceDeps(
       makeFakeDeps({
         listChatClients: () => [makeChat()],
         getAgentConfigById: async () => ({ machineId: "mach_cfg" }),
         getDefaultMachineId: () => "mach_default",
+        getEnvironment: async () => makeEnv(),
       }),
     );
     let obs = (await observerService.list("acp-link"))[0];
@@ -240,6 +248,7 @@ describe("observer-service", () => {
         listChatClients: () => [makeChat()],
         getAgentConfigById: async () => null,
         getDefaultMachineId: () => "mach_default",
+        getEnvironment: async () => makeEnv(),
       }),
     );
     obs = (await observerService.list("acp-link"))[0];
@@ -251,6 +260,7 @@ describe("observer-service", () => {
         listChatClients: () => [makeChat()],
         getAgentConfigById: async () => null,
         getDefaultMachineId: () => null,
+        getEnvironment: async () => makeEnv(),
       }),
     );
     obs = (await observerService.list("acp-link"))[0];
@@ -265,9 +275,9 @@ describe("observer-service", () => {
         listExternalRelayEntries: () => [makeRelay({ relayWsId: "ext_relay_xyz" })],
         listChatClients: () => [makeChat({ wsId: "yjs_abc" })],
         getAgentConfigById: async () => ({ machineId: "mach_1" }),
+        getEnvironment: async () => makeEnv(),
       }),
     );
-    stubEnvironmentRepo({ getById: async () => makeEnv() });
 
     const ids = (await observerService.list("acp-link")).map((o) => o.id).sort();
     expect(ids).toEqual(["acp-ws:acp_ws_1a2b3c", "chat-relay:yjs_abc", "external-relay:ext_relay_xyz"]);
@@ -423,9 +433,9 @@ describe("observer-service", () => {
         listUserNamesByIds: async () => new Map([["user-1", "张三"]]),
         listAgentConfigNamesByIds: async () => new Map([["acfg-1", "客服助手"]]),
         listMachineNamesByIds: async () => new Map([["mach_1", "边缘节点-01"]]),
+        getEnvironment: async () => makeEnv({ name: "生产环境" }),
       }),
     );
-    stubEnvironmentRepo({ getById: async () => makeEnv({ name: "生产环境" }) });
 
     const view = await observerService.tree("acp-link");
     expect(view.names.organizationId["org-1"]).toBe("Acme 组织");
@@ -443,9 +453,9 @@ describe("observer-service", () => {
         listExternalRelayEntries: () => [makeRelay()],
         getAgentConfigById: async () => ({ machineId: "mach_1" }),
         getInstanceName: async () => undefined,
+        getEnvironment: async () => undefined,
       }),
     );
-    stubEnvironmentRepo({ getById: async () => undefined });
 
     const view = await observerService.tree("acp-link");
     expect(view.names.organizationId).toEqual({});
@@ -492,7 +502,7 @@ describe("observer-service", () => {
       touchActivity: () => {},
     });
     const relayWs = createWs();
-    const authCtx: AuthContext = { organizationId: "org-1", userId: "user-1", role: "owner" };
+    const authCtx: TestAuthContext = { organizationId: "org-1", userId: "user-1", role: "owner" };
     await handleExternalRelayOpen(relayWs, "ext_relay_1", "env-1", authCtx, "inst-1");
 
     expect(listExternalRelayEntries()).toEqual([

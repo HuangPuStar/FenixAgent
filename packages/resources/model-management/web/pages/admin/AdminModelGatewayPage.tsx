@@ -1,15 +1,9 @@
+import { fetchSystemPeopleTree } from "@fenix/resource-observer/web";
 import { MasterKeyGate, SearchableUsageFilter } from "@fenix/resource-sandbox/web";
-import { clearAdminKey, getAdminKey } from "@fenix/web-runtime/lib/admin-key";
-import { useRequest } from "ahooks";
-import { ExternalLink, Info, RefreshCw, Search, TriangleAlert } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
-import { useTranslation } from "react-i18next";
-import { Bar, BarChart, CartesianGrid, Tooltip, XAxis, YAxis } from "recharts";
-import { toast } from "sonner";
-import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { ChartContainer } from "@/components/ui/chart";
+import { Badge } from "@fenix/ui-components/ui/badge";
+import { Button } from "@fenix/ui-components/ui/button";
+import { Card, CardContent, CardHeader, CardTitle } from "@fenix/ui-components/ui/card";
+import { ChartContainer } from "@fenix/ui-components/ui/chart";
 import {
   Dialog,
   DialogContent,
@@ -17,11 +11,17 @@ import {
   DialogFooter,
   DialogHeader,
   DialogTitle,
-} from "@/components/ui/dialog";
-import { Pagination } from "@/components/ui/pagination";
-import { Progress } from "@/components/ui/progress";
-import { ApiError } from "@/src/api/request";
-import { fetchSystemPeopleTree } from "@/src/api/system-people-tree";
+} from "@fenix/ui-components/ui/dialog";
+import { Pagination } from "@fenix/ui-components/ui/pagination";
+import { Progress } from "@fenix/ui-components/ui/progress";
+import { ApiError } from "@fenix/web-runtime/api/request";
+import { clearAdminKey, getAdminKey } from "@fenix/web-runtime/lib/admin-key";
+import { useRequest } from "ahooks";
+import { ExternalLink, Info, RefreshCw, Search, TriangleAlert } from "lucide-react";
+import { useEffect, useMemo, useState } from "react";
+import { useTranslation } from "react-i18next";
+import { Bar, BarChart, CartesianGrid, Tooltip, XAxis, YAxis } from "recharts";
+import { toast } from "sonner";
 import {
   checkModelGateway,
   getModelGatewayConfiguration,
@@ -34,6 +34,7 @@ import {
   syncModelGateway,
   updateModelGatewayBudgets,
 } from "../../api/model-gateway";
+import { MODELS_NS } from "../../i18n/namespace";
 import { buildRecentUsageDateRange } from "../../lib/model-gateway-usage";
 import { ModelGatewayKeyManagementPanel } from "./ModelGatewayKeyManagementPanel";
 import { getModelGatewayConnectionFeedback } from "./model-gateway-feedback";
@@ -41,7 +42,7 @@ import { buildModelGatewayOverviewUsageQuery, buildSevenDayUsageTrend } from "./
 
 /** 系统模型网关管理页一期壳：模型目录仍由 LiteLLM 管理，Fenix 只负责检查和投影同步。 */
 export function AdminModelGatewayPage() {
-  const { t } = useTranslation("observer");
+  const { t } = useTranslation(MODELS_NS);
   const [unlocked, setUnlocked] = useState(() => getAdminKey() !== null);
   const [gateError, setGateError] = useState<string | null>(null);
 
@@ -60,7 +61,7 @@ export function AdminModelGatewayPage() {
     <ModelGatewayDashboard
       onAuthFailure={() => {
         clearAdminKey();
-        setGateError(t("login.error"));
+        setGateError(t("admin.gateAuthFailed"));
         setUnlocked(false);
       }}
     />
@@ -68,7 +69,7 @@ export function AdminModelGatewayPage() {
 }
 
 function ModelGatewayDashboard({ onAuthFailure }: { onAuthFailure: () => void }) {
-  const { i18n, t } = useTranslation("observer");
+  const { i18n, t } = useTranslation(MODELS_NS);
   const [status, setStatus] = useState<ModelSyncStatus | null>(null);
   const [tab, setTab] = useState<"overview" | "models" | "budgets" | "usage" | "keys">("overview");
   const [selectedUsers, setSelectedUsers] = useState<string[]>([]);
@@ -437,7 +438,7 @@ function ModelGatewayDashboard({ onAuthFailure }: { onAuthFailure: () => void })
                       configRequest.data?.defaultBudget.maxBudgetUsd === null
                         ? t("modelGateway.unlimited")
                         : configRequest.data?.defaultBudget.maxBudgetUsd === undefined
-                          ? t("states.loading")
+                          ? t("admin.loading")
                           : `$${configRequest.data.defaultBudget.maxBudgetUsd}`
                     }
                     readOnly
@@ -548,7 +549,7 @@ function ModelGatewayDashboard({ onAuthFailure }: { onAuthFailure: () => void })
                 </Button>
               </div>
               {budgetsRequest.loading ? (
-                <p className="py-8 text-center text-sm text-text-muted">{t("states.loading")}</p>
+                <p className="py-8 text-center text-sm text-text-muted">{t("admin.loading")}</p>
               ) : (
                 <>
                   <div className="overflow-x-auto rounded-md border">
@@ -999,7 +1000,7 @@ function ModelGatewayDashboard({ onAuthFailure }: { onAuthFailure: () => void })
 }
 
 function UsageBreakdown({ title, items }: { title: string; items: Array<[string, number]> }) {
-  const { t } = useTranslation("observer");
+  const { t } = useTranslation(MODELS_NS);
   const maxSpend = Math.max(...items.map(([, spend]) => spend), 0);
   return (
     <div className="rounded-md border p-3">
@@ -1058,7 +1059,7 @@ function OverviewPanel({
   onRefresh: () => void;
   onModels: () => void;
 }) {
-  const { i18n, t } = useTranslation("observer");
+  const { i18n, t } = useTranslation(MODELS_NS);
   const trend = useMemo(() => buildSevenDayUsageTrend(usage?.records ?? []), [usage?.records]);
   const trendData = useMemo(() => trend.map(([date, value]) => ({ date, spend: value.spend })), [trend]);
   const provider = config?.provider;
@@ -1076,7 +1077,7 @@ function OverviewPanel({
       <div className="grid gap-3 sm:grid-cols-3">
         <Metric
           label={t("modelGateway.overview.recent7dSpend")}
-          value={usage ? formatUsd(usage.totalSpendUsd, i18n.language) : loading ? t("states.loading") : "—"}
+          value={usage ? formatUsd(usage.totalSpendUsd, i18n.language) : loading ? t("admin.loading") : "—"}
           foot={
             usage
               ? t("modelGateway.overview.tokenSummary", {
@@ -1088,12 +1089,12 @@ function OverviewPanel({
         />
         <Metric
           label={t("modelGateway.overview.activeUsers")}
-          value={usage ? usage.activeUserCount : loading ? t("states.loading") : "—"}
+          value={usage ? usage.activeUserCount : loading ? t("admin.loading") : "—"}
           foot={t("modelGateway.overview.activeUsersFoot7d")}
         />
         <Metric
           label={t("modelGateway.overview.configuredModels")}
-          value={provider ? provider.modelCount : loading ? t("states.loading") : "—"}
+          value={provider ? provider.modelCount : loading ? t("admin.loading") : "—"}
           foot={
             status?.status === "synced"
               ? t("modelGateway.overview.modelsSynced")
@@ -1118,7 +1119,7 @@ function OverviewPanel({
           <CardContent>
             {!usage ? (
               <p className="py-12 text-center text-sm text-text-muted">
-                {loading ? t("states.loading") : t("modelGateway.overview.noUsage")}
+                {loading ? t("admin.loading") : t("modelGateway.overview.noUsage")}
               </p>
             ) : (
               <div className="h-52">

@@ -1,4 +1,4 @@
-import { ApiError } from "@/src/api/request";
+import { ApiError } from "@fenix/web-runtime/api/request";
 
 /** 仅将统一请求层明确标记的 404 视为“尚未生成图谱”。 */
 export function isKnowledgeGraphNotFound(error: unknown): boolean {

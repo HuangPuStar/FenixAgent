@@ -16,12 +16,18 @@ import type {
   RunSummary,
   StorageAdapter,
 } from "@fenix/workflow-engine";
-import { db } from "@server/db";
 import { workflow, workflowEvent, workflowNodeOutput, workflowSnapshot } from "@server/db/schema";
 import { and, desc, eq, inArray, sql } from "drizzle-orm";
+import { getWorkflowDatabase } from "../../db";
 
-/** 创建 PostgreSQL 存储适配器，所有查询限定在指定 team 内 */
+/**
+ * 创建 PostgreSQL 存储适配器，所有查询限定在指定 team 内。
+ *
+ * DB 句柄在调用时现取（`getWorkflowDatabase()` 依赖宿主完成应用基础设施初始化，不能在模块加载期固化）；
+ * 适配器本身按请求构造，句柄生命周期与请求一致。
+ */
 export function createPgStorageAdapter(organizationId: string): StorageAdapter {
+  const db = getWorkflowDatabase();
   return {
     // ---------- 事件 ----------
 

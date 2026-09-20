@@ -5,56 +5,66 @@
 
 import { error as logError } from "@fenix/logger";
 import { ApiSystemErrorResponseSchema } from "@fenix/platform-sdk";
-import { systemApiAuthPlugin } from "@server/plugins/system-api-auth";
 import Elysia from "elysia";
 import { ApiSystemObserverAcpLinkResponseSchema } from "../../schemas/api-system-observer.schema";
 import { ObserverKindNotFoundError, observerService } from "../../services/observer";
+import type { SystemApiObserverRouteDependencies } from "../dependencies";
 
-const app = new Elysia({ name: "api-system-observer", prefix: "/api/system/observer" }).use(systemApiAuthPlugin).model({
-  "api-system-observer-acp-link-response": ApiSystemObserverAcpLinkResponseSchema,
-});
+/**
+ * `/api/system/observer` 路由工厂（宿主注入系统 key 守卫，理由见 `../dependencies`）。
+ *
+ * 插件名（`api-system-observer`）与守卫的插件名不同：Elysia 按 plugin `name` 去重，
+ * 同名会让先构造的一方静默生效，守卫就会变成「看起来装了、实际没装」。
+ */
+export function createApiSystemObserverRoutes(deps: SystemApiObserverRouteDependencies) {
+  const app = new Elysia({ name: "api-system-observer", prefix: "/api/system/observer" })
+    .use(deps.systemApiGuardPlugin)
+    .model({
+      "api-system-observer-acp-link-response": ApiSystemObserverAcpLinkResponseSchema,
+    });
 
-app.get(
-  "/acp-link",
-  // biome-ignore lint/suspicious/noExplicitAny: Elysia response schema + custom macro 下类型推断不稳定
-  async ({ error }: any) => {
-    try {
-      const view = await observerService.tree("acp-link");
-      return {
-        success: true,
-        data: {
-          generatedAt: view.generatedAt,
-          kind: view.kind,
-          total: view.total,
-          // 内部 RelationTreeView 顶层持有 byOrg/byEntity；对外形状按文档 §4 包 trees 骨架
-          trees: { byEntity: view.byEntity, byOrg: view.byOrg },
-          integrity: view.integrity,
-          names: view.names,
-        },
-      };
-    } catch (err) {
-      // 未注册的 kind → 404；其余一律 500。响应不泄内部细节，但服务端保留诊断上下文
-      if (err instanceof ObserverKindNotFoundError) {
-        return error(404, { error: { code: "NOT_FOUND", message: err.message } });
+  app.get(
+    "/acp-link",
+    // biome-ignore lint/suspicious/noExplicitAny: Elysia response schema + custom macro 下类型推断不稳定
+    async ({ error }: any) => {
+      try {
+        const view = await observerService.tree("acp-link");
+        return {
+          success: true,
+          data: {
+            generatedAt: view.generatedAt,
+            kind: view.kind,
+            total: view.total,
+            // 内部 RelationTreeView 顶层持有 byOrg/byEntity；对外形状按文档 §4 包 trees 骨架
+            trees: { byEntity: view.byEntity, byOrg: view.byOrg },
+            integrity: view.integrity,
+            names: view.names,
+          },
+        };
+      } catch (err) {
+        // 未注册的 kind → 404；其余一律 500。响应不泄内部细节，但服务端保留诊断上下文
+        if (err instanceof ObserverKindNotFoundError) {
+          return error(404, { error: { code: "NOT_FOUND", message: err.message } });
+        }
+        logError("[System-Observer] collect failed", err);
+        return error(500, { error: { code: "INTERNAL_ERROR", message: "Observer collection failed" } });
       }
-      logError("[System-Observer] collect failed", err);
-      return error(500, { error: { code: "INTERNAL_ERROR", message: "Observer collection failed" } });
-    }
-  },
-  {
-    systemApiKeyAuth: true,
-    response: {
-      200: "api-system-observer-acp-link-response",
-      401: ApiSystemErrorResponseSchema,
-      404: ApiSystemErrorResponseSchema,
-      500: ApiSystemErrorResponseSchema,
     },
-    detail: {
-      tags: ["System Observer"],
-      summary: "获取 ACP 活跃链接观察视图",
-      description: "系统级接口，返回 acp-link 的归属树、machine 树与一致性汇总（请求驱动、纯只读、即用即弃）。",
+    {
+      systemApiKeyAuth: true,
+      response: {
+        200: "api-system-observer-acp-link-response",
+        401: ApiSystemErrorResponseSchema,
+        404: ApiSystemErrorResponseSchema,
+        500: ApiSystemErrorResponseSchema,
+      },
+      detail: {
+        tags: ["System Observer"],
+        summary: "获取 ACP 活跃链接观察视图",
+        description: "系统级接口，返回 acp-link 的归属树、machine 树与一致性汇总（请求驱动、纯只读、即用即弃）。",
+      },
     },
-  },
-);
+  );
 
-export default app;
+  return app;
+}

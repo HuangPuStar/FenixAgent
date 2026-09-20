@@ -5,11 +5,22 @@ import type {
   ResourceQueryConstraint,
   ScopedRow,
 } from "@fenix/platform-sdk";
-import { db } from "@server/db";
 import { provider } from "@server/db/schema";
 import { asc, eq, type SQL } from "drizzle-orm";
 import type { PgColumn, PgTable } from "drizzle-orm/pg-core";
 import { PROVIDER_RESOURCE_TYPE, providerResource } from "../access/provider-resource";
+import { getModelManagementDatabase } from "../db";
+
+/**
+ * 取本模块的 DB 句柄。
+ *
+ * 包一层而不是 `import { db } from "@server/db"`：句柄只能在宿主完成基础设施初始化之后读取，而这些仓储
+ * 是进程级单例，构造期可能早于 `initializeApplicationInfrastructure()`。名字与 Drizzle 惯例一致，调用点
+ * 读起来与直接使用 `db` 相同。
+ */
+function database() {
+  return getModelManagementDatabase();
+}
 
 /**
  * Provider **资源行**的持久化访问层。
@@ -184,7 +195,7 @@ export function createProviderRepository(query: AuthorizedResourceQuery<Provider
 
     async create(input) {
       const set = writeSet(input.data);
-      const rows = await db
+      const rows = await database()
         .insert(provider)
         .values({
           organizationId: input.organizationId,
@@ -203,7 +214,7 @@ export function createProviderRepository(query: AuthorizedResourceQuery<Provider
     },
 
     async updateById(input) {
-      const rows = await db
+      const rows = await database()
         .update(provider)
         .set(writeSet(input.data))
         .where(eq(provider.id, input.resourceId))
@@ -212,12 +223,15 @@ export function createProviderRepository(query: AuthorizedResourceQuery<Provider
     },
 
     async removeById(input) {
-      const rows = await db.delete(provider).where(eq(provider.id, input.resourceId)).returning({ id: provider.id });
+      const rows = await database()
+        .delete(provider)
+        .where(eq(provider.id, input.resourceId))
+        .returning({ id: provider.id });
       return rows.length > 0;
     },
 
     async findByIdUnscoped(input) {
-      const rows = await db.select().from(provider).where(eq(provider.id, input.resourceId)).limit(1);
+      const rows = await database().select().from(provider).where(eq(provider.id, input.resourceId)).limit(1);
       return rows[0];
     },
   };

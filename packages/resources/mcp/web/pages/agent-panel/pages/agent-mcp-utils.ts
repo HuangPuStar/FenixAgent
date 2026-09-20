@@ -1,5 +1,6 @@
+import { ApiError } from "@fenix/web-runtime/api/request";
+import type { McpServerConfig, McpServerInfo } from "@fenix/web-runtime/types/config";
 import * as z from "zod/v4";
-import type { McpServerConfig, McpServerInfo } from "@/src/types/config";
 import { getMcpDisplayName, isExternalMcp } from "../../../lib/mcp-resource-access";
 
 export type McpCatalogScope = "all" | "organization" | "public";
@@ -213,6 +214,17 @@ export function countMcpScopes(servers: McpServerInfo[], activeOrganizationId?: 
     organization: servers.filter((server) => !isExternalMcp(server, activeOrganizationId)).length,
     public: servers.filter((server) => server.scope?.visibility === "public").length,
   };
+}
+
+/**
+ * 判断目录加载失败是否属于「无权限」。
+ *
+ * 依据是错误**码**而不是状态码：`@fenix/web-runtime/api/request` 把 401 与 403 一并归一为
+ * `UNAUTHORIZED`，页面据此把它与网络/服务端故障分开渲染——403 是永久拒绝、401 需要重新登录，
+ * 两者都不会因为再点一次重试而改变，所以无权限分支不给重试按钮，避免把用户引向无意义的重复请求。
+ */
+export function isUnauthorizedError(error: unknown): boolean {
+  return error instanceof ApiError && error.code === "UNAUTHORIZED";
 }
 
 function entriesToRecord(entries: KeyValueEntry[]): Record<string, string> | undefined {

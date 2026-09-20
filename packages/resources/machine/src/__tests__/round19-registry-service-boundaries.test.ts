@@ -1,13 +1,14 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { readJson, resetAllStubs } from "@fenix/platform-sdk/testing";
-import { resetTestAuth, setTestAuth } from "@server/plugins/auth";
-import { stubRegistry } from "@server/test-utils/stubs/module-stubs";
 import {
   CreateMachineSchema,
   EventQuerySchema,
   MachineQuerySchema,
   UpdateMachineSchema,
 } from "../schemas/registry.schema";
+import { createWebRegistryRoutes } from "../server/routes/web/registry";
+import { setRegistryRouteDeps } from "../server/testing";
+import { createStubSessionAuthGuardPlugin, resetTestAuth, setTestAuth } from "./guard-stubs";
 
 const authContext = { organizationId: "org-a", userId: "user-a", role: "owner" as const };
 
@@ -32,9 +33,8 @@ function machineRecord(overrides: Record<string, unknown> = {}) {
   };
 }
 
-async function registryApp() {
-  return (await import("../routes/web/registry")).default;
-}
+// 路由实例文件级构造一次：会话守卫替身按请求期读取当前会话（setTestAuth 即时生效）
+const registryRoutes = createWebRegistryRoutes({ authGuardPlugin: createStubSessionAuthGuardPlugin() });
 
 beforeEach(() => {
   resetAllStubs();
@@ -46,6 +46,7 @@ beforeEach(() => {
 
 afterEach(() => {
   resetTestAuth();
+  setRegistryRouteDeps(null);
   resetAllStubs();
 });
 
@@ -160,13 +161,13 @@ describe("registry Web 路由的鉴权、隔离和失败边界", () => {
   // 当前请求的认证上下文会被传给列表服务，确保服务层按组织和用户隔离数据。
   test("列表路由传递认证上下文", async () => {
     let received: unknown;
-    stubRegistry({
+    setRegistryRouteDeps({
       listMachines: async (ctx: unknown) => {
         received = ctx;
         return { data: [], total: 0 };
       },
     });
-    const response = await (await registryApp()).handle(new Request("http://localhost/registry/machines"));
+    const response = await registryRoutes.handle(new Request("http://localhost/registry/machines"));
 
     expect(response.status).toBe(200);
     expect(received).toEqual(authContext);
@@ -174,8 +175,8 @@ describe("registry Web 路由的鉴权、隔离和失败边界", () => {
 
   // 列表路由将服务返回的日期序列化为秒级时间戳。
   test("列表路由序列化机器日期字段", async () => {
-    stubRegistry({ listMachines: async () => ({ data: [machineRecord()], total: 1 }) });
-    const response = await (await registryApp()).handle(new Request("http://localhost/registry/machines"));
+    setRegistryRouteDeps({ listMachines: async () => ({ data: [machineRecord()], total: 1 }) });
+    const response = await registryRoutes.handle(new Request("http://localhost/registry/machines"));
     const body = (await readJson(response)) as { data: { items: Array<{ createdAt: number }>; total: number } };
 
     expect(response.status).toBe(200);
@@ -186,13 +187,13 @@ describe("registry Web 路由的鉴权、隔离和失败边界", () => {
   // 标签参数经过 schema 校验后传入服务边界。
   test("列表路由传递标签筛选参数", async () => {
     let received: unknown;
-    stubRegistry({
+    setRegistryRouteDeps({
       listMachines: async (_ctx: unknown, filters: unknown) => {
         received = filters;
         return { data: [], total: 0 };
       },
     });
-    const response = await (await registryApp()).handle(
+    const response = await registryRoutes.handle(
       new Request("http://localhost/registry/machines?labels=gpu&limit=2&offset=1"),
     );
 
@@ -203,13 +204,13 @@ describe("registry Web 路由的鉴权、隔离和失败边界", () => {
   // 列表路由将 sandbox 类型传递给隔离后的服务查询。
   test("列表路由传递sandbox类型", async () => {
     let received: unknown;
-    stubRegistry({
+    setRegistryRouteDeps({
       listMachines: async (_ctx: unknown, filters: unknown) => {
         received = filters;
         return { data: [], total: 0 };
       },
     });
-    const response = await (await registryApp()).handle(new Request("http://localhost/registry/machines?type=sandbox"));
+    const response = await registryRoutes.handle(new Request("http://localhost/registry/machines?type=sandbox"));
 
     expect(response.status).toBe(200);
     expect(received).toEqual({ labels: undefined, limit: 20, offset: 0, type: "sandbox" });
@@ -217,33 +218,31 @@ describe("registry Web 路由的鉴权、隔离和失败边界", () => {
 
   // 路由拒绝超过上限的分页参数，避免服务层接收无界读取。
   test("列表路由拒绝超出范围的分页参数", async () => {
-    expect(
-      (await (await registryApp()).handle(new Request("http://localhost/registry/machines?limit=101"))).status,
-    ).toBe(422);
+    expect((await registryRoutes.handle(new Request("http://localhost/registry/machines?limit=101"))).status).toBe(422);
   });
 
   // 路由拒绝未知机器类型，防止筛选语义漂移。
   test("列表路由拒绝未知机器类型", async () => {
-    expect(
-      (await (await registryApp()).handle(new Request("http://localhost/registry/machines?type=remote"))).status,
-    ).toBe(422);
+    expect((await registryRoutes.handle(new Request("http://localhost/registry/machines?type=remote"))).status).toBe(
+      422,
+    );
   });
 
   // 服务异常被映射为稳定的内部错误响应。
   test("列表路由映射服务异常为500", async () => {
-    stubRegistry({
+    setRegistryRouteDeps({
       listMachines: async () => {
         throw new Error("database unavailable");
       },
     });
-    const response = await (await registryApp()).handle(new Request("http://localhost/registry/machines"));
+    const response = await registryRoutes.handle(new Request("http://localhost/registry/machines"));
 
     expect(response.status).toBe(500);
   });
 
   // 创建路由拒绝空名称，避免无效记录进入服务层。
   test("创建路由拒绝空名称", async () => {
-    const response = await (await registryApp()).handle(
+    const response = await registryRoutes.handle(
       new Request("http://localhost/registry/machines", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -256,7 +255,7 @@ describe("registry Web 路由的鉴权、隔离和失败边界", () => {
 
   // 创建路由拒绝非数组标签，避免未验证数据进入注册服务。
   test("创建路由拒绝非数组标签", async () => {
-    const response = await (await registryApp()).handle(
+    const response = await registryRoutes.handle(
       new Request("http://localhost/registry/machines", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -269,7 +268,7 @@ describe("registry Web 路由的鉴权、隔离和失败边界", () => {
 
   // 创建路由返回服务生成的初始化信息。
   test("创建路由返回初始化信息", async () => {
-    stubRegistry({
+    setRegistryRouteDeps({
       createMachine: async () => ({
         id: "mach-1",
         name: "worker",
@@ -277,7 +276,7 @@ describe("registry Web 路由的鉴权、隔离和失败边界", () => {
         initCommand: "safe command",
       }),
     });
-    const response = await (await registryApp()).handle(
+    const response = await registryRoutes.handle(
       new Request("http://localhost/registry/machines", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -293,12 +292,12 @@ describe("registry Web 路由的鉴权、隔离和失败边界", () => {
 
   // 创建失败不暴露堆栈，仅映射为受控错误。
   test("创建路由映射服务失败", async () => {
-    stubRegistry({
+    setRegistryRouteDeps({
       createMachine: async () => {
         throw new Error("write failed");
       },
     });
-    const response = await (await registryApp()).handle(
+    const response = await registryRoutes.handle(
       new Request("http://localhost/registry/machines", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -311,15 +310,15 @@ describe("registry Web 路由的鉴权、隔离和失败边界", () => {
 
   // 不可见机器详情统一返回404，避免泄露跨组织存在性。
   test("详情路由把不可见机器映射为404", async () => {
-    stubRegistry({ getMachine: async () => null });
-    expect(
-      (await (await registryApp()).handle(new Request("http://localhost/registry/machines/mach-foreign"))).status,
-    ).toBe(404);
+    setRegistryRouteDeps({ getMachine: async () => null });
+    expect((await registryRoutes.handle(new Request("http://localhost/registry/machines/mach-foreign"))).status).toBe(
+      404,
+    );
   });
 
   // 详情路由序列化机器和事件时间，保持 API 契约一致。
   test("详情路由序列化机器与事件日期", async () => {
-    stubRegistry({
+    setRegistryRouteDeps({
       getMachine: async () => ({
         ...machineRecord(),
         recentEvents: [
@@ -333,7 +332,7 @@ describe("registry Web 路由的鉴权、隔离和失败边界", () => {
         ],
       }),
     });
-    const response = await (await registryApp()).handle(new Request("http://localhost/registry/machines/mach-1"));
+    const response = await registryRoutes.handle(new Request("http://localhost/registry/machines/mach-1"));
     const body = (await readJson(response)) as { data: { recentEvents: Array<{ createdAt: number }> } };
 
     expect(response.status).toBe(200);
@@ -342,19 +341,17 @@ describe("registry Web 路由的鉴权、隔离和失败边界", () => {
 
   // 详情服务失败被映射为500，客户端可进行重试。
   test("详情路由映射服务异常为500", async () => {
-    stubRegistry({
+    setRegistryRouteDeps({
       getMachine: async () => {
         throw new Error("read failed");
       },
     });
-    expect((await (await registryApp()).handle(new Request("http://localhost/registry/machines/mach-1"))).status).toBe(
-      500,
-    );
+    expect((await registryRoutes.handle(new Request("http://localhost/registry/machines/mach-1"))).status).toBe(500);
   });
 
   // 更新路由拒绝空请求字段，避免无意义的写操作。
   test("更新路由拒绝空名称", async () => {
-    const response = await (await registryApp()).handle(
+    const response = await registryRoutes.handle(
       new Request("http://localhost/registry/machines/mach-1", {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
@@ -367,12 +364,12 @@ describe("registry Web 路由的鉴权、隔离和失败边界", () => {
 
   // 跨组织更新以404呈现，避免暴露机器归属。
   test("更新路由把跨组织机器映射为404", async () => {
-    stubRegistry({
+    setRegistryRouteDeps({
       updateMachine: async () => {
         throw new Error("machine 'mach-foreign' not found");
       },
     });
-    const response = await (await registryApp()).handle(
+    const response = await registryRoutes.handle(
       new Request("http://localhost/registry/machines/mach-foreign", {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
@@ -385,8 +382,8 @@ describe("registry Web 路由的鉴权、隔离和失败边界", () => {
 
   // 更新路由返回秒级时间戳，避免 Date 泄漏到 JSON 契约。
   test("更新路由序列化日期字段", async () => {
-    stubRegistry({ updateMachine: async () => machineRecord() });
-    const response = await (await registryApp()).handle(
+    setRegistryRouteDeps({ updateMachine: async () => machineRecord() });
+    const response = await registryRoutes.handle(
       new Request("http://localhost/registry/machines/mach-1", {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
@@ -402,14 +399,13 @@ describe("registry Web 路由的鉴权、隔离和失败边界", () => {
   // 事件路由拒绝负偏移量，保护分页边界。
   test("事件路由拒绝负偏移量", async () => {
     expect(
-      (await (await registryApp()).handle(new Request("http://localhost/registry/machines/mach-1/events?offset=-1")))
-        .status,
+      (await registryRoutes.handle(new Request("http://localhost/registry/machines/mach-1/events?offset=-1"))).status,
     ).toBe(422);
   });
 
   // 事件路由返回服务给出的隔离分页结果。
   test("事件路由返回分页事件", async () => {
-    stubRegistry({
+    setRegistryRouteDeps({
       listEvents: async () => ({
         data: [
           {
@@ -423,7 +419,7 @@ describe("registry Web 路由的鉴权、隔离和失败边界", () => {
         total: 1,
       }),
     });
-    const response = await (await registryApp()).handle(
+    const response = await registryRoutes.handle(
       new Request("http://localhost/registry/machines/mach-1/events?limit=1"),
     );
     const body = (await readJson(response)) as { data: { items: Array<{ createdAt: number }>; total: number } };
@@ -435,52 +431,49 @@ describe("registry Web 路由的鉴权、隔离和失败边界", () => {
 
   // 事件服务异常映射为500，避免返回部分或伪造审计数据。
   test("事件路由映射服务异常为500", async () => {
-    stubRegistry({
+    setRegistryRouteDeps({
       listEvents: async () => {
         throw new Error("event store unavailable");
       },
     });
-    expect(
-      (await (await registryApp()).handle(new Request("http://localhost/registry/machines/mach-1/events"))).status,
-    ).toBe(500);
+    expect((await registryRoutes.handle(new Request("http://localhost/registry/machines/mach-1/events"))).status).toBe(
+      500,
+    );
   });
 
   // 在线机器删除被映射为冲突，阻止活跃连接被提前释放。
   test("删除路由映射在线机器冲突为409", async () => {
-    stubRegistry({
+    setRegistryRouteDeps({
       deleteMachine: async () => {
         throw new Error("machine 'mach-1' is online and cannot be deleted");
       },
     });
     expect(
-      (
-        await (
-          await registryApp()
-        ).handle(new Request("http://localhost/registry/machines/mach-1", { method: "DELETE" }))
-      ).status,
+      (await registryRoutes.handle(new Request("http://localhost/registry/machines/mach-1", { method: "DELETE" })))
+        .status,
     ).toBe(409);
   });
 
   // 跨组织删除以404呈现，避免越权探测机器是否存在。
   test("删除路由把跨组织机器映射为404", async () => {
-    stubRegistry({
+    setRegistryRouteDeps({
       deleteMachine: async () => {
         throw new Error("machine 'mach-foreign' not found");
       },
     });
     expect(
       (
-        await (
-          await registryApp()
-        ).handle(new Request("http://localhost/registry/machines/mach-foreign", { method: "DELETE" }))
+        await registryRoutes.handle(
+          new Request("http://localhost/registry/machines/mach-foreign", { method: "DELETE" }),
+        )
       ).status,
     ).toBe(404);
   });
 
   // 删除成功返回释放确认，供客户端安全刷新列表。
   test("删除路由返回已释放结果", async () => {
-    stubRegistry({ deleteMachine: async () => ({ deleted: true as const }) });
-    const response = await (await registryApp()).handle(
+    setRegistryRouteDeps({ deleteMachine: async () => ({ deleted: true as const }) });
+    const response = await registryRoutes.handle(
       new Request("http://localhost/registry/machines/mach-1", { method: "DELETE" }),
     );
 

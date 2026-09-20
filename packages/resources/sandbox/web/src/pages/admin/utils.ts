@@ -7,8 +7,9 @@
 // byEntity 侧缺失时用 byOrg 值补齐。
 //
 // 入参类型是 `web/src/types/acp-link-view.ts` 的结构子集（observer 的真实视图模型在
-// 对方包内且无 `./web` 出口，反向 import 会形成包级环）；此处用子集类型，所以 observer
-// 传入的完整视图类型可直接赋值，不改变调用方。
+// `packages/resources/observer/web/api/observer.ts`，今天已随 observer 的 `./web` 出口公开，
+// 不必走被门禁禁止的 `src/**` 深链；不直接引用它是因为反向 import 会形成包级环——observer 的
+// `dependencies` 已含本包）；此处用子集类型，所以 observer 传入的完整视图类型可直接赋值，不改变调用方。
 
 import type {
   AcpLinkViewLeaf,

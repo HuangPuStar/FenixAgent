@@ -1,6 +1,6 @@
 import type { ActorContext } from "@fenix/platform-sdk";
 import { AppError } from "@fenix/platform-sdk";
-import { configError } from "@server/services/config-utils";
+import { configError } from "../../../config-envelope";
 
 /**
  * `/web/config/*` 的响应信封适配：主体注入 → handler → `{success,data}` / `{success:false,error}` + 状态码。

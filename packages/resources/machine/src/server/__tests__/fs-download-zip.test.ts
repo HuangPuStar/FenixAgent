@@ -12,11 +12,14 @@ import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { Readable } from "node:stream";
-import { resetAllStubs } from "@fenix/platform-sdk/testing";
-import { setConfig } from "@server/config";
-import { stubEnvironmentRepo } from "@server/test-utils/stubs/module-stubs";
 import { gate } from "../services/agent-file-service";
 import type { FileAuthContext } from "../services/file-types";
+import {
+  initializeMachineModuleConfig,
+  lockMachineWorkspaceRoot,
+  stubMachineEnvironmentRecord,
+  unlockMachineWorkspaceRoot,
+} from "../testing";
 
 const ORG_ID = "org-1";
 const USER_ID = "user-1";
@@ -100,19 +103,16 @@ async function waitForFile(filePath: string): Promise<void> {
 
 beforeEach(async () => {
   // 每个用例重建干净环境：stub 环境归属 + 独立 tmp workspace 根目录 + 本地路由
-  resetAllStubs();
-  stubEnvironmentRepo({
-    getById: async () => ({ id: ENV_ID, organizationId: ORG_ID, userId: USER_ID }),
-  });
+  initializeMachineModuleConfig();
+  stubMachineEnvironmentRecord({ id: ENV_ID, organizationId: ORG_ID, userId: USER_ID });
   workspaceRoot = await mkdtemp(join(tmpdir(), "fs-download-zip-"));
-  process.env.WORKSPACE_ROOT = workspaceRoot;
-  setConfig({ defaultMachineId: undefined });
+  await lockMachineWorkspaceRoot(workspaceRoot);
 });
 
 afterEach(async () => {
   delete process.env.WORKSPACE_ROOT;
+  unlockMachineWorkspaceRoot();
   await rm(workspaceRoot, { recursive: true, force: true });
-  setConfig({ defaultMachineId: undefined });
 });
 
 describe("downloadZip 子进程生命周期", () => {

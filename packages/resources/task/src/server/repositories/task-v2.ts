@@ -1,7 +1,7 @@
-import { db } from "@server/db";
 import type { ScheduledTaskV2Insert, ScheduledTaskV2Row } from "@server/db/schema";
 import { scheduledTaskV2 } from "@server/db/schema";
 import { and, desc, eq, ilike, sql } from "drizzle-orm";
+import { getTaskDatabase } from "../db";
 
 export type { ScheduledTaskV2Insert, ScheduledTaskV2Row };
 
@@ -27,6 +27,7 @@ export interface IScheduledTaskV2Repo {
 
 class PgScheduledTaskV2Repo implements IScheduledTaskV2Repo {
   async listByUserAndOrg(userId: string, organizationId: string) {
+    const db = getTaskDatabase();
     return db
       .select()
       .from(scheduledTaskV2)
@@ -41,6 +42,7 @@ class PgScheduledTaskV2Repo implements IScheduledTaskV2Repo {
     pageSize: number,
     opts?: { keyword?: string; type?: string; agentId?: string },
   ) {
+    const db = getTaskDatabase();
     const where = [eq(scheduledTaskV2.userId, userId), eq(scheduledTaskV2.organizationId, organizationId)];
     if (opts?.keyword) where.push(ilike(scheduledTaskV2.name, `%${opts.keyword}%`));
     if (opts?.type) where.push(eq(scheduledTaskV2.type, opts.type));
@@ -61,6 +63,7 @@ class PgScheduledTaskV2Repo implements IScheduledTaskV2Repo {
   }
 
   async getByUserAndOrgAndId(userId: string, organizationId: string, taskId: string) {
+    const db = getTaskDatabase();
     const rows = await db
       .select()
       .from(scheduledTaskV2)
@@ -76,21 +79,25 @@ class PgScheduledTaskV2Repo implements IScheduledTaskV2Repo {
   }
 
   async getById(taskId: string) {
+    const db = getTaskDatabase();
     const rows = await db.select().from(scheduledTaskV2).where(eq(scheduledTaskV2.id, taskId)).limit(1);
     return rows[0] ?? null;
   }
 
   async create(data: ScheduledTaskV2Insert) {
+    const db = getTaskDatabase();
     const [row] = await db.insert(scheduledTaskV2).values(data).returning();
     return row;
   }
 
   async update(taskId: string, data: Partial<ScheduledTaskV2Insert>) {
+    const db = getTaskDatabase();
     const rows = await db.update(scheduledTaskV2).set(data).where(eq(scheduledTaskV2.id, taskId)).returning();
     return rows[0] ?? null;
   }
 
   async deleteByUserAndOrgAndId(userId: string, organizationId: string, taskId: string): Promise<boolean> {
+    const db = getTaskDatabase();
     const result = await db
       .delete(scheduledTaskV2)
       .where(
@@ -105,6 +112,7 @@ class PgScheduledTaskV2Repo implements IScheduledTaskV2Repo {
   }
 
   async listEnabled() {
+    const db = getTaskDatabase();
     return db.select().from(scheduledTaskV2).where(eq(scheduledTaskV2.enabled, true));
   }
 }

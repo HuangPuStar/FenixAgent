@@ -24,6 +24,18 @@ export function getDbStub(): DbStub {
   return dbStub ?? {};
 }
 
+/**
+ * 本用例是否登记过 DB 替身。
+ *
+ * 宿主 preload 的 `getDatabase()` 读取 seam（`apps/server/src/test-utils/setup-mocks.ts`）用它区分
+ * 「用例声明了 DB 替身」与「用例没碰 DB」：只有前者才回退到替身，后者必须让平台的「应用基础设施尚未
+ * 初始化」原样抛出——platform-sdk 的 `server-infrastructure.test.ts` 断言的就是后者。
+ * 语义与 {@link hasModuleConfigStub} 一致。
+ */
+export function hasDbStub(): boolean {
+  return dbStub !== undefined;
+}
+
 /** 清空 DB 替身，供用例之间复位。 */
 export function resetDbStub(): void {
   dbStub = undefined;

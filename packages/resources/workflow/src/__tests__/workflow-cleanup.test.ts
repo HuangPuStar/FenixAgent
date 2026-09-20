@@ -16,22 +16,23 @@
  *     orchestration-instance-rollback.test.ts 与 web DELETE 路由测试
  *     （instances-delete-idempotent.test.ts）覆盖，本测试聚焦 cleanup 的编排语义
  *     （幂等 / 隔离 / 失败不中断）。
- *   - stopInstance 自 AE-P2.1 起读取 getCoreRuntime().listInstances() 做三侧收敛，
- *     core-bootstrap 未配置 stub 时返回 undefined 会 TypeError，故此处必须
- *     stubCoreBootstrap 注入空 listInstances 的假 facade；同 org 但活跃表无记录的
+ *   - stopInstance 自 AE-P2.1 起读取 core runtime 的 listInstances() 做三侧收敛，端口未绑定
+ *     （`getBoundCoreRuntime()` 抛错）会让 stopInstance 整体失败、supplement 残留，故此处必须
+ *     经 `bindStubCoreRuntime` 注入空 listInstances 的假 facade；同 org 但活跃表无记录的
  *     实例会被幂等收敛清理（不再返回 "Instance not found" 保留 supplement）。
  */
 
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { globalInstanceRegistry } from "@fenix/agent-runtime/server";
+import type { CoreRuntimeFacade } from "@fenix/core";
 import { resetAllStubs } from "@fenix/platform-sdk/testing";
-import { stubCoreBootstrap } from "@server/test-utils/stubs/module-stubs";
 import { cleanupSpawnedInstances } from "../server/services/workflow";
 import {
   acquireInstanceLease,
   clearInstanceLeases,
   releaseInstanceLease,
 } from "../server/services/workflow/instance-lease";
+import { bindStubCoreRuntime, restoreCoreRuntimePort } from "./core-runtime-stub";
 
 const ORG_1 = "org-1";
 const ORG_2 = "org-2";
@@ -40,7 +41,7 @@ const ORG_2 = "org-2";
 const fakeFacade = {
   listInstances: () => [],
   stopInstance: async () => {},
-};
+} as unknown as CoreRuntimeFacade;
 
 /** 注册一个属于指定 org 的 running supplement（真实注册表单例）。 */
 function registerRunningInstance(instanceId: string, environmentId: string, organizationId: string): void {
@@ -60,13 +61,14 @@ describe("cleanupSpawnedInstances", () => {
     globalInstanceRegistry.clear();
     clearInstanceLeases();
     resetAllStubs();
-    stubCoreBootstrap({ getCoreRuntime: () => fakeFacade });
+    bindStubCoreRuntime(fakeFacade);
   });
 
   afterEach(() => {
     globalInstanceRegistry.clear();
     clearInstanceLeases();
     resetAllStubs();
+    restoreCoreRuntimePort();
   });
 
   // 幂等：不存在的 instanceId 被 stopInstance 以 ok:false 静默跳过，cleanup 重复执行无害

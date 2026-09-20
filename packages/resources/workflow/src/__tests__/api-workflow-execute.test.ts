@@ -1,9 +1,16 @@
 import { describe, expect, test } from "bun:test";
 
+import { createApiWorkflowRoutes } from "../server/routes/api/workflows";
+import { createStubSessionAuthGuard } from "./guard-stubs";
+
 // 工作流执行 API 集成测试
 // 测试 POST /api/workflows/:workflowId/execute 端点
 
-const apiWorkflowRoute = (await import("../server/routes/api/workflows")).default;
+const guard = createStubSessionAuthGuard();
+
+// 路由经工厂构造并注入会话守卫替身：静态条件禁止包内测试依赖宿主 `@server/plugins/auth`，
+// 而 Elysia 的 macro/state 是实例作用域的，守卫必须是构造时传入的同一实例。
+const apiWorkflowRoute = createApiWorkflowRoutes({ authGuardPlugin: guard });
 
 describe("POST /api/workflows/:workflowId/execute", () => {
   /** 发起 API 请求的辅助函数 */

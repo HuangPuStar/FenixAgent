@@ -1,7 +1,7 @@
 import { findAgentConfigNamesByIds } from "@fenix/agent-config/server";
 import { createLiteLlmAdapter } from "@fenix/model-gateway-litellm";
 import { getIdentityDirectory } from "@fenix/platform-sdk/server";
-import { config } from "@server/config";
+import { getModelManagementConfig } from "../config";
 import { SUBJECT_REJECTION_MESSAGES, type SubjectVerificationPort } from "../ports/subject-verification";
 import {
   deleteModelGatewayCredential,
@@ -39,8 +39,12 @@ export interface ModelGatewayRuntimeDeps {
  *
  * 未配置管理凭证或本地加密密钥时只保留 Provider 初始化能力，Agent 动态
  * Key 和管理操作会明确失败，避免用空凭证启动或把密钥明文落库。
+ *
+ * 配置经 `getModelManagementConfig()` 在调用期读取（迁移前是 `import { config } from "@server/config"` 的
+ * 加载期绑定）：模块配置由宿主在基础设施初始化时注入，本函数由宿主装配阶段调用，天然晚于初始化。
  */
 export function createModelGatewayRuntime(deps: ModelGatewayRuntimeDeps) {
+  const config = getModelManagementConfig();
   if (!config.modelGatewayAdminKey || !config.modelGatewayCredentialEncryptionKey) return null;
   const subjectVerification = deps.subjectVerification;
 

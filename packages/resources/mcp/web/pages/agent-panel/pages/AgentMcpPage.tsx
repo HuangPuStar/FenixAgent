@@ -1,14 +1,14 @@
+import { useOrg } from "@fenix/identity/web";
+import { ConfirmDialog } from "@fenix/ui-components/config/ConfirmDialog";
+import { unwrap } from "@fenix/web-runtime/api/request";
+import { NS } from "@fenix/web-runtime/i18n/namespace";
+import type { McpServerConfig, McpServerInfo, McpToolInfo } from "@fenix/web-runtime/types/config";
 import { useRequest } from "ahooks";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
-import { ConfirmDialog } from "@/components/config/ConfirmDialog";
-import { mcpApi } from "@/src/api/mcp";
-import { unwrap } from "@/src/api/request";
-import { useOrg } from "@/src/contexts/OrgContext";
-import { NS } from "@/src/i18n";
-import { canManageMcpSharing, canWriteMcp, getMcpKey, getMcpLookupKey } from "@/src/lib/mcp-resource-access";
-import type { McpServerConfig, McpServerInfo, McpToolInfo } from "@/src/types/config";
+import { mcpApi } from "../../../api/mcp";
+import { canManageMcpSharing, canWriteMcp, getMcpKey, getMcpLookupKey } from "../../../lib/mcp-resource-access";
 import { AgentMcpCatalog } from "./agent-mcp-catalog";
 import { AgentMcpDialog, type McpEditorTarget } from "./agent-mcp-dialog";
 import type { McpCatalogScope } from "./agent-mcp-utils";
@@ -17,6 +17,8 @@ export function AgentMcpPage() {
   const { t } = useTranslation(NS.MCP);
   const { t: tComponents } = useTranslation(NS.COMPONENTS);
   // 当前组织 id 用于判定资源归属：`/web` 视图只给 scope.organizationId，需要本地比对才知道是否外部资源。
+  // 组织上下文必须与宿主挂载的 React context 是同一份实例（第二份 context 会让 useOrg 永远拿到默认
+  // 值），因此从身份包的浏览器入口取用，而不是在包内另建组织状态。
   const { org } = useOrg();
   const activeOrganizationId = org?.id;
   const [query, setQuery] = useState("");
@@ -39,7 +41,13 @@ export function AgentMcpPage() {
       server.enabled ? unwrap(mcpApi.disable(server.name)) : unwrap(mcpApi.enable(server.name)),
     {
       manual: true,
-      onSuccess: () => catalog.refresh(),
+      // 启停是「改」操作：仅靠列表状态翻转不足以确认，成功反馈要与删除/分享开关保持一致的 toast。
+      onSuccess: (result) => {
+        toast.success(
+          result.enabled ? t("toast.enabled", { name: result.name }) : t("toast.disabled", { name: result.name }),
+        );
+        catalog.refresh();
+      },
       onError: (error) => {
         console.error(t("toast.operationFailed"), error);
         toast.error(t("toast.operationFailedWith", { message: error.message }));

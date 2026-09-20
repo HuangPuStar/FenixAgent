@@ -2,23 +2,24 @@ import { afterAll, afterEach, beforeEach, describe, expect, mock, test } from "b
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { resetAllStubs } from "@fenix/platform-sdk/testing";
-import { setConfig } from "@server/config";
-import { registryRegistry, stubEnvironmentRepo, stubRegistry } from "@server/test-utils/stubs/module-stubs";
 import { gate } from "../services/agent-file-service";
 import { flushPendingBatches } from "../services/file-event-limiter";
 import { destroyEnvironmentQueue, type FileEventFrame, subscribe } from "../services/file-event-queue";
 import { resetFileMachineEventDeps, setFileMachineEventDeps } from "../services/file-machine-events";
 import type { FileAuthContext } from "../services/file-types";
+import {
+  initializeMachineModuleConfig,
+  lockMachineWorkspaceRoot,
+  stubMachineEnvironmentRecord,
+  unlockMachineWorkspaceRoot,
+} from "../testing";
 import type { WsConnection } from "../transport/ws-types";
 
-// sendFileOpAndWait 属请求发送域（自 handler 拆至 file-ws-requests，setup-mocks 部分
-// mock——未配置 stub 时回退真实实现），此处动态 import 触发记账
+// sendFileOpAndWait 属请求发送域（自 handler 拆至 file-ws-requests），此处动态 import 触发记账
 const fileOpRequests = await import("../transport/file-ws-requests");
 
-// file-ws-handler 由 setup-mocks preload 部分 mock（仅 isFileWsConnected /
-// sendFileOpAndWait 可 stub，未配置时回退真实实现），本测试动态 import 后直接使用
-// 真实的事件接收逻辑；registry 的 writeRegistryEvent 经 stubRegistry 配置断言告警落库。
+// 本测试直接使用真实的事件接收逻辑（`file-ws-handler` / `file-machine-events`）；registry 的
+// writeRegistryEvent 经包内句柄 `setFileMachineEventDeps` 替换后断言告警落库。
 // 模块级状态（连接 / 环境集 / 限频窗口）在 beforeEach 通过 closeAllFileWsConnections
 // 清理；限频器（file-event-limiter）的窗口按注入时间或真实时间自动重置，
 // 各用例使用唯一 envId/machineId 避免跨用例窗口污染。
@@ -75,8 +76,7 @@ const cleanups: string[] = [];
 const tmpDirs: string[] = [];
 
 beforeEach(async () => {
-  resetAllStubs();
-  setFileMachineEventDeps({ writeRegistryEvent: (...args) => registryRegistry.get("writeRegistryEvent")(...args) });
+  initializeMachineModuleConfig();
   const handler = await import("../transport/file-ws-handler");
   handler.closeAllFileWsConnections();
 });
@@ -91,8 +91,9 @@ afterEach(async () => {
   for (const dir of tmpDirs.splice(0)) {
     await rm(dir, { recursive: true, force: true });
   }
-  delete process.env.WORKSPACE_ROOT;
-  setConfig({ defaultMachineId: undefined });
+  // 本文件只有「本地写路径事件发布」一组用例持锁，其余用例不参与锁：根状态一律交由解锁处理
+  // （未持锁时它是空操作），不再手动 delete——delete 会替并发持有者把根删掉。
+  unlockMachineWorkspaceRoot();
 });
 
 afterAll(async () => {
@@ -205,7 +206,7 @@ describe("file-ws 事件接收（W7，§7.5）", () => {
   // 未声明环境：严格模式下必须丢弃事件并落库 registryEvent 告警，不静默
   test("未声明环境的事件被丢弃并写 registryEvent 告警", async () => {
     const registryEventSpy = mock(async () => {});
-    stubRegistry({ writeRegistryEvent: registryEventSpy });
+    setFileMachineEventDeps({ writeRegistryEvent: registryEventSpy });
     const handler = await import("../transport/file-ws-handler");
     const declaredEnv = "evt-env-declared";
     cleanups.push(declaredEnv);
@@ -238,7 +239,7 @@ describe("file-ws 事件接收（W7，§7.5）", () => {
   // 旧机器端 register 无 environments：宽松模式放行事件（兼容过渡），且不写拒绝告警
   test("register 无 environments 宽松放行且不告警", async () => {
     const registryEventSpy = mock(async () => {});
-    stubRegistry({ writeRegistryEvent: registryEventSpy });
+    setFileMachineEventDeps({ writeRegistryEvent: registryEventSpy });
     const handler = await import("../transport/file-ws-handler");
     const envId = "evt-env-lenient";
     cleanups.push(envId);
@@ -407,13 +408,10 @@ describe("本地写路径事件发布（W7，§4.3）", () => {
   test("本地 service 写操作发布 source:user 事件", async () => {
     const envId = "evt-env-local";
     cleanups.push(envId);
-    stubEnvironmentRepo({
-      getById: async () => ({ id: envId, organizationId: ORG_ID, userId: USER_ID }),
-    });
+    stubMachineEnvironmentRecord({ id: envId, organizationId: ORG_ID, userId: USER_ID });
     const workspaceRoot = await mkdtemp(join(tmpdir(), "file-ws-events-"));
     tmpDirs.push(workspaceRoot);
-    process.env.WORKSPACE_ROOT = workspaceRoot;
-    setConfig({ defaultMachineId: undefined });
+    await lockMachineWorkspaceRoot(workspaceRoot);
 
     const frames: FileEventFrame[] = [];
     const unsub = subscribe(envId, (f) => frames.push(f));
@@ -438,13 +436,10 @@ describe("本地写路径事件发布（W7，§4.3）", () => {
   test("本地 rename 发布带 to 字段的事件", async () => {
     const envId = "evt-env-local-rename";
     cleanups.push(envId);
-    stubEnvironmentRepo({
-      getById: async () => ({ id: envId, organizationId: ORG_ID, userId: USER_ID }),
-    });
+    stubMachineEnvironmentRecord({ id: envId, organizationId: ORG_ID, userId: USER_ID });
     const workspaceRoot = await mkdtemp(join(tmpdir(), "file-ws-events-"));
     tmpDirs.push(workspaceRoot);
-    process.env.WORKSPACE_ROOT = workspaceRoot;
-    setConfig({ defaultMachineId: undefined });
+    await lockMachineWorkspaceRoot(workspaceRoot);
 
     const frames: FileEventFrame[] = [];
     const unsub = subscribe(envId, (f) => frames.push(f));

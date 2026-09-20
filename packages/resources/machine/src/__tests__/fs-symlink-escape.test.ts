@@ -7,18 +7,22 @@ import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { mkdir, mkdtemp, readdir, readFile, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { resetAllStubs } from "@fenix/platform-sdk/testing";
-import { setConfig } from "@server/config";
-import { resetTestAuth, setTestAuth } from "@server/plugins/auth";
-import { stubEnvironmentRepo } from "@server/test-utils/stubs/module-stubs";
+import { createWebFsRoutes } from "../server/routes/web/fs";
+import {
+  initializeMachineModuleConfig,
+  lockMachineWorkspaceRoot,
+  stubMachineEnvironmentRecord,
+  unlockMachineWorkspaceRoot,
+} from "../server/testing";
+import { createStubSessionAuthGuardPlugin, resetTestAuth, setTestAuth } from "./guard-stubs";
 
 const ORG_ID = "org-1";
 const USER_ID = "user-1";
 const ENV_ID = "env-1";
 
-// 动态 import 路由模块。environmentRepo 的 mock 实时转发（setup-mocks.ts），
-// beforeEach 注入 stub 即可。
-const fsRoutes = await import("../routes/web/fs");
+// 路由实例文件级构造一次：会话守卫替身按请求期读取当前会话，用例内 setTestAuth 即时生效；
+// 环境读取经包内句柄替换（stubMachineEnvironmentRecord），beforeEach 注入即可。
+const fsRoutes = createWebFsRoutes({ authGuardPlugin: createStubSessionAuthGuardPlugin() });
 
 let workspaceRoot: string;
 let outsideDir: string;
@@ -31,14 +35,12 @@ function stubAuth() {
 }
 
 function stubEnvironment() {
-  stubEnvironmentRepo({
-    getById: async () => ({ id: ENV_ID, organizationId: ORG_ID, userId: USER_ID }),
-  });
+  stubMachineEnvironmentRecord({ id: ENV_ID, organizationId: ORG_ID, userId: USER_ID });
 }
 
 /** fs 路由直连 handle（会话认证由 setTestAuth 注入） */
 function fsHandle(path: string, init?: RequestInit): Promise<Response> {
-  return fsRoutes.default.handle(new Request(`http://localhost/environments/${ENV_ID}${path}`, init));
+  return fsRoutes.handle(new Request(`http://localhost/environments/${ENV_ID}${path}`, init));
 }
 
 /** workspace 目录（WORKSPACE_ROOT/org/user/env） */
@@ -60,13 +62,12 @@ async function expectNotFound(response: Response): Promise<void> {
 }
 
 beforeEach(async () => {
-  resetAllStubs();
+  initializeMachineModuleConfig();
   stubEnvironment();
   stubAuth();
   workspaceRoot = await mkdtemp(join(tmpdir(), "fs-symlink-escape-"));
   outsideDir = await mkdtemp(join(tmpdir(), "fs-symlink-outside-"));
-  process.env.WORKSPACE_ROOT = workspaceRoot;
-  setConfig({ defaultMachineId: undefined });
+  await lockMachineWorkspaceRoot(workspaceRoot);
   // 外部目录预置一个文件，供读/删/rename 逃逸断言
   await writeFile(join(outsideDir, "secret.txt"), "top-secret", "utf-8");
   // workspace 结构：user/ + 指向外部的逃逸 symlink（link）+ 指向内部的合法 symlink（link2）
@@ -78,10 +79,10 @@ beforeEach(async () => {
 
 afterEach(async () => {
   resetTestAuth();
-  delete process.env.WORKSPACE_ROOT;
+  // 根状态由解锁负责清除（未持锁时是空操作，不会替并发持有者改根），不再手动 delete
+  unlockMachineWorkspaceRoot();
   await rm(workspaceRoot, { recursive: true, force: true });
   await rm(outsideDir, { recursive: true, force: true });
-  setConfig({ defaultMachineId: undefined });
 });
 
 describe("symlink 逃逸防护", () => {
@@ -147,8 +148,12 @@ describe("不误伤", () => {
     const realRoot = await mkdtemp(join(tmpdir(), "fs-symlink-realroot-"));
     const linkRoot = join(tmpdir(), `fs-root-link-${Math.random().toString(36).slice(2)}`);
     await symlink(realRoot, linkRoot, "dir");
+    // 本用例会在运行中把根切到软链目录：必须重新经锁独占（契约见 workspace-root-lock.ts 的
+    // 「含按用例切换根的」）。先释放本文件 beforeEach 持有的根再重新排队——直接二次取锁会等自己
+    // 的释放而空等到锁的等待上限；直接改 process.env 则会把并发文件正在读的根换掉。
+    unlockMachineWorkspaceRoot();
+    await lockMachineWorkspaceRoot(linkRoot);
     try {
-      process.env.WORKSPACE_ROOT = linkRoot;
       const writeRes = await fsHandle("/fs/user/ok.txt", {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
@@ -159,7 +164,8 @@ describe("不误伤", () => {
       expect(readRes.status).toBe(200);
       expect(await readFile(join(realRoot, ORG_ID, USER_ID, ENV_ID, "user", "ok.txt"), "utf-8")).toBe("fine");
     } finally {
-      delete process.env.WORKSPACE_ROOT;
+      // 恢复（删除）根必须在解锁之前：反序会让下一个文件立刻写入它的根，本次删除就把对方的根改坏了
+      unlockMachineWorkspaceRoot();
       await rm(realRoot, { recursive: true, force: true });
     }
   });

@@ -1,4 +1,14 @@
 import {
+  AgentMasterDetailHeader,
+  AgentMasterDetailWorkspace,
+} from "@fenix/ui-components/components/agent-master-detail-workspace";
+import { AppHeader } from "@fenix/ui-components/layout/app-header";
+import { AppPage } from "@fenix/ui-components/layout/app-page";
+import { Button } from "@fenix/ui-components/ui/button";
+import { Skeleton } from "@fenix/ui-components/ui/skeleton";
+import { NS } from "@fenix/web-runtime/i18n/namespace";
+import type { McpServerInfo, McpToolInfo } from "@fenix/web-runtime/types/config";
+import {
   AlertTriangle,
   CheckCircle2,
   ChevronRight,
@@ -9,22 +19,13 @@ import {
   RefreshCw,
   Search,
   Share2,
+  ShieldAlert,
   TerminalSquare,
   Trash2,
   Wrench,
 } from "lucide-react";
 import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { Button } from "@/components/ui/button";
-import { Skeleton } from "@/components/ui/skeleton";
-import { AppHeader } from "@/src/components/layout/app-header";
-import { AppPage } from "@/src/components/layout/app-page";
-import { NS } from "@/src/i18n";
-import {
-  AgentMasterDetailHeader,
-  AgentMasterDetailWorkspace,
-} from "@/src/pages/agent-panel/shared/agent-master-detail-workspace";
-import type { McpServerInfo, McpToolInfo } from "@/src/types/config";
 import {
   canManageMcpSharing,
   canWriteMcp,
@@ -32,7 +33,7 @@ import {
   getMcpKey,
   isExternalMcp,
 } from "../../../lib/mcp-resource-access";
-import { countMcpScopes, filterMcpServers, type McpCatalogScope } from "./agent-mcp-utils";
+import { countMcpScopes, filterMcpServers, isUnauthorizedError, type McpCatalogScope } from "./agent-mcp-utils";
 import "./agent-mcp.css";
 import "./agent-mcp-detail.css";
 
@@ -75,6 +76,19 @@ export function AgentMcpCatalog(props: Props) {
 
   if (props.loading) return <McpCatalogLoading />;
   if (props.error && props.servers.length === 0) {
+    // 无权限单独成一个分支：它不给重试按钮（原因见 `isUnauthorizedError`），
+    // 而一般故障仍然保留重试入口，避免把「点一次就好」和「点了也没用」混成同一种界面。
+    if (isUnauthorizedError(props.error)) {
+      return (
+        <AppPage className="agent-mcp-page">
+          <section className="mcp-load-error" role="alert">
+            <ShieldAlert />
+            <strong>{t("loadState.unauthorizedTitle")}</strong>
+            <p>{t("loadState.unauthorizedHint")}</p>
+          </section>
+        </AppPage>
+      );
+    }
     return (
       <AppPage className="agent-mcp-page">
         <section className="mcp-load-error" role="alert">
@@ -90,8 +104,10 @@ export function AgentMcpCatalog(props: Props) {
     );
   }
 
+  // 这里已不是加载态（loading 在上方提前返回），因此不标 aria-busy：恒真的 busy 会让屏幕阅读器
+  // 把整页更新一直当作「未完成」而推迟播报。加载态的 aria-busy 由 McpCatalogLoading 承担。
   return (
-    <AppPage className="agent-mcp-page" busy>
+    <AppPage className="agent-mcp-page">
       <AppHeader
         title={t("title")}
         subtitle={t("subtitle")}
@@ -338,12 +354,18 @@ function McpToolList({ tools, loading }: { tools: McpToolInfo[]; loading: boolea
 }
 
 function McpCatalogLoading() {
+  const { t } = useTranslation(NS.MCP);
+  // 骨架屏本身没有可读内容，屏幕阅读器只会看到一片空白：文案走 sr-only 的 role="status"，
+  // 容器再用 aria-busy 标出整块仍在加载（与 sandbox 面板的状态语义一致）。
   return (
-    <AppPage className="agent-mcp-page">
+    <AppPage className="agent-mcp-page" busy>
       <Skeleton className="h-7 w-36" />
       <Skeleton className="mt-2 h-4 w-80" />
       <Skeleton className="mt-7 h-10 w-full" />
       <Skeleton className="mt-7 h-[520px] w-full rounded-[10px]" />
+      <span className="sr-only" role="status">
+        {t("loadState.loading")}
+      </span>
     </AppPage>
   );
 }

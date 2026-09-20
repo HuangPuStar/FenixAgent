@@ -1,10 +1,28 @@
 import { describe, expect, test } from "bun:test";
 import { ContextPanel } from "@fenix/chat-channel/web";
+import { createInstance } from "i18next";
+import type { ComponentProps } from "react";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { I18nextProvider } from "react-i18next";
-import i18n from "@/src/i18n";
-import type { ThreadEntry } from "../../../../../../apps/web/src/lib/types";
+
+/**
+ * 本包页面内嵌的 ContextPanel 服务端渲染回归。
+ *
+ * 面板实现属 `@fenix/chat-channel`（本包只是消费方），因此这里只守护「面板能为本包页面完成
+ * SSR 且不因条目空/折叠而崩」这一集成前提，不重复断言 chat-channel 自己的渲染细节。
+ */
+type ThreadEntry = ComponentProps<typeof ContextPanel>["entries"][number];
+
+/**
+ * 自建 i18n 实例，而不是取宿主 `@/src/i18n` 单例。
+ *
+ * 两点原因：包内的 web 交付物不得依赖宿主别名（§1 静态条件 2）；SSR 断言的是「渲染到哪些 key /
+ * 结构」，用空字典让 `t(key)` 原样回显 key，比依赖宿主字典里恰好有这些文案更稳定——文案改动不会
+ * 让本包的集成前提测试失真（同款先例：`packages/ui-components/web/__tests__/chat-composer.test.tsx`）。
+ */
+const i18n = createInstance();
+void i18n.init({ lng: "zh", fallbackLng: "zh", initAsync: false, resources: {} });
 
 function renderPanel(entries: ThreadEntry[], collapsed = false, modelName = "claude-test") {
   return renderToStaticMarkup(
@@ -24,12 +42,13 @@ function renderPanel(entries: ThreadEntry[], collapsed = false, modelName = "cla
 }
 
 describe("ContextPanel 服务端渲染", () => {
-  // 没有工具调用的会话仍应展示模型与用量统计，避免空面板崩溃。
-  test("空会话展示模型与用量统计", () => {
+  // 没有工具调用的会话仍应展示稳定的统计与空状态，避免空面板崩溃。
+  test("空会话展示工具空态与模型信息", () => {
     const html = renderPanel([]);
 
     expect(html).toContain("claude-test");
     expect(html).toContain("12s");
+    expect(html).toContain("contextPanel.noToolCalls");
     expect(html).toContain("0 / 200.0k");
   });
 
@@ -41,8 +60,8 @@ describe("ContextPanel 服务端渲染", () => {
     expect(html).not.toContain("opus (peri-haiku)");
   });
 
-  // 工具调用应按规范名称合并计数后展示。
-  test("工具调用渲染聚合计数", () => {
+  // 工具调用应按规范名称合并计数，并将待确认调用展示在权限队列中。
+  test("工具调用渲染聚合计数与待确认队列", () => {
     const entries: ThreadEntry[] = [
       { type: "user_message", id: "user-1", content: "部署服务" },
       {
@@ -81,6 +100,7 @@ describe("ContextPanel 服务端渲染", () => {
     expect(html).toContain("bash");
     expect(html).toContain("read");
     expect(html).toContain("Read 配置");
+    expect(html).toContain("contextPanel.pendingConfirmation");
     expect(html).toContain(">2</span>");
   });
 
@@ -104,10 +124,11 @@ describe("ContextPanel 服务端渲染", () => {
     expect(html).toContain("1.0k");
   });
 
-  // 收起面板时内容容器必须进入不可交互的折叠状态。
-  test("收起状态禁用面板交互", () => {
+  // 收起面板仍保留切换控件，但内容容器必须进入不可交互的折叠状态。
+  test("收起状态保留切换控件并禁用面板交互", () => {
     const html = renderPanel([], true);
 
     expect(html).toContain("!w-0 opacity-0 !border-l-0 pointer-events-none");
+    expect(html).toContain("contextPanel.showContext");
   });
 });

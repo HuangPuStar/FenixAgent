@@ -1,18 +1,24 @@
 import { afterEach, describe, expect, test } from "bun:test";
-import Elysia from "elysia";
-import webSidebarConfig from "../routes/web/sidebar-config";
+import { createWebSidebarConfigRoutes } from "../server/routes/web/sidebar-config";
+import { initializeAgentConfigModuleConfig } from "../server/testing";
+
+/**
+ * `/web/sidebar-config` 路由。
+ *
+ * 工厂无依赖（该端点在登录页也要可用，刻意不声明 `sessionAuth`），因此这里直接调用工厂，不注入
+ * 守卫替身；配置经 `initializeAgentConfigModuleConfig` 注入。
+ */
+
+const app = createWebSidebarConfigRoutes();
 
 describe("web sidebar config routes", () => {
-  const originalEnv = { ...process.env };
-  const app = new Elysia().use(webSidebarConfig);
-
   afterEach(() => {
-    process.env = { ...originalEnv } as NodeJS.ProcessEnv;
+    initializeAgentConfigModuleConfig();
   });
 
   // GET /sidebar-config 返回解析后的隐藏 tab 列表
   test("GET /sidebar-config 返回 hiddenTabs", async () => {
-    process.env.APP_HIDDEN_SIDEBAR_TABS = "models,mcp";
+    initializeAgentConfigModuleConfig({ hiddenSidebarTabs: "models,mcp" });
 
     const response = await app.handle(new Request("http://localhost/sidebar-config"));
     const payload = (await response.json()) as {

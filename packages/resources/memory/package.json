@@ -3,23 +3,35 @@
   "private": true,
   "type": "module",
   "exports": {
-    ".": {
-      "types": "./src/index.ts",
-      "default": "./src/index.ts"
-    },
-    "./module": {
-      "types": "./fenix.module.ts",
-      "default": "./fenix.module.ts"
-    },
-    "./server": {
-      "types": "./src/server.ts",
-      "default": "./src/server.ts"
-    }
+    ".": "./src/index.ts",
+    "./module": "./fenix.module.ts",
+    "./server": "./src/server.ts",
+    "./server/testing": "./src/server/testing.ts",
+    "./web": "./web/index.ts",
+    "./web/i18n": "./web/i18n/index.ts"
   },
   "dependencies": {
+    "@chenglou/pretext": "^0.0.7",
     "@fenix/platform-sdk": "workspace:*",
+    "@fenix/ui-components": "workspace:*",
+    "@fenix/web-runtime": "workspace:*",
+    "cytoscape": "^3.34.0",
+    "cytoscape-fcose": "^2.2.0",
     "drizzle-orm": "^0.45.2",
     "elysia": "^1.4.28",
+    "lucide-react": "^1.16.0",
+    "react-markdown": "^10.1.0",
+    "remark-gfm": "^4.0.1",
+    "sonner": "^2.0.7",
     "zod": "^4.4.3"
+  },
+  "peerDependencies": {
+    "i18next": "^26.2.0",
+    "react": "^19.2.6",
+    "react-dom": "^19.2.6",
+    "react-i18next": "^17.0.8"
+  },
+  "devDependencies": {
+    "happy-dom": "^20.9.0"
   }
 }

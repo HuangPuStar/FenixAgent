@@ -1,10 +1,8 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import type { ActorContext } from "@fenix/platform-sdk";
 import { ConflictError, NotFoundError } from "@fenix/platform-sdk";
-import { readJson, resetAllStubs, stubAuthApi } from "@fenix/platform-sdk/testing";
-import { resetTestAuth, setTestAuth } from "@server/plugins/auth";
-import { setTestOrgContext } from "@server/services/org-context";
-import { stubEnvironmentRepo } from "@server/test-utils/stubs/module-stubs";
+import { readJson } from "@fenix/platform-sdk/testing";
+import { createWebSkillsConfigRoutes } from "../server/routes/web/config/skills";
 import {
   authorizedSkill,
   authorizedSkillDetail,
@@ -12,6 +10,7 @@ import {
   resetSkillModuleStub,
   testActor,
 } from "./fixtures";
+import { createStubSessionAuthGuardPlugin } from "./guard-stubs";
 
 /**
  * `/web/config/skills` 协议层用例。
@@ -19,17 +18,16 @@ import {
  * 授权、可见性与名称解析都在应用 Facade 内，本文件只覆盖协议层职责：参数校验、请求映射、视图映射
  * （决策 D2：`scope + access.actions`）与错误码映射。Facade 行为——文件与资源行的补偿写入、跨组织
  * 名称解析、导入冲突判定——由 `skill-facade` 用例覆盖。
+ *
+ * 守卫由工厂注入替身（理由与鉴权覆盖缺口见 `./guard-stubs.ts`）。
  */
 
-const skillsRoute = (await import("../server/routes/web/config/skills")).default;
-
-function authenticate(organizationId = "org-1") {
-  setTestAuth({
-    user: { id: "user-1", email: "user-1@example.test", name: "Tester" },
-    authContext: { organizationId, userId: "user-1", role: "owner" },
-  });
-  setTestOrgContext({ organizationId, userId: "user-1", role: "owner" });
-}
+const skillsRoute = createWebSkillsConfigRoutes({
+  authGuardPlugin: createStubSessionAuthGuardPlugin(testActor()),
+});
+const unauthenticatedSkillsRoute = createWebSkillsConfigRoutes({
+  authGuardPlugin: createStubSessionAuthGuardPlugin(null),
+});
 
 function request(path: string, init?: RequestInit) {
   return skillsRoute.handle(new Request(`http://localhost${path}`, init));
@@ -57,25 +55,17 @@ function uploadForm(overrides: { manifest?: string; conflictStrategy?: string; f
 
 describe("round44 Skill 配置路由", () => {
   beforeEach(() => {
-    resetAllStubs();
     resetSkillModuleStub();
     // 默认装入全未打桩的替身：参数校验用例在被测方法调用之前就应失败，任何越界调用都会立即暴露。
     installSkillModuleStub();
-    authenticate();
   });
 
   afterEach(() => {
-    resetTestAuth();
-    setTestOrgContext(null);
     resetSkillModuleStub();
   });
 
-  // 未认证请求必须在 session 守卫处终止，不能进入资源模块。
+  // 无组织上下文的请求落在路由层 401，且不触碰资源模块（守卫只负责不注入主体）。
   test("未认证列表返回 401", async () => {
-    resetTestAuth();
-    setTestOrgContext(null);
-    stubAuthApi({ getSession: async () => null, verifyApiKey: async () => ({ valid: false }) });
-    stubEnvironmentRepo({ getBySecret: async () => null });
     let listed = false;
     installSkillModuleStub({
       facade: {
@@ -86,7 +76,9 @@ describe("round44 Skill 配置路由", () => {
       },
     });
 
-    expect((await request("/config/skills")).status).toBe(401);
+    const response = await unauthenticatedSkillsRoute.handle(new Request("http://localhost/config/skills"));
+
+    expect(response.status).toBe(401);
     expect(listed).toBeFalse();
   });
 

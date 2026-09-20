@@ -1,4 +1,5 @@
 import type { TaskExecInput, TaskExecOutput, TaskExecutor } from "./types";
+import { isTimeoutAbortError } from "./utils";
 
 interface HttpDefinition {
   url: string;
@@ -53,8 +54,8 @@ export const httpExecutor: TaskExecutor = {
         error: responseText ? `HTTP ${response.status}: ${responseText.slice(0, 500)}` : `HTTP ${response.status}`,
       };
     } catch (err) {
-      // AbortSignal.timeout 触发时会抛出 DOMException，name 为 "TimeoutError"（Bun/Node.js 运行时）
-      const isTimeout = err instanceof Error && (err.name === "TimeoutError" || err.name === "AbortError");
+      // 超时判定收敛在 utils，用例直接断言同一个函数（内联判定会逼用例复制条件，复制件漂移时用例照样全绿）
+      const isTimeout = isTimeoutAbortError(err);
       const msg = err instanceof Error ? err.message : String(err);
       const duration = Date.now() - startTime;
 

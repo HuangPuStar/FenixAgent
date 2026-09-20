@@ -1,21 +1,25 @@
+import { useOrg } from "@fenix/identity/web";
+import { unwrap } from "@fenix/web-runtime/api/request";
+import { NS } from "@fenix/web-runtime/i18n/namespace";
+import { dispatchConfigChange } from "@fenix/web-runtime/lib/config-events";
+import type {
+  SkillUploadConflictResponse,
+  SkillUploadConflictStrategy,
+  UploadSkillSummary,
+} from "@fenix/web-runtime/types/config";
 import { useRequest } from "ahooks";
 import { type ChangeEvent, useCallback, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
-import { unwrap } from "@/src/api/request";
-import { skillConfigApi } from "@/src/api/skills";
-import { useOrg } from "@/src/contexts/OrgContext";
-import { NS } from "@/src/i18n";
-import { dispatchConfigChange } from "@/src/lib/config-events";
+import { skillConfigApi } from "../../../api/skills";
 import {
   canManageSkillSharing,
   canWriteSkill,
   getSkillKey,
   getSkillLookupKey,
   isPublicSkill,
-} from "@/src/lib/skill-resource-access";
-import { buildSkillUploadFormData, parseSkillUploadFiles, validateUploadBatch } from "@/src/lib/skill-upload";
-import type { SkillUploadConflictResponse, SkillUploadConflictStrategy, UploadSkillSummary } from "@/src/types/config";
+} from "../../../lib/skill-resource-access";
+import { buildSkillUploadFormData, parseSkillUploadFiles, validateUploadBatch } from "../../../lib/skill-upload";
 import { AgentSkillsCatalog } from "./agent-skills-catalog";
 import { AgentSkillsDialogs } from "./agent-skills-dialogs";
 import type { SkillCatalogScope, SkillCreateMode, SkillInfo } from "./agent-skills-types";
@@ -103,6 +107,9 @@ export function AgentSkillsPage() {
     {
       manual: true,
       onSuccess: () => {
+        // 更新与创建共用同一份成功反馈文案口径：表单关闭 + 列表刷新之外，必须有一条可见反馈，
+        // 否则用户只能从「对话框关了」推断保存是否生效。
+        toast.success(t("toast.skillUpdated"));
         setDialogOpen(false);
         catalog.refresh();
         dispatchConfigChange("skills");
@@ -140,6 +147,8 @@ export function AgentSkillsPage() {
   const deleteSkill = useRequest((name: string) => unwrap(skillConfigApi.del(name)), {
     manual: true,
     onSuccess: () => {
+      // 删除是不可逆操作，成功反馈与失败反馈同等必要：列表刷新后的「少了那一条」不足以证明删成功。
+      toast.success(t("toast.skillDeleted"));
       setDeleteTarget(null);
       catalog.refresh();
       dispatchConfigChange("skills");

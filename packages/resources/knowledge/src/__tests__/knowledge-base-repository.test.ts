@@ -1,10 +1,13 @@
 import { beforeEach, describe, expect, mock, test } from "bun:test";
-import { resetAllStubs, stubDb } from "@fenix/platform-sdk/testing";
+import { stubDb } from "@fenix/platform-sdk/testing";
 import { agentKnowledgeBindingRepo, knowledgeResourceRepo } from "../server/repositories/knowledge-base";
+import { initializeKnowledgeModuleConfig } from "../server/testing";
 
 describe("知识库仓储边界行为", () => {
   beforeEach(() => {
-    resetAllStubs();
+    // 仓储经 `getKnowledgeDatabase()` 取句柄（platform-sdk 基础设施，未初始化即抛错），
+    // 因此这里初始化转发到 `stubDb()` 的 DB 代理；用例内再按需替换替身。
+    initializeKnowledgeModuleConfig();
   });
 
   // 同步任务没有远端资源 ID 时必须短路，避免生成无意义的 SQL 更新或查询。

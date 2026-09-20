@@ -1,6 +1,6 @@
-import { db } from "@server/db";
 import { agentSiteApp, knowledgeBase, machine, mcpServer, model, provider, skill } from "@server/db/schema";
 import { and, eq, inArray } from "drizzle-orm";
+import { getAgentConfigDatabase } from "../db";
 import type { AgentNode } from "./config/types";
 
 /**
@@ -14,8 +14,9 @@ import type { AgentNode } from "./config/types";
  * 访问 db」。本次是纯搬迁，没有顺带改动查询形状或兜底策略。
  *
  * 跨包表（`model` / `provider` / `machine` / `skill` / `mcp_server` / `knowledge_base` /
- * `agent_site_app`）直接经 `@server/db/schema` 读取，和迁移前一致；这些表的所有权随资源包迁移
- * 属于后续任务（1.3 / 1.7），此处不引入新的抽象层。
+ * `agent_site_app`）经 `@server/db/schema` 读取，和迁移前一致；这些表的所有权随资源包迁移属于
+ * 后续任务（表定义迁出归 1.7），此处不引入新的抽象层。DB 句柄改经 `getAgentConfigDatabase()`
+ * 请求期取得（`@server/db` 的模块级句柄已切断）。
  */
 
 /** 关联资源标签视图；字段与 `/web/config/agents` 响应的 `relatedResources` 一一对应。 */
@@ -50,6 +51,7 @@ export interface AgentRelatedResourceInput {
 async function resolveModelLabel(modelId: string | null): Promise<string | null> {
   if (!modelId) return null;
 
+  const db = getAgentConfigDatabase();
   const modelRows = await db
     .select({
       modelName: model.modelId,
@@ -81,7 +83,7 @@ async function resolveModelLabel(modelId: string | null): Promise<string | null>
 async function resolveMachineLabel(agentNode: AgentNode): Promise<string | null> {
   if (agentNode.kind !== "machine") return null;
 
-  const machineRows = await db
+  const machineRows = await getAgentConfigDatabase()
     .select({ agentName: machine.agentName, name: machine.name, machineInfo: machine.machineInfo })
     .from(machine)
     .where(eq(machine.id, agentNode.machineId))
@@ -113,6 +115,7 @@ export async function buildAgentRelatedResourceView(
   input: AgentRelatedResourceInput,
 ): Promise<AgentRelatedResourceView> {
   const fallback = buildFallbackView(input);
+  const db = getAgentConfigDatabase();
 
   try {
     const [modelLabel, machineLabel] = await Promise.all([

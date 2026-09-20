@@ -89,6 +89,23 @@ function isValidSteps(steps: number): boolean {
   return Number.isInteger(steps) && steps >= 1 && steps <= 1000;
 }
 
+/**
+ * Agent 名称校验：1-64 字符，Unicode 字母、数字、空格与单连字符（不得首尾为空格/连字符，不得出现 `--`）。
+ *
+ * 从宿主 `@server/services/config-utils` 迁入（CE 阶段 2 任务 1.3）：宿主那支是 `/web/config/*` 的共享
+ * 工具，而调用它的只剩本包（宿主自身只剩测试），继续跨包深链等于把一条校验规则挂在一个 per-资源
+ * 语义的实现上——资源名规则属于资源域，随 create 路径归本包。
+ */
+export function isValidAgentName(name: string): boolean {
+  return (
+    typeof name === "string" &&
+    name.length >= 1 &&
+    name.length <= 64 &&
+    !name.includes("--") &&
+    /^[\p{L}0-9][\p{L}0-9 -]*[\p{L}0-9]$|^[\p{L}0-9]$/u.test(name)
+  );
+}
+
 /** 校验 agent 数据字段，返回错误码或 null */
 export function validateAgentData(data: Record<string, unknown>): string | null {
   if (data.agentNode !== undefined && data.agentNode !== null && !normalizeAgentNode(data.agentNode)) {

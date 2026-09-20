@@ -1,14 +1,16 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { readJson, resetAllStubs, stubAuthApi } from "@fenix/platform-sdk/testing";
-import { resetTestAuth, setTestAuth } from "@server/plugins/auth";
-import { stubEnvironmentRepo } from "@server/test-utils/stubs/module-stubs";
+import { readJson, resetAllStubs } from "@fenix/platform-sdk/testing";
 import type { TaskExecutionLogRow } from "../server/repositories/task";
 import { taskExecutionLogRepo } from "../server/repositories/task";
 import type { ScheduledTaskV2Row } from "../server/repositories/task-v2";
 import { scheduledTaskV2Repo } from "../server/repositories/task-v2";
+import { createWebTasksV2Routes } from "../server/routes/web/tasks-v2";
 import { schedulerService } from "../server/services/scheduler";
+import { createStubSessionAuthGuard } from "./guard-stubs";
 
-const route = (await import("../server/routes/web/tasks-v2")).default;
+// 守卫替身与路由共用同一实例：Elysia 按插件名去重，同一文件内重建守卫会让认证状态回到初始值。
+const guard = createStubSessionAuthGuard({ organizationId: "org-1", userId: "user-1" });
+const route = createWebTasksV2Routes({ authGuardPlugin: guard.plugin });
 const now = new Date("2026-08-19T00:00:00.000Z");
 
 function task(overrides: Partial<ScheduledTaskV2Row> = {}): ScheduledTaskV2Row {
@@ -52,10 +54,7 @@ function log(overrides: Partial<TaskExecutionLogRow> = {}): TaskExecutionLogRow 
 }
 
 function authenticate() {
-  setTestAuth({
-    user: { id: "user-1", email: "user-1@example.test", name: "Tester" },
-    authContext: { organizationId: "org-1", userId: "user-1", role: "owner" },
-  });
+  guard.setAuthContext({ organizationId: "org-1", userId: "user-1" });
 }
 
 function request(path: string, init?: RequestInit) {
@@ -125,7 +124,7 @@ describe("round55 Tasks V2 Web 路由", () => {
   });
 
   afterEach(() => {
-    resetTestAuth();
+    guard.setAuthContext(null);
     restoreSeams();
     resetAllStubs();
   });
@@ -137,9 +136,7 @@ describe("round55 Tasks V2 Web 路由", () => {
       listed = true;
       return { rows: [], total: 0 };
     };
-    resetTestAuth();
-    stubEnvironmentRepo({ getBySecret: async () => null });
-    stubAuthApi({ getSession: async () => null, verifyApiKey: async () => ({ valid: false }) });
+    guard.setAuthContext(null);
 
     expect((await request("/tasks/v2")).status).toBe(401);
     expect(listed).toBe(false);

@@ -2,6 +2,7 @@
 // `launch-spec-builder`，后者又引入 `@fenix/resource-knowledge/server`（含路由模块），而 knowledge
 // 路由反向依赖 `@server/plugins/auth` —— 形成 `auth → agent-runtime → knowledge 路由 → auth` 的
 // 顶层 TDZ 环（`source-route-imports.test.ts` 用全新进程守护这一点）。窄入口只暴露 environment 仓储。
+import type { AuthenticateSiteRequest } from "@fenix/agent-config/server";
 import { environmentRepo } from "@fenix/agent-runtime/server/environment";
 import {
   buildPhoneTempEmail,
@@ -95,6 +96,28 @@ export interface AuthContext {
 }
 
 /**
+ * {@link toActorContext} 的输入：与 {@link AuthContext} 同形，但 `role` 放宽为字符串。
+ *
+ * 系统路径（启动期 builtin 同步、`/web/meta-agent/ensure`）的主体由资源包的 `MetaAgentContext`
+ * 给出，它的 `role` 是自由字符串——只写进 API Key 的 metadata，不参与任何授权判断
+ * （见 `@fenix/agent-config/server` 的 `services/meta-agent.ts`）。请求路径仍传 `AuthContext`，
+ * 其角色已是三值联合，这里放宽不会让请求路径失去校验。
+ */
+export interface ActorSubject {
+  readonly organizationId: string;
+  readonly userId: string;
+  readonly role: string;
+  readonly memberships?: AuthContext["memberships"];
+}
+
+/** 授权谓词只认这三个角色；未知角色按最小权限收敛，不把自由字符串带进授权面。 */
+const ACTOR_ROLES = new Set<AuthContext["role"]>(["owner", "admin", "member"]);
+
+function normalizeActorRole(role: string): AuthContext["role"] {
+  return ACTOR_ROLES.has(role as AuthContext["role"]) ? (role as AuthContext["role"]) : "member";
+}
+
+/**
  * 把宿主的请求级身份投影为平台可信主体（`ActorContext`）。
  *
  * 这是宿主唯一的主体转换点：资源包与平台实现都只消费 `ActorContext`，不得自行解释
@@ -102,14 +125,15 @@ export interface AuthContext {
  * 契约分支保留给系统管理形态确定后的扩展）。
  *
  * `memberships` 缺失时回退为「当前组织 + 当前角色」：只有无法解析全量成员关系的上下文（测试
- * 构造的 `setTestAuth` / `setTestOrgContext`）才会走到该分支，生产路径始终带全量成员关系。
+ * 构造的 `setTestAuth` / `setTestOrgContext`）与系统路径的 {@link ActorSubject} 才会走该分支，
+ * 请求的生产路径始终带全量成员关系。
  */
-export function toActorContext(ctx: AuthContext): ActorContext {
+export function toActorContext(ctx: ActorSubject): ActorContext {
   return {
     kind: "user",
     userId: ctx.userId,
     activeOrganizationId: ctx.organizationId,
-    memberships: ctx.memberships ?? [{ organizationId: ctx.organizationId, role: ctx.role }],
+    memberships: ctx.memberships ?? [{ organizationId: ctx.organizationId, role: normalizeActorRole(ctx.role) }],
   };
 }
 
@@ -184,6 +208,20 @@ export async function authenticateRequest(request: Request): Promise<RequestAuth
     authContext,
   };
 }
+
+/**
+ * 站点代理（`@fenix/agent-config` 的 `/web/site/deploy/*` 与 `/app-*` 兜底）的请求级认证。
+ *
+ * 与 `authGuardPlugin` 同一份实现：站点代理不走 `sessionAuth` 宏——它要区分「未登录」与「已登录
+ * 但无权限」并分别重定向，所以需要直接拿认证结果。这里只投影出可见性判定需要的两个标识，包侧不
+ * 依赖宿主的 `AuthContext` 结构。
+ */
+export const authenticateSiteRequest: AuthenticateSiteRequest = async (request) => {
+  const result = await authenticateRequest(request);
+  const authContext = result?.authContext;
+  if (!authContext) return null;
+  return { userId: authContext.userId, organizationId: authContext.organizationId };
+};
 
 /** 仅凭据路径（Environment Secret / API Key）的认证尝试，成功时写入 store。 */
 async function tryApiKeyAuth(

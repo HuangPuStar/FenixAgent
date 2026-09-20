@@ -1,9 +1,15 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { readJson, resetAllStubs, stubAuthApi, stubDb } from "@fenix/platform-sdk/testing";
-import { resetTestAuth, setTestAuth } from "@server/plugins/auth";
-import { setTestOrgContext } from "@server/services/org-context";
+import { readJson, resetAllStubs, stubDb } from "@fenix/platform-sdk/testing";
 
-const route = (await import("../server/routes/web/workflow-defs")).default;
+import { createWebWorkflowDefsRoutes } from "../server/routes/web/workflow-defs";
+import { initializeWorkflowModuleConfig } from "../server/testing";
+import { createStubSessionAuthGuard } from "./guard-stubs";
+
+const guard = createStubSessionAuthGuard();
+
+// 路由经工厂构造并注入会话守卫替身：静态条件禁止包内测试依赖宿主 `@server/plugins/auth`，
+// 而 Elysia 的 macro/state 是实例作用域的，守卫必须是构造时传入的同一实例。
+const route = createWebWorkflowDefsRoutes({ authGuardPlugin: guard });
 
 function request(path: string, init?: RequestInit) {
   return route.handle(new Request(`http://localhost${path}`, init));
@@ -18,11 +24,7 @@ function jsonRequest(path: string, body: Record<string, unknown>, method = "POST
 }
 
 function setAuthenticatedOrg(organizationId = "org-round38") {
-  setTestAuth({
-    user: { id: "user-round38", email: "round38@test.invalid", name: "Round 38" },
-    authContext: { organizationId, userId: "user-round38", role: "owner" },
-  });
-  setTestOrgContext({ organizationId, userId: "user-round38", role: "owner" });
+  guard.setActor({ organizationId, userId: "user-round38" });
 }
 
 function queryResult(rows: unknown[]) {
@@ -72,21 +74,19 @@ function trigger(organizationId = "org-round38", enabled = true) {
 
 describe("Round 38 工作流定义路由行为", () => {
   beforeEach(() => {
-    resetAllStubs();
+    initializeWorkflowModuleConfig();
     setAuthenticatedOrg();
   });
 
   afterEach(() => {
-    resetTestAuth();
-    setTestOrgContext(null);
+    guard.setActor(null);
     resetAllStubs();
   });
 
   // 未认证用户不能扫描可恢复工作流目录。
   test("未认证扫描可恢复工作流返回 401", async () => {
-    resetTestAuth();
-    setTestOrgContext(null);
-    stubAuthApi({ getSession: async () => null });
+    guard.setActor(null);
+    guard.setActor(null);
 
     const response = await request("/workflow-defs/recoverable");
 

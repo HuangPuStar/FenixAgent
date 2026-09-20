@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { resetAllStubs, stubDb } from "@fenix/platform-sdk/testing";
+import { initializeAgentConfigModuleConfig } from "../server/testing";
 
 /**
  * agent-config-site-app service：list / sync 行为
@@ -10,7 +11,8 @@ import { resetAllStubs, stubDb } from "@fenix/platform-sdk/testing";
  */
 describe("agent-config-site-app service", () => {
   beforeEach(() => {
-    resetAllStubs();
+    // 复位替身并初始化应用基础设施（DB 句柄经转发代理，见 `../server/testing.ts`）。
+    initializeAgentConfigModuleConfig();
   });
 
   afterEach(() => {

@@ -4,11 +4,10 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { ResourceAccess, ResourceQueryConstraint } from "@fenix/platform-sdk";
 import { ConflictError, ForbiddenError, NotFoundError } from "@fenix/platform-sdk";
-import { setConfig } from "@server/config";
 import { skillResource } from "../server/access/skill-resource";
 import { SkillFacade } from "../server/facades/skill-facade";
 import { skillContentPath } from "../server/services/skill-content";
-import { createStubSkillService } from "../server/testing";
+import { createStubSkillService, initializeSkillModuleConfig } from "../server/testing";
 import {
   authorizedSkill,
   createFakeAccessControl,
@@ -64,7 +63,7 @@ let skillRoot = "";
 beforeEach(() => {
   skillRoot = join(tmpdir(), `fenix-skill-facade-${Date.now()}-${Math.random().toString(16).slice(2)}`);
   mkdirSync(skillRoot, { recursive: true });
-  setConfig({ skillDir: skillRoot });
+  initializeSkillModuleConfig({ skillDir: skillRoot });
 });
 
 afterEach(() => {

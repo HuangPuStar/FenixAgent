@@ -3,6 +3,14 @@
   "subtitle": "管理知识库、查看资源状态并上传索引材料",
   "loadError": "加载知识库失败",
   "loadDetailError": "加载知识库详情失败",
+  "accessDenied": {
+    "title": "你没有查看知识库的权限",
+    "description": "当前账号缺少本页面所需的知识库权限。请改用有权限的账号登录，或联系组织管理员为你的账号开通。"
+  },
+  "loadFailure": {
+    "hint": "请重试。若持续失败，请稍后再试或联系组织管理员。",
+    "formOptions": "表单选项加载失败"
+  },
   "searchPlaceholder": "搜索知识库...",
   "emptyTitle": "还没有知识库",
   "emptyDescription": "知识库用于存储和管理文档，为 Agent 提供上下文检索能力。",

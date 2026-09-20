@@ -1,9 +1,10 @@
 import { beforeEach, describe, expect, test } from "bun:test";
-import { resetAllStubs, stubDb } from "@fenix/platform-sdk/testing";
+import { stubDb } from "@fenix/platform-sdk/testing";
 import {
   resolveBoundKnowledgeBasesByConfigId,
   searchKnowledgeDetailedForAgent,
 } from "../server/services/knowledge-runtime";
+import { initializeKnowledgeModuleConfig } from "../server/testing";
 
 function createJoinedBindingsQuery(rows: unknown[]) {
   return {
@@ -19,7 +20,9 @@ function createJoinedBindingsQuery(rows: unknown[]) {
 
 describe("知识运行时绑定解析", () => {
   beforeEach(() => {
-    resetAllStubs();
+    // 运行时检索经仓储读绑定，仓储句柄来自 platform-sdk 基础设施（未初始化即抛错）；
+    // 这里初始化转发到 `stubDb()` 的 DB 代理，用例内再按需替换替身。
+    initializeKnowledgeModuleConfig();
   });
 
   // Agent 读取绑定知识库时应过滤没有远端数据集的记录、按优先级排序并补齐远端身份回退值。

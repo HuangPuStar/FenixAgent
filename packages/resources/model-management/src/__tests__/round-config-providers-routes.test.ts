@@ -1,15 +1,17 @@
 import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
+import type { ActorContext, MemberRole } from "@fenix/platform-sdk";
 import { ForbiddenError, NotFoundError } from "@fenix/platform-sdk";
 import { readJson, resetAllStubs } from "@fenix/platform-sdk/testing";
-import { resetTestAuth, setTestAuth } from "@server/plugins/auth";
-import { setTestOrgContext } from "@server/services/org-context";
+import type { SecretReferenceResolver } from "../server/config-envelope";
 import type { AuthorizedProviderDetail, AuthorizedProviderListItem } from "../server/facades/provider-facade";
+import { createWebConfigProvidersRoutes } from "../server/routes/web/config/providers";
 import {
   createStubModelManagementServerModule,
   createStubProviderFacade,
   installModelManagementModule,
   resetModelManagementModuleForTesting,
 } from "../server/testing";
+import { createStubSessionAuthGuardPlugin } from "./guard-stubs";
 
 /**
  * `/web/config/providers` 协议层的接缝迁移（决策 D2 + 计划 S5）。
@@ -19,16 +21,30 @@ import {
  *
  * 视图返回 `scope + access`（当前主体的归属与有效动作），旧栈的 `resourceAccess` 不再出现在 `/web`
  * 响应里；错误码（`VALIDATION_ERROR` / `NOT_FOUND` / `FORBIDDEN`）与文案仍是迁移前的逐字契约。
+ *
+ * 会话守卫与密钥引用解析都改为注入（迁移前是宿主的 `setTestAuth` / `setTestOrgContext` 与
+ * `resolveApiKey`）：前者必须与宿主的认证解析同实例，后者读 `process.env`，两者都不能留在包内。
  */
 
-const route = (await import("../server/routes/web/config/providers")).default;
+/** 当前请求的身份；守卫替身按需读取，用例可中途换组织。 */
+let currentActor: ActorContext | null = null;
+
+/** 密钥引用解析替身：明文原样返回。`{env:NAME}` 分支读环境变量，属宿主实现，不在包内用例范围。 */
+const resolveSecretReference: SecretReferenceResolver = (raw) => raw ?? null;
+
+const route = createWebConfigProvidersRoutes({
+  authGuardPlugin: createStubSessionAuthGuardPlugin(() => currentActor),
+  resolveSecretReference,
+});
 
 function authenticate(organizationId = "org-1") {
-  setTestAuth({
-    user: { id: "user-1", email: "user-1@example.test", name: "Tester" },
-    authContext: { organizationId, userId: "user-1", role: "owner" },
-  });
-  setTestOrgContext({ organizationId, userId: "user-1", role: "owner" });
+  const role: MemberRole = "owner";
+  currentActor = {
+    kind: "user",
+    userId: "user-1",
+    activeOrganizationId: organizationId,
+    memberships: [{ organizationId, role }],
+  };
 }
 
 function request(path: string, init?: RequestInit) {
@@ -105,8 +121,7 @@ describe("Provider 配置 Web 路由", () => {
 
   afterEach(() => {
     resetModelManagementModuleForTesting();
-    resetTestAuth();
-    setTestOrgContext(null);
+    currentActor = null;
   });
 
   // 列表返回 Facade 的可见集合，并投影为控制台字段：归属与动作原样透传，密钥只出 keyHint。

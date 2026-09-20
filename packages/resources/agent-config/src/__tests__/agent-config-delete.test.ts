@@ -6,6 +6,7 @@ import {
   type AgentConfigQueryStorage,
   createAgentConfigRepository,
 } from "../server/repositories/agent-config-resource";
+import { initializeAgentConfigModuleConfig } from "../server/testing";
 
 /**
  * Agent 删除的**持久化语义**（S4 接缝迁移）。
@@ -30,7 +31,9 @@ function unusedQueryPort(): AuthorizedResourceQuery<AgentConfigQueryStorage> {
 
 describe("deleteAgentConfig", () => {
   beforeEach(() => {
-    resetAllStubs();
+    // 复位替身并初始化应用基础设施（DB 句柄经转发代理，见 `../server/testing.ts`）——仓储经
+    // `getDatabase()` 取句柄，不再是模块级 `db` 导出。
+    initializeAgentConfigModuleConfig();
   });
 
   afterEach(() => {

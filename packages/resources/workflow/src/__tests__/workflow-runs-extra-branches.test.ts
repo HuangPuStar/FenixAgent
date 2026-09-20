@@ -1,11 +1,16 @@
 import { afterEach, beforeEach, describe, expect, mock, spyOn, test } from "bun:test";
-import { readJson, resetAllStubs, stubAuthApi } from "@fenix/platform-sdk/testing";
+import { readJson, resetAllStubs } from "@fenix/platform-sdk/testing";
 import { WorkflowError, WorkflowErrorCode } from "@fenix/workflow-engine";
-import { resetTestAuth, setTestAuth } from "@server/plugins/auth";
-import { setTestOrgContext } from "@server/services/org-context";
+import { createWebWorkflowRunsRoutes } from "../server/routes/web/workflow-runs";
 import { getTeamEngine } from "../server/services/workflow";
+import { initializeWorkflowModuleConfig } from "../server/testing";
+import { createStubSessionAuthGuard } from "./guard-stubs";
 
-const route = (await import("../server/routes/web/workflow-runs")).workflowRunsRoutes;
+const guard = createStubSessionAuthGuard();
+
+// 路由经工厂构造并注入会话守卫替身：静态条件禁止包内测试依赖宿主 `@server/plugins/auth`，
+// 而 Elysia 的 macro/state 是实例作用域的，守卫必须是构造时传入的同一实例。
+const route = createWebWorkflowRunsRoutes({ authGuardPlugin: guard });
 
 function request(path: string, init?: RequestInit) {
   return route.handle(new Request(`http://localhost${path}`, init));
@@ -16,23 +21,18 @@ function post(body: Record<string, unknown>): RequestInit {
 }
 
 function authenticate(organizationId = "org-workflow-runs-extra", userId = "user-workflow-runs-extra") {
-  setTestAuth({
-    user: { id: userId, email: `${userId}@test.invalid`, name: "工作流补充测试用户" },
-    authContext: { organizationId, userId, role: "owner" },
-  });
-  setTestOrgContext({ organizationId, userId, role: "owner" });
+  guard.setActor({ organizationId, userId });
 }
 
 describe("workflow-runs 路由额外业务分支", () => {
   beforeEach(() => {
-    resetAllStubs();
+    initializeWorkflowModuleConfig();
     authenticate();
   });
 
   afterEach(() => {
     mock.restore();
-    resetTestAuth();
-    setTestOrgContext(null);
+    guard.setActor(null);
     resetAllStubs();
   });
 
@@ -83,9 +83,8 @@ describe("workflow-runs 路由额外业务分支", () => {
   // 未认证的干运行请求必须在进入引擎前被拦截，防止匿名用户探测工作流校验能力。
   test("未认证干运行返回 401 且不调用引擎", async () => {
     const dryRun = spyOn(getTeamEngine("org-workflow-runs-extra"), "dryRun");
-    resetTestAuth();
-    setTestOrgContext(null);
-    stubAuthApi({ getSession: async () => null });
+    guard.setActor(null);
+    guard.setActor(null);
 
     const response = await request("/workflow-runs/dry", post({ yaml: "name: demo" }));
 

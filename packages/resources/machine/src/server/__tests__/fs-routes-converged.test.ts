@@ -8,10 +8,17 @@ import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
 import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { resetAllStubs, stubDb } from "@fenix/platform-sdk/testing";
-import { setConfig } from "@server/config";
-import { resetTestAuth, setTestAuth } from "@server/plugins/auth";
-import { stubEnvironmentRepo, stubFileWsHandler } from "@server/test-utils/stubs/module-stubs";
+import { stubDb } from "@fenix/platform-sdk/testing";
+import { createStubSessionAuthGuardPlugin, resetTestAuth, setTestAuth } from "../../__tests__/guard-stubs";
+import { createWebFsRoutes } from "../routes/web/fs";
+import {
+  initializeMachineModuleConfig,
+  lockMachineWorkspaceRoot,
+  stubFileWsTransport,
+  stubMachineConfig,
+  stubMachineEnvironmentRecord,
+  unlockMachineWorkspaceRoot,
+} from "../testing";
 import { BusyError } from "../transport/file-ws-requests";
 
 const ORG_ID = "org-1";
@@ -19,9 +26,10 @@ const USER_ID = "user-1";
 const ENV_ID = "env-1";
 const MACHINE_ID = "mach_1";
 
-// 动态 import 路由模块。environmentRepo / file-ws-handler 的 mock 是实时转发
-// （setup-mocks.ts），属性访问总是转发到当前 stub，beforeEach 注入即可。
-const fsRoutes = await import("../../routes/web/fs");
+// 路由实例文件级构造一次：会话守卫替身按请求期读取当前会话（setTestAuth 即时生效）；
+// 环境读取与 file-ws 传输经包内句柄替换（stubMachineEnvironmentRecord / stubFileWsTransport）
+// 按调用时读取，beforeEach 或用例内注入即可。
+const fsRoutes = createWebFsRoutes({ authGuardPlugin: createStubSessionAuthGuardPlugin() });
 
 let workspaceRoot: string;
 
@@ -33,14 +41,12 @@ function stubAuth() {
 }
 
 function stubEnvironment() {
-  stubEnvironmentRepo({
-    getById: async () => ({ id: ENV_ID, organizationId: ORG_ID, userId: USER_ID }),
-  });
+  stubMachineEnvironmentRecord({ id: ENV_ID, organizationId: ORG_ID, userId: USER_ID });
 }
 
 /** 直连路由 handle（会话认证由 setTestAuth 注入） */
 function handle(path: string, init?: RequestInit): Promise<Response> {
-  return fsRoutes.default.handle(new Request(`http://localhost/environments/${ENV_ID}${path}`, init));
+  return fsRoutes.handle(new Request(`http://localhost/environments/${ENV_ID}${path}`, init));
 }
 
 /** 构造 multipart 上传请求：一个文件 + 可选 relativePaths（fileName 可伪造 multipart filename）。
@@ -69,37 +75,36 @@ async function expectError(response: Response, status: number, type: string): Pr
 }
 
 beforeEach(async () => {
-  resetAllStubs();
+  initializeMachineModuleConfig();
   stubEnvironment();
   stubAuth();
   workspaceRoot = await mkdtemp(join(tmpdir(), "fs-routes-converged-"));
-  process.env.WORKSPACE_ROOT = workspaceRoot;
-  setConfig({ defaultMachineId: undefined });
+  await lockMachineWorkspaceRoot(workspaceRoot);
 });
 
 afterEach(async () => {
   resetTestAuth();
   delete process.env.WORKSPACE_ROOT;
+  unlockMachineWorkspaceRoot();
   await rm(workspaceRoot, { recursive: true, force: true });
-  setConfig({ defaultMachineId: undefined });
 });
 
 /** 本地/远程共用错误契约：同一输入必须返回同一错误码（§2.4 收敛保证）。
  *  覆盖 400（越界上传/绝对路径）与 404（环境不可见）；429/503 为远程传输层
  *  状态，仅远程 describe 覆盖。 */
 async function expectCommonErrorContract(): Promise<void> {
-  resetAllStubs();
+  initializeMachineModuleConfig();
   stubEnvironment();
   stubAuth();
   // 越界上传（.. 段）→ 400 validation_error（D16 回归，W2 行为随迁）
-  const escapeRes = await fsRoutes.default.handle(uploadRequest(["../evil.txt"]));
+  const escapeRes = await fsRoutes.handle(uploadRequest(["../evil.txt"]));
   await expectError(escapeRes, 400, "validation_error");
   // 绝对路径读文件 → 400 validation_error（门面统一前置校验，本地/远程一致）
   const absRead = await handle("/fs//etc/passwd");
   await expectError(absRead, 400, "validation_error");
   // 环境不存在或不可见 → 404 not_found（门面归属校验，先于路由决策）
-  resetAllStubs();
-  stubEnvironmentRepo({ getById: async () => null });
+  initializeMachineModuleConfig();
+  stubMachineEnvironmentRecord(null);
   stubAuth();
   const missing = await handle("/fs?path=user");
   await expectError(missing, 404, "not_found");
@@ -252,7 +257,7 @@ describe("本地环境（无 machine 配置）", () => {
 
   test("upload 成功文件落盘在 workspace 内", async () => {
     // 正常上传：文件应写入 WORKSPACE_ROOT/org/user/env/user 之下，内容一致
-    const response = await fsRoutes.default.handle(uploadRequest(["folder/  note.txt"], "plain.txt"));
+    const response = await fsRoutes.handle(uploadRequest(["folder/  note.txt"], "plain.txt"));
     expect(response.status).toBe(200);
     expect(await readFile(join(workspaceDir(), "user", "sub", "folder", "  note.txt"), "utf-8")).toBe("evil");
   });
@@ -265,8 +270,8 @@ describe("远程环境（stub file-ws 在线）", () => {
     stubDb({
       select: () => ({ from: () => ({ where: () => ({ limit: async () => [{ id: MACHINE_ID }] }) }) }),
     });
-    stubFileWsHandler({ isFileWsConnected: () => true });
-    setConfig({ defaultMachineId: MACHINE_ID });
+    stubFileWsTransport({ isFileWsConnected: () => true });
+    stubMachineConfig({ defaultMachineId: MACHINE_ID });
   });
 
   /** 按操作返回机器端结果的 stub（对齐 remote-file-service 的返回结构） */
@@ -307,7 +312,7 @@ describe("远程环境（stub file-ws 在线）", () => {
         }
       },
     );
-    stubFileWsHandler({ isFileWsConnected: () => true, sendFileOpAndWait: sendFileOpMock });
+    stubFileWsTransport({ isFileWsConnected: () => true, sendFileOpAndWait: sendFileOpMock });
     return sendFileOpMock;
   }
 
@@ -377,13 +382,13 @@ describe("远程环境（stub file-ws 在线）", () => {
 
   test("机器端背压 busy → 429 + Retry-After: 1", async () => {
     // W1 背压错误经门面映射 429（瞬时容量问题），响应必须带 Retry-After 头供调用方退避
-    stubFileWsHandler({
+    stubFileWsTransport({
       isFileWsConnected: () => true,
       sendFileOpAndWait: async () => {
         throw new BusyError("file-op busy: pending limit reached");
       },
     });
-    setConfig({ defaultMachineId: MACHINE_ID });
+    stubMachineConfig({ defaultMachineId: MACHINE_ID });
     const response = await handle("/fs?path=user");
     expect(response.headers.get("Retry-After")).toBe("1");
     await expectError(response, 429, "busy");
@@ -391,8 +396,8 @@ describe("远程环境（stub file-ws 在线）", () => {
 
   test("配置了 machine 但 file-ws 未连接 → 503 file_service_unavailable", async () => {
     // 拒绝静默回退本地：配了远程机器但未连接时返回 503，不得落本地（错误类型统一，无 remote_error）
-    stubFileWsHandler({ isFileWsConnected: () => false });
-    setConfig({ defaultMachineId: MACHINE_ID });
+    stubFileWsTransport({ isFileWsConnected: () => false });
+    stubMachineConfig({ defaultMachineId: MACHINE_ID });
     await expectError(await handle("/fs?path=user"), 503, "file_service_unavailable");
   });
 

@@ -5,7 +5,7 @@
  * 采用 RESTful 风格，统一通过 request() 与后端 /web/channels/* 通信。
  */
 
-import { request } from "@/src/api/request";
+import { request } from "@fenix/web-runtime/api/request";
 
 /** 通道绑定记录 */
 interface ChannelBinding {
@@ -41,8 +41,13 @@ export interface CreateChannelBindingRequest {
 /** 创建通道绑定响应 */
 export type CreateChannelBindingResponse = ChannelBinding;
 
-/** 删除通道绑定响应 */
-export type DeleteChannelBindingResponse = Record<string, unknown>;
+/**
+ * 删除通道绑定响应。
+ *
+ * 服务端固定返回 `{ success: true, data: null }`，`request()` 解包后即 `null`；此前的
+ * `Record<string, unknown>` 与真实返回不符，调用方按对象访问会拿到 `undefined`。
+ */
+export type DeleteChannelBindingResponse = null;
 
 /** Hermes 推送服务连接状态 */
 export interface HermesStatus {

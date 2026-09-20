@@ -1,12 +1,14 @@
 import { beforeEach, describe, expect, test } from "bun:test";
-import { resetAllStubs, stubDb } from "@fenix/platform-sdk/testing";
+import { stubDb } from "@fenix/platform-sdk/testing";
+import { initializeAgentConfigModuleConfig } from "../server/testing";
 
 describe("agentSiteAppRepo", () => {
   // repo 方法导入需要懒加载：stubDb 返回的 db 对象在 lazy import 之前设置
   let repo: typeof import("../server/repositories/agent-site-app").agentSiteAppRepo;
 
   beforeEach(async () => {
-    resetAllStubs();
+    // 复位替身并初始化应用基础设施（DB 句柄经转发代理，见 `../server/testing.ts`）。
+    initializeAgentConfigModuleConfig();
     const mod = await import("../server/repositories/agent-site-app");
     repo = mod.agentSiteAppRepo;
   });

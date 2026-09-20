@@ -5,11 +5,11 @@ import type {
   ResourceQueryConstraint,
   ScopedRow,
 } from "@fenix/platform-sdk";
-import { db } from "@server/db";
 import { skill } from "@server/db/schema";
 import { and, asc, desc, eq, inArray, type SQL } from "drizzle-orm";
 import type { PgColumn, PgTable } from "drizzle-orm/pg-core";
 import { SKILL_RESOURCE_TYPE, skillResource } from "../access/skill-resource";
+import { getSkillDatabase } from "../db";
 
 /**
  * Skill 的持久化访问层。
@@ -18,7 +18,8 @@ import { SKILL_RESOURCE_TYPE, skillResource } from "../access/skill-resource";
  * 本包只交出主表、归属列与业务条件，授权谓词、排序与分页由平台实现编译进同一条 SQL。仓储因此不持有
  * 任何组织、角色或 `visibility` 判断，也不解释 `ResourceQueryConstraint` 的内部结构。
  *
- * 写路径（INSERT / UPDATE / DELETE）不属于授权范围，直接经 `db` 执行；权限校验发生在 Facade。
+ * 写路径（INSERT / UPDATE / DELETE）不属于授权范围，直接经 {@link getSkillDatabase} 执行；权限校验
+ * 发生在 Facade。句柄在方法内取而不是模块级持有：模块加载期宿主可能尚未完成基础设施初始化。
  * SKILL.md 与归档文件由 `services/skill-fs.ts` 负责，不在仓储职责内。
  */
 
@@ -209,7 +210,7 @@ export function createSkillRepository(query: AuthorizedResourceQuery<SkillQueryS
     },
 
     async insert(input) {
-      const rows = await db
+      const rows = await getSkillDatabase()
         .insert(skill)
         .values({
           organizationId: input.organizationId,
@@ -227,7 +228,7 @@ export function createSkillRepository(query: AuthorizedResourceQuery<SkillQueryS
     },
 
     async upsertByOrgAndName(input) {
-      const rows = await db
+      const rows = await getSkillDatabase()
         .insert(skill)
         .values({
           organizationId: input.organizationId,
@@ -249,7 +250,7 @@ export function createSkillRepository(query: AuthorizedResourceQuery<SkillQueryS
     },
 
     async updateById(input) {
-      const rows = await db
+      const rows = await getSkillDatabase()
         .update(skill)
         .set({
           description: input.data.description ?? null,
@@ -262,12 +263,15 @@ export function createSkillRepository(query: AuthorizedResourceQuery<SkillQueryS
     },
 
     async deleteById(input) {
-      const rows = await db.delete(skill).where(eq(skill.id, input.resourceId)).returning({ id: skill.id });
+      const rows = await getSkillDatabase()
+        .delete(skill)
+        .where(eq(skill.id, input.resourceId))
+        .returning({ id: skill.id });
       return rows.length > 0;
     },
 
     async deleteByOrgAndName(input) {
-      const rows = await db
+      const rows = await getSkillDatabase()
         .delete(skill)
         .where(and(eq(skill.organizationId, input.organizationId), eq(skill.name, input.name)))
         .returning({ id: skill.id });
@@ -275,12 +279,12 @@ export function createSkillRepository(query: AuthorizedResourceQuery<SkillQueryS
     },
 
     async findByIdUnscoped(input) {
-      const rows = await db.select().from(skill).where(eq(skill.id, input.resourceId)).limit(1);
+      const rows = await getSkillDatabase().select().from(skill).where(eq(skill.id, input.resourceId)).limit(1);
       return rows[0];
     },
 
     async listByOrganizationUnscoped(input) {
-      return db
+      return getSkillDatabase()
         .select()
         .from(skill)
         .where(eq(skill.organizationId, input.organizationId))
@@ -288,7 +292,7 @@ export function createSkillRepository(query: AuthorizedResourceQuery<SkillQueryS
     },
 
     async findByNameUnscoped(input) {
-      const rows = await db
+      const rows = await getSkillDatabase()
         .select()
         .from(skill)
         .where(and(eq(skill.organizationId, input.organizationId), eq(skill.name, input.name)))
@@ -297,7 +301,7 @@ export function createSkillRepository(query: AuthorizedResourceQuery<SkillQueryS
     },
 
     async updateVisibilityUnscoped(input) {
-      const rows = await db
+      const rows = await getSkillDatabase()
         .update(skill)
         .set({ visibility: input.visibility, updatedAt: new Date() })
         .where(eq(skill.id, input.resourceId))
@@ -314,3 +318,20 @@ export function createSkillRepository(query: AuthorizedResourceQuery<SkillQueryS
  * "同一批数据的两次查询"有确定结果，不依赖数据库的物理返回顺序。
  */
 export const SKILL_LIST_ORDER: readonly SQL[] = [desc(skill.createdAt), asc(skill.id)];
+
+/** 启动期存储迁移需要的行投影：只取定位旧目录所需的两列。 */
+export interface SkillOrgAndName {
+  readonly organizationId: string;
+  readonly name: string;
+}
+
+/**
+ * 无授权列出全部 Skill 的 (组织, 名称)。
+ *
+ * 刻意不挂到 {@link SkillRepository} 上：启动迁移在授权查询端口可用之前执行，也不需要任何授权谓词，
+ * 塞进接口只会逼调用方先构造一个用不上的 query 实例。表结构（`skill`）与其余方法同源，故仍留在仓储
+ * 模块内，保持"本包只有这一处直接拼 SQL"的边界。
+ */
+export async function listAllSkillOrgAndNameUnscoped(): Promise<readonly SkillOrgAndName[]> {
+  return getSkillDatabase().select({ organizationId: skill.organizationId, name: skill.name }).from(skill);
+}

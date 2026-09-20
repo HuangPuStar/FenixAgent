@@ -1,14 +1,29 @@
 import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
 import type { EnvironmentRecord } from "@fenix/agent-runtime/server";
-import { readJson, resetAllStubs, stubAuthApi } from "@fenix/platform-sdk/testing";
-import { resetTestAuth, setTestAuth } from "@server/plugins/auth";
-import { stubEnvironmentRepo } from "@server/test-utils/stubs/module-stubs";
+import { readJson, resetAllStubs } from "@fenix/platform-sdk/testing";
 import type { ChannelBindingRow } from "../server/repositories/channel-binding";
 import { channelBindingRepo } from "../server/repositories/channel-binding";
+import type { ChannelEnvironmentLookup } from "../server/routes/dependencies";
+import { createWebChannelsRoutes } from "../server/routes/web/channels";
 import { setHermesClientGetter } from "../server/services/channel-provider";
+import { createStubSessionAuthGuardPlugin } from "./guard-stubs";
 
-const route = (await import("../server/routes/web/channels")).default;
 const now = new Date("2026-08-19T00:00:00.000Z");
+const TEST_AUTH = { organizationId: "org-1", userId: "user-1" };
+
+/**
+ * Environment 归属查询替身。
+ *
+ * 真实实现由宿主注入（`@fenix/agent-runtime/server` 的 `environmentRepo`），包内不得依赖宿主
+ * preload 的模块替身（`@server/test-utils/stubs/*`），因此这里按路由声明的窄接口提供可控返回值。
+ * 每条例用 `beforeEach` 恢复默认行为，避免用例之间的交叉污染。
+ */
+const environmentLookup: ChannelEnvironmentLookup = {
+  getById: async () => undefined,
+  listByOrganizationId: async () => [],
+};
+/** 最近一次列表查询收到的组织 ID：隔离规则必须按认证上下文查询，而不是查全表后过滤。 */
+let queriedOrganizationIds: string[] = [];
 
 function environment(overrides: Partial<EnvironmentRecord> = {}): EnvironmentRecord {
   return {
@@ -60,18 +75,25 @@ function responseBinding(overrides: Partial<ChannelBindingRow> = {}) {
   };
 }
 
-function authenticate() {
-  setTestAuth({
-    user: { id: "user-1", email: "user-1@example.test", name: "Tester" },
-    authContext: { organizationId: "org-1", userId: "user-1", role: "owner" },
-  });
-}
+// 认证守卫按插件名去重，两个实例分属两个独立的 app 根：一个注入认证上下文，一个不注入（未认证）。
+const route = createWebChannelsRoutes({
+  authGuardPlugin: createStubSessionAuthGuardPlugin(TEST_AUTH),
+  environmentLookup,
+});
+/** 未认证场景专用实例：守卫替身按宿主真实守卫的 401 形状拒绝，用于逐端点验证鉴权声明。 */
+const anonymousRoute = createWebChannelsRoutes({
+  authGuardPlugin: createStubSessionAuthGuardPlugin(null),
+  environmentLookup,
+});
 
 function request(path: string, init?: RequestInit) {
   return route.handle(new Request(`http://localhost${path}`, init));
 }
+function jsonInit(method: string, body: Record<string, unknown>): RequestInit {
+  return { method, headers: { "content-type": "application/json" }, body: JSON.stringify(body) };
+}
 function json(path: string, method: string, body: Record<string, unknown>) {
-  return request(path, { method, headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
+  return request(path, jsonInit(method, body));
 }
 
 const originals = {
@@ -95,13 +117,14 @@ describe("round54 Web 通道路由", () => {
   beforeEach(() => {
     resetAllStubs();
     restoreRepo();
-    authenticate();
+    queriedOrganizationIds = [];
+    environmentLookup.getById = async (id: string) => (id === "env-1" ? environment() : undefined);
+    environmentLookup.listByOrganizationId = async (organizationId: string) => {
+      queriedOrganizationIds.push(organizationId);
+      return [environment()];
+    };
     // 其他测试可能初始化全局 Hermes 单例；本套路由测试默认覆盖未初始化场景。
     setHermesClientGetter(() => null);
-    stubEnvironmentRepo({
-      getById: async (id: string) => (id === "env-1" ? environment() : undefined),
-      listByOrganizationId: async () => [environment()],
-    });
     channelBindingRepo.create = mock(async (input) => binding(input));
     channelBindingRepo.delete = mock(async () => true);
     channelBindingRepo.getById = mock(async (id: string) => (id === "binding-1" ? binding() : binding({ id })));
@@ -109,17 +132,27 @@ describe("round54 Web 通道路由", () => {
     channelBindingRepo.update = mock(async () => {});
   });
   afterEach(() => {
-    resetTestAuth();
     setHermesClientGetter(null);
     restoreRepo();
     resetAllStubs();
   });
 
-  // 未认证请求必须由认证中间件拒绝。
-  test("未认证列表返回 401", async () => {
-    resetTestAuth();
-    stubAuthApi({ getSession: async () => null, verifyApiKey: async () => ({ valid: false }) });
-    expect((await request("/channels/bindings")).status).toBe(401);
+  // 未认证时每个端点都必须被守卫拦下：逐一断言 401，缺一条 `sessionAuth: true` 声明即失败。
+  // 请求体必须是合法载荷：Elysia 的校验阶段先于 `beforeHandle`，空体只会得到 422 而测不到鉴权。
+  test("未认证时全部端点返回 401", async () => {
+    const cases: Array<[string, RequestInit | undefined]> = [
+      ["/channels/providers", undefined],
+      ["/channels/hermes/status", undefined],
+      ["/channels/bindings", undefined],
+      ["/channels/bindings", jsonInit("POST", { platform: "feishu", agentId: "env-1" })],
+      ["/channels/bindings/binding-1", jsonInit("PATCH", { enabled: false })],
+      ["/channels/bindings/binding-1", { method: "DELETE" }],
+    ];
+    for (const [path, init] of cases) {
+      const response = await anonymousRoute.handle(new Request(`http://localhost${path}`, init));
+      expect([path, init?.method ?? "GET", response.status]).toEqual([path, init?.method ?? "GET", 401]);
+      expect(await readJson(response)).toEqual({ error: { type: "unauthorized", message: "Not authenticated" } });
+    }
   });
   // Hermes 不可用时平台仍安全地标为禁用。
   test("供应商列表返回禁用平台", async () => {
@@ -144,6 +177,11 @@ describe("round54 Web 通道路由", () => {
       data: { connected: false, url: "", platforms: [], reconnecting: false, lastConnectedAt: null },
     });
   });
+  // 环境查询必须按认证上下文的组织进行，禁止查全表后在内存里过滤（那样会读到其他组织的数据）。
+  test("绑定列表按认证组织查询环境", async () => {
+    await request("/channels/bindings");
+    expect(queriedOrganizationIds).toEqual(["org-1"]);
+  });
   // 空列表不得制造伪造绑定。
   test("绑定列表保留空结果", async () => {
     channelBindingRepo.list = mock(async () => []);
@@ -159,7 +197,7 @@ describe("round54 Web 通道路由", () => {
   });
   // 不可读环境对应的名称必须为空。
   test("绑定列表缺少环境时返回空名称", async () => {
-    stubEnvironmentRepo({ getById: async () => undefined });
+    environmentLookup.getById = async () => undefined;
     expect(await readJson(await request("/channels/bindings"))).toEqual({
       success: true,
       data: [{ ...responseBinding(), agentName: null }],
@@ -212,7 +250,7 @@ describe("round54 Web 通道路由", () => {
   });
   // 跨组织环境要隐藏为不存在。
   test("创建绑定拒绝其他组织环境", async () => {
-    stubEnvironmentRepo({ getById: async () => environment({ organizationId: "org-foreign" }) });
+    environmentLookup.getById = async () => environment({ organizationId: "org-foreign" });
     expect((await json("/channels/bindings", "POST", { platform: "feishu", agentId: "env-1" })).status).toBe(404);
   });
   // 删除不存在绑定应返回 not found。
@@ -222,7 +260,7 @@ describe("round54 Web 通道路由", () => {
   });
   // 删除跨组织绑定必须拒绝。
   test("删除其他组织绑定返回 403", async () => {
-    stubEnvironmentRepo({ getById: async () => environment({ organizationId: "org-foreign" }) });
+    environmentLookup.getById = async () => environment({ organizationId: "org-foreign" });
     expect((await request("/channels/bindings/binding-1", { method: "DELETE" })).status).toBe(403);
   });
   // 删除竞争失败仍应映射为 not found。
@@ -244,7 +282,7 @@ describe("round54 Web 通道路由", () => {
   });
   // 更新跨组织绑定必须拒绝。
   test("更新其他组织绑定返回 403", async () => {
-    stubEnvironmentRepo({ getById: async () => environment({ organizationId: "org-foreign" }) });
+    environmentLookup.getById = async () => environment({ organizationId: "org-foreign" });
     expect((await json("/channels/bindings/binding-1", "PATCH", { enabled: false })).status).toBe(403);
   });
   // 更新成功需返回最新绑定和环境名称。
@@ -258,7 +296,7 @@ describe("round54 Web 通道路由", () => {
   // 更新后环境不可读时只能给出空名称。
   test("更新绑定缺少环境时返回空名称", async () => {
     let reads = 0;
-    stubEnvironmentRepo({ getById: async () => (++reads === 1 ? environment() : undefined) });
+    environmentLookup.getById = async () => (++reads === 1 ? environment() : undefined);
     expect(
       (await (await json("/channels/bindings/binding-1", "PATCH", { chatId: null })).json()).data.agentName,
     ).toBeNull();
@@ -266,5 +304,26 @@ describe("round54 Web 通道路由", () => {
   // 非布尔 enabled 必须被更新 schema 拒绝。
   test("更新绑定拒绝无效 enabled", async () => {
     expect((await json("/channels/bindings/binding-1", "PATCH", { enabled: "false" })).status).toBe(422);
+  });
+  // 请求体里的 agentId 是本次写入的新目标，必须与 POST 同口径校验归属：只校验原绑定的 agentId
+  // 会让任何已认证用户把绑定改写到其他组织的 Environment，写库已经发生，响应还会回显该环境名。
+  test("更新绑定拒绝改指其他组织环境", async () => {
+    const update = mock(async () => {});
+    channelBindingRepo.update = update;
+    environmentLookup.getById = async (id: string) =>
+      id === "env-1" ? environment() : environment({ id: "env-2", organizationId: "org-foreign" });
+    const r = await json("/channels/bindings/binding-1", "PATCH", { agentId: "env-2" });
+    expect(r.status).toBe(404);
+    expect(await readJson(r)).toEqual({ success: false, error: { code: "NOT_FOUND", message: "Agent 不存在" } });
+    // 越权目标必须在校验阶段就被拒绝，不能先落库再报错。
+    expect(update.mock.calls.length).toBe(0);
+  });
+  // 改指到本组织内的另一个环境是合法更新，且响应应给出新环境的名称。
+  test("更新绑定允许改指本组织环境", async () => {
+    channelBindingRepo.getById = mock(async () => binding({ agentId: "env-2" }));
+    environmentLookup.getById = async (id: string) => environment({ id, name: id === "env-2" ? "新环境" : "团队环境" });
+    const r = await json("/channels/bindings/binding-1", "PATCH", { agentId: "env-2" });
+    expect(r.status).toBe(200);
+    expect(((await readJson(r)) as { data: { agentName: string | null } }).data.agentName).toBe("新环境");
   });
 });

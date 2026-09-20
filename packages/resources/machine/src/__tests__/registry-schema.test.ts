@@ -51,56 +51,11 @@ describe("agentConfig 新增 machineId 外键列", () => {
   });
 });
 
-describe("REGISTRY_SECRET 环境变量", () => {
-  function withRequiredEnv(): { restore: () => void } {
-    const original = {
-      DATABASE_URL: process.env.DATABASE_URL,
-      RCS_API_KEYS: process.env.RCS_API_KEYS,
-      REGISTRY_SECRET: process.env.REGISTRY_SECRET,
-    };
-
-    process.env.DATABASE_URL = "postgres://u:p@h:5432/db";
-    process.env.RCS_API_KEYS = "test-key";
-
-    return {
-      restore: () => {
-        for (const [key, value] of Object.entries(original)) {
-          if (value === undefined) {
-            delete process.env[key];
-          } else {
-            process.env[key] = value;
-          }
-        }
-      },
-    };
-  }
-
-  // REGISTRY_SECRET 默认值为空字符串
-  test("REGISTRY_SECRET 默认值", async () => {
-    const { restore } = withRequiredEnv();
-    delete process.env.REGISTRY_SECRET;
-    try {
-      const { validateEnv } = await import("@server/env");
-      const env = validateEnv();
-      expect(env.REGISTRY_SECRET).toBe("rcs-registry-secret");
-    } finally {
-      restore();
-    }
-  });
-
-  // REGISTRY_SECRET 可覆盖
-  test("REGISTRY_SECRET 可覆盖", async () => {
-    const { restore } = withRequiredEnv();
-    try {
-      process.env.REGISTRY_SECRET = "my-secret";
-      const { validateEnv } = await import("@server/env");
-      const env = validateEnv();
-      expect(env.REGISTRY_SECRET).toBe("my-secret");
-    } finally {
-      restore();
-    }
-  });
-});
+// 已删除「REGISTRY_SECRET 环境变量」两条用例（默认值 / 可覆盖）：该变量由 agent-runtime 的 `/acp/ws`、
+// `/acp/ws/fs` 端点校验（`packages/agent-runtime/src/routes/acp/index.ts` 读 `validateEnv().REGISTRY_SECRET`），
+// 迁移前本包注册路由经它做机器侧接入鉴权，收敛后本包已无任何读取点（全仓 grep 确认）。留在包内只能经
+// `@server/env` 断言宿主内部变量，正是本任务要切断的宿主依赖；宿主 env 的默认值断言应归宿主 env 用例
+//（见交付说明的 sharedPatches：建议宿主补上，本任务不写 apps/**）。
 
 describe("registry schema 文件导出", () => {
   test("UpdateMachineSchema 已导出", async () => {

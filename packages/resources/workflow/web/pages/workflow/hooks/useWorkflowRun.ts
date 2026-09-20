@@ -1,14 +1,8 @@
+import { unwrap } from "@fenix/web-runtime/api/request";
 import type { Edge, Node } from "@xyflow/react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
-import { unwrap } from "@/src/api/request";
-import {
-  buildRunSummary,
-  clearWorkflowEvents,
-  pushWorkflowError,
-  pushWorkflowRunStatus,
-} from "@/src/lib/use-workflow-events";
 import { workflowDefApi } from "../../../api/workflow-defs";
 import {
   type DAGEvent,
@@ -18,6 +12,12 @@ import {
   workflowEngineApi,
 } from "../../../api/workflow-engine";
 import type { WorkflowSSEEvent } from "../../../api/workflow-sse";
+import {
+  buildRunSummary,
+  clearWorkflowEvents,
+  pushWorkflowError,
+  pushWorkflowRunStatus,
+} from "../../../lib/use-workflow-events";
 import { autoLayout } from "../layout";
 import { dedupEvents } from "../utils";
 import { START_NODE_ID } from "../yaml-utils";

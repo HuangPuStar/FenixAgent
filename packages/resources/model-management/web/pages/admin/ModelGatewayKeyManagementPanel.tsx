@@ -1,16 +1,17 @@
+import { ConfirmDialog } from "@fenix/ui-components/config/ConfirmDialog";
+import { Badge } from "@fenix/ui-components/ui/badge";
+import { Button } from "@fenix/ui-components/ui/button";
+import { Card, CardContent, CardHeader, CardTitle } from "@fenix/ui-components/ui/card";
+import { Checkbox } from "@fenix/ui-components/ui/checkbox";
+import { Pagination } from "@fenix/ui-components/ui/pagination";
+import { ApiError } from "@fenix/web-runtime/api/request";
 import { useRequest } from "ahooks";
 import { RefreshCw, Trash2 } from "lucide-react";
 import { useCallback, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
-import { ConfirmDialog } from "@/components/config/ConfirmDialog";
-import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Checkbox } from "@/components/ui/checkbox";
-import { Pagination } from "@/components/ui/pagination";
-import { listModelGatewayKeys, type ModelGatewayManagedKey, removeModelGatewayKeys } from "@/src/api/model-gateway";
-import { ApiError } from "@/src/api/request";
+import { listModelGatewayKeys, type ModelGatewayManagedKey, removeModelGatewayKeys } from "../../api/model-gateway.ts";
+import { MODELS_NS } from "../../i18n/namespace";
 
 function keyReason(key: ModelGatewayManagedKey): string {
   return key.usable ? "usable" : (key.invalidReason ?? "unusable");
@@ -18,7 +19,7 @@ function keyReason(key: ModelGatewayManagedKey): string {
 
 /** 管理 Fenix 创建的 Virtual Key；密钥明文从不返回浏览器。 */
 export function ModelGatewayKeyManagementPanel({ onAuthFailure }: { onAuthFailure: () => void }) {
-  const { t } = useTranslation("observer");
+  const { t } = useTranslation(MODELS_NS);
   const [page, setPage] = useState(1);
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [confirmOpen, setConfirmOpen] = useState(false);
@@ -85,7 +86,7 @@ export function ModelGatewayKeyManagementPanel({ onAuthFailure }: { onAuthFailur
         {keysRequest.error ? (
           <p className="py-8 text-center text-sm text-destructive">{t("modelGateway.keysPage.loadError")}</p>
         ) : keysRequest.loading && !keysRequest.data ? (
-          <p className="py-8 text-center text-sm text-text-muted">{t("states.loading")}</p>
+          <p className="py-8 text-center text-sm text-text-muted">{t("admin.loading")}</p>
         ) : (keysRequest.data?.items.length ?? 0) === 0 ? (
           <p className="py-8 text-center text-sm text-text-muted">{t("modelGateway.keysPage.empty")}</p>
         ) : (

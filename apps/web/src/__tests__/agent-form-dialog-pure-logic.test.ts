@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+import type { McpServerInfo, ModelEntry, SkillInfo } from "@fenix/web-runtime/types/config";
 import {
   canManageMcpSharing,
   filterWritableMcps,
@@ -35,7 +36,6 @@ import {
 } from "../lib/agent-utils";
 import { err, ok, unwrapApiResult } from "../lib/api-result";
 import { intRangeSchema, nameSchema, optionalFloatSchema, validateWithSchema } from "../lib/form-utils";
-import type { McpServerInfo, ModelEntry, SkillInfo } from "../types/config";
 
 /** 共享来源 Agent 的 `/web` 详情视图字段：归属其他组织且只有读动作。 */
 function sharedAgentFields() {

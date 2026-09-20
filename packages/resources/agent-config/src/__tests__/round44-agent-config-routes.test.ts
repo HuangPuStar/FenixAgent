@@ -1,10 +1,18 @@
 import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
 import { ForbiddenError, NotFoundError } from "@fenix/platform-sdk";
-import { readJson, resetAllStubs, stubDb } from "@fenix/platform-sdk/testing";
-import { resetTestAuth, setTestAuth } from "@server/plugins/auth";
-import { setTestOrgContext } from "@server/services/org-context";
-import { stubConfigPg } from "@server/test-utils/stubs/config-pg-stub";
-import { authorizedAgent, installAgentModuleStub, resetAgentModuleStub } from "./fixtures";
+import { readJson, stubDb } from "@fenix/platform-sdk/testing";
+import type { AgentConfigWriteData } from "../server/repositories/agent-config-resource";
+import { createWebConfigAgentsRoutes } from "../server/routes/web/config/agents";
+import { initializeAgentConfigModuleConfig } from "../server/testing";
+import {
+  authorizedAgent,
+  createTestAgentPreferencesPort,
+  installAgentModuleStub,
+  resetAgentModuleStub,
+  resetAgentPreferences,
+  stubAgentPreferences,
+} from "./fixtures";
+import { createStubSessionAuthGuardPlugin, resetTestAuth, setTestAuth } from "./guard-stubs";
 
 /**
  * `/web/config/agents` 协议层的接缝迁移（S4）。
@@ -14,14 +22,14 @@ import { authorizedAgent, installAgentModuleStub, resetAgentModuleStub } from ".
  * 视图按决策 D2 返回 `scope + access`，旧栈的 `resourceAccess` 不再出现在 `/web` 响应里。
  */
 
-const route = (await import("../server/routes/web/config/agents")).default;
+// 守卫与偏好端口由宿主注入：测试注入替身（§6.4），端口方法在请求期读取可变替身实现。
+const route = createWebConfigAgentsRoutes({
+  authGuardPlugin: createStubSessionAuthGuardPlugin(),
+  userAgentPreferences: createTestAgentPreferencesPort(),
+});
 
 function authenticate(organizationId = "org-1") {
-  setTestAuth({
-    user: { id: "user-1", email: "user-1@example.test", name: "Tester" },
-    authContext: { organizationId, userId: "user-1", role: "owner" },
-  });
-  setTestOrgContext({ organizationId, userId: "user-1", role: "owner" });
+  setTestAuth({ organizationId, userId: "user-1" });
 }
 
 function request(path: string, init?: RequestInit) {
@@ -53,18 +61,19 @@ function installSafeDb() {
 
 describe("round44 Agent 配置 Web 路由", () => {
   beforeEach(() => {
-    resetAllStubs();
+    // 复位替身并初始化应用基础设施（DB 句柄经转发代理，见 `../server/testing.ts`）。
+    initializeAgentConfigModuleConfig();
     resetAgentModuleStub();
     authenticate();
     installSafeDb();
     // 用户偏好是宿主配置服务的职责（不在本资源模块内），默认"未设置默认 Agent"。
-    stubConfigPg({ getUserConfig: async () => ({ defaultAgent: null }) });
+    stubAgentPreferences({});
   });
 
   afterEach(() => {
     resetAgentModuleStub();
     resetTestAuth();
-    setTestOrgContext(null);
+    resetAgentPreferences();
   });
 
   // 列表必须以认证组织上下文调用应用层，不能使用客户端输入决定组织。
@@ -244,6 +253,31 @@ describe("round44 Agent 配置 Web 路由", () => {
     expect(calls).toEqual(["mcp:mcp-1", "site:site-1"]);
   });
 
+  // 写路径返回体是前端结果类型（`web/api/agents.ts` 的 AgentSaveResult）的合同：字段增减必须两侧同步。
+  // 授权视图字段恒返回（决策 D2），organizationName 只在身份名录给出名称时出现。
+  test("创建与更新的返回体恒为 id / name / scope / access", async () => {
+    installAgentModuleStub({
+      facade: {
+        existsInOrganization: async () => false,
+        create: async () => authorizedAgent({ id: "agent-created", name: "new-agent" }),
+        update: async () => authorizedAgent({ id: "agent-updated", name: "new-agent" }),
+      },
+    });
+
+    const created = await readJson(await json("/config/agents", "POST", { name: "new-agent", data: {} }));
+    expect(Object.keys(created.data as Record<string, unknown>).sort()).toEqual(["access", "id", "name", "scope"]);
+    expect(created.data).toMatchObject({
+      id: "agent-created",
+      name: "new-agent",
+      scope: { organizationId: "org-1", ownerUserId: "user-1", visibility: "private" },
+      access: { actions: ["read", "create", "update", "delete", "use"] },
+    });
+
+    const updated = await readJson(await json("/config/agents?name=new-agent", "PUT", { data: {} }));
+    expect(Object.keys(updated.data as Record<string, unknown>).sort()).toEqual(["access", "id", "name", "scope"]);
+    expect(updated.data).toMatchObject({ id: "agent-updated", name: "new-agent" });
+  });
+
   // 更新缺少目标名称时不得触发任何应用层写入。
   test("更新缺少名称返回 400", async () => {
     const update = mock(async () => authorizedAgent());
@@ -289,7 +323,7 @@ describe("round44 Agent 配置 Web 路由", () => {
 
   // 更新只能传递白名单字段，防止调用方覆盖组织归属等敏感列。
   test("更新过滤非白名单字段", async () => {
-    let updateData: Record<string, unknown> = {};
+    let updateData: AgentConfigWriteData | undefined;
     installAgentModuleStub({
       facade: {
         update: async (_actor, _name, data) => {
@@ -412,9 +446,9 @@ describe("round44 Agent 配置 Web 路由", () => {
   test("设置默认 Agent 写入当前用户配置", async () => {
     let defaultAgent: string | null | undefined = "";
     installAgentModuleStub({ facade: { get: async () => authorizedAgent({ name: "researcher" }) } });
-    stubConfigPg({
-      setUserConfig: async (_ctx, userConfig) => {
-        defaultAgent = userConfig.defaultAgent;
+    stubAgentPreferences({
+      write: async (_subject, patch) => {
+        defaultAgent = patch.defaultAgent;
       },
     });
 
@@ -422,5 +456,20 @@ describe("round44 Agent 配置 Web 路由", () => {
 
     expect(response.status).toBe(200);
     expect(defaultAgent).toBe("researcher");
+  });
+
+  // 设置默认 Agent 的返回体是前端 AgentSetDefaultResult 的合同：与保存响应不同，它不含资源 id
+  // （写入的是用户偏好而不是资源行），字段集必须独立断言，防止前端照抄保存响应的形状。
+  test("设置默认 Agent 的返回体为 default_agent / scope / access", async () => {
+    installAgentModuleStub({ facade: { get: async () => authorizedAgent({ id: "agent-7", name: "researcher" }) } });
+
+    const body = await readJson(await json("/config/agents/default", "POST", { name: "researcher" }));
+
+    expect(Object.keys(body.data as Record<string, unknown>).sort()).toEqual(["access", "default_agent", "scope"]);
+    expect(body.data).toMatchObject({
+      default_agent: "researcher",
+      scope: { organizationId: "org-1", ownerUserId: "user-1", visibility: "private" },
+      access: { actions: ["read", "create", "update", "delete", "use"] },
+    });
   });
 });

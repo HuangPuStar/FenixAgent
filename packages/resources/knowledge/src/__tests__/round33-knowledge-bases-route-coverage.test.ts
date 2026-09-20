@@ -1,14 +1,28 @@
 import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
 import { resetAllStubs } from "@fenix/platform-sdk/testing";
-import { resetConfig, setConfig } from "@server/config";
-import { resetTestAuth, setTestAuth } from "@server/plugins/auth";
 import {
   type KnowledgeBaseRow,
   type KnowledgeResourceRow,
   knowledgeBaseRepo,
   knowledgeResourceRepo,
 } from "../server/repositories/knowledge-base";
-import webKnowledgeBasesRoute from "../server/routes/web/knowledge-bases";
+import { createWebKnowledgeBaseRoutes } from "../server/routes/web/knowledge-bases";
+import { initializeKnowledgeModuleConfig } from "../server/testing";
+import { createStubSessionAuthGuardPlugin } from "./guard-stubs";
+
+/**
+ * 认证上下文由守卫替身写入（真实守卫属宿主，包内不得依赖它构造路由）。
+ * 取值与迁移前 `setTestAuth()` 注入的一致：`{ organizationId: "org-1", userId: "user-1" }`。
+ */
+const AUTH_CONTEXT = { organizationId: "org-1", userId: "user-1" } as const;
+const webKnowledgeBasesRoute = createWebKnowledgeBaseRoutes({
+  authGuardPlugin: createStubSessionAuthGuardPlugin(AUTH_CONTEXT),
+});
+/** 拒绝态守卫（`authContext = null` 返回 401）：用于断言端点确实声明了 `sessionAuth`。 */
+const deniedWebKnowledgeBasesRoute = createWebKnowledgeBaseRoutes({
+  authGuardPlugin: createStubSessionAuthGuardPlugin(null),
+});
+
 import { RagFlowKnowledgeProvider } from "../server/services/knowledge-provider/ragflow";
 import { setKnowledgeProviderForTesting } from "../server/services/knowledge-provider/registry";
 import { setKnowledgeRuntimeProviderForTesting } from "../server/services/knowledge-runtime";
@@ -53,6 +67,11 @@ function resource(overrides: Partial<KnowledgeResourceRow> = {}): KnowledgeResou
   };
 }
 
+/** 拒绝态请求：走 `deniedWebKnowledgeBasesRoute`，用于「缺失认证上下文不放行」的断言。 */
+function deniedRequest(path: string, init?: RequestInit) {
+  return deniedWebKnowledgeBasesRoute.handle(new Request(`http://localhost${path}`, init));
+}
+
 function request(path: string, init?: RequestInit) {
   return webKnowledgeBasesRoute.handle(new Request(`http://localhost${path}`, init));
 }
@@ -65,10 +84,12 @@ function jsonRequest(path: string, method: string, body: Record<string, unknown>
   });
 }
 
-function authenticate(organizationId = "org-1") {
-  setTestAuth({
-    user: { id: "user-1", email: "user-1@example.test", name: "Tester" },
-    authContext: { organizationId, userId: "user-1", role: "owner" },
+/** 拒绝态 JSON 请求：与 `jsonRequest` 同形，走 `deniedWebKnowledgeBasesRoute`。 */
+function deniedJsonRequest(path: string, method: string, body: Record<string, unknown> = {}) {
+  return deniedRequest(path, {
+    method,
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
   });
 }
 
@@ -145,9 +166,7 @@ const originals = {
 
 describe("知识库 Web 路由 round33 覆盖", () => {
   beforeEach(() => {
-    resetAllStubs();
-    authenticate();
-    setConfig({ ragflowApiKey: "test-ragflow-key" });
+    initializeKnowledgeModuleConfig({ ragflowApiKey: "test-ragflow-key" });
   });
 
   afterEach(() => {
@@ -158,8 +177,6 @@ describe("知识库 Web 路由 round33 覆盖", () => {
     setKnowledgeProviderForTesting(null);
     setKnowledgeRuntimeProviderForTesting(null);
     setKnowledgeUploadProviderForTesting(null);
-    resetConfig();
-    resetTestAuth();
     resetAllStubs();
   });
 
@@ -181,8 +198,7 @@ describe("知识库 Web 路由 round33 覆盖", () => {
     ["图谱读取", "/knowledgeBases/kb-1/graph", "GET", {}],
     ["模型管理", "/knowledgeBases/models", "POST", { action: "list" }],
   ])("认证适配器缺失上下文时不暴露成功 DTO：%s", async (_name, path, method, body) => {
-    resetTestAuth();
-    const response = await jsonRequest(path, method, body);
+    const response = await deniedJsonRequest(path, method, body);
     expect(response.status).toBeGreaterThanOrEqual(400);
   });
 

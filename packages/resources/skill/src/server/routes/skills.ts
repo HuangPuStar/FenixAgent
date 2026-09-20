@@ -19,12 +19,19 @@ function jsonError(status: number, code: string, message: string): Response {
   return Response.json({ success: false, error: { code, message } }, { status });
 }
 
-const app = new Elysia({ name: "skills", prefix: "/skills" }).model({
+/**
+ * 受令牌保护的 `/skills/:name/download`。
+ *
+ * 与其他两条路由不同，这条**不是工厂**：令牌本身就是授权凭据（无 session、无 actor），不需要宿主的
+ * `sessionAuth` 宏，因此没有需要注入的守卫，也没有第二份实例可注入。它保留为模块级实例，按名导出，
+ * 与工厂导出并列在 `src/server.ts`，宿主挂载点见 `apps/server/src/main.ts`。
+ */
+export const skillDownloadRoutes = new Elysia({ name: "skills", prefix: "/skills" }).model({
   "skill-download-params": SkillDownloadParamsSchema,
   "skill-download-query": SkillDownloadQuerySchema,
 });
 
-app.get(
+skillDownloadRoutes.get(
   "/:name/download",
   // biome-ignore lint/suspicious/noExplicitAny: 下载接口返回二进制流，Elysia 在 query + 非 JSON 响应场景下类型推断不稳定
   async ({ params, query, set }: any) => {
@@ -81,5 +88,3 @@ app.get(
     },
   },
 );
-
-export default app;

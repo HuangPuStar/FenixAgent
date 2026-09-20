@@ -1,11 +1,12 @@
+import { ApiError, unwrap } from "@fenix/web-runtime/api/request";
+import { dispatchConfigChange } from "@fenix/web-runtime/lib/config-events";
+import type { ProviderInfo, ProviderModel } from "@fenix/web-runtime/types/config";
 import { useRequest } from "ahooks";
 import { useCallback, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
-import { providerApi } from "@/src/api/providers";
-import { ApiError, unwrap } from "@/src/api/request";
-import { dispatchConfigChange } from "@/src/lib/config-events";
-import type { ProviderInfo, ProviderModel } from "@/src/types/config";
+import { providerApi } from "../../../api/providers.ts";
+import { MODELS_NS } from "../../../i18n/namespace";
 import { canManageProviderSharing } from "../../../lib/provider-resource-access";
 import type {
   DiscoveryState,
@@ -41,7 +42,7 @@ function buildModelPayload(draft: ModelDraft): Record<string, unknown> {
 
 /** 真实 Provider/Model API 的唯一页面数据控制器。 */
 export function useAgentModelsData() {
-  const { t } = useTranslation("models");
+  const { t } = useTranslation(MODELS_NS);
   const [modelTest, setModelTest] = useState<ModelTestState | null>(null);
   const [discovery, setDiscovery] = useState<DiscoveryState | null>(null);
 

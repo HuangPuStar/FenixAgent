@@ -7,7 +7,6 @@
 
 import type { ActorContext, IdentityDirectory } from "@fenix/platform-sdk";
 import { ApiErrorResponseSchema, AppError, toResourceAccessView } from "@fenix/platform-sdk";
-import { authGuardPlugin } from "@server/plugins/auth";
 import Elysia from "elysia";
 import type { SkillDetailView, SkillListItem } from "../../facades/skill-facade";
 import { getSkillServerModule } from "../../runtime";
@@ -21,6 +20,7 @@ import {
   ApiSkillListQuerySchema,
   ApiSkillListResponseSchema,
 } from "../../schemas/api-skill.schema";
+import type { SkillRouteDependencies } from "../dependencies";
 import { readSkillUploadForm, type UploadFormData } from "../skill-upload-form";
 
 /**
@@ -109,215 +109,228 @@ function resolveOverwrite(formData: UploadFormData): boolean {
   return value === "true";
 }
 
-const app = new Elysia({ name: "api-skills", prefix: "/api/skills" }).use(authGuardPlugin).model({
-  "api-skill-list-query": ApiSkillListQuerySchema,
-  "api-skill-id-params": ApiSkillIdParamsSchema,
-  "api-skill-create-body": ApiSkillCreateBodySchema,
-  "api-skill-list-response": ApiSkillListResponseSchema,
-  "api-skill-detail": ApiSkillDetailSchema,
-  "api-skill-delete-response": ApiSkillDeleteResponseSchema,
-});
+/**
+ * `/api/skills` 路由工厂。
+ *
+ * 改为工厂：守卫必须与宿主的认证解析是同一份实例（Elysia 的 `macro` / `state` 是实例作用域的，父实例
+ * 无法向已构造的子实例回填），因此由宿主注入 `authGuardPlugin`，包内不再导入
+ * `@server/plugins/auth`。宿主挂载点见 `apps/server/src/main.ts`。
+ */
+export function createApiSkillsRoutes(deps: SkillRouteDependencies) {
+  const app = new Elysia({ name: "api-skills", prefix: "/api/skills" }).use(deps.authGuardPlugin).model({
+    "api-skill-list-query": ApiSkillListQuerySchema,
+    "api-skill-id-params": ApiSkillIdParamsSchema,
+    "api-skill-create-body": ApiSkillCreateBodySchema,
+    "api-skill-list-response": ApiSkillListResponseSchema,
+    "api-skill-detail": ApiSkillDetailSchema,
+    "api-skill-delete-response": ApiSkillDeleteResponseSchema,
+  });
 
-// ── GET /api/skills — 获取 Skill 列表 ──
+  // ── GET /api/skills — 获取 Skill 列表 ──
 
-app.get(
-  "/",
-  // biome-ignore lint/suspicious/noExplicitAny: Elysia 在自定义 response schema 下类型推断不稳定
-  async ({ store, query, error }: any) => {
-    const actor = store.actor as ActorContext | null;
-    if (!actor) {
-      return error(401, { error: { code: "UNAUTHORIZED", message: "请求缺少组织上下文" } });
-    }
-    const { page, pageSize } = query as ApiSkillListQuery;
-
-    try {
-      const { facade, identity } = getSkillServerModule();
-      const { items, total } = await facade.list(actor, { limit: pageSize, offset: (page - 1) * pageSize });
-      const organizationNames = await resolveOrganizationNames(
-        identity,
-        items.map((item) => item.scope.organizationId),
-      );
-      return {
-        items: items.map((item) =>
-          toApiSkillListItem(item, actor.activeOrganizationId, organizationNames.get(item.scope.organizationId ?? "")),
-        ),
-        total,
-        page,
-        pageSize,
-      };
-    } catch (err) {
-      const mapped = mapApiError(err);
-      return error(mapped.status, mapped.body);
-    }
-  },
-  {
-    sessionAuth: true,
-    query: "api-skill-list-query",
-    response: {
-      200: "api-skill-list-response",
-      401: ApiErrorResponseSchema,
-      500: ApiErrorResponseSchema,
-    },
-    detail: {
-      tags: ["External Skill"],
-      summary: "获取 Skill 列表",
-      description:
-        "返回当前主体可见的 Skill 列表（不含正文内容），采用稳定分页结构；分页与计数在数据库内完成。包含组织内部创建的 Skill 以及外部组织公开的只读 Skill。",
-    },
-  },
-);
-
-// ── GET /api/skills/:id — 获取 Skill 详情 ──
-
-app.get(
-  "/:id",
-  // biome-ignore lint/suspicious/noExplicitAny: Elysia 在自定义 response schema 下类型推断不稳定
-  async ({ store, params, error }: any) => {
-    const actor = store.actor as ActorContext | null;
-    if (!actor) {
-      return error(401, { error: { code: "UNAUTHORIZED", message: "请求缺少组织上下文" } });
-    }
-    const { id } = params as ApiSkillIdParams;
-
-    try {
-      const { facade, identity } = getSkillServerModule();
-      const detail = await facade.readDetailById(actor, id);
-      if (!detail) {
-        return error(404, { error: { code: "NOT_FOUND", message: `Skill '${id}' not found` } });
+  app.get(
+    "/",
+    // biome-ignore lint/suspicious/noExplicitAny: Elysia 在自定义 response schema 下类型推断不稳定
+    async ({ store, query, error }: any) => {
+      const actor = store.actor as ActorContext | null;
+      if (!actor) {
+        return error(401, { error: { code: "UNAUTHORIZED", message: "请求缺少组织上下文" } });
       }
-      const organizationNames = await resolveOrganizationNames(identity, [detail.scope.organizationId]);
-      return toApiSkillDetail(
-        detail,
-        actor.activeOrganizationId,
-        organizationNames.get(detail.scope.organizationId ?? ""),
-      );
-    } catch (err) {
-      const mapped = mapApiError(err);
-      return error(mapped.status, mapped.body);
-    }
-  },
-  {
-    sessionAuth: true,
-    params: "api-skill-id-params",
-    response: {
-      200: "api-skill-detail",
-      401: ApiErrorResponseSchema,
-      404: ApiErrorResponseSchema,
-      500: ApiErrorResponseSchema,
-    },
-    detail: {
-      tags: ["External Skill"],
-      summary: "获取 Skill 详情",
-      description: "按 Skill 唯一 ID 返回详情，包含 SKILL.md 正文内容。仅返回当前主体可见的资源。",
-    },
-  },
-);
+      const { page, pageSize } = query as ApiSkillListQuery;
 
-// ── POST /api/skills — 上传创建 Skill ──
-
-app.post(
-  "/",
-  // biome-ignore lint/suspicious/noExplicitAny: Elysia 在自定义 response schema 下类型推断不稳定
-  async ({ store, request, error }: any) => {
-    const actor = store.actor as ActorContext | null;
-    if (!actor) {
-      return error(401, { error: { code: "UNAUTHORIZED", message: "请求缺少组织上下文" } });
-    }
-
-    try {
-      const { facade, identity } = getSkillServerModule();
-      const { files, formData } = await readSkillUploadForm(request);
-      const overwrite = resolveOverwrite(formData);
-
-      const skillNames = [...new Set(files.map((file) => file.skillName))];
-      if (skillNames.length !== 1) {
-        throw new AppError("每次只允许导入一个 Skill", "VALIDATION_ERROR", 400);
+      try {
+        const { facade, identity } = getSkillServerModule();
+        const { items, total } = await facade.list(actor, { limit: pageSize, offset: (page - 1) * pageSize });
+        const organizationNames = await resolveOrganizationNames(
+          identity,
+          items.map((item) => item.scope.organizationId),
+        );
+        return {
+          items: items.map((item) =>
+            toApiSkillListItem(
+              item,
+              actor.activeOrganizationId,
+              organizationNames.get(item.scope.organizationId ?? ""),
+            ),
+          ),
+          total,
+          page,
+          pageSize,
+        };
+      } catch (err) {
+        const mapped = mapApiError(err);
+        return error(mapped.status, mapped.body);
       }
+    },
+    {
+      sessionAuth: true,
+      query: "api-skill-list-query",
+      response: {
+        200: "api-skill-list-response",
+        401: ApiErrorResponseSchema,
+        500: ApiErrorResponseSchema,
+      },
+      detail: {
+        tags: ["External Skill"],
+        summary: "获取 Skill 列表",
+        description:
+          "返回当前主体可见的 Skill 列表（不含正文内容），采用稳定分页结构；分页与计数在数据库内完成。包含组织内部创建的 Skill 以及外部组织公开的只读 Skill。",
+      },
+    },
+  );
 
-      const result = await facade.importDirectories(actor, files, overwrite ? "overwrite" : undefined);
-      if (result.conflicts.length > 0) {
-        const conflictName = result.conflicts[0]?.name ?? skillNames[0] ?? "unknown";
-        return error(409, { error: { code: "CONFLICT", message: `Skill '${conflictName}' already exists` } });
+  // ── GET /api/skills/:id — 获取 Skill 详情 ──
+
+  app.get(
+    "/:id",
+    // biome-ignore lint/suspicious/noExplicitAny: Elysia 在自定义 response schema 下类型推断不稳定
+    async ({ store, params, error }: any) => {
+      const actor = store.actor as ActorContext | null;
+      if (!actor) {
+        return error(401, { error: { code: "UNAUTHORIZED", message: "请求缺少组织上下文" } });
+      }
+      const { id } = params as ApiSkillIdParams;
+
+      try {
+        const { facade, identity } = getSkillServerModule();
+        const detail = await facade.readDetailById(actor, id);
+        if (!detail) {
+          return error(404, { error: { code: "NOT_FOUND", message: `Skill '${id}' not found` } });
+        }
+        const organizationNames = await resolveOrganizationNames(identity, [detail.scope.organizationId]);
+        return toApiSkillDetail(
+          detail,
+          actor.activeOrganizationId,
+          organizationNames.get(detail.scope.organizationId ?? ""),
+        );
+      } catch (err) {
+        const mapped = mapApiError(err);
+        return error(mapped.status, mapped.body);
+      }
+    },
+    {
+      sessionAuth: true,
+      params: "api-skill-id-params",
+      response: {
+        200: "api-skill-detail",
+        401: ApiErrorResponseSchema,
+        404: ApiErrorResponseSchema,
+        500: ApiErrorResponseSchema,
+      },
+      detail: {
+        tags: ["External Skill"],
+        summary: "获取 Skill 详情",
+        description: "按 Skill 唯一 ID 返回详情，包含 SKILL.md 正文内容。仅返回当前主体可见的资源。",
+      },
+    },
+  );
+
+  // ── POST /api/skills — 上传创建 Skill ──
+
+  app.post(
+    "/",
+    // biome-ignore lint/suspicious/noExplicitAny: Elysia 在自定义 response schema 下类型推断不稳定
+    async ({ store, request, error }: any) => {
+      const actor = store.actor as ActorContext | null;
+      if (!actor) {
+        return error(401, { error: { code: "UNAUTHORIZED", message: "请求缺少组织上下文" } });
       }
 
-      const imported = result.imported[0];
-      if (!imported) {
-        return error(500, { error: { code: "INTERNAL_ERROR", message: "Skill import returned no created entry" } });
+      try {
+        const { facade, identity } = getSkillServerModule();
+        const { files, formData } = await readSkillUploadForm(request);
+        const overwrite = resolveOverwrite(formData);
+
+        const skillNames = [...new Set(files.map((file) => file.skillName))];
+        if (skillNames.length !== 1) {
+          throw new AppError("每次只允许导入一个 Skill", "VALIDATION_ERROR", 400);
+        }
+
+        const result = await facade.importDirectories(actor, files, overwrite ? "overwrite" : undefined);
+        if (result.conflicts.length > 0) {
+          const conflictName = result.conflicts[0]?.name ?? skillNames[0] ?? "unknown";
+          return error(409, { error: { code: "CONFLICT", message: `Skill '${conflictName}' already exists` } });
+        }
+
+        const imported = result.imported[0];
+        if (!imported) {
+          return error(500, { error: { code: "INTERNAL_ERROR", message: "Skill import returned no created entry" } });
+        }
+        const detail = await facade.readDetailById(actor, imported.id);
+        if (!detail) {
+          return error(500, { error: { code: "INTERNAL_ERROR", message: "Skill could not be reloaded" } });
+        }
+        const organizationNames = await resolveOrganizationNames(identity, [detail.scope.organizationId]);
+        return toApiSkillDetail(
+          detail,
+          actor.activeOrganizationId,
+          organizationNames.get(detail.scope.organizationId ?? ""),
+        );
+      } catch (err) {
+        const mapped = mapApiError(err);
+        return error(mapped.status, mapped.body);
       }
-      const detail = await facade.readDetailById(actor, imported.id);
-      if (!detail) {
-        return error(500, { error: { code: "INTERNAL_ERROR", message: "Skill could not be reloaded" } });
+    },
+    {
+      sessionAuth: true,
+      response: {
+        200: "api-skill-detail",
+        400: ApiErrorResponseSchema,
+        401: ApiErrorResponseSchema,
+        409: ApiErrorResponseSchema,
+        500: ApiErrorResponseSchema,
+      },
+      detail: {
+        tags: ["External Skill"],
+        summary: "上传创建 Skill",
+        description:
+          "使用与控制台上传接口一致的 multipart/form-data 协议导入单个 Skill。表单需要包含 `manifest` JSON 字符串和 `files` 文件列表；传 `overwrite=true` 时允许覆盖同名 Skill，否则同名冲突返回 409。",
+      },
+    },
+  );
+
+  // ── DELETE /api/skills/:id — 删除 Skill ──
+
+  app.delete(
+    "/:id",
+    // biome-ignore lint/suspicious/noExplicitAny: Elysia 在自定义 response schema 下类型推断不稳定
+    async ({ store, params, error }: any) => {
+      const actor = store.actor as ActorContext | null;
+      if (!actor) {
+        return error(401, { error: { code: "UNAUTHORIZED", message: "请求缺少组织上下文" } });
       }
-      const organizationNames = await resolveOrganizationNames(identity, [detail.scope.organizationId]);
-      return toApiSkillDetail(
-        detail,
-        actor.activeOrganizationId,
-        organizationNames.get(detail.scope.organizationId ?? ""),
-      );
-    } catch (err) {
-      const mapped = mapApiError(err);
-      return error(mapped.status, mapped.body);
-    }
-  },
-  {
-    sessionAuth: true,
-    response: {
-      200: "api-skill-detail",
-      400: ApiErrorResponseSchema,
-      401: ApiErrorResponseSchema,
-      409: ApiErrorResponseSchema,
-      500: ApiErrorResponseSchema,
-    },
-    detail: {
-      tags: ["External Skill"],
-      summary: "上传创建 Skill",
-      description:
-        "使用与控制台上传接口一致的 multipart/form-data 协议导入单个 Skill。表单需要包含 `manifest` JSON 字符串和 `files` 文件列表；传 `overwrite=true` 时允许覆盖同名 Skill，否则同名冲突返回 409。",
-    },
-  },
-);
+      const { id } = params as ApiSkillIdParams;
 
-// ── DELETE /api/skills/:id — 删除 Skill ──
-
-app.delete(
-  "/:id",
-  // biome-ignore lint/suspicious/noExplicitAny: Elysia 在自定义 response schema 下类型推断不稳定
-  async ({ store, params, error }: any) => {
-    const actor = store.actor as ActorContext | null;
-    if (!actor) {
-      return error(401, { error: { code: "UNAUTHORIZED", message: "请求缺少组织上下文" } });
-    }
-    const { id } = params as ApiSkillIdParams;
-
-    try {
-      const { facade } = getSkillServerModule();
-      const detail = await facade.getById(actor, id);
-      if (!detail) {
-        return error(404, { error: { code: "NOT_FOUND", message: `Skill '${id}' not found` } });
+      try {
+        const { facade } = getSkillServerModule();
+        const detail = await facade.getById(actor, id);
+        if (!detail) {
+          return error(404, { error: { code: "NOT_FOUND", message: `Skill '${id}' not found` } });
+        }
+        await facade.removeById(actor, id);
+        return { id, name: detail.name, deleted: true as const };
+      } catch (err) {
+        const mapped = mapApiError(err);
+        return error(mapped.status, mapped.body);
       }
-      await facade.removeById(actor, id);
-      return { id, name: detail.name, deleted: true as const };
-    } catch (err) {
-      const mapped = mapApiError(err);
-      return error(mapped.status, mapped.body);
-    }
-  },
-  {
-    sessionAuth: true,
-    params: "api-skill-id-params",
-    response: {
-      200: "api-skill-delete-response",
-      401: ApiErrorResponseSchema,
-      403: ApiErrorResponseSchema,
-      404: ApiErrorResponseSchema,
-      500: ApiErrorResponseSchema,
     },
-    detail: {
-      tags: ["External Skill"],
-      summary: "删除 Skill",
-      description: "按唯一 ID 删除 Skill，同时清理数据库元数据和文件系统内容。仅可删除当前主体有权删除的 Skill。",
+    {
+      sessionAuth: true,
+      params: "api-skill-id-params",
+      response: {
+        200: "api-skill-delete-response",
+        401: ApiErrorResponseSchema,
+        403: ApiErrorResponseSchema,
+        404: ApiErrorResponseSchema,
+        500: ApiErrorResponseSchema,
+      },
+      detail: {
+        tags: ["External Skill"],
+        summary: "删除 Skill",
+        description: "按唯一 ID 删除 Skill，同时清理数据库元数据和文件系统内容。仅可删除当前主体有权删除的 Skill。",
+      },
     },
-  },
-);
+  );
 
-export default app;
+  return app;
+}

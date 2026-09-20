@@ -1,19 +1,20 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { resetAllStubs, stubAuthApi } from "@fenix/platform-sdk/testing";
-import { resetTestAuth, setTestAuth } from "@server/plugins/auth";
-import { setTestOrgContext } from "@server/services/org-context";
-import { stubCustomTools } from "@server/test-utils/stubs/module-stubs";
-import webWorkflowCustomTools from "../server/routes/web/workflow-custom-tools";
+import { createWebWorkflowCustomToolsRoutes } from "../server/routes/web/workflow-custom-tools";
+import { initializeWorkflowModuleConfig, stubCustomTools } from "../server/testing";
+import { createStubSessionAuthGuard } from "./guard-stubs";
+
+const guard = createStubSessionAuthGuard();
+
+// 路由经工厂构造并注入会话守卫替身：静态条件禁止包内测试依赖宿主 `@server/plugins/auth`，
+// 而 Elysia 的 macro/state 是实例作用域的，守卫必须是构造时传入的同一实例。
+const route = createWebWorkflowCustomToolsRoutes({ authGuardPlugin: guard });
 
 describe("GET /web/workflow-custom-tools", () => {
   beforeEach(() => {
-    resetAllStubs();
-    setTestAuth({
-      user: { id: "u1", email: "test@test.com", name: "Tester" },
-      authContext: { organizationId: "org1", userId: "u1", role: "owner" },
-    });
-    setTestOrgContext({ organizationId: "org1", userId: "u1", role: "owner" });
-    // 注入 fake registry 数据；setup-mocks.ts 已 mock 模块，此处只配置返回值
+    // 模块配置与 DB 替身的初始化统一走包内 /server/testing（内部含 resetAllStubs）
+    initializeWorkflowModuleConfig();
+    guard.setActor({ organizationId: "org1", userId: "org1" });
+    // 注入 fake registry 数据；模块替身由 ../server/testing 安装，此处只配置返回值
     stubCustomTools({
       getCustomToolsRegistry: () => ({
         list: () => [
@@ -29,13 +30,12 @@ describe("GET /web/workflow-custom-tools", () => {
   });
 
   afterEach(() => {
-    resetTestAuth();
-    setTestOrgContext(null);
+    guard.setActor(null);
   });
 
   // 已登录返回 registry.list() 数据
   test("已登录返回 registry.list() 数据", async () => {
-    const r = await webWorkflowCustomTools.handle(new Request("http://localhost/workflow-custom-tools"));
+    const r = await route.handle(new Request("http://localhost/workflow-custom-tools"));
     expect(r.status).toBe(200);
     const json = await r.json();
     expect(json.success).toBe(true);
@@ -45,11 +45,9 @@ describe("GET /web/workflow-custom-tools", () => {
 
   // 未登录返回 401
   test("未登录返回 401", async () => {
-    resetTestAuth();
-    setTestOrgContext(null);
-    stubAuthApi({ getSession: async () => null });
+    guard.setActor(null);
 
-    const r = await webWorkflowCustomTools.handle(new Request("http://localhost/workflow-custom-tools"));
+    const r = await route.handle(new Request("http://localhost/workflow-custom-tools"));
     expect(r.status).toBe(401);
   });
 });

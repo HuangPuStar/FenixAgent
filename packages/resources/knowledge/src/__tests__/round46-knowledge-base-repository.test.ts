@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, mock, test } from "bun:test";
-import { resetAllStubs, stubDb } from "@fenix/platform-sdk/testing";
+import { stubDb } from "@fenix/platform-sdk/testing";
 import {
   type AgentKnowledgeBindingInsert,
   agentKnowledgeBindingRepo,
@@ -8,6 +8,7 @@ import {
   knowledgeBaseRepo,
   knowledgeResourceRepo,
 } from "../server/repositories/knowledge-base";
+import { initializeKnowledgeModuleConfig } from "../server/testing";
 
 const NOW = new Date("2026-08-19T00:00:00.000Z");
 
@@ -58,7 +59,10 @@ function expectLoose(value: unknown) {
   return expect(value);
 }
 
-beforeEach(resetAllStubs);
+// 仓储句柄来自 platform-sdk 基础设施（未初始化即抛错），初始化转发到 `stubDb()` 的 DB 代理。
+beforeEach(() => {
+  initializeKnowledgeModuleConfig();
+});
 
 describe("round46 知识库仓储真实行为", () => {
   // 按 ID 查询应返回数据库首行。

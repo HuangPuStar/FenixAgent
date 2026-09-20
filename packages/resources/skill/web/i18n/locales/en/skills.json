@@ -22,6 +22,10 @@
     "noDescription": "No purpose documented",
     "private": "Private"
   },
+  "accessDenied": {
+    "title": "No permission to view skills",
+    "description": "Your account is not allowed to view this organization's skill library. Sign in with an account that has access, or ask your organization administrator to grant it."
+  },
   "loadState": {
     "title": "Could not load skills",
     "retry": "Try again"

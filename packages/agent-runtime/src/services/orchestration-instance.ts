@@ -19,10 +19,10 @@ import type { Instance, LaunchSpec } from "@fenix/orchestration";
 import { NotFoundError } from "@fenix/platform-sdk";
 import type { AgentLaunchSpec } from "@fenix/plugin-sdk";
 import { config, getBaseUrl } from "@server/config";
-import type { AuthContext } from "@server/plugins/auth";
 import { getCoreRuntime } from "@server/services/core-bootstrap";
 import type { InstanceSpawnSource, InstanceSupplement } from "@server/types/store";
 import { environmentRepo } from "../server/repositories/environment";
+import { toActorContext } from "./actor-context";
 import { beginSpawnReservation, releaseSpawnReservation } from "./agent-concurrency";
 import { globalInstanceRegistry } from "./instance-registry";
 import { buildBasicLaunchSpec, buildLaunchSpec } from "./launch-spec-builder";
@@ -469,11 +469,11 @@ async function buildAgentLaunchSpecForCore(
     });
   }
 
-  const accessCtx: AuthContext = {
+  const accessCtx = toActorContext({
     organizationId: env.organizationId ?? "",
     userId: launchSpec.userId,
     role: "owner",
-  };
+  });
   const agentConfig = await getReadableAgentConfigById(accessCtx, env.agentConfigId);
   if (!agentConfig) {
     throw new NotFoundError(`AgentConfig '${env.agentConfigId}' not found`);

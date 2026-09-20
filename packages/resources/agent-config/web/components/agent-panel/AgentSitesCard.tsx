@@ -1,8 +1,8 @@
+import { useCardEmit } from "@fenix/ui-components/lib/card-renderer";
+import { cn } from "@fenix/ui-components/lib/cn";
 import { AlertCircle, ArrowRight, Globe, Loader2 } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
-import { agentSitesApi } from "@/src/api/sites";
-import { useCardEmit } from "@/src/lib/card-renderer";
-import { cn } from "@/src/lib/utils";
+import { agentSitesApi } from "../../api/sites";
 
 interface AgentSitesCardProps {
   /** 远端 site 的 remoteAppId（由 streamdown 从 HTML attribute agent-site-id 传入），前端据此拼出同源地址 */
@@ -25,8 +25,9 @@ export function AgentSitesCard(props: AgentSitesCardProps) {
   const [error, setError] = useState<string | null>(null);
   const [siteName, setSiteName] = useState<string | null>(null);
 
-  // 仅挂载时执行一次：agentSiteId/emit 不应作为重触发依赖，cleanup 由 cancelled flag 保证
-  // 仅挂载时执行一次。
+  // 仅挂载时执行一次：agentSiteId/emit 不应作为重触发依赖（依赖变化重跑会重复请求并重复上报 render
+  // 事件），cleanup 由 cancelled flag 保证。
+  // biome-ignore lint/correctness/useExhaustiveDependencies: 一次性挂载是刻意行为，补齐依赖会改变语义；源文件位于 apps/web 时未声明 react 依赖、规则未启用，包内按 T2e 声明 react 后该规则才生效。
   useEffect(() => {
     if (!agentSiteId) {
       setError("缺少 agent-site-id 属性");

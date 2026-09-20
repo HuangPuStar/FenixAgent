@@ -2,9 +2,7 @@ import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
 import { mkdtemp, readFile, rename, rm, stat, symlink } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { resetAllStubs, stubDb } from "@fenix/platform-sdk/testing";
-import { setConfig } from "@server/config";
-import { stubEnvironmentRepo, stubFileWsHandler } from "@server/test-utils/stubs/module-stubs";
+import { stubDb } from "@fenix/platform-sdk/testing";
 import { gate } from "../services/agent-file-service";
 import { setLocalUploadBeforeWriteHookForTest } from "../services/file-backends";
 import {
@@ -15,6 +13,14 @@ import {
   type ReadResult,
   type UploadFileInput,
 } from "../services/file-types";
+import {
+  initializeMachineModuleConfig,
+  lockMachineWorkspaceRoot,
+  stubFileWsTransport,
+  stubMachineConfig,
+  stubMachineEnvironmentRecord,
+  unlockMachineWorkspaceRoot,
+} from "../testing";
 import { BusyError } from "../transport/file-ws-requests";
 
 const ORG_ID = "org-1";
@@ -46,20 +52,17 @@ function uploadFile(name: string, content: string, relativePath?: string): Uploa
 
 beforeEach(async () => {
   // 每个用例重建干净环境：stub 环境归属 + 独立 tmp workspace 根目录 + 本地路由
-  resetAllStubs();
-  stubEnvironmentRepo({
-    getById: async () => ({ id: ENV_ID, organizationId: ORG_ID, userId: USER_ID }),
-  });
+  initializeMachineModuleConfig();
+  stubMachineEnvironmentRecord({ id: ENV_ID, organizationId: ORG_ID, userId: USER_ID });
   workspaceRoot = await mkdtemp(join(tmpdir(), "agent-file-service-"));
-  process.env.WORKSPACE_ROOT = workspaceRoot;
-  setConfig({ defaultMachineId: undefined });
+  await lockMachineWorkspaceRoot(workspaceRoot);
 });
 
 afterEach(async () => {
   setLocalUploadBeforeWriteHookForTest();
   delete process.env.WORKSPACE_ROOT;
+  unlockMachineWorkspaceRoot();
   await rm(workspaceRoot, { recursive: true, force: true });
-  setConfig({ defaultMachineId: undefined });
 });
 
 describe("本地 LocalBackend（真实 tmp 目录）", () => {
@@ -299,8 +302,8 @@ describe("远程 RemoteBackend（stub file-ws）", () => {
         }
       },
     );
-    stubFileWsHandler({ isFileWsConnected: () => true, sendFileOpAndWait: sendFileOpMock });
-    setConfig({ defaultMachineId: MACHINE_ID });
+    stubFileWsTransport({ isFileWsConnected: () => true, sendFileOpAndWait: sendFileOpMock });
+    stubMachineConfig({ defaultMachineId: MACHINE_ID });
     stubMachineExists();
     return sendFileOpMock;
   }
@@ -349,8 +352,8 @@ describe("远程 RemoteBackend（stub file-ws）", () => {
         },
       };
     });
-    stubFileWsHandler({ isFileWsConnected: () => true, sendFileOpAndWait: sendFileOpMock });
-    setConfig({ defaultMachineId: MACHINE_ID });
+    stubFileWsTransport({ isFileWsConnected: () => true, sendFileOpAndWait: sendFileOpMock });
+    stubMachineConfig({ defaultMachineId: MACHINE_ID });
     stubMachineExists();
     const result = await gate(ENV_ID, authCtx).read("user/a.bin", "auto");
     expect(result.type).toBe("binary");
@@ -358,8 +361,8 @@ describe("远程 RemoteBackend（stub file-ws）", () => {
 
   test("配置了 machine 但 file-ws 未连接 → 503 file_service_unavailable", async () => {
     // 拒绝静默回退：配了远程机器但未连接时所有操作 503，不得落本地
-    stubFileWsHandler({ isFileWsConnected: () => false });
-    setConfig({ defaultMachineId: MACHINE_ID });
+    stubFileWsTransport({ isFileWsConnected: () => false });
+    stubMachineConfig({ defaultMachineId: MACHINE_ID });
     await expect(gate(ENV_ID, authCtx).list("user")).rejects.toMatchObject({
       type: "file_service_unavailable",
       statusCode: 503,
@@ -368,24 +371,24 @@ describe("远程 RemoteBackend（stub file-ws）", () => {
 
   test("机器端背压 busy → 429 busy", async () => {
     // W1 背压错误类型应映射 429（瞬时容量问题，不得映射 503）
-    stubFileWsHandler({
+    stubFileWsTransport({
       isFileWsConnected: () => true,
       sendFileOpAndWait: async () => {
         throw new BusyError("file-op busy: pending limit reached");
       },
     });
-    setConfig({ defaultMachineId: MACHINE_ID });
+    stubMachineConfig({ defaultMachineId: MACHINE_ID });
     stubMachineExists();
     await expect(gate(ENV_ID, authCtx).list("user")).rejects.toMatchObject({ type: "busy", statusCode: 429 });
   });
 
   test("机器端执行错误 → 503 且 message 不泄露机器细节", async () => {
     // 机器端 status:error 应映射 503，message 为模板化文案（机器内部错误只进日志）
-    stubFileWsHandler({
+    stubFileWsTransport({
       isFileWsConnected: () => true,
       sendFileOpAndWait: async () => ({ status: "error", error: "EACCES: /mnt/internal/secret-path" }),
     });
-    setConfig({ defaultMachineId: MACHINE_ID });
+    stubMachineConfig({ defaultMachineId: MACHINE_ID });
     stubMachineExists();
     const err = (await gate(ENV_ID, authCtx)
       .list("user")
@@ -399,7 +402,7 @@ describe("远程 RemoteBackend（stub file-ws）", () => {
 describe("门面统一错误映射与能力常量", () => {
   test("环境不可见（无归属）→ 404 not_found", async () => {
     // 归属校验：环境不存在或不属于该组织时映射 404（与 403 角色错误区分，W17 启用）
-    stubEnvironmentRepo({ getById: async () => null });
+    stubMachineEnvironmentRecord(null);
     await expect(gate(ENV_ID, authCtx).list("user")).rejects.toMatchObject({ type: "not_found", statusCode: 404 });
   });
 

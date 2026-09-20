@@ -4,7 +4,7 @@ import {
   RESOURCE_QUERY_CONSTRAINT_PAYLOAD,
   type ResourceQueryConstraint,
 } from "@fenix/platform-sdk";
-import { resetAllStubs, stubDb } from "@fenix/platform-sdk/testing";
+import { initializeTestApplicationInfrastructure, resetAllStubs, stubDb } from "@fenix/platform-sdk/testing";
 import { PROVIDER_RESOURCE_TYPE, providerResource } from "../server/access/provider-resource";
 import {
   createProviderRepository,
@@ -31,6 +31,23 @@ function testListConstraint(action: "read" | "use" = "read"): ResourceQueryConst
     provider: "test-access-control",
     [RESOURCE_QUERY_CONSTRAINT_PAYLOAD]: { action },
   };
+}
+
+/**
+ * 装配 DB 替身并初始化应用基础设施。
+ *
+ * 仓储经 `getModelManagementDatabase()` 读平台契约里的进程级句柄，未初始化时读取即抛错，因此
+ * 需要语句级替身的用例必须先走这一步。顺序即生产装配顺序：先登记句柄替身，再初始化基础设施
+ * ——基础设施持有的是**引用**，反转顺序会让仓储读到未初始化的状态。本包不读模块配置，
+ * `moduleConfigs` 留空。
+ *
+ * 前置 `resetAllStubs()` 而不是依赖 `afterEach`：初始化只允许一次，用例内先复位可让本文件单独
+ * 执行与全量执行的行为一致（避免上一条用例留下的已初始化状态把本用例变成「重复初始化」错误）。
+ */
+function installDbStub(stub: Record<string, unknown>): void {
+  resetAllStubs();
+  stubDb(stub);
+  initializeTestApplicationInfrastructure();
 }
 
 /** Provider 主表行的最小完整夹具；未列出的列按建表默认值补齐。 */
@@ -192,7 +209,7 @@ describe("Provider 仓储下推", () => {
   test("create 的冲突更新不写归属列", async () => {
     let conflictSet: Record<string, unknown> | undefined;
     let insertedValues: Record<string, unknown> | undefined;
-    stubDb({
+    installDbStub({
       insert: () => ({
         values: (values: Record<string, unknown>) => {
           insertedValues = values;
@@ -235,7 +252,7 @@ describe("Provider 仓储下推", () => {
   // 更新同样只写可写列：保存配置不得让资源换组织、换属主或改变公开受众。
   test("updateById 的写入负载不含归属列", async () => {
     let updatedSet: Record<string, unknown> | undefined;
-    stubDb({
+    installDbStub({
       update: () => ({
         set: (set: Record<string, unknown>) => {
           updatedSet = set;
@@ -261,7 +278,7 @@ describe("Provider 仓储下推", () => {
   // 无授权读取是显式的旁路：命名里带 Unscoped，只允许系统路径（模型网关同步、启动装配）调用。
   test("findByIdUnscoped 走无授权查询且不经过授权端口", async () => {
     const row = providerRow();
-    stubDb({ select: () => ({ from: () => ({ where: () => ({ limit: async () => [row] }) }) }) });
+    installDbStub({ select: () => ({ from: () => ({ where: () => ({ limit: async () => [row] }) }) }) });
     const { query, findInputs, listInputs } = createRecordingQuery();
     const repository = createProviderRepository(query);
 

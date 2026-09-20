@@ -7,9 +7,22 @@ import {
   listModelGatewayCredentialsAfter,
   upsertModelGatewayCredential,
 } from "@fenix/model-management/server";
-import { resetDbStub, stubDb } from "@fenix/platform-sdk/testing";
+import { initializeTestApplicationInfrastructure, resetAllStubs, stubDb } from "@fenix/platform-sdk/testing";
 
 const KEY = "a".repeat(32);
+
+/**
+ * 装配 DB 替身并初始化应用基础设施。
+ *
+ * 加密/解密三条用例是纯函数，不需要 DB；后两条走仓储，而仓储经 `getModelManagementDatabase()` 读
+ * 平台契约里的进程级句柄，未初始化时读取即抛错。顺序即生产装配顺序：先登记句柄替身，再初始化
+ * 基础设施——基础设施持有的是**引用**，反转顺序会让仓储读到未初始化的状态。
+ */
+function installDbStub(stub: Record<string, unknown>): void {
+  resetAllStubs();
+  stubDb(stub);
+  initializeTestApplicationInfrastructure();
+}
 
 describe("model gateway credential persistence", () => {
   // 验证 Virtual Key 使用独立 AES-256-GCM 密钥加密，并且密文格式可持久化。
@@ -57,7 +70,7 @@ describe("model gateway credential persistence", () => {
       metadata: { source: "test" },
     };
 
-    stubDb(createCredentialDbStub());
+    installDbStub(createCredentialDbStub());
     try {
       const created = await upsertModelGatewayCredential(subject);
       const repeated = await upsertModelGatewayCredential({ ...subject, encryptedCredential: "mgc1.replaced" });
@@ -72,7 +85,7 @@ describe("model gateway credential persistence", () => {
         }),
       ).toMatchObject({ id: created.id, status: "active" });
     } finally {
-      resetDbStub();
+      resetAllStubs();
     }
   });
 
@@ -91,7 +104,7 @@ describe("model gateway credential persistence", () => {
       metadata: {},
     };
 
-    stubDb(createCredentialDbStub(id));
+    installDbStub(createCredentialDbStub(id));
     try {
       await upsertModelGatewayCredential(subject);
       await deleteModelGatewayCredential(id);
@@ -102,7 +115,7 @@ describe("model gateway credential persistence", () => {
       const row = rows.find((item) => item.id === id);
       expect(row).toBeUndefined();
     } finally {
-      resetDbStub();
+      resetAllStubs();
     }
   });
 });

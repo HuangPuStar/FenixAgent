@@ -19,9 +19,9 @@
 
 import { getBoundCoreRuntime } from "@fenix/agent-runtime/server";
 import { createLogger, error as logError } from "@fenix/logger";
-import { config } from "@server/config";
-import type { FileWsConnectionEntry } from "@server/types/store";
+import { getMachineConfig } from "../config";
 import { writeRegistryEvent } from "../repositories/registry-event";
+import type { FileWsConnectionEntry } from "../transport/ws-types";
 import {
   type FileChangeKind,
   type FileChangeSource,
@@ -33,17 +33,30 @@ import { registerEnvironmentQueue } from "./file-event-queue";
 
 const logger = createLogger("file-machine-events");
 
-const deps = { writeRegistryEvent };
-const defaultDeps = { ...deps };
+/** 用例登记的替换值；`null` 表示全部走默认实现。 */
+let injected: Partial<{ writeRegistryEvent: typeof writeRegistryEvent }> | null = null;
+
+/**
+ * 依赖句柄用 getter 暴露：默认实现按**调用时**读取模块绑定。
+ *
+ * 本包处在 `machine → agent-runtime → sandbox → machine` 的既有环上（台账登记的方向性豁免，1.4 收敛），
+ * 顶层把导入的 `const` 读进对象字面量，会在环的另一侧入口加载时抛 TDZ（`Cannot access … before initialization`），
+ * 而宿主 preload 会加载本包，导致全仓测试一起失败。getter 不改调用点、不改依赖图，只推迟读取时机。
+ */
+const deps = {
+  get writeRegistryEvent(): typeof writeRegistryEvent {
+    return injected?.writeRegistryEvent ?? writeRegistryEvent;
+  },
+};
 
 /** 测试用：替换告警持久化，避免 file-WS 协议测试依赖真实数据库。 */
 export function setFileMachineEventDeps(overrides: Partial<typeof deps>): void {
-  Object.assign(deps, overrides);
+  injected = { ...injected, ...overrides };
 }
 
 /** 测试用：恢复默认依赖，防止模块级注入跨用例泄漏。 */
 export function resetFileMachineEventDeps(): void {
-  Object.assign(deps, defaultDeps);
+  injected = null;
 }
 
 /** 单机器可声明的环境数量上限；超限拒绝新声明并落库 registryEvent（管理面可见） */
@@ -176,7 +189,7 @@ export function registerMachineDeclaration(machineId: string, rawEnvs: unknown):
 export function handleFileWsRegisterIdentity(entry: FileWsConnectionEntry, machineId: string): boolean {
   const node = getBoundCoreRuntime()?.getNode(machineId);
   if (node) return false;
-  if (config.fileWsIdentityStrict) {
+  if (getMachineConfig().fileWsIdentityStrict) {
     logger.warn(`file-ws register rejected (unknown_machine): machineId=${machineId} wsId=${entry.wsId}`);
     writeEventWarning(machineId, "unknown_machine_rejected", { wsId: entry.wsId });
     try {

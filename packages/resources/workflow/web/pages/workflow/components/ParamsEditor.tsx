@@ -1,12 +1,11 @@
+import { Button } from "@fenix/ui-components/ui/button";
+import { Checkbox } from "@fenix/ui-components/ui/checkbox";
+import { Input } from "@fenix/ui-components/ui/input";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@fenix/ui-components/ui/select";
+import { Textarea } from "@fenix/ui-components/ui/textarea";
 import { Plus, Trash2 } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
-
-import { Button } from "@/components/ui/button";
-import { Checkbox } from "@/components/ui/checkbox";
-import { Input } from "@/components/ui/input";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Textarea } from "@/components/ui/textarea";
 
 export type ParamType = "string" | "number" | "boolean" | "object";
 
@@ -53,7 +52,9 @@ export function ParamsEditor({
   };
 
   const entriesLen = entries.length;
-  // Reset confirmation when the entry count changes.
+  // entriesLen 是「条目数变化即取消待确认的删除」的触发条件，不是 effect 读取的值：effect 体只调用
+  // setState 与清理定时器，因此按 biome 的建议删掉依赖会让已武装的删除确认跨条目变更存活下来。
+  // biome-ignore lint/correctness/useExhaustiveDependencies: entriesLen 是触发条件（条目数变化即重置二次确认），effect 体不读取它
   useEffect(() => {
     setConfirmDeleteKey(null);
     if (confirmTimerRef.current) {
@@ -265,7 +266,7 @@ export function ParamsEditor({
               variant="ghost"
               size="icon"
               onClick={() => handleDeleteClick(i)}
-              title={isConfirming ? t("components:confirm") : undefined}
+              title={isConfirming ? t("editor.delete_confirm_hint") : undefined}
               className={`size-6 ${isConfirming ? "bg-amber-50 text-red-500" : "text-gray-400"}`}
             >
               <Trash2 size={13} />

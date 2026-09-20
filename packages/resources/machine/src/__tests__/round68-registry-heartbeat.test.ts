@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
 import { resetAllStubs, stubDb } from "@fenix/platform-sdk/testing";
-import { registryRegistry, stubRegistry } from "@server/test-utils/stubs/module-stubs";
+import { initializeMachineModuleConfig } from "../server/testing";
 
 const heartbeat = await import("@fenix/resource-machine/server");
 
@@ -14,12 +14,10 @@ function stubHeartbeatPersistence() {
   return { update };
 }
 
+// 心跳持久化经包内句柄替换（heartbeat.setRegistryHeartbeatDeps）：用例在各自作用域内注入断言用的替身。
+// 初始化基础设施：正常心跳路径要读 DB（Sandbox 状态投影），未初始化会直接抛错。
 beforeEach(() => {
-  resetAllStubs();
-  heartbeat.setRegistryHeartbeatDeps({
-    markHeartbeatTimeout: (machineId: string) => registryRegistry.get("markHeartbeatTimeout")(machineId),
-    updateHeartbeat: (machineId: string) => registryRegistry.get("updateHeartbeat")(machineId),
-  });
+  initializeMachineModuleConfig();
 });
 
 afterEach(() => {
@@ -38,7 +36,7 @@ describe("registry 心跳生命周期", () => {
   test("超时后标记机器并执行一次清理回调", async () => {
     const markHeartbeatTimeout = mock(async () => {});
     const onTimeout = mock(() => {});
-    stubRegistry({ markHeartbeatTimeout, updateHeartbeat: async () => {} });
+    heartbeat.setRegistryHeartbeatDeps({ markHeartbeatTimeout, updateHeartbeat: async () => {} });
 
     heartbeat.startHeartbeat("machine-timeout", 2, onTimeout);
     await wait(30);
@@ -53,7 +51,7 @@ describe("registry 心跳生命周期", () => {
       throw new Error("database unavailable");
     });
     const onTimeout = mock(() => {});
-    stubRegistry({ markHeartbeatTimeout, updateHeartbeat: async () => {} });
+    heartbeat.setRegistryHeartbeatDeps({ markHeartbeatTimeout, updateHeartbeat: async () => {} });
 
     heartbeat.startHeartbeat("machine-timeout-error", 2, onTimeout);
     await wait(30);
@@ -68,7 +66,7 @@ describe("registry 心跳生命周期", () => {
     const markHeartbeatTimeout = mock(async () => {});
     const onTimeout = mock(() => {});
     const { update } = stubHeartbeatPersistence();
-    stubRegistry({ markHeartbeatTimeout, updateHeartbeat });
+    heartbeat.setRegistryHeartbeatDeps({ markHeartbeatTimeout, updateHeartbeat });
 
     heartbeat.startHeartbeat("machine-refresh", 20, onTimeout);
     await wait(10);
@@ -89,7 +87,7 @@ describe("registry 心跳生命周期", () => {
     const markHeartbeatTimeout = mock(async () => {});
     const oldTimeout = mock(() => {});
     const latestTimeout = mock(() => {});
-    stubRegistry({ markHeartbeatTimeout, updateHeartbeat: async () => {} });
+    heartbeat.setRegistryHeartbeatDeps({ markHeartbeatTimeout, updateHeartbeat: async () => {} });
 
     heartbeat.startHeartbeat("machine-replaced", 5, oldTimeout);
     heartbeat.startHeartbeat("machine-replaced", 5, latestTimeout);
@@ -103,7 +101,7 @@ describe("registry 心跳生命周期", () => {
   // 主动断开机器或重复停止巡检时，都应安全释放已登记的本地定时资源。
   test("停止心跳和巡检可重复调用且不会触发清理", async () => {
     const onTimeout = mock(() => {});
-    stubRegistry({ markHeartbeatTimeout: async () => {}, updateHeartbeat: async () => {} });
+    heartbeat.setRegistryHeartbeatDeps({ markHeartbeatTimeout: async () => {}, updateHeartbeat: async () => {} });
 
     heartbeat.startHeartbeat("machine-stopped", 5, onTimeout);
     heartbeat.stopHeartbeat("machine-stopped");

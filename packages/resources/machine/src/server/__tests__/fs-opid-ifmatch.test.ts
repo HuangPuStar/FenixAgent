@@ -8,20 +8,28 @@ import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { resetAllStubs, stubDb } from "@fenix/platform-sdk/testing";
-import { setConfig } from "@server/config";
-import { resetTestAuth, setTestAuth } from "@server/plugins/auth";
-import { stubEnvironmentRepo, stubFileWsHandler } from "@server/test-utils/stubs/module-stubs";
+import { stubDb } from "@fenix/platform-sdk/testing";
+import { createStubSessionAuthGuardPlugin, resetTestAuth, setTestAuth } from "../../__tests__/guard-stubs";
+import { createWebFsRoutes } from "../routes/web/fs";
 import { resolveWorkspacePath } from "../services/workspace-fs";
+import {
+  initializeMachineModuleConfig,
+  lockMachineWorkspaceRoot,
+  stubFileWsTransport,
+  stubMachineConfig,
+  stubMachineEnvironmentRecord,
+  unlockMachineWorkspaceRoot,
+} from "../testing";
 
 const ORG_ID = "org-1";
 const USER_ID = "user-1";
 const ENV_ID = "env-1";
 const MACHINE_ID = "mach_1";
 
-// 动态 import 路由模块。environmentRepo / file-ws-handler 的 mock 是实时转发
-// （setup-mocks.ts），属性访问总是转发到当前 stub，beforeEach 注入即可。
-const fsRoutes = await import("../../routes/web/fs");
+// 路由实例文件级构造一次：会话守卫替身按请求期读取当前会话（setTestAuth 即时生效）；
+// 环境读取与 file-ws 传输经包内句柄替换（stubMachineEnvironmentRecord / stubFileWsTransport）
+// 按调用时读取，beforeEach 或用例内注入即可。
+const fsRoutes = createWebFsRoutes({ authGuardPlugin: createStubSessionAuthGuardPlugin() });
 
 let workspaceRoot: string;
 
@@ -33,14 +41,12 @@ function stubAuth() {
 }
 
 function stubEnvironment() {
-  stubEnvironmentRepo({
-    getById: async () => ({ id: ENV_ID, organizationId: ORG_ID, userId: USER_ID }),
-  });
+  stubMachineEnvironmentRecord({ id: ENV_ID, organizationId: ORG_ID, userId: USER_ID });
 }
 
 /** 直连路由 handle（会话认证由 setTestAuth 注入） */
 function handle(path: string, init?: RequestInit): Promise<Response> {
-  return fsRoutes.default.handle(new Request(`http://localhost/environments/${ENV_ID}${path}`, init));
+  return fsRoutes.handle(new Request(`http://localhost/environments/${ENV_ID}${path}`, init));
 }
 
 /** 经 resolveWorkspacePath 写入（其会先 mkdir user 作用域目录，保证父目录存在） */
@@ -68,19 +74,18 @@ async function currentEtag(path: string): Promise<string> {
 }
 
 beforeEach(async () => {
-  resetAllStubs();
+  initializeMachineModuleConfig();
   stubEnvironment();
   stubAuth();
   workspaceRoot = await mkdtemp(join(tmpdir(), "fs-opid-ifmatch-"));
-  process.env.WORKSPACE_ROOT = workspaceRoot;
-  setConfig({ defaultMachineId: undefined });
+  await lockMachineWorkspaceRoot(workspaceRoot);
 });
 
 afterEach(async () => {
   resetTestAuth();
   delete process.env.WORKSPACE_ROOT;
+  unlockMachineWorkspaceRoot();
   await rm(workspaceRoot, { recursive: true, force: true });
-  setConfig({ defaultMachineId: undefined });
 });
 
 describe("X-File-Op-Id 回显（§7.2）", () => {
@@ -223,8 +228,8 @@ describe("远程环境（stub file-ws）：op_id 帧透传 + remoteStat 比对",
     stubDb({
       select: () => ({ from: () => ({ where: () => ({ limit: async () => [{ id: MACHINE_ID }] }) }) }),
     });
-    stubFileWsHandler({ isFileWsConnected: () => true });
-    setConfig({ defaultMachineId: MACHINE_ID });
+    stubFileWsTransport({ isFileWsConnected: () => true });
+    stubMachineConfig({ defaultMachineId: MACHINE_ID });
   });
 
   /** 记录 file_op 调用的 stub：stat 返回固定版本（size=5, modifiedAt=1000），
@@ -247,7 +252,7 @@ describe("远程环境（stub file-ws）：op_id 帧透传 + remoteStat 比对",
         throw new Error(`unexpected operation: ${operation}`);
       },
     );
-    stubFileWsHandler({ isFileWsConnected: () => true, sendFileOpAndWait: sendFileOpMock });
+    stubFileWsTransport({ isFileWsConnected: () => true, sendFileOpAndWait: sendFileOpMock });
     return calls;
   }
 

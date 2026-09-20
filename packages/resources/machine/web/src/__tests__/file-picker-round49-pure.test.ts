@@ -1,5 +1,11 @@
+// MCP 资源访问纯逻辑的补充覆盖（本包文件选择器会按 MCP 视图项展示共享资源标签，因此把这批边界
+// 断言留在本包：跨包模块的授权视图行为一旦回退，这里先红）。
+//
+// 归属：`mcp-resource-access` 的实现与视图类型归 `@fenix/resource-mcp`（§6.5 的共享 web 模块裁决），
+// 本文件只做消费方断言，走对方**包根入口**——`@fenix/resource-mcp/web/lib/mcp-resource-access` 这类
+// 深层路径会把对方的内部目录变成事实契约，实现目录一挪就断。
 import { describe, expect, test } from "bun:test";
-import type { McpResourceLike } from "@/src/lib/mcp-resource-access";
+import type { McpResourceLike } from "@fenix/resource-mcp/web";
 import {
   canManageMcpSharing,
   canWriteMcp,
@@ -8,7 +14,7 @@ import {
   getMcpKey,
   getMcpLookupKey,
   getMcpResourceBadgeKey,
-} from "@/src/lib/mcp-resource-access";
+} from "@fenix/resource-mcp/web";
 
 /** 本组织可写 MCP 的 `/web` 视图字段：key 由归属组织与资源 id 派生，权限只看 access.actions。 */
 const ownedMcp: McpResourceLike = {

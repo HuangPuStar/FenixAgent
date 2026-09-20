@@ -1,14 +1,12 @@
 import { afterAll, afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
-import { resetAllStubs } from "@fenix/platform-sdk/testing";
-import { setConfig } from "@server/config";
-import { registryRegistry, stubCoreBootstrap, stubRegistry } from "@server/test-utils/stubs/module-stubs";
-import { resetFileMachineEventDeps, setFileMachineEventDeps } from "../services/file-machine-events";
+import { setFileMachineEventDeps } from "../services/file-machine-events";
+import { initializeMachineModuleConfig, stubMachineConfig } from "../testing";
 import type { WsConnection } from "../transport/ws-types";
+import { bindStubCoreRuntime, restoreCoreRuntimePort } from "./core-runtime-stub";
 
-// file-ws-handler 由 setup-mocks preload 部分 mock（仅 isFileWsConnected /
-// sendFileOpAndWait 可 stub，未配置时回退真实实现），本测试动态 import 后使用真实
-// register 对账逻辑；core-bootstrap 的 getCoreRuntime 与 registry 的 writeRegistryEvent
-// 经 stubCoreBootstrap / stubRegistry 注入（lazy mock，调用时解析）。
+// 本测试使用真实的 register 对账逻辑（动态 import ../transport/file-ws-handler）：
+// core runtime 的对账查询经 agent-runtime 的绑定端口替换（core-runtime-stub），
+// registry 的 writeRegistryEvent 经包内句柄 setFileMachineEventDeps 替换。
 // 告警断言走 registry_event 落库（§7.4 可观测）：测试模式下 pino level=silent，
 // logger.warn 无输出，registryEvent 是唯一可断言的告警通道（与 W7 测试同模式）。
 // 模块级连接状态在 beforeEach/afterEach 通过 closeAllFileWsConnections 清理。
@@ -42,16 +40,15 @@ function sentTypes(ws: WsConnection & { _messages: string[] }): string[] {
 }
 
 beforeEach(async () => {
-  resetAllStubs();
-  setFileMachineEventDeps({ writeRegistryEvent: (...args) => registryRegistry.get("writeRegistryEvent")(...args) });
+  initializeMachineModuleConfig();
   const handler = await import("../transport/file-ws-handler");
   handler.closeAllFileWsConnections();
-  resetFileMachineEventDeps();
 });
 
 afterEach(async () => {
-  // 恢复宽松默认：config 为模块级共享对象，严格模式用例必须复位避免泄漏
-  setConfig({ fileWsIdentityStrict: undefined });
+  // 还原端口绑定：宿主 preload 已绑定转发到宿主替身注册表的端口，留下替身会让后续
+  // 测试文件看到空的 registerRemoteNode / unregisterRemoteNode 而静默失真
+  restoreCoreRuntimePort();
   const handler = await import("../transport/file-ws-handler");
   handler.closeAllFileWsConnections();
 });
@@ -65,11 +62,10 @@ describe("W11 身份绑定（§7.1，P2-14）", () => {
   test("严格模式 + 未知 machine（getNode 为 null）：close 4404 且不注册、不广播 registered", async () => {
     // 对账查询面是 core runtime node 注册（registerRemoteNode 产物）：getNode 查无此机
     // → 严格模式必须 close(4404, "unknown_machine")，不得登记进 machineFileWsIndex
-    stubCoreBootstrap({ getCoreRuntime: () => ({ getNode: () => null }) });
+    bindStubCoreRuntime({ getNode: () => null });
     const registryEventSpy = mock(async () => {});
-    stubRegistry({ writeRegistryEvent: registryEventSpy });
     setFileMachineEventDeps({ writeRegistryEvent: registryEventSpy });
-    setConfig({ fileWsIdentityStrict: true });
+    stubMachineConfig({ fileWsIdentityStrict: true });
     const handler = await import("../transport/file-ws-handler");
 
     const ws = openWs(handler, "ws_strict_unknown");
@@ -88,13 +84,10 @@ describe("W11 身份绑定（§7.1，P2-14）", () => {
   test("严格模式 + 已知 machine（getNode 有值）：正常注册放行", async () => {
     // 对账通过（该 machine 已完成 acp-ws 注册链，node 存在于 core runtime）→
     // 严格模式下也必须放行：不得误杀合法机器
-    stubCoreBootstrap({
-      getCoreRuntime: () => ({ getNode: () => ({ id: "mach_known", mode: "remote", status: "online" }) }),
-    });
+    bindStubCoreRuntime({ getNode: () => ({ id: "mach_known", mode: "remote", status: "online" }) });
     const registryEventSpy = mock(async () => {});
-    stubRegistry({ writeRegistryEvent: registryEventSpy });
     setFileMachineEventDeps({ writeRegistryEvent: registryEventSpy });
-    setConfig({ fileWsIdentityStrict: true });
+    stubMachineConfig({ fileWsIdentityStrict: true });
     const handler = await import("../transport/file-ws-handler");
 
     const ws = openWs(handler, "ws_strict_known");
@@ -110,9 +103,8 @@ describe("W11 身份绑定（§7.1，P2-14）", () => {
   test("宽松模式（默认）+ 未知 machine：放行注册 + 告警落库", async () => {
     // 两阶段过渡软开关默认 false：getNode 查无此机（含服务端重启后 file-ws 先于
     // acp-ws 到达的时序窗口）时放行 + 告警，不硬阻塞旧机器端
-    stubCoreBootstrap({ getCoreRuntime: () => ({ getNode: () => null }) });
+    bindStubCoreRuntime({ getNode: () => null });
     const registryEventSpy = mock(async () => {});
-    stubRegistry({ writeRegistryEvent: registryEventSpy });
     setFileMachineEventDeps({ writeRegistryEvent: registryEventSpy });
     const handler = await import("../transport/file-ws-handler");
 
@@ -131,8 +123,8 @@ describe("W11 身份绑定（§7.1，P2-14）", () => {
 
   test("宽松模式（显式 false）+ 未知 machine：行为与默认一致", async () => {
     // 显式 RCS_FILE_WS_IDENTITY_STRICT=false 时同样放行，覆盖 env 显式配置路径
-    stubCoreBootstrap({ getCoreRuntime: () => undefined });
-    setConfig({ fileWsIdentityStrict: false });
+    bindStubCoreRuntime(null);
+    stubMachineConfig({ fileWsIdentityStrict: false });
     const handler = await import("../transport/file-ws-handler");
 
     const ws = openWs(handler, "ws_lenient_explicit");

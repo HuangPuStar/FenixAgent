@@ -1,21 +1,25 @@
 // src/__tests__/api-system-observer-links.test.ts
-// GET /api/system/observer/acp-link 的鉴权 / 结构 / integrity 单测（实现计划 §6.2，文档 §7.2）。
+// GET /api/system/observer/acp-link 的结构 / integrity 单测（实现计划 §6.2，文档 §7.2）。
 //
-// 基建约定：process.env.RCS_SYSTEM_API_KEYS 在 beforeEach 设置、afterEach 恢复；
-// setObserverServiceDeps(fake) 注入来源（getEnvironment 走默认 → stubEnvironmentRepo 控制权威表）；
-// 直接对路由 app 发 Request 断言状态码与响应结构。
+// 基建约定：`setObserverServiceDeps(fake)` 注入来源与权威回查（environment 也走同一 seam 的
+// `getEnvironment`），直接对路由 app 发 Request 断言状态码与响应结构。
+// 鉴权不在本文件覆盖：守卫由宿主注入，包内只能注入放行替身（见 `./guard-stubs`）。
 
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { resetAllStubs } from "@fenix/platform-sdk/testing";
-import type { AcpConnectionSnapshot } from "@server/types/store";
+import { createApiSystemObserverRoutes } from "../server/routes/api/system-observer";
 import {
+  type AcpConnectionSnapshot,
   acpLinkProvider,
-  type ObserverServiceDeps,
   observerService,
   setObserverServiceDeps,
 } from "../server/services/observer";
+import { createStubSystemApiGuardPlugin } from "./guard-stubs";
+import { makeFakeDeps } from "./observer-fixtures";
 
-const apiSystemObserverRoutes = (await import("../server/routes/api/system-observer")).default;
+const apiSystemObserverRoutes = createApiSystemObserverRoutes({
+  systemApiGuardPlugin: createStubSystemApiGuardPlugin(),
+});
 
 function request(path: string, init?: RequestInit) {
   return apiSystemObserverRoutes.handle(new Request(`http://localhost${path}`, init));
@@ -36,65 +40,23 @@ function makeMachine(overrides: Partial<AcpConnectionSnapshot> = {}): AcpConnect
   };
 }
 
-/** 默认 fake deps：来源为空、machine 解析为空、名称解析为空；测试按需覆盖。 */
-function makeFakeDeps(overrides: Partial<ObserverServiceDeps> = {}): Partial<ObserverServiceDeps> {
-  return {
-    listAcpWsConnections: () => [],
-    listExternalRelayEntries: () => [],
-    listChatClients: () => [],
-    getAgentConfigById: async () => null,
-    getDefaultMachineId: () => null,
-    getInstanceName: async () => undefined,
-    listOrganizationNamesByIds: async () => new Map(),
-    listUserNamesByIds: async () => new Map(),
-    listAgentConfigNamesByIds: async () => new Map(),
-    listMachineNamesByIds: async () => new Map(),
-    ...overrides,
-  };
-}
-
 describe("API System Observer", () => {
-  const originalKeys = process.env.RCS_SYSTEM_API_KEYS;
-
   beforeEach(() => {
     resetAllStubs();
-    process.env.RCS_SYSTEM_API_KEYS = "sys-key-1";
     setObserverServiceDeps(makeFakeDeps());
   });
 
   afterEach(() => {
     setObserverServiceDeps(null);
-    process.env.RCS_SYSTEM_API_KEYS = originalKeys;
-    // test 5 摘除了 acp-link provider，复位时重新注册，避免影响后续用例
+    // 下方的用例摘除了 acp-link provider，复位时重新注册，避免影响后续用例
     observerService.register(acpLinkProvider);
   });
 
-  // 未携带系统级 key 时，系统观察面应拒绝访问。
-  test("无 key 请求返回 401", async () => {
-    const res = await request("/api/system/observer/acp-link");
-    const json = await res.json();
-    expect(res.status).toBe(401);
-    expect(json).toEqual({ error: { code: "UNAUTHORIZED", message: "Invalid system API key" } });
-  });
-
-  // 错误 key / 错误 query token 同样应被拒绝。
-  test("错 key 与错 query token 返回 401", async () => {
-    const headerRes = await request("/api/system/observer/acp-link", {
-      headers: { Authorization: "Bearer wrong-key" },
-    });
-    expect(headerRes.status).toBe(401);
-
-    const queryRes = await request("/api/system/observer/acp-link?token=wrong-key");
-    expect(queryRes.status).toBe(401);
-  });
-
-  // 有效 key + fake deps：返回 { success, data }，data 含 kind/total/trees.{byEntity,byOrg}/integrity。
-  test("有效 key 返回 acp-link 观察视图", async () => {
+  // fake deps 下返回 { success, data }，data 含 kind/total/trees.{byEntity,byOrg}/integrity。
+  test("返回 acp-link 观察视图", async () => {
     setObserverServiceDeps(makeFakeDeps({ listAcpWsConnections: () => [makeMachine()] }));
 
-    const res = await request("/api/system/observer/acp-link", {
-      headers: { Authorization: "Bearer sys-key-1" },
-    });
+    const res = await request("/api/system/observer/acp-link");
     expect(res.status).toBe(200);
     const json = (await res.json()) as {
       success: boolean;
@@ -128,9 +90,7 @@ describe("API System Observer", () => {
   test("integrity 命中：mismatched 与 mismatchedItems", async () => {
     setObserverServiceDeps(makeFakeDeps({ listAcpWsConnections: () => [makeMachine({ machineId: null })] }));
 
-    const res = await request("/api/system/observer/acp-link", {
-      headers: { Authorization: "Bearer sys-key-1" },
-    });
+    const res = await request("/api/system/observer/acp-link");
     expect(res.status).toBe(200);
     const json = (await res.json()) as {
       data: { integrity: { checked: number; mismatched: number; mismatchedItems: { kind: string; id: string }[] } };
@@ -144,9 +104,7 @@ describe("API System Observer", () => {
   test("Provider 摘除后请求返回 404", async () => {
     observerService.unregister("acp-link");
 
-    const res = await request("/api/system/observer/acp-link", {
-      headers: { Authorization: "Bearer sys-key-1" },
-    });
+    const res = await request("/api/system/observer/acp-link");
     expect(res.status).toBe(404);
     const json = (await res.json()) as { error: { code: string } };
     expect(json.error.code).toBe("NOT_FOUND");

@@ -1,47 +1,23 @@
-import type { ApiSystemPagination, ApiSystemUserRecord } from "@fenix/platform-sdk";
+import type { ApiSystemUserRecord } from "@fenix/platform-sdk";
 import { getIdentityDirectory } from "@fenix/platform-sdk/server";
-import { db } from "@server/db";
-import { agentConfig } from "@server/db/schema";
-import { and, ilike, or } from "drizzle-orm";
+import {
+  type ModelGatewaySubjectAgent,
+  type SubjectSearchInput,
+  searchAgentConfigs,
+} from "../repositories/subject-agent-search";
 
-export interface ModelGatewaySubjectAgent {
-  id: string;
-  name: string;
-  organizationId: string;
-  userId: string;
-}
+/**
+ * 管理端主体检索：用户走身份目录，Agent 走本包仓储的只读投影。
+ *
+ * 本文件不接触 DB 句柄：1.3 要求 repository 是包内唯一数据访问点，Agent 检索的 SQL 已在
+ * `../repositories/subject-agent-search`，这里只做分页适配与依赖装配（测试可整体替换两个检索函数）。
+ */
 
-export interface SubjectSearchInput extends ApiSystemPagination {
-  keyword?: string;
-  organizationId?: string;
-  userId?: string;
-}
+export type { ModelGatewaySubjectAgent, SubjectSearchInput } from "../repositories/subject-agent-search";
 
 export interface ModelGatewaySubjectServiceDeps {
   findUsers: (input: SubjectSearchInput) => Promise<ApiSystemUserRecord[]>;
   listAgents: (input: SubjectSearchInput) => Promise<ModelGatewaySubjectAgent[]>;
-}
-
-async function queryAgents(input: SubjectSearchInput): Promise<ModelGatewaySubjectAgent[]> {
-  const conditions = [];
-  if (input.organizationId) conditions.push(ilike(agentConfig.organizationId, input.organizationId));
-  if (input.userId) conditions.push(ilike(agentConfig.userId, input.userId));
-  if (input.keyword?.trim()) {
-    const keyword = `%${input.keyword.trim()}%`;
-    conditions.push(or(ilike(agentConfig.name, keyword), ilike(agentConfig.id, keyword)));
-  }
-  const rows = await db
-    .select({
-      id: agentConfig.id,
-      name: agentConfig.name,
-      organizationId: agentConfig.organizationId,
-      userId: agentConfig.userId,
-    })
-    .from(agentConfig)
-    .where(conditions.length > 0 ? and(...conditions) : undefined)
-    .limit(input.pageSize)
-    .offset((input.page - 1) * input.pageSize);
-  return rows;
 }
 
 /**
@@ -58,7 +34,7 @@ async function searchUsersViaDirectory(input: SubjectSearchInput): Promise<ApiSy
 export function createModelGatewaySubjectService(deps: Partial<ModelGatewaySubjectServiceDeps> = {}) {
   const resolved = {
     findUsers: deps.findUsers ?? searchUsersViaDirectory,
-    listAgents: deps.listAgents ?? queryAgents,
+    listAgents: deps.listAgents ?? searchAgentConfigs,
   };
   return {
     async searchUsers(input: SubjectSearchInput): Promise<{

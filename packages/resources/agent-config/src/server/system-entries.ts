@@ -1,5 +1,4 @@
-import type { AuthContext } from "@server/plugins/auth";
-import { toActorContext } from "@server/plugins/auth";
+import type { ActorContext } from "@fenix/platform-sdk";
 import type { AgentConfigRow } from "./repositories/agent-config-resource";
 import { getAgentConfigModule } from "./runtime";
 import type { AgentConfigDetailWithAccess } from "./services/config/types";
@@ -15,9 +14,11 @@ import type { AgentConfigDetailWithAccess } from "./services/config/types";
  *   站点绑定校验）。这些路径已经持有环境 / 实例 ID 并校验过归属，再要求一个 actor 只会导致调用方
  *   伪造身份。
  * - {@link getReadableAgentConfigById}：**按组织可见性**读取，语义与迁移前的 `canReadResource`
- *   一致（归属组织相同，或资源对其他组织公开可读）。迁移期兼容入口：宿主与 agent-runtime 中多处
- *   调用点仍以 `AuthContext` 形式传上下文，本函数把转换收敛在一处（`toActorContext`），1.2 不改造
- *   那些调用方；它们全部只用于读，不构成权限提升。
+ *   一致（归属组织相同，或资源对其他组织公开可读）。
+ *
+ * 二者都不接受宿主的 `AuthContext`：主体转换（宿主 `toActorContext`）属宿主边界，包侧只接收已经
+ * 转换好的 `ActorContext`（§6.4「`toActorContext` → 宿主边界转换」）。调用方原本持有 `AuthContext`
+ * 时，转换点应收敛在调用方一侧，本包不替它解释 `role` 与成员关系。
  */
 
 /**
@@ -37,13 +38,14 @@ export async function getAgentConfigById(id: string, organizationId?: string): P
  * 按资源 ID 读取当前主体可读的 Agent 配置。
  *
  * 读动作对所有成员开放（`memberDefaultActions` 含 `read`），公开资源对所有已认证用户开放
- * （`publicDefaultActions` 含 `read`），因此即便 `ctx` 里的角色信息来自调用方构造，本路径也不会
- * 授予超出"读"的能力。
+ * （`publicDefaultActions` 含 `read`），因此即便 `actor` 里的角色信息来自调用方构造，本路径也不会
+ * 授予超出"读"的能力。调用方必须传入宿主边界已转换的 `ActorContext`：没有 `activeOrganizationId`
+ * 或没有对应成员关系的主体读不到任何组织资源（`facade.getById` 按 `scope` 判定）。
  */
 export async function getReadableAgentConfigById(
-  ctx: AuthContext,
+  actor: ActorContext,
   id: string,
 ): Promise<AgentConfigDetailWithAccess | null> {
-  const authorized = await getAgentConfigModule().facade.getById(toActorContext(ctx), id);
+  const authorized = await getAgentConfigModule().facade.getById(actor, id);
   return authorized ?? null;
 }

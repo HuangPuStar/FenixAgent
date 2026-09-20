@@ -1,14 +1,29 @@
-/** Machine 资源包服务端公开入口。 */
+/**
+ * Machine 资源包服务端公开入口。
+ *
+ * 依赖方向：宿主 `apps/server`、`@fenix/agent-runtime` 与 `@fenix/resource-sandbox` 是合法消费者；路由一律
+ * 以工厂形式导出，认证守卫由宿主注入（理由见 `./server/routes/dependencies`）。本入口不导出浏览器代码，也不
+ * 导出测试替身（替身在 `./server/testing`）。
+ */
 
-export { default as apiWorkspaceRoutes } from "./routes/api/workspaces";
-export { default as webFileEventsRoutes } from "./routes/web/file-events";
-export { default as webFsRoutes } from "./routes/web/fs";
-export { default as webRegistryRoutes } from "./routes/web/registry";
+export * from "./schemas/api-workspace.schema";
 export * from "./schemas/file.schema";
 export * from "./schemas/file-events.schema";
 export * from "./schemas/registry.schema";
+export type { MachineModuleConfig } from "./server/config";
+export { getMachineConfig } from "./server/config";
+export { getMachineDatabase, type MachineDatabase } from "./server/db";
 export * from "./server/repositories/agent-machine";
 export * from "./server/repositories/machine-repository";
+export { createApiWorkspaceRoutes } from "./server/routes/api/workspaces";
+export type {
+  MachineRequestAuthResult,
+  WebFileEventsRouteDependencies,
+  WebMachineRouteDependencies,
+} from "./server/routes/dependencies";
+export { createWebFileEventsRoutes } from "./server/routes/web/file-events";
+export { contentDispositionAttachment, createWebFsRoutes } from "./server/routes/web/fs";
+export { createWebRegistryRoutes } from "./server/routes/web/registry";
 export * from "./server/services/agent-file-service";
 export * from "./server/services/api-workspace";
 export * from "./server/services/file-backends";

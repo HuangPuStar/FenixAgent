@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, test } from "bun:test";
-import { createWebSandboxPoolsRoutes } from "../routes/web/sandbox-pools";
+import { createWebSandboxPoolsRoutes } from "../server/routes/web/sandbox-pools";
 import { initializeSandboxModuleConfig } from "../server/testing";
 import { createStubSessionAuthGuardPlugin } from "./guard-stubs";
 

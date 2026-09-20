@@ -435,6 +435,25 @@
   margin-top: 8px;
 }
 
+/* 列表加载失败的持久分支：与空态同一套留白（空态是同尺寸的另一分支），但文案用强色以区别于「暂无任务」。 */
+.task-load-error {
+  display: grid;
+  min-height: 230px;
+  place-content: center;
+  justify-items: center;
+  gap: 8px;
+  color: var(--task-faint);
+  text-align: center;
+}
+.task-load-error strong {
+  color: var(--task-ink);
+  font-size: 14px;
+}
+.task-load-error p {
+  max-width: 460px;
+  font-size: 10px;
+}
+
 @media (max-width: 900px) {
   .task-runtime-board > header {
     align-items: flex-start;

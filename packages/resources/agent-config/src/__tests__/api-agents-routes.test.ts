@@ -6,9 +6,9 @@ import {
   installSkillServerModule,
   resetSkillServerModuleForTesting,
 } from "@fenix/resource-skill/server/testing";
-import { resetTestAuth, setTestAuth } from "@server/plugins/auth";
-import { setTestOrgContext } from "@server/services/org-context";
+import { createApiAgentsRoutes } from "../server/routes/api/agents";
 import { authorizedAgent, installAgentModuleStub, resetAgentModuleStub } from "./fixtures";
+import { createStubSessionAuthGuardPlugin, resetTestAuth, setTestAuth } from "./guard-stubs";
 
 /**
  * `/api/agents` 对外已发布合同的用例（S4 接缝迁移）。
@@ -18,9 +18,12 @@ import { authorizedAgent, installAgentModuleStub, resetAgentModuleStub } from ".
  *
  * Skill 名称解析经 `resolveSkillIds` → Skill 资源模块的 Facade（`skill-directory.ts`），因此名称→ID
  * 的解析用 Skill 模块替身表达，不再用配置服务桩。
+ *
+ * 路由改工厂后由包内守卫替身注入会话（迁移前读宿主 `setTestAuth` / `setTestOrgContext`）：主体一律是
+ * 平台 `ActorContext`，用例断言里出现的 `activeOrganizationId` / `userId` 就是宿主注入的内容。
  */
 
-const apiAgentsRoute = (await import("../server/routes/api/agents")).default;
+const apiAgentsRoute = createApiAgentsRoutes({ authGuardPlugin: createStubSessionAuthGuardPlugin() });
 
 function request(path: string, init?: RequestInit) {
   return apiAgentsRoute.handle(new Request(`http://localhost${path}`, init));
@@ -54,11 +57,7 @@ describe("API Agents Routes", () => {
     resetAllStubs();
     resetAgentModuleStub();
     resetSkillServerModuleForTesting();
-    setTestAuth({
-      user: { id: "user-1", email: "user@test.com", name: "Tester" },
-      authContext: { organizationId: "org-1", userId: "user-1", role: "owner" },
-    });
-    setTestOrgContext({ organizationId: "org-1", userId: "user-1", role: "owner" });
+    setTestAuth({ organizationId: "org-1", userId: "user-1" });
     installAgentModuleStub({
       facade: {
         list: async () => ({ items: [], total: 0 }),
@@ -72,7 +71,6 @@ describe("API Agents Routes", () => {
     resetAgentModuleStub();
     resetSkillServerModuleForTesting();
     resetTestAuth();
-    setTestOrgContext(null);
   });
 
   // 列表接口应返回当前调用方可读的 Agent，包含本组织和外部共享资源。

@@ -1,4 +1,5 @@
 import { useOrg } from "@fenix/identity/web";
+import type { AgentInfo } from "@fenix/web-runtime/types/config";
 import { useNavigate } from "@tanstack/react-router";
 import { useRequest } from "ahooks";
 import { Bot, Loader2, Plus, Search, Sparkles } from "lucide-react";
@@ -15,7 +16,6 @@ import { NS } from "@/src/i18n";
 import { AgentFormDialog } from "@/src/pages/agent-panel/agent-editor/AgentFormDialog";
 import { getAgentConfigLookupKey, getAgentDisplayName, isExternalAgent } from "../../../lib/agent-resource-access";
 import { useConfigChangeListener } from "../../../lib/config-events";
-import type { AgentInfo } from "../../../types/config";
 
 interface AgentManageNode {
   agent: AgentInfo;

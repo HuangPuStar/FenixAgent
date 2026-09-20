@@ -3,6 +3,7 @@ import { access, mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { resetAllStubs, stubDb } from "@fenix/platform-sdk/testing";
+import { initializeWorkflowModuleConfig } from "../server/testing";
 
 // @ts-expect-error Bun query import 会加载独立的真实仓储实例，同时 ../db 仍由 preload stubDb Proxy 隔离。
 const workflowDef = await import("../server/repositories/workflow-def?round72");
@@ -40,7 +41,7 @@ function workflowRow(overrides: Record<string, unknown> = {}) {
   };
 }
 
-beforeEach(resetAllStubs);
+beforeEach(initializeWorkflowModuleConfig);
 afterEach(async () => {
   resetAllStubs();
   await Promise.all(temporaryDirectories.splice(0).map((directory) => rm(directory, { force: true, recursive: true })));

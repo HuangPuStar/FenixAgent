@@ -1,14 +1,14 @@
+import { envApi } from "@fenix/agent-runtime/web/api/environments";
+import { cn } from "@fenix/ui-components/lib/cn";
+import { Button } from "@fenix/ui-components/ui/button";
+import { unwrap } from "@fenix/web-runtime/api/request";
+import { NS } from "@fenix/web-runtime/i18n/namespace";
 import { useNavigate } from "@tanstack/react-router";
 import { AlertCircle, ExternalLink, Globe, Loader2, RefreshCw } from "lucide-react";
 import QRCode from "qrcode";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
-import { Button } from "@/components/ui/button";
-import { envApi } from "@/src/api/environments";
-import { unwrap } from "@/src/api/request";
-import { NS } from "@/src/i18n";
-import { cn } from "@/src/lib/utils";
 
 export interface SiteFrameProps {
   /** 远程 app id（形如 app-xxxx），拼接到同源根路径展示业务前端 */
@@ -93,6 +93,7 @@ export function SiteFrame({ remoteAppId, name, createdByAgentConfigId, createdBy
   // onLoad 触发后清除。src 在组件实例内是常量（父组件用 key={remoteAppId} 重挂载），
   // 变化等同整个组件重挂载，effect 自然重新执行，故不列入依赖。
   // reloadKey 是 reload 信号，effect 内部不需要直接引用。
+  // biome-ignore lint/correctness/useExhaustiveDependencies: reloadKey 是刻意的重触发信号（用户点刷新后重启超时定时器），规则看不到「依赖变化即重启」的意图，移除依赖会丢失刷新语义；源文件位于 apps/web 时未声明 react 依赖、规则未启用。
   useEffect(() => {
     setLoadState("loading");
     timerRef.current = setTimeout(() => {

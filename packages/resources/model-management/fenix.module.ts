@@ -21,14 +21,16 @@ import type { ModuleManifest } from "@fenix/platform-sdk";
  * `DocManager` 与任务映射），但该包尚未提供 manifest、当前不在资源包装配集内；它注册为 resource
  * 模块的那一刻，生成器的装配依赖反向校验会强制补上这条边。
  *
- * 不声明 `create`：模块组合根（`src/module.ts` 的进程级单例）属任务 1.3 W2 切片；当前装配入口是
- * `createModelManagementServerModule` + `installModelManagementModule`（宿主显式调用）。
+ * `create` 是惰性组合根（`src/module.ts`）：返回两个进程级单例的取值器，函数本身无副作用，因此装配
+ * 序列在任何时点调用它都安全；平台能力注入（`createModelManagementServerModule` +
+ * `installModelManagementModule`）仍由宿主显式完成，注册表尚未表达这类构造依赖。
  * 不声明 `contributions` 与 `web`：消费方分别是 §1.5 的宿主挂载与 §1.6 的 WebShell 装配，形状必须与
- * 消费端同时定型；当前路由是包内 `.use(authGuardPlugin)` 的 default export，不形成第二套装配路径。
+ * 消费端同时定型；当前路由是包内工厂函数，由宿主在装配时注入守卫（`src/server/routes/dependencies.ts`）。
  */
 export const moduleManifest = {
   id: "model-management",
   kind: "resource",
   dependsOn: ["agent-config"],
   capabilities: ["resource.model-management"],
+  create: () => import("./src/module").then((module) => module.createModelManagementModule()),
 } satisfies ModuleManifest;

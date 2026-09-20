@@ -1,11 +1,11 @@
+import { useOrg } from "@fenix/identity/web";
+import { Button } from "@fenix/ui-components/ui/button";
+import { Skeleton } from "@fenix/ui-components/ui/skeleton";
+import type { ProviderInfo, ProviderModel } from "@fenix/web-runtime/types/config";
 import { useNavigate } from "@tanstack/react-router";
 import { AlertTriangle, RefreshCw } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { Button } from "@/components/ui/button";
-import { Skeleton } from "@/components/ui/skeleton";
-import { useOrg } from "@/src/contexts/OrgContext";
-import type { ProviderInfo, ProviderModel } from "@/src/types/config";
 import { AgentModelsCatalog } from "./agent-models-catalog";
 import { useAgentModelsData } from "./agent-models-data";
 import { DiscoveryDialog, ModelDeleteDialogs, ModelEditorDialog, ProviderEditorDialog } from "./agent-models-dialogs";
@@ -14,9 +14,10 @@ import { getProviderKey, type ProviderScope, providerMatchesScope } from "./agen
 import "./agent-models.css";
 import "./agent-models-dialogs.css";
 import "./agent-models-states.css";
+import { MODELS_NS } from "../../../i18n/namespace";
 
 export function AgentModelsPage() {
-  const { t } = useTranslation("models");
+  const { t } = useTranslation(MODELS_NS);
   const navigate = useNavigate();
   // 当前组织 id 用于判定 Provider 归属：`/web` 视图只给 scope.organizationId，需本地比对才知道是否共享来源。
   const { org } = useOrg();

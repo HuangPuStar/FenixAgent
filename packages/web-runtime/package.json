@@ -52,6 +52,10 @@
     "./chat/use-context-queue": {
       "types": "./web/chat/use-context-queue.ts",
       "default": "./web/chat/use-context-queue.ts"
+    },
+    "./types/config": {
+      "types": "./web/types/config.ts",
+      "default": "./web/types/config.ts"
     }
   },
   "scripts": {

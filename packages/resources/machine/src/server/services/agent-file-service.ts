@@ -9,9 +9,9 @@
 // file-types.ts；执行后端（BackEnd / LocalBackend / RemoteBackend /
 // If-Match 版本比对）与路由决策在 file-backends.ts；本文件仅保留门面。
 
-import { getOwnedEnvironment } from "@fenix/agent-runtime/server";
 import { createLogger } from "@fenix/logger";
 import { AppError, ValidationError } from "@fenix/platform-sdk";
+import { getOwnedEnvironment } from "../environment-port";
 import { BusyError } from "../transport/file-ws-requests";
 import { type BackEnd, resolveExecutionBackend } from "./file-backends";
 import { assertSafePath as assertPathSafe, normalizeUploadRelativePath } from "./file-path-validator";
@@ -118,8 +118,9 @@ class AgentFileServiceImpl implements AgentFileService {
     }
   }
   private async ensureEnvironment(): Promise<void> {
-    // W17 启用角色检查前，getOwnedEnvironment 尚无 role 参数（environment-core 为 W17 独占）；
-    // 用扩展签名透传 auth.role（JS 运行时忽略多余参数），W17 启用后调用点无需改动。
+    // role 目前只透传不校验（角色检查归 W17）：本包的 role 来自宿主认证上下文（字符串），
+    // 与 environment-core 的 EnvironmentRole 字面量联合不同源，故在调用点做一次最小收窄；
+    // W17 启用检查时，role 必须在认证边界完成校验后再传进来。
     const getOwned = getOwnedEnvironment as (
       envId: string,
       organizationId: string,

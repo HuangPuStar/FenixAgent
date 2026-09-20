@@ -2,9 +2,7 @@
 // 查询显式在服务层完成，避免路由直接接触持久化模型。
 
 import { getIdentityDirectory } from "@fenix/platform-sdk/server";
-import { db } from "@server/db";
-import { agentConfig } from "@server/db/schema";
-import { asc, eq } from "drizzle-orm";
+import { listAgentConfigsByOrganization } from "../repositories/system-people-repository";
 
 export interface SystemPeopleAgent {
   id: string;
@@ -50,18 +48,7 @@ export function createSystemPeopleTreeService(): SystemPeopleTreeService {
       const result: SystemPeopleOrganization[] = [];
 
       for (const organization of organizations) {
-        const agents = await db
-          .select({
-            id: agentConfig.id,
-            userId: agentConfig.userId,
-            name: agentConfig.name,
-            description: agentConfig.description,
-            machineId: agentConfig.machineId,
-            engineType: agentConfig.engineType,
-          })
-          .from(agentConfig)
-          .where(eq(agentConfig.organizationId, organization.id))
-          .orderBy(asc(agentConfig.name), asc(agentConfig.id));
+        const agents = await listAgentConfigsByOrganization(organization.id);
 
         const users = new Map<string, SystemPeopleUser>(
           organization.members.map((member) => [

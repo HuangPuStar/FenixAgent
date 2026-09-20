@@ -1,6 +1,5 @@
 import type { ActorContext, IdentityDirectory } from "@fenix/platform-sdk";
 import { AppError, NotFoundError, ValidationError, WebErrSchema, WebOkSchema } from "@fenix/platform-sdk";
-import { authGuardPlugin } from "@server/plugins/auth";
 import Elysia from "elysia";
 import * as z from "zod/v4";
 import type { AuthorizedMcpServer } from "../../../facades/mcp-server-facade";
@@ -15,6 +14,7 @@ import {
   validateMcpConfig,
 } from "../../../services/config/mcp-config";
 import { inspectRemoteMcpServer } from "../../../services/mcp-inspector";
+import type { McpRouteDependencies } from "../../dependencies";
 
 /**
  * `/web/config/mcp` 协议层。
@@ -25,6 +25,10 @@ import { inspectRemoteMcpServer } from "../../../services/mcp-inspector";
  *
  * 视图变化（决策 D2）：列表与详情不再返回旧栈的 `resourceAccess`，改为返回资源归属 `scope` 与
  * 当前主体有效动作 `access.actions`；`organizationName` 是展示字段，由身份目录批量解析。
+ *
+ * 导出的是**路由工厂**而非构造好的实例：`sessionAuth` 宏与 `store.actor` 由宿主守卫写入，
+ * Elysia 的 `macro` / `state` 又是实例作用域的，父实例无法向已构造的子实例回填，因此守卫必须由
+ * 宿主注入（`McpRouteDependencies`）；包内不复制认证策略，测试注入替身（`src/__tests__/guard-stubs`）。
  */
 
 function splitMcpConfigInput(input: unknown): { config: McpServerConfig; publicReadable?: boolean } {
@@ -379,380 +383,382 @@ const looseOkSchema = WebOkSchema(z.union([z.looseObject({}), z.null()]));
 
 // ── 路由注册 ──
 
-const app = new Elysia({ name: "web-config-mcp" }).use(authGuardPlugin);
+export function createWebMcpConfigRoutes(deps: McpRouteDependencies) {
+  const app = new Elysia({ name: "web-config-mcp" }).use(deps.authGuardPlugin);
 
-// GET /web/config/mcp — list all MCP servers (or get single when ?name=xxx)
-app.get(
-  "/config/mcp",
-  // biome-ignore lint/suspicious/noExplicitAny: Elysia query type is loose at runtime
-  ({ store, query, status }: any) => {
-    const name = extractName(query);
-    return runWebHandler(status, store, (actor) => (name ? handleGet(actor, name) : handleList(actor)));
-  },
-  {
-    sessionAuth: true,
-    query: nameQuerySchema,
-    response: {
-      200: looseOkSchema,
-      400: WebErrSchema,
-      401: WebErrSchema,
-      403: WebErrSchema,
-      404: WebErrSchema,
+  // GET /web/config/mcp — list all MCP servers (or get single when ?name=xxx)
+  app.get(
+    "/config/mcp",
+    // biome-ignore lint/suspicious/noExplicitAny: Elysia query type is loose at runtime
+    ({ store, query, status }: any) => {
+      const name = extractName(query);
+      return runWebHandler(status, store, (actor) => (name ? handleGet(actor, name) : handleList(actor)));
     },
-    detail: {
-      tags: ["McpConfig"],
-      summary: "获取 MCP 服务器列表或详情",
-      description:
-        "不带 `name` 查询参数时返回当前主体可见的 MCP 服务器列表（含归属 `scope` 与有效动作 `access.actions`）；带 `name` 时返回指定服务器的完整配置详情（名称支持 resource key 格式 org_id/server-uuid）。",
-      parameters: [
-        {
-          name: "name",
-          in: "query",
-          required: false,
-          description: "MCP 服务器名称或共享资源键；传入后接口切换为详情查询模式。",
-          schema: { type: "string" },
-        },
-      ],
+    {
+      sessionAuth: true,
+      query: nameQuerySchema,
+      response: {
+        200: looseOkSchema,
+        400: WebErrSchema,
+        401: WebErrSchema,
+        403: WebErrSchema,
+        404: WebErrSchema,
+      },
+      detail: {
+        tags: ["McpConfig"],
+        summary: "获取 MCP 服务器列表或详情",
+        description:
+          "不带 `name` 查询参数时返回当前主体可见的 MCP 服务器列表（含归属 `scope` 与有效动作 `access.actions`）；带 `name` 时返回指定服务器的完整配置详情（名称支持 resource key 格式 org_id/server-uuid）。",
+        parameters: [
+          {
+            name: "name",
+            in: "query",
+            required: false,
+            description: "MCP 服务器名称或共享资源键；传入后接口切换为详情查询模式。",
+            schema: { type: "string" },
+          },
+        ],
+      },
     },
-  },
-);
+  );
 
-// POST /web/config/mcp — create MCP server
-app.post(
-  "/config/mcp",
-  // biome-ignore lint/suspicious/noExplicitAny: Elysia body type is loose at runtime
-  ({ store, body, status }: any) => {
-    const name = typeof body?.name === "string" ? body.name : "";
-    const configInput = body?.config ?? body;
-    const publicReadable = typeof body?.publicReadable === "boolean" ? body.publicReadable : undefined;
-    return runWebHandler(status, store, (actor) => handleCreate(actor, name, configInput, publicReadable));
-  },
-  {
-    sessionAuth: true,
-    response: {
-      200: looseOkSchema,
-      400: WebErrSchema,
-      401: WebErrSchema,
-      403: WebErrSchema,
-      409: WebErrSchema,
+  // POST /web/config/mcp — create MCP server
+  app.post(
+    "/config/mcp",
+    // biome-ignore lint/suspicious/noExplicitAny: Elysia body type is loose at runtime
+    ({ store, body, status }: any) => {
+      const name = typeof body?.name === "string" ? body.name : "";
+      const configInput = body?.config ?? body;
+      const publicReadable = typeof body?.publicReadable === "boolean" ? body.publicReadable : undefined;
+      return runWebHandler(status, store, (actor) => handleCreate(actor, name, configInput, publicReadable));
     },
-    detail: {
-      tags: ["McpConfig"],
-      summary: "创建 MCP 服务器",
-      description:
-        "创建新的 MCP 服务器配置。请求体需要提供 `name` 和 `config`，并支持可选 `publicReadable`。同组织内同名服务器返回 409；创建组织资源的动作由当前主体的角色决定。",
+    {
+      sessionAuth: true,
+      response: {
+        200: looseOkSchema,
+        400: WebErrSchema,
+        401: WebErrSchema,
+        403: WebErrSchema,
+        409: WebErrSchema,
+      },
+      detail: {
+        tags: ["McpConfig"],
+        summary: "创建 MCP 服务器",
+        description:
+          "创建新的 MCP 服务器配置。请求体需要提供 `name` 和 `config`，并支持可选 `publicReadable`。同组织内同名服务器返回 409；创建组织资源的动作由当前主体的角色决定。",
+      },
     },
-  },
-);
+  );
 
-// PUT /web/config/mcp?name=xxx — update MCP server
-app.put(
-  "/config/mcp",
-  // biome-ignore lint/suspicious/noExplicitAny: Elysia body type is loose at runtime
-  ({ store, query, body, status }: any) => {
-    const name = extractName(query);
-    if (!name) {
-      return status(400, buildWebErrorBody("VALIDATION_ERROR", "缺少 'name' 查询参数"));
-    }
-    const configInput = body?.config ?? body;
-    return runWebHandler(status, store, (actor) => handleUpdate(actor, name, configInput));
-  },
-  {
-    sessionAuth: true,
-    query: nameQuerySchema,
-    response: {
-      200: looseOkSchema,
-      400: WebErrSchema,
-      401: WebErrSchema,
-      403: WebErrSchema,
-      404: WebErrSchema,
+  // PUT /web/config/mcp?name=xxx — update MCP server
+  app.put(
+    "/config/mcp",
+    // biome-ignore lint/suspicious/noExplicitAny: Elysia body type is loose at runtime
+    ({ store, query, body, status }: any) => {
+      const name = extractName(query);
+      if (!name) {
+        return status(400, buildWebErrorBody("VALIDATION_ERROR", "缺少 'name' 查询参数"));
+      }
+      const configInput = body?.config ?? body;
+      return runWebHandler(status, store, (actor) => handleUpdate(actor, name, configInput));
     },
-    detail: {
-      tags: ["McpConfig"],
-      summary: "更新 MCP 服务器配置",
-      description:
-        "更新指定 MCP 服务器的完整配置对象。名称通过 `name` 查询参数传入，请求体为 `config` 对象（可含 `publicReadable`）。不可见返回 404，可见但无修改权限返回 403。",
-      parameters: [
-        {
-          name: "name",
-          in: "query",
-          required: true,
-          description: "MCP 服务器名称或共享资源键。",
-          schema: { type: "string" },
-        },
-      ],
+    {
+      sessionAuth: true,
+      query: nameQuerySchema,
+      response: {
+        200: looseOkSchema,
+        400: WebErrSchema,
+        401: WebErrSchema,
+        403: WebErrSchema,
+        404: WebErrSchema,
+      },
+      detail: {
+        tags: ["McpConfig"],
+        summary: "更新 MCP 服务器配置",
+        description:
+          "更新指定 MCP 服务器的完整配置对象。名称通过 `name` 查询参数传入，请求体为 `config` 对象（可含 `publicReadable`）。不可见返回 404，可见但无修改权限返回 403。",
+        parameters: [
+          {
+            name: "name",
+            in: "query",
+            required: true,
+            description: "MCP 服务器名称或共享资源键。",
+            schema: { type: "string" },
+          },
+        ],
+      },
     },
-  },
-);
+  );
 
-// DELETE /web/config/mcp?name=xxx — delete MCP server
-app.delete(
-  "/config/mcp",
-  // biome-ignore lint/suspicious/noExplicitAny: Elysia store type
-  ({ store, query, status }: any) => {
-    const name = extractName(query);
-    if (!name) {
-      return status(400, buildWebErrorBody("VALIDATION_ERROR", "缺少 'name' 查询参数"));
-    }
-    return runWebHandler(status, store, (actor) => handleDelete(actor, name));
-  },
-  {
-    sessionAuth: true,
-    query: nameQuerySchema,
-    response: {
-      200: looseOkSchema,
-      400: WebErrSchema,
-      401: WebErrSchema,
-      403: WebErrSchema,
-      404: WebErrSchema,
+  // DELETE /web/config/mcp?name=xxx — delete MCP server
+  app.delete(
+    "/config/mcp",
+    // biome-ignore lint/suspicious/noExplicitAny: Elysia store type
+    ({ store, query, status }: any) => {
+      const name = extractName(query);
+      if (!name) {
+        return status(400, buildWebErrorBody("VALIDATION_ERROR", "缺少 'name' 查询参数"));
+      }
+      return runWebHandler(status, store, (actor) => handleDelete(actor, name));
     },
-    detail: {
-      tags: ["McpConfig"],
-      summary: "删除 MCP 服务器",
-      description:
-        "删除指定的 MCP 服务器及其缓存的工具记录（同一事务）。仅对资源拥有 `delete` 动作的主体可删除（owner / admin；其他组织的公开资源不可删除）。",
-      parameters: [
-        {
-          name: "name",
-          in: "query",
-          required: true,
-          description: "待删除的 MCP 服务器名称或共享资源键。",
-          schema: { type: "string" },
-        },
-      ],
+    {
+      sessionAuth: true,
+      query: nameQuerySchema,
+      response: {
+        200: looseOkSchema,
+        400: WebErrSchema,
+        401: WebErrSchema,
+        403: WebErrSchema,
+        404: WebErrSchema,
+      },
+      detail: {
+        tags: ["McpConfig"],
+        summary: "删除 MCP 服务器",
+        description:
+          "删除指定的 MCP 服务器及其缓存的工具记录（同一事务）。仅对资源拥有 `delete` 动作的主体可删除（owner / admin；其他组织的公开资源不可删除）。",
+        parameters: [
+          {
+            name: "name",
+            in: "query",
+            required: true,
+            description: "待删除的 MCP 服务器名称或共享资源键。",
+            schema: { type: "string" },
+          },
+        ],
+      },
     },
-  },
-);
+  );
 
-// ─── Action routes (use "/actions/" prefix to avoid name collision) ───
+  // ─── Action routes (use "/actions/" prefix to avoid name collision) ───
 
-// POST /web/config/mcp/actions/enable?name=xxx — enable server
-app.post(
-  "/config/mcp/actions/enable",
-  // biome-ignore lint/suspicious/noExplicitAny: Elysia store type
-  ({ store, query, status }: any) => {
-    const name = extractName(query);
-    if (!name) {
-      return status(400, buildWebErrorBody("VALIDATION_ERROR", "缺少 'name' 查询参数"));
-    }
-    return runWebHandler(status, store, (actor) => handleEnable(actor, name));
-  },
-  {
-    sessionAuth: true,
-    query: nameQuerySchema,
-    response: {
-      200: looseOkSchema,
-      400: WebErrSchema,
-      401: WebErrSchema,
-      403: WebErrSchema,
-      404: WebErrSchema,
+  // POST /web/config/mcp/actions/enable?name=xxx — enable server
+  app.post(
+    "/config/mcp/actions/enable",
+    // biome-ignore lint/suspicious/noExplicitAny: Elysia store type
+    ({ store, query, status }: any) => {
+      const name = extractName(query);
+      if (!name) {
+        return status(400, buildWebErrorBody("VALIDATION_ERROR", "缺少 'name' 查询参数"));
+      }
+      return runWebHandler(status, store, (actor) => handleEnable(actor, name));
     },
-    detail: {
-      tags: ["McpConfig"],
-      summary: "启用 MCP 服务器",
-      description: "启用指定的 MCP 服务器，使其可在 Agent 运行时被使用。名称通过 `name` 查询参数传入。",
-      parameters: [
-        {
-          name: "name",
-          in: "query",
-          required: true,
-          description: "待启用的 MCP 服务器名称或共享资源键。",
-          schema: { type: "string" },
-        },
-      ],
+    {
+      sessionAuth: true,
+      query: nameQuerySchema,
+      response: {
+        200: looseOkSchema,
+        400: WebErrSchema,
+        401: WebErrSchema,
+        403: WebErrSchema,
+        404: WebErrSchema,
+      },
+      detail: {
+        tags: ["McpConfig"],
+        summary: "启用 MCP 服务器",
+        description: "启用指定的 MCP 服务器，使其可在 Agent 运行时被使用。名称通过 `name` 查询参数传入。",
+        parameters: [
+          {
+            name: "name",
+            in: "query",
+            required: true,
+            description: "待启用的 MCP 服务器名称或共享资源键。",
+            schema: { type: "string" },
+          },
+        ],
+      },
     },
-  },
-);
+  );
 
-// POST /web/config/mcp/actions/disable?name=xxx — disable server
-app.post(
-  "/config/mcp/actions/disable",
-  // biome-ignore lint/suspicious/noExplicitAny: Elysia store type
-  ({ store, query, status }: any) => {
-    const name = extractName(query);
-    if (!name) {
-      return status(400, buildWebErrorBody("VALIDATION_ERROR", "缺少 'name' 查询参数"));
-    }
-    return runWebHandler(status, store, (actor) => handleDisable(actor, name));
-  },
-  {
-    sessionAuth: true,
-    query: nameQuerySchema,
-    response: {
-      200: looseOkSchema,
-      400: WebErrSchema,
-      401: WebErrSchema,
-      403: WebErrSchema,
-      404: WebErrSchema,
+  // POST /web/config/mcp/actions/disable?name=xxx — disable server
+  app.post(
+    "/config/mcp/actions/disable",
+    // biome-ignore lint/suspicious/noExplicitAny: Elysia store type
+    ({ store, query, status }: any) => {
+      const name = extractName(query);
+      if (!name) {
+        return status(400, buildWebErrorBody("VALIDATION_ERROR", "缺少 'name' 查询参数"));
+      }
+      return runWebHandler(status, store, (actor) => handleDisable(actor, name));
     },
-    detail: {
-      tags: ["McpConfig"],
-      summary: "禁用 MCP 服务器",
-      description: "禁用指定的 MCP 服务器，使其在 Agent 运行时暂时不可用。名称通过 `name` 查询参数传入。",
-      parameters: [
-        {
-          name: "name",
-          in: "query",
-          required: true,
-          description: "待禁用的 MCP 服务器名称或共享资源键。",
-          schema: { type: "string" },
-        },
-      ],
+    {
+      sessionAuth: true,
+      query: nameQuerySchema,
+      response: {
+        200: looseOkSchema,
+        400: WebErrSchema,
+        401: WebErrSchema,
+        403: WebErrSchema,
+        404: WebErrSchema,
+      },
+      detail: {
+        tags: ["McpConfig"],
+        summary: "禁用 MCP 服务器",
+        description: "禁用指定的 MCP 服务器，使其在 Agent 运行时暂时不可用。名称通过 `name` 查询参数传入。",
+        parameters: [
+          {
+            name: "name",
+            in: "query",
+            required: true,
+            description: "待禁用的 MCP 服务器名称或共享资源键。",
+            schema: { type: "string" },
+          },
+        ],
+      },
     },
-  },
-);
+  );
 
-// POST /web/config/mcp/actions/test?name=xxx — test saved server connection
-app.post(
-  "/config/mcp/actions/test",
-  // biome-ignore lint/suspicious/noExplicitAny: Elysia store type
-  ({ store, query, status }: any) => {
-    const name = extractName(query);
-    if (!name) {
-      return status(400, buildWebErrorBody("VALIDATION_ERROR", "缺少 'name' 查询参数"));
-    }
-    return runWebHandler(status, store, (actor) => handleTest(actor, name));
-  },
-  {
-    sessionAuth: true,
-    query: nameQuerySchema,
-    response: {
-      200: looseOkSchema,
-      400: WebErrSchema,
-      401: WebErrSchema,
-      403: WebErrSchema,
-      404: WebErrSchema,
+  // POST /web/config/mcp/actions/test?name=xxx — test saved server connection
+  app.post(
+    "/config/mcp/actions/test",
+    // biome-ignore lint/suspicious/noExplicitAny: Elysia store type
+    ({ store, query, status }: any) => {
+      const name = extractName(query);
+      if (!name) {
+        return status(400, buildWebErrorBody("VALIDATION_ERROR", "缺少 'name' 查询参数"));
+      }
+      return runWebHandler(status, store, (actor) => handleTest(actor, name));
     },
-    detail: {
-      tags: ["McpConfig"],
-      summary: "测试已保存的 MCP 服务器连接",
-      description:
-        "测试指定 MCP 服务器的连接可达性与协议兼容性。对远程服务器执行 MCP 协议握手，对本地服务器检查命令可用性。名称通过 `name` 查询参数传入。",
-      parameters: [
-        {
-          name: "name",
-          in: "query",
-          required: true,
-          description: "待测试的 MCP 服务器名称或共享资源键。",
-          schema: { type: "string" },
-        },
-      ],
+    {
+      sessionAuth: true,
+      query: nameQuerySchema,
+      response: {
+        200: looseOkSchema,
+        400: WebErrSchema,
+        401: WebErrSchema,
+        403: WebErrSchema,
+        404: WebErrSchema,
+      },
+      detail: {
+        tags: ["McpConfig"],
+        summary: "测试已保存的 MCP 服务器连接",
+        description:
+          "测试指定 MCP 服务器的连接可达性与协议兼容性。对远程服务器执行 MCP 协议握手，对本地服务器检查命令可用性。名称通过 `name` 查询参数传入。",
+        parameters: [
+          {
+            name: "name",
+            in: "query",
+            required: true,
+            description: "待测试的 MCP 服务器名称或共享资源键。",
+            schema: { type: "string" },
+          },
+        ],
+      },
     },
-  },
-);
+  );
 
-// POST /web/config/mcp/actions/test-url — test arbitrary URL
-app.post(
-  "/config/mcp/actions/test-url",
-  // biome-ignore lint/suspicious/noExplicitAny: Elysia body type is loose at runtime
-  async ({ body, status }: any) => {
-    const url = typeof body?.url === "string" ? body.url : undefined;
-    const headers =
-      typeof body?.headers === "object" && body?.headers !== null
-        ? (body.headers as Record<string, string>)
-        : undefined;
-    const timeout = typeof body?.timeout === "number" ? (body.timeout as number) : undefined;
+  // POST /web/config/mcp/actions/test-url — test arbitrary URL
+  app.post(
+    "/config/mcp/actions/test-url",
+    // biome-ignore lint/suspicious/noExplicitAny: Elysia body type is loose at runtime
+    async ({ body, status }: any) => {
+      const url = typeof body?.url === "string" ? body.url : undefined;
+      const headers =
+        typeof body?.headers === "object" && body?.headers !== null
+          ? (body.headers as Record<string, string>)
+          : undefined;
+      const timeout = typeof body?.timeout === "number" ? (body.timeout as number) : undefined;
 
-    try {
-      // 任意 URL 探活不涉及已保存资源，因此不需要主体与授权。
-      return await handleTestUrl(url!, headers, timeout);
-    } catch (error_) {
-      const err = resolveThrownError(error_);
-      if (err) return status(err.code, err.body);
-      throw error_;
-    }
-  },
-  {
-    sessionAuth: true,
-    response: {
-      200: looseOkSchema,
-      400: WebErrSchema,
-      401: WebErrSchema,
+      try {
+        // 任意 URL 探活不涉及已保存资源，因此不需要主体与授权。
+        return await handleTestUrl(url!, headers, timeout);
+      } catch (error_) {
+        const err = resolveThrownError(error_);
+        if (err) return status(err.code, err.body);
+        throw error_;
+      }
     },
-    detail: {
-      tags: ["McpConfig"],
-      summary: "测试任意 URL 的 MCP 协议兼容性",
-      description:
-        "向任意 URL 发起 MCP 协议探测，验证其是否可连接且支持 MCP 协议。请求体需包含 `url` 字段，可选的 `headers` 和 `timeout`。",
+    {
+      sessionAuth: true,
+      response: {
+        200: looseOkSchema,
+        400: WebErrSchema,
+        401: WebErrSchema,
+      },
+      detail: {
+        tags: ["McpConfig"],
+        summary: "测试任意 URL 的 MCP 协议兼容性",
+        description:
+          "向任意 URL 发起 MCP 协议探测，验证其是否可连接且支持 MCP 协议。请求体需包含 `url` 字段，可选的 `headers` 和 `timeout`。",
+      },
     },
-  },
-);
+  );
 
-// POST /web/config/mcp/actions/inspect?name=xxx — inspect remote MCP server tools
-app.post(
-  "/config/mcp/actions/inspect",
-  // biome-ignore lint/suspicious/noExplicitAny: Elysia store type
-  ({ store, query, status }: any) => {
-    const name = extractName(query);
-    if (!name) {
-      return status(400, buildWebErrorBody("VALIDATION_ERROR", "缺少 'name' 查询参数"));
-    }
-    return runWebHandler(status, store, (actor) => handleInspect(actor, name));
-  },
-  {
-    sessionAuth: true,
-    query: nameQuerySchema,
-    response: {
-      200: looseOkSchema,
-      400: WebErrSchema,
-      401: WebErrSchema,
-      403: WebErrSchema,
-      404: WebErrSchema,
+  // POST /web/config/mcp/actions/inspect?name=xxx — inspect remote MCP server tools
+  app.post(
+    "/config/mcp/actions/inspect",
+    // biome-ignore lint/suspicious/noExplicitAny: Elysia store type
+    ({ store, query, status }: any) => {
+      const name = extractName(query);
+      if (!name) {
+        return status(400, buildWebErrorBody("VALIDATION_ERROR", "缺少 'name' 查询参数"));
+      }
+      return runWebHandler(status, store, (actor) => handleInspect(actor, name));
     },
-    detail: {
-      tags: ["McpConfig"],
-      summary: "检测远程 MCP 服务器工具列表",
-      description:
-        "连接指定的远程 MCP 服务器，获取其工具列表并存入数据库。仅支持 remote 类型的服务器。名称通过 `name` 查询参数传入。",
-      parameters: [
-        {
-          name: "name",
-          in: "query",
-          required: true,
-          description: "待检测的 MCP 服务器名称或共享资源键。",
-          schema: { type: "string" },
-        },
-      ],
+    {
+      sessionAuth: true,
+      query: nameQuerySchema,
+      response: {
+        200: looseOkSchema,
+        400: WebErrSchema,
+        401: WebErrSchema,
+        403: WebErrSchema,
+        404: WebErrSchema,
+      },
+      detail: {
+        tags: ["McpConfig"],
+        summary: "检测远程 MCP 服务器工具列表",
+        description:
+          "连接指定的远程 MCP 服务器，获取其工具列表并存入数据库。仅支持 remote 类型的服务器。名称通过 `name` 查询参数传入。",
+        parameters: [
+          {
+            name: "name",
+            in: "query",
+            required: true,
+            description: "待检测的 MCP 服务器名称或共享资源键。",
+            schema: { type: "string" },
+          },
+        ],
+      },
     },
-  },
-);
+  );
 
-// GET /web/config/mcp/actions/tools?name=xxx — list cached tools
-app.get(
-  "/config/mcp/actions/tools",
-  // biome-ignore lint/suspicious/noExplicitAny: Elysia store type
-  ({ store, query, status }: any) => {
-    const name = extractName(query);
-    if (!name) {
-      return status(400, buildWebErrorBody("VALIDATION_ERROR", "缺少 'name' 查询参数"));
-    }
-    return runWebHandler(status, store, (actor) => handleListTools(actor, name));
-  },
-  {
-    sessionAuth: true,
-    query: nameQuerySchema,
-    response: {
-      200: looseOkSchema,
-      400: WebErrSchema,
-      401: WebErrSchema,
-      404: WebErrSchema,
+  // GET /web/config/mcp/actions/tools?name=xxx — list cached tools
+  app.get(
+    "/config/mcp/actions/tools",
+    // biome-ignore lint/suspicious/noExplicitAny: Elysia store type
+    ({ store, query, status }: any) => {
+      const name = extractName(query);
+      if (!name) {
+        return status(400, buildWebErrorBody("VALIDATION_ERROR", "缺少 'name' 查询参数"));
+      }
+      return runWebHandler(status, store, (actor) => handleListTools(actor, name));
     },
-    detail: {
-      tags: ["McpConfig"],
-      summary: "获取 MCP 服务器的缓存工具列表",
-      description:
-        "获取指定 MCP 服务器上次检测后缓存的工具列表。适用于内部和外部（只读共享）MCP 服务器；`name` 返回资源自身的名称，与查询用的资源键无关。名称通过 `name` 查询参数传入。",
-      parameters: [
-        {
-          name: "name",
-          in: "query",
-          required: true,
-          description: "MCP 服务器名称或共享资源键。",
-          schema: { type: "string" },
-        },
-      ],
+    {
+      sessionAuth: true,
+      query: nameQuerySchema,
+      response: {
+        200: looseOkSchema,
+        400: WebErrSchema,
+        401: WebErrSchema,
+        404: WebErrSchema,
+      },
+      detail: {
+        tags: ["McpConfig"],
+        summary: "获取 MCP 服务器的缓存工具列表",
+        description:
+          "获取指定 MCP 服务器上次检测后缓存的工具列表。适用于内部和外部（只读共享）MCP 服务器；`name` 返回资源自身的名称，与查询用的资源键无关。名称通过 `name` 查询参数传入。",
+        parameters: [
+          {
+            name: "name",
+            in: "query",
+            required: true,
+            description: "MCP 服务器名称或共享资源键。",
+            schema: { type: "string" },
+          },
+        ],
+      },
     },
-  },
-);
+  );
 
-export default app;
+  return app;
+}

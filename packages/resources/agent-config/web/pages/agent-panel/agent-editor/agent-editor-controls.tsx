@@ -1,3 +1,4 @@
+import { NS } from "@fenix/web-runtime/i18n/namespace";
 import { Check, ChevronLeft, ChevronRight, Cpu, Minus, Plus, Search } from "lucide-react";
 import {
   type ButtonHTMLAttributes,
@@ -7,7 +8,6 @@ import {
   useState,
 } from "react";
 import { useTranslation } from "react-i18next";
-import { NS } from "@/src/i18n";
 import { type AgentEditorOption, filterAgentEditorOptions, paginateAgentEditorOptions } from "./agent-editor-model";
 
 export function Intro({ eyebrow, title, description }: { eyebrow: string; title: string; description: string }) {

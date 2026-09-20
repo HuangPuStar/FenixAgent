@@ -5,7 +5,7 @@ import { useTranslation } from "react-i18next";
 
 type Measurable = { getBoundingClientRect(): DOMRect };
 
-import { Popover, PopoverAnchor, PopoverContent } from "@/components/ui/popover";
+import { Popover, PopoverAnchor, PopoverContent } from "@fenix/ui-components/ui/popover";
 import type { CustomToolItem } from "../../../api/workflow-defs";
 import type { AgentNodeOption } from "../hooks/useWorkflowMetaAgent";
 import type { WfMeta } from "../yaml-utils";

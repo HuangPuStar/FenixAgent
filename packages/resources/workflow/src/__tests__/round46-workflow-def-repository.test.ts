@@ -14,6 +14,7 @@ import {
   setLatestVersion,
   updateWorkflowMeta,
 } from "../server/repositories/workflow-def";
+import { initializeWorkflowModuleConfig } from "../server/testing";
 
 const ctx = { organizationId: "org-a", userId: "user-a" };
 
@@ -65,7 +66,7 @@ function updated<T>(rows: T[], onSet?: (value: unknown) => void) {
   });
 }
 
-beforeEach(resetAllStubs);
+beforeEach(initializeWorkflowModuleConfig);
 afterEach(resetAllStubs);
 
 describe("round46 工作流定义仓储真实行为", () => {

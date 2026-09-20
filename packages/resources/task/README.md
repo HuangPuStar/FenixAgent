@@ -1,48 +1,191 @@
 # @fenix/resource-task
 
-定时任务（HTTP / Agent 两类执行）与执行日志的唯一 owner。
+定时任务（HTTP / Agent 两类执行）、执行日志与进程内调度的唯一 owner。
+
+「唯一」按命令核对：`git grep -ln node-schedule -- packages apps/server/src` 命中 6 个文件、全部在本包
+（`README.md` / `package.json` / `fenix.module.ts` + 2 个源码文件 + 1 个测试文件；其中真正 import 的只有
+`src/server/services/scheduler/index.ts`，`scheduler/utils.ts` 与 `src/__tests__/task-v2-validation.test.ts`
+只在注释里提到），宿主 `apps/server/src` 为 0，`/web/tasks/v2` 系列路由与 `scheduled_task_v2` /
+`task_execution_log` 的读写也只在包内（表定义除外，见下文残留）。
 
 ## 职责
 
-- **进程内调度**：`src/server/services/scheduler/index.ts` 的 `SchedulerService` 用 `node-schedule` 按 task id 维护 job。`start()` 读 `scheduledTaskV2Repo.listEnabled()` 逐个装载（非法 cron 只记日志不阻断启动），成功装载后把 `job.nextInvocation()` 经 `toInvocationDate` 写回 `nextRunAt`；`stop()` / `unschedule()` 取消 job 并清 running 标记；单例 `schedulerService` 由宿主在生命周期里 `start()` / `stop()`。
-- **单飞与执行日志**：`execute(taskId, "cron" | "manual")` 以 `runningTasks` 去重——重复触发写一条 `skipped` 日志（`skipReason: previous_run_still_active`）并返回 failed，不排队；任务已删除或已禁用时清理残留 job（否则该任务会被永久误判为 running）；执行结果统一写 `taskExecutionLog` 并更新 `lastRunAt` / `lastStatus`。
-- **执行器契约**：`TaskExecutor` 由 `register()` 注册，内置 `http`（默认 POST、无 `content-type` 时补 JSON、GET 不发 body、`AbortSignal.timeout(timeoutSeconds ?? 30)`、摘要截断 2000）与 `agent`（`openAgentSession({ startSource: "scheduled" })`，累积 `session/update` 中 `update.sessionUpdate === "agent_message_chunk"` 的 `content.text`，遇 `result.stopReason` 结束，超时归 `timeout`，`finally` 必定 `turn.dispose()`；`setAgentExecutorDeps()` 是测试接缝）。
-- **领域服务**：`src/server/services/task-v2.ts` 做用户 + 组织双重隔离的 CRUD、toggle、manual trigger 与日志分页 / 清空；跨字段校验覆盖 cron 5 字段 + 字符合集 + `cron-parser` 语义、IANA 时区、超时 1–3600、agent 任务必填 agentId、HTTP URL 与 headers 形状；更新路径拒绝改 type、拒绝给 HTTP 任务写 agentId、拒绝空串 cron；cron / 时区 / enabled 变化才 reschedule。响应把时间戳降为 epoch 秒、可空字段归一为 `null`。
-- **持久化**：`src/server/repositories/task-v2.ts`（`scheduledTaskV2Repo`：分页列表带 keyword / type / agentId 过滤与真实 total、`getByUserAndOrgAndId` 归属谓词、`listEnabled`）与 `src/server/repositories/task.ts`（`taskExecutionLogRepo`）是唯一数据访问点。
-- **HTTP 交付物**：`src/server/routes/web/tasks-v2.ts` 的 `/web/tasks/v2` 系列（列表 / 创建 / 详情 / 更新 / 删除 / toggle / trigger / 日志查询 / 日志清空），model 定义在 `src/server/schemas/task-v2.schema.ts`，信封用 `@fenix/platform-sdk` 的 `WebOkSchema` / `WebErrSchema` / `PaginationParamsSchema`；`safeTaskOp` 把 Postgres `invalid input syntax` 归一为 404。
-- **浏览器侧**：`web/api/tasks-v2.ts`（`taskV2Api`，经 `@/src/api/request`）、`web/pages/agent-panel/`（`AgentTasksPage` 页面 + `TasksPanel` / `AgentTasksRegistry` / `AgentTaskRuntimeBoard` / `TaskForm` / `TaskLogDialog` / `CronEditor` 与 `agent-tasks-utils`）、`web/i18n/{zh,en}/tasks-v2.json`（各 20 键）。
-- **测试**：`src/__tests__`（10 文件）覆盖校验与更新不变量、路由未认证 401 与跨组织拒绝、调度器残留 job 清理、http / agent 执行器与超时分类；`web/__tests__`（5 文件）覆盖 CronEditor 纯逻辑与组件、`agent-tasks-utils`。
+- **进程内调度**：`src/server/services/scheduler/index.ts` 的 `SchedulerService` 用 `node-schedule` 按 task id
+  维护 job。`start()` 读 `scheduledTaskV2Repo.listEnabled()` 逐个装载（非法 cron 只记日志、不阻断启动），
+  成功装载后把 `job.nextInvocation()` 经 `toInvocationDate` 写回 `nextRunAt`；`stop()` / `unschedule()`
+  取消 job 并清 running 标记；生产代码只通过单例 `schedulerService` 使用它，`start()` / `stop()` 由宿主
+  生命周期调用（`apps/server/src/main.ts:112,320`，是否启动由宿主读 `RCS_DISABLE_SCHEDULER` 决定）。
+- **单飞与执行日志**：`execute(taskId, "cron" | "manual")` 以 running 标记去重——重复触发写一条 `skipped`
+  日志（`skipReason: previous_run_still_active`）并返回 failed，不排队；任务已删除或已禁用时清理残留 job
+  （否则该任务会被永久误判为 running）；执行结果统一写 `taskExecutionLog` 并更新 `lastRunAt` / `lastStatus`。
+- **执行器契约**：`TaskExecutor` 由 `register()` 注册，内置 `http`（默认 POST、无 `content-type` 时补 JSON、
+  GET 不发 body、`AbortSignal.timeout(timeoutSeconds ?? 30)`、摘要截断 2000，超时判定用
+  `isTimeoutAbortError`）与 `agent`（`openAgentSession({ startSource: "scheduled" })`，累积
+  `session/update` 中 `update.sessionUpdate === "agent_message_chunk"` 的文本，遇 `result.stopReason`
+  结束，超时归 `timeout`，`finally` 必定 `turn.dispose()`）。
+- **领域服务**：`src/server/services/task-v2.ts` 做用户 + 组织双重隔离的 CRUD、toggle、手动触发与日志分页 /
+  清空；跨字段校验覆盖 cron 5 字段 + 字符合集 + `cron-parser` 语义、IANA 时区、超时 1–3600、agent 任务必填
+  agentId、HTTP URL 与 headers 形状；更新路径拒绝改 type、拒绝给 HTTP 任务写 agentId、拒绝空串 cron；
+  cron / 时区 / enabled 变化才 reschedule。响应把时间戳降为 epoch 秒、可空字段归一为 `null`。
+- **持久化**：`src/server/repositories/task-v2.ts`（`scheduledTaskV2Repo`：分页列表带 keyword / type /
+  agentId 过滤与真实 total、`getByUserAndOrgAndId` 归属谓词、`listEnabled`）与
+  `src/server/repositories/task.ts`（`taskExecutionLogRepo`）是唯一数据访问点——包内 `getTaskDatabase()`
+  的调用点全部落在这两个文件：`git grep -n "getTaskDatabase()" -- packages/resources/task/src` 命中
+  15 处（`task-v2.ts` 8 + `task.ts` 7）。调用点之外只有 2 条 import 与 1 处注释提及，函数自身的定义在
+  `src/server/db.ts`——按裸名字 grep 会把这几类一并计入（`git grep -n "getTaskDatabase" --
+  packages/resources/task/src` = 17 行 = 调用 15 + import 2；后两个文件尚未纳入索引，加上定义与
+  `src/__tests__/db-stub.ts` 的注释，工作树口径为 19 行），因此本行按带括号的调用口径核对。句柄经
+  `src/server/db.ts` 在**每次调用时**取（模块加载期宿主可能尚未完成基础设施初始化）。
+- **HTTP 交付物**：`createWebTasksV2Routes(deps)`（`src/server/routes/web/tasks-v2.ts`）声明 `/web/tasks/v2`
+  系列（列表 / 创建 / 详情 / 更新 / 删除 / toggle / trigger / 日志查询 / 日志清空），model 定义在
+  `src/server/schemas/task-v2.schema.ts`，信封用 `@fenix/platform-sdk` 的 `WebOkSchema` / `WebErrSchema` /
+  `PaginationParamsSchema`；`safeTaskOp` 把 Postgres `invalid input syntax` 归一为 404。宿主挂载点是
+  `apps/server/src/routes/web/index.ts:17,52,79`（已按工厂形态接线，见「守卫由宿主注入」）。
+- **组合根**：`src/module.ts` 的 `createTaskModule()` 返回包内既有单例（`schedulerService` + 两个仓储）；
+  `fenix.module.ts` 的 `create` 惰性指向它。服务端出口是 `src/server.ts`（`exports["./server"]`）。
+- **浏览器侧**：`web/index.ts`（`exports["./web"]`）导出 `AgentTasksPage`、`TasksPanel`、`taskV2Api` 与 i18n
+  资源；页面在 `web/pages/agent-panel/**`，api client 在 `web/api/tasks-v2.ts`。命名空间 `tasksV2` 的 123
+  个键（en / zh 逐键对齐，`web/__tests__/task-i18n.test.ts` 守护）由本包自持，其中 6 个
+  `panelMode.tasks*` 是 W2 从宿主 `components.json` 迁入的面板文案；`loadState.*`（4 键）与
+  `action.more` 是 §1.3(6) 状态补齐时新增的文案。
+- **列表状态口径（§1.3(6)，2026-09-20 补齐）**：任务列表与侧栏面板的加载失败都落在**持久**错误分支
+  （`role="alert"` + 重试入口接到 `useRequest().refresh`），不再只弹 toast 后退回「暂无任务」空态；
+  401/403 单列无权限分支且不给重试（`web/pages/agent-panel/pages/agent-tasks-utils.ts` 的
+  `isUnauthorizedError` 同时认宿主 `forbidden` 与 request 层归一的 `UNAUTHORIZED`）；加载态带
+  `aria-busy`；`TasksPanel` 的行选择区改为真 `<button aria-pressed>`，不再用 `role="button"` 容器
+  包住 `Switch`/`Button`，纯图标控件（执行 / 更多操作 / 开关）全部有 `aria-label`。
+  为什么列表取数必须经 `unwrap`：ahooks 只在 promise reject 时置 `error`，读 `data.success` 的写法会让
+  失败静默变成空数组——这正是缺口成因，改动前的 `TasksPanel` 就属此类。
+- **测试**：`bun test packages/resources/task` 覆盖 19 个文件，含包边界契约测试
+  （`src/__tests__/task-source-migration.test.ts`，逐条对应计划 §1 的静态条件）、浏览器面守卫
+  （`web/__tests__/task-browser-surface.test.ts`，走值导入图 + 外部白名单）与列表状态用例
+  （`web/__tests__/task-list-states.test.tsx`，真实渲染）；最近一次全绿为
+  320 pass / 0 fail / 511 expect（2026-09-20）。若整批用例同时报 `Cannot find module`，先确认是否有
+  并行包正处于迁移中间态：`bunfig.toml` 的仓库共享 preload（`apps/server/src/test-utils/setup-mocks.ts`）
+  会把它拉进每个用例文件，与本包改动无关。
+  浏览器面守卫的两条「可构建性」断言（宿主别名 / 外部依赖白名单）只对本包与共享基础设施包
+  （`packages/ui-components`、`packages/web-runtime`）的文件生效——范围由 `POLICED_DIRECTORIES` 显式列出，
+  理由与实测见「边界外的已知项」；ui-components 新引入的库（`recharts`、`streamdown` 与若干 radix 原语）
+  落在白名单内，白名单缺项会让本包守卫变红以强制一次浏览器可用性评审。
 
 ## 依赖边界
 
-本包属 `resources` 类别，类别禁则只有一条（`scripts/lib/architecture-boundary-rules.ts`）：`resources → platform-impl`。
+本包属 `resources` 类别，类别禁则只有一条（`scripts/lib/architecture-boundary-rules.ts`）：
+`resources → platform-impl`。实测 `git grep -nE 'from "@fenix/(identity|access-control)' --
+packages/resources/task` 为 0（按 import 形态而不是裸包名核对：裸名会把本 README 与守卫注释里
+「identity 是上游迁移中间态」的说明文字也算成依赖）：组织与用户上下文只从路由注入的
+`store.authContext` 取用，不做角色解释。
 
-- **不导入** `@fenix/identity/*` 与 `@fenix/access-control/*`；组织与用户上下文只从路由注入的 `store.authContext` 取用，不做角色解释。
-- **跨包值导入**只有三个包：`@fenix/agent-runtime/server`（agent 执行器的非阻塞入口）、`@fenix/logger`、`@fenix/platform-sdk`（schema 基元）。没有任何指向其它资源包的值导入，故 `dependsOn` 为空——本包是叶子模块，装配上不要求其它资源模块同批启用。
-- **`@server/**` 是待消除的宿主内引用**：`@server/db`、`@server/db/schema`（`scheduled_task_v2` / `task_execution_log`）、`@server/plugins/auth`；已由台账登记为 `apps-boundary`（owner 1.5，其中表定义迁出归 §1.7）。
+- **跨包值导入 26 条说明符、6 个目标包**（`grep -rhoE '"@fenix/[^"]+"' packages/resources/task/src
+  packages/resources/task/web | grep -v resource-task | sort -u | wc -l` → 26；未过滤时 27 条，多出的一条是
+  `web/index.ts` 注释里的自重引用。目标包为 `@fenix/agent-config`、`@fenix/agent-runtime`、`@fenix/logger`、
+  `@fenix/platform-sdk`、`@fenix/ui-components`、`@fenix/web-runtime`，含后三者的子路径）。每条都落在对方
+  `package.json` 声明的公开出口（`./server`、`./web`、`./testing` 与逐文件子路径），零 `@fenix/*/src/**`——
+  由契约测试同时按「不深入 src」与「能解析到对方 exports 键」两条断言守护。
+- **`dependsOn: []`**：本包服务端生产代码没有任何指向已注册资源模块的值导入；唯一的 workspace 值导入是
+  agent 执行器的 `@fenix/agent-runtime/server`，而 agent-runtime 是 profile 的固定基础槽位（生成器
+  `assertDependsOnComplete` 也只对 `kind: "resource"` 目标生效）。理由与反例写在 `fenix.module.ts`。
+- **宿主导入只剩表定义**：`git grep -nE "from \"@server/" -- packages/resources/task/src` 命中 6 处 =
+  生产代码 3 处（`repositories/task-v2.ts` 2 条、`repositories/task.ts` 1 条）+ 测试 3 处（三个用例文件的
+  `import type`），全部是 `@server/db/schema`（`scheduled_task_v2` / `task_execution_log` 表定义，迁出归
+  任务 1.7）；另 1 处是 `src/server/db.ts` 注释里的旧写法示例（该文件尚未纳入索引，`git grep` 看不见它，
+  按工作树 grep 口径共 7 行），它不是可解析导入。
+  W2 已切断另外两条宿主内部依赖：`@server/plugins/auth`（改工厂注入）与 `@server/db`（改 `getDatabase()`）。
+- **零宿主别名与零环境变量**：包内 `web/` 的 `@/` **import 说明符** 0 处（`git grep -nE "from \"@/"
+  -- packages/resources/task/web` 为 0）、`src/` 的 `process.env` 0 处、穿透到包外的相对引用 0 处，均由
+  契约测试守护（对应计划 §1 条件 2 / 4 / 3）；`mock.module()` 的实参不是 import 说明符、上面这条 grep 与
+  浏览器面守卫都看不见它，因此契约测试另有一条按全包扫描其说明符的用例（W2.5 补，堵的是残留死 mock）。
 
 ## 守卫由宿主注入
 
-Elysia 的 `macro` / `state` 是实例作用域的，父实例无法向已构造的子实例回填，因此 `authGuardPlugin` 必须与宿主的认证解析（含 `setTestAuth` 测试 seam 与组织上下文）是同一份实例；包内不得自带一份同名守卫——两份同名实例会被 Elysia 按 plugin `name` 去重，先构造的一方静默生效。
+路由以工厂形式导出：`createWebTasksV2Routes({ authGuardPlugin })`，注入类型只声明 `AnyElysia`
+（`src/server/routes/dependencies.ts`），包内不 import 宿主的 `@server/plugins/auth`。
 
-目标形态与沙盒样本一致：路由以**工厂**导出（`createWebTasksV2Routes({ authGuardPlugin })`），由宿主注入守卫。**现状尚未到达**：本文件仍是 default export 的 `new Elysia({ name: "web-tasks-v2" }).use(authGuardPlugin)`，守卫直接来自 `@server/plugins/auth`，用 `sessionAuth: true` 宏 + `store.authContext` 取 `userId` / `organizationId`；切到工厂形态归任务 1.3 W2 切片（见下节）。「路由 + 真实守卫 + 会话」这条已发布合同由宿主用例覆盖，包内不重复断言。
+为什么必须注入而不是包内自带一份：Elysia 的 `macro` / `state` 是实例作用域的，父实例无法向已构造的子实例
+回填；且插件按 `name` 去重，两份同名守卫会被静默择一，症状是「认证解析在宿主、路由看到的上下文却是空的」。
+宿主的认证解析还要兼顾测试 seam（`setTestAuth`）与组织上下文，因此守卫必须与宿主是同一份实例。
+
+**覆盖边界（实测）**：本包路由用例注入的是替身（`src/__tests__/guard-stubs.ts`），因此包内证明的是「路由
+确实声明了 `sessionAuth: true`、未认证时在触达仓储前返回 401、已认证时把上下文转发给服务层」；真实守卫的
+凭据解析与 401 映射由宿主用例覆盖（`apps/server/src/__tests__/round45-auth-plugin.test.ts`）。
+
+**宿主接线（2026-09-20 实测）**：服务端已按工厂形态接线——`apps/server/src/routes/web/index.ts:17` 从
+`@fenix/resource-task/server` 取 `createWebTasksV2Routes`、`:52` 注入 `authGuardPlugin` 构造、`:79` 挂载；
+调度器同理：`apps/server/src/main.ts:112` 取 `schedulerService`，`:354-358` 按 `RCS_DISABLE_SCHEDULER`
+决定启动、`:555` 停止。宿主 `apps/web` 侧与 i18n 相关的两处（子路径注册、`NS` 常量）也已落地，剩 3 处
+直连（见「边界外的已知项」）。
 
 ## 配置与 DB
 
-本包不读 `process.env`、不读 `@server/config`：
+本包不读 `process.env`、不读 `@server/config`（`git grep -n "process.env" -- packages/resources/task/src`
+为 0）：
 
-- 唯一的启动开关 `RCS_DISABLE_SCHEDULER` 由宿主读取，宿主据此决定是否调用 `schedulerService.start()`；
-- DB 句柄直接取宿主 `@server/db`（模块作用域单例），表定义取 `@server/db/schema`。W2 改为平台 `getDatabase()`，且句柄读取必须发生在调用时——模块加载期宿主可能尚未完成基础设施初始化；
-- `src/server/repositories/**` 是唯一数据访问点，`routes` 与 `services` 不直接取 DB 句柄或表对象。
+- 唯一的启动开关 `RCS_DISABLE_SCHEDULER` 由宿主声明与读取（`apps/server/src/env.ts:83`、
+  `main.ts:354-358` 经 `bootstrap/scheduler-startup.ts` 决定是否调用 `schedulerService.start()`，
+  `main.ts:555` 停止）；本包只提供 `start()` / `stop()`。
+- DB 句柄经 `src/server/db.ts` 的 `getTaskDatabase()` → `@fenix/platform-sdk/server` 的 `getDatabase()`
+  在调用时获取；表对象暂时仍来自 `@server/db/schema`（§1.7 残留）。
+- `src/server/repositories/**` 是唯一数据访问点，`routes` 与 `services` 既不取 DB 句柄也不直接操作表。
+- 测试基建：`src/__tests__/db-stub.ts` 用转发代理把每次属性读取转发到当前 DB 替身，从而在
+  `initializeTestApplicationInfrastructure()` 已注入句柄之后，用例仍可随时 `stubDb(...)` 更换替身
+  （基础设施持有的是引用，不解这一层会让「用例内换替身」静默失效）。
 
-`envDefinitions` 与表定义迁出收敛在任务 1.7 处理。
+`envDefinitions` 未声明：归任务 1.7，本包不含环境变量声明。
 
 ## 边界外的已知项
 
-- **没有 `web/index.ts` 浏览器出口**：宿主的 `apps/web/src/i18n/index.ts` 用相对路径直接导入本包 `web/i18n/*/tasks-v2.json`，页面文件也被宿主编译期相对导入；`web/api/**` 与页面仍用宿主别名 `@/src`、`@/components`（55 处 / 9 文件，台账 `web-package-not-to-app`，owner 1.6）。`./web` 与 `web/i18n/index.ts` 出口归 W2 切片 / §1.6 WebShell 装配。
-- **路由仍是 default export 而非「工厂 + 守卫注入」**：改法见 §6.4 W2 配方（`deps` 类型落包内 `src/routes/dependencies.ts`，只声明 `AnyElysia`）；对应的 `@server/plugins/auth` 引用同批消失。
-- **没有 `src/module.ts` 单例**：manifest 因此不声明 `create`；进程级组合根（`schedulerService` 等单例的装配出口）归 W2 切片。
-- **表定义仍导入 `@server/db/schema`**：迁出归 §1.7；`@server/db` 句柄改 `getDatabase()` 归 W2；台账 `apps-boundary` 条目保留至两件事都完成。
-- **包内测试仍引用 `@server/*`**（4 文件）：3 个用例取 `@server/db/schema` 的行类型，`round55-tasks-v2-routes.test.ts` 另取 `@server/plugins/auth` 与 `@server/test-utils/stubs/module-stubs`；改指平台 `/testing` 与包内守卫替身归 W2（§6.2 映射表）。
-- **`manifest.web` 未声明**（归 §1.6 / §1.5 共同定型）；**`envDefinitions` 未声明**（归 §1.7）。
-- **两个纯逻辑测试复制了实现而非导入**（`toInvocationDate` 的类型守卫、http-executor 的超时分类）：实现漂移不会被它们发现，收敛（导出可测符号或改为注入）归 W2。
+- **`TasksPanel` 的 trigger / toggle 无失败反馈、也无成功 toast（只登记，本任务不实现）**：
+  现象：`web/pages/agent-panel/TasksPanel.tsx:85`（`handleTrigger`，`:88` 调 `taskV2Api.trigger`）与
+  `:101`（`handleToggle`，`:104` 调 `taskV2Api.toggle`）写成
+  `try { await taskV2Api.trigger/toggle(...); refresh(); } catch { toast.error(...) }`，但
+  `web/api/tasks-v2.ts:71` / `:74` 的这两个方法返回 `request()` 的 `ApiResponse` 信封而不是 reject——
+  `packages/web-runtime/web/api/request.ts` 只对网络错误 / 超时抛异常，业务失败（`success:false` 信封或
+  4xx/5xx）走正常返回路径。于是 `catch` 只在断网时可达：业务失败时既不弹
+  `panelMode.tasksTriggerFailed` / `panelMode.tasksToggleFailed`，也照常 `refresh()` 把失败当成成功。
+  影响范围：仅本包 `TasksPanel`（侧栏面板）的两个行内操作；整页 `AgentTasksPage` 另经 `unwrap` 处理，
+  不受影响。后果是 trigger / toggle **业务失败时无任何错误反馈（静默）**，**成功时也无 toast**
+  （`toast.toggled` / `toast.triggered` 等键目前只有整页消费）。
+  风险：授权 / 校验类失败被静默吞掉，用户会误以为操作已生效；与列表 / 日志区已收敛的
+  「失败必须可见」口径不一致。
+  移除条件：`web/api/tasks-v2.ts` 的 `trigger` / `toggle` 改为 reject 语义（在 API 层 `unwrap`），
+  或在 `TasksPanel` 调用点检查信封 `success === false` 后补齐失败反馈，并给成功路径补 `toast.success`；
+  两条路任选其一即可移除此条目。改动落在本包 `web/**`，随 W3 或后续波次收口。
+- **宿主 `apps/web` 仍有 3 处直连**（均属共享文件波次）：`vite.config.ts:131` 的
+  `@/src/api/tasks-v2` alias（`git grep -n "@/src/api/tasks-v2" -- apps/web` 除 alias 自身外 0 命中，
+  随 `./web` 出口删除）与 `vite.config.ts:133-135` 的 `@/src/pages/agent-panel/pages/AgentTasksPage`
+  alias（唯一 importer 是宿主 route adapter `routes/agent/_panel/tasks.tsx:5`）、`pages/agent-panel/ArtifactsPanel.tsx:15`
+  的深层相对 `TasksPanel` import（改为 `@fenix/resource-task/web`）。`tasks.tsx` 这个薄 route adapter
+  保留在宿主是既定分工（§1.6），它随 W3 改指 `@fenix/resource-task/web`。
+- **i18n 两侧均已落地（2026-09-20 实测，切换由 W3 完成）**：字典在 `web/i18n/locales/{en,zh}/tasks-v2.json`
+  （计划 §4 的形状，W2.5 迁移；旧路径 `web/i18n/{en,zh}/` 已无引用），宿主
+  `apps/web/src/i18n/index.ts:23` 已改为子路径 `@fenix/resource-task/web/i18n`，`:119` / `:133` 用
+  `tasksV2Resources.en/zh` 以 `TASKS_V2_NS` 登记；宿主不再按相对路径 import 包内 JSON。宿主的 `NS` 表
+  改为 `{ ...SHARED_NS }` 后已无 `"tasksV2"` 字面量（`web-runtime` 的中心表持有该值），本包
+  `TASKS_V2_NS` 与宿主注册同源。
+- **宿主 `components.json` 待删键**：6 个 `panelMode.tasks*`（`tasksEmpty` / `tasksListTitle` /
+  `tasksLoadFailed` / `tasksManage` / `tasksToggleFailed` / `tasksTriggerFailed`，读者已改为读本包字典）
+  与 2 个全仓无读者键（`tasksCount` / `tasksViewLogs`）——位于宿主
+  `apps/web/src/i18n/locales/{en,zh}/components.json:57-64`（`tasks` 单数在 :56，不在清单内），
+  按 `grep -rn 'tasksCount\|tasksViewLogs' apps packages --include='*.ts' --include='*.tsx'` 除字典自身外
+  0 命中。删除属共享文件波次，本包只记录清单。
+  `panelMode.tasks`（单数）不在此列：宿主 `apps/web/src/components/agent-panel/TopModeTabs.tsx:23`
+  仍用它渲染面板标签，属宿主面板外壳的文案。
+- **6 个 `error.*` 键无读取方**（`invalidHeaders` / `nameRequired` / `cronRequired` / `urlRequired` /
+  `agentRequired` / `promptRequired`）：迁移前的宿主 `TaskForm` 也只渲染 zod message，属既有死键；保留是为了
+  不与 EE 侧可能的使用方冲突，删除需一次全仓核对（W5 收口或 EE 复盘）。
+- **表定义仍导入 `@server/db/schema`**（6 处，见上）：迁出归任务 1.7，台账 `apps-boundary` 条目保留至完成，
+  owner 已为 1.7、rationale 记为「仅剩表定义导入」（`scripts/architecture/exceptions.json`，属计划 §4 的
+  W3 独占写入范围，本包只读不改）。
+- **浏览器面守卫的断言范围收在「本包 + 共享基础设施包」**（2026-09-20 W2.5 实测并已按此实现）：本包经
+  `@fenix/agent-config/web` 消费兄弟资源包，后者又按 §6.5 消费 `@fenix/identity/web`（`useOrg` 必须取宿主
+  同一份 context），于是 identity 尚未迁完的 `web/**`（`grep -rnE 'from "@/' packages/platform/identity/web`
+  当日实测 35 → 44 处，随该包迁移进度变动；另有 `better-auth` 等库）会经两跳
+  进入本包的值导入图。这类**上游迁移中间态**不算本包红线（一个文件只有一个 owner）：identity 的别名债务由
+  直接依赖它的 `packages/resources/agent-config/web/__tests__/agent-config-browser-surface.test.ts` 以
+  `UPSTREAM_ALIAS_DEBT_DIRS` 登记；本包只保留对它的「解析 / 穿透 / node 内建 / `@server`」断言。
+  反之，共享基础设施包（ui-components / web-runtime）是白名单断言的责任范围，其新增外部库必须在这里评审。
+- **`manifest.web` / `contributions` 未声明**：形状必须与 `mountContribution`（§1.5）与 WebShell（§1.6）的
+  消费端同时定型，单方面发明会返工。
+- **宿主侧两处随波次收口**：`deploy/assembly/ce.json` 的 `resources` 仍是空列表，登记本模块属 W3 装配清单；
+  宿主 `apps/server/src/__tests__/task-schema.test.ts:3,21` 仍从宿主 `db/schema` 取 `taskExecutionLog` 并
+  手写建表 DDL，随表定义迁出（§1.7）一并改指本包——两处都不在本包可写范围内。

@@ -1,27 +1,33 @@
+import { agentApi } from "@fenix/agent-config/web";
+import { ConfirmDialog } from "@fenix/ui-components/config/ConfirmDialog";
+import { FormDialog } from "@fenix/ui-components/config/FormDialog";
+import { AppHeader } from "@fenix/ui-components/layout/app-header";
+import { AppPage } from "@fenix/ui-components/layout/app-page";
+import { Button } from "@fenix/ui-components/ui/button";
+import { Skeleton } from "@fenix/ui-components/ui/skeleton";
+import type { PaginatedResponse } from "@fenix/web-runtime/api/request";
+import { unwrap } from "@fenix/web-runtime/api/request";
+import { NS } from "@fenix/web-runtime/i18n/namespace";
+import type { AgentInfo } from "@fenix/web-runtime/types/config";
 import { useRequest } from "ahooks";
-import { Plus } from "lucide-react";
+import { AlertTriangle, Plus, RefreshCw } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
 import type { z } from "zod/v4";
-import { ConfirmDialog } from "@/components/config/ConfirmDialog";
-import { FormDialog } from "@/components/config/FormDialog";
-import { Button } from "@/components/ui/button";
-import { Skeleton } from "@/components/ui/skeleton";
-import { agentApi } from "@/src/api/agents";
-import type { PaginatedResponse } from "@/src/api/request";
-import { unwrap } from "@/src/api/request";
-import type { TaskV2CreateBody, TaskV2Info, TaskV2UpdateBody } from "@/src/api/tasks-v2";
-import { taskV2Api } from "@/src/api/tasks-v2";
-import { AppHeader } from "@/src/components/layout/app-header";
-import { AppPage } from "@/src/components/layout/app-page";
-import { NS } from "@/src/i18n";
-import type { AgentInfo } from "@/src/types/config";
+import type { TaskV2CreateBody, TaskV2Info, TaskV2UpdateBody } from "../../../api/tasks-v2";
+import { taskV2Api } from "../../../api/tasks-v2";
 import { TaskForm, type TaskFormValues } from "../components/TaskForm";
 import { TaskLogDialog } from "../components/TaskLogDialog";
 import { AgentTaskRuntimeBoard } from "./agent-task-runtime-board";
 import { AgentTasksRegistry, AgentTasksToolbar } from "./agent-tasks-registry";
-import { buildTaskDefinition, INITIAL_TASK_FORM_VALUES, taskFormSchema, taskToFormValues } from "./agent-tasks-utils";
+import {
+  buildTaskDefinition,
+  INITIAL_TASK_FORM_VALUES,
+  isUnauthorizedError,
+  taskFormSchema,
+  taskToFormValues,
+} from "./agent-tasks-utils";
 import "./agent-tasks.css";
 
 // ── 组件 ──
@@ -45,6 +51,7 @@ export function AgentTasksPage() {
 
   // 筛选条件或搜索词变化时，重置到第 1 页
   // 筛选/搜索变化时需重置页码，但 effect 体只用 setPage。
+  // biome-ignore lint/correctness/useExhaustiveDependencies: 两个依赖是刻意保留的触发信号——effect 体只调 setPage，移除依赖会让筛选后仍停留在旧页码（规则看不到「依赖变化即重置」的意图）；包内声明 react 后本规则才启用。
   useEffect(() => {
     setPage(1);
   }, [debouncedKeyword, typeFilter]);
@@ -53,6 +60,7 @@ export function AgentTasksPage() {
   const {
     data: pageData,
     loading,
+    error: listError,
     refresh,
   } = useRequest(
     async () => {
@@ -279,11 +287,11 @@ export function AgentTasksPage() {
   const initialLoadDone = useRef(false);
   if (!initialLoadDone.current && loading) {
     return (
-      <div className="min-h-full overflow-auto bg-[#f4f7fb] px-8 py-7 text-[#14213d]">
+      <div className="min-h-full overflow-auto bg-[#f4f7fb] px-8 py-7 text-[#14213d]" aria-busy="true">
         <AppHeader title={t("title")} subtitle={t("subtitle")} />
         <div className="space-y-3">
           {Array.from({ length: 5 }).map((_, i) => (
-            // Static skeleton placeholders have no domain identifier.
+            // biome-ignore lint/suspicious/noArrayIndexKey: 骨架屏是静态装饰、不重排，索引键不会引起元素错位；包内按 T2e 声明 react 后本规则才启用。
             <Skeleton key={i} className="h-12 w-full rounded-lg" />
           ))}
         </div>
@@ -293,6 +301,32 @@ export function AgentTasksPage() {
   // 首次加载完成后标记，后续 loading 不再替换整棵树
   if (!initialLoadDone.current && !loading) {
     initialLoadDone.current = true;
+  }
+
+  // 加载失败必须落到持久分支：只弹 toast 时，toast 消失后 `tasks` 退化成空数组、界面显示「暂无任务」，
+  // 「加载失败」与「确实没有任务」不可区分，用户也没有恢复入口。401/403 是持久授权状态，
+  // 单列无权限分支且不给重试（再点一次只会拿到同一个拒绝）。
+  if (listError) {
+    const unauthorized = isUnauthorizedError(listError);
+    return (
+      <AppPage className="agent-tasks-page">
+        <AppHeader title={t("title")} subtitle={t("subtitle")} />
+        <div className="task-load-error" role="alert">
+          <AlertTriangle className="size-8" />
+          <strong>
+            {unauthorized ? t("loadState.unauthorizedTitle") : t("loadState.failed", { message: listError.message })}
+          </strong>
+          {unauthorized ? (
+            <p>{t("loadState.unauthorizedHint")}</p>
+          ) : (
+            <Button variant="outline" size="sm" onClick={refresh} disabled={loading}>
+              <RefreshCw className="mr-1 size-3.5" />
+              {t("loadState.retry")}
+            </Button>
+          )}
+        </div>
+      </AppPage>
+    );
   }
 
   return (

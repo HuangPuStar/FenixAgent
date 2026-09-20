@@ -1,6 +1,5 @@
 import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
 import { resetAllStubs } from "@fenix/platform-sdk/testing";
-import { resetConfig, setConfig } from "@server/config";
 import {
   agentKnowledgeBindingRepo,
   knowledgeBaseRepo,
@@ -16,6 +15,7 @@ import {
   searchKnowledgeForTest,
   setKnowledgeRuntimeProviderForTesting,
 } from "../server/services/knowledge-runtime";
+import { initializeKnowledgeModuleConfig } from "../server/testing";
 
 const NOW = new Date("2026-08-19T00:00:00.000Z");
 
@@ -94,8 +94,7 @@ const originals = {
 
 describe("知识运行时服务分支", () => {
   beforeEach(() => {
-    resetAllStubs();
-    setConfig({ ragflowApiKey: "test-ragflow-key" });
+    initializeKnowledgeModuleConfig({ ragflowApiKey: "test-ragflow-key" });
   });
 
   afterEach(() => {
@@ -103,7 +102,6 @@ describe("知识运行时服务分支", () => {
     agentKnowledgeBindingRepo.listJoinedWithKnowledgeBaseByConfigId = originals.joinedBindings;
     knowledgeResourceRepo.findByRemoteIds = originals.findResources;
     setKnowledgeRuntimeProviderForTesting(null);
-    resetConfig();
     resetAllStubs();
   });
 

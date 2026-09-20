@@ -1,5 +1,9 @@
+import { Button } from "@fenix/ui-components/ui/button";
+import { Label } from "@fenix/ui-components/ui/label";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@fenix/ui-components/ui/select";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@fenix/ui-components/ui/table";
+import { NS } from "@fenix/web-runtime/i18n/namespace";
 import {
-  AlertCircle,
   Calendar,
   CheckCircle,
   ChevronLeft,
@@ -16,15 +20,12 @@ import {
 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { Button } from "@/components/ui/button";
-import { Label } from "@/components/ui/label";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { hindsightApi } from "@/src/api/hindsight";
-import { NS } from "@/src/i18n";
+import { hindsightApi } from "../../../api/hindsight";
+import { type HindsightFailure, toHindsightFailure } from "../failure";
 import type { GraphApiData, MemoryTableRow } from "../types";
 import { Constellation } from "./Constellation";
 import { convertHindsightGraphData, Graph2D, type GraphNode } from "./Graph2d";
+import { HindsightFailureNotice } from "./HindsightFailureNotice";
 import { MemoryDetailModal } from "./MemoryDetailModal";
 import { MemoryDetailPanel } from "./MemoryDetailPanel";
 import { MemoryViewSwitcher } from "./MemoryViewSwitcher";
@@ -56,7 +57,7 @@ export function DataView({
   const [compactMode, setCompactMode] = useState(compact);
   const [data, setData] = useState<GraphApiData | null>(null);
   const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [failure, setFailure] = useState<HindsightFailure | null>(null);
   const [currentPage, setCurrentPage] = useState(1);
   const [selectedGraphNode, setSelectedGraphNode] = useState<MemoryTableRow | null>(null);
   const [modalMemoryId, setModalMemoryId] = useState<string | null>(null);
@@ -113,7 +114,7 @@ export function DataView({
 
   const loadData = async (limit?: number, q: string | undefined = initialQuery, tags?: string[]) => {
     setLoading(true);
-    setError(null);
+    setFailure(null);
     try {
       const graphData = await hindsightApi.getGraph({
         type: factType,
@@ -140,7 +141,7 @@ export function DataView({
       }
     } catch (loadError) {
       console.error("[DataView] loadData failed:", loadError);
-      setError(loadError instanceof Error ? loadError.message : t("dataView.loadFailed"));
+      setFailure(toHindsightFailure(loadError, t("dataView.loadFailed")));
     } finally {
       setLoading(false);
     }
@@ -277,8 +278,11 @@ export function DataView({
     return "var(--color-primary)";
   }, []);
 
-  // 组件挂载或 factType 变化时自动加载数据
-  // Mount-only load; loadData remains stable through the ref pattern.
+  // 挂载期单次加载：`factType` / 检索词的变化由父级 `key={`${perspective}:${searchQuery}`}`
+  // （MemoriesPage）触发的重挂载表达，本 effect 不负责感知这些 prop 的变化。
+  // `loadData` 是组件体内的普通函数（未 memo，且内部 setState），每次渲染身份都会变；把它列入依赖
+  // 会让本 effect 每次渲染都重新拉取数据，并因 setLoading 触发的新渲染形成请求循环，故显式抑制该规则。
+  // biome-ignore lint/correctness/useExhaustiveDependencies: 挂载期单次加载；列入 loadData 会造成每次渲染重新请求。
   useEffect(() => {
     loadData();
   }, []);
@@ -301,17 +305,14 @@ export function DataView({
           <RefreshCw className="w-8 h-8 mx-auto mb-3 text-muted-foreground animate-spin" />
           <p className="text-muted-foreground">{t("dataView.loadingMemories")}</p>
         </div>
-      ) : error ? (
+      ) : failure ? (
         <div className="flex flex-col items-center justify-center gap-3 py-16 text-center" role="alert">
-          <AlertCircle className="size-8 text-destructive" />
-          <div>
-            <p className="text-sm font-medium">{t("dataView.loadFailed")}</p>
-            <p className="mt-1 text-xs text-muted-foreground">{error}</p>
-          </div>
-          <Button variant="outline" size="sm" onClick={() => void loadData()} disabled={loading}>
-            <RefreshCw className={`size-4 ${loading ? "animate-spin" : ""}`} />
-            {t("dataView.retry")}
-          </Button>
+          <HindsightFailureNotice
+            failure={failure}
+            titleKey="dataView.loadFailed"
+            retryKey="dataView.retry"
+            onRetry={() => void loadData()}
+          />
         </div>
       ) : !data ? (
         <div className="flex items-center justify-center py-20">

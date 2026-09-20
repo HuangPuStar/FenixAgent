@@ -4,7 +4,7 @@
  * 对接后端 POST /web/meta-agent/ensure。
  */
 
-import { request } from "@/src/api/request";
+import { request } from "@fenix/web-runtime/api/request";
 
 export interface EnsureMetaResult {
   environmentId: string;

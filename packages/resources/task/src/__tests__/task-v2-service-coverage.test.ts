@@ -12,6 +12,7 @@ import {
   triggerTaskV2,
   updateTaskV2,
 } from "../server/services/task-v2";
+import { resetStubsWithDb } from "./db-stub";
 
 const USER_ID = "user-current";
 const ORG_ID = "org-current";
@@ -56,7 +57,7 @@ function pagedDb(rows: unknown[], total: string | number) {
   return { limit, offset };
 }
 
-beforeEach(resetAllStubs);
+beforeEach(resetStubsWithDb);
 afterEach(resetAllStubs);
 
 describe("task-v2 服务隔离、错误与分页", () => {

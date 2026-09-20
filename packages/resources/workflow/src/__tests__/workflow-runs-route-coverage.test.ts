@@ -1,23 +1,23 @@
 import { afterEach, beforeEach, describe, expect, mock, spyOn, test } from "bun:test";
 import { readJson, resetAllStubs } from "@fenix/platform-sdk/testing";
 import { WorkflowError, WorkflowErrorCode } from "@fenix/workflow-engine";
-import { resetTestAuth, setTestAuth } from "@server/plugins/auth";
-import { setTestOrgContext } from "@server/services/org-context";
-import { stubPgStorageAdapter } from "@server/test-utils/stubs/module-stubs";
+import { createWebWorkflowRunsRoutes } from "../server/routes/web/workflow-runs";
 import { getTeamEngine } from "../server/services/workflow";
+import { initializeWorkflowModuleConfig, stubPgStorageAdapter } from "../server/testing";
+import { createStubSessionAuthGuard } from "./guard-stubs";
 
-const route = (await import("../server/routes/web/workflow-runs")).workflowRunsRoutes;
+const guard = createStubSessionAuthGuard();
+
+// 路由经工厂构造并注入会话守卫替身：静态条件禁止包内测试依赖宿主 `@server/plugins/auth`，
+// 而 Elysia 的 macro/state 是实例作用域的，守卫必须是构造时传入的同一实例。
+const route = createWebWorkflowRunsRoutes({ authGuardPlugin: guard });
 
 function request(path: string, init?: RequestInit) {
   return route.handle(new Request(`http://localhost${path}`, init));
 }
 
 function authenticate(organizationId = "org-route-tests", userId = "user-route-tests") {
-  setTestAuth({
-    user: { id: userId, email: `${userId}@test.com`, name: "路由测试用户" },
-    authContext: { organizationId, userId, role: "owner" },
-  });
-  setTestOrgContext({ organizationId, userId, role: "owner" });
+  guard.setActor({ organizationId, userId });
 }
 
 function jsonRequest(body: Record<string, unknown>): RequestInit {
@@ -26,14 +26,13 @@ function jsonRequest(body: Record<string, unknown>): RequestInit {
 
 describe("workflow-runs 路由补充覆盖", () => {
   beforeEach(() => {
-    resetAllStubs();
+    initializeWorkflowModuleConfig();
     authenticate();
   });
 
   afterEach(() => {
     mock.restore();
-    resetTestAuth();
-    setTestOrgContext(null);
+    guard.setActor(null);
     resetAllStubs();
   });
 

@@ -1,13 +1,10 @@
 import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
-import { resetAllStubs } from "@fenix/platform-sdk/testing";
-import { resetConfig, setConfig } from "@server/config";
-import { resetTestAuth, setTestAuth } from "@server/plugins/auth";
 import {
   agentKnowledgeBindingRepo,
   type KnowledgeBaseRow,
   knowledgeBaseRepo,
 } from "../server/repositories/knowledge-base";
-import webKnowledgeBasesRoute from "../server/routes/web/knowledge-bases";
+import { createWebKnowledgeBaseRoutes } from "../server/routes/web/knowledge-bases";
 import {
   createKnowledgeBaseRecord,
   deleteKnowledgeBase,
@@ -19,6 +16,17 @@ import {
   verifyEmbeddingProvider,
 } from "../server/services/knowledge-base";
 import { RagFlowKnowledgeProvider } from "../server/services/knowledge-provider/ragflow";
+import { initializeKnowledgeModuleConfig, stubKnowledgeConfig } from "../server/testing";
+import { createStubSessionAuthGuardPlugin } from "./guard-stubs";
+
+/**
+ * 认证上下文由守卫替身写入（真实守卫属宿主，包内不得依赖它构造路由）。
+ * 取值与迁移前 `setTestAuth()` 注入的一致：`{ organizationId: "org-1", userId: "user-1" }`。
+ */
+const AUTH_CONTEXT = { organizationId: "org-1", userId: "user-1" } as const;
+const webKnowledgeBasesRoute = createWebKnowledgeBaseRoutes({
+  authGuardPlugin: createStubSessionAuthGuardPlugin(AUTH_CONTEXT),
+});
 
 const NOW = new Date("2026-08-19T00:00:00.000Z");
 
@@ -61,13 +69,6 @@ function request(path: string, init?: RequestInit) {
   return webKnowledgeBasesRoute.handle(new Request(`http://localhost${path}`, init));
 }
 
-function setAuthenticatedOrg(organizationId = "org-1") {
-  setTestAuth({
-    user: { id: "user-1", email: "user-1@test.com", name: "Tester" },
-    authContext: { organizationId, userId: "user-1", role: "owner" },
-  });
-}
-
 const originals = {
   create: knowledgeBaseRepo.create,
   delete: knowledgeBaseRepo.delete,
@@ -79,9 +80,7 @@ const originals = {
 
 describe("知识库 service 隔离分支", () => {
   beforeEach(() => {
-    resetAllStubs();
-    setAuthenticatedOrg();
-    setConfig({ ragflowApiKey: "test-ragflow-key" });
+    initializeKnowledgeModuleConfig({ ragflowApiKey: "test-ragflow-key" });
   });
 
   afterEach(() => {
@@ -92,9 +91,6 @@ describe("知识库 service 隔离分支", () => {
     knowledgeBaseRepo.update = originals.update;
     agentKnowledgeBindingRepo.deleteByKnowledgeBaseId = originals.deleteBindings;
     setKnowledgeProviderForTesting(null);
-    resetConfig();
-    resetTestAuth();
-    resetAllStubs();
   });
 
   // 路由 schema 必须在访问 service 前拒绝空 slug，避免无效配置进入远端调用。
@@ -114,7 +110,7 @@ describe("知识库 service 隔离分支", () => {
 
   // provider key 缺失时路由应返回业务错误，而不是向上游发送空凭据。
   test("POST /knowledgeBases 在 provider 不可用时返回验证错误", async () => {
-    setConfig({ ragflowApiKey: "" });
+    stubKnowledgeConfig({ ragflowApiKey: "" });
 
     const response = await request("/knowledgeBases", {
       method: "POST",

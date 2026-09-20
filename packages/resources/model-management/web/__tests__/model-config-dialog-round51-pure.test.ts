@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import type { ModelConfig, ModelEntry } from "@/src/types/config";
+import type { ModelConfig, ModelEntry } from "@fenix/web-runtime/types/config";
 import { mergeModelConfigUpdate } from "../components/config/ModelConfigDialog";
 import { buildModelOptions } from "../lib/model-config-utils";
 

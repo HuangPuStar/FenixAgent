@@ -38,13 +38,15 @@ const ALLOWED_HOST_IMPORT = "@server/db/schema";
  * 记成「一对」而不是两份清单：旧路径残留（第二份实现复活）与新路径缺失是同一次迁移失败的两种
  * 表现，成对记录才能让失败信息同时指出两端。
  *
- * 注意 `apps/web/src/routes/admin/sandbox.tsx` 与 `apps/web/src/__tests__/system-sandbox.test.ts`
- * 保留在宿主是既定分工（WebShell 薄 route adapter，归 §1.6），不在本清单里，不要当成残留删除。
+ * 注意 `apps/web/src/routes/admin/sandbox.tsx` 保留在宿主是既定分工（WebShell 薄 route adapter，归 §1.6），
+ * 不在本清单里，不要当成残留删除。它旁边的 `apps/web/src/__tests__/system-sandbox.test.ts` 则是**反向**约束：
+ * 该测试已随 RMD-08 迁入本包（`web/__tests__/system-sandbox.test.ts`），宿主路径不得复活——
+ * `scripts/__tests__/rmd-08-migration.test.ts` 正向断言宿主两份旧路径都不存在、包内唯一落点存在。
  */
 const MIGRATION_PAIRS: ReadonlyArray<readonly [hostPath: string, packagePath: string]> = [
-  ["apps/server/src/routes/api/sandbox.ts", "src/routes/api/sandbox.ts"],
-  ["apps/server/src/routes/api/sandbox-cluster.ts", "src/routes/api/sandbox-cluster.ts"],
-  ["apps/server/src/routes/api/sandbox-server.ts", "src/routes/api/sandbox-server.ts"],
+  ["apps/server/src/routes/api/sandbox.ts", "src/server/routes/api/sandbox.ts"],
+  ["apps/server/src/routes/api/sandbox-cluster.ts", "src/server/routes/api/sandbox-cluster.ts"],
+  ["apps/server/src/routes/api/sandbox-server.ts", "src/server/routes/api/sandbox-server.ts"],
   ["apps/server/src/__tests__/api-sandbox-schema.test.ts", "src/__tests__/api-sandbox-schema.test.ts"],
   ["apps/server/src/__tests__/api-sandbox-server.test.ts", "src/__tests__/api-sandbox-server.test.ts"],
   ["apps/server/src/__tests__/sandbox-api-error-mapping.test.ts", "src/__tests__/sandbox-api-error-mapping.test.ts"],
@@ -184,6 +186,18 @@ function filesUnder(entry: string): string[] {
 /** web 贡献的已扫描文件；宿主别名只可能在 web 面出现，作用域断言按这个集合收敛。 */
 const webFiles = new Set(filesUnder("web"));
 
+/**
+ * 路由模块：`src/server/routes/**` 下导出 `create*Routes` 工厂的文件（去掉扩展名的绝对路径）。
+ *
+ * 只认工厂导出，因为 `routes/dependencies.ts` 只放注入用的类型，被各 route 导入是设计内行为；
+ * 把它算进来会让「route 之间不得互相依赖」的断言对合法用法误报。
+ */
+const routeModuleBases = new Set(
+  filesUnder("src/server/routes")
+    .filter((file) => /export function create\w*Routes/.test(readFileSync(file, "utf8")))
+    .map((file) => file.replace(/\.tsx?$/, "")),
+);
+
 /** 相对说明符是否落在包外：`resolve` 折叠 `..` 段，宿主与兄弟资源包都会在这里现形。 */
 function escapesPackage(file: string, specifier: string): boolean {
   return !resolve(dirname(file), specifier).startsWith(`${PKG_ROOT}/`);
@@ -200,10 +214,10 @@ describe("Sandbox 包边界契约（任务 1.3 §1 静态条件）", () => {
     for (const expected of [
       "fenix.module.ts",
       "src/server.ts",
-      "src/routes/api/sandbox.ts",
-      "src/routes/api/sandbox-cluster.ts",
-      "src/routes/api/sandbox-server.ts",
-      "src/routes/web/sandbox-pools.ts",
+      "src/server/routes/api/sandbox.ts",
+      "src/server/routes/api/sandbox-cluster.ts",
+      "src/server/routes/api/sandbox-server.ts",
+      "src/server/routes/web/sandbox-pools.ts",
       "src/__tests__/guard-stubs.ts",
       "web/index.ts",
       "web/src/api/system-sandbox.ts",
@@ -252,6 +266,20 @@ describe("Sandbox 包边界契约（任务 1.3 §1 静态条件）", () => {
     expect(offenders.map(describeRef)).toEqual([]);
   });
 
+  // route 只做协议适配（§1.3(2)）：route 之间互相 import 会把协议实现耦合成网状，共享逻辑
+  // （例如错误映射）必须落在 `routes/` 之外。此前 `sandbox-server` 从 `sandbox-cluster` 取
+  // `mapSandboxClusterAdminError`，就是这条断言要挡住的形状。
+  test("路由模块之间不存在相互依赖边", () => {
+    // 正向控制：路由模块集合为空时下面的断言恒真，先钉住规模（本包当前 4 个路由工厂）。
+    expect(routeModuleBases.size).toBeGreaterThanOrEqual(4);
+    const offenders = refs.filter((ref) => {
+      if (!routeModuleBases.has(ref.file.replace(/\.tsx?$/, ""))) return false;
+      if (!ref.specifier.startsWith(".")) return false;
+      return routeModuleBases.has(resolve(dirname(ref.file), ref.specifier));
+    });
+    expect(offenders.map(describeRef)).toEqual([]);
+  });
+
   // 环境变量读取与校验统一在宿主（§1.5）：包内直读 `process.env` 会把部署知识复制进资源模块，
   // 两处默认值会分歧。标题刻意不写该字面量——本文件也在扫描范围内，标题会被自己扫成违规。
   test("包内 src 不直读宿主环境变量", () => {
@@ -273,10 +301,39 @@ describe("Sandbox 包边界契约（任务 1.3 §1 静态条件）", () => {
     expect(missing.map(([key, target]) => `${key} → ${target}`)).toEqual([]);
   });
 
-  // `./module` 与 `./web` 是模块注册与浏览器装配的锚点：指错文件会让宿主取到错误的贡献形状。
-  test("package.json 的 ./module 与 ./web 指向约定文件", () => {
-    expect(manifest.exports?.["./module"]).toBe("./fenix.module.ts");
-    expect(manifest.exports?.["./web"]).toBe("./web/index.ts");
+  // 只断言「目标存在」会漏掉**键被删掉**这一半（W1 变异测试实测：删掉 `exports["./server"]` 后
+  // 本文件仍全绿）。因此这里逐个键断言存在 + 目标路径，每条都对应一个真实消费方：
+  //   `.`、`./server`、`./module` 是计划 §2.2 的交付物契约；`./server/testing` 由 machine 包的
+  //   `server/testing` 子路径与宿主 `test-utils/setup-mocks.ts` 消费；
+  //   `./web/i18n` 由宿主 `apps/web/src/i18n/index.ts` 消费；`./web` 由 observer / model-management /
+  //   agent-config 的 web 面消费。
+  test("package.json 的 exports 键齐备且指向约定文件", () => {
+    const expected: ReadonlyArray<readonly [string, string]> = [
+      ["./module", "./fenix.module.ts"],
+      ["./server", "./src/server.ts"],
+      ["./server/testing", "./src/server/testing.ts"],
+      ["./web", "./web/index.ts"],
+      ["./web/i18n", "./web/i18n/index.ts"],
+    ];
+    for (const [key, target] of expected) {
+      expect(manifest.exports?.[key], `exports 缺少 ${key}`).toBe(target);
+    }
+    // 根入口必须存在，且不得是浏览器入口：包根被服务端与装配层导入，指向 `web/**` 会把整张
+    // 浏览器图（React、Radix、页面）拖进模块注册与装配路径。
+    expect(typeof manifest.exports?.["."]).toBe("string");
+    expect(manifest.exports?.["."]?.startsWith("./web/")).toBe(false);
+  });
+
+  // README 是 §1 静态条件 6 的交付物，但「文件存在」不等于「五段式非占位」——W1 变异测试实测：
+  // 换成单行占位后本文件仍全绿。这里把结构与体量钉住，缺段或退化成占位会在包内直接失败。
+  test("README 为五段式且非占位", () => {
+    const readme = readFileSync(join(PKG_ROOT, "README.md"), "utf8");
+    expect(readme.startsWith("# @fenix/resource-sandbox")).toBe(true);
+    const headings = readme.split("\n").filter((line) => line.startsWith("## "));
+    expect(headings).toEqual(["## 定位与 owner", "## 服务端交付物", "## web 面与 i18n", "## 边界残留", "## 已知项"]);
+    const bodyLines = readme.split("\n").filter((line) => line.trim().length > 0);
+    expect(bodyLines.length).toBeGreaterThanOrEqual(40);
+    expect(readme).not.toMatch(/TODO|待补|占位/);
   });
 
   // 跨包只能走对方根入口的公开导出；深入 `@fenix/*/src` 会把别的包的内部实现拖进本包依赖面。

@@ -12,9 +12,6 @@ const RMD_07_MOVES = [
   ["src/routes/web/peri-task-details.ts", "apps/server/src/routes/web/peri-task-details.ts"],
   ["src/routes/web/config/index.ts", "apps/server/src/routes/web/config/index.ts"],
   ["src/schemas/api-instance.schema.ts", "apps/server/src/schemas/api-instance.schema.ts"],
-  ["src/schemas/api-model.schema.ts", "apps/server/src/schemas/api-model.schema.ts"],
-  ["src/schemas/api-workspace.schema.ts", "apps/server/src/schemas/api-workspace.schema.ts"],
-  ["src/schemas/config.schema.ts", "apps/server/src/schemas/config.schema.ts"],
   ["src/schemas/index.ts", "apps/server/src/schemas/index.ts"],
   ["src/schemas/peri-task-details.ts", "apps/server/src/schemas/peri-task-details.ts"],
   ["src/schemas/session.schema.ts", "apps/server/src/schemas/session.schema.ts"],
@@ -79,9 +76,33 @@ const RMD_07_MOVES = [
   ].map((file) => [`src/__tests__/${file}`, `apps/server/src/__tests__/${file}`] as const),
 ] as const;
 
+/**
+ * 任务 1.3 收口时删掉的宿主 schema 副本，三元组为 `[旧根路径, 宿主 schemas 路径, 包内 owner 落点]`。
+ *
+ * 这三份契约的 owner 是 Provider / Model / Machine 资源包，宿主副本在删除前已零消费方（`schemas/index.ts`
+ * 不转发）；与包内实现并存会让同一份协议出现两种定义，且分歧只在运行期暴露。
+ */
+const RMD_07_RELOCATED = [
+  [
+    "src/schemas/api-model.schema.ts",
+    "apps/server/src/schemas/api-model.schema.ts",
+    "packages/resources/model-management/src/server/schemas/api-model.schema.ts",
+  ],
+  [
+    "src/schemas/config.schema.ts",
+    "apps/server/src/schemas/config.schema.ts",
+    "packages/resources/model-management/src/server/schemas/config.schema.ts",
+  ],
+  [
+    "src/schemas/api-workspace.schema.ts",
+    "apps/server/src/schemas/api-workspace.schema.ts",
+    "packages/resources/machine/src/schemas/api-workspace.schema.ts",
+  ],
+] as const;
+
 describe("RMD-07 server-host migration", () => {
-  // 仅这 70 个获批源文件迁入 server host，避免旧根路径或额外迁移悄然出现。
-  // 原 75 项中已有五项的目标不再由 server host 持有：
+  // 仅这 67 个获批源文件迁入 server host，避免旧根路径或额外迁移悄然出现。
+  // 原 75 项中已有七项的目标不再由 server host 持有：
   // 任务 1.2 的三项：
   // - `schemas/common.schema.ts` 上移到 `packages/platform/platform-sdk/src/protocol/web-envelope.ts`；
   // - `routes/web/config/providers.ts` 由 Provider 资源包接管
@@ -94,11 +115,25 @@ describe("RMD-07 server-host migration", () => {
   //   （`packages/resources/sandbox/src/routes/web/sandbox-pools.ts`），宿主只保留挂载；
   // - `schemas/api-common.schema.ts` 上移到 `packages/platform/platform-sdk/src/protocol/system-api.ts`
   //   （`ApiErrorResponseSchema` 与错误分类法同批下沉，workflow 包的同名转发 shim 一并删除）。
+  // 任务 1.3 收口的三项（宿主副本零消费方，宿主侧删除，见下方 relocated 断言）：
+  // - `schemas/api-model.schema.ts`、`schemas/config.schema.ts` 的 owner 是 model-management 包；
+  // - `schemas/api-workspace.schema.ts` 的 owner 是 machine 包——该宿主文件与包内同名文件**字节相同**
+  //   且已无任何导入方，属 §1.3(1) 明令禁止的 app↔package 重复实现，按「删除优于兼容」删除。
   test("removes every legacy source and retains its exact server-host target", () => {
-    expect(RMD_07_MOVES).toHaveLength(70);
+    expect(RMD_07_MOVES).toHaveLength(67);
     for (const [source, target] of RMD_07_MOVES) {
       expect(existsSync(source), `legacy source still exists: ${source}`).toBe(false);
       expect(existsSync(target), `server-host target is missing: ${target}`).toBe(true);
+    }
+  });
+
+  // Provider / Model / Machine 契约的 owner 已在资源包：旧根路径与宿主 schemas 路径都不得复活，包内必须有唯一落点。
+  test("relocates the provider and model schemas to the model management package", () => {
+    expect(RMD_07_RELOCATED).toHaveLength(3);
+    for (const [legacy, shell, owner] of RMD_07_RELOCATED) {
+      expect(existsSync(legacy), `legacy source still exists: ${legacy}`).toBe(false);
+      expect(existsSync(shell), `host copy still exists: ${shell}`).toBe(false);
+      expect(existsSync(owner), `package owner is missing: ${owner}`).toBe(true);
     }
   });
 });

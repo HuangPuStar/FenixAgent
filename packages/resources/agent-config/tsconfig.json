@@ -22,31 +22,7 @@
         "packages/resources/agent-config/src/server/services/config/agent-config.ts"
       ],
       "@fenix/agent-config/server/testing": ["packages/resources/agent-config/src/server/testing.ts"],
-      "@server/*": ["apps/server/src/*"],
-      "@/components/ui/*": ["apps/web/components/ui/*"],
-      "@/components/*": ["apps/web/components/*"],
-      "@/components/model-icon/*": ["packages/resources/model-management/web/components/model-icon/*"],
-      "@/src/i18n/locales/*": ["apps/web/src/i18n/locales/*"],
-      "@/src/i18n": ["apps/web/src/i18n/index.ts"],
-      "@/src/api/request": ["apps/web/src/api/request.ts"],
-      "@/src/api/helpers": ["apps/web/src/api/helpers.ts"],
-      "@/src/api/agents": ["packages/resources/agent-config/web/api/agents.ts"],
-      "@/src/api/sites": ["packages/resources/agent-config/web/api/sites.ts"],
-      "@/src/api/environments": ["packages/agent-runtime/web/api/environments.ts"],
-      "@/src/api/skills": ["packages/resources/skill/web/api/skills.ts"],
-      "@/src/api/mcp": ["packages/resources/mcp/web/api/mcp.ts"],
-      "@/src/api/knowledge-bases": ["packages/resources/knowledge/web/api/knowledge-bases.ts"],
-      "@/src/api/hindsight": ["packages/resources/memory/web/api/hindsight.ts"],
-      "@/src/api/models": ["packages/resources/model-management/web/api/models.ts"],
-      "@/src/types/knowledge": ["packages/resources/knowledge/web/types/knowledge.ts"],
-      "@/src/lib/mcp-resource-access": ["packages/resources/mcp/web/lib/mcp-resource-access.ts"],
-      "@/src/lib/skill-resource-access": ["packages/resources/skill/web/lib/skill-resource-access.ts"],
-      "@/src/lib/card-renderer": ["apps/web/src/lib/card-renderer/index.ts"],
-      "@/src/lib/model-config-utils": ["packages/resources/model-management/web/lib/model-config-utils.ts"],
-      "@/src/lib/provider-resource-access": ["packages/resources/model-management/web/lib/provider-resource-access.ts"],
-      "@/src/lib/utils": ["apps/web/src/lib/utils.ts"],
-      "@/src/contexts/OrgContext": ["packages/platform/identity/web/contexts/OrgContext.tsx"],
-      "@/src/*": ["apps/web/src/*"]
+      "@server/*": ["apps/server/src/*"]
     }
   },
   "include": ["src/**/*.ts", "src/**/*.tsx", "web/**/*.ts", "web/**/*.tsx"]

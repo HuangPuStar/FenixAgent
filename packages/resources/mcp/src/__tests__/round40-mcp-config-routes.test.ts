@@ -2,9 +2,9 @@ import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import type { ActorContext } from "@fenix/platform-sdk";
 import { ConflictError, ForbiddenError, NotFoundError } from "@fenix/platform-sdk";
 import { readJson, resetAllStubs } from "@fenix/platform-sdk/testing";
-import { resetTestAuth, setTestAuth } from "@server/plugins/auth";
-import { setTestOrgContext } from "@server/services/org-context";
+import { createWebMcpConfigRoutes } from "../server/routes/web/config/mcp";
 import { authorizedServer, installMcpModuleStub, resetMcpModuleStub, testActor } from "./fixtures";
+import { createStubMcpAuthGuardPlugin } from "./guard-stubs";
 
 /**
  * `/web/config/mcp` 协议层用例。
@@ -12,16 +12,17 @@ import { authorizedServer, installMcpModuleStub, resetMcpModuleStub, testActor }
  * 授权、可见性与资源解析都在应用 Facade 内，本文件只覆盖协议层职责：参数校验、请求映射、视图
  * 映射与错误码映射。Facade 行为（工具计数降级、名称优先级、删除事务等）由 `mcp-server-facade`
  * 用例覆盖。
+ *
+ * 会话守卫由宿主注入（工厂参数），用例注入包内替身并通过它控制 `store.actor`；不再借宿主的
+ * `setTestAuth` / `setTestOrgContext` 短路认证——那会让本用例依赖宿主实现。
  */
 
-const mcpRoute = (await import("../server/routes/web/config/mcp")).default;
+const guard = createStubMcpAuthGuardPlugin();
+const mcpRoute = createWebMcpConfigRoutes({ authGuardPlugin: guard.plugin });
 
-function authenticate(organizationId = "org-1") {
-  setTestAuth({
-    user: { id: "user-1", email: "user-1@example.test", name: "Tester" },
-    authContext: { organizationId, userId: "user-1", role: "owner" },
-  });
-  setTestOrgContext({ organizationId, userId: "user-1", role: "owner" });
+/** 默认主体是 org-1 的 owner；具体组织由 `testActor({ activeOrganizationId })` 指定。 */
+function authenticate() {
+  guard.setActor(testActor());
 }
 
 function request(path: string, init?: RequestInit) {
@@ -44,8 +45,7 @@ describe("round40 MCP 配置路由", () => {
   });
 
   afterEach(() => {
-    resetTestAuth();
-    setTestOrgContext(null);
+    guard.setActor(null);
     resetMcpModuleStub();
   });
 
@@ -126,7 +126,8 @@ describe("round40 MCP 配置路由", () => {
     expect(body.data.servers[0]).not.toHaveProperty("organizationName");
   });
 
-  // 已认证但缺少组织上下文的请求不得进入 Facade：没有 active organization 就无法定义资源归属。
+  // 无主体的请求（未认证，或已认证但没有 active organization）不得进入 Facade：
+  // 没有 active organization 就无法定义资源归属。
   test("缺少组织上下文返回 401 且不调用 Facade", async () => {
     let called = false;
     installMcpModuleStub({
@@ -137,10 +138,7 @@ describe("round40 MCP 配置路由", () => {
         },
       },
     });
-    setTestAuth({
-      user: { id: "user-1", email: "user-1@example.test", name: "Tester" },
-      authContext: null,
-    });
+    guard.setActor(null);
 
     const response = await request("/config/mcp");
 

@@ -1,10 +1,9 @@
 import { describe, expect, test } from "bun:test";
-
+import type { ModelEntry } from "@fenix/web-runtime/types/config";
 import {
   mapMcpOptions,
   mapModelOptions,
 } from "../../../../packages/resources/agent-config/web/pages/agent-panel/agent-editor/agent-editor-model";
-import type { ModelEntry } from "../types/config";
 
 type McpServer = Parameters<typeof mapMcpOptions>[0][number];
 

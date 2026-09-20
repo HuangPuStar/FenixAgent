@@ -1,8 +1,11 @@
 import { beforeEach, describe, expect, test } from "bun:test";
 import { buildLaunchSpec } from "@fenix/agent-runtime/server";
-import { resetAllStubs, stubDb } from "@fenix/platform-sdk/testing";
+import { stubDb } from "@fenix/platform-sdk/testing";
 import { setListAgentKnowledgeBindingsById } from "@fenix/resource-knowledge/server";
+import { createMemoryModuleConfig } from "@fenix/resource-memory/server/testing";
+import { createSkillModuleConfig } from "@fenix/resource-skill/server/testing";
 import { agentConfigMcp, agentConfigSkill, mcpServer, model, provider } from "@server/db/schema";
+import { initializeWorkflowModuleConfig } from "../server/testing";
 
 const now = new Date("2026-06-01T00:00:00.000Z");
 
@@ -49,7 +52,9 @@ function createWorkflowAgentConfig() {
 
 describe("workflow provider model access", () => {
   beforeEach(() => {
-    resetAllStubs();
+    // 用例经 buildLaunchSpec 读 skill / memory 包的模块配置（技能根目录、记忆服务开关）：必须一并声明，
+    // 字段形状用各包自己的工厂，本包不手抄字段表。
+    initializeWorkflowModuleConfig({}, { skill: createSkillModuleConfig(), memory: createMemoryModuleConfig() });
     setListAgentKnowledgeBindingsById(async () => []);
   });
 

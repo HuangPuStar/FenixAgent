@@ -1,15 +1,18 @@
 import { beforeEach, describe, expect, mock, test } from "bun:test";
-import { resetAllStubs, stubDb } from "@fenix/platform-sdk/testing";
+import { stubDb } from "@fenix/platform-sdk/testing";
 import {
   createKnowledgeBaseRecord,
   resolveKnowledgeTenantIdentity,
   sanitizeKnowledgeBase,
 } from "../server/services/knowledge-base";
 import { listKnowledgeResources } from "../server/services/knowledge-upload";
+import { initializeKnowledgeModuleConfig } from "../server/testing";
 
 describe("知识库服务边界", () => {
   beforeEach(() => {
-    resetAllStubs();
+    // 服务经仓储落库，仓储句柄来自 platform-sdk 基础设施（未初始化即抛错）；
+    // 这里初始化转发到 `stubDb()` 的 DB 代理，用例内再按需替换替身。
+    initializeKnowledgeModuleConfig();
   });
 
   // 创建请求缺少有效名称时必须在访问数据库和 provider 前返回输入校验错误。

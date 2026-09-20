@@ -21,16 +21,10 @@ import {
   globalInstanceRegistry,
   markInstanceRelayAttached,
   type PromptTurn,
-  resetOrchestrationInstanceDeps,
-  setOrchestrationInstanceDeps,
 } from "@fenix/agent-runtime/server";
-import type { CoreRuntimeFacade, RuntimeInstanceSnapshot } from "@fenix/core";
-import type { AgentController } from "@fenix/orchestration";
 import { resetAllStubs } from "@fenix/platform-sdk/testing";
 import type { EngineRelayMessage } from "@fenix/plugin-sdk";
 import { WorkflowErrorCode } from "@fenix/workflow-engine";
-import { stubCoreBootstrap } from "@server/test-utils/stubs/module-stubs";
-import type { InstanceSupplement } from "@server/types/store";
 import { AgentChatSessionAdapter } from "../server/services/workflow/agent-chat-transport";
 import {
   acquireInstanceLease,
@@ -107,6 +101,13 @@ function makeFakeChatSession(): ChatAgentSession {
     dispose: async () => {},
   };
 }
+
+/**
+ * supplement 形状直接取自注册表 API 的参数类型：迁移前从宿主 `@server/types/store` import type，
+ * 那正是静态条件 1 禁止的宿主内部依赖；用 `Parameters<typeof …register>` 派生既不用复制字段清单，
+ * 也不会与该类型的 owner（agent-runtime）漂移。
+ */
+type InstanceSupplement = Parameters<typeof globalInstanceRegistry.register>[1];
 
 /** 构造已注册的 supplement（模拟 registerSupplement 后的状态） */
 function makeSupplement(overrides: Partial<InstanceSupplement> = {}): InstanceSupplement {
@@ -498,72 +499,54 @@ describe("AgentChatSessionAdapter", () => {
   });
 });
 
-// C-P2.4：workflow run 中 relay_closed（进程崩溃）必须触发本地实例级死亡清理，
-// 否则死实例状态恒 running、被 ensureRunning 无限复用且持续占并发额度
+// C-P2.4：workflow run 中 relay_closed（进程崩溃）必须把死亡信号交给 agent-runtime 的本地实例清理入口，
+// 否则死实例状态恒 running、被 ensureRunning 无限复用且持续占并发额度。
+//
+// 覆盖边界（为什么用注入的清理入口替身而不是宿主 stub）：清理实现（core 快照校验 → controller.stopInstance
+// → core stopInstance → supplement 清理）属 agent-runtime，由它的 local-instance-death-cleanup.test.ts
+// 覆盖 9 个用例；而它读的 core runtime 仍是宿主模块，包内用例既不能 import 宿主模块、也无法经
+// CoreRuntimePort 注入（迁移前的做法是宿主 preload 的 stubCoreBootstrap，正是静态条件 1 要切断的依赖）。
+// 本包拥有的是**调用点**，故此处只断言「relay_closed 到达 → 清理入口被调用一次且携带死亡实例 id」。
 describe("AgentChatSessionAdapter relay death cleanup", () => {
-  /** 记录 controller.stopInstance 调用（清理触发的证据）。 */
-  const controllerStopCalls: string[] = [];
-
-  const fakeFacade = {
-    getInstance: () =>
-      ({
-        instanceId: "inst-test",
-        engineType: "opencode",
-        nodeId: "local-default",
-        status: "running",
-        launchSpec: {},
-        relayConnected: false,
-        createdAt: new Date(),
-        updatedAt: new Date(),
-      }) as unknown as RuntimeInstanceSnapshot,
-    stopInstance: async () => {},
-  } as unknown as CoreRuntimeFacade;
-
-  const fakeController = {
-    listInstances: () => [{ instanceId: "inst-test" }],
-    stopInstance: async (instanceId: string) => {
-      controllerStopCalls.push(instanceId);
-    },
-  } as unknown as AgentController;
+  /** 交给适配器的清理入口替身记录（调用点证据）。 */
+  const cleanupCalls: string[] = [];
 
   beforeEach(() => {
-    controllerStopCalls.length = 0;
-    stubCoreBootstrap({ getCoreRuntime: () => fakeFacade });
-    setOrchestrationInstanceDeps({ getOrchestrationController: () => fakeController });
+    cleanupCalls.length = 0;
   });
 
   afterEach(() => {
-    resetOrchestrationInstanceDeps();
     resetAllStubs();
   });
 
-  // workflow run 进行中收到 relay_closed：本地实例死亡信号，清理须触发；
+  // workflow run 进行中收到 relay_closed：死亡信号必须送达清理入口；
   // 失败结果（exit_code=1）与清理互不阻塞
-  test("workflow run 中 relay_closed 到达 → 本地实例触发 terminateLocalDeadInstance", async () => {
+  test("workflow run 中 relay_closed 到达 → 调用清理入口并携带死亡实例", async () => {
     const turn = new FakeTurn();
-    const adapter = new AgentChatSessionAdapter(turn, makeFakeChatSession(), 1000);
+    const adapter = new AgentChatSessionAdapter(turn, makeFakeChatSession(), 1000, (instanceId) => {
+      cleanupCalls.push(instanceId);
+    });
 
     const promise = adapter.execute({ prompt: "x" });
     turn.push({ type: "relay_closed", payload: { code: "relay_disconnected" } });
 
     const result = await promise;
     expect(result.exit_code).toBe(1);
-    // terminateLocalDeadInstance 为 fire-and-forget，等其微任务链完成
-    await new Promise((resolve) => setTimeout(resolve, 0));
-    expect(controllerStopCalls).toEqual(["inst-test"]);
+    expect(cleanupCalls).toEqual(["inst-test"]);
   });
 
   // 主动关闭路径（dispose 先注销 listener）不得触发死亡清理：
   // 钉住"relay_closed 送达监听器即意外断连"的判定边界（C-P2.4）
   test("run 正常结束（无 relay_closed）→ 不触发清理", async () => {
     const turn = new FakeTurn();
-    const adapter = new AgentChatSessionAdapter(turn, makeFakeChatSession(), 1000);
+    const adapter = new AgentChatSessionAdapter(turn, makeFakeChatSession(), 1000, (instanceId) => {
+      cleanupCalls.push(instanceId);
+    });
 
     const promise = adapter.execute({ prompt: "x" });
     turn.push({ jsonrpc: "2.0", result: { stopReason: "end_turn" } } as unknown as EngineRelayMessage);
 
     await promise;
-    await new Promise((resolve) => setTimeout(resolve, 0));
-    expect(controllerStopCalls).toEqual([]);
+    expect(cleanupCalls).toEqual([]);
   });
 });

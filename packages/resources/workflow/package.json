@@ -3,26 +3,45 @@
   "private": true,
   "type": "module",
   "dependencies": {
+    "@fenix/agent-config": "workspace:*",
     "@fenix/agent-runtime": "workspace:*",
-    "@fenix/chat-channel": "workspace:*",
     "@fenix/logger": "workspace:*",
     "@fenix/platform-sdk": "workspace:*",
     "@fenix/plugin-sdk": "workspace:*",
+    "@fenix/ui-components": "workspace:*",
+    "@fenix/web-runtime": "workspace:*",
     "@fenix/workflow-engine": "workspace:*",
+    "@xyflow/react": "^12.10.2",
+    "ahooks": "^3.9.7",
+    "dagre": "^0.8.5",
     "drizzle-orm": "^0.45.2",
     "elysia": "^1.4.28",
     "js-yaml": "^5.1.0",
-    "nanoid": "^5.1.6",
+    "lucide-react": "^1.16.0",
+    "nanoid": "^5.1.11",
+    "sonner": "^2.0.7",
     "zod": "^4.4.3"
+  },
+  "peerDependencies": {
+    "@tanstack/react-router": "^1.170.7",
+    "i18next": "^26.2.0",
+    "react": "^19.2.6",
+    "react-dom": "^19.2.6",
+    "react-i18next": "^17.0.8"
   },
   "exports": {
     ".": "./src/index.ts",
     "./module": "./fenix.module.ts",
-    "./server": "./src/server.ts"
+    "./server": "./src/server.ts",
+    "./server/testing": "./src/server/testing.ts",
+    "./web": "./web/index.ts",
+    "./web/i18n": "./web/i18n/index.ts"
   },
   "devDependencies": {
     "@fenix/core": "workspace:*",
-    "@fenix/orchestration": "workspace:*",
-    "@fenix/resource-knowledge": "workspace:*"
+    "@fenix/resource-knowledge": "workspace:*",
+    "@fenix/resource-memory": "workspace:*",
+    "@fenix/resource-skill": "workspace:*",
+    "happy-dom": "^20.9.0"
   }
 }

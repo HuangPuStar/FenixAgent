@@ -1,6 +1,17 @@
-import { db } from "@server/db";
 import { model } from "@server/db/schema";
 import { and, count, eq, inArray } from "drizzle-orm";
+import { getModelManagementDatabase } from "../db";
+
+/**
+ * 取本模块的 DB 句柄。
+ *
+ * 包一层而不是 `import { db } from "@server/db"`：句柄只能在宿主完成基础设施初始化之后读取，而这些仓储
+ * 是进程级单例，构造期可能早于 `initializeApplicationInfrastructure()`。名字与 Drizzle 惯例一致，调用点
+ * 读起来与直接使用 `db` 相同。
+ */
+function database() {
+  return getModelManagementDatabase();
+}
 
 /**
  * Model **子表**的持久化访问层。
@@ -107,12 +118,12 @@ export function createModelRepository(): ModelRepository {
 
   return {
     async listByProviderId(input) {
-      return db.select().from(model).where(eq(model.providerId, input.providerId));
+      return database().select().from(model).where(eq(model.providerId, input.providerId));
     },
 
     async countByProviderIds(input) {
       if (input.providerIds.length === 0) return new Map();
-      const rows = await db
+      const rows = await database()
         .select({ providerId: model.providerId, total: count() })
         .from(model)
         .where(inArray(model.providerId, [...input.providerIds]))
@@ -121,7 +132,7 @@ export function createModelRepository(): ModelRepository {
     },
 
     async findById(input) {
-      const rows = await db
+      const rows = await database()
         .select()
         .from(model)
         .where(and(eq(model.providerId, input.providerId), eq(model.id, input.id)))
@@ -130,7 +141,7 @@ export function createModelRepository(): ModelRepository {
     },
 
     async findByModelId(input) {
-      const rows = await db
+      const rows = await database()
         .select()
         .from(model)
         .where(and(eq(model.providerId, input.providerId), eq(model.modelId, input.modelId)))
@@ -140,7 +151,7 @@ export function createModelRepository(): ModelRepository {
 
     async upsert(input) {
       const set = writeSet(input.data);
-      const rows = await db
+      const rows = await database()
         .insert(model)
         .values({
           organizationId: input.organizationId,
@@ -157,7 +168,7 @@ export function createModelRepository(): ModelRepository {
     },
 
     async updateById(input) {
-      const rows = await db
+      const rows = await database()
         .update(model)
         .set(writeSet(input.data))
         .where(and(rowKey(input), eq(model.id, input.id)))
@@ -166,7 +177,7 @@ export function createModelRepository(): ModelRepository {
     },
 
     async updateByModelId(input) {
-      const rows = await db
+      const rows = await database()
         .update(model)
         .set(writeSet(input.data))
         .where(and(rowKey(input), eq(model.modelId, input.modelId)))
@@ -175,7 +186,7 @@ export function createModelRepository(): ModelRepository {
     },
 
     async removeById(input) {
-      const rows = await db
+      const rows = await database()
         .delete(model)
         .where(and(rowKey(input), eq(model.id, input.id)))
         .returning({ id: model.id });
@@ -183,7 +194,7 @@ export function createModelRepository(): ModelRepository {
     },
 
     async removeByModelId(input) {
-      const rows = await db
+      const rows = await database()
         .delete(model)
         .where(and(rowKey(input), eq(model.modelId, input.modelId)))
         .returning({ id: model.id });

@@ -15,6 +15,7 @@ import { stopInstance } from "@fenix/agent-runtime/server";
 import { createLogger } from "@fenix/logger";
 import type { Transport, WorkflowEngine } from "@fenix/workflow-engine";
 import { createWorkflowEngine } from "@fenix/workflow-engine";
+import { getWorkflowConfig } from "../../config";
 import { createAgentChatTransport } from "./agent-chat-transport";
 import { getCustomToolsRegistry } from "./custom-tools";
 import { hasActiveInstanceLease } from "./instance-lease";
@@ -81,7 +82,9 @@ export function getTeamEngine(organizationId: string): WorkflowEngine {
     const engine = createWorkflowEngine({
       storage,
       transport,
-      hmacSecret: process.env.RCS_WORKFLOW_HMAC_SECRET || crypto.randomUUID(),
+      // 部署密钥来自模块配置（宿主 env 声明与校验归 §1.7 的 envDefinitions）；缺省每进程一个随机值，
+      // 多实例部署必须显式配置，否则跨实例恢复的 run 会签名校验失败。
+      hmacSecret: getWorkflowConfig().hmacSecret ?? crypto.randomUUID(),
       customRegistry: getCustomToolsRegistry(),
     });
     runtime = { engine, transport };

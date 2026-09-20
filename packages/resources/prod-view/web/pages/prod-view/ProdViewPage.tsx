@@ -1,18 +1,21 @@
+import { Button } from "@fenix/ui-components/ui/button";
+import { ApiError, unwrap } from "@fenix/web-runtime/api/request";
 import { useParams } from "@tanstack/react-router";
 import { useRequest } from "ahooks";
 import { lazy, Suspense, useRef } from "react";
 import { useTranslation } from "react-i18next";
-import { Button } from "@/components/ui/button";
-import { prodViewApi } from "@/src/api/prod-views";
-import { unwrap } from "@/src/api/request";
-import { NS } from "@/src/i18n";
-import "@/src/pages/agent-panel/agent-panel.css";
+import { prodViewApi } from "../../api/prod-views";
+import { PROD_VIEWS_NS } from "../../i18n/namespace";
+
+// 本页用到的 `.agent-panel-layout` / `.agent-panel-body` 定义在宿主 apps/web 的 agent-panel.css，
+// 由挂载本页的路由 `apps/web/src/routes/view/$prodViewId.tsx` 以副作用导入加载（它在 lazy 之前导入，
+// 样式先于页面组件执行）。本包不再自带该 CSS 的导入：包内 web 面禁止宿主别名，而样式表仍属宿主资源。
 
 const ChatArea = lazy(() => import("@fenix/chat-channel/web/chat-area").then((m) => ({ default: m.ChatArea })));
 
 export function ProdViewPage() {
   const { prodViewId } = useParams({ from: "/view/$prodViewId" }) as { prodViewId: string };
-  const { t } = useTranslation(NS.PROD_VIEWS);
+  const { t } = useTranslation(PROD_VIEWS_NS);
   const requestGeneration = useRef(0);
 
   const {
@@ -30,6 +33,9 @@ export function ProdViewPage() {
     { refreshDeps: [prodViewId] },
   );
 
+  /** 401/403（request 层把两者统一归一为 UNAUTHORIZED）不重试：分享页的授权结果不因重试改变。 */
+  const unauthorized = loadError instanceof ApiError && loadError.code === "UNAUTHORIZED";
+
   return (
     <div className="agent-panel-layout !flex-col">
       {/* 极简 header：复用 agent 页面的 CSS 变量，确保暗色模式一致 */}
@@ -45,11 +51,18 @@ export function ProdViewPage() {
             <span className="sr-only">{t("loading")}</span>
           </div>
         ) : loadError ? (
-          <div className="flex h-full flex-col items-center justify-center gap-4">
-            <p className="text-sm text-text-muted">{(loadError as Error)?.message ?? t("loadError")}</p>
-            <Button variant="outline" onClick={refresh} disabled={loading}>
-              {t("retry")}
-            </Button>
+          // 持久错误分支（role="alert"）与 401/403 的无权限分支分开：后者给重试按钮是无意义的入口。
+          <div className="flex h-full flex-col items-center justify-center gap-4" role="alert">
+            <p className="text-sm text-text-muted">
+              {unauthorized ? t("noPermission") : ((loadError as Error)?.message ?? t("loadError"))}
+            </p>
+            {unauthorized ? (
+              <p className="text-xs text-text-dim">{t("noPermissionHint")}</p>
+            ) : (
+              <Button variant="outline" onClick={refresh} disabled={loading}>
+                {t("retry")}
+              </Button>
+            )}
           </div>
         ) : !viewConfig?.environmentId ? (
           <div className="flex h-full flex-col items-center justify-center gap-4">

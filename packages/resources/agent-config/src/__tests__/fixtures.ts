@@ -13,6 +13,12 @@ import {
 } from "@fenix/platform-sdk";
 import { agentConfigResource } from "../server/access/agent-config-resource";
 import type { AgentConfigFacadeApi, AuthorizedAgentConfig } from "../server/facades/agent-config-facade";
+import type {
+  UserAgentPreferencesPatch,
+  UserAgentPreferencesPort,
+  UserAgentPreferencesSnapshot,
+  UserAgentPreferencesSubject,
+} from "../server/ports/user-agent-preferences";
 import type { AgentConfigRow, ScopedAgentConfigRow } from "../server/repositories/agent-config-resource";
 import type { AgentAssociations } from "../server/services/agent-associations";
 import type { AgentConfigService } from "../server/services/agent-config-service";
@@ -121,6 +127,42 @@ export function installAgentModuleStub(
 /** 清除模块装配结果；测试结束必须调用，避免跨用例共享状态。 */
 export function resetAgentModuleStub(): void {
   resetAgentConfigModuleForTesting();
+}
+
+/**
+ * 当前用户的默认 Agent 偏好替身（迁移前宿主 `stubConfigPg` 的接缝，收窄为一个端口）。
+ *
+ * `user_config` 属身份族表，不由本包拥有：宿主经 {@link UserAgentPreferencesPort} 注入读写实现。
+ * 路由实例在模块加载期构造，因此这里保持一份**可变实现**并让端口方法在请求期转发——用例才能在
+ * `beforeEach` 里改变行为而不必重建路由。默认读「未设置默认 Agent」、写丢弃。
+ */
+let agentPreferences: {
+  readonly read: (subject: UserAgentPreferencesSubject) => Promise<UserAgentPreferencesSnapshot>;
+  readonly write: (subject: UserAgentPreferencesSubject, patch: UserAgentPreferencesPatch) => Promise<void>;
+} = {
+  read: async () => ({ defaultAgent: null }),
+  write: async () => undefined,
+};
+
+/** 替换偏好读写实现；未提供的部分保持默认（读 null、写丢弃）。 */
+export function stubAgentPreferences(overrides: Partial<typeof agentPreferences>): void {
+  agentPreferences = {
+    read: overrides.read ?? (async () => ({ defaultAgent: null })),
+    write: overrides.write ?? (async () => undefined),
+  };
+}
+
+/** 复位偏好替身；测试结束必须调用，避免写入断言泄漏到下一条用例。 */
+export function resetAgentPreferences(): void {
+  stubAgentPreferences({});
+}
+
+/** 构造测试用的偏好端口；方法在请求期读取当前替身实现。 */
+export function createTestAgentPreferencesPort(): UserAgentPreferencesPort {
+  return {
+    read: (subject) => agentPreferences.read(subject),
+    write: (subject, patch) => agentPreferences.write(subject, patch),
+  };
 }
 
 /** 构造平台授权条件句柄；形状与 `DefaultAccessControl` 产出的条件一致（含私有载荷键）。 */

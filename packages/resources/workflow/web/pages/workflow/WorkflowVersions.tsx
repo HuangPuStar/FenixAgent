@@ -1,15 +1,16 @@
+import { ConfirmDialog } from "@fenix/ui-components/config/ConfirmDialog";
+import { AppHeader } from "@fenix/ui-components/layout/app-header";
+import { Button } from "@fenix/ui-components/ui/button";
+import { Skeleton } from "@fenix/ui-components/ui/skeleton";
+import { unwrap } from "@fenix/web-runtime/api/request";
 import { Link } from "@tanstack/react-router";
 import { useRequest } from "ahooks";
-import { AlertTriangle, Clock, Inbox, RefreshCw, RotateCcw, Star } from "lucide-react";
+import { AlertTriangle, Clock, Inbox, RefreshCw, RotateCcw, ShieldAlert, Star } from "lucide-react";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
-import { ConfirmDialog } from "@/components/config/ConfirmDialog";
-import { Button } from "@/components/ui/button";
-import { Skeleton } from "@/components/ui/skeleton";
-import { unwrap } from "@/src/api/request";
-import { AppHeader } from "@/src/components/layout/app-header";
 import { workflowDefApi } from "../../api/workflow-defs";
+import { isUnauthorizedError } from "./utils";
 
 interface WorkflowVersionsProps {
   workflowId: string;
@@ -42,11 +43,14 @@ export function WorkflowVersions({ workflowId }: WorkflowVersionsProps) {
       ? versionsError.message
       : String(versionsError)
     : null;
+  const unauthorized = isUnauthorizedError(versionsError);
 
   // 设为最新版本
   const { run: runSetLatest } = useRequest((version: number) => workflowDefApi.setLatest(workflowId, version), {
     manual: true,
     onSuccess: () => {
+      // 列表刷新会换掉 latest 徽标，但「哪一次操作生效了」仍需一句明说（同页恢复操作同口径）
+      toast.success(t("versions.set_latest_success"));
       wfRefresh();
       versionsRefresh();
     },
@@ -97,10 +101,10 @@ export function WorkflowVersions({ workflowId }: WorkflowVersionsProps) {
 
   if (wfLoading && !wf) {
     return (
-      <div className="flex flex-col gap-2">
-        {Array.from({ length: 3 }).map((_, i) => (
-          // Static skeleton placeholders have no domain identifier.
-          <Skeleton key={i} className="h-16 w-full rounded-lg" />
+      <div className="flex flex-col gap-2" role="status" aria-busy="true" aria-label={t("versions.loading")}>
+        {/* 占位行没有领域标识：先生成键数组再渲染，避免下标直接作为 key（骨架屏不重排、无行内状态）。 */}
+        {Array.from({ length: 3 }, (_, i) => `version-skeleton-${i}`).map((rowKey) => (
+          <Skeleton key={rowKey} className="h-16 w-full rounded-lg" />
         ))}
       </div>
     );
@@ -148,17 +152,30 @@ export function WorkflowVersions({ workflowId }: WorkflowVersionsProps) {
 
       {/* 内容 */}
       {versionsLoading ? (
-        <div className="flex flex-col gap-2">
-          {Array.from({ length: 3 }).map((_, i) => (
-            // Static skeleton placeholders have no domain identifier.
-            <Skeleton key={i} className="h-16 w-full rounded-lg" />
+        <div className="flex flex-col gap-2" role="status" aria-busy="true" aria-label={t("versions.loading")}>
+          {/* 占位行没有领域标识：先生成键数组再渲染，避免下标直接作为 key（骨架屏不重排、无行内状态）。 */}
+          {Array.from({ length: 3 }, (_, i) => `version-list-skeleton-${i}`).map((rowKey) => (
+            <Skeleton key={rowKey} className="h-16 w-full rounded-lg" />
           ))}
         </div>
       ) : versionsError ? (
-        <div className="text-center py-10">
-          <AlertTriangle size={32} className="text-status-error mx-auto mb-2" />
-          <p className="text-[13px] text-text-secondary">{t("versions.load_failed", { error: versionsErrorMsg })}</p>
-        </div>
+        // 持久错误分支：不能只弹 toast 就落回「暂无发布版本」，否则用户以为是没有版本可用。
+        // 无权限单独渲染且不带重试（401 需重新登录、403 是永久拒绝，重试不会改变结果）。
+        unauthorized ? (
+          <div className="text-center py-10" role="alert">
+            <ShieldAlert size={32} className="text-status-error mx-auto mb-2" />
+            <p className="text-[13px] text-text-secondary font-medium">{t("versions.unauthorized_title")}</p>
+            <p className="text-[11px] text-text-dim mt-1">{t("versions.unauthorized_hint")}</p>
+          </div>
+        ) : (
+          <div className="text-center py-10" role="alert">
+            <AlertTriangle size={32} className="text-status-error mx-auto mb-2" />
+            <p className="text-[13px] text-text-secondary">{t("versions.load_failed", { error: versionsErrorMsg })}</p>
+            <Button variant="outline" size="sm" className="mt-3" onClick={versionsRefresh}>
+              <RefreshCw size={13} className="mr-1" /> {t("versions.retry")}
+            </Button>
+          </div>
+        )
       ) : versions.length === 0 ? (
         <div className="text-center py-10">
           <Inbox size={32} className="text-text-muted mx-auto mb-2" />
@@ -176,9 +193,29 @@ export function WorkflowVersions({ workflowId }: WorkflowVersionsProps) {
                 key={v.id}
                 className="rounded-lg border border-border-light bg-surface-1 px-4 py-3 transition-colors hover:border-border-active hover:shadow-sm"
               >
+                {/*
+                  整行点击 = 展开/收起该版本 YAML。这在包里没有等价的键盘入口（操作列只有
+                  「设为 latest / 恢复到草稿」，都不做展开），所以整行必须自己是可聚焦控件：
+                  role="button" + tabIndex + Enter/Space 键处理。Space 默认会滚动页面，需 preventDefault。
+                  aria-expanded 暴露展开状态，aria-label 给整行一个不含内部按钮文案的可访问名。
+                  focus-visible 用与 ui/button 相同的 ring token，键盘焦点才可见。
+                */}
                 <div
-                  className="flex items-center gap-3 text-xs cursor-pointer"
+                  className="flex items-center gap-3 text-xs cursor-pointer rounded-md focus-visible:outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50"
+                  role="button"
+                  tabIndex={0}
+                  aria-expanded={isViewing}
+                  aria-label={t("versions.view_yaml", { version: v.version })}
                   onClick={() => handleViewYaml(v.version)}
+                  onKeyDown={(e) => {
+                    if (e.target !== e.currentTarget) return;
+                    // 后代隔离：行内操作列有真实的 <button>，落在它们身上的 Enter/Space 属于按钮自身，
+                    // 必须原样冒泡给浏览器默认激活；这里抢过来既会 preventDefault 掉按钮的默认激活，
+                    // 又会让整行误展开 YAML。整行只处理落在自己身上的按键。
+                    if (e.key !== "Enter" && e.key !== " ") return;
+                    e.preventDefault();
+                    handleViewYaml(v.version);
+                  }}
                 >
                   <div className="font-mono font-semibold text-text-primary min-w-[40px]">v{v.version}</div>
                   {isLatest && (
