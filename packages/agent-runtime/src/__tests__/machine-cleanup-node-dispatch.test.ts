@@ -3,7 +3,7 @@
  *
  * 根因：sweep（startMachineSweep → triggerMachineCleanupByMachineId）清理断连机器时
  * 未通知编排域 AgentNode，节点保持 stale connected，ensureNode 放行 spawn 走死信道。
- * 本文件从宿主入口 triggerMachineCleanupByMachineId 验证节点状态被纠正为 disconnected。
+ * 本文件从 machine 清理入口 triggerMachineCleanupByMachineId 验证节点状态被纠正为 disconnected。
  * registry / registry-heartbeat / core-bootstrap 已在 setup-mocks.ts 中通过 preload
  * mock 注册（createLazyMock 模式），stub 行为通过 stubXxx() 在 beforeEach 中配置。
  */
@@ -64,7 +64,7 @@ describe("triggerMachineCleanupByMachineId 编排域节点通知", () => {
     getAgentNodeService().ensureNode("e2p1-cleanup-m1");
     expect(registeredNode.status()).toBe("connected");
 
-    const { triggerMachineCleanupByMachineId } = await import("@fenix/agent-runtime/server");
+    const { triggerMachineCleanupByMachineId } = await import("../server/transport/acp-ws-handler");
     triggerMachineCleanupByMachineId("e2p1-cleanup-m1", "sweep: no active WS connection");
 
     expect(registeredNode.status()).toBe("disconnected");
@@ -73,7 +73,7 @@ describe("triggerMachineCleanupByMachineId 编排域节点通知", () => {
 
   // 服务重启后 DB 残留 online 但从未建立连接的机器：清理路径不得抛错
   test("未注册节点的清理路径不抛错", async () => {
-    const { triggerMachineCleanupByMachineId } = await import("@fenix/agent-runtime/server");
+    const { triggerMachineCleanupByMachineId } = await import("../server/transport/acp-ws-handler");
     expect(() =>
       triggerMachineCleanupByMachineId("e2p1-cleanup-ghost", "sweep: no active WS connection"),
     ).not.toThrow();

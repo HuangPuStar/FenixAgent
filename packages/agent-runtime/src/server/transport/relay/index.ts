@@ -1,7 +1,7 @@
 export { sendToAgentWs } from "../acp-ws-handler";
 export { closeClientsForMachineInstances } from "./client-close";
 export * from "./lifecycle-port";
-export { closeInstanceRelay, extractAcpEvent, extractJsonRpc, sendToInstanceRelay } from "./relay-handler";
+export { sendToInstanceRelay } from "./relay-handler";
 
 import {
   closeAllRelayConnections as closeAllRelayLifecycleConnections,

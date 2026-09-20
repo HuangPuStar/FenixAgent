@@ -14,7 +14,11 @@ import {
   getBoundAgentRuntime,
   type PromptTurn,
 } from "@fenix/agent-runtime/runtime";
-import { environmentRepo } from "@fenix/agent-runtime/server";
+// environment 仓储走窄入口（1.4 W6a）：只需按组织列环境候选，不必经 barrel 拉进启动路径之外的宿主依赖。
+import { environmentRepo } from "@fenix/agent-runtime/server/environment";
+// JSON-RPC 帧提取的唯一实现在 chat-channel 协议层（1.4 W6a 收口）：本包此前自带一份私有副本，
+// 与 agent-runtime 的副本、chat-channel 的正本三处语义等价却各自演进，故一并删除改指正本。
+import { extractJsonRpc } from "@fenix/chat-channel";
 import { createLogger } from "@fenix/logger";
 import type { EngineRelayHandle } from "@fenix/plugin-sdk";
 import type { AgentMessage, AgentRequest, AgentResponse, AgentSession, Transport } from "@fenix/workflow-engine";
@@ -29,20 +33,6 @@ const logger = createLogger("wf-agent-chat");
 const DEFAULT_EXECUTE_TIMEOUT_MS = 10 * 60 * 1000;
 
 // ---------- JSON-RPC 消息提取 ----------
-
-/**
- * 从 relay 消息中提取 JSON-RPC 对象。
- * relay 消息可能以两种格式到达：
- *   A) 原始 JSON-RPC：{ jsonrpc: "2.0", method / result, ... }
- *   B) 包裹格式：{ type: "session_update", payload: { jsonrpc: "2.0", ... } }
- */
-function extractJsonRpc(msg: unknown): Record<string, unknown> | null {
-  const asAny = msg as Record<string, unknown>;
-  if (asAny.jsonrpc === "2.0") return asAny;
-  const payload = asAny.payload as Record<string, unknown> | undefined;
-  if (payload?.jsonrpc === "2.0") return payload;
-  return null;
-}
 
 /** 从 JSON-RPC 通知中提取 session/update 的 payload */
 function extractSessionUpdate(rpc: Record<string, unknown>): Record<string, unknown> | null {

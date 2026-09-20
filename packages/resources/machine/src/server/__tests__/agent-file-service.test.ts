@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
-import { mkdtemp, readFile, rename, rm, stat, symlink } from "node:fs/promises";
+import { mkdtemp, readdir, readFile, rename, rm, stat, symlink } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { stubDb } from "@fenix/platform-sdk/testing";
@@ -43,6 +43,21 @@ async function collectStream(stream: NodeJS.ReadableStream): Promise<Buffer> {
   const chunks: Uint8Array[] = [];
   for await (const chunk of stream) chunks.push(chunk as Uint8Array);
   return Buffer.concat(chunks);
+}
+
+/**
+ * 递归列出目录下的全部文件路径（相对 `dir`）。
+ * 目录本身不存在时返回空数组——这是「什么都没写」的最强形态；其余错误照常抛出。
+ */
+async function listFilesRecursively(dir: string): Promise<string[]> {
+  try {
+    return await readdir(dir, { recursive: true, withFileTypes: true }).then((entries) =>
+      entries.filter((entry) => entry.isFile()).map((entry) => join(entry.parentPath, entry.name)),
+    );
+  } catch (err) {
+    if ((err as NodeJS.ErrnoException).code === "ENOENT") return [];
+    throw err;
+  }
 }
 
 /** 构造上传输入（content 为原始字节，本地直接落盘 / 远程 base64 化） */
@@ -367,6 +382,31 @@ describe("远程 RemoteBackend（stub file-ws）", () => {
       type: "file_service_unavailable",
       statusCode: 503,
     });
+  });
+
+  test("写/上传在 file-ws 未连接时被拒后，本地 workspace 下无新文件", async () => {
+    // 1.4 W6a 补齐 §6.2 缺口：此前只有 503 错误契约间接证明「不回退本地」，本用例直接断言
+    // 副作用面——被拒的写与上传不得在 WORKSPACE_ROOT/<org>/<user>/<env> 下留任何文件。
+    // 同时覆盖「拒绝先于建目录」：连目标目录都不应被顺手创建（否则下次连接会看到脏目录）。
+    stubFileWsTransport({ isFileWsConnected: () => false });
+    stubMachineConfig({ defaultMachineId: MACHINE_ID });
+    const fs = gate(ENV_ID, authCtx);
+
+    await expect(fs.write("user/leak.txt", "leak")).rejects.toMatchObject({
+      type: "file_service_unavailable",
+    });
+    await expect(fs.upload("user", [uploadFile("leak-upload.txt", "leak")])).rejects.toMatchObject({
+      type: "file_service_unavailable",
+    });
+
+    const scopedDir = join(workspaceRoot, ORG_ID, USER_ID, ENV_ID);
+    expect(await listFilesRecursively(scopedDir)).toEqual([]);
+
+    // 自证这条空断言有判别力：摘掉 machine 配置走本地模式后，同一路径下确实会落文件。
+    // 否则 helper 写错（例如递归选项失效）会让上面的 `toEqual([])` 恒真。
+    stubMachineConfig({ defaultMachineId: undefined });
+    await fs.write("user/local.txt", "local");
+    expect(await listFilesRecursively(scopedDir)).toEqual([join(scopedDir, "user/local.txt")]);
   });
 
   test("机器端背压 busy → 429 busy", async () => {

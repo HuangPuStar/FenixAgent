@@ -13,12 +13,13 @@
 import { findAgentConfigNamesByIds, getAgentConfigById } from "@fenix/agent-config/server";
 import {
   agentInstanceRepo,
-  type EnvironmentRecord,
   type ExternalRelayConnectionSnapshot,
-  environmentRepo,
   listAcpConnections,
   listExternalRelayEntries as listExternalRelayEntriesModule,
 } from "@fenix/agent-runtime/server";
+// environment 仓储走 `./server/environment` 窄入口（1.4 W6a）：barrel 会连带拉进启动路径之外的宿主依赖，
+// 窄入口只暴露 environment 仓储与记录类型，与 `apps/server/src/plugins/auth.ts` 同一做法。
+import { type EnvironmentRecord, environmentRepo } from "@fenix/agent-runtime/server/environment";
 import { getIdentityDirectory } from "@fenix/platform-sdk/server";
 import { findMachineNamesByIds, getMachineConfig } from "@fenix/resource-machine/server";
 import { acpLinkProvider } from "./providers/acp-link";

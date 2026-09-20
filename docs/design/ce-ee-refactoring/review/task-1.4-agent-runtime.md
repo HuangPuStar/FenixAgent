@@ -1126,3 +1126,72 @@ W4 的第二片，按 §15.1 的切分执行「删旧路径」，两个提交落
 ### 18.6 验收与证据
 
 W6a / W6b 各自独立验证；两片合并后由 W7 统一跑 `precheck` / `build:web` / `docs:build` / 台账核对。**`createDbMock` 缺 `attachDatabasePoolErrorLogger` 导出**这条既有红项（§17.6）在 W6 期间若仍阻断 `precheck` 全绿，按既有口径只报告证据、不夹带修复，留待 W7 阶段收口前处理。
+
+## 十九、W6a 交付记录（测试 seam 与泄漏面机械收敛，2026-09-21）
+
+### 19.1 交付清单（对账 §18.4）
+
+| # | §18.4 内容 | 落地结果 |
+| --- | --- | --- |
+| 1 | 删零消费方符号 30 名 + 零消费 seam 7 个 | **实测 40 名**（判据与四类分解见 19.2-1）。逐名复核「导入者 + 裸提及 + 注释 + 命名空间属性」四类命中后才删；`server.ts` 公开面 **238 → 196 名** |
+| 2 | 三行 `export *` 收窄为显式名单 | 三行已收窄；因删除零消费名，实际收窄 **19 行**（31 行 `export *` → 12 行，见 19.2-2） |
+| 3 | 包内用例 11 处改相对导入 | 12 文件（含删除 `acp-machine-register.test.ts` 的 9 条纯存在性守卫）+ 本片新增用例 1 处 |
+| 4 | 跨包生产消费方 5 处改走已有面 | 实测 **3 处**：observer `observer-service.ts`（动态 import）、agent-config `meta-agent.ts`、workflow `agent-chat-transport.ts` 的 `environmentRepo`/`EnvironmentRecord` → `@fenix/agent-runtime/server/environment`；其余跨包取数是 §18.5-1 观测面对象 |
+| 5 | 宿主侧 4 个符号与 event bus 改走已有 `bind*Port` | **措辞不成立，改为据实标注**（见 19.2-3）：这些符号正是那些 port 的实现来源，全部保留并标 `宿主取用·` |
+| 6 | 删 relay 泄漏透出（三处）+ 用例改从 chat-channel 取 | 已完成：`extractAcpEvent` / `extractJsonRpc` 从公开面消失，`extract-acp-event.test.ts`（8 例）改指 `@fenix/chat-channel` |
+| 7 | 两份 `extractJsonRpc` 副本收口 + workflow 依赖 | 已完成：唯一实现在 `chat-channel/src/protocol/acp-channel.ts`（形参放宽为 `unknown`，消掉调用点 cast）；workflow `package.json` 与 `bun.lock` 同步加 `@fenix/chat-channel`；`fenix.module.ts` 三类边 → 四类边 |
+| 8 | §6.2 两处边界用例补强 | 已完成：machine 侧「file-ws 未连接时写/上传被拒且本地 workspace 无新文件」含自证判别力；agent-runtime 侧新增 `acp-routes-ws-message-limit.test.ts`（5 例，走 `FileWsPort` 替身，覆盖三条 10MB 通道 + object 帧） |
+| 9 | 删 tsconfig 4 条 chat-channel paths + 台账 3 条 | 已完成：`tsconfig.base.json` / `tsconfig.json` 各删 4 条并留原因注释；台账见 19.4 |
+| 10 | `bindAcpInstanceActivityPort` 归位；`environment-core` 行据实改写 | 已完成；多角色模块改用 `｜` 复合标注（见 19.3-2） |
+
+### 19.2 四处计数/措辞偏离（按判据实测，非范围扩张）
+
+1. **第 1 项：30 名 + 7 seam → 40 名。** 判据是「全仓（含动态 import）无导入者」，逐名复核后删除 40 名，分四类：① 33 名零消费符号（19 个契约/协议类型 + 7 个 `OpenAIChat*` 子 schema + `OpenAgentSessionInput` + `ORCHESTRATION_MESSAGE_MAP` + 5 个 seam：`agentInstanceRuntimeCoordinator` / `getAgentMachineCache` / `resetAgentConfigLookupPort` / `resetLocalNodeAgentNodeServicePort` / `resetRedisConnectionPortForTest`）；② 3 名零命中但存在同名或注释提及（`AgentInstanceRuntimeOperations` / `ORCHESTRATION_STATUS_MAP` / `SessionEvent`，核实后均为定义文件自用）；③ 2 名仅被包内 `index.ts` 再出口（`EnvironmentCreateParams` / `closeInstanceRelay`）；④ 2 名在片内用例改相对导入后转为零消费（`FileWsPort` / `resetFileWsPort`）。**独立复核**：用脚本重新枚举新公开面（196 名）并对全仓做「命中文件数 ≤ 2」扫描，确认无残留零消费名（`InstanceSchemaActivityInfo` / `InstanceSchemaInfo` 为别名，消费点即宿主 schema barrel）。
+2. **第 2 项：三行 → 19 行。** 删除某个名字必须先把它所在的 `export *` 显式化，故除 §18.4 点名的 `acp-ws-handler` / `external-relay` / `event-bus` 三行外，另有 16 行因含被删名一并收窄（`errors/orchestration-http`、`schemas/environment.schema`、`schemas/openai-chat.schema`、`agent-config-lookup-port`、`agent-instance-service`、`agent-launch-spec-port`、`api-instance`、`core-runtime-port`、`file-ws-port`、`local-node-agent-node-service-port`、`machine-registry-port`、`redis-connection-port`、`session-event-bus-port`、`orchestration-instance`、`agent-chat-service`、`agent-node-bridge`）。剩余 12 行 `export *` 无零消费名，保持原样。
+3. **第 5 项措辞不成立（本片唯一的口径修正）。** 原文写「宿主侧 4 个符号与 event bus 改走已有 `bind*Port`」，但 `apps/server/src/main.ts:280-323` 正是**用这些符号给别的包绑定 port**（`bindMachineHostPort({ resolveWorkspacePath, findMachineConnectionById, triggerMachineCleanupByMachineId, … })`、`bindLocalNodeAgentNodeServicePort({ getAgentNodeService })`、`bindSessionEventBusPort({ getAllBuses: getAllEventBuses, removeBus: removeEventBus })`），它们是 port 的**实现来源**而非消费方，没有「改走」的余地。落地方式：全部保留，新增与 `测试取用·` 对称的 `宿主取用·` 标注（语义写进 `server.ts` 文件头），并在行内按名归属。`workspace-resolver-runtime-export.test.ts` 的旧注释（「Machine 只能经 runtime 的公开 server 边界」）同时订正为「消费方是宿主组合根」。
+4. **第 4 项：5 处 → 3 处**（见 19.1 表格）。
+
+### 19.3 非显然取舍
+
+1. **契约类型随判据一并删除。** 40 名里有 12 个是 port / 路由契约类型（`MachineRegistryPort`、`RedisConnectionPort`、`SessionEventBusPort`、`RelayLifecyclePort`、`LocalNodeAgentNodeServicePort`、`RemoteNodeTransportSlot`、`AgentLaunchSpecRequest`、`MinimalAgentLaunchSpecRequest`、`AgentExecutionNode`、`AgentInstanceConnectOptions/Result`、`RequestErrorLogger`）。按「零导入者」判据它们该删，但删掉后宿主仍可绑定同名 port——因为 TS 结构化类型让 `bind*Port({ … })` 的对象字面量自行推断，不需要具名。取舍：**判据优先，按需回归**（文件头已注明「将来出现需要命名它的消费方再按需回归」）。这与 §18.1「公开面只剩宿主注入 port + 路由/协议/错误映射 + 运行态类型」不冲突：删的是名字，不是 port 面。
+2. **biome organizeImports 会合并同一 specifier 的同类型性语句**（只保留第一条注释）。本片原打算用「拆语句」给 `acp-ws-handler`（宿主注入 / 宿主取用 / 泄漏三类角色）和 `environment-core`（宿主注入 / 宿主取用两类）分行标注，被 `biome check --write` 合并回一条并只留了第一类标注——这会让标注说谎。改为**复合标注**（`｜` 分区 + 逐名归属），并把该约束写进 `server.ts` 文件头。`export type` 与 `export` 两族不会被合并，是唯一可拆的维度（`./server/repositories`、`./schemas/instance.schema` 的既有两段式正因如此）。
+3. **`FileWsPort` / `resetFileWsPort` 的归属。** 片内新增用例原本经 barrel 取这两个名字，按裁定 2「能走 port 替身就走 port」改走相对导入后，它们在 barrel 上转为零消费，于是随判据删除（`bindFileWsPort` / `getFileWsPort` 因有宿主/包内消费保留）。
+4. **`db-pool-config.test.ts` 红项：本片修复，偏离 §18.6「只报告证据、不夹带修复」。** 新增事实：§17.6 记的修法（给 `createDbMock` 补一个转发属性，约 3 行）**不足以修复**——用例断言的是 `buildDatabasePoolOptions` 的映射结果与 `attachDatabasePoolErrorLogger` 的监听行为，需要**真实实现**，而替身整体顶掉了 `../db`，从任何路径都取不到；CLAUDE.md 又禁止测试文件直接 `mock.module()`。故按最小改法：把这两个无副作用函数移进新叶子模块 `apps/server/src/db/pool-config.ts`（`db/index.ts` 改为从它导入，不再 re-export），用例改从实现方取，日志类别仍为 `db`。理由：该红项由阶段 2 的 PHY-01 迁移（`9f189d747`）引入（文件搬迁后 preload 替身未同步），属阶段 2 回归而非无关历史状态；用户红线要求 `precheck` 报错必须处理后才能宣称完成。**修完 `precheck` 全绿**（19.5）。
+5. **冻结区变更仅一处，且计划已授权。** `relay-handler.ts` 的 diff 只是删掉 `export { extractAcpEvent, extractJsonRpc } from "@fenix/chat-channel";` 一行与随之失效的注释（4 增 6 删），文件内的 relay 逻辑、`import` 行、函数体一行未动——这正是 §18.4 第 6 项点名的三处之一（`server.ts:92-96`、`relay-handler.ts:9`、`relay/index.ts:4`）。其余 9 个冻结文件在本片 diff 为空。
+
+### 19.4 台账 44 → 40（削 4 条，0 新增 0 改写）
+
+| 删除条目 | owner | 依据 |
+| --- | --- | --- |
+| `no-cross-package-src:packages/chat-channel`（`@fenix/agent-runtime` ← `@fenix/chat-channel`） | `1.4` | 裁 $18.3-4：删冗余 paths 别名后该 rule 无命中 |
+| 同上（`@fenix/web-runtime`）、同上（`@fenix/model-management`） | `1.6` / `未排期` | 同因；§1.6 名下该条消失须在该片计划里注明，`structured-to-thread.ts` 搬迁仍按 §1.6 执行 |
+| `no-circular @fenix/agent-runtime → @fenix/resource-sandbox` | `1.4` | 门禁报 stale（已不再违规） |
+
+**`no-circular` 的 stale 现象须记账**：删掉这条后门禁转绿，但实测**同一个环家族仍有 31 条命中**（`agent-runtime ↔ agent-config ↔ machine ↔ sandbox`，环长 11–17），覆盖来自 `agent-runtime → agent-runtime`(1.5)、`machine → machine`(1.4)、`sandbox → sandbox`(1.4)、`machine → agent-config`(1.4)。即门禁在这条上报的只是「代表边」，删它**不等于**环被消解。这与 §10.4（W5 预测删 7 条实删 3 条）、§16.4（20 → 19）同因，属既有现象而非本片引入的退化。
+
+### 19.5 验证证据
+
+| 验证 | 结果 |
+| --- | --- |
+| `env -u ANTHROPIC_MODEL bun run precheck` | **全绿 `All passed`（113.7s）**：format / import-sort / module-registry / architecture / tsc(server) / tsc(web) / tsc(app skeletons) / dependency-boundaries / lint / server-and-script-tests / package-tests / web-app-tests 全部 ✓ |
+| ├ `server-and-script-tests` | 911 pass / 0 fail（67 文件，8.1s）——§17.5 红项消除 |
+| ├ `package-tests` | 7228 pass / 2 skip / 0 fail（589 文件） |
+| └ `web-app-tests` | 946 pass / 0 fail（54 文件） |
+| `env -u ANTHROPIC_MODEL bun run check:dependencies` | ✓ 2397 modules / 12 条已登记例外命中 / 0 条新增违规 / 0 条 stale |
+| `env -u ANTHROPIC_MODEL bun run architecture:check` | ✓ 2245 files / 11 rules / 28 条已登记例外 |
+| `bun run typecheck`（全仓 tsc --noEmit） | ✓ 0 错误 |
+| `bun test packages/agent-runtime/` | 796 pass / 0 fail（98 文件） |
+| 公开面机械复核 | 238 → 196 名；脚本枚举 + 全仓「命中文件 ≤ 2」扫描无残留零消费名 |
+| 冻结区 | 10 文件中仅 `relay-handler.ts` 有 diff（19.3-5），其余为 0 |
+| 提交规模 | 34 文件 +527 / −270（含 2 个新文件：`acp-routes-ws-message-limit.test.ts`、`apps/server/src/db/pool-config.ts`） |
+
+### 19.6 遗留项
+
+| 项 | 归属 |
+| --- | --- |
+| `SpawnedInstance` 带 `apiKey: string`（`server/services/agent-instance-runtime-projection.ts:30`）并已在公开面外透 | 安全面待裁定项，本片未动；须与用户确认后再定归属 |
+| `package.json` 的 `./server/orchestration-environment`、`./web/api/environments` 两处 exports 全仓零导入者（悬空入口） | W6b 或 W7 裁量 |
+| `bun.lock` 有一行与本片无关的既有漂移（`packages/resources/agent-config` 缺 `@fenix/plugin-sdk`） | 已从本片 diff 剔除；不在本任务内修 |
+| `extract-acp-event.test.ts` 位于 agent-runtime 但只测 chat-channel 的实现（导出归属建议） | 只记录不建议实施（迁移会把本包测试计数搬给 chat-channel） |
+| `runtime.ts` 11 处派生返回类型 + 2 处 `Parameters<…>` 显式化、`/runtime` 只读观测面、跨包测试专用入口、`owner:"1.4"` 剩余 4 条复核 | W6b（§18.5） |
+
