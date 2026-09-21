@@ -225,10 +225,11 @@ FK；identity 9 张已随任务 1.2 迁出，业务 40 张待迁）按包名语�
 | B0 | 跨包 schema 导入的路径作用域例外 + 零差异门禁 | 已交付 | `b3411344b` |
 | B1 | machine / registry_event 迁至 `@fenix/resource-machine/db` | 已交付 | 见 §7.10 |
 | B2 | mcp（`mcp_server`、`mcp_tool`）迁至 `@fenix/resource-mcp/db` | 已交付 | 见 §7.11 |
+| B3 | model-management（`provider`、`model`、`model_gateway_credential`，含 3 个 pgEnum）迁至 `@fenix/model-management/db` | 已交付 | 见 §7.12 |
 | B4 前置 | 沙盒实例投影写路径移到 sandbox 侧（§4.8 第 3 条，已裁定） | 待办 | — |
 | B7 前置 | agent-runtime 的 `agent_config` LEFT JOIN 改为经 owner 公开入口取投影，装配方向不允许时退回宿主注入端口（§4.8 第 4 条 / §8.4 第 7 条） | 待办·须先反馈 | — |
 | B7 前置 | join 表归属与 D4 的冲突复核（§8.4 第 8 条） | 待办·须先反馈 | — |
-| B3–B13 | 其余 36 张表按拓扑序迁出（§4.7 / §4.7.1 交付面） | 待办 | — |
+| B4–B13 | 其余 29 张表按拓扑序迁出（§4.7 表共 36 张，B1–B3 已迁 7 张；§4.7.1 交付面） | 待办 | — |
 | C0 | 打通模块声明的 env 回流至宿主 | 已交付 | `cb0c5976c` |
 | C1 | `workspace-resolver` 改读模块配置 + `WORKSPACE_ROOT` 收敛 | 待办 | — |
 | C2–C18 | 其余模块声明 `envDefinitions` | 待办 | — |
@@ -480,7 +481,8 @@ package-tests 7956 pass / 2 skip / 0 fail、server-and-script-tests 806 pass、w
   包级边；`check:dependencies` 的 0 条新增违规是同一结论的第二个证据。
 - **B3 不能照抄这条。** `agent-config` 的 `dependsOn` 不含 `model-management`，而 model / provider 的标签
   读取就在同一个文件里（§4.8 第 1 条的读点清单），照 B2 直连做法会命中 `dependsOn` 缺失；B3 开工前须先按
-  §4.8 第 4 条口径定夺（公开入口 vs 宿主注入端口）。
+  §4.8 第 4 条口径定夺（公开入口 vs 宿主注入端口）。**（B3 已定夺：走宿主注入端口 `ModelLookupPort`，
+  理由是 `model-management` 的 `dependsOn` 已含 `agent-config`、反向声明会闭合二元环；见 §7.12。）**
 
 **宿主侧调用期的处置（用户裁定，2026-09-21）：登记为 carve-out，不在 §4.7.1 ① 的收口范围内。** 本批把
 `apps/server/src/services/data-migrates/backfill-resource-visibility.ts` 的 `mcpServer` 导入从
@@ -548,6 +550,79 @@ verifier **确认 10 条 / 驳回 10 条**（确认项含 2 条纯核验记录�
 **状态**：复跑取得一次**干净的全绿结果**并提交：15 步全通过，其中 package-tests 7956 pass / 2 skip /
 0 fail、server-and-script-tests 806 pass、web-app-tests 319 pass，总耗时 86.3 秒。
 
+### 7.12 B3：`provider` / `model` / `model_gateway_credential` 迁至 `@fenix/model-management/db`（2026-09-21，本批）
+
+**交付面**：新 owner 文件 `packages/resources/model-management/db/schema.ts`——三张表定义与宿主被删段
+逐字一致（含 `idx_provider_org_name` / `idx_provider_org_visibility` / `idx_model_provider_model` /
+`idx_model_org_provider_model` / `idx_model_gateway_credential_{subject,external_id,status_id}` 七个索引名），
+**`providerProtocolEnum` / `providerKindEnum` / `modelGatewayCredentialStatusEnum` 三个 pgEnum 随表迁入**
+（`packages/**` 此前 pgEnum 计数为 0，这是 owner 包持有枚举的首例；`check:schema-ddl-drift` 零差异证明
+迁移链未感知这次搬家）；`package.json` 加 `"./db"` 出口，并按 §4.7.1 ② 补 `@fenix/identity` 声明
+（`provider.userId → user.id` 是迁出后唯一的跨包外键）；包内 5 处导入改指本包出口
+（`server/access/provider-resource.ts:2`、`server/repositories/{provider-resource,model-resource,
+model-gateway-credential}.ts`、`__tests__/model-gateway-schema.test.ts:2`）；宿主 `schema.ts` 删三张表与
+三个 pgEnum、改为 import `@fenix/model-management/db` 供 `agent_config.model_id` 表达外键；
+`drizzle.config.ts` 加 schema 路径；**调用期跨包读取点收口**与宿主 data-migrate 处置见下；`README.md`
+第 3 行与「边界残留」第 1–2 条、`src/server/db.ts`、`src/server/config-envelope.ts` 的注释同步；
+`docs/developer/arch/litellm-integration.md` 两处以 `providerProtocolEnum` 为锚点的过期位置引用（`:579`
+的「schema.ts 第 17 行附近」与 `:810` 写死的 `src/db/schema.ts:17`）随批改指 owner 路径。
+
+**调用期跨包取数收口：本批**必须**走宿主注入端口——B 块第一个「不能直连」的样本。** B2 的直连依据是
+`agent-config/fenix.module.ts` 已声明 `dependsOn: ["mcp", ...]`；B3 的同一条路走不通，因为
+**`model-management` 的 `dependsOn` 已含 `agent-config`**（本批唯一读点在
+`agent-config/src/server/services/agent-related-resources.ts` 的 `resolveModelLabel`），反向再声明
+`model-management` 会闭合装配二元环。结论按 §4.8 第 4 条落成端口：
+
+- `agent-config` 新增 `src/server/ports/model-lookup.ts`（形状逐条照抄既有 `machine-lookup.ts`：
+  `ModelLookupPort` 接口 + `bind` / `get` / `reset` 三件套，重复绑定与未绑定均 fail-fast 抛错），替代原先
+  直接 `db.select(...).from(model)` 的读取。
+- 实现在 owner 侧：`model-management/src/server/repositories/model-resource.ts` 末尾新增只读投影
+  `findModelLabelsByIds(ids)`——按 id 批量取「`provider.displayName ?? provider.name` / `model.displayName
+  ?? model.modelId`」标签；只读、无授权判断（与同文件 `findRowUnscoped` 同一前提）、空入参返回空 Map、
+  **任何一段取不到都不在 Map 里造值**（含模型行在而 Provider 行缺失），并以
+  `provider.organization_id === model.organization_id` 复刻原查询的父子匹配条件。
+- 出口走 `./server` barrel 而非窄子路径：唯一消费者是宿主（`host-startup.ts` 与测试 preload），与
+  `bindMachineLookupPort`（`@fenix/resource-machine/server` barrel）取用方式一致。
+- 绑定点在 `apps/server/src/bootstrap/host-startup.ts`（`wirePermissions` 之后，与另两个 agent-config 端口
+  并排），测试侧在 `apps/server/src/test-utils/setup-mocks.ts` 的 preload 里绑**真实实现**——该文件已把
+  宿主 db 换成替身，`getModelManagementDatabase()` 与 `getDatabase()` 同源；漏绑不会 fail-fast 到「端口
+  未绑定」，只会让模型标签静默退化成 id，因此与 machine 的绑定放在一起并留了注释。
+- 两侧各有一份「B3 不能照抄 B2」的注释互相指认（`agent-related-resources.ts` 文件头段落、
+  `model-management/src/server.ts` 具名导出处），B4 及以后按同法先判方向再选直连或端口。
+- 合法性证据：`bun run generate:module-registry --check` 通过（17 个模块 manifest 对齐，即没有引入新的
+  包级边）；`check:dependencies` 2267 modules、0 条新增违规。
+
+**宿主侧调用期的处置（沿用用户裁定，2026-09-21 的 carve-out，见 §4.7.1 第 1 条）**：本批把
+`apps/server/src/services/data-migrates/migrate-agent-config-model-id.ts` 与
+`backfill-resource-visibility.ts` 的 `model` / `provider` 导入从 `../../db/schema` 改指
+`@fenix/model-management/db`。两文件都是**宿主部署期**数据迁移（release 步骤执行一次），
+`migrate-agent-config-model-id` 按模型引用定位 `provider` / `model` 行、`backfill-resource-visibility`
+按 `provider.visibility` 回填公开受众。理由与 B2 逐条相同（packages 域禁则不适用于装配层宿主 + 迁移
+寿命只到下一次发布），不再重复。
+
+**§4.7.1 ③ 在本批不适用（本批暴露的缺口，已登记 §8.1）**：`model-management` 没有 source-migration
+契约测试——machine / mcp / sandbox / agent-config / workflow / task 六个包都有，本包只有
+`src/__tests__/model-gateway-schema.test.ts`（schema 形状断言，不断言宿主导入残留）。因此本批没有
+「残留数 > 0」的正向控制需要收缩；本包与宿主的边界此刻由 `apps-boundary` 台账 + `check:dependencies`
+承担。
+
+**为什么台账条目没删**：B3 后本包的 `@server/db/schema` 残留**精确为 1 处**——
+`src/server/repositories/subject-agent-search.ts:2` 读的是**宿主自己的** `agent_config`（表归 B7）。
+实测 `command grep -rnE 'from "@server/' packages/resources/model-management/src | grep -vE ':[0-9]+: *\*'`
+→ **1 行**。`scripts/architecture/exceptions.json` 的 model-management 条目只更新 `rationale` 与
+`removeWhen`（成因由「6 处表定义」改指 `agent_config`，归 agent-config 批），**条目必须保留到
+agent-config 批落地**：台账是「包对」粒度，提前删除会把尚未迁出的读取一并放行。
+
+**验证**：`check:schema-ddl-drift` 零差异（含三个 pgEnum 搬家，证明 DDL 逐字等价）；`tsc --noEmit` 无错误
+（根与 `apps/web` 两张表）；`generate:module-registry --check` 17 模块对齐；`architecture:check` 2125 files
+/ 19 条例外；`check:dependencies` 2267 modules、0 条新增违规（+2 modules / +1 依赖声明为预期增量）；
+`bun test packages/resources/model-management packages/resources/agent-config` **939 pass / 0 fail**
+（80 files）；定向 `round45-agent-config-routes-coverage` + model-management **231 pass / 0 fail**；
+`bun test apps/server/src/__tests__/` **639 pass / 0 fail**。round45 的模型标签断言由真实端口实现
+（preload 绑定）驱动，替身数据仍是按表身份分发的 `model` / `provider` 行。
+
+**状态**：见本批提交（§五 表 B3 行）。
+
 ## 八、已知缺口与未完成项（逐条登记 owner 与移除条件）
 
 > 依据 `ce-ee-engineering-standards.md` §10.7.4：边界豁免与依赖残留必须逐条登记并写明 owner
@@ -567,6 +642,7 @@ verifier **确认 10 条 / 驳回 10 条**（确认项含 2 条纯核验记录�
 | 8 | `EnvDefinition` 的 `secret` / `restartRequired` 无任何消费者 | C 块 | 见 §8.4 |
 | 9 | `packages/agent-runtime/src/server/services/workspace-resolver.ts:9` 直读 `process.env.WORKSPACE_ROOT`——server 装配面内**唯一**真违规 | C 块 | 见 §8.4 |
 | 10 | 环境变量整段继承的残余：不传 `env` 的隐式继承 10 处、`docker/sandbox-dsh/scripts/dsh-acp-wrapper.js`、`apps/server/src/services/agent-generation.ts:63` 的 `new OpenAI()` 隐式读 `OPENAI_API_KEY` | 1.7 剩余 | 逐处改为白名单或显式注入；`new OpenAI()` 改由注入配置构造 |
+| 11 | **`model-management` 没有 source-migration 契约测试**（machine / mcp / sandbox / agent-config / workflow / task 六个包均有），因此 §4.7.1 ③ 的「残留数 > 0」正向控制在 B3 无从收缩，该包与宿主的边界在测试层无人守护（只靠 `apps-boundary` 台账 + `check:dependencies`） | B 块收尾 | 按同形测试补一份（断言 `src/**` 对 `@server/**` 的残留仅 `repositories/subject-agent-search.ts:2` 一处），B7 落地后随台账清零一并改为反向断言 |
 
 ### 8.2 1.7 未完成条目（本档位不做）
 
@@ -588,7 +664,7 @@ migration smoke（空库 + 真实历史升级库）、`deploy-preflight`、readi
 | 1 | 宿主 `apps/server/src/db/schema.ts` **无法清空**：D3 裁定把 `resource_permission`（+ 3 个 pgEnum）、`share_link`、`share_event_snapshot` 留在宿主，但 1.7 第五条验收口径是「宿主不再持有业务表定义」 | B 块收尾 | 三张表要么找到 owner（建议 `resource_permission` 归 access-control）并迁出，要么把验收口径改为「宿主只保留经裁定的例外」并同步权威设计 |
 | 2 | `machine → sandbox` 的调用期表读取（`machine-sandbox-projection.ts`）在 `sandbox_instance` 迁出后构成 §2.3 类别禁则违规，无法靠 `./db` 出口解决 | B4 之前 | 按 §4.8 第 3 条的任一路径重构（宿主端口回调或 sandbox 公开写入口）并登记范围 |
 | 3 | 14 条 owner=`1.7` 的 `apps-boundary` 豁免**只能在 B 块末期集中清零**（§4.8 第 2 条） | B 块收尾 | 各目标表迁完后逐包核对「不再引用 `@server/**`」，逐条删除并留证据 |
-| 4 | 剩余 11 批（B3–B13）各有若干跨包调用期表读取需一并**改为经 owner 公开入口或宿主注入端口取数**（§4.8 第 1 条 B1 实测 19 处为 B 块总数，B2 已收口 1 处、余 18 处）；只改指 owner 的 `./db` 不算完成（§4.8 第 4 条）。**逐包清单目前无权威落点**——§4.8 #1 与本节原先的「见 §7.10」所指清单在 §7.10 中不存在，审计已指出 | 各批同批（清单并入 B 块末期，与本节第 3 条同一次扫描） | 每批交付面含全部读取点，漏改会让 preload 的模块链接期抛错（§4.8 第 1 条）、且残留 §6.1 边界 1 违规；末期逐包核对时一并产出完整清单 |
+| 4 | 剩余 10 批（B4–B13）各有若干跨包调用期表读取需一并**改为经 owner 公开入口或宿主注入端口取数**（§4.8 第 1 条 B1 实测 19 处为 B 块总数，B2 已收口 1 处、B3 已收口 1 处、余 17 处）；只改指 owner 的 `./db` 不算完成（§4.8 第 4 条）。**逐包清单目前无权威落点**——§4.8 #1 与本节原先的「见 §7.10」所指清单在 §7.10 中不存在，审计已指出 | 各批同批（清单并入 B 块末期，与本节第 3 条同一次扫描） | 每批交付面含全部读取点，漏改会让 preload 的模块链接期抛错（§4.8 第 1 条）、且残留 §6.1 边界 1 违规；末期逐包核对时一并产出完整清单 |
 | 5 | **门禁缺口：相对路径伸进别的包 `db/` 两道门禁都不报。** `check-architecture` 的 `CROSS_PACKAGE_SOURCE_PATH`（`scripts/check-architecture.ts:43`）与 dependency-cruiser 的 `no-cross-package-src:<pkg>`（`.dependency-cruiser.cjs:28-30`）判「跨包内部路径」时只认 `src` / `web/src`，新出现的 `db/` 不在任何一侧。审计已用夹具复现（相对路径在 `db/` 与 `src/` 两种位置均 exit 0，同路径改指别包 `src/` 则 exit 1）；当前仓库无实际违规 | B 块收尾 | 把 `db` 纳入「跨包内部路径」判定，但**只对相对路径生效**——裸说明符 `@fenix/<pkg>/db` 是 §6.1 允许的组装期出口，不能一并拦 |
 | 6 | 组装期 `db/` 不在「子进程不得整段继承宿主 env」的扫描面内：`scripts/check-dependency-boundaries.ts:54-72` 的文件收集只认目录名 `src`，`packages/*/db/**`（含设计规定的 `db/data-migrations/`）整体跳过。审计判定为**已声明范围**而非漏报（该步骤注释即写明范围只含 `packages/**/src/**`；`db/` 是组装期 + 幂等 DML 层，不构造子进程；实测 db/ 下 2 个文件零 `process.env` / spawn） | 不修，登记备查 | 若日后 `db/data-migrations/` 出现子进程调用，须同步扩大扫描面 |
 | 7 | **B7 前置：`agent-runtime` 在查询期 LEFT JOIN `agent_config`**（`services/environment-orchestration.ts`、`services/environment-web.ts`）。`agent_config` 迁出后该导入命中 `.dependency-cruiser.cjs:74-90` 的 `agent-runtime-not-to-resources`（其 `pathNot` 只排除 `packages/agent-runtime/db/` 与 `packages/resources/(machine\|sandbox)/`），而 `check-architecture` 拦不住它。按 §4.8 第 4 条应改为经 agent-config 公开入口取投影（若 `agent-runtime → agent-config` 的包级边不被装配方向允许，则退回宿主注入端口），但 LEFT JOIN → 批量投影查询是一次独立设计（且要避免 N+1） | B7 之前 | 先反馈再定夺取数形状，然后重构两个查询 |

@@ -1,4 +1,5 @@
 import { organization, user } from "@fenix/identity/db";
+import { model } from "@fenix/model-management/db";
 import { machine } from "@fenix/resource-machine/db";
 import { mcpServer } from "@fenix/resource-mcp/db";
 import { sql } from "drizzle-orm";
@@ -10,10 +11,10 @@ import { sql } from "drizzle-orm";
  * （`drizzle.config.ts` 同时声明全部 schema 文件），因此并置不会产生第二份真相；跨包读取身份数据仍必须
  * 走 `IdentityDirectory`，不得依赖本文件。
  *
- * 同理，`@fenix/resource-machine/db` 的机器表（§1.7 首批迁出）与 `@fenix/resource-mcp/db` 的 MCP 表
- * （§1.7 第二批迁出）也只在这里**取用**、不重复定义——`agent_config.machine_id` 与
- * `agent_config_mcp.mcp_server_id` 需要它们以列对象形式表达外键（Drizzle 的 `.references()` 没有
- * 字符串形式），组装期例外的口径与边界见
+ * 同理，`@fenix/resource-machine/db` 的机器表（§1.7 首批迁出）、`@fenix/resource-mcp/db` 的 MCP 表
+ * （§1.7 第二批迁出）与 `@fenix/model-management/db` 的模型表（§1.7 第三批迁出）也只在这里**取用**、
+ * 不重复定义——`agent_config.machine_id`、`agent_config_mcp.mcp_server_id` 与 `agent_config.model_id`
+ * 需要它们以列对象形式表达外键（Drizzle 的 `.references()` 没有字符串形式），组装期例外的口径与边界见
  * `docs/design/ce-ee-refactoring/ce-ee-engineering-standards.md` §6.1。
  */
 export {
@@ -43,13 +44,6 @@ import {
   varchar,
 } from "drizzle-orm/pg-core";
 
-export const providerProtocolEnum = pgEnum("provider_protocol", ["openai", "anthropic"]);
-export const providerKindEnum = pgEnum("provider_kind", ["direct", "gateway"]);
-export const modelGatewayCredentialStatusEnum = pgEnum("model_gateway_credential_status", [
-  "active",
-  "blocked",
-  "error",
-]);
 // 旧授权栈的三个 pg enum 与下方 `resourcePermission` 表随 CE 阶段 2 任务 1.2 的 CE 授权栈下线而失去全部
 // 读写方，但**不能在本发布内删除**：`services/data-migrates/backfill-resource-visibility.ts` 仍要把旧栈的
 // `principal_type='all' AND action='read'` 记录回填成资源主表的 `visibility='public'`，而 SQL 迁移先于启动期
@@ -353,90 +347,6 @@ export const channelBinding = pgTable(
   (table) => ({
     platformIdx: index("idx_channel_binding_platform").on(table.platform),
     agentIdx: index("idx_channel_binding_agent_id").on(table.agentId),
-  }),
-);
-
-// ——————————————————————————
-// F002: 配置存储迁移 (fs → pg)
-// ——————————————————————————
-
-// AI 服务商
-export const provider = pgTable(
-  "provider",
-  {
-    id: uuid("id").primaryKey().defaultRandom(),
-    userId: text("user_id")
-      .notNull()
-      .references(() => user.id, { onDelete: "cascade" }),
-    organizationId: text("organization_id").notNull(),
-    name: varchar("name").notNull(),
-    displayName: varchar("display_name"),
-    kind: providerKindEnum("kind").notNull().default("direct"),
-    gatewayType: varchar("gateway_type"),
-    protocol: providerProtocolEnum("protocol").notNull().default("openai"),
-    baseUrl: text("base_url"),
-    apiKey: text("api_key"),
-    extraOptions: jsonb("extra_options"),
-    // 资源可见范围：授权实现的唯一公开受众声明（public 对任意已认证主体开放公开默认动作）。
-    visibility: varchar("visibility", { length: 20 }).notNull().default("private"),
-    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
-    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
-  },
-  (table) => ({
-    orgNameIdx: uniqueIndex("idx_provider_org_name").on(table.organizationId, table.name),
-    orgVisibilityIdx: index("idx_provider_org_visibility").on(table.organizationId, table.visibility),
-  }),
-);
-
-// AI 模型（原 provider.models 子对象）
-export const model = pgTable(
-  "model",
-  {
-    id: uuid("id").primaryKey().defaultRandom(),
-    providerId: uuid("provider_id")
-      .notNull()
-      .references(() => provider.id, { onDelete: "cascade" }),
-    organizationId: text("organization_id").notNull(),
-    modelId: varchar("model_id").notNull(),
-    displayName: varchar("display_name"),
-    modalities: jsonb("modalities"),
-    limitConfig: jsonb("limit_config"),
-    cost: jsonb("cost"),
-    options: jsonb("options"),
-    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
-    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
-  },
-  (table) => ({
-    providerModelIdx: uniqueIndex("idx_model_provider_model").on(table.providerId, table.modelId),
-    orgModelIdx: uniqueIndex("idx_model_org_provider_model").on(table.organizationId, table.providerId, table.modelId),
-  }),
-);
-
-// 模型网关凭证映射：远端 Key 回收后删除，使恢复授权时可安全换发新 Key。
-export const modelGatewayCredential = pgTable(
-  "model_gateway_credential",
-  {
-    id: uuid("id").primaryKey().defaultRandom(),
-    gatewayProviderId: uuid("gateway_provider_id").notNull(),
-    organizationId: text("organization_id").notNull(),
-    userId: text("user_id").notNull(),
-    agentConfigId: uuid("agent_config_id").notNull(),
-    externalCredentialId: text("external_credential_id").notNull(),
-    encryptedCredential: text("encrypted_credential"),
-    status: modelGatewayCredentialStatusEnum("status").notNull().default("active"),
-    metadata: jsonb("metadata").notNull().default(sql`'{}'`),
-    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
-    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
-  },
-  (table) => ({
-    subjectIdx: uniqueIndex("idx_model_gateway_credential_subject").on(
-      table.gatewayProviderId,
-      table.organizationId,
-      table.userId,
-      table.agentConfigId,
-    ),
-    externalIdIdx: index("idx_model_gateway_credential_external_id").on(table.externalCredentialId),
-    statusIdIdx: index("idx_model_gateway_credential_status_id").on(table.status, table.id),
   }),
 );
 

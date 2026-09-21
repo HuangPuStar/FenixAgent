@@ -1,5 +1,5 @@
+import { provider } from "@fenix/model-management/db";
 import type { ResourceRegistration } from "@fenix/platform-sdk";
-import { provider } from "@server/db/schema";
 import type { PgColumn } from "drizzle-orm/pg-core";
 
 /**

@@ -576,7 +576,8 @@ sequenceDiagram
 ### 1. `src/db/schema.ts` —— 数据模型
 
 ```typescript
-// 位置：schema.ts 第 17 行附近
+// 位置：packages/resources/model-management/db/schema.ts（任务 1.7 B3 起 provider 表与其枚举归 owner 包；
+// 宿主 apps/server/src/db/schema.ts 不再定义本枚举，只经 @fenix/model-management/db 取用做跨包装配）
 
 // 修改：扩展 provider 协议枚举
 export const providerProtocolEnum = pgEnum("provider_protocol", [
@@ -807,7 +808,7 @@ src/services/litellm/
 
 | 文件 | 位置 | 修改内容 |
 |------|------|----------|
-| `src/db/schema.ts:17` | `providerProtocolEnum` | 枚举添加 `"litellm"` |
+| `packages/resources/model-management/db/schema.ts` | `providerProtocolEnum` | 枚举添加 `"litellm"`（任务 1.7 B3 前该枚举曾位于宿主 `src/db/schema.ts`） |
 | `src/services/config/types.ts:95` | `ProviderUpsertData.protocol` | 联合类型添加 `"litellm"` |
 | `packages/resources/model-management/src/server/schemas/config.schema.ts` | ~7 处 `z.enum(["openai", "anthropic"])` | 全部添加 `"litellm"` |
 | `packages/resources/model-management/src/server/schemas/api-model.schema.ts` | ~3 处 provider protocol schema | 全部添加 `"litellm"` |

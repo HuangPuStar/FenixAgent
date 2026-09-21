@@ -1,8 +1,9 @@
 import { findMcpServerLabelsByIds } from "@fenix/resource-mcp/server/config";
-import { agentSiteApp, knowledgeBase, model, provider, skill } from "@server/db/schema";
+import { agentSiteApp, knowledgeBase, skill } from "@server/db/schema";
 import { and, eq, inArray } from "drizzle-orm";
 import { getAgentConfigDatabase } from "../db";
 import { getMachineLookupPort } from "../ports/machine-lookup";
+import { getModelLookupPort } from "../ports/model-lookup";
 import type { AgentNode } from "./config/types";
 
 /**
@@ -15,14 +16,14 @@ import type { AgentNode } from "./config/types";
  * 搬迁自 `routes/web/config/agent-route-support.ts`：原实现直接放在路由里，违反「route 不得直接
  * 访问 db」。本次是纯搬迁，没有顺带改动查询形状或兜底策略。
  *
- * 跨包表分两类读法：`machine`（§1.7 B1）与 `mcp_server`（B2）已迁出，本包**不读它们的表对象**——
- * machine 经宿主注入的 {@link MachineLookupPort} 取投影（见 {@link resolveMachineLabel}），MCP 标签经
- * 本包 `dependsOn` 已声明的 `@fenix/resource-mcp/server/config` 取投影（见
- * {@link findMcpServerLabelsByIds}）：两者的差别不是风格，而是**本包能否直接导入对方**——machine 的
- * `dependsOn` 已含本包，反向声明会闭合装配环，故只能走端口。其余（`model` / `provider` / `skill` /
- * `knowledge_base` / `agent_site_app`）仍经 `@server/db/schema`，所有权随资源包迁移属后续任务，届时按
- * 同一口径改为经 owner 的公开入口取数。DB 句柄改经 `getAgentConfigDatabase()` 请求期取得
- * （`@server/db` 的模块级句柄已切断）。
+ * 跨包表分两类读法，差别不是风格，而是**本包能否直接导入对方**：
+ * - 走宿主注入端口：`machine`（§1.7 B1，经 {@link MachineLookupPort}）与 `model` / `provider`（B3，经
+ *   {@link getModelLookupPort}）——这两个包的 `dependsOn` 都已含本包，反向声明会闭合装配环。
+ * - 走对方已声明的公开入口：MCP 标签经 `@fenix/resource-mcp/server/config` 的
+ *   {@link findMcpServerLabelsByIds}（本包 `dependsOn` 已含 mcp，方向合法）。
+ * 其余（`skill` / `knowledge_base` / `agent_site_app`）仍经 `@server/db/schema`，所有权随资源包迁移属
+ * 后续任务，届时按同一口径改为经 owner 的公开入口或端口取数。DB 句柄改经
+ * `getAgentConfigDatabase()` 请求期取得（`@server/db` 的模块级句柄已切断）。
  */
 
 /** 关联资源标签视图；字段与 `/web/config/agents` 响应的 `relatedResources` 一一对应。 */
@@ -53,36 +54,16 @@ export interface AgentRelatedResourceInput {
   readonly knowledgeBaseIds: readonly string[];
 }
 
-/** 解析模型标签：`<provider 展示名>/<模型展示名>`；任一段缺失时退回 modelId。 */
+/**
+ * 解析模型标签：`<provider 展示名>/<模型展示名>`；任一段缺失时退回 modelId。
+ *
+ * 标签怎么拼（含缺失时回退到 `name` / `model_id`）由 model-management 的只读投影决定，见
+ * {@link getModelLookupPort}；这里只保留「取不到就退回 id」这一层视图语义。
+ */
 async function resolveModelLabel(modelId: string | null): Promise<string | null> {
   if (!modelId) return null;
-
-  const db = getAgentConfigDatabase();
-  const modelRows = await db
-    .select({
-      modelName: model.modelId,
-      displayName: model.displayName,
-      providerId: model.providerId,
-      providerOrganizationId: model.organizationId,
-    })
-    .from(model)
-    .where(eq(model.id, modelId))
-    .limit(1);
-  const modelRow = modelRows[0];
-
-  if (modelRow) {
-    const providerRows = await db
-      .select({ name: provider.name, displayName: provider.displayName })
-      .from(provider)
-      .where(and(eq(provider.id, modelRow.providerId), eq(provider.organizationId, modelRow.providerOrganizationId)))
-      .limit(1);
-    const providerRow = providerRows[0];
-    if (providerRow) {
-      return `${providerRow.displayName ?? providerRow.name}/${modelRow.displayName ?? modelRow.modelName}`;
-    }
-  }
-
-  return modelId;
+  const labels = await getModelLookupPort().findModelLabelsByIds([modelId]);
+  return labels.get(modelId) ?? modelId;
 }
 
 /**

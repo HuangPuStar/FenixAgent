@@ -18,6 +18,12 @@ export {
   type MachineLookupPort,
   resetMachineLookupPort,
 } from "./server/ports/machine-lookup";
+export {
+  bindModelLookupPort,
+  getModelLookupPort,
+  type ModelLookupPort,
+  resetModelLookupPort,
+} from "./server/ports/model-lookup";
 export type {
   UserAgentPreferencesPatch,
   UserAgentPreferencesPort,

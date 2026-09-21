@@ -1,4 +1,4 @@
-import { modelGatewayCredential } from "@server/db/schema";
+import { modelGatewayCredential } from "@fenix/model-management/db";
 import { and, asc, eq, gt, inArray } from "drizzle-orm";
 import { getModelManagementDatabase } from "../db";
 

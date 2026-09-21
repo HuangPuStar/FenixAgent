@@ -2,8 +2,8 @@
  * `/web/config/*` 协议层的响应信封与密钥提示工具。
  *
  * 迁移前这三件事由宿主 `apps/server/src/services/config-utils.ts` 提供，资源包经 `@server/**` 深链取得。
- * 1.3 的硬边界要求包内 `src/**` 只允许 `@server/db/schema`（表定义迁移未完成的残留），因此把本包真正
- * 用到的三个纯函数收进包内：`configSuccess` / `configError` 是 `/web` 的通用回包形状，`toKeyHint` 是
+ * 1.3 的硬边界要求包内 `src/**` 只允许 `@server/db/schema`，因此把本包真正用到的三个纯函数收进包内：
+ * `configSuccess` / `configError` 是 `/web` 的通用回包形状，`toKeyHint` 是
  * Provider 视图的固定字段。宿主版本里其余导出（`configNotFound`、`isValidResourceName`、
  * `safeJsonParse` 等）本包未引用，不复制——「顺手搬一份」会把宿主的工具模块整体变成第二份实现。
  *

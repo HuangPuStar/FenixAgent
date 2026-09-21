@@ -1,9 +1,10 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
+import { model, provider } from "@fenix/model-management/db";
 import { resetAllStubs, stubDb } from "@fenix/platform-sdk/testing";
 import { InvalidKnowledgeBindingError } from "@fenix/resource-knowledge/server";
 import { machine } from "@fenix/resource-machine/db";
 import { mcpServer } from "@fenix/resource-mcp/db";
-import { agentSiteApp, knowledgeBase, model, provider, skill } from "@server/db/schema";
+import { agentSiteApp, knowledgeBase, skill } from "@server/db/schema";
 import { createWebConfigAgentsRoutes } from "../server/routes/web/config/agents";
 import { initializeAgentConfigModuleConfig } from "../server/testing";
 import {
@@ -118,8 +119,12 @@ describe("round45 Agent 配置路由补充覆盖", () => {
       },
     });
     installDbRows({
-      model: [{ id: "model-1", modelName: "gpt", displayName: "GPT", providerId: "provider-1" }],
-      provider: [{ id: "provider-1", name: "openai", displayName: "OpenAI" }],
+      // 模型标签投影由 owner 包实现（经宿主绑定的 ModelLookupPort）：按 `model.model_id` 取模型段、
+      // 按 `provider.name` 回退，并用两行的 `organization_id` 相等作为父子匹配条件。
+      model: [
+        { id: "model-1", modelId: "gpt", displayName: "GPT", providerId: "provider-1", organizationId: "org-source" },
+      ],
+      provider: [{ id: "provider-1", name: "openai", displayName: "OpenAI", organizationId: "org-source" }],
       machine: [{ id: "machine-1", agentName: "worker", name: "", machineInfo: { hostname: "host-1" } }],
       skill: [{ id: "skill-1", label: "检索" }],
       // 标签投影由 owner 包实现，按 `mcp_server.name` 取标签（不再是调用方自己的 `label` 别名）。

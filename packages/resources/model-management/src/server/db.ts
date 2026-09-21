@@ -4,10 +4,10 @@ import type { NodePgDatabase } from "drizzle-orm/node-postgres";
 /**
  * 本包仓储使用的 DB 句柄类型。
  *
- * 表定义仍由宿主 `@server/db/schema` 提供（`provider` / `model` / `model_gateway_credential` 的迁移
- * 归任务 1.7），句柄类型刻意不写 `typeof schema`：本包仓储只做 `select` / `insert` / `update` /
- * `delete`，不使用 `db.query.*` 关系查询，因此不需要耦合宿主的 schema 聚合类型；表定义迁出后这里
- * 无需改动。
+ * 表定义自任务 1.7 B3 起由本包 `db/schema.ts` 提供（`@fenix/model-management/db`），句柄类型刻意不写
+ * `typeof schema`：本包仓储只做 `select` / `insert` / `update` / `delete`，不使用 `db.query.*` 关系查询，
+ * 因此不需要耦合 schema 聚合类型——迁表前它解开了对宿主 schema 类型的耦合，迁表后同样不必改成
+ * `typeof modelManagementSchema`。
  */
 export type ModelManagementDatabase = NodePgDatabase<Record<string, never>>;
 

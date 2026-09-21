@@ -1,4 +1,4 @@
-import { model } from "@server/db/schema";
+import { model, provider } from "@fenix/model-management/db";
 import { and, asc, count, eq, inArray, type SQL } from "drizzle-orm";
 import { getModelManagementDatabase } from "../db";
 
@@ -238,4 +238,55 @@ export function createModelRepository(): ModelRepository {
       return rows.length > 0;
     },
   };
+}
+
+/**
+ * 按 model id 批量取**展示标签**（`<Provider 展示名>/<模型展示名>`）。
+ *
+ * 只读、无授权判断：model 是 Provider 的子表（见本文件头部），调用方给出 model id 时 Provider 的授权
+ * 已经完成，这里只负责把 id 换成名称——因此与 `findRowUnscoped` 同一授权前提，差别只在形状与列宽
+ * （这条返回拼好的两段标签，那条返回整行）。
+ *
+ * 标签怎么拼属于本包自己的词汇：哪一段缺失时回退到 `name` / `model_id` 由本包决定，调用方只保留
+ * 「取不到就退回 id」这一层视图语义。**任何一段取不到都不在 Map 里造值**（含模型行在、但其 Provider
+ * 行缺失的情形）——「查不到」与「显示名就是 id」是两种不同的结果。
+ *
+ * Provider 行按 `(id, model.organization_id)` 匹配，与迁移前的查询条件一致：`model.organization_id`
+ * 是随 Provider 冗余下来的列，带上它能让「子行与父行组织不一致」这种脏数据不匹配（调用方因而退回 id），
+ * 而不是把另一个组织的 Provider 名显示出来。
+ */
+export async function findModelLabelsByIds(ids: readonly string[]): Promise<Map<string, string>> {
+  if (ids.length === 0) return new Map();
+
+  const db = getModelManagementDatabase();
+  const modelRows = await db
+    .select({
+      id: model.id,
+      modelId: model.modelId,
+      displayName: model.displayName,
+      providerId: model.providerId,
+      organizationId: model.organizationId,
+    })
+    .from(model)
+    .where(inArray(model.id, [...ids]));
+  if (modelRows.length === 0) return new Map();
+
+  const providerRows = await db
+    .select({
+      id: provider.id,
+      organizationId: provider.organizationId,
+      name: provider.name,
+      displayName: provider.displayName,
+    })
+    .from(provider)
+    .where(inArray(provider.id, [...new Set(modelRows.map((row) => row.providerId))]));
+  const providerById = new Map(providerRows.map((row) => [row.id, row]));
+
+  const labels = new Map<string, string>();
+  for (const row of modelRows) {
+    const providerRow = providerById.get(row.providerId);
+    if (!providerRow || providerRow.organizationId !== row.organizationId) continue;
+    labels.set(row.id, `${providerRow.displayName ?? providerRow.name}/${row.displayName ?? row.modelId}`);
+  }
+  return labels;
 }
