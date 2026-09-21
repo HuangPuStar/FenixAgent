@@ -58,6 +58,11 @@ import { existsSync } from "node:fs";
  *     （落 `web/lib/`，经窄子路径出口给宿主壳），以及两个随被测实现归位的宿主测试
  *     （`agent-home-generation.test.tsx` / `agent-create-enter-flow.test.ts`）——后者导入宿主
  *     `@/src/api/environments` 只为拿类型，实现与 owner 全在包侧。MOVES 66 → 60 / RELOCATED 81 → 87。
+ * 15. 任务 1.6 T12 归位最后一份 agent-config 归属的宿主测试 `agent-form-dialog-ssr.test.tsx`
+ *     （MOVES 60 → 59，RELOCATED 87 → 88）：口径同第 8~11 条，被测实现 `AgentFormDialog` 归本包
+ *     `web/pages/agent-panel/agent-editor/`，源文件此前以四级相对路径反向读取包内实现、并取宿主
+ *     启动期 i18n 单例；迁入后改为自建空字典实例（三条断言全是「渲染为空」，不涉任何文案）。
+ *     同族的 `agent-form-dialog-pure-logic.test.ts` 不在本次搬运内，理由见 review 文档 §7.31。
  */
 const RMD_08_MOVES = [
   ["web/src/App.tsx", "apps/web/src/App.tsx"],
@@ -65,7 +70,6 @@ const RMD_08_MOVES = [
     "web/src/__tests__/agent-form-dialog-pure-logic.test.ts",
     "apps/web/src/__tests__/agent-form-dialog-pure-logic.test.ts",
   ],
-  ["web/src/__tests__/agent-form-dialog-ssr.test.tsx", "apps/web/src/__tests__/agent-form-dialog-ssr.test.tsx"],
   [
     "web/src/__tests__/agent-sidebar-instance-order.test.ts",
     "apps/web/src/__tests__/agent-sidebar-instance-order.test.ts",
@@ -580,6 +584,11 @@ const RMD_08_RELOCATED = [
     "apps/web/src/__tests__/agent-create-enter-flow.test.ts",
     "packages/resources/agent-config/web/__tests__/agent-create-enter-flow.test.ts",
   ],
+  [
+    "web/src/__tests__/agent-form-dialog-ssr.test.tsx",
+    "apps/web/src/__tests__/agent-form-dialog-ssr.test.tsx",
+    "packages/resources/agent-config/web/__tests__/agent-form-dialog-ssr.test.tsx",
+  ],
 ] as const;
 
 describe("RMD-08 apps/web migration", () => {
@@ -597,9 +606,10 @@ describe("RMD-08 apps/web migration", () => {
   // T10b3 又移出 2 项（见文件头第 10 条），82 → 80；T10b4 把 8 个 agent-config 归属的宿主测试移入包内
   // （见文件头第 11 条），80 → 72；T10b5 直删 1 项自指用例（见文件头第 12 条），72 → 71；
   // T11d 随导航贡献化直删 `AgentSidebarConfig.tsx`（见文件头第 13 条），71 → 70；T11e 把三个 agent-panel
-  // 页面与其自有字典归位到 `@fenix/agent-config`（见文件头第 14 条），70 → 60。
+  // 页面与其自有字典归位到 `@fenix/agent-config`（见文件头第 14 条），70 → 60；T12 把最后一份
+  // agent-config 归属的宿主测试 `agent-form-dialog-ssr.test.tsx` 归位（见文件头第 15 条），60 → 59。
   test("removes every legacy source and retains its exact owner target", () => {
-    expect(RMD_08_MOVES).toHaveLength(60);
+    expect(RMD_08_MOVES).toHaveLength(59);
     for (const [source, target] of RMD_08_MOVES) {
       expect(existsSync(source), `legacy source still exists: ${source}`).toBe(false);
       expect(existsSync(target), `apps/web target is missing: ${target}`).toBe(true);
@@ -652,12 +662,13 @@ describe("RMD-08 apps/web migration", () => {
 
   // 任务 1.3 收口的 9 份 + 任务 1.6 T4 的 1 份 + T8b 的 11 份 + T8c 的 11 份 + T8d 的 15 份 + T9a 的 2 份
   // + T10b1 的 12 份 + T10b2 的 7 份 + T10b3 的 1 份 + T10b4 的 8 份 + T11e 归位的 agent-panel 页面、
+  // 首页/概览页自有字典与创建导航助手 + T12 归位的 `agent-form-dialog-ssr.test.tsx`（60 → 59 同批）：
   // 首页/概览页自有字典与创建导航助手：
   // 旧根路径与应用壳路径都不得复活，
   // 且包侧 owner 落点必须存在。副本与 owner 并存是「两份实现各自能跑」的最坏形态，
   // 删除与断言必须成对出现。
   test("relocates the leftover host copies to their package owners", () => {
-    expect(RMD_08_RELOCATED).toHaveLength(87);
+    expect(RMD_08_RELOCATED).toHaveLength(88);
     for (const [legacy, shell, owner] of RMD_08_RELOCATED) {
       expect(existsSync(legacy), `legacy source still exists: ${legacy}`).toBe(false);
       expect(existsSync(shell), `host copy still exists: ${shell}`).toBe(false);
