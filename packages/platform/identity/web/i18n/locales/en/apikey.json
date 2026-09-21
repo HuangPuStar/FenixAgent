@@ -51,5 +51,8 @@
     "copyFailed": "Copy failed, please select and copy manually",
     "deleteFailed": "Failed to revoke API Key",
     "deleted": "API Key revoked"
+  },
+  "nav": {
+    "apikeys": "API Key"
   }
 }

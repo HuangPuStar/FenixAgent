@@ -147,5 +147,8 @@
   "error": {
     "operationFailed": "操作失败"
   },
-  "orgSwitchFailed": "切换组织失败"
+  "orgSwitchFailed": "切换组织失败",
+  "nav": {
+    "organizations": "组织"
+  }
 }
