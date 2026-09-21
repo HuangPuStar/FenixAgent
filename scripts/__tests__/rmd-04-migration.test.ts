@@ -86,10 +86,19 @@ const RMD_04_MOVES = [
   ]),
   ["web/src/api/meta-agent.ts", "packages/resources/agent-config/web/src/api/meta-agent.ts"],
   ["web/src/api/sidebar-config.ts", "packages/resources/agent-config/web/src/api/sidebar-config.ts"],
-  ...["agent-sidebar-config-filter-pure", "agent-sidebar-config"].map((name) => [
-    `web/src/__tests__/${name}.test.ts`,
-    `packages/resources/agent-config/web/src/__tests__/${name}.test.ts`,
-  ]),
+  // 这两条随 §1.6 T11d 再次搬迁：包内 `AgentSidebarConfig` 与宿主同源副本同批退场，侧栏装配与裁剪
+  // 的 owner 归宿主 WebShell。`-filter-pure` 是逐字 port（50 条边界断言）；`agent-sidebar-config`
+  // 的三条裁剪断言改写进 `shell-navigation.test.ts` 的「运行时裁剪」一组，并补上装配期不变量。
+  [
+    "web/src/__tests__/agent-sidebar-config-filter-pure.test.ts",
+    "packages/resources/agent-config/web/src/__tests__/agent-sidebar-config-filter-pure.test.ts",
+    "apps/web/src/__tests__/shell-navigation-filter.test.ts",
+  ],
+  [
+    "web/src/__tests__/agent-sidebar-config.test.ts",
+    "packages/resources/agent-config/web/src/__tests__/agent-sidebar-config.test.ts",
+    "apps/web/src/__tests__/shell-navigation.test.ts",
+  ],
 ] as const;
 
 describe("RMD-04 ownership migration", () => {

@@ -40,6 +40,11 @@ import { existsSync } from "node:fs";
  * 12. 任务 1.6 T10b5 直删 1 项自指用例（72 → 71）：`new-session-dialog-form.test.ts` 在文件内定义
  *     `newSessionSchema` 再断言它自身的 `safeParse`，全仓无任何生产模块导出该 schema（`NewSessionDialog`
  *     已不存在），五条断言只在测 zod；与文件头第 7 条的自指 i18n 测试同一口径，另立专项断言防复活。
+ * 13. 任务 1.6 T11d 在 apps/web 内再搬 6 项（71 → 71，仅改第二列的落点）：壳层容器与两份 CSS 从
+ *     `apps/web/src/pages/agent-panel/` 移入 `apps/web/src/shell/`，其中 `AgentPanelLayout.tsx` 改名
+ *     `DefaultAppShell.tsx` 与 `apps/web/fenix.module.ts` 的 `kind: "web-shell"` 对齐。owner 仍是 apps-web
+ *     （RMD-08 判定的资源归属未变），但落点已不是 `pages/`，故按本表的「当前唯一落点」语义更新第二列；
+ *     `AgentSidebarConfig.tsx` 在 T11d 收尾随导航贡献化删除，届时移入下方 retired 断言。
  */
 const RMD_08_MOVES = [
   ["web/src/App.tsx", "apps/web/src/App.tsx"],
@@ -112,14 +117,14 @@ const RMD_08_MOVES = [
   ["web/src/lib/password-crypto.ts", "packages/platform/identity/web/lib/password-crypto.ts"],
   ["web/src/lib/retry.ts", "apps/web/src/lib/retry.ts"],
   ["web/src/pages/LoginPage.tsx", "apps/web/src/pages/LoginPage.tsx"],
-  ["web/src/pages/agent-panel/AgentPanelLayout.tsx", "apps/web/src/pages/agent-panel/AgentPanelLayout.tsx"],
-  ["web/src/pages/agent-panel/AgentSidebar.tsx", "apps/web/src/pages/agent-panel/AgentSidebar.tsx"],
-  ["web/src/pages/agent-panel/AgentSidebarConfig.tsx", "apps/web/src/pages/agent-panel/AgentSidebarConfig.tsx"],
-  ["web/src/pages/agent-panel/AgentSidebarTree.tsx", "apps/web/src/pages/agent-panel/AgentSidebarTree.tsx"],
-  ["web/src/pages/agent-panel/ArtifactsPanel.tsx", "apps/web/src/pages/agent-panel/ArtifactsPanel.tsx"],
+  ["web/src/pages/agent-panel/AgentPanelLayout.tsx", "apps/web/src/shell/DefaultAppShell.tsx"],
+  ["web/src/pages/agent-panel/AgentSidebar.tsx", "apps/web/src/shell/AgentSidebar.tsx"],
+  ["web/src/pages/agent-panel/AgentSidebarConfig.tsx", "apps/web/src/shell/AgentSidebarConfig.tsx"],
+  ["web/src/pages/agent-panel/AgentSidebarTree.tsx", "apps/web/src/shell/AgentSidebarTree.tsx"],
+  ["web/src/pages/agent-panel/ArtifactsPanel.tsx", "apps/web/src/shell/ArtifactsPanel.tsx"],
   ["web/src/pages/agent-panel/agent-create-navigation.ts", "apps/web/src/pages/agent-panel/agent-create-navigation.ts"],
-  ["web/src/pages/agent-panel/agent-panel.css", "apps/web/src/pages/agent-panel/agent-panel.css"],
-  ["web/src/pages/agent-panel/artifacts-workspace.css", "apps/web/src/pages/agent-panel/artifacts-workspace.css"],
+  ["web/src/pages/agent-panel/agent-panel.css", "apps/web/src/shell/agent-panel.css"],
+  ["web/src/pages/agent-panel/artifacts-workspace.css", "apps/web/src/shell/artifacts-workspace.css"],
   [
     "web/src/pages/agent-panel/pages/AgentDashboardPage.tsx",
     "apps/web/src/pages/agent-panel/pages/AgentDashboardPage.tsx",

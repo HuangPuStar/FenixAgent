@@ -1,13 +1,26 @@
+// `filterNavGroups` 的纯语义测试。
+//
+// 函数的 owner 在 §1.6 T11d 从 `@fenix/agent-config` 的宿主同源副本迁到 WebShell（隐藏列表来自
+// `sidebarConfigApi`，但被裁剪的是 Shell 装配出的导航），本文件随之从
+// `packages/resources/agent-config/web/src/__tests__/agent-sidebar-config-filter-pure.test.ts`
+// 迁入宿主：函数搬了家，覆盖它的 50 条边界断言一条不丢。
+//
+// 这里只测纯集合运算，不构造完整导航项（`filterNavGroups` 的约束只看 `id`，理由见函数注释）。
+
 import { describe, expect, test } from "bun:test";
 
+import type { LucideIcon } from "lucide-react";
 import { FileText } from "lucide-react";
 
-import { filterNavGroups, type NavEntry } from "../../pages/agent-panel/AgentSidebarConfig";
+import { filterNavGroups } from "../shell/shell-navigation";
+
+/** 测试用的最小项形状：`filterNavGroups` 只读 `id`，其余字段用于断言引用稳定性。 */
+type TestEntry = { id: string; labelKey: string; icon: LucideIcon };
 
 type TestGroup = {
   id: string;
   label: string;
-  items: NavEntry[];
+  items: TestEntry[];
   metadata?: { source: string };
 };
 
@@ -18,7 +31,7 @@ const icons = {
   delta: FileText,
 };
 
-function entry(id: string): NavEntry {
+function entry(id: string): TestEntry {
   return { id, labelKey: `label.${id}`, icon: icons[id as keyof typeof icons] ?? icons.alpha };
 }
 
@@ -136,14 +149,14 @@ describe("filterNavGroups 纯逻辑", () => {
 
   // 原本为空的分组不应出现在输出中。
   test("输入中的空分组会被移除", () => {
-    const source = [{ id: "empty", label: "空组", items: [] as NavEntry[] }];
+    const source = [{ id: "empty", label: "空组", items: [] as TestEntry[] }];
 
     expect(filterNavGroups(source, [])).toEqual([]);
   });
 
   // 空组不能阻止其他非空分组显示。
   test("空分组不会影响非空分组", () => {
-    const source = [{ id: "empty", label: "空组", items: [] as NavEntry[] }, ...groups()];
+    const source = [{ id: "empty", label: "空组", items: [] as TestEntry[] }, ...groups()];
 
     expect(filterNavGroups(source, []).map((group) => group.id)).toEqual(["first", "second"]);
   });
@@ -346,7 +359,7 @@ describe("filterNavGroups 纯逻辑", () => {
   test("中间空组被移除但保留其他顺序", () => {
     const source = [
       { id: "one", label: "一", items: [entry("alpha")] },
-      { id: "empty", label: "空", items: [] as NavEntry[] },
+      { id: "empty", label: "空", items: [] as TestEntry[] },
       { id: "two", label: "二", items: [entry("beta")] },
     ];
 
@@ -396,7 +409,7 @@ describe("filterNavGroups 纯逻辑", () => {
   test("可处理冻结的输入数据", () => {
     const source = Object.freeze(
       groups().map((group) =>
-        Object.freeze({ ...group, items: Object.freeze(group.items.slice()) as unknown as NavEntry[] }),
+        Object.freeze({ ...group, items: Object.freeze(group.items.slice()) as unknown as TestEntry[] }),
       ),
     ) as unknown as TestGroup[];
 

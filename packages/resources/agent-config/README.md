@@ -58,16 +58,18 @@ Agent 配置资源行、关联绑定（Skill / MCP / 知识库 / 记忆）与站
 - **唯一跨包 web 入口**：`web/index.ts`。从它出发的值导入图不含 `node:` 内建、`@server/*` 与宿主别名
   `@/`，由 `web/__tests__/agent-config-browser-surface.test.ts` 递归守护（含跨包递归与白名单说明）。
 - 导出面覆盖实测消费方：task / prod-view 取 `agentApi`；model-management 的编辑器纯逻辑用例取
-  `agent-editor-model` 的转换与校验 schema；宿主 `AgentSidebarConfig.tsx` 取 `sidebarConfigApi`、宿主
-  `AgentSidebarTree.tsx` 取 `ensureMetaAgent`；workflow 的 `useMetaAgent` 已导出待其改指。
-- **包根导出的 `AgentSidebarConfig` 目前零消费方**（实测）：宿主控制台消费的是它自己的本地副本
-  `apps/web/src/pages/agent-panel/AgentSidebarConfig.tsx`（`AgentSidebar.tsx` 从 `./AgentSidebarConfig`
-  取 `AgentSidebarQuickNav`），二者同源——均为 151 行，仅两处 import 不同（宿主版从包根取
-  `sidebarConfigApi`、`NS` 走宿主别名 `@/src/i18n`；包内版反之）。该副本连同其余宿主↔包同源实现的移除
-  归 §1.6（整体处置口径见 review 文档 §6.9 第 1 条：页面下沉后宿主副本自然消失），宿主侧文件不在本包可写范围。
-- **页面与组件域**：`web/pages/agent-panel/**`（编辑器、`AgentSitesPage`、`agent-sites-catalog`、
-  `AgentSidebarConfig`）、`web/components/agent-panel/**`（`SiteFrame` / `SiteTabsBar` /
-  `MountSiteDialog` / `AgentSitesCard`）、`web/api/**`、`web/hooks/**`、`web/lib/**`。
+  `agent-editor-model` 的转换与校验 schema；宿主 WebShell 的 `shell/use-shell-navigation.ts` 取
+  `sidebarConfigApi`、`shell/AgentSidebarTree.tsx` 取 `ensureMetaAgent`；workflow 的 `useMetaAgent`
+  已导出待其改指。
+- **`AgentSidebarConfig` 已退场**（§1.6 T11d）：包根曾导出一个零消费方的 `AgentSidebarConfig`，与宿主
+  `apps/web/src/pages/agent-panel/AgentSidebarConfig.tsx` 同源（均为 151 行，仅两处 import 不同）。
+  侧栏导航的真相源现为各包 `web/contribution.ts` 的项声明 + WebShell 的分组表（`SHELL_NAV_GROUPS`），
+  两侧副本与宿主旧表 `SIDEBAR_NAV_GROUPS` 同批删除；`filterNavGroups` 的纯逻辑与断言改由宿主
+  `apps/web/src/shell/shell-navigation.ts` 持有——隐藏列表来自本包 `sidebarConfigApi`，被裁剪的却是
+  Shell 装配出的导航，owner 因此是 Shell。本包只剩数据面（`./src/api/sidebar-config`）。
+- **页面与组件域**：`web/pages/agent-panel/**`（编辑器、`AgentSitesPage`、`agent-sites-catalog`）、
+  `web/components/agent-panel/**`（`SiteFrame` / `SiteTabsBar` / `MountSiteDialog` / `AgentSitesCard`）、
+  `web/api/**`、`web/hooks/**`、`web/lib/**`。
 - **i18n 自持**：`web/i18n/locales/{en,zh}/agents.json` 各 271 个键，两份键结构一致（实测比对，
   由 `web/__tests__/agent-i18n.test.ts` 与 `agent-config-browser-surface.test.ts` 守护）；命名空间由
   `web/i18n/namespace.ts` 给出（`AGENTS_NS`）。宿主在 i18n 初始化时经子路径
