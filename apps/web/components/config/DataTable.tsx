@@ -1,3 +1,7 @@
+import { Button } from "@fenix/ui-components/ui/button";
+import { Checkbox } from "@fenix/ui-components/ui/checkbox";
+import { Input } from "@fenix/ui-components/ui/input";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@fenix/ui-components/ui/table";
 import {
   type ColumnDef,
   type ExpandedState,
@@ -14,10 +18,6 @@ import {
 import { ChevronDown, ChevronRight, Search } from "lucide-react";
 import { Fragment, useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { Button } from "@/components/ui/button";
-import { Checkbox } from "@/components/ui/checkbox";
-import { Input } from "@/components/ui/input";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 
 export interface Column<T> {
   key: string;

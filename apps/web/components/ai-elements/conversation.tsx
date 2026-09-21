@@ -1,11 +1,11 @@
 "use client";
 
+import { Button } from "@fenix/ui-components/ui/button";
 import { ArrowDownIcon, UserIcon } from "lucide-react";
 import type { ComponentProps } from "react";
 import { useCallback } from "react";
 import { useTranslation } from "react-i18next";
 import { StickToBottom, useStickToBottomContext } from "use-stick-to-bottom";
-import { Button } from "@/components/ui/button";
 import { cn } from "@/src/lib/utils";
 
 export type ConversationProps = ComponentProps<typeof StickToBottom>;

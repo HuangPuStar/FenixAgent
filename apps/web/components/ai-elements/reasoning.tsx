@@ -1,11 +1,11 @@
 "use client";
 
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@fenix/ui-components/ui/collapsible";
 import { useControllableState } from "@radix-ui/react-use-controllable-state";
 import { BrainIcon, ChevronDownIcon } from "lucide-react";
 import type { ComponentProps, ReactNode } from "react";
 import { createContext, memo, useContext, useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { cn } from "@/src/lib/utils";
 import { Shimmer } from "./shimmer";
 

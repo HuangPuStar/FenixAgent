@@ -1,15 +1,15 @@
 import { ChangePasswordDialog, signOut, useOrg, useSession } from "@fenix/identity/web";
-import { Link } from "@tanstack/react-router";
-import { Building2, Check, ChevronLeft, ChevronRight, KeyRound, LogOut, UserRound } from "lucide-react";
-import { memo, useEffect, useState } from "react";
-import { useTranslation } from "react-i18next";
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
-import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from "@/components/ui/resizable";
+} from "@fenix/ui-components/ui/dropdown-menu";
+import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from "@fenix/ui-components/ui/resizable";
+import { Link } from "@tanstack/react-router";
+import { Building2, Check, ChevronLeft, ChevronRight, KeyRound, LogOut, UserRound } from "lucide-react";
+import { memo, useEffect, useState } from "react";
+import { useTranslation } from "react-i18next";
 import { NS } from "@/src/i18n";
 import { AgentSidebarQuickNav } from "./AgentSidebarConfig";
 import { AgentSidebarTree } from "./AgentSidebarTree";

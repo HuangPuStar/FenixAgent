@@ -1,7 +1,7 @@
+import { Dialog, DialogClose, DialogContent, DialogHeader, DialogTitle } from "@fenix/ui-components/ui/dialog";
 import { Maximize2, Minimize2 } from "lucide-react";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
-import { Dialog, DialogClose, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { NS } from "@/src/i18n";
 
 const PREVIEW_SIZES = [

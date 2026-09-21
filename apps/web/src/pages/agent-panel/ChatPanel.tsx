@@ -14,9 +14,9 @@
 import type { PublicErrorInfo } from "@fenix/chat-channel";
 import { ACPMain } from "@fenix/ui-components/chat/shell/ACPMain";
 import type { BoundMcpOption } from "@fenix/ui-components/chat/shell/chat-interface-types";
+import { TooltipProvider } from "@fenix/ui-components/ui/tooltip";
 import { Bot, Loader2 } from "lucide-react";
 import { useTranslation } from "react-i18next";
-import { TooltipProvider } from "@/components/ui/tooltip";
 import { NS } from "@/src/i18n";
 import { useChatPanelPorts } from "./chat-panel-ports";
 import { useChatPanelRuntime } from "./use-chat-panel-runtime";

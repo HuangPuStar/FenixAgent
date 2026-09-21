@@ -1,8 +1,8 @@
+import { Button } from "@fenix/ui-components/ui/button";
 import { createFileRoute, Link, useNavigate, useSearch } from "@tanstack/react-router";
 import { History, Loader, Pencil, Plus } from "lucide-react";
 import { lazy, Suspense, useCallback, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { Button } from "@/components/ui/button";
 import { AppHeader } from "@/src/components/layout/app-header";
 import { AppPage } from "@/src/components/layout/app-page";
 

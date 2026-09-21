@@ -1,10 +1,10 @@
 import { SiteFrame, SiteTabsBar } from "@fenix/agent-config/web";
+import { Button } from "@fenix/ui-components/ui/button";
 import { useRequest } from "ahooks";
 import { Globe, Plus, Upload } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
-import { Button } from "@/components/ui/button";
 import { envApi } from "@/src/api/environments";
 import type { ProdViewModulesConfig } from "@/src/api/prod-views";
 import { unwrap } from "@/src/api/request";

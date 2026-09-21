@@ -1,5 +1,5 @@
+import { Badge } from "@fenix/ui-components/ui/badge";
 import { useTranslation } from "react-i18next";
-import { Badge } from "@/components/ui/badge";
 import { cn } from "@/src/lib/utils";
 
 interface StatusBadgeProps {

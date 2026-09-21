@@ -1,6 +1,6 @@
+import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from "@fenix/ui-components/ui/resizable";
 import { type RefObject, useEffect, useRef } from "react";
 import type { PanelImperativeHandle } from "react-resizable-panels";
-import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from "@/components/ui/resizable";
 import type { ChangedFile } from "../../lib/extract-changed-files";
 import { FileTabsBar } from "./FileTabsBar";
 import { FileTreeTab, type FileTreeTabHandle } from "./FileTreeTab";

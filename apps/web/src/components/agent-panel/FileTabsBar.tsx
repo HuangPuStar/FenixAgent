@@ -1,8 +1,8 @@
+import { Button } from "@fenix/ui-components/ui/button";
+import { Popover, PopoverContent, PopoverTrigger } from "@fenix/ui-components/ui/popover";
 import { ChevronDown, FilePen, X } from "lucide-react";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
-import { Button } from "@/components/ui/button";
-import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { FileTypeIcon } from "@/src/components/file-icon-helper";
 import { NS } from "@/src/i18n";
 import { cn } from "@/src/lib/utils";

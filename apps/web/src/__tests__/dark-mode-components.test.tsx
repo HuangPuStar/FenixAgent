@@ -1,11 +1,11 @@
 import { describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
+import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@fenix/ui-components/ui/accordion";
+import { Calendar } from "@fenix/ui-components/ui/calendar";
+import { DatePicker } from "@fenix/ui-components/ui/date-picker";
+import { Skeleton } from "@fenix/ui-components/ui/skeleton";
 import ReactDOMServer from "react-dom/server";
-import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
-import { Calendar } from "@/components/ui/calendar";
-import { DatePicker } from "@/components/ui/date-picker";
-import { Skeleton } from "@/components/ui/skeleton";
 
 const DARK_MODE_VARIABLES = [
   "--color-background",

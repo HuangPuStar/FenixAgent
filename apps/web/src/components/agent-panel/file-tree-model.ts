@@ -1,4 +1,4 @@
-import type { TreeNodeData } from "@/components/ui/tree";
+import type { TreeNodeData } from "@fenix/ui-components/ui/tree";
 import { MAX_UPLOAD_SIZE_BYTES } from "@/src/api/fs";
 
 export interface ParsedFileNode {

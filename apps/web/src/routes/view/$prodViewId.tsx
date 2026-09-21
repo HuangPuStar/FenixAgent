@@ -1,7 +1,7 @@
+import { Button } from "@fenix/ui-components/ui/button";
 import { createFileRoute } from "@tanstack/react-router";
 import { lazy, Suspense } from "react";
 import { ErrorBoundary, type FallbackProps } from "react-error-boundary";
-import { Button } from "@/components/ui/button";
 import "@/src/pages/agent-panel/agent-panel.css";
 
 const Page = lazy(() => import("@/src/pages/prod-view/ProdViewPage").then((m) => ({ default: m.ProdViewPage })));

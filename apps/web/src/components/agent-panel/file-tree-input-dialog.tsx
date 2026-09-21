@@ -1,5 +1,4 @@
-import type { FormEvent } from "react";
-import { Button } from "@/components/ui/button";
+import { Button } from "@fenix/ui-components/ui/button";
 import {
   Dialog,
   DialogContent,
@@ -7,8 +6,9 @@ import {
   DialogFooter,
   DialogHeader,
   DialogTitle,
-} from "@/components/ui/dialog";
-import { Input } from "@/components/ui/input";
+} from "@fenix/ui-components/ui/dialog";
+import { Input } from "@fenix/ui-components/ui/input";
+import type { FormEvent } from "react";
 
 interface FileTreeInputDialogProps {
   open: boolean;

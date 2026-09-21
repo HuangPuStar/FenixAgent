@@ -1,4 +1,3 @@
-import { useTranslation } from "react-i18next";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -8,7 +7,8 @@ import {
   AlertDialogFooter,
   AlertDialogHeader,
   AlertDialogTitle,
-} from "@/components/ui/alert-dialog";
+} from "@fenix/ui-components/ui/alert-dialog";
+import { useTranslation } from "react-i18next";
 import { cn } from "@/src/lib/utils";
 
 interface ConfirmDialogProps {

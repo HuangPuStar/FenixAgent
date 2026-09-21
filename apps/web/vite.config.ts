@@ -19,7 +19,6 @@ export default defineConfig({
   base: "/ctrl/",
   resolve: {
     alias: {
-      "@/components/ui": path.resolve(__dirname, "components/ui"),
       "@/components": path.resolve(__dirname, "components"),
       "@/src/i18n/locales": path.resolve(__dirname, "src/i18n/locales"),
       "@/src/i18n": path.resolve(__dirname, "src/i18n"),
