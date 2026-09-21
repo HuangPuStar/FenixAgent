@@ -102,7 +102,7 @@ WebShell 从静态 registry 收集各资源包的 web contribution（不反向�
 | T6 | `agent-runtime/web` 收敛 | 已交付（a–e） | 见下方 §7.11 |
 | T7 | 5 条 `special-dependency` 消除 | 已交付（含 4b） | 见下方 §7.12 |
 | T8 | 宿主组件/lib/api 簇改指并删除 | 已交付（a–d + z） | 见下方 §7.13 |
-| T9 | i18n 归属重划与 `quoteTruncatedBadge` 缺陷修复 | a、b 已交付，c 待办 | a 见 §7.15 / b 见 §7.16 |
+| T9 | i18n 归属重划与 `quoteTruncatedBadge` 缺陷修复 | **a、b、c 已交付** | a 见 §7.15 / b 见 §7.16 / c 见 §7.17 |
 | T10 | 测试迁移与 happy-dom 收敛 | 待办 | — |
 | T11 | WebShell 落地 | 待办 | — |
 | T12 | 收尾：台账复核、文档修订、证据留痕 | 待办 | — |
@@ -1199,7 +1199,7 @@ identity 包，而不是新建一个 `account` 命名空间。理由：`settings
 registryEvent 告警」）：该文件单跑 12 pass、`bun test packages/` 连跑两轮均 7310 pass 0 fail，
 随后两轮 precheck 亦全绿——与本次 i18n 改动无因果关系（该用例不涉及 i18n），按非确定性失败记录。
 
-### 7.16 T9b i18n 缺陷修复：引用截断徽标漏译、错误卡片标题硬编码（2026-09-21）
+### 7.16 T9b i18n 缺陷修复：引用截断徽标漏译、错误卡片标题硬编码（2026-09-21，`90138dcd8`）
 
 | # | 缺陷（修复前） | 成因 | 处理 |
 |---|---|---|---|
@@ -1229,6 +1229,120 @@ packages/ui-components/web/__tests__/message.ssr.test.tsx` 11 pass / 40 expect�
 `chat-area-environment-deletion` + `chat-panel-transport-lifecycle` 4 pass；`env -u ANTHROPIC_MODEL bun run precheck`
 全绿（771 / 7311 + 2 skip / 969，0 fail）；`bun run build:web` 成功。
 
+### 7.17 T9c 宿主自有字典收敛：死键剪除与四份空壳字典退场（2026-09-21）
+
+T9 的最后一片。T9a 结清借键、T9b 修缺陷，本片只做一件事：把宿主自有命名空间里**无人消费的键**和
+**零绑定的整份字典**清掉，并给宿主补上与各包对等的一致性守护。
+
+**判定口径（证据脚本 `/tmp/t9/deadkeys.py`，不入库）。** 消费点 = 全仓 `.ts` / `.tsx`（含测试、含
+`ui-sandbox`，排除 `node_modules` / `dist` / `docs`）里的**字符串字面量**；文件归属的命名空间由
+`useTranslation(<arg>)` 解析（`NS.X` 查中心表、`<CONST>` 查各包 `namespace.ts`、字面量；无参 →
+`common`），据此把「形如点路径的裸字面量」记为该文件绑定命名空间下的消费；显式限定 `"<ns>:<path>"`
+单独记账；模板字面量按静态前缀 + 尾缀匹配。**无 `useTranslation` 调用的文件里的点路径字面量一律进
+UNKNOWN 集合且永不删除**——口径刻意保守，宁可留下真死键也不误删。结果：**684 条确定性死键 + 136 条
+UNKNOWN**。
+
+**过程中发现并修补的两个脚本缺口（都不修补就会真的误删）：**
+
+1. **裸模板字面量被整段跳过。** 初版对 `"${" in raw` 的字面量直接 `continue`，于是
+   `FileTreeTab.tsx` 的 `` t(`fileTree.dialog.${errorKey}`) ``、`` t(`fileTree.dialog.${dialogKind}Title`) ``
+   这类动态键被判成死键。修补为「前缀是点路径且以 `.` 结尾、尾缀是纯标识符」时记录为「前缀 + 尾缀」
+   消费（两条件共同排除把 URL / 拼装串当成键前缀）。确定性死键 700 → 684，救回 16 条，其中
+   `agentPanel:siteDeployment.visibility.*` 5 条已核实为 `packages/resources/agent-config/web/pages/`
+   两个页面经 `NS.AGENT_PANEL` 的真实消费。
+2. **脚本只以 zh 字典为准遍历，en 单侧的键从未进入审查。** 补做 en / zh 单侧键审计后查出
+   `agentPanel.dragHint`（**仅 en 存在、全仓 0 个消费点**，全仓唯一出现即字典自身）——删掉 en 那一份后
+   宿主字典的 zh / en 键集才完全对称。这条缺口说明「以单一语言字典为遍历基准」的判定结构会系统性漏掉
+   单侧键，故把「键集逐字一致」固化成守卫（见下方新增测试）。
+
+**整份退场：`TASKS` / `SESSIONS` / `ENVIRONMENTS` / `TOOL_NARRATOR`。** 决定性判据是「全仓有无
+`useTranslation(<该 ns>)` 绑定」——四者均为 **0**（`NS.TASKS_V2` 之类的 `NS.X` 精确匹配已排除词边界
+干扰；`NS.X` 在 `i18n/index.ts` 的登记处与中心表自身的出现不计），即字典 100% 无人读取。它们各自的
+UNKNOWN 残留（合计 38 条，如 `active` / `online` / `sessions`）来自 DB 状态值、Y.Doc key、URL 段等
+无关文件里的通用词字面量，不是真实消费方。8 个 JSON 文件（4 命名空间 × 2 语言）整份删除；`i18n/index.ts`
+的 import 与 `hostResources` 登记同步移除；守护 `toolNarrator` 字典的**自指测试**
+`apps/web/src/__tests__/narrators-i18n.test.ts` 一并删除（它只读该字典并断言同一文件里的键，字典没了就
+没有对象可测）。
+
+**保留中心表里这四个常量名。** `packages/web-runtime/web/i18n/namespace.ts` 的 `NS.TASKS` 等 4 个
+常量**不删**：它是跨包共享的**名称注册表**，删常量没有功能收益（字典与登记都已不在），却要改一处
+跨包契约文件并牵动全部消费方。取舍是「名称注册表可以比实际在用的命名空间宽」，与 §4「键的最终所在地
+= 包的 owner」不冲突——那条约束管的是键与字典，不是名称常量。此项已在 `i18n/index.ts` 头注写明。
+
+**剪除量与分布（zh 侧键数，en 侧多删 1 条 `dragHint`）。**
+
+| 字典 | 前 | 后 | 处置 |
+|---|---:|---:|---|
+| `components` | 472 | 103 | 删 369 条死键 |
+| `agentPanel` | 141 | 116 | 删 25 条死键 |
+| `common` | 94 | 63 | 删 33 条死键，**补 2 条**（见下） |
+| `dashboard` | 43 | 3 | 删 40 条死键 |
+| `login` | 57 | 44 | 删 13 条死键 |
+| `sidebar` | 26 | 19 | 删 7 条死键 |
+| `agentHome` | 21 | 19 | 删 2 条死键 |
+| `environments` / `sessions` / `tasks` / `toolNarrator` | 68 / 60 / 85 / 20 | 0 | 整份删除（其中 38 条 UNKNOWN 随字典一并消失） |
+| **合计** | **1087** | **367** | **净 −720** |
+
+`agentPanel.json` 含内联短对象（`"pagination": { "label": … }`、`"status": { "published": … }`），
+`json.dumps` 重排会产生与本次剪除无关的整文件 diff，故对它改用**行级**剪除（删末键后留下的尾逗号单独
+清理），diff 只含删行与一处逗号移除；其余字典先逐字节校验 `json.dumps(…, indent=2) + "\n"` 与原文一致
+再重写。
+
+**顺带补齐 `common.next` / `common.previous`。** 这两条不是本次删的键，而是审计中发现的**反向缺口**：
+`packages/resources/memory` 的 `DocumentsView` 以限定字面量引用宿主 `common:previous` / `common:next`，
+且该包的 `memory-i18n.test.ts` 已把 `["common:cancel", "common:next", "common:previous"]` 登记为
+「跨命名空间依赖，只能依赖已登记三条」——宿主 `common` 字典却只提供了 `cancel`。即字典相对**已声明的
+跨命名空间契约**是缺的，中文界面下这两处分页按钮一直靠 `defaultValue` 显示英文。按「引用的键必须在
+字典里」的不变式补齐（zh 上一页 / 下一页，en Previous / Next），使下面那条守卫无需任何豁免名单。
+
+**对抗验证（三重独立检查 + 双向对照）。** 删键的风险全在「删过头」，故用三种口径反查被删的 685 条键：
+
+1. **ns 感知的调用点反查**：对每个被删键，找出 `t("key")` 调用点，只在该文件绑定的命名空间**包含**该
+   宿主命名空间时才算疑点 → **0 条**。
+2. **整串严格相等**：文件绑定了该宿主命名空间，且文件里出现「整串等于键或等于 `<ns>:<key>`」的字符串
+   字面量 → **0 条**（此口径已用阳性对照验证有效：`agentPanel.selectAgent`、`agentPanel.showArtifacts`、
+   `sidebar.navGroupCore` 均被正确命中）。
+3. **HEAD 与现版字典的回归对照**：同一引用在 HEAD 版字典可解析、现版不可解析 → **0 条**。
+
+中途三种宽松口径曾分别报出 341 / 189 / 105 条疑点，逐条定位后**全部**是校验器自身的口径缺陷而非误删：
+末段子串匹配过松（`error` 命中任意含该词的字符串）、同文件多个 hook 的绑定取并集后归属错位
+（`AgentManagementPage` 第 68 行绑 `NS.AGENTS`，第 171 行的 `t("management.title")` 属 agents 包）、
+限定符未校验（`"agentPanel:apiKeys"` 被当作 `sidebar:apiKeys`）。三种口径收敛到零且阳性对照有效后才提交。
+另外确认 `apps/web/src/lib/theme.ts` 的 `"light" | "dark"` 是主题联合类型取值、`routes/__root.tsx` 的
+`errors.not_found` 等是无关命名空间，均非 i18n 引用。
+
+**新增守护：`apps/web/src/__tests__/host-i18n.test.ts`。** 每个资源包都有自己的 `*-i18n.test.ts`，宿主
+此前**一份都没有**——这正是 `dragHint` 单侧漂移和 684 条死键能长期无人发现的结构性原因。本片把包侧的
+四条断言补到宿主侧：① 每份字典 zh / en 键集逐字一致（挡 `dragHint` 类）；② 每份字典两个语言文件都存在
+且非空（挡「两边一起缺」）；③ `i18n/index.ts` 登记了全部**且仅有**磁盘上的宿主字典（挡「有字典没登记 →
+整片回显 key」与「登记了没文件 → 引导期 import 失败」两种形态）；④ 全仓限定字面量 `t("<ns>:<key>")` 都能
+在对应宿主字典里查到（挡删键时连带踩掉跨包引用，同时独立校验各包登记的跨命名空间清单）。两条关键断言
+都做了负向对照（人为删 `common.cancel`、人为造 en 单侧键），确认失败信息准确。
+
+**台账同步**：`RMD_08_MOVES` 109 → **100**（8 份字典 + 1 个自指测试的落点不再存在），按既有先例从清单
+移除条目、递减长度断言、在文件头追加第 7 条改判说明，并补一条「自指测试不得复活」的断言。
+
+**登记新债务（本片不处理）：包页面跨包消费宿主命名空间。** 迁移后仍有多处**包内**页面直接绑定宿主的
+`NS.AGENT_PANEL` / `NS.COMPONENTS`（如 `packages/resources/agent-config/web/pages/agent-panel/` 的
+`AgentSitesPage.tsx` / `agent-sites-catalog.tsx`，`packages/resources/skill`、`model-management`、
+`mcp` 的同类页面），使宿主 `agentPanel` / `components` 两份字典实际是「包与宿主共用」。这是 §1.3
+「资源的浏览器入口只从 `./web` 导出…」尚未走完的部分，方向是把这些键的 owner 交还各资源包并新建
+命名空间。本片按死键口径处理时已把这些**真实消费方全部保住**（第 1 条验证正是为此），但归属没有改变
+——故 `agentPanel` / `components` 两份字典在收拾资源包命名空间时应一并复核，属「改职责边界」的决定，
+不在本片范围。
+
+**邻近发现（本片未处理，仅登记）**：`apps/web/src/App.tsx` 的 `parseConfigView` 只被它自己的
+`config-routing.test.ts` 消费，全仓无生产调用点（`/ctrl/*` 前缀已由 TanStack 文件路由接管）——属 T8
+「零消费直删」口径的漏网项，因不在 i18n 范围内故本片未删。另：包内仍有 415 行硬编码中文用户可见文案
+（46 个文件，集中在 knowledge 的 RAGFlow 组件、model-management 的两个目录页、task 的 zod 校验层），
+远超本任务范围，登记为技术债。
+
+**验证**：`bun test apps/web/src/__tests__/` 962 → 966 pass（删 7 条自指用例、新增 4 条宿主守卫，
+0 fail）；`bun test packages/` 7311 pass / 2 skip / 0 fail（首轮用 `bun test packages/` 直跑时有 8 条
+Claude ACP adapter 用例失败，系会话注入的 `ANTHROPIC_MODEL` 污染环境，`env -u ANTHROPIC_MODEL` 复跑
+同批次 1016 pass 0 fail，与本次改动无关）；`env -u ANTHROPIC_MODEL bun run precheck` 全绿
+（772 / 7311 + 2 skip / 966，0 fail）；`bun run build:web` 成功。
+
 ---
 
 ## 八、用户可见行为变更
@@ -1246,11 +1360,13 @@ packages/ui-components/web/__tests__/message.ssr.test.tsx` 11 pass / 40 expect�
 | 4 | 会话重命名 / 删除失败时无提示 | `onNotice` 未透传到侧栏与头部（§7.7 缺口 D） | T5c1b `98a84ad68` |
 | 5 | 引用被截断时的徽标在中文界面显示英文（`23 chars omitted`）；更早的宿主实现在此位置直接显示原始 key `composerAssets.quoteTruncatedBadge` | `quoteTruncatedBadge` 的 zh 值照抄 en；键集 / 占位符两条守护都挡不住这类漏译 | T9b |
 | 6 | 会话面板错误卡片的标题对英文用户显示中文 `执行出错` | T6d 拆 `ChatPanel.tsx` 时硬编码带入 | T9b |
+| 7 | 回忆库（hindsight）文档视图的分页按钮在中文界面显示英文 `Previous` / `Next` | memory 包以限定字面量引用宿主 `common:previous` / `common:next`（且已登记为跨命名空间依赖），宿主 `common` 字典却缺这两条，一直靠 `defaultValue` 兜底 | T9c |
 
 第 3 条的修法是两处共用同一个派发器（`dispatchArtifactsPreviewFile(envId, path)`）；事件名未变，变的
 是状态面板那条的详情补齐了 `envId`。第 4 条在线上需服务端返回错误才触发（对抗验证判 real=False）。
 第 5、6 条属文案语言错误，验收时把界面语言切到英文（第 6 条）或中文（第 5 条）各看一处即可。
 第 6 条只修了标题：卡片正文 `error.message` 恒为英文，中英混排是登记未处理的跨包契约缺口（见 §7.16 末段）。
+第 7 条只影响回忆库文档视图翻页按钮的文案，验收时把界面语言切到中文看该页脚即可。
 
 ### 8.2 有意的呈现取舍
 
@@ -1270,6 +1386,7 @@ packages/ui-components/web/__tests__/message.ssr.test.tsx` 11 pass / 40 expect�
 
 ### 8.3 发布验收建议
 
-按 8.1 的 6 条做定向回归（建站卡片可见并可跳转、工作流上下文注入、状态面板文件点击、会话重命名失败
-提示、引用截断徽标的中文文案、错误卡片标题的英文文案），8.2 的 7 条按「与旧版截图比对」验一次即可；
+按 8.1 的 7 条做定向回归（建站卡片可见并可跳转、工作流上下文注入、状态面板文件点击、会话重命名失败
+提示、引用截断徽标的中文文案、错误卡片标题的英文文案、回忆库文档视图分页按钮的中文文案），
+8.2 的 7 条按「与旧版截图比对」验一次即可；
 `chat-channel/web` 尚未删除，旧实现可随时对比（T5d 删除后仅存 git 历史）。

@@ -1,34 +1,7 @@
 {
   "filePicker": {
     "title": "选择文件",
-    "searchPlaceholder": "搜索文件...",
-    "uploadFile": "上传文件",
-    "noFiles": "暂无文件",
-    "loadFailed": "加载文件失败",
-    "uploadFailed": "上传失败",
-    "fileTooLarge": "{{name}} 太大了（上限 {{max}}）",
-    "uploadTooLarge": "上传失败：文件大小超过 100MB 限制",
-    "totalTooLarge": "文件总量 {{total}} 超过了单次上传 {{max}} 限制，请分批次上传"
-  },
-  "permission": {
-    "notSet": "未设置",
-    "ask": "询问",
-    "allow": "允许",
-    "deny": "拒绝",
-    "globalStrategy": "全局策略",
-    "globalStrategyDesc": "设置后所有工具继承此策略，未设置则使用 Agent引擎 内置默认值",
-    "toolPermissions": "工具权限",
-    "toggleTools": "开关型工具",
-    "ruleTools": "规则型工具（支持通配符规则）",
-    "collapse": "收起",
-    "expand": "展开",
-    "wildcardPlaceholder": "通配符，如 *.env",
-    "addRule": "+ 添加规则",
-    "skillPermissions": "Skill 权限",
-    "loadingSkills": "加载 Skill 列表...",
-    "customRules": "自定义规则（通配符模式）",
-    "skillWildcardPlaceholder": "通配符，如 \"internal-*\"",
-    "addCustomRule": "+ 添加自定义规则"
+    "fileTooLarge": "{{name}} 太大了（上限 {{max}}）"
   },
   "panelMode": {
     "panelTabs": "右侧工作区",
@@ -50,52 +23,16 @@
     "unmountConfirmTitle": "卸载站点？",
     "unmountConfirm": "确定卸载此 Agent 的 \"{{name}}\" 站点？",
     "mountSuccess": "已挂载 {{count}} 个站点",
-    "unmountSuccess": "已卸载站点",
     "mountFailed": "挂载失败",
     "unmountFailed": "卸载失败",
     "tasks": "定时任务",
     "tasksEmpty": "暂无绑定的定时任务",
     "tasksManage": "前往管理",
-    "tasksCount": "共 {{count}} 个任务",
     "tasksLoadFailed": "加载任务列表失败",
     "tasksToggleFailed": "切换任务状态失败",
     "tasksTriggerFailed": "触发任务失败",
     "tasksListTitle": "任务列表",
-    "tasksViewLogs": "查看日志",
     "views": "发布视图",
-    "viewsEmpty": "暂无发布的视图",
-    "viewsEmptyHint": "点击 + 创建发布视图",
-    "viewsManage": "前往管理",
-    "viewsLoadFailed": "加载发布视图失败",
-    "viewsToggleFailed": "切换视图状态失败",
-    "viewsListTitle": "发布视图",
-    "viewsCopyLink": "复制链接",
-    "viewsEdit": "编辑",
-    "viewsDelete": "删除",
-    "viewsLinkCopied": "链接已复制",
-    "viewsCopyFailed": "复制失败",
-    "viewsCreate": "创建",
-    "viewsCreateTitle": "创建发布视图",
-    "viewsEditTitle": "编辑发布视图",
-    "viewsDeleteTitle": "删除发布视图？",
-    "viewsDeleteConfirm": "确定删除 \"{{name}}\"？",
-    "viewsNameLabel": "名称",
-    "viewsNamePlaceholder": "输入视图名称",
-    "viewsDescLabel": "描述（可选）",
-    "viewsDescPlaceholder": "简要描述该视图的用途",
-    "viewsModulesLabel": "模块配置",
-    "viewsLinkLabel": "访问链接",
-    "viewsCreateSuccess": "创建成功",
-    "viewsUpdateSuccess": "更新成功",
-    "viewsDeleteSuccess": "删除成功",
-    "viewsSave": "保存",
-    "viewsCancel": "取消",
-    "viewsOpenView": "打开视图",
-    "viewsSuggestedNames": "推荐命名",
-    "viewsChatModules": "Chat 模块",
-    "viewsPanelModules": "附加面板",
-    "viewsEnabled": "已启用",
-    "viewsDisabled": "已禁用",
     "floating": "浮动",
     "docked": "固定",
     "dock": "固定右侧工作区",
@@ -111,34 +48,14 @@
     "loadFailed": "加载站点失败：{{message}}",
     "loadTimeout": "站点加载超时",
     "loadTimeoutHint": "站点可能在后台继续加载，可刷新重试或在新标签页打开",
-    "traceToCreator": "溯源",
     "traceToCreatorTooltip": "切换到创建此站点的智能体",
-    "notCreator": "非创建者智能体",
     "notCreatorTooltip": "此站点由其他智能体创建，你只能操作数据，无法修改站点文件。点击溯源切换到创建者智能体。"
   },
   "fileTree": {
-    "accessibleName": "文件树",
-    "refresh": "刷新",
-    "refreshItem": "刷新 {{name}}",
-    "deleteItem": "删除 {{name}}",
     "emptyState": "工作区暂无文件",
     "emptyHint": "通过上方按钮或拖拽文件到此处上传",
-    "upload": "上传",
-    "download": "下载",
-    "newFile": "新建文件",
-    "newFileIn": "在 {{name}} 中新建文件",
-    "newFileName": "新文件名",
-    "open": "打开",
-    "openFile": "打开 {{name}}",
-    "searchPlaceholder": "搜索文件",
-    "clearSearch": "清除文件搜索",
-    "noSearchResults": "没有匹配的文件",
-    "workspace": "工作区",
-    "user": "我的文件",
     "userEmptyState": "暂无文件",
     "retry": "重试",
-    "uploadFolder": "上传文件夹",
-    "uploadSuccess": "已上传 {{count}} 个文件",
     "uploadFailed": "上传失败",
     "uploadPartialIndeterminate": "{{message}} 部分文件可能已经上传，确切数量未知；文件列表已刷新。",
     "staleBanner": "文件服务暂时不可用，正在自动重连",
@@ -147,18 +64,8 @@
     "mkdirFailed": "创建文件夹失败",
     "newFileFailed": "创建文件失败",
     "dropToUpload": "释放文件以上传",
-    "hintDragUpload": "拖拽上传",
-    "hintDoubleClick": "双击预览",
-    "hintDrag": "拖拽上传",
     "uploadTo": "上传到: {{path}}",
-    "uploadingFile": "正在上传 {{name}}...",
-    "uploadingProgress": "{{percent}}%",
-    "downloadZip": "下载 ZIP",
-    "downloading": "正在下载...",
-    "retryDownload": "重试下载",
     "downloadFailed": "下载失败",
-    "showTree": "展开文件树",
-    "hideTree": "收起文件树",
     "closeTab": "关闭标签",
     "moreTabs": "还有 {{count}} 个标签",
     "dialog": {
@@ -176,204 +83,8 @@
       "confirm": "确认"
     },
     "contextMenu": {
-      "reference": "引用到聊天",
-      "rename": "重命名",
-      "move": "移动",
-      "movePrompt": "输入目标完整路径",
-      "delete": "删除",
-      "newFolder": "新建文件夹",
-      "newFolderName": "新文件夹名称"
-    },
-    "preview": {
-      "title": "预览",
-      "loading": "加载中...",
-      "notTextFile": "无法预览二进制文件",
-      "fetchFailed": "加载文件内容失败",
-      "noFileSelected": "选择文件以预览",
-      "modifiedAt": "修改时间",
-      "unsupportedType": "此文件类型不支持预览",
-      "fileSize": "文件大小",
-      "fileType": "文件类型",
-      "pdfLoadFailed": "加载 PDF 失败",
-      "tableLoadFailed": "加载表格文件失败",
-      "emptyTable": "表格为空",
-      "tableTruncated": "显示 {{shown}} / {{total}} 行",
-      "htmlPreview": "预览",
-      "htmlSource": "源码"
+      "delete": "删除"
     }
-  },
-  "tool": {
-    "statusPending": "等待中",
-    "statusRunning": "运行中",
-    "statusAwaitingApproval": "等待批准",
-    "statusResponded": "已响应",
-    "statusCompleted": "已完成",
-    "statusError": "错误",
-    "statusDenied": "已拒绝",
-    "statusRejected": "已拒绝",
-    "parameters": "参数",
-    "error": "错误",
-    "result": "结果"
-  },
-  "codeBlock": {
-    "copied": "已复制",
-    "copy": "复制"
-  },
-  "permissionRequest": {
-    "title": "需要权限"
-  },
-  "reasoning": {
-    "thinking": "思考中...",
-    "thought": "思考了一会",
-    "thoughtFor": "思考了 {{duration}} 秒"
-  },
-  "conversation": {
-    "noMessages": "暂无消息",
-    "startConversation": "开始对话以查看消息",
-    "scrollToBottom": "回到最新消息",
-    "scrollToLastUserMessage": "滚动到最后一条用户消息"
-  },
-  "message": {
-    "expand": "扩大",
-    "collapse": "缩小",
-    "previousBranch": "上一个分支",
-    "nextBranch": "下一个分支",
-    "image": "图片",
-    "attachment": "附件",
-    "removeAttachment": "移除附件",
-    "remove": "移除"
-  },
-  "promptInput": {
-    "image": "图片",
-    "attachment": "附件",
-    "removeAttachment": "移除附件",
-    "remove": "移除",
-    "addPhotosOrFiles": "添加图片或文件",
-    "uploadFiles": "上传文件",
-    "submit": "提交"
-  },
-  "chatView": {
-    "startConversation": "开始对话",
-    "startConversationDesc": "输入消息开始聊天",
-    "thinking": "思考中"
-  },
-  "commandMenu": {
-    "title": "命令",
-    "count": "{{count}} 项可用",
-    "noMatch": "没有匹配的命令",
-    "searchPlaceholder": "搜索命令名称或说明",
-    "navigate": "切换",
-    "select": "选择",
-    "close": "关闭",
-    "skills": "Skills",
-    "skillsCaption": "当前对话的工作方式",
-    "mcps": "MCP 插件",
-    "mcpsCaption": "Agent 已绑定的连接",
-    "connected": "已连接",
-    "selectedCapabilities": "本轮已选择能力"
-  },
-  "errorArea": {
-    "agent_runtime": "Agent Runtime Error",
-    "sync_relay": "Sync Relay Error",
-    "control_plane": "Control Plane Error",
-    "action": "Action Error",
-    "code": "错误代码：{{code}}"
-  },
-  "messageBubble": {
-    "expand": "展开",
-    "uploadedImage": "已上传图片",
-    "imagePreview": "图片预览",
-    "systemMessage": "系统提醒",
-    "openSystemMessage": "双击查看系统提醒详情",
-    "systemMessageDescription": "以下内容由系统注入，仅供检查当前会话上下文。",
-    "turnError": "执行出错",
-    "actions": "消息操作",
-    "copy": "复制",
-    "quote": "引用",
-    "addToConversation": "添加到对话"
-  },
-  "planView": {
-    "high": "高",
-    "medium": "中",
-    "low": "低",
-    "executionPlan": "执行计划"
-  },
-  "toolCallGroup": {
-    "running": "运行中",
-    "failed": "{{count}} 失败",
-    "count": "{{count}} 次工具调用",
-    "completedCount": "{{count}} 成功",
-    "runningCount": "{{count}} 执行中",
-    "expand": "展开",
-    "collapse": "收起",
-    "input": "输入",
-    "output": "输出"
-  },
-  "chatInput": {
-    "placeholder": "给智能体发送消息…",
-    "commandList": "命令列表",
-    "referenceFile": "引用文件"
-  },
-  "modelConfig": {
-    "title": "模型配置",
-    "description": "选择主模型和轻量模型",
-    "primaryModel": "主模型",
-    "primaryModelPlaceholder": "选择主模型",
-    "lightweightModel": "轻量模型",
-    "lightweightModelPlaceholder": "选择轻量模型"
-  },
-  "acpMain": {
-    "newSession": "新会话",
-    "noSessions": "暂无会话",
-    "clickToCreate": "点击上方 + 创建新会话",
-    "historySessions": "历史会话",
-    "sessions": "会话",
-    "today": "今天",
-    "yesterday": "昨天",
-    "earlier": "更早",
-    "rename": "重命名",
-    "delete": "删除",
-    "cannotDeleteActiveSession": "当前活动会话不能删除",
-    "deleteSessionTitle": "删除会话",
-    "deleteConfirm": "确定要删除会话 \"{{title}}\" 吗？此操作不可撤销。",
-    "cancel": "取消",
-    "chatBusy": "请等待当前对话完成后再切换会话",
-    "renameFailed": "重命名失败：{{message}}",
-    "deleteFailed": "删除失败：{{message}}"
-  },
-  "chatInterface": {
-    "processingError": "请求未能正常处理，请检查 Agent 或大模型状态后重试",
-    "processingErrorDetail": "请求未能正常处理 (stopReason: {{stopReason}}, inputTokens: {{inputTokens}}, outputTokens: {{outputTokens}})，请检查 Agent 或大模型状态后重试",
-    "newThread": "新对话",
-    "agentPlaceholder": "给智能体发送消息…",
-    "waitingSession": "等待会话...",
-    "readonlyMode": "只读模式 — 无法发送消息"
-  },
-  "chatHeader": {
-    "newSession": "新会话",
-    "searchPlaceholder": "搜索历史会话…",
-    "noResults": "没有匹配的会话",
-    "refresh": "刷新会话列表",
-    "showSessions": "展开会话面板",
-    "hideSessions": "收起会话面板",
-    "pinSessions": "钉住会话面板",
-    "unpinSessions": "解除钉住"
-  },
-  "contextPanel": {
-    "unknownModel": "未知",
-    "input": "输入",
-    "output": "输出",
-    "defaultSession": "默认",
-    "showContext": "显示上下文面板",
-    "hideContext": "隐藏上下文面板",
-    "running": "运行中",
-    "tokens": "Token",
-    "tools": "工具",
-    "messages": "消息",
-    "tokenUsage": "Token 用量",
-    "toolCalls": "工具调用",
-    "noToolCalls": "暂无工具调用",
-    "pendingConfirmation": "待确认"
   },
   "tree": {
     "showMore": "+{{count}} 更多",
@@ -381,22 +92,6 @@
     "loadError": "加载失败",
     "retry": "重试",
     "empty": "暂无内容"
-  },
-  "planPanel": {
-    "title": "执行计划"
-  },
-  "todoPanel": {
-    "collapse": "收起",
-    "completed": "已完成",
-    "inProgress": "进行中"
-  },
-  "todoChanges": {
-    "added": "新增",
-    "removed": "移除",
-    "pending": "待办",
-    "in_progress": "进行中",
-    "completed": "已完成",
-    "updated": "更新"
   },
   "resource": {
     "internal": "私有",
@@ -406,69 +101,12 @@
     "makePrivate": "设为私有",
     "readOnly": "只读"
   },
-  "metaAgent": {
-    "title": "Meta Agent",
-    "history_title": "会话历史",
-    "history_empty": "暂无会话",
-    "history_untitled": "未命名",
-    "chat_collapse": "收起面板",
-    "chat_expand": "展开面板"
-  },
   "chatComposer": {
-    "send": "发送",
-    "stop": "停止",
-    "newSession": "新会话",
-    "hint": "Enter 发送，Shift+Enter 换行 · 粘贴图片或输入 @ 引用文件",
-    "skillButton": "技能",
-    "commandButton": "命令",
-    "fileButton": "文件",
-    "attach": "添加图片或文件",
-    "context": "上下文",
-    "contextUnknown": "上下文用量暂不可用",
-    "contextUsed": "已使用 {{count}} / {{limit}} Token",
-    "contextUsedUnknownLimit": "已使用 {{count}} Token，上下文上限未知",
-    "uploadingFiles": "正在上传 {{count}} 个文件…",
     "fileTooLarge": "单个文件不能超过 100 MB",
-    "filesTooLarge": "一次上传的文件总量不能超过 100 MB",
-    "uploadFailed": "文件上传失败"
-  },
-  "chatEmpty": {
-    "startConversation": "开始对话",
-    "startConversationDesc": "描述想法、贴入上下文，或从一个话题开始讨论。",
-    "eyebrow": "从一次充分讨论开始",
-    "readyWithAgent": "{{agentName}} 已准备就绪",
-    "suggestionReview": "讨论代码变更的思路与风险",
-    "suggestionPlan": "讨论技术方案的选择与取舍",
-    "suggestionBuild": "讨论构建失败的可能原因",
-    "skills": "已加载 Skills",
-    "skillsHint": "输入 / 打开 Skill 弹窗",
-    "noSkills": "暂无绑定 Skills"
-  },
-  "agentBadge": {
-    "enterChat": "进入对话",
-    "edit": "编辑",
-    "statusRunning": "运行中",
-    "statusStopped": "已停止"
-  },
-  "hindsightToolCard": {
-    "failed": "失败"
+    "filesTooLarge": "一次上传的文件总量不能超过 100 MB"
   },
   "statusBadge": {
-    "configured": "已配置",
-    "enabled": "已启用",
-    "unconfigured": "未配置",
-    "disabled": "已禁用",
-    "builtin": "内置",
-    "custom": "自定义",
-    "primaryModel": "主模型",
-    "subAgent": "子Agent",
     "all": "全部"
-  },
-  "dataTable": {
-    "actions": "操作",
-    "noData": "暂无数据",
-    "searchPlaceholder": "搜索...",
-    "pagination": "第 {{start}}-{{end}} 条，共 {{total}} 条"
   },
   "confirmDialog": {
     "confirm": "确认",
@@ -480,105 +118,18 @@
     "cancel": "取消",
     "saving": "保存中..."
   },
-  "batchActionBar": {
-    "selected": "已选择 {{count}} 项",
-    "clear": "清除"
-  },
-  "datePicker": {
-    "placeholder": "选择日期"
-  },
   "toolCallRow": {
-    "viewParams": "查看参数",
-    "previewFile": "预览 {{path}}",
-    "openFile": "打开文件",
-    "toolName": "工具",
-    "running": "工具正在执行中…"
-  },
-  "subAgentPanel": {
-    "title": "子 Agent 执行轨迹",
-    "summary": "{{messages}} 条消息 · {{tools}} 个工具步骤"
+    "openFile": "打开文件"
   },
   "permissionPanel": {
-    "title": "权限确认",
-    "waiting": "Agent 正在等待",
-    "aboutToRun": "即将执行",
-    "audit": "本次选择将记录在会话审计中",
     "allow": "允许",
     "allowSession": "允许本次会话",
     "deny": "拒绝"
   },
-  "sessionModeSelector": {
-    "default": "默认"
-  },
-  "periTask": {
-    "title": "任务活动",
-    "syncing": "正在同步任务…",
-    "activeCount": "{{count}} 进行中",
-    "reconnecting": "重连中 — 任务列表可能不完整",
-    "loading": "正在加载任务…",
-    "empty": "暂无任务",
-    "kindSubagent": "子代理",
-    "kindBackground": "后台任务",
-    "subtype": {
-      "agent": "Agent",
-      "shell": "Shell",
-      "workflow": "Workflow"
-    },
-    "status": {
-      "running": "运行中",
-      "completed": "已完成",
-      "failed": "失败",
-      "cancelled": "已取消"
-    },
-    "unknownTitle": "未知任务",
-    "previewOnly": "仅提供摘要",
-    "viewDetail": "查看详情",
-    "detailTitle": "任务详情",
-    "detailLoading": "正在加载详情…",
-    "detailLoadFailed": "详情加载失败",
-    "detailRetry": "重试",
-    "detailClose": "关闭",
-    "detailUnavailable": "Peri 未提供此任务的详情。",
-    "detailExpired": "此任务详情已过期。"
-  },
   "askUser": {
-    "title": "需要你回答",
-    "description": "Agent 需要你提供一些信息以继续执行",
     "submit": "提交",
     "previous": "上一个问题",
     "next": "下一个",
     "nextQuestion": "下一个问题"
-  },
-  "chatStatus": {
-    "title": "状态显示",
-    "todo": "Todo",
-    "subtasks": "子任务",
-    "changes": "Changes",
-    "toggle": "展开或收起状态",
-    "added": "新增",
-    "modified": "已修改",
-    "todoStatus": {
-      "pending": "排队中",
-      "in_progress": "正在执行",
-      "completed": "已完成"
-    }
-  },
-  "composerAssets": {
-    "title": "待发送 Assets",
-    "image": "待发送图片",
-    "imageNumber": "图片 {{count}}",
-    "quoteNumber": "引用 {{count}}",
-    "sentQuotes": "本轮引用",
-    "removeImage": "移除图片",
-    "removeFile": "移除 {{name}}",
-    "removeQuote": "移除引用",
-    "prepareImageFailed": "图片处理失败，请移除后重试",
-    "quoteTruncated": "引用过长，已省略 {{count}} 个字符",
-    "quoteTruncatedContext": "[引用过长，已省略后续 {{count}} 个字符]",
-    "quoteLimitReached": "本轮引用内容已达上限，请先发送或移除部分引用"
-  },
-  "promptJump": {
-    "title": "用户提示词快速跳转",
-    "untitled": "未命名提示词"
   }
 }

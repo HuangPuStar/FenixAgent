@@ -20,6 +20,10 @@ import { existsSync } from "node:fs";
  *    经 `@/src/api/registry` 别名消费，T4 把该页的机器注册表能力改成宿主注入的 `MachineRegistryPort`
  *    后，壳副本零消费，且与 `packages/resources/machine/web/api/registry.ts` 除 import 说明符外逐字相同，
  *    于是删除、owner 归 machine 包（见下方 relocated 断言）。
+ * 7. 任务 1.6 T9c 直删 9 项（109 → 100）：`TASKS` / `SESSIONS` / `ENVIRONMENTS` / `TOOL_NARRATOR` 四个
+ *    宿主命名空间的 8 份字典在全仓没有任何 `useTranslation` 绑定（历史迁出后留下的空壳，真实消费方各在
+ *    资源包内），连同守护 `toolNarrator` 字典的**自指测试** `narrators-i18n.test.ts`（它只读该字典并断言
+ *    同一文件里的键）一并删除。删除口径与逐条证据见 `review/task-1.6-web-shell.md` §7.17。
  */
 const RMD_08_MOVES = [
   ["web/src/App.tsx", "apps/web/src/App.tsx"],
@@ -84,7 +88,6 @@ const RMD_08_MOVES = [
   ["web/src/__tests__/fs-upload-url.test.ts", "apps/web/src/__tests__/fs-upload-url.test.ts"],
   ["web/src/__tests__/instances-api.test.ts", "apps/web/src/__tests__/instances-api.test.ts"],
   ["web/src/__tests__/message-additional-ssr.test.tsx", "apps/web/src/__tests__/message-additional-ssr.test.tsx"],
-  ["web/src/__tests__/narrators-i18n.test.ts", "apps/web/src/__tests__/narrators-i18n.test.ts"],
   ["web/src/__tests__/new-session-dialog-form.test.ts", "apps/web/src/__tests__/new-session-dialog-form.test.ts"],
   ["web/src/__tests__/pagination.test.tsx", "apps/web/src/__tests__/pagination.test.tsx"],
   [
@@ -137,23 +140,15 @@ const RMD_08_MOVES = [
   ["web/src/i18n/locales/en/common.json", "apps/web/src/i18n/locales/en/common.json"],
   ["web/src/i18n/locales/en/components.json", "apps/web/src/i18n/locales/en/components.json"],
   ["web/src/i18n/locales/en/dashboard.json", "apps/web/src/i18n/locales/en/dashboard.json"],
-  ["web/src/i18n/locales/en/environments.json", "apps/web/src/i18n/locales/en/environments.json"],
   ["web/src/i18n/locales/en/login.json", "apps/web/src/i18n/locales/en/login.json"],
-  ["web/src/i18n/locales/en/sessions.json", "apps/web/src/i18n/locales/en/sessions.json"],
   ["web/src/i18n/locales/en/sidebar.json", "apps/web/src/i18n/locales/en/sidebar.json"],
-  ["web/src/i18n/locales/en/tasks.json", "apps/web/src/i18n/locales/en/tasks.json"],
-  ["web/src/i18n/locales/en/toolNarrator.json", "apps/web/src/i18n/locales/en/toolNarrator.json"],
   ["web/src/i18n/locales/zh/agentHome.json", "apps/web/src/i18n/locales/zh/agentHome.json"],
   ["web/src/i18n/locales/zh/agentPanel.json", "apps/web/src/i18n/locales/zh/agentPanel.json"],
   ["web/src/i18n/locales/zh/common.json", "apps/web/src/i18n/locales/zh/common.json"],
   ["web/src/i18n/locales/zh/components.json", "apps/web/src/i18n/locales/zh/components.json"],
   ["web/src/i18n/locales/zh/dashboard.json", "apps/web/src/i18n/locales/zh/dashboard.json"],
-  ["web/src/i18n/locales/zh/environments.json", "apps/web/src/i18n/locales/zh/environments.json"],
   ["web/src/i18n/locales/zh/login.json", "apps/web/src/i18n/locales/zh/login.json"],
-  ["web/src/i18n/locales/zh/sessions.json", "apps/web/src/i18n/locales/zh/sessions.json"],
   ["web/src/i18n/locales/zh/sidebar.json", "apps/web/src/i18n/locales/zh/sidebar.json"],
-  ["web/src/i18n/locales/zh/tasks.json", "apps/web/src/i18n/locales/zh/tasks.json"],
-  ["web/src/i18n/locales/zh/toolNarrator.json", "apps/web/src/i18n/locales/zh/toolNarrator.json"],
   ["web/src/lib/api-result.ts", "apps/web/src/lib/api-result.ts"],
   ["web/src/lib/auth-preference.ts", "apps/web/src/lib/auth-preference.ts"],
   ["web/src/lib/form-utils.ts", "apps/web/src/lib/form-utils.ts"],
@@ -428,7 +423,7 @@ const RMD_08_RELOCATED = [
 ] as const;
 
 describe("RMD-08 apps/web migration", () => {
-  // 152 个保留的应用壳源文件都必须从旧根路径移除，并保留在唯一的 owner 目标。
+  // 100 个保留的应用壳源文件都必须从旧根路径移除，并保留在唯一的 owner 目标。
   // 任务 1.3 收口移出的一项：`__tests__/task-form-schema.test.ts` 是内联的表单校验 schema 副本，宿主侧
   // 既无 TaskForm 组件也无导入方，且已与包内唯一 owner 漂移；owner 是 task 包，见下方 relocated 断言。
   // 任务 1.6 T2 再移出 18 项零消费文件，见文件头第 5 条；T4 又移出 1 项（`api/registry.ts`，
@@ -436,9 +431,10 @@ describe("RMD-08 apps/web migration", () => {
   // T8d 再移出 15 项（改指包出口）并直删 5 项零消费文件（`context-queue` 宿主副本、`token-stats`、
   // `citation-preview-context`、两份第三方类型垫片——垫片归各包自持，见 §1.6 T8z），130 → 111；
   // T9a 把宿主 `settings.json` 两份交给 identity 包（唯一消费方是包内的 `ChangePasswordDialog`），
-  // 111 → 109——i18n 归属重划：键的物理落点必须等于 owner。
+  // 111 → 109——i18n 归属重划：键的物理落点必须等于 owner；T9c 直删 8 份零绑定字典与 1 项自指测试
+  // （见文件头第 7 条），109 → 100。
   test("removes every legacy source and retains its exact owner target", () => {
-    expect(RMD_08_MOVES).toHaveLength(109);
+    expect(RMD_08_MOVES).toHaveLength(100);
     for (const [source, target] of RMD_08_MOVES) {
       expect(existsSync(source), `legacy source still exists: ${source}`).toBe(false);
       expect(existsSync(target), `apps/web target is missing: ${target}`).toBe(true);
@@ -449,6 +445,13 @@ describe("RMD-08 apps/web migration", () => {
   test("keeps the retired card renderer test deleted", () => {
     expect(existsSync("web/src/__tests__/card-renderer-pure-utils.test.ts")).toBe(false);
     expect(existsSync("apps/web/src/__tests__/card-renderer-pure-utils.test.ts")).toBe(false);
+  });
+
+  // 自指 i18n 测试随其守护的字典一同退役：`toolNarrator` 字典在 T9c 整份删除（无任何命名空间绑定），
+  // 旧根路径与应用壳路径都不得复活，否则等于凭空恢复一份死字典的守护测试。
+  test("keeps the self-referential narrator i18n test deleted", () => {
+    expect(existsSync("web/src/__tests__/narrators-i18n.test.ts")).toBe(false);
+    expect(existsSync("apps/web/src/__tests__/narrators-i18n.test.ts")).toBe(false);
   });
 
   // 沙盒请求构造测试的 owner 已从应用壳交给资源包：旧根路径与旧 app 壳路径都不得复活，包内必须有唯一落点。

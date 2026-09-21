@@ -6,6 +6,11 @@
 //   api client）拉进首屏 bundle。命名空间字面量取自 `@fenix/web-runtime/i18n/namespace` 的中心表和各包
 //   导出的常量，宿主不复制字面量（两份字面量一旦分歧，症状是文案整片回退成 key 回显且构建期不可见）。
 // - **宿主自有**：通用壳层（common / login / sidebar / …）与尚未迁出宿主的旧命名空间，仍读 `./locales/**`。
+//
+// T9c 收敛：`TASKS` / `SESSIONS` / `ENVIRONMENTS` / `TOOL_NARRATOR` 四个宿主命名空间在全仓没有任何
+// `useTranslation` 绑定（历史迁出后留下的空壳字典），连同其 JSON 一并删除，此处不再登记。中心表
+// `@fenix/web-runtime/i18n/namespace` 仍保留这四个名称常量——它是跨包共享的**名称注册表**，删常量
+// 无功能收益却要改跨包契约，取舍理由见 `review/task-1.6-web-shell.md` §7.17。
 import { AGENTS_NS, agentResources } from "@fenix/agent-config/web/i18n";
 import {
   APIKEY_NS,
@@ -37,23 +42,15 @@ import agentPanelEN from "./locales/en/agentPanel.json";
 import commonEN from "./locales/en/common.json";
 import componentsEN from "./locales/en/components.json";
 import dashboardEN from "./locales/en/dashboard.json";
-import environmentsEN from "./locales/en/environments.json";
 import loginEN from "./locales/en/login.json";
-import sessionsEN from "./locales/en/sessions.json";
 import sidebarEN from "./locales/en/sidebar.json";
-import tasksEN from "./locales/en/tasks.json";
-import toolNarratorEN from "./locales/en/toolNarrator.json";
 import agentHomeZH from "./locales/zh/agentHome.json";
 import agentPanelZH from "./locales/zh/agentPanel.json";
 import commonZH from "./locales/zh/common.json";
 import componentsZH from "./locales/zh/components.json";
 import dashboardZH from "./locales/zh/dashboard.json";
-import environmentsZH from "./locales/zh/environments.json";
 import loginZH from "./locales/zh/login.json";
-import sessionsZH from "./locales/zh/sessions.json";
 import sidebarZH from "./locales/zh/sidebar.json";
-import tasksZH from "./locales/zh/tasks.json";
-import toolNarratorZH from "./locales/zh/toolNarrator.json";
 
 /**
  * 宿主命名空间表 = 跨包中心表（`@fenix/web-runtime/i18n/namespace`）+ 各包自有常量。
@@ -80,26 +77,18 @@ const hostResources = {
     [NS.LOGIN]: loginEN,
     [NS.SIDEBAR]: sidebarEN,
     [NS.DASHBOARD]: dashboardEN,
-    [NS.TASKS]: tasksEN,
-    [NS.SESSIONS]: sessionsEN,
-    [NS.ENVIRONMENTS]: environmentsEN,
     [NS.COMPONENTS]: componentsEN,
     [NS.AGENT_PANEL]: agentPanelEN,
     [NS.AGENT_HOME]: agentHomeEN,
-    [NS.TOOL_NARRATOR]: toolNarratorEN,
   },
   zh: {
     [NS.COMMON]: commonZH,
     [NS.LOGIN]: loginZH,
     [NS.SIDEBAR]: sidebarZH,
     [NS.DASHBOARD]: dashboardZH,
-    [NS.TASKS]: tasksZH,
-    [NS.SESSIONS]: sessionsZH,
-    [NS.ENVIRONMENTS]: environmentsZH,
     [NS.COMPONENTS]: componentsZH,
     [NS.AGENT_PANEL]: agentPanelZH,
     [NS.AGENT_HOME]: agentHomeZH,
-    [NS.TOOL_NARRATOR]: toolNarratorZH,
   },
 } as const;
 
