@@ -17,7 +17,6 @@
     "allowImportingTsExtensions": true,
     "noEmit": true,
     "paths": {
-      "@/components/*": ["./apps/web/components/*"],
       "@/src/*": ["./apps/web/src/*"],
       "@/src/api/agents": ["./packages/resources/agent-config/web/api/agents.ts"],
       "@/src/api/api-keys": ["./packages/platform/identity/web/api/api-keys.ts"],

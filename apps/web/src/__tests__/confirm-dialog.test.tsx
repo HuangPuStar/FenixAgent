@@ -1,8 +1,8 @@
 import { describe, expect, test } from "bun:test";
 import * as fs from "node:fs";
 import { join } from "node:path";
+import { ConfirmDialog } from "@fenix/ui-components/config/ConfirmDialog";
 import ReactDOMServer from "react-dom/server";
-import { ConfirmDialog } from "../../components/config/ConfirmDialog";
 
 describe("ConfirmDialog", () => {
   test("exports ConfirmDialog as a function", () => {
@@ -49,13 +49,14 @@ describe("ConfirmDialog", () => {
     expect(typeof alertDialogMod.AlertDialogCancel).toBe("function");
   });
 
-  test("ConfirmDialog.tsx imports from ui/alert-dialog", () => {
+  test("ConfirmDialog 内部用 AlertDialog 而非普通 Dialog", () => {
+    // 实现文件的 owner 已归 `@fenix/ui-components`（§1.6 T8b 删除宿主副本），断言随之指向包内文件；
+    // 被守护的意图不变：确认弹窗必须走 AlertDialog 语义（否则读屏/ESC 行为与确认语义都不对）。
     const content = fs.readFileSync(
-      join(import.meta.dirname, "..", "..", "components/config/ConfirmDialog.tsx"),
+      join(import.meta.dirname, "..", "..", "..", "..", "packages/ui-components/web/config/ConfirmDialog.tsx"),
       "utf-8",
     );
-    // import.meta.dirname = web/src/__tests__, so ../../components = web/components
-    expect(content).toContain('from "@fenix/ui-components/ui/alert-dialog"');
+    expect(content).toContain('from "../ui/alert-dialog"');
     expect(content).not.toMatch(/from.*ui\/dialog/);
   });
 });

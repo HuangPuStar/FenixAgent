@@ -1,3 +1,4 @@
+import { ConfirmDialog } from "@fenix/ui-components/config/ConfirmDialog";
 import {
   Download,
   FilePlus2,
@@ -21,7 +22,6 @@ import type { NodeRendererProps, TreeApi } from "react-arborist";
 import { Tree as ArboristTree } from "react-arborist";
 import { createPortal } from "react-dom";
 import { useTranslation } from "react-i18next";
-import { ConfirmDialog } from "@/components/config/ConfirmDialog";
 import { FileTypeIcon } from "@/src/components/file-icon-helper";
 import { NS } from "@/src/i18n";
 import type { ParsedFileNode } from "./file-tree-model";

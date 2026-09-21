@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { getBadgeVariant } from "../../components/config/StatusBadge";
+import { getBadgeVariant } from "@fenix/ui-components/config/StatusBadge";
 
 describe("getBadgeVariant", () => {
   test("configured → green", () => {

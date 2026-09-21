@@ -978,6 +978,84 @@ T6c2 删除 33 个测试后的求值顺序，本节不重复处理，统一归 T
 
 ---
 
+### 7.13 T8 宿主副本簇退场（2026-09-21）
+
+T8 的验收目标是让 `apps/web` 不再持有「owner 已经迁走」的实现副本。宿主副本与包内实现并存会持续制造
+分叉（本任务已两次遇到宿主副本与包内契约语义不一致），因此本片的判定标准必须是**可复现的实证**而非
+文件名或体量估算。
+
+#### 判定口径（三张清单，先用脚本产出再动手）
+
+1. **「副本」的判定**：按**行集合相似度**打分（非空、非注释行集合的交并比），并对每个候选做**逐导出面
+   比对**（导出名、导出种类、签名差异逐条列出）。文件名相同或目录名相同都不作为证据。
+2. **「改指后删」的执行**：用**确定性 codemod** 重写所有消费方的导入说明符，再删宿主文件。codemod 必须
+   同时解析三种说明符形态——相对路径、tsconfig `paths` 中的 `@/` 别名、vite `alias`——只替换说明符本身。
+3. **消费方包含宿主测试**：把测试的 import 改指到包出口是本片的责任；T10 只负责搬迁测试文件本身。
+
+实测规模：**80 个删除目标**、**215 个消费点**（三种形态分别计数）。相似度打分低于 0.7 的 12 项逐一定性，
+其中 8 项是 basename 假阳性（同名不同物），2 项是真分叉（`tree`、`file-tree-view`）——后者都取到了包内
+自带的超集证明或导出面实证，故仍按「改指后删」处理。
+
+一次必须记录的教训：首轮扫描的 `paths` 解析正则漏掉了 `["./..."]` 这一 JSON 形态（`[` 后紧跟引号），
+导致全部别名形态消费点被漏计（消费点从 44 处升到 215 处）。消费点计数偏低的代价是删掉仍有引用的文件，
+所以扫描脚本的解析覆盖度本身就是证据链的一部分，不能靠抽查验证。
+
+#### 簇划分与提交序
+
+按「同一批宿主文件不会被多簇同时改写」切分，每片可独立跑门禁、独立提交：**T8a** `components/ui/**`、
+**T8b** `components/config/**` + `components/ai-elements/**`、**T8c** `src/components/**` 11 个副本、
+**T8d** `src/{lib,hooks,api,types}` 簇（含 10 项零消费直删）。零消费且包内无对应物的宿主文件（`lib/{retry,
+form-utils,api-result}.ts`、`api/helpers.ts`、`App.tsx`）按 T2 先例保留，交 T10 处理。
+
+同样必须记录的一条方法论取舍：本片**没有**用并发子代理改文件。多簇会改同一批宿主文件
+（`ArtifactsPanel.tsx` 同时消费 `lib` 与 `components`），并行代理写同一文件必然冲突；codemod 逐簇串行、
+可复现、可审计，是这里唯一正确的执行方式。
+
+#### T8a：`apps/web/components/ui/**` 退场（`451e2163c`）
+
+删除 36 个路径（35 个副本 + `index.ts` 聚合器），28 个文件被 codemod 改指（65 处），
+`tsconfig.json` 与 `apps/web/vite.config.ts` 各自的 `@/components/ui` 别名同步删除。
+
+**契约差异处置（1 处）**：`date-picker.test.tsx` 原断言宿主副本用 `useTranslation("datePicker.placeholder")`
+取默认占位；包内契约明确为「英文默认文案 + 调用方 `placeholder` 覆盖，不自带 i18n 单例」，本地化由
+`locale` prop 承担。按 owner 契约改写断言（`Select date`，并补 `locale="en-US"` 用例），差异写在
+`apps/web/src/__tests__/date-picker.test.tsx` 头注。同批**删除该文件模块作用域的 `react-i18next` 替身**
+与配套 `afterEach(mock.restore)`——CLAUDE.md 禁止测试直接调用 `mock.module()`，且该替身会跨文件残留。
+
+#### T8b：`components/config/**` 与 `components/ai-elements/**` 退场（本批提交）
+
+删除 11 个文件（`config` 4 + `ai-elements` 6 + `chat-message-content.css`），`apps/web/components/` 目录
+随之消失；8 个文件被 codemod 改指（8 处），`tsconfig.json` 与 `apps/web/vite.config.ts` 的 `@/components/*`
+别名删除。
+
+**契约差异处置（1 处）**：`data-table-ssr.test.tsx` 的分页断言。宿主副本是硬编码中文「上一页/下一页」
+（无对应 i18n 键），包内改为英文默认值并在实现处明文登记为「已知限制：仅这两个按钮的可见文案未本地化，
+移除条件是消费方提出本地化需求」。该用例守护的是「`pageCount > 1` 时翻页控件出现」这条结构，语言差异
+随 owner 契约走，断言改为 `Previous` / `Next`，理由写在测试注释内。
+
+**连带修正（同批必需）**：
+
+- `packages/chat-channel/tsconfig.json` 删除 5 条指向宿主 `apps/web` 的死别名（`@/components/ui/*`、
+  `@/components/*`、`@/src/api/request`、`@/src/lib/utils`、`@/src/*`）。§1.3 静态条件 3 要求
+  `packages/**` 内不得出现指向 `apps/web` 的相对路径，而包内实测零 `@/` import，这些条目只会让宿主式
+  说明符在包内静默解析成功。保留指向包内的 5 条。全仓包 `tsconfig.json` 现已无 `apps/web` 条目。
+- `confirm-dialog.test.tsx` 的「内部用 AlertDialog」断言改读包内实现
+  （`packages/ui-components/web/config/ConfirmDialog.tsx`），守护意图不变。
+- `components.json`（shadcn CLI 配置，`Dockerfile:18` 会 `COPY`，不能删）的 `aliases` 全部指向已被
+  本片删除的路径，一并修正为真实落点：`ui` → `packages/ui-components/web/ui`（owner 包，新增 UI 原语
+  应落在包内而非宿主），其余四项指向仍存在的宿主目录。
+- `scripts/__tests__/rmd-08-migration.test.ts` 台账同步：`RMD_08_MOVES` 删 11 条（152 → 141），
+  `RMD_08_RELOCATED` 增 11 条三元组（10 → 21，owner 为 `packages/ui-components/web/{chat/primitives,config}/*`）。
+
+#### 验证
+
+`env -u ANTHROPIC_MODEL bun run precheck` 全绿（format / import-sort / module-registry / architecture /
+tsc server+web+app-skeletons / dependency-boundaries / lint / server-and-script-tests 771 pass /
+package-tests 7311 pass + 2 skip / web-app-tests 969 pass，0 fail）；`bun run build:web` 成功；
+主机侧零 `@/components/*` 导入说明符，`apps/web/components/` 目录已不存在。
+
+---
+
 ## 八、用户可见行为变更
 
 本节汇总 T3–T5c2 期间「包内实现与线上 chat-channel 实现」之间**用户可感知**的差异，供发布说明与回归

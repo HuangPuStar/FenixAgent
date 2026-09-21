@@ -1,6 +1,4 @@
 import { describe, expect, test } from "bun:test";
-import { createElement, type ReactNode } from "react";
-import { renderToReadableStream, renderToStaticMarkup } from "react-dom/server";
 import {
   MessageAction,
   MessageActions,
@@ -14,7 +12,9 @@ import {
   MessageBranchSelector,
   MessageResponse,
   MessageToolbar,
-} from "../../components/ai-elements/message";
+} from "@fenix/ui-components/chat/primitives/message";
+import { createElement, type ReactNode } from "react";
+import { renderToReadableStream, renderToStaticMarkup } from "react-dom/server";
 
 async function renderStreaming(element: ReactNode) {
   const stream = await renderToReadableStream(element);

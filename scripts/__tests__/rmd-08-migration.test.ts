@@ -22,17 +22,6 @@ import { existsSync } from "node:fs";
  *    于是删除、owner 归 machine 包（见下方 relocated 断言）。
  */
 const RMD_08_MOVES = [
-  ["web/components/ai-elements/chat-message-content.css", "apps/web/components/ai-elements/chat-message-content.css"],
-  ["web/components/ai-elements/conversation.tsx", "apps/web/components/ai-elements/conversation.tsx"],
-  ["web/components/ai-elements/iframe-preview.tsx", "apps/web/components/ai-elements/iframe-preview.tsx"],
-  ["web/components/ai-elements/message-attachments.tsx", "apps/web/components/ai-elements/message-attachments.tsx"],
-  ["web/components/ai-elements/message.tsx", "apps/web/components/ai-elements/message.tsx"],
-  ["web/components/ai-elements/reasoning.tsx", "apps/web/components/ai-elements/reasoning.tsx"],
-  ["web/components/ai-elements/shimmer.tsx", "apps/web/components/ai-elements/shimmer.tsx"],
-  ["web/components/config/ConfirmDialog.tsx", "apps/web/components/config/ConfirmDialog.tsx"],
-  ["web/components/config/DataTable.tsx", "apps/web/components/config/DataTable.tsx"],
-  ["web/components/config/FormDialog.tsx", "apps/web/components/config/FormDialog.tsx"],
-  ["web/components/config/StatusBadge.tsx", "apps/web/components/config/StatusBadge.tsx"],
   ["web/src/App.tsx", "apps/web/src/App.tsx"],
   ["web/src/__tests__/agent-create-enter-flow.test.ts", "apps/web/src/__tests__/agent-create-enter-flow.test.ts"],
   [
@@ -243,12 +232,15 @@ const RMD_08_MOVES = [
 ] as const;
 
 /**
- * 1.3 与 1.6 T4 收口时删掉的宿主副本，三元组为 `[旧根路径, 应用壳路径, 包内 owner 落点]`。
+ * 1.3 与 1.6 T4/T8 收口时删掉的宿主副本，三元组为 `[旧根路径, 应用壳路径, 包内 owner 落点]`。
  *
  * 这些文件在 RMD-08 时是「apps/web 的壳」，但键的 owner 与实现的 owner 都属于资源包 / web-runtime：
  * 宿主再留一份就是两份实现并存（i18n 字典尤其危险——命名空间同名时构建期不报错，运行期整片文案回退）。
  * `MetaAgentPanel.tsx` 的宿主副本在被删除前已经零引用（面板实现在 workflow 包内），仍按「宿主不得复活」
  * 断言，避免把一份 workflow 实现重新接回应用壳；`api/registry.ts` 同理由 T4 移出（见文件头第 6 条）。
+ * 任务 1.6 T8b 再移出 11 项：`components/ai-elements/**`（7，owner 为 `chat/primitives/**`）与
+ * `components/config/**`（4）——这 11 个宿主副本的消费方已全部改指 `@fenix/ui-components` 的对应出口，
+ * 副本本身零引用。
  */
 const RMD_08_RELOCATED = [
   [
@@ -293,6 +285,61 @@ const RMD_08_RELOCATED = [
     "apps/web/src/__tests__/task-form-schema.test.ts",
     "packages/resources/task/web/__tests__/agent-tasks-utils.test.ts",
   ],
+  [
+    "web/components/ai-elements/chat-message-content.css",
+    "apps/web/components/ai-elements/chat-message-content.css",
+    "packages/ui-components/web/chat/primitives/chat-message-content.css",
+  ],
+  [
+    "web/components/ai-elements/conversation.tsx",
+    "apps/web/components/ai-elements/conversation.tsx",
+    "packages/ui-components/web/chat/primitives/conversation.tsx",
+  ],
+  [
+    "web/components/ai-elements/iframe-preview.tsx",
+    "apps/web/components/ai-elements/iframe-preview.tsx",
+    "packages/ui-components/web/chat/primitives/iframe-preview.tsx",
+  ],
+  [
+    "web/components/ai-elements/message-attachments.tsx",
+    "apps/web/components/ai-elements/message-attachments.tsx",
+    "packages/ui-components/web/chat/primitives/message-attachments.tsx",
+  ],
+  [
+    "web/components/ai-elements/message.tsx",
+    "apps/web/components/ai-elements/message.tsx",
+    "packages/ui-components/web/chat/primitives/message.tsx",
+  ],
+  [
+    "web/components/ai-elements/reasoning.tsx",
+    "apps/web/components/ai-elements/reasoning.tsx",
+    "packages/ui-components/web/chat/primitives/reasoning.tsx",
+  ],
+  [
+    "web/components/ai-elements/shimmer.tsx",
+    "apps/web/components/ai-elements/shimmer.tsx",
+    "packages/ui-components/web/chat/primitives/shimmer.tsx",
+  ],
+  [
+    "web/components/config/ConfirmDialog.tsx",
+    "apps/web/components/config/ConfirmDialog.tsx",
+    "packages/ui-components/web/config/ConfirmDialog.tsx",
+  ],
+  [
+    "web/components/config/DataTable.tsx",
+    "apps/web/components/config/DataTable.tsx",
+    "packages/ui-components/web/config/DataTable.tsx",
+  ],
+  [
+    "web/components/config/FormDialog.tsx",
+    "apps/web/components/config/FormDialog.tsx",
+    "packages/ui-components/web/config/FormDialog.tsx",
+  ],
+  [
+    "web/components/config/StatusBadge.tsx",
+    "apps/web/components/config/StatusBadge.tsx",
+    "packages/ui-components/web/config/StatusBadge.tsx",
+  ],
 ] as const;
 
 describe("RMD-08 apps/web migration", () => {
@@ -302,7 +349,7 @@ describe("RMD-08 apps/web migration", () => {
   // 任务 1.6 T2 再移出 18 项零消费文件，见文件头第 5 条；T4 又移出 1 项（`api/registry.ts`，
   // 见文件头第 6 条与下方 relocated 断言），153 → 152。
   test("removes every legacy source and retains its exact owner target", () => {
-    expect(RMD_08_MOVES).toHaveLength(152);
+    expect(RMD_08_MOVES).toHaveLength(141);
     for (const [source, target] of RMD_08_MOVES) {
       expect(existsSync(source), `legacy source still exists: ${source}`).toBe(false);
       expect(existsSync(target), `apps/web target is missing: ${target}`).toBe(true);
@@ -329,11 +376,11 @@ describe("RMD-08 apps/web migration", () => {
     expect(existsSync("packages/web-runtime/web/lib/admin-key.ts")).toBe(true);
   });
 
-  // 任务 1.3 收口的 9 份 + 任务 1.6 T4 新增的 1 份宿主副本：旧根路径与应用壳路径都不得复活，
+  // 任务 1.3 收口的 9 份 + 任务 1.6 T4 的 1 份 + T8b 的 11 份宿主副本：旧根路径与应用壳路径都不得复活，
   // 且包侧 owner 落点必须存在。副本与 owner 并存是「两份实现各自能跑」的最坏形态，
   // 删除与断言必须成对出现。
   test("relocates the leftover host copies to their package owners", () => {
-    expect(RMD_08_RELOCATED).toHaveLength(10);
+    expect(RMD_08_RELOCATED).toHaveLength(21);
     for (const [legacy, shell, owner] of RMD_08_RELOCATED) {
       expect(existsSync(legacy), `legacy source still exists: ${legacy}`).toBe(false);
       expect(existsSync(shell), `host copy still exists: ${shell}`).toBe(false);

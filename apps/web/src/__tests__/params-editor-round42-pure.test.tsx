@@ -6,7 +6,7 @@ import {
   filterData,
   paginateData,
   sortData,
-} from "../../components/config/DataTable";
+} from "@fenix/ui-components/config/DataTable";
 
 type Row = {
   id: string;

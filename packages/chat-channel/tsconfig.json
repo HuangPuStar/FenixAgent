@@ -4,16 +4,11 @@
   "compilerOptions": {
     "paths": {
       "@server/*": ["../../apps/server/src/*"],
-      "@/components/ui/*": ["../../apps/web/components/ui/*"],
-      "@/components/*": ["../../apps/web/components/*"],
       "@/src/api/agents": ["../../packages/resources/agent-config/web/api/agents.ts"],
       "@/src/api/environments": ["../../packages/agent-runtime/web/api/environments.ts"],
       "@/src/api/mcp": ["../../packages/resources/mcp/web/api/mcp.ts"],
       "@/src/api/prod-views": ["../../packages/resources/prod-view/web/api/prod-views.ts"],
-      "@/src/api/request": ["../../apps/web/src/api/request.ts"],
       "@/src/lib/model-config-utils": ["../../packages/resources/model-management/web/lib/model-config-utils.ts"],
-      "@/src/lib/utils": ["../../apps/web/src/lib/utils.ts"],
-      "@/src/*": ["../../apps/web/src/*"],
       "@fenix/chat-channel": ["./src/index.ts"],
       "@fenix/chat-channel/server": ["./src/server.ts"]
     }
