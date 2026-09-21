@@ -1110,3 +1110,91 @@ architecture / 三项 tsc / dependency-boundaries / lint）全部通过。
   `bootstrapServerAssembly` 暴露给 `main.ts`）：1.5f 接线时按 §3.1 的「只接管权限装配」范围定，候选是
   资源包同形的进程级槽位。
 - `platform-sdk/src/server.ts` 的 `ServerRouteHost` 与 `contributions` 的实际消费方集中在 1.5e。
+
+### 1.5e-1 prod-view 试点（2026-09-21）
+
+分片行原文：「路由 contributions 声明：**先试点 `prod-view`**（2 个 web 路由、叶子模块、已在包内），
+打通「包声明 → 宿主挂载」端到端；再逐包铺开其余 12 个有路由的包」，判据「每个包的 `routes/web/index.ts`
+挂载点减少一处；试点片后 `precheck` + 手工启动验证」，前置 1.5d。
+
+**一、【需审核】新增第 5 项契约：`ModuleContribution.slot`**
+
+1.5d 定型的路由贡献形状是 `(host) => 路由实例`，但没有回答「挂到宿主的哪一面」。这不是可选细节：
+资源包内部的路径是**相对形式**（`/prod-views/:id/load`），最终 URL 前缀由宿主聚合实例决定，`/web` 与
+`/web/config` 是两个独立聚合——prod-view 的 2 条路由分属两者，挂错面等于整组端点前缀错位，而宿主侧的
+校验（槽未知 / 未返回 Elysia）发现不了这件事。
+
+落地：`ModuleContribution` 增加 `readonly slot?: string`（默认 `"app"`），取值是**宿主自定义的字符串**，
+platform-sdk 不认识具体槽位、只负责透传。宿主侧 `bootstrap/route-contributions.ts` 维护「槽名 → 聚合
+实例」映射，未接线的槽名当场报错。这是对已审核的 §3.3 的**扩大**（原裁定只覆盖贡献的形状与 `order`），
+故在此单列待审。
+
+**二、落地清单**
+
+| 项 | 位置 | 说明 |
+| --- | --- | --- |
+| 契约 | `platform-sdk/src/assembly/module-manifest.ts` | `ModuleContribution.slot`（第 5 项契约，见上） |
+| 宿主协议面 | `apps/server/src/bootstrap/route-host.ts`（新） | `ServerRouteHost` 的唯一实现，七字段一次填满 |
+| 贡献登记 | `apps/server/src/bootstrap/route-contributions.ts`（新） | `mountServerRouteContribution` / `takeRouteContributions(slot)` / 测试用 `resetRouteContributions` |
+| 包内装配 | `packages/resources/prod-view/src/server/assembly.ts`（新） | 从 `ServerRouteHost` 收窄出 `authGuardPlugin`，暴露两个路由工厂 |
+| 包声明 | `packages/resources/prod-view/fenix.module.ts` | 两条 `app-route` 贡献（`slot: "web"` / `"web-config"`，`value` 为惰性 `import()`） |
+| 宿主聚合 | `apps/server/src/routes/web/index.ts`、`routes/web/config/index.ts` | 两个聚合改为工厂，接收本槽的贡献数组并在末尾 `.use([...])` |
+| 宿主接线 | `apps/server/src/main.ts` | `wirePermissions` 段替换为 `bootstrapServerAssembly({ mountContribution })`；app 链改 `.use(createWebApp({ web: takeRouteContributions(...), webConfig: ... }))` |
+| 发布组合 | `deploy/assembly/ce.json` | `resources` 填实为 7 项（含依赖闭包） |
+| 启动序 | `apps/server/src/bootstrap/startup-sequence.ts` | `wirePermissions` 类型放宽为 `() => Promise<unknown>`（装配返回结果宿主暂不需要） |
+
+**三、需审核的取舍**
+
+1. **判据「打通端到端」迫使 `main.ts` 提前接入 registry**（原本计划归 1.5f）。理由：不接 registry 就
+   只能测「登记函数本身」，无法证明「真实 ce.json + 真实模块工厂产出的路由真的进了槽」。做法上仍守
+   §3.1 的最小范围——只替换 `wirePermissions` 一段，其余启动序、服务装配、HTTP 路由序列一律不动。
+   替代方案（在用例里手工调 `bootstrapServerAssembly` 已部分采用）不能替代宿主真实接线，故两者都做。
+2. **`route-host.ts` 七项一次填满**而不是「谁先迁入谁先加」：七项实现都已存在且是同一份进程级实例，
+   逐片追加会让每迁一个包改一次宿主装配面。代价仅是几行对象字面量。
+3. **槽名 `"web"` / `"web-config"` 由宿主定义**，包只写字符串字面量。包因此对宿主槽名有软耦合，但没有
+   更好的选择：槽名是包与宿主之间唯一的约定面，且必须能在 manifest（静态描述符）里表达。
+   `"config"` 之类更短的名字与 `/web/config` 的对应关系更弱，故取路径名。
+4. **`ce.json` 的 `resources` 填实为 7 项**：PROD_VIEW 之外，knowledge / mcp / memory / skill /
+   agent-config / model-management 是按 profile 依赖闭包（agent-config 依赖 knowledge/mcp/memory/skill；
+   mcp 依赖 knowledge；model-management 依赖 agent-config）反推的必需项。不填实则端到端装配只有
+   identity / access-control / agent-runtime，prod-view 的 contributions 也观察不到真实依赖链。
+   副作用：这些模块的 `create` 在装配期被**再调一次**——identity 的目录与 agent-runtime 的实例协调器
+   都是幂等读取（`initializeApplicationInfrastructure` 已在更早阶段初始化），无副作用；1.5f 删除宿主手写
+   装配后自然唯一。
+5. **默认槽 `"app"` 暂无读者**：1.5f 接顶层 app 槽前，声明不带 `slot` 的路由贡献会以「未知聚合槽 "app"」
+   报错，而不是被静默丢弃。这条有专门用例锁定。
+6. **`resetRouteContributions()` 只为测试**：槽位是进程级单例，真实进程装配只发生一次；没有它跨用例会
+   累积上一例的路由。已按「仅服务测试」标注，与 `resetXxxModule` 同类。
+
+**四、测试**
+
+| 文件 | 用例数 | 断言要点 |
+| --- | --- | --- |
+| `apps/server/src/__tests__/route-contributions.test.ts`（新） | 8 | 按槽分组 / 空槽返回空数组 / 非 `app-route` 跳过 / 未知槽报错 / 默认槽 `"app"` 报错 / value 非函数报错 / 构造函数未返回 Elysia 报错 / **真实 profile 端到端**（真实 ce.json + 生成 registry + 10 个真实模块工厂 → 断言 web 槽 1 条、web-config 槽 5 条路径） |
+| `packages/resources/prod-view/src/__tests__/prod-view-contributions.test.ts`（新） | 4 | manifest 两条贡献的 `[id, kind, slot]` / web 槽产出 `/prod-views/:id/load` / web-config 槽含 `/config/prod-views` 与 `/config/prod-views/:id` / assembly 收窄结果与贡献一致 |
+| `apps/server/src/__tests__/config-integration.test.ts`、`agent-platform-api-reference.test.ts`（改） | — | 聚合工厂化的调用面适配（`createWebConfigApp([])`、`createWebApp({ web: [], webConfig: [] })`） |
+| `apps/server/src/__tests__/access-control-bootstrap-order.test.ts`（改） | — | `wirePermissions` 改传 `Promise<unknown>` 后注释同步为「跑的是 registry 装配」 |
+
+端到端断言用 `toEqual` 而非 `toContain`：1.5e 每迁入一个包这里就多一条路径，迁移进度因此有一份可执行的
+镜像，漏挂不会静默通过。
+
+**五、验证证据**
+
+定向：`bun test apps/server/src/__tests__/route-contributions.test.ts .../module-assembly.test.ts .../bootstrap.test.ts`
+19 pass / 0 fail；`bun test apps/server/src/__tests__/` 633 pass / 0 fail；prod-view 4 pass；三个受影响用例文件均通过；
+根 `tsc --noEmit` 无输出；`generate:module-registry --check` ✓（17 个 manifest）；`architecture:check` ✓
+（2239 files / 11 rules / 27 例外）；`check:dependencies` ✓（2391 modules / 12 例外 / 0 新增违规）。
+全量：`env -u ANTHROPIC_MODEL bun run precheck` → `All passed (86961ms)`。server-and-script-tests
+**770 pass / 0 fail**（较 1.5d 的 762 多 8，即新增的 `route-contributions.test.ts` 8 例，无既有用例减少）；
+package-tests **7316 pass / 2 skip / 0 fail**（较 1.5d 的 7312 多 4，即 prod-view 的 4 例）；
+web-app-tests 946 pass / 0 fail（无前端改动，与 1.5d 持平）；其余九步全部通过。
+
+**手工启动验证未完成**：本机无 PostgreSQL（`bun run dev` 在 `initDb` 阶段 `ECONNREFUSED 127.0.0.1:5432` /
+`::1:5432`，失败点早于装配，与本片改动无关），OrbStack docker daemon 未运行且未安装 `psql` / `pg_isready`，
+无法在本环境补做。需要在可用 DB 的环境补跑 `bun run dev` + `/health` + prod-view 两个端点；端到端装配
+在测试中以真实 profile 覆盖（见上表第 8 条用例），但**进程级启动路径未实测**，列为遗留。
+
+**六、遗留**
+
+- 手工启动验证（`bun run dev` + `/health`）待有 DB 的环境补做。
+- 1.5e-2：其余 12 个有路由的包逐包铺开，每迁一包更新 `route-contributions.test.ts` 的真实端到端断言。

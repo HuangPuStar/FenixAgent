@@ -3,13 +3,16 @@ import { readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { createApiWorkflowRoutes } from "@fenix/resource-workflow/server";
 import { authGuardPlugin } from "../plugins/auth";
-import webRoutes from "../routes/web";
+import { createWebApp } from "../routes/web";
 
 const REFERENCES_DIR = join(process.cwd(), ".agents/skills/agent-platform-api/references");
 
 // 资源包路由是工厂（守卫由宿主注入，Elysia 的 macro / state 是实例作用域的），用例按宿主装配的
 // 同一形状构造一份，只读它的 route 表做路径比对。
 const apiWorkflowRoutes = createApiWorkflowRoutes({ authGuardPlugin });
+// `/web` 聚合同样是工厂：1.5e 起路由贡献由装配期登记（`bootstrap/route-contributions`），用例只关心
+// 宿主手写序列注册的路径，故两个槽都传空数组——文档示例不覆盖已迁入贡献面的端点。
+const webRoutes = createWebApp({ web: [], webConfig: [] });
 
 interface DocumentedRequest {
   file: string;

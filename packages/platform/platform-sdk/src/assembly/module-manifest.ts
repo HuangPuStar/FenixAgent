@@ -31,6 +31,15 @@ export interface ModuleContribution<TValue = unknown> {
    * `order` 即可自证；宿主因此不再需要维护「哪些模块必须最后挂」的手写清单。
    */
   readonly order?: number;
+  /**
+   * 宿主协议聚合槽：贡献挂到宿主的哪一面，默认 `"app"`（顶层应用）。
+   *
+   * 路由贡献的路径是**相对形式**（包内不写 `/web` 一类前缀，前缀由宿主的聚合实例决定），所以要挂进
+   * `/web` 还是 `/web/config` 这类聚合面必须由声明说清。槽名是包与宿主之间唯一的约定面，取值是宿主
+   * 自定义的字符串（platform-sdk 不认识具体槽位，也就不把某个应用的结构写进契约）；宿主把槽名映射到
+   * 具体聚合实例，遇到未知槽名当场报错——静默丢弃一个路由贡献等于让整组端点消失。
+   */
+  readonly slot?: string;
   readonly value: TValue;
 }
 

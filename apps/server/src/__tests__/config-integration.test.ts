@@ -28,7 +28,7 @@ import { resetTestAuth, setTestAuth } from "../plugins/auth";
 import { setTestOrgContext } from "../services/org-context";
 import { stubConfigPg } from "../test-utils/stubs/config-pg-stub";
 
-const configRoute = (await import("../routes/web/config/index")).default;
+const configRoute = (await import("../routes/web/config/index")).createWebConfigApp([]);
 
 function request(path: string, init?: RequestInit) {
   return configRoute.handle(new Request(`http://localhost${path.replace(/^\/web/, "")}`, init));

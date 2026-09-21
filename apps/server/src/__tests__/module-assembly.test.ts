@@ -12,11 +12,21 @@ import { bootstrapServerAssembly } from "../bootstrap";
  * 产物验证「发布版本今天真的能装起来」。
  */
 
-/** server 侧实例化顺序：基础模块按 profile 声明顺序展开，Web Shell 不参与。 */
+/**
+ * server 侧实例化顺序：三个基础模块按 profile 声明顺序展开，资源模块按 `dependsOn` 拓扑序跟进
+ * （1.5e 起 `resources` 由真实 ce.json 驱动），Web Shell 不参与。
+ */
 const EXPECTED_SERVER_MODULES = [
   ["identity", "identity"],
   ["access-control", "access-control"],
   ["agent-runtime", "agent-runtime"],
+  ["knowledge", "resource"],
+  ["mcp", "resource"],
+  ["memory", "resource"],
+  ["skill", "resource"],
+  ["agent-config", "resource"],
+  ["model-management", "resource"],
+  ["prod-view", "resource"],
 ];
 
 /** 真实 registry 里由 `apps/web/fenix.module.ts` 提供的纯元数据 Shell 描述符。 */
@@ -87,6 +97,9 @@ test("bootstrapServerAssembly 按依赖序装配并逆序幂等释放", async ()
   ] satisfies readonly ModuleManifest[];
 
   const result = await bootstrapServerAssembly({
+    // Shell 槽位取真实 profile 的绑定，但 profile 的 `resources` 由本用例自己声明——fixture 工厂只覆盖
+    // 三个基础模块，真实 ce.json 的资源列表会引用未注册进 fixture 的模块。
+    profile: { ...(await loadAssemblyProfile()), resources: [] },
     // 真实 Shell 描述符 + fixture 基础模块工厂：真实 Runtime 工厂会拉起整套服务端运行面。
     manifests: [...lifecycleManifests, ...generatedWebShellManifests],
     loadEnv: (definitions) => loadDeclaredEnv(definitions, {}),

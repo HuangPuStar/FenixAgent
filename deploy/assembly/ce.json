@@ -3,6 +3,6 @@
   "accessControl": "access-control",
   "agentRuntime": "agent-runtime",
   "webShell": "default",
-  "resources": [],
+  "resources": ["agent-config", "knowledge", "mcp", "memory", "model-management", "prod-view", "skill"],
   "web": []
 }
