@@ -1,8 +1,8 @@
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@fenix/ui-components/ui/dialog";
-import { NS } from "@fenix/web-runtime/i18n/namespace";
 import { Eye, EyeOff } from "lucide-react";
 import { useCallback, useState } from "react";
 import { useTranslation } from "react-i18next";
+import { SETTINGS_NS } from "../i18n/namespace";
 import { encryptPassword } from "../lib/password-crypto";
 
 interface ChangePasswordDialogProps {
@@ -11,7 +11,9 @@ interface ChangePasswordDialogProps {
 }
 
 export function ChangePasswordDialog({ open, onOpenChange }: ChangePasswordDialogProps) {
-  const { t } = useTranslation(NS.SETTINGS);
+  // 命名空间常量取自本包的 i18n 出口：字典 owner 是本包（§1.6 T9 由宿主搬入），
+  // 宿主只负责在启动时把它注册到同名命名空间。
+  const { t } = useTranslation(SETTINGS_NS);
   const [currentPassword, setCurrentPassword] = useState("");
   const [newPassword, setNewPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");

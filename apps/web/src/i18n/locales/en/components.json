@@ -450,7 +450,6 @@
     "statusRunning": "Running",
     "statusStopped": "Stopped"
   },
-  "orgSwitchFailed": "Failed to switch organization",
   "hindsightToolCard": {
     "failed": "Failed"
   },
@@ -558,7 +557,11 @@
     "toggle": "Expand or collapse status",
     "added": "Added",
     "modified": "Modified",
-    "todoStatus": { "pending": "Queued", "in_progress": "Running", "completed": "Completed" }
+    "todoStatus": {
+      "pending": "Queued",
+      "in_progress": "Running",
+      "completed": "Completed"
+    }
   },
   "composerAssets": {
     "title": "Assets to send",

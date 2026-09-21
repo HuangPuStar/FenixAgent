@@ -146,5 +146,6 @@
   },
   "error": {
     "operationFailed": "Operation failed"
-  }
+  },
+  "orgSwitchFailed": "Failed to switch organization"
 }

@@ -7,7 +7,14 @@
 //   导出的常量，宿主不复制字面量（两份字面量一旦分歧，症状是文案整片回退成 key 回显且构建期不可见）。
 // - **宿主自有**：通用壳层（common / login / sidebar / …）与尚未迁出宿主的旧命名空间，仍读 `./locales/**`。
 import { AGENTS_NS, agentResources } from "@fenix/agent-config/web/i18n";
-import { APIKEY_NS, apikeyResources, ORGS_NS, orgResources } from "@fenix/identity/web/i18n";
+import {
+  APIKEY_NS,
+  apikeyResources,
+  ORGS_NS,
+  orgResources,
+  SETTINGS_NS,
+  settingsResources,
+} from "@fenix/identity/web/i18n";
 import { MODELS_NS, modelManagementResources } from "@fenix/model-management/web/i18n";
 import { CHANNELS_NS, channelsResources } from "@fenix/resource-channel/web/i18n";
 import { KNOWLEDGE_NS, knowledgeResources } from "@fenix/resource-knowledge/web/i18n";
@@ -33,7 +40,6 @@ import dashboardEN from "./locales/en/dashboard.json";
 import environmentsEN from "./locales/en/environments.json";
 import loginEN from "./locales/en/login.json";
 import sessionsEN from "./locales/en/sessions.json";
-import settingsEN from "./locales/en/settings.json";
 import sidebarEN from "./locales/en/sidebar.json";
 import tasksEN from "./locales/en/tasks.json";
 import toolNarratorEN from "./locales/en/toolNarrator.json";
@@ -45,7 +51,6 @@ import dashboardZH from "./locales/zh/dashboard.json";
 import environmentsZH from "./locales/zh/environments.json";
 import loginZH from "./locales/zh/login.json";
 import sessionsZH from "./locales/zh/sessions.json";
-import settingsZH from "./locales/zh/settings.json";
 import sidebarZH from "./locales/zh/sidebar.json";
 import tasksZH from "./locales/zh/tasks.json";
 import toolNarratorZH from "./locales/zh/toolNarrator.json";
@@ -76,7 +81,6 @@ const hostResources = {
     [NS.SIDEBAR]: sidebarEN,
     [NS.DASHBOARD]: dashboardEN,
     [NS.TASKS]: tasksEN,
-    [NS.SETTINGS]: settingsEN,
     [NS.SESSIONS]: sessionsEN,
     [NS.ENVIRONMENTS]: environmentsEN,
     [NS.COMPONENTS]: componentsEN,
@@ -90,7 +94,6 @@ const hostResources = {
     [NS.SIDEBAR]: sidebarZH,
     [NS.DASHBOARD]: dashboardZH,
     [NS.TASKS]: tasksZH,
-    [NS.SETTINGS]: settingsZH,
     [NS.SESSIONS]: sessionsZH,
     [NS.ENVIRONMENTS]: environmentsZH,
     [NS.COMPONENTS]: componentsZH,
@@ -120,6 +123,7 @@ const packageResources = {
     [HINDSIGHT_NS]: hindsightResources.en,
     [PROD_VIEWS_NS]: prodViewsResources.en,
     [SANDBOX_NS]: sandboxResources.en,
+    [SETTINGS_NS]: settingsResources.en,
     [UI_COMPONENTS_NS]: uiComponentsResources.en,
   },
   zh: {
@@ -137,6 +141,7 @@ const packageResources = {
     [HINDSIGHT_NS]: hindsightResources.zh,
     [PROD_VIEWS_NS]: prodViewsResources.zh,
     [SANDBOX_NS]: sandboxResources.zh,
+    [SETTINGS_NS]: settingsResources.zh,
     [UI_COMPONENTS_NS]: uiComponentsResources.zh,
   },
 } as const;

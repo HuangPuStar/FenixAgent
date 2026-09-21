@@ -1163,6 +1163,42 @@ TopModeTabs,artifacts-dialogs,artifacts-files-workspace,use-file-tree-events,use
 `dry` 复核为 0 处残留；台账的 `RMD_08_MOVES` 全条目（111 条）的 legacy 路径与 `RMD_08_RELOCATED`
 （47 条）的 legacy + shell 路径均不存在、owner 落点均存在。
 
+### 7.15 T9a identity 借键结清（2026-09-21）
+
+T9 拆三片：**T9a 借键结清**（本节）、T9b i18n 缺陷修复、T9c 宿主自有命名空间收敛。范围以本文件
+§7.10 的结论为准——「T9 的 i18n 重划由此提前一格完成，T9 只剩宿主自有命名空间的收敛」（T5c2 已把包
+命名空间的注册做完，`uiComponents` 字典随切换接入）。
+
+**债务来源**：T4（§7.3）把 identity 的字典搬进包内时，**只搬了 apikey / orgs 两份**，
+`ChangePasswordDialog` 读的宿主 `NS.SETTINGS`（11 键全在 `apps/web/src/i18n/locales/*/settings.json`）
+与 `OrgContext` 读的宿主 `NS.COMPONENTS`（键 `orgSwitchFailed`）留作债务，由
+`identity-i18n.test.ts` 的 `BORROWED_KEYS` 白名单**双向**登记（既覆盖全部越界键，又反向断言这些键
+此刻不在本包字典里）。本次搬迁后白名单与其文件头债务注释一并删除——不留「已搬迁但仍被豁免」的通道。
+
+**不改命名空间，只改 owner**：沿用中心表已有的 `NS.SETTINGS`（`"settings"`），把字典 owner 从宿主搬到
+identity 包，而不是新建一个 `account` 命名空间。理由：`settings` 命名空间在宿主已无任何其它消费方
+（11 键全部来自这一个对话框），新建命名空间只会让「设置」语义在两个 literal 之间分裂。
+
+**改动**：
+
+| 项 | 处理 |
+|---|---|
+| `apps/web/src/i18n/locales/{en,zh}/settings.json` | `git mv` 到 `packages/platform/identity/web/i18n/locales/{en,zh}/settings.json`（**译文逐字未变**） |
+| 宿主 `i18n/index.ts` | 删除该字典的 import 与 `hostResources` 条目；改从 `@fenix/identity/web/i18n` 取 `SETTINGS_NS` / `settingsResources`，登记进 `packageResources` |
+| identity `web/i18n/{namespace,index}.ts` | 新增 `SETTINGS_NS` 与 `settingsResources` 出口；头注从「两个命名空间」改为三个并写明搬迁来由 |
+| `ChangePasswordDialog.tsx` | `useTranslation(NS.SETTINGS)`（web-runtime 中心表）→ `useTranslation(SETTINGS_NS)`（本包出口） |
+| `OrgContext.tsx` | `useTranslation(NS.COMPONENTS)` → `useTranslation(NS.ORGS)`；`orgSwitchFailed` 从宿主 `components.json` 搬入 identity `orgs.json`（译文逐字未变） |
+| `identity-i18n.test.ts` | 收下第三份字典（键集一致、占位符一致、规模底线 ≥11）；删除 `BORROWED_KEYS` / 借键吻合断言 / 债务断言；「字面量键都在字典内」改为无白名单 |
+
+**台账同步**：`RMD_08_MOVES` 111 → 109（`settings.json` 两份的宿主落点不再存在），
+`RMD_08_RELOCATED` 47 → 49（owner = `packages/platform/identity/web/i18n/locales/{en,zh}/settings.json`）。
+
+**验证**：`env -u ANTHROPIC_MODEL bun run precheck` 全绿（771 / 7310 + 2 skip / 969，0 fail）；
+`bun run build:web` 成功。首次 precheck 时 `package-tests` 出现过一次非确定性失败
+（`packages/resources/machine/src/server/__tests__/file-ws-events.test.ts:207`「未声明环境的事件被丢弃并写
+registryEvent 告警」）：该文件单跑 12 pass、`bun test packages/` 连跑两轮均 7310 pass 0 fail，
+随后两轮 precheck 亦全绿——与本次 i18n 改动无因果关系（该用例不涉及 i18n），按非确定性失败记录。
+
 ---
 
 ## 八、用户可见行为变更

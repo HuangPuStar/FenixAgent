@@ -450,7 +450,6 @@
     "statusRunning": "运行中",
     "statusStopped": "已停止"
   },
-  "orgSwitchFailed": "切换组织失败",
   "hindsightToolCard": {
     "failed": "失败"
   },
@@ -558,7 +557,11 @@
     "toggle": "展开或收起状态",
     "added": "新增",
     "modified": "已修改",
-    "todoStatus": { "pending": "排队中", "in_progress": "正在执行", "completed": "已完成" }
+    "todoStatus": {
+      "pending": "排队中",
+      "in_progress": "正在执行",
+      "completed": "已完成"
+    }
   },
   "composerAssets": {
     "title": "待发送 Assets",

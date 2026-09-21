@@ -140,7 +140,6 @@ const RMD_08_MOVES = [
   ["web/src/i18n/locales/en/environments.json", "apps/web/src/i18n/locales/en/environments.json"],
   ["web/src/i18n/locales/en/login.json", "apps/web/src/i18n/locales/en/login.json"],
   ["web/src/i18n/locales/en/sessions.json", "apps/web/src/i18n/locales/en/sessions.json"],
-  ["web/src/i18n/locales/en/settings.json", "apps/web/src/i18n/locales/en/settings.json"],
   ["web/src/i18n/locales/en/sidebar.json", "apps/web/src/i18n/locales/en/sidebar.json"],
   ["web/src/i18n/locales/en/tasks.json", "apps/web/src/i18n/locales/en/tasks.json"],
   ["web/src/i18n/locales/en/toolNarrator.json", "apps/web/src/i18n/locales/en/toolNarrator.json"],
@@ -152,7 +151,6 @@ const RMD_08_MOVES = [
   ["web/src/i18n/locales/zh/environments.json", "apps/web/src/i18n/locales/zh/environments.json"],
   ["web/src/i18n/locales/zh/login.json", "apps/web/src/i18n/locales/zh/login.json"],
   ["web/src/i18n/locales/zh/sessions.json", "apps/web/src/i18n/locales/zh/sessions.json"],
-  ["web/src/i18n/locales/zh/settings.json", "apps/web/src/i18n/locales/zh/settings.json"],
   ["web/src/i18n/locales/zh/sidebar.json", "apps/web/src/i18n/locales/zh/sidebar.json"],
   ["web/src/i18n/locales/zh/tasks.json", "apps/web/src/i18n/locales/zh/tasks.json"],
   ["web/src/i18n/locales/zh/toolNarrator.json", "apps/web/src/i18n/locales/zh/toolNarrator.json"],
@@ -417,6 +415,16 @@ const RMD_08_RELOCATED = [
     "packages/ui-components/web/chat/lib/tool-semantic.ts",
   ],
   ["web/src/lib/types.ts", "apps/web/src/lib/types.ts", "packages/ui-components/web/chat/types.ts"],
+  [
+    "web/src/i18n/locales/en/settings.json",
+    "apps/web/src/i18n/locales/en/settings.json",
+    "packages/platform/identity/web/i18n/locales/en/settings.json",
+  ],
+  [
+    "web/src/i18n/locales/zh/settings.json",
+    "apps/web/src/i18n/locales/zh/settings.json",
+    "packages/platform/identity/web/i18n/locales/zh/settings.json",
+  ],
 ] as const;
 
 describe("RMD-08 apps/web migration", () => {
@@ -426,9 +434,11 @@ describe("RMD-08 apps/web migration", () => {
   // 任务 1.6 T2 再移出 18 项零消费文件，见文件头第 5 条；T4 又移出 1 项（`api/registry.ts`，
   // 见文件头第 6 条），153 → 152；T8b 再移出 11 项，152 → 141；T8c 再移出 11 项，141 → 130；
   // T8d 再移出 15 项（改指包出口）并直删 5 项零消费文件（`context-queue` 宿主副本、`token-stats`、
-  // `citation-preview-context`、两份第三方类型垫片——垫片归各包自持，见 §1.6 T8z），130 → 111。
+  // `citation-preview-context`、两份第三方类型垫片——垫片归各包自持，见 §1.6 T8z），130 → 111；
+  // T9a 把宿主 `settings.json` 两份交给 identity 包（唯一消费方是包内的 `ChangePasswordDialog`），
+  // 111 → 109——i18n 归属重划：键的物理落点必须等于 owner。
   test("removes every legacy source and retains its exact owner target", () => {
-    expect(RMD_08_MOVES).toHaveLength(111);
+    expect(RMD_08_MOVES).toHaveLength(109);
     for (const [source, target] of RMD_08_MOVES) {
       expect(existsSync(source), `legacy source still exists: ${source}`).toBe(false);
       expect(existsSync(target), `apps/web target is missing: ${target}`).toBe(true);
@@ -460,7 +470,7 @@ describe("RMD-08 apps/web migration", () => {
   // 且包侧 owner 落点必须存在。副本与 owner 并存是「两份实现各自能跑」的最坏形态，
   // 删除与断言必须成对出现。
   test("relocates the leftover host copies to their package owners", () => {
-    expect(RMD_08_RELOCATED).toHaveLength(47);
+    expect(RMD_08_RELOCATED).toHaveLength(49);
     for (const [legacy, shell, owner] of RMD_08_RELOCATED) {
       expect(existsSync(legacy), `legacy source still exists: ${legacy}`).toBe(false);
       expect(existsSync(shell), `host copy still exists: ${shell}`).toBe(false);

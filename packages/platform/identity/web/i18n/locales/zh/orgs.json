@@ -146,5 +146,6 @@
   },
   "error": {
     "operationFailed": "操作失败"
-  }
+  },
+  "orgSwitchFailed": "切换组织失败"
 }
