@@ -60,6 +60,33 @@ WebShell 从静态 registry 收集各资源包的 web contribution（不反向�
    theme 跟随系统偏好）随重放生效，逐条记入本文「用户可见行为变更」。
 8. **`@server/**` 在 `packages/**` 的 84 文件消费面**（其中 `@server/db/schema` 61 处）：不属本任务，
    保留台账 owner=1.7。
+9. **`ContextPanel` 由「迁入 ui-components」改为删除（2026-09-21 实测修正，先反馈）**：向用户呈报切片时，
+   该面板按「迁入 `ui-components/web/chat/panels/`」描述。落地前实测证明它是**生产不可达的死代码**：
+   `packages/chat-channel/web/components/ACPMain.tsx:401` 恒传 `hideContextPanel={true}`，渲染分支
+   `{!readonly && !hideContextPanel && (…)}` 在当前所有调用路径上恒假；`apps/web` 从不渲染它（宿主走
+   `chat-channel/web/chat-area`）；`@fenix/ui-components` 的 `ChatInterface.tsx` 已在 2026-09-18 按同一结论
+   移除该面板与开关（另见 `packages/ui-components/README.md:88`）。唯一消费者是
+   `packages/resources/knowledge/web/src/__tests__/context-panel-ssr.test.tsx`——它测的是一个宿主从不渲染的
+   组件，其「本包页面内嵌 ContextPanel」的前提不成立。按 CLAUDE.md 原则 10「删除优于兼容」，处置改为删除：
+   组件本体、上述 SSR 测试、chat-channel `ChatInterface` 的渲染分支与 `hideContextPanel` 透传、`web/index.ts`
+   的导出、chat-channel browser-surface 守卫中对应的三条断言一并删除。**连带收益**：ui-components 聊天字典
+   不需要补 `contextPanel.*` 六个键，T9 范围相应缩小。
+10. **`boundMcps` 的注入点是宿主容器，不是 `agent-runtime` 的 `ChatPanel`**：用户裁定「`agent-config/web`
+    提供助手」后，本打算让 `packages/agent-runtime/web/agent-panel/ChatPanel.tsx` 直接调它。实测不可行：
+    §2.3 禁止 `agent-runtime` 依赖除 Machine/Sandbox 外的 `resources`，且这条边已在任务 1.4 W4b 通过两个端口
+    消除（`packages/agent-runtime/src/server/services/agent-config-lookup-port.ts:6` 明写「阶段 2 任务 1.4 W4b
+    已消除该边」），`.dependency-cruiser.cjs` 的 `agent-runtime-not-to-resources` 按文件级路径拦截。故助手落
+    `agent-config/web`（裁定不变），改由**宿主容器调用**：`ChatArea`（T5b 起属 `apps/web`）以
+    `loadBoundMcps(activeAgentId)` 取数，经 `ChatPanel` 透传给 ui-components 面板的 `boundMcps` 端口。
+    已知代价：ChatArea 与助手各取一次 environment 详情（前者供 ArtifactsPanel 的站点绑定），随第 11 条的归位
+    合并。
+11. **`ChatPanel` 的归位留给 T6，T5 只加一个透传 prop**：`ChatPanel.tsx` 现物理位于
+    `packages/agent-runtime/web/agent-panel/`，但它是宿主接线层——别名 `@/src/pages/agent-panel/ChatPanel`
+    就是按宿主模块寻址它的，且它依赖只属于宿主的 `@/src/lib/auth-client`（identity 的 web）与
+    `@/src/hooks/use-task-views`（task 资源的 web），而 §2.3 同样禁止 `agent-runtime` 依赖这两者。因此 T6 的
+    「164 处别名归零」必然要求把它迁到 `apps/web`；本任务不做这次搬迁，只按裁定把它的 `ACPMain` 来源从
+    `@fenix/chat-channel/web` 改指 `@fenix/ui-components/chat/shell/ACPMain` 并加 `boundMcps` 透传，
+    避免与 T6 重复改写同一文件。
 
 ---
 
@@ -71,7 +98,7 @@ WebShell 从静态 registry 收集各资源包的 web contribution（不反向�
 | T2 | 宿主零消费死代码与重复副本删除 | 已交付 | 见下方 §7.2 |
 | T3 | `@fenix/ui-components` 扩面 | 已交付 | `b858bf68f` |
 | T4 | `identity/web` 清零 + i18n | 4a 已交付 / 4b 待办 | 见下方 §7.3 |
-| T5 | `chat-channel/web` 清零 | 待办 | — |
+| T5 | `chat-channel/web` 清零 | a 已交付 / b,c,d 待办 | 见下方 §7.4 |
 | T6 | `agent-runtime/web` 收敛 | 待办 | — |
 | T7 | 5 条 `special-dependency` 消除 | 待办 | — |
 | T8 | 宿主组件/lib/api 簇改指并删除 | 待办 | — |
@@ -79,6 +106,16 @@ WebShell 从静态 registry 收集各资源包的 web contribution（不反向�
 | T10 | 测试迁移与 happy-dom 收敛 | 待办 | — |
 | T11 | WebShell 落地 | 待办 | — |
 | T12 | 收尾：台账复核、文档修订、证据留痕 | 待办 | — |
+
+**T5 分片**（用户裁定「整体退场，由 ui-components 接管」+「`agent-config/web` 提供助手」的落地顺序；
+每片独立可 `precheck`、独立提交，避免一个提交裹住全部改动）：
+
+| # | 标题 | 内容 |
+| --- | --- | --- |
+| T5a | `agent-config/web` 新增 `loadBoundMcps` | 纯新增助手 + 出口，见 §7.4；`agent-runtime` 不得持有该查询（§四.10） |
+| T5b | `ChatArea` 簇迁至宿主 | `ChatArea.tsx` / `chat-area-lifecycle.ts` 迁 `apps/web/src/pages/agent-panel/`；chat 设计层 CSS 归 ui-components；宿主页面壳层规则留在宿主；`ProdViewPage` 改注入；环境删除用例随迁 |
+| T5c | `ChatPanel` 改指 ui-components 面板 | `@fenix/chat-channel/web` → `@fenix/ui-components/chat/shell/ACPMain`；补 `boundMcps` 透传；`agent-runtime` 声明 `@fenix/ui-components` 依赖 |
+| T5d | `chat-channel/web` 退场 | 删 3 个组件与入口（含 §四.9 的 `ContextPanel` 死代码链）、删 `./web*` 出口与 tsconfig paths、测试归位、删台账 1 条 |
 
 ---
 
@@ -121,7 +158,14 @@ T4 计划为一片，实测后发现两半的**失败面**不同，故拆成两�
 - **4a**（本次交付）：identity 别名归零 + `web/i18n` 建设 + **删 2 条台账**。这一半的改动会让
   T3 遗留的三条「上游别名债务」白名单断言与 `RMD_08_MOVES` 的目标存在性断言**同时变红**，
   必须同批处理（见 §7.3 的连带改动），否则 4a 无法独立成绿。
-- **4b**（待办）：移除 3 处 `mock.module("@fenix/identity/web", …)`。
+- **4b**（**已并入 T7**，见下）：移除 3 处 `mock.module("@fenix/identity/web", …)`。
+
+**4b 为何并入 T7**：这 3 处替身（`skill` / `mcp` / `knowledge` 的 `*-page-states.test.tsx`）替换的正是
+`useOrg` / `useSession`，而 T7 要做的事就是把这 5 个资源页从「import `@fenix/identity/web` 的 hook」
+改为「消费 `@fenix/web-runtime` 的 org/session 契约」。替身去掉后测试要么改为挂真实 `OrgProvider`
++ fetch 桩（`useOrg` 在无 Provider 时 throw，见 `OrgContext.tsx:134`），要么改为注入 T7 的新契约——
+**后者的形状取决于 T7 的裁定**。在 T4b 里先按前者重写一遍、T7 再按后者重写一遍，是纯粹的返工，
+且会让 3 个测试文件短暂持有「与 T7 即将删除的依赖耦合」的写法。故 4b 随 T7 一起落地。
 
 原计划的判据「3 条固化断言不会破 4a」**是错的**：
 
@@ -321,3 +365,39 @@ identity 不能直连 `@fenix/resource-machine/web`。经用户裁定采用**窄
     机器注册表来自包内唯一实现
   - **未**命中 `apps/web/src/api/registry.ts` —— 宿主重复副本确实已离开产物
   - `main-wVYkOXRU.js` 同时动态 import 上述两个 `web-*` chunk，组合根的注入在产物中可见
+
+### 7.4 T5a `agent-config/web` 新增 `loadBoundMcps`（2026-09-21）
+
+#### 新增
+
+- `packages/resources/agent-config/web/lib/bound-mcps.ts`：`loadBoundMcps(agentId)`，实现逐段对应源
+  `packages/chat-channel/web/components/ChatInterface.tsx:95-122` 的组件内查询链
+  （`envApi.get → agentConfigId → agentApi.list → agentApi.get(getAgentConfigLookupKey) → mcpIds →
+  mcpApi.list` 过滤），返回形状即 ui-components 的 `boundMcps` 端口类型 `BoundMcpOption`
+  （`{ id, name, description: summary }`）。
+- `packages/resources/agent-config/web/index.ts`：转出 `loadBoundMcps`，并在文件头的「导出面覆盖当前
+  跨包消费方」清单里记明新消费方（宿主 ChatArea）。
+
+#### 两处与源实现的刻意差异
+
+- **不吞错**：源写法是 `void Promise.all([...]).then(async ([...]) => {...})`，其中 `agentApi.get` 的失败
+  会落成未处理拒绝；这里按原样抛出，由调用方的 `useRequest` 决定降级（UI 侧表现为「无绑定 MCP」）。
+  只有「环境没有所属 Agent」（`agentConfigId` 为空，ACP/Bridge 环境的正常形态）返回空数组。
+- **归属理由写进文件头**：该查询同时需要 Agent 配置与 MCP 资源，而 §2.3 禁止 `agent-runtime` 依赖除
+  Machine/Sandbox 外的 `resources`（该边已在任务 1.4 W4b 端口化消除），因此只能由 `agent-config` 持有，
+  由宿主容器调用——详见 §四.10。
+
+#### 明确不在本片范围
+
+- T5b/T5c/T5d（`ChatArea` 迁宿主、`ChatPanel` 改指、`chat-channel/web` 退场）——本片只做助手，不含任何
+  消费方改动，故对现有行为零影响。
+
+#### 验证
+
+- `bun test packages/resources/agent-config` → 405 pass / 0 fail（含 browser-surface 守卫：
+  新引用的四个说明符 `@fenix/agent-runtime/web/api/environments`、`@fenix/resource-mcp/web`、
+  `@fenix/web-runtime/api/request`、`@fenix/ui-components/chat/shell/chat-interface-types` 均已在
+  该包的既有值导入图中，未新增外部依赖）
+- `tsc --noEmit`（根）→ 无输出（exit 0）；`tsc -p apps/web/tsconfig.json --noEmit` → 无输出
+- `bun run architecture:check` → ✓ 2241 files / 10 rules / 26 条已登记例外
+- `bun run check:dependencies` → ✓ 2393 modules / 11 条已登记例外 / 0 条新增违规
