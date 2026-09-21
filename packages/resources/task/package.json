@@ -30,6 +30,7 @@
     "./module": "./fenix.module.ts",
     "./server": "./src/server.ts",
     "./web": "./web/index.ts",
+    "./web/contribution": "./web/contribution.ts",
     "./web/i18n": "./web/i18n/index.ts"
   }
 }
