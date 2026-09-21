@@ -1,5 +1,7 @@
 // web/i18n/index.ts
-// agents 命名空间的文案资源出口（计划 §4：键的最终所在地 = 包的 owner）。
+// 本包自持命名空间的文案资源出口（计划 §4：键的最终所在地 = 包的 owner）。
+//
+// 当前两份：`agents`（编辑器与站点页，271 键）与 `dashboard`（概览页，3 键）。
 //
 // 为什么这批键要迁入本包：它们原本寄居在宿主 `apps/web/src/i18n/locales/*/agents.json`，
 // 但 271 个键的消费方几乎全是 agent-config 的编辑器与站点页面（当时宿主只剩未装配的
@@ -14,9 +16,11 @@
 // 未注册时 i18next 回退为 key 回显，因此宿主接线必须先于页面启用。
 
 import en from "./locales/en/agents.json";
+import dashboardEn from "./locales/en/dashboard.json";
 import zh from "./locales/zh/agents.json";
+import dashboardZh from "./locales/zh/dashboard.json";
 
-export { AGENTS_NS } from "./namespace";
+export { AGENTS_NS, DASHBOARD_NS } from "./namespace";
 
 /**
  * agents 命名空间的 en / zh 文案资源；两份键结构完全一致（缺键会让界面回退显示 key，
@@ -25,3 +29,10 @@ export { AGENTS_NS } from "./namespace";
 export const agentResources = { en, zh } as const;
 
 export type AgentResources = typeof agentResources;
+
+/**
+ * dashboard 命名空间的 en / zh 文案资源；两份键结构完全一致（同一守卫断言）。
+ */
+export const dashboardResources = { en: dashboardEn, zh: dashboardZh } as const;
+
+export type DashboardResources = typeof dashboardResources;

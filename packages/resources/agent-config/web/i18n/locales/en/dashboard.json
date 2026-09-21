@@ -1,5 +1,5 @@
 {
   "title": "Dashboard",
   "subtitle": "Real-time monitoring of AI Agent control panel",
-  "loading": "Loading dashboard..."
+  "welcome": "Welcome. Pick a module on the left to get started."
 }

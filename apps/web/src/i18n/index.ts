@@ -11,7 +11,9 @@
 // `useTranslation` 绑定（历史迁出后留下的空壳字典），连同其 JSON 一并删除，此处不再登记。中心表
 // `@fenix/web-runtime/i18n/namespace` 仍保留这四个名称常量——它是跨包共享的**名称注册表**，删常量
 // 无功能收益却要改跨包契约，取舍理由见 `review/task-1.6-web-shell.md` §7.17。
-import { AGENTS_NS, agentResources } from "@fenix/agent-config/web/i18n";
+// T11e 起 `dashboard` 也从宿主自有转出：其唯一消费方（概览占位页）随「宿主剩余页面归位」迁入
+// `@fenix/agent-config`，字典按「键的最终所在地 = 包的 owner」改由该包的 `./web/i18n` 登记。
+import { AGENTS_NS, agentResources, DASHBOARD_NS, dashboardResources } from "@fenix/agent-config/web/i18n";
 import {
   APIKEY_NS,
   apikeyResources,
@@ -41,14 +43,12 @@ import agentHomeEN from "./locales/en/agentHome.json";
 import agentPanelEN from "./locales/en/agentPanel.json";
 import commonEN from "./locales/en/common.json";
 import componentsEN from "./locales/en/components.json";
-import dashboardEN from "./locales/en/dashboard.json";
 import loginEN from "./locales/en/login.json";
 import sidebarEN from "./locales/en/sidebar.json";
 import agentHomeZH from "./locales/zh/agentHome.json";
 import agentPanelZH from "./locales/zh/agentPanel.json";
 import commonZH from "./locales/zh/common.json";
 import componentsZH from "./locales/zh/components.json";
-import dashboardZH from "./locales/zh/dashboard.json";
 import loginZH from "./locales/zh/login.json";
 import sidebarZH from "./locales/zh/sidebar.json";
 
@@ -76,7 +76,6 @@ const hostResources = {
     [NS.COMMON]: commonEN,
     [NS.LOGIN]: loginEN,
     [NS.SIDEBAR]: sidebarEN,
-    [NS.DASHBOARD]: dashboardEN,
     [NS.COMPONENTS]: componentsEN,
     [NS.AGENT_PANEL]: agentPanelEN,
     [NS.AGENT_HOME]: agentHomeEN,
@@ -85,7 +84,6 @@ const hostResources = {
     [NS.COMMON]: commonZH,
     [NS.LOGIN]: loginZH,
     [NS.SIDEBAR]: sidebarZH,
-    [NS.DASHBOARD]: dashboardZH,
     [NS.COMPONENTS]: componentsZH,
     [NS.AGENT_PANEL]: agentPanelZH,
     [NS.AGENT_HOME]: agentHomeZH,
@@ -99,6 +97,7 @@ const hostResources = {
 const packageResources = {
   en: {
     [AGENTS_NS]: agentResources.en,
+    [DASHBOARD_NS]: dashboardResources.en,
     [APIKEY_NS]: apikeyResources.en,
     [ORGS_NS]: orgResources.en,
     [MODELS_NS]: modelManagementResources.en,
@@ -117,6 +116,7 @@ const packageResources = {
   },
   zh: {
     [AGENTS_NS]: agentResources.zh,
+    [DASHBOARD_NS]: dashboardResources.zh,
     [APIKEY_NS]: apikeyResources.zh,
     [ORGS_NS]: orgResources.zh,
     [MODELS_NS]: modelManagementResources.zh,

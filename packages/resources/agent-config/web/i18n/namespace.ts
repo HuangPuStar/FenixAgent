@@ -14,3 +14,13 @@
  * 命名空间归属本包（键的最终所在地 = 包的 owner，计划 §4），因此常量也由本包声明。
  */
 export const AGENTS_NS = "agents";
+
+/**
+ * 概览页（`/agent/dashboard`）自有命名空间。
+ *
+ * 它曾作为「宿主自有命名空间」登记在 `apps/web/src/i18n/locales/<lang>/dashboard.json`，但唯一消费方
+ * `AgentDashboardPage.tsx` 随 §1.6 T11e 迁入本包，字典随之归位（同 `AGENTS_NS` 的口径）。
+ * 沿用 `"dashboard"` 原名：`@fenix/web-runtime/i18n/namespace` 的中心表已登记该名称，改名要同时
+ * 改中心表与注册点而无可观测收益。
+ */
+export const DASHBOARD_NS = "dashboard";

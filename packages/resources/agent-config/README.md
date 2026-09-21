@@ -71,11 +71,15 @@ Agent 配置资源行、关联绑定（Skill / MCP / 知识库 / 记忆）与站
   以及随 §1.6 T11e 从宿主归位的 agent-panel 页面）、
   `web/components/agent-panel/**`（`SiteFrame` / `SiteTabsBar` / `MountSiteDialog` / `AgentSitesCard`）、
   `web/api/**`、`web/hooks/**`、`web/lib/**`。
-- **i18n 自持**：`web/i18n/locales/{en,zh}/agents.json` 各 271 个键，两份键结构一致（实测比对，
-  由 `web/__tests__/agent-i18n.test.ts` 与 `agent-config-browser-surface.test.ts` 守护）；命名空间由
-  `web/i18n/namespace.ts` 给出（`AGENTS_NS`）。宿主在 i18n 初始化时经子路径
-  `@fenix/agent-config/web/i18n` 取 `agentResources.en/zh` 注册——走子路径而不是 `./web` 根入口，避免把
+- **i18n 自持**：两份命名空间。`web/i18n/locales/{en,zh}/agents.json` 各 271 个键（编辑器与站点页）；
+  `web/i18n/locales/{en,zh}/dashboard.json` 各 3 个键（`/agent/dashboard` 概览页，随该页在 §1.6 T11e 归位）。
+  两份字典各自 en/zh 键结构一致（实测比对，由 `web/__tests__/agent-i18n.test.ts` 与
+  `agent-config-browser-surface.test.ts` 守护）；命名空间常量由 `web/i18n/namespace.ts` 给出
+  （`AGENTS_NS` / `DASHBOARD_NS`）。宿主在 i18n 初始化时经子路径 `@fenix/agent-config/web/i18n` 取
+  `agentResources.en/zh` 与 `dashboardResources.en/zh` 注册——走子路径而不是 `./web` 根入口，避免把
   整棵编辑器页面图拉进首屏 bundle；未注册时 i18next 回退为 key 回显。
+  迁移时顺带修掉一处**既有缺陷**：概览页正文取 `t("welcome")` 而宿主字典只有 `loading`（无消费方），
+  迁入时按页面的实际键改为 `welcome` 并删掉 `loading`；此前该行显示的是字面量 `welcome`。
 
 ## 边界残留
 

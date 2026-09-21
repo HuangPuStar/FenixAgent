@@ -158,6 +158,7 @@ const CONSUMER_SYMBOLS: ReadonlyArray<{ symbol: string; owner: string }> = [
   { symbol: "sidebarConfigApi", owner: "src/api/sidebar-config.ts" },
   { symbol: "ensureMetaAgent", owner: "src/api/meta-agent.ts" },
   // 宿主 route adapter 取三个 agent-panel 页面（§1.6 T11e 归位，原先经 vite / tsconfig 桥接别名）
+  { symbol: "AgentDashboardPage", owner: "pages/agent-panel/pages/AgentDashboardPage.tsx" },
   { symbol: "AgentManagementPage", owner: "pages/agent-panel/pages/AgentManagementPage.tsx" },
 ];
 
@@ -325,12 +326,15 @@ describe("agent-config web 入口浏览器可达面", () => {
   });
 
   // i18n 资源必须由入口转出（宿主统一注册）；宿主删除寄居字典的前提是这里已提供。
-  test("入口导出 agents 命名空间与 en/zh 资源", () => {
+  // `dashboard` 随概览页在 T11e 归位，与该页的命名空间常量一起断言，防止「页面搬了、字典没搬」。
+  test("入口导出 agents / dashboard 命名空间与 en/zh 资源", () => {
     const source = stripComments(readFileSync(WEB_ENTRY, "utf8"));
-    expect(source).toContain("AGENTS_NS");
-    expect(source).toContain("agentResources");
+    for (const symbol of ["AGENTS_NS", "agentResources", "DASHBOARD_NS", "dashboardResources"]) {
+      expect(source).toContain(symbol);
+    }
     const i18nSource = stripComments(readFileSync(join(WEB_ROOT, "i18n", "index.ts"), "utf8"));
     expect(i18nSource).toContain("AGENTS_NS");
+    expect(i18nSource).toContain("DASHBOARD_NS");
   });
 
   // 独立上下文回归点：组织/会话上下文必须取自宿主挂载的同一份 context（§6.5 裁定），且本包不得依赖
