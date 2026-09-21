@@ -163,5 +163,8 @@
     "batchFailedWith": "Batch operation failed: {{message}}"
   },
   "headerNamePlaceholder": "Header Name",
-  "headerValuePlaceholder": "Header Value"
+  "headerValuePlaceholder": "Header Value",
+  "nav": {
+    "mcp": "Plugin Marketplace"
+  }
 }

@@ -161,5 +161,8 @@
     "batchFailedWith": "批量操作失败: {{message}}"
   },
   "headerNamePlaceholder": "Header 名称",
-  "headerValuePlaceholder": "Header 值"
+  "headerValuePlaceholder": "Header 值",
+  "nav": {
+    "mcp": "插件市场"
+  }
 }
