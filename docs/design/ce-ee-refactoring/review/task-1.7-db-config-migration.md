@@ -686,7 +686,11 @@ Provider 属别组织不产出 / Provider 行缺失不产出 / 展示名回退 /
 **验证**：`bun test packages/resources/machine packages/resources/sandbox` **651 pass / 1 fail**
 （唯一失败是 `fs-download-zip.test.ts` 在受限 PATH 下拿不到 `zip` 可执行文件，与本批无关，`which zip`
 在交互 shell 下存在）；`bun test apps/server/src/__tests__/` **639 pass / 0 fail**；
-`grep -rn 'sandbox_instance' packages/resources/machine/src` 为空；`precheck` 全绿（见提交）。
+`grep -rn 'sandbox_instance' packages/resources/machine/src` 在**生产代码**上为 0 行
+（全包共 5 行命中，全部是注释与断言文本：`machine-lifecycle-port.ts` 文件头的历史说明 2 行、
+`machine-resource-surface.test.ts` 的反向守卫说明、`machine-package-contract.test.ts` 的迁移注记、
+`remote-file-service.test.ts` 的用例注释；原写「为空」是拿全包 grep 口径当生产口径，订正见 §7.16）；
+`precheck` 全绿（见提交）。
 
 **状态**：见本批提交（§五 表 B4 前置行）。
 
@@ -815,6 +819,66 @@ B4 的残留归零，本包的残留还在。
 
 **状态**：见本批提交（§五 表 B5 行）。
 
+### 7.16 B4 前置审计整改：装配接线覆盖、端口降级语义与取证口径（2026-09-22，本批）
+
+对 B4 主体（`184adae63`）与 B4 前置（`0108b9d4a`）做了一轮独立审计（26 个代理、四视角 + 逐条反驳，
+22 条原始发现，**确认 9 条、驳回 13 条**）。确认项**没有一条是代码行为缺陷**，全部是「覆盖是否真的
+抓得住」与「文档取证口径是否属实」两类。本批逐条整改如下。
+
+**一、装配接线零覆盖（确认项中最重）**
+
+- **发现**：`createSandboxModule()` 内那一次 `bindMachineLifecyclePort(...)` 是「机器事件 → 沙盒实例投影」
+  真正发生投影的**唯一生产接线**。审计做了变异——把两个通知实现**对调**、以及把整段绑定**换成 no-op**，
+  `apps/server/src/__tests__/` 639 例与 machine + sandbox 656 例**全绿**，而生产里实例会永久停在
+  `creating` / `starting` / `recovering`（`sandboxManager.recoverAfterRestart()` 的恢复链靠这条投影闭环）。
+  成因：三段（通报 / 投影 / 接线）各有用例，唯独把两段接起来的那一行没有；`git grep -n 'createSandboxModule'
+  0108b9d4a -- '*/__tests__/*' '*.test.ts'` → 0 命中。
+- **整改**：新增 `packages/resources/sandbox/src/__tests__/sandbox-module-wiring.test.ts`（3 例）。
+  断言用**函数同一性**（`expect(port?.notifyMachineRegistered).toBe(markSandboxInstancesReadyForMachine)`），
+  同时抓得住「对调」与「换空实现」两种变异；再加一例端到端旁证（经端口通报一次，断言写出的载荷与仓储
+  自己的投影逐字一致），封堵「绑了个什么都不做的包装层」这类绕开同一性断言的改法；路由端口（
+  `resolveSandboxRoute`）一并钉住。
+- **变异确认**：把 `module.ts` 里两个通知对调 → **2 fail**（同一性 + 载荷）；还原后复绿。
+
+**二、`MachineLifecyclePort` 的「未绑定=正常降级」无断言，且端口跨文件泄漏**
+
+- **发现**：本端口与 `host-port.ts` 语义**刻意相反**（host port 未绑定即失败，本端口未绑定是正常状态），
+  但这条差异只有注释在说：`round36` / `round68` 都在 `beforeEach` 里绑记录器，**没有一条用例跑在「未绑定」
+  这个状态下**。
+- **发现（泄漏）**：两处 `afterEach` 只清 `lifecycleCalls`、不 `resetMachineLifecyclePortForTest()`，
+  而 `Bun` 在同一进程跑完整个包——端口带着上一个文件的记录器存活到下个文件。审计证据：变异
+  「`getMachineLifecyclePort()` 未绑定即 throw」下全包绿，单跑 `round39` 则 4 红，即**顺序相关的假绿**。
+- **整改**：新增 `packages/resources/machine/src/__tests__/machine-lifecycle-port.test.ts`（5 例）——
+  未绑定读取返回 `null`；未绑定端口时**注册路径**照常完成（钉住 `registry.ts` 调用点的可选链）；
+  未绑定端口时**心跳路径**照常完成（钉住 `registry-heartbeat.ts` 的可选链）；绑定守卫的两条语义
+  （二次绑定**不同**实现报错、重复绑定**同一**引用放行）一并钉住。同时给 `round36` / `round68` 的
+  `afterEach` 补 `resetMachineLifecyclePortForTest()`（文件内注释写明「只在 beforeEach 里 reset 会
+  让端口跨文件存活」）。
+- **变异确认**：让 `getMachineLifecyclePort()` 未绑定时抛错 → 新文件 **3 fail**、而 `round36` + `round68`
+  仍 **99 pass / 0 fail**——审计给出的「旧用例全绿」结论逐字复现；还原后复绿。
+
+**三、四处取证口径与计数订正（均为本批之前引入）**
+
+| 位置 | 原写 | 实测 | 订正 |
+|---|---|---|---|
+| 评审文档 §7.13 验证段、§8.4 第 2 条 | `grep -rn 'sandbox_instance' packages/resources/machine/src` **为空** | 全包 5 行命中，全是注释 / 断言文本（端口文件头 2 行、`machine-resource-surface.test.ts` 反向守卫、`machine-package-contract.test.ts` 迁移注记、`remote-file-service.test.ts` 用例注释）；**生产代码 0 行** | 改为「生产代码 0 行」并列出 5 处命中的出处 |
+| `scripts/architecture/exceptions.json`（machine 条目 `rationale`） | 同上一句 | 同上 | 同上，并补「生产侧 `from "@server` 前缀只命中 `src/server/services/registry.ts` 一个文件」 |
+| `packages/resources/machine/README.md:256` | 「本包 `src/**` 不再出现 `sandbox_instance`」 | 同上 | 改为「不再有**写**它的代码路径」+ 命中明细 |
+| `packages/resources/machine/README.md:181` | 「§1.7 B1 后剩 **2 个生产文件 + 1 个测试文件**」 | 1 个生产（`registry.ts` 的 `agent_config`）+ 2 个测试（`registry-schema.test.ts`、`machine-package-contract.test.ts` 的常量）——与同文件 :127 自相矛盾 | 改为「1 个生产文件 + 2 个测试文件」并写明是哪几个 |
+| `packages/resources/sandbox/README.md:34` | `grep -cE "^export" src/server.ts` → **22** | **23** | 改为 23（非本批引入） |
+| `packages/resources/sandbox/README.md:35` | `getSandboxDatabase` → **23 处**、`getSandboxDatabase()` → **21 处** | **25 处** / **23 处**（命中仍只落在 `db.ts` 与两个 repository） | 改为 25 / 23（B4 迁表后计数变化，本批前未同步） |
+
+**为什么「grep 为空」这类写法要订正而不是放宽**：本批的两个表迁移都以「grep 命中数」作为边界证据，
+而全包 grep 会把**注释、断言文本、扫描器夹具**一并算进去。B4 自己的测试（零容忍断言 + 负例夹具）与
+B5 的残留清单正是靠这些文本存在，口径混淆会让人误以为「代码路径已归零」，也会在下一次迁移时把
+测试文本当成待清理的残留。
+
+**验证**：`bun test packages/resources/machine packages/resources/sandbox` **664 pass / 0 fail**（68 files，
+B4 前置为 656，+8 = 新增 5 + 3）；`bun test apps/server/src/__tests__/` **639 pass / 0 fail**（46 files）；
+两次变异实验均已还原并复跑确认；`precheck` 见提交。
+
+**状态**：见本批提交 `test(ce-ee): 1.7 B4 前置 补装配接线覆盖并订正取证口径`。
+
 ## 八、已知缺口与未完成项（逐条登记 owner 与移除条件）
 
 > 依据 `ce-ee-engineering-standards.md` §10.7.4：边界豁免与依赖残留必须逐条登记并写明 owner
@@ -854,7 +918,7 @@ migration smoke（空库 + 真实历史升级库）、`deploy-preflight`、readi
 | # | 缺口 | owner | 移除条件 |
 |---|---|---|---|
 | 1 | 宿主 `apps/server/src/db/schema.ts` **无法清空**：D3 裁定把 `resource_permission`（+ 3 个 pgEnum）、`share_link`、`share_event_snapshot` 留在宿主，但 1.7 第五条验收口径是「宿主不再持有业务表定义」 | B 块收尾 | 三张表要么找到 owner（建议 `resource_permission` 归 access-control）并迁出，要么把验收口径改为「宿主只保留经裁定的例外」并同步权威设计 |
-| 2 | ~~`machine → sandbox` 的调用期表读取（`machine-sandbox-projection.ts`）在 `sandbox_instance` 迁出后构成 §2.3 类别禁则违规~~ **已闭环（§7.13，2026-09-22）**：按 §4.8 第 3 条走「投影写路径移到 sandbox 侧」，machine 只通报事件、sandbox 在自己的表上写 | ~~B4 之前~~ 已交付 | 已验证 `grep -rn 'sandbox_instance' packages/resources/machine/src` 为空、machine 的跨模块表读取降为 1 处（`agent_config`，归 B7） |
+| 2 | ~~`machine → sandbox` 的调用期表读取（`machine-sandbox-projection.ts`）在 `sandbox_instance` 迁出后构成 §2.3 类别禁则违规~~ **已闭环（§7.13，2026-09-22）**：按 §4.8 第 3 条走「投影写路径移到 sandbox 侧」，machine 只通报事件、sandbox 在自己的表上写 | ~~B4 之前~~ 已交付 | 已验证 machine 包**生产代码**里 `sandbox_instance` 命中 0 行（全包 5 行均为注释 / 断言文本，见 §7.16）、machine 的跨模块表读取降为 1 处（`agent_config`，归 B7） |
 | 3 | owner=`1.7` 的 `apps-boundary` 豁免按「该包最后一个跨模块表读取消失」逐条退场（§4.8 第 2 条）。B4 已删 1 条（sandbox，见 §7.14），**余 13 条**；其余多数要等目标表迁出后其读取点同批收口，**只能在 B 块末期集中清零** | B 块收尾 | 各目标表迁完后逐包核对「不再引用 `@server/**`」，逐条删除并留证据；`architecture:check` 的 stale 检测是充分证据 |
 | 4 | 剩余 9 批（B5–B13）各有若干跨包调用期表读取需一并**改为经 owner 公开入口或宿主注入端口取数**（§4.8 第 1 条 B1 实测 19 处为 B 块总数，B2 已收口 1 处、B3 已收口 1 处、B4 已收口 1 处——B4 消除的是**跨包写**，见 §7.14，余 16 处）；只改指 owner 的 `./db` 不算完成（§4.8 第 4 条）。**逐包清单目前无权威落点**——§4.8 #1 与本节原先的「见 §7.10」所指清单在 §7.10 中不存在，审计已指出 | 各批同批（清单并入 B 块末期，与本节第 3 条同一次扫描） | 每批交付面含全部读取点，漏改会让 preload 的模块链接期抛错（§4.8 第 1 条）、且残留 §6.1 边界 1 违规；末期逐包核对时一并产出完整清单 |
 | 5 | **门禁缺口：相对路径伸进别的包 `db/` 两道门禁都不报。** `check-architecture` 的 `CROSS_PACKAGE_SOURCE_PATH`（`scripts/check-architecture.ts:43`）与 dependency-cruiser 的 `no-cross-package-src:<pkg>`（`.dependency-cruiser.cjs:28-30`）判「跨包内部路径」时只认 `src` / `web/src`，新出现的 `db/` 不在任何一侧。审计已用夹具复现（相对路径在 `db/` 与 `src/` 两种位置均 exit 0，同路径改指别包 `src/` 则 exit 1）；当前仓库无实际违规 | B 块收尾 | 把 `db` 纳入「跨包内部路径」判定，但**只对相对路径生效**——裸说明符 `@fenix/<pkg>/db` 是 §6.1 允许的组装期出口，不能一并拦 |

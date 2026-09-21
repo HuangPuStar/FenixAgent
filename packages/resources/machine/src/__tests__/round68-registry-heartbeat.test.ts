@@ -52,6 +52,9 @@ afterEach(() => {
   heartbeat.stopHeartbeat("machine-stopped");
   heartbeat.stopMachineSweep();
   heartbeat.resetRegistryHeartbeatDeps();
+  // 端口复位也是复位的一部分：只在 beforeEach 里 reset，端口会带着本文件的记录器活到下一个文件
+  // （模块级单例，Bun 同进程跑完整个包），下一个文件若想验「未绑定」就永远验不到。
+  heartbeat.resetMachineLifecyclePortForTest();
   resetAllStubs();
 });
 

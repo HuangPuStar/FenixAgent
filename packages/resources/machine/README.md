@@ -178,7 +178,8 @@
   运行时依赖，代码证据只有一处：`src/server/services/remote-file-service.ts` 值导入 `getAgentConfigById` /
   `resolveAgentNode`。
   **为什么台账只删 3 条而不是 7 条**：反向边消失不等于环消失。本包仍有 `@server/db/schema` 这一条指向宿主的边
-  （§1.7 B1 后剩 2 个生产文件 + 1 个测试文件，均为跨模块表读取），而宿主装配 agent-runtime 与 sandbox、
+  （§1.7 B4 前置后剩 1 个生产文件 + 2 个测试文件，均为跨模块表读取：生产侧只有
+  `src/server/services/registry.ts` 的 `agent_config`），而宿主装配 agent-runtime 与 sandbox、
   agent-runtime 又依赖 sandbox、sandbox 依赖本包，于是环由 `machine → apps/server → agent-runtime → sandbox → machine` 继续闭合，
   `no-circular` 里 machine 相关的其余条目因此仍是**真实违规**（查 `scripts/architecture/exceptions.json` 时
   不能按 §5.3 的预测数删条目）。
@@ -253,7 +254,10 @@ const webFileEvents = createWebFileEventsRoutes({ authenticateRequest });
      只覆盖 `db/**`、本文件在 `src/server/services/` 下不适用。按 §4.8 第 3 条的裁定，**投影写路径移到 sandbox
      侧**：本包改为经 `machine-lifecycle-port.ts` 通报事件（`notifyMachineRegistered` / `notifyMachineHeartbeat`），
      由 `@fenix/resource-sandbox` 在 `createSandboxModule()` 注入实现在自己表上写（方向 sandbox → machine，
-     与该包已有的 `MachineSandboxRoutePort` 同形），本包 `src/**` 不再出现 `sandbox_instance`。
+     与该包已有的 `MachineSandboxRoutePort` 同形）。本包 `src/**` 不再有**写** `sandbox_instance` 的代码路径
+     （2026-09-22 实测：`grep -rn sandbox_instance src` 共 5 行命中，全部是注释与断言文本——`machine-lifecycle-port.ts`
+     文件头的历史说明 2 行、`machine-resource-surface.test.ts` 的反向守卫说明、`machine-package-contract.test.ts`
+     的迁移注记、`remote-file-service.test.ts` 的用例注释；生产代码 0 行）。
 - **service 直连 DB 未收敛**：`getMachineDatabase()` 的调用点除 3 个 repository 外，还有 3 个 service
   （`registry.ts` / `registry-heartbeat.ts` / `remote-file-service.ts`），3 个 service 合计 30 处，
   其中 `registry.ts` 一个文件 28 处。
