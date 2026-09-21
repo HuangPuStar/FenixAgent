@@ -57,14 +57,35 @@
 - 让 WebShell 从静态 registry 的资源 web contribution 收集导航、路由与页面，不允许资源模块反向决定全局布局，也不允许运行时注入路由或远程脚本。
 - 保持文件路由和生成 `routeTree` 的工具链；不手改生成文件。前端仅通过 API client 访问后端，前端可见性不能替代服务端授权。
 - 核查并修复构建别名、Vite 入口、静态资源、路由、测试与生产静态挂载，确保浏览器 bundle 不含 server-only 依赖。
+  （→ 已由 §1.6 T11e 交付：`apps/web/vite.config.ts` 与根 `tsconfig.json` 的**全部** `@/src/...` 桥接条目已删除，
+  两张表只剩宿主自有别名；跨包引用一律经各包 `exports`，浏览器 bundle 的 server-only 依赖由各包
+  `*-browser-surface.test.ts` 的静态值导入图守护 + `build:web` 复核。）
 - **分支收敛（执行本任务时必读）**：本任务与 §1.3 在 `feat/ui-components-demo` 上有并行实现（自 `d8e29658b` 分叉：250 新增 / 298 修改 / 32 重命名 / 0 删除）。阶段 1 已把其中的 `@fenix/ui-components` 与 `@fenix/web-runtime` 前置落地（未接线），接入与资源包下沉按本条执行。
   - **收敛方式：重放，不做整体合并。** 518 个文件可直接取用；只有 62 个双方都改过，需以本分支逻辑为主融合——本分支侧的改动集中在授权语义（`resourceAccess` → `scope` + `access.actions`），该分支侧绝大多数只是 import specifier 改写。
   - **identity 红线**：该分支把身份 web 职责落到了已于 §1.2 删除的 `packages/resources/identity-admin`。**不得落盘该包**；其 18 个改动全是 import 改写、零业务逻辑，按职责重定向即可。`lib/admin-key.ts` 保留在 `apps/web/src/lib/admin-key.ts` 原位（6 个资源包经 `@/src/lib/admin-key` 引用）。收尾硬检查 `git grep -n 'identity-admin'` 必须为 0。
+    （→ **收尾口径已修订**：`packages/resources/identity-admin` 目录**不存在**，全仓 0 处功能性引用；剩余命中全是
+    「迁移自 …」溯源注释、历史文档与 `rmd-06` 迁移台账数据——改写这些历史记录会伪造溯源，故保留。收尾判定因此是
+    「包不存在 + 0 处功能性引用」而不是字面上的 grep 归零，裁定见 `review/task-1.6-web-shell.md` §三。
+    另：`lib/admin-key.ts` 的现址是 `@fenix/web-runtime/lib/admin-key`——消费方（`model-management`、
+    `observer` 等）已随 §1.6 改经该出口，宿主 `apps/web/src/lib/admin-key.ts` 已不存在。）
   - **新包接入**：17 个消费包补 workspace 依赖声明。**该分支的绿灯不能作为依据**——它的 `.dependency-cruiser.cjs` 缺 `exportsFields` / `tsConfig`，`@fenix/*` 解析失败会让 `undeclared-workspace-dependency` 静默漏报。5 个自带 `paths` 的包 tsconfig（`agent-runtime`、`chat-channel`、`resources/{agent-config,model-management,memory}`）各补 `@fenix/*` 条目（`paths` 在 extends 链上是**覆盖而非合并**）。`apps/web/vite.config.ts` 的别名须指向包的 `web/` **目录**而非入口文件（字符串别名按前缀替换，指向 `index.ts` 会得到 `.../index.ts/api/request`）。
+    （→ **本条后半已作废**：§1.6 T11e 按「跨包引用一律经包 `exports`」收口，宿主两张别名表里的
+    `@/src/...` 桥接条目已**全部删除**，「别名指向 `web/` 目录还是入口文件」的选择不再存在。
+    `apps/web/vite.config.ts` 现在只保留宿主自有别名（宿主 `src/`、宿主 i18n 字典、`@server`），
+    根 `tsconfig.json` 与之逐条对应。前半条（5 个包 tsconfig 补 `@fenix/*` 条目）仍是有效约定。）
   - **台账同批削减**：`scripts/architecture/exceptions.json` 中本任务名下的 `web-package-not-to-app`、本阶段为 `@fenix/web-runtime` 登记的 `no-cross-package-src:packages/chat-channel` 等条目，须按实际残留**在同一批**改完——`scripts/check-dependency-boundaries.ts` 对「已不再违规」的条目直接失败。这些条目的 `removeWhen` 写的是「改经 WebShell 公开面**或包内自持**」，本任务走的正是「包内自持」。
   - **已知偏离**：`web-runtime/web/chat/structured-to-thread.ts` 读取 Chat Doc，与 `@fenix/chat-channel` 形成包级互引。经核查**不触发** `no-circular`（该规则是模块级闭环，出边落在 `chat-channel/src/index.ts` 而 `src/**` 不反向引用），但触发 `no-cross-package-src`——`chat-channel` 的 `exports["."]` 即 `./src/index.ts`，规则按解析后的最终路径判定，浏览器侧没有更合适的入口（`./server` 会把 node 依赖带进 bundle）。本任务按最小改动落地，把这份「Chat Doc → 展示结构」投影层交还 `packages/chat-channel/web/lib/`，而不是改写导入。
+    （→ **本条已改判（执行期裁定 §四.6）**：`chat-channel/web/lib/` 与实测不符且会新增依赖边，投影层**保留现状落点**
+    `packages/web-runtime/web/chat/`，按登记例外处理，不改写导入也不搬迁。）
   - **包内测试基础设施**：`@fenix/ui-components` 的 5 个 happy-dom 测试需要 `initializeHappyDomWindow`——happy-dom 把 `SyntaxError` 等 JS 全局定义成 Window 实例上值为 `undefined` 的可写属性，其 `SelectorParser` 会 `new this.window.SyntaxError(...)`，任何 `querySelectorAll` 都抛 `undefined is not a constructor`。为不新增 `apps-boundary` / `web-package-not-to-app` 台账条目，阶段 1 在包内落了 `web/__tests__/happy-dom-window.ts`。该 workaround 全仓已有 15 个用例（本包 5 + 既有 10），本任务应收敛为一个跨包测试工具入口（参照 `@fenix/resource-machine/server/testing` 的 `/testing` 子路径先例）并迁走全部调用方；在那之前它与 `apps/web/src/__tests__/happy-dom-window.ts` 两份实现必须同步修改。
+    （→ **已由 §1.6 T10a 交付**：单一定义落在 `@fenix/ui-components/web/testing`（`packages/ui-components/web/testing.ts`
+    的 `initializeHappyDomWindow`），原先的多份 `happy-dom-window.ts` 副本已全部退场，调用方经该导出取用。）
   - **文案断言的环境依赖（本批已修，迁移时须重新核对）**：`apps/web` 与各包的测试跑在同一 bun 进程里，`useTranslation` 的取值取决于同进程其他测试文件：组件的 import 图可能初始化宿主 i18n 单例（`apps/web/src/i18n/index.ts`），因而返回真实译文；也可能因为别的测试文件对 `react-i18next` 登记了模块 mock（全仓 6 处，如 `packages/agent-runtime/web/__tests__/file-picker-panel.test.tsx`）而回显 key——该 mock 会残留到后续文件，且此时宿主单例本身仍是真实实例（2026-09-20 用临时探针实测：整包跑时 `@/src/i18n` 仍带 `getFixedT`、语言 `en-US`，但 `t()` 已回显 key）。只认单一形态的断言在两种环境下互相矛盾，且**两个方向都会出错**——实测 `packages/agent-runtime/web/__tests__/chat-composer.test.tsx` 单文件跑 21 pass、整包跑 6 fail（该文件不注入 provider 也不 import 宿主 i18n，单跑时进程内没有可用实例、按 i18next 自身回退返回 key；整包时宿主单例已被同进程初始化）；同一组件的 `chat-composer-ssr.test.tsx` 恰好相反，整包跑绿、单跑 8 pass / 3 fail（该文件自带 `I18nextProvider`，单跑是真实译文；整包时被残留的 `react-i18next` 模块 mock 覆盖成 key 回显）。本批处置分两类，均已单跑与整包验证：**改为双形态** 3 个文件 10 处（`packages/agent-runtime/web/__tests__/chat-composer.test.tsx` 6 处、同目录 `chat-composer-ssr.test.tsx` 3 处、`apps/web/src/__tests__/agent-resource-picker-interaction.test.tsx` 1 处），同时接受「译文」与「key 回显」；**删除 key 断言** 6 个文件 14 处（`packages/agent-runtime/web/__tests__/tool-call-row-ssr.test.tsx` 6 处、同目录 `chat-empty-state.test.tsx` 3 处、`packages/agent-runtime/web/src/__tests__/message.ssr.test.tsx` 3 处、`apps/web/src/__tests__/data-table-ssr.test.tsx` 1 处、`apps/web/src/__tests__/message-additional-ssr.test.tsx` 1 处、`packages/resources/knowledge/web/src/__tests__/context-panel-ssr.test.tsx` 3 处），只保留与 i18n 状态无关的断言（结构类名、`data-*`、调用方传入的字面量、否定断言）；其中 3 个用例删后只剩否定断言会退化为恒真，改按等价稳定锚点断言（`.tool-call-row-status` 类名、Radix `aria-expanded="false"`），原因写在用例注释里。**这批断言不能只跑整包验证**，改动后每个文件都已单跑。`web/` 页面迁入包内后测试与字典的相对位置改变，同一批断言需重新核对。
+    （→ **已复核**：§1.6 T11e 三页与其字典、测试同批迁入 `@fenix/agent-config` 后，本清单里唯一落在该包内的
+    文件 `packages/resources/agent-config/web/__tests__/agent-resource-picker-interaction.test.tsx` 自
+    T10b4（`8788be029`）起未改动即通过（该页面的字典归位只改注册点，不改断言形态）；完整门禁
+    `env -u ANTHROPIC_MODEL bun run precheck` 全绿（package 7924 / web 352，0 fail），证据见
+    `review/task-1.6-web-shell.md` §7.29 与 §7.30。）
   - **顺带发现（本批未修）**：`packages/agent-runtime/web/components/chat/{ChatQuoteMessage,composer-assets}.tsx` 使用的 `composerAssets.quoteTruncatedBadge` 在宿主 `apps/web/src/i18n/locales/{en,zh}/components.json` 中**不存在**——同名键只落在 `packages/ui-components/web/i18n/locales/*/uiComponents.json`，且带 `chat.components.` 前缀，宿主 i18n 也未注册该命名空间。因此引用被截断时徽标会直接显示原始 key（原测试正是以「key 回显」断言固化了这一现象，证据即该断言本身）——属用户可见 i18n 缺陷，本批按同一规则删除该断言，缺陷本身待与 `@fenix/ui-components` 接入一起处置（→ 已由 §1.6 T9b 修复：zh 译文补齐、被删断言按真实译文恢复，证据见 `review/task-1.6-web-shell.md` §7.16）。另：`setup-mocks.ts` 中「react-i18next 不可用时按需注册 mock」的探针与回退分支已**删除**——其前提已证伪（`bun.lock` 的 integrity 与 registry.npmjs.org 的 `dist.integrity` 逐字节一致，CI 走 `bun install --frozen-lockfile`），实测探针恒为 true、回退分支从未注册，整段删除后 `precheck` 仍全绿；若将来 Bun 对根入口 named export 的解析真的回归，表现为 import 期直接失败，比 mock 兜底更易定位。
   - **依赖升级策略**：该分支带来的 42 项版本变更（含 4 个 major：`ai` ^6→^7、`motion` ^12→^13、`nanoid` ^5→^6、`react-day-picker` ^9→^10）**默认不做**；只有开发中确认「必须升级某项才能完成」时才升级该项并写明原因，非必需的保持不动。两个新包的依赖已在阶段 1 对齐到根版本，其落地不构成升级；`ai` 是后端依赖（`apps/server` 在用），不因本次前端收敛升级。
 

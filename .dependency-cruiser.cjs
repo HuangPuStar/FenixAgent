@@ -86,6 +86,9 @@ module.exports = {
     doNotFollow: { path: "node_modules" },
     // 别名表以仓库根 tsconfig.json 为唯一来源；dependency-cruiser 的 paths 以运行目录为基准，
     // 因此门禁必须在仓库根执行（package.json 的 check:dependencies 已保证这一点）。
+    // §1.6 T11e 之后这张表只剩宿主自有别名（宿主 `src/`、宿主 i18n 字典、`@server`）：指向
+    // `packages/**` 的桥接别名已全部删除，跨包引用一律经各包 `exports`——因此本门禁里出现的
+    // `@/src/*` 边必然是宿主内部引用，不再需要区分「宿主自己的文件」与「包内实现」。
     tsConfig: { fileName: "tsconfig.json" },
     enhancedResolveOptions: {
       // 本仓库的 workspace 包只有 exports、没有 main；不声明 exportsFields 会让所有

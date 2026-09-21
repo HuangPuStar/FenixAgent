@@ -10,13 +10,13 @@
 // **与 `packages/*/web` 的边界**：外壳不实现业务能力，只消费各包贡献的导航声明（见
 // `./shell-navigation.ts`）与路由目标。业务页面经 TanStack 文件路由挂在 `<Outlet/>` 上。
 
+import { AgentFormDialog } from "@fenix/agent-config/web";
 import { resolveCreatedAgentChatTarget } from "@fenix/agent-config/web/lib/agent-create-navigation";
+import { envApi } from "@fenix/agent-runtime/web/api/environments";
 import { unwrap } from "@fenix/web-runtime/api/request";
 import { dispatchConfigChange } from "@fenix/web-runtime/lib/config-events";
 import { Outlet, useNavigate, useRouterState } from "@tanstack/react-router";
 import { useCallback, useRef, useState } from "react";
-import { envApi } from "@/src/api/environments";
-import { AgentFormDialog } from "@/src/pages/agent-panel/agent-editor/AgentFormDialog";
 import { ChatArea } from "@/src/pages/agent-panel/ChatArea";
 import { AgentSidebar } from "./AgentSidebar";
 import "./agent-panel.css";

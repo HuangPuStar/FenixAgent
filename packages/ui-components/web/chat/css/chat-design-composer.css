@@ -3,7 +3,8 @@
  * 附件与引用资产、能力标签，以及宿主 agent-panel.css 的玻璃卡片补充段。
  *
  * 复制自 packages/chat-channel/web/src/pages/agent-panel/chat-design-composer.css（逐字，含色值），
- * 并追加 apps/web/src/pages/agent-panel/agent-panel.css 的 chat 段（第 920-1022 行）。
+ * 并追加宿主 `agent-panel.css`（现 `apps/web/src/shell/`）的 chat 段：该段在迁移前 1022 行版本里为
+ * 第 920-1022 行，已随 T5c2 `1fd40fb8b` 删除。
  * 源文件 658 行，因仓库 500 行红线按职责拆为：
  *   - chat-design-composer.css（本文件）：输入岛本体 + 附件/引用 + 能力标签 + 宿主补充段
  *   - chat-design-command-menu.css：命令面板（popover / inline / panel）与其分区、快捷键提示
@@ -377,7 +378,8 @@
 }
 
 /* ────────────────────────────────────────────────────────────────────────────
- * 补充段来源：apps/web/src/pages/agent-panel/agent-panel.css 第 920-1022 行
+ * 补充段来源：宿主 `agent-panel.css`（现 `apps/web/src/shell/`）迁移前 1022 行版本的第 920-1022 行；
+ * 该段已随 T5c2 `1fd40fb8b` 删除，故以下规则在本包内是唯一存续处
  * （ChatHeader 浮动玻璃卡片 + ChatComposer 玻璃命令岛 + textarea/元信息条/分隔线及 .dark 变体），
  * 规则与注释逐字复制，未改数值。
  *
@@ -501,4 +503,4 @@
   background: rgba(255, 255, 255, 0.08);
 }
 
-/* ── 补充段结束（来源：apps/web/src/pages/agent-panel/agent-panel.css 第 920-1022 行） ── */
+/* ── 补充段结束（来源：宿主 agent-panel.css 迁移前 1022 行版本的第 920-1022 行，已随 T5c2 1fd40fb8b 删除） ── */

@@ -127,9 +127,11 @@ describe("本包 i18n 字典（models 命名空间）", () => {
     // 本次（任务 1.3 缺口修复）再新增 5 个状态/可访问名键（`gateway.forbidden` +
     // `verticalModels.{searchLabel,emptyTitle,emptyDescription,clearSearch}`）共 386；
     // §1.6 T11b2 侧栏导航随项下沉再新增 `nav.{models,algorithms,verticalModels}` 3 键共 389
-    // （文案逐字取自宿主 `agentPanel` 的同名键，见 `web/contribution.ts`）。
-    expect(enKeys.size).toBe(389);
-    expect(zhKeys.size).toBe(389);
+    // （文案逐字取自宿主 `agentPanel` 的同名键，见 `web/contribution.ts`）；§1.6 T12 结清
+    // `AlgorithmsPage` / `VerticalModelsPage` 的两条跨包借键——页标题改指本包 `nav.*`，副标题落在
+    // 本包 `algorithms.subtitle` / `verticalModels.subtitle`（文案逐字取自宿主同名键）共 391。
+    expect(enKeys.size).toBe(391);
+    expect(zhKeys.size).toBe(391);
   });
 
   // 字典内不得再嵌一层命名空间前缀：宿主按 MODELS_NS 注册本文件，多一层前缀会让所有键变成 key 回显。
@@ -195,14 +197,16 @@ describe("本包 i18n 字典（models 命名空间）", () => {
     expect(MODELS_NS).toBe("models");
   });
 
-  // 包内页面只读本包命名空间与宿主 `agentPanel`（侧边栏/页面标题文案由宿主与 agent-config 的导航共享，
-  // 迁走会让宿主导航缺键）。出现第三个命名空间即说明包内又寄居了别人的键。
-  test("包内页面只使用本包命名空间与宿主 agentPanel", () => {
+  // 包内页面只读本包命名空间：`useTranslation` 的实参必须落在 `MODELS_NS`，出现别的命名空间即说明
+  // 包内又寄居了别人的键。此前豁免宿主 `NS.AGENT_PANEL`（`AlgorithmsPage` / `VerticalModelsPage` 的
+  // 页标题与副标题借键），§1.6 T12 把这两页的文案全部归位到本包后，豁免本身也失去存在理由——
+  // 留着等于给下一条跨包借键预留后门。
+  test("包内页面的 useTranslation 只使用本包命名空间", () => {
     const offenders: string[] = [];
     for (const file of sources) {
       for (const match of file.text.matchAll(/useTranslation\(\s*([^)]*?)\s*\)/g)) {
         const arg = match[1];
-        if (arg === "" || arg.includes("MODELS_NS") || arg.includes("NS.AGENT_PANEL")) continue;
+        if (arg === "" || arg.includes("MODELS_NS")) continue;
         offenders.push(`${file.path} → useTranslation(${arg})`);
       }
     }

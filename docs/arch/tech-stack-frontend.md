@@ -44,7 +44,7 @@
 
 ### 通用业务组件
 
-在 shadcn/ui 原语之上封装了一套通用业务组件（`apps/web/components/config/`），统一项目内高频交互模式：
+在 shadcn/ui 原语之上封装了一套通用业务组件（`@fenix/ui-components/web/config/`，经 `@fenix/ui-components/config/<name>` 引用），统一项目内高频交互模式：
 
 | 组件 | 用途 |
 |------|------|
@@ -53,10 +53,9 @@
 | **`ConfirmDialog`** | 确认操作对话框，支持 destructive 变体 |
 | **`BatchActionBar`** | 批量操作悬浮栏 |
 | **`EmptyState`** | 空状态占位卡片 |
-| **`ModelConfigDialog`** | 模型配置专用对话框 |
+| **`ModelConfigDialog`** | 模型配置专用对话框（归 `packages/resources/model-management/web/components/config/ModelConfigDialog.tsx`，不在 `ui-components`） |
 | **`StatusBadge`** | 状态徽标，用于标识启用/禁用等二元状态 |
 | **`ModelIcon`** | 模型图标组件，优先查本地对照表，兜底到 `@lobehub/icons`，禁止业务代码直接 import 图标 |
-| **`ModelSelectorPopover`** / **`ModelSelectorPicker`** | 模型选择器组件 |
 
 ---
 

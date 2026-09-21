@@ -69,7 +69,9 @@ const MIGRATION_PAIRS: ReadonlyArray<readonly [hostPath: string, packagePath: st
   ["apps/server/src/repositories/agent-config.ts", "src/server/repositories/agent-config.ts"],
   ["apps/web/src/api/agents.ts", "web/api/agents.ts"],
   ["apps/web/src/api/sites.ts", "web/api/sites.ts"],
-  ["apps/web/src/api/meta-agent.ts", "web/src/api/meta-agent.ts"],
+  // 目标路径与宿主旧路径不同级：§1.6 T12 把该客户端从 `web/src/api/` 提到 `web/lib/`，以窄子路径
+  // 出口 `./web/lib/meta-agent` 发布（`web/src/**` 不出现在 `exports` 里，见 web 入口头部说明）。
+  ["apps/web/src/api/meta-agent.ts", "web/lib/meta-agent.ts"],
   ["apps/web/src/api/sidebar-config.ts", "web/src/api/sidebar-config.ts"],
   ["apps/web/src/hooks/use-meta-agent.ts", "web/hooks/use-meta-agent.ts"],
   ["apps/web/components/agent-panel/AgentSitesCard.tsx", "web/components/agent-panel/AgentSitesCard.tsx"],

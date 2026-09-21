@@ -485,10 +485,14 @@
     "loading": "Loading…"
   },
   "verticalModels": {
+    "subtitle": "Fine-tuned on enterprise data, transforming general AI into business-specialized reasoning engines",
     "searchLabel": "Search vertical models",
     "emptyTitle": "No matching models",
     "emptyDescription": "Try a different keyword, or clear the search to see all models.",
     "clearSearch": "Clear search"
+  },
+  "algorithms": {
+    "subtitle": "A collection of mainstream ML algorithms — plug & play for Agent tasks"
   },
   "nav": {
     "models": "Model Library",

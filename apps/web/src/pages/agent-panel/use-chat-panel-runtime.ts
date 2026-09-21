@@ -27,13 +27,13 @@ import {
   createDeterministicRcsSessionId,
   type PublicErrorInfo,
 } from "@fenix/chat-channel";
+import { useSession } from "@fenix/identity/web";
 import { useChatPageVisible } from "@fenix/web-runtime/hooks/use-page-visible";
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
 import { useTaskViews } from "@/src/hooks/use-task-views";
 import { NS } from "@/src/i18n";
-import { useSession } from "@/src/lib/auth-client";
 import { randomUUID } from "@/src/lib/utils";
 import { type ChatAuthState, resolveChatAuthState } from "./chat-auth-state";
 import type { ChatWsConnectionState } from "./chat-visible-reconnect";

@@ -1,6 +1,8 @@
 {
-  // 别名表只在根 tsconfig.json 维护一份：前端需要跨包解析，dependency-cruiser 也以仓库根为基准
-  // 读取同一张表，重复声明会让架构门禁与实际解析漂移。rootDir 显式指向仓库根，抵消继承来的 outDir。
+  // 别名表只在根 tsconfig.json 维护一份：前端与 dependency-cruiser 都以仓库根为基准读同一张表，
+  // 重复声明会让架构门禁与实际解析漂移。rootDir 显式指向仓库根，抵消继承来的 outDir。
+  // 该表自 §1.6 T11e 起只剩宿主自有别名（宿主 `src/`、宿主 i18n 字典、`@server`）——指向 `packages/**`
+  // 的桥接条目已删除，跨包引用一律经各包 `exports`，与 `apps/web/vite.config.ts` 的别名表逐条对应。
   "extends": "../../tsconfig.json",
   "compilerOptions": {
     "rootDir": "../../",

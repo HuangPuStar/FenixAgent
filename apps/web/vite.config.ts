@@ -19,135 +19,16 @@ export default defineConfig({
   base: "/ctrl/",
   resolve: {
     alias: {
+      // 只保留宿主自有别名（宿主 `src/`、宿主 i18n 字典、`@server`）。指向 `packages/**` 的桥接别名
+      // 已随 §1.6 T11e 全部删除：每个消费方都改直连各包的公开出口（包根 `./web` 或 `./web/lib/*`
+      // 窄口），别名只会让「包内实现」在宿主侧有一个永不过期的写法。同批删除的还有根 `tsconfig.json`
+      // 里同名的一批 `paths`（两张表必须一致——dependency-cruiser 也读根表）。
+      //
+      // 保留下来的理由：这些目标就是宿主自己的文件，别名只是缩短相对路径；`@/src/i18n/locales`
+      // 必须排在 `@/src/i18n` 之前（vite 按声明顺序取首个匹配），否则字典目录会被 i18n 单例吃掉。
       "@/src/i18n/locales": path.resolve(__dirname, "src/i18n/locales"),
       "@/src/i18n": path.resolve(__dirname, "src/i18n"),
       "@/src/api/helpers": path.resolve(__dirname, "src/api/helpers.ts"),
-      "@/src/api/api-keys": path.resolve(__dirname, "../../packages/platform/identity/web/api/api-keys.ts"),
-      "@/src/api/organizations": path.resolve(__dirname, "../../packages/platform/identity/web/api/organizations.ts"),
-      "@/src/api/prod-views": path.resolve(__dirname, "../../packages/resources/prod-view/web/api/prod-views.ts"),
-      "@/src/api/agents": path.resolve(__dirname, "../../packages/resources/agent-config/web/api/agents.ts"),
-      "@/src/api/sites": path.resolve(__dirname, "../../packages/resources/agent-config/web/api/sites.ts"),
-      "@/src/components/agent-panel/AgentSitesCard": path.resolve(
-        __dirname,
-        "../../packages/resources/agent-config/web/components/agent-panel/AgentSitesCard.tsx",
-      ),
-      "@/src/components/agent-panel/MountSiteDialog": path.resolve(
-        __dirname,
-        "../../packages/resources/agent-config/web/components/agent-panel/MountSiteDialog.tsx",
-      ),
-      "@/src/pages/agent-panel/agent-editor": path.resolve(
-        __dirname,
-        "../../packages/resources/agent-config/web/pages/agent-panel/agent-editor",
-      ),
-      "@/src/pages/agent-panel/components/AgentGenerationForm": path.resolve(
-        __dirname,
-        "../../packages/resources/agent-config/web/pages/agent-panel/components/AgentGenerationForm.tsx",
-      ),
-      "@/src/pages/agent-panel/pages/AgentSitesPage": path.resolve(
-        __dirname,
-        "../../packages/resources/agent-config/web/pages/agent-panel/pages/AgentSitesPage.tsx",
-      ),
-      "@/src/api/skills": path.resolve(__dirname, "../../packages/resources/skill/web/api/skills.ts"),
-      "@/src/api/mcp": path.resolve(__dirname, "../../packages/resources/mcp/web/api/mcp.ts"),
-      "@/src/api/knowledge-bases": path.resolve(
-        __dirname,
-        "../../packages/resources/knowledge/web/api/knowledge-bases.ts",
-      ),
-      "@/src/pages/hindsight/MemoriesPage": path.resolve(
-        __dirname,
-        "../../packages/resources/memory/web/pages/hindsight/MemoriesPage.tsx",
-      ),
-      "@/src/types/knowledge": path.resolve(__dirname, "../../packages/resources/knowledge/web/types/knowledge.ts"),
-      "@/src/pages/agent-panel/components/knowledge-graph-state": path.resolve(
-        __dirname,
-        "../../packages/resources/knowledge/web/pages/agent-panel/knowledge-graph-state.ts",
-      ),
-      "@/src/lib/mcp-resource-access": path.resolve(
-        __dirname,
-        "../../packages/resources/mcp/web/lib/mcp-resource-access.ts",
-      ),
-      "@/src/pages/agent-panel/pages/AgentMcpPage": path.resolve(
-        __dirname,
-        "../../packages/resources/mcp/web/pages/agent-panel/pages/AgentMcpPage.tsx",
-      ),
-      "@/src/pages/agent-panel/pages/AgentKnowledgeBasesPage": path.resolve(
-        __dirname,
-        "../../packages/resources/knowledge/web/pages/agent-panel/pages/AgentKnowledgeBasesPage.tsx",
-      ),
-      "@/src/lib/skill-resource-access": path.resolve(
-        __dirname,
-        "../../packages/resources/skill/web/lib/skill-resource-access.ts",
-      ),
-      "@/src/pages/agent-panel/pages/AgentSkillsPage": path.resolve(
-        __dirname,
-        "../../packages/resources/skill/web/pages/agent-panel/pages/AgentSkillsPage.tsx",
-      ),
-      "@/src/api/models": path.resolve(__dirname, "../../packages/resources/model-management/web/api/models.ts"),
-      "@/src/api/environments": path.resolve(__dirname, "../../packages/agent-runtime/web/api/environments.ts"),
-      "@/src/pages/agent-panel/pages/AgentTasksPage": path.resolve(
-        __dirname,
-        "../../packages/resources/task/web/pages/agent-panel/pages/AgentTasksPage.tsx",
-      ),
-      "@/src/pages/agent-panel/pages/AgentChannelsPage": path.resolve(
-        __dirname,
-        "../../packages/resources/channel/web/pages/agent-panel/pages/AgentChannelsPage.tsx",
-      ),
-      "@/src/pages/agent-panel/pages/AgentApiKeysPage": path.resolve(
-        __dirname,
-        "../../packages/platform/identity/web/pages/agent-panel/pages/AgentApiKeysPage.tsx",
-      ),
-      // `@/src/pages/agent-panel/pages/AgentOrganizationsPage` 的别名已随 §1.6 T4 删除：
-      // 该页需要宿主注入机器注册表（`machineRegistry`），route adapter 必须直连
-      // `@fenix/identity/web` 与 `@fenix/resource-machine/web`，别名无法表达这次装配。
-      "@/src/pages/admin/AdminLogsPage": path.resolve(
-        __dirname,
-        "../../packages/resources/observer/web/pages/admin/AdminLogsPage.tsx",
-      ),
-      "@/src/pages/admin/AdminObserverPage": path.resolve(
-        __dirname,
-        "../../packages/resources/observer/web/pages/admin/AdminObserverPage.tsx",
-      ),
-      "@/src/pages/admin/AdminPeoplePage": path.resolve(
-        __dirname,
-        "../../packages/resources/observer/web/pages/admin/AdminPeoplePage.tsx",
-      ),
-      "@/src/pages/agent-panel/pages/AgentProdViewsPage": path.resolve(
-        __dirname,
-        "../../packages/resources/prod-view/web/pages/agent-panel/pages/AgentProdViewsPage.tsx",
-      ),
-      "@/src/pages/agent-panel/ProdViewsPanel": path.resolve(
-        __dirname,
-        "../../packages/resources/prod-view/web/pages/agent-panel/ProdViewsPanel.tsx",
-      ),
-      "@/src/pages/prod-view/ProdViewPage": path.resolve(
-        __dirname,
-        "../../packages/resources/prod-view/web/pages/prod-view/ProdViewPage.tsx",
-      ),
-      "@/src/pages/workflow": path.resolve(__dirname, "../../packages/resources/workflow/web/pages/workflow"),
-      "@/src/lib/model-config-utils": path.resolve(
-        __dirname,
-        "../../packages/resources/model-management/web/lib/model-config-utils.ts",
-      ),
-      "@/src/pages/admin/AdminModelGatewayPage": path.resolve(
-        __dirname,
-        "../../packages/resources/model-management/web/pages/admin/AdminModelGatewayPage.tsx",
-      ),
-      "@/src/pages/agent-panel/pages/AgentModelsPage": path.resolve(
-        __dirname,
-        "../../packages/resources/model-management/web/pages/agent-panel/pages/AgentModelsPage.tsx",
-      ),
-      "@/src/pages/agent-panel/pages/VerticalModelsPage": path.resolve(
-        __dirname,
-        "../../packages/resources/model-management/web/pages/agent-panel/pages/VerticalModelsPage.tsx",
-      ),
-      "@/src/pages/agent-panel/pages/ModelGatewayUsagePage": path.resolve(
-        __dirname,
-        "../../packages/resources/model-management/web/pages/agent-panel/pages/ModelGatewayUsagePage.tsx",
-      ),
-      // 身份客户端的唯一实现落在 @fenix/identity/web；这里保留 @/src 别名是因为资源包与
-      // agent-runtime 的 web contribution 仍以别名引用它，改直依赖会新增 resource/agent-runtime
-      // → platform-impl 的禁止边（见 scripts/lib/architecture-boundary-rules.ts §2.3）。
-      "@/src/lib/auth-client": path.resolve(__dirname, "../../packages/platform/identity/web/lib/auth-client.ts"),
       "@/src/lib/utils": path.resolve(__dirname, "src/lib/utils.ts"),
       "@/src/lib/random-uuid-polyfill": path.resolve(__dirname, "src/lib/random-uuid-polyfill.ts"),
       "@/src/lib/theme": path.resolve(__dirname, "src/lib/theme.ts"),

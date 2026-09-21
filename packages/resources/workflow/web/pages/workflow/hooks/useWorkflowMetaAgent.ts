@@ -1,4 +1,4 @@
-import { ensureMetaAgent } from "@fenix/agent-config/web";
+import { ensureMetaAgent } from "@fenix/agent-config/web/lib/meta-agent";
 import { envApi } from "@fenix/agent-runtime/web/api/environments";
 import { unwrap } from "@fenix/web-runtime/api/request";
 import { useRequest } from "ahooks";
@@ -52,8 +52,11 @@ export interface UseWorkflowMetaAgentReturn {
  * 分支把它放在 agent-config 的 `web/hooks/use-meta-agent.ts`，尚未落到本仓库；宿主同名 hook
  * `apps/web/src/hooks/useMetaAgent.ts` 当前零引用、属宿主私有）。这里只保留环境就绪这一段，
  * 不再复制一份通用 hook 文件；待 agent-config 经 `@fenix/agent-config/web` 发布 `useMetaAgent` 后，
- * 本段收敛为对该导出的调用（已登记 sharedPatch）。`ensureMetaAgent` 只能从
- * `@fenix/agent-config/web`（对方根入口）取，不得走深层路径。
+ * 本段收敛为对该导出的调用（已登记 sharedPatch）。
+ *
+ * `ensureMetaAgent` 走 agent-config 的窄子路径出口 `@fenix/agent-config/web/lib/meta-agent`
+ * （`exports` 显式声明，非深层路径）：包根 barrel 会把该包整棵页面图连同 mcp / knowledge / memory /
+ * model-management 的 web 面一起拖进本包的浏览器可达面，而这里只用得到这一个写死的 POST 客户端。
  *
  * `ensureMetaAgent` 只在面板展开时请求（收起状态不自建 environment），并用 ref 去重快速 toggle；
  * 失败只记录诊断，不打断编辑器——面板本身就是可选能力。

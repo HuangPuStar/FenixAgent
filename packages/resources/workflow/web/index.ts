@@ -16,13 +16,16 @@
  * 不再经 tsconfig/vite 别名穿透到本包 `web/pages/**`。
  *
  * 编辑器可达面的构成（白名单据此分组收录）：编辑器自身引入 `@xyflow/react`；它经
- * `hooks/useWorkflowMetaAgent.ts` 取 `@fenix/agent-config/web` 的 `ensureMetaAgent` 与
- * `@fenix/agent-runtime/web/api/environments`，而 agent-config 的包根入口是聚合 barrel（§2.3 的 web 行
- * 允许资源包经对方 `./web` 取能力），于是一次性带进 agent-config / mcp / knowledge / memory /
- * model-management 的整片 web 图与其浏览器库。这条 fan-out 是既有形态、不是本包引入的，bundle 层面
- * 也与加回入口前一致（宿主本来就按别名加载同一批文件）；代价是白名单从「本包引了哪些库」变成「本包
- * 可达面的库全集」，信号更粗——已在 `review/task-1.6-web-shell.md` 登记，收窄手段是为 agent-config
- * 的 `ensureMetaAgent` 增加窄子路径出口。
+ * `hooks/useWorkflowMetaAgent.ts` 取 `@fenix/agent-config/web/lib/meta-agent` 的 `ensureMetaAgent` 与
+ * `@fenix/agent-runtime/web/api/environments`，其余外部库都随 `@fenix/ui-components` 的共享原语进入。
+ *
+ * 该跨包腿曾是 T11e 加回入口时的最大噪音源：`ensureMetaAgent` 原从 agent-config 的**包根聚合 barrel**
+ * 取（§2.3 的 web 行允许资源包经对方 `./web` 取能力），一次带进 agent-config / mcp / knowledge /
+ * memory / model-management 的整片 web 图，本守卫的白名单因此涨到 46 条「可达面的库全集」。T12 给该
+ * 函数加了窄子路径出口（`@fenix/agent-config/web/lib/meta-agent`，只含一个 POST 客户端，无页面依赖），
+ * 跨包到达面收敛到 `web/lib/meta-agent.ts` 一个文件，白名单回到 20 条「本包/宿主自己的依赖 + 经
+ * ui-components 传递的库」。bundle 层面两次形态一致（宿主本来就加载同一批文件），差异在信号精度：
+ * 白名单重新等于「本包引了哪些库」。
  *
  * 面按「消费方实际需要」收敛：宿主控制台经本入口消费 `pages/**` 与 `api/**`。包内其余组件
  * （`components/**`）除页面已引用的之外不逐个导出——没有包外消费方时提前铺开会把内部结构固化成公共

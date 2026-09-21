@@ -1,7 +1,8 @@
 /*
  * 文件树（react-arborist 版）样式。
  *
- * 来源：`apps/web/src/pages/agent-panel/artifacts-workspace.css` 中 `.file-tree-*` 段，逐条迁移。
+ * 来源：宿主 `artifacts-workspace.css`（现 `apps/web/src/shell/`，T11d 前位于
+ * `apps/web/src/pages/agent-panel/`）中的 `.file-tree-*` 段，逐条迁移。
  * 该段原先只在 artifacts 工作区样式表里，文件树组件离开宿主后必须是自足的，故随组件收进包内。
  *
  * 迁移取舍：

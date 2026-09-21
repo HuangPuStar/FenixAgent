@@ -17,6 +17,7 @@
     "./web/lib/agent-node": "./web/lib/agent-node.ts",
     "./web/lib/agent-resource-access": "./web/lib/agent-resource-access.ts",
     "./web/lib/agent-utils": "./web/lib/agent-utils.ts",
+    "./web/lib/meta-agent": "./web/lib/meta-agent.ts",
     "./server/system-prompt": "./src/server/services/agent-system-prompt.ts",
     "./server/agent-launch-spec": "./src/server/services/agent-launch-spec/index.ts",
     "./server/agent-config-lookup": "./src/server/services/agent-config-lookup.ts",

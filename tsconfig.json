@@ -18,101 +18,18 @@
     "noEmit": true,
     "paths": {
       "@/src/*": ["./apps/web/src/*"],
-      "@/src/api/agents": ["./packages/resources/agent-config/web/api/agents.ts"],
-      "@/src/api/api-keys": ["./packages/platform/identity/web/api/api-keys.ts"],
-      "@/src/api/environments": ["./packages/agent-runtime/web/api/environments.ts"],
       "@/src/api/helpers": ["./apps/web/src/api/helpers.ts"],
-      "@/src/api/knowledge-bases": ["./packages/resources/knowledge/web/api/knowledge-bases.ts"],
-      "@/src/api/mcp": ["./packages/resources/mcp/web/api/mcp.ts"],
-      "@/src/api/models": ["./packages/resources/model-management/web/api/models.ts"],
-      "@/src/api/organizations": ["./packages/platform/identity/web/api/organizations.ts"],
-      "@/src/api/prod-views": ["./packages/resources/prod-view/web/api/prod-views.ts"],
-      "@/src/api/sites": ["./packages/resources/agent-config/web/api/sites.ts"],
-      "@/src/api/skills": ["./packages/resources/skill/web/api/skills.ts"],
-      "@/src/components/agent-panel/AgentSitesCard": [
-        "./packages/resources/agent-config/web/components/agent-panel/AgentSitesCard.tsx"
-      ],
-      "@/src/components/agent-panel/MountSiteDialog": [
-        "./packages/resources/agent-config/web/components/agent-panel/MountSiteDialog.tsx"
-      ],
       "@/src/i18n": ["./apps/web/src/i18n/index.ts"],
       "@/src/i18n/locales/*": ["./apps/web/src/i18n/locales/*"],
-      "@/src/lib/auth-client": ["./packages/platform/identity/web/lib/auth-client.ts"],
       "@/src/lib/card-renderer/*": ["./apps/web/src/lib/card-renderer/*"],
-      "@/src/lib/mcp-resource-access": ["./packages/resources/mcp/web/lib/mcp-resource-access.ts"],
-      "@/src/lib/model-config-utils": ["./packages/resources/model-management/web/lib/model-config-utils.ts"],
       "@/src/lib/random-uuid-polyfill": ["./apps/web/src/lib/random-uuid-polyfill.ts"],
-      "@/src/lib/skill-resource-access": ["./packages/resources/skill/web/lib/skill-resource-access.ts"],
       "@/src/lib/theme": ["./apps/web/src/lib/theme.ts"],
       "@/src/lib/utils": ["./apps/web/src/lib/utils.ts"],
-      "@/src/pages/admin/AdminLogsPage": ["./packages/resources/observer/web/pages/admin/AdminLogsPage.tsx"],
-      "@/src/pages/admin/AdminModelGatewayPage": [
-        "./packages/resources/model-management/web/pages/admin/AdminModelGatewayPage.tsx"
-      ],
-      "@/src/pages/admin/AdminObserverPage": ["./packages/resources/observer/web/pages/admin/AdminObserverPage.tsx"],
-      "@/src/pages/admin/AdminPeoplePage": ["./packages/resources/observer/web/pages/admin/AdminPeoplePage.tsx"],
-      "@/src/pages/agent-panel/ProdViewsPanel": [
-        "./packages/resources/prod-view/web/pages/agent-panel/ProdViewsPanel.tsx"
-      ],
-      "@/src/pages/agent-panel/agent-editor/*": [
-        "./packages/resources/agent-config/web/pages/agent-panel/agent-editor/*"
-      ],
-      "@/src/pages/agent-panel/components/AgentGenerationForm": [
-        "./packages/resources/agent-config/web/pages/agent-panel/components/AgentGenerationForm.tsx"
-      ],
-      "@/src/pages/agent-panel/components/knowledge-graph-state": [
-        "./packages/resources/knowledge/web/pages/agent-panel/knowledge-graph-state.ts"
-      ],
-      "@/src/pages/agent-panel/pages/AgentApiKeysPage": [
-        "./packages/platform/identity/web/pages/agent-panel/pages/AgentApiKeysPage.tsx"
-      ],
-      "@/src/pages/agent-panel/pages/AgentChannelsPage": [
-        "./packages/resources/channel/web/pages/agent-panel/pages/AgentChannelsPage.tsx"
-      ],
-      "@/src/pages/agent-panel/pages/AgentKnowledgeBasesPage": [
-        "./packages/resources/knowledge/web/pages/agent-panel/pages/AgentKnowledgeBasesPage.tsx"
-      ],
-      "@/src/pages/agent-panel/pages/AgentMcpPage": [
-        "./packages/resources/mcp/web/pages/agent-panel/pages/AgentMcpPage.tsx"
-      ],
-      "@/src/pages/agent-panel/pages/AgentModelsPage": [
-        "./packages/resources/model-management/web/pages/agent-panel/pages/AgentModelsPage.tsx"
-      ],
-      "@/src/pages/agent-panel/pages/AgentOrganizationsPage": [
-        "./packages/platform/identity/web/pages/agent-panel/pages/AgentOrganizationsPage.tsx"
-      ],
-      "@/src/pages/agent-panel/pages/AgentProdViewsPage": [
-        "./packages/resources/prod-view/web/pages/agent-panel/pages/AgentProdViewsPage.tsx"
-      ],
-      "@/src/pages/agent-panel/pages/AgentSitesPage": [
-        "./packages/resources/agent-config/web/pages/agent-panel/pages/AgentSitesPage.tsx"
-      ],
-      "@/src/pages/agent-panel/pages/AgentSkillsPage": [
-        "./packages/resources/skill/web/pages/agent-panel/pages/AgentSkillsPage.tsx"
-      ],
-      "@/src/pages/agent-panel/pages/AgentTasksPage": [
-        "./packages/resources/task/web/pages/agent-panel/pages/AgentTasksPage.tsx"
-      ],
-      "@/src/pages/agent-panel/pages/ModelGatewayUsagePage": [
-        "./packages/resources/model-management/web/pages/agent-panel/pages/ModelGatewayUsagePage.tsx"
-      ],
-      "@/src/pages/agent-panel/pages/VerticalModelsPage": [
-        "./packages/resources/model-management/web/pages/agent-panel/pages/VerticalModelsPage.tsx"
-      ],
-      "@/src/pages/hindsight/MemoriesPage": ["./packages/resources/memory/web/pages/hindsight/MemoriesPage.tsx"],
-      "@/src/pages/prod-view/ProdViewPage": ["./packages/resources/prod-view/web/pages/prod-view/ProdViewPage.tsx"],
-      "@/src/pages/workflow/*": ["./packages/resources/workflow/web/pages/workflow/*"],
-      "@/src/types/knowledge": ["./packages/resources/knowledge/web/types/knowledge.ts"],
-      // 此处刻意不为 @fenix/chat-channel* 声明别名（其余 @fenix/* 子路径同理）：
-      // moduleResolution 为 bundler，包内 `exports` 已声明 `.` / `./server` / `./web`，
-      // 多一份别名只会让 dependency-cruiser 按别名把合法的公开入口导入判成 src 穿透
-      // （`no-cross-package-src:packages/chat-channel` 的 21 处命中全部由此产生）。
-      // 详见 docs/design/ce-ee-refactoring/review/task-1.4-agent-runtime.md §18.3 裁定 4。
-      //
-      // 同理由，`@/src/yjs/*`（曾指向 `packages/agent-runtime/web/yjs/*`）已随 §1.6 T6e 删除：
-      // doc-hub / yjs-ws 本就经 `@fenix/agent-runtime` 根出口对外，别名只是让宿主写法与包
-      // 出口看起来像两套实现。宿主与包现在都从根出口取同一份模块实例（DocHub 是模块级单例，
-      // 双实例会导致两份 Y.Doc）。
+      // 只保留宿主自有别名。指向 `packages/**` 的一批桥接别名（`@/src/api/*`、`@/src/pages/**`、
+      // `@/src/lib/*`、`@/src/components/**`、`@/src/types/*`）已随 §1.6 T11e 全部删除：消费方改直连
+      // 各包公开出口后它们零消费，留着只会让「包内实现」在宿主侧有一个永不过期的写法。同批删除了
+      // `apps/web/vite.config.ts` 里的对应条目——两张表必须一致，dependency-cruiser 也读这张表。
+      // 宿主自有别名必须列在这里（`@/src/*` 通配只覆盖宿主 `src/`）。
       "@server/*": ["./apps/server/src/*"]
     }
   },

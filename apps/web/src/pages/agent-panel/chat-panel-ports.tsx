@@ -69,7 +69,8 @@ import { FilePickerDialog } from "@/src/components/FilePickerDialog";
  *   在任务 1.3 已改指包副本；
  * - 取出方（chat-channel `ChatInterface.flushContext`）此时仍读宿主副本——宿主副本无人写入，
  *   恒返回 `null`，workflow 注入的上下文在 1.3 之后被静默丢弃。
- * 本端口改读包副本（与写入方同实例），因此**修复**了该分裂；宿主副本待 T8 随宿主死副本一并删除。
+ * 本端口改读包副本（与写入方同实例），因此**修复**了该分裂；宿主两份副本
+ * （`apps/web/src/lib/{context-queue,structured-to-thread}.ts`）已随 §1.6 T8d 删除（`6679b4648`），包副本是唯一实现。
  * 该行为变更记录在 review 文档 §7.8、用户可见面见 §八。
  */
 

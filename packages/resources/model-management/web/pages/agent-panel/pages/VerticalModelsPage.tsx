@@ -2,7 +2,6 @@ import { AppHeader } from "@fenix/ui-components/layout/app-header";
 import { Badge } from "@fenix/ui-components/ui/badge";
 import { Button } from "@fenix/ui-components/ui/button";
 import { Input } from "@fenix/ui-components/ui/input";
-import { NS } from "@fenix/web-runtime/i18n/namespace";
 import { Search } from "lucide-react";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
@@ -101,9 +100,8 @@ const ALL_MODELS: VerticalModel[] = [
 ];
 
 export function VerticalModelsPage() {
-  // 两套命名空间各有 owner：页面标题与侧边栏文案归宿主 `agentPanel`（agent-config 的导航共享同一批键），
-  // 本页新增的搜索/空态文案归本包 `models`。变量名分开是为了让 i18n 归属在调用点上就能看出来。
-  const { t: tPanel } = useTranslation(NS.AGENT_PANEL);
+  // 本页文案全部归本包 `models`：页标题复用 `nav.verticalModels`（与宿主 `agentPanel.verticalModels`
+  // 逐字一致，判定见 `web/contribution.ts`），副标题与搜索/空态文案是本包自持键。
   const { t } = useTranslation(MODELS_NS);
   const [search, setSearch] = useState("");
 
@@ -113,7 +111,7 @@ export function VerticalModelsPage() {
   return (
     <div className="flex flex-col flex-1 h-full overflow-auto">
       <div className="px-8 pt-8 pb-0">
-        <AppHeader title={tPanel("verticalModels")} subtitle={tPanel("verticalModelsSubtitle")} />
+        <AppHeader title={t("nav.verticalModels")} subtitle={t("verticalModels.subtitle")} />
       </div>
 
       {/* 搜索栏 */}

@@ -1,7 +1,7 @@
 // ChatPanel.tsx —— 宿主侧的会话面板视图（CE 阶段 2 §1.6 T6d 从
 // `packages/agent-runtime/web/agent-panel/ChatPanel.tsx` 归位宿主并按用户裁定拆成三份）。
 //
-// 为什么归位宿主：本组件是宿主接线层，依赖只属于宿主的 `@/src/lib/auth-client`（identity 的 web）、
+// 为什么归位宿主：本组件是宿主接线层，依赖只属于宿主的身份 web 面（`@fenix/identity/web`）、
 // `@/src/hooks/*` 与 `@/src/i18n`，而 `.dependency-cruiser.cjs` 按 §2.3 禁止 agent-runtime 依赖
 // 这些包/宿主模块（此前 6 处越界登记在台账里，T6d 随搬迁消失）。
 // 拆分：本文件只做分支渲染与错误卡片；连接状态机在 `use-chat-panel-runtime.ts`，

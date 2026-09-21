@@ -230,11 +230,11 @@ if (!data?.length) return <EmptyState icon={<FolderOpen />} title={t("empty.titl
 
 ## 4. 组件规范
 
-**shadcn/ui 已有组件禁止重复开发**。`apps/web/components/ui/` 下已有的基础组件（Button、Input、Select、Dialog、Tabs、Skeleton 等 36 个），直接使用，不手写替代品。
+**shadcn/ui 已有组件禁止重复开发**。`@fenix/ui-components` 的 `web/ui/` 下已有的基础组件（Button、Input、Select、Dialog、Tabs、Skeleton 等 38 个，经 `@fenix/ui-components/ui/<name>` 引用），直接使用，不手写替代品。
 
 ### 4.1 通用业务组件
 
-`apps/web/components/config/` 下封装了项目统一的交互模式：
+`@fenix/ui-components/web/config/` 下封装了项目统一的交互模式（经 `@fenix/ui-components/config/<name>` 引用）：
 
 | 组件 | 用途 | 关键 props |
 |------|------|------------|
@@ -242,7 +242,6 @@ if (!data?.length) return <EmptyState icon={<FolderOpen />} title={t("empty.titl
 | `ConfirmDialog` | 删除确认对话框 | `variant: "destructive"` / `onConfirm` / `loading` |
 | `EmptyState` | 空状态占位 | `icon` / `title` / `description` / `action` |
 | `StatusBadge` | 状态徽标 | `status` (string，通过 colorMap 映射颜色) |
-| `AgentPageHeader` | 统一页面标题栏 | `title` / `subtitle` / `actions` |
 
 ### 4.2 Dialog 状态管理
 
@@ -268,7 +267,7 @@ import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod/v4";
 import { useRequest } from "ahooks";
-import { FormDialog } from "@/components/config/FormDialog";
+import { FormDialog } from "@fenix/ui-components/config/FormDialog";
 
 const formSchema = z.object({
   name: z.string().min(1, "名称不能为空"),
@@ -345,7 +344,7 @@ import { Link, useNavigate } from "@tanstack/react-router";
 
 // 3. 第三方 UI 库
 import { Bot, Plus, Search, Trash2 } from "lucide-react";
-import { Skeleton } from "@/components/ui/skeleton";
+import { Skeleton } from "@fenix/ui-components/ui/skeleton";
 
 // 4. 项目内部模块
 import { taskApi } from "@/src/api/tasks";
@@ -793,7 +792,7 @@ t("toast.saved", { name: item.name })  // 插值
 <div className="space-y-3">
 ```
 
-`cn()` 仅限 `apps/web/components/ui/` 下的基础组件使用，业务页面直接写 className 字符串。
+`cn()` 仅限 `@fenix/ui-components` 的 `web/ui/` 基础组件使用，业务页面直接写 className 字符串。
 
 ### 10.2 图标
 
