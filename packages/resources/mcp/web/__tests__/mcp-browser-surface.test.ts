@@ -55,17 +55,12 @@ const BROWSER_SAFE_EXTERNAL: ReadonlyMap<string, string> = new Map([
   ["@radix-ui/react-collapsible", "无样式原语（ui/collapsible 传递依赖，编辑器 OAuth 折叠面板）"],
   ["@radix-ui/react-tabs", "无样式原语（ui/tabs 传递依赖，编辑器手工/JSON 双 Tab）"],
   ["@radix-ui/react-scroll-area", "无样式原语（ui/scroll-area 传递依赖）"],
-  ["@radix-ui/react-label", "无样式原语（ui/label 传递依赖，经 identity 的 API Key 页面进入）"],
+  ["@radix-ui/react-label", "无样式原语（ui/label 传递依赖，编辑器表单字段）"],
   ["class-variance-authority", "类名变体工具（ui/* 传递依赖），纯函数"],
   ["clsx", "类名拼接工具（lib/cn 传递依赖），纯函数"],
   ["tailwind-merge", "Tailwind 类名去重（lib/cn 传递依赖），纯函数"],
   ["react-hook-form", "表单状态库（ui-components config/FormDialog 传递依赖）"],
   ["@hookform/resolvers", "表单校验桥接（config/FormDialog 的 zodResolver）"],
-  // 经 @fenix/identity/web 子路径传递进入：身份浏览器入口（§6.5 裁定 useOrg 必须取宿主同一份 context）
-  ["@tanstack/react-router", "浏览器路由（identity OrgContext 的导航用）"],
-  ["better-auth", "认证客户端 SDK（identity lib/auth-client 的 client/react 入口）"],
-  ["@better-auth/api-key", "API Key 客户端插件（identity lib/auth-client）"],
-  ["@noble/ciphers", "纯 JS 密码学实现（identity lib/password-crypto），无 node 依赖"],
 ]);
 
 /**
@@ -134,18 +129,18 @@ describe("mcp web 入口浏览器可达面", () => {
     expect(reachedWebFiles.size).toBeGreaterThanOrEqual(9);
 
     // 跨包递归的有效性：钉住每个上游包一条稳定路径（ui-components 的按钮与表单弹窗、web-runtime 的
-    // request/namespace、identity 的组织 context）。少了这一段，「@fenix/* 被当成外部依赖放过」
+    // request/namespace/org-session 契约）。少了这一段，「@fenix/* 被当成外部依赖放过」
     // 会以「包内断言全绿」的形式漏网。
     for (const expected of [
       "packages/ui-components/web/ui/button.tsx",
       "packages/ui-components/web/config/FormDialog.tsx",
       "packages/web-runtime/web/api/request.ts",
       "packages/web-runtime/web/i18n/namespace.ts",
-      "packages/platform/identity/web/contexts/OrgContext.tsx",
+      "packages/web-runtime/web/contexts/org-session.tsx",
     ]) {
       expect(reachedPackageFiles).toContain(expected);
     }
-    expect(reachedPackageFiles.size).toBeGreaterThanOrEqual(30);
+    expect(reachedPackageFiles.size).toBeGreaterThanOrEqual(20);
   });
 
   // 2026-08-17 事故的形态：`@fenix/<pkg>/<subpath>` 看起来像外部依赖，实则是穿透入口。
@@ -254,11 +249,15 @@ describe("mcp web 入口浏览器可达面", () => {
     }
   });
 
-  // 组织上下文必须取宿主挂载的同一份 React context 实例（§6.5 裁定）；包内另建一份会让 `useOrg`
-  // 永远拿到默认值，且这种缺陷在界面上只表现为「权限判定全体失效」，很难从现象反推。
-  test("组织上下文取自 @fenix/identity/web，包内不另建 context", () => {
+  // 组织上下文必须取宿主挂载的同一份 React context 实例（§6.5 裁定），且资源包不得依赖平台实现
+  // （§2.3 `special-dependency`）；§1.6 T7 把两者同时满足的落点定为 `@fenix/web-runtime` 的 org/session
+  // 契约——实现方仍是身份包的 `OrgProvider`（它包一层 `OrgSessionProvider`），资源包因此既拿到同一份
+  // context 实例，又只依赖契约。包内另建一份会让组织/会话取值永远拿到默认值，这种缺陷在界面上只表现为
+  // 「权限判定全体失效」，很难从现象反推。
+  test("组织上下文取自 @fenix/web-runtime/contexts/org-session，包内不另建 context", () => {
     const page = readFileSync(join(WEB_ROOT, "pages/agent-panel/pages/AgentMcpPage.tsx"), "utf8");
-    expect(page).toContain('from "@fenix/identity/web"');
+    expect(page).toContain('from "@fenix/web-runtime/contexts/org-session"');
+    expect(page).not.toContain("@fenix/identity");
     const offenders = collectSources(WEB_ROOT).filter((file) =>
       /\bcreateContext\b/.test(stripComments(readFileSync(file, "utf8"))),
     );

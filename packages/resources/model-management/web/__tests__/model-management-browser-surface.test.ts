@@ -36,8 +36,8 @@ const PKG_NAME = (JSON.parse(readFileSync(join(PKG_ROOT, "package.json"), "utf8"
  * `package.json` 的依赖声明一一对应。workspace 包一律不收录——它们必须被递归进入，否则
  * `@fenix/x/server` 又能穿透（见「白名单不收录 workspace 包」）。
  *
- * 兄弟包经 `@fenix/ui-components` / `@fenix/web-runtime` / `@fenix/identity` / 资源包子路径带进来的
- * 外部库（`@radix-ui/*`、`better-auth`、knowledge 的 `mammoth` 等）**不在此列**：那些引用由各自包内的
+ * 兄弟包经 `@fenix/ui-components` / `@fenix/web-runtime` / 资源包子路径带进来的
+ * 外部库（`@radix-ui/*`、knowledge 的 `mammoth` 等）**不在此列**：那些引用由各自包内的
  * 同款守卫评审（见 ownRefs）。未收录的自有依赖一旦被引入就会让本测试变红，从而强制一次浏览器可用性评审。
  */
 const BROWSER_SAFE_EXTERNAL: ReadonlyMap<string, string> = new Map([
@@ -106,14 +106,16 @@ describe("model-management web 入口浏览器可达面", () => {
     }
     expect(reachedWebFiles.size).toBeGreaterThanOrEqual(25);
 
-    // 跨包递归的有效性：只钉稳定路径——ui-components 的按钮、web-runtime 的 request、identity 的组织
-    // context、兄弟资源包（observer / sandbox）的包根入口。少了这一段，「@fenix/* 被当成
+    // 跨包递归的有效性：只钉稳定路径——ui-components 的按钮、web-runtime 的 request 与 org/session
+    // 契约、兄弟资源包（observer / sandbox）的包根入口。少了这一段，「@fenix/* 被当成
     // 外部依赖放过」会以「包内断言全绿」的形式漏网。
     // 这里不再钉 knowledge：`EmbeddingModelManager` 收归 knowledge 后，本包与它已无值导入边。
+    // 也不再钉 identity：§1.6 T7 后本包的组织/会话取值经 `@fenix/web-runtime` 契约，
+    // 图里已没有 platform-impl 这条边（`special-dependency` 同批归零）。
     for (const expected of [
       "packages/ui-components/web/ui/button.tsx",
       "packages/web-runtime/web/api/request.ts",
-      "packages/platform/identity/web/index.ts",
+      "packages/web-runtime/web/contexts/org-session.tsx",
       "packages/resources/observer/web/index.ts",
       "packages/resources/sandbox/web/index.ts",
     ]) {

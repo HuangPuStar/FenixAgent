@@ -1,10 +1,12 @@
 import { unwrap } from "@fenix/web-runtime/api/request";
+import { OrgSessionProvider } from "@fenix/web-runtime/contexts/org-session";
 import { NS } from "@fenix/web-runtime/i18n/namespace";
 import { useNavigate } from "@tanstack/react-router";
 import { createContext, type ReactNode, useCallback, useContext, useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
 import { orgApi } from "../api/organizations";
+import { useSession } from "../lib/auth-client";
 
 interface OrgInfo {
   id: string;
@@ -50,6 +52,9 @@ function installFetchInterceptor() {
 export function OrgProvider({ children }: { children: ReactNode }) {
   const navigate = useNavigate();
   const { t } = useTranslation(NS.COMPONENTS);
+  // 会话是资源包判断资源归属的另一半（`userId`）；本 Provider 是 `OrgSession` 契约的实现方，
+  // 因此在这里订阅一次，投影给下游，而不是让每个资源包各自再取一份会话。
+  const { data: session, isPending: sessionPending } = useSession();
   const [org, setOrg] = useState<OrgInfo | null>(null);
   const [role, setRole] = useState<string | null>(null);
   const [orgs, setOrgs] = useState<OrgWithRole[]>([]);
@@ -126,7 +131,24 @@ export function OrgProvider({ children }: { children: ReactNode }) {
     [org, role, orgs, loading, switchOrg, refreshOrgs],
   );
 
-  return <OrgContext.Provider value={value}>{children}</OrgContext.Provider>;
+  // 资源包可见的投影（`@fenix/web-runtime/contexts/org-session`）。`isOwner` 取 `role === "owner"`：
+  // 角色字符串是身份域词汇，不下沉给资源包。
+  const orgSessionValue = useMemo(
+    () => ({
+      organizationId: org?.id ?? null,
+      userId: session?.user?.id ?? null,
+      isOwner: role === "owner",
+      // 组织列表与会话各自可能在解析中；任一未就绪都意味着投影里的字段还不是最终值。
+      pending: loading || sessionPending,
+    }),
+    [org, session, role, loading, sessionPending],
+  );
+
+  return (
+    <OrgSessionProvider value={orgSessionValue}>
+      <OrgContext.Provider value={value}>{children}</OrgContext.Provider>
+    </OrgSessionProvider>
+  );
 }
 
 export function useOrg() {

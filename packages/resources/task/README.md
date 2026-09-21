@@ -177,12 +177,14 @@ packages/resources/task` 为 0（按 import 形态而不是裸包名核对：裸
   owner 已为 1.7、rationale 记为「仅剩表定义导入」（`scripts/architecture/exceptions.json`，属计划 §4 的
   W3 独占写入范围，本包只读不改）。
 - **浏览器面守卫的断言范围收在「本包 + 共享基础设施包」**（2026-09-20 W2.5 实测并已按此实现）：本包经
-  `@fenix/agent-config/web` 消费兄弟资源包，后者又按 §6.5 消费 `@fenix/identity/web`（`useOrg` 必须取宿主
-  同一份 context），于是 identity 尚未迁完的 `web/**`（`grep -rnE 'from "@/' packages/platform/identity/web`
-  当日实测 35 → 44 处，随该包迁移进度变动；另有 `better-auth` 等库）会经两跳
-  进入本包的值导入图。这类**上游迁移中间态**不算本包红线（一个文件只有一个 owner）：identity 的别名债务由
-  直接依赖它的 `packages/resources/agent-config/web/__tests__/agent-config-browser-surface.test.ts` 以
-  `UPSTREAM_ALIAS_DEBT_DIRS` 登记；本包只保留对它的「解析 / 穿透 / node 内建 / `@server`」断言。
+  `@fenix/agent-config/web` 消费兄弟资源包，而兄弟包的文件不属本包红线（一个文件只有一个 owner），其内部
+  卫生由各自的 `web/__tests__/*-browser-surface` 守卫负责；本包对它们只保留「解析 / 穿透 / node 内建 /
+  `@server`」断言。这条范围当初由**上游迁移中间态**触发：`@fenix/agent-config/web` 曾按 §6.5 消费
+  `@fenix/identity/web`（`useOrg` 取宿主同一份 context），于是 identity 尚未迁完的 `web/**`（当日实测
+  35 → 44 处别名，另有 `better-auth` 等库）经两跳进入本包的值导入图，由 agent-config 以
+  `UPSTREAM_ALIAS_DEBT_DIRS` 登记。§1.6 T7 后那条边已不存在——组织/会话取值改经 `@fenix/web-runtime` 的
+  `contexts/org-session` 契约，identity 不再进入任何资源包的值导入图。范围规则本身保留（它表达的是
+  owner 边界，不依赖当下是否有债务），只是不再有正在生效的例外。
   反之，共享基础设施包（ui-components / web-runtime）是白名单断言的责任范围，其新增外部库必须在这里评审。
 - **`manifest.web` / `contributions` 未声明**：形状必须与 `mountContribution`（§1.5）与 WebShell（§1.6）的
   消费端同时定型，单方面发明会返工。

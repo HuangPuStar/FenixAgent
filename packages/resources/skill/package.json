@@ -3,7 +3,6 @@
   "private": true,
   "type": "module",
   "dependencies": {
-    "@fenix/identity": "workspace:*",
     "@fenix/logger": "workspace:*",
     "@fenix/platform-sdk": "workspace:*",
     "@fenix/ui-components": "workspace:*",

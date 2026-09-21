@@ -105,10 +105,6 @@ const BROWSER_SAFE_EXTERNAL: ReadonlyMap<string, string> = new Map([
   ["cytoscape", "图可视化（memory 图谱组件传递依赖），纯浏览器实现"],
   ["cytoscape-fcose", "cytoscape 布局插件（同上）"],
   ["@chenglou/pretext", "排版测量（memory 对话文本层传递依赖），纯浏览器实现"],
-  // 经 @fenix/identity/web 子路径传递进入（§6.5 裁定 useOrg 必须取宿主同一份 context）
-  ["better-auth", "认证客户端 SDK（identity lib/auth-client 的 client/react 入口）"],
-  ["@better-auth/api-key", "API Key 客户端插件（identity lib/auth-client）"],
-  ["@noble/ciphers", "纯 JS 密码学实现（identity lib/password-crypto），无 node 依赖"],
 ]);
 
 // 曾有一张 `PENDING_MIGRATION_DIRS` 登记表：迁移期允许「跨包宿主别名只来自已登记目录」，被登记的包迁完后

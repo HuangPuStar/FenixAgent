@@ -54,7 +54,7 @@ const BROWSER_SAFE_EXTERNAL: ReadonlyMap<string, string> = new Map([
   ["remark-gfm", "GFM 插件（本包 dependencies），纯函数"],
   ["sonner", "Toast 渲染（本包 dependencies）"],
   ["xlsx", "表格解析（本包 dependencies），纯 JS"],
-  // 经 @fenix/ui-components / @fenix/identity / @fenix/model-management 子路径传递进入的浏览器库
+  // 经 @fenix/ui-components / @fenix/web-runtime / @fenix/model-management 子路径传递进入的浏览器库
   ["@radix-ui/react-alert-dialog", "无样式原语（ui/alert-dialog 传递依赖）"],
   ["@radix-ui/react-checkbox", "无样式原语（ui/checkbox 传递依赖）"],
   ["@radix-ui/react-dialog", "无样式原语（ui/dialog、config/ConfirmDialog 传递依赖）"],
@@ -134,7 +134,7 @@ describe("knowledge web 入口浏览器可达面", () => {
       "packages/ui-components/web/ui/button.tsx",
       "packages/web-runtime/web/api/request.ts",
       "packages/web-runtime/web/i18n/namespace.ts",
-      "packages/platform/identity/web/index.ts",
+      "packages/web-runtime/web/contexts/org-session.tsx",
     ]) {
       expect(reachedPackageFiles).toContain(expected);
     }

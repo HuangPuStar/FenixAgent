@@ -1,4 +1,3 @@
-import { useOrg } from "@fenix/identity/web";
 import { modelApi } from "@fenix/model-management/web";
 import type { KnowledgeBaseInfo } from "@fenix/resource-knowledge/web";
 import { kbApi } from "@fenix/resource-knowledge/web";
@@ -13,6 +12,7 @@ import {
   skillConfigApi,
 } from "@fenix/resource-skill/web";
 import { unwrap } from "@fenix/web-runtime/api/request";
+import { useOrgSession } from "@fenix/web-runtime/contexts/org-session";
 import { dispatchConfigChange } from "@fenix/web-runtime/lib/config-events";
 import type { AgentDetail, ResourceAccessActions, ResourceScopeView } from "@fenix/web-runtime/types/config";
 import { useRequest } from "ahooks";
@@ -115,8 +115,11 @@ export function useAgentEditor(options: UseAgentEditorOptions) {
   const [progressiveData, setProgressiveData] = useState<AgentEditorData | null>(null);
   const [restartDialogOpen, setRestartDialogOpen] = useState(false);
   // MCP 选项分组要区分本组织与共享来源，而 `/web` 视图只返回 scope，必须与当前组织 id 比对。
-  const { org } = useOrg();
-  const activeOrganizationId = org?.id;
+  // 取值经 `@fenix/web-runtime` 的 org/session 契约（§1.6 T7），实现方是身份包的 `OrgProvider`。
+  const { organizationId } = useOrgSession();
+  // 契约用 `null` 表示「无活动组织」，本包比较函数与子组件的入参口径是 `string | undefined`：
+  // 在取值处一次归一，调用点保持既有形状，避免把 `| null` 扩散进各处签名。
+  const activeOrganizationId = organizationId ?? undefined;
 
   const loadService = useCallback(async (): Promise<AgentEditorData> => {
     if (mode === "edit" && !agentName) throw new Error(t("editor.missingTarget"));

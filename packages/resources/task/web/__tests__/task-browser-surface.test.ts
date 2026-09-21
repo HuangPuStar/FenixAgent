@@ -19,7 +19,8 @@
 // 「解析 / 穿透 / node 内建 / `@server`」断言：它们的内部卫生由各自包的 `web/__tests__/*-browser-surface`
 // 守卫负责（守卫模板要求每个带 `web/` 的资源包都建一份），一个文件只有一个 owner。
 // 为什么需要这条范围：本包经 `@fenix/agent-config/web`（`agentApi`）合法消费兄弟资源包，后者又按 §6.5
-// 消费 `@fenix/identity/web`（`useOrg` 必须取宿主同一份 context）。这类**上游迁移中间态**若算进
+// 消费组织上下文（§1.6 T7 起经 `@fenix/web-runtime` 的 org/session 契约，不再直接依赖 `@fenix/identity`）。
+// 这类**上游迁移中间态**若算进
 // 本包红线，本包守卫就会随别人的进度变红、失去定位能力。2026-09-20 时 identity 的 `web/**` 尚有
 // 大量 `@/` 别名（两次实测 35 → 44 处），由直接依赖它的
 // `packages/resources/agent-config/web/__tests__/agent-config-browser-surface.test.ts` 以
