@@ -9,10 +9,10 @@
 // `WorkflowVersions` 用 `<Link>` 渲染编辑入口，脱离 RouterProvider 会抛错，这里只需要它渲染成一个可点的元素。
 
 import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
+import { initializeHappyDomWindow } from "@fenix/ui-components/testing";
 import { Window } from "happy-dom";
 import { act, createElement, type FC, type ReactNode } from "react";
 import { createRoot, type Root } from "react-dom/client";
-import { initializeHappyDomWindow } from "./happy-dom-window";
 
 (globalThis as Record<string, unknown>).IS_REACT_ACT_ENVIRONMENT = true;
 

@@ -4,6 +4,7 @@
 // 同进程 i18n 单例状态（见 §1.6 的文案断言说明），断言文案会引入环境相关的假绿/假红。
 
 import { afterEach, describe, expect, test } from "bun:test";
+import { initializeHappyDomWindow } from "@fenix/ui-components/testing";
 import { ApiError } from "@fenix/web-runtime/api/request";
 import { Window } from "happy-dom";
 import i18next from "i18next";
@@ -13,7 +14,6 @@ import { I18nextProvider } from "react-i18next";
 import { HINDSIGHT_NS, hindsightResources } from "../i18n";
 import { HindsightFailureNotice } from "../pages/hindsight/components/HindsightFailureNotice";
 import { toHindsightFailure } from "../pages/hindsight/failure";
-import { initializeHappyDomWindow } from "./happy-dom-window";
 
 (globalThis as Record<string, unknown>).IS_REACT_ACT_ENVIRONMENT = true;
 

@@ -16,7 +16,7 @@ if (typeof (globalThis as Record<string, unknown>).window === "undefined") {
  * 却因导入组件模块而连带加载 `antd-style` 的用例（`agent-form-dialog-*`、`agent-resource-picker-*`
  * 等）。这是**最小垫片，不是 DOM**：只补齐「有 window 就必须有 matchMedia」这一条隐含契约，让加载期
  * 守卫与断点判定退回默认分支；需要真实 DOM 的用例仍各自显式建立 happy-dom Window
- *（`apps/web/src/__tests__/happy-dom-window.ts`）。
+ *（`@fenix/ui-components/testing` 的 `initializeHappyDomWindow`，全仓唯一实现）。
  *
  * 与包侧记录的阻断项一致（`packages/resources/model-management/web/__tests__/provider-model-resource-access-flow.test.ts`
  * 与 `packages/resources/agent-config/web/__tests__/agent-config-browser-surface.test.ts` 均以「补齐

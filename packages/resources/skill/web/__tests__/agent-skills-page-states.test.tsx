@@ -93,6 +93,7 @@ afterEach(() => {
   mock.restore();
 });
 
+import { initializeHappyDomWindow } from "@fenix/ui-components/testing";
 import { OrgSessionProvider } from "@fenix/web-runtime/contexts/org-session";
 import { Window } from "happy-dom";
 import { act, createElement, type ReactNode } from "react";
@@ -100,7 +101,6 @@ import { createRoot, type Root } from "react-dom/client";
 import { skillResources } from "../i18n";
 import { AgentSkillsPage } from "../pages/agent-panel/pages/AgentSkillsPage";
 import type { SkillInfo } from "../pages/agent-panel/pages/agent-skills-types";
-import { initializeHappyDomWindow } from "./happy-dom-window";
 
 const dialogProbe = (label: string, onClick: () => void) =>
   createElement("button", { type: "button", "data-testid": label, onClick }, label);

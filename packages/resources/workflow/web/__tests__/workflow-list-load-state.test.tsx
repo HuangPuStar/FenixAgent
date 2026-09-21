@@ -9,10 +9,10 @@
 // react-i18next / sonner 模块替身（本包既有前端测试都是这个形状）。
 
 import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
+import { initializeHappyDomWindow } from "@fenix/ui-components/testing";
 import { Window } from "happy-dom";
 import { act, createElement, type FC } from "react";
 import { createRoot, type Root } from "react-dom/client";
-import { initializeHappyDomWindow } from "./happy-dom-window";
 
 (globalThis as Record<string, unknown>).IS_REACT_ACT_ENVIRONMENT = true;
 
