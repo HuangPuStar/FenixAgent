@@ -136,9 +136,11 @@ describe("workflow 字典完整性", () => {
   });
 
   // 顶层键组是宿主接线与页面消费面契约：新增组必须同步两份字典（缺一组会整片回显 key）。
+  // `nav` 组的消费方是 web contribution 的导航项（`nav.workflow`，由 Shell 侧 `t(labelKey, { ns })`
+  // 取值，见 web/contribution.ts 与 §1.6 T11b），不是页面源码里的字面量 `t()`，因此必须列在这里。
   test("顶层键组与页面消费面一致", () => {
     const groups = Object.keys(EN).sort();
-    expect(groups).toEqual(["editor", "end_node", "list", "nodes", "page", "run_params", "runs", "versions"]);
+    expect(groups).toEqual(["editor", "end_node", "list", "nav", "nodes", "page", "run_params", "runs", "versions"]);
     expect(Object.keys(ZH).sort()).toEqual(groups);
   });
 });

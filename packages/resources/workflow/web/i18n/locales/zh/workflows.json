@@ -452,5 +452,8 @@
     "breadcrumb_back": "工作流",
     "breadcrumb_edit": "编辑",
     "breadcrumb_versions": "版本"
+  },
+  "nav": {
+    "workflow": "智能体编排"
   }
 }
