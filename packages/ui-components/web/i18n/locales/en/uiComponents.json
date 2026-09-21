@@ -151,7 +151,17 @@
         "uploadedImage": "Uploaded image"
       },
       "periTask": {
+        "detailClose": "Close",
+        "detailExpired": "This task detail has expired.",
+        "detailLoadFailed": "Failed to load detail",
+        "detailLoading": "Loading detail...",
+        "detailRetry": "Retry",
+        "detailTitle": "Task detail",
+        "detailUnavailable": "Peri did not provide detail for this task.",
+        "kindBackground": "Background",
+        "kindSubagent": "Subagent",
         "loading": "Loading tasks...",
+        "previewOnly": "Summary only",
         "reconnecting": "Reconnecting — task list may be incomplete",
         "status": {
           "cancelled": "Cancelled",

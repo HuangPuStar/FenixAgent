@@ -8,6 +8,7 @@ import {
   IMAGE_COMPRESSION_OPTIONS,
   type UploadComposerFiles,
 } from "@fenix/ui-components/chat/composer/composer-file-processing";
+import { PeriTaskDetailSheet } from "@fenix/ui-components/chat/panels/PeriTaskDetailSheet";
 import type { ChatNotice, ChatStatsSummary } from "@fenix/ui-components/chat/shell/chat-interface-types";
 import type { PeriTaskViewProjection, StructuredMessage, ThreadEntry } from "@fenix/ui-components/chat/types";
 import { flushContext } from "@fenix/web-runtime/chat/context-queue";
@@ -17,9 +18,9 @@ import { ChatStatsDispatcher } from "@fenix/web-runtime/lib/chat-stats";
 import imageCompression from "browser-image-compression";
 import { type ReactNode, useCallback, useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
+import { getPeriTaskDetail } from "@/src/api/peri-task-details";
 import { FilePickerDialog } from "@/src/components/FilePickerDialog";
 import { uploadComposerFiles } from "../components/chat/composer-file-processing";
-import { PeriTaskDetailSheet } from "../components/chat/PeriTaskDetailSheet";
 
 /**
  * ChatPanel → `@fenix/ui-components/chat/shell/ACPMain` 的宿主端口装配（CE 阶段 2 任务 1.6 T5c2）。
@@ -33,7 +34,7 @@ import { PeriTaskDetailSheet } from "../components/chat/PeriTaskDetailSheet";
  *
  * | 端口 | 源实现位置 | 本模块做法 |
  * | --- | --- | --- |
- * | `renderPeriTaskDetail` | `ChatInterface` 直接渲染 agent-runtime 的 `PeriTaskDetailSheet` | 同一组件经注入槽渲染；无 `sessionId`（无详情接口）、无 `agentId` 时不给槽（任务行只读，与源 `agentId && detailSessionId` 判定一致） |
+ * | `renderPeriTaskDetail` | `ChatInterface` 直接渲染 agent-runtime 的 `PeriTaskDetailSheet` | 组件已迁 `@fenix/ui-components/chat/panels/PeriTaskDetailSheet`（§1.6 T6a），经注入槽渲染；详情取数由本模块注入 `getPeriTaskDetail`（宿主 API 客户端），包内不依赖资源包；无 `sessionId`（无详情接口）、无 `agentId` 时不给槽（任务行只读，与源 `agentId && detailSessionId` 判定一致） |
  * | `sidebarOpen` / `onSidebarOpenChange` | `ACPMain` 内 `localStorage` 键 `acp-sidebar-open`（缺省展开） | 同一个键、同一处持久化时机（切换时写入），状态由本 hook 受控持有 |
  * | `projectEntries` | `ChatInterface` 直接调用 `@/src/lib/structured-to-thread` | `@fenix/web-runtime/chat/structured-to-thread`（投影函数与宿主副本逐字一致，已核对；纯函数，无双实例状态问题） |
  * | `flushContext` | `ChatInterface` 直接调用 `@/src/lib/context-queue`（**宿主副本**） | `@fenix/web-runtime/chat/context-queue`（**包副本**）——见下方「上下文队列双副本」 |
@@ -168,7 +169,13 @@ export function useChatPanelPorts({
   const renderPeriTaskDetail = useMemo(() => {
     if (!agentId || !sessionId) return;
     return (task: PeriTaskViewProjection, close: () => void) => (
-      <PeriTaskDetailSheet environmentId={agentId} sessionId={sessionId} task={task} onClose={close} />
+      <PeriTaskDetailSheet
+        environmentId={agentId}
+        sessionId={sessionId}
+        task={task}
+        onClose={close}
+        loadDetail={getPeriTaskDetail}
+      />
     );
   }, [agentId, sessionId]);
 

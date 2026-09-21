@@ -176,6 +176,10 @@
       "types": "./web/chat/narrators/write.ts",
       "default": "./web/chat/narrators/write.ts"
     },
+    "./chat/panels/PeriTaskDetailSheet": {
+      "types": "./web/chat/panels/PeriTaskDetailSheet.tsx",
+      "default": "./web/chat/panels/PeriTaskDetailSheet.tsx"
+    },
     "./chat/panels/PermissionPanel": {
       "types": "./web/chat/panels/PermissionPanel.tsx",
       "default": "./web/chat/panels/PermissionPanel.tsx"
