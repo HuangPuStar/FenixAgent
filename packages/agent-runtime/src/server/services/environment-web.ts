@@ -1,7 +1,7 @@
 import { randomBytes } from "node:crypto";
 import { createLogger } from "@fenix/logger";
 import { ConflictError, NotFoundError, ValidationError } from "@fenix/platform-sdk";
-import { agentConfig, environment, machine } from "@server/db/schema";
+import { agentConfig, environment } from "@server/db/schema";
 import { and, eq, isNotNull } from "drizzle-orm";
 import type { CreateWebEnvironmentParams, UpdateWebEnvironmentParams } from "../../services/environment-core";
 import { generateEnvSecret, getOwnedEnvironment, KEBAB_CASE_RE } from "../../services/environment-core";
@@ -10,6 +10,7 @@ import type { EnvironmentRecord, EnvironmentUpdateParams } from "../repositories
 import { environmentRepo } from "../repositories/environment";
 import { getAgentConfigLookupPort } from "./agent-config-lookup-port";
 import { agentInstanceService } from "./agent-instance-service";
+import { getMachineRegistryPort } from "./machine-registry-port";
 import { resolveWorkspacePath } from "./workspace-resolver";
 
 export type { CreateWebEnvironmentParams, UpdateWebEnvironmentParams };
@@ -162,16 +163,13 @@ export async function createWebEnvironment(params: CreateWebEnvironmentParams) {
     userId,
   });
   if (!agent) throw new ValidationError(`AgentConfig '${params.agentConfigId}' 不存在`);
-  // 通过 AgentConfig 找到绑定的 machine，取其 agentName 作为 machineName
-  // （machineName 推导留在本包：machine 表属本包数据，不构成跨包依赖）
+  // 通过 AgentConfig 找到绑定的 machine，取其 agentName 作为 machineName。
+  // 与上面的 AgentConfig 取数同口径：`machine` 表已随 §1.7 B1 归 `@fenix/resource-machine`，本包不再
+  // 读表对象，改经宿主绑定的 `MachineRegistryPort` 取投影（§2.2 / §2.3：调用期只能经包根入口公开的
+  // service / DTO 取数；runtime 更不得回链资源包）。
   if (agent.node?.kind === "machine") {
-    const db = getAgentRuntimeDatabase();
-    const m = await db
-      .select({ agentName: machine.agentName })
-      .from(machine)
-      .where(eq(machine.id, agent.node.machineId))
-      .limit(1);
-    machineName = m[0]?.agentName ?? undefined;
+    const names = await getMachineRegistryPort().findMachineAgentNamesByIds([agent.node.machineId]);
+    machineName = names.get(agent.node.machineId) ?? undefined;
   }
 
   // 先复用已有 environment，避免“模板创建后马上点击”时两个入口为同一 agent 重复建环境。
@@ -239,14 +237,10 @@ export async function updateWebEnvironment(envId: string, organizationId: string
     if (!agent) throw new ValidationError(`AgentConfig '${params.agentConfigId}' 不存在`);
     patch.agentConfigId = params.agentConfigId;
     let machineName: string | null = null;
+    // 同 createWebEnvironment：经 `MachineRegistryPort` 取 agentName 投影，不读表对象。
     if (agent.node?.kind === "machine") {
-      const db = getAgentRuntimeDatabase();
-      const m = await db
-        .select({ agentName: machine.agentName })
-        .from(machine)
-        .where(eq(machine.id, agent.node.machineId))
-        .limit(1);
-      machineName = m[0]?.agentName ?? null;
+      const names = await getMachineRegistryPort().findMachineAgentNamesByIds([agent.node.machineId]);
+      machineName = names.get(agent.node.machineId) ?? null;
     }
     patch.machineName = machineName;
   }

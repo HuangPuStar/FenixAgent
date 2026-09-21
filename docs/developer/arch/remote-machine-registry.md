@@ -311,7 +311,7 @@ performMachineCleanup()
 
 ### 4.1 machine 表
 
-`src/db/schema.ts:917-939`
+`packages/resources/machine/db/schema.ts:15-40`（§1.7 B1 迁出前为 `apps/server/src/db/schema.ts:937-961`）
 
 | 列 | 类型 | 说明 |
 |----|------|------|
@@ -320,6 +320,7 @@ performMachineCleanup()
 | `userId` | text? | 关联用户 |
 | `agentName` | varchar | 如 `opencode` |
 | `name` | varchar? | 显示名称 |
+| `type` | varchar(32) | 机器类型，默认 `machine` |
 | `status` | varchar | `online` / `offline` |
 | `machineInfo` | jsonb | `{hostname, ip, mac, os, arch}` |
 | `labels` | jsonb | 字符串数组标签 |
@@ -333,7 +334,7 @@ performMachineCleanup()
 
 ### 4.2 registryEvent 表
 
-`src/db/schema.ts:941-956`
+`packages/resources/machine/db/schema.ts:42-57`（迁出前为 `apps/server/src/db/schema.ts:963-978`）
 
 | 列 | 类型 | 说明 |
 |----|------|------|

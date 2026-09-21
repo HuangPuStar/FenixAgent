@@ -6,11 +6,11 @@
 // 只读文件、不 import 被测模块：把这些文件 import 进来会把懒加载的宿主单例与 Elysia 实例带进测试进程。
 
 import { describe, expect, test } from "bun:test";
-import { readdirSync, readFileSync, statSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
 import { join, relative, resolve } from "node:path";
 
 const PKG_ROOT = resolve(import.meta.dir, "../..");
-const SOURCE_DIRS = ["src", "web"];
+const SOURCE_DIRS = ["src", "web", "db"];
 
 /** 表定义迁出归任务 1.7，本任务作为显式残留保留这一条精确路径（§5）。 */
 const ALLOWED_HOST_IMPORT = "@server/db/schema";
@@ -35,7 +35,12 @@ function specifiers(code: string): string[] {
   return [...code.matchAll(/\bfrom\s+["']([^"']+)["']/g)].map((match) => match[1] ?? "");
 }
 
-const ALL_SOURCE_FILES = SOURCE_DIRS.flatMap((dir) => listSourceFiles(join(PKG_ROOT, dir)));
+// `db/` 是表定义迁出后的归属目录（§6.1）；本包暂无该目录，故与同族其余 9 个扫描器一样加存在性守卫，
+// 使目录落地当批自动纳入扫描面，不必再改一次门禁。listSourceFiles 直接 readdirSync，无守卫会抛错。
+const ALL_SOURCE_FILES = SOURCE_DIRS.flatMap((dir) => {
+  const abs = join(PKG_ROOT, dir);
+  return existsSync(abs) ? listSourceFiles(abs) : [];
+});
 
 describe("skill 包边界契约", () => {
   // 生产代码只允许表定义这一条宿主导入：任何别的 `@server/*` 都意味着包重新伸手取宿主内部实现。

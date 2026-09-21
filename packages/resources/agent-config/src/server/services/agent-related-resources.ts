@@ -1,6 +1,7 @@
-import { agentSiteApp, knowledgeBase, machine, mcpServer, model, provider, skill } from "@server/db/schema";
+import { agentSiteApp, knowledgeBase, mcpServer, model, provider, skill } from "@server/db/schema";
 import { and, eq, inArray } from "drizzle-orm";
 import { getAgentConfigDatabase } from "../db";
+import { getMachineLookupPort } from "../ports/machine-lookup";
 import type { AgentNode } from "./config/types";
 
 /**
@@ -13,10 +14,11 @@ import type { AgentNode } from "./config/types";
  * 搬迁自 `routes/web/config/agent-route-support.ts`：原实现直接放在路由里，违反「route 不得直接
  * 访问 db」。本次是纯搬迁，没有顺带改动查询形状或兜底策略。
  *
- * 跨包表（`model` / `provider` / `machine` / `skill` / `mcp_server` / `knowledge_base` /
- * `agent_site_app`）经 `@server/db/schema` 读取，和迁移前一致；这些表的所有权随资源包迁移属于
- * 后续任务（表定义迁出归 1.7），此处不引入新的抽象层。DB 句柄改经 `getAgentConfigDatabase()`
- * 请求期取得（`@server/db` 的模块级句柄已切断）。
+ * 跨包表分两类读法：`machine` 已随 §1.7 B1 迁出，本包**不读它的表对象**，经宿主注入的
+ * {@link MachineLookupPort} 取投影（见 {@link resolveMachineLabel}）；其余（`model` / `provider` /
+ * `skill` / `mcp_server` / `knowledge_base` / `agent_site_app`）仍经 `@server/db/schema`，所有权随
+ * 资源包迁移属后续任务，届时按同一口径改为经各自端口 / 公开入口取数。DB 句柄改经
+ * `getAgentConfigDatabase()` 请求期取得（`@server/db` 的模块级句柄已切断）。
  */
 
 /** 关联资源标签视图；字段与 `/web/config/agents` 响应的 `relatedResources` 一一对应。 */
@@ -79,23 +81,14 @@ async function resolveModelLabel(modelId: string | null): Promise<string | null>
   return modelId;
 }
 
-/** 解析执行节点标签：机器名称优先，其次主机名，最后 agent 名称；机器行缺失时退回 machineId。 */
+/**
+ * 解析执行节点标签。标签回退链（人工命名 → 主机名 → Agent 名）由 machine 侧算好（见
+ * {@link MachineLookupPort}）；这里只负责「取不到就退回 id」这一层视图语义。
+ */
 async function resolveMachineLabel(agentNode: AgentNode): Promise<string | null> {
   if (agentNode.kind !== "machine") return null;
-
-  const machineRows = await getAgentConfigDatabase()
-    .select({ agentName: machine.agentName, name: machine.name, machineInfo: machine.machineInfo })
-    .from(machine)
-    .where(eq(machine.id, agentNode.machineId))
-    .limit(1);
-  const machineRow = machineRows[0];
-  if (!machineRow) return agentNode.machineId;
-
-  const hostname =
-    machineRow.machineInfo && typeof machineRow.machineInfo === "object"
-      ? ((machineRow.machineInfo as { hostname?: string }).hostname ?? "")
-      : "";
-  return machineRow.name || hostname || machineRow.agentName;
+  const labels = await getMachineLookupPort().findMachineLabelsByIds([agentNode.machineId]);
+  return labels.get(agentNode.machineId) ?? agentNode.machineId;
 }
 
 /** 构造全 ID 兜底视图：任何一步解析失败时整体回退到这里。 */

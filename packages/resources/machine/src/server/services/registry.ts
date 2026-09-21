@@ -1,6 +1,7 @@
 import { log } from "@fenix/logger";
 import { getIdentityDirectory } from "@fenix/platform-sdk/server";
-import { agentConfig, machine, registryEvent } from "@server/db/schema";
+import { machine, registryEvent } from "@fenix/resource-machine/db";
+import { agentConfig } from "@server/db/schema";
 import { and, desc, eq, isNull, or, sql } from "drizzle-orm";
 import { getMachineDatabase } from "../db";
 import { writeRegistryEvent } from "../repositories/registry-event";

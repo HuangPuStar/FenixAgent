@@ -22,7 +22,7 @@ const PKG_ROOT = resolve(import.meta.dir, "../..");
 /** 仓库根；旧路径与新 owner 路径都以它为基准记录。 */
 const REPO_ROOT = resolve(PKG_ROOT, "../../..");
 /** 包内源码入口；README 等文档里的示例不属于可解析引用，不参与扫描。 */
-const SOURCE_ENTRIES = ["src", "web", "fenix.module.ts"];
+const SOURCE_ENTRIES = ["src", "web", "db", "fenix.module.ts"];
 
 /**
  * 唯一允许的宿主导入。

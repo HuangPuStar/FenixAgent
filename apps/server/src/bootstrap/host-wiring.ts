@@ -26,6 +26,7 @@ import {
   checkWsMessageSize,
   disconnectMachine,
   estimateWsMessageBytes,
+  findMachineAgentNamesByIds,
   formatFileWsCloseLog,
   handleFileWsClose,
   handleFileWsMessage,
@@ -89,7 +90,15 @@ export function wireHostRuntime(env: ServerEnv, appConfig: AppConfig): HostWirin
 
   const agentRuntime = createAgentRuntimeModule().runtime;
   bindCoreRuntimePort({ getCoreRuntime, registerRemoteNode, unregisterRemoteNode });
-  bindMachineRegistryPort({ registerMachine, disconnectMachine, handleHeartbeat, startHeartbeat, stopHeartbeat });
+  bindMachineRegistryPort({
+    registerMachine,
+    disconnectMachine,
+    handleHeartbeat,
+    startHeartbeat,
+    stopHeartbeat,
+    // 只读投影：runtime 不得回链资源包，取数走这里绑定的实现（§1.7 B1，表已归 machine）。
+    findMachineAgentNamesByIds,
+  });
   // Machine 包的宿主运行态：workspace 根、Core runtime 节点、file-ws 连接索引与断连清理都是宿主进程级单例，
   // 包不反向导入 agent-runtime 取值，改由这里一次绑定（未装配时包内调用即失败，不隐式回退）。
   bindMachineHostPort({

@@ -9,6 +9,15 @@ export interface MachineRegistryPort {
   handleHeartbeat(machineId: string): Promise<void>;
   startHeartbeat(machineId: string, intervalMs: number, onTimeout: () => void): void;
   stopHeartbeat(machineId: string): void;
+  /**
+   * 按 machine id 批量取 **agent 名**投影（environment 的 `machineName` 用它）；空入参返回空 Map。
+   *
+   * 只读投影与上面的生命周期方法同一个理由：runtime **不得**回链资源包。这里早年经宿主
+   * `@server/db/schema` 直接读 `machine` 表，表随 §1.7 B1 归 `@fenix/resource-machine` 后，直读表对象
+   * 既违反 §6.1 的路径作用域（调用期只能经包根入口的 service / DTO 取数），也会因为 agent-config 与
+   * machine 互相依赖而在模块装配期成环——所以取数走宿主在这个端口上绑定的实现。
+   */
+  findMachineAgentNamesByIds(ids: readonly string[]): Promise<ReadonlyMap<string, string>>;
 }
 
 let machineRegistryPort: MachineRegistryPort | null = null;

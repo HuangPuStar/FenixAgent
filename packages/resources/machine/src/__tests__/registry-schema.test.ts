@@ -6,7 +6,7 @@ import { describe, expect, test } from "bun:test";
 describe("machine 表", () => {
   // machine 表列定义正确
   test("machine 表列定义正确", async () => {
-    const { machine } = await import("@server/db/schema");
+    const { machine } = await import("@fenix/resource-machine/db");
     const columns = Object.keys(machine);
     const expectedColumns = [
       "id",
@@ -14,6 +14,10 @@ describe("machine 表", () => {
       "userId",
       "agentName",
       "name",
+      // 这一列的断言原在 sandbox 的 sandbox-schema 用例里（`machine.type.name === "type"`），B1 迁表时
+      // 随「资源包不该断言别包表结构」一并删除。属性的存在性由这里接回；列名映射（属性名 → DB 列名）
+      // 由 `bun run check:schema-ddl-drift` 逐字段比对迁移快照保证，那是比单列断言更强的门禁。
+      "type",
       "status",
       "machineInfo",
       "labels",
@@ -33,7 +37,7 @@ describe("machine 表", () => {
 describe("registry_event 表", () => {
   // registry_event 表列定义正确
   test("registry_event 表列定义正确", async () => {
-    const { registryEvent } = await import("@server/db/schema");
+    const { registryEvent } = await import("@fenix/resource-machine/db");
     const columns = Object.keys(registryEvent);
     const expectedColumns = ["id", "machineId", "type", "detail", "createdAt"];
     for (const col of expectedColumns) {

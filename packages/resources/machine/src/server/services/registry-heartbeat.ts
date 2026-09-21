@@ -1,5 +1,5 @@
 import { log, error as logError } from "@fenix/logger";
-import { machine } from "@server/db/schema";
+import { machine } from "@fenix/resource-machine/db";
 import { eq } from "drizzle-orm";
 import { getMachineDatabase } from "../db";
 import { getMachineHostPort } from "../host-port";

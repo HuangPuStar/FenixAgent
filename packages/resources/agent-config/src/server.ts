@@ -12,6 +12,12 @@ export {
   type AgentConfigServerModule,
   createAgentConfigServerModule,
 } from "./server/module";
+export {
+  bindMachineLookupPort,
+  getMachineLookupPort,
+  type MachineLookupPort,
+  resetMachineLookupPort,
+} from "./server/ports/machine-lookup";
 export type {
   UserAgentPreferencesPatch,
   UserAgentPreferencesPort,

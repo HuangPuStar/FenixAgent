@@ -7,17 +7,25 @@
 本包属 `resources` 类别，解析 AgentNode 为执行节点、承载机器侧文件读写。装配面上的消费者：宿主
 `apps/server`（挂载路由、接入 file-ws、启动心跳巡检、优雅关闭）、`@fenix/resource-sandbox`（机器寻址、
 沙盒实例投影、沙盒路由判定）与 `@fenix/resource-observer`（读机器注册表），三者入口都是本包 `./server`
-的公开面；`@fenix/agent-config` 只经 `./web` 取 `registryApi`。`@fenix/agent-runtime` **不**消费本包
-（1.4 起该反向边已消除）：它需要的机器注册 / 心跳 / 断连能力由宿主经 `MachineRegistryPort` 注入。
-机器元数据不在这里重复建表。
+的公开面。
+
+**调用期的跨包取数一律经宿主注入的端口**（2026-09-21 §1.7 B1 起）：`@fenix/agent-runtime` 经
+`MachineRegistryPort.findMachineAgentNamesByIds`、`@fenix/resource-agent-config` 经它自己的
+`MachineLookupPort.findMachineLabelsByIds` 取机器展示投影，两者都由宿主绑定到本包
+`repositories/machine-repository.ts` 的实现。消费方**不得**导入本包的表对象（§2.2 / §2.3：组装期例外只在
+各包 `db/` 内成立），也**不得**直接导入本包的公开入口——本包 `dependsOn` 已含 `agent-config`
+（`remote-file-service.ts` 解析 AgentNode），agent-config 再反向声明 `dependsOn: ["machine"]` 会在模块
+装配期闭合二元环，所有 profile 都会因装配顺序失败。`@fenix/agent-runtime` 的机器注册 / 心跳 / 断连能力
+同走 `MachineRegistryPort`，`@fenix/agent-config` 的浏览器侧只经 `./web` 取 `registryApi`。机器元数据不在
+这里重复建表。
 
 强断言的实测口径（改动本节时同步复跑，避免留下不成立的「唯一 / 只有 / 全部」）：
 
 - **写入口收敛**：`grep -rln "insert(machine)\|update(machine)\|delete(machine)" packages apps --include="*.ts"`
-  实测 2 个文件——本包 `src/server/services/registry.ts` 与宿主 `apps/server/src/services/core-bootstrap.ts`
-  （启动时按 `RCS_DEFAULT_MACHINE_ID` 补建 pending 机器，属宿主装配职责，owner 1.5）。因此准确说法是
-  「`registry_event` 的写入点只有本包（`repositories/registry-event.ts` 与 `services/registry.ts`）；
-  `machine` 表写入口两处，另一处在宿主」。
+  实测 1 个文件——本包 `src/server/services/registry.ts`。宿主启动时按 `RCS_DEFAULT_MACHINE_ID` 补建 pending
+  机器已不再自己写表，改为调用本包导出的 `ensureDefaultMachine`（`apps/server/src/services/core-bootstrap.ts:85`）。
+  因此准确说法是「`machine` 的写入点只有本包；`registry_event` 同样只有本包（`repositories/registry-event.ts`
+  与 `services/registry.ts`）」。
 - **file-ws 帧处理实现**：`grep -rln "export function handleFileWs\|export function parseFileWsMessage\|export function formatFileWsCloseLog"`
   实测 4 个文件——`src/server/transport/` 的 `file-ws-handler.ts` / `file-ws-payload.ts` / `file-ws-close-log.ts`
   加 `src/server/services/file-machine-events.ts`（事件接收侧）；`@fenix/agent-runtime` 只持有 `FileWsPort` 接口
@@ -26,8 +34,15 @@
 - **路由交付面只有工厂**：`grep -rn "export function create" src/server/routes/` 实测 4 个工厂
   （`createWebFsRoutes` / `createWebFileEventsRoutes` / `createWebRegistryRoutes` / `createApiWorkspaceRoutes`），
   本包不再导出已构造的路由实例——守卫由宿主注入，见「守卫由宿主注入」一节。
-- **宿主内部依赖只剩表定义**：`grep -rn "from \"@server" src/` 实测 7 处（7 个生产文件）+ 1 个测试文件的动态
-  `import("@server/db/schema")`，全部是 `@server/db/schema`。
+- **宿主内部依赖只剩跨模块表读取**：§1.7 B1 已把本包自己的 `machine` / `registry_event` 迁到 `./db`
+  （`@fenix/resource-machine/db`）。两条口径不同的实测：
+
+  - `grep -rn 'from "@server' src/` → **2 个生产文件**，读的全部是**别的模块**的表：`registry.ts` 读
+    `agent_config`、`machine-sandbox-projection.ts` 读 `sandbox_instance`。
+  - `grep -rln '@server/db/schema' src/` → 多出 **2 个测试文件**：`registry-schema.test.ts` 经
+    `await import("@server/db/schema")` 断言 `agent_config` 的外键列；`machine-package-contract.test.ts`
+    把它作为常量与注释写入契约测试。动态 `import()` 也是引用（契约测试的扫描器认它），但上面那条
+    `from "@server` 的 grep 认不出来——两处引用面都在，只是命令不同。
 
 ## 服务端交付物
 
@@ -107,8 +122,14 @@
 
 ## 边界残留
 
-- **`@server/db/schema`（7 个生产文件，7 处）**：表定义（`machine` / `registry_event` / `agent_config` /
-  `sandbox_instance`）与 DDL 归 §1.7，本任务按裁决保留为显式残留；`apps-boundary` 台账条目保留并改判 owner。
+- **`@server/db/schema`（2 个生产文件 + 1 个测试文件）**：§1.7 B1 已迁出本包自己的 `machine` /
+  `registry_event`，现由 `@fenix/resource-machine/db` 提供（`package.json` 新增 `./db` 出口，
+  `drizzle.config.ts` 新增该 schema 路径，DDL 零差异由 `bun run check:schema-ddl-drift` 守护）。
+  残留三处读的是**别的模块**的表——`agent_config`（owner `@fenix/agent-config`）与 `sandbox_instance`
+  （owner `@fenix/resource-sandbox`），必须随各自目标表迁出解决，不能简单改指对方的 `./db`：
+  §6.1 的组装期例外只覆盖 `db/**` 路径，`src/**` 的调用期跨模块表访问仍按 §2.3 判定，而 `machine → sandbox`
+  本身就是类别禁则（见「边界残留 · 跨模块表读取」）。`apps-boundary` 台账条目按「本包不再引用
+  `@server/**`」的条件保留到最后一个跨模块表读取消失为止——台账是「包对」粒度，提前删除会连尚未迁出的读取一并放行。
 - **需要编排者（共享文件 owner）落地的补丁**——以下文件不在本包目录内，本任务不写，缺一条就会出现运行期
   「工厂未注入守卫」或「导出名不存在」：
   1. `apps/server/src/main.ts`：`apiWorkspaceRoutes` 已不存在，改调 `createApiWorkspaceRoutes({ authGuardPlugin })`；
@@ -154,8 +175,8 @@
   运行时依赖，代码证据只有一处：`src/server/services/remote-file-service.ts` 值导入 `getAgentConfigById` /
   `resolveAgentNode`。
   **为什么台账只删 3 条而不是 7 条**：反向边消失不等于环消失。本包仍有 `@server/db/schema` 这一条指向宿主的边
-  （7 个文件，归 §1.7 的表定义迁出），而宿主装配 agent-runtime 与 sandbox、agent-runtime 又依赖 sandbox、
-  sandbox 依赖本包，于是环由 `machine → apps/server → agent-runtime → sandbox → machine` 继续闭合，
+  （§1.7 B1 后剩 2 个生产文件 + 1 个测试文件，均为跨模块表读取），而宿主装配 agent-runtime 与 sandbox、
+  agent-runtime 又依赖 sandbox、sandbox 依赖本包，于是环由 `machine → apps/server → agent-runtime → sandbox → machine` 继续闭合，
   `no-circular` 里 machine 相关的其余条目因此仍是**真实违规**（查 `scripts/architecture/exceptions.json` 时
   不能按 §5.3 的预测数删条目）。
 
@@ -227,6 +248,11 @@ const webFileEvents = createWebFileEventsRoutes({ authenticateRequest });
      引入，把机器注册 / 心跳投影为实例状态（`update` 两处）。这个**写**路径无法由 sandbox 侧代劳（机器事件的
      接收方在本包），且它是 `machine → sandbox` 反向边消失后仅存的接触面：不再有值导入，只剩经
      `@server/db/schema` 的表定义访问，已并入 `apps-boundary` 台账（owner §1.7 的表定义迁出批次）。
+     **§1.7 的 sandbox 表迁出必须先解决这一处**：把导入改指 `@fenix/resource-sandbox/db` 会立刻构成
+     §2.3 的类别禁则违规（`machine → sandbox` 被禁止），而 §6.1 的组装期例外只覆盖 `db/**` 路径，本文件在
+     `src/server/services/` 下不适用。可行方向有二——把投影写路径移到 sandbox 侧（机器注册/心跳经宿主注入的
+     端口回调），或由 sandbox 提供「按机器 ID 更新实例状态」的公开写入口；两者都超出「只搬表定义」的范围，
+     须在 sandbox 批开始前定夺。
 - **service 直连 DB 未收敛**：`getMachineDatabase()` 的调用点除 3 个 repository 外，还有 4 个 service
   （`registry.ts` / `registry-heartbeat.ts` / `remote-file-service.ts` / `machine-sandbox-projection.ts`），
   4 个 service 合计 30 处，其中 `registry.ts` 一个文件 26 处。

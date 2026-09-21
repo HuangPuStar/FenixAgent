@@ -1,6 +1,6 @@
 import { type AgentNode, getAgentConfigById, resolveAgentNode } from "@fenix/agent-config/server";
 import { AppError } from "@fenix/platform-sdk";
-import { machine } from "@server/db/schema";
+import { machine } from "@fenix/resource-machine/db";
 import { eq } from "drizzle-orm";
 import { getMachineConfig } from "../config";
 import { getMachineDatabase } from "../db";
