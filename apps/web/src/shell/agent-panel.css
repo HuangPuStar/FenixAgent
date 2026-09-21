@@ -3,7 +3,7 @@
  * （行首图标 + 尾列包裹），旧样式表没有对应规则，单换样式或单换 DOM 都会错版。
  * 本文件原先在末尾另有一段「玻璃磨砂命令岛」补充段（旧第 916-1022 行），已随本次切换删除——
  * 该段已逐字包含在包内 `chat-design-composer.css`，且包内注释记录了它必须排在设计规则之后的级联理由。 */
-@import "../../../../../packages/ui-components/web/chat/css/chat.css";
+@import "../../../../packages/ui-components/web/chat/css/chat.css";
 
 /* ============================================================
    Unified Agent Panel — 三栏布局专用样式

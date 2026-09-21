@@ -16,12 +16,12 @@ import type { ProdViewModulesConfig } from "@/src/api/prod-views";
 import { agentSitesApi, type SiteApp } from "@/src/api/sites";
 import { NS } from "@/src/i18n";
 import { ProdViewsPanel } from "@/src/pages/agent-panel/ProdViewsPanel";
-import { TasksPanel } from "../../../../../packages/resources/task/web/pages/agent-panel/TasksPanel";
-import { ArtifactsDialogs } from "../../components/agent-panel/artifacts-dialogs";
-import { ArtifactsFilesWorkspace } from "../../components/agent-panel/artifacts-files-workspace";
-import type { FileTreeTabHandle } from "../../components/agent-panel/FileTreeTab";
-import { normalizeToUserPath } from "../../components/agent-panel/preview/utils";
-import { type TopMode, TopModeTabs } from "../../components/agent-panel/TopModeTabs";
+import { TasksPanel } from "../../../../packages/resources/task/web/pages/agent-panel/TasksPanel";
+import { ArtifactsDialogs } from "../components/agent-panel/artifacts-dialogs";
+import { ArtifactsFilesWorkspace } from "../components/agent-panel/artifacts-files-workspace";
+import type { FileTreeTabHandle } from "../components/agent-panel/FileTreeTab";
+import { normalizeToUserPath } from "../components/agent-panel/preview/utils";
+import { type TopMode, TopModeTabs } from "../components/agent-panel/TopModeTabs";
 
 /** 打开文件 tab 的 LRU 上限：超出时丢弃最旧（数组末尾）的，与 FileTabsBar 的 MAX_VISIBLE_TABS 解耦 */
 const MAX_OPEN_FILES = 8;

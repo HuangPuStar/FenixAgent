@@ -43,7 +43,7 @@ import { agentApi } from "@/src/api/agents";
 import { envApi } from "@/src/api/environments";
 import { instanceApi } from "@/src/api/instances";
 import { NS } from "@/src/i18n";
-import type { Environment, EnvironmentInstance } from "../../types/index";
+import type { Environment, EnvironmentInstance } from "../types/index";
 
 interface AgentConfigItem {
   id: string;

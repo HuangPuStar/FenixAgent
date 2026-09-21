@@ -153,8 +153,9 @@ packages/resources/task` 为 0（按 import 形态而不是裸包名核对：裸
 - **宿主 `apps/web` 仍有 3 处直连**（均属共享文件波次）：`vite.config.ts:131` 的
   `@/src/api/tasks-v2` alias（`git grep -n "@/src/api/tasks-v2" -- apps/web` 除 alias 自身外 0 命中，
   随 `./web` 出口删除）与 `vite.config.ts:133-135` 的 `@/src/pages/agent-panel/pages/AgentTasksPage`
-  alias（唯一 importer 是宿主 route adapter `routes/agent/_panel/tasks.tsx:5`）、`pages/agent-panel/ArtifactsPanel.tsx:15`
-  的深层相对 `TasksPanel` import（改为 `@fenix/resource-task/web`）。`tasks.tsx` 这个薄 route adapter
+  alias（唯一 importer 是宿主 route adapter `routes/agent/_panel/tasks.tsx:5`）、`apps/web/src/shell/ArtifactsPanel.tsx`
+  的深层相对 `TasksPanel` import（§1.6 T11d 该文件由 `pages/agent-panel/` 迁入 `shell/`，相对深度同步减一，改为
+  `@fenix/resource-task/web` 仍属 W3）。`tasks.tsx` 这个薄 route adapter
   保留在宿主是既定分工（§1.6），它随 W3 改指 `@fenix/resource-task/web`。
 - **i18n 两侧均已落地（2026-09-20 实测，切换由 W3 完成）**：字典在 `web/i18n/locales/{en,zh}/tasks-v2.json`
   （计划 §4 的形状，W2.5 迁移；旧路径 `web/i18n/{en,zh}/` 已无引用），宿主

@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
-import { orderInstancesByRunningStatus } from "../pages/agent-panel/AgentSidebarTree";
+import { orderInstancesByRunningStatus } from "../shell/AgentSidebarTree";
 import type { EnvironmentInstance } from "../types";
 
 function instance(instanceUid: string, status: EnvironmentInstance["status"]): EnvironmentInstance {
@@ -39,14 +39,14 @@ describe("Agent sidebar Instance 排序", () => {
 });
 
 test("聊天路由向侧边栏传递当前 Instance", () => {
-  const source = readFileSync(resolve(import.meta.dir, "../pages/agent-panel/AgentPanelLayout.tsx"), "utf8");
+  const source = readFileSync(resolve(import.meta.dir, "../shell/DefaultAppShell.tsx"), "utf8");
 
   expect(source).toContain("selectedInstanceId={isChatRoute ? chatSessionId : lastChatSessionRef.current}");
 });
 
 // 配置导航分区只允许内容容器滚动，避免与外层包装形成嵌套双滚动条。
 test("配置导航分区保持单一滚动容器", () => {
-  const source = readFileSync(resolve(import.meta.dir, "../pages/agent-panel/agent-panel.css"), "utf8");
+  const source = readFileSync(resolve(import.meta.dir, "../shell/agent-panel.css"), "utf8");
   const navStyles = source.match(/\.agent-sidebar-nav \{([^}]*)\}/)?.[1];
   const wrapperStyles = source.match(/\.agent-sidebar-nav-wrap \{([^}]*)\}/)?.[1];
 
@@ -58,7 +58,7 @@ test("配置导航分区保持单一滚动容器", () => {
 
 // 智能体区域上边框必须装配为垂直可拖动分隔线。
 test("智能体区域使用可拖动上边框调整高度", () => {
-  const source = readFileSync(resolve(import.meta.dir, "../pages/agent-panel/AgentSidebar.tsx"), "utf8");
+  const source = readFileSync(resolve(import.meta.dir, "../shell/AgentSidebar.tsx"), "utf8");
   const handleIndex = source.indexOf('className="agent-sidebar-tree-resize-handle"');
   const treeIndex = source.indexOf('className="agent-sidebar-tree-wrap h-full min-h-0 overflow-hidden"');
 
