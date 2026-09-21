@@ -103,7 +103,7 @@ WebShell 从静态 registry 收集各资源包的 web contribution（不反向�
 | T7 | 5 条 `special-dependency` 消除 | 已交付（含 4b） | 见下方 §7.12 |
 | T8 | 宿主组件/lib/api 簇改指并删除 | 已交付（a–d + z） | 见下方 §7.13 |
 | T9 | i18n 归属重划与 `quoteTruncatedBadge` 缺陷修复 | **a、b、c、d 已交付** | a 见 §7.15 / b 见 §7.16 / c 见 §7.17 / d 见 §7.18 |
-| T10 | 测试迁移与 happy-dom 收敛 | **a、b1–b4 已交付**（余下分片随 T11 收口） | a 见 §7.19 / b1 见 §7.20 / b2 见 §7.21 / b3 见 §7.22 / b4 见 §7.23 |
+| T10 | 测试迁移与 happy-dom 收敛 | **a、b1–b5 已交付**（余下分片随 T11 收口） | a 见 §7.19 / b1 见 §7.20 / b2 见 §7.21 / b3 见 §7.22 / b4 见 §7.23 / b5 见 §7.24 |
 | T11 | WebShell 落地 | 待办 | — |
 | T12 | 收尾：台账复核、文档修订、证据留痕 | 待办 | — |
 
@@ -1408,7 +1408,7 @@ T3 已把 `initializeHappyDomWindow` 定为**唯一实现**（`@fenix/ui-compone
 `git ls-files | grep -c happy-dom-window` = 0。完整门禁与 `build:web` 见 §7.20（本片与 T10b1 在同一工作区
 里跑门禁时，唯一失败项是 T10b1 尚未同步的 RMD-08 台账，补台账后全绿）。
 
-### 7.20 T10b1 宿主测试按 owner 归位：12 个 ui-components 用例迁入包内（2026-09-21，）
+### 7.20 T10b1 宿主测试按 owner 归位：12 个 ui-components 用例迁入包内（2026-09-21，`f1ce9ddd5`）
 
 T10 的第二片。判定口径是**导入图谱**而不是文件名相似度：把宿主 `apps/web/src/__tests__/` 的 60 个用例逐个
 解析 import 说明符，按「包所有 / 宿主所有 / 标准库 / 相对宿主」四分类，凡「被测实现的 owner 已在 T8b/T8c 归
@@ -1444,7 +1444,7 @@ T10 的第二片。判定口径是**导入图谱**而不是文件名相似度：
 完整门禁 `env -u ANTHROPIC_MODEL bun run precheck` 全绿（772 / 7496 + 2 skip / 792，0 fail），
 `bun run build:web` 与 `bun run docs:build` 均成功。
 
-### 7.21 T10b2 宿主测试按 owner 归位：7 个 web-runtime 用例迁入包内（2026-09-21，）
+### 7.21 T10b2 宿主测试按 owner 归位：7 个 web-runtime 用例迁入包内（2026-09-21，`2a8c45b1e`）
 
 T10 的第三片，判定口径与 T10b1（§7.20）同一张导入图谱，owner 换成 `@fenix/web-runtime`：`request` 与两个
 `structured-thread-*`、`todo`、`permission-options`、`artifacts-preview-events`、`config-types` 共 7 个宿主
@@ -1466,7 +1466,7 @@ relocated 断言，避免它成为台账之外的宿主复活口。
 完整门禁 `env -u ANTHROPIC_MODEL bun run precheck` 全绿（772 / 7618 + 2 skip / 670，0 fail），
 `bun run build:web` 与 `bun run docs:build` 均成功。
 
-### 7.22 T10b3 收尾 ui-components 归属：1 项随实现迁入、1 项按 owner 拆开、1 项重复覆盖直删（2026-09-21，）
+### 7.22 T10b3 收尾 ui-components 归属：1 项随实现迁入、1 项按 owner 拆开、1 项重复覆盖直删（2026-09-21，`c0c70dfcd`）
 
 T10 的第四片，宿主侧最后一组「除标准库外只引用 `@fenix/ui-components` 出口」的用例。三种处置：
 
@@ -1503,7 +1503,7 @@ package owners`：旧的根路径与宿主副本都不得复活、两个 owner �
 完整门禁 `env -u ANTHROPIC_MODEL bun run precheck` 全绿（773 / 7639 + 2 skip / 630，0 fail，lint 零
 warning），`bun run build:web` 与 `bun run docs:build` 均成功。
 
-### 7.23 T10b4 宿主测试按 owner 归位：8 个 agent-config 用例迁入包内（2026-09-21，）
+### 7.23 T10b4 宿主测试按 owner 归位：8 个 agent-config 用例迁入包内（2026-09-21，`8788be029`）
 
 T10 的第五片，收掉最后一批「实现已在包内、用例仍在宿主」的用例：`agent-form-dialog-*`（5 份）与
 `agent-resource-picker-interaction.test.tsx`、`agent-node-selector.test.ts`、`agent-utils.test.ts`。它们的
@@ -1527,6 +1527,29 @@ T10 的第五片，收掉最后一批「实现已在包内、用例仍在宿主�
 `bun test scripts/__tests__/rmd-08-migration.test.ts` 7 pass。宿主 `apps/web/src/__tests__/` 38 → 30 个用例文件。
 完整门禁 `env -u ANTHROPIC_MODEL bun run precheck` 全绿（773 / 7975 + 2 skip / 294，0 fail，lint 零 warning），
 `bun run build:web` 与 `bun run docs:build` 均成功。
+
+### 7.24 T10b5 自指用例退役：`new-session-dialog-form.test.ts` 直删（2026-09-21，）
+
+宿主测试盘点时发现的一处**不守护任何实现**的用例，按 §7.17 的先例退役。该文件 38 行，5 条断言的全部内容
+是：在文件内定义 `const newSessionSchema = z.object({ title: z.string(), envId: z.string() })`，随后断言
+它的 `safeParse` 对 `""` 成功、对 `null` 失败、对 `"   "` 成功。
+
+**判据（三条都要成立才算自指）**：① 被守护对象是文件内字面量，不是任何导入的生产模块；② 全仓没有任何生产
+模块导出 `newSessionSchema`（逐标识符 grep）；③ 其命名的实现 `NewSessionDialog` 在全仓已不存在（`grep -rl`
+零命中，会话创建表单的能力已并入 `@fenix/ui-components` 的 chat shell）。三条成立的后果是：这 5 条断言只
+在测 zod 自身的语义，任何产品改动都不会让它失败，也不会被它拦住。
+
+**没有覆盖损失**：删除前后宿主侧无对位用例被削弱——它从未守护过宿主模块；包内 chat shell 的会话创建路径由
+`packages/ui-components/web/__tests__/chat-shell-wiring.test.tsx` 等用例覆盖。
+
+**台账与删除同批**：从 `RMD_08_MOVES` 移出（`toHaveLength(72)` → 71），并另立专项断言
+（`keeps the self-referential session form schema test deleted`：旧根路径与应用壳路径都不得复活），文件头
+追加第 12 条改判——「删除」必须与「防复活断言」成对出现，否则等于留了一个可以被静默还原的空位。
+
+**验证**：`bun test scripts/__tests__/rmd-08-migration.test.ts` 8 pass（新增的防复活断言计入）；宿主
+`apps/web/src/__tests__/` 30 → 29 个用例文件。完整门禁 `env -u ANTHROPIC_MODEL bun run precheck` 全绿
+（774 / 7975 + 2 skip / 289，0 fail，lint 零 warning），`bun run build:web` 与 `bun run docs:build` 均成功。
+脚本测试计数 773 → 774 即本次新增的那条专项断言。
 
 ---
 

@@ -37,6 +37,9 @@ import { existsSync } from "node:fs";
  *     `../../../../packages/resources/agent-config/web/...` 反向读取包内实现，既是跨边界依赖也说明 owner
  *     已明确；`agent-form-dialog-pure-logic.test.ts` 因同时导入宿主 `../api/fs`、`../lib/{api-result,form-utils}`
  *     而不在本片（等 T11 把宿主 `src/{api,lib}` 的剩余模块定归属后再归位）。
+ * 12. 任务 1.6 T10b5 直删 1 项自指用例（72 → 71）：`new-session-dialog-form.test.ts` 在文件内定义
+ *     `newSessionSchema` 再断言它自身的 `safeParse`，全仓无任何生产模块导出该 schema（`NewSessionDialog`
+ *     已不存在），五条断言只在测 zod；与文件头第 7 条的自指 i18n 测试同一口径，另立专项断言防复活。
  */
 const RMD_08_MOVES = [
   ["web/src/App.tsx", "apps/web/src/App.tsx"],
@@ -60,7 +63,6 @@ const RMD_08_MOVES = [
   ["web/src/__tests__/form-utils.test.ts", "apps/web/src/__tests__/form-utils.test.ts"],
   ["web/src/__tests__/fs-upload-url.test.ts", "apps/web/src/__tests__/fs-upload-url.test.ts"],
   ["web/src/__tests__/instances-api.test.ts", "apps/web/src/__tests__/instances-api.test.ts"],
-  ["web/src/__tests__/new-session-dialog-form.test.ts", "apps/web/src/__tests__/new-session-dialog-form.test.ts"],
   ["web/src/__tests__/peri-task-details-api.test.ts", "apps/web/src/__tests__/peri-task-details-api.test.ts"],
   ["web/src/__tests__/preview-utils-normalize.test.ts", "apps/web/src/__tests__/preview-utils-normalize.test.ts"],
   [
@@ -542,9 +544,9 @@ describe("RMD-08 apps/web migration", () => {
   // （见文件头第 7 条），109 → 100；T10b1 把 12 个 ui-components 归属的宿主测试移入包内（见文件头第 8 条），
   // 100 → 88；T10b2 把 7 个 web-runtime 归属的宿主测试移入包内（见文件头第 9 条），88 → 82；
   // T10b3 又移出 2 项（见文件头第 10 条），82 → 80；T10b4 把 8 个 agent-config 归属的宿主测试移入包内
-  // （见文件头第 11 条），80 → 72。
+  // （见文件头第 11 条），80 → 72；T10b5 直删 1 项自指用例（见文件头第 12 条），72 → 71。
   test("removes every legacy source and retains its exact owner target", () => {
-    expect(RMD_08_MOVES).toHaveLength(72);
+    expect(RMD_08_MOVES).toHaveLength(71);
     for (const [source, target] of RMD_08_MOVES) {
       expect(existsSync(source), `legacy source still exists: ${source}`).toBe(false);
       expect(existsSync(target), `apps/web target is missing: ${target}`).toBe(true);
@@ -562,6 +564,14 @@ describe("RMD-08 apps/web migration", () => {
   test("keeps the self-referential narrator i18n test deleted", () => {
     expect(existsSync("web/src/__tests__/narrators-i18n.test.ts")).toBe(false);
     expect(existsSync("apps/web/src/__tests__/narrators-i18n.test.ts")).toBe(false);
+  });
+
+  // 同款自指测试退役（§1.6 T10b5）：`new-session-dialog-form.test.ts` 在文件内自带一份 `newSessionSchema`
+  // 再断言它的 safeParse 行为，而全仓没有任何生产模块导出该 schema（`NewSessionDialog` 已不存在）——五条
+  // 断言实际只在测 zod 自身。旧根路径与应用壳路径都不得复活，否则等于恢复一份不守护任何实现的用例。
+  test("keeps the self-referential session form schema test deleted", () => {
+    expect(existsSync("web/src/__tests__/new-session-dialog-form.test.ts")).toBe(false);
+    expect(existsSync("apps/web/src/__tests__/new-session-dialog-form.test.ts")).toBe(false);
   });
 
   // 沙盒请求构造测试的 owner 已从应用壳交给资源包：旧根路径与旧 app 壳路径都不得复活，包内必须有唯一落点。
