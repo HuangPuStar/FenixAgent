@@ -3,6 +3,20 @@
   "accessControl": "access-control",
   "agentRuntime": "agent-runtime",
   "webShell": "default",
-  "resources": ["agent-config", "knowledge", "mcp", "memory", "model-management", "prod-view", "skill"],
+  "resources": [
+    "agent-config",
+    "channel",
+    "knowledge",
+    "machine",
+    "mcp",
+    "memory",
+    "model-management",
+    "observer",
+    "prod-view",
+    "sandbox",
+    "skill",
+    "task",
+    "workflow"
+  ],
   "web": []
 }

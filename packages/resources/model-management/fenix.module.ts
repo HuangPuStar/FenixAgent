@@ -1,4 +1,5 @@
 import type { ModuleManifest } from "@fenix/platform-sdk";
+import type { ServerRouteHost } from "@fenix/platform-sdk/server";
 import { providerResource } from "./src/server/access/provider-resource";
 
 /**
@@ -32,8 +33,13 @@ import { providerResource } from "./src/server/access/provider-resource";
  * （`setModelGatewayServices`）不在本工厂内构造——它依赖宿主进程级的凭据与预算装配，归宿主的
  * `initModelGateway`（§1.5 裁定：registry 不接管启动序）。
  *
- * 不声明 `contributions` 与 `web`：消费方分别是 §1.5 的宿主挂载与 §1.6 的 WebShell 装配，形状必须与
- * 消费端同时定型；当前路由是包内工厂函数，由宿主在装配时注入守卫（`src/server/routes/dependencies.ts`）。
+ * 声明 `contributions`（1.5e）：`/web/config/models` 与 `/web/config/providers` 的路由实例由本模块以惰性
+ * 构造函数 `(host) => import("./src/server/assembly").then(...)` 给出，`slot: "web-config"` 指明挂宿主
+ * `/web/config` 聚合面——路由路径是相对形式，前缀由宿主的聚合实例决定，「挂哪一面」只能由声明说清。
+ * 惰性 import 与 `create` 同因：registry 会被大量位置导入，不能在索引层就把 Elysia 拖进模块图。
+ * `/web/model-gateway` 与 `/web/peri-task-details` 随后按同一形状迁入 `web` 槽（1.5e 逐包铺开）。
+ *
+ * 不声明 `web`：消费方是 §1.6 的 WebShell 装配，形状必须与消费端同时定型。
  */
 export const moduleManifest = {
   id: "model-management",
@@ -41,5 +47,23 @@ export const moduleManifest = {
   dependsOn: ["agent-config"],
   capabilities: ["resource.model-management"],
   accessControlBindings: [providerResource.storage],
+  contributions: [
+    {
+      id: "model-management.web-config-models",
+      kind: "app-route",
+      slot: "web-config",
+      value: (host: ServerRouteHost) =>
+        import("./src/server/assembly").then((assembly) => assembly.createModelManagementWebConfigModelsRoutes(host)),
+    },
+    {
+      id: "model-management.web-config-providers",
+      kind: "app-route",
+      slot: "web-config",
+      value: (host: ServerRouteHost) =>
+        import("./src/server/assembly").then((assembly) =>
+          assembly.createModelManagementWebConfigProvidersRoutes(host),
+        ),
+    },
+  ],
   create: (context) => import("./src/module").then((module) => module.createModelManagementModule(context)),
 } satisfies ModuleManifest;

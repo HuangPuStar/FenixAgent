@@ -128,17 +128,64 @@ test("构造函数未返回 Elysia 实例时拒绝装配", async () => {
 
 // 真实发布组合（真实 ce.json + 生成 registry + 真实模块工厂）的端到端登记：断言用 `toEqual` 而不是
 // `toContain`——1.5e 每迁入一个包，这里就多一条路径，迁移进度因此有一份可执行的镜像，漏挂不会静默通过。
-test("真实 profile 装配后 prod-view 的路由进入对应槽", async () => {
+// 分组顺序即装配收集顺序（拓扑序 + manifest 内声明序），不是视觉分块。
+test("真实 profile 装配后各包的路由进入对应槽", async () => {
   initializeTestApplicationInfrastructure();
 
   await bootstrapServerAssembly({ mountContribution: mountServerRouteContribution });
 
-  expect(slottedRoutes(WEB_SLOT)).toEqual(["GET /prod-views/:id/load"]);
+  expect(slottedRoutes(WEB_SLOT)).toEqual([
+    // prod-view（1.5e-1 试点；其余 12 个包在本片逐批迁入后继续在此追加）
+    "GET /prod-views/:id/load",
+  ]);
   expect(slottedRoutes(WEB_CONFIG_SLOT)).toEqual([
+    // mcp
+    "GET /config/mcp",
+    "POST /config/mcp",
+    "PUT /config/mcp",
+    "DELETE /config/mcp",
+    "POST /config/mcp/actions/enable",
+    "POST /config/mcp/actions/disable",
+    "POST /config/mcp/actions/test",
+    "POST /config/mcp/actions/test-url",
+    "POST /config/mcp/actions/inspect",
+    "GET /config/mcp/actions/tools",
+    // skill
+    "GET /config/skills",
+    "GET /config/skills/:name",
+    "GET /config/skills/:name/download",
+    "POST /config/skills",
+    "PUT /config/skills/:name",
+    "PUT /config/skills/:name/access",
+    "DELETE /config/skills/:name",
+    "POST /config/skills/upload",
+    // agent-config
+    "GET /config/agents/templates",
+    "GET /config/agents",
+    "POST /config/agents",
+    "PUT /config/agents",
+    "POST /config/agents/restart",
+    "DELETE /config/agents",
+    "POST /config/agents/default",
+    // model-management
+    "GET /config/models",
+    "PUT /config/models",
+    "POST /config/models/refresh",
+    "GET /config/providers",
+    "PUT /config/providers",
+    "DELETE /config/providers",
+    "POST /config/providers/actions/fetch-models",
+    "POST /config/providers/actions/test-model",
+    "POST /config/providers/actions/models",
+    "PUT /config/providers/actions/models/:modelId",
+    "DELETE /config/providers/actions/models/:modelId",
+    // prod-view
     "GET /config/prod-views",
     "GET /config/prod-views/:id",
     "POST /config/prod-views",
     "PUT /config/prod-views/:id",
     "DELETE /config/prod-views/:id",
+    // sandbox
+    "GET /config/sandbox-pools",
   ]);
 });

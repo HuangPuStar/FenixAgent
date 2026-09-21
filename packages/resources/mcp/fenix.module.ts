@@ -1,4 +1,5 @@
 import type { ModuleManifest } from "@fenix/platform-sdk";
+import type { ServerRouteHost } from "@fenix/platform-sdk/server";
 import { mcpServerResource } from "./src/server/access/mcp-server-resource";
 
 /**
@@ -35,9 +36,13 @@ import { mcpServerResource } from "./src/server/access/mcp-server-resource";
  * 组合根产出的实例。工厂保持惰性——registry 会被大量位置导入，不能在索引层就把 Drizzle、Elysia 与
  * MCP SDK 拖进模块图；构造仍由 `src/server/module.ts` 唯一实现。
  *
- * 不声明 `contributions` / `web` / `envDefinitions`：`contributions` 与 `web` 的消费方分别是
- * §1.5 的宿主挂载与 §1.6 的 WebShell 装配，形状必须与消费端同时定型；本包不读 `process.env`、
- * 没有独立部署级变量，`envDefinitions` 归 §1.7 的 env 收敛。
+ * 声明 `contributions`（1.5e）：`/web/config/mcp` 的路由实例由本模块以惰性构造函数
+ * `(host) => import("./src/server/assembly").then(...)` 给出，`slot: "web-config"` 指明挂宿主 `/web/config`
+ * 聚合面——路由路径是相对形式，前缀由宿主的聚合实例决定，「挂哪一面」只能由声明说清。惰性 import 与
+ * `create` 同因：registry 会被大量位置导入，不能在索引层就把 Elysia 拖进模块图。
+ *
+ * 不声明 `web` / `envDefinitions`：消费方分别是 §1.6 的 WebShell 装配与 §1.7 的宿主 env 登记；本包不读
+ * `process.env`、没有独立部署级变量。
  */
 export const moduleManifest = {
   id: "mcp",
@@ -45,6 +50,15 @@ export const moduleManifest = {
   dependsOn: ["knowledge"],
   capabilities: ["resource.mcp"],
   accessControlBindings: [mcpServerResource.storage],
+  contributions: [
+    {
+      id: "mcp.web-config",
+      kind: "app-route",
+      slot: "web-config",
+      value: (host: ServerRouteHost) =>
+        import("./src/server/assembly").then((assembly) => assembly.createMcpWebConfigRoutes(host)),
+    },
+  ],
   // 工厂保持惰性：registry 会被大量位置导入，不能在索引层就把 Drizzle、Elysia 与 MCP SDK 拖进模块图。
   create: (context) => import("./src/module").then((module) => module.createMcpModule(context)),
 } satisfies ModuleManifest;

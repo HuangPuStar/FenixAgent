@@ -15,6 +15,10 @@ import { bootstrapServerAssembly } from "../bootstrap";
 /**
  * server 侧实例化顺序：三个基础模块按 profile 声明顺序展开，资源模块按 `dependsOn` 拓扑序跟进
  * （1.5e 起 `resources` 由真实 ce.json 驱动），Web Shell 不参与。
+ *
+ * 资源模块是全量发布组合的 13 个（不是「谁被迁移谁才启用」）：宿主手写挂载逐包迁入贡献面后，未启用的
+ * 模块其路由会随手写挂载一起消失，因此启用范围必须先于迁移到位。跨类别顺序（machine 早于 sandbox，
+ * agent-config 早于 model-management）由各自 `dependsOn` 决定，不按字母序。
  */
 const EXPECTED_SERVER_MODULES = [
   ["identity", "identity"],
@@ -25,8 +29,14 @@ const EXPECTED_SERVER_MODULES = [
   ["memory", "resource"],
   ["skill", "resource"],
   ["agent-config", "resource"],
+  ["channel", "resource"],
+  ["machine", "resource"],
   ["model-management", "resource"],
+  ["observer", "resource"],
   ["prod-view", "resource"],
+  ["sandbox", "resource"],
+  ["task", "resource"],
+  ["workflow", "resource"],
 ];
 
 /** 真实 registry 里由 `apps/web/fenix.module.ts` 提供的纯元数据 Shell 描述符。 */

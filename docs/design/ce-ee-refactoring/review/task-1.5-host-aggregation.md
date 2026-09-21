@@ -1198,3 +1198,96 @@ web-app-tests 946 pass / 0 fail（无前端改动，与 1.5d 持平）；其余�
 
 - 手工启动验证（`bun run dev` + `/health`）待有 DB 的环境补做。
 - 1.5e-2：其余 12 个有路由的包逐包铺开，每迁一包更新 `route-contributions.test.ts` 的真实端到端断言。
+
+### 1.5e-2a `/web/config` 面清零 + 发布组合全量启用（2026-09-21）
+
+分片行原文（1.5e 后半段）：「再逐包铺开其余 12 个有路由的包」，判据「每个包的 `routes/web/index.ts`
+挂载点减少一处；试点片后 `precheck` + 手工启动验证」。
+
+本片把 `/web/config` 聚合面的 6 个手写挂载点全部迁到贡献声明，`routes/web/config/index.ts` 因此**只剩
+`.use([...contributedRoutes])` 一行挂载**——这是 1.5e 的第一个「聚合面清零」，也为 `web` 面（23 个手写
+挂载点）的迁移定下可复制的形状。
+
+**一、【需审核】`deploy/assembly/ce.json` 的 `resources` 提前填实为全量 13 个**
+
+1.5e-1 只填了 7 项（prod-view 的依赖闭包）。本片一迁 sandbox 就暴露了问题：sandbox 不在 profile 里，
+它的贡献没有消费方，而宿主手写挂载已按判据删除 → `/web/config/sandbox-pools` **静默消失**。
+
+裁定：填成全量发布组合的 13 个资源模块（`agent-config` / `channel` / `knowledge` / `machine` / `mcp` /
+`memory` / `model-management` / `observer` / `prod-view` / `sandbox` / `skill` / `task` / `workflow`），
+理由与影响：
+
+- **「启用范围先于迁移」是迁移判据的前提**：判据要求「挂载点减少一处」，若被迁的包未启用，减少的挂载
+  点不会由贡献补回，迁移即回归。
+- **CE 单机发布的语义就是全部能力**：13 个模块都是真实交付物，不存在「只装子集」的部署形态。
+- **提前完成了 1.5f 的一项判据**（「填实 `deploy/assembly/ce.json` 的 `resources`」）。1.5f 余下的判据
+  （`grep '@fenix/' apps/server/src/main.ts` 归零、删除 `no-new-handwritten-registry` 规则与
+  `handwrittenRegistryBaseline`）不受影响。
+- **副作用（列为遗留）**：`channel` / `machine` / `observer` / `sandbox` / `task` / `workflow` 这 6 个
+  模块的 `create` 是 1.5d 之前的形式（`() => import("./src/module").then(m => m.createXxxModule())`，不
+  接收 `ModuleFactoryContext`、不 `installXxxModule`、不返回给宿主消费），本片起它们**首次在装配期被
+  执行**。测试全绿说明无失败路径；但「构造出的实例无人读取」与「create 是否有装配期副作用」需要
+  1.5f 的手工启动验证确认，届时它们要与 1.5d 已改的四个受控资源包同形。
+
+**二、本片迁入的包与端点**
+
+| 包 | 贡献 id | 槽 | 端点数 |
+| --- | --- | --- | --- |
+| `model-management` | `model-management.web-config-providers` | `web-config` | 8 |
+| `model-management` | `model-management.web-config-models` | `web-config` | 3 |
+| `sandbox` | `sandbox.web-config` | `web-config` | 1 |
+| `agent-config` | `agent-config.web-config-agents` | `web-config` | 7 |
+| `skill` | `skill.web-config` | `web-config` | 8 |
+| `mcp` | `mcp.web-config` | `web-config` | 10 |
+
+每包新增 `src/server/assembly.ts`：把 `ServerRouteHost` 收窄为该包路由的依赖类型（`unknown` → 具体端口，
+收窄只在包内做一次，理由见 §3.3）；`fenix.module.ts` 用 `slot: "web-config"` 声明惰性构造函数
+（`value: (host) => import("./src/server/assembly").then(...)`，惰性理由同 `create`：registry 会被大量
+位置导入，不能在索引层把 Elysia 拖进模块图）；包内注释同步改写（原先写的都是「不声明 `contributions`」）。
+
+**三、本片未做 / 明确取舍**
+
+1. **`web` 面的 23 个手写挂载点本片不动**（identity 2、agent-runtime 3、agent-config 4、channel 1、
+   knowledge 1、machine 3、memory 1、model-management 2、task 1、workflow 5；`branding` 是宿主自有文件，
+   永远留在挂载序列里）。批 1.5e-2b 起继续，理由：这 23 个里有 2 处需要扩 `ServerRouteHost`
+   （`verifyEnvironmentOwnership` 给 model-management 的 peri 任务详情、`rotateCallerApiKey` 给
+   agent-config 的 meta-agent），是契约面的改动，应与它服务的迁移片同批评审。
+2. **不为每个包复制一份 prod-view 的包内贡献测试**。宿主 `route-contributions.test.ts` 的真实 profile
+   用例已经用 `toEqual` 精确锁定「每个包贡献了哪些路径、进了哪个槽」——slot 写错会表现为路径出现在错误的
+   槽并当场失败；包内再写一份是同一事实的第二份拷贝。prod-view 那份（4 例）保留：它是试点期宿主接线
+   完成**前**的自证工具，且额外覆盖了「`assembly.ts` 的收窄结果与贡献一致」这一点（该文件是唯一断言
+   assembly 导出的地方）。
+3. **新增 `apps/server/src/test-utils/web-config-routes.ts`**：给「需要真实 `/web/config` 路由但不关心
+   装配语义」的用例（`config-integration.test.ts`、`agent-platform-api-reference.test.ts`）提供各包路由
+   工厂 + 宿主端口实现的集合。必须这么做而不是跑 `bootstrapServerAssembly` 的原因：装配要求基础设施已
+   初始化，而 `initializeApplicationInfrastructure` **每进程只允许调用一次**，测试进程里真实装配由
+   `route-contributions.test.ts` 独占（preload 刻意不初始化基础设施，见 `test-utils/setup-mocks.ts`）。
+   helper 的端口取宿主真实实现而非替身：这两个用例断言的是「协议层把资源 Facade 的输出映射成视图」。
+4. **`ce.json` 的 `resources` 用字母序**而不是拓扑序：拓扑序由 registry 的 `visit()` 按 `dependsOn`
+   决定，profile 里的顺序只表达「启用哪些」，字母序在 13 项时比人工维护的拓扑序更不容易写错。
+
+**四、测试**
+
+| 文件 | 改动 | 断言要点 |
+| --- | --- | --- |
+| `apps/server/src/__tests__/route-contributions.test.ts` | 真实 profile 用例扩到 42 条 `web-config` 路径 | 每包分组列出全部路径（可执行的迁移镜像，漏挂即失败） |
+| `apps/server/src/__tests__/module-assembly.test.ts` | `EXPECTED_SERVER_MODULES` 扩到 16 项（3 基础 + 13 资源） | 拓扑序：`machine` 早于 `sandbox`、`agent-config` 早于 `model-management`，不按字母序 |
+| `apps/server/src/__tests__/config-integration.test.ts` | 装配来源改为 helper | 12 例行为断言不变（stub Facade 边界不变） |
+| `apps/server/src/__tests__/agent-platform-api-reference.test.ts` | `webConfig` 槽改喂 helper | 文档 curl 示例全部命中真实注册路由（迁移前 29 条 `/web/config/*` 缺失） |
+
+**五、验证证据**
+
+定向：`bun test apps/server/src/__tests__/` **633 pass / 0 fail**；`sandbox` + `skill` + `mcp`
+**669 pass / 0 fail**；`agent-config` + `model-management` **633 pass / 0 fail**；根 `tsc --noEmit` 无输出；
+`architecture:check` ✓（2245 files / 11 rules / 27 例外）；`check:dependencies` ✓（2397 modules / 12 例外 /
+0 新增违规）；`generate:module-registry --check` ✓（17 个 manifest）。
+
+全量：`env -u ANTHROPIC_MODEL bun run precheck` → `All passed (85648ms)`。server-and-script-tests
+**770 pass / 0 fail**、package-tests **7316 pass / 2 skip / 0 fail**、web-app-tests 946 pass / 0 fail ——
+三项用例数与 1.5e-1 持平（本片只改既有断言的内容与装配来源，未新增用例）。
+
+**六、遗留**
+
+- `web` 面 23 个挂载点的迁移（1.5e-2b），含 `ServerRouteHost` 扩两字段（见三.1）。
+- 6 个「1.5d 之前形态」的 `create` 要在 1.5f 与四个受控资源包同形（见一.4）。
+- 手工启动验证仍待有 DB 的环境补做（同 1.5e-1）。

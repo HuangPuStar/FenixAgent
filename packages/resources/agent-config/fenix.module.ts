@@ -1,4 +1,5 @@
 import type { ModuleManifest } from "@fenix/platform-sdk";
+import type { ServerRouteHost } from "@fenix/platform-sdk/server";
 import { agentConfigResource } from "./src/server/access/agent-config-resource";
 
 /**
@@ -34,8 +35,15 @@ import { agentConfigResource } from "./src/server/access/agent-config-resource";
  * 拖进模块图。工厂产出 `src/server/module.ts` 的 `createAgentConfigServerModule(deps)` 构造的真实例并
  * 装入进程级槽位，依赖取自 registry 的装配声明——详见 `src/module.ts`。
  *
- * 不声明 `contributions` / `web` / `envDefinitions`：消费方分别是 §1.5 宿主挂载、§1.6 WebShell 装配与
- * §1.7 的宿主 env 登记，形状必须与消费端同时定型。
+ * 声明 `contributions`（1.5e）：`/web/config/agents` 的路由实例由本模块以惰性构造函数
+ * `(host) => import("./src/server/assembly").then(...)` 给出，`slot: "web-config"` 指明挂宿主 `/web/config`
+ * 聚合面——路由路径是相对形式，前缀由宿主的聚合实例决定，「挂哪一面」只能由声明说清。惰性 import 与
+ * `create` 同因：registry 会被大量位置导入，不能在索引层就把 Elysia 拖进模块图。
+ * `/web/agent-sites`、`/web/sidebar-config`、`/web/agent-generation`、`/web/meta-agent/ensure` 随后按同一
+ * 形状迁入 `web` 槽（1.5e 逐包铺开）。
+ *
+ * 不声明 `web` / `envDefinitions`：消费方分别是 §1.6 WebShell 装配与 §1.7 的宿主 env 登记，形状必须与
+ * 消费端同时定型。
  */
 export const moduleManifest = {
   id: "agent-config",
@@ -43,5 +51,14 @@ export const moduleManifest = {
   dependsOn: ["knowledge", "mcp", "memory", "skill"],
   capabilities: ["resource.agent-config"],
   accessControlBindings: [agentConfigResource.storage],
+  contributions: [
+    {
+      id: "agent-config.web-config-agents",
+      kind: "app-route",
+      slot: "web-config",
+      value: (host: ServerRouteHost) =>
+        import("./src/server/assembly").then((assembly) => assembly.createAgentConfigWebConfigRoutes(host)),
+    },
+  ],
   create: (context) => import("./src/module").then((module) => module.createAgentConfigModule(context)),
 } satisfies ModuleManifest;

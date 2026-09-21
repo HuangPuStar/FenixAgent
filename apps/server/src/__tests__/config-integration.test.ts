@@ -25,10 +25,14 @@ import {
 } from "@fenix/resource-skill/server/testing";
 import { setConfig } from "../config";
 import { resetTestAuth, setTestAuth } from "../plugins/auth";
+import { createWebConfigApp } from "../routes/web/config";
 import { setTestOrgContext } from "../services/org-context";
 import { stubConfigPg } from "../test-utils/stubs/config-pg-stub";
+import { createTestWebConfigRoutes } from "../test-utils/web-config-routes";
 
-const configRoute = (await import("../routes/web/config/index")).createWebConfigApp([]);
+// `/web/config` 面在生产由 registry 装配的路由贡献提供（1.5e 起逐包迁入），本用例只需要那面的真实路由，
+// 不关心装配语义，故用 test-utils 的同入口集合（理由见该 helper 的文件头）。
+const configRoute = createWebConfigApp(createTestWebConfigRoutes());
 
 function request(path: string, init?: RequestInit) {
   return configRoute.handle(new Request(`http://localhost${path.replace(/^\/web/, "")}`, init));
