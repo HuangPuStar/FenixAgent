@@ -104,7 +104,7 @@ WebShell 从静态 registry 收集各资源包的 web contribution（不反向�
 | T8 | 宿主组件/lib/api 簇改指并删除 | 已交付（a–d + z） | 见下方 §7.13 |
 | T9 | i18n 归属重划与 `quoteTruncatedBadge` 缺陷修复 | **a、b、c、d 已交付** | a 见 §7.15 / b 见 §7.16 / c 见 §7.17 / d 见 §7.18 |
 | T10 | 测试迁移与 happy-dom 收敛 | **a、b1–b5 已交付**（余下分片随 T11 收口） | a 见 §7.19 / b1 见 §7.20 / b2 见 §7.21 / b3 见 §7.22 / b4 见 §7.23 / b5 见 §7.24 |
-| T11 | WebShell 落地 | **a–d 已交付；e 的 1–3 段已交付**（余 e-4） | a 见 §7.25 / b 见 §7.26 / c 见 §7.27 / d 见 §7.28 / e 见 §7.29 |
+| T11 | WebShell 落地 | **已全部交付** | a 见 §7.25 / b 见 §7.26 / c 见 §7.27 / d 见 §7.28 / e 见 §7.29 与 §7.30 |
 | T12 | 收尾：台账复核、文档修订、证据留痕 | 待办 | — |
 
 **T5 分片**（用户裁定「整体退场，由 ui-components 接管」+「`agent-config/web` 提供助手」的落地顺序；
@@ -127,7 +127,7 @@ WebShell 从静态 registry 收集各资源包的 web contribution（不反向�
 | T11b | 各包 `web/contribution.ts` | **已交付**（§7.26）：9 个包各持一份声明（14 项导航）+ `exports["./web/contribution"]` + 导航文案随项迁入各包字典；宿主旧键保留到 T11d 切换 |
 | T11c | 生成器与浏览器产物 | **已交付**（§7.27）：9 个 manifest 声明 `web` 惰性入口说明符 + `ce.json` 的 `web` 落 9 项（仅有真实载荷）+ `scripts/generate-web-contributions.ts` 生成 `apps/generated/web-contributions.ts`（只含静态 import）+ `ci.ts` 子项 + 导航文案解析契约测试 |
 | T11d | Shell 落地 | **已交付**（§7.28）：`apps/web/src/shell/` 三片——壳层容器迁入（`2a9b96fff`）、包内死副本退场与 `filterNavGroups` 归位（`19812a49d`）、侧栏改由产物渲染 + 宿主旧导航表与 12 条键删除（`903477877`） |
-| T11e | route adapter 直连包入口 | **1–3 段已交付**（§7.29）：`7152834ea` 三页归位到 `@fenix/agent-config` 完毕（含各自有字典与创建导航助手）+ 对应 route adapter 直连包入口；**4 段待办**：宿主消费面（`AgentSidebarTree` / `ChatArea` / `ArtifactsPanel` / `DefaultAppShell` / `use-chat-panel-runtime` / `lib/card-renderer/builtins.ts` / `components/agent-panel/artifacts-dialogs.tsx` / 两个宿主测试 / `@/src/lib/auth-client` 去留判定）改直连 + 删 `apps/web/vite.config.ts` 与根 `tsconfig.json` 的全部桥接条目 |
+| T11e | route adapter 直连包入口 | **已交付**（§7.29 三段 + §7.30 两段）：`7152834ea` 三页归位到 `@fenix/agent-config`（含各自有字典与创建导航助手）+ 对应 route adapter 直连包入口；`f05fd7f6b` 宿主消费面全部改直连包出口；`64c6cecc4` 删除两套桥接别名表（`apps/web/vite.config.ts` + 根 `tsconfig.json`），两张表自此只剩宿主自有别名 |
 
 ---
 
@@ -1886,13 +1886,77 @@ T11 的第五片，也是「宿主还剩哪些页面」这条线的收口片。�
 
 **登记（不在本片做）**：
 
-1. **T11e-4**：「22 条 `@/src/...` 桥接改造 + 删两套桥接条目」的另一半——宿主消费面
-   （`AgentSidebarTree` / `ChatArea` / `ArtifactsPanel` / `DefaultAppShell` / `use-chat-panel-runtime` /
-   `lib/card-renderer/builtins.ts` / `components/agent-panel/artifacts-dialogs.tsx` / 两个宿主测试）
-   改直连各包出口，随后删除 `apps/web/vite.config.ts` 与根 `tsconfig.json` 的全部桥接别名条目。
-2. **`agent-form-dialog-pure-logic.test.ts` 的归位**：它仍反向读包内实现并导入宿主 `../api/fs`、
-   `../lib/{api-result,form-utils}`，要等 T11e-4 定完宿主 `src/{api,lib}` 的剩余模块归属（原 T10b4 的
-   登记项）。
+1. ~~**T11e-4**：「22 条 `@/src/...` 桥接改造 + 删两套桥接条目」的另一半~~ **已交付**，
+   见 §7.30（`f05fd7f6b` + `64c6cecc4`）。登记转出：`apps/web/src/__tests__/agent-form-dialog-pure-logic.test.ts`
+   与 `agent-form-dialog-ssr.test.tsx` 的**归位**仍未做（见下条），以及 `apps/web/src/__tests__/`
+   里三处对 `@/src/*` 宿主自有别名的借用（`api-client.test.ts` / `random-uuid-polyfill.test.ts` /
+   `utils.test.ts`）属宿主内部引用，不随别名表删除而变化。
+2. **`agent-form-dialog-pure-logic.test.ts` 的归位**：它仍反向读包内实现（`../../../../packages/resources/agent-config/web/pages/agent-panel/agent-editor/agent-editor-model`，
+   `agent-form-dialog-ssr.test.tsx` 同形）并导入宿主 `../api/fs`、`../lib/{api-result,form-utils}`；
+   T11e-4 只把它的三处借键 import 改到了 `@fenix/resource-{mcp,skill}` / `@fenix/model-management/web`，
+   用例本身的归属（留宿主还是按 owner 迁包内，以及迁移后怎么处理那两条宿主 `../` 依赖）仍待裁定。
+
+### 7.30 T11e-4 宿主消费面直连与两套桥接别名表删除（2026-09-21，`f05fd7f6b` + `64c6cecc4`）
+
+T11e 的收口片：把宿主的最后一批「经 `@/src/...` 写到包内文件」的消费点改成直连包出口，然后删掉两张
+别名表里支撑这些写法的条目。
+
+| 段 | 提交 | 内容 |
+| --- | --- | --- |
+| T11e-4a | `f05fd7f6b` | 10 个宿主文件改直连包出口（Shell 三个面板、`DefaultAppShell`、`ChatArea`、`use-chat-panel-runtime`、`ChatPanel` 注释、`lib/card-renderer/builtins.ts`、`artifacts-dialogs.tsx`、三个宿主测试的借键 import）；`packages/chat-channel/tsconfig.json` 删 5 条死 `@/src/*` paths |
+| T11e-4b | `64c6cecc4` | 删两套别名表的全部桥接条目（vite 侧 39 条 / tsconfig 侧 30 余条）；同批修掉 `ArtifactsPanel` 一处绕过 `exports` 的深层相对路径；7 份包 README 的待办措辞改为已完成口径 |
+
+**为什么必须两段分开**：别名表是「包内实现在宿主侧有一个永不过期的写法」的唯一来源，只要还有消费点，
+删表就是制造解析失败。顺序只能是「先改消费点、门禁全绿 → 再删表」，两段各带一次完整 `precheck`，
+任何一段出问题时另一段仍是干净可回滚的。
+
+**三处非显然取舍**：
+
+1. **`agent-runtime` 用深路径、`identity` 用根出口**——同样是「改直连」，落点却不同：`agent-runtime`
+   的 `package.json` 没有 `./web` 根出口（web 面只有 `./web/api/environments` 一条），因此
+   `envApi` 必须走这条**唯一公开面**；`identity` 没有 `./web/lib/auth-client` 子路径，而包根
+   `@fenix/identity/web` 已是宿主在用的公开面（`useSession` 等符号都在根出口），所以 `useSession`
+   改从根出口取。两处都不是「深入包内实现」——判据是「该路径是否在 `exports` 里声明」。
+2. **`@/src/lib/auth-client` 的裁定是删除而非保留**：它的唯一指针是身份包的 `web/lib/auth-client.ts`，
+   消费方（`use-chat-panel-runtime`）改走根出口后零消费，别名条目随之删除。宿主侧不再有第二份
+   auth-client 的取法。
+3. **两张表必须逐条一致**，且只删「指向 `packages/**`」的条目：保留的 8 条 vite / 9 条 tsconfig 全是
+   宿主自有（宿主 `src/`、宿主 i18n 字典、`@/src/api/helpers`、`@/src/lib/{utils,random-uuid-polyfill,theme}`、
+   `@/src/lib/card-renderer/*`、`@server`）。`@/src/i18n/locales` 必须排在 `@/src/i18n` 之前（vite 按声明
+   顺序取首个匹配），删表时未动顺序。dependency-cruiser 以根表为唯一来源（`.dependency-cruiser.cjs` 的
+   `tsConfig: { fileName: "tsconfig.json" }`），所以「删表后门禁仍绿」本身就是两张表与解析一致性的证据。
+
+**别名表拦不住的漏网（同批修掉）**：`apps/web/src/shell/ArtifactsPanel.tsx` 的 `TasksPanel` 原先是
+`../../../../packages/resources/task/web/pages/agent-panel/TasksPanel` —— **深层相对路径穿透**，既不经过
+`exports`，也不在任何别名表里，删表不会让它现形（`git grep '"@/src/'` 同样看不到它）。它与 T11e-4a 的
+其余 10 个文件是同一类问题（宿主侧绕过包公开面），故并入本片修为 `@fenix/resource-task/web`。剩余两处
+同形写法（`apps/web/src/__tests__/agent-form-dialog-{pure-logic.test.ts,ssr.test.tsx}` 反向读
+`agent-config/web/pages/**`）不在本片：它们的归位要连用例本身一起搬（登记见 §7.29 第 2 条）。
+**未新增门禁规则**拦这类写法：本任务是迁移收口，加一条有界检查属范围外的新机制，且现有
+`packages/*/web/__tests__/*-browser-surface.test.ts` 只守「包内不得回指宿主」这一个方向；登记为 §七
+待办（宿主 → 包 方向的裸相对穿透）。
+
+**实测对账**：脚本对全仓 `apps/**`、`packages/**`、`scripts/**` 的 50 处 `@/src/*` 引用逐条做路径存在性
+校验，唯一未解析的是 `apps/server/src/__tests__/architecture-check.test.ts:322` 的**合成 fixture 字符串**
+（它喂给架构检查器当输入，断言 stdout 含该说明符；规则按说明符模式判定，不依赖别名解析，且该路径
+在删表前也不存在于 `paths` 中——改动前后均 0 影响）。`packages/chat-channel/tsconfig.json` 的 5 条
+`@/src/*` paths 经实测对本包 `src` 零引用后删除（保留 `@server/*` 与两条 `@fenix/chat-channel*`）。
+台账（RMD-08）不变：本片只改 import 说明符与配置文件，不移动任何宿主文件，故 MOVES / RELOCATED 保持
+T11e-3c 后的 60 / 87。
+
+**门禁与文档**：两段各自 `precheck` 全绿（末段 server 788 / package 7924（2 skip）/ web 352，0 fail，
+lint 零 warning），`build:web`（2.29s）与 `docs:build` 通过。文档同步了 7 份包 README（channel /
+knowledge / mcp / model-management / observer / prod-view / skill 的「随 T11e 收尾批次删除」改为已完成；
+task 另修了它对 `ArtifactsPanel` 走别名的过期描述），并订正 observer README 一处旧记录——它记的
+`@/src/api/{observer,system-logs,system-people-tree}` 三条「死别名」在删除前的两张表里查无此条
+（`git show HEAD:apps/web/vite.config.ts | grep -n observer` 只命中 3 条页面 alias）。
+
+**登记转出（不在本片做）**：
+
+1. 宿主测试反向读 `agent-config/web/pages/**` 的两处（见上）；迁移时如何处置它们对宿主
+   `../api/fs`、`../lib/{api-result,form-utils}` 的依赖仍未裁定。
+2. 宿主 → 包 方向的裸相对穿透检查（若有第二个真实用例出现再加规则；今天只剩上面两处，都在测试里）。
+3. `packages/resources/agent-config` 的 `ensureMetaAgent` 窄口（收窄 workflow 白名单 fan-out）——T12 登记项。
 
 ---
 
