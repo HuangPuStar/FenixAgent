@@ -98,7 +98,7 @@ WebShell 从静态 registry 收集各资源包的 web contribution（不反向�
 | T2 | 宿主零消费死代码与重复副本删除 | 已交付 | 见下方 §7.2 |
 | T3 | `@fenix/ui-components` 扩面 | 已交付 | `b858bf68f` |
 | T4 | `identity/web` 清零 + i18n | 4a 已交付 / 4b 待办 | 见下方 §7.3 |
-| T5 | `chat-channel/web` 清零 | a,b,c1,c2 已交付 / c5,d 待办 | 见下方 §7.4–§7.8 |
+| T5 | `chat-channel/web` 清零 | a,b,c1,c2,c5 已交付 / d 待办 | 见下方 §7.4–§7.9 |
 | T6 | `agent-runtime/web` 收敛 | 待办 | — |
 | T7 | 5 条 `special-dependency` 消除 | 待办 | — |
 | T8 | 宿主组件/lib/api 簇改指并删除 | 待办 | — |
@@ -114,7 +114,7 @@ WebShell 从静态 registry 收集各资源包的 web contribution（不反向�
 | --- | --- | --- |
 | T5a | `agent-config/web` 新增 `loadBoundMcps` | 纯新增助手 + 出口，见 §7.4；`agent-runtime` 不得持有该查询（§四.10） |
 | T5b | `ChatArea` 簇迁至宿主 | **已交付**（§7.5）：`ChatArea.tsx` / `chat-area-lifecycle.ts` / `chat-layout.css` 迁 `apps/web/src/pages/agent-panel/`；`ProdViewPage` 改注入窄端口；环境删除用例随迁 |
-| T5c | `ChatPanel` 改指 ui-components 面板 | **c1 已交付**（§7.6，一致性缺口修复见 §7.7）、**c2 已交付**（§7.8）；c3（宿主注入 `boundMcps`）与 c4（chat CSS 切包）并入 c2——CSS 必须与 DOM 同批，分离提交会出现两端样式都错版的中间态；余 c5 测试归位待办 |
+| T5c | `ChatPanel` 改指 ui-components 面板 | **c1 已交付**（§7.6，一致性缺口修复见 §7.7）、**c2 已交付**（§7.8）；c3（宿主注入 `boundMcps`）与 c4（chat CSS 切包）并入 c2——CSS 必须与 DOM 同批，分离提交会出现两端样式都错版的中间态；**c5 测试归位已交付**（§7.9） |
 | T5d | `chat-channel/web` 退场 | 删 3 个组件与入口（含 §四.9 的 `ContextPanel` 死代码链）、删 `./web*` 出口与 tsconfig paths、测试归位、删台账 1 条 |
 
 ---
@@ -617,7 +617,7 @@ c2 要把 `ACPMain` 的宿主职责从「组件内直连」改为「宿主注入
 - `bun run lint` / `bun run typecheck:web` / `bun run check:dependencies` / `bun run architecture:check` → ✓
 - `bun run build:web` → ✓
 
-### 7.8 T5c2 `ChatPanel` 改指 ui-components 面板（2026-09-21）
+### 7.8 T5c2 `ChatPanel` 改指 ui-components 面板（2026-09-21，`1fd40fb8b`）
 
 本片是 T5 的**原子切换**：`agent-runtime` 的 `ChatPanel` 从 `@fenix/chat-channel/web` 的 `ACPMain` 改指
 `@fenix/ui-components/chat/shell/ACPMain`，宿主职责全部经端口注入。c3（`boundMcps` 注入）与 c4（chat
@@ -692,6 +692,35 @@ resources（含 `agent-config`）。只注入**当前活跃 slot**——keep-ali
 - `bun run build:web` → ✓（`ChatPanel` chunk 301.69 kB；dist `agent-panel-*.css` 含 `chat-header-card` ×7、
   `chat-command-menu-tail` ×1、`chat-composer-wrapper` ×5——切换后的样式表确实进入了生产产物；i18n chunk
   含 `quoteLimitReached`，字典装载到位）
+
+### 7.9 T5c5 三个 Chat 测试归位（2026-09-21）
+
+三个测试此前住在 `packages/chat-channel/web/src/__tests__/`，但它们断言的对象早已不属于 chat-channel：
+c2 之后线上渲染的是 ui-components 的 `ACPMain`、派发/消费摘要的是 web-runtime 的模块。留在旧包会同时
+产生两个问题——① 断言的是 T5d 即将删除的实现（删 `chat-channel/web` 时测试一起消失，覆盖归零，且不会
+有人发现）；② 位置与命名误导后来者，以为 chat-channel 仍是 chat 行为的 owner。
+
+| 测试 | 新位置 | 断言对象 | 迁移改动 |
+| --- | --- | --- | --- |
+| `acp-main-session-recovery.test.tsx` | `packages/ui-components/web/__tests__/` | 包内 shell 的刷新恢复（loading 中恢复当前会话仍发 `load_session`） | `ACPMain` 改包内相对导入；happy-dom 初始化改用 `@fenix/ui-components/testing`（T3 收敛的唯一实现——原先以相对路径读 `apps/web/src/__tests__/happy-dom-window`，属 `web-package-not-to-app` 越界）；快照类型改 `../chat/types`（ui-components 刻意不与 `@fenix/chat-channel` 建边，类型已在包内重声明，见其 README）；补 i18next 实例初始化（否则包内 shell 的文案走 react-i18next 的「无实例」告警路径） |
+| `chat-stats.test.tsx` | `packages/web-runtime/web/__tests__/` | `ChatStatsDispatcher`（`web/lib/chat-stats`）+ `useChangedFilesFromStats`（`web/hooks/use-changed-files-stats`） | 两者都在 web-runtime，故整份迁入，**不必**按原计划拆成「包侧派发方 + 宿主消费方」两半（消费 hook 也已在 web-runtime 有归属）；`ChangedFile` 改 `@fenix/ui-components/chat/lib/extract-changed-files`（web-runtime 实际消费的类型来源） |
+| `structured-to-thread.test.ts` | `packages/web-runtime/web/__tests__/` | `web/chat/structured-to-thread` | 投影导入改包内相对路径；`@fenix/chat-channel/server` 的聚合层导入保留 |
+
+其他改动：web-runtime 补 devDependencies（`happy-dom` / `react-dom` / `@types/react-dom`）——包内测试自带
+DOM 与 React 渲染需要，`bun.lock` 同步。`bun test packages/` 自动发现，CI 无需改动。
+
+**台账不动**：`scripts/root-source-owner-rules.ts` 里 `web/src/__tests__/…` 的条目按**历史根路径**登记
+（RMD-01 → chat-channel），审计对象是已不存在的根目录（`bun run check:root-owner-inventory` → `files=0`）。
+改写它等于篡改阶段 1 的迁移记录，故保留原样。
+
+#### 验证
+
+- `bun test packages/ui-components/web/__tests__/ packages/web-runtime/web/__tests__/` → 70 pass / 0 fail
+- `env -u ANTHROPIC_MODEL bun run precheck` → ✓ All passed（83876ms）：server 770 pass、package 7338 pass /
+  2 skip、web-app 949 pass——迁移前后 **package-tests 总数不变**（3 个文件换位置，用例数相同）
+- `bun run build:web` → ✓（纯测试迁移，产物无变化）
+- `bun run check:dependencies` → ✓ 2395 modules / 0 条新增违规；`bun run architecture:check` → ✓ 2243 files
+- `bun run lint` → ✓（迁移后首跑有 1 条 import 排序错误，已按 biome 修复）
 
 ---
 

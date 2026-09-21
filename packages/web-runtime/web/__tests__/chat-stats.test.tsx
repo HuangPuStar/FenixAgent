@@ -1,4 +1,3 @@
-// web/src/__tests__/chat-stats.test.tsx
 // SP-B7 chat:stats 摘要协议的行为测试，覆盖三条关键链路：
 // 1) ChatStatsDispatcher（派发方）：摘要 payload 只含轻量字段（不含 entries）、
 //    相同签名幂等跳过、1s trailing 窗口合并多次变化、依赖变化/卸载时 flush 保证最终态；
@@ -7,13 +6,13 @@
 // 3) 派发器默认走 window.dispatchEvent 派发 chat:stats，与消费方构成闭环。
 
 import { afterEach, describe, expect, test } from "bun:test";
+import type { ChangedFile } from "@fenix/ui-components/chat/lib/extract-changed-files";
+import { initializeHappyDomWindow } from "@fenix/ui-components/testing";
 import { Window } from "happy-dom";
 import { act, createElement } from "react";
 import { createRoot, type Root } from "react-dom/client";
-import { useChangedFilesFromStats } from "@/src/hooks/use-changed-files-stats";
-import { ChatStatsDispatcher, type ChatStatsSummary } from "@/src/lib/chat-stats";
-import type { ChangedFile } from "@/src/lib/extract-changed-files";
-import { initializeHappyDomWindow } from "../../../../../apps/web/src/__tests__/happy-dom-window";
+import { useChangedFilesFromStats } from "../hooks/use-changed-files-stats";
+import { ChatStatsDispatcher, type ChatStatsSummary } from "../lib/chat-stats";
 
 (globalThis as Record<string, unknown>).IS_REACT_ACT_ENVIRONMENT = true;
 

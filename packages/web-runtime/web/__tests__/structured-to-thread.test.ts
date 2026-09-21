@@ -1,4 +1,3 @@
-// web/src/__tests__/structured-to-thread.test.ts
 // chatDocEntriesToStructuredMessages 切分回归 + 增量派生（SP-B2 第二步）测试：
 // - 切分回归：assistant entry 内文本段被工具调用打断时，展示投影必须切分为多条
 //   assistant_message（保持 "ai → tool×N → ai" 的真实顺序，id 唯一）；
@@ -15,7 +14,7 @@ import type { NormalizedEvent, StructuredMessage } from "@fenix/chat-channel";
 // 聚合层服务端能力经 server 子路径导入（双入口边界，见 CLAUDE.md YJS 不变量 11）
 import { applyNormalizedEvent, createChatDoc, createSessionDoc, type DocPair } from "@fenix/chat-channel/server";
 import type * as Y from "yjs";
-import { chatDocEntriesToStructuredMessages, structuredToThreadEntries } from "@/src/lib/structured-to-thread";
+import { chatDocEntriesToStructuredMessages, structuredToThreadEntries } from "../chat/structured-to-thread";
 
 let pair: DocPair;
 

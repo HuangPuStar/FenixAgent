@@ -849,7 +849,10 @@
       },
       "devDependencies": {
         "@types/react": "^19.2.15",
+        "@types/react-dom": "^19.2.3",
+        "happy-dom": "^20.9.0",
         "react": "^19.2.6",
+        "react-dom": "^19.2.6",
       },
       "peerDependencies": {
         "react": "^19",
