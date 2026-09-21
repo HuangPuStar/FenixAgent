@@ -693,7 +693,7 @@ resources（含 `agent-config`）。只注入**当前活跃 slot**——keep-ali
   `chat-command-menu-tail` ×1、`chat-composer-wrapper` ×5——切换后的样式表确实进入了生产产物；i18n chunk
   含 `quoteLimitReached`，字典装载到位）
 
-### 7.9 T5c5 三个 Chat 测试归位（2026-09-21）
+### 7.9 T5c5 三个 Chat 测试归位（2026-09-21，`d6a0caceb`）
 
 三个测试此前住在 `packages/chat-channel/web/src/__tests__/`，但它们断言的对象早已不属于 chat-channel：
 c2 之后线上渲染的是 ui-components 的 `ACPMain`、派发/消费摘要的是 web-runtime 的模块。留在旧包会同时
@@ -722,7 +722,7 @@ DOM 与 React 渲染需要，`bun.lock` 同步。`bun test packages/` 自动发�
 - `bun run check:dependencies` → ✓ 2395 modules / 0 条新增违规；`bun run architecture:check` → ✓ 2243 files
 - `bun run lint` → ✓（迁移后首跑有 1 条 import 排序错误，已按 biome 修复）
 
-### 7.10 T5d `chat-channel/web` 退场（2026-09-21）
+### 7.10 T5d `chat-channel/web` 退场（2026-09-21，`8f364c109`）
 
 c2 之后线上聊天界面由 ui-components 的 `ACPMain` 渲染，`chat-channel/web` 已无运行时消费方；继续保留它
 会让「谁渲染聊天 UI」的归属再次含糊，也会让 `@fenix/chat-channel/web` 这个出口成为绕过 `exports` 收敛的
