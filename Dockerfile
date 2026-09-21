@@ -32,6 +32,22 @@ COPY --from=migrate-build /tmp/migrate-bundle/migrate.js ./
 COPY drizzle ./drizzle
 CMD ["bun", "migrate.js"]
 
+############### data migration image ###############
+
+# 数据迁移是发布期的一次性步骤，必须独立于应用容器启动命令执行（§6.3 / §10.6.2）：
+# 每个副本各跑一次含文件副作用的迁移不是幂等并发安全。发布顺序：migrate → data-migrate → 部署应用。
+# 运行本镜像时必须注入与应用相同的环境变量，并挂载与应用相同的数据卷（/app/data）：迁移会写 skill 目录，
+# 卷/路径不一致会留下「记录已落库、应用读不到迁移后文件」且无法靠重跑自愈的状态。
+FROM deps AS data-migrate-build
+COPY db ./db
+COPY apps/server ./apps/server
+RUN bun build db/data-migration-runner.ts --target=bun --outdir /tmp/data-migrate-bundle
+
+FROM oven/bun:1 AS data-migrate
+WORKDIR /app
+COPY --from=data-migrate-build /tmp/data-migrate-bundle/data-migration-runner.js ./
+CMD ["bun", "data-migration-runner.js"]
+
 ############### production image ###############
 
 FROM oven/bun:1 AS runtime
@@ -83,6 +99,7 @@ RUN rm -rf /root/.bun/install/cache /tmp/bun-*
 COPY --from=build /app/dist ./dist
 COPY --from=build /app/apps/web/dist ./apps/web/dist
 COPY --from=migrate-build /tmp/migrate-bundle/migrate.js ./
+COPY --from=data-migrate-build /tmp/data-migrate-bundle/data-migration-runner.js ./
 COPY drizzle ./drizzle
 
 RUN mkdir -p /root/.config/opencode /root/.local/share/opencode /app/data /app/workflow /app/workspaces

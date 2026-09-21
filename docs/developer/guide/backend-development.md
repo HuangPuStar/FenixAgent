@@ -8,10 +8,10 @@
 
 ### 1.1 `apps/server/src/` 后端主服务源码
 
-- `apps/server/src/main.ts`：服务启动入口，负责装配插件、路由、启动阶段任务，例如数据迁移。
+- `apps/server/src/main.ts`：服务启动入口，负责装配插件、路由和启动阶段任务（业务数据迁移不在其中，见 §3.7）。
 - `apps/server/src/openapi.ts`：统一维护 OpenAPI / Scalar 文档插件与全局 tag 定义，供入口按 `/api` 和 `/web` 两套文档分别挂载。
 - `apps/server/src/routes/`：主服务装配的 HTTP / WebSocket 路由定义；控制台共享路由在 `apps/server/src/routes/web/`。
-- `apps/server/src/services/`：主服务业务编排、启动与横切服务；`apps/server/src/services/config/` 按配置资源类型内聚，`apps/server/src/services/data-migrates/` 存放启动时数据迁移。
+- `apps/server/src/services/`：主服务业务编排、启动与横切服务；`apps/server/src/services/config/` 按配置资源类型内聚，`apps/server/src/services/data-migrates/` 存放一次性数据迁移（由部署期入口执行，见 §3.7）。
 - `apps/server/src/repositories/`：低层数据访问封装，只做持久化操作，不承载业务规则。
 - `apps/server/src/db/`：数据库连接、Schema 定义等。
 - `apps/server/src/schemas/`：请求参数、响应结构、配置 body 等校验 Schema。
@@ -145,6 +145,7 @@
 - DDL 迁移文件：`drizzle/`
 - 迁移执行入口：`scripts/migrate.ts`
 - 数据迁移实现：`apps/server/src/services/data-migrate.ts` 与 `apps/server/src/services/data-migrates/`
+- 数据迁移执行入口：`db/data-migration-runner.ts`（部署期一次性执行，不随应用启动运行）
 
 ### 3.5 Schema 变更流程
 
@@ -175,8 +176,15 @@ DDL 迁移和数据迁移必须分离：
 - 每个数据迁移在 `apps/server/src/services/data-migrates/` 下独立成文件。
 - 必须实现统一接口并注册到 `apps/server/src/services/data-migrate.ts`。
 - `name` 必须唯一，执行记录写入 `data_migrate_record`。
-- 迁移逻辑必须幂等；失败后再次启动时应可安全重试。
+- 迁移逻辑必须幂等；失败后重新执行时应可安全重试。
 - 不要把批量 `UPDATE/INSERT/DELETE` 数据修复逻辑直接写进 DDL SQL。
+
+执行方式（§6.3 / §10.6.2）：
+
+- 数据迁移由部署期入口 `db/data-migration-runner.ts` 执行一次，**不在应用进程启动时执行**；应用副本启动不承担数据迁移责任。
+- 发布顺序固定为：DDL 迁移（`migrate.js`）→ 数据迁移（`data-migration-runner.js`）→ 部署新版本进程。顺序颠倒会因缺列/缺表而失败（fail-stop）。
+- 数据迁移不得写进 `docker-compose.yml` 的容器启动命令：多副本会重复执行含文件副作用的迁移。
+- 执行该步骤的进程必须与应用**同一份环境变量与数据卷**：迁移读模块配置（如 `skillDir`）并写文件，路径/卷不一致会留下「记录已落库、应用读不到迁移后文件」且重跑会被记录跳过、无法自愈的状态。
 
 ### 3.8 迁移冲突与故障处理
 
@@ -216,7 +224,7 @@ DDL 迁移和数据迁移必须分离：
 ### 4.2.1 非 `/web` / `/api` 的内部协议路由
 
 - 如果接口既不是给控制台前端 `/web` 场景使用，也不是给外部 OpenAPI `/api` 场景使用，就不要放进领域包的 `src/server/routes/web/` 或 `src/server/routes/api/`。
-- 这类接口应按协议或内部用途放在所属包的独立 route 模块中，例如 `packages/resources/mcp/src/server/routes/mcp/`、`packages/agent-runtime/src/routes/acp/`、`apps/server/src/routes/hooks.ts`、`packages/resources/skill/src/server/routes/skills.ts`。
+- 这类接口应按协议或内部用途放在所属包的独立 route 模块中，例如 `packages/resources/mcp/src/server/routes/mcp/`、`packages/agent-runtime/src/routes/acp/`、`packages/resources/workflow/src/server/routes/hooks/`、`packages/resources/skill/src/server/routes/skills.ts`。
 - 路由前缀应与用途明确对应，使用独立前缀，例如 `/mcp/*`、`/acp/*`、`/hooks/*`、`/skills/*`，避免与 `/web/*`、`/api/*` 语义混淆。
 - 这类接口通常属于内部协议入口、系统桥接层、静态资源下载入口、Webhook 或框架透传能力，不应为了“风格统一”强行并入 `/web` 或 `/api`。
 - 这类接口默认按内部使用处理，OpenAPI 文档一般应设置 `detail.hide: true` 隐藏；只有在明确要求对外展示或确有文档消费方时，才公开到文档中。

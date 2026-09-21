@@ -29,7 +29,6 @@ import { findDeprecatedEnvVars } from "../env";
 import type { ServerEnv } from "../env-loader";
 import { closeCache } from "../services/cache";
 import { initCoreRuntime } from "../services/core-bootstrap";
-import { runDataMigrations } from "../services/data-migrate";
 import { createModelGatewaySubjectVerification } from "../services/model-gateway-subject-verification";
 import { createPreLaunchPorts, type PreLaunchPortsDeps } from "../services/pre-launch-ports";
 import { syncBuiltin } from "../services/sync-builtin";
@@ -44,10 +43,14 @@ import { runCriticalStartupSequence } from "./startup-sequence";
  * 顺序约束集中在两个函数里，两侧都不可重排：
  *
  * **启动**（`startHostRuntime`）：DB → 模块装配 → 模型网关是 §3.1 钉下的关键序列（`initModelGateway` 里的
- * `ensureSystemAdmin` / `runDataMigrations` / 沙盒崩溃恢复是宿主进程级动作，不是任何模块的贡献），随后才是
+ * `ensureSystemAdmin` / 沙盒崩溃恢复是宿主进程级动作，不是任何模块的贡献），随后才是
  * 「启动前取数端口 → 沙盒默认池 → Core runtime → 调度器 → builtin 同步 → 自定义节点工具 → Hermes → RagFlow
  * 体检 → 巡检定时器 → 空闲监视」。其中「启动前取数端口」必须晚于 `wirePermissions`（agent-config / skill /
  * mcp / model-management 四个模块那时才装配完成），且晚于模型网关凭证解析器就绪。
+ *
+ * 业务数据迁移**不在**本序列内：§6.3 与 §10.6.2 要求一次性数据迁移只由部署发布任务执行。发布期入口是
+ * `db/data-migration-runner.ts`，必须在 DDL 迁移之后、新版本进程启动之前跑一次；它「早于 builtin 同步」
+ * 这一时序要求因此由发布顺序保证，而不是由本文件的启动序保证。
  *
  * **关闭**（`shutdownHostRuntime`）：与启动严格反向冻结——先停接受新工作的（runtime drain / 调度器 /
  * Hermes），再停巡检定时器，最后关连接、缓存与 DB；每一步都有独立超时，超时只记日志不阻断后续步骤。
@@ -113,10 +116,6 @@ export async function startHostRuntime(env: ServerEnv, agentRuntime: AgentRuntim
       // 先应用 env，再跑系统初始化：system admin 需要读取密码文件路径配置。
       const systemAdmin = await ensureSystemAdmin();
       startupLog.info(`System admin ready: ${systemAdmin.email}`);
-
-      // 数据迁移仍要早于 builtin 同步，避免旧数据结构影响系统资源落盘位置。
-      await runDataMigrations();
-      startupLog.info("Data migrations completed");
 
       // 上游凭据的主体复验端口：用已装配的授权能力 + agent_config 的资源定义，与平台其它入口判定
       // Agent 可用性的是同一条规则（见 `services/model-gateway-subject-verification`）。

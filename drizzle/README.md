@@ -99,6 +99,30 @@
 - 这个场景不要只改时间戳后直接重跑；如果后续迁移已经部分生效，必须先做结构补偿，否则很容易产生重复建表、重复加列或索引冲突。
 - 如果其中任一迁移还涉及数据迁移、回填、批量修复等复杂逻辑，不能直接套用上面的 DDL 回滚方法，必须按实际数据状态额外设计补偿方案，先恢复数据和结构一致性，再决定是否重跑迁移。
 
+### 场景 3.4：历史 `db:push` 库需要一次显式基线化
+
+背景：迁移入口曾经把「异常 message 含 `already exists`」当作「库是先 `db:push` 建的」而按成功退出；该容忍已删除，迁移失败一律非 0 退出（理由见 `docs/need-to-change/31-gate-release-and-migration.md`）。因此历史用 `db:push` 直接推平 schema、没有 `drizzle."__drizzle_migrations"` 记录的环境，第一次执行 `migrate.js` 会在重复建表处失败。
+
+这类库需要**一次显式的基线化**：把「结构确实已经存在的那部分迁移」记为已应用，之后交给 `migrate.js` 继续应用剩余迁移。判定「哪些已经存在」必须由人确认（场景三开头的三处核对点），不能由脚本猜。
+
+处理方式（在能访问数据库的机器上执行，需要 `psql` 与 `jq`）：
+
+1. 先备份数据库——基线化必须可回滚。
+2. 核对该库真实结构与迁移链的差异，确定最后一个「结构已经存在」的迁移节点 `<tag>`。
+3. 插入一行进度记录即可：drizzle 只按 `created_at` 的最大值判断进度，`hash` 取该迁移 SQL 文件内容的 sha256，`created_at` 取 `_journal.json` 中该节点的 `when`。
+
+```bash
+tag=<最后一个已存在的迁移节点，例如 0027_access-control-resource-visibility>
+sha=$(shasum -a 256 "drizzle/${tag}.sql" | cut -d' ' -f1)
+when=$(jq -r --arg tag "$tag" '.entries[] | select(.tag==$tag) | .when' drizzle/meta/_journal.json)
+psql "$DATABASE_URL" -c \
+  "insert into drizzle.\"__drizzle_migrations\" (hash, created_at) values ('${sha}', ${when})"
+```
+
+4. 重新执行 `migrate.js`：应只应用 `<tag>` 之后的迁移。若仍报 `already exists`，说明基线节点选错或库结构与迁移链不一致，回到第 2 步继续核对——**不要**把该错误当成可忽略。
+
+注意：`drizzle."__drizzle_migrations"` 表不存在时（库从未跑过任何迁移），先执行一次 `migrate.js`：它会在事务外先建好 `drizzle` schema 与该表，再在重复建表处失败；此时按上面第 3 步插入基线行即可。
+
 ## 场景四：需要执行数据迁移（非 DDL）
 
 当功能开发不仅涉及 schema 变更，还需要**对已有数据进行批量修改/搬迁**时，不能直接在 DDL 迁移 SQL 里手写数据操作。这类逻辑必须走代码迁移流程。
@@ -108,7 +132,7 @@
 | 类型 | 内容 | 执行方式 |
 |------|------|----------|
 | DDL 迁移（`drizzle/`） | 表结构变更（新增列、索引等） | `bun run db:migrate` 或 `migrate.js` |
-| 数据迁移（`data-migrate.ts`） | 已有数据的批量处理/搬迁 | 服务启动时 `runDataMigrations()` 自动执行 |
+| 数据迁移（`data-migrate.ts`） | 已有数据的批量处理/搬迁 | 部署期入口 `db/data-migration-runner.ts` 执行一次 |
 
 ### 如何新增一个数据迁移
 
@@ -144,16 +168,20 @@ export const _deps = {
 
 ### 执行机制
 
-- 服务启动时（`apps/server/src/main.ts`）自动调用 `runDataMigrations()`。
+- 由部署期入口 `db/data-migration-runner.ts` 在发布步骤执行一次（镜像内为 `bun data-migration-runner.js`）。
+  **应用进程启动不执行数据迁移**：一次性迁移只由部署发布任务承担，避免每个副本各跑一次含文件副作用的迁移。
+- 发布顺序固定为：DDL 迁移（`migrate.js`）→ 数据迁移（`data-migration-runner.js`）→ 部署新版本进程。
+- 该步骤的运行环境必须与应用一致（同一份环境变量与数据卷）：迁移会读模块配置（如 `skillDir`）并写文件。
 - 每个迁移执行前会查询 `data_migrate_record` 表，**已执行过的迁移会自动跳过**。
 - 迁移成功后将 `name` 写入 `data_migrate_record` 表作为执行记录。
 - 迁移按 `_deps.migrates` 数组中的顺序依次执行，不可变更已有迁移的顺序。
+- 任一迁移失败即中止后续迁移并以非 0 退出，部署流水线据此失败停止。
 
 ### 注意事项
 
 - 数据迁移的 `name` 在 `data_migrate_record` 表中唯一，不可重复。
-- 迁移逻辑必须**保证幂等性**：如果中途失败，下次启动会重新执行，避免产生重复数据。
-- 迁移中如果创建了文件/目录等副作用，失败时应清理已产生的半成品，防止下次启动误判为已完成。
+- 迁移逻辑必须**保证幂等性**：如果中途失败，重新执行时会再次尝试，避免产生重复数据。
+- 迁移中如果创建了文件/目录等副作用，失败时应清理已产生的半成品，防止下次执行误判为已完成。
 - 数据迁移的 DDL 变更（如新增表）仍然需要通过 Drizzle 生成 DDL 迁移文件，两者独立但可协同。
 
 ---

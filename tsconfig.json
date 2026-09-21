@@ -33,6 +33,8 @@
       "@server/*": ["./apps/server/src/*"]
     }
   },
-  "include": ["apps/server/src/**/*.ts"],
+  // `db/` 只放部署期数据迁移入口（release 步骤，不进应用启动序列），其类型正确性直接影响
+  // 运维可执行性，故纳入检查；根 `scripts/` 仍由 bun 运行时与定向测试覆盖，不在本 include 内。
+  "include": ["apps/server/src/**/*.ts", "db/**/*.ts"],
   "exclude": ["node_modules", "dist"]
 }

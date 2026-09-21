@@ -11,13 +11,14 @@ import { agentConfig, mcpServer, provider, resourcePermission, skill } from "../
  * （agent_config / skill / mcp_server / provider）在任务 1.2 的 S2–S5 已全部切到新栈，回填之后
  * 不会丢失既有公开受众。
  *
- * 执行时机：注册进 `data-migrate` 启动期 runner，在 builtin 同步之前执行一次并记入
- * `data_migrate_record`。`DROP TABLE resource_permission` 已按裁决推到**下一发布**（见
+ * 执行时机：注册进 `data-migrate` 注册表，由部署期入口 `db/data-migration-runner.ts` 在发布步骤执行一次
+ * 并记入 `data_migrate_record`（启动序不再执行数据迁移，见 §6.3 / §10.6.2）。该步骤位于 DDL 迁移之后、
+ * 新版本进程启动之前，因此仍早于 builtin 同步。`DROP TABLE resource_permission` 已按裁决推到**下一发布**（见
  * `db/schema.ts` 中三个 enum 与 `resourcePermission` 表处的 `removeWhen`），回填必须在该 DROP
  * 之前于全部环境执行完毕。回填只做"读授权 → 公开受众"的单向收敛，不回写授权表。
  *
  * 风险：`principal_type='organization'` 的记录没有任何写入方，一旦存在即说明数据形态超出本
- * 迁移的假设，此时直接失败并停止启动流程，等待人工处置——不猜测其语义，也不静默跳过。
+ * 迁移的假设，此时直接失败并停止发布步骤（非 0 退出），等待人工处置——不猜测其语义，也不静默跳过。
  */
 
 /** 归属列在主表上的受控资源；`resource_permission.resource_type` 与本表的资源类型一一对应。 */
