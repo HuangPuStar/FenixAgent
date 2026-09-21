@@ -295,5 +295,8 @@
     "pageOf": "第 {{page}}/{{total}} 页",
     "fetchFailed": "获取切片列表失败",
     "toggleFailed": "切换切片状态失败"
+  },
+  "nav": {
+    "knowledgeBases": "知识库"
   }
 }
