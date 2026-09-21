@@ -11,12 +11,12 @@
  * 设计原则：宽容处理 rawInput / rawOutput 的字段变体
  * （不同 Agent 命名习惯不同），失败时返回兜底值而非抛错。
  *
- * 纯化改动点：`resolveToolCardKind` 不再调用宿主 `classifyToolSemantic`——语义只信任投影边界
- * 写入的入参 `tool.semantic`，缺失时跳过语义分支（随后仍走 display / rawInput 推断，最终
- * 回落 "unknown"），因此本模块不依赖任何宿主分类器。类型改从 `../types` 导入。
+ * 纯化改动点：`resolveToolCardKind` 的语义兜底改用包内 `../lib/tool-semantic` 的同一个
+ * `classifyToolSemantic`（源实现经 `@/src/lib/tool-semantic` 调用宿主副本，两份逐字一致），
+ * 因此本模块不依赖任何宿主模块。类型改从 `../types` 导入。
  */
 
-import { semanticToToolCardKind } from "../lib/tool-semantic";
+import { classifyToolSemantic, semanticToToolCardKind } from "../lib/tool-semantic";
 import type { ToolCallData, ToolCardKind } from "../types";
 
 /**
@@ -318,15 +318,14 @@ const DISPLAY_TYPE_MAP: Record<string, ToolCardKind> = {
  * 5. 兜底 "unknown"
  *
  * 注意：完全不依赖 title 字段。
- *
- * 纯化改动点：源实现第 3 级回退调用宿主 `classifyToolSemantic({ name: tool.title, ... })`
- * 推断语义；包内只读取入参 `tool.semantic`，缺失时跳过该级（后续 display / rawInput 推断与
- * "unknown" 兜底保持不变）。
  */
 export function resolveToolCardKind(
   tool: Pick<ToolCallData, "display" | "rawInput" | "rawOutput"> & Partial<Pick<ToolCallData, "title" | "semantic">>,
   meta?: Record<string, unknown> | null,
 ): ToolCardKind {
+  // 第 3 级的语义兜底与源实现一致：投影边界未写入 semantic 时按工具名重新分类
+  const semantic =
+    tool.semantic ?? classifyToolSemantic({ name: tool.title, rawInput: tool.rawInput, display: tool.display });
   const display = tool.display ?? extractDisplayMeta(tool.rawOutput, meta);
   if (display?.type) {
     const direct = DISPLAY_TYPE_MAP[display.type];
@@ -338,7 +337,7 @@ export function resolveToolCardKind(
       return "read-file";
     }
   }
-  const semanticKind = tool.semantic ? semanticToToolCardKind(tool.semantic) : undefined;
+  const semanticKind = semanticToToolCardKind(semantic);
   if (semanticKind) return semanticKind;
 
   // 名称未知时，继续使用 rawInput 识别扩展工具类型。

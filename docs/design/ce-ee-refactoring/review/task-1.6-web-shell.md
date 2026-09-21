@@ -99,7 +99,7 @@ WebShell 从静态 registry 收集各资源包的 web contribution（不反向�
 | T3 | `@fenix/ui-components` 扩面 | 已交付 | `b858bf68f` |
 | T4 | `identity/web` 清零 + i18n | 4a 已交付 / 4b 待办 | 见下方 §7.3 |
 | T5 | `chat-channel/web` 清零 | a,b,c1,c2,c5,d 已交付 | 见下方 §7.4–§7.10 |
-| T6 | `agent-runtime/web` 收敛 | 待办 | — |
+| T6 | `agent-runtime/web` 收敛 | a,b 已交付 / c,d,e 待办 | 见下方 §7.11 |
 | T7 | 5 条 `special-dependency` 消除 | 待办 | — |
 | T8 | 宿主组件/lib/api 簇改指并删除 | 待办 | — |
 | T9 | i18n 归属重划与 `quoteTruncatedBadge` 缺陷修复 | 待办 | — |
@@ -770,6 +770,62 @@ c2 之后线上聊天界面由 ui-components 的 `ACPMain` 渲染，`chat-channe
 - `bun run lint` → ✓（由 precheck 的 lint 步骤覆盖，零告警）
 
 首次 `precheck` 曾因 `rmd-05-migration.test.ts` 红（1 fail / 770 tests），即上方「连带修正」第一条；修正后全绿。
+
+---
+
+### 7.11 T6 旧 chat 实现退场（2026-09-21，T6a `9998926ec` + T6b `912569796`）
+
+#### 前置核查：删除前必须证明包内是超集（用户裁定的硬条件）
+
+用户对「`packages/agent-runtime/web/components/chat/**` 整体退场删除」附加了前置条件：
+**删除前先做逐文件行为比对，确认 ui-components 侧是超集**。核查按两步做：
+
+1. **机械预筛**：52 对同名/同职责文件逐对 `diff`。50 对全部有差异——差异来自 T3 的纯化改写
+   （`@/` 别名改指包内、i18n 收敛到 `UI_COMPONENTS_NS`、类型包内重声明、宿主依赖改 prop / 端口注入），
+   机械 diff 无法区分「纯化改写」与「功能丢失」，故必须逐对语义判定。
+2. **语义判定 + 对抗反驳**（工作流 `t6-duplicate-coverage-audit`，57 个 agent）：每对文件由独立核查员
+   完整读 A / B 后判定 `superset` / `equivalent` / `gap`，对判为 `gap` 的条目再由对抗核查员尽力反驳
+   （倾向驳回，只有找不到任何实现或等价物才承认缺失）。
+
+**结果**：52 对全部返回，`equivalent` 39 + `superset` 10 + `gap` 3；3 对共 5 条 gap 全部被反驳，
+**存活缺失 0 条**。5 条 gap 的处置：
+
+| 文件 | 指控 | 处置 |
+| --- | --- | --- |
+| `ToolCallRow.tsx` | ① `publicError` 块（message + Type + ID）不再渲染 ② 完成态状态词（`Done` / `已完成`）被抑制 | 均为 §8.2 第 1、2 行已登记的 T3 有意取舍（`b858bf68f`），非本片引入 |
+| `TodoChanges.tsx` | ① 每条待办右侧的变更标签 badge ② 随之删除的 6 条 `chat.components.todoChanges.*` 文案 | §8.2 第 3 行已登记的 `e8c73280a` 有意取舍；`packages/ui-components/README.md` 同载 |
+| `narrators/helpers.ts` | `resolveToolCardKind` 第 3 级「按 title 兜底分类」被删，只读 `tool.semantic` | **采纳并修复**（见下） |
+
+`narrators/helpers.ts` 的反驳意见是「在线链路由投影端口 `projectEntries` 写入 `semantic` / `kind`，
+该分支不可观测」。结论虽真，但它把包内行为押在宿主投影契约上（`ToolCallData.semantic` 在包类型里仍是可选）。
+包内已有逐字一致的 `../lib/tool-semantic`（含 `classifyToolSemantic`），故直接恢复源实现的三级优先：
+`const semantic = tool.semantic ?? classifyToolSemantic({ name: tool.title, rawInput: tool.rawInput, display: tool.display })`，
+使该模块不再依赖任何宿主模块也不丢分支——**这是核查发现的唯一实质缺口，已按「删除前补齐」而非「记录为取舍」处置**。
+
+#### T6a：`PeriTaskDetailSheet` 迁 ui-components（`9998926ec`）
+
+| 动作 | 内容 |
+| --- | --- |
+| 新增 | `packages/ui-components/web/chat/panels/PeriTaskDetailSheet.tsx`（150 行）：Button / Sheet 走包内、i18n 收敛 `chat.components.periTask.*`、`PeriTaskViewProjection` 从 `../types` 取；**详情取数改为 `loadDetail` prop 注入**——源实现直连宿主 `@/src/api/peri-task-details`，而该 API 后端 owner 是 `resources/model-management`，包内不得依赖资源包 |
+| 字典 | en / zh 各补 10 键（`periTask.detail*` / `kind*` / `previewOnly`），`i18n-barrel.test.ts` 与 en/zh 键集一致性用例同步通过 |
+| 出口 | `package.json` 增 `./chat/panels/PeriTaskDetailSheet` |
+| 改指 | `chat-panel-ports.tsx` 改从包导入并把宿主 `getPeriTaskDetail` 注入 `loadDetail`；端口表对应行同步改写 |
+| 删除 | 3 个零引用死组件：`TodoPanel` / `PeriTaskList` / `PeriTaskViewCard`（全仓仅注释提及、无 import；待办展示由包内 `TodoChanges` 承接） |
+
+#### T6b：宿主两处改指（`912569796`）
+
+`FilePickerDialog` 改用 `@fenix/ui-components/chat/shell/FilePickerPanel`（`listDir` 经 `unwrap` 解包、
+`uploadFiles` 直连 `uploadChatFiles`，与包内 props 文档示例一致）；`AgentManagementPage` 改用
+`@fenix/ui-components/chat/shell/AgentBadge`。这两处是宿主对 `agent-runtime/web/components/chat` **仅存的活引用**，
+T6c 整体退场的前置。
+
+#### 待办（T6c / T6d / T6e）
+
+| 片 | 内容 |
+| --- | --- |
+| T6c | 删除 `components/chat/**` 53 个文件 + 迁移 35 个测试到包内（保持覆盖不归零）；同批清理四条别名（根 `tsconfig.json`、`packages/agent-runtime/tsconfig.json`、`packages/chat-channel/tsconfig.json`、`apps/web/vite.config.ts`）与台账指纹 |
+| T6d | `ChatPanel` 归位宿主并**拆成三份**（视图 / `chat-panel-ports.tsx` / 新增 `use-chat-panel-runtime.ts`，各 ≤500 行），连带 `chat-auth-state` / `chat-visible-reconnect` / `session-mutation-refresh` 与其测试 |
+| T6e | 别名与配置收尾：`@/src/yjs/doc-hub` 的去处、hooks 的 `@/src/lib/structured-to-thread` 改指 `@fenix/web-runtime/chat/structured-to-thread`、`agent-runtime/web` 的 `@/` 别名归零 |
 
 ---
 
