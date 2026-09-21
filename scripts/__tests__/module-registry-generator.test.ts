@@ -3,7 +3,8 @@ import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import ts from "typescript";
-import { generateModuleRegistry, MODULE_KINDS } from "../generate-module-registry";
+import { generateModuleRegistry } from "../generate-module-registry";
+import { MODULE_KINDS } from "../lib/module-manifest-source";
 
 /** 临时 workspace 中的一个 manifest fixture；路径是仓库相对路径。 */
 interface ManifestFixture {
