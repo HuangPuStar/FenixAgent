@@ -22,7 +22,9 @@ export interface HindsightActor {
  * `upsertSystemServer`，不走用户授权），而本包 manifest 的 `dependsOn` 冻结为 `[]`
  * （生成器的 `assertDependsOnDeclared` 要求 `dependsOn` 的每条都在 `package.json` 有 workspace 依赖，
  * 写入模块 ID 就会失败）。登记属于「外部能力」而不是本包的领域规则，注入是唯一正确的方向：
- * 宿主 `apps/server` 的实现可原样传入（`upsertSystemMcpServer` 的入参形状是本类型的超集）。
+ * 宿主在接线处提供实现即可（薄到一次 `getMcpServerModule().service.upsertSystemServer` 委托）。宿主原
+ * 先写好的那份薄包装（`apps/server/src/services/config/mcp-system-server.ts`）因该端口从未被注入、零生产
+ * 消费方，已随任务 1.5c 作为死代码删除——这条 Hindsight 登记路径至今未接线。
  */
 export type RegisterSystemMcpServer = (input: {
   readonly name: string;

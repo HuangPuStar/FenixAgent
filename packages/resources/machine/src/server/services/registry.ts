@@ -207,6 +207,50 @@ export async function createSandboxMachine(params: {
 }
 
 /**
+ * 补齐部署兜底机器记录（幂等）。
+ *
+ * `RCS_DEFAULT_MACHINE_ID` 指向的机器随部署自带、注册前不存在，因此启动时需要一条 pending 记录作为
+ * 后续 acp-ws 注册的锚点：`organizationId` / `userId` 均为 null，表示系统机器、对所有组织可见。
+ *
+ * 为什么归本包：`machine` 表是本包的数据面，此前宿主在自己的启动引导里直接 select / insert 该表，属
+ * 「表与它的写入分处两层」。宿主仍负责读环境（兜底机器 ID 与引擎类型来自 `RCS_*`），本函数只接收已解析的
+ * 值——包内不读环境变量，默认引擎类型的兜底与部署值来源同源。
+ *
+ * @returns 本次是否新建；已存在时返回 false，且不覆盖既有注册信息（status / machineInfo / 心跳字段）
+ */
+export async function ensureDefaultMachine(params: { machineId: string; agentName: string }): Promise<boolean> {
+  const existing = await getMachineDatabase()
+    .select({ id: machine.id })
+    .from(machine)
+    .where(eq(machine.id, params.machineId))
+    .limit(1);
+
+  if (existing.length > 0) return false;
+
+  const now = new Date();
+
+  await getMachineDatabase().insert(machine).values({
+    id: params.machineId,
+    organizationId: null,
+    userId: null,
+    agentName: params.agentName,
+    name: "system-default",
+    status: "pending",
+    machineInfo: null,
+    labels: [],
+    heartbeatIntervalMs: 30000,
+    lastHeartbeatAt: null,
+    registeredAt: now,
+    createdAt: now,
+    updatedAt: now,
+  });
+
+  log(`[registry] Auto-created default machine ${params.machineId} (status=pending)`);
+
+  return true;
+}
+
+/**
  * 删除 sandbox machine 记录。
  *
  * 与 deleteMachine（管理面删除，含引用校验与 file-ws 清理）语义不同：此处只

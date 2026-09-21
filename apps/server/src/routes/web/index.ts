@@ -15,7 +15,6 @@ import { createWebChannelsRoutes } from "@fenix/resource-channel/server";
 import { createWebKnowledgeBaseRoutes } from "@fenix/resource-knowledge/server";
 import { createWebFileEventsRoutes, createWebFsRoutes, createWebRegistryRoutes } from "@fenix/resource-machine/server";
 import { createWebHindsightRoutes } from "@fenix/resource-memory/server";
-import { createWebProdViewsRoutes } from "@fenix/resource-prod-view/server";
 import { createWebTasksV2Routes } from "@fenix/resource-task/server";
 import {
   createWebWorkflowCustomToolsRoutes,
@@ -24,11 +23,11 @@ import {
   createWebWorkflowRunsRoutes,
   createWebWorkflowSseRoutes,
 } from "@fenix/resource-workflow/server";
-import Elysia from "elysia";
+import Elysia, { type AnyElysia } from "elysia";
 import { authenticateRequest, authGuardPlugin } from "../../plugins/auth";
 import { environmentLookup, verifyEnvironmentOwnership } from "../../services/resource-module-ports";
 import webBranding from "./branding";
-import webConfig from "./config";
+import { createWebConfigApp } from "./config";
 
 // 资源包路由一律改为工厂：守卫必须与宿主的认证解析是同一份实例（Elysia 的 macro / state 是实例
 // 作用域的，父实例无法向已构造的子实例回填），因此在这里注入而不是让包自建。
@@ -65,35 +64,54 @@ const webWorkflowCustomTools = createWebWorkflowCustomToolsRoutes({ authGuardPlu
 const webWorkflowEngine = createWebWorkflowEngineRoutes({ authGuardPlugin });
 const webWorkflowSse = createWebWorkflowSseRoutes({ authGuardPlugin });
 const workflowRunsRoutes = createWebWorkflowRunsRoutes({ authGuardPlugin });
-const webProdViewsRoutes = createWebProdViewsRoutes({ authGuardPlugin });
 const webAgentGeneration = createWebAgentGenerationRoutes({ authGuardPlugin });
 
-const webApp = new Elysia({ name: "web", prefix: "/web" })
-  .use(webApiKeys)
-  .use(webBranding)
-  .use(webControl)
-  .use(webSidebarConfig)
-  .use(webAgentSites)
-  .use(webChannelsRoutes)
-  .use(webConfig)
-  .use(webFs)
-  .use(webFileEvents)
-  .use(webInstances)
-  .use(webHindsight)
-  .use(webKnowledgeBases)
-  .use(webMetaAgent)
-  .use(webModelGateway)
-  .use(webOrganizations)
-  .use(webPeriTaskDetails)
-  .use(webTasksV2Routes)
-  .use(webEnvironments)
-  .use(webRegistry)
-  .use(webWorkflowDefs)
-  .use(webWorkflowCustomTools)
-  .use(webWorkflowEngine)
-  .use(webWorkflowSse)
-  .use(workflowRunsRoutes)
-  .use(webProdViewsRoutes)
-  .use(webAgentGeneration);
+/** 按聚合槽传入的路由贡献；槽位定义与装配期收集见 `apps/server/src/bootstrap/route-contributions.ts`。 */
+export interface WebRouteSlots {
+  readonly web: readonly AnyElysia[];
+  readonly webConfig: readonly AnyElysia[];
+}
 
-export default webApp;
+/**
+ * `/web` 聚合实例。
+ *
+ * `contributedRoutes` 是按 registry 装配结果登记到 `web` / `web-config` 两个槽的路由（1.5e 起逐包从下面的
+ * 手写序列迁入；`/web/config/*` 面的贡献由 `createWebConfigApp` 内挂载）。贡献统一挂在本聚合手写序列
+ * 之后：贡献之间的相对顺序由装配收集顺序决定，兜底类贡献在自己声明处写 `order` 自证优先级，宿主不再
+ * 维护「谁必须最后挂」的清单（review §3.3）。
+ *
+ * 改为工厂（不再是模块级单例）的原因：贡献实例只有在 `bootstrapServerAssembly()` 的 mount 阶段才存在，
+ * 而装配跑在 app 构造之前——顶层构造的单例拿不到它们（review §3.3 的时序）。
+ */
+export function createWebApp(slots: WebRouteSlots): AnyElysia {
+  return (
+    new Elysia({ name: "web", prefix: "/web" })
+      .use(webApiKeys)
+      .use(webBranding)
+      .use(webControl)
+      .use(webSidebarConfig)
+      .use(webAgentSites)
+      .use(webChannelsRoutes)
+      .use(createWebConfigApp(slots.webConfig))
+      .use(webFs)
+      .use(webFileEvents)
+      .use(webInstances)
+      .use(webHindsight)
+      .use(webKnowledgeBases)
+      .use(webMetaAgent)
+      .use(webModelGateway)
+      .use(webOrganizations)
+      .use(webPeriTaskDetails)
+      .use(webTasksV2Routes)
+      .use(webEnvironments)
+      .use(webRegistry)
+      .use(webWorkflowDefs)
+      .use(webWorkflowCustomTools)
+      .use(webWorkflowEngine)
+      .use(webWorkflowSse)
+      .use(workflowRunsRoutes)
+      .use(webAgentGeneration)
+      // Elysia 的 `.use()` 接数组参数（不是展开），见 `node_modules/elysia/dist/index.d.ts` 的重载。
+      .use([...slots.web])
+  );
+}

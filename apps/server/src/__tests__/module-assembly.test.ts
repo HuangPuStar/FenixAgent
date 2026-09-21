@@ -12,15 +12,43 @@ import { bootstrapServerAssembly } from "../bootstrap";
  * 产物验证「发布版本今天真的能装起来」。
  */
 
-/** server 侧实例化顺序：基础模块按 profile 声明顺序展开，Web Shell 不参与。 */
+/**
+ * server 侧实例化顺序：三个基础模块按 profile 声明顺序展开，资源模块按 `dependsOn` 拓扑序跟进
+ * （1.5e 起 `resources` 由真实 ce.json 驱动），Web Shell 不参与。
+ *
+ * 资源模块是全量发布组合的 13 个（不是「谁被迁移谁才启用」）：宿主手写挂载逐包迁入贡献面后，未启用的
+ * 模块其路由会随手写挂载一起消失，因此启用范围必须先于迁移到位。跨类别顺序（machine 早于 sandbox，
+ * agent-config 早于 model-management）由各自 `dependsOn` 决定，不按字母序。
+ */
 const EXPECTED_SERVER_MODULES = [
   ["identity", "identity"],
   ["access-control", "access-control"],
   ["agent-runtime", "agent-runtime"],
+  ["knowledge", "resource"],
+  ["mcp", "resource"],
+  ["memory", "resource"],
+  ["skill", "resource"],
+  ["agent-config", "resource"],
+  ["channel", "resource"],
+  ["machine", "resource"],
+  ["model-management", "resource"],
+  ["observer", "resource"],
+  ["prod-view", "resource"],
+  ["sandbox", "resource"],
+  ["task", "resource"],
+  ["workflow", "resource"],
 ];
 
 /** 真实 registry 里由 `apps/web/fenix.module.ts` 提供的纯元数据 Shell 描述符。 */
 const generatedWebShellManifests = generatedModuleManifests.filter((manifest) => manifest.kind === "web-shell");
+
+/**
+ * registry 产出的契约视图。
+ *
+ * 生成物用 `as const satisfies` 保留各 manifest 的字面量类型，联合类型上访问不到「只有部分模块声明」
+ * 的可选字段（如 `accessControlBindings`）；按契约面收窄后，用例读到的就是宿主装配入口读的那份类型。
+ */
+const contractManifests: readonly ModuleManifest[] = generatedModuleManifests;
 
 // 真实 ce.json 必须能被真实生成的 registry 解析，否则发布组合在启动前就不可用。
 test("真实 profile 与生成的 registry 可解析", async () => {
@@ -79,6 +107,9 @@ test("bootstrapServerAssembly 按依赖序装配并逆序幂等释放", async ()
   ] satisfies readonly ModuleManifest[];
 
   const result = await bootstrapServerAssembly({
+    // Shell 槽位取真实 profile 的绑定，但 profile 的 `resources` 由本用例自己声明——fixture 工厂只覆盖
+    // 三个基础模块，真实 ce.json 的资源列表会引用未注册进 fixture 的模块。
+    profile: { ...(await loadAssemblyProfile()), resources: [] },
     // 真实 Shell 描述符 + fixture 基础模块工厂：真实 Runtime 工厂会拉起整套服务端运行面。
     manifests: [...lifecycleManifests, ...generatedWebShellManifests],
     loadEnv: (definitions) => loadDeclaredEnv(definitions, {}),
@@ -108,6 +139,17 @@ test("bootstrapServerAssembly 按依赖序装配并逆序幂等释放", async ()
   // 宿主可能同时从信号处理和错误路径触发关闭，重复 dispose 不得重复释放资源。
   await result.dispose();
   expect(events.slice(-3)).toEqual(["dispose:agent-runtime", "dispose:access-control", "dispose:identity"]);
+});
+
+// 授权绑定只从声明面收集（§1.5f 起宿主不再手写 `bindings` 列表）：四个受控资源主表必须各自声明
+// 自己的 `storage`，漏声明的那一个会在运行期以「未注册存储绑定」报错，而不是静默放宽授权范围。
+test("受控资源 manifest 各自声明存储绑定", async () => {
+  const declaredTypes = contractManifests
+    .flatMap((manifest) => manifest.accessControlBindings ?? [])
+    .map((binding) => binding.resourceType)
+    .sort();
+
+  expect(declaredTypes).toEqual(["agent_config", "mcp_server", "provider", "skill"]);
 });
 
 // profile 引用了未编译进 registry 的 Shell 时，必须在执行任何工厂前失败。

@@ -83,20 +83,20 @@ Agent 配置资源行、关联绑定（Skill / MCP / 知识库 / 记忆）与站
   `apps/server/src/config.ts`、`apps/server/src/env.ts` 与 `packages/agent-runtime` 的
   `launch-spec-builder.ts` 消费；`./server/config` 被宿主 `config-validators` 用例消费；
   `./server/runtime` 与 `./server/api-agent-schema` 分别由宿主装配与协议 schema 消费方使用。
-- **宿主侧第二份实现（待宿主删除，非本包可写范围）**：`apps/server/src/schemas/sidebar-config.schema.ts`；
-  `apps/server/src/services/config-utils.ts:27` 的 `isValidResourceName`（与包内
-  `src/server/services/config/agent-config.ts:99` 的 `isValidAgentName` 逐字符等价，生产引用已归零，
-  只剩宿主 `round16-*` / `round22-*` 用例引用，删除时须同批改这两条用例）；
+- **宿主侧第二份实现（待宿主删除，非本包可写范围）**：
   `apps/web/src/lib/agent-node.ts`、`agent-utils.ts`、`agent-resource-access.ts`（与包内 `web/lib/*`
   同源、仅导入路径不同，消费方是尚未迁移的宿主页面 `AgentManagementPage` / `AgentSidebarTree` 与其 3 个
   宿主用例）；`apps/web/src/pages/agent-panel/AgentSidebarConfig.tsx`（同源副本，见「web 面与 i18n」一节）。
   **已删除**：`apps/web/src/i18n/locales/{en,zh}/agents.json`（键集曾与包内两份文件完全一致）——宿主
   `apps/web/src/i18n/index.ts` 已改经 `@fenix/agent-config/web/i18n` 子路径注册 `agentResources`，不再
-  持有第二份字典，此项已不是残留。
-- **宿主 `user_config` 的读写**不是本包可删除的副本：本包只声明 `UserAgentPreferencesPort`，实现是宿主
-  `apps/server/src/services/config/user-config.ts` 的 `getUserConfig` / `setUserConfig`，由
-  `apps/server/src/services/resource-module-ports.ts` 适配成端口后注入（`/web/config/agents` 与
-  `/web/config/models` 共用同一张表，只留一组写入语义）。
+  持有第二份字典，此项已不是残留；`apps/server/src/schemas/sidebar-config.schema.ts`（任务 1.5a 随 160 行
+  无引用 barrel `schemas/index.ts` 一并删除）；`apps/server/src/services/config-utils.ts` 的
+  `isValidResourceName`（与包内 `src/server/services/config/agent-config.ts:99` 的 `isValidAgentName`
+  逐字符等价，生产引用已归零，任务 1.5c 与宿主 `round16-*` / `round22-*` 两条用例同批删除）。
+- **宿主 `user_config` 的读写**不在本包：本包只声明 `UserAgentPreferencesPort`，读写随 `user_config` 表在
+  任务 1.5c 归位 `@fenix/identity` 的 `src/repositories/user-config.ts`（`getUserConfig` /
+  `setUserConfig`），由 `apps/server/src/services/resource-module-ports.ts` 适配成端口后注入
+  （`/web/config/agents` 与 `/web/config/models` 共用同一张表，只留一组写入语义）。
 - **删除优于兼容**：本包不保留旧路径的 re-export，也不双写；宿主侧残留项的删除与宿主挂载接线同批提交。
 
 ## 已知项

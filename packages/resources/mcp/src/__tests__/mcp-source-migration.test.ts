@@ -35,9 +35,11 @@ const ALLOWED_HOST_IMPORT = "@server/db/schema";
  * 表现，成对记录才能让失败信息同时指出两端。清单来自 PHY-05 资源闭包的 rename 记录
  * （`git show --name-status -M 0b4ec5858`，server 侧取 `src/**`、web 侧取 `web/src/**`）。
  *
- * `apps/server/src/services/config/mcp-system-server.ts` 与 `apps/web/src/routes/agent/_panel/mcp.tsx`
- * 保留在宿主是既定分工（宿主系统初始化路径与 WebShell 薄 route adapter，归 §1.5/§1.6），
- * 不在本清单里，不要当成残留删除。
+ * `apps/web/src/routes/agent/_panel/mcp.tsx` 保留在宿主是既定分工（WebShell 薄 route adapter，归 §1.6），
+ * 不在本清单里，不要当成残留删除。`apps/server/src/services/config/mcp-system-server.ts`（宿主系统初始化
+ * 路径的薄包装）原先同属保留面，后经任务 1.5c 核验：它的唯一端口 `RegisterSystemMcpServer` 从未被注入、
+ * 宿主侧零生产消费方，已按「删除优于兼容」删除（见 review/task-1.5-host-aggregation.md §1.5c-8），
+ * 同样不属于本清单的迁移残留。
  */
 const MIGRATION_PAIRS: ReadonlyArray<readonly [hostPath: string, packagePath: string]> = [
   ["apps/server/src/routes/api/mcp.ts", "src/server/routes/api/mcp.ts"],
@@ -328,12 +330,17 @@ describe("MCP 包边界契约（任务 1.3 §1 静态条件）", () => {
   });
 
   // 模块 id 是 registry 的索引键：清单与组合根不一致会让装配取到别的模块（或取不到）。
-  test("fenix.module.ts 的 id 与 src/module.ts 的组合根一致", () => {
+  test("fenix.module.ts 声明 id 且 create 指向包内组合根", () => {
     expect(manifestSource).toContain('id: "mcp"');
     const moduleSource = readFileSync(resolve(PKG_ROOT, "src/module.ts"), "utf8");
-    expect(moduleSource).toContain('readonly id: "mcp"');
+    // 组合根产出真实模块实例（返回 `McpServerServerModule`），不再是装配结果的命名空间包装。
+    expect(moduleSource).toContain(
+      "export function createMcpModule(context: ModuleFactoryContext): McpServerServerModule",
+    );
     // create 指向组合根且保持惰性（registry 会被大量位置导入，不能在索引层拉起 Drizzle/Elysia）。
-    expect(manifestSource).toContain('create: () => import("./src/module").then((module) => module.createMcpModule())');
+    expect(manifestSource).toContain(
+      'create: (context) => import("./src/module").then((module) => module.createMcpModule(context))',
+    );
   });
 
   // README 是交付物的一部分：缺节或占位会让读者以为能力不存在（本包 README 曾写「没有 web 出口」）。

@@ -116,3 +116,104 @@ test("通过注入边界完成 env、preflight 和贡献挂载", async () => {
   expect(events).toEqual(["env:0", "preflight:4", "mount:agent-config.routes"]);
   expect(result.webContributions.get("agent-config")).toBe("page");
 });
+
+// 基础模块必须能读到本次装配的全部声明（含尚未实例化的资源模块）：授权模块据此收集资源模块声明的
+// 静态绑定，收集因此不依赖资源模块的实例化，装配序不会成环。
+test("工厂读到本次装配的全部声明，基础模块可先行收集静态绑定", async () => {
+  const seenDeclarations: string[][] = [];
+  const collectedBindings: string[] = [];
+  const declarationManifests = [
+    {
+      id: "identity",
+      kind: "identity",
+      dependsOn: [],
+      create: ({ declarations }) => {
+        seenDeclarations.push(declarations.map((manifest) => manifest.id));
+        return { id: "identity" };
+      },
+    },
+    {
+      id: "access-control",
+      kind: "access-control",
+      dependsOn: ["identity"],
+      create: ({ declarations }) => {
+        collectedBindings.push(
+          ...declarations
+            .flatMap((manifest) => manifest.accessControlBindings ?? [])
+            .map((binding) => binding.resourceType),
+        );
+        return { id: "access-control" };
+      },
+    },
+    {
+      id: "agent-runtime",
+      kind: "agent-runtime",
+      dependsOn: ["access-control"],
+      create: () => ({ id: "runtime" }),
+    },
+    {
+      id: "mcp",
+      kind: "resource",
+      dependsOn: [],
+      accessControlBindings: [{ resourceType: "mcp_server", table: {}, columns: { id: {} } }],
+      create: () => ({ id: "mcp" }),
+    },
+    // profile 的 webShell 必须解析到已注册的 web-shell 模块；Shell 不进 server 的实例化列表。
+    { id: "default", kind: "web-shell", dependsOn: [] },
+  ] satisfies readonly ModuleManifest[];
+
+  const result = await bootstrapServerAssembly({
+    profile: { ...profile, resources: ["mcp"], web: [] },
+    manifests: declarationManifests,
+    loadEnv: () => ({}),
+  });
+
+  // 声明面是拓扑序的启用模块全集：顺序与实例化顺序一致，且不含不参与实例化的 Shell。
+  expect(seenDeclarations).toEqual([["identity", "access-control", "agent-runtime", "mcp"]]);
+  // access-control 先于 mcp 构造，却已经拿到 mcp 声明的绑定——「先装配授权、再装配资源模块」由此成立。
+  expect(collectedBindings).toEqual(["mcp_server"]);
+  expect(result.modules.map((manifest) => manifest.id)).toEqual(["identity", "access-control", "agent-runtime", "mcp"]);
+});
+
+// 兜底与通配路由必须最后挂载：贡献的 order 让优先级在声明处自证，宿主不必维护「哪些模块必须最后挂」。
+test("贡献按 order 升序稳定排序后挂载", async () => {
+  const mounted: string[] = [];
+  const orderedManifests = [
+    {
+      id: "identity",
+      kind: "identity",
+      dependsOn: [],
+      contributions: [
+        { id: "identity.primary", kind: "app-route", value: "primary" },
+        { id: "identity.fallback", kind: "app-route", order: 100, value: "fallback" },
+      ],
+      create: () => ({ id: "identity" }),
+    },
+    {
+      id: "access-control",
+      kind: "access-control",
+      dependsOn: ["identity"],
+      contributions: [{ id: "access-control.primary", kind: "app-route", value: "primary" }],
+      create: () => ({ id: "access-control" }),
+    },
+    {
+      id: "agent-runtime",
+      kind: "agent-runtime",
+      dependsOn: ["access-control"],
+      create: () => ({ id: "runtime" }),
+    },
+    { id: "default", kind: "web-shell", dependsOn: [] },
+  ] satisfies readonly ModuleManifest[];
+
+  await bootstrapServerAssembly({
+    profile: { ...profile, resources: [], web: [] },
+    manifests: orderedManifests,
+    loadEnv: () => ({}),
+    mountContribution: ({ contribution }) => {
+      mounted.push(contribution.id);
+    },
+  });
+
+  // 同 order 保持拓扑序与声明序（identity 早于 access-control），order 100 的兜底贡献排在最后。
+  expect(mounted).toEqual(["identity.primary", "access-control.primary", "identity.fallback"]);
+});

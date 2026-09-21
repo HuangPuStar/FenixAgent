@@ -1,16 +1,6 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { composeAgentSystemPrompt } from "@fenix/agent-config/server/system-prompt";
-import {
-  configError,
-  configNotFound,
-  configSuccess,
-  configValidationError,
-  isValidResourceName,
-  resolveApiKey,
-  safeJsonParse,
-  safeJsonStringify,
-  toKeyHint,
-} from "../services/config-utils";
+import { resolveApiKey } from "../services/config-utils";
 
 /**
  * 宿主侧的启动规格边界与输入边界。
@@ -20,8 +10,11 @@ import {
  * 组装规则本身由 agent-config 的 `agent-launch-spec-*.test.ts` 逐条覆盖，这里只守住「宿主不再有第二份
  * 实现入口」——同一份规格出现两个入口时，只有其中一个会跟着改动走。
  *
- * 「输入边界」这一半仍是宿主自有职责：资源名校验、`{env:...}` 密钥解引用、控制台响应包装、JSON 安全
- * 转换、系统提示词拼装与密钥提示。
+ * 「输入边界」这一半只剩宿主仍要负责的两项：`{env:...}` 密钥解引用（资源包不得读宿主环境变量）与系统
+ * 提示词拼装。资源名校验、控制台响应包装、JSON 安全转换、密钥提示四项随宿主 `services/config-utils.ts`
+ * 的信封函数在任务 1.5c 删除：它们的消费方是已迁入资源包的旧路由，宿主副本零生产消费方，行为由包内
+ * 实现（`@fenix/model-management` 的 `config-envelope.ts`、`@fenix/agent-config` 的 `isValidAgentName`）
+ * 的用例覆盖。
  */
 
 describe("round22 宿主启动规格边界与输入边界", () => {
@@ -36,24 +29,6 @@ describe("round22 宿主启动规格边界与输入边界", () => {
     expect(runtime.buildLaunchSpec).toBeUndefined();
     expect(runtime.buildBasicLaunchSpec).toBeUndefined();
   });
-
-  // 名称边界拒绝可能造成资源混淆或路径歧义的字符。
-  test.each([
-    ["中文", "名", true],
-    ["数字", "7", true],
-    ["空格", "安全 Agent", true],
-    ["连字符", "安全-Agent", true],
-    ["空", "", false],
-    ["前空格", " 安全", false],
-    ["尾空格", "安全 ", false],
-    ["双连字符", "安全--Agent", false],
-    ["下划线", "安全_Agent", false],
-    ["斜杠", "安全/Agent", false],
-    ["换行", "安全\nAgent", false],
-    ["emoji", "安全😀", false],
-    ["64字符", "a".repeat(64), true],
-    ["65字符", "a".repeat(65), false],
-  ])("资源名称%s", (_label, value, expected) => expect(isValidResourceName(value)).toBe(expected));
 
   // 密钥解析只识别完整 env 引用，避免错误输入被提升为凭据。
   test.each([
@@ -70,33 +45,6 @@ describe("round22 宿主启动规格边界与输入边界", () => {
     delete process.env.ROUND22_KEY;
   });
 
-  // 响应包装器保持控制台协议的错误码和零值数据。
-  test.each([
-    ["成功零值", () => configSuccess(0), { success: true, data: 0 }],
-    ["成功空串", () => configSuccess(""), { success: true, data: "" }],
-    ["错误省略数据", () => configError("DENY", "拒绝"), { success: false, error: { code: "DENY", message: "拒绝" } }],
-    [
-      "错误保留 null",
-      () => configError("DENY", "拒绝", null),
-      { success: false, error: { code: "DENY", message: "拒绝" }, data: null },
-    ],
-    ["未找到", () => configNotFound("资源"), { success: false, error: { code: "NOT_FOUND", message: "资源" } }],
-    [
-      "校验错误",
-      () => configValidationError("格式错误"),
-      { success: false, error: { code: "VALIDATION_ERROR", message: "格式错误" } },
-    ],
-  ])("配置响应%s", (_label, create, expected) => expect(JSON.stringify(create())).toBe(JSON.stringify(expected)));
-
-  // JSON 边界不能抛出，损坏输入必须被收敛为空值。
-  test.each([
-    ["序列化 null", () => safeJsonStringify(null), undefined],
-    ["序列化对象", () => safeJsonStringify({ tenant: "org" }), '{"tenant":"org"}'],
-    ["空串", () => safeJsonParse(""), null],
-    ["损坏 JSON", () => safeJsonParse("{bad"), null],
-    ["对象", () => safeJsonParse<{ tenant: string }>('{"tenant":"org"}'), { tenant: "org" }],
-  ])("JSON 输入%s", (_label, execute, expected) => expect(execute()).toEqual(expected));
-
   // 系统提示词必须替换占位符，并在缺少插槽时安全追加用户要求。
   test.each([
     ["完整模板", "名称={{agentName}} 内容={{userPrompt}}", "隔离助手", " 审计 ", "名称=隔离助手 内容=审计"],
@@ -107,11 +55,4 @@ describe("round22 宿主启动规格边界与输入边界", () => {
     ["裁剪完整模板", "  {{userPrompt}}  ", "隔离助手", " 内容 ", "内容"],
   ])("系统提示词%s", (_label, template, name, prompt, expected) =>
     expect(composeAgentSystemPrompt(template, name, prompt)).toBe(expected));
-
-  // 密钥提示只能暴露前四位和后三位，避免配置页泄露完整凭据。
-  test.each([
-    ["缺失", undefined, "*******"],
-    ["短密钥", "abc", "*******"],
-    ["长密钥", "secret-7890", "secr***890"],
-  ])("密钥提示%s", (_label, key, expected) => expect(toKeyHint(key)).toBe(expected));
 });

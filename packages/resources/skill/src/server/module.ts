@@ -15,27 +15,27 @@ import { createSkillSystem, type SkillSystemApi } from "./services/skill-system"
 /**
  * Skill 资源包组合根。
  *
- * 依赖全部由宿主注入：授权能力来自 `@fenix/access-control`（`createDrizzleAccessControl` 的
+ * 依赖全部由注入方提供：授权能力来自 `@fenix/access-control`（`createDrizzleAccessControl` 的
  * `accessControl` / `scopeStore` / `authorizedQuery`），身份展示信息来自 `@fenix/identity` 的
  * `IdentityDirectory` 实现。本包不 import 任何具体实现，也不在模块内部保存进程级单例——一次装配
  * 产出一个实例集，测试可以装配自己的实例而互不影响。
  *
- * 已知不足：当前由 `apps/server` 启动流程手工注入，模块注册表尚未表达"平台能力 + 身份目录"这类
- * 构造依赖；registry 驱动的组合根落地时，本函数即模块工厂的目标形状（见
- * `packages/platform/access-control/fenix.module.ts` 的同类说明）。
+ * 注入方有两种，共用本函数这一处构造：registry 工厂（`src/module.ts` 的 `createSkillModule`，授权端口
+ * 取自 `context.modules` 的 access-control 实例、身份目录取自 `@fenix/platform-sdk/server`）与测试
+ * （直接注入替身）。本函数只构造，不读 DB、不写单例，因此两条路径不会互相覆盖。
  */
 
 export interface SkillModuleDeps {
   readonly accessControl: AccessControlModule;
   readonly scopeStore: ResourceScopeStore;
-  /** 宿主汇总全部资源绑定后产出的查询端口；存储类型在本包内收窄。 */
+  /** access-control 汇总全部资源模块声明的绑定后产出的查询端口；存储类型在本包内收窄。 */
   readonly authorizedQuery: AuthorizedResourceQuery;
   /** 组织名录等展示信息的只读投影；不由本包实现。 */
   readonly identity: IdentityDirectory;
 }
 
 export interface SkillServerModule {
-  /** 资源注册；宿主汇总 `bindings` 时使用，避免两处各写一份归属列。 */
+  /** 资源注册；manifest 经它声明 `accessControlBindings`，避免两处各写一份归属列。 */
   readonly resource: typeof skillResource;
   /** 协议层入口（授权 + 领域编排 + 内容补偿写入）。 */
   readonly facade: SkillFacadeApi;

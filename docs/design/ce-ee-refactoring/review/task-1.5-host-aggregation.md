@@ -879,3 +879,415 @@ environment 拉起时以 500 的形式暴露。
 7296 pass / web-app-tests 946 pass / 0 fail；`architecture`、`dependency-boundaries`、`module-registry`、
 三项 `tsc`、`lint`、`format`、`import-sort` 均通过。定向运行 `rmd-07-migration` +
 `config-integration` 17 pass / 0 fail（后者是偏好端口端到端用例，见三）。
+
+### 1.5c-7 `services/core-bootstrap.ts` 按 §3.4 拆分（2026-09-21）
+
+计划原文（§四 1.5c 行）：「`services/core-bootstrap.ts` 按 3.4 拆分（`ensureMachineExists` → machine，
+实例注册表 → agent-runtime）」。
+
+**一、迁出与落点**
+
+| 改动 | 文件 |
+| --- | --- |
+| 兜底机器记录的补齐迁入 machine 包，改 `ensureDefaultMachine({ machineId, agentName })`（幂等，返回是否新建） | 宿主 `ensureMachineExists` → `packages/resources/machine/src/server/services/registry.ts` |
+| 宿主启动改为调用包导出，部署值仍由宿主提供 | `apps/server/src/services/core-bootstrap.ts` |
+| 实例登记表收敛（删 core 实例 + 配对注销登记表 + 编排域活跃表）迁入 agent-runtime | 新增 `packages/agent-runtime/src/services/machine-instance-cleanup.ts`（`convergeMachineInstances`） |
+| 端口面：两个旧方法合并为一个 | `packages/agent-runtime/src/runtime.ts`（`AgentRuntimePort`） |
+| 宿主三个使用点（重连分支、断连、沙盒释放）改调单一入口 | `apps/server/src/services/core-bootstrap.ts` |
+
+**二、【需审核】「实例注册表 → agent-runtime」的落法**
+
+宿主 `core-bootstrap` 原有两段与实例登记表有关的代码：①循环 `runtime.listInstances()` 删该 machine 的
+core 实例、逐个 `unregisterInstance`；②调用编排域收敛 `cleanupInstancesForMachine`。候选取法有三：
+
+1. **把整个收敛编排搬到 agent-runtime 的断连/重连调用点**（宿主只留节点与 transport）。否决：沙盒释放
+   （`Sandbox → Machine.releaseMachineRuntime → MachineHostPort.unregisterCoreRuntimeNode`）不经 ACP
+   handler，宿主绑定必须继续承载这段清理，否则沙盒销毁会永久占用并发额度（现有注释 E-P0.1 正是为此）。
+   两处各写一份收敛代码则违背单一 owner。
+2. **宿主直接 import agent-runtime 的收敛函数**。否决：1.4 已把这两次调用从包内直连改为经 port
+   （`unregisterInstance` 即当时新增），回退等于撤销已交付裁定。
+3. **收敛成一个 port 方法，实现在包内**（本片采用）。宿主持有 core 单例、只决定「何时收敛」，三条路径
+   （重连 / 断连 / 沙盒释放）都走同一入口；「删 core 实例」与「注销登记表」在实现里不可分——
+   调用方拿不到中间态，也就没机会漏配对。
+
+**三、端口面收缩（管理面 41 → 40 方法）**
+
+- `cleanupInstancesForMachine(machineId): number` 与 `unregisterInstance(instanceUid): void` 合并为
+  `cleanupMachineInstances(machineId): number`（返回从 core 删掉的实例数；旧方法的返回值只有编排域计数，
+  唯一消费者是宿主的日志，见下）。**这是有意的契约面收缩**：两个方法的唯一消费者都是宿主的同两处循环，
+  合并后旧方法零消费方，按「删除优于兼容」不留零消费者的 port 成员。
+- `unregisterInstance` 的文档契约（「宿主把实例从 Core runtime 删除时必须配对调用」）由新方法内部保证，
+  不再是调用方的义务。
+- 1.4 评审 §（`packages/agent-runtime/src/runtime.ts` 一行）记的「新增 `unregisterInstance`」属历史记录，
+  不追改；本条即其被取代的落点。
+
+**四、行为等价声明**
+
+- **顺序不变**：重连分支仍是「`updateNodeStatus(online)` → 删实例 → 编排域收敛」；断连仍是
+  「节点置 offline → 删实例 → 编排域收敛」；沙盒释放仍走 `unregisterRemoteNode`。
+- **编排域收敛仍无条件调用**（core 侧无实例时也调用），与迁出前的两处一致。
+- **日志文本变化**：原先两条按上下文区分的行（`[core-bootstrap] Deleted instance X on reconnected/
+  disconnected machine Y`）改为一条 `[machine-instance-cleanup] Deleted instance X on machine Y`——包内
+  不知道调用上下文；无任何用例断言这些日志（`grep` 确认仅存在于被删代码内）。兜底机器记录的日志同理
+  改为 `[registry] Auto-created default machine …`。
+- **宿主端行为面不变**：`registerRemoteNode` / `unregisterRemoteNode` / `initCoreRuntime` 的签名、调用点
+  （`main.ts`、`acp-ws-handler`、`MachineHostPort` 绑定）与装配顺序一行未动。
+
+**五、测试与 seam**
+
+- 新增 `packages/agent-runtime/src/__tests__/machine-instance-cleanup.test.ts`（3 例）：只删目标机器的实例、
+  配对注销登记表条目、其它机器不受影响；core 实例为空时仍收敛编排域（沙盒释放路径的关键语义）；
+  幂等重入。core 单例经宿主 preload 的 `stubCoreBootstrap` 注入假 facade，与包内既有接缝一致。
+- `packages/resources/machine/src/__tests__/round39-registry-service.test.ts` 增 2 例：缺失时补建系统记录
+  （`organizationId` / `userId` 为 null、`status=pending`）、已存在时不写（幂等，不覆盖注册信息）。
+- 宿主用例零改动：`@server/services/core-bootstrap` 在 preload 里是整模块替身（`stubCoreBootstrap`），
+  其函数体不执行，故两处循环的搬走对宿主测试进程不可见；`machine-cleanup-node-dispatch.test.ts` 等
+  替身 `unregisterRemoteNode` 的用例同样不受影响。
+
+**六、台账同步**
+
+- `scripts/root-source-owner-rules.ts`、`scripts/architecture/exceptions.json`、`rmd-07-migration.test.ts`
+  均无需改动：`core-bootstrap.ts` 仍留在宿主目标路径（`RMD_07_MOVES` 条目不变），本片未新增包 → 宿主依赖，
+  也未增删文件清单。
+- `packages/agent-runtime/src/__tests__/runtime-port.test.ts` 的清单同步（管理面 41 → 40、两条换一条）——
+  该用例的设计意图就是让 port 面的每次增删都必须显式落到测试上。
+- `FUNCTIONAL_MODULE_INVENTORY.md` 两行（「应用启动、模块装配与内置资源」「插件注册表与 Core Runtime」）
+  仍指向宿主 `core-bootstrap.ts` 且语义成立（Core 单例、节点与 transport 缓存都留在宿主），本片不改。
+- 注释同步：`orchestration-machine-cleanup.ts` 的「背景/调用方」两段、`remote-file-service.ts` 提到
+  「兜底机器由 core-bootstrap 自动创建」的一句，均改指新落点。
+
+**验证证据**：`precheck` 全绿 `All passed (97408ms)`——server-and-script-tests 798 pass / package-tests
+7301 pass（较 1.5c-6 的 7296 增 5，即本片新增的 3 + 2 例）/ 2 skip / web-app-tests 946 pass / 0 fail；
+`architecture`、`dependency-boundaries`（2383 modules，0 条新增违规）、`module-registry`、三项 `tsc`、
+`lint`、`format`、`import-sort` 均通过。定向运行 `machine-instance-cleanup`（3 pass）、`runtime-port`、
+`orchestration-machine-cleanup`、`machine-cleanup-node-dispatch`、`round39-registry-service` 共 47 pass / 0 fail。
+
+### 1.5c-8 `services/config/*` 与 `config-utils.ts` 信封函数删除（2026-09-21）
+
+1.5a 计划行原文：「`services/config/index.ts`、`services/config-utils.ts` 的信封函数（`resolveApiKey`
+保留）、`services/config/mcp-system-server.ts`（零消费方薄包装）」，判据「删除后 `precheck` 全绿；每项删除
+均有『零生产消费方』证据」。1.5a 交付记录把后两项留到本片（见 §七 1.5a「本轮未动」），本片收口。
+
+**一、删除清单与零消费方证据**
+
+| 项 | 「零生产消费方」证据 | 现 owner / 取代者 |
+| --- | --- | --- |
+| `services/config/mcp-system-server.ts`（23 行） | 唯一消费者是同批删除的 `services/config/index.ts`；它服务的端口 `RegisterSystemMcpServer` 从未被注入——`ensureHindsightMcpServer` 在 `apps/**` 命中 0 处生产调用，包内只有 `src/server/services/hindsight.ts` 的定义与 7 条用例 | 接线时在装配点委托一次 `getMcpServerModule().service.upsertSystemServer`（原包装体就是这一行） |
+| `services/config/index.ts`（3 行 barrel） | 三条导出全零导入方：`upsertSystemMcpServer`（同上）、`AuthContext` 类型（宿主全部 `AuthContext` 消费方都直接取自 `plugins/auth`，如 `sync-builtin.ts` / `org-context.ts`）、`PermissionAction` / `PermissionConfig`（宿主无消费方）。唯一提到该路径的代码是 `setup-mocks.ts` 的 `mock.module("@server/services/config")`，而仓内没有任何用例需要它提供的键 | `services/config/types.ts` 保留（`env.ts` 的 `ENGINE_TYPES` 取自它，`rmd-07` 条目不变） |
+| `config-utils.ts` 的 8 个信封/工具函数（`configSuccess` / `configError` / `configNotFound` / `configValidationError` / `isValidResourceName` / `toKeyHint` / `safeJsonStringify` / `safeJsonParse`） | 生产消费方只有 `resolveApiKey`（`services/resource-module-ports.ts:27` 的 `resolveSecretReference`）一个；其余 8 个只被 `round16` / `round22` 两条宿主用例引用 | 包内自持：`@fenix/model-management` 的 `src/server/config-envelope.ts`（`configSuccess` / `configError` / `toKeyHint`，其 `toKeyHint` 改为传入 resolver）、`@fenix/agent-config` 的 `isValidAgentName`（与 `isValidResourceName` 逐字符等价，agent-config README 早已登记「删除时须同批改这两条用例」）；`safeJson*` 的唯一消费方是已迁出的旧 `/web/config/*` 路由，迁出后无取代者 |
+
+**二、`upsertSystemMcpServer` 两候选的取舍（1.5a 留给本片的判断）**
+
+- **候选「迁入 memory 包」不成立**：memory 包的 `fenix.module.ts` 把 `dependsOn` 冻结为 `[]`
+  （`assertDependsOnDeclared` 要求每条都在 `package.json` 有 workspace 依赖），而写入实现属
+  `@fenix/resource-mcp`——跨包依赖过不去，这正是当初引入 `RegisterSystemMcpServer` 参数注入的原因
+  （`hindsight.ts` 头注释）。把宿主这份适配器搬进 memory 包只会复现同一个依赖问题。
+- **采用删除**：整条 Hindsight 登记路径未接线（`ensureHindsightMcpServer` 生产零调用；`main.ts:227` 只把
+  `HINDSIGHT_MCP_URL` 传进模块配置，没有消费者），宿主这 6 行是死适配器。删除不改变 memory README 第 10 条
+  遗留的 (a) 接线 / (b) 删除 裁定——那条裁定针对**包内**登记实现与 7 条用例，本片未动它们；本片只是把「接线」
+  的成本降到装配点一次委托，已在该条尾部补记。
+
+**三、测试处置**
+
+- `round16`（−11 例）/ `round22`（−28 例）中被删函数的部分同步删除，保留 `resolveApiKey`（宿主仍要注入它）
+  与两文件其它主题；两文件头部注释改写，说明「输入边界」现在只剩密钥解引用与系统提示词拼装，以及被删部分的
+  行为由哪里覆盖。
+- **为什么不把断言改指包内实现**：包内 `toKeyHint` 多一个 resolver 形参、`configSuccess` / `configError` 的
+  消费方是包内路由工厂，签名与调用面都与宿主版不同，且包内已有自己的用例
+  （`round-config-providers-routes.test.ts` 经 provider 视图覆盖 keyHint 与信封形状）。宿主侧再抄一份断言
+  等于给包内实现加第二套测试入口，与「同一能力只有一个 owner」相悖。
+
+**四、台账同步**
+
+- `scripts/__tests__/rmd-07-migration.test.ts`：`RMD_07_MOVES` 移出 `services/config/index.ts` 一项，
+  长度 40 → 39，并在 MOVES 注释块末尾补记本批删除理由（含「另两个删除项不在本表内」的说明）。
+- `scripts/root-source-owner-rules.ts`：无本批相关条目（`RETAINED_HOST_TEST_RATIONALES` 中 `round16` /
+  `round22` 两条仍成立——文件保留、主题未变）；`scripts/architecture/exceptions.json`、`FUNCTIONAL_MODULE_INVENTORY.md`
+  对本批无命中。
+
+**五、注释与 README 同步**
+
+- 包内注释三处改为现在时的事实陈述：`memory/.../hindsight.ts` 的端口注释（不再声称宿主已有可原样传入的实现，
+  改述为「宿主在接线处委托一次」+ 删除记录）、`mcp/src/__tests__/mcp-source-migration.test.ts` 的
+  「不在本清单里」说明、`mcp/src/server/runtime.ts` 的环约束说明（保留约束，补记该文件已删除）。
+- README 三份：`memory/README.md` 第 10 条追加 2026-09-21 更新（见上）；`mcp/README.md` 的领域服务条改为
+  「宿主在接线处经 `./server/runtime` 调用」；`agent-config/README.md` 把 `isValidResourceName` 从「待宿主
+  删除」挪入「已删除」清单。
+- **顺带修正一处 1.5c-6 遗留的失真**：`agent-config/README.md` 同一段落的「宿主 `user_config` 的读写」条目仍
+  指向 1.5c-6 已删除的 `apps/server/src/services/config/user-config.ts`，随本次同段改写为 identity 的
+  `src/repositories/user-config.ts`。同因的 `packages/platform/identity/README.md:45`（消费者路径同样过时）
+  不在本片改动面内，留 §1.5g。
+
+**验证证据**：定向运行 `round16` / `round22` / `config-integration` / `rmd-07` 共 47 pass / 0 fail；
+`mcp` + `memory` 两包 291 pass / 0 fail。`precheck` 全绿 `All passed (101203ms)`——server-and-script-tests
+**759 pass / 0 fail**（较 1.5c-7 的 798 少 39，恰为本片删除的 11 + 28 条断言，无其它用例受影响）；
+package-tests 7301 pass / 2 skip / 0 fail（与 1.5c-7 持平）；web-app-tests 946 pass / 0 fail；
+`architecture`、`dependency-boundaries`、`module-registry`、三项 `tsc`、`lint`、`format`、`import-sort` 均通过。
+
+### 1.5d platform-sdk 契约扩展（2026-09-21）
+
+分片行原文：「【需审核】platform-sdk 契约扩展：`ModuleFactoryContext.declarations`、
+`ModuleManifest.accessControlBindings`、`ModuleContribution.order`、`ServerRouteHost` 与宿主协议 adapter 面；
+access-control / mcp / skill / agent-config / model-management 的 `create` 改为接收声明并去掉「已知不足」
+注释」，判据「`bootstrap.test.ts` 扩测新契约；`access-control` 与 mcp 的 create 返回真实例而非命名空间」。
+
+**一、§3.2 / §3.3 的落地对照**
+
+| 裁定项 | 落地位置 | 本片状态 |
+| --- | --- | --- |
+| `ModuleFactoryContext.declarations` | `platform-sdk/src/assembly/module-manifest.ts` 加字段（含「为什么走声明面」注释）；`bootstrap.ts` 的 create 阶段传 `resolved.modules` | 拓扑序的启用 manifest 全集，实例化前即可读 |
+| `ModuleManifest.accessControlBindings` | 同文件加可选字段；`access-control` 的工厂 `flatMap` 汇总 | 四个受控资源 manifest 各自声明 `xxxResource.storage` |
+| `ModuleContribution.order` | 同文件加可选字段；`bootstrap.ts` 新增 `orderContributions()` 稳定排序 | 默认 0，同值保持「拓扑序 + manifest 内声明序」 |
+| `ServerRouteHost` | `platform-sdk/src/server.ts`（7 字段全 `unknown`） | **本片只定义、无消费方**——§3.3 的路由贡献挂载在 1.5e 落地 |
+| 三处「已知不足」注释 | access-control / mcp / skill / agent-config / model-management 的 `fenix.module.ts` 与 `src/module.ts` | 删除，改写为现在时的事实陈述（含新的约束说明） |
+
+`create` 改动明细：
+
+- `access-control`：`create: () => import("./src/suite")`（返回包命名空间）→ `createDrizzleAccessControl({ database: getDatabase<AccessControlDatabase>(), bindings: context.declarations.flatMap((m) => m.accessControlBindings ?? []) })`。
+  `database` 与 `identity` 不新增注入面（§3.2 第 3 条）：沿用 `@fenix/platform-sdk/server` 的 `getDatabase()`，与 1.4 在 agent-runtime 上的模式一致。
+- 四个资源包：`create: () => import("./src/module").then((m) => m.createXxxModule())` → 传入 `context`；包内 `src/module.ts` 删除 `McpModule` 式的「装配结果命名空间」包装接口，改为从 `context.modules` 取 access-control 端口、从 `@fenix/platform-sdk/server` 取身份目录，调用既有的 `createXxxServerModule()`（仍是唯一构造实现）后 `installXxxModule(module)`，**返回真实模块实例**。
+
+**二、需审核的取舍（本片自行裁定，理由与触发条件）**
+
+1. **四处「收窄 access-control 实例」的代码各写一份**（`requireAccessControlSuite`，每处 8 行，报错文案带包名前缀）。
+   不抽到 `platform-sdk` 的硬理由：`context.modules` 的值是 `unknown`，收窄它需要「access-control 实例的形状」，
+   而该形状由 `@fenix/access-control` 定义，`platform-sdk` 不得依赖 platform-impl；SDK 能提供的只有「按端口键取
+   模块实例」的通用助手，那是一项**新公共契约**，超出本任务已审核的三项（§3.2 / §3.3）。
+   提炼触发条件已写入 mcp 的注释：出现第二个**非 access-control** 的端口也需要同形收窄时，按当时形状评审该助手。
+2. **registry 的加载图变重**：资源 manifest 为了声明 `storage` 必须**值导入**自己的资源注册文件
+   （`mcp-server-resource.ts` 等，链上含 `@server/db/schema` 的表定义），绑定是值而非类型，无法用 `import type` 替代。
+   已核实的爆炸半径：导入生成物的只有 `apps/server/src/bootstrap.ts` 与宿主用例，`apps/web` 侧不导入 registry
+   （web 只经 `apps/web/fenix.module.ts` 提供纯元数据 Shell 描述符），因此浏览器 bundle 不受影响；
+   `architecture:check`（2234 files）与 `check:dependencies`（2386 modules，0 新增违规）均确认无越界边。
+3. **资源包 `create` 内自行 `installXxxModule` 且不登记 cleanup**：装配结果只有 facade / service / repository，全是
+   无连接、无句柄的普通对象，进程退出不需要释放；`resetXxxModule` 仍只服务测试。这样 1.5f 删除宿主手写装配后
+   读取点 `getXxxModule()` 不会出现「无人写入」的窗口。
+4. **`ServerRouteHost` 在本片没有消费方**：按 §3.3 它属于「与路由贡献同时定型」的契约，本片先定型接口与
+   `order` 排序，实际分派与各包 `src/server/assembly.ts` 收窄留给 1.5e（本片不写无人使用的 adapter）。
+5. **端到端真实 profile 装配不在本片**：宿主用例只断言「registry 的声明集合 = 四个受控资源绑定」，
+   真正用 `ce.json` 跑通 `create` 全链（含 access-control 汇总绑定后建立查询）归 1.5f 的接线验证。
+6. **`dependsOn` 不得写 `access-control`** 这条约束同时写进两侧注释，并由既有门禁长期守护：
+   资源 manifest 静态导入的是自己的注册文件，若哪天有人把 `access-control` 写进 `dependsOn`，
+   `generate:module-registry` 的反向校验（`assertDependsOnComplete`）会以「已登记越界边不得编码成装配依赖」失败。
+
+**三、测试**
+
+| 文件 | 用例 | 断言要点 |
+| --- | --- | --- |
+| `apps/server/src/__tests__/bootstrap.test.ts`（+2） | 工厂读到本次装配的全部声明 | `seenDeclarations` = 拓扑序全集；access-control 先构造却已拿到 mcp 声明的 `mcp_server` 绑定——「先装配授权、再装配资源模块」由此成立 |
+| 同上 | 贡献按 `order` 升序稳定排序后挂载 | `["identity.primary", "access-control.primary", "identity.fallback"]`（order 100 的兜底最后） |
+| `apps/server/src/__tests__/module-assembly.test.ts`（+1） | 受控资源 manifest 各自声明存储绑定 | 真实 registry 汇总出的 `resourceType` 排序后 = `["agent_config", "mcp_server", "provider", "skill"]` |
+| `apps/server/src/__tests__/module-assembly.test.ts`（改） | — | 新增 `contractManifests: readonly ModuleManifest[]` 契约视图：生成物的 `as const satisfies` 保留的是各 manifest 字面量类型，联合类型上访问不到只有部分模块声明的可选字段 |
+| `packages/platform/access-control/src/__tests__/module-assembly.test.ts`（新，3 例） | 真实例 / 绑定从声明收集 / 基础设施未初始化即报错 | 真实例是 `DefaultAccessControl` 与 `ColumnResourceScopeStore`；未声明绑定的资源报「资源 not_declared 未注册存储绑定，无法解析归属范围」（不静默放宽） |
+| 四个资源包 `src/__tests__/module-assembly.test.ts`（新，各 2 例） | 真实例 + 装入进程级槽位 / 端口缺失即报错 | `module.resource === xxxResource` 且 `getXxxModule() === module`；缺端口抛「access-control 模块未提供 accessControl / scopeStore / authorizedQuery」 |
+| `mcp/src/__tests__/mcp-source-migration.test.ts`、`skill/src/__tests__/skill-source-boundary.test.ts`（改） | — | 源码边界断言随 create 形态改写（新增 `create: (context) => import("./src/module").then((module) => module.createXxxModule(context))`，并断言返回真实模块类型的签名行） |
+
+**四、验证证据**
+
+定向：`bun test packages/platform/platform-sdk/src/__tests__/ packages/platform/access-control/src/__tests__/` 79 pass / 0 fail；
+`mcp` + `skill` 359 pass、`agent-config` + `model-management` 429 pass；
+`bootstrap.test.ts` 6 pass、`module-assembly.test.ts` 5 pass；根 `tsc --noEmit` 无输出；
+`generate:module-registry --check` ✓（17 个 manifest）；`architecture:check` ✓（2234 files / 11 rules / 27 例外）；
+`check:dependencies` ✓（2386 modules / 12 例外 / 0 新增违规）。
+
+全量：`env -u ANTHROPIC_MODEL bun run precheck` → `All passed (122696ms)`。server-and-script-tests
+**762 pass / 0 fail**（较 1.5c-8 的 759 多 3，即本片新增的 `bootstrap.test.ts` +2 与宿主 `module-assembly.test.ts` +1，
+无既有用例减少）；package-tests **7312 pass / 2 skip / 0 fail**（较 1.5c-8 的 7301 多 11，即 access-control 3 +
+四个资源包各 2）；web-app-tests 946 pass / 0 fail；其余九步（format / import-sort / module-registry /
+architecture / 三项 tsc / dependency-boundaries / lint）全部通过。
+
+**非确定性失败记录**（与本片改动无关，留证）：本片第一次全量 `precheck` 的 package-tests 步骤报
+**79 fail / 7233 pass**，日志尾部可见的失败集中在 `packages/platform/identity/web/__tests__/organization-invite-dialog.test.tsx`
+的 DOM 断言（`container.querySelector("button")` 返回 `null`），同步骤耗时由常态 52s 涨到 147s；另跑
+`bun test packages/platform/identity/web/` 为 12 pass / 0 fail。第二次重跑时该步骤被 `scripts/ci.ts` 的 300s
+硬超时终止（实测 417282ms，无汇总输出）；同期 `ps` 显示机器上另一个 bun 进程持续占 CPU（`%CPU` 63、已运行 7 分钟）。
+负载回落后的第三次重跑即上面这条全绿结果。判断：与装配契约改动无关的负载型非确定性失败，故不视为本片回归，
+但重试证据留此备查。
+
+**五、遗留**
+
+- 宿主在装配后**读取 access-control 实例**的路径未在本片确定（`BootstrapResult.instances` 尚未经
+  `bootstrapServerAssembly` 暴露给 `main.ts`）：1.5f 接线时按 §3.1 的「只接管权限装配」范围定，候选是
+  资源包同形的进程级槽位。
+- `platform-sdk/src/server.ts` 的 `ServerRouteHost` 与 `contributions` 的实际消费方集中在 1.5e。
+
+### 1.5e-1 prod-view 试点（2026-09-21）
+
+分片行原文：「路由 contributions 声明：**先试点 `prod-view`**（2 个 web 路由、叶子模块、已在包内），
+打通「包声明 → 宿主挂载」端到端；再逐包铺开其余 12 个有路由的包」，判据「每个包的 `routes/web/index.ts`
+挂载点减少一处；试点片后 `precheck` + 手工启动验证」，前置 1.5d。
+
+**一、【需审核】新增第 5 项契约：`ModuleContribution.slot`**
+
+1.5d 定型的路由贡献形状是 `(host) => 路由实例`，但没有回答「挂到宿主的哪一面」。这不是可选细节：
+资源包内部的路径是**相对形式**（`/prod-views/:id/load`），最终 URL 前缀由宿主聚合实例决定，`/web` 与
+`/web/config` 是两个独立聚合——prod-view 的 2 条路由分属两者，挂错面等于整组端点前缀错位，而宿主侧的
+校验（槽未知 / 未返回 Elysia）发现不了这件事。
+
+落地：`ModuleContribution` 增加 `readonly slot?: string`（默认 `"app"`），取值是**宿主自定义的字符串**，
+platform-sdk 不认识具体槽位、只负责透传。宿主侧 `bootstrap/route-contributions.ts` 维护「槽名 → 聚合
+实例」映射，未接线的槽名当场报错。这是对已审核的 §3.3 的**扩大**（原裁定只覆盖贡献的形状与 `order`），
+故在此单列待审。
+
+**二、落地清单**
+
+| 项 | 位置 | 说明 |
+| --- | --- | --- |
+| 契约 | `platform-sdk/src/assembly/module-manifest.ts` | `ModuleContribution.slot`（第 5 项契约，见上） |
+| 宿主协议面 | `apps/server/src/bootstrap/route-host.ts`（新） | `ServerRouteHost` 的唯一实现，七字段一次填满 |
+| 贡献登记 | `apps/server/src/bootstrap/route-contributions.ts`（新） | `mountServerRouteContribution` / `takeRouteContributions(slot)` / 测试用 `resetRouteContributions` |
+| 包内装配 | `packages/resources/prod-view/src/server/assembly.ts`（新） | 从 `ServerRouteHost` 收窄出 `authGuardPlugin`，暴露两个路由工厂 |
+| 包声明 | `packages/resources/prod-view/fenix.module.ts` | 两条 `app-route` 贡献（`slot: "web"` / `"web-config"`，`value` 为惰性 `import()`） |
+| 宿主聚合 | `apps/server/src/routes/web/index.ts`、`routes/web/config/index.ts` | 两个聚合改为工厂，接收本槽的贡献数组并在末尾 `.use([...])` |
+| 宿主接线 | `apps/server/src/main.ts` | `wirePermissions` 段替换为 `bootstrapServerAssembly({ mountContribution })`；app 链改 `.use(createWebApp({ web: takeRouteContributions(...), webConfig: ... }))` |
+| 发布组合 | `deploy/assembly/ce.json` | `resources` 填实为 7 项（含依赖闭包） |
+| 启动序 | `apps/server/src/bootstrap/startup-sequence.ts` | `wirePermissions` 类型放宽为 `() => Promise<unknown>`（装配返回结果宿主暂不需要） |
+
+**三、需审核的取舍**
+
+1. **判据「打通端到端」迫使 `main.ts` 提前接入 registry**（原本计划归 1.5f）。理由：不接 registry 就
+   只能测「登记函数本身」，无法证明「真实 ce.json + 真实模块工厂产出的路由真的进了槽」。做法上仍守
+   §3.1 的最小范围——只替换 `wirePermissions` 一段，其余启动序、服务装配、HTTP 路由序列一律不动。
+   替代方案（在用例里手工调 `bootstrapServerAssembly` 已部分采用）不能替代宿主真实接线，故两者都做。
+2. **`route-host.ts` 七项一次填满**而不是「谁先迁入谁先加」：七项实现都已存在且是同一份进程级实例，
+   逐片追加会让每迁一个包改一次宿主装配面。代价仅是几行对象字面量。
+3. **槽名 `"web"` / `"web-config"` 由宿主定义**，包只写字符串字面量。包因此对宿主槽名有软耦合，但没有
+   更好的选择：槽名是包与宿主之间唯一的约定面，且必须能在 manifest（静态描述符）里表达。
+   `"config"` 之类更短的名字与 `/web/config` 的对应关系更弱，故取路径名。
+4. **`ce.json` 的 `resources` 填实为 7 项**：PROD_VIEW 之外，knowledge / mcp / memory / skill /
+   agent-config / model-management 是按 profile 依赖闭包（agent-config 依赖 knowledge/mcp/memory/skill；
+   mcp 依赖 knowledge；model-management 依赖 agent-config）反推的必需项。不填实则端到端装配只有
+   identity / access-control / agent-runtime，prod-view 的 contributions 也观察不到真实依赖链。
+   副作用：这些模块的 `create` 在装配期被**再调一次**——identity 的目录与 agent-runtime 的实例协调器
+   都是幂等读取（`initializeApplicationInfrastructure` 已在更早阶段初始化），无副作用；1.5f 删除宿主手写
+   装配后自然唯一。
+5. **默认槽 `"app"` 暂无读者**：1.5f 接顶层 app 槽前，声明不带 `slot` 的路由贡献会以「未知聚合槽 "app"」
+   报错，而不是被静默丢弃。这条有专门用例锁定。
+6. **`resetRouteContributions()` 只为测试**：槽位是进程级单例，真实进程装配只发生一次；没有它跨用例会
+   累积上一例的路由。已按「仅服务测试」标注，与 `resetXxxModule` 同类。
+
+**四、测试**
+
+| 文件 | 用例数 | 断言要点 |
+| --- | --- | --- |
+| `apps/server/src/__tests__/route-contributions.test.ts`（新） | 8 | 按槽分组 / 空槽返回空数组 / 非 `app-route` 跳过 / 未知槽报错 / 默认槽 `"app"` 报错 / value 非函数报错 / 构造函数未返回 Elysia 报错 / **真实 profile 端到端**（真实 ce.json + 生成 registry + 10 个真实模块工厂 → 断言 web 槽 1 条、web-config 槽 5 条路径） |
+| `packages/resources/prod-view/src/__tests__/prod-view-contributions.test.ts`（新） | 4 | manifest 两条贡献的 `[id, kind, slot]` / web 槽产出 `/prod-views/:id/load` / web-config 槽含 `/config/prod-views` 与 `/config/prod-views/:id` / assembly 收窄结果与贡献一致 |
+| `apps/server/src/__tests__/config-integration.test.ts`、`agent-platform-api-reference.test.ts`（改） | — | 聚合工厂化的调用面适配（`createWebConfigApp([])`、`createWebApp({ web: [], webConfig: [] })`） |
+| `apps/server/src/__tests__/access-control-bootstrap-order.test.ts`（改） | — | `wirePermissions` 改传 `Promise<unknown>` 后注释同步为「跑的是 registry 装配」 |
+
+端到端断言用 `toEqual` 而非 `toContain`：1.5e 每迁入一个包这里就多一条路径，迁移进度因此有一份可执行的
+镜像，漏挂不会静默通过。
+
+**五、验证证据**
+
+定向：`bun test apps/server/src/__tests__/route-contributions.test.ts .../module-assembly.test.ts .../bootstrap.test.ts`
+19 pass / 0 fail；`bun test apps/server/src/__tests__/` 633 pass / 0 fail；prod-view 4 pass；三个受影响用例文件均通过；
+根 `tsc --noEmit` 无输出；`generate:module-registry --check` ✓（17 个 manifest）；`architecture:check` ✓
+（2239 files / 11 rules / 27 例外）；`check:dependencies` ✓（2391 modules / 12 例外 / 0 新增违规）。
+全量：`env -u ANTHROPIC_MODEL bun run precheck` → `All passed (86961ms)`。server-and-script-tests
+**770 pass / 0 fail**（较 1.5d 的 762 多 8，即新增的 `route-contributions.test.ts` 8 例，无既有用例减少）；
+package-tests **7316 pass / 2 skip / 0 fail**（较 1.5d 的 7312 多 4，即 prod-view 的 4 例）；
+web-app-tests 946 pass / 0 fail（无前端改动，与 1.5d 持平）；其余九步全部通过。
+
+**手工启动验证未完成**：本机无 PostgreSQL（`bun run dev` 在 `initDb` 阶段 `ECONNREFUSED 127.0.0.1:5432` /
+`::1:5432`，失败点早于装配，与本片改动无关），OrbStack docker daemon 未运行且未安装 `psql` / `pg_isready`，
+无法在本环境补做。需要在可用 DB 的环境补跑 `bun run dev` + `/health` + prod-view 两个端点；端到端装配
+在测试中以真实 profile 覆盖（见上表第 8 条用例），但**进程级启动路径未实测**，列为遗留。
+
+**六、遗留**
+
+- 手工启动验证（`bun run dev` + `/health`）待有 DB 的环境补做。
+- 1.5e-2：其余 12 个有路由的包逐包铺开，每迁一包更新 `route-contributions.test.ts` 的真实端到端断言。
+
+### 1.5e-2a `/web/config` 面清零 + 发布组合全量启用（2026-09-21）
+
+分片行原文（1.5e 后半段）：「再逐包铺开其余 12 个有路由的包」，判据「每个包的 `routes/web/index.ts`
+挂载点减少一处；试点片后 `precheck` + 手工启动验证」。
+
+本片把 `/web/config` 聚合面的 6 个手写挂载点全部迁到贡献声明，`routes/web/config/index.ts` 因此**只剩
+`.use([...contributedRoutes])` 一行挂载**——这是 1.5e 的第一个「聚合面清零」，也为 `web` 面（23 个手写
+挂载点）的迁移定下可复制的形状。
+
+**一、【需审核】`deploy/assembly/ce.json` 的 `resources` 提前填实为全量 13 个**
+
+1.5e-1 只填了 7 项（prod-view 的依赖闭包）。本片一迁 sandbox 就暴露了问题：sandbox 不在 profile 里，
+它的贡献没有消费方，而宿主手写挂载已按判据删除 → `/web/config/sandbox-pools` **静默消失**。
+
+裁定：填成全量发布组合的 13 个资源模块（`agent-config` / `channel` / `knowledge` / `machine` / `mcp` /
+`memory` / `model-management` / `observer` / `prod-view` / `sandbox` / `skill` / `task` / `workflow`），
+理由与影响：
+
+- **「启用范围先于迁移」是迁移判据的前提**：判据要求「挂载点减少一处」，若被迁的包未启用，减少的挂载
+  点不会由贡献补回，迁移即回归。
+- **CE 单机发布的语义就是全部能力**：13 个模块都是真实交付物，不存在「只装子集」的部署形态。
+- **提前完成了 1.5f 的一项判据**（「填实 `deploy/assembly/ce.json` 的 `resources`」）。1.5f 余下的判据
+  （`grep '@fenix/' apps/server/src/main.ts` 归零、删除 `no-new-handwritten-registry` 规则与
+  `handwrittenRegistryBaseline`）不受影响。
+- **副作用（列为遗留）**：`channel` / `machine` / `observer` / `sandbox` / `task` / `workflow` 这 6 个
+  模块的 `create` 是 1.5d 之前的形式（`() => import("./src/module").then(m => m.createXxxModule())`，不
+  接收 `ModuleFactoryContext`、不 `installXxxModule`、不返回给宿主消费），本片起它们**首次在装配期被
+  执行**。测试全绿说明无失败路径；但「构造出的实例无人读取」与「create 是否有装配期副作用」需要
+  1.5f 的手工启动验证确认，届时它们要与 1.5d 已改的四个受控资源包同形。
+
+**二、本片迁入的包与端点**
+
+| 包 | 贡献 id | 槽 | 端点数 |
+| --- | --- | --- | --- |
+| `model-management` | `model-management.web-config-providers` | `web-config` | 8 |
+| `model-management` | `model-management.web-config-models` | `web-config` | 3 |
+| `sandbox` | `sandbox.web-config` | `web-config` | 1 |
+| `agent-config` | `agent-config.web-config-agents` | `web-config` | 7 |
+| `skill` | `skill.web-config` | `web-config` | 8 |
+| `mcp` | `mcp.web-config` | `web-config` | 10 |
+
+每包新增 `src/server/assembly.ts`：把 `ServerRouteHost` 收窄为该包路由的依赖类型（`unknown` → 具体端口，
+收窄只在包内做一次，理由见 §3.3）；`fenix.module.ts` 用 `slot: "web-config"` 声明惰性构造函数
+（`value: (host) => import("./src/server/assembly").then(...)`，惰性理由同 `create`：registry 会被大量
+位置导入，不能在索引层把 Elysia 拖进模块图）；包内注释同步改写（原先写的都是「不声明 `contributions`」）。
+
+**三、本片未做 / 明确取舍**
+
+1. **`web` 面的 23 个手写挂载点本片不动**（identity 2、agent-runtime 3、agent-config 4、channel 1、
+   knowledge 1、machine 3、memory 1、model-management 2、task 1、workflow 5；`branding` 是宿主自有文件，
+   永远留在挂载序列里）。批 1.5e-2b 起继续，理由：这 23 个里有 2 处需要扩 `ServerRouteHost`
+   （`verifyEnvironmentOwnership` 给 model-management 的 peri 任务详情、`rotateCallerApiKey` 给
+   agent-config 的 meta-agent），是契约面的改动，应与它服务的迁移片同批评审。
+2. **不为每个包复制一份 prod-view 的包内贡献测试**。宿主 `route-contributions.test.ts` 的真实 profile
+   用例已经用 `toEqual` 精确锁定「每个包贡献了哪些路径、进了哪个槽」——slot 写错会表现为路径出现在错误的
+   槽并当场失败；包内再写一份是同一事实的第二份拷贝。prod-view 那份（4 例）保留：它是试点期宿主接线
+   完成**前**的自证工具，且额外覆盖了「`assembly.ts` 的收窄结果与贡献一致」这一点（该文件是唯一断言
+   assembly 导出的地方）。
+3. **新增 `apps/server/src/test-utils/web-config-routes.ts`**：给「需要真实 `/web/config` 路由但不关心
+   装配语义」的用例（`config-integration.test.ts`、`agent-platform-api-reference.test.ts`）提供各包路由
+   工厂 + 宿主端口实现的集合。必须这么做而不是跑 `bootstrapServerAssembly` 的原因：装配要求基础设施已
+   初始化，而 `initializeApplicationInfrastructure` **每进程只允许调用一次**，测试进程里真实装配由
+   `route-contributions.test.ts` 独占（preload 刻意不初始化基础设施，见 `test-utils/setup-mocks.ts`）。
+   helper 的端口取宿主真实实现而非替身：这两个用例断言的是「协议层把资源 Facade 的输出映射成视图」。
+4. **`ce.json` 的 `resources` 用字母序**而不是拓扑序：拓扑序由 registry 的 `visit()` 按 `dependsOn`
+   决定，profile 里的顺序只表达「启用哪些」，字母序在 13 项时比人工维护的拓扑序更不容易写错。
+
+**四、测试**
+
+| 文件 | 改动 | 断言要点 |
+| --- | --- | --- |
+| `apps/server/src/__tests__/route-contributions.test.ts` | 真实 profile 用例扩到 42 条 `web-config` 路径 | 每包分组列出全部路径（可执行的迁移镜像，漏挂即失败） |
+| `apps/server/src/__tests__/module-assembly.test.ts` | `EXPECTED_SERVER_MODULES` 扩到 16 项（3 基础 + 13 资源） | 拓扑序：`machine` 早于 `sandbox`、`agent-config` 早于 `model-management`，不按字母序 |
+| `apps/server/src/__tests__/config-integration.test.ts` | 装配来源改为 helper | 12 例行为断言不变（stub Facade 边界不变） |
+| `apps/server/src/__tests__/agent-platform-api-reference.test.ts` | `webConfig` 槽改喂 helper | 文档 curl 示例全部命中真实注册路由（迁移前 29 条 `/web/config/*` 缺失） |
+
+**五、验证证据**
+
+定向：`bun test apps/server/src/__tests__/` **633 pass / 0 fail**；`sandbox` + `skill` + `mcp`
+**669 pass / 0 fail**；`agent-config` + `model-management` **633 pass / 0 fail**；根 `tsc --noEmit` 无输出；
+`architecture:check` ✓（2245 files / 11 rules / 27 例外）；`check:dependencies` ✓（2397 modules / 12 例外 /
+0 新增违规）；`generate:module-registry --check` ✓（17 个 manifest）。
+
+全量：`env -u ANTHROPIC_MODEL bun run precheck` → `All passed (85648ms)`。server-and-script-tests
+**770 pass / 0 fail**、package-tests **7316 pass / 2 skip / 0 fail**、web-app-tests 946 pass / 0 fail ——
+三项用例数与 1.5e-1 持平（本片只改既有断言的内容与装配来源，未新增用例）。
+
+**六、遗留**
+
+- `web` 面 23 个挂载点的迁移（1.5e-2b），含 `ServerRouteHost` 扩两字段（见三.1）。
+- 6 个「1.5d 之前形态」的 `create` 要在 1.5f 与四个受控资源包同形（见一.4）。
+- 手工启动验证仍待有 DB 的环境补做（同 1.5e-1）。

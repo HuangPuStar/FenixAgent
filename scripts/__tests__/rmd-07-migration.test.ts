@@ -6,7 +6,6 @@ const RMD_07_MOVES = [
   ["src/routes/web/config/index.ts", "apps/server/src/routes/web/config/index.ts"],
   ["src/services/build-info.ts", "apps/server/src/services/build-info.ts"],
   ["src/services/config-utils.ts", "apps/server/src/services/config-utils.ts"],
-  ["src/services/config/index.ts", "apps/server/src/services/config/index.ts"],
   ["src/services/config/types.ts", "apps/server/src/services/config/types.ts"],
   ["src/services/core-bootstrap.ts", "apps/server/src/services/core-bootstrap.ts"],
   ["src/services/data-migrate.ts", "apps/server/src/services/data-migrate.ts"],
@@ -218,8 +217,16 @@ describe("RMD-07 server-host migration", () => {
   // `src/services/config/user-config.ts`
   // 本轮从本表移入下方 relocated 断言（宿主副本删除、owner 落回 workflow / agent-runtime /
   // model-management / agent-config / identity 包），理由见 relocated 的文档注释。
+  // 任务 1.5c 的死代码删除一项（本轮移出本表，无新 owner）：`services/config/index.ts`。它是
+  // `upsertSystemMcpServer` 的转发 barrel，另两条导出（`AuthContext`、`PermissionAction` /
+  // `PermissionConfig`）也无导入方；而 `upsertSystemMcpServer` 服务的唯一端口
+  // `RegisterSystemMcpServer` 从未被注入（`ensureHindsightMcpServer` 全仓只有测试调用），整条
+  // Hindsight MCP 登记路径未接线，宿主这份属零生产消费方的薄包装，按「删除优于兼容」删除，见
+  // review/task-1.5-host-aggregation.md §1.5c-8。同批删除的 `services/config/mcp-system-server.ts`
+  // （上述 barrel 的被转发对象，从未单独登记）与 `services/config-utils.ts` 的信封函数（文件本体保留
+  // `resolveApiKey`）不在本表内。
   test("removes every legacy source and retains its exact server-host target", () => {
-    expect(RMD_07_MOVES).toHaveLength(40);
+    expect(RMD_07_MOVES).toHaveLength(39);
     for (const [source, target] of RMD_07_MOVES) {
       expect(existsSync(source), `legacy source still exists: ${source}`).toBe(false);
       expect(existsSync(target), `server-host target is missing: ${target}`).toBe(true);

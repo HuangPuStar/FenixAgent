@@ -1,4 +1,6 @@
 import type { ModuleManifest } from "@fenix/platform-sdk";
+import type { ServerRouteHost } from "@fenix/platform-sdk/server";
+import { providerResource } from "./src/server/access/provider-resource";
 
 /**
  * Provider / Model 资源模块描述符。
@@ -21,16 +23,47 @@ import type { ModuleManifest } from "@fenix/platform-sdk";
  * `DocManager` 与任务映射），但该包尚未提供 manifest、当前不在资源包装配集内；它注册为 resource
  * 模块的那一刻，生成器的装配依赖反向校验会强制补上这条边。
  *
- * `create` 是惰性组合根（`src/module.ts`）：返回两个进程级单例的取值器，函数本身无副作用，因此装配
- * 序列在任何时点调用它都安全；平台能力注入（`createModelManagementServerModule` +
- * `installModelManagementModule`）仍由宿主显式完成，注册表尚未表达这类构造依赖。
- * 不声明 `contributions` 与 `web`：消费方分别是 §1.5 的宿主挂载与 §1.6 的 WebShell 装配，形状必须与
- * 消费端同时定型；当前路由是包内工厂函数，由宿主在装配时注入守卫（`src/server/routes/dependencies.ts`）。
+ * 声明 `accessControlBindings`：`providerResource.storage` 是本模块主表（`provider`）的归属列声明，
+ * 由 `access-control` 的工厂经 `ModuleFactoryContext.declarations` 汇总。静态导入资源注册文件是有意的
+ * 取舍——绑定是值而不是类型，只能来自静态导出；本模块**不得**为这条边把 `access-control` 写进
+ * `dependsOn`，否则授权模块与资源模块会互相等待（理由与加载代价见 `@fenix/resource-mcp` 的同类说明）。
+ *
+ * `create` 是惰性组合根（`src/module.ts`）：由 registry 注入装配声明，构造
+ * `createModelManagementServerModule(deps)` 的真实例并装入进程级槽位。模型网关服务集
+ * （`setModelGatewayServices`）不在本工厂内构造——它依赖宿主进程级的凭据与预算装配，归宿主的
+ * `initModelGateway`（§1.5 裁定：registry 不接管启动序）。
+ *
+ * 声明 `contributions`（1.5e）：`/web/config/models` 与 `/web/config/providers` 的路由实例由本模块以惰性
+ * 构造函数 `(host) => import("./src/server/assembly").then(...)` 给出，`slot: "web-config"` 指明挂宿主
+ * `/web/config` 聚合面——路由路径是相对形式，前缀由宿主的聚合实例决定，「挂哪一面」只能由声明说清。
+ * 惰性 import 与 `create` 同因：registry 会被大量位置导入，不能在索引层就把 Elysia 拖进模块图。
+ * `/web/model-gateway` 与 `/web/peri-task-details` 随后按同一形状迁入 `web` 槽（1.5e 逐包铺开）。
+ *
+ * 不声明 `web`：消费方是 §1.6 的 WebShell 装配，形状必须与消费端同时定型。
  */
 export const moduleManifest = {
   id: "model-management",
   kind: "resource",
   dependsOn: ["agent-config"],
   capabilities: ["resource.model-management"],
-  create: () => import("./src/module").then((module) => module.createModelManagementModule()),
+  accessControlBindings: [providerResource.storage],
+  contributions: [
+    {
+      id: "model-management.web-config-models",
+      kind: "app-route",
+      slot: "web-config",
+      value: (host: ServerRouteHost) =>
+        import("./src/server/assembly").then((assembly) => assembly.createModelManagementWebConfigModelsRoutes(host)),
+    },
+    {
+      id: "model-management.web-config-providers",
+      kind: "app-route",
+      slot: "web-config",
+      value: (host: ServerRouteHost) =>
+        import("./src/server/assembly").then((assembly) =>
+          assembly.createModelManagementWebConfigProvidersRoutes(host),
+        ),
+    },
+  ],
+  create: (context) => import("./src/module").then((module) => module.createModelManagementModule(context)),
 } satisfies ModuleManifest;

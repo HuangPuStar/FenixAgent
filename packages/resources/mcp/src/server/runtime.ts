@@ -11,8 +11,9 @@ import type { McpServerServerModule } from "./module";
  *
  * 本文件是包导出面 `./server/runtime` 的入口：宿主只需要装配结果与配置类型时从这里导入，不要经
  * `./server` barrel——barrel 会连带导出 HTTP 路由，把 agent-runtime 及其宿主依赖拉进导入方所在的
- * 依赖图（`apps/server/src/services/config/mcp-system-server.ts` 曾因此在宿主服务与资源包之间
- * 形成环，见 `scripts/architecture/exceptions.json` 的 no-circular 说明）。
+ * 依赖图（`apps/server/src/services/config/mcp-system-server.ts` 曾因此在宿主服务与资源包之间形成环，
+ * 见 `scripts/architecture/exceptions.json` 的 no-circular 说明；该文件本身已随任务 1.5c 作为零消费方
+ * 死代码删除，本条约束对后续任何宿主消费方仍然成立）。
  */
 
 export type { McpServerConfig } from "./services/config/mcp-config";

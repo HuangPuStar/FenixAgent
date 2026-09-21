@@ -175,6 +175,39 @@ describe("registry 服务第 39 轮真实业务覆盖", () => {
     expect(deleted).toEqual(["called"]);
   });
 
+  // 部署兜底机器首次启动时不存在，须补一条 pending 系统记录（组织与用户为 null，全组织可见）。
+  test("兜底机器缺失时补建系统记录", async () => {
+    const inserts: unknown[] = [];
+    stubDb({ select: mock(() => limitedRows([])), insert: insertRecorder(inserts) });
+
+    await expect(registry.ensureDefaultMachine({ machineId: "mach-default", agentName: "claude-code" })).resolves.toBe(
+      true,
+    );
+
+    expect(inserts).toEqual([
+      expect.objectContaining({
+        id: "mach-default",
+        organizationId: null,
+        userId: null,
+        agentName: "claude-code",
+        name: "system-default",
+        status: "pending",
+      }),
+    ]);
+  });
+
+  // 已存在时必须幂等：重复启动不得改写既有注册信息（status / 心跳字段由注册流程维护）。
+  test("兜底机器已存在时不重复写入", async () => {
+    const inserts: unknown[] = [];
+    stubDb({ select: mock(() => limitedRows([{ id: "mach-default" }])), insert: insertRecorder(inserts) });
+
+    await expect(registry.ensureDefaultMachine({ machineId: "mach-default", agentName: "opencode" })).resolves.toBe(
+      false,
+    );
+
+    expect(inserts).toEqual([]);
+  });
+
   // 指定不存在的预创建 machineId 必须拒绝连接。
   test("指定不存在 machineId 时拒绝注册", async () => {
     stubDb({ select: mock(() => limitedRows([])) });

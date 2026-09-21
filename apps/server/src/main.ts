@@ -5,15 +5,11 @@ interceptConsole();
 
 const startupLog = createLogger("rcs");
 
-import { createDrizzleAccessControl } from "@fenix/access-control/suite";
 import {
-  agentConfigResource,
-  createAgentConfigServerModule,
   createAgentSitesCompatRoutes,
   createAgentSitesProxyRoutes,
   createApiAgentsRoutes,
   getAgentConfigModule,
-  installAgentConfigModule,
   setMetaAgentModelResolver,
 } from "@fenix/agent-config/server";
 import { createAgentRuntimeModule } from "@fenix/agent-runtime/runtime";
@@ -44,17 +40,10 @@ import {
   createApiModelsRoutes,
   createApiSystemModelGatewayRoutes,
   createModelGatewayRuntime,
-  createModelManagementServerModule,
   createSystemModelGatewayProviderService,
   getModelManagementModule,
-  installModelManagementModule,
-  providerResource,
 } from "@fenix/model-management/server";
-import {
-  getIdentityDirectory,
-  initializeApplicationInfrastructure,
-  registerIdentityDirectory,
-} from "@fenix/platform-sdk/server";
+import { initializeApplicationInfrastructure, registerIdentityDirectory } from "@fenix/platform-sdk/server";
 import { bindAcpEventBusPort, getHermesClient, initHermesClient } from "@fenix/resource-channel/server";
 import { checkRagFlowHealth, createApiKnowledgeBaseRoutes } from "@fenix/resource-knowledge/server";
 import {
@@ -80,13 +69,7 @@ import {
   stopFileWsSweep,
   stopHeartbeat,
 } from "@fenix/resource-machine/server";
-import {
-  createApiMcpRoutes,
-  createMcpServerServerModule,
-  installMcpServerModule,
-  knowledgeMcpRoutes,
-  mcpServerResource,
-} from "@fenix/resource-mcp/server";
+import { createApiMcpRoutes, knowledgeMcpRoutes } from "@fenix/resource-mcp/server";
 import {
   createApiSystemLogsRoutes,
   createApiSystemObserverRoutes,
@@ -100,13 +83,7 @@ import {
   registerConfiguredSandboxProviders,
   sandboxManager,
 } from "@fenix/resource-sandbox/server";
-import {
-  createApiSkillsRoutes,
-  createSkillServerModule,
-  installSkillServerModule,
-  skillDownloadRoutes,
-  skillResource,
-} from "@fenix/resource-skill/server";
+import { createApiSkillsRoutes, skillDownloadRoutes } from "@fenix/resource-skill/server";
 import { schedulerService } from "@fenix/resource-task/server";
 import {
   createApiWorkflowRoutes,
@@ -116,6 +93,13 @@ import {
 } from "@fenix/resource-workflow/server";
 import type { WebSocketHandler } from "bun";
 import Elysia from "elysia";
+import { bootstrapServerAssembly } from "./bootstrap";
+import {
+  mountServerRouteContribution,
+  takeRouteContributions,
+  WEB_CONFIG_SLOT,
+  WEB_SLOT,
+} from "./bootstrap/route-contributions";
 import { startSchedulerUnlessDisabled } from "./bootstrap/scheduler-startup";
 import { runCriticalStartupSequence } from "./bootstrap/startup-sequence";
 import { applyEnv, config, getBaseUrl } from "./config";
@@ -135,7 +119,7 @@ import { errorPlugin } from "./plugins/error-handler";
 import { deriveRequestId, injectRequestId, logError, logRequest, logResponse } from "./plugins/logger";
 import { ctrlStaticPlugin } from "./plugins/static";
 import { systemApiAuthPlugin } from "./plugins/system-api-auth";
-import webApp from "./routes/web";
+import { createWebApp } from "./routes/web";
 import { buildHealthInfo } from "./services/build-info";
 import { closeCache, getRedisConnection } from "./services/cache";
 import { getCoreRuntime, initCoreRuntime, registerRemoteNode, unregisterRemoteNode } from "./services/core-bootstrap";
@@ -336,29 +320,15 @@ await runCriticalStartupSequence({
     await initDb();
     startupLog.info("Database initialized");
   },
-  wirePermissions: () => {
-    // 模型网关与 builtin 都会查询资源授权，必须在业务资源初始化前完成宿主装配。
-    // MCP / Skill / AgentConfig / Provider 资源使用同一授权栈：归属列在主表，授权谓词与分页/计数由
-    // 同一份资源注册下推到 SQL。
-    const accessControlSuite = createDrizzleAccessControl({
-      database: db,
-      bindings: [
-        mcpServerResource.storage,
-        skillResource.storage,
-        agentConfigResource.storage,
-        providerResource.storage,
-      ],
-    });
-    const moduleDeps = {
-      accessControl: accessControlSuite.accessControl,
-      scopeStore: accessControlSuite.scopeStore,
-      authorizedQuery: accessControlSuite.authorizedQuery,
-      identity: getIdentityDirectory(),
-    };
-    installMcpServerModule(createMcpServerServerModule(moduleDeps));
-    installSkillServerModule(createSkillServerModule(moduleDeps));
-    installAgentConfigModule(createAgentConfigServerModule(moduleDeps));
-    installModelManagementModule(createModelManagementServerModule(moduleDeps));
+  wirePermissions: async () => {
+    // 模块装配改由 registry 驱动（1.5e 起逐个资源模块迁入，1.5f 全面切换）：按 `deploy/assembly/ce.json`
+    // 的 profile 拓扑序 create 各模块，再把 `app-route` 贡献登记到宿主聚合槽（槽的消费点在下方
+    // `createWebApp`）。授权绑定不再在这里手写——各资源模块在自己的 manifest 里声明
+    // `accessControlBindings`，access-control 的工厂经 `declarations` 汇总（review §3.2）。
+    //
+    // 时机不变：模型网关与 builtin 都会查询资源授权，装配必须在业务资源初始化前完成；本步骤仍在关键
+    // 启动序列内、`initDb` 之后（`getDatabase()` 此时可用）。
+    await bootstrapServerAssembly({ mountContribution: mountServerRouteContribution });
   },
   initModelGateway: async () => {
     registerConfiguredSandboxProviders();
@@ -547,8 +517,8 @@ const app = new Elysia({
   )
   // better-auth handler
   .use(authPlugin)
-  // Web control panel routes
-  .use(webApp)
+  // Web control panel routes：装配期登记的 app-route 贡献按聚合槽注入（未启用贡献的槽位为空数组）
+  .use(createWebApp({ web: takeRouteContributions(WEB_SLOT), webConfig: takeRouteContributions(WEB_CONFIG_SLOT) }))
   // Token-protected skill archive download for plugins/runtimes
   .use(skillDownloadRoutes)
   // Agent Sites L3 business frontend proxy (/web/site/deploy/:appId/* prefix)

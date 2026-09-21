@@ -1,41 +1,52 @@
-import { getModelGatewayServices, type ModelGatewayServices } from "./server/model-gateway";
-import type { ModelManagementServerModule } from "./server/module";
-import { getModelManagementModule } from "./server/module-runtime";
+import type { ModuleFactoryContext } from "@fenix/platform-sdk";
+import { getIdentityDirectory } from "@fenix/platform-sdk/server";
+import {
+  createModelManagementServerModule,
+  type ModelManagementModuleDeps,
+  type ModelManagementServerModule,
+} from "./server/module";
+import { installModelManagementModule } from "./server/module-runtime";
 
 /**
- * Model-management 模块的运行时表面。
+ * Model-management 模块的 registry 装配入口。
  *
- * 只暴露需要"对象身份"的两块进程级单例，不新建第二套：资源模块表面（facade / service / repositories）
- * 与模型网关服务集（provider / budget / subject / usage / keyManagement）。`setModelGatewayServices`
- * 是全进程单例，再构造一份等于让同一批凭据、预算和用量各有两条读取路径。
+ * 装配期做三件事：从 `context.modules` 取 access-control 的授权端口、从
+ * `@fenix/platform-sdk/server` 取身份目录，然后调用 `./server/module` 的
+ * `createModelManagementServerModule` 构造实例并装入进程级槽位。真正的构造仍是那一处实现——本文件
+ * 只补齐「依赖从哪来」。
  *
- * 两个属性都是**读时才取**的取值器，不是构造期快照：
+ * 必须 `install`：`/web/config/providers`、`/web/config/models`、`/api/models` 与模型网关的
+ * provider 同步都在调用时经 `getModelManagementModule()` 读取同一份结果。装配结果里没有需要释放的
+ * 连接或句柄，因此不登记 cleanup；`resetModelManagementModule` 仍只服务测试。
  *
- * - 本包的服务端表面必须由宿主注入平台能力（`AccessControlModule` / `ResourceScopeStore` /
- *   `AuthorizedResourceQuery` / `IdentityDirectory`）后才存在，而模块工厂在装配序列里被调用时这些
- *   注入未必已经发生（`src/server/module.ts` 已记录这一「构造依赖尚未由注册表表达」的已知不足）；
- * - 取值器把"未装配"的失败推迟到真正读取的调用点，并复用 `getModelManagementModule` /
- *   `getModelGatewayServices` 的既有报错，而不是把 undefined 变成一路静默的"资源不存在"。
- *
- * 因此本函数是**无副作用**的：不读 DB、不写单例、不注册清理，装配序列可以在任何时点调用它。
+ * 模型网关服务集（`ModelGatewayServices`）**不在这里装配**：它由宿主在 `initModelGateway` 阶段经
+ * `createModelGatewayRuntime` 建立（依赖进程级凭据与预算配置），§1.5 的裁定是 registry 不接管启动序。
  */
-export interface ModelManagementModule {
-  readonly id: "model-management";
-  /** 已装配的资源模块表面；未装配时读取即报错。 */
-  readonly server: ModelManagementServerModule;
-  /** 模型网关运行时服务集；网关未启用（未配置管理凭证）时读取即报错。 */
-  readonly gateway: ModelGatewayServices;
+export function createModelManagementModule(context: ModuleFactoryContext): ModelManagementServerModule {
+  const module = createModelManagementServerModule({
+    ...requireAccessControlSuite(context),
+    identity: getIdentityDirectory(),
+  });
+  installModelManagementModule(module);
+  return module;
 }
 
-/** 创建 Model-management 模块实例（惰性取值器，见接口注释）。 */
-export function createModelManagementModule(): ModelManagementModule {
-  return {
-    id: "model-management",
-    get server() {
-      return getModelManagementModule();
-    },
-    get gateway() {
-      return getModelGatewayServices();
-    },
-  };
+/** 本包需要的授权端口子集；形状与 `ModelManagementModuleDeps` 的前三项一致。 */
+type AccessControlSuite = Pick<ModelManagementModuleDeps, "accessControl" | "scopeStore" | "authorizedQuery">;
+
+/**
+ * 收窄 registry 注入的 access-control 实例。
+ *
+ * 口径与 `@fenix/resource-mcp` 的 `src/module.ts` 相同（`unknown` 槽位 + 一次显式收窄 + 缺端口当场
+ * 报错，不抽到 platform-sdk 的理由见该文件）：本包不 import `@fenix/access-control`，`resources →
+ * platform-impl` 被依赖矩阵禁止。
+ */
+function requireAccessControlSuite(context: ModuleFactoryContext): AccessControlSuite {
+  const instance = context.modules.get("access-control") as Partial<AccessControlSuite> | undefined;
+  if (!instance?.accessControl || !instance.scopeStore || !instance.authorizedQuery) {
+    throw new Error(
+      "ModelManagement 资源模块装配失败：access-control 模块未提供 accessControl / scopeStore / authorizedQuery",
+    );
+  }
+  return instance as AccessControlSuite;
 }
