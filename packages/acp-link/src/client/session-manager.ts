@@ -63,7 +63,8 @@ export class SessionManager {
 
   setSystemPrompt(prompt: string): void {
     this.systemPrompt = prompt;
-    console.log("[session-manager] system prompt set:", prompt.substring(0, 50));
+    // 只记长度：system prompt 由调用方拼装，可能含实例配置与凭据引用。
+    console.log("[session-manager] system prompt set, length:", prompt.length);
   }
 
   constructor(agentName: string, _maxSessions = 5, cwd = "/home/bun/app") {

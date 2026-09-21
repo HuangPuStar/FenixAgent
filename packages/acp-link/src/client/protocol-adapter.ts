@@ -85,11 +85,13 @@ export class ProtocolAdapter {
           const delta = event.delta as Record<string, unknown> | undefined;
           if (delta?.type === "text_delta" && typeof delta.text === "string") {
             this.streamedTextThisTurn = true;
-            console.log("[protocol-debug] → agent_message_chunk:", (delta.text as string).slice(0, 50));
+            // 只记长度：流式增量是 Agent 输出正文，逐块打印等于把回答写进日志。
+            console.log("[protocol-debug] → agent_message_chunk, length:", (delta.text as string).length);
             this.send("agent_message_chunk", { type: "text", text: delta.text as string });
           } else if (delta?.type === "thinking_delta" && typeof delta.thinking === "string") {
             this.streamedTextThisTurn = true;
-            console.log("[protocol-debug] → agent_thought_chunk:", (delta.thinking as string).slice(0, 50));
+            // 同上：思考内容属 Agent 输出，不得进入日志。
+            console.log("[protocol-debug] → agent_thought_chunk, length:", (delta.thinking as string).length);
             this.send("agent_thought_chunk", { type: "text", text: delta.thinking as string });
           } else if (delta?.type === "input_json_delta" && delta.partial_json) {
             // tool_use 参数流式增量，透传

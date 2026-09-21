@@ -528,7 +528,6 @@ function WorkflowEditorInner({ workflowId, runId, chatPanel }: WorkflowEditorPro
   const hasParams = workflowParams && Object.keys(workflowParams).length > 0;
 
   const onRunClick = useCallback(() => {
-    console.log("[RunButton] meta.params:", JSON.stringify(meta.params), "hasParams:", hasParams);
     if (hasParams) {
       setParamsDialogOpen(true);
     } else {

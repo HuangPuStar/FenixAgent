@@ -244,6 +244,85 @@ function getAlsContext(): Record<string, unknown> {
 
 // ━━━━━ createLogger ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
+// ━━━━━ 敏感内容脱敏 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+/**
+ * 命中即整体替换为 `[Redacted]` 的键名（小写并去掉 `_` / `-` 后**精确**匹配）。
+ *
+ * 不用子串匹配：本平台 `maxTokens`、`tokenCount`、`promptTokens` 都是合法诊断字段，
+ * 子串匹配会把它们一并抹掉，反而破坏可观测性。
+ */
+const SENSITIVE_KEYS = new Set([
+  "password",
+  "passwd",
+  "pwd",
+  "secret",
+  "clientsecret",
+  "token",
+  "accesstoken",
+  "refreshtoken",
+  "idtoken",
+  "apikey",
+  "apikeys",
+  "accesskey",
+  "secretkey",
+  "privatekey",
+  "authorization",
+  "cookie",
+  "setcookie",
+  "credentials",
+  "connectionstring",
+  "databaseurl",
+  "dsn",
+]);
+
+const REDACTED = "[Redacted]";
+
+/** 递归深度上限处整棵子树折叠成的标记。 */
+const MAX_DEPTH_MARKER = "[MaxDepth]";
+
+/** 键名归一化，使 `api_key` / `apiKey` / `API-KEY` 命中同一条目。 */
+function normalizeLogKey(key: string): string {
+  return key.toLowerCase().replace(/[_-]/g, "");
+}
+
+/** 掩掉连接串中的口令（`scheme://user:pw@host` → `scheme://user:***@host`）。 */
+function maskConnectionCredentials(text: string): string {
+  return text.replace(/([a-z][a-z0-9+.-]*:\/\/[^:@/\s]*:)[^@/\s]+@/gi, "$1***@");
+}
+
+function scrubValue(value: unknown, depth: number, seen: WeakSet<object>): unknown {
+  if (typeof value === "string") return maskConnectionCredentials(value);
+  if (value === null || typeof value !== "object") return value;
+  // 环引用替换为标记，避免 JSON.stringify 抛错后丢整条日志。
+  if (seen.has(value)) return "[Circular]";
+  seen.add(value);
+  // 超过深度上限的子树整体折叠。脱敏是安全控制，必须 fail-closed：若原样返回，
+  // 深层敏感键及其连接串会绕过所有替换明文落盘。环已由 seen 拦截，这里只为防爆栈。
+  if (depth >= 6) return MAX_DEPTH_MARKER;
+
+  if (Array.isArray(value)) return value.map((item) => scrubValue(item, depth + 1, seen));
+
+  const scrubbed: Record<string, unknown> = {};
+  for (const [key, item] of Object.entries(value)) {
+    scrubbed[key] = SENSITIVE_KEYS.has(normalizeLogKey(key)) ? REDACTED : scrubValue(item, depth + 1, seen);
+  }
+  return scrubbed;
+}
+
+/**
+ * 按键名与值形态脱敏任意日志参数，供 `argsToMsg` 序列化对象时调用。
+ *
+ * 为什么不依赖 pino 的 `redact`：`argsToMsg` 会先把对象 `JSON.stringify` 进消息字符串，
+ * 而 pino 的 `redact` 只作用于合并对象（本仓库只放 ALS 上下文与 `err`），对消息正文无效。
+ * 因此「日志不得记录 token、Cookie、密码、连接串」只能收敛在这一层。
+ *
+ * 注意 `formatEntry` 不经过本函数——它只供测试构造条目，不落日志流。
+ */
+export function scrubSensitive(value: unknown): unknown {
+  return scrubValue(value, 0, new WeakSet<object>());
+}
+
 function argsToMsg(args: unknown[]): [string, Record<string, unknown>?] {
   const strings: string[] = [];
   const extras: Record<string, unknown> = {};
@@ -251,7 +330,7 @@ function argsToMsg(args: unknown[]): [string, Record<string, unknown>?] {
 
   for (const a of args) {
     if (typeof a === "string") {
-      strings.push(a);
+      strings.push(maskConnectionCredentials(a));
     } else if (a instanceof Error) {
       // pino 的 err 序列化会自动输出 message + stack
       if (strings.length === 0) strings.push(a.message);
@@ -259,7 +338,7 @@ function argsToMsg(args: unknown[]): [string, Record<string, unknown>?] {
       hasExtra = true;
     } else if (a !== undefined && a !== null) {
       try {
-        strings.push(typeof a === "object" ? JSON.stringify(a) : String(a));
+        strings.push(typeof a === "object" ? JSON.stringify(scrubSensitive(a)) : String(a));
       } catch {
         strings.push(String(a));
       }
