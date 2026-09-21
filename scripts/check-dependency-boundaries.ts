@@ -10,11 +10,16 @@
  *    比对：只有**未登记**的新违规才失败。
  * 3. 台账中已经不再违规的条目直接报错。台账是待清偿清单而不是永久豁免名单，阶段末必须为空
  *    （见 ce-ee-engineering-standards §10.7.4）。
+ *
+ * 另有一步**独立**的源码扫描：子进程环境不得整段继承宿主 `process.env`
+ * （ce-ee-engineering-standards §10.6.3「子进程和 Provider 只获得白名单」）。该步骤刻意不进
+ * `cruise()` 的违规归一流程——污染「规则 + 来源包 + 目标包」指纹台账会让例外登记失去意义。
  */
 
 import { spawnSync } from "node:child_process";
+import { readdir, readFile } from "node:fs/promises";
 import { createRequire } from "node:module";
-import { isAbsolute, join, resolve } from "node:path";
+import { isAbsolute, join, relative, resolve } from "node:path";
 import {
   type ArchitectureException,
   exceptionFingerprint,
@@ -25,6 +30,75 @@ import { createPackageNameResolver, loadWorkspacePackages, normalizePath } from 
 const CONFIG_FILE = ".dependency-cruiser.cjs";
 const CRUISE_BIN = "node_modules/dependency-cruiser/bin/dependency-cruise.mjs";
 const CRUISE_TARGETS = ["apps", "packages"] as const;
+
+/**
+ * 宿主环境变量扫描的源码范围：仅 packages 下各包 `src/` 目录（递归）。
+ *
+ * 范围故意不含 `apps/**`：apps 侧由宿主装配层人工保证（本次收窄前实测 apps 为零命中），
+ * 本步骤因此**不是**全仓门禁，覆盖的是 packages 内的子进程 spawn 点。
+ */
+const HOST_ENV_SCAN_ROOT = "packages";
+const HOST_ENV_SCAN_EXTENSIONS = [".ts", ".tsx", ".mts", ".js", ".mjs", ".cjs"] as const;
+const HOST_ENV_SCAN_SKIP_DIRS = new Set(["node_modules", "dist"]);
+
+/**
+ * 「子进程拿到全量宿主环境」的检测形状：`...process.env` / `...Bun.env` 展开，且位于对象字面量
+ * 属性位置（`env:` 位置、或绑定名为 `env` 的字面量都是这种形态）。
+ *
+ * 末位否定断言排除了「展开的是成员访问结果」的形态：`...(process.env.X ? [a] : [])` 与
+ * `...process.env.X` 展开的是数组/单值，不是宿主环境本体（`packages/acp-link/src/server.ts`
+ * 的 supported_engine_types 就是这个形状），必须零误伤。
+ */
+const HOST_ENV_SPREAD_PATTERN = /(?:^|[\s{,(])\.\.\.\s*\(?\s*(?:process|Bun)\.env\b(?!\s*[.[])/;
+
+/** 递归收集 packages 下各包 `src/` 目录里的源码文件。 */
+async function collectHostEnvScanFiles(root: string): Promise<string[]> {
+  const files: string[] = [];
+  const walk = async (directory: string, inSourceTree: boolean): Promise<void> => {
+    let entries: Awaited<ReturnType<typeof readdir>>;
+    try {
+      entries = await readdir(directory, { withFileTypes: true });
+    } catch {
+      return;
+    }
+    for (const entry of entries) {
+      const fullPath = join(directory, entry.name);
+      if (entry.isDirectory()) {
+        if (HOST_ENV_SCAN_SKIP_DIRS.has(entry.name)) continue;
+        await walk(fullPath, inSourceTree || entry.name === "src");
+        continue;
+      }
+      if (!inSourceTree) continue;
+      if (HOST_ENV_SCAN_EXTENSIONS.some((extension) => entry.name.endsWith(extension))) files.push(fullPath);
+    }
+  };
+  await walk(root, false);
+  return files;
+}
+
+/**
+ * 扫描 packages 下各包 `src/` 目录，返回「子进程环境整段继承宿主 `process.env`」的 `文件:行号` 列表。
+ *
+ * 导出供门禁自检使用；`fileList` 仅测试注入，生产从 `repositoryRoot` 递归收集。
+ */
+export async function findHostEnvSpreadViolations(
+  repositoryRoot: string,
+  fileList?: readonly string[],
+): Promise<string[]> {
+  const files = fileList ?? (await collectHostEnvScanFiles(join(repositoryRoot, HOST_ENV_SCAN_ROOT)));
+  const violations: string[] = [];
+  for (const file of files) {
+    const content = await readFile(file, "utf8");
+    if (!content.includes("process.env") && !content.includes("Bun.env")) continue;
+    const lines = content.split("\n");
+    for (let index = 0; index < lines.length; index++) {
+      if (HOST_ENV_SPREAD_PATTERN.test(lines[index] ?? "")) {
+        violations.push(`${normalizePath(relative(repositoryRoot, file))}:${index + 1}`);
+      }
+    }
+  }
+  return violations;
+}
 
 /** dependency-cruiser JSON 报告中门禁实际使用的字段。 */
 interface CruiseReport {
@@ -170,6 +244,16 @@ export async function checkDependencyBoundaries(
   options: { readonly repositoryRoot?: string; readonly cruiseReport?: CruiseReport } = {},
 ): Promise<number> {
   const repositoryRoot = resolve(options.repositoryRoot ?? resolve(import.meta.dir, ".."));
+
+  // 源码扫描先于 dependency-cruiser（后者要跑完整个 apps + packages 解析），失败时快速返回。
+  const hostEnvSpreads = await findHostEnvSpreadViolations(repositoryRoot);
+  if (hostEnvSpreads.length > 0) {
+    console.log(`✗ dependency-boundaries 发现 ${hostEnvSpreads.length} 处子进程环境整段继承宿主 process.env`);
+    for (const location of hostEnvSpreads) console.log(`  ${location}`);
+    console.log("  子进程与 Provider 只能获得白名单环境：替换打底对象，不要展开 process.env / Bun.env");
+    return 1;
+  }
+
   const report = options.cruiseReport ?? cruise(repositoryRoot);
 
   const unresolved = collectUnresolved(repositoryRoot, report);

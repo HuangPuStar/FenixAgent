@@ -35,6 +35,10 @@
       "import": "./src/client/resolve-executable.ts",
       "types": "./src/client/resolve-executable.ts"
     },
+    "./spawn-env": {
+      "import": "./src/spawn-env.ts",
+      "types": "./src/spawn-env.ts"
+    },
     "./types": {
       "import": "./src/types.ts",
       "types": "./src/types.ts"

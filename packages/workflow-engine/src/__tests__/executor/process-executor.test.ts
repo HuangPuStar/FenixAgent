@@ -154,6 +154,24 @@ describe("ProcessExecutor", () => {
     expect(output.stdout.trim()).toBe("from_node_env");
   });
 
+  // 宿主进程的密钥变量（DATABASE_URL 等）不得出现在 shell 节点的子进程环境里。
+  test("子进程环境不继承宿主密钥", async () => {
+    const previous = process.env.DATABASE_URL;
+    process.env.DATABASE_URL = "postgres://host/leak";
+    const ctx = makeCtx();
+    const node = shellNode('printf "%s" "$DATABASE_URL"');
+
+    try {
+      const output = await executor.execute(node, ctx);
+
+      expect(output.exit_code).toBe(0);
+      expect(output.stdout).toBe("");
+    } finally {
+      if (previous === undefined) delete process.env.DATABASE_URL;
+      else process.env.DATABASE_URL = previous;
+    }
+  });
+
   // secrets 注入为环境变量
   test("secrets 注入为子进程环境变量", async () => {
     const ctx = makeCtx({ secrets: { API_KEY: "key123" } });

@@ -14,6 +14,7 @@ import type { NodeExecutionContext, NodeExecutor } from "../scheduler/dag-schedu
 import type { ShellNodeDef } from "../types/dag";
 import { WorkflowError, WorkflowErrorCode } from "../types/errors";
 import type { NodeOutput } from "../types/execution";
+import { buildWorkflowNodeEnv } from "./node-env";
 
 // ---------- 常量 ----------
 
@@ -40,8 +41,8 @@ export class ProcessExecutor implements NodeExecutor {
     const command = (ctx.resolvedInputs.command as string | string[]) ?? shellNode.command;
     const resolvedCommand = typeof command === "string" ? ["/bin/sh", "-c", command] : command;
 
-    // 合并环境变量：进程环境 + env（静态）+ inputs（动态）+ secrets
-    const env: Record<string, string | undefined> = { ...(process.env as Record<string, string>) };
+    // 合并环境变量：宿主白名单 + env（静态）+ inputs（动态）+ secrets
+    const env: Record<string, string | undefined> = buildWorkflowNodeEnv();
 
     const nodeEnv = (ctx.resolvedInputs.env as Record<string, string>) ?? shellNode.env;
     if (nodeEnv) {
@@ -159,7 +160,8 @@ export class ProcessExecutor implements NodeExecutor {
     // 发射 node.started 事件
     const subprocess = Bun.spawn(command, {
       cwd,
-      env: { ...(process.env as Record<string, string>), ...env },
+      // spawn 边界再收敛一次：即使上游合并逻辑变化，非白名单键也不会进入子进程
+      env: buildWorkflowNodeEnv(env),
       stdout: "pipe",
       stderr: "pipe",
     });

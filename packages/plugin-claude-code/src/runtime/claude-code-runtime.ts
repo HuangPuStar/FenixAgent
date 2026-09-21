@@ -9,6 +9,7 @@ import type {
   StartInstanceInput,
   StopInstanceInput,
 } from "@fenix/plugin-sdk";
+import { buildAgentProcessEnv } from "acp-link/spawn-env";
 import { prepareWorkspaceEnvironment } from "./environment";
 import { buildMcpConfig, buildSettings } from "./settings";
 import { installSkills } from "./skill-installer";
@@ -19,6 +20,20 @@ interface InstanceState {
   process: ChildProcess | null;
   port: number;
   token: string;
+}
+
+/**
+ * 读取宿主进程的单个配置键，仅在已定义时返回该项，避免把 `undefined` 写进子进程环境。
+ *
+ * 为什么不加进 `buildAgentProcessEnv` 的白名单：本仓模型配置的既有架构是经 launchSpec /
+ * settings 文件显式下发，白名单越短越安全；按前缀放宽（`ANTHROPIC_*`）会让宿主密钥随下一次
+ * 改名重新泄漏。而 acp-link 进程内的 `claude-acp-adapter` 直读 `ANTHROPIC_MODEL`（模型列表
+ * 回退值）与 `CLAUDE_CODE_CLI_PATH`（Claude CLI 可执行路径，即 `pathToClaudeCodeExecutable`），
+ * 故由本调用点逐键显式补齐，其余宿主密钥仍被白名单拦住。
+ */
+function pickDefinedHostEnv(key: string): Record<string, string> {
+  const value = process.env[key];
+  return value === undefined ? {} : { [key]: value };
 }
 
 /**
@@ -57,10 +72,13 @@ export function createClaudeCodeRuntime(): EngineRuntime {
       const proc = spawn("acp-link", [], {
         cwd: state.workspace,
         stdio: ["pipe", "pipe", "inherit"],
-        env: {
-          ...process.env,
+        // acp-link 子进程同样只吃白名单：宿主密钥不经继承透传。
+        // acp-link 进程内直读的两个配置键由本调用点显式补齐（理由见 pickDefinedHostEnv）。
+        env: buildAgentProcessEnv({
           ACP_ENGINE_TYPE: "claude-code",
-        },
+          ...pickDefinedHostEnv("ANTHROPIC_MODEL"),
+          ...pickDefinedHostEnv("CLAUDE_CODE_CLI_PATH"),
+        }),
       });
 
       state.process = proc;

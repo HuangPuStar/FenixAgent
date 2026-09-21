@@ -14,6 +14,7 @@ import {
   type JsonRpcRequest,
 } from "../json-rpc.js";
 import { buildPeriCapabilityMeta, isPeriTaskNotificationMethod } from "../peri-task-capability.js";
+import { buildAgentProcessEnv } from "../spawn-env.js";
 
 // biome-ignore lint/suspicious/noExplicitAny: event callback signatures vary by event type
 type SessionEventCallback = (...args: any[]) => void;
@@ -104,9 +105,7 @@ export class SessionManager {
 
     try {
       console.log("[session-manager] spawning opencode...");
-      const spawnEnv = launchSpec?.extraEnv
-        ? { ...process.env, ...(launchSpec.extraEnv as Record<string, string>) }
-        : { ...process.env };
+      const spawnEnv = buildAgentProcessEnv(launchSpec?.extraEnv as Record<string, string> | undefined);
       const spawnCwd = (launchSpec?.cwd as string) ?? this.cwd;
       const proc = spawn(this.agentName, ["acp"], {
         cwd: spawnCwd,
