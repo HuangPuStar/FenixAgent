@@ -6,7 +6,7 @@ import type {
   ResourceQueryConstraint,
   ScopedRow,
 } from "@fenix/platform-sdk";
-import { mcpServer, mcpTool } from "@server/db/schema";
+import { mcpServer, mcpTool } from "@fenix/resource-mcp/db";
 import { and, eq, inArray, type SQL, sql } from "drizzle-orm";
 import type { PgColumn, PgTable } from "drizzle-orm/pg-core";
 import { MCP_SERVER_RESOURCE_TYPE, mcpServerResource } from "../access/mcp-server-resource";
@@ -321,4 +321,23 @@ export function createMcpServerRepository(query: AuthorizedResourceQuery<McpServ
         .where(and(eq(mcpTool.organizationId, input.organizationId), eq(mcpTool.serverName, input.serverName)));
     },
   };
+}
+
+/**
+ * 按 mcp id 批量取**展示标签**（`name`）；空入参返回空 Map，缺失的 id 不出现在结果里。
+ *
+ * 无授权的只读投影，与 {@link McpServerRepository.listByIdsUnscoped} 同一授权前提：调用方持有的是
+ * 绑定表给出的 ID 集合（Agent 配置的 MCP 绑定），标签只用于渲染，不做归属或可见性判断——`name` 不是
+ * 敏感字段，而过滤 `visibility` 会让"曾经绑定过但已不可见"的资源退化成裸 ID，与迁移前的行为不一致。
+ *
+ * 与 `listByIdsUnscoped` 的差别只在形状与列宽：那条返回整行（含 `config` jsonb，launch spec 要读），
+ * 这条只取 `id` + `name` 给展示投影用。两者不合并——合并会让展示路径也去读可能带凭证的 `config`。
+ */
+export async function findMcpServerLabelsByIds(ids: readonly string[]): Promise<Map<string, string>> {
+  if (ids.length === 0) return new Map();
+  const rows = await getMcpDatabase()
+    .select({ id: mcpServer.id, name: mcpServer.name })
+    .from(mcpServer)
+    .where(inArray(mcpServer.id, [...ids]));
+  return new Map(rows.map((row) => [row.id, row.name]));
 }

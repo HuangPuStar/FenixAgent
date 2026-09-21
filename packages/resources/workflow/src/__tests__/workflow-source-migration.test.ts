@@ -13,8 +13,8 @@
 // 与沙盒黄金样本（`packages/resources/sandbox/src/__tests__/sandbox-source-migration.test.ts`）的差异：
 // 沙盒有一张「宿主旧路径 → 包内新路径」的成对迁移表，而 workflow 的宿主旧实现（`routes/web/workflow*`、
 // `pages/workflow/**`、`api/workflow*`）在本任务之前的切片里就已删除，HEAD 树里已不存在——把它们写成
-// 「宿主路径已删除」的断言会恒真。这里改为两个有约束力的方向：宿主残留**副本**不得复活、宿主要求的
-// 合法残留（表定义）必须有明确清点。
+// 「宿主路径已删除」的断言会恒真。这里改为两个有约束力的方向：宿主残留**副本**不得复活，以及
+// **包内对 `@server/**` 零容忍**（表定义残留已随 §1.7 B6 归零，见下方 `SCANNER_FIXTURE` 的说明）。
 
 import { describe, expect, test } from "bun:test";
 import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
@@ -25,28 +25,34 @@ const PKG_ROOT = resolve(import.meta.dir, "../..");
 /** 仓库根；宿主侧断言都以它为基准。 */
 const REPO_ROOT = resolve(PKG_ROOT, "../../..");
 /** 包内源码入口；README 等文档里的示例不属于可解析引用，不参与扫描。 */
-const SOURCE_ENTRIES = ["src", "web", "fenix.module.ts"];
+const SOURCE_ENTRIES = ["src", "web", "db", "fenix.module.ts"];
 
 /**
- * 唯一允许的宿主导入。
+ * 扫描器负例夹具（§4.7.1 ③ 的收缩形态）。
  *
- * 表定义迁出归任务 1.7，本任务把它作为**显式残留**保留（见任务 1.3 实施记录 §5），且只允许这一条精确
- * 路径：`@server/db/schema` 之下的任何深路径都意味着重新伸手取宿主内部。
+ * 本包对宿主表定义的引用已随 §1.7 B6 归零（九张 workflow 表迁入本包 `db/`），原先那条「残留必然存在」
+ * 的正向控制随之失效——它的作用是「扫不到就说明说明符提取失效」，而此刻扫不到才是正确结果。改用负例
+ * 夹具承担同一职责：一段真实源码形状的字符串，含一条宿主导入与一条**注释里**形似导入的文本，断言语义
+ * 是「前者必须被捞出、后者必须被剥掉」。
+ *
+ * **注释为什么必须是块注释形状**（B4 主体审计整改，2026-09-22，与沙盒黄金样本同步）：`SPECIFIER_PATTERNS`
+ * 的 `from` 形式带 `^[ \t]*` 行首锚点，而行注释 `// import …` 的行首是 `/` 不是 `import`，未剥注释时
+ * 本来就不在候选集里。用行注释做这条负例，`stripComments` 改成恒等也不会报红——夹具只验证了「捞出」
+ * 那半条。块注释的中间行行首正是 `import`：未剥注释时会被捞出（`SCANNER_FIXTURE_COMMENTED` 钉住这一点），
+ * 剥掉后才消失，两半缺一不可。
+ *
+ * 夹具按行以字符串字面量拼成，源码里 `import` 前面始终有引号，因此不会被本文件的真实扫描误判引用。
  */
-const ALLOWED_HOST_IMPORT = "@server/db/schema";
+const SCANNER_FIXTURE = [
+  'import { x } from "@server/db/schema";',
+  "/*",
+  'import { y } from "@server/db/in-block-comment";',
+  "*/",
+  "const z = 1;",
+].join("\n");
 
-/**
- * 允许使用宿主表定义的**全部**位置（清点式白名单）。
- *
- * 只允许仓储与引擎的存储适配器：前者是「仓储 = 唯一数据访问点」的落点，后者是 workflow-engine
- * `StorageAdapter` 端口的实现（引擎自己拥有事件流/快照的表结构），两者都不是路由或业务编排。
- * 新增使用点必须在这里显式登记——等同于一次边界评审。
- */
-const HOST_TABLE_USAGE_ALLOWLIST = [
-  "src/server/repositories/workflow-def.ts",
-  "src/server/repositories/workflow-trigger.ts",
-  "src/server/services/workflow/pg-storage-adapter.ts",
-];
+/** 夹具里那条藏在块注释中的形似导入：未剥注释时会被 `extractSpecifiers` 一并捞出。 */
+const SCANNER_FIXTURE_COMMENTED = "@server/db/in-block-comment";
 
 /**
  * 宿主侧不得再出现的 workflow 实现副本（相对仓库根）。
@@ -201,8 +207,12 @@ const exportEntries = Object.entries(manifest.exports ?? {});
 describe("Workflow 包边界契约（任务 1.3 §1 静态条件）", () => {
   // 遍历有效性自检：walker 若只返回入口文件，后续「不存在违规引用」的断言会全部退化为恒真。
   test("扫描有效性自检：源码集合覆盖全包，且已知残留宿主导入能被扫到", () => {
+    // `db/**` 也必须被钉住：它是本包九张表的落点，一旦从 `SOURCE_ENTRIES` 掉出去，往 `db/schema.ts`
+    // 插一条真宿主导入不会有任何断言报红——「本包确实扫不到」与「db/ 根本没进扫描集」就分不开了
+    // （B4 主体审计发现，2026-09-22；`sourceFiles.length` 的阈值比实际文件数低 20 余，兜不住单目录缺失）。
     for (const expected of [
       "fenix.module.ts",
+      "db/schema.ts",
       "src/index.ts",
       "src/module.ts",
       "src/server.ts",
@@ -219,28 +229,17 @@ describe("Workflow 包边界契约（任务 1.3 §1 静态条件）", () => {
       expect(sourceFiles).toContain(resolve(PKG_ROOT, expected));
     }
     expect(sourceFiles.length).toBeGreaterThanOrEqual(60);
-    // 正向控制：表定义残留必然存在，扫不到就说明说明符提取失效（而不是「没有宿主导入」）。
-    expect(refs.filter((ref) => ref.specifier === ALLOWED_HOST_IMPORT).length).toBeGreaterThan(0);
+    // 扫描器自检（负例夹具）分两半，缺一不可：
+    //   1) 未剥注释时，块注释里的形似导入**必须**被捞出——证明夹具本身有区分力，而不是「恰好扫不到」；
+    //   2) 剥掉注释后只剩真实导入——证明 `stripComments` 真的在起作用。
+    expect(extractSpecifiers(SCANNER_FIXTURE)).toEqual(["@server/db/schema", SCANNER_FIXTURE_COMMENTED]);
+    expect(extractSpecifiers(stripComments(SCANNER_FIXTURE))).toEqual(["@server/db/schema"]);
   });
 
-  // 宿主实现只能经平台契约（`@fenix/platform-sdk`）或注入进入本包；除表定义残留外一律违规。
-  test("包内不存在表定义以外的宿主 @server 导入", () => {
-    const offenders = refs.filter(
-      (ref) => ref.specifier.startsWith("@server/") && ref.specifier !== ALLOWED_HOST_IMPORT,
-    );
+  // 宿主实现只能经平台契约（`@fenix/platform-sdk`）或注入进入本包；§1.7 B6 之后**零容忍**。
+  test("包内不存在任何宿主 @server 导入", () => {
+    const offenders = refs.filter((ref) => ref.specifier.startsWith("@server/"));
     expect(offenders.map(describeRef)).toEqual([]);
-  });
-
-  // 表定义残留必须有明确清点：新增使用点等于扩大宿主耦合面，必须走一次边界评审。
-  // 作用域只算生产代码——静态条件 1 明确允许 `src/__tests__` 里出现表定义（用例要按表对象判定 stubDb
-  // 分支），它们的路径面由上面那条「只允许 @server/db/schema」统一兜住。
-  test("宿主表定义只出现在登记过的仓储与存储适配器里", () => {
-    const users = refs
-      .filter((ref) => ref.specifier === ALLOWED_HOST_IMPORT)
-      .map((ref) => relative(PKG_ROOT, ref.file) ?? "")
-      .filter((rel) => !rel.startsWith("src/__tests__/"))
-      .sort();
-    expect(users).toEqual(HOST_TABLE_USAGE_ALLOWLIST);
   });
 
   // 宿主别名（`@/src`、`@/components`）由 apps/web 的 tsconfig/vite 提供，包离开宿主就解析不了。
@@ -340,7 +339,11 @@ describe("Workflow 包边界契约（任务 1.3 §1 静态条件）", () => {
     const offenders: string[] = [];
     for (const file of sourceFiles.filter((candidate) => candidate.startsWith(`${routesDir}/`))) {
       for (const specifier of extractSpecifiers(stripComments(readFileSync(file, "utf8")))) {
-        if (specifier === "drizzle-orm" || specifier.startsWith("drizzle-orm/") || specifier === ALLOWED_HOST_IMPORT) {
+        if (
+          specifier === "drizzle-orm" ||
+          specifier.startsWith("drizzle-orm/") ||
+          specifier === "@fenix/resource-workflow/db"
+        ) {
           offenders.push(`${relative(PKG_ROOT, file)} → ${specifier}`);
           continue;
         }

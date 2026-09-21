@@ -1,7 +1,11 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
+import { model, provider } from "@fenix/model-management/db";
 import { resetAllStubs, stubDb } from "@fenix/platform-sdk/testing";
 import { InvalidKnowledgeBindingError } from "@fenix/resource-knowledge/server";
-import { agentSiteApp, knowledgeBase, machine, mcpServer, model, provider, skill } from "@server/db/schema";
+import { machine } from "@fenix/resource-machine/db";
+import { mcpServer } from "@fenix/resource-mcp/db";
+import { skill } from "@fenix/resource-skill/db";
+import { agentSiteApp, knowledgeBase } from "@server/db/schema";
 import { createWebConfigAgentsRoutes } from "../server/routes/web/config/agents";
 import { initializeAgentConfigModuleConfig } from "../server/testing";
 import {
@@ -116,11 +120,17 @@ describe("round45 Agent 配置路由补充覆盖", () => {
       },
     });
     installDbRows({
-      model: [{ id: "model-1", modelName: "gpt", displayName: "GPT", providerId: "provider-1" }],
-      provider: [{ id: "provider-1", name: "openai", displayName: "OpenAI" }],
+      // 模型标签投影由 owner 包实现（经宿主绑定的 ModelLookupPort）：按 `model.model_id` 取模型段、
+      // 按 `provider.name` 回退，并用两行的 `organization_id` 相等作为父子匹配条件。
+      model: [
+        { id: "model-1", modelId: "gpt", displayName: "GPT", providerId: "provider-1", organizationId: "org-source" },
+      ],
+      provider: [{ id: "provider-1", name: "openai", displayName: "OpenAI", organizationId: "org-source" }],
       machine: [{ id: "machine-1", agentName: "worker", name: "", machineInfo: { hostname: "host-1" } }],
-      skill: [{ id: "skill-1", label: "检索" }],
-      mcpServer: [{ id: "mcp-1", label: "浏览器" }],
+      // 标签投影由 owner 包实现（`@fenix/resource-skill/server/config`），按 `skill.name` 取标签。
+      skill: [{ id: "skill-1", name: "检索" }],
+      // 标签投影由 owner 包实现，按 `mcp_server.name` 取标签（不再是调用方自己的 `label` 别名）。
+      mcpServer: [{ id: "mcp-1", name: "浏览器" }],
       knowledgeBase: [{ id: "kb-1", name: "知识库", slug: "docs" }],
       agentSiteApp: [{ id: "site-1", name: "站点", remoteAppId: "remote-1" }],
     });

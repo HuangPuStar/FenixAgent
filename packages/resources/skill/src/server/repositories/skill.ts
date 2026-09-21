@@ -5,7 +5,7 @@ import type {
   ResourceQueryConstraint,
   ScopedRow,
 } from "@fenix/platform-sdk";
-import { skill } from "@server/db/schema";
+import { skill } from "@fenix/resource-skill/db";
 import { and, asc, desc, eq, inArray, type SQL } from "drizzle-orm";
 import type { PgColumn, PgTable } from "drizzle-orm/pg-core";
 import { SKILL_RESOURCE_TYPE, skillResource } from "../access/skill-resource";
@@ -351,4 +351,23 @@ export interface SkillOrgAndName {
  */
 export async function listAllSkillOrgAndNameUnscoped(): Promise<readonly SkillOrgAndName[]> {
   return getSkillDatabase().select({ organizationId: skill.organizationId, name: skill.name }).from(skill);
+}
+
+/**
+ * 按 skill id 批量取**展示标签**（`name`）；空入参返回空 Map，缺失的 id 不出现在结果里。
+ *
+ * 无授权的只读投影（与 {@link listAllSkillOrgAndNameUnscoped} 同属刻意的无谓词读取）：调用方持有的是绑定
+ * 表给出的 ID 集合（Agent 配置的 Skill 绑定），标签只用于渲染，不做归属或可见性判断——`name` 不是敏感
+ * 字段，而按 `visibility` 过滤会让「曾经绑定过但已不可见」的技能退化成裸 ID，与迁移前的行为不一致。
+ *
+ * 与 mcp 的 `findMcpServerLabelsByIds` 同形（`@fenix/resource-mcp/server/config`）：展示投影由 owner
+ * 提供，消费方因此不必再直接读本包的表对象（§1.7 B5 的调用期收口）。
+ */
+export async function findSkillLabelsByIds(ids: readonly string[]): Promise<Map<string, string>> {
+  if (ids.length === 0) return new Map();
+  const rows = await getSkillDatabase()
+    .select({ id: skill.id, name: skill.name })
+    .from(skill)
+    .where(inArray(skill.id, [...ids]));
+  return new Map(rows.map((row) => [row.id, row.name]));
 }

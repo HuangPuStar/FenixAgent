@@ -1,3 +1,4 @@
+import { provider } from "@fenix/model-management/db";
 import type {
   AuthorizedResourceQuery,
   QueryStorageTypes,
@@ -5,7 +6,6 @@ import type {
   ResourceQueryConstraint,
   ScopedRow,
 } from "@fenix/platform-sdk";
-import { provider } from "@server/db/schema";
 import { and, asc, eq, type SQL } from "drizzle-orm";
 import type { PgColumn, PgTable } from "drizzle-orm/pg-core";
 import { PROVIDER_RESOURCE_TYPE, providerResource } from "../access/provider-resource";

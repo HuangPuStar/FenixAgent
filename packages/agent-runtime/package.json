@@ -42,15 +42,16 @@
     "test": "bun test"
   },
   "dependencies": {
-    "@fenix/platform-sdk": "workspace:*",
     "@fenix/agent-config": "workspace:*",
     "@fenix/chat-channel": "workspace:*",
     "@fenix/core": "workspace:*",
     "@fenix/logger": "workspace:*",
     "@fenix/orchestration": "workspace:*",
+    "@fenix/platform-sdk": "workspace:*",
     "@fenix/plugin-sdk": "workspace:*",
     "@fenix/remote-runtime": "workspace:*",
     "@fenix/resource-knowledge": "workspace:*",
+    "@fenix/resource-machine": "workspace:*",
     "@fenix/resource-memory": "workspace:*",
     "@fenix/resource-sandbox": "workspace:*",
     "@fenix/resource-skill": "workspace:*",

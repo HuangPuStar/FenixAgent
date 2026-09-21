@@ -16,6 +16,7 @@
   },
   "exports": {
     ".": "./src/index.ts",
+    "./db": "./db/schema.ts",
     "./module": "./fenix.module.ts",
     "./server": "./src/server.ts",
     "./server/schema": "./src/server/schema.ts",

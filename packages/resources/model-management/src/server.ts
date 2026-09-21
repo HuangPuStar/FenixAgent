@@ -37,7 +37,9 @@ export type {
 } from "./server/ports/user-model-preferences";
 export * from "./server/repositories/model-gateway-credential";
 export type { ModelRepository, ModelRow, ModelWriteData } from "./server/repositories/model-resource";
-export { createModelRepository } from "./server/repositories/model-resource";
+// `findModelLabelsByIds` 是「模型怎么显示」的只读投影，宿主在装配期把它绑到 agent-config 的
+// `ModelLookupPort` 上（见 §1.7 B3）：agent-config 不能反向 import 本包（本包的 dependsOn 已含它）。
+export { createModelRepository, findModelLabelsByIds } from "./server/repositories/model-resource";
 export type {
   ProviderQueryStorage,
   ProviderRepository,

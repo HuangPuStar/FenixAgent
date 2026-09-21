@@ -1,4 +1,4 @@
-import { workflowTrigger } from "@server/db/schema";
+import { workflowTrigger } from "@fenix/resource-workflow/db";
 import { desc, eq } from "drizzle-orm";
 import { getWorkflowDatabase } from "../db";
 

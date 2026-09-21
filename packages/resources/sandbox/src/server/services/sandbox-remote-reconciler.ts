@@ -1,7 +1,7 @@
 import { createLogger } from "@fenix/logger";
 import { stopHeartbeat } from "@fenix/resource-machine/server";
+import type { SandboxInstance } from "@fenix/resource-sandbox/db";
 import type { SandboxCreateInput, SandboxProvider, SandboxRef } from "@fenix/sandbox-provider";
-import type { SandboxInstance } from "@server/db/schema";
 import type { SandboxInstanceLockScope, SandboxInstancePatch } from "../repositories/sandbox-instance-repository";
 import { type SandboxInstanceStatus, SandboxStateError } from "./sandbox-errors";
 import { readSandboxResolvedConfig } from "./sandbox-instance-snapshot";

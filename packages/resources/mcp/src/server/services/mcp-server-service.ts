@@ -1,5 +1,5 @@
 import type { ResourceQueryConstraint } from "@fenix/platform-sdk";
-import { mcpServer } from "@server/db/schema";
+import { mcpServer } from "@fenix/resource-mcp/db";
 import { asc } from "drizzle-orm";
 import type { McpServerRepository, McpServerRow, McpToolRow, ScopedMcpServerRow } from "../repositories/mcp-server";
 import type { McpServerConfig, McpServerType } from "./config/mcp-config";

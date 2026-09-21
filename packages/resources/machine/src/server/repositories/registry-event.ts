@@ -1,4 +1,4 @@
-import { registryEvent } from "@server/db/schema";
+import { registryEvent } from "@fenix/resource-machine/db";
 import { getMachineDatabase } from "../db";
 
 function generateRegistryEventId(): string {

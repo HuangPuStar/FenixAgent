@@ -1,5 +1,5 @@
 import type { ResourceRegistration } from "@fenix/platform-sdk";
-import { mcpServer } from "@server/db/schema";
+import { mcpServer } from "@fenix/resource-mcp/db";
 import type { PgColumn } from "drizzle-orm/pg-core";
 
 /**

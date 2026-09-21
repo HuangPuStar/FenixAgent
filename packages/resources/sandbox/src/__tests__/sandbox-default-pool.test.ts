@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
+import type { SandboxPool } from "@fenix/resource-sandbox/db";
 import { initializeDefaultSandboxPool } from "@fenix/resource-sandbox/server";
-import type { SandboxPool } from "@server/db/schema";
 
 const settings = {
   sandboxEnabled: true,

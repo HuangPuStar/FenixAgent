@@ -164,15 +164,7 @@
       "to": "@fenix/server-app",
       "owner": "1.7",
       "removeWhen": "表定义迁出（§1.7）后，包不再引用 `@server/**`",
-      "rationale": "实测 7 处导入 / 7 个文件，全部为 `@server/db/schema` 表定义导入。宿主中的资源领域实现已随任务 1.3 迁回包内，残留仅剩表定义；表定义迁出归 §1.7，本条目保留至该步骤完成，不新建通配条目。"
-    },
-    {
-      "rule": "apps-boundary",
-      "from": "@fenix/resource-sandbox",
-      "to": "@fenix/server-app",
-      "owner": "1.7",
-      "removeWhen": "表定义迁出（§1.7）后，包不再引用 `@server/**`",
-      "rationale": "实测 9 处导入 / 9 个文件，全部为 `@server/db/schema` 表定义导入。宿主中的资源领域实现已随任务 1.3 迁回包内，残留仅剩表定义；表定义迁出归 §1.7，本条目保留至该步骤完成，不新建通配条目。"
+      "rationale": "实测 7 处导入 / 7 个文件，全部为 `@server/db/schema` 表定义导入。宿主中的资源领域实现已随任务 1.3 迁回包内，残留仅剩表定义；表定义迁出归 §1.7，本条目保留至该步骤完成，不新建通配条目。\n\n**（§1.7 B1 进度，2026-09-21）本包的 `machine` / `registry_event` 已迁至 `@fenix/resource-machine/db`**，包内 7 处引用的 5 处随之改指本包出口，宿主改经该出口取用；agent-config 与 agent-runtime 的调用期取数**不读表对象**，改为经宿主注入的端口（agent-config 的 `MachineLookupPort`、agent-runtime 的 `MachineRegistryPort`）——二者都不能直接导入本包：本包 `dependsOn` 已含 agent-config，反向声明会在模块装配期成环；sandbox 侧对 machine 表的唯一引用是一条列名断言（`machine.type.name`，属「资源包不该断言别包表结构」），随本批**删除**而非改指，属性存在性已在本包的 `registry-schema.test.ts` 接回，列名映射由 `check:schema-ddl-drift` 覆盖。残留 3 处、均为**跨模块表读取**：`src/server/services/registry.ts`（`agent_config`，owner agent-config）、`src/server/services/machine-sandbox-projection.ts`（`sandbox_instance`，owner sandbox）、`src/__tests__/registry-schema.test.ts`（`agent_config` 的外键列断言）。它们的目标表尚未迁出（分别在 §1.7 的 agent-config 批与 sandbox 批），本条目因此**必须保留到本包最后一个跨模块表读取消失为止**——台账是「包对」粒度，提前删除会连尚未迁出的读取一并放行。\n\n**（§1.7 B4 前置进度，2026-09-22）残留 3 处降为 2 处**：`sandbox_instance`（owner sandbox）的写入已按 §4.8 第 3 条裁定移到 sandbox 侧——本包不再直接 UPDATE 该表，改为经新增的 `machine-lifecycle-port.ts` 通报机器注册 / 心跳事件，由 `@fenix/resource-sandbox` 在 `createSandboxModule()` 里注入实现在自己的表上写（方向 sandbox → machine，与该包已有的 `MachineSandboxRoutePort` 同形，未绑定=正常降级），因此 `machine → sandbox` 的类别禁则违规面归零、无需新增依赖矩阵例外。`src/server/services/machine-sandbox-projection.ts` 与其测试已删除，新增 `src/server/machine-lifecycle-port.ts`。**剩余 2 处均为 `agent_config`（owner agent-config）**：`src/server/services/registry.ts` 的引用检查 / 绑定写、`src/__tests__/registry-schema.test.ts` 的外键列断言，随 §1.7 的 agent-config 批处理。实测生产侧 `from \"@server` 前缀命中 1 个文件（`src/server/services/registry.ts`）、包内 `sandbox_instance` 命中 5 行且全为注释 / 断言文本（生产代码 0 行）。本条目仍**必须保留到本包最后一个跨模块表读取消失为止**——台账是「包对」粒度，提前删除会连尚未迁出的读取一并放行。"
     },
     {
       "rule": "apps-boundary",
@@ -181,14 +173,6 @@
       "owner": "1.7",
       "removeWhen": "表定义迁出（§1.7）后，包不再引用 `@server/**`",
       "rationale": "实测 11 处导入 / 11 个文件，全部为 `@server/db/schema` 表定义导入。宿主中的资源领域实现已随任务 1.3 迁回包内，残留仅剩表定义；表定义迁出归 §1.7，本条目保留至该步骤完成，不新建通配条目。"
-    },
-    {
-      "rule": "apps-boundary",
-      "from": "@fenix/resource-workflow",
-      "to": "@fenix/server-app",
-      "owner": "1.7",
-      "removeWhen": "表定义迁出（§1.7）后，包不再引用 `@server/**`",
-      "rationale": "实测 4 处导入 / 4 个文件，全部为 `@server/db/schema` 表定义导入。宿主中的资源领域实现已随任务 1.3 迁回包内，残留仅剩表定义；表定义迁出归 §1.7，本条目保留至该步骤完成，不新建通配条目。"
     },
     {
       "rule": "apps-boundary",
@@ -203,24 +187,24 @@
       "from": "@fenix/model-management",
       "to": "@fenix/server-app",
       "owner": "1.7",
-      "removeWhen": "表定义迁出（§1.7）后，包不再引用 `@server/**`——1.5 侧的宿主能力面已随 1.5b 交付清空（`@server/db` 模块句柄与 `@server/config` 改经模块配置 / platform-sdk 受限入口），剩余唯一成因是表定义引用；届时删除本条。",
-      "rationale": "1.5g 复测（2026-09-21，工作树 872010416，2411 modules）据实改写：实测 **6 处导入 / 6 个文件，全部是表定义**（`@server/db/schema`）——5 处生产（`server/access/provider-resource.ts`、`server/repositories/model-resource.ts`、`server/repositories/provider-resource.ts`、`server/repositories/model-gateway-credential.ts`、`server/repositories/subject-agent-search.ts`）+ 1 处测试（`src/__tests__/model-gateway-schema.test.ts`）。上次记载「12 处 / 9 个文件：6 处表定义 + 4 处宿主 db 模块 + 2 处宿主 config」，后两类 6 处已随 1.5b 整体归零（`server/db.ts` 与 `server/config.ts` 只剩解释性注释，不再有导入）。原 removeWhen 的前提「宿主中残留的资源领域实现迁回包内」不再成立：包内已不依赖任何宿主实现，故 owner 与同形态的 12 条一并归 §1.7、removeWhen 按其实际形态改写。"
+      "removeWhen": "表定义迁出（§1.7）后，包不再引用 `@server/**`——1.5 侧的宿主能力面已随 1.5b 交付清空（`@server/db` 模块句柄与 `@server/config` 改经模块配置 / platform-sdk 受限入口）；B3 之后唯一成因是 `agent_config`（归 agent-config 批，`server/repositories/subject-agent-search.ts` 的只读检索），该表迁出后本包零 `@server/` 引用，届时删除本条。",
+      "rationale": "1.5g 复测（2026-09-21，工作树 872010416，2411 modules）据实改写：实测 **6 处导入 / 6 个文件，全部是表定义**（`@server/db/schema`）——5 处生产（`server/access/provider-resource.ts`、`server/repositories/model-resource.ts`、`server/repositories/provider-resource.ts`、`server/repositories/model-gateway-credential.ts`、`server/repositories/subject-agent-search.ts`）+ 1 处测试（`src/__tests__/model-gateway-schema.test.ts`）。上次记载「12 处 / 9 个文件：6 处表定义 + 4 处宿主 db 模块 + 2 处宿主 config」，后两类 6 处已随 1.5b 整体归零（`server/db.ts` 与 `server/config.ts` 只剩解释性注释，不再有导入）。原 removeWhen 的前提「宿主中残留的资源领域实现迁回包内」不再成立：包内已不依赖任何宿主实现，故 owner 与同形态的 12 条一并归 §1.7、removeWhen 按其实际形态改写。\n\n**（§1.7 B3 进度，2026-09-21）本包的 `provider` / `model` / `model_gateway_credential` 已迁至 `@fenix/model-management/db`**（三个 pgEnum 随表迁入，是本仓 owner 包持有枚举的首例），包内 4 处生产引用与 1 处用例随之改指本包出口，宿主改经该出口取用以维持 `agent_config.model_id` 的外键表达；`drizzle.config.ts` 已声明该 schema 路径。残留由 6 处降为 **1 处**：`src/server/repositories/subject-agent-search.ts` 读的是**宿主自己的** `agent_config`（归 agent-config 批）。调用期的跨包取数不在本条范围内：`packages/resources/agent-config` 对 `model` / `provider` 的展示标签读取改为经宿主注入的 `ModelLookupPort`（本包 `dependsOn` 已含 agent-config，反向声明会闭合装配二元环，故不能像 B2 那样直连），端口实现是本包 `server/repositories/model-resource.ts` 的只读投影 `findModelLabelsByIds`，由宿主经本包 barrel 取用并绑定。本条目因此**必须保留到 agent-config 批落地为止**——台账是「包对」粒度，提前删除会把尚未迁出的读取一并放行。"
     },
     {
       "rule": "apps-boundary",
       "from": "@fenix/resource-mcp",
       "to": "@fenix/server-app",
       "owner": "1.7",
-      "removeWhen": "表定义迁出（§1.7）后，包不再引用 `@server/**`——1.5 侧的宿主能力面已随 1.5b 交付清空（`@server/db` 模块句柄与 `@server/config` 改经模块配置 / platform-sdk 受限入口），剩余唯一成因是表定义引用；届时删除本条。",
-      "rationale": "1.5g 复测（2026-09-21，工作树 872010416，2411 modules）据实改写：实测 **5 处导入 / 5 个文件，全部是表定义**（`@server/db/schema`）——4 处生产（`server/access/mcp-server-resource.ts`、`server/repositories/mcp-server.ts`、`server/services/mcp-server-service.ts`、`server/services/config/agent-config-mcp.ts`）+ 1 处测试（`src/__tests__/mcp-server-repository.test.ts`）。上次记载「6 处 / 6 个文件：5 处表定义 + 1 处宿主 auth 插件（宿主协议聚合，属 1.5 范围）」，那 1 处 `@server/plugins/auth` 已随 1.5b 的宿主守卫工厂化归零（`src/__tests__/guard-stubs.ts` 的注释记录了这次改口）。原 removeWhen 的前提「宿主中残留的资源领域实现迁回包内」不再成立：包内已不依赖任何宿主实现，故 owner 与同形态的 12 条一并归 §1.7、removeWhen 按其实际形态改写。"
+      "removeWhen": "表定义迁出（§1.7）后，包不再引用 `@server/**`——1.5 侧的宿主能力面已随 1.5b 交付清空（`@server/db` 模块句柄与 `@server/config` 改经模块配置 / platform-sdk 受限入口）；B2 之后唯一成因是 `agent_config_mcp`（归 agent-config 批），该表迁出后本包零 `@server/` 引用，届时删除本条。",
+      "rationale": "1.5g 复测（2026-09-21，工作树 872010416，2411 modules）据实改写：实测 **5 处导入 / 5 个文件，全部是表定义**（`@server/db/schema`）——4 处生产（`server/access/mcp-server-resource.ts`、`server/repositories/mcp-server.ts`、`server/services/mcp-server-service.ts`、`server/services/config/agent-config-mcp.ts`）+ 1 处测试（`src/__tests__/mcp-server-repository.test.ts`）。上次记载「6 处 / 6 个文件：5 处表定义 + 1 处宿主 auth 插件（宿主协议聚合，属 1.5 范围）」，那 1 处 `@server/plugins/auth` 已随 1.5b 的宿主守卫工厂化归零（`src/__tests__/guard-stubs.ts` 的注释记录了这次改口）。原 removeWhen 的前提「宿主中残留的资源领域实现迁回包内」不再成立：包内已不依赖任何宿主实现，故 owner 与同形态的 12 条一并归 §1.7、removeWhen 按其实际形态改写。\n\n**（§1.7 B2 进度，2026-09-21）本包的 `mcp_server` / `mcp_tool` 已迁至 `@fenix/resource-mcp/db`**，包内 4 处引用的 3 处生产文件与 1 处用例随之改指本包出口，宿主改经该出口取用以维持 `agent_config_mcp.mcp_server_id` 的外键表达；`drizzle.config.ts` 已声明该 schema 路径。残留由 5 处降为 **1 处**：`src/server/services/config/agent-config-mcp.ts` 读的是**宿主自己的** `agent_config_mcp` 关联表（该表归 agent-config 批，本包只是它的读写口径提供方）。调用期的跨包取数不在本条范围内：`packages/resources/agent-config` 对本包 `mcp_server` 的展示标签读取改为经本包 `./server/config` 出口的 `findMcpServerLabelsByIds`（本包 `dependsOn` 不含 agent-config，而 agent-config 已声明 `dependsOn: [\"mcp\"]`，方向合法，无需宿主注入端口）。本条目因此**必须保留到 agent-config 批落地为止**——台账是「包对」粒度，提前删除会把尚未迁出的读取一并放行。"
     },
     {
       "rule": "apps-boundary",
       "from": "@fenix/resource-skill",
       "to": "@fenix/server-app",
       "owner": "1.7",
-      "removeWhen": "表定义迁出（§1.7）后，包不再引用 `@server/**`",
-      "rationale": "实测 3 处导入 / 3 个文件，全部为 `@server/db/schema` 表定义导入。宿主中的资源领域实现已随任务 1.3 迁回包内，残留仅剩表定义；表定义迁出归 §1.7，本条目保留至该步骤完成，不新建通配条目。"
+      "removeWhen": "关联表 `agent_config_skill` 的定义归属定夺并迁出（§1.7 B7）后，包不再引用 `@server/**`",
+      "rationale": "实测 **1 处导入 / 1 个文件**（`repositories/agent-config-skill.ts` 读关联表 `agent_config_skill`）。B5（2026-09-22）已把 `skill` 资源行的表定义迁至 `@fenix/resource-skill/db`，原先的 3 处降为 1 处；剩下的这一处不是「本包自己的表没迁完」，而是 join 表的定义归属随评审文档 §8.4 第 8 条的 D4 复核（owner 定夺在 B7），故本条目按 §4.8 第 2 条保留至该批——提前删除会把尚未定夺的读取一并放行。"
     },
     {
       "rule": "apps-boundary",

@@ -1,4 +1,4 @@
-import { type NewSandboxPool, type SandboxPool, sandboxPool } from "@server/db/schema";
+import { type NewSandboxPool, type SandboxPool, sandboxPool } from "@fenix/resource-sandbox/db";
 import { and, eq, isNull, or } from "drizzle-orm";
 import { getSandboxDatabase } from "../db";
 

@@ -1,12 +1,28 @@
-import { organization, user } from "@fenix/identity/db";
+import { user } from "@fenix/identity/db";
+import { model } from "@fenix/model-management/db";
+import { machine } from "@fenix/resource-machine/db";
+import { mcpServer } from "@fenix/resource-mcp/db";
+import { skill } from "@fenix/resource-skill/db";
 import { sql } from "drizzle-orm";
 
 /**
  * 身份表由 `@fenix/identity/db` 拥有（CE 阶段 2 任务 1.2），这里只转出、不重复定义。
  *
  * 宿主是唯一同时持有两侧表定义的层：宿主的业务表需要身份表作为外键目标。它们与宿主表共用同一条迁移链
- * （`drizzle.config.ts` 同时声明两个 schema 文件），因此并置不会产生第二份真相；跨包读取身份数据仍必须
+ * （`drizzle.config.ts` 同时声明全部 schema 文件），因此并置不会产生第二份真相；跨包读取身份数据仍必须
  * 走 `IdentityDirectory`，不得依赖本文件。
+ *
+ * 同理，`@fenix/resource-machine/db` 的机器表（§1.7 首批迁出）、`@fenix/resource-mcp/db` 的 MCP 表
+ * （第二批）、`@fenix/model-management/db` 的模型表（第三批）、`@fenix/resource-sandbox/db` 的沙盒表
+ * （第四批）与 `@fenix/resource-skill/db` 的 Skill 表（第五批）也只在这里**取用**、不重复定义——
+ * `agent_config.machine_id`、`agent_config_mcp.mcp_server_id`、`agent_config.model_id`、
+ * `agent_config_skill.skill_id` 需要它们以列对象形式表达外键（Drizzle 的 `.references()` 没有字符串
+ * 形式），组装期例外的口径与边界见
+ * `docs/design/ce-ee-refactoring/ce-ee-engineering-standards.md` §6.1。
+ *
+ * 第六批（任务 1.7 B6）的 Workflow 九张领域表**不在这份清单里**：它们的表间外键在
+ * `@fenix/resource-workflow/db` 内闭合，宿主任何表都不引用它们，因此宿主不再需要它们的表对象，
+ * 连 `import` 一行也没有保留（与上表各批不同）。
  */
 export {
   account,
@@ -35,13 +51,6 @@ import {
   varchar,
 } from "drizzle-orm/pg-core";
 
-export const providerProtocolEnum = pgEnum("provider_protocol", ["openai", "anthropic"]);
-export const providerKindEnum = pgEnum("provider_kind", ["direct", "gateway"]);
-export const modelGatewayCredentialStatusEnum = pgEnum("model_gateway_credential_status", [
-  "active",
-  "blocked",
-  "error",
-]);
 // 旧授权栈的三个 pg enum 与下方 `resourcePermission` 表随 CE 阶段 2 任务 1.2 的 CE 授权栈下线而失去全部
 // 读写方，但**不能在本发布内删除**：`services/data-migrates/backfill-resource-visibility.ts` 仍要把旧栈的
 // `principal_type='all' AND action='read'` 记录回填成资源主表的 `visibility='public'`，而 SQL 迁移先于启动期
@@ -55,23 +64,6 @@ export const resourcePermissionTypeEnum = pgEnum("resource_permission_type", [
 ]);
 export const resourcePermissionPrincipalEnum = pgEnum("resource_permission_principal", ["all", "organization"]);
 export const resourcePermissionActionEnum = pgEnum("resource_permission_action", ["read"]);
-
-// MCP Tool 缓存表
-export const mcpTool = pgTable(
-  "mcp_tool",
-  {
-    id: uuid("id").primaryKey().defaultRandom(),
-    organizationId: text("organization_id").notNull(),
-    serverName: varchar("server_name").notNull(),
-    toolName: varchar("tool_name").notNull(),
-    description: text("description"),
-    inputSchema: jsonb("input_schema"),
-    inspectedAt: timestamp("inspected_at", { withTimezone: true }).notNull().defaultNow(),
-  },
-  (table) => ({
-    orgServerIdx: index("idx_mcp_tool_org_server").on(table.organizationId, table.serverName),
-  }),
-);
 
 // Share Link 分享链接表
 export const shareLink = pgTable(
@@ -365,90 +357,6 @@ export const channelBinding = pgTable(
   }),
 );
 
-// ——————————————————————————
-// F002: 配置存储迁移 (fs → pg)
-// ——————————————————————————
-
-// AI 服务商
-export const provider = pgTable(
-  "provider",
-  {
-    id: uuid("id").primaryKey().defaultRandom(),
-    userId: text("user_id")
-      .notNull()
-      .references(() => user.id, { onDelete: "cascade" }),
-    organizationId: text("organization_id").notNull(),
-    name: varchar("name").notNull(),
-    displayName: varchar("display_name"),
-    kind: providerKindEnum("kind").notNull().default("direct"),
-    gatewayType: varchar("gateway_type"),
-    protocol: providerProtocolEnum("protocol").notNull().default("openai"),
-    baseUrl: text("base_url"),
-    apiKey: text("api_key"),
-    extraOptions: jsonb("extra_options"),
-    // 资源可见范围：授权实现的唯一公开受众声明（public 对任意已认证主体开放公开默认动作）。
-    visibility: varchar("visibility", { length: 20 }).notNull().default("private"),
-    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
-    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
-  },
-  (table) => ({
-    orgNameIdx: uniqueIndex("idx_provider_org_name").on(table.organizationId, table.name),
-    orgVisibilityIdx: index("idx_provider_org_visibility").on(table.organizationId, table.visibility),
-  }),
-);
-
-// AI 模型（原 provider.models 子对象）
-export const model = pgTable(
-  "model",
-  {
-    id: uuid("id").primaryKey().defaultRandom(),
-    providerId: uuid("provider_id")
-      .notNull()
-      .references(() => provider.id, { onDelete: "cascade" }),
-    organizationId: text("organization_id").notNull(),
-    modelId: varchar("model_id").notNull(),
-    displayName: varchar("display_name"),
-    modalities: jsonb("modalities"),
-    limitConfig: jsonb("limit_config"),
-    cost: jsonb("cost"),
-    options: jsonb("options"),
-    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
-    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
-  },
-  (table) => ({
-    providerModelIdx: uniqueIndex("idx_model_provider_model").on(table.providerId, table.modelId),
-    orgModelIdx: uniqueIndex("idx_model_org_provider_model").on(table.organizationId, table.providerId, table.modelId),
-  }),
-);
-
-// 模型网关凭证映射：远端 Key 回收后删除，使恢复授权时可安全换发新 Key。
-export const modelGatewayCredential = pgTable(
-  "model_gateway_credential",
-  {
-    id: uuid("id").primaryKey().defaultRandom(),
-    gatewayProviderId: uuid("gateway_provider_id").notNull(),
-    organizationId: text("organization_id").notNull(),
-    userId: text("user_id").notNull(),
-    agentConfigId: uuid("agent_config_id").notNull(),
-    externalCredentialId: text("external_credential_id").notNull(),
-    encryptedCredential: text("encrypted_credential"),
-    status: modelGatewayCredentialStatusEnum("status").notNull().default("active"),
-    metadata: jsonb("metadata").notNull().default(sql`'{}'`),
-    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
-    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
-  },
-  (table) => ({
-    subjectIdx: uniqueIndex("idx_model_gateway_credential_subject").on(
-      table.gatewayProviderId,
-      table.organizationId,
-      table.userId,
-      table.agentConfigId,
-    ),
-    externalIdIdx: index("idx_model_gateway_credential_external_id").on(table.externalCredentialId),
-    statusIdIdx: index("idx_model_gateway_credential_status_id").on(table.status, table.id),
-  }),
-);
-
 // Agent 配置
 export const agentConfig = pgTable(
   "agent_config",
@@ -481,63 +389,6 @@ export const agentConfig = pgTable(
   }),
 );
 
-export const sandboxPool = pgTable(
-  "sandbox_pool",
-  {
-    id: text("id").primaryKey(),
-    organizationId: text("organization_id").references(() => organization.id, { onDelete: "set null" }),
-    name: varchar("name").notNull(),
-    providerKey: varchar("provider_key", { length: 64 }).notNull(),
-    image: varchar("image").notNull(),
-    defaultResources: jsonb("default_resources").notNull(),
-    extra: jsonb("extra"),
-    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
-    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
-  },
-  (table) => ({
-    organizationIdx: index("idx_sandbox_pool_organization").on(table.organizationId),
-    providerIdx: index("idx_sandbox_pool_provider").on(table.providerKey),
-  }),
-);
-
-export const sandboxInstance = pgTable(
-  "sandbox_instance",
-  {
-    id: text("id").primaryKey(),
-    machineId: text("machine_id").notNull(),
-    providerKey: varchar("provider_key", { length: 64 }).notNull(),
-    sandboxPoolId: text("sandbox_pool_id")
-      .notNull()
-      .references(() => sandboxPool.id, { onDelete: "restrict" }),
-    userId: text("user_id")
-      .notNull()
-      .references(() => user.id, { onDelete: "cascade" }),
-    externalSandboxId: varchar("external_sandbox_id"),
-    status: varchar("status", { length: 32 }).notNull(),
-    resolvedConfig: jsonb("resolved_config").notNull(),
-    resourceOverrides: jsonb("resource_overrides"),
-    providerPayload: jsonb("provider_payload"),
-    lastHeartbeatAt: timestamp("last_heartbeat_at", { withTimezone: true }),
-    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
-    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
-  },
-  (table) => ({
-    machineIdx: uniqueIndex("idx_sandbox_instance_machine_id").on(table.machineId),
-    poolUserIdx: index("idx_sandbox_instance_pool_user").on(table.sandboxPoolId, table.userId),
-    externalIdx: index("idx_sandbox_instance_external_id").on(table.externalSandboxId),
-    activeUniqueIdx: uniqueIndex("idx_sandbox_instance_active_unique").on(
-      table.providerKey,
-      table.sandboxPoolId,
-      table.userId,
-    ),
-  }),
-);
-
-export type SandboxPool = typeof sandboxPool.$inferSelect;
-export type NewSandboxPool = typeof sandboxPool.$inferInsert;
-export type SandboxInstance = typeof sandboxInstance.$inferSelect;
-export type NewSandboxInstance = typeof sandboxInstance.$inferInsert;
-
 // Agent 记忆配置（独立表，承载记忆开关状态，为后续扩展预留）
 export const agentMemoryConfig = pgTable("agent_memory_config", {
   id: uuid("id").primaryKey().defaultRandom(),
@@ -549,53 +400,6 @@ export const agentMemoryConfig = pgTable("agent_memory_config", {
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
 });
-
-// MCP 服务器
-export const mcpServer = pgTable(
-  "mcp_server",
-  {
-    id: uuid("id").primaryKey().defaultRandom(),
-    userId: text("user_id")
-      .notNull()
-      .references(() => user.id, { onDelete: "cascade" }),
-    organizationId: text("organization_id").notNull(),
-    name: varchar("name").notNull(),
-    type: varchar("type", { length: 32 }).notNull(),
-    config: jsonb("config").notNull(),
-    enabled: boolean("enabled").notNull().default(true),
-    // 资源可见范围：授权实现的唯一公开受众声明（public 对任意已认证主体开放公开默认动作）。
-    visibility: varchar("visibility", { length: 20 }).notNull().default("private"),
-    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
-    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
-  },
-  (table) => ({
-    orgNameIdx: uniqueIndex("idx_mcp_server_org_name").on(table.organizationId, table.name),
-    orgVisibilityIdx: index("idx_mcp_server_org_visibility").on(table.organizationId, table.visibility),
-  }),
-);
-
-// 技能元数据（全局技能库，内容保留在文件系统）
-export const skill = pgTable(
-  "skill",
-  {
-    id: uuid("id").primaryKey().defaultRandom(),
-    userId: text("user_id")
-      .notNull()
-      .references(() => user.id, { onDelete: "cascade" }),
-    organizationId: text("organization_id").notNull(),
-    name: varchar("name").notNull(),
-    description: text("description"),
-    metadata: jsonb("metadata"),
-    // 资源可见范围：授权实现的唯一公开受众声明（public 对任意已认证主体开放公开默认动作）。
-    visibility: varchar("visibility", { length: 20 }).notNull().default("private"),
-    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
-    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
-  },
-  (table) => ({
-    orgNameIdx: uniqueIndex("idx_skill_org_name").on(table.organizationId, table.name),
-    orgVisibilityIdx: index("idx_skill_org_visibility").on(table.organizationId, table.visibility),
-  }),
-);
 
 // 一次性数据迁移执行记录（由部署期入口 `db/data-migration-runner.ts` 写入，不随应用启动执行）
 export const dataMigrateRecord = pgTable(
@@ -702,278 +506,6 @@ export const agentConfigSiteApp = pgTable(
     pk: uniqueIndex("idx_agent_config_site_app_pk").on(table.agentConfigId, table.siteAppId),
     agentConfigIdx: index("idx_agent_config_site_app_agent_config").on(table.agentConfigId),
     siteAppIdx: index("idx_agent_config_site_app_site_app").on(table.siteAppId),
-  }),
-);
-
-// ────────────────────────────────────────────
-// Workflow 独立领域模块
-// ────────────────────────────────────────────
-
-// Workflow 定义
-export const workflow = pgTable(
-  "workflow",
-  {
-    id: uuid("id").primaryKey().defaultRandom(),
-    userId: text("user_id")
-      .notNull()
-      .references(() => user.id, { onDelete: "cascade" }),
-    organizationId: text("organization_id").notNull(),
-    name: varchar("name").notNull(),
-    description: text("description"),
-    latestVersion: integer("latest_version"),
-    storagePath: text("storage_path"),
-    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
-    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
-  },
-  (table) => ({
-    orgNameIdx: uniqueIndex("idx_workflow_org_name").on(table.organizationId, table.name),
-  }),
-);
-
-// Workflow 版本（草稿 + 已发布）
-export const workflowVersion = pgTable(
-  "workflow_version",
-  {
-    id: uuid("id").primaryKey().defaultRandom(),
-    workflowId: uuid("workflow_id")
-      .notNull()
-      .references(() => workflow.id, { onDelete: "cascade" }),
-    version: integer("version").notNull(),
-    filePath: text("file_path").notNull(),
-    status: varchar("status", { length: 20 }).notNull(), // "draft" | "published"
-    createdBy: text("created_by")
-      .notNull()
-      .references(() => user.id, { onDelete: "cascade" }),
-    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
-  },
-  (table) => ({
-    workflowVersionIdx: uniqueIndex("idx_workflow_version_unique").on(table.workflowId, table.version),
-  }),
-);
-
-// Workflow 执行记录
-export const workflowRun = pgTable(
-  "workflow_run",
-  {
-    id: uuid("id").primaryKey().defaultRandom(),
-    workflowId: uuid("workflow_id")
-      .notNull()
-      .references(() => workflow.id, { onDelete: "cascade" }),
-    version: integer("version"),
-    status: varchar("status").notNull().default("running"),
-    input: jsonb("input"),
-    output: jsonb("output"),
-    stepResults: jsonb("step_results"),
-    triggeredBy: varchar("triggered_by").notNull().default("manual"),
-    startedAt: timestamp("started_at", { withTimezone: true }).notNull().defaultNow(),
-    completedAt: timestamp("completed_at", { withTimezone: true }),
-    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
-  },
-  (table) => ({
-    workflowIdx: index("idx_workflow_run_workflow").on(table.workflowId),
-    statusIdx: index("idx_workflow_run_status").on(table.status),
-  }),
-);
-
-// ────────────────────────────────────────────
-// Workflow Engine Event Sourcing（@fenix/workflow-engine）
-// ────────────────────────────────────────────
-
-// Workflow 事件流表
-export const workflowEvent = pgTable(
-  "workflow_event",
-  {
-    id: uuid("id").primaryKey().defaultRandom(),
-    eventId: varchar("event_id").notNull(),
-    runId: varchar("run_id").notNull(),
-    projectId: varchar("project_id"),
-    nodeId: varchar("node_id"),
-    timestamp: timestamp("timestamp", { withTimezone: true }).notNull(),
-    type: varchar("type").notNull(),
-    nodeType: varchar("node_type"),
-    metadata: jsonb("metadata"),
-    organizationId: text("organization_id").notNull(),
-    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
-  },
-  (table) => ({
-    runIdx: index("idx_workflow_event_run").on(table.runId),
-    orgIdx: index("idx_workflow_event_org").on(table.organizationId),
-    typeIdx: index("idx_workflow_event_run_type").on(table.runId, table.type),
-    nodeIdx: index("idx_workflow_event_run_node").on(table.runId, table.nodeId),
-  }),
-);
-
-// Workflow 快照表
-export const workflowSnapshot = pgTable(
-  "workflow_snapshot",
-  {
-    id: uuid("id").primaryKey().defaultRandom(),
-    snapshotId: varchar("snapshot_id").notNull(),
-    runId: varchar("run_id").notNull(),
-    workflowId: uuid("workflow_id"),
-    lastEventId: varchar("last_event_id").notNull(),
-    timestamp: timestamp("timestamp", { withTimezone: true }).notNull(),
-    nodeStates: jsonb("node_states").notNull(),
-    dagStatus: varchar("dag_status").notNull(),
-    organizationId: text("organization_id").notNull(),
-    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
-  },
-  (table) => ({
-    runIdx: index("idx_workflow_snapshot_run").on(table.runId),
-    orgIdx: index("idx_workflow_snapshot_org").on(table.organizationId),
-    workflowIdx: index("idx_workflow_snapshot_workflow").on(table.workflowId),
-  }),
-);
-
-// Workflow 节点输出表
-export const workflowNodeOutput = pgTable(
-  "workflow_node_output",
-  {
-    id: uuid("id").primaryKey().defaultRandom(),
-    runId: varchar("run_id").notNull(),
-    nodeId: varchar("node_id").notNull(),
-    stdout: text("stdout").notNull().default(""),
-    json: jsonb("json"),
-    exitCode: integer("exit_code").notNull(),
-    size: integer("size"),
-    ref: text("ref"),
-    organizationId: text("organization_id").notNull(),
-    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
-  },
-  (table) => ({
-    runNodeIdx: uniqueIndex("idx_workflow_node_output_run_node").on(table.runId, table.nodeId),
-    orgIdx: index("idx_workflow_node_output_org").on(table.organizationId),
-  }),
-);
-
-// ─────────────────────────���──────────────────
-// Workflow Board（看板面板）
-// ────────────────────────────────────────────
-
-export const workflowBoard = pgTable(
-  "workflow_board",
-  {
-    id: uuid("id").primaryKey().defaultRandom(),
-    organizationId: text("organization_id").notNull(),
-    name: varchar("name", { length: 100 }).notNull(),
-    userId: text("user_id")
-      .notNull()
-      .references(() => user.id, { onDelete: "cascade" }),
-    isDefault: boolean("is_default").notNull().default(false),
-    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
-    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
-  },
-  (table) => ({
-    orgNameIdx: uniqueIndex("idx_workflow_board_org_name").on(table.organizationId, table.name),
-    orgIdx: index("idx_workflow_board_org").on(table.organizationId),
-  }),
-);
-
-// ────────────────────────────────────────────
-// Workflow Job（看板 Job 实体）
-// ────────────────────���───────────────────────
-
-export const workflowJob = pgTable(
-  "workflow_job",
-  {
-    id: uuid("id").primaryKey().defaultRandom(),
-    boardId: uuid("board_id")
-      .notNull()
-      .references(() => workflowBoard.id, { onDelete: "cascade" }),
-    organizationId: text("organization_id").notNull(),
-    userId: text("user_id")
-      .notNull()
-      .references(() => user.id, { onDelete: "cascade" }),
-    workflowId: uuid("workflow_id")
-      .notNull()
-      .references(() => workflow.id, { onDelete: "cascade" }),
-    version: integer("version").notNull(),
-    params: jsonb("params"),
-    status: varchar("status", { length: 20 }).notNull().default("ready"),
-    lastRunId: varchar("last_run_id"),
-    lastDagStatus: varchar("last_dag_status", { length: 20 }),
-    runCount: integer("run_count").notNull().default(0),
-    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
-    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
-  },
-  (table) => ({
-    boardIdx: index("idx_workflow_job_board").on(table.boardId),
-    orgIdx: index("idx_workflow_job_org").on(table.organizationId),
-    statusIdx: index("idx_workflow_job_status").on(table.organizationId, table.status),
-    workflowIdx: index("idx_workflow_job_workflow").on(table.workflowId),
-  }),
-);
-
-// ────────────────────────────────────────────
-// Workflow Trigger（外部触发器）
-// ────────────────────────────────────────────
-
-export const workflowTrigger = pgTable(
-  "workflow_trigger",
-  {
-    id: uuid("id").primaryKey().defaultRandom(),
-    organizationId: text("organization_id").notNull(),
-    workflowId: uuid("workflow_id")
-      .notNull()
-      .references(() => workflow.id, { onDelete: "cascade" }),
-    type: varchar("type", { length: 30 }).notNull().default("webhook"),
-    publicHash: varchar("public_hash", { length: 64 }).notNull().unique(),
-    secret: varchar("secret"),
-    config: jsonb("config"),
-    enabled: boolean("enabled").notNull().default(true),
-    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
-    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
-  },
-  (table) => ({
-    hashIdx: uniqueIndex("idx_workflow_trigger_hash").on(table.publicHash),
-    orgWorkflowIdx: index("idx_workflow_trigger_org_workflow").on(table.organizationId, table.workflowId),
-  }),
-);
-
-// ────────────────────────────────────────────
-// Registry Center（注册中心）
-// ────────────────────────────────────────────
-
-export const machine = pgTable(
-  "machine",
-  {
-    id: text("id").primaryKey(),
-    organizationId: text("organization_id"),
-    userId: text("user_id"),
-    agentName: varchar("agent_name").notNull(),
-    name: varchar("name"),
-    type: varchar("type", { length: 32 }).notNull().default("machine"),
-    status: varchar("status").default("online").notNull(),
-    machineInfo: jsonb("machine_info"),
-    labels: jsonb("labels"),
-    maxSessions: integer("max_sessions").default(5),
-    heartbeatIntervalMs: integer("heartbeat_interval_ms").default(30000),
-    lastHeartbeatAt: timestamp("last_heartbeat_at", { withTimezone: true }),
-    registeredAt: timestamp("registered_at", { withTimezone: true }).notNull().defaultNow(),
-    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
-    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
-  },
-  (table) => ({
-    orgIdx: index("idx_machine_org").on(table.organizationId),
-    typeIdx: index("idx_machine_type").on(table.type),
-    statusIdx: index("idx_machine_status").on(table.status),
-  }),
-);
-
-export const registryEvent = pgTable(
-  "registry_event",
-  {
-    id: text("id").primaryKey(),
-    machineId: text("machine_id")
-      .notNull()
-      .references(() => machine.id, { onDelete: "cascade" }),
-    type: varchar("type").notNull(),
-    detail: jsonb("detail"),
-    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
-  },
-  (table) => ({
-    machineIdx: index("idx_registry_event_machine").on(table.machineId),
-    typeIdx: index("idx_registry_event_type").on(table.type),
   }),
 );
 

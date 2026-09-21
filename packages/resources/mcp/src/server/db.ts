@@ -4,9 +4,9 @@ import type { NodePgDatabase } from "drizzle-orm/node-postgres";
 /**
  * MCP 仓储使用的 DB 句柄类型。
  *
- * 表定义当前仍由宿主 `@server/db/schema` 提供（迁出归任务 1.7），但句柄类型刻意不写
- * `typeof schema`：本包只做 `select` / `insert` / `update` / `delete` / `transaction`，不使用
- * `db.query.*` 关系查询，因此不需要耦合宿主的 schema 聚合类型；表定义迁出后这里无需改动。
+ * 表定义已随 §1.7 B2 迁到本包 `db/schema.ts`，但句柄类型刻意仍不写 `typeof schema`：本包只做
+ * `select` / `insert` / `update` / `delete` / `transaction`，不使用 `db.query.*` 关系查询，因此不需要
+ * 耦合 schema 聚合类型——这也是迁移前后这里的类型无需改动的原因。
  */
 export type McpDatabase = NodePgDatabase<Record<string, never>>;
 

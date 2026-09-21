@@ -1,10 +1,11 @@
-import { getAgentConfigModule } from "@fenix/agent-config/server";
+import { bindMachineLookupPort, bindModelLookupPort, getAgentConfigModule } from "@fenix/agent-config/server";
 import { bindAgentConfigLookupPort, bindAgentLaunchSpecPort } from "@fenix/agent-runtime/server";
 import { ensureSystemAdmin } from "@fenix/identity/server";
 import { createLogger } from "@fenix/logger";
 import {
   createModelGatewayRuntime,
   createSystemModelGatewayProviderService,
+  findModelLabelsByIds,
   getModelManagementModule,
 } from "@fenix/model-management/server";
 import type { AssemblyProfile } from "@fenix/platform-sdk/assembly";
@@ -12,6 +13,7 @@ import { getHermesClient, initHermesClient } from "@fenix/resource-channel/serve
 import { checkRagFlowHealth } from "@fenix/resource-knowledge/server";
 import {
   closeAllFileWsConnections,
+  findMachineLabelsByIds,
   startFileWsSweep,
   startMachineSweep,
   stopFileWsSweep,
@@ -165,7 +167,12 @@ export async function startHostRuntime(
   });
   bindAgentLaunchSpecPort(preLaunchPorts.launchSpec);
   bindAgentConfigLookupPort(preLaunchPorts.lookup);
-  startupLog.info("Pre-launch ports bound (agent launch spec / agent config lookup)");
+  // agent-config 的机器标签与模型标签端口：实现分别是 machine 与 model-management 包的只读投影。绑在这里
+  // 而不是 `host-wiring.ts`，是为了与本文件已有的另两个 agent-config 端口放在一起——host-wiring 刻意不
+  // 导入 agent-config 的入口。
+  bindMachineLookupPort({ findMachineLabelsByIds });
+  bindModelLookupPort({ findModelLabelsByIds });
+  startupLog.info("Pre-launch ports bound (agent launch spec / agent config lookup / machine labels / model labels)");
 
   // 沙盒默认池初始化与崩溃恢复（Sandbox 能力，早于 core runtime 启动）。
   // 失败不阻断启动：沙盒不可用时仅影响沙盒执行节点，普通执行路径不受影响。

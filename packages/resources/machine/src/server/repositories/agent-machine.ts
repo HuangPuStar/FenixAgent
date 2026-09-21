@@ -1,5 +1,5 @@
 import type { AgentMachineData, AgentMachineRepo } from "@fenix/orchestration";
-import { machine } from "@server/db/schema";
+import { machine } from "@fenix/resource-machine/db";
 import { eq } from "drizzle-orm";
 import { getMachineDatabase } from "../db";
 

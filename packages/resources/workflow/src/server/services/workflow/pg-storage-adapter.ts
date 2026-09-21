@@ -6,6 +6,7 @@
  * workflowNodeOutput 存储节点输出。
  */
 
+import { workflow, workflowEvent, workflowNodeOutput, workflowSnapshot } from "@fenix/resource-workflow/db";
 import type {
   DAGEvent,
   DAGSnapshot,
@@ -16,7 +17,6 @@ import type {
   RunSummary,
   StorageAdapter,
 } from "@fenix/workflow-engine";
-import { workflow, workflowEvent, workflowNodeOutput, workflowSnapshot } from "@server/db/schema";
 import { and, desc, eq, inArray, sql } from "drizzle-orm";
 import { getWorkflowDatabase } from "../../db";
 

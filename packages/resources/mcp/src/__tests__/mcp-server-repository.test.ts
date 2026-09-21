@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import type { AuthorizedResourceQuery, ResourceQueryConstraint } from "@fenix/platform-sdk";
-import { mcpServer } from "@server/db/schema";
+import { mcpServer } from "@fenix/resource-mcp/db";
 import { asc } from "drizzle-orm";
 import { MCP_SERVER_RESOURCE_TYPE } from "../server/access/mcp-server-resource";
 import {
