@@ -1418,6 +1418,59 @@ web-app-tests **946 pass / 0 fail**。
 
 - `/web/site/deploy` 与 `/app-*` 兜底（agent-config 的 `agent-sites-proxy`）仍在 `main.ts` 顶层手写挂载，
   归 1.5f 的顶层 `app` 槽。
-- 手工启动验证仍待有 DB 的环境补做（同 1.5e-1）。
+- 手工启动验证已由 1.5e-3 补做（该节同时关掉 1.5e-1 / 2a / 2b-1 三处遗留里的同一项）。
 - 待裁定项已在 §二、§四 标注：`ServerRouteHost` 是否应承载 `rotateCallerApiKey` 这类业务动作，以及是否为
   `test-utils/web-routes.ts` 与生产路由面的漂移加自动守护。
+
+### 1.5e-3 手工启动验证（2026-09-21）
+
+分片表 1.5e 判据里的「手工启动验证」至此补做完成，同时关掉 1.5e-1、1.5e-2a、1.5e-2b-1 三处「无 PostgreSQL
+未完成」的遗留。前置事实：本机此前没有可用 DB（OrbStack 未运行、无 `psql`/`pg_isready`），这四项一直挂着。
+
+**一、环境选择【需审核】**
+
+为跑验证启动了 OrbStack（本机唯一的容器运行时，此前未运行）。数据库**没有**复用已在 5432 上的
+`fenixagent-postgres-1`——那是另一个检出（`/Users/liyuan/Work/FenixAgent`）的开发库，跑 `db:migrate`
+会改动它的数据；改为起一次性容器 `postgres:16-alpine` 并映射到 **55432**：
+
+```
+docker run -d --name aos-sandbox-pg-verify -p 55432:5432 \
+  -e POSTGRES_USER=rcs -e POSTGRES_PASSWORD=rcs -e POSTGRES_DB=rcs postgres:16-alpine
+DATABASE_URL=postgres://rcs:rcs@127.0.0.1:55432/rcs bun run db:migrate   # 全链应用成功
+```
+
+副作用两条：启动 OrbStack 会让它配置的 `restart: unless-stopped` 容器（litellm、opensandbox 等）随之启动；
+验证容器与服务进程已在收尾时删掉/停掉。
+
+**二、启动结果：成功，无装配期错误**
+
+`bun run apps/server/src/main.ts`（`DATABASE_URL` 指向上面的验证库）启动到
+`Listening on 0.0.0.0:3000 (baseUrl: http://localhost:3000)`。日志中先有 `Database initialized`、三条
+data migration（`migrate-agent-config-model-id`、`migrate-skill-storage-by-organization`、
+`access-control/20260919-backfill-resource-visibility`）完成、`System admin ready`、内置 Skill 同步与
+custom tools registry ready。**全文无 ERROR，也没有「未知聚合槽」「没有返回 Elysia 实例」「基础模块 …
+未返回实例」**——即 1.5e 全量迁入贡献面后，装配期与启动序都正常。
+
+**三、端点可达性探测（证明「贡献真的挂上去了」）**
+
+探测有个必须说明的对照：**未注册的路径不会 404**，静态兜底会把它们交给 SPA 返回 200
+（`/web/nope`、`/web/config/nope`、`/api/nope` 实测均为 200）。因此判据是「路由自己的响应」——被守卫拦下的
+401、schema 校验失败的 400、公开端点的真实负载，三者都只能由真实注册的路由产生。
+
+| 探测 | 结果 | 说明 |
+|---|---|---|
+| `GET /health` | 200 | 服务存活 |
+| `GET /web/sidebar-config/` | 200 `{"success":true,"data":{"hiddenTabs":[…]}}` | 公开端点返回真实配置 |
+| `GET /web/prod-views/anything/load`、`/web/api-keys`、`/web/environments`、`/web/knowledgeBases`、`/web/hindsight/status`、`/web/channels/bindings`、`/web/environments/x/fs`、`/web/registry/machines`、`/web/tasks/v2`、`/web/workflow-defs` | 401 | 1.5e-1 / 2b-1 迁入的 `web` 面，守卫拦住 |
+| `GET /web/agent-sites/apps`、`GET /web/agents/e1/sessions/s1/peri-tasks/t1/detail`、`POST /web/meta-agent/ensure` | 401 | 2b-2 迁入的三条守卫路由 |
+| `GET /web/model-gateway/p1/usage` | 400 `startAt: Invalid input: expected string`、`POST /web/agent-generation` | 400 | 2b-2 迁入的两条，schema 校验已执行 |
+| `GET /web/config/{mcp,skills,agents,models,providers,prod-views,sandbox-pools}` | 全 401 | `web-config` 槽 7 个实例全部在 |
+
+其中 `sandbox-pools` 是 1.5e-2a 那次「路由静默消失」的主角，本次确认真实启动下已由贡献补回
+（此前只有 `config-integration.test.ts` 的替身路径能证明它有响应）。
+
+**四、遗留**
+
+- 本节的验证只覆盖「注册与装配」，没有覆盖需要登录态的端到端业务流（登录、Agent 会话、workflow 执行）——
+  那些属于 1.5f/1.8 的证据范围。
+- 验证库是一次性的，未保留；如需复现按 §一 的命令重建。
