@@ -6,8 +6,8 @@ import { History, Loader, Pencil, Plus } from "lucide-react";
 import { lazy, Suspense, useCallback, useState } from "react";
 import { useTranslation } from "react-i18next";
 
-const WorkflowList = lazy(() => import("@/src/pages/workflow/WorkflowList").then((m) => ({ default: m.WorkflowList })));
-const WorkflowRuns = lazy(() => import("@/src/pages/workflow/WorkflowRuns").then((m) => ({ default: m.WorkflowRuns })));
+const WorkflowList = lazy(() => import("@fenix/resource-workflow/web").then((m) => ({ default: m.WorkflowList })));
+const WorkflowRuns = lazy(() => import("@fenix/resource-workflow/web").then((m) => ({ default: m.WorkflowRuns })));
 
 function TabContentFallback() {
   return (
