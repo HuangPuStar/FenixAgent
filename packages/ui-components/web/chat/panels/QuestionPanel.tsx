@@ -22,9 +22,8 @@
 import { Check, ChevronDown, ChevronLeft, ChevronRight } from "lucide-react";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
-
+import { UI_COMPONENTS_NS } from "../../i18n/namespace";
 import { cn } from "../../lib/cn";
-import { UI_COMPONENTS_NS } from "../../lib/i18n";
 import { Button } from "../../ui/button";
 import type { QuestionProjection } from "../types";
 

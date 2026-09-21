@@ -181,8 +181,8 @@ describe("machine web 入口浏览器可达面", () => {
     expect(pkg.exports?.["./web"]).toBe("./web/index.ts");
   });
 
-  // 入口导出面：跨包消费方（agent-config 编辑器、identity 组织机器页）取用的是 registryApi 与它的类型，
-  // 导出面缩水会让消费方退回深层路径。
+  // 入口导出面：跨包消费方（agent-config 编辑器直连；宿主 route adapter 为 identity 组织机器页注入）
+  // 取用的是 registryApi 与它的类型，导出面缩水会让消费方退回深层路径。
   test("入口从 api/registry 转出 registryApi 与记录类型", () => {
     const source = stripComments(readFileSync(WEB_ENTRY, "utf8"));
     expect(source).toContain('from "./api/registry"');

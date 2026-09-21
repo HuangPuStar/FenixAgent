@@ -3,7 +3,7 @@ import { initReactI18next } from "react-i18next/initReactI18next";
 
 import en from "../web/i18n/locales/en/uiComponents.json";
 import zh from "../web/i18n/locales/zh/uiComponents.json";
-import { UI_COMPONENTS_NS } from "../web/lib/i18n";
+import { UI_COMPONENTS_NS } from "../web/i18n/namespace";
 
 /**
  * demo 自带的 i18n 实例。

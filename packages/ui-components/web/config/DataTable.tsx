@@ -16,7 +16,7 @@ import type * as React from "react";
 import { Fragment, useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 
-import { UI_COMPONENTS_NS } from "../lib/i18n";
+import { UI_COMPONENTS_NS } from "../i18n/namespace";
 import { Button } from "../ui/button";
 import { Checkbox } from "../ui/checkbox";
 import { Input } from "../ui/input";

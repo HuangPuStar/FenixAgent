@@ -1,28 +1,44 @@
 {
-  "extends": "../../../apps/web/tsconfig.json",
+  // 包内类型检查入口：**自包含**，不 extends 任何包外 tsconfig。
+  // 原先 extends `apps/web/tsconfig.json` 违反 1.3 review §1 静态条件 3（`packages/**` 内不得出现
+  // 指向 `apps/web` 的相对路径），并让本包的编译设置由宿主应用决定；理由与取舍见
+  // `packages/resources/memory/tsconfig.json` 文件头。
+  // - `paths` 只映射本包与同盟包的公开入口，其余 `@fenix/*` 走包 exports；
+  // - 不写 `baseUrl`：paths 的值在无 baseUrl 时相对本文件解析，且 TS 6.0 起 baseUrl 已弃用
+  //   （因此也不再需要 `ignoreDeprecations`）。
   "compilerOptions": {
+    "target": "ES2022",
+    "module": "ES2022",
+    "moduleResolution": "bundler",
     "lib": ["ES2022", "DOM", "DOM.Iterable"],
     "jsx": "react-jsx",
+    "types": ["bun"],
+    "strict": true,
+    "esModuleInterop": true,
+    "skipLibCheck": true,
+    "forceConsistentCasingInFileNames": true,
+    "resolveJsonModule": true,
+    "isolatedModules": true,
+    "verbatimModuleSyntax": true,
+    "allowImportingTsExtensions": true,
     "noEmit": true,
-    "ignoreDeprecations": "6.0",
     "rootDir": "../../..",
-    "baseUrl": "../../..",
     "paths": {
-      "@fenix/agent-runtime": ["packages/agent-runtime/src/index.ts"],
-      "@fenix/agent-runtime/server": ["packages/agent-runtime/src/server.ts"],
-      "@fenix/agent-config": ["packages/resources/agent-config/src/index.ts"],
-      "@fenix/agent-config/server": ["packages/resources/agent-config/src/server.ts"],
+      "@fenix/agent-runtime": ["../../../packages/agent-runtime/src/index.ts"],
+      "@fenix/agent-runtime/server": ["../../../packages/agent-runtime/src/server.ts"],
+      "@fenix/agent-config": ["../../../packages/resources/agent-config/src/index.ts"],
+      "@fenix/agent-config/server": ["../../../packages/resources/agent-config/src/server.ts"],
       "@fenix/agent-config/server/system-prompt": [
-        "packages/resources/agent-config/src/server/services/agent-system-prompt.ts"
+        "../../../packages/resources/agent-config/src/server/services/agent-system-prompt.ts"
       ],
       "@fenix/agent-config/server/api-agent-schema": [
-        "packages/resources/agent-config/src/server/schemas/api-agent.schema.ts"
+        "../../../packages/resources/agent-config/src/server/schemas/api-agent.schema.ts"
       ],
       "@fenix/agent-config/server/config": [
-        "packages/resources/agent-config/src/server/services/config/agent-config.ts"
+        "../../../packages/resources/agent-config/src/server/services/config/agent-config.ts"
       ],
-      "@fenix/agent-config/server/testing": ["packages/resources/agent-config/src/server/testing.ts"],
-      "@server/*": ["apps/server/src/*"]
+      "@fenix/agent-config/server/testing": ["../../../packages/resources/agent-config/src/server/testing.ts"],
+      "@server/*": ["../../../apps/server/src/*"]
     }
   },
   "include": ["src/**/*.ts", "src/**/*.tsx", "web/**/*.ts", "web/**/*.tsx"]

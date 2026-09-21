@@ -1,9 +1,9 @@
+import { unwrap } from "@fenix/web-runtime/api/request";
+import { NS } from "@fenix/web-runtime/i18n/namespace";
 import { useNavigate } from "@tanstack/react-router";
 import { createContext, type ReactNode, useCallback, useContext, useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
-import { unwrap } from "@/src/api/request";
-import { NS } from "@/src/i18n";
 import { orgApi } from "../api/organizations";
 
 interface OrgInfo {

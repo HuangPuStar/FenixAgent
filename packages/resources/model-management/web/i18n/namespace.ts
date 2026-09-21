@@ -2,8 +2,7 @@
 //
 // 与 `locales/**` 分开声明：页面只需要命名空间常量，不该因为 `useTranslation(MODELS_NS)`
 // 就把两份字典（约 470 个叶子键）拉进模块图（字典由宿主统一注册，见 web/i18n/index.ts 的说明）。
-// 同款先例：`@fenix/ui-components/lib/i18n` 只导出 `UI_COMPONENTS_NS`，字典在
-// `@fenix/ui-components/i18n/locales/*/uiComponents.json`。
+// 同款先例：`@fenix/ui-components/i18n` 的命名空间常量 `UI_COMPONENTS_NS`，字典也从同出口导出。
 //
 // 字面量取自 `@fenix/web-runtime/i18n/namespace` 的共享 NS 表而不是再写一遍：该表已登记
 // `MODELS: "models"`，包内再硬编码一个字面量会多出一处必须同步的真相来源，而宿主注册字典时按的

@@ -11,8 +11,11 @@
  * 经 `/web/registry/machines*` 协议暴露，web 侧没有 UI 组件——文件域页面拆两处收敛：可复用的
  * 展示组件（文件树视图、文件选择面板、文件图标辅助）已上收 `@fenix/ui-components`（本包 web 用例按
  * 对方公开入口做消费方断言），宿主专用容器与文件 API 客户端随 §1.6 的 WebShell 装配迁入，届时再从本入口转出。
- * 跨包消费方（agent-config 的 Agent 编辑器、identity 的组织机器页）取用的也是这一份 `registryApi`，
- * 因此它们必须走包根 `@fenix/resource-machine/web`，不得深入 `web/api/registry` 这类实现路径。
+ * 跨包消费方取用的也是这一份 `registryApi`，因此它们必须走包根 `@fenix/resource-machine/web`，
+ * 不得深入 `web/api/registry` 这类实现路径。当前消费方有两处：agent-config 的 Agent 编辑器直连本入口；
+ * identity 的组织机器页不直连（§2.3 禁止 platform-impl → resources），改由宿主 route adapter
+ * `apps/web/src/routes/agent/_panel/organizations.tsx` 把本入口的 `registryApi` 注入为它的
+ * `machineRegistry` prop，端口形状见 identity 的 `agent-organizations-types.ts`。
  */
 
 export * from "./api/registry";

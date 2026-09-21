@@ -27,7 +27,7 @@ import { FileViewer } from "@open-file-viewer/react";
 import type { ErrorInfo, ReactNode } from "react";
 import { Component, useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { UI_COMPONENTS_NS } from "../../lib/i18n";
+import { UI_COMPONENTS_NS } from "../../i18n/namespace";
 import { htmlPreviewPlugin } from "./html-plugin";
 import { nativePdfPlugin } from "./native-pdf-plugin";
 import { getPreviewMimeType, loadByteAccuratePreviewSource, shouldLoadPreviewAsBlob } from "./preview-source";

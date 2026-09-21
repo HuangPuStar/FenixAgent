@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { useTranslation } from "react-i18next";
-import { UI_COMPONENTS_NS } from "../../lib/i18n";
+import { UI_COMPONENTS_NS } from "../../i18n/namespace";
 import type { UserMessageEntry } from "../types";
 import "../css/chat-navigation-aids.css";
 
@@ -49,7 +49,7 @@ interface PromptPreview {
  *
  * 复制自 `packages/agent-runtime/web/components/chat/chat-navigation-aids.tsx`。
  * 纯化改动点：`@/src/lib/types` → 包内 `../types`；命名空间常量与样式表路径收敛到包内
- * （`../../lib/i18n`、`../css/chat-navigation-aids.css`）；键加 `chat.components.` 前缀。
+ * （`../../i18n/namespace`、`../css/chat-navigation-aids.css`）；键加 `chat.components.` 前缀。
  */
 export function PromptJumpRail({ entries }: PromptJumpRailProps) {
   const { t } = useTranslation(UI_COMPONENTS_NS);

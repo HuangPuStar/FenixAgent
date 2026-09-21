@@ -1,5 +1,14 @@
 import { describe, expect, test } from "bun:test";
+import { existsSync, readFileSync } from "node:fs";
+import { join } from "node:path";
 import * as barrel from "../index";
+
+const PKG_ROOT = join(import.meta.dir, "..", "..");
+const packageExports = (
+  JSON.parse(readFileSync(join(PKG_ROOT, "package.json"), "utf8")) as {
+    exports: Record<string, string | { default?: string; types?: string }>;
+  }
+).exports;
 
 /**
  * barrel 冒烟测试：只断言公共出口的名称与非空性，不渲染组件、不 mock 模块、不做 UI 结构断言。
@@ -408,5 +417,37 @@ describe("barrel 导出契约", () => {
   test("barrel 的运行时导出总数与期望清单一致", () => {
     const expectedTotal = Object.values(EXPECTED_EXPORTS).reduce((sum, names) => sum + names.length, 0);
     expect(Object.keys(barrel).length, "导出数量已变化，请同步 EXPECTED_EXPORTS").toBe(expectedTotal);
+  });
+
+  // barrel 公开的每个模块都必须有对应的 `exports` 深链键。只有 `export *` 是可深链的公开面：
+  // 缺键时消费方只能经整包 barrel 取用（把整套组件图拉进自己的模块图），或退化为 `@/…` 相对路径穿越，
+  // 后者正是 `web-package-not-to-app` 台账的来源。分组自身子 barrel（`./chat/narrators/index`）以
+  // 目录名为键（`./chat/narrators`），与包 `exports` 的既有命名一致。
+  test("barrel 公开的每个模块都有对应的 exports 深链键", () => {
+    const barrelSource = readFileSync(join(import.meta.dir, "..", "index.ts"), "utf8");
+    const targets = [
+      ...new Set(
+        [...barrelSource.matchAll(/^export [^;]*from "\.\/(.+?)";$/gm)].map((match) =>
+          match[1].replace(/\/index$/, ""),
+        ),
+      ),
+    ];
+    // 扫描有效性自检：正则失配（改了 export 写法）时下面会「零缺口」地假通过。
+    expect(targets.length).toBeGreaterThanOrEqual(120);
+    const missing = targets.filter((target) => !Object.hasOwn(packageExports, `./${target}`));
+    expect(missing, "barrel 已公开但 exports 缺少深链键").toEqual([]);
+  });
+
+  // 反向：`exports` 的每个子路径键都必须落在真实文件上。悬空键（改名后漏删、手写笔误）会让消费方
+  // 在解析期报错，而 `tsc` 只检查仓库内已被引用的键，未被引用的悬空键不会被任何现有检查发现。
+  test("exports 的子路径键都解析到真实文件", () => {
+    const dangling = Object.entries(packageExports)
+      .filter(([key]) => key !== "." && key !== "./styles.css")
+      .flatMap(([key, value]) => {
+        const target =
+          typeof value === "string" ? value : ((value as { default?: string; types?: string }).default ?? "");
+        return target && existsSync(join(PKG_ROOT, target)) ? [] : [`${key} -> ${target || "(无 default/types)"}`];
+      });
+    expect(dangling, "exports 存在悬空键").toEqual([]);
   });
 });

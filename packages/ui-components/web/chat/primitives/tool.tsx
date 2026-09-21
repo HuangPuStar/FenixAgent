@@ -3,9 +3,8 @@ import { CheckCircleIcon, ChevronDownIcon, CircleIcon, ClockIcon, WrenchIcon, XC
 import type { ComponentProps, ReactNode } from "react";
 import { isValidElement } from "react";
 import { useTranslation } from "react-i18next";
-
+import { UI_COMPONENTS_NS } from "../../i18n/namespace";
 import { cn } from "../../lib/cn";
-import { UI_COMPONENTS_NS } from "../../lib/i18n";
 import { Badge } from "../../ui/badge";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "../../ui/collapsible";
 import { CodeBlock } from "./code-block";

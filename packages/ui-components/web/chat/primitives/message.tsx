@@ -29,10 +29,9 @@ import {
 } from "react";
 import { useTranslation } from "react-i18next";
 import type { Components } from "streamdown";
-
+import { UI_COMPONENTS_NS } from "../../i18n/namespace";
 import { getRegisteredAllowedTags, getRegisteredComponents } from "../../lib/card-renderer";
 import { cn } from "../../lib/cn";
-import { UI_COMPONENTS_NS } from "../../lib/i18n";
 import { Button } from "../../ui/button";
 import { ButtonGroup, ButtonGroupText } from "../../ui/button-group";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "../../ui/tooltip";

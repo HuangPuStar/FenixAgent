@@ -9,7 +9,7 @@
 import { Bot, ChevronDown, Loader2 } from "lucide-react";
 import { memo, useContext, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { UI_COMPONENTS_NS } from "../../lib/i18n";
+import { UI_COMPONENTS_NS } from "../../i18n/namespace";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "../../ui/collapsible";
 import type { AssistantMessageEntry, ThreadEntry, ToolCallEntry } from "../types";
 import { SubAgentToolCallGroupContext } from "./sub-agent-tool-call-context";

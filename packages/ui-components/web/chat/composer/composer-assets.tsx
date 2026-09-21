@@ -1,6 +1,6 @@
 import { FileText, Quote, X } from "lucide-react";
 import { useTranslation } from "react-i18next";
-import { UI_COMPONENTS_NS } from "../../lib/i18n";
+import { UI_COMPONENTS_NS } from "../../i18n/namespace";
 import { createQuotePreview } from "../lib/context-queue";
 import type { FileAttachment, UserMessageImage } from "../types";
 

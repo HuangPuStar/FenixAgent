@@ -19,12 +19,12 @@
 // 「解析 / 穿透 / node 内建 / `@server`」断言：它们的内部卫生由各自包的 `web/__tests__/*-browser-surface`
 // 守卫负责（守卫模板要求每个带 `web/` 的资源包都建一份），一个文件只有一个 owner。
 // 为什么需要这条范围：本包经 `@fenix/agent-config/web`（`agentApi`）合法消费兄弟资源包，后者又按 §6.5
-// 消费 `@fenix/identity/web`（`useOrg` 必须取宿主同一份 context），而 identity 尚未迁完，其 `web/**`
-// 里仍有大量 `@/` 别名与 better-auth 等库（2026-09-20 两次实测 35 → 44 处，随该包进度变动）；这类
-// **上游迁移中间态**若算进
-// 本包红线，本包守卫就会随别人的进度变红、失去定位能力。identity 的别名债务由直接依赖它的
+// 消费 `@fenix/identity/web`（`useOrg` 必须取宿主同一份 context）。这类**上游迁移中间态**若算进
+// 本包红线，本包守卫就会随别人的进度变红、失去定位能力。2026-09-20 时 identity 的 `web/**` 尚有
+// 大量 `@/` 别名（两次实测 35 → 44 处），由直接依赖它的
 // `packages/resources/agent-config/web/__tests__/agent-config-browser-surface.test.ts` 以
-// `UPSTREAM_ALIAS_DEBT_DIRS` 登记，本包不重复登记（同一类债务两份清单会各自漂移）。
+// `UPSTREAM_ALIAS_DEBT_DIRS` 登记；§1.6 T4 把身份包归零后那份白名单已删除，agent-config 的守卫改为
+// 「本包与全图零别名」的严格断言，本包仍不重复登记（同一类债务两份清单会各自漂移）。
 // 同理，兄弟资源包（`packages/resources/<other>/**`）的文件也不在断言范围内。
 //
 // 测试文件与 `node:*` 的豁免：递归只沿 exports 出口走，而任何包的 exports 都不指向 `__tests__`，

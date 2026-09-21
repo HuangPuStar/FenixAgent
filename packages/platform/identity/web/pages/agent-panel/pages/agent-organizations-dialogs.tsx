@@ -1,6 +1,3 @@
-import { Check, Copy, Search, X } from "lucide-react";
-import { useTranslation } from "react-i18next";
-import { toast } from "sonner";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -10,12 +7,16 @@ import {
   AlertDialogFooter,
   AlertDialogHeader,
   AlertDialogTitle,
-} from "@/components/ui/alert-dialog";
-import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
-import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { Input } from "@/components/ui/input";
-import type { OrgMemberCandidate } from "@/src/api/organizations";
+} from "@fenix/ui-components/ui/alert-dialog";
+import { Badge } from "@fenix/ui-components/ui/badge";
+import { Button } from "@fenix/ui-components/ui/button";
+import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@fenix/ui-components/ui/dialog";
+import { Input } from "@fenix/ui-components/ui/input";
+import { NS } from "@fenix/web-runtime/i18n/namespace";
+import { Check, Copy, Search, X } from "lucide-react";
+import { useTranslation } from "react-i18next";
+import { toast } from "sonner";
+import type { OrgMemberCandidate } from "../../../api/organizations";
 import type { MachineFormState, OrganizationsDialogsProps } from "./agent-organizations-types";
 
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
@@ -28,7 +29,7 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
 }
 
 function CreateOrganizationDialog({ props }: { props: OrganizationsDialogsProps }) {
-  const { t } = useTranslation("orgs");
+  const { t } = useTranslation(NS.ORGS);
   return (
     <Dialog open={props.createOpen} onOpenChange={props.onCreateOpenChange}>
       <DialogContent>
@@ -73,7 +74,7 @@ export function MemberCandidateButton({
   selected: boolean;
   onAdd: (candidate: OrgMemberCandidate) => void;
 }) {
-  const { t } = useTranslation("orgs");
+  const { t } = useTranslation(NS.ORGS);
   const disabled = candidate.isMember || selected;
   return (
     <button type="button" className="org-member-candidate" disabled={disabled} onClick={() => onAdd(candidate)}>
@@ -88,7 +89,7 @@ export function MemberCandidateButton({
 }
 
 function InviteMemberDialog({ props }: { props: OrganizationsDialogsProps }) {
-  const { t } = useTranslation("orgs");
+  const { t } = useTranslation(NS.ORGS);
   const showResults = props.debouncedInviteKeyword.length >= 3;
   return (
     <Dialog open={props.inviteOpen} onOpenChange={props.onInviteOpenChange}>
@@ -177,7 +178,7 @@ function InviteMemberDialog({ props }: { props: OrganizationsDialogsProps }) {
 }
 
 function ConfirmDialogs({ props }: { props: OrganizationsDialogsProps }) {
-  const { t } = useTranslation("orgs");
+  const { t } = useTranslation(NS.ORGS);
   return (
     <>
       <AlertDialog open={props.deleteOpen} onOpenChange={props.onDeleteOpenChange}>
@@ -263,7 +264,7 @@ function MachineFields({
   onChange: (form: MachineFormState) => void;
   prefix: "createMachineDialog" | "editMachineDialog";
 }) {
-  const { t } = useTranslation("orgs");
+  const { t } = useTranslation(NS.ORGS);
   return (
     <div className="org-dialog-fields">
       <Field label={t(`${prefix}.name`)}>
@@ -293,7 +294,7 @@ function MachineFields({
 }
 
 function CopyValue({ label, value }: { label: string; value: string }) {
-  const { t } = useTranslation("orgs");
+  const { t } = useTranslation(NS.ORGS);
   return (
     <Field label={label}>
       <div className="org-copy-value">
@@ -314,7 +315,7 @@ function CopyValue({ label, value }: { label: string; value: string }) {
 }
 
 function MachineDialogs({ props }: { props: OrganizationsDialogsProps }) {
-  const { t } = useTranslation("orgs");
+  const { t } = useTranslation(NS.ORGS);
   return (
     <>
       <Dialog open={props.machineCreateOpen} onOpenChange={props.onMachineCreateOpenChange}>

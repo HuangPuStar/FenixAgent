@@ -19,7 +19,7 @@ import type { ChangeEvent, DragEvent, MouseEvent, ReactNode, RefObject } from "r
 import { useTranslation } from "react-i18next";
 
 import { ConfirmDialog } from "../config/ConfirmDialog";
-import { UI_COMPONENTS_NS } from "../lib/i18n";
+import { UI_COMPONENTS_NS } from "../i18n/namespace";
 import { FileTreeArborist } from "./file-tree-arborist";
 import type { FileTreeContextMenuState, FileTreeDownloadState } from "./file-tree-context-menu";
 import { FileTreeContextMenu } from "./file-tree-context-menu";

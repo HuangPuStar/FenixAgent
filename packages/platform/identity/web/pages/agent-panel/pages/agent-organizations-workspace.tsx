@@ -1,4 +1,12 @@
 import {
+  AgentMasterDetailHeader,
+  AgentMasterDetailWorkspace,
+} from "@fenix/ui-components/components/agent-master-detail-workspace";
+import { Button } from "@fenix/ui-components/ui/button";
+import { Input } from "@fenix/ui-components/ui/input";
+import { Skeleton } from "@fenix/ui-components/ui/skeleton";
+import { NS } from "@fenix/web-runtime/i18n/namespace";
+import {
   Check,
   Copy,
   Monitor,
@@ -13,16 +21,8 @@ import {
 } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Skeleton } from "@/components/ui/skeleton";
-import type { OrgMember } from "@/src/api/organizations";
-import type { MachineRecord } from "@/src/api/registry";
-import {
-  AgentMasterDetailHeader,
-  AgentMasterDetailWorkspace,
-} from "@/src/pages/agent-panel/shared/agent-master-detail-workspace";
-import type { OrganizationsWorkspaceProps } from "./agent-organizations-types";
+import type { OrgMember } from "../../../api/organizations";
+import type { MachineView, OrganizationsWorkspaceProps } from "./agent-organizations-types";
 import { canOperateMachine } from "./agent-organizations-utils";
 
 function RoleIcon({ role }: { role: string }) {
@@ -32,13 +32,13 @@ function RoleIcon({ role }: { role: string }) {
 }
 
 function RoleBadge({ role }: { role: string }) {
-  const { t } = useTranslation("orgs");
+  const { t } = useTranslation(NS.ORGS);
   return <span className={`org-role-badge is-${role}`}>{t(`roles.${role}`, role)}</span>;
 }
 
 /** 完整展示组织 ID，并提供明确的复制操作名称。 */
 export function OrganizationIdCopy({ id, onCopy }: { id: string; onCopy: () => void }) {
-  const { t } = useTranslation("orgs");
+  const { t } = useTranslation(NS.ORGS);
   return (
     <button type="button" onClick={onCopy} aria-label={t("copyId")} title={t("copyId")}>
       <code>{id}</code>
@@ -48,7 +48,7 @@ export function OrganizationIdCopy({ id, onCopy }: { id: string; onCopy: () => v
 }
 
 function OrganizationDirectory({ props }: { props: OrganizationsWorkspaceProps }) {
-  const { t } = useTranslation("orgs");
+  const { t } = useTranslation(NS.ORGS);
   return (
     <aside className="org-directory" aria-label={t("myOrgs")}>
       <div className="org-directory-heading">
@@ -78,7 +78,7 @@ function OrganizationDirectory({ props }: { props: OrganizationsWorkspaceProps }
 }
 
 function MembersSection({ props }: { props: OrganizationsWorkspaceProps }) {
-  const { t } = useTranslation("orgs");
+  const { t } = useTranslation(NS.ORGS);
   return (
     <section className="org-section">
       <div className="org-section-heading">
@@ -130,8 +130,8 @@ function MembersSection({ props }: { props: OrganizationsWorkspaceProps }) {
   );
 }
 
-function MachineRow({ machine, props }: { machine: MachineRecord; props: OrganizationsWorkspaceProps }) {
-  const { t } = useTranslation("orgs");
+function MachineRow({ machine, props }: { machine: MachineView; props: OrganizationsWorkspaceProps }) {
+  const { t } = useTranslation(NS.ORGS);
   const hostname = (machine.machineInfo?.hostname as string | undefined) ?? machine.agentName;
   const canOperate = canOperateMachine(machine, props.selectedOrgId, props.currentUserId, props.canManage);
   return (
@@ -191,7 +191,7 @@ function MachineRow({ machine, props }: { machine: MachineRecord; props: Organiz
 }
 
 function MachinesSection({ props }: { props: OrganizationsWorkspaceProps }) {
-  const { t } = useTranslation("orgs");
+  const { t } = useTranslation(NS.ORGS);
   return (
     <section className="org-section">
       <div className="org-section-heading">
@@ -231,7 +231,7 @@ function OrganizationDetail({
   props: OrganizationsWorkspaceProps;
   headerOnly?: boolean;
 }) {
-  const { t } = useTranslation("orgs");
+  const { t } = useTranslation(NS.ORGS);
   if (props.detailLoading)
     return (
       <div className="org-detail-loading">

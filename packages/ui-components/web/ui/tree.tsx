@@ -14,7 +14,7 @@ import type { ChildrenLoader, NodeState, TreeContextValue, TreeHandle, TreeNodeD
  * ./internal/tree-item-parts（源文件超过 500 行红线后的按职责拆分）。公开导出与拆分前完全一致。
  *
  * 文案通过 react-i18next 的包内命名空间读取，宿主必须在 render 前注册
- * `web/i18n/locales/<lng>/uiComponents.json`，详见 ../lib/i18n。
+ * `web/i18n/locales/<lng>/uiComponents.json`，详见 ../i18n/namespace。
  */
 
 // 公开类型定义在 ./internal/tree-types（供 internal/ 内多个文件共享，避免类型环），此处原样再导出。

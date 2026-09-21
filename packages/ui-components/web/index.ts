@@ -100,13 +100,13 @@ export * from "./config/DataTable";
 export * from "./config/EmptyState";
 export * from "./config/FormDialog";
 export * from "./config/StatusBadge";
+export * from "./i18n/namespace";
 // layout —— 页面骨架
 export * from "./layout/app-header";
 export * from "./layout/app-page";
 // lib —— 包内基础设施
 export * from "./lib/card-renderer";
 export * from "./lib/cn";
-export * from "./lib/i18n";
 export * from "./lib/theme";
 // ui —— 基础控件
 export * from "./ui/accordion";

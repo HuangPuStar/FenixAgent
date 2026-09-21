@@ -8,7 +8,7 @@
 
 import { Plus } from "lucide-react";
 import { useTranslation } from "react-i18next";
-import { UI_COMPONENTS_NS } from "../../../lib/i18n";
+import { UI_COMPONENTS_NS } from "../../../i18n/namespace";
 import { Button } from "../../../ui/button";
 import { ScrollArea } from "../../../ui/scroll-area";
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "../../../ui/sheet";

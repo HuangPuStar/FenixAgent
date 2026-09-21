@@ -1,6 +1,6 @@
 import { useTranslation } from "react-i18next";
+import { UI_COMPONENTS_NS } from "../i18n/namespace";
 import { cn } from "../lib/cn";
-import { UI_COMPONENTS_NS } from "../lib/i18n";
 import { Badge } from "../ui/badge";
 
 interface StatusBadgeProps {

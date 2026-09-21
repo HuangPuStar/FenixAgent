@@ -17,8 +17,8 @@
 import { CircleX, CodeXml, Loader2 } from "lucide-react";
 import { type ReactNode, useCallback, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
+import { UI_COMPONENTS_NS } from "../../i18n/namespace";
 import { cn } from "../../lib/cn";
-import { UI_COMPONENTS_NS } from "../../lib/i18n";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "../../ui/dialog";
 import { cardKindToStyle, formatOutput, kindLabel, supportsFilePreview, truncate } from "../lib/tool-call-utils";
 import { narrate } from "../narrators";

@@ -1,4 +1,4 @@
-import type { MachineRecord } from "@/src/api/registry";
+import type { MachineView } from "./agent-organizations-types";
 
 /** Derive a stable URL slug without creating a second server-side validation contract. */
 export function nameToSlug(name: string): string {
@@ -17,7 +17,7 @@ export function readDefaultMachineId(metadata: Record<string, unknown> | null | 
 }
 
 export function canOperateMachine(
-  machine: MachineRecord,
+  machine: MachineView,
   organizationId: string | null,
   currentUserId: string | null,
   canManage: boolean,

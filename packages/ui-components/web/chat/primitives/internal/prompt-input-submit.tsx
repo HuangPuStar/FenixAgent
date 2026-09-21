@@ -9,9 +9,8 @@ import type { ChatStatus } from "ai";
 import { CornerDownLeftIcon, Loader2Icon, SquareIcon, XIcon } from "lucide-react";
 import type { ComponentProps } from "react";
 import { useTranslation } from "react-i18next";
-
+import { UI_COMPONENTS_NS } from "../../../i18n/namespace";
 import { cn } from "../../../lib/cn";
-import { UI_COMPONENTS_NS } from "../../../lib/i18n";
 import { InputGroupButton } from "../../../ui/input-group";
 
 export type PromptInputSubmitProps = ComponentProps<typeof InputGroupButton> & {

@@ -1,7 +1,7 @@
 import { Blocks, Paperclip, Plus, Send, Square } from "lucide-react";
 import type { RefObject } from "react";
 import { useTranslation } from "react-i18next";
-import { UI_COMPONENTS_NS } from "../../lib/i18n";
+import { UI_COMPONENTS_NS } from "../../i18n/namespace";
 import { Button } from "../../ui/button";
 import { simplifyModelDisplayName } from "../lib/simplify-model-display-name";
 import type { AvailableCommand, SessionMode } from "../types";

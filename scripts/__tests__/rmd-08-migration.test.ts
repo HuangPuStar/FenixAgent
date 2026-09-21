@@ -4,7 +4,7 @@ import { existsSync } from "node:fs";
 /**
  * RMD-08 开始时从 root-source-owner audit 导出的精确迁移清单。
  *
- * 第二列是该文件**当前**唯一的 owner 落点。RMD-08 之后有四项改判：
+ * 第二列是该文件**当前**唯一的 owner 落点。RMD-08 之后有五项改判：
  * 1. `password-crypto.ts` 属于身份密码职责，CE 阶段 2 任务 1.2 把它随 `auth-client.ts` 一并迁入
  *    `packages/platform/identity/web/lib/`，不再是 apps/web 的壳文件。
  * 2. `system-sandbox.test.ts` 验证的是沙盒资源自身的请求构造约定，CE 阶段 2 任务 1.3 把 owner 从应用壳
@@ -13,27 +13,26 @@ import { existsSync } from "node:fs";
  *    `packages/web-runtime/web/lib/admin-key.ts`，宿主侧删除（见下方 relocated 断言）。
  * 4. 任务 1.3 收口的 9 份「宿主副本」不再由 apps/web 持有：字典、共享类型、hook、面板与一份表单校验测试的
  *    owner 落在资源包 / web-runtime，宿主副本删除（见 `RMD_08_RELOCATED` 与下方 relocated 断言）。
+ * 5. 任务 1.6 T2 删掉 18 个零消费宿主文件（171 → 153）：它们的 owner 落点**从未**被任何代码引用，
+ *    是 RMD-08 的搬运残留再加之后续拆分留下的孤儿。删除依据见任务 1.6 T2 的 review 文档：
+ *    逐标识符全仓 grep + 传递可达性（测试算根与不算根两轮）+ 现有 dist sourcemap 实证三者一致。
+ * 6. 任务 1.6 T4 再移出一项：`web/src/api/registry.ts` 的壳副本在 T4 之前一直由 identity 的组织机器页
+ *    经 `@/src/api/registry` 别名消费，T4 把该页的机器注册表能力改成宿主注入的 `MachineRegistryPort`
+ *    后，壳副本零消费，且与 `packages/resources/machine/web/api/registry.ts` 除 import 说明符外逐字相同，
+ *    于是删除、owner 归 machine 包（见下方 relocated 断言）。
  */
 const RMD_08_MOVES = [
   ["web/components/ai-elements/chat-message-content.css", "apps/web/components/ai-elements/chat-message-content.css"],
-  ["web/components/ai-elements/code-block.tsx", "apps/web/components/ai-elements/code-block.tsx"],
   ["web/components/ai-elements/conversation.tsx", "apps/web/components/ai-elements/conversation.tsx"],
   ["web/components/ai-elements/iframe-preview.tsx", "apps/web/components/ai-elements/iframe-preview.tsx"],
-  ["web/components/ai-elements/index.ts", "apps/web/components/ai-elements/index.ts"],
   ["web/components/ai-elements/message-attachments.tsx", "apps/web/components/ai-elements/message-attachments.tsx"],
   ["web/components/ai-elements/message.tsx", "apps/web/components/ai-elements/message.tsx"],
-  ["web/components/ai-elements/permission-request.tsx", "apps/web/components/ai-elements/permission-request.tsx"],
-  ["web/components/ai-elements/prompt-input.tsx", "apps/web/components/ai-elements/prompt-input.tsx"],
   ["web/components/ai-elements/reasoning.tsx", "apps/web/components/ai-elements/reasoning.tsx"],
   ["web/components/ai-elements/shimmer.tsx", "apps/web/components/ai-elements/shimmer.tsx"],
-  ["web/components/ai-elements/tool.tsx", "apps/web/components/ai-elements/tool.tsx"],
-  ["web/components/config/BatchActionBar.tsx", "apps/web/components/config/BatchActionBar.tsx"],
   ["web/components/config/ConfirmDialog.tsx", "apps/web/components/config/ConfirmDialog.tsx"],
   ["web/components/config/DataTable.tsx", "apps/web/components/config/DataTable.tsx"],
-  ["web/components/config/EmptyState.tsx", "apps/web/components/config/EmptyState.tsx"],
   ["web/components/config/FormDialog.tsx", "apps/web/components/config/FormDialog.tsx"],
   ["web/components/config/StatusBadge.tsx", "apps/web/components/config/StatusBadge.tsx"],
-  ["web/components/config/index.ts", "apps/web/components/config/index.ts"],
   ["web/src/App.tsx", "apps/web/src/App.tsx"],
   ["web/src/__tests__/agent-create-enter-flow.test.ts", "apps/web/src/__tests__/agent-create-enter-flow.test.ts"],
   [
@@ -128,23 +127,11 @@ const RMD_08_MOVES = [
   ["web/src/api/fs.ts", "apps/web/src/api/fs.ts"],
   ["web/src/api/instances.ts", "apps/web/src/api/instances.ts"],
   ["web/src/api/peri-task-details.ts", "apps/web/src/api/peri-task-details.ts"],
-  ["web/src/api/registry.ts", "apps/web/src/api/registry.ts"],
   ["web/src/components/FilePickerDialog.tsx", "apps/web/src/components/FilePickerDialog.tsx"],
-  ["web/src/components/OrgSwitcher.tsx", "apps/web/src/components/OrgSwitcher.tsx"],
-  ["web/src/components/PermissionTab.tsx", "apps/web/src/components/PermissionTab.tsx"],
-  [
-    "web/src/components/agent-panel/ChangedFilesSection.tsx",
-    "apps/web/src/components/agent-panel/ChangedFilesSection.tsx",
-  ],
   ["web/src/components/agent-panel/FileTabsBar.tsx", "apps/web/src/components/agent-panel/FileTabsBar.tsx"],
-  [
-    "web/src/components/agent-panel/FileTreeContextMenu.tsx",
-    "apps/web/src/components/agent-panel/FileTreeContextMenu.tsx",
-  ],
   ["web/src/components/agent-panel/FileTreeTab.tsx", "apps/web/src/components/agent-panel/FileTreeTab.tsx"],
   ["web/src/components/agent-panel/PreviewTab.tsx", "apps/web/src/components/agent-panel/PreviewTab.tsx"],
   ["web/src/components/agent-panel/TopModeTabs.tsx", "apps/web/src/components/agent-panel/TopModeTabs.tsx"],
-  ["web/src/components/agent-panel/WorkbenchPanel.tsx", "apps/web/src/components/agent-panel/WorkbenchPanel.tsx"],
   ["web/src/components/agent-panel/artifacts-dialogs.tsx", "apps/web/src/components/agent-panel/artifacts-dialogs.tsx"],
   [
     "web/src/components/agent-panel/artifacts-files-workspace.tsx",
@@ -225,11 +212,8 @@ const RMD_08_MOVES = [
   ["web/src/lib/token-stats.ts", "apps/web/src/lib/token-stats.ts"],
   ["web/src/lib/tool-semantic.ts", "apps/web/src/lib/tool-semantic.ts"],
   ["web/src/lib/types.ts", "apps/web/src/lib/types.ts"],
-  ["web/src/lib/use-context-queue.ts", "apps/web/src/lib/use-context-queue.ts"],
   ["web/src/pages/LoginPage.tsx", "apps/web/src/pages/LoginPage.tsx"],
-  ["web/src/pages/agent-panel/AgentAppShell.tsx", "apps/web/src/pages/agent-panel/AgentAppShell.tsx"],
   ["web/src/pages/agent-panel/AgentPanelLayout.tsx", "apps/web/src/pages/agent-panel/AgentPanelLayout.tsx"],
-  ["web/src/pages/agent-panel/AgentPanelPage.tsx", "apps/web/src/pages/agent-panel/AgentPanelPage.tsx"],
   ["web/src/pages/agent-panel/AgentSidebar.tsx", "apps/web/src/pages/agent-panel/AgentSidebar.tsx"],
   ["web/src/pages/agent-panel/AgentSidebarConfig.tsx", "apps/web/src/pages/agent-panel/AgentSidebarConfig.tsx"],
   ["web/src/pages/agent-panel/AgentSidebarTree.tsx", "apps/web/src/pages/agent-panel/AgentSidebarTree.tsx"],
@@ -237,10 +221,6 @@ const RMD_08_MOVES = [
   ["web/src/pages/agent-panel/agent-create-navigation.ts", "apps/web/src/pages/agent-panel/agent-create-navigation.ts"],
   ["web/src/pages/agent-panel/agent-panel.css", "apps/web/src/pages/agent-panel/agent-panel.css"],
   ["web/src/pages/agent-panel/artifacts-workspace.css", "apps/web/src/pages/agent-panel/artifacts-workspace.css"],
-  [
-    "web/src/pages/agent-panel/components/KnowledgeGraphPanel.tsx",
-    "apps/web/src/pages/agent-panel/components/KnowledgeGraphPanel.tsx",
-  ],
   [
     "web/src/pages/agent-panel/pages/AgentDashboardPage.tsx",
     "apps/web/src/pages/agent-panel/pages/AgentDashboardPage.tsx",
@@ -250,7 +230,6 @@ const RMD_08_MOVES = [
     "web/src/pages/agent-panel/pages/AgentManagementPage.tsx",
     "apps/web/src/pages/agent-panel/pages/AgentManagementPage.tsx",
   ],
-  ["web/src/pages/agent-panel/shared/AgentCardList.tsx", "apps/web/src/pages/agent-panel/shared/AgentCardList.tsx"],
   [
     "web/src/pages/agent-panel/shared/agent-master-detail-workspace.tsx",
     "apps/web/src/pages/agent-panel/shared/agent-master-detail-workspace.tsx",
@@ -264,12 +243,12 @@ const RMD_08_MOVES = [
 ] as const;
 
 /**
- * 任务 1.3 收口时删掉的宿主副本，三元组为 `[旧根路径, 应用壳路径, 包内 owner 落点]`。
+ * 1.3 与 1.6 T4 收口时删掉的宿主副本，三元组为 `[旧根路径, 应用壳路径, 包内 owner 落点]`。
  *
  * 这些文件在 RMD-08 时是「apps/web 的壳」，但键的 owner 与实现的 owner 都属于资源包 / web-runtime：
  * 宿主再留一份就是两份实现并存（i18n 字典尤其危险——命名空间同名时构建期不报错，运行期整片文案回退）。
  * `MetaAgentPanel.tsx` 的宿主副本在被删除前已经零引用（面板实现在 workflow 包内），仍按「宿主不得复活」
- * 断言，避免把一份 workflow 实现重新接回应用壳。
+ * 断言，避免把一份 workflow 实现重新接回应用壳；`api/registry.ts` 同理由 T4 移出（见文件头第 6 条）。
  */
 const RMD_08_RELOCATED = [
   [
@@ -288,6 +267,7 @@ const RMD_08_RELOCATED = [
     "packages/resources/workflow/web/lib/use-workflow-events.ts",
   ],
   ["web/src/types/config.ts", "apps/web/src/types/config.ts", "packages/web-runtime/web/types/config.ts"],
+  ["web/src/api/registry.ts", "apps/web/src/api/registry.ts", "packages/resources/machine/web/api/registry.ts"],
   [
     "web/src/i18n/locales/en/agents.json",
     "apps/web/src/i18n/locales/en/agents.json",
@@ -316,11 +296,13 @@ const RMD_08_RELOCATED = [
 ] as const;
 
 describe("RMD-08 apps/web migration", () => {
-  // 171 个保留的应用壳源文件都必须从旧根路径移除，并保留在唯一的 owner 目标。
+  // 152 个保留的应用壳源文件都必须从旧根路径移除，并保留在唯一的 owner 目标。
   // 任务 1.3 收口移出的一项：`__tests__/task-form-schema.test.ts` 是内联的表单校验 schema 副本，宿主侧
   // 既无 TaskForm 组件也无导入方，且已与包内唯一 owner 漂移；owner 是 task 包，见下方 relocated 断言。
+  // 任务 1.6 T2 再移出 18 项零消费文件，见文件头第 5 条；T4 又移出 1 项（`api/registry.ts`，
+  // 见文件头第 6 条与下方 relocated 断言），153 → 152。
   test("removes every legacy source and retains its exact owner target", () => {
-    expect(RMD_08_MOVES).toHaveLength(171);
+    expect(RMD_08_MOVES).toHaveLength(152);
     for (const [source, target] of RMD_08_MOVES) {
       expect(existsSync(source), `legacy source still exists: ${source}`).toBe(false);
       expect(existsSync(target), `apps/web target is missing: ${target}`).toBe(true);
@@ -347,10 +329,11 @@ describe("RMD-08 apps/web migration", () => {
     expect(existsSync("packages/web-runtime/web/lib/admin-key.ts")).toBe(true);
   });
 
-  // 任务 1.3 收口的 9 份宿主副本：旧根路径与应用壳路径都不得复活，且包侧 owner 落点必须存在。
-  // 副本与 owner 并存是「两份实现各自能跑」的最坏形态，删除与断言必须成对出现。
+  // 任务 1.3 收口的 9 份 + 任务 1.6 T4 新增的 1 份宿主副本：旧根路径与应用壳路径都不得复活，
+  // 且包侧 owner 落点必须存在。副本与 owner 并存是「两份实现各自能跑」的最坏形态，
+  // 删除与断言必须成对出现。
   test("relocates the leftover host copies to their package owners", () => {
-    expect(RMD_08_RELOCATED).toHaveLength(9);
+    expect(RMD_08_RELOCATED).toHaveLength(10);
     for (const [legacy, shell, owner] of RMD_08_RELOCATED) {
       expect(existsSync(legacy), `legacy source still exists: ${legacy}`).toBe(false);
       expect(existsSync(shell), `host copy still exists: ${shell}`).toBe(false);

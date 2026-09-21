@@ -3,8 +3,7 @@
 //
 // 与 `locales/**` 分开声明：组件只需要命名空间常量，不该因为 `useTranslation(SANDBOX_NS)`
 // 就把两份字典拉进模块图（字典由宿主统一注册，见 web/i18n/index.ts 的说明）。
-// 同款先例：`@fenix/ui-components/lib/i18n` 只导出 `UI_COMPONENTS_NS`，字典在
-// `@fenix/ui-components/i18n/locales/*/uiComponents.json`。
+// 同款先例：`@fenix/ui-components/i18n` 的命名空间常量 `UI_COMPONENTS_NS`，字典也从同出口导出。
 
 /**
  * 命名空间归属本包（键的最终所在地 = 包的 owner，计划 §4），因此常量也由本包声明。

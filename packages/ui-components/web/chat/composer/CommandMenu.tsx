@@ -1,7 +1,7 @@
 import { CheckCircle2, Plug, Search, Sparkles } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { UI_COMPONENTS_NS } from "../../lib/i18n";
+import { UI_COMPONENTS_NS } from "../../i18n/namespace";
 import { Input } from "../../ui/input";
 import { ScrollArea } from "../../ui/scroll-area";
 import { useRovingListNavigation } from "../../ui/use-roving-list-navigation";

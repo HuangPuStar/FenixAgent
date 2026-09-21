@@ -1,7 +1,7 @@
 import { X } from "lucide-react";
 import { type ReactNode, useRef } from "react";
 import { useTranslation } from "react-i18next";
-import { UI_COMPONENTS_NS } from "../../lib/i18n";
+import { UI_COMPONENTS_NS } from "../../i18n/namespace";
 import type { AvailableCommand, ChatInputMessage, FileAttachment, SessionMode } from "../types";
 import { CommandMenu, type McpOption } from "./CommandMenu";
 import { ComposerAssets, type ComposerQuote } from "./composer-assets";

@@ -1,7 +1,7 @@
 import { Check, ChevronDown, ChevronUp, Shield } from "lucide-react";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
-import { UI_COMPONENTS_NS } from "../../lib/i18n";
+import { UI_COMPONENTS_NS } from "../../i18n/namespace";
 import { Button } from "../../ui/button";
 import { Popover, PopoverContent, PopoverTrigger } from "../../ui/popover";
 import type { SessionMode } from "../types";
@@ -14,7 +14,7 @@ import type { SessionMode } from "../types";
  * 归属说明：该文件不在输入岛组的分组清单内，但它是 `composer-toolbar.tsx`（readOnly 用法）
  * 的唯一消费方，且没有任何并行分组负责复制它——为保证输入岛可用，本组一并复制到
  * `composer/`。若集成阶段决定把它归入 `panels/` 或 `shell/`，只需移动文件并同步
- * `composer-toolbar.tsx` 的一行 import（文件内部只依赖 `../../ui/*`、`../types` 与 `../../lib/i18n`）。
+ * `composer-toolbar.tsx` 的一行 import（文件内部只依赖 `../../ui/*`、`../types` 与 `../../i18n/namespace`）。
  *
  * 纯化改动点：`@fenix/chat-channel` 的 `SessionMode` → 包内 `../types`；
  * `@/components/ui/{button,popover}` → 包内 `../../ui/*`；命名空间改为 `UI_COMPONENTS_NS`

@@ -15,8 +15,8 @@ import { ArrowLeft, ChevronRight, Folder, Loader2, Upload } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { FileTypeIcon } from "../../components/file-icon-helper";
+import { UI_COMPONENTS_NS } from "../../i18n/namespace";
 import { cn } from "../../lib/cn";
-import { UI_COMPONENTS_NS } from "../../lib/i18n";
 import { Button } from "../../ui/button";
 import { Input } from "../../ui/input";
 

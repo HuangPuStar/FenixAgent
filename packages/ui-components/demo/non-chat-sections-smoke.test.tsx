@@ -1,9 +1,8 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
+import { initializeHappyDomWindow } from "@fenix/ui-components/testing";
 import { Window } from "happy-dom";
 import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
-
-import { initializeHappyDomWindow } from "../web/__tests__/happy-dom-window";
 import { setupDemoI18n } from "./i18n";
 import { Providers } from "./providers";
 import { AgentL1Section } from "./sections/agent-l1";

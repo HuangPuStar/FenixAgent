@@ -8,9 +8,8 @@
 import { ImageIcon, PaperclipIcon, XIcon } from "lucide-react";
 import { type ComponentProps, Fragment, type HTMLAttributes, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
-
+import { UI_COMPONENTS_NS } from "../../../i18n/namespace";
 import { cn } from "../../../lib/cn";
-import { UI_COMPONENTS_NS } from "../../../lib/i18n";
 import { Button } from "../../../ui/button";
 import { DropdownMenuItem } from "../../../ui/dropdown-menu";
 // 仅需 HoverCardTrigger：内容区使用包内 PromptInputHoverCardContent 包装（源文件额外引入了未使用的 HoverCardContent）
