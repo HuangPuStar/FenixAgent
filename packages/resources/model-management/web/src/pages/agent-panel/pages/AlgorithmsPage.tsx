@@ -2,10 +2,10 @@ import { AppHeader } from "@fenix/ui-components/layout/app-header";
 import { Badge } from "@fenix/ui-components/ui/badge";
 import { Button } from "@fenix/ui-components/ui/button";
 import { Input } from "@fenix/ui-components/ui/input";
-import { NS } from "@fenix/web-runtime/i18n/namespace";
 import { Search } from "lucide-react";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
+import { MODELS_NS } from "../../../../i18n/namespace";
 import { AlgorithmDetailDialog } from "./AlgorithmDetailDialog";
 
 interface Algorithm {
@@ -337,7 +337,9 @@ const ALL_ALGORITHMS: Algorithm[] = [
 const CATEGORIES = ["全部", "分类", "回归", "聚类", "降维", "排序", "异常检测", "时序预测", "深度学习", "推荐", "优化"];
 
 export function AlgorithmsPage() {
-  const { t } = useTranslation(NS.AGENT_PANEL);
+  // 页标题复用本包 `nav.algorithms`（文案与宿主 `agentPanel.algorithms` 逐字一致，判定见
+  // `web/contribution.ts`），副标题是本包自持的 `algorithms.subtitle`——本页文案自此全在本包字典内。
+  const { t } = useTranslation(MODELS_NS);
   const [activeCategory, setActiveCategory] = useState("全部");
   const [selectedAlgorithm, setSelectedAlgorithm] = useState<Algorithm | null>(null);
   const [searchInput, setSearchInput] = useState("");
@@ -359,7 +361,7 @@ export function AlgorithmsPage() {
   return (
     <div className="flex flex-col flex-1 h-full overflow-auto">
       <div className="px-8 pt-8 pb-0">
-        <AppHeader title={t("algorithms")} subtitle={t("algorithmsSubtitle")} />
+        <AppHeader title={t("nav.algorithms")} subtitle={t("algorithms.subtitle")} />
       </div>
 
       <div className="flex items-center gap-1.5 px-8 pt-5 pb-2">

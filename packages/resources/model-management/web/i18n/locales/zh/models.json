@@ -485,10 +485,14 @@
     "loading": "加载中…"
   },
   "verticalModels": {
+    "subtitle": "以企业专有数据精调，将通用AI转化为懂企业业务的专业推理引擎",
     "searchLabel": "搜索垂直模型",
     "emptyTitle": "没有匹配的模型",
     "emptyDescription": "换个关键词试试，或清空搜索查看全部模型。",
     "clearSearch": "清空搜索"
+  },
+  "algorithms": {
+    "subtitle": "汇集主流机器学习算法，Agent 任务驱动即插即用"
   },
   "nav": {
     "models": "模型库",
