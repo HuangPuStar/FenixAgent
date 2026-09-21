@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { shouldAutoReconnectOnVisible } from "../agent-panel/chat-visible-reconnect";
+import { shouldAutoReconnectOnVisible } from "../pages/agent-panel/chat-visible-reconnect";
 
 describe("shouldAutoReconnectOnVisible", () => {
   // 首次挂载且初始可见时不重复连接

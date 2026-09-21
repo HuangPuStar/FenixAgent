@@ -1,61 +1,108 @@
+// use-chat-panel-runtime.ts
+// ChatPanel 的运行时：YJS 建连/重连状态机、commandId 幂等缓存、出站 Action 回调与 ACP 展示态派生。
+//
+// 拆分背景（CE 阶段 2 §1.6 T6d）：ChatPanel 原是单文件 494 行，transport/状态机与分支渲染混在一起。
+// 归位宿主时按职责拆三份（用户裁定「拆成三份」，各 ≤500 行）：
+// - 本文件：连接与动作（无 JSX）
+// - `ChatPanel.tsx`：分支渲染与错误卡片（不含状态机）
+// - `chat-panel-ports.tsx`：ui-components 面板的宿主端口装配
+//
+// 包侧依赖经 `@fenix/agent-runtime` 的**根浏览器出口**（`src/index.ts` 明写「只导出 Environment、
+// Chat 与 YJS 的浏览器侧实现」），与 workflow 包消费同一份实现，因此不会产生第二份 Y.Doc 或连接。
+// 宿主里还残留的 `@/src/yjs/*` 等同源别名（如 `use-task-views.ts`）随 T6e 一并收敛。
+
+import {
+  applyDocHubUpdate,
+  buildYjsUrl,
+  createYjsWs,
+  getDocHubStateVectors,
+  replaceDocHubUpdate,
+  useChatState,
+  useSessionState,
+  type YjsWsState,
+} from "@fenix/agent-runtime";
 import {
   type ActionAck,
   type ActionError,
   createDeterministicRcsSessionId,
   type PublicErrorInfo,
 } from "@fenix/chat-channel";
-import { ACPMain } from "@fenix/ui-components/chat/shell/ACPMain";
-import type { BoundMcpOption } from "@fenix/ui-components/chat/shell/chat-interface-types";
-import { Bot, Loader2 } from "lucide-react";
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
-import { TooltipProvider } from "@/components/ui/tooltip";
 import { useTaskViews } from "@/src/hooks/use-task-views";
 import { useChatPageVisible } from "@/src/hooks/usePageVisible";
 import { NS } from "@/src/i18n";
 import { useSession } from "@/src/lib/auth-client";
 import { randomUUID } from "@/src/lib/utils";
-import { useChatState } from "../hooks/use-chat-state";
-import { useSessionState } from "../hooks/use-session-state";
-import { applyDocHubUpdate, getDocHubStateVectors, replaceDocHubUpdate } from "../yjs/doc-hub";
-import { buildYjsUrl, createYjsWs, type YjsWsState } from "../yjs/yjs-ws";
-import { resolveChatAuthState } from "./chat-auth-state";
-import { useChatPanelPorts } from "./chat-panel-ports";
+import { type ChatAuthState, resolveChatAuthState } from "./chat-auth-state";
 import type { ChatWsConnectionState } from "./chat-visible-reconnect";
 import { sendSessionMutationWithRefresh } from "./session-mutation-refresh";
 
-type WsConnectionState = ChatWsConnectionState;
-
-interface ChatPanelProps {
-  agentId: string | null;
-  sessionId?: string | null;
-  hideSidebar?: boolean;
-  scenePrompt?: string;
-  contextKey?: string;
-  onPromptComplete?: () => void;
-  /**
-   * 已绑定 MCP 列表（透传给 ui-components 面板的 `boundMcps` 端口）。
-   *
-   * 取数在宿主容器：`agent-config/web` 的 `loadBoundMcps` 只能由宿主容器调用——`.dependency-cruiser.cjs`
-   * 的 `agent-runtime-not-to-resources` 禁止本包依赖 resources（含 `agent-config`）。未注入时命令菜单
-   * 只显示 ACP 命令、不含 MCP 条目。
-   */
-  boundMcps?: readonly BoundMcpOption[];
+/** `ACPMain` 的出站回调集合（`sessionState.acpSessionId` 变化时重建，见下）。 */
+export interface ChatPanelCallbacks {
+  onSendPrompt: (contentBlocks: unknown[]) => void;
+  onCancel: () => void;
+  onCreateSession: () => void;
+  onLoadSession: (sid: string) => void;
+  onResumeSession: (sid: string) => void;
+  onRenameSession: (sid: string, title: string) => void;
+  onDeleteSession: (sid: string) => void;
+  onRespondPermission: (requestId: string, optionId: string | null) => void;
+  onRespondQuestion: (questionId: string, answers: Array<string | string[]>) => void;
+  onSetMode: (modeId: string) => void;
 }
 
-export function ChatPanel({
+/** `ACPMain` 需要的派生展示态（从 Chat Doc 的能力/模型/模式子树投影）。 */
+export interface ChatPanelDerivedState {
+  supportsImages: boolean;
+  modelName: string | undefined;
+  supportsLoadSession: boolean;
+  availableCommands: ReturnType<typeof useChatState>["state"]["availableCommands"];
+  availableModes: { id: string; name: string }[];
+  currentModeId: string | null;
+  supportsModeSelection: boolean;
+  tokenUsage: ReturnType<typeof useChatState>["state"]["tokenUsage"];
+}
+
+/**
+ * ChatPanel 的运行时状态与出站出口。
+ *
+ * `chatState` / `sessionState` 是两份 Y.Doc 的读数（DocHub 共享实例），`periTasks` 单独订阅
+ * Session Doc 的 tasks 子树；三者由本 hook 统一持有，渲染层只做分支。
+ */
+export interface ChatPanelRuntime {
+  authState: ChatAuthState;
+  connectionState: ChatWsConnectionState;
+  /** 最近一次服务端分类错误；责任域由错误产生边界提供，不能按 WebSocket 通道猜测。 */
+  classifiedError: PublicErrorInfo | null;
+  /** 最近一次 action_error（transient banner）；不进入 connectionState 状态机。 */
+  actionError: ActionError | null;
+  /** 非终态断开后的自动重连标记：UI 展示轻提示而非整屏「已断开」。 */
+  autoReconnecting: boolean;
+  /** RCS session id（Y.Doc 命名用），未就绪时为 undefined。 */
+  rcsSessionKey: string | undefined;
+  chatState: ReturnType<typeof useChatState>["state"];
+  sessionState: ReturnType<typeof useSessionState>["state"];
+  periTasks: ReturnType<typeof useTaskViews>["state"]["tasks"];
+  periTasksLoaded: boolean;
+  derivedState: ChatPanelDerivedState;
+  callbacks: ChatPanelCallbacks;
+}
+
+/**
+ * 装配 ChatPanel 的运行时。`agentId` 为空时不建连；`sessionId` 参与 RCS session id 派生，
+ * 因此同一 agent 的不同会话拥有各自独立的 Y.Doc。
+ */
+export function useChatPanelRuntime({
   agentId,
   sessionId,
-  hideSidebar,
-  scenePrompt,
-  contextKey,
-  onPromptComplete,
-  boundMcps,
-}: ChatPanelProps) {
+}: {
+  agentId: string | null;
+  sessionId?: string | null;
+}): ChatPanelRuntime {
   const { t } = useTranslation(NS.AGENT_PANEL);
-  const [connectionState, setConnectionState] = useState<WsConnectionState>("disconnected");
-  /** 最近一次服务端分类错误；责任域由错误产生边界提供，不能按 WebSocket 通道猜测。 */
+  const [connectionState, setConnectionState] = useState<ChatWsConnectionState>("disconnected");
   const [classifiedError, setClassifiedError] = useState<PublicErrorInfo | null>(null);
   // 最近一次 action_error（transient banner，5s 自动清除）；不进入 errorCode 连接状态机，
   // 避免单动作失败触发整屏错误态
@@ -282,7 +329,7 @@ export function ChatPanel({
   }, [agentId, sessionId, rcsSessionKey, authState, sendViaWs, handleActionAck, releaseCommandId, showActionError]);
 
   // 从 chatState 提取 ACPMain 需要的派生状态
-  const derivedState = useMemo(() => {
+  const derivedState = useMemo((): ChatPanelDerivedState => {
     const caps = chatState.capabilities;
     const ms = chatState.modelState;
     const mds = chatState.modeState;
@@ -315,7 +362,7 @@ export function ChatPanel({
   // 为 ACPMain 提供的出站回调（经 sendAction 统一出口：WS 未就绪时 toast 反馈；
   // 回调保持 void 签名，与 ACPMainProps 契约一致，boolean 结果不外传）
   const callbacks = useMemo(
-    () => ({
+    (): ChatPanelCallbacks => ({
       onSendPrompt: (contentBlocks: unknown[]) => {
         // send_prompt 携带当前 ACP sessionId：服务端（translator → dispatcher）据此
         // 精确路由到对应 session。不带时 dispatcher fallback 连接级当前会话——多
@@ -373,122 +420,18 @@ export function ChatPanel({
     [sendAction, sendViaWs, sessionState.acpSessionId],
   );
 
-  // 宿主端口（纯化后由 ui-components 的 chat 外壳注入；实现与来源见 chat-panel-ports.tsx）
-  const ports = useChatPanelPorts({ agentId, sessionId });
-
-  // 未选中实例 → 欢迎空状态
-  if (!agentId) {
-    return (
-      <div className="agent-welcome-empty">
-        <Bot className="h-16 w-16" />
-        <p className="title">{t("selectAgent")}</p>
-        <p className="desc">{t("selectAgentDesc")}</p>
-      </div>
-    );
-  }
-
-  // 错误状态
-  if ((connectionState === "error" || connectionState === "disconnected") && classifiedError) {
-    return <PublicErrorCard error={classifiedError} className="agent-welcome-empty" />;
-  }
-
-  // 登录态未就绪（user session 加载中）——与"连接中"（WS 建连）语义分离，
-  // 避免 auth 悬挂时 UI 永驻"正在连接 Agent"转圈
-  if (authState === "loading") {
-    return (
-      <div className="agent-welcome-empty">
-        <Loader2 className="h-8 w-8 animate-spin text-brand" />
-        <p className="title">{t("loadingUser")}</p>
-      </div>
-    );
-  }
-
-  // 登录态失败（useSession 报错 / 未登录）——明确错误态 + 重试出口
-  if (authState === "failed") {
-    return (
-      <div className="agent-welcome-empty">
-        <p className="title">{t("authFailed")}</p>
-        <p className="desc">{t("authFailedDesc")}</p>
-      </div>
-    );
-  }
-
-  // 连接中
-  if (connectionState === "connecting") {
-    return (
-      <div className="agent-welcome-empty">
-        <Loader2 className="h-8 w-8 animate-spin text-brand" />
-        <p className="title">{t("connectingAgent")}</p>
-      </div>
-    );
-  }
-
-  // 已连接 → 渲染 ACPMain
-  if (connectionState === "connected") {
-    return (
-      <TooltipProvider>
-        {classifiedError && <PublicErrorCard error={classifiedError} />}
-        {actionError && <PublicErrorCard error={actionError.error} />}
-        {sessionState.agentPublicError &&
-          sessionState.agentPublicError.id !== classifiedError?.id &&
-          sessionState.agentPublicError.id !== actionError?.error.id && (
-            <PublicErrorCard error={sessionState.agentPublicError} />
-          )}
-        <ACPMain
-          agentId={agentId}
-          hideSidebar={hideSidebar}
-          // 此处必须是 RCS session id（与 Y.Doc 命名一致），不是 URL sessionId：
-          rcsSessionId={rcsSessionKey ?? undefined}
-          detailSessionId={sessionId ?? undefined}
-          scenePrompt={scenePrompt}
-          contextKey={contextKey}
-          onPromptComplete={onPromptComplete}
-          chatState={chatState}
-          sessionState={sessionState}
-          connectionState={connectionState}
-          // Peri Task 视图（切片 2）：会话活动面板数据，经 ACPMain 透传给 ChatInterface
-          periTasks={periTaskState.tasks}
-          periTasksLoaded={periTaskState.loaded}
-          supportsImages={derivedState.supportsImages}
-          supportsLoadSession={derivedState.supportsLoadSession}
-          modelName={derivedState.modelName}
-          tokenUsage={derivedState.tokenUsage}
-          availableCommands={derivedState.availableCommands}
-          availableModes={derivedState.availableModes}
-          currentModeId={derivedState.currentModeId}
-          supportsModeSelection={derivedState.supportsModeSelection}
-          boundMcps={boundMcps}
-          {...callbacks}
-          {...ports}
-        />
-      </TooltipProvider>
-    );
-  }
-
-  // 断开仅表示连接生命周期；状态机可自行重连，不生成业务错误或恢复操作。
-  return (
-    <div className="agent-welcome-empty">
-      <p className="title">{autoReconnecting ? t("reconnecting") : t("agentDisconnected")}</p>
-      <p className="desc">{autoReconnecting ? t("reconnectingDesc") : t("agentOfflineDesc")}</p>
-    </div>
-  );
-}
-
-function PublicErrorCard({ error, className }: { error: PublicErrorInfo; className?: string }) {
-  return (
-    <div
-      className={
-        className ??
-        "mx-4 mt-3 rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive"
-      }
-      role="alert"
-    >
-      <p className="font-medium">执行出错</p>
-      <p className="mt-1 whitespace-pre-wrap">{error.message}</p>
-      <div className="mt-4 flex flex-wrap gap-x-4 gap-y-1">
-        <span className="break-all">Type: {error.type}</span>
-        <span className="break-all">ID: {error.id}</span>
-      </div>
-    </div>
-  );
+  return {
+    authState,
+    connectionState,
+    classifiedError,
+    actionError,
+    autoReconnecting,
+    rcsSessionKey,
+    chatState,
+    sessionState,
+    periTasks: periTaskState.tasks,
+    periTasksLoaded: periTaskState.loaded,
+    derivedState,
+    callbacks,
+  };
 }

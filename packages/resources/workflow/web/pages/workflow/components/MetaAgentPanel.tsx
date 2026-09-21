@@ -1,8 +1,26 @@
-import { ChatPanel } from "@fenix/agent-runtime";
 import { ChevronLeft, ChevronRight } from "lucide-react";
+import type { ComponentType } from "react";
 import { useTranslation } from "react-i18next";
 
+/**
+ * 宿主注入的聊天面板端口：只声明本面板真实供给的 props（`hideSidebar` 由本组件自填）。
+ *
+ * 实现必须是 `apps/web/src/pages/agent-panel/ChatPanel.tsx`：它是宿主接线层（依赖宿主 i18n、
+ * identity 的 web 会话与宿主的 hooks），而包不得依赖 apps（`web-package-not-to-app` 红线），
+ * 因此由宿主 route 注入。同型先例见 `ProdViewPage` 的 `chatArea` 端口（CE 阶段 2 §1.6 T5b）。
+ */
+export interface MetaAgentChatPanelProps {
+  agentId: string | null;
+  scenePrompt?: string;
+  contextKey?: string;
+  onPromptComplete?: () => void;
+  /** 面板自带拉手与外壳，始终隐藏聊天面板内部的侧边栏会话列表。 */
+  hideSidebar?: boolean;
+}
+
 export interface MetaAgentPanelProps {
+  /** 宿主注入的聊天面板组件；此处只透传，不复制会话/连接逻辑。 */
+  chatPanel: ComponentType<MetaAgentChatPanelProps>;
   /** 面板是否展开 */
   chatOpen: boolean;
   /** 设置面板展开状态 */
@@ -31,15 +49,16 @@ export interface MetaAgentPanelProps {
  * 按「键/组件归属消费方域」迁入本包；否则包内 `WorkflowEditor` 必须 import 宿主路径，违反静态条件 2
  * （包 `web/**` 不得出现 `@/`）。宿主那份与 `.meta-agent-*` 样式清理登记在任务 1.3 的 sharedPatches。
  *
- * **依赖边界**：聊天实现来自 `@fenix/agent-runtime` 的**根**浏览器出口（`ChatPanel` 与 YJS/会话状态同批导出，
- * 且宿主 Vite 已把它指向同一份实现），因此这里只负责「拉手 + 面板外壳」，不复制会话/连接逻辑，
- * 也不会产生第二份 ACP 连接。收起时整块卸载面板，避免保持连接。
+ * **依赖边界**：聊天实现由宿主经 `chatPanel` 端口注入（CE 阶段 2 §1.6 T6d：`ChatPanel` 是宿主接线层，
+ * 已从 `@fenix/agent-runtime` 根出口撤出并物理迁入 `apps/web`），因此这里只负责「拉手 + 面板外壳」，
+ * 不复制会话/连接逻辑，也不会产生第二份 ACP 连接。收起时整块卸载面板，避免保持连接。
  *
  * **样式约定**：`meta-agent-panel` / `meta-agent-toggle-btn` 两个类名是宿主窄屏样式（`apps/web/src/index.css`
  * 的 `.meta-agent-panel .acp-main-root` 等作用域收紧规则）的钩子，故意保持不变；这批窄屏规则的归属收敛
  * 同属 sharedPatches（宿主改动不由本包执行）。
  */
 export function MetaAgentPanel({
+  chatPanel: ChatPanel,
   chatOpen,
   setChatOpen,
   metaAgentId,

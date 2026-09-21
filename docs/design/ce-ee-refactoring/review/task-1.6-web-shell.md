@@ -99,7 +99,7 @@ WebShell 从静态 registry 收集各资源包的 web contribution（不反向�
 | T3 | `@fenix/ui-components` 扩面 | 已交付 | `b858bf68f` |
 | T4 | `identity/web` 清零 + i18n | 4a 已交付 / 4b 待办 | 见下方 §7.3 |
 | T5 | `chat-channel/web` 清零 | a,b,c1,c2,c5,d 已交付 | 见下方 §7.4–§7.10 |
-| T6 | `agent-runtime/web` 收敛 | a,b,c 已交付 / d,e 待办 | 见下方 §7.11 |
+| T6 | `agent-runtime/web` 收敛 | a,b,c,d 已交付 / e 待办 | 见下方 §7.11 |
 | T7 | 5 条 `special-dependency` 消除 | 待办 | — |
 | T8 | 宿主组件/lib/api 簇改指并删除 | 待办 | — |
 | T9 | i18n 归属重划与 `quoteTruncatedBadge` 缺陷修复 | 待办 | — |
@@ -773,7 +773,7 @@ c2 之后线上聊天界面由 ui-components 的 `ACPMain` 渲染，`chat-channe
 
 ---
 
-### 7.11 T6 旧 chat 实现退场（2026-09-21，T6a `9998926ec` + T6b `912569796`）
+### 7.11 T6 旧 chat 实现退场与 `ChatPanel` 归位（2026-09-21，T6a `9998926ec` + T6b `912569796`）
 
 #### 前置核查：删除前必须证明包内是超集（用户裁定的硬条件）
 
@@ -842,12 +842,47 @@ prod-view,model-management}` 经桶入口间接触达）以 `ReferenceError: cus
 `apps/web/src/__tests__/agent-resource-picker-interaction.test.tsx` 的注入在 `afterAll` 已还原全局，不泄漏，
 故未改。
 
-#### 待办（T6d / T6e）
+#### T6d：`ChatPanel` 归位宿主并拆成三份（用户裁定「宿主注入」）
+
+**先决问题：workflow 包是 `ChatPanel` 的消费方。** 原裁定只说「`ChatPanel` 迁 `apps/web`」，但盘点消费方
+时发现 `packages/resources/workflow/web/pages/workflow/components/MetaAgentPanel.tsx` 正从
+`@fenix/agent-runtime` 根出口 import `ChatPanel`。若照搬，`@fenix/resource-workflow` 就要依赖 `apps/web`
+——踩 `web-package-not-to-app` 与 §2.3 依赖矩阵两条红线。按工程原则第 6 条「职责与公共契约变化必须先反馈」
+向用户呈报三个候选（宿主注入 / 面板下沉到 workflow 包 / 端口传递 hooks），用户裁定
+**「宿主注入（沿用 T5b 先例）」**：`WorkflowEditor` 声明 `chatPanel` 端口，宿主路由注入自己的实现。
+
+| 动作 | 内容 |
+| --- | --- |
+| 搬迁（模块） | `chat-auth-state.ts` / `chat-visible-reconnect.ts` / `session-mutation-refresh.ts` 原样 `git mv` 至 `apps/web/src/pages/agent-panel/`；`chat-panel-ports.tsx` 同迁并改写头部（原在包内、现为宿主模块，对包只依赖包出口） |
+| 拆分（视图） | `ChatPanel.tsx` 494 行的单文件按天然边界拆三份：`ChatPanel.tsx`（184 行，只做分支渲染 + `PublicErrorCard`）、`use-chat-panel-runtime.ts`（437 行，YJS 建连/重连状态机、commandId 幂等缓存、出站 Action 回调与派生展示态，无 JSX）、`chat-panel-ports.tsx`（205 行，ui-components 面板的宿主端口装配）——各 ≤500 行，满足原则 2 |
+| 搬迁（测试） | 4 个测试 `git mv` 至 `apps/web/src/__tests__/`，导入路径改 `../pages/agent-panel/...` |
+| 端口形状 | 包侧 `MetaAgentChatPanelProps { agentId; scenePrompt?; contextKey?; onPromptComplete?; hideSidebar? }`；`WorkflowEditorProps` 增 `chatPanel: ComponentType<MetaAgentChatPanelProps>`，`MetaAgentPanel` 只透传不复制会话/连接逻辑（宿主注入端的同型先例见 `routes/view/$prodViewId.tsx` 的 `chatArea`） |
+| 注入点 | `apps/web/src/routes/agent/_panel/workflow_.$id.edit.tsx` 增 lazy `ChatPanel` 并 `chatPanel={ChatPanel}` |
+| 包出口 | `packages/agent-runtime/src/index.ts` 撤出 `ChatPanel` 导出并在头注写明去向（该出口的契约是「只导出 Environment / Chat / YJS 的浏览器侧实现」，ChatPanel 依赖宿主 i18n 与 identity 的 web 会话，本就不该在此） |
+| 别名 | 删 `@/src/pages/agent-panel/ChatPanel` 两条特殊别名（根 `tsconfig.json`、`apps/web/vite.config.ts`），删后由通用 `@/src/*` 覆盖；`ChatArea.tsx` 的 lazy import 改相对路径 |
+| 台账 | `web-package-not-to-app`（`@fenix/agent-runtime -> @fenix/web-app`）rationale 由 T6c2 的 10 处 / 4 文件更新为 **2 处 / 2 文件**（`web/hooks/use-chat-state.ts` 与 `use-session-state.ts` 各一处 `@/src/lib/structured-to-thread`，随 T6e 归零）；ChatPanel 6 处与 chat-panel-ports 2 处随本片消失 |
+| 连带注释 | workflow 包三处（`web/index.ts` 头注、`workflow-browser-surface.test.ts` 的编辑器守护说明、`workflow-page-route.test.ts` 头注）原先都把「经 ChatPanel 到 `@fenix/chat-channel` 的腿」记为债务，本片改写为「该腿已消失，剩余债务须靠守卫实测」 |
+
+**测试锚点迁移。** `chat-panel-transport-lifecycle.test.ts` 用源码锚点钉住两处建连语义（`acpSessionId:
+acpSessionIdRef.current || undefined` 必须存在、`sessionState.acpSessionId` 不得出现在建连 effect 片段内）。
+拆分后这两处已移入 `use-chat-panel-runtime.ts`，常量由包内 `agent-panel/ChatPanel.tsx` 改指该文件，断言
+与注释同步更新——**没有放宽断言**。
+
+**登记既有 i18n 缺口（属 T9，不在本片修）。** `ChatPanel.tsx` 的 `PublicErrorCard` 标题是硬编码中文
+`执行出错`（`git log -S` 追溯为 `0562da970` 迁包时带入，非本片引入）。宿主已有可用键
+`components.messageBubble.turnError`，但把它接到错误卡片上属于 i18n 归属重划（T9）的范围，故此处只登记
+不改动，避免本片与 T9 重复改写同一文件。
+
+验证：`env -u ANTHROPIC_MODEL bun run precheck` 全绿（package-tests 7311 pass / 0 fail，web-app-tests
+968 pass / 0 fail）；`bun run build:web` 成功（`ChatPanel` 独立 chunk 304.73 kB）；拆分后 `bun test
+packages/agent-runtime/` 488 pass（原 507 减已迁出的 19）、`bun test packages/resources/workflow/` 725 pass、
+4 个搬迁测试 19 pass。
+
+#### 待办（T6e）
 
 | 片 | 内容 |
 | --- | --- |
-| T6d | `ChatPanel` 归位宿主并**拆成三份**（视图 / `chat-panel-ports.tsx` / 新增 `use-chat-panel-runtime.ts`，各 ≤500 行），连带 `chat-auth-state` / `chat-visible-reconnect` / `session-mutation-refresh` 与其测试 |
-| T6e | 别名与配置收尾：`@/src/yjs/doc-hub` 的去处、hooks 的 `@/src/lib/structured-to-thread` 改指 `@fenix/web-runtime/chat/structured-to-thread`、`agent-runtime/web` 的 `@/` 别名归零 |
+| T6e | 别名与配置收尾：`@/src/yjs/doc-hub` 的去处、hooks 的 `@/src/lib/structured-to-thread` 改指 `@fenix/web-runtime/chat/structured-to-thread`、`agent-runtime/web` 的 `@/` 别名归零（台账 `web-package-not-to-app` 随之归零） |
 
 ---
 

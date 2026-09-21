@@ -24,7 +24,8 @@ import { getPeriTaskDetail } from "@/src/api/peri-task-details";
 import { FilePickerDialog } from "@/src/components/FilePickerDialog";
 
 /**
- * ChatPanel → `@fenix/ui-components/chat/shell/ACPMain` 的宿主端口装配（CE 阶段 2 任务 1.6 T5c2）。
+ * ChatPanel → `@fenix/ui-components/chat/shell/ACPMain` 的宿主端口装配（CE 阶段 2 任务 1.6 T5c2；
+ * 本文件原在 `packages/agent-runtime/web/agent-panel/`，随 T6d 与 ChatPanel 一同归位宿主）。
  *
  * 为什么单独一个模块：ui-components 的 chat 外壳把原先写在 chat 层内部的宿主职责提成注入端口
  * （见 `chat-interface-types.ts` 的端口说明）。这些端口的实现在宿主一侧，与 ChatPanel 的
@@ -57,8 +58,9 @@ import { FilePickerDialog } from "@/src/components/FilePickerDialog";
  * 用户消息里的 `@./path` 点击是正常的）。本端口让两处共用同一个派发器，该点击自此真的打开预览；
  * 这是用户可见行为变更，已登记在 review 文档 §八。
  *
- * 依赖方向：本文件只依赖包出口（`@fenix/ui-components/*`、`@fenix/web-runtime/*`）与 agent-runtime
- * 内部模块；未走 `@/components/chat` 这类宿主别名（该别名已随 T6c2 删除），避免把别名债务再领回一份。
+ * 依赖方向：本文件是宿主模块——对包只依赖包出口（`@fenix/ui-components/*`、`@fenix/web-runtime/*`），
+ * 宿主的 `@/src/api/*` / `@/src/components/*` 属同层调用；未走 `@/components/chat` 这类指向已删实现的
+ * 别名（该别名已随 T6c2 删除）。
  *
  * 上下文队列双副本：`context-queue` 是**有状态**模块（模块级 `Map` 保存待注入的 system-reminder）。
  * 迁移中途 `apps/web/src/lib/context-queue.ts` 与 `@fenix/web-runtime/chat/context-queue` 同时存在

@@ -204,10 +204,10 @@ describe("workflow web 入口浏览器可达面", () => {
     expect(source).toContain("workflowResources");
   });
 
-  // 编辑器暂不纳入入口的**守护**：`WorkflowEditor` 的值导入图穿到
-  // `@fenix/agent-runtime → @fenix/chat-channel → acp-link` 与 agent-config web 的 `@/` 残留，
-  // 两处都是他人债务（见 web/index.ts 的说明与 openIssue）。谁把编辑器加回入口，必须同时清掉债务
-  // 或把这两类放行写成本文件的显式例外——不允许静默绕过。
+  // 编辑器暂不纳入入口的**守护**：`WorkflowEditor` 的值导入图会穿到别的包（agent-config web 的 `@/`
+  // 残留等；2026-09-20 实测的 `@fenix/agent-runtime → @fenix/chat-channel → acp-link` 那条腿已随
+  // §1.6 T6d 的 ChatPanel 归位宿主消失，见 web/index.ts 的说明与 openIssue）。这两类债务都是他人的，
+  // 谁把编辑器加回入口，必须同时清掉债务或把放行写成本文件的显式例外——不允许静默绕过。
   test("入口暂不导出编辑器（外部债务未清前不得静默加回）", () => {
     const source = stripComments(readFileSync(WEB_ENTRY, "utf8"));
     expect(source).not.toContain("WorkflowEditor");

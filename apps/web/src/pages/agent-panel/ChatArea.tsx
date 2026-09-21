@@ -46,7 +46,7 @@ import { evictDeletedEnvironmentSlots, resolveActiveChatEnvironmentId, type Sess
 import "@/src/pages/agent-panel/artifacts-workspace.css";
 import "./chat-layout.css";
 
-const ChatPanel = lazy(() => import("@/src/pages/agent-panel/ChatPanel").then((m) => ({ default: m.ChatPanel })));
+const ChatPanel = lazy(() => import("./ChatPanel").then((m) => ({ default: m.ChatPanel })));
 const ArtifactsPanel = lazy(() =>
   import("@/src/pages/agent-panel/ArtifactsPanel").then((m) => ({ default: m.ArtifactsPanel })),
 );

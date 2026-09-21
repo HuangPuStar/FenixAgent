@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { resolveChatAuthState } from "../agent-panel/chat-auth-state";
+import { resolveChatAuthState } from "../pages/agent-panel/chat-auth-state";
 
 describe("resolveChatAuthState", () => {
   // useSession 请求进行中（首次加载）：必须等待登录态就绪，展示加载态而非"连接中"

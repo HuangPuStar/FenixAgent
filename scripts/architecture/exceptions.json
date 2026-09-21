@@ -308,7 +308,7 @@
       "to": "@fenix/web-app",
       "owner": "1.6",
       "removeWhen": "agent-runtime 的 web contribution 不再引用宿主内部实现，改经 WebShell 公开面或包内自持",
-      "rationale": "T6c2 后实测 10 处 / 4 文件（T6 起点为 170 处 / 68 文件）：`@/src/lib`(4)、`@/src/hooks`(2)、`@/components/ui`(1)、`@/src/i18n`(1)、`@/src/api`(1)、`@/src/components`(1)，其中 ChatPanel 6 处 + chat-panel-ports 2 处（随 T6d 归位宿主）、hooks 2 处 `@/src/lib/structured-to-thread`（随 T6e 改指包出口）。原 170 处中的 `@/components/chat`(34) 与整份旧 chat 实现已随 T6c2 删除。详见 review 文档 §7.11。"
+      "rationale": "T6d 后实测 2 处 / 2 文件（T6 起点为 170 处 / 68 文件）：`packages/agent-runtime/web/hooks/use-chat-state.ts` 与 `use-session-state.ts` 各 1 处 `@/src/lib/structured-to-thread`，随 T6e 改指 `@fenix/web-runtime/chat/structured-to-thread` 后归零。原 170 处中的 `@/components/chat`(34) 与整份旧 chat 实现已随 T6c2 删除；ChatPanel 6 处 + chat-panel-ports 2 处已随 T6d 归位宿主（文件本体迁入 `apps/web/src/pages/agent-panel/`，workflow 的 `MetaAgentPanel` 改由宿主经 `WorkflowEditor` 的 `chatPanel` 端口注入）。详见 review 文档 §7.11。"
     }
   ]
 }

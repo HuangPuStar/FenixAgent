@@ -128,10 +128,6 @@ export default defineConfig({
       ),
       "@/src/pages/workflow": path.resolve(__dirname, "../../packages/resources/workflow/web/pages/workflow"),
       "@/src/yjs": path.resolve(__dirname, "../../packages/agent-runtime/web/yjs"),
-      "@/src/pages/agent-panel/ChatPanel": path.resolve(
-        __dirname,
-        "../../packages/agent-runtime/web/agent-panel/ChatPanel.tsx",
-      ),
       "@/src/lib/card-renderer": path.resolve(__dirname, "src/lib/card-renderer"),
       "@/src/lib/model-config-utils": path.resolve(
         __dirname,

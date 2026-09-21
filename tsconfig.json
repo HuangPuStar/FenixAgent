@@ -55,7 +55,6 @@
       ],
       "@/src/pages/admin/AdminObserverPage": ["./packages/resources/observer/web/pages/admin/AdminObserverPage.tsx"],
       "@/src/pages/admin/AdminPeoplePage": ["./packages/resources/observer/web/pages/admin/AdminPeoplePage.tsx"],
-      "@/src/pages/agent-panel/ChatPanel": ["./packages/agent-runtime/web/agent-panel/ChatPanel.tsx"],
       "@/src/pages/agent-panel/ProdViewsPanel": [
         "./packages/resources/prod-view/web/pages/agent-panel/ProdViewsPanel.tsx"
       ],

@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { sendSessionMutationWithRefresh } from "../agent-panel/session-mutation-refresh";
+import { sendSessionMutationWithRefresh } from "../pages/agent-panel/session-mutation-refresh";
 
 describe("会话变更后的列表刷新", () => {
   // 会话变更成功写入连接后必须立即追加列表查询，让 Yjs 会话投影尽快收敛。

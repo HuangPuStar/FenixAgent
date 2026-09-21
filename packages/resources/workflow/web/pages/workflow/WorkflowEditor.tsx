@@ -12,7 +12,7 @@ import {
   useNodesState,
   useReactFlow,
 } from "@xyflow/react";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { type ComponentType, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
 import "@xyflow/react/dist/style.css";
@@ -50,7 +50,7 @@ import {
   workflowEngineApi,
 } from "../../api/workflow-engine";
 import { connectWorkflowSSE, disconnectWorkflowSSE } from "../../api/workflow-sse";
-import { MetaAgentPanel } from "./components/MetaAgentPanel";
+import { type MetaAgentChatPanelProps, MetaAgentPanel } from "./components/MetaAgentPanel";
 import { NodeConfigSheet } from "./components/NodeConfigSheet";
 import { RunParamsDialog } from "./components/RunParamsDialog";
 import { RunStatusPanel } from "./components/RunStatusPanel";
@@ -91,9 +91,14 @@ const BASIC_PALETTE_ITEMS = [
 interface WorkflowEditorProps {
   workflowId?: string;
   runId?: string;
+  /**
+   * 宿主注入的 Meta Agent 聊天面板组件（本包不得依赖 apps，见 `MetaAgentChatPanelProps`）。
+   * 由 `apps/web/src/routes/agent/_panel/workflow_.$id.edit.tsx` 传入宿主 `ChatPanel`。
+   */
+  chatPanel: ComponentType<MetaAgentChatPanelProps>;
 }
 
-function WorkflowEditorInner({ workflowId, runId }: WorkflowEditorProps) {
+function WorkflowEditorInner({ workflowId, runId, chatPanel }: WorkflowEditorProps) {
   const { t } = useTranslation("workflows");
   const [nodes, setNodes, onNodesChange] = useNodesState<Node>([createStartNode()]);
   const [edges, setEdges, onEdgesChange] = useEdgesState<Edge>([]);
@@ -978,6 +983,7 @@ function WorkflowEditorInner({ workflowId, runId }: WorkflowEditorProps) {
 
       {/* Meta Agent Chat 右侧面板 */}
       <MetaAgentPanel
+        chatPanel={chatPanel}
         chatOpen={chatOpen}
         setChatOpen={setChatOpen}
         metaAgentId={metaAgentId}
