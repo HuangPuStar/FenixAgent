@@ -1,3 +1,5 @@
+import { unwrap } from "@fenix/web-runtime/api/request";
+import { dispatchConfigChange } from "@fenix/web-runtime/lib/config-events";
 import { useNavigate } from "@tanstack/react-router";
 import { useRequest } from "ahooks";
 import { ArrowLeft, BookOpen, FileCode, FileText, Pencil, Search, Wand2 } from "lucide-react";
@@ -8,11 +10,9 @@ import { toast } from "sonner";
 import { agentApi } from "@/src/api/agents";
 import { envApi } from "@/src/api/environments";
 import { modelApi } from "@/src/api/models";
-import { unwrap } from "@/src/api/request";
 import { NS } from "@/src/i18n";
 import type { GenerationFormData } from "@/src/pages/agent-panel/components/AgentGenerationForm";
 import { AgentGenerationForm } from "@/src/pages/agent-panel/components/AgentGenerationForm";
-import { dispatchConfigChange } from "../../../lib/config-events";
 import { resolveCreatedAgentChatTarget } from "../agent-create-navigation";
 
 const assetBase = import.meta.env.BASE_URL;

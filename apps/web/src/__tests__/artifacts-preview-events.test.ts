@@ -4,7 +4,7 @@ import {
   dispatchArtifactsPreviewFile,
   getArtifactsPreviewFileDetail,
   isWorkspaceRelativeFilePath,
-} from "../lib/artifacts-preview-events";
+} from "@fenix/web-runtime/lib/artifacts-preview-events";
 
 // 聊天附件只允许 workspace 相对文件路径，拒绝绝对路径、越界段和控制字符。
 test("validates chat attachment paths before preview", () => {

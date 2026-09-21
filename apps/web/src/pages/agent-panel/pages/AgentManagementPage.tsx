@@ -1,7 +1,14 @@
+import {
+  getAgentConfigLookupKey,
+  getAgentDisplayName,
+  isExternalAgent,
+} from "@fenix/agent-config/web/lib/agent-resource-access";
 import { useOrg } from "@fenix/identity/web";
 import { AgentBadge } from "@fenix/ui-components/chat/shell/AgentBadge";
 import { AppHeader } from "@fenix/ui-components/layout/app-header";
 import { AppPage } from "@fenix/ui-components/layout/app-page";
+import { unwrap } from "@fenix/web-runtime/api/request";
+import { useConfigChangeListener } from "@fenix/web-runtime/lib/config-events";
 import type { AgentInfo } from "@fenix/web-runtime/types/config";
 import { useNavigate } from "@tanstack/react-router";
 import { useRequest } from "ahooks";
@@ -11,11 +18,8 @@ import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
 import { agentApi } from "@/src/api/agents";
 import { type EnvironmentDetail, envApi } from "@/src/api/environments";
-import { unwrap } from "@/src/api/request";
 import { NS } from "@/src/i18n";
 import { AgentFormDialog } from "@/src/pages/agent-panel/agent-editor/AgentFormDialog";
-import { getAgentConfigLookupKey, getAgentDisplayName, isExternalAgent } from "../../../lib/agent-resource-access";
-import { useConfigChangeListener } from "../../../lib/config-events";
 
 interface AgentManageNode {
   agent: AgentInfo;

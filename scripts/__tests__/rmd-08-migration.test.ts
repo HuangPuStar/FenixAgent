@@ -131,9 +131,7 @@ const RMD_08_MOVES = [
     "apps/web/src/components/agent-panel/use-file-tree-events.ts",
   ],
   ["web/src/components/agent-panel/use-file-uploads.ts", "apps/web/src/components/agent-panel/use-file-uploads.ts"],
-  ["web/src/hooks/use-changed-files-stats.ts", "apps/web/src/hooks/use-changed-files-stats.ts"],
   ["web/src/hooks/use-task-views.ts", "apps/web/src/hooks/use-task-views.ts"],
-  ["web/src/hooks/usePageVisible.ts", "apps/web/src/hooks/usePageVisible.ts"],
   ["web/src/i18n/locales/en/agentHome.json", "apps/web/src/i18n/locales/en/agentHome.json"],
   ["web/src/i18n/locales/en/agentPanel.json", "apps/web/src/i18n/locales/en/agentPanel.json"],
   ["web/src/i18n/locales/en/common.json", "apps/web/src/i18n/locales/en/common.json"],
@@ -158,26 +156,11 @@ const RMD_08_MOVES = [
   ["web/src/i18n/locales/zh/sidebar.json", "apps/web/src/i18n/locales/zh/sidebar.json"],
   ["web/src/i18n/locales/zh/tasks.json", "apps/web/src/i18n/locales/zh/tasks.json"],
   ["web/src/i18n/locales/zh/toolNarrator.json", "apps/web/src/i18n/locales/zh/toolNarrator.json"],
-  ["web/src/lib/agent-node.ts", "apps/web/src/lib/agent-node.ts"],
-  ["web/src/lib/agent-resource-access.ts", "apps/web/src/lib/agent-resource-access.ts"],
-  ["web/src/lib/agent-utils.ts", "apps/web/src/lib/agent-utils.ts"],
   ["web/src/lib/api-result.ts", "apps/web/src/lib/api-result.ts"],
-  ["web/src/lib/artifacts-preview-events.ts", "apps/web/src/lib/artifacts-preview-events.ts"],
   ["web/src/lib/auth-preference.ts", "apps/web/src/lib/auth-preference.ts"],
-  ["web/src/lib/chat-stats.ts", "apps/web/src/lib/chat-stats.ts"],
-  ["web/src/lib/citation-preview-context.tsx", "apps/web/src/lib/citation-preview-context.tsx"],
-  ["web/src/lib/config-events.ts", "apps/web/src/lib/config-events.ts"],
-  ["web/src/lib/context-queue.ts", "apps/web/src/lib/context-queue.ts"],
-  ["web/src/lib/extract-changed-files.ts", "apps/web/src/lib/extract-changed-files.ts"],
   ["web/src/lib/form-utils.ts", "apps/web/src/lib/form-utils.ts"],
   ["web/src/lib/password-crypto.ts", "packages/platform/identity/web/lib/password-crypto.ts"],
   ["web/src/lib/retry.ts", "apps/web/src/lib/retry.ts"],
-  ["web/src/lib/strip-html-tags.ts", "apps/web/src/lib/strip-html-tags.ts"],
-  ["web/src/lib/structured-to-thread.ts", "apps/web/src/lib/structured-to-thread.ts"],
-  ["web/src/lib/todo.ts", "apps/web/src/lib/todo.ts"],
-  ["web/src/lib/token-stats.ts", "apps/web/src/lib/token-stats.ts"],
-  ["web/src/lib/tool-semantic.ts", "apps/web/src/lib/tool-semantic.ts"],
-  ["web/src/lib/types.ts", "apps/web/src/lib/types.ts"],
   ["web/src/pages/LoginPage.tsx", "apps/web/src/pages/LoginPage.tsx"],
   ["web/src/pages/agent-panel/AgentPanelLayout.tsx", "apps/web/src/pages/agent-panel/AgentPanelLayout.tsx"],
   ["web/src/pages/agent-panel/AgentSidebar.tsx", "apps/web/src/pages/agent-panel/AgentSidebar.tsx"],
@@ -200,10 +183,8 @@ const RMD_08_MOVES = [
     "web/src/pages/agent-panel/shared/agent-master-detail-workspace.tsx",
     "apps/web/src/pages/agent-panel/shared/agent-master-detail-workspace.tsx",
   ],
-  ["web/src/types/cytoscape-fcose.d.ts", "apps/web/src/types/cytoscape-fcose.d.ts"],
   ["web/src/types/global.d.ts", "apps/web/src/types/global.d.ts"],
   ["web/src/types/index.ts", "apps/web/src/types/index.ts"],
-  ["web/src/types/react-file-icon.d.ts", "apps/web/src/types/react-file-icon.d.ts"],
   ["web/src/vite-env.d.ts", "apps/web/src/vite-env.d.ts"],
   ["web/tsconfig.json", "apps/web/tsconfig.json"],
 ] as const;
@@ -220,6 +201,9 @@ const RMD_08_MOVES = [
  * 副本本身零引用。
  * 任务 1.6 T8c 再移出 11 项：`src/components/**` 的 `PreviewTab`、`file-tree-*`、`file-icon-helper`、
  * `layout/**` 与 `preview/**`——消费方已改指 `@fenix/ui-components` 的 `components/**` 与 `layout/**` 出口。
+ * 任务 1.6 T8d 再移出 15 项：`src/{api,hooks,lib}` 的 `request`、两个 hooks 与 12 个 `lib` 模块——
+ * owner 分属 `@fenix/web-runtime`（api/hooks/lib/chat）、`@fenix/agent-config`（web/lib）与
+ * `@fenix/ui-components`（chat/lib、chat/types）。
  */
 const RMD_08_RELOCATED = [
   [
@@ -374,6 +358,65 @@ const RMD_08_RELOCATED = [
     "apps/web/src/components/agent-panel/preview/overrides.css",
     "packages/ui-components/web/components/preview/overrides.css",
   ],
+  ["web/src/api/request.ts", "apps/web/src/api/request.ts", "packages/web-runtime/web/api/request.ts"],
+  [
+    "web/src/hooks/use-changed-files-stats.ts",
+    "apps/web/src/hooks/use-changed-files-stats.ts",
+    "packages/web-runtime/web/hooks/use-changed-files-stats.ts",
+  ],
+  [
+    "web/src/hooks/usePageVisible.ts",
+    "apps/web/src/hooks/usePageVisible.ts",
+    "packages/web-runtime/web/hooks/use-page-visible.ts",
+  ],
+  [
+    "web/src/lib/agent-node.ts",
+    "apps/web/src/lib/agent-node.ts",
+    "packages/resources/agent-config/web/lib/agent-node.ts",
+  ],
+  [
+    "web/src/lib/agent-resource-access.ts",
+    "apps/web/src/lib/agent-resource-access.ts",
+    "packages/resources/agent-config/web/lib/agent-resource-access.ts",
+  ],
+  [
+    "web/src/lib/agent-utils.ts",
+    "apps/web/src/lib/agent-utils.ts",
+    "packages/resources/agent-config/web/lib/agent-utils.ts",
+  ],
+  [
+    "web/src/lib/artifacts-preview-events.ts",
+    "apps/web/src/lib/artifacts-preview-events.ts",
+    "packages/web-runtime/web/lib/artifacts-preview-events.ts",
+  ],
+  ["web/src/lib/chat-stats.ts", "apps/web/src/lib/chat-stats.ts", "packages/web-runtime/web/lib/chat-stats.ts"],
+  [
+    "web/src/lib/config-events.ts",
+    "apps/web/src/lib/config-events.ts",
+    "packages/web-runtime/web/lib/config-events.ts",
+  ],
+  [
+    "web/src/lib/extract-changed-files.ts",
+    "apps/web/src/lib/extract-changed-files.ts",
+    "packages/ui-components/web/chat/lib/extract-changed-files.ts",
+  ],
+  [
+    "web/src/lib/strip-html-tags.ts",
+    "apps/web/src/lib/strip-html-tags.ts",
+    "packages/ui-components/web/chat/lib/strip-html-tags.ts",
+  ],
+  [
+    "web/src/lib/structured-to-thread.ts",
+    "apps/web/src/lib/structured-to-thread.ts",
+    "packages/web-runtime/web/chat/structured-to-thread.ts",
+  ],
+  ["web/src/lib/todo.ts", "apps/web/src/lib/todo.ts", "packages/web-runtime/web/chat/todo.ts"],
+  [
+    "web/src/lib/tool-semantic.ts",
+    "apps/web/src/lib/tool-semantic.ts",
+    "packages/ui-components/web/chat/lib/tool-semantic.ts",
+  ],
+  ["web/src/lib/types.ts", "apps/web/src/lib/types.ts", "packages/ui-components/web/chat/types.ts"],
 ] as const;
 
 describe("RMD-08 apps/web migration", () => {
@@ -381,9 +424,11 @@ describe("RMD-08 apps/web migration", () => {
   // 任务 1.3 收口移出的一项：`__tests__/task-form-schema.test.ts` 是内联的表单校验 schema 副本，宿主侧
   // 既无 TaskForm 组件也无导入方，且已与包内唯一 owner 漂移；owner 是 task 包，见下方 relocated 断言。
   // 任务 1.6 T2 再移出 18 项零消费文件，见文件头第 5 条；T4 又移出 1 项（`api/registry.ts`，
-  // 见文件头第 6 条），153 → 152；T8b 再移出 11 项，152 → 141；T8c 再移出 11 项，141 → 130。
+  // 见文件头第 6 条），153 → 152；T8b 再移出 11 项，152 → 141；T8c 再移出 11 项，141 → 130；
+  // T8d 再移出 15 项（改指包出口）并直删 5 项零消费文件（`context-queue` 宿主副本、`token-stats`、
+  // `citation-preview-context`、两份第三方类型垫片——垫片归各包自持，见 §1.6 T8z），130 → 111。
   test("removes every legacy source and retains its exact owner target", () => {
-    expect(RMD_08_MOVES).toHaveLength(130);
+    expect(RMD_08_MOVES).toHaveLength(111);
     for (const [source, target] of RMD_08_MOVES) {
       expect(existsSync(source), `legacy source still exists: ${source}`).toBe(false);
       expect(existsSync(target), `apps/web target is missing: ${target}`).toBe(true);
@@ -410,11 +455,12 @@ describe("RMD-08 apps/web migration", () => {
     expect(existsSync("packages/web-runtime/web/lib/admin-key.ts")).toBe(true);
   });
 
-  // 任务 1.3 收口的 9 份 + 任务 1.6 T4 的 1 份 + T8b 的 11 份 + T8c 的 11 份宿主副本：两个旧路径都不得复活，
+  // 任务 1.3 收口的 9 份 + 任务 1.6 T4 的 1 份 + T8b 的 11 份 + T8c 的 11 份 + T8d 的 15 份宿主副本：
+  // 旧根路径与应用壳路径都不得复活，
   // 且包侧 owner 落点必须存在。副本与 owner 并存是「两份实现各自能跑」的最坏形态，
   // 删除与断言必须成对出现。
   test("relocates the leftover host copies to their package owners", () => {
-    expect(RMD_08_RELOCATED).toHaveLength(32);
+    expect(RMD_08_RELOCATED).toHaveLength(47);
     for (const [legacy, shell, owner] of RMD_08_RELOCATED) {
       expect(existsSync(legacy), `legacy source still exists: ${legacy}`).toBe(false);
       expect(existsSync(shell), `host copy still exists: ${shell}`).toBe(false);

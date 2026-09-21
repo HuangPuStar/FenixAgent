@@ -21,7 +21,6 @@ export default defineConfig({
     alias: {
       "@/src/i18n/locales": path.resolve(__dirname, "src/i18n/locales"),
       "@/src/i18n": path.resolve(__dirname, "src/i18n"),
-      "@/src/api/request": path.resolve(__dirname, "src/api/request.ts"),
       "@/src/api/helpers": path.resolve(__dirname, "src/api/helpers.ts"),
       "@/src/api/api-keys": path.resolve(__dirname, "../../packages/platform/identity/web/api/api-keys.ts"),
       "@/src/api/organizations": path.resolve(__dirname, "../../packages/platform/identity/web/api/organizations.ts"),
@@ -125,7 +124,6 @@ export default defineConfig({
         "../../packages/resources/prod-view/web/pages/prod-view/ProdViewPage.tsx",
       ),
       "@/src/pages/workflow": path.resolve(__dirname, "../../packages/resources/workflow/web/pages/workflow"),
-      "@/src/lib/card-renderer": path.resolve(__dirname, "src/lib/card-renderer"),
       "@/src/lib/model-config-utils": path.resolve(
         __dirname,
         "../../packages/resources/model-management/web/lib/model-config-utils.ts",

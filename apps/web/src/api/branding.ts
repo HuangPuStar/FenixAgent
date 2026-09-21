@@ -7,7 +7,7 @@
  * 职责（CE/EE 重构决策 D4），随身份包拆分落位到 `apps/web` 宿主。请求路径与返回类型保持不变。
  */
 
-import { request } from "@/src/api/request";
+import { request } from "@fenix/web-runtime/api/request";
 
 /** 品牌配置数据 */
 export interface BrandingConfig {

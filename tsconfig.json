@@ -27,7 +27,6 @@
       "@/src/api/models": ["./packages/resources/model-management/web/api/models.ts"],
       "@/src/api/organizations": ["./packages/platform/identity/web/api/organizations.ts"],
       "@/src/api/prod-views": ["./packages/resources/prod-view/web/api/prod-views.ts"],
-      "@/src/api/request": ["./apps/web/src/api/request.ts"],
       "@/src/api/sites": ["./packages/resources/agent-config/web/api/sites.ts"],
       "@/src/api/skills": ["./packages/resources/skill/web/api/skills.ts"],
       "@/src/components/agent-panel/AgentSitesCard": [
@@ -39,7 +38,6 @@
       "@/src/i18n": ["./apps/web/src/i18n/index.ts"],
       "@/src/i18n/locales/*": ["./apps/web/src/i18n/locales/*"],
       "@/src/lib/auth-client": ["./packages/platform/identity/web/lib/auth-client.ts"],
-      "@/src/lib/card-renderer": ["./apps/web/src/lib/card-renderer/index.ts"],
       "@/src/lib/card-renderer/*": ["./apps/web/src/lib/card-renderer/*"],
       "@/src/lib/mcp-resource-access": ["./packages/resources/mcp/web/lib/mcp-resource-access.ts"],
       "@/src/lib/model-config-utils": ["./packages/resources/model-management/web/lib/model-config-utils.ts"],

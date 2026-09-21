@@ -32,7 +32,7 @@ describe("request helpers", () => {
       },
     };
 
-    const { request } = await import("../api/request");
+    const { request } = await import("@fenix/web-runtime/api/request");
     const result = await request<{ models: string[] }>("/web/config/providers/actions/fetch-models", {
       method: "POST",
       query: { name: "anthropic" },
@@ -67,7 +67,7 @@ describe("request helpers", () => {
       },
     };
 
-    const { request, unwrap, ApiError } = await import("../api/request");
+    const { request, unwrap, ApiError } = await import("@fenix/web-runtime/api/request");
 
     try {
       await unwrap(
@@ -95,7 +95,7 @@ describe("request helpers", () => {
     fetchMock.status = 503;
     fetchMock.body = { success: false, error: "Hindsight service unavailable" };
 
-    const { request } = await import("../api/request");
+    const { request } = await import("@fenix/web-runtime/api/request");
     const result = await request("/web/hindsight/status");
 
     expect(result.error?.message).toBe("Hindsight service unavailable");
@@ -106,7 +106,7 @@ describe("request helpers", () => {
     fetchMock.status = 503;
     fetchMock.body = { success: false, error: { message: "" } };
 
-    const { request } = await import("../api/request");
+    const { request } = await import("@fenix/web-runtime/api/request");
     const result = await request("/web/hindsight/status");
 
     expect(result.error?.message).toBe("请求失败 (503)");
@@ -117,7 +117,7 @@ describe("request helpers", () => {
     fetchMock.status = 503;
     fetchMock.body = { success: false, error: { message: "   " } };
 
-    const { request } = await import("../api/request");
+    const { request } = await import("@fenix/web-runtime/api/request");
     const result = await request("/web/hindsight/status");
 
     expect(result.error?.message).toBe("请求失败 (503)");
@@ -134,7 +134,7 @@ describe("request helpers", () => {
       ),
     ) as unknown as typeof fetch;
 
-    const { request } = await import("../api/request");
+    const { request } = await import("@fenix/web-runtime/api/request");
     const result = await request("/web/hindsight/status");
 
     expect(result.error?.message).toBe("请求失败 (503)");
@@ -151,7 +151,7 @@ describe("request helpers", () => {
       ),
     ) as unknown as typeof fetch;
 
-    const { request } = await import("../api/request");
+    const { request } = await import("@fenix/web-runtime/api/request");
     const result = await request("/web/hindsight/status");
 
     expect(result.error).toEqual({ code: "SERVER_ERROR", message: "请求失败 (503)" });
@@ -168,7 +168,7 @@ describe("request helpers", () => {
       ),
     ) as unknown as typeof fetch;
 
-    const { request } = await import("../api/request");
+    const { request } = await import("@fenix/web-runtime/api/request");
     const result = await request("/web/hindsight/status");
 
     expect(result.error).toEqual({ code: "SERVER_ERROR", message: "服务器返回了意外的响应格式" });
@@ -179,7 +179,7 @@ describe("request helpers", () => {
     fetchMock.status = 503;
     fetchMock.body = { success: false, error: { detail: "upstream unavailable" } };
 
-    const { request } = await import("../api/request");
+    const { request } = await import("@fenix/web-runtime/api/request");
     const result = await request("/web/hindsight/status");
 
     expect(result.error?.message).toBe("请求失败 (503)");
@@ -188,8 +188,8 @@ describe("request helpers", () => {
 
 describe("request bearerToken", () => {
   // 帮助函数：执行请求后取出 fetch 调用的 RequestInit，便于断言注入的请求头。
-  async function fetchInitFor(options: Parameters<typeof import("../api/request").request>[1]) {
-    const { request } = await import("../api/request");
+  async function fetchInitFor(options: Parameters<typeof import("@fenix/web-runtime/api/request").request>[1]) {
+    const { request } = await import("@fenix/web-runtime/api/request");
     await request<{ ok: boolean }>("/web/test", options);
     const calls = (globalThis.fetch as unknown as { mock: { calls: [string, RequestInit][] } }).mock.calls;
     return calls[calls.length - 1]?.[1];

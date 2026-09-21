@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { isValidAgentNameInput } from "../lib/agent-utils";
+import { isValidAgentNameInput } from "@fenix/agent-config/web/lib/agent-utils";
 
 describe("Agent 名称输入校验", () => {
   // 名称中的普通空格是展示语义的一部分，创建 Agent 时必须允许提交。

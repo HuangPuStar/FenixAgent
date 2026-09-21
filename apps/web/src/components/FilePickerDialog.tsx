@@ -1,8 +1,8 @@
 import { FilePickerPanel } from "@fenix/ui-components/chat/shell/FilePickerPanel";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@fenix/ui-components/ui/dialog";
+import { unwrap } from "@fenix/web-runtime/api/request";
 import { useTranslation } from "react-i18next";
 import { fsApi, uploadChatFiles } from "@/src/api/fs";
-import { unwrap } from "@/src/api/request";
 import type { FileInfo } from "../types";
 
 interface FilePickerDialogProps {

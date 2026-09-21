@@ -1,4 +1,4 @@
-import { request, unwrap } from "@/src/api/request";
+import { request, unwrap } from "@fenix/web-runtime/api/request";
 
 export type PeriTaskDetail =
   | {

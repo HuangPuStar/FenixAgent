@@ -1,5 +1,11 @@
 import { SiteFrame, SiteTabsBar } from "@fenix/agent-config/web";
+import type { ChangedFile } from "@fenix/ui-components/chat/lib/extract-changed-files";
 import { Button } from "@fenix/ui-components/ui/button";
+import { unwrap } from "@fenix/web-runtime/api/request";
+import {
+  ARTIFACTS_PREVIEW_FILE_EVENT,
+  getArtifactsPreviewFileDetail,
+} from "@fenix/web-runtime/lib/artifacts-preview-events";
 import { useRequest } from "ahooks";
 import { Globe, Plus, Upload } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -7,10 +13,8 @@ import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
 import { envApi } from "@/src/api/environments";
 import type { ProdViewModulesConfig } from "@/src/api/prod-views";
-import { unwrap } from "@/src/api/request";
 import { agentSitesApi, type SiteApp } from "@/src/api/sites";
 import { NS } from "@/src/i18n";
-import { ARTIFACTS_PREVIEW_FILE_EVENT, getArtifactsPreviewFileDetail } from "@/src/lib/artifacts-preview-events";
 import { ProdViewsPanel } from "@/src/pages/agent-panel/ProdViewsPanel";
 import { TasksPanel } from "../../../../../packages/resources/task/web/pages/agent-panel/TasksPanel";
 import { ArtifactsDialogs } from "../../components/agent-panel/artifacts-dialogs";
@@ -18,7 +22,6 @@ import { ArtifactsFilesWorkspace } from "../../components/agent-panel/artifacts-
 import type { FileTreeTabHandle } from "../../components/agent-panel/FileTreeTab";
 import { normalizeToUserPath } from "../../components/agent-panel/preview/utils";
 import { type TopMode, TopModeTabs } from "../../components/agent-panel/TopModeTabs";
-import type { ChangedFile } from "../../lib/extract-changed-files";
 
 /** 打开文件 tab 的 LRU 上限：超出时丢弃最旧（数组末尾）的，与 FileTabsBar 的 MAX_VISIBLE_TABS 解耦 */
 const MAX_OPEN_FILES = 8;

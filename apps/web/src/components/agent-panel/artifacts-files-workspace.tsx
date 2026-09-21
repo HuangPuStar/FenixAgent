@@ -1,8 +1,8 @@
+import type { ChangedFile } from "@fenix/ui-components/chat/lib/extract-changed-files";
 import { PreviewTab } from "@fenix/ui-components/components/PreviewTab";
 import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from "@fenix/ui-components/ui/resizable";
 import { type RefObject, useEffect, useRef } from "react";
 import type { PanelImperativeHandle } from "react-resizable-panels";
-import type { ChangedFile } from "../../lib/extract-changed-files";
 import { FileTabsBar } from "./FileTabsBar";
 import { FileTreeTab, type FileTreeTabHandle } from "./FileTreeTab";
 

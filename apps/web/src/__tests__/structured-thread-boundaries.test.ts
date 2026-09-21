@@ -1,8 +1,13 @@
 import { describe, expect, test } from "bun:test";
 import type { StructuredMessage } from "@fenix/chat-channel";
-import { structuredToThreadEntries } from "../lib/structured-to-thread";
-import { getTodoChanges, getTodosFromRawInput, isTodoWriteToolCall, parseTodosFromRawInput } from "../lib/todo";
-import type { TodoItem } from "../lib/types";
+import type { TodoItem } from "@fenix/ui-components/chat/types";
+import { structuredToThreadEntries } from "@fenix/web-runtime/chat/structured-to-thread";
+import {
+  getTodoChanges,
+  getTodosFromRawInput,
+  isTodoWriteToolCall,
+  parseTodosFromRawInput,
+} from "@fenix/web-runtime/chat/todo";
 
 function tool(
   status: StructuredMessage extends never

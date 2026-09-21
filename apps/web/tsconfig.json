@@ -11,5 +11,17 @@
     "declarationMap": false,
     "noEmit": true
   },
-  "include": ["fenix.module.ts", "src/**/*.ts", "src/**/*.tsx", "components/**/*.ts", "components/**/*.tsx"]
+  "include": [
+    "fenix.module.ts",
+    "src/**/*.ts",
+    "src/**/*.tsx",
+    "components/**/*.ts",
+    "components/**/*.tsx",
+    // 宿主 tsc 会顺包 `exports` 检查包源文件（各包 exports 的 types 条件指向 `.ts` / `.tsx` 源），
+    // 因此包自带的第三方类型垫片（`web/types/*.d.ts` 里的 `declare module`）必须在宿主检查上下文里
+    // 可见，否则 `tsc -p apps/web/tsconfig.json` 会把包内的 `cytoscape-fcose` / `react-file-icon`
+    // 报成 TS7016。垫片的归属仍是各包，宿主不再保留副本（§1.6 T8z 删除了宿主的两份）。
+    "../../packages/*/web/types/*.d.ts",
+    "../../packages/*/*/web/types/*.d.ts"
+  ]
 }

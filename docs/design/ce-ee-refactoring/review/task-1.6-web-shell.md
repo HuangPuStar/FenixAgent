@@ -905,7 +905,7 @@ packages/agent-runtime/` 488 pass（原 507 减已迁出的 19）、`bun test pa
 pass / 0 fail、web-app-tests 968 pass / 0 fail）；`bun run build:web` 成功；`bun run architecture:check` ✓
 （2183 files / 24 条已登记例外）；`bun run check:dependencies` ✓（0 条新增违规）。
 
-### 7.12 T7 / T4b 组织与会话上下文改经 `@fenix/web-runtime` 契约（2026-09-21）
+### 7.12 T7 / T4b 组织与会话上下文改经 `@fenix/web-runtime` 契约（2026-09-21，`b5c5323fa` + `9fd834be4`）
 
 **先决问题：契约落在哪。** 5 条 `special-dependency` 的成因完全相同——skill / mcp / knowledge /
 model-management / agent-config 的 web 面 `import { useOrg, useSession } from "@fenix/identity/web"`。
@@ -1047,7 +1047,7 @@ form-utils,api-result}.ts`、`api/helpers.ts`、`App.tsx`）按 T2 先例保留�
 - `scripts/__tests__/rmd-08-migration.test.ts` 台账同步：`RMD_08_MOVES` 删 11 条（152 → 141），
   `RMD_08_RELOCATED` 增 11 条三元组（10 → 21，owner 为 `packages/ui-components/web/{chat/primitives,config}/*`）。
 
-#### T8c：`apps/web/src/components/**` 副本簇退场
+#### T8c：`apps/web/src/components/**` 副本簇退场（`f2ae6bf59`）
 
 删除 11 个路径（`PreviewTab`、`file-tree-{input-dialog,model,view}`、`file-icon-helper`、
 `layout/{app-header,app-page}`、`preview/{FileViewerPreview,html-plugin,native-pdf-plugin,overrides.css}`），
@@ -1092,16 +1092,76 @@ owner 在包内（`web/components/preview/**`）。同目录的 `preview/utils.t
 **台账同步**：`RMD_08_MOVES` 141 → 130，`RMD_08_RELOCATED` 21 → 32（owner 为
 `packages/ui-components/web/{components,layout}/**`）。
 
+#### T8d + T8z：`src/{api,hooks,lib,types}` 副本簇退场与零消费直删
+
+**为何与 T8z 合并成一批**：T8d 删掉 `lib/types.ts` 后，T8z 的直删目标 `lib/token-stats.ts` 会立刻报
+TS2307（`Cannot find module './types'`）。两片拆开必然产生一个类型检查失败的中间提交，故合并为一批。
+
+**T8d：15 项「改指后删」，60 处消费点 / 29 个文件改指**（其中 15 个是宿主测试——按 T8 口径，测试
+文件的导入说明符由本片改指到包出口，测试文件本身的搬迁属 T10）。
+
+| 宿主副本 | 包内 owner 出口 |
+|---|---|
+| `src/api/request.ts` | `@fenix/web-runtime/api/request` |
+| `src/hooks/{use-changed-files-stats,usePageVisible}.ts` | `@fenix/web-runtime/hooks/**` |
+| `src/lib/{agent-node,agent-resource-access,agent-utils}.ts` | `@fenix/agent-config` 的 `web/lib/**`（本片新增 3 条出口） |
+| `src/lib/{artifacts-preview-events,chat-stats,config-events}.ts`、`structured-to-thread.ts`、`todo.ts` | `@fenix/web-runtime` 的 `lib/**` 与 `chat/**` |
+| `src/lib/{extract-changed-files,strip-html-tags,tool-semantic}.ts`、`types.ts` | `@fenix/ui-components` 的 `chat/lib/**` 与 `chat/types` |
+
+`agent-config` 的三条 `./web/lib/*` 出口是本片新增。归属理由：这三个模块是 agent 配置领域的浏览器侧
+助手（解析 agent 节点、判定资源可访问性、配置展示助手），与既有的 `./web` 出口同属一层；放进
+`web-runtime` 会污染「跨资源运行时契约」的定位，放进 `ui-components` 则与 UI 无关。
+
+**T8z：9 项零消费直删**：`lib/{context-queue,token-stats,citation-preview-context.tsx}`、
+`lib/card-renderer/{index,registry,emitter,context.tsx}`、`types/{cytoscape-fcose,react-file-icon}.d.ts`。
+
+- `card-renderer/` 的 4 项是宿主死副本：宿主注册表与包内注册表是两份互不相通的模块实例，而 markdown
+  渲染器已归 `@fenix/ui-components`（`web/chat/primitives/message.tsx` 读的是包内注册表），写进宿主
+  注册表的条目不会被渲染。同目录 `builtins.ts` **保留**：它是宿主的注册入口（`main.tsx:6` 经
+  `./lib/card-renderer/builtins` 加载），负责把宿主专有的 `agent-sites` 卡片注册到包内注册表；其文件
+  注释同步更新为「本目录其余文件已随 T8z 删除」。
+- 两份第三方类型垫片的归属本来就在各包（`packages/resources/memory/web/types/cytoscape-fcose.d.ts`、
+  `packages/ui-components/web/types/react-file-icon.d.ts`），宿主只是重复声明。
+
+**连带修正 1：`apps/web/tsconfig.json` 的 include 补包垫片 glob。** 删掉宿主垫片后
+`tsc -p apps/web/tsconfig.json` 报 3 处 TS7016——宿主 tsc 会顺各包 `exports` 的 types 条件检查包源
+文件，而包自带垫片不在宿主 include 内，`declare module` 不生效。修正为
+`../../packages/*/web/types/*.d.ts` 与 `../../packages/*/*/web/types/*.d.ts` 两条 glob，理由写在
+该文件注释里。这是把「宿主为包提供类型」的隐式耦合显式化，而不是在宿主保留副本，也不是放宽检查。
+
+**连带修正 2：`context-queue.test.ts` 拆成两个 owner 来源。** 宿主副本删除后，用例里「有状态队列」
+与「纯函数」两组断言分别断言 `@fenix/web-runtime/chat/context-queue`（`contextQueues` 模块级 Map，
+即 workflow 写入方与 chat-channel 取出方共用的那一个实例）与 `@fenix/ui-components/chat/lib/context-queue`
+（无副作用的引用解析/截断/序列化）。拆分的理由写在文件头注释内。
+
+**连带修正 3：死别名条目清理。** 根 `tsconfig.json` 与 `apps/web/vite.config.ts` 删除 `@/src/api/request`
+条目；`@/src/lib/card-renderer` 条目同样删除（`@/src/lib/card-renderer/*` 通配保留，`main.tsx` 走相对
+路径 `./lib/card-renderer/builtins`）。
+
+**未列入本片的宿主 `src/lib` 保留项**：`app-brand` / `clipboard-polyfill` / `random-uuid-polyfill` /
+`streamdown-table-patch` / `theme` / `utils` 在包内**没有**对应实现（逐个 `find` 核对，同名文件都在
+无关目录），不是副本；`api-result` / `auth-preference` / `form-utils` / `retry` / `password-crypto`
+仍在台账在册，宿主仍有活消费方。二者都不属本片范围。
+
+**台账同步**：`RMD_08_MOVES` 130 → 111（在册的 T8d 14 项 + T8z 5 项；`api/request.ts` 与
+`card-renderer/**` 本就不在 MOVES 中，故 19 ≠ 15 + 9），`RMD_08_RELOCATED` 32 → 47（T8d 15 项的三元组）。
+台账里 `password-crypto.ts` 一行的第二个元素是 `packages/...` 而非 `apps/web/...`，用脚本重排数组时必须
+按原文保留——本片第一次批量改写就把它漏掉了，靠长度断言（111 vs 110）才发现。
+
 #### 验证
 
-T8a / T8b / T8c 三片各自跑过一轮完整门禁，均全绿。最终一轮（含 T8c）：
+T8a / T8b / T8c / T8d+T8z 四片各自跑过一轮完整门禁，均全绿。最终一轮（含 T8d+T8z）：
 `env -u ANTHROPIC_MODEL bun run precheck` 全绿（format / import-sort / module-registry / architecture /
 tsc server+web+app-skeletons / dependency-boundaries / lint / server-and-script-tests 771 pass /
 package-tests 7311 pass + 2 skip / web-app-tests 969 pass，0 fail）；`bun run build:web` 成功。
-结构性证据：全仓零 `@/components/*` 导入说明符，`apps/web/components/` 目录已不存在，
+结构性证据（四片合计）：全仓零 `@/components/*` 导入说明符；`apps/web/components/` 目录已不存在，
 `apps/web/src/components/` 仅剩 9 个活文件（`FilePickerDialog`、`agent-panel/{FileTabsBar,FileTreeTab,
 TopModeTabs,artifacts-dialogs,artifacts-files-workspace,use-file-tree-events,use-file-uploads}`、
-`agent-panel/preview/utils.ts`）。
+`agent-panel/preview/utils.ts`）；`apps/web/src/{api,hooks,lib,types}` 的副本已清空，剩余 20 个文件里
+`src/lib` 的 11 项均有明确归属（6 项宿主专有、5 项台账在册仍有活消费方，见上），`src/types` 只剩
+`global.d.ts` 与 `index.ts`，`src/hooks` 只剩 `use-task-views.ts`。T8d 的改指由确定性 codemod 完成，
+`dry` 复核为 0 处残留；台账的 `RMD_08_MOVES` 全条目（111 条）的 legacy 路径与 `RMD_08_RELOCATED`
+（47 条）的 legacy + shell 路径均不存在、owner 落点均存在。
 
 ---
 

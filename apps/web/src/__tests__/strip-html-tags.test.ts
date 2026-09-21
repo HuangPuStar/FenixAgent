@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { splitSystemReminderBlocks, stripHtmlTags } from "../lib/strip-html-tags";
+import { splitSystemReminderBlocks, stripHtmlTags } from "@fenix/ui-components/chat/lib/strip-html-tags";
 
 describe("stripHtmlTags", () => {
   // 剔除成对的 <system-reminder> 块（含块内内容），这是标题最常见的污染源
