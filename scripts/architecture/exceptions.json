@@ -2,7 +2,7 @@
   "_comment": [
     "架构例外台账：登记存量边界违规，精确到「规则 + 来源包 + 目标包」，每条带所属任务号与移除条件。",
     "门禁（scripts/check-dependency-boundaries.ts）只阻断未登记的**新增**违规，并在某条不再违规时报错要求删除。",
-    "owner 取值：阶段 2 任务号（1.2 / 1.4 / 1.5 / 1.6 / 1.7）或「未排期」——后者表示该违规不属于阶段 2 任何任务的范围，",
+    "owner 取值：在排任务的编号（如 1.6 / 1.7）或「未排期」——后者表示该违规不属于任何在排任务的范围，",
     "是本次门禁修复后被如实暴露出来的既有债务。逐包核查结论与裁定记录在各任务的 review 文档里：",
     "docs/design/ce-ee-refactoring/review/ 下的 task-1.2-platform-identity-authorization.md（身份与授权）、",
     "task-1.3-resource-packages.md（资源包）、task-1.4-agent-runtime.md（agent-runtime 与 machine/sandbox 方向收敛）、",
@@ -26,7 +26,8 @@
     "agent-config → agent-config）的删除条件全部挂在同一条边上——machine → agent-config（§2.3 矩阵外的反向边，其三条未触发风险与",
     "两条候选修复路径见该条 rationale 末段）——而该边没有任何在排分片承接，原 owner 1.4 已结项（1.4 §22.3 已把这族明确推出）。",
     "故按用户裁定统一改挂「未排期」（不假手已结项任务），待 machine 包的方向收敛任务立项时改挂它的编号；届时删掉",
-    "remote-file-service.ts:1 那一行 import 即可一次清掉 6 条。"
+    "remote-file-service.ts:1 那一行 import 即可一次清掉 6 条。",
+    "owner 必须指向**真正承接**该违规的排期任务，或显式的「未排期」；**不得保留已结项任务号**——那会让读表人误以为有人在管（2026-09-21 按用户裁定清理过一次：1.2 / 1.4 / 1.5 三个号当时清零，改挂 1.7 或「未排期」）。"
   ],
   "exceptions": [
     {
