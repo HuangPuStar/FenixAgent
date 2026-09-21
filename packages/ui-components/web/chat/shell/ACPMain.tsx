@@ -27,7 +27,7 @@ import { SidebarSessionList } from "./sidebar-session-list";
  * ACPMain 属性。复制自 `packages/chat-channel/web/components/ACPMain.tsx`。
  * 纯化改动点：`sidebarOpen` / `onSidebarOpenChange` 取代 localStorage `acp-sidebar-open`；
  * `onNotice` 取代 sonner toast；并把宿主端口（`boundMcps` / `projectEntries` / `flushContext` /
- * Composer 上传相关回调 / `onStatsChange`）透传给 ChatInterface。
+ * Composer 上传相关回调 / `onStatsChange` / `onOpenWorkspaceFile`）透传给 ChatInterface。
  */
 interface ACPMainProps {
   agentId?: string;
@@ -100,6 +100,11 @@ interface ACPMainProps {
   subscribeExternal?: ComposerExternalSubscribe;
   /** 运行时提示出口（透传给 ChatInterface，替代 sonner toast） */
   onNotice?: (notice: ChatNotice) => void;
+  /**
+   * 打开工作区文件（透传给 ChatInterface）：用户消息正文中的 `@./path` 引用与状态面板的
+   * 变更文件行都用它。源实现经宿主的预览事件总线派发；未注入时点击文件不产生跳转。
+   */
+  onOpenWorkspaceFile?: (envId: string, path: string) => void;
   /** 会话统计摘要出口（透传给 ChatInterface，替代 window `chat:stats` 事件） */
   onStatsChange?: (stats: ChatStatsSummary) => void;
 }
@@ -158,6 +163,7 @@ export function ACPMain({
   subscribeExternal,
   onNotice,
   onStatsChange,
+  onOpenWorkspaceFile,
 }: ACPMainProps) {
   const { t } = useTranslation(UI_COMPONENTS_NS);
   const sessions = chatState?.sessions ?? [];
@@ -465,6 +471,7 @@ export function ACPMain({
             subscribeExternal={subscribeExternal}
             onNotice={onNotice}
             onStatsChange={onStatsChange}
+            onOpenWorkspaceFile={onOpenWorkspaceFile}
           />
         </div>
       </div>

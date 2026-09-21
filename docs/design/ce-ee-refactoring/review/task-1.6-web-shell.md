@@ -114,7 +114,7 @@ WebShell 从静态 registry 收集各资源包的 web contribution（不反向�
 | --- | --- | --- |
 | T5a | `agent-config/web` 新增 `loadBoundMcps` | 纯新增助手 + 出口，见 §7.4；`agent-runtime` 不得持有该查询（§四.10） |
 | T5b | `ChatArea` 簇迁至宿主 | **已交付**（§7.5）：`ChatArea.tsx` / `chat-area-lifecycle.ts` / `chat-layout.css` 迁 `apps/web/src/pages/agent-panel/`；`ProdViewPage` 改注入窄端口；环境删除用例随迁 |
-| T5c | `ChatPanel` 改指 ui-components 面板 | `@fenix/chat-channel/web` → `@fenix/ui-components/chat/shell/ACPMain`；补 `boundMcps` 透传；`agent-runtime` 声明 `@fenix/ui-components` 依赖 |
+| T5c | `ChatPanel` 改指 ui-components 面板 | **c1 已交付**（§7.6），余 c2–c5 待办：c2 `ChatPanel` 改指 `@fenix/ui-components/chat/shell/ACPMain` + 端口接线（外移出 500 行红线）；c3 宿主注入 `boundMcps`（`loadBoundMcps`）；c4 chat CSS 切包；c5 测试归位 |
 | T5d | `chat-channel/web` 退场 | 删 3 个组件与入口（含 §四.9 的 `ContextPanel` 死代码链）、删 `./web*` 出口与 tsconfig paths、测试归位、删台账 1 条 |
 
 ---
@@ -501,3 +501,63 @@ identity 不能直连 `@fenix/resource-machine/web`。经用户裁定采用**窄
 - `bun run architecture:check` → ✓ 2240 files / 10 rules / 26 条已登记例外（文件数 −1 = 删除 `web/chat-area.ts`）
 - `bun run check:dependencies` → ✓ 2391 modules / 11 条已登记例外 / 0 条新增违规
 - `tsc --noEmit`（根）与 `tsc -p apps/web/tsconfig.json --noEmit` → 均无输出（exit 0）
+
+### 7.6 T5c1 ui-components 侧两个缺口补齐（2026-09-21）
+
+T5c（`ChatPanel` 改指 ui-components 面板）拆为 5 个独立提交：c1 ui-components 侧补齐 → c2 `ChatPanel`
+改指与端口接线 → c3 宿主注入（`boundMcps`）→ c4 chat CSS 切包 → c5 测试归位。本节只记 c1。
+
+#### 缺口 A：`ACPMain` 丢弃 `onOpenWorkspaceFile`
+
+纯化把「打开工作区文件」从宿主事件总线（`dispatchArtifactsPreviewFile`）改成宿主回调 prop，
+`ChatInterface` 用它渲染用户消息正文里的 `@./path` 引用按钮与状态面板的变更文件行；但 `ACPMainProps`
+从未声明该 prop，透传给 `ChatInterface` 的那一行也不存在。T5c2 里 `ChatPanel` 即使传入也会被丢弃，
+而**类型检查不会发现**——可选 prop 不传合法，传了被忽略同样合法。
+
+修法：`ACPMainProps` 增声明、组件形参解构、透传一行（3 处），行为在 c2 接线后生效。
+
+#### 缺口 B：建议提示词与消息「引用」的包内环路断开
+
+源实现中这两个动作由 `ChatView` 经 window 自定义事件（`chat:apply-suggested-prompt` / `chat:quote`）
+回到 `ChatComposer`，生产方与消费方都在 chat 层内部。纯化把派发点改成回调 prop、把消费侧改成宿主注入的
+`subscribeExternal`，但没有把这条环路接回去：`ChatInterface` 不传 `onApplySuggestedPrompt` / `onQuote`，
+两者恒为 `undefined` ⇒ 点空状态建议提示词、点消息「引用」**静默无反应**（无异常、无日志）。
+
+修法：新增 `web/chat/shell/internal/use-composer-input-bridge.ts`——把包内事件汇入宿主注入的同一条订阅
+通道（`ChatInterface` 用「宿主订阅 + 包内处理器集合」的合并订阅喂给 `ChatComposer`，`ChatView` 的两个
+回调 `emit` 包内事件）。
+
+两条非显然取舍：
+
+1. **不新增注入端口**（如 `onApplySuggestedPrompt` 回调）：这两个动作的生产方就在包内，要求宿主代为转达
+   会把包内环路变成宿主的义务，任一宿主漏接即重现同一种静默失效。合并订阅让「包内事件」与「宿主外部来源」
+   对 `ChatComposer` 而言是同一件事，订阅入口仍只有一条。
+2. **不做 `contextScope` 过滤**：源实现按 `contextScope` 过滤 window 事件，是因为 window 是全局通道，
+   同一页面内多个会话实例（主面板与 MetaAgentPanel 同时挂载）会互相串扰。合并通道按 `ChatInterface`
+   实例分发，订阅者集合属于该实例，跨实例串扰在结构上不可能——这不是放宽校验，而是把「靠过滤补救」换成
+   「靠作用域不成立」。宿主注入的外部来源（如文件树引用）仍由宿主自己做会话/环境归属过滤
+   （`composer-effects.ts` 的纯化说明不变）。
+
+#### 新增测试
+
+`packages/ui-components/web/__tests__/chat-shell-wiring.test.tsx`（3 用例，happy-dom + 包内 mock 会话），
+针对的正是上面两种静默失效：
+
+1. 不注入任何宿主订阅时，点空状态建议提示词 → 草稿正文更新（环路闭合）；
+2. 宿主外部事件（`file-reference`）与包内事件共用同一通道，两者都到达输入岛（合并未吞掉宿主来源）；
+3. `ACPMain` 透传 `onOpenWorkspaceFile`：只读模式渲染 mock 会话，点消息里的 `@./src/lib/context-queue.ts`
+   → 回调收到 `(envId, path)`（缺透传行即失败）。
+
+#### 明文不在本片范围
+
+- `ChatPanel` 的改指与端口接线（c2）、`boundMcps` 宿主注入（c3）、chat CSS 切包（c4）、测试归位（c5）。
+- 本包仍未被 `apps/web` 接入，c1 交付后线上行为不变：`grep -rl useComposerInputBridge apps/web/dist/assets` 无命中。
+
+#### 验证
+
+- `env -u ANTHROPIC_MODEL bun run precheck` → ✓ All passed：server-and-script-tests **770 pass / 0 fail**、
+  package-tests **7337 pass / 2 skip / 0 fail**（= T5b 的 7334 + 3 个新用例）、web-app-tests **949 pass / 0 fail**
+- `bun test packages/ui-components/web/__tests__/` → 33 pass / 0 fail
+- `bun run build:web` → ✓ built（本包 shell 尚未被接入，无 chunk 受影响）
+- `bun run architecture:check` → ✓ 2242 files / 10 rules / 26 条已登记例外（+2 = 新增 bridge 钩子与其测试）
+- `bun run check:dependencies` → ✓ 2394 modules / 11 条已登记例外 / 0 条新增违规

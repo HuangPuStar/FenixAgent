@@ -11,6 +11,9 @@
  *   `projectEntries` 注入。
  * - 提交链路抽到 `./internal/use-chat-input-submit`、调试快照抽到 `./internal/use-debug-snapshot`
  *   （单文件 500 行约束）；类型与工具函数全部改为包内导入，i18n 收敛到 `UI_COMPONENTS_NS`。
+ * - 空状态建议提示词与消息「引用」原经 window 事件回到 ChatComposer，纯化后由
+ *   `./internal/use-composer-input-bridge` 在包内自闭合（把包内事件汇入宿主注入的
+ *   `subscribeExternal` 通道，见该文件说明）。
  * - `loadPeriTaskDetail` 端口与 `PeriTaskDetailSheet` 详情抽屉一并移除（2026-09-18）：`PeriTask*`
  *   三件套源自 `agent-runtime`，在 `apps/web` 无对应实现，属旧组件。`ChatStatusPanel` 的 tasks Tab
  *   仍在（`periTasks` / `periTasksLoaded` 保留）；详情入口改由 `renderPeriTaskDetail` 注入槽承接
@@ -36,6 +39,7 @@ import type { PeriTaskViewProjection, ThreadEntry, TokenUsage } from "../types";
 import { ChatView } from "../view/ChatView";
 import type { ChatInterfaceHandle, ChatInterfaceProps } from "./chat-interface-types";
 import { useChatInputSubmit } from "./internal/use-chat-input-submit";
+import { useComposerInputBridge } from "./internal/use-composer-input-bridge";
 import { useChatDebugSnapshot } from "./internal/use-debug-snapshot";
 
 export type { ChatInterfaceHandle } from "./chat-interface-types";
@@ -149,6 +153,23 @@ export const ChatInterface = forwardRef<ChatInterfaceHandle, ChatInterfaceProps>
   const requestCreateSession = useCallback(async () => {
     await onCreateSession();
   }, [onCreateSession]);
+
+  // ── 输入岛外部事件的包内环路 ──
+  // 空状态建议提示词与消息「引用」由 ChatView 产生、ChatComposer 消费，源实现经 window
+  // 自定义事件回环；这里把包内事件并入宿主注入的订阅通道（见 `./internal/use-composer-input-bridge`）。
+  const { subscribe: composerSubscribe, emit: emitComposerInput } = useComposerInputBridge(subscribeExternal);
+
+  // 建议提示词：替换草稿正文（ChatComposer 侧语义）。
+  const handleApplySuggestedPrompt = useCallback(
+    (prompt: string) => emitComposerInput({ type: "suggested-prompt", prompt }),
+    [emitComposerInput],
+  );
+
+  // 消息引用：追加一条待发送引用（配额判断与截断在 ChatComposer 内）。
+  const handleQuote = useCallback(
+    (text: string) => emitComposerInput({ type: "quote", quote: { text } }),
+    [emitComposerInput],
+  );
 
   // 提交链路（归一化 ContentBlock[] + 无会话时缓存 prompt 并等待就绪）
   const handleChatInputSubmit = useChatInputSubmit({
@@ -307,6 +328,8 @@ export const ChatInterface = forwardRef<ChatInterfaceHandle, ChatInterfaceProps>
           sessionId={rcsSessionId ?? activeSessionId ?? undefined}
           envId={agentId}
           onOpenWorkspaceFile={onOpenWorkspaceFile}
+          onApplySuggestedPrompt={handleApplySuggestedPrompt}
+          onQuote={handleQuote}
         />
 
         <div className="chat-input-dock">
@@ -372,7 +395,7 @@ export const ChatInterface = forwardRef<ChatInterfaceHandle, ChatInterfaceProps>
                 uploadFiles={uploadFiles}
                 compressImage={compressImage}
                 renderFilePicker={renderFilePicker}
-                subscribeExternal={subscribeExternal}
+                subscribeExternal={composerSubscribe}
                 onNotice={onNotice}
               />
             </div>
