@@ -40,6 +40,8 @@ const window = initializeHappyDomWindow(new Window());
 (globalThis as any).Node = window.Node;
 // biome-ignore lint/suspicious/noExplicitAny: 同上
 (globalThis as any).HTMLElement = window.HTMLElement;
+// biome-ignore lint/suspicious/noExplicitAny: 同上（streamdown 的 diff 组件按 `customElements.get` 判定自定义元素）
+(globalThis as any).customElements = window.customElements;
 // biome-ignore lint/suspicious/noExplicitAny: 同上
 (globalThis as any).Element = window.Element;
 // biome-ignore lint/suspicious/noExplicitAny: 同上（命令菜单等浮层监听 pointer 事件）

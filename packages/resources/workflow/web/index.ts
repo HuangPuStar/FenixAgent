@@ -7,14 +7,19 @@
  * 因此这里只导出可在浏览器中执行的模块；服务端能力走 `./server`，`./module` 是模块注册表的组合根出口，
  * 两者都不从这里转出。
  *
- * **为什么暂不导出编辑器（`WorkflowEditor` / `WorkflowPage`）**：它们的值导入图会穿到别的包——经
- * `@fenix/agent-runtime` 的 `ChatPanel` 到 `@fenix/chat-channel`，再撞上 `acp-link` 的
- * `./websocket-code` 出口不可解析（2026-09-20 实测，`git show` 未改动的第三方债务）；同一链条还会到达
- * agent-config web 侧仍带 `@/` 宿主别名的文件。这两处都不是本包可修的范围（前者属 chat-channel/acp-link
- * owner，后者属 agent-config 的 L2 切片），若把编辑器纳入入口，本守卫的「全图无违规」断言会被他人债务
- * 长期染红，反而失去回归信号。编辑器本身的 `@/` 清理已完成（静态条件 2 对本包 `web/**` 全覆盖），
- * 宿主仍按既有 tsconfig/vite 别名消费它；两处债务清掉后应把 `WorkflowEditor` / `WorkflowPage` 加回本入口
- * （已登记为 openIssue）。
+ * **为什么暂不导出编辑器（`WorkflowEditor` / `WorkflowPage`）**：它们的值导入图会穿到别的包——2026-09-20
+ * 实测经 `@fenix/agent-runtime` 的 `ChatPanel` 到 `@fenix/chat-channel`，再撞上 `acp-link` 的
+ * `./websocket-code` 出口不可解析（`git show` 未改动的第三方债务）；同一链条还会到达 agent-config web 侧
+ * 仍带 `@/` 宿主别名的文件。这两处都不是本包可修的范围（前者属 chat-channel/acp-link owner，后者属
+ * agent-config 的 L2 切片），若把编辑器纳入入口，本守卫的「全图无违规」断言会被他人债务长期染红，
+ * 反而失去回归信号。编辑器本身的 `@/` 清理已完成（静态条件 2 对本包 `web/**` 全覆盖），宿主仍按既有
+ * tsconfig/vite 别名消费它；债务清掉后应把 `WorkflowEditor` / `WorkflowPage` 加回本入口（已登记为
+ * openIssue）。
+ *
+ * 更新（2026-09-21，§1.6 T6d）：`ChatPanel` 已从 `@fenix/agent-runtime` 根出口撤出并归位宿主，本编辑器的
+ * 聊天面板改由宿主经 `chatPanel` 端口注入，因此上面那条「经 ChatPanel 到 chat-channel → acp-link」的腿
+ * 已消失；加回入口前请以本守卫实测复核剩余债务（agent-config 侧与 `agent-runtime/web/api/environments` 的
+ * 可达性可能仍触发同类失败）。
  *
  * 面按「消费方实际需要」收敛：宿主控制台经 tsconfig/vite 别名消费 `pages/**` 与 `api/**`
  * （`@/src/pages/workflow/*`、`@/src/api/workflow-*`）。包内其余组件（`components/**`）除页面已引用的之外

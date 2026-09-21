@@ -41,6 +41,8 @@ const window = initializeHappyDomWindow(new Window());
 (globalThis as any).ResizeObserver = window.ResizeObserver;
 /* biome-ignore lint/suspicious/noExplicitAny: 同上 */
 (globalThis as any).HTMLElement = window.HTMLElement;
+/* biome-ignore lint/suspicious/noExplicitAny: 同上（streamdown 的 diff 组件按 `customElements.get` 判定自定义元素） */
+(globalThis as any).customElements = window.customElements;
 /* biome-ignore lint/suspicious/noExplicitAny: 同上 */
 (globalThis as any).requestAnimationFrame = window.requestAnimationFrame.bind(window);
 /* biome-ignore lint/suspicious/noExplicitAny: 同上 */

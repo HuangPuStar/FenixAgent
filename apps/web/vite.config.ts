@@ -20,7 +20,6 @@ export default defineConfig({
   resolve: {
     alias: {
       "@/components/ui": path.resolve(__dirname, "components/ui"),
-      "@/components/chat": path.resolve(__dirname, "../../packages/agent-runtime/web/components/chat"),
       "@/components": path.resolve(__dirname, "components"),
       "@/src/i18n/locales": path.resolve(__dirname, "src/i18n/locales"),
       "@/src/i18n": path.resolve(__dirname, "src/i18n"),
@@ -128,11 +127,6 @@ export default defineConfig({
         "../../packages/resources/prod-view/web/pages/prod-view/ProdViewPage.tsx",
       ),
       "@/src/pages/workflow": path.resolve(__dirname, "../../packages/resources/workflow/web/pages/workflow"),
-      "@/src/yjs": path.resolve(__dirname, "../../packages/agent-runtime/web/yjs"),
-      "@/src/pages/agent-panel/ChatPanel": path.resolve(
-        __dirname,
-        "../../packages/agent-runtime/web/agent-panel/ChatPanel.tsx",
-      ),
       "@/src/lib/card-renderer": path.resolve(__dirname, "src/lib/card-renderer"),
       "@/src/lib/model-config-utils": path.resolve(
         __dirname,

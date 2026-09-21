@@ -99,7 +99,7 @@ WebShell 从静态 registry 收集各资源包的 web contribution（不反向�
 | T3 | `@fenix/ui-components` 扩面 | 已交付 | `b858bf68f` |
 | T4 | `identity/web` 清零 + i18n | 4a 已交付 / 4b 待办 | 见下方 §7.3 |
 | T5 | `chat-channel/web` 清零 | a,b,c1,c2,c5,d 已交付 | 见下方 §7.4–§7.10 |
-| T6 | `agent-runtime/web` 收敛 | 待办 | — |
+| T6 | `agent-runtime/web` 收敛 | 已交付（a–e） | 见下方 §7.11 |
 | T7 | 5 条 `special-dependency` 消除 | 待办 | — |
 | T8 | 宿主组件/lib/api 簇改指并删除 | 待办 | — |
 | T9 | i18n 归属重划与 `quoteTruncatedBadge` 缺陷修复 | 待办 | — |
@@ -755,6 +755,7 @@ c2 之后线上聊天界面由 ui-components 的 `ACPMain` 渲染，`chat-channe
 - `packages/agent-runtime/web/components/chat/chat-interface-types.ts`（44 行）是 `ChatInterfaceProps` /
   `ChatInterfaceHandle` 的**零消费方死副本**（ui-components 已自持同名类型），其 `hideContextPanel?: boolean`
   一行虽在 §四.9 的删除口径内，但该文件整体归 T6（`agent-runtime/web` 收敛），本片不动。
+  **已了结**：整个 `web/components/chat/**` 53 个文件随 T6c2 `f2741a82d` 删除。
 - `CLAUDE.md` 不变量 11 的「前端 vite alias 直连根入口」措辞、`docs/design/2026-09-18-packages-web-ui-components-migration.md`
   中指向 `chat-channel/web/**` 的行号引用：前者机制描述仍成立（从根入口 re-export 服务端模块会打进 bundle）只是
   通道不再叫 alias，后者是历史快照。两者一并归 T12 的文档复核。
@@ -770,6 +771,139 @@ c2 之后线上聊天界面由 ui-components 的 `ACPMain` 渲染，`chat-channe
 - `bun run lint` → ✓（由 precheck 的 lint 步骤覆盖，零告警）
 
 首次 `precheck` 曾因 `rmd-05-migration.test.ts` 红（1 fail / 770 tests），即上方「连带修正」第一条；修正后全绿。
+
+---
+
+### 7.11 T6 `agent-runtime/web` 收敛：旧 chat 退场、`ChatPanel` 归位、别名归零（2026-09-21）
+
+#### 前置核查：删除前必须证明包内是超集（用户裁定的硬条件）
+
+用户对「`packages/agent-runtime/web/components/chat/**` 整体退场删除」附加了前置条件：
+**删除前先做逐文件行为比对，确认 ui-components 侧是超集**。核查按两步做：
+
+1. **机械预筛**：52 对同名/同职责文件逐对 `diff`。50 对全部有差异——差异来自 T3 的纯化改写
+   （`@/` 别名改指包内、i18n 收敛到 `UI_COMPONENTS_NS`、类型包内重声明、宿主依赖改 prop / 端口注入），
+   机械 diff 无法区分「纯化改写」与「功能丢失」，故必须逐对语义判定。
+2. **语义判定 + 对抗反驳**（工作流 `t6-duplicate-coverage-audit`，57 个 agent）：每对文件由独立核查员
+   完整读 A / B 后判定 `superset` / `equivalent` / `gap`，对判为 `gap` 的条目再由对抗核查员尽力反驳
+   （倾向驳回，只有找不到任何实现或等价物才承认缺失）。
+
+**结果**：52 对全部返回，`equivalent` 39 + `superset` 10 + `gap` 3；3 对共 5 条 gap 全部被反驳，
+**存活缺失 0 条**。5 条 gap 的处置：
+
+| 文件 | 指控 | 处置 |
+| --- | --- | --- |
+| `ToolCallRow.tsx` | ① `publicError` 块（message + Type + ID）不再渲染 ② 完成态状态词（`Done` / `已完成`）被抑制 | 均为 §8.2 第 1、2 行已登记的 T3 有意取舍（`b858bf68f`），非本片引入 |
+| `TodoChanges.tsx` | ① 每条待办右侧的变更标签 badge ② 随之删除的 6 条 `chat.components.todoChanges.*` 文案 | §8.2 第 3 行已登记的 `e8c73280a` 有意取舍；`packages/ui-components/README.md` 同载 |
+| `narrators/helpers.ts` | `resolveToolCardKind` 第 3 级「按 title 兜底分类」被删，只读 `tool.semantic` | **采纳并修复**（见下） |
+
+`narrators/helpers.ts` 的反驳意见是「在线链路由投影端口 `projectEntries` 写入 `semantic` / `kind`，
+该分支不可观测」。结论虽真，但它把包内行为押在宿主投影契约上（`ToolCallData.semantic` 在包类型里仍是可选）。
+包内已有逐字一致的 `../lib/tool-semantic`（含 `classifyToolSemantic`），故直接恢复源实现的三级优先：
+`const semantic = tool.semantic ?? classifyToolSemantic({ name: tool.title, rawInput: tool.rawInput, display: tool.display })`，
+使该模块不再依赖任何宿主模块也不丢分支——**这是核查发现的唯一实质缺口，已按「删除前补齐」而非「记录为取舍」处置**。
+
+#### T6a：`PeriTaskDetailSheet` 迁 ui-components（`9998926ec`）
+
+| 动作 | 内容 |
+| --- | --- |
+| 新增 | `packages/ui-components/web/chat/panels/PeriTaskDetailSheet.tsx`（150 行）：Button / Sheet 走包内、i18n 收敛 `chat.components.periTask.*`、`PeriTaskViewProjection` 从 `../types` 取；**详情取数改为 `loadDetail` prop 注入**——源实现直连宿主 `@/src/api/peri-task-details`，而该 API 后端 owner 是 `resources/model-management`，包内不得依赖资源包 |
+| 字典 | en / zh 各补 10 键（`periTask.detail*` / `kind*` / `previewOnly`），`i18n-barrel.test.ts` 与 en/zh 键集一致性用例同步通过 |
+| 出口 | `package.json` 增 `./chat/panels/PeriTaskDetailSheet` |
+| 改指 | `chat-panel-ports.tsx` 改从包导入并把宿主 `getPeriTaskDetail` 注入 `loadDetail`；端口表对应行同步改写 |
+| 删除 | 3 个零引用死组件：`TodoPanel` / `PeriTaskList` / `PeriTaskViewCard`（全仓仅注释提及、无 import；待办展示由包内 `TodoChanges` 承接） |
+
+#### T6b：宿主两处改指（`912569796`）
+
+`FilePickerDialog` 改用 `@fenix/ui-components/chat/shell/FilePickerPanel`（`listDir` 经 `unwrap` 解包、
+`uploadFiles` 直连 `uploadChatFiles`，与包内 props 文档示例一致）；`AgentManagementPage` 改用
+`@fenix/ui-components/chat/shell/AgentBadge`。这两处是宿主对 `agent-runtime/web/components/chat` **仅存的活引用**，
+T6c 整体退场的前置。
+
+#### T6c：旧 chat 实现整体退场（`f2741a82d`）
+
+| 动作 | 内容 |
+| --- | --- |
+| 删除源码 | `packages/agent-runtime/web/components/chat/**` 53 个文件；`packages/agent-runtime/web/src/**` 整目录（2 个孤儿测试） |
+| 删除测试 | `web/__tests__/` 中 33 个旧 chat 测试（覆盖已由 T6c1 的 35 个包内测试承接，见 §7.11 上表）；保留 12 个非 chat 测试（`chat-auth-state` / `chat-panel-transport-lifecycle` / `use-chat-state*` / `yjs-*` 等，随 T6d、T6e 处置） |
+| 别名清理 | 删除四处 `@/components/chat`：根 `tsconfig.json`、`packages/agent-runtime/tsconfig.json`、`packages/chat-channel/tsconfig.json`、`apps/web/vite.config.ts` |
+| 台账 | 删 1 条指纹归零的 stale 例外（`agent-runtime-not-to-resources` → `@fenix/model-management`，唯一消费方 `composer-toolbar.tsx` 已删）；`web-package-not-to-app` 的 rationale 更新为 T6c2 后实测 10 处 / 4 文件（T6 起点 170 处 / 68 文件） |
+| 端口反转 | `chat-panel-ports.tsx` 的 `uploadFiles` 改为「包内 `uploadComposerFiles(files, upload)` 做体积校验 → 宿主 `uploadChatFiles(agentId, batch)` 注入」，包内 composer 自此不持网络依赖 |
+| 连带修复 | DOM 全局注入成对化（下条） |
+
+**连带修复：`HTMLElement` 与 `customElements` 必须成对注入。** `bun test` 在同一进程内依次求值全部
+测试文件，删除 33 个旧测试改变了文件求值顺序，使一个**此前潜伏**的全局污染显形：本包 6 处用例把
+`globalThis.HTMLElement` 指向 happy-dom 的构造器却不注入 `customElements`，而 streamdown 的 diff 组件
+（`@pierre/diffs`）在模块求值期判定 `typeof HTMLElement !== "undefined" && customElements.get(TAG) == null`
+——于是「有 DOM」成立而 `customElements` 为 `undefined`，此后任何导入该链路的文件（`resources/{task,
+prod-view,model-management}` 经桶入口间接触达）以 `ReferenceError: customElements is not defined` 崩在
+测试之间的空档里（`precheck` 实测 4 例）。修法是在 6 处注入点各补一行 `customElements`（与 `HTMLElement`
+同源，`customElements.define` 与 `instanceof HTMLElement` 因此落在同一注册表）；不变量写入
+`packages/ui-components/web/testing.ts` 头部（该文件是 happy-dom 初始化的唯一实现）。宿主
+`apps/web/src/__tests__/agent-resource-picker-interaction.test.tsx` 的注入在 `afterAll` 已还原全局，不泄漏，
+故未改。
+
+#### T6d：`ChatPanel` 归位宿主并拆成三份（用户裁定「宿主注入」）
+
+**先决问题：workflow 包是 `ChatPanel` 的消费方。** 原裁定只说「`ChatPanel` 迁 `apps/web`」，但盘点消费方
+时发现 `packages/resources/workflow/web/pages/workflow/components/MetaAgentPanel.tsx` 正从
+`@fenix/agent-runtime` 根出口 import `ChatPanel`。若照搬，`@fenix/resource-workflow` 就要依赖 `apps/web`
+——踩 `web-package-not-to-app` 与 §2.3 依赖矩阵两条红线。按工程原则第 6 条「职责与公共契约变化必须先反馈」
+向用户呈报三个候选（宿主注入 / 面板下沉到 workflow 包 / 端口传递 hooks），用户裁定
+**「宿主注入（沿用 T5b 先例）」**：`WorkflowEditor` 声明 `chatPanel` 端口，宿主路由注入自己的实现。
+
+| 动作 | 内容 |
+| --- | --- |
+| 搬迁（模块） | `chat-auth-state.ts` / `chat-visible-reconnect.ts` / `session-mutation-refresh.ts` 原样 `git mv` 至 `apps/web/src/pages/agent-panel/`；`chat-panel-ports.tsx` 同迁并改写头部（原在包内、现为宿主模块，对包只依赖包出口） |
+| 拆分（视图） | `ChatPanel.tsx` 494 行的单文件按天然边界拆三份：`ChatPanel.tsx`（184 行，只做分支渲染 + `PublicErrorCard`）、`use-chat-panel-runtime.ts`（437 行，YJS 建连/重连状态机、commandId 幂等缓存、出站 Action 回调与派生展示态，无 JSX）、`chat-panel-ports.tsx`（205 行，ui-components 面板的宿主端口装配）——各 ≤500 行，满足原则 2 |
+| 搬迁（测试） | 4 个测试 `git mv` 至 `apps/web/src/__tests__/`，导入路径改 `../pages/agent-panel/...` |
+| 端口形状 | 包侧 `MetaAgentChatPanelProps { agentId; scenePrompt?; contextKey?; onPromptComplete?; hideSidebar? }`；`WorkflowEditorProps` 增 `chatPanel: ComponentType<MetaAgentChatPanelProps>`，`MetaAgentPanel` 只透传不复制会话/连接逻辑（宿主注入端的同型先例见 `routes/view/$prodViewId.tsx` 的 `chatArea`） |
+| 注入点 | `apps/web/src/routes/agent/_panel/workflow_.$id.edit.tsx` 增 lazy `ChatPanel` 并 `chatPanel={ChatPanel}` |
+| 包出口 | `packages/agent-runtime/src/index.ts` 撤出 `ChatPanel` 导出并在头注写明去向（该出口的契约是「只导出 Environment / Chat / YJS 的浏览器侧实现」，ChatPanel 依赖宿主 i18n 与 identity 的 web 会话，本就不该在此） |
+| 别名 | 删 `@/src/pages/agent-panel/ChatPanel` 两条特殊别名（根 `tsconfig.json`、`apps/web/vite.config.ts`），删后由通用 `@/src/*` 覆盖；`ChatArea.tsx` 的 lazy import 改相对路径 |
+| 台账 | `web-package-not-to-app`（`@fenix/agent-runtime -> @fenix/web-app`）rationale 由 T6c2 的 10 处 / 4 文件更新为 **2 处 / 2 文件**（`web/hooks/use-chat-state.ts` 与 `use-session-state.ts` 各一处 `@/src/lib/structured-to-thread`，随 T6e 归零）；ChatPanel 6 处与 chat-panel-ports 2 处随本片消失 |
+| 连带注释 | workflow 包三处（`web/index.ts` 头注、`workflow-browser-surface.test.ts` 的编辑器守护说明、`workflow-page-route.test.ts` 头注）原先都把「经 ChatPanel 到 `@fenix/chat-channel` 的腿」记为债务，本片改写为「该腿已消失，剩余债务须靠守卫实测」 |
+
+**测试锚点迁移。** `chat-panel-transport-lifecycle.test.ts` 用源码锚点钉住两处建连语义（`acpSessionId:
+acpSessionIdRef.current || undefined` 必须存在、`sessionState.acpSessionId` 不得出现在建连 effect 片段内）。
+拆分后这两处已移入 `use-chat-panel-runtime.ts`，常量由包内 `agent-panel/ChatPanel.tsx` 改指该文件，断言
+与注释同步更新——**没有放宽断言**。
+
+**登记既有 i18n 缺口（属 T9，不在本片修）。** `ChatPanel.tsx` 的 `PublicErrorCard` 标题是硬编码中文
+`执行出错`（`git log -S` 追溯为 `0562da970` 迁包时带入，非本片引入）。宿主已有可用键
+`components.messageBubble.turnError`，但把它接到错误卡片上属于 i18n 归属重划（T9）的范围，故此处只登记
+不改动，避免本片与 T9 重复改写同一文件。
+
+验证：`env -u ANTHROPIC_MODEL bun run precheck` 全绿（package-tests 7311 pass / 0 fail，web-app-tests
+968 pass / 0 fail）；`bun run build:web` 成功（`ChatPanel` 独立 chunk 304.73 kB）；拆分后 `bun test
+packages/agent-runtime/` 488 pass（原 507 减已迁出的 19）、`bun test packages/resources/workflow/` 725 pass、
+4 个搬迁测试 19 pass。
+
+#### T6e：别名与配置收尾，`web-package-not-to-app` 归零
+
+| 动作 | 内容 |
+| --- | --- |
+| 包内改指 | `agent-runtime/web/hooks/{use-chat-state,use-session-state}.ts` 的 `@/src/lib/structured-to-thread` → `@fenix/web-runtime/chat/structured-to-thread` |
+| 宿主改指 | `apps/web/src/hooks/use-task-views.ts` 与其测试的 `@/src/yjs/doc-hub` → `@fenix/agent-runtime`（宿主与包此后取**同一份** doc-hub 模块实例；DocHub 是模块级单例，双实例等于两份 Y.Doc） |
+| 别名删除 | `@/src/yjs`：根 `tsconfig.json`、`packages/agent-runtime/tsconfig.json`、`apps/web/vite.config.ts` 各 1 条；该别名只是让包内实现看起来像宿主实现，doc-hub / yjs-ws 本就经包根出口对外 |
+| 配置收敛 | `packages/agent-runtime/tsconfig.json` 重写为**只声明 `@server/*`**：原文件另有 6 条指向本包 web 的别名（`@/src/hooks/use-*`、`@/src/pages/agent-panel/*` × 4，后者随 T6d 起目标已不存在）+ 8 条宿主路径别名（`@/src/i18n*`、`@/src/api/*`、`@/src/lib/*`、`@/src/contexts/*`、`@/components/*`、`@/src/*`）。实测包内 `src/**` 与 `web/**` 对 `@/` 的引用已为 0，宿主 `apps/server/src/**` 也无 `@/` 引用，故全部删除。**刻意不补回**：`paths` 一旦存在，包内多写一行 `@/` 也不会报错，别名消失反而让越界在 typecheck 期直接失败 |
+| 测试基础设施 | `agent-runtime/web/__tests__/use-chat-state-hook.test.tsx` 的 happy-dom 初始化由相对路径读 `apps/web/src/__tests__/happy-dom-window` 改为 `@fenix/ui-components/testing`——**这是台账该条目的最后一处真实命中**（package 测试跨相对路径读宿主，既越界也让本包离开宿主后无法独立测试）。该做法与 `chat-composer.test.tsx` 一致，也是本任务计划里记的「收敛为跨包测试工具入口」在 agent-runtime 上的落地；`resources/{skill,memory,workflow}` 的 3 份包内副本仍未收敛，属 T10 / 1.3 W4 范围 |
+| 台账 | 删除 `web-package-not-to-app / @fenix/agent-runtime -> @fenix/web-app`（T6 起点 170 处 / 68 文件 → 0）。**该条目必须删**：`architecture:check` 对「已不再违规」的登记直接判 red，这也是删除过程中唯一一处「先删条目→检查报红→才暴露出的真命中」——即上面的 happy-dom 相对导入，若按 T6d 时的口径「实测 2 处」直接删条目就会漏掉它 |
+| 注释同步 | `tsconfig.json` 的别名段补写 `@/src/yjs` 删除理由；`use-chat-panel-runtime.ts` 头注由「残留 `@/src/yjs/*` 随 T6e 收敛」改为「已随 T6e 删除」 |
+
+**等价性证据（改指前必须核对，不靠「看起来一样」）**：两份 `structured-to-thread` 的 `diff` 只有 4 处——
+文件头注释、import 位置（宿主版取 `./tool-semantic` / `./types`，包版取 `@fenix/ui-components/chat/lib/tool-semantic` /
+`/chat/types`）、以及 `structuredToThreadEntries` 的入参由 `StructuredMessage[]` 放宽为 `readonly StructuredMessage[]`。
+被依赖的 `tool-semantic` 两份**逐字一致**（包版注释自述「逐字复制」）；类型侧包版已拆成
+`internal/types-*` 并按 barrel 重导出，但 `structured-to-thread` 对它的使用是 `import type`，不进运行时。
+故 `sessionOptionKindsToPermissionOptions` / `chatDocEntriesToStructuredMessages` 的运行时行为不变。
+
+**T6 至此全部交付（a–e）。** 包内 `web/` 保留 `api/` / `hooks/` / `yjs/` / `__tests__/`（agent-runtime 的浏览器侧
+实现，经根出口对外）；`@/` 宿主别名在包内为 0，台账本任务名下不再有 `web-package-not-to-app`。
+
+验证：`env -u ANTHROPIC_MODEL bun run precheck` 全绿（server-and-script-tests 771 pass、package-tests 7311
+pass / 0 fail、web-app-tests 968 pass / 0 fail）；`bun run build:web` 成功；`bun run architecture:check` ✓
+（2183 files / 24 条已登记例外）；`bun run check:dependencies` ✓（0 条新增违规）。
 
 ---
 

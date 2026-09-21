@@ -19,12 +19,12 @@ import type {
   SessionStatus,
 } from "@fenix/chat-channel";
 import { createYjsStore, isPublicError, type YjsStore } from "@fenix/chat-channel";
-import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
-import type * as Y from "yjs";
 import {
   chatDocEntriesToStructuredMessages,
   sessionOptionKindsToPermissionOptions,
-} from "@/src/lib/structured-to-thread";
+} from "@fenix/web-runtime/chat/structured-to-thread";
+import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
+import type * as Y from "yjs";
 import {
   createChatDocBinding,
   createSessionDocBinding,

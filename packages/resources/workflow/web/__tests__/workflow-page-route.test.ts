@@ -2,8 +2,9 @@
 // 守护 WorkflowPage 的导航契约：视图解析正确，且包内 web 不再出现 location 写操作。
 //
 // 为什么单独一个文件：解析逻辑拆到 `pages/workflow/workflow-path.ts`（纯函数）就是为了能被这样直接测到——
-// 从 `pages/WorkflowPage.tsx` 导入会连带加载 `WorkflowEditor → @fenix/agent-runtime → @fenix/chat-channel`
-// 整条链（`web/index.ts` 的说明与 `workflow-browser-surface.test.ts` 的守卫都记录了这件事）。
+// 从 `pages/WorkflowPage.tsx` 导入会连带加载 `WorkflowEditor` 及其整条跨包链（`web/index.ts` 的说明与
+// `workflow-browser-surface.test.ts` 的守卫都记录了这件事；§1.6 T6d 后该链不再经 `ChatPanel` →
+// `@fenix/chat-channel`，面板改由宿主经 `chatPanel` 端口注入）。
 //
 // 第二条断言是 P0 规则的回归守卫：前端规范把 `window.location.href =` / `replace` / `reload` 与
 // `history.pushState` / `replaceState` 列为 location 写操作禁令（`docs/developer/guide/frontend-development.md`

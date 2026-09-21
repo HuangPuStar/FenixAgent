@@ -16,6 +16,7 @@
 // 状态：tasks/taskOrder 子树存在 ⇒ loaded=true（Session Doc 快照已同步）；
 // 子树缺失（快照未到达）⇒ loaded=false，调用方展示加载态。
 
+import { createSessionDocBinding, getDocHubReplacementVersion, subscribeDocHubReplacement } from "@fenix/agent-runtime";
 import type {
   PeriTaskDetailAvailability,
   PeriTaskKind,
@@ -26,7 +27,6 @@ import type {
 import { createYjsStore, type YjsStore } from "@fenix/chat-channel";
 import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from "react";
 import type * as Y from "yjs";
-import { createSessionDocBinding, getDocHubReplacementVersion, subscribeDocHubReplacement } from "@/src/yjs/doc-hub";
 
 /** 终态集合：非终态（running）展示在前 */
 const PERI_TASK_TERMINAL_STATUSES: ReadonlySet<PeriTaskStatus> = new Set(["completed", "failed", "cancelled"]);
