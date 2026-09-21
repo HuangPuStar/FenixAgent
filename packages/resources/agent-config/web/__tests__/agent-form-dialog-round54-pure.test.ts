@@ -1,9 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import type { McpServerInfo, ModelEntry } from "@fenix/web-runtime/types/config";
-import {
-  mapMcpOptions,
-  mapModelOptions,
-} from "../../../../packages/resources/agent-config/web/pages/agent-panel/agent-editor/agent-editor-model";
+import { mapMcpOptions, mapModelOptions } from "../pages/agent-panel/agent-editor/agent-editor-model";
 
 function createModel(overrides: Partial<ModelEntry> = {}): ModelEntry {
   return {

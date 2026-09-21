@@ -33,46 +33,24 @@ import { existsSync } from "node:fs";
  * 10. 任务 1.6 T10b3 收尾 ui-components 归属（82 → 80）：同上口径，另含两处变形——`tree-component.test.tsx`
  *     去掉宿主副本时代遗留的 `@/src/i18n` 替身（`ui/tree` 只依赖包内 `i18n/namespace`）；
  *     `context-queue.test.ts` 按 owner 拆开，队列一半随宿主副本删除（与包内用例逐字重复）。
+ * 11. 任务 1.6 T10b4 把 8 个 agent-config 归属的宿主测试移入包内（80 → 72）：这 8 份此前以
+ *     `../../../../packages/resources/agent-config/web/...` 反向读取包内实现，既是跨边界依赖也说明 owner
+ *     已明确；`agent-form-dialog-pure-logic.test.ts` 因同时导入宿主 `../api/fs`、`../lib/{api-result,form-utils}`
+ *     而不在本片（等 T11 把宿主 `src/{api,lib}` 的剩余模块定归属后再归位）。
  */
 const RMD_08_MOVES = [
   ["web/src/App.tsx", "apps/web/src/App.tsx"],
   ["web/src/__tests__/agent-create-enter-flow.test.ts", "apps/web/src/__tests__/agent-create-enter-flow.test.ts"],
   [
-    "web/src/__tests__/agent-form-dialog-bulk-pure-options.test.ts",
-    "apps/web/src/__tests__/agent-form-dialog-bulk-pure-options.test.ts",
-  ],
-  [
-    "web/src/__tests__/agent-form-dialog-editor-guards.test.ts",
-    "apps/web/src/__tests__/agent-form-dialog-editor-guards.test.ts",
-  ],
-  [
-    "web/src/__tests__/agent-form-dialog-high-gap-conversions.test.tsx",
-    "apps/web/src/__tests__/agent-form-dialog-high-gap-conversions.test.tsx",
-  ],
-  [
-    "web/src/__tests__/agent-form-dialog-options-boundaries.test.tsx",
-    "apps/web/src/__tests__/agent-form-dialog-options-boundaries.test.tsx",
-  ],
-  [
     "web/src/__tests__/agent-form-dialog-pure-logic.test.ts",
     "apps/web/src/__tests__/agent-form-dialog-pure-logic.test.ts",
   ],
-  [
-    "web/src/__tests__/agent-form-dialog-round54-pure.test.ts",
-    "apps/web/src/__tests__/agent-form-dialog-round54-pure.test.ts",
-  ],
   ["web/src/__tests__/agent-form-dialog-ssr.test.tsx", "apps/web/src/__tests__/agent-form-dialog-ssr.test.tsx"],
   ["web/src/__tests__/agent-home-generation.test.tsx", "apps/web/src/__tests__/agent-home-generation.test.tsx"],
-  ["web/src/__tests__/agent-node-selector.test.ts", "apps/web/src/__tests__/agent-node-selector.test.ts"],
-  [
-    "web/src/__tests__/agent-resource-picker-interaction.test.tsx",
-    "apps/web/src/__tests__/agent-resource-picker-interaction.test.tsx",
-  ],
   [
     "web/src/__tests__/agent-sidebar-instance-order.test.ts",
     "apps/web/src/__tests__/agent-sidebar-instance-order.test.ts",
   ],
-  ["web/src/__tests__/agent-utils.test.ts", "apps/web/src/__tests__/agent-utils.test.ts"],
   ["web/src/__tests__/api-client.test.ts", "apps/web/src/__tests__/api-client.test.ts"],
   ["web/src/__tests__/api-result-utils.test.ts", "apps/web/src/__tests__/api-result-utils.test.ts"],
   ["web/src/__tests__/auth-preference.test.ts", "apps/web/src/__tests__/auth-preference.test.ts"],
@@ -183,6 +161,9 @@ const RMD_08_MOVES = [
  * 任务 1.6 T10b3 再移出 1 项并拆 1 项：`tree-component.test.tsx` 随 `ui/tree` 的实现迁入 ui-components；
  * `context-queue.test.ts` 同时守护队列（web-runtime）与纯函数（ui-components）两个 owner，按 owner 拆开
  * （队列一半与 web-runtime 包内用例逐字重复，随宿主副本一并删除），拆分归属另立专项断言。
+ * 任务 1.6 T10b4 再移出 8 项：`agent-form-dialog-*`（5）与 `agent-resource-picker-interaction`、
+ * `agent-node-selector`、`agent-utils` 的宿主用例——被测实现是 agent-config 包的
+ * `web/pages/agent-panel/agent-editor/**`，此前只能从宿主以四级相对路径反向读取包内实现，迁入后改为一跳。
  */
 const RMD_08_RELOCATED = [
   [
@@ -506,6 +487,46 @@ const RMD_08_RELOCATED = [
     "apps/web/src/__tests__/tree-component.test.tsx",
     "packages/ui-components/web/__tests__/tree-component.test.tsx",
   ],
+  [
+    "web/src/__tests__/agent-form-dialog-bulk-pure-options.test.ts",
+    "apps/web/src/__tests__/agent-form-dialog-bulk-pure-options.test.ts",
+    "packages/resources/agent-config/web/__tests__/agent-form-dialog-bulk-pure-options.test.ts",
+  ],
+  [
+    "web/src/__tests__/agent-form-dialog-editor-guards.test.ts",
+    "apps/web/src/__tests__/agent-form-dialog-editor-guards.test.ts",
+    "packages/resources/agent-config/web/__tests__/agent-form-dialog-editor-guards.test.ts",
+  ],
+  [
+    "web/src/__tests__/agent-form-dialog-high-gap-conversions.test.tsx",
+    "apps/web/src/__tests__/agent-form-dialog-high-gap-conversions.test.tsx",
+    "packages/resources/agent-config/web/__tests__/agent-form-dialog-high-gap-conversions.test.tsx",
+  ],
+  [
+    "web/src/__tests__/agent-form-dialog-options-boundaries.test.tsx",
+    "apps/web/src/__tests__/agent-form-dialog-options-boundaries.test.tsx",
+    "packages/resources/agent-config/web/__tests__/agent-form-dialog-options-boundaries.test.tsx",
+  ],
+  [
+    "web/src/__tests__/agent-form-dialog-round54-pure.test.ts",
+    "apps/web/src/__tests__/agent-form-dialog-round54-pure.test.ts",
+    "packages/resources/agent-config/web/__tests__/agent-form-dialog-round54-pure.test.ts",
+  ],
+  [
+    "web/src/__tests__/agent-node-selector.test.ts",
+    "apps/web/src/__tests__/agent-node-selector.test.ts",
+    "packages/resources/agent-config/web/__tests__/agent-node-selector.test.ts",
+  ],
+  [
+    "web/src/__tests__/agent-resource-picker-interaction.test.tsx",
+    "apps/web/src/__tests__/agent-resource-picker-interaction.test.tsx",
+    "packages/resources/agent-config/web/__tests__/agent-resource-picker-interaction.test.tsx",
+  ],
+  [
+    "web/src/__tests__/agent-utils.test.ts",
+    "apps/web/src/__tests__/agent-utils.test.ts",
+    "packages/resources/agent-config/web/__tests__/agent-utils.test.ts",
+  ],
 ] as const;
 
 describe("RMD-08 apps/web migration", () => {
@@ -520,9 +541,10 @@ describe("RMD-08 apps/web migration", () => {
   // 111 → 109——i18n 归属重划：键的物理落点必须等于 owner；T9c 直删 8 份零绑定字典与 1 项自指测试
   // （见文件头第 7 条），109 → 100；T10b1 把 12 个 ui-components 归属的宿主测试移入包内（见文件头第 8 条），
   // 100 → 88；T10b2 把 7 个 web-runtime 归属的宿主测试移入包内（见文件头第 9 条），88 → 82；
-  // T10b3 又移出 2 项（见文件头第 10 条），82 → 80。
+  // T10b3 又移出 2 项（见文件头第 10 条），82 → 80；T10b4 把 8 个 agent-config 归属的宿主测试移入包内
+  // （见文件头第 11 条），80 → 72。
   test("removes every legacy source and retains its exact owner target", () => {
-    expect(RMD_08_MOVES).toHaveLength(80);
+    expect(RMD_08_MOVES).toHaveLength(72);
     for (const [source, target] of RMD_08_MOVES) {
       expect(existsSync(source), `legacy source still exists: ${source}`).toBe(false);
       expect(existsSync(target), `apps/web target is missing: ${target}`).toBe(true);
@@ -557,12 +579,12 @@ describe("RMD-08 apps/web migration", () => {
   });
 
   // 任务 1.3 收口的 9 份 + 任务 1.6 T4 的 1 份 + T8b 的 11 份 + T8c 的 11 份 + T8d 的 15 份 + T9a 的 2 份
-  // + T10b1 的 12 份 + T10b2 的 7 份 + T10b3 的 1 份宿主副本：
+  // + T10b1 的 12 份 + T10b2 的 7 份 + T10b3 的 1 份 + T10b4 的 8 份宿主副本：
   // 旧根路径与应用壳路径都不得复活，
   // 且包侧 owner 落点必须存在。副本与 owner 并存是「两份实现各自能跑」的最坏形态，
   // 删除与断言必须成对出现。
   test("relocates the leftover host copies to their package owners", () => {
-    expect(RMD_08_RELOCATED).toHaveLength(69);
+    expect(RMD_08_RELOCATED).toHaveLength(77);
     for (const [legacy, shell, owner] of RMD_08_RELOCATED) {
       expect(existsSync(legacy), `legacy source still exists: ${legacy}`).toBe(false);
       expect(existsSync(shell), `host copy still exists: ${shell}`).toBe(false);

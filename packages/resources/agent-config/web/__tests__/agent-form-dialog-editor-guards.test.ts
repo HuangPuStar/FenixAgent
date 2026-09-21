@@ -5,11 +5,11 @@ import {
   shouldConfirmAgentEditorClose,
   shouldDisableAgentEditor,
   shouldShowAgentEditorLoading,
-} from "../../../../packages/resources/agent-config/web/pages/agent-panel/agent-editor/agent-editor-model";
+} from "../pages/agent-panel/agent-editor/agent-editor-model";
 import {
   appendUnavailableNodeOption,
   dispatchAgentReconnect,
-} from "../../../../packages/resources/agent-config/web/pages/agent-panel/agent-editor/use-agent-editor";
+} from "../pages/agent-panel/agent-editor/use-agent-editor";
 
 describe("Agent Editor 关闭保护与分页", () => {
   // 创建态和编辑态的 Escape 都应在存在可写草稿时触发关闭确认。

@@ -103,7 +103,7 @@ WebShell 从静态 registry 收集各资源包的 web contribution（不反向�
 | T7 | 5 条 `special-dependency` 消除 | 已交付（含 4b） | 见下方 §7.12 |
 | T8 | 宿主组件/lib/api 簇改指并删除 | 已交付（a–d + z） | 见下方 §7.13 |
 | T9 | i18n 归属重划与 `quoteTruncatedBadge` 缺陷修复 | **a、b、c、d 已交付** | a 见 §7.15 / b 见 §7.16 / c 见 §7.17 / d 见 §7.18 |
-| T10 | 测试迁移与 happy-dom 收敛 | **a、b1 已交付**（b 余下分片待做） | a 见 §7.19 / b1 见 §7.20 |
+| T10 | 测试迁移与 happy-dom 收敛 | **a、b1–b4 已交付**（余下分片随 T11 收口） | a 见 §7.19 / b1 见 §7.20 / b2 见 §7.21 / b3 见 §7.22 / b4 见 §7.23 |
 | T11 | WebShell 落地 | 待办 | — |
 | T12 | 收尾：台账复核、文档修订、证据留痕 | 待办 | — |
 
@@ -1499,9 +1499,34 @@ package owners`：旧的根路径与宿主副本都不得复活、两个 owner �
 **验证**：`bun test packages/ui-components/` 617 pass 0 fail（迁入两个用例文件后 58 → 60 个文件、596 → 617
 个用例）；四个对位文件（web-runtime 与 ui-components 各一份 `context-queue`、`tree-component`、宿主
 `utils.test.ts`）65 pass 0 fail；`bun test scripts/__tests__/rmd-08-migration.test.ts` 7 pass。宿主
-`apps/web/src/__tests__/` 41 → 39 个用例文件（web-app-tests 630 pass / 38 文件）。
+`apps/web/src/__tests__/` 41 → 38 个用例文件（web-app-tests 630 pass / 38 文件）。
 完整门禁 `env -u ANTHROPIC_MODEL bun run precheck` 全绿（773 / 7639 + 2 skip / 630，0 fail，lint 零
 warning），`bun run build:web` 与 `bun run docs:build` 均成功。
+
+### 7.23 T10b4 宿主测试按 owner 归位：8 个 agent-config 用例迁入包内（2026-09-21，）
+
+T10 的第五片，收掉最后一批「实现已在包内、用例仍在宿主」的用例：`agent-form-dialog-*`（5 份）与
+`agent-resource-picker-interaction.test.tsx`、`agent-node-selector.test.ts`、`agent-utils.test.ts`。它们的
+被测实现全是 `@fenix/agent-config/web/pages/agent-panel/agent-editor/**` 与 `web/lib/{agent-node,agent-utils}`，
+此前只能从宿主以 `../../../../packages/resources/agent-config/web/...` **四级相对路径反向读取包内实现**——
+这本身就是跨边界依赖（`§2.3` 的「跨包相对说明符把别包内部结构变成事实契约」），迁入后同一跳改为 `../`，
+共改写 11 处。`agent-node-selector` 与 `agent-utils` 的导入已是包名自引用，零文本改动。
+
+`agent-form-dialog-pure-logic.test.ts` **不在本片**：它同时导入宿主 `../api/fs`、`../lib/{api-result,form-utils}`，
+而这三者是 T8d 判定为「宿主专有」的模块（无包侧 owner）。归位的前提是先有 owner，属 T11 的收口范围；
+强行搬进包内会把宿主实现变成包的事实依赖。
+
+`agent-resource-picker-interaction.test.tsx` 直接 `import { Window } from "happy-dom"`，本包未声明该 devDependency
+（与 `resources/skill` 同形：都只经由 `@fenix/ui-components/testing` 的入口取用），实测在 workspace 根解析下
+正常，故本片不为它单独改 `package.json` 与锁文件。
+
+**台账与搬迁同批**：8 项从 `RMD_08_MOVES` 移出（`toHaveLength(80)` → 72），追加进 `RMD_08_RELOCATED`
+（`toHaveLength(69)` → 77），文件头追加第 11 条改判。
+
+**验证**：`bun test packages/resources/agent-config/` 741 pass 0 fail（该包用例文件 5 → 13）；
+`bun test scripts/__tests__/rmd-08-migration.test.ts` 7 pass。宿主 `apps/web/src/__tests__/` 38 → 30 个用例文件。
+完整门禁 `env -u ANTHROPIC_MODEL bun run precheck` 全绿（773 / 7975 + 2 skip / 294，0 fail，lint 零 warning），
+`bun run build:web` 与 `bun run docs:build` 均成功。
 
 ---
 
