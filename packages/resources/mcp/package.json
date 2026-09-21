@@ -8,7 +8,7 @@
     "./module": "./fenix.module.ts",
     "./server": "./src/server.ts",
     "./server/runtime": "./src/server/runtime.ts",
-    "./server/config": "./src/server/services/config/agent-config-mcp.ts",
+    "./server/config": "./src/server/services/mcp-labels.ts",
     "./server/schema": "./src/server-schema.ts",
     "./server/testing": "./src/server/testing.ts",
     "./web": "./web/index.ts",

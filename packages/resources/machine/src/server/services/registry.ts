@@ -1,7 +1,7 @@
+import { bindMachineIdByAgentName, isAgentConfigBoundToMachine } from "@fenix/agent-config/server";
 import { log } from "@fenix/logger";
 import { getIdentityDirectory } from "@fenix/platform-sdk/server";
 import { machine, registryEvent } from "@fenix/resource-machine/db";
-import { agentConfig } from "@server/db/schema";
 import { and, desc, eq, isNull, or, sql } from "drizzle-orm";
 import { getMachineDatabase } from "../db";
 import { getMachineLifecyclePort } from "../machine-lifecycle-port";
@@ -422,12 +422,10 @@ export async function deleteMachine(ctx: MachineRequestAuth, id: string): Promis
     throw new Error(`machine '${id}' is online and cannot be deleted`);
   }
 
-  const referencedAgents = await getMachineDatabase()
-    .select()
-    .from(agentConfig)
-    .where(and(eq(agentConfig.organizationId, ctx.organizationId), eq(agentConfig.machineId, id)))
-    .limit(1);
-  if (referencedAgents.length > 0) {
+  // 悬挂引用守卫经 owner 的公开入口判定：`machine_id` 列的语义与「哪条 Agent 配置跑在这台机器上」的
+  // 归属规则属 Agent 配置领域，本包只表达「这台机器还能不能删」这个业务意图，不自己解释该列、也不在
+  // 本包重写归属条件（表已随 §1.7 B7 迁至 `@fenix/agent-config/db`）。
+  if (await isAgentConfigBoundToMachine(ctx.organizationId, id)) {
     throw new Error(`machine '${id}' is still referenced by agent configs`);
   }
 
@@ -461,14 +459,19 @@ export async function deleteMachine(ctx: MachineRequestAuth, id: string): Promis
   return { deleted: true };
 }
 
-/** 按 agentName 匹配 agentConfig 并绑定 machineId */
+/**
+ * 机器注册时按 `agentName` 绑定 Agent 配置。
+ *
+ * 机器注册上报的 `agentName` 是它与 Agent 配置之间唯一的身份线索；本包只表达「这台机器上线了、引擎是
+ * `agentName`」这个意图。**为什么匹配与写入都归 owner**：「按名称匹配本组织同名配置、同名多条一起绑定、
+ * 绑定同时刷新 `updatedAt`」都是 `machine_id` 列的语义，属 Agent 配置领域（§4.8 第 7 条：调用期跨包写随
+ * 表迁出收敛为 owner 的写入口），本包不再自持归属条件，也不直接触碰该表。
+ *
+ * `tenantId` 为空表示无法确定组织范围，此时不绑定（既有前置条件，与"无组织即无匹配范围"一致）。
+ */
 async function bindAgentConfigs(machineId: string, agentName: string, tenantId: string | null): Promise<void> {
   if (!tenantId) return;
-  const conditions = [eq(agentConfig.organizationId, tenantId), eq(agentConfig.name, agentName)];
-  await getMachineDatabase()
-    .update(agentConfig)
-    .set({ machineId, updatedAt: new Date() })
-    .where(and(...conditions));
+  await bindMachineIdByAgentName({ organizationId: tenantId, agentName, machineId });
 }
 
 /** 服务启动时调用：将所有 online 状态的 machine 重置为 offline（服务重启后 WS 连接均已断开） */

@@ -1,8 +1,9 @@
 import type { EnvironmentData, EnvironmentRepo } from "@fenix/orchestration";
-import { agentConfig, environment } from "@server/db/schema";
+import { environment } from "@server/db/schema";
 import { eq } from "drizzle-orm";
 import { getAgentRuntimeConfig } from "../config";
 import { getAgentRuntimeDatabase } from "../db";
+import { getAgentConfigLookupPort } from "../services/agent-config-lookup-port";
 
 /**
  * 宿主注入的"执行节点解析器"（可选）。
@@ -57,6 +58,12 @@ export class PgEnvironmentOrchestrationRepo implements EnvironmentRepo {
    *   5. 禁用本地执行且无任何 machine 配置时为 null，编排域视为配置错误拒绝启动。
    * 占位节点由宿主侧本地节点服务（src/services/local-node-service.ts）供给，
    * core 侧在 disableLocalExecution 时同样不注册 local-default 节点。
+   *
+   * 第 2 步的两列不再由本查询 LEFT JOIN 取得：`agent_config` 已随 §1.7 B7 迁出宿主 schema，而本包
+   * 不得回链资源包（`.dependency-cruiser.cjs` 的 `agent-runtime-not-to-resources`），因此改经宿主绑定的
+   * `AgentConfigLookupPort` 取**原始**字段（`findAgentConfigExecutionFields`）。端口是宿主装配期绑定的
+   * 基础设施访问器、不含业务规则，与上面「解析规则注入 services」的理由不冲突：fallback 链本身仍只在本
+   * 文件里。
    */
   async getEnvironment(envId: string, userId?: string): Promise<EnvironmentData | null> {
     const db = getAgentRuntimeDatabase();
@@ -67,12 +74,9 @@ export class PgEnvironmentOrchestrationRepo implements EnvironmentRepo {
         organizationId: environment.organizationId,
         agentConfigId: environment.agentConfigId,
         autoStart: environment.autoStart,
-        configMachineId: agentConfig.machineId,
-        agentNode: agentConfig.agentNode,
         envUserId: environment.userId,
       })
       .from(environment)
-      .leftJoin(agentConfig, eq(environment.agentConfigId, agentConfig.id))
       .where(eq(environment.id, envId))
       .limit(1);
 
@@ -82,6 +86,15 @@ export class PgEnvironmentOrchestrationRepo implements EnvironmentRepo {
     // AgentController 在 spawn 层兜底（错误从 404 变为 422，见类注释）。
     if (!row) return null;
 
+    // 无 agentConfigId 时不问端口：ACP/Bridge 注册路径的环境不因端口装配状态改变行为。
+    // 有 agentConfigId 但取不到配置行（已被删除）时按"两列皆空"处理，与迁移前 LEFT JOIN
+    // 的语义一致（配置缺失 = 未绑定执行节点 → 走默认 fallback 链）。
+    const executionFields = row.agentConfigId
+      ? await getAgentConfigLookupPort().findAgentConfigExecutionFields(row.agentConfigId)
+      : null;
+    const configMachineId = executionFields?.machineId ?? null;
+    const agentNode = executionFields?.agentNode ?? null;
+
     // 业务节点解析（sandbox / agentNode）优先，默认链兜底。
     // userId 缺省时回退到环境属主（历史调用方不传 userId 时资源归属到环境属主）。
     const resolvedNodeId = this.executionNodeResolver
@@ -89,8 +102,8 @@ export class PgEnvironmentOrchestrationRepo implements EnvironmentRepo {
           envId,
           organizationId: row.organizationId,
           userId: userId ?? row.envUserId ?? undefined,
-          agentNode: row.agentNode,
-          configMachineId: row.configMachineId,
+          agentNode,
+          configMachineId,
         })
       : null;
 
@@ -109,7 +122,7 @@ export class PgEnvironmentOrchestrationRepo implements EnvironmentRepo {
         // （agent_config.agentNode 存在即权威，空对象 {} 表示"显式清空"也应忽略历史列，
         // 否则 spawn 用列、文件路径忽略列会分裂，实例在列绑定机器上运行而文件操作
         // 落到默认机器/本地）。agentNode 为 null（历史数据、合并前恒为 null）时列照常生效。
-        (row.agentNode == null ? row.configMachineId || null : null) ??
+        (agentNode == null ? configMachineId || null : null) ??
         defaultMachineId ??
         // 本地执行占位节点（与旧路径 nodeId 兜底语义一致）；禁用本地执行时
         // 无兜底，编排域 AgentController 会以配置错误拒绝启动。

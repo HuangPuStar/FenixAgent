@@ -1,6 +1,6 @@
+import { agentConfigSiteApp } from "@fenix/agent-config/db";
 import type { ActorContext } from "@fenix/platform-sdk";
 import { WebErrSchema } from "@fenix/platform-sdk";
-import { agentConfigSiteApp } from "@server/db/schema";
 import { eq } from "drizzle-orm";
 import Elysia from "elysia";
 import { getAgentConfigDatabase } from "../../db";

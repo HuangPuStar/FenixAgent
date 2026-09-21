@@ -1,28 +1,29 @@
+import { agentConfig } from "@fenix/agent-config/db";
 import { user } from "@fenix/identity/db";
-import { model } from "@fenix/model-management/db";
-import { machine } from "@fenix/resource-machine/db";
-import { mcpServer } from "@fenix/resource-mcp/db";
-import { skill } from "@fenix/resource-skill/db";
 import { sql } from "drizzle-orm";
 
 /**
- * 身份表由 `@fenix/identity/db` 拥有（CE 阶段 2 任务 1.2），这里只转出、不重复定义。
+ * 宿主只从已迁出的 owner 包**取用**表对象，不重复定义。
  *
- * 宿主是唯一同时持有两侧表定义的层：宿主的业务表需要身份表作为外键目标。它们与宿主表共用同一条迁移链
- * （`drizzle.config.ts` 同时声明全部 schema 文件），因此并置不会产生第二份真相；跨包读取身份数据仍必须
- * 走 `IdentityDirectory`，不得依赖本文件。
+ * 身份表由 `@fenix/identity/db` 拥有（CE 阶段 2 任务 1.2），这里只转出、不重复定义；Agent 配置聚合的
+ * 五张表由 `@fenix/agent-config/db` 拥有（任务 1.7 B7）。宿主是唯一同时持有两侧表定义的层：宿主的业务表
+ * 需要它们作为外键目标，而 Drizzle 的 `.references()` 只接受列对象、没有字符串形式。它们与宿主表共用
+ * 同一条迁移链（`drizzle.config.ts` 同时声明全部 schema 文件），因此并置不会产生第二份真相；跨包读取
+ * 身份数据仍必须走 `IdentityDirectory`，读 Agent 配置仍必须走本包的服务端入口，不得依赖本文件。
+ * 组装期例外的口径与边界见 `docs/design/ce-ee-refactoring/ce-ee-engineering-standards.md` §6.1。
  *
- * 同理，`@fenix/resource-machine/db` 的机器表（§1.7 首批迁出）、`@fenix/resource-mcp/db` 的 MCP 表
- * （第二批）、`@fenix/model-management/db` 的模型表（第三批）、`@fenix/resource-sandbox/db` 的沙盒表
- * （第四批）与 `@fenix/resource-skill/db` 的 Skill 表（第五批）也只在这里**取用**、不重复定义——
- * `agent_config.machine_id`、`agent_config_mcp.mcp_server_id`、`agent_config.model_id`、
- * `agent_config_skill.skill_id` 需要它们以列对象形式表达外键（Drizzle 的 `.references()` 没有字符串
- * 形式），组装期例外的口径与边界见
- * `docs/design/ce-ee-refactoring/ce-ee-engineering-standards.md` §6.1。
+ * 本文件里 `agentConfig` 的五个使用点都是宿主自有表的外键：`environment.agent_config_id`、
+ * `agent_knowledge_binding`、`task_execution_log`、`agent_memory_config`、`prod_view`（后四张表各引用一次
+ * `agent_config.id`），它们随 B8–B13 按拓扑序迁出宿主。
  *
- * 第六批（任务 1.7 B6）的 Workflow 九张领域表**不在这份清单里**：它们的表间外键在
- * `@fenix/resource-workflow/db` 内闭合，宿主任何表都不引用它们，因此宿主不再需要它们的表对象，
- * 连 `import` 一行也没有保留（与上表各批不同）。
+ * **B7 之后本文件不再导入的包**：`@fenix/model-management/db`、`@fenix/resource-machine/db`、
+ * `@fenix/resource-mcp/db`、`@fenix/resource-skill/db`——它们此前只被 `agent_config.model_id` /
+ * `agent_config.machine_id` / `agent_config_mcp.mcp_server_id` / `agent_config_skill.skill_id` 四处外键
+ * 取用，这四张表随 B7 迁入 `@fenix/agent-config/db` 后，本文件连 `import` 一行也不再需要（宿主其它
+ * 位置仍是这些包的合法消费方，例如 `services/data-migrates/` 直接按归属取它们的 `db/` 出口）。
+ *
+ * 任务 1.7 B6 的 Workflow 九张领域表从未出现在这份清单里：它们的表间外键在
+ * `@fenix/resource-workflow/db` 内闭合，宿主任何表都不引用它们。
  */
 export {
   account,
@@ -357,38 +358,6 @@ export const channelBinding = pgTable(
   }),
 );
 
-// Agent 配置
-export const agentConfig = pgTable(
-  "agent_config",
-  {
-    id: uuid("id").primaryKey().defaultRandom(),
-    userId: text("user_id")
-      .notNull()
-      .references(() => user.id, { onDelete: "cascade" }),
-    organizationId: text("organization_id").notNull(),
-    name: varchar("name").notNull(),
-    // 已废弃：不再被读取，后面使用 modelId
-    model: varchar("model"),
-    // 运行时正式使用 modelId 关联模型表主键。
-    modelId: uuid("model_id").references(() => model.id, { onDelete: "set null" }),
-    prompt: text("prompt"),
-    description: text("description"),
-    machineId: text("machine_id").references(() => machine.id, { onDelete: "set null" }),
-    agentNode: jsonb("agent_node"),
-    // 预留给未来可变扩展，避免为低频碎片配置反复加列。
-    extra: jsonb("extra"),
-    engineType: varchar("engine_type", { length: 32 }).default("opencode"),
-    // 资源可见范围：授权实现的唯一公开受众声明（public 对任意已认证主体开放公开默认动作）。
-    visibility: varchar("visibility", { length: 20 }).notNull().default("private"),
-    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
-    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
-  },
-  (table) => ({
-    orgNameIdx: uniqueIndex("idx_agent_config_org_name").on(table.organizationId, table.name),
-    orgVisibilityIdx: index("idx_agent_config_org_visibility").on(table.organizationId, table.visibility),
-  }),
-);
-
 // Agent 记忆配置（独立表，承载记忆开关状态，为后续扩展预留）
 export const agentMemoryConfig = pgTable("agent_memory_config", {
   id: uuid("id").primaryKey().defaultRandom(),
@@ -450,103 +419,6 @@ export const resourcePermission = pgTable(
       table.action,
     ),
     resourceIdx: index("idx_resource_permission_resource").on(table.resourceType, table.resourceId),
-  }),
-);
-
-// Agent↔Skill 多对多关联
-export const agentConfigSkill = pgTable(
-  "agent_config_skill",
-  {
-    agentConfigId: uuid("agent_config_id")
-      .notNull()
-      .references(() => agentConfig.id, { onDelete: "cascade" }),
-    skillId: uuid("skill_id")
-      .notNull()
-      .references(() => skill.id, { onDelete: "cascade" }),
-    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
-  },
-  (table) => ({
-    pk: uniqueIndex("idx_agent_config_skill_pk").on(table.agentConfigId, table.skillId),
-  }),
-);
-
-// Agent↔MCP 多对多关联
-export const agentConfigMcp = pgTable(
-  "agent_config_mcp",
-  {
-    agentConfigId: uuid("agent_config_id")
-      .notNull()
-      .references(() => agentConfig.id, { onDelete: "cascade" }),
-    mcpServerId: uuid("mcp_server_id")
-      .notNull()
-      .references(() => mcpServer.id, { onDelete: "cascade" }),
-    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
-  },
-  (table) => ({
-    pk: uniqueIndex("idx_agent_config_mcp_pk").on(table.agentConfigId, table.mcpServerId),
-  }),
-);
-
-// Agent↔SiteApp 多对多关联
-// 一个 Agent 配置可绑定多个 agent-sites 应用，绑定的 sites 会出现在 chat 右侧文件区的
-// 顶部 tab 中，与 Files 通过 tab 切换互斥展示。绑定层挂在 agentConfig 上，可被多个
-// environment 共享，与 skill/mcp 绑定层级一致。
-export const agentConfigSiteApp = pgTable(
-  "agent_config_site_app",
-  {
-    agentConfigId: uuid("agent_config_id")
-      .notNull()
-      .references(() => agentConfig.id, { onDelete: "cascade" }),
-    siteAppId: uuid("site_app_id")
-      .notNull()
-      .references(() => agentSiteApp.id, { onDelete: "cascade" }),
-    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
-  },
-  (table) => ({
-    pk: uniqueIndex("idx_agent_config_site_app_pk").on(table.agentConfigId, table.siteAppId),
-    agentConfigIdx: index("idx_agent_config_site_app_agent_config").on(table.agentConfigId),
-    siteAppIdx: index("idx_agent_config_site_app_site_app").on(table.siteAppId),
-  }),
-);
-
-// ────────────────────────────────────────────
-// Agent Sites 代理 — app 映射与凭证
-// ────────────────────────────────────────────
-
-export const agentSiteApp = pgTable(
-  "agent_site_app",
-  {
-    id: uuid("id").primaryKey().defaultRandom(),
-    organizationId: text("organization_id").notNull(),
-    userId: text("user_id")
-      .notNull()
-      .references(() => user.id, { onDelete: "cascade" }),
-    remoteAppId: varchar("remote_app_id", { length: 64 }).notNull(),
-    name: varchar("name", { length: 32 }).notNull(),
-    description: text("description"),
-    platformToken: text("platform_token").notNull(),
-    platformTokenId: varchar("platform_token_id", { length: 64 }).notNull(),
-    visibility: varchar("visibility", { length: 20 }).notNull().default("private"),
-    // ── custom app 部署相关 ──
-    // appType 为判别字段：'pocketbase' 时下方三个字段保持 null；
-    // 'custom' 时 entryFile 指定入口文件（如 'main.ts'），activeSlot 为蓝绿部署槽（'a'/'b'），
-    // deployedAt 记录最后一次部署时间。
-    appType: varchar("app_type", { length: 20 }).notNull().default("pocketbase"),
-    entryFile: varchar("entry_file", { length: 64 }),
-    activeSlot: varchar("active_slot", { length: 8 }),
-    deployedAt: timestamp("deployed_at", { withTimezone: true }),
-    /** 创建此 site 的 agent_config id。ON DELETE SET NULL：创建者被删除时放空，兜底放开所有绑定 agent 的修改权限。 */
-    createdByAgentConfigId: uuid("created_by_agent_config_id").references(() => agentConfig.id, {
-      onDelete: "set null",
-    }),
-    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
-    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
-  },
-  (table) => ({
-    remoteAppIdIdx: uniqueIndex("idx_agent_site_app_remote_app_id").on(table.remoteAppId),
-    orgVisibilityIdx: index("idx_agent_site_app_org_visibility").on(table.organizationId, table.visibility),
-    orgIdx: index("idx_agent_site_app_org").on(table.organizationId),
-    userIdx: index("idx_agent_site_app_user").on(table.userId),
   }),
 );
 

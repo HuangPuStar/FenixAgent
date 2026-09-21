@@ -1,3 +1,4 @@
+import { agentConfig } from "@fenix/agent-config/db";
 import type {
   AuthorizedResourceQuery,
   QueryStorageTypes,
@@ -5,7 +6,7 @@ import type {
   ResourceQueryConstraint,
   ScopedRow,
 } from "@fenix/platform-sdk";
-import { agentConfig, environment } from "@server/db/schema";
+import { environment } from "@server/db/schema";
 import { and, asc, desc, eq, type SQL } from "drizzle-orm";
 import type { PgColumn, PgTable } from "drizzle-orm/pg-core";
 import { AGENT_CONFIG_RESOURCE_TYPE, agentConfigResource } from "../access/agent-config-resource";

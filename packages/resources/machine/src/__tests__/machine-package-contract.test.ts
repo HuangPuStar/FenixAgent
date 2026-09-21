@@ -26,14 +26,6 @@ const REPO_ROOT = resolve(PKG_ROOT, "../../..");
 /** 包内源码入口；README 等文档里的示例不属于可解析引用，不参与扫描。 */
 const SOURCE_ENTRIES = ["src", "web", "db", "fenix.module.ts"];
 
-/**
- * 唯一允许的宿主导入。
- *
- * 表定义迁出归任务 1.7，本任务把它作为**显式残留**保留（README「边界残留」），且只允许这一条精确
- * 路径：`@server/db/schema` 之下的任何深路径都意味着重新伸手取宿主内部。
- */
-const ALLOWED_HOST_IMPORT = "@server/db/schema";
-
 /** `readdirSync` 的递归遍历跳过 `node_modules`（包内软链指向别的包的实现，不是本包源码）。 */
 function listPackageFiles(absDir: string): string[] {
   const files: string[] = [];
@@ -203,7 +195,7 @@ describe("Machine 包边界契约（任务 1.3 §1 静态条件）", () => {
   });
 
   // 遍历有效性自检：walker 若漏掉目录，后续「不存在违规引用」的断言会成片退化为恒真。
-  test("扫描有效性自检：源码集合覆盖全包，且已知残留宿主导入能被扫到", () => {
+  test("扫描有效性自检：源码集合覆盖全包，且说明符提取有效", () => {
     for (const expected of [
       "fenix.module.ts",
       "src/server.ts",
@@ -221,18 +213,17 @@ describe("Machine 包边界契约（任务 1.3 §1 静态条件）", () => {
       expect(sourceFiles).toContain(resolve(PKG_ROOT, expected));
     }
     expect(sourceFiles.length).toBeGreaterThanOrEqual(80);
-    // 正向控制：表定义残留必然存在，扫不到就说明说明符提取失效，而不是「没有宿主导入」。
-    // 残留按外键拓扑序逐批迁出（§1.7 表定义迁出），这里同步收缩成精确列表：本包自己的
-    // `machine` / `registry_event` 已迁至 `./db`，`sandbox_instance` 的写入已随 §1.7 B4 前置
-    // 移到 sandbox 侧（本包只通报 `MachineLifecyclePort`），只剩跨模块读 `agent_config`
-    // （owner agent-config，随 B7 迁出）。
-    // 最后一个表定义迁完时，连这条正向控制一起删除（届时本包应零 `@server` 导入）。
-    expect(
-      refs
-        .filter((ref) => ref.specifier === ALLOWED_HOST_IMPORT)
-        .map((ref) => relative(PKG_ROOT, ref.file))
-        .sort(),
-    ).toEqual(["src/__tests__/registry-schema.test.ts", "src/server/services/registry.ts"]);
+    // 正向控制：必须有一条已知存在的说明符能被扫到，否则下面「零宿主导入」的断言会退化成恒真。
+    // 载体随残留迁出而更换：表定义残留（`@server/db/schema`）已全部消失，§1.7 B7 收口后本包零
+    // `@server` 导入，于是改钉本次收口的实际落点——`registry.ts` 的 agent_config 读写必须经 owner
+    // 的公开入口 `@fenix/agent-config/server`，而不是回头直读对方的 `db` 或宿主 schema。
+    // 这条同时是 B7 的行为契约：若哪天有人把绑定/引用检查改回包内 SQL，它会立刻变红。
+    expect(refs).toContainEqual(
+      expect.objectContaining({
+        file: resolve(PKG_ROOT, "src/server/services/registry.ts"),
+        specifier: "@fenix/agent-config/server",
+      }),
+    );
   });
 
   // RMD-02 完成后宿主与包内旧路径都不能保留 Machine/File 的同名实现或兼容垫片。
@@ -296,11 +287,11 @@ describe("Machine 包边界契约（任务 1.3 §1 静态条件）", () => {
     }
   });
 
-  // 宿主实现只能经平台契约（`@fenix/platform-sdk`）或注入进入本包；除表定义残留外一律违规。
-  test("包内不存在表定义以外的宿主 @server 导入", () => {
-    const offenders = refs.filter(
-      (ref) => ref.specifier.startsWith("@server") && ref.specifier !== ALLOWED_HOST_IMPORT,
-    );
+  // 宿主实现只能经平台契约（`@fenix/platform-sdk`）或注入进入本包。§1.7 B7 收口前这里放行唯一残留
+  // `@server/db/schema`（跨模块读 agent_config）；表迁出后本包对该 schema 已无任何引用，白名单随之删除——
+  // 从此是**零例外**：任何 `@server` 说明符（含深路径与动态 `import()`）都是违规。
+  test("包内不存在宿主 @server 导入", () => {
+    const offenders = refs.filter((ref) => ref.specifier.startsWith("@server"));
 
     expect(offenders.map(describeRef)).toEqual([]);
   });

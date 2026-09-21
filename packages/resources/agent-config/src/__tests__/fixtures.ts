@@ -331,3 +331,55 @@ export function launchSpecDeps(overrides: Partial<AgentLaunchSpecAssemblerDeps> 
     ...overrides,
   };
 }
+
+// ── Drizzle 查询形状断言（跨包取数面 / 系统检索 / 人员树）的公共助手 ──
+//
+// 三个用例文件（`agent-config-repository` / `agent-config-cross-package-queries` /
+// `agent-config-ownership-projection`）都要「证明谓词下推的是哪一列、绑的是哪个值」。列名只能证明
+// 「下推了某一列」，参数值才证明「用的是调用方给的那个组织」，因此两个助手成对使用。
+
+/**
+ * 摊平 Drizzle `SQL` chunk 树收集列名。
+ *
+ * 不能对整个 `SQL` 做 `JSON.stringify`（表与列互相引用，会抛循环结构错误），因此按 chunk 树递归取
+ * 叶子列节点的名字（Drizzle 的列节点同时带 `name` / `dataType` / `columnType`）。
+ */
+export function collectColumnNames(node: unknown, names: string[] = []): string[] {
+  if (node === null || typeof node !== "object") return names;
+  const chunks = (node as { queryChunks?: readonly unknown[] }).queryChunks;
+  if (Array.isArray(chunks)) {
+    for (const chunk of chunks) collectColumnNames(chunk, names);
+    return names;
+  }
+  const candidate = node as { name?: unknown; dataType?: unknown; columnType?: unknown };
+  if (typeof candidate.name === "string" && candidate.dataType !== undefined && candidate.columnType !== undefined) {
+    names.push(candidate.name);
+  }
+  return names;
+}
+
+/**
+ * 收集绑定参数的字面值。
+ *
+ * 两种形态都要收：`eq` 这类运算符把值包成 `Param` 节点（`value` + `encoder`），而 `ilike` / `like`
+ * 的 `shouldInlineParams` 会把值**内联为裸叶子**。裸叶子只可能是参数——SQL 文本一律包在
+ * `StringChunk` 里（后者的 `value` 因此不能被当成参数）。
+ */
+export function collectParamValues(node: unknown, values: string[] = []): string[] {
+  if (node === null || node === undefined) return values;
+  if (typeof node === "string" || typeof node === "number" || typeof node === "boolean") {
+    values.push(String(node));
+    return values;
+  }
+  if (typeof node !== "object") return values;
+  const chunks = (node as { queryChunks?: readonly unknown[] }).queryChunks;
+  if (Array.isArray(chunks)) {
+    for (const chunk of chunks) collectParamValues(chunk, values);
+    return values;
+  }
+  const candidate = node as { value?: unknown; encoder?: unknown };
+  if (candidate.encoder !== undefined && candidate.value !== undefined) {
+    values.push(String(candidate.value));
+  }
+  return values;
+}

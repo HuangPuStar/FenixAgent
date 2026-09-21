@@ -10,9 +10,11 @@ import { providerResource } from "./src/server/access/provider-resource";
  * `/api/models` 与 `/api/system/model-gateway`；`routes/web/index.ts`、`routes/web/config/index.ts`
  * 分别挂载 `/web/model-gateway`、`/web/config/providers`、`/web/config/models`。
  *
- * `dependsOn: ["agent-config"]`：`src/server/model-gateway/runtime.ts` 值导入
- * `@fenix/agent-config/server` 的 `findAgentConfigNamesByIds`，把网关凭据映射里的 `agentConfigId`
- * 解析成 Agent 名称（用量列表与密钥管理列表两处都要用），两者必须成套启用。
+ * `dependsOn: ["agent-config"]`：两处值导入。`src/server/model-gateway/runtime.ts` 取
+ * `findAgentConfigNamesByIds`，把网关凭据映射里的 `agentConfigId` 解析成 Agent 名称（用量列表与密钥管理
+ * 列表两处都要用）；`src/server/repositories/subject-agent-search.ts` 取 `searchAgentConfigsSystem`，把
+ * 预算主体选择器的检索交给 owner（任务 1.7 B7 起检索 SQL 与表定义都在 agent-config，本包只保留协议分页
+ * `page` / `pageSize` → `limit` / `offset` 的换算）。两者必须成套启用。
  *
  * 不声明 `resource-sandbox`：只有 `web/pages/admin/AdminModelGatewayPage.tsx` 值导入
  * `@fenix/resource-sandbox/web` 复用 `MasterKeyGate` / `SearchableUsageFilter`，本包 `src/**` 无该

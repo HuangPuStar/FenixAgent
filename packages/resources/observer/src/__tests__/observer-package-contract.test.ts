@@ -24,12 +24,13 @@ const REPO_ROOT = resolve(PKG_ROOT, "../../..");
 const SOURCE_ENTRIES = ["src", "web", "db", "fenix.module.ts"];
 
 /**
- * 唯一允许的宿主导入。
+ * 本包必然存在的跨包公开出口导入；用作「说明符提取仍然有效」的正向控制。
  *
- * 表定义迁出归任务 1.7，本任务把它作为**显式残留**保留（任务 1.3 计划 §5），且只允许这一条精确路径：
- * `@server/db/schema` 之下任何深路径都意味着重新伸手取宿主内部实现。
+ * 迁移期这里曾是宿主导入白名单 `@server/db/schema`（任务 1.3 计划 §5 的显式残留）：1.7 B7 把
+ * `agent_config` 表定义迁到 `@fenix/agent-config/db`、人员树改经 owner 的公开取数面取数后，本包
+ * 已无任何宿主导入，白名单随之取消——留一个空的允许集会让这条断言退化成空洞的恒真式。
  */
-const ALLOWED_HOST_IMPORT = "@server/db/schema";
+const REQUIRED_CROSS_PACKAGE_IMPORT = "@fenix/platform-sdk/server";
 
 /**
  * 资源间引用的允许出口（§1 静态条件 7：只经对方包根入口）。
@@ -74,13 +75,17 @@ const HOST_PATHS_REMOVED: readonly string[] = [
 ];
 
 /**
- * 本包允许出现 DB 句柄与表对象的文件：句柄由 `src/server/db.ts` 提供，表对象只在仓储里出现。
- * 禁的是「服务/路由直接取句柄或表对象」——绕开仓储会让查询条件散落进业务层。
+ * 本包允许出现 DB 句柄与表对象的文件：**空集**。
  *
- * 断言只在生产代码上生效（`__tests__` 不参与）：测试要注入替身、要断言仓储被调用，
+ * 迁移期这里是 `src/server/db.ts`（句柄）与 `src/server/repositories/**`（表对象）：人员树是本包唯一的
+ * 数据访问点。1.7 B7 把 `agent_config` 的读取收敛回 owner（agent-config）后，本包的句柄模块与仓储层
+ * 已无消费方并随之删除，本包**零**数据访问——因此任何 `getDatabase` / `@server/db` 的重新出现都意味着
+ * 第二套取数路径，必须拦下（而不是「落在允许目录里就放行」）。
+ *
+ * 断言只在生产代码上生效（`__tests__` 不参与）：测试要注入替身（`stubDb()`）、要断言取数被调用，
  * 允许出现这些符号；本文件自身也在 `__tests__` 内，因此不需要转义技巧。
  */
-const DATA_ACCESS_DIRS = ["src/server/db.ts", "src/server/repositories"];
+const DATA_ACCESS_DIRS: readonly string[] = [];
 
 /** 去掉行注释与块注释；字符串字面量原样保留（说明符就在引号里）。 */
 function stripComments(source: string): string {
@@ -199,7 +204,7 @@ const exportEntries = Object.entries(manifest.exports ?? {});
 
 describe("Observer 包边界契约（任务 1.3 §1 静态条件）", () => {
   // 遍历有效性自检：walker 若只返回入口文件，「不存在违规引用」的断言会全部退化为恒真。
-  test("扫描有效性自检：源码集合覆盖全包，且已知残留宿主导入能被扫到", () => {
+  test("扫描有效性自检：源码集合覆盖全包，且已知跨包导入能被扫到", () => {
     for (const expected of [
       "fenix.module.ts",
       "src/server.ts",
@@ -207,7 +212,6 @@ describe("Observer 包边界契约（任务 1.3 §1 静态条件）", () => {
       "src/server/routes/api/system-logs.ts",
       "src/server/routes/api/system-observer.ts",
       "src/server/routes/api/system-people-tree.ts",
-      "src/server/repositories/system-people-repository.ts",
       "src/__tests__/guard-stubs.ts",
       "web/index.ts",
       "web/i18n/locales/en/observer.json",
@@ -219,15 +223,14 @@ describe("Observer 包边界契约（任务 1.3 §1 静态条件）", () => {
       if (/\.tsx?$/.test(expected)) expect(sourceFiles).toContain(abs);
     }
     expect(sourceFiles.length).toBeGreaterThanOrEqual(30);
-    // 正向控制：表定义残留必然存在，扫不到就说明说明符提取失效（而不是「没有宿主导入」）。
-    expect(refs.filter((ref) => ref.specifier === ALLOWED_HOST_IMPORT).length).toBeGreaterThan(0);
+    // 正向控制：本包必然有跨包公开出口导入（平台契约），扫不到就说明说明符提取失效（而不是「没有宿主导入」）。
+    expect(refs.filter((ref) => ref.specifier === REQUIRED_CROSS_PACKAGE_IMPORT).length).toBeGreaterThan(0);
   });
 
-  // §1 条件 1：宿主实现只能经平台契约（`@fenix/platform-sdk`）或注入进入本包，表定义残留除外。
-  test("包内不存在表定义以外的宿主 @server 导入", () => {
-    const offenders = refs.filter(
-      (ref) => ref.specifier.startsWith("@server/") && ref.specifier !== ALLOWED_HOST_IMPORT,
-    );
+  // §1 条件 1：宿主实现只能经平台契约（`@fenix/platform-sdk`）或注入进入本包。B7 迁出表定义后，
+  // 「表定义残留」这条唯一例外已消失，因此这里是不带白名单的全量禁则。
+  test("包内不存在宿主 @server 导入", () => {
+    const offenders = refs.filter((ref) => ref.specifier.startsWith("@server/"));
     expect(offenders.map(describeRef)).toEqual([]);
   });
 
@@ -308,8 +311,8 @@ describe("Observer 包边界契约（任务 1.3 §1 静态条件）", () => {
   });
 
   // §1 条件 8（本包可判定的一半）：路由不互相导入（route 调 route 会让协议装配变成隐式依赖），
-  // 且数据访问只经仓储——句柄 `getObserverDatabase()` 与表对象只允许出现在 db.ts 与 repositories/**。
-  test("路由不互相导入，数据访问收敛在仓储", () => {
+  // 且包内不出现任何 DB 句柄或表对象（B7 后本包零数据访问，见 `DATA_ACCESS_DIRS` 的说明）。
+  test("路由不互相导入，包内不出现 DB 访问", () => {
     const routeFiles = filesUnder("src/server/routes");
     const crossRoute = refs.filter(
       (ref) =>

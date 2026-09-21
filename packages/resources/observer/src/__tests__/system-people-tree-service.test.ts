@@ -1,9 +1,14 @@
-// 系统人员树 service 的业务规则用例（真实 service + 真实仓储，只替换平台契约的两个端口）。
+// 系统人员树 service 的业务规则用例（真实 service + agent-config 公开取数面的真实实现，
+// 只替换平台契约的身份目录端口与 DB 句柄）。
 //
 // 为什么必须补：协议层用例走 `setSystemPeopleTreeServiceForTests` 注入假 service，服务自身的规则完全
 // 覆盖不到。这些规则写错时接口照样返回 200——只是树上少了一批历史 owner（他们名下的智能体随之在系统
 // 视图里消失），或者给没有 member 行的人编造出一个角色。批量补齐还承担性能契约：缺失 owner 必须一次
 // 批量投影，不能在循环里逐行查询（组织多、owner 多时是 N+1）。
+//
+// 取数在 B7 后由 agent-config 的 `listAgentConfigsByOrganization()` 承担，但它与宿主的其它仓储同源于
+// platform-sdk 的 `getDatabase()`，因此 `stubDb()` 登记的替身同样拦得住——service 仍按组织各查一次、
+// 只拿到本组织的行，这条多租户隔离断言不因换接 owner 而失效。
 
 import { beforeEach, describe, expect, test } from "bun:test";
 import type { OrganizationWithMembers, UserDisplayInfo } from "@fenix/platform-sdk";
@@ -142,7 +147,7 @@ describe("system-people-tree service", () => {
     ]);
   });
 
-  // 组织之间互不串行：每个组织各查一次仓储，agent 只挂到本组织的用户下（多租户隔离的最低要求）。
+  // 组织之间互不串行：每个组织各查一次取数面，agent 只挂到本组织的用户下（多租户隔离的最低要求）。
   test("按组织分别取数，agent 不跨组织挂载", async () => {
     const db = createPeopleTreeDbStub({
       "org-1": [systemPeopleAgentRow({ id: "agent-1", userId: "user-1" })],
@@ -174,7 +179,7 @@ describe("system-people-tree service", () => {
     expect(db.whereClauses).toHaveLength(2);
   });
 
-  // 同一用户多个 agent 全部挂上，且保持仓储的返回顺序（SQL 已按 name → id 排序，服务不得重排）。
+  // 同一用户多个 agent 全部挂上，且保持取数面的返回顺序（owner 的 SQL 已按 name → id 排序，服务不得重排）。
   test("同一用户的多个 agent 全量挂载并保持仓储顺序", async () => {
     const db = createPeopleTreeDbStub({
       "org-1": [

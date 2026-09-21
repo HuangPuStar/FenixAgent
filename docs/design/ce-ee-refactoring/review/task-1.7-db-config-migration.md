@@ -236,10 +236,11 @@ FK；identity 9 张已随任务 1.2 迁出，业务 40 张待迁）按包名语�
 | B4 | sandbox（`sandbox_pool`、`sandbox_instance`）迁至 `@fenix/resource-sandbox/db` | 已交付 | 见 §7.14 |
 | B4 审计整改 | 契约测试的夹具判别力与 `db/` 扫描集补正（代码，`d549e0838`）+ 七处取证口径订正 | 已交付 | 见 §7.18 |
 | B5 | skill（`skill`）迁至 `@fenix/resource-skill/db` | 已交付 | 见 §7.15 |
-| B7 前置 | agent-runtime 的 `agent_config` LEFT JOIN 改为经 owner 公开入口取投影，装配方向不允许时退回宿主注入端口（§4.8 第 4 条 / §8.4 第 7 条） | 待办·须先反馈 | — |
-| B7 前置 | join 表归属与 D4 的冲突复核（§8.4 第 8 条） | 待办·须先反馈 | — |
+| B7 前置 | agent-runtime 的 `agent_config` LEFT JOIN 改为经 owner 公开入口取投影，装配方向不允许时退回宿主注入端口（§4.8 第 4 条 / §8.4 第 7 条） | 已交付 | 见 §7.19 |
+| B7 前置 | join 表归属与 D4 的冲突复核（§8.4 第 8 条） | 已交付（裁定：三张 join 表全归 agent-config） | 见 §7.19 |
 | B6 | workflow（九张领域表）迁至 `@fenix/resource-workflow/db` | 已交付 | 见 §7.17 |
-| B7–B13 | 其余 17 张表按拓扑序迁出（§4.7 表共 36 张，B1–B6 已迁 19 张；§4.7.1 交付面） | 待办 | — |
+| B7 | agent-config（`agent_config` + 三张 join 表 + `agent_site_app`）迁至 `@fenix/agent-config/db`；machine / model-management / observer 的调用期读取与写入收口 | 已交付 | 见 §7.19 |
+| B8–B13 | 其余 12 张表按拓扑序迁出（§4.7 表共 36 张，B1–B7 已迁 24 张；§4.7.1 交付面） | 待办 | — |
 | C0 | 打通模块声明的 env 回流至宿主 | 已交付 | `cb0c5976c` |
 | C1 | `workspace-resolver` 改读模块配置 + `WORKSPACE_ROOT` 收敛 | 待办 | — |
 | C2–C18 | 其余模块声明 `envDefinitions` | 待办 | — |
@@ -1015,6 +1016,121 @@ packages/resources/workflow/src/__tests__/workflow-source-migration.test.ts` **2
 
 **状态**：代码改动见 `d549e0838`；文档与注释订正见本批提交（§五 表「B4 审计整改」行）。
 
+### 7.19 B7：`agent_config` 一族 5 张表迁至 `@fenix/agent-config/db`（2026-09-22，本批）
+
+**交付面**：新 owner 文件 `packages/resources/agent-config/db/schema.ts`（主表 `agent_config`、三张 join 表
+`agent_config_skill` / `agent_config_mcp` / `agent_config_site_app`、Agent Sites 代理表 `agent_site_app`）；
+`package.json` 加 `./db` 出口并补 `@fenix/identity` 依赖声明；`drizzle.config.ts` 加该 schema 路径；本包
+`src/server/**` 10 个生产文件经该出口取表（其中 `repositories/agent-config-mcp.ts` /
+`agent-config-skill.ts` 为新增），另有 2 个用例文件（`agent-config-schema.test.ts` 新增、
+`round45-agent-config-routes-coverage.test.ts` 改指）；宿主 `schema.ts` 删五张
+表定义（`git diff --numstat` → 删 147 / 增 19，净 -128），改为导入该出口供 5 处**自有表**外键表达，另有
+`services/data-migrates/` 两个发布期迁移按
+§4.7.1 第 1 条的宿主 carve-out 经同一出口取表对象；调用期跨包读 / 写收口（见下）；`scripts/architecture/exceptions.json` 删 5 条、
+更新 2 条；mcp / skill / machine / model-management / observer 的契约测试与注释同步。
+
+**调用期收口明细**（§4.7.1 第 1 / 4 条。B7 是 B 块唯一**同时**含读收口与写收口的批次）：
+
+| 包 | 迁移前的形态 | 收口后 |
+|---|---|---|
+| `agent-runtime` | `services/environment-orchestration.ts`、`services/environment-web.ts` 查询期 LEFT JOIN `agent_config` | 宿主注入的 `AgentConfigLookupPort` 新增 `findAgentConfigExecutionFields` / `findAgentConfigNamesByIds` 两个只读投影方法，LEFT JOIN 变批量投影 |
+| `machine` | `registry.ts` 删除守卫读 `agent_config`（存在性判定）+ 机器注册路径 UPDATE `machine_id` | 读改经 `isAgentConfigBoundToMachine`、写改经 `bindMachineIdByAgentName`（`@fenix/agent-config/server`） |
+| `model-management` | `repositories/subject-agent-search.ts` 自持主体检索 SQL | 薄适配层：只做 `page` / `pageSize` → `limit` / `offset` 换算，检索归 `searchAgentConfigsSystem` |
+| `observer` | `repositories/system-people-repository.ts` 自持归属查询 | 改经 `listAgentConfigsByOrganization`，行类型用 owner 的 `AgentConfigOwnershipRow` |
+| `mcp` / `skill` | 各自持有并读写自己的关联表 | 表与读写随聚合根归 `agent-config`，两包旧文件删除，`./server/config` 收缩为纯标签投影 |
+
+三处需要记下理由的取舍：
+
+- **端口新增两个方法而不是复用既有的**：`findAgentConfig` / `findVisibleAgentConfig` 返回整行且带可见性
+  （授权）语义；编排仓储要的是「原始执行字段」与「按 id 取名称」，复用会把授权语义带进执行期路径。
+  端口在配置行已被删除时返回 `null`，调用方按迁移前 LEFT JOIN 的语义降级（字段缺失 → fallback 默认
+  机器），该分支由 `environment-orchestration.test.ts` 新增用例钉住（同时断言端口确实被以
+  `agentConfigId` 调用过，避免「降级正确但根本没查」也判绿）。
+- **宿主零文本改动**：接口扩展只落在 agent-runtime 的端口定义与 agent-config 的实现
+  （`services/agent-config-lookup.ts`）上，`bootstrap/host-startup.ts` 与 `services/pre-launch-ports.ts`
+  均未改动（实现对象原地满足扩展后的契约）。
+- **machine 的守卫与写入走 owner 的公开 service、不是端口**：`agent-config → machine` 已存在（B1 的
+  `MachineLookupPort` 方向），反向声明会闭合新环；而 `machine → agent-config` 是既有边，直接用公开入口
+  不新增任何包级边。抛错文案（`machine '<id>' is still referenced by agent configs`）与 `tenantId` 为空
+  时跳过写入的行为逐字保留。
+
+**为什么 D4 成立、而 B2 / B5 的实现必须改**（§8.4 第 8 条结案，用户裁定「全归 agent-config」）：三张 join
+表的 `agent_config_id` 指向聚合根，Drizzle 的 `.references()` 只接受列对象、没有字符串形式，因此任何
+**非本包持有**的 join 表都必须组装期导入 `@fenix/agent-config/db`。若留在 mcp / skill，反向的
+`mcp → agent-config` / `skill → agent-config` 既未声明（`undeclared-workspace-dependency`），又会与既有
+`agent-config → mcp`（7 处）/ `agent-config → skill`（9 处）闭合新环。B2 / B5 期间的「各包自持」是迁移
+中间态，其文件头自述的理由是「避免第二个包再写一份 delete + insert 覆盖逻辑」——而这张表的唯一读者本来
+就在 agent-config 侧（`services/agent-associations.ts`），随表迁入没有第二处调用方，该理由随之消失。
+
+**两处 `sync*` 的空串过滤实现不一致（逐字迁移，登记而不顺手改）**：`syncAgentMcps` 用
+`mcpServerIds.filter((id) => id?.trim())`，**保留未 trim 的原值**入库；`syncAgentSkills` 用
+`skillIds.map((id) => id?.trim()).filter(Boolean)`，**先 trim 再入库**。两者都随各自原文件逐字迁入本包
+（迁移前即如此，`git show HEAD:` 可复核），**不是本批引入的行为差异**。统一它会改变其中一条写入路径的
+落库值（带前后空白的 id 从「原样」变为「已 trim」），属行为变更，故按「只搬位置」的原则登记：
+**建议与「关联表写入是否需要 id 格式校验」一并排期**，不要在迁移批里顺手改。
+
+**被删断言在 owner 侧接回（不留覆盖缺口）**：machine 的 `registry-schema.test.ts` 删除了「`agent_config`
+包含 `machineId` 列」（原经 `@server/db/schema` 断言）；按 B1 对 `machine.type` 的同一口径——B1 审计把
+「删断言无人接回」判为缺陷——本批在 owner 侧新增
+`packages/resources/agent-config/src/__tests__/agent-config-schema.test.ts` 接回五张表的列存在性断言。
+列名映射（属性名 → DB 列名）仍由 `bun run check:schema-ddl-drift` 承担。
+
+**合约测试正向控制的口径更换（两处，均为「消失的载体」而非「放宽断言」）**：
+
+- `mcp-source-migration.test.ts` 原以「`@server/db/schema` 残留数 > 0」作正向控制；本批残留归零后改为
+  「存在 `@fenix/platform-sdk` 说明符且存在相对导入」，并把宿主断言改为 `@server/` 前缀为空。
+- `skill-browser-surface.test.ts` 的负例注入原断言「注入 `./server` 后图里出现 `@server/*`」；本包零宿主
+  导入后该标记不再可用，改用服务端专属外部依赖 `elysia` / `drizzle-orm`（与 `node:` 内建两条并存，
+  「进到了服务端实现」与「拦截能力」缺一不可）。同包 `skill-source-boundary.test.ts` 的宿主引用断言由
+  「等于白名单」升级为「等于空数组」，白名单常量删除。
+
+**台账**：删 5 条 `apps-boundary`（machine / model-management / mcp / skill / observer），依据是五包
+`src/**` 与 `db/**` 的 `@server` 实测归零 + `architecture:check` 的 stale 检测；`agent-runtime` 与
+`agent-config` 两条保留并追加「§1.7 B7 进度」段——两者残留都指向尚未迁出的**宿主自有**表
+（`environment` / `agent_instance` / `knowledge_base`），随 B8 / B9 收口。
+
+**验证**：`check:schema-ddl-drift` 零差异（五张表只搬位置）；`architecture:check` 通过（2134 files，10
+rules，12 条已登记例外）；`check:dependencies` 通过（2276 modules，10 条已登记例外，0 条新增违规——D4
+裁定下没有新增任何包级边）；`tsc --noEmit` 无错误；包内测试 agent-config 731 / machine 551 / mcp 289 /
+skill 276 / model-management 233 各自单跑全绿；observer 与宿主 `bun run precheck` 的实测见本批收尾段。
+
+**已知缺口登记**（新增，与本节 8.4 第 6 条的 DDL 门禁盲区同族）：`agent_config` 的**列结构**断言已在
+owner 侧接回，但「表名 → 定义文件」唯一性仍无门禁——若这五张表日后在宿主或其他包重新出现第二份定义，
+`check:schema-ddl-drift` 会因「差异为零」而放行。移出条件同 §8.4 第 6 条第 (a) 项（表名 owner 定完后加
+唯一性断言）。
+
+**observer 侧收口（代理执行、我逐条复核）**：删 `src/server/db.ts`、`src/server/repositories/system-people-repository.ts`
+与其用例（并清掉空目录）；`services/system-people-tree-service.ts` 改经 `@fenix/agent-config/server` 的
+`listAgentConfigsByOrganization()` 取数，并在边界处转成视图类型（`toSystemPeopleAgent(row: AgentConfigOwnershipRow)`）；
+`__tests__/system-people-db-stub.ts` 改用 owner 的行类型、删掉 `collectColumnNames`、把 `collectParamValues`
+降为私有（它已只服务替身自己的组织反查）；`observer-package-contract.test.ts` 去掉宿主导入白名单、改以
+`@fenix/platform-sdk` 与非相对导入作正向控制，`DATA_ACCESS_DIRS` 收敛为空集。**空集不等于空转**：读源码确认该
+断言扫 `filesUnder("src")` 的全部文件、只跳过白名单，命中任何 `getObserverDatabase` / `getDatabase` /
+`@server/db` 说明符都会失败。实测 observer 单跑 **78 pass / 0 fail**。
+
+**文档与注释同步（代理执行、我逐条复核）**：6 个 README（agent-config / machine / mcp / model-management /
+observer / skill）+ 6 个 `fenix.module.ts` 注释 + `skill/db/schema.ts` 的 JSDoc。复核不只看它的引述，而是
+独立复算关键数字：6 个 `fenix.module.ts` 的 diff **非注释行 = 0**（`dependsOn` 未改）；agent-config 的生产
+宿主导入 2 处（`environment` / `knowledge_base`）；五张表的 `.references()` 跨包目标 5 个（`user` /
+`model` / `machine` / `mcpServer` / `skill`）；`@fenix/identity` 是 `package.json` 唯一新增依赖；agent-runtime
+的宿主表导入只剩 `environment` / `agent_instance`；宿主 `schema.ts` 里 `agentConfig` 5 个使用点；台账里
+machine 名下 2 条 `no-circular`、observer / mcp / skill / model-management 条目为 0。**代理范围外的两处失实我
+自己补**：`agent-config/src/server/db.ts` 的句柄注释（它被明确禁止改该目录）与本节交付面的两个数字
+（本包文件数、宿主 `schema.ts` 的删行数与使用点数——`git diff --numstat` 实测删 147 / 增 19）。其判定
+「stale 但不改」的 5 项我抽查后同意，其中 `skill/src/server.ts` 的「agent-runtime 是合法消费者」在 B7 前后
+一致（`git grep '@fenix/resource-skill' HEAD -- packages/agent-runtime` 也只命中 `package.json` 一行），
+属契约许可陈述而非本批失实。
+
+**precheck 实测**：`env -u ANTHROPIC_MODEL bun run precheck` → **15 步全绿**（122.9s）：format / import-sort /
+module-registry / web-contributions / owner-inventory / schema-ddl-drift / architecture / tsc（server、web、
+app skeletons）/ dependency-boundaries / lint / server-and-script-tests（806 pass）/ package-tests（7991 tests：
+7988 pass / 2 skip / 0 fail）/ web-app-tests（319 pass）。首跑有一次**与本批无关**的抖动失败：
+`workflow-engine/src/__tests__/executor/api-executor.test.ts` 的 `expect(elapsed).toBeLessThan(3000)` 实测
+5224ms——该包本批零改动（`git status --porcelain | grep workflow` 为空），隔离单跑同文件 20 pass、整文件
+1376ms，判定为 639 文件并发下的计时抖动；复跑全绿，未改该断言。与 §7.10（`bun test packages/`）与 §7.11
+（`round37-service-boundaries`）记录的两条属同一类——负载下的时序敏感用例，本档不另建清单，按上述三段各自的
+「非确定性失败记录」就地登记。
+
 ## 八、已知缺口与未完成项（逐条登记 owner 与移除条件）
 
 > 依据 `ce-ee-engineering-standards.md` §10.7.4：边界豁免与依赖残留必须逐条登记并写明 owner
@@ -1034,7 +1150,9 @@ packages/resources/workflow/src/__tests__/workflow-source-migration.test.ts` **2
 | 8 | `EnvDefinition` 的 `secret` / `restartRequired` 无任何消费者 | C 块 | 见 §8.4 |
 | 9 | `packages/agent-runtime/src/server/services/workspace-resolver.ts:9` 直读 `process.env.WORKSPACE_ROOT`——server 装配面内**唯一**真违规 | C 块 | 见 §8.4 |
 | 10 | 环境变量整段继承的残余：不传 `env` 的隐式继承 10 处、`docker/sandbox-dsh/scripts/dsh-acp-wrapper.js`、`apps/server/src/services/agent-generation.ts:63` 的 `new OpenAI()` 隐式读 `OPENAI_API_KEY` | 1.7 剩余 | 逐处改为白名单或显式注入；`new OpenAI()` 改由注入配置构造 |
-| 11 | **`model-management` 没有 source-migration 契约测试**（machine / mcp / sandbox / agent-config / workflow / task 六个包均有），因此 §4.7.1 ③ 的「残留数 > 0」正向控制在 B3 无从收缩，该包与宿主的边界在测试层无人守护（只靠 `apps-boundary` 台账 + `check:dependencies`） | B 块收尾 | 按同形测试补一份（断言 `src/**` 对 `@server/**` 的残留仅 `repositories/subject-agent-search.ts:2` 一处），B7 落地后随台账清零一并改为反向断言 |
+| 11 | **`model-management` 没有 source-migration 契约测试**（machine / mcp / sandbox / agent-config / workflow / task 六个包均有），因此 §4.7.1 ③ 的「残留数 > 0」正向控制在 B3 无从收缩，该包与宿主的边界在测试层无人守护（只靠 `apps-boundary` 台账 + `check:dependencies`） | B 块收尾 | 按同形测试补一份。**口径已随 B7 更新**：该包 `src/**` 的 `@server/**` 残留已归零（B7 把 `repositories/subject-agent-search.ts` 收窄为薄适配层，检索 SQL 归 agent-config 的 `searchAgentConfigsSystem`，见 §7.19），因此新用例的断言是「零宿主导入」（与 machine / mcp / skill / observer 同形），不再有「残留数 > 0」的正向控制可收缩——正向控制改用一条非宿主说明符（如 `@fenix/platform-sdk`）与实际存在的相对导入 |
+
+| 12 | **`observer` 的 `drizzle-orm` 声明在本批后成为未使用依赖**：B7 删掉该包唯一的 DB 句柄与仓储后，全包 `src/**`、`web/**` 再无 `drizzle-orm` 导入（仅一处浏览器面测试的注释提到它）。删除声明需要跑 `bun install` 更新 `bun.lock`，本批不动锁文件 | B 块收尾（依赖清理） | 删 `packages/resources/observer/package.json` 的 `drizzle-orm` 条目并 `bun install`，与其它包的未使用依赖一并清理 |
 
 ### 8.2 1.7 未完成条目（本档位不做）
 
@@ -1055,13 +1173,13 @@ migration smoke（空库 + 真实历史升级库）、`deploy-preflight`、readi
 |---|---|---|---|
 | 1 | 宿主 `apps/server/src/db/schema.ts` **无法清空**：D3 裁定把 `resource_permission`（+ 3 个 pgEnum）、`share_link`、`share_event_snapshot` 留在宿主，但 1.7 第五条验收口径是「宿主不再持有业务表定义」 | B 块收尾 | 三张表要么找到 owner（建议 `resource_permission` 归 access-control）并迁出，要么把验收口径改为「宿主只保留经裁定的例外」并同步权威设计 |
 | 2 | ~~`machine → sandbox` 的调用期表读取（`machine-sandbox-projection.ts`）在 `sandbox_instance` 迁出后构成 §2.3 类别禁则违规~~ **已闭环（§7.13，2026-09-22）**：按 §4.8 第 3 条走「投影写路径移到 sandbox 侧」，machine 只通报事件、sandbox 在自己的表上写 | ~~B4 之前~~ 已交付 | 已验证 machine 包**生产代码**里 `sandbox_instance` 命中 0 行（全包 5 行均为注释 / 断言文本，见 §7.16）、machine 的跨模块表读取降为 1 处（`agent_config`，归 B7） |
-| 3 | owner=`1.7` 的 `apps-boundary` 豁免按「该包最后一个跨模块表读取消失」逐条退场（§4.8 第 2 条）。B4 与 B6 各删 1 条（sandbox 见 §7.14、workflow 见 §7.17），**余 12 条**；其余多数要等目标表迁出后其读取点同批收口，**只能在 B 块末期集中清零** | B 块收尾 | 各目标表迁完后逐包核对「不再引用 `@server/**`」，逐条删除并留证据；`architecture:check` 的 stale 检测是充分证据 |
-| 4 | 剩余 7 批（B7–B13）各有若干跨包调用期表读取需一并**改为经 owner 公开入口或宿主注入端口取数**（§4.8 第 1 条 B1 实测 19 处为 B 块**读**总数，B2 收口 1 处、B3 收口 1 处、B5 收口 1 处、B6 收口 **0 处**——该包九张表无任何跨包读取者，见 §7.17，**余 16 处**；B4 不在其中：它消除的是**跨包写**（machine 写 `sandbox_instance`），见 §7.14，2026-09-22 审计订正——本节此前把 B4 也减了一次，与「19 处是读口径」自相矛盾）；只改指 owner 的 `./db` 不算完成（§4.8 第 4 条）。**逐包清单目前无权威落点**——§4.8 #1 与本节原先的「见 §7.10」所指清单在 §7.10 中不存在，审计已指出 | 各批同批（清单并入 B 块末期，与本节第 3 条同一次扫描） | 每批交付面含全部读取点，漏改会让 preload 的模块链接期抛错（§4.8 第 1 条）、且残留 §6.1 边界 1 违规；末期逐包核对时一并产出完整清单 |
+| 3 | owner=`1.7` 的 `apps-boundary` 豁免按「该包最后一个跨模块表读取消失」逐条退场（§4.8 第 2 条）。B4 与 B6 各删 1 条（sandbox 见 §7.14、workflow 见 §7.17）；**B7 一次删 5 条**（machine / model-management / mcp / skill / observer，五包 `src/**` 与 `db/**` 的 `@server` 引用同时归零，见 §7.19），**余 7 条**（`agent-runtime` / `agent-config` / `resource-knowledge` / `resource-task` / `resource-memory` / `resource-prod-view` / `resource-channel`）；其余多数要等目标表迁出后其读取点同批收口，**只能在 B 块末期集中清零** | B 块收尾 | 各目标表迁完后逐包核对「不再引用 `@server/**`」，逐条删除并留证据；`architecture:check` 的 stale 检测是充分证据 |
+| 4 | 剩余 7 批（B7–B13）各有若干跨包调用期表读取需一并**改为经 owner 公开入口或宿主注入端口取数**（§4.8 第 1 条 B1 实测 19 处为 B 块**读**总数，B2 收口 1 处、B3 收口 1 处、B5 收口 1 处、B6 收口 **0 处**——该包九张表无任何跨包读取者，见 §7.17，**余 16 处**；B4 不在其中：它消除的是**跨包写**（machine 写 `sandbox_instance`），见 §7.14，2026-09-22 审计订正——本节此前把 B4 也减了一次，与「19 处是读口径」自相矛盾）；只改指 owner 的 `./db` 不算完成（§4.8 第 4 条）。**B7 收口的是 `agent_config` 一族（5 张表）的全部跨包读取点**：`agent-runtime` 2 个文件（改经宿主注入的 `AgentConfigLookupPort` 新增方法）、`machine` 1 个文件（删除守卫改经 `isAgentConfigBoundToMachine`）、`model-management` 1 个文件（主体检索改经 `searchAgentConfigsSystem`）、`observer` 1 个文件（归属查询改经 `listAgentConfigsByOrganization`，见 §7.19）；`mcp` / `skill` 没有跨包读取——它们读的是自己的关联表，表随聚合根迁走后读取点归 `agent-config` 自己。**逐包清单目前无权威落点**——§4.8 #1 与本节原先的「见 §7.10」所指清单在 §7.10 中不存在，审计已指出；B7 因此改为按「本批实际改动的文件」实数枚举，不再在 19 这个从未落盘分项的总数上继续加减 | 各批同批（清单并入 B 块末期，与本节第 3 条同一次扫描） | 每批交付面含全部读取点，漏改会让 preload 的模块链接期抛错（§4.8 第 1 条）、且残留 §6.1 边界 1 违规；末期逐包核对时一并产出完整清单 |
 | 5 | **门禁缺口：相对路径伸进别的包 `db/` 两道门禁都不报。** `check-architecture` 的 `CROSS_PACKAGE_SOURCE_PATH`（`scripts/check-architecture.ts:43`）与 dependency-cruiser 的 `no-cross-package-src:<pkg>`（`.dependency-cruiser.cjs:28-30`）判「跨包内部路径」时只认 `src` / `web/src`，新出现的 `db/` 不在任何一侧。审计已用夹具复现（相对路径在 `db/` 与 `src/` 两种位置均 exit 0，同路径改指别包 `src/` 则 exit 1）；当前仓库无实际违规 | B 块收尾 | 把 `db` 纳入「跨包内部路径」判定，但**只对相对路径生效**——裸说明符 `@fenix/<pkg>/db` 是 §6.1 允许的组装期出口，不能一并拦 |
 | 6 | **门禁缺口：`check:schema-ddl-drift` 的两处判别力盲区**（B4 主体审计发现，2026-09-22，非本批缺陷）。该门禁只做「`drizzle.config` 声明的 schema 集合 → 与最新 snapshot 的 DDL 差异」，因此：(a) **同一张表被两个已声明样式的模块重复定义**（第二份实现复活）→ 0 差异；(b) 表内**列序变化** → 0 差异（列集与类型没变）。含义是「只搬位置」的机器证据实际来自交付方**同时删掉了旧定义**这个动作，门禁本身识别不了重复定义 | B 块收尾 | 重复定义面可加一条「表名 → 定义文件」唯一性断言（前提是表名的 owner 已按 §4.7 矩阵定完，否则「同一表出现在两个 owner 的 schema 里」与「宿主 barrel 转出」需要区分）；列序面若重要，可对 snapshot 做「逐列序号」比较。两者都要另开任务，不在 1.7 内实现 |
 | 6 | 组装期 `db/` 不在「子进程不得整段继承宿主 env」的扫描面内：`scripts/check-dependency-boundaries.ts:54-72` 的文件收集只认目录名 `src`，`packages/*/db/**`（含设计规定的 `db/data-migrations/`）整体跳过。审计判定为**已声明范围**而非漏报（该步骤注释即写明范围只含 `packages/**/src/**`；`db/` 是组装期 + 幂等 DML 层，不构造子进程；实测 db/ 下 2 个文件零 `process.env` / spawn） | 不修，登记备查 | 若日后 `db/data-migrations/` 出现子进程调用，须同步扩大扫描面 |
-| 7 | **B7 前置：`agent-runtime` 在查询期 LEFT JOIN `agent_config`**（`services/environment-orchestration.ts`、`services/environment-web.ts`）。`agent_config` 迁出后该导入命中 `.dependency-cruiser.cjs:74-90` 的 `agent-runtime-not-to-resources`（其 `pathNot` 只排除 `packages/agent-runtime/db/` 与 `packages/resources/(machine\|sandbox)/`），而 `check-architecture` 拦不住它。按 §4.8 第 4 条应改为经 agent-config 公开入口取投影（若 `agent-runtime → agent-config` 的包级边不被装配方向允许，则退回宿主注入端口），但 LEFT JOIN → 批量投影查询是一次独立设计（且要避免 N+1） | B7 之前 | 先反馈再定夺取数形状，然后重构两个查询 |
-| 8 | **D4 裁定（3 张 join 表归 agent-config）与现有实现冲突。** `agent_config_mcp` 已由 mcp 包自持（`mcp/src/server/services/config/agent-config-mcp.ts`，文件头自述「MCP 包自持」），`agent_config_skill` 同理由 skill 包持有，唯一的读者是各自包内文件。按 D4 迁到 agent-config 会让 mcp / skill 反向导入 `@fenix/agent-config/db`：两者都未声明该包（触发 `undeclared-workspace-dependency`），且 `agent-config → mcp`（7 处）、`agent-config → skill`（9 处）已存在，各自闭合一条**新环**。这是 D4 裁定当时未计入的成本。**B2 实测佐证**（§7.11）：mcp 包的 `agent_config_mcp` 读写口径已由该包自己的 `./server/config` 出口公开，且 B2 迁表后它是该包**唯一**残留的宿主表读取——按 D4 迁走会让这个出口失去唯一内容 | B7 之前 | 重新确认：维持 D4（mcp / skill 改写为经 agent-config 公开 service 访问）还是改为按现有实现归属（各持自己的关联表，agent-config 经它们的窄入口访问） |
+| 7 | ~~**B7 前置：`agent-runtime` 在查询期 LEFT JOIN `agent_config`**（`services/environment-orchestration.ts`、`services/environment-web.ts`）。`agent_config` 迁出后该导入命中 `.dependency-cruiser.cjs:74-90` 的 `agent-runtime-not-to-resources`（其 `pathNot` 只排除 `packages/agent-runtime/db/` 与 `packages/resources/(machine\|sandbox)/`），而 `check-architecture` 拦不住它。按 §4.8 第 4 条应改为经 agent-config 公开入口取投影（若 `agent-runtime → agent-config` 的包级边不被装配方向允许，则退回宿主注入端口），但 LEFT JOIN → 批量投影查询是一次独立设计（且要避免 N+1）~~ **已闭环（§7.19，2026-09-22）**：两个查询改经宿主注入的 `AgentConfigLookupPort`（新增 `findAgentConfigExecutionFields` / `findAgentConfigNamesByIds` 两个只读投影方法）批量取投影，无 N+1 | 已交付 | 宿主**零文本改动**：接口扩展只落在 agent-config 的实现（`services/agent-config-lookup.ts`）与 agent-runtime 的端口定义上，`apps/server/src/bootstrap/host-startup.ts` / `services/pre-launch-ports.ts` 均未改动（实现对象原地满足扩展后的契约） |
+| 8 | ~~**D4 裁定（3 张 join 表归 agent-config）与现有实现冲突。** `agent_config_mcp` 已由 mcp 包自持（`mcp/src/server/services/config/agent-config-mcp.ts`，文件头自述「MCP 包自持」），`agent_config_skill` 同理由 skill 包持有，唯一的读者是各自包内文件。按 D4 迁到 agent-config 会让 mcp / skill 反向导入 `@fenix/agent-config/db`：两者都未声明该包（触发 `undeclared-workspace-dependency`），且 `agent-config → mcp`（7 处）、`agent-config → skill`（9 处）已存在，各自闭合一条**新环**。这是 D4 裁定当时未计入的成本。**B2 实测佐证**（§7.11）：mcp 包的 `agent_config_mcp` 读写口径已由该包自己的 `./server/config` 出口公开，且 B2 迁表后它是该包**唯一**残留的宿主表读取——按 D4 迁走会让这个出口失去唯一内容~~ **已闭环（§7.19，2026-09-22）：维持 D4，三张 join 表全归 agent-config。**冲突的根源是 B2 / B5 期间的「各包自持」中间态，不是 D4 本身——`mcp ↔ agent-config` 与 `skill ↔ agent-config` 反向声明之所以会成环，是因为关联表若留在 mcp / skill 侧，其 `agent_config_id` 外键必须组装期导入本包表对象；表随聚合根进来则零新边、零新环 | 已交付 | — |
 
 **C 块**：C1 的已知破测（`workspace-resolver.test.ts` 4 条、machine 侧 10 个文件因
 `initializeMachineModuleConfig` 只注册 `"machine"` 而抛「模块 agent-runtime 未声明应用基础设施配置」）
@@ -1069,9 +1187,17 @@ migration smoke（空库 + 真实历史升级库）、`deploy-preflight`、readi
 
 ### 8.5 边界豁免与依赖残留（§10.7.4）
 
-台账 `scripts/architecture/exceptions.json` 共 28 条（B4 删除 sandbox 的 `apps-boundary` 条目后，见 §7.14）：
+台账 `scripts/architecture/exceptions.json` 共 22 条（B4 删 sandbox 后为 28 条，B6 删 workflow 1 条、B7 删
+5 条，见 §7.14 / §7.17 / §7.19；实测口径：`bun run architecture:check` 报 12 条已登记例外
+（= `apps-boundary` 7 + `undeclared-workspace-dependency` 5，两条规则都定义在
+`scripts/lib/architecture-boundary-rules.ts`），`bun run check:dependencies` 报 10 条
+（= `.dependency-cruiser.cjs` 的 `no-circular`），两者相加才是 22）：
 
-- **13 条 owner=`1.7`**：均为 `apps-boundary → @fenix/server-app`，属 B 块范围，随宿主收敛清理。
+- **7 条 owner=`1.7`**：均为 `apps-boundary → @fenix/server-app`，属 B 块范围，随宿主收敛清理。B7 后
+  余下的是 `agent-runtime`、`agent-config`、`resource-knowledge`、`resource-task`、`resource-memory`、
+  `resource-prod-view`、`resource-channel` 七个包——它们的残留都指向宿主**自有**表
+  （`environment` / `agent_instance` / `knowledge_base` / `task` / `memory` / …），只能在各自那张表
+  迁出时一并收口（B8–B13）。
 - **15 条 owner=`未排期`**：10 条 `no-circular`（跨包环的「每环一条」代表边）+ 5 条
   `undeclared-workspace-dependency`（`acp-link` 系缺依赖声明）。按台账 `_comment` 的口径，这
   15 条是「门禁修复后被如实暴露出来的既有债务，不属于任何在排任务的范围」。本批不动，按 §10.7.4

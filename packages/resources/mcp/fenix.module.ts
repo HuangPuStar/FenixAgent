@@ -5,7 +5,9 @@ import { mcpServerResource } from "./src/server/access/mcp-server-resource";
 /**
  * MCP 资源模块描述符。
  *
- * 受控 MCP Server 资源（增删改查、启停、远程检测、tool 缓存与 Agent 绑定）的唯一 owner。装配面上的
+ * 受控 MCP Server 资源（增删改查、启停、远程检测、tool 缓存与关联 id 的标签投影）的唯一 owner——Agent ↔
+ * MCP 关联表 `agent_config_mcp` 随 `agent_config` 聚合归 `@fenix/agent-config`（任务 1.7 B7），关联边本身
+ * 不在本包，本包只为该 id 集合提供展示标签。装配面上的
  * 服务端交付物是 `@fenix/resource-mcp/server`：资源注册 `mcpServerResource`、唯一应用入口
  * `McpServerFacade`、组合根 `createMcpServerServerModule`，以及 `/web/config/mcp`、`/api/mcp` 与
  * 内部协议入口 `/mcp/knowledge`。宿主的系统初始化路径经 `./server/runtime` 的

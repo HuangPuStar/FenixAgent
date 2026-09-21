@@ -1,7 +1,7 @@
 import { randomBytes } from "node:crypto";
 import { createLogger } from "@fenix/logger";
 import { ConflictError, NotFoundError, ValidationError } from "@fenix/platform-sdk";
-import { agentConfig, environment } from "@server/db/schema";
+import { environment } from "@server/db/schema";
 import { and, eq, isNotNull } from "drizzle-orm";
 import type { CreateWebEnvironmentParams, UpdateWebEnvironmentParams } from "../../services/environment-core";
 import { generateEnvSecret, getOwnedEnvironment, KEBAB_CASE_RE } from "../../services/environment-core";
@@ -259,19 +259,20 @@ export async function updateWebEnvironment(envId: string, organizationId: string
 
 /** 获取团队所有环境并组装实例信息（web/environments 路由用） */
 export async function listEnvironmentsWithInstances(organizationId: string, viewerUserId?: string) {
-  // LEFT JOIN agentConfig 一次性拿到 environment + agent_name
   const db = getAgentRuntimeDatabase();
   const rows = await db
-    .select({
-      env: environment,
-      agentName: agentConfig.name,
-    })
+    .select()
     .from(environment)
-    .leftJoin(agentConfig, eq(environment.agentConfigId, agentConfig.id))
     .where(and(eq(environment.organizationId, organizationId), isNotNull(environment.agentConfigId)));
 
+  // agent_name 经 `AgentConfigLookupPort` 批量取（`agent_config` 已随 §1.7 B7 迁出宿主 schema，本包不得
+  // 回链资源包）。一次查询换一个 Map 是本函数的既定要求：逐行问端口会让列表页产生 N+1。取不到名字的
+  // id 不出现在 Map 里，等价于迁移前 LEFT JOIN 的 null。
+  const agentIds = [...new Set(rows.map((row) => row.agentConfigId).filter((id): id is string => Boolean(id)))];
+  const agentNames = await getAgentConfigLookupPort().findAgentConfigNamesByIds(agentIds);
+
   const results = [];
-  for (const { env, agentName } of rows) {
+  for (const env of rows) {
     // agent 绑定的 runtime environment 是按用户隔离的；列表页只暴露当前用户自己的 runtime，
     // 避免前端把其他成员的 env 误挂到自己看到的 agent 上。
     if (viewerUserId && env.agentConfigId && env.userId !== viewerUserId) {
@@ -285,7 +286,7 @@ export async function listEnvironmentsWithInstances(organizationId: string, view
       description: env.description ?? null,
       workspace_path: env.workspacePath,
       agent_config_id: env.agentConfigId ?? null,
-      agent_name: agentName ?? null,
+      agent_name: env.agentConfigId ? (agentNames.get(env.agentConfigId) ?? null) : null,
       status: env.status,
       machine_name: env.machineName ?? null,
       branch: env.branch ?? null,

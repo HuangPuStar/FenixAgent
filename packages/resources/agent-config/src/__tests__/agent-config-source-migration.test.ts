@@ -33,8 +33,12 @@ const SOURCE_ENTRIES = ["src", "web", "db", "fenix.module.ts"];
 /**
  * 唯一允许的宿主导入。
  *
- * 表定义迁出归任务 1.7，本任务把它作为**显式残留**保留，且只允许这一条精确路径：`@server/db/schema`
- * 之下的任何深路径都意味着重新伸手取宿主内部。
+ * 本包自己的表已于 §1.7 B7 全部迁出（`agent_config` / `agent_config_skill` / `agent_config_mcp` /
+ * `agent_config_site_app` / `agent_site_app` 归本包 `db/` 出口）。这条豁免现在只为**仍属宿主的
+ * `environment`**（`repositories/agent-config-resource.ts` / `__tests__/agent-config-delete.test.ts`）
+ * 与 **`knowledge_base`**（`services/agent-related-resources.ts` /
+ * `__tests__/round45-agent-config-routes-coverage.test.ts`）两张表存在，各自随 B8 / B9 迁出后一并删除。
+ * 语义仍是「只允许这一条精确路径」：`@server/db/schema` 之下的任何深路径都意味着重新伸手取宿主内部。
  */
 const ALLOWED_HOST_IMPORT = "@server/db/schema";
 
@@ -251,7 +255,8 @@ describe("AgentConfig 包边界契约（任务 1.3 §1 静态条件）", () => {
       expect(sourceFiles).toContain(resolve(PKG_ROOT, expected));
     }
     expect(sourceFiles.length).toBeGreaterThanOrEqual(100);
-    // 正向控制：表定义残留必然存在，扫不到就说明说明符提取失效（而不是「没有宿主导入」）。
+    // 正向控制：宿主**自有**表（`environment` / `knowledge_base`，见 ALLOWED_HOST_IMPORT 的说明）的导入
+    // 必然存在，扫不到就说明说明符提取失效（而不是「本包已零宿主依赖」）。
     expect(refs.filter((ref) => ref.specifier === ALLOWED_HOST_IMPORT).length).toBeGreaterThan(0);
   });
 

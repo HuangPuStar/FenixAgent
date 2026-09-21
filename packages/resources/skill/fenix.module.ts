@@ -8,8 +8,10 @@ import { skillResource } from "./src/server/access/skill-resource";
  * Skill 资源（`skill` 表行 + SKILL.md 文档 + 同级归档文件）的资源归属语义、授权编排与「内容 + 资源行」
  * 补偿写入的唯一 owner。装配面上的消费者是宿主 `apps/server`（组合根装配后挂载 `/web/config/skills`、
  * `/api/skills` 与 `/skills/:name/download`，并经 `installSkillServerModule` 注入装配结果）、
- * `@fenix/resource-agent-config`（绑定表读写、元 Agent 的 Skill 装载，以及启动参数取 Skill 归档路径
- * ——该组装自任务 1.4 W4b 起也在 agent-config）。`./server` 出口含资源注册、组合根与 HTTP 路由；只要装配结果或内容能力的
+ * `@fenix/resource-agent-config`（元 Agent 的 Skill 装载、可见 Skill 投影与关联 id 的标签投影，以及启动
+ * 参数取 Skill 归档路径——该组装自任务 1.4 W4b 起也在 agent-config；Agent ↔ Skill 关联表
+ * `agent_config_skill` 自任务 1.7 B7 起也在 agent-config，其读写不再经过本包）。
+ * `./server` 出口含资源注册、组合根与 HTTP 路由；只要装配结果或内容能力的
  * 调用方走窄出口 `./server/runtime`、`./server/content`、`./server/config`——barrel 会连带导出 Elysia
  * 路由与下载令牌，把调用方拉进宿主依赖图（理由见 `src/server/runtime.ts` 与 `src/server-content.ts`
  * 的文件头注释）。
@@ -21,10 +23,13 @@ import { skillResource } from "./src/server/access/skill-resource";
  * `resource` 模块，不构成装配边。授权与身份实现由宿主经 `createSkillServerModule(deps)` 注入，
  * 本包不 import 任何平台实现，也不 import 兄弟资源包，因此 skill 是叶子模块。
  *
- * 不声明别的反向边：`@fenix/resource-agent-config`（其 `src/server/services/agent-associations.ts` 的
- * `listAgentSkillIds` / `syncAgentSkills`、`src/server/services/skill-directory.ts`、
- * `src/server/services/agent-launch-spec/skill-resolution.ts`、`src/services/meta-agent.ts`）
- * 与宿主都导入本包的服务端入口，方向是它们 → 本模块。`@fenix/agent-runtime` 曾有一条入边（旧
+ * 不声明别的反向边：`@fenix/resource-agent-config`（`src/server/services/skill-directory.ts` 与
+ * `src/server/services/meta-agent.ts` 取 `./server/runtime` 的 `getSkillServerModule`，
+ * `src/server/services/meta-agent.ts` 与 `src/server/services/agent-launch-spec/skill-resolution.ts`
+ * 取 `./server/content` 的归档与 frontmatter 能力，`src/server/services/agent-related-resources.ts`
+ * 取 `./server/config` 的 `findSkillLabelsByIds`；其 `src/server/repositories/agent-config-skill.ts`
+ * 的 `listAgentSkillIds` / `syncAgentSkills` 自 B7 起只读写 agent-config 自己的 `agent_config_skill`
+ * 表，不再导入本包）与宿主都导入本包的服务端入口，方向是它们 → 本模块。`@fenix/agent-runtime` 曾有一条入边（旧
  * `src/services/launch-spec-builder.ts`），任务 1.4 W4b 删除该文件后已消除。把这条边写进本模块会反转装配方向并构成装配
  * 循环：skill 与 agent-config 一旦成套启用，`platform-sdk` 的 `visit()` 会以「模块装配依赖存在循环」
  * 失败；即使抛开循环，本包 `package.json` 也没有这些编译依赖，生成器的 `assertDependsOnDeclared` 会

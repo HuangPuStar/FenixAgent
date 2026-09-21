@@ -1,6 +1,7 @@
+import { agentSiteApp } from "@fenix/agent-config/db";
 import { findMcpServerLabelsByIds } from "@fenix/resource-mcp/server/config";
 import { findSkillLabelsByIds } from "@fenix/resource-skill/server/config";
-import { agentSiteApp, knowledgeBase } from "@server/db/schema";
+import { knowledgeBase } from "@server/db/schema";
 import { and, eq, inArray } from "drizzle-orm";
 import { getAgentConfigDatabase } from "../db";
 import { getMachineLookupPort } from "../ports/machine-lookup";
@@ -23,9 +24,10 @@ import type { AgentNode } from "./config/types";
  * - 走对方已声明的公开入口：MCP 标签经 `@fenix/resource-mcp/server/config` 的
  *   {@link findMcpServerLabelsByIds}（本包 `dependsOn` 已含 mcp），Skill 标签经
  *   `@fenix/resource-skill/server/config` 的 {@link findSkillLabelsByIds}（同因，B5）——两条边方向都合法。
- * 其余（`knowledge_base` / `agent_site_app`）仍经 `@server/db/schema`，所有权随资源包迁移属后续任务
- * （B9 / B7），届时按同一口径改为经 owner 的公开入口或端口取数。DB 句柄改经
- * `getAgentConfigDatabase()` 请求期取得（`@server/db` 的模块级句柄已切断）。
+ * `agent_site_app` 随 B7 与聚合根一起归本包（`@fenix/agent-config/db`，从本包自己的 db 出口取）；只剩
+ * `knowledge_base` 仍经 `@server/db/schema`，它的所有权随知识库包迁移属后续批次（B9），届时按同一口径
+ * 改为经 owner 的公开入口或端口取数。DB 句柄改经 `getAgentConfigDatabase()` 请求期取得（`@server/db`
+ * 的模块级句柄已切断）。
  */
 
 /** 关联资源标签视图；字段与 `/web/config/agents` 响应的 `relatedResources` 一一对应。 */

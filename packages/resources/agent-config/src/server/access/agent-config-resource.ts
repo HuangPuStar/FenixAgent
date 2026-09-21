@@ -1,5 +1,5 @@
+import { agentConfig } from "@fenix/agent-config/db";
 import type { ResourceRegistration } from "@fenix/platform-sdk";
-import { agentConfig } from "@server/db/schema";
 import type { PgColumn } from "drizzle-orm/pg-core";
 
 /**

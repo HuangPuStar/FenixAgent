@@ -12,8 +12,9 @@ import { boolean, index, jsonb, pgTable, text, timestamp, uniqueIndex, uuid, var
  * `mcp_server.user_id` 的级联删除，不复制定义。跨模块外键的组装期例外口径见
  * `docs/design/ce-ee-refactoring/ce-ee-engineering-standards.md` §6.1。
  *
- * `agent_config_mcp` **不在**这里：它是 Agent 配置侧的关联边，表定义仍归宿主（迁出随 agent-config 批），
- * 与本包主表的外键由宿主经 `@fenix/resource-mcp/db` 表达。
+ * `agent_config_mcp` **不在**这里：它是 Agent 配置聚合的关联边，表定义归 `@fenix/agent-config/db`
+ * （任务 1.7 B7 随 `agent_config` 一起迁出）。`agent_config_mcp.mcp_server_id` 的外键由那边组装期导入
+ * 本文件的 `mcpServer` 表达；反向的 `mcp → agent-config` 导入会闭合一条新环，因此本包不持有该表。
  */
 
 /** MCP Tool 缓存表：由 inspector 探测后写入，随所属 server 的生命周期整体替换。 */

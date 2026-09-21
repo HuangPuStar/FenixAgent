@@ -4,9 +4,10 @@ import type { NodePgDatabase } from "drizzle-orm/node-postgres";
 /**
  * AgentConfig 仓储使用的 DB 句柄类型。
  *
- * 表定义当前仍由宿主 `@server/db/schema` 提供（迁出归任务 1.7，1.3 的显式残留），但句柄类型刻意不写
- * `typeof schema`：仓储只做 `select` / `insert` / `update` / `delete` / `transaction`，不使用
- * `db.query.*` 关系查询，因此不需要耦合宿主的 schema 聚合类型；表定义迁出后这里无需改动。
+ * 本包五张表的定义自任务 1.7 B7 起由本包持有（`db/schema.ts`，出口 `@fenix/agent-config/db`），但句柄
+ * 类型仍刻意不写 `typeof schema`：仓储只做 `select` / `insert` / `update` / `delete` / `transaction`，
+ * 不使用 `db.query.*` 关系查询，因此不需要耦合任何 schema 聚合类型（宿主迁出前那一版同样如此，
+ * 迁出后无需改动——这正是当初不写 `typeof schema` 的目的）。
  */
 export type AgentConfigDatabase = NodePgDatabase<Record<string, never>>;
 

@@ -1,5 +1,5 @@
+import { agentConfig } from "@fenix/agent-config/db";
 import type { ActorContext, WebErr } from "@fenix/platform-sdk";
-import { agentConfig } from "@server/db/schema";
 import { inArray } from "drizzle-orm";
 import { getAgentConfigDatabase } from "../../db";
 import type { AgentSiteAppRow } from "../../repositories/agent-site-app";

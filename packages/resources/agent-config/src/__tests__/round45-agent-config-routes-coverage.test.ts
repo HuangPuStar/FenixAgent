@@ -1,11 +1,12 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
+import { agentSiteApp } from "@fenix/agent-config/db";
 import { model, provider } from "@fenix/model-management/db";
 import { resetAllStubs, stubDb } from "@fenix/platform-sdk/testing";
 import { InvalidKnowledgeBindingError } from "@fenix/resource-knowledge/server";
 import { machine } from "@fenix/resource-machine/db";
 import { mcpServer } from "@fenix/resource-mcp/db";
 import { skill } from "@fenix/resource-skill/db";
-import { agentSiteApp, knowledgeBase } from "@server/db/schema";
+import { knowledgeBase } from "@server/db/schema";
 import { createWebConfigAgentsRoutes } from "../server/routes/web/config/agents";
 import { initializeAgentConfigModuleConfig } from "../server/testing";
 import {

@@ -1,20 +1,27 @@
 # @fenix/agent-config
 
-Agent 配置资源行、关联绑定（Skill / MCP / 知识库 / 记忆）与站点应用（Site App）的 owner。本包目录是
-`agent_config` 与 `agent_site_app` 两张表的读写方、`/web` 与 `/api` 协议面的实现方，以及 agent 编辑器
-/ 站点页面的浏览器实现方。
+Agent 配置资源行、关联绑定（Skill / MCP / 知识库 / 记忆）与站点应用（Site App）的 owner。本包是
+`agent_config`、三张关联表（`agent_config_skill` / `agent_config_mcp` / `agent_config_site_app`）与
+`agent_site_app` 五张表的唯一 owner——表定义在 `db/schema.ts`，经出口 `@fenix/agent-config/db` 汇入
+`drizzle.config.ts` 声明的同一条迁移链（任务 1.7 B7）——也是 `/web` 与 `/api` 协议面的实现方，以及
+agent 编辑器 / 站点页面的浏览器实现方。
 
 ## 定位与 owner
 
-- **资源域**：`agent_config`（资源行 + 授权入口）与 `agent_site_app`（站点应用）。受控读取的授权谓词
-  由注入的 `AccessControlModule` 编译，仓储不判断组织、角色与 `visibility`；资源注册在
-  `src/server/access/agent-config-resource.ts`（member 默认只有 `read` / `use`）。
+- **资源域**：受控资源主表 `agent_config`（资源行 + 授权入口）与 `agent_site_app`（站点应用）。三张关联表
+  （`agent_config_skill` / `agent_config_mcp` / `agent_config_site_app`）随聚合归本包：它们的
+  `agent_config_id` 都指向本包主表，而 Drizzle 的 `.references()` 只接受列对象、没有字符串形式，任何非本包
+  持有的关联表都必须组装期导入 `@fenix/agent-config/db`，因此留在聚合根内是零新边、零新环的方案（裁定见
+  评审文档 §8.4 第 8 条）。受控读取的授权谓词由注入的 `AccessControlModule` 编译，仓储不判断组织、角色与
+  `visibility`；资源注册在 `src/server/access/agent-config-resource.ts`（member 默认只有 `read` / `use`）。
 - **清单与组合根**：`fenix.module.ts` 的 `moduleManifest`（`id: "agent-config"`、`kind: "resource"`、
   `capabilities: ["resource.agent-config"]`、`create` 惰性），`create()` 指向 `src/module.ts` 的
   `createAgentConfigModule()`；进程级装配结果由 `src/server/runtime.ts` 持有，
   `createAgentConfigServerModule(deps)`（`src/server/module.ts`）是唯一组合实现，未装配即报错。
-- **依赖方向**：`dependsOn: ["knowledge","mcp","memory","skill"]`——四条边都由 `src/**` 的值导入证明
-  （绑定表分散在各自资源包），注释逐条列在 `fenix.module.ts`。反向边由消费方声明：machine、
+- **依赖方向**：`dependsOn: ["knowledge","mcp","memory","skill"]`——四条边都由 `src/**` 的值导入证明，
+  注释逐条列在 `fenix.module.ts`。mcp / skill 两条在 B7 前由「绑定表归对方」支撑；关联表迁入本包后，来源改为
+  纯取数面：对方的标签投影（`@fenix/resource-mcp/server/config` 与 `@fenix/resource-skill/server/config`）、
+  LaunchSpec 解析里的对方 service / row 类型、Skill Facade 与内容能力。反向边由消费方声明：machine、
   model-management、observer 导入本包入口，本包不写这些边。
 - **边界守护**：`src/__tests__/agent-config-source-migration.test.ts` 静态扫描 `src`、`web`、
   `fenix.module.ts`（含用例）的 import/export 说明符，断言：非表定义的 `@server/*` 导入为零、web 面
@@ -37,24 +44,43 @@ Agent 配置资源行、关联绑定（Skill / MCP / 知识库 / 记忆）与站
   `authenticateRequest`（站点代理的请求级认证）的类型与注入形状；包内不再 import 宿主守卫实现。
 - **领域与应用层**：`src/server/services/agent-config-service.ts`（领域服务，不接收 actor）、
   `src/server/facades/agent-config-facade.ts`（授权编排 + 停止实例 / 清理绑定 Environment / 重启实例）、
-  `src/server/services/agent-associations.ts`（Skill / MCP / 知识库 / 记忆 / 站点五类绑定的统一门面）、
-  `src/server/repositories/*`（资源行、编排域 `AgentConfigRepo` 的 PG 实现、站点应用）。
+  `src/server/services/agent-associations.ts`（Skill / MCP / 知识库 / 记忆 / 站点五类绑定的统一门面；
+  Skill / MCP 两类转调本包 `repositories/agent-config-skill.ts` / `agent-config-mcp.ts`，知识库与记忆仍经
+  对方公开入口）、`src/server/repositories/*`（资源行、编排域 `AgentConfigRepo` 的 PG 实现、站点应用，
+  以及上述两张关联表的读写）、`src/server/services/agent-config-lookup.ts`（查询投影：按 ID 与按可见性读
+  之外，还有 `findAgentConfigExecutionFields` / `findAgentConfigNamesByIds` 两个方法，供宿主绑定到
+  agent-runtime 的 `AgentConfigLookupPort`）。
+- **跨包取数面**：`src/server/repositories/agent-config.ts` 集中放「不经授权谓词、不是请求路径」的系统
+  取数，每个函数只取消费者真正需要的列——只读的 `findAgentConfigNamesByIds`、
+  `listAgentConfigsByOrganization`（含 `AgentConfigOwnershipRow`，服务 observer 人员树）、
+  `searchAgentConfigsSystem`（服务 model-management 的系统管理面全局检索）、`isAgentConfigBoundToMachine`
+  （服务 machine 删除前的悬空引用守卫），以及该文件**唯一**的写入口 `bindMachineIdByAgentName`（machine
+  注册时按 `agentName` 绑定机器）。调用方因此拿不到整行去自行解释 `machineId` / `agentNode`。
 - **模块配置**：`src/server/config.ts` 经 `getModuleConfig("agent-config")` 读取，并用 zod `strictObject`
   校验四个字段（`hiddenSidebarTabs`、`agentSitesBaseUrl`、`agentSitesMasterKey`、`agentGenerationModel`）。
   包内不读运行环境变量，值由宿主装配阶段注入。
-- **表定义**：8 个生产文件**真实 import** `@server/db/schema`（另有 2 个用例导入、1 个契约测试自身含该
-  字符串），这是本包唯一允许的宿主导入（迁出归 §1.7）。复核：
-  `grep -rl 'from "@server/db/schema"' packages/resources/agent-config/src --include='*.ts' | grep -v __tests__ | wc -l`
-  → 8；按裸字符串统计为 9，第 9 处是 `src/server/db.ts` 的**文档注释**（不是导入），不计入。
+- **表定义**：2 个生产文件**真实 import** `@server/db/schema`，都取宿主自有表——`agent-config-resource.ts`
+  取 `environment`（编排环境归属）、`agent-related-resources.ts` 取 `knowledge_base`（知识库绑定投影）。
+  这是本包唯一允许的宿主导入。复核：
+  `grep -rnE 'from "@server' packages/resources/agent-config/src | grep -v __tests__` → 3 行，其中 2 行是真导入，
+  第 3 行是 `src/server/db.ts:19` 的文档注释（举例说明不该有的形状）。按裸字符串
+  `grep -rl '@server/' packages/resources/agent-config/src --include='*.ts' | grep -v __tests__` → 9 个生产文件，
+  除这 2 处导入外全是注释/文档提及，没有第三处真实导入。B7 前本包有 8 个生产文件真实 import 该路径
+  （`agent_config` 及关联表、
+  `agent_site_app` 都在宿主 schema 里），随 §1.7 B7 的五表迁出清零。五张表的跨包外键目标共五个——`user`
+  （身份表）、`model`、`machine`、`mcpServer`、`skill`——都只在组装期导入、只取列对象表达级联语义，
+  `package.json` 因此需声明对应依赖（B7 为此新增的只有 `@fenix/identity`，其余四条此前已在）。
 - **测试基建**：`./server/testing` 提供 `createAgentConfigModuleConfig` /
   `initializeAgentConfigModuleConfig`（复位替身 + 以模块配置初始化应用基础设施，DB 句柄经转发代理）、
   Facade / Service / Associations / Identity 替身与模块替身装载器；未打桩的方法调用即失败。
-- **exports**（`package.json`，实测）：`.`、`./module`、`./server`、`./web`、`./web/i18n`、
+- **exports**（`package.json`，实测）：`.`、`./db`（五张表的 schema，B7 新增；`drizzle.config.ts` 按此声明）、
+  `./module`、`./server`、`./web`、`./web/i18n`、
   `./server/testing`、`./web/contribution` 与 3 条 `./web/lib/*` 窄口（`agent-node` /
   `agent-resource-access` / `agent-utils`，宿主壳与宿主测试按需取用，避免从包根入口把整棵编辑器
-  页面图拉进壳层 chunk；`agent-create-navigation` 同此例，见 §1.6 T11e-3c），以及 4 条过渡子路径
-  `./server/runtime`、`./server/system-prompt`、`./server/api-agent-schema`、`./server/config`
-  （消费方见「边界残留」）。
+  页面图拉进壳层 chunk；`agent-create-navigation` 同此例，见 §1.6 T11e-3c），以及 6 条过渡子路径
+  `./server/runtime`、`./server/system-prompt`、`./server/api-agent-schema`、`./server/config`、
+  `./server/agent-launch-spec`、`./server/agent-config-lookup`（消费方见「边界残留」；后两条由宿主
+  `services/pre-launch-ports.ts` 消费，`agent-config-lookup` 正是 `AgentConfigLookupPort` 的宿主实现入口）。
 
 ## web 面与 i18n
 
@@ -96,13 +122,20 @@ Agent 配置资源行、关联绑定（Skill / MCP / 知识库 / 记忆）与站
 
 ## 边界残留
 
-- **表定义**：`@server/db/schema`（8 个生产文件真实 import；按裸字符串统计多出的第 9 处是
-  `src/server/db.ts` 的文档注释，非导入）是本包与宿主的唯一持久化耦合，迁出归任务 1.7。复核命令见
+- **表定义已迁出，残留只剩宿主自有表（§1.7 B7，2026-09-22）**：`agent_config`、三张关联表
+  （`agent_config_skill` / `agent_config_mcp` / `agent_config_site_app`）与 `agent_site_app` 的定义已迁到
+  `db/schema.ts`（出口 `@fenix/agent-config/db`，DDL 逐字保留、`bun run check:schema-ddl-drift` 零差异）。
+  本包与宿主的持久化耦合只剩两处宿主自有表：`environment`（`agent-config-resource.ts` 的编排环境归属）与
+  `knowledge_base`（`agent-related-resources.ts` 的知识库绑定投影，该表所有权随知识库批迁出）。复核命令见
   「服务端交付物」的表定义条。
 - **过渡 exports 子路径**（消费方实测，收敛到包根归宿主侧改动）：`./server/system-prompt` 被
-  `apps/server/src/config.ts`、`apps/server/src/env.ts` 与 `packages/agent-runtime` 的
-  `launch-spec-builder.ts` 消费；`./server/config` 被宿主 `config-validators` 用例消费；
-  `./server/runtime` 与 `./server/api-agent-schema` 分别由宿主装配与协议 schema 消费方使用。
+  `apps/server/src/config.ts:2`、`apps/server/src/env.ts:2` 与宿主两条协议用例消费；`./server/config` 被宿主
+  `config-validators` 用例消费；`./server/agent-launch-spec` 与 `./server/agent-config-lookup` 由宿主
+  `apps/server/src/services/pre-launch-ports.ts`（第 16 / 20 行）消费；`./server/runtime` 与
+  `./server/api-agent-schema` 分别由宿主装配与协议 schema 消费方使用。订正一处旧记录：本 README 此前把
+  `packages/agent-runtime` 的 `launch-spec-builder.ts` 也记为 `./server/system-prompt` 的消费方——该文件已随
+  任务 1.4 W4b 删除，实测 `grep -rn 'from "@fenix/agent-config' packages/agent-runtime/src --include='*.ts'
+  | grep -v __tests__ | wc -l` → 0（该路径下对 `@fenix/agent-config` 的提及只剩注释）。
 - **宿主侧第二份实现——已全部退场**：`apps/web/src/lib/agent-node.ts`、`agent-utils.ts`、
   `agent-resource-access.ts`（与包内 `web/lib/*` 同源）随 §1.6 T8d 的「宿主 `src/{api,hooks,lib,types}`
   副本簇退场」删除；`apps/web/src/pages/agent-panel/AgentSidebarConfig.tsx` 随 T11d 与其包内死副本同时
@@ -132,14 +165,16 @@ Agent 配置资源行、关联绑定（Skill / MCP / 知识库 / 记忆）与站
   原由本包的 `meta-agent` 用例覆盖，因宿主依赖被切出包内，其等价覆盖需在宿主侧补齐（随 W3）。
 - **模块配置字段暂由宿主直接提供**（`moduleConfigs["agent-config"]`），未走模块 `envDefinitions`；
   声明、校验与 preflight 收敛归任务 1.7。
-- **§1.3(3) 的后半段「生成已授权 LaunchSpec 再调 Runtime port」本任务未实现**：Facade 只覆盖 CRUD 与
-  `restartInstances`（后者校验 `use` 动作，成员默认具备），不产出 LaunchSpec；agent 的启动/运行路径由
-  `@fenix/agent-runtime` 自行读取 `agent_config` 构建启动输入（`orchestration-bootstrap.ts` 经
-  `agentConfigRepo`、`launch-spec-builder.ts` 直读表），**不经 ActorContext、不校验 `use` 动作**。
-  影响面：启动期授权未经过本包 Facade，agent 配置读取尚未收敛为窄契约。该项归 **§1.4**
-  （架构台账 `agent-runtime-not-to-resources` 的 `@fenix/agent-runtime → @fenix/agent-config` 条目 owner
-  已是 1.4）。移除条件：`removeWhen` =「agent 配置读取收敛为 port 注入」——agent-runtime 改为经 Runtime
-  port 接收已授权的启动输入后，本包 Facade 补上 `use` 授权与 LaunchSpec 生成，本条目同批删除。
+- **§1.3(3) 的后半段「生成已授权 LaunchSpec 再调 Runtime port」仍未实现（B7 已缩小差距）**：Facade 只覆盖
+  CRUD 与 `restartInstances`（后者校验 `use` 动作，成员默认具备），不产出 LaunchSpec。B7 把 agent-runtime
+  对 `agent_config` 的读点从「直读宿主 schema」改为经宿主注入的 `AgentConfigLookupPort`
+  （`findAgentConfigExecutionFields` / `findAgentConfigNamesByIds`，见该包
+  `services/agent-config-lookup-port.ts`；`agentConfigRepo` 与 `launch-spec-builder.ts` 已不在该包），
+  但读取仍是**不经 ActorContext、不校验 `use` 动作**的启动期取数。影响面：启动期授权未经过本包 Facade，
+  agent 配置读取尚未收敛为「已授权的启动输入」。该项属 **§1.4** 范围；原先指向的架构台账条目
+  `agent-runtime-not-to-resources`（`@fenix/agent-runtime → @fenix/agent-config`）已不在
+  `scripts/architecture/exceptions.json` 中（实测 `grep -c "agent-runtime-not-to-resources"
+  scripts/architecture/exceptions.json` → 0），余下的「Facade 补 `use` 授权与 LaunchSpec 生成」仍待落地。
 - **（2026-09-20 复核已解除）本包 web 面在 `bun test` 中的求值失败，原因为宿主 i18n 旧深链**：宿主
   `apps/web/src/i18n/index.ts` 原先按各包旧布局深链 `web/i18n/{en,zh}/*.json`，经 `@fenix/identity/web`
   的 `OrgContext.tsx`（走宿主别名 `@/src/i18n`）把失效路径拉进本包值导入图，令 `@fenix/agent-config/web`
