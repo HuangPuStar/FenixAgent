@@ -1,4 +1,5 @@
 import type { ModuleManifest } from "@fenix/platform-sdk";
+import { skillResource } from "./src/server/access/skill-resource";
 
 /**
  * Skill 资源模块描述符。
@@ -28,6 +29,15 @@ import type { ModuleManifest } from "@fenix/platform-sdk";
  * 失败；即使抛开循环，本包 `package.json` 也没有这些编译依赖，生成器的 `assertDependsOnDeclared` 会
  * 先行报错。依赖本模块的模块各自声明 skill 才是正确形状。
  *
+ * 声明 `accessControlBindings`：`skillResource.storage` 是本模块主表（`skill`）的归属列声明，由
+ * `access-control` 的工厂经 `ModuleFactoryContext.declarations` 汇总。静态导入资源注册文件是有意的
+ * 取舍——绑定是值而不是类型，只能来自静态导出；本模块**不得**为这条边把 `access-control` 写进
+ * `dependsOn`，否则授权模块与资源模块会互相等待（理由与加载代价见 `@fenix/resource-mcp` 的同类说明）。
+ *
+ * 声明 `create`：指向 `src/module.ts` 的 `createSkillModule(context)`，由 registry 注入装配声明并装入
+ * 组合根产出的实例。工厂保持惰性——registry 会被大量位置导入，不能在索引层就把 Drizzle、Elysia 拖进
+ * 模块图。
+ *
  * 不声明 `contributions` / `web` / `envDefinitions`：消费方分别是 §1.5 宿主挂载、§1.6 WebShell 装配
  * 与 §1.7 的宿主 env 登记，形状必须与消费端同时定型。本包已有 `web/index.ts` 浏览器出口，
  * `web` 贡献待 §1.6 装配面落地时一并声明。
@@ -37,6 +47,7 @@ export const moduleManifest = {
   kind: "resource",
   dependsOn: [],
   capabilities: ["resource.skill"],
+  accessControlBindings: [skillResource.storage],
   // 工厂保持惰性：registry 会被大量位置导入，不能在索引层就把 Drizzle、Elysia 拖进模块图。
-  create: () => import("./src/module").then((module) => module.createSkillModule()),
+  create: (context) => import("./src/module").then((module) => module.createSkillModule(context)),
 } satisfies ModuleManifest;

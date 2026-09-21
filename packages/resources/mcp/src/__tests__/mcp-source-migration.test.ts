@@ -330,12 +330,17 @@ describe("MCP 包边界契约（任务 1.3 §1 静态条件）", () => {
   });
 
   // 模块 id 是 registry 的索引键：清单与组合根不一致会让装配取到别的模块（或取不到）。
-  test("fenix.module.ts 的 id 与 src/module.ts 的组合根一致", () => {
+  test("fenix.module.ts 声明 id 且 create 指向包内组合根", () => {
     expect(manifestSource).toContain('id: "mcp"');
     const moduleSource = readFileSync(resolve(PKG_ROOT, "src/module.ts"), "utf8");
-    expect(moduleSource).toContain('readonly id: "mcp"');
+    // 组合根产出真实模块实例（返回 `McpServerServerModule`），不再是装配结果的命名空间包装。
+    expect(moduleSource).toContain(
+      "export function createMcpModule(context: ModuleFactoryContext): McpServerServerModule",
+    );
     // create 指向组合根且保持惰性（registry 会被大量位置导入，不能在索引层拉起 Drizzle/Elysia）。
-    expect(manifestSource).toContain('create: () => import("./src/module").then((module) => module.createMcpModule())');
+    expect(manifestSource).toContain(
+      'create: (context) => import("./src/module").then((module) => module.createMcpModule(context))',
+    );
   });
 
   // README 是交付物的一部分：缺节或占位会让读者以为能力不存在（本包 README 曾写「没有 web 出口」）。

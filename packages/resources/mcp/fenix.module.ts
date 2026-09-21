@@ -1,4 +1,5 @@
 import type { ModuleManifest } from "@fenix/platform-sdk";
+import { mcpServerResource } from "./src/server/access/mcp-server-resource";
 
 /**
  * MCP 资源模块描述符。
@@ -24,10 +25,15 @@ import type { ModuleManifest } from "@fenix/platform-sdk";
  * 反向边不存在：knowledge 的服务端代码不导入本包，这条边是单边的，不构成装配环；knowledge 注册后
  * 生成器的 `assertDependsOnComplete` 会接管「值导入了已注册资源模块就必须声明」这半边的持续校验。
  *
- * 声明 `create`：指向 `src/module.ts` 的组合根 `createMcpModule()`（W2 落地）。工厂保持惰性——
- * registry 会被大量位置导入，不能在索引层就把 Drizzle、Elysia 与 MCP SDK 拖进模块图；组合根本身
- * 需要平台注入（授权、查询端口、身份目录），因此它只补 `id` 并把装配生命周期转出，构造仍由
- * `src/server/module.ts` 唯一实现（理由见 `src/module.ts`）。
+ * 声明 `accessControlBindings`：`mcpServerResource.storage` 是本模块主表（`mcp_server`）的归属列声明，
+ * 由 `access-control` 的工厂经 `ModuleFactoryContext.declarations` 汇总。这里静态导入资源注册文件是
+ * 有意的取舍：绑定是值而不是类型，只能来自静态导出；代价是 registry 的加载图多了本包的资源注册
+ * （含 `@server/db/schema` 的表定义），而消费 registry 的入口只有服务端的装配入口与宿主用例。
+ * 本模块**不得**为这条边把 `access-control` 写进 `dependsOn`：授权模块要等声明齐全才能构造。
+ *
+ * 声明 `create`：指向 `src/module.ts` 的 `createMcpModule(context)`，由 registry 注入装配声明并装入
+ * 组合根产出的实例。工厂保持惰性——registry 会被大量位置导入，不能在索引层就把 Drizzle、Elysia 与
+ * MCP SDK 拖进模块图；构造仍由 `src/server/module.ts` 唯一实现。
  *
  * 不声明 `contributions` / `web` / `envDefinitions`：`contributions` 与 `web` 的消费方分别是
  * §1.5 的宿主挂载与 §1.6 的 WebShell 装配，形状必须与消费端同时定型；本包不读 `process.env`、
@@ -38,6 +44,7 @@ export const moduleManifest = {
   kind: "resource",
   dependsOn: ["knowledge"],
   capabilities: ["resource.mcp"],
+  accessControlBindings: [mcpServerResource.storage],
   // 工厂保持惰性：registry 会被大量位置导入，不能在索引层就把 Drizzle、Elysia 与 MCP SDK 拖进模块图。
-  create: () => import("./src/module").then((module) => module.createMcpModule()),
+  create: (context) => import("./src/module").then((module) => module.createMcpModule(context)),
 } satisfies ModuleManifest;

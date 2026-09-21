@@ -1,4 +1,5 @@
 import type { ModuleManifest } from "@fenix/platform-sdk";
+import { agentConfigResource } from "./src/server/access/agent-config-resource";
 
 /**
  * AgentConfig 资源模块描述符。
@@ -24,10 +25,14 @@ import type { ModuleManifest } from "@fenix/platform-sdk";
  * 它们 → 本模块，写进本模块会反转装配方向并成环；`sandbox` 同样不声明——`use-agent-editor.ts` 导入的是
  * `@fenix/resource-sandbox/web`，浏览器贡献不进入服务端装配顺序（反向校验只扫 `src/**` 的值导入）。
  *
+ * 声明 `accessControlBindings`：`agentConfigResource.storage` 是本模块主表（`agent_config`）的归属列
+ * 声明，由 `access-control` 的工厂经 `ModuleFactoryContext.declarations` 汇总。静态导入资源注册文件是
+ * 有意的取舍——绑定是值而不是类型，只能来自静态导出；本模块**不得**为这条边把 `access-control` 写进
+ * `dependsOn`，否则授权模块与资源模块会互相等待（理由与加载代价见 `@fenix/resource-mcp` 的同类说明）。
+ *
  * 声明 `create`（惰性）：registry 会被大量位置导入，不能在索引层就把 Drizzle、Elysia 与 agent-runtime
- * 拖进模块图。工厂返回的是**进程级装配结果的入口**（`src/module.ts`）而不是自造实例——真正的组合仍是
- * `src/server/module.ts` 的 `createAgentConfigServerModule(deps)`，由宿主注入授权与身份目录后经
- * `installAgentConfigModule` 装入；理由同 `@fenix/resource-mcp` / `@fenix/resource-skill`。
+ * 拖进模块图。工厂产出 `src/server/module.ts` 的 `createAgentConfigServerModule(deps)` 构造的真实例并
+ * 装入进程级槽位，依赖取自 registry 的装配声明——详见 `src/module.ts`。
  *
  * 不声明 `contributions` / `web` / `envDefinitions`：消费方分别是 §1.5 宿主挂载、§1.6 WebShell 装配与
  * §1.7 的宿主 env 登记，形状必须与消费端同时定型。
@@ -37,5 +42,6 @@ export const moduleManifest = {
   kind: "resource",
   dependsOn: ["knowledge", "mcp", "memory", "skill"],
   capabilities: ["resource.agent-config"],
-  create: () => import("./src/module").then((module) => module.createAgentConfigModule()),
+  accessControlBindings: [agentConfigResource.storage],
+  create: (context) => import("./src/module").then((module) => module.createAgentConfigModule(context)),
 } satisfies ModuleManifest;

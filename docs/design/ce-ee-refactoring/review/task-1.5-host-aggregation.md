@@ -1023,3 +1023,90 @@ core 实例、逐个 `unregisterInstance`；②调用编排域收敛 `cleanupIns
 **759 pass / 0 fail**（较 1.5c-7 的 798 少 39，恰为本片删除的 11 + 28 条断言，无其它用例受影响）；
 package-tests 7301 pass / 2 skip / 0 fail（与 1.5c-7 持平）；web-app-tests 946 pass / 0 fail；
 `architecture`、`dependency-boundaries`、`module-registry`、三项 `tsc`、`lint`、`format`、`import-sort` 均通过。
+
+### 1.5d platform-sdk 契约扩展（2026-09-21）
+
+分片行原文：「【需审核】platform-sdk 契约扩展：`ModuleFactoryContext.declarations`、
+`ModuleManifest.accessControlBindings`、`ModuleContribution.order`、`ServerRouteHost` 与宿主协议 adapter 面；
+access-control / mcp / skill / agent-config / model-management 的 `create` 改为接收声明并去掉「已知不足」
+注释」，判据「`bootstrap.test.ts` 扩测新契约；`access-control` 与 mcp 的 create 返回真实例而非命名空间」。
+
+**一、§3.2 / §3.3 的落地对照**
+
+| 裁定项 | 落地位置 | 本片状态 |
+| --- | --- | --- |
+| `ModuleFactoryContext.declarations` | `platform-sdk/src/assembly/module-manifest.ts` 加字段（含「为什么走声明面」注释）；`bootstrap.ts` 的 create 阶段传 `resolved.modules` | 拓扑序的启用 manifest 全集，实例化前即可读 |
+| `ModuleManifest.accessControlBindings` | 同文件加可选字段；`access-control` 的工厂 `flatMap` 汇总 | 四个受控资源 manifest 各自声明 `xxxResource.storage` |
+| `ModuleContribution.order` | 同文件加可选字段；`bootstrap.ts` 新增 `orderContributions()` 稳定排序 | 默认 0，同值保持「拓扑序 + manifest 内声明序」 |
+| `ServerRouteHost` | `platform-sdk/src/server.ts`（7 字段全 `unknown`） | **本片只定义、无消费方**——§3.3 的路由贡献挂载在 1.5e 落地 |
+| 三处「已知不足」注释 | access-control / mcp / skill / agent-config / model-management 的 `fenix.module.ts` 与 `src/module.ts` | 删除，改写为现在时的事实陈述（含新的约束说明） |
+
+`create` 改动明细：
+
+- `access-control`：`create: () => import("./src/suite")`（返回包命名空间）→ `createDrizzleAccessControl({ database: getDatabase<AccessControlDatabase>(), bindings: context.declarations.flatMap((m) => m.accessControlBindings ?? []) })`。
+  `database` 与 `identity` 不新增注入面（§3.2 第 3 条）：沿用 `@fenix/platform-sdk/server` 的 `getDatabase()`，与 1.4 在 agent-runtime 上的模式一致。
+- 四个资源包：`create: () => import("./src/module").then((m) => m.createXxxModule())` → 传入 `context`；包内 `src/module.ts` 删除 `McpModule` 式的「装配结果命名空间」包装接口，改为从 `context.modules` 取 access-control 端口、从 `@fenix/platform-sdk/server` 取身份目录，调用既有的 `createXxxServerModule()`（仍是唯一构造实现）后 `installXxxModule(module)`，**返回真实模块实例**。
+
+**二、需审核的取舍（本片自行裁定，理由与触发条件）**
+
+1. **四处「收窄 access-control 实例」的代码各写一份**（`requireAccessControlSuite`，每处 8 行，报错文案带包名前缀）。
+   不抽到 `platform-sdk` 的硬理由：`context.modules` 的值是 `unknown`，收窄它需要「access-control 实例的形状」，
+   而该形状由 `@fenix/access-control` 定义，`platform-sdk` 不得依赖 platform-impl；SDK 能提供的只有「按端口键取
+   模块实例」的通用助手，那是一项**新公共契约**，超出本任务已审核的三项（§3.2 / §3.3）。
+   提炼触发条件已写入 mcp 的注释：出现第二个**非 access-control** 的端口也需要同形收窄时，按当时形状评审该助手。
+2. **registry 的加载图变重**：资源 manifest 为了声明 `storage` 必须**值导入**自己的资源注册文件
+   （`mcp-server-resource.ts` 等，链上含 `@server/db/schema` 的表定义），绑定是值而非类型，无法用 `import type` 替代。
+   已核实的爆炸半径：导入生成物的只有 `apps/server/src/bootstrap.ts` 与宿主用例，`apps/web` 侧不导入 registry
+   （web 只经 `apps/web/fenix.module.ts` 提供纯元数据 Shell 描述符），因此浏览器 bundle 不受影响；
+   `architecture:check`（2234 files）与 `check:dependencies`（2386 modules，0 新增违规）均确认无越界边。
+3. **资源包 `create` 内自行 `installXxxModule` 且不登记 cleanup**：装配结果只有 facade / service / repository，全是
+   无连接、无句柄的普通对象，进程退出不需要释放；`resetXxxModule` 仍只服务测试。这样 1.5f 删除宿主手写装配后
+   读取点 `getXxxModule()` 不会出现「无人写入」的窗口。
+4. **`ServerRouteHost` 在本片没有消费方**：按 §3.3 它属于「与路由贡献同时定型」的契约，本片先定型接口与
+   `order` 排序，实际分派与各包 `src/server/assembly.ts` 收窄留给 1.5e（本片不写无人使用的 adapter）。
+5. **端到端真实 profile 装配不在本片**：宿主用例只断言「registry 的声明集合 = 四个受控资源绑定」，
+   真正用 `ce.json` 跑通 `create` 全链（含 access-control 汇总绑定后建立查询）归 1.5f 的接线验证。
+6. **`dependsOn` 不得写 `access-control`** 这条约束同时写进两侧注释，并由既有门禁长期守护：
+   资源 manifest 静态导入的是自己的注册文件，若哪天有人把 `access-control` 写进 `dependsOn`，
+   `generate:module-registry` 的反向校验（`assertDependsOnComplete`）会以「已登记越界边不得编码成装配依赖」失败。
+
+**三、测试**
+
+| 文件 | 用例 | 断言要点 |
+| --- | --- | --- |
+| `apps/server/src/__tests__/bootstrap.test.ts`（+2） | 工厂读到本次装配的全部声明 | `seenDeclarations` = 拓扑序全集；access-control 先构造却已拿到 mcp 声明的 `mcp_server` 绑定——「先装配授权、再装配资源模块」由此成立 |
+| 同上 | 贡献按 `order` 升序稳定排序后挂载 | `["identity.primary", "access-control.primary", "identity.fallback"]`（order 100 的兜底最后） |
+| `apps/server/src/__tests__/module-assembly.test.ts`（+1） | 受控资源 manifest 各自声明存储绑定 | 真实 registry 汇总出的 `resourceType` 排序后 = `["agent_config", "mcp_server", "provider", "skill"]` |
+| `apps/server/src/__tests__/module-assembly.test.ts`（改） | — | 新增 `contractManifests: readonly ModuleManifest[]` 契约视图：生成物的 `as const satisfies` 保留的是各 manifest 字面量类型，联合类型上访问不到只有部分模块声明的可选字段 |
+| `packages/platform/access-control/src/__tests__/module-assembly.test.ts`（新，3 例） | 真实例 / 绑定从声明收集 / 基础设施未初始化即报错 | 真实例是 `DefaultAccessControl` 与 `ColumnResourceScopeStore`；未声明绑定的资源报「资源 not_declared 未注册存储绑定，无法解析归属范围」（不静默放宽） |
+| 四个资源包 `src/__tests__/module-assembly.test.ts`（新，各 2 例） | 真实例 + 装入进程级槽位 / 端口缺失即报错 | `module.resource === xxxResource` 且 `getXxxModule() === module`；缺端口抛「access-control 模块未提供 accessControl / scopeStore / authorizedQuery」 |
+| `mcp/src/__tests__/mcp-source-migration.test.ts`、`skill/src/__tests__/skill-source-boundary.test.ts`（改） | — | 源码边界断言随 create 形态改写（新增 `create: (context) => import("./src/module").then((module) => module.createXxxModule(context))`，并断言返回真实模块类型的签名行） |
+
+**四、验证证据**
+
+定向：`bun test packages/platform/platform-sdk/src/__tests__/ packages/platform/access-control/src/__tests__/` 79 pass / 0 fail；
+`mcp` + `skill` 359 pass、`agent-config` + `model-management` 429 pass；
+`bootstrap.test.ts` 6 pass、`module-assembly.test.ts` 5 pass；根 `tsc --noEmit` 无输出；
+`generate:module-registry --check` ✓（17 个 manifest）；`architecture:check` ✓（2234 files / 11 rules / 27 例外）；
+`check:dependencies` ✓（2386 modules / 12 例外 / 0 新增违规）。
+
+全量：`env -u ANTHROPIC_MODEL bun run precheck` → `All passed (122696ms)`。server-and-script-tests
+**762 pass / 0 fail**（较 1.5c-8 的 759 多 3，即本片新增的 `bootstrap.test.ts` +2 与宿主 `module-assembly.test.ts` +1，
+无既有用例减少）；package-tests **7312 pass / 2 skip / 0 fail**（较 1.5c-8 的 7301 多 11，即 access-control 3 +
+四个资源包各 2）；web-app-tests 946 pass / 0 fail；其余九步（format / import-sort / module-registry /
+architecture / 三项 tsc / dependency-boundaries / lint）全部通过。
+
+**非确定性失败记录**（与本片改动无关，留证）：本片第一次全量 `precheck` 的 package-tests 步骤报
+**79 fail / 7233 pass**，日志尾部可见的失败集中在 `packages/platform/identity/web/__tests__/organization-invite-dialog.test.tsx`
+的 DOM 断言（`container.querySelector("button")` 返回 `null`），同步骤耗时由常态 52s 涨到 147s；另跑
+`bun test packages/platform/identity/web/` 为 12 pass / 0 fail。第二次重跑时该步骤被 `scripts/ci.ts` 的 300s
+硬超时终止（实测 417282ms，无汇总输出）；同期 `ps` 显示机器上另一个 bun 进程持续占 CPU（`%CPU` 63、已运行 7 分钟）。
+负载回落后的第三次重跑即上面这条全绿结果。判断：与装配契约改动无关的负载型非确定性失败，故不视为本片回归，
+但重试证据留此备查。
+
+**五、遗留**
+
+- 宿主在装配后**读取 access-control 实例**的路径未在本片确定（`BootstrapResult.instances` 尚未经
+  `bootstrapServerAssembly` 暴露给 `main.ts`）：1.5f 接线时按 §3.1 的「只接管权限装配」范围定，候选是
+  资源包同形的进程级槽位。
+- `platform-sdk/src/server.ts` 的 `ServerRouteHost` 与 `contributions` 的实际消费方集中在 1.5e。

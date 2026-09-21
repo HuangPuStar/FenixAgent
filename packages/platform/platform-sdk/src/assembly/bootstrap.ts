@@ -86,6 +86,25 @@ function selectModuleEnv(
   );
 }
 
+/** 待挂载的贡献及其归属 manifest。 */
+interface MountEntry {
+  readonly manifest: ModuleManifest;
+  readonly contribution: ModuleContribution;
+}
+
+/**
+ * 展开全部贡献并按 `order` 稳定排序。
+ *
+ * `Array.prototype.sort` 自 ES2019 起保证稳定，因此同 `order` 的贡献保持「拓扑序 + manifest 内声明序」，
+ * 声明不带 `order` 的模块之间不会因为排序而互换挂载顺序。
+ */
+function orderContributions(modules: readonly ModuleManifest[]): readonly MountEntry[] {
+  const entries: MountEntry[] = modules.flatMap((manifest) =>
+    (manifest.contributions ?? []).map((contribution) => ({ manifest, contribution })),
+  );
+  return entries.sort((left, right) => (left.contribution.order ?? 0) - (right.contribution.order ?? 0));
+}
+
 /**
  * 执行静态 server 装配的固定阶段。
  *
@@ -107,6 +126,7 @@ export async function bootstrapModules(options: BootstrapModulesOptions): Promis
           manifest.create?.({
             env: selectModuleEnv(manifest, env),
             modules: instances,
+            declarations: resolved.modules,
             registerCleanup,
           }),
         ),
@@ -118,19 +138,17 @@ export async function bootstrapModules(options: BootstrapModulesOptions): Promis
     }
 
     if (options.mountContribution) {
-      for (const manifest of resolved.modules) {
-        for (const contribution of manifest.contributions ?? []) {
-          await cleanupStack.runWithRegistrar((registerCleanup) =>
-            Promise.resolve(
-              options.mountContribution?.({
-                contribution,
-                manifest,
-                instance: instances.get(manifest.id),
-                registerCleanup,
-              }),
-            ),
-          );
-        }
+      for (const { manifest, contribution } of orderContributions(resolved.modules)) {
+        await cleanupStack.runWithRegistrar((registerCleanup) =>
+          Promise.resolve(
+            options.mountContribution?.({
+              contribution,
+              manifest,
+              instance: instances.get(manifest.id),
+              registerCleanup,
+            }),
+          ),
+        );
       }
     }
   } catch (error) {

@@ -22,6 +22,14 @@ const EXPECTED_SERVER_MODULES = [
 /** 真实 registry 里由 `apps/web/fenix.module.ts` 提供的纯元数据 Shell 描述符。 */
 const generatedWebShellManifests = generatedModuleManifests.filter((manifest) => manifest.kind === "web-shell");
 
+/**
+ * registry 产出的契约视图。
+ *
+ * 生成物用 `as const satisfies` 保留各 manifest 的字面量类型，联合类型上访问不到「只有部分模块声明」
+ * 的可选字段（如 `accessControlBindings`）；按契约面收窄后，用例读到的就是宿主装配入口读的那份类型。
+ */
+const contractManifests: readonly ModuleManifest[] = generatedModuleManifests;
+
 // 真实 ce.json 必须能被真实生成的 registry 解析，否则发布组合在启动前就不可用。
 test("真实 profile 与生成的 registry 可解析", async () => {
   const profile = await loadAssemblyProfile();
@@ -108,6 +116,17 @@ test("bootstrapServerAssembly 按依赖序装配并逆序幂等释放", async ()
   // 宿主可能同时从信号处理和错误路径触发关闭，重复 dispose 不得重复释放资源。
   await result.dispose();
   expect(events.slice(-3)).toEqual(["dispose:agent-runtime", "dispose:access-control", "dispose:identity"]);
+});
+
+// 授权绑定只从声明面收集（§1.5f 起宿主不再手写 `bindings` 列表）：四个受控资源主表必须各自声明
+// 自己的 `storage`，漏声明的那一个会在运行期以「未注册存储绑定」报错，而不是静默放宽授权范围。
+test("受控资源 manifest 各自声明存储绑定", async () => {
+  const declaredTypes = contractManifests
+    .flatMap((manifest) => manifest.accessControlBindings ?? [])
+    .map((binding) => binding.resourceType)
+    .sort();
+
+  expect(declaredTypes).toEqual(["agent_config", "mcp_server", "provider", "skill"]);
 });
 
 // profile 引用了未编译进 registry 的 Shell 时，必须在执行任何工厂前失败。

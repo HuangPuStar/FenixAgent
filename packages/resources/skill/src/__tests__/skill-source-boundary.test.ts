@@ -81,11 +81,16 @@ describe("skill 包边界契约", () => {
 
   // 模块 id 是 registry 的索引键：清单与组合根不一致会让装配取到别的模块；`create` 必须惰性，
   // 否则索引层就会把 Drizzle / Elysia 拉进模块图。
-  test("fenix.module.ts 的 id 与组合根一致且 create 保持惰性", () => {
+  test("fenix.module.ts 声明 id 且 create 指向包内组合根", () => {
     const manifest = readFileSync(join(PKG_ROOT, "fenix.module.ts"), "utf8");
     expect(manifest).toContain('id: "skill"');
-    expect(manifest).toContain('create: () => import("./src/module").then((module) => module.createSkillModule())');
-    expect(readFileSync(join(PKG_ROOT, "src/module.ts"), "utf8")).toContain('readonly id: "skill"');
+    expect(manifest).toContain(
+      'create: (context) => import("./src/module").then((module) => module.createSkillModule(context))',
+    );
+    // 组合根产出真实模块实例（返回 `SkillServerModule`），不再是装配结果的命名空间包装。
+    expect(readFileSync(join(PKG_ROOT, "src/module.ts"), "utf8")).toContain(
+      "export function createSkillModule(context: ModuleFactoryContext): SkillServerModule",
+    );
   });
 
   // 浏览器入口的包导出契约：消费方只认子路径，改指向文件即断链（vite 别名与宿主 i18n 都按此解析）。
