@@ -1,4 +1,5 @@
 import type { ModuleManifest } from "@fenix/platform-sdk";
+import type { ServerRouteHost } from "@fenix/platform-sdk/server";
 
 /**
  * Knowledge 资源模块描述符。
@@ -24,9 +25,13 @@ import type { ModuleManifest } from "@fenix/platform-sdk";
  * workspace 依赖指向上游，方向必须由它们在各自 manifest 里写 `dependsOn: ["knowledge"]`。本包是资源装配
  * 图里的叶子，反向声明会与依赖矩阵和装配拓扑序冲突。
  *
- * 不声明 `contributions` / `web` / `envDefinitions`：宿主当前按显式调用装配（`createWebKnowledgeBaseRoutes`
- * 等路由工厂注入宿主守卫），浏览器交付物由宿主 vite alias 映射（`apps/web/vite.config.ts`）；它们的形状
- * 必须与消费端同时定型，单方面发明会留下第二套装配路径。
+ * 声明 `contributions`（1.5e）：`/web/knowledge-bases` 的路由实例由本模块以惰性构造函数
+ * `(host) => import("./src/server/assembly").then(...)` 给出，`slot: "web"` 指明挂宿主 `/web` 聚合面——
+ * 路由路径是相对形式，前缀由宿主的聚合实例决定，「挂哪一面」只能由声明说清。惰性 import 与 `create`
+ * 同因：registry 会被大量位置导入，不能在索引层就把 Elysia 拖进模块图。
+ *
+ * 不声明 `web` / `envDefinitions`：浏览器交付物由宿主 vite alias 映射（`apps/web/vite.config.ts`），其形状
+ * 必须与 §1.6 消费端同时定型，单方面发明会留下第二套装配路径；env 收敛归 §1.7。
  *
  * `create` 指向 `src/module.ts` 的组合根（进程级仓储单例），并保持惰性：registry 会被大量位置导入，
  * 不能在索引层就把 Drizzle、Elysia 与知识库服务图拖进来。
@@ -36,6 +41,15 @@ export const moduleManifest = {
   kind: "resource",
   dependsOn: [],
   capabilities: ["resource.knowledge"],
+  contributions: [
+    {
+      id: "knowledge.web",
+      kind: "app-route",
+      slot: "web",
+      value: (host: ServerRouteHost) =>
+        import("./src/server/assembly").then((assembly) => assembly.createKnowledgeWebRoutes(host)),
+    },
+  ],
   // 工厂保持惰性：registry 会被大量位置导入，不能在索引层就把 Drizzle、Elysia 与知识库服务图拖进模块图。
   create: () => import("./src/module").then((module) => module.createKnowledgeModule()),
 } satisfies ModuleManifest;

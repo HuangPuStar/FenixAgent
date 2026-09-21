@@ -1,4 +1,5 @@
 import type { ModuleManifest } from "@fenix/platform-sdk";
+import type { ServerRouteHost } from "@fenix/platform-sdk/server";
 
 /**
  * Task 资源模块描述符。
@@ -40,16 +41,29 @@ import type { ModuleManifest } from "@fenix/platform-sdk";
  * 开两条调度路径（重复执行、重复写执行日志）。工厂保持惰性：registry 会被大量位置导入，不能在索引层
  * 就把 Drizzle、Elysia 与 node-schedule 拖进模块图。
  *
- * 不声明 `contributions` 与 `web`：两者的消费方分别是 §1.5 的宿主挂载与 §1.6 的 WebShell 装配，
- * 形状必须与消费端同时定型；单方面发明会返工。不声明 `envDefinitions`（归 §1.7）：本包不读
- * `process.env`、不读 `@server/config`，宿主用 `RCS_DISABLE_SCHEDULER` 决定是否调用
- * `schedulerService.start()`，该变量的声明与校验在宿主。
+ * 声明 `contributions`（1.5e）：`/web/tasks-v2` 的路由实例由本模块以惰性构造函数
+ * `(host) => import("./src/server/assembly").then(...)` 给出，`slot: "web"` 指明挂宿主 `/web` 聚合面——
+ * 路由路径是相对形式，前缀由宿主的聚合实例决定，「挂哪一面」只能由声明说清。惰性 import 与 `create`
+ * 同因：registry 会被大量位置导入，不能在索引层就把 Elysia 拖进模块图。
+ *
+ * 不声明 `web`：消费方是 §1.6 的 WebShell 装配，形状必须与消费端同时定型。不声明 `envDefinitions`
+ * （归 §1.7）：本包不读 `process.env`、不读 `@server/config`，宿主用 `RCS_DISABLE_SCHEDULER` 决定是否
+ * 调用 `schedulerService.start()`，该变量的声明与校验在宿主。
  */
 export const moduleManifest = {
   id: "task",
   kind: "resource",
   dependsOn: [],
   capabilities: ["resource.task"],
+  contributions: [
+    {
+      id: "task.web",
+      kind: "app-route",
+      slot: "web",
+      value: (host: ServerRouteHost) =>
+        import("./src/server/assembly").then((assembly) => assembly.createTaskWebRoutes(host)),
+    },
+  ],
   // 工厂保持惰性：registry 会被大量位置导入，不能在索引层就把 Drizzle、Elysia 与 node-schedule 拖进模块图。
   create: () => import("./src/module").then((module) => module.createTaskModule()),
 } satisfies ModuleManifest;

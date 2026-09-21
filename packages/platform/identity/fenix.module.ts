@@ -1,4 +1,5 @@
 import type { ModuleManifest } from "@fenix/platform-sdk";
+import type { ServerRouteHost } from "@fenix/platform-sdk/server";
 
 /**
  * Identity 平台模块描述符。
@@ -11,12 +12,35 @@ import type { ModuleManifest } from "@fenix/platform-sdk";
  * 本模块声明的运行期依赖只有应用基础设施中的 DB（经 `@fenix/platform-sdk/server` 读取）；
  * better-auth 与系统管理员密码文件等部署配置当前仍由宿主解析后经 `initializeApplicationInfrastructure`
  * 的模块配置传入，模块自身的 `envDefinitions` 与 preflight 随 1.7 的 env 收敛一并补齐。
+ *
+ * 声明 `contributions`（1.5e）：`/web/api-keys` 与 `/web/organizations` 的路由实例由本模块以惰性构造函数
+ * `(host) => import("./src/server/assembly").then(...)` 给出，`slot: "web"` 指明挂宿主 `/web` 聚合面——
+ * 路由路径是相对形式，前缀由宿主的聚合实例决定，「挂哪一面」只能由声明说清。**基础模块同样参与贡献挂载**：
+ * 装配的 mount 阶段遍历 profile 解析出的全部模块（`bootstrapModules` 的 `orderContributions`），不区分
+ * 类别，因此这两条路由与其他资源包的路由走同一条接线。惰性 import 与 `create` 同因：registry 会被大量位置
+ * 导入，不能在索引层就把 Elysia 拖进模块图。
  */
 export const moduleManifest = {
   id: "identity",
   kind: "identity",
   dependsOn: [],
   capabilities: ["platform.identity"],
+  contributions: [
+    {
+      id: "identity.web-api-keys",
+      kind: "app-route",
+      slot: "web",
+      value: (host: ServerRouteHost) =>
+        import("./src/server/assembly").then((assembly) => assembly.createIdentityWebApiKeysRoutes(host)),
+    },
+    {
+      id: "identity.web-organizations",
+      kind: "app-route",
+      slot: "web",
+      value: (host: ServerRouteHost) =>
+        import("./src/server/assembly").then((assembly) => assembly.createIdentityWebOrganizationsRoutes(host)),
+    },
+  ],
   // 工厂保持惰性：registry 会被大量位置导入，不能在索引层就把 Drizzle 与 better-auth 拖进模块图。
   create: () => import("./src/module").then((module) => module.createIdentityModule()),
 } satisfies ModuleManifest;

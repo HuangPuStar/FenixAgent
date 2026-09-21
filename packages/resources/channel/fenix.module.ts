@@ -1,4 +1,5 @@
 import type { ModuleManifest } from "@fenix/platform-sdk";
+import type { ServerRouteHost } from "@fenix/platform-sdk/server";
 
 /**
  * Channel 资源模块描述符。
@@ -22,15 +23,28 @@ import type { ModuleManifest } from "@fenix/platform-sdk";
  * `getAcpEventBusPort()` fail-fast。这条边若写成装配依赖，两个模块必须成套启用，方向与 §2.3「资源不得
  * 反向调用 Runtime 基础设施」冲突；宿主的显式绑定是当前唯一接线路径，不构成第二套装配方式。
  *
- * 不声明 `contributions` 与 `web`：前者的消费方是 §1.5 的宿主挂载，后者的字段形状必须与 §1.6 的
- * WebShell 装配同时定型，单方面发明会返工（实施记录 §四.2）。包侧已具备 `./web` 出口与浏览器安全
- * 守卫，缺的只是 registry 侧的消费方式。
+ * 声明 `contributions`（1.5e）：`/web/channels` 的路由实例由本模块以惰性构造函数
+ * `(host) => import("./src/server/assembly").then(...)` 给出，`slot: "web"` 指明挂宿主 `/web` 聚合面——
+ * 路由路径是相对形式，前缀由宿主的聚合实例决定，「挂哪一面」只能由声明说清。惰性 import 与 `create`
+ * 同因：registry 会被大量位置导入，不能在索引层就把 Elysia 拖进模块图。
+ *
+ * 不声明 `web`：字段形状必须与 §1.6 的 WebShell 装配同时定型，单方面发明会返工（实施记录 §四.2）。
+ * 包侧已具备 `./web` 出口与浏览器安全守卫，缺的只是 registry 侧的消费方式。
  */
 export const moduleManifest = {
   id: "channel",
   kind: "resource",
   dependsOn: [],
   capabilities: ["resource.channel"],
+  contributions: [
+    {
+      id: "channel.web",
+      kind: "app-route",
+      slot: "web",
+      value: (host: ServerRouteHost) =>
+        import("./src/server/assembly").then((assembly) => assembly.createChannelWebRoutes(host)),
+    },
+  ],
   // 工厂保持惰性：registry 会被大量位置导入，不能在索引层就把 Elysia、Hermes 客户端与 drizzle 拖进模块图。
   create: () => import("./src/module").then((module) => module.createChannelModule()),
 } satisfies ModuleManifest;

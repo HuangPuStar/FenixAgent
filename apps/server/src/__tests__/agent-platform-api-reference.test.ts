@@ -4,7 +4,7 @@ import { join } from "node:path";
 import { createApiWorkflowRoutes } from "@fenix/resource-workflow/server";
 import { authGuardPlugin } from "../plugins/auth";
 import { createWebApp } from "../routes/web";
-import { createTestWebConfigRoutes } from "../test-utils/web-config-routes";
+import { createTestWebConfigRoutes, createTestWebRoutes } from "../test-utils/web-routes";
 
 const REFERENCES_DIR = join(process.cwd(), ".agents/skills/agent-platform-api/references");
 
@@ -12,9 +12,9 @@ const REFERENCES_DIR = join(process.cwd(), ".agents/skills/agent-platform-api/re
 // 同一形状构造一份，只读它的 route 表做路径比对。
 const apiWorkflowRoutes = createApiWorkflowRoutes({ authGuardPlugin });
 // `/web` 聚合同样是工厂：1.5e 起路由贡献由装配期登记（`bootstrap/route-contributions`）。本用例检查
-// 「文档示例指向真实注册的路由」，因此要喂入各包的真实路由——`web` 槽仍传空数组（文档示例不覆盖那里已
-// 迁入贡献面的端点），`webConfig` 槽用 test-utils 的同入口集合（不跑装配的理由见该 helper 文件头）。
-const webRoutes = createWebApp({ web: [], webConfig: createTestWebConfigRoutes() });
+// 「文档示例指向真实注册的路由」，因此两个槽都喂各包的真实路由（不跑装配的理由见 helper 文件头）；
+// 宿主手写序列里剩下的 6 条由 `createWebApp` 自己挂载。
+const webRoutes = createWebApp({ web: createTestWebRoutes(), webConfig: createTestWebConfigRoutes() });
 
 interface DocumentedRequest {
   file: string;

@@ -1,4 +1,5 @@
 import type { ModuleManifest } from "@fenix/platform-sdk";
+import type { ServerRouteHost } from "@fenix/platform-sdk/server";
 
 /**
  * Machine 资源模块描述符。
@@ -19,13 +20,42 @@ import type { ModuleManifest } from "@fenix/platform-sdk";
  * `create`：惰性组合根（`src/module.ts` 的 `createMachineModule()`），模块索引层只 import 本文件，装配期
  * 再按需加载 `./server` 图——file-ws 连接索引、心跳巡检与事件队列都是进程级单例，装配只能从这一处进入。
  *
- * 不声明 `contributions` 与 `web`：消费方分别是 §1.5 的宿主挂载与 §1.6 的 WebShell 装配，形状必须与
- * 消费端同时定型；当前宿主按显式调用装配，不形成第二套装配路径。
+ * 声明 `contributions`（1.5e）：`/web/environments/:id/files/*`、`/web/file-events`、`/web/machines` 三条
+ * 路由实例由本模块以惰性构造函数 `(host) => import("./src/server/assembly").then(...)` 给出，
+ * `slot: "web"` 指明挂宿主 `/web` 聚合面——路由路径是相对形式，前缀由宿主的聚合实例决定，「挂哪一面」
+ * 只能由声明说清。`/web/file-events` 是 WS 升级、不走 `sessionAuth` 宏，它从同一份宿主协议面取显式认证
+ * 入口（`authenticateRequest`）。惰性 import 与 `create` 同因：registry 会被大量位置导入，不能在索引层就
+ * 把 Elysia 拖进模块图。
+ *
+ * 不声明 `web`：消费方是 §1.6 的 WebShell 装配，形状必须与消费端同时定型。
  */
 export const moduleManifest = {
   id: "machine",
   kind: "resource",
   dependsOn: ["agent-config"],
   capabilities: ["resource.machine"],
+  contributions: [
+    {
+      id: "machine.web-fs",
+      kind: "app-route",
+      slot: "web",
+      value: (host: ServerRouteHost) =>
+        import("./src/server/assembly").then((assembly) => assembly.createMachineWebFsRoutes(host)),
+    },
+    {
+      id: "machine.web-file-events",
+      kind: "app-route",
+      slot: "web",
+      value: (host: ServerRouteHost) =>
+        import("./src/server/assembly").then((assembly) => assembly.createMachineWebFileEventsRoutes(host)),
+    },
+    {
+      id: "machine.web-registry",
+      kind: "app-route",
+      slot: "web",
+      value: (host: ServerRouteHost) =>
+        import("./src/server/assembly").then((assembly) => assembly.createMachineWebRegistryRoutes(host)),
+    },
+  ],
   create: () => import("./src/module").then((module) => module.createMachineModule()),
 } satisfies ModuleManifest;

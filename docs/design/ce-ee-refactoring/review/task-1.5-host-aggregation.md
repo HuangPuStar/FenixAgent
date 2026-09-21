@@ -1291,3 +1291,61 @@ web-app-tests 946 pass / 0 fail（无前端改动，与 1.5d 持平）；其余�
 - `web` 面 23 个挂载点的迁移（1.5e-2b），含 `ServerRouteHost` 扩两字段（见三.1）。
 - 6 个「1.5d 之前形态」的 `create` 要在 1.5f 与四个受控资源包同形（见一.4）。
 - 手工启动验证仍待有 DB 的环境补做（同 1.5e-1）。
+
+### 1.5e-2b-1 `web` 面 8 包迁入（2026-09-21）
+
+本片把 `web` 面的 19 个手写挂载点迁到贡献声明：identity 2、agent-runtime 3、knowledge 1、memory 1、
+channel 1、machine 3、task 1、workflow 5、prod-view（1.5e-1 已迁）。宿主 `routes/web/index.ts` 的手写序列
+由 24 项降到 7 项（`branding` + agent-config 4 + model-management 2）。
+
+**一、基础模块同样声明贡献（本片新确立）**
+
+identity 与 agent-runtime 是 `kind: identity` / `kind: agent-runtime` 的基础模块，此前没有贡献面。装配的
+mount 阶段（`bootstrapModules` 的 `orderContributions`）遍历的是 profile 解析出的**全部**模块，不区分类别，
+因此它们与资源包走同一条接线——本片用它们的 5 条路由验证了这一点。两条约束写进各自 manifest 注释：
+
+- 基础模块的 `create` 必须返回实例（否则 `bootstrapModules` 抛「基础模块 X 工厂未返回实例」），与贡献面无关；
+- 贡献的 `slot` 语义与资源包完全一致，宿主侧不认识包类别。
+
+**二、`module` 贡献的粒度：按路由组，不按包**
+
+一个包有几条路由组就声明几条贡献（workflow 5 条、machine 3 条、identity 2 条），而不是「一包一条贡献、
+内部再挂多个路由实例」。理由：贡献是「怎么造这条路由」的声明，粒度与路由工厂一一对应——逐条可直接落到
+包内的一个工厂函数，未来某条路由需要换槽或换 `order` 时不必拆包。代价是 `Object` 数量变多（13 个包共
+25 条贡献），由 `route-contributions.test.ts` 的 `toEqual` 全列表守护。
+
+**三、`/web` 面的挂载顺序在迁移前后一致（已核对）**
+
+Elysia 的同路径冲突取决于挂载顺序，而贡献顺序是「拓扑序 + manifest 内声明序」，与迁移前手写序列**不
+同**（手写序列是人工排的）。核对结果：`/web` 面唯一的前缀重叠是 agent-runtime 的 `/environments/*` 与
+machine 的 `/environments/:id/fs/*`，两者段数不同、不构成歧义；`model-management` 的
+`/agents/:environmentId/sessions/:sessionId/peri-tasks/:taskId/detail` 与 agent-config 的
+`/agent-sites/*`、`/agent-generation` 前缀不同。因此本片不引入 `order`（没有兜底或通配贡献）。
+`route-contributions.test.ts` 的 139 条 `web` 槽断言按装配收集顺序列出全部路径，任何顺序或内容的漂移都会
+表现为断言失败。
+
+**四、测试 helper 改名扩容**
+
+`test-utils/web-config-routes.ts` → `test-utils/web-routes.ts`，新增 `createTestWebRoutes()`（`web` 面 18 个
+路由实例，agent-config 与 model-management 的 6 条仍由 `createWebApp` 的手写序列提供，故不在其中）。
+`agent-platform-api-reference.test.ts` 的两个槽因此都拿到真实路由——迁移后它一度报 29 条文档示例缺失
+（`/web/config/*`），本批又暴露出 `web` 面的缺失，两次都是同一个原因：聚合面改由贡献提供后，用例不能再用
+空槽构造。
+
+**五、验证证据**
+
+定向：`bun test apps/server/src/__tests__/` **633 pass / 0 fail**（含 `route-contributions.test.ts` 的
+139 + 42 条路径断言）；`platform/identity` + `agent-runtime` + `channel` + `knowledge`
+**1529 pass / 0 fail**；`memory` + `task` + `workflow` + `machine` **1700 pass / 0 fail**；根
+`tsc --noEmit` 无输出。
+
+全量 `env -u ANTHROPIC_MODEL bun run precheck` 全绿：`All passed (84971ms)`，format / import-sort /
+module-registry / architecture / tsc(server, web, app-skeletons) / dependency-boundaries / lint 全过，
+server-and-script-tests **770 pass / 0 fail**、package-tests **7316 pass / 2 skip / 0 fail**、
+web-app-tests **946 pass / 0 fail**。
+
+**六、遗留**
+
+- `web` 面剩 agent-config 4 条与 model-management 2 条（1.5e-2b-2），同批扩 `ServerRouteHost` 的
+  `rotateCallerApiKey` 与 `verifyEnvironmentOwnership` 两个端口；完成后宿主 `routes/web/index.ts` 只剩
+  `branding` 一项手写挂载。

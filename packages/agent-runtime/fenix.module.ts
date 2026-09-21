@@ -1,4 +1,5 @@
 import type { ModuleManifest } from "@fenix/platform-sdk";
+import type { ServerRouteHost } from "@fenix/platform-sdk/server";
 
 /**
  * Agent Runtime 的静态装配描述符。
@@ -13,11 +14,40 @@ import type { ModuleManifest } from "@fenix/platform-sdk";
  * `create` 返回收敛后的运行 port（`AgentRuntimeModule.runtime`），不是服务端公开入口的整体
  * 表面（1.4 W3 前的临时形态）：端口的目标是让 registry 驱动的装配能拿到唯一的实例/环境
  * 生命周期入口，而宿主装配面（`./server` 的注入 port、路由工厂）由宿主显式调用。
+ *
+ * 声明 `contributions`（1.5e）：`/web/control`、`/web/environments`、`/web/instances` 的路由实例由本模块
+ * 以惰性构造函数 `(host) => import("./src/server/assembly").then(...)` 给出，`slot: "web"` 指明挂宿主
+ * `/web` 聚合面——路由路径是相对形式，前缀由宿主的聚合实例决定，「挂哪一面」只能由声明说清。**基础模块
+ * 同样参与贡献挂载**：装配的 mount 阶段遍历全部解析出的模块（`orderContributions`），不区分类别。惰性
+ * import 与 `create` 同因：registry 会被大量位置导入，不能在索引层就把 Elysia 拖进模块图。
  */
 export const moduleManifest = {
   id: "agent-runtime",
   kind: "agent-runtime",
   dependsOn: [],
   capabilities: ["runtime.agent"],
+  contributions: [
+    {
+      id: "agent-runtime.web-control",
+      kind: "app-route",
+      slot: "web",
+      value: (host: ServerRouteHost) =>
+        import("./src/server/assembly").then((assembly) => assembly.createAgentRuntimeWebControlRoutes(host)),
+    },
+    {
+      id: "agent-runtime.web-environments",
+      kind: "app-route",
+      slot: "web",
+      value: (host: ServerRouteHost) =>
+        import("./src/server/assembly").then((assembly) => assembly.createAgentRuntimeWebEnvironmentsRoutes(host)),
+    },
+    {
+      id: "agent-runtime.web-instances",
+      kind: "app-route",
+      slot: "web",
+      value: (host: ServerRouteHost) =>
+        import("./src/server/assembly").then((assembly) => assembly.createAgentRuntimeWebInstancesRoutes(host)),
+    },
+  ],
   create: () => import("./src/runtime").then((module) => module.createAgentRuntimeModule()),
 } satisfies ModuleManifest;
