@@ -50,8 +50,11 @@ Agent 配置资源行、关联绑定（Skill / MCP / 知识库 / 记忆）与站
   `initializeAgentConfigModuleConfig`（复位替身 + 以模块配置初始化应用基础设施，DB 句柄经转发代理）、
   Facade / Service / Associations / Identity 替身与模块替身装载器；未打桩的方法调用即失败。
 - **exports**（`package.json`，实测）：`.`、`./module`、`./server`、`./web`、`./web/i18n`、
-  `./server/testing`，以及 4 条过渡子路径 `./server/runtime`、`./server/system-prompt`、
-  `./server/api-agent-schema`、`./server/config`（消费方见「边界残留」）。
+  `./server/testing`、`./web/contribution` 与 3 条 `./web/lib/*` 窄口（`agent-node` /
+  `agent-resource-access` / `agent-utils`，宿主壳与宿主测试按需取用，避免从包根入口把整棵编辑器
+  页面图拉进壳层 chunk；`agent-create-navigation` 同此例，见 §1.6 T11e-3c），以及 4 条过渡子路径
+  `./server/runtime`、`./server/system-prompt`、`./server/api-agent-schema`、`./server/config`
+  （消费方见「边界残留」）。
 
 ## web 面与 i18n
 
@@ -68,16 +71,21 @@ Agent 配置资源行、关联绑定（Skill / MCP / 知识库 / 记忆）与站
   `apps/web/src/shell/shell-navigation.ts` 持有——隐藏列表来自本包 `sidebarConfigApi`，被裁剪的却是
   Shell 装配出的导航，owner 因此是 Shell。本包只剩数据面（`./src/api/sidebar-config`）。
 - **页面与组件域**：`web/pages/agent-panel/**`（编辑器、`AgentSitesPage`、`agent-sites-catalog`，
-  以及随 §1.6 T11e 从宿主归位的 agent-panel 页面）、
+  以及随 §1.6 T11e 从宿主归位的三个 agent-panel 页面 `AgentManagementPage` / `AgentDashboardPage` /
+  `AgentHomePage`）、
   `web/components/agent-panel/**`（`SiteFrame` / `SiteTabsBar` / `MountSiteDialog` / `AgentSitesCard`）、
   `web/api/**`、`web/hooks/**`、`web/lib/**`。
-- **i18n 自持**：两份命名空间。`web/i18n/locales/{en,zh}/agents.json` 各 271 个键（编辑器与站点页）；
-  `web/i18n/locales/{en,zh}/dashboard.json` 各 3 个键（`/agent/dashboard` 概览页，随该页在 §1.6 T11e 归位）。
-  两份字典各自 en/zh 键结构一致（实测比对，由 `web/__tests__/agent-i18n.test.ts` 与
+- **i18n 自持**：三份命名空间。`web/i18n/locales/{en,zh}/agents.json` 各 271 个键（编辑器与站点页）；
+  `web/i18n/locales/{en,zh}/dashboard.json` 各 3 个键（`/agent/dashboard` 概览页）；
+  `web/i18n/locales/{en,zh}/agentHome.json` 各 19 个键（`/agent/home`「创建智能体」首页与它的生成表单
+  `AgentGenerationForm`）——三份字典的消费方随各自页面在 §1.6 T11e 归位，故按「键的最终所在地 = 包的
+  owner」同批迁入。三份字典各自 en/zh 键结构一致（实测比对，由 `web/__tests__/agent-i18n.test.ts` 与
   `agent-config-browser-surface.test.ts` 守护）；命名空间常量由 `web/i18n/namespace.ts` 给出
-  （`AGENTS_NS` / `DASHBOARD_NS`）。宿主在 i18n 初始化时经子路径 `@fenix/agent-config/web/i18n` 取
-  `agentResources.en/zh` 与 `dashboardResources.en/zh` 注册——走子路径而不是 `./web` 根入口，避免把
-  整棵编辑器页面图拉进首屏 bundle；未注册时 i18next 回退为 key 回显。
+  （`AGENTS_NS` / `DASHBOARD_NS` / `AGENT_HOME_NS`）。宿主在 i18n 初始化时经子路径
+  `@fenix/agent-config/web/i18n` 取三组资源注册——走子路径而不是 `./web` 根入口，避免把整棵编辑器
+  页面图拉进首屏 bundle；未注册时 i18next 回退为 key 回显。
+  仍借宿主共享命名空间的只有两条：`components`（站点页签 / 挂载弹窗 / iframe 外壳）与 `agentPanel`
+  （`siteDeployment.*`），它们的键同时被 apps/web 与别的包消费，整体搬迁需跨包裁定。
   迁移时顺带修掉一处**既有缺陷**：概览页正文取 `t("welcome")` 而宿主字典只有 `loading`（无消费方），
   迁入时按页面的实际键改为 `welcome` 并删掉 `loading`；此前该行显示的是字面量 `welcome`。
 
@@ -93,8 +101,8 @@ Agent 配置资源行、关联绑定（Skill / MCP / 知识库 / 记忆）与站
 - **宿主侧第二份实现——已全部退场**：`apps/web/src/lib/agent-node.ts`、`agent-utils.ts`、
   `agent-resource-access.ts`（与包内 `web/lib/*` 同源）随 §1.6 T8d 的「宿主 `src/{api,hooks,lib,types}`
   副本簇退场」删除；`apps/web/src/pages/agent-panel/AgentSidebarConfig.tsx` 随 T11d 与其包内死副本同时
-  删除；三个 agent-panel 页面（`AgentManagementPage` / `AgentHomePage` / `AgentDashboardPage`）随 T11e
-  迁入本包。本包 web 面对宿主源码已零引用。
+  删除；三个 agent-panel 页面（`AgentManagementPage` / `AgentHomePage` / `AgentDashboardPage`）与其
+  自有字典、创建导航助手 `agent-create-navigation.ts` 随 T11e 迁入本包。本包 web 面对宿主源码已零引用。
   **已删除**：`apps/web/src/i18n/locales/{en,zh}/agents.json`（键集曾与包内两份文件完全一致）——宿主
   `apps/web/src/i18n/index.ts` 已改经 `@fenix/agent-config/web/i18n` 子路径注册 `agentResources`，不再
   持有第二份字典，此项已不是残留；`apps/server/src/schemas/sidebar-config.schema.ts`（任务 1.5a 随 160 行

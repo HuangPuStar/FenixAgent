@@ -24,3 +24,14 @@ export const AGENTS_NS = "agents";
  * 改中心表与注册点而无可观测收益。
  */
 export const DASHBOARD_NS = "dashboard";
+
+/**
+ * 「创建智能体」首页（`/agent/home`）自有命名空间。
+ *
+ * 它原属宿主自有命名空间（`apps/web/src/i18n/locales/<lang>/agentHome.json`），两个消费方
+ * ——`AgentHomePage.tsx` 与 `AgentGenerationForm.tsx`——随 §1.6 T11e-3c 同批迁入本包，字典随之按
+ * 「键的最终所在地 = 包的 owner」归位。`AgentGenerationForm` 原先经中心表的 `NS.AGENT_HOME` 取该名，
+ * 现在两个消费方都在包内，统一改用本常量，避免同一个命名空间在包内有两种写法。
+ * 沿用 `"agentHome"` 原名：中心表已登记该名称，改名要同时改中心表与注册点而无可观测收益。
+ */
+export const AGENT_HOME_NS = "agentHome";

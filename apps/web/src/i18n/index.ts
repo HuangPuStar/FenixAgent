@@ -11,9 +11,18 @@
 // `useTranslation` 绑定（历史迁出后留下的空壳字典），连同其 JSON 一并删除，此处不再登记。中心表
 // `@fenix/web-runtime/i18n/namespace` 仍保留这四个名称常量——它是跨包共享的**名称注册表**，删常量
 // 无功能收益却要改跨包契约，取舍理由见 `review/task-1.6-web-shell.md` §7.17。
-// T11e 起 `dashboard` 也从宿主自有转出：其唯一消费方（概览占位页）随「宿主剩余页面归位」迁入
-// `@fenix/agent-config`，字典按「键的最终所在地 = 包的 owner」改由该包的 `./web/i18n` 登记。
-import { AGENTS_NS, agentResources, DASHBOARD_NS, dashboardResources } from "@fenix/agent-config/web/i18n";
+// T11e 起 `dashboard` 与 `agentHome` 也从宿主自有转出：两者的消费方（概览页、「创建智能体」首页与它的
+// 生成表单）随「宿主剩余页面归位」迁入 `@fenix/agent-config`，字典按「键的最终所在地 = 包的 owner」
+// 改由该包的 `./web/i18n` 登记。宿主仍保留 `agentPanel` / `components`——它们被多个包共用，
+// 整体搬迁需跨包裁定（见 agent-config README 的共享补丁清单）。
+import {
+  AGENT_HOME_NS,
+  AGENTS_NS,
+  agentHomeResources,
+  agentResources,
+  DASHBOARD_NS,
+  dashboardResources,
+} from "@fenix/agent-config/web/i18n";
 import {
   APIKEY_NS,
   apikeyResources,
@@ -39,13 +48,11 @@ import { NS as SHARED_NS } from "@fenix/web-runtime/i18n/namespace";
 import i18n from "i18next";
 import LanguageDetector from "i18next-browser-languagedetector";
 import { initReactI18next } from "react-i18next/initReactI18next";
-import agentHomeEN from "./locales/en/agentHome.json";
 import agentPanelEN from "./locales/en/agentPanel.json";
 import commonEN from "./locales/en/common.json";
 import componentsEN from "./locales/en/components.json";
 import loginEN from "./locales/en/login.json";
 import sidebarEN from "./locales/en/sidebar.json";
-import agentHomeZH from "./locales/zh/agentHome.json";
 import agentPanelZH from "./locales/zh/agentPanel.json";
 import commonZH from "./locales/zh/common.json";
 import componentsZH from "./locales/zh/components.json";
@@ -78,7 +85,6 @@ const hostResources = {
     [NS.SIDEBAR]: sidebarEN,
     [NS.COMPONENTS]: componentsEN,
     [NS.AGENT_PANEL]: agentPanelEN,
-    [NS.AGENT_HOME]: agentHomeEN,
   },
   zh: {
     [NS.COMMON]: commonZH,
@@ -86,7 +92,6 @@ const hostResources = {
     [NS.SIDEBAR]: sidebarZH,
     [NS.COMPONENTS]: componentsZH,
     [NS.AGENT_PANEL]: agentPanelZH,
-    [NS.AGENT_HOME]: agentHomeZH,
   },
 } as const;
 
@@ -98,6 +103,7 @@ const packageResources = {
   en: {
     [AGENTS_NS]: agentResources.en,
     [DASHBOARD_NS]: dashboardResources.en,
+    [AGENT_HOME_NS]: agentHomeResources.en,
     [APIKEY_NS]: apikeyResources.en,
     [ORGS_NS]: orgResources.en,
     [MODELS_NS]: modelManagementResources.en,
@@ -117,6 +123,7 @@ const packageResources = {
   zh: {
     [AGENTS_NS]: agentResources.zh,
     [DASHBOARD_NS]: dashboardResources.zh,
+    [AGENT_HOME_NS]: agentHomeResources.zh,
     [APIKEY_NS]: apikeyResources.zh,
     [ORGS_NS]: orgResources.zh,
     [MODELS_NS]: modelManagementResources.zh,

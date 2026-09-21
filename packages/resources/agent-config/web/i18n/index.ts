@@ -15,12 +15,14 @@
 // 启动期求值，从根入口导入会把整棵编辑器页面图（Radix 组件、站点 iframe、Monaco 等）拉进首屏 bundle。
 // 未注册时 i18next 回退为 key 回显，因此宿主接线必须先于页面启用。
 
+import agentHomeEn from "./locales/en/agentHome.json";
 import en from "./locales/en/agents.json";
 import dashboardEn from "./locales/en/dashboard.json";
+import agentHomeZh from "./locales/zh/agentHome.json";
 import zh from "./locales/zh/agents.json";
 import dashboardZh from "./locales/zh/dashboard.json";
 
-export { AGENTS_NS, DASHBOARD_NS } from "./namespace";
+export { AGENT_HOME_NS, AGENTS_NS, DASHBOARD_NS } from "./namespace";
 
 /**
  * agents 命名空间的 en / zh 文案资源；两份键结构完全一致（缺键会让界面回退显示 key，
@@ -36,3 +38,10 @@ export type AgentResources = typeof agentResources;
 export const dashboardResources = { en: dashboardEn, zh: dashboardZh } as const;
 
 export type DashboardResources = typeof dashboardResources;
+
+/**
+ * agentHome 命名空间的 en / zh 文案资源；两份键结构完全一致（同一守卫断言）。
+ */
+export const agentHomeResources = { en: agentHomeEn, zh: agentHomeZh } as const;
+
+export type AgentHomeResources = typeof agentHomeResources;

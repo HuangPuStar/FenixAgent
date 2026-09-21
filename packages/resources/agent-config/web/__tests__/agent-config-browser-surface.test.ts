@@ -157,8 +157,12 @@ const CONSUMER_SYMBOLS: ReadonlyArray<{ symbol: string; owner: string }> = [
   { symbol: "agentApi", owner: "api/agents.ts" },
   { symbol: "sidebarConfigApi", owner: "src/api/sidebar-config.ts" },
   { symbol: "ensureMetaAgent", owner: "src/api/meta-agent.ts" },
-  // 宿主 route adapter 取三个 agent-panel 页面（§1.6 T11e 归位，原先经 vite / tsconfig 桥接别名）
+  // 宿主 route adapter 取三个 agent-panel 页面（§1.6 T11e 归位，原先经 vite / tsconfig 桥接别名）；
+  // 首页与创建流程共用的 `resolveCreatedAgentChatTarget` 不在本表——宿主壳经窄子路径
+  // `@fenix/agent-config/web/lib/agent-create-navigation` 消费它（同 `web/lib/agent-node` 的先例），
+  // 不构成「从包根取用」的契约；它仍随首页进入下面自检的表内（浏览器安全由同一张图守护）。
   { symbol: "AgentDashboardPage", owner: "pages/agent-panel/pages/AgentDashboardPage.tsx" },
+  { symbol: "AgentHomePage", owner: "pages/agent-panel/pages/AgentHomePage.tsx" },
   { symbol: "AgentManagementPage", owner: "pages/agent-panel/pages/AgentManagementPage.tsx" },
 ];
 
@@ -177,12 +181,15 @@ describe("agent-config web 入口浏览器可达面", () => {
       "components/agent-panel/SiteFrame.tsx",
       "pages/agent-panel/agent-editor/AgentFormDialog.tsx",
       "pages/agent-panel/pages/agent-sites-catalog.tsx",
+      "pages/agent-panel/pages/AgentHomePage.tsx",
+      "lib/agent-create-navigation.ts",
     ]) {
       expect(reachedWebFiles).toContain(expected);
     }
     // §1.6 T11d 起 `pages/agent-panel/AgentSidebarConfig.tsx` 退场（宿主同源副本与包内死副本同时删除，
-    // 侧栏导航改由 WebShell 消费各包的 `web/contribution.ts`），基线随之 24 → 23。
-    expect(reachedWebFiles.size).toBeGreaterThanOrEqual(23);
+    // 侧栏导航改由 WebShell 消费各包的 `web/contribution.ts`），基线随之 24 → 23；T11e 又把三个
+    // agent-panel 页面与创建导航助手归位进来（字典是 JSON，不在遍历面内；三个页面 + 助手 = +4）。
+    expect(reachedWebFiles.size).toBeGreaterThanOrEqual(27);
 
     // 跨包递归的有效性：钉住每条上游一条稳定路径（ui-components 的按钮/弹窗、web-runtime 的
     // request / namespace / org-session 契约、model-management 的编辑器依赖、兄弟资源包的
@@ -327,12 +334,20 @@ describe("agent-config web 入口浏览器可达面", () => {
 
   // i18n 资源必须由入口转出（宿主统一注册）；宿主删除寄居字典的前提是这里已提供。
   // `dashboard` 随概览页在 T11e 归位，与该页的命名空间常量一起断言，防止「页面搬了、字典没搬」。
-  test("入口导出 agents / dashboard 命名空间与 en/zh 资源", () => {
+  test("入口导出 agents / dashboard / agentHome 命名空间与 en/zh 资源", () => {
     const source = stripComments(readFileSync(WEB_ENTRY, "utf8"));
-    for (const symbol of ["AGENTS_NS", "agentResources", "DASHBOARD_NS", "dashboardResources"]) {
+    for (const symbol of [
+      "AGENT_HOME_NS",
+      "agentHomeResources",
+      "AGENTS_NS",
+      "agentResources",
+      "DASHBOARD_NS",
+      "dashboardResources",
+    ]) {
       expect(source).toContain(symbol);
     }
     const i18nSource = stripComments(readFileSync(join(WEB_ROOT, "i18n", "index.ts"), "utf8"));
+    expect(i18nSource).toContain("AGENT_HOME_NS");
     expect(i18nSource).toContain("AGENTS_NS");
     expect(i18nSource).toContain("DASHBOARD_NS");
   });

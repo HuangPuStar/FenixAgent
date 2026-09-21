@@ -1,6 +1,13 @@
+// web/__tests__/agent-create-enter-flow.test.ts
+// 守护「新建 Agent → 进入真实实例 → 得到聊天路由目标」的共享助手。
+//
+// §1.6 T11e-3c 随被测实现（`web/lib/agent-create-navigation.ts`）从宿主
+// `apps/web/src/__tests__/` 迁入：实现已在包内，宿主用例只能靠 `@/src/...` 反向指回包侧，
+// 等于让「包内实现」被「应用壳测试」守护。
+
 import { describe, expect, mock, test } from "bun:test";
-import type { EnterEnvironmentResponse, EnvironmentDetail } from "@/src/api/environments";
-import { resolveCreatedAgentChatTarget } from "../pages/agent-panel/agent-create-navigation";
+import type { EnterEnvironmentResponse, EnvironmentDetail } from "@fenix/agent-runtime/web/api/environments";
+import { resolveCreatedAgentChatTarget } from "../lib/agent-create-navigation";
 
 describe("新建智能体进入对话", () => {
   // 新建智能体创建环境后必须显式进入环境，并携带实例 UID 导航，避免聊天页永久等待连接。
