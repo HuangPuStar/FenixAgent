@@ -1,10 +1,12 @@
 /*
  * Chat 样式聚合入口。
  *
- * 用途：替代宿主 `apps/web/src/pages/agent-panel/agent-panel.css` 的
+ * 用途：替代宿主 `apps/web/src/shell/agent-panel.css` 的
  * `@import "../../../../../packages/chat-channel/web/src/pages/agent-panel/chat-design.css"` 与
- * 该文件第 920-1022 行的 chat 段——即「没有组件负责导入」的那一层设计样式（会话外壳、消息视图、
+ * 该文件迁移前 1022 行版本的第 920-1022 行 chat 段——即「没有组件负责导入」的那一层设计样式（会话外壳、消息视图、
  * 工具时间线、状态面板、输入岛、命令面板、划词浮层、窄屏适配）。
+ * 该段已随 T5c2 `1fd40fb8b` 删除（宿主 `agent-panel.css` 现为 919 行）：chat 段的存续处只有本入口
+ * 与 `chat-design-composer.css` 的补充段。
  *
  * 不在本入口重复导入的样式表（保持与源仓库一致的「由组件自行导入」模式，避免同一 CSS 模块
  * 出现两个导入来源）：
