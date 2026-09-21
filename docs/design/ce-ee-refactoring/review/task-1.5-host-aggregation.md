@@ -1908,8 +1908,14 @@ cancelled 0 jobs`，进程随即退出。**这里要如实说明证据强度**�
 
 **2026-09-21 用户裁定（对「这条边不改是否影响功能」的答复）**：**只记账、不修复**，修复留待后续有空时做。
 据此在台账该条 `rationale` 末段补记了 1.5 结项复核查到的三条未触发风险（模块单例装配面依赖、barrel 加载序
-环、可观测性损失）与两条候选修复路径（改指窄入口 / 宿主注入 lookup 端口），`removeWhen` 同步加注；归属
-(a)/(b) **仍未决**（owner 现为已结项的 1.4），见 §8.3。
+环、可观测性损失）与两条候选修复路径（改指窄入口 / 宿主注入 lookup 端口），`removeWhen` 同步加注。
+
+**同日二次裁定（归属）**：用户选择「改挂未排期」——本族 6 条指纹（`machine → agent-config` / `machine → machine` /
+`sandbox → machine` / `sandbox → sandbox` / `agent-runtime → agent-runtime` / `agent-config → agent-config`）
+的 `owner` 由 1.4（4 条，已结项）与 1.5（2 条）统一改为「未排期」，理由收敛在台账 `_comment` 新增的
+「4 包环族 owner 改挂「未排期」」段，6 条各自只加一行指针（不复制整段，避免 1.5g-5 记过的漂移问题）。
+改挂后 owner 分布：1.4 1 / 1.6 9 / 1.7 14 / 未排期 15。任务号仍只用于**真正承接**该违规的排期，
+「未排期」是显式的兜底值（台账 `_comment` 第 3 段原有定义）。
 
 #### 1.5g-5 【需审核】把逐条重复的「通用段落」收敛进 `_comment`
 
@@ -2078,7 +2084,7 @@ packages 7316（2 skip）/ web 946，0 fail）；`bun run build:web` ✓（`✓ 
 | `services/data-migrate.ts` + `services/data-migrates/*`（3 文件 477 行） | §1.7 | 见下 |
 | `envDefinitions` / `preflight` 收敛、模块配置读取面的彻底收敛 | §1.7 | §四「本任务不做」 |
 | web 页面下沉与 WebShell 装配 | §1.6 | §一 |
-| `machine → agent-config` 闭合边（4 包环族 38 处环的共同闭合边，无在排分片）：归属待裁定 (a)/(b)；**本轮经用户裁定只记账不修复**，三条未触发风险与两条候选修复路径记在台账该条 `rationale` 末段 | 归属待裁定；修复待后续任务 | 1.5g-4 遗留 |
+| `machine → agent-config` 闭合边（4 包环族 38 处环的共同闭合边，无在排分片）：**只记账不修复**，三条未触发风险与两条候选修复路径记在台账该条 `rationale` 末段；本族 6 条指纹 owner 已按用户裁定统一改挂「未排期」 | 未排期（改动仅台账） | 1.5g-4 遗留 |
 | 未排期 9 条台账（含 `no-circular @fenix/resource-knowledge` 自环） | 待排期 | 1.5g-2、1.5g-4 ① |
 
 `services/data-migrate.ts` 与 `services/data-migrates/{backfill-resource-visibility,
