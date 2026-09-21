@@ -1,4 +1,5 @@
 import { useOrg } from "@fenix/identity/web";
+import { AgentBadge } from "@fenix/ui-components/chat/shell/AgentBadge";
 import type { AgentInfo } from "@fenix/web-runtime/types/config";
 import { useNavigate } from "@tanstack/react-router";
 import { useRequest } from "ahooks";
@@ -6,7 +7,6 @@ import { Bot, Loader2, Plus, Search, Sparkles } from "lucide-react";
 import { useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
-import { AgentBadge } from "@/components/chat/AgentBadge";
 import { agentApi } from "@/src/api/agents";
 import { type EnvironmentDetail, envApi } from "@/src/api/environments";
 import { unwrap } from "@/src/api/request";
