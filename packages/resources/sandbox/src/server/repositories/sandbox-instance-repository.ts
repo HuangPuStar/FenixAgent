@@ -1,4 +1,4 @@
-import { type NewSandboxInstance, type SandboxInstance, sandboxInstance } from "@server/db/schema";
+import { type NewSandboxInstance, type SandboxInstance, sandboxInstance } from "@fenix/resource-sandbox/db";
 import { and, desc, eq, inArray } from "drizzle-orm";
 import { getSandboxDatabase } from "../db";
 

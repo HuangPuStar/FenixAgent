@@ -25,12 +25,20 @@ const REPO_ROOT = resolve(PKG_ROOT, "../../..");
 const SOURCE_ENTRIES = ["src", "web", "db", "fenix.module.ts"];
 
 /**
- * 唯一允许的宿主导入。
+ * 扫描器负例夹具（§4.7.1 ③ 的收缩形态）。
  *
- * 表定义迁出归任务 1.7，本任务把它作为**显式残留**保留（见任务 1.3 实施记录 §四），
- * 且只允许这一条精确路径：`@server/db/schema` 之下的任何深路径都意味着重新伸手取宿主内部。
+ * 本包对宿主表定义的引用已随 §1.7 B4 归零（`sandbox_pool` / `sandbox_instance` 迁入本包 `db/`），
+ * 原先那条「残留必然存在」的正向控制随之失效——它的作用是「扫不到就说明说明符提取失效」，而此刻
+ * 扫不到才是正确结果。改用负例夹具承担同一职责：一段真实源码形状的字符串，含一条宿主导入与一条
+ * **注释里**形似导入的文本，断言语义是「前者必须被捞出、后者必须被剥掉」。
+ *
+ * 夹具按行以字符串字面量拼成，源码里 `import` 前面始终有引号，因此不会被本文件的真实扫描误判引用。
  */
-const ALLOWED_HOST_IMPORT = "@server/db/schema";
+const SCANNER_FIXTURE = [
+  'import { x } from "@server/db/schema";',
+  '// import { y } from "@server/db/other";',
+  "const z = 1;",
+].join("\n");
 
 /**
  * RMD-03 迁移映射（宿主旧路径 → 包内新 owner 路径）。
@@ -226,8 +234,8 @@ describe("Sandbox 包边界契约（任务 1.3 §1 静态条件）", () => {
       expect(sourceFiles).toContain(resolve(PKG_ROOT, expected));
     }
     expect(sourceFiles.length).toBeGreaterThanOrEqual(60);
-    // 正向控制：表定义残留必然存在，扫不到就说明说明符提取失效（而不是「没有宿主导入」）。
-    expect(refs.filter((ref) => ref.specifier === ALLOWED_HOST_IMPORT).length).toBeGreaterThan(0);
+    // 扫描器自检（负例夹具）：宿主导入必须被捞出、注释里的形似文本必须被剥掉——两者任一失效即报红。
+    expect(extractSpecifiers(stripComments(SCANNER_FIXTURE))).toEqual(["@server/db/schema"]);
   });
 
   // RMD-03 完成后宿主侧不得保留 Sandbox 的第二份实现，否则新旧两套会各自漂移。
@@ -246,11 +254,9 @@ describe("Sandbox 包边界契约（任务 1.3 §1 静态条件）", () => {
     expect(missing).toEqual([]);
   });
 
-  // 宿主实现只能经平台契约（`@fenix/platform-sdk`）或注入进入本包；除表定义残留外一律违规。
-  test("包内不存在表定义以外的宿主 @server 导入", () => {
-    const offenders = refs.filter(
-      (ref) => ref.specifier.startsWith("@server/") && ref.specifier !== ALLOWED_HOST_IMPORT,
-    );
+  // 宿主实现只能经平台契约（`@fenix/platform-sdk`）或注入进入本包；§1.7 B4 之后**零容忍**。
+  test("包内不存在任何宿主 @server 导入", () => {
+    const offenders = refs.filter((ref) => ref.specifier.startsWith("@server/"));
     expect(offenders.map(describeRef)).toEqual([]);
   });
 

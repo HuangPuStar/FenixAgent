@@ -1,4 +1,4 @@
-import { organization, user } from "@fenix/identity/db";
+import { user } from "@fenix/identity/db";
 import { model } from "@fenix/model-management/db";
 import { machine } from "@fenix/resource-machine/db";
 import { mcpServer } from "@fenix/resource-mcp/db";
@@ -381,63 +381,6 @@ export const agentConfig = pgTable(
     orgVisibilityIdx: index("idx_agent_config_org_visibility").on(table.organizationId, table.visibility),
   }),
 );
-
-export const sandboxPool = pgTable(
-  "sandbox_pool",
-  {
-    id: text("id").primaryKey(),
-    organizationId: text("organization_id").references(() => organization.id, { onDelete: "set null" }),
-    name: varchar("name").notNull(),
-    providerKey: varchar("provider_key", { length: 64 }).notNull(),
-    image: varchar("image").notNull(),
-    defaultResources: jsonb("default_resources").notNull(),
-    extra: jsonb("extra"),
-    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
-    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
-  },
-  (table) => ({
-    organizationIdx: index("idx_sandbox_pool_organization").on(table.organizationId),
-    providerIdx: index("idx_sandbox_pool_provider").on(table.providerKey),
-  }),
-);
-
-export const sandboxInstance = pgTable(
-  "sandbox_instance",
-  {
-    id: text("id").primaryKey(),
-    machineId: text("machine_id").notNull(),
-    providerKey: varchar("provider_key", { length: 64 }).notNull(),
-    sandboxPoolId: text("sandbox_pool_id")
-      .notNull()
-      .references(() => sandboxPool.id, { onDelete: "restrict" }),
-    userId: text("user_id")
-      .notNull()
-      .references(() => user.id, { onDelete: "cascade" }),
-    externalSandboxId: varchar("external_sandbox_id"),
-    status: varchar("status", { length: 32 }).notNull(),
-    resolvedConfig: jsonb("resolved_config").notNull(),
-    resourceOverrides: jsonb("resource_overrides"),
-    providerPayload: jsonb("provider_payload"),
-    lastHeartbeatAt: timestamp("last_heartbeat_at", { withTimezone: true }),
-    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
-    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
-  },
-  (table) => ({
-    machineIdx: uniqueIndex("idx_sandbox_instance_machine_id").on(table.machineId),
-    poolUserIdx: index("idx_sandbox_instance_pool_user").on(table.sandboxPoolId, table.userId),
-    externalIdx: index("idx_sandbox_instance_external_id").on(table.externalSandboxId),
-    activeUniqueIdx: uniqueIndex("idx_sandbox_instance_active_unique").on(
-      table.providerKey,
-      table.sandboxPoolId,
-      table.userId,
-    ),
-  }),
-);
-
-export type SandboxPool = typeof sandboxPool.$inferSelect;
-export type NewSandboxPool = typeof sandboxPool.$inferInsert;
-export type SandboxInstance = typeof sandboxInstance.$inferSelect;
-export type NewSandboxInstance = typeof sandboxInstance.$inferInsert;
 
 // Agent 记忆配置（独立表，承载记忆开关状态，为后续扩展预留）
 export const agentMemoryConfig = pgTable("agent_memory_config", {

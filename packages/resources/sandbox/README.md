@@ -1,6 +1,6 @@
 # @fenix/resource-sandbox
 
-沙盒资源池、沙盒实例生命周期与远程 Sandbox Cluster 管理协议的唯一 owner：服务端实现、路由工厂、浏览器出口与文案都在本包内，宿主 `apps/server` 只剩挂载与装配调用（`apps/server/src/routes/web/config/index.ts` 调 `createWebSandboxPoolsRoutes`，`apps/server/src/main.ts` 调 `createApiSandbox*Routes`），不再持有沙盒领域实现——宿主侧与沙盒相关的残留只有表定义（`db/schema.ts`，归 §1.7）与 env 声明/装配期配置构造（`env.ts`、`config.ts`，归 §1.5/§1.7）。22 条宿主→包迁移对由 `src/__tests__/sandbox-source-migration.test.ts` 逐条断言「宿主旧路径已删、包内新路径存在」。
+沙盒资源池、沙盒实例生命周期与远程 Sandbox Cluster 管理协议的唯一 owner：服务端实现、路由工厂、浏览器出口与文案都在本包内，宿主 `apps/server` 只剩挂载与装配调用（`apps/server/src/routes/web/config/index.ts` 调 `createWebSandboxPoolsRoutes`，`apps/server/src/main.ts` 调 `createApiSandbox*Routes`），不再持有沙盒领域实现——宿主侧与沙盒相关的残留只剩 env 声明与装配期配置构造（`env.ts`、`config.ts`，归 §1.5/§1.7），表定义已于任务 1.7 B4（2026-09-22）迁入本包 `db/schema.ts`。22 条宿主→包迁移对由 `src/__tests__/sandbox-source-migration.test.ts` 逐条断言「宿主旧路径已删、包内新路径存在」。
 
 本包是任务 1.3 的 W0 黄金样本：其余 12 个资源包的交付物形状（manifest、`./web`、`./server/testing`、路由工厂 + 守卫注入、包内契约测试、README 五段式）以本包为模板复制。
 
@@ -34,7 +34,7 @@ const webSandboxPools = createWebSandboxPoolsRoutes({ authGuardPlugin });
 - **出口形状**：`./server` 是具名再导出、没有 default（实测 `grep -cE "^export" src/server.ts` → 22 条）；`./server/testing` 自持模块配置夹具（`createSandboxModuleConfig` / `initializeSandboxModuleConfig`），消费方是 machine 包的 `server/testing` 子路径与宿主 `test-utils/setup-mocks.ts`——同一份「必填字段 + 缺省值」只写一次，避免宿主与包内各抄一份字段清单。
 - **仓库是唯一数据访问点**：`getSandboxDatabase()` 的使用点只有 `src/server/db.ts`（定义）与 `src/server/repositories/{sandbox-pool-repository,sandbox-instance-repository}.ts`（实测 `grep -rn "getSandboxDatabase" src` → 23 处提及、`grep -rn "getSandboxDatabase()" src` → 21 处，命中只落在这三个文件内）；`src/server/routes/**` 与 `src/server/services/**` 不直接取 DB 句柄或表对象。
 - **配置**：`getSandboxConfig()` 经 `getModuleConfig("sandbox")` 取宿主已校验的值，并用 `z.strictObject` 校验形状（`z.ZodType<SandboxModuleConfig>` 标注让「接口加了字段而 schema 没加」在编译期报错；未知字段运行期拒绝）。包内不读 `process.env`、不读 `.env`（实测 `grep -rn "process\.env" src` → 0 条）。
-- **DB 句柄类型**：`NodePgDatabase<Record<string, never>>`——刻意不写 `typeof schema`，仓储只做 `select` / `insert` / `update` / `delete` / `transaction`，不使用 `db.query.*`，因此表定义迁出后这里无需改形状。句柄在每个方法内取，不在模块加载期持有（加载早于宿主 `initializeApplicationInfrastructure()`）。
+- **DB 句柄类型**：`NodePgDatabase<Record<string, never>>`——刻意不写 `typeof schema`，仓储只做 `select` / `insert` / `update` / `delete` / `transaction`，不使用 `db.query.*`，因此表定义迁出后这里无需改形状（B4 已迁出，确认未改）。句柄在每个方法内取，不在模块加载期持有（加载早于宿主 `initializeApplicationInfrastructure()`）。
 
 ## web 面与 i18n
 
@@ -50,9 +50,13 @@ const webSandboxPools = createWebSandboxPoolsRoutes({ authGuardPlugin });
 
 ## 边界残留
 
-- **表定义仍在宿主（唯一的宿主内部依赖）**：实测 `grep -rn "from \"@server/db/schema\"" src web fenix.module.ts` → **9 处 / 9 个文件**，全部是这一条精确路径：生产 6 处（`repositories/sandbox-pool-repository.ts`、`repositories/sandbox-instance-repository.ts`、`services/sandbox-admin-service.ts`、`services/sandbox-default-pool.ts`、`services/sandbox-manager.ts`、`services/sandbox-remote-reconciler.ts`），测试 3 处。除此以外包内不存在任何 `@server/*` 导入（`sandbox-source-migration.test.ts` 断言除该精确路径外零命中，含 `import type`）。表定义、DDL 与迁移归任务 1.7；迁出后本包零 `@server/` 依赖，`src/server/db.ts` 的句柄类型无需改动。
+- **宿主内部依赖已清零（任务 1.7 B4，2026-09-22）**：`sandbox_pool` / `sandbox_instance` 与其 4 个推断类型迁入本包 `db/schema.ts`（出口 `@fenix/resource-sandbox/db`，`drizzle.config.ts` 已声明，DDL 逐字保留、`bun run check:schema-ddl-drift` 零差异）。生产代码实测 `command grep -rnE '@server' src web db fenix.module.ts` → **0 处**（此前 9 处表定义导入全部改指本包出口）；仅在 `sandbox-source-migration.test.ts` / `sandbox-browser-surface.test.ts` 两个测试里作为**扫描器夹具与断言文本**出现，不是导入。因此：
+  - `scripts/architecture/exceptions.json` 的 `apps-boundary @fenix/resource-sandbox → @fenix/server-app` 条目**已按 §4.8 第 2 条的删除条件删除**（「该包最后一个跨模块表读取消失」），`bun run architecture:check` 由门禁自身确认该条目已成 stale（删除前报「已不再违规，必须删除」，删除后 2127 files / 18 条例外全绿）——这是本包零 `@server` 依赖的机器证据，比逐条 grep 更强。
+  - `src/server/db.ts` 的句柄类型无需改动（本就刻意不写 `typeof schema`）。
+  - `sandbox-source-migration.test.ts` 的「表定义残留 > 0」正向控制随之失效（此刻扫不到才是正确结果），按 §4.7.1 ③ 收缩为**负例夹具自检**：一段真实源码形状的字符串含宿主导入与注释里形似导入的文本，断言「前者被捞出、后者被剥掉」。`SCANNER_FIXTURE` 按行以字符串字面量拼成，源码里 `import` 前始终有引号，不会被本文件的真实扫描误判。
+  - 唯一跨包外键目标仍是身份表（`organization` / `user`，经 `@fenix/identity/db` 取表对象表达级联行为），`package.json` 为此新增 `@fenix/identity`；`sandbox_instance.machine_id` 历史 DDL 上就是无约束列，因此不导入 machine 包。
 - **需要编排者落盘的共享文件 patch**（包切片按 §4 禁写 `scripts/**`、`apps/**`、`docs/**`）：
-  1. `scripts/architecture/exceptions.json` 的 `apps-boundary @fenix/resource-sandbox → @fenix/server-app` 条目**已落盘**（`exceptions.json:269-276`：`owner` = `1.7`、`rationale` = 「实测 9 处导入 / 9 个文件，全部为 `@server/db/schema` 表定义导入」），无需再改；条目本身保留（仍有命中，删掉会让门禁报 stale 或漏掉真实边）。
+  1. ~~`scripts/architecture/exceptions.json` 的 `apps-boundary @fenix/resource-sandbox → @fenix/server-app` 条目~~：**已删除**（任务 1.7 B4，2026-09-22）——本包已零 `@server` 引用，条目按 §4.8 第 2 条的条件退场。
   2. `scripts/__tests__/rmd-07-migration.test.ts` 第 93–94 行的注释仍指向旧路径 `packages/resources/sandbox/src/routes/web/sandbox-pools.ts`（本任务已移入 `src/server/routes/web/`）；该处只是注释文本，不影响断言。
   3. `packages/web-runtime/web/i18n/namespace.ts` 的 `NS` 表未登记 `SANDBOX`；宿主当前直接取 `SANDBOX_NS`，登记后可与其余命名空间同形（跨包文件，不在本包切片内）。
   4. 文档侧旧路径引用（`docs/arch/root-source-owner-inventory.md:53`、`FUNCTIONAL_MODULE_INVENTORY.md:54,104`）随目录收敛更新。

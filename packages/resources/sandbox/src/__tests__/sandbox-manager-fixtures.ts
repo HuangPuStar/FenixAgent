@@ -1,4 +1,4 @@
-import type { SandboxInstance, SandboxPool } from "@server/db/schema";
+import type { SandboxInstance, SandboxPool } from "@fenix/resource-sandbox/db";
 
 /**
  * SandboxManager 用例的公共夹具。

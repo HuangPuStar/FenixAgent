@@ -1,7 +1,7 @@
 // 身份数据经 platform-sdk 的只读窄契约读取：resource 类别不得依赖 platform-impl（identity）。
 import { getIdentityDirectory } from "@fenix/platform-sdk/server";
 import { findMachinesBasicInfoByIds } from "@fenix/resource-machine/server";
-import type { SandboxInstance, SandboxPool } from "@server/db/schema";
+import type { SandboxInstance, SandboxPool } from "@fenix/resource-sandbox/db";
 import { findSandboxInstanceById, listSandboxInstances } from "../repositories/sandbox-instance-repository";
 import {
   createSandboxPool,

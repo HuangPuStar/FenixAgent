@@ -1,7 +1,7 @@
 import { createLogger } from "@fenix/logger";
 import { createSandboxMachine, isMachineOnline, releaseMachineRuntime } from "@fenix/resource-machine/server";
+import type { SandboxInstance, SandboxPool } from "@fenix/resource-sandbox/db";
 import type { SandboxResourceOverrides, SandboxResources, SandboxTemplate } from "@fenix/sandbox-provider";
-import type { SandboxInstance, SandboxPool } from "@server/db/schema";
 import type { SandboxInstanceLockScope } from "../repositories/sandbox-instance-repository";
 import {
   createSandboxInstance,

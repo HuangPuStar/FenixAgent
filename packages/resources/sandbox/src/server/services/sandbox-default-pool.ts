@@ -1,4 +1,4 @@
-import type { NewSandboxPool, SandboxPool } from "@server/db/schema";
+import type { NewSandboxPool, SandboxPool } from "@fenix/resource-sandbox/db";
 import { getSandboxConfig, type SandboxModuleConfig } from "../config";
 import { upsertSandboxPool } from "../repositories/sandbox-pool-repository";
 import { parseSandboxResources } from "./sandbox-config";
