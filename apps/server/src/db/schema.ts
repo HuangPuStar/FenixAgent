@@ -1,5 +1,6 @@
 import { organization, user } from "@fenix/identity/db";
 import { machine } from "@fenix/resource-machine/db";
+import { mcpServer } from "@fenix/resource-mcp/db";
 import { sql } from "drizzle-orm";
 
 /**
@@ -9,9 +10,11 @@ import { sql } from "drizzle-orm";
  * （`drizzle.config.ts` 同时声明全部 schema 文件），因此并置不会产生第二份真相；跨包读取身份数据仍必须
  * 走 `IdentityDirectory`，不得依赖本文件。
  *
- * 同理，`@fenix/resource-machine/db` 的机器表（§1.7 首批迁出）也只在这里**取用**、不重复定义——
- * `agent_config.machine_id` 需要它以列对象形式表达外键（Drizzle 的 `.references()` 没有字符串形式），
- * 组装期例外的口径与边界见 `docs/design/ce-ee-refactoring/ce-ee-engineering-standards.md` §6.1。
+ * 同理，`@fenix/resource-machine/db` 的机器表（§1.7 首批迁出）与 `@fenix/resource-mcp/db` 的 MCP 表
+ * （§1.7 第二批迁出）也只在这里**取用**、不重复定义——`agent_config.machine_id` 与
+ * `agent_config_mcp.mcp_server_id` 需要它们以列对象形式表达外键（Drizzle 的 `.references()` 没有
+ * 字符串形式），组装期例外的口径与边界见
+ * `docs/design/ce-ee-refactoring/ce-ee-engineering-standards.md` §6.1。
  */
 export {
   account,
@@ -60,23 +63,6 @@ export const resourcePermissionTypeEnum = pgEnum("resource_permission_type", [
 ]);
 export const resourcePermissionPrincipalEnum = pgEnum("resource_permission_principal", ["all", "organization"]);
 export const resourcePermissionActionEnum = pgEnum("resource_permission_action", ["read"]);
-
-// MCP Tool 缓存表
-export const mcpTool = pgTable(
-  "mcp_tool",
-  {
-    id: uuid("id").primaryKey().defaultRandom(),
-    organizationId: text("organization_id").notNull(),
-    serverName: varchar("server_name").notNull(),
-    toolName: varchar("tool_name").notNull(),
-    description: text("description"),
-    inputSchema: jsonb("input_schema"),
-    inspectedAt: timestamp("inspected_at", { withTimezone: true }).notNull().defaultNow(),
-  },
-  (table) => ({
-    orgServerIdx: index("idx_mcp_tool_org_server").on(table.organizationId, table.serverName),
-  }),
-);
 
 // Share Link 分享链接表
 export const shareLink = pgTable(
@@ -554,30 +540,6 @@ export const agentMemoryConfig = pgTable("agent_memory_config", {
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
 });
-
-// MCP 服务器
-export const mcpServer = pgTable(
-  "mcp_server",
-  {
-    id: uuid("id").primaryKey().defaultRandom(),
-    userId: text("user_id")
-      .notNull()
-      .references(() => user.id, { onDelete: "cascade" }),
-    organizationId: text("organization_id").notNull(),
-    name: varchar("name").notNull(),
-    type: varchar("type", { length: 32 }).notNull(),
-    config: jsonb("config").notNull(),
-    enabled: boolean("enabled").notNull().default(true),
-    // 资源可见范围：授权实现的唯一公开受众声明（public 对任意已认证主体开放公开默认动作）。
-    visibility: varchar("visibility", { length: 20 }).notNull().default("private"),
-    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
-    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
-  },
-  (table) => ({
-    orgNameIdx: uniqueIndex("idx_mcp_server_org_name").on(table.organizationId, table.name),
-    orgVisibilityIdx: index("idx_mcp_server_org_visibility").on(table.organizationId, table.visibility),
-  }),
-);
 
 // 技能元数据（全局技能库，内容保留在文件系统）
 export const skill = pgTable(

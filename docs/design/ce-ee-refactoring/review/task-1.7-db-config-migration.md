@@ -132,7 +132,7 @@ FK；identity 9 张已随任务 1.2 迁出，业务 40 张待迁）按包名语�
 原口径「新 owner 文件 + 本包读取点 + 全部跨包读取点 + `drizzle.config.ts` + 文档」经审计补四项，
 后续 12 批**逐批**适用：
 
-1. **调用期读取点必须改为经 owner 的公开入口或宿主注入端口取数**，不是把 import 改指 owner 的 `./db` 出口（§4.8 第 4 条）。
+1. **调用期读取点必须改为经 owner 的公开入口或宿主注入端口取数**，不是把 import 改指 owner 的 `./db` 出口（§4.8 第 4 条）。**作用域是 `packages/**`**：本条判定依据是 §2.2 / §2.3 的包级依赖矩阵，属 packages 域禁则；**宿主（`apps/server/**`）经 owner `./db` 出口读写别的包的表对象不在收口范围内**——它是唯一同时持有全部 owner 表定义的装配层（与宿主 `schema.ts` 表达跨包外键同一条理由），且部署期数据迁移是一次性的。**裁定（用户，2026-09-21）：登记为 carve-out**，逐条落点见 §7.11。
 2. **`package.json` 依赖声明**：owner 包的 `db/schema.ts` 每导入一个跨包表对象，就必须声明该表所在包
    ——§6.1 的 `db/` 例外只豁免 `special-dependency`，`undeclared-workspace-dependency` 不豁免（§4.8 第 5 条）。
 3. **该包的 source-migration 契约测试**：含「`@server/db/schema` 残留数 > 0」正向控制的用例当批必然
@@ -224,10 +224,11 @@ FK；identity 9 张已随任务 1.2 迁出，业务 40 张待迁）按包名语�
 | A6 | 架构文档过期路径修正 | 已交付 | `180cd66ac` |
 | B0 | 跨包 schema 导入的路径作用域例外 + 零差异门禁 | 已交付 | `b3411344b` |
 | B1 | machine / registry_event 迁至 `@fenix/resource-machine/db` | 已交付 | 见 §7.10 |
+| B2 | mcp（`mcp_server`、`mcp_tool`）迁至 `@fenix/resource-mcp/db` | 已交付 | 见 §7.11 |
 | B4 前置 | 沙盒实例投影写路径移到 sandbox 侧（§4.8 第 3 条，已裁定） | 待办 | — |
 | B7 前置 | agent-runtime 的 `agent_config` LEFT JOIN 改为经 owner 公开入口取投影，装配方向不允许时退回宿主注入端口（§4.8 第 4 条 / §8.4 第 7 条） | 待办·须先反馈 | — |
 | B7 前置 | join 表归属与 D4 的冲突复核（§8.4 第 8 条） | 待办·须先反馈 | — |
-| B2–B13 | 其余 38 张表按拓扑序迁出（§4.7 / §4.7.1 交付面） | 待办 | — |
+| B3–B13 | 其余 36 张表按拓扑序迁出（§4.7 / §4.7.1 交付面） | 待办 | — |
 | C0 | 打通模块声明的 env 回流至宿主 | 已交付 | `cb0c5976c` |
 | C1 | `workspace-resolver` 改读模块配置 + `WORKSPACE_ROOT` 收敛 | 待办 | — |
 | C2–C18 | 其余模块声明 `envDefinitions` | 待办 | — |
@@ -444,8 +445,108 @@ sandbox / mcp 289 / workflow 726 / task 321 / channel 202 / prod-view 116 / obse
   前端用例超时/断言失败。**与本批改动无因果关系**（失败集合里没有 machine 相关文件，且两次全量失败
   的文件集合互不相同）。
 
-**状态**：代码与文档已就绪，`precheck` 因上述非确定性尚未取得一次干净的全绿结果，定稿前须在低负载下
-重跑并留存输出（§8.4 未完成项）。
+**状态**：已在低负载下重跑取得一次**干净的全绿结果**并提交（`eb4b8cdc6`）：15 步全通过，其中
+package-tests 7956 pass / 2 skip / 0 fail、server-and-script-tests 806 pass、web-app-tests 319 pass，
+总耗时 126.6 秒。上文的非确定性失败因此确认为**负载导致**，非本批缺陷。
+
+### 7.11 B2：`mcp_server` / `mcp_tool` 迁至 `@fenix/resource-mcp/db`（2026-09-21，本批）
+
+**交付面**：新 owner 文件 `packages/resources/mcp/db/schema.ts`（`mcpTool` 与 `mcpServer` 两张表定义与
+宿主被删段逐字一致，含索引名 `idx_mcp_tool_org_server` / `idx_mcp_server_org_name` /
+`idx_mcp_server_org_visibility`）；`package.json` 加 `./db` 出口，并按 §4.7.1 ② 补
+`@fenix/identity` 声明（`mcpServer.userId → user.id`，与 B1 的 machine 同因）；包内 4 个读取点改指本包
+出口（`src/server/repositories/mcp-server.ts`、`src/server/services/mcp-server-service.ts`、
+`src/server/access/mcp-server-resource.ts`、`src/__tests__/mcp-server-repository.test.ts`）；宿主
+`schema.ts` 删两张表定义、改为 import 该出口供 `agent_config_mcp.mcp_server_id` 表达外键；
+`drizzle.config.ts` 加 schema 路径；**调用期跨包读取点收口**（见下）；`README.md` 四处、`src/server/db.ts`、
+`fenix.module.ts` 与 `mcp-source-migration.test.ts` 的注释同步。
+
+**调用期跨包取数收口（与 B1 走了不同路径，原因是装配方向不同）。** B1 的两处必须走宿主注入端口，因为
+`machine` 的 `dependsOn` 已含消费方、反向声明会闭合装配环。B2 的消费点在 `agent-config`，而
+**`agent-config/fenix.module.ts` 已声明 `dependsOn: ["knowledge", "mcp", "memory", "skill"]`**——
+`agent-config → mcp` 是既有声明的合法方向，**无需端口，直接 import owner 的窄出口即可**：
+
+- mcp 新增调用期投影 `findMcpServerLabelsByIds`（`src/server/repositories/mcp-server.ts` 末尾）：按 id
+  批量取**展示标签**（`mcp_server.name`），空入参返回空 Map、缺失的 id 不出现在结果里；只读、无授权判断，
+  与邻居 `listByIdsUnscoped` 同一授权前提，差别只在形状与列宽（后者返回整行，含 launch spec 要读的
+  `config` jsonb）。「一台 MCP 服务怎么显示」是 mcp 自己的词汇，不是消费方视图语义。
+- 出口选 `./server/config`（`src/server/services/config/agent-config-mcp.ts`）而**不是**服务端 barrel：
+  该文件头自述「barrel 会连带把 HTTP 路由与 agent-runtime 拉进消费方的依赖图」。`agent-config/src/
+  server/services/agent-related-resources.ts` 的导入改为 `@fenix/resource-mcp/server/config`，读取点由
+  `db.select(...).from(mcpServer)` 改成 `findMcpServerLabelsByIds(input.mcpIds)`（与 skill 的标签查询并列在
+  同一个 `Promise.all` 里）。该文件的文件头段落同步改写成「machine 走端口、mcp 走已声明 `dependsOn` 的公开
+  入口，差别不是风格而是本包能否直接导入对方」。
+- 合法性由 `bun run generate:module-registry --check` 判定（17 个模块 manifest 通过），即没有引入新的
+  包级边；`check:dependencies` 的 0 条新增违规是同一结论的第二个证据。
+- **B3 不能照抄这条。** `agent-config` 的 `dependsOn` 不含 `model-management`，而 model / provider 的标签
+  读取就在同一个文件里（§4.8 第 1 条的读点清单），照 B2 直连做法会命中 `dependsOn` 缺失；B3 开工前须先按
+  §4.8 第 4 条口径定夺（公开入口 vs 宿主注入端口）。
+
+**宿主侧调用期的处置（用户裁定，2026-09-21）：登记为 carve-out，不在 §4.7.1 ① 的收口范围内。** 本批把
+`apps/server/src/services/data-migrates/backfill-resource-visibility.ts` 的 `mcpServer` 导入从
+`../../db/schema` 改指 `@fenix/resource-mcp/db`。该文件是**宿主部署期**数据迁移（release 步骤执行一次，
+位于 DDL 之后、新版本进程启动之前，见 §6.3 / §10.6.2），调用期读写四张受控资源主表
+（`agent_config` / `skill` / `mcp_server` / `provider`）的 `visibility` 列。判定不适用本条的理由：
+§4.7.1 ① 的依据是 §2.2 / §2.3 的**包级依赖矩阵**（§6.1 边界 1 的路径作用域为 `packages/**/db/**`），
+是 packages 域禁则；宿主是唯一同时持有全部 owner 表定义的装配层（这正是宿主 `schema.ts` 经 owner `./db`
+表达外键的同一条理由，B1 已如此），而该迁移是一次性的、随下一次发布 `DROP TABLE resource_permission`
+一并删除——为一个寿命只剩一次发布的迁移新建 4 个 owner 写 API，违反 CLAUDE.md「抽象延迟到第二个真实
+用例出现时才引入」。口径已写入 §4.7.1 第 1 条，供 B3–B13 直接引用。
+
+**为什么台账条目没删**：见 §4.8 第 2 条。B2 后 mcp 包的 `@server/db/schema` 残留**精确为 1 处**——
+`src/server/services/config/agent-config-mcp.ts` 读宿主自己的 `agent_config_mcp`（该表归 B7）。
+`scripts/architecture/exceptions.json` 的 mcp 条目只更新了 `rationale` 与 `removeWhen`（把原先的「5 处」
+订正为「1 处」，并把成因指向 `agent_config_mcp`），**条目必须保留到 agent-config 批落地**。
+
+**契约测试正向控制的收缩**（§4.7.1 ③）：`packages/resources/mcp/src/__tests__/mcp-source-migration.test.ts`
+的 `ALLOWED_HOST_IMPORT` 注释改成「本包自己的表已迁出，这条残留现在只剩 `agent_config_mcp` 一处」，
+并注明该表迁出后正向控制会失效、须改为反向断言。
+
+**对抗式审计与整改**（工作流 `wf_245c2c44-797`，4 个视角 × 逐条反驳验证）：finders 共报 20 条，
+verifier **确认 10 条 / 驳回 10 条**（确认项含 2 条纯核验记录）。
+
+- 采纳并已整改 1 条：`backfill-resource-visibility.ts` 的 `@fenix/resource-mcp/db` import 位置破坏 biome
+  `organizeImports`，**本批在磁盘上带着全仓唯一一条 lint 错误**。该项在审计进行中已修（移到
+  `@fenix/logger` 之后），现全仓只读 `biome check` 为 `Checked 2309 files / No fixes applied / EXIT=0`。
+  附带结论值得留档：`precheck` 的 import-sort 步骤带 `--write`，会把这类违规**静默改写**掉，因此
+  「`precheck` 全绿」不等于提交内容已过只读 lint（与「precheck 读磁盘而非 git 索引」同类风险）；
+  CI 的 `bun run lint` 无 `--write`，会直接红在这个文件上。
+- 采纳并已整改 1 条：本节原先缺失——§五 表的 B2 行指针悬空，本批的交付面四条结论、残留 5→1 的实测、
+  各门禁实测值均无权威落点。已补本节，§8.4 第 4 行的批次余量同步订正。
+- **驳回 10 条**。其中 4 条是同一主张的重复（「宿主 data-migrate 经 owner `./db` 读写属 §4.7.1 ① 禁止的
+  形态」），四条 verifier 独立判「不成立」，理由与上面的 carve-out 裁定一致（错把 packages 域禁则套到宿主
+  层），故不改代码、只登记。其余驳回项：README 两条依赖边界断言「已失效」（该 bullet 最后改于
+  `b5c5323f` 的 1.6 T7、非本批改动，且 `db/` 例外是 §6.1 的组装期规定）；`./server/config` 出口被扩成
+  「关联表访问 + 主表标签投影」两件事「与 skill 同形出口不一致」（那正是该出口文件头的自述，属已登记
+  口径）；包内测试导入 owner `./db` 取表对象（B1 对 machine 用例已有同类写法并落地）；CLAUDE.md 与
+  `backend-development.md` 的「schema 真相来源有两个」过期（属 1.8 文档全量更新，§6.1 已登记）。
+- **读取点余项清单的落点缺口**（审计发现，如实登记）：§4.8 第 1 条的「B1 实测 19 处」是 B 块全部跨包
+  调用期表读取点总数，本批收口其中 1 处（`agent-config` 的 mcp 标签读取），余 18 处随 B3–B13 逐批收口。
+  **逐包清单没有权威落点**——§4.8 #1 与 §8.4 #4 原先的「见 §7.10」所指清单在 §7.10 中并不存在。完整清单
+  的逐包盘点需要「逐包核对不再引用 `@server/**`」这一次扫描，与 §8.4 第 3 条的 14 条台账清零同源，故并入
+  B 块末期一起做（§8.4 第 4 条已同步登记）。
+
+**验证**：`check:schema-ddl-drift` 零差异（迁表未产生任何 DDL 漂移，证明两张表定义逐字等价）；
+`check:dependencies` 通过（2265 modules，0 条新增违规——`./server/config` 出口没有引入新的包级边）；
+`architecture:check` 通过（2123 files，19 条已登记例外）；`bun run generate:module-registry --check` 通过
+（17 个模块 manifest 全部对齐，即 `agent-config → mcp` 的方向合法）；`tsc --noEmit` 无错误；
+`bun test packages/resources/mcp packages/resources/agent-config` **1000 pass / 0 fail**（69 files）；
+`bun test apps/server/src/__tests__` **639 pass / 0 fail**（46 files）。
+
+**非确定性失败记录**（CLAUDE.md 要求：需要重复时记录原因与证据）。本批首次全量 `precheck` 在
+`server-and-script-tests` 步骤红过一次：`apps/server/src/__tests__/round37-service-boundaries.test.ts:184`
+的 `expect(fixture.calls).toEqual({ restart: 1, recover: 0, markError: 0 })` 实得 `recover: 1`。归因与证据：
+
+- **与本批改动无因果关系**：该文件只涉及 `SandboxExecutionHandler` 与 sandbox manager 桩，全文不出现
+  `mcp` / `agent-config` / `@server/db/schema`；用例自身以 `runtimeConnectTimeoutMs: 1`（1 ms 连接超时）
+  驱动「首次等待失败 → 重启」这条路径，`recover: 1` 说明在 CPU 争抢下走了另一条分支——**用例定义上就是
+  时序敏感的**。
+- **单跑与复跑均通过**：单文件单跑 130 pass / 0 fail；同一命令（三个目录）复跑 806 pass / 0 fail；
+  完整 `precheck` 复跑 15/15 全绿。
+- 与 §7.10 记录的 `bun test packages/` 非确定性属同一类（负载下的时序敏感用例），非本批缺陷。
+
+**状态**：复跑取得一次**干净的全绿结果**并提交：15 步全通过，其中 package-tests 7956 pass / 2 skip /
+0 fail、server-and-script-tests 806 pass、web-app-tests 319 pass，总耗时 86.3 秒。
 
 ## 八、已知缺口与未完成项（逐条登记 owner 与移除条件）
 
@@ -487,11 +588,11 @@ migration smoke（空库 + 真实历史升级库）、`deploy-preflight`、readi
 | 1 | 宿主 `apps/server/src/db/schema.ts` **无法清空**：D3 裁定把 `resource_permission`（+ 3 个 pgEnum）、`share_link`、`share_event_snapshot` 留在宿主，但 1.7 第五条验收口径是「宿主不再持有业务表定义」 | B 块收尾 | 三张表要么找到 owner（建议 `resource_permission` 归 access-control）并迁出，要么把验收口径改为「宿主只保留经裁定的例外」并同步权威设计 |
 | 2 | `machine → sandbox` 的调用期表读取（`machine-sandbox-projection.ts`）在 `sandbox_instance` 迁出后构成 §2.3 类别禁则违规，无法靠 `./db` 出口解决 | B4 之前 | 按 §4.8 第 3 条的任一路径重构（宿主端口回调或 sandbox 公开写入口）并登记范围 |
 | 3 | 14 条 owner=`1.7` 的 `apps-boundary` 豁免**只能在 B 块末期集中清零**（§4.8 第 2 条） | B 块收尾 | 各目标表迁完后逐包核对「不再引用 `@server/**`」，逐条删除并留证据 |
-| 4 | 剩余 12 批各有若干跨包调用期表读取需一并**改为经 owner 公开入口或宿主注入端口取数**（实测 19 处的余项，见 §7.10）；只改指 owner 的 `./db` 不算完成（§4.8 第 4 条） | 各批同批 | 每批交付面含全部读取点，漏改会让 preload 的模块链接期抛错（§4.8 第 1 条）、且残留 §6.1 边界 1 违规 |
+| 4 | 剩余 11 批（B3–B13）各有若干跨包调用期表读取需一并**改为经 owner 公开入口或宿主注入端口取数**（§4.8 第 1 条 B1 实测 19 处为 B 块总数，B2 已收口 1 处、余 18 处）；只改指 owner 的 `./db` 不算完成（§4.8 第 4 条）。**逐包清单目前无权威落点**——§4.8 #1 与本节原先的「见 §7.10」所指清单在 §7.10 中不存在，审计已指出 | 各批同批（清单并入 B 块末期，与本节第 3 条同一次扫描） | 每批交付面含全部读取点，漏改会让 preload 的模块链接期抛错（§4.8 第 1 条）、且残留 §6.1 边界 1 违规；末期逐包核对时一并产出完整清单 |
 | 5 | **门禁缺口：相对路径伸进别的包 `db/` 两道门禁都不报。** `check-architecture` 的 `CROSS_PACKAGE_SOURCE_PATH`（`scripts/check-architecture.ts:43`）与 dependency-cruiser 的 `no-cross-package-src:<pkg>`（`.dependency-cruiser.cjs:28-30`）判「跨包内部路径」时只认 `src` / `web/src`，新出现的 `db/` 不在任何一侧。审计已用夹具复现（相对路径在 `db/` 与 `src/` 两种位置均 exit 0，同路径改指别包 `src/` 则 exit 1）；当前仓库无实际违规 | B 块收尾 | 把 `db` 纳入「跨包内部路径」判定，但**只对相对路径生效**——裸说明符 `@fenix/<pkg>/db` 是 §6.1 允许的组装期出口，不能一并拦 |
 | 6 | 组装期 `db/` 不在「子进程不得整段继承宿主 env」的扫描面内：`scripts/check-dependency-boundaries.ts:54-72` 的文件收集只认目录名 `src`，`packages/*/db/**`（含设计规定的 `db/data-migrations/`）整体跳过。审计判定为**已声明范围**而非漏报（该步骤注释即写明范围只含 `packages/**/src/**`；`db/` 是组装期 + 幂等 DML 层，不构造子进程；实测 db/ 下 2 个文件零 `process.env` / spawn） | 不修，登记备查 | 若日后 `db/data-migrations/` 出现子进程调用，须同步扩大扫描面 |
 | 7 | **B7 前置：`agent-runtime` 在查询期 LEFT JOIN `agent_config`**（`services/environment-orchestration.ts`、`services/environment-web.ts`）。`agent_config` 迁出后该导入命中 `.dependency-cruiser.cjs:74-90` 的 `agent-runtime-not-to-resources`（其 `pathNot` 只排除 `packages/agent-runtime/db/` 与 `packages/resources/(machine\|sandbox)/`），而 `check-architecture` 拦不住它。按 §4.8 第 4 条应改为经 agent-config 公开入口取投影（若 `agent-runtime → agent-config` 的包级边不被装配方向允许，则退回宿主注入端口），但 LEFT JOIN → 批量投影查询是一次独立设计（且要避免 N+1） | B7 之前 | 先反馈再定夺取数形状，然后重构两个查询 |
-| 8 | **D4 裁定（3 张 join 表归 agent-config）与现有实现冲突。** `agent_config_mcp` 已由 mcp 包自持（`mcp/src/server/services/config/agent-config-mcp.ts`，文件头自述「MCP 包自持」），`agent_config_skill` 同理由 skill 包持有，唯一的读者是各自包内文件。按 D4 迁到 agent-config 会让 mcp / skill 反向导入 `@fenix/agent-config/db`：两者都未声明该包（触发 `undeclared-workspace-dependency`），且 `agent-config → mcp`（7 处）、`agent-config → skill`（9 处）已存在，各自闭合一条**新环**。这是 D4 裁定当时未计入的成本 | B7 之前 | 重新确认：维持 D4（mcp / skill 改写为经 agent-config 公开 service 访问）还是改为按现有实现归属（各持自己的关联表，agent-config 经它们的窄入口访问） |
+| 8 | **D4 裁定（3 张 join 表归 agent-config）与现有实现冲突。** `agent_config_mcp` 已由 mcp 包自持（`mcp/src/server/services/config/agent-config-mcp.ts`，文件头自述「MCP 包自持」），`agent_config_skill` 同理由 skill 包持有，唯一的读者是各自包内文件。按 D4 迁到 agent-config 会让 mcp / skill 反向导入 `@fenix/agent-config/db`：两者都未声明该包（触发 `undeclared-workspace-dependency`），且 `agent-config → mcp`（7 处）、`agent-config → skill`（9 处）已存在，各自闭合一条**新环**。这是 D4 裁定当时未计入的成本。**B2 实测佐证**（§7.11）：mcp 包的 `agent_config_mcp` 读写口径已由该包自己的 `./server/config` 出口公开，且 B2 迁表后它是该包**唯一**残留的宿主表读取——按 D4 迁走会让这个出口失去唯一内容 | B7 之前 | 重新确认：维持 D4（mcp / skill 改写为经 agent-config 公开 service 访问）还是改为按现有实现归属（各持自己的关联表，agent-config 经它们的窄入口访问） |
 
 **C 块**：C1 的已知破测（`workspace-resolver.test.ts` 4 条、machine 侧 10 个文件因
 `initializeMachineModuleConfig` 只注册 `"machine"` 而抛「模块 agent-runtime 未声明应用基础设施配置」）

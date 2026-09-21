@@ -2,7 +2,8 @@ import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { resetAllStubs, stubDb } from "@fenix/platform-sdk/testing";
 import { InvalidKnowledgeBindingError } from "@fenix/resource-knowledge/server";
 import { machine } from "@fenix/resource-machine/db";
-import { agentSiteApp, knowledgeBase, mcpServer, model, provider, skill } from "@server/db/schema";
+import { mcpServer } from "@fenix/resource-mcp/db";
+import { agentSiteApp, knowledgeBase, model, provider, skill } from "@server/db/schema";
 import { createWebConfigAgentsRoutes } from "../server/routes/web/config/agents";
 import { initializeAgentConfigModuleConfig } from "../server/testing";
 import {
@@ -121,7 +122,8 @@ describe("round45 Agent 配置路由补充覆盖", () => {
       provider: [{ id: "provider-1", name: "openai", displayName: "OpenAI" }],
       machine: [{ id: "machine-1", agentName: "worker", name: "", machineInfo: { hostname: "host-1" } }],
       skill: [{ id: "skill-1", label: "检索" }],
-      mcpServer: [{ id: "mcp-1", label: "浏览器" }],
+      // 标签投影由 owner 包实现，按 `mcp_server.name` 取标签（不再是调用方自己的 `label` 别名）。
+      mcpServer: [{ id: "mcp-1", name: "浏览器" }],
       knowledgeBase: [{ id: "kb-1", name: "知识库", slug: "docs" }],
       agentSiteApp: [{ id: "site-1", name: "站点", remoteAppId: "remote-1" }],
     });

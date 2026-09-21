@@ -4,6 +4,7 @@
   "type": "module",
   "exports": {
     ".": "./src/index.ts",
+    "./db": "./db/schema.ts",
     "./module": "./fenix.module.ts",
     "./server": "./src/server.ts",
     "./server/runtime": "./src/server/runtime.ts",
@@ -16,6 +17,7 @@
   },
   "dependencies": {
     "@fenix/agent-runtime": "workspace:*",
+    "@fenix/identity": "workspace:*",
     "@fenix/logger": "workspace:*",
     "@fenix/platform-sdk": "workspace:*",
     "@fenix/resource-knowledge": "workspace:*",

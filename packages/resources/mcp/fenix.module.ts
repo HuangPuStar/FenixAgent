@@ -29,7 +29,7 @@ import { mcpServerResource } from "./src/server/access/mcp-server-resource";
  * 声明 `accessControlBindings`：`mcpServerResource.storage` 是本模块主表（`mcp_server`）的归属列声明，
  * 由 `access-control` 的工厂经 `ModuleFactoryContext.declarations` 汇总。这里静态导入资源注册文件是
  * 有意的取舍：绑定是值而不是类型，只能来自静态导出；代价是 registry 的加载图多了本包的资源注册
- * （含 `@server/db/schema` 的表定义），而消费 registry 的入口只有服务端的装配入口与宿主用例。
+ * （含 `./db` 的表定义），而消费 registry 的入口只有服务端的装配入口与宿主用例。
  * 本模块**不得**为这条边把 `access-control` 写进 `dependsOn`：授权模块要等声明齐全才能构造。
  *
  * 声明 `create`：指向 `src/module.ts` 的 `createMcpModule(context)`，由 registry 注入装配声明并装入

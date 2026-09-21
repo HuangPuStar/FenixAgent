@@ -23,8 +23,11 @@ const SOURCE_ENTRIES = ["src", "web", "db", "fenix.module.ts"];
 /**
  * 唯一允许的宿主导入。
  *
- * 表定义迁出归任务 1.7，本任务把它作为**显式残留**保留（见任务 1.3 实施记录 §5），
- * 且只允许这一条精确路径：`@server/db/schema` 之下的任何深路径都意味着重新伸手取宿主内部。
+ * 本包自己的表（`mcp_server` / `mcp_tool`）已随 §1.7 B2 迁到 `db/schema.ts`，因此这条残留现在只剩
+ * **一处**：`services/config/agent-config-mcp.ts` 读宿主自己的 `agent_config_mcp` 关联表（它归
+ * agent-config 批）。只允许这一条精确路径：`@server/db/schema` 之下的任何深路径都意味着重新伸手取
+ * 宿主内部。`agent_config_mcp` 迁出后本包的 `@server/` 引用应降到 0，届时下方「扫描有效性自检」的
+ * 正向控制会失效，须改为反向断言。
  */
 const ALLOWED_HOST_IMPORT = "@server/db/schema";
 

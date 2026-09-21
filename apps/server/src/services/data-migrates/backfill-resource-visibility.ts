@@ -1,7 +1,8 @@
 import { log } from "@fenix/logger";
+import { mcpServer } from "@fenix/resource-mcp/db";
 import { and, count, eq, inArray, ne } from "drizzle-orm";
 import { db } from "../../db";
-import { agentConfig, mcpServer, provider, resourcePermission, skill } from "../../db/schema";
+import { agentConfig, provider, resourcePermission, skill } from "../../db/schema";
 
 /**
  * 把旧 `resource_permission` 的"公开读"授权回填到资源主表的 `visibility` 列。

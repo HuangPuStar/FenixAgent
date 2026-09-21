@@ -1,4 +1,5 @@
-import { agentSiteApp, knowledgeBase, mcpServer, model, provider, skill } from "@server/db/schema";
+import { findMcpServerLabelsByIds } from "@fenix/resource-mcp/server/config";
+import { agentSiteApp, knowledgeBase, model, provider, skill } from "@server/db/schema";
 import { and, eq, inArray } from "drizzle-orm";
 import { getAgentConfigDatabase } from "../db";
 import { getMachineLookupPort } from "../ports/machine-lookup";
@@ -14,11 +15,14 @@ import type { AgentNode } from "./config/types";
  * 搬迁自 `routes/web/config/agent-route-support.ts`：原实现直接放在路由里，违反「route 不得直接
  * 访问 db」。本次是纯搬迁，没有顺带改动查询形状或兜底策略。
  *
- * 跨包表分两类读法：`machine` 已随 §1.7 B1 迁出，本包**不读它的表对象**，经宿主注入的
- * {@link MachineLookupPort} 取投影（见 {@link resolveMachineLabel}）；其余（`model` / `provider` /
- * `skill` / `mcp_server` / `knowledge_base` / `agent_site_app`）仍经 `@server/db/schema`，所有权随
- * 资源包迁移属后续任务，届时按同一口径改为经各自端口 / 公开入口取数。DB 句柄改经
- * `getAgentConfigDatabase()` 请求期取得（`@server/db` 的模块级句柄已切断）。
+ * 跨包表分两类读法：`machine`（§1.7 B1）与 `mcp_server`（B2）已迁出，本包**不读它们的表对象**——
+ * machine 经宿主注入的 {@link MachineLookupPort} 取投影（见 {@link resolveMachineLabel}），MCP 标签经
+ * 本包 `dependsOn` 已声明的 `@fenix/resource-mcp/server/config` 取投影（见
+ * {@link findMcpServerLabelsByIds}）：两者的差别不是风格，而是**本包能否直接导入对方**——machine 的
+ * `dependsOn` 已含本包，反向声明会闭合装配环，故只能走端口。其余（`model` / `provider` / `skill` /
+ * `knowledge_base` / `agent_site_app`）仍经 `@server/db/schema`，所有权随资源包迁移属后续任务，届时按
+ * 同一口径改为经 owner 的公开入口取数。DB 句柄改经 `getAgentConfigDatabase()` 请求期取得
+ * （`@server/db` 的模块级句柄已切断）。
  */
 
 /** 关联资源标签视图；字段与 `/web/config/agents` 响应的 `relatedResources` 一一对应。 */
@@ -116,22 +120,16 @@ export async function buildAgentRelatedResourceView(
       resolveMachineLabel(input.agentNode),
     ]);
 
-    const [skillRows, mcpRows] = await Promise.all([
+    const [skillRows, mcpLabelMap] = await Promise.all([
       input.skillIds.length > 0
         ? db
             .select({ id: skill.id, label: skill.name })
             .from(skill)
             .where(inArray(skill.id, [...input.skillIds]))
         : [],
-      input.mcpIds.length > 0
-        ? db
-            .select({ id: mcpServer.id, label: mcpServer.name })
-            .from(mcpServer)
-            .where(inArray(mcpServer.id, [...input.mcpIds]))
-        : [],
+      findMcpServerLabelsByIds(input.mcpIds),
     ]);
     const skillLabelMap = new Map(skillRows.map((row) => [row.id, row.label]));
-    const mcpLabelMap = new Map(mcpRows.map((row) => [row.id, row.label]));
 
     const knowledgeBaseRows =
       input.knowledgeBaseIds.length > 0
