@@ -56,10 +56,10 @@
 | 文件 | 职责 |
 |------|------|
 | `src/services/instance.ts` | 实例 spawn/stop/list，`ensureRunning`、`spawnInstanceFromEnvironment` |
-| `src/services/agent-chat-service.ts` | `openAgentSession` 一站式入口（spawn → relay → turn） |
+| `packages/agent-runtime/src/services/agent-chat-service.ts` | `openAgentSession` 一站式入口（spawn → relay → turn） |
 | `src/services/launch-spec-builder.ts` | `buildLaunchSpec` — 将 Agent 配置编译为 Core 可消费的 spec |
-| `src/services/instance-registry.ts` | `globalInstanceRegistry` — 内存补充信息（userId, relay 计数等） |
-| `src/services/acp-idle-monitor.ts` | 空闲巡检，满足超时条件自动 `stopInstance` |
+| `packages/agent-runtime/src/services/instance-registry.ts` | `globalInstanceRegistry` — 内存补充信息（userId, relay 计数等） |
+| `packages/agent-runtime/src/services/acp-idle-monitor.ts` | 空闲巡检，满足超时条件自动 `stopInstance` |
 
 ### 核心逻辑
 
@@ -95,10 +95,10 @@
 
 | 文件 | 职责 |
 |------|------|
-| `src/services/registry.ts` | Machine DB CRUD：`listMachines`、`registerMachine`、`disconnectMachine` |
-| `src/services/registry-heartbeat.ts` | 心跳管理：`startHeartbeat`、`handleHeartbeat`、`stopHeartbeat` |
+| `packages/resources/machine/src/server/services/registry.ts` | Machine DB CRUD：`listMachines`、`registerMachine`、`disconnectMachine` |
+| `packages/resources/machine/src/server/services/registry-heartbeat.ts` | 心跳管理：`startHeartbeat`、`handleHeartbeat`、`stopHeartbeat` |
 | `src/services/core-bootstrap.ts` | Core 初始化 + `registerRemoteNode` / `unregisterRemoteNode` |
-| `src/transport/acp-ws-handler.ts` | Machine WS 连接管理：`handleAcpWsOpen`、消息路由、断连处理 |
+| `packages/agent-runtime/src/server/transport/acp-ws-handler.ts` | Machine WS 连接管理：`handleAcpWsOpen`、消息路由、断连处理 |
 | `packages/acp-runtime-cli/src/bin.ts` | 远程机器 CLI 入口：启动 Agent + acp-link bridge + 注册到 RCS |
 
 ### 核心逻辑
@@ -344,9 +344,9 @@ Agent CLI 进程                    Agent CLI 进程退出 / 异常
 | 耦合点 | 位置 | 说明 |
 |-------|------|------|
 | `runtimeResolver` | `src/services/core-bootstrap.ts:78` | L1/L2 通过它注入远程 transport，L3 通过它获取正确的 runtime 实现 |
-| `globalInstanceRegistry` | `src/services/instance-registry.ts` | L1 的业务补充信息（userId、relayCount），L3 无感知 |
-| `findMachineConnectionById` | `src/transport/acp-ws-handler.ts` | L1 spawn 前的 L2 连通性检查 |
-| `touchInstanceActivity` | `src/services/acp-idle-monitor.ts` | L1 空闲监控的埋点，每条 ACL 消息都触发 |
+| `globalInstanceRegistry` | `packages/agent-runtime/src/services/instance-registry.ts` | L1 的业务补充信息（userId、relayCount），L3 无感知 |
+| `findMachineConnectionById` | `packages/agent-runtime/src/server/transport/acp-ws-handler.ts` | L1 spawn 前的 L2 连通性检查 |
+| `touchInstanceActivity` | `packages/agent-runtime/src/services/acp-idle-monitor.ts` | L1 空闲监控的埋点，每条 ACL 消息都触发 |
 | `onInstanceStarted` | `src/services/core-bootstrap.ts:75` | L3 实例 started 后回调，写入 pluginMetadata |
 | `WsRemoteTransport` | `packages/remote-runtime/` | L2 创建并缓存，L3 通过 `runtimeResolver` 消费 |
 

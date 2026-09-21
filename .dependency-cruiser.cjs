@@ -64,9 +64,15 @@ module.exports = {
     },
     {
       name: "agent-runtime-not-to-resources",
-      comment: "agent-runtime 层不能反向依赖资源领域包；Machine/Sandbox 是设计登记的专用运行入口例外。",
+      comment:
+        "agent-runtime 层不能反向依赖资源领域包；Machine/Sandbox 是设计登记的专用运行入口例外。" +
+        "`db/**` 按 §6.1 的 schema 组装期例外放行（environment.agent_config_id 是跨模块外键，表对象只能导入），" +
+        "src/** 的反向禁则不变。",
       severity: "error",
-      from: { path: "(?:^|/)packages/agent-runtime/" },
+      from: {
+        path: "(?:^|/)packages/agent-runtime/",
+        pathNot: "(?:^|/)packages/agent-runtime/db/",
+      },
       to: {
         path: "(?:^|/)packages/resources/",
         pathNot: "(?:^|/)packages/resources/(?:machine|sandbox)/",

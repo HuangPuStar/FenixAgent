@@ -87,6 +87,20 @@ function isWebContribution(relativePath: string): boolean {
   return /^packages\/[^/]+\/(?:[^/]+\/)?web\//.test(relativePath);
 }
 
+/**
+ * schema 组装期路径：包目录下一层的 `db/`。
+ *
+ * §6.1 的**跨模块外键 schema 组装期例外**允许这些文件导入其他模块 `db/schema.ts` 的表对象：Drizzle 的
+ * `.references()` 与 `foreignKey()` 只接受列对象，没有字符串名或延迟解析的写法，被引用表不在同一文件时
+ * 只能组装期导入。判定放在检查器里而不是登记进例外台账——台账按 `(ruleId, from, to)` 匹配，粒度是
+ * 「包对」，一条 schema 例外会连同该包 `src/**` 的导入一起放行，等于废掉整条 §2.3 禁则。
+ *
+ * 与 `isWebContribution` 同形：必须锚定包目录，否则 `packages/platform/identity/src/x/db/` 一类路径会被误放行。
+ */
+function isSchemaAssemblyPath(relativePath: string): boolean {
+  return /^packages\/[^/]+\/(?:[^/]+\/)?db\//.test(relativePath);
+}
+
 /** 说明符相对当前文件是否越界进入 `apps/` 下的某个应用。 */
 function resolveEscapeTarget(context: RuleContext, specifier: string): string | undefined {
   if (!specifier.startsWith(".")) return;
@@ -172,11 +186,13 @@ function createAppsBoundaryRule(): ArchitectureRule {
  * `special-dependency`：§2.3 中针对**具体模块**而非整个类别的跨类别禁则。
  *
  * 只有 package.json 声明与源码都指向某个禁止类别时才判定，因此必须在包粒度而非文件粒度生效。
+ * `db/**` 的跨模块表对象引用是 §6.1 单独规定的组装期例外，整条规则对它不适用——调用期禁则不变。
  */
 function createSpecialDependencyRule(): ArchitectureRule {
   return {
     id: "special-dependency",
     check(context) {
+      if (isSchemaAssemblyPath(context.relativePath)) return [];
       const category = resolvePackageCategory(context.packageDirectory);
       if (!category || !context.packageName) return [];
       const forbidden = FORBIDDEN_CROSS_CATEGORY[category];

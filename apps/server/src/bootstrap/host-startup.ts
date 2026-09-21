@@ -7,6 +7,7 @@ import {
   createSystemModelGatewayProviderService,
   getModelManagementModule,
 } from "@fenix/model-management/server";
+import type { AssemblyProfile } from "@fenix/platform-sdk/assembly";
 import { getHermesClient, initHermesClient } from "@fenix/resource-channel/server";
 import { checkRagFlowHealth } from "@fenix/resource-knowledge/server";
 import {
@@ -29,7 +30,6 @@ import { findDeprecatedEnvVars } from "../env";
 import type { ServerEnv } from "../env-loader";
 import { closeCache } from "../services/cache";
 import { initCoreRuntime } from "../services/core-bootstrap";
-import { runDataMigrations } from "../services/data-migrate";
 import { createModelGatewaySubjectVerification } from "../services/model-gateway-subject-verification";
 import { createPreLaunchPorts, type PreLaunchPortsDeps } from "../services/pre-launch-ports";
 import { syncBuiltin } from "../services/sync-builtin";
@@ -44,10 +44,14 @@ import { runCriticalStartupSequence } from "./startup-sequence";
  * 顺序约束集中在两个函数里，两侧都不可重排：
  *
  * **启动**（`startHostRuntime`）：DB → 模块装配 → 模型网关是 §3.1 钉下的关键序列（`initModelGateway` 里的
- * `ensureSystemAdmin` / `runDataMigrations` / 沙盒崩溃恢复是宿主进程级动作，不是任何模块的贡献），随后才是
+ * `ensureSystemAdmin` / 沙盒崩溃恢复是宿主进程级动作，不是任何模块的贡献），随后才是
  * 「启动前取数端口 → 沙盒默认池 → Core runtime → 调度器 → builtin 同步 → 自定义节点工具 → Hermes → RagFlow
  * 体检 → 巡检定时器 → 空闲监视」。其中「启动前取数端口」必须晚于 `wirePermissions`（agent-config / skill /
  * mcp / model-management 四个模块那时才装配完成），且晚于模型网关凭证解析器就绪。
+ *
+ * 业务数据迁移**不在**本序列内：§6.3 与 §10.6.2 要求一次性数据迁移只由部署发布任务执行。发布期入口是
+ * `db/data-migration-runner.ts`，必须在 DDL 迁移之后、新版本进程启动之前跑一次；它「早于 builtin 同步」
+ * 这一时序要求因此由发布顺序保证，而不是由本文件的启动序保证。
  *
  * **关闭**（`shutdownHostRuntime`）：与启动严格反向冻结——先停接受新工作的（runtime drain / 调度器 /
  * Hermes），再停巡检定时器，最后关连接、缓存与 DB；每一步都有独立超时，超时只记日志不阻断后续步骤。
@@ -78,8 +82,17 @@ function withShutdownDeadline<T>(promise: Promise<T>, phase: string, deadline: n
   ]);
 }
 
-/** 按关键序列与启动后编排完成全部启动步骤；`agentRuntime` 来自 `wireHostRuntime()`。 */
-export async function startHostRuntime(env: ServerEnv, agentRuntime: AgentRuntimeHandles): Promise<void> {
+/**
+ * 按关键序列与启动后编排完成全部启动步骤。
+ *
+ * `agentRuntime` 来自 `wireHostRuntime()`；`profile` 来自 `resolveAssemblyEnv()`，与 `env` 同一次解析，
+ * 透传进装配避免重复读文件（profile 路径由发布入口固定，两侧解析结果必然相同）。
+ */
+export async function startHostRuntime(
+  env: ServerEnv,
+  agentRuntime: AgentRuntimeHandles,
+  profile: AssemblyProfile,
+): Promise<void> {
   // 模型网关的运行时凭证解析器：在启动序列里解析后交给 agent-config 的启动参数组装器
   // （见下方 `createPreLaunchPorts` + 端口绑定）。W4b 删掉 agent-runtime 的旧解析器槽位后，
   // 这是唯一注入点：组装器遇到 `kind = "gateway"` 的 Provider 时用它换签发凭证。
@@ -98,7 +111,7 @@ export async function startHostRuntime(env: ServerEnv, agentRuntime: AgentRuntim
       //
       // 时机不变：模型网关与 builtin 都会查询资源授权，装配必须在业务资源初始化前完成；本步骤仍在关键
       // 启动序列内、`initDb` 之后（`getDatabase()` 此时可用）。
-      await bootstrapServerAssembly({ mountContribution: mountServerRouteContribution });
+      await bootstrapServerAssembly({ profile, mountContribution: mountServerRouteContribution });
     },
     initModelGateway: async () => {
       registerConfiguredSandboxProviders();
@@ -113,10 +126,6 @@ export async function startHostRuntime(env: ServerEnv, agentRuntime: AgentRuntim
       // 先应用 env，再跑系统初始化：system admin 需要读取密码文件路径配置。
       const systemAdmin = await ensureSystemAdmin();
       startupLog.info(`System admin ready: ${systemAdmin.email}`);
-
-      // 数据迁移仍要早于 builtin 同步，避免旧数据结构影响系统资源落盘位置。
-      await runDataMigrations();
-      startupLog.info("Data migrations completed");
 
       // 上游凭据的主体复验端口：用已装配的授权能力 + agent_config 的资源定义，与平台其它入口判定
       // Agent 可用性的是同一条规则（见 `services/model-gateway-subject-verification`）。

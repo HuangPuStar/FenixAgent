@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { $ } from "bun";
 
-import { compareBoundaryViolations } from "../check-dependency-boundaries";
+import { compareBoundaryViolations, findHostEnvSpreadViolations } from "../check-dependency-boundaries";
 import { type ArchitectureException, exceptionFingerprint } from "../lib/architecture-exceptions";
 
 const repoRoot = resolve(import.meta.dir, "../..");
@@ -157,4 +157,60 @@ test("只把本门禁负责的规则条目标记为失效", () => {
   const comparison = compareBoundaryViolations({ exceptions, ownRuleNames: ["no-circular"], violations: [] });
 
   expect(comparison.stale.map((entry) => entry.rule)).toEqual(["no-circular"]);
+});
+
+/** 写入待扫描的临时源码文件；扫描器本身只读文件，无需真实包结构。 */
+async function writeScanFixture(files: Record<string, string>): Promise<{ root: string; paths: string[] }> {
+  const root = await mkdtemp(join(tmpdir(), "fenix-host-env-scan-"));
+  const paths: string[] = [];
+  for (const [name, content] of Object.entries(files)) {
+    const filePath = join(root, name);
+    await writeFile(filePath, content);
+    paths.push(filePath);
+  }
+  return { root, paths };
+}
+
+// 子进程 env 整段展开宿主 process.env 是密钥泄漏的充分信号，必须逐处报出文件与行号。
+test("命中 env 字面量里的宿主环境展开", async () => {
+  const fixture = await writeScanFixture({
+    "spread.ts": [
+      "const a = {",
+      "  env: { ...process.env, ...extraEnv },",
+      "};",
+      "const b = { env: { ...(process.env as Record<string, string>), ...nodeEnv } };",
+      "const c = { env: { ...Bun.env } };",
+    ].join("\n"),
+  });
+
+  try {
+    const violations = await findHostEnvSpreadViolations(fixture.root, fixture.paths);
+
+    expect(violations).toEqual(["spread.ts:2", "spread.ts:4", "spread.ts:5"]);
+  } finally {
+    await rm(fixture.root, { force: true, recursive: true });
+  }
+});
+
+// 具名白名单与「展开成员访问结果」的数组展开都不是宿主环境泄漏，必须零误伤
+// （server.ts 的 supported_engine_types 就是后一种形状）。
+test("放过具名白名单与成员访问展开", async () => {
+  const fixture = await writeScanFixture({
+    "clean.ts": [
+      "const a = { env: input.env };",
+      "const b = { env: launchSpec.env };",
+      "const c = { env: launchSpecEnv };",
+      "const d = { env: environment };",
+      "const e = {",
+      "  supported: [...(process.env.CLI_PATH ? [{ type: 'cli' }] : [])],",
+      "};",
+      "const f = { env: { ...copyOfEnv, ...extraEnv } };",
+    ].join("\n"),
+  });
+
+  try {
+    expect(await findHostEnvSpreadViolations(fixture.root, fixture.paths)).toEqual([]);
+  } finally {
+    await rm(fixture.root, { force: true, recursive: true });
+  }
 });

@@ -25,6 +25,7 @@ import {
 } from "./json-rpc.js";
 import { buildPeriCapabilityMeta, isPeriTaskNotificationMethod } from "./peri-task-capability.js";
 import { createReconnectScheduler } from "./reconnect-scheduler.js";
+import { buildAgentProcessEnv } from "./spawn-env.js";
 import type { AgentCapabilities, ContentBlock, PromptCapabilities, SessionModelState } from "./types.js";
 import { getWebSocketCodeMessage, WEBSOCKET_CODES } from "./websocket-code.js";
 import { decodeJsonWsMessage, WsPayloadTooLargeError } from "./ws-message.js";
@@ -1094,7 +1095,7 @@ export function createAcpServer(config: ServerConfig): AcpServerHandle {
       const agentProcess = spawn(command, args, {
         cwd,
         stdio: ["pipe", "pipe", "inherit"],
-        env: { ...process.env, ...extraEnv },
+        env: buildAgentProcessEnv(extraEnv),
       });
 
       state.process = agentProcess;

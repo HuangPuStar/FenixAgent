@@ -12,7 +12,7 @@ import { filterTestSummary } from "./ci-output";
 const STEPS = [
   {
     name: "format",
-    cmd: "biome format --write apps/server/src/ apps/ packages/ scripts/ docs/.vitepress/",
+    cmd: "biome format --write apps/server/src/ apps/ packages/ scripts/ db/ docs/.vitepress/",
     filter: (out: string) => {
       if (out.includes("No fixes applied") || out.includes("Formatted")) return null;
       return out;
@@ -20,7 +20,7 @@ const STEPS = [
   },
   {
     name: "import-sort",
-    cmd: "biome check --write --linter-enabled=false apps/server/src/ apps/ packages/ scripts/ docs/.vitepress/",
+    cmd: "biome check --write --linter-enabled=false apps/server/src/ apps/ packages/ scripts/ db/ docs/.vitepress/",
     filter: (out: string) => {
       if (out.includes("No fixes applied") || out.includes("Checked")) return null;
       return out;
@@ -35,6 +35,18 @@ const STEPS = [
     name: "web-contributions",
     cmd: "bun run generate:web-contributions --check",
     filter: (out: string) => (out.includes("已验证") ? null : out),
+  },
+  {
+    // 根源码归属清单同样是「文档 == 规则表产出」的生成物门禁，必须与 CI 走同一入口。
+    name: "owner-inventory",
+    cmd: "bun run check:root-owner-inventory",
+    filter: (out: string) => (out.includes("unowned=0 ambiguous=0") ? null : out),
+  },
+  {
+    // 表搬迁只搬位置、不改结构：schema 聚合结果与已发布迁移链必须零 DDL 差异（§6.1 / §10.6.1）。
+    name: "schema-ddl-drift",
+    cmd: "bun run check:schema-ddl-drift",
+    filter: (out: string) => (out.includes("✓ schema-ddl-drift") ? null : out),
   },
   {
     name: "architecture",
@@ -72,7 +84,7 @@ const STEPS = [
   },
   {
     name: "lint",
-    cmd: "biome check apps/server/src/ apps/ packages/ scripts/ docs/.vitepress/",
+    cmd: "biome check apps/server/src/ apps/ packages/ scripts/ db/ docs/.vitepress/",
     filter: (out: string) => {
       if (out.includes("Checked") && !out.includes("error") && !out.includes("warning")) return null;
       // 只保留有问题的文件行

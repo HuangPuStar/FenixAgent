@@ -5,9 +5,14 @@ import type { ServerRouteHost } from "@fenix/platform-sdk/server";
  * Identity 平台模块描述符。
  *
  * 身份、组织、成员、认证与 API Key 的唯一 owner。它是平台基础模块：不依赖任何其他模块
- * （`dependsOn` 为空），资源与运行时模块也**不得**直接依赖它——依赖矩阵禁止任何类别依赖
- * `platform-impl`。调用方需要的身份数据只经 `@fenix/platform-sdk` 的 `IdentityDirectory`
+ * （`dependsOn` 为空）。资源的**调用期**（service / repository）不得依赖它——依赖矩阵禁止任何类别
+ * 依赖 `platform-impl`，调用方需要的身份数据只经 `@fenix/platform-sdk` 的 `IdentityDirectory`
  * 窄契约取得，由宿主 `apps/server` 注册实现。
+ *
+ * 唯一的例外在 **schema 组装期**：其他模块的 `db/schema.ts` 会导入这里的表对象表达跨模块外键
+ * （Drizzle 的 `.references()` 只接受列对象，没有字符串形式）。该例外仅限各模块 `db/` 子目录下的文件，
+ * `src/` 与 `web/` 的跨包导入仍按 §2.3 判定为违规；口径与边界见
+ * `docs/design/ce-ee-refactoring/ce-ee-engineering-standards.md` §6.1。
  *
  * 本模块声明的运行期依赖只有应用基础设施中的 DB（经 `@fenix/platform-sdk/server` 读取）；
  * better-auth 与系统管理员密码文件等部署配置当前仍由宿主解析后经 `initializeApplicationInfrastructure`

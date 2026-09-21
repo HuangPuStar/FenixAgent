@@ -25,12 +25,12 @@
 
 | 组件 | 文件 | 职责 |
 |------|------|------|
-| ChatPanel | `packages/agent-runtime/web/agent-panel/ChatPanel.tsx` | 创建 YJS WS 连接、管理连接状态（connecting/connected/error）、监听 `agent:reconnect` 事件重建连接 |
-| ACPMain | `packages/chat-channel/web/components/ACPMain.tsx` | 会话引导 bootstrap：等待 Agent `capabilities` 后列出会话并选择/新建；sessions 增量可能分多次到达，用防抖（300ms）等待列表稳定后再执行引导 |
-| ChatInterface | `packages/chat-channel/web/components/ChatInterface.tsx` | 核心中枢——注册所有 ACP handler，消费 Chat Doc / Session Doc 渲染 `ThreadEntry[]`，管理 isLoading / errorMessage / todoItems 状态 |
-| AgentSidebar | `apps/web/src/pages/agent-panel/AgentSidebar.tsx` | 会话列表与切换 |
-| ArtifactsPanel | `apps/web/src/pages/agent-panel/ArtifactsPanel.tsx` | 产出物与文件浏览 |
-| FilePicker | `packages/agent-runtime/web/components/chat/FilePickerPanel.tsx` / `apps/web/src/components/FilePickerDialog.tsx` | 工作区文件选择与上传 |
+| ChatPanel | `apps/web/src/pages/agent-panel/ChatPanel.tsx` | 创建 YJS WS 连接、管理连接状态（connecting/connected/error）、监听 `agent:reconnect` 事件重建连接 |
+| ACPMain | `packages/ui-components/web/chat/shell/ACPMain.tsx` | 会话引导 bootstrap：等待 Agent `capabilities` 后列出会话并选择/新建；sessions 增量可能分多次到达，用防抖（300ms）等待列表稳定后再执行引导 |
+| ChatInterface | `packages/ui-components/web/chat/shell/ChatInterface.tsx` | 核心中枢——注册所有 ACP handler，消费 Chat Doc / Session Doc 渲染 `ThreadEntry[]`，管理 isLoading / errorMessage / todoItems 状态 |
+| AgentSidebar | `apps/web/src/shell/AgentSidebar.tsx` | 会话列表与切换 |
+| ArtifactsPanel | `apps/web/src/shell/ArtifactsPanel.tsx` | 产出物与文件浏览 |
+| FilePicker | `packages/ui-components/web/chat/shell/FilePickerPanel.tsx` / `apps/web/src/components/FilePickerDialog.tsx` | 工作区文件选择与上传 |
 
 ## 权威边界
 

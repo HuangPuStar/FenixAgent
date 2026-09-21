@@ -597,7 +597,7 @@ export const skill = pgTable(
   }),
 );
 
-// 启动数据迁移执行记录
+// 一次性数据迁移执行记录（由部署期入口 `db/data-migration-runner.ts` 写入，不随应用启动执行）
 export const dataMigrateRecord = pgTable(
   "data_migrate_record",
   {

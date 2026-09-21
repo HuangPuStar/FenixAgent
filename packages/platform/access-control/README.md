@@ -46,9 +46,10 @@ CE 默认的资源范围与动作授权实现，以及把授权条件下推到 S
 ## 已知项
 
 `apps/server/src/db/schema.ts` 中 `resource_permission` 表及其三个 pg enum 的 DDL 仍在（带 `removeWhen`
-注释）。它已无任何运行时读写方，但**唯一读者**是启动期数据迁移
-`apps/server/src/services/data-migrates/backfill-resource-visibility.ts`——SQL 迁移先于启动期 data migration
-执行，同一发布内 DROP 会让全新库启动即失败、升级库静默丢失公开共享语义，因此 DROP 推迟到下一个发布
+注释）。它已无任何运行时读写方，但**唯一读者**是部署期数据迁移
+`apps/server/src/services/data-migrates/backfill-resource-visibility.ts`——SQL 迁移先于部署期 data migration
+执行（发布顺序：`migrate.js` → `data-migration-runner.js` → 部署应用），同一发布内 DROP 会让全新库启动即失败、
+升级库静默丢失公开共享语义，因此 DROP 推迟到下一个发布
 （回填记入 `data_migrate_record` 之后）。
 
 理由与执行条件见 `docs/design/ce-ee-refactoring/ce-access-control-design.md` §6.2 与

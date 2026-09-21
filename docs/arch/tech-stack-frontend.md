@@ -63,9 +63,9 @@
 
 与后端 better-auth 三路认证体系对接：
 
-- **better-auth 客户端**（`apps/web/src/lib/auth-client.ts`）：`createAuthClient` + `organizationClient` + `apiKeyClient`，导出 `useSession`/`signIn`/`signUp`/`signOut`
+- **better-auth 客户端**（`packages/platform/identity/web/lib/auth-client.ts`）：`createAuthClient` + `organizationClient` + `apiKeyClient`，导出 `useSession`/`signIn`/`signUp`/`signOut`
 - **组织上下文传递**：活跃组织 ID 存 localStorage，通过 HTTP header 注入到 `/web/*` 和 `/api/*` 请求；WebSocket relay 通过 query param 传递（因 WS 不支持自定义 header）
-- **API Client 自动认证**：`apps/web/src/api/request.ts` 自动携带 Cookie（`credentials: "include"`）
+- **API Client 自动认证**：`packages/web-runtime/web/api/request.ts` 自动携带 Cookie（`credentials: "include"`）
 
 ---
 
@@ -82,9 +82,9 @@
 
 ---
 
-## 6. API Client：apps/web/src/api/request.ts
+## 6. API Client：packages/web-runtime/web/api/request.ts
 
-前端 API 调用统一通过 `apps/web/src/api/request.ts`，每个资源域独立 API 模块（`api/tasks.ts`、`api/skills.ts` 等），自动携带认证 Cookie（`credentials: "include"`）。禁止在组件中直接使用原生 `fetch()`。
+前端 API 调用统一通过 `packages/web-runtime/web/api/request.ts`，每个资源域独立 API 模块（`api/tasks.ts`、`api/skills.ts` 等），自动携带认证 Cookie（`credentials: "include"`）。禁止在组件中直接使用原生 `fetch()`。
 
 ---
 

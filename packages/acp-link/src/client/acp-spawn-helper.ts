@@ -4,6 +4,7 @@ import * as acp from "@agentclientprotocol/sdk";
 import { createElicitationHandler } from "../elicitation.js";
 import { ACP_METHOD, createNotification } from "../json-rpc.js";
 import { buildPeriCapabilityMeta, isPeriTaskNotificationMethod } from "../peri-task-capability.js";
+import { buildAgentProcessEnv } from "../spawn-env.js";
 
 /** 仅提取安全的事件 discriminator，诊断日志不得输出 event_json 内容。 */
 function readPeriAgentEventType(eventJson: unknown): string {
@@ -47,7 +48,7 @@ export async function spawnAcpAgent(
   launchSpecEnv: Record<string, string> | undefined,
   send: (message: unknown) => void,
 ): Promise<SpawnResult> {
-  const spawnEnv = launchSpecEnv ? { ...process.env, ...launchSpecEnv } : { ...process.env };
+  const spawnEnv = buildAgentProcessEnv(launchSpecEnv);
 
   const proc = spawn(executable, args, {
     cwd: workspace,

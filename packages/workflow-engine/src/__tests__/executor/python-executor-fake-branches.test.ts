@@ -139,6 +139,36 @@ describe("PythonExecutor 内存 fake 分支", () => {
     );
   });
 
+  // 宿主密钥（如 DATABASE_URL）不得进入节点子进程；节点 env / inputs / secrets 仍必须生效。
+  test("节点环境不继承宿主密钥且保留节点声明变量", async () => {
+    const executor = createExecutor();
+    const previous = process.env.DATABASE_URL;
+    process.env.DATABASE_URL = "postgres://host/leak";
+    const ctx = makeContext({
+      secrets: { CONTEXT_VALUE: "from-context" },
+      resolvedInputs: {
+        code: "print(message)",
+        env: { NODE_VALUE: "from-node" },
+        inputs: { message: { value: "已注入", rawExpression: "params.message" } },
+      },
+    });
+    writeSpy.mockResolvedValue(0);
+    spawnSpy.mockImplementation(() => createSubprocess("ok\n") as unknown as ReturnType<typeof Bun.spawn>);
+
+    try {
+      await executor.execute(makeNode(), ctx);
+      const spawnOptions = spawnSpy.mock.calls[0]?.[1] as { env?: Record<string, string | undefined> };
+      const env = spawnOptions.env ?? {};
+
+      expect(env).not.toHaveProperty("DATABASE_URL");
+      expect(env).toMatchObject({ CONTEXT_VALUE: "from-context", NODE_VALUE: "from-node" });
+      expect(writeSpy.mock.calls[0]?.[1]).toContain('message = "已注入"');
+    } finally {
+      if (previous === undefined) delete process.env.DATABASE_URL;
+      else process.env.DATABASE_URL = previous;
+    }
+  });
+
   test("pip 安装失败时返回截断后的 NODE_FAILED 且不启动 python3", async () => {
     const executor = createExecutor();
     writeSpy.mockResolvedValue(0);

@@ -149,9 +149,9 @@ Provider 在**每次请求时**只读遍历下列来源，不挂接任何 open/c
 
 | 来源 | 现有注册表 | 可取的字段 |
 |------|-----------|-----------|
-| `acp-ws` | `src/transport/acp-ws-handler.ts: connections` | `userId`、`agentId`（identify 后）/`boundEnvId`、`machineId`、`isMachine` |
+| `acp-ws` | `packages/agent-runtime/src/server/transport/acp-ws-handler.ts: connections` | `userId`、`agentId`（identify 后）/`boundEnvId`、`machineId`、`isMachine` |
 | `machine` | 同上 `isMachine=true` | `machineId`、`userId` |
-| `external-relay` | `src/transport/relay/external-relay.ts: entries` | `agentId`、`instanceId`、`authCtx.userId/orgId` |
+| `external-relay` | `packages/agent-runtime/src/server/transport/relay/external-relay.ts: entries` | `agentId`、`instanceId`、`authCtx.userId/orgId` |
 | `chat-relay` | `@fenix/chat-channel` `ConnectionRegistry.clients` | `userId`、`agentId`、`instanceId`、`rcsSessionId`、`acpSessionId` |
 
 角色 id 补齐与一致性校验，由 Observer 在收集后经 `environment` 等权威数据回查完成（§0.3）。
@@ -247,7 +247,7 @@ interface LeafView { id; source; machineId; payload?: Record<string, unknown> }
 
 ## 5. 前端面板（独立 `/admin`）
 
-- 路由：`web/src/routes/admin/index.tsx`（`routeTree.gen.ts` 由工具生成）。
+- 路由：`apps/web/src/routes/admin/index.tsx`（`routeTree.gen.ts` 由工具生成）。
 - **MasterKeyGate 登录**：输入 master key → 存 `sessionStorage` → `request.ts` 统一注入
   `Authorization: Bearer <key>`；401 清 key 回登录。不纳入 better-auth 会话体系。
 - **仪表盘（按 kind tab 组织，首版仅 acp-link）**：
@@ -286,9 +286,9 @@ interface LeafView { id; source; machineId; payload?: Record<string, unknown> }
 
 - Observer 只经 Provider 在请求时**只读**遍历既有来源，不改被观察对象语义；某 kind 未注册 Provider
   即不返回该视图，随时可摘除，无迁移、无回滚负担。
-- 后端单测：`src/__tests__/observer-service.test.ts`（各 kind 回调 → 关系树正确、join key 一致、
+- 后端单测：`packages/resources/observer/src/__tests__/observer-service.test.ts`（各 kind 回调 → 关系树正确、join key 一致、
   未就绪角色不占位、归属不一致置 `verified=false`）。
-- API 单测：`src/__tests__/api-system-observer-links.test.ts`（鉴权 401、结构、integrity）。
+- API 单测：`packages/resources/observer/src/__tests__/api-system-observer-links.test.ts`（鉴权 401、结构、integrity）。
 - 变更后遵循 CLAUDE.md：后端 `bun test src/__tests__/...` + `bun run precheck`；前端 `bun run build:web`
   + `precheck`。
 
