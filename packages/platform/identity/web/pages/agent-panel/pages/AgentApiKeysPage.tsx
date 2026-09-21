@@ -1,21 +1,22 @@
+import { ConfirmDialog } from "@fenix/ui-components/config/ConfirmDialog";
+import { FormDialog } from "@fenix/ui-components/config/FormDialog";
+import { AppHeader } from "@fenix/ui-components/layout/app-header";
+import { AppPage } from "@fenix/ui-components/layout/app-page";
+import { Button } from "@fenix/ui-components/ui/button";
+import { Input } from "@fenix/ui-components/ui/input";
+import { Label } from "@fenix/ui-components/ui/label";
+import { Skeleton } from "@fenix/ui-components/ui/skeleton";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@fenix/ui-components/ui/table";
+import { unwrap } from "@fenix/web-runtime/api/request";
 import { useRequest } from "ahooks";
 import { AlertTriangle, Copy, KeyRound, Plus, RefreshCw, Search, ShieldCheck, Trash2 } from "lucide-react";
 import { useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
-import { ConfirmDialog } from "@/components/config/ConfirmDialog";
-import { FormDialog } from "@/components/config/FormDialog";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { Skeleton } from "@/components/ui/skeleton";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { type ApiKeyInfo, apiKeyApi } from "@/src/api/api-keys";
-import { unwrap } from "@/src/api/request";
-import { AppHeader } from "@/src/components/layout/app-header";
-import { AppPage } from "@/src/components/layout/app-page";
+import { type ApiKeyInfo, apiKeyApi } from "../../../api/api-keys";
 import { filterApiKeys, formatApiKeyDate, getApiKeyCreateErrorMessage } from "./agent-api-keys-utils";
 import "./agent-api-keys.css";
+import { NS } from "@fenix/web-runtime/i18n/namespace";
 
 /** Copy selected dialog text without moving focus outside Radix FocusScope. */
 function copyElementText(element: HTMLElement | null): boolean {
@@ -44,7 +45,7 @@ function ApiKeyTable({
   loading: boolean;
   onRevoke: (id: string) => void;
 }) {
-  const { t, i18n } = useTranslation("apikey");
+  const { t, i18n } = useTranslation(NS.APIKEY);
   if (loading) {
     return (
       <div className="api-key-table-loading">
@@ -112,7 +113,7 @@ function ApiKeyTable({
 }
 
 export function AgentApiKeysPage() {
-  const { t } = useTranslation("apikey");
+  const { t } = useTranslation(NS.APIKEY);
   const [dialogOpen, setDialogOpen] = useState(false);
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState<string | null>(null);

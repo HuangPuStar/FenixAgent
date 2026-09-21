@@ -1,5 +1,5 @@
-import type { ApiKeyInfo } from "@/src/api/api-keys";
-import { ApiError } from "@/src/api/request";
+import { ApiError } from "@fenix/web-runtime/api/request";
+import type { ApiKeyInfo } from "../../../api/api-keys";
 
 /**
  * 将创建 API key 的错误转换为用户可理解的提示文案。

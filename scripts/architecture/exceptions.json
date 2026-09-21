@@ -320,22 +320,6 @@
     },
     {
       "rule": "web-package-not-to-app",
-      "from": "@fenix/identity",
-      "to": "@fenix/web-app",
-      "owner": "1.6",
-      "removeWhen": "identity 的 web contribution 不再引用宿主内部实现，改经 WebShell 公开面或包内自持",
-      "rationale": "实测 45 处 / 15 文件：`@/src/api`(18)、`@/components/ui`(15)、`@/src/i18n`(4)、`@/src/components`(4)、`@/components/config`(2)、`@/src/pages`(1)，另有 1 处相对路径越过 `apps/web/src/__tests__/happy-dom-window`。1.2 已把该 Web 职责整体迁入 packages/platform/identity/web，引用宿主内部实现的债务随之平移，故条目由 `@fenix/resource-identity-admin` 改登记为 `@fenix/identity`（owner 与移除条件不变，仍由 1.6 负责宿主公开面的最终形态）。"
-    },
-    {
-      "rule": "platform-not-to-agent-runtime-resources-apps",
-      "from": "@fenix/identity",
-      "to": "@fenix/web-app",
-      "owner": "1.6",
-      "removeWhen": "identity 的 web contribution 不再引用宿主内部实现，改经 WebShell 公开面或包内自持（与上一条 web-package-not-to-app 同批移除）",
-      "rationale": "实测 35 处，全部是 `packages/platform/identity/web/**` 里被 dependency-cruiser 解析到 `apps/web/src/**` 的 `@/src`、`@/components` 别名。这是与上一条 `web-package-not-to-app` 完全同源的债务，只因 1.2 把身份 Web 职责从 `packages/resources/identity-admin` 迁到 `packages/platform/identity`，才落进本规则 `from: packages/platform/` 的射程（资源包路径此前不在射程内，所以当时只由上一条规则登记）。两条计数不同是因为统计口径不同：本规则按 dependency-cruiser 解析后的真实边计数，上一条按源码里的越界 specifier 计数（含无法解析到 apps/web 的相对路径）。1.6 完成 WebShell 公开面后两条一并删除。"
-    },
-    {
-      "rule": "web-package-not-to-app",
       "from": "@fenix/chat-channel",
       "to": "@fenix/web-app",
       "owner": "1.6",

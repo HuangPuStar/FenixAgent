@@ -100,10 +100,9 @@ export default defineConfig({
         __dirname,
         "../../packages/platform/identity/web/pages/agent-panel/pages/AgentApiKeysPage.tsx",
       ),
-      "@/src/pages/agent-panel/pages/AgentOrganizationsPage": path.resolve(
-        __dirname,
-        "../../packages/platform/identity/web/pages/agent-panel/pages/AgentOrganizationsPage.tsx",
-      ),
+      // `@/src/pages/agent-panel/pages/AgentOrganizationsPage` 的别名已随 §1.6 T4 删除：
+      // 该页需要宿主注入机器注册表（`machineRegistry`），route adapter 必须直连
+      // `@fenix/identity/web` 与 `@fenix/resource-machine/web`，别名无法表达这次装配。
       "@/src/pages/admin/AdminLogsPage": path.resolve(
         __dirname,
         "../../packages/resources/observer/web/pages/admin/AdminLogsPage.tsx",

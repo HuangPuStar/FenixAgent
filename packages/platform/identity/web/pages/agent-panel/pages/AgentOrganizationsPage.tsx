@@ -1,26 +1,42 @@
+import { AppHeader } from "@fenix/ui-components/layout/app-header";
+import { AppPage } from "@fenix/ui-components/layout/app-page";
+import { Button } from "@fenix/ui-components/ui/button";
+import { unwrap } from "@fenix/web-runtime/api/request";
+import { NS } from "@fenix/web-runtime/i18n/namespace";
 import { useRequest } from "ahooks";
 import { Plus } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
-import { Button } from "@/components/ui/button";
-import { type OrgMember, type OrgMemberCandidate, orgApi } from "@/src/api/organizations";
-import { type MachineRecord, registryApi } from "@/src/api/registry";
-import { unwrap } from "@/src/api/request";
-import { AppHeader } from "@/src/components/layout/app-header";
-import { AppPage } from "@/src/components/layout/app-page";
+import { type OrgMember, type OrgMemberCandidate, orgApi } from "../../../api/organizations";
 import { useOrg } from "../../../contexts/OrgContext";
 import { useSession } from "../../../lib/auth-client";
 import { OrganizationsDialogs } from "./agent-organizations-dialogs";
 import "./agent-organizations.css";
-import type { MachineCreateResult, MachineFormState, OrganizationListItem } from "./agent-organizations-types";
+import type {
+  MachineCreateResult,
+  MachineFormState,
+  MachineRegistryPort,
+  MachineView,
+  OrganizationListItem,
+} from "./agent-organizations-types";
 import { nameToSlug, parseLabels, readDefaultMachineId } from "./agent-organizations-utils";
 import { OrganizationsWorkspace } from "./agent-organizations-workspace";
 
 const EMPTY_MACHINE_FORM: MachineFormState = { name: "", labels: "", agentName: "opencode" };
 
-export function AgentOrganizationsPage() {
-  const { t } = useTranslation("orgs");
+/** 组织页的宿主注入点。 */
+export interface AgentOrganizationsPageProps {
+  /**
+   * 机器注册表能力。§2.3 禁止 platform 实现依赖 resources，因此本页不 import
+   * `@fenix/resource-machine`，由宿主 route adapter 注入其 `registryApi`；
+   * 端口形状与字段漂移的约束见 `agent-organizations-types.ts`。
+   */
+  machineRegistry: MachineRegistryPort;
+}
+
+export function AgentOrganizationsPage({ machineRegistry }: AgentOrganizationsPageProps) {
+  const { t } = useTranslation(NS.ORGS);
   const { org: currentOrg, refreshOrgs } = useOrg();
   const { data: session } = useSession();
   const currentUserId = session?.user?.id ?? null;
@@ -43,8 +59,8 @@ export function AgentOrganizationsPage() {
   const [savingEngine, setSavingEngine] = useState(false);
   const [machineCreateOpen, setMachineCreateOpen] = useState(false);
   const [machineEditOpen, setMachineEditOpen] = useState(false);
-  const [machineDeleteTarget, setMachineDeleteTarget] = useState<MachineRecord | null>(null);
-  const [machineEditTarget, setMachineEditTarget] = useState<MachineRecord | null>(null);
+  const [machineDeleteTarget, setMachineDeleteTarget] = useState<MachineView | null>(null);
+  const [machineEditTarget, setMachineEditTarget] = useState<MachineView | null>(null);
   const [machineForm, setMachineForm] = useState<MachineFormState>(EMPTY_MACHINE_FORM);
   const [machineCreateResult, setMachineCreateResult] = useState<MachineCreateResult | null>(null);
 
@@ -71,7 +87,7 @@ export function AgentOrganizationsPage() {
     data: machinesResponse,
     loading: machinesLoading,
     refresh: refreshMachines,
-  } = useRequest(() => unwrap(registryApi.list({ limit: 50 })), {
+  } = useRequest(() => unwrap(machineRegistry.list({ limit: 50 })), {
     ready: !!selectedOrgId,
     refreshDeps: [selectedOrgId],
   });
@@ -211,7 +227,7 @@ export function AgentOrganizationsPage() {
   const { run: runCreateMachine, loading: createMachineLoading } = useRequest(
     (form: MachineFormState) =>
       unwrap(
-        registryApi.create({ name: form.name.trim(), labels: parseLabels(form.labels), agentName: form.agentName }),
+        machineRegistry.create({ name: form.name.trim(), labels: parseLabels(form.labels), agentName: form.agentName }),
       ),
     {
       manual: true,
@@ -228,7 +244,7 @@ export function AgentOrganizationsPage() {
   const { run: runUpdateMachine, loading: updateMachineLoading } = useRequest(
     (machineId: string, form: MachineFormState) =>
       unwrap(
-        registryApi.update(machineId, {
+        machineRegistry.update(machineId, {
           name: form.name.trim(),
           labels: parseLabels(form.labels),
           agentName: form.agentName,
@@ -249,7 +265,7 @@ export function AgentOrganizationsPage() {
     },
   );
   const { run: runDeleteMachine, loading: deleteMachineLoading } = useRequest(
-    (machineId: string) => unwrap(registryApi.remove(machineId)),
+    (machineId: string) => unwrap(machineRegistry.remove(machineId)),
     {
       manual: true,
       onSuccess: () => {

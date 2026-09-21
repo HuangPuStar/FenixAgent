@@ -97,15 +97,14 @@ const BROWSER_SAFE_EXTERNAL: ReadonlyMap<string, string> = new Map([
 ]);
 
 /**
- * 上游 web contribution 尚未清偿的宿主别名债务：`@/...` 只允许由这些目录下的文件发射。
+ * 全图宿主别名红线：`@/...` 说明符在整张值导入图里零容忍。
  *
- * 现状（2026-09-20 实测）：本包 web 自身零别名（硬条件），但本包经 `@fenix/identity/web`（`useOrg`）
- * 与 `@fenix/model-management/web`（`modelApi` / provider 授权助手）合法消费的两个兄弟入口，
- * 内部仍有 58 处 `@/src`、`@/components`——那是它们自己的迁移未完成，本包既改不动也不该替它们掩盖。
- * 因此这里把债务**钉到具体目录**：别的包一旦也往本包图里渗别名，这条断言立刻变红；
- * 两个上游清零后集合自然变空，断言仍守着「别名不得来自第三方包」这条不变量。
+ * 历史（2026-09-20 实测）：本包 web 自身一直零别名，但本包经 `@fenix/identity/web`（`useOrg`）与
+ * `@fenix/model-management/web`（`modelApi` / provider 授权助手）合法消费的两个兄弟入口当时合计仍有
+ * 58 处 `@/src`、`@/components`；本包改不动也不该替它们掩盖，于是把债务**钉到具体目录**
+ * （`UPSTREAM_ALIAS_DEBT_DIRS`）。§1.6 T4 把身份包的别名归零（model-management 此前已归零）后，
+ * 这份白名单失去全部成员，原地删除并升级为严格断言：任何包往本包图里渗别名都直接失败。
  */
-const UPSTREAM_ALIAS_DEBT_DIRS = ["packages/platform/identity/web/", "packages/resources/model-management/web/"];
 const ALIAS_SPECIFIER = /^@\//;
 
 /**
@@ -237,18 +236,13 @@ describe("agent-config web 入口浏览器可达面", () => {
   });
 
   // 宿主别名会让包离开 apps/web 的 tsconfig/vite 配置后无法解析，属于 1.3 的硬性禁止项。
-  // 上游（identity / model-management）未清偿的别名按目录登记，出现第三处即失败。
-  test("本包零宿主别名；上游别名债务只来自登记的目录", () => {
+  // 两个上游（identity / model-management）均已归零，因此本包自己的源码与整张图都要求零别名。
+  test("本包与全图零宿主别名", () => {
     const ownOffenders = ownReferences.filter((ref) => ALIAS_SPECIFIER.test(ref.specifier));
     expect(offendersOf(ownOffenders)).toEqual([]);
 
-    const upstreamDebt = graph.references.filter((ref) => ALIAS_SPECIFIER.test(ref.specifier));
-    const unregistered = upstreamDebt.filter(
-      (ref) => !UPSTREAM_ALIAS_DEBT_DIRS.some((directory) => repoPath(ref.from).startsWith(directory)),
-    );
-    expect(unregistered.map(describeRef)).toEqual([]);
-    // 债务仍在（两个上游此刻确实没清零）：断言不能因「集合为空」而假绿。
-    expect(upstreamDebt.length).toBeGreaterThan(0);
+    const graphOffenders = graph.references.filter((ref) => ALIAS_SPECIFIER.test(ref.specifier));
+    expect(graphOffenders.map(describeRef)).toEqual([]);
   });
 
   // 跨包必须走 exports 出口：@fenix/*/src 之类的深路径会把别的包的内部实现拖进浏览器图。

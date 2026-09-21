@@ -70,7 +70,7 @@ WebShell 从静态 registry 收集各资源包的 web contribution（不反向�
 | T1 | 别名表与依赖声明归一 | 已交付 | `5e342aa31` |
 | T2 | 宿主零消费死代码与重复副本删除 | 已交付 | 见下方 §7.2 |
 | T3 | `@fenix/ui-components` 扩面 | 已交付 | `b858bf68f` |
-| T4 | `identity/web` 清零 + i18n | 待办 | — |
+| T4 | `identity/web` 清零 + i18n | 4a 已交付 / 4b 待办 | 见下方 §7.3 |
 | T5 | `chat-channel/web` 清零 | 待办 | — |
 | T6 | `agent-runtime/web` 收敛 | 待办 | — |
 | T7 | 5 条 `special-dependency` 消除 | 待办 | — |
@@ -113,6 +113,35 @@ WebShell 从静态 registry 收集各资源包的 web contribution（不反向�
 ### 6.3 T2（本节）
 
 见 §7.2。
+
+### 6.4 T4（本节，已拆为 4a / 4b）
+
+T4 计划为一片，实测后发现两半的**失败面**不同，故拆成两片各自成绿：
+
+- **4a**（本次交付）：identity 别名归零 + `web/i18n` 建设 + **删 2 条台账**。这一半的改动会让
+  T3 遗留的三条「上游别名债务」白名单断言与 `RMD_08_MOVES` 的目标存在性断言**同时变红**，
+  必须同批处理（见 §7.3 的连带改动），否则 4a 无法独立成绿。
+- **4b**（待办）：移除 3 处 `mock.module("@fenix/identity/web", …)`。
+
+原计划的判据「3 条固化断言不会破 4a」**是错的**：
+
+| 计划预判 | 实际 |
+| --- | --- |
+| 「3 条断言是宽容过滤器，identity 清零后集合自然为空，不破 4a」 | agent-config 的 `expect(upstreamDebt.length).toBeGreaterThan(0)` 是**非空硬断言**（防空集假绿），必然变红；mcp / skill 的 `isUpstreamAliasDebt` 随白名单一起失去意义，留着就是死代码 |
+| 「身份包 45/35 处别名」 | 实测 mcp 侧还多一处**非别名**连带：identity 的 API Key 页面从宿主 `@/components/ui/label`（别名解析不到、图在此断掉）改为 `@fenix/ui-components/ui/label`（可解析、图继续下行），于是 `@radix-ui/react-label` 首次进入 mcp 的浏览器可达面，需要显式评审后进白名单 |
+
+另外两项**计划外但由本片直接造成**的改动：
+
+1. 计划把「宿主 `lib/api/hooks/types` 簇改指并删除」全部归 T8；但 `apps/web/src/api/registry.ts`
+   的最后消费者正是 identity 组织机器页的 `@/src/api/registry` 别名，本片把该消费改为端口注入后它立即零消费，
+   且与 `packages/resources/machine/web/api/registry.ts` **除 import 说明符外逐字相同**（`diff` 实测）。
+   留着就是「零消费的宿主重复副本」——正是 T2 的删除口径，故随本片删除并改挂 `RMD_08_RELOCATED`。
+2. identity 组织页需要机器注册表能力，而 §2.3 禁止 platform 实现依赖 resources。经用户裁定采用
+   **窄端口注入**：identity 声明 `MachineView` / `MachineRegistryPort`，宿主 route adapter 注入
+   `@fenix/resource-machine/web` 的 `registryApi`，字段漂移在组合根变成类型错误。
+   这顺带把 `apps/web/src/routes/agent/_panel/organizations.tsx` 改成直连包入口，
+   删掉一条 vite 别名——方向与 T11 一致，但**只**在该页做（`AgentApiKeysPage` 的别名与 `apikeys.tsx`
+   保持原样，留给 T11，遵循「禁止顺手重构无关代码」）。
 
 ---
 
@@ -186,3 +215,109 @@ WebShell 从静态 registry 收集各资源包的 web contribution（不反向�
   其余是历史记录（迁移计划、review 文档、`FUNCTIONAL_MODULE_INVENTORY.md`、`docs/need-to-change/25,27`）：
   - `docs/arch/tech-stack-frontend.md:47,54` 仍把 `BatchActionBar` / `EmptyState` 登记为 `apps/web/components/config/` 的现存组件
   - `docs/developer/guide/frontend-development.md:233` 仍把 `apps/web/components/config/` 描述为统一交互模式的来源目录
+
+### 7.3 T4a `identity/web` 别名清零 + i18n 建设（2026-09-21）
+
+#### 别名归零
+
+`packages/platform/identity/web/**` 的宿主越界引用归零：**44 处 `@/...` 别名 + 1 处相对越界**
+（`__tests__/organization-invite-dialog.test.tsx` 的 `../../../../../apps/web/src/__tests__/happy-dom-window`）。
+两者都改为包自有依赖或包内相对路径：
+
+| 原说明符 | 去向 |
+| --- | --- |
+| `@/src/api/request`（`unwrap` / `request`） | `@fenix/web-runtime/api/request` |
+| `@/src/i18n`（`NS`） | `@fenix/web-runtime/i18n/namespace` |
+| `@/components/ui/*`、`@/components/config/*` | `@fenix/ui-components/{ui,config}/*` |
+| `@/src/components/layout/*` | `@fenix/ui-components/layout/*` |
+| `@/src/pages/agent-panel/shared/agent-master-detail-workspace` | `@fenix/ui-components/components/agent-master-detail-workspace` |
+| `@/src/api/{api-keys,organizations}` | 包内相对 `../../../api/*`（别名此前就指向 identity 自己的文件，属别名自指，改后行为不变） |
+| `apps/web/src/__tests__/happy-dom-window` | `@fenix/ui-components/testing`（T3 建立的单份 happy-dom 入口；两者行为一致，仅注释不同） |
+
+#### 机器注册表能力改走窄端口注入
+
+identity 的组织页有机器 Tab（列表 / 预注册 / 改删），此前经 `@/src/api/registry` 取宿主的 `registryApi`。
+`@/src` 别名归零后这条路径不存在，而 `.dependency-cruiser.cjs` 的
+`platform-not-to-agent-runtime-resources-apps`（error）禁止 `packages/platform/**` → `packages/resources/**`，
+identity 不能直连 `@fenix/resource-machine/web`。经用户裁定采用**窄端口注入**：
+
+- identity 在 `agent-organizations-types.ts` 声明结构类型 `MachineView` 与 `MachineRegistryPort`
+  （`list` / `create` / `update` / `remove` 四个方法的形状），`AgentOrganizationsPage` 新增
+  `machineRegistry: MachineRegistryPort` prop；宿主与包之间不再有 `MachineRecord` 这个名字的耦合。
+- 宿主 route adapter `apps/web/src/routes/agent/_panel/organizations.tsx` 把
+  `@fenix/resource-machine/web` 的 `registryApi` 注入进去——组合只发生在 apps（唯一 composition root）。
+- 漂移后果：`registryApi` 的签名一旦变化，在**组合根**变成类型错误（`tsc (web)` 门禁），
+  而不是运行期取到 `undefined`。
+
+#### i18n 归位
+
+- 字典经 `git mv` 移到 `web/i18n/locales/{en,zh}/{apikey,orgs}.json`（apikey 14 顶层 / 35 叶子，
+  orgs 46 顶层 / 116 叶子，两语言键集一致）。
+- 新建 `web/i18n/namespace.ts`（`APIKEY_NS` / `ORGS_NS` 取自 `@fenix/web-runtime/i18n/namespace` 的中心表，
+  不复制字面量）与 `web/i18n/index.ts`（转出两个 NS 常量 + `apikeyResources` / `orgResources`）。
+- `package.json` 新增出口 `"./web/i18n"`（带 `web/` 前缀——本包 `exports` 的 `./web` 本身带前缀，
+  与 ui-components 省略前缀的 `./i18n` 形态不同）。
+- 宿主 `apps/web/src/i18n/index.ts` 不再深相对路径读 identity 的 JSON，改为
+  `import { APIKEY_NS, apikeyResources, ORGS_NS, orgResources } from "@fenix/identity/web/i18n"`，
+  并从 `hostResources` 移除这两个命名空间、加入 `packageResources`。
+
+#### 新增守护测试
+
+`packages/platform/identity/web/__tests__/identity-i18n.test.ts`（11 例）：两字典 en/zh 键集一致与规模底线、
+插值占位符一致、源码字面量 `t("key")` 全命中、动态键族齐备（`roles.*`、`machineStatus.*`、
+`createMachineDialog.*` / `editMachineDialog.*`）、无带命名空间前缀的寄居键、NS 常量等于中心表取值且与文件名一致、
+出口指向同一批 JSON 且不含宿主路径、`package.json` 的 `./web/i18n` 出口形态。
+
+其中 **T9 债务被显式登记而非豁免**：`ChangePasswordDialog.tsx` 借宿主 `NS.SETTINGS` 的 11 个键、
+`OrgContext.tsx` 借宿主 `NS.COMPONENTS` 的 `orgSwitchFailed`，共 12 个键此刻不在 identity 字典内
+（已核实它们确实存在于宿主字典）。测试用 `BORROWED_KEYS` 双向钉住：白名单外的缺失一律失败，
+且这些键**不得**出现在本包字典里——T9 真把键搬进来时该断言先失败，迫使白名单与债务注释一起删除。
+
+#### 连带改动（台账与断言必须与代码削减同批）
+
+- `scripts/architecture/exceptions.json`：删除两条台账条目
+  `web-package-not-to-app / @fenix/identity / @fenix/web-app`（原登记 45 处 / 15 文件）与
+  `platform-not-to-agent-runtime-resources-apps / @fenix/identity / @fenix/web-app`（原登记 35 处）。
+  门禁计数由 27 + 12 变为 **26 + 11 = 37 条**，两侧均无「精确归零」报错。
+- 三条上游别名债务白名单随清零一起删除并**反向化**（这正是 4a 必须连带处理的原因，见 §6.4）：
+  - `packages/resources/agent-config/web/__tests__/agent-config-browser-surface.test.ts`：
+    删 `UPSTREAM_ALIAS_DEBT_DIRS`，`expect(upstreamDebt.length).toBeGreaterThan(0)` 改为
+    `expect(graphOffenders).toEqual([])`（全图零别名）
+  - `packages/resources/mcp/web/__tests__/mcp-browser-surface.test.ts`、`skill` 同名文件：
+    删 `UPSTREAM_ALIAS_DEBT_DIR` 与 `isUpstreamAliasDebt`，两处调用点改为严格过滤
+  - `packages/resources/task/web/__tests__/task-browser-surface.test.ts`：仅更新引用该白名单的注释
+- mcp 白名单新增 `@radix-ui/react-label`：identity 的 API Key 页改指 `@fenix/ui-components/ui/label` 后，
+  该原语首次进入 mcp 的值导入图（此前 `@/components/ui/label` 是别名，图在此断掉）。
+  其余 8 个包的 browser-surface 早已收录该原语。
+- `scripts/__tests__/rmd-08-migration.test.ts`：`["web/src/api/registry.ts", "apps/web/src/api/registry.ts"]`
+  从 `RMD_08_MOVES` 移入 `RMD_08_RELOCATED`（owner = `packages/resources/machine/web/api/registry.ts`），
+  长度断言 `153 → 152`、`9 → 10`，文件头补第 6 条改判说明。
+- 删除 `apps/web/src/api/registry.ts`（172 行）+ `apps/web/vite.config.ts` 删除
+  `@/src/pages/agent-panel/pages/AgentOrganizationsPage` 别名（留注释说明为何别名无法表达这次装配）。
+  同批的两处注释订正：`packages/resources/machine/web/index.ts` 与
+  `machine-browser-surface.test.ts` 关于「identity 直连 registryApi」的描述已过期，改为「宿主 route adapter 注入」。
+- `packages/platform/identity/package.json` 新增依赖 `@fenix/ui-components`、`@fenix/web-runtime`
+  与 devDependency `happy-dom`（版本对齐 `^20.9.0`）。
+
+#### 明确不在本片范围
+
+- T9：`ChangePasswordDialog` / `OrgContext` 的借键（已由测试双向钉住，见上）。
+- T11：`AgentApiKeysPage` 的 `@/src` 别名与 `apps/web/src/routes/agent/_panel/apikeys.tsx` 的骨架
+  （该页不需要注入，别名仍然可用）。本片只动了因端口注入而**必须**动的 organizations 一页。
+- T4b：3 处 `mock.module("@fenix/identity/web", …)`。
+
+#### 验证
+
+- `bun test packages/platform/identity` → 52 pass / 0 fail（含新增 11 例）
+- `bun run architecture:check` → ✓ 2240 files / 10 rules / **26 条**已登记例外
+- `bun run check:dependencies` → ✓ 2392 modules / **11 条**已登记例外 / 0 条新增违规
+- `precheck` → ✓ All passed（server-and-script-tests 770 pass；package-tests 7337 pass / 2 skip / 0 fail；
+  web-app-tests 946 pass）
+- `build:web` → rc=0。dist 证据（`grep -F <仓库相对路径> apps/web/dist/assets/*.map`）：
+  - 命中 `packages/platform/identity/web/pages/agent-panel/pages/AgentOrganizationsPage.tsx`（`web-BQFMzAZk.js.map`）
+    与 `packages/platform/identity/web/i18n/locales/en/orgs.json`（`i18n-C-6WWKdl.js.map`）——
+    字典确经包出口注册，不再走宿主路径
+  - 命中 `packages/resources/machine/web/api/registry.ts`（`web-DHPVSti_.js.map`）——
+    机器注册表来自包内唯一实现
+  - **未**命中 `apps/web/src/api/registry.ts` —— 宿主重复副本确实已离开产物
+  - `main-wVYkOXRU.js` 同时动态 import 上述两个 `web-*` chunk，组合根的注入在产物中可见

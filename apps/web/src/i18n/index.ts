@@ -6,11 +6,8 @@
 //   api client）拉进首屏 bundle。命名空间字面量取自 `@fenix/web-runtime/i18n/namespace` 的中心表和各包
 //   导出的常量，宿主不复制字面量（两份字面量一旦分歧，症状是文案整片回退成 key 回显且构建期不可见）。
 // - **宿主自有**：通用壳层（common / login / sidebar / …）与尚未迁出宿主的旧命名空间，仍读 `./locales/**`。
-//
-// 例外：身份族的 apikey / orgs 仍以深层相对路径读取 `packages/platform/identity/web/i18n` 下的 JSON——
-// 该包尚未提供 `/web/i18n` 出口（文件还是旧的 `{en,zh}/*.json` 布局）。属 `@fenix/identity` 的 i18n
-// 出口债，随该包前端收敛一并处理，见 review 文档「跨资源收敛」。
 import { AGENTS_NS, agentResources } from "@fenix/agent-config/web/i18n";
+import { APIKEY_NS, apikeyResources, ORGS_NS, orgResources } from "@fenix/identity/web/i18n";
 import { MODELS_NS, modelManagementResources } from "@fenix/model-management/web/i18n";
 import { CHANNELS_NS, channelsResources } from "@fenix/resource-channel/web/i18n";
 import { KNOWLEDGE_NS, knowledgeResources } from "@fenix/resource-knowledge/web/i18n";
@@ -26,10 +23,6 @@ import { NS as SHARED_NS } from "@fenix/web-runtime/i18n/namespace";
 import i18n from "i18next";
 import LanguageDetector from "i18next-browser-languagedetector";
 import { initReactI18next } from "react-i18next/initReactI18next";
-import apikeyEN from "../../../../packages/platform/identity/web/i18n/en/apikey.json";
-import orgsEN from "../../../../packages/platform/identity/web/i18n/en/orgs.json";
-import apikeyZH from "../../../../packages/platform/identity/web/i18n/zh/apikey.json";
-import orgsZH from "../../../../packages/platform/identity/web/i18n/zh/orgs.json";
 import agentHomeEN from "./locales/en/agentHome.json";
 import agentPanelEN from "./locales/en/agentPanel.json";
 import commonEN from "./locales/en/common.json";
@@ -84,8 +77,6 @@ const hostResources = {
     [NS.AGENT_PANEL]: agentPanelEN,
     [NS.AGENT_HOME]: agentHomeEN,
     [NS.TOOL_NARRATOR]: toolNarratorEN,
-    [NS.APIKEY]: apikeyEN,
-    [NS.ORGS]: orgsEN,
   },
   zh: {
     [NS.COMMON]: commonZH,
@@ -100,8 +91,6 @@ const hostResources = {
     [NS.AGENT_PANEL]: agentPanelZH,
     [NS.AGENT_HOME]: agentHomeZH,
     [NS.TOOL_NARRATOR]: toolNarratorZH,
-    [NS.APIKEY]: apikeyZH,
-    [NS.ORGS]: orgsZH,
   },
 } as const;
 
@@ -112,6 +101,8 @@ const hostResources = {
 const packageResources = {
   en: {
     [AGENTS_NS]: agentResources.en,
+    [APIKEY_NS]: apikeyResources.en,
+    [ORGS_NS]: orgResources.en,
     [MODELS_NS]: modelManagementResources.en,
     [OBSERVER_NS]: observerResources.en,
     [SKILL_NS]: skillResources.en,
@@ -126,6 +117,8 @@ const packageResources = {
   },
   zh: {
     [AGENTS_NS]: agentResources.zh,
+    [APIKEY_NS]: apikeyResources.zh,
+    [ORGS_NS]: orgResources.zh,
     [MODELS_NS]: modelManagementResources.zh,
     [OBSERVER_NS]: observerResources.zh,
     [SKILL_NS]: skillResources.zh,

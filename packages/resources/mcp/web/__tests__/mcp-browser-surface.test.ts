@@ -55,6 +55,7 @@ const BROWSER_SAFE_EXTERNAL: ReadonlyMap<string, string> = new Map([
   ["@radix-ui/react-collapsible", "无样式原语（ui/collapsible 传递依赖，编辑器 OAuth 折叠面板）"],
   ["@radix-ui/react-tabs", "无样式原语（ui/tabs 传递依赖，编辑器手工/JSON 双 Tab）"],
   ["@radix-ui/react-scroll-area", "无样式原语（ui/scroll-area 传递依赖）"],
+  ["@radix-ui/react-label", "无样式原语（ui/label 传递依赖，经 identity 的 API Key 页面进入）"],
   ["class-variance-authority", "类名变体工具（ui/* 传递依赖），纯函数"],
   ["clsx", "类名拼接工具（lib/cn 传递依赖），纯函数"],
   ["tailwind-merge", "Tailwind 类名去重（lib/cn 传递依赖），纯函数"],
@@ -68,14 +69,13 @@ const BROWSER_SAFE_EXTERNAL: ReadonlyMap<string, string> = new Map([
 ]);
 
 /**
- * 上游 web contribution 尚未清偿的宿主别名债务：`@/...` 只允许由该目录下的文件发射。
+ * 全图宿主别名红线：`@/...` 说明符在整张值导入图里零容忍。
  *
- * 现状（2026-09-20 实测）：本包 web 自身零别名（硬条件），但 `@fenix/identity/web` 的
- * 14 个文件仍有 33 处 `@/src`、`@/components`——那是身份包自己的迁移未完成，本包既改不动也不该
- * 替它掩盖。因此这里把它**钉到具体目录**：别的包一旦也往本包图里渗别名，这条断言立刻变红。
- * 身份包清零后本断言的集合自然变空，仍然守着「别名不得来自第三方包」这条不变量。
+ * 历史（2026-09-20 实测）：本包 web 自身一直零别名，但上游 `@fenix/identity/web` 当时仍有 33 处
+ * `@/src`、`@/components`；本包改不动也不该替它掩盖，于是把债务**钉到具体目录**
+ * （`UPSTREAM_ALIAS_DEBT_DIR`）。§1.6 T4 把身份包的别名归零后，这份白名单失去唯一成员，
+ * 原地删除并升级为严格断言：任何包往本包图里渗别名都直接失败，不再有「来自哪个目录」的例外。
  */
-const UPSTREAM_ALIAS_DEBT_DIR = "packages/platform/identity/web/";
 const ALIAS_SPECIFIER = /^@\//;
 
 /** 到达的包内文件（WEB_ROOT 相对）。 */
@@ -99,9 +99,6 @@ const reachedWebFiles = new Set(
  */
 const reachedPackageFiles = new Set(graph.files.filter((file) => !file.startsWith(`${WEB_ROOT}${sep}`)).map(repoPath));
 const externals = graph.references.filter((ref) => ref.kind === "external");
-/** 上游别名债务：本包不可修，但仍要求「只来自 identity，且不来自本包」。 */
-const isUpstreamAliasDebt = (ref: { from: string; specifier: string }): boolean =>
-  ALIAS_SPECIFIER.test(ref.specifier) && repoPath(ref.from).startsWith(UPSTREAM_ALIAS_DEBT_DIR);
 
 /** 收集 web 下的源码文件（排除测试与字典），供「包内不得另建 context」这类源码级断言使用。 */
 function collectSources(directory: string): string[] {
@@ -191,11 +188,9 @@ describe("mcp web 入口浏览器可达面", () => {
     expect(offendersOf(offenders)).toEqual([]);
   });
 
-  // 别名债务必须钉死在来源目录：别的包一旦也把 `@/...` 渗进本包图，这条会指认出来。
-  test("全图宿主别名只允许来自身份包的 web contribution", () => {
-    const offenders = graph.references.filter(
-      (ref) => ALIAS_SPECIFIER.test(ref.specifier) && !isUpstreamAliasDebt(ref),
-    );
+  // 全图零别名：上游身份包已于 §1.6 T4 归零，白名单删除后这里不再有「来自哪个目录」的例外。
+  test("全图零宿主别名（本包与上游包均不得发射 @/ 说明符）", () => {
+    const offenders = graph.references.filter((ref) => ALIAS_SPECIFIER.test(ref.specifier));
     expect(offendersOf(offenders)).toEqual([]);
   });
 
@@ -214,9 +209,8 @@ describe("mcp web 入口浏览器可达面", () => {
   });
 
   // 未列入白名单的裸包说明符可能是「忘记声明依赖」或「引入了非浏览器库」，必须显式评审。
-  // 上游别名债务已由上面的来源断言单独钉住，这里不重复报案；其余外部依赖一律要求白名单收录。
   test("包外运行时依赖在白名单内", () => {
-    const offenders = externals.filter((ref) => !BROWSER_SAFE_EXTERNAL.has(ref.root) && !isUpstreamAliasDebt(ref));
+    const offenders = externals.filter((ref) => !BROWSER_SAFE_EXTERNAL.has(ref.root));
     expect(offendersOf(offenders)).toEqual([]);
   });
 

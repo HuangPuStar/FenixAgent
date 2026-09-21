@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import type { MachineRecord } from "@/src/api/registry";
+import type { MachineView } from "../pages/agent-panel/pages/agent-organizations-types";
 import {
   canOperateMachine,
   nameToSlug,
@@ -7,7 +7,7 @@ import {
   readDefaultMachineId,
 } from "../pages/agent-panel/pages/agent-organizations-utils";
 
-const MACHINE: MachineRecord = {
+const MACHINE: MachineView = {
   id: "machine-1",
   organizationId: "org-1",
   userId: null,
@@ -16,12 +16,6 @@ const MACHINE: MachineRecord = {
   status: "offline",
   machineInfo: null,
   labels: [],
-  maxSessions: 1,
-  heartbeatIntervalMs: 1000,
-  lastHeartbeatAt: null,
-  registeredAt: 1,
-  createdAt: 1,
-  updatedAt: 1,
 };
 
 describe("agent organization view utilities", () => {

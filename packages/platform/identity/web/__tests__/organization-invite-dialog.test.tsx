@@ -1,13 +1,24 @@
 import { afterAll, afterEach, describe, expect, test } from "bun:test";
+import { initializeHappyDomWindow } from "@fenix/ui-components/testing";
 import { Window } from "happy-dom";
+import { createInstance } from "i18next";
 import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { I18nextProvider } from "react-i18next";
-import i18n from "@/src/i18n";
-import { initializeHappyDomWindow } from "../../../../../apps/web/src/__tests__/happy-dom-window";
 import type { OrgMemberCandidate } from "../api/organizations";
+import { ORGS_NS, orgResources } from "../i18n";
 
 (globalThis as Record<string, unknown>).IS_REACT_ACT_ENVIRONMENT = true;
+
+/** 渲染用的真实 i18next 实例，只挂本包 en 字典；理由见 organization-id-display.test.tsx。 */
+const i18n = createInstance();
+void i18n.init({
+  lng: "en",
+  fallbackLng: "en",
+  defaultNS: ORGS_NS,
+  initAsync: false,
+  resources: { en: { [ORGS_NS]: orgResources.en } },
+});
 const win = initializeHappyDomWindow(new Window());
 const globals = globalThis as Record<string, unknown>;
 const originalGlobals = new Map(
