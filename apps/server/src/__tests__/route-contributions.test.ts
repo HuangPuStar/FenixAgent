@@ -5,6 +5,7 @@ import { Elysia } from "elysia";
 import { bootstrapServerAssembly } from "../bootstrap";
 import {
   API_SLOT,
+  APP_SLOT,
   mountServerRouteContribution,
   resetRouteContributions,
   takeRouteContributions,
@@ -16,9 +17,10 @@ import {
  * 装配期路由贡献的登记契约（1.5e）。
  *
  * 时序是这里的关键：`bootstrapServerAssembly()` 跑在宿主 app 构造之前（review §3.3），贡献只能先被
- * 「构造 + 登记到槽」，再由 `createWebApp` 从槽里取出挂载。因此本文件锁定三件事——按槽分组、未知槽
- * 当场失败、贡献构造函数必须产出 Elysia 实例；真实的端到端装配（真实 profile + 真实 registry）由
- * `module-assembly.test.ts` 与手工启动验证覆盖。
+ * 「构造 + 登记到槽」，再由 `createWebApp` / `createApiApp` / 顶层根 app 从槽里取出挂载。因此本文件锁定
+ * 四件事——按槽分组、未知槽当场失败、贡献构造函数必须产出 Elysia 实例、兜底路由靠自己的大 `order` 排在
+ * 同槽末尾；真实的端到端装配（真实 profile + 真实 registry）由 `module-assembly.test.ts` 与手工启动验证
+ * 覆盖。
  */
 
 /** fixture profile：只启用 probe 这一个资源模块，Shell 槽位沿用发布组合的绑定。 */
@@ -74,17 +76,19 @@ beforeEach(() => {
   resetRouteContributions();
 });
 
-// 贡献按 slot 分组登记：`/web`、`/web/config` 与 `/api` 是三个聚合实例，挂错面等于整组端点前缀错位。
+// 贡献按 slot 分组登记：`/web`、`/web/config`、`/api` 与顶层 `app` 是四个聚合实例，挂错面等于整组端点前缀错位。
 test("路由贡献按聚合槽登记", async () => {
   await assemble([
     { id: "probe.web", kind: "app-route", slot: WEB_SLOT, value: () => routeInstance("/probe") },
     { id: "probe.config", kind: "app-route", slot: WEB_CONFIG_SLOT, value: () => routeInstance("/config/probe") },
     { id: "probe.api", kind: "app-route", slot: API_SLOT, value: () => routeInstance("/api/probe") },
+    { id: "probe.app", kind: "app-route", slot: APP_SLOT, value: () => routeInstance("/probe-app") },
   ]);
 
   expect(slottedRoutes(WEB_SLOT)).toEqual(["GET /probe"]);
   expect(slottedRoutes(WEB_CONFIG_SLOT)).toEqual(["GET /config/probe"]);
   expect(slottedRoutes(API_SLOT)).toEqual(["GET /api/probe"]);
+  expect(slottedRoutes(APP_SLOT)).toEqual(["GET /probe-app"]);
 });
 
 // 未启用任何贡献到某一面的模块时，槽是空数组而不是报错：profile 决定哪些面有路由。
@@ -108,11 +112,28 @@ test("未知聚合槽名拒绝装配", async () => {
   ).rejects.toThrow('指向未知聚合槽 "content"');
 });
 
-// 默认槽是 `app`，1.5f 接入顶层 app 前它没有读者——这期间声明不带 slot 的贡献必须报错而不是被静默丢弃。
-test("未声明 slot 的贡献在顶层 app 槽接线前拒绝装配", async () => {
-  await expect(
-    assemble([{ id: "probe.default", kind: "app-route", value: () => routeInstance("/probe") }]),
-  ).rejects.toThrow('指向未知聚合槽 "app"');
+// 默认槽是 `app`：不声明 slot 的贡献落在顶层应用面，且与显式写 `slot: "app"` 等价（1.5f-1b 起该槽有读者）。
+test("未声明 slot 的贡献落在顶层 app 槽", async () => {
+  await assemble([{ id: "probe.default", kind: "app-route", value: () => routeInstance("/probe") }]);
+
+  expect(slottedRoutes(APP_SLOT)).toEqual(["GET /probe"]);
+});
+
+// 兜底通配路由靠贡献自己的大 `order` 排到同槽末尾：宿主不维护「谁必须最后挂」的清单，声明序在前也不
+// 妨碍它被后移（`Array.sort` 自 ES2019 起稳定，同 order 的贡献才保持拓扑序与声明序）。
+test("order 大的贡献在同一槽内最后挂载", async () => {
+  await assemble([
+    {
+      id: "probe.app-late",
+      kind: "app-route",
+      slot: APP_SLOT,
+      order: 100,
+      value: () => routeInstance("/probe-late"),
+    },
+    { id: "probe.app", kind: "app-route", slot: APP_SLOT, value: () => routeInstance("/probe") },
+  ]);
+
+  expect(slottedRoutes(APP_SLOT)).toEqual(["GET /probe", "GET /probe-late"]);
 });
 
 // 贡献的 value 必须是惰性构造函数（manifest 是静态描述符，存不了实例）；类型写错要当场报错。
@@ -457,5 +478,26 @@ test("真实 profile 装配后各包的路由进入对应槽", async () => {
     "POST /api/system/sandbox-server/servers/:serverId/sandboxes/:sandboxId/commands",
     // workflow
     "POST /api/workflows/:workflowId/execute",
+  ]);
+  expect(slottedRoutes(APP_SLOT)).toEqual([
+    // agent-runtime（`/acp` 下四条是 WS 升级，method 记为 WS）
+    "GET /acp/agents",
+    "WS /acp/ws",
+    "WS /acp/file-ws",
+    "WS /acp/yjs/:agentId",
+    "WS /acp/relay/:agentId",
+    // mcp
+    "ALL /mcp/knowledge",
+    // skill
+    "GET /skills/:name/download",
+    // agent-config（站点代理；`/app-*` 兜底见末尾）
+    "ALL /web/site/deploy/:appId",
+    "ALL /web/site/deploy/:appId/*",
+    // workflow
+    "ALL /workflow-ui/",
+    "ALL /workflow-ui/:path",
+    "POST /hooks/:publicHash",
+    // agent-config 兜底（`order: 100`，必须在所有具体路由之后）
+    "ALL /*",
   ]);
 });

@@ -1561,3 +1561,120 @@ model-management 的 `/api/system/model-gateway`（第 11）排在 observer 的 
   `/api/system/*` 路由）。**`scripts/architecture/exceptions.json` 的 `handwrittenRegistryBaseline` 里
   `"@fenix/resource-observer"` 一行因此成为陈旧条目**——该字段整体按计划在 1.5f 收尾片删除，本片不动它，
   以免留下「规则已删、基线还在」的中间态。
+
+### 1.5f-1b 顶层 `app` 槽落地：7 条协议路由手写挂载清零（2026-09-21）
+
+分片表 1.5f 的第二片，前置是 1.5f-1a（`api` 槽）。口径不变：只做协议路由，生命周期/启动编排留下片。
+
+**一、做了什么**
+
+`APP_SLOT = "app"` 加回 `READABLE_SLOTS`（上一片刻意不加，理由见 1.5f-1a §四——读数与写数必须同批到位），
+五个包各加一个装配函数与一条 `slot: "app"` 贡献：
+
+| 包 | 装配函数 | 贡献 id | 路由（槽内实际登记） |
+|---|---|---|---|
+| agent-runtime | `createAgentRuntimeAcpAppRoutes(host)` | `agent-runtime.app-acp` | `GET /acp/agents` + 4 条 WS（`/acp/ws`、`/file-ws`、`/yjs/:agentId`、`/relay/:agentId`） |
+| mcp | `createKnowledgeMcpAppRoutes()` | `mcp.app-knowledge` | `ALL /mcp/knowledge` |
+| skill | `createSkillDownloadAppRoutes()` | `skill.app-download` | `GET /skills/:name/download` |
+| agent-config | `createAgentConfigAgentSitesProxyRoutes(host)` | `agent-config.app-site-deploy` | `ALL /web/site/deploy/:appId`、`/:appId/*` |
+| agent-config | `createAgentConfigAgentSitesCompatRoutes(host)` | `agent-config.app-site-compat`（**`order: 100`**） | `ALL /*` |
+| workflow | `createWorkflowStaticAppRoutes(host)` | `workflow.app-static` | `ALL /workflow-ui/`、`/workflow-ui/:path` |
+| workflow | `createWorkflowHooksAppRoutes()` | `workflow.app-hooks` | `POST /hooks/:publicHash` |
+
+`main.ts` 的 7 条 `.use(...)` 收成一条 `.use([...takeRouteContributions(APP_SLOT)])` 放在链尾；相应 import 与
+只服务于它们的 `authenticateSiteRequest`、`authGuardPlugin`、`authenticateRequest` 宿主导入一并删除
+（后两者仍由 `bootstrap/route-host.ts` 持有，`main.ts` 不再直接消费）。`route-contributions.test.ts` 的真实
+profile 断言新增 `APP_SLOT` 分组（13 条路径），并新增一条 `order` 用例、把「未声明 slot 拒绝装配」改成
+「未声明 slot 落在 `app` 槽」。
+
+两处模块级单例（`knowledgeMcpRoutes`、`skillDownloadRoutes`）的装配函数只包一层惰性构造函数、不复制第二份
+实例——它们不是工厂（自鉴权、无守卫可注入），贡献的 `value` 却必须是函数，包一层是最小改动。两处都在包内
+注释里写明了理由。
+
+**二、【需审核】宿主 `authenticateSiteRequest` 删除、投影移入包内**
+
+上一片起，站点代理的请求级认证曾是宿主 `plugins/auth.ts` 的一个导出（`AuthenticateSiteRequest` 类型的实现，
+投影出 `{userId, organizationId}`）。本片把它删掉，改由 `agent-config` 的 `assembly.ts` 的 `siteAuthenticator(host)`
+在包内做同一份投影。
+
+理由是职责归属：`ServerRouteHost` 已经有 `authenticateRequest` 端口，站点代理要的只是它的一个投影，而投影规则
+（「可见性判定只认 userId / organizationId」）属于包自己的依赖契约——留在宿主等于让宿主的 `plugins/auth.ts`
+替包决定包需要什么。删除后 `ServerRouteHost` **仍然是 10 个端口**（没有新增，也没有减少），包侧不 import 宿主
+的 `AuthContext`：投影只按结构化类型读 `authContext` 上的两个字段。
+
+代价是这份投影从「宿主唯一实现」变成「包内实现 + 宿主端口实现」，`authenticateRequest` 本身仍是唯一认证源。
+若不认可这个归属，替代方案是把投影作为一个新的宿主端口加进 `ServerRouteHost`（第 11 项），但那样会把
+1.5f-1a §二已经点出的「接口正在承载宿主能力之外的东西」再推一步。
+
+**三、【需审核】`app` 槽内的挂载顺序与手写序不同**
+
+槽内顺序 = 拓扑序 + manifest 内声明序（+ `order` 稳定排序），实际登记序见上表的行序：`acp` → `mcp` →
+`skill` → 站点代理 → `workflow-ui` → `hooks` → 站点兜底。与迁移前 `main.ts` 的手写序相比，前三项从
+`createApiApp` 之后前移到 `createWebApp` 之后（`skillDownloadRoutes` 与站点代理同理后移），其余相对位置不变。
+
+逐前缀核对无遮蔽：`/acp`、`/mcp/knowledge`、`/skills`、`/web/site/deploy`、`/workflow-ui`、
+`/hooks/:publicHash`、`/*` 七个前缀互不重叠，且唯一的通配 `/*` 排在最末。Elysia 的 radix 匹配对静态段优先于
+参数段，因此顺序不参与正确性判断——顺序唯一有语义的地方是通配兜底，而它现在由贡献自己声明。
+
+**四、【需审核】首例 `order` 使用，与 `route-faces.ts` 的有意留白**
+
+本片是 `ModuleContribution.order` 的**第一个使用者**（此前 grep 无命中）。契约与实现早已就位
+（`module-manifest.ts:24-44` 的文档 + `bootstrap.ts:101-106` 的 `orderContributions()` 稳定排序），本片只是
+第一次真的需要它：`/*` 兜底必须最后挂，而它在 manifest 里的声明序位于站点代理之后、`workflow` 之前
+（拓扑序第 8），不写 `order` 就会排在 `/hooks/:publicHash` 前面（虽然 radix 下仍不改变匹配结果，但「兜底不是
+最后一个注册」这件事本身不可接受）。
+
+取值 `100` 没有语义刻度，只是「比默认 0 大」的标记；风险是将来若有第二个贡献也写 `order`，两者的大小关系
+并不表达任何跨模块的优先级约定。**记录在案，不在本片处理**：如果出现第二个使用者，值得把 `order` 的语义
+收窄成命名常量（如平台层导出 `FALLBACK_ORDER`）。
+
+`test-utils/route-faces.ts` 本片**不镜像** `app` 槽（有意留白，已在文件头写明）：这一面的 7 条入口各自带独立
+前缀与认证口径，包内用例已在包内测试里覆盖，宿主侧没有需要「真实路由面」的用例；多一份无人消费的镜像只会
+多一处需要同步的漂移源。真实装配的镜像仍由 `route-contributions.test.ts` 的 `toEqual` 全量断言承担。
+
+**五、手工启动验证（判据里的「服务可启动」）**
+
+按 1.5e-3 的口径复跑：一次性 `postgres:16-alpine` 容器映射 **55432**（不复用 5432 上另一个检出的开发库），
+`db:migrate` 全链应用成功后启动主进程。日志**无装配期错误**（无「未知聚合槽」「没有返回 Elysia 实例」「基础模块
+未返回实例」），唯一 WARN 是 RagFlow 不可达（验证环境无 RagFlow，既有行为）。
+
+第一轮（无 agent-sites 配置）：
+
+| 探测 | 结果 | 说明 |
+|---|---|---|
+| `GET /acp/agents` | 401 `Not authenticated` | 会话守卫的 `sessionAuth` 宏在 app 槽数组内解析成功 |
+| `GET /workflow-ui/` | 401 同上 | 同上 |
+| `POST /mcp/knowledge` | 400 `authorization: expected string` | 自带的 Bearer schema 校验已执行 |
+| `GET /skills/nope/download?token=bogus` | 403 `Invalid skill download token` | 令牌校验已执行 |
+| `POST /hooks/deadbeef` | **404** `{"error":"trigger not found"}` | 路由自己产生的 404（SPA 兜底不会返回它） |
+| `GET /api/skills/`、`GET /web/prod-views/anything/load` | 全 401 | 先注册的两面未被 app 槽的通配兜底遮蔽 |
+| `GET /api/system/logs/` | 401 `Invalid system API key` | system API 面仍在 |
+| `GET /health` | 200 | 服务存活 |
+| `GET /nope`、`GET /web/site/deploy/app-abc123` | 均 200 | 对照项：未注册路径走 SPA 兜底。**站点链路未配置时代理直接让路**，与兜底同为 200，无区分度——故补第二轮 |
+
+第二轮（`AGENT_SITES_BASE_URL` 指向不可达地址 + 一次性 dummy `AGENT_SITES_MASTER_KEY`，并在验证库里临时插入
+一条 `visibility = 'public'` 的 `agent_site_app` 行 `app-verify0`）：
+
+| 探测 | 结果 | 说明 |
+|---|---|---|
+| `GET /web/site/deploy/app-verify0/` | 502 `bad_gateway: Agent Sites unreachable` | 站点代理路由已注册，且处理函数真的跑到了转发 |
+| `GET /app-verify0/api/x` | 502 同上 | **`/*` 兜底已注册且未被遮蔽**——本片风险最高的一条 |
+| `GET /app-nosuch99/x` | 200 | 兜底解析到库内不存在的 appId 后让路（`parseAppPath` 命中但 `getAppByRemoteId` 为空） |
+
+验证容器、服务进程与那条临时数据都在收尾时删除/停止；未保留可复用库。
+
+第二轮同时关掉 §六第一条风险：「通配符路由（`/app-xxx/*` 兜底、`/web/site/deploy/:appId/*` 代理）的相对优先级需
+在 1.5e 试点与 1.5f 切换后实测确认」——现在两条都在贡献面下实测到真实处理结果（502），切到拓扑序 + `order`
+之后优先级没有变化。
+
+**六、本片收尾状态：`main.ts` 里已无协议路由 import**
+
+`grep -n 'from "@fenix/' apps/server/src/main.ts` 现余 13 处，**全部是生命周期/启动编排符号**（`1.5f-1c` 的范围）：
+`@fenix/agent-config/server`（`getAgentConfigModule` / `setMetaAgentModelResolver`）、`@fenix/agent-runtime/runtime`
+（`createAgentRuntimeModule`）、`@fenix/agent-runtime/server`（`bind*Port` 系列、事件总线、workspace 解析）、
+`@fenix/identity/server`（`createIdentityDirectory` / `ensureSystemAdmin`）、`@fenix/model-management/server`、
+`@fenix/resource-channel/server`、`@fenix/resource-knowledge/server`（`checkRagFlowHealth`）、
+`@fenix/resource-machine/server`、`@fenix/resource-sandbox/server`、`@fenix/resource-task/server`（`schedulerService`）、
+`@fenix/resource-workflow/server`（`initCustomToolsRegistry`），外加按裁定保留的 `@fenix/logger` 与
+`@fenix/platform-sdk/server`。`main.ts` 现 572 行，包路由的挂载点只剩 4 条 `.use()`（`authPlugin` 之外的三面聚合
++ 一条 `app` 槽）。

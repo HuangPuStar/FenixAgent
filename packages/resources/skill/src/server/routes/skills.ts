@@ -24,7 +24,8 @@ function jsonError(status: number, code: string, message: string): Response {
  *
  * 与其他两条路由不同，这条**不是工厂**：令牌本身就是授权凭据（无 session、无 actor），不需要宿主的
  * `sessionAuth` 宏，因此没有需要注入的守卫，也没有第二份实例可注入。它保留为模块级实例，按名导出，
- * 与工厂导出并列在 `src/server.ts`，宿主挂载点见 `apps/server/src/main.ts`。
+ * 与工厂导出并列在 `src/server.ts`；挂载点自 1.5f-1b 起由 manifest 的 `slot: "app"` 贡献声明
+ * （`src/server/assembly.ts` 的 `createSkillDownloadAppRoutes` 只把它包成惰性构造函数）。
  */
 export const skillDownloadRoutes = new Elysia({ name: "skills", prefix: "/skills" }).model({
   "skill-download-params": SkillDownloadParamsSchema,

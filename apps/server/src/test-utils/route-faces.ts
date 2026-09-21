@@ -78,6 +78,12 @@ import {
  * 聚合只按槽挂载）；需要「真实路由」但不关心装配语义的用例走本 helper。三面的内容与顺序以
  * `__tests__/route-contributions.test.ts` 的 `toEqual` 断言为准——本文件与它漂移时，那边的失败就是信号。
  *
+ * 不镜像顶层 `app` 槽（`/acp`、`/mcp/knowledge`、`/skills/:name/download`、`/workflow-ui`、
+ * `/hooks/:publicHash`、站点代理与 `/app-*` 兜底）：这些协议入口各自带独立前缀与认证口径，包内用例已在
+ * 各自的包内测试里覆盖（`acp-routes-auth.test.ts`、`hooks-routes.test.ts`、`workflow-static-proxy.test.ts`、
+ * `mcp-knowledge-route.test.ts`），宿主侧没有需要「真实路由面」的用例。留白是有意的：多一份无人消费的
+ * 镜像只会多一处需要同步的漂移源。
+ *
  * 不直接跑 `bootstrapServerAssembly` 的原因：它要求基础设施已初始化，而
  * `initializeApplicationInfrastructure` 每进程只允许调用一次（重复调用抛错）——测试进程里真实装配由
  * `__tests__/route-contributions.test.ts` 独占；preload 刻意不初始化基础设施，理由见

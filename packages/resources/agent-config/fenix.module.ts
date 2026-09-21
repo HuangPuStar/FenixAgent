@@ -40,9 +40,11 @@ import { agentConfigResource } from "./src/server/access/agent-config-resource";
  * 形式，前缀由宿主的聚合实例决定，「挂哪一面」只能由声明说清。惰性 import 与 `create` 同因：registry 会
  * 被大量位置导入，不能在索引层就把 Elysia 拖进模块图。
  *
- * 一条挂 `web-config`（`/web/config/agents`），四条挂 `web`，一条挂 `api`（`/api/agents`，1.5f）。
- * `/web/sidebar-config` 的工厂不消费 host：该端点在登录页也要可用，刻意不声明 `sessionAuth`，故不需要
- * 宿主注入守卫。
+ * 一条挂 `web-config`（`/web/config/agents`），四条挂 `web`，一条挂 `api`（`/api/agents`，1.5f），两条挂
+ * 顶层 `app`（`/web/site/deploy/:appId/*` 与 `/app-*` 兜底，1.5f-1b）。`/web/sidebar-config` 的工厂不消费
+ * host：该端点在登录页也要可用，刻意不声明 `sessionAuth`，故不需要宿主注入守卫。站点代理两条都不走
+ * `sessionAuth`——它要区分「未登录」与「已登录但无权限」并分别重定向，改用宿主的 `authenticateRequest`
+ * 投影（`SiteRequestIdentity`）。
  *
  * 不声明 `web` / `envDefinitions`：消费方分别是 §1.6 WebShell 装配与 §1.7 的宿主 env 登记，形状必须与
  * 消费端同时定型。
@@ -95,6 +97,23 @@ export const moduleManifest = {
       slot: "api",
       value: (host: ServerRouteHost) =>
         import("./src/server/assembly").then((assembly) => assembly.createAgentConfigApiRoutes(host)),
+    },
+    {
+      id: "agent-config.app-site-deploy",
+      kind: "app-route",
+      slot: "app",
+      value: (host: ServerRouteHost) =>
+        import("./src/server/assembly").then((assembly) => assembly.createAgentConfigAgentSitesProxyRoutes(host)),
+    },
+    {
+      id: "agent-config.app-site-compat",
+      kind: "app-route",
+      slot: "app",
+      // 兜底路由：通配 `/*` 必须最后注册，否则会遮蔽同槽里后挂的具体路由。`order` 在这里就是「本贡献
+      // 必须排在其它贡献之后」的自证（默认 0，取任意正数即可）。
+      order: 100,
+      value: (host: ServerRouteHost) =>
+        import("./src/server/assembly").then((assembly) => assembly.createAgentConfigAgentSitesCompatRoutes(host)),
     },
   ],
   create: (context) => import("./src/module").then((module) => module.createAgentConfigModule(context)),

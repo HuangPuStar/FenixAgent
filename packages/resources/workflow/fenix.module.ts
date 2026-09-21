@@ -33,9 +33,10 @@ import type { ServerRouteHost } from "@fenix/platform-sdk/server";
  * import 与 `create` 同因：registry 会被大量位置导入，不能在索引层就把 Elysia 拖进模块图。五条贡献的声明
  * 序就是挂载序（与迁移前宿主手写序列一致）。
  *
- * 1.5f 追加一条 `api` 槽贡献：`/api/workflows/:workflowId/execute`。`/workflow/*` 静态代理（
- * `createWorkflowStaticApp`）、MCP 与 hooks 入口不走本槽——它们各自带独立前缀与认证口径，挂宿主顶层
- * `app` 槽。
+ * 1.5f 追加一条 `api` 槽贡献：`/api/workflows/:workflowId/execute`。1.5f-1b 再追加两条顶层 `app` 槽贡献：
+ * `/workflow-ui/*` 静态代理（`createWorkflowStaticApp`，会话守卫面但与 `/web` 不同前缀）与
+ * `/hooks/:publicHash` Webhook 接收（无认证——`publicHash` 即凭据）。三条 `app` 槽路由各自带独立前缀与
+ * 认证口径，因此单列一槽而不是塞进 `/web` 或 `/api`（两条都在本模块声明序末尾）。
  *
  * 不声明 `web`：消费方是 §1.6 的 WebShell 装配，形状必须与消费端同时定型；`envDefinitions` 与 preflight
  * 收敛在任务 1.7。
@@ -87,6 +88,20 @@ export const moduleManifest = {
       slot: "api",
       value: (host: ServerRouteHost) =>
         import("./src/server/assembly").then((assembly) => assembly.createWorkflowApiRoutes(host)),
+    },
+    {
+      id: "workflow.app-static",
+      kind: "app-route",
+      slot: "app",
+      value: (host: ServerRouteHost) =>
+        import("./src/server/assembly").then((assembly) => assembly.createWorkflowStaticAppRoutes(host)),
+    },
+    {
+      id: "workflow.app-hooks",
+      kind: "app-route",
+      slot: "app",
+      // 工厂不消费 host：无认证是 Webhook 端点的协议语义，没有守卫可注入。
+      value: () => import("./src/server/assembly").then((assembly) => assembly.createWorkflowHooksAppRoutes()),
     },
   ],
   create: () => import("./src/module").then((module) => module.createWorkflowModule()),

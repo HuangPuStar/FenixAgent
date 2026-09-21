@@ -24,6 +24,10 @@ import type { ServerRouteHost } from "@fenix/platform-sdk/server";
  * 1.5f 追加两条 `api` 槽贡献：实例接入（`/api/agents/:agentId/instances/connect`）与 OpenAI 兼容对话
  * （`/api/agents/:agentId/v1/chat/completions`）。两者与 `/web` 面共用同一份会话守卫，实例接入另需宿主
  * 请求错误日志（读 `request` 上的 requestId，包内没有来源）。
+ *
+ * 1.5f-1b 追加一条顶层 `app` 槽贡献：`/acp/*`。它与 `/web`、`/api` 都不同前缀，且是唯一同时需要会话
+ * 守卫与 `authenticateRequest` 本身的路由面——WS 升级在 `open` 里自行认证并区分「未认证 / 无组织上下文 /
+ * 通过」（分别以 4003 关闭），不能改用 `sessionAuth` 宏。
  */
 export const moduleManifest = {
   id: "agent-runtime",
@@ -65,6 +69,13 @@ export const moduleManifest = {
       slot: "api",
       value: (host: ServerRouteHost) =>
         import("./src/server/assembly").then((assembly) => assembly.createAgentRuntimeOpenaiChatRoutes(host)),
+    },
+    {
+      id: "agent-runtime.app-acp",
+      kind: "app-route",
+      slot: "app",
+      value: (host: ServerRouteHost) =>
+        import("./src/server/assembly").then((assembly) => assembly.createAgentRuntimeAcpAppRoutes(host)),
     },
   ],
   create: () => import("./src/runtime").then((module) => module.createAgentRuntimeModule()),

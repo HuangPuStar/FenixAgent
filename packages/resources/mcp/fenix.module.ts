@@ -39,7 +39,11 @@ import { mcpServerResource } from "./src/server/access/mcp-server-resource";
  * 声明 `contributions`（1.5e）：`/web/config/mcp` 与 `/api/mcp` 的路由实例由本模块以惰性构造函数
  * `(host) => import("./src/server/assembly").then(...)` 给出，`slot` 指明挂宿主哪一面——路由路径是相对
  * 形式，前缀由宿主的聚合实例决定，「挂哪一面」只能由声明说清。惰性 import 与 `create` 同因：registry 会被
- * 大量位置导入，不能在索引层就把 Elysia 拖进模块图。两条路由共用同一份会话守卫。
+ * 大量位置导入，不能在索引层就把 Elysia 拖进模块图。前两条路由共用同一份会话守卫。
+ *
+ * 1.5f-1b 追加一条顶层 `app` 槽贡献：`/mcp/knowledge`。它是内部协议入口（Bearer environment secret
+ * 自鉴权，与 `/api/*`、`/web/*` 都不同前缀），且是模块级单例——装配面只包一层惰性构造函数，理由见
+ * `src/server/assembly.ts` 的 `createKnowledgeMcpAppRoutes`。
  *
  * 不声明 `web` / `envDefinitions`：消费方分别是 §1.6 的 WebShell 装配与 §1.7 的宿主 env 登记；本包不读
  * `process.env`、没有独立部署级变量。
@@ -64,6 +68,13 @@ export const moduleManifest = {
       slot: "api",
       value: (host: ServerRouteHost) =>
         import("./src/server/assembly").then((assembly) => assembly.createMcpApiRoutes(host)),
+    },
+    {
+      id: "mcp.app-knowledge",
+      kind: "app-route",
+      slot: "app",
+      // 工厂不消费 host：Bearer environment secret 自鉴权，没有守卫可注入。
+      value: () => import("./src/server/assembly").then((assembly) => assembly.createKnowledgeMcpAppRoutes()),
     },
   ],
   // 工厂保持惰性：registry 会被大量位置导入，不能在索引层就把 Drizzle、Elysia 与 MCP SDK 拖进模块图。

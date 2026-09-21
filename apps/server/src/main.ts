@@ -5,12 +5,7 @@ interceptConsole();
 
 const startupLog = createLogger("rcs");
 
-import {
-  createAgentSitesCompatRoutes,
-  createAgentSitesProxyRoutes,
-  getAgentConfigModule,
-  setMetaAgentModelResolver,
-} from "@fenix/agent-config/server";
+import { getAgentConfigModule, setMetaAgentModelResolver } from "@fenix/agent-config/server";
 import { createAgentRuntimeModule } from "@fenix/agent-runtime/runtime";
 import {
   bindAcpInstanceActivityPort,
@@ -22,7 +17,6 @@ import {
   bindLocalNodeAgentNodeServicePort,
   bindMachineRegistryPort,
   bindSessionEventBusPort,
-  createAcpRoutes,
   environmentRepo,
   findMachineConnectionById,
   getAcpEventBus,
@@ -63,20 +57,19 @@ import {
   stopFileWsSweep,
   stopHeartbeat,
 } from "@fenix/resource-machine/server";
-import { knowledgeMcpRoutes } from "@fenix/resource-mcp/server";
 import {
   initializeDefaultSandboxPool,
   registerConfiguredSandboxProviders,
   sandboxManager,
 } from "@fenix/resource-sandbox/server";
-import { skillDownloadRoutes } from "@fenix/resource-skill/server";
 import { schedulerService } from "@fenix/resource-task/server";
-import { createHookRoutes, createWorkflowStaticApp, initCustomToolsRegistry } from "@fenix/resource-workflow/server";
+import { initCustomToolsRegistry } from "@fenix/resource-workflow/server";
 import type { WebSocketHandler } from "bun";
 import Elysia from "elysia";
 import { bootstrapServerAssembly } from "./bootstrap";
 import {
   API_SLOT,
+  APP_SLOT,
   mountServerRouteContribution,
   takeRouteContributions,
   WEB_CONFIG_SLOT,
@@ -89,13 +82,7 @@ import { db, initDb, client as pgClient } from "./db";
 import { findDeprecatedEnvVars } from "./env";
 import { loadServerEnv } from "./env-loader";
 import { createExternalOpenApiPlugin, createWebOpenApiPlugin } from "./openapi";
-import {
-  authenticateRequest,
-  authenticateSiteRequest,
-  authGuardPlugin,
-  authPlugin,
-  toActorContext,
-} from "./plugins/auth";
+import { authPlugin, toActorContext } from "./plugins/auth";
 import { corsPlugin } from "./plugins/cors";
 import { errorPlugin } from "./plugins/error-handler";
 import { deriveRequestId, injectRequestId, logRequest, logResponse } from "./plugins/logger";
@@ -501,24 +488,15 @@ const app = new Elysia({
   .use(authPlugin)
   // Web control panel routes：装配期登记的 app-route 贡献按聚合槽注入（未启用贡献的槽位为空数组）
   .use(createWebApp({ web: takeRouteContributions(WEB_SLOT), webConfig: takeRouteContributions(WEB_CONFIG_SLOT) }))
-  // Token-protected skill archive download for plugins/runtimes
-  .use(skillDownloadRoutes)
-  // Agent Sites L3 business frontend proxy (/web/site/deploy/:appId/* prefix)
-  .use(createAgentSitesProxyRoutes({ authenticateRequest: authenticateSiteRequest }))
   // External API routes：装配期登记的 app-route 贡献按 `api` 聚合槽注入
   // （`/api/agents`、`/api/knowledge-bases`、`/api/skills`、`/api/models`、`/api/mcp`、
   // `/api/system/*`、`/api/environments/*`、`/api/workflows/*` 与 OpenAI 兼容对话端点）
   .use(createApiApp({ api: takeRouteContributions(API_SLOT) }))
-  // Workflow proxy (not under /web prefix)
-  .use(createWorkflowStaticApp({ authGuardPlugin }))
-  // MCP routes
-  .use(knowledgeMcpRoutes)
-  // Webhook trigger routes (no auth；凭 publicHash) —— 位置与原入口 `src/index.ts` 的顺序一致
-  .use(createHookRoutes())
-  // ACP protocol routes
-  .use(createAcpRoutes({ authGuardPlugin, authenticateRequest }))
-  // Agent Sites 兼容层（兜底 /app-xxx/* 绝对路径访问，必须注册在最后）
-  .use(createAgentSitesCompatRoutes({ authenticateRequest: authenticateSiteRequest }));
+  // 顶层协议入口：`/acp/*`、`/mcp/knowledge`、`/skills/:name/download`、`/workflow-ui/*`、
+  // `/hooks/:publicHash`、`/web/site/deploy/:appId/*` 与 `/app-*` 兜底。它们各自带独立前缀与认证口径，
+  // 只有「代理还是兜底」这一层差别——兜底通配 `/*` 必须最后注册，由该贡献自己的大 `order` 自证
+  // （见 `agent-config/fenix.module.ts`），宿主不维护「谁必须最后挂」的清单。
+  .use([...takeRouteContributions(APP_SLOT)]);
 
 const port = config.port;
 const host = config.host;

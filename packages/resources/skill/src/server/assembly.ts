@@ -2,6 +2,7 @@ import type { ServerRouteHost } from "@fenix/platform-sdk/server";
 import type { AnyElysia } from "elysia";
 import { createApiSkillsRoutes } from "./routes/api/skills";
 import type { SkillRouteDependencies } from "./routes/dependencies";
+import { skillDownloadRoutes } from "./routes/skills";
 import { createWebSkillsConfigRoutes } from "./routes/web/config/skills";
 
 /**
@@ -28,4 +29,15 @@ export function createSkillWebConfigRoutes(host: ServerRouteHost) {
 /** `/api/skills` 对外稳定技能接口（挂宿主 `api` 聚合槽）。 */
 export function createSkillApiRoutes(host: ServerRouteHost) {
   return createApiSkillsRoutes(routeDependencies(host));
+}
+
+/**
+ * `/skills/:name/download` 归档下载（挂宿主 `app` 槽）。
+ *
+ * 返回的是模块级单例而不是新构造的实例：这条路由**不是工厂**（令牌本身就是授权凭据，无守卫可注入，
+ * 见 `routes/skills.ts` 的文件头）。装配面仍以「函数」形态给出——贡献的 `value` 必须是惰性构造函数，
+ * 这里只是把既有实例包一层，不复制第二份。
+ */
+export function createSkillDownloadAppRoutes() {
+  return skillDownloadRoutes;
 }

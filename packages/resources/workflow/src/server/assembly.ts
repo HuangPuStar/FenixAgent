@@ -2,9 +2,11 @@ import type { ServerRouteHost } from "@fenix/platform-sdk/server";
 import type { AnyElysia } from "elysia";
 import { createApiWorkflowRoutes } from "./routes/api/workflows";
 import type { WorkflowRouteDependencies } from "./routes/dependencies";
+import { createHookRoutes } from "./routes/hooks";
 import { createWebWorkflowCustomToolsRoutes } from "./routes/web/workflow-custom-tools";
 import { createWebWorkflowDefsRoutes } from "./routes/web/workflow-defs";
 import { createWebWorkflowEngineRoutes } from "./routes/web/workflow-engine";
+import { createWorkflowStaticApp } from "./routes/web/workflow-proxy";
 import { createWebWorkflowRunsRoutes } from "./routes/web/workflow-runs";
 import { createWebWorkflowSseRoutes } from "./routes/web/workflow-sse";
 
@@ -54,4 +56,19 @@ export function createWorkflowWebRunsRoutes(host: ServerRouteHost) {
 /** `/api/workflows/:workflowId/execute` 对外工作流执行（挂宿主 `api` 聚合槽）。 */
 export function createWorkflowApiRoutes(host: ServerRouteHost) {
   return createApiWorkflowRoutes(routeDependencies(host));
+}
+
+/** `/workflow-ui/*` 引擎前端静态代理（挂宿主 `app` 槽）。 */
+export function createWorkflowStaticAppRoutes(host: ServerRouteHost) {
+  return createWorkflowStaticApp(routeDependencies(host));
+}
+
+/**
+ * `/hooks/:publicHash` Webhook 接收（挂宿主 `app` 槽）。
+ *
+ * 工厂不消费 host：无认证是这个端点的协议语义（`publicHash` 即凭据），没有守卫可注入，理由见
+ * `routes/hooks/index.ts` 的文件头。
+ */
+export function createWorkflowHooksAppRoutes() {
+  return createHookRoutes();
 }

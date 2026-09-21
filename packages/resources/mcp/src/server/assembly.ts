@@ -2,6 +2,7 @@ import type { ServerRouteHost } from "@fenix/platform-sdk/server";
 import type { AnyElysia } from "elysia";
 import { createApiMcpRoutes } from "./routes/api/mcp";
 import type { McpRouteDependencies } from "./routes/dependencies";
+import knowledgeMcpRoutes from "./routes/mcp/knowledge";
 import { createWebMcpConfigRoutes } from "./routes/web/config/mcp";
 
 /**
@@ -28,4 +29,16 @@ export function createMcpWebConfigRoutes(host: ServerRouteHost) {
 /** `/api/mcp` 对外稳定 MCP 服务器接口（挂宿主 `api` 聚合槽）。 */
 export function createMcpApiRoutes(host: ServerRouteHost) {
   return createApiMcpRoutes(routeDependencies(host));
+}
+
+/**
+ * `/mcp/knowledge` 内部协议入口（挂宿主 `app` 槽）。
+ *
+ * 返回的是模块级单例而不是新构造的实例：这条路由用 Bearer environment secret 自鉴权（解析出的
+ * environment 决定可见知识库），没有宿主守卫可注入，因此包内没有第二条实例（见
+ * `routes/mcp/knowledge.ts` 的 `export default app`）。装配面仍以「函数」形态给出——贡献的 `value` 必须
+ * 是惰性构造函数，这里只是把既有实例包一层，不复制第二份。
+ */
+export function createKnowledgeMcpAppRoutes() {
+  return knowledgeMcpRoutes;
 }

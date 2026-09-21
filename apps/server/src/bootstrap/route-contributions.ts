@@ -11,8 +11,9 @@ import { serverRouteHost } from "./route-host";
  * 可挂的聚合实例。所以装配阶段只做「构造 + 登记到槽」，main.ts 构造聚合（`routes/web/index.ts` 的
  * `createWebApp`）时再按槽取出、`.use()` 进去。
  *
- * 槽名是包与宿主之间的约定面：包声明「挂到 `/web` 还是 `/web/config`」，宿主负责把槽名映射到具体聚合
- * 实例。未知槽名当场报错——静默丢弃一个路由贡献等于让整组端点消失，比装配失败更难排查。
+ * 槽名是包与宿主之间的约定面：包声明「挂到 `/web`、`/web/config`、`/api` 还是顶层 `app`」，宿主负责把
+ * 槽名映射到具体聚合实例。未知槽名当场报错——静默丢弃一个路由贡献等于让整组端点消失，比装配失败更难
+ * 排查。
  */
 
 /** `/web` 聚合槽（`routes/web/index.ts` 的 `createWebApp`）。 */
@@ -21,6 +22,15 @@ export const WEB_SLOT = "web";
 export const WEB_CONFIG_SLOT = "web-config";
 /** `/api/*` 对外稳定 API 聚合槽（`routes/api/index.ts` 的 `createApiApp`）。 */
 export const API_SLOT = "api";
+/**
+ * 顶层应用槽（`main.ts` 的根 app）。
+ *
+ * 走这一槽的是**不共享前缀**的协议入口：`/skills/*` 下载、`/acp`、`/mcp/knowledge`、`/hooks/*`、
+ * `/workflow-ui/*`、`/web/site/deploy/*` 与 `/app-*` 兜底。它们的注册顺序有语义（`/*` 兜底必须最后挂），
+ * 因此贡献在自己的声明处写 `order` 自证（`ModuleContribution.order` 的既定用途），宿主不维护「谁必须
+ * 最后挂」的清单。
+ */
+export const APP_SLOT = "app";
 
 /** 路由贡献的构造函数形状：装配期把宿主协议面交给包，由包返回构造好的 Elysia 实例。 */
 type RouteContributionFactory = (host: ServerRouteHost) => unknown;
@@ -31,11 +41,10 @@ const slottedRoutes = new Map<string, AnyElysia[]>();
 /**
  * 宿主读得到的槽位。
  *
- * 三个槽都有真实消费者：`web` / `web-config` 由 `createWebApp` 取，`api` 由 `createApiApp` 取。声明一个
- * 不在这里的槽名会当场报错——静默丢弃一个路由贡献等于让整组端点消失。顶层 `app` 槽（`/skills/*` 下载、
- * MCP、hooks、站点代理与兜底）随它的宿主消费方（`main.ts` 的根 app）同批接线，不先于读者声明。
+ * 四个槽都有真实消费者：`web` / `web-config` 由 `createWebApp` 取，`api` 由 `createApiApp` 取，`app` 由
+ * `main.ts` 的根 app 取。声明一个不在这里的槽名会当场报错——静默丢弃一个路由贡献等于让整组端点消失。
  */
-const READABLE_SLOTS: readonly string[] = [WEB_SLOT, WEB_CONFIG_SLOT, API_SLOT];
+const READABLE_SLOTS: readonly string[] = [WEB_SLOT, WEB_CONFIG_SLOT, API_SLOT, APP_SLOT];
 
 /**
  * `mountContribution` 的宿主实现：只处理路由贡献。

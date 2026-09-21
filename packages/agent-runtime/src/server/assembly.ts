@@ -1,8 +1,10 @@
 import type { ServerRouteHost } from "@fenix/platform-sdk/server";
 import type { AnyElysia } from "elysia";
+import { createAcpRoutes } from "../routes/acp";
 import { createApiInstanceRoutes } from "../routes/api/instances";
 import { createOpenaiChatRoutes } from "../routes/api/openai-chat";
 import type {
+  AcpRouteDependencies,
   AgentRuntimeAuthDependencies,
   ApiInstanceRouteDependencies,
   RequestErrorLogger,
@@ -55,4 +57,19 @@ export function createAgentRuntimeApiInstanceRoutes(host: ServerRouteHost) {
 /** `/api/agents/:agentId/v1/chat/completions` OpenAI 兼容对话（挂宿主 `api` 聚合槽）。 */
 export function createAgentRuntimeOpenaiChatRoutes(host: ServerRouteHost) {
   return createOpenaiChatRoutes(routeDependencies(host));
+}
+
+/**
+ * `/acp/*` 机器接入、前端 YJS 与外部客户端 Relay（挂宿主 `app` 槽）。
+ *
+ * 除会话守卫外还要 `authenticateRequest` 本身：WS 升级路径在 `open` 里自行认证并区分「未认证 / 无组织
+ * 上下文 / 通过」（分别以 4003 关闭连接），不能改用 `sessionAuth` 宏让守卫短路请求——理由见
+ * `routes/acp/index.ts` 的工厂注释。
+ */
+export function createAgentRuntimeAcpAppRoutes(host: ServerRouteHost) {
+  const deps: AcpRouteDependencies = {
+    ...routeDependencies(host),
+    authenticateRequest: host.authenticateRequest as AcpRouteDependencies["authenticateRequest"],
+  };
+  return createAcpRoutes(deps);
 }
