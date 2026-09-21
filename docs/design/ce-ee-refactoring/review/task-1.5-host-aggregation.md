@@ -1294,9 +1294,10 @@ web-app-tests 946 pass / 0 fail（无前端改动，与 1.5d 持平）；其余�
 
 ### 1.5e-2b-1 `web` 面 8 包迁入（2026-09-21）
 
-本片把 `web` 面的 19 个手写挂载点迁到贡献声明：identity 2、agent-runtime 3、knowledge 1、memory 1、
-channel 1、machine 3、task 1、workflow 5、prod-view（1.5e-1 已迁）。宿主 `routes/web/index.ts` 的手写序列
-由 24 项降到 7 项（`branding` + agent-config 4 + model-management 2）。
+本片把 `web` 面的 17 条包路由迁到贡献声明（按包计：identity 2、agent-runtime 3、knowledge 1、memory 1、
+channel 1、machine 3、task 1、workflow 5；prod-view 1 条已由 1.5e-1 迁走）。宿主 `routes/web/index.ts` 的
+手写挂载由 26 条降到 8 条（`branding` + config 聚合 + agent-config 4 + model-management 2；后 6 条在
+1.5e-2b-2 迁走）。
 
 **一、基础模块同样声明贡献（本片新确立）**
 
@@ -1349,3 +1350,74 @@ web-app-tests **946 pass / 0 fail**。
 - `web` 面剩 agent-config 4 条与 model-management 2 条（1.5e-2b-2），同批扩 `ServerRouteHost` 的
   `rotateCallerApiKey` 与 `verifyEnvironmentOwnership` 两个端口；完成后宿主 `routes/web/index.ts` 只剩
   `branding` 一项手写挂载。
+
+### 1.5e-2b-2 `/web` 手写序列清零（2026-09-21）
+
+本片是 1.5e 的最后一片：agent-config 的 4 条（`/web/sidebar-config`、`/web/agent-sites`、
+`/web/agent-generation`、`/web/meta-agent/ensure`）与 model-management 的 2 条（`/web/model-gateway`、
+`/web/agents/:environmentId/sessions/:sessionId/peri-tasks/:taskId/detail`）迁入 `web` 槽。
+
+**一、`routes/web/index.ts` 的手写序列清零**
+
+只剩两条手写挂载，且都不属于任何模块：`branding`（控制台品牌素材）与 `/web/config` 聚合实例。`createWebApp`
+现在只有三行 `.use()`，本文件不再 import 任何 `@fenix/*` 包——`web` 面的包路由全部来自槽。判据「每个包的
+`routes/web/index.ts` 挂载点减少一处」的累计结果：1.5e 起点（`6f39e4bdc`）该文件的 `.use()` 为 26 条
+（24 条包路由 + `branding` + config 聚合），现状 2 条。24 条包路由里含 identity 2 条与 agent-runtime 3 条，
+即两个基础模块与资源包走的是同一条装配接线（见 1.5e-2b-1 §一）。
+
+**二、`ServerRouteHost` 扩两字段【需审核】**
+
+`verifyEnvironmentOwnership`（peri 任务详情校验 Environment 归属）与 `rotateCallerApiKey`（meta agent
+轮换调用方 API Key）。两者在 1.5e-1 试点时被有意排除在「七项一次填满」之外（见 §三.1 遗留），本片与消费
+路由同批加，字段数 7 → 9。
+
+必须走宿主端口而不是包内自建：`apikey` 表属 `@fenix/identity`、`Environment` 表属 `@fenix/agent-runtime`，
+资源包对二者都没有合法依赖（§2.3 矩阵）。宿主侧 `verifyEnvironmentOwnership` 取自
+`services/resource-module-ports.ts`，`rotateCallerApiKey` 直接取 `@fenix/identity/server`。
+
+需审核的点：`ServerRouteHost` 的定位是「宿主协议 adapter 面」，而 `rotateCallerApiKey` 是一个**业务动作**
+而非协议适配——放进这个面意味着 platform-sdk 的契约里出现一条语义偏业务的条目。替代方案是让 meta-agent
+路由走 `ModuleFactoryContext` 或另开一个「宿主业务能力」契约面，两者都要新增机制；本片按「沿用既有契约、
+不新增机制」处理，请裁定是否可接受。
+
+**三、挂载顺序变化（已核对）**
+
+迁移前这 6 条在槽外、统一早于 `slots.web`；迁移后按拓扑序落在槽内：agent-config 在 memory 之后 / channel
+之前，model-management 在 machine 之后 / prod-view 之前。逐条核对前序路由有无前缀遮蔽——identity
+（`/api-keys`、`/organizations`）、agent-runtime（`/sessions`、`/environments`、`/instances`）、knowledge
+（`/knowledgeBases`）、memory（`/hindsight`）、channel（`/channels`）、machine（`/environments/:id/fs`、
+`/file-events/`、`/registry`）与这 6 条的 `/sidebar-config`、`/agent-sites`、`/agent-generation`、
+`/meta-agent`、`/model-gateway`、`/agents/:environmentId/...` 均无前缀重叠；agent-sites 内部唯一通配
+`ALL /agent-sites/apps/:id/api/*` 也在自己的前缀内。因此本片同样不引入 `order`。
+
+**四、`test-utils/web-routes.ts` 顺带修正两处漂移【需审核】**
+
+1. `createTestWebConfigRoutes()` 漏了 prod-view 的 `/config/prod-views`（1.5e-1 试点迁入时未回补），且排列
+   顺序是迁移前的宿主手写序而不是装配收集序——本片按装配收集序补齐为 7 个路由实例（mcp、skill、
+   agent-config、model-management×2、prod-view、sandbox）。
+2. `createTestWebRoutes()` 补入本片迁入的 6 条（现 24 条），顺序按装配收集序。
+
+这两处漂移此前不会让任何用例失败（helper 只服务「协议层映射」类断言，这些用例里不存在冲突路径），但会让
+「helper == 生产路由面」的假设失真——缺 prod-view 配置面时，未来依赖 `/web/config/prod-views` 的用例会得到
+假 404。是否需要为 helper 与生产的这种漂移加一条自动守护（例如用例里断言两边路径集合相等）**待裁定**：真实
+装配由 `route-contributions.test.ts` 独占，跨用例比对需要另开机制；本片只修内容，不加守护。
+
+**五、验证证据**
+
+`route-contributions.test.ts` 的 `web` 槽自 139 条增至 158 条（agent-config 17 + model-management 2），
+`web-config` 槽 62 条路径不变。断言 diff 精确给出 19 条新路径与插入位置，照此补齐后 8 pass。
+`bun test apps/server/src/__tests__/` **633 pass / 0 fail**；`agent-config` + `model-management` +
+`platform-sdk` **687 pass / 0 fail**；根 `tsc --noEmit` 无输出。
+
+全量 `env -u ANTHROPIC_MODEL bun run precheck` 全绿：`All passed (84922ms)`，format / import-sort /
+module-registry / architecture / tsc(server, web, app-skeletons) / dependency-boundaries / lint 全过，
+server-and-script-tests **770 pass / 0 fail**、package-tests **7316 pass / 2 skip / 0 fail**、
+web-app-tests **946 pass / 0 fail**。
+
+**六、遗留**
+
+- `/web/site/deploy` 与 `/app-*` 兜底（agent-config 的 `agent-sites-proxy`）仍在 `main.ts` 顶层手写挂载，
+  归 1.5f 的顶层 `app` 槽。
+- 手工启动验证仍待有 DB 的环境补做（同 1.5e-1）。
+- 待裁定项已在 §二、§四 标注：`ServerRouteHost` 是否应承载 `rotateCallerApiKey` 这类业务动作，以及是否为
+  `test-utils/web-routes.ts` 与生产路由面的漂移加自动守护。

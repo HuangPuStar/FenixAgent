@@ -211,6 +211,24 @@ test("真实 profile 装配后各包的路由进入对应槽", async () => {
     "GET /hindsight/entities",
     "GET /hindsight/entities/:id",
     "GET /hindsight/entities/graph",
+    // agent-config（`/sidebar-config/` 无守卫，登录页也要用它）
+    "GET /sidebar-config/",
+    "GET /agent-sites/apps",
+    "GET /agent-sites/apps/:id",
+    "GET /agent-sites/apps/by-remote/:remoteAppId",
+    "POST /agent-sites/apps",
+    "PATCH /agent-sites/apps/:id",
+    "DELETE /agent-sites/apps/:id",
+    "POST /agent-sites/apps/:id/rotate-token",
+    "PUT /agent-sites/apps/:id/files/:path",
+    "POST /agent-sites/apps/:id/files/bundle",
+    "POST /agent-sites/apps/:id/deploy",
+    "GET /agent-sites/agent-configs/:agentConfigId/sites",
+    "POST /agent-sites/agent-configs/:agentConfigId/sites/:siteAppId",
+    "DELETE /agent-sites/agent-configs/:agentConfigId/sites/:siteAppId",
+    "ALL /agent-sites/apps/:id/api/*",
+    "POST /agent-generation",
+    "POST /meta-agent/ensure",
     // channel
     "GET /channels/providers",
     "GET /channels/hermes/status",
@@ -236,6 +254,9 @@ test("真实 profile 装配后各包的路由进入对应槽", async () => {
     "PATCH /registry/machines/:id",
     "DELETE /registry/machines/:id",
     "GET /registry/machines/:id/events",
+    // model-management
+    "GET /model-gateway/:providerId/usage",
+    "GET /agents/:environmentId/sessions/:sessionId/peri-tasks/:taskId/detail",
     // prod-view
     "GET /prod-views/:id/load",
     // task

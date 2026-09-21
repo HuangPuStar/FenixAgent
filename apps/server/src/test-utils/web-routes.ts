@@ -1,17 +1,28 @@
-import { createWebConfigAgentsRoutes } from "@fenix/agent-config/server";
+import {
+  createWebAgentGenerationRoutes,
+  createWebAgentSitesRoutes,
+  createWebConfigAgentsRoutes,
+  createWebMetaAgentRoutes,
+  createWebSidebarConfigRoutes,
+} from "@fenix/agent-config/server";
 import {
   createWebControlRoutes,
   createWebEnvironmentsRoutes,
   createWebInstancesRoutes,
 } from "@fenix/agent-runtime/server";
-import { createWebApiKeysRoutes, createWebOrganizationsRoutes } from "@fenix/identity/server";
-import { createWebConfigModelsRoutes, createWebConfigProvidersRoutes } from "@fenix/model-management/server";
+import { createWebApiKeysRoutes, createWebOrganizationsRoutes, rotateCallerApiKey } from "@fenix/identity/server";
+import {
+  createWebConfigModelsRoutes,
+  createWebConfigProvidersRoutes,
+  createWebModelGatewayRoutes,
+  createWebPeriTaskDetailsRoutes,
+} from "@fenix/model-management/server";
 import { createWebChannelsRoutes } from "@fenix/resource-channel/server";
 import { createWebKnowledgeBaseRoutes } from "@fenix/resource-knowledge/server";
 import { createWebFileEventsRoutes, createWebFsRoutes, createWebRegistryRoutes } from "@fenix/resource-machine/server";
 import { createWebMcpConfigRoutes } from "@fenix/resource-mcp/server";
 import { createWebHindsightRoutes } from "@fenix/resource-memory/server";
-import { createWebProdViewsRoutes } from "@fenix/resource-prod-view/server";
+import { createWebConfigProdViewsRoutes, createWebProdViewsRoutes } from "@fenix/resource-prod-view/server";
 import { createWebSandboxPoolsRoutes } from "@fenix/resource-sandbox/server";
 import { createWebSkillsConfigRoutes } from "@fenix/resource-skill/server";
 import { createWebTasksV2Routes } from "@fenix/resource-task/server";
@@ -29,13 +40,15 @@ import {
   resolveSecretReference,
   userAgentPreferences,
   userModelPreferences,
+  verifyEnvironmentOwnership,
 } from "../services/resource-module-ports";
 
 /**
  * 测试用的 `/web` 与 `/web/config` 面路由集合：各包路由工厂 + 宿主端口实现。
  *
- * 生产这两面由 registry 装配的路由贡献提供（1.5e 起逐包迁入，宿主聚合只按槽挂载）；需要「真实路由」但
- * 不关心装配语义的用例走本 helper。
+ * 生产这两面由 registry 装配的路由贡献提供（1.5e 已全量迁入，宿主聚合只按槽挂载）；需要「真实路由」但
+ * 不关心装配语义的用例走本 helper。两面的内容与顺序以
+ * `__tests__/route-contributions.test.ts` 的 `toEqual` 断言为准——本文件与它漂移时，那边的失败就是信号。
  *
  * 不直接跑 `bootstrapServerAssembly` 的原因：它要求基础设施已初始化，而
  * `initializeApplicationInfrastructure` 每进程只允许调用一次（重复调用抛错）——测试进程里真实装配由
@@ -48,10 +61,10 @@ import {
  */
 
 /**
- * 已由贡献提供的 `/web` 面路由。
+ * 已由贡献提供的 `/web` 面路由；顺序与装配收集顺序一致（见文件头）。
  *
- * 仍在宿主 `routes/web/index.ts` 手写序列里的 6 条（agent-config 4、model-management 2）不在这里——它们由
- * `createWebApp` 自己挂载，本 helper 只补贡献侧（调用方是 `createWebApp({ web: createTestWebRoutes(), ... })`）。
+ * 调用方是 `createWebApp({ web: createTestWebRoutes(), ... })`：宿主手写序列只剩 `branding` 与
+ * `/web/config` 聚合实例，`/web` 面的包路由全部在这里。
  */
 export function createTestWebRoutes(): readonly AnyElysia[] {
   return [
@@ -62,10 +75,16 @@ export function createTestWebRoutes(): readonly AnyElysia[] {
     createWebInstancesRoutes({ authGuardPlugin }),
     createWebKnowledgeBaseRoutes({ authGuardPlugin }),
     createWebHindsightRoutes({ authGuardPlugin }),
+    createWebSidebarConfigRoutes(),
+    createWebAgentSitesRoutes({ authGuardPlugin }),
+    createWebAgentGenerationRoutes({ authGuardPlugin }),
+    createWebMetaAgentRoutes({ authGuardPlugin, rotateCallerApiKey }),
     createWebChannelsRoutes({ authGuardPlugin, environmentLookup }),
     createWebFsRoutes({ authGuardPlugin }),
     createWebFileEventsRoutes({ authenticateRequest }),
     createWebRegistryRoutes({ authGuardPlugin }),
+    createWebModelGatewayRoutes({ authGuardPlugin }),
+    createWebPeriTaskDetailsRoutes({ authGuardPlugin, getOwnedEnvironment: verifyEnvironmentOwnership }),
     createWebProdViewsRoutes({ authGuardPlugin }),
     createWebTasksV2Routes({ authGuardPlugin }),
     createWebWorkflowDefsRoutes({ authGuardPlugin }),
@@ -76,14 +95,15 @@ export function createTestWebRoutes(): readonly AnyElysia[] {
   ];
 }
 
-/** 已由贡献提供的 `/web/config` 面路由；顺序与迁移前宿主手写序列一致。 */
+/** 已由贡献提供的 `/web/config` 面路由；顺序与装配收集顺序一致（见文件头）。 */
 export function createTestWebConfigRoutes(): readonly AnyElysia[] {
   return [
-    createWebConfigProvidersRoutes({ authGuardPlugin, resolveSecretReference }),
-    createWebSandboxPoolsRoutes({ authGuardPlugin }),
-    createWebConfigModelsRoutes({ authGuardPlugin, userModelPreferences }),
-    createWebConfigAgentsRoutes({ authGuardPlugin, userAgentPreferences }),
-    createWebSkillsConfigRoutes({ authGuardPlugin }),
     createWebMcpConfigRoutes({ authGuardPlugin }),
+    createWebSkillsConfigRoutes({ authGuardPlugin }),
+    createWebConfigAgentsRoutes({ authGuardPlugin, userAgentPreferences }),
+    createWebConfigModelsRoutes({ authGuardPlugin, userModelPreferences }),
+    createWebConfigProvidersRoutes({ authGuardPlugin, resolveSecretReference }),
+    createWebConfigProdViewsRoutes({ authGuardPlugin }),
+    createWebSandboxPoolsRoutes({ authGuardPlugin }),
   ];
 }

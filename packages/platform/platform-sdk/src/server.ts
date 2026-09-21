@@ -177,6 +177,10 @@ export interface ServerRouteHost {
   readonly userModelPreferences: unknown;
   /** `{env:NAME}` 密钥引用解析；真相来源是宿主进程环境，包不得直读 `process.env`。 */
   readonly resolveSecretReference: unknown;
+  /** Environment 归属校验；不存在、跨组织或跨用户一律抛 `NotFoundError`。 */
+  readonly verifyEnvironmentOwnership: unknown;
+  /** 轮换调用方名下的 API Key；「同名 key 只保留一把」的编排只在身份侧实现一处。 */
+  readonly rotateCallerApiKey: unknown;
 }
 
 function requireInfrastructure(): ApplicationInfrastructure {

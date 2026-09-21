@@ -35,12 +35,13 @@ import { agentConfigResource } from "./src/server/access/agent-config-resource";
  * 拖进模块图。工厂产出 `src/server/module.ts` 的 `createAgentConfigServerModule(deps)` 构造的真实例并
  * 装入进程级槽位，依赖取自 registry 的装配声明——详见 `src/module.ts`。
  *
- * 声明 `contributions`（1.5e）：`/web/config/agents` 的路由实例由本模块以惰性构造函数
- * `(host) => import("./src/server/assembly").then(...)` 给出，`slot: "web-config"` 指明挂宿主 `/web/config`
- * 聚合面——路由路径是相对形式，前缀由宿主的聚合实例决定，「挂哪一面」只能由声明说清。惰性 import 与
- * `create` 同因：registry 会被大量位置导入，不能在索引层就把 Elysia 拖进模块图。
- * `/web/agent-sites`、`/web/sidebar-config`、`/web/agent-generation`、`/web/meta-agent/ensure` 随后按同一
- * 形状迁入 `web` 槽（1.5e 逐包铺开）。
+ * 声明 `contributions`（1.5e）：五条路由的实例由本模块以惰性构造函数
+ * `(host) => import("./src/server/assembly").then(...)` 给出，`slot` 指明挂宿主哪一面——路由路径是相对
+ * 形式，前缀由宿主的聚合实例决定，「挂哪一面」只能由声明说清。惰性 import 与 `create` 同因：registry 会
+ * 被大量位置导入，不能在索引层就把 Elysia 拖进模块图。
+ *
+ * 一条挂 `web-config`（`/web/config/agents`），四条挂 `web`。`/web/sidebar-config` 的工厂不消费 host：
+ * 该端点在登录页也要可用，刻意不声明 `sessionAuth`，故不需要宿主注入守卫。
  *
  * 不声明 `web` / `envDefinitions`：消费方分别是 §1.6 WebShell 装配与 §1.7 的宿主 env 登记，形状必须与
  * 消费端同时定型。
@@ -58,6 +59,34 @@ export const moduleManifest = {
       slot: "web-config",
       value: (host: ServerRouteHost) =>
         import("./src/server/assembly").then((assembly) => assembly.createAgentConfigWebConfigRoutes(host)),
+    },
+    {
+      id: "agent-config.web-sidebar-config",
+      kind: "app-route",
+      slot: "web",
+      value: () =>
+        import("./src/server/assembly").then((assembly) => assembly.createAgentConfigWebSidebarConfigRoutes()),
+    },
+    {
+      id: "agent-config.web-agent-sites",
+      kind: "app-route",
+      slot: "web",
+      value: (host: ServerRouteHost) =>
+        import("./src/server/assembly").then((assembly) => assembly.createAgentConfigWebAgentSitesRoutes(host)),
+    },
+    {
+      id: "agent-config.web-agent-generation",
+      kind: "app-route",
+      slot: "web",
+      value: (host: ServerRouteHost) =>
+        import("./src/server/assembly").then((assembly) => assembly.createAgentConfigWebAgentGenerationRoutes(host)),
+    },
+    {
+      id: "agent-config.web-meta-agent",
+      kind: "app-route",
+      slot: "web",
+      value: (host: ServerRouteHost) =>
+        import("./src/server/assembly").then((assembly) => assembly.createAgentConfigWebMetaAgentRoutes(host)),
     },
   ],
   create: (context) => import("./src/module").then((module) => module.createAgentConfigModule(context)),

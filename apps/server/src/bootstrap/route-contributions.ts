@@ -15,9 +15,9 @@ import { serverRouteHost } from "./route-host";
  * 实例。未知槽名当场报错——静默丢弃一个路由贡献等于让整组端点消失，比装配失败更难排查。
  */
 
-/** `/web` 聚合槽（`routes/web/index.ts` 的 webApp）。 */
+/** `/web` 聚合槽（`routes/web/index.ts` 的 `createWebApp`）。 */
 export const WEB_SLOT = "web";
-/** `/web/config` 聚合槽（`routes/web/config/index.ts` 的 webConfigApp）。 */
+/** `/web/config` 聚合槽（`routes/web/config/index.ts` 的 `createWebConfigApp`）。 */
 export const WEB_CONFIG_SLOT = "web-config";
 
 /** 路由贡献的构造函数形状：装配期把宿主协议面交给包，由包返回构造好的 Elysia 实例。 */

@@ -33,11 +33,14 @@ import { providerResource } from "./src/server/access/provider-resource";
  * （`setModelGatewayServices`）不在本工厂内构造——它依赖宿主进程级的凭据与预算装配，归宿主的
  * `initModelGateway`（§1.5 裁定：registry 不接管启动序）。
  *
- * 声明 `contributions`（1.5e）：`/web/config/models` 与 `/web/config/providers` 的路由实例由本模块以惰性
- * 构造函数 `(host) => import("./src/server/assembly").then(...)` 给出，`slot: "web-config"` 指明挂宿主
- * `/web/config` 聚合面——路由路径是相对形式，前缀由宿主的聚合实例决定，「挂哪一面」只能由声明说清。
- * 惰性 import 与 `create` 同因：registry 会被大量位置导入，不能在索引层就把 Elysia 拖进模块图。
- * `/web/model-gateway` 与 `/web/peri-task-details` 随后按同一形状迁入 `web` 槽（1.5e 逐包铺开）。
+ * 声明 `contributions`（1.5e）：四条路由的实例由本模块以惰性构造函数
+ * `(host) => import("./src/server/assembly").then(...)` 给出，`slot` 指明挂宿主哪一面——路由路径是相对
+ * 形式，前缀由宿主的聚合实例决定，「挂哪一面」只能由声明说清。惰性 import 与 `create` 同因：registry 会
+ * 被大量位置导入，不能在索引层就把 Elysia 拖进模块图。
+ *
+ * 两条挂 `web-config`（`/web/config/models`、`/web/config/providers`），两条挂 `web`
+ * （`/web/model-gateway`、`/web/agents/:environmentId/sessions/:sessionId/peri-tasks/:taskId/detail`）。
+ * 后者要校验 Environment 归属，消费宿主 `verifyEnvironmentOwnership` 端口。
  *
  * 不声明 `web`：消费方是 §1.6 的 WebShell 装配，形状必须与消费端同时定型。
  */
@@ -62,6 +65,22 @@ export const moduleManifest = {
       value: (host: ServerRouteHost) =>
         import("./src/server/assembly").then((assembly) =>
           assembly.createModelManagementWebConfigProvidersRoutes(host),
+        ),
+    },
+    {
+      id: "model-management.web-model-gateway",
+      kind: "app-route",
+      slot: "web",
+      value: (host: ServerRouteHost) =>
+        import("./src/server/assembly").then((assembly) => assembly.createModelManagementWebGatewayRoutes(host)),
+    },
+    {
+      id: "model-management.web-peri-task-details",
+      kind: "app-route",
+      slot: "web",
+      value: (host: ServerRouteHost) =>
+        import("./src/server/assembly").then((assembly) =>
+          assembly.createModelManagementWebPeriTaskDetailsRoutes(host),
         ),
     },
   ],
