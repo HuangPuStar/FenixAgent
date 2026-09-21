@@ -62,7 +62,7 @@ Hindsight 长期记忆在平台内的唯一 owner：记忆可用性判定、Hind
 2. `apps/server/src/test-utils/setup-mocks.ts:29`：`registerModuleConfigBaseline("memory", createMemoryModuleConfig())`（import 自 `@fenix/resource-memory/server/testing`）——**已落地**。落地前实测：只登记 skill 基线时 `bun test packages/agent-runtime/src/__tests__/round43-launch-spec-builder.test.ts` 在 `getMemoryConfig` 抛「应用基础设施尚未初始化」（10 pass / 13 fail）；补上 memory 基线后同一命令 **23 pass / 0 fail**。
 3. `apps/server/src/routes/web/index.ts:11,45`：`import { createWebHindsightRoutes } from "@fenix/resource-memory/server"` + `createWebHindsightRoutes({ authGuardPlugin })`——**已落地**（此前该行导入的是已删除的 `webHindsightRoutes`，探针实测 TS 报 `has no exported member named 'webHindsightRoutes'`；该诊断当时被 workflow 包正在写文件的语法错误掩盖，见已知项 8）。
 4. `scripts/architecture/exceptions.json`：`apps-boundary` 的 memory 条目改写为「实测 1 处导入 / 1 个文件，全部为 `@server/db/schema` 表定义、owner 1.7」；`web-package-not-to-app` 的 memory 条目（HEAD 46 处 / 13 文件）删除——**已落地**。
-5. §1.6 重接线——**i18n 部分已落地，页面/API 部分待 §1.6**：宿主 `apps/web/src/i18n/index.ts:18,123,137` 已改经 `@fenix/resource-memory/web/i18n` 登记字典；但 `apps/web/src/routes/agent/_panel/memories.tsx:5` 仍写 `import("@/src/pages/hindsight/MemoriesPage")`，靠 `apps/web/vite.config.ts:67-69` 把该说明符别名到本包真实文件。别名表收敛与 `apps/web/src/types/cytoscape-fcose.d.ts` 的删除随页面重接线一起做（本包已自带 `web/types/cytoscape-fcose.d.ts` 垫片）。
+5. §1.6 重接线——**已落地**：宿主 `apps/web/src/i18n/index.ts:18,123,137` 经 `@fenix/resource-memory/web/i18n` 登记字典；`apps/web/src/routes/agent/_panel/memories.tsx` 的懒加载说明符已随 T11e 改指 `@fenix/resource-memory/web`，不再经 `@/src/pages/hindsight/MemoriesPage` 别名穿透本包 `web/**`。宿主 `apps/web/src/types/cytoscape-fcose.d.ts` 也已不存在（本包自带的 `web/types/cytoscape-fcose.d.ts` 垫片是唯一一份）。
 
 ## 已知项
 

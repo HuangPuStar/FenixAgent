@@ -2,7 +2,7 @@ import { createFileRoute } from "@tanstack/react-router";
 import { lazy, Suspense } from "react";
 
 const Page = lazy(() =>
-  import("@/src/pages/agent-panel/pages/AgentKnowledgeBasesPage").then((m) => ({
+  import("@fenix/resource-knowledge/web").then((m) => ({
     default: m.AgentKnowledgeBasesPage,
   })),
 );

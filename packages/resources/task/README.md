@@ -150,13 +150,11 @@ packages/resources/task` 为 0（按 import 形态而不是裸包名核对：裸
   移除条件：`web/api/tasks-v2.ts` 的 `trigger` / `toggle` 改为 reject 语义（在 API 层 `unwrap`），
   或在 `TasksPanel` 调用点检查信封 `success === false` 后补齐失败反馈，并给成功路径补 `toast.success`；
   两条路任选其一即可移除此条目。改动落在本包 `web/**`，随 W3 或后续波次收口。
-- **宿主 `apps/web` 仍有 3 处直连**（均属共享文件波次）：`vite.config.ts:131` 的
-  `@/src/api/tasks-v2` alias（`git grep -n "@/src/api/tasks-v2" -- apps/web` 除 alias 自身外 0 命中，
-  随 `./web` 出口删除）与 `vite.config.ts:133-135` 的 `@/src/pages/agent-panel/pages/AgentTasksPage`
-  alias（唯一 importer 是宿主 route adapter `routes/agent/_panel/tasks.tsx:5`）、`apps/web/src/shell/ArtifactsPanel.tsx`
-  的深层相对 `TasksPanel` import（§1.6 T11d 该文件由 `pages/agent-panel/` 迁入 `shell/`，相对深度同步减一，改为
-  `@fenix/resource-task/web` 仍属 W3）。`tasks.tsx` 这个薄 route adapter
-  保留在宿主是既定分工（§1.6），它随 W3 改指 `@fenix/resource-task/web`。
+- **宿主 `apps/web` 直连（§1.6 T11e 后）**：`routes/agent/_panel/tasks.tsx` 这个薄 route adapter 已改指
+  `@fenix/resource-task/web`（保留在宿主是既定分工）；`vite.config.ts` 的 `@/src/api/tasks-v2` 与
+  `@/src/pages/agent-panel/pages/AgentTasksPage` 两条 alias 随之失去全部消费方。`apps/web/src/shell/ArtifactsPanel.tsx`
+  的 `TasksPanel` import 仍走别名（宿主 Shell 消费面，随 T11e 收尾批次改为 `@fenix/resource-task/web`），
+  别名表条目也在那批一并删除。
 - **i18n 两侧均已落地（2026-09-20 实测，切换由 W3 完成）**：字典在 `web/i18n/locales/{en,zh}/tasks-v2.json`
   （计划 §4 的形状，W2.5 迁移；旧路径 `web/i18n/{en,zh}/` 已无引用），宿主
   `apps/web/src/i18n/index.ts:23` 已改为子路径 `@fenix/resource-task/web/i18n`，`:119` / `:133` 用
