@@ -13,6 +13,7 @@ import { Button } from "../../../ui/button";
 import { ScrollArea } from "../../../ui/scroll-area";
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "../../../ui/sheet";
 import type { SessionSummary } from "../../types";
+import type { ChatNotice } from "../chat-interface-types";
 import { SidebarSessionList } from "../sidebar-session-list";
 
 /** 移动端会话抽屉属性。 */
@@ -26,6 +27,8 @@ export interface AcpMainMobileSidebarProps {
   onSelectSession: (session: SessionSummary) => void;
   onRenameSession: (sessionId: string, title: string) => void;
   onDeleteSession: (sessionId: string) => void;
+  /** 会话重命名 / 删除失败的提示出口（源实现在 `SidebarSessionList` 内直连 sonner） */
+  onNotice?: (notice: ChatNotice) => void;
 }
 
 /** 窄屏（`md:hidden`）会话抽屉：标题 + 新建入口 + 会话列表。复制自 `ACPMain.tsx` 的 Sheet 分支。 */
@@ -38,6 +41,7 @@ export function AcpMainMobileSidebar({
   onSelectSession,
   onRenameSession,
   onDeleteSession,
+  onNotice,
 }: AcpMainMobileSidebarProps) {
   const { t } = useTranslation(UI_COMPONENTS_NS);
 
@@ -70,6 +74,7 @@ export function AcpMainMobileSidebar({
               sessions={sessions}
               onRenameSession={onRenameSession}
               onDeleteSession={onDeleteSession}
+              onNotice={onNotice}
             />
           </ScrollArea>
         </div>

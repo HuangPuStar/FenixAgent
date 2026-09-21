@@ -85,7 +85,7 @@ interface ACPMainProps {
   /** 侧边栏展开状态变化回调（宿主可在此持久化，如写入 localStorage `acp-sidebar-open`） */
   onSidebarOpenChange?: (open: boolean) => void;
   /** 已绑定 MCP 列表（透传给 ChatInterface，替代包内 envApi/agentApi/mcpApi 查询） */
-  boundMcps?: BoundMcpOption[];
+  boundMcps?: readonly BoundMcpOption[];
   /** `StructuredMessage[]` → `ThreadEntry[]` 投影（透传给 ChatInterface，由宿主注入） */
   projectEntries?: (structuredMessages: readonly StructuredMessage[]) => ThreadEntry[];
   /** 上下文队列取出并清空（透传给 ChatInterface，源为宿主 `@/src/lib/context-queue.flushContext`） */
@@ -378,6 +378,7 @@ export function ACPMain({
           sessions={sessions}
           onRenameSession={onRenameSession}
           onDeleteSession={onDeleteSession}
+          onNotice={onNotice}
           showSessionList={false}
         />
       )}
@@ -392,6 +393,7 @@ export function ACPMain({
           onSelectSession={handleSelectSession}
           onRenameSession={onRenameSession}
           onDeleteSession={onDeleteSession}
+          onNotice={onNotice}
         />
       )}
 
@@ -426,6 +428,7 @@ export function ACPMain({
                 sessions={sessions}
                 onRenameSession={onRenameSession}
                 onDeleteSession={onDeleteSession}
+                onNotice={onNotice}
               />
             </ScrollArea>
           </div>

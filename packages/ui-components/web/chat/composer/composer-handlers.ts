@@ -116,6 +116,7 @@ export function useComposerHandlers({
     addAttachments,
     quotes,
     updateQuotes,
+    readQuotes,
     selectedMcpIds,
     selectedCommandNames,
     commandPanelOpen,
@@ -161,11 +162,14 @@ export function useComposerHandlers({
     (incoming: { text: string }) => {
       const quoteText = incoming.text;
       if (!quoteText.trim()) return;
-      if (quotes.length >= MAX_QUOTE_COUNT) {
+      // 配额读同步 ref 而非渲染期 `quotes`：同一批次内连续派发多条引用时，渲染期变量尚未更新，
+      // 每条都按旧额度放行即可绕过 8 条 / 8000 字符上限（源实现用 `quotesRef.current`）。
+      const currentQuotes = readQuotes();
+      if (currentQuotes.length >= MAX_QUOTE_COUNT) {
         notify("info", t("chat.components.composerAssets.quoteLimitReached"));
         return;
       }
-      const quotedCharacterCount = quotes.reduce((total, quote) => total + Array.from(quote.text).length, 0);
+      const quotedCharacterCount = currentQuotes.reduce((total, quote) => total + Array.from(quote.text).length, 0);
       const remainingCharacterCount = MAX_TOTAL_QUOTED_TEXT_LENGTH - quotedCharacterCount;
       if (remainingCharacterCount <= 0) {
         notify("info", t("chat.components.composerAssets.quoteLimitReached"));
@@ -181,7 +185,7 @@ export function useComposerHandlers({
       }
       textareaRef.current?.focus();
     },
-    [notify, quotes, t, textareaRef, updateQuotes],
+    [notify, readQuotes, t, textareaRef, updateQuotes],
   );
 
   useComposerExternalInput(subscribeExternal, {

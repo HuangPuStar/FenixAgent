@@ -178,6 +178,8 @@ export const ChatInterface = forwardRef<ChatInterfaceHandle, ChatInterfaceProps>
     scenePrompt,
     contextScope: composerContextScope,
     flushContext,
+    // 输入岛与发送边界共用同一个压缩端口（缺这里发送路径就丢失 >2MiB 图片的二次压缩）
+    compressImage,
     onCreateSession,
     onSendPrompt,
     onNotice,
