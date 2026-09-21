@@ -28,6 +28,7 @@
     "generate:module-registry": "bun run scripts/generate-module-registry.ts",
     "generate:web-contributions": "bun run scripts/generate-web-contributions.ts",
     "check:root-owner-inventory": "bun run scripts/check-root-source-owner-inventory.ts --check",
+    "check:schema-ddl-drift": "bun run scripts/check-schema-ddl-drift.ts",
     "preview:web": "bunx vite preview --config apps/web/vite.config.ts",
     "typecheck": "tsc --noEmit",
     "typecheck:web": "tsc -p apps/web/tsconfig.json --noEmit",

@@ -364,6 +364,41 @@ describe("architecture check CLI", () => {
     expect(result.stdout).toContain("special-dependency");
   });
 
+  // §6.1 的 schema 组装期例外：Drizzle 的 .references() 只接受列对象，跨模块外键只能在 db/schema.ts
+  // 里导入对方的表对象，因此 db/** 的跨包导入不由 §2.3 判定。
+  test("allows cross-package table imports under db/", async () => {
+    const root = await createFixture({
+      "package.json": WORKSPACE_ROOT_MANIFEST,
+      "packages/platform/identity/package.json": '{"name":"@fenix/identity"}\n',
+      "packages/platform/identity/db/schema.ts": "export const user = {};\n",
+      "packages/resources/consumer/package.json":
+        '{"name":"@fenix/consumer","dependencies":{"@fenix/identity":"workspace:*"}}\n',
+      "packages/resources/consumer/db/schema.ts": 'import { user } from "@fenix/identity/db";\nvoid user;\n',
+    });
+
+    const result = await runCheck(root);
+
+    expect(result.exitCode).toBe(0);
+  });
+
+  // 例外只作用于 db/ 路径：同一包在 src/ 里导入对方的表对象仍是 §2.3 的违规。若按包对登记例外，
+  // 这条会被一起放行——那正是路径作用域判定要防的事。
+  test("still rejects cross-package table imports under src/", async () => {
+    const root = await createFixture({
+      "package.json": WORKSPACE_ROOT_MANIFEST,
+      "packages/platform/identity/package.json": '{"name":"@fenix/identity"}\n',
+      "packages/platform/identity/db/schema.ts": "export const user = {};\n",
+      "packages/resources/consumer/package.json":
+        '{"name":"@fenix/consumer","dependencies":{"@fenix/identity":"workspace:*"}}\n',
+      "packages/resources/consumer/src/repository.ts": 'import { user } from "@fenix/identity/db";\nvoid user;\n',
+    });
+
+    const result = await runCheck(root);
+
+    expect(result.exitCode).toBe(1);
+    expect(result.stdout).toContain("[special-dependency]");
+  });
+
   // §158 要求同类别内部的方向也能被门禁判定：identity 与 access-control 同属 platform-impl，
   // 矩阵只允许 access-control → identity，反向边必须被拒。
   test("rejects identity imports of the access control implementation", async () => {
@@ -482,6 +517,7 @@ describe("architecture check CLI", () => {
       "module-registry",
       "web-contributions",
       "owner-inventory",
+      "schema-ddl-drift",
       "architecture",
       "tsc (server)",
       "tsc (web)",

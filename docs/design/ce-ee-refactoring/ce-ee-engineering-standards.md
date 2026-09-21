@@ -102,7 +102,7 @@ export class AgentConfigService {
 }
 ```
 
-这里的 `SkillService`、`McpService` 必须由各自 package 的根入口显式导出；调用方不得导入 `@fenix/skill/src/services/*`、B 的 repository 或 db/schema。具体 service 在 `apps/server` 装配时创建并注入，不能由资源 A 自行构造 B 的 repository 或具体授权实现。`Domain Service` 不接受 actor、不执行用户授权；资源 A 的 Facade 已授权自身动作后，可直接复用 B 的 Domain Service。资源 A 不能读取资源 B 的角色、归属或可见性规则，也不能依赖其具体授权实现。
+这里的 `SkillService`、`McpService` 必须由各自 package 的根入口显式导出；调用方不得导入 `@fenix/skill/src/services/*`、B 的 repository 或 db/schema。具体 service 在 `apps/server` 装配时创建并注入，不能由资源 A 自行构造 B 的 repository 或具体授权实现。**调用期**的 `db/schema` 禁则不含 schema 组装期的跨模块外键表对象引用——那是 §6.1 单独规定的路径作用域例外，只在 `db/**` 内成立。`Domain Service` 不接受 actor、不执行用户授权；资源 A 的 Facade 已授权自身动作后，可直接复用 B 的 Domain Service。资源 A 不能读取资源 B 的角色、归属或可见性规则，也不能依赖其具体授权实现。
 
 前端遵循同样的宽松规则：关系紧密且稳定时，一个资源的 `web` 子路径可直接依赖另一资源 `web` 根入口公开的 API client、query hook、DTO 或可复用组件；禁止导入对方 `web/src/**` 内部文件，也不强制额外抽象接口。前端仅用于展示和选择，后端保存关联时必须再次校验引用资源的当前权限和有效性。
 
@@ -132,10 +132,10 @@ export interface SkillReferenceResolver {
 | `packages/platform/identity` | `platform-sdk`、认证/存储等必要基础依赖 | `access-control`、`agent-runtime`、`resources`、`apps` | 有状态平台模块，拥有用户、组织、成员、认证/API Key 及其 DB、route、Web；产出可信身份上下文和公开 Identity Service |
 | `packages/platform/access-control` | `platform-sdk`、同一产品版本的 `identity` 公开入口、无业务语义基础依赖 | `agent-runtime`、`resources`、`apps`、Identity 的内部路径 | Identity 与 AccessControl 保持两个包，普通资源不得依赖此具体实现 |
 | `packages/` 中除 `platform/*`、`agent-runtime`、`resources/*` 外的包 | 按各包自身的 SDK 或插件职责声明 | 包间依赖环 | 独立 SDK/插件包，如 `acp-link`、`core`、`orchestration`、`chat-channel`、`remote-runtime`；服务模块直接通过包引用使用其能力，不适用服务模块依赖矩阵的其他限制 |
-| `packages/agent-runtime`（`@fenix/agent-runtime`） | `platform-sdk`、四个基础运行包、Machine/Sandbox 的专用公开运行入口、无业务语义基础依赖 | 除 Machine/Sandbox 外的 `resources`、具体 AccessControl/Identity、`apps`、Machine/Sandbox 内部路径 | 组合 Environment、Instance、生命周期、并发与 relay/session；固定编译方向是 `agent-runtime → sandbox → machine` 及 `agent-runtime → machine` |
+| `packages/agent-runtime`（`@fenix/agent-runtime`） | `platform-sdk`、四个基础运行包、Machine/Sandbox 的专用公开运行入口、无业务语义基础依赖 | 除 Machine/Sandbox 外的 `resources`、具体 AccessControl/Identity、`apps`、Machine/Sandbox 内部路径（跨模块外键的表对象引用见 §6.1） | 组合 Environment、Instance、生命周期、并发与 relay/session；固定编译方向是 `agent-runtime → sandbox → machine` 及 `agent-runtime → machine` |
 | `packages/resources/machine` | `platform-sdk`、本资源声明的基础依赖 | `agent-runtime`、Sandbox、具体 AccessControl/Identity、`apps`、其他包内部路径 | Runtime 固定基础资源；拥有注册、心跳、文件与在线状态，不得回调 Runtime repository、singleton 或生命周期实现 |
 | `packages/resources/sandbox` | `platform-sdk`、Machine 公开入口、Sandbox Provider 公开 API、本资源声明的基础依赖 | `agent-runtime`、具体 AccessControl/Identity、`apps`、其他包内部路径 | Runtime 固定基础资源；拥有执行环境供给、恢复和管理面，多实现差异留在 Provider 插件点 |
-| 其他 `packages/resources/<resource>` | `platform-sdk`、本资源声明的基础依赖、其他资源包根入口公开的 service/DTO；按需依赖根入口公开接口 | `apps`、具体 AccessControl/Identity、其他资源的内部 `src/**`、repository/schema | 资源的授权只依赖 `AccessControlModule` 契约；需要身份的只读投影（用户展示信息、组织名录、成员关系、系统托管租户）时经 `platform-sdk` 的 `IdentityDirectory` 窄契约，由 app 装配注入；资源间规则见上一节 |
+| 其他 `packages/resources/<resource>` | `platform-sdk`、本资源声明的基础依赖、其他资源包根入口公开的 service/DTO；按需依赖根入口公开接口 | `apps`、具体 AccessControl/Identity、其他资源的内部 `src/**`、repository/schema（跨模块外键的表对象引用见 §6.1） | 资源的授权只依赖 `AccessControlModule` 契约；需要身份的只读投影（用户展示信息、组织名录、成员关系、系统托管租户）时经 `platform-sdk` 的 `IdentityDirectory` 窄契约，由 app 装配注入；资源间规则见上一节 |
 | `packages/resources/<resource>/web` | 本资源及其他资源 `./web` 公开的 DTO/API client/hook/组件、已作为公开入口发布的共享 UI、Web SDK | 所有服务端 `services`、`repositories`、db、adapter；其他资源 `web/src/**`；`apps/web` 内部 | 浏览器边界，不得把 server 代码带入 bundle。共享 UI 目前没有独立公开入口，资源 web 不得因此穿透 `apps/web` 内部；复用方式（提取公开入口或其他）单独决定 |
 | `apps/server` | 所有已启用包的公开入口 | 任意包内部路径 | 唯一的 server 装配根：读取 profile、注入依赖、挂载 route、注册生命周期 |
 | `apps/web` | 资源 `./web` 公开入口、Web 契约、版本自己的 Shell | 服务端实现、resource 根入口中的 server-only 导出 | 最终 Web 装配根；Shell 属于 app，不属于资源包 |
@@ -365,6 +365,23 @@ schema: [
 ]
 ```
 
+**跨模块外键的 schema 组装期例外。** 表之间可以存在跨模块外键，而 Drizzle 的 `.references()` 与 `foreignKey()` 只接受列对象——没有字符串名或延迟解析的写法。因此被引用表不在同一文件时，引用方**只能**在组装期导入对方的 `db/schema.ts`：
+
+```ts
+// packages/resources/memory/db/schema.ts
+import { agentConfig } from "@fenix/agent-config/db";
+
+export const agentMemoryConfig = pgTable("agent_memory_config", {
+  agentConfigId: text("agent_config_id").references(() => agentConfig.id, { onDelete: "cascade" }),
+});
+```
+
+这是 §2.2 与 §2.3 的**唯一例外**，边界有三条：
+
+1. **只允许 `packages/**/db/**` 路径**。`src/**`、`web/**` 里出现跨包 schema 导入仍按 §2.2 / §2.3 判定为违规——调用期只能经包根入口公开的 service / DTO 取数。`agent-runtime` 对 `resources` 的反向禁则同理只约束 `src/**`（`environment.agent_config_id` 是既有跨模块外键）。
+2. **不构成包级依赖边**。它在 `package.json` 里仍要显式声明依赖（§2.1），但不进入 `dependsOn` / registry 的装配顺序：`db/**` 不参与模块装配，因此不会把资源模块的启用范围绑在一起。
+3. **由路径作用域门禁强制，不进按包对匹配的例外台账**。台账是「包对」粒度，一条 schema 例外会连同该包的 `src/**` 一起放行，等于废掉整条禁则；实现见 `scripts/lib/architecture-boundary-rules.ts` 的 `special-dependency` 与 `.dependency-cruiser.cjs` 的 `agent-runtime-not-to-resources`。
+
 ### 6.2 迁移规则
 
 1. 变更模块 schema，更新模块 schema manifest。
@@ -450,7 +467,7 @@ packages/resources/agent-config/db/data-migrations/
 ### 10.2 依赖与公开边界
 
 1. workspace 编译依赖与第 2.3 节矩阵一致、无循环、无跨包 `src/**` 或相对路径穿透；每个依赖均在消费包 `package.json` 显式声明。
-2. 精确的特殊依赖只包括经设计登记的边：`access-control → identity`、`agent-runtime → sandbox/machine`、`sandbox → machine`。Machine/Sandbox 不反向依赖 Runtime；新增例外必须先修改权威设计并通过用户评审。
+2. 精确的特殊依赖只包括经设计登记的边：`access-control → identity`、`agent-runtime → sandbox/machine`、`sandbox → machine`。Machine/Sandbox 不反向依赖 Runtime；新增例外必须先修改权威设计并通过用户评审。另有一条经用户评审登记的**路径作用域例外**（2026-09-21）：`packages/**/db/**` 可导入其他模块 `db/schema.ts` 的表对象以表达跨模块外键，口径与边界见 §6.1；它不构成包级依赖边。
 3. `package.json` dependency、manifest `dependsOn`、生成 registry 和 assembly 表达同一依赖方向；architecture check 与 dependency-cruiser 能阻断新增违规，而不是依赖人工约定。
 4. 根入口和 `./server`、`./web`、专用 runtime-facing subpath 的运行环境边界明确；浏览器入口不得经任何重导出链加载 Node、DB 或服务端模块。
 

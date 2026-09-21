@@ -43,6 +43,12 @@ const STEPS = [
     filter: (out: string) => (out.includes("unowned=0 ambiguous=0") ? null : out),
   },
   {
+    // 表搬迁只搬位置、不改结构：schema 聚合结果与已发布迁移链必须零 DDL 差异（§6.1 / §10.6.1）。
+    name: "schema-ddl-drift",
+    cmd: "bun run check:schema-ddl-drift",
+    filter: (out: string) => (out.includes("✓ schema-ddl-drift") ? null : out),
+  },
+  {
     name: "architecture",
     cmd: "bun run architecture:check",
     filter: (out: string) => (out.includes("✓ architecture-check") ? null : out),
