@@ -97,10 +97,10 @@ WebShell 从静态 registry 收集各资源包的 web contribution（不反向�
 | T1 | 别名表与依赖声明归一 | 已交付 | `5e342aa31` |
 | T2 | 宿主零消费死代码与重复副本删除 | 已交付 | 见下方 §7.2 |
 | T3 | `@fenix/ui-components` 扩面 | 已交付 | `b858bf68f` |
-| T4 | `identity/web` 清零 + i18n | 4a 已交付 / 4b 待办 | 见下方 §7.3 |
+| T4 | `identity/web` 清零 + i18n | 已交付（a + b 并入 T7） | 4a 见 §7.3 / 4b 见 §7.12 |
 | T5 | `chat-channel/web` 清零 | a,b,c1,c2,c5,d 已交付 | 见下方 §7.4–§7.10 |
 | T6 | `agent-runtime/web` 收敛 | 已交付（a–e） | 见下方 §7.11 |
-| T7 | 5 条 `special-dependency` 消除 | 待办 | — |
+| T7 | 5 条 `special-dependency` 消除 | 已交付（含 4b） | 见下方 §7.12 |
 | T8 | 宿主组件/lib/api 簇改指并删除 | 待办 | — |
 | T9 | i18n 归属重划与 `quoteTruncatedBadge` 缺陷修复 | 待办 | — |
 | T10 | 测试迁移与 happy-dom 收敛 | 待办 | — |
@@ -158,7 +158,7 @@ T4 计划为一片，实测后发现两半的**失败面**不同，故拆成两�
 - **4a**（本次交付）：identity 别名归零 + `web/i18n` 建设 + **删 2 条台账**。这一半的改动会让
   T3 遗留的三条「上游别名债务」白名单断言与 `RMD_08_MOVES` 的目标存在性断言**同时变红**，
   必须同批处理（见 §7.3 的连带改动），否则 4a 无法独立成绿。
-- **4b**（**已并入 T7**，见下）：移除 3 处 `mock.module("@fenix/identity/web", …)`。
+- **4b**（**已并入 T7 并随之交付**，见 §7.12）：移除 3 处 `mock.module("@fenix/identity/web", …)`。
 
 **4b 为何并入 T7**：这 3 处替身（`skill` / `mcp` / `knowledge` 的 `*-page-states.test.tsx`）替换的正是
 `useOrg` / `useSession`，而 T7 要做的事就是把这 5 个资源页从「import `@fenix/identity/web` 的 hook」
@@ -904,6 +904,77 @@ packages/agent-runtime/` 488 pass（原 507 减已迁出的 19）、`bun test pa
 验证：`env -u ANTHROPIC_MODEL bun run precheck` 全绿（server-and-script-tests 771 pass、package-tests 7311
 pass / 0 fail、web-app-tests 968 pass / 0 fail）；`bun run build:web` 成功；`bun run architecture:check` ✓
 （2183 files / 24 条已登记例外）；`bun run check:dependencies` ✓（0 条新增违规）。
+
+### 7.12 T7 / T4b 组织与会话上下文改经 `@fenix/web-runtime` 契约（2026-09-21）
+
+**先决问题：契约落在哪。** 5 条 `special-dependency` 的成因完全相同——skill / mcp / knowledge /
+model-management / agent-config 的 web 面 `import { useOrg, useSession } from "@fenix/identity/web"`。
+但 §6.5 的裁定「组织上下文必须取宿主挂载的**同一份** React context 实例」与 §2.3 的「`resources` 不得
+依赖 `platform-impl`」在此正面冲突：资源包内自建 context 会拿到第二个实例（取值永远落在默认值），照搬
+identity 的 context 又违反依赖矩阵。按工程原则 6 向用户呈报三个候选（契约落 `@fenix/web-runtime` /
+资源包经 props 注入 / 台账长期豁免），用户裁定 **「契约落在 `@fenix/web-runtime`（推荐）」**。
+
+**第二次裁定：`isOwner`。** 裁定后的契约形状是 `{ organizationId, userId, pending }`，但盘点 5 个站点
+时发现 `AgentKnowledgeBasesPage` 还需要组织角色（`role === "owner"` 决定 `canManage` 与详情页的
+`canManageDetail`）。这同样是公共契约变更，再次弹窗，用户裁定 **「契约补 `isOwner` 布尔（推荐）」**：
+只给资源包真实需要的粒度，角色枚举（`owner` / `admin` / `member`）属身份域词汇，不外泄到 5 个包的
+类型面。
+
+| 动作 | 内容 |
+| --- | --- |
+| 契约新建 | `packages/web-runtime/web/contexts/org-session.tsx`：`OrgSession { organizationId; userId; isOwner; pending }` + `OrgSessionProvider` + `useOrgSession()`（不在 Provider 内即抛，不静默回落默认值）；出口 `./contexts/org-session` |
+| 实现方投影 | identity 的 `OrgProvider` 新增 `useSession()` 订阅与 `orgSessionValue` useMemo，外层包一层 `OrgSessionProvider`；取数、切换与 fetch 头注入等身份域逻辑仍只在本包（web-runtime 只声明形状） |
+| 5 个站点改指 | `AgentSkillsPage` / `AgentMcpPage` / `AgentKnowledgeBasesPage` / `AgentModelsPage` 改 `useOrgSession()`；`agent-config` 的 `use-agent-editor.ts` 同改（原 `useOrg`） |
+| 测试断言反转 | 3 条 `*-browser-surface` 的正向固化（`expect(page).toContain('from "@fenix/identity/web"')`）改为「取自契约 + 源码不得出现 `@fenix/identity`」；skill / mcp / knowledge / model-management / agent-config 的跨包到达面钉子由 `packages/platform/identity/web/contexts/OrgContext.tsx` 改指 `packages/web-runtime/web/contexts/org-session.tsx` |
+| T4b | 删 3 处 `mock.module("@fenix/identity/web")` 替身，改挂**真实** `OrgSessionProvider`（§6.4 的「4b 并入 T7」据此落地） |
+| 台账 | 删 5 条 `special-dependency … → @fenix/identity`（条目 34 → 29；`architecture:check` 24 → 19 条已登记例外，`check:dependencies` 仍 10 条 / 0 条新增违规） |
+| 死依赖 | 5 个资源包的 `@fenix/identity` workspace 依赖删除（import 归零后已无消费方），`bun.lock` 同步 8 行 |
+| 白名单死条目 | 4 份 `*-browser-surface` 白名单里的「经 `@fenix/identity/web` 传递进入」条目（`better-auth` / `@better-auth/api-key` / `@noble/ciphers` / `@tanstack/react-router`）随边消失删除；**删除本身就是证据**——若它们仍可达，「包外运行时依赖在白名单内」会立刻报红（实测删除后全绿，故确为死条目） |
+| 跨包到达面阈值 | skill 25 → 20、mcp 30 → 20（identity 子树离开值导入图，可达面缩小是预期结果）；model-management 的 20 未变 |
+| README | skill / mcp / knowledge / task 四份 README 的「边界残留 / 依赖边界 / 守卫范围」段落改写为「已消除」并记录新落点 |
+
+**为什么是 projection 而不是 re-export 身份的 context。** re-export 会把身份域的实现细节（`orgApi.list`
+的调用时机、`switchOrg` 的乐观更新与回滚、给全局 `fetch` 注入 `X-Active-Org-Id`）留在资源包的依赖链上，
+依赖方向问题只是被一句 re-export 掩盖。投影让资源包的类型面只含四项，且「值来自同一份实现」这一点由
+**实现方主动投影**保证：`OrgProvider` 是唯一的投影点，资源包之间不可能各自造出第二份值。
+
+**为什么不选「props 逐层注入」（T5b / T6d 的先例形态）。** 5 个站点都是**整页装配**——宿主路由直接
+渲染 `AgentSkillsPage` 这类页面组件，中间没有可注入的宿主边界；补一层包装组件只是把同一个 hook 换个
+地方调用，对上下文的依赖既没减少也没消失。契约 + 单 hook 与「取宿主同一份 context 实例」的约束同构，
+且不需要为 5 个页面各加一个包装点。
+
+**契约用 `null`、消费方口径是 `undefined`：在取值处一次归一。** 契约按 `/web` 视图模型的既有习惯用
+`string | null` 表达「不存在」（与 `types/config.ts` 的 `string | null` 一致）；5 个站点的比较函数
+（`isExternalSkill` / `isExternalMcp` / `providerMatchesScope` / `mapModelOptions`）与子组件 prop 用的是
+`string | undefined`。取舍是**在取值处归一**（`const activeOrganizationId = organizationId ?? undefined;`）
+而不是把 `| null` 扩散进这些签名：null 语义挡在契约边界内，调用点保持原样，改动面最小。
+
+**T4b 的测试保真度确实提高了，不只是「换个注入方式」。** 3 个 page-states 用例原先的替身是
+`useOrg: () => ({ org: { id: "org-current" }, role: "owner" })`——它把页面**怎么用**组织上下文也一并
+替身掉了（`role` 到 `isOwner` 的转换、会话与组织两个来源的合并都不过被测代码）。改挂真实
+`OrgSessionProvider` 后，页面走的是契约的真实解构与比较路径：少给一个字段（例如漏挂 Provider）用例会
+立刻抛 `useOrgSession must be used within OrgSessionProvider`，而不是静默拿到默认值继续跑。取值与旧替身
+逐项等价：`organizationId` 与用例内的资源归属一致（否则本组织资源会被判成共享来源）、`isOwner: true`
+对应旧 `role: "owner"`、`userId: undefined` 对应旧空会话。
+
+**观察到但未处理的既有现象（非本片引入）。** `bun test packages/resources`（本任务期间用于快速回归的
+**窄口径**）在本片改动前后都报 4 例 `# Unhandled error between tests`：3 例是 `@pierre/diffs` 模块求值期
+的 `ReferenceError: customElements is not defined`，1 例是 `spawn zip` ENOENT（本机无 `zip`）。基线对比：
+在 HEAD 的临时 worktree 跑同一命令同样得 4 errors（另有 98 例失败是该 worktree 的路径依赖用例，与本片
+无关），故为既有条件而非本片引入。CI 的真实门禁 `bun test packages/`（`scripts/ci.ts` 的 package-tests）
+全绿，本片未触及它的触发面；§7.11 记录的「`HTMLElement` 与 `customElements` 必须成对注入」修复针对的是
+T6c2 删除 33 个测试后的求值顺序，本节不重复处理，统一归 T10（测试迁移与 happy-dom 收敛）。
+
+**登记一处文档债务（不属本片可写范围）。** `packages/resources/model-management/README.md` 用行号引用
+`scripts/architecture/exceptions.json`（`:239` / `:303` / `:407`）；本片删除 5 条条目后文件降到 266 行，
+这些引用彻底失效（该段本就自述「已失真」）。model-management 的 README 归该包与 T12 文档收尾，本片只
+登记不改写。
+
+验证：`env -u ANTHROPIC_MODEL bun run precheck` 全绿（server-and-script-tests 771 pass、package-tests
+7311 pass / 0 fail / 2 skip、web-app-tests 968 pass / 0 fail）；`bun run build:web` 成功；
+`bun run architecture:check` ✓（2184 files / 19 条已登记例外）；`bun run check:dependencies` ✓
+（2335 modules / 10 条已登记例外 / 0 条新增违规）；5 个资源包与 model-management / prod-view / task 的
+`*-browser-surface` 与 3 个 page-states 专项用例全部通过。
 
 ---
 

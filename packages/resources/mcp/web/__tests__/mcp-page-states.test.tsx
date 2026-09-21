@@ -9,7 +9,6 @@
 //
 // 环境：happy-dom + react-dom/client（与同批 prod-view / skill / workflow 的组件用例同款）。
 // 跨包依赖只 mock 三类会把真实副作用或不可运行实现带进用例的东西：
-//   - `@fenix/identity/web`：其组织上下文依赖宿主别名（`@/src/api/request`），包内测试无法解析；
 //     本用例只需要一个当前组织 id 用来判定资源归属。
 //   - `react-i18next`：**必须自己注册替身**。bun 1.4.2 的 `mock.module` 会跨文件残留，同进程里已有
 //     文件注册过 `t: (key) => key` 的替身，不注册就会被它顶掉、断言里出现 i18n key 回显。
@@ -141,14 +140,6 @@ mock.module("sonner", () => ({
   toast: { error: () => {}, success: () => {}, info: () => {}, warning: () => {}, message: () => {} },
 }));
 
-// 替身给的是跨包并集：`useOrg` 供本用例判归属，`useSession` 是 knowledge 页面的出口——
-// bun 1.4.2 下命名空间会被同进程后续文件复用，缺出口会在链接期抛 `Export named 'useSession' not found`。
-mock.module("@fenix/identity/web", () => ({
-  // 组织 id 必须写字面量：mock 工厂在模块求值期执行，引用正文里的 const 会命中 TDZ。
-  useOrg: () => ({ org: { id: "org-current", name: "本组织" }, role: "owner" }),
-  useSession: () => ({ data: null }),
-}));
-
 /**
  * `@fenix/ui-components/config/FormDialog` 的同签名替身（跨文件污染的**收口点**，不只是文案替身）。
  *
@@ -232,9 +223,24 @@ afterAll(() => {
   }
 });
 
+import { OrgSessionProvider } from "@fenix/web-runtime/contexts/org-session";
 import type { McpServerInfo } from "@fenix/web-runtime/types/config";
 
 const ACTIVE_ORG_ID = "org-current";
+
+/**
+ * 组织/会话上下文挂**真实** `OrgSessionProvider`（§1.6 T7）：页面经
+ * `@fenix/web-runtime/contexts/org-session` 取组织 id，该契约是纯 React context、包内可直接解析，
+ * 因此不再 mock 平台实现（`@fenix/identity/web`）——那条替身是 `special-dependency` 台账里本包站点的
+ * 镜像，随本任务的台账削减一并退场。取值与旧替身等价：`organizationId` 与用例里的资源归属一致
+ * （否则本组织资源会被判成共享来源），`isOwner` 对应旧的 `role: "owner"`，`userId` 对应旧空会话。
+ */
+const ORG_SESSION = { organizationId: ACTIVE_ORG_ID, userId: null, isOwner: true, pending: false };
+
+/** 把被测节点包进 org/session 契约的 Provider。 */
+function withOrgSession(node: ReactElement): ReactElement {
+  return createElement(OrgSessionProvider, { value: ORG_SESSION }, node);
+}
 
 /**
  * 被测组件一律**动态导入**：React DOM 与 Radix 在模块求值期就会读取 `document` 与 DOM 构造器，
@@ -333,7 +339,7 @@ afterEach(async () => {
 /** 渲染并等待请求链（fetch → unwrap → setState）与随后的 React 重渲染落定。 */
 async function render(node: ReactElement): Promise<void> {
   await act(async () => {
-    root.render(node);
+    root.render(withOrgSession(node));
   });
   for (let i = 0; i < 5; i += 1) {
     await act(async () => {
