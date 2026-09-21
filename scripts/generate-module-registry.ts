@@ -1,7 +1,7 @@
 import { mkdir, readFile, writeFile } from "node:fs/promises";
-import { dirname, relative, resolve, sep } from "node:path";
+import { dirname, relative, resolve } from "node:path";
 
-import ts from "typescript";
+import type ts from "typescript";
 
 import {
   type ArchitectureException,
@@ -9,12 +9,19 @@ import {
   loadArchitectureLedger,
 } from "./lib/architecture-exceptions";
 import { getImportReferences, parseTypeScriptSource } from "./lib/import-references";
+import {
+  collectManifestCandidates,
+  collectRepositoryFiles,
+  findManifestObject,
+  findRuntimeFields,
+  loadManifestSource,
+  type ManifestDescriptor,
+  type ManifestLocation,
+  normalizePath,
+  readExportTarget,
+} from "./lib/module-manifest-source";
 
 const GENERATED_HEADER = "// 此文件由 scripts/generate-module-registry.ts 生成，请勿手动编辑。";
-const PACKAGE_NAME_PATTERN = /^@[a-z0-9][a-z0-9._-]*\/[a-z0-9][a-z0-9._-]*$/;
-/** 与 `@fenix/platform-sdk` 的 `moduleIdSchema` 保持一致。 */
-const MODULE_ID_PATTERN = /^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$/;
-const MANIFEST_EXPORT_NAME = "moduleManifest";
 const PACKAGE_MODULE_EXPORT_KEY = "./module";
 /** 模块服务端生产代码的扫描范围；`web/**` 不参与服务端装配顺序。 */
 const MODULE_SOURCE_PATTERNS = ["src/**/*.ts", "src/**/*.tsx"] as const;
@@ -29,19 +36,7 @@ const WORKSPACE_PACKAGE_PREFIX = "@fenix/";
 const CYCLE_RULE_NAME = "no-circular";
 
 /** 受版本控制的 manifest 扫描根：workspace 包与应用骨架。 */
-const PACKAGE_MANIFEST_GLOB = "packages/**/fenix.module.ts";
-const APP_MANIFEST_GLOB = "apps/*/fenix.module.ts";
-
-/** 声明这些字段即意味着 manifest 携带运行期代码，与「纯元数据描述符」互斥。 */
-const RUNTIME_MANIFEST_FIELDS = ["create", "contributions", "web", "envDefinitions"] as const;
-
-/**
- * 生成器认可的模块类别，必须与 `ModuleKind` 完全一致。
- *
- * 之所以在构建脚本里重复一份：生成器运行时不依赖 `@fenix/platform-sdk`。两者的漂移由
- * `scripts/__tests__/module-registry-generator.test.ts` 的类型穷尽断言守护。
- */
-export const MODULE_KINDS = ["access-control", "agent-runtime", "identity", "resource", "web-shell"] as const;
+const MANIFEST_GLOBS = { apps: "apps/*/fenix.module.ts", packages: "packages/**/fenix.module.ts" } as const;
 
 /** registry 生成或检查的配置。 */
 export interface GenerateModuleRegistryOptions {
@@ -56,13 +51,6 @@ export interface GenerateModuleRegistryResult {
   readonly outputFile: string;
 }
 
-/** 从 manifest 源码静态读出的描述符字段；生成器不执行 manifest。 */
-interface ManifestDescriptor {
-  readonly id: string;
-  readonly kind: string;
-  readonly dependsOn: readonly string[];
-}
-
 interface DiscoveredModule {
   /** 仓库相对 POSIX 路径，用于稳定排序与错误信息。 */
   readonly manifestFile: string;
@@ -72,147 +60,7 @@ interface DiscoveredModule {
   readonly dependencies: Readonly<Record<string, string>>;
   readonly descriptor: ManifestDescriptor;
   /** `packages/**` 走公开 `exports["./module"]`；`apps/*` 由生成物相对导入。 */
-  readonly location: "package" | "app";
-}
-
-function normalizePath(filePath: string): string {
-  return filePath.split(sep).join("/");
-}
-
-async function collectFiles(repositoryRoot: string, pattern: string): Promise<string[]> {
-  const files = await Array.fromAsync(new Bun.Glob(pattern).scan({ cwd: repositoryRoot, onlyFiles: true }));
-  return files.map(normalizePath);
-}
-
-async function readPackageManifest(
-  repositoryRoot: string,
-  packageDirectory: string,
-  manifestFile: string,
-): Promise<{ name: string; dependencies: Record<string, string>; exports: unknown }> {
-  const packageJsonPath = resolve(repositoryRoot, packageDirectory, "package.json");
-  let source: string;
-  try {
-    source = await readFile(packageJsonPath, "utf8");
-  } catch (error) {
-    throw new Error(`模块所在目录缺少 package.json: ${packageDirectory} (${manifestFile})`, { cause: error });
-  }
-
-  const parsed = JSON.parse(source) as { dependencies?: unknown; exports?: unknown; name?: unknown };
-  if (typeof parsed.name !== "string" || !PACKAGE_NAME_PATTERN.test(parsed.name)) {
-    throw new Error(`模块缺少 package name: ${manifestFile}`);
-  }
-
-  const dependencies: Record<string, string> = {};
-  if (parsed.dependencies !== undefined) {
-    if (typeof parsed.dependencies !== "object" || parsed.dependencies === null || Array.isArray(parsed.dependencies)) {
-      throw new Error(`package.json 的 dependencies 必须是对象: ${packageDirectory}`);
-    }
-    for (const [name, range] of Object.entries(parsed.dependencies)) {
-      if (typeof range === "string") dependencies[name] = range;
-    }
-  }
-
-  return { dependencies, exports: parsed.exports, name: parsed.name };
-}
-
-/** 剥离 `satisfies` / `as` / 括号包装，取出对象字面量。 */
-function unwrapObjectLiteral(expression: ts.Expression | undefined): ts.ObjectLiteralExpression | undefined {
-  let node = expression;
-  while (node && (ts.isSatisfiesExpression(node) || ts.isAsExpression(node) || ts.isParenthesizedExpression(node))) {
-    node = node.expression;
-  }
-  return node && ts.isObjectLiteralExpression(node) ? node : undefined;
-}
-
-function findManifestObject(sourceFile: ts.SourceFile): ts.ObjectLiteralExpression | undefined {
-  for (const statement of sourceFile.statements) {
-    if (!ts.isVariableStatement(statement)) continue;
-    for (const declaration of statement.declarationList.declarations) {
-      if (!ts.isIdentifier(declaration.name) || declaration.name.text !== MANIFEST_EXPORT_NAME) continue;
-      return unwrapObjectLiteral(declaration.initializer);
-    }
-  }
-  return;
-}
-
-function findProperty(
-  objectLiteral: ts.ObjectLiteralExpression,
-  propertyName: string,
-): ts.PropertyAssignment | undefined {
-  for (const property of objectLiteral.properties) {
-    if (!ts.isPropertyAssignment(property)) continue;
-    const name = property.name;
-    if ((ts.isIdentifier(name) || ts.isStringLiteralLike(name)) && name.text === propertyName) return property;
-  }
-  return;
-}
-
-function readStringProperty(
-  objectLiteral: ts.ObjectLiteralExpression,
-  propertyName: string,
-  manifestFile: string,
-): string | undefined {
-  const property = findProperty(objectLiteral, propertyName);
-  if (!property) return;
-  if (!ts.isStringLiteralLike(property.initializer)) {
-    throw new Error(`manifest 的 ${propertyName} 必须是字符串字面量: ${manifestFile}`);
-  }
-  return property.initializer.text;
-}
-
-/**
- * 静态读取 manifest 描述符。
- *
- * 只接受字面量：生成器不执行 manifest 也不做常量折叠，任何计算值都会让校验结论不可靠。
- */
-function readManifestDescriptor(sourceFile: ts.SourceFile, manifestFile: string): ManifestDescriptor {
-  const objectLiteral = findManifestObject(sourceFile);
-  if (!objectLiteral) {
-    throw new Error(`manifest 必须导出字面量描述符 "export const moduleManifest = { ... }": ${manifestFile}`);
-  }
-
-  const id = readStringProperty(objectLiteral, "id", manifestFile);
-  if (id === undefined || !MODULE_ID_PATTERN.test(id)) {
-    throw new Error(`manifest 必须声明合法模块 ID 字面量 id: ${manifestFile}`);
-  }
-
-  const kind = readStringProperty(objectLiteral, "kind", manifestFile);
-  if (kind === undefined || !(MODULE_KINDS as readonly string[]).includes(kind)) {
-    throw new Error(`manifest 的 kind 必须是 ${MODULE_KINDS.join(" | ")} 之一: ${manifestFile}`);
-  }
-
-  const dependsOnProperty = findProperty(objectLiteral, "dependsOn");
-  if (!dependsOnProperty || !ts.isArrayLiteralExpression(dependsOnProperty.initializer)) {
-    throw new Error(`manifest 必须声明模块 ID 字面量数组 dependsOn: ${manifestFile}`);
-  }
-  const dependsOn = dependsOnProperty.initializer.elements.map((element) => {
-    if (!ts.isStringLiteralLike(element) || !MODULE_ID_PATTERN.test(element.text)) {
-      throw new Error(`manifest 的 dependsOn 只能包含模块 ID 字面量: ${manifestFile}`);
-    }
-    return element.text;
-  });
-
-  return { dependsOn, id, kind };
-}
-
-/** 声明了运行期字段的 manifest 不能再被当作纯元数据描述符引入 registry。 */
-function findRuntimeFields(objectLiteral: ts.ObjectLiteralExpression): string[] {
-  return RUNTIME_MANIFEST_FIELDS.filter((field) => findProperty(objectLiteral, field) !== undefined);
-}
-
-/** 从 `exports` 字段解析 `./module` 的目标路径，兼容字符串与条件对象两种写法。 */
-function readModuleExportTarget(exportsField: unknown): string | undefined {
-  if (typeof exportsField !== "object" || exportsField === null || Array.isArray(exportsField)) return;
-
-  const entry = (exportsField as Record<string, unknown>)[PACKAGE_MODULE_EXPORT_KEY];
-  if (typeof entry === "string") return entry;
-  if (typeof entry !== "object" || entry === null) return;
-
-  for (const condition of ["types", "import", "require", "node", "default"]) {
-    const target = (entry as Record<string, unknown>)[condition];
-    if (typeof target === "string") return target;
-  }
-  return;
+  readonly location: ManifestLocation;
 }
 
 /**
@@ -244,7 +92,7 @@ function assertModuleExport(
   exportsField: unknown,
   manifestFile: string,
 ): void {
-  const target = readModuleExportTarget(exportsField);
+  const target = readExportTarget(exportsField, PACKAGE_MODULE_EXPORT_KEY);
   if (target === undefined) {
     throw new Error(`模块包必须在 package.json 声明 exports["./module"] 指向 manifest: ${packageDirectory}`);
   }
@@ -330,7 +178,7 @@ function indexLedgeredEdges(ledger: ArchitectureLedger): ReadonlyMap<string, Arc
   const edges = new Map<string, ArchitectureException>();
   for (const exception of ledger.exceptions.values()) {
     if (exception.rule === CYCLE_RULE_NAME) continue;
-    edges.set(`${exception.from} ${exception.to}`, exception);
+    edges.set(`${exception.from} ${exception.to}`, exception);
   }
   return edges;
 }
@@ -338,7 +186,7 @@ function indexLedgeredEdges(ledger: ArchitectureLedger): ReadonlyMap<string, Arc
 /** 模块服务端生产代码文件（`src/**`，排除 `__tests__`），按代码点顺序稳定排序。 */
 async function collectModuleSourceFiles(repositoryRoot: string, packageDirectory: string): Promise<string[]> {
   const patterns = MODULE_SOURCE_PATTERNS.map((pattern) => `${packageDirectory}/${pattern}`);
-  const files = (await Promise.all(patterns.map((pattern) => collectFiles(repositoryRoot, pattern)))).flat();
+  const files = (await Promise.all(patterns.map((pattern) => collectRepositoryFiles(repositoryRoot, pattern)))).flat();
   return files
     .filter((file) => !file.includes(TEST_DIRECTORY_SEGMENT))
     .sort((left, right) => (left < right ? -1 : left > right ? 1 : 0));
@@ -404,7 +252,7 @@ async function assertDependsOnComplete(
       if (module.descriptor.dependsOn.includes(dependencyId)) continue;
       const dependency = byId.get(dependencyId);
       if (!dependency) continue;
-      if (ledgeredEdges.has(`${module.packageName} ${dependency.packageName}`)) continue;
+      if (ledgeredEdges.has(`${module.packageName} ${dependency.packageName}`)) continue;
       violations.push(
         `模块 ${module.descriptor.id} 的服务端代码导入了已注册模块 ${dependencyId}（${site}），` +
           `但 manifest 未声明 dependsOn: ["${dependencyId}"]`,
@@ -414,7 +262,7 @@ async function assertDependsOnComplete(
     for (const dependencyId of module.descriptor.dependsOn) {
       const dependency = byId.get(dependencyId);
       if (!dependency) continue;
-      const exception = ledgeredEdges.get(`${module.packageName} ${dependency.packageName}`);
+      const exception = ledgeredEdges.get(`${module.packageName} ${dependency.packageName}`);
       if (!exception) continue;
       violations.push(
         `模块 ${module.descriptor.id} 的 dependsOn 声明了 ${dependencyId}，但 ${exception.from} -> ${exception.to} ` +
@@ -456,48 +304,34 @@ function renderRegistry(modules: readonly DiscoveredModule[], repositoryRoot: st
 }
 
 async function discoverModules(repositoryRoot: string): Promise<readonly DiscoveredModule[]> {
-  const [packageManifests, appManifests] = await Promise.all([
-    collectFiles(repositoryRoot, PACKAGE_MANIFEST_GLOB),
-    collectFiles(repositoryRoot, APP_MANIFEST_GLOB),
-  ]);
-
-  const candidates = [
-    ...packageManifests.map((manifestFile) => ({ location: "package" as const, manifestFile })),
-    ...appManifests.map((manifestFile) => ({ location: "app" as const, manifestFile })),
-  ].sort((left, right) =>
-    left.manifestFile < right.manifestFile ? -1 : left.manifestFile > right.manifestFile ? 1 : 0,
-  );
+  const candidates = await collectManifestCandidates(repositoryRoot, MANIFEST_GLOBS);
 
   return Promise.all(
-    candidates.map(async ({ manifestFile, location }): Promise<DiscoveredModule> => {
-      const packageDirectory = normalizePath(dirname(manifestFile));
-      const packageManifest = await readPackageManifest(repositoryRoot, packageDirectory, manifestFile);
+    candidates.map(async (candidate): Promise<DiscoveredModule> => {
+      const source = await loadManifestSource(repositoryRoot, candidate);
+      const { descriptor, packageDirectory, packageName } = source;
+      const manifestFile = candidate.manifestFile;
 
-      const sourceText = await readFile(resolve(repositoryRoot, manifestFile), "utf8");
-      const sourceFile = parseTypeScriptSource(manifestFile, sourceText);
-      const descriptor = readManifestDescriptor(sourceFile, manifestFile);
-
-      if (location === "app") {
+      if (candidate.location === "app") {
         if (descriptor.kind !== "web-shell") {
           throw new Error(`apps 下的 manifest 只能是 web-shell 类别，实际为 ${descriptor.kind}: ${manifestFile}`);
         }
-        assertWebShellIsPureMetadata(sourceFile, manifestFile);
-      } else if (descriptor.kind === "web-shell") {
-        // WebShell 是应用级组合而不是资源模块，见 ce-ee-engineering-standards §4.1。
-        throw new Error(`web-shell manifest 必须位于 apps/ 而不是 packages/: ${manifestFile}`);
-      }
-
-      if (location === "package") {
-        assertModuleExport(repositoryRoot, packageDirectory, packageManifest.exports, manifestFile);
+        assertWebShellIsPureMetadata(source.sourceFile, manifestFile);
+      } else {
+        if (descriptor.kind === "web-shell") {
+          // WebShell 是应用级组合而不是资源模块，见 ce-ee-engineering-standards §4.1。
+          throw new Error(`web-shell manifest 必须位于 apps/ 而不是 packages/: ${manifestFile}`);
+        }
+        assertModuleExport(repositoryRoot, packageDirectory, source.exportsField, manifestFile);
       }
 
       return {
-        dependencies: packageManifest.dependencies,
+        dependencies: source.dependencies,
         descriptor,
-        location,
+        location: candidate.location,
         manifestFile,
         packageDirectory,
-        packageName: packageManifest.name,
+        packageName,
       };
     }),
   );

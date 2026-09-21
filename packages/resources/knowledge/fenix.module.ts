@@ -31,8 +31,13 @@ import type { ServerRouteHost } from "@fenix/platform-sdk/server";
  * 会被大量位置导入，不能在索引层就把 Elysia 拖进模块图。两条路由共用同一份会话守卫（`/api` 面同样接受
  * 会话 cookie 与 API Key，与 `/web` 无差别）。
  *
- * 不声明 `web` / `envDefinitions`：浏览器交付物由宿主 vite alias 映射（`apps/web/vite.config.ts`），其形状
- * 必须与 §1.6 消费端同时定型，单方面发明会留下第二套装配路径；env 收敛归 §1.7。
+ * 声明 `web`（§1.6 已定型）：`contribution` 是该包浏览器载荷的惰性**入口说明符字符串**——WebShell 生成器
+ * 只对 manifest 做 AST 静态读取、不执行它，所以入口只能是「声明」而不是「推断」，取值必须是字符串字面量；
+ * 宿主 vite alias 继续把这些说明符映射到包内实现，不产生第二套装配路径。它**不是**浏览器依赖：
+ * `lucide-react` / React 载荷只存在于 `@fenix/resource-knowledge/web/contribution` 导出的值里，不会沿
+ * registry 进入服务端装配图（server 侧拿到的只有这一条字符串）。
+ *
+ * `envDefinitions` 的留白保持不变，env 收敛归 §1.7。
  *
  * `create` 指向 `src/module.ts` 的组合根（进程级仓储单例），并保持惰性：registry 会被大量位置导入，
  * 不能在索引层就把 Drizzle、Elysia 与知识库服务图拖进来。
@@ -42,6 +47,10 @@ export const moduleManifest = {
   kind: "resource",
   dependsOn: [],
   capabilities: ["resource.knowledge"],
+  web: {
+    id: "knowledge",
+    contribution: "@fenix/resource-knowledge/web/contribution",
+  },
   contributions: [
     {
       id: "knowledge.web",

@@ -38,14 +38,22 @@ import type { ServerRouteHost } from "@fenix/platform-sdk/server";
  * `/hooks/:publicHash` Webhook 接收（无认证——`publicHash` 即凭据）。三条 `app` 槽路由各自带独立前缀与
  * 认证口径，因此单列一槽而不是塞进 `/web` 或 `/api`（两条都在本模块声明序末尾）。
  *
- * 不声明 `web`：消费方是 §1.6 的 WebShell 装配，形状必须与消费端同时定型；`envDefinitions` 与 preflight
- * 收敛在任务 1.7。
+ * 声明 `web`（§1.6 已定型）：`contribution` 是该包浏览器载荷的惰性**入口说明符字符串**——WebShell 生成器
+ * 只对 manifest 做 AST 静态读取、不执行它，所以入口只能是「声明」而不是「推断」，取值必须是字符串字面量。
+ * 它**不是**浏览器依赖：`lucide-react` / React 载荷只存在于 `@fenix/resource-workflow/web/contribution`
+ * 导出的值里，不会沿 registry 进入服务端装配图（server 侧拿到的只有这一条字符串）。
+ *
+ * `envDefinitions` 与 preflight 收敛在任务 1.7。
  */
 export const moduleManifest = {
   id: "workflow",
   kind: "resource",
   dependsOn: [],
   capabilities: ["resource.workflow"],
+  web: {
+    id: "workflow",
+    contribution: "@fenix/resource-workflow/web/contribution",
+  },
   contributions: [
     {
       id: "workflow.web-defs",

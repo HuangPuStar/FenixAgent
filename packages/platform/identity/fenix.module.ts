@@ -19,12 +19,21 @@ import type { ServerRouteHost } from "@fenix/platform-sdk/server";
  * 装配的 mount 阶段遍历 profile 解析出的全部模块（`bootstrapModules` 的 `orderContributions`），不区分
  * 类别，因此这两条路由与其他资源包的路由走同一条接线。惰性 import 与 `create` 同因：registry 会被大量位置
  * 导入，不能在索引层就把 Elysia 拖进模块图。
+ *
+ * 声明 `web`（§1.6 已定型）：`contribution` 是本模块浏览器载荷的惰性**入口说明符字符串**，供 WebShell
+ * 生成器静态定位——生成器只对 manifest 做 AST 静态读取、不执行它，所以取值必须是字符串字面量。它**不是**
+ * 浏览器依赖：`lucide-react` / React 载荷只存在于 `@fenix/identity/web/contribution` 导出的值里，不会沿
+ * registry 进入服务端装配图（server 侧拿到的只有这一条字符串）。
  */
 export const moduleManifest = {
   id: "identity",
   kind: "identity",
   dependsOn: [],
   capabilities: ["platform.identity"],
+  web: {
+    id: "identity",
+    contribution: "@fenix/identity/web/contribution",
+  },
   contributions: [
     {
       id: "identity.web-api-keys",

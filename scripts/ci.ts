@@ -32,6 +32,11 @@ const STEPS = [
     filter: (out: string) => (out.includes("已验证") ? null : out),
   },
   {
+    name: "web-contributions",
+    cmd: "bun run generate:web-contributions --check",
+    filter: (out: string) => (out.includes("已验证") ? null : out),
+  },
+  {
     name: "architecture",
     cmd: "bun run architecture:check",
     filter: (out: string) => (out.includes("✓ architecture-check") ? null : out),

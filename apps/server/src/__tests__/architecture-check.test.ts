@@ -480,6 +480,7 @@ describe("architecture check CLI", () => {
       "format",
       "import-sort",
       "module-registry",
+      "web-contributions",
       "architecture",
       "tsc (server)",
       "tsc (web)",

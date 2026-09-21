@@ -48,14 +48,23 @@ import { skillResource } from "./src/server/access/skill-resource";
  * 会话守卫，与 `/web`、`/api` 两面都不同前缀，因此单列一槽（`skillDownloadRoutes` 是模块级单例，装配面
  * 只包一层惰性构造函数，理由见 `src/server/assembly.ts` 的 `createSkillDownloadAppRoutes`）。
  *
- * 不声明 `web` / `envDefinitions`：消费方分别是 §1.6 的 WebShell 装配与 §1.7 的宿主 env 登记，形状必须
- * 与消费端同时定型。本包已有 `web/index.ts` 浏览器出口，`web` 贡献待 §1.6 装配面落地时一并声明。
+ * 声明 `web`（§1.6 已定型）：`contribution` 是该包浏览器载荷的惰性**入口说明符字符串**，指向已有的
+ * `web/index.ts` 浏览器出口上的贡献值——WebShell 生成器只对 manifest 做 AST 静态读取、不执行它，所以入口
+ * 只能是「声明」而不是「推断」，取值必须是字符串字面量。它**不是**浏览器依赖：`lucide-react` / React 载荷
+ * 只存在于 `@fenix/resource-skill/web/contribution` 导出的值里，不会沿 registry 进入服务端装配图（server
+ * 侧拿到的只有这一条字符串）。
+ *
+ * `envDefinitions` 的留白保持不变：消费方是 §1.7 的宿主 env 登记，形状必须与消费端同时定型。
  */
 export const moduleManifest = {
   id: "skill",
   kind: "resource",
   dependsOn: [],
   capabilities: ["resource.skill"],
+  web: {
+    id: "skill",
+    contribution: "@fenix/resource-skill/web/contribution",
+  },
   accessControlBindings: [skillResource.storage],
   contributions: [
     {

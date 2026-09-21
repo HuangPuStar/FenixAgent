@@ -45,13 +45,20 @@ import { providerResource } from "./src/server/access/provider-resource";
  * 1.5f 追加两条挂 `api`：`/api/models`（会话守卫，与 `/web` 面同一份实例）与
  * `/api/system/model-gateway`（系统 API 守卫，与普通请求认证互不相关）。
  *
- * 不声明 `web`：消费方是 §1.6 的 WebShell 装配，形状必须与消费端同时定型。
+ * 声明 `web`（§1.6 已定型）：`contribution` 是该包浏览器载荷的惰性**入口说明符字符串**——WebShell 生成器
+ * 只对 manifest 做 AST 静态读取、不执行它，所以入口只能是「声明」而不是「推断」，取值必须是字符串字面量。
+ * 它**不是**浏览器依赖：`lucide-react` / React 载荷只存在于 `@fenix/model-management/web/contribution` 导出
+ * 的值里，不会沿 registry 进入服务端装配图（server 侧拿到的只有这一条字符串）。
  */
 export const moduleManifest = {
   id: "model-management",
   kind: "resource",
   dependsOn: ["agent-config"],
   capabilities: ["resource.model-management"],
+  web: {
+    id: "model-management",
+    contribution: "@fenix/model-management/web/contribution",
+  },
   accessControlBindings: [providerResource.storage],
   contributions: [
     {
