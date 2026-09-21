@@ -311,6 +311,11 @@
     "emptyTitle": "No agents",
     "emptyDescription": "Create your first agent using the button above"
   },
+  "nav": {
+    "home": "New Agent",
+    "agents": "Agent Management",
+    "sites": "App Deployment"
+  },
   "loadFailed": "Failed to load agents",
   "envCreateFailed": "Failed to create runtime environment",
   "enterFailed": "Failed to enter agent"
