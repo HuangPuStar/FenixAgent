@@ -208,6 +208,11 @@ describe("消息组件的服务端渲染", () => {
     expect(markup).toContain("我引用了什么");
     expect(markup).toContain("chat-quote-message");
     expect(markup).toContain("需要单独展示的引用正文");
+    // 截断徽标（`omittedCharacterCount: 23`）必须渲染出译文。此处恢复 T6c1 前删掉的那条断言：
+    // 旧断言固化的是「key 回显」（`composerAssets.quoteTruncatedBadge` 当时在宿主字典里缺键），
+    // T9 补齐 zh 译文后改断言真实译文（用例的 i18next 实例 `lng: "en"`，故取英文文案）。
+    expect(markup).toContain("23 chars omitted");
+    expect(markup).not.toContain("quoteTruncatedBadge");
     expect(markup).not.toContain("chat-system-reminder");
   });
 

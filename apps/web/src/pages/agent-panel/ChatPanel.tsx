@@ -165,6 +165,11 @@ export function ChatPanel({
 }
 
 function PublicErrorCard({ error, className }: { error: PublicErrorInfo; className?: string }) {
+  // 标题取 `uiComponents` 命名空间：同一张卡片（同样的 class、`role="alert"`、Type/ID 尾注）在
+  // `@fenix/ui-components` 的 `MessageBubble` 里渲染 turn 失败错误，键 `chat.components.messageBubble.turnError`
+  // 的 owner 是该包；宿主旧的 `components.messageBubble.*` 子树在 T6 搬迁后已无宿主消费方（T9c 收敛）。
+  // 命名空间常量经中心表 `NS.UI_COMPONENTS` 取，与 `NS.AGENTS` 等宿主消费包命名空间的先例一致。
+  const { t } = useTranslation(NS.UI_COMPONENTS);
   return (
     <div
       className={
@@ -173,7 +178,7 @@ function PublicErrorCard({ error, className }: { error: PublicErrorInfo; classNa
       }
       role="alert"
     >
-      <p className="font-medium">执行出错</p>
+      <p className="font-medium">{t("chat.components.messageBubble.turnError")}</p>
       <p className="mt-1 whitespace-pre-wrap">{error.message}</p>
       <div className="mt-4 flex flex-wrap gap-x-4 gap-y-1">
         <span className="break-all">Type: {error.type}</span>

@@ -115,7 +115,7 @@
         "quoteLimitReached": "本轮引用内容已达上限，请先发送或移除部分引用",
         "quoteNumber": "引用 {{count}}",
         "quoteTruncated": "引用过长，已省略 {{count}} 个字符",
-        "quoteTruncatedBadge": "{{count}} chars omitted",
+        "quoteTruncatedBadge": "已省略 {{count}} 个字符",
         "removeFile": "移除 {{name}}",
         "removeImage": "移除图片",
         "removeQuote": "移除引用",

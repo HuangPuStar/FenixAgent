@@ -96,6 +96,14 @@ describe("ui-components uiComponents 字典完整性", () => {
     expect(mismatched).toEqual([]);
   });
 
+  // 键集与占位符一致挡不住「zh 值照抄 en」这类漏译：键在、占位符也在，只是中文界面显示英文。
+  // `quoteTruncatedBadge` 正是这样漏了很久（引用截断徽标在中文界面显示 "{{count}} chars omitted"），
+  // T9b 修复后在此钉住；同类漏译应逐键在这里补一行断言，而不是放宽本条。
+  test("已修复漏译：引用截断徽标的 zh 不是 en 的照抄", () => {
+    const key = "chat.components.composerAssets.quoteTruncatedBadge";
+    expect(zhFlat.get(key)).not.toBe(enFlat.get(key));
+  });
+
   // 源码里所有字面量键都必须存在于字典（扫描有效性自检：覆盖到全部组件层）。
   test("源码中的字面量 t() 键都在字典内", () => {
     const missing = [...literalKeys.keys()].filter((key) => !enFlat.has(key) && !zhFlat.has(key));

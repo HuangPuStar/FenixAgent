@@ -101,8 +101,8 @@ WebShell 从静态 registry 收集各资源包的 web contribution（不反向�
 | T5 | `chat-channel/web` 清零 | a,b,c1,c2,c5,d 已交付 | 见下方 §7.4–§7.10 |
 | T6 | `agent-runtime/web` 收敛 | 已交付（a–e） | 见下方 §7.11 |
 | T7 | 5 条 `special-dependency` 消除 | 已交付（含 4b） | 见下方 §7.12 |
-| T8 | 宿主组件/lib/api 簇改指并删除 | 待办 | — |
-| T9 | i18n 归属重划与 `quoteTruncatedBadge` 缺陷修复 | 待办 | — |
+| T8 | 宿主组件/lib/api 簇改指并删除 | 已交付（a–d + z） | 见下方 §7.13 |
+| T9 | i18n 归属重划与 `quoteTruncatedBadge` 缺陷修复 | a、b 已交付，c 待办 | a 见 §7.15 / b 见 §7.16 |
 | T10 | 测试迁移与 happy-dom 收敛 | 待办 | — |
 | T11 | WebShell 落地 | 待办 | — |
 | T12 | 收尾：台账复核、文档修订、证据留痕 | 待办 | — |
@@ -1163,7 +1163,7 @@ TopModeTabs,artifacts-dialogs,artifacts-files-workspace,use-file-tree-events,use
 `dry` 复核为 0 处残留；台账的 `RMD_08_MOVES` 全条目（111 条）的 legacy 路径与 `RMD_08_RELOCATED`
 （47 条）的 legacy + shell 路径均不存在、owner 落点均存在。
 
-### 7.15 T9a identity 借键结清（2026-09-21）
+### 7.15 T9a identity 借键结清（2026-09-21，`fc5a39f85`）
 
 T9 拆三片：**T9a 借键结清**（本节）、T9b i18n 缺陷修复、T9c 宿主自有命名空间收敛。范围以本文件
 §7.10 的结论为准——「T9 的 i18n 重划由此提前一格完成，T9 只剩宿主自有命名空间的收敛」（T5c2 已把包
@@ -1199,6 +1199,36 @@ identity 包，而不是新建一个 `account` 命名空间。理由：`settings
 registryEvent 告警」）：该文件单跑 12 pass、`bun test packages/` 连跑两轮均 7310 pass 0 fail，
 随后两轮 precheck 亦全绿——与本次 i18n 改动无因果关系（该用例不涉及 i18n），按非确定性失败记录。
 
+### 7.16 T9b i18n 缺陷修复：引用截断徽标漏译、错误卡片标题硬编码（2026-09-21）
+
+| # | 缺陷（修复前） | 成因 | 处理 |
+|---|---|---|---|
+| 1 | 引用被截断时，**中文界面显示英文徽标**：正文里出现 `23 chars omitted` | `quoteTruncatedBadge` 的 en / zh 两份值逐字相同（照抄 en）。既有的「键集一致」「插值占位符一致」两条守护都挡不住这类漏译——键在、占位符也在，只是译文没写 | zh 改为 `已省略 {{count}} 个字符`（与同级 `quoteTruncated`「引用过长，已省略 {{count}} 个字符」用词一致）；`i18n-barrel.test.ts` 增一条钉住该键 zh ≠ en 的断言 |
+| 2 | 该徽标的渲染无人守：T6c1 前那条断言固化的是「key 回显」缺陷（当时宿主字典缺此键），按规则删除后未恢复 | — | `message.ssr.test.tsx`「用户消息将结构化引用显示为引用胶囊」用例恢复断言：断言真实译文 `23 chars omitted`（用例 i18next 实例 `lng: "en"`）并显式否定 key 回显 |
+| 3 | 会话面板错误卡片标题对英文用户显示中文 `执行出错` | T6d 拆 `ChatPanel.tsx` 时硬编码带入（`git log -S` 追溯为 `0562da970` 迁包时引入），§7.11 已登记「属 i18n 归属重划（T9）」 | `PublicErrorCard` 改经 `t()`：命名空间 `NS.UI_COMPONENTS`，键 `chat.components.messageBubble.turnError` |
+
+**为什么标题取包命名空间，而不是 §7.11 登记的宿主 `components.messageBubble.turnError`。** 核查后改判：同一张卡片
+（同样的 class 串、`role="alert"`、`Type:` / `ID:` 尾注）在 `@fenix/ui-components` 的 `MessageBubble.tsx` 渲染 turn
+失败错误时**已经**在用 `chat.components.messageBubble.turnError`；而宿主 `components.json` 的整个 `messageBubble`
+子树（11 键）在 T6 搬迁后已无任何宿主消费方。取包键 = 一处文案一个 owner，宿主那份死字典随 T9c 整体删除；
+取宿主键则要在 11 键死字典里留下唯一复活的 1 键，与 §4「键的最终所在地 = 包的 owner」相悖。宿主消费包命名空间
+有既有先例（`AgentManagementPage` 用 `NS.AGENTS`、`routes/admin/*` 用 `"observer"`），常量经中心表
+`NS.UI_COMPONENTS` 取，未新增 import。
+
+**登记未处理：`PublicError.message` 恒为英文，中文界面必然中英混排。** `packages/chat-channel/src/public-error.ts`
+的 `PUBLIC_ERROR_MESSAGES` 为 28 个 type 各备 `zh` / `en` 两条，但 `createPublicError` 与跨边界校验
+`isPublicError` 都把它钉在 `.en` 上（后者要求 `message === PUBLIC_ERROR_MESSAGES[type].en` 才认作合法公开错误）——
+`zh` 那一半在**全仓没有任何读取点**，只有 `src/__tests__/public-error.test.ts` 断言它非空；而两处 UI 卡片
+（包的 `MessageBubble` 与宿主 `PublicErrorCard`）都直接渲染 `error.message`。因此本片修完标题后，中文界面下卡片
+仍是「中文标题 + 英文正文」。可选修法有三条——① 保持契约现状、只登记；② 前端按稳定的 `error.type` 查本地化
+字典渲染；③ 把 28×2 条文案从 TS 表迁进包 i18n 字典、由 UI 按 `type` 取——三条都会改到 `@fenix/chat-channel` 的
+公共契约或引入跨包同步义务，按 CLAUDE.md「公共契约变化必须先反馈」留待用户裁定，**本片未改动该文件**。
+
+**验证**：`bun test packages/ui-components/` 412 → 413 pass（新增 1 条守译断言）；`bun test
+packages/ui-components/web/__tests__/message.ssr.test.tsx` 11 pass / 40 expect；宿主
+`chat-area-environment-deletion` + `chat-panel-transport-lifecycle` 4 pass；`env -u ANTHROPIC_MODEL bun run precheck`
+全绿（771 / 7311 + 2 skip / 969，0 fail）；`bun run build:web` 成功。
+
 ---
 
 ## 八、用户可见行为变更
@@ -1214,9 +1244,13 @@ registryEvent 告警」）：该文件单跑 12 pass、`bun test packages/` 连�
 | 2 | workflow 注入的上下文丢失（Agent 看不到工作流上下文） | `context-queue` 双副本，写入方与取出方各持一份（§7.8） | T5c2 |
 | 3 | 状态面板「变更文件」里点击文件条目无反应 | 源实现该处派发的事件详情只有 `{path}`、缺 `envId`，被消费方的环境隔离校验判为「其他 environment」恒忽略（工具卡片与消息内 `@./path` 的点击一直正常） | T5c2 |
 | 4 | 会话重命名 / 删除失败时无提示 | `onNotice` 未透传到侧栏与头部（§7.7 缺口 D） | T5c1b `98a84ad68` |
+| 5 | 引用被截断时的徽标在中文界面显示英文（`23 chars omitted`）；更早的宿主实现在此位置直接显示原始 key `composerAssets.quoteTruncatedBadge` | `quoteTruncatedBadge` 的 zh 值照抄 en；键集 / 占位符两条守护都挡不住这类漏译 | T9b |
+| 6 | 会话面板错误卡片的标题对英文用户显示中文 `执行出错` | T6d 拆 `ChatPanel.tsx` 时硬编码带入 | T9b |
 
 第 3 条的修法是两处共用同一个派发器（`dispatchArtifactsPreviewFile(envId, path)`）；事件名未变，变的
 是状态面板那条的详情补齐了 `envId`。第 4 条在线上需服务端返回错误才触发（对抗验证判 real=False）。
+第 5、6 条属文案语言错误，验收时把界面语言切到英文（第 6 条）或中文（第 5 条）各看一处即可。
+第 6 条只修了标题：卡片正文 `error.message` 恒为英文，中英混排是登记未处理的跨包契约缺口（见 §7.16 末段）。
 
 ### 8.2 有意的呈现取舍
 
@@ -1236,6 +1270,6 @@ registryEvent 告警」）：该文件单跑 12 pass、`bun test packages/` 连�
 
 ### 8.3 发布验收建议
 
-按 8.1 的 4 条做定向回归（建站卡片可见并可跳转、工作流上下文注入、状态面板文件点击、会话重命名失败
-提示），8.2 的 7 条按「与旧版截图比对」验一次即可；`chat-channel/web` 尚未删除，旧实现可随时对比
-（T5d 删除后仅存 git 历史）。
+按 8.1 的 6 条做定向回归（建站卡片可见并可跳转、工作流上下文注入、状态面板文件点击、会话重命名失败
+提示、引用截断徽标的中文文案、错误卡片标题的英文文案），8.2 的 7 条按「与旧版截图比对」验一次即可；
+`chat-channel/web` 尚未删除，旧实现可随时对比（T5d 删除后仅存 git 历史）。
