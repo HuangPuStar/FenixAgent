@@ -2,8 +2,12 @@ import type { ServerRouteHost } from "@fenix/platform-sdk/server";
 import type { AnyElysia } from "elysia";
 import type { SecretReferenceResolver } from "./config-envelope";
 import type { UserModelPreferencesPort } from "./ports/user-model-preferences";
+import { createApiModelsRoutes } from "./routes/api/models";
+import { createApiSystemModelGatewayRoutes } from "./routes/api/system-model-gateway";
 import type {
+  ApiModelManagementRouteDependencies,
   EnvironmentOwnershipCheck,
+  SystemApiModelManagementRouteDependencies,
   WebConfigModelsRouteDependencies,
   WebConfigProvidersRouteDependencies,
   WebModelManagementRouteDependencies,
@@ -27,9 +31,14 @@ import { createWebPeriTaskDetailsRoutes } from "./routes/web/peri-task-details";
  * 构造，构造时机由宿主装配决定，故本文件不持有任何状态。
  */
 
-/** 会话守卫收窄；本包四条路由都要它。 */
+/** 会话守卫收窄；本包 `/web/*` 路由与 `/api/models` 都要它。 */
 function authGuard(host: ServerRouteHost): AnyElysia {
   return host.authGuardPlugin as AnyElysia;
+}
+
+/** 系统 API 守卫收窄；只有 `/api/system/model-gateway` 要它（与普通请求认证互不相关）。 */
+function systemApiGuard(host: ServerRouteHost): AnyElysia {
+  return host.systemApiGuardPlugin as AnyElysia;
 }
 
 /** `/web/config/models` 模型清单与同步（挂宿主 `web-config` 聚合槽）。 */
@@ -63,4 +72,16 @@ export function createModelManagementWebPeriTaskDetailsRoutes(host: ServerRouteH
     getOwnedEnvironment: host.verifyEnvironmentOwnership as EnvironmentOwnershipCheck,
   };
   return createWebPeriTaskDetailsRoutes(deps);
+}
+
+/** `/api/models` 对外稳定模型与供应商接口（挂宿主 `api` 聚合槽）。 */
+export function createModelManagementApiModelsRoutes(host: ServerRouteHost) {
+  const deps: ApiModelManagementRouteDependencies = { authGuardPlugin: authGuard(host) };
+  return createApiModelsRoutes(deps);
+}
+
+/** `/api/system/model-gateway` 系统管理网关接口（挂宿主 `api` 聚合槽）。 */
+export function createModelManagementApiSystemModelGatewayRoutes(host: ServerRouteHost) {
+  const deps: SystemApiModelManagementRouteDependencies = { systemApiGuardPlugin: systemApiGuard(host) };
+  return createApiSystemModelGatewayRoutes(deps);
 }

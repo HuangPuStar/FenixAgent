@@ -1,4 +1,5 @@
 import {
+  createApiAgentsRoutes,
   createWebAgentGenerationRoutes,
   createWebAgentSitesRoutes,
   createWebConfigAgentsRoutes,
@@ -6,27 +7,52 @@ import {
   createWebSidebarConfigRoutes,
 } from "@fenix/agent-config/server";
 import {
+  createApiInstanceRoutes,
+  createOpenaiChatRoutes,
   createWebControlRoutes,
   createWebEnvironmentsRoutes,
   createWebInstancesRoutes,
 } from "@fenix/agent-runtime/server";
-import { createWebApiKeysRoutes, createWebOrganizationsRoutes, rotateCallerApiKey } from "@fenix/identity/server";
 import {
+  createApiSystemRoutes,
+  createWebApiKeysRoutes,
+  createWebOrganizationsRoutes,
+  rotateCallerApiKey,
+} from "@fenix/identity/server";
+import {
+  createApiModelsRoutes,
+  createApiSystemModelGatewayRoutes,
   createWebConfigModelsRoutes,
   createWebConfigProvidersRoutes,
   createWebModelGatewayRoutes,
   createWebPeriTaskDetailsRoutes,
 } from "@fenix/model-management/server";
 import { createWebChannelsRoutes } from "@fenix/resource-channel/server";
-import { createWebKnowledgeBaseRoutes } from "@fenix/resource-knowledge/server";
-import { createWebFileEventsRoutes, createWebFsRoutes, createWebRegistryRoutes } from "@fenix/resource-machine/server";
-import { createWebMcpConfigRoutes } from "@fenix/resource-mcp/server";
+import { createApiKnowledgeBaseRoutes, createWebKnowledgeBaseRoutes } from "@fenix/resource-knowledge/server";
+import {
+  createApiWorkspaceRoutes,
+  createWebFileEventsRoutes,
+  createWebFsRoutes,
+  createWebRegistryRoutes,
+} from "@fenix/resource-machine/server";
+import { createApiMcpRoutes, createWebMcpConfigRoutes } from "@fenix/resource-mcp/server";
 import { createWebHindsightRoutes } from "@fenix/resource-memory/server";
+import {
+  createApiSystemLogsRoutes,
+  createApiSystemObserverRoutes,
+  createApiSystemPeopleTreeRoutes,
+} from "@fenix/resource-observer/server";
 import { createWebConfigProdViewsRoutes, createWebProdViewsRoutes } from "@fenix/resource-prod-view/server";
-import { createWebSandboxPoolsRoutes } from "@fenix/resource-sandbox/server";
-import { createWebSkillsConfigRoutes } from "@fenix/resource-skill/server";
+import {
+  createApiSandboxClusterRoutes,
+  createApiSandboxRoutes,
+  createApiSandboxServerRoutes,
+  createWebSandboxPoolsRoutes,
+} from "@fenix/resource-sandbox/server";
+import { createApiSkillsRoutes, createWebSkillsConfigRoutes } from "@fenix/resource-skill/server";
 import { createWebTasksV2Routes } from "@fenix/resource-task/server";
 import {
+  createApiWorkflowRoutes,
   createWebWorkflowCustomToolsRoutes,
   createWebWorkflowDefsRoutes,
   createWebWorkflowEngineRoutes,
@@ -35,6 +61,8 @@ import {
 } from "@fenix/resource-workflow/server";
 import type { AnyElysia } from "elysia";
 import { authenticateRequest, authGuardPlugin } from "../plugins/auth";
+import { logError } from "../plugins/logger";
+import { systemApiAuthPlugin } from "../plugins/system-api-auth";
 import {
   environmentLookup,
   resolveSecretReference,
@@ -44,10 +72,10 @@ import {
 } from "../services/resource-module-ports";
 
 /**
- * 测试用的 `/web` 与 `/web/config` 面路由集合：各包路由工厂 + 宿主端口实现。
+ * 测试用的 `/web`、`/web/config` 与 `/api` 面路由集合：各包路由工厂 + 宿主端口实现。
  *
- * 生产这两面由 registry 装配的路由贡献提供（1.5e 已全量迁入，宿主聚合只按槽挂载）；需要「真实路由」但
- * 不关心装配语义的用例走本 helper。两面的内容与顺序以
+ * 生产这三面由 registry 装配的路由贡献提供（1.5e 起 `/web` 两面全量迁入、1.5f 起 `/api` 面全量迁入，宿主
+ * 聚合只按槽挂载）；需要「真实路由」但不关心装配语义的用例走本 helper。三面的内容与顺序以
  * `__tests__/route-contributions.test.ts` 的 `toEqual` 断言为准——本文件与它漂移时，那边的失败就是信号。
  *
  * 不直接跑 `bootstrapServerAssembly` 的原因：它要求基础设施已初始化，而
@@ -55,9 +83,10 @@ import {
  * `__tests__/route-contributions.test.ts` 独占；preload 刻意不初始化基础设施，理由见
  * `test-utils/setup-mocks.ts`（platform-sdk 的 server-infrastructure.test.ts 依赖「未初始化即失败」）。
  *
- * 两面的排列顺序都与装配收集顺序（拓扑序 + manifest 内声明序）一致：同路径冲突时的匹配结果取决于挂载
- * 顺序，用例要看到与生产相同的形状。端口取 `plugins/auth` 与 `services/resource-module-ports.ts` 的真实
- * 实现而不是替身：使用本 helper 的用例断言「协议层把资源 Facade 的输出映射成视图」，端口本身要跑真实实现。
+ * 三面的排列顺序都与装配收集顺序（拓扑序 + manifest 内声明序）一致：同路径冲突时的匹配结果取决于挂载
+ * 顺序，用例要看到与生产相同的形状。端口取 `plugins/auth`、`plugins/logger`、`plugins/system-api-auth` 与
+ * `services/resource-module-ports.ts` 的真实实现而不是替身：使用本 helper 的用例断言「协议层把资源 Facade
+ * 的输出映射成视图」，端口本身要跑真实实现。
  */
 
 /**
@@ -105,5 +134,34 @@ export function createTestWebConfigRoutes(): readonly AnyElysia[] {
     createWebConfigProvidersRoutes({ authGuardPlugin, resolveSecretReference }),
     createWebConfigProdViewsRoutes({ authGuardPlugin }),
     createWebSandboxPoolsRoutes({ authGuardPlugin }),
+  ];
+}
+
+/**
+ * 已由贡献提供的 `/api` 面路由；顺序与装配收集顺序一致（见文件头）。
+ *
+ * 调用方是 `createApiApp({ api: createTestApiRoutes() })`。会话守卫面与系统 API 守卫面在同一个实例里按
+ * 装配序交错（identity 的 `/api/system/*` 在最前，随后是 agent-runtime 两条会话守卫路由，sandbox 的三条
+ * 系统 API 路由在末尾之前），因此系统 API 用例与对外 API 用例都能拿到与生产同形的实例。
+ */
+export function createTestApiRoutes(): readonly AnyElysia[] {
+  return [
+    createApiSystemRoutes({ systemApiGuardPlugin: systemApiAuthPlugin }),
+    createApiInstanceRoutes({ authGuardPlugin, logError }),
+    createOpenaiChatRoutes({ authGuardPlugin }),
+    createApiKnowledgeBaseRoutes({ authGuardPlugin }),
+    createApiMcpRoutes({ authGuardPlugin }),
+    createApiSkillsRoutes({ authGuardPlugin }),
+    createApiAgentsRoutes({ authGuardPlugin }),
+    createApiWorkspaceRoutes({ authGuardPlugin }),
+    createApiModelsRoutes({ authGuardPlugin }),
+    createApiSystemModelGatewayRoutes({ systemApiGuardPlugin: systemApiAuthPlugin }),
+    createApiSystemObserverRoutes({ systemApiGuardPlugin: systemApiAuthPlugin }),
+    createApiSystemLogsRoutes({ systemApiGuardPlugin: systemApiAuthPlugin }),
+    createApiSystemPeopleTreeRoutes({ systemApiGuardPlugin: systemApiAuthPlugin }),
+    createApiSandboxRoutes({ systemApiGuardPlugin: systemApiAuthPlugin }),
+    createApiSandboxClusterRoutes({ systemApiGuardPlugin: systemApiAuthPlugin }),
+    createApiSandboxServerRoutes({ systemApiGuardPlugin: systemApiAuthPlugin }),
+    createApiWorkflowRoutes({ authGuardPlugin }),
   ];
 }

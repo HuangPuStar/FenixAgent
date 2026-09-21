@@ -1,5 +1,6 @@
 import type { ServerRouteHost } from "@fenix/platform-sdk/server";
 import type { AnyElysia } from "elysia";
+import { createApiKnowledgeBaseRoutes } from "./routes/api/knowledge-bases";
 import type { KnowledgeRouteDependencies } from "./routes/dependencies";
 import { createWebKnowledgeBaseRoutes } from "./routes/web/knowledge-bases";
 
@@ -22,4 +23,9 @@ function routeDependencies(host: ServerRouteHost): KnowledgeRouteDependencies {
 /** `/web/knowledge-bases` 知识库管理（挂宿主 `web` 聚合槽）。 */
 export function createKnowledgeWebRoutes(host: ServerRouteHost) {
   return createWebKnowledgeBaseRoutes(routeDependencies(host));
+}
+
+/** `/api/knowledge-bases` 对外稳定知识库接口（挂宿主 `api` 聚合槽）。 */
+export function createKnowledgeApiRoutes(host: ServerRouteHost) {
+  return createApiKnowledgeBaseRoutes(routeDependencies(host));
 }

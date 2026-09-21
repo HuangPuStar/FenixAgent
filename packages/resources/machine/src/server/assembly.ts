@@ -1,5 +1,6 @@
 import type { ServerRouteHost } from "@fenix/platform-sdk/server";
 import type { AnyElysia } from "elysia";
+import { createApiWorkspaceRoutes } from "./routes/api/workspaces";
 import type { WebFileEventsRouteDependencies, WebMachineRouteDependencies } from "./routes/dependencies";
 import { createWebFileEventsRoutes } from "./routes/web/file-events";
 import { createWebFsRoutes } from "./routes/web/fs";
@@ -38,4 +39,9 @@ export function createMachineWebFileEventsRoutes(host: ServerRouteHost) {
 /** `/web/machines` 机器注册表管理（挂宿主 `web` 聚合槽）。 */
 export function createMachineWebRegistryRoutes(host: ServerRouteHost) {
   return createWebRegistryRoutes(routeDependencies(host));
+}
+
+/** `/api/environments/:environmentId/workspace/files` 对外工作区文件接口（挂宿主 `api` 聚合槽）。 */
+export function createMachineApiWorkspaceRoutes(host: ServerRouteHost) {
+  return createApiWorkspaceRoutes(routeDependencies(host));
 }

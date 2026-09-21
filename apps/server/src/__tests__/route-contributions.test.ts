@@ -4,6 +4,7 @@ import { initializeTestApplicationInfrastructure } from "@fenix/platform-sdk/tes
 import { Elysia } from "elysia";
 import { bootstrapServerAssembly } from "../bootstrap";
 import {
+  API_SLOT,
   mountServerRouteContribution,
   resetRouteContributions,
   takeRouteContributions,
@@ -73,15 +74,17 @@ beforeEach(() => {
   resetRouteContributions();
 });
 
-// 贡献按 slot 分组登记：`/web` 与 `/web/config` 是两个聚合实例，挂错面等于整组端点前缀错位。
+// 贡献按 slot 分组登记：`/web`、`/web/config` 与 `/api` 是三个聚合实例，挂错面等于整组端点前缀错位。
 test("路由贡献按聚合槽登记", async () => {
   await assemble([
     { id: "probe.web", kind: "app-route", slot: WEB_SLOT, value: () => routeInstance("/probe") },
     { id: "probe.config", kind: "app-route", slot: WEB_CONFIG_SLOT, value: () => routeInstance("/config/probe") },
+    { id: "probe.api", kind: "app-route", slot: API_SLOT, value: () => routeInstance("/api/probe") },
   ]);
 
   expect(slottedRoutes(WEB_SLOT)).toEqual(["GET /probe"]);
   expect(slottedRoutes(WEB_CONFIG_SLOT)).toEqual(["GET /config/probe"]);
+  expect(slottedRoutes(API_SLOT)).toEqual(["GET /api/probe"]);
 });
 
 // 未启用任何贡献到某一面的模块时，槽是空数组而不是报错：profile 决定哪些面有路由。
@@ -354,5 +357,105 @@ test("真实 profile 装配后各包的路由进入对应槽", async () => {
     "DELETE /config/prod-views/:id",
     // sandbox
     "GET /config/sandbox-pools",
+  ]);
+  expect(slottedRoutes(API_SLOT)).toEqual([
+    // identity
+    "GET /api/system/users",
+    "DELETE /api/system/users/:id",
+    "POST /api/system/users/reset-password",
+    "POST /api/system/users",
+    "GET /api/system/users/:id",
+    "GET /api/system/users/:id/api-keys",
+    "GET /api/system/users/:id/organizations",
+    "DELETE /api/system/organizations/:id",
+    "GET /api/system/organizations",
+    "POST /api/system/organizations",
+    "DELETE /api/system/api-keys/:id",
+    "GET /api/system/organizations/:id",
+    "POST /api/system/organizations/:id/members",
+    "POST /api/system/api-keys",
+    // agent-runtime
+    "POST /api/agents/:agentId/instances/connect",
+    "POST /api/agents/:agentId/v1/chat/completions",
+    // knowledge
+    "GET /api/knowledge-bases",
+    // mcp
+    "GET /api/mcp",
+    "GET /api/mcp/:id",
+    "POST /api/mcp",
+    "PUT /api/mcp/:id",
+    "DELETE /api/mcp/:id",
+    // skill
+    "GET /api/skills/",
+    "GET /api/skills/:id",
+    "POST /api/skills/",
+    "DELETE /api/skills/:id",
+    // agent-config
+    "GET /api/agents",
+    "GET /api/agents/:id",
+    "POST /api/agents",
+    "PUT /api/agents/:id",
+    "DELETE /api/agents/:id",
+    // machine
+    "POST /api/environments/:environmentId/workspace/files",
+    // model-management
+    "GET /api/models/providers",
+    "POST /api/models/providers",
+    "GET /api/models/providers/:providerId",
+    "PUT /api/models/providers/:providerId",
+    "DELETE /api/models/providers/:providerId",
+    "POST /api/models/providers/:providerId/models",
+    "GET /api/models/providers/:providerId/models",
+    "GET /api/models/providers/:providerId/models/:id",
+    "PUT /api/models/providers/:providerId/models/:id",
+    "DELETE /api/models/providers/:providerId/models/:id",
+    "GET /api/system/model-gateway/config",
+    "GET /api/system/model-gateway/keys",
+    "POST /api/system/model-gateway/keys/actions/remove",
+    "GET /api/system/model-gateway/models/status",
+    "POST /api/system/model-gateway/budgets/actions/bulk-reset",
+    "POST /api/system/model-gateway/models/actions/sync",
+    "PUT /api/system/model-gateway/budgets/:userId",
+    "GET /api/system/model-gateway/budgets",
+    "POST /api/system/model-gateway/budgets/actions/bulk-update",
+    "GET /api/system/model-gateway/subjects/users",
+    "GET /api/system/model-gateway/subjects/agents",
+    "GET /api/system/model-gateway/usage",
+    // observer
+    "GET /api/system/observer/acp-link",
+    "GET /api/system/logs/",
+    "GET /api/system/logs/search",
+    "GET /api/system/logs/download",
+    "GET /api/system/people-tree/",
+    // sandbox
+    "GET /api/system/sandbox-pools",
+    "POST /api/system/sandbox-pools",
+    "GET /api/system/sandbox-pools/:poolId",
+    "PUT /api/system/sandbox-pools/:poolId",
+    "DELETE /api/system/sandbox-pools/:poolId",
+    "GET /api/system/sandbox-instances",
+    "GET /api/system/sandbox-instances/:instanceId",
+    "PUT /api/system/sandbox-instances/:instanceId",
+    "DELETE /api/system/sandbox-instances/:instanceId",
+    "POST /api/system/sandbox-instances/rebuild",
+    "GET /api/system/sandbox-cluster/pools",
+    "POST /api/system/sandbox-cluster/pools",
+    "GET /api/system/sandbox-cluster/pools/:poolId",
+    "PUT /api/system/sandbox-cluster/pools/:poolId",
+    "DELETE /api/system/sandbox-cluster/pools/:poolId",
+    "GET /api/system/sandbox-cluster/servers",
+    "POST /api/system/sandbox-cluster/servers",
+    "GET /api/system/sandbox-cluster/servers/:serverId",
+    "PUT /api/system/sandbox-cluster/servers/:serverId",
+    "DELETE /api/system/sandbox-cluster/servers/:serverId",
+    "POST /api/system/sandbox-cluster/servers/:serverId/health-check",
+    "PUT /api/system/sandbox-cluster/servers/:serverId/tunnel",
+    "GET /api/system/sandbox-cluster/servers/:serverId/tunnel/frpc.toml",
+    "GET /api/system/sandbox-server/servers/:serverId/sandboxes",
+    "GET /api/system/sandbox-server/servers/:serverId/sandboxes/:sandboxId",
+    "GET /api/system/sandbox-server/servers/:serverId/sandboxes/:sandboxId/diagnostics",
+    "POST /api/system/sandbox-server/servers/:serverId/sandboxes/:sandboxId/commands",
+    // workflow
+    "POST /api/workflows/:workflowId/execute",
   ]);
 });

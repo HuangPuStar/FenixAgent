@@ -33,7 +33,7 @@ import { providerResource } from "./src/server/access/provider-resource";
  * （`setModelGatewayServices`）不在本工厂内构造——它依赖宿主进程级的凭据与预算装配，归宿主的
  * `initModelGateway`（§1.5 裁定：registry 不接管启动序）。
  *
- * 声明 `contributions`（1.5e）：四条路由的实例由本模块以惰性构造函数
+ * 声明 `contributions`（1.5e）：六条路由的实例由本模块以惰性构造函数
  * `(host) => import("./src/server/assembly").then(...)` 给出，`slot` 指明挂宿主哪一面——路由路径是相对
  * 形式，前缀由宿主的聚合实例决定，「挂哪一面」只能由声明说清。惰性 import 与 `create` 同因：registry 会
  * 被大量位置导入，不能在索引层就把 Elysia 拖进模块图。
@@ -41,6 +41,9 @@ import { providerResource } from "./src/server/access/provider-resource";
  * 两条挂 `web-config`（`/web/config/models`、`/web/config/providers`），两条挂 `web`
  * （`/web/model-gateway`、`/web/agents/:environmentId/sessions/:sessionId/peri-tasks/:taskId/detail`）。
  * 后者要校验 Environment 归属，消费宿主 `verifyEnvironmentOwnership` 端口。
+ *
+ * 1.5f 追加两条挂 `api`：`/api/models`（会话守卫，与 `/web` 面同一份实例）与
+ * `/api/system/model-gateway`（系统 API 守卫，与普通请求认证互不相关）。
  *
  * 不声明 `web`：消费方是 §1.6 的 WebShell 装配，形状必须与消费端同时定型。
  */
@@ -81,6 +84,22 @@ export const moduleManifest = {
       value: (host: ServerRouteHost) =>
         import("./src/server/assembly").then((assembly) =>
           assembly.createModelManagementWebPeriTaskDetailsRoutes(host),
+        ),
+    },
+    {
+      id: "model-management.api-models",
+      kind: "app-route",
+      slot: "api",
+      value: (host: ServerRouteHost) =>
+        import("./src/server/assembly").then((assembly) => assembly.createModelManagementApiModelsRoutes(host)),
+    },
+    {
+      id: "model-management.api-system-model-gateway",
+      kind: "app-route",
+      slot: "api",
+      value: (host: ServerRouteHost) =>
+        import("./src/server/assembly").then((assembly) =>
+          assembly.createModelManagementApiSystemModelGatewayRoutes(host),
         ),
     },
   ],

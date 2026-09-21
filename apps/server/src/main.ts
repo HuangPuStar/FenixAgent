@@ -8,7 +8,6 @@ const startupLog = createLogger("rcs");
 import {
   createAgentSitesCompatRoutes,
   createAgentSitesProxyRoutes,
-  createApiAgentsRoutes,
   getAgentConfigModule,
   setMetaAgentModelResolver,
 } from "@fenix/agent-config/server";
@@ -24,8 +23,6 @@ import {
   bindMachineRegistryPort,
   bindSessionEventBusPort,
   createAcpRoutes,
-  createApiInstanceRoutes,
-  createOpenaiChatRoutes,
   environmentRepo,
   findMachineConnectionById,
   getAcpEventBus,
@@ -35,24 +32,21 @@ import {
   resolveWorkspacePath,
   triggerMachineCleanupByMachineId,
 } from "@fenix/agent-runtime/server";
-import { createApiSystemRoutes, createIdentityDirectory, ensureSystemAdmin } from "@fenix/identity/server";
+import { createIdentityDirectory, ensureSystemAdmin } from "@fenix/identity/server";
 import {
-  createApiModelsRoutes,
-  createApiSystemModelGatewayRoutes,
   createModelGatewayRuntime,
   createSystemModelGatewayProviderService,
   getModelManagementModule,
 } from "@fenix/model-management/server";
 import { initializeApplicationInfrastructure, registerIdentityDirectory } from "@fenix/platform-sdk/server";
 import { bindAcpEventBusPort, getHermesClient, initHermesClient } from "@fenix/resource-channel/server";
-import { checkRagFlowHealth, createApiKnowledgeBaseRoutes } from "@fenix/resource-knowledge/server";
+import { checkRagFlowHealth } from "@fenix/resource-knowledge/server";
 import {
   bindMachineEnvironmentPort,
   bindMachineHostPort,
   checkParsedObjectSize,
   checkWsMessageSize,
   closeAllFileWsConnections,
-  createApiWorkspaceRoutes,
   disconnectMachine,
   estimateWsMessageBytes,
   formatFileWsCloseLog,
@@ -69,32 +63,20 @@ import {
   stopFileWsSweep,
   stopHeartbeat,
 } from "@fenix/resource-machine/server";
-import { createApiMcpRoutes, knowledgeMcpRoutes } from "@fenix/resource-mcp/server";
+import { knowledgeMcpRoutes } from "@fenix/resource-mcp/server";
 import {
-  createApiSystemLogsRoutes,
-  createApiSystemObserverRoutes,
-  createApiSystemPeopleTreeRoutes,
-} from "@fenix/resource-observer/server";
-import {
-  createApiSandboxClusterRoutes,
-  createApiSandboxRoutes,
-  createApiSandboxServerRoutes,
   initializeDefaultSandboxPool,
   registerConfiguredSandboxProviders,
   sandboxManager,
 } from "@fenix/resource-sandbox/server";
-import { createApiSkillsRoutes, skillDownloadRoutes } from "@fenix/resource-skill/server";
+import { skillDownloadRoutes } from "@fenix/resource-skill/server";
 import { schedulerService } from "@fenix/resource-task/server";
-import {
-  createApiWorkflowRoutes,
-  createHookRoutes,
-  createWorkflowStaticApp,
-  initCustomToolsRegistry,
-} from "@fenix/resource-workflow/server";
+import { createHookRoutes, createWorkflowStaticApp, initCustomToolsRegistry } from "@fenix/resource-workflow/server";
 import type { WebSocketHandler } from "bun";
 import Elysia from "elysia";
 import { bootstrapServerAssembly } from "./bootstrap";
 import {
+  API_SLOT,
   mountServerRouteContribution,
   takeRouteContributions,
   WEB_CONFIG_SLOT,
@@ -116,9 +98,9 @@ import {
 } from "./plugins/auth";
 import { corsPlugin } from "./plugins/cors";
 import { errorPlugin } from "./plugins/error-handler";
-import { deriveRequestId, injectRequestId, logError, logRequest, logResponse } from "./plugins/logger";
+import { deriveRequestId, injectRequestId, logRequest, logResponse } from "./plugins/logger";
 import { ctrlStaticPlugin } from "./plugins/static";
-import { systemApiAuthPlugin } from "./plugins/system-api-auth";
+import { createApiApp } from "./routes/api";
 import { createWebApp } from "./routes/web";
 import { buildHealthInfo } from "./services/build-info";
 import { closeCache, getRedisConnection } from "./services/cache";
@@ -523,25 +505,10 @@ const app = new Elysia({
   .use(skillDownloadRoutes)
   // Agent Sites L3 business frontend proxy (/web/site/deploy/:appId/* prefix)
   .use(createAgentSitesProxyRoutes({ authenticateRequest: authenticateSiteRequest }))
-  // External API routes
-  .use(createApiAgentsRoutes({ authGuardPlugin }))
-  .use(createApiKnowledgeBaseRoutes({ authGuardPlugin }))
-  .use(createApiSkillsRoutes({ authGuardPlugin }))
-  .use(createApiModelsRoutes({ authGuardPlugin }))
-  .use(createApiMcpRoutes({ authGuardPlugin }))
-  .use(createApiSystemRoutes({ systemApiGuardPlugin: systemApiAuthPlugin }))
-  .use(createApiSystemLogsRoutes({ systemApiGuardPlugin: systemApiAuthPlugin }))
-  .use(createApiSystemModelGatewayRoutes({ systemApiGuardPlugin: systemApiAuthPlugin }))
-  .use(createApiSystemObserverRoutes({ systemApiGuardPlugin: systemApiAuthPlugin }))
-  .use(createApiSystemPeopleTreeRoutes({ systemApiGuardPlugin: systemApiAuthPlugin }))
-  .use(createApiSandboxRoutes({ systemApiGuardPlugin: systemApiAuthPlugin }))
-  .use(createApiSandboxClusterRoutes({ systemApiGuardPlugin: systemApiAuthPlugin }))
-  .use(createApiSandboxServerRoutes({ systemApiGuardPlugin: systemApiAuthPlugin }))
-  .use(createApiInstanceRoutes({ authGuardPlugin, logError }))
-  .use(createApiWorkspaceRoutes({ authGuardPlugin }))
-  .use(createApiWorkflowRoutes({ authGuardPlugin }))
-  // OpenAI-compatible Chat API
-  .use(createOpenaiChatRoutes({ authGuardPlugin }))
+  // External API routes：装配期登记的 app-route 贡献按 `api` 聚合槽注入
+  // （`/api/agents`、`/api/knowledge-bases`、`/api/skills`、`/api/models`、`/api/mcp`、
+  // `/api/system/*`、`/api/environments/*`、`/api/workflows/*` 与 OpenAI 兼容对话端点）
+  .use(createApiApp({ api: takeRouteContributions(API_SLOT) }))
   // Workflow proxy (not under /web prefix)
   .use(createWorkflowStaticApp({ authGuardPlugin }))
   // MCP routes

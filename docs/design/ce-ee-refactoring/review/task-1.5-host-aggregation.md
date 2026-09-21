@@ -1474,3 +1474,90 @@ custom tools registry ready。**全文无 ERROR，也没有「未知聚合槽」
 - 本节的验证只覆盖「注册与装配」，没有覆盖需要登录态的端到端业务流（登录、Agent 会话、workflow 执行）——
   那些属于 1.5f/1.8 的证据范围。
 - 验证库是一次性的，未保留；如需复现按 §一 的命令重建。
+
+### 1.5f-1a `api` 槽落地：17 条 `/api/*` 手写挂载清零（2026-09-21）
+
+分片表 1.5f 的第一片。判据原文要求 `grep '@fenix/' apps/server/src/main.ts` 归零，与用户裁定合并后的执行口径是
+**「只要求模块与协议路由归零」**，且**分批**：本片只做协议路由（`api` 槽），顶层 `app` 槽与约 30 处生命周期/启动
+编排调用留下两片。`@fenix/logger`（`interceptConsole()` 必须最先执行）与 `@fenix/platform-sdk/server`
+（`initializeApplicationInfrastructure` / `registerIdentityDirectory`）的 import 按裁定保留。
+
+**一、做了什么**
+
+`api` 槽（`bootstrap/route-contributions.ts` 的 `API_SLOT = "api"`）+ 聚合实例
+`apps/server/src/routes/api/index.ts` 的 `createApiApp({ api })`。11 个包各自在 `src/server/assembly.ts` 里加一个
+收窄函数（observer 此前没有 `assembly.ts`，本片新建），manifest 加 `slot: "api"` 的 `app-route` 贡献：
+
+| 包 | 贡献 | 守卫 |
+|---|---|---|
+| identity | `createIdentityApiSystemRoutes`（`/api/system/users`、`/organizations`、`/api-keys`，14 条） | system API |
+| agent-runtime | `createAgentRuntimeApiInstanceRoutes`、`createAgentRuntimeOpenaiChatRoutes` | 会话（前者的实例接入另需 `logError`） |
+| knowledge / mcp / skill / agent-config / machine / workflow | 各 1 条 | 会话 |
+| model-management | `/api/models`（会话）、`/api/system/model-gateway`（system API） | 两种 |
+| observer | `/api/system/{observer,logs,people-tree}`，3 条 | system API |
+| sandbox | `/api/system/{sandbox-pools,sandbox-instances}`、`-cluster`、`-server`，三个工厂 | system API |
+
+`main.ts` 的 17 条 `.use(createApi…Routes({…}))` 换成一条
+`.use(createApiApp({ api: takeRouteContributions(API_SLOT) }))`，相应 import 与只服务于它们的
+`systemApiAuthPlugin` / `logError` 宿主导入一并删除。`route-contributions.test.ts` 的真实 profile 断言新增
+`API_SLOT` 分组（89 条路径，`toEqual` 全量镜像）。
+
+**二、【需审核】`ServerRouteHost` 第三次扩面：`logError`**
+
+10 个端口分三批到位的前两批见 1.5d 与 2b-2 的记录；本片加第 10 项 `logError`（`/api/agents/:agentId/instances/connect`
+的唯一消费方）。理由与前两批同类：它要读宿主中间件写在 request 上的 `__requestId` / `__startTime`，以及
+`errorPlugin` 对 SPA 兜底与 `ValidationError` 的特判——包内没有来源，自建第二份会让同一次失败在两条日志管道里
+各记一次并丢掉 requestId 关联。
+
+需要审核的是**方向**而不是实现：`rotateCallerApiKey`（2b-2 加入）与本项都说明 `ServerRouteHost` 正在承载「宿主
+能力」之外的东西。第十项之后，这个接口里有 5 个纯守卫/取数端口（`authGuardPlugin`、`systemApiGuardPlugin`、
+`authenticateRequest`、`environmentLookup`、`verifyEnvironmentOwnership`）、2 个身份族偏好端口、1 个密钥引用解析、
+1 个业务动作、1 个日志钩子。建议的收口方式（**本片未做**，等 1.5f 收尾时一并裁定）：把「协议适配」与「宿主能力
+注入」拆成两个接口，`ServerRouteHost` 只留前者。
+
+**三、【需审核】`api` 槽的挂载顺序与手写序不同**
+
+槽内顺序 = 装配拓扑序 + manifest 内声明序（与 `web` / `web-config` 两面同规则），因此与迁移前 `main.ts` 的
+手写序有两处不同：agent-runtime 的两条（拓扑序第 3）排在 agent-config / knowledge / mcp / skill 之前；
+model-management 的 `/api/system/model-gateway`（第 11）排在 observer 的 `/api/system/*`（第 12）之前。逐前缀核对
+无遮蔽：`/api/agents/:agentId/*` 与 `/api/agents/{,":id"}` 段深不同；`/api/system/` 下第二段全是静态
+（`users` / `organizations` / `api-keys` / `model-gateway` / `logs` / `observer` / `people-tree` / `sandbox-*`），
+没有同位置的参数路由。Elysia 的 radix 匹配对静态段优先，不依赖注册顺序。
+
+真正有风险的是**两种守卫家族进同一个实例**：会话守卫生成的 `store.actor` / `sessionAuth` 宏与系统 API 守卫的
+`store.systemAuth` 在同一 app 作用域里是否互相干扰——这一点在手工验证里用真实 system key 双向证伪（见 §五）。
+
+**四、【需审核】顶层 `app` 槽本片刻意不接线**
+
+`READABLE_SLOTS` 仍只有 `web` / `web-config` / `api` 三项：`app` 槽的消费者（`main.ts` 根 app 的
+`skillDownloadRoutes`、MCP、hooks、站点代理/兜底）留下片，读数与写数必须同批到位——先把槽名加进白名单会让
+「声明了但没人取」的贡献被静默丢弃，而这条路径的失败模式恰好是「整组端点消失」，规则存在的意义就是让它当场报错。
+`route-contributions.test.ts` 里「未声明 slot 的贡献拒绝装配」那条用例因此保持原样。
+
+**五、手工启动验证（判据里的「服务可启动」）**
+
+按 1.5e-3 的口径复跑：一次性 `postgres:16-alpine` 容器映射 **55432**（不复用 5432 上另一个检出的开发库），
+`db:migrate` 全链应用成功后 `RCS_PORT=3901 bun run apps/server/src/main.ts` 启动到
+`Listening on 0.0.0.0:3901`。日志 323 行，**无装配期错误**（无「未知聚合槽」「没有返回 Elysia 实例」），
+唯二 ERROR 来自本节自己的探测请求（路由 schema 校验 400 与 better-auth 拒绝 system key）。
+
+| 探测 | 结果 | 说明 |
+|---|---|---|
+| `GET /api/{agents,knowledge-bases,skills/,mcp,models/providers}` | 全 401 | 5 个会话守卫包 |
+| `POST /api/environments/env-1/workspace/files`、`/api/agents/a-1/instances/connect` | 401 | machine / agent-runtime 的实例接入 |
+| `POST /api/agents/a-1/v1/chat/completions`、`/api/workflows/wf-1/execute` | 400 `messages: expected array` / `authorization: expected string` | 路由自己的 schema 校验已执行（校验先于守卫是这两条路由的既有协议行为，本片未改） |
+| `GET /api/system/{users,logs/,people-tree/,observer/acp-link,model-gateway/config,sandbox-pools,sandbox-cluster/pools,sandbox-server/servers/x/sandboxes}` | 全 401（无 token） | 7 条 system API 路由全部在位 |
+| 同上三条 + `/api/system/users` 带**真实** `RCS_SYSTEM_API_KEYS` | 200 + 真实负载（sandbox 池列表、人员树、acp-link 观察树） | 系统 API 面真的能服务，不只是拦住 |
+| `/api/{skills/,agents,models/providers}` 带**同一把** system key | 全 401 | 反向对照：system key 打不开会话守卫面，两种守卫家族没有混用 |
+| `GET /api/nope` | 200 | 对照项：未注册路径走 SPA 兜底，不返回 404 |
+
+验证容器与服务进程已在收尾时删除/停止；未保留可复用库。
+
+**六、本片出现的两处清理**
+
+- `test-utils/web-routes.ts` 改名为 `test-utils/route-faces.ts`（`git mv`）：本片起它同时提供 `/web`、`/web/config`、
+  `/api` 三面的测试路由，文件名与内容不再对应；两个调用方同步改 import。`app` 面（下片）也在同一命名下。
+- `@fenix/resource-observer/server` 从 `main.ts` 的 import 里完全消失（它在宿主侧的唯一用法就是那三条
+  `/api/system/*` 路由）。**`scripts/architecture/exceptions.json` 的 `handwrittenRegistryBaseline` 里
+  `"@fenix/resource-observer"` 一行因此成为陈旧条目**——该字段整体按计划在 1.5f 收尾片删除，本片不动它，
+  以免留下「规则已删、基线还在」的中间态。

@@ -27,6 +27,9 @@ import type { ServerRouteHost } from "@fenix/platform-sdk/server";
  * 入口（`authenticateRequest`）。惰性 import 与 `create` 同因：registry 会被大量位置导入，不能在索引层就
  * 把 Elysia 拖进模块图。
  *
+ * 1.5f 追加一条 `api` 槽贡献：`/api/environments/:environmentId/workspace/files`（对外工作区文件接口，
+ * 与 `/web` 面共用同一份会话守卫）。
+ *
  * 不声明 `web`：消费方是 §1.6 的 WebShell 装配，形状必须与消费端同时定型。
  */
 export const moduleManifest = {
@@ -55,6 +58,13 @@ export const moduleManifest = {
       slot: "web",
       value: (host: ServerRouteHost) =>
         import("./src/server/assembly").then((assembly) => assembly.createMachineWebRegistryRoutes(host)),
+    },
+    {
+      id: "machine.api-workspaces",
+      kind: "app-route",
+      slot: "api",
+      value: (host: ServerRouteHost) =>
+        import("./src/server/assembly").then((assembly) => assembly.createMachineApiWorkspaceRoutes(host)),
     },
   ],
   create: () => import("./src/module").then((module) => module.createMachineModule()),

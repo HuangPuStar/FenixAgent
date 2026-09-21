@@ -20,6 +20,10 @@ import type { ServerRouteHost } from "@fenix/platform-sdk/server";
  * `/web` 聚合面——路由路径是相对形式，前缀由宿主的聚合实例决定，「挂哪一面」只能由声明说清。**基础模块
  * 同样参与贡献挂载**：装配的 mount 阶段遍历全部解析出的模块（`orderContributions`），不区分类别。惰性
  * import 与 `create` 同因：registry 会被大量位置导入，不能在索引层就把 Elysia 拖进模块图。
+ *
+ * 1.5f 追加两条 `api` 槽贡献：实例接入（`/api/agents/:agentId/instances/connect`）与 OpenAI 兼容对话
+ * （`/api/agents/:agentId/v1/chat/completions`）。两者与 `/web` 面共用同一份会话守卫，实例接入另需宿主
+ * 请求错误日志（读 `request` 上的 requestId，包内没有来源）。
  */
 export const moduleManifest = {
   id: "agent-runtime",
@@ -47,6 +51,20 @@ export const moduleManifest = {
       slot: "web",
       value: (host: ServerRouteHost) =>
         import("./src/server/assembly").then((assembly) => assembly.createAgentRuntimeWebInstancesRoutes(host)),
+    },
+    {
+      id: "agent-runtime.api-instances",
+      kind: "app-route",
+      slot: "api",
+      value: (host: ServerRouteHost) =>
+        import("./src/server/assembly").then((assembly) => assembly.createAgentRuntimeApiInstanceRoutes(host)),
+    },
+    {
+      id: "agent-runtime.api-openai-chat",
+      kind: "app-route",
+      slot: "api",
+      value: (host: ServerRouteHost) =>
+        import("./src/server/assembly").then((assembly) => assembly.createAgentRuntimeOpenaiChatRoutes(host)),
     },
   ],
   create: () => import("./src/runtime").then((module) => module.createAgentRuntimeModule()),

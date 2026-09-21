@@ -4,7 +4,7 @@ import { join } from "node:path";
 import { createApiWorkflowRoutes } from "@fenix/resource-workflow/server";
 import { authGuardPlugin } from "../plugins/auth";
 import { createWebApp } from "../routes/web";
-import { createTestWebConfigRoutes, createTestWebRoutes } from "../test-utils/web-routes";
+import { createTestWebConfigRoutes, createTestWebRoutes } from "../test-utils/route-faces";
 
 const REFERENCES_DIR = join(process.cwd(), ".agents/skills/agent-platform-api/references");
 

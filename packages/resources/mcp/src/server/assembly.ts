@@ -1,5 +1,6 @@
 import type { ServerRouteHost } from "@fenix/platform-sdk/server";
 import type { AnyElysia } from "elysia";
+import { createApiMcpRoutes } from "./routes/api/mcp";
 import type { McpRouteDependencies } from "./routes/dependencies";
 import { createWebMcpConfigRoutes } from "./routes/web/config/mcp";
 
@@ -22,4 +23,9 @@ function routeDependencies(host: ServerRouteHost): McpRouteDependencies {
 /** `/web/config/mcp` MCP 服务器管理（挂宿主 `web-config` 聚合槽）。 */
 export function createMcpWebConfigRoutes(host: ServerRouteHost) {
   return createWebMcpConfigRoutes(routeDependencies(host));
+}
+
+/** `/api/mcp` 对外稳定 MCP 服务器接口（挂宿主 `api` 聚合槽）。 */
+export function createMcpApiRoutes(host: ServerRouteHost) {
+  return createApiMcpRoutes(routeDependencies(host));
 }

@@ -33,6 +33,10 @@ import type { ServerRouteHost } from "@fenix/platform-sdk/server";
  * import 与 `create` 同因：registry 会被大量位置导入，不能在索引层就把 Elysia 拖进模块图。五条贡献的声明
  * 序就是挂载序（与迁移前宿主手写序列一致）。
  *
+ * 1.5f 追加一条 `api` 槽贡献：`/api/workflows/:workflowId/execute`。`/workflow/*` 静态代理（
+ * `createWorkflowStaticApp`）、MCP 与 hooks 入口不走本槽——它们各自带独立前缀与认证口径，挂宿主顶层
+ * `app` 槽。
+ *
  * 不声明 `web`：消费方是 §1.6 的 WebShell 装配，形状必须与消费端同时定型；`envDefinitions` 与 preflight
  * 收敛在任务 1.7。
  */
@@ -76,6 +80,13 @@ export const moduleManifest = {
       slot: "web",
       value: (host: ServerRouteHost) =>
         import("./src/server/assembly").then((assembly) => assembly.createWorkflowWebRunsRoutes(host)),
+    },
+    {
+      id: "workflow.api",
+      kind: "app-route",
+      slot: "api",
+      value: (host: ServerRouteHost) =>
+        import("./src/server/assembly").then((assembly) => assembly.createWorkflowApiRoutes(host)),
     },
   ],
   create: () => import("./src/module").then((module) => module.createWorkflowModule()),

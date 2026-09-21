@@ -1,6 +1,7 @@
 import type { ServerRouteHost } from "@fenix/platform-sdk/server";
 import type { AnyElysia } from "elysia";
-import type { WebIdentityRouteDependencies } from "../routes/dependencies";
+import { createApiSystemRoutes } from "../routes/api/system";
+import type { SystemApiRouteDependencies, WebIdentityRouteDependencies } from "../routes/dependencies";
 import { createWebApiKeysRoutes } from "../routes/web/api-keys";
 import { createWebOrganizationsRoutes } from "../routes/web/organizations";
 
@@ -28,4 +29,10 @@ export function createIdentityWebApiKeysRoutes(host: ServerRouteHost) {
 /** `/web/organizations` 组织与成员管理（挂宿主 `web` 聚合槽）。 */
 export function createIdentityWebOrganizationsRoutes(host: ServerRouteHost) {
   return createWebOrganizationsRoutes(routeDependencies(host));
+}
+
+/** `/api/system/*` 系统管理的用户与组织接口（挂宿主 `api` 聚合槽）。 */
+export function createIdentityApiSystemRoutes(host: ServerRouteHost) {
+  const deps: SystemApiRouteDependencies = { systemApiGuardPlugin: host.systemApiGuardPlugin as AnyElysia };
+  return createApiSystemRoutes(deps);
 }

@@ -1,5 +1,6 @@
 import type { ServerRouteHost } from "@fenix/platform-sdk/server";
 import type { AnyElysia } from "elysia";
+import { createApiWorkflowRoutes } from "./routes/api/workflows";
 import type { WorkflowRouteDependencies } from "./routes/dependencies";
 import { createWebWorkflowCustomToolsRoutes } from "./routes/web/workflow-custom-tools";
 import { createWebWorkflowDefsRoutes } from "./routes/web/workflow-defs";
@@ -48,4 +49,9 @@ export function createWorkflowWebSseRoutes(host: ServerRouteHost) {
 /** `/web/workflow-runs` 运行记录与回放（挂宿主 `web` 聚合槽）。 */
 export function createWorkflowWebRunsRoutes(host: ServerRouteHost) {
   return createWebWorkflowRunsRoutes(routeDependencies(host));
+}
+
+/** `/api/workflows/:workflowId/execute` 对外工作流执行（挂宿主 `api` 聚合槽）。 */
+export function createWorkflowApiRoutes(host: ServerRouteHost) {
+  return createApiWorkflowRoutes(routeDependencies(host));
 }

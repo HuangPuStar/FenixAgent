@@ -1,7 +1,9 @@
 import type { ServerRouteHost } from "@fenix/platform-sdk/server";
 import type { AnyElysia } from "elysia";
 import type { UserAgentPreferencesPort } from "./ports/user-agent-preferences";
+import { createApiAgentsRoutes } from "./routes/api/agents";
 import type {
+  ApiAgentConfigRouteDependencies,
   WebAgentConfigRouteDependencies,
   WebConfigAgentsRouteDependencies,
   WebMetaAgentRouteDependencies,
@@ -68,4 +70,10 @@ export function createAgentConfigWebMetaAgentRoutes(host: ServerRouteHost) {
 export function createAgentConfigWebAgentGenerationRoutes(host: ServerRouteHost) {
   const deps: WebAgentConfigRouteDependencies = { authGuardPlugin: authGuard(host) };
   return createWebAgentGenerationRoutes(deps);
+}
+
+/** `/api/agents` 对外稳定 Agent 接口（挂宿主 `api` 聚合槽）。 */
+export function createAgentConfigApiRoutes(host: ServerRouteHost) {
+  const deps: ApiAgentConfigRouteDependencies = { authGuardPlugin: authGuard(host) };
+  return createApiAgentsRoutes(deps);
 }

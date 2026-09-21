@@ -39,10 +39,13 @@ import { skillResource } from "./src/server/access/skill-resource";
  * 组合根产出的实例。工厂保持惰性——registry 会被大量位置导入，不能在索引层就把 Drizzle、Elysia 拖进
  * 模块图。
  *
- * 声明 `contributions`（1.5e）：`/web/config/skills` 的路由实例由本模块以惰性构造函数
- * `(host) => import("./src/server/assembly").then(...)` 给出，`slot: "web-config"` 指明挂宿主 `/web/config`
- * 聚合面——路由路径是相对形式，前缀由宿主的聚合实例决定，「挂哪一面」只能由声明说清。惰性 import 与
- * `create` 同因：registry 会被大量位置导入，不能在索引层就把 Elysia 拖进模块图。
+ * 声明 `contributions`（1.5e）：`/web/config/skills` 与 `/api/skills` 的路由实例由本模块以惰性构造函数
+ * `(host) => import("./src/server/assembly").then(...)` 给出，`slot` 指明挂宿主哪一面——路由路径是相对
+ * 形式，前缀由宿主的聚合实例决定，「挂哪一面」只能由声明说清。惰性 import 与 `create` 同因：registry 会被
+ * 大量位置导入，不能在索引层就把 Elysia 拖进模块图。两条路由共用同一份会话守卫。
+ *
+ * `/skills/*` 归档下载（`skillDownloadRoutes`）不走本槽：它用独立的 skill 下载 token 认证，不是会话守卫
+ * 面，挂在宿主顶层 `app` 槽。
  *
  * 不声明 `web` / `envDefinitions`：消费方分别是 §1.6 的 WebShell 装配与 §1.7 的宿主 env 登记，形状必须
  * 与消费端同时定型。本包已有 `web/index.ts` 浏览器出口，`web` 贡献待 §1.6 装配面落地时一并声明。
@@ -60,6 +63,13 @@ export const moduleManifest = {
       slot: "web-config",
       value: (host: ServerRouteHost) =>
         import("./src/server/assembly").then((assembly) => assembly.createSkillWebConfigRoutes(host)),
+    },
+    {
+      id: "skill.api",
+      kind: "app-route",
+      slot: "api",
+      value: (host: ServerRouteHost) =>
+        import("./src/server/assembly").then((assembly) => assembly.createSkillApiRoutes(host)),
     },
   ],
   // 工厂保持惰性：registry 会被大量位置导入，不能在索引层就把 Drizzle、Elysia 拖进模块图。

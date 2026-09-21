@@ -1,5 +1,6 @@
 import type { ServerRouteHost } from "@fenix/platform-sdk/server";
 import type { AnyElysia } from "elysia";
+import { createApiSkillsRoutes } from "./routes/api/skills";
 import type { SkillRouteDependencies } from "./routes/dependencies";
 import { createWebSkillsConfigRoutes } from "./routes/web/config/skills";
 
@@ -22,4 +23,9 @@ function routeDependencies(host: ServerRouteHost): SkillRouteDependencies {
 /** `/web/config/skills` 技能管理（挂宿主 `web-config` 聚合槽）。 */
 export function createSkillWebConfigRoutes(host: ServerRouteHost) {
   return createWebSkillsConfigRoutes(routeDependencies(host));
+}
+
+/** `/api/skills` 对外稳定技能接口（挂宿主 `api` 聚合槽）。 */
+export function createSkillApiRoutes(host: ServerRouteHost) {
+  return createApiSkillsRoutes(routeDependencies(host));
 }
