@@ -125,9 +125,11 @@ describe("本包 i18n 字典（models 命名空间）", () => {
     expect(count(zhKeys, "admin")).toBe(2);
     // 宿主 `models` 命名空间的 41 组 200 键原样迁入；加上三组迁入键共 381 个叶子；
     // 本次（任务 1.3 缺口修复）再新增 5 个状态/可访问名键（`gateway.forbidden` +
-    // `verticalModels.{searchLabel,emptyTitle,emptyDescription,clearSearch}`）共 386。
-    expect(enKeys.size).toBe(386);
-    expect(zhKeys.size).toBe(386);
+    // `verticalModels.{searchLabel,emptyTitle,emptyDescription,clearSearch}`）共 386；
+    // §1.6 T11b2 侧栏导航随项下沉再新增 `nav.{models,algorithms,verticalModels}` 3 键共 389
+    // （文案逐字取自宿主 `agentPanel` 的同名键，见 `web/contribution.ts`）。
+    expect(enKeys.size).toBe(389);
+    expect(zhKeys.size).toBe(389);
   });
 
   // 字典内不得再嵌一层命名空间前缀：宿主按 MODELS_NS 注册本文件，多一层前缀会让所有键变成 key 回显。

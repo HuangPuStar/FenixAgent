@@ -489,5 +489,10 @@
     "emptyTitle": "没有匹配的模型",
     "emptyDescription": "换个关键词试试，或清空搜索查看全部模型。",
     "clearSearch": "清空搜索"
+  },
+  "nav": {
+    "models": "模型库",
+    "algorithms": "算法库",
+    "verticalModels": "企业垂直大模型"
   }
 }

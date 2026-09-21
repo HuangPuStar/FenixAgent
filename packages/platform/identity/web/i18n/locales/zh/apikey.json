@@ -51,5 +51,8 @@
     "copyFailed": "复制失败，请手动选择并复制",
     "deleteFailed": "吊销 API 密钥失败",
     "deleted": "API 密钥已吊销"
+  },
+  "nav": {
+    "apikeys": "API Key"
   }
 }

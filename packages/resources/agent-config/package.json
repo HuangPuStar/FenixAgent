@@ -11,6 +11,7 @@
     "./server/testing": "./src/server/testing.ts",
     "./server/runtime": "./src/server/runtime.ts",
     "./web": "./web/index.ts",
+    "./web/contribution": "./web/contribution.ts",
     "./web/i18n": "./web/i18n/index.ts",
     "./web/lib/agent-node": "./web/lib/agent-node.ts",
     "./web/lib/agent-resource-access": "./web/lib/agent-resource-access.ts",

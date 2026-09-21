@@ -452,5 +452,8 @@
     "breadcrumb_back": "Workflows",
     "breadcrumb_edit": "Edit",
     "breadcrumb_versions": "Versions"
+  },
+  "nav": {
+    "workflow": "Workflow"
   }
 }

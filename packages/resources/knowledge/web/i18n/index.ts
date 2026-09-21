@@ -13,6 +13,9 @@
 // 收口补齐的 `loadFailure.*`），两语言键集合完全一致，且全部
 // 落在 knowledge 域；`packages/resources/observer/web/i18n/*/observer.json` 下没有本包键，
 // 因此本次没有「从 observer 命名空间迁出」的动作（movedIn / movedOut 均为空）。
+//
+// 键数更新（§1.6 T11b，2026-09-21）：侧栏导航随项下沉新增 `nav.knowledgeBases`（见 `web/contribution.ts`），
+// 故顶层键与扁平键各 +1，为 57 / 248；上面那条「键集合一致且全部落在 knowledge 域」的结论不变。
 
 import en from "./locales/en/knowledge.json";
 import zh from "./locales/zh/knowledge.json";

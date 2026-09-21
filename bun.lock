@@ -837,6 +837,7 @@
         "@fenix/chat-channel": "workspace:*",
         "@fenix/ui-components": "workspace:*",
         "i18next": "^26.2.0",
+        "lucide-react": "^1.16.0",
         "yjs": "^13.6.31",
       },
       "devDependencies": {

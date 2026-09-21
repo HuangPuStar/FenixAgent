@@ -311,6 +311,11 @@
     "emptyTitle": "暂无智能体",
     "emptyDescription": "点击右上角创建第一个智能体"
   },
+  "nav": {
+    "home": "新建智能体",
+    "agents": "智能体管理",
+    "sites": "应用部署"
+  },
   "loadFailed": "加载智能体失败",
   "envCreateFailed": "创建运行环境失败",
   "enterFailed": "进入智能体失败"

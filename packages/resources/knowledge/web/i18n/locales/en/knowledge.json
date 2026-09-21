@@ -295,5 +295,8 @@
     "pageOf": "Page {{page}}/{{total}}",
     "fetchFailed": "Failed to fetch chunks",
     "toggleFailed": "Failed to toggle chunk"
+  },
+  "nav": {
+    "knowledgeBases": "Knowledge Bases"
   }
 }

@@ -8,6 +8,7 @@
     "./server": "./src/server.ts",
     "./server/testing": "./src/server/testing.ts",
     "./web": "./web/index.ts",
+    "./web/contribution": "./web/contribution.ts",
     "./web/i18n": "./web/i18n/index.ts"
   },
   "dependencies": {

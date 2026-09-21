@@ -159,5 +159,8 @@
       "weekday9am": "Weekdays at 9:00 AM",
       "monthly1st": "1st of month"
     }
+  },
+  "nav": {
+    "tasks": "Scheduled Tasks"
   }
 }

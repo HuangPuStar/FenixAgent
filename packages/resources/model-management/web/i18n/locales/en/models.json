@@ -489,5 +489,10 @@
     "emptyTitle": "No matching models",
     "emptyDescription": "Try a different keyword, or clear the search to see all models.",
     "clearSearch": "Clear search"
+  },
+  "nav": {
+    "models": "Model Library",
+    "algorithms": "Algorithms",
+    "verticalModels": "Enterprise Vertical LLM"
   }
 }

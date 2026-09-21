@@ -33,6 +33,7 @@
       "types": "./web/index.ts",
       "default": "./web/index.ts"
     },
+    "./web/contribution": "./web/contribution.ts",
     "./web/i18n": {
       "types": "./web/i18n/index.ts",
       "default": "./web/i18n/index.ts"
