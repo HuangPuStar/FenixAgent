@@ -278,5 +278,8 @@
     "tooltipSources": "{{count}} 个来源",
     "tooltipDocument": "文档",
     "tooltipLinks": "{{count}} 条链接"
+  },
+  "nav": {
+    "memories": "记忆"
   }
 }

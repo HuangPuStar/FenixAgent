@@ -278,5 +278,8 @@
     "tooltipSources": "{{count}} sources",
     "tooltipDocument": "Document",
     "tooltipLinks": "{{count}} links"
+  },
+  "nav": {
+    "memories": "Memories"
   }
 }
