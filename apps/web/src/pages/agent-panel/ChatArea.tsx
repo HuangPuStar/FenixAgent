@@ -12,9 +12,10 @@
  * helper 在运行期 `appendChild` 到 head 末尾），两者的级联先后正好相反。实测过改挂的后果：`chat-layout.css`
  * 一旦被内联进静态 `agent-panel.css` 的第 2 行，它就会输给同文件里更靠后的 `.agent-panel-content{
  * padding:12px }` 与懒加载的 `artifacts-workspace.css` 的 `.agent-chat-workspace{ gap:10px }`——聊天区凭空
- * 内缩 12px、docked 布局多出 10px 间隙（T5b 复核发现，已回退）。被 lazy 装载的 ChatPanel 仍按宿主别名解析
- * （`@/src/pages/agent-panel/*`），因此本文件位移不改变它的解析结果；`ArtifactsPanel` 已随 T11d 迁入
- * `apps/web/src/shell/`，其样式 `artifacts-workspace.css` 同迁，仍是「先 artifacts 后 chat-layout」的导入序。
+ * 内缩 12px、docked 布局多出 10px 间隙（T5b 复核发现，已回退）。被 lazy 装载的 ChatPanel 走宿主自有的
+ * `@/src/*` 别名（指向 `apps/web/src/*`，T11e-4b 已删除全部指向 `packages/**` 的桥接别名），因此本文件
+ * 位移不改变它的解析结果，也不依赖任何包出口；`ArtifactsPanel` 已随 T11d 迁入 `apps/web/src/shell/`，
+ * 其样式 `artifacts-workspace.css` 同迁，仍是「先 artifacts 后 chat-layout」的导入序。
  *
  * 外部注入点：`ProdViewPage`（`@fenix/resource-prod-view/web`）不直接引用本组件，而是通过
  * `ProdViewChatAreaProps` 窄端口接收宿主传入的聊天容器——分享页路由 `apps/web/src/routes/view/$prodViewId.tsx`

@@ -260,7 +260,8 @@ apps/web/src/
 └── shell/                  # 本版本最终壳：布局、首页、导航、品牌、Provider、鉴权后壳
 
 apps/generated/
-└── module-registry.ts      # 构建期生成的资源 web contribution 静态 import
+├── module-registry.ts      # 构建期生成的服务端装配 registry（各 `fenix.module.ts` 静态 import）
+└── web-contributions.ts    # 构建期生成的浏览器 contribution 静态 import（只被 apps/web 消费）
 
 packages/resources/<module>/web/
 ├── api/                    # 调用 /web 的类型化客户端
@@ -268,20 +269,20 @@ packages/resources/<module>/web/
 ├── components/             # 领域组件
 ├── hooks/                  # 本领域数据和状态逻辑
 ├── i18n/                   # 本领域翻译资源
-└── contribution.ts         # 导航、权限提示、页面元数据、路由目标声明
+└── contribution.ts         # 浏览器面贡献，形状由 @fenix/web-runtime 的 ./shell/contribution 定义；当前只落导航
 ```
 
 TanStack Router 仍保持文件路由：应用的 `routes/` 是薄文件，静态导入选定资源模块 `web/` 子路径的页面。不要尝试运行时注入路由。
 
 `WebShell` 是应用级组合，不是资源模块，也不放入 `packages`。`apps/web/src/shell/DefaultAppShell.tsx` 持有首页、布局、导航和全局 Provider。
 
-`web` 列表选择构建期生成 registry 中的资源页面 contribution：
+`web` 列表按各模块 manifest 的 `web.contribution` 说明符选择浏览器 contribution，由独立产物静态导入：
 
 ```text
-assembly.web      → generated module registry → resources/*/web contribution
+assembly.web      → apps/generated/web-contributions.ts → <pkg>/web/contribution
 ```
 
-浏览器侧消费 contribution 时不得因重导出链加载服务端模块（§10.2.4）。服务端 registry 与浏览器消费的清单是否共用一份产物由实现决定，约束是浏览器入口的加载图里不出现服务端实现。
+浏览器侧消费 contribution 时不得因重导出链加载服务端模块（§10.2.4）。服务端 registry 与浏览器清单是**两份产物**（`module-registry.ts` / `web-contributions.ts`）：后者只被 `apps/web` 的构建消费，不进 server registry；约束是浏览器入口的加载图里不出现服务端实现。
 
 因此，资源页不能反向决定全局布局；Shell 可收集已启用资源模块的导航、路由和页面 contribution，但不得导入资源模块的 server service、repository 或 db。若将来确实有两个以上独立 Web 应用复用同一完整 Shell，才把已稳定的 Shell 实现抽取为 package；即使如此，`apps/web` 仍是最终选择和装配入口。
 
@@ -430,6 +431,7 @@ packages/resources/agent-config/db/data-migrations/
 | 文件、机器、Sandbox | Machine/Sandbox 保持独立资源 owner 和 DB/Web，但作为 Runtime 固定基础资源由 `@fenix/agent-runtime` 依赖其专用公开运行入口；严格禁止反向依赖 Runtime，Sandbox 多实现走 Provider 插件点 |
 | 工作流、任务、Webhook、调度 | 独立资源或编排模块；通过 Agent 公开 port 接入，节点、执行器、触发器为静态插件 |
 | 控制台壳、导航、业务页面、品牌 | apps/web 壳 + resources 模块内的 `web/`；静态 contribution |
+| 其中「导航」的分工 | 分组定义与组间顺序归 **Shell**；导航项（id / groupId / order / i18n 命名空间 / labelKey / icon）与其文案归**各资源模块的 `web/contribution.ts`**——资源模块不得反向决定全局布局 |
 | 应用 HTTP、MCP/ACP/Webhook/SSE/WS | 模块 server route contribution + app 协议聚合 |
 | DB、数据迁移、日志、部署、系统管理 | 仓库级 `db/`、`deploy/`、`@fenix/logger` 与应用日志入口；模块显式贡献 |
 

@@ -1,6 +1,10 @@
 # 设计：packages 的 web 前端切换到 @fenix/ui-components
 
 > 日期：2026-09-18 | 分支：`feat/ui-components-demo` | 状态：待批准后开工
+>
+> **历史快照**：本文是当时的设计与实测记录，其中的路径、行号与引用计数均按当时状态保留，不作为现状依据
+> （例如下文引用的 `packages/chat-channel/web/components/ChatInterface.tsx:484` 已随 CE 阶段 2 任务 1.6 的 T5 / T11 删除，
+> 该目录整体不存在）。实际落位与结论见 `docs/design/ce-ee-refactoring/review/task-1.6-web-shell.md`。
 
 ## 背景与目标
 

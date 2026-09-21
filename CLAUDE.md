@@ -50,7 +50,7 @@ FenixAgent 是基于 Elysia + Bun 的多租户 ACP Agent 平台，前端使用 R
 
 - `apps/web/src/routes/`：TanStack Router 文件路由；`routeTree.gen.ts` 为生成文件，严禁手改。
 - `apps/web/src/pages/`：页面和业务容器。
-- `apps/web/components/`：通用 UI 与业务组件。
+- `apps/web/src/shell/`：本版本最终 Shell（布局、导航容器、Provider、鉴权后壳）；通用 UI 与业务组件归 `@fenix/ui-components`，宿主不再保留副本。
 - `apps/web/src/api/`：前端 API 建模层。
 - `apps/web/src/i18n/`：国际化配置与语言资源。
 - `apps/web/src/__tests__/`：前端关键流程测试。
@@ -127,10 +127,10 @@ bun run db:migrate                  # 执行迁移
 - 请求统一通过 `apps/web/src/api/request.ts`；`request<T>()` 已处理路径参数、query、JSON、错误标准化和响应解包。
 - 数据获取优先遵循前端规范和现有 `ahooks` / `useRequest` 模式，避免重复请求与竞态覆盖。
 - 用户可见字符串必须通过 `t()`；i18n 插值使用 `{{var}}`，单花括号 `{var}` 会被当作字面文本。
-- 基础组件优先复用 `apps/web/components/ui/`；通用图标使用 `lucide-react`；模型品牌图标使用 `packages/resources/model-management/web/components/model-icon/ModelIcon.tsx`。
+- 基础组件优先复用 `@fenix/ui-components/ui/<name>`（该包无根出口，逐文件子路径）；通用图标使用 `lucide-react`；模型品牌图标使用 `packages/resources/model-management/web/components/model-icon/ModelIcon.tsx`。
 - 纯逻辑模块不得依赖 UI 图标包；特别是不得让后端或纯逻辑测试间接加载 `@lobehub/icons`。
 - 页面流程必须覆盖 loading、empty、error、retry、success feedback 和可访问性状态。
-- 路径别名：`@/src` → `apps/web/src`，`@/components` → `apps/web/components`，`@server` → `apps/server/src`。
+- 路径别名只保留宿主自有条目（`@/src/*` → `apps/web/src/*`、`@server/*` → `apps/server/src/*`，含 `@/src/i18n`、`@/src/i18n/locales`、`@/src/api/helpers`、`@/src/lib/*` 等细粒度项）；跨包引用一律经各包 `exports`，禁止再新增指向 `packages/**` 的别名。`apps/web/vite.config.ts` 与根 `tsconfig.json` 两张表必须逐条一致（dependency-cruiser 读根表）。
 
 ### Agent 通信权威路径
 
@@ -197,7 +197,7 @@ Agent 通信分为三种明确场景，底层 relay 与 ACP 消息规则必须�
 8. 同一 `instanceId + userId` 的多标签页共享一个 relay handle；引用计数归零后才释放，切换 session 时同步同组客户端的 `acpSessionId`。
 9. WebSocket 发送背压阈值为 64 KB，默认连接上限为 200（`YJS_MAX_CLIENTS`）；修改时必须保留限流、资源释放和单连接故障隔离。
 10. `ChatView` 与 `EntryRenderer` 使用 `React.memo`；comparator 必须与调用方 prop 稳定性保持一致，修改 props 时同步更新 comparator 和相关渲染测试。
-11. `@fenix/chat-channel` 根入口必须浏览器安全：只导出类型、schema、`chat-writer`、`yjs-store`、`protocol`、`transport`、`util`；服务端能力（`channel` 控制面、`persist` 持久化、`state` 聚合层 DocManager/factory/aggregator 等）必须经 `@fenix/chat-channel/server` 子路径导出。前端 vite alias 直连根入口，从根入口 re-export 服务端模块会把 node 依赖打进浏览器 bundle（2026-08-17 事故：`node:crypto` 外置桩致整包加载崩溃）；边界由 `packages/chat-channel/src/__tests__/chat-channel-browser-surface.test.ts` 静态走值导入图守护。
+11. `@fenix/chat-channel` 根入口必须浏览器安全：只导出类型、schema、`chat-writer`、`yjs-store`、`protocol`、`transport`、`util`；服务端能力（`channel` 控制面、`persist` 持久化、`state` 聚合层 DocManager/factory/aggregator 等）必须经 `@fenix/chat-channel/server` 子路径导出。前端消费方经包 `exports` 直连根入口（§1.6 T11e-4b 已删除全部指向 `packages/**` 的 vite / tsconfig 桥接别名），从根入口 re-export 服务端模块会把 node 依赖打进浏览器 bundle（2026-08-17 事故：`node:crypto` 外置桩致整包加载崩溃）；边界由 `packages/chat-channel/src/__tests__/chat-channel-browser-surface.test.ts` 静态走值导入图守护。
 
 ## 数据库与迁移
 
