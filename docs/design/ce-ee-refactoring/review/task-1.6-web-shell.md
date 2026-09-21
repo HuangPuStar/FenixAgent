@@ -103,7 +103,7 @@ WebShell 从静态 registry 收集各资源包的 web contribution（不反向�
 | T7 | 5 条 `special-dependency` 消除 | 已交付（含 4b） | 见下方 §7.12 |
 | T8 | 宿主组件/lib/api 簇改指并删除 | 已交付（a–d + z） | 见下方 §7.13 |
 | T9 | i18n 归属重划与 `quoteTruncatedBadge` 缺陷修复 | **a、b、c、d 已交付** | a 见 §7.15 / b 见 §7.16 / c 见 §7.17 / d 见 §7.18 |
-| T10 | 测试迁移与 happy-dom 收敛 | 待办 | — |
+| T10 | 测试迁移与 happy-dom 收敛 | **a、b1 已交付**（b 余下分片待做） | a 见 §7.19 / b1 见 §7.20 |
 | T11 | WebShell 落地 | 待办 | — |
 | T12 | 收尾：台账复核、文档修订、证据留痕 | 待办 | — |
 
@@ -1345,7 +1345,7 @@ Claude ACP adapter 用例失败，系会话注入的 `ANTHROPIC_MODEL` 污染环
 同批次 1016 pass 0 fail，与本次改动无关）；`env -u ANTHROPIC_MODEL bun run precheck` 全绿
 （772 / 7311 + 2 skip / 966，0 fail）；`bun run build:web` 成功。
 
-### 7.18 T9d 公开错误正文按 `type` 取本地化文案（2026-09-21）
+### 7.18 T9d 公开错误正文按 `type` 取本地化文案（2026-09-21，`2a61e7513`）
 
 T9 的第四片，结掉 §7.16 末段登记的那个跨包缺口。用户 2026-09-21 裁定走方案 ②：UI 用稳定的 `error.type`
 取本地化文案，`message` 退化为「未登记 type 的兜底 + 日志字段」，**wire 契约与 `isPublicError` 完整性校验不变**。
@@ -1386,6 +1386,63 @@ T9 的第四片，结掉 §7.16 末段登记的那个跨包缺口。用户 2026-
 **验证**：`bun test packages/ui-components/` 413 → 420 pass（新增 6 + SSR 用例 1）；`bun test apps/web/src/__tests__/`
 966 → 968 pass（新增 2）；`env -u ANTHROPIC_MODEL bun run precheck` 全绿（772 / 7318 + 2 skip / 968，0 fail）；
 `bun run build:web` 成功。
+
+### 7.19 T10a happy-dom 五份副本收敛为一份（2026-09-21，`31e2da0c7`）
+
+T3 已把 `initializeHappyDomWindow` 定为**唯一实现**（`@fenix/ui-components/testing`，落点理由见该文件头注：
+本包是 `standalone` 纯前端包、依赖矩阵允许全部类别依赖它，放在 `apps/web/src/__tests__/` 则会被
+`.dependency-cruiser.cjs` 判为 `web-package-not-to-app` 越界），并留下了 5 份副本中的第 5 份；
+副本本身的删除留在本片。
+
+本片删除宿主 `apps/web/src/__tests__/happy-dom-window.ts` 与 `resources/{memory,skill,workflow}` 各
+`web/__tests__/happy-dom-window.ts` 共 4 份。4 份与唯一实现**逐字相同**（差异只在注释），所以删除是行为等价
+改动，不需要「先证明包内是超集」那一轮前置核查（对比 §7.11）。删除后 8 个调用点改经
+`@fenix/ui-components/testing` 导入；连同 T6e 已先改指的 agent-runtime 那 1 处，全仓 9 个调用点走同一入口，
+`happy-dom` 由本包在 `devDependencies` 声明，调用点不再各自声明。
+
+连带修正两处指向旧副本路径的注释：`apps/server/src/test-utils/setup-globals.ts`（说明「需要真实 DOM 的
+用例各自显式建立 happy-dom Window」的落点）与 `packages/resources/memory/README.md` 已知项 3（由
+「happy-dom-window.ts 有 4 份副本」划改为「已收敛」）。
+
+**验证**：改指的 8 个文件 48 pass 0 fail（`apps/web` 2 + memory 2 + skill 1 + workflow 3）；
+`git ls-files | grep -c happy-dom-window` = 0。完整门禁与 `build:web` 见 §7.20（本片与 T10b1 在同一工作区
+里跑门禁时，唯一失败项是 T10b1 尚未同步的 RMD-08 台账，补台账后全绿）。
+
+### 7.20 T10b1 宿主测试按 owner 归位：12 个 ui-components 用例迁入包内（2026-09-21，）
+
+T10 的第二片。判定口径是**导入图谱**而不是文件名相似度：把宿主 `apps/web/src/__tests__/` 的 60 个用例逐个
+解析 import 说明符，按「包所有 / 宿主所有 / 标准库 / 相对宿主」四分类，凡「被测实现的 owner 已在 T8b/T8c 归
+`@fenix/ui-components`，且用例除标准库外只引用该包出口」者即搬——留在宿主等于让「包内实现」被「应用壳测试」
+守护，而 T8b/T8c 已把宿主副本删干净，这类用例正是宿主侧仅存的续命引用。
+
+迁入 `packages/ui-components/web/__tests__/` 的 12 个：表格与分页 `config-datatable`、`config-helpers`、
+`data-table-round41-pure`、`data-table-ssr`、`pagination`、`params-editor-round42-pure`；日期与确认
+`date-picker`、`confirm-dialog`；纯逻辑与 SSR `extract-changed-files`、`extract-changed-files-boundaries`、
+`strip-html-tags`、`message-additional-ssr`。
+
+迁移改动只有两类：import 说明符改指包名自引用（`@fenix/ui-components/...`，仓库已有
+`@fenix/ui-components/testing` 先例）；以及 `confirm-dialog.test.tsx` 里读实现源码的路径——原先从宿主以
+四级相对路径回包读，迁入后变成同包内一跳 `join(import.meta.dirname, "..", "config/ConfirmDialog.tsx")`。
+三处提到 `apps/web` / 「宿主副本」的历史注释（`confirm-dialog:53`、`data-table-ssr:95`、`date-picker:1`）
+描述的是**T8a/T8b 已删除的宿主副本**，与用例当前落点无关，按「注释不改写历史结论」保留原文。
+
+**台账与搬迁同批**（计划红线）：这 12 项从 `RMD_08_MOVES` 移出（`toHaveLength(100)` → 88），按 relocated
+语义追加进 `RMD_08_RELOCATED`（`toHaveLength(49)` → 61，断言旧根路径与宿主副本都不存在、包侧 owner 存在），
+文件头追加第 8 条改判、块内计数注释同步。只搬文件不改台账会被门禁直接挡住
+（`apps/web target is missing: apps/web/src/__tests__/config-datatable.test.ts`）——这正是「不许静默搬迁」的
+守护形态，门禁对「指纹恰好归零」的条目反向报错、对新增指纹直接失败。
+
+**本片排除项（逐条有因，不是遗漏）**：`dark-mode-components.test.tsx` 的被测主体是宿主全局样式表
+`apps/web/src/index.css` 的 `.dark` 变量块，owner 仍是宿主；`peri-task-details-api`、`use-task-views`、
+`pure-logic-transform-boundaries`、`agent-form-dialog-*`（4 份）的导入图里仍有宿主实现（`../api/*`、
+`../hooks/*`、`../lib/*`），要等 T11 把页面与别名的宿主实现收口后才能判定归属；`chat-area-*`、
+`config-routing`、`host-i18n` 等被测对象本来就是宿主装配，留在宿主。余下分片按同一口径继续。
+
+**验证**：宿主 `apps/web/src/__tests__/` 60 → 48 个用例文件，包侧 `packages/ui-components/web/__tests__/`
+41 → 53 个；`bun test packages/ui-components/` 420 → 596 pass 0 fail；
+`bun test scripts/__tests__/rmd-08-migration.test.ts` 6 pass（含两条 relocated / moves 断言）。
+完整门禁 `env -u ANTHROPIC_MODEL bun run precheck` 全绿（772 / 7496 + 2 skip / 792，0 fail），
+`bun run build:web` 与 `bun run docs:build` 均成功。
 
 ---
 

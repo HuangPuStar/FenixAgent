@@ -24,6 +24,9 @@ import { existsSync } from "node:fs";
  *    宿主命名空间的 8 份字典在全仓没有任何 `useTranslation` 绑定（历史迁出后留下的空壳，真实消费方各在
  *    资源包内），连同守护 `toolNarrator` 字典的**自指测试** `narrators-i18n.test.ts`（它只读该字典并断言
  *    同一文件里的键）一并删除。删除口径与逐条证据见 `review/task-1.6-web-shell.md` §7.17。
+ * 8. 任务 1.6 T10b1 把 12 个 ui-components 归属的宿主测试移入包内（100 → 88）：这些用例的被测实现
+ *    在 T8b/T8c 已整体退场到 `@fenix/ui-components`，导入图里除标准库外只指向该包出口，留在宿主等于让
+ *    「包内实现」被「应用壳测试」守护；搬运后宿主不再是它们的 owner（见下方 relocated 断言）。
  */
 const RMD_08_MOVES = [
   ["web/src/App.tsx", "apps/web/src/App.tsx"],
@@ -68,32 +71,15 @@ const RMD_08_MOVES = [
   ["web/src/__tests__/api-result-utils.test.ts", "apps/web/src/__tests__/api-result-utils.test.ts"],
   ["web/src/__tests__/artifacts-preview-events.test.ts", "apps/web/src/__tests__/artifacts-preview-events.test.ts"],
   ["web/src/__tests__/auth-preference.test.ts", "apps/web/src/__tests__/auth-preference.test.ts"],
-  ["web/src/__tests__/config-datatable.test.ts", "apps/web/src/__tests__/config-datatable.test.ts"],
-  ["web/src/__tests__/config-helpers.test.ts", "apps/web/src/__tests__/config-helpers.test.ts"],
   ["web/src/__tests__/config-routing.test.ts", "apps/web/src/__tests__/config-routing.test.ts"],
   ["web/src/__tests__/config-types.test.ts", "apps/web/src/__tests__/config-types.test.ts"],
-  ["web/src/__tests__/confirm-dialog.test.tsx", "apps/web/src/__tests__/confirm-dialog.test.tsx"],
   ["web/src/__tests__/context-queue.test.ts", "apps/web/src/__tests__/context-queue.test.ts"],
   ["web/src/__tests__/dark-mode-components.test.tsx", "apps/web/src/__tests__/dark-mode-components.test.tsx"],
-  ["web/src/__tests__/data-table-round41-pure.test.tsx", "apps/web/src/__tests__/data-table-round41-pure.test.tsx"],
-  ["web/src/__tests__/data-table-ssr.test.tsx", "apps/web/src/__tests__/data-table-ssr.test.tsx"],
-  ["web/src/__tests__/date-picker.test.tsx", "apps/web/src/__tests__/date-picker.test.tsx"],
-  [
-    "web/src/__tests__/extract-changed-files-boundaries.test.ts",
-    "apps/web/src/__tests__/extract-changed-files-boundaries.test.ts",
-  ],
-  ["web/src/__tests__/extract-changed-files.test.ts", "apps/web/src/__tests__/extract-changed-files.test.ts"],
   ["web/src/__tests__/folder-upload-batching.test.ts", "apps/web/src/__tests__/folder-upload-batching.test.ts"],
   ["web/src/__tests__/form-utils.test.ts", "apps/web/src/__tests__/form-utils.test.ts"],
   ["web/src/__tests__/fs-upload-url.test.ts", "apps/web/src/__tests__/fs-upload-url.test.ts"],
   ["web/src/__tests__/instances-api.test.ts", "apps/web/src/__tests__/instances-api.test.ts"],
-  ["web/src/__tests__/message-additional-ssr.test.tsx", "apps/web/src/__tests__/message-additional-ssr.test.tsx"],
   ["web/src/__tests__/new-session-dialog-form.test.ts", "apps/web/src/__tests__/new-session-dialog-form.test.ts"],
-  ["web/src/__tests__/pagination.test.tsx", "apps/web/src/__tests__/pagination.test.tsx"],
-  [
-    "web/src/__tests__/params-editor-round42-pure.test.tsx",
-    "apps/web/src/__tests__/params-editor-round42-pure.test.tsx",
-  ],
   ["web/src/__tests__/peri-task-details-api.test.ts", "apps/web/src/__tests__/peri-task-details-api.test.ts"],
   ["web/src/__tests__/permission-options.test.ts", "apps/web/src/__tests__/permission-options.test.ts"],
   ["web/src/__tests__/preview-utils-normalize.test.ts", "apps/web/src/__tests__/preview-utils-normalize.test.ts"],
@@ -103,7 +89,6 @@ const RMD_08_MOVES = [
   ],
   ["web/src/__tests__/random-uuid-polyfill.test.ts", "apps/web/src/__tests__/random-uuid-polyfill.test.ts"],
   ["web/src/__tests__/retry.test.ts", "apps/web/src/__tests__/retry.test.ts"],
-  ["web/src/__tests__/strip-html-tags.test.ts", "apps/web/src/__tests__/strip-html-tags.test.ts"],
   [
     "web/src/__tests__/structured-thread-additional.test.ts",
     "apps/web/src/__tests__/structured-thread-additional.test.ts",
@@ -197,6 +182,9 @@ const RMD_08_MOVES = [
  * 任务 1.6 T8d 再移出 15 项：`src/{api,hooks,lib}` 的 `request`、两个 hooks 与 12 个 `lib` 模块——
  * owner 分属 `@fenix/web-runtime`（api/hooks/lib/chat）、`@fenix/agent-config`（web/lib）与
  * `@fenix/ui-components`（chat/lib、chat/types）。
+ * 任务 1.6 T10b1 再移出 12 项：`src/__tests__/**` 的表格、分页、日期选择器、确认弹窗与 config 纯逻辑
+ * 用例——被测实现的 owner 已在 T8b/T8c 归 `@fenix/ui-components`，这些用例的导入图里除标准库外只指向
+ * 该包出口，于是用例随实现移入包内，宿主侧不再保留第二份。
  */
 const RMD_08_RELOCATED = [
   [
@@ -420,6 +408,66 @@ const RMD_08_RELOCATED = [
     "apps/web/src/i18n/locales/zh/settings.json",
     "packages/platform/identity/web/i18n/locales/zh/settings.json",
   ],
+  [
+    "web/src/__tests__/config-datatable.test.ts",
+    "apps/web/src/__tests__/config-datatable.test.ts",
+    "packages/ui-components/web/__tests__/config-datatable.test.ts",
+  ],
+  [
+    "web/src/__tests__/config-helpers.test.ts",
+    "apps/web/src/__tests__/config-helpers.test.ts",
+    "packages/ui-components/web/__tests__/config-helpers.test.ts",
+  ],
+  [
+    "web/src/__tests__/confirm-dialog.test.tsx",
+    "apps/web/src/__tests__/confirm-dialog.test.tsx",
+    "packages/ui-components/web/__tests__/confirm-dialog.test.tsx",
+  ],
+  [
+    "web/src/__tests__/data-table-round41-pure.test.tsx",
+    "apps/web/src/__tests__/data-table-round41-pure.test.tsx",
+    "packages/ui-components/web/__tests__/data-table-round41-pure.test.tsx",
+  ],
+  [
+    "web/src/__tests__/data-table-ssr.test.tsx",
+    "apps/web/src/__tests__/data-table-ssr.test.tsx",
+    "packages/ui-components/web/__tests__/data-table-ssr.test.tsx",
+  ],
+  [
+    "web/src/__tests__/date-picker.test.tsx",
+    "apps/web/src/__tests__/date-picker.test.tsx",
+    "packages/ui-components/web/__tests__/date-picker.test.tsx",
+  ],
+  [
+    "web/src/__tests__/extract-changed-files-boundaries.test.ts",
+    "apps/web/src/__tests__/extract-changed-files-boundaries.test.ts",
+    "packages/ui-components/web/__tests__/extract-changed-files-boundaries.test.ts",
+  ],
+  [
+    "web/src/__tests__/extract-changed-files.test.ts",
+    "apps/web/src/__tests__/extract-changed-files.test.ts",
+    "packages/ui-components/web/__tests__/extract-changed-files.test.ts",
+  ],
+  [
+    "web/src/__tests__/message-additional-ssr.test.tsx",
+    "apps/web/src/__tests__/message-additional-ssr.test.tsx",
+    "packages/ui-components/web/__tests__/message-additional-ssr.test.tsx",
+  ],
+  [
+    "web/src/__tests__/pagination.test.tsx",
+    "apps/web/src/__tests__/pagination.test.tsx",
+    "packages/ui-components/web/__tests__/pagination.test.tsx",
+  ],
+  [
+    "web/src/__tests__/params-editor-round42-pure.test.tsx",
+    "apps/web/src/__tests__/params-editor-round42-pure.test.tsx",
+    "packages/ui-components/web/__tests__/params-editor-round42-pure.test.tsx",
+  ],
+  [
+    "web/src/__tests__/strip-html-tags.test.ts",
+    "apps/web/src/__tests__/strip-html-tags.test.ts",
+    "packages/ui-components/web/__tests__/strip-html-tags.test.ts",
+  ],
 ] as const;
 
 describe("RMD-08 apps/web migration", () => {
@@ -432,9 +480,10 @@ describe("RMD-08 apps/web migration", () => {
   // `citation-preview-context`、两份第三方类型垫片——垫片归各包自持，见 §1.6 T8z），130 → 111；
   // T9a 把宿主 `settings.json` 两份交给 identity 包（唯一消费方是包内的 `ChangePasswordDialog`），
   // 111 → 109——i18n 归属重划：键的物理落点必须等于 owner；T9c 直删 8 份零绑定字典与 1 项自指测试
-  // （见文件头第 7 条），109 → 100。
+  // （见文件头第 7 条），109 → 100；T10b1 把 12 个 ui-components 归属的宿主测试移入包内（见文件头第 8 条），
+  // 100 → 88。
   test("removes every legacy source and retains its exact owner target", () => {
-    expect(RMD_08_MOVES).toHaveLength(100);
+    expect(RMD_08_MOVES).toHaveLength(88);
     for (const [source, target] of RMD_08_MOVES) {
       expect(existsSync(source), `legacy source still exists: ${source}`).toBe(false);
       expect(existsSync(target), `apps/web target is missing: ${target}`).toBe(true);
@@ -468,12 +517,13 @@ describe("RMD-08 apps/web migration", () => {
     expect(existsSync("packages/web-runtime/web/lib/admin-key.ts")).toBe(true);
   });
 
-  // 任务 1.3 收口的 9 份 + 任务 1.6 T4 的 1 份 + T8b 的 11 份 + T8c 的 11 份 + T8d 的 15 份宿主副本：
+  // 任务 1.3 收口的 9 份 + 任务 1.6 T4 的 1 份 + T8b 的 11 份 + T8c 的 11 份 + T8d 的 15 份 + T9a 的 2 份
+  // + T10b1 的 12 份宿主副本：
   // 旧根路径与应用壳路径都不得复活，
   // 且包侧 owner 落点必须存在。副本与 owner 并存是「两份实现各自能跑」的最坏形态，
   // 删除与断言必须成对出现。
   test("relocates the leftover host copies to their package owners", () => {
-    expect(RMD_08_RELOCATED).toHaveLength(49);
+    expect(RMD_08_RELOCATED).toHaveLength(61);
     for (const [legacy, shell, owner] of RMD_08_RELOCATED) {
       expect(existsSync(legacy), `legacy source still exists: ${legacy}`).toBe(false);
       expect(existsSync(shell), `host copy still exists: ${shell}`).toBe(false);
