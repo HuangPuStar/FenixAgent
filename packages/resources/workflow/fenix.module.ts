@@ -10,7 +10,7 @@ import type { ServerRouteHost } from "@fenix/platform-sdk/server";
  * `handleWebhookRequest`）；消费者是宿主 `apps/server`（`main.ts` 与 `routes/web/index.ts`）。
  *
  * `dependsOn: []`：本包服务端生产代码（`src/**`）没有任何对已注册 `resource` 模块的值导入，是叶子模块。
- * 现有跨包导入都属于「不构成装配依赖」的四类边，故不声明：
+ * 现有跨包导入都属于「不构成装配依赖」的三类边，故不声明：
  * - `@fenix/agent-runtime/runtime`：`src/server/services/workflow/index.ts:14` 取运行 port 后调
  * `stopInstance` 清理 run 创建的实例、`workflow-events.ts` 经 `session.getEventBus` 取事件总线、
  * `agent-chat-transport.ts` 经 port 做实例启动/心跳/停止（1.4 W6b 前这三处都从 `./server` 取，
@@ -19,10 +19,13 @@ import type { ServerRouteHost } from "@fenix/platform-sdk/server";
  * - `@fenix/workflow-engine` 与 `@fenix/plugin-sdk`（后者在 `agent-chat-transport.ts:26` 仅 `import type`，
  * 编译期擦除）：两者都未注册为模块，写进 `dependsOn` 会被 registry 生成器以「引用了未注册模块」拒绝；
  * - `@fenix/chat-channel`（1.4 W6a 新增，`agent-chat-transport.ts` 取 `extractJsonRpc`）：同属未注册为
- * 模块的基础类别包，理由同上；本包私有 JSON-RPC 副本删除后，帧解析统一由该包协议层提供；
- * - `@server/db/schema`：`src/**` 生产代码只剩这一条宿主内部依赖（表定义，§5 残留，owner 1.7 迁出），
- * 它不构成装配依赖；原先的 `@server/db`、`@server/config`、`@server/plugins/auth` 反向依赖已在本任务
- * 切片内切断（分别改为 `getWorkflowDatabase()`、`getModuleConfig("workflow")`、路由工厂注入守卫）。
+ * 模块的基础类别包，理由同上；本包私有 JSON-RPC 副本删除后，帧解析统一由该包协议层提供。
+ *
+ * 原先四类中的第四类（`@server/db/schema` 的宿主表定义）已随任务 1.7 B6（2026-09-22）消失：九张领域表
+ * 迁入本包 `db/schema.ts` 后，`src/**` 生产代码对 `@server/**` **零命中**（机器证据是 `apps-boundary
+ * @fenix/resource-workflow → @fenix/server-app` 台账条目被 `architecture:check` 的 stale 检测判为过期）。
+ * 更早在本任务切片内切断的三条反向依赖仍是同一结论的成因：`@server/db` → `getWorkflowDatabase()`、
+ * `@server/config` → `getModuleConfig("workflow")`、`@server/plugins/auth` → 路由工厂注入守卫。
  *
  * `create` 指向 `src/module.ts` 的组合根（返回包内既有进程级单例，不新建第二套 engine 缓存）；
  * 工厂保持惰性：registry 会被大量位置导入，不能在索引层就把 Elysia、Drizzle 与 workflow-engine 拖进模块图。

@@ -234,6 +234,7 @@ FK；identity 9 张已随任务 1.2 迁出，业务 40 张待迁）按包名语�
 | B3 | model-management（`provider`、`model`、`model_gateway_credential`，含 3 个 pgEnum）迁至 `@fenix/model-management/db` | 已交付 | 见 §7.12 |
 | B4 前置 | 沙盒实例投影写路径移到 sandbox 侧（§4.8 第 3 条，已裁定） | 已交付 | 见 §7.13 |
 | B4 | sandbox（`sandbox_pool`、`sandbox_instance`）迁至 `@fenix/resource-sandbox/db` | 已交付 | 见 §7.14 |
+| B4 审计整改 | 契约测试的夹具判别力与 `db/` 扫描集补正（代码，`d549e0838`）+ 七处取证口径订正 | 已交付 | 见 §7.18 |
 | B5 | skill（`skill`）迁至 `@fenix/resource-skill/db` | 已交付 | 见 §7.15 |
 | B7 前置 | agent-runtime 的 `agent_config` LEFT JOIN 改为经 owner 公开入口取投影，装配方向不允许时退回宿主注入端口（§4.8 第 4 条 / §8.4 第 7 条） | 待办·须先反馈 | — |
 | B7 前置 | join 表归属与 D4 的冲突复核（§8.4 第 8 条） | 待办·须先反馈 | — |
@@ -612,8 +613,9 @@ model-gateway-credential}.ts`、`__tests__/model-gateway-schema.test.ts:2`）；
 **§4.7.1 ③ 在本批不适用（本批暴露的缺口，已登记 §8.1）**：`model-management` 没有 source-migration
 契约测试——machine / mcp / sandbox / agent-config / workflow / task 六个包都有，本包只有
 `src/__tests__/model-gateway-schema.test.ts`（schema 形状断言，不断言宿主导入残留）。因此本批没有
-「残留数 > 0」的正向控制需要收缩；本包与宿主的边界此刻由 `apps-boundary` 台账 + `check:dependencies`
-承担。
+「残留数 > 0」的正向控制需要收缩；本包与宿主的边界此刻由 `apps-boundary` 台账 +
+`check:dependencies` 承担——两者的分工见 §7.18 末条（`apps-boundary` / `undeclared-workspace-dependency`
+由 **`architecture:check`** 拦，`check:dependencies` 管的是包级依赖边，2026-09-22 审计订正）。
 
 **为什么台账条目没删**：B3 后本包的 `@server/db/schema` 残留**精确为 1 处**——
 `src/server/repositories/subject-agent-search.ts:2` 读的是**宿主自己的** `agent_config`（表归 B7）。
@@ -719,10 +721,12 @@ Provider 属别组织不产出 / Provider 行缺失不产出 / 展示名回退 /
    - 判据由「等于该精确路径的列表」收缩为「**不以 `@server/` 开头**」（零容忍），测试名改为
      「包内不存在任何宿主 `@server` 导入」；
    - 新增 `SCANNER_FIXTURE` 负例夹具承担原职责：一段按真实源码形状拼成的字符串，含一行宿主导入与一行
-     「注释里形似导入」的文本，断言扫描器把前者捞出、把后者剥掉。
+     「**块注释里**形似导入」的文本（块注释形状是 2026-09-22 审计整改的结果，初稿用的行注释形状只验证了
+     一半，见 §7.18），断言扫描器把前者捞出、把后者剥掉。
    **为什么不能只是删掉断言**：扫描器（`stripComments` + `extractSpecifiers`）是本测试自写的，仓库里没有
    别的用例钉住它；夹具是唯一能把「此刻恰好扫不到」与「扫描器已坏」区分开的装置。夹具按行以字符串字面量
-   拼成，源码里 `import` 前始终有引号，不会被本文件对自身的真实扫描误判（实测生产代码 `@server` 命中 0 处）。
+   拼成，源码里 `import` 前始终有引号，不会被本文件对自身的真实扫描误判（导入口径 `@server/` 命中 0 处；
+   文本口径的 14 处命中明细见 README「边界残留」一节，2026-09-22 订正）。
 4. **④调用期跨包写。** §4.8 第 7 条登记的两处（machine 写 `agent_config.machineId`、agent-config 写
    `environment`）都不在本包；本包曾有的那一处（machine 写 `sandbox_instance`）已在 B4 前置处置（§7.13）。
 
@@ -731,16 +735,21 @@ Provider 属别组织不产出 / Provider 行缺失不产出 / 展示名回退 /
 - 新建 `packages/resources/sandbox/db/schema.ts`：`sandboxPool` / `sandboxInstance` 两表 + 4 个推断类型
   （`SandboxPool` / `NewSandboxPool` / `SandboxInstance` / `NewSandboxInstance`）。DDL 逐字保留（列序、`varchar`
   长度、`timestamp` 模式、索引名与唯一索引），文件头注释写明两个跨包外键目标与「`machine_id` 无约束」的理由。
-- 宿主 `apps/server/src/db/schema.ts` 删除同名两表 + 4 类型（−59 行）。顶部 `organization` 导入随之收窄为
-  `user`（`organization` 在宿主 schema 中的唯一用处就是 `sandbox_pool.organization_id`）；`organization` 仍经
-  宿主顶部的 `export { … organization … } from "@fenix/identity/db"` 转出，对经宿主 barrel 取身份表的消费者
-  无影响。
+- 宿主 `apps/server/src/db/schema.ts` 删除同名两表 + 4 类型（**净 −57 行**：`--numstat` 为 `1 增 / 58 删`；
+  §7.14 初稿写的「−59」是 `--stat` 的**变更总行数**，把增删相加了，2026-09-22 审计订正）。顶部 `organization`
+  导入随之收窄为 `user`（`organization` 在宿主 schema 中的唯一用处就是 `sandbox_pool.organization_id`）；
+  `organization` 仍经宿主顶部的 `export { … organization … } from "@fenix/identity/db"` 转出，对经宿主 barrel
+  取身份表的消费者无影响。
 - `drizzle.config.ts` 的 `schema` 数组新增本包 `db/schema.ts`，注释同步（不声明会让 `db:generate` 把这两张表
   误判为已删除）。
-- **10 处导入改指本包出口**：生产 6 个文件（`repositories/sandbox-{instance,pool}-repository.ts`、
-  `services/sandbox-{admin-service,default-pool,manager,remote-reconciler}.ts`），测试 4 个文件
-  （`sandbox-default-pool.test.ts`、`sandbox-manager-fixtures.ts`、`sandbox-schema.test.ts`、
-  `sandbox-source-migration.test.ts`）。
+- **9 处导入改指本包出口**：生产 6 个文件（`repositories/sandbox-{instance,pool}-repository.ts`、
+  `services/sandbox-{admin-service,default-pool,manager,remote-reconciler}.ts`），测试 3 个文件
+  （`sandbox-default-pool.test.ts`、`sandbox-manager-fixtures.ts`、`sandbox-schema.test.ts`）——`grep -rn
+  "@fenix/resource-sandbox/db" packages/resources/sandbox apps/server/src` 在同一提交上实测 9 条导入。
+  **§7.14 初稿写「10 处…测试 4 个文件」并把 `sandbox-source-migration.test.ts` 列入，是错的**：该文件
+  从不导入本包 `db`，它是**检测**旧表定义导入的那一方（现在则断言零残留）。这条错报与同批 README 的
+  「此前 9 处」、以及被替换掉的旧断言原文「残留 9 处 / 9 个文件」三处自相矛盾，2026-09-22 审计订正
+  （同批提交信息里也写了「10 处」，commit message 不可改，记此备查）。
 - `src/server/db.ts` 的句柄类型注释同步：**未改动类型形状**——迁表前那句「刻意不写 `typeof schema`，迁出后
   无需改动」的承诺本批被证实（`SandboxDatabase = NodePgDatabase<Record<string, never>>` 原样保留）。
 
@@ -939,6 +948,73 @@ B4 前置为 656，+8 = 新增 5 + 3）；`bun test apps/server/src/__tests__/` 
 
 **状态**：见本批提交（§五 表 B6 行）。
 
+### 7.18 B4 主体审计回收：夹具判别力、`db/` 扫描集与取证口径（2026-09-22，本批）
+
+**审计形态**：对 B4（`184adae63`）交付面跑了一轮多代理主体审计（46 个代理、约 278 万 subagent token、
+耗时约 28 分钟），产出 `confirmed 13 / disputed 5 / rejected 3`。本节记录逐条处置。判据沿用本任务既有
+口径：**能改代码的先改代码并用变异实验双向证实；纯口径不实的改文档并写明订正理由；不成立的给出理由。**
+
+#### 一、测试有效性（两条，唯一需要改代码的）
+
+1. **负例夹具只验证了一半**（confirmed[3]/[8]，major）。`SCANNER_FIXTURE` 里「注释中形似导入必须被
+   剥掉」这半条此前**恒真**：三条 `SPECIFIER_PATTERNS` 的 `from` 形式带 `^[ \t]*` 行首锚点，而行注释
+   `// import …` 的行首是 `/` 不是 `import`，未剥注释时本就不在候选集里。**变异实测**：把
+   `stripComments` 改成 `return source;` 后，夹具断言（原第 238 行）**仍全绿**，报红的只有
+   `process.env` 那条无关用例——即「两者任一失效即报红」的表述是假的，夹具当时只能证明「说明符提取
+   正则没坏」。
+   **处置**：夹具的注释行改为**块注释形状**（中间行行首正是 `import`），断言拆成两条，并新增
+   `SCANNER_FIXTURE_COMMENTED` 常量：未剥注释时两条说明符**都要**被捞出（证明夹具本身有区分力），
+   剥掉后只剩真实导入（证明 `stripComments` 在起作用）。两处契约测试（sandbox 黄金样本 + workflow）
+   同形处理。
+2. **`db/**` 没有被任何正向控制钉进扫描集**（confirmed[4]，minor）。`toContain` 清单点了 `src/`、
+   `web/`、`fenix.module.ts`，唯独漏了本批表定义的新家；`sourceFiles.length >= 60` 的阈值比实际文件数
+   低 20 余，掉一个目录也兜不住。**变异实测**：从 `SOURCE_ENTRIES` 删掉 `"db"` 后整套仍全绿，此时往
+   `db/schema.ts` 插一条真宿主导入也不报红——「本包确实扫不到」与「`db/` 根本没进扫描集」无法区分。
+   **处置**：两份契约测试各把 `db/schema.ts` 加进 `toContain` 清单。
+
+**变异证据（整改后，四轮各自备份 → 注入 → 跑 → 还原 → `cmp` 校验）**：`stripComments` 改恒等 →
+sandbox / workflow 的**夹具断言自身**各报红（整改前该条恒绿）；`SOURCE_ENTRIES` 删 `"db"` →
+两份的遍历有效性自检各报红 1 条。还原后 26 pass / 0 fail。代码改动随 `d549e0838` 单独提交。
+
+#### 二、取证口径订正（七处，全部是「写下的数字与命令实测不符」）
+
+| 位置 | 原文 | 实测 | 处置 |
+|---|---|---|---|
+| sandbox `README.md:3` | 宿主「只剩挂载与装配调用（`routes/web/config/index.ts` 调 `createWebSandboxPoolsRoutes`，`main.ts` 调 `createApiSandbox*Routes`）」 | 这两个文件**零** sandbox 引用；`createApiSandbox*Routes` 是**本包 assembly 的导出名**，宿主从不调用。生产装配经本包 `fenix.module.ts` 的四条 `app-route` 贡献 → `src/server/assembly.ts`；宿主里直接点名四个工厂的只有测试工具 `route-faces.ts` | 改写整句并留订正说明（confirmed[12]，minor / doc-truth） |
+| sandbox `README.md:53` | 「生产代码实测 `grep -rnE '@server' src web db fenix.module.ts` → 0 处」 | 该命令实测 **14 处**命中（审计当时 12 处；本节第一部分把夹具改成块注释形状并新增一个常量后 +2），其中 `web/index.ts:4` 是**生产文件**（注释文字）。把文本口径误记成导入口径，掩盖了那一处 | 拆成**导入口径**（`@server/**` 导入 0 处，9 处表定义导入改指本包出口）与**文本口径**（14 处命中明细：`web/index.ts:4` 1 + `sandbox-source-migration.test.ts` 7 + `sandbox-browser-surface.test.ts` 6）并留订正说明（confirmed[9]，**major** / doc-truth） |
+| workflow `README.md:68` | 「生产代码实测 `grep -rn 'from \"@server/' src web db fenix.module.ts` → 0 处」 | 该命令实测 **2 处**命中，都在 `workflow-source-migration.test.ts` 的夹具字符串字面量里 | 同形拆成两个口径并留订正说明（与上条同类，审计未单列——**审计只审了 B4，这条是本批自查发现的同形缺陷**） |
+| workflow `fenix.module.ts:23` | 「`@server/db/schema`：`src/**` 生产代码只剩这一条宿主内部依赖（表定义，§5 残留，owner 1.7 迁出）」 | **B6 把这条依赖删掉了**，注释没同步：「四类边」变三类，bullet 本身应整条删除 | 删 bullet、改「三类边」、补一段说明迁移后的机器证据（**B6 交付的遗漏注释**，本批自查发现） |
+| §7.14:740 | 「**10 处**导入改指本包出口……测试 **4** 个文件（含 `sandbox-source-migration.test.ts`）」 | 实测 **9 条** import（生产 6 + 测试 3）；该文件从不导入本包 `db`，它是**检测**旧表定义导入的那一方 | 改为 9 处 / 测试 3 个文件，并写明与 README「此前 9 处」、旧断言「9 处 / 9 个文件」三处自相矛盾的原因（confirmed[1]/[7]/[11]，三条重复主张；commit message 里也写了「10 处」，不可改，记此备查） |
+| §7.14:734 | 「（−59 行）」 | `--numstat` 实测 `1 增 / 58 删`，**净 −57**；59 是 `--stat` 的**变更总行数** | 改为「净 −57 行」并注明口径来源（confirmed[10] + disputed[0]，同一主张的两种计票） |
+| §8.4 第 4 条 | 「B4 已收口 1 处……余 15 处」 | 19 处是**读**口径，B4 消除的是**跨包写**（machine 写 `sandbox_instance`），不在 19 处内；B4 也在 §7.14 ① 自述「本批 ① 没有可收口的点」 | 改为「余 **16 处**」= 19 − B2 1 − B3 1 − B5 1（B4 记 0、B6 记 0），并把「B4 不适用读口径」写进同一行（rejected[1] 与 disputed 的计票分歧由此统一） |
+| §7.14:612 段 + §7.18 末条 | 「本包与宿主的边界由 `apps-boundary` 台账 + `check:dependencies` 承担」 | `undeclared-workspace-dependency` / `apps-boundary` 由 **`architecture:check`**（`scripts/lib/architecture-boundary-rules.ts:124`）拦，**不在** `check:dependencies` 里（实测删掉 `@fenix/identity` 声明后 `check:dependencies` 全绿、`architecture:check` 报错）；precheck 两步都跑，所以「边界仍被强制」的结论不变 | 在原句补分工说明（confirmed[5] 指出的是**审计简报**的命令选错，不是文档写错；文档这处顺手写清以免读者误解） |
+
+#### 三、不予采纳的审计主张（disputed 5 + rejected 3 中无实质动作的部分）
+
+- **「工作树被并发会话/代理改脏，`module.ts` 的端口实现被换成空实现」（confirmed[6]）、「审计期间有
+  并发代理在做 B5、导致 `check:schema-ddl-drift` 必然失败」（disputed[2]）、「工作树被并发写入，本地
+  实测不可信」（disputed[4]）、「被审文件第 1 行有未还原的注入」（rejected[2]）**——四处指向同一现象，
+  归因不实：那是**审计自身的变异实验就地改了工作树**（finding[4] 自己描述了往 `db/schema.ts` 注入、
+  finding[3] 描述了改 `stripComments`），不是别的会话。**处置**：本批开工前先跑 `git status --porcelain`
+  → 空；`module.ts` 的端口绑定经 `grep -n "notifyMachineRegistered:"` 复核仍在第 43 行指向
+  `markSandboxInstancesReadyForMachine` 的正确实现（§7.16 那批的变异在提交前已 `cmp` 还原）。
+  **可迁移的教训**：审计代理做变异实验后必须还原并复核——本任务已把它写进流程约束；而审计报告对
+  工作树污染的归因不能当作证据。
+- **disputed[1]（DDL 门禁对真实变异有判别力）、disputed[3]（B4 删台账条目正确）**：均为**核验记录**，
+  与本节结论一致，无需动作——`disputed` 是计票口径（`alive=1`），不代表主张被推翻。
+- **confirmed[0]（两表定义逐字节一致）**：核验记录，非缺陷。
+- **confirmed[2]（`check:schema-ddl-drift` 的判别力盲区）**：非本批缺陷但值得长期跟踪，已按登记规则
+  落 **§8.4 第 6 条**（含「重复定义」与「列序变化」两面及各自的移除条件）。
+
+#### 四、验证
+
+`bun test packages/resources/sandbox/src/__tests__/sandbox-source-migration.test.ts
+packages/resources/workflow/src/__tests__/workflow-source-migration.test.ts` **26 pass / 0 fail**；
+`env -u ANTHROPIC_MODEL bun run precheck` ✓ 全绿（15 步，7974 pass / 2 skip / 0 fail）——代码批
+（`d549e0838`）与文档批各跑一次。工作树在本批开工前与收尾前均为干净状态。
+
+**状态**：代码改动见 `d549e0838`；文档与注释订正见本批提交（§五 表「B4 审计整改」行）。
+
 ## 八、已知缺口与未完成项（逐条登记 owner 与移除条件）
 
 > 依据 `ce-ee-engineering-standards.md` §10.7.4：边界豁免与依赖残留必须逐条登记并写明 owner
@@ -980,8 +1056,9 @@ migration smoke（空库 + 真实历史升级库）、`deploy-preflight`、readi
 | 1 | 宿主 `apps/server/src/db/schema.ts` **无法清空**：D3 裁定把 `resource_permission`（+ 3 个 pgEnum）、`share_link`、`share_event_snapshot` 留在宿主，但 1.7 第五条验收口径是「宿主不再持有业务表定义」 | B 块收尾 | 三张表要么找到 owner（建议 `resource_permission` 归 access-control）并迁出，要么把验收口径改为「宿主只保留经裁定的例外」并同步权威设计 |
 | 2 | ~~`machine → sandbox` 的调用期表读取（`machine-sandbox-projection.ts`）在 `sandbox_instance` 迁出后构成 §2.3 类别禁则违规~~ **已闭环（§7.13，2026-09-22）**：按 §4.8 第 3 条走「投影写路径移到 sandbox 侧」，machine 只通报事件、sandbox 在自己的表上写 | ~~B4 之前~~ 已交付 | 已验证 machine 包**生产代码**里 `sandbox_instance` 命中 0 行（全包 5 行均为注释 / 断言文本，见 §7.16）、machine 的跨模块表读取降为 1 处（`agent_config`，归 B7） |
 | 3 | owner=`1.7` 的 `apps-boundary` 豁免按「该包最后一个跨模块表读取消失」逐条退场（§4.8 第 2 条）。B4 与 B6 各删 1 条（sandbox 见 §7.14、workflow 见 §7.17），**余 12 条**；其余多数要等目标表迁出后其读取点同批收口，**只能在 B 块末期集中清零** | B 块收尾 | 各目标表迁完后逐包核对「不再引用 `@server/**`」，逐条删除并留证据；`architecture:check` 的 stale 检测是充分证据 |
-| 4 | 剩余 7 批（B7–B13）各有若干跨包调用期表读取需一并**改为经 owner 公开入口或宿主注入端口取数**（§4.8 第 1 条 B1 实测 19 处为 B 块总数，B2 已收口 1 处、B3 已收口 1 处、B4 已收口 1 处——B4 消除的是**跨包写**，见 §7.14；B5 收口 1 处、B6 收口 **0 处**——该包九张表无任何跨包读取者，见 §7.17，余 15 处）；只改指 owner 的 `./db` 不算完成（§4.8 第 4 条）。**逐包清单目前无权威落点**——§4.8 #1 与本节原先的「见 §7.10」所指清单在 §7.10 中不存在，审计已指出 | 各批同批（清单并入 B 块末期，与本节第 3 条同一次扫描） | 每批交付面含全部读取点，漏改会让 preload 的模块链接期抛错（§4.8 第 1 条）、且残留 §6.1 边界 1 违规；末期逐包核对时一并产出完整清单 |
+| 4 | 剩余 7 批（B7–B13）各有若干跨包调用期表读取需一并**改为经 owner 公开入口或宿主注入端口取数**（§4.8 第 1 条 B1 实测 19 处为 B 块**读**总数，B2 收口 1 处、B3 收口 1 处、B5 收口 1 处、B6 收口 **0 处**——该包九张表无任何跨包读取者，见 §7.17，**余 16 处**；B4 不在其中：它消除的是**跨包写**（machine 写 `sandbox_instance`），见 §7.14，2026-09-22 审计订正——本节此前把 B4 也减了一次，与「19 处是读口径」自相矛盾）；只改指 owner 的 `./db` 不算完成（§4.8 第 4 条）。**逐包清单目前无权威落点**——§4.8 #1 与本节原先的「见 §7.10」所指清单在 §7.10 中不存在，审计已指出 | 各批同批（清单并入 B 块末期，与本节第 3 条同一次扫描） | 每批交付面含全部读取点，漏改会让 preload 的模块链接期抛错（§4.8 第 1 条）、且残留 §6.1 边界 1 违规；末期逐包核对时一并产出完整清单 |
 | 5 | **门禁缺口：相对路径伸进别的包 `db/` 两道门禁都不报。** `check-architecture` 的 `CROSS_PACKAGE_SOURCE_PATH`（`scripts/check-architecture.ts:43`）与 dependency-cruiser 的 `no-cross-package-src:<pkg>`（`.dependency-cruiser.cjs:28-30`）判「跨包内部路径」时只认 `src` / `web/src`，新出现的 `db/` 不在任何一侧。审计已用夹具复现（相对路径在 `db/` 与 `src/` 两种位置均 exit 0，同路径改指别包 `src/` 则 exit 1）；当前仓库无实际违规 | B 块收尾 | 把 `db` 纳入「跨包内部路径」判定，但**只对相对路径生效**——裸说明符 `@fenix/<pkg>/db` 是 §6.1 允许的组装期出口，不能一并拦 |
+| 6 | **门禁缺口：`check:schema-ddl-drift` 的两处判别力盲区**（B4 主体审计发现，2026-09-22，非本批缺陷）。该门禁只做「`drizzle.config` 声明的 schema 集合 → 与最新 snapshot 的 DDL 差异」，因此：(a) **同一张表被两个已声明样式的模块重复定义**（第二份实现复活）→ 0 差异；(b) 表内**列序变化** → 0 差异（列集与类型没变）。含义是「只搬位置」的机器证据实际来自交付方**同时删掉了旧定义**这个动作，门禁本身识别不了重复定义 | B 块收尾 | 重复定义面可加一条「表名 → 定义文件」唯一性断言（前提是表名的 owner 已按 §4.7 矩阵定完，否则「同一表出现在两个 owner 的 schema 里」与「宿主 barrel 转出」需要区分）；列序面若重要，可对 snapshot 做「逐列序号」比较。两者都要另开任务，不在 1.7 内实现 |
 | 6 | 组装期 `db/` 不在「子进程不得整段继承宿主 env」的扫描面内：`scripts/check-dependency-boundaries.ts:54-72` 的文件收集只认目录名 `src`，`packages/*/db/**`（含设计规定的 `db/data-migrations/`）整体跳过。审计判定为**已声明范围**而非漏报（该步骤注释即写明范围只含 `packages/**/src/**`；`db/` 是组装期 + 幂等 DML 层，不构造子进程；实测 db/ 下 2 个文件零 `process.env` / spawn） | 不修，登记备查 | 若日后 `db/data-migrations/` 出现子进程调用，须同步扩大扫描面 |
 | 7 | **B7 前置：`agent-runtime` 在查询期 LEFT JOIN `agent_config`**（`services/environment-orchestration.ts`、`services/environment-web.ts`）。`agent_config` 迁出后该导入命中 `.dependency-cruiser.cjs:74-90` 的 `agent-runtime-not-to-resources`（其 `pathNot` 只排除 `packages/agent-runtime/db/` 与 `packages/resources/(machine\|sandbox)/`），而 `check-architecture` 拦不住它。按 §4.8 第 4 条应改为经 agent-config 公开入口取投影（若 `agent-runtime → agent-config` 的包级边不被装配方向允许，则退回宿主注入端口），但 LEFT JOIN → 批量投影查询是一次独立设计（且要避免 N+1） | B7 之前 | 先反馈再定夺取数形状，然后重构两个查询 |
 | 8 | **D4 裁定（3 张 join 表归 agent-config）与现有实现冲突。** `agent_config_mcp` 已由 mcp 包自持（`mcp/src/server/services/config/agent-config-mcp.ts`，文件头自述「MCP 包自持」），`agent_config_skill` 同理由 skill 包持有，唯一的读者是各自包内文件。按 D4 迁到 agent-config 会让 mcp / skill 反向导入 `@fenix/agent-config/db`：两者都未声明该包（触发 `undeclared-workspace-dependency`），且 `agent-config → mcp`（7 处）、`agent-config → skill`（9 处）已存在，各自闭合一条**新环**。这是 D4 裁定当时未计入的成本。**B2 实测佐证**（§7.11）：mcp 包的 `agent_config_mcp` 读写口径已由该包自己的 `./server/config` 出口公开，且 B2 迁表后它是该包**唯一**残留的宿主表读取——按 D4 迁走会让这个出口失去唯一内容 | B7 之前 | 重新确认：维持 D4（mcp / skill 改写为经 agent-config 公开 service 访问）还是改为按现有实现归属（各持自己的关联表，agent-config 经它们的窄入口访问） |
