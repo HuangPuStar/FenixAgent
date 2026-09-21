@@ -32,13 +32,24 @@ const SOURCE_ENTRIES = ["src", "web", "db", "fenix.module.ts"];
  * 扫不到才是正确结果。改用负例夹具承担同一职责：一段真实源码形状的字符串，含一条宿主导入与一条
  * **注释里**形似导入的文本，断言语义是「前者必须被捞出、后者必须被剥掉」。
  *
+ * **注释为什么必须是块注释形状**（B4 主体审计整改，2026-09-22）：`SPECIFIER_PATTERNS` 的 `from`
+ * 形式带 `^[ \t]*` 行首锚点，而行注释 `// import …` 的行首是 `/` 不是 `import`，未剥注释时本来
+ * 就不在候选集里。用行注释做这条负例，`stripComments` 改成恒等也不会报红——夹具只验证了「捞出」
+ * 那半条。块注释的中间行行首正是 `import`：未剥注释时会被捞出（`SCANNER_FIXTURE_COMMENTED` 钉住
+ * 这一点），剥掉后才消失，两半缺一不可。
+ *
  * 夹具按行以字符串字面量拼成，源码里 `import` 前面始终有引号，因此不会被本文件的真实扫描误判引用。
  */
 const SCANNER_FIXTURE = [
   'import { x } from "@server/db/schema";',
-  '// import { y } from "@server/db/other";',
+  "/*",
+  'import { y } from "@server/db/in-block-comment";',
+  "*/",
   "const z = 1;",
 ].join("\n");
+
+/** 夹具里那条藏在块注释中的形似导入：未剥注释时会被 `extractSpecifiers` 一并捞出。 */
+const SCANNER_FIXTURE_COMMENTED = "@server/db/in-block-comment";
 
 /**
  * RMD-03 迁移映射（宿主旧路径 → 包内新 owner 路径）。
@@ -219,8 +230,12 @@ const exportEntries = Object.entries(manifest.exports ?? {});
 describe("Sandbox 包边界契约（任务 1.3 §1 静态条件）", () => {
   // 遍历有效性自检：walker 若只返回入口文件，后续「不存在违规引用」的断言会全部退化为恒真。
   test("扫描有效性自检：源码集合覆盖全包，且已知残留宿主导入能被扫到", () => {
+    // `db/**` 也必须被钉住：它是本包表定义的落点，一旦从 `SOURCE_ENTRIES` 掉出去，往 `db/schema.ts`
+    // 插一条真宿主导入不会有任何断言报红——「本包确实扫不到」与「db/ 根本没进扫描集」就分不开了
+    // （B4 主体审计发现，2026-09-22；`sourceFiles.length` 的阈值比实际文件数低 20 余，兜不住单目录缺失）。
     for (const expected of [
       "fenix.module.ts",
+      "db/schema.ts",
       "src/server.ts",
       "src/server/routes/api/sandbox.ts",
       "src/server/routes/api/sandbox-cluster.ts",
@@ -234,7 +249,10 @@ describe("Sandbox 包边界契约（任务 1.3 §1 静态条件）", () => {
       expect(sourceFiles).toContain(resolve(PKG_ROOT, expected));
     }
     expect(sourceFiles.length).toBeGreaterThanOrEqual(60);
-    // 扫描器自检（负例夹具）：宿主导入必须被捞出、注释里的形似文本必须被剥掉——两者任一失效即报红。
+    // 扫描器自检（负例夹具）分两半，缺一不可：
+    //   1) 未剥注释时，块注释里的形似导入**必须**被捞出——证明夹具本身有区分力，而不是「恰好扫不到」；
+    //   2) 剥掉注释后只剩真实导入——证明 `stripComments` 真的在起作用。
+    expect(extractSpecifiers(SCANNER_FIXTURE)).toEqual(["@server/db/schema", SCANNER_FIXTURE_COMMENTED]);
     expect(extractSpecifiers(stripComments(SCANNER_FIXTURE))).toEqual(["@server/db/schema"]);
   });
 
