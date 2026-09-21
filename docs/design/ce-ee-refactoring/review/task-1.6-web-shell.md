@@ -105,7 +105,7 @@ WebShell 从静态 registry 收集各资源包的 web contribution（不反向�
 | T9 | i18n 归属重划与 `quoteTruncatedBadge` 缺陷修复 | **a、b、c、d 已交付** | a 见 §7.15 / b 见 §7.16 / c 见 §7.17 / d 见 §7.18 |
 | T10 | 测试迁移与 happy-dom 收敛 | **a、b1–b5 已交付**（余下分片随 T11 收口） | a 见 §7.19 / b1 见 §7.20 / b2 见 §7.21 / b3 见 §7.22 / b4 见 §7.23 / b5 见 §7.24 |
 | T11 | WebShell 落地 | **已全部交付** | a 见 §7.25 / b 见 §7.26 / c 见 §7.27 / d 见 §7.28 / e 见 §7.29 与 §7.30 |
-| T12 | 收尾：台账复核、文档修订、证据留痕 | 待办 | — |
+| T12 | 收尾：台账复核、文档修订、证据留痕 | **已交付**（六批） | ①`aa9a3cc22` ②`7afd2188c` ③`c961fca02` ④`5a3238dbe` ⑤`f98c8bf7d` ⑥ 见 §7.31 |
 
 **T5 分片**（用户裁定「整体退场，由 ui-components 接管」+「`agent-config/web` 提供助手」的落地顺序；
 每片独立可 `precheck`、独立提交，避免一个提交裹住全部改动）：
@@ -1904,7 +1904,7 @@ T11e 的收口片：把宿主的最后一批「经 `@/src/...` 写到包内文�
 | 段 | 提交 | 内容 |
 | --- | --- | --- |
 | T11e-4a | `f05fd7f6b` | 10 个宿主文件改直连包出口（Shell 三个面板、`DefaultAppShell`、`ChatArea`、`use-chat-panel-runtime`、`ChatPanel` 注释、`lib/card-renderer/builtins.ts`、`artifacts-dialogs.tsx`、三个宿主测试的借键 import）；`packages/chat-channel/tsconfig.json` 删 5 条死 `@/src/*` paths |
-| T11e-4b | `64c6cecc4` | 删两套别名表的全部桥接条目（vite 侧 39 条 / tsconfig 侧 30 余条）；同批修掉 `ArtifactsPanel` 一处绕过 `exports` 的深层相对路径；7 份包 README 的待办措辞改为已完成口径 |
+| T11e-4b | `64c6cecc4` | 删两套别名表的全部桥接条目（vite 侧删 39 条、47 → 8；tsconfig 侧删 40 条、49 → 9，两处均为实测值，原记为「tsconfig 侧 30 余条」系估数，T12 订正）；同批修掉 `ArtifactsPanel` 一处绕过 `exports` 的深层相对路径；7 份包 README 的待办措辞改为已完成口径 |
 
 **为什么必须两段分开**：别名表是「包内实现在宿主侧有一个永不过期的写法」的唯一来源，只要还有消费点，
 删表就是制造解析失败。顺序只能是「先改消费点、门禁全绿 → 再删表」，两段各带一次完整 `precheck`，
@@ -1934,7 +1934,10 @@ T11e 的收口片：把宿主的最后一批「经 `@/src/...` 写到包内文�
 `agent-config/web/pages/**`）不在本片：它们的归位要连用例本身一起搬（登记见 §7.29 第 2 条）。
 **未新增门禁规则**拦这类写法：本任务是迁移收口，加一条有界检查属范围外的新机制，且现有
 `packages/*/web/__tests__/*-browser-surface.test.ts` 只守「包内不得回指宿主」这一个方向；登记为 §七
-待办（宿主 → 包 方向的裸相对穿透）。
+待办（宿主 → 包 方向的裸相对穿透）。**T12 更新**：这里提到的「剩余两处同形写法」已随本片全部结清
+（`agent-form-dialog-ssr.test.tsx` 见 §7.31 第 ② 条、`agent-form-dialog-pure-logic.test.ts` 见第 ⑤ 条），
+`grep -rn '\.\./\.\./\.\./\.\./packages/' apps/web/` 实测为 0，宿主侧不再有任何穿透包内实现深路径的相对
+import；那条门禁规则仍未新增（第二个真实用例没有出现，符合「抽象延迟到第二个用例」）。
 
 **实测对账**：脚本对全仓 `apps/**`、`packages/**`、`scripts/**` 的 50 处 `@/src/*` 引用逐条做路径存在性
 校验，唯一未解析的是 `apps/server/src/__tests__/architecture-check.test.ts:322` 的**合成 fixture 字符串**
@@ -1958,6 +1961,77 @@ task 另修了它对 `ArtifactsPanel` 走别名的过期描述），并订正 ob
 2. 宿主 → 包 方向的裸相对穿透检查（若有第二个真实用例出现再加规则；今天只剩上面两处，都在测试里）。
 3. `packages/resources/agent-config` 的 `ensureMetaAgent` 窄口（收窄 workflow 白名单 fan-out）——T12 登记项。
 
+**T12 更新**：以上三条均已办结（第 1 条见 §7.31 第 ⑤ 条、第 2 条见本节上方的「T12 更新」、第 3 条见
+§7.31 第 ④ 条）。第 2 条仍未新增门禁规则——T12 把这类写法清零后连「今天的用例」都不存在了，此时加规则
+属无对象的新机制。
+
+### 7.31 T12 收尾：台账复核、文档修订、证据留痕（2026-09-21，`aa9a3cc22` + `7afd2188c` + `c961fca02` + `5a3238dbe` + `f98c8bf7d` + `e8714f8f1`）
+
+T12 是收口片：把 T1–T11 留下的过期文档、混合归属测试、登记项与「本任务引入的缺陷」一次结清，并为
+「迁移后产物稳定」留下可复核的证据。按「每批独立可 `precheck`、独立提交」拆成六批（本文件是第六批）。
+
+| 批 | 提交 | 内容 |
+| --- | --- | --- |
+| ① 文档修订 | `aa9a3cc22` | 9 文件 53 插入 / 24 删除：`ce-ee-engineering-standards.md`（`apps/generated/` 两份产物、`contribution.ts` 形状、§9 归属表新增导航分工行）、`CLAUDE.md` 四处、`tech-stack-frontend.md`、`frontend-development.md`、`2026-09-18-*.md` 加「历史快照」标注、`deploy/assembly/README.md`，另含 §1.6 计划文本与两处代码注释 |
+| ② ssr 测试归位 | `7afd2188c` | `agent-form-dialog-ssr.test.tsx` 迁入包内（自建空字典实例替代宿主 i18n 单例，三条断言均为「渲染为空」）；台账 MOVES 60 → 59 / RELOCATED 87 → 88 |
+| ③ 借键结清与死键删除 | `c961fca02` | 修 `VerticalModelsPage` 页头显示字面量 `verticalModels` 的缺陷（§8.1 第 10 条）+ 结清另三条跨包借键；删宿主 `sidebar.json` 11 条死键 |
+| ④ `ensureMetaAgent` 窄口 | `5a3238dbe` | 实现移 `web/lib/meta-agent.ts` + 新增 `./web/lib/meta-agent` 子路径出口；workflow 白名单 46 → 20 并新增「不超列」断言；`rmd-04` 台账补三元组 |
+| ⑤ pure-logic 按 owner 拆开 | `f98c8bf7d` | 30 条用例按「被测实现归谁」拆为 18 迁入 / 5 包内重复删 / 7 宿主 owner 删；台账 MOVES 59 → 58 / RELOCATED 88 → 89 |
+| ⑥ CSS 溯源注释 | `e8714f8f1` | ui-components 三份样式表的「来源」路径与行号改为「现路径 + 迁移前路径 + 段已删除」三层口径 |
+
+**三项用户裁定与落点**：
+
+1. `agent-form-dialog-pure-logic.test.ts`（30 条混装用例）→ **按 owner 拆开**，不整份搬家、不整份留下
+   （见第 ⑤ 条）。
+2. 「13 个包没有包内 `tsconfig.json`」→ **登记为独立任务**，不在 T12 补。**实测订正**：35 个 workspace
+   包中实为 **14 个**缺包内 `tsconfig.json`（`platform/{access-control,identity,platform-sdk}` +
+   `resources/{channel,knowledge,machine,mcp,model-management,observer,prod-view,sandbox,skill,task,
+   workflow}`），另有 **17 个**包的 `web/` 子目录没有独立 `web/tsconfig.json`。`scripts/ci.ts` 的 tsc 三步
+   只覆盖 server / web 骨架，这些包的 `packages/*/{src,web}/**` 不在任何 tsc 项目内——类型错误目前只能靠
+   运行时测试兜住。这是本任务迁移后暴露的**既存**缺口（不是本次引入），修复方式与覆盖范围要单独评估。
+3. `ensureMetaAgent` 的出口形态 → **迁 `web/lib` + 子路径出口**（同 `web/lib/agent-create-navigation`
+   先例），而非「留在 `web/src/api` 但加子路径」。
+
+**三处口径订正**（原判定被实测推翻，均已在对应文档改口）：
+
+1. 「`agent-form-dialog-pure-logic` 里唯一未被宿主既有测试覆盖的是 `:186` 的空服务端消息兜底，需并入
+   `api-result-utils.test.ts`」——**实测已被覆盖**：`pure-logic-transform-boundaries.test.ts` 的「空字符串
+   错误消息回退通用错误」正是断言 `unwrapApiResult(err("FAILED", ""))` 抛 `Unknown API error`。按「同一
+   符号同一断言形态不重复守护」的既定口径，该条不并入（补进去只会多一处重复），7 条宿主 owner 用例整体
+   删除的依据也据此从「6 条等价 + 1 条独有」订正为「7 条全部等价」。
+2. `64c6cecc4` 提交信息与 §7.30 表格里「tsconfig 侧 30 余条」——**实测 49 → 9，删 40 条**；vite 侧 47 → 8，
+   删 39 条（该处原记载正确）。
+3. `scripts/root-source-owner-rules.ts` 与生成的 `docs/arch/root-source-owner-inventory.md` 里仍写
+   `web/src/api/meta-agent.ts`——**不改**。该表是「旧根前缀 → 目标前缀 / owner / 任务」的**声明式迁移
+   规则**（表头即 `Prefix | Target prefix | Owner | 任务`），记录 RMD-04 当时的动作，不随包内后续再移动
+   而变；同批的 `src/services/meta-agent.ts` 等条目同理。`check:root-owner-inventory` 报 files=0 /
+   unowned=0，与本次移动无关。
+
+**验证与证据**（均在六批全部落地后的工作区上实测）：
+
+- `env -u ANTHROPIC_MODEL bun run precheck` 全绿，120.5s：server-and-script-tests 788 pass；package-tests
+  7944 pass / 2 skip（629 files）；web-app-tests 319 pass（28 files，较 T11e 收尾的 352 减少 33 = ssr 归位
+  3 条 + pure-logic 拆分的 30 条）；lint 零 warning；architecture 与 dependency-boundaries 无新增违规。
+- **产物稳定性**：`rm -rf apps/web/dist && bun run build:web` 连跑两轮，`find dist -type f | sort | xargs
+  shasum -a 256` 逐文件比对完全一致（401 个文件），两轮的清单整体摘要同为
+  `323238598e913f336c315205b027dd61aab8e85cabdfb9f09f278f0a536e1283`。`apps/web/dist` 被 `.gitignore:3`
+  忽略，故证据只能落在本文件正文（这也是为什么这里逐字给出摘要值）。
+- `bun run docs:build` 通过（23.07s）。
+- 台账双绿：RMD-08 的 MOVES 58 / RELOCATED 89 两项断言与文件头第 1–16 条记录一致；§四的「`identity-admin`
+  必须 0 命中」口径作废后的替代核验（目录不存在 + 功能性引用 0 处）仍然成立。
+- 宿主侧「穿透包内实现深路径」的相对 import 归零（见 §7.30 的 T12 更新）。
+
+**登记转出（本任务不做，留待独立任务）**：
+
+1. 14 个包缺包内 `tsconfig.json` / 17 个 `web/` 无独立 tsconfig（见上方裁定 2），含覆盖范围与接入
+   `scripts/ci.ts` 的方式。
+2. `round37-service-boundaries.test.ts` 在负载下偶发失败的既有非确定性（本任务多次复跑判为环境相关，
+   与迁移无关）。
+3. `packages/resources/knowledge/web/i18n/index.ts` 的键数注释仍靠人工维护，宜改为测试守护（同本任务
+   `model-management-i18n` 的做法）。
+4. 两份历史设计文档中的过期指向（按「不改写历史文档」口径保留，仅在正文首行标注快照性质）。
+5. 宿主 → 包 方向的裸相对穿透检查：T12 已把该形态清零，**当前无对象**，故不加规则（见 §7.30 更新）。
+
 ---
 
 ## 八、用户可见行为变更
@@ -1979,6 +2053,7 @@ task 另修了它对 `ArtifactsPanel` 走别名的过期描述），并订正 ob
 | 7 | 回忆库（hindsight）文档视图的分页按钮在中文界面显示英文 `Previous` / `Next` | memory 包以限定字面量引用宿主 `common:previous` / `common:next`（且已登记为跨命名空间依赖），宿主 `common` 字典却缺这两条，一直靠 `defaultValue` 兜底 | T9c |
 | 8 | 错误卡片正文（聊天 turn 失败、会话面板错误）在中文界面显示英文摘要 | `PublicError.message` 是 wire 与日志字段，`createPublicError` / `isPublicError` 把它钉在 `.en` 上，两处卡片却直接渲染它；`PUBLIC_ERROR_MESSAGES` 的 `zh` 一半全仓无读取点 | T9d |
 | 9 | 概览页（`/agent/dashboard`）正文显示字面量 `welcome`（中英文界面都一样） | 页面取 `t("welcome")`，宿主 `dashboard.json` 里却只有无消费方的 `loading`——i18next 缺键回退为键名。该页无导航入口，只能靠直连 URL 到达，长期无人发现 | T11e-3b |
+| 10 | 垂直模型页（`/agent/vertical-models`）页头标题显示字面量 `verticalModels`（中英文界面都一样） | 页标题取宿主 `agentPanel` 的 `verticalModels` 键，而该键已随 T11d-3（`903477877`）删除——T11b2 把导航文案随项下沉到各包字典时漏了这两页的页头；`AlgorithmsPage` 同批向宿主借 `algorithms` / `algorithmsSubtitle` 两键 | T12 `c961fca02` |
 
 第 3 条的修法是两处共用同一个派发器（`dispatchArtifactsPreviewFile(envId, path)`）；事件名未变，变的
 是状态面板那条的详情补齐了 `envId`。第 4 条在线上需服务端返回错误才触发（对抗验证判 real=False）。
@@ -1988,6 +2063,9 @@ task 另修了它对 `ArtifactsPanel` 走别名的过期描述），并订正 ob
 第 7 条只影响回忆库文档视图翻页按钮的文案，验收时把界面语言切到中文看该页脚即可。
 第 9 条在 T11e-3b 迁 `dashboard` 字典时按页面的实际键把 `loading` 改为 `welcome`（并把 `loading` 删除），
 验收时直连 `/agent/dashboard` 看正文是否显示引导语而非 `welcome`。
+第 10 条的四条借键一并结清：两页页标题改指本包 `nav.*`（文案与宿主逐字一致，T11b2 落盘时已核对），
+两条副标题落本包 `algorithms.subtitle` / `verticalModels.subtitle`；验收时直连 `/agent/vertical-models`
+与 `/agent/algorithms`，看页头是否为中文标题而非键名（两页都在侧栏「配置」组内有入口）。
 
 ### 8.2 有意的呈现取舍
 
@@ -2007,7 +2085,8 @@ task 另修了它对 `ArtifactsPanel` 走别名的过期描述），并订正 ob
 
 ### 8.3 发布验收建议
 
-按 8.1 的 8 条做定向回归（建站卡片可见并可跳转、工作流上下文注入、状态面板文件点击、会话重命名失败
+按 8.1 的 10 条做定向回归（建站卡片可见并可跳转、工作流上下文注入、状态面板文件点击、会话重命名失败
 提示、引用截断徽标的中文文案、错误卡片标题的英文文案、回忆库文档视图分页按钮的中文文案、错误卡片正文
-的中文文案），8.2 的 7 条按「与旧版截图比对」验一次即可；
-`chat-channel/web` 尚未删除，旧实现可随时对比（T5d 删除后仅存 git 历史）。
+的中文文案、概览页引导语、垂直模型页与算法页的页头标题），8.2 的 7 条按「与旧版截图比对」验一次即可。
+`chat-channel/web` 已随 T5d 删除（`packages/chat-channel/web` 目录与 `exports["./web"]` 均不存在，旧实现
+仅存 git 历史，需要对照时取 `git show 8f364c109^:<原路径>`）。
