@@ -107,9 +107,9 @@ test("bootstrapServerAssembly 按依赖序装配并逆序幂等释放", async ()
   ] satisfies readonly ModuleManifest[];
 
   const result = await bootstrapServerAssembly({
-    // Shell 槽位取真实 profile 的绑定，但 profile 的 `resources` 由本用例自己声明——fixture 工厂只覆盖
-    // 三个基础模块，真实 ce.json 的资源列表会引用未注册进 fixture 的模块。
-    profile: { ...(await loadAssemblyProfile()), resources: [] },
+    // Shell 槽位取真实 profile 的绑定，但 profile 的 `resources` 与 `web` 由本用例自己声明——fixture 工厂
+    // 只覆盖三个基础模块，真实 ce.json 的资源列表与 web 列表都会引用未注册进 fixture 的模块。
+    profile: { ...(await loadAssemblyProfile()), resources: [], web: [] },
     // 真实 Shell 描述符 + fixture 基础模块工厂：真实 Runtime 工厂会拉起整套服务端运行面。
     manifests: [...lifecycleManifests, ...generatedWebShellManifests],
     loadEnv: (definitions) => loadDeclaredEnv(definitions, {}),

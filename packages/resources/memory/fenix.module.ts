@@ -39,13 +39,20 @@ import type { ServerRouteHost } from "@fenix/platform-sdk/server";
  * 路由路径是相对形式，前缀由宿主的聚合实例决定，「挂哪一面」只能由声明说清。惰性 import 与 `create`
  * 同因：registry 会被大量位置导入，不能在索引层就把 Elysia 拖进模块图。
  *
- * 不声明 `web`：消费方是 §1.6 的 WebShell 装配，形状必须与消费端同时定型。
+ * 声明 `web`（§1.6 已定型）：`contribution` 是该包浏览器载荷的惰性**入口说明符字符串**——WebShell 生成器
+ * 只对 manifest 做 AST 静态读取、不执行它，所以入口只能是「声明」而不是「推断」，取值必须是字符串字面量。
+ * 它**不是**浏览器依赖：`lucide-react` / React 载荷只存在于 `@fenix/resource-memory/web/contribution` 导出
+ * 的值里，不会沿 registry 进入服务端装配图（server 侧拿到的只有这一条字符串）。
  */
 export const moduleManifest = {
   id: "memory",
   kind: "resource",
   dependsOn: [],
   capabilities: ["resource.memory"],
+  web: {
+    id: "memory",
+    contribution: "@fenix/resource-memory/web/contribution",
+  },
   contributions: [
     {
       id: "memory.web",

@@ -46,15 +46,23 @@ import type { ServerRouteHost } from "@fenix/platform-sdk/server";
  * 路由路径是相对形式，前缀由宿主的聚合实例决定，「挂哪一面」只能由声明说清。惰性 import 与 `create`
  * 同因：registry 会被大量位置导入，不能在索引层就把 Elysia 拖进模块图。
  *
- * 不声明 `web`：消费方是 §1.6 的 WebShell 装配，形状必须与消费端同时定型。不声明 `envDefinitions`
- * （归 §1.7）：本包不读 `process.env`、不读 `@server/config`，宿主用 `RCS_DISABLE_SCHEDULER` 决定是否
- * 调用 `schedulerService.start()`，该变量的声明与校验在宿主。
+ * 声明 `web`（§1.6 已定型）：`contribution` 是该包浏览器载荷的惰性**入口说明符字符串**——WebShell 生成器
+ * 只对 manifest 做 AST 静态读取、不执行它，所以入口只能是「声明」而不是「推断」，取值必须是字符串字面量。
+ * 它**不是**浏览器依赖：`lucide-react` / React 载荷只存在于 `@fenix/resource-task/web/contribution` 导出的
+ * 值里，不会沿 registry 进入服务端装配图（server 侧拿到的只有这一条字符串）。
+ *
+ * `envDefinitions` 的留白保持不变（归 §1.7）：本包不读 `process.env`、不读 `@server/config`，宿主用
+ * `RCS_DISABLE_SCHEDULER` 决定是否调用 `schedulerService.start()`，该变量的声明与校验在宿主。
  */
 export const moduleManifest = {
   id: "task",
   kind: "resource",
   dependsOn: [],
   capabilities: ["resource.task"],
+  web: {
+    id: "task",
+    contribution: "@fenix/resource-task/web/contribution",
+  },
   contributions: [
     {
       id: "task.web",

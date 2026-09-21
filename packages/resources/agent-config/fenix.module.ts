@@ -46,14 +46,22 @@ import { agentConfigResource } from "./src/server/access/agent-config-resource";
  * `sessionAuth`——它要区分「未登录」与「已登录但无权限」并分别重定向，改用宿主的 `authenticateRequest`
  * 投影（`SiteRequestIdentity`）。
  *
- * 不声明 `web` / `envDefinitions`：消费方分别是 §1.6 WebShell 装配与 §1.7 的宿主 env 登记，形状必须与
- * 消费端同时定型。
+ * 声明 `web`（§1.6 已定型）：`contribution` 是该包浏览器载荷的惰性**入口说明符字符串**——WebShell 生成器
+ * 只对 manifest 做 AST 静态读取、不执行它，所以入口只能是「声明」而不是「推断」，取值必须是字符串字面量。
+ * 它**不是**浏览器依赖：`lucide-react` / React 载荷只存在于 `@fenix/agent-config/web/contribution` 导出的值
+ * 里，不会沿 registry 进入服务端装配图（server 侧拿到的只有这一条字符串）。
+ *
+ * `envDefinitions` 的留白保持不变：消费方是 §1.7 的宿主 env 登记，形状必须与消费端同时定型。
  */
 export const moduleManifest = {
   id: "agent-config",
   kind: "resource",
   dependsOn: ["knowledge", "mcp", "memory", "skill"],
   capabilities: ["resource.agent-config"],
+  web: {
+    id: "agent-config",
+    contribution: "@fenix/agent-config/web/contribution",
+  },
   accessControlBindings: [agentConfigResource.storage],
   contributions: [
     {

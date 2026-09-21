@@ -45,14 +45,22 @@ import { mcpServerResource } from "./src/server/access/mcp-server-resource";
  * 自鉴权，与 `/api/*`、`/web/*` 都不同前缀），且是模块级单例——装配面只包一层惰性构造函数，理由见
  * `src/server/assembly.ts` 的 `createKnowledgeMcpAppRoutes`。
  *
- * 不声明 `web` / `envDefinitions`：消费方分别是 §1.6 的 WebShell 装配与 §1.7 的宿主 env 登记；本包不读
- * `process.env`、没有独立部署级变量。
+ * 声明 `web`（§1.6 已定型）：`contribution` 是该包浏览器载荷的惰性**入口说明符字符串**——WebShell 生成器
+ * 只对 manifest 做 AST 静态读取、不执行它，所以入口只能是「声明」而不是「推断」，取值必须是字符串字面量。
+ * 它**不是**浏览器依赖：`lucide-react` / React 载荷只存在于 `@fenix/resource-mcp/web/contribution` 导出的
+ * 值里，不会沿 registry 进入服务端装配图（server 侧拿到的只有这一条字符串）。
+ *
+ * `envDefinitions` 的留白保持不变（归 §1.7 的宿主 env 登记）：本包不读 `process.env`、没有独立部署级变量。
  */
 export const moduleManifest = {
   id: "mcp",
   kind: "resource",
   dependsOn: ["knowledge"],
   capabilities: ["resource.mcp"],
+  web: {
+    id: "mcp",
+    contribution: "@fenix/resource-mcp/web/contribution",
+  },
   accessControlBindings: [mcpServerResource.storage],
   contributions: [
     {
