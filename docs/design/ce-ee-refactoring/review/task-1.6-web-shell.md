@@ -1022,7 +1022,7 @@ form-utils,api-result}.ts`、`api/helpers.ts`、`App.tsx`）按 T2 先例保留�
 `apps/web/src/__tests__/date-picker.test.tsx` 头注。同批**删除该文件模块作用域的 `react-i18next` 替身**
 与配套 `afterEach(mock.restore)`——CLAUDE.md 禁止测试直接调用 `mock.module()`，且该替身会跨文件残留。
 
-#### T8b：`components/config/**` 与 `components/ai-elements/**` 退场（本批提交）
+#### T8b：`components/config/**` 与 `components/ai-elements/**` 退场（`9b19d15c9`）
 
 删除 11 个文件（`config` 4 + `ai-elements` 6 + `chat-message-content.css`），`apps/web/components/` 目录
 随之消失；8 个文件被 codemod 改指（8 处），`tsconfig.json` 与 `apps/web/vite.config.ts` 的 `@/components/*`
@@ -1047,12 +1047,61 @@ form-utils,api-result}.ts`、`api/helpers.ts`、`App.tsx`）按 T2 先例保留�
 - `scripts/__tests__/rmd-08-migration.test.ts` 台账同步：`RMD_08_MOVES` 删 11 条（152 → 141），
   `RMD_08_RELOCATED` 增 11 条三元组（10 → 21，owner 为 `packages/ui-components/web/{chat/primitives,config}/*`）。
 
+#### T8c：`apps/web/src/components/**` 副本簇退场
+
+删除 11 个路径（`PreviewTab`、`file-tree-{input-dialog,model,view}`、`file-icon-helper`、
+`layout/{app-header,app-page}`、`preview/{FileViewerPreview,html-plugin,native-pdf-plugin,overrides.css}`），
+7 个宿主文件 11 处消费点改指到 `@fenix/ui-components` 的 `components/**` 与 `layout/**` 出口。
+
+**超集证明先行（本片最重的一项）**：`file-tree-view.tsx` 是最可疑的候选——宿主单文件 544 行、与包内
+同名文件的行集合相似度只有 0.41。实测证明这是**拆分造成的相似度失真**而非功能缺失：宿主单文件在包内被
+拆成 `file-tree-view`（容器）+ `file-tree-arborist`（含 sticky 目录条、`ResizeObserver` 测高、
+`requestAnimationFrame` 滚动换算、行内新建/删除/刷新按钮）+ `file-tree-context-menu`（7 个菜单项、
+视口贴边、portal 到 body）+ `file-tree.css`，四者并集覆盖宿主的全部非空行，逐行等价（差异只有改名、
+`viewProps` 类型收窄、`32`/`12` 提为 `ROW_HEIGHT`/`INDENT` 常量、i18n 命名空间）。该结论与包内头注
+自带的纯化取舍说明互相印证，故此处的「副本」判定不采信相似度分数。
+
+**契约差异处置（1 处，含消费方适配）**：包内 `FileTreeView` 去掉了宿主契约里的 `envId`（宿主概念，
+不应进入公共契约），改为语义化的 `canMutate`；同时摘除在该视图内**没有任何使用点**的死 props
+`isDirectory` 与 `onOpen`。因此消费方 `FileTreeTab.tsx`（宿主活文件，未随包迁移）需要同步适配：
+`envId={envId}` → `canMutate={!!envId}`、删掉 `isDirectory` / `onOpen` 两个传参，并删除因此不再被引用的
+`isDirectory` `useCallback`（`findFileNode` 仍被 `handleToggle` / `handleContextMenu` 使用，保留）。
+三处适配的语义等价性：`canMutate` 的判定与源实现逐字一致（`disabled={!props.envId}` → `disabled={!canMutate}`），
+`onPreviewFile` 仍经 `handleSelect` 生效（`onOpen` 在源实现里从未被调用）。
+
+**零消费直删 4 项**：`preview/{FileViewerPreview,html-plugin,native-pdf-plugin,overrides.css}` 的唯一宿主
+消费方就是 `PreviewTab`（本身是副本），`PreviewTab` 改指包出口后这 4 项在宿主零引用，直接删——它们的
+owner 在包内（`web/components/preview/**`）。同目录的 `preview/utils.ts` **不删**：`ArtifactsPanel.tsx` 与
+`preview-utils-normalize.test.ts` 仍在消费它，这正是包内 README 第 43 条「只取子集、原文件保持不动」的
+前提，本片不得推翻。
+
+**验收无回归的一处核对**：包内 `PreviewTab` 与 `FileTreeView` 的文案改用包内 `UI_COMPONENTS_NS`。
+逐字核对后确认两处文案值与宿主一致（面板标题 zh「文件」/ en `File Browser` ↔ 包内 `fileTree.title` 同值），
+且宿主 `apps/web/src/i18n/index.ts:123,140` 已注册该命名空间与字典，故不是用户可见变化。
+
+**呈现取舍（1 处，登记到 §8.2）**：`AppHeader` / `AppPage` 的硬编码色值（`#e4eaf2` / `#17233a` /
+`#94a3b8` / `#f5f7fb`）在包内改为主题 token（`border` / `text-bright` / `text-muted` / `surface-0`）。
+宿主 `apps/web/src/index.css` 已定义同名 token，且亮色值已在同色域（`surface-0` 为 `#f8fafc` 而非
+`#f5f7fb`），因此有极轻微的色差，换来的是暗色主题下不再破色。这 3 个消费方页面（`AgentDashboardPage` /
+`AgentManagementPage` / `workflow.tsx`）的视觉验收应纳入回归清单。
+
+**契约收窄的一处连带改动**：`file-tree-model.ts` 的 `MAX_FILE_UPLOAD_SIZE_LABEL` 依赖宿主上传上限配置
+（`@/src/api/fs` 的 `MAX_UPLOAD_SIZE_BYTES`），包内只收纯数据子集。该常量改由唯一消费方
+`use-file-uploads.ts` 自持，理由写在常量注释内（业务配置而非组件契约，因此不迁入包内）。
+
+**台账同步**：`RMD_08_MOVES` 141 → 130，`RMD_08_RELOCATED` 21 → 32（owner 为
+`packages/ui-components/web/{components,layout}/**`）。
+
 #### 验证
 
+T8a / T8b / T8c 三片各自跑过一轮完整门禁，均全绿。最终一轮（含 T8c）：
 `env -u ANTHROPIC_MODEL bun run precheck` 全绿（format / import-sort / module-registry / architecture /
 tsc server+web+app-skeletons / dependency-boundaries / lint / server-and-script-tests 771 pass /
-package-tests 7311 pass + 2 skip / web-app-tests 969 pass，0 fail）；`bun run build:web` 成功；
-主机侧零 `@/components/*` 导入说明符，`apps/web/components/` 目录已不存在。
+package-tests 7311 pass + 2 skip / web-app-tests 969 pass，0 fail）；`bun run build:web` 成功。
+结构性证据：全仓零 `@/components/*` 导入说明符，`apps/web/components/` 目录已不存在，
+`apps/web/src/components/` 仅剩 9 个活文件（`FilePickerDialog`、`agent-panel/{FileTabsBar,FileTreeTab,
+TopModeTabs,artifacts-dialogs,artifacts-files-workspace,use-file-tree-events,use-file-uploads}`、
+`agent-panel/preview/utils.ts`）。
 
 ---
 
@@ -1083,12 +1132,14 @@ package-tests 7311 pass + 2 skip / web-app-tests 969 pass，0 fail）；`bun run
 | 4 | 用户消息图片缩略图 80px 居中 → 96px（`size-24`）右对齐（`ml-auto`） | 复用包内 `primitives/message-attachments`，与附件条的尺寸/对齐统一 | T3 `b858bf68f` |
 | 5 | 附件上传失败提示为通用文案，原文只进控制台 | 包内无法翻译宿主上传回调抛出的业务错误；属包校验的错误（`chatComposer.*` key）仍按原文翻译 | 前置 `e8c73280a` |
 | 6 | 空状态建议提示词与消息「引用」的投递范围为**本实例**（源实现走全局 window 事件，靠 `contextScope` 过滤跨实例串扰） | 合并订阅按 `ChatInterface` 实例分发，订阅者集合属于该实例，跨实例串扰在结构上不可能（§7.6 取舍 2）；宿主注入的外部来源（文件树引用）仍由宿主做环境归属过滤 | T5c1 `403af2969` |
+| 7 | 业务页标题区与页面容器的色值由硬编码改为主题 token：`#e4eaf2` → `border`、`#17233a` → `text-bright`、`#94a3b8` → `text-muted`、`#f5f7fb` → `surface-0`（`surface-0` 亮色值为 `#f8fafc`，有极轻微色差） | `layout/AppHeader` 与 `layout/AppPage` 归 `@fenix/ui-components`（§7.13 T8c），包内组件不应写死宿主页面色值；改用 token 后随主题切换，暗色下不再破色。信息层级与间距完全不变 | T8c |
 
 第 6 条在线上无可观测差异（验证判 real=False）：源实现的 `contextScope` 过滤已把多实例串扰挡住，包内
-实现是把「靠过滤补救」换成「靠作用域不成立」。
+实现是把「靠过滤补救」换成「靠作用域不成立」。第 7 条须与旧版截图比对一次，消费方为
+`AgentDashboardPage`、`AgentManagementPage` 与 `routes/agent/_panel/workflow.tsx` 三个页面。
 
 ### 8.3 发布验收建议
 
 按 8.1 的 4 条做定向回归（建站卡片可见并可跳转、工作流上下文注入、状态面板文件点击、会话重命名失败
-提示），8.2 的 6 条按「与旧版截图比对」验一次即可；`chat-channel/web` 尚未删除，旧实现可随时对比
+提示），8.2 的 7 条按「与旧版截图比对」验一次即可；`chat-channel/web` 尚未删除，旧实现可随时对比
 （T5d 删除后仅存 git 历史）。

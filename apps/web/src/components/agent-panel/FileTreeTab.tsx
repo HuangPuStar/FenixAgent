@@ -1,11 +1,4 @@
-import { useRequest } from "ahooks";
-import { forwardRef, useCallback, useEffect, useImperativeHandle, useRef, useState } from "react";
-import { useTranslation } from "react-i18next";
-import { toast } from "sonner";
-import { downloadWorkspacePath, fsApi } from "@/src/api/fs";
-import { unwrap } from "@/src/api/request";
-import { NS } from "@/src/i18n";
-import { FileTreeInputDialog } from "./file-tree-input-dialog";
+import { FileTreeInputDialog } from "@fenix/ui-components/components/file-tree-input-dialog";
 import {
   collectDirectoryPaths,
   filterFileTree,
@@ -13,8 +6,15 @@ import {
   type ParsedFileNode,
   parsePathsToTree,
   splitFileTreeSections,
-} from "./file-tree-model";
-import { FileTreeView } from "./file-tree-view";
+} from "@fenix/ui-components/components/file-tree-model";
+import { FileTreeView } from "@fenix/ui-components/components/file-tree-view";
+import { useRequest } from "ahooks";
+import { forwardRef, useCallback, useEffect, useImperativeHandle, useRef, useState } from "react";
+import { useTranslation } from "react-i18next";
+import { toast } from "sonner";
+import { downloadWorkspacePath, fsApi } from "@/src/api/fs";
+import { unwrap } from "@/src/api/request";
+import { NS } from "@/src/i18n";
 import { useFileTreeEvents } from "./use-file-tree-events";
 import { useFileUploads } from "./use-file-uploads";
 
@@ -370,7 +370,6 @@ export const FileTreeTab = forwardRef<FileTreeTabHandle, FileTreeTabProps>(funct
   const hasSearchResults = visibleSections.workspace.length > 0 || visibleSections.user.length > 0;
   const expandedIds = normalizedSearch ? collectDirectoryPaths(visibleTree) : [...expandedIdsRef.current];
   const showTree = !!envId && !(isEmpty && !stale);
-  const isDirectory = useCallback((path: string) => findFileNode(treeDataRef.current, path)?.isDir ?? false, []);
 
   const openInputDialog = useCallback((kind: "rename" | "move" | "newFile" | "newFolder", path: string, value = "") => {
     setInputDialog({ kind, path, value });
@@ -408,7 +407,8 @@ export const FileTreeTab = forwardRef<FileTreeTabHandle, FileTreeTabProps>(funct
   return (
     <>
       <FileTreeView
-        envId={envId}
+        // 源实现用 `envId` 表达「能否改动远端」；包内契约改为语义化的 `canMutate`（§1.6 T8c）。
+        canMutate={!!envId}
         loading={loading && treeDataRef.current.length === 0}
         stale={stale}
         uploading={uploading}
@@ -442,8 +442,6 @@ export const FileTreeTab = forwardRef<FileTreeTabHandle, FileTreeTabProps>(funct
         onDragLeave={handleDragLeave}
         onDrop={handleDrop}
         onContextMenu={handleContextMenu}
-        isDirectory={isDirectory}
-        onOpen={onPreviewFile}
         onReference={handleReference}
         onDownload={handleDownload}
         onRenameRequest={(path, name) => openInputDialog("rename", path, name)}

@@ -119,41 +119,18 @@ const RMD_08_MOVES = [
   ["web/src/components/FilePickerDialog.tsx", "apps/web/src/components/FilePickerDialog.tsx"],
   ["web/src/components/agent-panel/FileTabsBar.tsx", "apps/web/src/components/agent-panel/FileTabsBar.tsx"],
   ["web/src/components/agent-panel/FileTreeTab.tsx", "apps/web/src/components/agent-panel/FileTreeTab.tsx"],
-  ["web/src/components/agent-panel/PreviewTab.tsx", "apps/web/src/components/agent-panel/PreviewTab.tsx"],
   ["web/src/components/agent-panel/TopModeTabs.tsx", "apps/web/src/components/agent-panel/TopModeTabs.tsx"],
   ["web/src/components/agent-panel/artifacts-dialogs.tsx", "apps/web/src/components/agent-panel/artifacts-dialogs.tsx"],
   [
     "web/src/components/agent-panel/artifacts-files-workspace.tsx",
     "apps/web/src/components/agent-panel/artifacts-files-workspace.tsx",
   ],
-  [
-    "web/src/components/agent-panel/file-tree-input-dialog.tsx",
-    "apps/web/src/components/agent-panel/file-tree-input-dialog.tsx",
-  ],
-  ["web/src/components/agent-panel/file-tree-model.ts", "apps/web/src/components/agent-panel/file-tree-model.ts"],
-  ["web/src/components/agent-panel/file-tree-view.tsx", "apps/web/src/components/agent-panel/file-tree-view.tsx"],
-  [
-    "web/src/components/agent-panel/preview/FileViewerPreview.tsx",
-    "apps/web/src/components/agent-panel/preview/FileViewerPreview.tsx",
-  ],
-  [
-    "web/src/components/agent-panel/preview/html-plugin.ts",
-    "apps/web/src/components/agent-panel/preview/html-plugin.ts",
-  ],
-  [
-    "web/src/components/agent-panel/preview/native-pdf-plugin.ts",
-    "apps/web/src/components/agent-panel/preview/native-pdf-plugin.ts",
-  ],
-  ["web/src/components/agent-panel/preview/overrides.css", "apps/web/src/components/agent-panel/preview/overrides.css"],
   ["web/src/components/agent-panel/preview/utils.ts", "apps/web/src/components/agent-panel/preview/utils.ts"],
   [
     "web/src/components/agent-panel/use-file-tree-events.ts",
     "apps/web/src/components/agent-panel/use-file-tree-events.ts",
   ],
   ["web/src/components/agent-panel/use-file-uploads.ts", "apps/web/src/components/agent-panel/use-file-uploads.ts"],
-  ["web/src/components/file-icon-helper.tsx", "apps/web/src/components/file-icon-helper.tsx"],
-  ["web/src/components/layout/app-header.tsx", "apps/web/src/components/layout/app-header.tsx"],
-  ["web/src/components/layout/app-page.tsx", "apps/web/src/components/layout/app-page.tsx"],
   ["web/src/hooks/use-changed-files-stats.ts", "apps/web/src/hooks/use-changed-files-stats.ts"],
   ["web/src/hooks/use-task-views.ts", "apps/web/src/hooks/use-task-views.ts"],
   ["web/src/hooks/usePageVisible.ts", "apps/web/src/hooks/usePageVisible.ts"],
@@ -241,6 +218,8 @@ const RMD_08_MOVES = [
  * 任务 1.6 T8b 再移出 11 项：`components/ai-elements/**`（7，owner 为 `chat/primitives/**`）与
  * `components/config/**`（4）——这 11 个宿主副本的消费方已全部改指 `@fenix/ui-components` 的对应出口，
  * 副本本身零引用。
+ * 任务 1.6 T8c 再移出 11 项：`src/components/**` 的 `PreviewTab`、`file-tree-*`、`file-icon-helper`、
+ * `layout/**` 与 `preview/**`——消费方已改指 `@fenix/ui-components` 的 `components/**` 与 `layout/**` 出口。
  */
 const RMD_08_RELOCATED = [
   [
@@ -340,6 +319,61 @@ const RMD_08_RELOCATED = [
     "apps/web/components/config/StatusBadge.tsx",
     "packages/ui-components/web/config/StatusBadge.tsx",
   ],
+  [
+    "web/src/components/agent-panel/PreviewTab.tsx",
+    "apps/web/src/components/agent-panel/PreviewTab.tsx",
+    "packages/ui-components/web/components/PreviewTab.tsx",
+  ],
+  [
+    "web/src/components/agent-panel/file-tree-input-dialog.tsx",
+    "apps/web/src/components/agent-panel/file-tree-input-dialog.tsx",
+    "packages/ui-components/web/components/file-tree-input-dialog.tsx",
+  ],
+  [
+    "web/src/components/agent-panel/file-tree-model.ts",
+    "apps/web/src/components/agent-panel/file-tree-model.ts",
+    "packages/ui-components/web/components/file-tree-model.ts",
+  ],
+  [
+    "web/src/components/agent-panel/file-tree-view.tsx",
+    "apps/web/src/components/agent-panel/file-tree-view.tsx",
+    "packages/ui-components/web/components/file-tree-view.tsx",
+  ],
+  [
+    "web/src/components/file-icon-helper.tsx",
+    "apps/web/src/components/file-icon-helper.tsx",
+    "packages/ui-components/web/components/file-icon-helper.tsx",
+  ],
+  [
+    "web/src/components/layout/app-header.tsx",
+    "apps/web/src/components/layout/app-header.tsx",
+    "packages/ui-components/web/layout/app-header.tsx",
+  ],
+  [
+    "web/src/components/layout/app-page.tsx",
+    "apps/web/src/components/layout/app-page.tsx",
+    "packages/ui-components/web/layout/app-page.tsx",
+  ],
+  [
+    "web/src/components/agent-panel/preview/FileViewerPreview.tsx",
+    "apps/web/src/components/agent-panel/preview/FileViewerPreview.tsx",
+    "packages/ui-components/web/components/preview/FileViewerPreview.tsx",
+  ],
+  [
+    "web/src/components/agent-panel/preview/html-plugin.ts",
+    "apps/web/src/components/agent-panel/preview/html-plugin.ts",
+    "packages/ui-components/web/components/preview/html-plugin.ts",
+  ],
+  [
+    "web/src/components/agent-panel/preview/native-pdf-plugin.ts",
+    "apps/web/src/components/agent-panel/preview/native-pdf-plugin.ts",
+    "packages/ui-components/web/components/preview/native-pdf-plugin.ts",
+  ],
+  [
+    "web/src/components/agent-panel/preview/overrides.css",
+    "apps/web/src/components/agent-panel/preview/overrides.css",
+    "packages/ui-components/web/components/preview/overrides.css",
+  ],
 ] as const;
 
 describe("RMD-08 apps/web migration", () => {
@@ -347,9 +381,9 @@ describe("RMD-08 apps/web migration", () => {
   // 任务 1.3 收口移出的一项：`__tests__/task-form-schema.test.ts` 是内联的表单校验 schema 副本，宿主侧
   // 既无 TaskForm 组件也无导入方，且已与包内唯一 owner 漂移；owner 是 task 包，见下方 relocated 断言。
   // 任务 1.6 T2 再移出 18 项零消费文件，见文件头第 5 条；T4 又移出 1 项（`api/registry.ts`，
-  // 见文件头第 6 条与下方 relocated 断言），153 → 152。
+  // 见文件头第 6 条），153 → 152；T8b 再移出 11 项，152 → 141；T8c 再移出 11 项，141 → 130。
   test("removes every legacy source and retains its exact owner target", () => {
-    expect(RMD_08_MOVES).toHaveLength(141);
+    expect(RMD_08_MOVES).toHaveLength(130);
     for (const [source, target] of RMD_08_MOVES) {
       expect(existsSync(source), `legacy source still exists: ${source}`).toBe(false);
       expect(existsSync(target), `apps/web target is missing: ${target}`).toBe(true);
@@ -376,11 +410,11 @@ describe("RMD-08 apps/web migration", () => {
     expect(existsSync("packages/web-runtime/web/lib/admin-key.ts")).toBe(true);
   });
 
-  // 任务 1.3 收口的 9 份 + 任务 1.6 T4 的 1 份 + T8b 的 11 份宿主副本：旧根路径与应用壳路径都不得复活，
+  // 任务 1.3 收口的 9 份 + 任务 1.6 T4 的 1 份 + T8b 的 11 份 + T8c 的 11 份宿主副本：两个旧路径都不得复活，
   // 且包侧 owner 落点必须存在。副本与 owner 并存是「两份实现各自能跑」的最坏形态，
   // 删除与断言必须成对出现。
   test("relocates the leftover host copies to their package owners", () => {
-    expect(RMD_08_RELOCATED).toHaveLength(21);
+    expect(RMD_08_RELOCATED).toHaveLength(32);
     for (const [legacy, shell, owner] of RMD_08_RELOCATED) {
       expect(existsSync(legacy), `legacy source still exists: ${legacy}`).toBe(false);
       expect(existsSync(shell), `host copy still exists: ${shell}`).toBe(false);
