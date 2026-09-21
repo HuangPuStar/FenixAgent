@@ -1,18 +1,19 @@
+// web/__tests__/agent-form-dialog-pure-logic.test.ts
+// 从宿主 `apps/web/src/__tests__/` 迁入（CE 阶段 2 任务 1.6 T12）：本文件守护的纯逻辑实现全部归本包
+// （`lib/agent-utils`、`lib/agent-resource-access`）或本包编辑器直接消费的兄弟包浏览器出口
+// （model-management 的模型选项、mcp / skill 的授权与展示），留在宿主只能经包出口取用，等于让包内
+// 实现被应用壳测试守护。
+//
+// 迁入时按 owner 拆开去重（§7.31 的裁定）：源文件 30 条用例里
+//   - 18 条迁入本文件，各自带本包既有用例没有覆盖的断言；
+//   - 5 条与本包既有用例等价而删除——`mapMcpOptions` / `mapModelOptions` 的选项映射已被
+//     `agent-form-dialog-round54-pure` / `-bulk-pure-options` / `-options-boundaries` 覆盖，
+//     Agent 名称的空格 / 连续连字符 / 长度上限已被 `agent-utils` 与 `config-agents-page` 覆盖；
+//   - 7 条守护宿主自有的 `api/fs`（`buildUploadUrl`）、`lib/api-result`、`lib/form-utils`，owner 不在本包，
+//     留在宿主：其中 6 条与 `fs-upload-url` / `form-utils` / `api-result-utils` 等价而删除，唯一未覆盖的
+//     「空服务端消息兜底」并入 `apps/web/src/__tests__/api-result-utils.test.ts`。
+
 import { describe, expect, test } from "bun:test";
-import {
-  canManageAgentSharing,
-  getAgentAccessBadgeKey,
-  getAgentConfigLookupKey,
-  getAgentDisplayName,
-  isAgentWritable,
-} from "@fenix/agent-config/web/lib/agent-resource-access";
-import {
-  buildAgentPayload,
-  buildKnowledgeFormState,
-  filterKnowledgeBaseIds,
-  getDefaultKnowledgeFormState,
-  isValidAgentNameInput,
-} from "@fenix/agent-config/web/lib/agent-utils";
 import { buildModelOptions } from "@fenix/model-management/web";
 import {
   canManageMcpSharing,
@@ -30,12 +31,19 @@ import {
 } from "@fenix/resource-skill/web";
 import type { McpServerInfo, ModelEntry, SkillInfo } from "@fenix/web-runtime/types/config";
 import {
-  mapMcpOptions,
-  mapModelOptions,
-} from "../../../../packages/resources/agent-config/web/pages/agent-panel/agent-editor/agent-editor-model";
-import { buildUploadUrl } from "../api/fs";
-import { err, ok, unwrapApiResult } from "../lib/api-result";
-import { intRangeSchema, nameSchema, optionalFloatSchema, validateWithSchema } from "../lib/form-utils";
+  canManageAgentSharing,
+  getAgentAccessBadgeKey,
+  getAgentConfigLookupKey,
+  getAgentDisplayName,
+  isAgentWritable,
+} from "../lib/agent-resource-access";
+import {
+  buildAgentPayload,
+  buildKnowledgeFormState,
+  filterKnowledgeBaseIds,
+  getDefaultKnowledgeFormState,
+  isValidAgentNameInput,
+} from "../lib/agent-utils";
 
 /** 共享来源 Agent 的 `/web` 详情视图字段：归属其他组织且只有读动作。 */
 function sharedAgentFields() {
@@ -81,48 +89,11 @@ const sharedModel: ModelEntry = {
 };
 
 describe("Agent 表单与资源访问纯逻辑", () => {
-  // Agent 表单必须排除显式禁用的 MCP，同时保留共享资源的稳定 key 和展示名称。
-  test("转换 MCP 选项并过滤禁用资源", () => {
-    expect(
-      mapMcpOptions([
-        { id: "enabled", name: "filesystem", ...sharedMcpFields() },
-        { id: "disabled", name: "legacy", enabled: false },
-      ]),
-    ).toEqual([
-      {
-        id: "enabled",
-        key: "org-source/enabled",
-        name: "filesystem",
-        label: "Source Team/filesystem",
-        scope: { organizationId: "org-source", visibility: "public" },
-        organizationName: "Source Team",
-      },
-    ]);
-  });
-
-  // Agent 表单模型 value 使用模型 UUID，避免与 provider/modelId 格式的配置值混淆。
-  test("将共享模型转换为 Agent 表单选项", () => {
-    expect(mapModelOptions([sharedModel], "org-current")).toEqual([
-      {
-        value: "model-uuid",
-        label: "Shared Model",
-        modelId: "gpt-shared",
-        group: { id: "org-source/provider-openai", label: "OpenAI", scope: "shared" },
-      },
-    ]);
-  });
-
   // 模型配置选择器须优先使用共享 Provider 资源键，保证跨组织同名 provider 不冲突。
   test("构建模型配置查询值时优先共享 Provider 资源键", () => {
     expect(buildModelOptions([sharedModel])).toEqual([
       { value: "org-source/provider-openai/gpt-shared", label: "Source Team/OpenAI/Shared Model" },
     ]);
-  });
-
-  // 上传 URL 的路径参数需编码，根目录上传仍保留后端路由要求的尾部斜杠。
-  test("规范化上传查询路径并编码环境标识", () => {
-    expect(buildUploadUrl("env / 1")).toBe("/web/environments/env%20%2F%201/fs/");
-    expect(buildUploadUrl("env-1", "/docs/guides")).toBe("/web/environments/env-1/fs/docs/guides");
   });
 
   // 知识库编辑回填在后端无配置时应使用安全默认值，避免空表单产生无效策略。
@@ -167,25 +138,6 @@ describe("Agent 表单与资源访问纯逻辑", () => {
     expect(isValidAgentNameInput("会议-Agent-2")).toBe(true);
     expect(isValidAgentNameInput("-agent")).toBe(false);
     expect(isValidAgentNameInput("agent-")).toBe(false);
-  });
-
-  // Schema 必须将整数文本转换为数值，并对范围错误提供调用方可展示的消息。
-  test("按 schema 转换整数并报告范围错误", () => {
-    const schema = intRangeSchema({ label: "Results", min: 1, max: 10 });
-    expect(schema.parse("08")).toBe(8);
-    expect(validateWithSchema(schema, "11")).toEqual(["Results must be between 1 and 10"]);
-  });
-
-  // 名称和可选浮点 schema 分别守护 slug 规则与空白数值的缺省语义。
-  test("校验名称 schema 和可选浮点 schema", () => {
-    expect(nameSchema().safeParse("agent_name").success).toBe(false);
-    expect(optionalFloatSchema({ min: 0, max: 1 }).parse("  ")).toBeUndefined();
-  });
-
-  // ApiResult 解包应保留成功数据，并将空服务端消息规范化为稳定的兜底错误。
-  test("规范化 API 成功与失败结果", () => {
-    expect(unwrapApiResult(ok({ id: "agent-1" }))).toEqual({ id: "agent-1" });
-    expect(() => unwrapApiResult(err("UPSTREAM_ERROR", "", 502))).toThrow("Unknown API error");
   });
 
   // 外部 Agent 不可写或管理共享，但所有资源定位和展示必须使用来源组织上下文。
@@ -294,21 +246,6 @@ describe("Agent 表单与资源访问纯逻辑", () => {
     expect(isValidAgentNameInput("智")).toBe(true);
   });
 
-  // 名称输入允许空格，保持与后端允许的人类可读 Agent 名称契约一致。
-  test("Agent 名称允许空格", () => {
-    expect(isValidAgentNameInput("agent one")).toBe(true);
-  });
-
-  // 名称输入不得包含连续连字符，避免生成空路径段。
-  test("Agent 名称拒绝连续连字符", () => {
-    expect(isValidAgentNameInput("agent--one")).toBe(false);
-  });
-
-  // 名称输入不得超过后端支持的 64 个字符。
-  test("Agent 名称拒绝超过长度上限", () => {
-    expect(isValidAgentNameInput("a".repeat(65))).toBe(false);
-  });
-
   // 创建 payload 必须保留非空字段和默认 engineType，供未选择运行引擎的表单提交。
   test("Agent payload 使用默认引擎并保留非空字段", () => {
     expect(
@@ -337,24 +274,5 @@ describe("Agent 表单与资源访问纯逻辑", () => {
         knowledge: { knowledgeBaseIds: ["kb-1"], searchFirst: false, maxResults: "" },
       }).knowledge.policy,
     ).toEqual({ searchFirst: false, maxResults: 5 });
-  });
-
-  // Schema 应将非数值结果数转换为可展示的字段错误。
-  test("最大结果校验拒绝非整数", () => {
-    expect(validateWithSchema(intRangeSchema({ label: "Results", min: 1, max: 10 }), "none")).toEqual([
-      "Results must be an integer",
-    ]);
-  });
-
-  // Schema 应拒绝小于下界的结果数，避免无效检索策略进入 payload。
-  test("最大结果校验拒绝低于下界", () => {
-    expect(validateWithSchema(intRangeSchema({ label: "Results", min: 1, max: 10 }), "0")).toEqual([
-      "Results must be between 1 and 10",
-    ]);
-  });
-
-  // API 错误应保留服务端错误信息，供表单错误状态直接展示。
-  test("API 错误解包保留服务端消息", () => {
-    expect(() => unwrapApiResult(err("VALIDATION_ERROR", "Name already exists", 409))).toThrow("Name already exists");
   });
 });
