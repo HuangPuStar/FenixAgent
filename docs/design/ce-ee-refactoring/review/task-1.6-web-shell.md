@@ -1934,10 +1934,16 @@ T11e 的收口片：把宿主的最后一批「经 `@/src/...` 写到包内文�
 `agent-config/web/pages/**`）不在本片：它们的归位要连用例本身一起搬（登记见 §7.29 第 2 条）。
 **未新增门禁规则**拦这类写法：本任务是迁移收口，加一条有界检查属范围外的新机制，且现有
 `packages/*/web/__tests__/*-browser-surface.test.ts` 只守「包内不得回指宿主」这一个方向；登记为 §七
-待办（宿主 → 包 方向的裸相对穿透）。**T12 更新**：这里提到的「剩余两处同形写法」已随本片全部结清
-（`agent-form-dialog-ssr.test.tsx` 见 §7.31 第 ② 条、`agent-form-dialog-pure-logic.test.ts` 见第 ⑤ 条），
-`grep -rn '\.\./\.\./\.\./\.\./packages/' apps/web/` 实测为 0，宿主侧不再有任何穿透包内实现深路径的相对
-import；那条门禁规则仍未新增（第二个真实用例没有出现，符合「抽象延迟到第二个用例」）。
+待办（宿主 → 包 方向的裸相对穿透）。**T12 更新**：这里提到的「剩余两处同形写法」已随本片全部结清（`agent-form-dialog-ssr.test.tsx` 见 §7.31
+第 ② 条、`agent-form-dialog-pure-logic.test.ts` 见第 ⑤ 条）。**口径限定**：归零的是 **JS/TS 值导入**——
+`git grep -n '\.\./\.\./\.\./\.\./packages/' apps/web/` 由 2 处降为 1 处，且剩下这处不是 JS：宿主 CSS 还有
+一处同类形态，`apps/web/src/shell/agent-panel.css:6` 的
+`@import "../../../../packages/ui-components/web/chat/css/chat.css"`。它是 T11d 前就存在的既定形态（T11d 只改
+壳层 CSS 的落点，相对层级随之从三级变四级），且 CSS 无法像 JS 那样走包 `exports`——`@fenix/ui-components`
+目前只声明了 `./styles.css`（→ `web/styles/theme.css`，主题 token），没有 chat 聚合入口的出口。CSS 的
+`@import` 是构建期静态解析、不会把整棵模块图带进 bundle，与本次要根治的「JS 值导入绕过公开面」不同源，
+故按范围外记录（见 §7.31 登记转出第 6 项），不在此处顺手新增出口。那条宿主 → 包 门禁规则仍未新增
+（第二个**真实**用例没有出现，符合「抽象延迟到第二个用例」）。
 
 **实测对账**：脚本对全仓 `apps/**`、`packages/**`、`scripts/**` 的 50 处 `@/src/*` 引用逐条做路径存在性
 校验，唯一未解析的是 `apps/server/src/__tests__/architecture-check.test.ts:322` 的**合成 fixture 字符串**
@@ -2019,7 +2025,12 @@ T12 是收口片：把 T1–T11 留下的过期文档、混合归属测试、登
 - `bun run docs:build` 通过（23.07s）。
 - 台账双绿：RMD-08 的 MOVES 58 / RELOCATED 89 两项断言与文件头第 1–16 条记录一致；§四的「`identity-admin`
   必须 0 命中」口径作废后的替代核验（目录不存在 + 功能性引用 0 处）仍然成立。
-- 宿主侧「穿透包内实现深路径」的相对 import 归零（见 §7.30 的 T12 更新）。
+- 宿主侧「穿透包内实现深路径」的 **JS/TS 值导入**归零（`git grep -n '\.\./\.\./\.\./\.\./packages/' apps/web/`
+  由 2 → 1：测试那两处已随本片迁走，余下 1 处是宿主 CSS 的 `@import`，口径辨析与登记见 §7.30 的 T12 更新）。
+- 红线抽验：`packages/resources/identity-admin` 目录不存在；宿主 `apps/web/src/` 内无
+  `window.location.{href,replace,reload}` 与 `window.history.pushState`（`git grep` 命中的 2 处是
+  `use-file-tree-events.ts` 读取 `window.location.protocol` / `.host` 拼 WebSocket URL，属只读属性，不在
+  红线列举的导航用法内）。
 
 **登记转出（本任务不做，留待独立任务）**：
 
@@ -2030,7 +2041,12 @@ T12 是收口片：把 T1–T11 留下的过期文档、混合归属测试、登
 3. `packages/resources/knowledge/web/i18n/index.ts` 的键数注释仍靠人工维护，宜改为测试守护（同本任务
    `model-management-i18n` 的做法）。
 4. 两份历史设计文档中的过期指向（按「不改写历史文档」口径保留，仅在正文首行标注快照性质）。
-5. 宿主 → 包 方向的裸相对穿透检查：T12 已把该形态清零，**当前无对象**，故不加规则（见 §7.30 更新）。
+5. 宿主 → 包 方向的裸相对穿透检查：T12 已把 **JS/TS 值导入**形态清零，**当前无对象**，故不加规则
+   （见 §7.30 的 T12 更新）。
+6. 宿主 CSS 经相对路径 `@import` 包内样式（`apps/web/src/shell/agent-panel.css:6` → ui-components 的
+   `web/chat/css/chat.css`，全仓唯一一处）。要改走包说明符，需先为该聚合入口声明 CSS 出口（当前
+   `@fenix/ui-components` 只有 `./styles.css`），并评估 Vite 在「包内同名多份 CSS 分片」下的解析与去重
+   行为，属独立任务。
 
 ---
 
