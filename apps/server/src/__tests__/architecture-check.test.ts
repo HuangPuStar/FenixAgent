@@ -481,6 +481,7 @@ describe("architecture check CLI", () => {
       "import-sort",
       "module-registry",
       "web-contributions",
+      "owner-inventory",
       "architecture",
       "tsc (server)",
       "tsc (web)",

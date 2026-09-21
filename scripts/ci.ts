@@ -12,7 +12,7 @@ import { filterTestSummary } from "./ci-output";
 const STEPS = [
   {
     name: "format",
-    cmd: "biome format --write apps/server/src/ apps/ packages/ scripts/ docs/.vitepress/",
+    cmd: "biome format --write apps/server/src/ apps/ packages/ scripts/ db/ docs/.vitepress/",
     filter: (out: string) => {
       if (out.includes("No fixes applied") || out.includes("Formatted")) return null;
       return out;
@@ -20,7 +20,7 @@ const STEPS = [
   },
   {
     name: "import-sort",
-    cmd: "biome check --write --linter-enabled=false apps/server/src/ apps/ packages/ scripts/ docs/.vitepress/",
+    cmd: "biome check --write --linter-enabled=false apps/server/src/ apps/ packages/ scripts/ db/ docs/.vitepress/",
     filter: (out: string) => {
       if (out.includes("No fixes applied") || out.includes("Checked")) return null;
       return out;
@@ -78,7 +78,7 @@ const STEPS = [
   },
   {
     name: "lint",
-    cmd: "biome check apps/server/src/ apps/ packages/ scripts/ docs/.vitepress/",
+    cmd: "biome check apps/server/src/ apps/ packages/ scripts/ db/ docs/.vitepress/",
     filter: (out: string) => {
       if (out.includes("Checked") && !out.includes("error") && !out.includes("warning")) return null;
       // 只保留有问题的文件行
