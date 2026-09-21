@@ -264,6 +264,7 @@
         "@fenix/resource-memory": "workspace:*",
         "@fenix/resource-sandbox": "workspace:*",
         "@fenix/resource-skill": "workspace:*",
+        "@fenix/ui-components": "workspace:*",
         "@fenix/web-runtime": "workspace:*",
         "acp-link": "workspace:*",
         "drizzle-orm": "^0.45.2",

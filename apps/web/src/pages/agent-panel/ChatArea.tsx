@@ -19,6 +19,8 @@
  * `ProdViewChatAreaProps` 窄端口接收宿主传入的聊天容器——分享页路由 `apps/web/src/routes/view/$prodViewId.tsx`
  * 负责把本组件作为该 prop 注入。
  */
+
+import { loadBoundMcps } from "@fenix/agent-config/web";
 import { useRequest } from "ahooks";
 import { PanelRight } from "lucide-react";
 import {
@@ -121,6 +123,16 @@ export function ChatArea({ agentId, sessionId, visible, deletedEnvironmentIds, m
     },
   );
 
+  // 已绑定 MCP 列表：ui-components 面板的命令菜单 MCP 条目来源（`ChatPanel` 的 `boundMcps` 端口）。
+  // 取数必须留在宿主容器：查询要同时读 agent-config 与 MCP 资源包，而 ChatPanel 所在的
+  // `@fenix/agent-runtime` 按 `.dependency-cruiser.cjs` 的 agent-runtime-not-to-resources 不得依赖
+  // resources（含 agent-config），故由宿主取好后注入。查询失败降级为「无绑定 MCP」（面板仍可用）。
+  const { data: boundMcps } = useRequest(async () => (activeAgentId ? loadBoundMcps(activeAgentId) : []), {
+    refreshDeps: [activeAgentId],
+    ready: !!activeAgentId,
+    onError: (err) => console.warn("[ChatArea] 加载已绑定 MCP 失败", err),
+  });
+
   // changedFiles 由 ChatInterface 通过 chat:stats 摘要事件派发（已含 extractChangedFiles 的结果），
   // 此处只做投影存储，不再持有完整 entries 或二次全量派生。
   // 按 agentName 过滤：ChatArea 维护跨 agent 的 session keep-alive 槽位，
@@ -200,7 +212,13 @@ export function ChatArea({ agentId, sessionId, visible, deletedEnvironmentIds, m
     return (
       <ChatPageVisibleContext.Provider key={`${key}:${restartVersion}`} value={isActive}>
         <div style={{ display: isActive ? "contents" : "none" }}>
-          <ChatPanel agentId={slot.agentId} sessionId={slot.sessionId} />
+          {/* boundMcps 只注入当前活跃 slot：keep-alive 的隐藏 slot 若拿到活跃 agent 的列表，
+              重新激活时会短暂显示另一个 agent 的 MCP 条目 */}
+          <ChatPanel
+            agentId={slot.agentId}
+            sessionId={slot.sessionId}
+            boundMcps={slot.agentId === activeAgentId ? boundMcps : undefined}
+          />
         </div>
       </ChatPageVisibleContext.Provider>
     );

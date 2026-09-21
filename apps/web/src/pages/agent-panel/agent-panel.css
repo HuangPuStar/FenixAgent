@@ -1,4 +1,9 @@
-@import "../../../../../packages/chat-channel/web/src/pages/agent-panel/chat-design.css";
+/* Chat 设计样式归 `@fenix/ui-components`（聚合入口按级联顺序导入 12 份分段样式表）。
+ * 从 chat-channel 的 `chat-design.css` 改指此处必须与该 DOM 同批：包内 DOM 的命令菜单是 4 轨网格
+ * （行首图标 + 尾列包裹），旧样式表没有对应规则，单换样式或单换 DOM 都会错版。
+ * 本文件原先在末尾另有一段「玻璃磨砂命令岛」补充段（旧第 916-1022 行），已随本次切换删除——
+ * 该段已逐字包含在包内 `chat-design-composer.css`，且包内注释记录了它必须排在设计规则之后的级联理由。 */
+@import "../../../../../packages/ui-components/web/chat/css/chat.css";
 
 /* ============================================================
    Unified Agent Panel — 三栏布局专用样式
@@ -911,112 +916,4 @@ file-tree-container {
   flex: 1;
   min-width: 0;
   overflow: hidden;
-}
-
-/* =============================================================================
-   ChatComposer —— 玻璃磨砂命令岛
-   ============================================================================= */
-
-/* ChatHeader —— 顶部浮动玻璃卡片，与 ChatComposer 形成视觉对称。
- * 替代原先的 border-b 横条分隔；通过外层 ACPMain 的 padding 让卡片悬浮于子页面顶部。 */
-.chat-header-card {
-  background: rgba(255, 255, 255, 0.72);
-  backdrop-filter: blur(16px) saturate(180%);
-  -webkit-backdrop-filter: blur(16px) saturate(180%);
-  border: 1px solid rgba(255, 255, 255, 0.9);
-  border-radius: 16px;
-  box-shadow: none;
-  overflow: hidden;
-  transition:
-    border-color 0.2s ease,
-    box-shadow 0.2s ease;
-}
-
-.chat-header-card:hover {
-  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.06);
-}
-
-/* 暗色模式 */
-:root.dark .chat-header-card,
-.dark .chat-header-card {
-  background: rgba(45, 45, 47, 0.72);
-  border: 1px solid rgba(255, 255, 255, 0.08);
-  box-shadow: none;
-}
-
-.chat-header-card:hover {
-  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
-}
-
-/* backdrop-filter 不支持时的 fallback */
-@supports not ((backdrop-filter: blur(16px)) or (-webkit-backdrop-filter: blur(16px))) {
-  .chat-header-card {
-    background: var(--color-surface-1);
-  }
-}
-
-.chat-composer-card {
-  background: rgba(255, 255, 255, 0.72);
-  backdrop-filter: blur(16px) saturate(180%);
-  -webkit-backdrop-filter: blur(16px) saturate(180%);
-  border: 1px solid rgba(255, 255, 255, 0.9);
-  border-radius: 20px;
-  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.06);
-  overflow: clip;
-  transition:
-    border-color 0.2s ease,
-    box-shadow 0.2s ease;
-}
-
-/* 暗色模式 */
-:root.dark .chat-composer-card,
-.dark .chat-composer-card {
-  background: rgba(45, 45, 47, 0.72);
-  border: 1px solid rgba(255, 255, 255, 0.08);
-  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
-}
-
-/* focus-within：不显示聚焦高亮，保持与页面背景融合 */
-.chat-composer-card:focus-within {
-  border-color: color-mix(in srgb, var(--color-brand) 8%, transparent);
-  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.06);
-}
-
-/* backdrop-filter 不支持时的 fallback */
-@supports not ((backdrop-filter: blur(16px)) or (-webkit-backdrop-filter: blur(16px))) {
-  .chat-composer-card {
-    background: var(--color-surface-1);
-  }
-}
-
-/* textarea 编辑区 */
-.chat-composer-textarea {
-  font-family: var(--font-display, inherit);
-}
-
-.chat-composer-textarea:focus {
-  outline: none;
-}
-
-/* 元信息条 */
-.chat-composer-meta {
-  border-top: 1px solid rgba(0, 0, 0, 0.05);
-}
-
-:root.dark .chat-composer-meta,
-.dark .chat-composer-meta {
-  border-top-color: rgba(255, 255, 255, 0.05);
-}
-
-/* 元信息条分隔线 */
-.chat-composer-divider {
-  width: 1px;
-  height: 12px;
-  background: rgba(0, 0, 0, 0.08);
-  flex-shrink: 0;
-}
-
-:root.dark .chat-composer-divider,
-.dark .chat-composer-divider {
-  background: rgba(255, 255, 255, 0.08);
 }

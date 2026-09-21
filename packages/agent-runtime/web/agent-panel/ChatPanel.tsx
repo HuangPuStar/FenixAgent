@@ -4,7 +4,8 @@ import {
   createDeterministicRcsSessionId,
   type PublicErrorInfo,
 } from "@fenix/chat-channel";
-import { ACPMain } from "@fenix/chat-channel/web";
+import { ACPMain } from "@fenix/ui-components/chat/shell/ACPMain";
+import type { BoundMcpOption } from "@fenix/ui-components/chat/shell/chat-interface-types";
 import { Bot, Loader2 } from "lucide-react";
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
@@ -20,6 +21,7 @@ import { useSessionState } from "../hooks/use-session-state";
 import { applyDocHubUpdate, getDocHubStateVectors, replaceDocHubUpdate } from "../yjs/doc-hub";
 import { buildYjsUrl, createYjsWs, type YjsWsState } from "../yjs/yjs-ws";
 import { resolveChatAuthState } from "./chat-auth-state";
+import { useChatPanelPorts } from "./chat-panel-ports";
 import type { ChatWsConnectionState } from "./chat-visible-reconnect";
 import { sendSessionMutationWithRefresh } from "./session-mutation-refresh";
 
@@ -33,6 +35,14 @@ interface ChatPanelProps {
   scenePrompt?: string;
   contextKey?: string;
   onPromptComplete?: () => void;
+  /**
+   * 已绑定 MCP 列表（透传给 ui-components 面板的 `boundMcps` 端口）。
+   *
+   * 取数在宿主容器：`agent-config/web` 的 `loadBoundMcps` 只能由宿主容器调用——`.dependency-cruiser.cjs`
+   * 的 `agent-runtime-not-to-resources` 禁止本包依赖 resources（含 `agent-config`）。未注入时命令菜单
+   * 只显示 ACP 命令、不含 MCP 条目。
+   */
+  boundMcps?: readonly BoundMcpOption[];
 }
 
 export function ChatPanel({
@@ -43,6 +53,7 @@ export function ChatPanel({
   scenePrompt,
   contextKey,
   onPromptComplete,
+  boundMcps,
 }: ChatPanelProps) {
   const { t } = useTranslation(NS.AGENT_PANEL);
   const [connectionState, setConnectionState] = useState<WsConnectionState>("disconnected");
@@ -364,6 +375,9 @@ export function ChatPanel({
     [sendAction, sendViaWs, sessionState.acpSessionId],
   );
 
+  // 宿主端口（纯化后由 ui-components 的 chat 外壳注入；实现与来源见 chat-panel-ports.tsx）
+  const ports = useChatPanelPorts({ agentId, sessionId });
+
   // 未选中实例 → 欢迎空状态
   if (!agentId) {
     return (
@@ -446,7 +460,9 @@ export function ChatPanel({
           availableModes={derivedState.availableModes}
           currentModeId={derivedState.currentModeId}
           supportsModeSelection={derivedState.supportsModeSelection}
+          boundMcps={boundMcps}
           {...callbacks}
+          {...ports}
         />
       </TooltipProvider>
     );

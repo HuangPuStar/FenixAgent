@@ -98,7 +98,7 @@ WebShell 从静态 registry 收集各资源包的 web contribution（不反向�
 | T2 | 宿主零消费死代码与重复副本删除 | 已交付 | 见下方 §7.2 |
 | T3 | `@fenix/ui-components` 扩面 | 已交付 | `b858bf68f` |
 | T4 | `identity/web` 清零 + i18n | 4a 已交付 / 4b 待办 | 见下方 §7.3 |
-| T5 | `chat-channel/web` 清零 | a,b 已交付 / c,d 待办 | 见下方 §7.4、§7.5 |
+| T5 | `chat-channel/web` 清零 | a,b,c1,c2 已交付 / c5,d 待办 | 见下方 §7.4–§7.8 |
 | T6 | `agent-runtime/web` 收敛 | 待办 | — |
 | T7 | 5 条 `special-dependency` 消除 | 待办 | — |
 | T8 | 宿主组件/lib/api 簇改指并删除 | 待办 | — |
@@ -114,7 +114,7 @@ WebShell 从静态 registry 收集各资源包的 web contribution（不反向�
 | --- | --- | --- |
 | T5a | `agent-config/web` 新增 `loadBoundMcps` | 纯新增助手 + 出口，见 §7.4；`agent-runtime` 不得持有该查询（§四.10） |
 | T5b | `ChatArea` 簇迁至宿主 | **已交付**（§7.5）：`ChatArea.tsx` / `chat-area-lifecycle.ts` / `chat-layout.css` 迁 `apps/web/src/pages/agent-panel/`；`ProdViewPage` 改注入窄端口；环境删除用例随迁 |
-| T5c | `ChatPanel` 改指 ui-components 面板 | **c1 已交付**（§7.6），余 c2–c5 待办：c2 `ChatPanel` 改指 `@fenix/ui-components/chat/shell/ACPMain` + 端口接线（外移出 500 行红线）；c3 宿主注入 `boundMcps`（`loadBoundMcps`）；c4 chat CSS 切包；c5 测试归位 |
+| T5c | `ChatPanel` 改指 ui-components 面板 | **c1 已交付**（§7.6，一致性缺口修复见 §7.7）、**c2 已交付**（§7.8）；c3（宿主注入 `boundMcps`）与 c4（chat CSS 切包）并入 c2——CSS 必须与 DOM 同批，分离提交会出现两端样式都错版的中间态；余 c5 测试归位待办 |
 | T5d | `chat-channel/web` 退场 | 删 3 个组件与入口（含 §四.9 的 `ContextPanel` 死代码链）、删 `./web*` 出口与 tsconfig paths、测试归位、删台账 1 条 |
 
 ---
@@ -561,3 +561,173 @@ T5c（`ChatPanel` 改指 ui-components 面板）拆为 5 个独立提交：c1 ui
 - `bun run build:web` → ✓ built（本包 shell 尚未被接入，无 chunk 受影响）
 - `bun run architecture:check` → ✓ 2242 files / 10 rules / 26 条已登记例外（+2 = 新增 bridge 钩子与其测试）
 - `bun run check:dependencies` → ✓ 2394 modules / 11 条已登记例外 / 0 条新增违规
+
+### 7.7 T5c1b 端口消费一致性核查与四处缺口修复（2026-09-21，`98a84ad68`）
+
+c2 要把 `ACPMain` 的宿主职责从「组件内直连」改为「宿主注入」，前提是那张端口对照表逐条对齐线上实
+现（chat-channel 的 `ChatInterface` / `ACPMain` 是该边界的现役代码，包内实现是它的纯化版）。核查用一
+个并发一致性工作流：每个端口一个子代理，读源实现与包内实现两侧代码，产出「源行为 → 包内行为 → 是否
+等价」；每条结论再由独立子代理对抗验证（默认尝试证伪，必须给出**线上可达路径**才算 real）。规模 23
+个子代理、0 error。
+
+结论：4 条缺口，其中 **1 条 real=True（用户可见）**，3 条 real=False（机制成立，线上链路不可达）。
+
+#### 缺口 A：卡片标签注册表两份模块实例（real=True，用户可见）
+
+- **机制**：宿主 `apps/web/src/lib/card-renderer/{registry,emitter,context}` 与包内
+  `web/lib/card-renderer.tsx`（是宿主三文件的超集）是两份互不相通的 `Map`。`agent-sites` 卡片由宿主
+  `src/lib/card-renderer/builtins.ts` 注册，而 markdown 渲染方（包内 `web/chat/primitives/message.tsx`）
+  在 T3 之后读的是**包内**注册表 ⇒ 标签不在白名单 ⇒ rehype-sanitize 直接剥离整个标签。
+- **影响**：助手回复里的站点卡片连同「查看站点」入口一起消失，而 skill 文档规定该卡片是告知用户建站
+  访问地址的唯一渠道（禁止手工拼 URL）——即用户拿不到自己刚建好的站点地址。
+- **修**：注册落点与渲染方统一到包内注册表（`builtins.ts` + 宿主 `ai-elements/message.tsx`）。宿主
+  `src/lib/card-renderer/` 三文件自此是死副本，随 T8 连同 T4a 的别名债务一并删除。
+
+#### 缺口 B：发送边界的图片二次压缩未接端口（real=False）
+
+源实现在输入岛与发送边界（`useChatInputSubmit`）各压缩一次；纯化后 `compressImage` 只接到输入岛，
+发送边界不传 ⇒ 只剩一次压缩，失去源实现「发出图片 ≤2MiB」的兜底。对抗验证未能在线上构造出可达路径
+（正常链路输入岛已用同一份参数压缩过，判 real=False）；修复理由是端口语义一致：**同一个端口必须被同
+一条链路上的所有消费点消费**，压缩失败回退为原文件这类边界仍会走到第二道压缩。
+
+#### 缺口 C：引用配额读渲染期快照（real=False）
+
+源实现用 `quotesRef.current` 同步累加配额；包内 `useSemiControlledState` 只暴露渲染期值 ⇒ 同一 React
+批次内连续派发的多条引用各自按旧额度放行，可绕过 8 条 / 8000 字符上限。线上 `chat:quote` 生产方一次
+只派发一条，故 real=False。修法：半受控状态原语增第三个返回值 `read`（同一份 ref 的同步读口，源实现
+`quotesRef.current` 的等价物），`handleQuote` 改用它；补一条同批次回归测试
+（`chat-composer.test.tsx`：一次 `act` 内派发 3 条 4000 字符引用 → 只保留 2 条；去掉修复即失败）。
+
+#### 缺口 D：`onNotice` 未透传到侧栏与头部（real=False）
+
+`ACPMainProps` 已有 `onNotice`，但没有透传给 `ChatHeader` / `SidebarSessionList` / 移动端抽屉三个消费
+点 ⇒ 会话重命名、删除失败的提示无出口（源实现在 `SidebarSessionList` 内直连 sonner）。该路径需服务端
+返回错误才触发，判 real=False；修它是因为这三处正是该端口在 c2 之后唯一的用途。
+
+#### 提交切分
+
+4 条修复单独成 `98a84ad68`（9 个文件），与 c2 的切换本体分开：修复不依赖 c2 的 DOM/CSS 同批约束，
+单独可 `precheck`、单独可回滚。同一文件 `ACPMain.tsx` 按 hunk 级切分——缺口 D 的 4 行 `onNotice` 透传
+进本提交，c2 的 `boundMcps?: readonly BoundMcpOption[]` 一行留在切换提交（它服务于 c2 的注入端口）。
+
+#### 验证
+
+- `env -u ANTHROPIC_MODEL bun run precheck` → ✓ All passed：server 770 pass、package 7338 pass / 2 skip
+  （= §7.6 的 7337 + 1 个新配额用例）、web-app 949 pass
+- `bun run lint` / `bun run typecheck:web` / `bun run check:dependencies` / `bun run architecture:check` → ✓
+- `bun run build:web` → ✓
+
+### 7.8 T5c2 `ChatPanel` 改指 ui-components 面板（2026-09-21）
+
+本片是 T5 的**原子切换**：`agent-runtime` 的 `ChatPanel` 从 `@fenix/chat-channel/web` 的 `ACPMain` 改指
+`@fenix/ui-components/chat/shell/ACPMain`，宿主职责全部经端口注入。c3（`boundMcps` 注入）与 c4（chat
+CSS 切包）并入本片而非各自成片，理由见下。
+
+#### 端口装配（新增 `web/agent-panel/chat-panel-ports.tsx`）
+
+12 个端口（`renderPeriTaskDetail` / `sidebarOpen` / `onSidebarOpenChange` / `projectEntries` /
+`flushContext` / `uploadFiles` / `compressImage` / `renderFilePicker` / `subscribeExternal` / `onNotice` /
+`onStatsChange` / `onOpenWorkspaceFile`）集中在一个模块里装配，逐端口对照表写在文件头（源实现位置 ↔
+本模块做法 ↔ 偏差与理由）。`ChatPanel.tsx` 只加两行：`const ports = useChatPanelPorts({ agentId, sessionId })`
+与 `{...ports}`，既避免 ChatPanel 越过 500 行红线，也让「每个端口对应哪段源实现」可逐条对照。
+
+**已知风险**：`ChatPanel.tsx` 本片后为 **497 行 / 500 行红线**（端口外移正是为了让本片净增的 18 行不越线）。
+T6 把 `ChatPanel` 归位宿主时须顺手拆分（transport 建连与渲染分支已是天然边界），否则下一次改动必然撞线。
+
+两个非显然取舍记在文件头：`onStatsChange` **不传 `emit`**（保住 window `chat:stats` 派发路径，否则
+`ChatArea` 的 `useChangedFilesFromStats` 会静默丢掉 ArtifactsPanel 的变更文件）；`subscribeExternal` 只
+桥接 `file-tree:reference`（建议提示词与引用已在 c1 走包内闭环，再桥接会重复投递）。
+
+#### 上下文队列双副本修复（用户可见）
+
+`context-queue` 是**有状态**模块（模块级 `Map`）。写入方（`workflow/web`）在任务 1.3 已改指
+`@fenix/web-runtime/chat/context-queue`，而取出方（chat-channel `ChatInterface.flushContext`）读宿主副本
+`apps/web/src/lib/context-queue.ts`——宿主副本无人写入、恒返回 `null`，**workflow 注入的上下文自 1.3 起
+被静默丢弃**。端口改读包副本（与写入方同实例）即修复；宿主副本随 T8 删除。该链路此前没有测试覆盖，
+属「1.3 的改指不完整」而非本片引入的回归。
+
+#### `boundMcps` 宿主注入（原 c3）
+
+`loadBoundMcps` 的调用点在宿主 `ChatArea.tsx`：查询同时读 agent-config 与 MCP 资源包，而 `ChatPanel`
+所在的 `@fenix/agent-runtime` 按 `.dependency-cruiser.cjs` 的 `agent-runtime-not-to-resources` 不得依赖
+resources（含 `agent-config`）。只注入**当前活跃 slot**——keep-alive 的隐藏 slot 若拿到活跃 agent 的
+列表，重新激活时会短暂显示另一个 agent 的 MCP 条目。查询失败降级为「无绑定 MCP」（面板仍可用），
+与源实现「列表为空则命令菜单不显示 MCP 组」一致。类型上 `boundMcps?: readonly BoundMcpOption[]`
+（宿主传入的是只读视图，不复制数组）。
+
+#### chat CSS 切包（原 c4，必须与 c2 同批）
+
+`agent-panel.css` 第 1 行的 `@import` 从 `chat-channel/web/src/pages/agent-panel/chat-design.css` 改指
+`packages/ui-components/web/chat/css/chat.css`（聚合入口，按级联顺序导入 12 份分段样式表）；文件末尾原
+「玻璃磨砂命令岛」补充段（旧 916–1022 行）删除——该段已逐字包含在包内 `chat-design-composer.css`，且
+包内注释记录了它必须排在设计规则之后的级联理由。
+
+**为什么 CSS 不能单独成片**：包内 DOM 的命令菜单是 **4 轨网格**（`.chat-command-menu-command-icon` 行首
+图标 + `.chat-command-menu-tail` 尾列包裹，`grid-template-columns: 16px …`），旧样式表是 3 轨、且没有这
+两个类的规则。单换样式或单换 DOM 都会错版——这正是「CSS 必须与产生该 DOM 的代码同批」的实例。
+
+#### 其他改动
+
+- i18n：宿主登记第 15 个包命名空间 `UI_COMPONENTS`（字典经 `@fenix/ui-components/i18n`，常量经
+  `@fenix/ui-components/i18n/namespace`）。未登记时 i18next 回显原始 key，整片文案变成 `chat.…`。
+  T9 的 i18n 重划由此提前一格完成，T9 只剩宿主自有命名空间的收敛。
+- `structuredToThreadEntries` 形参放宽为 `readonly StructuredMessage[]`（端口签名要求只读入参）；
+  `agent-runtime/package.json` 增 `@fenix/ui-components` 依赖。
+- `ChatArea` 惰性加载的 `ChatPanel` 仍按宿主别名解析（`@/src/pages/agent-panel/ChatPanel` 指向
+  agent-runtime 的实现），T6 才把 ChatPanel 归位宿主。
+
+#### 明文不在本片范围
+
+`chat-channel/web` 出口与 3 个旧组件的删除、`initialCwd` 的移除（T5d）；测试归位（c5）；宿主
+`context-queue` / `chat-stats` / `structured-to-thread` / `artifacts-preview-events` 死副本与整份
+`src/lib/card-renderer/` 的删除（T8）；`agent-runtime/web` 的别名清零（T6）。
+
+#### 验证
+
+- `env -u ANTHROPIC_MODEL bun run precheck` → ✓ All passed：server 770 pass、package 7338 pass / 2 skip、
+  web-app 949 pass
+- `bun run typecheck:web` / `bun run lint` → ✓ 零告警
+- `bun run check:dependencies` → ✓ 2395 modules / 11 条已登记例外 / 0 条新增违规
+- `bun run architecture:check` → ✓ 2243 files / 10 rules / 26 条已登记例外
+- `bun run build:web` → ✓（`ChatPanel` chunk 301.69 kB；dist `agent-panel-*.css` 含 `chat-header-card` ×7、
+  `chat-command-menu-tail` ×1、`chat-composer-wrapper` ×5——切换后的样式表确实进入了生产产物；i18n chunk
+  含 `quoteLimitReached`，字典装载到位）
+
+---
+
+## 八、用户可见行为变更
+
+本节汇总 T3–T5c2 期间「包内实现与线上 chat-channel 实现」之间**用户可感知**的差异，供发布说明与回归
+验收使用。分两类：切换后修复（此前行为是坏的）、有意的呈现取舍（此前行为正常，包内实现选择不同）。
+
+### 8.1 切换后修复的缺陷
+
+| # | 现象（切换前） | 成因 | 归属 |
+| --- | --- | --- | --- |
+| 1 | 助手建站后回复里的站点卡片不显示，用户拿不到站点地址 | 卡片注册表两份模块实例（§7.7 缺口 A） | T5c1b `98a84ad68` |
+| 2 | workflow 注入的上下文丢失（Agent 看不到工作流上下文） | `context-queue` 双副本，写入方与取出方各持一份（§7.8） | T5c2 |
+| 3 | 状态面板「变更文件」里点击文件条目无反应 | 源实现该处派发的事件详情只有 `{path}`、缺 `envId`，被消费方的环境隔离校验判为「其他 environment」恒忽略（工具卡片与消息内 `@./path` 的点击一直正常） | T5c2 |
+| 4 | 会话重命名 / 删除失败时无提示 | `onNotice` 未透传到侧栏与头部（§7.7 缺口 D） | T5c1b `98a84ad68` |
+
+第 3 条的修法是两处共用同一个派发器（`dispatchArtifactsPreviewFile(envId, path)`）；事件名未变，变的
+是状态面板那条的详情补齐了 `envId`。第 4 条在线上需服务端返回错误才触发（对抗验证判 real=False）。
+
+### 8.2 有意的呈现取舍
+
+| # | 差异 | 理由 | 归属 |
+| --- | --- | --- | --- |
+| 1 | 工具卡片不再展示脱敏错误的 `Type` / `ID` 两行 | 该块是网格第二列，与标题下方第二行的错误信息重复（`narrate` 的 `errorDetail` 优先取 `publicError.message`），只保留后者的信息量 | T3 `b858bf68f` |
+| 2 | 工具卡片运行中标题改为 Shimmer 动效、完成态状态词移除 | 复用包内 `chat/primitives/shimmer`（与推理「思考中」同源），状态词与左侧图标重复 | T3 `b858bf68f` |
+| 3 | `TodoChanges` 每条待办右侧的变更标签（带底色 badge）移除 | 变更语义已由左侧图标与文案样式表达；随之删除两个语言包里仅此处使用的 `chat.components.todoChanges.*` | 前置 `e8c73280a` |
+| 4 | 用户消息图片缩略图 80px 居中 → 96px（`size-24`）右对齐（`ml-auto`） | 复用包内 `primitives/message-attachments`，与附件条的尺寸/对齐统一 | T3 `b858bf68f` |
+| 5 | 附件上传失败提示为通用文案，原文只进控制台 | 包内无法翻译宿主上传回调抛出的业务错误；属包校验的错误（`chatComposer.*` key）仍按原文翻译 | 前置 `e8c73280a` |
+| 6 | 空状态建议提示词与消息「引用」的投递范围为**本实例**（源实现走全局 window 事件，靠 `contextScope` 过滤跨实例串扰） | 合并订阅按 `ChatInterface` 实例分发，订阅者集合属于该实例，跨实例串扰在结构上不可能（§7.6 取舍 2）；宿主注入的外部来源（文件树引用）仍由宿主做环境归属过滤 | T5c1 `403af2969` |
+
+第 6 条在线上无可观测差异（验证判 real=False）：源实现的 `contextScope` 过滤已把多实例串扰挡住，包内
+实现是把「靠过滤补救」换成「靠作用域不成立」。
+
+### 8.3 发布验收建议
+
+按 8.1 的 4 条做定向回归（建站卡片可见并可跳转、工作流上下文注入、状态面板文件点击、会话重命名失败
+提示），8.2 的 6 条按「与旧版截图比对」验一次即可；`chat-channel/web` 尚未删除，旧实现可随时对比
+（T5d 删除后仅存 git 历史）。

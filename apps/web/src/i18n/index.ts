@@ -19,6 +19,8 @@ import { SANDBOX_NS, sandboxResources } from "@fenix/resource-sandbox/web/i18n";
 import { SKILL_NS, skillResources } from "@fenix/resource-skill/web/i18n";
 import { TASKS_V2_NS, tasksV2Resources } from "@fenix/resource-task/web/i18n";
 import { WORKFLOW_NS, workflowResources } from "@fenix/resource-workflow/web/i18n";
+import { uiComponentsResources } from "@fenix/ui-components/i18n";
+import { UI_COMPONENTS_NS } from "@fenix/ui-components/i18n/namespace";
 import { NS as SHARED_NS } from "@fenix/web-runtime/i18n/namespace";
 import i18n from "i18next";
 import LanguageDetector from "i18next-browser-languagedetector";
@@ -51,9 +53,13 @@ import toolNarratorZH from "./locales/zh/toolNarrator.json";
 /**
  * 宿主命名空间表 = 跨包中心表（`@fenix/web-runtime/i18n/namespace`）+ 各包自有常量。
  *
- * 中心表已收录全部宿主自有命名空间与包自有命名空间（`UI_COMPONENTS` 只登记名称，字典归
- * `@fenix/ui-components`，宿主尚未接入——见 stage-2 计划 §1.3 的已知缺陷条目）；`SANDBOX` 尚未进表，
- * 先取包的常量，待中心表补齐后可直接改用 `SHARED_NS.SANDBOX`。
+ * 中心表已收录全部宿主自有命名空间与包自有命名空间；`SANDBOX` 尚未进表，先取包的常量，
+ * 待中心表补齐后可直接改用 `SHARED_NS.SANDBOX`。
+ *
+ * `UI_COMPONENTS` 的字典在 T5c2（`ChatPanel` 改指 ui-components 面板）随切换接入：包内聊天界面
+ * 全量使用该命名空间，未登记时 i18next 会回显原始 key（整片文案变成 `chat.…`）。该包的字典经
+ * `@fenix/ui-components/i18n` 登记（该包 exports 用 `./i18n` 而非 `./web/i18n`，命名空间常量另从
+ * `@fenix/ui-components/i18n/namespace` 取，避免与字典同模块被一起拉进首屏）。
  */
 export const NS = {
   ...SHARED_NS,
@@ -114,6 +120,7 @@ const packageResources = {
     [HINDSIGHT_NS]: hindsightResources.en,
     [PROD_VIEWS_NS]: prodViewsResources.en,
     [SANDBOX_NS]: sandboxResources.en,
+    [UI_COMPONENTS_NS]: uiComponentsResources.en,
   },
   zh: {
     [AGENTS_NS]: agentResources.zh,
@@ -130,6 +137,7 @@ const packageResources = {
     [HINDSIGHT_NS]: hindsightResources.zh,
     [PROD_VIEWS_NS]: prodViewsResources.zh,
     [SANDBOX_NS]: sandboxResources.zh,
+    [UI_COMPONENTS_NS]: uiComponentsResources.zh,
   },
 } as const;
 
