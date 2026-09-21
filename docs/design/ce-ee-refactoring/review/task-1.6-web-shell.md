@@ -102,7 +102,7 @@ WebShell 从静态 registry 收集各资源包的 web contribution（不反向�
 | T6 | `agent-runtime/web` 收敛 | 已交付（a–e） | 见下方 §7.11 |
 | T7 | 5 条 `special-dependency` 消除 | 已交付（含 4b） | 见下方 §7.12 |
 | T8 | 宿主组件/lib/api 簇改指并删除 | 已交付（a–d + z） | 见下方 §7.13 |
-| T9 | i18n 归属重划与 `quoteTruncatedBadge` 缺陷修复 | **a、b、c 已交付** | a 见 §7.15 / b 见 §7.16 / c 见 §7.17 |
+| T9 | i18n 归属重划与 `quoteTruncatedBadge` 缺陷修复 | **a、b、c、d 已交付** | a 见 §7.15 / b 见 §7.16 / c 见 §7.17 / d 见 §7.18 |
 | T10 | 测试迁移与 happy-dom 收敛 | 待办 | — |
 | T11 | WebShell 落地 | 待办 | — |
 | T12 | 收尾：台账复核、文档修订、证据留痕 | 待办 | — |
@@ -1165,9 +1165,9 @@ TopModeTabs,artifacts-dialogs,artifacts-files-workspace,use-file-tree-events,use
 
 ### 7.15 T9a identity 借键结清（2026-09-21，`fc5a39f85`）
 
-T9 拆三片：**T9a 借键结清**（本节）、T9b i18n 缺陷修复、T9c 宿主自有命名空间收敛。范围以本文件
-§7.10 的结论为准——「T9 的 i18n 重划由此提前一格完成，T9 只剩宿主自有命名空间的收敛」（T5c2 已把包
-命名空间的注册做完，`uiComponents` 字典随切换接入）。
+T9 拆四片：**T9a 借键结清**（本节）、T9b i18n 缺陷修复、T9c 宿主自有命名空间收敛、T9d 公开错误正文
+本地化（§7.18，由 T9b 末段登记的跨包缺口派生）。范围以本文件 §7.10 的结论为准——「T9 的 i18n 重划由此
+提前一格完成，T9 只剩宿主自有命名空间的收敛」（T5c2 已把包命名空间的注册做完，`uiComponents` 字典随切换接入）。
 
 **债务来源**：T4（§7.3）把 identity 的字典搬进包内时，**只搬了 apikey / orgs 两份**，
 `ChangePasswordDialog` 读的宿主 `NS.SETTINGS`（11 键全在 `apps/web/src/i18n/locales/*/settings.json`）
@@ -1215,24 +1215,26 @@ registryEvent 告警」）：该文件单跑 12 pass、`bun test packages/` 连�
 有既有先例（`AgentManagementPage` 用 `NS.AGENTS`、`routes/admin/*` 用 `"observer"`），常量经中心表
 `NS.UI_COMPONENTS` 取，未新增 import。
 
-**登记未处理：`PublicError.message` 恒为英文，中文界面必然中英混排。** `packages/chat-channel/src/public-error.ts`
-的 `PUBLIC_ERROR_MESSAGES` 为 28 个 type 各备 `zh` / `en` 两条，但 `createPublicError` 与跨边界校验
-`isPublicError` 都把它钉在 `.en` 上（后者要求 `message === PUBLIC_ERROR_MESSAGES[type].en` 才认作合法公开错误）——
-`zh` 那一半在**全仓没有任何读取点**，只有 `src/__tests__/public-error.test.ts` 断言它非空；而两处 UI 卡片
-（包的 `MessageBubble` 与宿主 `PublicErrorCard`）都直接渲染 `error.message`。因此本片修完标题后，中文界面下卡片
-仍是「中文标题 + 英文正文」。可选修法有三条——① 保持契约现状、只登记；② 前端按稳定的 `error.type` 查本地化
-字典渲染；③ 把 28×2 条文案从 TS 表迁进包 i18n 字典、由 UI 按 `type` 取——三条都会改到 `@fenix/chat-channel` 的
-公共契约或引入跨包同步义务，按 CLAUDE.md「公共契约变化必须先反馈」留待用户裁定，**本片未改动该文件**。
+**登记未处理（→ 已由 T9d 按方案 ② 处理，见 §7.18）：`PublicError.message` 恒为英文，中文界面必然中英混排。**
+`packages/chat-channel/src/public-error.ts` 的 `PUBLIC_ERROR_MESSAGES` 为 28 个 type 各备 `zh` / `en` 两条，但
+`createPublicError` 与跨边界校验 `isPublicError` 都把它钉在 `.en` 上（后者要求 `message === PUBLIC_ERROR_MESSAGES[type].en`
+才认作合法公开错误）——`zh` 那一半在**全仓没有任何读取点**，只有 `src/__tests__/public-error.test.ts` 断言它非空；
+而两处 UI 卡片（包的 `MessageBubble` 与宿主 `PublicErrorCard`）都直接渲染 `error.message`。因此本片修完标题后，
+中文界面下卡片仍是「中文标题 + 英文正文」。可选修法有三条——① 保持契约现状、只登记；② 前端按稳定的 `error.type`
+查本地化字典渲染；③ 把 28×2 条文案从 TS 表迁进包 i18n 字典、由 UI 按 `type` 取——三条都会改到 `@fenix/chat-channel`
+的公共契约或引入跨包同步义务，按 CLAUDE.md「公共契约变化必须先反馈」留待用户裁定，**本片未改动该文件**（T9d
+同样未改动它，理由见 §7.18）。
 
 **验证**：`bun test packages/ui-components/` 412 → 413 pass（新增 1 条守译断言）；`bun test
 packages/ui-components/web/__tests__/message.ssr.test.tsx` 11 pass / 40 expect；宿主
 `chat-area-environment-deletion` + `chat-panel-transport-lifecycle` 4 pass；`env -u ANTHROPIC_MODEL bun run precheck`
 全绿（771 / 7311 + 2 skip / 969，0 fail）；`bun run build:web` 成功。
 
-### 7.17 T9c 宿主自有字典收敛：死键剪除与四份空壳字典退场（2026-09-21）
+### 7.17 T9c 宿主自有字典收敛：死键剪除与四份空壳字典退场（2026-09-21，`e69deeeb1`）
 
-T9 的最后一片。T9a 结清借键、T9b 修缺陷，本片只做一件事：把宿主自有命名空间里**无人消费的键**和
-**零绑定的整份字典**清掉，并给宿主补上与各包对等的一致性守护。
+T9 的第三片（写就时以为收尾，随后 T9b 登记的跨包缺口又派生出 §7.18）。T9a 结清借键、T9b 修缺陷，
+本片只做一件事：把宿主自有命名空间里**无人消费的键**和**零绑定的整份字典**清掉，并给宿主补上与各包
+对等的一致性守护。
 
 **判定口径（证据脚本 `/tmp/t9/deadkeys.py`，不入库）。** 消费点 = 全仓 `.ts` / `.tsx`（含测试、含
 `ui-sandbox`，排除 `node_modules` / `dist` / `docs`）里的**字符串字面量**；文件归属的命名空间由
@@ -1343,6 +1345,48 @@ Claude ACP adapter 用例失败，系会话注入的 `ANTHROPIC_MODEL` 污染环
 同批次 1016 pass 0 fail，与本次改动无关）；`env -u ANTHROPIC_MODEL bun run precheck` 全绿
 （772 / 7311 + 2 skip / 966，0 fail）；`bun run build:web` 成功。
 
+### 7.18 T9d 公开错误正文按 `type` 取本地化文案（2026-09-21）
+
+T9 的第四片，结掉 §7.16 末段登记的那个跨包缺口。用户 2026-09-21 裁定走方案 ②：UI 用稳定的 `error.type`
+取本地化文案，`message` 退化为「未登记 type 的兜底 + 日志字段」，**wire 契约与 `isPublicError` 完整性校验不变**。
+
+**为什么不能直接渲染 `message`**：它是 `PublicError`（WS 错误帧载荷，`chat-channel/src/schema.ts` 第 66 / 79 / 131 行）
+的字段，`createPublicError` 恒取 `PUBLIC_ERROR_MESSAGES[type].en`，而 `isPublicError` 更把它当作**不可信帧的完整性
+依据**（要求 `message === PUBLIC_ERROR_MESSAGES[type].en` 才认作合法公开错误）。也就是说 `message` 属于协议、
+且必然恒为英文；界面正文改由 `type` 取译文后，它只剩「未登记 type 的兜底」一个前端用途（日志侧
+`serializePublicErrorLog` 只记 `errorId` / `errorType`，本来就不用它）。
+
+**落地（三个文件 + 两处调用点）**：
+- 字典：`@fenix/ui-components` 的 `uiComponents.json` 新增 `chat.components.publicError.<域>.<原因>`，28 键 ×2 语言。
+- 取值：新增 `web/chat/view/public-error-text.ts` 的 `publicErrorText(t, error)`，两处卡片共用。键 = 前缀 + `type`，
+  **不做「type → 键名」映射表**——协议 type 自带 `<域>.<原因>` 结构，字典按同样两级嵌套组织，少一张表就少一处会与
+  协议漂移的第二真相（漏键由穷举断言挡）。未登记 type 回退 `error.message`，绝不回显 key。
+- 调用点：包内 `MessageBubble.tsx`（`publicErrorText(t, entry.error)`）与宿主 `ChatPanel.tsx` 的 `PublicErrorCard`
+  （`publicErrorText(t, error)`）——此前两处都直接渲染 `error.message`，是同一个缺陷的两个现身点。
+
+**方案 ③（把 28×2 条文案从 TS 表迁进字典、删表里的 `zh`）没有一并做**：`PUBLIC_ERROR_MESSAGES` 是
+`@fenix/chat-channel` 的公开导出，删掉 `PublicErrorMessages.zh` 字段属公共契约变更（CLAUDE.md 要求先反馈），
+且该包为 CE / EE 共享，EE 侧可能自行消费 `zh`。代价是同一句中文在两处各存一份——改用**宿主契约测试**钉住
+（见下表第三行），而不是靠人工同步。**本片未改动 `@fenix/chat-channel` 任何文件。**
+
+**守护测试**：
+
+| 文件 | 钉住什么 |
+| --- | --- |
+| `packages/ui-components/web/__tests__/public-error-text.test.ts`（新） | 内联契约的 `PublicErrorType` 取值集合 ↔ 字典 `publicError` 子树**双向**一一对应（少键 = key 回显或退回英文，多键 = 协议已删 type 留下的死键）；28 条 zh 均非 en 照抄；`publicErrorText` 的键推导与两条回退路径（未登记 type、未登记且摘要为空） |
+| `packages/ui-components/web/__tests__/message.ssr.test.tsx` | 新增一条中文渲染用例：把 `entry.error.message` 刻意写成与字典都不同的第三种文案，断言渲染出中文且**不出现**该 message——组件若退回读 `message`，会同时命中两个失败面 |
+| `apps/web/src/__tests__/public-error-i18n.test.ts`（新） | 协议表 ↔ 字典逐字相等（28 个 type 的 en / zh），且字典不含协议表之外的 type。落点在宿主：`apps/web/src/i18n/index.ts` 是全仓唯一同时依赖两个包的地方 |
+
+`public-error-text.test.ts` 的类型清单**从 `types-chat-projection.ts` 源码里解析**而不是在测试里再抄一份：
+本包对 chat 契约整体逐字内联，抄一份就等于多一处会漂移的第二真相，且协议新增 type 时测试不会跟着变。
+
+**对照验证（三条都在本次实测）**：删一条 zh 键 → 穷举断言失败；把 `MessageBubble` 退回读 `entry.error.message`
+→ 中文渲染用例失败；把字典某条 zh 改写一个标点 → 宿主契约测试失败（失败信息直接打印协议表值与字典值两侧）。
+
+**验证**：`bun test packages/ui-components/` 413 → 420 pass（新增 6 + SSR 用例 1）；`bun test apps/web/src/__tests__/`
+966 → 968 pass（新增 2）；`env -u ANTHROPIC_MODEL bun run precheck` 全绿（772 / 7318 + 2 skip / 968，0 fail）；
+`bun run build:web` 成功。
+
 ---
 
 ## 八、用户可见行为变更
@@ -1361,11 +1405,13 @@ Claude ACP adapter 用例失败，系会话注入的 `ANTHROPIC_MODEL` 污染环
 | 5 | 引用被截断时的徽标在中文界面显示英文（`23 chars omitted`）；更早的宿主实现在此位置直接显示原始 key `composerAssets.quoteTruncatedBadge` | `quoteTruncatedBadge` 的 zh 值照抄 en；键集 / 占位符两条守护都挡不住这类漏译 | T9b |
 | 6 | 会话面板错误卡片的标题对英文用户显示中文 `执行出错` | T6d 拆 `ChatPanel.tsx` 时硬编码带入 | T9b |
 | 7 | 回忆库（hindsight）文档视图的分页按钮在中文界面显示英文 `Previous` / `Next` | memory 包以限定字面量引用宿主 `common:previous` / `common:next`（且已登记为跨命名空间依赖），宿主 `common` 字典却缺这两条，一直靠 `defaultValue` 兜底 | T9c |
+| 8 | 错误卡片正文（聊天 turn 失败、会话面板错误）在中文界面显示英文摘要 | `PublicError.message` 是 wire 与日志字段，`createPublicError` / `isPublicError` 把它钉在 `.en` 上，两处卡片却直接渲染它；`PUBLIC_ERROR_MESSAGES` 的 `zh` 一半全仓无读取点 | T9d |
 
 第 3 条的修法是两处共用同一个派发器（`dispatchArtifactsPreviewFile(envId, path)`）；事件名未变，变的
 是状态面板那条的详情补齐了 `envId`。第 4 条在线上需服务端返回错误才触发（对抗验证判 real=False）。
-第 5、6 条属文案语言错误，验收时把界面语言切到英文（第 6 条）或中文（第 5 条）各看一处即可。
-第 6 条只修了标题：卡片正文 `error.message` 恒为英文，中英混排是登记未处理的跨包契约缺口（见 §7.16 末段）。
+第 5、6、8 条属文案语言错误，验收时把界面语言切到英文（第 6 条）或中文（第 5、8 条）各看一处即可。
+第 6 条修的是标题、第 8 条修的是正文，两处已在同一张卡片上；第 8 条的正文改由稳定 `error.type` 取译文后，
+`error.message` 只作未登记 type 的兜底（取舍见 §7.18）。
 第 7 条只影响回忆库文档视图翻页按钮的文案，验收时把界面语言切到中文看该页脚即可。
 
 ### 8.2 有意的呈现取舍
@@ -1386,7 +1432,7 @@ Claude ACP adapter 用例失败，系会话注入的 `ANTHROPIC_MODEL` 污染环
 
 ### 8.3 发布验收建议
 
-按 8.1 的 7 条做定向回归（建站卡片可见并可跳转、工作流上下文注入、状态面板文件点击、会话重命名失败
-提示、引用截断徽标的中文文案、错误卡片标题的英文文案、回忆库文档视图分页按钮的中文文案），
-8.2 的 7 条按「与旧版截图比对」验一次即可；
+按 8.1 的 8 条做定向回归（建站卡片可见并可跳转、工作流上下文注入、状态面板文件点击、会话重命名失败
+提示、引用截断徽标的中文文案、错误卡片标题的英文文案、回忆库文档视图分页按钮的中文文案、错误卡片正文
+的中文文案），8.2 的 7 条按「与旧版截图比对」验一次即可；
 `chat-channel/web` 尚未删除，旧实现可随时对比（T5d 删除后仅存 git 历史）。

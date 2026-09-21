@@ -65,6 +65,28 @@ function renderMarkup(element: ReactNode): string {
   return renderToStaticMarkup(createElement(I18nextProvider, { i18n }, element));
 }
 
+/**
+ * 中文实例：公开错误正文的本地化断言需要真实中文译文（与 en 用例共用同一份字典资源）。
+ * 单开一个实例而不是改 `lng`，避免语言在用例间互相污染。
+ */
+const zhI18n: I18nInstance = createInstance();
+void zhI18n.use(initReactI18next).init({
+  lng: "zh",
+  fallbackLng: "en",
+  ns: [UI_COMPONENTS_NS],
+  defaultNS: UI_COMPONENTS_NS,
+  initAsync: false,
+  interpolation: { escapeValue: false },
+  resources: {
+    en: { [UI_COMPONENTS_NS]: en },
+    zh: { [UI_COMPONENTS_NS]: zh },
+  },
+});
+
+function renderMarkupZh(element: ReactNode): string {
+  return renderToStaticMarkup(createElement(I18nextProvider, { i18n: zhI18n }, element));
+}
+
 async function renderStreaming(element: ReactNode): Promise<string> {
   const stream = await renderToReadableStream(createElement(I18nextProvider, { i18n }, element));
   await stream.allReady;
@@ -190,6 +212,31 @@ describe("消息组件的服务端渲染", () => {
     expect(markup.indexOf("The Agent request failed.")).toBeLessThan(
       markup.indexOf("Type: AGENT_RUNTIME.REQUEST_FAILED"),
     );
+  });
+
+  // 正文必须按稳定的 `error.type` 取字典，而不是渲染 `error.message`——后者是 wire 与日志字段且恒为
+  // 英文（`isPublicError` 以它做帧完整性校验），直接渲染会让中文界面永远显示英文。这里刻意把
+  // `message` 写成与字典都不同的第三种文案：若组件仍读 `message`，本条会同时命中「未出现中文」与
+  // 「出现了 message」两个失败面。
+  test("失败正文按 type 取本地化文案而非 wire 摘要", () => {
+    const markup = renderMarkupZh(
+      createElement(AssistantBubble, {
+        entry: {
+          type: "assistant_message",
+          id: "assistant-error-zh",
+          chunks: [],
+          error: {
+            type: "AGENT_RUNTIME.REQUEST_FAILED",
+            id: "err_00000000000000000000000000000002",
+            message: "wire summary that must not be rendered",
+          },
+        },
+      }),
+    );
+
+    expect(markup).toContain("Agent 请求失败。");
+    expect(markup).not.toContain("wire summary that must not be rendered");
+    // 未登记 type 才回退 wire 摘要：这条路径由包内 `public-error-text.test.ts` 断言，此处只钉渲染契约。
   });
 
   // Chat 引用从 reminder 投影为专用引用胶囊，正文保持用户消息且不误显示系统提醒胶囊。

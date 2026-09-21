@@ -316,6 +316,10 @@
       "types": "./web/chat/view/chat-navigation-aids.tsx",
       "default": "./web/chat/view/chat-navigation-aids.tsx"
     },
+    "./chat/view/public-error-text": {
+      "types": "./web/chat/view/public-error-text.ts",
+      "default": "./web/chat/view/public-error-text.ts"
+    },
     "./components/AgentCardList": {
       "types": "./web/components/AgentCardList.tsx",
       "default": "./web/components/AgentCardList.tsx"

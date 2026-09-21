@@ -181,6 +181,46 @@
         "title": "用户提示词快速跳转",
         "untitled": "未命名提示词"
       },
+      "publicError": {
+        "AGENT_RUNTIME": {
+          "REQUEST_FAILED": "Agent 请求失败。",
+          "SESSION_FAILED": "Agent 会话失败。",
+          "PROMPT_REJECTED": "Agent 拒绝了请求。",
+          "PROMPT_TIMEOUT": "Agent 请求处理超时。",
+          "LLM_API_ERROR": "LLM API 请求失败。",
+          "LLM_API_CONFIGURATION_ERROR": "LLM API 认证或权限配置无效。",
+          "LLM_API_RATE_LIMITED": "LLM API 请求受到速率限制。",
+          "DISCONNECTED": "Agent 连接已断开。"
+        },
+        "SYNC_RELAY": {
+          "CONNECTION_LOST": "同步连接已断开。",
+          "CAPACITY_EXCEEDED": "同步服务当前无法接受更多连接。",
+          "KEEPALIVE_TIMEOUT": "同步连接保活超时。",
+          "SYNC_FAILED": "同步失败。"
+        },
+        "CONTROL_PLANE": {
+          "ENVIRONMENT_UNAVAILABLE": "Agent 环境不可用。",
+          "MACHINE_UNAVAILABLE": "Agent 运行机器当前不可用。",
+          "INSTANCE_RECLAIMED": "Agent 实例已被回收。",
+          "INSTANCE_START_FAILED": "Agent 实例启动失败。",
+          "INSTANCE_LIMIT_REACHED": "Agent 实例数量已达上限。",
+          "CONFIGURATION_INVALID": "Agent 配置无效。"
+        },
+        "ACTION": {
+          "UNAUTHENTICATED": "当前操作需要认证。",
+          "FORBIDDEN": "当前操作未获授权。",
+          "SESSION_NOT_FOUND": "操作对应的会话不存在。",
+          "VERSION_CONFLICT": "操作状态版本冲突。",
+          "INVALID_STATE": "当前状态不允许执行该操作。",
+          "RATE_LIMITED": "当前操作请求过多。",
+          "PAYLOAD_TOO_LARGE": "操作数据过大。",
+          "AGENT_UNAVAILABLE": "Agent 当前不可用于该操作。",
+          "FAILED": "操作失败。"
+        },
+        "INTERNAL": {
+          "UNCLASSIFIED": "系统发生未分类错误。"
+        }
+      },
       "sessionModeSelector": {
         "default": "默认"
       },

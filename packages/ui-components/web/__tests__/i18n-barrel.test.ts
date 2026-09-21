@@ -19,8 +19,11 @@ import { join, relative, resolve } from "node:path";
 
 const WEB_ROOT = resolve(import.meta.dir, "..");
 const PKG_ROOT = resolve(WEB_ROOT, "..");
-/** 迁入基线：出口就位时的完整键数。只许增不许减——减少意味着删掉了组件仍在用的键。 */
-const KEY_BASELINE = 243;
+/**
+ * 迁入基线：出口就位时的完整键数。只许增不许减——减少意味着删掉了组件仍在用的键。
+ * 按增量维护：T9d 加 28 条 `chat.components.publicError.*`（公开错误正文的本地化文案），243 → 271。
+ */
+const KEY_BASELINE = 271;
 
 const EN = JSON.parse(readFileSync(join(WEB_ROOT, "i18n/locales/en/uiComponents.json"), "utf8")) as Record<
   string,

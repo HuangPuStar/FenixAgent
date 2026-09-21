@@ -14,6 +14,7 @@
 import type { PublicErrorInfo } from "@fenix/chat-channel";
 import { ACPMain } from "@fenix/ui-components/chat/shell/ACPMain";
 import type { BoundMcpOption } from "@fenix/ui-components/chat/shell/chat-interface-types";
+import { publicErrorText } from "@fenix/ui-components/chat/view/public-error-text";
 import { TooltipProvider } from "@fenix/ui-components/ui/tooltip";
 import { Bot, Loader2 } from "lucide-react";
 import { useTranslation } from "react-i18next";
@@ -179,7 +180,9 @@ function PublicErrorCard({ error, className }: { error: PublicErrorInfo; classNa
       role="alert"
     >
       <p className="font-medium">{t("chat.components.messageBubble.turnError")}</p>
-      <p className="mt-1 whitespace-pre-wrap">{error.message}</p>
+      {/* 正文同样按 `type` 取字典而非 `error.message`：后者是 wire/日志字段且恒为英文，与包内
+          `MessageBubble` 共用 `publicErrorText`，两处卡片的中文界面不再一英一中。 */}
+      <p className="mt-1 whitespace-pre-wrap">{publicErrorText(t, error)}</p>
       <div className="mt-4 flex flex-wrap gap-x-4 gap-y-1">
         <span className="break-all">Type: {error.type}</span>
         <span className="break-all">ID: {error.id}</span>
