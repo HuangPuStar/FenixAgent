@@ -2,6 +2,8 @@
 
 本文是阶段 2 任务 1.5 的执行计划与设计裁定记录。
 
+**状态：已结项（2026-09-21）**——分片 1.5a–1.5g 全部交付，验收逐条对照与移交清单见 §八。
+
 任务目标见[阶段 2 执行计划 §1.5](../ce-ee-refactoring-stage-2-plan.md)，权威约束见[目标架构与开发规范 §2.3](../ce-ee-engineering-standards.md)（依赖矩阵）。
 
 **用户补充裁定（2026-09-21，任务开始前给出）**：「`/api/*` 目前还没有外部使用，接口是可以调整的（如有必要）」。本任务若需要调整 `/api/*` 的契约形状（路由归属、DTO 形状、错误信封），不必按对外兼容契约处理；`/web/*` 与协议入口沿用既有约定。
@@ -246,6 +248,8 @@ mcp / skill / agent-config / model-management 的**实例**，则 `access-contro
 envDefinitions 与 preflight 收敛（§1.7）、模块配置读取面彻底收敛（§1.7）。
 
 ## 五、验收与证据
+
+> 逐条末态实测（命令、数字、结论）见 §八 8.1；本节保留计划原文。
 
 1. **门禁判据**：`no-new-handwritten-registry` 规则与 `handwrittenRegistryBaseline` 已删除，且
    `apps/server/src/main.ts` 不含任何 `@fenix/*` import。
@@ -1960,3 +1964,145 @@ cancelled 0 jobs`，进程随即退出。**这里要如实说明证据强度**�
 `env -u ANTHROPIC_MODEL bun run precheck`：**全绿 `All passed`（92285ms）**，12 个子项全部 ✓
 （server 770 / packages 7316（2 skip）/ web 946，0 fail）；`bun run docs:build` ✓（11.16s）。本片无生产代码改动，
 故未做手工启动验证（1.5f-1c 刚验过同一装配路径）。
+
+## 八、结项验收与移交（2026-09-21）
+
+**结论**：分片 1.5a–1.5g 全部交付，§五 六条验收全部达成，§一 四条范围逐条对照见 8.2；没有需要回退的交付。
+末态树为 `f56f16f04` 加本节文档改动，下面每条证据都是该树实测。
+
+### 8.1 §五 验收逐条对照
+
+| # | 验收条款 | 末态实测 | 结论 |
+| --- | --- | --- | --- |
+| 1 | 门禁判据 | 规则与基线字段已拆除，残留 6 处全为拆除记录与负向守护；`main.ts` 的 `@fenix/*` 只剩 `@fenix/logger` 1 处 | ✓ |
+| 2 | 装配自洽 | `module-assembly.test.ts` 5 pass / 0 fail（真实 `ce.json` + 生成 registry） | ✓ |
+| 3 | 依赖收口 | 包内生产代码对 `@server/**` 的非 `db/schema` 导入（静态 + 动态）为 **0** | ✓ |
+| 4 | 宿主收敛 | 非测试 **65 文件 / 7736 行 → 50 文件 / 6148 行**，逐项对账闭合 | ✓ |
+| 5 | 全量验证 | `precheck` / `build:web` / `docs:build` 全绿；启动与 `/health` 见 1.5e-3 | ✓ |
+| 6 | 台账 | 1.5 名下 6 条改写（实测 5 条）并收敛家族级口径 | ✓ |
+
+**验收 1（门禁判据）**。`grep -rn 'no-new-handwritten-registry' scripts apps packages` 命中 1 处：
+`scripts/lib/architecture-boundary-rules.ts:245-246`——记录该规则「冻结基线、阻断宿主入口新增手写挂载」的
+过渡期用途与拆除理由，是留档不是规则。`grep -rn 'handwrittenRegistryBaseline'` 命中 5 处，全部是「该字段已
+消失」的记录与守护：同一注释、`apps/server/src/__tests__/architecture-check.test.ts:451-459`（负向断言：
+过渡期字段不再被静默接受）、`observer` / `channel` 两份包 README 的 2026-09-21 更新标注。`grep -c '@fenix/'
+apps/server/src/main.ts` = **1**，唯一一处是 `@fenix/logger`——1.5f 的判据口径经用户裁定收窄为「模块与协议
+路由归零」，`@fenix/logger` / `@fenix/platform-sdk/server` 这类设施面不在判据内。
+
+**验收 2（装配自洽）**。`env -u ANTHROPIC_MODEL bun test apps/server/src/__tests__/module-assembly.test.ts`
+→ **5 pass / 0 fail**（247ms，11 个断言）。用例读受版本控制的 `deploy/assembly/ce.json`（13 个 resources +
+`identity` / `access-control` / `agent-runtime` + `webShell: "default"`）与构建期生成的 `generatedModuleManifests`，
+断言 16 个 server 模块的展开顺序（基础模块按声明序、资源模块按 `dependsOn` 拓扑序）、逐模块可实例化、
+`dispose` 可逆序释放——即 1.5e-2a 填实 `resources`、1.5f 切换 `main.ts` 之后的真实发布组合。
+
+**验收 3（依赖收口）**。严格口径（行首 `import` / `export` + `from "@server/`，排除 `db/schema` 与
+`__tests__`）生产命中 **0**；动态 `import("@server/…")` 同口径生产命中 **0**。门禁 `apps-boundary` 在应用层
+共 81 条诊断（**49 条生产 / 32 条测试与测试基建**），specifier 分布为 `@server/db/schema` 64、
+`@server/test-utils/stubs/module-stubs` 16、`@server/plugins/error-handler` 1——**非表定义的 17 条全部在
+agent-runtime 自己的 `__tests__` 里**（登记在该条测试侧的 18 处内），生产侧 49 条**全部是表定义导入**，
+无 `@server/config`、`@server/services/*`、`@server/plugins/*`。
+
+**验收 4（宿主收敛）**。起点按 2.1 的同一口径（`apps/server/src` 非测试）复测为 65 文件 / 7736 行，
+末态 50 文件 / 6148 行：
+
+| 组成 | 文件 | 行数 |
+| --- | --- | --- |
+| 起点（`cc0925247`） | 65 | 7736 |
+| 1.5a 死代码删除 | −12 | −526 |
+| 1.5c 系业务面迁出 | −11 | −1295 |
+| 1.5d–1.5f 新增宿主装配面 | +8 | +855 |
+| 保留文件内部净变化（14 个文件） | — | −622 |
+| **末态** | **50** | **6148** |
+
+- 1.5a 删除的 12 个非测试文件：`schemas/{index 160, sidebar-config.schema 19}`、`types/{messages 83, api 80}`、
+  `transport/ws-types 22`、`utils/executable 44`、`logger 15`、`plugins/require-team-scope 24`、
+  `services/config/{jsonb 38, index 6, mcp-system-server 23}`、`repositories/index 12`。
+- 1.5c 系迁出的 11 个非测试文件：`routes/web/{environments 367, instances 212, control 188, meta-agent 58,
+  peri-task-details 57}`、`routes/hooks 56`、`schemas/{session.schema 84, peri-task-details 45}`、
+  `services/{transport 104, config/user-config 63, automationState 61}`。
+- 新增的 8 个装配面文件：`bootstrap/{host-startup 239, host-wiring 133, module-configs 121,
+  route-contributions 91, route-host 42, meta-agent-model-resolver 32}`、`test-utils/route-faces.ts 173`、
+  `routes/api/index.ts 24`。
+- 保留文件的内部净变化：`main.ts` **649 → 171**（−478，手写装配全量拆解）、`routes/web/index.ts` 86 → 34、
+  `services/core-bootstrap.ts` 198 → 146、`services/config-utils.ts` 64 → 21、`plugins/auth.ts` 450 → 435、
+  `routes/web/config/index.ts` 35 → 24、`services/config/types.ts` 80 → 72、`db/schema.ts` 1044 → 1042、
+  `test-utils/stubs/config-pg-stub.ts` 32 → 35、`bootstrap.ts` 35 → 36、`bootstrap/startup-sequence.ts` 13 → 14、
+  `env-loader.ts` 15 → 23、`services/resource-module-ports.ts` 90 → 100、`test-utils/setup-mocks.ts` 476 → 492。
+- 算式闭合：7736 − 1821 + 855 − 622 = **6148**，文件数 65 − 23 + 8 = **50**。测试侧另有 8 个文件删除
+  （1363 行）、1 个文件新增（`__tests__/route-contributions.test.ts` 503 行）与 8 个文件净变化（+10 行），
+  `__tests__` 目录 52 文件 / 8169 行 → 45 文件 / 7319 行。
+- 3.4 的类别清单之外**没有业务实现**：末态 44 个生产文件逐项都能归入 3.4 的一栏，品牌三件套
+  （`services/branding.ts` / `routes/web/branding.ts` / `schemas/branding.schema.ts`）按 3.6 的 D4 先例保留。
+
+**验收 5（全量验证）**。`env -u ANTHROPIC_MODEL bun run precheck` **全绿**（12 个子项，server 770 /
+packages 7316（2 skip）/ web 946，0 fail）；`bun run build:web` ✓（`✓ built in 1.77s`，`apps/web/dist/` 是后端
+静态资源的真源）；`bun run docs:build` ✓（11.10s）；手动启动与端点可达性见 1.5e-3，`main.ts` 切换后的同一
+装配路径由 1.5f-1c 复验。
+
+**验收 6（台账）**。见 1.5g-3：3 条 `no-circular` 与 3 条 `apps-boundary` 逐条改写（其中
+`chat-channel → server-app` 已在 1.5b 销账，故「6 条」实测为 5 条），另复核 1.4 名下的
+`agent-runtime → server-app` 并 append 复测段；家族级口径（48 环 / 84 边 / 4 包环族 38 处 / 代表边语义）
+收敛进 `_comment`，两处悬空引用清零。
+
+### 8.2 §一 范围四条对照
+
+1. **宿主收敛** — 见验收 4 的对账。保留面落点：进程入口 `main.ts`（171 行）；装配
+   `bootstrap/`（7 文件 672 行）+ `bootstrap.ts`（36）+ `assembly-config.ts`（17）；环境 `env.ts`（254）+
+   `env-loader.ts`（23）+ `config.ts`（139）；DB `db/`（3 文件 1121，其中 `schema.ts` 1042 归 §1.7）；
+   认证 adapter `plugins/auth.ts`（435）+ `plugins/system-api-auth.ts`（53）+ `services/org-context.ts`（114）；
+   通用中间件 `plugins/{logger 248, error-handler 101, static 85, cors 23}`；协议聚合 `routes/`（4 文件 177）；
+   OpenAPI `openapi.ts`（234）；宿主端口 `services/{resource-module-ports 100, pre-launch-ports 97,
+   model-gateway-subject-verification 92}`；跨包启动编排 `bootstrap/host-startup.ts` +
+   `services/sync-builtin.ts`；进程级单例 `services/cache.ts`。
+2. **路由 contribution** — `/web` 面 24 条包路由分两片迁入（1.5e-2b-1 八包、1.5e-2b-2 序列清零），`/api` 面
+   17 条迁入 11 个包的 api 槽（1.5f-1a，`d0ab3caa4`），协议入口 7 条迁入顶层 app 槽（1.5f-1b，`c95b67296`）；
+   `main.ts` 的 `.use()` 只剩聚合槽。route 层职责由 `test-utils/route-faces.ts` 的静态面与
+   `__tests__/route-contributions.test.ts` 守护。
+3. **同一 Facade 的薄 adapter** — 迁出的 web / api / 协议路由全部落在 owner 包内并调用包内既有 service
+   （1.5c、1.5e-2b、1.5f-1a、1.5f-1b 各片记录逐条列出落点），宿主侧没有留下第二套 CRUD 或业务流程；
+   `/api/*` 的契约形状按任务开始前的用户裁定「可以调整」，本次只改归属、未改形状。
+4. **基础设施入口** — `bootstrap/host-wiring.ts` 的 `wireHostRuntime` 是 `initializeApplicationInfrastructure`
+   与 `registerIdentityDirectory` 的**唯一**调用点，DB 连接、Redis provider（`() => getRedisConnection()`）与
+   `moduleConfigs` 都在这里一次交付；包只经 `@fenix/platform-sdk/server` 读取，不再深链宿主路径（验收 3 归零）。
+
+### 8.3 移交与不做的说明
+
+| 项 | 去向 | 依据 |
+| --- | --- | --- |
+| `@server/db/schema` 生产 49 处 + 14 条 `apps-boundary`（13 条 owner 已 1.7、1 条 1.4） | §1.7 | 验收 3、1.5g-4 ② |
+| `services/data-migrate.ts` + `services/data-migrates/*`（3 文件 477 行） | §1.7 | 见下 |
+| `envDefinitions` / `preflight` 收敛、模块配置读取面的彻底收敛 | §1.7 | §四「本任务不做」 |
+| web 页面下沉与 WebShell 装配 | §1.6 | §一 |
+| `machine → agent-config` 闭合边的归属（4 包环族 38 处环的共同闭合边，无在排分片） | 待用户裁定 (a)/(b) | 1.5g-4 遗留 |
+| 未排期 9 条台账（含 `no-circular @fenix/resource-knowledge` 自环） | 待排期 | 1.5g-2、1.5g-4 ① |
+
+`services/data-migrate.ts` 与 `services/data-migrates/{backfill-resource-visibility,
+migrate-agent-config-model-id}.ts` 是本结项新发现的**清点缺口**（不是交付缺口）：它们由
+`bootstrap/host-startup.ts` 的 `runDataMigrations` 在启动期调用，读写宿主 `db/schema` 的 `agentConfig` /
+`model` / `provider` / `resourcePermission` / `skill` / `mcpServer` 表，其中一条还调用
+`@fenix/resource-skill/server/migration`。3.4 的类别清单没有列举它们（既不是通用中间件也不是协议聚合），
+1.5 全程未触碰，故「3.4 之外无业务实现」的结论仍然成立，但**清点本身要补**：建议随表定义一并移交 §1.7——
+宿主保留「编排 + `data_migrate_record` 记录」，各一次性迁移随其表的 owner 包走。
+
+### 8.4 结项复核的交叉发现：1.7 名下 3 条计数漂移
+
+本结项用门禁原生诊断（临时清空台账取真值，手法同 1.5g-1）复核了全部 14 条 `apps-boundary`：
+
+| 条目（owner 1.7） | 1.3 记载（`12b56dbc6`） | 末态门禁实测 | 差异来源 |
+| --- | --- | --- | --- |
+| `resource-machine` | 7 处 / 7 文件 | **10 条**（生产 7 + 测试 3） | 生产侧 7 文件与记载一致；3 条是 `src/__tests__/registry-schema.test.ts:9/36/48` 的 `await import("@server/db/schema")`——**动态导入**，静态 `grep` 会漏，1.3 的计数只算了静态导入 |
+| `agent-config` | 11 处 / 11 文件 | **10 条**（生产 8 + 测试 2） | 末态 10 条全是表定义；1.3 的 11 未列文件、已无法逐项对账，差额 1 推测为当期的非表定义导入（1.5b 已归零） |
+| `resource-workflow` | 4 处 / 4 文件 | **3 条**（生产 3） | 1.3 时还有 1 个测试文件的表定义导入，其后消失 |
+
+其余 11 条（含 1.5g 改写的 3 条）与门禁实测**逐条一致**。三处差异都是**时点与口径**问题，不是违规消失——
+`architecture:check` 的 stale 检查没有报错，反证每条登记仍有真实违规。这三条的 owner 是 1.7，按 1.5g-5 写入
+`_comment` 的约定（各条在自己的 owner 任务改写时同步），本任务只登记不改写。
+
+### 8.5 结项时的末态快照
+
+- 门禁：`bun run architecture:check` ✓ `2259 files, 10 rules, 27 条已登记例外`；`bun run check:dependencies`
+  ✓ `2411 modules, 12 条已登记例外, 0 条新增违规, 0 stale`。
+- 验证：`env -u ANTHROPIC_MODEL bun run precheck` ✓ 全绿 `All passed`（86848ms）；`bun run build:web` ✓（1.77s）；
+  `bun run docs:build` ✓（11.10s）。
+- 规模：`apps/server/src` 非测试 50 文件 / 6148 行；`__tests__` 45 文件 / 7319 行；台账 339 行，owner 分布
+  1.4 5 / 1.5 2 / 1.6 9 / 1.7 14 / 未排期 9。
