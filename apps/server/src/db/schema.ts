@@ -2,6 +2,7 @@ import { user } from "@fenix/identity/db";
 import { model } from "@fenix/model-management/db";
 import { machine } from "@fenix/resource-machine/db";
 import { mcpServer } from "@fenix/resource-mcp/db";
+import { skill } from "@fenix/resource-skill/db";
 import { sql } from "drizzle-orm";
 
 /**
@@ -12,9 +13,11 @@ import { sql } from "drizzle-orm";
  * 走 `IdentityDirectory`，不得依赖本文件。
  *
  * 同理，`@fenix/resource-machine/db` 的机器表（§1.7 首批迁出）、`@fenix/resource-mcp/db` 的 MCP 表
- * （§1.7 第二批迁出）与 `@fenix/model-management/db` 的模型表（§1.7 第三批迁出）也只在这里**取用**、
- * 不重复定义——`agent_config.machine_id`、`agent_config_mcp.mcp_server_id` 与 `agent_config.model_id`
- * 需要它们以列对象形式表达外键（Drizzle 的 `.references()` 没有字符串形式），组装期例外的口径与边界见
+ * （第二批）、`@fenix/model-management/db` 的模型表（第三批）、`@fenix/resource-sandbox/db` 的沙盒表
+ * （第四批）与 `@fenix/resource-skill/db` 的 Skill 表（第五批）也只在这里**取用**、不重复定义——
+ * `agent_config.machine_id`、`agent_config_mcp.mcp_server_id`、`agent_config.model_id`、
+ * `agent_config_skill.skill_id` 需要它们以列对象形式表达外键（Drizzle 的 `.references()` 没有字符串
+ * 形式），组装期例外的口径与边界见
  * `docs/design/ce-ee-refactoring/ce-ee-engineering-standards.md` §6.1。
  */
 export {
@@ -393,29 +396,6 @@ export const agentMemoryConfig = pgTable("agent_memory_config", {
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
 });
-
-// 技能元数据（全局技能库，内容保留在文件系统）
-export const skill = pgTable(
-  "skill",
-  {
-    id: uuid("id").primaryKey().defaultRandom(),
-    userId: text("user_id")
-      .notNull()
-      .references(() => user.id, { onDelete: "cascade" }),
-    organizationId: text("organization_id").notNull(),
-    name: varchar("name").notNull(),
-    description: text("description"),
-    metadata: jsonb("metadata"),
-    // 资源可见范围：授权实现的唯一公开受众声明（public 对任意已认证主体开放公开默认动作）。
-    visibility: varchar("visibility", { length: 20 }).notNull().default("private"),
-    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
-    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
-  },
-  (table) => ({
-    orgNameIdx: uniqueIndex("idx_skill_org_name").on(table.organizationId, table.name),
-    orgVisibilityIdx: index("idx_skill_org_visibility").on(table.organizationId, table.visibility),
-  }),
-);
 
 // 一次性数据迁移执行记录（由部署期入口 `db/data-migration-runner.ts` 写入，不随应用启动执行）
 export const dataMigrateRecord = pgTable(

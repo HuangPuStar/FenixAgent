@@ -4,7 +4,8 @@ import { resetAllStubs, stubDb } from "@fenix/platform-sdk/testing";
 import { InvalidKnowledgeBindingError } from "@fenix/resource-knowledge/server";
 import { machine } from "@fenix/resource-machine/db";
 import { mcpServer } from "@fenix/resource-mcp/db";
-import { agentSiteApp, knowledgeBase, skill } from "@server/db/schema";
+import { skill } from "@fenix/resource-skill/db";
+import { agentSiteApp, knowledgeBase } from "@server/db/schema";
 import { createWebConfigAgentsRoutes } from "../server/routes/web/config/agents";
 import { initializeAgentConfigModuleConfig } from "../server/testing";
 import {
@@ -126,7 +127,8 @@ describe("round45 Agent 配置路由补充覆盖", () => {
       ],
       provider: [{ id: "provider-1", name: "openai", displayName: "OpenAI", organizationId: "org-source" }],
       machine: [{ id: "machine-1", agentName: "worker", name: "", machineInfo: { hostname: "host-1" } }],
-      skill: [{ id: "skill-1", label: "检索" }],
+      // 标签投影由 owner 包实现（`@fenix/resource-skill/server/config`），按 `skill.name` 取标签。
+      skill: [{ id: "skill-1", name: "检索" }],
       // 标签投影由 owner 包实现，按 `mcp_server.name` 取标签（不再是调用方自己的 `label` 别名）。
       mcpServer: [{ id: "mcp-1", name: "浏览器" }],
       knowledgeBase: [{ id: "kb-1", name: "知识库", slug: "docs" }],

@@ -1,5 +1,5 @@
 import type { ResourceRegistration } from "@fenix/platform-sdk";
-import { skill } from "@server/db/schema";
+import { skill } from "@fenix/resource-skill/db";
 import type { PgColumn } from "drizzle-orm/pg-core";
 
 /**

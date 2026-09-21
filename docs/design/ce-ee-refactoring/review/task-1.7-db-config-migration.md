@@ -234,9 +234,10 @@ FK；identity 9 张已随任务 1.2 迁出，业务 40 张待迁）按包名语�
 | B3 | model-management（`provider`、`model`、`model_gateway_credential`，含 3 个 pgEnum）迁至 `@fenix/model-management/db` | 已交付 | 见 §7.12 |
 | B4 前置 | 沙盒实例投影写路径移到 sandbox 侧（§4.8 第 3 条，已裁定） | 已交付 | 见 §7.13 |
 | B4 | sandbox（`sandbox_pool`、`sandbox_instance`）迁至 `@fenix/resource-sandbox/db` | 已交付 | 见 §7.14 |
+| B5 | skill（`skill`）迁至 `@fenix/resource-skill/db` | 已交付 | 见 §7.15 |
 | B7 前置 | agent-runtime 的 `agent_config` LEFT JOIN 改为经 owner 公开入口取投影，装配方向不允许时退回宿主注入端口（§4.8 第 4 条 / §8.4 第 7 条） | 待办·须先反馈 | — |
 | B7 前置 | join 表归属与 D4 的冲突复核（§8.4 第 8 条） | 待办·须先反馈 | — |
-| B5–B13 | 其余 27 张表按拓扑序迁出（§4.7 表共 36 张，B1–B4 已迁 9 张；§4.7.1 交付面） | 待办 | — |
+| B6–B13 | 其余 26 张表按拓扑序迁出（§4.7 表共 36 张，B1–B5 已迁 10 张；§4.7.1 交付面） | 待办 | — |
 | C0 | 打通模块声明的 env 回流至宿主 | 已交付 | `cb0c5976c` |
 | C1 | `workspace-resolver` 改读模块配置 + `WORKSPACE_ROOT` 收敛 | 待办 | — |
 | C2–C18 | 其余模块声明 `envDefinitions` | 待办 | — |
@@ -752,6 +753,67 @@ Provider 属别组织不产出 / Provider 行缺失不产出 / 展示名回退 /
 与 B4 前置那次记录的环境噪声同源，非本批引入；`precheck` 见提交。
 
 **状态**：见本批提交（§五 表 B4 行）。
+
+### 7.15 B5：`skill` 迁至 `@fenix/resource-skill/db`（2026-09-22，本批）
+
+**交付面（对照 §4.7.1 四条）**：
+
+1. **①调用期读取点收口（本批的主体工作量）。** 跨包读取点只有一处：
+   `packages/resources/agent-config/src/server/services/agent-related-resources.ts:107-110` 直接 `select`
+   `skill` 表取展示标签。本包 `fenix.module.ts` 的 `dependsOn: []` 是「叶子模块」，而 agent-config 的
+   `dependsOn` 已含 `skill`，方向合法——因此按 **B2 的 mcp 先例**走「owner 公开入口」而不是宿主注入端口：
+   - 新增 `findSkillLabelsByIds(ids)`（`src/server/repositories/skill.ts`），经
+     `@fenix/resource-skill/server/config` 再导出。**入口与形状都对齐 mcp 的
+     `@fenix/resource-mcp/server/config`**（B2 定型：关联表读写 + 关联 id 的展示标签投影同处一个窄出口），
+     `src/server-config.ts` 的文件头随之改写为「`@fenix/resource-agent-config` 的取数面」。
+   - **取数语义逐字保留**：不按 `visibility` 过滤、不按组织过滤（`name` 非敏感字段；按可见性过滤会让
+     「曾经绑定过但已不可见」的技能退化成裸 ID，与迁移前行为不一致）、空入参不查库。调用方因此从
+     「自己拼 SQL」退回「拿绑定表给出的 ID 集合换名字」这一层视图语义（与 `resolveModelLabel` /
+     `resolveMachineLabel` 同构）。
+   - 该文件的头注释按同一口径改写：「跨包表的两类读法」清单里 `skill` 从「仍经 `@server/db/schema`」
+     移入「经对方已声明的公开入口」，余下 `knowledge_base`（B9）与 `agent_site_app`（B7）保持原状。
+2. **②owner `db/schema.ts` 声明跨包导入。** 新建 `packages/resources/skill/db/schema.ts`，从
+   `@fenix/identity/db` 导入 `user` 表达 `skill.user_id` 的级联删除；`organization_id` 历史 DDL 上就是
+   无外键约束的 text 列，故**不**导入 `organization`。`package.json` 同批新增 `"./db"` 出口与
+   `"@fenix/identity": "workspace:*"` 声明（§6.1 的 `db/` 例外只豁免 `special-dependency`）。
+   **不导出 `$inferSelect` 推断类型**：本包仓储自持 `SkillRow`，没有第二个消费者，与 machine / mcp /
+   model-management 三个先例一致（只有 sandbox 导出，因为它的仓储确实引用了那两个类型）。
+3. **③source-migration 契约测试收缩。** `src/__tests__/skill-source-boundary.test.ts` 的「`@server/db/schema`
+   残留清单」由 **3 项收缩为 1 项**（只剩 `src/server/repositories/agent-config-skill.ts` 读关联表），
+   `ALLOWED_HOST_IMPORT` 常量**保留**并补注释说明它现在只服务于 join 表。
+   **与 B4 的处置刻意相反**：B4 的残留归零，正向控制反向失效，故改成零容忍断言 + 负例夹具自检；本包的
+   关联表是**尚未迁出的真实残留**，此刻「扫得到」才是正确结果，改成零容忍只会得到一个当下必红的断言。
+   两批的差别只有一件事——本包还有没有真实残留。
+4. **④调用期跨包写。** 本批无。§4.8 第 7 条登记的两处都不在本包；宿主
+   `services/data-migrates/backfill-resource-visibility.ts` 对 `skill.visibility` 的写入是**宿主部署期**
+   数据迁移（release 步骤执行一次），按 §4.7.1 第 1 条的用户裁定登记为 carve-out，处置与 B2 / B3 逐条相同
+   （只把 `skill` 的导入改指本包 `./db`，`agent_config` / `resourcePermission` 仍取宿主 schema）。
+
+**实际改动**：新建 `db/schema.ts`（表 + 两条索引，DDL 逐字保留）；宿主 `apps/server/src/db/schema.ts` 删
+该表并改为 `import { skill } from "@fenix/resource-skill/db"`（`agent_config_skill.skill_id` 的外键要用列对
+象表达，宿主是唯一同时持有两侧定义的装配层，口径同 B3 的 `agent_config.model_id`）；`drizzle.config.ts`
+声明新路径；包内 2 处导入改指本包出口（`access/skill-resource.ts`、`repositories/skill.ts`）；
+`src/server/db.ts` 的句柄类型注释同步（**形状未改**）；`agent-config` 的关联资源视图改经公开入口取标签，
+`round45-agent-config-routes-coverage.test.ts` 的桩行由 `{ id, label }` 改为 `{ id, name }`（投影改读
+`skill.name` 后，`label` 别名不再存在——这条桩行改动本身就是「取数换手」的证明）。
+
+**补测（把 B3 审计的教训前置，不等审计来发现）**：B3 的同类投影 `findModelLabelsByIds` 曾被审计变异实验
+证明「组织一致性判据无覆盖、删掉 939+639 个用例全绿」（§7.12 补测段）。本批交付同一形态的新投影时即带上
+覆盖：新增 `src/__tests__/skill-label-lookup.test.ts`（3 例：批量取 `name` / 查不到的 id 不造值 /
+空入参不查库），并**做变异确认**——删掉 `if (ids.length === 0) return new Map();` 守卫后
+「入参为空时不查库」报红，还原后复绿。
+
+**台账条目按实测改写但保留**：`apps-boundary @fenix/resource-skill → @fenix/server-app` 的 `rationale`
+由「3 处导入 / 3 个文件」改为「1 处导入 / 1 个文件」（只剩关联表），`removeWhen` 改指 B7 的 join 表归属
+定夺。判据与 B4 删条目用的是同一条（§4.8 第 2 条「该包最后一个跨模块表读取消失」），结论不同只因事实不同：
+B4 的残留归零，本包的残留还在。
+
+**验证**：`check:schema-ddl-drift` ✓ 零差异；`architecture:check` ✓ 2129 files / 18 条例外（条目保留，
+`rationale` 更新不改变条数）；`check:dependencies` ✓ 2270 modules / 0 条新增违规；`generate:module-registry
+--check` ✓ 17 模块；`bun test packages/resources/skill packages/resources/agent-config apps/server/src/__tests__/`
+**1626 pass / 0 fail**（118 files）；`precheck` 见提交。
+
+**状态**：见本批提交（§五 表 B5 行）。
 
 ## 八、已知缺口与未完成项（逐条登记 owner 与移除条件）
 

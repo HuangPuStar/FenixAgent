@@ -1,5 +1,6 @@
 import { findMcpServerLabelsByIds } from "@fenix/resource-mcp/server/config";
-import { agentSiteApp, knowledgeBase, skill } from "@server/db/schema";
+import { findSkillLabelsByIds } from "@fenix/resource-skill/server/config";
+import { agentSiteApp, knowledgeBase } from "@server/db/schema";
 import { and, eq, inArray } from "drizzle-orm";
 import { getAgentConfigDatabase } from "../db";
 import { getMachineLookupPort } from "../ports/machine-lookup";
@@ -20,9 +21,10 @@ import type { AgentNode } from "./config/types";
  * - 走宿主注入端口：`machine`（§1.7 B1，经 {@link MachineLookupPort}）与 `model` / `provider`（B3，经
  *   {@link getModelLookupPort}）——这两个包的 `dependsOn` 都已含本包，反向声明会闭合装配环。
  * - 走对方已声明的公开入口：MCP 标签经 `@fenix/resource-mcp/server/config` 的
- *   {@link findMcpServerLabelsByIds}（本包 `dependsOn` 已含 mcp，方向合法）。
- * 其余（`skill` / `knowledge_base` / `agent_site_app`）仍经 `@server/db/schema`，所有权随资源包迁移属
- * 后续任务，届时按同一口径改为经 owner 的公开入口或端口取数。DB 句柄改经
+ *   {@link findMcpServerLabelsByIds}（本包 `dependsOn` 已含 mcp），Skill 标签经
+ *   `@fenix/resource-skill/server/config` 的 {@link findSkillLabelsByIds}（同因，B5）——两条边方向都合法。
+ * 其余（`knowledge_base` / `agent_site_app`）仍经 `@server/db/schema`，所有权随资源包迁移属后续任务
+ * （B9 / B7），届时按同一口径改为经 owner 的公开入口或端口取数。DB 句柄改经
  * `getAgentConfigDatabase()` 请求期取得（`@server/db` 的模块级句柄已切断）。
  */
 
@@ -101,16 +103,10 @@ export async function buildAgentRelatedResourceView(
       resolveMachineLabel(input.agentNode),
     ]);
 
-    const [skillRows, mcpLabelMap] = await Promise.all([
-      input.skillIds.length > 0
-        ? db
-            .select({ id: skill.id, label: skill.name })
-            .from(skill)
-            .where(inArray(skill.id, [...input.skillIds]))
-        : [],
+    const [skillLabelMap, mcpLabelMap] = await Promise.all([
+      findSkillLabelsByIds(input.skillIds),
       findMcpServerLabelsByIds(input.mcpIds),
     ]);
-    const skillLabelMap = new Map(skillRows.map((row) => [row.id, row.label]));
 
     const knowledgeBaseRows =
       input.knowledgeBaseIds.length > 0

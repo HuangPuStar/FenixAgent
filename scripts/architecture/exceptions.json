@@ -211,8 +211,8 @@
       "from": "@fenix/resource-skill",
       "to": "@fenix/server-app",
       "owner": "1.7",
-      "removeWhen": "表定义迁出（§1.7）后，包不再引用 `@server/**`",
-      "rationale": "实测 3 处导入 / 3 个文件，全部为 `@server/db/schema` 表定义导入。宿主中的资源领域实现已随任务 1.3 迁回包内，残留仅剩表定义；表定义迁出归 §1.7，本条目保留至该步骤完成，不新建通配条目。"
+      "removeWhen": "关联表 `agent_config_skill` 的定义归属定夺并迁出（§1.7 B7）后，包不再引用 `@server/**`",
+      "rationale": "实测 **1 处导入 / 1 个文件**（`repositories/agent-config-skill.ts` 读关联表 `agent_config_skill`）。B5（2026-09-22）已把 `skill` 资源行的表定义迁至 `@fenix/resource-skill/db`，原先的 3 处降为 1 处；剩下的这一处不是「本包自己的表没迁完」，而是 join 表的定义归属随评审文档 §8.4 第 8 条的 D4 复核（owner 定夺在 B7），故本条目按 §4.8 第 2 条保留至该批——提前删除会把尚未定夺的读取一并放行。"
     },
     {
       "rule": "apps-boundary",
