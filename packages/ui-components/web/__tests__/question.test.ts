@@ -1,0 +1,70 @@
+import { describe, expect, test } from "bun:test";
+import { questionNarrator } from "../chat/narrators/question";
+import type { NarrationContext } from "../chat/narrators/types";
+import type { ToolCallData } from "../chat/types";
+
+/**
+ * questionNarrator 单测。
+ *
+ * 覆盖：match 规则（question/ask）、verb、description/AskUserQuestion questions
+ * 与兼容 question 字段优先级、长问题截断（带双引号包裹后的总长度）。
+ *
+ * 来源：`packages/agent-runtime/web/__tests__/question.test.ts` 逐字迁移，
+ * 仅改写导入路径（narrator / 类型改指包内 `../chat/**`）。
+ */
+
+const mockT = ((key: string) => key) as unknown as NarrationContext["t"];
+
+function makeCtx(rawInput: unknown, description?: string): NarrationContext {
+  return {
+    tool: {
+      id: "t1",
+      title: "Question",
+      status: "waiting_for_confirmation",
+      rawInput: rawInput as Record<string, unknown>,
+      description,
+    } as ToolCallData,
+    kind: "question",
+    status: "waiting_for_confirmation",
+    t: mockT,
+  };
+}
+
+describe("questionNarrator", () => {
+  // kinds 包含 "question"
+  test("kinds 包含 question", () => {
+    expect(questionNarrator.kinds).toContain("question");
+  });
+
+  // 中文动作必须明确表达向用户提问的行为
+  test("verb 是 '询问用户'", () => {
+    expect(questionNarrator.verb).toBe("询问用户");
+  });
+
+  // 优先用 description（Agent 提供的完整问题）作为 object
+  test("从 description 提取问题文本", () => {
+    const { object } = questionNarrator.getDisplay(makeCtx({}, "要不要继续？"));
+    expect(object).toBe('"要不要继续？"');
+  });
+
+  // AskUserQuestion 的问题文本位于 rawInput.questions 数组首项的 question 字段。
+  test("从 AskUserQuestion 的 rawInput.questions 提取", () => {
+    const { object } = questionNarrator.getDisplay(
+      makeCtx({ questions: [{ question: "你希望先修复哪一个问题？", header: "修复范围", options: [] }] }),
+    );
+    expect(object).toBe('"你希望先修复哪一个问题？"');
+  });
+
+  // 单问题工具仍可使用 rawInput.question，避免影响既有协议兼容性。
+  test("从 rawInput.question 提取", () => {
+    const { object } = questionNarrator.getDisplay(makeCtx({ question: "用什么方案？" }));
+    expect(object).toBe('"用什么方案？"');
+  });
+
+  // 长问题截断：truncate(40) = 41 字符 + 前后双引号 = 43 字符
+  test("长问题截断到 40 字符", () => {
+    const long = "x".repeat(50);
+    const { object } = questionNarrator.getDisplay(makeCtx({}, long));
+    expect((object as string).length).toBe(43); // 40 + 省略号 + 前后双引号
+  });
+});

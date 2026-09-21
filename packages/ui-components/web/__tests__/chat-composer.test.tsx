@@ -4,10 +4,12 @@ import { Window } from "happy-dom";
 import { createInstance } from "i18next";
 import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
+import ReactDOMServer from "react-dom/server";
 import { initReactI18next } from "react-i18next/initReactI18next";
 import { ChatComposer } from "../chat/composer/ChatComposer";
 import type { ComposerExternalEvent, ComposerExternalSubscribe } from "../chat/composer/composer-effects";
 import { processImageFiles, uploadComposerFiles } from "../chat/composer/composer-file-processing";
+import { buildPromptText } from "../chat/composer/composer-prompt";
 import en from "../i18n/locales/en/uiComponents.json";
 import { UI_COMPONENTS_NS } from "../i18n/namespace";
 
@@ -221,5 +223,313 @@ describe("注入式文件处理", () => {
     });
     expect(compressCalls).toBe(1);
     expect(jpeg.mimeType).toBe("image/jpeg");
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 迁移自 `packages/agent-runtime/web/__tests__/chat-composer.test.tsx`
+// （CE 阶段 2 §1.6 T6c1：旧聊天实现整体退场，用例随实现迁入 owner 包）。
+//
+// 迁移改动点（用例名与中文注释逐字保留，仅按包内契约改写断言的取值来源）：
+// - 导入路径按 A→B 表改写（`../components/chat/x` → `../chat/<layer>/x`）；`buildPromptText` 与
+//   `ReactDOMServer` 提到文件头，`ComposerAssets` 沿用旧用例的 `await import`。
+// - i18n 换包内字典：旧文件读宿主 `apps/web/src/i18n/locales/en/components.json` 的 `chatComposer.*`；
+//   包内同键位于 `uiComponents` 命名空间的 `chat.*` 子树（`chat.components.chatComposer.*`），
+//   断言经 `chatText` / `expectCopy` 取包内字典译文，字典缺键时回落 key（口径同 `expectText`）。
+// - `envId` prop 已随纯化去掉：旧用例名里的「environment」在包内对应「是否注入 `uploadFiles` /
+//   `renderFilePicker`」。用例名保留旧名以便与旧文件逐条对照，断言按包内实际契约书写。
+// - 旧实现以 3 个 window CustomEvent（`chat:apply-suggested-prompt` / `file-tree:reference` /
+//   `chat:quote`）接收外部输入，包内收敛为 `subscribeExternal` 注入，交互用例改为直接向注入的
+//   订阅者派发事件（不再需要自建 happy-dom window）。
+// - happy-dom 引导复用文件头已有的包内 `testing` 入口，不再读 `apps/web/src/__tests__/happy-dom-window`。
+// - §8.2 与 README「已知取舍」登记的 ToolCallRow / TodoChanges 取舍不涉及本文件用例，故无删除项。
+// ─────────────────────────────────────────────────────────────────────────────
+
+/** 迁移用例里的 `ChatComposer` props（类型空间取值，不产生运行时加载）。 */
+type MigratedComposerProps = Parameters<typeof ChatComposer>[0];
+/** `onSubmit` 收到的消息类型（旧文件用 `ComposerProps["onSubmit"]` 推导，语义一致）。 */
+type SubmittedMessage = Parameters<MigratedComposerProps["onSubmit"]>[0];
+
+/**
+ * 断言渲染结果里出现了某条 composer 文案（包内 `uiComponents` 命名空间，`key` 相对 `chat.` 子树，
+ * 如 `components.chatComposer.send`）——译文与 key 两种形态都接受，口径与 `expectText` 一致。
+ */
+function expectCopy(html: string, key: string) {
+  const translated = chatText(key);
+  const candidates = [translated, `chat.${key}`].filter((value): value is string => typeof value === "string");
+  expect(
+    candidates.some((candidate) => html.includes(candidate)),
+    `文案 chat.${key} 既没有以译文也没有以 key 形态出现在渲染结果里`,
+  ).toBe(true);
+}
+
+/** 找到发送/停止按钮（含 lucide 图标的 button）；包内该按钮带稳定类名 `chat-composer-send`。 */
+function findActionButton(container: HTMLElement): HTMLElement | null {
+  return (
+    Array.from(container.querySelectorAll("button")).find((b) =>
+      b.querySelector("svg.lucide-send, svg.lucide-square"),
+    ) ?? null
+  );
+}
+
+describe("Composer prompt capabilities", () => {
+  // 未选择能力时保持用户正文原样，不产生额外 reminder。
+  test("keeps plain prompt unchanged without selected capabilities", () => {
+    expect(buildPromptText({ text: "检查这个改动" })).toBe("检查这个改动");
+  });
+
+  // Skill slash command 已在用户正文中，发送边界只为 MCP 注入 system-reminder。
+  test("injects only selected mcps at the send boundary", () => {
+    expect(buildPromptText({ text: "/review 检查这个改动", mcps: ["filesystem"] })).toBe(
+      "<system-reminder>\nThe user selected these MCP connections for this turn: filesystem\nUse the selected MCP connections when they are relevant to the user's request.\n</system-reminder>\n\n/review 检查这个改动",
+    );
+  });
+});
+
+describe("ChatComposer", () => {
+  // 引用在输入区只显示紧凑方形卡片，正文仅放入受限的 hover/focus 预览。
+  test("renders a compact quote tile with bounded hover preview", async () => {
+    const { ComposerAssets } = await import("../chat/composer/composer-assets");
+    const html = ReactDOMServer.renderToString(
+      <ComposerAssets
+        images={[]}
+        files={[]}
+        quotes={[{ id: "quote-1", text: "不应展示的引用正文", omittedCharacterCount: 128 }]}
+        onRemoveImage={() => {}}
+        onRemoveFile={() => {}}
+        onRemoveQuote={() => {}}
+      />,
+    );
+
+    expect(html).toContain("chat-composer-asset is-quote");
+    expect(html).toContain("chat-composer-quote-preview");
+    expect(html).toContain("不应展示的引用正文");
+    expect(html).toContain("…");
+  });
+
+  test("exports as function", () => {
+    expect(typeof ChatComposer).toBe("function");
+  });
+
+  test("renders without envId (minimal props)", () => {
+    expect(() => {
+      ReactDOMServer.renderToString(<ChatComposer onSubmit={() => {}} />);
+    }).not.toThrow();
+  });
+
+  test("renders textarea with placeholder", () => {
+    const html = ReactDOMServer.renderToString(<ChatComposer onSubmit={() => {}} placeholder="给智能体发送消息…" />);
+    expect(html).toContain("给智能体发送消息");
+  });
+
+  // 发送按钮现在是纯图标（无文字），检查 lucide Send 图标存在
+  test("renders send button", () => {
+    const html = ReactDOMServer.renderToString(<ChatComposer onSubmit={() => {}} />);
+    expect(html).toContain("lucide-send");
+  });
+
+  // 只渲染协议真实 token 总量，不按固定上限推算百分比。
+  test("renders real context usage without a fake percentage", () => {
+    const html = ReactDOMServer.renderToString(
+      <ChatComposer onSubmit={() => {}} contextUsage={{ totalTokens: 12300, inputTokens: 5000, outputTokens: 7300 }} />,
+    );
+    expect(html).toContain("12.3k");
+    expect(html).not.toContain("%");
+  });
+
+  // 元信息条：新会话按钮文案（i18n 译文或 key 回显，见 expectCopy）
+  test("renders new session button when showNewSession is true", () => {
+    const html = ReactDOMServer.renderToString(
+      <ChatComposer onSubmit={() => {}} showNewSession={true} onNewSession={() => {}} />,
+    );
+    expectCopy(html, "components.chatComposer.newSession");
+  });
+
+  // 浮动按钮组：技能按钮在有 commands 和 envId 时渲染
+  // （迁移：`envId` 在包内对应「注入了 `uploadFiles`」，本用例断言技能入口与附件入口都渲染。）
+  test("renders skill and file buttons when commands and envId provided", () => {
+    const mockCommands = [
+      { name: "review", description: "Code review" },
+      { name: "test", description: "Run tests" },
+    ];
+    const html = ReactDOMServer.renderToString(
+      <ChatComposer onSubmit={() => {}} commands={mockCommands} uploadFiles={async () => []} />,
+    );
+    expectCopy(html, "components.chatComposer.skillButton");
+    expectCopy(html, "components.chatComposer.attach");
+  });
+
+  // 无环境时仍展示文件入口以保持工具栏稳定，但入口必须禁用，不能触发无作用上传。
+  // （迁移：包内「无环境」= 未注入 `uploadFiles` / `supportsImages`，禁用判定由 `supportsAttachments` 承担。）
+  test("disables file button when commands exist without an environment", () => {
+    const mockCommands = [{ name: "review", description: "Code review" }];
+    const html = ReactDOMServer.renderToString(<ChatComposer onSubmit={() => {}} commands={mockCommands} />);
+    expectCopy(html, "components.chatComposer.skillButton");
+    expectCopy(html, "components.chatComposer.attach");
+    // 「入口被禁用」按稳定类名断言：aria-label 的取值随 i18n 状态变化，不作为禁用与否的判据。
+    expect(html).toMatch(/<button[^>]*chat-composer-file[^>]*disabled=""/);
+  });
+
+  // 浮动按钮组：仅有 envId 无 commands 时，只有文件按钮
+  // （迁移：旧断言 `not.toContain("chatComposer.commandButton")` 在包内恒真——该 key 两端都不存在，
+  //  改为按稳定类名断言技能入口不渲染。）
+  test("renders only file button when no commands", () => {
+    const html = ReactDOMServer.renderToString(<ChatComposer onSubmit={() => {}} uploadFiles={async () => []} />);
+    expect(html).not.toContain("chat-composer-plugin");
+    expectCopy(html, "components.chatComposer.attach");
+  });
+
+  // 浮动按钮组：commands 为空数组时不显示技能按钮，无 envId 时不显示文件按钮
+  // （迁移：无 envId 时包内仍渲染文件入口（禁用态），故断言口径同下：入口在、技能入口不在。）
+  test("renders no buttons when commands empty array and no envId", () => {
+    const html = ReactDOMServer.renderToString(<ChatComposer onSubmit={() => {}} commands={[]} />);
+    expect(html).not.toContain("chat-composer-plugin");
+    expectCopy(html, "components.chatComposer.attach");
+  });
+
+  // 断点 1 修复：canCancel（accepting/running/awaiting_permission）时按钮渲染 Square 停止图标，
+  // 输出过程中（running，loading 非空但 canCancel=true）停止按钮也必须可见
+  test("renders Square stop icon when canCancel is true", () => {
+    const html = ReactDOMServer.renderToString(
+      <ChatComposer onSubmit={() => {}} canCancel={true} onInterrupt={() => {}} />,
+    );
+    expect(html).toContain("lucide-square");
+    expect(html).not.toContain("lucide-send");
+  });
+
+  // canCancel 时停止按钮可点击（不带 disabled）——running 输出期间可随时中断
+  test("stop button is enabled when canCancel is true", () => {
+    const html = ReactDOMServer.renderToString(
+      <ChatComposer onSubmit={() => {}} canCancel={true} onInterrupt={() => {}} />,
+    );
+    expect(html).toContain('chat-composer-send is-stop" type="button"');
+    expectCopy(html, "components.chatComposer.stop");
+  });
+
+  // cancelling（isLoading 且 canCancel=false）：渲染 Square 且 disabled，防止重复点发重取消
+  test("renders disabled Square when isLoading and canCancel is false (cancelling)", () => {
+    const html = ReactDOMServer.renderToString(
+      <ChatComposer onSubmit={() => {}} isLoading={true} canCancel={false} onInterrupt={() => {}} />,
+    );
+    expect(html).toContain("lucide-square");
+    expect(html).toContain('disabled=""');
+  });
+
+  // 默认状态（无 canCancel/isLoading）渲染 Send 图标——回归保护，与既有行为一致
+  test("renders Send icon by default", () => {
+    const html = ReactDOMServer.renderToString(<ChatComposer onSubmit={() => {}} />);
+    expect(html).toContain("lucide-send");
+    expect(html).not.toContain("lucide-square");
+  });
+});
+
+// ── 交互测试（happy-dom + react-dom/client）──
+// 补 P2-5：SSR 字符串断言只验证了渲染结果，未覆盖 onClick 分支。
+// 以下用例直接渲染并点击按钮，验证 canCancel 时点击走 onInterrupt 而非 handleSubmit。
+
+describe("ChatComposer interaction", () => {
+  // 连续引用应同步更新预算；发送时引用作为本轮原子字段提交，方形卡不暴露正文。
+  test("bounds synchronous quotes and submits hidden quote context", () => {
+    let emit: ((event: ComposerExternalEvent) => void) | undefined;
+    let submitted: SubmittedMessage | undefined;
+    const props: MigratedComposerProps = {
+      contextScope: "session-a",
+      onSubmit: (message) => {
+        submitted = message;
+      },
+      subscribeExternal: (handler) => {
+        emit = handler;
+        return () => {
+          emit = undefined;
+        };
+      },
+    };
+    mount(props);
+
+    act(() => {
+      emit?.({ type: "quote", quote: { text: "甲".repeat(4_000) } });
+      emit?.({ type: "quote", quote: { text: "乙".repeat(4_000) } });
+      emit?.({ type: "quote", quote: { text: "丙".repeat(4_000) } });
+    });
+
+    expect(container.querySelectorAll(".chat-composer-asset.is-quote").length).toBe(2);
+    expect(container.querySelectorAll(".chat-composer-quote-preview").length).toBe(2);
+    const button = findActionButton(container);
+    act(() => (button as unknown as HTMLButtonElement).click());
+    expect(submitted?.quoteContext).toContain("甲".repeat(100));
+    expect(submitted?.quoteContext).toContain("乙".repeat(100));
+    expect(submitted?.quoteContext).not.toContain("丙");
+  });
+
+  // 切换确定性会话 scope 时清空旧引用，避免旧会话上下文进入新会话。
+  test("clears quote tiles when context scope changes", () => {
+    let emit: ((event: ComposerExternalEvent) => void) | undefined;
+    const subscribe: ComposerExternalSubscribe = (handler) => {
+      emit = handler;
+      return () => {
+        emit = undefined;
+      };
+    };
+    const props: MigratedComposerProps = {
+      contextScope: "session-a",
+      onSubmit: () => {},
+      subscribeExternal: subscribe,
+    };
+    mount(props);
+
+    act(() => {
+      emit?.({ type: "quote", quote: { text: "旧会话" } });
+    });
+    expect(container.querySelectorAll(".chat-composer-asset.is-quote").length).toBe(1);
+
+    mount({ ...props, contextScope: "session-b" });
+    expect(container.querySelectorAll(".chat-composer-asset.is-quote").length).toBe(0);
+  });
+
+  // canCancel（running 输出中）时点击按钮：只触发 onInterrupt，不触发 onSubmit——
+  // 这是断点 1 的核心交互：输出期间点停止必须走取消链路而不是重发消息
+  test("click calls onInterrupt when canCancel is true", () => {
+    let submitCalls = 0;
+    let interruptCalls = 0;
+    mount({
+      onSubmit: () => {
+        submitCalls += 1;
+      },
+      onInterrupt: () => {
+        interruptCalls += 1;
+      },
+      canCancel: true,
+    });
+
+    const button = findActionButton(container);
+    expect(button).not.toBeNull();
+    expect(button?.querySelector("svg.lucide-square")).not.toBeNull();
+    act(() => (button as unknown as HTMLButtonElement).click());
+    expect(interruptCalls).toBe(1);
+    expect(submitCalls).toBe(0);
+  });
+
+  // cancelling（isLoading 且 canCancel=false，取消已发出）时按钮禁用：
+  // 点击无任何动作，防止重复点触发无意义的重发 cancel RPC
+  test("click is no-op when cancelling (isLoading && !canCancel)", () => {
+    let submitCalls = 0;
+    let interruptCalls = 0;
+    mount({
+      onSubmit: () => {
+        submitCalls += 1;
+      },
+      onInterrupt: () => {
+        interruptCalls += 1;
+      },
+      isLoading: true,
+      canCancel: false,
+    });
+
+    const button = findActionButton(container);
+    expect(button).not.toBeNull();
+    expect(button?.hasAttribute("disabled")).toBe(true);
+    act(() => (button as unknown as HTMLButtonElement).click());
+    expect(interruptCalls).toBe(0);
+    expect(submitCalls).toBe(0);
   });
 });
