@@ -1,17 +1,21 @@
 import { describe, expect, test } from "bun:test";
 
+// 宿主副本 `apps/web/src/lib/context-queue.ts` 已随 §1.6 T8d 退场，本用例拆成两个 owner 来源断言：
+// - 有状态队列（`contextQueues` 模块级 Map）归 `@fenix/web-runtime/chat/context-queue`，
+//   即 workflow 包的写入方与 chat-channel 的取出方共用的那一个实例；
+// - 纯函数子集（引用解析/截断/序列化）归 `@fenix/ui-components/chat/lib/context-queue`。
+// 拆开是因为包内已按职责分成两份：队列是宿主会话级可变状态，纯函数无副作用可公共复用。
+const { pushContext, removeContext, flushContext, clearContextQueue } = await import(
+  "@fenix/web-runtime/chat/context-queue"
+);
 const {
   MAX_QUOTED_TEXT_LENGTH,
   MAX_QUOTE_CONTEXT_PAYLOAD_LENGTH,
-  pushContext,
-  removeContext,
-  flushContext,
-  clearContextQueue,
   isVisibleContentBlock,
   limitQuotedText,
   parseChatQuotes,
   serializeChatQuotes,
-} = await import("../lib/context-queue");
+} = await import("@fenix/ui-components/chat/lib/context-queue");
 
 describe("context-queue", () => {
   test("flushContext 返回 null 当队列为空", () => {

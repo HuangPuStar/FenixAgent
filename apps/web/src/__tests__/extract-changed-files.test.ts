@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
-import { extractChangedFiles } from "../lib/extract-changed-files";
-import type { ThreadEntry } from "../lib/types";
+import { extractChangedFiles } from "@fenix/ui-components/chat/lib/extract-changed-files";
+import type { ThreadEntry } from "@fenix/ui-components/chat/types";
 
 describe("extractChangedFiles", () => {
   // 空 entries 返回空数组

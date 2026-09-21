@@ -13,7 +13,6 @@
   },
   "dependencies": {
     "@antv/g6": "^5.0.49",
-    "@fenix/identity": "workspace:*",
     "@fenix/platform-sdk": "workspace:*",
     "@fenix/ui-components": "workspace:*",
     "@fenix/web-runtime": "workspace:*",

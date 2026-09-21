@@ -1,8 +1,8 @@
 import { describe, expect, test } from "bun:test";
 import type { StructuredMessage } from "@fenix/chat-channel";
-import { structuredToThreadEntries } from "../lib/structured-to-thread";
-import { getTodoChanges } from "../lib/todo";
-import type { TodoItem } from "../lib/types";
+import type { TodoItem } from "@fenix/ui-components/chat/types";
+import { structuredToThreadEntries } from "@fenix/web-runtime/chat/structured-to-thread";
+import { getTodoChanges } from "@fenix/web-runtime/chat/todo";
 
 describe("TodoWrite 增量投影", () => {
   // 状态变更、新增和移除必须被明确投影，未变化的条目不应重复展示。

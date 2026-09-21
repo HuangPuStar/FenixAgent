@@ -1,9 +1,14 @@
 import { describe, expect, test } from "bun:test";
+import type { TodoItem } from "@fenix/ui-components/chat/types";
+import {
+  getTodoChanges,
+  getTodosFromRawInput,
+  isTodoWriteToolCall,
+  parseTodosFromRawInput,
+} from "@fenix/web-runtime/chat/todo";
 import type { ModelEntry } from "@fenix/web-runtime/types/config";
 import { buildModelOptions } from "@/src/lib/model-config-utils";
 import { err, ok, unwrapApiResult } from "../lib/api-result";
-import { getTodoChanges, getTodosFromRawInput, isTodoWriteToolCall, parseTodosFromRawInput } from "../lib/todo";
-import type { TodoItem } from "../lib/types";
 
 const baseModel: ModelEntry = {
   id: "model-1",

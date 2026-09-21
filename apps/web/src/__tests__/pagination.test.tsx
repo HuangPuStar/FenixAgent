@@ -1,7 +1,7 @@
 import { describe, expect, mock, test } from "bun:test";
+import { Pagination } from "@fenix/ui-components/ui/pagination";
 import { createElement } from "react";
 import ReactDOMServer from "react-dom/server";
-import { Pagination } from "@/components/ui/pagination";
 
 // 简易 t() mock：返回可识别的翻译文本
 const t = mock((key: string, opts?: Record<string, unknown>) => {

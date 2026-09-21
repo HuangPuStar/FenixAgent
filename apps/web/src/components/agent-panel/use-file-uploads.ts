@@ -1,7 +1,13 @@
 import type { TFunction } from "i18next";
 import { type ChangeEvent, useCallback, useEffect, useRef, useState } from "react";
 import { MAX_UPLOAD_BATCH_SIZE_BYTES, MAX_UPLOAD_SIZE_BYTES, uploadFiles as uploadWorkspaceFiles } from "@/src/api/fs";
-import { MAX_FILE_UPLOAD_SIZE_LABEL } from "./file-tree-model";
+
+/**
+ * 单文件上传上限的展示文案；`file-tree-model` 的宿主副本随 §1.6 T8c 退场，本文件改为自持。
+ * `@fenix/ui-components/components/file-tree-model` 只收纯数据子集，该文案依赖宿主的上传上限
+ * 配置（`@/src/api/fs` 的 `MAX_UPLOAD_SIZE_BYTES`），属业务配置而非组件契约，因此不迁入包内。
+ */
+const MAX_FILE_UPLOAD_SIZE_LABEL = `${MAX_UPLOAD_SIZE_BYTES / (1024 * 1024)}MB`;
 
 interface UseFileUploadsOptions {
   envId: string | null;

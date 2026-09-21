@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
-import { extractChangedFiles } from "../lib/extract-changed-files";
-import type { ThreadEntry, ToolCallData } from "../lib/types";
+import { extractChangedFiles } from "@fenix/ui-components/chat/lib/extract-changed-files";
+import type { ThreadEntry, ToolCallData } from "@fenix/ui-components/chat/types";
 
 function toolCall(overrides: Partial<ToolCallData> = {}): ThreadEntry {
   return {

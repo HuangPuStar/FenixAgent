@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
-import { ApiError } from "@/src/api/request";
+import { ApiError } from "@fenix/web-runtime/api/request";
 import { getPeriTaskDetail, type PeriTaskDetail } from "../api/peri-task-details";
 
 const originalFetch = globalThis.fetch;

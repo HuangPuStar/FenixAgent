@@ -1,6 +1,6 @@
-import { useOrg } from "@fenix/identity/web";
 import { ConfirmDialog } from "@fenix/ui-components/config/ConfirmDialog";
 import { unwrap } from "@fenix/web-runtime/api/request";
+import { useOrgSession } from "@fenix/web-runtime/contexts/org-session";
 import { NS } from "@fenix/web-runtime/i18n/namespace";
 import type { McpServerConfig, McpServerInfo, McpToolInfo } from "@fenix/web-runtime/types/config";
 import { useRequest } from "ahooks";
@@ -17,10 +17,12 @@ export function AgentMcpPage() {
   const { t } = useTranslation(NS.MCP);
   const { t: tComponents } = useTranslation(NS.COMPONENTS);
   // 当前组织 id 用于判定资源归属：`/web` 视图只给 scope.organizationId，需要本地比对才知道是否外部资源。
-  // 组织上下文必须与宿主挂载的 React context 是同一份实例（第二份 context 会让 useOrg 永远拿到默认
-  // 值），因此从身份包的浏览器入口取用，而不是在包内另建组织状态。
-  const { org } = useOrg();
-  const activeOrganizationId = org?.id;
+  // 取值经 `@fenix/web-runtime` 的 org/session 契约（§1.6 T7），实现方是身份包的 `OrgProvider`——
+  // 契约的 context 实例唯一，故与宿主挂载的是同一份；本包不依赖平台实现，也不另建组织状态。
+  const { organizationId } = useOrgSession();
+  // 契约用 `null` 表示「无活动组织」，本包比较函数与子组件的入参口径是 `string | undefined`：
+  // 在取值处一次归一，调用点保持既有形状，避免把 `| null` 扩散进各处签名。
+  const activeOrganizationId = organizationId ?? undefined;
   const [query, setQuery] = useState("");
   const [scope, setScope] = useState<McpCatalogScope>("all");
   const [editorTarget, setEditorTarget] = useState<McpEditorTarget>(null);

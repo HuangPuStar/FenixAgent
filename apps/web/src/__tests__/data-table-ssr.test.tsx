@@ -1,10 +1,9 @@
 import { expect, test } from "bun:test";
+import { type Column, DataTable } from "@fenix/ui-components/config/DataTable";
 import { createInstance } from "i18next";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { I18nextProvider } from "react-i18next";
-
-import { type Column, DataTable } from "../../components/config/DataTable";
 
 type Row = {
   id: string;
@@ -93,6 +92,10 @@ test("DataTable SSR：展示搜索、分页和默认展开内容", () => {
   expect(html).toContain("第一页记录");
   expect(html).not.toContain("第二页记录");
   expect(html).toContain("详情 first");
-  expect(html).toContain("上一页");
-  expect(html).toContain("下一页");
+  // 翻页按钮：owner 已归 `@fenix/ui-components/config/DataTable`（§1.6 T8b 删除宿主副本）。
+  // 宿主副本此处是硬编码中文「上一页/下一页」（无对应 i18n 键），包内改为英文默认值并在实现处
+  // 明文登记为「已知限制：仅这两个按钮的可见文案未本地化，移除条件是消费方提出本地化需求」。
+  // 本用例守护的是「pageCount > 1 时翻页控件出现」这条结构，语言差异随 owner 契约走。
+  expect(html).toContain("Previous");
+  expect(html).toContain("Next");
 });

@@ -5,7 +5,7 @@ import {
   selectionToValue,
   shouldShowRemoteNode,
   valueToSelection,
-} from "../lib/agent-node";
+} from "@fenix/agent-config/web/lib/agent-node";
 
 describe("运行节点选择", () => {
   // 本地默认节点保存为空对象，交给后端运行时动态解析。

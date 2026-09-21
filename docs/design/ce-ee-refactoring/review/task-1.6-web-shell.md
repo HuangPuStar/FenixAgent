@@ -97,10 +97,10 @@ WebShell 从静态 registry 收集各资源包的 web contribution（不反向�
 | T1 | 别名表与依赖声明归一 | 已交付 | `5e342aa31` |
 | T2 | 宿主零消费死代码与重复副本删除 | 已交付 | 见下方 §7.2 |
 | T3 | `@fenix/ui-components` 扩面 | 已交付 | `b858bf68f` |
-| T4 | `identity/web` 清零 + i18n | 4a 已交付 / 4b 待办 | 见下方 §7.3 |
+| T4 | `identity/web` 清零 + i18n | 已交付（a + b 并入 T7） | 4a 见 §7.3 / 4b 见 §7.12 |
 | T5 | `chat-channel/web` 清零 | a,b,c1,c2,c5,d 已交付 | 见下方 §7.4–§7.10 |
 | T6 | `agent-runtime/web` 收敛 | 已交付（a–e） | 见下方 §7.11 |
-| T7 | 5 条 `special-dependency` 消除 | 待办 | — |
+| T7 | 5 条 `special-dependency` 消除 | 已交付（含 4b） | 见下方 §7.12 |
 | T8 | 宿主组件/lib/api 簇改指并删除 | 待办 | — |
 | T9 | i18n 归属重划与 `quoteTruncatedBadge` 缺陷修复 | 待办 | — |
 | T10 | 测试迁移与 happy-dom 收敛 | 待办 | — |
@@ -158,7 +158,7 @@ T4 计划为一片，实测后发现两半的**失败面**不同，故拆成两�
 - **4a**（本次交付）：identity 别名归零 + `web/i18n` 建设 + **删 2 条台账**。这一半的改动会让
   T3 遗留的三条「上游别名债务」白名单断言与 `RMD_08_MOVES` 的目标存在性断言**同时变红**，
   必须同批处理（见 §7.3 的连带改动），否则 4a 无法独立成绿。
-- **4b**（**已并入 T7**，见下）：移除 3 处 `mock.module("@fenix/identity/web", …)`。
+- **4b**（**已并入 T7 并随之交付**，见 §7.12）：移除 3 处 `mock.module("@fenix/identity/web", …)`。
 
 **4b 为何并入 T7**：这 3 处替身（`skill` / `mcp` / `knowledge` 的 `*-page-states.test.tsx`）替换的正是
 `useOrg` / `useSession`，而 T7 要做的事就是把这 5 个资源页从「import `@fenix/identity/web` 的 hook」
@@ -905,6 +905,264 @@ packages/agent-runtime/` 488 pass（原 507 减已迁出的 19）、`bun test pa
 pass / 0 fail、web-app-tests 968 pass / 0 fail）；`bun run build:web` 成功；`bun run architecture:check` ✓
 （2183 files / 24 条已登记例外）；`bun run check:dependencies` ✓（0 条新增违规）。
 
+### 7.12 T7 / T4b 组织与会话上下文改经 `@fenix/web-runtime` 契约（2026-09-21，`b5c5323fa` + `9fd834be4`）
+
+**先决问题：契约落在哪。** 5 条 `special-dependency` 的成因完全相同——skill / mcp / knowledge /
+model-management / agent-config 的 web 面 `import { useOrg, useSession } from "@fenix/identity/web"`。
+但 §6.5 的裁定「组织上下文必须取宿主挂载的**同一份** React context 实例」与 §2.3 的「`resources` 不得
+依赖 `platform-impl`」在此正面冲突：资源包内自建 context 会拿到第二个实例（取值永远落在默认值），照搬
+identity 的 context 又违反依赖矩阵。按工程原则 6 向用户呈报三个候选（契约落 `@fenix/web-runtime` /
+资源包经 props 注入 / 台账长期豁免），用户裁定 **「契约落在 `@fenix/web-runtime`（推荐）」**。
+
+**第二次裁定：`isOwner`。** 裁定后的契约形状是 `{ organizationId, userId, pending }`，但盘点 5 个站点
+时发现 `AgentKnowledgeBasesPage` 还需要组织角色（`role === "owner"` 决定 `canManage` 与详情页的
+`canManageDetail`）。这同样是公共契约变更，再次弹窗，用户裁定 **「契约补 `isOwner` 布尔（推荐）」**：
+只给资源包真实需要的粒度，角色枚举（`owner` / `admin` / `member`）属身份域词汇，不外泄到 5 个包的
+类型面。
+
+| 动作 | 内容 |
+| --- | --- |
+| 契约新建 | `packages/web-runtime/web/contexts/org-session.tsx`：`OrgSession { organizationId; userId; isOwner; pending }` + `OrgSessionProvider` + `useOrgSession()`（不在 Provider 内即抛，不静默回落默认值）；出口 `./contexts/org-session` |
+| 实现方投影 | identity 的 `OrgProvider` 新增 `useSession()` 订阅与 `orgSessionValue` useMemo，外层包一层 `OrgSessionProvider`；取数、切换与 fetch 头注入等身份域逻辑仍只在本包（web-runtime 只声明形状） |
+| 5 个站点改指 | `AgentSkillsPage` / `AgentMcpPage` / `AgentKnowledgeBasesPage` / `AgentModelsPage` 改 `useOrgSession()`；`agent-config` 的 `use-agent-editor.ts` 同改（原 `useOrg`） |
+| 测试断言反转 | 3 条 `*-browser-surface` 的正向固化（`expect(page).toContain('from "@fenix/identity/web"')`）改为「取自契约 + 源码不得出现 `@fenix/identity`」；skill / mcp / knowledge / model-management / agent-config 的跨包到达面钉子由 `packages/platform/identity/web/contexts/OrgContext.tsx` 改指 `packages/web-runtime/web/contexts/org-session.tsx` |
+| T4b | 删 3 处 `mock.module("@fenix/identity/web")` 替身，改挂**真实** `OrgSessionProvider`（§6.4 的「4b 并入 T7」据此落地） |
+| 台账 | 删 5 条 `special-dependency … → @fenix/identity`（条目 34 → 29；`architecture:check` 24 → 19 条已登记例外，`check:dependencies` 仍 10 条 / 0 条新增违规） |
+| 死依赖 | 5 个资源包的 `@fenix/identity` workspace 依赖删除（import 归零后已无消费方），`bun.lock` 同步 8 行 |
+| 白名单死条目 | 4 份 `*-browser-surface` 白名单里的「经 `@fenix/identity/web` 传递进入」条目（`better-auth` / `@better-auth/api-key` / `@noble/ciphers` / `@tanstack/react-router`）随边消失删除；**删除本身就是证据**——若它们仍可达，「包外运行时依赖在白名单内」会立刻报红（实测删除后全绿，故确为死条目） |
+| 跨包到达面阈值 | skill 25 → 20、mcp 30 → 20（identity 子树离开值导入图，可达面缩小是预期结果）；model-management 的 20 未变 |
+| README | skill / mcp / knowledge / task 四份 README 的「边界残留 / 依赖边界 / 守卫范围」段落改写为「已消除」并记录新落点 |
+
+**为什么是 projection 而不是 re-export 身份的 context。** re-export 会把身份域的实现细节（`orgApi.list`
+的调用时机、`switchOrg` 的乐观更新与回滚、给全局 `fetch` 注入 `X-Active-Org-Id`）留在资源包的依赖链上，
+依赖方向问题只是被一句 re-export 掩盖。投影让资源包的类型面只含四项，且「值来自同一份实现」这一点由
+**实现方主动投影**保证：`OrgProvider` 是唯一的投影点，资源包之间不可能各自造出第二份值。
+
+**为什么不选「props 逐层注入」（T5b / T6d 的先例形态）。** 5 个站点都是**整页装配**——宿主路由直接
+渲染 `AgentSkillsPage` 这类页面组件，中间没有可注入的宿主边界；补一层包装组件只是把同一个 hook 换个
+地方调用，对上下文的依赖既没减少也没消失。契约 + 单 hook 与「取宿主同一份 context 实例」的约束同构，
+且不需要为 5 个页面各加一个包装点。
+
+**契约用 `null`、消费方口径是 `undefined`：在取值处一次归一。** 契约按 `/web` 视图模型的既有习惯用
+`string | null` 表达「不存在」（与 `types/config.ts` 的 `string | null` 一致）；5 个站点的比较函数
+（`isExternalSkill` / `isExternalMcp` / `providerMatchesScope` / `mapModelOptions`）与子组件 prop 用的是
+`string | undefined`。取舍是**在取值处归一**（`const activeOrganizationId = organizationId ?? undefined;`）
+而不是把 `| null` 扩散进这些签名：null 语义挡在契约边界内，调用点保持原样，改动面最小。
+
+**T4b 的测试保真度确实提高了，不只是「换个注入方式」。** 3 个 page-states 用例原先的替身是
+`useOrg: () => ({ org: { id: "org-current" }, role: "owner" })`——它把页面**怎么用**组织上下文也一并
+替身掉了（`role` 到 `isOwner` 的转换、会话与组织两个来源的合并都不过被测代码）。改挂真实
+`OrgSessionProvider` 后，页面走的是契约的真实解构与比较路径：少给一个字段（例如漏挂 Provider）用例会
+立刻抛 `useOrgSession must be used within OrgSessionProvider`，而不是静默拿到默认值继续跑。取值与旧替身
+逐项等价：`organizationId` 与用例内的资源归属一致（否则本组织资源会被判成共享来源）、`isOwner: true`
+对应旧 `role: "owner"`、`userId: undefined` 对应旧空会话。
+
+**观察到但未处理的既有现象（非本片引入）。** `bun test packages/resources`（本任务期间用于快速回归的
+**窄口径**）在本片改动前后都报 4 例 `# Unhandled error between tests`：3 例是 `@pierre/diffs` 模块求值期
+的 `ReferenceError: customElements is not defined`，1 例是 `spawn zip` ENOENT（本机无 `zip`）。基线对比：
+在 HEAD 的临时 worktree 跑同一命令同样得 4 errors（另有 98 例失败是该 worktree 的路径依赖用例，与本片
+无关），故为既有条件而非本片引入。CI 的真实门禁 `bun test packages/`（`scripts/ci.ts` 的 package-tests）
+全绿，本片未触及它的触发面；§7.11 记录的「`HTMLElement` 与 `customElements` 必须成对注入」修复针对的是
+T6c2 删除 33 个测试后的求值顺序，本节不重复处理，统一归 T10（测试迁移与 happy-dom 收敛）。
+
+**登记一处文档债务（不属本片可写范围）。** `packages/resources/model-management/README.md` 用行号引用
+`scripts/architecture/exceptions.json`（`:239` / `:303` / `:407`）；本片删除 5 条条目后文件降到 266 行，
+这些引用彻底失效（该段本就自述「已失真」）。model-management 的 README 归该包与 T12 文档收尾，本片只
+登记不改写。
+
+验证：`env -u ANTHROPIC_MODEL bun run precheck` 全绿（server-and-script-tests 771 pass、package-tests
+7311 pass / 0 fail / 2 skip、web-app-tests 968 pass / 0 fail）；`bun run build:web` 成功；
+`bun run architecture:check` ✓（2184 files / 19 条已登记例外）；`bun run check:dependencies` ✓
+（2335 modules / 10 条已登记例外 / 0 条新增违规）；5 个资源包与 model-management / prod-view / task 的
+`*-browser-surface` 与 3 个 page-states 专项用例全部通过。
+
+---
+
+### 7.13 T8 宿主副本簇退场（2026-09-21）
+
+T8 的验收目标是让 `apps/web` 不再持有「owner 已经迁走」的实现副本。宿主副本与包内实现并存会持续制造
+分叉（本任务已两次遇到宿主副本与包内契约语义不一致），因此本片的判定标准必须是**可复现的实证**而非
+文件名或体量估算。
+
+#### 判定口径（三张清单，先用脚本产出再动手）
+
+1. **「副本」的判定**：按**行集合相似度**打分（非空、非注释行集合的交并比），并对每个候选做**逐导出面
+   比对**（导出名、导出种类、签名差异逐条列出）。文件名相同或目录名相同都不作为证据。
+2. **「改指后删」的执行**：用**确定性 codemod** 重写所有消费方的导入说明符，再删宿主文件。codemod 必须
+   同时解析三种说明符形态——相对路径、tsconfig `paths` 中的 `@/` 别名、vite `alias`——只替换说明符本身。
+3. **消费方包含宿主测试**：把测试的 import 改指到包出口是本片的责任；T10 只负责搬迁测试文件本身。
+
+实测规模：**80 个删除目标**、**215 个消费点**（三种形态分别计数）。相似度打分低于 0.7 的 12 项逐一定性，
+其中 8 项是 basename 假阳性（同名不同物），2 项是真分叉（`tree`、`file-tree-view`）——后者都取到了包内
+自带的超集证明或导出面实证，故仍按「改指后删」处理。
+
+一次必须记录的教训：首轮扫描的 `paths` 解析正则漏掉了 `["./..."]` 这一 JSON 形态（`[` 后紧跟引号），
+导致全部别名形态消费点被漏计（消费点从 44 处升到 215 处）。消费点计数偏低的代价是删掉仍有引用的文件，
+所以扫描脚本的解析覆盖度本身就是证据链的一部分，不能靠抽查验证。
+
+#### 簇划分与提交序
+
+按「同一批宿主文件不会被多簇同时改写」切分，每片可独立跑门禁、独立提交：**T8a** `components/ui/**`、
+**T8b** `components/config/**` + `components/ai-elements/**`、**T8c** `src/components/**` 11 个副本、
+**T8d** `src/{lib,hooks,api,types}` 簇（含 10 项零消费直删）。零消费且包内无对应物的宿主文件（`lib/{retry,
+form-utils,api-result}.ts`、`api/helpers.ts`、`App.tsx`）按 T2 先例保留，交 T10 处理。
+
+同样必须记录的一条方法论取舍：本片**没有**用并发子代理改文件。多簇会改同一批宿主文件
+（`ArtifactsPanel.tsx` 同时消费 `lib` 与 `components`），并行代理写同一文件必然冲突；codemod 逐簇串行、
+可复现、可审计，是这里唯一正确的执行方式。
+
+#### T8a：`apps/web/components/ui/**` 退场（`451e2163c`）
+
+删除 36 个路径（35 个副本 + `index.ts` 聚合器），28 个文件被 codemod 改指（65 处），
+`tsconfig.json` 与 `apps/web/vite.config.ts` 各自的 `@/components/ui` 别名同步删除。
+
+**契约差异处置（1 处）**：`date-picker.test.tsx` 原断言宿主副本用 `useTranslation("datePicker.placeholder")`
+取默认占位；包内契约明确为「英文默认文案 + 调用方 `placeholder` 覆盖，不自带 i18n 单例」，本地化由
+`locale` prop 承担。按 owner 契约改写断言（`Select date`，并补 `locale="en-US"` 用例），差异写在
+`apps/web/src/__tests__/date-picker.test.tsx` 头注。同批**删除该文件模块作用域的 `react-i18next` 替身**
+与配套 `afterEach(mock.restore)`——CLAUDE.md 禁止测试直接调用 `mock.module()`，且该替身会跨文件残留。
+
+#### T8b：`components/config/**` 与 `components/ai-elements/**` 退场（`9b19d15c9`）
+
+删除 11 个文件（`config` 4 + `ai-elements` 6 + `chat-message-content.css`），`apps/web/components/` 目录
+随之消失；8 个文件被 codemod 改指（8 处），`tsconfig.json` 与 `apps/web/vite.config.ts` 的 `@/components/*`
+别名删除。
+
+**契约差异处置（1 处）**：`data-table-ssr.test.tsx` 的分页断言。宿主副本是硬编码中文「上一页/下一页」
+（无对应 i18n 键），包内改为英文默认值并在实现处明文登记为「已知限制：仅这两个按钮的可见文案未本地化，
+移除条件是消费方提出本地化需求」。该用例守护的是「`pageCount > 1` 时翻页控件出现」这条结构，语言差异
+随 owner 契约走，断言改为 `Previous` / `Next`，理由写在测试注释内。
+
+**连带修正（同批必需）**：
+
+- `packages/chat-channel/tsconfig.json` 删除 5 条指向宿主 `apps/web` 的死别名（`@/components/ui/*`、
+  `@/components/*`、`@/src/api/request`、`@/src/lib/utils`、`@/src/*`）。§1.3 静态条件 3 要求
+  `packages/**` 内不得出现指向 `apps/web` 的相对路径，而包内实测零 `@/` import，这些条目只会让宿主式
+  说明符在包内静默解析成功。保留指向包内的 5 条。全仓包 `tsconfig.json` 现已无 `apps/web` 条目。
+- `confirm-dialog.test.tsx` 的「内部用 AlertDialog」断言改读包内实现
+  （`packages/ui-components/web/config/ConfirmDialog.tsx`），守护意图不变。
+- `components.json`（shadcn CLI 配置，`Dockerfile:18` 会 `COPY`，不能删）的 `aliases` 全部指向已被
+  本片删除的路径，一并修正为真实落点：`ui` → `packages/ui-components/web/ui`（owner 包，新增 UI 原语
+  应落在包内而非宿主），其余四项指向仍存在的宿主目录。
+- `scripts/__tests__/rmd-08-migration.test.ts` 台账同步：`RMD_08_MOVES` 删 11 条（152 → 141），
+  `RMD_08_RELOCATED` 增 11 条三元组（10 → 21，owner 为 `packages/ui-components/web/{chat/primitives,config}/*`）。
+
+#### T8c：`apps/web/src/components/**` 副本簇退场（`f2ae6bf59`）
+
+删除 11 个路径（`PreviewTab`、`file-tree-{input-dialog,model,view}`、`file-icon-helper`、
+`layout/{app-header,app-page}`、`preview/{FileViewerPreview,html-plugin,native-pdf-plugin,overrides.css}`），
+7 个宿主文件 11 处消费点改指到 `@fenix/ui-components` 的 `components/**` 与 `layout/**` 出口。
+
+**超集证明先行（本片最重的一项）**：`file-tree-view.tsx` 是最可疑的候选——宿主单文件 544 行、与包内
+同名文件的行集合相似度只有 0.41。实测证明这是**拆分造成的相似度失真**而非功能缺失：宿主单文件在包内被
+拆成 `file-tree-view`（容器）+ `file-tree-arborist`（含 sticky 目录条、`ResizeObserver` 测高、
+`requestAnimationFrame` 滚动换算、行内新建/删除/刷新按钮）+ `file-tree-context-menu`（7 个菜单项、
+视口贴边、portal 到 body）+ `file-tree.css`，四者并集覆盖宿主的全部非空行，逐行等价（差异只有改名、
+`viewProps` 类型收窄、`32`/`12` 提为 `ROW_HEIGHT`/`INDENT` 常量、i18n 命名空间）。该结论与包内头注
+自带的纯化取舍说明互相印证，故此处的「副本」判定不采信相似度分数。
+
+**契约差异处置（1 处，含消费方适配）**：包内 `FileTreeView` 去掉了宿主契约里的 `envId`（宿主概念，
+不应进入公共契约），改为语义化的 `canMutate`；同时摘除在该视图内**没有任何使用点**的死 props
+`isDirectory` 与 `onOpen`。因此消费方 `FileTreeTab.tsx`（宿主活文件，未随包迁移）需要同步适配：
+`envId={envId}` → `canMutate={!!envId}`、删掉 `isDirectory` / `onOpen` 两个传参，并删除因此不再被引用的
+`isDirectory` `useCallback`（`findFileNode` 仍被 `handleToggle` / `handleContextMenu` 使用，保留）。
+三处适配的语义等价性：`canMutate` 的判定与源实现逐字一致（`disabled={!props.envId}` → `disabled={!canMutate}`），
+`onPreviewFile` 仍经 `handleSelect` 生效（`onOpen` 在源实现里从未被调用）。
+
+**零消费直删 4 项**：`preview/{FileViewerPreview,html-plugin,native-pdf-plugin,overrides.css}` 的唯一宿主
+消费方就是 `PreviewTab`（本身是副本），`PreviewTab` 改指包出口后这 4 项在宿主零引用，直接删——它们的
+owner 在包内（`web/components/preview/**`）。同目录的 `preview/utils.ts` **不删**：`ArtifactsPanel.tsx` 与
+`preview-utils-normalize.test.ts` 仍在消费它，这正是包内 README 第 43 条「只取子集、原文件保持不动」的
+前提，本片不得推翻。
+
+**验收无回归的一处核对**：包内 `PreviewTab` 与 `FileTreeView` 的文案改用包内 `UI_COMPONENTS_NS`。
+逐字核对后确认两处文案值与宿主一致（面板标题 zh「文件」/ en `File Browser` ↔ 包内 `fileTree.title` 同值），
+且宿主 `apps/web/src/i18n/index.ts:123,140` 已注册该命名空间与字典，故不是用户可见变化。
+
+**呈现取舍（1 处，登记到 §8.2）**：`AppHeader` / `AppPage` 的硬编码色值（`#e4eaf2` / `#17233a` /
+`#94a3b8` / `#f5f7fb`）在包内改为主题 token（`border` / `text-bright` / `text-muted` / `surface-0`）。
+宿主 `apps/web/src/index.css` 已定义同名 token，且亮色值已在同色域（`surface-0` 为 `#f8fafc` 而非
+`#f5f7fb`），因此有极轻微的色差，换来的是暗色主题下不再破色。这 3 个消费方页面（`AgentDashboardPage` /
+`AgentManagementPage` / `workflow.tsx`）的视觉验收应纳入回归清单。
+
+**契约收窄的一处连带改动**：`file-tree-model.ts` 的 `MAX_FILE_UPLOAD_SIZE_LABEL` 依赖宿主上传上限配置
+（`@/src/api/fs` 的 `MAX_UPLOAD_SIZE_BYTES`），包内只收纯数据子集。该常量改由唯一消费方
+`use-file-uploads.ts` 自持，理由写在常量注释内（业务配置而非组件契约，因此不迁入包内）。
+
+**台账同步**：`RMD_08_MOVES` 141 → 130，`RMD_08_RELOCATED` 21 → 32（owner 为
+`packages/ui-components/web/{components,layout}/**`）。
+
+#### T8d + T8z：`src/{api,hooks,lib,types}` 副本簇退场与零消费直删
+
+**为何与 T8z 合并成一批**：T8d 删掉 `lib/types.ts` 后，T8z 的直删目标 `lib/token-stats.ts` 会立刻报
+TS2307（`Cannot find module './types'`）。两片拆开必然产生一个类型检查失败的中间提交，故合并为一批。
+
+**T8d：15 项「改指后删」，60 处消费点 / 29 个文件改指**（其中 15 个是宿主测试——按 T8 口径，测试
+文件的导入说明符由本片改指到包出口，测试文件本身的搬迁属 T10）。
+
+| 宿主副本 | 包内 owner 出口 |
+|---|---|
+| `src/api/request.ts` | `@fenix/web-runtime/api/request` |
+| `src/hooks/{use-changed-files-stats,usePageVisible}.ts` | `@fenix/web-runtime/hooks/**` |
+| `src/lib/{agent-node,agent-resource-access,agent-utils}.ts` | `@fenix/agent-config` 的 `web/lib/**`（本片新增 3 条出口） |
+| `src/lib/{artifacts-preview-events,chat-stats,config-events}.ts`、`structured-to-thread.ts`、`todo.ts` | `@fenix/web-runtime` 的 `lib/**` 与 `chat/**` |
+| `src/lib/{extract-changed-files,strip-html-tags,tool-semantic}.ts`、`types.ts` | `@fenix/ui-components` 的 `chat/lib/**` 与 `chat/types` |
+
+`agent-config` 的三条 `./web/lib/*` 出口是本片新增。归属理由：这三个模块是 agent 配置领域的浏览器侧
+助手（解析 agent 节点、判定资源可访问性、配置展示助手），与既有的 `./web` 出口同属一层；放进
+`web-runtime` 会污染「跨资源运行时契约」的定位，放进 `ui-components` 则与 UI 无关。
+
+**T8z：9 项零消费直删**：`lib/{context-queue,token-stats,citation-preview-context.tsx}`、
+`lib/card-renderer/{index,registry,emitter,context.tsx}`、`types/{cytoscape-fcose,react-file-icon}.d.ts`。
+
+- `card-renderer/` 的 4 项是宿主死副本：宿主注册表与包内注册表是两份互不相通的模块实例，而 markdown
+  渲染器已归 `@fenix/ui-components`（`web/chat/primitives/message.tsx` 读的是包内注册表），写进宿主
+  注册表的条目不会被渲染。同目录 `builtins.ts` **保留**：它是宿主的注册入口（`main.tsx:6` 经
+  `./lib/card-renderer/builtins` 加载），负责把宿主专有的 `agent-sites` 卡片注册到包内注册表；其文件
+  注释同步更新为「本目录其余文件已随 T8z 删除」。
+- 两份第三方类型垫片的归属本来就在各包（`packages/resources/memory/web/types/cytoscape-fcose.d.ts`、
+  `packages/ui-components/web/types/react-file-icon.d.ts`），宿主只是重复声明。
+
+**连带修正 1：`apps/web/tsconfig.json` 的 include 补包垫片 glob。** 删掉宿主垫片后
+`tsc -p apps/web/tsconfig.json` 报 3 处 TS7016——宿主 tsc 会顺各包 `exports` 的 types 条件检查包源
+文件，而包自带垫片不在宿主 include 内，`declare module` 不生效。修正为
+`../../packages/*/web/types/*.d.ts` 与 `../../packages/*/*/web/types/*.d.ts` 两条 glob，理由写在
+该文件注释里。这是把「宿主为包提供类型」的隐式耦合显式化，而不是在宿主保留副本，也不是放宽检查。
+
+**连带修正 2：`context-queue.test.ts` 拆成两个 owner 来源。** 宿主副本删除后，用例里「有状态队列」
+与「纯函数」两组断言分别断言 `@fenix/web-runtime/chat/context-queue`（`contextQueues` 模块级 Map，
+即 workflow 写入方与 chat-channel 取出方共用的那一个实例）与 `@fenix/ui-components/chat/lib/context-queue`
+（无副作用的引用解析/截断/序列化）。拆分的理由写在文件头注释内。
+
+**连带修正 3：死别名条目清理。** 根 `tsconfig.json` 与 `apps/web/vite.config.ts` 删除 `@/src/api/request`
+条目；`@/src/lib/card-renderer` 条目同样删除（`@/src/lib/card-renderer/*` 通配保留，`main.tsx` 走相对
+路径 `./lib/card-renderer/builtins`）。
+
+**未列入本片的宿主 `src/lib` 保留项**：`app-brand` / `clipboard-polyfill` / `random-uuid-polyfill` /
+`streamdown-table-patch` / `theme` / `utils` 在包内**没有**对应实现（逐个 `find` 核对，同名文件都在
+无关目录），不是副本；`api-result` / `auth-preference` / `form-utils` / `retry` / `password-crypto`
+仍在台账在册，宿主仍有活消费方。二者都不属本片范围。
+
+**台账同步**：`RMD_08_MOVES` 130 → 111（在册的 T8d 14 项 + T8z 5 项；`api/request.ts` 与
+`card-renderer/**` 本就不在 MOVES 中，故 19 ≠ 15 + 9），`RMD_08_RELOCATED` 32 → 47（T8d 15 项的三元组）。
+台账里 `password-crypto.ts` 一行的第二个元素是 `packages/...` 而非 `apps/web/...`，用脚本重排数组时必须
+按原文保留——本片第一次批量改写就把它漏掉了，靠长度断言（111 vs 110）才发现。
+
+#### 验证
+
+T8a / T8b / T8c / T8d+T8z 四片各自跑过一轮完整门禁，均全绿。最终一轮（含 T8d+T8z）：
+`env -u ANTHROPIC_MODEL bun run precheck` 全绿（format / import-sort / module-registry / architecture /
+tsc server+web+app-skeletons / dependency-boundaries / lint / server-and-script-tests 771 pass /
+package-tests 7311 pass + 2 skip / web-app-tests 969 pass，0 fail）；`bun run build:web` 成功。
+结构性证据（四片合计）：全仓零 `@/components/*` 导入说明符；`apps/web/components/` 目录已不存在，
+`apps/web/src/components/` 仅剩 9 个活文件（`FilePickerDialog`、`agent-panel/{FileTabsBar,FileTreeTab,
+TopModeTabs,artifacts-dialogs,artifacts-files-workspace,use-file-tree-events,use-file-uploads}`、
+`agent-panel/preview/utils.ts`）；`apps/web/src/{api,hooks,lib,types}` 的副本已清空，剩余 20 个文件里
+`src/lib` 的 11 项均有明确归属（6 项宿主专有、5 项台账在册仍有活消费方，见上），`src/types` 只剩
+`global.d.ts` 与 `index.ts`，`src/hooks` 只剩 `use-task-views.ts`。T8d 的改指由确定性 codemod 完成，
+`dry` 复核为 0 处残留；台账的 `RMD_08_MOVES` 全条目（111 条）的 legacy 路径与 `RMD_08_RELOCATED`
+（47 条）的 legacy + shell 路径均不存在、owner 落点均存在。
+
 ---
 
 ## 八、用户可见行为变更
@@ -934,12 +1192,14 @@ pass / 0 fail、web-app-tests 968 pass / 0 fail）；`bun run build:web` 成功�
 | 4 | 用户消息图片缩略图 80px 居中 → 96px（`size-24`）右对齐（`ml-auto`） | 复用包内 `primitives/message-attachments`，与附件条的尺寸/对齐统一 | T3 `b858bf68f` |
 | 5 | 附件上传失败提示为通用文案，原文只进控制台 | 包内无法翻译宿主上传回调抛出的业务错误；属包校验的错误（`chatComposer.*` key）仍按原文翻译 | 前置 `e8c73280a` |
 | 6 | 空状态建议提示词与消息「引用」的投递范围为**本实例**（源实现走全局 window 事件，靠 `contextScope` 过滤跨实例串扰） | 合并订阅按 `ChatInterface` 实例分发，订阅者集合属于该实例，跨实例串扰在结构上不可能（§7.6 取舍 2）；宿主注入的外部来源（文件树引用）仍由宿主做环境归属过滤 | T5c1 `403af2969` |
+| 7 | 业务页标题区与页面容器的色值由硬编码改为主题 token：`#e4eaf2` → `border`、`#17233a` → `text-bright`、`#94a3b8` → `text-muted`、`#f5f7fb` → `surface-0`（`surface-0` 亮色值为 `#f8fafc`，有极轻微色差） | `layout/AppHeader` 与 `layout/AppPage` 归 `@fenix/ui-components`（§7.13 T8c），包内组件不应写死宿主页面色值；改用 token 后随主题切换，暗色下不再破色。信息层级与间距完全不变 | T8c |
 
 第 6 条在线上无可观测差异（验证判 real=False）：源实现的 `contextScope` 过滤已把多实例串扰挡住，包内
-实现是把「靠过滤补救」换成「靠作用域不成立」。
+实现是把「靠过滤补救」换成「靠作用域不成立」。第 7 条须与旧版截图比对一次，消费方为
+`AgentDashboardPage`、`AgentManagementPage` 与 `routes/agent/_panel/workflow.tsx` 三个页面。
 
 ### 8.3 发布验收建议
 
 按 8.1 的 4 条做定向回归（建站卡片可见并可跳转、工作流上下文注入、状态面板文件点击、会话重命名失败
-提示），8.2 的 6 条按「与旧版截图比对」验一次即可；`chat-channel/web` 尚未删除，旧实现可随时对比
+提示），8.2 的 7 条按「与旧版截图比对」验一次即可；`chat-channel/web` 尚未删除，旧实现可随时对比
 （T5d 删除后仅存 git 历史）。

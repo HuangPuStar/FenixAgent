@@ -27,11 +27,11 @@ import {
   createDeterministicRcsSessionId,
   type PublicErrorInfo,
 } from "@fenix/chat-channel";
+import { useChatPageVisible } from "@fenix/web-runtime/hooks/use-page-visible";
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
 import { useTaskViews } from "@/src/hooks/use-task-views";
-import { useChatPageVisible } from "@/src/hooks/usePageVisible";
 import { NS } from "@/src/i18n";
 import { useSession } from "@/src/lib/auth-client";
 import { randomUUID } from "@/src/lib/utils";

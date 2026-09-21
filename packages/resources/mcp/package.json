@@ -15,7 +15,6 @@
   },
   "dependencies": {
     "@fenix/agent-runtime": "workspace:*",
-    "@fenix/identity": "workspace:*",
     "@fenix/logger": "workspace:*",
     "@fenix/platform-sdk": "workspace:*",
     "@fenix/resource-knowledge": "workspace:*",

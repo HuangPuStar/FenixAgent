@@ -16,8 +16,6 @@
 //     一旦注册就是**进程级**且不可撤销，同批 channel / mcp 文件注册的是 `t: (key) => key` 的替身；
 //     替身细节（provider 语义、`t` 的稳定引用）见 `react-i18next-stub.ts`；
 //   - `sonner`：toast 需要宿主 Toaster 订阅，本用例只需观察失败反馈没有退化成弹窗；
-//   - `@fenix/identity/web`：其实现依赖宿主别名（`@/src/api/request`），包内测试不可运行，注入组织与
-//     会话上下文即可（页面据此判断 canManage）；
 //   - `@tanstack/react-router`：页面用 `useNavigate` / `useSearch` 读写 `?kbId=`，脱离 RouterProvider
 //     会抛错；本用例不需要真实路由跳转，只提供替身；
 //   - `@fenix/ui-components/config/FormDialog`：Radix 弹窗内容在 happy-dom 下不挂载（实测：portal 容器
@@ -25,6 +23,7 @@
 //     被替换的是弹窗自身的呈现，不是本用例观察的失败态与重试接线。
 
 import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
+import { OrgSessionProvider } from "@fenix/web-runtime/contexts/org-session";
 import { Window } from "happy-dom";
 import { createInstance } from "i18next";
 import { act, createElement, type ReactElement, type ReactNode } from "react";
@@ -35,12 +34,6 @@ import { registerReactI18nextStub } from "./react-i18next-stub";
 
 // 告知 React 当前为测试环境，消除 act() 警告
 (globalThis as Record<string, unknown>).IS_REACT_ACT_ENVIRONMENT = true;
-
-mock.module("@fenix/identity/web", () => ({
-  // 组织角色必须写字面量：mock 工厂在模块求值期（早于本文件正文）执行，引用正文里的 const 会命中 TDZ。
-  useOrg: () => ({ org: { id: "org-current", name: "本组织" }, role: "owner" }),
-  useSession: () => ({ data: null }),
-}));
 
 /**
  * 路由并集替身里的 `Link`：渲染成可点的 `<a>`。
@@ -96,9 +89,19 @@ void i18n.init({
   resources: { en: { [KNOWLEDGE_NS]: knowledgeResources.en } },
 });
 
-/** 被测页面统一包在 i18n provider 里渲染（页面内的 `useTranslation(NS.KNOWLEDGE)` 据此取字典）。 */
+/**
+ * 组织/会话上下文挂**真实** `OrgSessionProvider`（§1.6 T7）：页面经
+ * `@fenix/web-runtime/contexts/org-session` 取 `userId` / `isOwner` 判 canManage，该契约是纯 React
+ * context、包内可直接解析，因此不再 mock 平台实现（`@fenix/identity/web`）——那条替身是
+ * `special-dependency` 台账里本包站点的镜像，随本任务的台账削减一并退场。
+ * 取值与旧替身等价：`isOwner: true` 对应旧的 `role: "owner"`（canManage 为真），`userId: null`
+ * 对应旧的空会话（详情页的「本人知识库」判定只剩 isOwner 这一路）。
+ */
+const ORG_SESSION = { organizationId: "org-current", userId: null, isOwner: true, pending: false };
+
+/** 被测页面统一包在 i18n provider 与 org/session 契约的 Provider 里渲染。 */
 function withI18n(node: ReactElement): ReactElement {
-  return createElement(I18nextProvider, { i18n }, node);
+  return createElement(OrgSessionProvider, { value: ORG_SESSION }, createElement(I18nextProvider, { i18n }, node));
 }
 
 // `react-i18next` 替身：本包两个组件用例共用 `registerReactI18nextStub`（语义与理由见该文件），

@@ -5,7 +5,7 @@ import {
   filterData,
   paginateData,
   sortData,
-} from "../../components/config/DataTable";
+} from "@fenix/ui-components/config/DataTable";
 
 interface Row {
   name: string;

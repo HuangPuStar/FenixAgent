@@ -1,6 +1,6 @@
-import { useOrg } from "@fenix/identity/web";
 import { Button } from "@fenix/ui-components/ui/button";
 import { Skeleton } from "@fenix/ui-components/ui/skeleton";
+import { useOrgSession } from "@fenix/web-runtime/contexts/org-session";
 import type { ProviderInfo, ProviderModel } from "@fenix/web-runtime/types/config";
 import { useNavigate } from "@tanstack/react-router";
 import { AlertTriangle, RefreshCw } from "lucide-react";
@@ -20,8 +20,11 @@ export function AgentModelsPage() {
   const { t } = useTranslation(MODELS_NS);
   const navigate = useNavigate();
   // 当前组织 id 用于判定 Provider 归属：`/web` 视图只给 scope.organizationId，需本地比对才知道是否共享来源。
-  const { org } = useOrg();
-  const activeOrganizationId = org?.id;
+  // 取值经 `@fenix/web-runtime` 的 org/session 契约（§1.6 T7），实现方是身份包的 `OrgProvider`。
+  const { organizationId } = useOrgSession();
+  // 契约用 `null` 表示「无活动组织」，本包比较函数与子组件的入参口径是 `string | undefined`：
+  // 在取值处一次归一，调用点保持既有形状，避免把 `| null` 扩散进各处签名。
+  const activeOrganizationId = organizationId ?? undefined;
   const data = useAgentModelsData();
   const [query, setQuery] = useState("");
   const [scope, setScope] = useState<ProviderScope>("all");

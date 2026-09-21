@@ -7,9 +7,7 @@
 // 分支顺序与回调接线，源码里出现 `toast.success` 字样并不等于运行时走到了那一行。
 //
 // 环境：happy-dom + react-dom/client（与同批 prod-view / memory / workflow 的组件用例同款）。
-// 跨包依赖只 mock 四类会把真实副作用或不可运行实现带进用例的东西：
-//   - `@fenix/identity/web`：其 `OrgContext` 依赖宿主别名（`@/src/api/request`），包内测试无法解析；
-//     本用例只需要一个组织上下文，按 §1.6 的收敛方向直接注入。
+// 跨包依赖只 mock 三类会把真实副作用带进用例的东西：
 //   - `sonner`：toast 需要宿主 Toaster 订阅，这里只记录调用。
 //   - `@fenix/ui-components` 的两个弹窗：Radix 弹窗内容在 happy-dom 下不挂载（实测：portal 容器
 //     建立、内容为空），因此用同签名替身驱动「确认删除 / 提交表单」这两条数据流——被替换的是弹窗
@@ -27,14 +25,6 @@ import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
 
 const toastSuccessCalls: string[] = [];
 const toastErrorCalls: string[] = [];
-
-// 替身给的是跨包并集：`useOrg` 供本用例判归属，`useSession` 是 knowledge 页面的出口——
-// bun 1.4.2 下命名空间会被同进程后续文件复用，缺出口会在链接期抛 `Export named 'useSession' not found`。
-mock.module("@fenix/identity/web", () => ({
-  // 组织 id 必须写字面量：mock 工厂在模块求值期（早于本文件正文）执行，引用正文里的 const 会命中 TDZ。
-  useOrg: () => ({ org: { id: "org-current", name: "本组织" }, role: "owner" }),
-  useSession: () => ({ data: null }),
-}));
 
 // 替身给的是跨包并集（success / error / info / warning / message）：bun 1.4.2 下 `mock.module`
 // 的命名空间会被同进程后续文件复用，只给本用例用到的两个方法会让之后加载的组件取到 undefined。
@@ -103,6 +93,7 @@ afterEach(() => {
   mock.restore();
 });
 
+import { OrgSessionProvider } from "@fenix/web-runtime/contexts/org-session";
 import { Window } from "happy-dom";
 import { act, createElement, type ReactNode } from "react";
 import { createRoot, type Root } from "react-dom/client";
@@ -241,10 +232,20 @@ afterEach(() => {
   restoreConsoleError();
 });
 
+/**
+ * 组织/会话上下文改为挂**真实** `OrgSessionProvider`（§1.6 T7）：页面现在经
+ * `@fenix/web-runtime/contexts/org-session` 取组织 id，该契约是纯 React context、包内可直接解析，
+ * 因此不再需要 mock 平台实现（`@fenix/identity/web`）——那条替身同时是 `special-dependency` 台账里
+ * 最后一批资源包站点的镜像，随本任务的台账削减一并退场。
+ * 取值与旧替身等价：`organizationId` 与 `skill.scope.organizationId` 一致（否则本组织技能会被判成共享
+ * 来源），`isOwner` 对应旧的 `role: "owner"`，`userId` 对应旧的 `useSession()` 空会话。
+ */
+const ORG_SESSION = { organizationId: "org-current", userId: null, isOwner: true, pending: false };
+
 /** 渲染并等待 useRequest 的 promise 链与随后的 React 重渲染落定。 */
 async function render(): Promise<void> {
   await act(async () => {
-    root.render(createElement(AgentSkillsPage));
+    root.render(createElement(OrgSessionProvider, { value: ORG_SESSION }, createElement(AgentSkillsPage)));
   });
   await settle();
 }
@@ -347,8 +348,9 @@ describe("AgentSkillsPage 列表加载状态", () => {
       return detailSuccess();
     };
 
+    // 本用例要看「fetch 还没落定」的那一帧，因此不走 `render()` 的等待链，Provider 需自行包上。
     await act(async () => {
-      root.render(createElement(AgentSkillsPage));
+      root.render(createElement(OrgSessionProvider, { value: ORG_SESSION }, createElement(AgentSkillsPage)));
     });
 
     expect(container.querySelector('[aria-busy="true"]')).not.toBeNull();

@@ -29,7 +29,7 @@ afterEach(() => {
 // 模块导出完整性
 describe("Tree component exports", () => {
   test("Tree module exports all expected components", async () => {
-    const mod = await import("@/components/ui/tree");
+    const mod = await import("@fenix/ui-components/ui/tree");
     expect(typeof mod.Tree).toBe("function");
     expect(typeof mod.TreeItem).toBe("function");
     expect(typeof mod.TreeItemContent).toBe("function");
@@ -40,7 +40,7 @@ describe("Tree component exports", () => {
 // TreeItem 直接渲染（通过 children prop + nodeData 绕过异步加载）
 describe("TreeItem rendering", () => {
   test("TreeItem renders label and badge from nodeData", async () => {
-    const { Tree, TreeItem } = await import("@/components/ui/tree");
+    const { Tree, TreeItem } = await import("@fenix/ui-components/ui/tree");
 
     const getChildren = async () => [];
 
@@ -55,7 +55,7 @@ describe("TreeItem rendering", () => {
   });
 
   test("TreeItem renders description when provided", async () => {
-    const { Tree, TreeItem } = await import("@/components/ui/tree");
+    const { Tree, TreeItem } = await import("@fenix/ui-components/ui/tree");
 
     const getChildren = async () => [];
 
@@ -70,7 +70,7 @@ describe("TreeItem rendering", () => {
   });
 
   test("TreeItem with isDisabled applies opacity class", async () => {
-    const { Tree, TreeItem } = await import("@/components/ui/tree");
+    const { Tree, TreeItem } = await import("@fenix/ui-components/ui/tree");
 
     const getChildren = async () => [];
 
@@ -84,7 +84,7 @@ describe("TreeItem rendering", () => {
   });
 
   test("TreeItem renders custom actions via renderActions", async () => {
-    const { Tree, TreeItem } = await import("@/components/ui/tree");
+    const { Tree, TreeItem } = await import("@fenix/ui-components/ui/tree");
 
     const getChildren = async () => [];
 
@@ -103,7 +103,7 @@ describe("TreeItem rendering", () => {
 
   // 节点全名提示使用统一 Tooltip，避免每个节点创建 fixed 浮层造成滚动重影。
   test("TreeItem uses the shared tooltip instead of a fixed hover layer", async () => {
-    const { Tree, TreeItem } = await import("@/components/ui/tree");
+    const { Tree, TreeItem } = await import("@fenix/ui-components/ui/tree");
 
     const html = renderToStaticMarkup(
       <Tree getChildren={async () => []}>
@@ -118,7 +118,7 @@ describe("TreeItem rendering", () => {
     expect(html).not.toContain("position:fixed");
   });
   test("TreeItem renders icon when provided", async () => {
-    const { Tree, TreeItem } = await import("@/components/ui/tree");
+    const { Tree, TreeItem } = await import("@fenix/ui-components/ui/tree");
 
     const TestIcon = ({ className }: { className?: string }) =>
       `<svg class="${className}" data-testid="icon" />` as unknown as React.ReactElement;
@@ -139,7 +139,7 @@ describe("TreeItem rendering", () => {
   });
 
   test("TreeItem renders selected state via selectedId", async () => {
-    const { Tree, TreeItem } = await import("@/components/ui/tree");
+    const { Tree, TreeItem } = await import("@fenix/ui-components/ui/tree");
 
     const getChildren = async () => [];
 
@@ -157,14 +157,14 @@ describe("TreeItem rendering", () => {
 // TreeItemContent 和 TreeItemGroup
 describe("Tree sub-components", () => {
   test("TreeItemContent renders children", async () => {
-    const { TreeItemContent } = await import("@/components/ui/tree");
+    const { TreeItemContent } = await import("@fenix/ui-components/ui/tree");
     const html = renderToStaticMarkup(<TreeItemContent>Hello</TreeItemContent>);
     expect(html).toContain("Hello");
     expect(html).toContain('data-slot="tree-item-content"');
   });
 
   test("TreeItemGroup renders children", async () => {
-    const { TreeItemGroup } = await import("@/components/ui/tree");
+    const { TreeItemGroup } = await import("@fenix/ui-components/ui/tree");
     const html = renderToStaticMarkup(<TreeItemGroup>Group</TreeItemGroup>);
     expect(html).toContain("Group");
     expect(html).toContain('data-slot="tree-item-group"');

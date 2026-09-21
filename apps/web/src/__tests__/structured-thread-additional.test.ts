@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import type { StructuredMessage } from "@fenix/chat-channel";
-import { structuredToThreadEntries } from "../lib/structured-to-thread";
+import { structuredToThreadEntries } from "@fenix/web-runtime/chat/structured-to-thread";
 
 function tool(
   overrides: Partial<Extract<StructuredMessage, { type: "tool_call" }>> = {},

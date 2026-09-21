@@ -17,7 +17,6 @@
   "dependencies": {
     "@fenix/agent-config": "workspace:*",
     "@fenix/chat-channel": "workspace:*",
-    "@fenix/identity": "workspace:*",
     "@fenix/logger": "workspace:*",
     "@fenix/model-gateway-litellm": "workspace:*",
     "@fenix/model-gateway-sdk": "workspace:*",

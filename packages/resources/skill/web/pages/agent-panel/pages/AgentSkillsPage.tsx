@@ -1,5 +1,5 @@
-import { useOrg } from "@fenix/identity/web";
 import { unwrap } from "@fenix/web-runtime/api/request";
+import { useOrgSession } from "@fenix/web-runtime/contexts/org-session";
 import { NS } from "@fenix/web-runtime/i18n/namespace";
 import { dispatchConfigChange } from "@fenix/web-runtime/lib/config-events";
 import type {
@@ -52,8 +52,12 @@ function getUploadConflictData(error: unknown): SkillUploadConflictResponse | nu
 export function AgentSkillsPage() {
   const { t } = useTranslation(NS.SKILLS);
   const { t: tComponents } = useTranslation(NS.COMPONENTS);
-  const { org } = useOrg();
-  const activeOrganizationId = org?.id;
+  // 当前组织 id 用于判定资源归属（`/web` 视图只给 scope.organizationId）：取值经
+  // `@fenix/web-runtime` 的 org/session 契约（§1.6 T7），实现方是身份包的 `OrgProvider`。
+  const { organizationId } = useOrgSession();
+  // 契约用 `null` 表示「无活动组织」，本包比较函数与子组件的入参口径是 `string | undefined`：
+  // 在取值处一次归一，调用点保持既有形状，避免把 `| null` 扩散进各处签名。
+  const activeOrganizationId = organizationId ?? undefined;
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editingSkill, setEditingSkill] = useState<SkillInfo | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<string | null>(null);

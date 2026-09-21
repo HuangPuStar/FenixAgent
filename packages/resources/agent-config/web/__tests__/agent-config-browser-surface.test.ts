@@ -34,7 +34,7 @@ const PKG_NAME = (JSON.parse(readFileSync(join(PKG_ROOT, "package.json"), "utf8"
  * 浏览器安全外部依赖白名单：键是包根（`@scope/name` 或裸名），值说明它为什么可以停在图外。
  *
  * 收录条件：由宿主提供（本包 peerDependency）、本包声明的浏览器库，或经 `@fenix/ui-components`、
- * `@fenix/identity/web`、`@fenix/model-management/web` 子路径传递进入的纯浏览器库。
+ * `@fenix/web-runtime`、`@fenix/model-management/web` 子路径传递进入的纯浏览器库。
  * workspace 包一律不收录——它们必须被递归进入，否则 `@fenix/x/server` 又能穿透（见「白名单不收录
  * workspace 包」）。未收录的库一旦被引入就会让本测试变红，从而强制做一次浏览器可用性评审。
  */
@@ -85,10 +85,6 @@ const BROWSER_SAFE_EXTERNAL: ReadonlyMap<string, string> = new Map([
   ["cytoscape-fcose", "cytoscape 布局插件（同上）"],
   ["@antv/g6", "图可视化（ui-components 图谱面板传递依赖），纯浏览器实现"],
   ["@chenglou/pretext", "排版测量库（ui-components 文本层传递依赖），纯浏览器实现"],
-  // 经 @fenix/identity/web 子路径传递进入（§6.5 裁定 useOrg 必须取宿主同一份 context）
-  ["better-auth", "认证客户端 SDK（identity lib/auth-client 的 client/react 入口）"],
-  ["@better-auth/api-key", "API Key 客户端插件（identity lib/auth-client）"],
-  ["@noble/ciphers", "纯 JS 密码学实现（identity lib/password-crypto），无 node 依赖"],
   // 经 @fenix/model-management/web 子路径传递进入（编辑器模型选择器的品牌图标）
   // `@lobehub/icons` 的 dependencies 里还有 `antd-style`，后者在 import 期就求值
   // `window.matchMedia`：浏览器构建无影响（window 齐备），但无 DOM 的 `bun test` 进程只要被宿主
@@ -185,14 +181,14 @@ describe("agent-config web 入口浏览器可达面", () => {
     expect(reachedWebFiles.size).toBeGreaterThanOrEqual(24);
 
     // 跨包递归的有效性：钉住每条上游一条稳定路径（ui-components 的按钮/弹窗、web-runtime 的
-    // request 与 namespace、identity 的组织 context、model-management 的编辑器依赖、兄弟资源包的
+    // request / namespace / org-session 契约、model-management 的编辑器依赖、兄弟资源包的
     // API client）。少了这一段，「@fenix/* 被当成外部依赖放过」会以「包内断言全绿」的形式漏网。
     for (const expected of [
       "packages/ui-components/web/ui/button.tsx",
       "packages/ui-components/web/config/FormDialog.tsx",
       "packages/web-runtime/web/api/request.ts",
       "packages/web-runtime/web/i18n/namespace.ts",
-      "packages/platform/identity/web/index.ts",
+      "packages/web-runtime/web/contexts/org-session.tsx",
       "packages/resources/model-management/web/index.ts",
       "packages/resources/knowledge/web/index.ts",
       "packages/resources/sandbox/web/index.ts",
@@ -334,13 +330,16 @@ describe("agent-config web 入口浏览器可达面", () => {
     expect(i18nSource).toContain("AGENTS_NS");
   });
 
-  // 独立上下文回归点：组织上下文必须取自宿主挂载的同一份 identity context（§6.5 裁定），
-  // 包内另建 context 会让 useOrg 永远拿到默认值——用源码断言钉住，防止后续「搬运」回来。
-  test("组织上下文取自 @fenix/identity/web，包内不另建 context", () => {
+  // 独立上下文回归点：组织/会话上下文必须取自宿主挂载的同一份 context（§6.5 裁定），且本包不得依赖
+  // 平台实现（§2.3 `special-dependency`）；§1.6 T7 把落点定为 `@fenix/web-runtime` 的 org/session 契约，
+  // 实现方仍是身份包的 `OrgProvider`。包内另建 context 会让取值永远拿到默认值——用源码断言钉住，
+  // 防止后续「搬运」回来。
+  test("组织上下文取自 @fenix/web-runtime/contexts/org-session，包内不另建 context", () => {
     const source = stripComments(
       readFileSync(join(WEB_ROOT, "pages/agent-panel/agent-editor/use-agent-editor.ts"), "utf8"),
     );
-    expect(source).toContain('from "@fenix/identity/web"');
+    expect(source).toContain('from "@fenix/web-runtime/contexts/org-session"');
+    expect(source).not.toContain("@fenix/identity");
     expect(source).not.toContain("OrgContext");
   });
 

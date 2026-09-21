@@ -9,6 +9,10 @@
       "types": "./web/api/request.ts",
       "default": "./web/api/request.ts"
     },
+    "./contexts/org-session": {
+      "types": "./web/contexts/org-session.tsx",
+      "default": "./web/contexts/org-session.tsx"
+    },
     "./i18n/namespace": {
       "types": "./web/i18n/namespace.ts",
       "default": "./web/i18n/namespace.ts"

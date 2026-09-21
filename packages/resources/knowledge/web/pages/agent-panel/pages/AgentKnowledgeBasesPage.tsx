@@ -1,4 +1,3 @@
-import { useOrg, useSession } from "@fenix/identity/web";
 import { AgentMasterDetailWorkspace } from "@fenix/ui-components/components/agent-master-detail-workspace";
 import { ConfirmDialog } from "@fenix/ui-components/config/ConfirmDialog";
 import { FormDialog } from "@fenix/ui-components/config/FormDialog";
@@ -30,6 +29,7 @@ import { Skeleton } from "@fenix/ui-components/ui/skeleton";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@fenix/ui-components/ui/tabs";
 import { Textarea } from "@fenix/ui-components/ui/textarea";
 import { unwrap } from "@fenix/web-runtime/api/request";
+import { useOrgSession } from "@fenix/web-runtime/contexts/org-session";
 import { NS } from "@fenix/web-runtime/i18n/namespace";
 import { useNavigate, useSearch } from "@tanstack/react-router";
 import { useRequest } from "ahooks";
@@ -92,9 +92,10 @@ function getStatusDot(status: string) {
 
 export function AgentKnowledgeBasesPage() {
   const { t } = useTranslation(NS.KNOWLEDGE);
-  const { data: session } = useSession();
-  const { role: orgRole } = useOrg();
-
+  // 管理权限与「是否本人知识库」都取自 `@fenix/web-runtime` 的 org/session 契约（§1.6 T7）：
+  // 实现方是身份包的 `OrgProvider`，契约的 context 实例唯一，故与宿主挂载的是同一份；
+  // 本包不依赖平台实现，也不另建组织/会话状态。`isOwner` 已是判定结果，不再比角色字符串。
+  const { userId, isOwner } = useOrgSession();
   const navigate = useNavigate();
   const search = useSearch({ strict: false }) as { kbId?: string };
   const kbId = typeof search.kbId === "string" && search.kbId ? search.kbId : null;
@@ -114,7 +115,6 @@ export function AgentKnowledgeBasesPage() {
   );
 
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const isOrgOwner = orgRole === "owner";
   const [selectedDetail, setSelectedDetail] = useState<KnowledgeBaseDetail | null>(null);
   const [resources, setResources] = useState<KnowledgeResourceInfo[]>([]);
   const [dialogOpen, setDialogOpen] = useState(false);
@@ -504,10 +504,10 @@ export function AgentKnowledgeBasesPage() {
   };
 
   // 权限控制：owner 有管理权限
-  const canManage = isOrgOwner;
+  const canManage = isOwner;
 
   // 当前选中的知识库是否可管理（编辑/删除/上传/重新解析/启用等操作）
-  const canManageDetail = selectedDetail ? session?.user?.id === selectedDetail.userId || isOrgOwner : false;
+  const canManageDetail = selectedDetail ? userId === selectedDetail.userId || isOwner : false;
 
   return (
     <AppPage className="agent-knowledge-page" busy>

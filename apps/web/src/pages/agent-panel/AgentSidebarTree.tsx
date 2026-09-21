@@ -1,5 +1,26 @@
 import { ensureMetaAgent } from "@fenix/agent-config/web";
+import { shouldShowRemoteNode } from "@fenix/agent-config/web/lib/agent-node";
+import {
+  getAgentAccessBadgeKey,
+  getAgentConfigLookupKey,
+  getAgentDisplayName,
+  isAgentWritable,
+} from "@fenix/agent-config/web/lib/agent-resource-access";
 import { useOrg } from "@fenix/identity/web";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@fenix/ui-components/ui/alert-dialog";
+import { Checkbox } from "@fenix/ui-components/ui/checkbox";
+import { Switch } from "@fenix/ui-components/ui/switch";
+import { unwrap } from "@fenix/web-runtime/api/request";
+import { dispatchConfigChange, useConfigChangeListener } from "@fenix/web-runtime/lib/config-events";
 import type { AgentNode, ResourceAccessActions, ResourceScopeView } from "@fenix/web-runtime/types/config";
 import { useRequest } from "ahooks";
 import {
@@ -18,31 +39,10 @@ import {
 import { memo, useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from "@/components/ui/alert-dialog";
-import { Checkbox } from "@/components/ui/checkbox";
-import { Switch } from "@/components/ui/switch";
 import { agentApi } from "@/src/api/agents";
 import { envApi } from "@/src/api/environments";
 import { instanceApi } from "@/src/api/instances";
-import { unwrap } from "@/src/api/request";
 import { NS } from "@/src/i18n";
-import { shouldShowRemoteNode } from "../../lib/agent-node";
-import {
-  getAgentAccessBadgeKey,
-  getAgentConfigLookupKey,
-  getAgentDisplayName,
-  isAgentWritable,
-} from "../../lib/agent-resource-access";
-import { dispatchConfigChange, useConfigChangeListener } from "../../lib/config-events";
 import type { Environment, EnvironmentInstance } from "../../types/index";
 
 interface AgentConfigItem {
