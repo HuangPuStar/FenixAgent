@@ -1678,3 +1678,130 @@ profile 断言新增 `APP_SLOT` 分组（13 条路径），并新增一条 `orde
 `@fenix/resource-workflow/server`（`initCustomToolsRegistry`），外加按裁定保留的 `@fenix/logger` 与
 `@fenix/platform-sdk/server`。`main.ts` 现 572 行，包路由的挂载点只剩 4 条 `.use()`（`authPlugin` 之外的三面聚合
 + 一条 `app` 槽）。
+
+### 1.5f-1c 宿主启动序与关闭序迁出、门禁规则拆除（2026-09-21）
+
+分片表 1.5f 的第三片，也是该行的收口片。口径仍是用户裁定的「只要求模块与协议路由归零」——`@fenix/logger`
+与 `@fenix/platform-sdk/server` 的 import 保留；搬迁（不重设计）为原则，启动序与关闭序的**顺序约束一字未改**。
+
+**一、做了什么**
+
+`main.ts` 从 572 行收缩到 171 行，只留「进程边界」四件事：读 env、建 app、listen、挂信号。新增三个文件与一个
+既有的 `bootstrap/*` 并列：
+
+| 新文件 | 导出 | 承载什么 |
+|---|---|---|
+| `bootstrap/module-configs.ts`（121 行） | `buildModuleConfigs(env, config)` | 原 `main.ts:134-235` 的 10 个模块配置字面量，逐条注释随迁 |
+| `bootstrap/host-wiring.ts`（133 行） | `wireHostRuntime(env, config) → { agentRuntime }` | `initializeApplicationInfrastructure` + 身份目录 + meta-agent 策略注册 + `createAgentRuntimeModule().runtime` + 10 个 `bind*Port` |
+| `bootstrap/meta-agent-model-resolver.ts`（32 行） | `registerMetaAgentModelResolver()` | 原 `main.ts:108-118` 的 Meta Agent 默认模型解析回调 |
+| `bootstrap/host-startup.ts`（239 行） | `startHostRuntime(env, agentRuntime)` / `shutdownHostRuntime(agentRuntime)` | 关键启动序列三段 lambda、启动后编排 12 步、`withShutdownDeadline` 与关闭序 11 步 |
+
+`main.ts` 的调用序收成三行：`loadServerEnv` → `applyEnv` → `wireHostRuntime` → `await startHostRuntime` →
+`new Elysia(...)`。装配期接线必须早于 app 构造（`app-route` 贡献在装配时登记、在 `takeRouteContributions()`
+处被消费），这一点由代码顺序自证，不再依赖「读一遍 300 行才知道」。
+
+门禁拆除（判据第二条）：
+
+| 位置 | 动作 |
+|---|---|
+| `scripts/lib/architecture-boundary-rules.ts` | 删 `createHandwrittenRegistryRule` 与 `HANDWRITTEN_REGISTRY_FILE`；`createBoundaryRules()` 不再接参；原处留一段说明「为什么删规则而不是留空规则」 |
+| `scripts/lib/architecture-exceptions.ts` | 删 schema 字段与 `ArchitectureLedger.handwrittenRegistryBaseline`；`EMPTY_LEDGER` 与返回对象相应收窄 |
+| `scripts/check-architecture.ts` | 传参改 `createBoundaryRules()` |
+| `scripts/architecture/exceptions.json` | 删 16 行 `handwrittenRegistryBaseline` |
+| `apps/server/src/__tests__/architecture-check.test.ts` | 删 2 条基线用例（含 `ledger()` 的 `extra` 形参），加 1 条「退役字段被 `strictObject` 拒绝」用例 |
+
+文档同步（迁移的直接后果，非顺手改）：`packages/resources/observer/README.md` 与 `packages/resources/channel/README.md`
+里两处「`handwrittenRegistryBaseline` 第 22 行是……不随本包改动」的断言已失效，各补一句 2026-09-21 更新；
+`apps/server/src/test-utils/setup-mocks.ts` 四处「生产由宿主 main.ts 注入」的指针改指 `bootstrap/host-wiring.ts`
+与 `bootstrap/module-configs.ts`（都是给维护者定位真相源的指针，指错就等于没有）；`apps/server/src/bootstrap.ts`
+的文件头从「当前旧服务尚未切换到该入口」改为「1.5f 起是唯一装配路径」。
+
+**二、【需审核】四个文件的切法：为什么 meta-agent 解析器单独成文、日志实例为什么有两个**
+
+`bootstrap/*` 里 11 个 `bind*Port` 与 meta-agent 解析器都属于「宿主交给包一个东西」，但性质不同：前者交的是
+**进程级运行态句柄**（workspace 根、事件总线、连接索引），后者交的是**一条资源可见性策略**——它把宿主协议
+层的请求上下文经 `toActorContext` 翻译成资源包的 actor，再走资源包自己的 Facade 取数。策略需要宿主
+`plugins/auth` 的具体实现，而运行态句柄不需要；两者放进同一个文件会让 `host-wiring.ts` 多解释一件与
+「运行态」无关的事，故单独成文（32 行，一个导出）。
+
+`startupLog` 现在有两个实例：`main.ts` 的（打印 `Listening on ...`）与 `host-startup.ts` 的（启动/关闭全过程）。
+`createLogger("rcs")` 两次调用返回的是同一个模块名的 pino child，输出里无法区分、也不需要区分——启动与关闭
+是同一个进程生命周期，诊断时「这行来自哪个文件」没有价值，因此没有引入 `logger` 参数传递，也没有把日志实例
+提到第三个共享文件里（那会让 `main.ts` 为了一个日志实例再 import 一个 `bootstrap/*`）。
+
+**三、【需审核】搬迁中的四处非逐字等价，逐条交代**
+
+1. `setMetaAgentModelResolver` 的注册时机从「模块顶层」挪到 `wireHostRuntime()` 内部。不变式是「必须在
+   `bootstrapServerAssembly` 之前注册」，新位置仍满足（`wireHostRuntime` 早于 `startHostRuntime`）；
+   差别只是从 `applyEnv` 之前变成之后，而该回调体内的 `getModelManagementModule()` 是请求期才求值的，
+   不读 env。
+2. 关闭序的总超时 `deadline` 改为在 `shutdownHostRuntime` 内计算（原来在 `gracefulShutdown` 里记完信号日志后
+   计算）。差异是「`shutdownLog.info(Received signal)` 这一行是否计入 10s 预算」，量级为微秒，不改变超时行为。
+3. `process.exit(0)` 从关闭序里挪回 `main.ts` 的信号处理函数——退出进程是入口的职责，关闭函数只负责把资源
+   关干净，因此它现在可以被测试或其它入口复用。
+4. `host-startup.ts` 保留了 RagFlow 体检的 `console.log` / `console.warn` 原样（被 `interceptConsole` 接管为
+   module `"console"`），没有一并改成 `startupLog`——那是本次搬迁之外的清理，不在片内范围。
+
+**四、【需审核】新增 `ServerEnv` 类型别名（`env-loader.ts`）**
+
+`loadServerEnv()` 的返回类型是 `Readonly<Record<string, unknown>> & Env`：宿主 schema 声明的字段之外，还有
+**启用的模块自己声明**的那部分字段。`OPENAI_API_KEY` 就是后者——`apps/server/src/env.ts` 故意不声明它
+（注释写明「由 OpenAI SDK 自动读取，此处仅声明模型名」），因此 `buildModuleConfigs(env: Env, ...)` 会在
+`env.OPENAI_API_KEY` 处报错。这不是标注装饰：用 `Env` 会丢掉模块声明面，用 `ServerEnv` 才是 `main.ts` 实际
+传下来的那份。三个新文件的 env 形参统一用它。
+
+**五、手工启动验证（判据第三条「服务可启动」）**
+
+按 1.5e-3 / 1.5f-1b 的口径复跑：一次性 `postgres:16-alpine` 容器映射 **55432**（不复用 5432 上另一个检出的
+开发库），`db:migrate` 全链应用成功后启动主进程（容器、进程与库在收尾时全部删除）。启动日志的里程碑顺序与
+代码顺序逐条一致，且**无装配期错误**：
+
+```
+Database initialized → System admin ready → Data migrations completed → Model gateway runtime initialized
+→ Pre-launch ports bound (agent launch spec / agent config lookup) → Default sandbox pool initialized: default-2
+→ Core runtime initialized → [SchedulerService] Started successfully → Builtin resources synced
+→ Custom tools registry initialized (count=2) → WARN RagFlow health check failed → Listening on 0.0.0.0:3000
+```
+
+其中三条是本片搬迁的直接见证：`Pre-launch ports bound` 出现在 `Model gateway runtime initialized` 之后（证
+「启动前取数端口晚于模型网关凭证解析器」这条顺序约束在新位置仍成立）；`Default sandbox pool initialized` 与
+`Core runtime initialized` 的先后关系对应 `initializeDefaultSandboxPool` → `recoverAfterRestart` →
+`initCoreRuntime` 三步；`[acp-idle-monitor] [ACP-IDLE] yjs realtime docs` 之后每 5s 稳定输出一次，证明
+`agentRuntime.startIdleMonitor()` 真的执行了——这一条**没有任何 HTTP 面可观测**，日志是唯一证据。
+
+路由面探测（12 条，四槽全覆盖）：
+
+| 探测 | 结果 | 说明 |
+|---|---|---|
+| `GET /health` | 200 | 服务存活 |
+| `GET /acp/agents`、`GET /workflow-ui/`、`GET /api/skills/`、`GET /web/prod-views/anything/load` | 全 401 `Not authenticated` | `app` / `api` / `web` 三面的会话守卫均生效 |
+| `POST /mcp/knowledge` | 400 `authorization: Invalid input: expected string` | `app` 槽自带的 Bearer schema 校验已执行 |
+| `GET /skills/nope/download?token=bogus` | 403 `Invalid skill download token` | `app` 槽的令牌校验已执行 |
+| `POST /hooks/deadbeef` | 404 `{"error":"trigger not found"}` | 路由自产 404（SPA 兜底不会返回它） |
+| `GET /api/system/logs/` | 401 `Invalid system API key` | system API 面独立守卫仍在 |
+| `GET /web/config/agent-config` | 200 | `web-config` 槽可达 |
+| `GET /nope`、`GET /app-abc123/x` | 均 200 | 对照项：未注册路径走 SPA 兜底 |
+
+关闭序验证：`kill -TERM` 后日志为 `Received SIGTERM, shutting down...` → `[SchedulerService] Stopped,
+cancelled 0 jobs`，进程随即退出。**这里要如实说明证据强度**：关闭过程的日志只有上述两行，因此「进程按时
+退出且无 `Shutdown phase timed out`」是关闭序整体成功的**间接**证据，而非逐阶段证明——若某个 `await` 超时，
+`withShutdownDeadline` 会打 error 日志，无 error 说明没有阶段被超时放行；但「关得干净」与「关得掉」是两件
+事，后者由进程退出直接证明，前者只由各阶段不报错间接支持。
+
+**六、1.5f 行收尾：三条判据齐**
+
+1. **`grep '@fenix/' apps/server/src/main.ts` 归零**：只剩第 1 行的 `@fenix/logger`（用户裁定保留）。
+   为让这条判据长期可机械复核，文件头那句「不持有任何 `@fenix/*` 的具体实现依赖」改写成不含该字面量的措辞，
+   因此现在 `grep -c '@fenix/'` 的期望值恒为 1（就是那一行 logger），多一处就是回归。
+2. **门禁规则与基线字段同时消失**：见 §一 的拆除表。这里记一条删除理由——留着「空规则」等于留下「入口允许
+   出现哪些包名」的第二份清单，恰好是要根除的那种手写映射；新增模块不再需要改宿主代码，也就没有需要特判的
+   入口文件。
+3. **服务可启动**：见 §五。
+
+分片表 1.5f 行的第三项「填实 `deploy/assembly/ce.json` 的 `resources`」已由 1.5e-2a 完成（现为 13 项 = 拓扑序
+16 项减 `identity` / `access-control` / `agent-runtime`），本片核对后无需改动。
+
+收尾规模：`main.ts` 572 → **171** 行；`bootstrap/*`（含 1.5f-1a/1b 的 `route-contributions.ts`、`route-host.ts`、
+`scheduler-startup.ts`、`startup-sequence.ts`）合计 689 行。`main.ts` 的 `.use()` 现为 9 条，其中 3 条是聚合槽
+消费点（`web` + `web-config` / `api` / `app`），其余 6 条是 cors、两个 OpenAPI、ctrlStatic、errorPlugin、authPlugin
+——都是宿主自己的中间件，不是包的路由贡献。测试计数 771 → 770（删 2 加 1），`precheck` 全绿（86529ms）。

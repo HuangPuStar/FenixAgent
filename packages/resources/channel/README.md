@@ -42,7 +42,7 @@ IM 通道能力的唯一 owner：通道平台描述、Hermes 网关连接与消�
   - **待落盘 — §1.6 WebShell 收敛**：`apps/web/vite.config.ts:132`（`@/src/api/channels`）与 `:137-140`（`@/src/pages/agent-panel/pages/AgentChannelsPage`）的文件级 alias、`apps/web/src/routes/agent/_panel/channels.tsx:5` 的懒加载说明符，改指 `@fenix/resource-channel/web`。
   - **待落盘 — CE 装配清单**：`deploy/assembly/ce.json` 的 `"resources": []` 需登记 `channel`（复核：`grep -n channel deploy/assembly/ce.json` 当前无命中）。
 - **架构台账**（`scripts/architecture/exceptions.json`，编排者所有；W2.5 复测现状 = 已达标）：
-  - `web-package-not-to-app`（channel）：entry 已从工作区文件删除（复测：`grep -n '@fenix/resource-channel'` 只剩 2 处——`handwrittenRegistryBaseline` 与 `apps-boundary` 条目，规则为 `web-package-not-to-app` 的 channel 条目不存在）。归零依据：`grep -rnE 'from "@/' packages/resources/channel/web` → 0 命中。
+  - `web-package-not-to-app`（channel）：entry 已从工作区文件删除（复测：`grep -n '@fenix/resource-channel'` 只剩 2 处——`handwrittenRegistryBaseline` 与 `apps-boundary` 条目，规则为 `web-package-not-to-app` 的 channel 条目不存在）。归零依据：`grep -rnE 'from "@/' packages/resources/channel/web` → 0 命中。**2026-09-21 更新：`handwrittenRegistryBaseline` 已随 1.5f 的 `main.ts` 切换整体删除，复测命中数随之减 1；不影响本条的归零结论。**
   - `apps-boundary`（channel，owner 1.7）：条目 rationale 已是「实测 1 处导入 / 1 个文件，全部为 `@server/db/schema` 表定义导入」，与复测一致（`grep -rnE 'from "@server/' packages/resources/channel/src` → 仅 `src/server/repositories/channel-binding.ts:1`）。若上游回退这两处削减，需按门禁规则重做（stale 条目与未登记违规都会直接失败）。
 - **`im_channel` / `im_channel_route` 无实现**：宿主 `apps/server/src/db/schema.ts` 已声明这两个「升级目标」表，但除 schema 内部外没有任何代码引用；本包仍以遗留表 `channel_binding` 为数据面。补实现或删表都不在本任务范围，需先确认归属。
 

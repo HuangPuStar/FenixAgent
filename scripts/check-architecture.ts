@@ -303,10 +303,7 @@ async function main(): Promise<void> {
   await validateSourceRoots(root);
 
   const [packages, ledger] = await Promise.all([loadPackageFacts(root), loadArchitectureLedger(root)]);
-  const rules = [
-    ...HARD_RULES,
-    ...createBoundaryRules({ handwrittenRegistryBaseline: ledger.handwrittenRegistryBaseline }),
-  ];
+  const rules = [...HARD_RULES, ...createBoundaryRules()];
   const checkFile = createFileChecker(root, packages, rules);
 
   const sourceFiles = (

@@ -153,7 +153,7 @@ const realGetModuleConfig = platformServer.getModuleConfig;
 // 才回退——没登记说明该用例不碰 DB，必须原样抛出平台错误，`server-infrastructure.test.ts` 的两条契约
 // 用例正是断言这种情形。
 const realGetDatabase = platformServer.getDatabase;
-// Redis 连接（1.5b 收敛到进程能力面）：生产由 main.ts 在 `initializeApplicationInfrastructure` 里声明
+// Redis 连接（1.5b 收敛到进程能力面）：生产由 `bootstrap/host-wiring.ts` 在 `initializeApplicationInfrastructure` 里声明
 // provider，agent-runtime 的会话快照与 chat-channel 的 DocManager 都经 `getRedisConnection()` 取用。
 // 回退条件与 DB 一致——测试进程不初始化基础设施，未初始化时落到宿主 `services/cache` 这条唯一取数路径
 // （未配置 `RCS_REDIS_URL` 时返回 null，包内据此跳过快照持久化，与 round29-cache-isolation 的断言一致）。
@@ -197,7 +197,7 @@ mock.module("@fenix/platform-sdk/server", () => ({
 // 资源模块配置基线：字段清单与缺省值取自包自身的 `./server/testing`（唯一真相），宿主不另抄一份字段表。
 // 登记范围＝宿主测试进程里「请求期会经 `getModuleConfig()` 读自己配置」的全部模块；漏登记一个，该模块的
 // 「路由可达」类宿主用例就会在请求期 500（实测：补齐前 `apps/server/src/__tests__/` 有 33 项因此失败）。
-// 缺省值与 `apps/server/src/config.ts` 的部署默认值一致；两侧一旦分歧，宿主 main.ts 的注入清单与包内
+// 缺省值与 `apps/server/src/config.ts` 的部署默认值一致；两侧一旦分歧，宿主 `bootstrap/module-configs.ts` 的注入清单与包内
 // `strictObject` 校验会在启动期先失败，不会静默走测试缺省值。
 registerModuleConfigBaseline("agent-config", createAgentConfigModuleConfig());
 registerModuleConfigBaseline("agent-runtime", createAgentRuntimeModuleConfig());
@@ -224,7 +224,7 @@ registerStubResetter(() => {
 
 // ── identity 的基础设施入口（DB 与模块配置）──
 
-// identity 经 `@fenix/platform-sdk/server` 读取 DB 与模块配置，生产由宿主 main.ts 的
+// identity 经 `@fenix/platform-sdk/server` 读取 DB 与模块配置，生产由宿主 `bootstrap/host-wiring.ts` 的
 // `initializeApplicationInfrastructure()` 提供。测试进程不初始化应用基础设施：
 // platform-sdk 的 server-infrastructure.test.ts 依赖"未初始化时读取必须失败"这一前提，
 // 在 preload 里初始化会让那条用例失去意义。因此这里把 identity 的两个入口接到既有 stub
@@ -241,7 +241,7 @@ mock.module("../../../../packages/platform/identity/src/config", () => ({
 
 // ── 身份只读窄契约（IdentityDirectory）──
 
-// 生产由宿主 main.ts 在装配阶段 `registerIdentityDirectory()` 注入 identity 的实现；测试进程不装配
+// 生产由宿主 `bootstrap/host-wiring.ts` 在装配阶段 `registerIdentityDirectory()` 注入 identity 的实现；测试进程不装配
 // 宿主，若这里不注册，任何经 `getIdentityDirectory()` 的调用都会抛错（org-context、acp 空闲监控、
 // observer 名称解析等）。注册的是转发代理而非快照：用例在任意时刻 `stubIdentityDirectory()` 都能
 // 立即生效，不需要重新注册。

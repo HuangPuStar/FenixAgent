@@ -17,10 +17,7 @@ interface CheckResult {
 const WORKSPACE_ROOT_MANIFEST = '{"name":"fixture-root","workspaces":["packages/*","packages/*/*","apps/*"]}\n';
 
 /** 生成一份最小台账；`owner` / `removeWhen` / `rationale` 非空是加载器的硬性要求。 */
-function ledger(
-  exceptions: readonly { rule: string; from: string; to: string }[],
-  extra: { handwrittenRegistryBaseline?: readonly string[] } = {},
-): string {
+function ledger(exceptions: readonly { rule: string; from: string; to: string }[]): string {
   return `${JSON.stringify(
     {
       exceptions: exceptions.map((entry) => ({
@@ -29,9 +26,6 @@ function ledger(
         removeWhen: "夹具用条目，验收后随夹具销毁",
         rationale: "行为夹具：验证台账的放行与失效判定，不代表真实仓库的债务。",
       })),
-      ...(extra.handwrittenRegistryBaseline
-        ? { handwrittenRegistryBaseline: [...extra.handwrittenRegistryBaseline] }
-        : {}),
     },
     null,
     2,
@@ -454,36 +448,26 @@ describe("architecture check CLI", () => {
     expect(result.stdout).toContain("✓ architecture-check");
   });
 
-  // 宿主入口在切换到静态 registry 之前必须停止扩大手写挂载，否则新模块会绕过 assembly profile。
-  test("rejects new handwritten module mounts in the server entrypoint", async () => {
+  // `handwrittenRegistryBaseline` 是过渡期字段，规则删除后必须一并消失，不能再被静默接受。
+  test("rejects the retired handwritten registry baseline field", async () => {
     const root = await createFixture({
       "package.json": WORKSPACE_ROOT_MANIFEST,
       "packages/resources/agent-config/package.json": '{"name":"@fenix/agent-config"}\n',
       "apps/server/src/main.ts": 'import "@fenix/agent-config";\n',
+      "scripts/architecture/exceptions.json": `${JSON.stringify(
+        {
+          handwrittenRegistryBaseline: ["@fenix/agent-config"],
+          exceptions: [],
+        },
+        null,
+        2,
+      )}\n`,
     });
 
     const result = await runCheck(root);
 
     expect(result.exitCode).toBe(1);
-    expect(result.stdout).toContain("no-new-handwritten-registry");
-    expect(result.stdout).toContain("apps/server/src/main.ts");
-  });
-
-  // 冻结基线里的手写挂载是 1.5 之前的存量，删除导入不在本任务的范围内，因此只阻断新增。
-  test("accepts handwritten module mounts recorded in the frozen baseline", async () => {
-    const root = await createFixture({
-      "package.json": WORKSPACE_ROOT_MANIFEST,
-      "apps/server/src/main.ts": 'import "@fenix/agent-config";\n',
-      "packages/resources/agent-config/package.json": '{"name":"@fenix/agent-config"}\n',
-      "scripts/architecture/exceptions.json": ledger([], {
-        handwrittenRegistryBaseline: ["@fenix/agent-config"],
-      }),
-    });
-
-    const result = await runCheck(root);
-
-    expect(result.exitCode).toBe(0);
-    expect(result.stdout).toContain("✓ architecture-check");
+    expect(result.stderr).toContain("架构例外台账格式非法");
   });
 
   // precheck 必须持续包含 architecture 阶段，避免检查器存在但接线被误删。

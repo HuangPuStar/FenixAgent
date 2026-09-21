@@ -32,14 +32,6 @@ const architectureExceptionSchema = z.strictObject({
 const architectureExceptionFileSchema = z.strictObject({
   // JSON 不能写注释，但台账需要一处解释字段语义与 owner 取值的地方，否则维护者只能翻文档。
   _comment: z.array(z.string()).optional(),
-  /**
-   * 手写注册表冻结基线：`apps/server/src/main.ts` 当前直接导入的 `@fenix/*` 包名。
-   *
-   * 它不是「包 A → 包 B」的边界边，而是一份现状快照，因此不放进 `exceptions`——放进去会污染
-   * 台账的「不再违规即删除」语义。1.5 把宿主切换到 `bootstrapServerAssembly` 后，该字段与
-   * `no-new-handwritten-registry` 规则一并删除。
-   */
-  handwrittenRegistryBaseline: z.array(z.string().min(1)).optional(),
   exceptions: z.array(architectureExceptionSchema),
 });
 
@@ -53,13 +45,12 @@ export function exceptionFingerprint(rule: string, from: string, to: string): st
 /** 台账默认位置。 */
 export const ARCHITECTURE_EXCEPTIONS_PATH = "scripts/architecture/exceptions.json";
 
-/** 加载后的台账；`exceptions` 以指纹为键，`handwrittenRegistryBaseline` 是手写注册表冻结快照。 */
+/** 加载后的台账；`exceptions` 以指纹为键。 */
 export interface ArchitectureLedger {
   readonly exceptions: ReadonlyMap<string, ArchitectureException>;
-  readonly handwrittenRegistryBaseline: ReadonlySet<string>;
 }
 
-const EMPTY_LEDGER: ArchitectureLedger = { exceptions: new Map(), handwrittenRegistryBaseline: new Set() };
+const EMPTY_LEDGER: ArchitectureLedger = { exceptions: new Map() };
 
 /**
  * 读取并校验台账。
@@ -95,8 +86,5 @@ export async function loadArchitectureLedger(
     byFingerprint.set(fingerprint, exception);
   }
 
-  return {
-    exceptions: byFingerprint,
-    handwrittenRegistryBaseline: new Set(parsed.data.handwrittenRegistryBaseline ?? []),
-  };
+  return { exceptions: byFingerprint };
 }
