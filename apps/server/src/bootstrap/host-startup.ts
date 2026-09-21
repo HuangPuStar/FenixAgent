@@ -7,6 +7,7 @@ import {
   createSystemModelGatewayProviderService,
   getModelManagementModule,
 } from "@fenix/model-management/server";
+import type { AssemblyProfile } from "@fenix/platform-sdk/assembly";
 import { getHermesClient, initHermesClient } from "@fenix/resource-channel/server";
 import { checkRagFlowHealth } from "@fenix/resource-knowledge/server";
 import {
@@ -81,8 +82,17 @@ function withShutdownDeadline<T>(promise: Promise<T>, phase: string, deadline: n
   ]);
 }
 
-/** 按关键序列与启动后编排完成全部启动步骤；`agentRuntime` 来自 `wireHostRuntime()`。 */
-export async function startHostRuntime(env: ServerEnv, agentRuntime: AgentRuntimeHandles): Promise<void> {
+/**
+ * 按关键序列与启动后编排完成全部启动步骤。
+ *
+ * `agentRuntime` 来自 `wireHostRuntime()`；`profile` 来自 `resolveAssemblyEnv()`，与 `env` 同一次解析，
+ * 透传进装配避免重复读文件（profile 路径由发布入口固定，两侧解析结果必然相同）。
+ */
+export async function startHostRuntime(
+  env: ServerEnv,
+  agentRuntime: AgentRuntimeHandles,
+  profile: AssemblyProfile,
+): Promise<void> {
   // 模型网关的运行时凭证解析器：在启动序列里解析后交给 agent-config 的启动参数组装器
   // （见下方 `createPreLaunchPorts` + 端口绑定）。W4b 删掉 agent-runtime 的旧解析器槽位后，
   // 这是唯一注入点：组装器遇到 `kind = "gateway"` 的 Provider 时用它换签发凭证。
@@ -101,7 +111,7 @@ export async function startHostRuntime(env: ServerEnv, agentRuntime: AgentRuntim
       //
       // 时机不变：模型网关与 builtin 都会查询资源授权，装配必须在业务资源初始化前完成；本步骤仍在关键
       // 启动序列内、`initDb` 之后（`getDatabase()` 此时可用）。
-      await bootstrapServerAssembly({ mountContribution: mountServerRouteContribution });
+      await bootstrapServerAssembly({ profile, mountContribution: mountServerRouteContribution });
     },
     initModelGateway: async () => {
       registerConfiguredSandboxProviders();

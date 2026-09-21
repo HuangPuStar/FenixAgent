@@ -7,11 +7,11 @@ const startupLog = createLogger("rcs");
 
 import type { WebSocketHandler } from "bun";
 import Elysia from "elysia";
+import { resolveAssemblyEnv } from "./bootstrap/assembly-env";
 import { shutdownHostRuntime, startHostRuntime } from "./bootstrap/host-startup";
 import { wireHostRuntime } from "./bootstrap/host-wiring";
 import { API_SLOT, APP_SLOT, takeRouteContributions, WEB_CONFIG_SLOT, WEB_SLOT } from "./bootstrap/route-contributions";
 import { applyEnv, config } from "./config";
-import { loadServerEnv } from "./env-loader";
 import { createExternalOpenApiPlugin, createWebOpenApiPlugin } from "./openapi";
 import { authPlugin } from "./plugins/auth";
 import { corsPlugin } from "./plugins/cors";
@@ -32,13 +32,13 @@ import { buildHealthInfo } from "./services/build-info";
  */
 const startedAt = new Date().toISOString();
 
-const env = loadServerEnv([]);
+const { profile, env } = await resolveAssemblyEnv();
 applyEnv(env);
 
 // 装配期接线 + 启动序（两者都必须在 app 构造前完成：`app-route` 贡献是在装配时登记、在下方
 // `takeRouteContributions()` 处被消费的）。
 const { agentRuntime } = wireHostRuntime(env, config);
-await startHostRuntime(env, agentRuntime);
+await startHostRuntime(env, agentRuntime, profile);
 
 const app = new Elysia({
   websocket: {
