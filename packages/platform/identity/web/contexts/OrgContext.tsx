@@ -51,7 +51,9 @@ function installFetchInterceptor() {
 
 export function OrgProvider({ children }: { children: ReactNode }) {
   const navigate = useNavigate();
-  const { t } = useTranslation(NS.COMPONENTS);
+  // `orgSwitchFailed` 随 §1.6 T9 从宿主 `components` 命名空间搬入本包的 `orgs` 字典：
+  // 该键的唯一消费方就是这个 Provider，落在宿主是「键的物理落点 ≠ owner」。
+  const { t } = useTranslation(NS.ORGS);
   // 会话是资源包判断资源归属的另一半（`userId`）；本 Provider 是 `OrgSession` 契约的实现方，
   // 因此在这里订阅一次，投影给下游，而不是让每个资源包各自再取一份会话。
   const { data: session, isPending: sessionPending } = useSession();

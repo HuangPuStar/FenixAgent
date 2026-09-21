@@ -101,9 +101,9 @@ WebShell 从静态 registry 收集各资源包的 web contribution（不反向�
 | T5 | `chat-channel/web` 清零 | a,b,c1,c2,c5,d 已交付 | 见下方 §7.4–§7.10 |
 | T6 | `agent-runtime/web` 收敛 | 已交付（a–e） | 见下方 §7.11 |
 | T7 | 5 条 `special-dependency` 消除 | 已交付（含 4b） | 见下方 §7.12 |
-| T8 | 宿主组件/lib/api 簇改指并删除 | 待办 | — |
-| T9 | i18n 归属重划与 `quoteTruncatedBadge` 缺陷修复 | 待办 | — |
-| T10 | 测试迁移与 happy-dom 收敛 | 待办 | — |
+| T8 | 宿主组件/lib/api 簇改指并删除 | 已交付（a–d + z） | 见下方 §7.13 |
+| T9 | i18n 归属重划与 `quoteTruncatedBadge` 缺陷修复 | **a、b、c、d 已交付** | a 见 §7.15 / b 见 §7.16 / c 见 §7.17 / d 见 §7.18 |
+| T10 | 测试迁移与 happy-dom 收敛 | **a、b1–b5 已交付**（余下分片随 T11 收口） | a 见 §7.19 / b1 见 §7.20 / b2 见 §7.21 / b3 见 §7.22 / b4 见 §7.23 / b5 见 §7.24 |
 | T11 | WebShell 落地 | 待办 | — |
 | T12 | 收尾：台账复核、文档修订、证据留痕 | 待办 | — |
 
@@ -1163,6 +1163,394 @@ TopModeTabs,artifacts-dialogs,artifacts-files-workspace,use-file-tree-events,use
 `dry` 复核为 0 处残留；台账的 `RMD_08_MOVES` 全条目（111 条）的 legacy 路径与 `RMD_08_RELOCATED`
 （47 条）的 legacy + shell 路径均不存在、owner 落点均存在。
 
+### 7.15 T9a identity 借键结清（2026-09-21，`fc5a39f85`）
+
+T9 拆四片：**T9a 借键结清**（本节）、T9b i18n 缺陷修复、T9c 宿主自有命名空间收敛、T9d 公开错误正文
+本地化（§7.18，由 T9b 末段登记的跨包缺口派生）。范围以本文件 §7.10 的结论为准——「T9 的 i18n 重划由此
+提前一格完成，T9 只剩宿主自有命名空间的收敛」（T5c2 已把包命名空间的注册做完，`uiComponents` 字典随切换接入）。
+
+**债务来源**：T4（§7.3）把 identity 的字典搬进包内时，**只搬了 apikey / orgs 两份**，
+`ChangePasswordDialog` 读的宿主 `NS.SETTINGS`（11 键全在 `apps/web/src/i18n/locales/*/settings.json`）
+与 `OrgContext` 读的宿主 `NS.COMPONENTS`（键 `orgSwitchFailed`）留作债务，由
+`identity-i18n.test.ts` 的 `BORROWED_KEYS` 白名单**双向**登记（既覆盖全部越界键，又反向断言这些键
+此刻不在本包字典里）。本次搬迁后白名单与其文件头债务注释一并删除——不留「已搬迁但仍被豁免」的通道。
+
+**不改命名空间，只改 owner**：沿用中心表已有的 `NS.SETTINGS`（`"settings"`），把字典 owner 从宿主搬到
+identity 包，而不是新建一个 `account` 命名空间。理由：`settings` 命名空间在宿主已无任何其它消费方
+（11 键全部来自这一个对话框），新建命名空间只会让「设置」语义在两个 literal 之间分裂。
+
+**改动**：
+
+| 项 | 处理 |
+|---|---|
+| `apps/web/src/i18n/locales/{en,zh}/settings.json` | `git mv` 到 `packages/platform/identity/web/i18n/locales/{en,zh}/settings.json`（**译文逐字未变**） |
+| 宿主 `i18n/index.ts` | 删除该字典的 import 与 `hostResources` 条目；改从 `@fenix/identity/web/i18n` 取 `SETTINGS_NS` / `settingsResources`，登记进 `packageResources` |
+| identity `web/i18n/{namespace,index}.ts` | 新增 `SETTINGS_NS` 与 `settingsResources` 出口；头注从「两个命名空间」改为三个并写明搬迁来由 |
+| `ChangePasswordDialog.tsx` | `useTranslation(NS.SETTINGS)`（web-runtime 中心表）→ `useTranslation(SETTINGS_NS)`（本包出口） |
+| `OrgContext.tsx` | `useTranslation(NS.COMPONENTS)` → `useTranslation(NS.ORGS)`；`orgSwitchFailed` 从宿主 `components.json` 搬入 identity `orgs.json`（译文逐字未变） |
+| `identity-i18n.test.ts` | 收下第三份字典（键集一致、占位符一致、规模底线 ≥11）；删除 `BORROWED_KEYS` / 借键吻合断言 / 债务断言；「字面量键都在字典内」改为无白名单 |
+
+**台账同步**：`RMD_08_MOVES` 111 → 109（`settings.json` 两份的宿主落点不再存在），
+`RMD_08_RELOCATED` 47 → 49（owner = `packages/platform/identity/web/i18n/locales/{en,zh}/settings.json`）。
+
+**验证**：`env -u ANTHROPIC_MODEL bun run precheck` 全绿（771 / 7310 + 2 skip / 969，0 fail）；
+`bun run build:web` 成功。首次 precheck 时 `package-tests` 出现过一次非确定性失败
+（`packages/resources/machine/src/server/__tests__/file-ws-events.test.ts:207`「未声明环境的事件被丢弃并写
+registryEvent 告警」）：该文件单跑 12 pass、`bun test packages/` 连跑两轮均 7310 pass 0 fail，
+随后两轮 precheck 亦全绿——与本次 i18n 改动无因果关系（该用例不涉及 i18n），按非确定性失败记录。
+
+### 7.16 T9b i18n 缺陷修复：引用截断徽标漏译、错误卡片标题硬编码（2026-09-21，`90138dcd8`）
+
+| # | 缺陷（修复前） | 成因 | 处理 |
+|---|---|---|---|
+| 1 | 引用被截断时，**中文界面显示英文徽标**：正文里出现 `23 chars omitted` | `quoteTruncatedBadge` 的 en / zh 两份值逐字相同（照抄 en）。既有的「键集一致」「插值占位符一致」两条守护都挡不住这类漏译——键在、占位符也在，只是译文没写 | zh 改为 `已省略 {{count}} 个字符`（与同级 `quoteTruncated`「引用过长，已省略 {{count}} 个字符」用词一致）；`i18n-barrel.test.ts` 增一条钉住该键 zh ≠ en 的断言 |
+| 2 | 该徽标的渲染无人守：T6c1 前那条断言固化的是「key 回显」缺陷（当时宿主字典缺此键），按规则删除后未恢复 | — | `message.ssr.test.tsx`「用户消息将结构化引用显示为引用胶囊」用例恢复断言：断言真实译文 `23 chars omitted`（用例 i18next 实例 `lng: "en"`）并显式否定 key 回显 |
+| 3 | 会话面板错误卡片标题对英文用户显示中文 `执行出错` | T6d 拆 `ChatPanel.tsx` 时硬编码带入（`git log -S` 追溯为 `0562da970` 迁包时引入），§7.11 已登记「属 i18n 归属重划（T9）」 | `PublicErrorCard` 改经 `t()`：命名空间 `NS.UI_COMPONENTS`，键 `chat.components.messageBubble.turnError` |
+
+**为什么标题取包命名空间，而不是 §7.11 登记的宿主 `components.messageBubble.turnError`。** 核查后改判：同一张卡片
+（同样的 class 串、`role="alert"`、`Type:` / `ID:` 尾注）在 `@fenix/ui-components` 的 `MessageBubble.tsx` 渲染 turn
+失败错误时**已经**在用 `chat.components.messageBubble.turnError`；而宿主 `components.json` 的整个 `messageBubble`
+子树（11 键）在 T6 搬迁后已无任何宿主消费方。取包键 = 一处文案一个 owner，宿主那份死字典随 T9c 整体删除；
+取宿主键则要在 11 键死字典里留下唯一复活的 1 键，与 §4「键的最终所在地 = 包的 owner」相悖。宿主消费包命名空间
+有既有先例（`AgentManagementPage` 用 `NS.AGENTS`、`routes/admin/*` 用 `"observer"`），常量经中心表
+`NS.UI_COMPONENTS` 取，未新增 import。
+
+**登记未处理（→ 已由 T9d 按方案 ② 处理，见 §7.18）：`PublicError.message` 恒为英文，中文界面必然中英混排。**
+`packages/chat-channel/src/public-error.ts` 的 `PUBLIC_ERROR_MESSAGES` 为 28 个 type 各备 `zh` / `en` 两条，但
+`createPublicError` 与跨边界校验 `isPublicError` 都把它钉在 `.en` 上（后者要求 `message === PUBLIC_ERROR_MESSAGES[type].en`
+才认作合法公开错误）——`zh` 那一半在**全仓没有任何读取点**，只有 `src/__tests__/public-error.test.ts` 断言它非空；
+而两处 UI 卡片（包的 `MessageBubble` 与宿主 `PublicErrorCard`）都直接渲染 `error.message`。因此本片修完标题后，
+中文界面下卡片仍是「中文标题 + 英文正文」。可选修法有三条——① 保持契约现状、只登记；② 前端按稳定的 `error.type`
+查本地化字典渲染；③ 把 28×2 条文案从 TS 表迁进包 i18n 字典、由 UI 按 `type` 取——三条都会改到 `@fenix/chat-channel`
+的公共契约或引入跨包同步义务，按 CLAUDE.md「公共契约变化必须先反馈」留待用户裁定，**本片未改动该文件**（T9d
+同样未改动它，理由见 §7.18）。
+
+**验证**：`bun test packages/ui-components/` 412 → 413 pass（新增 1 条守译断言）；`bun test
+packages/ui-components/web/__tests__/message.ssr.test.tsx` 11 pass / 40 expect；宿主
+`chat-area-environment-deletion` + `chat-panel-transport-lifecycle` 4 pass；`env -u ANTHROPIC_MODEL bun run precheck`
+全绿（771 / 7311 + 2 skip / 969，0 fail）；`bun run build:web` 成功。
+
+### 7.17 T9c 宿主自有字典收敛：死键剪除与四份空壳字典退场（2026-09-21，`e69deeeb1`）
+
+T9 的第三片（写就时以为收尾，随后 T9b 登记的跨包缺口又派生出 §7.18）。T9a 结清借键、T9b 修缺陷，
+本片只做一件事：把宿主自有命名空间里**无人消费的键**和**零绑定的整份字典**清掉，并给宿主补上与各包
+对等的一致性守护。
+
+**判定口径（证据脚本 `/tmp/t9/deadkeys.py`，不入库）。** 消费点 = 全仓 `.ts` / `.tsx`（含测试、含
+`ui-sandbox`，排除 `node_modules` / `dist` / `docs`）里的**字符串字面量**；文件归属的命名空间由
+`useTranslation(<arg>)` 解析（`NS.X` 查中心表、`<CONST>` 查各包 `namespace.ts`、字面量；无参 →
+`common`），据此把「形如点路径的裸字面量」记为该文件绑定命名空间下的消费；显式限定 `"<ns>:<path>"`
+单独记账；模板字面量按静态前缀 + 尾缀匹配。**无 `useTranslation` 调用的文件里的点路径字面量一律进
+UNKNOWN 集合且永不删除**——口径刻意保守，宁可留下真死键也不误删。结果：**684 条确定性死键 + 136 条
+UNKNOWN**。
+
+**过程中发现并修补的两个脚本缺口（都不修补就会真的误删）：**
+
+1. **裸模板字面量被整段跳过。** 初版对 `"${" in raw` 的字面量直接 `continue`，于是
+   `FileTreeTab.tsx` 的 `` t(`fileTree.dialog.${errorKey}`) ``、`` t(`fileTree.dialog.${dialogKind}Title`) ``
+   这类动态键被判成死键。修补为「前缀是点路径且以 `.` 结尾、尾缀是纯标识符」时记录为「前缀 + 尾缀」
+   消费（两条件共同排除把 URL / 拼装串当成键前缀）。确定性死键 700 → 684，救回 16 条，其中
+   `agentPanel:siteDeployment.visibility.*` 5 条已核实为 `packages/resources/agent-config/web/pages/`
+   两个页面经 `NS.AGENT_PANEL` 的真实消费。
+2. **脚本只以 zh 字典为准遍历，en 单侧的键从未进入审查。** 补做 en / zh 单侧键审计后查出
+   `agentPanel.dragHint`（**仅 en 存在、全仓 0 个消费点**，全仓唯一出现即字典自身）——删掉 en 那一份后
+   宿主字典的 zh / en 键集才完全对称。这条缺口说明「以单一语言字典为遍历基准」的判定结构会系统性漏掉
+   单侧键，故把「键集逐字一致」固化成守卫（见下方新增测试）。
+
+**整份退场：`TASKS` / `SESSIONS` / `ENVIRONMENTS` / `TOOL_NARRATOR`。** 决定性判据是「全仓有无
+`useTranslation(<该 ns>)` 绑定」——四者均为 **0**（`NS.TASKS_V2` 之类的 `NS.X` 精确匹配已排除词边界
+干扰；`NS.X` 在 `i18n/index.ts` 的登记处与中心表自身的出现不计），即字典 100% 无人读取。它们各自的
+UNKNOWN 残留（合计 38 条，如 `active` / `online` / `sessions`）来自 DB 状态值、Y.Doc key、URL 段等
+无关文件里的通用词字面量，不是真实消费方。8 个 JSON 文件（4 命名空间 × 2 语言）整份删除；`i18n/index.ts`
+的 import 与 `hostResources` 登记同步移除；守护 `toolNarrator` 字典的**自指测试**
+`apps/web/src/__tests__/narrators-i18n.test.ts` 一并删除（它只读该字典并断言同一文件里的键，字典没了就
+没有对象可测）。
+
+**保留中心表里这四个常量名。** `packages/web-runtime/web/i18n/namespace.ts` 的 `NS.TASKS` 等 4 个
+常量**不删**：它是跨包共享的**名称注册表**，删常量没有功能收益（字典与登记都已不在），却要改一处
+跨包契约文件并牵动全部消费方。取舍是「名称注册表可以比实际在用的命名空间宽」，与 §4「键的最终所在地
+= 包的 owner」不冲突——那条约束管的是键与字典，不是名称常量。此项已在 `i18n/index.ts` 头注写明。
+
+**剪除量与分布（zh 侧键数，en 侧多删 1 条 `dragHint`）。**
+
+| 字典 | 前 | 后 | 处置 |
+|---|---:|---:|---|
+| `components` | 472 | 103 | 删 369 条死键 |
+| `agentPanel` | 141 | 116 | 删 25 条死键 |
+| `common` | 94 | 63 | 删 33 条死键，**补 2 条**（见下） |
+| `dashboard` | 43 | 3 | 删 40 条死键 |
+| `login` | 57 | 44 | 删 13 条死键 |
+| `sidebar` | 26 | 19 | 删 7 条死键 |
+| `agentHome` | 21 | 19 | 删 2 条死键 |
+| `environments` / `sessions` / `tasks` / `toolNarrator` | 68 / 60 / 85 / 20 | 0 | 整份删除（其中 38 条 UNKNOWN 随字典一并消失） |
+| **合计** | **1087** | **367** | **净 −720** |
+
+`agentPanel.json` 含内联短对象（`"pagination": { "label": … }`、`"status": { "published": … }`），
+`json.dumps` 重排会产生与本次剪除无关的整文件 diff，故对它改用**行级**剪除（删末键后留下的尾逗号单独
+清理），diff 只含删行与一处逗号移除；其余字典先逐字节校验 `json.dumps(…, indent=2) + "\n"` 与原文一致
+再重写。
+
+**顺带补齐 `common.next` / `common.previous`。** 这两条不是本次删的键，而是审计中发现的**反向缺口**：
+`packages/resources/memory` 的 `DocumentsView` 以限定字面量引用宿主 `common:previous` / `common:next`，
+且该包的 `memory-i18n.test.ts` 已把 `["common:cancel", "common:next", "common:previous"]` 登记为
+「跨命名空间依赖，只能依赖已登记三条」——宿主 `common` 字典却只提供了 `cancel`。即字典相对**已声明的
+跨命名空间契约**是缺的，中文界面下这两处分页按钮一直靠 `defaultValue` 显示英文。按「引用的键必须在
+字典里」的不变式补齐（zh 上一页 / 下一页，en Previous / Next），使下面那条守卫无需任何豁免名单。
+
+**对抗验证（三重独立检查 + 双向对照）。** 删键的风险全在「删过头」，故用三种口径反查被删的 685 条键：
+
+1. **ns 感知的调用点反查**：对每个被删键，找出 `t("key")` 调用点，只在该文件绑定的命名空间**包含**该
+   宿主命名空间时才算疑点 → **0 条**。
+2. **整串严格相等**：文件绑定了该宿主命名空间，且文件里出现「整串等于键或等于 `<ns>:<key>`」的字符串
+   字面量 → **0 条**（此口径已用阳性对照验证有效：`agentPanel.selectAgent`、`agentPanel.showArtifacts`、
+   `sidebar.navGroupCore` 均被正确命中）。
+3. **HEAD 与现版字典的回归对照**：同一引用在 HEAD 版字典可解析、现版不可解析 → **0 条**。
+
+中途三种宽松口径曾分别报出 341 / 189 / 105 条疑点，逐条定位后**全部**是校验器自身的口径缺陷而非误删：
+末段子串匹配过松（`error` 命中任意含该词的字符串）、同文件多个 hook 的绑定取并集后归属错位
+（`AgentManagementPage` 第 68 行绑 `NS.AGENTS`，第 171 行的 `t("management.title")` 属 agents 包）、
+限定符未校验（`"agentPanel:apiKeys"` 被当作 `sidebar:apiKeys`）。三种口径收敛到零且阳性对照有效后才提交。
+另外确认 `apps/web/src/lib/theme.ts` 的 `"light" | "dark"` 是主题联合类型取值、`routes/__root.tsx` 的
+`errors.not_found` 等是无关命名空间，均非 i18n 引用。
+
+**新增守护：`apps/web/src/__tests__/host-i18n.test.ts`。** 每个资源包都有自己的 `*-i18n.test.ts`，宿主
+此前**一份都没有**——这正是 `dragHint` 单侧漂移和 684 条死键能长期无人发现的结构性原因。本片把包侧的
+四条断言补到宿主侧：① 每份字典 zh / en 键集逐字一致（挡 `dragHint` 类）；② 每份字典两个语言文件都存在
+且非空（挡「两边一起缺」）；③ `i18n/index.ts` 登记了全部**且仅有**磁盘上的宿主字典（挡「有字典没登记 →
+整片回显 key」与「登记了没文件 → 引导期 import 失败」两种形态）；④ 全仓限定字面量 `t("<ns>:<key>")` 都能
+在对应宿主字典里查到（挡删键时连带踩掉跨包引用，同时独立校验各包登记的跨命名空间清单）。两条关键断言
+都做了负向对照（人为删 `common.cancel`、人为造 en 单侧键），确认失败信息准确。
+
+**台账同步**：`RMD_08_MOVES` 109 → **100**（8 份字典 + 1 个自指测试的落点不再存在），按既有先例从清单
+移除条目、递减长度断言、在文件头追加第 7 条改判说明，并补一条「自指测试不得复活」的断言。
+
+**登记新债务（本片不处理）：包页面跨包消费宿主命名空间。** 迁移后仍有多处**包内**页面直接绑定宿主的
+`NS.AGENT_PANEL` / `NS.COMPONENTS`（如 `packages/resources/agent-config/web/pages/agent-panel/` 的
+`AgentSitesPage.tsx` / `agent-sites-catalog.tsx`，`packages/resources/skill`、`model-management`、
+`mcp` 的同类页面），使宿主 `agentPanel` / `components` 两份字典实际是「包与宿主共用」。这是 §1.3
+「资源的浏览器入口只从 `./web` 导出…」尚未走完的部分，方向是把这些键的 owner 交还各资源包并新建
+命名空间。本片按死键口径处理时已把这些**真实消费方全部保住**（第 1 条验证正是为此），但归属没有改变
+——故 `agentPanel` / `components` 两份字典在收拾资源包命名空间时应一并复核，属「改职责边界」的决定，
+不在本片范围。
+
+**邻近发现（本片未处理，仅登记）**：`apps/web/src/App.tsx` 的 `parseConfigView` 只被它自己的
+`config-routing.test.ts` 消费，全仓无生产调用点（`/ctrl/*` 前缀已由 TanStack 文件路由接管）——属 T8
+「零消费直删」口径的漏网项，因不在 i18n 范围内故本片未删。另：包内仍有 415 行硬编码中文用户可见文案
+（46 个文件，集中在 knowledge 的 RAGFlow 组件、model-management 的两个目录页、task 的 zod 校验层），
+远超本任务范围，登记为技术债。
+
+**验证**：`bun test apps/web/src/__tests__/` 962 → 966 pass（删 7 条自指用例、新增 4 条宿主守卫，
+0 fail）；`bun test packages/` 7311 pass / 2 skip / 0 fail（首轮用 `bun test packages/` 直跑时有 8 条
+Claude ACP adapter 用例失败，系会话注入的 `ANTHROPIC_MODEL` 污染环境，`env -u ANTHROPIC_MODEL` 复跑
+同批次 1016 pass 0 fail，与本次改动无关）；`env -u ANTHROPIC_MODEL bun run precheck` 全绿
+（772 / 7311 + 2 skip / 966，0 fail）；`bun run build:web` 成功。
+
+### 7.18 T9d 公开错误正文按 `type` 取本地化文案（2026-09-21，`2a61e7513`）
+
+T9 的第四片，结掉 §7.16 末段登记的那个跨包缺口。用户 2026-09-21 裁定走方案 ②：UI 用稳定的 `error.type`
+取本地化文案，`message` 退化为「未登记 type 的兜底 + 日志字段」，**wire 契约与 `isPublicError` 完整性校验不变**。
+
+**为什么不能直接渲染 `message`**：它是 `PublicError`（WS 错误帧载荷，`chat-channel/src/schema.ts` 第 66 / 79 / 131 行）
+的字段，`createPublicError` 恒取 `PUBLIC_ERROR_MESSAGES[type].en`，而 `isPublicError` 更把它当作**不可信帧的完整性
+依据**（要求 `message === PUBLIC_ERROR_MESSAGES[type].en` 才认作合法公开错误）。也就是说 `message` 属于协议、
+且必然恒为英文；界面正文改由 `type` 取译文后，它只剩「未登记 type 的兜底」一个前端用途（日志侧
+`serializePublicErrorLog` 只记 `errorId` / `errorType`，本来就不用它）。
+
+**落地（三个文件 + 两处调用点）**：
+- 字典：`@fenix/ui-components` 的 `uiComponents.json` 新增 `chat.components.publicError.<域>.<原因>`，28 键 ×2 语言。
+- 取值：新增 `web/chat/view/public-error-text.ts` 的 `publicErrorText(t, error)`，两处卡片共用。键 = 前缀 + `type`，
+  **不做「type → 键名」映射表**——协议 type 自带 `<域>.<原因>` 结构，字典按同样两级嵌套组织，少一张表就少一处会与
+  协议漂移的第二真相（漏键由穷举断言挡）。未登记 type 回退 `error.message`，绝不回显 key。
+- 调用点：包内 `MessageBubble.tsx`（`publicErrorText(t, entry.error)`）与宿主 `ChatPanel.tsx` 的 `PublicErrorCard`
+  （`publicErrorText(t, error)`）——此前两处都直接渲染 `error.message`，是同一个缺陷的两个现身点。
+
+**方案 ③（把 28×2 条文案从 TS 表迁进字典、删表里的 `zh`）没有一并做**：`PUBLIC_ERROR_MESSAGES` 是
+`@fenix/chat-channel` 的公开导出，删掉 `PublicErrorMessages.zh` 字段属公共契约变更（CLAUDE.md 要求先反馈），
+且该包为 CE / EE 共享，EE 侧可能自行消费 `zh`。代价是同一句中文在两处各存一份——改用**宿主契约测试**钉住
+（见下表第三行），而不是靠人工同步。**本片未改动 `@fenix/chat-channel` 任何文件。**
+
+**守护测试**：
+
+| 文件 | 钉住什么 |
+| --- | --- |
+| `packages/ui-components/web/__tests__/public-error-text.test.ts`（新） | 内联契约的 `PublicErrorType` 取值集合 ↔ 字典 `publicError` 子树**双向**一一对应（少键 = key 回显或退回英文，多键 = 协议已删 type 留下的死键）；28 条 zh 均非 en 照抄；`publicErrorText` 的键推导与两条回退路径（未登记 type、未登记且摘要为空） |
+| `packages/ui-components/web/__tests__/message.ssr.test.tsx` | 新增一条中文渲染用例：把 `entry.error.message` 刻意写成与字典都不同的第三种文案，断言渲染出中文且**不出现**该 message——组件若退回读 `message`，会同时命中两个失败面 |
+| `apps/web/src/__tests__/public-error-i18n.test.ts`（新） | 协议表 ↔ 字典逐字相等（28 个 type 的 en / zh），且字典不含协议表之外的 type。落点在宿主：`apps/web/src/i18n/index.ts` 是全仓唯一同时依赖两个包的地方 |
+
+`public-error-text.test.ts` 的类型清单**从 `types-chat-projection.ts` 源码里解析**而不是在测试里再抄一份：
+本包对 chat 契约整体逐字内联，抄一份就等于多一处会漂移的第二真相，且协议新增 type 时测试不会跟着变。
+
+**对照验证（三条都在本次实测）**：删一条 zh 键 → 穷举断言失败；把 `MessageBubble` 退回读 `entry.error.message`
+→ 中文渲染用例失败；把字典某条 zh 改写一个标点 → 宿主契约测试失败（失败信息直接打印协议表值与字典值两侧）。
+
+**验证**：`bun test packages/ui-components/` 413 → 420 pass（新增 6 + SSR 用例 1）；`bun test apps/web/src/__tests__/`
+966 → 968 pass（新增 2）；`env -u ANTHROPIC_MODEL bun run precheck` 全绿（772 / 7318 + 2 skip / 968，0 fail）；
+`bun run build:web` 成功。
+
+### 7.19 T10a happy-dom 五份副本收敛为一份（2026-09-21，`31e2da0c7`）
+
+T3 已把 `initializeHappyDomWindow` 定为**唯一实现**（`@fenix/ui-components/testing`，落点理由见该文件头注：
+本包是 `standalone` 纯前端包、依赖矩阵允许全部类别依赖它，放在 `apps/web/src/__tests__/` 则会被
+`.dependency-cruiser.cjs` 判为 `web-package-not-to-app` 越界），并留下了 5 份副本中的第 5 份；
+副本本身的删除留在本片。
+
+本片删除宿主 `apps/web/src/__tests__/happy-dom-window.ts` 与 `resources/{memory,skill,workflow}` 各
+`web/__tests__/happy-dom-window.ts` 共 4 份。4 份与唯一实现**逐字相同**（差异只在注释），所以删除是行为等价
+改动，不需要「先证明包内是超集」那一轮前置核查（对比 §7.11）。删除后 8 个调用点改经
+`@fenix/ui-components/testing` 导入；连同 T6e 已先改指的 agent-runtime 那 1 处，全仓 9 个调用点走同一入口，
+`happy-dom` 由本包在 `devDependencies` 声明，调用点不再各自声明。
+
+连带修正两处指向旧副本路径的注释：`apps/server/src/test-utils/setup-globals.ts`（说明「需要真实 DOM 的
+用例各自显式建立 happy-dom Window」的落点）与 `packages/resources/memory/README.md` 已知项 3（由
+「happy-dom-window.ts 有 4 份副本」划改为「已收敛」）。
+
+**验证**：改指的 8 个文件 48 pass 0 fail（`apps/web` 2 + memory 2 + skill 1 + workflow 3）；
+`git ls-files | grep -c happy-dom-window` = 0。完整门禁与 `build:web` 见 §7.20（本片与 T10b1 在同一工作区
+里跑门禁时，唯一失败项是 T10b1 尚未同步的 RMD-08 台账，补台账后全绿）。
+
+### 7.20 T10b1 宿主测试按 owner 归位：12 个 ui-components 用例迁入包内（2026-09-21，`f1ce9ddd5`）
+
+T10 的第二片。判定口径是**导入图谱**而不是文件名相似度：把宿主 `apps/web/src/__tests__/` 的 60 个用例逐个
+解析 import 说明符，按「包所有 / 宿主所有 / 标准库 / 相对宿主」四分类，凡「被测实现的 owner 已在 T8b/T8c 归
+`@fenix/ui-components`，且用例除标准库外只引用该包出口」者即搬——留在宿主等于让「包内实现」被「应用壳测试」
+守护，而 T8b/T8c 已把宿主副本删干净，这类用例正是宿主侧仅存的续命引用。
+
+迁入 `packages/ui-components/web/__tests__/` 的 12 个：表格与分页 `config-datatable`、`config-helpers`、
+`data-table-round41-pure`、`data-table-ssr`、`pagination`、`params-editor-round42-pure`；日期与确认
+`date-picker`、`confirm-dialog`；纯逻辑与 SSR `extract-changed-files`、`extract-changed-files-boundaries`、
+`strip-html-tags`、`message-additional-ssr`。
+
+迁移改动只有两类：import 说明符改指包名自引用（`@fenix/ui-components/...`，仓库已有
+`@fenix/ui-components/testing` 先例）；以及 `confirm-dialog.test.tsx` 里读实现源码的路径——原先从宿主以
+四级相对路径回包读，迁入后变成同包内一跳 `join(import.meta.dirname, "..", "config/ConfirmDialog.tsx")`。
+三处提到 `apps/web` / 「宿主副本」的历史注释（`confirm-dialog:53`、`data-table-ssr:95`、`date-picker:1`）
+描述的是**T8a/T8b 已删除的宿主副本**，与用例当前落点无关，按「注释不改写历史结论」保留原文。
+
+**台账与搬迁同批**（计划红线）：这 12 项从 `RMD_08_MOVES` 移出（`toHaveLength(100)` → 88），按 relocated
+语义追加进 `RMD_08_RELOCATED`（`toHaveLength(49)` → 61，断言旧根路径与宿主副本都不存在、包侧 owner 存在），
+文件头追加第 8 条改判、块内计数注释同步。只搬文件不改台账会被门禁直接挡住
+（`apps/web target is missing: apps/web/src/__tests__/config-datatable.test.ts`）——这正是「不许静默搬迁」的
+守护形态，门禁对「指纹恰好归零」的条目反向报错、对新增指纹直接失败。
+
+**本片排除项（逐条有因，不是遗漏）**：`dark-mode-components.test.tsx` 的被测主体是宿主全局样式表
+`apps/web/src/index.css` 的 `.dark` 变量块，owner 仍是宿主；`peri-task-details-api`、`use-task-views`、
+`pure-logic-transform-boundaries`、`agent-form-dialog-*`（4 份）的导入图里仍有宿主实现（`../api/*`、
+`../hooks/*`、`../lib/*`），要等 T11 把页面与别名的宿主实现收口后才能判定归属；`chat-area-*`、
+`config-routing`、`host-i18n` 等被测对象本来就是宿主装配，留在宿主。余下分片按同一口径继续。
+
+**验证**：宿主 `apps/web/src/__tests__/` 60 → 48 个用例文件，包侧 `packages/ui-components/web/__tests__/`
+41 → 53 个；`bun test packages/ui-components/` 420 → 596 pass 0 fail；
+`bun test scripts/__tests__/rmd-08-migration.test.ts` 6 pass（含两条 relocated / moves 断言）。
+完整门禁 `env -u ANTHROPIC_MODEL bun run precheck` 全绿（772 / 7496 + 2 skip / 792，0 fail），
+`bun run build:web` 与 `bun run docs:build` 均成功。
+
+### 7.21 T10b2 宿主测试按 owner 归位：7 个 web-runtime 用例迁入包内（2026-09-21，`2a8c45b1e`）
+
+T10 的第三片，判定口径与 T10b1（§7.20）同一张导入图谱，owner 换成 `@fenix/web-runtime`：`request` 与两个
+`structured-thread-*`、`todo`、`permission-options`、`artifacts-preview-events`、`config-types` 共 7 个宿主
+用例的导入说明符除标准库外全部指向该包出口（`api/request`、`chat/{structured-to-thread,todo}`、
+`lib/artifacts-preview-events`、`types/config`），宿主侧的被测实现已在 T8d 整体退场，用例留在宿主是同一种
+「包内实现被应用壳测试守护」。
+
+**本片是纯搬运**：7 个文件的 import 在 T8d 改指时就已写成包名自引用，因此工作区里只有 `git mv` 与台账，
+没有任何文本改动（rename 相似度 100%）——这也反过来验证了 T8d 的改指是完整的。
+
+`request.test.ts` **不在 RMD-08 快照内**（它守护的 `api/request` 是 T8d 才上收到包里的），本片一并归位并补进
+relocated 断言，避免它成为台账之外的宿主复活口。
+
+**台账与搬迁同批**：6 项（`request.test.ts` 不在快照内）从 `RMD_08_MOVES` 移出（`toHaveLength(88)` → 82），
+7 项追加进 `RMD_08_RELOCATED`（`toHaveLength(61)` → 68），文件头追加第 9 条改判。
+
+**验证**：`bun test packages/web-runtime/` 157 pass 0 fail（该包用例文件 3 → 10）；
+`bun test scripts/__tests__/rmd-08-migration.test.ts` 6 pass。宿主 `apps/web/src/__tests__/` 48 → 41 个用例文件。
+完整门禁 `env -u ANTHROPIC_MODEL bun run precheck` 全绿（772 / 7618 + 2 skip / 670，0 fail），
+`bun run build:web` 与 `bun run docs:build` 均成功。
+
+### 7.22 T10b3 收尾 ui-components 归属：1 项随实现迁入、1 项按 owner 拆开、1 项重复覆盖直删（2026-09-21，`c0c70dfcd`）
+
+T10 的第四片，宿主侧最后一组「除标准库外只引用 `@fenix/ui-components` 出口」的用例。三种处置：
+
+**① `tree-component.test.tsx` 随实现迁入包内**（`@fenix/ui-components/web/__tests__/`），并把两处
+`mock.module` 替身换成**真字典 + `I18nextProvider`**（与 `message.ssr.test.tsx` 同一约定）：
+- 对宿主 `@/src/i18n` 的替身是宿主副本时代（T8a 之前）的残留——`ui/tree` 只依赖包内 `web/i18n/namespace`，
+  包内不存在该导入方，删除后用例仍全绿，等于顺带证明它是死替身。
+- 对 `react-i18next` 的替身必须改掉：**它实测会跨文件泄漏**。本文件迁入包内后与 `message.ssr.test.tsx`、
+  `chat-composer.test.tsx` 同进程求值，`afterEach` 的 `mock.restore()` 挡不住已经拿到替身绑定的模块，
+  整包测试随即出现 14 条失败——i18n 断言退化成回显 key（`chat.components.composerAssets.quoteNumber`）。
+  换成真字典后恢复全绿；顺带也满足了「测试文件禁止直接调用 `mock.module()`」（CLAUDE.md）。
+
+**② `context-queue.test.ts` 按 owner 拆开**。它一个文件同时守护两个 owner：队列状态（`contextQueues` 模块级
+Map）归 `@fenix/web-runtime/chat/context-queue`，纯函数子集（引用解析 / Unicode 安全截断 / 序列化）归
+`@fenix/ui-components/chat/lib/context-queue`。拆开后：队列一半**随宿主副本一并删除**——它与该包
+`web/__tests__/context-queue.test.ts` 的 7 条用例**逐字重复**（同注释、同断言），留一份即够；纯函数一半移入
+包内新用例。宿主侧因此没有覆盖损失。
+
+**③ `ui-components.test.ts` 直删（重复覆盖）**。它是一份 87 行的 barrel 冒烟用例，两类断言都已有更强或对位的
+守护：导出名清单由包内 `barrel-exports.test.ts` 逐名 + 计数 + `package.json` 出口一致性覆盖（该文件明确
+「只断言公共出口的名称与非空性，不渲染组件、不 mock 模块」）；`cn` 的两条断言守护的是**宿主**自己的
+`apps/web/src/lib/utils.ts`，故不迁包、并入宿主 `utils.test.ts`（该文件原先未覆盖 `cn`）。删除按
+「重复覆盖」口径，不属搬迁。
+
+**台账与改动同批**：`context-queue.test.ts` 与 `tree-component.test.tsx` 从 `RMD_08_MOVES` 移出
+（`toHaveLength(82)` → 80）；`tree-component.test.tsx` 追加进 `RMD_08_RELOCATED`（`toHaveLength(68)` → 69）；
+拆分归属无法用 relocated 三元组表达，另立专项断言（`splits the host context queue test between its two
+package owners`：旧的根路径与宿主副本都不得复活、两个 owner 侧用例都必须存在）。文件头追加第 10 条改判。
+
+**验证**：`bun test packages/ui-components/` 617 pass 0 fail（迁入两个用例文件后 58 → 60 个文件、596 → 617
+个用例）；四个对位文件（web-runtime 与 ui-components 各一份 `context-queue`、`tree-component`、宿主
+`utils.test.ts`）65 pass 0 fail；`bun test scripts/__tests__/rmd-08-migration.test.ts` 7 pass。宿主
+`apps/web/src/__tests__/` 41 → 38 个用例文件（web-app-tests 630 pass / 38 文件）。
+完整门禁 `env -u ANTHROPIC_MODEL bun run precheck` 全绿（773 / 7639 + 2 skip / 630，0 fail，lint 零
+warning），`bun run build:web` 与 `bun run docs:build` 均成功。
+
+### 7.23 T10b4 宿主测试按 owner 归位：8 个 agent-config 用例迁入包内（2026-09-21，`8788be029`）
+
+T10 的第五片，收掉最后一批「实现已在包内、用例仍在宿主」的用例：`agent-form-dialog-*`（5 份）与
+`agent-resource-picker-interaction.test.tsx`、`agent-node-selector.test.ts`、`agent-utils.test.ts`。它们的
+被测实现全是 `@fenix/agent-config/web/pages/agent-panel/agent-editor/**` 与 `web/lib/{agent-node,agent-utils}`，
+此前只能从宿主以 `../../../../packages/resources/agent-config/web/...` **四级相对路径反向读取包内实现**——
+这本身就是跨边界依赖（`§2.3` 的「跨包相对说明符把别包内部结构变成事实契约」），迁入后同一跳改为 `../`，
+共改写 11 处。`agent-node-selector` 与 `agent-utils` 的导入已是包名自引用，零文本改动。
+
+`agent-form-dialog-pure-logic.test.ts` **不在本片**：它同时导入宿主 `../api/fs`、`../lib/{api-result,form-utils}`，
+而这三者是 T8d 判定为「宿主专有」的模块（无包侧 owner）。归位的前提是先有 owner，属 T11 的收口范围；
+强行搬进包内会把宿主实现变成包的事实依赖。
+
+`agent-resource-picker-interaction.test.tsx` 直接 `import { Window } from "happy-dom"`，本包未声明该 devDependency
+（与 `resources/skill` 同形：都只经由 `@fenix/ui-components/testing` 的入口取用），实测在 workspace 根解析下
+正常，故本片不为它单独改 `package.json` 与锁文件。
+
+**台账与搬迁同批**：8 项从 `RMD_08_MOVES` 移出（`toHaveLength(80)` → 72），追加进 `RMD_08_RELOCATED`
+（`toHaveLength(69)` → 77），文件头追加第 11 条改判。
+
+**验证**：`bun test packages/resources/agent-config/` 741 pass 0 fail（该包用例文件 5 → 13）；
+`bun test scripts/__tests__/rmd-08-migration.test.ts` 7 pass。宿主 `apps/web/src/__tests__/` 38 → 30 个用例文件。
+完整门禁 `env -u ANTHROPIC_MODEL bun run precheck` 全绿（773 / 7975 + 2 skip / 294，0 fail，lint 零 warning），
+`bun run build:web` 与 `bun run docs:build` 均成功。
+
+### 7.24 T10b5 自指用例退役：`new-session-dialog-form.test.ts` 直删（2026-09-21，）
+
+宿主测试盘点时发现的一处**不守护任何实现**的用例，按 §7.17 的先例退役。该文件 38 行，5 条断言的全部内容
+是：在文件内定义 `const newSessionSchema = z.object({ title: z.string(), envId: z.string() })`，随后断言
+它的 `safeParse` 对 `""` 成功、对 `null` 失败、对 `"   "` 成功。
+
+**判据（三条都要成立才算自指）**：① 被守护对象是文件内字面量，不是任何导入的生产模块；② 全仓没有任何生产
+模块导出 `newSessionSchema`（逐标识符 grep）；③ 其命名的实现 `NewSessionDialog` 在全仓已不存在（`grep -rl`
+零命中，会话创建表单的能力已并入 `@fenix/ui-components` 的 chat shell）。三条成立的后果是：这 5 条断言只
+在测 zod 自身的语义，任何产品改动都不会让它失败，也不会被它拦住。
+
+**没有覆盖损失**：删除前后宿主侧无对位用例被削弱——它从未守护过宿主模块；包内 chat shell 的会话创建路径由
+`packages/ui-components/web/__tests__/chat-shell-wiring.test.tsx` 等用例覆盖。
+
+**台账与删除同批**：从 `RMD_08_MOVES` 移出（`toHaveLength(72)` → 71），并另立专项断言
+（`keeps the self-referential session form schema test deleted`：旧根路径与应用壳路径都不得复活），文件头
+追加第 12 条改判——「删除」必须与「防复活断言」成对出现，否则等于留了一个可以被静默还原的空位。
+
+**验证**：`bun test scripts/__tests__/rmd-08-migration.test.ts` 8 pass（新增的防复活断言计入）；宿主
+`apps/web/src/__tests__/` 30 → 29 个用例文件。完整门禁 `env -u ANTHROPIC_MODEL bun run precheck` 全绿
+（774 / 7975 + 2 skip / 289，0 fail，lint 零 warning），`bun run build:web` 与 `bun run docs:build` 均成功。
+脚本测试计数 773 → 774 即本次新增的那条专项断言。
+
 ---
 
 ## 八、用户可见行为变更
@@ -1178,9 +1566,17 @@ TopModeTabs,artifacts-dialogs,artifacts-files-workspace,use-file-tree-events,use
 | 2 | workflow 注入的上下文丢失（Agent 看不到工作流上下文） | `context-queue` 双副本，写入方与取出方各持一份（§7.8） | T5c2 |
 | 3 | 状态面板「变更文件」里点击文件条目无反应 | 源实现该处派发的事件详情只有 `{path}`、缺 `envId`，被消费方的环境隔离校验判为「其他 environment」恒忽略（工具卡片与消息内 `@./path` 的点击一直正常） | T5c2 |
 | 4 | 会话重命名 / 删除失败时无提示 | `onNotice` 未透传到侧栏与头部（§7.7 缺口 D） | T5c1b `98a84ad68` |
+| 5 | 引用被截断时的徽标在中文界面显示英文（`23 chars omitted`）；更早的宿主实现在此位置直接显示原始 key `composerAssets.quoteTruncatedBadge` | `quoteTruncatedBadge` 的 zh 值照抄 en；键集 / 占位符两条守护都挡不住这类漏译 | T9b |
+| 6 | 会话面板错误卡片的标题对英文用户显示中文 `执行出错` | T6d 拆 `ChatPanel.tsx` 时硬编码带入 | T9b |
+| 7 | 回忆库（hindsight）文档视图的分页按钮在中文界面显示英文 `Previous` / `Next` | memory 包以限定字面量引用宿主 `common:previous` / `common:next`（且已登记为跨命名空间依赖），宿主 `common` 字典却缺这两条，一直靠 `defaultValue` 兜底 | T9c |
+| 8 | 错误卡片正文（聊天 turn 失败、会话面板错误）在中文界面显示英文摘要 | `PublicError.message` 是 wire 与日志字段，`createPublicError` / `isPublicError` 把它钉在 `.en` 上，两处卡片却直接渲染它；`PUBLIC_ERROR_MESSAGES` 的 `zh` 一半全仓无读取点 | T9d |
 
 第 3 条的修法是两处共用同一个派发器（`dispatchArtifactsPreviewFile(envId, path)`）；事件名未变，变的
 是状态面板那条的详情补齐了 `envId`。第 4 条在线上需服务端返回错误才触发（对抗验证判 real=False）。
+第 5、6、8 条属文案语言错误，验收时把界面语言切到英文（第 6 条）或中文（第 5、8 条）各看一处即可。
+第 6 条修的是标题、第 8 条修的是正文，两处已在同一张卡片上；第 8 条的正文改由稳定 `error.type` 取译文后，
+`error.message` 只作未登记 type 的兜底（取舍见 §7.18）。
+第 7 条只影响回忆库文档视图翻页按钮的文案，验收时把界面语言切到中文看该页脚即可。
 
 ### 8.2 有意的呈现取舍
 
@@ -1200,6 +1596,7 @@ TopModeTabs,artifacts-dialogs,artifacts-files-workspace,use-file-tree-events,use
 
 ### 8.3 发布验收建议
 
-按 8.1 的 4 条做定向回归（建站卡片可见并可跳转、工作流上下文注入、状态面板文件点击、会话重命名失败
-提示），8.2 的 7 条按「与旧版截图比对」验一次即可；`chat-channel/web` 尚未删除，旧实现可随时对比
-（T5d 删除后仅存 git 历史）。
+按 8.1 的 8 条做定向回归（建站卡片可见并可跳转、工作流上下文注入、状态面板文件点击、会话重命名失败
+提示、引用截断徽标的中文文案、错误卡片标题的英文文案、回忆库文档视图分页按钮的中文文案、错误卡片正文
+的中文文案），8.2 的 7 条按「与旧版截图比对」验一次即可；
+`chat-channel/web` 尚未删除，旧实现可随时对比（T5d 删除后仅存 git 历史）。

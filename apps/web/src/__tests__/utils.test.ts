@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 
 const {
+  cn,
   formatTime,
   statusClass,
   isClosedSessionStatus,
@@ -217,5 +218,22 @@ describe("isConversationClearedStatus", () => {
 
   test("returns false for empty object", () => {
     expect(isConversationClearedStatus({})).toBe(false);
+  });
+});
+
+// =============================================================================
+// cn()
+// =============================================================================
+
+// 用例从宿主 `ui-components.test.ts` 并入（§1.6 T10b3）：那份 smoke 用例的导出断言已由包内
+// `packages/ui-components/web/__tests__/barrel-exports.test.ts` 逐名覆盖（更强），只有 `cn` 这两条
+// 守护的是宿主自己的 `cn`，故留下、其余删除。
+describe("cn", () => {
+  test("concatenates class names", () => {
+    expect(cn("a", "b")).toBe("a b");
+  });
+
+  test("filters falsy values", () => {
+    expect(cn("a", false && "b")).toBe("a");
   });
 });

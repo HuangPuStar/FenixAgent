@@ -20,79 +20,50 @@ import { existsSync } from "node:fs";
  *    经 `@/src/api/registry` 别名消费，T4 把该页的机器注册表能力改成宿主注入的 `MachineRegistryPort`
  *    后，壳副本零消费，且与 `packages/resources/machine/web/api/registry.ts` 除 import 说明符外逐字相同，
  *    于是删除、owner 归 machine 包（见下方 relocated 断言）。
+ * 7. 任务 1.6 T9c 直删 9 项（109 → 100）：`TASKS` / `SESSIONS` / `ENVIRONMENTS` / `TOOL_NARRATOR` 四个
+ *    宿主命名空间的 8 份字典在全仓没有任何 `useTranslation` 绑定（历史迁出后留下的空壳，真实消费方各在
+ *    资源包内），连同守护 `toolNarrator` 字典的**自指测试** `narrators-i18n.test.ts`（它只读该字典并断言
+ *    同一文件里的键）一并删除。删除口径与逐条证据见 `review/task-1.6-web-shell.md` §7.17。
+ * 8. 任务 1.6 T10b1 把 12 个 ui-components 归属的宿主测试移入包内（100 → 88）：这些用例的被测实现
+ *    在 T8b/T8c 已整体退场到 `@fenix/ui-components`，导入图里除标准库外只指向该包出口，留在宿主等于让
+ *    「包内实现」被「应用壳测试」守护；搬运后宿主不再是它们的 owner（见下方 relocated 断言）。
+ * 9. 任务 1.6 T10b2 把 7 个 web-runtime 归属的宿主测试移入包内（88 → 82）：判定口径同第 8 条，只是 owner
+ *    换成 `@fenix/web-runtime`；其中 `request.test.ts` 不在 RMD-08 快照内（它守护的是 T8d 才上收到包里的
+ *    `api/request`），一并归位并补进 relocated 断言，避免宿主侧复活。
+ * 10. 任务 1.6 T10b3 收尾 ui-components 归属（82 → 80）：同上口径，另含两处变形——`tree-component.test.tsx`
+ *     去掉宿主副本时代遗留的 `@/src/i18n` 替身（`ui/tree` 只依赖包内 `i18n/namespace`）；
+ *     `context-queue.test.ts` 按 owner 拆开，队列一半随宿主副本删除（与包内用例逐字重复）。
+ * 11. 任务 1.6 T10b4 把 8 个 agent-config 归属的宿主测试移入包内（80 → 72）：这 8 份此前以
+ *     `../../../../packages/resources/agent-config/web/...` 反向读取包内实现，既是跨边界依赖也说明 owner
+ *     已明确；`agent-form-dialog-pure-logic.test.ts` 因同时导入宿主 `../api/fs`、`../lib/{api-result,form-utils}`
+ *     而不在本片（等 T11 把宿主 `src/{api,lib}` 的剩余模块定归属后再归位）。
+ * 12. 任务 1.6 T10b5 直删 1 项自指用例（72 → 71）：`new-session-dialog-form.test.ts` 在文件内定义
+ *     `newSessionSchema` 再断言它自身的 `safeParse`，全仓无任何生产模块导出该 schema（`NewSessionDialog`
+ *     已不存在），五条断言只在测 zod；与文件头第 7 条的自指 i18n 测试同一口径，另立专项断言防复活。
  */
 const RMD_08_MOVES = [
   ["web/src/App.tsx", "apps/web/src/App.tsx"],
   ["web/src/__tests__/agent-create-enter-flow.test.ts", "apps/web/src/__tests__/agent-create-enter-flow.test.ts"],
   [
-    "web/src/__tests__/agent-form-dialog-bulk-pure-options.test.ts",
-    "apps/web/src/__tests__/agent-form-dialog-bulk-pure-options.test.ts",
-  ],
-  [
-    "web/src/__tests__/agent-form-dialog-editor-guards.test.ts",
-    "apps/web/src/__tests__/agent-form-dialog-editor-guards.test.ts",
-  ],
-  [
-    "web/src/__tests__/agent-form-dialog-high-gap-conversions.test.tsx",
-    "apps/web/src/__tests__/agent-form-dialog-high-gap-conversions.test.tsx",
-  ],
-  [
-    "web/src/__tests__/agent-form-dialog-options-boundaries.test.tsx",
-    "apps/web/src/__tests__/agent-form-dialog-options-boundaries.test.tsx",
-  ],
-  [
     "web/src/__tests__/agent-form-dialog-pure-logic.test.ts",
     "apps/web/src/__tests__/agent-form-dialog-pure-logic.test.ts",
   ],
-  [
-    "web/src/__tests__/agent-form-dialog-round54-pure.test.ts",
-    "apps/web/src/__tests__/agent-form-dialog-round54-pure.test.ts",
-  ],
   ["web/src/__tests__/agent-form-dialog-ssr.test.tsx", "apps/web/src/__tests__/agent-form-dialog-ssr.test.tsx"],
   ["web/src/__tests__/agent-home-generation.test.tsx", "apps/web/src/__tests__/agent-home-generation.test.tsx"],
-  ["web/src/__tests__/agent-node-selector.test.ts", "apps/web/src/__tests__/agent-node-selector.test.ts"],
-  [
-    "web/src/__tests__/agent-resource-picker-interaction.test.tsx",
-    "apps/web/src/__tests__/agent-resource-picker-interaction.test.tsx",
-  ],
   [
     "web/src/__tests__/agent-sidebar-instance-order.test.ts",
     "apps/web/src/__tests__/agent-sidebar-instance-order.test.ts",
   ],
-  ["web/src/__tests__/agent-utils.test.ts", "apps/web/src/__tests__/agent-utils.test.ts"],
   ["web/src/__tests__/api-client.test.ts", "apps/web/src/__tests__/api-client.test.ts"],
   ["web/src/__tests__/api-result-utils.test.ts", "apps/web/src/__tests__/api-result-utils.test.ts"],
-  ["web/src/__tests__/artifacts-preview-events.test.ts", "apps/web/src/__tests__/artifacts-preview-events.test.ts"],
   ["web/src/__tests__/auth-preference.test.ts", "apps/web/src/__tests__/auth-preference.test.ts"],
-  ["web/src/__tests__/config-datatable.test.ts", "apps/web/src/__tests__/config-datatable.test.ts"],
-  ["web/src/__tests__/config-helpers.test.ts", "apps/web/src/__tests__/config-helpers.test.ts"],
   ["web/src/__tests__/config-routing.test.ts", "apps/web/src/__tests__/config-routing.test.ts"],
-  ["web/src/__tests__/config-types.test.ts", "apps/web/src/__tests__/config-types.test.ts"],
-  ["web/src/__tests__/confirm-dialog.test.tsx", "apps/web/src/__tests__/confirm-dialog.test.tsx"],
-  ["web/src/__tests__/context-queue.test.ts", "apps/web/src/__tests__/context-queue.test.ts"],
   ["web/src/__tests__/dark-mode-components.test.tsx", "apps/web/src/__tests__/dark-mode-components.test.tsx"],
-  ["web/src/__tests__/data-table-round41-pure.test.tsx", "apps/web/src/__tests__/data-table-round41-pure.test.tsx"],
-  ["web/src/__tests__/data-table-ssr.test.tsx", "apps/web/src/__tests__/data-table-ssr.test.tsx"],
-  ["web/src/__tests__/date-picker.test.tsx", "apps/web/src/__tests__/date-picker.test.tsx"],
-  [
-    "web/src/__tests__/extract-changed-files-boundaries.test.ts",
-    "apps/web/src/__tests__/extract-changed-files-boundaries.test.ts",
-  ],
-  ["web/src/__tests__/extract-changed-files.test.ts", "apps/web/src/__tests__/extract-changed-files.test.ts"],
   ["web/src/__tests__/folder-upload-batching.test.ts", "apps/web/src/__tests__/folder-upload-batching.test.ts"],
   ["web/src/__tests__/form-utils.test.ts", "apps/web/src/__tests__/form-utils.test.ts"],
   ["web/src/__tests__/fs-upload-url.test.ts", "apps/web/src/__tests__/fs-upload-url.test.ts"],
   ["web/src/__tests__/instances-api.test.ts", "apps/web/src/__tests__/instances-api.test.ts"],
-  ["web/src/__tests__/message-additional-ssr.test.tsx", "apps/web/src/__tests__/message-additional-ssr.test.tsx"],
-  ["web/src/__tests__/narrators-i18n.test.ts", "apps/web/src/__tests__/narrators-i18n.test.ts"],
-  ["web/src/__tests__/new-session-dialog-form.test.ts", "apps/web/src/__tests__/new-session-dialog-form.test.ts"],
-  ["web/src/__tests__/pagination.test.tsx", "apps/web/src/__tests__/pagination.test.tsx"],
-  [
-    "web/src/__tests__/params-editor-round42-pure.test.tsx",
-    "apps/web/src/__tests__/params-editor-round42-pure.test.tsx",
-  ],
   ["web/src/__tests__/peri-task-details-api.test.ts", "apps/web/src/__tests__/peri-task-details-api.test.ts"],
-  ["web/src/__tests__/permission-options.test.ts", "apps/web/src/__tests__/permission-options.test.ts"],
   ["web/src/__tests__/preview-utils-normalize.test.ts", "apps/web/src/__tests__/preview-utils-normalize.test.ts"],
   [
     "web/src/__tests__/pure-logic-transform-boundaries.test.ts",
@@ -100,17 +71,6 @@ const RMD_08_MOVES = [
   ],
   ["web/src/__tests__/random-uuid-polyfill.test.ts", "apps/web/src/__tests__/random-uuid-polyfill.test.ts"],
   ["web/src/__tests__/retry.test.ts", "apps/web/src/__tests__/retry.test.ts"],
-  ["web/src/__tests__/strip-html-tags.test.ts", "apps/web/src/__tests__/strip-html-tags.test.ts"],
-  [
-    "web/src/__tests__/structured-thread-additional.test.ts",
-    "apps/web/src/__tests__/structured-thread-additional.test.ts",
-  ],
-  [
-    "web/src/__tests__/structured-thread-boundaries.test.ts",
-    "apps/web/src/__tests__/structured-thread-boundaries.test.ts",
-  ],
-  ["web/src/__tests__/todo.test.ts", "apps/web/src/__tests__/todo.test.ts"],
-  ["web/src/__tests__/tree-component.test.tsx", "apps/web/src/__tests__/tree-component.test.tsx"],
   ["web/src/__tests__/use-task-views.test.tsx", "apps/web/src/__tests__/use-task-views.test.tsx"],
   ["web/src/__tests__/utils.test.ts", "apps/web/src/__tests__/utils.test.ts"],
   ["web/src/api/fs.ts", "apps/web/src/api/fs.ts"],
@@ -137,25 +97,15 @@ const RMD_08_MOVES = [
   ["web/src/i18n/locales/en/common.json", "apps/web/src/i18n/locales/en/common.json"],
   ["web/src/i18n/locales/en/components.json", "apps/web/src/i18n/locales/en/components.json"],
   ["web/src/i18n/locales/en/dashboard.json", "apps/web/src/i18n/locales/en/dashboard.json"],
-  ["web/src/i18n/locales/en/environments.json", "apps/web/src/i18n/locales/en/environments.json"],
   ["web/src/i18n/locales/en/login.json", "apps/web/src/i18n/locales/en/login.json"],
-  ["web/src/i18n/locales/en/sessions.json", "apps/web/src/i18n/locales/en/sessions.json"],
-  ["web/src/i18n/locales/en/settings.json", "apps/web/src/i18n/locales/en/settings.json"],
   ["web/src/i18n/locales/en/sidebar.json", "apps/web/src/i18n/locales/en/sidebar.json"],
-  ["web/src/i18n/locales/en/tasks.json", "apps/web/src/i18n/locales/en/tasks.json"],
-  ["web/src/i18n/locales/en/toolNarrator.json", "apps/web/src/i18n/locales/en/toolNarrator.json"],
   ["web/src/i18n/locales/zh/agentHome.json", "apps/web/src/i18n/locales/zh/agentHome.json"],
   ["web/src/i18n/locales/zh/agentPanel.json", "apps/web/src/i18n/locales/zh/agentPanel.json"],
   ["web/src/i18n/locales/zh/common.json", "apps/web/src/i18n/locales/zh/common.json"],
   ["web/src/i18n/locales/zh/components.json", "apps/web/src/i18n/locales/zh/components.json"],
   ["web/src/i18n/locales/zh/dashboard.json", "apps/web/src/i18n/locales/zh/dashboard.json"],
-  ["web/src/i18n/locales/zh/environments.json", "apps/web/src/i18n/locales/zh/environments.json"],
   ["web/src/i18n/locales/zh/login.json", "apps/web/src/i18n/locales/zh/login.json"],
-  ["web/src/i18n/locales/zh/sessions.json", "apps/web/src/i18n/locales/zh/sessions.json"],
-  ["web/src/i18n/locales/zh/settings.json", "apps/web/src/i18n/locales/zh/settings.json"],
   ["web/src/i18n/locales/zh/sidebar.json", "apps/web/src/i18n/locales/zh/sidebar.json"],
-  ["web/src/i18n/locales/zh/tasks.json", "apps/web/src/i18n/locales/zh/tasks.json"],
-  ["web/src/i18n/locales/zh/toolNarrator.json", "apps/web/src/i18n/locales/zh/toolNarrator.json"],
   ["web/src/lib/api-result.ts", "apps/web/src/lib/api-result.ts"],
   ["web/src/lib/auth-preference.ts", "apps/web/src/lib/auth-preference.ts"],
   ["web/src/lib/form-utils.ts", "apps/web/src/lib/form-utils.ts"],
@@ -204,6 +154,18 @@ const RMD_08_MOVES = [
  * 任务 1.6 T8d 再移出 15 项：`src/{api,hooks,lib}` 的 `request`、两个 hooks 与 12 个 `lib` 模块——
  * owner 分属 `@fenix/web-runtime`（api/hooks/lib/chat）、`@fenix/agent-config`（web/lib）与
  * `@fenix/ui-components`（chat/lib、chat/types）。
+ * 任务 1.6 T10b1 再移出 12 项：`src/__tests__/**` 的表格、分页、日期选择器、确认弹窗与 config 纯逻辑
+ * 用例——被测实现的 owner 已在 T8b/T8c 归 `@fenix/ui-components`，这些用例的导入图里除标准库外只指向
+ * 该包出口，于是用例随实现移入包内，宿主侧不再保留第二份。
+ * 任务 1.6 T10b2 再移出 7 项：`request` 与两个 `structured-thread-*`、`todo`、`permission-options`、
+ * `artifacts-preview-events`、`config-types` 的宿主用例——全部只引用 `@fenix/web-runtime` 出口（其中
+ * `request.test.ts` 未被 RMD-08 快照收录，本片一并归位），owner 是该包的 `web/{api,lib,chat,types}`。
+ * 任务 1.6 T10b3 再移出 1 项并拆 1 项：`tree-component.test.tsx` 随 `ui/tree` 的实现迁入 ui-components；
+ * `context-queue.test.ts` 同时守护队列（web-runtime）与纯函数（ui-components）两个 owner，按 owner 拆开
+ * （队列一半与 web-runtime 包内用例逐字重复，随宿主副本一并删除），拆分归属另立专项断言。
+ * 任务 1.6 T10b4 再移出 8 项：`agent-form-dialog-*`（5）与 `agent-resource-picker-interaction`、
+ * `agent-node-selector`、`agent-utils` 的宿主用例——被测实现是 agent-config 包的
+ * `web/pages/agent-panel/agent-editor/**`，此前只能从宿主以四级相对路径反向读取包内实现，迁入后改为一跳。
  */
 const RMD_08_RELOCATED = [
   [
@@ -417,18 +379,174 @@ const RMD_08_RELOCATED = [
     "packages/ui-components/web/chat/lib/tool-semantic.ts",
   ],
   ["web/src/lib/types.ts", "apps/web/src/lib/types.ts", "packages/ui-components/web/chat/types.ts"],
+  [
+    "web/src/i18n/locales/en/settings.json",
+    "apps/web/src/i18n/locales/en/settings.json",
+    "packages/platform/identity/web/i18n/locales/en/settings.json",
+  ],
+  [
+    "web/src/i18n/locales/zh/settings.json",
+    "apps/web/src/i18n/locales/zh/settings.json",
+    "packages/platform/identity/web/i18n/locales/zh/settings.json",
+  ],
+  [
+    "web/src/__tests__/config-datatable.test.ts",
+    "apps/web/src/__tests__/config-datatable.test.ts",
+    "packages/ui-components/web/__tests__/config-datatable.test.ts",
+  ],
+  [
+    "web/src/__tests__/config-helpers.test.ts",
+    "apps/web/src/__tests__/config-helpers.test.ts",
+    "packages/ui-components/web/__tests__/config-helpers.test.ts",
+  ],
+  [
+    "web/src/__tests__/confirm-dialog.test.tsx",
+    "apps/web/src/__tests__/confirm-dialog.test.tsx",
+    "packages/ui-components/web/__tests__/confirm-dialog.test.tsx",
+  ],
+  [
+    "web/src/__tests__/data-table-round41-pure.test.tsx",
+    "apps/web/src/__tests__/data-table-round41-pure.test.tsx",
+    "packages/ui-components/web/__tests__/data-table-round41-pure.test.tsx",
+  ],
+  [
+    "web/src/__tests__/data-table-ssr.test.tsx",
+    "apps/web/src/__tests__/data-table-ssr.test.tsx",
+    "packages/ui-components/web/__tests__/data-table-ssr.test.tsx",
+  ],
+  [
+    "web/src/__tests__/date-picker.test.tsx",
+    "apps/web/src/__tests__/date-picker.test.tsx",
+    "packages/ui-components/web/__tests__/date-picker.test.tsx",
+  ],
+  [
+    "web/src/__tests__/extract-changed-files-boundaries.test.ts",
+    "apps/web/src/__tests__/extract-changed-files-boundaries.test.ts",
+    "packages/ui-components/web/__tests__/extract-changed-files-boundaries.test.ts",
+  ],
+  [
+    "web/src/__tests__/extract-changed-files.test.ts",
+    "apps/web/src/__tests__/extract-changed-files.test.ts",
+    "packages/ui-components/web/__tests__/extract-changed-files.test.ts",
+  ],
+  [
+    "web/src/__tests__/message-additional-ssr.test.tsx",
+    "apps/web/src/__tests__/message-additional-ssr.test.tsx",
+    "packages/ui-components/web/__tests__/message-additional-ssr.test.tsx",
+  ],
+  [
+    "web/src/__tests__/pagination.test.tsx",
+    "apps/web/src/__tests__/pagination.test.tsx",
+    "packages/ui-components/web/__tests__/pagination.test.tsx",
+  ],
+  [
+    "web/src/__tests__/params-editor-round42-pure.test.tsx",
+    "apps/web/src/__tests__/params-editor-round42-pure.test.tsx",
+    "packages/ui-components/web/__tests__/params-editor-round42-pure.test.tsx",
+  ],
+  [
+    "web/src/__tests__/strip-html-tags.test.ts",
+    "apps/web/src/__tests__/strip-html-tags.test.ts",
+    "packages/ui-components/web/__tests__/strip-html-tags.test.ts",
+  ],
+  [
+    "web/src/__tests__/artifacts-preview-events.test.ts",
+    "apps/web/src/__tests__/artifacts-preview-events.test.ts",
+    "packages/web-runtime/web/__tests__/artifacts-preview-events.test.ts",
+  ],
+  [
+    "web/src/__tests__/config-types.test.ts",
+    "apps/web/src/__tests__/config-types.test.ts",
+    "packages/web-runtime/web/__tests__/config-types.test.ts",
+  ],
+  [
+    "web/src/__tests__/permission-options.test.ts",
+    "apps/web/src/__tests__/permission-options.test.ts",
+    "packages/web-runtime/web/__tests__/permission-options.test.ts",
+  ],
+  [
+    "web/src/__tests__/request.test.ts",
+    "apps/web/src/__tests__/request.test.ts",
+    "packages/web-runtime/web/__tests__/request.test.ts",
+  ],
+  [
+    "web/src/__tests__/structured-thread-additional.test.ts",
+    "apps/web/src/__tests__/structured-thread-additional.test.ts",
+    "packages/web-runtime/web/__tests__/structured-thread-additional.test.ts",
+  ],
+  [
+    "web/src/__tests__/structured-thread-boundaries.test.ts",
+    "apps/web/src/__tests__/structured-thread-boundaries.test.ts",
+    "packages/web-runtime/web/__tests__/structured-thread-boundaries.test.ts",
+  ],
+  [
+    "web/src/__tests__/todo.test.ts",
+    "apps/web/src/__tests__/todo.test.ts",
+    "packages/web-runtime/web/__tests__/todo.test.ts",
+  ],
+  [
+    "web/src/__tests__/tree-component.test.tsx",
+    "apps/web/src/__tests__/tree-component.test.tsx",
+    "packages/ui-components/web/__tests__/tree-component.test.tsx",
+  ],
+  [
+    "web/src/__tests__/agent-form-dialog-bulk-pure-options.test.ts",
+    "apps/web/src/__tests__/agent-form-dialog-bulk-pure-options.test.ts",
+    "packages/resources/agent-config/web/__tests__/agent-form-dialog-bulk-pure-options.test.ts",
+  ],
+  [
+    "web/src/__tests__/agent-form-dialog-editor-guards.test.ts",
+    "apps/web/src/__tests__/agent-form-dialog-editor-guards.test.ts",
+    "packages/resources/agent-config/web/__tests__/agent-form-dialog-editor-guards.test.ts",
+  ],
+  [
+    "web/src/__tests__/agent-form-dialog-high-gap-conversions.test.tsx",
+    "apps/web/src/__tests__/agent-form-dialog-high-gap-conversions.test.tsx",
+    "packages/resources/agent-config/web/__tests__/agent-form-dialog-high-gap-conversions.test.tsx",
+  ],
+  [
+    "web/src/__tests__/agent-form-dialog-options-boundaries.test.tsx",
+    "apps/web/src/__tests__/agent-form-dialog-options-boundaries.test.tsx",
+    "packages/resources/agent-config/web/__tests__/agent-form-dialog-options-boundaries.test.tsx",
+  ],
+  [
+    "web/src/__tests__/agent-form-dialog-round54-pure.test.ts",
+    "apps/web/src/__tests__/agent-form-dialog-round54-pure.test.ts",
+    "packages/resources/agent-config/web/__tests__/agent-form-dialog-round54-pure.test.ts",
+  ],
+  [
+    "web/src/__tests__/agent-node-selector.test.ts",
+    "apps/web/src/__tests__/agent-node-selector.test.ts",
+    "packages/resources/agent-config/web/__tests__/agent-node-selector.test.ts",
+  ],
+  [
+    "web/src/__tests__/agent-resource-picker-interaction.test.tsx",
+    "apps/web/src/__tests__/agent-resource-picker-interaction.test.tsx",
+    "packages/resources/agent-config/web/__tests__/agent-resource-picker-interaction.test.tsx",
+  ],
+  [
+    "web/src/__tests__/agent-utils.test.ts",
+    "apps/web/src/__tests__/agent-utils.test.ts",
+    "packages/resources/agent-config/web/__tests__/agent-utils.test.ts",
+  ],
 ] as const;
 
 describe("RMD-08 apps/web migration", () => {
-  // 152 个保留的应用壳源文件都必须从旧根路径移除，并保留在唯一的 owner 目标。
+  // 100 个保留的应用壳源文件都必须从旧根路径移除，并保留在唯一的 owner 目标。
   // 任务 1.3 收口移出的一项：`__tests__/task-form-schema.test.ts` 是内联的表单校验 schema 副本，宿主侧
   // 既无 TaskForm 组件也无导入方，且已与包内唯一 owner 漂移；owner 是 task 包，见下方 relocated 断言。
   // 任务 1.6 T2 再移出 18 项零消费文件，见文件头第 5 条；T4 又移出 1 项（`api/registry.ts`，
   // 见文件头第 6 条），153 → 152；T8b 再移出 11 项，152 → 141；T8c 再移出 11 项，141 → 130；
   // T8d 再移出 15 项（改指包出口）并直删 5 项零消费文件（`context-queue` 宿主副本、`token-stats`、
-  // `citation-preview-context`、两份第三方类型垫片——垫片归各包自持，见 §1.6 T8z），130 → 111。
+  // `citation-preview-context`、两份第三方类型垫片——垫片归各包自持，见 §1.6 T8z），130 → 111；
+  // T9a 把宿主 `settings.json` 两份交给 identity 包（唯一消费方是包内的 `ChangePasswordDialog`），
+  // 111 → 109——i18n 归属重划：键的物理落点必须等于 owner；T9c 直删 8 份零绑定字典与 1 项自指测试
+  // （见文件头第 7 条），109 → 100；T10b1 把 12 个 ui-components 归属的宿主测试移入包内（见文件头第 8 条），
+  // 100 → 88；T10b2 把 7 个 web-runtime 归属的宿主测试移入包内（见文件头第 9 条），88 → 82；
+  // T10b3 又移出 2 项（见文件头第 10 条），82 → 80；T10b4 把 8 个 agent-config 归属的宿主测试移入包内
+  // （见文件头第 11 条），80 → 72；T10b5 直删 1 项自指用例（见文件头第 12 条），72 → 71。
   test("removes every legacy source and retains its exact owner target", () => {
-    expect(RMD_08_MOVES).toHaveLength(111);
+    expect(RMD_08_MOVES).toHaveLength(71);
     for (const [source, target] of RMD_08_MOVES) {
       expect(existsSync(source), `legacy source still exists: ${source}`).toBe(false);
       expect(existsSync(target), `apps/web target is missing: ${target}`).toBe(true);
@@ -439,6 +557,21 @@ describe("RMD-08 apps/web migration", () => {
   test("keeps the retired card renderer test deleted", () => {
     expect(existsSync("web/src/__tests__/card-renderer-pure-utils.test.ts")).toBe(false);
     expect(existsSync("apps/web/src/__tests__/card-renderer-pure-utils.test.ts")).toBe(false);
+  });
+
+  // 自指 i18n 测试随其守护的字典一同退役：`toolNarrator` 字典在 T9c 整份删除（无任何命名空间绑定），
+  // 旧根路径与应用壳路径都不得复活，否则等于凭空恢复一份死字典的守护测试。
+  test("keeps the self-referential narrator i18n test deleted", () => {
+    expect(existsSync("web/src/__tests__/narrators-i18n.test.ts")).toBe(false);
+    expect(existsSync("apps/web/src/__tests__/narrators-i18n.test.ts")).toBe(false);
+  });
+
+  // 同款自指测试退役（§1.6 T10b5）：`new-session-dialog-form.test.ts` 在文件内自带一份 `newSessionSchema`
+  // 再断言它的 safeParse 行为，而全仓没有任何生产模块导出该 schema（`NewSessionDialog` 已不存在）——五条
+  // 断言实际只在测 zod 自身。旧根路径与应用壳路径都不得复活，否则等于恢复一份不守护任何实现的用例。
+  test("keeps the self-referential session form schema test deleted", () => {
+    expect(existsSync("web/src/__tests__/new-session-dialog-form.test.ts")).toBe(false);
+    expect(existsSync("apps/web/src/__tests__/new-session-dialog-form.test.ts")).toBe(false);
   });
 
   // 沙盒请求构造测试的 owner 已从应用壳交给资源包：旧根路径与旧 app 壳路径都不得复活，包内必须有唯一落点。
@@ -455,16 +588,26 @@ describe("RMD-08 apps/web migration", () => {
     expect(existsSync("packages/web-runtime/web/lib/admin-key.ts")).toBe(true);
   });
 
-  // 任务 1.3 收口的 9 份 + 任务 1.6 T4 的 1 份 + T8b 的 11 份 + T8c 的 11 份 + T8d 的 15 份宿主副本：
+  // 任务 1.3 收口的 9 份 + 任务 1.6 T4 的 1 份 + T8b 的 11 份 + T8c 的 11 份 + T8d 的 15 份 + T9a 的 2 份
+  // + T10b1 的 12 份 + T10b2 的 7 份 + T10b3 的 1 份 + T10b4 的 8 份宿主副本：
   // 旧根路径与应用壳路径都不得复活，
   // 且包侧 owner 落点必须存在。副本与 owner 并存是「两份实现各自能跑」的最坏形态，
   // 删除与断言必须成对出现。
   test("relocates the leftover host copies to their package owners", () => {
-    expect(RMD_08_RELOCATED).toHaveLength(47);
+    expect(RMD_08_RELOCATED).toHaveLength(77);
     for (const [legacy, shell, owner] of RMD_08_RELOCATED) {
       expect(existsSync(legacy), `legacy source still exists: ${legacy}`).toBe(false);
       expect(existsSync(shell), `host copy still exists: ${shell}`).toBe(false);
       expect(existsSync(owner), `package owner is missing: ${owner}`).toBe(true);
     }
+  });
+  // 拆分归属的用例无法用 relocated 三元组表达：`context-queue` 的宿主副本连同「队列状态」一半一并删除
+  // （那一半与该包 `web/__tests__/context-queue.test.ts` 逐字重复），纯函数一半移入 ui-components。断言
+  // 覆盖三件事：旧的根路径与宿主副本都不得复活，两个 owner 侧的用例都必须存在。
+  test("splits the host context queue test between its two package owners", () => {
+    expect(existsSync("web/src/__tests__/context-queue.test.ts")).toBe(false);
+    expect(existsSync("apps/web/src/__tests__/context-queue.test.ts")).toBe(false);
+    expect(existsSync("packages/web-runtime/web/__tests__/context-queue.test.ts")).toBe(true);
+    expect(existsSync("packages/ui-components/web/__tests__/context-queue.test.ts")).toBe(true);
   });
 });

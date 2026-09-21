@@ -14,6 +14,7 @@
 import type { PublicErrorInfo } from "@fenix/chat-channel";
 import { ACPMain } from "@fenix/ui-components/chat/shell/ACPMain";
 import type { BoundMcpOption } from "@fenix/ui-components/chat/shell/chat-interface-types";
+import { publicErrorText } from "@fenix/ui-components/chat/view/public-error-text";
 import { TooltipProvider } from "@fenix/ui-components/ui/tooltip";
 import { Bot, Loader2 } from "lucide-react";
 import { useTranslation } from "react-i18next";
@@ -165,6 +166,11 @@ export function ChatPanel({
 }
 
 function PublicErrorCard({ error, className }: { error: PublicErrorInfo; className?: string }) {
+  // 标题取 `uiComponents` 命名空间：同一张卡片（同样的 class、`role="alert"`、Type/ID 尾注）在
+  // `@fenix/ui-components` 的 `MessageBubble` 里渲染 turn 失败错误，键 `chat.components.messageBubble.turnError`
+  // 的 owner 是该包；宿主旧的 `components.messageBubble.*` 子树在 T6 搬迁后已无宿主消费方（T9c 收敛）。
+  // 命名空间常量经中心表 `NS.UI_COMPONENTS` 取，与 `NS.AGENTS` 等宿主消费包命名空间的先例一致。
+  const { t } = useTranslation(NS.UI_COMPONENTS);
   return (
     <div
       className={
@@ -173,8 +179,10 @@ function PublicErrorCard({ error, className }: { error: PublicErrorInfo; classNa
       }
       role="alert"
     >
-      <p className="font-medium">执行出错</p>
-      <p className="mt-1 whitespace-pre-wrap">{error.message}</p>
+      <p className="font-medium">{t("chat.components.messageBubble.turnError")}</p>
+      {/* 正文同样按 `type` 取字典而非 `error.message`：后者是 wire/日志字段且恒为英文，与包内
+          `MessageBubble` 共用 `publicErrorText`，两处卡片的中文界面不再一英一中。 */}
+      <p className="mt-1 whitespace-pre-wrap">{publicErrorText(t, error)}</p>
       <div className="mt-4 flex flex-wrap gap-x-4 gap-y-1">
         <span className="break-all">Type: {error.type}</span>
         <span className="break-all">ID: {error.id}</span>

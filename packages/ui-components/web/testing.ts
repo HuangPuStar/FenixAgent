@@ -32,8 +32,9 @@
 //
 // 同款先例：`@fenix/resource-machine/server/testing`、`@fenix/platform-sdk/testing`。
 //
-// 消费方须自行声明 `happy-dom` 为 devDependency（本包已在 devDependencies 声明）；调用点迁移进度
-// 见 §1.6 T10（宿主 apps/web 与 resources/{memory,skill,workflow} 的副本一并删除）。
+// 消费方不必重复声明 `happy-dom`：它由本包在 devDependencies 声明，调用点经本子路径间接取用。
+// 收敛已完成（§1.6 T10a）：宿主 apps/web 与 resources/{memory,skill,workflow} 的 4 份副本一并删除，
+// 8 个调用点改指本入口，全仓 `happy-dom-window*` 文件数为 0。
 
 import type { Window } from "happy-dom";
 

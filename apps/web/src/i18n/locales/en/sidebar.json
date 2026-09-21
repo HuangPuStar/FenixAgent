@@ -1,16 +1,13 @@
 {
   "console": "Console",
-  "overview": "Overview",
   "agents": "Agents",
   "sessions": "Sessions",
-  "agentConfig": "Agent Config",
   "models": "Models",
   "skills": "Skills",
   "mcp": "MCP",
   "tasks": "Scheduled Tasks",
   "channels": "Channels",
   "config": "Configuration",
-  "apiKeys": "API Key",
   "workflow": "Workflow",
   "knowledge": "Knowledge",
   "organizations": "Organizations",
@@ -19,10 +16,6 @@
   "resizeAgentArea": "Drag to resize the Agent area",
   "changePassword": "Change Password",
   "logout": "Sign Out",
-  "searchDev": "Global search coming soon",
-  "agentPanel": "Agent Panel",
-  "dashboard": "Dashboard",
   "navGroupCore": "Core",
-  "navGroupConfig": "Configuration",
-  "navGroupSystem": "System"
+  "navGroupConfig": "Configuration"
 }

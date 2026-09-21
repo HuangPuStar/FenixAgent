@@ -1,11 +1,9 @@
 {
   "showArtifacts": "Show artifacts panel",
-  "hideArtifacts": "Hide artifacts panel",
   "resizeArtifacts": "Resize right workspace",
   "workflow": "Workflow",
   "agentManagement": "Agent Management",
   "models": "Model Library",
-  "modelGatewayUsage": "My model gateway usage",
   "sessions": "Sessions",
   "skills": "Skill Library",
   "algorithms": "Algorithms",
@@ -18,11 +16,8 @@
   "apiKeys": "API Key",
   "agents": "Agents",
   "noAgents": "No agents yet",
-  "instanceN": "Agent #{{number}}",
   "stopInstanceFailed": "Failed to stop instance: {{message}}",
   "enterInstanceFailed": "Failed to enter instance: {{message}}",
-  "tabFiles": "File Browser",
-  "dragHint": "Drag files here to upload",
   "selectAgent": "Select an agent instance",
   "selectAgentDesc": "Select an agent instance from the sidebar to start a conversation",
   "connectingAgent": "Connecting to Agent...",
@@ -31,31 +26,11 @@
   "authFailedDesc": "Could not resolve the current user. Click retry; if it persists, refresh the page or sign in again.",
   "agentDisconnected": "Agent not connected",
   "agentOfflineDesc": "Agent is not online. Please make sure acp-link is started.",
-  "instanceStartFailed": "Instance failed to start",
-  "autoStartDisabledDesc": "Auto-start is disabled for this instance. Enable it in the instance config, then retry.",
-  "maxSessionsReachedDesc": "The instance limit has been reached. Stop another instance first, then retry.",
-  "launchSpecBuildFailedDesc": "The instance launch configuration is incomplete. Check the environment and execution settings, then retry.",
-  "environmentUnavailable": "Connection target unavailable",
-  "environmentUnavailableDesc": "The agent environment no longer exists or has been deleted. Go back and select an agent again.",
-  "machineUnavailableDesc": "The remote machine hosting the agent is unavailable. Verify the machine is online, then click reconnect.",
-  "instanceIdleReclaimedDesc": "The Agent instance was reclaimed after being inactive. Click reconnect to start it again.",
-  "clientKeepaliveTimeoutDesc": "The connection was closed after keepalive timed out. Click reconnect to resume the conversation.",
-  "agentRequestFailedDesc": "The operation did not complete. Try again; the connection is still available.",
-  "errorArea": {
-    "agent_runtime": "Agent Runtime Error",
-    "sync_relay": "Sync Relay Error",
-    "control_plane": "Control Plane Error",
-    "action": "Action Error"
-  },
-  "errorCode": "Error code: {{code}}",
-  "actionErrorRetryableDesc": "Operation failed. Please retry later: {{message}}",
-  "actionErrorFatalDesc": "Operation failed: {{message}}",
   "reconnect": "Reconnect",
   "reconnecting": "Reconnecting...",
   "reconnectingDesc": "Connection lost, reconnecting automatically. Click retry if it does not recover.",
   "wsSendFailed": "Connection lost — the operation was not sent. Wait for reconnect or click reconnect.",
   "connecting": "Connecting...",
-  "enterFailed": "Failed to enter instance",
   "loading_agent_panel": "Loading agent panel...",
   "createAgent": "New Agent",
   "agentConfig": "Agent Config",
@@ -68,7 +43,6 @@
   "restartSuccess": "Instance restarted",
   "restartFailed": "Restart failed: {{message}}",
   "restartFailedSaved": "Configuration was saved, but restart failed: {{message}}",
-  "restartPartialFailed": "{{failed}} of {{total}} instances failed to restart",
   "stopSuccess": "Instance stopped",
   "noInstancesToRestart": "No running instances to restart",
   "restartTitle": "Restart Agent Instances",
@@ -155,8 +129,6 @@
     }
   },
   "changedFiles": {
-    "title": "Changed Files",
-    "count_one": "{{count}} file",
-    "count_other": "{{count}} files"
+    "title": "Changed Files"
   }
 }

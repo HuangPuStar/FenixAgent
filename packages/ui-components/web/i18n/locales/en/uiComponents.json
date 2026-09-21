@@ -181,6 +181,46 @@
         "title": "Jump to user prompts",
         "untitled": "Untitled prompt"
       },
+      "publicError": {
+        "AGENT_RUNTIME": {
+          "REQUEST_FAILED": "The Agent request failed.",
+          "SESSION_FAILED": "The Agent session failed.",
+          "PROMPT_REJECTED": "The Agent rejected the request.",
+          "PROMPT_TIMEOUT": "The Agent request timed out.",
+          "LLM_API_ERROR": "The LLM API request failed.",
+          "LLM_API_CONFIGURATION_ERROR": "The LLM API authentication or authorization configuration is invalid.",
+          "LLM_API_RATE_LIMITED": "The LLM API request was rate limited.",
+          "DISCONNECTED": "The Agent disconnected."
+        },
+        "SYNC_RELAY": {
+          "CONNECTION_LOST": "The synchronization connection was lost.",
+          "CAPACITY_EXCEEDED": "The synchronization service cannot accept more connections.",
+          "KEEPALIVE_TIMEOUT": "The synchronization connection timed out.",
+          "SYNC_FAILED": "Synchronization failed."
+        },
+        "CONTROL_PLANE": {
+          "ENVIRONMENT_UNAVAILABLE": "The Agent environment is unavailable.",
+          "MACHINE_UNAVAILABLE": "The Agent machine is unavailable.",
+          "INSTANCE_RECLAIMED": "The Agent instance was reclaimed.",
+          "INSTANCE_START_FAILED": "The Agent instance failed to start.",
+          "INSTANCE_LIMIT_REACHED": "The Agent instance limit was reached.",
+          "CONFIGURATION_INVALID": "The Agent configuration is invalid."
+        },
+        "ACTION": {
+          "UNAUTHENTICATED": "The action requires authentication.",
+          "FORBIDDEN": "The action is not authorized.",
+          "SESSION_NOT_FOUND": "The action session was not found.",
+          "VERSION_CONFLICT": "The action state version conflicted.",
+          "INVALID_STATE": "The action is invalid in the current state.",
+          "RATE_LIMITED": "Too many actions were submitted.",
+          "PAYLOAD_TOO_LARGE": "The action payload is too large.",
+          "AGENT_UNAVAILABLE": "The Agent is unavailable for the action.",
+          "FAILED": "The action failed."
+        },
+        "INTERNAL": {
+          "UNCLASSIFIED": "An unclassified system error occurred."
+        }
+      },
       "sessionModeSelector": {
         "default": "Default"
       },
