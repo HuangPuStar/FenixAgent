@@ -124,7 +124,7 @@ T11b* → T11c → T11d → T11e*）：
 | # | 标题 | 内容 |
 | --- | --- | --- |
 | T11a | 契约与形状定稿 | **已交付**（§7.25）：`@fenix/web-runtime` 新出口 `./shell/contribution`，载荷 `WebAppContribution`（导航项含 id/groupId/order/ns/labelKey/icon） |
-| T11b | 各包 `web/contribution.ts` | 按包分批（b1 agent-config、b2 model-management、b3 identity、b4 workflow/skill/knowledge、b5 mcp/task/memory）：贡献导航项 + `exports["./web/contribution"]` + 导航文案随项迁入各包字典 |
+| T11b | 各包 `web/contribution.ts` | **已交付**（§7.26）：9 个包各持一份声明（14 项导航）+ `exports["./web/contribution"]` + 导航文案随项迁入各包字典；宿主旧键保留到 T11d 切换 |
 | T11c | 生成器与浏览器产物 | `scripts/generate-web-contributions.ts` 读 `deploy/assembly/ce.json` 的 `web` 列表生成 `apps/generated/web-contributions.ts`（只含静态 import）；`ci.ts` 新增子项；`ce.json` 的 `web` 落 13 项 |
 | T11d | Shell 落地 | `apps/web/src/shell/`：`DefaultAppShell` 消费产物、侧栏导航改由 registry 渲染、`AgentSidebarConfig` 宿主/包内双写收敛 |
 | T11e | route adapter 直连包入口 | 22 条 `@/src/...` 桥接改造 + 删 `apps/web/vite.config.ts` 与根 `tsconfig.json` 的桥接条目 + 宿主剩余页面归位（`AgentHomePage` / `AgentManagementPage` / `AgentDashboardPage`） |
@@ -1540,7 +1540,7 @@ T10 的第五片，收掉最后一批「实现已在包内、用例仍在宿主�
 完整门禁 `env -u ANTHROPIC_MODEL bun run precheck` 全绿（773 / 7975 + 2 skip / 294，0 fail，lint 零 warning），
 `bun run build:web` 与 `bun run docs:build` 均成功。
 
-### 7.24 T10b5 自指用例退役：`new-session-dialog-form.test.ts` 直删（2026-09-21，）
+### 7.24 T10b5 自指用例退役：`new-session-dialog-form.test.ts` 直删（2026-09-21，`5afb106ea`）
 
 宿主测试盘点时发现的一处**不守护任何实现**的用例，按 §7.17 的先例退役。该文件 38 行，5 条断言的全部内容
 是：在文件内定义 `const newSessionSchema = z.object({ title: z.string(), envId: z.string() })`，随后断言
@@ -1563,7 +1563,7 @@ T10 的第五片，收掉最后一批「实现已在包内、用例仍在宿主�
 （774 / 7975 + 2 skip / 289，0 fail，lint 零 warning），`bun run build:web` 与 `bun run docs:build` 均成功。
 脚本测试计数 773 → 774 即本次新增的那条专项断言。
 
-### 7.25 T11a 契约定稿：浏览器侧 web contribution 载荷（2026-09-21，）
+### 7.25 T11a 契约定稿：浏览器侧 web contribution 载荷（2026-09-21，`0cf79565d`）
 
 T11 的第一片，只定契约不接实现：`@fenix/web-runtime` 新增出口 `./shell/contribution`
 （`web/shell/contribution.ts`），导出 `WebNavigationItem` 与 `WebAppContribution`。契约形状此前被
@@ -1607,6 +1607,78 @@ server 侧选择「哪些 web 模块参与装配」，浏览器侧承载「装�
 **验证**：`bunx tsc -p packages/web-runtime/tsconfig.json` 0 error；`bun install` 锁文件 +1 行；
 完整门禁 `env -u ANTHROPIC_MODEL bun run precheck` 全绿（774 / 7975 + 2 skip / 289，0 fail，lint 零
 warning），`bun run build:web` 成功。
+
+### 7.26 T11b 导航所有权下沉：9 个包各持一份 `web/contribution.ts`（2026-09-21，`41002db1d` + `e2f97dc1c` + `68f751182` + `3ca3de51e` + `cf336e4ed` + `2a0085ad2` + `c4f59e191` + `d6460977e` + `bb1a35ad6`）
+
+T11 的第二片，把侧栏 14 项导航的所有权从宿主 `SIDEBAR_NAV_GROUPS` 搬到各资源包。本片**只新增
+声明与文案**：宿主旧字典与旧侧栏一律不动，Shell 切换（T11d）才消费这些声明，因此本片落地后界面
+零变化，回滚即删文件。
+
+| 包 | 项（`id` / `groupId` / `order` / 图标） | 命名空间 | 文案来源（宿主键，逐字） |
+| --- | --- | --- | --- |
+| `agent-config` | `home` / core / 10 / `Plus`；`agents` / core / 20 / `Bot`；`sites` / config / 80 / `Globe` | `agents` | `agentPanel.{createAgent,agentManagement,sites}` |
+| `model-management` | `models` / config / 10 / `Cpu`；`algorithms` / config / 20 / `Binary`；`vertical-models` / core / 40 / `Layers` | `models` | `agentPanel.{models,algorithms,verticalModels}` |
+| `identity` | `organizations` / config / 90 / `Users`；`apikeys` / config / 100 / `KeyRound` | `orgs`、`apikey` | `sidebar.organizations`、`agentPanel.apiKeys` |
+| `workflow` | `workflow` / core / 30 / `Workflow` | `workflows` | `agentPanel.workflow` |
+| `skill` | `skills` / config / 30 / `Settings` | `skills` | `agentPanel.skills` |
+| `knowledge` | `knowledge-bases` / config / 40 / `BookOpen` | `knowledge` | `agentPanel.knowledgeBases` |
+| `mcp` | `mcp` / config / 50 / `Plug` | `mcp` | `agentPanel.mcp` |
+| `task` | `tasks` / config / 60 / `Clock` | `tasksV2` | `agentPanel.tasks` |
+| `memory` | `memories` / config / 70 / `Brain` | `hindsight` | `agentPanel.memories` |
+
+**按包提交**（一个包 = 一个提交，`web/contribution.ts` + `exports` 出口 + 本包字典 + 该包自己的
+i18n 基线更新同批）：`agent-config` `41002db1d` / `model-management` `e2f97dc1c` / `identity`
+`68f751182` / `workflow` `3ca3de51e` / `skill` `cf336e4ed` / `knowledge` `2a0085ad2` / `mcp`
+`c4f59e191` / `task` `d6460977e` / `memory` `bb1a35ad6`。
+
+**`order` 用 10 的步长**编码迁移前 `SIDEBAR_NAV_GROUPS` 的数组下标（core: home 10 / agents 20 /
+workflow 30 / vertical-models 40；config: models 10 / algorithms 20 / skills 30 / knowledge-bases 40 /
+mcp 50 / tasks 60 / memories 70 / sites 80 / organizations 90 / apikeys 100）。步长留出的空档让后续
+包插入项时不必重排他人声明，组内相对顺序与迁移前逐项一致。
+
+**`identity` 的两个项分属两个命名空间**：`organizations` 迁移前以 `sidebar:organizations` 借用宿主
+`sidebar` 字典（§7.15 登记的借键债务之一），本片起改由本包 `ORGS_NS` 自持；`apikeys` 沿用
+`agentPanel.apiKeys`。项各自携带自己的 `ns`，Shell 取值用 `t(labelKey, { ns })`，两项共用一条 `ns`
+会让其中一项回退成 key 回显。
+
+**过渡期重复（T11d 前必须保留宿主旧键）**：本片落地后，同一批文案同时存在于宿主字典与本包字典。
+宿主旧键（`agentPanel` 的 13 条导航键 + `sidebar.organizations`）**只能**在 Shell 改由 registry 渲染
+的那一片删除。早删会让侧栏在切换前就回显 key；晚删则留下永远不被读取的死键。这条时序约束是
+T11d 的入场条件，也是 `agent-config/web/i18n/namespace.ts` 头注释里「§1.6 装配前留在宿主」那句的
+兑现时点。
+
+**随片更新的测试基线（两处，均为按新事实更新计数而非放松断言）**：
+
+- `model-management/web/__tests__/model-management-i18n.test.ts`：精确键数 386 → 389（本片 +3），
+  注释补记新增键的来源。
+- `workflow/web/__tests__/workflow-i18n.test.ts`：顶层键组基线加入 `"nav"`，注释说明 `nav` 组的消费方
+  是 web contribution 而非页面字面量 `t()`（该测试的字面量扫描不覆盖 `labelKey`）。
+- 其余 7 个包的 i18n 测试（en/zh 键集相等、插值一致、字面量可解析）无需改动即通过。
+
+**验证**：9 个包 `bun test packages/<pkg>/` 各自 0 fail（`identity` 51 / `model-management` 228 /
+`workflow` 725 / `skill` 273 / `knowledge` 419 / `mcp` 289 / `task` 321 / `memory` 107 / `agent-config` 741）；
+`bun run check:dependencies` 0 条新增违规；四个包（`skill` / `knowledge` / `mcp` / `task`）做了
+`biome check` 与运行时导入形状复核，取到的项与本文表格逐字一致；完整门禁与 `build:web` 见下。
+
+**门禁证据**：`env -u ANTHROPIC_MODEL bun run precheck` 全绿（server 774 / package 7973 通过 + 2 skip
+共 7975 / web 289，0 fail，lint 零 warning）；`bun run build:web` 成功。
+
+**本片发现的既有问题（登记，不在本片修）**：
+
+1. **9 个包中 7 个没有包内 `tsconfig.json`**（`packages/resources/` 下只有 `memory` 与 `agent-config`
+   有）。它们的 web 面目前只靠宿主的 `tsc (web)` 与 `tsc (app skeletons)` 覆盖，而本片新增的
+   `web/contribution.ts` 在 T11d 接线前**没有消费方**，因此落在两道门禁的 program 之外——本片只能
+   用等价命令行口径（`tsc --ignoreConfig --noEmit --strict …`）做单文件校验。包内自包含 tsconfig 是
+   task-1.3 起对资源包的既定形态（见 `packages/resources/memory/tsconfig.json` 文件头），这 7 个包补齐
+   属独立缺陷，随 T12 或后续任务处理。
+2. **`knowledge/web/i18n/index.ts` 的键数实测注释失效**：头注释记「2026-09-20 实测 en/zh 各 56 个顶层
+   键、247 个扁平键」，本片新增 `nav` 后为 57 / 248。同批补注新事实并保留原实测记录（改写历史观测
+   会伪造记录），更彻底的收敛（把实测数字换成测试守护）留给 T12 统一处理。
+3. **`round37-service-boundaries.test.ts` 在门禁并发负载下出现一次非确定性失败**：断言
+   `fixture.calls` 的 `recover` 期望 0、实到 1。该用例用 `runtimeConnectTimeoutMs: 1` 制造超时，对系统
+   负载敏感；本片 6 个包级测试套件与门禁并发跑在同一台机器上。单文件复跑
+   `env -u ANTHROPIC_MODEL bun test apps/server/src/__tests__/round37-service-boundaries.test.ts`
+   → 130 / 130 通过，且本片未触碰任何 `apps/server` 文件，判定为**负载诱发的时序脆弱**而非回归。
 
 ---
 
