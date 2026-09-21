@@ -104,7 +104,7 @@ WebShell 从静态 registry 收集各资源包的 web contribution（不反向�
 | T8 | 宿主组件/lib/api 簇改指并删除 | 已交付（a–d + z） | 见下方 §7.13 |
 | T9 | i18n 归属重划与 `quoteTruncatedBadge` 缺陷修复 | **a、b、c、d 已交付** | a 见 §7.15 / b 见 §7.16 / c 见 §7.17 / d 见 §7.18 |
 | T10 | 测试迁移与 happy-dom 收敛 | **a、b1–b5 已交付**（余下分片随 T11 收口） | a 见 §7.19 / b1 见 §7.20 / b2 见 §7.21 / b3 见 §7.22 / b4 见 §7.23 / b5 见 §7.24 |
-| T11 | WebShell 落地 | 待办 | — |
+| T11 | WebShell 落地 | **a 已交付**（b–e 见下方分片表） | a 见 §7.25 |
 | T12 | 收尾：台账复核、文档修订、证据留痕 | 待办 | — |
 
 **T5 分片**（用户裁定「整体退场，由 ui-components 接管」+「`agent-config/web` 提供助手」的落地顺序；
@@ -116,6 +116,18 @@ WebShell 从静态 registry 收集各资源包的 web contribution（不反向�
 | T5b | `ChatArea` 簇迁至宿主 | **已交付**（§7.5）：`ChatArea.tsx` / `chat-area-lifecycle.ts` / `chat-layout.css` 迁 `apps/web/src/pages/agent-panel/`；`ProdViewPage` 改注入窄端口；环境删除用例随迁 |
 | T5c | `ChatPanel` 改指 ui-components 面板 | **c1 已交付**（§7.6，一致性缺口修复见 §7.7）、**c2 已交付**（§7.8）；c3（宿主注入 `boundMcps`）与 c4（chat CSS 切包）并入 c2——CSS 必须与 DOM 同批，分离提交会出现两端样式都错版的中间态；**c5 测试归位已交付**（§7.9） |
 | T5d | `chat-channel/web` 退场 | **已交付**（§7.10）：删 3 个组件与入口共 11 个文件（含 §四.9 的 `ContextPanel` 死代码链）、删 `./web` 出口与 tsconfig paths、knowledge 侧测试与依赖同批删除、删台账 1 条 |
+
+**T11 分片**（本任务最大的一片：契约、生成器、13 个包的贡献、Shell 落地、37 个 route adapter 与
+两套过渡别名表的拆除都在它名下。按「每片独立可 `precheck`、独立提交」拆开，依赖顺序 T11a →
+T11b* → T11c → T11d → T11e*）：
+
+| # | 标题 | 内容 |
+| --- | --- | --- |
+| T11a | 契约与形状定稿 | **已交付**（§7.25）：`@fenix/web-runtime` 新出口 `./shell/contribution`，载荷 `WebAppContribution`（导航项含 id/groupId/order/ns/labelKey/icon） |
+| T11b | 各包 `web/contribution.ts` | 按包分批（b1 agent-config、b2 model-management、b3 identity、b4 workflow/skill/knowledge、b5 mcp/task/memory）：贡献导航项 + `exports["./web/contribution"]` + 导航文案随项迁入各包字典 |
+| T11c | 生成器与浏览器产物 | `scripts/generate-web-contributions.ts` 读 `deploy/assembly/ce.json` 的 `web` 列表生成 `apps/generated/web-contributions.ts`（只含静态 import）；`ci.ts` 新增子项；`ce.json` 的 `web` 落 13 项 |
+| T11d | Shell 落地 | `apps/web/src/shell/`：`DefaultAppShell` 消费产物、侧栏导航改由 registry 渲染、`AgentSidebarConfig` 宿主/包内双写收敛 |
+| T11e | route adapter 直连包入口 | 22 条 `@/src/...` 桥接改造 + 删 `apps/web/vite.config.ts` 与根 `tsconfig.json` 的桥接条目 + 宿主剩余页面归位（`AgentHomePage` / `AgentManagementPage` / `AgentDashboardPage`） |
 
 ---
 
@@ -1550,6 +1562,51 @@ T10 的第五片，收掉最后一批「实现已在包内、用例仍在宿主�
 `apps/web/src/__tests__/` 30 → 29 个用例文件。完整门禁 `env -u ANTHROPIC_MODEL bun run precheck` 全绿
 （774 / 7975 + 2 skip / 289，0 fail，lint 零 warning），`bun run build:web` 与 `bun run docs:build` 均成功。
 脚本测试计数 773 → 774 即本次新增的那条专项断言。
+
+### 7.25 T11a 契约定稿：浏览器侧 web contribution 载荷（2026-09-21，）
+
+T11 的第一片，只定契约不接实现：`@fenix/web-runtime` 新增出口 `./shell/contribution`
+（`web/shell/contribution.ts`），导出 `WebNavigationItem` 与 `WebAppContribution`。契约形状此前被
+两处文档明确留白——`task-1.3` 评审写了「`manifest.web` 字段不在本任务声明：其形状必须与 §1.6 WebShell
+的消费方式同时设计」，`platform-sdk` 的 `WebContribution<TValue>` 也只钉了 `{ id, contribution }`
+外壳、`TValue` 留空。本片把 `TValue` 填上。
+
+**三条用户裁定（2026-09-21）**：
+
+| 议题 | 裁定 | 后果 |
+| --- | --- | --- |
+| 导航项图标如何表达 | **载荷含 `LucideIcon` 组件**（非图标名、非宿主决定） | 项形状与现有 `NavEntry` 逐字一致（`id`/`labelKey`/`icon`/`order`），14 项搬迁零改写；载荷**不进** `fenix.module.ts`，故 server 装配图不受影响 |
+| 分组（core / config）与组顺序归谁 | **Shell 声明** | 包只声明 `groupId` 与组内 `order`；全局布局属应用壳，符合 standards §4.1「资源页不能反向决定全局布局」 |
+| 导航文案归属 | **随项迁入各包字典** | 项携带 `{ ns, labelKey }`，Shell 用 `t(labelKey, { ns })` 取译文；宿主 `agentPanel` 字典里的导航键随项下沉，顺带消解已登记的「包页面跨包消费宿主命名空间」债务中的导航部分 |
+
+**为什么契约落 `@fenix/web-runtime`**：与 §1.6 T7 的 org/session 契约同一判据——它是浏览器运行时
+基础设施包，宿主与全部资源包的 web 面都已依赖它，且它自己不依赖任何 `@fenix/*` 业务包；契约放进某个
+资源包会让其余包反向依赖那个包。代价是本包新增一条 `lucide-react` 声明（其余包与宿主都已在用同一个
+库，`standards:56` 把它列为可安全打进浏览器 bundle 的普通依赖）。
+
+**为什么不复用 `platform-sdk` 的 `WebContribution`**：那一层是**服务端装配**契约
+（`profile.web` 选择列表 → registry 解析 → `bootstrap.webContributions`），其值会沿 registry 进入
+server 编译图；本载荷携带 React 组件，写进 manifest 就等于把浏览器依赖拖进服务端装配图——正是
+`assertWebShellIsPureMetadata` 与 `.dependency-cruiser.cjs` 两侧都在防的事。两者是同一概念的两侧：
+server 侧选择「哪些 web 模块参与装配」，浏览器侧承载「装配什么」。
+
+**载荷只含导航**：standards §4.1 列了四类语义范畴（导航、权限提示、页面元数据、路由目标声明），
+本片只落导航。路由目标已由导航项的 `id` 表达（Shell 组装 `/agent/<id>`），页面本体走 TanStack 文件
+路由（standards:274「不要尝试运行时注入路由」），权限提示与页面元数据没有第二个真实消费方——按
+「抽象延迟到第二个真实用例出现」的原则留白，而不是先把四个槽位一次铺满。
+
+**「导航的两条来源」不是冲突**：`standards:343` 写「运行时变化的品牌、导航和功能开关从受控的
+`/web` 配置接口读取」，与「导航由静态 contribution 收集」并存。现状本就如此且语义自洽：静态 contribution
+是**全集**，`sidebarConfigApi.get()` 的 `hiddenTabs` 只做**运行时裁剪**（`filterNavGroups`），两者不重叠。
+
+**文档冲突登记（T12 修订）**：standards §4.1 的目录树写 `packages/resources/<module>/web/contribution.ts`，
+执行计划 T11 行写 `web-contribution.ts` —— 采用 standards 的 `web/contribution.ts`（在 `web/` 目录内，
+浏览器面归属自然）；standards §9 归属表把「导航」同时归给「apps/web 壳」与「资源模块静态 contribution」，
+按本次三条件裁定补一句分工说明。
+
+**验证**：`bunx tsc -p packages/web-runtime/tsconfig.json` 0 error；`bun install` 锁文件 +1 行；
+完整门禁 `env -u ANTHROPIC_MODEL bun run precheck` 全绿（774 / 7975 + 2 skip / 289，0 fail，lint 零
+warning），`bun run build:web` 成功。
 
 ---
 

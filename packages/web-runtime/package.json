@@ -57,6 +57,10 @@
       "types": "./web/chat/use-context-queue.ts",
       "default": "./web/chat/use-context-queue.ts"
     },
+    "./shell/contribution": {
+      "types": "./web/shell/contribution.ts",
+      "default": "./web/shell/contribution.ts"
+    },
     "./types/config": {
       "types": "./web/types/config.ts",
       "default": "./web/types/config.ts"
@@ -69,6 +73,7 @@
     "@fenix/chat-channel": "workspace:*",
     "@fenix/ui-components": "workspace:*",
     "i18next": "^26.2.0",
+    "lucide-react": "^1.16.0",
     "yjs": "^13.6.31"
   },
   "peerDependencies": {
