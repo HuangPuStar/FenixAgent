@@ -1,6 +1,6 @@
 import { Loader2, MessageSquare, Pencil } from "lucide-react";
 import { useTranslation } from "react-i18next";
-import { UI_COMPONENTS_NS } from "../../lib/i18n";
+import { UI_COMPONENTS_NS } from "../../i18n/namespace";
 
 // =============================================================================
 // AgentBadge — 工牌卡组件，双模式：空状态展示（ChatView）+ 管理卡片（AgentManagementPage）

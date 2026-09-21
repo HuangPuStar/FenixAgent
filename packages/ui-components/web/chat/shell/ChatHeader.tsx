@@ -1,8 +1,8 @@
 import { ChevronDown, Loader2, MessageSquare, PanelLeft, PanelLeftClose, Plus, Search } from "lucide-react";
 import { type KeyboardEvent, useCallback, useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
+import { UI_COMPONENTS_NS } from "../../i18n/namespace";
 import { cn } from "../../lib/cn";
-import { UI_COMPONENTS_NS } from "../../lib/i18n";
 import {
   AlertDialog,
   AlertDialogAction,

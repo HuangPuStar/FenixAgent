@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
+import { initializeHappyDomWindow } from "@fenix/ui-components/testing";
 import { Window } from "happy-dom";
 import { createInstance } from "i18next";
 import { act } from "react";
@@ -8,8 +9,7 @@ import { ChatComposer } from "../chat/composer/ChatComposer";
 import type { ComposerExternalEvent, ComposerExternalSubscribe } from "../chat/composer/composer-effects";
 import { processImageFiles, uploadComposerFiles } from "../chat/composer/composer-file-processing";
 import en from "../i18n/locales/en/uiComponents.json";
-import { UI_COMPONENTS_NS } from "../lib/i18n";
-import { initializeHappyDomWindow } from "./happy-dom-window";
+import { UI_COMPONENTS_NS } from "../i18n/namespace";
 
 /**
  * 输入岛（`web/chat/composer/`）的行为测试。

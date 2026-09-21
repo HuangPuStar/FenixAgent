@@ -3,9 +3,8 @@ import { BrainIcon, ChevronDownIcon } from "lucide-react";
 import type { ComponentProps, ReactNode } from "react";
 import { createContext, memo, useContext, useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
-
+import { UI_COMPONENTS_NS } from "../../i18n/namespace";
 import { cn } from "../../lib/cn";
-import { UI_COMPONENTS_NS } from "../../lib/i18n";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "../../ui/collapsible";
 import { Shimmer } from "./shimmer";
 

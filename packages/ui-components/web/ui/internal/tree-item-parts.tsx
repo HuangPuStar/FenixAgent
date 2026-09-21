@@ -1,6 +1,6 @@
 import type { ReactNode } from "react";
 import { useTranslation } from "react-i18next";
-import { UI_COMPONENTS_NS } from "../../lib/i18n";
+import { UI_COMPONENTS_NS } from "../../i18n/namespace";
 import { Tooltip, TooltipContent, TooltipTrigger } from "../tooltip";
 
 /**
@@ -8,7 +8,7 @@ import { Tooltip, TooltipContent, TooltipTrigger } from "../tooltip";
  *
  * 抽离自 tree.tsx（源文件超过 500 行红线）：这些片段不是公开 API，只有 TreeItem 使用，
  * 放在 internal/ 下避免污染包的对外出口。文案统一走包内命名空间 UI_COMPONENTS_NS，
- * 宿主需按 web/lib/i18n.ts 的说明注册 uiComponents.json。
+ * 宿主需按 web/i18n/index.ts 的说明注册字典。
  */
 
 // ---------------------------------------------------------------------------

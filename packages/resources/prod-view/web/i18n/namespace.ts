@@ -6,7 +6,7 @@
 // 消费方（本包组件、宿主装配）不必知道中心表结构，也让「prodViews 归本包所有」在导入点显式可见。
 //
 // 与 `web/i18n/index.ts`（字典资源）分开：组件只需要常量，不该因为 `useTranslation(PROD_VIEWS_NS)`
-// 就把两份 JSON 拉进模块图；同款先例见 `@fenix/ui-components/lib/i18n` 与 sandbox 的
+// 就把两份 JSON 拉进模块图；同款先例见 `@fenix/ui-components/i18n` 与 sandbox 的
 // `web/i18n/namespace.ts`。
 
 import { NS } from "@fenix/web-runtime/i18n/namespace";

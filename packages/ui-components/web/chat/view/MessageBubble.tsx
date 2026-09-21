@@ -1,7 +1,7 @@
 import { ChevronDown, Copy, File, Quote } from "lucide-react";
 import { type MutableRefObject, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { UI_COMPONENTS_NS } from "../../lib/i18n";
+import { UI_COMPONENTS_NS } from "../../i18n/namespace";
 import { Button } from "../../ui/button";
 import { Dialog, DialogContent, DialogTitle } from "../../ui/dialog";
 import { isVisibleContentBlock, parseChatQuotes } from "../lib/context-queue";

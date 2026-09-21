@@ -9,8 +9,8 @@
 
 import { MessageSquare, Pencil, Trash2, X } from "lucide-react";
 import { useTranslation } from "react-i18next";
+import { UI_COMPONENTS_NS } from "../../../i18n/namespace";
 import { cn } from "../../../lib/cn";
-import { UI_COMPONENTS_NS } from "../../../lib/i18n";
 import { Button } from "../../../ui/button";
 import { Tooltip, TooltipContent, TooltipTrigger } from "../../../ui/tooltip";
 import { stripHtmlTags } from "../../lib/strip-html-tags";

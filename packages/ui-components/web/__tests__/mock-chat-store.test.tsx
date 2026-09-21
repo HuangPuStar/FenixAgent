@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, expect, test } from "bun:test";
+import { initializeHappyDomWindow } from "@fenix/ui-components/testing";
 import { Window } from "happy-dom";
 import { createInstance } from "i18next";
 import { act } from "react";
@@ -8,8 +9,7 @@ import { type MockChatSession, useMockChatSession } from "../chat/mocks/mock-cha
 import { MOCK_AGENT_ID, MOCK_RCS_SESSION_ID } from "../chat/mocks/mock-fixtures";
 import { ChatInterface } from "../chat/shell/ChatInterface";
 import en from "../i18n/locales/en/uiComponents.json";
-import { UI_COMPONENTS_NS } from "../lib/i18n";
-import { initializeHappyDomWindow } from "./happy-dom-window";
+import { UI_COMPONENTS_NS } from "../i18n/namespace";
 
 /**
  * 内存 mock 驱动的契约测试。

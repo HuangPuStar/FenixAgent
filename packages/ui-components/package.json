@@ -12,21 +12,65 @@
     "./styles.css": {
       "default": "./web/styles/theme.css"
     },
+    "./chat/composer/ChatComposer": {
+      "types": "./web/chat/composer/ChatComposer.tsx",
+      "default": "./web/chat/composer/ChatComposer.tsx"
+    },
     "./chat/composer/CommandMenu": {
       "types": "./web/chat/composer/CommandMenu.tsx",
       "default": "./web/chat/composer/CommandMenu.tsx"
+    },
+    "./chat/composer/SessionModeSelector": {
+      "types": "./web/chat/composer/SessionModeSelector.tsx",
+      "default": "./web/chat/composer/SessionModeSelector.tsx"
+    },
+    "./chat/composer/chat-image-content": {
+      "types": "./web/chat/composer/chat-image-content.ts",
+      "default": "./web/chat/composer/chat-image-content.ts"
+    },
+    "./chat/composer/composer-assets": {
+      "types": "./web/chat/composer/composer-assets.tsx",
+      "default": "./web/chat/composer/composer-assets.tsx"
+    },
+    "./chat/composer/composer-context-meter": {
+      "types": "./web/chat/composer/composer-context-meter.tsx",
+      "default": "./web/chat/composer/composer-context-meter.tsx"
+    },
+    "./chat/composer/composer-effects": {
+      "types": "./web/chat/composer/composer-effects.ts",
+      "default": "./web/chat/composer/composer-effects.ts"
     },
     "./chat/composer/composer-file-processing": {
       "types": "./web/chat/composer/composer-file-processing.ts",
       "default": "./web/chat/composer/composer-file-processing.ts"
     },
+    "./chat/composer/composer-handlers": {
+      "types": "./web/chat/composer/composer-handlers.ts",
+      "default": "./web/chat/composer/composer-handlers.ts"
+    },
     "./chat/composer/composer-prompt": {
       "types": "./web/chat/composer/composer-prompt.ts",
       "default": "./web/chat/composer/composer-prompt.ts"
     },
+    "./chat/composer/composer-state": {
+      "types": "./web/chat/composer/composer-state.ts",
+      "default": "./web/chat/composer/composer-state.ts"
+    },
+    "./chat/composer/composer-toolbar": {
+      "types": "./web/chat/composer/composer-toolbar.tsx",
+      "default": "./web/chat/composer/composer-toolbar.tsx"
+    },
+    "./chat/composer/useDragUpload": {
+      "types": "./web/chat/composer/useDragUpload.ts",
+      "default": "./web/chat/composer/useDragUpload.ts"
+    },
     "./chat/lib/chat-derived-state": {
       "types": "./web/chat/lib/chat-derived-state.ts",
       "default": "./web/chat/lib/chat-derived-state.ts"
+    },
+    "./chat/lib/chat-render-layout": {
+      "types": "./web/chat/lib/chat-render-layout.ts",
+      "default": "./web/chat/lib/chat-render-layout.ts"
     },
     "./chat/lib/context-queue": {
       "types": "./web/chat/lib/context-queue.ts",
@@ -35,6 +79,14 @@
     "./chat/lib/extract-changed-files": {
       "types": "./web/chat/lib/extract-changed-files.ts",
       "default": "./web/chat/lib/extract-changed-files.ts"
+    },
+    "./chat/lib/session-actions": {
+      "types": "./web/chat/lib/session-actions.ts",
+      "default": "./web/chat/lib/session-actions.ts"
+    },
+    "./chat/lib/session-grouping": {
+      "types": "./web/chat/lib/session-grouping.ts",
+      "default": "./web/chat/lib/session-grouping.ts"
     },
     "./chat/lib/simplify-model-display-name": {
       "types": "./web/chat/lib/simplify-model-display-name.ts",
@@ -124,29 +176,129 @@
       "types": "./web/chat/narrators/write.ts",
       "default": "./web/chat/narrators/write.ts"
     },
+    "./chat/panels/PermissionPanel": {
+      "types": "./web/chat/panels/PermissionPanel.tsx",
+      "default": "./web/chat/panels/PermissionPanel.tsx"
+    },
+    "./chat/panels/QuestionPanel": {
+      "types": "./web/chat/panels/QuestionPanel.tsx",
+      "default": "./web/chat/panels/QuestionPanel.tsx"
+    },
+    "./chat/panels/chat-status-panel": {
+      "types": "./web/chat/panels/chat-status-panel.tsx",
+      "default": "./web/chat/panels/chat-status-panel.tsx"
+    },
+    "./chat/primitives/code-block": {
+      "types": "./web/chat/primitives/code-block.tsx",
+      "default": "./web/chat/primitives/code-block.tsx"
+    },
     "./chat/primitives/conversation": {
       "types": "./web/chat/primitives/conversation.tsx",
       "default": "./web/chat/primitives/conversation.tsx"
+    },
+    "./chat/primitives/iframe-preview": {
+      "types": "./web/chat/primitives/iframe-preview.tsx",
+      "default": "./web/chat/primitives/iframe-preview.tsx"
     },
     "./chat/primitives/message": {
       "types": "./web/chat/primitives/message.tsx",
       "default": "./web/chat/primitives/message.tsx"
     },
+    "./chat/primitives/message-attachments": {
+      "types": "./web/chat/primitives/message-attachments.tsx",
+      "default": "./web/chat/primitives/message-attachments.tsx"
+    },
     "./chat/primitives/permission-request": {
       "types": "./web/chat/primitives/permission-request.tsx",
       "default": "./web/chat/primitives/permission-request.tsx"
+    },
+    "./chat/primitives/prompt-input": {
+      "types": "./web/chat/primitives/prompt-input.tsx",
+      "default": "./web/chat/primitives/prompt-input.tsx"
     },
     "./chat/primitives/reasoning": {
       "types": "./web/chat/primitives/reasoning.tsx",
       "default": "./web/chat/primitives/reasoning.tsx"
     },
+    "./chat/primitives/shimmer": {
+      "types": "./web/chat/primitives/shimmer.tsx",
+      "default": "./web/chat/primitives/shimmer.tsx"
+    },
+    "./chat/primitives/tool": {
+      "types": "./web/chat/primitives/tool.tsx",
+      "default": "./web/chat/primitives/tool.tsx"
+    },
+    "./chat/shell/ACPMain": {
+      "types": "./web/chat/shell/ACPMain.tsx",
+      "default": "./web/chat/shell/ACPMain.tsx"
+    },
+    "./chat/shell/AgentAvatar": {
+      "types": "./web/chat/shell/AgentAvatar.tsx",
+      "default": "./web/chat/shell/AgentAvatar.tsx"
+    },
+    "./chat/shell/AgentBadge": {
+      "types": "./web/chat/shell/AgentBadge.tsx",
+      "default": "./web/chat/shell/AgentBadge.tsx"
+    },
+    "./chat/shell/ChatHeader": {
+      "types": "./web/chat/shell/ChatHeader.tsx",
+      "default": "./web/chat/shell/ChatHeader.tsx"
+    },
+    "./chat/shell/ChatInterface": {
+      "types": "./web/chat/shell/ChatInterface.tsx",
+      "default": "./web/chat/shell/ChatInterface.tsx"
+    },
+    "./chat/shell/FilePickerPanel": {
+      "types": "./web/chat/shell/FilePickerPanel.tsx",
+      "default": "./web/chat/shell/FilePickerPanel.tsx"
+    },
+    "./chat/shell/chat-interface-types": {
+      "types": "./web/chat/shell/chat-interface-types.ts",
+      "default": "./web/chat/shell/chat-interface-types.ts"
+    },
+    "./chat/shell/sidebar-session-list": {
+      "types": "./web/chat/shell/sidebar-session-list.tsx",
+      "default": "./web/chat/shell/sidebar-session-list.tsx"
+    },
+    "./chat/timeline/HindsightToolCard": {
+      "types": "./web/chat/timeline/HindsightToolCard.tsx",
+      "default": "./web/chat/timeline/HindsightToolCard.tsx"
+    },
     "./chat/timeline/SubAgentPanel": {
       "types": "./web/chat/timeline/SubAgentPanel.tsx",
       "default": "./web/chat/timeline/SubAgentPanel.tsx"
     },
+    "./chat/timeline/TodoChanges": {
+      "types": "./web/chat/timeline/TodoChanges.tsx",
+      "default": "./web/chat/timeline/TodoChanges.tsx"
+    },
+    "./chat/timeline/ToolCallGroup": {
+      "types": "./web/chat/timeline/ToolCallGroup.tsx",
+      "default": "./web/chat/timeline/ToolCallGroup.tsx"
+    },
+    "./chat/timeline/ToolCallRow": {
+      "types": "./web/chat/timeline/ToolCallRow.tsx",
+      "default": "./web/chat/timeline/ToolCallRow.tsx"
+    },
+    "./chat/timeline/sub-agent-tool-call-context": {
+      "types": "./web/chat/timeline/sub-agent-tool-call-context.ts",
+      "default": "./web/chat/timeline/sub-agent-tool-call-context.ts"
+    },
     "./chat/types": {
       "types": "./web/chat/types.ts",
       "default": "./web/chat/types.ts"
+    },
+    "./chat/view/ChatQuoteMessage": {
+      "types": "./web/chat/view/ChatQuoteMessage.tsx",
+      "default": "./web/chat/view/ChatQuoteMessage.tsx"
+    },
+    "./chat/view/ChatView": {
+      "types": "./web/chat/view/ChatView.tsx",
+      "default": "./web/chat/view/ChatView.tsx"
+    },
+    "./chat/view/CitationLink": {
+      "types": "./web/chat/view/CitationLink.tsx",
+      "default": "./web/chat/view/CitationLink.tsx"
     },
     "./chat/view/MessageBubble": {
       "types": "./web/chat/view/MessageBubble.tsx",
@@ -156,9 +308,17 @@
       "types": "./web/chat/view/SystemMessage.tsx",
       "default": "./web/chat/view/SystemMessage.tsx"
     },
+    "./chat/view/chat-navigation-aids": {
+      "types": "./web/chat/view/chat-navigation-aids.tsx",
+      "default": "./web/chat/view/chat-navigation-aids.tsx"
+    },
     "./components/AgentCardList": {
       "types": "./web/components/AgentCardList.tsx",
       "default": "./web/components/AgentCardList.tsx"
+    },
+    "./components/PreviewTab": {
+      "types": "./web/components/PreviewTab.tsx",
+      "default": "./web/components/PreviewTab.tsx"
     },
     "./components/WorkbenchPanel": {
       "types": "./web/components/WorkbenchPanel.tsx",
@@ -172,19 +332,73 @@
       "types": "./web/components/file-icon-helper.tsx",
       "default": "./web/components/file-icon-helper.tsx"
     },
+    "./components/file-tree-arborist": {
+      "types": "./web/components/file-tree-arborist.tsx",
+      "default": "./web/components/file-tree-arborist.tsx"
+    },
+    "./components/file-tree-context-menu": {
+      "types": "./web/components/file-tree-context-menu.tsx",
+      "default": "./web/components/file-tree-context-menu.tsx"
+    },
+    "./components/file-tree-input-dialog": {
+      "types": "./web/components/file-tree-input-dialog.tsx",
+      "default": "./web/components/file-tree-input-dialog.tsx"
+    },
+    "./components/file-tree-model": {
+      "types": "./web/components/file-tree-model.ts",
+      "default": "./web/components/file-tree-model.ts"
+    },
+    "./components/file-tree-view": {
+      "types": "./web/components/file-tree-view.tsx",
+      "default": "./web/components/file-tree-view.tsx"
+    },
+    "./components/preview/FileViewerPreview": {
+      "types": "./web/components/preview/FileViewerPreview.tsx",
+      "default": "./web/components/preview/FileViewerPreview.tsx"
+    },
+    "./components/preview/html-plugin": {
+      "types": "./web/components/preview/html-plugin.ts",
+      "default": "./web/components/preview/html-plugin.ts"
+    },
+    "./components/preview/native-pdf-plugin": {
+      "types": "./web/components/preview/native-pdf-plugin.ts",
+      "default": "./web/components/preview/native-pdf-plugin.ts"
+    },
+    "./components/preview/preview-source": {
+      "types": "./web/components/preview/preview-source.ts",
+      "default": "./web/components/preview/preview-source.ts"
+    },
+    "./config/BatchActionBar": {
+      "types": "./web/config/BatchActionBar.tsx",
+      "default": "./web/config/BatchActionBar.tsx"
+    },
     "./config/ConfirmDialog": {
       "types": "./web/config/ConfirmDialog.tsx",
       "default": "./web/config/ConfirmDialog.tsx"
+    },
+    "./config/DataTable": {
+      "types": "./web/config/DataTable.tsx",
+      "default": "./web/config/DataTable.tsx"
+    },
+    "./config/EmptyState": {
+      "types": "./web/config/EmptyState.tsx",
+      "default": "./web/config/EmptyState.tsx"
     },
     "./config/FormDialog": {
       "types": "./web/config/FormDialog.tsx",
       "default": "./web/config/FormDialog.tsx"
     },
-    "./i18n/locales/en/uiComponents.json": {
-      "default": "./web/i18n/locales/en/uiComponents.json"
+    "./config/StatusBadge": {
+      "types": "./web/config/StatusBadge.tsx",
+      "default": "./web/config/StatusBadge.tsx"
     },
-    "./i18n/locales/zh/uiComponents.json": {
-      "default": "./web/i18n/locales/zh/uiComponents.json"
+    "./i18n": {
+      "types": "./web/i18n/index.ts",
+      "default": "./web/i18n/index.ts"
+    },
+    "./i18n/namespace": {
+      "types": "./web/i18n/namespace.ts",
+      "default": "./web/i18n/namespace.ts"
     },
     "./layout/app-header": {
       "types": "./web/layout/app-header.tsx",
@@ -202,9 +416,17 @@
       "types": "./web/lib/cn.ts",
       "default": "./web/lib/cn.ts"
     },
-    "./lib/i18n": {
-      "types": "./web/lib/i18n.ts",
-      "default": "./web/lib/i18n.ts"
+    "./lib/theme": {
+      "types": "./web/lib/theme.tsx",
+      "default": "./web/lib/theme.tsx"
+    },
+    "./testing": {
+      "types": "./web/testing.ts",
+      "default": "./web/testing.ts"
+    },
+    "./ui/accordion": {
+      "types": "./web/ui/accordion.tsx",
+      "default": "./web/ui/accordion.tsx"
     },
     "./ui/alert-dialog": {
       "types": "./web/ui/alert-dialog.tsx",
@@ -217,6 +439,14 @@
     "./ui/button": {
       "types": "./web/ui/button.tsx",
       "default": "./web/ui/button.tsx"
+    },
+    "./ui/button-group": {
+      "types": "./web/ui/button-group.tsx",
+      "default": "./web/ui/button-group.tsx"
+    },
+    "./ui/calendar": {
+      "types": "./web/ui/calendar.tsx",
+      "default": "./web/ui/calendar.tsx"
     },
     "./ui/card": {
       "types": "./web/ui/card.tsx",
@@ -238,6 +468,14 @@
       "types": "./web/ui/command.tsx",
       "default": "./web/ui/command.tsx"
     },
+    "./ui/connection-status": {
+      "types": "./web/ui/connection-status.tsx",
+      "default": "./web/ui/connection-status.tsx"
+    },
+    "./ui/date-picker": {
+      "types": "./web/ui/date-picker.tsx",
+      "default": "./web/ui/date-picker.tsx"
+    },
     "./ui/dialog": {
       "types": "./web/ui/dialog.tsx",
       "default": "./web/ui/dialog.tsx"
@@ -250,9 +488,21 @@
       "types": "./web/ui/dropdown-menu.tsx",
       "default": "./web/ui/dropdown-menu.tsx"
     },
+    "./ui/form": {
+      "types": "./web/ui/form.tsx",
+      "default": "./web/ui/form.tsx"
+    },
+    "./ui/hover-card": {
+      "types": "./web/ui/hover-card.tsx",
+      "default": "./web/ui/hover-card.tsx"
+    },
     "./ui/input": {
       "types": "./web/ui/input.tsx",
       "default": "./web/ui/input.tsx"
+    },
+    "./ui/input-group": {
+      "types": "./web/ui/input-group.tsx",
+      "default": "./web/ui/input-group.tsx"
     },
     "./ui/label": {
       "types": "./web/ui/label.tsx",
@@ -270,6 +520,10 @@
       "types": "./web/ui/progress.tsx",
       "default": "./web/ui/progress.tsx"
     },
+    "./ui/resizable": {
+      "types": "./web/ui/resizable.tsx",
+      "default": "./web/ui/resizable.tsx"
+    },
     "./ui/scroll-area": {
       "types": "./web/ui/scroll-area.tsx",
       "default": "./web/ui/scroll-area.tsx"
@@ -277,6 +531,10 @@
     "./ui/select": {
       "types": "./web/ui/select.tsx",
       "default": "./web/ui/select.tsx"
+    },
+    "./ui/separator": {
+      "types": "./web/ui/separator.tsx",
+      "default": "./web/ui/separator.tsx"
     },
     "./ui/sheet": {
       "types": "./web/ui/sheet.tsx",
@@ -306,9 +564,17 @@
       "types": "./web/ui/textarea.tsx",
       "default": "./web/ui/textarea.tsx"
     },
+    "./ui/theme-toggle": {
+      "types": "./web/ui/theme-toggle.tsx",
+      "default": "./web/ui/theme-toggle.tsx"
+    },
     "./ui/tooltip": {
       "types": "./web/ui/tooltip.tsx",
       "default": "./web/ui/tooltip.tsx"
+    },
+    "./ui/tree": {
+      "types": "./web/ui/tree.tsx",
+      "default": "./web/ui/tree.tsx"
     },
     "./ui/use-roving-list-navigation": {
       "types": "./web/ui/use-roving-list-navigation.ts",

@@ -3,9 +3,8 @@ import type { ComponentProps, ReactNode } from "react";
 import { useCallback } from "react";
 import { useTranslation } from "react-i18next";
 import { StickToBottom, useStickToBottomContext } from "use-stick-to-bottom";
-
+import { UI_COMPONENTS_NS } from "../../i18n/namespace";
 import { cn } from "../../lib/cn";
-import { UI_COMPONENTS_NS } from "../../lib/i18n";
 import { Button } from "../../ui/button";
 import "./conversation.css";
 

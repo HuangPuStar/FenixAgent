@@ -1,7 +1,7 @@
 import { ArrowUpRight } from "lucide-react";
 import React, { useMemo } from "react";
 import { useTranslation } from "react-i18next";
-import { UI_COMPONENTS_NS } from "../../lib/i18n";
+import { UI_COMPONENTS_NS } from "../../i18n/namespace";
 import { buildChatRenderBlocks, type ChatRenderItem } from "../lib/chat-render-layout";
 import { Conversation, ConversationContent, ConversationScrollButtons } from "../primitives/conversation";
 import { AgentBadgeSkeleton, type AgentSkillInfo } from "../shell/AgentBadge";

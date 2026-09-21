@@ -22,7 +22,7 @@
 
 import { forwardRef, useCallback, useEffect, useImperativeHandle, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { UI_COMPONENTS_NS } from "../../lib/i18n";
+import { UI_COMPONENTS_NS } from "../../i18n/namespace";
 import { Button } from "../../ui/button";
 import { ChatComposer } from "../composer/ChatComposer";
 import { derivePendingPermissions, deriveTodoItems } from "../lib/chat-derived-state";

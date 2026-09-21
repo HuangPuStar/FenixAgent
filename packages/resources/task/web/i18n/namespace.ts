@@ -6,7 +6,7 @@
 //
 // 值取自 `@fenix/web-runtime/i18n/namespace` 的共享 NS 表而不是在本包重新写一份字面量：两份字面量一旦
 // 分歧，症状是文案整片回退成 key 回显（宿主按旧名字注册、组件按新名字取），且构建期不可见。同款先例见
-// `@fenix/ui-components/lib/i18n` 的 `UI_COMPONENTS_NS`。
+// `@fenix/ui-components/i18n` 的 `UI_COMPONENTS_NS`。
 // 实测（2026-09-20）：宿主 `apps/web/src/i18n/index.ts:23` 已从本包的 `TASKS_V2_NS` 取值并以其登记资源，
 // 宿主不再持有 `"tasksV2"` 字面量（`NS` 表改为 `{ ...SHARED_NS }`，值由中心表持有）。
 //

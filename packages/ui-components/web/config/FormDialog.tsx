@@ -4,7 +4,7 @@ import { FormProvider, useForm } from "react-hook-form";
 import { useTranslation } from "react-i18next";
 import type { z } from "zod/v4";
 
-import { UI_COMPONENTS_NS } from "../lib/i18n";
+import { UI_COMPONENTS_NS } from "../i18n/namespace";
 import { Button } from "../ui/button";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "../ui/dialog";
 

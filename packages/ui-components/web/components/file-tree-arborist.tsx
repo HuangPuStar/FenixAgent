@@ -18,7 +18,7 @@ import type { NodeRendererProps, TreeApi } from "react-arborist";
 import { Tree as ArboristTree } from "react-arborist";
 import { useTranslation } from "react-i18next";
 
-import { UI_COMPONENTS_NS } from "../lib/i18n";
+import { UI_COMPONENTS_NS } from "../i18n/namespace";
 import { FileTypeIcon } from "./file-icon-helper";
 import type { ParsedFileNode } from "./file-tree-model";
 import "./file-tree.css";
