@@ -8,12 +8,14 @@
   },
   "dependencies": {
     "@fenix/agent-config": "workspace:*",
+    "@fenix/agent-runtime": "workspace:*",
     "@fenix/chat-channel": "workspace:*",
     "@fenix/identity": "workspace:*",
     "@fenix/model-management": "workspace:*",
     "@fenix/platform-sdk": "workspace:*",
     "@fenix/resource-channel": "workspace:*",
     "@fenix/resource-knowledge": "workspace:*",
+    "@fenix/resource-machine": "workspace:*",
     "@fenix/resource-mcp": "workspace:*",
     "@fenix/resource-memory": "workspace:*",
     "@fenix/resource-observer": "workspace:*",
@@ -22,6 +24,7 @@
     "@fenix/resource-skill": "workspace:*",
     "@fenix/resource-task": "workspace:*",
     "@fenix/resource-workflow": "workspace:*",
+    "@fenix/ui-components": "workspace:*",
     "@fenix/web-runtime": "workspace:*"
   }
 }

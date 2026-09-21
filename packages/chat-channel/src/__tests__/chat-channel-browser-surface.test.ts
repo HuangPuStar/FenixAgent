@@ -205,11 +205,25 @@ describe("chat-channel 根入口浏览器可达面", () => {
     expect(offenders.map((entry) => `${relative(PKG_SRC, entry.file)} → ${entry.specifier}`)).toEqual([]);
   });
 
-  test("web vite alias 仍指向根入口（守护对象未漂移）", () => {
+  test("浏览器侧 @fenix/chat-channel 解析只到根入口（exports 与宿主别名同源守护）", () => {
+    // 事故防线：浏览器 bundle 只能经根入口（src/index.ts）进入本包。
+    // CE 阶段 2 §1.6 收敛后，宿主不再为 `@fenix/*` 登记 vite alias，浏览器解析与 bun / tsc /
+    // dependency-cruiser 走同一条包 `exports` 通道，因此守护点从「vite alias 文本」移到
+    // 「包 exports 的 `.` 条目」。之所以删 alias 而不是改指向：`tsconfig.json` 顶部注释已裁定
+    // `@fenix/*` 不得在宿主重复登记——多一份别名表会掩盖 exports 缺口，也会让 dependency-cruiser
+    // 把公开入口导入误判为 no-cross-package-src 的包内穿越。
+    // 两层一起断言：exports 是权威目标；宿主别名（若将来重新引入）不得指向 server。
+    const pkg = JSON.parse(readFileSync(join(PKG_SRC, "../package.json"), "utf8")) as {
+      exports: Record<string, string | { default?: string }>;
+    };
+    const rootExport = pkg.exports["."];
+    expect(typeof rootExport === "string" ? rootExport : rootExport?.default).toBe("./src/index.ts");
+
     const viteConfig = readFileSync(resolve(import.meta.dir, "../../../../apps/web/vite.config.ts"), "utf8");
-    expect(viteConfig).toContain(
-      '"@fenix/chat-channel": path.resolve(__dirname, "../../packages/chat-channel/src/index.ts")',
-    );
+    const chatChannelAliases = viteConfig.split("\n").filter((line) => line.includes('"@fenix/chat-channel'));
+    for (const line of chatChannelAliases) {
+      expect(line).toContain("packages/chat-channel/src/index.ts");
+    }
   });
 
   test("服务端子路径入口存在且含聚合层导出", () => {
