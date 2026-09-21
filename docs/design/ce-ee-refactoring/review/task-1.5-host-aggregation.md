@@ -257,7 +257,8 @@ envDefinitions 与 preflight 收敛（§1.7）、模块配置读取面彻底收�
    7736 行的净减少量与 1.5a/1.5c 的删除/迁出清单可对账。
 5. **全量验证**：`bun run precheck`（`env -u ANTHROPIC_MODEL`）、`bun run build:web`、
    `bun run docs:build` 三项全绿；服务可 `bun run dev` 启动并通过 `/health`。
-6. **台账**：1.5 名下 6 条据实改写，销账项标注删除条件与实际证据。
+6. **台账**：1.5 名下 6 条据实改写（实测为 5 条——第 6 条 `apps-boundary @fenix/chat-channel → server-app`
+   已在 1.5b 随 `a084454c6` 销账），销账项标注删除条件与实际证据。见 1.5g-3。
 
 ## 六、遗留与风险
 
@@ -268,9 +269,10 @@ envDefinitions 与 preflight 收敛（§1.7）、模块配置读取面彻底收�
 - **`@server/plugins/auth` 的 28 处命中**尚未逐条甄别，1.5b 内完成；若出现真实深链，需要补做
   守卫工厂化，可能撑大 1.5b 的范围。
 - **`automationState.ts` 的删除**为待确认项（见 3.6）。
-- **悬空引用**：多条台账 rationale 引用的
-  `docs/design/ce-ee-refactoring/review/1.1-warehouse-boundary.md` 不存在，1.5g 一并处理
-  （改为指向真实存在的文档或删除该论据）。
+- **悬空引用（已由 1.5g 处理）**：多条台账 rationale 引用的
+  `docs/design/ce-ee-refactoring/review/1.1-warehouse-boundary.md` 不存在。1.5g 把那段逐字重复的
+  通用文本收敛进台账 `_comment`，指针改指 `review/` 下四份真实存在的任务文档；同批统一了
+  「待最终收口统一，见 §二十一」与 223 / 161、37 处等旧口径（见 1.5g-5、1.5g-7）。
 - **`@server/db/schema` 的 114 处生产命中**不在本任务范围（§1.7），1.5 只能保证不新增。
 
 ## 七、交付记录
@@ -1805,3 +1807,156 @@ cancelled 0 jobs`，进程随即退出。**这里要如实说明证据强度**�
 `scheduler-startup.ts`、`startup-sequence.ts`）合计 689 行。`main.ts` 的 `.use()` 现为 9 条，其中 3 条是聚合槽
 消费点（`web` + `web-config` / `api` / `app`），其余 6 条是 cors、两个 OpenAPI、ctrlStatic、errorPlugin、authPlugin
 ——都是宿主自己的中间件，不是包的路由贡献。测试计数 771 → 770（删 2 加 1），`precheck` 全绿（86529ms）。
+
+### 1.5g 台账据实改写（2026-09-21）
+
+分片表 1.5g 判据：**台账计数与门禁实测一致**。本片不含生产代码改动，只有
+`scripts/architecture/exceptions.json` 与本文档。
+
+#### 1.5g-1 实测方法（可复现）
+
+门禁的例外台账会「把已登记的违规吃掉」，直接跑门禁只能看到「绿/红」，看不到原生计数。本片的取真值手法是：
+
+1. 备份台账（`cp` 到 `/tmp`）；
+2. **临时摘除**要复核的条目，按 `check:dependencies` 的参数跑 dependency-cruiser
+   （`--config .dependency-cruiser.cjs apps packages`，输出 JSON）；
+3. 解析 `summary.violations` 里 `rule.name === "no-circular"` 的条目，按每条 `cycle` 数组的
+   **参与者包集合**聚类成「环族」，再按 `from` / `to` 包对统计指纹分布；
+4. 立刻还原备份，并用 `git diff` 验证还原为空；
+5. 非环条目（`apps-boundary`）用全仓 `grep 'from "@server/'` 逐文件核对，测试/非测试分开计数。
+
+**为什么必须摘除条目**：`no-circular` 是**每环一条**上报，且台账按「规则 + 来源包 + 目标包」登记——
+指纹相同的环会合并成一条登记项，摘除后才能真正看清该指纹下有几处环、环长多少、参与者是谁。
+（这也解释了 1.4 §19.4 / §21.4 记的「删掉某条指纹下的条目不等于环被消解」现象，本片把该现象写进了
+台账 `_comment` 的固定约定，不再逐条重复。）
+
+#### 1.5g-2 实测结果
+
+**全局**（工作树 `872010416`，2411 modules）：`no-circular` 无台账时共 **48 条环**；参与环的边 **84 条**；
+环长分布 `{2:4, 4:4, 5:2, 11:1, 12:5, 13:6, 14:7, 15:7, 16:7, 17:5}`；分布包对指纹 10 个。构成两群：
+
+| 群 | 指纹（`from → to`） | 处数 | 环长 |
+| --- | --- | --- | --- |
+| 4 包环族：`agent-config` / `agent-runtime` / `resource-machine` / `resource-sandbox` | `agent-runtime → agent-runtime` **14**、`resource-machine → resource-machine` 10、`resource-sandbox → resource-sandbox` 7、`agent-config → agent-config` **3**、`resource-sandbox → resource-machine` 3、`resource-machine → agent-config` 1 | **38** | 11–17 |
+| 包内自环与插件包族 | `ccb → ccb` 4、`opencode → opencode` 4、`claude-code → claude-code` 1、`resource-knowledge → resource-knowledge` 1 | 10 | 2、4、5 |
+
+4 包环族内每条环各含一次固定的 4 条跨包边（每条边出现在 38 条环里）：
+`machine → agent-config`、`agent-config → agent-runtime`、`agent-runtime → sandbox`、`sandbox → machine`。
+**共同闭合边是 §2.3 依赖矩阵外的 `machine → agent-config`**——它同时是 1.4 名下 4 条同族条目的 `removeWhen`
+所指的那条边。
+
+#### 1.5g-3 1.5 名下条目逐条改写（实为 5 条，不是分片表写的 6 条）
+
+分片表与 §五 验收第 6 条都写「1.5 名下 6 条」（3 条 `no-circular` + 3 条 `apps-boundary`）。规划时属实，
+**其中 1 条已在 1.5b 销账**：`apps-boundary @fenix/chat-channel → @fenix/server-app` 随 `a084454c6`
+（「切断包到宿主的 Redis 与模块配置残留边」）删除（门禁的 stale 检查要求删除，属本任务自己的进展）。
+故本片据实改写的是 **3 条 `no-circular` + 2 条 `apps-boundary` = 5 条**。
+
+| 条目 | 上次记载 | 1.5g 实测 | 处置 |
+| --- | --- | --- | --- |
+| `no-circular` `agent-runtime → agent-runtime` | 32 处环（环长 3–9）；三族：`agent-config ↔ agent-runtime ↔ server-app`(27)、`agent-runtime ↔ server-app`(3)、`agent-runtime ↔ knowledge ↔ server-app`(2) | **14 处环（环长 14–17）**；一族（4 包，无 `server-app` 参与者） | 计数、参与者、跨包边、根因全部据实改写；`removeWhen` 改为「machine 删矩阵外的 `machine → agent-config` 反向边」；owner 保持 1.5（见 1.5g-4） |
+| `no-circular` `agent-config → agent-config` | 10 处环（环长 8–12）；含两包形态 7 处与 `server-app` / `resource-skill` 形态 | **3 处环（环长 14–15）**；同上一族 | 同上 |
+| `no-circular` `resource-knowledge → resource-knowledge` | 2 处环（环长 2–11）；1 处含 `server-app` + 1 处包内自环 | **1 处环（环长 2）**；纯包内自引用 | owner 由 1.5 改派「未排期」；根因定位到阶段 1 引入的自引用（见 1.5g-4） |
+| `apps-boundary` `model-management → server-app` | 12 处 / 9 文件（6 表定义 + 4 宿主 `db` 模块 + 2 宿主 `config`） | **6 处 / 6 文件，全部表定义** | owner 改派 1.7；`removeWhen` 改成与同形态 12 条一致的「表定义迁出（§1.7）」 |
+| `apps-boundary` `resource-mcp → server-app` | 6 处 / 6 文件（5 表定义 + 1 处 `@server/plugins/auth`） | **5 处 / 5 文件，全部表定义** | 同上 |
+
+读法：两条 `apps-boundary` 的「宿主能力面」残留（共 7 处）已由 1.5b 归零（`@server/db` 模块句柄、
+`@server/config`、`@server/plugins/auth`），1.5 部分已清，剩下的唯一成因是表定义引用——这正是
+同形态 12 条（归 §1.7）的现状，故 owner 一并归 1.7。
+
+#### 1.5g-4 【需审核】owner 改派与不改派
+
+**① `resource-knowledge → resource-knowledge`：1.5 → 「未排期」。** 证据两条：
+
+- 剩余那处环是 `src/server/services/agent-knowledge.ts:2` 用**包名**导入自身的
+  `@fenix/resource-knowledge/server`（取 `agentKnowledgeBindingRepo` / `knowledgeBaseRepo`），
+  而 `src/server.ts:20` 又 `export * from "./server/services/agent-knowledge"`——纯包内两节点自环，无跨包边。
+  该自引用由**阶段 1** 的 PHY-05 资源闭包迁移（`0b4ec5858`，2026-09-16，早于阶段 2）引入。
+- 原 `removeWhen`（「1.5 下沉 apps/server 能力，包内那处随 knowledge 组合面一并处理」）的前提已消失：
+  环内已无指向 `@fenix/server-app` 的参与者，1.5 的下沉工作也不可能消除一个包内自引用。
+
+台账 `_comment` 对「未排期」的定义正是「不属于阶段 2 任何任务范围、如实暴露出来的既有债务」。
+**替代方案**（若审核认为不宜改派）：保持 owner 1.5，`removeWhen` 写「包内自引用消除」，代价是
+1.5 结项时会带一条本任务无法交付的条目。
+
+**② 两条 `apps-boundary`：1.5 → 1.7。** 依据是**先例**：同名同形态的 12 条（`resource-machine` / `sandbox` /
+`agent-config` / `workflow` / `knowledge` / `skill` / `task` / `observer` / `memory` / `prod-view` / `channel` …）
+在上游任务交完各自那份后，均已由 owner 改成 1.7 + `removeWhen`「表定义迁出（§1.7）」。
+本片的两条现在与它们**逐字同形**（残留仅表定义），继续挂在 1.5 名下会让「1.5 结项」带着两条
+实际归 §1.7 的条目。**替代方案**：保持 owner 1.5、只把 `removeWhen` 指向 §1.7。
+
+**③ 两条 `no-circular`：保持 owner 1.5，不改派。** 1.5g 之前的计划倾向是把它们改挂 1.4（同族、同一条
+闭合边），复核时**推翻**了该倾向，依据是 1.4 结项记录原文（`task-1.4-agent-runtime.md` §22.3 未结项表）：
+
+> `machine → agent-config` / `machine → agent-runtime` 反向边构成的 37 处环族（4 条 1.4 台账 + 2 条 1.5
+> 台账）→ 归属：machine 包的方向收敛，**须在 §1.5 或 machine 包的独立任务中处理**；W5 已把能独立做的
+> 3 条做完。
+
+即 1.4 **已结项**且明确把这族登记为「未结项、归属 §1.5 或 machine 独立任务」；改挂一个已结项的任务
+是把它变成无人负责的挂账。故保留 1.5 + 把 `removeWhen` 改成真实的闭合条件。
+
+**遗留（需审核决定）**：`machine → agent-config` 这条闭合边现在**没有任何在排的分片会删它**——
+1.4 只剩 W7 收口、1.5 的范围是宿主聚合（包 → 包反向边不在其中）。请裁定：
+(a) 在 machine 包新开一个方向收敛任务（最优：一次性消解 38 处环，本条与 1.4 名下 4 条、`agent-config`
+指纹 1 条共 6 条台账随之删除）；
+(b) 明确「阶段 2 不做」，把 6 条一并改挂「未排期」，并在 `_comment` 注明该族需 machine 包的独立任务。
+本片不擅自处置：前者要开新任务、后者要改 1.4 名下 4 条，都超出「1.5 名下台账据实改写」的范围。
+
+#### 1.5g-5 【需审核】把逐条重复的「通用段落」收敛进 `_comment`
+
+10 条 `no-circular` 的 rationale 里各有一段**逐字重复**的「代表边语义 + 上报粒度 + 环长定义」段落，
+且已随多次复测**漂移出三种数字**（223/161 → 79/47 → 本次 84/48）与两种家族总数（37 → 38）。本片：
+
+- 在 `_comment` 新增两段固定约定：「【环的代表边与 owner 归属】」（含代表边不稳定、归属看 `cycle`
+  参与者集合、环长定义）与「【全局口径，2026-09-21 1.5g 复测】」（48 / 84、4 包环族 38 处 / 6 指纹 /
+  环长 11–17 / 4 条跨包边、共同闭合边、223|161 与 79|47 到此统一）；
+- 10 条 rationale 里那段重复文本 → 一句指针（「环的代表边语义、归属依据与上报粒度见本台账 `_comment` …」）；
+- `_comment` 的旧尾句「全部条目与逐包核查结论见 `…/review/1.1-warehouse-boundary.md`」——**该文件不存在**
+  （review §六 登记的悬空引用）——改为指向真实存在的四份任务 review 文档；owner 枚举同时补上 1.7
+  （旧文只列到 1.6，而 1.7 名下 14 条是账上最大的一族）。
+
+**为什么算在范围内**：review §六 把「该段落的悬空引用」明确指派给 1.5g；这 10 段是同一段文本的 10 份
+副本，只改指针而留着口径漂移，等于把已知错误留在账上。**代价**：动了 1.4 / 未排期名下条目的文本——
+但只删**重复段落**、不动各自的事实（计数、指纹分布、根因、`removeWhen` 均逐字保留）。若审核要求
+最小面，可回退为「只改指针、保留各条重复段」，代价是三种旧口径继续留在账上。
+
+#### 1.5g-6 复核 1.4 名下的 `agent-runtime → server-app`（`@server/**`）
+
+| 面 | 上次记载（1.5c-2） | 1.5g 实测 | 差异来源 |
+| --- | --- | --- | --- |
+| 非测试 | 5 处 / 5 文件（全 `@server/db/schema`） | **5 处 / 5 文件**（同） | — |
+| 测试 | 17 处 / 17 文件（`module-stubs` 15、`error-handler` 1、`db/schema` 1） | **18 处 / 18 文件**（`module-stubs` 16、`error-handler` 1、`db/schema` 1） | 1.5c-7（`6f39e4bdc`）给 `src/__tests__/machine-instance-cleanup.test.ts` 加了 `stubCoreBootstrap` 登记 |
+
+`rationale` 已 append 本段复测记录（含 +1 的来源提交）。另按复核结论给 `removeWhen` 加了一条注记：
+**本条的违规面含测试侧 18 处宿主测试基建耦合，仅完成 §1.7 表定义迁出不会让本条失效**——否则
+账上会出现「§1.7 做完就删本条」的错误预期。
+
+#### 1.5g-7 交叉发现（不属本片范围，只记录）
+
+1. **1.4 四条 `no-circular` 条目的「族内总数 37 处」现在是 38 处。** 各条**自身指纹**的计数
+   （1 / 10 / 3 / 7）仍然准确，失准的只是家族总数（W6b-3 时为 37，本次 38）与 `removeWhen` 里的
+   同一句。窗口内模块数由 2397 增至 2411（1.5b / 1.5c 迁入的控制面与控制台代码），+1 未逐提交定位。
+   按「不顺手改他任务条目」的范围纪律，本片不改这 4 条正文，只在 `_comment` 的「全局口径」段注明
+   其家族级数字是 W6b-3 时点快照、以 `_comment` 为准。**建议在处置 1.5g-4 遗留时一并改写。**
+2. **1.4 §21.6 记的「台账其余条目共用尾注里的 223 / 161 是更早口径」已由本片收口**（统一为本次实测
+   84 / 48 + 4 包环族 38 处），该遗留项可销。
+3. 本次实测的 4 包环族比 1.4 §21.4 记的 W6b-3 口径**多 1 处**，而该族「跨包边已同质化为固定 4 条」
+   的结论**未变**（每条环仍各含一次）——即增量是「新增环」而非「新增边种类」。
+
+#### 1.5g-8 判据对照与收尾
+
+| 判据 | 结果 |
+| --- | --- |
+| 分片表 1.5g「台账计数与门禁实测一致」 | 5 条按 1.5g-2 实测逐条改写；`rationale` / `removeWhen` 里的处数、文件数、环长、参与者集合均为本次实测值 |
+| `bun run architecture:check` | ✓ `2259 files, 10 rules, 27 条已登记例外`（规则数 10 是 1.5f 拆除 `no-new-handwritten-registry` 后的结果） |
+| `bun run check:dependencies` | ✓ `2411 modules, 12 条已登记例外, 0 条新增违规`（12 = 10 条 `no-circular` + `agent-runtime-not-to-resources` + `platform-not-to-agent-runtime-resources-apps`，0 stale 说明 10 个指纹**全部仍有真实违规**，与实测一致） |
+| 悬空引用 | `1.1-warehouse-boundary.md` 与「待最终收口统一，见 §二十一」两处悬空指针均清零（`grep` 为 0） |
+| §五 验收第 6 条「1.5 名下 6 条据实改写」 | 实为 5 条（第 6 条已由 1.5b 销账，见 1.5g-3） |
+
+收尾规模：台账 324 → **339** 行（42,120 → 45,419 字节）；`_comment` 333 → 1,474 字符；条目正文
+（`rationale` + `removeWhen`）19,980 → 20,597 字符——增量为 6 条复测记录，同时删掉了 10 条里逐字重复的
+通用段落。owner 分布：1.4 5 / 1.5 **2**（原 5）/ 1.6 9 / 1.7 **14**（原 12）/ 未排期 **9**（原 8）。
+
+`env -u ANTHROPIC_MODEL bun run precheck`：**全绿 `All passed`（92285ms）**，12 个子项全部 ✓
+（server 770 / packages 7316（2 skip）/ web 946，0 fail）；`bun run docs:build` ✓（11.16s）。本片无生产代码改动，
+故未做手工启动验证（1.5f-1c 刚验过同一装配路径）。
