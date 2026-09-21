@@ -1,4 +1,5 @@
 import type { ModuleManifest } from "@fenix/platform-sdk";
+import type { ServerRouteHost } from "@fenix/platform-sdk/server";
 
 /**
  * Observer 资源模块描述符。
@@ -37,14 +38,43 @@ import type { ModuleManifest } from "@fenix/platform-sdk";
  *   `@server/types/store` 的用法改为平台契约或包内结构类型；剩余唯一命中是 `@server/db/schema`
  *   表定义（1 处 / 1 个文件，迁移归 §1.7，台账 owner 改 1.7）。
  *
- * 不声明 `contributions` / `web` / `envDefinitions`：前两者的消费方分别是 §1.5 的宿主挂载与 §1.6 的
- * WebShell 装配，形状必须与消费端同时定型；`envDefinitions` 的宿主登记归 §1.7。
+ * 声明 `contributions`（1.5f）：三条只读接口的路由实例由本模块以惰性构造函数
+ * `(host) => import("./src/server/assembly").then(...)` 给出，三者都挂宿主 `api` 聚合槽——路由路径自带
+ * `/api/system/*` 前缀（对外合同的一部分），前缀不由宿主拼接。本包此前没有 `assembly.ts`：三条路由的守卫
+ * 一直由宿主手写注入，1.5f 迁入贡献面时才需要这个收窄点。惰性 import 与 `create` 同因：registry 会被大量
+ * 位置导入，不能在索引层就把 Elysia 拖进模块图。
+ *
+ * 不声明 `web` / `envDefinitions`：前者的消费方是 §1.6 的 WebShell 装配，形状必须与消费端同时定型；
+ * `envDefinitions` 的宿主登记归 §1.7。
  */
 export const moduleManifest = {
   id: "observer",
   kind: "resource",
   dependsOn: ["agent-config", "machine"],
   capabilities: ["resource.observer"],
+  contributions: [
+    {
+      id: "observer.api-system-observer",
+      kind: "app-route",
+      slot: "api",
+      value: (host: ServerRouteHost) =>
+        import("./src/server/assembly").then((assembly) => assembly.createObserverApiSystemRoutes(host)),
+    },
+    {
+      id: "observer.api-system-logs",
+      kind: "app-route",
+      slot: "api",
+      value: (host: ServerRouteHost) =>
+        import("./src/server/assembly").then((assembly) => assembly.createObserverApiSystemLogsRoutes(host)),
+    },
+    {
+      id: "observer.api-system-people-tree",
+      kind: "app-route",
+      slot: "api",
+      value: (host: ServerRouteHost) =>
+        import("./src/server/assembly").then((assembly) => assembly.createObserverApiSystemPeopleTreeRoutes(host)),
+    },
+  ],
   // 工厂保持惰性：registry 会被大量位置导入，不能在索引层就把 Elysia、Drizzle 与各来源实现拖进模块图。
   create: () => import("./src/module").then((module) => module.createObserverModule()),
 } satisfies ModuleManifest;

@@ -1291,3 +1291,517 @@ web-app-tests 946 pass / 0 fail（无前端改动，与 1.5d 持平）；其余�
 - `web` 面 23 个挂载点的迁移（1.5e-2b），含 `ServerRouteHost` 扩两字段（见三.1）。
 - 6 个「1.5d 之前形态」的 `create` 要在 1.5f 与四个受控资源包同形（见一.4）。
 - 手工启动验证仍待有 DB 的环境补做（同 1.5e-1）。
+
+### 1.5e-2b-1 `web` 面 8 包迁入（2026-09-21）
+
+本片把 `web` 面的 17 条包路由迁到贡献声明（按包计：identity 2、agent-runtime 3、knowledge 1、memory 1、
+channel 1、machine 3、task 1、workflow 5；prod-view 1 条已由 1.5e-1 迁走）。宿主 `routes/web/index.ts` 的
+手写挂载由 26 条降到 8 条（`branding` + config 聚合 + agent-config 4 + model-management 2；后 6 条在
+1.5e-2b-2 迁走）。
+
+**一、基础模块同样声明贡献（本片新确立）**
+
+identity 与 agent-runtime 是 `kind: identity` / `kind: agent-runtime` 的基础模块，此前没有贡献面。装配的
+mount 阶段（`bootstrapModules` 的 `orderContributions`）遍历的是 profile 解析出的**全部**模块，不区分类别，
+因此它们与资源包走同一条接线——本片用它们的 5 条路由验证了这一点。两条约束写进各自 manifest 注释：
+
+- 基础模块的 `create` 必须返回实例（否则 `bootstrapModules` 抛「基础模块 X 工厂未返回实例」），与贡献面无关；
+- 贡献的 `slot` 语义与资源包完全一致，宿主侧不认识包类别。
+
+**二、`module` 贡献的粒度：按路由组，不按包**
+
+一个包有几条路由组就声明几条贡献（workflow 5 条、machine 3 条、identity 2 条），而不是「一包一条贡献、
+内部再挂多个路由实例」。理由：贡献是「怎么造这条路由」的声明，粒度与路由工厂一一对应——逐条可直接落到
+包内的一个工厂函数，未来某条路由需要换槽或换 `order` 时不必拆包。代价是 `Object` 数量变多（13 个包共
+25 条贡献），由 `route-contributions.test.ts` 的 `toEqual` 全列表守护。
+
+**三、`/web` 面的挂载顺序在迁移前后一致（已核对）**
+
+Elysia 的同路径冲突取决于挂载顺序，而贡献顺序是「拓扑序 + manifest 内声明序」，与迁移前手写序列**不
+同**（手写序列是人工排的）。核对结果：`/web` 面唯一的前缀重叠是 agent-runtime 的 `/environments/*` 与
+machine 的 `/environments/:id/fs/*`，两者段数不同、不构成歧义；`model-management` 的
+`/agents/:environmentId/sessions/:sessionId/peri-tasks/:taskId/detail` 与 agent-config 的
+`/agent-sites/*`、`/agent-generation` 前缀不同。因此本片不引入 `order`（没有兜底或通配贡献）。
+`route-contributions.test.ts` 的 139 条 `web` 槽断言按装配收集顺序列出全部路径，任何顺序或内容的漂移都会
+表现为断言失败。
+
+**四、测试 helper 改名扩容**
+
+`test-utils/web-config-routes.ts` → `test-utils/web-routes.ts`，新增 `createTestWebRoutes()`（`web` 面 18 个
+路由实例，agent-config 与 model-management 的 6 条仍由 `createWebApp` 的手写序列提供，故不在其中）。
+`agent-platform-api-reference.test.ts` 的两个槽因此都拿到真实路由——迁移后它一度报 29 条文档示例缺失
+（`/web/config/*`），本批又暴露出 `web` 面的缺失，两次都是同一个原因：聚合面改由贡献提供后，用例不能再用
+空槽构造。
+
+**五、验证证据**
+
+定向：`bun test apps/server/src/__tests__/` **633 pass / 0 fail**（含 `route-contributions.test.ts` 的
+139 + 42 条路径断言）；`platform/identity` + `agent-runtime` + `channel` + `knowledge`
+**1529 pass / 0 fail**；`memory` + `task` + `workflow` + `machine` **1700 pass / 0 fail**；根
+`tsc --noEmit` 无输出。
+
+全量 `env -u ANTHROPIC_MODEL bun run precheck` 全绿：`All passed (84971ms)`，format / import-sort /
+module-registry / architecture / tsc(server, web, app-skeletons) / dependency-boundaries / lint 全过，
+server-and-script-tests **770 pass / 0 fail**、package-tests **7316 pass / 2 skip / 0 fail**、
+web-app-tests **946 pass / 0 fail**。
+
+**六、遗留**
+
+- `web` 面剩 agent-config 4 条与 model-management 2 条（1.5e-2b-2），同批扩 `ServerRouteHost` 的
+  `rotateCallerApiKey` 与 `verifyEnvironmentOwnership` 两个端口；完成后宿主 `routes/web/index.ts` 只剩
+  `branding` 一项手写挂载。
+
+### 1.5e-2b-2 `/web` 手写序列清零（2026-09-21）
+
+本片是 1.5e 的最后一片：agent-config 的 4 条（`/web/sidebar-config`、`/web/agent-sites`、
+`/web/agent-generation`、`/web/meta-agent/ensure`）与 model-management 的 2 条（`/web/model-gateway`、
+`/web/agents/:environmentId/sessions/:sessionId/peri-tasks/:taskId/detail`）迁入 `web` 槽。
+
+**一、`routes/web/index.ts` 的手写序列清零**
+
+只剩两条手写挂载，且都不属于任何模块：`branding`（控制台品牌素材）与 `/web/config` 聚合实例。`createWebApp`
+现在只有三行 `.use()`，本文件不再 import 任何 `@fenix/*` 包——`web` 面的包路由全部来自槽。判据「每个包的
+`routes/web/index.ts` 挂载点减少一处」的累计结果：1.5e 起点（`6f39e4bdc`）该文件的 `.use()` 为 26 条
+（24 条包路由 + `branding` + config 聚合），现状 2 条。24 条包路由里含 identity 2 条与 agent-runtime 3 条，
+即两个基础模块与资源包走的是同一条装配接线（见 1.5e-2b-1 §一）。
+
+**二、`ServerRouteHost` 扩两字段【需审核】**
+
+`verifyEnvironmentOwnership`（peri 任务详情校验 Environment 归属）与 `rotateCallerApiKey`（meta agent
+轮换调用方 API Key）。两者在 1.5e-1 试点时被有意排除在「七项一次填满」之外（见 §三.1 遗留），本片与消费
+路由同批加，字段数 7 → 9。
+
+必须走宿主端口而不是包内自建：`apikey` 表属 `@fenix/identity`、`Environment` 表属 `@fenix/agent-runtime`，
+资源包对二者都没有合法依赖（§2.3 矩阵）。宿主侧 `verifyEnvironmentOwnership` 取自
+`services/resource-module-ports.ts`，`rotateCallerApiKey` 直接取 `@fenix/identity/server`。
+
+需审核的点：`ServerRouteHost` 的定位是「宿主协议 adapter 面」，而 `rotateCallerApiKey` 是一个**业务动作**
+而非协议适配——放进这个面意味着 platform-sdk 的契约里出现一条语义偏业务的条目。替代方案是让 meta-agent
+路由走 `ModuleFactoryContext` 或另开一个「宿主业务能力」契约面，两者都要新增机制；本片按「沿用既有契约、
+不新增机制」处理，请裁定是否可接受。
+
+**三、挂载顺序变化（已核对）**
+
+迁移前这 6 条在槽外、统一早于 `slots.web`；迁移后按拓扑序落在槽内：agent-config 在 memory 之后 / channel
+之前，model-management 在 machine 之后 / prod-view 之前。逐条核对前序路由有无前缀遮蔽——identity
+（`/api-keys`、`/organizations`）、agent-runtime（`/sessions`、`/environments`、`/instances`）、knowledge
+（`/knowledgeBases`）、memory（`/hindsight`）、channel（`/channels`）、machine（`/environments/:id/fs`、
+`/file-events/`、`/registry`）与这 6 条的 `/sidebar-config`、`/agent-sites`、`/agent-generation`、
+`/meta-agent`、`/model-gateway`、`/agents/:environmentId/...` 均无前缀重叠；agent-sites 内部唯一通配
+`ALL /agent-sites/apps/:id/api/*` 也在自己的前缀内。因此本片同样不引入 `order`。
+
+**四、`test-utils/web-routes.ts` 顺带修正两处漂移【需审核】**
+
+1. `createTestWebConfigRoutes()` 漏了 prod-view 的 `/config/prod-views`（1.5e-1 试点迁入时未回补），且排列
+   顺序是迁移前的宿主手写序而不是装配收集序——本片按装配收集序补齐为 7 个路由实例（mcp、skill、
+   agent-config、model-management×2、prod-view、sandbox）。
+2. `createTestWebRoutes()` 补入本片迁入的 6 条（现 24 条），顺序按装配收集序。
+
+这两处漂移此前不会让任何用例失败（helper 只服务「协议层映射」类断言，这些用例里不存在冲突路径），但会让
+「helper == 生产路由面」的假设失真——缺 prod-view 配置面时，未来依赖 `/web/config/prod-views` 的用例会得到
+假 404。是否需要为 helper 与生产的这种漂移加一条自动守护（例如用例里断言两边路径集合相等）**待裁定**：真实
+装配由 `route-contributions.test.ts` 独占，跨用例比对需要另开机制；本片只修内容，不加守护。
+
+**五、验证证据**
+
+`route-contributions.test.ts` 的 `web` 槽自 139 条增至 158 条（agent-config 17 + model-management 2），
+`web-config` 槽 62 条路径不变。断言 diff 精确给出 19 条新路径与插入位置，照此补齐后 8 pass。
+`bun test apps/server/src/__tests__/` **633 pass / 0 fail**；`agent-config` + `model-management` +
+`platform-sdk` **687 pass / 0 fail**；根 `tsc --noEmit` 无输出。
+
+全量 `env -u ANTHROPIC_MODEL bun run precheck` 全绿：`All passed (84922ms)`，format / import-sort /
+module-registry / architecture / tsc(server, web, app-skeletons) / dependency-boundaries / lint 全过，
+server-and-script-tests **770 pass / 0 fail**、package-tests **7316 pass / 2 skip / 0 fail**、
+web-app-tests **946 pass / 0 fail**。
+
+**六、遗留**
+
+- `/web/site/deploy` 与 `/app-*` 兜底（agent-config 的 `agent-sites-proxy`）仍在 `main.ts` 顶层手写挂载，
+  归 1.5f 的顶层 `app` 槽。
+- 手工启动验证已由 1.5e-3 补做（该节同时关掉 1.5e-1 / 2a / 2b-1 三处遗留里的同一项）。
+- 待裁定项已在 §二、§四 标注：`ServerRouteHost` 是否应承载 `rotateCallerApiKey` 这类业务动作，以及是否为
+  `test-utils/web-routes.ts` 与生产路由面的漂移加自动守护。
+
+### 1.5e-3 手工启动验证（2026-09-21）
+
+分片表 1.5e 判据里的「手工启动验证」至此补做完成，同时关掉 1.5e-1、1.5e-2a、1.5e-2b-1 三处「无 PostgreSQL
+未完成」的遗留。前置事实：本机此前没有可用 DB（OrbStack 未运行、无 `psql`/`pg_isready`），这四项一直挂着。
+
+**一、环境选择【需审核】**
+
+为跑验证启动了 OrbStack（本机唯一的容器运行时，此前未运行）。数据库**没有**复用已在 5432 上的
+`fenixagent-postgres-1`——那是另一个检出（`/Users/liyuan/Work/FenixAgent`）的开发库，跑 `db:migrate`
+会改动它的数据；改为起一次性容器 `postgres:16-alpine` 并映射到 **55432**：
+
+```
+docker run -d --name aos-sandbox-pg-verify -p 55432:5432 \
+  -e POSTGRES_USER=rcs -e POSTGRES_PASSWORD=rcs -e POSTGRES_DB=rcs postgres:16-alpine
+DATABASE_URL=postgres://rcs:rcs@127.0.0.1:55432/rcs bun run db:migrate   # 全链应用成功
+```
+
+副作用两条：启动 OrbStack 会让它配置的 `restart: unless-stopped` 容器（litellm、opensandbox 等）随之启动；
+验证容器与服务进程已在收尾时删掉/停掉。
+
+**二、启动结果：成功，无装配期错误**
+
+`bun run apps/server/src/main.ts`（`DATABASE_URL` 指向上面的验证库）启动到
+`Listening on 0.0.0.0:3000 (baseUrl: http://localhost:3000)`。日志中先有 `Database initialized`、三条
+data migration（`migrate-agent-config-model-id`、`migrate-skill-storage-by-organization`、
+`access-control/20260919-backfill-resource-visibility`）完成、`System admin ready`、内置 Skill 同步与
+custom tools registry ready。**全文无 ERROR，也没有「未知聚合槽」「没有返回 Elysia 实例」「基础模块 …
+未返回实例」**——即 1.5e 全量迁入贡献面后，装配期与启动序都正常。
+
+**三、端点可达性探测（证明「贡献真的挂上去了」）**
+
+探测有个必须说明的对照：**未注册的路径不会 404**，静态兜底会把它们交给 SPA 返回 200
+（`/web/nope`、`/web/config/nope`、`/api/nope` 实测均为 200）。因此判据是「路由自己的响应」——被守卫拦下的
+401、schema 校验失败的 400、公开端点的真实负载，三者都只能由真实注册的路由产生。
+
+| 探测 | 结果 | 说明 |
+|---|---|---|
+| `GET /health` | 200 | 服务存活 |
+| `GET /web/sidebar-config/` | 200 `{"success":true,"data":{"hiddenTabs":[…]}}` | 公开端点返回真实配置 |
+| `GET /web/prod-views/anything/load`、`/web/api-keys`、`/web/environments`、`/web/knowledgeBases`、`/web/hindsight/status`、`/web/channels/bindings`、`/web/environments/x/fs`、`/web/registry/machines`、`/web/tasks/v2`、`/web/workflow-defs` | 401 | 1.5e-1 / 2b-1 迁入的 `web` 面，守卫拦住 |
+| `GET /web/agent-sites/apps`、`GET /web/agents/e1/sessions/s1/peri-tasks/t1/detail`、`POST /web/meta-agent/ensure` | 401 | 2b-2 迁入的三条守卫路由 |
+| `GET /web/model-gateway/p1/usage` | 400 `startAt: Invalid input: expected string`、`POST /web/agent-generation` | 400 | 2b-2 迁入的两条，schema 校验已执行 |
+| `GET /web/config/{mcp,skills,agents,models,providers,prod-views,sandbox-pools}` | 全 401 | `web-config` 槽 7 个实例全部在 |
+
+其中 `sandbox-pools` 是 1.5e-2a 那次「路由静默消失」的主角，本次确认真实启动下已由贡献补回
+（此前只有 `config-integration.test.ts` 的替身路径能证明它有响应）。
+
+**四、遗留**
+
+- 本节的验证只覆盖「注册与装配」，没有覆盖需要登录态的端到端业务流（登录、Agent 会话、workflow 执行）——
+  那些属于 1.5f/1.8 的证据范围。
+- 验证库是一次性的，未保留；如需复现按 §一 的命令重建。
+
+### 1.5f-1a `api` 槽落地：17 条 `/api/*` 手写挂载清零（2026-09-21）
+
+分片表 1.5f 的第一片。判据原文要求 `grep '@fenix/' apps/server/src/main.ts` 归零，与用户裁定合并后的执行口径是
+**「只要求模块与协议路由归零」**，且**分批**：本片只做协议路由（`api` 槽），顶层 `app` 槽与约 30 处生命周期/启动
+编排调用留下两片。`@fenix/logger`（`interceptConsole()` 必须最先执行）与 `@fenix/platform-sdk/server`
+（`initializeApplicationInfrastructure` / `registerIdentityDirectory`）的 import 按裁定保留。
+
+**一、做了什么**
+
+`api` 槽（`bootstrap/route-contributions.ts` 的 `API_SLOT = "api"`）+ 聚合实例
+`apps/server/src/routes/api/index.ts` 的 `createApiApp({ api })`。11 个包各自在 `src/server/assembly.ts` 里加一个
+收窄函数（observer 此前没有 `assembly.ts`，本片新建），manifest 加 `slot: "api"` 的 `app-route` 贡献：
+
+| 包 | 贡献 | 守卫 |
+|---|---|---|
+| identity | `createIdentityApiSystemRoutes`（`/api/system/users`、`/organizations`、`/api-keys`，14 条） | system API |
+| agent-runtime | `createAgentRuntimeApiInstanceRoutes`、`createAgentRuntimeOpenaiChatRoutes` | 会话（前者的实例接入另需 `logError`） |
+| knowledge / mcp / skill / agent-config / machine / workflow | 各 1 条 | 会话 |
+| model-management | `/api/models`（会话）、`/api/system/model-gateway`（system API） | 两种 |
+| observer | `/api/system/{observer,logs,people-tree}`，3 条 | system API |
+| sandbox | `/api/system/{sandbox-pools,sandbox-instances}`、`-cluster`、`-server`，三个工厂 | system API |
+
+`main.ts` 的 17 条 `.use(createApi…Routes({…}))` 换成一条
+`.use(createApiApp({ api: takeRouteContributions(API_SLOT) }))`，相应 import 与只服务于它们的
+`systemApiAuthPlugin` / `logError` 宿主导入一并删除。`route-contributions.test.ts` 的真实 profile 断言新增
+`API_SLOT` 分组（89 条路径，`toEqual` 全量镜像）。
+
+**二、【需审核】`ServerRouteHost` 第三次扩面：`logError`**
+
+10 个端口分三批到位的前两批见 1.5d 与 2b-2 的记录；本片加第 10 项 `logError`（`/api/agents/:agentId/instances/connect`
+的唯一消费方）。理由与前两批同类：它要读宿主中间件写在 request 上的 `__requestId` / `__startTime`，以及
+`errorPlugin` 对 SPA 兜底与 `ValidationError` 的特判——包内没有来源，自建第二份会让同一次失败在两条日志管道里
+各记一次并丢掉 requestId 关联。
+
+需要审核的是**方向**而不是实现：`rotateCallerApiKey`（2b-2 加入）与本项都说明 `ServerRouteHost` 正在承载「宿主
+能力」之外的东西。第十项之后，这个接口里有 5 个纯守卫/取数端口（`authGuardPlugin`、`systemApiGuardPlugin`、
+`authenticateRequest`、`environmentLookup`、`verifyEnvironmentOwnership`）、2 个身份族偏好端口、1 个密钥引用解析、
+1 个业务动作、1 个日志钩子。建议的收口方式（**本片未做**，等 1.5f 收尾时一并裁定）：把「协议适配」与「宿主能力
+注入」拆成两个接口，`ServerRouteHost` 只留前者。
+
+**三、【需审核】`api` 槽的挂载顺序与手写序不同**
+
+槽内顺序 = 装配拓扑序 + manifest 内声明序（与 `web` / `web-config` 两面同规则），因此与迁移前 `main.ts` 的
+手写序有两处不同：agent-runtime 的两条（拓扑序第 3）排在 agent-config / knowledge / mcp / skill 之前；
+model-management 的 `/api/system/model-gateway`（第 11）排在 observer 的 `/api/system/*`（第 12）之前。逐前缀核对
+无遮蔽：`/api/agents/:agentId/*` 与 `/api/agents/{,":id"}` 段深不同；`/api/system/` 下第二段全是静态
+（`users` / `organizations` / `api-keys` / `model-gateway` / `logs` / `observer` / `people-tree` / `sandbox-*`），
+没有同位置的参数路由。Elysia 的 radix 匹配对静态段优先，不依赖注册顺序。
+
+真正有风险的是**两种守卫家族进同一个实例**：会话守卫生成的 `store.actor` / `sessionAuth` 宏与系统 API 守卫的
+`store.systemAuth` 在同一 app 作用域里是否互相干扰——这一点在手工验证里用真实 system key 双向证伪（见 §五）。
+
+**四、【需审核】顶层 `app` 槽本片刻意不接线**
+
+`READABLE_SLOTS` 仍只有 `web` / `web-config` / `api` 三项：`app` 槽的消费者（`main.ts` 根 app 的
+`skillDownloadRoutes`、MCP、hooks、站点代理/兜底）留下片，读数与写数必须同批到位——先把槽名加进白名单会让
+「声明了但没人取」的贡献被静默丢弃，而这条路径的失败模式恰好是「整组端点消失」，规则存在的意义就是让它当场报错。
+`route-contributions.test.ts` 里「未声明 slot 的贡献拒绝装配」那条用例因此保持原样。
+
+**五、手工启动验证（判据里的「服务可启动」）**
+
+按 1.5e-3 的口径复跑：一次性 `postgres:16-alpine` 容器映射 **55432**（不复用 5432 上另一个检出的开发库），
+`db:migrate` 全链应用成功后 `RCS_PORT=3901 bun run apps/server/src/main.ts` 启动到
+`Listening on 0.0.0.0:3901`。日志 323 行，**无装配期错误**（无「未知聚合槽」「没有返回 Elysia 实例」），
+唯二 ERROR 来自本节自己的探测请求（路由 schema 校验 400 与 better-auth 拒绝 system key）。
+
+| 探测 | 结果 | 说明 |
+|---|---|---|
+| `GET /api/{agents,knowledge-bases,skills/,mcp,models/providers}` | 全 401 | 5 个会话守卫包 |
+| `POST /api/environments/env-1/workspace/files`、`/api/agents/a-1/instances/connect` | 401 | machine / agent-runtime 的实例接入 |
+| `POST /api/agents/a-1/v1/chat/completions`、`/api/workflows/wf-1/execute` | 400 `messages: expected array` / `authorization: expected string` | 路由自己的 schema 校验已执行（校验先于守卫是这两条路由的既有协议行为，本片未改） |
+| `GET /api/system/{users,logs/,people-tree/,observer/acp-link,model-gateway/config,sandbox-pools,sandbox-cluster/pools,sandbox-server/servers/x/sandboxes}` | 全 401（无 token） | 7 条 system API 路由全部在位 |
+| 同上三条 + `/api/system/users` 带**真实** `RCS_SYSTEM_API_KEYS` | 200 + 真实负载（sandbox 池列表、人员树、acp-link 观察树） | 系统 API 面真的能服务，不只是拦住 |
+| `/api/{skills/,agents,models/providers}` 带**同一把** system key | 全 401 | 反向对照：system key 打不开会话守卫面，两种守卫家族没有混用 |
+| `GET /api/nope` | 200 | 对照项：未注册路径走 SPA 兜底，不返回 404 |
+
+验证容器与服务进程已在收尾时删除/停止；未保留可复用库。
+
+**六、本片出现的两处清理**
+
+- `test-utils/web-routes.ts` 改名为 `test-utils/route-faces.ts`（`git mv`）：本片起它同时提供 `/web`、`/web/config`、
+  `/api` 三面的测试路由，文件名与内容不再对应；两个调用方同步改 import。`app` 面（下片）也在同一命名下。
+- `@fenix/resource-observer/server` 从 `main.ts` 的 import 里完全消失（它在宿主侧的唯一用法就是那三条
+  `/api/system/*` 路由）。**`scripts/architecture/exceptions.json` 的 `handwrittenRegistryBaseline` 里
+  `"@fenix/resource-observer"` 一行因此成为陈旧条目**——该字段整体按计划在 1.5f 收尾片删除，本片不动它，
+  以免留下「规则已删、基线还在」的中间态。
+
+### 1.5f-1b 顶层 `app` 槽落地：7 条协议路由手写挂载清零（2026-09-21）
+
+分片表 1.5f 的第二片，前置是 1.5f-1a（`api` 槽）。口径不变：只做协议路由，生命周期/启动编排留下片。
+
+**一、做了什么**
+
+`APP_SLOT = "app"` 加回 `READABLE_SLOTS`（上一片刻意不加，理由见 1.5f-1a §四——读数与写数必须同批到位），
+五个包各加一个装配函数与一条 `slot: "app"` 贡献：
+
+| 包 | 装配函数 | 贡献 id | 路由（槽内实际登记） |
+|---|---|---|---|
+| agent-runtime | `createAgentRuntimeAcpAppRoutes(host)` | `agent-runtime.app-acp` | `GET /acp/agents` + 4 条 WS（`/acp/ws`、`/file-ws`、`/yjs/:agentId`、`/relay/:agentId`） |
+| mcp | `createKnowledgeMcpAppRoutes()` | `mcp.app-knowledge` | `ALL /mcp/knowledge` |
+| skill | `createSkillDownloadAppRoutes()` | `skill.app-download` | `GET /skills/:name/download` |
+| agent-config | `createAgentConfigAgentSitesProxyRoutes(host)` | `agent-config.app-site-deploy` | `ALL /web/site/deploy/:appId`、`/:appId/*` |
+| agent-config | `createAgentConfigAgentSitesCompatRoutes(host)` | `agent-config.app-site-compat`（**`order: 100`**） | `ALL /*` |
+| workflow | `createWorkflowStaticAppRoutes(host)` | `workflow.app-static` | `ALL /workflow-ui/`、`/workflow-ui/:path` |
+| workflow | `createWorkflowHooksAppRoutes()` | `workflow.app-hooks` | `POST /hooks/:publicHash` |
+
+`main.ts` 的 7 条 `.use(...)` 收成一条 `.use([...takeRouteContributions(APP_SLOT)])` 放在链尾；相应 import 与
+只服务于它们的 `authenticateSiteRequest`、`authGuardPlugin`、`authenticateRequest` 宿主导入一并删除
+（后两者仍由 `bootstrap/route-host.ts` 持有，`main.ts` 不再直接消费）。`route-contributions.test.ts` 的真实
+profile 断言新增 `APP_SLOT` 分组（13 条路径），并新增一条 `order` 用例、把「未声明 slot 拒绝装配」改成
+「未声明 slot 落在 `app` 槽」。
+
+两处模块级单例（`knowledgeMcpRoutes`、`skillDownloadRoutes`）的装配函数只包一层惰性构造函数、不复制第二份
+实例——它们不是工厂（自鉴权、无守卫可注入），贡献的 `value` 却必须是函数，包一层是最小改动。两处都在包内
+注释里写明了理由。
+
+**二、【需审核】宿主 `authenticateSiteRequest` 删除、投影移入包内**
+
+上一片起，站点代理的请求级认证曾是宿主 `plugins/auth.ts` 的一个导出（`AuthenticateSiteRequest` 类型的实现，
+投影出 `{userId, organizationId}`）。本片把它删掉，改由 `agent-config` 的 `assembly.ts` 的 `siteAuthenticator(host)`
+在包内做同一份投影。
+
+理由是职责归属：`ServerRouteHost` 已经有 `authenticateRequest` 端口，站点代理要的只是它的一个投影，而投影规则
+（「可见性判定只认 userId / organizationId」）属于包自己的依赖契约——留在宿主等于让宿主的 `plugins/auth.ts`
+替包决定包需要什么。删除后 `ServerRouteHost` **仍然是 10 个端口**（没有新增，也没有减少），包侧不 import 宿主
+的 `AuthContext`：投影只按结构化类型读 `authContext` 上的两个字段。
+
+代价是这份投影从「宿主唯一实现」变成「包内实现 + 宿主端口实现」，`authenticateRequest` 本身仍是唯一认证源。
+若不认可这个归属，替代方案是把投影作为一个新的宿主端口加进 `ServerRouteHost`（第 11 项），但那样会把
+1.5f-1a §二已经点出的「接口正在承载宿主能力之外的东西」再推一步。
+
+**三、【需审核】`app` 槽内的挂载顺序与手写序不同**
+
+槽内顺序 = 拓扑序 + manifest 内声明序（+ `order` 稳定排序），实际登记序见上表的行序：`acp` → `mcp` →
+`skill` → 站点代理 → `workflow-ui` → `hooks` → 站点兜底。与迁移前 `main.ts` 的手写序相比，前三项从
+`createApiApp` 之后前移到 `createWebApp` 之后（`skillDownloadRoutes` 与站点代理同理后移），其余相对位置不变。
+
+逐前缀核对无遮蔽：`/acp`、`/mcp/knowledge`、`/skills`、`/web/site/deploy`、`/workflow-ui`、
+`/hooks/:publicHash`、`/*` 七个前缀互不重叠，且唯一的通配 `/*` 排在最末。Elysia 的 radix 匹配对静态段优先于
+参数段，因此顺序不参与正确性判断——顺序唯一有语义的地方是通配兜底，而它现在由贡献自己声明。
+
+**四、【需审核】首例 `order` 使用，与 `route-faces.ts` 的有意留白**
+
+本片是 `ModuleContribution.order` 的**第一个使用者**（此前 grep 无命中）。契约与实现早已就位
+（`module-manifest.ts:24-44` 的文档 + `bootstrap.ts:101-106` 的 `orderContributions()` 稳定排序），本片只是
+第一次真的需要它：`/*` 兜底必须最后挂，而它在 manifest 里的声明序位于站点代理之后、`workflow` 之前
+（拓扑序第 8），不写 `order` 就会排在 `/hooks/:publicHash` 前面（虽然 radix 下仍不改变匹配结果，但「兜底不是
+最后一个注册」这件事本身不可接受）。
+
+取值 `100` 没有语义刻度，只是「比默认 0 大」的标记；风险是将来若有第二个贡献也写 `order`，两者的大小关系
+并不表达任何跨模块的优先级约定。**记录在案，不在本片处理**：如果出现第二个使用者，值得把 `order` 的语义
+收窄成命名常量（如平台层导出 `FALLBACK_ORDER`）。
+
+`test-utils/route-faces.ts` 本片**不镜像** `app` 槽（有意留白，已在文件头写明）：这一面的 7 条入口各自带独立
+前缀与认证口径，包内用例已在包内测试里覆盖，宿主侧没有需要「真实路由面」的用例；多一份无人消费的镜像只会
+多一处需要同步的漂移源。真实装配的镜像仍由 `route-contributions.test.ts` 的 `toEqual` 全量断言承担。
+
+**五、手工启动验证（判据里的「服务可启动」）**
+
+按 1.5e-3 的口径复跑：一次性 `postgres:16-alpine` 容器映射 **55432**（不复用 5432 上另一个检出的开发库），
+`db:migrate` 全链应用成功后启动主进程。日志**无装配期错误**（无「未知聚合槽」「没有返回 Elysia 实例」「基础模块
+未返回实例」），唯一 WARN 是 RagFlow 不可达（验证环境无 RagFlow，既有行为）。
+
+第一轮（无 agent-sites 配置）：
+
+| 探测 | 结果 | 说明 |
+|---|---|---|
+| `GET /acp/agents` | 401 `Not authenticated` | 会话守卫的 `sessionAuth` 宏在 app 槽数组内解析成功 |
+| `GET /workflow-ui/` | 401 同上 | 同上 |
+| `POST /mcp/knowledge` | 400 `authorization: expected string` | 自带的 Bearer schema 校验已执行 |
+| `GET /skills/nope/download?token=bogus` | 403 `Invalid skill download token` | 令牌校验已执行 |
+| `POST /hooks/deadbeef` | **404** `{"error":"trigger not found"}` | 路由自己产生的 404（SPA 兜底不会返回它） |
+| `GET /api/skills/`、`GET /web/prod-views/anything/load` | 全 401 | 先注册的两面未被 app 槽的通配兜底遮蔽 |
+| `GET /api/system/logs/` | 401 `Invalid system API key` | system API 面仍在 |
+| `GET /health` | 200 | 服务存活 |
+| `GET /nope`、`GET /web/site/deploy/app-abc123` | 均 200 | 对照项：未注册路径走 SPA 兜底。**站点链路未配置时代理直接让路**，与兜底同为 200，无区分度——故补第二轮 |
+
+第二轮（`AGENT_SITES_BASE_URL` 指向不可达地址 + 一次性 dummy `AGENT_SITES_MASTER_KEY`，并在验证库里临时插入
+一条 `visibility = 'public'` 的 `agent_site_app` 行 `app-verify0`）：
+
+| 探测 | 结果 | 说明 |
+|---|---|---|
+| `GET /web/site/deploy/app-verify0/` | 502 `bad_gateway: Agent Sites unreachable` | 站点代理路由已注册，且处理函数真的跑到了转发 |
+| `GET /app-verify0/api/x` | 502 同上 | **`/*` 兜底已注册且未被遮蔽**——本片风险最高的一条 |
+| `GET /app-nosuch99/x` | 200 | 兜底解析到库内不存在的 appId 后让路（`parseAppPath` 命中但 `getAppByRemoteId` 为空） |
+
+验证容器、服务进程与那条临时数据都在收尾时删除/停止；未保留可复用库。
+
+第二轮同时关掉 §六第一条风险：「通配符路由（`/app-xxx/*` 兜底、`/web/site/deploy/:appId/*` 代理）的相对优先级需
+在 1.5e 试点与 1.5f 切换后实测确认」——现在两条都在贡献面下实测到真实处理结果（502），切到拓扑序 + `order`
+之后优先级没有变化。
+
+**六、本片收尾状态：`main.ts` 里已无协议路由 import**
+
+`grep -n 'from "@fenix/' apps/server/src/main.ts` 现余 13 处，**全部是生命周期/启动编排符号**（`1.5f-1c` 的范围）：
+`@fenix/agent-config/server`（`getAgentConfigModule` / `setMetaAgentModelResolver`）、`@fenix/agent-runtime/runtime`
+（`createAgentRuntimeModule`）、`@fenix/agent-runtime/server`（`bind*Port` 系列、事件总线、workspace 解析）、
+`@fenix/identity/server`（`createIdentityDirectory` / `ensureSystemAdmin`）、`@fenix/model-management/server`、
+`@fenix/resource-channel/server`、`@fenix/resource-knowledge/server`（`checkRagFlowHealth`）、
+`@fenix/resource-machine/server`、`@fenix/resource-sandbox/server`、`@fenix/resource-task/server`（`schedulerService`）、
+`@fenix/resource-workflow/server`（`initCustomToolsRegistry`），外加按裁定保留的 `@fenix/logger` 与
+`@fenix/platform-sdk/server`。`main.ts` 现 572 行，包路由的挂载点只剩 4 条 `.use()`（`authPlugin` 之外的三面聚合
++ 一条 `app` 槽）。
+
+### 1.5f-1c 宿主启动序与关闭序迁出、门禁规则拆除（2026-09-21）
+
+分片表 1.5f 的第三片，也是该行的收口片。口径仍是用户裁定的「只要求模块与协议路由归零」——`@fenix/logger`
+与 `@fenix/platform-sdk/server` 的 import 保留；搬迁（不重设计）为原则，启动序与关闭序的**顺序约束一字未改**。
+
+**一、做了什么**
+
+`main.ts` 从 572 行收缩到 171 行，只留「进程边界」四件事：读 env、建 app、listen、挂信号。新增三个文件与一个
+既有的 `bootstrap/*` 并列：
+
+| 新文件 | 导出 | 承载什么 |
+|---|---|---|
+| `bootstrap/module-configs.ts`（121 行） | `buildModuleConfigs(env, config)` | 原 `main.ts:134-235` 的 10 个模块配置字面量，逐条注释随迁 |
+| `bootstrap/host-wiring.ts`（133 行） | `wireHostRuntime(env, config) → { agentRuntime }` | `initializeApplicationInfrastructure` + 身份目录 + meta-agent 策略注册 + `createAgentRuntimeModule().runtime` + 10 个 `bind*Port` |
+| `bootstrap/meta-agent-model-resolver.ts`（32 行） | `registerMetaAgentModelResolver()` | 原 `main.ts:108-118` 的 Meta Agent 默认模型解析回调 |
+| `bootstrap/host-startup.ts`（239 行） | `startHostRuntime(env, agentRuntime)` / `shutdownHostRuntime(agentRuntime)` | 关键启动序列三段 lambda、启动后编排 12 步、`withShutdownDeadline` 与关闭序 11 步 |
+
+`main.ts` 的调用序收成三行：`loadServerEnv` → `applyEnv` → `wireHostRuntime` → `await startHostRuntime` →
+`new Elysia(...)`。装配期接线必须早于 app 构造（`app-route` 贡献在装配时登记、在 `takeRouteContributions()`
+处被消费），这一点由代码顺序自证，不再依赖「读一遍 300 行才知道」。
+
+门禁拆除（判据第二条）：
+
+| 位置 | 动作 |
+|---|---|
+| `scripts/lib/architecture-boundary-rules.ts` | 删 `createHandwrittenRegistryRule` 与 `HANDWRITTEN_REGISTRY_FILE`；`createBoundaryRules()` 不再接参；原处留一段说明「为什么删规则而不是留空规则」 |
+| `scripts/lib/architecture-exceptions.ts` | 删 schema 字段与 `ArchitectureLedger.handwrittenRegistryBaseline`；`EMPTY_LEDGER` 与返回对象相应收窄 |
+| `scripts/check-architecture.ts` | 传参改 `createBoundaryRules()` |
+| `scripts/architecture/exceptions.json` | 删 16 行 `handwrittenRegistryBaseline` |
+| `apps/server/src/__tests__/architecture-check.test.ts` | 删 2 条基线用例（含 `ledger()` 的 `extra` 形参），加 1 条「退役字段被 `strictObject` 拒绝」用例 |
+
+文档同步（迁移的直接后果，非顺手改）：`packages/resources/observer/README.md` 与 `packages/resources/channel/README.md`
+里两处「`handwrittenRegistryBaseline` 第 22 行是……不随本包改动」的断言已失效，各补一句 2026-09-21 更新；
+`apps/server/src/test-utils/setup-mocks.ts` 四处「生产由宿主 main.ts 注入」的指针改指 `bootstrap/host-wiring.ts`
+与 `bootstrap/module-configs.ts`（都是给维护者定位真相源的指针，指错就等于没有）；`apps/server/src/bootstrap.ts`
+的文件头从「当前旧服务尚未切换到该入口」改为「1.5f 起是唯一装配路径」。
+
+**二、【需审核】四个文件的切法：为什么 meta-agent 解析器单独成文、日志实例为什么有两个**
+
+`bootstrap/*` 里 11 个 `bind*Port` 与 meta-agent 解析器都属于「宿主交给包一个东西」，但性质不同：前者交的是
+**进程级运行态句柄**（workspace 根、事件总线、连接索引），后者交的是**一条资源可见性策略**——它把宿主协议
+层的请求上下文经 `toActorContext` 翻译成资源包的 actor，再走资源包自己的 Facade 取数。策略需要宿主
+`plugins/auth` 的具体实现，而运行态句柄不需要；两者放进同一个文件会让 `host-wiring.ts` 多解释一件与
+「运行态」无关的事，故单独成文（32 行，一个导出）。
+
+`startupLog` 现在有两个实例：`main.ts` 的（打印 `Listening on ...`）与 `host-startup.ts` 的（启动/关闭全过程）。
+`createLogger("rcs")` 两次调用返回的是同一个模块名的 pino child，输出里无法区分、也不需要区分——启动与关闭
+是同一个进程生命周期，诊断时「这行来自哪个文件」没有价值，因此没有引入 `logger` 参数传递，也没有把日志实例
+提到第三个共享文件里（那会让 `main.ts` 为了一个日志实例再 import 一个 `bootstrap/*`）。
+
+**三、【需审核】搬迁中的四处非逐字等价，逐条交代**
+
+1. `setMetaAgentModelResolver` 的注册时机从「模块顶层」挪到 `wireHostRuntime()` 内部。不变式是「必须在
+   `bootstrapServerAssembly` 之前注册」，新位置仍满足（`wireHostRuntime` 早于 `startHostRuntime`）；
+   差别只是从 `applyEnv` 之前变成之后，而该回调体内的 `getModelManagementModule()` 是请求期才求值的，
+   不读 env。
+2. 关闭序的总超时 `deadline` 改为在 `shutdownHostRuntime` 内计算（原来在 `gracefulShutdown` 里记完信号日志后
+   计算）。差异是「`shutdownLog.info(Received signal)` 这一行是否计入 10s 预算」，量级为微秒，不改变超时行为。
+3. `process.exit(0)` 从关闭序里挪回 `main.ts` 的信号处理函数——退出进程是入口的职责，关闭函数只负责把资源
+   关干净，因此它现在可以被测试或其它入口复用。
+4. `host-startup.ts` 保留了 RagFlow 体检的 `console.log` / `console.warn` 原样（被 `interceptConsole` 接管为
+   module `"console"`），没有一并改成 `startupLog`——那是本次搬迁之外的清理，不在片内范围。
+
+**四、【需审核】新增 `ServerEnv` 类型别名（`env-loader.ts`）**
+
+`loadServerEnv()` 的返回类型是 `Readonly<Record<string, unknown>> & Env`：宿主 schema 声明的字段之外，还有
+**启用的模块自己声明**的那部分字段。`OPENAI_API_KEY` 就是后者——`apps/server/src/env.ts` 故意不声明它
+（注释写明「由 OpenAI SDK 自动读取，此处仅声明模型名」），因此 `buildModuleConfigs(env: Env, ...)` 会在
+`env.OPENAI_API_KEY` 处报错。这不是标注装饰：用 `Env` 会丢掉模块声明面，用 `ServerEnv` 才是 `main.ts` 实际
+传下来的那份。三个新文件的 env 形参统一用它。
+
+**五、手工启动验证（判据第三条「服务可启动」）**
+
+按 1.5e-3 / 1.5f-1b 的口径复跑：一次性 `postgres:16-alpine` 容器映射 **55432**（不复用 5432 上另一个检出的
+开发库），`db:migrate` 全链应用成功后启动主进程（容器、进程与库在收尾时全部删除）。启动日志的里程碑顺序与
+代码顺序逐条一致，且**无装配期错误**：
+
+```
+Database initialized → System admin ready → Data migrations completed → Model gateway runtime initialized
+→ Pre-launch ports bound (agent launch spec / agent config lookup) → Default sandbox pool initialized: default-2
+→ Core runtime initialized → [SchedulerService] Started successfully → Builtin resources synced
+→ Custom tools registry initialized (count=2) → WARN RagFlow health check failed → Listening on 0.0.0.0:3000
+```
+
+其中三条是本片搬迁的直接见证：`Pre-launch ports bound` 出现在 `Model gateway runtime initialized` 之后（证
+「启动前取数端口晚于模型网关凭证解析器」这条顺序约束在新位置仍成立）；`Default sandbox pool initialized` 与
+`Core runtime initialized` 的先后关系对应 `initializeDefaultSandboxPool` → `recoverAfterRestart` →
+`initCoreRuntime` 三步；`[acp-idle-monitor] [ACP-IDLE] yjs realtime docs` 之后每 5s 稳定输出一次，证明
+`agentRuntime.startIdleMonitor()` 真的执行了——这一条**没有任何 HTTP 面可观测**，日志是唯一证据。
+
+路由面探测（12 条，四槽全覆盖）：
+
+| 探测 | 结果 | 说明 |
+|---|---|---|
+| `GET /health` | 200 | 服务存活 |
+| `GET /acp/agents`、`GET /workflow-ui/`、`GET /api/skills/`、`GET /web/prod-views/anything/load` | 全 401 `Not authenticated` | `app` / `api` / `web` 三面的会话守卫均生效 |
+| `POST /mcp/knowledge` | 400 `authorization: Invalid input: expected string` | `app` 槽自带的 Bearer schema 校验已执行 |
+| `GET /skills/nope/download?token=bogus` | 403 `Invalid skill download token` | `app` 槽的令牌校验已执行 |
+| `POST /hooks/deadbeef` | 404 `{"error":"trigger not found"}` | 路由自产 404（SPA 兜底不会返回它） |
+| `GET /api/system/logs/` | 401 `Invalid system API key` | system API 面独立守卫仍在 |
+| `GET /web/config/agent-config` | 200 | `web-config` 槽可达 |
+| `GET /nope`、`GET /app-abc123/x` | 均 200 | 对照项：未注册路径走 SPA 兜底 |
+
+关闭序验证：`kill -TERM` 后日志为 `Received SIGTERM, shutting down...` → `[SchedulerService] Stopped,
+cancelled 0 jobs`，进程随即退出。**这里要如实说明证据强度**：关闭过程的日志只有上述两行，因此「进程按时
+退出且无 `Shutdown phase timed out`」是关闭序整体成功的**间接**证据，而非逐阶段证明——若某个 `await` 超时，
+`withShutdownDeadline` 会打 error 日志，无 error 说明没有阶段被超时放行；但「关得干净」与「关得掉」是两件
+事，后者由进程退出直接证明，前者只由各阶段不报错间接支持。
+
+**六、1.5f 行收尾：三条判据齐**
+
+1. **`grep '@fenix/' apps/server/src/main.ts` 归零**：只剩第 1 行的 `@fenix/logger`（用户裁定保留）。
+   为让这条判据长期可机械复核，文件头那句「不持有任何 `@fenix/*` 的具体实现依赖」改写成不含该字面量的措辞，
+   因此现在 `grep -c '@fenix/'` 的期望值恒为 1（就是那一行 logger），多一处就是回归。
+2. **门禁规则与基线字段同时消失**：见 §一 的拆除表。这里记一条删除理由——留着「空规则」等于留下「入口允许
+   出现哪些包名」的第二份清单，恰好是要根除的那种手写映射；新增模块不再需要改宿主代码，也就没有需要特判的
+   入口文件。
+3. **服务可启动**：见 §五。
+
+分片表 1.5f 行的第三项「填实 `deploy/assembly/ce.json` 的 `resources`」已由 1.5e-2a 完成（现为 13 项 = 拓扑序
+16 项减 `identity` / `access-control` / `agent-runtime`），本片核对后无需改动。
+
+收尾规模：`main.ts` 572 → **171** 行；`bootstrap/*`（含 1.5f-1a/1b 的 `route-contributions.ts`、`route-host.ts`、
+`scheduler-startup.ts`、`startup-sequence.ts`）合计 689 行。`main.ts` 的 `.use()` 现为 9 条，其中 3 条是聚合槽
+消费点（`web` + `web-config` / `api` / `app`），其余 6 条是 cors、两个 OpenAPI、ctrlStatic、errorPlugin、authPlugin
+——都是宿主自己的中间件，不是包的路由贡献。测试计数 771 → 770（删 2 加 1），`precheck` 全绿（86529ms）。

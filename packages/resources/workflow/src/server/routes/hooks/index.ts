@@ -16,8 +16,8 @@
  *
  * 迁出时恢复了一处丢失的挂载：该路由原先挂在旧入口 `src/index.ts`（提交 `38bc236f0`），FND-05 把
  * 入口迁到 `apps/server/src/main.ts` 后未带过去，导致端点自那时起不可达（详情见 review 文档
- * task-1.5-host-aggregation.md §七 1.5c）。宿主 `main.ts` 的挂载位置与原顺序一致
- * （`createWorkflowStaticApp` → `knowledgeMcpRoutes` → 本路由 → `createAcpRoutes`）。
+ * task-1.5-host-aggregation.md §七 1.5c）。1.5f-1b 起改由 manifest 的 `slot: "app"` 贡献声明挂载，
+ * 宿主 `main.ts` 不再持有本路由的挂载点。
  */
 
 import Elysia from "elysia";

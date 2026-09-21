@@ -7,24 +7,6 @@
     "docs/design/ce-ee-refactoring/review/1.1-warehouse-boundary.md。",
     "禁止把 from / to 写成通配（加载器会直接拒绝）：通配会让整类边界静默失效。"
   ],
-  "handwrittenRegistryBaseline": [
-    "@fenix/access-control",
-    "@fenix/agent-config",
-    "@fenix/agent-runtime",
-    "@fenix/identity",
-    "@fenix/logger",
-    "@fenix/model-management",
-    "@fenix/platform-sdk",
-    "@fenix/resource-channel",
-    "@fenix/resource-knowledge",
-    "@fenix/resource-machine",
-    "@fenix/resource-mcp",
-    "@fenix/resource-observer",
-    "@fenix/resource-sandbox",
-    "@fenix/resource-skill",
-    "@fenix/resource-task",
-    "@fenix/resource-workflow"
-  ],
   "exceptions": [
     {
       "rule": "agent-runtime-not-to-resources",

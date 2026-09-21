@@ -12,9 +12,6 @@ import type { ArchitectureDiagnostic, ArchitectureRule, RuleContext } from "./ar
 import { getSpecifiers, positionOf } from "./architecture-rules";
 import { normalizePath } from "./workspace-packages";
 
-/** 唯一还允许手写挂载模块的宿主入口；1.5 切换到 bootstrapServerAssembly 后该规则连同基线一起删除。 */
-export const HANDWRITTEN_REGISTRY_FILE = "apps/server/src/main.ts";
-
 /** 包类别。由目录布局推导，而不是硬编码包名，新增包放进对应目录即自动归位。 */
 type PackageCategory =
   | "platform-sdk"
@@ -243,43 +240,19 @@ function createWebPackageNotToAppRule(): ArchitectureRule {
 }
 
 /**
- * `no-new-handwritten-registry`：宿主入口不得新增手写挂载的模块。
+ * 边界规则集。
  *
- * 1.1 只把 `ce.json` 接到生成的 registry 上，`main.ts` 的切换留给 1.5。在切换之前，这条规则
- * 阻止手写注册表继续扩大——否则新的模块会绕过 manifest 直接挂进宿主，装配 profile 失去意义。
- * 只阻断**新增**：删除导入是 1.5 的目标，不应被判违规。
+ * 这里曾有第五条 `no-new-handwritten-registry`：在 `main.ts` 尚未切到 registry 装配的过渡期，冻结
+ * `handwrittenRegistryBaseline` 并阻断宿主入口新增手写模块挂载。1.5f 完成切换后规则的适用对象消失
+ * （入口不再持有任何包实现依赖），规则与基线字段一并删除——**留下它会变成「入口允许出现哪些包名」的
+ * 第二份清单**，恰好是要根除的那种手写映射。此后约束由装配 profile 与模块 manifest 承担：新增模块
+ * 不改宿主代码，因此没有需要特判的入口文件。
  */
-function createHandwrittenRegistryRule(baseline: ReadonlySet<string>): ArchitectureRule {
-  return {
-    id: "no-new-handwritten-registry",
-    check(context) {
-      if (context.relativePath !== HANDWRITTEN_REGISTRY_FILE) return [];
-
-      const diagnostics: ArchitectureDiagnostic[] = [];
-      for (const reference of getSpecifiers(context)) {
-        const target = context.resolveWorkspacePackageName(reference.specifier);
-        if (!target || baseline.has(target)) continue;
-
-        diagnostics.push({
-          ...positionOf(context, reference.position),
-          filePath: context.relativePath,
-          message: `${HANDWRITTEN_REGISTRY_FILE} 新增了手写模块挂载 "${target}"；模块必须经 fenix.module.ts 与 assembly profile 装配`,
-          ruleId: "no-new-handwritten-registry",
-        });
-      }
-      return diagnostics;
-    },
-  };
-}
-
-export function createBoundaryRules(input: {
-  readonly handwrittenRegistryBaseline: ReadonlySet<string>;
-}): readonly ArchitectureRule[] {
+export function createBoundaryRules(): readonly ArchitectureRule[] {
   return [
     createUndeclaredWorkspaceDependencyRule(),
     createAppsBoundaryRule(),
     createSpecialDependencyRule(),
     createWebPackageNotToAppRule(),
-    createHandwrittenRegistryRule(input.handwrittenRegistryBaseline),
   ];
 }

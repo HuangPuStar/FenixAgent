@@ -4,7 +4,6 @@
 // `@fenix/resource-knowledge/server`（含路由模块），而 knowledge 路由反向依赖 `@server/plugins/auth`，
 // 形成 `auth → agent-runtime → knowledge 路由 → auth` 的顶层 TDZ 环（`source-route-imports.test.ts`
 // 用全新进程守护这一点）。任务 1.4 W4b 随「启动前取数搬出」删除了该 builder，环已不复存在。
-import type { AuthenticateSiteRequest } from "@fenix/agent-config/server";
 import { environmentRepo } from "@fenix/agent-runtime/server/environment";
 import {
   buildPhoneTempEmail,
@@ -210,20 +209,6 @@ export async function authenticateRequest(request: Request): Promise<RequestAuth
     authContext,
   };
 }
-
-/**
- * 站点代理（`@fenix/agent-config` 的 `/web/site/deploy/*` 与 `/app-*` 兜底）的请求级认证。
- *
- * 与 `authGuardPlugin` 同一份实现：站点代理不走 `sessionAuth` 宏——它要区分「未登录」与「已登录
- * 但无权限」并分别重定向，所以需要直接拿认证结果。这里只投影出可见性判定需要的两个标识，包侧不
- * 依赖宿主的 `AuthContext` 结构。
- */
-export const authenticateSiteRequest: AuthenticateSiteRequest = async (request) => {
-  const result = await authenticateRequest(request);
-  const authContext = result?.authContext;
-  if (!authContext) return null;
-  return { userId: authContext.userId, organizationId: authContext.organizationId };
-};
 
 /** 仅凭据路径（Environment Secret / API Key）的认证尝试，成功时写入 store。 */
 async function tryApiKeyAuth(

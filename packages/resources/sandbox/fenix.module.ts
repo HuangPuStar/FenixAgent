@@ -18,8 +18,9 @@ import type { ServerRouteHost } from "@fenix/platform-sdk/server";
  * `(host) => import("./src/server/assembly").then(...)` 给出，`slot: "web-config"` 指明挂宿主 `/web/config`
  * 聚合面——路由路径是相对形式，前缀由宿主的聚合实例决定，「挂哪一面」只能由声明说清。惰性 import 与
  * `create` 同因：registry 会被大量位置导入，不能在索引层就把 Elysia 拖进模块图。
- * `/api/system/sandbox-*` 仍由宿主按显式调用装配：系统 API 面尚未接入贡献槽，声明一个没有读者的贡献只会
- * 让装配在未知槽上失败。
+ *
+ * 1.5f 追加三条 `api` 槽贡献（`/api/system/sandbox-pools`、`-instances`、`-cluster`、`-server` 四组路由由
+ * 三个工厂给出）：它们改用系统 API 守卫，与 `/web` 面的会话守卫不是同一份实例，装配面上各自收窄一次。
  *
  * 不声明 `web`：消费方是 §1.6 的 WebShell 装配，形状必须与消费端同时定型。
  */
@@ -35,6 +36,27 @@ export const moduleManifest = {
       slot: "web-config",
       value: (host: ServerRouteHost) =>
         import("./src/server/assembly").then((assembly) => assembly.createSandboxWebConfigRoutes(host)),
+    },
+    {
+      id: "sandbox.api",
+      kind: "app-route",
+      slot: "api",
+      value: (host: ServerRouteHost) =>
+        import("./src/server/assembly").then((assembly) => assembly.createSandboxApiRoutes(host)),
+    },
+    {
+      id: "sandbox.api-cluster",
+      kind: "app-route",
+      slot: "api",
+      value: (host: ServerRouteHost) =>
+        import("./src/server/assembly").then((assembly) => assembly.createSandboxApiClusterRoutes(host)),
+    },
+    {
+      id: "sandbox.api-server",
+      kind: "app-route",
+      slot: "api",
+      value: (host: ServerRouteHost) =>
+        import("./src/server/assembly").then((assembly) => assembly.createSandboxApiServerRoutes(host)),
     },
   ],
   // 工厂保持惰性：registry 会被大量位置导入，不能在索引层就把 Drizzle、Elysia 与 provider SDK 拖进模块图。
