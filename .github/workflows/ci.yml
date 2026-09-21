@@ -36,10 +36,16 @@ jobs:
       - name: Typecheck (frontend)
         run: bun run typecheck:web
 
-      # 装配相关的三项检查必须与 precheck 走同一入口：registry 是生成物，架构门禁与依赖边界门禁
-      # 共用同一份例外台账，只在本机生效等于没有门禁。
+      # 装配相关的四项检查必须与 precheck 走同一入口：registry、web contributions 与根源码归属清单
+      # 都是生成物，架构门禁与依赖边界门禁共用同一份例外台账，只在本机生效等于没有门禁。
       - name: Generated module registry is up to date
         run: bun run generate:module-registry --check
+
+      - name: Generated web contributions are up to date
+        run: bun run generate:web-contributions --check
+
+      - name: Root source owner inventory is up to date
+        run: bun run check:root-owner-inventory
 
       - name: Architecture boundaries
         run: bun run architecture:check

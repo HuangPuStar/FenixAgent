@@ -37,6 +37,12 @@ const STEPS = [
     filter: (out: string) => (out.includes("已验证") ? null : out),
   },
   {
+    // 根源码归属清单同样是「文档 == 规则表产出」的生成物门禁，必须与 CI 走同一入口。
+    name: "owner-inventory",
+    cmd: "bun run check:root-owner-inventory",
+    filter: (out: string) => (out.includes("unowned=0 ambiguous=0") ? null : out),
+  },
+  {
     name: "architecture",
     cmd: "bun run architecture:check",
     filter: (out: string) => (out.includes("✓ architecture-check") ? null : out),
