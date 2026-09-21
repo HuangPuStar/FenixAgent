@@ -25,6 +25,7 @@
     "db:migrate": "bunx drizzle-kit migrate",
     "build:web": "bunx vite build --config apps/web/vite.config.ts",
     "generate:module-registry": "bun run scripts/generate-module-registry.ts",
+    "generate:web-contributions": "bun run scripts/generate-web-contributions.ts",
     "check:root-owner-inventory": "bun run scripts/check-root-source-owner-inventory.ts --check",
     "preview:web": "bunx vite preview --config apps/web/vite.config.ts",
     "typecheck": "tsc --noEmit",
