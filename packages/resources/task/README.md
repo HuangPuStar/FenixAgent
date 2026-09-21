@@ -153,8 +153,9 @@ packages/resources/task` 为 0（按 import 形态而不是裸包名核对：裸
 - **宿主 `apps/web` 直连（§1.6 T11e 后）**：`routes/agent/_panel/tasks.tsx` 这个薄 route adapter 已改指
   `@fenix/resource-task/web`（保留在宿主是既定分工）；`vite.config.ts` 的 `@/src/api/tasks-v2` 与
   `@/src/pages/agent-panel/pages/AgentTasksPage` 两条 alias 随之失去全部消费方。`apps/web/src/shell/ArtifactsPanel.tsx`
-  的 `TasksPanel` import 仍走别名（宿主 Shell 消费面，随 T11e 收尾批次改为 `@fenix/resource-task/web`），
-  别名表条目也在那批一并删除。
+  的 `TasksPanel` import 原先是穿透包内的深层相对路径（`../../../../packages/resources/task/web/pages/agent-panel/TasksPanel`），
+  已随 §1.6 T11e-4b 改为 `@fenix/resource-task/web`；宿主侧自此不再有绕过 `exports` 的写法。上述两条 alias
+  与其他全部桥接条目同批从宿主两张别名表删除（2026-09-21 实测 `git grep -n '"@/src/api/tasks-v2"'` 0 命中）。
 - **i18n 两侧均已落地（2026-09-20 实测，切换由 W3 完成）**：字典在 `web/i18n/locales/{en,zh}/tasks-v2.json`
   （计划 §4 的形状，W2.5 迁移；旧路径 `web/i18n/{en,zh}/` 已无引用），宿主
   `apps/web/src/i18n/index.ts:23` 已改为子路径 `@fenix/resource-task/web/i18n`，`:119` / `:133` 用

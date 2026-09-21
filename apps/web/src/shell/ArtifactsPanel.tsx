@@ -1,6 +1,7 @@
 import { agentSitesApi, type SiteApp, SiteFrame, SiteTabsBar } from "@fenix/agent-config/web";
 import { envApi } from "@fenix/agent-runtime/web/api/environments";
 import { type ProdViewModulesConfig, ProdViewsPanel } from "@fenix/resource-prod-view/web";
+import { TasksPanel } from "@fenix/resource-task/web";
 import type { ChangedFile } from "@fenix/ui-components/chat/lib/extract-changed-files";
 import { Button } from "@fenix/ui-components/ui/button";
 import { unwrap } from "@fenix/web-runtime/api/request";
@@ -14,7 +15,6 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
 import { NS } from "@/src/i18n";
-import { TasksPanel } from "../../../../packages/resources/task/web/pages/agent-panel/TasksPanel";
 import { ArtifactsDialogs } from "../components/agent-panel/artifacts-dialogs";
 import { ArtifactsFilesWorkspace } from "../components/agent-panel/artifacts-files-workspace";
 import type { FileTreeTabHandle } from "../components/agent-panel/FileTreeTab";
