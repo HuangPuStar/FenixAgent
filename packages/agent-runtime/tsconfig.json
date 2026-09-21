@@ -1,37 +1,14 @@
 {
+  // 本包只声明 `@server/*`：§1.6 T6e 后包内 `src/**` 与 `web/**` 对宿主的能力全部经
+  // `@fenix/*` 公开出口或端口注入取得，`@/src/*`、`@/components/*` 的宿主别名已归零
+  // （此前那些条目让宿主式说明符在本包内静默解析到 apps/web，属 `web-package-not-to-app`
+  // 台账里的存量债务）。刻意不再补回：别名一旦存在，包内多写一行 `@/` 也不会报错。
   "extends": "../../tsconfig.json",
   "compilerOptions": {
     "noEmit": true,
     "baseUrl": "../..",
     "paths": {
-      "@server/*": ["apps/server/src/*"],
-      "@/components/ui/*": ["apps/web/components/ui/*"],
-      "@/components/*": ["apps/web/components/*"],
-      "@/src/api/environments": ["packages/agent-runtime/web/api/environments.ts"],
-      "@/src/hooks/use-chat-state": ["packages/agent-runtime/web/hooks/use-chat-state.ts"],
-      "@/src/hooks/use-session-state": ["packages/agent-runtime/web/hooks/use-session-state.ts"],
-      "@/src/pages/agent-panel/ChatPanel": ["packages/agent-runtime/web/agent-panel/ChatPanel.tsx"],
-      "@/src/pages/agent-panel/chat-auth-state": ["packages/agent-runtime/web/agent-panel/chat-auth-state.ts"],
-      "@/src/pages/agent-panel/chat-visible-reconnect": [
-        "packages/agent-runtime/web/agent-panel/chat-visible-reconnect.ts"
-      ],
-      "@/src/pages/agent-panel/session-mutation-refresh": [
-        "packages/agent-runtime/web/agent-panel/session-mutation-refresh.ts"
-      ],
-      "@/src/yjs/*": ["packages/agent-runtime/web/yjs/*"],
-      "@/src/i18n/locales/*": ["apps/web/src/i18n/locales/*"],
-      "@/src/i18n": ["apps/web/src/i18n/index.ts"],
-      "@/src/api/request": ["apps/web/src/api/request.ts"],
-      "@/src/api/helpers": ["apps/web/src/api/helpers.ts"],
-      "@/src/lib/card-renderer": ["apps/web/src/lib/card-renderer/index.ts"],
-      "@/src/lib/card-renderer/*": ["apps/web/src/lib/card-renderer/*"],
-      "@/src/lib/model-config-utils": ["packages/resources/model-management/web/lib/model-config-utils.ts"],
-      "@/src/lib/auth-client": ["apps/web/src/lib/auth-client.ts"],
-      "@/src/lib/utils": ["apps/web/src/lib/utils.ts"],
-      "@/src/lib/random-uuid-polyfill": ["apps/web/src/lib/random-uuid-polyfill.ts"],
-      "@/src/lib/theme": ["apps/web/src/lib/theme.ts"],
-      "@/src/contexts/OrgContext": ["apps/web/src/contexts/OrgContext.tsx"],
-      "@/src/*": ["apps/web/src/*"]
+      "@server/*": ["apps/server/src/*"]
     }
   },
   "include": ["src/**/*.ts", "web/**/*.ts", "web/**/*.tsx"]

@@ -9,7 +9,7 @@
 //
 // 包侧依赖经 `@fenix/agent-runtime` 的**根浏览器出口**（`src/index.ts` 明写「只导出 Environment、
 // Chat 与 YJS 的浏览器侧实现」），与 workflow 包消费同一份实现，因此不会产生第二份 Y.Doc 或连接。
-// 宿主里还残留的 `@/src/yjs/*` 等同源别名（如 `use-task-views.ts`）随 T6e 一并收敛。
+// 宿主侧同源的 `@/src/yjs/*` 别名已随 §1.6 T6e 删除（`use-task-views.ts` 等改指根出口）。
 
 import {
   applyDocHubUpdate,

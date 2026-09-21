@@ -11,6 +11,7 @@
 // 不写纯 UI 结构断言：列表/卡片的展示状态由组件内部收敛，此处只验证数据流。
 
 import { describe, expect, test } from "bun:test";
+import { createSessionDocBinding, replaceDocHubUpdate, type SharedDocBinding } from "@fenix/agent-runtime";
 import type { PeriTaskViewProjection } from "@fenix/chat-channel";
 import { upsertPeriTaskView } from "@fenix/chat-channel";
 // createSessionDoc 属聚合层服务端能力，经 server 子路径导入（双入口边界）
@@ -19,7 +20,6 @@ import { Window } from "happy-dom";
 import { act, createElement, StrictMode } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import * as Y from "yjs";
-import { createSessionDocBinding, replaceDocHubUpdate, type SharedDocBinding } from "@/src/yjs/doc-hub";
 import { computePeriTaskViews, useTaskViews } from "../hooks/use-task-views";
 import { initializeHappyDomWindow } from "./happy-dom-window";
 

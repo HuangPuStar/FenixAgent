@@ -99,7 +99,7 @@ WebShell 从静态 registry 收集各资源包的 web contribution（不反向�
 | T3 | `@fenix/ui-components` 扩面 | 已交付 | `b858bf68f` |
 | T4 | `identity/web` 清零 + i18n | 4a 已交付 / 4b 待办 | 见下方 §7.3 |
 | T5 | `chat-channel/web` 清零 | a,b,c1,c2,c5,d 已交付 | 见下方 §7.4–§7.10 |
-| T6 | `agent-runtime/web` 收敛 | a,b,c,d 已交付 / e 待办 | 见下方 §7.11 |
+| T6 | `agent-runtime/web` 收敛 | 已交付（a–e） | 见下方 §7.11 |
 | T7 | 5 条 `special-dependency` 消除 | 待办 | — |
 | T8 | 宿主组件/lib/api 簇改指并删除 | 待办 | — |
 | T9 | i18n 归属重划与 `quoteTruncatedBadge` 缺陷修复 | 待办 | — |
@@ -755,6 +755,7 @@ c2 之后线上聊天界面由 ui-components 的 `ACPMain` 渲染，`chat-channe
 - `packages/agent-runtime/web/components/chat/chat-interface-types.ts`（44 行）是 `ChatInterfaceProps` /
   `ChatInterfaceHandle` 的**零消费方死副本**（ui-components 已自持同名类型），其 `hideContextPanel?: boolean`
   一行虽在 §四.9 的删除口径内，但该文件整体归 T6（`agent-runtime/web` 收敛），本片不动。
+  **已了结**：整个 `web/components/chat/**` 53 个文件随 T6c2 `f2741a82d` 删除。
 - `CLAUDE.md` 不变量 11 的「前端 vite alias 直连根入口」措辞、`docs/design/2026-09-18-packages-web-ui-components-migration.md`
   中指向 `chat-channel/web/**` 的行号引用：前者机制描述仍成立（从根入口 re-export 服务端模块会打进 bundle）只是
   通道不再叫 alias，后者是历史快照。两者一并归 T12 的文档复核。
@@ -773,7 +774,7 @@ c2 之后线上聊天界面由 ui-components 的 `ACPMain` 渲染，`chat-channe
 
 ---
 
-### 7.11 T6 旧 chat 实现退场与 `ChatPanel` 归位（2026-09-21，T6a `9998926ec` + T6b `912569796`）
+### 7.11 T6 `agent-runtime/web` 收敛：旧 chat 退场、`ChatPanel` 归位、别名归零（2026-09-21）
 
 #### 前置核查：删除前必须证明包内是超集（用户裁定的硬条件）
 
@@ -878,11 +879,31 @@ acpSessionIdRef.current || undefined` 必须存在、`sessionState.acpSessionId`
 packages/agent-runtime/` 488 pass（原 507 减已迁出的 19）、`bun test packages/resources/workflow/` 725 pass、
 4 个搬迁测试 19 pass。
 
-#### 待办（T6e）
+#### T6e：别名与配置收尾，`web-package-not-to-app` 归零
 
-| 片 | 内容 |
+| 动作 | 内容 |
 | --- | --- |
-| T6e | 别名与配置收尾：`@/src/yjs/doc-hub` 的去处、hooks 的 `@/src/lib/structured-to-thread` 改指 `@fenix/web-runtime/chat/structured-to-thread`、`agent-runtime/web` 的 `@/` 别名归零（台账 `web-package-not-to-app` 随之归零） |
+| 包内改指 | `agent-runtime/web/hooks/{use-chat-state,use-session-state}.ts` 的 `@/src/lib/structured-to-thread` → `@fenix/web-runtime/chat/structured-to-thread` |
+| 宿主改指 | `apps/web/src/hooks/use-task-views.ts` 与其测试的 `@/src/yjs/doc-hub` → `@fenix/agent-runtime`（宿主与包此后取**同一份** doc-hub 模块实例；DocHub 是模块级单例，双实例等于两份 Y.Doc） |
+| 别名删除 | `@/src/yjs`：根 `tsconfig.json`、`packages/agent-runtime/tsconfig.json`、`apps/web/vite.config.ts` 各 1 条；该别名只是让包内实现看起来像宿主实现，doc-hub / yjs-ws 本就经包根出口对外 |
+| 配置收敛 | `packages/agent-runtime/tsconfig.json` 重写为**只声明 `@server/*`**：原文件另有 6 条指向本包 web 的别名（`@/src/hooks/use-*`、`@/src/pages/agent-panel/*` × 4，后者随 T6d 起目标已不存在）+ 8 条宿主路径别名（`@/src/i18n*`、`@/src/api/*`、`@/src/lib/*`、`@/src/contexts/*`、`@/components/*`、`@/src/*`）。实测包内 `src/**` 与 `web/**` 对 `@/` 的引用已为 0，宿主 `apps/server/src/**` 也无 `@/` 引用，故全部删除。**刻意不补回**：`paths` 一旦存在，包内多写一行 `@/` 也不会报错，别名消失反而让越界在 typecheck 期直接失败 |
+| 测试基础设施 | `agent-runtime/web/__tests__/use-chat-state-hook.test.tsx` 的 happy-dom 初始化由相对路径读 `apps/web/src/__tests__/happy-dom-window` 改为 `@fenix/ui-components/testing`——**这是台账该条目的最后一处真实命中**（package 测试跨相对路径读宿主，既越界也让本包离开宿主后无法独立测试）。该做法与 `chat-composer.test.tsx` 一致，也是本任务计划里记的「收敛为跨包测试工具入口」在 agent-runtime 上的落地；`resources/{skill,memory,workflow}` 的 3 份包内副本仍未收敛，属 T10 / 1.3 W4 范围 |
+| 台账 | 删除 `web-package-not-to-app / @fenix/agent-runtime -> @fenix/web-app`（T6 起点 170 处 / 68 文件 → 0）。**该条目必须删**：`architecture:check` 对「已不再违规」的登记直接判 red，这也是删除过程中唯一一处「先删条目→检查报红→才暴露出的真命中」——即上面的 happy-dom 相对导入，若按 T6d 时的口径「实测 2 处」直接删条目就会漏掉它 |
+| 注释同步 | `tsconfig.json` 的别名段补写 `@/src/yjs` 删除理由；`use-chat-panel-runtime.ts` 头注由「残留 `@/src/yjs/*` 随 T6e 收敛」改为「已随 T6e 删除」 |
+
+**等价性证据（改指前必须核对，不靠「看起来一样」）**：两份 `structured-to-thread` 的 `diff` 只有 4 处——
+文件头注释、import 位置（宿主版取 `./tool-semantic` / `./types`，包版取 `@fenix/ui-components/chat/lib/tool-semantic` /
+`/chat/types`）、以及 `structuredToThreadEntries` 的入参由 `StructuredMessage[]` 放宽为 `readonly StructuredMessage[]`。
+被依赖的 `tool-semantic` 两份**逐字一致**（包版注释自述「逐字复制」）；类型侧包版已拆成
+`internal/types-*` 并按 barrel 重导出，但 `structured-to-thread` 对它的使用是 `import type`，不进运行时。
+故 `sessionOptionKindsToPermissionOptions` / `chatDocEntriesToStructuredMessages` 的运行时行为不变。
+
+**T6 至此全部交付（a–e）。** 包内 `web/` 保留 `api/` / `hooks/` / `yjs/` / `__tests__/`（agent-runtime 的浏览器侧
+实现，经根出口对外）；`@/` 宿主别名在包内为 0，台账本任务名下不再有 `web-package-not-to-app`。
+
+验证：`env -u ANTHROPIC_MODEL bun run precheck` 全绿（server-and-script-tests 771 pass、package-tests 7311
+pass / 0 fail、web-app-tests 968 pass / 0 fail）；`bun run build:web` 成功；`bun run architecture:check` ✓
+（2183 files / 24 条已登记例外）；`bun run check:dependencies` ✓（0 条新增违规）。
 
 ---
 

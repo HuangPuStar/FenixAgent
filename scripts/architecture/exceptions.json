@@ -301,14 +301,6 @@
       "owner": "1.6",
       "removeWhen": "宿主公开面 / WebShell 收敛后，资源包 web 面的组织与会话上下文改经注入（props 或 port）取得，不再 import `@fenix/identity/web`",
       "rationale": "§2.3 禁止 resource → platform-impl。实测 1 处 / 1 文件：web/pages/agent-panel/pages/AgentSkillsPage.tsx 的 `useOrg`/`useSession`（取的是宿主同一 context 实例，1.2 已裁决 org/session 上下文由 identity 提供，见 review §6.5）。收敛动作在 §1.6 的 WebShell 边界内完成。"
-    },
-    {
-      "rule": "web-package-not-to-app",
-      "from": "@fenix/agent-runtime",
-      "to": "@fenix/web-app",
-      "owner": "1.6",
-      "removeWhen": "agent-runtime 的 web contribution 不再引用宿主内部实现，改经 WebShell 公开面或包内自持",
-      "rationale": "T6d 后实测 2 处 / 2 文件（T6 起点为 170 处 / 68 文件）：`packages/agent-runtime/web/hooks/use-chat-state.ts` 与 `use-session-state.ts` 各 1 处 `@/src/lib/structured-to-thread`，随 T6e 改指 `@fenix/web-runtime/chat/structured-to-thread` 后归零。原 170 处中的 `@/components/chat`(34) 与整份旧 chat 实现已随 T6c2 删除；ChatPanel 6 处 + chat-panel-ports 2 处已随 T6d 归位宿主（文件本体迁入 `apps/web/src/pages/agent-panel/`，workflow 的 `MetaAgentPanel` 改由宿主经 `WorkflowEditor` 的 `chatPanel` 端口注入）。详见 review 文档 §7.11。"
     }
   ]
 }

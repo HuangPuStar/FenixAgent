@@ -127,7 +127,6 @@ export default defineConfig({
         "../../packages/resources/prod-view/web/pages/prod-view/ProdViewPage.tsx",
       ),
       "@/src/pages/workflow": path.resolve(__dirname, "../../packages/resources/workflow/web/pages/workflow"),
-      "@/src/yjs": path.resolve(__dirname, "../../packages/agent-runtime/web/yjs"),
       "@/src/lib/card-renderer": path.resolve(__dirname, "src/lib/card-renderer"),
       "@/src/lib/model-config-utils": path.resolve(
         __dirname,

@@ -13,11 +13,14 @@ import type { ChatStateSnapshot, SessionStateSnapshot } from "@fenix/chat-channe
 import { setSessionInfo, upsertPendingQuestion } from "@fenix/chat-channel";
 // createSessionDoc 属聚合层服务端能力，经 server 子路径导入（双入口边界）
 import { createSessionDoc } from "@fenix/chat-channel/server";
+// happy-dom Window 初始化复用包内 `testing` 入口（§1.6 T6e）。此前这里用相对路径读
+// `apps/web/src/__tests__/happy-dom-window`，既让本包离开宿主后无法独立测试，也是台账
+// `web-package-not-to-app` 的最后一条命中（该条目已随之删除）。
+import { initializeHappyDomWindow } from "@fenix/ui-components/testing";
 import { Window } from "happy-dom";
 import { act, createElement, StrictMode } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import * as Y from "yjs";
-import { initializeHappyDomWindow } from "../../../../apps/web/src/__tests__/happy-dom-window";
 import { useChatState } from "../hooks/use-chat-state";
 import { useSessionState } from "../hooks/use-session-state";
 import { createSessionDocBinding } from "../yjs/doc-hub";

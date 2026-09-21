@@ -107,12 +107,16 @@
       "@/src/pages/prod-view/ProdViewPage": ["./packages/resources/prod-view/web/pages/prod-view/ProdViewPage.tsx"],
       "@/src/pages/workflow/*": ["./packages/resources/workflow/web/pages/workflow/*"],
       "@/src/types/knowledge": ["./packages/resources/knowledge/web/types/knowledge.ts"],
-      "@/src/yjs/*": ["./packages/agent-runtime/web/yjs/*"],
       // 此处刻意不为 @fenix/chat-channel* 声明别名（其余 @fenix/* 子路径同理）：
       // moduleResolution 为 bundler，包内 `exports` 已声明 `.` / `./server` / `./web`，
       // 多一份别名只会让 dependency-cruiser 按别名把合法的公开入口导入判成 src 穿透
       // （`no-cross-package-src:packages/chat-channel` 的 21 处命中全部由此产生）。
       // 详见 docs/design/ce-ee-refactoring/review/task-1.4-agent-runtime.md §18.3 裁定 4。
+      //
+      // 同理由，`@/src/yjs/*`（曾指向 `packages/agent-runtime/web/yjs/*`）已随 §1.6 T6e 删除：
+      // doc-hub / yjs-ws 本就经 `@fenix/agent-runtime` 根出口对外，别名只是让宿主写法与包
+      // 出口看起来像两套实现。宿主与包现在都从根出口取同一份模块实例（DocHub 是模块级单例，
+      // 双实例会导致两份 Y.Doc）。
       "@server/*": ["./apps/server/src/*"]
     }
   },
