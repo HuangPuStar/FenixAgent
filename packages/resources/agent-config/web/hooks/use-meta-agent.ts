@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { ensureMetaAgent } from "../src/api/meta-agent";
+import { ensureMetaAgent } from "../lib/meta-agent";
 
 export interface UseMetaAgentOptions {
   /** localStorage key for persisting chatOpen state */

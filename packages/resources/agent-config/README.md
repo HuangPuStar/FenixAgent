@@ -58,12 +58,17 @@ Agent 配置资源行、关联绑定（Skill / MCP / 知识库 / 记忆）与站
 
 ## web 面与 i18n
 
-- **唯一跨包 web 入口**：`web/index.ts`。从它出发的值导入图不含 `node:` 内建、`@server/*` 与宿主别名
-  `@/`，由 `web/__tests__/agent-config-browser-surface.test.ts` 递归守护（含跨包递归与白名单说明）。
-- 导出面覆盖实测消费方：task / prod-view 取 `agentApi`；model-management 的编辑器纯逻辑用例取
-  `agent-editor-model` 的转换与校验 schema；宿主 WebShell 的 `shell/use-shell-navigation.ts` 取
-  `sidebarConfigApi`、`shell/AgentSidebarTree.tsx` 取 `ensureMetaAgent`；workflow 的 `useMetaAgent`
-  已导出待其改指。
+- **跨包 web 入口**：包根 `web/index.ts` 是聚合 barrel，从它出发的值导入图不含 `node:` 内建、`@server/*`
+  与宿主别名 `@/`，由 `web/__tests__/agent-config-browser-surface.test.ts` 递归守护（含跨包递归与白名单
+  说明）。另有两条**窄子路径出口**供只取单一能力的消费方避开整棵页面图：`./web/i18n`（字典，宿主导入
+  注册）与 `./web/lib/meta-agent`（Meta Agent 的 ensure 客户端）。二者在 `exports` 里显式声明；`web/src/**`
+  不是出口，也不应成为出口。
+- 导出面覆盖实测消费方（2026-09-21）：task / prod-view 取 `agentApi`；model-management 的编辑器纯逻辑
+  用例取 `agent-editor-model` 的转换与校验 schema；宿主 WebShell 的 `shell/use-shell-navigation.ts` 取
+  `sidebarConfigApi`、`shell/AgentSidebarTree.tsx` 取 `agentApi` 与 `ensureMetaAgent`（同一文件同时用
+  `agentApi`，故仍走包根）；workflow 的 `useWorkflowMetaAgent` 只取 `ensureMetaAgent`，改走窄子路径
+  `@fenix/agent-config/web/lib/meta-agent`（§1.6 T12）——走包根会把本包整棵页面图连带 mcp / knowledge /
+  memory / model-management 的 web 面拖进对方的浏览器可达面。包内的 `useMetaAgent` 已导出，暂无跨包消费方。
 - **`AgentSidebarConfig` 已退场**（§1.6 T11d）：包根曾导出一个零消费方的 `AgentSidebarConfig`，与宿主
   `apps/web/src/pages/agent-panel/AgentSidebarConfig.tsx` 同源（均为 151 行，仅两处 import 不同）。
   侧栏导航的真相源现为各包 `web/contribution.ts` 的项声明 + WebShell 的分组表（`SHELL_NAV_GROUPS`），

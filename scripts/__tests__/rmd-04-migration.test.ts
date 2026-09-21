@@ -84,7 +84,13 @@ const RMD_04_MOVES = [
     `src/__tests__/${name}.test.ts`,
     `packages/resources/agent-config/src/__tests__/${name}.test.ts`,
   ]),
-  ["web/src/api/meta-agent.ts", "packages/resources/agent-config/web/src/api/meta-agent.ts"],
+  // §1.6 T12 第三次搬迁：该客户端从 `web/src/api/` 提到 `web/lib/`，以窄子路径出口
+  // `./web/lib/meta-agent` 发布（同 `web/lib/agent-create-navigation` 的先例）。
+  [
+    "web/src/api/meta-agent.ts",
+    "packages/resources/agent-config/web/src/api/meta-agent.ts",
+    "packages/resources/agent-config/web/lib/meta-agent.ts",
+  ],
   ["web/src/api/sidebar-config.ts", "packages/resources/agent-config/web/src/api/sidebar-config.ts"],
   // 这两条随 §1.6 T11d 再次搬迁：包内 `AgentSidebarConfig` 与宿主同源副本同批退场，侧栏装配与裁剪
   // 的 owner 归宿主 WebShell。`-filter-pure` 是逐字 port（50 条边界断言）；`agent-sidebar-config`

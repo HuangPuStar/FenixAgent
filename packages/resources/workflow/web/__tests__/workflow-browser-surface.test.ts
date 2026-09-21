@@ -36,13 +36,16 @@ const PKG_NAME = (JSON.parse(readFileSync(join(PKG_ROOT, "package.json"), "utf8"
  * workspace 包一律不收录——它们必须被递归进入，否则 `@fenix/x/server` 又能穿透（见「白名单不收录
  * workspace 包」）。未收录的库一旦被引入就会让本测试变红，从而强制做一次浏览器可用性评审。
  *
- * 这份清单与入口的实际可达面**逐项对应**（不多列）：新增一项必然意味着入口新引了一个库。
+ * 这份清单与入口的实际可达面**逐项对应**（不多列）：新增一项必然意味着入口新引了一个库，多列一项则由
+ * 「白名单不超列实际可达面」那条断言打回。
  *
- * 2026-09-21（§1.6 T11e）：编辑器 `WorkflowEditor` 加回入口后，可达到面大幅扩张——它经
- * `@fenix/agent-config/web` 的包根 barrel 一次性带进 agent-config / mcp / knowledge / memory /
- * model-management 的整片 web 图。下面第三组因此是「可达面传递进来的库」，不再是「本包自己 import
- * 的库」；每个都是纯浏览器库，且早已随各自包进入宿主 bundle，收录不改变任何浏览器可用性结论。
- * 收窄手段已登记（为 agent-config 的 `ensureMetaAgent` 增加窄子路径出口），做完后本组应能显著缩减。
+ * 2026-09-21（§1.6 T11e/T12）：编辑器 `WorkflowEditor` 加回入口时，`hooks/useWorkflowMetaAgent.ts` 是
+ * 经 `@fenix/agent-config/web` 的**包根 barrel** 取 `ensureMetaAgent` 的，一次带进 agent-config / mcp /
+ * knowledge / memory / model-management 的整片 web 图与其浏览器库，白名单因此一度膨胀到 46 条。T12 为该
+ * 函数加了窄子路径出口 `@fenix/agent-config/web/lib/meta-agent`，agent-config 侧现在只到达
+ * `web/lib/meta-agent.ts` 一个文件，26 条「可达面传递进来的库」随之退场（46 → 20）。
+ * 现在的 20 条重新回到两类来源：本包/宿主自己的依赖，以及本包编辑器经 `@fenix/ui-components` 共享原语
+ * 传递进入的库——即下面各组注释所示。
  */
 const BROWSER_SAFE_EXTERNAL: ReadonlyMap<string, string> = new Map([
   // 宿主提供（本包 package.json 的 peerDependencies：单实例库必须与宿主同一份）
@@ -55,7 +58,8 @@ const BROWSER_SAFE_EXTERNAL: ReadonlyMap<string, string> = new Map([
   ["ahooks", "React hooks 工具库（宿主亦直接依赖）"],
   ["dagre", "DAG 自动布局算法（纯计算，`layout.ts` 消费）"],
   ["js-yaml", "YAML 解析/序列化（纯计算，`yaml-utils.ts` 消费）"],
-  // 经 @fenix/ui-components 子路径传递进入：无 node 依赖的浏览器库
+  // 经 @fenix/ui-components 子路径传递进入：本包编辑器用的共享原语（ui/button、ui/dialog、
+  // config/ConfirmDialog 等）各自的依赖，均为无 node 依赖的浏览器库
   ["@radix-ui/react-slot", "无样式原语（ui/button 传递依赖），只依赖 react/DOM"],
   ["@radix-ui/react-dialog", "无样式原语（ui/dialog、config/ConfirmDialog 传递依赖）"],
   ["@radix-ui/react-alert-dialog", "无样式原语（ui/alert-dialog 传递依赖）"],
@@ -65,38 +69,13 @@ const BROWSER_SAFE_EXTERNAL: ReadonlyMap<string, string> = new Map([
   ["tailwind-merge", "Tailwind 类名去重（lib/cn 传递依赖），纯函数"],
   // 编辑器自身引入（本包 package.json 的 dependencies）
   ["@xyflow/react", "DAG 画布库（编辑器画布，`pages/workflow/{WorkflowEditor,nodes,edges}.tsx` 与三个 hook）"],
-  // 编辑器可达面传递进入：先经 @fenix/ui-components 的共享原语
+  // 编辑器可达面传递进入：同为 @fenix/ui-components 的原语依赖（ui/sheet、ui/popover、ui/select、
+  // ui/checkbox），与上一组同源——2026-09-21 实测每条 external 的发出文件都落在
+  // `packages/ui-components/web/**`，不经 agent-config。
   ["radix-ui", "Radix 聚合包（ui/sheet、ui/progress 传递依赖），无 node 依赖"],
   ["@radix-ui/react-popover", "无样式原语（ui/popover 传递依赖）"],
   ["@radix-ui/react-select", "无样式原语（ui/select 传递依赖）"],
   ["@radix-ui/react-checkbox", "无样式原语（ui/checkbox 传递依赖）"],
-  ["@radix-ui/react-tooltip", "无样式原语（ui/tooltip 传递依赖）"],
-  ["@radix-ui/react-tabs", "无样式原语（ui/tabs 传递依赖）"],
-  ["@radix-ui/react-dropdown-menu", "无样式原语（ui/dropdown-menu 传递依赖）"],
-  ["@radix-ui/react-collapsible", "无样式原语（ui/collapsible 传递依赖）"],
-  ["@radix-ui/react-switch", "无样式原语（ui/switch 传递依赖）"],
-  ["@radix-ui/react-slider", "无样式原语（ui/slider 传递依赖）"],
-  ["@radix-ui/react-scroll-area", "无样式原语（ui/scroll-area 传递依赖）"],
-  ["@radix-ui/react-separator", "无样式原语（ui/separator 传递依赖）"],
-  ["cmdk", "命令面板（ui/command 传递依赖），纯浏览器"],
-  ["streamdown", "流式 Markdown 渲染（chat/primitives/message 传递依赖）"],
-  ["recharts", "图表（ui/chart、AdminModelGatewayPage 传递依赖）"],
-  // 编辑器可达面传递进入：经 @fenix/agent-config/web 包根 barrel 到达的其他资源包 web 图
-  ["react-dom", "React DOM 渲染（agent-editor/AgentFormDialog 传递依赖）"],
-  ["react-hook-form", "表单状态（agent-config agent-editor、ui-components config/FormDialog）"],
-  ["@hookform/resolvers", "表单解析器（FormDialog 的 zod 绑定），纯函数"],
-  ["zod", "schema 校验（agent-editor-model、agent-mcp-utils），纯函数"],
-  ["qrcode", "二维码生成（agent-config SiteFrame），纯浏览器"],
-  ["@lobehub/icons", "模型品牌图标（model-management ModelIcon），纯 SVG"],
-  ["dompurify", "HTML 消毒（knowledge 资源预览），纯浏览器"],
-  ["mammoth", "docx 解析（knowledge 资源预览），纯浏览器"],
-  ["react-markdown", "Markdown 渲染（knowledge 资源预览），纯浏览器"],
-  ["remark-gfm", "GFM 语法扩展（react-markdown 传递依赖），纯函数"],
-  ["xlsx", "表格解析（knowledge 资源预览），纯浏览器"],
-  ["@antv/g6", "图可视化（knowledge KnowledgeGraphPanel），Canvas 渲染"],
-  ["cytoscape", "图可视化（memory Graph2d），Canvas 渲染"],
-  ["cytoscape-fcose", "cytoscape 布局插件（memory Graph2d 传递依赖），纯计算"],
-  ["@chenglou/pretext", "文本排版测量（memory Constellation），纯浏览器"],
 ]);
 
 const graph = walkValueGraph(WEB_ENTRY);
@@ -159,6 +138,14 @@ describe("workflow web 入口浏览器可达面", () => {
     const packages = loadWorkspacePackages();
     const leaked = [...BROWSER_SAFE_EXTERNAL.keys()].filter((root) => packages.has(root));
     expect(leaked).toEqual([]);
+  });
+
+  // 白名单「不多列」：注释里声明清单与可达面逐项对应，这条把它变成被守护的不变量。收窄可达面（如
+  // T12 的窄子路径出口）后必须同批删掉不再可达的条目，否则清单会重新变成「历史上引过什么」的堆积。
+  test("白名单不超列实际可达面", () => {
+    const reachedRoots = new Set(externals.map((ref) => ref.root));
+    const extra = [...BROWSER_SAFE_EXTERNAL.keys()].filter((root) => !reachedRoots.has(root));
+    expect(extra).toEqual([]);
   });
 
   // 递归只沿 exports 出口走：任何包的 exports 都不该指向测试文件，图里出现 __tests__ 即说明有出口写错
@@ -248,9 +235,10 @@ describe("workflow web 入口浏览器可达面", () => {
     const source = stripComments(readFileSync(WEB_ENTRY, "utf8"));
     expect(source).toContain("WorkflowEditor");
     expect(reachedWebFiles).toContain("pages/workflow/WorkflowEditor.tsx");
-    // 编辑器链条上的跨包腿：agent-config 的 Meta Agent 就绪入口 + agent-runtime 的环境列表 API。
+    // 编辑器链条上的跨包腿：agent-config 的 Meta Agent 就绪入口（窄子路径，T12 起不再走对方包根
+    // barrel——包根会把该包整棵页面图带进本包可达面）+ agent-runtime 的环境列表 API。
     for (const expected of [
-      "packages/resources/agent-config/web/index.ts",
+      "packages/resources/agent-config/web/lib/meta-agent.ts",
       "packages/agent-runtime/web/api/environments.ts",
     ]) {
       expect(reachedPackageFiles).toContain(expected);
