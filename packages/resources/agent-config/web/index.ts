@@ -15,6 +15,8 @@
  *     宿主 `shell/AgentSidebarTree.tsx` 取 `ensureMetaAgent`；
  *   - 宿主聊天容器（`apps/web` 的 ChatArea）取 `loadBoundMcps`，把「Agent 已绑定的 MCP 选项」注入
  *     `@fenix/ui-components` 聊天面板的 `boundMcps` 端口（查询为何落在这里见 `./lib/bound-mcps.ts`）。
+ *   - `AgentManagementPage` 原寄居宿主 `apps/web/src/pages/agent-panel/pages/`，§1.6 T11e 随「宿主剩余
+ *     页面归位」迁入本包，route adapter 改直连本入口（原先经 vite / tsconfig 的 `@/src/pages/...` 桥接别名）。
  * 这些符号都在本文件的导出面内，消费方一律走包根，不得深入 `web/pages/**` 这类实现路径。
  *
  * 宿主注册 i18n 走子路径 `@fenix/agent-config/web/i18n`（见 `./i18n/index.ts` 的说明）：
@@ -37,6 +39,7 @@ export {
   type GenerationFormData,
   type SkillItem,
 } from "./pages/agent-panel/components/AgentGenerationForm";
+export { AgentManagementPage } from "./pages/agent-panel/pages/AgentManagementPage";
 export { AgentSitesPage } from "./pages/agent-panel/pages/AgentSitesPage";
 export { AgentSitesCatalog, type SiteVisibilityFilter } from "./pages/agent-panel/pages/agent-sites-catalog";
 export * from "./src/api/meta-agent";

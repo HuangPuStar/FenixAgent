@@ -2,7 +2,7 @@ import { createFileRoute } from "@tanstack/react-router";
 import { lazy } from "react";
 
 const AgentManagementPage = lazy(() =>
-  import("@/src/pages/agent-panel/pages/AgentManagementPage").then((m) => ({
+  import("@fenix/agent-config/web").then((m) => ({
     default: m.AgentManagementPage,
   })),
 );

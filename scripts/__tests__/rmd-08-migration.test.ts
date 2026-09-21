@@ -47,6 +47,11 @@ import { existsSync } from "node:fs";
  *     同片的 T11d 收尾直删 1 项（71 → 70）：`AgentSidebarConfig.tsx` 是宿主侧那份 14 项导航表，侧栏的
  *     真相源改由各包 `web/contribution.ts` + WebShell 分组表装配后它零消费，属「删除优于兼容」的直删，
  *     另立专项断言防三处路径复活。
+ * 14. 任务 1.6 T11e 把宿主剩余的三个 agent-panel 页面归位到 `@fenix/agent-config`（MOVES 70 → 69，
+ *     RELOCATED 77 → 78）：它们的值依赖全部落在该包（`agentApi` / `envApi` / `modelApi` /
+ *     `AgentFormDialog` / `AgentGenerationForm`），留在宿主只能靠 vite / tsconfig 的 `@/src/pages/...`
+ *     桥接别名解析。本片先搬 `AgentManagementPage.tsx`（另两页同批随 T11e-3 搬完）；`agent-create-navigation.ts`
+ *     是该页与宿主壳共用的纯函数，其归属与搬迁见 T11e-3 的后续分片。
  */
 const RMD_08_MOVES = [
   ["web/src/App.tsx", "apps/web/src/App.tsx"],
@@ -131,10 +136,6 @@ const RMD_08_MOVES = [
     "apps/web/src/pages/agent-panel/pages/AgentDashboardPage.tsx",
   ],
   ["web/src/pages/agent-panel/pages/AgentHomePage.tsx", "apps/web/src/pages/agent-panel/pages/AgentHomePage.tsx"],
-  [
-    "web/src/pages/agent-panel/pages/AgentManagementPage.tsx",
-    "apps/web/src/pages/agent-panel/pages/AgentManagementPage.tsx",
-  ],
   [
     "web/src/pages/agent-panel/shared/agent-master-detail-workspace.tsx",
     "apps/web/src/pages/agent-panel/shared/agent-master-detail-workspace.tsx",
@@ -535,6 +536,11 @@ const RMD_08_RELOCATED = [
     "apps/web/src/__tests__/agent-utils.test.ts",
     "packages/resources/agent-config/web/__tests__/agent-utils.test.ts",
   ],
+  [
+    "web/src/pages/agent-panel/pages/AgentManagementPage.tsx",
+    "apps/web/src/pages/agent-panel/pages/AgentManagementPage.tsx",
+    "packages/resources/agent-config/web/pages/agent-panel/pages/AgentManagementPage.tsx",
+  ],
 ] as const;
 
 describe("RMD-08 apps/web migration", () => {
@@ -551,9 +557,10 @@ describe("RMD-08 apps/web migration", () => {
   // 100 → 88；T10b2 把 7 个 web-runtime 归属的宿主测试移入包内（见文件头第 9 条），88 → 82；
   // T10b3 又移出 2 项（见文件头第 10 条），82 → 80；T10b4 把 8 个 agent-config 归属的宿主测试移入包内
   // （见文件头第 11 条），80 → 72；T10b5 直删 1 项自指用例（见文件头第 12 条），72 → 71；
-  // T11d 随导航贡献化直删 `AgentSidebarConfig.tsx`（见文件头第 13 条），71 → 70。
+  // T11d 随导航贡献化直删 `AgentSidebarConfig.tsx`（见文件头第 13 条），71 → 70；T11e 把三个 agent-panel
+  // 页面归位到 `@fenix/agent-config`（见文件头第 14 条），70 → 69。
   test("removes every legacy source and retains its exact owner target", () => {
-    expect(RMD_08_MOVES).toHaveLength(70);
+    expect(RMD_08_MOVES).toHaveLength(69);
     for (const [source, target] of RMD_08_MOVES) {
       expect(existsSync(source), `legacy source still exists: ${source}`).toBe(false);
       expect(existsSync(target), `apps/web target is missing: ${target}`).toBe(true);
@@ -605,12 +612,12 @@ describe("RMD-08 apps/web migration", () => {
   });
 
   // 任务 1.3 收口的 9 份 + 任务 1.6 T4 的 1 份 + T8b 的 11 份 + T8c 的 11 份 + T8d 的 15 份 + T9a 的 2 份
-  // + T10b1 的 12 份 + T10b2 的 7 份 + T10b3 的 1 份 + T10b4 的 8 份宿主副本：
+  // + T10b1 的 12 份 + T10b2 的 7 份 + T10b3 的 1 份 + T10b4 的 8 份 + T11e 归位的 agent-panel 页面：
   // 旧根路径与应用壳路径都不得复活，
   // 且包侧 owner 落点必须存在。副本与 owner 并存是「两份实现各自能跑」的最坏形态，
   // 删除与断言必须成对出现。
   test("relocates the leftover host copies to their package owners", () => {
-    expect(RMD_08_RELOCATED).toHaveLength(77);
+    expect(RMD_08_RELOCATED).toHaveLength(78);
     for (const [legacy, shell, owner] of RMD_08_RELOCATED) {
       expect(existsSync(legacy), `legacy source still exists: ${legacy}`).toBe(false);
       expect(existsSync(shell), `host copy still exists: ${shell}`).toBe(false);

@@ -50,6 +50,11 @@ const BORROWED_NAMESPACE_FILES: ReadonlyArray<{ file: string; namespace: string;
     reason: "Agent 首页生成表单仍由 apps/web 的 AgentHomePage 消费同一批键",
   },
   {
+    file: "pages/agent-panel/pages/AgentManagementPage.tsx",
+    namespace: "NS.COMPONENTS",
+    reason: "`statusBadge.all` 是筛选条与宿主 `components` 字典共用的键（唯一借用点），迁入会新增一份重复键",
+  },
+  {
     file: "pages/agent-panel/pages/AgentSitesPage.tsx",
     namespace: "NS.AGENT_PANEL",
     reason: "siteDeployment.* 键组由多个 agent-panel 页面共享，整体搬迁需跨包裁定",

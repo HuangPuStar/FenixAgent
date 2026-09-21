@@ -2,10 +2,11 @@
 // agents 命名空间的文案资源出口（计划 §4：键的最终所在地 = 包的 owner）。
 //
 // 为什么这批键要迁入本包：它们原本寄居在宿主 `apps/web/src/i18n/locales/*/agents.json`，
-// 但 271 个键的消费方几乎全是 agent-config 的编辑器与站点页面（宿主只剩 §1.6 未装配的
+// 但 271 个键的消费方几乎全是 agent-config 的编辑器与站点页面（当时宿主只剩未装配的
 // `AgentManagementPage.tsx` 取 `management.*` / `categories.*`）。文案文件留在宿主，等于
 // 「页面 owner」与「字典 owner」分属两侧，任一侧改名都不会被另一侧的门禁发现。迁入后本包
 // 自持 `agents` 命名空间，宿主侧只删除旧文件并把注册改指本模块（见 README 的共享补丁清单）。
+// 该页随后也随 §1.6 T11e 迁入本包，`agents` 命名空间的消费方自此全在本包内。
 //
 // 宿主注册方式（apps/web/src/i18n/index.ts）：从子路径 `@fenix/agent-config/web/i18n` 导入本模块，
 // 把 `agentResources.en/zh` 登记到 `AGENTS_NS`。走子路径而不是 `./web` 根入口：宿主 i18n 在应用

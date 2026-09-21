@@ -67,7 +67,8 @@ Agent 配置资源行、关联绑定（Skill / MCP / 知识库 / 记忆）与站
   两侧副本与宿主旧表 `SIDEBAR_NAV_GROUPS` 同批删除；`filterNavGroups` 的纯逻辑与断言改由宿主
   `apps/web/src/shell/shell-navigation.ts` 持有——隐藏列表来自本包 `sidebarConfigApi`，被裁剪的却是
   Shell 装配出的导航，owner 因此是 Shell。本包只剩数据面（`./src/api/sidebar-config`）。
-- **页面与组件域**：`web/pages/agent-panel/**`（编辑器、`AgentSitesPage`、`agent-sites-catalog`）、
+- **页面与组件域**：`web/pages/agent-panel/**`（编辑器、`AgentSitesPage`、`agent-sites-catalog`，
+  以及随 §1.6 T11e 从宿主归位的 agent-panel 页面）、
   `web/components/agent-panel/**`（`SiteFrame` / `SiteTabsBar` / `MountSiteDialog` / `AgentSitesCard`）、
   `web/api/**`、`web/hooks/**`、`web/lib/**`。
 - **i18n 自持**：`web/i18n/locales/{en,zh}/agents.json` 各 271 个键，两份键结构一致（实测比对，
@@ -85,10 +86,11 @@ Agent 配置资源行、关联绑定（Skill / MCP / 知识库 / 记忆）与站
   `apps/server/src/config.ts`、`apps/server/src/env.ts` 与 `packages/agent-runtime` 的
   `launch-spec-builder.ts` 消费；`./server/config` 被宿主 `config-validators` 用例消费；
   `./server/runtime` 与 `./server/api-agent-schema` 分别由宿主装配与协议 schema 消费方使用。
-- **宿主侧第二份实现（待宿主删除，非本包可写范围）**：
-  `apps/web/src/lib/agent-node.ts`、`agent-utils.ts`、`agent-resource-access.ts`（与包内 `web/lib/*`
-  同源、仅导入路径不同，消费方是尚未迁移的宿主页面 `AgentManagementPage` / `AgentSidebarTree` 与其 3 个
-  宿主用例）；`apps/web/src/pages/agent-panel/AgentSidebarConfig.tsx`（同源副本，见「web 面与 i18n」一节）。
+- **宿主侧第二份实现——已全部退场**：`apps/web/src/lib/agent-node.ts`、`agent-utils.ts`、
+  `agent-resource-access.ts`（与包内 `web/lib/*` 同源）随 §1.6 T8d 的「宿主 `src/{api,hooks,lib,types}`
+  副本簇退场」删除；`apps/web/src/pages/agent-panel/AgentSidebarConfig.tsx` 随 T11d 与其包内死副本同时
+  删除；三个 agent-panel 页面（`AgentManagementPage` / `AgentHomePage` / `AgentDashboardPage`）随 T11e
+  迁入本包。本包 web 面对宿主源码已零引用。
   **已删除**：`apps/web/src/i18n/locales/{en,zh}/agents.json`（键集曾与包内两份文件完全一致）——宿主
   `apps/web/src/i18n/index.ts` 已改经 `@fenix/agent-config/web/i18n` 子路径注册 `agentResources`，不再
   持有第二份字典，此项已不是残留；`apps/server/src/schemas/sidebar-config.schema.ts`（任务 1.5a 随 160 行

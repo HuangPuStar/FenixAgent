@@ -1,13 +1,10 @@
-import {
-  getAgentConfigLookupKey,
-  getAgentDisplayName,
-  isExternalAgent,
-} from "@fenix/agent-config/web/lib/agent-resource-access";
-import { useOrg } from "@fenix/identity/web";
+import { type EnvironmentDetail, envApi } from "@fenix/agent-runtime/web/api/environments";
 import { AgentBadge } from "@fenix/ui-components/chat/shell/AgentBadge";
 import { AppHeader } from "@fenix/ui-components/layout/app-header";
 import { AppPage } from "@fenix/ui-components/layout/app-page";
 import { unwrap } from "@fenix/web-runtime/api/request";
+import { useOrgSession } from "@fenix/web-runtime/contexts/org-session";
+import { NS } from "@fenix/web-runtime/i18n/namespace";
 import { useConfigChangeListener } from "@fenix/web-runtime/lib/config-events";
 import type { AgentInfo } from "@fenix/web-runtime/types/config";
 import { useNavigate } from "@tanstack/react-router";
@@ -16,10 +13,9 @@ import { Bot, Loader2, Plus, Search, Sparkles } from "lucide-react";
 import { useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
-import { agentApi } from "@/src/api/agents";
-import { type EnvironmentDetail, envApi } from "@/src/api/environments";
-import { NS } from "@/src/i18n";
-import { AgentFormDialog } from "@/src/pages/agent-panel/agent-editor/AgentFormDialog";
+import { agentApi } from "../../../api/agents";
+import { getAgentConfigLookupKey, getAgentDisplayName, isExternalAgent } from "../../../lib/agent-resource-access";
+import { AgentFormDialog } from "../agent-editor/AgentFormDialog";
 
 interface AgentManageNode {
   agent: AgentInfo;
@@ -66,8 +62,10 @@ function inferCategory(agent: AgentInfo, activeOrganizationId?: string): FilterI
 export function AgentManagementPage() {
   const navigate = useNavigate();
   const { t } = useTranslation(NS.AGENTS);
-  const { org } = useOrg();
-  const orgId = org?.id;
+  // 组织上下文经 §1.6 T7 的平台中立契约取（`useOrg()` 会构成 resource → platform-impl 禁止边）。
+  // 契约投影用 `null` 表示「未解析出组织」，本页内部沿用可选参数的 `undefined` 语义。
+  const { organizationId } = useOrgSession();
+  const orgId = organizationId ?? undefined;
   const filterLabels = useFilterLabels();
   const [query, setQuery] = useState("");
   const [activeFilter, setActiveFilter] = useState<FilterId>("all");

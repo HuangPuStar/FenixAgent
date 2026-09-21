@@ -157,6 +157,8 @@ const CONSUMER_SYMBOLS: ReadonlyArray<{ symbol: string; owner: string }> = [
   { symbol: "agentApi", owner: "api/agents.ts" },
   { symbol: "sidebarConfigApi", owner: "src/api/sidebar-config.ts" },
   { symbol: "ensureMetaAgent", owner: "src/api/meta-agent.ts" },
+  // 宿主 route adapter 取三个 agent-panel 页面（§1.6 T11e 归位，原先经 vite / tsconfig 桥接别名）
+  { symbol: "AgentManagementPage", owner: "pages/agent-panel/pages/AgentManagementPage.tsx" },
 ];
 
 describe("agent-config web 入口浏览器可达面", () => {
