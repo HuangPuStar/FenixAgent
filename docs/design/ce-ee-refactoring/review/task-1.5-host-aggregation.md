@@ -1906,6 +1906,11 @@ cancelled 0 jobs`，进程随即退出。**这里要如实说明证据强度**�
 (b) 明确「阶段 2 不做」，把 6 条一并改挂「未排期」，并在 `_comment` 注明该族需 machine 包的独立任务。
 本片不擅自处置：前者要开新任务、后者要改 1.4 名下 4 条，都超出「1.5 名下台账据实改写」的范围。
 
+**2026-09-21 用户裁定（对「这条边不改是否影响功能」的答复）**：**只记账、不修复**，修复留待后续有空时做。
+据此在台账该条 `rationale` 末段补记了 1.5 结项复核查到的三条未触发风险（模块单例装配面依赖、barrel 加载序
+环、可观测性损失）与两条候选修复路径（改指窄入口 / 宿主注入 lookup 端口），`removeWhen` 同步加注；归属
+(a)/(b) **仍未决**（owner 现为已结项的 1.4），见 §8.3。
+
 #### 1.5g-5 【需审核】把逐条重复的「通用段落」收敛进 `_comment`
 
 10 条 `no-circular` 的 rationale 里各有一段**逐字重复**的「代表边语义 + 上报粒度 + 环长定义」段落，
@@ -2073,7 +2078,7 @@ packages 7316（2 skip）/ web 946，0 fail）；`bun run build:web` ✓（`✓ 
 | `services/data-migrate.ts` + `services/data-migrates/*`（3 文件 477 行） | §1.7 | 见下 |
 | `envDefinitions` / `preflight` 收敛、模块配置读取面的彻底收敛 | §1.7 | §四「本任务不做」 |
 | web 页面下沉与 WebShell 装配 | §1.6 | §一 |
-| `machine → agent-config` 闭合边的归属（4 包环族 38 处环的共同闭合边，无在排分片） | 待用户裁定 (a)/(b) | 1.5g-4 遗留 |
+| `machine → agent-config` 闭合边（4 包环族 38 处环的共同闭合边，无在排分片）：归属待裁定 (a)/(b)；**本轮经用户裁定只记账不修复**，三条未触发风险与两条候选修复路径记在台账该条 `rationale` 末段 | 归属待裁定；修复待后续任务 | 1.5g-4 遗留 |
 | 未排期 9 条台账（含 `no-circular @fenix/resource-knowledge` 自环） | 待排期 | 1.5g-2、1.5g-4 ① |
 
 `services/data-migrate.ts` 与 `services/data-migrates/{backfill-resource-visibility,
