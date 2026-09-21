@@ -1,13 +1,10 @@
 import { describe, expect, test } from "bun:test";
 
-// 宿主副本 `apps/web/src/lib/context-queue.ts` 已随 §1.6 T8d 退场，本用例拆成两个 owner 来源断言：
-// - 有状态队列（`contextQueues` 模块级 Map）归 `@fenix/web-runtime/chat/context-queue`，
-//   即 workflow 包的写入方与 chat-channel 的取出方共用的那一个实例；
-// - 纯函数子集（引用解析/截断/序列化）归 `@fenix/ui-components/chat/lib/context-queue`。
-// 拆开是因为包内已按职责分成两份：队列是宿主会话级可变状态，纯函数无副作用可公共复用。
-const { pushContext, removeContext, flushContext, clearContextQueue } = await import(
-  "@fenix/web-runtime/chat/context-queue"
-);
+// 引用上下文队列的用例按两个 owner 拆开（§1.6 T10b3）：有状态队列（`contextQueues` 模块级 Map）归
+// `@fenix/web-runtime/chat/context-queue`（其用例见该包 `web/__tests__/context-queue.test.ts`），本文件只
+// 守护无副作用的纯函数子集——引用解析、Unicode 安全截断与序列化，归
+// `@fenix/ui-components/chat/lib/context-queue`。拆开是因为包内已按职责分成两份：队列是宿主会话级可变
+// 状态，纯函数可公共复用。
 const {
   MAX_QUOTED_TEXT_LENGTH,
   MAX_QUOTE_CONTEXT_PAYLOAD_LENGTH,
@@ -17,70 +14,7 @@ const {
   serializeChatQuotes,
 } = await import("@fenix/ui-components/chat/lib/context-queue");
 
-describe("context-queue", () => {
-  test("flushContext 返回 null 当队列为空", () => {
-    clearContextQueue();
-    expect(flushContext()).toBeNull();
-  });
-
-  test("pushContext + flushContext 返回拼接的 system-reminder block", () => {
-    clearContextQueue();
-    pushContext("route", "当前页面: /agent/chat/agent-123");
-    pushContext("session", "sessionId: ses-456");
-    const result = flushContext();
-    expect(result).not.toBeNull();
-    expect(result!.startsWith("<system-reminder>")).toBe(true);
-    expect(result!.endsWith("</system-reminder>")).toBe(true);
-    expect(result).toContain("当前页面: /agent/chat/agent-123");
-    expect(result).toContain("sessionId: ses-456");
-  });
-
-  test("flushContext 清空队列后再次 flush 返回 null", () => {
-    clearContextQueue();
-    pushContext("route", "test");
-    flushContext();
-    expect(flushContext()).toBeNull();
-  });
-
-  test("pushContext 覆盖同 key 的旧值", () => {
-    clearContextQueue();
-    pushContext("route", "旧页面");
-    pushContext("route", "新页面");
-    const result = flushContext();
-    expect(result).toContain("新页面");
-    expect(result).not.toContain("旧页面");
-  });
-
-  test("removeContext 移除指定 key", () => {
-    clearContextQueue();
-    pushContext("route", "页面");
-    pushContext("session", "会话");
-    removeContext("session");
-    const result = flushContext();
-    expect(result).toContain("页面");
-    expect(result).not.toContain("会话");
-  });
-
-  test("removeContext 不存在的 key 不报错", () => {
-    clearContextQueue();
-    expect(() => removeContext("nonexistent")).not.toThrow();
-  });
-
-  // 意图：keep-alive 会话的引用上下文只能由对应会话消费，全局上下文仍可随当前会话发送。
-  test("flushContext 隔离会话队列", () => {
-    clearContextQueue();
-    pushContext("route", "全局页面");
-    pushContext("quote-a", "会话 A 引用", "session-a");
-    pushContext("quote-b", "会话 B 引用", "session-b");
-
-    const sessionA = flushContext("session-a");
-    expect(sessionA).toContain("全局页面");
-    expect(sessionA).toContain("会话 A 引用");
-    expect(sessionA).not.toContain("会话 B 引用");
-    expect(flushContext("session-a")).toBeNull();
-    expect(flushContext("session-b")).toContain("会话 B 引用");
-  });
-
+describe("context-queue 纯函数", () => {
   // 超长引用必须在进入上下文队列前截断，避免把整段聊天输出传给 Agent。
   test("limitQuotedText 限制超长引用并报告省略字符数", () => {
     const source = `${"甲".repeat(MAX_QUOTED_TEXT_LENGTH)}后续内容`;

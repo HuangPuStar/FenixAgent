@@ -30,6 +30,9 @@ import { existsSync } from "node:fs";
  * 9. 任务 1.6 T10b2 把 7 个 web-runtime 归属的宿主测试移入包内（88 → 82）：判定口径同第 8 条，只是 owner
  *    换成 `@fenix/web-runtime`；其中 `request.test.ts` 不在 RMD-08 快照内（它守护的是 T8d 才上收到包里的
  *    `api/request`），一并归位并补进 relocated 断言，避免宿主侧复活。
+ * 10. 任务 1.6 T10b3 收尾 ui-components 归属（82 → 80）：同上口径，另含两处变形——`tree-component.test.tsx`
+ *     去掉宿主副本时代遗留的 `@/src/i18n` 替身（`ui/tree` 只依赖包内 `i18n/namespace`）；
+ *     `context-queue.test.ts` 按 owner 拆开，队列一半随宿主副本删除（与包内用例逐字重复）。
  */
 const RMD_08_MOVES = [
   ["web/src/App.tsx", "apps/web/src/App.tsx"],
@@ -74,7 +77,6 @@ const RMD_08_MOVES = [
   ["web/src/__tests__/api-result-utils.test.ts", "apps/web/src/__tests__/api-result-utils.test.ts"],
   ["web/src/__tests__/auth-preference.test.ts", "apps/web/src/__tests__/auth-preference.test.ts"],
   ["web/src/__tests__/config-routing.test.ts", "apps/web/src/__tests__/config-routing.test.ts"],
-  ["web/src/__tests__/context-queue.test.ts", "apps/web/src/__tests__/context-queue.test.ts"],
   ["web/src/__tests__/dark-mode-components.test.tsx", "apps/web/src/__tests__/dark-mode-components.test.tsx"],
   ["web/src/__tests__/folder-upload-batching.test.ts", "apps/web/src/__tests__/folder-upload-batching.test.ts"],
   ["web/src/__tests__/form-utils.test.ts", "apps/web/src/__tests__/form-utils.test.ts"],
@@ -89,7 +91,6 @@ const RMD_08_MOVES = [
   ],
   ["web/src/__tests__/random-uuid-polyfill.test.ts", "apps/web/src/__tests__/random-uuid-polyfill.test.ts"],
   ["web/src/__tests__/retry.test.ts", "apps/web/src/__tests__/retry.test.ts"],
-  ["web/src/__tests__/tree-component.test.tsx", "apps/web/src/__tests__/tree-component.test.tsx"],
   ["web/src/__tests__/use-task-views.test.tsx", "apps/web/src/__tests__/use-task-views.test.tsx"],
   ["web/src/__tests__/utils.test.ts", "apps/web/src/__tests__/utils.test.ts"],
   ["web/src/api/fs.ts", "apps/web/src/api/fs.ts"],
@@ -179,6 +180,9 @@ const RMD_08_MOVES = [
  * 任务 1.6 T10b2 再移出 7 项：`request` 与两个 `structured-thread-*`、`todo`、`permission-options`、
  * `artifacts-preview-events`、`config-types` 的宿主用例——全部只引用 `@fenix/web-runtime` 出口（其中
  * `request.test.ts` 未被 RMD-08 快照收录，本片一并归位），owner 是该包的 `web/{api,lib,chat,types}`。
+ * 任务 1.6 T10b3 再移出 1 项并拆 1 项：`tree-component.test.tsx` 随 `ui/tree` 的实现迁入 ui-components；
+ * `context-queue.test.ts` 同时守护队列（web-runtime）与纯函数（ui-components）两个 owner，按 owner 拆开
+ * （队列一半与 web-runtime 包内用例逐字重复，随宿主副本一并删除），拆分归属另立专项断言。
  */
 const RMD_08_RELOCATED = [
   [
@@ -497,6 +501,11 @@ const RMD_08_RELOCATED = [
     "apps/web/src/__tests__/todo.test.ts",
     "packages/web-runtime/web/__tests__/todo.test.ts",
   ],
+  [
+    "web/src/__tests__/tree-component.test.tsx",
+    "apps/web/src/__tests__/tree-component.test.tsx",
+    "packages/ui-components/web/__tests__/tree-component.test.tsx",
+  ],
 ] as const;
 
 describe("RMD-08 apps/web migration", () => {
@@ -510,9 +519,10 @@ describe("RMD-08 apps/web migration", () => {
   // T9a 把宿主 `settings.json` 两份交给 identity 包（唯一消费方是包内的 `ChangePasswordDialog`），
   // 111 → 109——i18n 归属重划：键的物理落点必须等于 owner；T9c 直删 8 份零绑定字典与 1 项自指测试
   // （见文件头第 7 条），109 → 100；T10b1 把 12 个 ui-components 归属的宿主测试移入包内（见文件头第 8 条），
-  // 100 → 88；T10b2 把 7 个 web-runtime 归属的宿主测试移入包内（见文件头第 9 条），88 → 82。
+  // 100 → 88；T10b2 把 7 个 web-runtime 归属的宿主测试移入包内（见文件头第 9 条），88 → 82；
+  // T10b3 又移出 2 项（见文件头第 10 条），82 → 80。
   test("removes every legacy source and retains its exact owner target", () => {
-    expect(RMD_08_MOVES).toHaveLength(82);
+    expect(RMD_08_MOVES).toHaveLength(80);
     for (const [source, target] of RMD_08_MOVES) {
       expect(existsSync(source), `legacy source still exists: ${source}`).toBe(false);
       expect(existsSync(target), `apps/web target is missing: ${target}`).toBe(true);
@@ -547,16 +557,25 @@ describe("RMD-08 apps/web migration", () => {
   });
 
   // 任务 1.3 收口的 9 份 + 任务 1.6 T4 的 1 份 + T8b 的 11 份 + T8c 的 11 份 + T8d 的 15 份 + T9a 的 2 份
-  // + T10b1 的 12 份 + T10b2 的 7 份宿主副本：
+  // + T10b1 的 12 份 + T10b2 的 7 份 + T10b3 的 1 份宿主副本：
   // 旧根路径与应用壳路径都不得复活，
   // 且包侧 owner 落点必须存在。副本与 owner 并存是「两份实现各自能跑」的最坏形态，
   // 删除与断言必须成对出现。
   test("relocates the leftover host copies to their package owners", () => {
-    expect(RMD_08_RELOCATED).toHaveLength(68);
+    expect(RMD_08_RELOCATED).toHaveLength(69);
     for (const [legacy, shell, owner] of RMD_08_RELOCATED) {
       expect(existsSync(legacy), `legacy source still exists: ${legacy}`).toBe(false);
       expect(existsSync(shell), `host copy still exists: ${shell}`).toBe(false);
       expect(existsSync(owner), `package owner is missing: ${owner}`).toBe(true);
     }
+  });
+  // 拆分归属的用例无法用 relocated 三元组表达：`context-queue` 的宿主副本连同「队列状态」一半一并删除
+  // （那一半与该包 `web/__tests__/context-queue.test.ts` 逐字重复），纯函数一半移入 ui-components。断言
+  // 覆盖三件事：旧的根路径与宿主副本都不得复活，两个 owner 侧的用例都必须存在。
+  test("splits the host context queue test between its two package owners", () => {
+    expect(existsSync("web/src/__tests__/context-queue.test.ts")).toBe(false);
+    expect(existsSync("apps/web/src/__tests__/context-queue.test.ts")).toBe(false);
+    expect(existsSync("packages/web-runtime/web/__tests__/context-queue.test.ts")).toBe(true);
+    expect(existsSync("packages/ui-components/web/__tests__/context-queue.test.ts")).toBe(true);
   });
 });

@@ -1466,6 +1466,43 @@ relocated 断言，避免它成为台账之外的宿主复活口。
 完整门禁 `env -u ANTHROPIC_MODEL bun run precheck` 全绿（772 / 7618 + 2 skip / 670，0 fail），
 `bun run build:web` 与 `bun run docs:build` 均成功。
 
+### 7.22 T10b3 收尾 ui-components 归属：1 项随实现迁入、1 项按 owner 拆开、1 项重复覆盖直删（2026-09-21，）
+
+T10 的第四片，宿主侧最后一组「除标准库外只引用 `@fenix/ui-components` 出口」的用例。三种处置：
+
+**① `tree-component.test.tsx` 随实现迁入包内**（`@fenix/ui-components/web/__tests__/`），并把两处
+`mock.module` 替身换成**真字典 + `I18nextProvider`**（与 `message.ssr.test.tsx` 同一约定）：
+- 对宿主 `@/src/i18n` 的替身是宿主副本时代（T8a 之前）的残留——`ui/tree` 只依赖包内 `web/i18n/namespace`，
+  包内不存在该导入方，删除后用例仍全绿，等于顺带证明它是死替身。
+- 对 `react-i18next` 的替身必须改掉：**它实测会跨文件泄漏**。本文件迁入包内后与 `message.ssr.test.tsx`、
+  `chat-composer.test.tsx` 同进程求值，`afterEach` 的 `mock.restore()` 挡不住已经拿到替身绑定的模块，
+  整包测试随即出现 14 条失败——i18n 断言退化成回显 key（`chat.components.composerAssets.quoteNumber`）。
+  换成真字典后恢复全绿；顺带也满足了「测试文件禁止直接调用 `mock.module()`」（CLAUDE.md）。
+
+**② `context-queue.test.ts` 按 owner 拆开**。它一个文件同时守护两个 owner：队列状态（`contextQueues` 模块级
+Map）归 `@fenix/web-runtime/chat/context-queue`，纯函数子集（引用解析 / Unicode 安全截断 / 序列化）归
+`@fenix/ui-components/chat/lib/context-queue`。拆开后：队列一半**随宿主副本一并删除**——它与该包
+`web/__tests__/context-queue.test.ts` 的 7 条用例**逐字重复**（同注释、同断言），留一份即够；纯函数一半移入
+包内新用例。宿主侧因此没有覆盖损失。
+
+**③ `ui-components.test.ts` 直删（重复覆盖）**。它是一份 87 行的 barrel 冒烟用例，两类断言都已有更强或对位的
+守护：导出名清单由包内 `barrel-exports.test.ts` 逐名 + 计数 + `package.json` 出口一致性覆盖（该文件明确
+「只断言公共出口的名称与非空性，不渲染组件、不 mock 模块」）；`cn` 的两条断言守护的是**宿主**自己的
+`apps/web/src/lib/utils.ts`，故不迁包、并入宿主 `utils.test.ts`（该文件原先未覆盖 `cn`）。删除按
+「重复覆盖」口径，不属搬迁。
+
+**台账与改动同批**：`context-queue.test.ts` 与 `tree-component.test.tsx` 从 `RMD_08_MOVES` 移出
+（`toHaveLength(82)` → 80）；`tree-component.test.tsx` 追加进 `RMD_08_RELOCATED`（`toHaveLength(68)` → 69）；
+拆分归属无法用 relocated 三元组表达，另立专项断言（`splits the host context queue test between its two
+package owners`：旧的根路径与宿主副本都不得复活、两个 owner 侧用例都必须存在）。文件头追加第 10 条改判。
+
+**验证**：`bun test packages/ui-components/` 617 pass 0 fail（迁入两个用例文件后 58 → 60 个文件、596 → 617
+个用例）；四个对位文件（web-runtime 与 ui-components 各一份 `context-queue`、`tree-component`、宿主
+`utils.test.ts`）65 pass 0 fail；`bun test scripts/__tests__/rmd-08-migration.test.ts` 7 pass。宿主
+`apps/web/src/__tests__/` 41 → 39 个用例文件（web-app-tests 630 pass / 38 文件）。
+完整门禁 `env -u ANTHROPIC_MODEL bun run precheck` 全绿（773 / 7639 + 2 skip / 630，0 fail，lint 零
+warning），`bun run build:web` 与 `bun run docs:build` 均成功。
+
 ---
 
 ## 八、用户可见行为变更
