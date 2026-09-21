@@ -5,6 +5,9 @@ import { Button } from "@/components/ui/button";
 import "@/src/pages/agent-panel/agent-panel.css";
 
 const Page = lazy(() => import("@/src/pages/prod-view/ProdViewPage").then((m) => ({ default: m.ProdViewPage })));
+// 分享页只解析实例身份，聊天容器由宿主注入：ChatArea 属宿主 Shell（§2.3），
+// 资源包不得依赖聊天包实现，因此这里把宿主组件作为 `chatArea` prop 传入（CE 阶段 2 任务 1.6 T5b）。
+const ChatArea = lazy(() => import("@/src/pages/agent-panel/ChatArea").then((m) => ({ default: m.ChatArea })));
 
 /** ProdView 错误回退 UI：复用 agent-panel 布局 */
 function ProdViewErrorFallback({ error, resetErrorBoundary }: FallbackProps) {
@@ -40,7 +43,7 @@ export const Route = createFileRoute("/view/$prodViewId")({
           </div>
         }
       >
-        <Page />
+        <Page chatArea={ChatArea} />
       </Suspense>
     </ErrorBoundary>
   ),

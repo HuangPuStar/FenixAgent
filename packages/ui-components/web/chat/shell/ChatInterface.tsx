@@ -16,7 +16,8 @@
  *   仍在（`periTasks` / `periTasksLoaded` 保留）；详情入口改由 `renderPeriTaskDetail` 注入槽承接
  *   （宿主渲染自己的抽屉），未注入时任务行只读。
  * - `ContextPanel` 右栏与其开关一并移除（2026-09-18）：该面板源自 `chat-channel`，`apps/web` 从不渲染它
- *   （宿主走 `@fenix/chat-channel/web/chat-area`），源 ACPMain 也一直传 `hideContextPanel={true}`。
+ *   （宿主走自己的 `apps/web/src/pages/agent-panel/ChatArea.tsx`，CE 阶段 2 任务 1.6 T5b 起由该处接管），
+ *   源 ACPMain 也一直传 `hideContextPanel={true}`。
  *   `hideContextPanel` prop 随之删除；`renderEntries` / `promptUsage` 仍被状态面板与输入岛上下文计使用。
  */
 

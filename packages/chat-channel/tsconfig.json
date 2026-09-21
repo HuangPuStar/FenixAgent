@@ -17,8 +17,7 @@
       "@/src/*": ["../../apps/web/src/*"],
       "@fenix/chat-channel": ["./src/index.ts"],
       "@fenix/chat-channel/server": ["./src/server.ts"],
-      "@fenix/chat-channel/web": ["./web/index.ts"],
-      "@fenix/chat-channel/web/chat-area": ["./web/chat-area.ts"]
+      "@fenix/chat-channel/web": ["./web/index.ts"]
     }
   }
 }

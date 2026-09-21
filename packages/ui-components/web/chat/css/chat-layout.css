@@ -1,7 +1,8 @@
 /*
  * Chat 的唯一高度链（仅包内自有的会话外壳部分）。
  *
- * 复制自 packages/chat-channel/web/src/pages/agent-panel/chat-layout.css 的 `.acp-main-root` /
+ * 复制自 apps/web/src/pages/agent-panel/chat-layout.css（CE 阶段 2 任务 1.6 T5b 由
+ * packages/chat-channel/web/src/pages/agent-panel/chat-layout.css 迁入宿主）的 `.acp-main-root` /
  * `.chat-main-column` / `.chat-interface-*` 段，声明逐字复制；注释沿用源文并说明未复制的部分。
  * 源文件语义：消息时间线仍由 Conversation/use-stick-to-bottom 管理；这里仅约束外层 flex 容器，
  * 避免页面留白侵占可滚动区域或产生第二个滚动容器。

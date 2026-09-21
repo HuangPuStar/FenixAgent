@@ -20,7 +20,8 @@
  *   3. selection、responsive：对应源第 5、6 片；responsive 的媒体查询依赖「排在最后」以覆盖
  *      status / composer 的同特指度规则（如 .chat-composer-model 的 max-width），必须保持在
  *      status 与 composer 之后。
- *   4. chat-layout：源由 chat-channel 的 ChatArea.tsx 导入，属性与 shell 无值冲突，位置不敏感。
+ *   4. chat-layout：源由宿主 apps/web 的 ChatArea.tsx 导入（T5b 起该组件属宿主 Shell），
+ *      属性与 shell 无值冲突，位置不敏感。
  *   5. chat-loading、chat-agent-badge：源在宿主 index.css 中先于上述样式加载，选择器与设计层
  *      不重叠，位置同样不敏感，此处统一收拢在末尾。
  */

@@ -84,8 +84,9 @@ demo/                     Vite 展示页（非库产物）
   若确认抽屉是通用能力（不绑 agent-runtime），再连同本槽位一并收进包内。
 
 同一条线在 2026-09-18 又清掉 `ContextPanel`（源自 `packages/chat-channel/web/components/ContextPanel.tsx`，
-会话右栏：模型信息 / token 用量 / 工具调用统计 / 待确认队列）。`apps/web` 走
-`@fenix/chat-channel/web/chat-area`，从不渲染它；源 `ACPMain` 也一直传 `hideContextPanel={true}`，
+会话右栏：模型信息 / token 用量 / 工具调用统计 / 待确认队列）。宿主走自己的
+`apps/web/src/pages/agent-panel/ChatArea.tsx`（CE 阶段 2 任务 1.6 T5b 从 `@fenix/chat-channel/web/chat-area`
+迁入宿主，该说明符已不存在），从不渲染它；源 `ACPMain` 也一直传 `hideContextPanel={true}`，
 即既有宿主路径下这块面板本就是隐藏的。
 
 - 一并移除的接线：`hideContextPanel` prop（`ChatInterface` / `ACPMain` / `chat-interface-types` 三处）、

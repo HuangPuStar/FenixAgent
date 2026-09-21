@@ -112,6 +112,13 @@ import { ProdViewsPanel } from "../pages/agent-panel/ProdViewsPanel";
 import { AgentProdViewsPage } from "../pages/agent-panel/pages/AgentProdViewsPage";
 import { ProdViewPage } from "../pages/prod-view/ProdViewPage";
 
+/**
+ * 聊天容器的测试替身：T5b 起 `ProdViewPage` 的聊天面板由宿主经 `chatArea` prop 注入，
+ * 本文件的两个用例只走加载失败与无权限分支，永远到不了聊天渲染，因此替身渲染空内容即可。
+ * 真实容器是 `apps/web` 的 `ChatArea`（本包不得引用它，见 ProdViewPage 的端口说明）。
+ */
+const StubChatArea = () => null;
+
 // ── fetch 桩：唯一的外部数据源 ──
 type StubResponse = { status: number; body: unknown };
 
@@ -321,7 +328,7 @@ describe("ProdViewsPanel 列表加载状态", () => {
 describe("ProdViewPage 加载状态", () => {
   test("加载失败落在持久错误分支并带可重试入口", async () => {
     viewResponses = [failure("SERVER_ERROR", "boom", 500)];
-    await render(createElement(ProdViewPage));
+    await render(createElement(ProdViewPage, { chatArea: StubChatArea }));
 
     expect(alertRegion()).not.toBeNull();
     expect(text()).toContain("boom");
@@ -330,7 +337,7 @@ describe("ProdViewPage 加载状态", () => {
 
   test("401/403 走无权限分支，不给无意义的重试按钮", async () => {
     viewResponses = [failure("UNAUTHORIZED", "forbidden", 403)];
-    await render(createElement(ProdViewPage));
+    await render(createElement(ProdViewPage, { chatArea: StubChatArea }));
 
     expect(text()).toContain("无权访问发布视图");
     expect(text()).toContain("当前账号未被授权管理该组织的发布视图");

@@ -351,10 +351,23 @@
         "@better-auth/api-key": "1.6.11",
         "@fenix/logger": "workspace:*",
         "@fenix/platform-sdk": "workspace:*",
+        "@fenix/ui-components": "workspace:*",
+        "@fenix/web-runtime": "workspace:*",
+        "ahooks": "^3.9.7",
         "better-auth": "1.6.11",
         "drizzle-orm": "^0.45.2",
         "elysia": "^1.4.28",
+        "lucide-react": "^1.16.0",
+        "sonner": "^2.0.7",
         "zod": "^4.4.3",
+      },
+      "devDependencies": {
+        "happy-dom": "^20.9.0",
+      },
+      "peerDependencies": {
+        "i18next": "^26.2.0",
+        "react": "^19.2.6",
+        "react-i18next": "^17.0.8",
       },
     },
     "packages/platform/platform-sdk": {
@@ -627,7 +640,6 @@
       "dependencies": {
         "@fenix/agent-config": "workspace:*",
         "@fenix/agent-runtime": "workspace:*",
-        "@fenix/chat-channel": "workspace:*",
         "@fenix/platform-sdk": "workspace:*",
         "@fenix/ui-components": "workspace:*",
         "@fenix/web-runtime": "workspace:*",

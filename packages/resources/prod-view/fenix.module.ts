@@ -28,10 +28,11 @@ import type { ServerRouteHost } from "@fenix/platform-sdk/server";
  *   `WebErrSchema`）；platform-sdk 是契约包，没有模块 ID 可声明，同样不进 `dependsOn`。
  * - 表定义仍取自宿主 `@server/db/schema`（`prod_view`，迁出归 §1.7，台账条目 `apps-boundary` 的 owner
  *   已改为 1.7）：这是 §5 明确保留的残留，不是可编码的装配依赖。
- * - web 侧的两条耦合都不进服务端装配：`@fenix/chat-channel/web/chat-area`
- *   （`web/pages/prod-view/ProdViewPage.tsx` 的 lazy import）与 `@fenix/agent-config/web`
+ * - web 侧的跨包耦合只有一条，且不进服务端装配：`@fenix/agent-config/web`
  *   （`web/pages/agent-panel/**` 的 `agentApi`，取 agent 名称做创建时的默认值）。web 贡献的启用由
- *   profile 的 `web` 列表表达（§1.6），且 chat-channel 尚无 manifest、没有模块 ID 可声明。
+ *   profile 的 `web` 列表表达（§1.6）。原先的第二条——`web/pages/prod-view/ProdViewPage.tsx`
+ *   对 `@fenix/chat-channel/web/chat-area` 的 lazy import——已由 CE 阶段 2 任务 1.6 T5b 消除：
+ *   聊天容器改由宿主经 `chatArea` prop 注入（`ProdViewChatAreaProps`），本包不再依赖聊天包。
  *
  * `create`：模块组合根 `src/module.ts` 的 `createProdViewModule()`，返回包内既有单例（`prodViewRepo`
  * 是 `prod_view` 表的唯一数据访问点）。registry 驱动的装配（§1.5 的 `mountContribution`）需要统一拿到

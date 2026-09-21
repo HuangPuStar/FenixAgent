@@ -98,7 +98,7 @@ WebShell 从静态 registry 收集各资源包的 web contribution（不反向�
 | T2 | 宿主零消费死代码与重复副本删除 | 已交付 | 见下方 §7.2 |
 | T3 | `@fenix/ui-components` 扩面 | 已交付 | `b858bf68f` |
 | T4 | `identity/web` 清零 + i18n | 4a 已交付 / 4b 待办 | 见下方 §7.3 |
-| T5 | `chat-channel/web` 清零 | a 已交付 / b,c,d 待办 | 见下方 §7.4 |
+| T5 | `chat-channel/web` 清零 | a,b 已交付 / c,d 待办 | 见下方 §7.4、§7.5 |
 | T6 | `agent-runtime/web` 收敛 | 待办 | — |
 | T7 | 5 条 `special-dependency` 消除 | 待办 | — |
 | T8 | 宿主组件/lib/api 簇改指并删除 | 待办 | — |
@@ -113,7 +113,7 @@ WebShell 从静态 registry 收集各资源包的 web contribution（不反向�
 | # | 标题 | 内容 |
 | --- | --- | --- |
 | T5a | `agent-config/web` 新增 `loadBoundMcps` | 纯新增助手 + 出口，见 §7.4；`agent-runtime` 不得持有该查询（§四.10） |
-| T5b | `ChatArea` 簇迁至宿主 | `ChatArea.tsx` / `chat-area-lifecycle.ts` 迁 `apps/web/src/pages/agent-panel/`；chat 设计层 CSS 归 ui-components；宿主页面壳层规则留在宿主；`ProdViewPage` 改注入；环境删除用例随迁 |
+| T5b | `ChatArea` 簇迁至宿主 | **已交付**（§7.5）：`ChatArea.tsx` / `chat-area-lifecycle.ts` / `chat-layout.css` 迁 `apps/web/src/pages/agent-panel/`；`ProdViewPage` 改注入窄端口；环境删除用例随迁 |
 | T5c | `ChatPanel` 改指 ui-components 面板 | `@fenix/chat-channel/web` → `@fenix/ui-components/chat/shell/ACPMain`；补 `boundMcps` 透传；`agent-runtime` 声明 `@fenix/ui-components` 依赖 |
 | T5d | `chat-channel/web` 退场 | 删 3 个组件与入口（含 §四.9 的 `ContextPanel` 死代码链）、删 `./web*` 出口与 tsconfig paths、测试归位、删台账 1 条 |
 
@@ -401,3 +401,103 @@ identity 不能直连 `@fenix/resource-machine/web`。经用户裁定采用**窄
 - `tsc --noEmit`（根）→ 无输出（exit 0）；`tsc -p apps/web/tsconfig.json --noEmit` → 无输出
 - `bun run architecture:check` → ✓ 2241 files / 10 rules / 26 条已登记例外
 - `bun run check:dependencies` → ✓ 2393 modules / 11 条已登记例外 / 0 条新增违规
+
+### 7.5 T5b `ChatArea` 簇迁至宿主（2026-09-21）
+
+#### 迁移清单
+
+| 动作 | 对象 |
+| --- | --- |
+| `git mv` | `packages/chat-channel/web/src/pages/agent-panel/ChatArea.tsx` → `apps/web/src/pages/agent-panel/ChatArea.tsx` |
+| `git mv` | 同目录 `chat-area-lifecycle.ts` → `apps/web/src/pages/agent-panel/chat-area-lifecycle.ts` |
+| `git mv` | 同目录 `chat-layout.css` → `apps/web/src/pages/agent-panel/chat-layout.css` |
+| `git mv` | `packages/chat-channel/web/src/__tests__/chat-area-environment-deletion.test.tsx` → `apps/web/src/__tests__/`（导入改宿主相对路径 `../pages/agent-panel/chat-area-lifecycle`） |
+| 删除 | `packages/chat-channel/web/chat-area.ts`；随之删 `package.json` 的 `exports["./web/chat-area"]`、`exports["./web/chat-area-lifecycle"]` 与 `packages/chat-channel/tsconfig.json` 的两条 paths |
+| 改指 | `AgentPanelLayout.tsx` 第 1 行 → `import { ChatArea } from "./ChatArea"` |
+| 样式 | `chat-layout.css` **仍由 `ChatArea.tsx` 副作用导入**（`artifacts-workspace.css` 之后接 `chat-layout.css`，与迁移前逐字相同）。中途曾改挂到 `agent-panel.css` 第 2 行的 `@import`，复核阶段实测到级联倒置（见下方「复核」第 1 条）后已完整回退，`agent-panel.css` 相对 HEAD 无 diff |
+| 新增端口 | `packages/resources/prod-view/web/pages/prod-view/ProdViewPage.tsx` 的 `ProdViewChatAreaProps` / `ProdViewPageProps`，由宿主路由 `apps/web/src/routes/view/$prodViewId.tsx` 注入 `ChatArea` |
+| 连带 | prod-view `package.json` 移除 `@fenix/chat-channel`；prod-view 的 browser-surface 守卫、README、`fenix.module.ts` 注释与 `prod-view-list-states.test.tsx` 同步 |
+
+#### 三处非显然取舍
+
+1. **`chat-layout.css` 继续挂在 `ChatArea.tsx` 的副作用导入上，不改挂 `agent-panel.css`**（本片最初改挂了，
+   复核阶段推翻并回退，结论与理由如下）。这份样式含两份宿主壳层声明（`.agent-panel-content--chat{padding:0}`、
+   `.agent-chat-workspace{gap:0}`），它们**必须**排在「静态页面样式」与「`artifacts-workspace.css`」之后才生效：
+   - `agent-panel.css` 是 `index.html` 的静态 `<link>`，而 `ChatArea.tsx` 属懒加载 chunk（其 CSS 由 preload
+     helper 在运行期 `appendChild` 到 head 末尾）——**运行期注入的样式表必然晚于静态 `<link>`**。迁移前
+     chat-layout 与 artifacts-workspace 同属 `ChatArea-*.css`（chat-layout 靠文件内导入顺序在后）而胜，
+     且整体晚于静态 `agent-panel-*.css` 而胜。
+   - 改挂后 chat-layout 落进静态 `agent-panel.css` 第 2 行（offset ≈24953），于是输给同文件更靠后的
+     `.agent-panel-content{padding:12px}`（offset ≈25816）与懒加载 `artifacts-workspace.css` 的
+     `.agent-chat-workspace{gap:10px}`：聊天区凭空内缩 12px、docked 布局多 10px 间隙（后者的 headless
+     Chrome 复现：`gap:10px`、chat 列宽 756−320−10=426）。
+   - 当时的「顺序等价性」论证只核对了 `chat-design` 与 `chat-layout` 之间的重叠选择器（那两项确实无冲突），
+     **漏掉了「chat-layout 相对 `agent-panel.css` 自身规则」这一组**（迁移前 chat-layout 晚于它、改挂后早于它）。
+   回退后重建产物与 HEAD 的构建**逐字节同名同内容**：`ChatArea-CwUaWDM8.css`（内为 artifacts-workspace
+   `gap:10px`@0 → chat-layout `padding:0`@10666 / `gap:0`@10719）与静态 `agent-panel-NcFXVk17.css`。
+2. **`ProdViewPage` 改注入 `chatArea` prop 而不是继续 lazy import 聊天包**。理由：分享页只解析
+   「哪个 Environment 的哪个实例」，聊天容器持有宿主路由态、keep-alive 槽位与页面壳层样式，按 §2.3
+   「Shell 属于 app，不属于资源包」归宿主。端口 `ProdViewChatAreaProps` 刻意小于宿主 `ChatArea` 的完整
+   props（不含 `deletedEnvironmentIds`——分享页没有删除流），宿主多出的可选 prop 不影响赋值。
+   连带 **prod-view 不再依赖 `@fenix/chat-channel`**（`dependencies` 已移除），其浏览器面守卫的登记表随之
+   收窄一条。
+3. **删除 `ChatArea.tsx` 的再导出** `export { evictDeletedEnvironmentSlots, resolveActiveChatEnvironmentId }`。
+   它的唯一消费方是包入口 `web/chat-area.ts` 的转发（供跨包取用），该入口随本片退场；迁移前实测全仓
+   无其他消费方（唯一引用点是那个测试文件，已改为直接导入 `chat-area-lifecycle`）。
+
+#### 实测依据（守卫收窄不是猜的）
+
+- 移除 prod-view 守卫里 `PENDING_MIGRATION_DIRS` 的 `packages/chat-channel/` 条目后该文件仍全绿
+  （15 pass），说明 prod-view 的 web 值导入图确实不再包含 `packages/chat-channel/` 下的任何文件；
+  同一实测也确认 `packages/chat-channel/web/chat-area.ts` 已从 `reachedPackageFiles` 消失，
+  故把这条 pin 从「遍历有效性自检」中删除而不是替换。
+- 复核进一步实测：全图宿主别名引用为 **0 处**（本包 0 + 跨包 0），`PENDING_MIGRATION_DIRS` 的两条余留
+  登记（`packages/resources/agent-config/`、`packages/platform/identity/web/`）同样不再命中任何引用，
+  身份那条还引用了 T4a 已删除的台账条目、并写着实测为 0 的「33 处」，属失实死登记。因此整张登记表与
+  `underPendingDirs` 一并删除，断言改为「本包与跨包文件一律零宿主别名」（与清空后的登记制等价，但没有
+  一张能被删空而不影响断言的表），并保留 `foreignRefs.length > 20` 作为「空集不是图没跨包」的有效性自检。
+  README「边界残留」的对应说明同步改写为「无待迁移债务」。
+- 架构台账 `web-package-not-to-app @fenix/chat-channel @fenix/web-app` **本片不动**：迁移后
+  `packages/chat-channel/web` 仍有 35 处宿主别名、分布在 5 个文件（3 个待退场组件 + 2 个待归位测试），
+  指纹未归零，删条目会命中门禁的「指纹恰好归零」反向报错；该条目的删除归 T5d。
+
+#### 明确不在本片范围
+
+- T5c（`ChatPanel` 改指 ui-components、`boundMcps` 注入、chat 设计层 CSS 切包）与 T5d（组件与入口退场）。
+  本片结束时聊天面板仍由 `@fenix/chat-channel/web` 的 `ACPMain`/`ChatInterface` 渲染，`agent-panel.css`
+  第 1 行仍指向包内 `chat-design.css`——CSS 切包必须与该 DOM 同批（T5c），否则类名集不匹配会错版。
+
+#### 复核（4 视角评审 → 逐条对抗式证伪，2026-09-21）
+
+四位评审分别走「悬空引用 / 契约与消费方 / CSS 级联 / 门禁与文档」四条线，产出的每条发现再交给独立
+复核 agent 尝试证伪（默认判伪、要求亲手复现；13 个 agent / 553 次工具调用）。原始 9 条（其中 CSS 级联
+一条被 3 位评审重复报出）去重为 5 个缺陷；证伪读数 8 条成立、1 条判「不可达」——那条正是本表第 1 条，
+判「不可达」只因复核运行时我已并发回退，该复核仍用 headless Chrome 复现过它成立时的 `gap:10px`。
+5 个缺陷全部已修：
+
+| # | 发现 | 判定与修法 |
+| --- | --- | --- |
+| 1 | `chat-layout.css` 改挂 `agent-panel.css` 后级联倒置：`.agent-panel-content--chat{padding:0}` 输给 `.agent-panel-content{padding:12px}`（聊天区内缩 12px），`.agent-chat-workspace{gap:0}` 输给 `artifacts-workspace.css` 的 `gap:10px`（docked 多 10px 间隙） | 3 位评审独立发现，3 位复核分别用产物 offset、临时 worktree 对照构建、headless Chrome + 真实 preload helper 复现（`gap:10px`、chat 列 756−320−10=426）。**已回退**：`ChatArea.tsx` 恢复副作用导入、`agent-panel.css` 删除该 `@import`（该文件相对 HEAD 已无 diff），重建产物与 HEAD 同名同内容 |
+| 2 | prod-view 守卫的登记制退化为空集恒真，且 identity 登记失实（写「33 处」、引用 T4a 已删的台账条目） | 已删表与 `underPendingDirs`，断言改为全图零别名 + `foreignRefs.length > 20` 自检（见上节） |
+| 3 | `packages/ui-components/README.md:88` 与 `web/chat/shell/ChatInterface.tsx:19` 仍以 `@fenix/chat-channel/web/chat-area` 描述宿主路径，该说明符已不可解析 | 两处改为指向宿主 `apps/web/src/pages/agent-panel/ChatArea.tsx` 并注明 T5b 迁入 |
+| 4 | ui-components 的 `chat/css/chat-layout.css:4`（复制来源路径）与 `chat/css/chat.css:23`（「源由 chat-channel 的 ChatArea.tsx 导入」）指向已位移的源 | 路径改为 `apps/web/src/pages/agent-panel/chat-layout.css`，并说明宿主 `ChatArea.tsx` 是导入方 |
+| 5 | `bun.lock` 与 prod-view `package.json` 不一致（本片移除 `@fenix/chat-channel` 但未重生成锁文件） | 已 `bun install --lockfile-only` 重生成：diff = prod-view 块删该行 + identity 块补齐 T3/T4a 遗留的 13 行漂移（`@fenix/ui-components`/`@fenix/web-runtime`/`ahooks`/`lucide-react`/`sonner`/`happy-dom` 与 peerDependencies）。门禁盲区已确认：precheck 无 install/lockfile 步骤，`--frozen-lockfile` 容忍 manifest 删依赖后的残留（exit 0），只有非 frozen 安装才会暴露 |
+
+复核同时确认的两点「不修」（记录以免重复排查）：
+
+- `apps/web/dist` 的 chunk 归属与迁移前一致（`ChatArea-*.css` 仍属懒加载 chunk），因此上表第 1 条之外的
+  级联次序无需再调；`AgentFormDialog-*.css` 里的 `.agent-panel-body{isolation:isolate}` 是动态表覆盖
+  静态表的老行为，与 `.agent-panel-body` 的 `min-width/min-height` 无值冲突。
+- 架构台账 `web-package-not-to-app @fenix/chat-channel` 仍不动（35 处别名未归零，归 T5d）。
+
+#### 验证
+
+- `env -u ANTHROPIC_MODEL bun run precheck` → ✓ All passed：server-and-script-tests 770 pass / 0 fail、
+  package-tests **7334 pass / 2 skip / 0 fail**、web-app-tests **949 pass / 0 fail**（后者 = 迁移前 946 + 随迁的 3 个用例）
+- `bun run build:web` → ✓ built，含 `ChatPanel-*.js` / `ArtifactsPanel-*.js` 分片正常产出；
+  复核修复后的产物中两个受级联影响的文件与 HEAD 的构建**同名同内容**：`ChatArea-CwUaWDM8.css`
+  （`artifacts-workspace.css` 的 `gap:10px`@0 → chat-layout 的 `padding:0`@10666 / `gap:0`@10719）
+  与静态 `agent-panel-NcFXVk17.css`——即 CSS 行为已逐字节回到迁移前
+- `bun run architecture:check` → ✓ 2240 files / 10 rules / 26 条已登记例外（文件数 −1 = 删除 `web/chat-area.ts`）
+- `bun run check:dependencies` → ✓ 2391 modules / 11 条已登记例外 / 0 条新增违规
+- `tsc --noEmit`（根）与 `tsc -p apps/web/tsconfig.json --noEmit` → 均无输出（exit 0）
