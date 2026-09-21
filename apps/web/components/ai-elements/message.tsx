@@ -1,5 +1,8 @@
 "use client";
 
+// 卡片标签注册表归 `@fenix/ui-components`：本目录的 `@/src/lib/card-renderer` 是另一份模块实例，
+// 与之并存会让「宿主在某一份注册、渲染读另一份」的标签白名单错位（`agent-sites` 卡片被剥离）。
+import { getRegisteredAllowedTags, getRegisteredComponents } from "@fenix/ui-components/lib/card-renderer";
 import type { UIMessage } from "ai";
 import { ChevronLeftIcon, ChevronRightIcon } from "lucide-react";
 import type { ComponentProps, ErrorInfo, HTMLAttributes, ReactElement } from "react";
@@ -21,7 +24,6 @@ import { Button } from "@/components/ui/button";
 import { ButtonGroup, ButtonGroupText } from "@/components/ui/button-group";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { NS } from "@/src/i18n";
-import { getRegisteredAllowedTags, getRegisteredComponents } from "@/src/lib/card-renderer";
 import { cn } from "@/src/lib/utils";
 import "./chat-message-content.css";
 import { IframePreview } from "./iframe-preview";

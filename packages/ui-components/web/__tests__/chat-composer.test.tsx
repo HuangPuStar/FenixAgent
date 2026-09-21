@@ -128,6 +128,32 @@ describe("ChatComposer 纯化接缝", () => {
     expectText(notices.at(-1)?.message, "components.composerAssets.quoteLimitReached");
   });
 
+  // 同一 React 批次内连续注入引用时，字符配额必须同步累加（源实现在一次 act 内派发 3 条
+  // 4000 字符引用并断言只保留 2 条）。配额判断若读渲染期快照，这 3 条会各自按满额度放行。
+  test("quote intake enforces character budget within one batch", () => {
+    let emit: ((event: ComposerExternalEvent) => void) | undefined;
+    mount({
+      onSubmit: () => {},
+      subscribeExternal: (handler) => {
+        emit = handler;
+        return () => {};
+      },
+    });
+
+    act(() => {
+      emit?.({ type: "quote", quote: { text: "甲".repeat(4_000) } });
+      emit?.({ type: "quote", quote: { text: "乙".repeat(4_000) } });
+      emit?.({ type: "quote", quote: { text: "丙".repeat(4_000) } });
+    });
+
+    const assets = container.querySelectorAll(".chat-composer-asset.is-quote");
+    expect(assets.length).toBe(2);
+    const rendered = container.textContent ?? "";
+    expect(rendered).toContain("甲".repeat(100));
+    expect(rendered).toContain("乙".repeat(100));
+    expect(rendered).not.toContain("丙".repeat(100));
+  });
+
   // 文件树引用事件追加 @./path 正文与附件 chip
   test("file reference appends mention and attachment", () => {
     let emit: ((event: ComposerExternalEvent) => void) | undefined;

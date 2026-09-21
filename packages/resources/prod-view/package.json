@@ -5,7 +5,6 @@
   "dependencies": {
     "@fenix/agent-config": "workspace:*",
     "@fenix/agent-runtime": "workspace:*",
-    "@fenix/chat-channel": "workspace:*",
     "@fenix/platform-sdk": "workspace:*",
     "@fenix/ui-components": "workspace:*",
     "@fenix/web-runtime": "workspace:*",

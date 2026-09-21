@@ -8,9 +8,9 @@
  *
  * 导出面的口径是「宿主与其它包真实需要的符号」：
  *   - `ProdViewsPanel` / `AgentProdViewsPage`：宿主 ArtifactsPanel 与 `/agent/_panel/views` 路由挂载；
- *   - `ProdViewPage`：`/view/$prodViewId` 公开路由；
- *   - api 与类型：`ProdViewModulesConfig` 被宿主 ArtifactsPanel 与 chat-channel 的 ChatArea 用作
- *     modulesConfig 的类型契约；
+ *   - `ProdViewPage` 与 `ProdViewPageProps` / `ProdViewChatAreaProps`：`/view/$prodViewId` 公开路由，
+ *     聊天容器由宿主按该端口注入（T5b 起本包不再引用任何聊天包）；
+ *   - api 与类型：`ProdViewModulesConfig` 被宿主 ArtifactsPanel 与 ChatArea 用作 modulesConfig 的类型契约；
  *   - i18n：宿主 `apps/web/src/i18n/index.ts` 统一注册，走 `./web/i18n` 子路径（见 web/i18n/index.ts）。
  *
  * 内部实现细节（`web/lib/prod-view-modules` 的构建/解析辅助函数、`web/api` 之外的模块）不从这里转出：
@@ -21,4 +21,8 @@ export * from "./api/prod-views";
 export { PROD_VIEWS_NS, type ProdViewsResources, prodViewsResources } from "./i18n";
 export { ProdViewsPanel } from "./pages/agent-panel/ProdViewsPanel";
 export { AgentProdViewsPage } from "./pages/agent-panel/pages/AgentProdViewsPage";
-export { ProdViewPage } from "./pages/prod-view/ProdViewPage";
+export {
+  type ProdViewChatAreaProps,
+  ProdViewPage,
+  type ProdViewPageProps,
+} from "./pages/prod-view/ProdViewPage";

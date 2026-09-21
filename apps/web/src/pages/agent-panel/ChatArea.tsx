@@ -1,3 +1,26 @@
+/**
+ * ChatArea — 聊天会话容器，**属于宿主 Shell**，不属于任何资源包或聊天包（CE 阶段 2 任务 1.6 T5b 迁入）。
+ *
+ * 归属理由：本组件不是聊天 UI 本身，而是「把哪个 Environment / 哪个 session 装进哪个面板」的装配逻辑——
+ * 它持有宿主的路由态（keep-alive 槽位、Environment 删除集、实例重连事件）、宿主的 URL/存储偏好
+ * （`fenix:artifacts-*`）、宿主的页面壳层（`agent-panel-*` 类名与 `AgentPanelLayout` 的 URL 解析约定），
+ * 以及宿主页面与面板之间的桥（`ChatPageVisibleContext`、`artifacts:*` 事件）。按 §2.3「Shell 属于 app，
+ * 不属于资源包」，它住在 `apps/web/src/pages/agent-panel/`。
+ *
+ * 样式仍是本文件的组件副作用导入（`artifacts-workspace.css` 之后接 `chat-layout.css`），**不要**改挂到
+ * `agent-panel.css`：该文件是 `index.html` 的静态 `<link>`，而本组件属于懒加载 chunk（其 CSS 由 preload
+ * helper 在运行期 `appendChild` 到 head 末尾），两者的级联先后正好相反。实测过改挂的后果：`chat-layout.css`
+ * 一旦被内联进静态 `agent-panel.css` 的第 2 行，它就会输给同文件里更靠后的 `.agent-panel-content{
+ * padding:12px }` 与懒加载的 `artifacts-workspace.css` 的 `.agent-chat-workspace{ gap:10px }`——聊天区凭空
+ * 内缩 12px、docked 布局多出 10px 间隙（T5b 复核发现，已回退）。被 lazy 装载的 ChatPanel 与 ArtifactsPanel
+ * 仍按宿主别名解析（`@/src/pages/agent-panel/*`），因此本文件位移不改变它们的解析结果。
+ *
+ * 外部注入点：`ProdViewPage`（`@fenix/resource-prod-view/web`）不直接引用本组件，而是通过
+ * `ProdViewChatAreaProps` 窄端口接收宿主传入的聊天容器——分享页路由 `apps/web/src/routes/view/$prodViewId.tsx`
+ * 负责把本组件作为该 prop 注入。
+ */
+
+import { loadBoundMcps } from "@fenix/agent-config/web";
 import { useRequest } from "ahooks";
 import { PanelRight } from "lucide-react";
 import {
@@ -37,8 +60,6 @@ interface ChatAreaProps {
   /** ProdView 模块配置，控制右侧附加面板的显示/隐藏 */
   modulesConfig?: ProdViewModulesConfig;
 }
-
-export { evictDeletedEnvironmentSlots, resolveActiveChatEnvironmentId } from "./chat-area-lifecycle";
 
 type ArtifactsLayoutMode = "floating" | "docked";
 
@@ -101,6 +122,16 @@ export function ChatArea({ agentId, sessionId, visible, deletedEnvironmentIds, m
       onError: (err) => console.warn("[ChatArea] 加载 environment 详情失败", err),
     },
   );
+
+  // 已绑定 MCP 列表：ui-components 面板的命令菜单 MCP 条目来源（`ChatPanel` 的 `boundMcps` 端口）。
+  // 取数必须留在宿主容器：查询要同时读 agent-config 与 MCP 资源包，而 ChatPanel 所在的
+  // `@fenix/agent-runtime` 按 `.dependency-cruiser.cjs` 的 agent-runtime-not-to-resources 不得依赖
+  // resources（含 agent-config），故由宿主取好后注入。查询失败降级为「无绑定 MCP」（面板仍可用）。
+  const { data: boundMcps } = useRequest(async () => (activeAgentId ? loadBoundMcps(activeAgentId) : []), {
+    refreshDeps: [activeAgentId],
+    ready: !!activeAgentId,
+    onError: (err) => console.warn("[ChatArea] 加载已绑定 MCP 失败", err),
+  });
 
   // changedFiles 由 ChatInterface 通过 chat:stats 摘要事件派发（已含 extractChangedFiles 的结果），
   // 此处只做投影存储，不再持有完整 entries 或二次全量派生。
@@ -181,7 +212,13 @@ export function ChatArea({ agentId, sessionId, visible, deletedEnvironmentIds, m
     return (
       <ChatPageVisibleContext.Provider key={`${key}:${restartVersion}`} value={isActive}>
         <div style={{ display: isActive ? "contents" : "none" }}>
-          <ChatPanel agentId={slot.agentId} sessionId={slot.sessionId} />
+          {/* boundMcps 只注入当前活跃 slot：keep-alive 的隐藏 slot 若拿到活跃 agent 的列表，
+              重新激活时会短暂显示另一个 agent 的 MCP 条目 */}
+          <ChatPanel
+            agentId={slot.agentId}
+            sessionId={slot.sessionId}
+            boundMcps={slot.agentId === activeAgentId ? boundMcps : undefined}
+          />
         </div>
       </ChatPageVisibleContext.Provider>
     );

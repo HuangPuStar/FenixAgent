@@ -12,20 +12,25 @@ import type { ComposerQuote } from "./composer-assets";
  * 纯化改动点：
  * - 文本 / 附件 / 引用 / 命令面板额外提供受控 prop 与变更回调（源实现全部为组件内部状态），
  *   宿主可据此在会话切换或草稿持久化时接管输入状态。
- * - 源 `quotesRef` 的「同步拿到最新引用」写法由半受控状态的内部 ref 统一承担，
- *   外部行为（含 `chat:quote` 事件里的配额判断）不变。
+ * - 源 `quotesRef` 的「同步拿到最新引用」写法由半受控状态的内部 ref 承担，并经 `readQuotes`
+ *   暴露给配额判断：只暴露渲染期 `quotes` 会让同一批次内连续注入的引用各自读到旧额度并绕过上限
+ *   （T5c2 一致性核查发现的缺口，已修）。
  * - `contextScope` 变化即清空引用（源实现的 keep-alive 会话隔离行为）保留。
  */
 
 /**
  * 半受控状态原语：`controlled === undefined` 时用内部 state，否则以受控值为准。
  * 内部 ref 始终保存最后一次已知值，保证函数式更新（`setValue(current => next)`）看到最新值。
+ *
+ * 第三个返回值 `read` 是同一份 ref 的同步读口：渲染期变量在同一个 React 批次内不更新，
+ * 而同批次内连续发生的读取（如 `chat:quote` 事件同步派发多条引用时的配额判断）必须看到
+ * 前一次写入的结果，否则每条都按旧值放行。源实现用 `quotesRef.current` 达成同一效果。
  */
 export function useSemiControlledState<T>(
   controlled: T | undefined,
   onChange: ((value: T) => void) | undefined,
   initial: T,
-): [T, (next: T | ((current: T) => T)) => void] {
+): [T, (next: T | ((current: T) => T)) => void, () => T] {
   const [internal, setInternal] = useState<T>(initial);
   const value = controlled === undefined ? internal : controlled;
   const valueRef = useRef(value);
@@ -41,7 +46,9 @@ export function useSemiControlledState<T>(
     [controlled, onChange],
   );
 
-  return [value, setValue];
+  const read = useCallback(() => valueRef.current, []);
+
+  return [value, setValue, read];
 }
 
 export interface ComposerStateOptions {
@@ -78,6 +85,11 @@ export interface ComposerState {
   removeAttachment: (path: string) => void;
   quotes: ComposerQuote[];
   updateQuotes: (next: ComposerQuote[] | ((current: ComposerQuote[]) => ComposerQuote[])) => void;
+  /**
+   * 同步读取当前引用列表（同批次内立即可见）。配额与字符数判断必须用它，不能用渲染期 `quotes`：
+   * 一次 React 批次内连续注入的多条引用会各自读到同一份旧值，从而绕过 8 条 / 8000 字符上限。
+   */
+  readQuotes: () => ComposerQuote[];
   selectedMcpIds: ReadonlySet<string>;
   toggleMcp: (mcp: McpOption) => void;
   /** 正文中以 `/name` 形式出现且属于 Agent 公布命令的名字集合（源派生逻辑逐字保留）。 */
@@ -118,7 +130,7 @@ export function useComposerState({
     onAttachmentsChange,
     [],
   );
-  const [quotes, setQuotes] = useSemiControlledState<ComposerQuote[]>(controlledQuotes, onQuotesChange, []);
+  const [quotes, setQuotes, readQuotes] = useSemiControlledState<ComposerQuote[]>(controlledQuotes, onQuotesChange, []);
   const [selectedMcpIds, setSelectedMcpIds] = useState<Set<string>>(new Set());
   const [commandPanelOpen, setCommandPanelOpen] = useSemiControlledState(
     controlledCommandPanelOpen,
@@ -228,6 +240,7 @@ export function useComposerState({
     removeAttachment,
     quotes,
     updateQuotes,
+    readQuotes,
     selectedMcpIds,
     toggleMcp,
     selectedCommandNames,

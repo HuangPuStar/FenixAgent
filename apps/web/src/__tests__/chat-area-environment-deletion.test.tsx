@@ -1,8 +1,7 @@
+// ChatArea 的 keep-alive 生命周期助手随容器一并归宿主（CE 阶段 2 任务 1.6 T5b），
+// 不再是 `@fenix/chat-channel/web` 的导出面，因此按宿主测试惯例走包内相对路径。
 import { describe, expect, test } from "bun:test";
-import {
-  evictDeletedEnvironmentSlots,
-  resolveActiveChatEnvironmentId,
-} from "@fenix/chat-channel/web/chat-area-lifecycle";
+import { evictDeletedEnvironmentSlots, resolveActiveChatEnvironmentId } from "../pages/agent-panel/chat-area-lifecycle";
 
 describe("ChatArea 删除 Environment 生命周期", () => {
   // 删除当前 Environment 后必须禁用详情请求与当前槽位回填，避免持续请求已删除资源。

@@ -8,17 +8,19 @@
 // 递归的代价是放行必须显式：只有下面的白名单里的**浏览器安全外部依赖**才允许停在图外。
 //
 // 两条跨包口径（本包特有，必须在断言里显式区分，否则守卫要么假红要么假绿）：
-//   1. 本包消费 `@fenix/agent-config` 与 `@fenix/chat-channel` 的浏览器能力。agent-config 的
+//   1. 本包消费 `@fenix/agent-config` 的浏览器能力。agent-config 的
 //      `exports["./web"]` 现指向它自己的 `web/index.ts`（全量索引，其文件头自述「导出面覆盖当前跨包
 //      消费方」），因此递归会经它进入编辑器，再连带 identity / knowledge / memory / machine / mcp /
-//      model-management / sandbox / skill / agent-runtime 的 web 入口；chat-channel 不在本波范围。
+//      model-management / sandbox / skill / agent-runtime 的 web 入口。
+//      （2026-09-21 T5b 起本包不再消费聊天包：分享页的聊天容器改为宿主经 `chatArea` prop 注入，
+//      `@fenix/chat-channel` 已整个离开本条值导入图，不再是登记项。）
 //      这些包图内的文件仍写着宿主别名 `@/...`，既无法递归进去（宿主别名不是包说明符，只能由宿主
 //      vite alias 解析），也不是本包能改的。因此「零宿主别名」按计划 §1 条件 2 的口径**限定在本包
 //      文件**，跨包残留改为登记制断言：只有登记过的包允许有别名残留，出现第三处即失败。
-//   2. `@/...` 停在图外意味着那些包的后半段（如 chat-channel 的 ChatArea → 宿主 ChatPanel、
-//      agent-config 编辑器的宿主别名段）**不在本守卫覆盖范围内**：它们是否浏览器安全由各自守卫负责，
-//      本包的结论只说「本包能看到的这一层是安全的」。因此本文件的白名单收录了经这些包传递进入的
-//      外部库（逐条评审后登记），它们的版本与用法变动由对应包的守卫负责。
+//   2. `@/...` 停在图外意味着那些包的后半段（如 agent-config 编辑器的宿主别名段）**不在本守卫
+//      覆盖范围内**：它们是否浏览器安全由各自守卫负责，本包的结论只说「本包能看到的这一层是安全的」。
+//      因此本文件的白名单收录了经这些包传递进入的外部库（逐条评审后登记），它们的版本与用法变动由
+//      对应包的守卫负责。
 //
 // 测试文件与 `node:*` 的豁免：递归只沿 exports 出口走，而任何包的 exports 都不指向 `__tests__`，
 // 所以 `bun:test` 与测试夹具不会进入图，不需要豁免；本文件自身的 `node:fs` 是守卫的运行时，
@@ -109,23 +111,12 @@ const BROWSER_SAFE_EXTERNAL: ReadonlyMap<string, string> = new Map([
   ["@noble/ciphers", "纯 JS 密码学实现（identity lib/password-crypto），无 node 依赖"],
 ]);
 
-/**
- * 允许遗留宿主别名的跨包目录（仓库根相对前缀）+ 原因。
- *
- * 登记制而非白名单式放行：断言要求「所有跨包别名引用的发出文件都落在这些目录内」，
- * 于是本包自己写回别名、或第三个包开始泄漏，都会立刻失败；被登记的包完成迁移后无需改测试。
- */
-const PENDING_MIGRATION_DIRS: ReadonlyMap<string, string> = new Map([
-  [
-    "packages/resources/agent-config/",
-    'L2 包：exports["./web"] 指向 web/index.ts 全量索引（覆盖跨包消费方），包内编辑器仍经下游包取能力',
-  ],
-  ["packages/chat-channel/", "本波范围外：ChatArea 页面仍按宿主别名取 agent-runtime 能力"],
-  [
-    "packages/platform/identity/web/",
-    "identity web 面的去别名归 §1.6：本包图内实测 33 处 `@/src`、`@/components`，台账条目 web-package-not-to-app @fenix/identity（owner 1.6）已登记该债务；本包只经 agent-config 编辑器间接到达，改不动也不该替它掩盖",
-  ],
-]);
+// 曾有一张 `PENDING_MIGRATION_DIRS` 登记表：迁移期允许「跨包宿主别名只来自已登记目录」，被登记的包迁完后
+// 收窄一条。2026-09-21（T5b）它的最后两条也失效了——identity web 面的别名在 T4a 清零、chat-channel 随
+// ChatArea 迁往宿主而整个离开本图，全图实测 0 处宿主别名，该表退化为「空集恒真」且字面描述已失实（
+// T5b 复核发现）。故连同 `underPendingDirs` 一并删除，断言直接要求全图零别名：这与登记表清空后的语义等价，
+// 但不再有一张能被删空而不影响任何断言的表。若将来又出现「迁移进行中、必须容忍某包别名」的需要，
+// 可照本文件的历史版本恢复登记制，并在恢复时同步写明 owner 与移除条件。
 
 const graph = walkValueGraph(WEB_ENTRY);
 /** 违规定位用仓库根相对路径：图跨包（ui-components / web-runtime / agent-config 及其编辑器连带的多包 web 面），包内相对路径会产生 `../../` 噪音。 */
@@ -143,11 +134,9 @@ const reachedPackageFiles = new Set(
 const externals = graph.references.filter((ref) => ref.kind === "external");
 /** 本包文件发出的引用：§1.3 硬条件（零宿主别名、依赖已声明）只对本包文件成立。 */
 const ownRefs = graph.references.filter((ref) => ref.from.startsWith(`${WEB_ROOT}${sep}`));
-/** 跨包文件发出的引用：登记制断言的对象。 */
+/** 跨包文件发出的引用：跨包别名断言的对象。 */
 const foreignRefs = graph.references.filter((ref) => !ref.from.startsWith(`${WEB_ROOT}${sep}`));
 const isHostAlias = (specifier: string): boolean => /^@\/(src|components)(\/|$)/.test(specifier);
-const underPendingDirs = (file: string): boolean =>
-  [...PENDING_MIGRATION_DIRS.keys()].some((prefix) => repoPath(file).startsWith(prefix));
 
 describe("prod-view web 入口浏览器可达面", () => {
   // 遍历有效性自检：图若解析失败会退化为「只有入口文件」，后续断言全部假绿。
@@ -166,15 +155,16 @@ describe("prod-view web 入口浏览器可达面", () => {
     }
     expect(reachedWebFiles.size).toBeGreaterThanOrEqual(8);
 
-    // 跨包递归的有效性：钉住本包真实消费的四条链——ui-components 的按钮、web-runtime 的 request 与
-    // ns 表、agent-config 的 web 出口（当前解析到 web/index.ts 全量索引）、chat-channel 的 chat-area
-    // 子路径。少了这一段，「@fenix/* 被当成外部依赖放过」会以「包内断言全绿」的形式漏网。
+    // 跨包递归的有效性：钉住本包真实消费的三条链——ui-components 的按钮、web-runtime 的 request 与
+    // ns 表、agent-config 的 web 出口（当前解析到 web/index.ts 全量索引）。少了这一段，
+    // 「@fenix/* 被当成外部依赖放过」会以「包内断言全绿」的形式漏网。
+    // （2026-09-21 T5b 起不再有第四条：分享页的聊天容器改为宿主经 `chatArea` prop 注入，
+    //  本包不再引用任何聊天包，`@fenix/chat-channel/web/chat-area` 这条链已消失。）
     for (const expected of [
       "packages/ui-components/web/ui/button.tsx",
       "packages/web-runtime/web/api/request.ts",
       "packages/web-runtime/web/i18n/namespace.ts",
       "packages/resources/agent-config/web/index.ts",
-      "packages/chat-channel/web/chat-area.ts",
     ]) {
       expect(reachedPackageFiles).toContain(expected);
     }
@@ -220,13 +210,12 @@ describe("prod-view web 入口浏览器可达面", () => {
     expect(ownRefs.length).toBeGreaterThan(20);
   });
 
-  // 跨包别名只能来自登记过的未迁移包：本包自己写回别名、或第三个包开始泄漏，都会在这里失败。
-  test("跨包文件的宿主别名只来自登记中的未迁移包", () => {
-    const offenders = foreignRefs.filter((ref) => isHostAlias(ref.specifier) && !underPendingDirs(ref.from));
+  // 跨包文件同样不得写宿主别名：任何包（含经 agent-config 编辑器间接到达的包）开始泄漏都在这里失败。
+  test("跨包文件零宿主别名（登记制已于 T5b 清空，见文件头说明）", () => {
+    const offenders = foreignRefs.filter((ref) => isHostAlias(ref.specifier));
     expect(offendersOf(offenders)).toEqual([]);
-    // 有效性自检：若登记包已迁移干净，这条断言会退化为「空集恒真」，读数应为 0 时才需要复核登记表。
-    const registered = foreignRefs.filter((ref) => isHostAlias(ref.specifier));
-    expect(registered.every((ref) => underPendingDirs(ref.from))).toBe(true);
+    // 有效性自检：跨包引用本身非空，证明上面空集不是「图没跨包」造成的。
+    expect(foreignRefs.length).toBeGreaterThan(20);
   });
 
   // 跨包必须走 exports 出口：@fenix/*/src 之类的深路径会把别的包的内部实现拖进浏览器图。

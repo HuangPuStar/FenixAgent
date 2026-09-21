@@ -11,7 +11,9 @@
  *   - `model-management` 的编辑器纯逻辑用例取 `agent-editor-model` 的转换函数与校验 schema；
  *   - `workflow` 仍待取 `useMetaAgent`（发布方在本包；宿主的 `hooks/useMetaAgent.ts` 已于 W3 删除，
  *     该包 `useWorkflowMetaAgent` 目前自持环境就绪逻辑）；
- *   - 宿主控制台的 `AgentSidebarConfig.tsx` 取 `sidebarConfigApi` 与 `ensureMetaAgent`。
+ *   - 宿主控制台的 `AgentSidebarConfig.tsx` 取 `sidebarConfigApi` 与 `ensureMetaAgent`；
+ *   - 宿主聊天容器（`apps/web` 的 ChatArea）取 `loadBoundMcps`，把「Agent 已绑定的 MCP 选项」注入
+ *     `@fenix/ui-components` 聊天面板的 `boundMcps` 端口（查询为何落在这里见 `./lib/bound-mcps.ts`）。
  * 这些符号都在本文件的导出面内，消费方一律走包根，不得深入 `web/pages/**` 这类实现路径。
  *
  * 宿主注册 i18n 走子路径 `@fenix/agent-config/web/i18n`（见 `./i18n/index.ts` 的说明）：
@@ -26,6 +28,7 @@ export { SiteFrame } from "./components/agent-panel/SiteFrame";
 export { type SiteEntry, SiteTabsBar } from "./components/agent-panel/SiteTabsBar";
 export { useMetaAgent } from "./hooks/use-meta-agent";
 export { AGENTS_NS, type AgentResources, agentResources } from "./i18n";
+export { loadBoundMcps } from "./lib/bound-mcps";
 export { AgentSidebarConfig } from "./pages/agent-panel/AgentSidebarConfig";
 export { AgentFormDialog, type AgentFormDialogProps } from "./pages/agent-panel/agent-editor/AgentFormDialog";
 export * from "./pages/agent-panel/agent-editor/agent-editor-model";

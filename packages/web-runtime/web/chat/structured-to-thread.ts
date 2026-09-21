@@ -95,7 +95,7 @@ function mapStatus(status: string): ToolCallStatus {
  * 将 Yjs StructuredMessage[] 转换为 ChatInterface 渲染用的 ThreadEntry[]。
  * 纯函数，无副作用。
  */
-export function structuredToThreadEntries(messages: StructuredMessage[]): ThreadEntry[] {
+export function structuredToThreadEntries(messages: readonly StructuredMessage[]): ThreadEntry[] {
   const entries: ThreadEntry[] = [];
   let previousTodos: TodoItem[] | null = null;
 

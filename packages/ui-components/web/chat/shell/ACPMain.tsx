@@ -27,11 +27,10 @@ import { SidebarSessionList } from "./sidebar-session-list";
  * ACPMain 属性。复制自 `packages/chat-channel/web/components/ACPMain.tsx`。
  * 纯化改动点：`sidebarOpen` / `onSidebarOpenChange` 取代 localStorage `acp-sidebar-open`；
  * `onNotice` 取代 sonner toast；并把宿主端口（`boundMcps` / `projectEntries` / `flushContext` /
- * Composer 上传相关回调 / `onStatsChange`）透传给 ChatInterface。
+ * Composer 上传相关回调 / `onStatsChange` / `onOpenWorkspaceFile`）透传给 ChatInterface。
  */
 interface ACPMainProps {
   agentId?: string;
-  initialCwd?: string;
   readonly?: boolean;
   hideSidebar?: boolean;
   rcsSessionId?: string;
@@ -85,7 +84,7 @@ interface ACPMainProps {
   /** 侧边栏展开状态变化回调（宿主可在此持久化，如写入 localStorage `acp-sidebar-open`） */
   onSidebarOpenChange?: (open: boolean) => void;
   /** 已绑定 MCP 列表（透传给 ChatInterface，替代包内 envApi/agentApi/mcpApi 查询） */
-  boundMcps?: BoundMcpOption[];
+  boundMcps?: readonly BoundMcpOption[];
   /** `StructuredMessage[]` → `ThreadEntry[]` 投影（透传给 ChatInterface，由宿主注入） */
   projectEntries?: (structuredMessages: readonly StructuredMessage[]) => ThreadEntry[];
   /** 上下文队列取出并清空（透传给 ChatInterface，源为宿主 `@/src/lib/context-queue.flushContext`） */
@@ -100,6 +99,11 @@ interface ACPMainProps {
   subscribeExternal?: ComposerExternalSubscribe;
   /** 运行时提示出口（透传给 ChatInterface，替代 sonner toast） */
   onNotice?: (notice: ChatNotice) => void;
+  /**
+   * 打开工作区文件（透传给 ChatInterface）：用户消息正文中的 `@./path` 引用与状态面板的
+   * 变更文件行都用它。源实现经宿主的预览事件总线派发；未注入时点击文件不产生跳转。
+   */
+  onOpenWorkspaceFile?: (envId: string, path: string) => void;
   /** 会话统计摘要出口（透传给 ChatInterface，替代 window `chat:stats` 事件） */
   onStatsChange?: (stats: ChatStatsSummary) => void;
 }
@@ -158,6 +162,7 @@ export function ACPMain({
   subscribeExternal,
   onNotice,
   onStatsChange,
+  onOpenWorkspaceFile,
 }: ACPMainProps) {
   const { t } = useTranslation(UI_COMPONENTS_NS);
   const sessions = chatState?.sessions ?? [];
@@ -372,6 +377,7 @@ export function ACPMain({
           sessions={sessions}
           onRenameSession={onRenameSession}
           onDeleteSession={onDeleteSession}
+          onNotice={onNotice}
           showSessionList={false}
         />
       )}
@@ -386,6 +392,7 @@ export function ACPMain({
           onSelectSession={handleSelectSession}
           onRenameSession={onRenameSession}
           onDeleteSession={onDeleteSession}
+          onNotice={onNotice}
         />
       )}
 
@@ -420,6 +427,7 @@ export function ACPMain({
                 sessions={sessions}
                 onRenameSession={onRenameSession}
                 onDeleteSession={onDeleteSession}
+                onNotice={onNotice}
               />
             </ScrollArea>
           </div>
@@ -465,6 +473,7 @@ export function ACPMain({
             subscribeExternal={subscribeExternal}
             onNotice={onNotice}
             onStatsChange={onStatsChange}
+            onOpenWorkspaceFile={onOpenWorkspaceFile}
           />
         </div>
       </div>

@@ -13,6 +13,7 @@
 
 import { useCallback, useEffect, useRef } from "react";
 import { prepareImageContent } from "../../composer/chat-image-content";
+import type { CompressImage } from "../../composer/composer-file-processing";
 import { buildPromptText } from "../../composer/composer-prompt";
 import type { ChatInputMessage, ContentBlock } from "../../types";
 import type { ChatNotice } from "../chat-interface-types";
@@ -35,6 +36,12 @@ export interface ChatInputSubmitOptions {
    * 未复制进包内）；未提供时本次提交不注入上下文块。
    */
   flushContext?: (scope?: string) => string | null;
+  /**
+   * 发送前的图片二次压缩（>2MiB 时归一为 JPEG）。源实现在发送边界无条件压缩；纯化后压缩能力
+   * 由宿主注入（`compressImage` 端口），但**输入岛与发送边界必须用同一个端口**：输入岛压缩后
+   * 体积仍可能越过 2MiB 阈值，缺这一步就失去源实现「发出图片 ≤2MiB」的保证。未提供时不压缩。
+   */
+  compressImage?: CompressImage;
   onCreateSession: () => Promise<void>;
   onSendPrompt: (contentBlocks: ContentBlock[]) => Promise<void>;
   /** 图片准备失败时的提示出口（替代 sonner toast） */
@@ -54,6 +61,7 @@ export function useChatInputSubmit({
   scenePrompt,
   contextScope,
   flushContext,
+  compressImage,
   onCreateSession,
   onSendPrompt,
   onNotice,
@@ -116,7 +124,7 @@ export function useChatInputSubmit({
       // 图片保持 ContentBlock 顺序；单张失败不阻塞其余正文与附件引用。
       for (const image of images) {
         try {
-          contentBlocks.push(await prepareImageContent(image));
+          contentBlocks.push(await prepareImageContent(image, compressImage));
         } catch (error) {
           console.error("[ChatInterface] Failed to prepare image:", error);
           onNotice?.({ level: "error", message: imagePrepareFailedMessage });
@@ -183,6 +191,7 @@ export function useChatInputSubmit({
       onCreateSession,
       contextScope,
       flushContext,
+      compressImage,
       onNotice,
       imagePrepareFailedMessage,
     ],

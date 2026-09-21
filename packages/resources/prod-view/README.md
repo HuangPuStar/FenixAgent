@@ -21,7 +21,8 @@
 ## web 面与 i18n
 
 - 浏览器出口是 `web/index.ts`（`exports["./web"]` 指向它），导出 `prodViewApi` 与其类型、`ProdViewsPanel`、`AgentProdViewsPage`、`ProdViewPage`，以及 i18n 的 `PROD_VIEWS_NS` / `prodViewsResources`。包内实现细节（`web/lib/prod-view-modules` 的辅助函数等）不转出，避免形成无人消费的公共面；消费方一律走这个根入口，不深入 `web/**` 子路径。
-- 宿主别名已清零：`grep -rn 'from "@/' packages/resources/prod-view/web` 无命中。跨包能力改走 `@fenix/ui-components/<子路径>`（UI）、`@fenix/web-runtime/<子路径>`（请求封装、i18n 命名空间、类型）、`@fenix/agent-config/web`（agent 名称）、`@fenix/chat-channel/web/chat-area`（分享页的 lazy ChatArea），全部经对方 `package.json` 的 `exports` 声明，不写文件级深路径。
+- 宿主别名已清零：`grep -rn 'from "@/' packages/resources/prod-view/web` 无命中。跨包能力改走 `@fenix/ui-components/<子路径>`（UI）、`@fenix/web-runtime/<子路径>`（请求封装、i18n 命名空间、类型）、`@fenix/agent-config/web`（agent 名称），全部经对方 `package.json` 的 `exports` 声明，不写文件级深路径。
+- 聊天容器由宿主注入（CE 阶段 2 任务 1.6 T5b）：`ProdViewPage` 不再 lazy import `@fenix/chat-channel/web/chat-area`，改为接收 `chatArea` prop（类型 `ProdViewChatAreaProps`），由宿主路由 `apps/web/src/routes/view/$prodViewId.tsx` 注入 `apps/web` 的 `ChatArea`。理由：聊天容器持宿主路由态、keep-alive 槽位与页面壳层样式，按 §2.3「Shell 属于 app，不属于资源包」归宿主；分享页只解析「哪个 Environment 的哪个实例」。连带效果：本包已从 `dependencies` 移除 `@fenix/chat-channel`。
 - 文案归属：本包域内键（含从宿主 `components` 命名空间迁入的 `panel.*` 28 个键）落在 `web/i18n/locales/{en,zh}/prodViews.json`，由 `web/i18n/index.ts` 聚合、`web/i18n/namespace.ts` 声明命名空间，`package.json` 的 `exports["./web/i18n"]` 指向 `web/i18n/index.ts`——布局与黄金样本 sandbox 一致（计划 §4 的目标态）。键一致性（en/zh 同集合、插值占位符成对、源码字面量键可查、28 个 `panel.*` 齐备）由 `web/__tests__/prod-view-i18n.test.ts` 守护。宿主侧注册需同批切到 `@fenix/resource-prod-view/web/i18n` 子路径（深相对路径的旧 JSON 位置已不存在），宿主侧同名键的删除见「边界残留」的 W3 patch 清单。
 
 ## 边界残留
@@ -31,7 +32,7 @@
 - 表定义：`src/server/repositories/prod-view.ts` 仍从 `@server/db/schema` 取 `prodView`（及行类型），这是包内唯一的宿主导入（`grep -rn 'from "@server/' packages/resources/prod-view/src` 共 2 处，另一处在测试夹具）。迁出归任务 1.7。
 - 宿主 `apps/web` 侧仍按逐文件别名直连 `web/**`：`apps/web/vite.config.ts:37,165-179` 把 `@/src/api/prod-views`、`@/src/pages/{agent-panel/pages/AgentProdViewsPage,agent-panel/ProdViewsPanel,prod-view/ProdViewPage}`、`@/src/lib/prod-view-modules` 指到本包文件，`apps/web/src/routes/view/$prodViewId.tsx` 也按别名 lazy 导入——归 §1.6 的别名收敛。服务端一侧已按工厂接线（2026-09-20 实测）：`apps/server/src/routes/web/index.ts:16` 导入并在 `:59` 构造 `createWebProdViewsRoutes({ authGuardPlugin })`、`:87` `.use(...)`；`apps/server/src/routes/web/config/index.ts:4` 导入并在 `:24` 构造 `createWebConfigProdViewsRoutes({ authGuardPlugin })`、`:33` `.use(...)`。
 - 文案双写窗口：宿主 `apps/web/src/i18n/locales/{en,zh}/components.json` 的 `panelMode.views*` 键组在本包迁出后应只做删除（保留被 `TopModeTabs.tsx` 消费的 `panelMode.views` 本身）；实测宿主已无任何代码消费其余 `views*` 键。
-- 浏览器面跨包耦合：`@fenix/agent-config/web` 的 `./web` 指向该包 `web/index.ts` 全量索引（其文件头自述「导出面覆盖当前跨包消费方」），`@fenix/chat-channel/web/chat-area` 属本波范围之外的包，`packages/platform/identity/web` 的去别名归 §1.6；三者的宿主别名不会进入本包源码，但会经跨包递归进入值导入图，因此在 `web/__tests__/prod-view-browser-surface.test.ts` 里以 `PENDING_MIGRATION_DIRS` 显式登记（带归属说明），随对应包迁移后收窄。
+- 浏览器面跨包耦合：`@fenix/agent-config/web` 的 `./web` 指向该包 `web/index.ts` 全量索引（其文件头自述「导出面覆盖当前跨包消费方」）。**无待迁移债务**：`web/__tests__/prod-view-browser-surface.test.ts` 曾用 `PENDING_MIGRATION_DIRS` 登记「跨包文件仍写宿主别名」的包（原三条：chat-channel、agent-config、identity/web），T4a 清零 identity 的别名、T5b 又随 ChatArea 迁往宿主而让 chat-channel 整个离开本包的值导入图，全图实测 0 处宿主别名，该登记表已删除，断言改为「本包与跨包文件一律零宿主别名」。
 
 **待落盘的宿主 patch 清单（W3，编排者独占的共享文件）**：
 
