@@ -1444,6 +1444,28 @@ T10 的第二片。判定口径是**导入图谱**而不是文件名相似度：
 完整门禁 `env -u ANTHROPIC_MODEL bun run precheck` 全绿（772 / 7496 + 2 skip / 792，0 fail），
 `bun run build:web` 与 `bun run docs:build` 均成功。
 
+### 7.21 T10b2 宿主测试按 owner 归位：7 个 web-runtime 用例迁入包内（2026-09-21，）
+
+T10 的第三片，判定口径与 T10b1（§7.20）同一张导入图谱，owner 换成 `@fenix/web-runtime`：`request` 与两个
+`structured-thread-*`、`todo`、`permission-options`、`artifacts-preview-events`、`config-types` 共 7 个宿主
+用例的导入说明符除标准库外全部指向该包出口（`api/request`、`chat/{structured-to-thread,todo}`、
+`lib/artifacts-preview-events`、`types/config`），宿主侧的被测实现已在 T8d 整体退场，用例留在宿主是同一种
+「包内实现被应用壳测试守护」。
+
+**本片是纯搬运**：7 个文件的 import 在 T8d 改指时就已写成包名自引用，因此工作区里只有 `git mv` 与台账，
+没有任何文本改动（rename 相似度 100%）——这也反过来验证了 T8d 的改指是完整的。
+
+`request.test.ts` **不在 RMD-08 快照内**（它守护的 `api/request` 是 T8d 才上收到包里的），本片一并归位并补进
+relocated 断言，避免它成为台账之外的宿主复活口。
+
+**台账与搬迁同批**：6 项（`request.test.ts` 不在快照内）从 `RMD_08_MOVES` 移出（`toHaveLength(88)` → 82），
+7 项追加进 `RMD_08_RELOCATED`（`toHaveLength(61)` → 68），文件头追加第 9 条改判。
+
+**验证**：`bun test packages/web-runtime/` 157 pass 0 fail（该包用例文件 3 → 10）；
+`bun test scripts/__tests__/rmd-08-migration.test.ts` 6 pass。宿主 `apps/web/src/__tests__/` 48 → 41 个用例文件。
+完整门禁 `env -u ANTHROPIC_MODEL bun run precheck` 全绿（772 / 7618 + 2 skip / 670，0 fail），
+`bun run build:web` 与 `bun run docs:build` 均成功。
+
 ---
 
 ## 八、用户可见行为变更
