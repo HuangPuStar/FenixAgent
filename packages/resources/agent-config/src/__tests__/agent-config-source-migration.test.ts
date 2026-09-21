@@ -106,7 +106,12 @@ const MIGRATION_PAIRS: ReadonlyArray<readonly [hostPath: string, packagePath: st
   ["apps/web/src/__tests__/agent-i18n.test.ts", "web/__tests__/agent-i18n.test.ts"],
   ["apps/web/src/__tests__/config-agents-page.test.ts", "web/__tests__/config-agents-page.test.ts"],
   ["apps/web/src/__tests__/agent-resource-access-flow.test.ts", "web/__tests__/agent-resource-access-flow.test.ts"],
-  ["apps/web/src/__tests__/agent-sidebar-config.test.ts", "web/src/__tests__/agent-sidebar-config.test.ts"],
+  // 曾经有过一对 `apps/web/src/__tests__/agent-sidebar-config.test.ts` →
+  // `web/src/__tests__/agent-sidebar-config.test.ts`。§1.6 T11d 撤销了这次迁移：侧栏导航的真相源改成
+  // 各包的 `web/contribution.ts` + WebShell 的分组表，`AgentSidebarConfig` 的宿主副本与包内死副本
+  // 一并删除，`filterNavGroups` 的纯逻辑与其 50 条断言改由宿主 WebShell 持有
+  // （`apps/web/src/shell/shell-navigation.ts` / `apps/web/src/__tests__/shell-navigation-filter.test.ts`）。
+  // 该能力不再属于本包，因此不再是「宿主 → 包」的迁移对。
 ];
 
 /** 去掉行注释与块注释；字符串字面量内的内容原样保留（说明符本身就在引号里）。 */

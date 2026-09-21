@@ -11,8 +11,8 @@ import { Building2, Check, ChevronLeft, ChevronRight, KeyRound, LogOut, UserRoun
 import { memo, useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { NS } from "@/src/i18n";
-import { AgentSidebarQuickNav } from "./AgentSidebarConfig";
 import { AgentSidebarTree } from "./AgentSidebarTree";
+import { ShellNavigation } from "./ShellNavigation";
 
 interface AgentSidebarProps {
   activeNav: string | null;
@@ -88,9 +88,9 @@ export const AgentSidebar = memo(function AgentSidebar({
 
       <ResizablePanelGroup orientation="vertical" className="agent-sidebar-sections">
         <ResizablePanel defaultSize="44%" minSize="120px">
-          {/* 快捷导航：模型、技能、MCP、组织管理 */}
+          {/* 快捷导航：项来自各资源包的 web contribution，分组与组序由 Shell 声明 */}
           <div className="agent-sidebar-nav-wrap">
-            <AgentSidebarQuickNav onNavigate={onNavigate} activeNav={activeNav} />
+            <ShellNavigation onNavigate={onNavigate} activeNav={activeNav} />
           </div>
         </ResizablePanel>
         <ResizableHandle className="agent-sidebar-tree-resize-handle" aria-label={tSidebar("resizeAgentArea")} />

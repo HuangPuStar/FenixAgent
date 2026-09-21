@@ -3,7 +3,7 @@
  *
  * 归属理由：本组件不是聊天 UI 本身，而是「把哪个 Environment / 哪个 session 装进哪个面板」的装配逻辑——
  * 它持有宿主的路由态（keep-alive 槽位、Environment 删除集、实例重连事件）、宿主的 URL/存储偏好
- * （`fenix:artifacts-*`）、宿主的页面壳层（`agent-panel-*` 类名与 `AgentPanelLayout` 的 URL 解析约定），
+ * （`fenix:artifacts-*`）、宿主的页面壳层（`agent-panel-*` 类名与 `DefaultAppShell` 的 URL 解析约定），
  * 以及宿主页面与面板之间的桥（`ChatPageVisibleContext`、`artifacts:*` 事件）。按 §2.3「Shell 属于 app，
  * 不属于资源包」，它住在 `apps/web/src/pages/agent-panel/`。
  *
@@ -12,8 +12,9 @@
  * helper 在运行期 `appendChild` 到 head 末尾），两者的级联先后正好相反。实测过改挂的后果：`chat-layout.css`
  * 一旦被内联进静态 `agent-panel.css` 的第 2 行，它就会输给同文件里更靠后的 `.agent-panel-content{
  * padding:12px }` 与懒加载的 `artifacts-workspace.css` 的 `.agent-chat-workspace{ gap:10px }`——聊天区凭空
- * 内缩 12px、docked 布局多出 10px 间隙（T5b 复核发现，已回退）。被 lazy 装载的 ChatPanel 与 ArtifactsPanel
- * 仍按宿主别名解析（`@/src/pages/agent-panel/*`），因此本文件位移不改变它们的解析结果。
+ * 内缩 12px、docked 布局多出 10px 间隙（T5b 复核发现，已回退）。被 lazy 装载的 ChatPanel 仍按宿主别名解析
+ * （`@/src/pages/agent-panel/*`），因此本文件位移不改变它的解析结果；`ArtifactsPanel` 已随 T11d 迁入
+ * `apps/web/src/shell/`，其样式 `artifacts-workspace.css` 同迁，仍是「先 artifacts 后 chat-layout」的导入序。
  *
  * 外部注入点：`ProdViewPage`（`@fenix/resource-prod-view/web`）不直接引用本组件，而是通过
  * `ProdViewChatAreaProps` 窄端口接收宿主传入的聊天容器——分享页路由 `apps/web/src/routes/view/$prodViewId.tsx`
@@ -46,13 +47,11 @@ import { envApi } from "@/src/api/environments";
 import type { ProdViewModulesConfig } from "@/src/api/prod-views";
 import { NS } from "@/src/i18n";
 import { evictDeletedEnvironmentSlots, resolveActiveChatEnvironmentId, type SessionSlot } from "./chat-area-lifecycle";
-import "@/src/pages/agent-panel/artifacts-workspace.css";
+import "@/src/shell/artifacts-workspace.css";
 import "./chat-layout.css";
 
 const ChatPanel = lazy(() => import("./ChatPanel").then((m) => ({ default: m.ChatPanel })));
-const ArtifactsPanel = lazy(() =>
-  import("@/src/pages/agent-panel/ArtifactsPanel").then((m) => ({ default: m.ArtifactsPanel })),
-);
+const ArtifactsPanel = lazy(() => import("@/src/shell/ArtifactsPanel").then((m) => ({ default: m.ArtifactsPanel })));
 
 interface ChatAreaProps {
   agentId: string | null;
@@ -96,7 +95,7 @@ function readArtifactsLayout(): ArtifactsLayoutMode {
  * 2. Session 级：缓存所有访问过的 session 的 ChatPanel 实例，
  *    同一 agent 下切换 session 时通过 CSS display 切换，不重建 WebSocket 连接
  *
- * agentId/sessionId 从 AgentPanelLayout 的 URL 解析传入（而非 Route.useParams），
+ * agentId/sessionId 从 DefaultAppShell 的 URL 解析传入（而非 Route.useParams），
  * 仅当用户主动切换到新的 chat agent 时才变更，切到非 chat 页面时保持上次的 agentId。
  */
 export function ChatArea({ agentId, sessionId, visible, deletedEnvironmentIds, modulesConfig }: ChatAreaProps) {

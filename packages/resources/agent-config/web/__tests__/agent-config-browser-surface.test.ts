@@ -172,13 +172,14 @@ describe("agent-config web 入口浏览器可达面", () => {
       "src/api/meta-agent.ts",
       "src/api/sidebar-config.ts",
       "components/agent-panel/SiteFrame.tsx",
-      "pages/agent-panel/AgentSidebarConfig.tsx",
       "pages/agent-panel/agent-editor/AgentFormDialog.tsx",
       "pages/agent-panel/pages/agent-sites-catalog.tsx",
     ]) {
       expect(reachedWebFiles).toContain(expected);
     }
-    expect(reachedWebFiles.size).toBeGreaterThanOrEqual(24);
+    // §1.6 T11d 起 `pages/agent-panel/AgentSidebarConfig.tsx` 退场（宿主同源副本与包内死副本同时删除，
+    // 侧栏导航改由 WebShell 消费各包的 `web/contribution.ts`），基线随之 24 → 23。
+    expect(reachedWebFiles.size).toBeGreaterThanOrEqual(23);
 
     // 跨包递归的有效性：钉住每条上游一条稳定路径（ui-components 的按钮/弹窗、web-runtime 的
     // request / namespace / org-session 契约、model-management 的编辑器依赖、兄弟资源包的

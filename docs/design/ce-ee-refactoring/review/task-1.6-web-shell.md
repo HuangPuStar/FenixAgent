@@ -104,7 +104,7 @@ WebShell 从静态 registry 收集各资源包的 web contribution（不反向�
 | T8 | 宿主组件/lib/api 簇改指并删除 | 已交付（a–d + z） | 见下方 §7.13 |
 | T9 | i18n 归属重划与 `quoteTruncatedBadge` 缺陷修复 | **a、b、c、d 已交付** | a 见 §7.15 / b 见 §7.16 / c 见 §7.17 / d 见 §7.18 |
 | T10 | 测试迁移与 happy-dom 收敛 | **a、b1–b5 已交付**（余下分片随 T11 收口） | a 见 §7.19 / b1 见 §7.20 / b2 见 §7.21 / b3 见 §7.22 / b4 见 §7.23 / b5 见 §7.24 |
-| T11 | WebShell 落地 | **a 已交付**（b–e 见下方分片表） | a 见 §7.25 |
+| T11 | WebShell 落地 | **a–d 已交付**（e 见下方分片表） | a 见 §7.25 / b 见 §7.26 / c 见 §7.27 / d 见 §7.28 |
 | T12 | 收尾：台账复核、文档修订、证据留痕 | 待办 | — |
 
 **T5 分片**（用户裁定「整体退场，由 ui-components 接管」+「`agent-config/web` 提供助手」的落地顺序；
@@ -126,7 +126,7 @@ WebShell 从静态 registry 收集各资源包的 web contribution（不反向�
 | T11a | 契约与形状定稿 | **已交付**（§7.25）：`@fenix/web-runtime` 新出口 `./shell/contribution`，载荷 `WebAppContribution`（导航项含 id/groupId/order/ns/labelKey/icon） |
 | T11b | 各包 `web/contribution.ts` | **已交付**（§7.26）：9 个包各持一份声明（14 项导航）+ `exports["./web/contribution"]` + 导航文案随项迁入各包字典；宿主旧键保留到 T11d 切换 |
 | T11c | 生成器与浏览器产物 | **已交付**（§7.27）：9 个 manifest 声明 `web` 惰性入口说明符 + `ce.json` 的 `web` 落 9 项（仅有真实载荷）+ `scripts/generate-web-contributions.ts` 生成 `apps/generated/web-contributions.ts`（只含静态 import）+ `ci.ts` 子项 + 导航文案解析契约测试 |
-| T11d | Shell 落地 | `apps/web/src/shell/`：`DefaultAppShell` 消费产物、侧栏导航改由 registry 渲染、`AgentSidebarConfig` 宿主/包内双写收敛 |
+| T11d | Shell 落地 | **已交付**（§7.28）：`apps/web/src/shell/` 三片——壳层容器迁入（`2a9b96fff`）、包内死副本退场与 `filterNavGroups` 归位（`19812a49d`）、侧栏改由产物渲染 + 宿主旧导航表与 12 条键删除（`903477877`） |
 | T11e | route adapter 直连包入口 | 22 条 `@/src/...` 桥接改造 + 删 `apps/web/vite.config.ts` 与根 `tsconfig.json` 的桥接条目 + 宿主剩余页面归位（`AgentHomePage` / `AgentManagementPage` / `AgentDashboardPage`） |
 
 ---
@@ -1750,6 +1750,89 @@ check 模式的缺失 / 一致 / 过期三态）全绿；`bun run generate:web-c
    `build:web` 是权威证据：9 条说明符必须全部可解析，否则整片浏览器装配失败。
 3. **`standards` §4.1 的目录树写 `web/contribution.ts`、执行计划 T11 行写 `web-contribution.ts`**：
    本片按 §7.25 的裁定采用 `web/contribution.ts`，standards 侧待 T12 修订。
+
+### 7.28 T11d Shell 落地：壳层容器迁入、双写收敛、侧栏改由产物渲染（2026-09-21，`2a9b96fff` + `19812a49d` + `903477877`）
+
+T11 的第四片，也是「谁持有侧栏」这件事真正换手的片。按「每片独立可 `precheck`、独立提交」拆成三段：
+
+| 段 | 提交 | 内容 |
+| --- | --- | --- |
+| T11d-1 | `2a9b96fff` | 壳层容器与两份 CSS 从 `apps/web/src/pages/agent-panel/` 迁入新建的 `apps/web/src/shell/`：`AgentSidebar` / `AgentSidebarTree` / `AgentSidebarConfig` / `ArtifactsPanel` / `AgentPanelLayout`（改名 `DefaultAppShell`） |
+| T11d-2 | `19812a49d` | 包内死副本退场（`agent-config/web` 的 `AgentSidebarConfig` 与两份用例）+ `filterNavGroups` 与装配纯逻辑归位宿主 `shell/shell-navigation.ts` |
+| T11d-3 | `903477877` | 侧栏改渲染 `ShellNavigation`（产物装配）+ 宿主旧导航表与 11 条 `agentPanel` 键、`sidebar.organizations` 删除 |
+
+**为什么壳层容器要单独立目录**（执行期裁定 3 的落地口径）：`AgentSidebar` 连品牌区、`AgentPanelLayout`
+连内容槽与聊天保活，都是「应用壳」而不是任何资源模块的业务——按 standards §4.1，资源模块不得决定全局
+布局。落到 `apps/web/src/shell/` 后，「哪些文件属于壳」在目录上一眼可辨，T11e 归位宿主剩余页面时也不会
+再与壳层文件混在 `pages/agent-panel/` 里。`AgentPanelLayout` 改名 `DefaultAppShell` 是为了与
+`apps/web/fenix.module.ts` 的 `kind: "web-shell"`、`apps/generated/web-contributions.ts` 的消费方对齐
+——旧名是「布局」，新名是它在 registry 世界里的身份。
+
+**装配与渲染的分工**（本片的核心设计）：三段各自的 owner 由数据来源决定——
+
+1. **分组归属与组间顺序 = Shell**（`SHELL_NAV_GROUPS`，T11 用户裁定）。分组由 Shell 持有，所以未知
+   `groupId` 在装配期**抛错**而不是静默丢项：丢掉一项导航会让对应页面在控制台里彻底不可达，而这类
+   漂移只有两端对账才看得出来。
+2. **项载荷 = 各包**（`web/contribution.ts`，T11b）。组内顺序的唯一排序键是 `order`，**同组内必须
+   唯一**，重复同样在装配期抛错。原契约注释写「同值时由 registry 的稳定排序（包 ID）决定」是**不可
+   实现**的规则：导航项不携带包身份，产物顺序又只是 profile 的 `web` 列表顺序，拿它兜底等于让版式随
+   装配清单变化——本次一并改成「唯一性」这条可判定的规则。
+3. **裁剪 = Shell**（`filterNavGroups`）。隐藏列表来自 agent-config 的 `sidebarConfigApi`，但被裁剪的
+   是 Shell 装配出的导航，owner 因此是 Shell——这也解释了为什么 `filterNavGroups` 从包内搬到宿主而
+   `sidebarConfigApi` 留在包内。裁剪只删项：不改序、不改分组、不留空组标题。
+
+`assembleNavGroups` 是**纯逻辑**（不碰 i18n、不碰请求），因此可以用构建期产物在无 React 环境里逐项
+对账；产物只含静态 import，装配结果在模块加载时算一次。项的文案走 `t(labelKey, { ns })`——`ns` 由贡献
+声明携带，Shell 因此不需要认识任何包。
+
+**两份副本的收敛**（T11d-2 + T11d-3）：`AgentSidebarConfig` 在宿主与 `agent-config/web` 各有一份 151 行
+同源副本。**两份都不是 owner**：真相源已改由各包贡献 + Shell 分组表装配，所以两份同批删除，而不是
+「留下一份改成读产物」。包内那份零消费（包根导出无人取），删除后 `agent-config` 只剩数据面
+（`./src/api/sidebar-config`）。
+
+**宿主字典削减的实际边界**：§7.26 记的「13 条导航键」实际只能删 **12** 条中的 11 条，两个原因都在
+实测里：
+
+- `createAgent` 不能删——`AgentSidebarTree` 仍以 `NS.AGENT_PANEL` 在用（它同时又是 `home` 项的文案，
+  但那是包字典的键，与此无关）。
+- `algorithms` / `algorithmsSubtitle` 不能删——`model-management` 的 `AlgorithmsPage` 用
+  `useTranslation(NS.AGENT_PANEL)` 取页面标题与副标题，**借用的是宿主字典**（`NS.AGENT_PANEL` 只由宿主
+  注册）。这属于 §7.15（T9a）那类「包借宿主键」，但不在本任务范围：它是页面标题而非导航文案，删除会
+  立刻打断模型页面。登记待 T12 按 T9a 口径结清（或明确划给 `models` 命名空间）。
+
+**为什么这次的删键不会静默打断侧栏**：包字典先落（T11b）、宿主键后删（T11d），两端文案在两片之间
+暂时重名；`host-i18n.test.ts` 的限定字面量扫描（`"<ns>:<key>"`）会在删键时立刻变红，因此两片必须
+分批且各自全绿。**逐字对账**（本片门禁之外的实证）：脚本比对 `git show HEAD:` 的旧值与各包字典的
+`nav.*`，14 项导航的 en / zh 文案与迁移前**逐字一致**——这是「用户可见行为零变化」的直接证据。
+
+**回归证据**：`bun run build:web` 成功，且产物 `DefaultAppShell-*.js` 内含全部 14 个 `nav.*` 键——
+这正是 §7.27 登记的第 2 条（「产物的 vite 解析未被真实构建图证明」）所需的权威证据：9 条
+`@fenix/*/web/contribution` 说明符全部经包 `exports` 在真实 vite 依赖图里解析成功，任一失败整片浏览器
+装配都会崩。`precheck` 全绿（server 788 / package 7917 / web 357，0 fail，lint 零 warning）。
+
+**随片更新的台账与文档**：`rmd-04` 两条 `agent-sidebar-config*` 条目补第三项现址（filter-pure 逐字 port
+到 `shell-navigation-filter.test.ts`，三条裁剪断言改写进 `shell-navigation.test.ts`）；`rmd-08` 六条落点
+改到 `shell/`、`AgentSidebarConfig.tsx` 移入专项 retired 断言（计数 71 → 70）；前端开发规范 §2.5
+「侧边栏」重写为「各包 `web/contribution.ts` 声明 + Shell 持分组」，原文指向的文件已不存在。
+
+**登记（不在本片修，交 T12）**：
+
+1. **`algorithms` / `algorithmsSubtitle` 的跨包借键**（见上），按 T9a 口径结清或明确归属。
+2. **宿主 `sidebar` 字典还有 8 条死键**：`channels` / `config` / `console` / `knowledge` / `mcp` /
+   `models` / `skills` / `workflow`。它们在 T11d 之前就没有消费方（T9c 的判据是「整个命名空间零绑定」，
+   `sidebar` 因仍有 `collapse` / `expand` 等活键而整体留存），本次只删了导航表真正指向的
+   `organizations`，避免顺手清无关键。
+3. **两份历史文档的指向已过期，保留原样**：`docs/design/2026-09-18-packages-web-ui-components-migration.md`
+   第 122 行的 C2 归属表把 `AgentSidebarConfig.tsx` 判给 agent-config（本片改判为「Shell 持有分组 +
+   包持有项」后该文件两侧同批删除），`docs/arch/root-source-owner-inventory.md` 第 158 行仍记着
+   `web/src/__tests__/agent-sidebar-config` 的 RMD-04 归属。两者都是**当时判定**的历史记录，按本仓
+   口径不改写历史文档，只在此登记；`scripts/root-source-owner-rules.ts:866` 的那条前缀规则同理保留
+   （它审计的是根目录遗留文件，包内落点已不存在也不会误报）。
+4. **ui-components 的 CSS 溯源注释指向已迁移路径**：`web/chat/css/chat.css:4`、
+   `chat-design-composer.css:6/380/504`（来源 `agent-panel.css`）与 `web/components/file-tree.css:4`
+   （来源 `artifacts-workspace.css`）共 5 行注释，在 T11d-1 之后 src 侧文件已改到
+   `apps/web/src/shell/`；同目录 `chat-layout.css:4` 与 `ChatInterface.tsx:22`、根 `README.md:89`
+   指的是未迁移的 `chat-layout.css` / `ChatArea.tsx`，仍然准确。归 T12 与其它溯源注释一并修订。
 
 ---
 

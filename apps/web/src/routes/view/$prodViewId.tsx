@@ -2,7 +2,7 @@ import { Button } from "@fenix/ui-components/ui/button";
 import { createFileRoute } from "@tanstack/react-router";
 import { lazy, Suspense } from "react";
 import { ErrorBoundary, type FallbackProps } from "react-error-boundary";
-import "@/src/pages/agent-panel/agent-panel.css";
+import "@/src/shell/agent-panel.css";
 
 const Page = lazy(() => import("@/src/pages/prod-view/ProdViewPage").then((m) => ({ default: m.ProdViewPage })));
 // 分享页只解析实例身份，聊天容器由宿主注入：ChatArea 属宿主 Shell（§2.3），

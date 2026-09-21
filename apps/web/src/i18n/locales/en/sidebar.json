@@ -10,7 +10,6 @@
   "config": "Configuration",
   "workflow": "Workflow",
   "knowledge": "Knowledge",
-  "organizations": "Organizations",
   "collapse": "Collapse sidebar",
   "expand": "Expand sidebar",
   "resizeAgentArea": "Drag to resize the Agent area",

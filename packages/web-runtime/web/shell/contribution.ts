@@ -31,7 +31,12 @@ export interface WebNavigationItem {
    * 全局布局属于应用壳，资源模块不得反向决定（standards §4.1）。
    */
   readonly groupId: string;
-  /** 组内顺序，小者在前；同值时由 registry 的稳定排序（包 ID）决定，与声明顺序无关。 */
+  /**
+   * 组内顺序，小者在前。**同组内必须唯一**：`order` 是组内唯一排序键，重复即 Shell 装配期报错。
+   *
+   * 没有「同值兜底」规则可选——导航项不携带包身份，产物顺序又只是 profile 的 `web` 列表顺序，
+   * 拿它兜底等于让版式随装配清单变化（判定见 `apps/web/src/shell/shell-navigation.ts`）。
+   */
   readonly order: number;
   /**
    * 文案 key 与它所属的 i18n 命名空间。

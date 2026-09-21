@@ -85,7 +85,11 @@ export const Route = createFileRoute("/agent/_panel/models")({
 
 ### 2.5 侧边栏
 
-导航项通过 `apps/web/src/pages/agent-panel/AgentSidebarConfig.tsx` 声明式定义——`NavGroup[]` 数组，每项含 `id`（映射到路由 `/agent/:id`）、`labelKey`（i18n key）、`icon`（lucide-react 组件）。
+导航项由**各资源包**在 `packages/<pkg>/web/contribution.ts` 声明——`WebNavigationItem` 数组，每项含 `id`（映射到路由 `/agent/:id`）、`groupId`、`order`（组内顺序，组内必须唯一）、`ns` / `labelKey`（i18n key 与它所属的包字典）、`icon`（lucide-react 组件）；契约与判据见 `@fenix/web-runtime/shell/contribution`。
+
+**分组与组间顺序由应用壳持有**（`apps/web/src/shell/shell-navigation.ts` 的 `SHELL_NAV_GROUPS`），资源包只声明自己属于哪一组、组内排第几——全局布局属于 Shell，资源模块不得反向决定。Shell 装配后由 `apps/web/src/shell/ShellNavigation.tsx` 渲染，并按服务端下发的 `hiddenTabs` 裁剪（只删项，不改序、不改分组）。
+
+新增一个控制台页面需要：包内 `web/contribution.ts` 加一项 + 包字典补 `labelKey`，Shell 侧零改动（分组表不认识的新分组会在装配期直接报错，不会静默丢项）。
 
 ## 3. 状态管理
 
