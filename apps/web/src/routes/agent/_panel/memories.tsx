@@ -2,7 +2,7 @@ import { createFileRoute } from "@tanstack/react-router";
 import { lazy, Suspense } from "react";
 
 const Page = lazy(() =>
-  import("@/src/pages/hindsight/MemoriesPage").then((m) => ({
+  import("@fenix/resource-memory/web").then((m) => ({
     default: m.MemoriesPage,
   })),
 );

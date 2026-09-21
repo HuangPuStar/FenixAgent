@@ -2,7 +2,7 @@ import { createFileRoute } from "@tanstack/react-router";
 import { lazy, Suspense } from "react";
 import { useTranslation } from "react-i18next";
 
-const AdminLogsPage = lazy(() => import("@/src/pages/admin/AdminLogsPage").then((m) => ({ default: m.AdminLogsPage })));
+const AdminLogsPage = lazy(() => import("@fenix/resource-observer/web").then((m) => ({ default: m.AdminLogsPage })));
 
 export const Route = createFileRoute("/admin/logs")({
   component: () => {

@@ -104,7 +104,7 @@ WebShell 从静态 registry 收集各资源包的 web contribution（不反向�
 | T8 | 宿主组件/lib/api 簇改指并删除 | 已交付（a–d + z） | 见下方 §7.13 |
 | T9 | i18n 归属重划与 `quoteTruncatedBadge` 缺陷修复 | **a、b、c、d 已交付** | a 见 §7.15 / b 见 §7.16 / c 见 §7.17 / d 见 §7.18 |
 | T10 | 测试迁移与 happy-dom 收敛 | **a、b1–b5 已交付**（余下分片随 T11 收口） | a 见 §7.19 / b1 见 §7.20 / b2 见 §7.21 / b3 见 §7.22 / b4 见 §7.23 / b5 见 §7.24 |
-| T11 | WebShell 落地 | **a–d 已交付**（e 见下方分片表） | a 见 §7.25 / b 见 §7.26 / c 见 §7.27 / d 见 §7.28 |
+| T11 | WebShell 落地 | **a–d 已交付；e 的 1–3 段已交付**（余 e-4） | a 见 §7.25 / b 见 §7.26 / c 见 §7.27 / d 见 §7.28 / e 见 §7.29 |
 | T12 | 收尾：台账复核、文档修订、证据留痕 | 待办 | — |
 
 **T5 分片**（用户裁定「整体退场，由 ui-components 接管」+「`agent-config/web` 提供助手」的落地顺序；
@@ -127,7 +127,7 @@ WebShell 从静态 registry 收集各资源包的 web contribution（不反向�
 | T11b | 各包 `web/contribution.ts` | **已交付**（§7.26）：9 个包各持一份声明（14 项导航）+ `exports["./web/contribution"]` + 导航文案随项迁入各包字典；宿主旧键保留到 T11d 切换 |
 | T11c | 生成器与浏览器产物 | **已交付**（§7.27）：9 个 manifest 声明 `web` 惰性入口说明符 + `ce.json` 的 `web` 落 9 项（仅有真实载荷）+ `scripts/generate-web-contributions.ts` 生成 `apps/generated/web-contributions.ts`（只含静态 import）+ `ci.ts` 子项 + 导航文案解析契约测试 |
 | T11d | Shell 落地 | **已交付**（§7.28）：`apps/web/src/shell/` 三片——壳层容器迁入（`2a9b96fff`）、包内死副本退场与 `filterNavGroups` 归位（`19812a49d`）、侧栏改由产物渲染 + 宿主旧导航表与 12 条键删除（`903477877`） |
-| T11e | route adapter 直连包入口 | 22 条 `@/src/...` 桥接改造 + 删 `apps/web/vite.config.ts` 与根 `tsconfig.json` 的桥接条目 + 宿主剩余页面归位（`AgentHomePage` / `AgentManagementPage` / `AgentDashboardPage`） |
+| T11e | route adapter 直连包入口 | **1–3 段已交付**（§7.29）：`7152834ea` 三页归位到 `@fenix/agent-config` 完毕（含各自有字典与创建导航助手）+ 对应 route adapter 直连包入口；**4 段待办**：宿主消费面（`AgentSidebarTree` / `ChatArea` / `ArtifactsPanel` / `DefaultAppShell` / `use-chat-panel-runtime` / `lib/card-renderer/builtins.ts` / `components/agent-panel/artifacts-dialogs.tsx` / 两个宿主测试 / `@/src/lib/auth-client` 去留判定）改直连 + 删 `apps/web/vite.config.ts` 与根 `tsconfig.json` 的全部桥接条目 |
 
 ---
 
@@ -1834,12 +1834,73 @@ T11 的第四片，也是「谁持有侧栏」这件事真正换手的片。按�
    `apps/web/src/shell/`；同目录 `chat-layout.css:4` 与 `ChatInterface.tsx:22`、根 `README.md:89`
    指的是未迁移的 `chat-layout.css` / `ChatArea.tsx`，仍然准确。归 T12 与其它溯源注释一并修订。
 
+### 7.29 T11e 页面归位与 route adapter 直连（2026-09-21，`7152834ea` + `8dafb7c4d` + `3f7fba0cd`）
+
+T11 的第五片，也是「宿主还剩哪些页面」这条线的收口片。按「每片独立可 `precheck`、独立提交」拆成三段：
+
+| 段 | 提交 | 内容 |
+| --- | --- | --- |
+| T11e-3a | `7152834ea` | `AgentManagementPage.tsx` 迁入 `agent-config/web/pages/agent-panel/pages/`，组织上下文改经 §1.6 T7 的平台中立契约 |
+| T11e-3b | `8dafb7c4d` | `AgentDashboardPage.tsx` 与其 `dashboard` 字典两份归位；顺带修掉一处既有缺陷（§8.1 第 9 条） |
+| T11e-3c | `3f7fba0cd` | `AgentHomePage.tsx`、`agentHome` 字典两份、创建导航助手 `agent-create-navigation.ts` 与两份随迁宿主测试 |
+
+**判据与先例**：§四.2 已把 `AgentHomePage` 判为资源页面（678 行「创建智能体」首页，值依赖
+`agentApi` / `envApi` / `modelApi` / `AgentGenerationForm` 全在包侧）。三段用的是同一条判据——页面的值依赖
+是否已全部落在某个包；若是，留在宿主就只剩「靠 vite / tsconfig 的 `@/src/...` 桥接别名解析」这一条理由，
+而别名正是 T11e-4 要删的东西。归位后 route adapter 直连包根入口（与 T11e-1 / T11e-2 的资源页面同形）。
+
+**三处非显然取舍**：
+
+1. **`AgentManagementPage` 的组织上下文必须换契约**。它在宿主时用 `useOrg()`（身份包的实现），
+   `agent-config` 直接用会新增一条 resource → platform-impl 的禁止边（§2.3 `special-dependency`）。
+   改用 §1.6 T7 定的 `@fenix/web-runtime/contexts/org-session` 的 `useOrgSession()`，语义等价已核：
+   `apps/web/src/routes/__root.tsx` 的 `<OrgProvider>` 内部就挂 `OrgSessionProvider`，两者都在 Provider 外
+   抛错，context 实例同一份。契约投影用 `null` 表示「未解析出组织」，而该页内部沿用可选参数的 `undefined`
+   语义，因此在页内显式投影 `organizationId ?? undefined`，而不是为迁就它改契约或改函数签名。
+2. **`agent-create-navigation.ts` 落 `agent-config/web/lib/`，宿主经窄子路径取用**。两个消费方一个在包内
+   （首页）、一个在宿主壳（`DefaultAppShell` 的「新建智能体」成功回调），而它只依赖环境 API 的类型，
+   按「谁的业务语义」留在 agent-config（入参是 `agentConfigId`，产出是聊天路由目标）。宿主壳若从包根入口
+   取，会把整棵编辑器页面图拉进壳层 chunk；`web/lib/agent-node` / `agent-resource-access` / `agent-utils`
+   已是同款先例，因此新增 exports 窄口 `./web/lib/agent-create-navigation`。它**不进包根导出面**：
+   `agent-config-browser-surface.test.ts` 的 `CONSUMER_SYMBOLS` 声明的是「从包根取用」的契约，而它从窄口
+   取用；但它随首页进入同一张值导入图，自检清单里已钉住 `lib/agent-create-navigation.ts`，浏览器安全由
+   同一张图守护。
+3. **`agentHome` 命名空间的写法统一**。两个消费方（首页与它的生成表单）随本片同批进入包内后，包内不该
+   再有两种写法：原先 `AgentGenerationForm` 经中心表取 `NS.AGENT_HOME`，现改由 `web/i18n/namespace.ts`
+   单点声明 `AGENT_HOME_NS`。中心表的 `AGENT_HOME` 名称常量保留——它是跨包共享的名称注册表，删常量
+   无功能收益却要改跨包契约（同 §7.17 对四个死命名空间的处理）。
+
+**实测对账**：三份字典（`agents` / `dashboard` / `agentHome`）的 en / zh 键集逐字一致；`agentHome` 的 19 个
+键零死键、零缺键（两个消费方的字面量 `t()`、`Trans i18nKey="greeting"` 与动态 `title1/2/3` 全被覆盖），
+因此本片一份键都没增删。`dashboard` 则相反：它带着一处既有缺陷进来，处置与理由见 §8.1 第 9 条
+（唯一消费方 + 无导航入口 = 长期无人发现，故随迁移顺带修复而非另起一片）。
+
+**归位后的归属状态**：`agents` 命名空间的消费方自此**全在包内**——`AgentManagementPage` 是最后一个宿主
+消费者。宿主仍保留 `components`（站点页签 / 挂载弹窗 / iframe 外壳）与 `agentPanel`（`siteDeployment.*`）
+两份共享命名空间：它们的键同时被 apps/web 与别的包消费，整体搬迁需跨包裁定，不在本任务范围。
+
+**台账与门禁**：RMD-08 台账 MOVES 70 → 66（3a、3b）→ 60（3c），RELOCATED 77 → 81 → 87——每段搬出宿主
+都必须同批改台账，否则 `rmd-08-migration.test.ts` 的「apps/web target is missing」先红。三段各自
+`precheck` 全绿（末段 server 788 / package 7924 / web 352，0 fail，lint 零 warning），`build:web` 与
+`docs:build` 通过。
+
+**登记（不在本片做）**：
+
+1. **T11e-4**：「22 条 `@/src/...` 桥接改造 + 删两套桥接条目」的另一半——宿主消费面
+   （`AgentSidebarTree` / `ChatArea` / `ArtifactsPanel` / `DefaultAppShell` / `use-chat-panel-runtime` /
+   `lib/card-renderer/builtins.ts` / `components/agent-panel/artifacts-dialogs.tsx` / 两个宿主测试）
+   改直连各包出口，随后删除 `apps/web/vite.config.ts` 与根 `tsconfig.json` 的全部桥接别名条目。
+2. **`agent-form-dialog-pure-logic.test.ts` 的归位**：它仍反向读包内实现并导入宿主 `../api/fs`、
+   `../lib/{api-result,form-utils}`，要等 T11e-4 定完宿主 `src/{api,lib}` 的剩余模块归属（原 T10b4 的
+   登记项）。
+
 ---
 
 ## 八、用户可见行为变更
 
-本节汇总 T3–T5c2 期间「包内实现与线上 chat-channel 实现」之间**用户可感知**的差异，供发布说明与回归
-验收使用。分两类：切换后修复（此前行为是坏的）、有意的呈现取舍（此前行为正常，包内实现选择不同）。
+本节汇总 T3 起的迁移波次中**用户可感知**的差异（前半为「包内实现与线上 chat-channel 实现」之间，T9
+起为宿主与包之间的装配变化），供发布说明与回归验收使用。分两类：切换后修复（此前行为是坏的）、
+有意的呈现取舍（此前行为正常，包内实现选择不同）。
 
 ### 8.1 切换后修复的缺陷
 
@@ -1853,6 +1914,7 @@ T11 的第四片，也是「谁持有侧栏」这件事真正换手的片。按�
 | 6 | 会话面板错误卡片的标题对英文用户显示中文 `执行出错` | T6d 拆 `ChatPanel.tsx` 时硬编码带入 | T9b |
 | 7 | 回忆库（hindsight）文档视图的分页按钮在中文界面显示英文 `Previous` / `Next` | memory 包以限定字面量引用宿主 `common:previous` / `common:next`（且已登记为跨命名空间依赖），宿主 `common` 字典却缺这两条，一直靠 `defaultValue` 兜底 | T9c |
 | 8 | 错误卡片正文（聊天 turn 失败、会话面板错误）在中文界面显示英文摘要 | `PublicError.message` 是 wire 与日志字段，`createPublicError` / `isPublicError` 把它钉在 `.en` 上，两处卡片却直接渲染它；`PUBLIC_ERROR_MESSAGES` 的 `zh` 一半全仓无读取点 | T9d |
+| 9 | 概览页（`/agent/dashboard`）正文显示字面量 `welcome`（中英文界面都一样） | 页面取 `t("welcome")`，宿主 `dashboard.json` 里却只有无消费方的 `loading`——i18next 缺键回退为键名。该页无导航入口，只能靠直连 URL 到达，长期无人发现 | T11e-3b |
 
 第 3 条的修法是两处共用同一个派发器（`dispatchArtifactsPreviewFile(envId, path)`）；事件名未变，变的
 是状态面板那条的详情补齐了 `envId`。第 4 条在线上需服务端返回错误才触发（对抗验证判 real=False）。
@@ -1860,6 +1922,8 @@ T11 的第四片，也是「谁持有侧栏」这件事真正换手的片。按�
 第 6 条修的是标题、第 8 条修的是正文，两处已在同一张卡片上；第 8 条的正文改由稳定 `error.type` 取译文后，
 `error.message` 只作未登记 type 的兜底（取舍见 §7.18）。
 第 7 条只影响回忆库文档视图翻页按钮的文案，验收时把界面语言切到中文看该页脚即可。
+第 9 条在 T11e-3b 迁 `dashboard` 字典时按页面的实际键把 `loading` 改为 `welcome`（并把 `loading` 删除），
+验收时直连 `/agent/dashboard` 看正文是否显示引导语而非 `welcome`。
 
 ### 8.2 有意的呈现取舍
 

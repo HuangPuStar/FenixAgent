@@ -13,6 +13,7 @@
     "./web": "./web/index.ts",
     "./web/contribution": "./web/contribution.ts",
     "./web/i18n": "./web/i18n/index.ts",
+    "./web/lib/agent-create-navigation": "./web/lib/agent-create-navigation.ts",
     "./web/lib/agent-node": "./web/lib/agent-node.ts",
     "./web/lib/agent-resource-access": "./web/lib/agent-resource-access.ts",
     "./web/lib/agent-utils": "./web/lib/agent-utils.ts",

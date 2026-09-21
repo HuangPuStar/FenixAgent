@@ -37,8 +37,12 @@ const PKG_NAME = (JSON.parse(readFileSync(join(PKG_ROOT, "package.json"), "utf8"
  * workspace 包」）。未收录的库一旦被引入就会让本测试变红，从而强制做一次浏览器可用性评审。
  *
  * 这份清单与入口的实际可达面**逐项对应**（不多列）：新增一项必然意味着入口新引了一个库。
- * 画布库 `@xyflow/react`、`zod`、`happy-dom` 之类不在其中，是因为入口（见 web/index.ts 的说明）
- * 不含编辑器链条；编辑器加回入口时它们会以「未列入白名单」的形式报红，正是要的评审触发点。
+ *
+ * 2026-09-21（§1.6 T11e）：编辑器 `WorkflowEditor` 加回入口后，可达到面大幅扩张——它经
+ * `@fenix/agent-config/web` 的包根 barrel 一次性带进 agent-config / mcp / knowledge / memory /
+ * model-management 的整片 web 图。下面第三组因此是「可达面传递进来的库」，不再是「本包自己 import
+ * 的库」；每个都是纯浏览器库，且早已随各自包进入宿主 bundle，收录不改变任何浏览器可用性结论。
+ * 收窄手段已登记（为 agent-config 的 `ensureMetaAgent` 增加窄子路径出口），做完后本组应能显著缩减。
  */
 const BROWSER_SAFE_EXTERNAL: ReadonlyMap<string, string> = new Map([
   // 宿主提供（本包 package.json 的 peerDependencies：单实例库必须与宿主同一份）
@@ -59,6 +63,40 @@ const BROWSER_SAFE_EXTERNAL: ReadonlyMap<string, string> = new Map([
   ["class-variance-authority", "类名变体工具（ui/* 传递依赖），纯函数"],
   ["clsx", "类名拼接工具（lib/cn 传递依赖），纯函数"],
   ["tailwind-merge", "Tailwind 类名去重（lib/cn 传递依赖），纯函数"],
+  // 编辑器自身引入（本包 package.json 的 dependencies）
+  ["@xyflow/react", "DAG 画布库（编辑器画布，`pages/workflow/{WorkflowEditor,nodes,edges}.tsx` 与三个 hook）"],
+  // 编辑器可达面传递进入：先经 @fenix/ui-components 的共享原语
+  ["radix-ui", "Radix 聚合包（ui/sheet、ui/progress 传递依赖），无 node 依赖"],
+  ["@radix-ui/react-popover", "无样式原语（ui/popover 传递依赖）"],
+  ["@radix-ui/react-select", "无样式原语（ui/select 传递依赖）"],
+  ["@radix-ui/react-checkbox", "无样式原语（ui/checkbox 传递依赖）"],
+  ["@radix-ui/react-tooltip", "无样式原语（ui/tooltip 传递依赖）"],
+  ["@radix-ui/react-tabs", "无样式原语（ui/tabs 传递依赖）"],
+  ["@radix-ui/react-dropdown-menu", "无样式原语（ui/dropdown-menu 传递依赖）"],
+  ["@radix-ui/react-collapsible", "无样式原语（ui/collapsible 传递依赖）"],
+  ["@radix-ui/react-switch", "无样式原语（ui/switch 传递依赖）"],
+  ["@radix-ui/react-slider", "无样式原语（ui/slider 传递依赖）"],
+  ["@radix-ui/react-scroll-area", "无样式原语（ui/scroll-area 传递依赖）"],
+  ["@radix-ui/react-separator", "无样式原语（ui/separator 传递依赖）"],
+  ["cmdk", "命令面板（ui/command 传递依赖），纯浏览器"],
+  ["streamdown", "流式 Markdown 渲染（chat/primitives/message 传递依赖）"],
+  ["recharts", "图表（ui/chart、AdminModelGatewayPage 传递依赖）"],
+  // 编辑器可达面传递进入：经 @fenix/agent-config/web 包根 barrel 到达的其他资源包 web 图
+  ["react-dom", "React DOM 渲染（agent-editor/AgentFormDialog 传递依赖）"],
+  ["react-hook-form", "表单状态（agent-config agent-editor、ui-components config/FormDialog）"],
+  ["@hookform/resolvers", "表单解析器（FormDialog 的 zod 绑定），纯函数"],
+  ["zod", "schema 校验（agent-editor-model、agent-mcp-utils），纯函数"],
+  ["qrcode", "二维码生成（agent-config SiteFrame），纯浏览器"],
+  ["@lobehub/icons", "模型品牌图标（model-management ModelIcon），纯 SVG"],
+  ["dompurify", "HTML 消毒（knowledge 资源预览），纯浏览器"],
+  ["mammoth", "docx 解析（knowledge 资源预览），纯浏览器"],
+  ["react-markdown", "Markdown 渲染（knowledge 资源预览），纯浏览器"],
+  ["remark-gfm", "GFM 语法扩展（react-markdown 传递依赖），纯函数"],
+  ["xlsx", "表格解析（knowledge 资源预览），纯浏览器"],
+  ["@antv/g6", "图可视化（knowledge KnowledgeGraphPanel），Canvas 渲染"],
+  ["cytoscape", "图可视化（memory Graph2d），Canvas 渲染"],
+  ["cytoscape-fcose", "cytoscape 布局插件（memory Graph2d 传递依赖），纯计算"],
+  ["@chenglou/pretext", "文本排版测量（memory Constellation），纯浏览器"],
 ]);
 
 const graph = walkValueGraph(WEB_ENTRY);
@@ -204,13 +242,18 @@ describe("workflow web 入口浏览器可达面", () => {
     expect(source).toContain("workflowResources");
   });
 
-  // 编辑器暂不纳入入口的**守护**：`WorkflowEditor` 的值导入图会穿到别的包（agent-config web 的 `@/`
-  // 残留等；2026-09-20 实测的 `@fenix/agent-runtime → @fenix/chat-channel → acp-link` 那条腿已随
-  // §1.6 T6d 的 ChatPanel 归位宿主消失，见 web/index.ts 的说明与 openIssue）。这两类债务都是他人的，
-  // 谁把编辑器加回入口，必须同时清掉债务或把放行写成本文件的显式例外——不允许静默绕过。
-  test("入口暂不导出编辑器（外部债务未清前不得静默加回）", () => {
+  // 编辑器纳入入口的**回归锚点**：宿主 route adapter 不再经别名穿透到 `web/pages/**`，入口必须转出
+  // 编辑器，且它的整条值导入图确实被走了一遍（只断言导出行会被「导出但图没进」满足）。
+  test("入口导出编辑器，且其值导入图在可达集合内", () => {
     const source = stripComments(readFileSync(WEB_ENTRY, "utf8"));
-    expect(source).not.toContain("WorkflowEditor");
-    expect(source).not.toContain("WorkflowPage");
+    expect(source).toContain("WorkflowEditor");
+    expect(reachedWebFiles).toContain("pages/workflow/WorkflowEditor.tsx");
+    // 编辑器链条上的跨包腿：agent-config 的 Meta Agent 就绪入口 + agent-runtime 的环境列表 API。
+    for (const expected of [
+      "packages/resources/agent-config/web/index.ts",
+      "packages/agent-runtime/web/api/environments.ts",
+    ]) {
+      expect(reachedPackageFiles).toContain(expected);
+    }
   });
 });

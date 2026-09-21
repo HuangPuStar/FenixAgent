@@ -1,3 +1,9 @@
+// web/__tests__/agent-home-generation.test.tsx
+// 守护「创建智能体」首页的生成输入校验与创建后导航契约。
+//
+// §1.6 T11e-3c 随被测页面（`web/pages/agent-panel/pages/AgentHomePage.tsx`）从宿主
+// `apps/web/src/__tests__/` 迁入，相对路径不变但落点已从「应用壳读包内实现」变成包内自持。
+
 import { describe, expect, test } from "bun:test";
 import { hasAgentGenerationPrompt } from "../pages/agent-panel/pages/AgentHomePage";
 

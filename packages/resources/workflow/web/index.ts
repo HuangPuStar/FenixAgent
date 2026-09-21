@@ -7,23 +7,26 @@
  * 因此这里只导出可在浏览器中执行的模块；服务端能力走 `./server`，`./module` 是模块注册表的组合根出口，
  * 两者都不从这里转出。
  *
- * **为什么暂不导出编辑器（`WorkflowEditor` / `WorkflowPage`）**：它们的值导入图会穿到别的包——2026-09-20
- * 实测经 `@fenix/agent-runtime` 的 `ChatPanel` 到 `@fenix/chat-channel`，再撞上 `acp-link` 的
- * `./websocket-code` 出口不可解析（`git show` 未改动的第三方债务）；同一链条还会到达 agent-config web 侧
- * 仍带 `@/` 宿主别名的文件。这两处都不是本包可修的范围（前者属 chat-channel/acp-link owner，后者属
- * agent-config 的 L2 切片），若把编辑器纳入入口，本守卫的「全图无违规」断言会被他人债务长期染红，
- * 反而失去回归信号。编辑器本身的 `@/` 清理已完成（静态条件 2 对本包 `web/**` 全覆盖），宿主仍按既有
- * tsconfig/vite 别名消费它；债务清掉后应把 `WorkflowEditor` / `WorkflowPage` 加回本入口（已登记为
- * openIssue）。
+ * **编辑器纳入入口的经过（`WorkflowEditor`）**：2026-09-20 曾因两条他人债务把编辑器挡在入口外——经
+ * `@fenix/agent-runtime` 的 `ChatPanel` 到 `@fenix/chat-channel` 再到 `acp-link` 的
+ * `./websocket-code` 不可解析出口，以及 agent-config web 侧仍带 `@/` 宿主别名的文件。§1.6 期间两条都已
+ * 消失：`ChatPanel` 归位宿主、改经 `chatPanel` 端口注入（T6d）；仓库内 `@/` 别名残留已清（T11e）。
+ * 2026-09-21 T11e 实测复核：本守卫的硬断言（`node:` / `@server` / `@/` 别名 / 不可解析出口 / 不深入
+ * `@fenix/<pkg>/src`）全部通过，只剩白名单需要为新增可达面补录——编辑器因此加回入口，宿主 route adapter
+ * 不再经 tsconfig/vite 别名穿透到本包 `web/pages/**`。
  *
- * 更新（2026-09-21，§1.6 T6d）：`ChatPanel` 已从 `@fenix/agent-runtime` 根出口撤出并归位宿主，本编辑器的
- * 聊天面板改由宿主经 `chatPanel` 端口注入，因此上面那条「经 ChatPanel 到 chat-channel → acp-link」的腿
- * 已消失；加回入口前请以本守卫实测复核剩余债务（agent-config 侧与 `agent-runtime/web/api/environments` 的
- * 可达性可能仍触发同类失败）。
+ * 编辑器可达面的构成（白名单据此分组收录）：编辑器自身引入 `@xyflow/react`；它经
+ * `hooks/useWorkflowMetaAgent.ts` 取 `@fenix/agent-config/web` 的 `ensureMetaAgent` 与
+ * `@fenix/agent-runtime/web/api/environments`，而 agent-config 的包根入口是聚合 barrel（§2.3 的 web 行
+ * 允许资源包经对方 `./web` 取能力），于是一次性带进 agent-config / mcp / knowledge / memory /
+ * model-management 的整片 web 图与其浏览器库。这条 fan-out 是既有形态、不是本包引入的，bundle 层面
+ * 也与加回入口前一致（宿主本来就按别名加载同一批文件）；代价是白名单从「本包引了哪些库」变成「本包
+ * 可达面的库全集」，信号更粗——已在 `review/task-1.6-web-shell.md` 登记，收窄手段是为 agent-config
+ * 的 `ensureMetaAgent` 增加窄子路径出口。
  *
- * 面按「消费方实际需要」收敛：宿主控制台经 tsconfig/vite 别名消费 `pages/**` 与 `api/**`
- * （`@/src/pages/workflow/*`、`@/src/api/workflow-*`）。包内其余组件（`components/**`）除页面已引用的之外
- * 不逐个导出——目前没有包外消费方，提前铺开会把内部结构固化成公共契约（CLAUDE.md 原则 7）。
+ * 面按「消费方实际需要」收敛：宿主控制台经本入口消费 `pages/**` 与 `api/**`。包内其余组件
+ * （`components/**`）除页面已引用的之外不逐个导出——没有包外消费方时提前铺开会把内部结构固化成公共
+ * 契约（CLAUDE.md 原则 7）。
  *
  * 命名冲突说明：`api/workflow-defs` 与 `api/workflows` 都定义了 `WorkflowDefItem` / `WorkflowVersionItem` /
  * `VersionYamlResponse`，因此这里全部用显式命名导出，不用 `export *`。
@@ -77,6 +80,7 @@ export { syncExpressionOnKeyRename, syncOutputOnRename } from "./pages/workflow/
 export { getPresetById, TRANSFORM_PRESETS, type TransformPreset } from "./pages/workflow/presets";
 export { DAG_STATUS_CFG, dedupEvents, formatEventType, formatMeta, relativeTime } from "./pages/workflow/utils";
 export { WorkflowBreadcrumb } from "./pages/workflow/WorkflowBreadcrumb";
+export { WorkflowEditor } from "./pages/workflow/WorkflowEditor";
 export { WorkflowList } from "./pages/workflow/WorkflowList";
 export { WorkflowRuns } from "./pages/workflow/WorkflowRuns";
 export { WorkflowVersions } from "./pages/workflow/WorkflowVersions";

@@ -1,3 +1,13 @@
+// pages/agent-panel/pages/AgentHomePage.tsx
+// agent-panel 的「创建智能体」首页（`/agent/home`）：一句话智能生成 + 模板一键创建。
+//
+// §1.6 T11e-3c 随「宿主剩余页面归位」迁入本包（原寄居 `apps/web/src/pages/agent-panel/pages/`）。
+// 它的值依赖全在包侧：`agentApi`（本包 `web/api`）、`envApi`（agent-runtime，经唯一放行的深路径）、
+// `modelApi`（model-management 包根）、表单元件 `AgentGenerationForm`；平铺在宿主只能靠 vite / tsconfig 的
+// `@/src/...` 桥接别名解析。`agentHome` 字典同批归位（见 `web/i18n/namespace.ts`），创建后进入实例的
+// `resolveCreatedAgentChatTarget` 落在 `web/lib/agent-create-navigation.ts`——宿主壳也消费它。
+import { envApi } from "@fenix/agent-runtime/web/api/environments";
+import { modelApi } from "@fenix/model-management/web";
 import { unwrap } from "@fenix/web-runtime/api/request";
 import { dispatchConfigChange } from "@fenix/web-runtime/lib/config-events";
 import { useNavigate } from "@tanstack/react-router";
@@ -7,13 +17,11 @@ import type { CSSProperties } from "react";
 import { useMemo, useState } from "react";
 import { Trans, useTranslation } from "react-i18next";
 import { toast } from "sonner";
-import { agentApi } from "@/src/api/agents";
-import { envApi } from "@/src/api/environments";
-import { modelApi } from "@/src/api/models";
-import { NS } from "@/src/i18n";
-import type { GenerationFormData } from "@/src/pages/agent-panel/components/AgentGenerationForm";
-import { AgentGenerationForm } from "@/src/pages/agent-panel/components/AgentGenerationForm";
-import { resolveCreatedAgentChatTarget } from "../agent-create-navigation";
+import { agentApi } from "../../../api/agents";
+import { AGENT_HOME_NS } from "../../../i18n/namespace";
+import { resolveCreatedAgentChatTarget } from "../../../lib/agent-create-navigation";
+import type { GenerationFormData } from "../components/AgentGenerationForm";
+import { AgentGenerationForm } from "../components/AgentGenerationForm";
 
 const assetBase = import.meta.env.BASE_URL;
 
@@ -48,7 +56,7 @@ export function hasAgentGenerationPrompt(value: string): boolean {
 
 /** Agent 首页：AI 智能生成 + 模板一键创建 */
 export function AgentHomePage() {
-  const { t } = useTranslation(NS.AGENT_HOME);
+  const { t } = useTranslation(AGENT_HOME_NS);
   const navigate = useNavigate();
 
   // 随机选择标题（挂载时决定）
@@ -215,7 +223,7 @@ export function AgentHomePage() {
               <div className="agent-home-greeting">
                 <Trans
                   i18nKey="greeting"
-                  ns={NS.AGENT_HOME}
+                  ns={AGENT_HOME_NS}
                   defaults="<strong>你好，</strong>告诉我你想创建一个怎样的智能体。描述它做什么、为谁服务，我会帮你生成配置。"
                   components={{ strong: <strong /> }}
                 />

@@ -3,7 +3,7 @@ import { lazy, Suspense } from "react";
 import { useTranslation } from "react-i18next";
 
 const AdminModelGatewayPage = lazy(() =>
-  import("@/src/pages/admin/AdminModelGatewayPage").then((module) => ({ default: module.AdminModelGatewayPage })),
+  import("@fenix/model-management/web").then((module) => ({ default: module.AdminModelGatewayPage })),
 );
 
 export const Route = createFileRoute("/admin/model-gateway")({

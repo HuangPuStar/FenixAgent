@@ -1,15 +1,17 @@
 // web/__tests__/agent-i18n.test.ts
-// 守护本包自持的 `agents` 字典：en/zh 键集一致、插值占位符一致、源码里写死的 t("key") 都能查到。
+// 守护本包自持的字典：en/zh 键集一致、插值占位符一致、源码里写死的 t("key") 都能查到。
 //
 // 为什么必须静态断言：i18next 缺键时回退为「显示 key 本身」，界面不报错，只有中英切换才暴露，
 // 容易漏到线上。这里直接读 JSON 文件（不经过 i18next 单例），因此不受测试中 react-i18next 模块 mock
 // 影响（宿主测试曾因 mock 让 t() 回显 key）。
 //
-// 「本包自持」的边界（计划 §4「键的最终所在地 = 包的 owner」）：本次迁入的只有 `agents` 命名空间
-// （宿主 `apps/web/src/i18n/locales/*/agents.json` 的 271 个键）。站点相关组件仍借用宿主共享命名空间
-// `components`（panelMode.* / siteFrame.* / confirmDialog.*）、`agentPanel`（siteDeployment.*）、
-// `agentHome`——它们同时被 apps/web、chat-channel、model-management、agent-runtime 消费，
-// 整体搬迁需要跨包裁定，不在本任务范围（见 BORROWED_NAMESPACE_FILES 与 README 的共享补丁清单）。
+// 「本包自持」的边界（计划 §4「键的最终所在地 = 包的 owner」）：`agents`（宿主
+// `apps/web/src/i18n/locales/<lang>/agents.json` 的 271 个键）、`dashboard`（概览页的 3 个键）与
+// `agentHome`（「创建智能体」首页与它的生成表单，19 个键）——后两者随各自页面在 §1.6 T11e 归位。
+// 站点相关组件仍借用宿主共享命名空间 `components`（panelMode.* / siteFrame.* / confirmDialog.*）与
+// `agentPanel`（siteDeployment.*）：它们同时被 apps/web、chat-channel、model-management、
+// agent-runtime 消费，整体搬迁需要跨包裁定，不在本任务范围（见 OTHER_NAMESPACE_FILES 与 README
+// 的共享补丁清单）。
 
 import { describe, expect, test } from "bun:test";
 import { readdirSync, readFileSync, statSync } from "node:fs";
@@ -21,14 +23,32 @@ const MIGRATED_KEY_BASELINE = 271;
 
 const EN = JSON.parse(readFileSync(join(WEB_ROOT, "i18n/locales/en/agents.json"), "utf8")) as Record<string, unknown>;
 const ZH = JSON.parse(readFileSync(join(WEB_ROOT, "i18n/locales/zh/agents.json"), "utf8")) as Record<string, unknown>;
+const AGENT_HOME_EN = JSON.parse(readFileSync(join(WEB_ROOT, "i18n/locales/en/agentHome.json"), "utf8")) as Record<
+  string,
+  unknown
+>;
+const AGENT_HOME_ZH = JSON.parse(readFileSync(join(WEB_ROOT, "i18n/locales/zh/agentHome.json"), "utf8")) as Record<
+  string,
+  unknown
+>;
+const DASHBOARD_EN = JSON.parse(readFileSync(join(WEB_ROOT, "i18n/locales/en/dashboard.json"), "utf8")) as Record<
+  string,
+  unknown
+>;
+const DASHBOARD_ZH = JSON.parse(readFileSync(join(WEB_ROOT, "i18n/locales/zh/dashboard.json"), "utf8")) as Record<
+  string,
+  unknown
+>;
 
 /**
- * 仍借用宿主共享命名空间的组件：键的 owner 不在本包，因此它们的字面量键不参与本包字典断言。
+ * 绑定**非 `agents`** 命名空间的文件：它们的字面量键不参与 `agents` 字典断言。
  *
- * 每个条目都带「期望命名空间」，断言会校验该文件确实在用这个命名空间——借用是显式登记的状态，
- * 不是扫描漏网；组件改用 `agents` 命名空间（或这些键被裁定迁入）时这条断言会先变红，强制重新评审。
+ * 两类都在此登记：① 键的 owner 仍在宿主（`components` / `agentPanel`，同时被别的包消费，
+ * 整体搬迁需跨包裁定）；② 键的 owner 已在本包但属于另一个命名空间（`dashboard` / `agentHome`，
+ * 其字典由下面独立的断言守护）。每个条目都带「期望命名空间」，断言会校验该文件确实在用这个命名空间——登记是显式
+ * 状态而不是扫描漏网；文件改用 `agents` 命名空间（或那些键被裁定迁入）时这条断言会先变红，强制重新评审。
  */
-const BORROWED_NAMESPACE_FILES: ReadonlyArray<{ file: string; namespace: string; reason: string }> = [
+const OTHER_NAMESPACE_FILES: ReadonlyArray<{ file: string; namespace: string; reason: string }> = [
   {
     file: "components/agent-panel/SiteTabsBar.tsx",
     namespace: "NS.COMPONENTS",
@@ -46,8 +66,23 @@ const BORROWED_NAMESPACE_FILES: ReadonlyArray<{ file: string; namespace: string;
   },
   {
     file: "pages/agent-panel/components/AgentGenerationForm.tsx",
-    namespace: "NS.AGENT_HOME",
-    reason: "Agent 首页生成表单仍由 apps/web 的 AgentHomePage 消费同一批键",
+    namespace: "AGENT_HOME_NS",
+    reason: "键的 owner 已随首页迁入本包（见下方 agentHome 断言），表单与首页共用同一命名空间",
+  },
+  {
+    file: "pages/agent-panel/pages/AgentHomePage.tsx",
+    namespace: "AGENT_HOME_NS",
+    reason: "同上；它还有 Trans 的 i18nKey 与动态 title1/2/3，无法被字面量扫描覆盖，另在下方断言里逐个点名",
+  },
+  {
+    file: "pages/agent-panel/pages/AgentDashboardPage.tsx",
+    namespace: "DASHBOARD_NS",
+    reason: "概览页的字典与 `agents` 同属本包自持，只是另一个命名空间（见下方 dashboard 断言）",
+  },
+  {
+    file: "pages/agent-panel/pages/AgentManagementPage.tsx",
+    namespace: "NS.COMPONENTS",
+    reason: "`statusBadge.all` 是筛选条与宿主 `components` 字典共用的键（唯一借用点），迁入会新增一份重复键",
   },
   {
     file: "pages/agent-panel/pages/AgentSitesPage.tsx",
@@ -94,14 +129,18 @@ function collectSources(directory: string): string[] {
 
 const enFlat = flatten(EN);
 const zhFlat = flatten(ZH);
-const borrowedFiles = new Map(BORROWED_NAMESPACE_FILES.map((entry) => [entry.file, entry]));
+const agentHomeEnFlat = flatten(AGENT_HOME_EN);
+const agentHomeZhFlat = flatten(AGENT_HOME_ZH);
+const dashboardEnFlat = flatten(DASHBOARD_EN);
+const dashboardZhFlat = flatten(DASHBOARD_ZH);
+const otherNamespaceFiles = new Map(OTHER_NAMESPACE_FILES.map((entry) => [entry.file, entry]));
 
-/** 源码里出现的字面量 `t("key")`，按文件归组（借用宿主命名空间的文件单独剔除）。 */
+/** 源码里出现的字面量 `t("key")`，按文件归组（绑定其他命名空间的文件单独剔除）。 */
 function collectLiteralKeys(): Map<string, string[]> {
   const usage = new Map<string, string[]>();
   for (const file of collectSources(WEB_ROOT)) {
     const relPath = relative(WEB_ROOT, file);
-    if (borrowedFiles.has(relPath)) continue;
+    if (otherNamespaceFiles.has(relPath)) continue;
     for (const match of readFileSync(file, "utf8").matchAll(/\bt\(\s*"([^"]+)"/g)) {
       usage.set(match[1], [...(usage.get(match[1]) ?? []), relPath]);
     }
@@ -135,20 +174,53 @@ describe("agent-config agents 字典完整性", () => {
     expect(literalKeys.size).toBeGreaterThanOrEqual(150);
   });
 
-  // 借用宿主命名空间的登记表必须与源码一致：文件仍在使用声明的命名空间，键不会两头落空。
-  test("登记借用宿主命名空间的文件确实在用该命名空间", () => {
-    const drifted = BORROWED_NAMESPACE_FILES.filter(
+  // 登记表必须与源码一致：文件仍在使用声明的命名空间，键不会两头落空。
+  test("登记绑定其他命名空间的文件确实在用该命名空间", () => {
+    const drifted = OTHER_NAMESPACE_FILES.filter(
       (entry) => !readFileSync(join(WEB_ROOT, entry.file), "utf8").includes(`useTranslation(${entry.namespace})`),
     );
     expect(drifted.map((entry) => `${entry.file} 未使用 ${entry.namespace}`)).toEqual([]);
   });
 
-  // 借用键不得被复制进本包字典：同一批键两边各存一份会让 host 侧删除静默打断本包界面，
+  // 其他命名空间的键组不得被复制进本包字典：同一批键两边各存一份会让 host 侧删除静默打断本包界面，
   // 也违反「键的最终所在地 = 包的 owner」。
-  test("借用命名空间的键组没有复制进本包字典", () => {
-    const borrowedGroups = ["siteDeployment", "panelMode", "siteFrame", "confirmDialog", "agentHome", "sidebar"];
-    const duplicated = borrowedGroups.filter((group) => enFlat.has(`${group}.x`) || Object.hasOwn(EN, group));
+  test("其他命名空间的键组没有复制进本包字典", () => {
+    const foreignGroups = ["siteDeployment", "panelMode", "siteFrame", "confirmDialog", "sidebar", "dashboard"];
+    const duplicated = foreignGroups.filter((group) => enFlat.has(`${group}.x`) || Object.hasOwn(EN, group));
     expect(duplicated).toEqual([]);
+  });
+
+  // `dashboard` 是本包自持的第二个命名空间（概览页随 §1.6 T11e 归位）：两份字典键集一致，
+  // 且该页写死的字面量键都能查到——两半缺一，界面就会在某一语言下回显 key。
+  test("dashboard 字典 en / zh 键集一致，且覆盖概览页的字面量键", () => {
+    expect([...dashboardZhFlat.keys()].sort()).toEqual([...dashboardEnFlat.keys()].sort());
+    const source = readFileSync(join(WEB_ROOT, "pages/agent-panel/pages/AgentDashboardPage.tsx"), "utf8");
+    const used = [...source.matchAll(/\bt\(\s*"([^"]+)"/g)].map((match) => match[1]);
+    expect(used.length).toBeGreaterThan(0);
+    const missing = used.filter((key) => !dashboardEnFlat.has(key) || !dashboardZhFlat.has(key));
+    expect(missing).toEqual([]);
+  });
+
+  // `agentHome` 是本包自持的第三个命名空间（首页与其生成表单随 §1.6 T11e-3c 归位）：两份字典键集一致，
+  // 两个消费方的字面量键都能查到，且三类字面量扫描覆盖不到的键——Trans 的 i18nKey、动态标题 id——
+  // 逐个点名。少了任一半，界面就会在某一语言下回显 key（历史上该页曾在英文界面显示字面量键名）。
+  test("agentHome 字典 en / zh 键集一致，且覆盖首页与生成表单的全部取键方式", () => {
+    expect([...agentHomeZhFlat.keys()].sort()).toEqual([...agentHomeEnFlat.keys()].sort());
+    const literalKeysOf = (relPath: string) =>
+      [...readFileSync(join(WEB_ROOT, relPath), "utf8").matchAll(/\bt\(\s*"([^"]+)"/g)].map((match) => match[1]);
+    for (const file of [
+      "pages/agent-panel/pages/AgentHomePage.tsx",
+      "pages/agent-panel/components/AgentGenerationForm.tsx",
+    ]) {
+      const used = literalKeysOf(file);
+      expect(used.length).toBeGreaterThan(0);
+      expect(used.filter((key) => !agentHomeEnFlat.has(key) || !agentHomeZhFlat.has(key))).toEqual([]);
+    }
+    // 动态与组件式取键：标题三选一（`titleKey` 随机取）与 `Trans i18nKey="greeting"`。
+    for (const key of ["title1", "title2", "title3", "greeting"]) {
+      expect(agentHomeEnFlat.has(key)).toBe(true);
+      expect(agentHomeZhFlat.has(key)).toBe(true);
+    }
   });
 
   // 动态模板键无法被字面量扫描覆盖：section id 列表与可见性枚举必须逐个存在。
@@ -184,13 +256,19 @@ describe("agent-config agents 字典完整性", () => {
     expect(nested).toEqual([]);
   });
 
-  // 命名空间字面量与宿主注册契约一致：宿主 `apps/web/src/i18n/index.ts` 用 NS.AGENTS 注册本模块，
-  // 新命名空间名（含改名）都会让宿主侧查询落空。字典文件名也必须与命名空间同名。
-  test("AGENTS_NS 字面量为 agents，且字典文件名与命名空间一致", () => {
+  // 命名空间字面量与宿主注册契约一致：宿主 `apps/web/src/i18n/index.ts` 用本模块的 `AGENTS_NS` /
+  // `DASHBOARD_NS` / `AGENT_HOME_NS` 注册字典，新命名空间名（含改名）都会让宿主侧查询落空。
+  // 字典文件名也必须与命名空间同名。
+  test("三个命名空间字面量固定，且字典文件名与命名空间一致", () => {
     const namespaceSource = readFileSync(join(WEB_ROOT, "i18n/namespace.ts"), "utf8");
     expect(namespaceSource).toMatch(/AGENTS_NS\s*=\s*"agents"/);
+    expect(namespaceSource).toMatch(/DASHBOARD_NS\s*=\s*"dashboard"/);
+    expect(namespaceSource).toMatch(/AGENT_HOME_NS\s*=\s*"agentHome"/);
     const indexSource = readFileSync(join(WEB_ROOT, "i18n/index.ts"), "utf8");
-    expect(indexSource).toContain("./locales/en/agents.json");
-    expect(indexSource).toContain("./locales/zh/agents.json");
+    for (const locale of ["en", "zh"]) {
+      for (const ns of ["agents", "dashboard", "agentHome"]) {
+        expect(indexSource).toContain(`./locales/${locale}/${ns}.json`);
+      }
+    }
   });
 });

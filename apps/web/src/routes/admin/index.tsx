@@ -3,7 +3,7 @@ import { lazy, Suspense } from "react";
 import { useTranslation } from "react-i18next";
 
 const AdminObserverPage = lazy(() =>
-  import("@/src/pages/admin/AdminObserverPage").then((m) => ({ default: m.AdminObserverPage })),
+  import("@fenix/resource-observer/web").then((m) => ({ default: m.AdminObserverPage })),
 );
 
 export const Route = createFileRoute("/admin/")({

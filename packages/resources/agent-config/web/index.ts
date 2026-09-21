@@ -15,6 +15,9 @@
  *     宿主 `shell/AgentSidebarTree.tsx` 取 `ensureMetaAgent`；
  *   - 宿主聊天容器（`apps/web` 的 ChatArea）取 `loadBoundMcps`，把「Agent 已绑定的 MCP 选项」注入
  *     `@fenix/ui-components` 聊天面板的 `boundMcps` 端口（查询为何落在这里见 `./lib/bound-mcps.ts`）。
+ *   - agent-panel 的三个页面原本寄居宿主 `apps/web/src/pages/agent-panel/pages/`，§1.6 T11e 随
+ *     「宿主剩余页面归位」迁入本包，route adapter 改直连本入口（原先经 vite / tsconfig 的
+ *     `@/src/pages/...` 桥接别名）。它们的自有字典同批归位，由本包 `./web/i18n` 注册。
  * 这些符号都在本文件的导出面内，消费方一律走包根，不得深入 `web/pages/**` 这类实现路径。
  *
  * 宿主注册 i18n 走子路径 `@fenix/agent-config/web/i18n`（见 `./i18n/index.ts` 的说明）：
@@ -28,7 +31,17 @@ export { MountSiteDialog } from "./components/agent-panel/MountSiteDialog";
 export { SiteFrame } from "./components/agent-panel/SiteFrame";
 export { type SiteEntry, SiteTabsBar } from "./components/agent-panel/SiteTabsBar";
 export { useMetaAgent } from "./hooks/use-meta-agent";
-export { AGENTS_NS, type AgentResources, agentResources } from "./i18n";
+export {
+  AGENT_HOME_NS,
+  AGENTS_NS,
+  type AgentHomeResources,
+  type AgentResources,
+  agentHomeResources,
+  agentResources,
+  DASHBOARD_NS,
+  type DashboardResources,
+  dashboardResources,
+} from "./i18n";
 export { loadBoundMcps } from "./lib/bound-mcps";
 export { AgentFormDialog, type AgentFormDialogProps } from "./pages/agent-panel/agent-editor/AgentFormDialog";
 export * from "./pages/agent-panel/agent-editor/agent-editor-model";
@@ -37,6 +50,9 @@ export {
   type GenerationFormData,
   type SkillItem,
 } from "./pages/agent-panel/components/AgentGenerationForm";
+export { AgentDashboardPage } from "./pages/agent-panel/pages/AgentDashboardPage";
+export { AgentHomePage } from "./pages/agent-panel/pages/AgentHomePage";
+export { AgentManagementPage } from "./pages/agent-panel/pages/AgentManagementPage";
 export { AgentSitesPage } from "./pages/agent-panel/pages/AgentSitesPage";
 export { AgentSitesCatalog, type SiteVisibilityFilter } from "./pages/agent-panel/pages/agent-sites-catalog";
 export * from "./src/api/meta-agent";

@@ -1,11 +1,9 @@
+import { WorkflowBreadcrumb } from "@fenix/resource-workflow/web";
 import { createFileRoute, useSearch } from "@tanstack/react-router";
 import { Loader } from "lucide-react";
 import { lazy, Suspense } from "react";
-import { WorkflowBreadcrumb } from "@/src/pages/workflow/WorkflowBreadcrumb";
 
-const WorkflowEditor = lazy(() =>
-  import("@/src/pages/workflow/WorkflowEditor").then((m) => ({ default: m.WorkflowEditor })),
-);
+const WorkflowEditor = lazy(() => import("@fenix/resource-workflow/web").then((m) => ({ default: m.WorkflowEditor })));
 
 // Meta Agent 聊天面板由宿主注入：workflow 包不得依赖 apps（`web-package-not-to-app`），
 // 而 ChatPanel 是宿主接线层（宿主 i18n + identity 的 web 会话）。同型先例见

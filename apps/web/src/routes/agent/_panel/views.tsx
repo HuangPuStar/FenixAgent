@@ -1,9 +1,7 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { lazy, Suspense } from "react";
 
-const Page = lazy(() =>
-  import("@/src/pages/agent-panel/pages/AgentProdViewsPage").then((m) => ({ default: m.AgentProdViewsPage })),
-);
+const Page = lazy(() => import("@fenix/resource-prod-view/web").then((m) => ({ default: m.AgentProdViewsPage })));
 
 export const Route = createFileRoute("/agent/_panel/views")({
   component: () => (

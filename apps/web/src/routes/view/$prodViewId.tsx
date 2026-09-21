@@ -4,7 +4,7 @@ import { lazy, Suspense } from "react";
 import { ErrorBoundary, type FallbackProps } from "react-error-boundary";
 import "@/src/shell/agent-panel.css";
 
-const Page = lazy(() => import("@/src/pages/prod-view/ProdViewPage").then((m) => ({ default: m.ProdViewPage })));
+const Page = lazy(() => import("@fenix/resource-prod-view/web").then((m) => ({ default: m.ProdViewPage })));
 // 分享页只解析实例身份，聊天容器由宿主注入：ChatArea 属宿主 Shell（§2.3），
 // 资源包不得依赖聊天包实现，因此这里把宿主组件作为 `chatArea` prop 传入（CE 阶段 2 任务 1.6 T5b）。
 const ChatArea = lazy(() => import("@/src/pages/agent-panel/ChatArea").then((m) => ({ default: m.ChatArea })));

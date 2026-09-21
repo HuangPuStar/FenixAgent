@@ -2,11 +2,12 @@ import { Button } from "@fenix/ui-components/ui/button";
 import { Input } from "@fenix/ui-components/ui/input";
 import { Label } from "@fenix/ui-components/ui/label";
 import { Textarea } from "@fenix/ui-components/ui/textarea";
-import { NS } from "@fenix/web-runtime/i18n/namespace";
 import { X } from "lucide-react";
 import { useCallback, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
+
+import { AGENT_HOME_NS } from "../../../i18n/namespace";
 
 export interface SkillItem {
   id: string;
@@ -33,7 +34,7 @@ function truncate(text: string, max: number) {
 }
 
 export function AgentGenerationForm({ initialData, onCreate, loading }: AgentGenerationFormProps) {
-  const { t } = useTranslation(NS.AGENT_HOME);
+  const { t } = useTranslation(AGENT_HOME_NS);
   const [name, setName] = useState(initialData.name);
   const [systemPrompt, setSystemPrompt] = useState(initialData.systemPrompt);
   const [skills, setSkills] = useState(initialData.skills);

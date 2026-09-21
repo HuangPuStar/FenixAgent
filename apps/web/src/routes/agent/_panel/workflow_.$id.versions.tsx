@@ -1,7 +1,7 @@
+import { WorkflowVersions } from "@fenix/resource-workflow/web";
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { Loader } from "lucide-react";
 import { Suspense, useCallback } from "react";
-import { WorkflowVersions } from "@/src/pages/workflow/WorkflowVersions";
 
 function WorkflowVersionsPage() {
   const { id } = Route.useParams();
