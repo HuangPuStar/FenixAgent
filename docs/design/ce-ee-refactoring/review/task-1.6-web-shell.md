@@ -117,15 +117,15 @@ WebShell 从静态 registry 收集各资源包的 web contribution（不反向�
 | T5c | `ChatPanel` 改指 ui-components 面板 | **c1 已交付**（§7.6，一致性缺口修复见 §7.7）、**c2 已交付**（§7.8）；c3（宿主注入 `boundMcps`）与 c4（chat CSS 切包）并入 c2——CSS 必须与 DOM 同批，分离提交会出现两端样式都错版的中间态；**c5 测试归位已交付**（§7.9） |
 | T5d | `chat-channel/web` 退场 | **已交付**（§7.10）：删 3 个组件与入口共 11 个文件（含 §四.9 的 `ContextPanel` 死代码链）、删 `./web` 出口与 tsconfig paths、knowledge 侧测试与依赖同批删除、删台账 1 条 |
 
-**T11 分片**（本任务最大的一片：契约、生成器、13 个包的贡献、Shell 落地、37 个 route adapter 与
-两套过渡别名表的拆除都在它名下。按「每片独立可 `precheck`、独立提交」拆开，依赖顺序 T11a →
-T11b* → T11c → T11d → T11e*）：
+**T11 分片**（本任务最大的一片：契约、生成器、各包的贡献（最终 9 个包有真实载荷，见 §7.27）、Shell
+落地、37 个 route adapter 与两套过渡别名表的拆除都在它名下。按「每片独立可 `precheck`、独立提交」拆开，
+依赖顺序 T11a → T11b* → T11c → T11d → T11e*）：
 
 | # | 标题 | 内容 |
 | --- | --- | --- |
 | T11a | 契约与形状定稿 | **已交付**（§7.25）：`@fenix/web-runtime` 新出口 `./shell/contribution`，载荷 `WebAppContribution`（导航项含 id/groupId/order/ns/labelKey/icon） |
 | T11b | 各包 `web/contribution.ts` | **已交付**（§7.26）：9 个包各持一份声明（14 项导航）+ `exports["./web/contribution"]` + 导航文案随项迁入各包字典；宿主旧键保留到 T11d 切换 |
-| T11c | 生成器与浏览器产物 | `scripts/generate-web-contributions.ts` 读 `deploy/assembly/ce.json` 的 `web` 列表生成 `apps/generated/web-contributions.ts`（只含静态 import）；`ci.ts` 新增子项；`ce.json` 的 `web` 落 13 项 |
+| T11c | 生成器与浏览器产物 | **已交付**（§7.27）：9 个 manifest 声明 `web` 惰性入口说明符 + `ce.json` 的 `web` 落 9 项（仅有真实载荷）+ `scripts/generate-web-contributions.ts` 生成 `apps/generated/web-contributions.ts`（只含静态 import）+ `ci.ts` 子项 + 导航文案解析契约测试 |
 | T11d | Shell 落地 | `apps/web/src/shell/`：`DefaultAppShell` 消费产物、侧栏导航改由 registry 渲染、`AgentSidebarConfig` 宿主/包内双写收敛 |
 | T11e | route adapter 直连包入口 | 22 条 `@/src/...` 桥接改造 + 删 `apps/web/vite.config.ts` 与根 `tsconfig.json` 的桥接条目 + 宿主剩余页面归位（`AgentHomePage` / `AgentManagementPage` / `AgentDashboardPage`） |
 
@@ -1679,6 +1679,77 @@ T11d 的入场条件，也是 `agent-config/web/i18n/namespace.ts` 头注释里�
    负载敏感；本片 6 个包级测试套件与门禁并发跑在同一台机器上。单文件复跑
    `env -u ANTHROPIC_MODEL bun test apps/server/src/__tests__/round37-service-boundaries.test.ts`
    → 130 / 130 通过，且本片未触碰任何 `apps/server` 文件，判定为**负载诱发的时序脆弱**而非回归。
+
+### 7.27 T11c 生成器与浏览器产物（2026-09-21，`d13187887` + `06981dd00` + `9b5dbc98d` + `28eae3b64` + `ea6cc7582`）
+
+T11 的第三片：把 T11b 的 9 份 `web/contribution.ts` 声明装配成构建期产物，并把「manifest 里的
+`web` 字段到底是什么形状」这件事定稿。
+
+**两条用户裁定（本节实施依据）**：
+
+1. `manifest.web` 的形状 = **惰性入口说明符字符串**：`web: { id: "<module-id>", contribution:
+   "@fenix/<pkg>/web/contribution" }`。server 装配图只拿到这一条字符串（零浏览器依赖），生成器按该串
+   静态 import 并校验出口存在。入口是**声明**而不是**推断**。
+2. `ce.json` 的 `web` 列表粒度 = **9 个（仅有真实载荷）**：只登记 9 个有导航载荷的包；
+   `channel` / `machine` / `observer` / `prod-view` / `sandbox` 不建空 `web/contribution.ts`。
+
+**为什么形状落在 manifest 而不是 profile**（三条证据，缺一条都不足以定稿）：`deploy/assembly/README.md`
+第 3 行禁止 profile 声明路径 / URL / 包名 / 代码入口，说明符串写在 manifest 里因此不冲突；README 第 16
+行给 `web` 行的语义是「已注册的 web contribution，只被浏览器 bundle 消费」——「已注册」指的是 registry
+里那张 `webById`；`ce-ee-engineering-standards` 第 278–281 行记的链路是
+`assembly.web → generated module registry → resources/*/web contribution`。加上 task-1.3 评审第 42 行明确
+把「惰性形状」留白给 §1.6 定稿，这条缺口自 task-1.3 起就等着本片。
+
+**产物与 server registry 的分工**：`manifest.web.contribution` 指向的载荷携带 React 组件，写进
+`apps/generated/module-registry.ts` 会让 server 在 `bootstrap.ts` 导入 registry 时把整张浏览器依赖图拉进
+进程。因此 manifest 放说明符字符串，浏览器产物（`apps/generated/web-contributions.ts`）独立生成、
+只被 `apps/web` 消费；两侧由**同一份 profile + 同一批 manifest** 派生，选择集不会漂移。
+`profile.web` → registry 的 `webContributions`（字符串）与浏览器产物（载荷）是同一概念的两半。
+
+**生成期的四条校验**（各对应一种构建期静默、运行期才炸的失败）：`web.id` 已注册且全局唯一（与
+`createModuleRegistry` 的 `webById` 同一判据）；该 web 模块的服务端模块在 profile 启用集内；说明符
+**经包 `exports` 解析**到真实文件（绕过 exports 拼路径等于允许浏览器产物 import 包内任意文件，
+`no-cross-package-src` 拦的正是这件事）；exports 目标不得越出包目录。启用集的口径复制自
+`resolveProfile` 的 `enabledIds`（固定槽位 + `resources` 列表本身），权威仍在 platform-sdk——
+生成器只重复它继续工作所必需的部分，避免第二套真相。
+
+**共享读取原语**：新增 `scripts/lib/module-manifest-source.ts`，把「不执行 manifest、只按 AST 读字面量」
+的原语从 `generate-module-registry.ts` 抽出，两个生成器共用同一套 `id` / `kind` / `web` 结论；
+`readExportTarget` 一并下沉并按 export key 参数化（`exports["./module"]` 与
+`exports["./web/contribution"]` 是同一个解析器）。抽出后 registry 生成物**字节级不变**。
+
+**随片修正的既有缺陷**：`scripts/generate-module-registry.ts` 源码里有 3 个**裸 NUL 字节**（台账边键的
+分隔符写成了真字节而非转义序列），自 `c67af3ed0` 起就在。后果是 git 把整个文件当二进制：提交里只有
+`Bin 25750 -> 18352 bytes`，看不出改动，`git blame` 与评审失效，grep 也跳过它——本次抽原语时正是因此
+先看不到自己的改动。按同仓库口径（`architecture-exceptions.ts` 的 `exceptionFingerprint` 用空格）改为
+单空格，键两侧都是 `@scope/name` 形态的包名、不含空格，行为不变。全仓受版本控制的文本文件中只有这一处。
+
+**过渡期无关但随片更新的一处测试基线**：`module-assembly.test.ts` 的 fixture 补 `web: []`。真实
+`ce.json` 的 web 列表会引用未注册进 fixture 的模块，与既有 `resources: []` 同一处理；
+`architecture-check.test.ts` 的 precheck 步骤基线 +1 行（新增 `web-contributions` 子项）。
+
+**契约测试**（`apps/web/src/__tests__/web-contributions.test.ts`）：14 项导航的 `id` 全局唯一、声明的
+命名空间都有可解析字典、`labelKey` 在 en / zh 两边都能取到。字典取自各包 `web/i18n` 的导出而非磁盘
+JSON 文件名——命名空间字面量与字典文件的对应由各包自己持有（`tasks-v2.json` ↔ `tasksV2` 就不按文件名）。
+它同时是产物进入类型检查的入口：接线前产物没有其它消费方，经这个相对导入才落进 `tsc (web)` 的 program，
+9 条 `webContribution` 具名导出因此被真实校验。
+
+**验证**：生成器 13 例（顺序与静态性、空列表、未注册 web 模块、owner 未启用、未声明 `web`、`web.id`
+重复、exports 缺声明 / 非子路径说明符 / 越出包目录 / 入口文件缺失、非字面量 `web`、profile 重复项、
+check 模式的缺失 / 一致 / 过期三态）全绿；`bun run generate:web-contributions --check` 通过；
+完整门禁 `env -u ANTHROPIC_MODEL bun run precheck` 全绿（server 787 / package 7973 通过 + 2 skip 共
+7975 / web 293，0 fail，lint 零 warning，新增 `web-contributions` 步骤通过）；`bun run build:web` 成功。
+
+**登记（不在本片修，交 T12 / T11d）**：
+
+1. **`deploy/assembly/README.md` 的 `web` 行语义待补一句**：产物是**构建期**按 JSON profile 固定的，
+   YAML profile 属部署期覆盖入口，部署期换 profile 不会重新打包浏览器 bundle。生成器只接受 JSON，
+   这条差异必须在 README 写明，否则「profile 可随镜像交付」会被读成「浏览器侧也随 profile 变」。
+2. **产物的 vite 解析未被真实构建图证明**：T11d 接线前 `apps/generated/web-contributions.ts` 不在
+   `build:web` 的依赖图里（契约测试用 bun 走同一条 `exports` 解析，风险低但不等价）。T11d 首次
+   `build:web` 是权威证据：9 条说明符必须全部可解析，否则整片浏览器装配失败。
+3. **`standards` §4.1 的目录树写 `web/contribution.ts`、执行计划 T11 行写 `web-contribution.ts`**：
+   本片按 §7.25 的裁定采用 `web/contribution.ts`，standards 侧待 T12 修订。
 
 ---
 
