@@ -139,10 +139,10 @@ const HINDSIGHT_DEFAULT_CONFIG = {
 
 | 文件 | 层 | 职责 |
 |------|-----|------|
-| `src/services/hindsight.ts` | Service | Bank 管理、MCP server 注册、API 转发 |
-| `src/routes/web/hindsight.ts` | Route | 反向代理（19 个端点），透传到 Hindsight |
+| `packages/resources/memory/src/server/services/hindsight.ts` | Service | Bank 管理、MCP server 注册、API 转发 |
+| `packages/resources/memory/src/server/routes/web/hindsight.ts` | Route | 反向代理（19 个端点），透传到 Hindsight |
 | `src/services/launch-spec-builder.ts` | Service | OpenCode 启动时注入 Hindsight 插件配置 |
-| `src/schemas/hindsight.schema.ts` | Schema | `/web/hindsight/status` 响应类型 |
+| `packages/resources/memory/src/server/schemas/hindsight.schema.ts` | Schema | `/web/hindsight/status` 响应类型 |
 | `src/env.ts` | Config | `HINDSIGHT_MCP_URL` 环境变量 |
 
 ### 后端路由表（`/web/hindsight`）
@@ -175,20 +175,20 @@ const HINDSIGHT_DEFAULT_CONFIG = {
 
 | 文件 | 职责 |
 |------|------|
-| `web/src/api/hindsight.ts` | 前端 API 客户端，封装所有 fetch 调用 |
-| `web/src/pages/hindsight/types.ts` | 18 个类型接口定义 |
-| `web/src/pages/hindsight/MemoriesPage.tsx` | 主页面（5 个 Tab，检查 Hindsight 状态） |
-| `web/src/pages/hindsight/components/DataView.tsx` | 核心数据视图（图谱/星座/表格/时间线） |
-| `web/src/pages/hindsight/components/Graph2d.tsx` | Cytoscape.js 图谱可视化 |
-| `web/src/pages/hindsight/components/Constellation.tsx` | Canvas 星座图可视化 |
-| `web/src/pages/hindsight/components/MemoryDetailModal.tsx` | 记忆详情弹窗 |
-| `web/src/pages/hindsight/components/MemoryDetailPanel.tsx` | 图谱节点详情侧面板 |
-| `web/src/pages/hindsight/components/EntitiesView.tsx` | 实体列表 + 关系图谱 |
-| `web/src/pages/hindsight/components/MentalModelsView.tsx` | 心理模型卡片网格 |
-| `web/src/pages/hindsight/components/DocumentsView.tsx` | 文档管理（上传/删除/搜索） |
-| `web/components/chat/HindsightToolCard.tsx` | 聊天中记忆工具紫色卡片 |
-| `web/components/chat/ToolCallGroup.tsx` | 工具调用分组（hindsight 独立渲染） |
-| `web/components/chat/tool-call-utils.ts` | `isHindsightTool()` 判断函数 |
+| `packages/resources/memory/web/api/hindsight.ts` | 前端 API 客户端，封装所有 fetch 调用 |
+| `packages/resources/memory/web/pages/hindsight/types.ts` | 18 个类型接口定义 |
+| `packages/resources/memory/web/pages/hindsight/MemoriesPage.tsx` | 主页面（5 个 Tab，检查 Hindsight 状态） |
+| `packages/resources/memory/web/pages/hindsight/components/DataView.tsx` | 核心数据视图（图谱/星座/表格/时间线） |
+| `packages/resources/memory/web/pages/hindsight/components/Graph2d.tsx` | Cytoscape.js 图谱可视化 |
+| `packages/resources/memory/web/pages/hindsight/components/Constellation.tsx` | Canvas 星座图可视化 |
+| `packages/resources/memory/web/pages/hindsight/components/MemoryDetailModal.tsx` | 记忆详情弹窗 |
+| `packages/resources/memory/web/pages/hindsight/components/MemoryDetailPanel.tsx` | 图谱节点详情侧面板 |
+| `packages/resources/memory/web/pages/hindsight/components/EntitiesView.tsx` | 实体列表 + 关系图谱 |
+| `packages/resources/memory/web/pages/hindsight/components/MentalModelsView.tsx` | 心理模型卡片网格 |
+| `packages/resources/memory/web/pages/hindsight/components/DocumentsView.tsx` | 文档管理（上传/删除/搜索） |
+| `packages/ui-components/web/chat/timeline/HindsightToolCard.tsx` | 聊天中记忆工具紫色卡片 |
+| `packages/ui-components/web/chat/timeline/ToolCallGroup.tsx` | 工具调用分组（hindsight 独立渲染） |
+| `packages/ui-components/web/chat/lib/tool-call-utils.ts` | `isHindsightTool()` 判断函数 |
 
 ### 运行库
 

@@ -1,7 +1,7 @@
 # AgentController 编排域架构（实现基线）
 
 > 状态：实现基线（2026-08-05 修订，对齐 `refactor/agent-controller` 分支，验证测试 215 个全绿）
-> 范围：编排域独立包 `packages/orchestration`（AgentController、AgentNodeService、AgentNode、Instance、LaunchSpecBuilder）与宿主桥接（`src/services/orchestration-instance.ts`、`orchestration-bootstrap.ts`、`orchestration-machine-cleanup.ts`、`src/transport/agent-node-bridge.ts`、`local-node-service.ts`、`src/transport/relay/external-relay.ts`）的创建、连接和生命周期。
+> 范围：编排域独立包 `packages/orchestration`（AgentController、AgentNodeService、AgentNode、Instance、LaunchSpecBuilder）与宿主桥接（`packages/agent-runtime/src/services/orchestration-instance.ts`、`orchestration-bootstrap.ts`、`orchestration-machine-cleanup.ts`、`packages/agent-runtime/src/transport/agent-node-bridge.ts`、`local-node-service.ts`、`packages/agent-runtime/src/server/transport/relay/external-relay.ts`）的创建、连接和生命周期。
 > 定位：本文档只定义 Agent 实例的控制与运行边界。YJS / ACP 到 YJS 的状态聚合与 Chat 域见 `docs/arch/19-yjs-chat-streaming.md`；文件操作信道（file-ws，与 acp-ws 平行的机器级信道）见 `docs/arch/12-files.md`。
 > 配套文档：`docs/design/2026-08-03-orchestration-package-prd.md` 与 `spec/global/adr/2026-08-03-orchestration-package-design.md`（重构立项与 ADR）。消费者审计报告与待决设计决策（E-P2.2 断连终态、C-P2.5 用户配额决策）的内容已并入本文档正文（§5、§2.2），不再单独成文。
 > 约定：本文档从"目标设计基线"修订为"已验证实现基线"，描述与代码一致的真实架构；代码演进偏离时，先更新本文档再改代码。关键实现文件以相对路径引用（行号不维护，以语义为准）。
@@ -264,7 +264,7 @@ stateDiagram-v2
 | 场景 | 入口 | 实例语义 |
 |---|---|---|
 | A. HTTP 程序化单轮 | `routes/api/openai-chat.ts` → `openAgentSession` → `spawnInstanceViaController` | 每次独立实例，dispose 销毁 |
-| B. 前端交互式 Chat | `/acp/yjs/:agentId`（`src/routes/acp/index.ts`）→ `gateway.handleOpen` → `ensureRunning` | 复用语义，**可创建**实例 |
+| B. 前端交互式 Chat | `/acp/yjs/:agentId`（`packages/agent-runtime/src/routes/acp/index.ts`）→ `gateway.handleOpen` → `ensureRunning` | 复用语义，**可创建**实例 |
 | C. Workflow | `workflow/agent-chat-transport.ts` → `ensureRunning(userId, ...)` → `connectAgentRelay` | 复用，不随单次执行销毁，租约保护 |
 | D. 外部 API + meta-agent | `api-instance.ts` / `meta-agent.ts` → `spawnInstanceViaController` | 每次独立实例 |
 | E. 停止 / 回收 / 断连 | `instance.ts` stopInstance / `acp-idle-monitor.ts` / `acp-ws-handler.ts` 机器清理 | AgentNode FSM + 断连对账 |
@@ -288,7 +288,7 @@ stateDiagram-v2
 
 | 层级 | 机制 | 状态 |
 |---|---|---|
-| 用户级 / 平台级 / 来源级 | `src/services/agent-concurrency.ts` 的 `beginSpawnReservation`（检查与登记同一同步段，pending 计入计数，finally 释放） | ✅ 生效（`RCS_USER_AGENT_MAX_CONCURRENCY` 等） |
+| 用户级 / 平台级 / 来源级 | `packages/agent-runtime/src/services/agent-concurrency.ts` 的 `beginSpawnReservation`（检查与登记同一同步段，pending 计入计数，finally 释放） | ✅ 生效（`RCS_USER_AGENT_MAX_CONCURRENCY` 等） |
 | Machine 容量 | `machine.maxSessions` 数据模型 | 仅保留容量元数据，当前未执行准入；未来实现时必须使用 Machine 专属 reservation / 错误码 |
 
 Environment 不再持有 `maxSessions` / `maxConcurrency` 配额。`AgentController` 只维护实例生命周期，禁止按 Environment 对内存实例表重新计数限流；业务并发治理统一由宿主 reservation 管理，以避免重复闸门和 TOCTOU 语义分裂。
@@ -320,7 +320,7 @@ Environment 不再持有 `maxSessions` / `maxConcurrency` 配额。`AgentControl
 
 ### 场景 B：前端交互式 Chat
 
-浏览器 WS 打开（`/acp/yjs/:agentId`，`src/routes/acp/index.ts` → `gateway.handleOpen`）→ `ensureRunning`（不存在则创建）→ Chat Doc / Session Doc 初始快照 → `relayReady`。实例复用语义与 YJS 不变量（rcsSessionId 确定性、cwd 注入、status 门禁、广播隔离）见 `19-yjs-chat-streaming.md`。
+浏览器 WS 打开（`/acp/yjs/:agentId`，`packages/agent-runtime/src/routes/acp/index.ts` → `gateway.handleOpen`）→ `ensureRunning`（不存在则创建）→ Chat Doc / Session Doc 初始快照 → `relayReady`。实例复用语义与 YJS 不变量（rcsSessionId 确定性、cwd 注入、status 门禁、广播隔离）见 `19-yjs-chat-streaming.md`。
 
 ### 场景 C：Workflow 复用与清理
 

@@ -652,7 +652,7 @@ erDiagram
 4. `src/env.ts`：`RCS_ENGINE_TYPE` enum（如需要全局默认引擎切换）
 5. `src/db/schema.ts`：生成迁移（DDL 允许任意 varchar，实际约束在应用层）
 6. `packages/acp-link/src/client/instance-manager.ts`：`AgentType` 联合类型
-7. 前端：`AgentFormDialog` 下拉选项 + `web/src/lib/agent-utils.ts` 默认值
+7. 前端：`AgentFormDialog` 下拉选项 + `packages/resources/agent-config/web/lib/agent-utils.ts` 默认值
 8. **`packages/acp-runtime-cli/src/bin.ts`**：`AGENT_TYPE` 联合类型 + `SUPPORTED_ENGINE_TYPES` 默认值
 
 ---

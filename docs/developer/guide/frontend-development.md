@@ -370,16 +370,16 @@ export function AgentTasksPage() {
 
 - 每个后端资源域 → 一个 `apps/web/src/api/<domain>.ts` 文件 → 一个命名的 API 对象导出
 - 组件只 import API 模块，不写 URL 字符串、不调 `fetch`
-- 共享基础设施集中在 `apps/web/src/api/request.ts` 基础模块，各域模块 import 使用
+- 共享基础设施集中在 `packages/web-runtime/web/api/request.ts` 基础模块（经 `@fenix/web-runtime/api/request` 出口 import），各域模块 import 使用
 - API 模块负责：URL 拼装、请求/响应序列化、错误统一处理
 - 组件负责：调用 API → 处理结果 → 更新 UI
 
 ### 5.2 共享基础模块 `request.ts`
 
-所有域模块共享同一个 `apps/web/src/api/request.ts`，统一管理 credentials、header 注入、错误标准化、超时、日志：
+所有域模块共享同一个 `packages/web-runtime/web/api/request.ts`，统一管理 credentials、header 注入、错误标准化、超时、日志：
 
 ```ts
-// apps/web/src/api/request.ts
+// packages/web-runtime/web/api/request.ts
 
 /** 统一错误码体系 */
 export type ErrorCode =

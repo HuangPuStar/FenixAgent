@@ -552,7 +552,7 @@ graph TB
 
 ### 5.3 工作流即 API 调用
 
-独立部署后，外部系统可通过 `POST /api/workflows/:workflowId/execute` 像调用函数一样触发工作流。定义见 `src/schemas/api-workflow.schema.ts`。
+独立部署后，外部系统可通过 `POST /api/workflows/:workflowId/execute` 像调用函数一样触发工作流。定义见 `packages/resources/workflow/src/server/schemas/api-workflow.schema.ts`。
 
 **请求体**：
 

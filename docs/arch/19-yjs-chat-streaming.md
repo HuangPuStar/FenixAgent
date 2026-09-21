@@ -120,7 +120,7 @@ flowchart TB
 | `Yjs Sync Frame` | `protocol/update-frame.ts` + `transport/ws.ts` | generation-aware update / state-vector / replace 二进制帧；magic/version、标识和 payload 上限校验；旧 generation fencing | 承载 Action 或授权上下文 |
 | `Redis Yjs Provider` | `persist/redis.ts` + `persist/snapshot-cas.ts` | active generation 指针、快照 CAS、generation-scoped key/channel、旧世代写入 fencing 与 TTL 回收 | 作为 ACP session 的持久化真相 |
 | `SessionLeaseManager` | **占位，不实现**（Q5 评审决策：YJS CRDT 已保证文档一致性，`commandId` 去重承担防重复副作用；`leaseEpoch` 类型占位） | 租约获取、续期、释放与 fencing token | 会话内容存储 |
-| `Instance 生命周期` | 编排域 `packages/orchestration`（AgentController + AgentNode/AgentNodeService，见 `docs/arch/20-orchestration-management.md`）；宿主 `ensureRunning`（`src/services/instance.ts`）经桥接注入 | Agent 实例复用 / 创建（仅新建时检查并发配额）、共享 relay 连接、空闲回收 | 浏览器会话状态 |
+| `Instance 生命周期` | 编排域 `packages/orchestration`（AgentController + AgentNode/AgentNodeService，见 `docs/arch/20-orchestration-management.md`）；宿主 `ensureRunning`（`packages/agent-runtime/src/server/services/agent-instance-service.ts`）经桥接注入 | Agent 实例复用 / 创建（仅新建时检查并发配额）、共享 relay 连接、空闲回收 | 浏览器会话状态 |
 
 **传输层边界（12-files.md 联动）**：`file_changed` 等文件变更事件**不**经 YJS/relay 通道（本文档广播按 `rcsSessionId` 隔离，禁止全局广播会话数据）——由文件域独立 WS 端点 `/web/file-events` 承载、按 environmentId 路由，见 `docs/arch/12-files.md` §4.3。ACP 会话内的工具事件（如 `read_file` 调用记录）仍走本通道，与文件系统事件互不混流。
 
@@ -305,7 +305,7 @@ sequenceDiagram
     CC-->>B: action_ack(commandId, committedVersion)
 ```
 
-- 实例生命周期在连接建立时完成：`ensureRunning(userId, agentId, "interactive", instanceNumber?)`（`src/services/instance.ts`，经桥接注入）先复用运行实例、仅新建时检查并发配额；relay 经 `connectAgentRelay(instanceId, rcsSessionId)` 共享。**load_session 不重复创建实例**。
+- 实例生命周期在连接建立时完成：`ensureRunning(userId, agentId, "interactive", instanceNumber?)`（`packages/agent-runtime/src/server/services/agent-instance-service.ts`，经桥接注入）先复用运行实例、仅新建时检查并发配额；relay 经 `connectAgentRelay(instanceId, rcsSessionId)` 共享。**load_session 不重复创建实例**。
 - `cwd`、environment 与 Agent config 必须由服务端可信数据解析，浏览器不能覆盖（`translateSimpleAction` 注入 `workspacePath`）。
 - **会话切换（switch session）**：`SessionChannel` 在转发 `session/load` / `session/new` 前调用 `DocManager.replaceProjection`。它创建共享同一新 generation 的 Chat/Session Y.Doc，只复制跨会话仍有效的 Agent status/capabilities、`sessions` 与 `sessionListLoaded`，不复制旧时间线、活动 turn、权限或问题投影；随后预编码两份 replacement frame，并通过 Redis compare-and-set 发布 active generation。任何构造、编码或 CAS 失败都会销毁候选 Doc，旧 projection 和会话 binding 保持不变。
 - **禁止 clear + replay 复用**：YJS 是基于 struct store 的 CRDT；在旧 Doc 上删除内容再回放并不会得到物理上的干净文档，反复切换会让 `encodeStateAsUpdate` 随历史 tombstone/struct 单调膨胀。会话切换必须换代，不得恢复旧的 `clearChatDocContent` / `clearSessionDocContent` 流程。
@@ -914,7 +914,7 @@ Agent 产生结构化 `PermissionRequested`；有权限的用户只能解决一�
 
 ### 场景 K：并发受限时建立 YJS 链接
 
-用户进入 ChatPanel 时，服务端在 WS 建立流程中按可信的 `userId + agentId` 执行 `ensureRunning(userId, agentId, "interactive", instanceNumber?)`（`src/services/instance.ts`，经桥接注入）：已有可复用的运行实例则复用；只有需要创建新实例时才检查 Environment `maxSessions`、平台与用户实例并发上限（编排域配额，见 20 号文档 §8.2）。**并发配额约束的是 Agent 运行实例，不是 `rcsSessionId` 或既有 YJS 链接。**
+用户进入 ChatPanel 时，服务端在 WS 建立流程中按可信的 `userId + agentId` 执行 `ensureRunning(userId, agentId, "interactive", instanceNumber?)`（`packages/agent-runtime/src/server/services/agent-instance-service.ts`，经桥接注入）：已有可复用的运行实例则复用；只有需要创建新实例时才检查 Environment `maxSessions`、平台与用户实例并发上限（编排域配额，见 20 号文档 §8.2）。**并发配额约束的是 Agent 运行实例，不是 `rcsSessionId` 或既有 YJS 链接。**
 
 实例可用后，前端再以 `rcsSessionId` 建立 YJS 链接；YJS 连接数另受 `YJS_MAX_CLIENTS` 限制。任一限制拒绝时，服务端返回明确错误并关闭或拒绝本次链接（终态关闭码见 §4.1）；前端显示失败状态，不自动排队、轮询或无限重试，也不得影响已有 `rcsSessionId` 的连接和投影。
 
