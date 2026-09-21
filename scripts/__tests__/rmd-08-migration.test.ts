@@ -43,8 +43,10 @@ import { existsSync } from "node:fs";
  * 13. 任务 1.6 T11d 在 apps/web 内再搬 6 项（71 → 71，仅改第二列的落点）：壳层容器与两份 CSS 从
  *     `apps/web/src/pages/agent-panel/` 移入 `apps/web/src/shell/`，其中 `AgentPanelLayout.tsx` 改名
  *     `DefaultAppShell.tsx` 与 `apps/web/fenix.module.ts` 的 `kind: "web-shell"` 对齐。owner 仍是 apps-web
- *     （RMD-08 判定的资源归属未变），但落点已不是 `pages/`，故按本表的「当前唯一落点」语义更新第二列；
- *     `AgentSidebarConfig.tsx` 在 T11d 收尾随导航贡献化删除，届时移入下方 retired 断言。
+ *     （RMD-08 判定的资源归属未变），但落点已不是 `pages/`，故按本表的「当前唯一落点」语义更新第二列。
+ *     同片的 T11d 收尾直删 1 项（71 → 70）：`AgentSidebarConfig.tsx` 是宿主侧那份 14 项导航表，侧栏的
+ *     真相源改由各包 `web/contribution.ts` + WebShell 分组表装配后它零消费，属「删除优于兼容」的直删，
+ *     另立专项断言防三处路径复活。
  */
 const RMD_08_MOVES = [
   ["web/src/App.tsx", "apps/web/src/App.tsx"],
@@ -119,7 +121,6 @@ const RMD_08_MOVES = [
   ["web/src/pages/LoginPage.tsx", "apps/web/src/pages/LoginPage.tsx"],
   ["web/src/pages/agent-panel/AgentPanelLayout.tsx", "apps/web/src/shell/DefaultAppShell.tsx"],
   ["web/src/pages/agent-panel/AgentSidebar.tsx", "apps/web/src/shell/AgentSidebar.tsx"],
-  ["web/src/pages/agent-panel/AgentSidebarConfig.tsx", "apps/web/src/shell/AgentSidebarConfig.tsx"],
   ["web/src/pages/agent-panel/AgentSidebarTree.tsx", "apps/web/src/shell/AgentSidebarTree.tsx"],
   ["web/src/pages/agent-panel/ArtifactsPanel.tsx", "apps/web/src/shell/ArtifactsPanel.tsx"],
   ["web/src/pages/agent-panel/agent-create-navigation.ts", "apps/web/src/pages/agent-panel/agent-create-navigation.ts"],
@@ -549,9 +550,10 @@ describe("RMD-08 apps/web migration", () => {
   // （见文件头第 7 条），109 → 100；T10b1 把 12 个 ui-components 归属的宿主测试移入包内（见文件头第 8 条），
   // 100 → 88；T10b2 把 7 个 web-runtime 归属的宿主测试移入包内（见文件头第 9 条），88 → 82；
   // T10b3 又移出 2 项（见文件头第 10 条），82 → 80；T10b4 把 8 个 agent-config 归属的宿主测试移入包内
-  // （见文件头第 11 条），80 → 72；T10b5 直删 1 项自指用例（见文件头第 12 条），72 → 71。
+  // （见文件头第 11 条），80 → 72；T10b5 直删 1 项自指用例（见文件头第 12 条），72 → 71；
+  // T11d 随导航贡献化直删 `AgentSidebarConfig.tsx`（见文件头第 13 条），71 → 70。
   test("removes every legacy source and retains its exact owner target", () => {
-    expect(RMD_08_MOVES).toHaveLength(71);
+    expect(RMD_08_MOVES).toHaveLength(70);
     for (const [source, target] of RMD_08_MOVES) {
       expect(existsSync(source), `legacy source still exists: ${source}`).toBe(false);
       expect(existsSync(target), `apps/web target is missing: ${target}`).toBe(true);
@@ -562,6 +564,15 @@ describe("RMD-08 apps/web migration", () => {
   test("keeps the retired card renderer test deleted", () => {
     expect(existsSync("web/src/__tests__/card-renderer-pure-utils.test.ts")).toBe(false);
     expect(existsSync("apps/web/src/__tests__/card-renderer-pure-utils.test.ts")).toBe(false);
+  });
+
+  // 侧栏导航表随所有权下沉到各包 `web/contribution.ts` 后退场（§1.6 T11d）：`AgentSidebarConfig.tsx`
+  // 的三条路径（旧根、迁入后的 `pages/agent-panel/`、壳层落点 `shell/`）都不得复活——它一旦回来，
+  // 侧栏就会出现第二份导航真相源，与产物装配的 14 项无声争抢版式。
+  test("keeps the retired sidebar nav table deleted", () => {
+    expect(existsSync("web/src/pages/agent-panel/AgentSidebarConfig.tsx")).toBe(false);
+    expect(existsSync("apps/web/src/pages/agent-panel/AgentSidebarConfig.tsx")).toBe(false);
+    expect(existsSync("apps/web/src/shell/AgentSidebarConfig.tsx")).toBe(false);
   });
 
   // 自指 i18n 测试随其守护的字典一同退役：`toolNarrator` 字典在 T9c 整份删除（无任何命名空间绑定），
