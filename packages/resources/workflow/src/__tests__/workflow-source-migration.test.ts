@@ -13,8 +13,8 @@
 // 与沙盒黄金样本（`packages/resources/sandbox/src/__tests__/sandbox-source-migration.test.ts`）的差异：
 // 沙盒有一张「宿主旧路径 → 包内新路径」的成对迁移表，而 workflow 的宿主旧实现（`routes/web/workflow*`、
 // `pages/workflow/**`、`api/workflow*`）在本任务之前的切片里就已删除，HEAD 树里已不存在——把它们写成
-// 「宿主路径已删除」的断言会恒真。这里改为两个有约束力的方向：宿主残留**副本**不得复活、宿主要求的
-// 合法残留（表定义）必须有明确清点。
+// 「宿主路径已删除」的断言会恒真。这里改为两个有约束力的方向：宿主残留**副本**不得复活，以及
+// **包内对 `@server/**` 零容忍**（表定义残留已随 §1.7 B6 归零，见下方 `SCANNER_FIXTURE` 的说明）。
 
 import { describe, expect, test } from "bun:test";
 import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
@@ -28,25 +28,20 @@ const REPO_ROOT = resolve(PKG_ROOT, "../../..");
 const SOURCE_ENTRIES = ["src", "web", "db", "fenix.module.ts"];
 
 /**
- * 唯一允许的宿主导入。
+ * 扫描器负例夹具（§4.7.1 ③ 的收缩形态）。
  *
- * 表定义迁出归任务 1.7，本任务把它作为**显式残留**保留（见任务 1.3 实施记录 §5），且只允许这一条精确
- * 路径：`@server/db/schema` 之下的任何深路径都意味着重新伸手取宿主内部。
- */
-const ALLOWED_HOST_IMPORT = "@server/db/schema";
-
-/**
- * 允许使用宿主表定义的**全部**位置（清点式白名单）。
+ * 本包对宿主表定义的引用已随 §1.7 B6 归零（九张 workflow 表迁入本包 `db/`），原先那条「残留必然存在」
+ * 的正向控制随之失效——它的作用是「扫不到就说明说明符提取失效」，而此刻扫不到才是正确结果。改用负例
+ * 夹具承担同一职责：一段真实源码形状的字符串，含一条宿主导入与一条**注释里**形似导入的文本，断言语义
+ * 是「前者必须被捞出、后者必须被剥掉」。
  *
- * 只允许仓储与引擎的存储适配器：前者是「仓储 = 唯一数据访问点」的落点，后者是 workflow-engine
- * `StorageAdapter` 端口的实现（引擎自己拥有事件流/快照的表结构），两者都不是路由或业务编排。
- * 新增使用点必须在这里显式登记——等同于一次边界评审。
+ * 夹具按行以字符串字面量拼成，源码里 `import` 前面始终有引号，因此不会被本文件的真实扫描误判引用。
  */
-const HOST_TABLE_USAGE_ALLOWLIST = [
-  "src/server/repositories/workflow-def.ts",
-  "src/server/repositories/workflow-trigger.ts",
-  "src/server/services/workflow/pg-storage-adapter.ts",
-];
+const SCANNER_FIXTURE = [
+  'import { x } from "@server/db/schema";',
+  '// import { y } from "@server/db/other";',
+  "const z = 1;",
+].join("\n");
 
 /**
  * 宿主侧不得再出现的 workflow 实现副本（相对仓库根）。
@@ -219,28 +214,14 @@ describe("Workflow 包边界契约（任务 1.3 §1 静态条件）", () => {
       expect(sourceFiles).toContain(resolve(PKG_ROOT, expected));
     }
     expect(sourceFiles.length).toBeGreaterThanOrEqual(60);
-    // 正向控制：表定义残留必然存在，扫不到就说明说明符提取失效（而不是「没有宿主导入」）。
-    expect(refs.filter((ref) => ref.specifier === ALLOWED_HOST_IMPORT).length).toBeGreaterThan(0);
+    // 扫描器自检（负例夹具）：宿主导入必须被捞出、注释里的形似文本必须被剥掉——两者任一失效即报红。
+    expect(extractSpecifiers(stripComments(SCANNER_FIXTURE))).toEqual(["@server/db/schema"]);
   });
 
-  // 宿主实现只能经平台契约（`@fenix/platform-sdk`）或注入进入本包；除表定义残留外一律违规。
-  test("包内不存在表定义以外的宿主 @server 导入", () => {
-    const offenders = refs.filter(
-      (ref) => ref.specifier.startsWith("@server/") && ref.specifier !== ALLOWED_HOST_IMPORT,
-    );
+  // 宿主实现只能经平台契约（`@fenix/platform-sdk`）或注入进入本包；§1.7 B6 之后**零容忍**。
+  test("包内不存在任何宿主 @server 导入", () => {
+    const offenders = refs.filter((ref) => ref.specifier.startsWith("@server/"));
     expect(offenders.map(describeRef)).toEqual([]);
-  });
-
-  // 表定义残留必须有明确清点：新增使用点等于扩大宿主耦合面，必须走一次边界评审。
-  // 作用域只算生产代码——静态条件 1 明确允许 `src/__tests__` 里出现表定义（用例要按表对象判定 stubDb
-  // 分支），它们的路径面由上面那条「只允许 @server/db/schema」统一兜住。
-  test("宿主表定义只出现在登记过的仓储与存储适配器里", () => {
-    const users = refs
-      .filter((ref) => ref.specifier === ALLOWED_HOST_IMPORT)
-      .map((ref) => relative(PKG_ROOT, ref.file) ?? "")
-      .filter((rel) => !rel.startsWith("src/__tests__/"))
-      .sort();
-    expect(users).toEqual(HOST_TABLE_USAGE_ALLOWLIST);
   });
 
   // 宿主别名（`@/src`、`@/components`）由 apps/web 的 tsconfig/vite 提供，包离开宿主就解析不了。
@@ -340,7 +321,11 @@ describe("Workflow 包边界契约（任务 1.3 §1 静态条件）", () => {
     const offenders: string[] = [];
     for (const file of sourceFiles.filter((candidate) => candidate.startsWith(`${routesDir}/`))) {
       for (const specifier of extractSpecifiers(stripComments(readFileSync(file, "utf8")))) {
-        if (specifier === "drizzle-orm" || specifier.startsWith("drizzle-orm/") || specifier === ALLOWED_HOST_IMPORT) {
+        if (
+          specifier === "drizzle-orm" ||
+          specifier.startsWith("drizzle-orm/") ||
+          specifier === "@fenix/resource-workflow/db"
+        ) {
           offenders.push(`${relative(PKG_ROOT, file)} → ${specifier}`);
           continue;
         }

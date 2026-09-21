@@ -5,7 +5,7 @@
  * YAML 内容通过 workflow-fs 读写文件系统，数据库只存路径引用。
  */
 
-import { workflow, workflowSnapshot, workflowVersion } from "@server/db/schema";
+import { workflow, workflowSnapshot, workflowVersion } from "@fenix/resource-workflow/db";
 import { and, desc, eq, sql } from "drizzle-orm";
 import { getWorkflowDatabase } from "../db";
 import {

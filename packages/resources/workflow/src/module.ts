@@ -9,8 +9,8 @@ import { getCustomToolsRegistry, initCustomToolsRegistry } from "./server/servic
  * 引擎内部持有 activeRuns（取消/审批状态）与每 team 一个 StorageAdapter；再构造一个 engine 等于给同一批
  * run 开两条取消/审批路径。因此组合根返回的是包内既有单例，而不是新建一套。
  *
- * 表定义仍由宿主 `@server/db/schema` 提供（迁出归 §1.7），但引擎只是消费方，句柄经
- * `getWorkflowDatabase()` 在请求期现取，所以这里不需要 DB 参数。
+ * 表定义自任务 1.7 B6 起由本包 `db/schema.ts` 提供（出口 `@fenix/resource-workflow/db`）；引擎只是消费方，
+ * 句柄经 `getWorkflowDatabase()` 在请求期现取，所以这里不需要 DB 参数。
  *
  * 路由工厂（`createWeb*Routes` / `createApiWorkflowRoutes`）、`handleWebhookRequest` 与
  * `createWorkflowStaticApp` 都要求宿主注入认证守卫，是宿主显式调用的装配入口，不经模块实例即可使用，

@@ -6,6 +6,7 @@
     "@fenix/agent-config": "workspace:*",
     "@fenix/agent-runtime": "workspace:*",
     "@fenix/chat-channel": "workspace:*",
+    "@fenix/identity": "workspace:*",
     "@fenix/logger": "workspace:*",
     "@fenix/platform-sdk": "workspace:*",
     "@fenix/plugin-sdk": "workspace:*",
@@ -32,6 +33,7 @@
   },
   "exports": {
     ".": "./src/index.ts",
+    "./db": "./db/schema.ts",
     "./module": "./fenix.module.ts",
     "./server": "./src/server.ts",
     "./server/testing": "./src/server/testing.ts",
