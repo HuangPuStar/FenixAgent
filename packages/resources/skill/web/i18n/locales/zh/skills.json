@@ -127,5 +127,8 @@
     "downloadUnavailable": "暂时无法下载该技能",
     "loadListFailed": "加载技能列表失败",
     "loadListFailedWith": "加载技能列表失败: {{message}}"
+  },
+  "nav": {
+    "skills": "技能库"
   }
 }

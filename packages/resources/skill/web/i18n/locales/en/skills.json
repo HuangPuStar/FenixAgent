@@ -127,5 +127,8 @@
     "downloadUnavailable": "This skill is currently unavailable for download",
     "loadListFailed": "Failed to load skill list",
     "loadListFailedWith": "Failed to load skill list: {{message}}"
+  },
+  "nav": {
+    "skills": "Skill Library"
   }
 }
