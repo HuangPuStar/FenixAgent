@@ -4,7 +4,6 @@
   "compilerOptions": {
     "paths": {
       "@server/*": ["../../apps/server/src/*"],
-      "@/components/chat/*": ["../../packages/agent-runtime/web/components/chat/*"],
       "@/components/ui/*": ["../../apps/web/components/ui/*"],
       "@/components/*": ["../../apps/web/components/*"],
       "@/src/api/agents": ["../../packages/resources/agent-config/web/api/agents.ts"],

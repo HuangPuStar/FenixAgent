@@ -13,6 +13,16 @@
 // 这里把宿主侧的标准错误构造器补到测试自建的 Window 上；`location.origin === "null"` 的修正
 // 供断言 URL 的用例使用。
 //
+// **DOM 全局注入必须成对：`HTMLElement` 与 `customElements`**（本函数不注入全局，此条约束落在各
+// 调用点）。`bun test` 在同一进程内依次求值全部测试文件，直接写 `globalThis.HTMLElement = win.HTMLElement`
+// 的用例（本包 web/__tests__ 与 demo 各 3 处）会把该全局泄漏给后续文件；而 streamdown 的 diff 组件
+// （`@pierre/diffs/dist/components/web-components.js`）在模块求值期判定
+// `typeof HTMLElement !== "undefined" && customElements.get(TAG) == null` —— 只注入 `HTMLElement`
+// 会让「有 DOM」这个前提成立而 `customElements` 仍是 `undefined`，于是此后任何导入该链路的文件
+// （如 resources/{task,prod-view,model-management} 经桶入口间接触达 streamdown）以
+// `ReferenceError: customElements is not defined` 崩在测试之间的空档里（2026-09-21 实测 4 例）。
+// 成对注入后，`customElements.define` 与 `instanceof HTMLElement` 落在同一个 happy-dom 注册表里。
+//
 // **为什么落点是 @fenix/ui-components 而不是 @fenix/web-runtime 或宿主**：本包是类别 `standalone`
 // 的纯前端包，依赖矩阵允许全部类别依赖它（`scripts/lib/architecture-boundary-rules.ts` 的
 // `FORBIDDEN_CROSS_CATEGORY.standalone = []`），而调用方横跨 apps/web、resources/*、chat-channel、

@@ -5,7 +5,6 @@
     "baseUrl": "../..",
     "paths": {
       "@server/*": ["apps/server/src/*"],
-      "@/components/chat/*": ["packages/agent-runtime/web/components/chat/*"],
       "@/components/ui/*": ["apps/web/components/ui/*"],
       "@/components/*": ["apps/web/components/*"],
       "@/src/api/environments": ["packages/agent-runtime/web/api/environments.ts"],

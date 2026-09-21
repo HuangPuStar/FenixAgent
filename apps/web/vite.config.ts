@@ -20,7 +20,6 @@ export default defineConfig({
   resolve: {
     alias: {
       "@/components/ui": path.resolve(__dirname, "components/ui"),
-      "@/components/chat": path.resolve(__dirname, "../../packages/agent-runtime/web/components/chat"),
       "@/components": path.resolve(__dirname, "components"),
       "@/src/i18n/locales": path.resolve(__dirname, "src/i18n/locales"),
       "@/src/i18n": path.resolve(__dirname, "src/i18n"),

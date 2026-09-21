@@ -29,6 +29,8 @@ const window = initializeHappyDomWindow(new Window());
 (globalThis as any).FileReader = window.FileReader;
 /* biome-ignore lint/suspicious/noExplicitAny: 同上（组件用 `element instanceof HTMLElement` 判定滚动层） */
 (globalThis as any).HTMLElement = window.HTMLElement;
+/* biome-ignore lint/suspicious/noExplicitAny: 同上（streamdown 的 diff 组件按 `customElements.get` 判定自定义元素） */
+(globalThis as any).customElements = window.customElements;
 /* biome-ignore lint/suspicious/noExplicitAny: React 19 的 act 环境标记 */
 (globalThis as any).IS_REACT_ACT_ENVIRONMENT = true;
 

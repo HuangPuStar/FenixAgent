@@ -31,14 +31,6 @@
   ],
   "exceptions": [
     {
-      "rule": "agent-runtime-not-to-resources",
-      "from": "@fenix/agent-runtime",
-      "to": "@fenix/model-management",
-      "owner": "1.7",
-      "removeWhen": "agent-runtime 的 web 侧不再经 `@/src/lib/model-config-utils` 共享别名直读 model-management 的 web 实现——该边随 §1.7 的真相源/配置边界收口与前端边界批次一并消除（与 `apps-boundary` 直读 `@server/db/schema` 同因：属「跨包直读实现细节」而非启动取数）",
-      "rationale": "实测 1 处导入 / 1 个文件，且**不在服务端**：`packages/agent-runtime/tsconfig.json` 把 `@/src/lib/model-config-utils` 别名指向 `packages/resources/model-management/web/lib/model-config-utils.ts`，唯一消费方是 `packages/agent-runtime/web/components/chat/composer-toolbar.tsx`（与 `apps/web` 的 `apps/web/vite.config.ts` 同一条前端共享别名边，见 review §15.2-2）。W4b 之前本条的服务端见证边是 `services/launch-spec-builder.ts` 与 orchestration 组装链对模型网关配置的直读，随「启动前取数搬出」迁往 `@fenix/agent-config` 的 `server/services/agent-launch-spec/model-resolution.ts`，服务端命中已归零；剩余边与 §5.1「应用基础设施经 platform-sdk 受限入口读取」无关，W4 不再处置，按 review §15.2-2 转 §1.7。"
-    },
-    {
       "rule": "no-circular",
       "from": "@fenix/agent-runtime",
       "to": "@fenix/agent-runtime",
@@ -316,7 +308,7 @@
       "to": "@fenix/web-app",
       "owner": "1.6",
       "removeWhen": "agent-runtime 的 web contribution 不再引用宿主内部实现，改经 WebShell 公开面或包内自持",
-      "rationale": "170 处 / 68 文件，最大的 web 越界面：`@/src/lib`(72)、`@/components/chat`(34)、`@/components/ui`(29)、`@/src/i18n`(12)。chat 渲染与 ai-elements 组件整体属于本包职责，1.6 迁移时随页面一起落入包内 `web/`；共享 UI 经 Shell 的公开面暴露。"
+      "rationale": "T6c2 后实测 10 处 / 4 文件（T6 起点为 170 处 / 68 文件）：`@/src/lib`(4)、`@/src/hooks`(2)、`@/components/ui`(1)、`@/src/i18n`(1)、`@/src/api`(1)、`@/src/components`(1)，其中 ChatPanel 6 处 + chat-panel-ports 2 处（随 T6d 归位宿主）、hooks 2 处 `@/src/lib/structured-to-thread`（随 T6e 改指包出口）。原 170 处中的 `@/components/chat`(34) 与整份旧 chat 实现已随 T6c2 删除。详见 review 文档 §7.11。"
     }
   ]
 }

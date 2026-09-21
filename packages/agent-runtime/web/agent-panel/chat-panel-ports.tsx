@@ -7,6 +7,7 @@ import {
   type CompressImage,
   IMAGE_COMPRESSION_OPTIONS,
   type UploadComposerFiles,
+  uploadComposerFiles,
 } from "@fenix/ui-components/chat/composer/composer-file-processing";
 import { PeriTaskDetailSheet } from "@fenix/ui-components/chat/panels/PeriTaskDetailSheet";
 import type { ChatNotice, ChatStatsSummary } from "@fenix/ui-components/chat/shell/chat-interface-types";
@@ -18,9 +19,9 @@ import { ChatStatsDispatcher } from "@fenix/web-runtime/lib/chat-stats";
 import imageCompression from "browser-image-compression";
 import { type ReactNode, useCallback, useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
+import { uploadChatFiles } from "@/src/api/fs";
 import { getPeriTaskDetail } from "@/src/api/peri-task-details";
 import { FilePickerDialog } from "@/src/components/FilePickerDialog";
-import { uploadComposerFiles } from "../components/chat/composer-file-processing";
 
 /**
  * ChatPanel → `@fenix/ui-components/chat/shell/ACPMain` 的宿主端口装配（CE 阶段 2 任务 1.6 T5c2）。
@@ -41,14 +42,15 @@ import { uploadComposerFiles } from "../components/chat/composer-file-processing
  * | `onNotice` | `ChatInterface` / `ACPMain` 内的 sonner `toast` | sonner 同级别映射（`toast.info` / `toast.warning` / `toast.error`） |
  * | `onStatsChange` | `ChatInterface` 内 `ChatStatsDispatcher`（1s trailing 节流 + 幂等 + 卸载补发） | 同一个 `ChatStatsDispatcher`，**不传 `emit`**：保持默认的 window `chat:stats` 派发路径，`ChatArea` 的 `useChangedFilesFromStats` 依赖它（改走回调等于把摘要改成组件树内传递，会静默丢掉 ArtifactsPanel 的变更文件）。该处不存在双副本问题：派发靠 window 事件、消费方只读 `detail` 与类型，跨副本等价 |
  * | `onOpenWorkspaceFile` | 工具卡片/用户消息派发 `dispatchArtifactsPreviewFile(envId, path)`，状态面板派发**裸事件**（见下） | 统一走 `dispatchArtifactsPreviewFile`（事件名相同，但状态面板的 detail 由旧实现的「仅 path」补齐为 `{envId, path}`，用户可见行为变更见 review §八） |
- * | `uploadFiles` | `ChatComposer` 内直连 `uploadChatFiles(envId, files)` | 复用本包既有的 `uploadComposerFiles(agentId, files)`（同样的 workspace 上传 + `{name, path}` 映射；包侧还会做一次体积校验，幂等） |
+ * | `uploadFiles` | `ChatComposer` 内直连 `uploadChatFiles(envId, files)` | 包内 `uploadComposerFiles(files, upload)` 做同样的体积校验与 `{name, path}` 映射，真实上传经本端口注入的宿主 `uploadChatFiles`（包内不持网络依赖） |
  * | `compressImage` | `ChatComposer` 内 `imageCompression(file, IMAGE_COMPRESSION_OPTIONS)` | 同一个库 + 包内导出的同一份参数（参数漂移会让压缩后体积/尺寸与源实现不一致） |
  * | `renderFilePicker` | `ChatComposer` 内按 `envId` 渲染宿主 `FilePickerDialog` | 同一组件；无 `agentId` 时不渲染（源实现同样以 `fileWorkspaceId` 为守卫） |
  * | `subscribeExternal` | `ChatComposer` 的 `file-tree:reference` window 监听（按 `envId` 过滤） | 只桥接该事件：`chat:apply-suggested-prompt` / `chat:quote` 的生产方也在 chat 层内部，已由包内环路闭合（见 ui-components `shell/internal/use-composer-input-bridge.ts`），桥接会重复投递 |
  *
  * 状态面板的裸事件（`onOpenWorkspaceFile` 一行的「详见」）：源实现里三处派发点是**两套写法**——
- * `ToolCallRow` / `MessageBubble` 走 `dispatchArtifactsPreviewFile(envId, path)`，而
- * `packages/agent-runtime/web/components/chat/chat-status-panel.tsx` 直接
+ * `ToolCallRow` / `MessageBubble` 走 `dispatchArtifactsPreviewFile(envId, path)`，而源实现的状态面板
+ * （`packages/agent-runtime/web/components/chat/chat-status-panel.tsx`，已随 T6c2 删除；包内现为
+ * `web/chat/panels/chat-status-panel.tsx`）直接
  * `window.dispatchEvent(new CustomEvent("artifacts:preview-file", { detail: { path: file.path } }))`，
  * **不带 envId**；消费方 `getArtifactsPreviewFileDetail` 要求 `detail.envId === envId`，于是事件恒被
  * 判为「其他 environment」并忽略——线上点击状态面板里的变更文件条目从来没有打开过预览（工具卡片、
@@ -56,7 +58,7 @@ import { uploadComposerFiles } from "../components/chat/composer-file-processing
  * 这是用户可见行为变更，已登记在 review 文档 §八。
  *
  * 依赖方向：本文件只依赖包出口（`@fenix/ui-components/*`、`@fenix/web-runtime/*`）与 agent-runtime
- * 内部模块；未走 `@/components/chat` 这类宿主别名，避免把已收敛的别名债务再领回一份。
+ * 内部模块；未走 `@/components/chat` 这类宿主别名（该别名已随 T6c2 删除），避免把别名债务再领回一份。
  *
  * 上下文队列双副本：`context-queue` 是**有状态**模块（模块级 `Map` 保存待注入的 system-reminder）。
  * 迁移中途 `apps/web/src/lib/context-queue.ts` 与 `@fenix/web-runtime/chat/context-queue` 同时存在
@@ -136,9 +138,14 @@ export function useChatPanelPorts({
     dispatchArtifactsPreviewFile(envId, path);
   }, []);
 
-  // 附件上传：无环境时返回空数组（ChatComposer 侧以端口是否存在判定附件入口可用性，故不能省）
+  // 附件上传：无环境时返回空数组（ChatComposer 侧以端口是否存在判定附件入口可用性，故不能省）。
+  // 包内 `uploadComposerFiles(files, upload)` 只做体积校验并把结果映射为 `{name, path}`，
+  // 真实上传走本端口注入的宿主 `uploadChatFiles`（T6c2 起包内不再持网络依赖）。
   const uploadFiles = useCallback<UploadComposerFiles>(
-    (files) => (agentId ? uploadComposerFiles(agentId, files) : Promise.resolve([])),
+    (files) =>
+      agentId
+        ? uploadComposerFiles(files, async (batch) => (await uploadChatFiles(agentId, batch)).files)
+        : Promise.resolve([]),
     [agentId],
   );
 

@@ -99,7 +99,7 @@ WebShell 从静态 registry 收集各资源包的 web contribution（不反向�
 | T3 | `@fenix/ui-components` 扩面 | 已交付 | `b858bf68f` |
 | T4 | `identity/web` 清零 + i18n | 4a 已交付 / 4b 待办 | 见下方 §7.3 |
 | T5 | `chat-channel/web` 清零 | a,b,c1,c2,c5,d 已交付 | 见下方 §7.4–§7.10 |
-| T6 | `agent-runtime/web` 收敛 | a,b 已交付 / c,d,e 待办 | 见下方 §7.11 |
+| T6 | `agent-runtime/web` 收敛 | a,b,c 已交付 / d,e 待办 | 见下方 §7.11 |
 | T7 | 5 条 `special-dependency` 消除 | 待办 | — |
 | T8 | 宿主组件/lib/api 簇改指并删除 | 待办 | — |
 | T9 | i18n 归属重划与 `quoteTruncatedBadge` 缺陷修复 | 待办 | — |
@@ -819,11 +819,33 @@ c2 之后线上聊天界面由 ui-components 的 `ACPMain` 渲染，`chat-channe
 `@fenix/ui-components/chat/shell/AgentBadge`。这两处是宿主对 `agent-runtime/web/components/chat` **仅存的活引用**，
 T6c 整体退场的前置。
 
-#### 待办（T6c / T6d / T6e）
+#### T6c：旧 chat 实现整体退场（`<sha>`）
+
+| 动作 | 内容 |
+| --- | --- |
+| 删除源码 | `packages/agent-runtime/web/components/chat/**` 53 个文件；`packages/agent-runtime/web/src/**` 整目录（2 个孤儿测试） |
+| 删除测试 | `web/__tests__/` 中 33 个旧 chat 测试（覆盖已由 T6c1 的 35 个包内测试承接，见 §7.11 上表）；保留 12 个非 chat 测试（`chat-auth-state` / `chat-panel-transport-lifecycle` / `use-chat-state*` / `yjs-*` 等，随 T6d、T6e 处置） |
+| 别名清理 | 删除四处 `@/components/chat`：根 `tsconfig.json`、`packages/agent-runtime/tsconfig.json`、`packages/chat-channel/tsconfig.json`、`apps/web/vite.config.ts` |
+| 台账 | 删 1 条指纹归零的 stale 例外（`agent-runtime-not-to-resources` → `@fenix/model-management`，唯一消费方 `composer-toolbar.tsx` 已删）；`web-package-not-to-app` 的 rationale 更新为 T6c2 后实测 10 处 / 4 文件（T6 起点 170 处 / 68 文件） |
+| 端口反转 | `chat-panel-ports.tsx` 的 `uploadFiles` 改为「包内 `uploadComposerFiles(files, upload)` 做体积校验 → 宿主 `uploadChatFiles(agentId, batch)` 注入」，包内 composer 自此不持网络依赖 |
+| 连带修复 | DOM 全局注入成对化（下条） |
+
+**连带修复：`HTMLElement` 与 `customElements` 必须成对注入。** `bun test` 在同一进程内依次求值全部
+测试文件，删除 33 个旧测试改变了文件求值顺序，使一个**此前潜伏**的全局污染显形：本包 6 处用例把
+`globalThis.HTMLElement` 指向 happy-dom 的构造器却不注入 `customElements`，而 streamdown 的 diff 组件
+（`@pierre/diffs`）在模块求值期判定 `typeof HTMLElement !== "undefined" && customElements.get(TAG) == null`
+——于是「有 DOM」成立而 `customElements` 为 `undefined`，此后任何导入该链路的文件（`resources/{task,
+prod-view,model-management}` 经桶入口间接触达）以 `ReferenceError: customElements is not defined` 崩在
+测试之间的空档里（`precheck` 实测 4 例）。修法是在 6 处注入点各补一行 `customElements`（与 `HTMLElement`
+同源，`customElements.define` 与 `instanceof HTMLElement` 因此落在同一注册表）；不变量写入
+`packages/ui-components/web/testing.ts` 头部（该文件是 happy-dom 初始化的唯一实现）。宿主
+`apps/web/src/__tests__/agent-resource-picker-interaction.test.tsx` 的注入在 `afterAll` 已还原全局，不泄漏，
+故未改。
+
+#### 待办（T6d / T6e）
 
 | 片 | 内容 |
 | --- | --- |
-| T6c | 删除 `components/chat/**` 53 个文件 + 迁移 35 个测试到包内（保持覆盖不归零）；同批清理四条别名（根 `tsconfig.json`、`packages/agent-runtime/tsconfig.json`、`packages/chat-channel/tsconfig.json`、`apps/web/vite.config.ts`）与台账指纹 |
 | T6d | `ChatPanel` 归位宿主并**拆成三份**（视图 / `chat-panel-ports.tsx` / 新增 `use-chat-panel-runtime.ts`，各 ≤500 行），连带 `chat-auth-state` / `chat-visible-reconnect` / `session-mutation-refresh` 与其测试 |
 | T6e | 别名与配置收尾：`@/src/yjs/doc-hub` 的去处、hooks 的 `@/src/lib/structured-to-thread` 改指 `@fenix/web-runtime/chat/structured-to-thread`、`agent-runtime/web` 的 `@/` 别名归零 |
 
