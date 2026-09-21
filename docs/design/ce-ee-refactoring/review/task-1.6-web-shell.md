@@ -819,7 +819,7 @@ c2 之后线上聊天界面由 ui-components 的 `ACPMain` 渲染，`chat-channe
 `@fenix/ui-components/chat/shell/AgentBadge`。这两处是宿主对 `agent-runtime/web/components/chat` **仅存的活引用**，
 T6c 整体退场的前置。
 
-#### T6c：旧 chat 实现整体退场（`<sha>`）
+#### T6c：旧 chat 实现整体退场（`f2741a82d`）
 
 | 动作 | 内容 |
 | --- | --- |
