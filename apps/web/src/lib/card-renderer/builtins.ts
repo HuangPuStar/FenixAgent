@@ -1,6 +1,6 @@
+import { AgentSitesCard } from "@fenix/agent-config/web";
 import { registerTagRenderer } from "@fenix/ui-components/lib/card-renderer";
 import type { ComponentType } from "react";
-import { AgentSitesCard } from "@/src/components/agent-panel/AgentSitesCard";
 
 // 注册目标是 **ui-components 的注册表**，不是本目录的 `./registry`：
 // markdown 渲染器已归 `@fenix/ui-components`（`web/chat/primitives/message.tsx` 读的是包内注册表），

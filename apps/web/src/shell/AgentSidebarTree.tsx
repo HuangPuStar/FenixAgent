@@ -1,4 +1,4 @@
-import { ensureMetaAgent } from "@fenix/agent-config/web";
+import { agentApi, ensureMetaAgent } from "@fenix/agent-config/web";
 import { shouldShowRemoteNode } from "@fenix/agent-config/web/lib/agent-node";
 import {
   getAgentAccessBadgeKey,
@@ -6,6 +6,7 @@ import {
   getAgentDisplayName,
   isAgentWritable,
 } from "@fenix/agent-config/web/lib/agent-resource-access";
+import { envApi } from "@fenix/agent-runtime/web/api/environments";
 import { useOrg } from "@fenix/identity/web";
 import {
   AlertDialog,
@@ -39,8 +40,6 @@ import {
 import { memo, useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
-import { agentApi } from "@/src/api/agents";
-import { envApi } from "@/src/api/environments";
 import { instanceApi } from "@/src/api/instances";
 import { NS } from "@/src/i18n";
 import type { Environment, EnvironmentInstance } from "../types/index";

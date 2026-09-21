@@ -13,22 +13,22 @@ import {
   getDefaultKnowledgeFormState,
   isValidAgentNameInput,
 } from "@fenix/agent-config/web/lib/agent-utils";
-import type { McpServerInfo, ModelEntry, SkillInfo } from "@fenix/web-runtime/types/config";
+import { buildModelOptions } from "@fenix/model-management/web";
 import {
   canManageMcpSharing,
   filterWritableMcps,
   getMcpDisplayName,
   getMcpResourceBadgeKey,
   type McpResourceLike,
-} from "@/src/lib/mcp-resource-access";
-import { buildModelOptions } from "@/src/lib/model-config-utils";
+} from "@fenix/resource-mcp/web";
 import {
   canWriteSkill,
   getSkillResourceBadgeKey,
   isExternalSkill,
   mapSkillOptions,
   normalizeSkillOptionsPayload,
-} from "@/src/lib/skill-resource-access";
+} from "@fenix/resource-skill/web";
+import type { McpServerInfo, ModelEntry, SkillInfo } from "@fenix/web-runtime/types/config";
 import {
   mapMcpOptions,
   mapModelOptions,

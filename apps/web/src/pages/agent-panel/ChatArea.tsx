@@ -22,6 +22,8 @@
  */
 
 import { loadBoundMcps } from "@fenix/agent-config/web";
+import { envApi } from "@fenix/agent-runtime/web/api/environments";
+import type { ProdViewModulesConfig } from "@fenix/resource-prod-view/web";
 import { unwrap } from "@fenix/web-runtime/api/request";
 import { useChangedFilesFromStats } from "@fenix/web-runtime/hooks/use-changed-files-stats";
 import { ChatPageVisibleContext } from "@fenix/web-runtime/hooks/use-page-visible";
@@ -43,8 +45,6 @@ import {
   useState,
 } from "react";
 import { useTranslation } from "react-i18next";
-import { envApi } from "@/src/api/environments";
-import type { ProdViewModulesConfig } from "@/src/api/prod-views";
 import { NS } from "@/src/i18n";
 import { evictDeletedEnvironmentSlots, resolveActiveChatEnvironmentId, type SessionSlot } from "./chat-area-lifecycle";
 import "@/src/shell/artifacts-workspace.css";
