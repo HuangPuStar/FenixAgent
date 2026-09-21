@@ -209,8 +209,8 @@ describe("Machine 包边界契约（任务 1.3 §1 静态条件）", () => {
       "src/server.ts",
       "src/server/routes/api/workspaces.ts",
       "src/server/routes/web/file-events.ts",
+      "src/server/machine-lifecycle-port.ts",
       "src/server/services/registry.ts",
-      "src/server/services/machine-sandbox-projection.ts",
       "src/__tests__/guard-stubs.ts",
       "web/index.ts",
       "web/api/registry.ts",
@@ -223,19 +223,16 @@ describe("Machine 包边界契约（任务 1.3 §1 静态条件）", () => {
     expect(sourceFiles.length).toBeGreaterThanOrEqual(80);
     // 正向控制：表定义残留必然存在，扫不到就说明说明符提取失效，而不是「没有宿主导入」。
     // 残留按外键拓扑序逐批迁出（§1.7 表定义迁出），这里同步收缩成精确列表：本包自己的
-    // `machine` / `registry_event` 已迁至 `./db`，只剩跨模块表读取——`agent_config`（owner
-    // agent-config）与 `sandbox_instance`（owner sandbox），两张表都尚未迁出。
+    // `machine` / `registry_event` 已迁至 `./db`，`sandbox_instance` 的写入已随 §1.7 B4 前置
+    // 移到 sandbox 侧（本包只通报 `MachineLifecyclePort`），只剩跨模块读 `agent_config`
+    // （owner agent-config，随 B7 迁出）。
     // 最后一个表定义迁完时，连这条正向控制一起删除（届时本包应零 `@server` 导入）。
     expect(
       refs
         .filter((ref) => ref.specifier === ALLOWED_HOST_IMPORT)
         .map((ref) => relative(PKG_ROOT, ref.file))
         .sort(),
-    ).toEqual([
-      "src/__tests__/registry-schema.test.ts",
-      "src/server/services/machine-sandbox-projection.ts",
-      "src/server/services/registry.ts",
-    ]);
+    ).toEqual(["src/__tests__/registry-schema.test.ts", "src/server/services/registry.ts"]);
   });
 
   // RMD-02 完成后宿主与包内旧路径都不能保留 Machine/File 的同名实现或兼容垫片。
@@ -278,7 +275,6 @@ describe("Machine 包边界契约（任务 1.3 §1 静态条件）", () => {
       "packages/resources/machine/src/__tests__/fs-upload-escape.test.ts",
       "packages/resources/machine/src/__tests__/local-node-service.test.ts",
       "packages/resources/machine/src/__tests__/machine-resource-surface.test.ts",
-      "packages/resources/machine/src/__tests__/machine-sandbox-projection.test.ts",
       "packages/resources/machine/src/__tests__/registry-filews-cleanup.test.ts",
       "packages/resources/machine/src/__tests__/registry-machine-stages.test.ts",
       "packages/resources/machine/src/__tests__/registry-routes-isolation.test.ts",

@@ -127,6 +127,33 @@ export async function touchSandboxInstanceHeartbeat(id: string, at = new Date())
     .where(eq(sandboxInstance.id, id));
 }
 
+/**
+ * 机器注册后把该机器上仍处于**中间态**的实例提升为 `ready`。
+ *
+ * 与 `updateSandboxInstance` 并列的第二条写入路径：机器侧事件只知道 `machineId`、不知道实例 ID，且一次
+ * 通知可能命中该机器上的多个实例，因此按归属列批量更新。**终态不得被复活**——`destroyed` / `error` 等
+ * 状态不在提升集合内，机器重连不会把已销毁的实例改回可用。
+ */
+export async function markSandboxInstancesReadyForMachine(machineId: string, at: Date): Promise<void> {
+  await getSandboxDatabase()
+    .update(sandboxInstance)
+    .set({ status: "ready", lastHeartbeatAt: at, updatedAt: at })
+    .where(
+      and(
+        eq(sandboxInstance.machineId, machineId),
+        inArray(sandboxInstance.status, ["creating", "starting", "recovering"]),
+      ),
+    );
+}
+
+/** 机器心跳：只更新该机器上实例的活跃时间，不改状态（状态由实例自己的生命周期推进）。 */
+export async function touchSandboxInstancesHeartbeatByMachine(machineId: string, at: Date): Promise<void> {
+  await getSandboxDatabase()
+    .update(sandboxInstance)
+    .set({ lastHeartbeatAt: at, updatedAt: at })
+    .where(eq(sandboxInstance.machineId, machineId));
+}
+
 export type SandboxInstanceListFilters = {
   sandboxPoolId?: string;
   instanceIds?: string[];

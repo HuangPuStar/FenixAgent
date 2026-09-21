@@ -5,6 +5,29 @@ import type { MachineRequestAuth } from "../server/types/auth";
 
 const registry = await import("@fenix/resource-machine/server");
 
+/** 机器生命周期通知的记录器（§1.7 B4 前置后，注册只通报事件，投影由 sandbox 侧写自己的表）。 */
+const lifecycleCalls: Array<{ event: "registered" | "heartbeat"; machineId: string; at: Date }> = [];
+
+/**
+ * 按用例重新绑定记录用端口。
+ *
+ * **不能写在文件顶层**：Bun 在同一进程里跑完整个包，第二个文件加载时会撞上「重复绑定」守卫
+ * （`machine-lifecycle-port.ts` 的守卫是给生产用的——装配期二次绑定意味着两套实现抢同一批实例行）。
+ * 用例侧改为「先重置再绑定」，模块级状态因此不跨文件泄漏。
+ */
+function bindLifecycleRecorder(): void {
+  registry.resetMachineLifecyclePortForTest();
+  lifecycleCalls.length = 0;
+  registry.bindMachineLifecyclePort({
+    notifyMachineRegistered: async (machineId, at) => {
+      lifecycleCalls.push({ event: "registered", machineId, at });
+    },
+    notifyMachineHeartbeat: async (machineId, at) => {
+      lifecycleCalls.push({ event: "heartbeat", machineId, at });
+    },
+  });
+}
+
 const owner: MachineRequestAuth = { organizationId: "org-a", userId: "user-a", role: "owner" };
 const foreign: MachineRequestAuth = { organizationId: "org-b", userId: "user-b", role: "owner" };
 
@@ -46,10 +69,12 @@ function insert(calls: unknown[]) {
 // 初始化基础设施：registry 服务经 getDatabase() 读 DB，未初始化会直接抛错（包内用例不再依赖宿主 preload）
 beforeEach(() => {
   initializeMachineModuleConfig();
+  bindLifecycleRecorder();
 });
 
 afterEach(() => {
   resetAllStubs();
+  lifecycleCalls.length = 0;
 });
 
 describe("registry 服务真实业务覆盖", () => {
@@ -198,8 +223,10 @@ describe("registry 服务真实业务覆盖", () => {
         id: machineId,
         isNew: false,
       });
-      expect(updates.length).toBe(3);
+      // 两次写入 = 机器行更新 + agent_config 绑定；沙盒实例投影已不属本包，改为经端口通报（下一行）。
+      expect(updates.length).toBe(2);
       expect(writes).toHaveLength(1);
+      expect(lifecycleCalls).toEqual([{ event: "registered", machineId, at: expect.any(Date) }]);
     });
   }
 

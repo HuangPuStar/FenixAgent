@@ -4,10 +4,10 @@ import { machine, registryEvent } from "@fenix/resource-machine/db";
 import { agentConfig } from "@server/db/schema";
 import { and, desc, eq, isNull, or, sql } from "drizzle-orm";
 import { getMachineDatabase } from "../db";
+import { getMachineLifecyclePort } from "../machine-lifecycle-port";
 import { writeRegistryEvent } from "../repositories/registry-event";
 import { closeMachineFileWsConnection } from "../transport/file-ws-handler";
 import type { MachineRequestAuth } from "../types/auth";
-import { markSandboxInstanceReadyForMachine } from "./machine-sandbox-projection";
 
 function genId(prefix: string): string {
   return `${prefix}_${crypto.randomUUID().slice(0, 22)}`;
@@ -318,7 +318,7 @@ export async function registerMachine(params: {
       detail: {},
     });
 
-  await markSandboxInstanceReadyForMachine(params.machineId, now);
+  await getMachineLifecyclePort()?.notifyMachineRegistered(params.machineId, now);
   await bindAgentConfigs(params.machineId, params.agentName, params.tenantId);
   return { id: params.machineId, isNew: isFirstRegistration };
 }

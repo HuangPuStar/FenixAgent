@@ -141,8 +141,8 @@ FK；identity 9 张已随任务 1.2 迁出，业务 40 张待迁）按包名语�
 
 批级阻塞（开工前必须先定夺，均已反馈）：
 
-- **B4（sandbox）**：`machine → sandbox` 是 §2.3 类别禁则的硬违规，已裁定走「投影写路径移到 sandbox
-  侧」（§4.8 第 3 条）。
+- ~~**B4（sandbox）**：`machine → sandbox` 是 §2.3 类别禁则的硬违规~~：**已解除**——按 §4.8 第 3 条的裁定，
+  投影写路径已移到 sandbox 侧并作为 B4 前置独立交付（2026-09-22，见 §7.13）。B4 主体因此回到「只搬表定义」。
 - **B7（agent-config）**：`agent-runtime` 两个文件在查询期 LEFT JOIN `agent_config`，迁表后会命中
   dependency-cruiser 的 `agent-runtime-not-to-resources`；且 D4「3 张 join 表归 agent-config」与现有
   实现冲突（§8.4 第 7、8 条）。
@@ -177,6 +177,11 @@ FK；identity 9 张已随任务 1.2 迁出，业务 40 张待迁）按包名语�
    sandbox 包在自己的表上写，machine 只经宿主注入的端口 / 事件通知。无需为 `machine → sandbox` 新增
    依赖矩阵例外（§2.3 免改）。该重构要改 machine 的投影触发链，作为 **B4 的前置小任务**独立交付，
    不在 B 块的「只搬表定义」批次里做。
+
+   **已交付（2026-09-22，见 §7.13）**：machine 侧新增 `machine-lifecycle-port.ts`
+   （`notifyMachineRegistered` / `notifyMachineHeartbeat`），投影实现移到 sandbox 的
+   `sandbox-instance-repository.ts`，由 `createSandboxModule()` 注入；`machine/src/**` 不再出现
+   `sandbox_instance`，本包的两处跨模块表读取降为 1 处（只剩 `agent_config`，归 B7）。
 
 4. **调用期跨包取数一经裁定为「调用公开函数」，但首轮实现被装配闭环挡死，最终落成宿主注入端口
    （2026-09-21）。** B1 原先把两处 `src/**` 调用期读取改指 `@fenix/resource-machine/db`，按 §6.1
@@ -226,7 +231,7 @@ FK；identity 9 张已随任务 1.2 迁出，业务 40 张待迁）按包名语�
 | B1 | machine / registry_event 迁至 `@fenix/resource-machine/db` | 已交付 | 见 §7.10 |
 | B2 | mcp（`mcp_server`、`mcp_tool`）迁至 `@fenix/resource-mcp/db` | 已交付 | 见 §7.11 |
 | B3 | model-management（`provider`、`model`、`model_gateway_credential`，含 3 个 pgEnum）迁至 `@fenix/model-management/db` | 已交付 | 见 §7.12 |
-| B4 前置 | 沙盒实例投影写路径移到 sandbox 侧（§4.8 第 3 条，已裁定） | 待办 | — |
+| B4 前置 | 沙盒实例投影写路径移到 sandbox 侧（§4.8 第 3 条，已裁定） | 已交付 | 见 §7.13 |
 | B7 前置 | agent-runtime 的 `agent_config` LEFT JOIN 改为经 owner 公开入口取投影，装配方向不允许时退回宿主注入端口（§4.8 第 4 条 / §8.4 第 7 条） | 待办·须先反馈 | — |
 | B7 前置 | join 表归属与 D4 的冲突复核（§8.4 第 8 条） | 待办·须先反馈 | — |
 | B4–B13 | 其余 29 张表按拓扑序迁出（§4.7 表共 36 张，B1–B3 已迁 7 张；§4.7.1 交付面） | 待办 | — |
@@ -621,7 +626,66 @@ agent-config 批落地**：台账是「包对」粒度，提前删除会把尚�
 `bun test apps/server/src/__tests__/` **639 pass / 0 fail**。round45 的模型标签断言由真实端口实现
 （preload 绑定）驱动，替身数据仍是按表身份分发的 `model` / `provider` 行。
 
+**补测（2026-09-22，审计发现）**：审计对 B3 新增的 `findModelLabelsByIds` 做变异实验时发现，删掉逐行组织
+一致性条件（`providerRow.organizationId !== row.organizationId` 整段）后 model-management **939 个用例**
+与宿主 **639 个用例**全绿——即这条判定当时**无任何覆盖**。它是跨组织可见性的兜底（`model.organization_id`
+是随 Provider 冗余下来的列），删掉没有编译 / 类型信号，因此必须有可执行断言钉住。已补
+`packages/resources/model-management/src/__tests__/model-label-lookup.test.ts`（5 例：同组织命中 /
+Provider 属别组织不产出 / Provider 行缺失不产出 / 展示名回退 / 空入参不查库），并**复跑同一变异确认新用例
+报红**（「删条件必须失败」是该覆盖的有效性判据，不是写完即可）。本批的其余契约测试由同一轮审计的另外三个
+视角负责，未产出结论（工作流随会话中断）。
+
 **状态**：见本批提交（§五 表 B3 行）。
+
+### 7.13 B4 前置：沙盒实例投影写路径移到 sandbox 侧（2026-09-22，本批）
+
+**为什么单独一批**：`machine → sandbox` 是 §2.3 的类别禁则，`machine-sandbox-projection.ts` 在
+`sandbox_instance` 迁出后无法靠改 import 解决（§6.1 的组装期例外只覆盖 `packages/**/db/**`，该文件在
+`src/server/services/` 下）。用户裁定「投影写路径移到 sandbox 侧」（§4.8 第 3 条），并要求作为 B4 的**前置
+小任务**独立交付——不在「只搬表定义」批次里做（该重构改的是 machine 的投影触发链，与迁表无关）。
+本批落地后 §8.4 第 2 条闭环、§四 的 B4 批级阻塞解除，B4 主体回到纯迁表。
+
+**交付面**：
+
+1. **machine 新增对外通知端口** `src/server/machine-lifecycle-port.ts`：`notifyMachineRegistered` /
+   `notifyMachineHeartbeat`（入参 `(machineId, at)`），导出 `bind*` / `get*` / `reset*ForTest`。
+   **未绑定是正常状态**（assembly profile 不含沙盒模块时本包静默跳过通知，那时也没有实例行），
+   与 `host-port.ts` 的 fail-fast 语义刻意不同。
+2. **删除** `src/server/services/machine-sandbox-projection.ts`（`git rm`）与其测试
+   `src/__tests__/machine-sandbox-projection.test.ts`。
+3. **触发点改通报**：`registry.ts` 的注册路径与 `registry-heartbeat.ts` 的 `handleHeartbeat` 各改一次调用。
+   **事件时刻由调用方给出**（`new Date()` 在 machine 侧取）：投影写入的时间戳因而可被用例断言，而不是藏在
+   接收方内部——与 `at = new Date()` 默认参数相比，这条口径让「谁决定时刻」在类型上就写明。
+4. **sandbox 侧实现**：`src/server/repositories/sandbox-instance-repository.ts` 新增
+   `markSandboxInstancesReadyForMachine`（按 `machine_id` 批量把 `creating` / `starting` / `recovering`
+   提升为 `ready` 并同步心跳）与 `touchSandboxInstancesHeartbeatByMachine`（只更新时间戳）。
+5. **装配绑定**：`src/module.ts` 的 `createSandboxModule()` 内绑定（紧邻既有的
+   `bindMachineSandboxRoutePort`），方向仍是 sandbox → machine。
+6. **测试迁移**：新增 `sandbox/src/__tests__/sandbox-instance-machine-projection.test.ts`（3 例，
+   用 `stubDb` 捕获 `set` 载荷 + `PgDialect().sqlToQuery` 断言 where 参数）；`machine-resource-surface.test.ts`
+   重写为「端口已公开 + 投影实现不得回到本包出口」的正反两条；`machine-package-contract.test.ts` 的
+   宿主导入正向控制由 3 项收缩为 2 项、扫描清单换文件；两个既有用例（`round36` / `round68`）改为断言
+   「经端口通报」而非「本包直接写表」。
+
+**为什么不需要宿主改动、manifest 改动或 §2.3 新例外**：`sandbox` 的 `dependsOn` 已含 `machine`，绑定发生在
+沙盒自己的 `createSandboxModule()` 内，machine 不反向依赖；这与该包已有的 `MachineSandboxRoutePort`
+（machine 定义、sandbox 自行绑定、未绑定=正常降级）**完全同形**，属已有机制而非新设施。
+
+**为什么「终态不得被复活」的判定留在 sandbox**：`destroyed` / `error` 不在提升集合内、心跳只写
+`last_heartbeat_at` 不碰 `status`——「哪些状态算中间态」是沙盒实例状态机的领域知识，与表同 owner。
+本批把这层知识从 machine 的 UPDATE 语句里搬回它的 owner，是这次重构的实质收益（改表定义的 import 只是表象）。
+
+**§4.7.1 交付面的适用性**：①（调用期读取点经 owner 公开入口 / 宿主注入端口）**方向相反**——本批消除的是
+一处**跨包写**；②（owner `db/schema.ts` 声明跨包导入）不适用，本批不迁表、不新增 `./db` 导入；
+③（source-migration 契约测试正向控制收缩）**适用**：machine 包的正向控制已按本批同步收缩（见交付面第 6 条）；
+④（调用期跨包写一并处理）本批即为此条而生——它正是 B1 实测登记的「两处调用期跨包写」之一（§4.8 第 7 条）。
+
+**验证**：`bun test packages/resources/machine packages/resources/sandbox` **651 pass / 1 fail**
+（唯一失败是 `fs-download-zip.test.ts` 在受限 PATH 下拿不到 `zip` 可执行文件，与本批无关，`which zip`
+在交互 shell 下存在）；`bun test apps/server/src/__tests__/` **639 pass / 0 fail**；
+`grep -rn 'sandbox_instance' packages/resources/machine/src` 为空；`precheck` 全绿（见提交）。
+
+**状态**：见本批提交（§五 表 B4 前置行）。
 
 ## 八、已知缺口与未完成项（逐条登记 owner 与移除条件）
 
@@ -662,7 +726,7 @@ migration smoke（空库 + 真实历史升级库）、`deploy-preflight`、readi
 | # | 缺口 | owner | 移除条件 |
 |---|---|---|---|
 | 1 | 宿主 `apps/server/src/db/schema.ts` **无法清空**：D3 裁定把 `resource_permission`（+ 3 个 pgEnum）、`share_link`、`share_event_snapshot` 留在宿主，但 1.7 第五条验收口径是「宿主不再持有业务表定义」 | B 块收尾 | 三张表要么找到 owner（建议 `resource_permission` 归 access-control）并迁出，要么把验收口径改为「宿主只保留经裁定的例外」并同步权威设计 |
-| 2 | `machine → sandbox` 的调用期表读取（`machine-sandbox-projection.ts`）在 `sandbox_instance` 迁出后构成 §2.3 类别禁则违规，无法靠 `./db` 出口解决 | B4 之前 | 按 §4.8 第 3 条的任一路径重构（宿主端口回调或 sandbox 公开写入口）并登记范围 |
+| 2 | ~~`machine → sandbox` 的调用期表读取（`machine-sandbox-projection.ts`）在 `sandbox_instance` 迁出后构成 §2.3 类别禁则违规~~ **已闭环（§7.13，2026-09-22）**：按 §4.8 第 3 条走「投影写路径移到 sandbox 侧」，machine 只通报事件、sandbox 在自己的表上写 | ~~B4 之前~~ 已交付 | 已验证 `grep -rn 'sandbox_instance' packages/resources/machine/src` 为空、machine 的跨模块表读取降为 1 处（`agent_config`，归 B7） |
 | 3 | 14 条 owner=`1.7` 的 `apps-boundary` 豁免**只能在 B 块末期集中清零**（§4.8 第 2 条） | B 块收尾 | 各目标表迁完后逐包核对「不再引用 `@server/**`」，逐条删除并留证据 |
 | 4 | 剩余 10 批（B4–B13）各有若干跨包调用期表读取需一并**改为经 owner 公开入口或宿主注入端口取数**（§4.8 第 1 条 B1 实测 19 处为 B 块总数，B2 已收口 1 处、B3 已收口 1 处、余 17 处）；只改指 owner 的 `./db` 不算完成（§4.8 第 4 条）。**逐包清单目前无权威落点**——§4.8 #1 与本节原先的「见 §7.10」所指清单在 §7.10 中不存在，审计已指出 | 各批同批（清单并入 B 块末期，与本节第 3 条同一次扫描） | 每批交付面含全部读取点，漏改会让 preload 的模块链接期抛错（§4.8 第 1 条）、且残留 §6.1 边界 1 违规；末期逐包核对时一并产出完整清单 |
 | 5 | **门禁缺口：相对路径伸进别的包 `db/` 两道门禁都不报。** `check-architecture` 的 `CROSS_PACKAGE_SOURCE_PATH`（`scripts/check-architecture.ts:43`）与 dependency-cruiser 的 `no-cross-package-src:<pkg>`（`.dependency-cruiser.cjs:28-30`）判「跨包内部路径」时只认 `src` / `web/src`，新出现的 `db/` 不在任何一侧。审计已用夹具复现（相对路径在 `db/` 与 `src/` 两种位置均 exit 0，同路径改指别包 `src/` 则 exit 1）；当前仓库无实际违规 | B 块收尾 | 把 `db` 纳入「跨包内部路径」判定，但**只对相对路径生效**——裸说明符 `@fenix/<pkg>/db` 是 §6.1 允许的组装期出口，不能一并拦 |

@@ -3,7 +3,7 @@ import { machine } from "@fenix/resource-machine/db";
 import { eq } from "drizzle-orm";
 import { getMachineDatabase } from "../db";
 import { getMachineHostPort } from "../host-port";
-import { touchSandboxInstanceHeartbeatForMachine } from "./machine-sandbox-projection";
+import { getMachineLifecyclePort } from "../machine-lifecycle-port";
 import { markHeartbeatTimeout, updateHeartbeat } from "./registry";
 
 /** 用例登记的替换值；`null` 表示全部走默认实现。 */
@@ -69,7 +69,9 @@ export function startHeartbeat(machineId: string, heartbeatIntervalMs: number, o
 
 export async function handleHeartbeat(machineId: string): Promise<void> {
   await deps.updateHeartbeat(machineId);
-  await touchSandboxInstanceHeartbeatForMachine(machineId);
+  // 事件时刻由调用方给出（端口不自己取时）：与 `registry.ts` 的注册通知同一口径，投影写入的时间戳因此
+  // 可被用例断言，而不是藏在接收方内部。
+  await getMachineLifecyclePort()?.notifyMachineHeartbeat(machineId, new Date());
 
   const entry = heartbeatMap.get(machineId);
   if (entry) {

@@ -4,6 +4,29 @@ import { initializeMachineModuleConfig } from "../server/testing";
 
 const heartbeat = await import("@fenix/resource-machine/server");
 
+/** 机器生命周期通知的记录器（§1.7 B4 前置后，心跳只通报事件，投影由 sandbox 侧写自己的表）。 */
+const lifecycleCalls: Array<{ event: "registered" | "heartbeat"; machineId: string; at: Date }> = [];
+
+/**
+ * 按用例重新绑定记录用端口。
+ *
+ * **不能写在文件顶层**：Bun 在同一进程里跑完整个包，第二个文件加载时会撞上「重复绑定」守卫
+ * （`machine-lifecycle-port.ts` 的守卫是给生产用的——装配期二次绑定意味着两套实现抢同一批实例行）。
+ * 用例侧改为「先重置再绑定」，模块级状态因此不跨文件泄漏。
+ */
+function bindLifecycleRecorder(): void {
+  heartbeat.resetMachineLifecyclePortForTest();
+  lifecycleCalls.length = 0;
+  heartbeat.bindMachineLifecyclePort({
+    notifyMachineRegistered: async (machineId, at) => {
+      lifecycleCalls.push({ event: "registered", machineId, at });
+    },
+    notifyMachineHeartbeat: async (machineId, at) => {
+      lifecycleCalls.push({ event: "heartbeat", machineId, at });
+    },
+  });
+}
+
 const wait = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
 function stubHeartbeatPersistence() {
@@ -15,9 +38,10 @@ function stubHeartbeatPersistence() {
 }
 
 // 心跳持久化经包内句柄替换（heartbeat.setRegistryHeartbeatDeps）：用例在各自作用域内注入断言用的替身。
-// 初始化基础设施：正常心跳路径要读 DB（Sandbox 状态投影），未初始化会直接抛错。
+// 初始化基础设施：心跳路径要读模块配置，未初始化会直接抛错。
 beforeEach(() => {
   initializeMachineModuleConfig();
+  bindLifecycleRecorder();
 });
 
 afterEach(() => {
@@ -60,12 +84,12 @@ describe("registry 心跳生命周期", () => {
     expect(onTimeout).toHaveBeenCalledTimes(1);
   });
 
-  // 收到正常心跳时，应同时刷新机器和关联 Sandbox 的活跃时间，并延后超时判断。
+  // 收到正常心跳时，应刷新机器活跃时间、通报沙盒侧投影，并延后超时判断。
   test("正常心跳刷新存储并重置超时计时", async () => {
     const updateHeartbeat = mock(async () => {});
     const markHeartbeatTimeout = mock(async () => {});
     const onTimeout = mock(() => {});
-    const { update } = stubHeartbeatPersistence();
+    stubHeartbeatPersistence();
     heartbeat.setRegistryHeartbeatDeps({ markHeartbeatTimeout, updateHeartbeat });
 
     heartbeat.startHeartbeat("machine-refresh", 20, onTimeout);
@@ -74,7 +98,8 @@ describe("registry 心跳生命周期", () => {
     await wait(30);
 
     expect(updateHeartbeat).toHaveBeenCalledWith("machine-refresh");
-    expect(update).toHaveBeenCalledTimes(1);
+    // 沙盒实例的活跃时间不再由本包写：只通报事件（时刻由调用方给出，见 registry-heartbeat）。
+    expect(lifecycleCalls).toEqual([{ event: "heartbeat", machineId: "machine-refresh", at: expect.any(Date) }]);
     expect(onTimeout).not.toHaveBeenCalled();
 
     await wait(40);

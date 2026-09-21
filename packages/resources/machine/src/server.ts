@@ -15,6 +15,7 @@ export { getMachineConfig } from "./server/config";
 export { getMachineDatabase, type MachineDatabase } from "./server/db";
 export * from "./server/environment-port";
 export * from "./server/host-port";
+export * from "./server/machine-lifecycle-port";
 export * from "./server/repositories/agent-machine";
 export * from "./server/repositories/machine-repository";
 export { createApiWorkspaceRoutes } from "./server/routes/api/workspaces";
@@ -55,7 +56,6 @@ export {
 export * from "./server/services/file-types";
 export * from "./server/services/machine-connection-waiter";
 export * from "./server/services/machine-runtime";
-export * from "./server/services/machine-sandbox-projection";
 export * from "./server/services/registry";
 export * from "./server/services/registry-heartbeat";
 export * from "./server/services/remote-file-service";

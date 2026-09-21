@@ -1,4 +1,8 @@
-import { bindMachineSandboxRoutePort } from "@fenix/resource-machine/server";
+import { bindMachineLifecyclePort, bindMachineSandboxRoutePort } from "@fenix/resource-machine/server";
+import {
+  markSandboxInstancesReadyForMachine,
+  touchSandboxInstancesHeartbeatByMachine,
+} from "./server/repositories/sandbox-instance-repository";
 import { sandboxExecutionHandler, sandboxManager, sandboxProviderRegistry } from "./server/services/index";
 import type { SandboxExecutionHandler } from "./server/services/sandbox-execution-handler";
 import { resolveSandboxMachineRoute } from "./server/services/sandbox-machine-route";
@@ -31,6 +35,14 @@ export function createSandboxModule(): SandboxModule {
   // 把「环境该路由到哪台机器」的沙盒判定注入 machine（方向 sandbox → machine）。绑定只在这里发生：
   // 不含沙盒模块的 assembly profile 下端口保持为空，machine 按「无沙盒能力」降级而不是报错。
   bindMachineSandboxRoutePort({ resolveSandboxRoute: resolveSandboxMachineRoute });
+  // 机器注册 / 心跳在**本包的表**上的投影也由本包写（同一方向 sandbox → machine）：machine 只通报事件，
+  // 「哪些状态是中间态、心跳写哪一列」是沙盒实例的领域知识。此前这段 UPDATE `sandbox_instance` 写在
+  // machine 包内，`sandbox_instance` 归本包后它成为 §2.3 禁止的 `machine → sandbox` 写路径（组装期例外
+  // 不覆盖 `src/**`），改为本包实现后该边不存在，§2.3 无需新增例外。
+  bindMachineLifecyclePort({
+    notifyMachineRegistered: markSandboxInstancesReadyForMachine,
+    notifyMachineHeartbeat: touchSandboxInstancesHeartbeatByMachine,
+  });
   return {
     id: "sandbox",
     providers: sandboxProviderRegistry,

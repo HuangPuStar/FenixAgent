@@ -7,6 +7,7 @@
 ## 定位与 owner
 
 - **资源池与实例**：`sandbox_pool` / `sandbox_instance` 的领域规则与状态机。`SandboxManager`（`src/server/services/sandbox-manager.ts`）负责复用、配置快照、重建、删除与重启恢复；`SandboxRemoteReconciler`（`sandbox-remote-reconciler.ts`）负责外部副作用与并发协调（Provider 查询/创建/恢复/销毁、行锁、machine 路由与心跳释放）。两者由 `SandboxManager` 组合，测试可单独驱动协调器。
+- **机器事件的实例投影**：机器注册与机器心跳对 `sandbox_instance` 的影响（把 `creating` / `starting` / `recovering` 的实例提升为 `ready`、刷新 `last_heartbeat_at`）由本包写（`src/server/repositories/sandbox-instance-repository.ts` 的 `markSandboxInstancesReadyForMachine` / `touchSandboxInstancesHeartbeatByMachine`）。**为什么是本包**（§1.7 B4 前置，2026-09-22）：写入的是本包的表，「哪些状态算中间态、心跳写哪一列」是本包的领域知识；此前这段 UPDATE 写在 `@fenix/resource-machine` 内，表归本包后便构成 §2.3 禁止的 `machine → sandbox` 写路径（§6.1 的组装期例外只覆盖 `db/**`）。方向仍是 sandbox → machine：本包在 `createSandboxModule()` 里把实现绑到 machine 的 `MachineLifecyclePort`（与该包已有的 `MachineSandboxRoutePort` 同形，未绑定=正常降级），machine 只负责通报事件。
 - **Provider 抽象**：`SandboxProviderRegistry` 与 `@fenix/sandbox-provider` 的具体实现。装配期由 `registerConfiguredSandboxProviders()` 按模块配置注册，模块加载期不发网络请求。
 - **执行入口**：`SandboxExecutionHandler` 把一次执行请求解析为可用的沙盒实例，等待 Machine 回连后返回 `machine_id` 作为寻址节点；`@fenix/agent-runtime` 的 `orchestration-bootstrap.ts` 是它的消费方。
 - **远程 Cluster 管理**：`createSandboxClusterClient()` 在服务端附加 Cluster 凭据，浏览器不接触该凭据（浏览器侧的 `systemSandboxApi` 只带 Master Key）。
