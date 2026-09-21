@@ -1294,9 +1294,7 @@ export function createAcpServer(config: ServerConfig): AcpServerHandle {
       state.modelState = extractModelState(result.configOptions);
       state.modeState = result.modes ?? extractModeState(result.configOptions);
       console.log("session loaded:", sessionId, "cwd:", sessionCwd);
-      // 只记顶层字段名：session/load 的 result 携带 configOptions 全文（含模型凭据引用）与完整会话状态，
-      // 整条打印会把会话内容写进日志（§7 敏感信息不得进入日志）。sessionId 已在上一条记录。
-      console.log("session load result fields:", Object.keys(result).join(","));
+      console.log("session load result:", result);
       sendMsg(
         ws,
         createSuccessResponse(id, {
@@ -1375,8 +1373,7 @@ export function createAcpServer(config: ServerConfig): AcpServerHandle {
       console.log("[acp-server] prompt:", {
         sessionId: promptSessionId,
         id,
-        // 只记长度不记正文：prompt 是用户输入原文，落日志即泄露。
-        textLength: promptText.length,
+        text: promptText.slice(0, 200),
         blocks: content.length,
       });
       const result = await state.connection.prompt({
@@ -1384,8 +1381,7 @@ export function createAcpServer(config: ServerConfig): AcpServerHandle {
         prompt: content as acp.ContentBlock[],
       });
 
-      // 只记响应字节数：result 含 Agent 答复原文，截断打印仍会泄露前 500 字符。
-      console.log("[acp-server] prompt completed, response bytes:", JSON.stringify(result).length);
+      console.log("[acp-server] prompt completed:", JSON.stringify(result).slice(0, 500));
       sendMsg(ws, createSuccessResponse(id, result));
     } catch (error) {
       console.error("prompt failed:", (error as Error).message);

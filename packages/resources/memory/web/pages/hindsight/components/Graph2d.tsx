@@ -273,6 +273,7 @@ export function Graph2D({
       try {
         console.log("Initializing cytoscape with container:", containerDiv);
         console.log("Elements count:", cyElements.length);
+        console.log("Sample elements:", cyElements.slice(0, 2));
 
         // Try minimal initialization first
         // cytoscape style 类型定义不完整，使用类型断言避免 TS2353

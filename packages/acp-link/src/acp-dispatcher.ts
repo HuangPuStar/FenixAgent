@@ -101,24 +101,21 @@ export class AcpDispatcher {
   /** 处理从 WS 收到的原始消息（可能是 JSON-RPC 或传输层消息） */
   async handleMessage(raw: unknown): Promise<void> {
     if (isTransportMessage(raw)) {
-      // 只记帧类型，不记整帧：入站帧含 prompt 原文与 Agent 输出，落日志即泄露。
-      console.log("[acp-dispatcher] ← transport, type:", (raw as { type?: string }).type);
+      console.log("[acp-dispatcher] ← transport:", JSON.stringify(raw).slice(0, 500));
       await this.handleTransportMessage(raw as Record<string, unknown>);
       return;
     }
 
     const msg = raw as Record<string, unknown>;
     if ((msg as { jsonrpc?: string }).jsonrpc === "2.0" && msg.method && msg.id !== undefined) {
-      // 同上：只记 method 与 id，足够定位是哪个请求。
-      console.log("[acp-dispatcher] ← rpc:", { method: msg.method, id: msg.id });
+      console.log("[acp-dispatcher] ← rpc:", JSON.stringify(raw).slice(0, 500));
       await this.handleRequest(msg as unknown as JsonRpcRequest);
       return;
     }
 
     // 处理 JSON-RPC 通知（有 method 但无 id），如 session/update
     if ((msg as { jsonrpc?: string }).jsonrpc === "2.0" && msg.method && msg.id === undefined) {
-      // session/update 等通知的 params 就是 Agent 输出正文，只记 method。
-      console.log("[acp-dispatcher] ← notification:", { method: msg.method });
+      console.log("[acp-dispatcher] ← notification:", JSON.stringify(raw).slice(0, 500));
       await this.handleNotification(msg as unknown as { method: string; params: Record<string, unknown> });
       return;
     }

@@ -233,8 +233,7 @@ export class HermesClient {
     const platform = msg.data.source.platform;
     const chatId = msg.data.source.chat_id;
 
-    // 只记长度：IM 入站文本是用户消息原文，落日志即泄露。
-    log(`[Hermes] Inbound message: platform=${platform} chatId=${chatId} textLength=${msg.data.text?.length ?? 0}`);
+    log(`[Hermes] Inbound message: platform=${platform} chatId=${chatId} text="${msg.data.text?.slice(0, 50)}"`);
 
     const match = await findBindingForMessage(platform, chatId);
     if (!match) {

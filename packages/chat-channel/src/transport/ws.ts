@@ -233,8 +233,7 @@ export function createYjsWsClient(options: YjsWsOptions): YjsWsClient {
           return;
         }
       } catch {
-        // 只记长度：解析失败的载荷仍可能是聊天正文片段，预览前 100 字符会泄露用户内容。
-        console.warn("[yjs-ws] failed to parse msg, length:", typeof data === "string" ? data.length : 0);
+        console.warn("[yjs-ws] failed to parse msg:", data.slice(0, 100));
       }
     };
 
