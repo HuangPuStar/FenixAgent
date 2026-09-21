@@ -15,7 +15,6 @@ import { dirname, join, relative, resolve } from "node:path";
 
 const PKG_SRC = resolve(import.meta.dir, "..");
 const ROOT_ENTRY = join(PKG_SRC, "index.ts");
-const WEB_ENTRY = resolve(PKG_SRC, "../web/index.ts");
 const PROJECT_ROOT = resolve(PKG_SRC, "../../..");
 
 /** state 目录下的服务端专属文件（聚合层 / 持久化工厂）；root 只允许 chat-writer / yjs-store */
@@ -235,31 +234,10 @@ describe("chat-channel 根入口浏览器可达面", () => {
     expect(source).toContain('from "./state"');
   });
 
-  test("控制台 web 入口不值导入服务端模块或 Node 运行时依赖", () => {
-    const webGraph = walkValueGraph(WEB_ENTRY);
-    const serverFiles = webGraph.files.filter((file) => file.startsWith(join(PKG_SRC, "server")));
-    const nodeRuntimeImports = webGraph.externals.filter(
-      (entry) => entry.specifier.startsWith("node:") || entry.specifier === "ioredis",
-    );
-
-    expect(serverFiles).toEqual([]);
-    expect(nodeRuntimeImports).toEqual([]);
-  });
-
-  // 浏览器 UI 入口必须集中导出已迁入的聊天组件，且不绕过 server 安全边界。
-  test("浏览器 UI 入口导出迁入后的聊天组件且不导入 server 子路径", () => {
-    const source = readFileSync(WEB_ENTRY, "utf8");
-
-    expect(source).toContain('export { ACPMain } from "./components/ACPMain"');
-    expect(source).toContain('export { ChatInterface, type ChatInterfaceHandle } from "./components/ChatInterface"');
-    expect(source).toContain('export { ContextPanel } from "./components/ContextPanel"');
-    expect(existsSync(resolve(PKG_SRC, "../web/components/ACPMain.tsx"))).toBe(true);
-    expect(existsSync(resolve(PKG_SRC, "../web/components/ChatInterface.tsx"))).toBe(true);
-    expect(existsSync(resolve(PKG_SRC, "../web/components/ContextPanel.tsx"))).toBe(true);
-    expect(stripComments(source)).not.toContain("@fenix/chat-channel/server");
-  });
-
-  // RMD-01 聊天文件迁入包后，根目录不得保留旧实现供浏览器或宿主误导入。
+  // RMD-01 聊天文件迁入包后，根目录不得保留旧实现供浏览器或宿主误导入；
+  // 2026-09-21（§1.6 T5d）包的 web 面整体退场，包内路径一并纳入本断言——聊天 UI 已归
+  // `@fenix/ui-components`，本包只剩协议与传输（根入口 + `./server`），任何一处复活都说明
+  // 「谁渲染聊天 UI」的归属又被打回原样。
   test("旧聊天根路径不存在", () => {
     const oldPaths = [
       "web/components/ACPMain.tsx",
@@ -276,8 +254,20 @@ describe("chat-channel 根入口浏览器可达面", () => {
       "web/src/pages/agent-panel/chat-layout.css",
       "src/services/chat-channel-error-classify.ts",
       "src/services/doc-manager-instance.ts",
+      // 包内 web 面（T5d 退场）
+      "packages/chat-channel/web/index.ts",
+      "packages/chat-channel/web/components/ACPMain.tsx",
+      "packages/chat-channel/web/components/ChatInterface.tsx",
+      "packages/chat-channel/web/components/ContextPanel.tsx",
+      "packages/chat-channel/web/src/pages/agent-panel/chat-design.css",
+      "packages/chat-channel/web/src/pages/agent-panel/chat-design-composer.css",
     ];
 
     expect(oldPaths.filter((path) => existsSync(resolve(PROJECT_ROOT, path)))).toEqual([]);
+    // 出口同批撤除：`@fenix/chat-channel/web` 不再可解析（浏览器侧聊天 UI 唯一入口是 ui-components）
+    const pkg = JSON.parse(readFileSync(join(PKG_SRC, "../package.json"), "utf8")) as {
+      exports: Record<string, unknown>;
+    };
+    expect(Object.keys(pkg.exports).sort()).toEqual([".", "./server"]);
   });
 });

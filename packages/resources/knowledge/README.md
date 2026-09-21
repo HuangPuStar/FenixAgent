@@ -54,7 +54,7 @@
 - **8 条 lint 全清零**：3 处 `noDangerouslySetInnerHtml`（RAGFlow 切片内容 / 检索高亮 HTML / mammoth docx 输出）都在同一行加 `DOMPurify.sanitize` 后配行级 `biome-ignore` 写明依据（`dompurify` 已在依赖里，默认白名单保留 `<em>` / `<span class>` 高亮与 data: URI 图片）；3 处 `noArrayIndexKey` 保留位置键并写明理由（表格整表重绘、位置即语义，空白行/空白单元格无唯一标识，内容派生键会撞键），与仓库内兄弟包骨架屏的同款取舍一致。
 - **刻意偏离（缺陷清单要求删 `resource.id` 依赖，本包不删）**：`ResourcePreviewContent.tsx` 的 effect 依赖里 `resource.id` 不是多余项，而是「换了资源」的唯一重触发信号——ahooks `useRequest({ manual: true })` 的 `run` 身份稳定，两个同类型资源互换时 `needsFetch` / `needsOfficeCheck` 都不变。实测探针（happy-dom + react-dom，跑完即删）：依赖含 `resource.id` 时切资源重拉 `/file/r1` → `/file/r2`；去掉后只拉 `/file/r1`，预览停在上一个资源。故保留依赖 + 行级 ignore，与 `agent-config` 的 `SiteFrame` reloadKey 同款取舍。
 - **消费方守卫收窄 + 注释漂移**：`web/__tests__/knowledge-browser-surface.test.ts` 的三个断言改为只统计本包 web 子图内的引用（`ownRefs`），修正被钉死的跨包路径（`model-management/web/index.ts`），并新增「不得静态导入 g6」用例——W2 快照里那 3 条失败即由此消解；跨包消费（`model-management/web` 反向引用本包）不再误判为违例。另修 `src/server/routes/web/knowledge-bases.ts:227` 的端点计数漂移（不再重复计数，实测 23 条）。
-- **宿主 i18n 注册表在本轮切到包出口**：切换过程中宿主一度按 `packages/resources/{channel,observer,prod-view,task,workflow}/web/i18n/{en,zh}/*.json` 的旧布局导入（字典已迁到 `locales/`），任何加载宿主 i18n 注册表的用例都会在加载期抛 `Cannot find module`（本包 `web/src/__tests__/context-panel-ssr.test.tsx` 与 `model-management` 的 web 用例均被挡）；宿主已改为经 `@fenix/<pkg>/web/i18n` 登记（本包见 `apps/web/src/i18n/index.ts:15`），本包用例随之恢复全绿（412 pass / 0 fail）。
+- **宿主 i18n 注册表在本轮切到包出口**：切换过程中宿主一度按 `packages/resources/{channel,observer,prod-view,task,workflow}/web/i18n/{en,zh}/*.json` 的旧布局导入（字典已迁到 `locales/`），任何加载宿主 i18n 注册表的用例都会在加载期抛 `Cannot find module`（本包 `web/src/__tests__/context-panel-ssr.test.tsx` 与 `model-management` 的 web 用例均被挡；该文件已于 CE 阶段 2 §1.6 T5d 删除——它断言的 `ContextPanel` 宿主从不渲染，见 `docs/design/ce-ee-refactoring/review/task-1.6-web-shell.md` §四.9）；宿主已改为经 `@fenix/<pkg>/web/i18n` 登记（本包见 `apps/web/src/i18n/index.ts:15`），本包用例随之恢复全绿（412 pass / 0 fail）。
 
 ## 前端状态补齐与死副本清理（2026-09-20，§1.3(6) 缺口修复）
 
@@ -108,7 +108,8 @@
   就是**进程级且不可撤销**：实测（对照组，跑完即删）`mock.restore()` 之后加载的文件、以及再注册一次真实
   命名空间，拿到的仍是替身；替身只提供 `useTranslation` 时本包 `knowledge-access-denied.test.tsx` /
   `web/src/__tests__/context-panel-ssr.test.tsx` 在加载期抛 `SyntaxError: Export named 'I18nextProvider' not found`，
-  补上真实导出后它们又会因 `t` 被换掉而断言失败（这两个文件用空字典断言 key 回显，必须拿到真实库）。
+  补上真实导出后它们又会因 `t` 被换掉而断言失败（这两个文件用空字典断言 key 回显，必须拿到真实库；
+  `context-panel-ssr.test.tsx` 已在 §1.6 T5d 随 `ContextPanel` 死代码链删除，现存的是 `knowledge-access-denied.test.tsx`）。
   真实实例的代价是 `resources` 形状必须是 `{ [语言]: { [命名空间]: 字典 } }`（少一层语言维度时 `t()` 静默回显 key，
   已在两个用例里写明），收益是断言直接取本包字典文案、不再需要逐字复刻的替身表。
 - **仍未接同一组件的两处（同口径核对后不闭环，理由与移除条件在下面）**：

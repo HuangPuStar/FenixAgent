@@ -98,7 +98,7 @@ WebShell 从静态 registry 收集各资源包的 web contribution（不反向�
 | T2 | 宿主零消费死代码与重复副本删除 | 已交付 | 见下方 §7.2 |
 | T3 | `@fenix/ui-components` 扩面 | 已交付 | `b858bf68f` |
 | T4 | `identity/web` 清零 + i18n | 4a 已交付 / 4b 待办 | 见下方 §7.3 |
-| T5 | `chat-channel/web` 清零 | a,b,c1,c2,c5 已交付 / d 待办 | 见下方 §7.4–§7.9 |
+| T5 | `chat-channel/web` 清零 | a,b,c1,c2,c5,d 已交付 | 见下方 §7.4–§7.10 |
 | T6 | `agent-runtime/web` 收敛 | 待办 | — |
 | T7 | 5 条 `special-dependency` 消除 | 待办 | — |
 | T8 | 宿主组件/lib/api 簇改指并删除 | 待办 | — |
@@ -115,7 +115,7 @@ WebShell 从静态 registry 收集各资源包的 web contribution（不反向�
 | T5a | `agent-config/web` 新增 `loadBoundMcps` | 纯新增助手 + 出口，见 §7.4；`agent-runtime` 不得持有该查询（§四.10） |
 | T5b | `ChatArea` 簇迁至宿主 | **已交付**（§7.5）：`ChatArea.tsx` / `chat-area-lifecycle.ts` / `chat-layout.css` 迁 `apps/web/src/pages/agent-panel/`；`ProdViewPage` 改注入窄端口；环境删除用例随迁 |
 | T5c | `ChatPanel` 改指 ui-components 面板 | **c1 已交付**（§7.6，一致性缺口修复见 §7.7）、**c2 已交付**（§7.8）；c3（宿主注入 `boundMcps`）与 c4（chat CSS 切包）并入 c2——CSS 必须与 DOM 同批，分离提交会出现两端样式都错版的中间态；**c5 测试归位已交付**（§7.9） |
-| T5d | `chat-channel/web` 退场 | 删 3 个组件与入口（含 §四.9 的 `ContextPanel` 死代码链）、删 `./web*` 出口与 tsconfig paths、测试归位、删台账 1 条 |
+| T5d | `chat-channel/web` 退场 | **已交付**（§7.10）：删 3 个组件与入口共 11 个文件（含 §四.9 的 `ContextPanel` 死代码链）、删 `./web` 出口与 tsconfig paths、knowledge 侧测试与依赖同批删除、删台账 1 条 |
 
 ---
 
@@ -721,6 +721,55 @@ DOM 与 React 渲染需要，`bun.lock` 同步。`bun test packages/` 自动发�
 - `bun run build:web` → ✓（纯测试迁移，产物无变化）
 - `bun run check:dependencies` → ✓ 2395 modules / 0 条新增违规；`bun run architecture:check` → ✓ 2243 files
 - `bun run lint` → ✓（迁移后首跑有 1 条 import 排序错误，已按 biome 修复）
+
+### 7.10 T5d `chat-channel/web` 退场（2026-09-21）
+
+c2 之后线上聊天界面由 ui-components 的 `ACPMain` 渲染，`chat-channel/web` 已无运行时消费方；继续保留它
+会让「谁渲染聊天 UI」的归属再次含糊，也会让 `@fenix/chat-channel/web` 这个出口成为绕过 `exports` 收敛的
+后门。按 §四.9 的裁定整片删除：
+
+| 类别 | 内容 |
+| --- | --- |
+| 包内 web 面 | `packages/chat-channel/web/**` 共 11 个文件：`index.ts`、`components/{ACPMain,ChatInterface,ContextPanel}.tsx`、`src/pages/agent-panel/chat-design{,-composer,-messages-tools,-responsive,-selection,-shell,-status}.css` |
+| 出口与路径 | `package.json` 删 `./web` 出口（`exports` 精确剩 `["." , "./server"]`）；`tsconfig.json` 删 `@fenix/chat-channel/web` paths |
+| 死代码唯一消费者 | `git rm packages/resources/knowledge/web/src/__tests__/context-panel-ssr.test.tsx`（5 个用例）；并从 knowledge 的 `package.json` 删 `@fenix/chat-channel` 依赖——全包仅该测试使用它 |
+| 死属性 | `initialCwd`：ui-components `web/chat/shell/ACPMain.tsx` 的声明、`packages/agent-runtime/web/agent-panel/ChatPanel.tsx` 的声明 / 解构 / 透传一并删除。c2 起 cwd 由 `ChatArea` 经端口注入，该 prop 在两条渲染路径上都没有消费方 |
+| 守卫改写 | `chat-channel-browser-surface.test.ts`：删 `WEB_ENTRY` 常量与两个 web 入口用例（9 → 7 个用例），包内 web 路径并入「旧聊天根路径不存在」，并把 `exports` 键断言（精确等于 `[".", "./server"]`）并进同一用例——出口撤除与文件删除同批受守护 |
+| 台账 | `scripts/architecture/exceptions.json` 删 `web-package-not-to-app @fenix/chat-channel -> @fenix/web-app`：该条目的指纹已归零，按门禁规则必须与代码同批删除，否则报 stale |
+
+#### 连带修正（同批必需）
+
+- **`scripts/__tests__/rmd-05-migration.test.ts`**：阶段 1 RMD-05 的 5 条迁移记录里，第 5 条的目标正是被删的
+  `context-panel-ssr.test.tsx`，其「目标必须存在」断言因此变红。处置**不是**删条目——那等于篡改阶段 1 的
+  迁移记录（与 §7.9「台账不动」同口径）。改为把它移入显式的 `RMD_05_TARGETS_LATER_DELETED`（附删除依据与
+  §四.9 出处），保留 `4 + 1 = 5` 的总数断言，并新增用例断言「源与目标都保持不存在」：记录的是「已裁定删除」，
+  不是「迁移丢失」。
+- **`packages/chat-channel/README.md`**：删去「web vite alias 直连」措辞——T1 起宿主不再登记 `@fenix/*` vite alias，
+  浏览器与 bun / tsc / dependency-cruiser 走同一条包 `exports` 通道；并明写「本包不含 UI，聊天界面归
+  `@fenix/ui-components/web/chat/**`」。
+- **`packages/resources/knowledge/README.md`**：两处引用已删测试的历史记录加注（说明该文件随 `ContextPanel`
+  死代码链删除、依据在本文 §四.9），避免后来者按图索骥找不到文件。
+
+#### 遗留（不属 T5d）
+
+- `packages/agent-runtime/web/components/chat/chat-interface-types.ts`（44 行）是 `ChatInterfaceProps` /
+  `ChatInterfaceHandle` 的**零消费方死副本**（ui-components 已自持同名类型），其 `hideContextPanel?: boolean`
+  一行虽在 §四.9 的删除口径内，但该文件整体归 T6（`agent-runtime/web` 收敛），本片不动。
+- `CLAUDE.md` 不变量 11 的「前端 vite alias 直连根入口」措辞、`docs/design/2026-09-18-packages-web-ui-components-migration.md`
+  中指向 `chat-channel/web/**` 的行号引用：前者机制描述仍成立（从根入口 re-export 服务端模块会打进 bundle）只是
+  通道不再叫 alias，后者是历史快照。两者一并归 T12 的文档复核。
+
+#### 验证
+
+- `env -u ANTHROPIC_MODEL bun run precheck` → ✓ All passed（84972ms）：server-and-script-tests 771 pass、
+  package-tests 7331 pass / 2 skip、web-app-tests 949 pass。**package 比 T5c5 后少 7 = 已删的 5 + 2 个用例**
+  （`context-panel-ssr.test.tsx` 5 个 + browser-surface 两个 web 入口用例），无其他用例增减。
+- `bun run build:web` → ✓ built in 1.90s（删除 CSS 与组件后产物正常生成，无悬空 `@import`）
+- `bun run check:dependencies` → ✓ 2390 modules / 11 条已登记例外 / 0 条新增违规（T5c5 后为 2395 modules）
+- `bun run architecture:check` → ✓ 2238 files / 25 条已登记例外（T5c5 后为 2243 files / 26 条，差值即本片删除）
+- `bun run lint` → ✓（由 precheck 的 lint 步骤覆盖，零告警）
+
+首次 `precheck` 曾因 `rmd-05-migration.test.ts` 红（1 fail / 770 tests），即上方「连带修正」第一条；修正后全绿。
 
 ---
 

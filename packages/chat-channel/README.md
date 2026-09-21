@@ -30,15 +30,18 @@ src/
 ├── transport/   # createYjsWsClient（前端同构 WS 客户端）
 ├── util/        # createDeterministicRcsSessionId
 ├── schema.ts    # Chat Doc / Session Doc 新 schema 与规范化事件类型
-├── index.ts     # 浏览器安全导出面（web vite alias 直连，禁止 re-export 服务端模块）
+├── index.ts     # 浏览器安全导出面（禁止 re-export 服务端模块）
 └── server.ts    # 服务端完整导出面 = index + channel + persist + state
 ```
+
+> 本包**不含任何 UI**：聊天界面自 CE 阶段 2 §1.6 T5d 起整体归 `@fenix/ui-components`（`web/chat/**`），
+> 包内 `web/` 已删除。
 
 ### 双入口导出
 
 | 入口 | 内容 | 消费方 |
 |------|------|--------|
-| `@fenix/chat-channel` | 类型、schema、`chat-writer`、`yjs-store`、`protocol`、`transport`、`util`（无 node 运行时依赖） | 前端（vite alias 直连源码）+ 双端共享纯函数 |
+| `@fenix/chat-channel` | 类型、schema、`chat-writer`、`yjs-store`、`protocol`、`transport`、`util`（无 node 运行时依赖） | 浏览器（经包 `exports` 解析源码，宿主不再登记 vite alias）+ 双端共享纯函数 |
 | `@fenix/chat-channel/server` | 上述 + `channel` 控制面 + `persist` 持久化 + `state` 聚合层（DocManager / factory / aggregator 等） | 仅服务端（Bun） |
 
 边界由 `packages/chat-channel/src/__tests__/chat-channel-browser-surface.test.ts` 静态走根入口值导入图守护；从根入口 re-export 服务端模块会把 node 依赖打进浏览器 bundle（2026-08-17 `node:crypto` 事故）。

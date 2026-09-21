@@ -31,7 +31,6 @@ import { SidebarSessionList } from "./sidebar-session-list";
  */
 interface ACPMainProps {
   agentId?: string;
-  initialCwd?: string;
   readonly?: boolean;
   hideSidebar?: boolean;
   rcsSessionId?: string;

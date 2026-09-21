@@ -36,7 +36,5 @@
     "react-dom": "^19.2.6",
     "react-i18next": "^17.0.8"
   },
-  "devDependencies": {
-    "@fenix/chat-channel": "workspace:*"
-  }
+  "devDependencies": {}
 }

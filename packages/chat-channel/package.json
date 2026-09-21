@@ -11,10 +11,6 @@
     "./server": {
       "types": "./src/server.ts",
       "default": "./src/server.ts"
-    },
-    "./web": {
-      "types": "./web/index.ts",
-      "default": "./web/index.ts"
     }
   },
   "scripts": {

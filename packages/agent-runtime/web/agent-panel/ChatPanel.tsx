@@ -30,7 +30,6 @@ type WsConnectionState = ChatWsConnectionState;
 interface ChatPanelProps {
   agentId: string | null;
   sessionId?: string | null;
-  initialCwd?: string;
   hideSidebar?: boolean;
   scenePrompt?: string;
   contextKey?: string;
@@ -48,7 +47,6 @@ interface ChatPanelProps {
 export function ChatPanel({
   agentId,
   sessionId,
-  initialCwd,
   hideSidebar,
   scenePrompt,
   contextKey,
@@ -438,7 +436,6 @@ export function ChatPanel({
           )}
         <ACPMain
           agentId={agentId}
-          initialCwd={initialCwd}
           hideSidebar={hideSidebar}
           // 此处必须是 RCS session id（与 Y.Doc 命名一致），不是 URL sessionId：
           rcsSessionId={rcsSessionKey ?? undefined}
