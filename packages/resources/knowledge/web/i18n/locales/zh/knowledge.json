@@ -14,9 +14,6 @@
   "searchPlaceholder": "搜索知识库...",
   "emptyTitle": "还没有知识库",
   "emptyDescription": "知识库用于存储和管理文档，为 Agent 提供上下文检索能力。",
-  "emptyCreateBtn": "创建第一个知识库",
-  "emptySearchMessage": "没有找到匹配 \"{{query}}\" 的知识库",
-  "emptyClearSearch": "清除搜索",
   "emptyMessage": "暂无知识库",
   "selectHint": "选择左侧知识库查看详情",
   "directory": {
@@ -29,22 +26,9 @@
     "embeddingModelDescription": "管理 RAGFlow 租户下的向量模型。",
     "importRagflow": "从 RAGFlow 导入"
   },
-  "newKnowledgeBase": "新建知识库",
   "loadFailed": "加载知识库失败",
-  "loadDetailFailed": "加载知识库详情失败",
-  "loadResourcesFailed": "加载资源列表失败",
-  "nameAndSlugRequired": "名称和 slug 为必填项",
-  "updateFailed": "更新失败",
-  "knowledgeBaseUpdated": "知识库已更新",
   "createFailed": "创建失败",
-  "knowledgeBaseCreated": "知识库已创建",
-  "saveFailed": "保存失败",
   "deleteFailed": "删除失败",
-  "knowledgeBaseDeleted": "知识库已删除",
-  "filesUploaded": "已上传 {{count}} 个文件",
-  "uploadFailed": "上传失败",
-  "enterResourceUrl": "请输入资源 URL",
-  "importFailed": "导入失败",
   "importDialog": {
     "title": "从 RAGFlow 导入知识库",
     "description": "选择下方未关联的知识库导入到当前平台空间",
@@ -101,9 +85,6 @@
     "cancel": "取消",
     "submit": "验证并添加"
   },
-  "urlResourceSubmitted": "URL 资源已提交",
-  "deleteResourceFailed": "删除资源失败",
-  "resourceDeleted": "资源已删除",
   "btn": {
     "create": "新建知识库",
     "edit": "编辑",
@@ -155,10 +136,7 @@
   },
   "columns": {
     "name": "名称",
-    "status": "状态",
-    "resourcesCount": "资源数",
-    "updatedAt": "最近更新时间",
-    "bindingsCount": "绑定Agent数"
+    "updatedAt": "最近更新时间"
   },
   "table": {
     "searchPlaceholder": "搜索知识库...",
@@ -173,30 +151,12 @@
   },
   "actions": {
     "retry": "重试",
-    "detail": "详情",
-    "upload": "上传",
     "delete": "删除"
   },
   "detail": {
     "loading": "加载中...",
     "slug": "slug",
-    "edit": "编辑",
-    "boundAgents": "绑定 {{count}} 个 Agent",
-    "noDescription": "暂无描述",
-    "recentError": "最近错误",
-    "uploadResources": "上传资源",
-    "selectFile": "选择文件",
-    "uploading": "上传中...",
-    "importUrl": "导入 URL",
-    "importUrlPlaceholder": "导入 URL",
-    "importing": "导入中...",
-    "sourceNamePlaceholder": "可选：来源名称",
-    "resourceList": "资源列表",
-    "resourceCount": "{{count}} 个资源",
-    "noResources": "暂无资源",
-    "deleting": "删除中...",
-    "delete": "删除",
-    "selectToView": "选择左侧知识库查看详情"
+    "boundAgents": "绑定 {{count}} 个 Agent"
   },
   "form": {
     "editTitle": "编辑知识库",
@@ -227,24 +187,8 @@
     "pipelineHint": "选择已创建的 Dataflow Canvas 作为文档解析流水线。",
     "noPipelinesHint": "请先在 RagFlow 中创建 Dataflow Canvas，再使用 pipeline 解析。"
   },
-  "chunkMethods": {
-    "naive": "通用",
-    "book": "手册",
-    "email": "邮件",
-    "laws": "法律",
-    "manual": "操作手册",
-    "one": "单块",
-    "paper": "论文",
-    "picture": "图片",
-    "presentation": "演示文稿",
-    "qa": "问答",
-    "table": "表格",
-    "tag": "标签"
-  },
   "card": {
-    "resourcesUnit": "{{count}} 个资源",
-    "lastUpdated": "更新于 {{time}}",
-    "noResources": "暂无资源"
+    "resourcesUnit": "{{count}} 个资源"
   },
   "detailConfig": {
     "embeddingModel": "向量模型",
@@ -258,13 +202,10 @@
     "deleteTitle": "确认删除知识库",
     "deleteDescription": "确定删除知识库 \"{{name}}\" 吗？",
     "deleteResourceTitle": "确认删除文档",
-    "deleteResourceDescription": "确定删除文档 \"{{name}}\" 吗？此操作不可撤销。",
-    "title": "确认删除知识库",
-    "description": "确定删除知识库 \"{{name}}\" 吗？"
+    "deleteResourceDescription": "确定删除文档 \"{{name}}\" 吗？此操作不可撤销。"
   },
   "preview": {
     "title": "预览：{{name}}",
-    "loading": "加载预览中...",
     "loadError": "加载预览内容失败",
     "unsupported": "该文件类型暂不支持预览",
     "converting": "正在转换 Office 文档为 PDF...",
@@ -311,7 +252,6 @@
     "knowledgeGraphSection": "知识图谱"
   },
   "graph": {
-    "title": "知识图谱",
     "generate": "生成知识图谱",
     "generating": "生成中",
     "generateSuccess": "知识图谱生成完成",
@@ -319,7 +259,6 @@
     "progressFailed": "获取知识图谱生成进度失败，请重试",
     "loadFailed": "加载知识图谱失败",
     "loading": "正在加载知识图谱...",
-    "retry": "重试",
     "delete": "删除",
     "deleteSuccess": "知识图谱已删除",
     "deleteFailed": "删除知识图谱失败",
@@ -330,17 +269,10 @@
     "nodes": "实体节点",
     "edges": "关系边",
     "networkHint": "拖拽节点 · 滚轮缩放 · 点击选中",
-    "nodeDetail": "节点详情",
     "entityType": "实体类型",
-    "weight": "权重",
-    "description": "描述",
-    "connectedNodes": "关联节点",
-    "noNodeSelected": "点击图中节点查看详情",
-    "noDescription": "暂无描述",
-    "legend": "图例"
+    "weight": "权重"
   },
   "chunk": {
-    "close": "关闭",
     "docPreview": "文档预览",
     "chunkCount": "共 {{count}} 个切片",
     "totalCount": "共 {{count}} 个切片",

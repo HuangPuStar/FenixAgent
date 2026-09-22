@@ -14,9 +14,6 @@
   "searchPlaceholder": "Search knowledge bases...",
   "emptyTitle": "No knowledge bases yet",
   "emptyDescription": "Knowledge bases store and manage documents, providing contextual retrieval capabilities for Agents.",
-  "emptyCreateBtn": "Create your first knowledge base",
-  "emptySearchMessage": "No results found for \"{{query}}\"",
-  "emptyClearSearch": "Clear search",
   "emptyMessage": "No knowledge bases",
   "selectHint": "Select a knowledge base on the left to view details",
   "directory": {
@@ -29,22 +26,9 @@
     "embeddingModelDescription": "Manage embedding models for the RAGFlow tenant.",
     "importRagflow": "Import from RAGFlow"
   },
-  "newKnowledgeBase": "New Knowledge Base",
   "loadFailed": "Failed to load knowledge bases",
-  "loadDetailFailed": "Failed to load knowledge base details",
-  "loadResourcesFailed": "Failed to load resource list",
-  "nameAndSlugRequired": "Name and slug are required",
-  "updateFailed": "Update failed",
-  "knowledgeBaseUpdated": "Knowledge base updated",
   "createFailed": "Create failed",
-  "knowledgeBaseCreated": "Knowledge base created",
-  "saveFailed": "Save failed",
   "deleteFailed": "Delete failed",
-  "knowledgeBaseDeleted": "Knowledge base deleted",
-  "filesUploaded": "{{count}} file(s) uploaded",
-  "uploadFailed": "Upload failed",
-  "enterResourceUrl": "Please enter a resource URL",
-  "importFailed": "Import failed",
   "importDialog": {
     "title": "Import from RAGFlow",
     "description": "Select an unassociated knowledge base below to import into the current workspace",
@@ -101,9 +85,6 @@
     "cancel": "Cancel",
     "submit": "Verify and Add"
   },
-  "urlResourceSubmitted": "URL resource submitted",
-  "deleteResourceFailed": "Failed to delete resource",
-  "resourceDeleted": "Resource deleted",
   "btn": {
     "create": "New Knowledge Base",
     "edit": "Edit",
@@ -155,10 +136,7 @@
   },
   "columns": {
     "name": "Name",
-    "status": "Status",
-    "resourcesCount": "Resources",
-    "updatedAt": "Last Updated",
-    "bindingsCount": "Bound Agents"
+    "updatedAt": "Last Updated"
   },
   "table": {
     "searchPlaceholder": "Search knowledge bases...",
@@ -173,30 +151,12 @@
   },
   "actions": {
     "retry": "Retry",
-    "detail": "Detail",
-    "upload": "Upload",
     "delete": "Delete"
   },
   "detail": {
     "loading": "Loading...",
     "slug": "slug",
-    "edit": "Edit",
-    "boundAgents": "Bound to {{count}} Agent(s)",
-    "noDescription": "No description",
-    "recentError": "Recent error",
-    "uploadResources": "Upload Resources",
-    "selectFile": "Select file",
-    "uploading": "Uploading...",
-    "importUrl": "Import URL",
-    "importUrlPlaceholder": "Import URL",
-    "importing": "Importing...",
-    "sourceNamePlaceholder": "Optional: source name",
-    "resourceList": "Resource List",
-    "resourceCount": "{{count}} resource(s)",
-    "noResources": "No resources",
-    "deleting": "Deleting...",
-    "delete": "Delete",
-    "selectToView": "Select a knowledge base on the left to view details"
+    "boundAgents": "Bound to {{count}} Agent(s)"
   },
   "form": {
     "editTitle": "Edit Knowledge Base",
@@ -227,24 +187,8 @@
     "pipelineHint": "Select a Dataflow Canvas to use as the document parsing pipeline.",
     "noPipelinesHint": "Create a Dataflow Canvas in RagFlow first to use pipeline parsing."
   },
-  "chunkMethods": {
-    "naive": "General",
-    "book": "Book / Manual",
-    "email": "Email",
-    "laws": "Legal",
-    "manual": "Manual",
-    "one": "One Block",
-    "paper": "Paper",
-    "picture": "Picture",
-    "presentation": "Presentation",
-    "qa": "Q&A",
-    "table": "Table",
-    "tag": "Tag"
-  },
   "card": {
-    "resourcesUnit": "{{count}} resources",
-    "lastUpdated": "Updated {{time}}",
-    "noResources": "No resources"
+    "resourcesUnit": "{{count}} resources"
   },
   "detailConfig": {
     "embeddingModel": "Embedding Model",
@@ -258,13 +202,10 @@
     "deleteTitle": "Confirm Delete Knowledge Base",
     "deleteDescription": "Are you sure you want to delete knowledge base \"{{name}}\"?",
     "deleteResourceTitle": "Confirm Delete Document",
-    "deleteResourceDescription": "Are you sure you want to delete document \"{{name}}\"? This action cannot be undone.",
-    "title": "Confirm Delete Knowledge Base",
-    "description": "Are you sure you want to delete knowledge base \"{{name}}\"?"
+    "deleteResourceDescription": "Are you sure you want to delete document \"{{name}}\"? This action cannot be undone."
   },
   "preview": {
     "title": "Preview: {{name}}",
-    "loading": "Loading preview...",
     "loadError": "Failed to load preview content",
     "unsupported": "This file type is not supported for preview",
     "converting": "Converting Office document to PDF...",
@@ -311,7 +252,6 @@
     "knowledgeGraphSection": "Knowledge Graph"
   },
   "graph": {
-    "title": "Knowledge Graph",
     "generate": "Generate Knowledge Graph",
     "generating": "Generating",
     "generateSuccess": "Knowledge graph generated",
@@ -319,7 +259,6 @@
     "progressFailed": "Failed to fetch generation progress. Please retry.",
     "loadFailed": "Failed to load knowledge graph",
     "loading": "Loading knowledge graph...",
-    "retry": "Retry",
     "delete": "Delete",
     "deleteSuccess": "Knowledge graph deleted",
     "deleteFailed": "Delete knowledge graph failed",
@@ -330,17 +269,10 @@
     "nodes": "Entity Nodes",
     "edges": "Relation Edges",
     "networkHint": "Drag nodes · Scroll to zoom · Click to select",
-    "nodeDetail": "Node Detail",
     "entityType": "Entity Type",
-    "weight": "Weight",
-    "description": "Description",
-    "connectedNodes": "Connected Nodes",
-    "noNodeSelected": "Click a node to view details",
-    "noDescription": "No description",
-    "legend": "Legend"
+    "weight": "Weight"
   },
   "chunk": {
-    "close": "Close",
     "docPreview": "Document Preview",
     "chunkCount": "{{count}} chunks",
     "totalCount": "{{count}} chunks total",
