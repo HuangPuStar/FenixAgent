@@ -1,5 +1,5 @@
 import { Pencil, Trash2, X } from "lucide-react";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { createContext, type ReactNode, useCallback, useContext, useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { UI_COMPONENTS_NS } from "../../i18n/namespace";
 import { cn } from "../../lib/cn";
@@ -34,6 +34,40 @@ interface SidebarSessionListProps {
   onDeleteSession: (sessionId: string) => void;
   /** 运行时提示出口（替代 sonner toast） */
   onNotice?: (notice: ChatNotice) => void;
+}
+
+/**
+ * 会话切换失败的回退信号（`token` 递增即表示「把高亮拉回 `sessionId`」）。
+ *
+ * 列表高亮在点击瞬间乐观置位（本组件 `activeId`），切换失败后没有任何东西会把它拉回来，
+ * 界面会持续停在错误的高亮上。仅把 `initialActiveSessionId` 设回原值不构成回退：它值未变，
+ * 依赖它的同步 effect 不会重跑，因此必须由 `ACPMain` 下发一个显式信号。
+ */
+export interface SessionSelectFallback {
+  /** 真实的当前会话（会话投影实际展示的会话）；null 表示当前没有会话 */
+  sessionId: string | null;
+  /** 回退序号，每次失败递增；同一会话连续失败也要重新生效 */
+  token: number;
+}
+
+/**
+ * 回退信号通道：用 Context 而非逐层 prop，是因为侧边栏列表还被移动端抽屉
+ * （`internal/acp-main-mobile-sidebar.tsx`）与 `ChatHeader` 间接渲染，`ACPMain` 无法在不改动
+ * 这两个包装组件的前提下把新增 prop 传进去；Context 在 `ACPMain` 根节点注入一次即可覆盖
+ * 全部 `SidebarSessionList` 实例（Radix Portal 不切断 React Context）。
+ * 未注入 Provider 时（独立使用本组件、演示页）值为 null，行为与新增信号前完全一致。
+ */
+const SessionSelectFallbackContext = createContext<SessionSelectFallback | null>(null);
+
+/** 注入会话切换失败回退信号（Provider 由 `ACPMain` 在根节点装配）。 */
+export function SessionSelectFallbackProvider({
+  fallback,
+  children,
+}: {
+  fallback: SessionSelectFallback | null;
+  children: ReactNode;
+}) {
+  return <SessionSelectFallbackContext.Provider value={fallback}>{children}</SessionSelectFallbackContext.Provider>;
 }
 
 /**
@@ -112,6 +146,14 @@ export function SidebarSessionList({
   }, [activeId, deleteTarget, onDeleteSession, t, onNotice]);
 
   useEffect(() => setActiveId(initialActiveSessionId), [initialActiveSessionId]);
+
+  // 切换失败回退：按整体信号对象触发（token 变化），把乐观置位的高亮拉回真实会话。
+  // 失败前 initialActiveSessionId 未变（成功路径才会更新它），所以不能依赖上一行的 effect。
+  const fallback = useContext(SessionSelectFallbackContext);
+  useEffect(() => {
+    if (!fallback) return;
+    setActiveId(fallback.sessionId);
+  }, [fallback]);
 
   const groups = useMemo(
     () =>

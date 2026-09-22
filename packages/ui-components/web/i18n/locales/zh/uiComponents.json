@@ -21,6 +21,8 @@
         "noSessions": "暂无会话",
         "rename": "重命名",
         "renameFailed": "重命名失败：{{message}}",
+        "sessionSwitchFailed": "切换会话失败，请重试",
+        "sessionSwitchUnsupported": "当前智能体不支持加载历史会话，无法切换会话",
         "sessions": "会话",
         "today": "今天",
         "yesterday": "昨天"
