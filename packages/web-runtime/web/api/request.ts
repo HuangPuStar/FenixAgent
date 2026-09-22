@@ -55,6 +55,41 @@ export async function unwrap<T>(resp: Promise<ApiResponse<T>>): Promise<T> {
   return data as T;
 }
 
+/**
+ * 将后端返回的 snake_case 键名转换为 camelCase，供各域 API 模块共用。
+ * 只递归数组元素（如实例列表项）；嵌套的普通对象保持原样——这是既有行为，改了会动响应形状。
+ */
+export function toCamelKeys(obj: Record<string, unknown>): Record<string, unknown> {
+  const result: Record<string, unknown> = {};
+  for (const [key, value] of Object.entries(obj)) {
+    const camelKey = key.replace(/_([a-z])/g, (_, c: string) => c.toUpperCase());
+    // 递归转换嵌套对象（如 instances 数组中的对象）
+    if (Array.isArray(value)) {
+      result[camelKey] = value.map((item) =>
+        item && typeof item === "object" ? toCamelKeys(item as Record<string, unknown>) : item,
+      );
+    } else {
+      result[camelKey] = value;
+    }
+  }
+  return result;
+}
+
+/** 将完整响应中的 data 字段进行键名转换（data 为对象或数组时均转换，其余原样返回） */
+export async function camelResponse<T>(resp: Promise<ApiResponse<T>>): Promise<ApiResponse<T>> {
+  const r = await resp;
+  if (r.success && r.data) {
+    if (Array.isArray(r.data)) {
+      r.data = r.data.map((item) =>
+        item && typeof item === "object" ? toCamelKeys(item as Record<string, unknown>) : item,
+      ) as unknown as T;
+    } else if (typeof r.data === "object") {
+      r.data = toCamelKeys(r.data as Record<string, unknown>) as unknown as T;
+    }
+  }
+  return r;
+}
+
 interface RequestOptions extends Omit<RequestInit, "body" | "headers"> {
   /** 路径参数 :id 插值 */
   params?: Record<string, string>;
