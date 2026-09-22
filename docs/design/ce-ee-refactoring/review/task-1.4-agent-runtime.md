@@ -577,6 +577,8 @@ W2 按用户指令「每个子任务完成先提交，再下一子任务」分�
 
 **两处部署值的双取数点（W2a 记录在 `config.ts` 注释）。** `workspace-resolver.ts` 仍直读 `process.env.WORKSPACE_ROOT`，与 W2a 新增的模块配置键是同一部署值的两个取数点；`defaultMachineId` 与 machine 模块同源但未改用 `getMachineConfig()`（agent-runtime 目前不依赖 `@fenix/resource-machine`，为一个字符串引入新跨包边不在授权范围）。两者都是**同一部署值的重复取数**，收敛需要 machine / chat-channel 的测试进程一并初始化基础设施，超出 1.4 范围，随 §1.5 的配置管道一并处理。
 
+**（2026-09-22 后续）** 第一处已随 **1.7 C1** 收口：`workspace-resolver.ts` 改读模块配置的 `workspaceRoot`；Machine host port 的根解析**拆给宿主** `apps/server/src/bootstrap/workspace-path.ts`（那份直读 `WORKSPACE_ROOT` 是 workspace 根锁的契约要求，与「包内读启动期快照」是两种语义），agent-runtime 的公开导出与钉它的用例一并删除——machine 侧测试零改动，理由与取证见 1.7 review §7.33。第二处（`defaultMachineId` 未走 `getMachineConfig()`）仍在。
+
 ### 12.4 台账 `apps-boundary` 不删、按职责面重测改写
 
 §7 预测 W2 删掉 `apps-boundary`（`@fenix/agent-runtime → @fenix/server-app`）。按裁定「按职责面收敛 + 表定义显式豁免」，该条**不删**（`owner` 仍 `1.4`），只按实测改写 `removeWhen` 与 `rationale`：原文「实测 105 处导入 / 54 个文件，其中 88 处非表定义」是 W2 动手前的全量口径（含测试与当时的宿主模块导入），与交付后的职责面划分已不匹配，改写为「11 处 / 8 文件 + 两类归属」。台账其余条目与总数（49）不变，`owner: "1.4"` 仍 11 条，W2 削 0 条——**切片交付 ≠ 台账削减**（§3.3），本条的删除条件要等 W4 与 §1.7 两条路径都走完。
@@ -604,7 +606,7 @@ W2 按用户指令「每个子任务完成先提交，再下一子任务」分�
 | `@server/config`(2) / `@server/db`(1) / `@server/services/config-utils`(1) / `@server/repositories`(1)，集中在 `launch-spec-builder.ts`、`orchestration-instance.ts`、`orchestration-bootstrap.ts` | W4「启动前取数搬出」（前两个文件删除或改指，`orchestration-bootstrap` 的组装点随 `LaunchSpecBuilder` 迁移） |
 | 6 处 `@server/db/schema` 表定义（`agent-instance` / `environment` / `environment-orchestration` / `environment-web` / `agent-chat-service` / `launch-spec-builder`） | §1.7 表定义迁出（§9.3 裁定） |
 | 包内测试侧 30 行宿主导入（test-utils 替身 12、表定义 11、宿主 config 6、error-handler 1） | W4（删除 `launch-spec-*` / `orchestration-*` 用例时一并消失）与 §1.7 |
-| `workspace-resolver.ts` 直读 `process.env.WORKSPACE_ROOT`、`defaultMachineId` 未走 `getMachineConfig()` | §1.5 配置管道（两处部署值的重复取数，见 12.3） |
+| ~~`workspace-resolver.ts` 直读 `process.env.WORKSPACE_ROOT`~~ **已随 1.7 C1 收口（1.7 review §8.1 第 9 条 / §7.33）**、`defaultMachineId` 未走 `getMachineConfig()` | §1.5 配置管道（两处部署值的重复取数，见 12.3） |
 | `apps/server/src/__tests__/db-pool-config.test.ts`（既有红项，非本任务引入、未修复） | 测试基础设施独立缺口：`setup-mocks.ts` 的 `createDbMock` 缺 `attachDatabasePoolErrorLogger` 导出，与 `apps/server/src/db/index.ts:44` 同出自 `9f189d747`。取证与无关性证明见 §10.5；修复方式是给 `createDbMock` 补导出，不随 1.4 夹带 |
 
 ## 十三、W3a 交付记录（Runtime port 定型，2026-09-20）

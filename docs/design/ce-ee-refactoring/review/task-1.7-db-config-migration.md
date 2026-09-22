@@ -250,8 +250,8 @@ FK；identity 9 张已随任务 1.2 迁出，业务 40 张待迁）按包名语�
 | B12 | task（`scheduled_task_v2`、`task_execution_log`）迁至 `@fenix/resource-task/db`；跨包读取点收口 0 处（宿主无读写方，唯一包外读取是宿主测试的列名断言，就地改指 owner 出口），契约测试白名单改零例外 | 已交付 | 见 §7.24 |
 | B13 | channel（`channel_binding`、`im_channel`、`im_channel_route`）迁至 `@fenix/resource-channel/db`；跨包读取点收口 0 处（`im_channel*` 为死表，`channel_binding` 读写全在本包仓储），契约测试白名单改零例外——**B 块最后一批，表迁移收口**（§4.7 表共 36 张，B1–B13 已迁业务表 33 张 + 交付面） | 已交付 | 见 §7.25 |
 | C0 | 打通模块声明的 env 回流至宿主 | 已交付 | `cb0c5976c` |
-| C1 | `workspace-resolver` 改读模块配置 + `WORKSPACE_ROOT` 收敛 | 待办 | — |
-| C2–C18 | 其余模块声明 `envDefinitions` | 待办 | — |
+| C1 | `workspace-resolver` 改读模块配置 + `WORKSPACE_ROOT` 收敛（含 `YJS_MAX_CLIENTS` 经 options 注入） | 已交付 | 见 §7.33 |
+| C2–C18 | 其余模块声明 `envDefinitions`（按「唯一 owner」判据：53 键迁出 + 6 键补齐） | 已交付 | 见 §7.32 |
 | 门禁 | precheck 步骤基线补正与 `db/` globs 覆盖 | 已交付 | `cb738e6c2` |
 
 ## 六、与计划的偏差
@@ -261,7 +261,8 @@ FK；identity 9 张已随任务 1.2 迁出，业务 40 张待迁）按包名语�
 2. **`ENV` 声明的 `secret` / `restartRequired`** 目前无任何消费者；补声明批次需明确这两个
    字段是「实现消费者」还是「保留并登记」，见 §八。
 3. **宿主 env schema 缺 2 键**（`GOTENBERG_URL`、`RCS_WORKFLOW_HMAC_SECRET`）：这两键由模块
-   声明、宿主未登记，补登记属 C 块范围（§八）。
+   声明、宿主未登记，补登记属 C 块范围（§八）。**已闭环（§7.32，2026-09-22）**：两键随 C 块由
+   knowledge / workflow 的 manifest 补齐 `envDefinitions`（同批还有 `LANGFUSE_*` 三键与 `YJS_MAX_CLIENTS`）。
 
 ## 七、交付记录
 
@@ -1999,6 +2000,67 @@ web-app-tests 319 pass / 0 fail。改动只涉及 7 个 `package.json` 与 `bun.
 
 **§8.4 第 5 条据此闭环。**
 
+### 7.32 1.7 C 块：53 个模块专属变量迁出宿主 env schema（2026-09-22，`0f822e61d`）
+
+**路线裁定**（用户四问，全选推荐项）：配置桥走**路线 A 的窄口径**——`envDefinitions` 只承担启动期校验与汇总，值仍由宿主 `bootstrap/module-configs.ts` 手工投影成模块配置，不引入通用拆分器、不改各模块 `config.ts` 的形态；收敛范围取「只迁**有唯一模块 owner** 的键」；宿主直读点只改与本次迁移直接相关的那些；收口以「不破既有测试」为限。
+
+**迁出面**：宿主 `apps/server/src/env.ts` 删 **53 键**（93 → 40）并同批删掉因之失效的 import（`255` → `164` 行）。44 个模块专属字段在 `config.ts` 改经 `readDeclaredEnv()` 取值，`module-configs.ts` 与 `host-startup.ts` 的直读点同批改。留在宿主的 40 键逐条有理由，已写入 `env.ts` 的维护者注释与 `config.ts` 的 `buildConfig` 说明：宿主自身运行参数（`RCS_VERSION` / `RCS_PORT` / `RCS_WS_IDLE_TIMEOUT` / `RCS_FILE_WS_*` 巡检与载荷上限 / `RCS_CCB_*` …）与**多模块共享或无唯一 owner 的键**——`RCS_DEFAULT_MACHINE_ID`（本包兜底 + machine 模块 + 宿主 core-bootstrap 三方消费）、`RCS_DEFAULT_ENGINE_TYPE`、`RCS_DISABLE_LOCAL_EXECUTION`（本包 `environment-orchestration.ts` 与 machine 的 `local-node-service.ts` 同时读）、`RCS_BASE_URL`、`RCS_REDIS_*`、`RCS_YJS_SNAPSHOT_*`（包内持久层直读）、`RCS_API_KEYS`（skill 下载 token 的 HMAC 签名，多消费面）等。**判据是「唯一 owner」而不是「包内专属」**：无唯一 owner 的键按裁定留在宿主，不属本块待办。
+
+**6 键是「补齐声明」而非迁移**——宿主 `env.ts` 从未声明，取值靠直读或 `??` 兜底：`GOTENBERG_URL`、`RCS_WORKFLOW_HMAC_SECRET`、`LANGFUSE_PUBLIC_KEY` / `LANGFUSE_SECRET_KEY` / `LANGFUSE_BASE_URL`（与已声明的 `HINDSIGHT_API_TOKEN` 同属 `services/pre-launch-ports.ts` 的同一个 `env:` 对象，原批漏声明）、`YJS_MAX_CLIENTS`（收口见 §7.33）。这一条同时闭环 §六「与计划的偏差」第 3 条（宿主 env schema 缺 2 键）。
+
+**同批修掉三处真实缺陷**（不是顺手改进，是迁移会引入或会因迁移而暴露的）：
+
+| # | 问题 | 修法 |
+|---|---|---|
+| 1 | **knowledge 两键的空串回归**：`RAGFLOW_API_URL` / `GOTENBERG_URL` 迁移前的取值实现是 `process.env.X \|\| "<默认>"`——`\|\|` 把空串当未设置。照抄 `.default()` 会让 `RAGFLOW_API_URL=` 由「回退默认地址」变成空字符串，`GOTENBERG_URL=` 更会撞模块配置的 `z.string().min(1)` 而拒绝启动 | 声明侧加 `z.preprocess((v) => (v === "" ? undefined : v), …)`，与宿主同名先例 `RCS_DEFAULT_MACHINE_ID` 同口径（docker-compose 的 `${VAR:-}` 在 .env 未设置时透传空串而非 undefined）。`RAGFLOW_API_KEY` 的 `.default("")` 保持原样：空串是「未配置 RAGFlow」这一真实部署状态的表达 |
+| 2 | **三处 `restartRequired` 与实现不符**：`HERMES_URL` / `HERMES_PLATFORMS` / `ACPX_G_URL` 声明的 `false` 暗示「改后无需重启」，但三者的消费点都是装配期读一次并固化——`host-startup.ts` 经 `readDeclaredEnv` 读一次后传进 `initHermesClient()`，之后 `resetHermesClient()` 重装配用的仍是那份启动期闭包值；`getWorkflowConfig()` 同理现取的是快照 | 三处改 `true`，与同文件的 `WORKFLOW_TOOLS_DIR` 一致 |
+| 3 | **`loadDeclaredEnv` 的校验失败消息不含键名**：逐值 `schema.parse(单值)` 让 zod 的 `issue.path` 恒为空数组，`error.message` 是整段 JSON，启动日志里看不到失败的是哪个键——而**声明键的启动期校验是唯一的失败点** | 新增 `describeParseFailure(key, moduleId, error)`：把键名与声明模块补回、逐条渲染 issue，并 `{ cause: error }` 保留结构化 issue 供调用方取回。由 `assembly-env.test.ts` 的「非法值被拒绝」两条断言首次暴露（原先断言 `/RCS_ACP_IDLE_TIMEOUT_SECONDS/` 收到的是 `"path": []` 的 JSON） |
+
+**测试面迁移**（迁出键的校验面必须跟着声明走，否则「声明在模块、校验无人执行」）：
+
+- `assembly-env.test.ts`：新增 3 条——声明键未设置时用模块声明的默认值、显式字符串值经 `z.coerce` 归一为数字、非法值在启动期被拒绝（断言错误文案含键名）。另新增**precheck 级护栏**「模块声明的键与宿主 `env.ts` schema 的键不相交」：用记录访问的 Proxy 当 `parseEnv` 的输入来枚举宿主 schema 实际读过的键集合（不写死清单——清单会随 `env.ts` 增删静默漂移，而漂移方向恰好是不可见的「漏报冲突」），再与真实 manifest 的声明键取交集。第二条用例改为「真实清单不改变宿主 schema 的任何键值」（逐值比较），冲突用例的载体从已迁出的 `WORKSPACE_ROOT` 换成 `RCS_PORT`。
+- `env-validation.test.ts`：删 3 行已迁出键的断言与 3 条并发上限用例（替换为指向 `assembly-env.test.ts` 的说明注释）——该文件用的是 `validateEnv()`（只跑宿主 schema），迁出键在那里永远取不到。
+- `config-system-admin-password.test.ts`：不再手写 27 个键，改为「真实清单 `parseEnv(...)` + 本用例要改的那一键」。
+
+**验证**（`0f822e61d` 提交前实测）：完整 `precheck` 15 步全绿——server / script 测试 808 通过、package 测试 8007 通过（2 跳过）、web-app 测试 319 通过；`architecture:check` 2145 文件 / 10 规则 / 5 条已登记例外；`generate:module-registry --check` 17 个 manifest 通过；`tsc --noEmit` 0 错误。
+
+### 7.33 1.7 C1：`WORKSPACE_ROOT` 收敛与 `YJS_MAX_CLIENTS` 经 options 注入（2026-09-22，本批）
+
+**触发**：§8.1 第 9 条（`workspace-resolver.ts` 直读 `process.env.WORKSPACE_ROOT`——server 装配面内**唯一**真违规）与第 15 条（`YJS_MAX_CLIENTS` 声明后引入的启动期收紧），两条同批落盘。
+
+**取证先行：实验否掉了原登记的修法及其归因。** §8.4 原记「machine 侧 10 个文件因 `initializeMachineModuleConfig` 只注册 `"machine"` 而抛『模块 agent-runtime 未声明应用基础设施配置』」。改读模块配置后实测的**真实破面是 5 条用例**（`fs-etag.test.ts` 的 8 条里 5 条红），而根因不是「配置没注册」，是**取数语义不同**：
+
+1. 根 `bunfig.toml` 的 `preload`（`setup-globals.ts` + `setup-mocks.ts`）作用于**全仓**测试，machine 包的 fs 用例跑在宿主 preload 下；`apps/server/src/test-utils/setup-mocks.ts` 的 `bindMachineHostPort({ resolveWorkspacePath, … })` 绑的正是 **agent-runtime 的 `resolveWorkspacePath`**（值来自 `@fenix/agent-runtime/server`）。也就是说 machine 侧的 workspace 根解析当时是**跨包复用**本包函数的。
+2. `@fenix/platform-sdk/testing` 的 `workspace-root-lock.ts` 明文要求「由 `resolveWorkspacePath` 在**每次调用时直读** `process.env.WORKSPACE_ROOT`」——它按用例把根切到 `mkdtemp` 目录再做进程级互斥，整套机制建立在这条前提上。
+3. 模块配置是**启动期快照**。即使给 machine 用例补注册 agent-runtime 配置，那 10 个 fs 文件的「按用例切根」也会**全部静默失效**（不是抛错，是全部指向同一个根、跨文件互相踩）——比抛错更危险。
+
+**裁定**（用户四问，选推荐项）：**拆开两种语义**，而不是把 machine 的测试基础设施拉齐。`resolveWorkspacePath` 承担了两个不同职责：
+
+| 职责 | 消费方 | 取数语义 |
+|---|---|---|
+| 包内请求路径解析 | `repositories/environment.ts`、`services/environment-web.ts`、`services/chat-channel-bootstrap.ts` | 读**模块配置** `workspaceRoot`（宿主启动期解析的绝对路径），与其余模块配置键同口径 |
+| Machine host port | 宿主装配 → machine 的 `workspace-fs` 越界校验 | **每次调用直读** `process.env.WORKSPACE_ROOT`（按**当前**根判定，不能按快照） |
+
+**改动面**：
+
+- `services/workspace-resolver.ts` 改读 `getAgentRuntimeConfig().workspaceRoot`，注释写明「不要再把它绑给 Machine 的 host port」及其原因。
+- **Machine host port 的根解析归宿主**：新增 `apps/server/src/bootstrap/workspace-path.ts` 的 `resolveWorkspacePathFromEnv()`，生产装配（`host-wiring.ts`）与宿主测试 preload（`setup-mocks.ts`）**共用同一份**——测试与生产的根语义因此逐字一致。函数体与迁移前的 agent-runtime 实现逐字相同（`process.env.WORKSPACE_ROOT ?? join(cwd, "workspaces")`，刻意不 `resolve()`），故 machine 侧行为零变化。
+- **公共契约变化**（本批唯一的跨包面变化，走用户裁定）：agent-runtime `src/server.ts` **删除** `resolveWorkspacePath` 的公开导出——宿主是它唯一的包外消费者，改用宿主实现后即成死代码；连同钉该导出可达性的 `workspace-resolver-runtime-export.test.ts` 一并删除（该用例的前提「宿主装配层经公开 server 边界取本包的 workspace 解析，用作 Machine 的 host port 实现」已不成立）。`agent-runtime/fenix.module.ts` 的 `WORKSPACE_ROOT` 声明注释与 `config.ts` 的「W2 已知分歧」段同批订正为已收口；machine 的 `host-port.ts` 则把「实现必须每次调用直读 env」写成契约本身。
+- `chat-channel-bootstrap.ts` 的 `maxClients` 由 `parseInt(process.env.YJS_MAX_CLIENTS || "", 10) || 200` 改为 `() => getAgentRuntimeConfig().yjsMaxClients`；`AgentRuntimeModuleConfig` 新增必填字段 `yjsMaxClients: number`（`z.number().int().positive()`，`strictObject` + `z.ZodType` 标注让「接口加字段而 schema 没加」在编译期报错），宿主 `module-configs.ts` 经 `readDeclaredEnv(env, "YJS_MAX_CLIENTS")` 投影，`createAgentRuntimeModuleConfig` 夹具补 `yjsMaxClients: 200`（宿主 preload 的基线随之齐全）。闭包保持**惰性**：`defaultDeps` 是模块级常量，装配期求值会撞「基础设施尚未初始化」。
+
+**行为变化（登记）**：
+
+| 变化 | 影响与判据 |
+|---|---|
+| `resolveWorkspacePath` 的根不再直读 env | 生产等价：宿主 `config.workspaceRoot` = `resolve(readDeclaredEnv(WORKSPACE_ROOT) ?? "./workspaces")`，原实现不 `resolve()`——仅当 `WORKSPACE_ROOT` 传**相对路径**时解析基准由「保持相对」变为「按 cwd 绝对化」，宿主侧更规范，且 `.env.example` / docker-compose 传的都是绝对路径或未设置。测试语义**有意**变化：包内路径解析不再跟随进程级 env 切换（这正是 machine host port 拆分出去的原因） |
+| `YJS_MAX_CLIENTS` 非法值拒绝启动 | 原先静默回落到 200、负值被原样接受；现由启动期 schema（`z.coerce.number().int().positive()`）拒绝。§8.1 第 15 条据此闭环——若部署侧确需兼容旧输入，应在模块 schema 内用 `z.preprocess` 归一而不是放宽校验 |
+
+**测试**：`workspace-resolver.test.ts` 4 条改写为经 `initializeAgentRuntimeModuleConfig({ workspaceRoot })` 装配配置后断言（新增「按模块配置的 workspaceRoot 拼接路径」一条，保留三段标识的组合唯一性断言；不再改 `process.env`，也不再需要根锁——同步窗口内的纯路径断言本就在锁契约的豁免面内）；machine 侧 **10 个 fs 文件一行未动**，这是拆分的直接收益。
+
+**验证**：`bun run typecheck` 0 错误；专项——machine 包 551 通过 / 0 失败、agent-runtime 包 492 / 0、chat-channel 包 651 / 0、宿主 `apps/server/src/__tests__/` 641 / 0。完整 `precheck` **15 步全绿（88.9s）**：server / script 测试 808 通过、package 测试 **8006 通过（2 跳过）**、web-app 测试 319 通过——package 计数比 §7.32 少 1 条，正是被删除的 `workspace-resolver-runtime-export.test.ts`（该文件只有 1 条可达性断言）。
+
+**§8.4 的「C 块」段据此订正**：原记的「machine 侧 10 个文件破测」是按已被否掉的方案（让 machine 也初始化 agent-runtime 配置）估的控制面文件数，真实破面与根因见上。
+
 ## 八、已知缺口与未完成项（逐条登记 owner 与移除条件）
 
 > 依据 `ce-ee-engineering-standards.md` §10.7.4：边界豁免与依赖残留必须逐条登记并写明 owner
@@ -2016,7 +2078,7 @@ web-app-tests 319 pass / 0 fail。改动只涉及 7 个 `package.json` 与 `bun.
 | 6 | 数据迁移自身无锁/租约：release job 并行重试时两个进程可并发（完成记录表使其**大体**幂等，但 skill 文件复制不是） | §6.3 claim 状态机 | 实现 claim 状态机（§8.2） |
 | 7 | 工作流节点不再继承宿主环境变量（§10.6.3 的既定方向）。依赖宿主变量的既有工作流会失效 | 已交付的行为变化 | 补偿通道：节点 `env` / `secrets` 字段显式声明 |
 | 8 | `EnvDefinition` 的 `secret` / `restartRequired` 无任何消费者 | C 块 | 见 §8.4 |
-| 9 | `packages/agent-runtime/src/server/services/workspace-resolver.ts:9` 直读 `process.env.WORKSPACE_ROOT`——server 装配面内**唯一**真违规 | C 块 | 见 §8.4 |
+| 9 | ~~`packages/agent-runtime/src/server/services/workspace-resolver.ts:9` 直读 `process.env.WORKSPACE_ROOT`——server 装配面内**唯一**真违规~~ **已闭环（§7.33，2026-09-22）**：resolver 改读模块配置的 `workspaceRoot`；Machine host port 的根解析拆给宿主 `bootstrap/workspace-path.ts`（那份直读 env 是 workspace 根锁的契约要求，不属违规面），agent-runtime 的公开导出与钉它的用例一并删除 | 已交付 | 见 §7.33 |
 | 10 | 环境变量整段继承的残余：不传 `env` 的隐式继承 10 处、`docker/sandbox-dsh/scripts/dsh-acp-wrapper.js`、`apps/server/src/services/agent-generation.ts:63` 的 `new OpenAI()` 隐式读 `OPENAI_API_KEY` | 1.7 剩余 | 逐处改为白名单或显式注入；`new OpenAI()` 改由注入配置构造 |
 | 11 | ~~**`model-management` 没有 source-migration 契约测试**（machine / mcp / sandbox / agent-config / workflow / task 六个包均有），因此 §4.7.1 ③ 的「残留数 > 0」正向控制在 B3 无从收缩，该包与宿主的边界在测试层无人守护（只靠 `apps-boundary` 台账 + `check:dependencies`）~~ **已闭环（§7.26，2026-09-22）**：补 `src/__tests__/model-management-source-migration.test.ts`（10 用例），断言为零容忍「包内不存在宿主 `@server` 导入」+ 宿主别名 / 穿透相对路径 / 跨包 `db` 出口，正向控制改用 `@fenix/platform-sdk`、包内相对导入与本包 `db` 出口自我引用三条必然存在的说明符 | 已交付 | 变异实验已验证判别力：注入一条 `import { db } from "@server/db"` 即让该用例单独转红，删除后复绿 |
 
@@ -2024,7 +2086,7 @@ web-app-tests 319 pass / 0 fail。改动只涉及 7 个 `package.json` 与 `bun.
 | 13 | **文档路径过期（本批扫描暴露，非本批引入）**：`docs/need-to-change/*` 的大量实现路径（`src/routes/**`、`src/services/**`、`src/repositories/**`）仍按阶段 1 之前的宿主布局书写，行号同样失效（§7.27 只补了路径口径说明与被迁表的 4 处注记）；`FUNCTIONAL_MODULE_INVENTORY.md` 多处仍指向 `packages/resources/identity-admin/**`（该包已随任务 1.2 删除）。同族第 3 条（`scripts/root-source-owner-rules.ts` 的说明文本）已单列 | 1.8（文档全量更新） | 逐篇按当前布局订正路径，或为该类文档加统一的口径声明并停止在正文承载体现在代码里的行号 |
 | 14 | **包级 tsconfig 不在任何门禁内（§7.28 顺带发现，非本批引入）**：`precheck` 的 tsc 步骤只跑 server / web / app skeletons，`tsc -p packages/<pkg>/tsconfig.json` 无人执行。`agent-runtime` 实测：`tsconfig.json` 的 `baseUrl` 已弃用（TS5101，整体失败），`--ignoreDeprecations 6.0` 后仍有 26 条既有错误（`res.json()` 类型为 `unknown`、`InstanceSupplement` 断言不重叠、`web/yjs/yjs-ws.ts` 缺 DOM lib、`chat-channel-bootstrap.test.ts` 找不到 `../transport/ws-types`）。与第 2 条（根 `scripts/` 不在 `include` 内）同族 | 1.8（测试入口与 CI 目录扫描） | 把各包 tsconfig 纳入静态检查，或明确登记「只检查三张宿主 tsconfig」为接受的口径；并入第 2 条同批处理 |
 
-| 15 | **`YJS_MAX_CLIENTS` 声明后引入启动期收紧（C 块，本批引入）**：该键原先只在 `chat-channel-bootstrap.ts` 以 `parseInt(process.env.YJS_MAX_CLIENTS, 10)` 兜底到 200 的方式直读——非法值静默回落到 200、负值被原样接受。迁入 `agent-runtime` 的 `envDefinitions` 后改由 `loadServerEnv()` 在启动期按 schema 校验，非法值将**拒绝启动**。这是「不留已知缺陷」的应然方向，但属可观测的行为变化，故登记 | C 块 | 与 C1「`YJS_MAX_CLIENTS` 改为经 options 注入」同批落盘；若部署侧确需兼容旧输入，应在模块 schema 内用 `z.preprocess` 归一而不是放宽校验 |
+| 15 | **`YJS_MAX_CLIENTS` 声明后引入启动期收紧（C 块，本批引入）**：该键原先只在 `chat-channel-bootstrap.ts` 以 `parseInt(process.env.YJS_MAX_CLIENTS, 10)` 兜底到 200 的方式直读——非法值静默回落到 200、负值被原样接受。迁入 `agent-runtime` 的 `envDefinitions` 后改由 `loadServerEnv()` 在启动期按 schema 校验，非法值将**拒绝启动**。这是「不留已知缺陷」的应然方向，但属可观测的行为变化，故登记 | C 块 | 与 C1「`YJS_MAX_CLIENTS` 改为经 options 注入」同批落盘；若部署侧确需兼容旧输入，应在模块 schema 内用 `z.preprocess` 归一而不是放宽校验。**已闭环（§7.33，2026-09-22）**：`chat-channel-bootstrap.ts` 改经 `AgentRuntimeModuleConfig.yjsMaxClients` 取数，启动期 schema 收紧随之生效 |
 
 ### 8.2 1.7 未完成条目（本档位不做）
 
@@ -2053,9 +2115,12 @@ migration smoke（空库 + 真实历史升级库）、`deploy-preflight`、readi
 | 7 | ~~**B7 前置：`agent-runtime` 在查询期 LEFT JOIN `agent_config`**（`services/environment-orchestration.ts`、`services/environment-web.ts`）。`agent_config` 迁出后该导入命中 `.dependency-cruiser.cjs:74-90` 的 `agent-runtime-not-to-resources`（其 `pathNot` 只排除 `packages/agent-runtime/db/` 与 `packages/resources/(machine\|sandbox)/`），而 `check-architecture` 拦不住它。按 §4.8 第 4 条应改为经 agent-config 公开入口取投影（若 `agent-runtime → agent-config` 的包级边不被装配方向允许，则退回宿主注入端口），但 LEFT JOIN → 批量投影查询是一次独立设计（且要避免 N+1）~~ **已闭环（§7.19，2026-09-22）**：两个查询改经宿主注入的 `AgentConfigLookupPort`（新增 `findAgentConfigExecutionFields` / `findAgentConfigNamesByIds` 两个只读投影方法）批量取投影，无 N+1 | 已交付 | 宿主**零文本改动**：接口扩展只落在 agent-config 的实现（`services/agent-config-lookup.ts`）与 agent-runtime 的端口定义上，`apps/server/src/bootstrap/host-startup.ts` / `services/pre-launch-ports.ts` 均未改动（实现对象原地满足扩展后的契约） |
 | 8 | ~~**D4 裁定（3 张 join 表归 agent-config）与现有实现冲突。** `agent_config_mcp` 已由 mcp 包自持（`mcp/src/server/services/config/agent-config-mcp.ts`，文件头自述「MCP 包自持」），`agent_config_skill` 同理由 skill 包持有，唯一的读者是各自包内文件。按 D4 迁到 agent-config 会让 mcp / skill 反向导入 `@fenix/agent-config/db`：两者都未声明该包（触发 `undeclared-workspace-dependency`），且 `agent-config → mcp`（7 处）、`agent-config → skill`（9 处）已存在，各自闭合一条**新环**。这是 D4 裁定当时未计入的成本。**B2 实测佐证**（§7.11）：mcp 包的 `agent_config_mcp` 读写口径已由该包自己的 `./server/config` 出口公开，且 B2 迁表后它是该包**唯一**残留的宿主表读取——按 D4 迁走会让这个出口失去唯一内容~~ **已闭环（§7.19，2026-09-22）：维持 D4，三张 join 表全归 agent-config。**冲突的根源是 B2 / B5 期间的「各包自持」中间态，不是 D4 本身——`mcp ↔ agent-config` 与 `skill ↔ agent-config` 反向声明之所以会成环，是因为关联表若留在 mcp / skill 侧，其 `agent_config_id` 外键必须组装期导入本包表对象；表随聚合根进来则零新边、零新环 | 已交付 | — |
 
-**C 块**：C1 的已知破测（`workspace-resolver.test.ts` 4 条、machine 侧 10 个文件因
-`initializeMachineModuleConfig` 只注册 `"machine"` 而抛「模块 agent-runtime 未声明应用基础设施配置」）
-尚未处理；宿主 env schema 缺 `GOTENBERG_URL` / `RCS_WORKFLOW_HMAC_SECRET` 两键（C2 补）。
+**C 块**：C1 与 C2–C18 均已交付（§7.33 / §7.32）。按「只迁有唯一模块 owner 的键」这一裁定，宿主 env
+schema 里符合判据的模块专属键已全部迁出（53 键），宿主余下 40 键逐条有留在宿主的理由（宿主自身参数 / 多模块
+共享 / 无唯一 owner，见 §7.32）；宿主 env schema 缺的 `GOTENBERG_URL` / `RCS_WORKFLOW_HMAC_SECRET` 两键已由
+各模块 manifest 补齐声明。**原登记的「machine 侧 10 个文件因 `initializeMachineModuleConfig` 只注册
+`"machine"` 而抛错」经实验证伪并订正**：真实破面是 5 条 fs 用例，根因是取数语义不同（host port 需要每次
+直读 env，模块配置是启动期快照），按「拆开两种语义」收口后 machine 侧零文件改动，见 §7.33。
 
 ### 8.5 边界豁免与依赖残留（§10.7.4）
 

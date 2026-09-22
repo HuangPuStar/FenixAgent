@@ -54,6 +54,7 @@ export function buildModuleConfigs(env: ServerEnv, config: AppConfig): Readonly<
       baseUrl,
       acpRegistrySecret: readDeclaredEnv<string>(env, "REGISTRY_SECRET"),
       fileWsMaxPayloadMb: env.RCS_FILE_WS_MAX_PAYLOAD_MB,
+      yjsMaxClients: readDeclaredEnv<number>(env, "YJS_MAX_CLIENTS"),
     },
     // 机器模块配置：远程机器兜底 ID 与 file-ws 治理参数，全部来自宿主已校验的 env/config。
     machine: {

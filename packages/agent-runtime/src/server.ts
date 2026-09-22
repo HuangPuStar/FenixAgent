@@ -132,7 +132,6 @@ export {
   getSessionEventBusPort,
   resetSessionEventBusPort,
 } from "./server/services/session-event-bus-port"; // 宿主注入·会话事件总线
-export { resolveWorkspacePath } from "./server/services/workspace-resolver"; // 宿主取用·workspace 路径解析（宿主绑给 Machine 的 host port；1.4 W5 后 Machine 已不依赖本包）
 export {
   bindAcpInstanceActivityPort,
   findMachineConnectionById,

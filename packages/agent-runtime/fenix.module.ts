@@ -50,13 +50,16 @@ const REGISTRY_SECRET_DEFAULT = "rcs-registry-secret";
  *    消费方只有本模块的实例生命周期、`acp-ws-handler` 与 chat-channel 装配（`chat-channel-bootstrap`）。
  * 2. **环境解析与协议入口的部署值**——`REGISTRY_SECRET`（`/acp/*` 接入方共享密钥，唯一消费者是 `/acp/*`
  *    协议入口）与 `WORKSPACE_ROOT`（workspace 根目录）。`WORKSPACE_ROOT` 同时是 review §8.1 第 9 条登记的
- *    server 装配面内唯一真违规点（`services/workspace-resolver.ts` 直读 `process.env`），本批**只声明**：
- *    resolver 改读模块配置、宿主 `config.ts` 的派生下沉，由主控在整合阶段处理。为此它的形状保持与宿主
- *    原行等价（`optional()`，**不**收紧为 `min(1)`——空串行为变化需单独裁定）。
- * 3. **补齐声明**——`YJS_MAX_CLIENTS`：宿主 schema 从未声明此键，唯一读取点是 `chat-channel-bootstrap.ts`
- *    的 `parseInt(process.env.YJS_MAX_CLIENTS || "", 10) || 200` 直读。声明它带来一处已知行为差异：现状下
- *    非法值静默回落到 200、负值被原样接受，声明后非法值将在启动期校验失败。该差异已登记在 review
- *    `task-1.7-db-config-migration.md` §8.1 第 15 条（owner C 块），与「改为经 options 注入」同批收口。
+ *    server 装配面内唯一真违规点，已随 1.7 C1 收口：`services/workspace-resolver.ts` 改读模块配置的
+ *    `workspaceRoot`，宿主 `config.ts` 的派生经 `readDeclaredEnv`。形状保持与宿主原行等价（`optional()`，
+ *    **不**收紧为 `min(1)`——空串行为变化需单独裁定）。宿主另有一份**直读** `process.env.WORKSPACE_ROOT`
+ *    的实现（`apps/server/src/bootstrap/workspace-path.ts`）绑给 Machine 的 host port，那份直读是契约要求
+ *    （`@fenix/platform-sdk/testing` 的 workspace 根锁按用例切根），不在本条的违规面内。
+ * 3. **补齐声明**——`YJS_MAX_CLIENTS`：宿主 schema 从未声明此键，原先唯一读取点是 `chat-channel-bootstrap.ts`
+ *    的 `parseInt(process.env.YJS_MAX_CLIENTS || "", 10) || 200` 直读，已随 1.7 C1 改为经模块配置注入
+ *    （`AgentRuntimeModuleConfig.yjsMaxClients`）。声明带来一处已知行为差异：原先非法值静默回落到 200、
+ *    负值被原样接受，声明后非法值在启动期校验失败——该差异登记在 review
+ *    `task-1.7-db-config-migration.md` §8.1 第 15 条，现已随收口同批生效。
  *    值仍在装配期被读一次并固化，`restartRequired: true` 与其余键口径一致。
  *
  * 默认值语义逐键照抄宿主原文，不做「顺手改进」：`optional()` 无默认值的键（并发总量上限、定时并发上限、
@@ -152,7 +155,7 @@ export const moduleManifest = {
       secret: false,
       restartRequired: true,
       description:
-        "chat-channel YJS WebSocket 的最大并发连接数；默认 200。宿主 schema 原本未声明此键（唯一读取点是 chat-channel-bootstrap 的直读），本批补齐：非法值由「静默回落默认」变为启动期校验失败、负值不再被接受。",
+        "chat-channel YJS WebSocket 的最大并发连接数；默认 200。宿主 schema 原本未声明此键（原唯一读取点是 chat-channel-bootstrap 的直读，1.7 C1 起改为经模块配置注入），本批补齐：非法值由「静默回落默认」变为启动期校验失败、负值不再被接受。",
     },
     // ── 环境解析与协议入口的部署值 ──
     {
@@ -172,7 +175,7 @@ export const moduleManifest = {
       secret: false,
       restartRequired: true,
       description:
-        "workspace 根目录；未配置时回落到宿主按运行目录解析的 workspaces（工作区路径公式的根）。本批只声明，形状与宿主原行等价（optional，未收紧为 min(1)）。",
+        "workspace 根目录；未配置时回落到宿主按运行目录解析的 workspaces（工作区路径公式的根）。形状与宿主原行等价（optional，未收紧为 min(1)）；1.7 C1 起由 services/workspace-resolver.ts 经模块配置消费。",
     },
   ],
   contributions: [

@@ -28,11 +28,11 @@ import * as z from "zod/v4";
  * `@fenix/resource-machine`，为一个字符串引入新的跨包边不在本任务授权内。宿主是唯一取数点，两款模块配置各持
  * 一份自己的切片，不构成两处 env 解析。
  *
- * 已知分歧（W2 记录，不在本任务修）：`server/services/workspace-resolver.ts` 仍直读 `process.env.WORKSPACE_ROOT`。
- * 它与本配置的 `workspaceRoot` 是同一个部署值的两处取数点，宿主解析规则一致（`WORKSPACE_ROOT ?? cwd/workspaces`）。
- * 未随 W2 收敛的原因是该函数被 machine / chat-channel 两个包及其大量测试直接复用（12+ 文件），改读模块配置
- * 需要这些包的测试进程一并初始化基础设施，超出 1.4 的范围。移除条件：这些包的测试基础设施补齐模块配置注入后
- * 统一改读 `getAgentRuntimeConfig().workspaceRoot`。
+ * 「`workspace-resolver` 直读 `process.env.WORKSPACE_ROOT`」这条 W2 已知分歧已在 1.7 C1 收口：
+ * `server/services/workspace-resolver.ts` 改读本配置的 `workspaceRoot`。收口方式不是「让 machine 的测试也
+ * 初始化本模块配置」，而是**拆开两种语义**——机器侧的 host port 要求每次调用直读 `WORKSPACE_ROOT`
+ * （`@fenix/platform-sdk/testing` 的 workspace 根锁按用例切根，读配置快照会让锁静默失效），该实现因此归宿主
+ * `apps/server/src/bootstrap/workspace-path.ts`，本包不再向 Machine 导出 `resolveWorkspacePath`。
  *
  * 这些字段暂由宿主直接提供，而不是走模块 `envDefinitions`（声明、校验与 preflight 收敛归任务 1.7）。
  */
@@ -61,6 +61,8 @@ export interface AgentRuntimeModuleConfig {
   readonly acpRegistrySecret: string;
   /** file-ws 单帧最大载荷（MB）。 */
   readonly fileWsMaxPayloadMb: number;
+  /** `/yjs/*` 的连接上限（`YJS_MAX_CLIENTS`）；超限关闭新连接并回 `too_many_connections`。 */
+  readonly yjsMaxClients: number;
   /** 本地执行的默认引擎类型（`RCS_DEFAULT_ENGINE_TYPE`）；缺省时调用方回退 `"opencode"`。 */
   readonly defaultEngineType?: string;
   /** 平台对外基址（宿主 `getBaseUrl()` 的已解析结果），注入 launch spec 的 `USER_META_BASE_URL`。 */
@@ -89,6 +91,7 @@ const AgentRuntimeModuleConfigSchema: z.ZodType<AgentRuntimeModuleConfig> = z.st
   workspaceRoot: z.string().min(1),
   acpRegistrySecret: z.string().min(1),
   fileWsMaxPayloadMb: z.number().int().positive(),
+  yjsMaxClients: z.number().int().positive(),
   defaultEngineType: z.string().min(1).optional(),
   baseUrl: z.string().min(1),
 });

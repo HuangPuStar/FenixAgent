@@ -3,7 +3,9 @@
 // 为什么需要这一层：Machine 包依赖三类只存在于宿主运行时的能力——
 //   1. workspace 根路径：`WORKSPACE_ROOT` 是跨包共享的进程级配置，读取归宿主与平台契约
 //      （`@fenix/platform-sdk/testing` 的 workspace 根锁即建立在这一前提上：只有本包参与互斥
-//      等于没有锁，别的包的文件照旧改根）；
+//      等于没有锁，别的包的文件照旧改根）。1.7 C1 起宿主直接绑定自己的解析实现
+//      （`apps/server/src/bootstrap/workspace-path.ts`），不再经 agent-runtime 转发——那条路径读的是
+//      启动期配置快照，会让「每次调用直读 env」的根锁失效；
 //   2. Core runtime 的远端节点注册表：单例由宿主装配，包内自行构造会出现两套节点状态；
 //   3. file-ws 连接索引与断连清理：索引的 owner 在 agent-runtime 的 acp-ws 侧，本包只消费。
 //
@@ -29,7 +31,13 @@ export type MachineRuntimeNodeHandle = object;
 
 /** Machine 包的宿主运行态契约。 */
 export interface MachineHostPort {
-  /** 计算环境隔离的 workspace 根路径 `{WORKSPACE_ROOT}/{organizationId}/{userId}/{environmentId}`。 */
+  /**
+   * 计算环境隔离的 workspace 根路径 `{WORKSPACE_ROOT}/{organizationId}/{userId}/{environmentId}`。
+   *
+   * 实现必须**每次调用直读** `process.env.WORKSPACE_ROOT`（宿主绑的是
+   * `apps/server/src/bootstrap/workspace-path.ts`，1.7 C1 起不再复用 agent-runtime 的同名函数）：fs 用例
+   * 经 workspace 根锁按用例把根切到 `mkdtemp` 目录，读启动期配置快照会让锁静默失效。
+   */
   resolveWorkspacePath(organizationId: string, userId: string, environmentId: string): string;
 
   /** Core runtime 中该机器的远端节点；未注册返回 null。 */

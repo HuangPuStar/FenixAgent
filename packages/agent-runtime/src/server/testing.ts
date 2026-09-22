@@ -125,6 +125,7 @@ export function createAgentRuntimeModuleConfig(
     baseUrl: "http://stub.invalid",
     acpRegistrySecret: "test-acp-registry-secret",
     fileWsMaxPayloadMb: 32,
+    yjsMaxClients: 200,
     ...overrides,
   };
 }

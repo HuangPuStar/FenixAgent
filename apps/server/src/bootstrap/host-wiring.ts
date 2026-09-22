@@ -13,7 +13,6 @@ import {
   getAgentNodeService,
   getAllEventBuses,
   removeEventBus,
-  resolveWorkspacePath,
   triggerMachineCleanupByMachineId,
 } from "@fenix/agent-runtime/server";
 import { createIdentityDirectory } from "@fenix/identity/server";
@@ -45,6 +44,7 @@ import { getRedisConnection } from "../services/cache";
 import { getCoreRuntime, registerRemoteNode, unregisterRemoteNode } from "../services/core-bootstrap";
 import { registerMetaAgentModelResolver } from "./meta-agent-model-resolver";
 import { buildModuleConfigs } from "./module-configs";
+import { resolveWorkspacePathFromEnv } from "./workspace-path";
 
 /**
  * 宿主运行态接线（启动序列的「装配期一次性接线」段）。
@@ -102,7 +102,9 @@ export function wireHostRuntime(env: ServerEnv, appConfig: AppConfig): HostWirin
   // Machine 包的宿主运行态：workspace 根、Core runtime 节点、file-ws 连接索引与断连清理都是宿主进程级单例，
   // 包不反向导入 agent-runtime 取值，改由这里一次绑定（未装配时包内调用即失败，不隐式回退）。
   bindMachineHostPort({
-    resolveWorkspacePath,
+    // workspace 根归宿主解析（`./workspace-path`）：机器侧要求每次调用直读 `WORKSPACE_ROOT`，与 agent-runtime
+    // 包内读配置快照的 `resolveWorkspacePath` 是两种语义，1.7 C1 起分开（见该文件的说明）。
+    resolveWorkspacePath: resolveWorkspacePathFromEnv,
     // Core runtime 单例归宿主（`./services/core-bootstrap`），此处只暴露「按 machineId 查节点」的窄视图。
     getCoreRuntimeNode: (machineId) => getCoreRuntime().getNode(machineId),
     unregisterCoreRuntimeNode: unregisterRemoteNode,
