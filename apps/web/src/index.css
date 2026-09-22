@@ -20,6 +20,11 @@
     "Microsoft YaHei", Arial, sans-serif;
   --font-mono: ui-monospace, "Cascadia Code", "Fira Code", "JetBrains Mono", Menlo, monospace;
 
+  /* Font size — Tailwind 默认刻度最小到 xs(12px)，10px 档是本仓库自有的更小一级。
+     只给字号不给 --text-3xs--line-height：带行高会让 text-3xs 附带 line-height 声明，
+     与它替换掉的 text-[10px]（只有 font-size）不等价，属视觉变更。 */
+  --text-3xs: 10px;
+
   /* Brand — Nexus Indigo */
   --color-brand: #1677ff;
   --color-brand-light: #4096ff;
