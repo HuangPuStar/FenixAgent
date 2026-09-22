@@ -288,14 +288,19 @@ const SLICES = [
   {
     name: "C 资源库与知识区",
     cssFiles: ["agent-editor-library.css", "agent-editor-knowledge.css"],
-    tsxFiles: ["AgentResourcePicker.tsx", "AgentKnowledgeSection.tsx", "agent-editor-controls.tsx"],
+    tsxFiles: [
+      "AgentResourcePicker.tsx",
+      "AgentKnowledgeSection.tsx",
+      "agent-editor-controls.tsx",
+      "agent-editor-library-classes.ts",
+    ],
   },
 ] as const;
 
 /** 迁移完成后唯一允许保留的样式表：关键帧 + 登记过的宿主钩子（两者都无法用工具类表达）。 */
 const RETAINED_FILE = "agent-editor-retained.css";
 /** 保留文件里唯一登记的宿主钩子选择器（`.agent-panel-body` 由宿主 `apps/web` 渲染，见文件注释）。 */
-const RETAINED_HOST_HOOK = ".agent-panel-body {";
+const RETAINED_HOST_HOOK = ".agent-panel-body";
 
 /** 冻结刻度：八档 + 窄屏图标化按钮的 0。 */
 const SCALE = [8, 10, 11, 12, 13, 14, 16, 17, 18];
@@ -415,6 +420,7 @@ const SCAN_FILES = [
   "AgentResourcePicker.tsx",
   "agent-editor-classes.ts",
   "agent-editor-form-classes.ts",
+  "agent-editor-library-classes.ts",
   "agent-editor-controls.tsx",
 ] as const;
 
@@ -679,11 +685,11 @@ describe("Agent Editor：Tailwind 迁移与字号刻度", () => {
     // 保留文件只能是 @keyframes + 那一条宿主钩子：出现其它选择器规则就说明有声明没迁完。
     const css = readFileSync(join(EDITOR_DIR, RETAINED_FILE), "utf8").replace(/\/\*[\s\S]*?\*\//g, "");
     expect(css).toContain("@keyframes agent-editor-section-enter");
-    const ruleHeads = css
-      .split("\n")
-      .map((line) => line.trim())
-      .filter((line) => line.endsWith("{") && !line.startsWith("@"))
-      .filter((line) => !/^(from|to|\d+%)/.test(line));
+    // 规则头按「`{` 之前的片段」取，而不是按「以 `{` 结尾的行」——单行规则
+    // （`.agent-editor-panel { color: red; }`）会从行尾判定里漏掉（红证时实测到过这个盲区）。
+    const ruleHeads = [...css.replace(/@keyframes[\s\S]*?\n\}/g, "").matchAll(/(?:^|\})\s*([.#a-zA-Z[][^{}@]*?)\s*\{/g)]
+      .map((match) => match[1].trim())
+      .filter((head) => !/^(from|to|\d+%)/.test(head));
     expect([...new Set(ruleHeads)]).toEqual([RETAINED_HOST_HOOK]);
   });
 

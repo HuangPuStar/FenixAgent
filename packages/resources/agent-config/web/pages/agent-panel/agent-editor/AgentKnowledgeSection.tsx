@@ -8,6 +8,23 @@ import { AgentResourcePicker } from "./AgentResourcePicker";
 import { SECTION } from "./agent-editor-classes";
 import { EditorStepperField, EditorTextarea, Field, Intro } from "./agent-editor-controls";
 import { DEFAULT_NAMESPACES_TEXTAREA, RETRIEVAL_OPTIONS_FIELDS } from "./agent-editor-form-classes";
+import {
+  DEFAULT_NAMESPACES,
+  KNOWLEDGE_BASES_PICKER,
+  KNOWLEDGE_BLOCK,
+  KNOWLEDGE_BODY,
+  KNOWLEDGE_BODY_BASES,
+  KNOWLEDGE_HEADING,
+  KNOWLEDGE_LAYOUT,
+  KNOWLEDGE_SWITCH,
+  KNOWLEDGE_SWITCH_KNOB,
+  KNOWLEDGE_SWITCH_KNOB_ON,
+  KNOWLEDGE_SWITCH_ON,
+  KNOWLEDGE_SWITCH_TRACK,
+  KNOWLEDGE_SWITCH_TRACK_ON,
+  RETRIEVAL_FIELDS,
+  RETRIEVAL_OPTIONS,
+} from "./agent-editor-library-classes";
 import type { AgentEditorValues } from "./agent-editor-model";
 import type { AgentEditorData } from "./use-agent-editor";
 
@@ -22,24 +39,26 @@ function KnowledgeBlock({
   title,
   description,
   className,
+  bodyClassName,
   children,
 }: {
   icon: ReactNode;
   title: string;
   description: string;
   className?: string;
+  bodyClassName?: string;
   children: ReactNode;
 }) {
   return (
-    <div className={`agent-knowledge-block${className ? ` ${className}` : ""}`}>
-      <header className="agent-knowledge-block__heading">
+    <div className={cn(KNOWLEDGE_BLOCK, className)}>
+      <header className={KNOWLEDGE_HEADING} data-slot="editor-knowledge-heading">
         <span>{icon}</span>
         <div>
           <strong>{title}</strong>
           <small>{description}</small>
         </div>
       </header>
-      <div className="agent-knowledge-block__body">{children}</div>
+      <div className={cn(KNOWLEDGE_BODY, bodyClassName)}>{children}</div>
     </div>
   );
 }
@@ -65,7 +84,8 @@ function CompactSwitch({
       role="switch"
       aria-checked={checked}
       disabled={disabled}
-      className={`agent-knowledge-switch${checked ? " is-on" : ""}`}
+      className={cn(KNOWLEDGE_SWITCH, checked && KNOWLEDGE_SWITCH_ON)}
+      data-on={checked ? "true" : undefined}
       onClick={() => onChange(!checked)}
     >
       <span>
@@ -75,8 +95,8 @@ function CompactSwitch({
         </strong>
         <small>{description}</small>
       </span>
-      <i aria-hidden="true">
-        <b />
+      <i className={cn(KNOWLEDGE_SWITCH_TRACK, checked && KNOWLEDGE_SWITCH_TRACK_ON)} aria-hidden="true">
+        <b className={cn(KNOWLEDGE_SWITCH_KNOB, checked && KNOWLEDGE_SWITCH_KNOB_ON)} />
       </i>
     </button>
   );
@@ -91,7 +111,7 @@ export function AgentKnowledgeSection({ form, data, disabled }: AgentKnowledgeSe
         title={t("editor.sections.knowledge")}
         description={t("editor.sectionDescriptions.knowledge")}
       />
-      <div className="agent-knowledge-layout">
+      <div className={KNOWLEDGE_LAYOUT}>
         {data.hindsightEnabled && (
           <KnowledgeBlock icon={<Brain />} title={t("memory.enableTitle")} description={t("memory.enableDescription")}>
             <Controller
@@ -115,13 +135,14 @@ export function AgentKnowledgeSection({ form, data, disabled }: AgentKnowledgeSe
           icon={<Database />}
           title={t("knowledge.bindTitle")}
           description={t("editor.knowledgeBaseDescription")}
-          className="agent-knowledge-block--bases"
+          bodyClassName={KNOWLEDGE_BODY_BASES}
         >
           <Controller
             name="knowledgeBaseIds"
             control={form.control}
             render={({ field }) => (
               <AgentResourcePicker
+                className={KNOWLEDGE_BASES_PICKER}
                 label={t("knowledge.bindTitle")}
                 options={data.knowledgeBases}
                 value={field.value}
@@ -137,17 +158,17 @@ export function AgentKnowledgeSection({ form, data, disabled }: AgentKnowledgeSe
           title={t("editor.retrievalPolicy")}
           description={t("editor.retrievalPolicyDescription")}
         >
-          <div className="agent-retrieval-fields">
+          <div className={RETRIEVAL_FIELDS}>
             <Field label={t("knowledge.defaultNamespaces")} hint={t("knowledge.defaultNamespacesDescription")}>
               <EditorTextarea
-                className={DEFAULT_NAMESPACES_TEXTAREA}
+                className={cn(DEFAULT_NAMESPACES_TEXTAREA, DEFAULT_NAMESPACES)}
                 id="agent-editor-default-namespaces"
                 disabled={disabled}
                 placeholder={t("knowledge.defaultNamespacesPlaceholder")}
                 {...form.register("defaultNamespaces")}
               />
             </Field>
-            <div className={cn("agent-retrieval-options", RETRIEVAL_OPTIONS_FIELDS)}>
+            <div className={cn(RETRIEVAL_OPTIONS, RETRIEVAL_OPTIONS_FIELDS)}>
               <Controller
                 name="searchFirst"
                 control={form.control}

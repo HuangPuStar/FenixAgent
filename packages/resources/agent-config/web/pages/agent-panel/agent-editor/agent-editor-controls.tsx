@@ -46,6 +46,17 @@ import {
   TOGGLE_ROW,
   TOGGLE_SWITCH,
 } from "./agent-editor-form-classes";
+import {
+  GROUP_FILTER,
+  GROUP_FILTER_BUTTON,
+  GROUP_FILTER_BUTTON_ACTIVE,
+  GROUP_FILTER_COUNT,
+  GROUP_FILTER_LABEL,
+  LIBRARY_PICKER,
+  LIBRARY_PICKER_FLAT,
+  LIBRARY_PICKER_RESULTS,
+  PAGINATION_IN_RESULTS,
+} from "./agent-editor-library-classes";
 import { type AgentEditorOption, filterAgentEditorOptions, paginateAgentEditorOptions } from "./agent-editor-model";
 
 /** 分区说明块：眉标 8px/750/等宽 + 标题 18px（760–1399 压 16px）+ 说明 12px（760–1119 收窄到 52ch）。 */
@@ -207,18 +218,21 @@ export function EditorPagination({
   pageSize,
   total,
   onPageChange,
+  className,
 }: {
   page: number;
   pageSize: number;
   total: number;
   onPageChange: (value: number) => void;
+  /** 调用点补充分页条样式（如结果区贴底 / 内嵌形态收边距）。 */
+  className?: string;
 }) {
   const { t } = useTranslation(NS.AGENTS);
   const pageCount = Math.max(1, Math.ceil(total / pageSize));
   const safePage = Math.min(Math.max(0, page), pageCount - 1);
   if (total === 0 || pageCount === 1) return null;
   return (
-    <footer className={cn("agent-editor-pagination", PAGINATION)}>
+    <footer className={cn(PAGINATION, className)} data-slot="pagination">
       <span>
         {safePage * pageSize + 1}–{Math.min((safePage + 1) * pageSize, total)} / {total}
       </span>
@@ -273,22 +287,32 @@ export function EditorGroupFilter({
   ).map(([, group]) => group);
   if (groups.length === 0) return null;
   return (
-    <nav className={cn("agent-editor-group-filter", GROUP_FILTER_NARROW)} aria-label={t("editor.resourceSources")}>
+    <nav
+      className={cn(GROUP_FILTER, GROUP_FILTER_NARROW)}
+      data-slot="group-filter"
+      aria-label={t("editor.resourceSources")}
+    >
       {!hideAll && (
-        <button type="button" className={value === "all" ? "is-active" : ""} onClick={() => onChange("all")}>
-          <span>{t("editor.allSources")}</span>
-          <em>{options.length}</em>
+        <button
+          type="button"
+          className={cn(GROUP_FILTER_BUTTON, value === "all" && GROUP_FILTER_BUTTON_ACTIVE)}
+          data-active={value === "all" ? "true" : undefined}
+          onClick={() => onChange("all")}
+        >
+          <span className={GROUP_FILTER_LABEL}>{t("editor.allSources")}</span>
+          <em className={GROUP_FILTER_COUNT}>{options.length}</em>
         </button>
       )}
       {groups.map((group) => (
         <button
           type="button"
           key={group.id}
-          className={value === group.id ? "is-active" : ""}
+          className={cn(GROUP_FILTER_BUTTON, value === group.id && GROUP_FILTER_BUTTON_ACTIVE)}
+          data-active={value === group.id ? "true" : undefined}
           onClick={() => onChange(group.id)}
         >
-          <span>{group.label}</span>
-          <em>{group.count}</em>
+          <span className={GROUP_FILTER_LABEL}>{group.label}</span>
+          <em className={GROUP_FILTER_COUNT}>{group.count}</em>
         </button>
       ))}
     </nav>
@@ -363,7 +387,11 @@ export function SinglePicker({
           </span>
         </div>
       )}
-      <div className={cn("agent-editor-library-picker", LIBRARY_PICKER_NARROW, !showGroups && "is-flat")}>
+      <div
+        className={cn(LIBRARY_PICKER, LIBRARY_PICKER_NARROW, !showGroups && LIBRARY_PICKER_FLAT)}
+        data-slot="library-picker"
+        data-flat={!showGroups ? "true" : undefined}
+      >
         {showGroups && (
           <EditorGroupFilter
             options={matching}
@@ -375,7 +403,7 @@ export function SinglePicker({
             }}
           />
         )}
-        <div className="agent-editor-library-picker__results">
+        <div className={LIBRARY_PICKER_RESULTS}>
           <div
             id={Icon === Cpu ? "agent-editor-model-options" : undefined}
             className={listClass}
@@ -436,7 +464,13 @@ export function SinglePicker({
               {errorMessage}
             </p>
           )}
-          <EditorPagination page={page} total={visible.length} pageSize={size} onPageChange={setPage} />
+          <EditorPagination
+            page={page}
+            total={visible.length}
+            pageSize={size}
+            onPageChange={setPage}
+            className={PAGINATION_IN_RESULTS}
+          />
         </div>
       </div>
     </>

@@ -28,6 +28,14 @@ import {
   PICKER_SELECTED,
 } from "./agent-editor-form-classes";
 import {
+  LIBRARY_PICKER,
+  LIBRARY_PICKER_EMBEDDED,
+  LIBRARY_PICKER_FLAT,
+  LIBRARY_PICKER_RESULTS,
+  LIBRARY_PICKER_RESULTS_EMBEDDED,
+  PAGINATION_EMBEDDED,
+} from "./agent-editor-library-classes";
+import {
   AGENT_EDITOR_PAGE_SIZE,
   type AgentEditorOption,
   filterAgentEditorOptions,
@@ -44,6 +52,8 @@ interface AgentResourcePickerProps {
   emptyText?: string;
   groupMode?: "required" | "auto" | "none";
   renderIcon?: (item: AgentEditorOption) => ReactNode;
+  /** 调用点覆盖外壳样式（如知识区 `--bases` 形态去掉描边/圆角）。 */
+  className?: string;
 }
 
 export function AgentResourcePicker({
@@ -56,6 +66,7 @@ export function AgentResourcePicker({
   emptyText,
   groupMode = "none",
   renderIcon,
+  className,
 }: AgentResourcePickerProps) {
   const { t } = useTranslation(NS.AGENTS);
   const [query, setQuery] = useState("");
@@ -101,7 +112,7 @@ export function AgentResourcePicker({
     onChange(exists ? value.filter((id) => id !== item.id) : [...value, item.id]);
   };
   return (
-    <div className={PICKER} role="group" aria-label={label}>
+    <div className={cn(PICKER, className)} role="group" aria-label={label}>
       <div className={PICKER_SELECTED}>
         <div>
           <strong>{t("editor.selectedCount", { count: value.length })}</strong>
@@ -153,7 +164,11 @@ export function AgentResourcePicker({
         />
         <kbd>{filtered.length.toLocaleString()}</kbd>
       </label>
-      <div className={cn("agent-editor-library-picker", !showGroups && "is-flat")}>
+      <div
+        className={cn(LIBRARY_PICKER, LIBRARY_PICKER_EMBEDDED, !showGroups && LIBRARY_PICKER_FLAT)}
+        data-slot="library-picker"
+        data-flat={!showGroups ? "true" : undefined}
+      >
         {showGroups && (
           <EditorGroupFilter
             options={matching}
@@ -165,7 +180,7 @@ export function AgentResourcePicker({
             }}
           />
         )}
-        <div className="agent-editor-library-picker__results">
+        <div className={cn(LIBRARY_PICKER_RESULTS, LIBRARY_PICKER_RESULTS_EMBEDDED)}>
           <div className={PICKER_LIST} data-slot="picker-list" role="group" aria-label={label}>
             {paged.items.map((item) => {
               const checked = selected.has(item.id);
@@ -213,6 +228,7 @@ export function AgentResourcePicker({
             pageSize={AGENT_EDITOR_PAGE_SIZE}
             total={filtered.length}
             onPageChange={setPage}
+            className={PAGINATION_EMBEDDED}
           />
         </div>
       </div>
