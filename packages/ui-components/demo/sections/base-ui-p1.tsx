@@ -19,13 +19,17 @@ export function BaseUiP1Section() {
   const { t } = useTranslation(DEMO_NS);
 
   return (
-    <section className="demo-section">
-      <h1 className="demo-section-title">{t("sections.baseUiP1")}</h1>
-      <p className="demo-hint">{t("sectionHints.baseUiP1")}</p>
+    <section>
+      <h1 data-slot="demo-section-title" className="mb-6 text-[24px] font-semibold">
+        {t("sections.baseUiP1")}
+      </h1>
+      <p className="mt-3 text-text-muted text-[12px]">{t("sectionHints.baseUiP1")}</p>
 
-      <div className="demo-example">
-        <h2 className="demo-example-title">AppPage / AppHeader</h2>
-        <p className="demo-hint">
+      <div className="mb-5 p-5 border border-border rounded-lg bg-surface-1">
+        <h2 data-slot="demo-example-title" className="mb-4 text-text-secondary text-[13px] font-medium">
+          AppPage / AppHeader
+        </h2>
+        <p className="mt-3 text-text-muted text-[12px]">
           AppPage 是页面级滚动边界（flex-1 + overflow-auto），因此示例给它一个确定高度的 flex 容器。
         </p>
         <div className="flex h-[320px] flex-col overflow-hidden rounded-lg border border-border">

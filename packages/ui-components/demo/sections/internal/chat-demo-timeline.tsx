@@ -59,10 +59,12 @@ export function ChatTimelineExamples() {
   );
 
   return (
-    <div className="demo-example">
-      <h2 className="demo-example-title">ToolCallGroup（各 kind + 子 Agent + 待确认 + Hindsight）</h2>
+    <div className="mb-5 p-5 border border-border rounded-lg bg-surface-1">
+      <h2 data-slot="demo-example-title" className="mb-4 text-text-secondary text-[13px] font-medium">
+        ToolCallGroup（各 kind + 子 Agent + 待确认 + Hindsight）
+      </h2>
       <ToolCallGroup entries={toolEntries} onPreviewFile={setPreviewedPath} />
-      <p className="demo-hint">
+      <p className="mt-3 text-text-muted text-[12px]">
         {previewedPath === null
           ? "点击文件类卡片上的文件名可触发 onPreviewFile；点右侧详情图标查看入参/出参原始 JSON。"
           : `onPreviewFile → ${previewedPath}`}

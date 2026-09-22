@@ -56,20 +56,32 @@ export function FileL1Section() {
   const userNodes = filterFileTree(sections.user, normalizedSearch);
 
   return (
-    <section className="demo-section">
-      <h1 className="demo-section-title">{t("sections.fileL1")}</h1>
-      <p className="demo-hint">{t("sectionHints.fileL1")}</p>
+    <section>
+      <h1 data-slot="demo-section-title" className="mb-6 text-[24px] font-semibold">
+        {t("sections.fileL1")}
+      </h1>
+      <p className="mt-3 text-text-muted text-[12px]">{t("sectionHints.fileL1")}</p>
 
-      <div className="demo-example">
-        <h2 className="demo-example-title">FileTreeView</h2>
-        <div className="demo-row" style={{ marginBottom: 12 }}>
-          <button type="button" className="demo-nav-item" onClick={() => setLoading((value) => !value)}>
+      <div className="mb-5 p-5 border border-border rounded-lg bg-surface-1">
+        <h2 data-slot="demo-example-title" className="mb-4 text-text-secondary text-[13px] font-medium">
+          FileTreeView
+        </h2>
+        <div className="flex flex-wrap items-center gap-3 mb-3">
+          <button
+            type="button"
+            className="block w-full mb-0.5 px-2.5 py-[7px] border-0 rounded-[var(--radius)] bg-transparent text-[14px] text-left cursor-pointer text-text-secondary hover:bg-surface-2 hover:text-text-primary"
+            onClick={() => setLoading((value) => !value)}
+          >
             loading: {String(loading)}
           </button>
-          <button type="button" className="demo-nav-item" onClick={() => setStale((value) => !value)}>
+          <button
+            type="button"
+            className="block w-full mb-0.5 px-2.5 py-[7px] border-0 rounded-[var(--radius)] bg-transparent text-[14px] text-left cursor-pointer text-text-secondary hover:bg-surface-2 hover:text-text-primary"
+            onClick={() => setStale((value) => !value)}
+          >
             stale: {String(stale)}
           </button>
-          {selected && <span className="demo-hint">selected: {selected}</span>}
+          {selected && <span className="mt-3 text-text-muted text-[12px]">selected: {selected}</span>}
         </div>
         {/* 树需要确定高度才能虚拟化：宿主里高度来自 artifacts 面板，这里给定值。 */}
         <div
@@ -137,11 +149,11 @@ export function FileL1Section() {
             workspaceNodes={workspaceNodes}
           />
         </div>
-        <p className="demo-hint">
+        <p className="mt-3 text-text-muted text-[12px]">
           文件类型图标由 <code>FileTypeIcon</code>（react-file-icon）渲染，尺寸由组件自带的 16px 外框决定； 树里的 12px
           图标位靠 <code>max-h-full max-w-full</code> 收窄。
         </p>
-        <p className="demo-hint">
+        <p className="mt-3 text-text-muted text-[12px]">
           上面这棵树的全部行为都来自本文件：展开/折叠写 <code>expandedIds</code>，搜索框写 <code>searchQuery</code> 并由{" "}
           <code>splitFileTreeSections</code> / <code>filterFileTree</code> 预处理，右键菜单、删除确认、下载反馈分别是{" "}
           <code>contextMenu</code> / <code>deleteConfirm</code> / <code>download</code>{" "}

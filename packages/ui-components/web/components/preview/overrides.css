@@ -5,6 +5,17 @@
  * 约束：必须与 `FileViewerPreview.tsx` 同目录并由该组件 import —— 它修正的是
  * @open-file-viewer 的默认外观（工具栏置底、去掉根容器边框、隐藏代码块操作按钮），
  * 一旦随组件打包时被遗漏，预览工具栏会回到顶部并与源宿主外观不一致。
+ *
+ * 为什么不能改写成 Tailwind 工具类（2026-09-22 全量清扫时的结论）：
+ * 1. `ofv-*` 元素全部由第三方渲染，组件没有地方挂 className —— 唯一的工具类写法是父级
+ *    arbitrary variant（`[&_.ofv-root]:border-0`）或 `!important` 形式；
+ * 2. 普通工具类会被反超：`@open-file-viewer/core/dist/style.css` **不含任何 @layer**（未分层），
+ *    而 Tailwind 的工具类落在 `@layer utilities` 里，未分层的普通声明优先于分层声明，
+ *    覆盖会静默失效（工具栏回到顶部、根容器边框回来、代码块操作按钮重新出现）；
+ * 3. 唯一能赢的工具类写法是 `!important`（`[&_.ofv-root]:border-0!`），但全仓没有任何
+ *    `!` 重要修饰工具类的先例，且它把胜负从「层序」挪到「重要性对拼」，更脆。
+ * 因此保留这份**未分层**的覆盖样式表：它与第三方样式同为未分层，靠导入顺序（本文件后于
+ * `@open-file-viewer/core/style.css`）稳定取胜。改动本文件前请先读上面三条。
  */
 
 /* 将 @open-file-viewer 工具栏从顶部移到预览区底部 */

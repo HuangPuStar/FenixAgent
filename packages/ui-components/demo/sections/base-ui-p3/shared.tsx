@@ -18,9 +18,11 @@ export function ComponentBlock({
   children: ReactNode;
 }) {
   return (
-    <div className="demo-example">
-      <h2 className="demo-example-title">{name}</h2>
-      <p className="demo-hint">{description}</p>
+    <div className="mb-5 p-5 border border-border rounded-lg bg-surface-1">
+      <h2 data-slot="demo-example-title" className="mb-4 text-text-secondary text-[13px] font-medium">
+        {name}
+      </h2>
+      <p className="mt-3 text-text-muted text-[12px]">{description}</p>
       <div className="mt-4 flex flex-col gap-6">{children}</div>
     </div>
   );
@@ -31,8 +33,8 @@ export function Example({ title, description, children }: { title: string; descr
   return (
     <section>
       <h3 className="text-sm font-medium">{title}</h3>
-      <p className="demo-hint">{description}</p>
-      <div className="demo-row mt-3">{children}</div>
+      <p className="mt-3 text-text-muted text-[12px]">{description}</p>
+      <div className="flex flex-wrap items-center gap-3 mt-3">{children}</div>
     </section>
   );
 }

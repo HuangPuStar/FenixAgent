@@ -75,12 +75,16 @@ export function DataL2Section() {
   const handleErrorRetry = () => setLastRetry("Retry from error state");
 
   return (
-    <section className="demo-section">
-      <h1 className="demo-section-title">{t("sections.dataL2")}</h1>
-      <p className="demo-hint">{t("sectionHints.dataL2")}</p>
+    <section>
+      <h1 data-slot="demo-section-title" className="mb-6 text-[24px] font-semibold">
+        {t("sections.dataL2")}
+      </h1>
+      <p className="mt-3 text-text-muted text-[12px]">{t("sectionHints.dataL2")}</p>
 
-      <div className="demo-example">
-        <h2 className="demo-example-title">Table + Checkbox + BatchActionBar</h2>
+      <div className="mb-5 p-5 border border-border rounded-lg bg-surface-1">
+        <h2 data-slot="demo-example-title" className="mb-4 text-text-secondary text-[13px] font-medium">
+          Table + Checkbox + BatchActionBar
+        </h2>
         <Table>
           <TableCaption>
             勾选任意行后 BatchActionBar 出现（组件自身固定在视口底部居中）；示例里点 action 等同于操作完成并清空选择。
@@ -127,21 +131,25 @@ export function DataL2Section() {
         ) : null}
       </div>
 
-      <div className="demo-example">
-        <h2 className="demo-example-title">StatusBadge</h2>
-        <div className="demo-row">
+      <div className="mb-5 p-5 border border-border rounded-lg bg-surface-1">
+        <h2 data-slot="demo-example-title" className="mb-4 text-text-secondary text-[13px] font-medium">
+          StatusBadge
+        </h2>
+        <div className="flex flex-wrap items-center gap-3">
           {STATUS_SAMPLES.map((status) => (
             <StatusBadge key={status} status={status} />
           ))}
         </div>
-        <p className="demo-hint">
+        <p className="mt-3 text-text-muted text-[12px]">
           文案按 statusBadge.&lt;status&gt; 查表，未命中的状态回退为状态原文（如 builtIn 与包内 builtin 键大小写不同）。
         </p>
       </div>
 
-      <div className="demo-example">
-        <h2 className="demo-example-title">FileTypeIcon</h2>
-        <div className="demo-row">
+      <div className="mb-5 p-5 border border-border rounded-lg bg-surface-1">
+        <h2 data-slot="demo-example-title" className="mb-4 text-text-secondary text-[13px] font-medium">
+          FileTypeIcon
+        </h2>
+        <div className="flex flex-wrap items-center gap-3">
           {FILE_TYPE_SAMPLES.map((filename) => (
             <span key={filename} className="text-muted-foreground flex items-center gap-2 text-xs">
               <FileTypeIcon filename={filename} />
@@ -151,8 +159,10 @@ export function DataL2Section() {
         </div>
       </div>
 
-      <div className="demo-example">
-        <h2 className="demo-example-title">EmptyState：No components yet</h2>
+      <div className="mb-5 p-5 border border-border rounded-lg bg-surface-1">
+        <h2 data-slot="demo-example-title" className="mb-4 text-text-secondary text-[13px] font-medium">
+          EmptyState：No components yet
+        </h2>
         <EmptyState
           icon={<Inbox className="h-8 w-8" />}
           title="No components yet"
@@ -161,8 +171,10 @@ export function DataL2Section() {
         />
       </div>
 
-      <div className="demo-example">
-        <h2 className="demo-example-title">EmptyState：Failed to load components</h2>
+      <div className="mb-5 p-5 border border-border rounded-lg bg-surface-1">
+        <h2 data-slot="demo-example-title" className="mb-4 text-text-secondary text-[13px] font-medium">
+          EmptyState：Failed to load components
+        </h2>
         <EmptyState
           icon={<TriangleAlert className="h-8 w-8 text-destructive" />}
           title="Failed to load components"
@@ -171,7 +183,7 @@ export function DataL2Section() {
         />
       </div>
 
-      {lastRetry ? <p className="demo-hint">Last callback: {lastRetry}</p> : null}
+      {lastRetry ? <p className="mt-3 text-text-muted text-[12px]">Last callback: {lastRetry}</p> : null}
     </section>
   );
 }

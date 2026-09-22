@@ -116,7 +116,9 @@ describe("demo chat sections", () => {
     act(() => root.render(<ChatL4Section />));
     const text = container.textContent ?? "";
     expect(text).toContain("Chat L4");
-    const titles = Array.from(container.querySelectorAll(".demo-example-title")).map((title) => title.textContent);
+    const titles = Array.from(container.querySelectorAll('[data-slot="demo-example-title"]')).map(
+      (title) => title.textContent,
+    );
     expect(titles).toEqual(["PromptInput", "Reasoning", "Tool / PermissionRequest"]);
   });
 

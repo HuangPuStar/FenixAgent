@@ -22,7 +22,7 @@ function DemoTagCard(props: Record<string, unknown>) {
   const body = typeof props.children === "string" ? props.children : null;
 
   return (
-    <span className="demo-tag-card">
+    <span className="inline-flex items-center gap-2 px-2.5 py-1.5 border border-dashed border-border-active rounded-[var(--radius)] text-[13px]">
       <strong>{title}</strong>
       {body}
     </span>

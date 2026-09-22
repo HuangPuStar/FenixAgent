@@ -53,13 +53,15 @@ export function DialogContainerExamples() {
 
   return (
     <>
-      <div className="demo-example">
-        <h2 className="demo-example-title">ConfirmDialog</h2>
-        <div className="demo-field">
-          <p className="demo-hint">
+      <div className="mb-5 p-5 border border-border rounded-lg bg-surface-1">
+        <h2 data-slot="demo-example-title" className="mb-4 text-text-secondary text-[13px] font-medium">
+          ConfirmDialog
+        </h2>
+        <div className="flex flex-col gap-1.5">
+          <p className="mt-3 text-text-muted text-[12px]">
             受控确认弹窗：确认后进入 loading，按钮文案切换为 Processing 且取消一并禁用，模拟请求结束后关闭。
           </p>
-          <div className="demo-row">
+          <div className="flex flex-wrap items-center gap-3">
             <Button variant="outline" onClick={() => setConfirmOpen(true)}>
               Revoke API keys
             </Button>
@@ -82,11 +84,15 @@ export function DialogContainerExamples() {
         </div>
       </div>
 
-      <div className="demo-example">
-        <h2 className="demo-example-title">FormDialog</h2>
-        <div className="demo-field">
-          <p className="demo-hint">表单弹窗：未传 formConfig 时走原生的 onSubmit，提交按钮共享同一 loading 状态。</p>
-          <div className="demo-row">
+      <div className="mb-5 p-5 border border-border rounded-lg bg-surface-1">
+        <h2 data-slot="demo-example-title" className="mb-4 text-text-secondary text-[13px] font-medium">
+          FormDialog
+        </h2>
+        <div className="flex flex-col gap-1.5">
+          <p className="mt-3 text-text-muted text-[12px]">
+            表单弹窗：未传 formConfig 时走原生的 onSubmit，提交按钮共享同一 loading 状态。
+          </p>
+          <div className="flex flex-wrap items-center gap-3">
             <Button variant="outline" onClick={() => setFormOpen(true)}>
               Create project
             </Button>
@@ -104,7 +110,7 @@ export function DialogContainerExamples() {
               });
             }}
           >
-            <div className="demo-field">
+            <div className="flex flex-col gap-1.5">
               <Label htmlFor="demo-project-name">Name</Label>
               <Input id="demo-project-name" placeholder="my-project" />
               <Label htmlFor="demo-project-owner">Owner</Label>
@@ -114,7 +120,7 @@ export function DialogContainerExamples() {
         </div>
       </div>
 
-      {lastEvent ? <p className="demo-hint">Last callback: {lastEvent}</p> : null}
+      {lastEvent ? <p className="mt-3 text-text-muted text-[12px]">Last callback: {lastEvent}</p> : null}
     </>
   );
 }

@@ -94,9 +94,9 @@ afterEach(() => {
   container.remove();
 });
 
-/** 按层级顺序读出侧栏条目；限定 .demo-nav 作用域，避免与分区内部的同名按钮混淆。 */
+/** 按层级顺序读出侧栏条目；锚在导航项的结构锚点上，避免与分区内部的同类按钮混淆。 */
 function readNavButtons(): HTMLButtonElement[] {
-  return Array.from(container.querySelectorAll<HTMLButtonElement>(".demo-nav .demo-nav-item"));
+  return Array.from(container.querySelectorAll<HTMLButtonElement>('[data-slot="demo-nav-item"]'));
 }
 
 function renderApp() {
@@ -121,7 +121,7 @@ describe("demo shell navigation", () => {
   // 默认进入第一个分区（Design Tokens），导航项与内容区标题一致。
   test("opens the first section by default", () => {
     renderApp();
-    expect(container.querySelector(".demo-section-title")?.textContent).toBe("Design Tokens");
+    expect(container.querySelector('[data-slot="demo-section-title"]')?.textContent).toBe("Design Tokens");
     expect(readNavButtons()[0]?.getAttribute("data-active")).toBe("true");
   });
 
@@ -131,7 +131,7 @@ describe("demo shell navigation", () => {
     const target = readNavButtons().find((button) => button.textContent === "File L1");
     expect(target).toBeDefined();
     act(() => target?.click());
-    expect(container.querySelector(".demo-section-title")?.textContent).toBe("File L1");
+    expect(container.querySelector('[data-slot="demo-section-title"]')?.textContent).toBe("File L1");
     expect(target?.getAttribute("data-active")).toBe("true");
     expect(readNavButtons()[0]?.getAttribute("data-active")).toBe("false");
   });

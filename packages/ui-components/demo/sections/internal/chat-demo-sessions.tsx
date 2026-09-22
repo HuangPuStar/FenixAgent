@@ -42,8 +42,10 @@ export function ChatSessionListExamples() {
   }, []);
 
   return (
-    <div className="demo-example">
-      <h2 className="demo-example-title">SidebarSessionList（按时间分组的会话列表）</h2>
+    <div className="mb-5 p-5 border border-border rounded-lg bg-surface-1">
+      <h2 data-slot="demo-example-title" className="mb-4 text-text-secondary text-[13px] font-medium">
+        SidebarSessionList（按时间分组的会话列表）
+      </h2>
       <div className="max-w-xs rounded-lg border border-border p-2">
         <SidebarSessionList
           initialActiveSessionId={session.chatState.activeSessionId}
@@ -57,10 +59,10 @@ export function ChatSessionListExamples() {
           onNotice={(listNotice) => setNotice(`${listNotice.level}: ${listNotice.message}`)}
         />
       </div>
-      <p className="demo-hint">
+      <p className="mt-3 text-text-muted text-[12px]">
         支持选中、重命名（铅笔）与删除确认（垃圾桶）：三项都走宿主回调，列表自身不持有会话管理状态。
       </p>
-      <p className="demo-hint">{notice ?? "等待交互…"}</p>
+      <p className="mt-3 text-text-muted text-[12px]">{notice ?? "等待交互…"}</p>
     </div>
   );
 }

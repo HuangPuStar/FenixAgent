@@ -132,8 +132,10 @@ export function ChatComposerExamples() {
 
   return (
     <>
-      <div className="demo-example">
-        <h2 className="demo-example-title">ChatComposer（命令菜单 + 附件行 + 上下文计 + 模式切换）</h2>
+      <div className="mb-5 p-5 border border-border rounded-lg bg-surface-1">
+        <h2 data-slot="demo-example-title" className="mb-4 text-text-secondary text-[13px] font-medium">
+          ChatComposer（命令菜单 + 附件行 + 上下文计 + 模式切换）
+        </h2>
         <ChatComposer
           commands={MOCK_AVAILABLE_COMMANDS}
           mcps={MOCK_BOUND_MCPS}
@@ -169,13 +171,13 @@ export function ChatComposerExamples() {
           }}
           placeholder="输入消息，或输入 / 打开命令菜单…"
         />
-        <p className="demo-hint">
+        <p className="mt-3 text-text-muted text-[12px]">
           {lastSubmit === null
             ? "命令面板默认展开；发送、上传与新建会话的回调结果会显示在这里。"
             : `已提交：${lastSubmit}（附件与引用已清空）`}
         </p>
-        <p className="demo-hint">{notice ?? "等待交互…"}</p>
-        <div className="demo-row mt-3">
+        <p className="mt-3 text-text-muted text-[12px]">{notice ?? "等待交互…"}</p>
+        <div className="flex flex-wrap items-center gap-3 mt-3">
           <Button
             size="sm"
             variant="outline"
@@ -211,14 +213,16 @@ export function ChatComposerExamples() {
             {isRunning ? "结束模拟 turn" : "模拟 turn 运行中"}
           </Button>
         </div>
-        <p className="demo-hint">
+        <p className="mt-3 text-text-muted text-[12px]">
           三个按钮分别走 subscribeExternal 的三类外部事件，效果与源宿主的 window 事件一致； 「模拟 turn
           运行中」会把发送按钮切成停止按钮（canCancel / isLoading）。
         </p>
       </div>
 
-      <div className="demo-example">
-        <h2 className="demo-example-title">ComposerAssets（图片 / 文件 / 引用）</h2>
+      <div className="mb-5 p-5 border border-border rounded-lg bg-surface-1">
+        <h2 data-slot="demo-example-title" className="mb-4 text-text-secondary text-[13px] font-medium">
+          ComposerAssets（图片 / 文件 / 引用）
+        </h2>
         <ComposerAssets
           images={[DEMO_IMAGE]}
           files={attachments}
@@ -227,18 +231,24 @@ export function ChatComposerExamples() {
           onRemoveFile={(path) => setAttachments((current) => current.filter((file) => file.path !== path))}
           onRemoveQuote={(id) => setQuotes((current) => current.filter((quote) => quote.id !== id))}
         />
-        <p className="demo-hint">移除文件或引用后，上方的 ChatComposer 中对应资产同步消失（同一份受控状态）。</p>
+        <p className="mt-3 text-text-muted text-[12px]">
+          移除文件或引用后，上方的 ChatComposer 中对应资产同步消失（同一份受控状态）。
+        </p>
       </div>
 
-      <div className="demo-example">
-        <h2 className="demo-example-title">ComposerContextMeter / SessionModeSelector</h2>
-        <div className="demo-row">
+      <div className="mb-5 p-5 border border-border rounded-lg bg-surface-1">
+        <h2 data-slot="demo-example-title" className="mb-4 text-text-secondary text-[13px] font-medium">
+          ComposerContextMeter / SessionModeSelector
+        </h2>
+        <div className="flex flex-wrap items-center gap-3">
           <ComposerContextMeter usage={MOCK_CONTEXT_USAGE} />
           <ComposerContextMeter usage={{ totalTokens: 12_800 }} />
           <SessionModeSelector modes={MOCK_AVAILABLE_MODES} currentModeId={modeId} onModeChange={setModeId} />
           <SessionModeSelector modes={MOCK_AVAILABLE_MODES} currentModeId={modeId} onModeChange={setModeId} readOnly />
         </div>
-        <p className="demo-hint">占用计在缺少 totalTokens 时不渲染；模式选择器的只读形态退化为静态 chip。</p>
+        <p className="mt-3 text-text-muted text-[12px]">
+          占用计在缺少 totalTokens 时不渲染；模式选择器的只读形态退化为静态 chip。
+        </p>
       </div>
     </>
   );

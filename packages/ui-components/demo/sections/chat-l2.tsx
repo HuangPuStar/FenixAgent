@@ -24,9 +24,11 @@ export function ChatL2Section() {
   const { t } = useTranslation(DEMO_NS);
 
   return (
-    <section className="demo-section">
-      <h1 className="demo-section-title">{t("sections.chatL2")}</h1>
-      <p className="demo-hint">{t("sectionHints.chatL2")}</p>
+    <section>
+      <h1 data-slot="demo-section-title" className="mb-6 text-[24px] font-semibold">
+        {t("sections.chatL2")}
+      </h1>
+      <p className="mt-3 text-text-muted text-[12px]">{t("sectionHints.chatL2")}</p>
 
       <ChatSessionListExamples />
       <ChatMessagesExamples />
