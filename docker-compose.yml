@@ -52,12 +52,11 @@ services:
             ACPX_G_URL: http://localhost:8848
             APP_BRAND_NAME: ${APP_BRAND_NAME:-Fenix}
             APP_LOGO_PATH: ${APP_LOGO_PATH:-}
-            OPENCODE_DISABLE_AUTOUPDATE: "1"
-            OPENCODE_DISABLE_TELEMETRY: "1"
             RCS_SECRET_ENCRYPTION_KEY: ${RCS_SECRET_ENCRYPTION_KEY:-}
         volumes:
-            - rcs-opencode-config:/root/.config/opencode
-            - rcs-opencode-data:/root/.local/share/opencode
+            # peri 全局目录（插件与 CLI 配置）持久化到命名卷，与 Dockerfile 声明的
+            # VOLUME /root/.peri 对应；不命名会让每次重建容器换一个匿名卷、丢失运行期写入。
+            - rcs-peri-home:/root/.peri
             - ./data:/app/data
             - ./workflow:/app/workflow
             - ./workspaces:/app/workspaces
@@ -78,5 +77,4 @@ services:
 
 volumes:
     postgres-data:
-    rcs-opencode-config:
-    rcs-opencode-data:
+    rcs-peri-home:
