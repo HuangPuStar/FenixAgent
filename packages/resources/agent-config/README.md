@@ -11,8 +11,8 @@ agent 编辑器 / 站点页面的浏览器实现方。
 - **资源域**：受控资源主表 `agent_config`（资源行 + 授权入口）与 `agent_site_app`（站点应用）。三张关联表
   （`agent_config_skill` / `agent_config_mcp` / `agent_config_site_app`）随聚合归本包：它们的
   `agent_config_id` 都指向本包主表，而 Drizzle 的 `.references()` 只接受列对象、没有字符串形式，任何非本包
-  持有的关联表都必须组装期导入 `@fenix/agent-config/db`，因此留在聚合根内是零新边、零新环的方案（裁定见
-  评审文档 §8.4 第 8 条）。受控读取的授权谓词由注入的 `AccessControlModule` 编译，仓储不判断组织、角色与
+  持有的关联表都必须组装期导入 `@fenix/agent-config/db`，因此留在聚合根内是零新边、零新环的方案。受控读取的
+  授权谓词由注入的 `AccessControlModule` 编译，仓储不判断组织、角色与
   `visibility`；资源注册在 `src/server/access/agent-config-resource.ts`（member 默认只有 `read` / `use`）。
 - **清单与组合根**：`fenix.module.ts` 的 `moduleManifest`（`id: "agent-config"`、`kind: "resource"`、
   `capabilities: ["resource.agent-config"]`、`create` 惰性），`create()` 指向 `src/module.ts` 的
@@ -197,6 +197,6 @@ agent 编辑器 / 站点页面的浏览器实现方。
   登记后该链已恢复：实测消费方用例
   `packages/resources/model-management/web/src/__tests__/agent-editor-model.test.ts` 13 pass / 0 fail
   （该文件头部记录了同一结论）。仅存的深链是 `@fenix/identity` 的 `apikey` / `orgs` 字典（纯 JSON 相对
-  导入，可正常求值），属该包的 i18n 出口债（review 文档 §6.9 第 4 条），不构成本包阻塞。
+  导入，可正常求值），属该包的 i18n 出口债，不构成本包阻塞。
 - **包内不装配 access-control / identity**：`createAgentConfigModule()` 返回已装入的装配结果入口，
   由宿主注入授权与身份目录；registry 装配落地时应改为从 `context.modules` 取实例（§1.5）。

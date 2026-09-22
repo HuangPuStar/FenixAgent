@@ -6,8 +6,7 @@
  *   与错误映射。消费方是 `apps/server` 的启动装配层与宿主路由。
  * - `@fenix/agent-runtime/runtime`：本包向外的运行能力面（启动/停止/状态/回收 + 会话与 relay
  *   数据面原语）。消费方是三条链路的编排层。**新消费方一律用 `./runtime`**：1.4 W3b 已把非测试
- *   消费方全部改调 port，原先标 `运行·` 且已无消费方或已随 port 归位的历史导出一并删除
- *（删除清单与逐行判据见 `docs/design/ce-ee-refactoring/review/task-1.4-agent-runtime.md` §14）。
+ *   消费方全部改调 port，原先标 `运行·` 且已无消费方或已随 port 归位的历史导出一并删除。
  *
  * 清单形态：**平铺 + 每行行内角色标注**，不按能力切块。原因是本文件由 `biome check --write`
  * 的 organizeImports 全局按 specifier 字母序重排——独立的分组注释会留在原位而语句被移动，

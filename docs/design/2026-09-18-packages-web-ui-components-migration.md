@@ -4,7 +4,7 @@
 >
 > **历史快照**：本文是当时的设计与实测记录，其中的路径、行号与引用计数均按当时状态保留，不作为现状依据
 > （例如下文引用的 `packages/chat-channel/web/components/ChatInterface.tsx:484` 已随 CE 阶段 2 任务 1.6 的 T5 / T11 删除，
-> 该目录整体不存在）。实际落位与结论见 `docs/design/ce-ee-refactoring/review/task-1.6-web-shell.md`。
+> 该目录整体不存在）。实际落位与结论以 `packages/ui-components/README.md` 为准。
 
 ## 背景与目标
 
@@ -118,7 +118,7 @@ chat-channel 外壳切到包内 `ChatInterface` 时，用它继续渲染 agent-r
 
 | 现文件 | 新位置 | 引用数 | 归属理由 |
 | --- | --- | --- | --- |
-| `apps/web/src/types/config.ts`（372 行） | `web-runtime/web/types/config.ts` | 32 | 6 个资源包共用的纯类型文件；挂到单个资源包上会形成跨资源 web 耦合（编排裁决见 `docs/design/ce-ee-refactoring/review/task-1.3-resource-packages.md` §6.5） |
+| `apps/web/src/types/config.ts`（372 行） | `web-runtime/web/types/config.ts` | 32 | 6 个资源包共用的纯类型文件；挂到单个资源包上会形成跨资源 web 耦合 |
 | `apps/web/src/lib/agent-resource-access.ts` | `agent-config/web/lib/agent-resource-access.ts` | 4 | Agent 资源访问器 |
 | `apps/web/src/lib/agent-node.ts` | `agent-config/web/lib/agent-node.ts` | 3 | AgentNode 选择逻辑 |
 | `apps/web/src/lib/agent-utils.ts` | `agent-config/web/lib/agent-utils.ts` | 2 | Agent 名称校验 + Knowledge 表单状态 |

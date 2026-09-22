@@ -60,7 +60,7 @@ const RMD_07_MOVES = [
  * 任务 1.5c 的五项：`src/routes/hooks.ts`（Webhook 入口）的 owner 是 workflow 资源包——处理器
  * `handleWebhookRequest` 与 trigger 仓储本来就在包内，宿主这份只是路由壳。迁出时一并恢复了自 FND-05
  * （入口迁到 `apps/server/src/main.ts`）起丢失的挂载：该路由在旧入口 `src/index.ts` 上是有 `.use()` 的，
- * 迁移时未带过来，导致 `/hooks/:publicHash` 长期不可达（详细证据见 review/task-1.5-host-aggregation.md §七）。
+ * 迁移时未带过来，导致 `/hooks/:publicHash` 长期不可达。
  * 另两项的 owner 是 agent-runtime：`schemas/session.schema.ts`（会话协议模型）与 `services/transport.ts`
  * （会话事件规范化与发布，迁入后定名 `transport/session-events.ts`）都只被宿主控制面路由消费，而控制面
  * 本身也已迁入该包——宿主副本删除后由包内落点承载，`/web/sessions/:id/*` 的协议定义与事件发布不再跨包。
@@ -171,7 +171,7 @@ describe("RMD-07 server-host migration", () => {
   // 原 75 项中已有九项的目标不再由 server host 持有：
   // 任务 1.4 W4b 的一项：`repositories/agent-engine.ts` 的宿主副本随「两条 LaunchSpec 收敛为一条」删除
   //   （它只为编排域的扁平聚合读取 (`PgAgentEngineRepo`) 供数，收敛后宿主零消费方，按「删除优于兼容」
-  //   删除；同批删除的还有 `PgAgentConfigRepo` 的聚合读入口，见 review/task-1.4-agent-runtime.md）。
+  //   删除；同批删除的还有 `PgAgentConfigRepo` 的聚合读入口）。
   //   该文件既没有新的 owner 包，也不该以「已迁入宿主」的身份留在本表里，故整行移出。
   // 任务 1.2 的三项：
   // - `schemas/common.schema.ts` 上移到 `packages/platform/platform-sdk/src/protocol/web-envelope.ts`；
@@ -180,7 +180,7 @@ describe("RMD-07 server-host migration", () => {
   //   宿主只保留 `routes/web/config/index.ts` 的挂载；
   // - `errors/index.ts` 被删除：它与 `src/errors.ts` 重复导出第二份 `AppError`，无任何导入方
   //   （`../errors` 始终解析到 `errors.ts`），保留只会让错误语义分叉。
-  // 任务 1.3 的两项（详见 review/task-1.3-resource-packages.md §6.1）：
+  // 任务 1.3 的两项：
   // - `routes/web/config/sandbox-pools.ts` 由 Sandbox 资源包接管
   //   （`packages/resources/sandbox/src/routes/web/sandbox-pools.ts`），宿主只保留挂载；
   // - `schemas/api-common.schema.ts` 上移到 `packages/platform/platform-sdk/src/protocol/system-api.ts`
@@ -192,7 +192,7 @@ describe("RMD-07 server-host migration", () => {
   // 任务 1.4 的一项：`src/types/store.ts` 的六个接口在 W1 归位 owner 包（`AcpConnectionEntry` /
   // `AcpConnectionSnapshot` / `WsConnection` → `@fenix/agent-runtime/server`，`InstanceSupplement` 等同文件
   // 内其他字段类型一并收回），实测宿主 0 消费方，按「删除优于兼容」删除宿主文件——它既不是宿主自有类型，
-  // 也不该以「已迁入宿主」的身份留在本表里（见 review/task-1.4-agent-runtime.md）。
+  // 也不该以「已迁入宿主」的身份留在本表里。
   // 任务 1.4 W2 的三项（本轮从本表移入下方 relocated 断言）：`schemas/api-instance.schema.ts`、
   // `services/openai-response-mapper.ts` 与后者的协议边界测试
   // `__tests__/round18-openai-response-protocol-boundaries.test.ts`。前两者唯一消费方是 agent-runtime 的
@@ -202,8 +202,8 @@ describe("RMD-07 server-host migration", () => {
   // 源文件九项：`repositories/index.ts`（全仓无 `@server/repositories` 消费方，仅一处历史注释提及）、
   // `schemas/index.ts`（160 行纯转发 barrel，仓内零 import）、`schemas/sidebar-config.schema.ts`（owner 是
   // agent-config 包，宿主这份的唯一引用就是上面那个 barrel）、`services/automationState.ts` 与
-  // `types/api.ts`（两份互相引用形成孤岛，`automation_state` 全仓无写入方，裁定见
-  // review/task-1.5-host-aggregation.md §3.6）、`services/config/jsonb.ts`（`parseJsonb` / `parseJsonbOr`
+  // `types/api.ts`（两份互相引用形成孤岛，`automation_state` 全仓无写入方）、
+  // `services/config/jsonb.ts`（`parseJsonb` / `parseJsonbOr`
   // 生产零消费方，mcp 包内已有同因实现）、`transport/ws-types.ts` 与 `types/messages.ts`（machine /
   // agent-runtime 各自自持同名类型并已在包内写明取代理由）、`utils/executable.ts`（acp-link 与
   // plugin-ccb / plugin-opencode 各有实现）。
@@ -221,8 +221,8 @@ describe("RMD-07 server-host migration", () => {
   // `upsertSystemMcpServer` 的转发 barrel，另两条导出（`AuthContext`、`PermissionAction` /
   // `PermissionConfig`）也无导入方；而 `upsertSystemMcpServer` 服务的唯一端口
   // `RegisterSystemMcpServer` 从未被注入（`ensureHindsightMcpServer` 全仓只有测试调用），整条
-  // Hindsight MCP 登记路径未接线，宿主这份属零生产消费方的薄包装，按「删除优于兼容」删除，见
-  // review/task-1.5-host-aggregation.md §1.5c-8。同批删除的 `services/config/mcp-system-server.ts`
+  // Hindsight MCP 登记路径未接线，宿主这份属零生产消费方的薄包装，按「删除优于兼容」删除。
+  // 同批删除的 `services/config/mcp-system-server.ts`
   // （上述 barrel 的被转发对象，从未单独登记）与 `services/config-utils.ts` 的信封函数（文件本体保留
   // `resolveApiKey`）不在本表内。
   test("removes every legacy source and retains its exact server-host target", () => {

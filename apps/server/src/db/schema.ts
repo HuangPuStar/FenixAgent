@@ -3,9 +3,8 @@
  *
  * 本文件只留三类内容：① 身份表定义由 `@fenix/identity/db` 拥有（CE 阶段 2 任务 1.2），这里只**
  * 转出**、不重复定义；② 宿主自有表 `data_migrate_record`（部署期数据迁移执行记录）；③ D3 裁定留在
- * 宿主的三张旧授权栈表（`resource_permission` + 3 个 pgEnum、`share_link`、`share_event_snapshot`，
- * 见 review/task-1.7-db-config-migration.md §8.1 第 1 条——它们无 owner、也无任何外键指向，因此不参与
- * 1.7 的批次）。
+ * 宿主的三张旧授权栈表（`resource_permission` + 3 个 pgEnum、`share_link`、`share_event_snapshot`——
+ * 它们无 owner、也无任何外键指向，因此不参与 1.7 的批次）。
  *
  * **B13 之后本文件不再导入任何 owner 包的表对象**：业务表定义随任务 1.7 的 B1–B13 全部迁至各 owner
  * 包的 `db/schema.ts`，跨包外键的列对象来源也随之离开（`@fenix/agent-config/db` 随 B12、`environment`
@@ -15,7 +14,7 @@
  * 数据走各自的服务端入口或注入端口，不得依赖本文件。
  *
  * 迁移链是全部 owner schema 与宿主 schema 的共同产物：`drizzle.config.ts` 必须同时声明它们，否则
- * `db:generate` 会把漏声明的一族误判为已删除。各批的迁移记录与实测见上引 review 文档 §7.10–§7.25。
+ * `db:generate` 会把漏声明的一族误判为已删除。
  */
 
 export {

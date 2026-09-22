@@ -3,10 +3,9 @@
     "架构例外台账：登记存量边界违规，精确到「规则 + 来源包 + 目标包」，每条带所属任务号与移除条件。",
     "门禁（scripts/check-dependency-boundaries.ts）只阻断未登记的**新增**违规，并在某条不再违规时报错要求删除。",
     "owner 取值：在排任务的编号（如 1.6 / 1.7）或「未排期」——后者表示该违规不属于任何在排任务的范围，",
-    "是本次门禁修复后被如实暴露出来的既有债务。逐包核查结论与裁定记录在各任务的 review 文档里：",
-    "docs/design/ce-ee-refactoring/review/ 下的 task-1.2-platform-identity-authorization.md（身份与授权）、",
-    "task-1.3-resource-packages.md（资源包）、task-1.4-agent-runtime.md（agent-runtime 与 machine/sandbox 方向收敛）、",
-    "task-1.5-host-aggregation.md（宿主聚合与本次台账据实改写）。",
+    "是本次门禁修复后被如实暴露出来的既有债务。逐包核查结论与裁定记录见同目录的 ce-ee-standards-compliance-gaps.md：",
+    "该文件是当前的符合性核查台账，逐条给出缺口、规范条款、现状证据与处置优先级，",
+    "本条目的 owner 与移除条件口径与它一致。",
     "禁止把 from / to 写成通配（加载器会直接拒绝）：通配会让整类边界静默失效。",
     "【环的代表边与 owner 归属】no-circular 的粒度为「每环一条」：环上每条边不逐条上报，from / to 只是该环上被挑中的一条",
     "**真实边**（相邻两点），不是环的参与者全集。被挑中的边若落在包内，包对指纹就会把跨包环显示成包内自环",
@@ -36,7 +35,7 @@
       "to": "@fenix/agent-runtime",
       "owner": "未排期",
       "removeWhen": "machine 删除 §2.3 依赖矩阵外的 `machine → agent-config` 反向边（本族 38 处环的共同闭合边，每条环各含一次）——该边一删，本条与其余 5 个指纹（1.4 名下 4 条 + `@fenix/agent-config → @fenix/agent-config`）一并消失。原先写的「1.5 下沉 apps/server 能力」已不是本条的移除条件：原 32 处环**每条都含** `@fenix/server-app → @fenix/agent-runtime`（32 处），该边随 1.5b / 1.5c 归零后本条降到 14 处，剩余环里已无任何宿主参与者。",
-      "rationale": "1.5g 复测（2026-09-21，工作树 872010416，2411 modules，按 `check:dependencies` 的参数重跑）据实改写：实测 **14 处环（环长 14–17）**；上次记载「32 处环（环长 3–9）」，处数与环长均不符。参与包只剩一族：@fenix/agent-config ↔ @fenix/agent-runtime ↔ @fenix/resource-machine ↔ @fenix/resource-sandbox（14 处）。上次记载的三支里，含 @fenix/server-app 的两支（27 处 + 3 处）与含 @fenix/resource-knowledge 的第三支（2 处）已随 1.5b / 1.5c 的包 → 宿主边下沉整体归零；本条 `from` / `to` 落在 agent-runtime 包内边，是代表边分布的结果，不是包内自环。环上跨包边已同质化为固定 4 条、每条环各含一次：@fenix/agent-runtime → @fenix/resource-sandbox、@fenix/agent-config → @fenix/agent-runtime、@fenix/resource-machine → @fenix/agent-config、@fenix/resource-sandbox → @fenix/resource-machine（本指纹下各 14 处）。根因随之改写：不再是「包 ↔ 应用倒置」，而是矩阵外的 @fenix/resource-machine → @fenix/agent-config 反向边闭合本族环；该边同时是 1.4 名下 4 条同族条目的共同闭合边，本族实测 38 处环、分布在 6 个包对指纹下，本条是其中之一。owner 保持 1.5：1.4 §22.3 把这族登记为 1.4 的未结项，归属写明「须在 §1.5 或 machine 包的独立任务中处理」，故本次不做改派（见 review/task-1.5-host-aggregation.md 的 1.5g【需审核】）。环的代表边语义、归属依据与上报粒度见本台账 `_comment` 的「环的代表边与 owner 归属」段。 owner 于 2026-09-21 按用户裁定改挂「未排期」（原 1.5）：本族 6 个指纹的删除条件都挂在同一条边上，理由见本台账 `_comment` 的「4 包环族 owner 改挂「未排期」」段。"
+      "rationale": "1.5g 复测（2026-09-21，工作树 872010416，2411 modules，按 `check:dependencies` 的参数重跑）据实改写：实测 **14 处环（环长 14–17）**；上次记载「32 处环（环长 3–9）」，处数与环长均不符。参与包只剩一族：@fenix/agent-config ↔ @fenix/agent-runtime ↔ @fenix/resource-machine ↔ @fenix/resource-sandbox（14 处）。上次记载的三支里，含 @fenix/server-app 的两支（27 处 + 3 处）与含 @fenix/resource-knowledge 的第三支（2 处）已随 1.5b / 1.5c 的包 → 宿主边下沉整体归零；本条 `from` / `to` 落在 agent-runtime 包内边，是代表边分布的结果，不是包内自环。环上跨包边已同质化为固定 4 条、每条环各含一次：@fenix/agent-runtime → @fenix/resource-sandbox、@fenix/agent-config → @fenix/agent-runtime、@fenix/resource-machine → @fenix/agent-config、@fenix/resource-sandbox → @fenix/resource-machine（本指纹下各 14 处）。根因随之改写：不再是「包 ↔ 应用倒置」，而是矩阵外的 @fenix/resource-machine → @fenix/agent-config 反向边闭合本族环；该边同时是 1.4 名下 4 条同族条目的共同闭合边，本族实测 38 处环、分布在 6 个包对指纹下，本条是其中之一。owner 保持 1.5：1.4 §22.3 把这族登记为 1.4 的未结项，归属写明「须在 §1.5 或 machine 包的独立任务中处理」，故本次不做改派。环的代表边语义、归属依据与上报粒度见本台账 `_comment` 的「环的代表边与 owner 归属」段。 owner 于 2026-09-21 按用户裁定改挂「未排期」（原 1.5）：本族 6 个指纹的删除条件都挂在同一条边上，理由见本台账 `_comment` 的「4 包环族 owner 改挂「未排期」」段。"
     },
     {
       "rule": "no-circular",

@@ -6,7 +6,7 @@ import { getIdentityDirectoryStub, resetAllStubs, stubIdentityDirectory } from "
 import { createModelGatewaySubjectVerification } from "../services/model-gateway-subject-verification";
 
 /**
- * 主体复验端口实现的拒绝路径回归（review 文档 1.52 的 S5 验收缺口）。
+ * 主体复验端口实现的拒绝路径回归（1.52 的 S5 验收缺口）。
  *
  * 这是**签发上游网关凭据前的权限判定**：`model-management` 声明窄端口、宿主装配真实实现。它新增了
  * 三种原先恒不可达的拒绝原因（用户 / 组织 / Agent 不存在），凭据吊销检测据原因决定"删除上游凭据"

@@ -62,8 +62,7 @@ const REGISTRY_SECRET_DEFAULT = "rcs-registry-secret";
  * 3. **补齐声明**——`YJS_MAX_CLIENTS`：宿主 schema 从未声明此键，原先唯一读取点是 `chat-channel-bootstrap.ts`
  *    的 `parseInt(process.env.YJS_MAX_CLIENTS || "", 10) || 200` 直读，已随 1.7 C1 改为经模块配置注入
  *    （`AgentRuntimeModuleConfig.yjsMaxClients`）。声明带来一处已知行为差异：原先非法值静默回落到 200、
- *    负值被原样接受，声明后非法值在启动期校验失败——该差异登记在 review
- *    `task-1.7-db-config-migration.md` §8.1 第 15 条，现已随收口同批生效。
+ *    负值被原样接受，声明后非法值在启动期校验失败——该差异现已随收口同批生效。
  *    值仍在装配期被读一次并固化，`restartRequired: true` 与其余键口径一致。
  *
  * 默认值语义逐键照抄宿主原文，不做「顺手改进」：`optional()` 无默认值的键（并发总量上限、定时并发上限、

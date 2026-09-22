@@ -13,8 +13,8 @@
 //   该回调，保持「宿主具备文件预览能力」这一旧用例前提。
 // - 保留注释里引用的 `components/chat/ToolCallRow.tsx` 是迁移前的路径，包内现为
 //   `web/chat/timeline/ToolCallRow.tsx`。
-// - 已登记的有意取舍（`docs/design/ce-ee-refactoring/review/task-1.6-web-shell.md` §8.2 第 1 行、
-//   `packages/ui-components/README.md`「纯化决策（相对 apps/web 源实现）」表中 `ToolCallRow.tsx` 行）：
+// - 已登记的有意取舍（`packages/ui-components/README.md`「纯化决策（相对 apps/web 源实现）」表中
+//   `ToolCallRow.tsx` 行）：
 //   「失败工具展示公开错误」用例删除——
 //   包内只保留标题下方第二行的 `errorDetail`（`narrate` 优先取 `publicError.message`），
 //   不再渲染该块右侧的 `Type:` / `ID:` 两行，故该用例的 Type / ID 断言在包内无对应行为。
