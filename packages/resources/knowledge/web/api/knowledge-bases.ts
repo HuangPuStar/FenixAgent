@@ -7,11 +7,11 @@
 
 import { ApiError, request } from "@fenix/web-runtime/api/request";
 import type {
+  KnowledgeBaseCreateBody,
   KnowledgeBaseDetail,
   KnowledgeBaseInfo,
   KnowledgeBaseListResponse,
   KnowledgeFormOptions,
-  KnowledgeParseMethod,
   KnowledgeResourceInfo,
   KnowledgeSearchBody,
   KnowledgeSearchResultData,
@@ -20,21 +20,14 @@ import type {
   UnassociatedKnowledgeBase,
 } from "../types/knowledge";
 
-/** 创建知识库请求体 */
-export interface KnowledgeBaseCreateBody {
-  name: string;
-  slug?: string;
-  description?: string;
-  /** 嵌入模型名；创建后不可改 */
-  embeddingModel?: string | null;
-  /** 解析方法；创建后不可改 */
-  parseMethod?: KnowledgeParseMethod | null;
-  /** 自定义解析 pipeline ID；仅 parseMethod=pipeline 时生效 */
-  pipelineId?: string | null;
-  /** 内置分块方法 parser_id；仅 parseMethod=builtin 时生效 */
-  chunkMethod?: string | null;
-  /** 知识库层级：global / org / user */
-}
+/**
+ * 创建知识库请求体由 `types/knowledge` 唯一持有，这里只 re-export。
+ *
+ * 收敛前本文件原地再声明了一份逐字相同的副本（含各自的字段注释），页面侧还有第三份内联副本；
+ * 三处字段、可选性、类型完全一致，因此合并成一份不会放宽任何类型。类型定义集中在 types 目录，
+ * 也让「请求体形状」只有一个改动点。
+ */
+export type { KnowledgeBaseCreateBody };
 
 /** 更新知识库请求体（部分字段可选） */
 export type KnowledgeBaseUpdateBody = Partial<KnowledgeBaseCreateBody>;
