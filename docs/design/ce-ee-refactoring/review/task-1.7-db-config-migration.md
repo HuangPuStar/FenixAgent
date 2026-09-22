@@ -2004,7 +2004,7 @@ web-app-tests 319 pass / 0 fail。改动只涉及 7 个 `package.json` 与 `bun.
 
 **路线裁定**（用户四问，全选推荐项）：配置桥走**路线 A 的窄口径**——`envDefinitions` 只承担启动期校验与汇总，值仍由宿主 `bootstrap/module-configs.ts` 手工投影成模块配置，不引入通用拆分器、不改各模块 `config.ts` 的形态；收敛范围取「只迁**有唯一模块 owner** 的键」；宿主直读点只改与本次迁移直接相关的那些；收口以「不破既有测试」为限。
 
-**迁出面**：宿主 `apps/server/src/env.ts` 删 **53 键**（93 → 40）并同批删掉因之失效的 import（`255` → `164` 行）。44 个模块专属字段在 `config.ts` 改经 `readDeclaredEnv()` 取值，`module-configs.ts` 与 `host-startup.ts` 的直读点同批改。留在宿主的 40 键逐条有理由，已写入 `env.ts` 的维护者注释与 `config.ts` 的 `buildConfig` 说明：宿主自身运行参数（`RCS_VERSION` / `RCS_PORT` / `RCS_WS_IDLE_TIMEOUT` / `RCS_FILE_WS_*` 巡检与载荷上限 / `RCS_CCB_*` …）与**多模块共享或无唯一 owner 的键**——`RCS_DEFAULT_MACHINE_ID`（本包兜底 + machine 模块 + 宿主 core-bootstrap 三方消费）、`RCS_DEFAULT_ENGINE_TYPE`、`RCS_DISABLE_LOCAL_EXECUTION`（本包 `environment-orchestration.ts` 与 machine 的 `local-node-service.ts` 同时读）、`RCS_BASE_URL`、`RCS_REDIS_*`、`RCS_YJS_SNAPSHOT_*`（包内持久层直读）、`RCS_API_KEYS`（skill 下载 token 的 HMAC 签名，多消费面）等。**判据是「唯一 owner」而不是「包内专属」**：无唯一 owner 的键按裁定留在宿主，不属本块待办。
+**迁出面**：宿主 `apps/server/src/env.ts` 删 **53 键**（93 → 40）并同批删掉因之失效的 import（`255` → `164` 行）。44 个模块专属字段在 `config.ts` 改经 `readDeclaredEnv()` 取值，`module-configs.ts` 与 `host-startup.ts` 的直读点同批改。留在宿主的 40 键逐条有理由，已写入 `env.ts` 的维护者注释与 `config.ts` 的 `buildConfig` 说明：宿主自身运行参数（`RCS_VERSION` / `RCS_PORT` / `RCS_FILE_WS_*` 巡检与载荷上限 …）与**多模块共享或无唯一 owner 的键**——`RCS_DEFAULT_MACHINE_ID`（本包兜底 + machine 模块 + 宿主 core-bootstrap 三方消费）、`RCS_DEFAULT_ENGINE_TYPE`、`RCS_DISABLE_LOCAL_EXECUTION`（本包 `environment-orchestration.ts` 与 machine 的 `local-node-service.ts` 同时读）、`RCS_BASE_URL`、`RCS_REDIS_*`、`RCS_YJS_SNAPSHOT_*`（包内持久层直读）、`RCS_API_KEYS`（skill 下载 token 的 HMAC 签名）等。**归属理由的独立复核见 §7.34**：`RCS_CCB_*` 不属「宿主自身运行参数」而是双通道的插件部署值，`RCS_YJS_SNAPSHOT_*` 是「单一 owner + 无 manifest + 待 DI 收口」而非「多模块共享」，另有 4 个宿主死键登记为 §8.1 第 16 条。**判据是「唯一 owner」而不是「包内专属」**：无唯一 owner 的键按裁定留在宿主，不属本块待办。
 
 **6 键是「补齐声明」而非迁移**——宿主 `env.ts` 从未声明，取值靠直读或 `??` 兜底：`GOTENBERG_URL`、`RCS_WORKFLOW_HMAC_SECRET`、`LANGFUSE_PUBLIC_KEY` / `LANGFUSE_SECRET_KEY` / `LANGFUSE_BASE_URL`（与已声明的 `HINDSIGHT_API_TOKEN` 同属 `services/pre-launch-ports.ts` 的同一个 `env:` 对象，原批漏声明）、`YJS_MAX_CLIENTS`（收口见 §7.33）。这一条同时闭环 §六「与计划的偏差」第 3 条（宿主 env schema 缺 2 键）。
 
@@ -2061,6 +2061,49 @@ web-app-tests 319 pass / 0 fail。改动只涉及 7 个 `package.json` 与 `bun.
 
 **§8.4 的「C 块」段据此订正**：原记的「machine 侧 10 个文件破测」是按已被否掉的方案（让 machine 也初始化 agent-runtime 配置）估的控制面文件数，真实破面与根因见上。
 
+### 7.34 C 块交付后的独立复核：数值、插件直读簇与 4 个宿主死键（2026-09-22）
+
+**触发**：§7.32 的核心断言是「宿主余下的 40 键逐条有留在宿主的理由」，但该断言在此之前只有类别标签与少量举例，**没有可核对的机器证据，也没有 40 键的逐条清单**。本批在交付后另起独立复核：脚本交叉核对数值面 + 逐键追消费点。结论是 **C 块的实现面无缺陷，缺的是登记与表述**；据此订正 §7.32 的举例、扩写 §8.1 第 10 条、新增第 16 条，**零代码改动**。
+
+**一、数值复核（补足 §7.32 缺少的机器证据）**：
+
+| 面 | 读数 | 与前置断言的关系 |
+|---|---|---|
+| 各 `fenix.module.ts` 的 `envDefinitions` 声明键 | **59** | = 53 迁出 + 6 补齐，逐键无重复（跨 manifest 重复声明 **0**） |
+| 宿主 `apps/server/src/env.ts` 顶层声明键 | **40** | 与「93 → 40」一致 |
+| 宿主 ↔ manifest **同名键** | **0 处** | `assertNoHostKeyOverride()` 的拒绝面当前为空 |
+
+末行是 C 块「加声明与删宿主同名行必须成对落地」这一要求在末态的机器证据——**漏删任意一行都会让服务启动直接失败**，因此「precheck 全绿」本身就是该面为空的旁证；本批另用脚本独立复核，不再依赖单一推理。
+
+**二、§8.1 第 10 条补录：引擎插件包的 env 直读簇（本批漏登记）**：
+
+| 读取点 | 键 |
+|---|---|
+| `packages/plugin-ccb/src/runtime/ccb-runtime.ts:108`、`packages/plugin-opencode/src/runtime/opencode-runtime.ts:107` | `WORKSPACE_ROOT`（`?? {cwd}/workspaces` 兜底） |
+| `packages/plugin-ccb/src/ccb-handler.ts:19-20` | `RCS_CCB_COMMAND` / `RCS_CCB_ARGS` |
+| `packages/plugin-ccb/src/runtime/environment-preparer.ts:64` | `IS_PERI` |
+| 两包的 `src/runtime/skill-installer.ts:30` | `RCS_URL` |
+
+**结构性阻塞的真实原因是「不是装配模块」，不是「依赖矩阵禁止」**：`envDefinitions` 的前提是「宿主启动期扫描并加载 `packages/**/fenix.module.ts`，再由 `loadServerEnv` 汇总校验」，而这三个包是**引擎插件**——没有 manifest、不参与 profile 装配（`@fenix/plugin-sdk` 的 `EnginePlugin` 是它们与服务侧相接的唯一契约），运行体在 acp-link 进程内。`ce-ee-engineering-standards.md` §2.3 对「`platform/*`、`agent-runtime`、`resources/*` 之外的包」这一行**唯一的禁则是「包间依赖环」，并未禁止依赖 `platform-sdk`**（`chat-channel` 就依赖它），所以「类别不允许 `platform-sdk`」是错误归因，不得用来解释本条。
+
+**顺带订正一个方法论陷阱**：「在子进程/边缘里读」**本身不是**「不能由 manifest 声明」的理由——`WORKSPACE_ROOT` 已由 agent-runtime manifest 声明，同时仍被上表两个插件与 machine 的 host port 直读。声明的是**宿主进程里的那一份**（`loadServerEnv` 汇总出的 `ServerEnv`），插件读的是**它自己进程或容器里的那一份**，两者是不同的值来源，可以并存。
+
+**三、`RCS_CCB_*` 的归属订正（一个被推翻的假设）**：
+复核中曾据「`apps/**` 只有 `env.ts:115-116` 两行声明、无读取点、无测试断言」判定这两个键是**宿主死声明**。**该假设经验证不成立**，证据链：
+1. `packages/acp-link/src/spawn-env.ts` 的白名单只放行 `AGENT_PROCESS_ENV_KEYS` 的 12 项与 `LC_` 前缀，注释明确「`RCS_*` 一律不做前缀放行」——但这条只约束**再往 Agent 子进程传一层**，不能据此推断宿主进程内无人读；
+2. **本地节点**下 `plugin-ccb` 的 `AcpLinkProcessManager.start()` 在**宿主进程内**调用 `createAcpServer()`（`packages/plugin-ccb/src/process/acp-link-process-manager.ts:48`），而 `packages/acp-link/src/server.ts:216-218` 的 handlers 表会就地构造 `ccb: createCcbHandler()`，`ccb-handler.ts:19-20` 随即读 `process.env.RCS_CCB_COMMAND`——**宿主 env 就是本地 ccb 实例的取值来源**；
+3. **沙盒路径**下 acp-link 运行在容器内，同名值由容器 env 提供（`.env:88-96` 的 `RCS_DEFAULT_SANDBOX_RESOURCES_JSON.environment`、`docker/sandbox-peri/docker-compose.yml:19-20`、`docker/sandbox-dsh/docker-compose.yml:23-24`）。
+
+结论：这两个键是**双通道的插件部署值**（本地走宿主 env、沙盒走容器 env），保留在宿主 schema 是本地通道的实义声明。§7.32 原把它们归入「宿主自身运行参数」——方向对但理由不全，该举例已订正，键本身挂到 §8.1 第 10 条。
+
+**四、4 个宿主死键（新发现，登记为 §8.1 第 16 条）**：
+`RCS_POLL_TIMEOUT` / `RCS_HEARTBEAT_INTERVAL` / `RCS_WS_IDLE_TIMEOUT` / `RCS_DISCONNECT_TIMEOUT` 在全仓只有两种形态：`env.ts:64-66,68` 的声明与 `config.ts:57,58,63,71` 的投影赋值。（`heartbeatInterval` 的其余命中全是 machine 自己的 `heartbeatIntervalMs` 常量族，非同一符号；`config.ts:16-17` 的命中是文件头注释。）`AppConfig` 的四个同名字段**零读取点**——已排除两条伪证路径：`AppConfig` 的消费方只有 `host-wiring.ts`（逐字段取用）与 `module-configs.ts`（显式投影，不含这四个字段），全仓无 `{ ...config }` 式整体下发，前端也不经 API 取用。
+`RCS_WS_IDLE_TIMEOUT` 最典型：`config.ts` 的注释写明它须「高于 `wsKeepaliveInterval * 3`，以便应用层保活在 Bun 关闭连接前判死」，但 `main.ts` 的 `Bun.serve` **只设了 `maxPayloadLength`、从未传 `idleTimeout`**（`env.RCS_FILE_WS_MAX_PAYLOAD_MB`）——Bun 用自己的默认值（注释自述同为 255s），因此**部署侧改这个键不生效**。疑为 WS 层改用 Bun 原生配置后遗留；现行保活旋钮是 `RCS_WS_KEEPALIVE_INTERVAL`（已由 agent-runtime manifest 声明）。**本块不删**：删除属部署面收缩、超出「只迁有唯一 owner 的键」的裁定范围，登记待裁定。
+
+**五、两处「理由表述不精确」（不是缺陷，但口径要改）**：
+- `RCS_YJS_SNAPSHOT_*`：§7.32 归入「多模块共享或无唯一 owner」，实际是**单一 owner**——`packages/chat-channel/src/persist/snapshot-config.ts:27-29` 按动态键直读（全仓唯一消费包）。它留在宿主的真实理由是「该包无 manifest（同第二条的结构性阻塞）+ 既定修法是宿主 DI 注入 options」，`CLAUDE.md` 环境变量段已载明这两点，§7.32 的归类应改成同一条结构口径。
+- `RCS_API_KEYS`：生产消费面实际只有 skill 模块（`bootstrap/module-configs.ts:79` 投影 → `packages/resources/skill/src/server/services/skill-download-token.ts`），§7.32 的「多消费面」缺证据（其余命中全是注释与 acp-link 的密钥剥除说明）。但它是宿主**必填**项、由部署面承诺（`env.ts:44` 的校验消息即写明用途），是否迁入 skill 的 `envDefinitions` 属**待裁定**，本块不动。
+
 ## 八、已知缺口与未完成项（逐条登记 owner 与移除条件）
 
 > 依据 `ce-ee-engineering-standards.md` §10.7.4：边界豁免与依赖残留必须逐条登记并写明 owner
@@ -2079,7 +2122,7 @@ web-app-tests 319 pass / 0 fail。改动只涉及 7 个 `package.json` 与 `bun.
 | 7 | 工作流节点不再继承宿主环境变量（§10.6.3 的既定方向）。依赖宿主变量的既有工作流会失效 | 已交付的行为变化 | 补偿通道：节点 `env` / `secrets` 字段显式声明 |
 | 8 | `EnvDefinition` 的 `secret` / `restartRequired` 无任何消费者 | C 块 | 见 §8.4 |
 | 9 | ~~`packages/agent-runtime/src/server/services/workspace-resolver.ts:9` 直读 `process.env.WORKSPACE_ROOT`——server 装配面内**唯一**真违规~~ **已闭环（§7.33，2026-09-22）**：resolver 改读模块配置的 `workspaceRoot`；Machine host port 的根解析拆给宿主 `bootstrap/workspace-path.ts`（那份直读 env 是 workspace 根锁的契约要求，不属违规面），agent-runtime 的公开导出与钉它的用例一并删除 | 已交付 | 见 §7.33 |
-| 10 | 环境变量整段继承的残余：不传 `env` 的隐式继承 10 处、`docker/sandbox-dsh/scripts/dsh-acp-wrapper.js`、`apps/server/src/services/agent-generation.ts:63` 的 `new OpenAI()` 隐式读 `OPENAI_API_KEY` | 1.7 剩余 | 逐处改为白名单或显式注入；`new OpenAI()` 改由注入配置构造 |
+| 10 | 环境变量整段继承的残余：不传 `env` 的隐式继承 10 处、`docker/sandbox-dsh/scripts/dsh-acp-wrapper.js`、`apps/server/src/services/agent-generation.ts:63` 的 `new OpenAI()` 隐式读 `OPENAI_API_KEY`；**引擎插件包的运行时直读（§7.34 二补录）**：`plugin-ccb/src/runtime/ccb-runtime.ts:108` 与 `plugin-opencode/src/runtime/opencode-runtime.ts:107` 读 `WORKSPACE_ROOT`、`plugin-ccb/src/ccb-handler.ts:19-20` 读 `RCS_CCB_COMMAND` / `RCS_CCB_ARGS`、`plugin-ccb/src/runtime/environment-preparer.ts:64` 读 `IS_PERI`、两包 `runtime/skill-installer.ts:30` 读 `RCS_URL`——**这几个包没有 `fenix.module.ts`、不是装配模块**，`envDefinitions` 对它们结构性不存在（与依赖矩阵无关，勿按「类别禁止依赖 platform-sdk」解释，见 §7.34 二） | 1.7 剩余 | 逐处改为白名单或显式注入；`new OpenAI()` 改由注入配置构造 |
 | 11 | ~~**`model-management` 没有 source-migration 契约测试**（machine / mcp / sandbox / agent-config / workflow / task 六个包均有），因此 §4.7.1 ③ 的「残留数 > 0」正向控制在 B3 无从收缩，该包与宿主的边界在测试层无人守护（只靠 `apps-boundary` 台账 + `check:dependencies`）~~ **已闭环（§7.26，2026-09-22）**：补 `src/__tests__/model-management-source-migration.test.ts`（10 用例），断言为零容忍「包内不存在宿主 `@server` 导入」+ 宿主别名 / 穿透相对路径 / 跨包 `db` 出口，正向控制改用 `@fenix/platform-sdk`、包内相对导入与本包 `db` 出口自我引用三条必然存在的说明符 | 已交付 | 变异实验已验证判别力：注入一条 `import { db } from "@server/db"` 即让该用例单独转红，删除后复绿 |
 
 | 12 | ~~**`observer` 的 `drizzle-orm` 声明在本批后成为未使用依赖**：B7 删掉该包唯一的 DB 句柄与仓储后，全包 `src/**`、`web/**` 再无 `drizzle-orm` 导入（仅一处浏览器面测试的注释提到它）。删除声明需要跑 `bun install` 更新 `bun.lock`，本批不动锁文件~~ **已闭环（B 块收尾（4），2026-09-22）**：按移除条件做了整仓未使用依赖扫描，共删 **9 条声明 / 7 个包**（`observer` 的 `drizzle-orm`；`agent-runtime` 的 `@fenix/resource-{knowledge,machine,memory,skill}`；`access-control` 的 `@fenix/logger`；三个插件包的 `@fenix/core`；`agent-config` 的 `@fenix/orchestration`），`bun install` 同批更新锁文件。**判据不能只看 import**：`access-control` 的 `@fenix/identity` 零 import，但被模块注册表的 `dependsOn: ["identity"]`（装配契约）要求声明，首轮按 import 扫描删除后被 `module-registry` 步骤拦下（`assertDependsOnDeclared`）并回退；`ui-components` 的 `@tailwindcss/typography` 只经 CSS `@plugin` 指令使用，静态扫描同样看不到 | 已交付 | 已交付，见 §7.29 |
@@ -2087,6 +2130,8 @@ web-app-tests 319 pass / 0 fail。改动只涉及 7 个 `package.json` 与 `bun.
 | 14 | **包级 tsconfig 不在任何门禁内（§7.28 顺带发现，非本批引入）**：`precheck` 的 tsc 步骤只跑 server / web / app skeletons，`tsc -p packages/<pkg>/tsconfig.json` 无人执行。`agent-runtime` 实测：`tsconfig.json` 的 `baseUrl` 已弃用（TS5101，整体失败），`--ignoreDeprecations 6.0` 后仍有 26 条既有错误（`res.json()` 类型为 `unknown`、`InstanceSupplement` 断言不重叠、`web/yjs/yjs-ws.ts` 缺 DOM lib、`chat-channel-bootstrap.test.ts` 找不到 `../transport/ws-types`）。与第 2 条（根 `scripts/` 不在 `include` 内）同族 | 1.8（测试入口与 CI 目录扫描） | 把各包 tsconfig 纳入静态检查，或明确登记「只检查三张宿主 tsconfig」为接受的口径；并入第 2 条同批处理 |
 
 | 15 | **`YJS_MAX_CLIENTS` 声明后引入启动期收紧（C 块，本批引入）**：该键原先只在 `chat-channel-bootstrap.ts` 以 `parseInt(process.env.YJS_MAX_CLIENTS, 10)` 兜底到 200 的方式直读——非法值静默回落到 200、负值被原样接受。迁入 `agent-runtime` 的 `envDefinitions` 后改由 `loadServerEnv()` 在启动期按 schema 校验，非法值将**拒绝启动**。这是「不留已知缺陷」的应然方向，但属可观测的行为变化，故登记 | C 块 | 与 C1「`YJS_MAX_CLIENTS` 改为经 options 注入」同批落盘；若部署侧确需兼容旧输入，应在模块 schema 内用 `z.preprocess` 归一而不是放宽校验。**已闭环（§7.33，2026-09-22）**：`chat-channel-bootstrap.ts` 改经 `AgentRuntimeModuleConfig.yjsMaxClients` 取数，启动期 schema 收紧随之生效 |
+
+| 16 | **4 个宿主 env 键零消费者（C 块交付后独立复核发现，非本批引入）**：`RCS_POLL_TIMEOUT` / `RCS_HEARTBEAT_INTERVAL` / `RCS_WS_IDLE_TIMEOUT` / `RCS_DISCONNECT_TIMEOUT` 在全仓只有 `env.ts:64-66,68` 的声明与 `config.ts:57,58,63,71` 的投影赋值，`AppConfig` 的四个同名字段**零读取点**（已排除整体序列化 / 前端经 API 取用两条路径）。`RCS_WS_IDLE_TIMEOUT` 尤甚：`config.ts` 注释写明它须「高于 `wsKeepaliveInterval * 3` 才能在 Bun 关闭连接前判死」，但 `main.ts` 的 `Bun.serve` 只设了 `maxPayloadLength`、**从未传 `idleTimeout`**——部署侧改这个键不生效。详见 §7.34 四 | 待裁定（C 块边缘） | 删除 4 个 env 键 + 4 个 `AppConfig` 字段 + `.env.example` 对应行；或明确「保留为 Bun 默认值的书面记录」并删掉注释中的「设置」语义。**属部署面收缩，超出「只迁有唯一 owner 的键」的裁定范围，本块只登记不动手** |
 
 ### 8.2 1.7 未完成条目（本档位不做）
 
