@@ -3,16 +3,6 @@ import { createContext, type ReactNode, useCallback, useContext, useEffect, useM
 import { useTranslation } from "react-i18next";
 import { UI_COMPONENTS_NS } from "../../i18n/namespace";
 import { cn } from "../../lib/cn";
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from "../../ui/alert-dialog";
 import { Button } from "../../ui/button";
 import { Spinner } from "../../ui/spinner";
 import { Tooltip, TooltipContent, TooltipTrigger } from "../../ui/tooltip";
@@ -21,6 +11,7 @@ import { groupByRecency } from "../lib/session-grouping";
 import { stripHtmlTags } from "../lib/strip-html-tags";
 import type { SessionSummary } from "../types";
 import type { ChatNotice } from "./chat-interface-types";
+import { DeleteSessionDialog } from "./internal/delete-session-dialog";
 
 /**
  * 侧边栏会话列表属性。
@@ -256,22 +247,12 @@ export function SidebarSessionList({
         </div>
       ))}
 
-      <AlertDialog open={deleteTarget !== null} onOpenChange={(open) => !open && setDeleteTarget(null)}>
-        <AlertDialogContent size="sm">
-          <AlertDialogHeader>
-            <AlertDialogTitle>{t("chat.components.acpMain.deleteSessionTitle")}</AlertDialogTitle>
-            <AlertDialogDescription>
-              {t("chat.components.acpMain.deleteConfirm", { title: deleteTarget?.title ?? "" })}
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel>{t("chat.components.acpMain.cancel")}</AlertDialogCancel>
-            <AlertDialogAction className="bg-red-600 text-white hover:bg-red-700" onClick={handleConfirmDelete}>
-              {t("chat.components.acpMain.delete")}
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
+      <DeleteSessionDialog
+        open={deleteTarget !== null}
+        title={deleteTarget?.title}
+        onOpenChange={(open) => !open && setDeleteTarget(null)}
+        onConfirm={handleConfirmDelete}
+      />
     </nav>
   );
 }

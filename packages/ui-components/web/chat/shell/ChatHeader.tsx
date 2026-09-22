@@ -3,16 +3,6 @@ import { type KeyboardEvent, useCallback, useEffect, useMemo, useState } from "r
 import { useTranslation } from "react-i18next";
 import { UI_COMPONENTS_NS } from "../../i18n/namespace";
 import { cn } from "../../lib/cn";
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from "../../ui/alert-dialog";
 import { Button } from "../../ui/button";
 import { Input } from "../../ui/input";
 import { Popover, PopoverContent, PopoverTrigger } from "../../ui/popover";
@@ -23,6 +13,7 @@ import { stripHtmlTags } from "../lib/strip-html-tags";
 import type { AgentSessionInfo } from "../types";
 import type { ChatNotice } from "./chat-interface-types";
 import { type ChatHeaderSessionItem, ChatHeaderSessionRow } from "./internal/chat-header-session-row";
+import { DeleteSessionDialog } from "./internal/delete-session-dialog";
 
 /**
  * 顶部卡片样式（源两段规则按级联的**生效值**落地）：
@@ -433,27 +424,12 @@ export function ChatHeader({
       <div className="flex-1" />
 
       {/* 会话删除二次确认 */}
-      <AlertDialog open={deleteTarget !== null} onOpenChange={(open) => !open && setDeleteTarget(null)}>
-        <AlertDialogContent size="sm">
-          <AlertDialogHeader>
-            <AlertDialogTitle>{t("chat.components.acpMain.deleteSessionTitle")}</AlertDialogTitle>
-            <AlertDialogDescription>
-              {t("chat.components.acpMain.deleteConfirm", { title: deleteTarget?.title ?? "" })}
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel onClick={() => setDeleteTarget(null)}>
-              {t("chat.components.acpMain.cancel")}
-            </AlertDialogCancel>
-            <AlertDialogAction
-              className="bg-red-600 text-white hover:bg-red-700 dark:bg-red-500 dark:hover:bg-red-600"
-              onClick={() => void handleConfirmDelete()}
-            >
-              {t("chat.components.acpMain.delete")}
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
+      <DeleteSessionDialog
+        open={deleteTarget !== null}
+        title={deleteTarget?.title}
+        onOpenChange={(open) => !open && setDeleteTarget(null)}
+        onConfirm={() => void handleConfirmDelete()}
+      />
     </div>
   );
 }
