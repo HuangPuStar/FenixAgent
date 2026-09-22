@@ -12,6 +12,7 @@ import { toast } from "sonner";
 
 import { SANDBOX_NS } from "../../../../i18n/namespace";
 import { type ClusterServer, type RemoteSandbox, systemSandboxApi } from "../../../api/system-sandbox";
+import { JsonPreview } from "./JsonPreview";
 
 type RemoteSandboxPanelProps = {
   server: ClusterServer;
@@ -216,9 +217,7 @@ export function RemoteSandboxPanel({ server, onAuthFailure }: RemoteSandboxPanel
           </DialogHeader>
           {selected ? (
             <div className="min-w-0 space-y-4">
-              <pre className="max-h-56 overflow-auto whitespace-pre-wrap break-all rounded bg-muted p-3 text-xs">
-                {JSON.stringify(detail ?? selected, null, 2)}
-              </pre>
+              <JsonPreview value={detail ?? selected} className="max-h-56" />
               {diagnostics !== null ? (
                 <div>
                   <Label>{t("diagnostics")}</Label>
