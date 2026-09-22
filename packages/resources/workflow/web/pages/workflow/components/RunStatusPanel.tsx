@@ -28,7 +28,7 @@ import { RunListPanel } from "./RunListPanel";
  * 高度不写死：`h-auto` + 列表 `items-stretch` 让触发项撑满组件标准条高（h-9），下划线因此压在条带下沿。
  */
 const RUN_TAB_TRIGGER =
-  "h-auto rounded-none border-0 border-b-2 border-transparent bg-transparent px-2 text-xs font-normal text-text-secondary whitespace-normal transition-colors data-[state=active]:border-brand data-[state=active]:font-semibold data-[state=active]:text-text-primary";
+  "h-auto rounded-none border-0 border-b-2 border-transparent bg-transparent px-2 text-xs font-normal text-text-secondary whitespace-normal transition-colors after:hidden data-[state=active]:border-brand data-[state=active]:font-semibold data-[state=active]:text-text-primary";
 
 export interface RunStatusPanelProps {
   activeRunId: string | null;

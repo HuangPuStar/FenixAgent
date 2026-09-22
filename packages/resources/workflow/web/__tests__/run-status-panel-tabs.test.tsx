@@ -65,6 +65,10 @@ describe("RunStatusPanel 事件/输出页签", () => {
     expect(html.match(/role="tab"/g)?.length).toBe(2);
     expect(html.match(/aria-selected="true"/g)?.length).toBe(1);
     expect(html.match(/aria-selected="false"/g)?.length).toBe(1);
+
+    // 下划线只由 border-b-2 表达：组件 line 变体自带的 ::after 指示条必须显式关掉，
+    // 否则激活项会同时出现两条下划线（border 压在条带下沿，::after 落在下边框之外）。
+    expect(html).toContain("after:hidden");
   });
 
   // 激活态跟随受控值：runRightTab 决定哪一个 tab 是 aria-selected="true"，且选中项是第一个页签。
