@@ -114,6 +114,7 @@ export * from "./layout/app-page";
 export * from "./lib/card-renderer";
 export * from "./lib/clipboard";
 export * from "./lib/cn";
+export * from "./lib/format";
 export * from "./lib/theme";
 // ui —— 基础控件
 export * from "./ui/accordion";

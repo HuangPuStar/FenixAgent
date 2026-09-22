@@ -452,6 +452,10 @@
       "types": "./web/lib/cn.ts",
       "default": "./web/lib/cn.ts"
     },
+    "./lib/format": {
+      "types": "./web/lib/format.ts",
+      "default": "./web/lib/format.ts"
+    },
     "./lib/theme": {
       "types": "./web/lib/theme.tsx",
       "default": "./web/lib/theme.tsx"
