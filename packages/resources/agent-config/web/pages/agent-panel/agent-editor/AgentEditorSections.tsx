@@ -7,8 +7,21 @@ import { selectionToValue, valueToSelection } from "../../../lib/agent-node";
 import { canManageAgentSharing } from "../../../lib/agent-resource-access";
 import { AgentKnowledgeSection } from "./AgentKnowledgeSection";
 import { AgentResourcePicker } from "./AgentResourcePicker";
-import { IDENTITY_FIELDS, SECTION } from "./agent-editor-classes";
+import { SECTION } from "./agent-editor-classes";
 import { EditorButton, EditorInput, EditorTextarea, Field, Intro, SinglePicker, Toggle } from "./agent-editor-controls";
+import {
+  ACCESS_PREVIEW,
+  AGENT_ID_BUTTON,
+  AGENT_ID_INPUT,
+  AGENT_ID_ROW,
+  CAPABILITY_TABS,
+  FORM_GRID,
+  GUIDANCE,
+  MODEL_SUMMARY,
+  OWNER_CARD,
+  PROMPT_EDITOR,
+  RUNTIME_NOTE,
+} from "./agent-editor-form-classes";
 import type { AgentEditorValues } from "./agent-editor-model";
 import type { AgentEditorData } from "./use-agent-editor";
 export type AgentEditorSection = "identity" | "model" | "capabilities" | "knowledge" | "runtime" | "sharing";
@@ -51,7 +64,7 @@ function Identity({
         title={t("editor.sections.identity")}
         description={t("editor.sectionDescriptions.identity")}
       />
-      <div className={`agent-editor-form-grid ${IDENTITY_FIELDS}`}>
+      <div className={FORM_GRID}>
         <Field label={t("form.name")} hint={mode === "edit" ? t("editor.nameImmutable") : undefined}>
           <EditorInput
             id="agent-editor-name"
@@ -66,15 +79,15 @@ function Identity({
             label={t("editor.agentId")}
             hint={t("editor.agentIdHint")}
           >
-            <div className="agent-editor-agent-id-row">
-              <EditorInput value={data.agentId} disabled />
-              <EditorButton type="button" onClick={onCopy}>
+            <div className={AGENT_ID_ROW}>
+              <EditorInput value={data.agentId} className={AGENT_ID_INPUT} disabled />
+              <EditorButton type="button" className={AGENT_ID_BUTTON} onClick={onCopy}>
                 {t("editor.copy")}
               </EditorButton>
             </div>
           </Field>
         )}
-        <Field className="agent-editor-field--description" label={t("form.description")}>
+        <Field className="col-span-full" label={t("form.description")}>
           <EditorInput
             id="agent-editor-description"
             disabled={disabled}
@@ -83,20 +96,20 @@ function Identity({
           />
         </Field>
         <Field
-          className="agent-editor-field--prompt"
+          className="col-span-full"
           label={t("form.prompt")}
           hint={t("editor.characterCount", { count: form.watch("prompt").length })}
         >
           <EditorTextarea
             id="agent-editor-prompt"
-            className="agent-editor-prompt-editor"
+            className={PROMPT_EDITOR}
             disabled={disabled}
             placeholder={t("form.promptPlaceholder")}
             {...form.register("prompt")}
           />
         </Field>
       </div>
-      <p className="agent-editor-guidance">
+      <p className={GUIDANCE}>
         <Info />
         {t("editor.promptGuidance")}
       </p>
@@ -130,7 +143,7 @@ function Model({ form, data, disabled }: { form: Props["form"]; data: Props["dat
           />
         )}
       />
-      <div className="agent-model-summary">
+      <div className={MODEL_SUMMARY}>
         <span>
           <Cpu />
         </span>
@@ -163,7 +176,7 @@ function Capabilities({ form, data, disabled }: { form: Props["form"]; data: Pro
         title={t("editor.sections.capabilities")}
         description={t("editor.sectionDescriptions.capabilities")}
       />
-      <div className="agent-capability-tabs" role="tablist">
+      <div className={CAPABILITY_TABS} role="tablist">
         {tabs.map((item) => {
           const Icon = capabilityIcons[item];
           return (
@@ -174,7 +187,7 @@ function Capabilities({ form, data, disabled }: { form: Props["form"]; data: Pro
               aria-selected={kind === item}
               aria-controls={panelId(item)}
               tabIndex={kind === item ? 0 : -1}
-              className={kind === item ? "is-active" : ""}
+              data-active={kind === item ? "true" : undefined}
               key={item}
               onClick={() => setKind(item)}
               onKeyDown={(event) => {
@@ -236,7 +249,7 @@ function Runtime({ form, data, disabled }: { form: Props["form"]; data: Props["d
           />
         )}
       />
-      <div className="agent-runtime-note">
+      <div className={RUNTIME_NOTE}>
         <Server />
         <div>
           <strong>{t("editor.workspaceIsolationTitle")}</strong>
@@ -267,7 +280,7 @@ function Sharing({
         title={t("editor.sections.sharing")}
         description={t("editor.sectionDescriptions.sharing")}
       />
-      <div className="agent-owner-card">
+      <div className={OWNER_CARD}>
         <span>{form.watch("name").slice(0, 1) || "A"}</span>
         <div>
           <small>{t("editor.resourceOwner")}</small>
@@ -290,7 +303,7 @@ function Sharing({
           />
         )}
       />
-      <div className="agent-access-preview">
+      <div className={ACCESS_PREVIEW}>
         <strong>{t("editor.currentVisibility")}</strong>
         <div>
           <span>{t("editor.currentTeam")}</span>

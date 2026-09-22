@@ -64,7 +64,10 @@ const SUMMARY_CARD =
   "transition-[border-color_140ms_ease,transform_140ms_ease,box-shadow_140ms_ease] " +
   "[&:hover]:-translate-x-[2px] [&:hover]:border-[#aac3ef] [&:hover]:shadow-[0_8px_20px_rgb(35_60_105_/_9%)] " +
   "[&>span]:grid [&>span]:size-8 [&>span]:place-items-center [&>span]:rounded-[9px] [&>span]:bg-[#eaf2ff] [&>span]:text-[#2f69d2] " +
-  "[&>div]:flex [&>div]:min-w-0 [&>div]:flex-col [&>svg]:w-[11px] [&>svg]:text-[#a2adbd]";
+  "[&>div]:flex [&>div]:min-w-0 [&>div]:flex-col [&>svg]:w-[11px] [&>svg]:text-[#a2adbd] " +
+  "[@media(min-width:760px)and(max-width:1119px)]:min-h-[48px] [@media(min-width:760px)and(max-width:1119px)]:grid-cols-[24px_minmax(0,1fr)_10px] " +
+  "[@media(min-width:760px)and(max-width:1119px)]:px-[7px] [@media(min-width:760px)and(max-width:1119px)]:py-[6px] " +
+  "[@media(min-width:760px)and(max-width:1119px)]:[&>span]:size-6";
 
 export function AgentEditorHeader({
   title,
@@ -278,8 +281,10 @@ export function AgentEditorSummary({
       >
         {t("editor.summaryTitle")}
       </h3>
-      <p className="mt-2 max-w-[590px] text-[12px] leading-[1.65] text-[#738098]">{t("editor.summaryDescription")}</p>
-      <div className="mt-[10px] grid gap-2">
+      <p className="mt-2 max-w-[590px] text-[12px] leading-[1.65] text-[#738098] [@media(min-width:760px)and(max-width:1119px)]:hidden">
+        {t("editor.summaryDescription")}
+      </p>
+      <div className="mt-[10px] grid gap-2 [@media(min-width:760px)and(max-width:1119px)]:gap-[6px] [@media(min-width:760px)and(max-width:1119px)]:mt-2">
         {cards.map((card) => (
           <button type="button" key={card.label} className={SUMMARY_CARD} onClick={() => onSectionChange(card.section)}>
             <span>{card.icon}</span>
@@ -291,7 +296,7 @@ export function AgentEditorSummary({
               >
                 {card.value}
               </strong>
-              <em className="mt-[2px] line-clamp-2 text-[11px] leading-[1.35] text-[#8b97a8] not-italic">
+              <em className="mt-[2px] line-clamp-2 text-[11px] leading-[1.35] text-[#8b97a8] not-italic [@media(min-width:760px)and(max-width:1119px)]:hidden">
                 {card.meta}
               </em>
             </div>
@@ -300,14 +305,14 @@ export function AgentEditorSummary({
         ))}
       </div>
       {/* 便签的 background 引用未定义 token（--color-primary-subtle），实际透明，故只迁 color。 */}
-      <div className="mt-[14px] flex gap-2 rounded-[10px] p-[10px] text-primary [&>svg]:w-[13px] [&>svg]:shrink-0">
+      <div className="mt-[14px] flex gap-2 rounded-[10px] p-[10px] text-primary [&>svg]:w-[13px] [&>svg]:shrink-0 [@media(min-width:760px)and(max-width:1119px)]:hidden">
         <Brain />
         <p className="text-[11px] leading-[1.5] text-text-muted">
           <strong className="mb-[2px] block text-[13px] text-text-primary">{t("editor.summaryHowItWorks")}</strong>
           {t("editor.summaryHowItWorksDescription")}
         </p>
       </div>
-      <div className="mt-[9px] flex items-center gap-[5px] text-[11px] text-text-muted [&>svg]:w-[10px]">
+      <div className="mt-[9px] flex items-center gap-[5px] text-[11px] text-text-muted [&>svg]:w-[10px] [@media(min-width:760px)and(max-width:1119px)]:hidden">
         <Check />
         {t("editor.summarySafety")}
       </div>

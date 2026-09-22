@@ -245,8 +245,8 @@ describe("AgentResourcePicker 组件交互", () => {
     );
     expect(container.textContent).not.toContain("editor.allSources");
     expect(container.querySelector(".agent-editor-group-filter .is-active")?.textContent).toContain("Org B");
-    expect(container.querySelector(".agent-resource-picker__list")?.textContent).toContain("Beta");
-    expect(container.querySelector(".agent-resource-picker__list")?.textContent).not.toContain("Alpha");
+    expect(container.querySelector("[data-slot=picker-list]")?.textContent).toContain("Beta");
+    expect(container.querySelector("[data-slot=picker-list]")?.textContent).not.toContain("Alpha");
   });
 
   // 只有一个真实分类的 Sites 应退化为平铺结果，不保留无意义来源栏。
@@ -288,7 +288,7 @@ describe("AgentResourcePicker 组件交互", () => {
     root = createRoot(container as unknown as HTMLElement);
     await act(async () => root?.render(<UnavailablePickerFixture />));
     const buttons = Array.from(container.querySelectorAll<"button">("button"));
-    const chip = buttons.find((button) => button.classList.contains("is-unavailable"));
+    const chip = buttons.find((button) => button.getAttribute("data-unavailable") === "true");
     const checkboxes = Array.from(container.querySelectorAll<"button">("button"));
     const removeCandidates = copyCandidates("editor.removeUnavailableResource", { name: "Hidden" });
     const blockedCandidates = copyCandidates("editor.unavailableResource", { name: "Blocked" });
@@ -298,7 +298,7 @@ describe("AgentResourcePicker 组件交互", () => {
     expect(hidden?.disabled).toBe(false);
     expect(blocked?.disabled).toBe(true);
     act(() => chip?.click());
-    expect(container.querySelector(".agent-resource-picker__chips .is-unavailable")).toBeNull();
+    expect(container.querySelector("[data-slot=picker-chips] [data-unavailable=true]")).toBeNull();
   });
 
   // Capabilities tabs 应建立完整关联，并用左右方向键移动激活项和焦点。

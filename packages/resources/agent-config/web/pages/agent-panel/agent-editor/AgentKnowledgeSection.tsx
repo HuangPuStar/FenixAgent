@@ -1,3 +1,4 @@
+import { cn } from "@fenix/ui-components/lib/cn";
 import { NS } from "@fenix/web-runtime/i18n/namespace";
 import { Brain, Database, Search } from "lucide-react";
 import type { ReactNode } from "react";
@@ -6,6 +7,7 @@ import { useTranslation } from "react-i18next";
 import { AgentResourcePicker } from "./AgentResourcePicker";
 import { SECTION } from "./agent-editor-classes";
 import { EditorStepperField, EditorTextarea, Field, Intro } from "./agent-editor-controls";
+import { DEFAULT_NAMESPACES_TEXTAREA, RETRIEVAL_OPTIONS_FIELDS } from "./agent-editor-form-classes";
 import type { AgentEditorValues } from "./agent-editor-model";
 import type { AgentEditorData } from "./use-agent-editor";
 
@@ -138,13 +140,14 @@ export function AgentKnowledgeSection({ form, data, disabled }: AgentKnowledgeSe
           <div className="agent-retrieval-fields">
             <Field label={t("knowledge.defaultNamespaces")} hint={t("knowledge.defaultNamespacesDescription")}>
               <EditorTextarea
+                className={DEFAULT_NAMESPACES_TEXTAREA}
                 id="agent-editor-default-namespaces"
                 disabled={disabled}
                 placeholder={t("knowledge.defaultNamespacesPlaceholder")}
                 {...form.register("defaultNamespaces")}
               />
             </Field>
-            <div className="agent-retrieval-options">
+            <div className={cn("agent-retrieval-options", RETRIEVAL_OPTIONS_FIELDS)}>
               <Controller
                 name="searchFirst"
                 control={form.control}

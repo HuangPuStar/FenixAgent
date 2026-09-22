@@ -282,6 +282,7 @@ const SLICES = [
       "AgentFormDialog.tsx",
       "AgentResourcePicker.tsx",
       "AgentKnowledgeSection.tsx",
+      "agent-editor-form-classes.ts",
     ],
   },
   {
@@ -413,6 +414,7 @@ const SCAN_FILES = [
   "AgentKnowledgeSection.tsx",
   "AgentResourcePicker.tsx",
   "agent-editor-classes.ts",
+  "agent-editor-form-classes.ts",
   "agent-editor-controls.tsx",
 ] as const;
 
@@ -495,7 +497,9 @@ function classNameOf(attrs: string, constants: Map<string, string>): string {
  */
 function classNameLiterals(source: string): string[] {
   const literal = (text: string) => text.replace(/\$\{[^{}]*\}/g, " ");
-  const out = [...source.matchAll(/className=(?:"([^"]*)"|\{`([^`]*)`\})/g)].map((m) => literal(m[1] ?? m[2]));
+  const out = [...source.matchAll(/className=(?:"([^"]*)"|\{`([^`]*)`\}|\{"([^"]*)"\})/g)].map((match) =>
+    literal(match[1] ?? match[2] ?? match[3] ?? ""),
+  );
   for (const call of source.matchAll(/(?:cn|clsx)\(([\s\S]*?)\)/g)) {
     for (const match of call[1].matchAll(/(["'`])([^"'`]*)\1/g)) out.push(literal(match[2]));
   }

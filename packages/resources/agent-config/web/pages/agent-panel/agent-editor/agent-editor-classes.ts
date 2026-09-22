@@ -79,7 +79,7 @@ export const MAP_BADGE =
 export const MAP_COPY =
   "flex min-w-0 flex-col [&>strong]:text-[13px] [&>strong]:[font-weight:680] [&>strong]:leading-[1.35] " +
   "[&>small]:overflow-hidden [&>small]:text-ellipsis [&>small]:whitespace-nowrap [&>small]:text-[11px] " +
-  "[&>small]:[font-weight:400] [&>small]:leading-[1.35] [&>small]:text-[#8d99ab]";
+  "[&>small]:[font-weight:400] [&>small]:leading-[1.35] [&>small]:text-[#8d99ab] [@media(min-width:760px)and(max-width:1119px)]:[&>small]:hidden";
 /** 中栏内容区：白底 + 内边距按「宽度档 × 高度档」互斥条件（避免同属性多值看生成顺序）。 */
 export const CONTENT =
   "overflow-x-hidden bg-[#fff] [padding:16px_20px_20px] " +
@@ -93,6 +93,8 @@ export const CONTENT =
 export const SUMMARY_ASIDE =
   "min-h-0 overflow-y-auto overscroll-contain border-l border-[#e5ebf3] bg-[#f7f9fc] " +
   "bg-[radial-gradient(circle_at_90%_0%,rgb(50_108_221_/_8%),transparent_36%)] px-[12px] pt-[16px] pb-[14px] " +
+  "[@media(min-width:1120px)and(max-width:1399px)]:[padding:12px_10px_10px] " +
+  "[@media(min-width:760px)and(max-width:1119px)]:[padding:10px_8px_8px] " +
   "[@media(min-width:760px)and(max-width:1119px)]:block";
 /** 页脚：上分隔线 + 阴影；≤759 改纵向并留 safe-area 下边距。 */
 export const FOOTER =
@@ -126,9 +128,6 @@ export const SECTION_INTRO =
   "[@media(min-width:760px)and(max-height:700px)]:mb-[12px]";
 /** 分区容器：720px 居中 + 入场动画（关键帧留在 `agent-editor-retained.css`，工具类只能按名引用）。 */
 export const SECTION = "w-[min(720px,100%)] mx-auto p-0 animate-[agent-editor-section-enter_180ms_ease_both]";
-/** 身份分区两列字段网格：≤759 收成单列。 */
-export const IDENTITY_FIELDS =
-  "grid grid-cols-[minmax(0,1fr)_minmax(0,1fr)] gap-[17px] [@media(max-width:759px)]:grid-cols-1";
 /** 加载壳导航行：与 `agent-editor-map [data-slot="tabs-trigger"]` 的骨架行高/列宽同构（46px / 27px 图标列）。 */
 export const LOADING_MAP_ROW =
   "grid min-h-[46px] grid-cols-[27px_minmax(0,1fr)] items-center gap-2 rounded-[11px] px-2 py-[5px] text-[#56657c]";

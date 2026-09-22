@@ -54,11 +54,8 @@ import {
   shouldShowAgentEditorLoading,
 } from "./agent-editor-model";
 import { useAgentEditor } from "./use-agent-editor";
-import "./agent-editor-form-fields.css";
-import "./agent-editor-form-surfaces.css";
 import "./agent-editor-library.css";
 import "./agent-editor-knowledge.css";
-import "./agent-editor-form-responsive.css";
 import "./agent-editor-retained.css";
 
 export type AgentFormDialogProps =
