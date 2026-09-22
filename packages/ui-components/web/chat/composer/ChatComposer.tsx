@@ -231,7 +231,7 @@ export function ChatComposer({
   // ---------------------------------------------------------------------------
   return (
     <div
-      className={`chat-composer-wrapper w-full max-w-3xl mx-auto px-4 sm:px-8 pb-4 pt-2${className ? ` ${className}` : ""}`}
+      className={`mx-auto w-full max-w-[820px] px-4 pt-0 pb-3 [@media(max-width:720px)]:px-[10px]${className ? ` ${className}` : ""}`}
     >
       <div className="relative">
         {commandPanelOpen && ((commands?.length ?? 0) > 0 || mcps.length > 0) && (
@@ -245,12 +245,16 @@ export function ChatComposer({
             onSelect={handlers.handleCommandSelect}
             onToggleMcp={toggleMcp}
             onClose={closeCommandPanel}
-            className="chat-command-menu--panel"
+            variant="panel"
           />
         )}
 
+        {/* 玻璃卡片：设计层（原 `.chat-composer-wrapper .chat-composer-card`，特指度 (0,2,0)）在源级联中
+            压过宿主补充段，故下方取值全部按设计层落地，暗色覆写按源 `.dark .chat-composer-card` 用
+            `[.dark_&…]`（类切换，非媒体查询）表达；`bg`/`shadow` 上的 `!` 用于保持源级联——设计层同样
+            压过 `isDragOver` 追加的 `bg-brand/5` 与 inset 阴影（那两条在源实现里被特指度压制、不可见）。 */}
         <div
-          className={`chat-composer-card${isDragOver ? " bg-brand/5 shadow-[inset_0_0_0_2px_var(--color-brand)]" : ""}`}
+          className={`relative overflow-visible rounded-[17px] border border-[#dce4ef] bg-[rgb(255_255_255_/_92%)]! shadow-[0_14px_42px_rgb(30_64_120_/_10%)]! backdrop-blur-[14px] focus-within:outline-0 [transition:border-color_0.2s_ease,box-shadow_0.2s_ease] [.dark_&:not(:focus-within)]:border-[rgba(255,255,255,0.08)] [.dark_&:not(:focus-within)]:bg-[rgba(45,45,47,0.72)]! [.dark_&:not(:focus-within)]:shadow-[0_4px_20px_rgba(0,0,0,0.3)]!${isDragOver ? " bg-brand/5 shadow-[inset_0_0_0_2px_var(--color-brand)]" : ""}`}
           onDragOver={hookDragOver}
           onDragEnter={hookDragEnter}
           onDragLeave={hookDragLeave}
@@ -287,7 +291,7 @@ export function ChatComposer({
 
           {(selectedCommandNames.size > 0 || selectedMcpIds.size > 0) && (
             <div
-              className="chat-composer-capabilities"
+              className="flex flex-wrap gap-[5px] px-[14px] pt-[10px]"
               role="group"
               aria-label={t("chat.components.commandMenu.selectedCapabilities")}
             >
@@ -295,6 +299,7 @@ export function ChatComposer({
                 <button
                   key={`skill:${name}`}
                   type="button"
+                  className="inline-flex min-h-[23px] cursor-pointer items-center gap-[5px] rounded-md border border-[#cfdaed] bg-[#f4f7fc] px-[7px] text-[9px] text-[#315a9f] [&>svg]:h-[9px] [&>svg]:w-[9px]"
                   onClick={() => setText((current) => removeSlashCommand(current, name))}
                 >
                   /{name}
@@ -304,7 +309,12 @@ export function ChatComposer({
               {mcps
                 .filter((mcp) => selectedMcpIds.has(mcp.id))
                 .map((mcp) => (
-                  <button key={`mcp:${mcp.id}`} type="button" className="is-mcp" onClick={() => toggleMcp(mcp)}>
+                  <button
+                    key={`mcp:${mcp.id}`}
+                    type="button"
+                    className="inline-flex min-h-[23px] cursor-pointer items-center gap-[5px] rounded-md border border-[#cfe4dc] bg-[#f3faf7] px-[7px] text-[9px] text-[#25745f] [&>svg]:h-[9px] [&>svg]:w-[9px]"
+                    onClick={() => toggleMcp(mcp)}
+                  >
                     MCP: {mcp.name}
                     <X />
                   </button>
@@ -322,7 +332,7 @@ export function ChatComposer({
               placeholder={_placeholder}
               disabled={disabled}
               rows={1}
-              className="chat-composer-textarea w-full resize-none border-none bg-transparent outline-none text-sm text-text-primary placeholder:text-text-muted min-h-[58px] max-h-[200px] leading-relaxed"
+              className="min-h-[58px] max-h-[200px] w-full resize-none border-none bg-transparent font-display text-sm leading-relaxed text-text-primary outline-none placeholder:text-text-muted"
             />
           </div>
 

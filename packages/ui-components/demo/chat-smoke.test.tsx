@@ -153,7 +153,7 @@ describe("demo chat sections", () => {
     const textareas = Array.from(container.querySelectorAll("textarea"));
     const draft = textareas.find((textarea) => textarea.value.includes("onPreviewFile"));
     expect(draft).toBeDefined();
-    const send = container.querySelector(".chat-composer-send");
+    const send = container.querySelector('[data-slot="chat-composer-send"]');
     expect(send).toBeDefined();
     act(() => (send as unknown as HTMLButtonElement).click());
     expect(container.textContent).toContain("已提交：用一句话说明 onPreviewFile 的宿主契约");

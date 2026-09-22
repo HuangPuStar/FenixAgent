@@ -73,14 +73,14 @@ describe("ChatComposer 服务端渲染", () => {
 
     expectCopy(html, "chat.components.chatInput.placeholder");
     expect(html).toContain("lucide-send");
-    expect(html).toContain("chat-composer-textarea");
+    expect(html).toContain("<textarea");
   });
 
   // Agent 尚未报告上下文用量时不展示占位入口，避免用破折号制造无效信息。
   test("无上下文信息时隐藏上下文入口", () => {
     const html = renderComposer();
 
-    expect(html).not.toContain("chat-composer-context");
+    expect(html).not.toContain('data-slot="chat-composer-context"');
   });
 
   // 外部禁用时输入和发送入口都必须禁用，避免将消息提交给不可用的会话。
@@ -112,7 +112,7 @@ describe("ChatComposer 服务端渲染", () => {
     const html = renderComposer({ modelName: "Claude Test" });
 
     expect(html).toContain("Claude Test");
-    expect(html).toContain("chat-composer-model");
+    expect(html).toContain('data-slot="chat-composer-model"');
   });
 
   // Peri 运行时模型名称只展示括号内别名，完整原始名称保留在 title 中。
@@ -132,14 +132,16 @@ describe("ChatComposer 服务端渲染", () => {
       availableModes: [{ id: "bypass", name: "Bypass" }],
       currentModeId: "bypass",
     });
-    const modelIndex = html.indexOf("chat-composer-model");
-    const contextIndex = html.indexOf("chat-composer-context");
-    const actionsIndex = html.indexOf("chat-composer-meta-actions");
+    const modelIndex = html.indexOf('data-slot="chat-composer-model"');
+    const contextIndex = html.indexOf('data-slot="chat-composer-context"');
+    const actionsIndex = html.indexOf('data-slot="chat-composer-meta-actions"');
 
     expect(modelIndex).toBeGreaterThan(-1);
     expect(contextIndex).toBeGreaterThan(modelIndex);
     expect(actionsIndex).toBeGreaterThan(contextIndex);
-    expect(html).toContain('<div class="chat-composer-meta-actions"><span class="chat-composer-security-policy"');
+    // 只读模式 chip 位于右侧操作区内（源断言的是 `chat-composer-meta-actions` 与
+    // `chat-composer-security-policy` 的固定嵌套串，改按渲染顺序断言同一事实）。
+    expect(html.indexOf('data-slot="chat-composer-security-policy"')).toBeGreaterThan(actionsIndex);
     expect(html).toContain("Bypass");
   });
 
@@ -184,6 +186,6 @@ describe("ChatComposer 服务端渲染", () => {
 
     expect(html).toContain("40.0k");
     expectCopy(html, "chat.components.chatComposer.newSession");
-    expect(html).toContain("chat-composer-context");
+    expect(html).toContain('data-slot="chat-composer-context"');
   });
 });

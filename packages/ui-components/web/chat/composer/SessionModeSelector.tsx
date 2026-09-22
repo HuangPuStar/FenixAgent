@@ -49,9 +49,15 @@ export function SessionModeSelector({
   if (readOnly) {
     const label = current?.name ?? t("chat.components.sessionModeSelector.default");
     return (
-      <span className="chat-composer-security-policy" title={label}>
-        <Shield />
-        <span>{label}</span>
+      <span
+        className="inline-flex h-7 max-w-[132px] min-w-0 items-center gap-[5px] px-[7px] text-[11px] leading-none text-[#7b8799] [@media(max-width:720px)]:px-[5px]"
+        data-slot="chat-composer-security-policy"
+        title={label}
+      >
+        <Shield className="h-[13px] w-[13px] flex-[0_0_13px] text-[#909bab]" />
+        <span className="overflow-hidden text-ellipsis whitespace-nowrap [@media(max-width:720px)]:hidden">
+          {label}
+        </span>
       </span>
     );
   }

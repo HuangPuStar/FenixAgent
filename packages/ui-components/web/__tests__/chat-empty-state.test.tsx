@@ -54,7 +54,7 @@ describe("Chat 空状态", () => {
     expect(markup).toContain("chat-empty-state");
     expect(markup).toContain("brand/fenix-agent-logo-mark.png");
     expect(markup).toContain("今天想完成什么？");
-    expect(markup).not.toContain("agent-badge");
+    expect(markup).not.toContain('data-slot="agent-badge"');
   });
 
   // 推荐提示词应引导用户先讨论思路、风险和取舍，而不是要求 Agent 直接行动。

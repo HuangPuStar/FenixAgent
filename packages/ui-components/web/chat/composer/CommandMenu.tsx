@@ -2,6 +2,7 @@ import { CheckCircle2, Plug, Search, Sparkles } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { UI_COMPONENTS_NS } from "../../i18n/namespace";
+import { cn } from "../../lib/cn";
 import { Input } from "../../ui/input";
 import { ScrollArea } from "../../ui/scroll-area";
 import { useRovingListNavigation } from "../../ui/use-roving-list-navigation";
@@ -16,14 +17,24 @@ import type { AvailableCommand } from "../types";
  * 命名空间改为 `UI_COMPONENTS_NS`（键 `chat.components.commandMenu.*`）；
  * 结构、键盘导航与类名逐字保留。
  *
- * 纯化改动（2026-09-18，命令/技能行改版，样式见 `../css/chat-design-command-menu.css`）：
+ * 纯化改动（2026-09-18，命令/技能行改版）：
  * 1. 行首的 `/` 前缀文字改为图标：这些行在能力面板里就是「技能」（区间标题即 `Skills`），
  *    故用技能目录页的代表图标 `Sparkles`（见 `packages/resources/skill/.../agent-skills-catalog.tsx`
  *    的 `getSkillIcon` 兜底分支），与 MCP 行的 `Plug` 同构（MCP 行一直是「图标 + 名称」）。
  * 2. 图标独立占网格首列（源里只有 MCP 行有图标列），技能行与 MCP 行的名称因此左对齐；
  *    名称不再带 `/{name}`，插入草稿的文本仍由 `ChatComposer` 拼 `/${name} `，协议不变。
- * 3. 右侧提示与选中勾选收进 `.chat-command-menu-tail`：二者同属行的尾列，源实现把它们与
+ * 3. 右侧提示与选中勾选收进尾列容器：二者同属行的尾列，源实现把它们与
  *    名称/描述并列为网格子项，一行同时有提示与勾选时会多出一个子项被挤到隐式第二行。
+ *
+ * 样式迁移（2026-09-22）：原 `../css/chat-design-command-menu.css` 中由本组件渲染的选择器
+ * 已逐条改写为下方 `className` 的 Tailwind 工具类，数值/色值逐字保持。要点：
+ * - 三形态差异：基础形态（popover/inline 共用的基类）的声明写在 `<div>` 的基类里；
+ *   「能力面板」形态（`variant="panel"`）在基类之后追加覆盖，两者靠 `cn()`（tailwind-merge）
+ *   的「后者胜出」消解同族冲突，等价于源实现的 `.chat-command-menu--panel` 特指度覆盖。
+ *   未渲染的 popover/inline 外壳（容器、头部、标题、计数、底部快捷键条）无挂载点，
+ *   仍在 `../css/chat-design-command-menu.css` 内原样保留（见该文件头「迁移遗留」）。
+ * - `is-active` 状态改为条件类组合，`is-selected` 在原样式表中没有任何声明（纯语义钩子）故直接删除；
+ *   两者原有的状态语义由既有的 `data-active` 与 `aria-pressed` 承担。
  */
 
 /** Agent 已绑定的 MCP 连接（本轮上下文候选）。 */
@@ -46,6 +57,11 @@ interface CommandMenuProps {
   className?: string;
   /** Toolbar mode owns a search input; slash mode keeps focus in the textarea. */
   showSearch?: boolean;
+  /**
+   * 形态选择（可选，默认基础形态）：`"panel"` 为输入岛能力面板，按源 `.chat-command-menu--panel`
+   * 的密度覆盖基础形态（高度/内边距/网格列/shadow）；基础形态即 popover/inline 共用的基类外观。
+   */
+  variant?: "default" | "panel";
 }
 
 /** 按名称或描述匹配命令（源实现逐字保留）。 */
@@ -55,6 +71,16 @@ function commandMatches(query: string, command: AvailableCommand): boolean {
   return (
     command.name.toLowerCase().includes(normalizedQuery) || command.description.toLowerCase().includes(normalizedQuery)
   );
+}
+
+/**
+ * 当前行（键盘导航或鼠标悬停命中）的强调样式。
+ *
+ * 基础形态：中性底色 + 左侧主题色强调条（源 `box-shadow: inset 2px 0 var(--color-brand)`）；
+ * 面板形态：只有底色，无强调条（源 `box-shadow: none`）。
+ */
+function activeClassName(panel: boolean): string {
+  return panel ? "bg-[#f7f8fa] text-[#263247]" : "bg-[#f5f7fa] text-[#263247] shadow-[inset_2px_0_var(--color-brand)]";
 }
 
 /**
@@ -72,6 +98,7 @@ export function CommandMenu({
   onClose,
   className,
   showSearch,
+  variant = "default",
 }: CommandMenuProps) {
   const { t } = useTranslation(UI_COMPONENTS_NS);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -129,34 +156,72 @@ export function CommandMenu({
   }, [handleKeyDown]);
 
   const empty = filteredCommands.length === 0 && filteredMcps.length === 0;
+  const panel = variant === "panel";
+  // 行/分区/文字的类名按 `variant` 组合：panel 形态的覆盖声明排在基础形态之后，由 cn()（tailwind-merge）
+  // 消解同族冲突，等价于源实现「`.chat-command-menu--panel` 特指度覆盖基础类名」的级联结果。
+  // active（键盘/悬停命中）的强调样式按行追加，见下方 `cn(itemClass, active && …)`。
+  const itemClass = cn(
+    "grid w-full items-center text-left text-[#687286] [transition:background_100ms_ease,color_100ms_ease]",
+    "min-h-[42px] grid-cols-[16px_minmax(120px,max-content)_minmax(0,1fr)_auto] gap-2.5 rounded-md px-[9px] py-1.5",
+    "hover:bg-[#f5f7fa] hover:text-[#263247]",
+    panel &&
+      "min-h-[34px] grid-cols-[16px_minmax(150px,max-content)_minmax(0,1fr)_auto] gap-1.5 rounded-[5px] px-2 py-0.5",
+    panel && "hover:bg-[#f7f8fa]",
+  );
+  const nameClass = "overflow-hidden text-ellipsis whitespace-nowrap text-[12px] font-normal text-[#263247]";
+  const descriptionClass = "overflow-hidden text-ellipsis whitespace-nowrap text-[11px] leading-[1.45] text-[#8b94a3]";
+  const iconClass = "h-4 w-4 flex-none text-[#8a96a8]";
 
   return (
-    <div ref={containerRef} className={`chat-command-menu${className ? ` ${className}` : ""}`}>
+    <div
+      ref={containerRef}
+      className={cn(
+        "overflow-hidden rounded-[11px] border border-[#e3e7ed] bg-white text-[#263247] shadow-[0_8px_28px_rgb(41_58_88_/_10%)]",
+        panel && "mb-[6px] w-full shadow-[0_5px_20px_rgb(41_58_88_/_5%)]",
+        className,
+      )}
+    >
       {showSearch && (
-        <div className="chat-command-menu-search">
-          <Search />
+        <div
+          className={cn(
+            "mx-2 mt-[7px] mb-[3px] flex h-[46px] items-center gap-2 rounded-[7px] bg-[#f6f8fb] px-[10px]",
+            panel && "m-0 h-[38px] rounded-none border-b border-[#eceef2] bg-white px-3",
+          )}
+        >
+          <Search
+            className={cn("h-[15px] w-[15px] flex-[0_0_15px] text-[#8a96a8]", panel && "h-4 w-4 flex-[0_0_16px]")}
+          />
           <Input
             type="text"
             placeholder={t("chat.components.commandMenu.searchPlaceholder")}
             value={searchQuery}
             onChange={(event) => setSearchQuery(event.target.value)}
-            className="chat-command-menu-input"
+            className={cn(
+              "h-9 flex-1 border-0 bg-transparent p-0 text-[13px] text-[#33445f] shadow-none focus-visible:ring-0",
+              panel && "h-[38px]",
+            )}
             autoFocus
           />
         </div>
       )}
-      <ScrollArea className="chat-command-menu-scroll">
-        <div className="chat-command-menu-list">
+      <ScrollArea className={cn("h-[min(322px,46vh)]", panel && "h-[min(210px,34vh)]")}>
+        <div className={cn("px-2 pt-1 pb-[7px]", panel && "px-2 py-0.5")}>
           {empty ? (
-            <div className="chat-command-menu-empty">{t("chat.components.commandMenu.noMatch")}</div>
+            <div className="px-[18px] py-[34px] text-center text-[12px] text-[#8b97a9]">
+              {t("chat.components.commandMenu.noMatch")}
+            </div>
           ) : (
             <>
               {filteredCommands.length > 0 && (
-                <section className="chat-command-menu-section">
+                <section>
                   {showSearch && (
-                    <div className="chat-command-menu-section-title">
-                      <strong>{t("chat.components.commandMenu.skills")}</strong>
-                      <span>{t("chat.components.commandMenu.skillsCaption")}</span>
+                    <div className="flex items-baseline gap-1.5 px-2 pt-[3px] pb-1">
+                      <strong className="text-[12px] font-[650] text-[#263247]">
+                        {t("chat.components.commandMenu.skills")}
+                      </strong>
+                      <span className="text-[11px] text-[#8b94a5]">
+                        {t("chat.components.commandMenu.skillsCaption")}
+                      </span>
                     </div>
                   )}
                   {filteredCommands.map((command) => {
@@ -173,15 +238,19 @@ export function CommandMenu({
                         aria-pressed={selected}
                         onClick={() => onSelect(command)}
                         onMouseEnter={() => setActiveKey(navigationKey)}
-                        className={`chat-command-menu-item${active ? " is-active" : ""}${selected ? " is-selected" : ""}`}
+                        className={cn(itemClass, active && activeClassName(panel))}
                       >
-                        <Sparkles className="chat-command-menu-command-icon" />
-                        <span className="chat-command-menu-name">{command.name}</span>
-                        <span className="chat-command-menu-description">{command.description}</span>
+                        <Sparkles className={iconClass} />
+                        <span className={nameClass}>{command.name}</span>
+                        <span className={descriptionClass}>{command.description}</span>
                         {(hint || selected) && (
-                          <span className="chat-command-menu-tail">
-                            {hint && <span className="chat-command-menu-hint">{hint}</span>}
-                            {selected && <CheckCircle2 className="chat-command-menu-check" />}
+                          <span className="flex items-center justify-self-end gap-2">
+                            {hint && (
+                              <span className={cn("text-[10px] not-italic text-[#a1a7b1]", panel && "text-[11px]")}>
+                                {hint}
+                              </span>
+                            )}
+                            {selected && <CheckCircle2 className="h-4 w-4 flex-none text-[#25856e]" />}
                           </span>
                         )}
                       </button>
@@ -190,10 +259,18 @@ export function CommandMenu({
                 </section>
               )}
               {showSearch && filteredMcps.length > 0 && (
-                <section className="chat-command-menu-section">
-                  <div className="chat-command-menu-section-title">
-                    <strong>{t("chat.components.commandMenu.mcps")}</strong>
-                    <span>{t("chat.components.commandMenu.mcpsCaption")}</span>
+                <section
+                  className={
+                    // 源 `.chat-command-menu-section + .chat-command-menu-section`：仅当 MCP 分区前面
+                    // 还有技能分区（相邻兄弟）时才加分隔线与间距。
+                    filteredCommands.length > 0 ? "mt-[3px] border-t border-[#edf0f4] pt-[3px]" : undefined
+                  }
+                >
+                  <div className="flex items-baseline gap-1.5 px-2 pt-[3px] pb-1">
+                    <strong className="text-[12px] font-[650] text-[#263247]">
+                      {t("chat.components.commandMenu.mcps")}
+                    </strong>
+                    <span className="text-[11px] text-[#8b94a5]">{t("chat.components.commandMenu.mcpsCaption")}</span>
                   </div>
                   {filteredMcps.map((mcp) => {
                     const navigationKey = `mcp:${mcp.id}`;
@@ -208,12 +285,18 @@ export function CommandMenu({
                         aria-pressed={selected}
                         onClick={() => onToggleMcp?.(mcp)}
                         onMouseEnter={() => setActiveKey(navigationKey)}
-                        className={`chat-command-menu-item chat-command-menu-mcp${active ? " is-active" : ""}${selected ? " is-selected" : ""}`}
+                        className={cn(
+                          itemClass,
+                          panel && "grid-cols-[16px_minmax(120px,220px)_minmax(0,1fr)_auto]",
+                          active && activeClassName(panel),
+                        )}
                       >
-                        <Plug className="chat-command-menu-mcp-icon" />
-                        <span className="chat-command-menu-name">{mcp.name}</span>
-                        <span className="chat-command-menu-description">{mcp.description}</span>
-                        <em className="chat-command-menu-mcp-state">{t("chat.components.commandMenu.connected")}</em>
+                        <Plug className={iconClass} />
+                        <span className={nameClass}>{mcp.name}</span>
+                        <span className={descriptionClass}>{mcp.description}</span>
+                        <em className="ml-auto text-[11px] not-italic text-[#25856e]">
+                          {t("chat.components.commandMenu.connected")}
+                        </em>
                       </button>
                     );
                   })}

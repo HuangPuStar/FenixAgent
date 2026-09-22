@@ -70,43 +70,49 @@ export function ComposerToolbar({
   const showStop = canCancel || isCancelling;
 
   return (
-    <div className="chat-composer-meta">
-      <div className="chat-composer-meta-main">
+    <div className="flex min-h-[44px] min-w-0 items-center gap-2.5 px-2.5 pt-[5px] pb-[7px]">
+      <div className="flex min-w-0 items-center gap-[3px] overflow-hidden">
         {(commands?.length ?? 0) + mcpCount > 0 ? (
           <button
             type="button"
-            className="chat-composer-plugin"
+            className="inline-flex h-7 shrink-0 items-center gap-[5px] rounded-md px-1.5 text-[#69768a] hover:bg-[#f1f5fa] hover:text-[#2f5ea9] data-[open]:text-[#315a9f]"
             data-open={commandPanelOpen || undefined}
+            data-slot="chat-composer-plugin"
             aria-expanded={commandPanelOpen}
             disabled={disabled || isLoading}
             onClick={() => onCommandPanelOpenChange(!commandPanelOpen)}
           >
-            <Blocks /> {t("chat.components.chatComposer.skillButton")}{" "}
-            <small>{(commands?.length ?? 0) + mcpCount}</small>
+            <Blocks className="h-[15px] w-[15px]" /> {t("chat.components.chatComposer.skillButton")}{" "}
+            <small className="text-[10px] text-[#94a0b2]">{(commands?.length ?? 0) + mcpCount}</small>
           </button>
         ) : null}
 
         <input ref={fileInputRef} type="file" multiple className="sr-only" onChange={onFileSelect} />
         <button
           type="button"
-          className="chat-composer-icon-button chat-composer-file"
+          className="inline-flex h-7 shrink-0 items-center gap-[5px] rounded-md px-1.5 text-[#69768a] hover:bg-[#f1f5fa] hover:text-[#2f5ea9]"
+          data-slot="chat-composer-file"
           disabled={disabled || !supportsAttachments}
           aria-label={t("chat.components.chatComposer.attach")}
           title={t("chat.components.chatComposer.attach")}
           onClick={() => fileInputRef.current?.click()}
         >
-          <Paperclip />
-          <span>{t("chat.components.chatComposer.fileButton")}</span>
+          <Paperclip className="h-[15px] w-[15px]" />
+          <span className="[@media(max-width:720px)]:hidden">{t("chat.components.chatComposer.fileButton")}</span>
         </button>
 
         {modelName ? (
-          <span className="chat-composer-model" title={modelName}>
+          <span
+            className="inline-flex h-7 max-w-[124px] min-w-0 items-center gap-[5px] overflow-hidden px-[7px] text-[11px] leading-none text-ellipsis whitespace-nowrap text-[#7b8799] [@media(max-width:720px)]:max-w-[92px]"
+            data-slot="chat-composer-model"
+            title={modelName}
+          >
             {simplifyModelDisplayName(modelName)}
           </span>
         ) : null}
         <ComposerContextMeter usage={contextUsage} />
       </div>
-      <div className="chat-composer-meta-actions">
+      <div className="ml-auto flex shrink-0 items-center gap-[5px]" data-slot="chat-composer-meta-actions">
         {availableModes?.length ? (
           <SessionModeSelector
             modes={availableModes}
@@ -116,8 +122,14 @@ export function ComposerToolbar({
           />
         ) : null}
         {showNewSession && onNewSession ? (
-          <Button type="button" variant="ghost" size="sm" onClick={onNewSession} className="chat-composer-new-session">
-            <Plus /> {t("chat.components.chatComposer.newSession")}
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            onClick={onNewSession}
+            className="h-7 gap-1 px-[7px] text-[11px] text-[#718096] has-[>svg]:px-[7px]"
+          >
+            <Plus className="size-3.5" /> {t("chat.components.chatComposer.newSession")}
           </Button>
         ) : null}
         <Button
@@ -126,7 +138,10 @@ export function ComposerToolbar({
           size="sm"
           onClick={canCancel ? onInterrupt : onSubmit}
           disabled={isCancelling || (!canCancel && !canSend)}
-          className={`chat-composer-send ${showStop ? "is-stop" : canSend ? "is-ready" : ""}`}
+          className={`grid h-[34px] w-[34px] place-items-center rounded-[10px] p-0 has-[>svg]:p-0 ${
+            showStop ? "bg-brand text-white" : canSend ? "bg-[#2f6fe4] text-white" : "bg-[#e8edf4] text-[#9aa6b7]"
+          }`}
+          data-slot="chat-composer-send"
           aria-label={t(showStop ? "chat.components.chatComposer.stop" : "chat.components.chatComposer.send")}
         >
           {showStop ? <Square fill="currentColor" /> : <Send />}

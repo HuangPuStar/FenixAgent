@@ -1,6 +1,7 @@
 import { Loader2, MessageSquare, Pencil } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { UI_COMPONENTS_NS } from "../../i18n/namespace";
+import { cn } from "../../lib/cn";
 
 // =============================================================================
 // AgentBadge — 工牌卡组件，双模式：空状态展示（ChatView）+ 管理卡片（AgentManagementPage）
@@ -9,7 +10,118 @@ import { UI_COMPONENTS_NS } from "../../i18n/namespace";
 // 来源：逐字复制 `packages/agent-runtime/web/components/chat/AgentBadge.tsx`。
 // 纯化改动点：`chat:inject-skill` window CustomEvent 总线改为 `onInjectSkill` 回调；
 // i18n 收敛到包内单一命名空间（键前缀 `chat.components.`）。
+//
+// 样式迁移（2026-09-22）：原 `../css/chat-agent-badge.css` 中由本文件渲染的选择器已逐条改写为
+// 下方常量与 `className` 的 Tailwind 工具类，数值/色值逐字保持。
+// - `.agent-badge::before/::after` 水印用同一条 `[&::before,&::after]:` 变体表达（两条伪元素声明相同，
+//   仅 `top` 与 `.before/.after` 不同），`content` 的四段 `attr(data-badge-name)` 用引号内下划线还原空格。
+// - `.skill-tag` 的暗色规则源文件用 `@media (prefers-color-scheme: dark)`，包内主题是 `.dark` 类切换，
+//   两者语义不同，故保留媒体查询写法（`[@media(prefers-color-scheme:dark)]:`）而非 `dark:`。
+// - `.agent-badge-skeleton` 的 `agent-badge-pulse` 动画定义仍在 `../css/chat-agent-badge.css`
+//   （`@keyframes` 属 CSS，本仓库动画定义统一留在样式表内），此处只引用动画名。
 // =============================================================================
+
+/** 工牌容器（源 `.agent-badge`）：水印伪元素 + 子元素统一 `relative z-1` 层叠。 */
+const BADGE_CLASS = cn(
+  "relative flex min-h-[340px] w-56 flex-col overflow-hidden rounded-[14px] border border-border",
+  "shadow-[0_1px_3px_rgba(0,0,0,0.04),0_4px_16px_rgba(0,0,0,0.03)]",
+  "[background:radial-gradient(circle,var(--color-border,#e2e8f0)_0.8px,transparent_0.8px)_0_0/60px_60px,var(--color-surface-1,#fff)]",
+  "[&>*]:relative [&>*]:z-[1]",
+);
+
+/** 水印伪元素共有声明（源 `.agent-badge::before, .agent-badge::after`）。 */
+const BADGE_WATERMARK_CLASS = cn(
+  "[&::before,&::after]:pointer-events-none [&::before,&::after]:absolute [&::before,&::after]:inset-x-0",
+  "[&::before,&::after]:z-0 [&::before,&::after]:flex [&::before,&::after]:items-center [&::before,&::after]:justify-center",
+  "[&::before,&::after]:overflow-hidden [&::before,&::after]:whitespace-nowrap [&::before,&::after]:rotate-[-10deg]",
+  "[&::before,&::after]:text-[80px] [&::before,&::after]:font-black [&::before,&::after]:tracking-[-0.02em]",
+  "[&::before,&::after]:text-[var(--color-border,#e2e8f0)] [&::before,&::after]:opacity-[0.16]",
+  '[&::before,&::after]:content-[attr(data-badge-name)_"__"_attr(data-badge-name)_"__"_attr(data-badge-name)_"__"_attr(data-badge-name)]',
+  "[&::before]:top-[41%] [&::after]:top-[80%]",
+);
+
+/** 渐变头部（源 `.agent-badge-header`）与挂绳孔伪元素。 */
+const BADGE_HEADER_CLASS = cn(
+  "relative shrink-0 px-[18px] pt-6 pb-8 text-center",
+  "[background:radial-gradient(220px_circle_at_50%_0%,rgba(107,230,255,0.22),transparent_68%),linear-gradient(180deg,#1759dc,#0d2a6e)]",
+  "after:absolute after:top-3 after:left-1/2 after:h-3.5 after:w-3.5 after:-translate-x-1/2 after:rounded-full",
+  "after:bg-[#cbd5e1] after:shadow-[inset_0_1px_2px_rgba(0,0,0,0.1)] after:content-['']",
+);
+
+const BADGE_TAG_CLASS =
+  "inline-block rounded-full bg-[rgba(255,255,255,0.18)] px-[14px] py-1 text-[10px] font-bold tracking-[0.15em] text-white uppercase backdrop-blur-[4px]";
+
+const BADGE_BODY_CLASS = "flex flex-1 flex-col items-center justify-center px-5";
+
+const BADGE_AVATAR_CLASS =
+  "relative z-[2] -mt-[30px] flex h-[50px] w-[50px] shrink-0 items-center justify-center rounded-full border-[3px] border-white bg-white shadow-[0_0_0_1.5px_var(--color-border,#e2e8f0),0_2px_12px_rgba(23,89,220,0.08)]";
+
+const BADGE_NAME_CLASS = "mt-1 shrink-0 text-[13px] font-bold text-text-primary";
+
+const BADGE_SOURCE_CLASS = "mt-2 shrink-0 text-[9px] tracking-[0.08em] text-text-muted uppercase";
+
+const BADGE_DESC_CLASS = "mt-[5px] shrink-0 text-center text-[10px] leading-[1.5] text-text-muted";
+
+/** 分隔线（源 `.agent-badge-divider` 的 `::before`/`::after` 虚线段）。 */
+const BADGE_DIVIDER_CLASS = cn(
+  "mx-5 flex shrink-0 items-center",
+  "[&::before,&::after]:flex-1 [&::before,&::after]:border-t [&::before,&::after]:border-dashed [&::before,&::after]:border-border",
+  "[&::before,&::after]:content-['']",
+);
+
+const BADGE_DOTS_CLASS = "mx-2.5 flex gap-1.5";
+
+const BADGE_DOT_CLASS = "h-[5px] w-[5px] shrink-0 rounded-full bg-[#cbd5e1]";
+
+const BADGE_SKILLS_CLASS = "flex shrink-0 flex-col items-center gap-2 px-5 pt-2.5 pb-[18px]";
+
+const BADGE_SKILLS_LABEL_CLASS = "text-[10px] font-bold tracking-[0.12em] text-text-muted uppercase";
+
+const BADGE_SKILLS_ROW_CLASS = "flex max-w-full flex-nowrap justify-center gap-1.5 overflow-hidden";
+
+const BADGE_SKILLS_HINT_CLASS = "text-[10px] text-text-muted";
+
+const BADGE_SKILLS_NONE_CLASS = "text-[12px] text-text-muted";
+
+/**
+ * 技能标签（源 `:where(.agent-badge) .skill-tag`）。
+ *
+ * 交互态与静态态的 hover 声明互相冲突（源靠规则先后决定：静态态在文件后部、胜出），故按状态二选一，
+ * 由 `cn()` 的后者胜出保证结果确定。
+ */
+const SKILL_TAG_CLASS = cn(
+  "inline-flex shrink-0 items-center rounded-full border border-border bg-surface-2 px-[9px] py-[3px]",
+  "font-display text-[11px] leading-[1.4] whitespace-nowrap text-text-secondary",
+  "[transition:background_0.15s,border-color_0.15s,color_0.15s]",
+  "[@media(prefers-color-scheme:dark)]:border-[rgba(255,255,255,0.08)] [@media(prefers-color-scheme:dark)]:bg-[rgba(255,255,255,0.06)]",
+);
+
+const SKILL_TAG_INTERACTIVE_CLASS = cn(
+  "cursor-pointer hover:border-[var(--color-border-hover,#d1d5db)] hover:bg-surface-3 hover:text-text-primary",
+  "[@media(prefers-color-scheme:dark)]:hover:border-[rgba(255,255,255,0.16)] [@media(prefers-color-scheme:dark)]:hover:bg-[rgba(255,255,255,0.12)]",
+);
+
+const SKILL_TAG_STATIC_CLASS = "cursor-default hover:border-border hover:bg-surface-2 hover:text-text-secondary";
+
+const BADGE_ACTIONS_CLASS = "flex shrink-0 gap-1 px-5 pt-2.5 pb-[14px]";
+
+const BADGE_ACTION_CLASS = cn(
+  "flex h-[26px] flex-1 cursor-pointer items-center justify-center gap-0.5 rounded-md border border-[#d9e2ee]",
+  "bg-white text-[10px] font-semibold text-[#65748a] [transition:background_0.15s,border-color_0.15s]",
+  "hover:border-[#b9cee8] hover:text-brand disabled:cursor-not-allowed disabled:opacity-60",
+);
+
+const BADGE_ACTION_PRIMARY_CLASS = "border-none bg-brand text-white hover:bg-[#0f67df]";
+
+/** 骨架屏共用的脉冲动画（`@keyframes agent-badge-pulse` 定义在 `../css/chat-agent-badge.css`）。 */
+const SKELETON_ANIMATION_CLASS = "animate-[agent-badge-pulse_2s_cubic-bezier(0.4,0,0.6,1)_infinite]";
+
+const SKELETON_CIRCLE_CLASS =
+  "h-[50px] w-[50px] shrink-0 rounded-full border-[3px] border-white bg-border shadow-[0_2px_12px_rgba(0,0,0,0.04)]";
+
+const SKELETON_LINE_CLASS = "shrink-0 rounded-md bg-border";
+
+const SKELETON_TAG_CLASS = "shrink-0 rounded-full bg-surface-2";
 
 /** 工牌卡技能条目（仅展示所需字段）。复制自源 `AgentBadge.tsx`。 */
 export interface AgentSkillInfo {
@@ -53,15 +165,15 @@ export function AgentBadge({
   const isManagement = status !== undefined || onEnter !== undefined || onEdit !== undefined;
 
   const badge = (
-    <div className="agent-badge" data-badge-name={name}>
+    <div className={cn(BADGE_CLASS, BADGE_WATERMARK_CLASS)} data-badge-name={name} data-slot="agent-badge">
       {/* 渐变头部 + 挂绳孔 */}
-      <div className="agent-badge-header">
-        <span className="agent-badge-tag">AGENT</span>
+      <div className={BADGE_HEADER_CLASS}>
+        <span className={BADGE_TAG_CLASS}>AGENT</span>
       </div>
 
       {/* 头像 + 名称 + 描述 */}
-      <div className="agent-badge-body">
-        <div className="agent-badge-avatar">
+      <div className={BADGE_BODY_CLASS}>
+        <div className={BADGE_AVATAR_CLASS}>
           <svg width="24" height="24" viewBox="0 0 24 24" fill="none" aria-hidden="true">
             <circle cx="12" cy="6" r="2.5" fill="var(--color-brand)" />
             <circle cx="6" cy="16" r="2.5" fill="var(--color-brand)" opacity=".85" />
@@ -73,49 +185,54 @@ export function AgentBadge({
             <line x1="8.2" y1="16" x2="15.8" y2="16" stroke="var(--color-brand)" strokeWidth="1" opacity=".3" />
           </svg>
         </div>
-        {sourceOrg && <div className="agent-badge-source">{sourceOrg}</div>}
-        <div className="agent-badge-name">{name}</div>
-        {description && <div className="agent-badge-desc">{description}</div>}
+        {sourceOrg && <div className={BADGE_SOURCE_CLASS}>{sourceOrg}</div>}
+        <div className={BADGE_NAME_CLASS}>{name}</div>
+        {description && <div className={BADGE_DESC_CLASS}>{description}</div>}
       </div>
 
       {/* 分隔线 */}
-      <div className="agent-badge-divider">
-        <span className="agent-badge-dots">
-          <span className="agent-badge-dot" />
-          <span className="agent-badge-dot" />
-          <span className="agent-badge-dot" />
+      <div className={BADGE_DIVIDER_CLASS}>
+        <span className={BADGE_DOTS_CLASS}>
+          <span className={BADGE_DOT_CLASS} />
+          <span className={BADGE_DOT_CLASS} />
+          <span className={BADGE_DOT_CLASS} />
         </span>
       </div>
 
       {/* Skills 区 — 管理模式下去掉 label/hint 和点击交互 */}
-      <div className="agent-badge-skills">
+      <div className={BADGE_SKILLS_CLASS}>
         {skills.length > 0 ? (
           <>
             {!isManagement && (
-              <span className="agent-badge-skills-label">📚 {t("chat.components.chatEmpty.skills")}</span>
+              <span className={BADGE_SKILLS_LABEL_CLASS}>📚 {t("chat.components.chatEmpty.skills")}</span>
             )}
-            <div className="agent-badge-skills-row">
+            <div className={BADGE_SKILLS_ROW_CLASS}>
               {skills.map((s) =>
                 isManagement ? (
-                  <span key={s.id} className="skill-tag skill-tag-static">
+                  <span key={s.id} className={cn(SKILL_TAG_CLASS, SKILL_TAG_STATIC_CLASS)}>
                     {s.label}
                   </span>
                 ) : (
-                  <button type="button" key={s.id} className="skill-tag" onClick={() => onInjectSkill?.(s.label)}>
+                  <button
+                    type="button"
+                    key={s.id}
+                    className={cn(SKILL_TAG_CLASS, SKILL_TAG_INTERACTIVE_CLASS)}
+                    onClick={() => onInjectSkill?.(s.label)}
+                  >
                     {s.label}
                   </button>
                 ),
               )}
             </div>
             {!isManagement && (
-              <span className="agent-badge-skills-hint">{t("chat.components.chatEmpty.skillsHint")}</span>
+              <span className={BADGE_SKILLS_HINT_CLASS}>{t("chat.components.chatEmpty.skillsHint")}</span>
             )}
           </>
         ) : (
           <>
-            <span className="agent-badge-skills-none">{t("chat.components.chatEmpty.noSkills")}</span>
+            <span className={BADGE_SKILLS_NONE_CLASS}>{t("chat.components.chatEmpty.noSkills")}</span>
             {!isManagement && (
-              <span className="agent-badge-skills-hint">{t("chat.components.chatEmpty.skillsHint")}</span>
+              <span className={BADGE_SKILLS_HINT_CLASS}>{t("chat.components.chatEmpty.skillsHint")}</span>
             )}
           </>
         )}
@@ -123,20 +240,20 @@ export function AgentBadge({
 
       {/* 管理模式：操作按钮 */}
       {isManagement && (onEnter || onEdit) && (
-        <div className="agent-badge-actions">
+        <div className={BADGE_ACTIONS_CLASS}>
           {onEnter && (
             <button
               type="button"
               disabled={isBusy}
               onClick={onEnter}
-              className="agent-badge-action agent-badge-action-primary"
+              className={cn(BADGE_ACTION_CLASS, BADGE_ACTION_PRIMARY_CLASS)}
             >
               {isBusy ? <Loader2 className="h-3 w-3 animate-spin" /> : <MessageSquare className="h-3 w-3" />}
               {t("chat.components.agentBadge.enterChat")}
             </button>
           )}
           {onEdit && (
-            <button type="button" disabled={isBusy} onClick={onEdit} className="agent-badge-action">
+            <button type="button" disabled={isBusy} onClick={onEdit} className={BADGE_ACTION_CLASS}>
               <Pencil className="h-3 w-3" />
               {t("chat.components.agentBadge.edit")}
             </button>
@@ -160,34 +277,34 @@ export function AgentBadge({
 export function AgentBadgeSkeleton() {
   return (
     <div className="flex size-full items-center justify-center p-8">
-      <div className="agent-badge">
-        <div className="agent-badge-header">
-          <span className="agent-badge-tag">AGENT</span>
+      <div className={cn(BADGE_CLASS, BADGE_WATERMARK_CLASS)} data-badge-name="" data-slot="agent-badge">
+        <div className={BADGE_HEADER_CLASS}>
+          <span className={BADGE_TAG_CLASS}>AGENT</span>
         </div>
-        <div className="agent-badge-body">
-          <div className="agent-badge-skeleton-circle agent-badge-skeleton" />
+        <div className={BADGE_BODY_CLASS}>
+          <div className={cn(SKELETON_CIRCLE_CLASS, SKELETON_ANIMATION_CLASS)} />
           <div
-            className="agent-badge-skeleton-line agent-badge-skeleton"
+            className={cn(SKELETON_LINE_CLASS, SKELETON_ANIMATION_CLASS)}
             style={{ width: 100, height: 13, marginTop: 10 }}
           />
           <div
-            className="agent-badge-skeleton-line agent-badge-skeleton"
+            className={cn(SKELETON_LINE_CLASS, SKELETON_ANIMATION_CLASS)}
             style={{ width: 160, height: 12, marginTop: 8 }}
           />
         </div>
-        <div className="agent-badge-divider">
-          <span className="agent-badge-dots">
-            <span className="agent-badge-dot" />
-            <span className="agent-badge-dot" />
-            <span className="agent-badge-dot" />
+        <div className={BADGE_DIVIDER_CLASS}>
+          <span className={BADGE_DOTS_CLASS}>
+            <span className={BADGE_DOT_CLASS} />
+            <span className={BADGE_DOT_CLASS} />
+            <span className={BADGE_DOT_CLASS} />
           </span>
         </div>
-        <div className="agent-badge-skills">
-          <div className="agent-badge-skeleton-line agent-badge-skeleton" style={{ width: 80, height: 12 }} />
+        <div className={BADGE_SKILLS_CLASS}>
+          <div className={cn(SKELETON_LINE_CLASS, SKELETON_ANIMATION_CLASS)} style={{ width: 80, height: 12 }} />
           <div style={{ display: "flex", gap: 6, marginTop: 4 }}>
-            <div className="agent-badge-skeleton-tag agent-badge-skeleton" style={{ width: 72, height: 24 }} />
-            <div className="agent-badge-skeleton-tag agent-badge-skeleton" style={{ width: 56, height: 24 }} />
-            <div className="agent-badge-skeleton-tag agent-badge-skeleton" style={{ width: 48, height: 24 }} />
+            <div className={cn(SKELETON_TAG_CLASS, SKELETON_ANIMATION_CLASS)} style={{ width: 72, height: 24 }} />
+            <div className={cn(SKELETON_TAG_CLASS, SKELETON_ANIMATION_CLASS)} style={{ width: 56, height: 24 }} />
+            <div className={cn(SKELETON_TAG_CLASS, SKELETON_ANIMATION_CLASS)} style={{ width: 48, height: 24 }} />
           </div>
         </div>
       </div>
