@@ -302,9 +302,13 @@ export function AgentMcpDialog({ target, onClose, onSaved }: Props) {
             </>
           ) : (
             <>
-              <LabeledField label={t("form.url")}>
+              {/* 字段名走**显式关联**：children 是 URL 输入框 + 「测试」按钮，隐式关联会把按钮文案
+                  并进 URL 输入框的可访问名（读屏念成「URL 测试」），且 `<label>` 里出现第二个可标记
+                  元素本身就不合法。字段名只标注输入框。 */}
+              <LabeledField label={t("form.url")} htmlFor="mcp-server-url">
                 <div className="flex gap-2">
                   <Input
+                    id="mcp-server-url"
                     value={form.url}
                     onChange={(event) => setForm({ ...form, url: event.target.value })}
                     disabled={readOnly}
@@ -378,6 +382,10 @@ function KeyValueEditor({
     onChange(entries.map((entry, entryIndex) => (entryIndex === index ? { ...entry, ...patch } : entry)));
   return (
     <div>
+      {/* 这里的字段名**不用 `LabeledField`**：它不是「字段名在上、控件在下」的形态，而是「字段名与
+          「添加」按钮同一行、控件是若干行输入框」的组标签——没有哪一个输入框该独占这个名字（标到第一行
+          的 key 输入框上，读屏会把它念成「环境变量」，反而误导），所以显式关联也不适用。组标签的正确
+          语义是 `fieldset`/`legend` 或 `role="group"` + `aria-labelledby`，本轮不改结构。 */}
       <div className="mb-2 flex items-center justify-between">
         <label className="text-sm font-medium text-text-primary">{label}</label>
         <Button
