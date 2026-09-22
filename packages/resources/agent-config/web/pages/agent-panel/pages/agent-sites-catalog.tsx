@@ -33,6 +33,10 @@ export type SiteVisibilityFilter = "all" | SiteApp["visibility"];
  * 目录页两处状态块（读取失败 / 本页目录为空）共用的排布：`EmptyState` 自带的是 `py-10` 内联块，
  * 这一屏两个位置都要撑满内容区并居中。与 mcp / skills 目录页同款——原 `.site-empty-state` 的
  * `min-height: 380px` 按既有口径取标准刻度 `min-h-96`（384px）。
+ *
+ * 与库内同名常量**不是逐字重复**，故不改为消费它：`@fenix/ui-components/config/EmptyState` 的
+ * `EMPTY_STATE_FILL_CLASS` 是 `min-h-64`（256px），换用它会把这一屏的撑高缩掉 128px、改掉布局意图
+ * （`76427173` 下沉该常量时已按同口径登记为「未做」）。
  */
 const EMPTY_STATE_FILL_CLASS = "flex min-h-96 flex-col items-center justify-center";
 
