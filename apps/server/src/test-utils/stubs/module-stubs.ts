@@ -55,25 +55,15 @@ export const registryRegistry = createStubRegistry("registry", false);
 // ../services/registry-heartbeat — 心跳检测服务，1 个测试文件使用
 export const registryHeartbeatRegistry = createStubRegistry("registryHeartbeat", false);
 
-// ../services/environment — 环境服务，1 个测试文件使用
-export const environmentServiceRegistry = createStubRegistry("environmentService", false);
-
 // workflow 的 pg-storage-adapter / custom-tools 替身不在宿主：owner 包自持，见
 // `packages/resources/workflow/src/server/testing.ts`（含「为什么宿主不能再装一份」的实测记录）。
 
-// /agent-runtime/server — 环境仓储（对象导出），1 个测试文件使用
-// biome-ignore lint/suspicious/noExplicitAny: repo stub 需要宽松类型
-let _environmentRepoStub: Record<string, any> | null = null;
-export function stubEnvironmentRepo(overrides: Record<string, unknown>) {
-  _environmentRepoStub = { ..._environmentRepoStub, ...overrides };
-}
-// biome-ignore lint/suspicious/noExplicitAny: repo stub 需要宽松类型
-export function getEnvironmentRepoStub(): Record<string, any> | null {
-  return _environmentRepoStub;
-}
-export function resetEnvironmentRepoStub() {
-  _environmentRepoStub = null;
-}
+// agent-runtime 的替身（环境仓储、Core runtime facade、Machine 注册端口）同样不在宿主（§1.7 收尾）：
+// 接缝由 `packages/agent-runtime/src/server/testing.ts` 自持，宿主用例从那个子路径导入
+// （preload 的 `apps/server/src/test-utils/setup-mocks.ts` 只保留「绑定生产实现」的职责）。
+// 原先这里的 `stubEnvironmentRepo` / `environmentServiceRegistry` 两个出口已删除：前者迁往该包，
+// 后者零消费方——`environmentServiceRegistry` 只被包内用例当作「自己装配 port 替身的中间表」使用，
+// 真正的取数已全部经 `getBoundAgentRuntime()`（round44 用例已改为文件内局部登记表）。
 
 // ../transport/file-ws-handler — 文件信道 handler，1 个测试文件使用（W5a 起）
 // 注意：这是「部分 mock」（setup-mocks.ts 注册），未配置 stub 时回退真实实现，
@@ -97,7 +87,6 @@ export const stubWorkflowTriggerRepo = workflowTriggerRepoRegistry.stub;
 export const stubWorkflowTriggerService = workflowTriggerServiceRegistry.stub;
 export const stubRegistry = registryRegistry.stub;
 export const stubRegistryHeartbeat = registryHeartbeatRegistry.stub;
-export const stubEnvironmentService = environmentServiceRegistry.stub;
 export const stubFileWsHandler = fileWsHandlerRegistry.stub;
 
 // ── 重置函数 ──
@@ -118,6 +107,5 @@ export function resetModuleStubs() {
   workflowTriggerServiceRegistry.reset();
   registryRegistry.reset();
   registryHeartbeatRegistry.reset();
-  environmentServiceRegistry.reset();
   fileWsHandlerRegistry.reset();
 }

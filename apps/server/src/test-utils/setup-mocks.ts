@@ -35,10 +35,8 @@ import { getConfigPgStub, resetConfigPgStubs } from "./stubs/config-pg-stub";
 import {
   coreBootstrapRegistry,
   fileWsHandlerRegistry,
-  getEnvironmentRepoStub,
   registryHeartbeatRegistry,
   registryRegistry,
-  resetEnvironmentRepoStub,
   resetModuleStubs,
 } from "./stubs/module-stubs";
 import { getSystemApiStub, resetSystemApiStubs } from "./stubs/system-api-stub";
@@ -212,13 +210,15 @@ registerModuleConfigBaseline("workflow", createWorkflowModuleConfig());
 // ── 宿主模块替身的复位登记 ──
 
 // 平台契约的 `resetAllStubs()` 只复位它自己持有的替身；宿主模块替身（config-pg、system-api、
-// services/* 与 environment 的注册表）由本目录的 `stubs/*` 持有，跨进程唯一入口是这里登记的复位器。
+// services/* 的注册表）由本目录的 `stubs/*` 持有，跨进程唯一入口是这里登记的复位器。
 // 用例只调用一个复位入口（`@fenix/platform-sdk/testing` 的 `resetAllStubs`），漏复位哪一层都会让该层的
 // 用例级配置泄漏到下一条用例，症状是「单独跑通过、全量跑失败」。登记在 preload 期完成，早于任何用例。
+//
+// 环境仓储的替身层不在本名单里（§1.7 收尾）：它已随仓储归 `@fenix/agent-runtime`，复位器由该包的
+// `./server/testing` 自行登记——上面 `createAgentRuntimeModuleConfig` 的 import 已经加载那个入口。
 registerStubResetter(() => {
   resetConfigPgStubs();
   resetModuleStubs();
-  resetEnvironmentRepoStub();
   resetSystemApiStubs();
 });
 
@@ -311,25 +311,16 @@ mock.module("@server/db", createDbMock);
 // 注意：../repositories 等模块导出了对象实例（repo），不能使用 createLazyMock（仅适用于函数导出）。
 // 这些模块需要被测代码使用 DI 注入模式后才能安全加入 preload。当前保留 mock.module() 在测试文件中。
 
-// ── agent-runtime 环境仓储（对象导出）──
-// 仅有 acp-machine-connection-lookup.test.ts 和 relay-handler-machine.test.ts 使用 mock
-
-mock.module("../../../../packages/agent-runtime/src/server/repositories/environment", () => {
-  // 用 Proxy 实时转发而非对象 getter：具名导入（如 environment-core 的
-  // `import { environmentRepo } from "@server/repositories"`）在模块首次求值时固化绑定，
-  // getter 一次返回的对象引用会被缓存——若其他测试文件先求值该模块，
-  // 后置的 stubEnvironmentRepo 将永远不生效（fs-upload-escape.test.ts 全量运行曾因此 404）。
-  // Proxy 把每次属性访问实时转发到当前 stub（与上方 ../db 的 createDbMock 同模式），
-  // 未配置 stub 时仍回退 `{ getById: async () => null }`，语义与原先一致。
-  const environmentRepoProxy = new Proxy({} as Record<string, unknown>, {
-    get: (_target, prop) => {
-      const stub = getEnvironmentRepoStub();
-      const target = stub ?? { getById: async () => null };
-      return target[prop as string];
-    },
-  });
-  return { environmentRepo: environmentRepoProxy };
-});
+// ── agent-runtime 环境仓储（对象导出）——2026-09-22 移除，勿恢复 ──
+// 此处的 `mock.module(".../packages/agent-runtime/src/server/repositories/environment", ...)` 已随
+// §1.7 收尾删除：仓储的替身层随仓储定义一起归 `@fenix/agent-runtime`（`repositories/environment.ts` 的
+// Proxy 转发 + `@fenix/agent-runtime/server/testing` 的 `stubEnvironmentRepo`）。包内用例原先只能经
+// 宿主测试基建登记替身，那正是台账最后一条 `apps-boundary`（`@fenix/agent-runtime → @fenix/server-app`）
+// 的全部残留面，删除条件是「测试侧归零」。
+//
+// 必须同时删除而不是「两边都留」：preload 注册的 mock 优先级高于包内后注册的 mock，留着会让包内登记的
+// 替身永不生效（workflow 的 `pg-storage-adapter` 在同一形态上实测过：包内断言全部落空）。
+// 宿主用例需要替身时从 `@fenix/agent-runtime/server/testing` 取，与生效的实现读写同一份状态。
 
 const CORE_BOOTSTRAP_KEYS = [
   "getCoreRuntime",

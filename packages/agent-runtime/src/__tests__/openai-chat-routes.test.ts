@@ -1,9 +1,9 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { AgentNodeUnavailableError } from "@fenix/orchestration";
 import { AppError, NotFoundError } from "@fenix/platform-sdk";
-import { errorPlugin } from "@server/plugins/error-handler";
 import Elysia from "elysia";
 import type { OpenAgentSessionResult } from "../services/agent-chat-service";
+import { errorPluginStub } from "./error-plugin-stub";
 import { createStubAgentRuntimeAuthGuardPlugin, resetTestAuth, setTestAuth } from "./guard-stubs";
 
 const openaiChatModule = await import("../routes/api/openai-chat");
@@ -17,10 +17,11 @@ function request(path: string, init?: RequestInit) {
   return openaiChatRoute.handle(new Request(`http://localhost${path}`, init));
 }
 
-// 挂载 errorPlugin 的完整 app：模拟生产装配（apps/server/src/main.ts 中 errorPlugin 先于
-// createOpenaiChatRoutes 的实例）。rethrow 的 AppError / OrchestrationError 只有经过 errorPlugin
-// 才能映射出 503/409/429 等稳定状态码（本地 handle 无 onError，错误会落成 500）。
-const appWithErrorPlugin = new Elysia().use(errorPlugin).use(openaiChatRoute);
+// 挂载错误插件的完整 app：模拟生产装配（apps/server/src/main.ts 中宿主 `errorPlugin` 先于
+// createOpenaiChatRoutes 的实例）。rethrow 的 AppError / OrchestrationError 只有经过错误插件
+// 才能映射出 503/404/429 等稳定状态码（本地 handle 无 onError，错误会落成 500）。
+// 生产挂的是宿主插件，包内用例用 `error-plugin-stub.ts` 的契约替身（§1.7 收尾：不得 import 宿主插件）。
+const appWithErrorPlugin = new Elysia().use(errorPluginStub).use(openaiChatRoute);
 
 function requestWithErrorPlugin(path: string, init?: RequestInit) {
   return appWithErrorPlugin.handle(new Request(`http://localhost${path}`, init));
@@ -111,7 +112,7 @@ describe("OpenAI Chat Routes", () => {
   });
 });
 
-describe("OpenAI Chat Routes — 错误映射（errorPlugin 装配）", () => {
+describe("OpenAI Chat Routes — 错误映射（错误插件装配）", () => {
   beforeEach(() => {
     setTestAuth({ organizationId: "test-org", userId: "test-user" });
   });

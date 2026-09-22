@@ -255,15 +255,13 @@
         "@fenix/agent-config": "workspace:*",
         "@fenix/chat-channel": "workspace:*",
         "@fenix/core": "workspace:*",
+        "@fenix/identity": "workspace:*",
         "@fenix/logger": "workspace:*",
         "@fenix/orchestration": "workspace:*",
         "@fenix/platform-sdk": "workspace:*",
         "@fenix/plugin-sdk": "workspace:*",
         "@fenix/remote-runtime": "workspace:*",
-        "@fenix/resource-knowledge": "workspace:*",
-        "@fenix/resource-memory": "workspace:*",
         "@fenix/resource-sandbox": "workspace:*",
-        "@fenix/resource-skill": "workspace:*",
         "@fenix/ui-components": "workspace:*",
         "@fenix/web-runtime": "workspace:*",
         "acp-link": "workspace:*",
@@ -341,7 +339,6 @@
       "name": "@fenix/access-control",
       "dependencies": {
         "@fenix/identity": "workspace:*",
-        "@fenix/logger": "workspace:*",
         "@fenix/platform-sdk": "workspace:*",
         "drizzle-orm": "^0.45.2",
       },
@@ -381,7 +378,6 @@
       "name": "@fenix/ccb",
       "version": "0.1.0",
       "dependencies": {
-        "@fenix/core": "workspace:*",
         "@fenix/plugin-sdk": "workspace:*",
         "acp-link": "workspace:*",
       },
@@ -390,7 +386,6 @@
       "name": "@fenix/claude-code",
       "version": "0.1.0",
       "dependencies": {
-        "@fenix/core": "workspace:*",
         "@fenix/plugin-sdk": "workspace:*",
         "acp-link": "workspace:*",
       },
@@ -402,7 +397,6 @@
       "name": "@fenix/opencode",
       "version": "0.1.0",
       "dependencies": {
-        "@fenix/core": "workspace:*",
         "@fenix/plugin-sdk": "workspace:*",
         "acp-link": "workspace:*",
       },
@@ -424,9 +418,9 @@
       "version": "0.1.0",
       "dependencies": {
         "@fenix/agent-runtime": "workspace:*",
+        "@fenix/identity": "workspace:*",
         "@fenix/logger": "workspace:*",
         "@fenix/model-management": "workspace:*",
-        "@fenix/orchestration": "workspace:*",
         "@fenix/platform-sdk": "workspace:*",
         "@fenix/plugin-sdk": "workspace:*",
         "@fenix/resource-knowledge": "workspace:*",
@@ -464,6 +458,7 @@
       "name": "@fenix/resource-channel",
       "dependencies": {
         "@fenix/agent-runtime": "workspace:*",
+        "@fenix/identity": "workspace:*",
         "@fenix/logger": "workspace:*",
         "@fenix/platform-sdk": "workspace:*",
         "@fenix/ui-components": "workspace:*",
@@ -487,6 +482,8 @@
       "name": "@fenix/resource-knowledge",
       "dependencies": {
         "@antv/g6": "^5.0.49",
+        "@fenix/agent-config": "workspace:*",
+        "@fenix/identity": "workspace:*",
         "@fenix/platform-sdk": "workspace:*",
         "@fenix/ui-components": "workspace:*",
         "@fenix/web-runtime": "workspace:*",
@@ -529,6 +526,7 @@
       "name": "@fenix/resource-mcp",
       "dependencies": {
         "@fenix/agent-runtime": "workspace:*",
+        "@fenix/identity": "workspace:*",
         "@fenix/logger": "workspace:*",
         "@fenix/platform-sdk": "workspace:*",
         "@fenix/resource-knowledge": "workspace:*",
@@ -552,6 +550,7 @@
       "name": "@fenix/resource-memory",
       "dependencies": {
         "@chenglou/pretext": "^0.0.7",
+        "@fenix/agent-config": "workspace:*",
         "@fenix/platform-sdk": "workspace:*",
         "@fenix/ui-components": "workspace:*",
         "@fenix/web-runtime": "workspace:*",
@@ -581,6 +580,7 @@
       "dependencies": {
         "@fenix/agent-config": "workspace:*",
         "@fenix/chat-channel": "workspace:*",
+        "@fenix/identity": "workspace:*",
         "@fenix/logger": "workspace:*",
         "@fenix/model-gateway-litellm": "workspace:*",
         "@fenix/model-gateway-sdk": "workspace:*",
@@ -617,7 +617,6 @@
         "@fenix/ui-components": "workspace:*",
         "@fenix/web-runtime": "workspace:*",
         "ahooks": "^3.9.7",
-        "drizzle-orm": "^0.45.2",
         "elysia": "^1.4.28",
         "lucide-react": "^1.16.0",
         "sonner": "^2.0.7",
@@ -654,6 +653,7 @@
     "packages/resources/sandbox": {
       "name": "@fenix/resource-sandbox",
       "dependencies": {
+        "@fenix/identity": "workspace:*",
         "@fenix/logger": "workspace:*",
         "@fenix/platform-sdk": "workspace:*",
         "@fenix/resource-machine": "workspace:*",
@@ -676,6 +676,7 @@
     "packages/resources/skill": {
       "name": "@fenix/resource-skill",
       "dependencies": {
+        "@fenix/identity": "workspace:*",
         "@fenix/logger": "workspace:*",
         "@fenix/platform-sdk": "workspace:*",
         "@fenix/ui-components": "workspace:*",
@@ -700,6 +701,7 @@
       "dependencies": {
         "@fenix/agent-config": "workspace:*",
         "@fenix/agent-runtime": "workspace:*",
+        "@fenix/identity": "workspace:*",
         "@fenix/logger": "workspace:*",
         "@fenix/platform-sdk": "workspace:*",
         "@fenix/ui-components": "workspace:*",
@@ -727,6 +729,7 @@
         "@fenix/agent-config": "workspace:*",
         "@fenix/agent-runtime": "workspace:*",
         "@fenix/chat-channel": "workspace:*",
+        "@fenix/identity": "workspace:*",
         "@fenix/logger": "workspace:*",
         "@fenix/platform-sdk": "workspace:*",
         "@fenix/plugin-sdk": "workspace:*",

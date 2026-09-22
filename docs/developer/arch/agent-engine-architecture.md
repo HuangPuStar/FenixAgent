@@ -635,7 +635,7 @@ erDiagram
 
 | 层级 | 位置 | 当前值 |
 |------|------|--------|
-| DB Schema | `src/db/schema.ts` → `agent_config.engine_type` | `varchar(32) DEFAULT 'opencode'` |
+| DB Schema | `packages/resources/agent-config/db/schema.ts` → `agent_config.engine_type`（任务 1.7 B7 起归 owner 包，宿主 schema 不再定义本表） | `varchar(32) DEFAULT 'opencode'` |
 | 类型常量 | `src/services/config/types.ts` → `ENGINE_TYPES` | `["opencode", "ccb", "claude-code"]` |
 | 环境变量 | `src/env.ts` → `RCS_ENGINE_TYPE` | `z.enum(["opencode", "ccb"])` |
 | Schema 校验 | `packages/resources/model-management/src/server/schemas/config.schema.ts` | `z.string().optional().describe(...)` |
@@ -650,7 +650,7 @@ erDiagram
 2. `src/services/core-bootstrap.ts`：注册 plugin + 加入 node.engineTypes
 3. `src/services/config/types.ts`：`ENGINE_TYPES` 数组
 4. `src/env.ts`：`RCS_ENGINE_TYPE` enum（如需要全局默认引擎切换）
-5. `src/db/schema.ts`：生成迁移（DDL 允许任意 varchar，实际约束在应用层）
+5. `packages/resources/agent-config/db/schema.ts`（`agent_config.engine_type` 的 owner）：生成迁移（DDL 允许任意 varchar，实际约束在应用层）
 6. `packages/acp-link/src/client/instance-manager.ts`：`AgentType` 联合类型
 7. 前端：`AgentFormDialog` 下拉选项 + `packages/resources/agent-config/web/lib/agent-utils.ts` 默认值
 8. **`packages/acp-runtime-cli/src/bin.ts`**：`AGENT_TYPE` 联合类型 + `SUPPORTED_ENGINE_TYPES` 默认值

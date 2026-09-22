@@ -1,9 +1,8 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { createWebControlRoutes } from "@fenix/agent-runtime/server";
 import { resetAllStubs, stubDb } from "@fenix/platform-sdk/testing";
-import { resetEnvironmentRepoStub, stubEnvironmentRepo } from "@server/test-utils/stubs/module-stubs";
 import { bindSessionEventBusPort, resetSessionEventBusPort } from "../server/services/session-event-bus-port";
-import { initializeAgentRuntimeModuleConfig } from "../server/testing";
+import { initializeAgentRuntimeModuleConfig, resetEnvironmentRepoStub, stubEnvironmentRepo } from "../server/testing";
 import { getAllEventBuses, getEventBus, removeEventBus } from "../transport/event-bus";
 import { createStubAgentRuntimeAuthGuardPlugin, resetTestAuth, setTestAuth } from "./guard-stubs";
 
@@ -31,8 +30,9 @@ function post(path: string, body: unknown) {
  *
  * - 实例归属走真实仓储（`agentInstanceService.getOwnedInstance` → `db.select().from().where().limit()`），
  *   用 `stubDb` 给一行实例记录；
- * - 环境组织归属走 `environmentRepo.getById`，而该模块被宿主 preload 的 `mock.module` 换成
- *   实时转发 Proxy（`apps/server/src/test-utils/setup-mocks.ts`），所以只能经它的登记替身设置。
+ * - 环境组织归属走 `environmentRepo.getById`，该模块导出的是包内替身层的实时 Proxy
+ *   （`../repositories/environment.ts`），经 `../server/testing` 的 `stubEnvironmentRepo` 设置
+ *   （§1.7 收尾起替身层归本包，不再经宿主 preload）。
  */
 function stubInstanceOwnership(...results: unknown[][]) {
   const queue = [...results];

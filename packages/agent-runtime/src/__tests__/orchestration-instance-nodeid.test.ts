@@ -13,7 +13,7 @@
  * 注入方式（禁 mock.module，全部用既有 seam）：
  *   - setOrchestrationInstanceDeps：覆盖 environmentRepo / buildAgentLaunchSpecForCore /
  *     getOrchestrationController；
- *   - stubCoreBootstrap({ getCoreRuntime }) 注入假 facade。
+ *   - core 单例经包内 `../server/testing` 的 stubCoreRuntimeFacade 注入假 facade。
  */
 
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
@@ -21,9 +21,8 @@ import type { CoreRuntimeFacade, LaunchInstanceRequest } from "@fenix/core";
 import type { AgentController, Instance } from "@fenix/orchestration";
 import { resetAllStubs } from "@fenix/platform-sdk/testing";
 import type { AgentLaunchSpec } from "@fenix/plugin-sdk";
-import { stubCoreBootstrap } from "@server/test-utils/stubs/module-stubs";
 import type { EnvironmentRecord, IEnvironmentRepo } from "../server/repositories/environment";
-import { initializeAgentRuntimeModuleConfig, stubAgentRuntimeConfig } from "../server/testing";
+import { initializeAgentRuntimeModuleConfig, stubAgentRuntimeConfig, stubCoreRuntimeFacade } from "../server/testing";
 import { globalInstanceRegistry } from "../services/instance-registry";
 import {
   type LaunchTargetRef,
@@ -82,7 +81,7 @@ describe("spawnInstanceViaCore nodeId snapshot", () => {
     // 缺省基线即 `undefined`（调用方回退 `"opencode"`），需要时用例内用 `stubAgentRuntimeConfig` 覆盖。
     initializeAgentRuntimeModuleConfig();
     launchCalls.length = 0;
-    stubCoreBootstrap({ getCoreRuntime: () => fakeFacade });
+    stubCoreRuntimeFacade(fakeFacade);
     setOrchestrationInstanceDeps({
       environmentRepo: fakeEnvironmentRepo,
       buildAgentLaunchSpecForCore: fakeBuildAgentLaunchSpecForCore,

@@ -43,7 +43,7 @@ FenixAgent 是基于 Elysia + Bun 的多租户 ACP Agent 平台，前端使用 R
 - `apps/server/src/repositories/`：数据访问层。
 - `apps/server/src/schemas/`：请求、响应和配置 schema。
 - `apps/server/src/transport/`：WebSocket、SSE、relay 和 EventBus。
-- `apps/server/src/db/schema.ts`：数据库 schema 真相来源之一（业务表）；身份表（`user` / `session` / `account` / `verification` / `organization` / `member` / `invitation` / `apikey` / `user_config`）的真相来源是 `packages/platform/identity/db/schema.ts`，两者共同汇入同一条 Drizzle 迁移链。
+- `apps/server/src/db/schema.ts`：宿主 schema，自 CE 阶段 2 任务 1.7 的表迁移收口（B1–B13）后**只留三类内容**——从 `packages/platform/identity/db/schema.ts` 转出身份表（`user` / `session` / `account` / `verification` / `organization` / `member` / `invitation` / `apikey` / `user_config`）、宿主自有表 `data_migrate_record`、以及 review 裁定暂留的三张旧授权栈表（`resource_permission`、`share_link`、`share_event_snapshot`）。业务表定义在各自的 owner 包 `db/schema.ts`。
 - `apps/server/src/__tests__/`、`apps/server/src/test-utils/`：后端测试和测试基础设施。
 
 ### 前端地图
@@ -201,7 +201,9 @@ Agent 通信分为三种明确场景，底层 relay 与 ACP 消息规则必须�
 
 ## 数据库与迁移
 
-- Schema 真相来源有两个，共同汇入同一条迁移链：业务表在 `apps/server/src/db/schema.ts`，身份表在 `packages/platform/identity/db/schema.ts`（CE 阶段 2 任务 1.2 迁出）。`drizzle.config.ts` 的 `schema` 必须同时声明两者，否则 `db:generate` 会误判其中一族已删除。改身份表就到 identity 包改，不得在宿主复制一份。
+- **一张表的定义只在一个 owner 手里**：业务表定义在所属模块的 `packages/**/db/schema.ts`（经该包 `exports["./db"]` 公开，如 `@fenix/resource-task/db`），身份表在 `packages/platform/identity/db/schema.ts`；宿主 `apps/server/src/db/schema.ts` 自任务 1.7 表迁移收口后不再持有业务表定义（只剩身份表转出、`data_migrate_record` 与三张经裁定的旧授权栈表）。改哪张表就到它的 owner 包改，不得在宿主或别的包复制一份。`drizzle.config.ts` 的 `schema` 必须声明**全部** owner 包路径与宿主 schema（共 15 条），否则 `db:generate` 会把漏声明的一族误判为已删除。
+- 表定义换手不得改变 DDL：`bun run check:schema-ddl-drift` 比对「`drizzle.config.ts` 声明的 schema 集合 → 最新 snapshot」的差异，必须为零。
+- 跨包外键（表 A 的列引用别包表 B 的主键）只允许在 `db/**` 的**组装期**导入 B 的表对象（Drizzle `.references()` 只接受列对象），例外口径见 `docs/design/ce-ee-refactoring/ce-ee-engineering-standards.md` §6.1；`src/**`、`web/**` 的调用期跨包读表一律违规，必须改经该 owner 的公开服务端入口或宿主注入端口。
 - 标准流程：修改 schema → `bun run db:generate --name <name>` → 审查 `drizzle/*.sql` 与 `drizzle/meta/*` → `bun run db:migrate` → 运行相关测试和 `bun run precheck`。
 - 跨组织可见性由四张受控资源主表（`agent_config` / `skill` / `mcp_server` / `provider`）的 `visibility varchar(20) NOT NULL DEFAULT 'private'` 表达；授权判断与查询谓词一律由 `@fenix/access-control` 产出，资源包只声明「资源类型 + 表 + 归属列 + 业务条件」。
 - 提交迁移时必须提交完整 `drizzle/` 迁移链，不能遗漏 `drizzle/meta/*`。

@@ -1,7 +1,6 @@
 import { beforeEach, describe, expect, test } from "bun:test";
 import { createAcpRoutes } from "@fenix/agent-runtime/server";
-import { stubEnvironmentRepo } from "@server/test-utils/stubs/module-stubs";
-import { initializeAgentRuntimeModuleConfig } from "../server/testing";
+import { initializeAgentRuntimeModuleConfig, stubEnvironmentRepo } from "../server/testing";
 import { createStubAgentRuntimeAuthGuardPlugin, createStubAuthenticateRequest, setTestAuth } from "./guard-stubs";
 
 // 路由工厂 + 宿主依赖替身（1.4 W2）：守卫供 HTTP 路由的 `sessionAuth` 宏，请求级认证供 WS 升级路径。
@@ -17,7 +16,8 @@ function request(path: string) {
 describe("/acp 路由的宿主注入认证", () => {
   beforeEach(() => {
     // 内含 resetAllStubs：替身会话会被一并复位，因此 setTestAuth 必须在它之后调用。
-    // 环境仓储走宿主 preload 的实时 Proxy（未配置时只有 `getById`），用例按需登记方法。
+    // 环境仓储走包内替身层（`../server/testing` 的 `stubEnvironmentRepo`）：只替换用例登记的方法，
+    // 未登记的方法走真实实现，用例按需登记。
     initializeAgentRuntimeModuleConfig();
   });
 

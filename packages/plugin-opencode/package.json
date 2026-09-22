@@ -10,7 +10,6 @@
     }
   },
   "dependencies": {
-    "@fenix/core": "workspace:*",
     "@fenix/plugin-sdk": "workspace:*",
     "acp-link": "workspace:*"
   },

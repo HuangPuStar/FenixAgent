@@ -35,13 +35,17 @@ const SOURCE_EXTENSIONS = new Set([".ts", ".tsx", ".mts", ".cts"]);
 const IGNORED_DIRECTORIES = new Set([".git", "coverage", "dist", "node_modules"]);
 
 /**
- * 跨包内部路径的目标形态：`packages/<pkg>/{src,web/src}/**`（`<pkg>` 可含一层分组目录）。
+ * 跨包内部路径的目标形态：`packages/<pkg>/{src,web/src,db}/**`（`<pkg>` 可含一层分组目录）。
  *
- * 用非贪婪匹配取到 `/src` 或 `/web/src` 之前的完整包目录，因此 `packages/resources/machine/src/x.ts`
+ * 用非贪婪匹配取到 `/src`、`/web/src` 或 `/db` 之前的完整包目录，因此 `packages/resources/machine/src/x.ts`
  * 与 `packages/chat-channel/src/x.ts` 都能得到正确边界，不需要维护分组目录白名单。
+ *
+ * `db` 只在本常量的**相对路径**分支里算内部路径。裸说明符分支（`package-no-internal-imports` 的第一条）
+ * 刻意不含 `db`：`@fenix/<pkg>/db` 是 §6.1 允许的 schema 组装期出口，跨模块外键只能这样导入表对象；
+ * 把它一并拦下会让所有 `db/schema.ts` 的跨包外键失效。收窄前后本仓库的相对跨包 `db/` 导入均为 0。
  */
-const CROSS_PACKAGE_SOURCE_PATH = /^packages\/(.+?)\/(?:src|web\/src)(?:\/|$)/;
-const WORKSPACE_DIRECTORY_OF_FILE = /^(packages\/.+?)\/(?:src|web)\//;
+const CROSS_PACKAGE_INTERNAL_PATH = /^packages\/(.+?)\/(?:src|web\/src|db)(?:\/|$)/;
+const WORKSPACE_DIRECTORY_OF_FILE = /^(packages\/.+?)\/(?:src|web|db)\//;
 
 /**
  * 浏览器入口：`apps/web` 与控制台代码，以及各包的 web contribution。
@@ -89,7 +93,7 @@ const HARD_RULES: readonly ArchitectureRule[] = [
       if (!specifier.startsWith(".")) return false;
 
       const targetPath = normalizePath(relative(context.root, resolve(dirname(context.absolutePath), specifier)));
-      const targetPackage = CROSS_PACKAGE_SOURCE_PATH.exec(targetPath)?.[1];
+      const targetPackage = CROSS_PACKAGE_INTERNAL_PATH.exec(targetPath)?.[1];
       if (!targetPackage) return false;
 
       // 同包内的相对导入合法。来源包优先取 workspace 声明，缺失时（行为夹具没有 package.json）

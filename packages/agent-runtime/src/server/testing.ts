@@ -15,6 +15,7 @@
  */
 
 import { join } from "node:path";
+import type { CoreRuntimeFacade } from "@fenix/core";
 import { overrideModuleConfig } from "@fenix/platform-sdk/server";
 import {
   getDbStub,
@@ -27,11 +28,24 @@ import type { AgentRuntime } from "../runtime";
 import { bindAgentRuntime, createAgentRuntime, resetAgentRuntimeForTest } from "../runtime";
 import type { AgentRuntimeModuleConfig } from "./config";
 import { getAgentRuntimeConfig } from "./config";
+import { resetEnvironmentRepoStubForTest, setEnvironmentRepoStub } from "./repositories/environment";
 import {
   type AgentLaunchSpecPort,
   bindAgentLaunchSpecPort,
   resetAgentLaunchSpecPort,
 } from "./services/agent-launch-spec-port";
+import {
+  bindCoreRuntimePort,
+  type CoreRuntimePort,
+  getBoundCoreRuntimePort,
+  resetCoreRuntimePortForTest,
+} from "./services/core-runtime-port";
+import {
+  bindMachineRegistryPort,
+  getMachineRegistryPort,
+  type MachineRegistryPort,
+  resetMachineRegistryPortForTest,
+} from "./services/machine-registry-port";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // 包内处理函数与内部登记表的测试 seam（1.4 W6b）
@@ -157,6 +171,139 @@ export function stubAgentRuntimeConfig(overrides: Partial<AgentRuntimeModuleConf
 export { getAgentRuntimeConfig };
 
 // ─────────────────────────────────────────────────────────────────────────────
+// 宿主注入面的包内替身（§1.7 收尾）
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * 这三组替身原先是宿主测试基建（`apps/server/src/test-utils/stubs/module-stubs.ts`）的出口，包内用例只能
+ * 经 `@server/test-utils/stubs/module-stubs` 登记 —— 那批导入是 `apps-boundary` 台账最后一条
+ * （`@fenix/agent-runtime → @fenix/server-app`，删除条件「测试侧归零」）的全部残留面。
+ *
+ * 三个接缝的实现归属本来就是本包（环境仓储、Core runtime 端口、Machine 注册端口都由本包声明），替身因此
+ * 一并收回：宿主 preload 只保留「绑定生产实现」的职责，不再替本包登记替身。宿主用例需要时从本入口取
+ * （宿主 preload 已经这么做，例如 `createAgentRuntimeModuleConfig`）。
+ *
+ * 三者的复位都挂到 `resetAllStubs()`（`registerStubResetter`）：用例在 `beforeEach` 调用的
+ * `initializeAgentRuntimeModuleConfig()` 内含 `resetAllStubs()`，因此「单跑绿、全量跑红」这类跨用例泄漏
+ * 不会因为漏复位而出现。
+ */
+
+/**
+ * 环境仓储的部分替身：只替换传入的方法，未登记的方法走真实实现（语义见仓储模块的替身层注释）。
+ *
+ * 形状刻意与旧出口一致（`Record<string, unknown>` 浅合并），用例无需改动调用点：原来写
+ * `stubEnvironmentRepo({ getById: async () => null })` 的地方现在只是换了 import 来源。
+ */
+export function stubEnvironmentRepo(overrides: Record<string, unknown>): void {
+  setEnvironmentRepoStub(overrides);
+}
+
+/** 清空环境仓储替身层（也随 `resetAllStubs()` 自动执行）。 */
+export const resetEnvironmentRepoStub = resetEnvironmentRepoStubForTest;
+
+/** 上一次绑定的 Core runtime 端口（宿主 preload 期或上一个用例留下的），复位时绑回。 */
+let savedCoreRuntimePort: CoreRuntimePort | null = null;
+
+/**
+ * 注入假 Core runtime facade（原宿主 `stubCoreBootstrap({ getCoreRuntime })`）。
+ *
+ * 只替换 `getCoreRuntime`：远端节点注册 / 注销继续走复位前绑定的端口（宿主 preload 把它们转发到宿主注册表，
+ * 与迁移前 `stubCoreBootstrap` 只覆盖 `getCoreRuntime` 语义一致）。宿主端口未绑定时退化为空操作——包内单跑
+ * （preload 未生效）时 `registerRemoteNode` 不应成为失败点，本包用例也不断言这两个动词。
+ *
+ * `null` 表示「对账面没有 facade」：`getCoreRuntime()` 返回 `null`（`acp-machine-connection-lookup` 用它
+ * 覆盖「无 core 实例」分支）。
+ *
+ * 参数取 `unknown` 而不是 `CoreRuntimeFacade`：用例注入的是只覆盖被断言方法的部分 facade（如
+ * `{ listInstances: () => [] }`），强类型会逼出成片的 `as never`，而收窄本就发生在被测代码里。真实实现的
+ * 形状仍由端口与 `@fenix/core` 的 `CoreRuntimeFacade` 约束，替身只影响测试进程。
+ */
+export function stubCoreRuntimeFacade(facade: unknown): void {
+  if (!coreRuntimeFacadeStubbed) {
+    savedCoreRuntimePort = tryGetBoundCoreRuntimePort();
+    coreRuntimeFacadeStubbed = true;
+  }
+  resetCoreRuntimePortForTest();
+  bindCoreRuntimePort({
+    getCoreRuntime: () => facade as CoreRuntimeFacade,
+    registerRemoteNode: savedCoreRuntimePort?.registerRemoteNode ?? (() => {}),
+    unregisterRemoteNode: savedCoreRuntimePort?.unregisterRemoteNode ?? (() => {}),
+  });
+}
+
+/** 还原前一次绑定的 Core runtime 端口（并回到「未替身」状态）。 */
+export function resetCoreRuntimeFacadeStub(): void {
+  if (!coreRuntimeFacadeStubbed) return;
+  resetCoreRuntimePortForTest();
+  if (savedCoreRuntimePort) bindCoreRuntimePort(savedCoreRuntimePort);
+  savedCoreRuntimePort = null;
+  coreRuntimeFacadeStubbed = false;
+}
+
+let coreRuntimeFacadeStubbed = false;
+
+/** 读取已绑定端口；未绑定时返回 `null`（供替身保存/还原，不做 fail-fast）。 */
+function tryGetBoundCoreRuntimePort(): CoreRuntimePort | null {
+  try {
+    return getBoundCoreRuntimePort();
+  } catch {
+    return null;
+  }
+}
+
+/** 上一次绑定的 Machine 注册端口（同上）。 */
+let savedMachineRegistryPort: MachineRegistryPort | null = null;
+let machineRegistryPortStubbed = false;
+
+/** 未登记且无前次绑定时的默认实现：显式抛错而不是返回 `undefined`，让漏登记立刻可定位。 */
+function unconfiguredMachineRegistryMethod(name: string): never {
+  throw new Error(`MachineRegistryPort stub '${name}' not configured, call stubMachineRegistryPort() in beforeEach`);
+}
+
+/**
+ * Machine 注册端口的部分替身（原宿主 `stubRegistry` / `stubRegistryHeartbeat`）。
+ *
+ * 未登记的方法按「前次绑定 → 默认」取值：前次绑定即宿主 preload 的转发端口（其 `findMachineAgentNamesByIds`
+ * 是读 DB 替身的真实实现，与迁移前一致）；无前次绑定时抛错，避免用例静默拿到 `undefined`。
+ */
+export function stubMachineRegistryPort(overrides: Partial<MachineRegistryPort>): void {
+  if (!machineRegistryPortStubbed) {
+    savedMachineRegistryPort = tryGetMachineRegistryPort();
+    machineRegistryPortStubbed = true;
+  }
+  resetMachineRegistryPortForTest();
+  const fallback = savedMachineRegistryPort;
+  bindMachineRegistryPort({
+    registerMachine: fallback?.registerMachine ?? (() => unconfiguredMachineRegistryMethod("registerMachine")),
+    disconnectMachine: fallback?.disconnectMachine ?? (() => unconfiguredMachineRegistryMethod("disconnectMachine")),
+    handleHeartbeat: fallback?.handleHeartbeat ?? (() => unconfiguredMachineRegistryMethod("handleHeartbeat")),
+    startHeartbeat: fallback?.startHeartbeat ?? (() => unconfiguredMachineRegistryMethod("startHeartbeat")),
+    stopHeartbeat: fallback?.stopHeartbeat ?? (() => unconfiguredMachineRegistryMethod("stopHeartbeat")),
+    findMachineAgentNamesByIds:
+      fallback?.findMachineAgentNamesByIds ?? (() => unconfiguredMachineRegistryMethod("findMachineAgentNamesByIds")),
+    ...overrides,
+  });
+}
+
+/** 还原前一次绑定的 Machine 注册端口。 */
+export function resetMachineRegistryPortStub(): void {
+  if (!machineRegistryPortStubbed) return;
+  resetMachineRegistryPortForTest();
+  if (savedMachineRegistryPort) bindMachineRegistryPort(savedMachineRegistryPort);
+  savedMachineRegistryPort = null;
+  machineRegistryPortStubbed = false;
+}
+
+/** 读取已绑定端口；未绑定时返回 `null`（同上，不做 fail-fast）。 */
+function tryGetMachineRegistryPort(): MachineRegistryPort | null {
+  try {
+    return getMachineRegistryPort();
+  } catch {
+    return null;
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // 运行 port 的替身（1.4 W3b）
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -240,3 +387,10 @@ function buildInertLaunchSpec(request: {
 }
 
 registerStubResetter(resetAgentLaunchSpecPort);
+
+// 三组宿主注入面替身的复位（§1.7 收尾）：与 `stubAgentLaunchSpecPort` 同口径挂到 `resetAllStubs()`，
+// 用例只需在 `beforeEach` 调 `initializeAgentRuntimeModuleConfig()`；漏挂复位会让替身泄漏到同进程的后续
+// 测试文件（症状是「单独跑通过、全量跑失败」，且失败点与泄漏源相隔很远）。
+registerStubResetter(resetEnvironmentRepoStubForTest);
+registerStubResetter(resetCoreRuntimeFacadeStub);
+registerStubResetter(resetMachineRegistryPortStub);

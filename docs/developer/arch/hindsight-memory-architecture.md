@@ -54,7 +54,9 @@ Hindsight 是外部部署的 AI 长期记忆服务（MIT 开源，Vectorize 出�
 
 ### 无专用记忆表
 
-`src/db/schema.ts` 中**没有** memory 专用表。记忆数据完全由外部 Hindsight 服务存储。
+本仓库**没有**记忆数据的专用表——记忆内容完全由外部 Hindsight 服务存储。全仓与记忆相关的唯一表是
+`agent_memory_config`（每个 Agent 配置的记忆开关），任务 1.7 B10 起归
+`packages/resources/memory/db/schema.ts`；它只记录开关，不存任何记忆条目。
 
 与记忆相关的间接依赖：
 - `member` 表：用户 member ID 用作 Hindsight Bank ID

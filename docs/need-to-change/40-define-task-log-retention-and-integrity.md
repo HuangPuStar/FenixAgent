@@ -13,6 +13,8 @@
 ## 已核验证据
 
 - `src/db/schema.ts:325-339`：taskId 无 FK，无 `(taskId,createdAt)` 索引。
+  （引用位置按审计当时的工作区；`task_execution_log` 现位于 `packages/resources/task/db/schema.ts`，
+  路径口径见 [README](./README.md) 顶部补记。DDL 未变，判断仍成立。）
 - `src/services/task-v2.ts:239-248`：删除 task 不处理 execution logs。
 - `src/repositories/task.ts:73-75`：日志删除只由显式 clear 使用。
 - 未发现 retention job 或归档策略。

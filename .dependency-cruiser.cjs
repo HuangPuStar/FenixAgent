@@ -29,6 +29,11 @@ function workspaceSourcePathPattern(path) {
   return `(?:^|/)${path.replaceAll("/", "\\/")}/src/`;
 }
 
+/** 匹配 workspace package 的 db 组装期出口目录（只能经 `@fenix/<pkg>/db` 引用，见 §6.1）。 */
+function workspaceDbPathPattern(path) {
+  return `(?:^|/)${path.replaceAll("/", "\\/")}/db/`;
+}
+
 const workspacePackageRoots = getWorkspacePackageRoots();
 
 module.exports = {
@@ -52,6 +57,21 @@ module.exports = {
         path: workspaceSourcePathPattern(targetRoot),
         // 必须保留 local：每个合法的 `@fenix/x` 导入都会解析到 packages/x/src/，
         // 去掉该过滤会产生数百条把公开导出误判为内部穿透的假阳性。
+        dependencyTypes: ["local"],
+      },
+    })),
+    ...workspacePackageRoots.map((targetRoot) => ({
+      name: `no-cross-package-db:${targetRoot}`,
+      comment:
+        "对方 db/ 只能经 `@fenix/<pkg>/db` 组装期出口引用（§6.1 的跨模块外键例外），不能像 src 一样用相对路径穿透。" +
+        "依赖类型限定 local 正是「只对相对路径生效」：裸说明符会解析成 workspace 类型而放行。",
+      severity: "error",
+      from: {
+        path: "(?:^|/)packages/",
+        pathNot: workspacePathPattern(targetRoot),
+      },
+      to: {
+        path: workspaceDbPathPattern(targetRoot),
         dependencyTypes: ["local"],
       },
     })),

@@ -3,15 +3,15 @@
  *
  * 覆盖本函数自己负责的两件事：①只删目标机器的 core 实例、且每个删除都配对注销实例登记表；
  * ②core 侧已无实例时仍要收敛编排域活跃表（调用方是宿主的机器重连/断连/沙盒释放路径，
- * 后者不经 ACP handler，E-P0.1）。core 单例经宿主 preload 的 `stubCoreBootstrap` 注入假 facade，
- * 与包内其它用例的接缝一致。
+ * 后者不经 ACP handler，E-P0.1）。core 单例经包内 `../server/testing` 的 `stubCoreRuntimeFacade`
+ * 注入假 facade，与包内其它用例的接缝一致。
  */
 
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import type { CoreRuntimeFacade } from "@fenix/core";
 import type { AgentController } from "@fenix/orchestration";
 import { resetAllStubs } from "@fenix/platform-sdk/testing";
-import { stubCoreBootstrap } from "@server/test-utils/stubs/module-stubs";
+import { stubCoreRuntimeFacade } from "../server/testing";
 import { globalInstanceRegistry } from "../services/instance-registry";
 import { convergeMachineInstances } from "../services/machine-instance-cleanup";
 import {
@@ -70,7 +70,7 @@ describe("convergeMachineInstances", () => {
       { instanceId: "inst-b", nodeId: "m1" },
       { instanceId: "inst-c", nodeId: "m2" },
     ]);
-    stubCoreBootstrap({ getCoreRuntime: () => facade });
+    stubCoreRuntimeFacade(facade);
     registerSupplement("inst-a", "env-1");
     registerSupplement("inst-c", "env-1");
 
@@ -86,7 +86,7 @@ describe("convergeMachineInstances", () => {
   // 这是沙盒释放路径唯一能收敛幽灵实例的时机
   test("core 实例为空时仍收敛编排域并返回 0", () => {
     const { facade } = fakeFacadeWith([]);
-    stubCoreBootstrap({ getCoreRuntime: () => facade });
+    stubCoreRuntimeFacade(facade);
     const reclaimed: string[] = [];
     setOrchestrationMachineCleanupDeps({
       getOrchestrationController: () =>
@@ -103,7 +103,7 @@ describe("convergeMachineInstances", () => {
   // 无匹配实例且活跃表为空：幂等重入安全（重连分支每次都会调用本函数）
   test("无匹配实例时幂等返回 0", () => {
     const { facade } = fakeFacadeWith([{ instanceId: "inst-c", nodeId: "m2" }]);
-    stubCoreBootstrap({ getCoreRuntime: () => facade });
+    stubCoreRuntimeFacade(facade);
 
     expect(convergeMachineInstances("m1")).toBe(0);
     expect(convergeMachineInstances("m1")).toBe(0);

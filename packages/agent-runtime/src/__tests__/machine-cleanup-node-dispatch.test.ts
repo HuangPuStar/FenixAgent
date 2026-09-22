@@ -4,14 +4,14 @@
  * 根因：sweep（startMachineSweep → triggerMachineCleanupByMachineId）清理断连机器时
  * 未通知编排域 AgentNode，节点保持 stale connected，ensureNode 放行 spawn 走死信道。
  * 本文件从 machine 清理入口 triggerMachineCleanupByMachineId 验证节点状态被纠正为 disconnected。
- * registry / registry-heartbeat / core-bootstrap 已在 setup-mocks.ts 中通过 preload
- * mock 注册（createLazyMock 模式），stub 行为通过 stubXxx() 在 beforeEach 中配置。
+ * registry / registry-heartbeat / core-bootstrap 这些替身由包内 `../server/testing` 提供
+ * （§1.7 收尾：接缝归本包），stub 行为通过 stubXxx() 在 beforeEach 中配置。
  */
 
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { type AgentNode, type AgentNodeSocket, AgentNodeUnavailableError } from "@fenix/orchestration";
 import { resetAllStubs } from "@fenix/platform-sdk/testing";
-import { stubCoreBootstrap, stubRegistry } from "@server/test-utils/stubs/module-stubs";
+import { stubCoreRuntimeFacade, stubMachineRegistryPort } from "../server/testing";
 import { getAgentNodeService } from "../transport/agent-node-bridge";
 
 /** 最小 AgentNodeSocket：close 立即确认。 */
@@ -40,11 +40,8 @@ beforeEach(() => {
   resetAllStubs();
   // disconnectMachine 必须配置：未配置时空 stub 返回 undefined，
   // triggerMachineCleanupByMachineId 的 .catch 会对 undefined 调用抛 TypeError
-  stubRegistry({ disconnectMachine: async () => {} });
-  stubCoreBootstrap({
-    getCoreRuntime: () => ({ listInstances: () => [] }),
-    unregisterRemoteNode: () => {},
-  });
+  stubMachineRegistryPort({ disconnectMachine: async () => {} });
+  stubCoreRuntimeFacade({ listInstances: () => [] });
 });
 
 afterEach(() => {

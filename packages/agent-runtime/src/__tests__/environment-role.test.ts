@@ -1,10 +1,10 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { ForbiddenError, NotFoundError } from "@fenix/platform-sdk";
 import { resetAllStubs } from "@fenix/platform-sdk/testing";
-import { stubEnvironmentRepo } from "@server/test-utils/stubs/module-stubs";
+import { stubEnvironmentRepo } from "../server/testing";
 
-// 动态 import：environmentRepo 的 mock 是 setup-mocks.ts 注册的实时 Proxy，
-// beforeEach 注入 stub 即可生效（与 fs-upload-escape.test.ts 同模式）。
+// 动态 import：environmentRepo 是包内登记替身层的实时 Proxy（`repositories/environment.ts`），
+// beforeEach 注入 stub 即可生效（§1.7 收尾起替身层归本包，不再经宿主 preload）。
 const { getOwnedEnvironment } = await import("../services/environment-core");
 
 const ORG_ID = "org-1";

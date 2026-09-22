@@ -2,7 +2,8 @@
 
 > 审计基线：2026-08-10 当前工作区（包含尚未提交的在途改动）  
 > 审计方式：领域上下文与 ADR 对照、静态依赖扫描、数据流追踪、并发/故障反例、契约交叉核验  
-> 文档性质：整改决策输入，不代表问题已经修复，也不以当前实现便利作为目标架构边界
+> 文档性质：整改决策输入，不代表问题已经修复，也不以当前实现便利作为目标架构边界  
+> **路径口径（2026-09-22 补记）**：各篇「已核验证据」里的 `src/**` 路径与行号写于审计当时，此后发生两次与路径相关的重构——阶段 1 的包化（`apps/server/src/**` 与 `apps/web/src/**` 的实现按域迁入 `packages/**`）与任务 1.7 的表迁移（表定义从宿主 `apps/server/src/db/schema.ts` 迁到各 owner 包的 `db/schema.ts`，DDL 逐字保留）。因此**结论仍然有效**（约束缺失的判据是 DDL 与调用路径，不是文件位置），但引用位置需按当前代码复核：涉及表定义时，`user_config` / `apikey` 等身份表在 `packages/platform/identity/db/schema.ts`，`agent_config` 与四张 join 表在 `packages/resources/agent-config/db/schema.ts`，`agent_knowledge_binding` / `knowledge_base` 在 `packages/resources/knowledge/db/schema.ts`，`scheduled_task_v2` / `task_execution_log` 在 `packages/resources/task/db/schema.ts`。
 
 ## 总结判决
 

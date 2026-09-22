@@ -269,7 +269,56 @@ class PgEnvironmentRepo implements IEnvironmentRepo {
   }
 }
 
-export const environmentRepo: IEnvironmentRepo = new PgEnvironmentRepo();
+/** 环境仓储的真实实现，也是 `environmentRepo` 未登记替身时的兜底目标。 */
+const environmentRepoImpl: IEnvironmentRepo = new PgEnvironmentRepo();
+
+/**
+ * 用例登记的仓储替身（**部分覆盖**）：只替换传进来的方法，未登记的方法仍走真实实现。
+ *
+ * 为什么替身层在本包、而不是继续留在宿主 preload（§1.7 收尾）：宿主原先按本模块的路径 `mock.module`
+ * 一份转发 Proxy，包内用例因此只能经宿主测试基建（`@server/test-utils/stubs/module-stubs`）登记替身 ——
+ * 这批引用是 `apps-boundary` 台账最后一条（`@fenix/agent-runtime → @fenix/server-app`）的残留面，而
+ * 删除条件是「测试侧归零」。替身层随仓储定义一起归本包后，包内用例从 `./server/testing` 取
+ * `stubEnvironmentRepo`，语义与替换点都在本包手里。
+ *
+ * 为什么**必须**同时删掉宿主 preload 的同路径 `mock.module`：preload 注册的 mock 优先级高于包内后注册的
+ * mock（Bun 1.3.13 实测，见 review/task-1.7 收尾记录），留着会让包内登记的替身永不生效 —— workflow 的
+ * `pg-storage-adapter` 曾在同一形态上踩过（包内断言全部落空）。
+ *
+ * 为什么未登记时回退真实实现而不是旧的 `{ getById: async () => null }`：那条兜底是「preload 按模块路径
+ * 整份替换」的产物（未登记即整份空替身）；改为**部分覆盖**后，未登记的方法保持真实行为，漏登记由用例断言
+ * 暴露，而不是被静默吞成空返回值。各用例原本就登记了它依赖的方法（此前的空替身只覆盖 `getById`）。
+ */
+// biome-ignore lint/suspicious/noExplicitAny: 替身按用例需要只给部分方法，形状由各用例自行收窄
+type EnvironmentRepoStub = Record<string, any>;
+let environmentRepoStub: EnvironmentRepoStub | null = null;
+
+/** 登记仓储替身（浅合并，同一用例可分多次登记不同方法）。 */
+export function setEnvironmentRepoStub(overrides: EnvironmentRepoStub): void {
+  environmentRepoStub = { ...(environmentRepoStub ?? {}), ...overrides };
+}
+
+/** 清空替身层，供 `resetAllStubs()` 与用例收尾调用。 */
+export function resetEnvironmentRepoStubForTest(): void {
+  environmentRepoStub = null;
+}
+
+/**
+ * 环境仓储单例。
+ *
+ * 为什么用 Proxy 而不是「激活后换绑」：具名导入在模块首次求值时固化绑定，任何「让导出指向另一个对象」的
+ * 写法都要么依赖 ESM 实时绑定语义、要么给每个消费方加一层取值函数；Proxy 把每次属性访问转发到当前替身，
+ * 与宿主 preload 旧 mock 同形（那段注释记的正是「getter 缓存对象引用会让后置替身永不生效」的 404 事故）。
+ *
+ * 实现类不使用 `this`（方法体一律直读 `getAgentRuntimeDatabase()`），因此转发不改变方法内的接收者语义；
+ * 若将来引入实例状态，需改为显式绑定转发。
+ */
+export const environmentRepo: IEnvironmentRepo = new Proxy(environmentRepoImpl, {
+  get: (target, prop) => {
+    if (environmentRepoStub && prop in environmentRepoStub) return environmentRepoStub[prop as string];
+    return Reflect.get(target, prop, target);
+  },
+});
 
 /**
  * 按 Agent 配置取绑定 Environment 的 id 列表（跨包**只读**入口，消费方是 `@fenix/agent-config` 的删除与

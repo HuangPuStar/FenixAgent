@@ -13,8 +13,8 @@
  *
  * 注入方式（禁 mock.module，复用既有 seam）：
  *   - globalInstanceRegistry 为真实单例，beforeEach 清空、用例内注册 supplement；
- *   - core-bootstrap 通过 stubCoreBootstrap 注入 fakeFacade（listInstances 空 +
- *     记录 stopInstance / deleteInstance 调用）；
+ *   - core-bootstrap 通过包内 `../server/testing` 的 stubCoreRuntimeFacade 注入 fakeFacade
+ *     （listInstances 空 + 记录 stopInstance / deleteInstance 调用）；
  *   - orchestration-instance 通过 setOrchestrationInstanceDeps 注入 fakeController
  *     （活跃表可操控，模拟"活跃实例正常停止"的成功路径）；未注入的用例走真实
  *     controller 单例（活跃表为空，controller.stopInstance 抛 INSTANCE_NOT_FOUND
@@ -26,13 +26,13 @@ import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import type { CoreRuntimeFacade } from "@fenix/core";
 import type { AgentController } from "@fenix/orchestration";
 import { resetAllStubs, stubDb } from "@fenix/platform-sdk/testing";
-import { stubCoreBootstrap } from "@server/test-utils/stubs/module-stubs";
 import { createWebInstancesRoutes } from "../routes/web/instances";
 import {
   globalInstanceRegistry,
   resetOrchestrationBootstrap,
   resetOrchestrationInstanceDeps,
   setOrchestrationInstanceDeps,
+  stubCoreRuntimeFacade,
 } from "../server/testing";
 import { createStubAgentRuntimeAuthGuardPlugin, resetTestAuth, setTestAuth } from "./guard-stubs";
 
@@ -91,7 +91,7 @@ describe("DELETE /web/instances/:id", () => {
     resetOrchestrationBootstrap();
     resetOrchestrationInstanceDeps();
     stubDb({});
-    stubCoreBootstrap({ getCoreRuntime: () => fakeFacade });
+    stubCoreRuntimeFacade(fakeFacade);
     setTestAuth({ organizationId: ORG_1, userId: "user-1" });
     stopCalls.length = 0;
     deleteCalls.length = 0;

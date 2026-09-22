@@ -3,14 +3,14 @@ import { AgentNodeUnavailableError } from "@fenix/orchestration";
 import { NotFoundError, ValidationError } from "@fenix/platform-sdk";
 import { resetAllStubs } from "@fenix/platform-sdk/testing";
 import { SandboxProviderNotConfiguredError, SandboxRuntimeNotReadyError } from "@fenix/resource-sandbox/server";
-import {
-  environmentServiceRegistry,
-  stubCoreBootstrap,
-  stubEnvironmentService,
-} from "@server/test-utils/stubs/module-stubs";
 import { createWebEnvironmentsRoutes } from "../routes/web/environments";
 import type { AgentRuntime } from "../runtime";
-import { resetAgentRuntimePort, setOrchestrationInstanceDeps, stubAgentRuntimePort } from "../server/testing";
+import {
+  resetAgentRuntimePort,
+  setOrchestrationInstanceDeps,
+  stubAgentRuntimePort,
+  stubCoreRuntimeFacade,
+} from "../server/testing";
 import { createStubAgentRuntimeAuthGuardPlugin, resetTestAuth, setTestAuth } from "./guard-stubs";
 
 // 路由不再自持 deps 袋子（1.4 W3b）：环境能力经运行 port 取，替换点就是 port 绑定本身
@@ -77,6 +77,31 @@ function json(path: string, method: string, body: Record<string, unknown> = {}) 
   });
 }
 
+/**
+ * 环境服务动词的文件内登记表。
+ *
+ * 为什么是文件内而不是宿主测试基建（§1.7 收尾）：环境能力在本包生产侧一律经 `getBoundAgentRuntime()` 取
+ * （1.4 W3b），这张表只是把「用例要断言的动词」转写进运行 port 替身（见 `stubRuntime`），属于本文件私有的
+ * 装配细节，不是跨包契约。原先进口宿主 `environmentServiceRegistry` 只因当时没有别的登记处，而该注册表
+ * 零生产消费方——随 `apps-boundary` 残留面一起删除。
+ *
+ * 表值取 `any`：登记表承载各动词的真实签名，收窄发生在 port 边界；`src/__tests__/**` 下
+ * `noExplicitAny` 已在 `biome.json` 覆盖中关闭，因此不需要（也不该留）行级 ignore——留着会被
+ * biome 判为「无效果的抑制注释」告警。
+ */
+type EnvironmentServiceStubFn = (...args: any[]) => any;
+let environmentServiceStubs: Record<string, EnvironmentServiceStubFn> = {};
+
+/** 登记环境服务动词的替身（浅合并，同一用例可分多次登记）。 */
+function stubEnvironmentService(overrides: Record<string, EnvironmentServiceStubFn>): void {
+  environmentServiceStubs = { ...environmentServiceStubs, ...overrides };
+}
+
+/** 取已登记的动词替身；未登记时返回空函数（与旧注册表 `throwOnMissing = false` 同口径）。 */
+function environmentServiceStub(name: string): EnvironmentServiceStubFn {
+  return environmentServiceStubs[name] ?? (() => {});
+}
+
 function configureEnvironmentStubs() {
   stubEnvironmentService({
     createWebEnvironment: async () => environment(),
@@ -95,11 +120,11 @@ function configureEnvironmentStubs() {
  */
 function stubRuntime(overrides: Partial<AgentRuntime> = {}) {
   stubAgentRuntimePort({
-    createEnvironment: (...args) => environmentServiceRegistry.get("createWebEnvironment")(...args),
-    deleteEnvironment: (...args) => environmentServiceRegistry.get("deleteEnvironment")(...args),
-    getOwnedEnvironment: (...args) => environmentServiceRegistry.get("getOwnedEnvironment")(...args),
-    listEnvironments: (...args) => environmentServiceRegistry.get("listEnvironmentsWithInstances")(...args),
-    updateEnvironment: (...args) => environmentServiceRegistry.get("updateWebEnvironment")(...args),
+    createEnvironment: (...args) => environmentServiceStub("createWebEnvironment")(...args),
+    deleteEnvironment: (...args) => environmentServiceStub("deleteEnvironment")(...args),
+    getOwnedEnvironment: (...args) => environmentServiceStub("getOwnedEnvironment")(...args),
+    listEnvironments: (...args) => environmentServiceStub("listEnvironmentsWithInstances")(...args),
+    updateEnvironment: (...args) => environmentServiceStub("updateWebEnvironment")(...args),
     listOwnedInstances: async () => [],
     ...overrides,
   });
@@ -107,13 +132,14 @@ function stubRuntime(overrides: Partial<AgentRuntime> = {}) {
 
 describe("round44 Web 环境路由", () => {
   beforeEach(() => {
+    environmentServiceStubs = {};
     resetAllStubs();
     authenticate();
     configureEnvironmentStubs();
     // 环境与实例能力一律经 port 取（1.4 W3b/W6b）：替换点是绑定本身，用例不再改写包内单例
     //（此前是 `agentInstanceService.resolveInstanceForOperation` 一类的 monkey-patch）。
     stubRuntime();
-    stubCoreBootstrap({ getCoreRuntime: () => ({ listInstances: () => [] }) });
+    stubCoreRuntimeFacade({ listInstances: () => [] });
   });
 
   afterEach(() => {
@@ -428,7 +454,7 @@ describe("round44 Web 环境路由", () => {
 
   // provider 未配置时，进入环境必须脱敏映射为 503。
   test("进入环境映射 provider 未配置错误", async () => {
-    stubCoreBootstrap({ getCoreRuntime: () => ({ listInstances: () => [] }) });
+    stubCoreRuntimeFacade({ listInstances: () => [] });
     setOrchestrationInstanceDeps({
       getOrchestrationController: () =>
         ({
@@ -444,7 +470,7 @@ describe("round44 Web 环境路由", () => {
 
   // runtime 未就绪时，同样不得泄漏 sandbox 内部标识。
   test("进入环境映射 runtime 未就绪错误", async () => {
-    stubCoreBootstrap({ getCoreRuntime: () => ({ listInstances: () => [] }) });
+    stubCoreRuntimeFacade({ listInstances: () => [] });
     setOrchestrationInstanceDeps({
       getOrchestrationController: () =>
         ({

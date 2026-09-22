@@ -71,7 +71,7 @@ docker compose up -d postgres
 bun run db:migrate
 ```
 
-如果修改了 `apps/server/src/db/schema.ts`，生成迁移文件：
+如果修改了表定义（业务表在所属 owner 包的 `packages/**/db/schema.ts`，身份表在 `packages/platform/identity/db/schema.ts`，宿主自有表在 `apps/server/src/db/schema.ts`），生成迁移文件：
 
 ```bash
 bun run db:generate --name <migration-name>

@@ -34,7 +34,6 @@
     "@fenix/identity": "workspace:*",
     "@fenix/logger": "workspace:*",
     "@fenix/model-management": "workspace:*",
-    "@fenix/orchestration": "workspace:*",
     "@fenix/platform-sdk": "workspace:*",
     "@fenix/plugin-sdk": "workspace:*",
     "@fenix/resource-knowledge": "workspace:*",
