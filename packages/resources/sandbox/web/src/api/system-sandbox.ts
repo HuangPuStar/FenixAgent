@@ -1,4 +1,4 @@
-import { request, unwrap } from "@fenix/web-runtime/api/request";
+import { ApiError, request, unwrap } from "@fenix/web-runtime/api/request";
 import { getAdminKey } from "@fenix/web-runtime/lib/admin-key";
 
 export interface SandboxResources {
@@ -266,9 +266,9 @@ export const systemSandboxApi = {
       const response = await fetch(`/api/system/sandbox-cluster/servers/${encodeURIComponent(id)}/tunnel/frpc.toml`, {
         headers: { Authorization: `Bearer ${getAdminKey() ?? ""}` },
       });
-      // 该端点直接回文本（非 /web 的 { success, data } 信封），故不经 request()。
-      // 失败信息是诊断上下文（进入 toast 的 description），面向用户的标题由 UI 侧 t() 提供。
-      if (!response.ok) throw new Error(`download tunnel config failed with HTTP ${response.status}`);
+      // 该端点直接回 toml 文本（非 /web 的 { success, data } 信封），故不经 request()；
+      // 三处裸 fetch 的失败语义统一由 buildStreamError 归一。
+      if (!response.ok) throw await buildStreamError(response);
       return response.text();
     },
   },
@@ -296,7 +296,7 @@ export const systemSandboxApi = {
         `/api/system/sandbox-server/servers/${encodeURIComponent(serverId)}/sandboxes/${encodeURIComponent(sandboxId)}/diagnostics`,
         { headers: { Authorization: `Bearer ${getAdminKey() ?? ""}` } },
       );
-      if (!response.ok) throw new Error(await readResponseError(response));
+      if (!response.ok) throw await buildStreamError(response);
       return response.text();
     },
     executeCommand: async (serverId: string, sandboxId: string, body: SandboxCommandBody, signal: AbortSignal) => {
@@ -312,30 +312,69 @@ export const systemSandboxApi = {
           signal,
         },
       );
-      if (!response.ok) throw new Error(await readResponseError(response));
+      if (!response.ok) throw await buildStreamError(response);
       return response;
     },
   },
 };
 
 /**
- * 解析流式端点的错误响应：优先取 `{ error: { message } }` 里的服务端消息，
- * 否则回退原始文本，最后回退 HTTP 状态码。
- * 只保留诊断上下文，不产出面向用户的文案——调用方以 t() 提供标题，本值进 description。
+ * toast description 的字符上限。
+ *
+ * 信封里的 message 是后端有意给的信息，本层不重写，但要封顶：后端 `extractClusterErrorMessage`
+ * （`src/server/services/sandbox-cluster-client.ts`）在上游返回非 JSON 时会把上游响应正文**原样**
+ * 当成 message 透传，上游是网关页时就是整段 HTML——不封顶等于把同一类长正文换个字段灌进 toast。
+ * 截断只影响极端长文，正常业务错误（如 "sandbox not found"）逐字保留。
  */
-async function readResponseError(response: Response): Promise<string> {
+const MAX_ERROR_MESSAGE_LENGTH = 200;
+
+/**
+ * 文本 / 流式端点的失败归一：一律抛 `ApiError`，与同文件其余经 `unwrap(request())` 的方法同一失败语义。
+ *
+ * 为什么这三个方法仍用裸 `fetch`：端点直接回文本或 SSE（非 `/web` 的 `{ success, data }` 信封），
+ * `request()` 只解 JSON 信封、且非 JSON 分支会把 body 当文本消费掉，拿不到原始文本 / 流。这与前端规范
+ * 5.3「非标准响应适配」记的「已知能力缺口」是同一处缺口（修法在 `request()` 一侧），本文件只是它在沙箱
+ * 域内的收容点——缺口补上后这三个方法应退回 `request()` / `unwrap()`。
+ *
+ * code 取服务端 `{ error: { code, message } }` 信封里的稳定错误码（与 `unwrap()` 的取码来源相同）；
+ * 信封缺失（网关 / 代理直接回 HTML 等）时退化为 UNKNOWN——不在本层再写一份 status→code 映射，
+ * 否则同一前端会出现第二套取码规则。
+ *
+ * message 只作诊断上下文（调用方拿它当 toast 的 description），面向用户的标题仍由调用方 `t()` 提供。
+ * 因此**不把响应正文当文案**：非信封响应退化为状态码文案（`HTTP ${status}`），原始正文只用于尝试解析
+ * 信封，解析失败即丢弃——否则网关 HTML 会整段出现在 toast 里，长文本还会撑爆 description。
+ * 信封内的 message 才回显，并按 `MAX_ERROR_MESSAGE_LENGTH` 封顶（见该常量说明）。
+ *
+ * 三处 fetch 都不传 `credentials`：`/api/system/*` 的守卫只读 `Authorization` 头
+ * （`apps/server/src/plugins/system-api-auth.ts`），不认 session cookie，补 `include` 不会改变鉴权结果，
+ * 因此维持不发送 cookie（更小的凭据暴露面），这不是缺陷。
+ */
+async function buildStreamError(response: Response): Promise<ApiError> {
   const text = await response.text().catch(() => "");
+  const envelope = parseErrorEnvelope(text);
+  const message = envelope.message ? truncateErrorMessage(envelope.message) : `HTTP ${response.status}`;
+  return new ApiError(message, envelope.code ?? "UNKNOWN");
+}
+
+/** 超长诊断文案截断并加省略号：调用方只展示，不需要完整正文。 */
+function truncateErrorMessage(message: string): string {
+  return message.length > MAX_ERROR_MESSAGE_LENGTH ? `${message.slice(0, MAX_ERROR_MESSAGE_LENGTH)}…` : message;
+}
+
+/** 解析 `{ error: { code, message } }` 信封；非该形状（网关 HTML 等）返回空对象，由 `buildStreamError` 用状态码文案兜底。 */
+function parseErrorEnvelope(text: string): { code?: string; message?: string } {
   try {
     const payload: unknown = JSON.parse(text);
-    if (typeof payload === "object" && payload !== null && !Array.isArray(payload)) {
-      const error = (payload as Record<string, unknown>).error;
-      if (typeof error === "object" && error !== null && !Array.isArray(error)) {
-        const message = (error as Record<string, unknown>).message;
-        if (typeof message === "string" && message.trim()) return message;
-      }
-    }
+    if (typeof payload !== "object" || payload === null || Array.isArray(payload)) return {};
+    const error = (payload as Record<string, unknown>).error;
+    if (typeof error !== "object" || error === null || Array.isArray(error)) return {};
+    const { code, message } = error as Record<string, unknown>;
+    return {
+      code: typeof code === "string" && code.trim() ? code : undefined,
+      message: typeof message === "string" && message.trim() ? message : undefined,
+    };
   } catch {
-    // 非 JSON 错误直接回退到原始文本。
+    // 非 JSON 错误体（网关 HTML 等）：信封缺失，code 落 UNKNOWN、message 由状态码文案兜底，正文不回显。
+    return {};
   }
-  return text.trim() || `HTTP ${response.status}`;
 }

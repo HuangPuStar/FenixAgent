@@ -15,7 +15,7 @@
 ```
 web/                      组件源码；必须在 web/ 下
   index.ts                barrel
-  lib/                    cn / i18n 命名空间常量 / theme / card-renderer
+  lib/                    cn / i18n 命名空间常量 / theme / card-renderer / clipboard
   styles/theme.css        设计 token（唯一样式入口）
   i18n/locales/{en,zh}/   包内文案，命名空间 uiComponents
   ui/ config/ chat/ components/ layout/
@@ -34,7 +34,7 @@ demo/                     Vite 展示页（非库产物）
 | `web/lib/i18n.ts` | `@/src/i18n` 单例 + `NS.COMPONENTS` / `NS.COMMON` | 只导出 `UI_COMPONENTS_NS = "uiComponents"`，资源由宿主注册 |
 | `web/lib/theme.tsx` | 源实现临时强制浅色，忽略 localStorage 与系统偏好 | 移除该 hack：初始主题取 localStorage，缺省回退 `defaultTheme`，`system` 跟随系统 |
 | `web/lib/card-renderer.tsx` | `@/src/lib/card-renderer/registry` + context/emitter | 只保留注册表，去掉会话事件通道；初始注册表为空 |
-| `web/chat/primitives/conversation.css` | `.chat-scroll-navigation` / `.chat-scroll-to-latest` 定义在 `packages/chat-channel/.../chat-design-shell.css` | 组件用到的样式随组件收进包内（逐字迁移），去掉跨包样式表依赖 |
+| `web/chat/primitives/conversation.css`（**阶段三已迁并删除**） | `.chat-scroll-navigation` / `.chat-scroll-to-latest` 定义在 `packages/chat-channel/.../chat-design-shell.css` | 组件用到的样式随组件收进包内（逐字迁移），去掉跨包样式表依赖；其后随 chat 样式迁移改成 `conversation.tsx` 里工具类，本文件删除 |
 | `web/chat/primitives/message.tsx` | `chat-markdown-content` 容器类由宿主 `MessageBubble` 注入，markdown 排版全挂在它上面 | 改由 `MessageResponse` 自身携带，独立使用时排版才生效（见「已知限制」第 8 条） |
 | `web/layout/`、`web/components/` 中的颜色字面量 | 源实现混用精确 hex（`#e4eaf2`、`#17233a`、`#1a2944`、`#f6f8fb`、`#e7ecf3`、`#99a8bc` 等） | 换成最近的语义 token（`border-border`、`text-text-bright`、`bg-surface-0`…）。**与宿主存在可见色差，属有意取舍**（2026-09-18 确认保持 token 化）：等值的（`#1677ff`→`brand`、`#94a3b8`→`text-muted`、`#ffffff`→`surface-1`）无差异，等值的以外的若要求与源逐像素一致，需改回 hex |
 | `web/components/preview/FileViewerPreview.tsx` | `buildPreviewUrl` 在组件内部硬编码宿主文件代理路由；重试参数固定用 `&` 拼接；`locale="zh-CN"` 与内置 `zhCNMessages` 中文写死 | `buildPreviewUrl` 提为可选 prop，默认值仍保留源实现（见「已知限制」第 9 条）；`&retry=` 改为按 URL 是否已含 `?` 选择分隔符（自定义构建器返回无 query 的 URL 时旧拼接会产出非法地址）；`locale` / `messages` 提为 props，默认值与源一致 |
@@ -46,10 +46,10 @@ demo/                     Vite 展示页（非库产物）
 | `web/chat/timeline/TodoChanges.tsx` | 每条待办右侧带变更标签（`新增` / `已完成` / `进行中` 等底色 badge） | 去掉该标签：变更语义由左侧图标与文案样式表达，右侧标签是重复信息；随之删除 `CHANGE_STYLES.labelClassName` 与两个语言包里仅此处使用的 `chat.components.todoChanges.*` 文案 |
 | `web/chat/primitives/message-attachments.tsx` | 图片 `alt` 固定取文件名，缺文件名时回落通用文案「Attachment」 | 新增可选 `alt` prop（优先于文件名），图片附件可传更准确的替代文本；缺省行为与源实现一致 |
 | `web/chat/shell/internal/use-composer-input-bridge.ts` | 空状态建议提示词与消息「引用」经 window 自定义事件（`chat:apply-suggested-prompt` / `chat:quote`）从 `ChatView` 回环到 `ChatComposer`，生产与消费都在 chat 包内部 | 包内事件汇入宿主注入的 `subscribeExternal` 同一条通道（不新增注入端口）：宿主不注入任何订阅时这两个动作也必须生效。副产物是源实现按 `contextScope` 过滤 window 事件不再需要——本通道按 `ChatInterface` 实例分发，跨实例（主面板与 MetaAgentPanel）串扰在结构上不可能（2026-09-21） |
-| `web/chat/css/chat-design-composer.css` | 卡片与元信息条的三条设计规则挂在宿主壳类 `.acp-main-root` 下（`.acp-main-root .chat-composer-card`、`:focus-within`、`.chat-composer-meta`） | 改用组件自身的 `.chat-composer-wrapper` 作前缀：特指度同为 (0,2,0)，与宿主补充段的级联关系逐条不变，但 `ChatComposer` 独立渲染时不再依赖宿主壳类 —— 否则元信息条失去 `display:flex`，本应同行的 `meta-main` / `meta-actions` 竖排成两行（demo 输入岛示例即此形态，2026-09-18 修正） |
-| `web/chat/css/chat-design-status.css`、`chat-design-responsive.css` | 交互区 / 状态面板宽度 `min(760px, calc(100% - 32px))`（窄屏 `calc(100% - 20px)`），与输入岛卡片等宽甚至更宽 | 改为比输入岛卡片每侧窄 16px（共 32px），形成台阶：`min(756px, calc(100% - 64px))`、窄屏 `calc(100% - 52px)`。源值只在宽列下比卡片窄 28px，列宽不足 792px 时与卡片完全齐平（2026-09-18） |
-| `web/chat/css/chat-design-composer.css` | `.chat-composer-send.is-stop`（turn 运行中，图标切成停止方块）底色为深墨蓝 `#25344a` | 改用包内 token `var(--color-brand)`：源色在浅色下近乎黑色、暗色下几乎融进背景，且与本包其余「主题色」入口不一致（`.is-ready` 的蓝、`PromptInputSubmit` 的 `bg-primary`）；尺寸、圆角与 `color: #fff` 保持不变（2026-09-18） |
-| `web/chat/composer/CommandMenu.tsx`、`web/chat/css/chat-design-command-menu.css` | 命令/技能行的名称是蓝色 `/{name}` 文本（`#3d5f95`，能力面板内 `#58739d`）且加粗（620 / 面板内 600），hover 与 `.is-active` 取 `#294d87` / `#f4f7fc`，选中勾选 `#5f83bd`；只有 MCP 行有 16px 图标列（技能行名称比 MCP 行名称左缩 22px）；行的提示与勾选是并列的网格子项 | 行首 `/` 改为 `Sparkles` 图标并独立成网格首列（技能行与 MCP 行的名称列因此对齐；图标取技能目录页 `getSkillIcon` 的兜底分支，见 `packages/resources/skill/.../agent-skills-catalog.tsx`）；名称改菜单正文色 `#263247` 且不再加粗（620 / 600 → 400），hover 底色改中性 `#f5f7fa`，勾选改与 MCP「已连接」同源的绿 `#25856e`，`.is-active` 左侧强调条改 `var(--color-brand)`；提示与勾选收进 `.chat-command-menu-tail`（源实现里两者同时出现的行会多出一个网格子项被挤到隐式第二行，34px → 47px）；插入草稿的文本仍是 `/${name} `，协议未变（2026-09-18） |
+| `web/chat/css/chat-design-composer.css`（**阶段二已迁并删除**，现行实现见 `composer/ChatComposer.tsx` 的卡片工具类） | 卡片与元信息条的三条设计规则挂在宿主壳类 `.acp-main-root` 下（`.acp-main-root .chat-composer-card`、`:focus-within`、`.chat-composer-meta`） | 改用组件自身的 `.chat-composer-wrapper` 作前缀：特指度同为 (0,2,0)，与宿主补充段的级联关系逐条不变，但 `ChatComposer` 独立渲染时不再依赖宿主壳类 —— 否则元信息条失去 `display:flex`，本应同行的 `meta-main` / `meta-actions` 竖排成两行（demo 输入岛示例即此形态，2026-09-18 修正） |
+| `web/chat/css/chat-design-status.css`、`chat-design-responsive.css`（**阶段四已迁并删除**，现行实现见 `panels/**` 的宽度/台阶工具类） | 交互区 / 状态面板宽度 `min(760px, calc(100% - 32px))`（窄屏 `calc(100% - 20px)`），与输入岛卡片等宽甚至更宽 | 改为比输入岛卡片每侧窄 16px（共 32px），形成台阶：`min(756px, calc(100% - 64px))`、窄屏 `calc(100% - 52px)`。源值只在宽列下比卡片窄 28px，列宽不足 792px 时与卡片完全齐平（2026-09-18） |
+| `web/chat/css/chat-design-composer.css`（**阶段二已迁并删除**，现行实现见 `composer/composer-toolbar.tsx` 的 `bg-brand`） | `.chat-composer-send.is-stop`（turn 运行中，图标切成停止方块）底色为深墨蓝 `#25344a` | 改用包内 token `var(--color-brand)`：源色在浅色下近乎黑色、暗色下几乎融进背景，且与本包其余「主题色」入口不一致（`.is-ready` 的蓝、`PromptInputSubmit` 的 `bg-primary`）；尺寸、圆角与 `color: #fff` 保持不变（2026-09-18） |
+| `web/chat/composer/CommandMenu.tsx`、`web/chat/css/chat-design-command-menu.css`（**阶段五整文件删除**：其中仅剩 popover/inline 外壳死代码，行内样式已全部迁入 `CommandMenu.tsx` 工具类） | 命令/技能行的名称是蓝色 `/{name}` 文本（`#3d5f95`，能力面板内 `#58739d`）且加粗（620 / 面板内 600），hover 与 `.is-active` 取 `#294d87` / `#f4f7fc`，选中勾选 `#5f83bd`；只有 MCP 行有 16px 图标列（技能行名称比 MCP 行名称左缩 22px）；行的提示与勾选是并列的网格子项 | 行首 `/` 改为 `Sparkles` 图标并独立成网格首列（技能行与 MCP 行的名称列因此对齐；图标取技能目录页 `getSkillIcon` 的兜底分支，见 `packages/resources/skill/.../agent-skills-catalog.tsx`）；名称改菜单正文色 `#263247` 且不再加粗（620 / 600 → 400），hover 底色改中性 `#f5f7fa`，勾选改与 MCP「已连接」同源的绿 `#25856e`，`.is-active` 左侧强调条改 `var(--color-brand)`；提示与勾选收进 `.chat-command-menu-tail`（源实现里两者同时出现的行会多出一个网格子项被挤到隐式第二行，34px → 47px）；插入草稿的文本仍是 `/${name} `，协议未变（2026-09-18） |
 
 `ConnectionState`、`PermissionOption` 等原先来自 `@fenix/chat-channel` 的类型，改为包内同构联合类型/字面量结构类型，
 避免把业务包拖进依赖图。
@@ -58,12 +58,23 @@ demo/                     Vite 展示页（非库产物）
 
 抽取过程中曾把 `packages/resources/{sandbox,memory,task}/web` 的 5 个组件一并纳入
 （`SearchableSelect`、`TagFilterInput`、`SegmentedSwitcher`、`CronEditor`、`CollapsibleSidePanel`）。
-这 5 个在 `apps/web` 中既无同名实现也无功能等价物，且 `apps/web` 不依赖任何 `@fenix/resources` 包
+这 5 个在 `apps/web` 中既无同名实现也无功能等价物，且**当时** `apps/web` 不依赖任何 `@fenix/resources` 包
 （`apps/web/package.json` 无相关依赖，源码中零 import），因此不属于「web 的通用前端组件」，已于 2026-09-18 删除，
 连同它们的 barrel 出口、demo 示例、`cron` / `tagInput` 文案键与 `cron-parser` 依赖。
 
-- 影响范围：这 5 个组件在源包（如 `packages/resources/task/web/pages/agent-panel/components/CronEditor.tsx`）
-  中仍各自存在，删除只影响本包的覆盖面，不影响任何消费方——本包尚未被接入。
+- **2026-09-22 订正：上面两条前提都已失效，但删除的结论不变。** `12b56dbc` 起 `apps/web/package.json` 逐条声明了
+  `@fenix/resource-*`，路由适配器与 i18n 引导直接 import 各包 web 出口——「apps/web 不依赖资源包」不再成立；
+  「本包尚未被接入」也不再成立（本包已是各资源包 web 面的共享依赖）。**不要再用这两条已失效的理由回推删除决定**；
+  重新纳入与否仍按下面第二条的条件逐案评估（真问题是「消费方是否跨包 / 是否属于宿主 web 的通用件」，不是
+  「apps/web 有没有依赖资源包」）。
+- 影响范围：这 5 个组件的**源实现**在源包中仍各自存在，但只有两个与库内同名
+  （`packages/resources/memory/web/pages/hindsight/components/TagFilterInput.tsx`、
+  `packages/resources/task/web/pages/agent-panel/components/CronEditor.tsx`）；另外三个在源包用的是原名，
+  按库内名字 grep 会零命中（易误判成「源实现已消失」）：`SearchableSelect` ←
+  `sandbox/web/src/pages/admin/components/SearchableUsageFilter.tsx`、`SegmentedSwitcher` ←
+  `memory/web/pages/hindsight/components/MemoryViewSwitcher.tsx`、`CollapsibleSidePanel` ←
+  `memory/web/pages/hindsight/components/MemoryVisualizationShell.tsx`。删除只影响本包的覆盖面，
+  实测全仓无任何消费方引用被删的 5 个库内说明符（`grep -rn "searchable-select\|tag-filter-input\|segmented-switcher\|cron-editor\|collapsible-side-panel" packages apps` 去掉库内与源包自身后零命中）。
 - 重新纳入的条件：先确认这些组件的宿主归属与真实消费方（谁渲染、谁提供文案与数据），
   再按同一套纯化约定单独评估，不要因为「看起来通用」而再次越过 `apps/web` 这条范围线。
 
@@ -123,64 +134,86 @@ i18n.addResourceBundle("zh", UI_COMPONENTS_NS, zh, true, true);
    demo 例外：`demo/demo.css` 为展示过渡效果单独 `@import` 了它，该依赖因此只声明在 devDependencies，不随包产物分发。
    - 影响范围：依赖这些类的过渡动画（dialog、accordion 等）在源仓库同样没有动画。
    - 移除条件：源仓库正式引入 `tw-animate-css` 并在主题入口 `@import` 之后再同步。
-2. **`status-badge-active` 是未定义类**：`config/StatusBadge.tsx` 使用该类，但源仓库与本包都没有定义它，不产生样式。
-   - 移除条件：宿主提供该工具类，或改为包内 token 驱动的高亮。
-3. **`@plugin "@tailwindcss/typography"`**：`tool` / `reasoning` 组件使用 `prose` 系列类名，主题入口因此声明了该插件，
+2. **`@plugin "@tailwindcss/typography"`**：`tool` / `reasoning` 组件使用 `prose` 系列类名，主题入口因此声明了该插件，
    消费方编译本包 CSS 时需能解析到 `@tailwindcss/typography`（已列入 dependencies）。
-4. **宿主外观只迁移「组件强依赖」的部分**：`theme.css` 带走了三条缺失即静默走样的全局规则——
+3. **宿主外观只迁移「组件强依赖」的部分**：`theme.css` 带走了三条缺失即静默走样的全局规则——
    `*, ::before, ::after { border-color: var(--color-border) }`（包内 51 处只写宽度的 `border` / `divide-*` 依赖它，
    否则回落到 `currentColor`）、`:focus-visible { outline: none }`（组件自带 ring，缺它会双层描边）与
-   `prefers-reduced-motion` 降级；`chat/primitives/chat-message-content.css` 另带走两条全局 streamdown 规则
-   （隐藏 streamdown 代码块头部、放行浮动操作按钮点击）。
+   `prefers-reduced-motion` 降级；两条原本全局的 streamdown 规则（隐藏 streamdown 代码块头部、放行浮动
+   操作按钮点击）也随组件收进包内，现由 `chat/primitives/internal/markdown-classes.ts` 的容器变体
+   （`[&_[data-streamdown=…]]:`）表达。
    以下仍是应用壳，不进入包内：`html, body` 的字号字体、sonner 定位、滚动条，以及
-   `@utility tool-status-pill*` / `tool-call-*` 与 `@keyframes`（`status-active-pulse`、`shimmerSlide`、
-   `agent-badge-pulse` 等）。
+   `@utility tool-status-pill*` / `tool-call-*` 与 `@keyframes status-active-pulse` 等。
+   chat 簇自己用到的关键帧（`loadingDotBounce`、`loadingDotBounceDark`、`shimmerSlide`、
+   `chat-active-prompt-flash`、`agent-badge-pulse`）已收进包内 `web/chat/css/chat-animations.css`。
    - 影响范围：这些 `@utility` / `@keyframes` 的实际使用方是 `agent-runtime`、`chat-channel` 的组件
      （`ToolCallRow`、`AgentBadge` 等），本包 `ui/`、`config/`、`chat/` 下组件均不引用；
      后续批次若引入依赖它们的组件需重新评估。
    - demo 为观感一致，自行复制了 `html, body` 基准字号与滚动条，不随包分发。
-5. **`ui/pagination.tsx` 的 `translationPrefix` 默认值为 `"runs"`**，其文案来自调用方注入的 `t`（非本包命名空间），
+4. **`ui/pagination.tsx` 的 `translationPrefix` 默认值为 `"runs"`**，其文案来自调用方注入的 `t`（非本包命名空间），
    本包字典不含该命名空间；消费方必须自行传入 `t`。
-6. **未迁移 streamdown 表格全屏补丁**：源宿主在 `apps/web/src/main.tsx` 入口调用 `installStreamdownTablePatch()`，
+5. **未迁移 streamdown 表格全屏补丁**：源宿主在 `apps/web/src/main.tsx` 入口调用 `installStreamdownTablePatch()`，
    为 streamdown 全屏表格对话框补上缺失的 `data-streamdown="table-wrapper"`（缺失时全屏视图下的复制/下载按钮无响应）。
    该补丁依赖 streamdown 内部 DOM 结构，属于应用壳，未随组件进入本包。
    - 影响范围：仅 `chat/primitives/message.tsx`（`MessageResponse` 渲染 streamdown）的表格全屏视图；demo 未安装该补丁，
      需要该行为的宿主必须在自己的入口安装等价补丁。
    - 移除条件：streamdown 修复全屏表格缺失 `data-streamdown="table-wrapper"` 的行为。
-7. **`MessageResponse` 的 `envId` 指向宿主文件代理路由**：传入 `envId` 时相对资源路径会被改写为
+6. **`MessageResponse` 的 `envId` 指向宿主文件代理路由**：传入 `envId` 时相对资源路径会被改写为
    `/web/environments/<envId>/fs/<path>?preview=true`（源宿主应用约定），本包不定义该路由。
    - 影响范围：不传 `envId` 时 URL 原样透传，组件不依赖任何宿主路由；传 `envId` 的宿主需自行提供该路由。
    - 移除条件：宿主改为注入自定义 `urlTransform`，或把代理前缀提升为 prop。
-8. **`MessageResponse` 自带 `chat-markdown-content` 容器类**：源仓库里该类由宿主容器（`MessageBubble`）注入，
-   而 markdown 排版（`chat-message-content.css` 内 32 条规则：标题/列表/引用/行内代码/代码块/表格）全挂在它上面；
-   宿主不注入时这些规则一条都不生效。包内改由 `MessageResponse` 自身携带，独立使用时排版才正确。
-   - 影响范围：宿主已注入该类的场景（如 `apps/web`）为重复声明同值；该样式表未包 `@layer`，
-     其 `color: #27364f` / `font-size: 14px` 在两侧都压过 `text-text-primary`，因此行为一致。
-   - 移除条件：宿主统一改为给 `MessageResponse` 提供等价的 markdown 容器类，或把排版规则改为不依赖包裹类。
-9. **`FileViewerPreview` 的默认 `buildPreviewUrl` 指向宿主文件代理路由**：不传该 prop 时预览 URL 为
+7. **markdown 排版改由 `MessageResponse` 自带的容器工具类承担**：阶段三把原
+   `chat/primitives/chat-message-content.css`（标题/列表/引用/行内代码/代码块/表格与 streamdown 内部 DOM）
+   全部改写成容器上的 arbitrary variant，落在 `chat/primitives/internal/markdown-classes.ts`
+   （导出 `MARKDOWN_CONTENT_CLASS`）。宿主因此**不再需要**给 markdown 注入包裹类名。
+   - 影响范围：`streamdown` 的根节点只接收它自己的 props（未知属性不落到 DOM），所以 markdown 容器
+     挂不上 `data-slot`；对它的断言改用容器内部 `data-streamdown="…"` 结构标记（见守卫用例）。
+   - 移除条件：无（这是终态；若将来 streamdown 支持自定义属性透传，可补一个 `data-slot` 锚点）。
+8. **`FileViewerPreview` 的默认 `buildPreviewUrl` 指向宿主文件代理路由**：不传该 prop 时预览 URL 为
    `/web/environments/<envId>/fs/<path>?preview=true`（源宿主应用约定），本包不定义该路由。
    - 影响范围：仅默认值；与第 7 条 `MessageResponse.envId` 属同类取舍。宿主传入自定义 `buildPreviewUrl`
      即完全解除该路由依赖。组件同时带 `import "@open-file-viewer/core/style.css"` 副作用导入，
      消费方（含 demo）编译时需能解析该 CSS —— 依赖已列入 dependencies。
    - 移除条件：宿主统一注入自定义构建器，或把代理前缀提升为必填 prop。
-10. **`FileViewerPreview` 的内置预览文案默认简体中文**：`locale` 默认 `"zh-CN"`、`messages` 默认值为内置中文；
+9. **`FileViewerPreview` 的内置预览文案默认简体中文**：`locale` 默认 `"zh-CN"`、`messages` 默认值为内置中文；
     React 错误边界内的提示（「预览组件加载失败」等）是硬编码中文，不随 `locale` / `messages` 变化。
     - 影响范围：非中文宿主需显式传 `locale` / `messages`；边界提示需要多语言时由宿主在外层再包一层本地化边界。
     - 移除条件：错误边界提示纳入 `messages` props（需要先定义边界提示的键位契约）。
-11. **`UserMessageImage.url` 是包内新增的展示用字段**：源类型只有 `mimeType` + `data`（base64），
+10. **`UserMessageImage.url` 是包内新增的展示用字段**：源类型只有 `mimeType` + `data`（base64），
     想展示一张真实网络图片就必须把二进制内联进源码。包内加可选 `url`，渲染方统一按「`url` 优先、
     缺省回退到 `data` 拼出的 data URL」取地址（消息气泡与输入岛附件行同规则），发送路径仍只读 `data`。
     - 影响范围：新增字段可选，宿主既有 `UserMessageImage` 可直接传入，不构成破坏性变更。
     - demo 例外：mock 与输入岛示例的图片因此指向 `https://picsum.photos/...`（见 `MOCK_USER_IMAGE_URL`），
       是 demo 里唯一的远程资源——断网时该图退化为 alt 文案，其余示例仍全部离线可渲染。
     - 移除条件：宿主把展示地址纳入协议（例如 Chat 历史直接下发可访问 URL），包内即可退化为直接透传该字段。
-12. **`ChatHeader` 的扁平化样式仍依赖宿主壳类 `.acp-main-root`**：`chat-design-shell.css` 的
-    `.acp-main-root .chat-header-card`（`height: 45px`、`border-bottom`、圆角置零、去除玻璃底）特指度为 (0,2,0)，
-    压过宿主补充段的 `.chat-header-card` (0,1,0)。`ChatHeader` 的根元素自身就是 `.chat-header-card`，
-    没有可挂前缀的组件内包装类，独立渲染时只能拿到宿主段的玻璃样式（圆角 16px + `backdrop-filter`）。
-    - 影响范围：仅外观（扁平 vs 玻璃），不会像 2026-09-18 修正的 `ChatComposer` 元信息条那样破坏布局；
-      包内 `ChatHeader` 目前只由 `ACPMain` / `ChatInterface` 渲染，两者自带 `.acp-main-root`，故不受影响。
-    - 移除条件：给 `ChatHeader` 增加组件内包装元素，或把该组规则的宿主前缀一并换成组件自有类名。
+11. **`ChatHeader` 的外壳形态依赖祖先类名 `.acp-main-root`**：阶段五后该页的样式已全部落在
+    `ChatHeader.tsx` 的 `HEADER_CARD_CLASS` 里，其中「外壳内形态」（`height: 45px`、仅底边分隔线、圆角置零、
+    去除玻璃底与 `backdrop-filter`）用祖先变体 `[.acp-main-root_&…]` 表达——`acp-main-root` 是 `ACPMain`
+    根节点的类名，同时是宿主 `apps/web/src/index.css`（`.meta-agent-panel .acp-main-root`）的作用域钩子，
+    因此现阶段保留；独立渲染（demo / 单测）时只拿到玻璃形态（圆角 16px + `backdrop-filter`）。
+    - 影响范围：仅外观（扁平 vs 玻璃），不破坏布局；包内 `ChatHeader` 目前只由 `ACPMain` 渲染，自带该类名。
+    - 移除条件：宿主不再以 `.acp-main-root` 作选择器后，`ACPMain` 删类名并把这些变体改为直接工具类
+      （同 `chat-layout.css` 的阻塞项，见下节的移除条件）。
+
+## chat 样式现状（阶段一至五迁移台账）
+
+chat 簇的手写 CSS + 语义类名已全部迁成组件 `className` 里的 Tailwind 工具类（口径：能迁就迁；
+工具类无法表达的关键帧与「控制我们在 React 树外/其它包里渲染不出或改不了的节点」才留 CSS）。
+起点 `cfacc426^` 为 **2888 行 / 15 个样式表**，现状 **144 行 / 3 个样式表**：
+
+| 存活文件 | 行数 | 保留理由 | 移除条件 |
+| --- | --- | --- | --- |
+| `web/chat/css/chat-layout.css` | 32 | 唯一高度链（`.acp-main-root` / `.chat-main-column` / `.chat-interface-root` / `.chat-interface-column` 的 `min-width/min-height/overflow`）。这些类名**同时是宿主** `apps/web/src/index.css` 与宿主 `apps/web/src/pages/agent-panel/chat-layout.css` 的选择器，删类名必须宿主同步 | 宿主侧改用自己的选择器后：把这些声明落进 `ACPMain` / `ChatInterface` 的工具类，删除本文件与 `chat.css` 的对应 `@import` |
+| `web/chat/css/chat-animations.css` | 86 | 五个 `@keyframes`（`loadingDotBounce` / `loadingDotBounceDark` / `shimmerSlide` / `chat-active-prompt-flash` / `agent-badge-pulse`）：动画定义无法用工具类表达，工具类只能按名引用 | 改用 Tailwind v4 `@theme { --animate-* }` 命名动画 token（需动 `web/styles/theme.css`）后可删 |
+| `web/chat/css/chat.css` | 26 | 聚合入口（仅剩两条 `@import` + 迁移台账注释），由 `web/chat/index.ts` 与根 `web/index.ts` 副作用导入 | 上一条 `chat-layout.css` 也消失后，本文件随之删除并移除两处副作用导入 |
+
+- 已迁成工具类并删除的样式表（13 个）：`chat-design-shell`、`chat-design-composer`、`chat-design-messages`、
+  `chat-design-selection`、`chat-design-status`、`chat-design-tools`、`chat-design-command-menu`、
+  `chat-design-responsive`、`chat-navigation-aids`、`chat-loading`、`chat-agent-badge`（以上在 `web/chat/css/`）
+  与 `primitives/conversation.css`、`primitives/chat-message-content.css`（后者现为
+  `primitives/internal/markdown-classes.ts` 的容器工具类）。
+- 守卫用例（`web/__tests__/chat-style-migration*.test.tsx` + `chat-style-migration-helpers.ts`）常驻校验：
+  已删文件不存在、已迁类名不得回流（含阶段五退役的命令面板三形态）、关键帧齐备、聚合入口的 `@import` 有效。
 
 ## 未来接入 apps/web（本期不做）
 

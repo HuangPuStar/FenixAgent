@@ -17,12 +17,16 @@ import { unwrap } from "@fenix/web-runtime/api/request";
 import { dispatchConfigChange } from "@fenix/web-runtime/lib/config-events";
 import { Outlet, useNavigate, useRouterState } from "@tanstack/react-router";
 import { useCallback, useRef, useState } from "react";
+import { useTranslation } from "react-i18next";
+import { toast } from "sonner";
+import { NS } from "@/src/i18n";
 import { ChatArea } from "@/src/pages/agent-panel/ChatArea";
 import { AgentSidebar } from "./AgentSidebar";
 import "./agent-panel.css";
 
 export function DefaultAppShell() {
   const navigate = useNavigate();
+  const { t } = useTranslation(NS.AGENT_PANEL);
   // 仅订阅 pathname：避免 useRouterState() 无选择器订阅全部路由状态
   // 导致每次 search/hash/loader 变动都触发级联重渲染
   const pathname = useRouterState({ select: (s) => s.location.pathname });
@@ -91,9 +95,12 @@ export function DefaultAppShell() {
         dispatchConfigChange("agents");
       } catch (e) {
         console.error("创建智能体后导航失败:", e);
+        // 智能体此时已经创建成功，失败的是「进入实例并打开会话」这一步。
+        // 不提示的话用户停在列表页，会以为创建整体失败而重复创建。
+        toast.error(t("agentCreatedNavFailed"));
       }
     },
-    [navigate],
+    [navigate, t],
   );
 
   // ── Chat keep-alive：始终渲染 ChatArea，仅通过 CSS 切换可见性 ──

@@ -73,11 +73,11 @@ describe("PromptJumpRail", () => {
   test("samples long conversations into a bounded prompt index", async () => {
     await act(async () => root.render(<PromptJumpRail entries={entries(80)} />));
 
-    const buttons = [...host.querySelectorAll<HTMLButtonElement>(".chat-prompt-jump-index__item")];
+    const buttons = [...host.querySelectorAll<HTMLButtonElement>('[data-slot="chat-prompt-jump-item"]')];
     expect(buttons).toHaveLength(14);
     expect(buttons[0]?.getAttribute("aria-label")).toContain("1/80");
     expect(buttons.at(-1)?.getAttribute("aria-label")).toContain("80/80");
-    expect(host.querySelectorAll(".chat-prompt-jump-index__list > li")).toHaveLength(14);
+    expect(host.querySelectorAll('[data-slot="chat-prompt-jump-list"] > li')).toHaveLength(14);
   });
 
   // system-reminder 是系统注入消息，不应占用左侧用户提示词导航的序号和刻度。
@@ -94,7 +94,7 @@ describe("PromptJumpRail", () => {
 
     await act(async () => root.render(<PromptJumpRail entries={promptEntries} />));
 
-    const buttons = [...host.querySelectorAll<HTMLButtonElement>(".chat-prompt-jump-index__item")];
+    const buttons = [...host.querySelectorAll<HTMLButtonElement>('[data-slot="chat-prompt-jump-item"]')];
     expect(buttons).toHaveLength(2);
     expect(buttons[0]?.getAttribute("aria-label")).toContain("1/2");
     expect(buttons[1]?.getAttribute("aria-label")).toContain("2/2");
@@ -114,7 +114,7 @@ describe("PromptJumpRail", () => {
 
     await act(async () => root.render(<PromptJumpRail entries={promptEntries} />));
 
-    expect(host.querySelector(".chat-prompt-jump-index")).toBeNull();
+    expect(host.querySelector('[data-slot="chat-prompt-jump-rail"]')).toBeNull();
   });
 
   // 点击刻度沿用浏览器平滑定位，不修改会话消息或 Conversation 的滚动实现。
@@ -134,16 +134,15 @@ describe("PromptJumpRail", () => {
     const target = window.document.getElementById("chat-entry-prompt-1") as unknown as HTMLElement;
     const scrollIntoView = mock(() => {});
     target.scrollIntoView = scrollIntoView as unknown as typeof target.scrollIntoView;
-    const button = host.querySelectorAll<HTMLButtonElement>(".chat-prompt-jump-index__item")[1]!;
+    const button = host.querySelectorAll<HTMLButtonElement>('[data-slot="chat-prompt-jump-item"]')[1]!;
 
     await act(async () => button.click());
 
     expect(scrollIntoView).toHaveBeenCalledWith({ behavior: "smooth", block: "center" });
     expect(button.getAttribute("aria-current")).toBe("location");
     expect(button.getAttribute("aria-controls")).toBe("chat-entry-prompt-1");
-    expect(target.classList.contains("chat-entry--active-prompt")).toBe(true);
-    expect(window.document.getElementById("chat-entry-prompt-0")?.classList.contains("chat-entry--active-prompt")).toBe(
-      false,
-    );
+    // 高亮由 `data-active-prompt` 属性承担（原 `chat-entry--active-prompt` 类名已随样式迁移删除）。
+    expect(target.hasAttribute("data-active-prompt")).toBe(true);
+    expect(window.document.getElementById("chat-entry-prompt-0")?.hasAttribute("data-active-prompt")).toBe(false);
   });
 });

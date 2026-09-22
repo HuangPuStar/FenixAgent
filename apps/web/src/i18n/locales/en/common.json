@@ -13,6 +13,7 @@
   "disable": "Disable",
   "connecting": "Connecting to dashboard...",
   "not_found": "Page not found",
+  "load_failed": "Failed to load the page",
   "no_access": "Access denied",
   "back_home": "Back to Home",
   "status": {

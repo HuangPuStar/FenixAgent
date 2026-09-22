@@ -10,11 +10,25 @@
  * 唯一的显式排除：`primitives/permission-request` 的组件层 `PermissionOption` 与 `./types` 内联的协议
  * 同名类型冲突（结构兼容、声明独立），权威类型由 `./types` 提供，需要组件层声明的消费方深链该模块。
  *
- * 末尾的 `import "./css/chat.css"` 是刻意的副作用导入：chat 设计层样式（会话外壳、消息视图、
- * 工具时间线、状态面板、输入岛、命令面板、划词浮层、窄屏适配）在包内没有唯一宿主组件，
- * 由本聚合入口负责加载，保证「消费方导入本 barrel 即得完整视觉」。
- * 组件自导入的样式（`primitives/conversation.css`、`primitives/chat-message-content.css`、
- * `css/chat-navigation-aids.css`）不在此重复导入。
+ * 末尾的 `import "./css/chat.css"` 是刻意的副作用导入：chat 簇**尚未迁成工具类**的样式在包内没有
+ * 唯一宿主组件，由本聚合入口负责加载，保证「消费方导入本 barrel 即得完整视觉」。
+ * 阶段五后只剩两片（见 `css/chat.css` 的「迁移进度」）：
+ *   - `chat-animations.css`：五个 `@keyframes`（工具类无法表达动画定义）；
+ *   - `chat-layout.css`：`.acp-main-root` / `.chat-main-column` / `.chat-interface-*` 的高度链，
+ *     类名同时是宿主 `apps/web/src/index.css` 与宿主 `chat-layout.css` 的选择器，需宿主侧同步才可删。
+ * 其余 chat 样式（composer / 命令面板 / 工牌卡 / 会话外壳 / 消息视图 / markdown 排版 /
+ * Conversation 滚动按钮 / 划词浮层 / 状态面板 / 工具时间线 / 提示词导航 / 加载指示 / 窄屏适配）
+ * 已在阶段一至五迁成组件 `className` 里的工具类；包内也没有「组件自导入」的 chat 样式表了
+ * （`conversation.css`、`chat-message-content.css`、`chat-navigation-aids.css` 先后迁空并删除）。
+ *
+ * 出处注释的读法（2026-09-22 全量对账）：本目录大量注释以「复制自 `X`」「来源：`X`」记录迁移出处，
+ * 而 X 指向的源文件多数已随迁移批次退场（见下）。这些注释此后按统一格式在路径后标注
+ * 「（旧路径，已于 <日期> 由 <commit> 删除）」——标注只说明**该路径已不存在**，出处正文的语义不变。
+ * 需要读原文时用 `git show <commit>^:<path>`，例如
+ * `git show f2741a82d^:packages/agent-runtime/web/components/chat/tool-call-utils.ts`。
+ * 涉及的退场批次：`f2741a82d`（agent-runtime 旧 chat 全目录，53 源文件）、`8f364c10`（chat-channel/web）、
+ * `6679b464` 与 `5c6aa908`（宿主 `apps/web/src/{api,lib,types,pages,components}`）、
+ * `9998926e`（PeriTaskDetailSheet 迁入本包）。
  *
  * 维护约定：新增或删除 `web/chat/` 下的模块时必须同步本文件与根 `web/index.ts`，
  * 否则深链与整包导入会出现能力差异。
@@ -91,6 +105,7 @@ export * from "./view/ChatView";
 export * from "./view/CitationLink";
 export * from "./view/chat-navigation-aids";
 export * from "./view/MessageBubble";
+export * from "./view/PublicErrorCard";
 export * from "./view/SystemMessage";
 // 设计层样式：作为分组 barrel 的副作用依赖加载，见文件头说明。
 import "./css/chat.css";

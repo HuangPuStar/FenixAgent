@@ -19,26 +19,31 @@ export function PreviewL1Section() {
   const { t } = useTranslation(DEMO_NS);
 
   return (
-    <section className="demo-section">
-      <h1 className="demo-section-title">{t("sections.previewL1")}</h1>
-      <p className="demo-hint">{t("sectionHints.previewL1")}</p>
+    <section>
+      <h1 data-slot="demo-section-title" className="mb-6 text-[24px] font-semibold">
+        {t("sections.previewL1")}
+      </h1>
+      <p className="mt-3 text-text-muted text-[12px]">{t("sectionHints.previewL1")}</p>
 
-      <div className="demo-example">
-        <h2 className="demo-example-title">PreviewTab</h2>
-        <p className="demo-hint">
+      <div className="mb-5 p-5 border border-border rounded-lg bg-surface-1">
+        <h2 data-slot="demo-example-title" className="mb-4 text-text-secondary text-[13px] font-medium">
+          PreviewTab
+        </h2>
+        <p className="mt-3 text-text-muted text-[12px]">
           宿主 tab 的占位容器：无选中文件时给空态，有文件但缺环境上下文时给加载态， 两者齐备才挂载 FileViewerPreview。
         </p>
-        <div className="demo-row" style={{ alignItems: "stretch" }}>
-          <div className="demo-field flex-1">
-            <p className="demo-hint">
+        {/* 原先用内联 style 覆盖 demo-row 的 align-items：迁成工具类后直接写 items-stretch。 */}
+        <div className="flex flex-wrap items-stretch gap-3">
+          <div className="flex flex-col gap-1.5 flex-1">
+            <p className="mt-3 text-text-muted text-[12px]">
               <code>envId=null</code> · <code>filePath=null</code> → 空态
             </p>
             <div className="h-[180px] overflow-hidden rounded-md border border-border">
               <PreviewTab envId={null} filePath={null} />
             </div>
           </div>
-          <div className="demo-field flex-1">
-            <p className="demo-hint">
+          <div className="flex flex-col gap-1.5 flex-1">
+            <p className="mt-3 text-text-muted text-[12px]">
               <code>envId=null</code> · <code>filePath="user/notes.md"</code> → 加载态
             </p>
             <div className="h-[180px] overflow-hidden rounded-md border border-border">
@@ -46,7 +51,7 @@ export function PreviewL1Section() {
             </div>
           </div>
         </div>
-        <p className="demo-hint">
+        <p className="mt-3 text-text-muted text-[12px]">
           加载态里的 spinner 是在等宿主补齐环境上下文（拿到 envId 后才会去取文件），因此会一直转下去； 等两个 prop
           齐备时 PreviewTab 会以 <code>key=filePath</code> 重建 FileViewerPreview ——
           切换文件不残留上一个文件的缩放与错误状态。内容态见 Preview L2。

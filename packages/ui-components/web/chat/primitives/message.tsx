@@ -14,6 +14,7 @@
 
 import type { UIMessage } from "ai";
 import { ChevronLeftIcon, ChevronRightIcon } from "lucide-react";
+import "./message.css";
 import type { ComponentProps, ErrorInfo, HTMLAttributes, ReactElement, ReactNode } from "react";
 import {
   Component,
@@ -35,8 +36,8 @@ import { cn } from "../../lib/cn";
 import { Button } from "../../ui/button";
 import { ButtonGroup, ButtonGroupText } from "../../ui/button-group";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "../../ui/tooltip";
-import "./chat-message-content.css";
 import { IframePreview } from "./iframe-preview";
+import { MARKDOWN_CONTENT_CLASS } from "./internal/markdown-classes";
 
 export {
   MessageAttachment,
@@ -55,7 +56,12 @@ class StreamdownErrorBoundary extends Component<{ children: ReactElement; fallba
   }
   render() {
     if (this.state.hasError) {
-      return <div className="chat-markdown-response whitespace-pre-wrap break-words">{this.props.fallback}</div>;
+      // 兜底分支同样承载 `.chat-markdown-response` 的元素级声明（未分层 → 压过 `break-words`，按生效值写）。
+      return (
+        <div className="min-w-0 max-w-full whitespace-pre-wrap wrap-anywhere [word-break:normal]">
+          {this.props.fallback}
+        </div>
+      );
     }
     return this.props.children;
   }
@@ -82,9 +88,12 @@ export type MessageContentProps = HTMLAttributes<HTMLDivElement>;
 
 export const MessageContent = ({ children, className, ...props }: MessageContentProps) => (
   <div
+    // `chat-message-content` 类名已随样式迁移删除；这里的换行/收缩声明取自原
+    // `chat-message-content.css`（未分层，压过 `break-words` 工具类，故按生效值写 `wrap-anywhere`）
+    // 与 `.is-user .chat-message-content { white-space: pre-wrap }`。
     className={cn(
-      "chat-message-content is-user:dark flex w-fit max-w-full flex-col gap-2 overflow-hidden text-sm break-words",
-      "group-[.is-user]:ml-auto group-[.is-user]:rounded-lg group-[.is-user]:bg-secondary group-[.is-user]:px-4 group-[.is-user]:py-3 group-[.is-user]:text-foreground",
+      "flex w-fit max-w-full min-w-0 flex-col gap-2 overflow-hidden text-sm wrap-anywhere [word-break:normal]",
+      "group-[.is-user]:ml-auto group-[.is-user]:whitespace-pre-wrap group-[.is-user]:rounded-lg group-[.is-user]:bg-secondary group-[.is-user]:px-4 group-[.is-user]:py-3 group-[.is-user]:text-foreground",
       "group-[.is-assistant]:text-foreground",
       className,
     )}
@@ -194,7 +203,7 @@ export const MessageBranch = ({ defaultBranch = 0, onBranchChange, className, ..
 
   return (
     <MessageBranchContext.Provider value={contextValue}>
-      <div className={cn("grid w-full gap-2 [&>div]:pb-0", className)} {...props} />
+      <div className={cn("message-branch grid w-full gap-2", className)} {...props} />
     </MessageBranchContext.Provider>
   );
 };
@@ -214,7 +223,7 @@ export const MessageBranchContent = ({ children, ...props }: MessageBranchConten
 
   return childrenArray.map((branch, index) => (
     <div
-      className={cn("grid gap-2 overflow-hidden [&>div]:pb-0", index === currentBranch ? "block" : "hidden")}
+      className={cn("message-branch-content grid gap-2 overflow-hidden", index === currentBranch ? "block" : "hidden")}
       key={branch.key}
       {...props}
     >
@@ -235,13 +244,7 @@ export const MessageBranchSelector = ({ className, from, ...props }: MessageBran
     return null;
   }
 
-  return (
-    <ButtonGroup
-      className="[&>*:not(:first-child)]:rounded-l-md [&>*:not(:last-child)]:rounded-r-md"
-      orientation="horizontal"
-      {...props}
-    />
-  );
+  return <ButtonGroup className="message-branch-selector" orientation="horizontal" {...props} />;
 };
 
 export type MessageBranchPreviousProps = ComponentProps<typeof Button>;
@@ -310,6 +313,35 @@ export type MessageResponseProps = {
   envId?: string;
 };
 
+/**
+ * 正文链接外观（`a` 与无法内联渲染的 `video` / `audio` 降级链接共用同一条配方）。
+ * 2026-09-22 库内去重：原为三处逐字重复的 `className` 字面量。
+ */
+const MARKDOWN_LINK_CLASS = "text-primary underline decoration-primary/40 underline-offset-2 hover:decoration-primary";
+
+/**
+ * 丢弃 streamdown 注入的非 DOM 透传属性（`children` / `node`），其余原样展开到宿主元素。
+ * 2026-09-22 库内去重：原为四处逐字重复的 `Object.fromEntries(...)` 表达式。
+ */
+const omitNonDomProps = (rest: Record<string, unknown>) =>
+  Object.fromEntries(Object.entries(rest).filter(([k]) => !["children", "node"].includes(k)));
+
+/**
+ * `video` / `audio` 在 streamdown 组件表里的降级渲染：不内联播放器，改为新窗口链接。
+ * 2026-09-22 库内去重：两个键的处理体此前逐字相同（唯一差异是键名），收敛为同一实现。
+ */
+const renderMediaLink = ({ src, children, className: _cx, ...rest }: Record<string, unknown>) => (
+  <a
+    href={src as string}
+    target="_blank"
+    rel="noopener noreferrer"
+    className={MARKDOWN_LINK_CLASS}
+    {...omitNonDomProps(rest)}
+  >
+    {(children as ReactNode) || (src as string)}
+  </a>
+);
+
 export const MessageResponse = memo(
   ({ className, children, envId, ...props }: MessageResponseProps) => {
     const urlTransform = useCallback(
@@ -347,42 +379,21 @@ export const MessageResponse = memo(
             src={src as string}
             alt={(alt as string) || ""}
             style={{ maxWidth: "100%", maxHeight: "50vh", objectFit: "contain" }}
-            {...Object.fromEntries(Object.entries(rest).filter(([k]) => !["children", "node"].includes(k)))}
+            {...omitNonDomProps(rest)}
           />
         ),
         iframe: (props: Record<string, unknown>) => <IframePreview {...props} />,
-        video: ({ src, children, className: _cx, ...rest }: Record<string, unknown>) => (
-          <a
-            href={src as string}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="text-primary underline decoration-primary/40 underline-offset-2 hover:decoration-primary"
-            {...Object.fromEntries(Object.entries(rest).filter(([k]) => !["children", "node"].includes(k)))}
-          >
-            {(children as ReactNode) || (src as string)}
-          </a>
-        ),
-        audio: ({ src, children, className: _cx, ...rest }: Record<string, unknown>) => (
-          <a
-            href={src as string}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="text-primary underline decoration-primary/40 underline-offset-2 hover:decoration-primary"
-            {...Object.fromEntries(Object.entries(rest).filter(([k]) => !["children", "node"].includes(k)))}
-          >
-            {(children as ReactNode) || (src as string)}
-          </a>
-        ),
+        video: renderMediaLink,
+        audio: renderMediaLink,
         a: ({ href, children, className: _cx, ...rest }: Record<string, unknown>) => {
           const hrefStr = typeof href === "string" ? href : "";
-          const safeProps = Object.fromEntries(Object.entries(rest).filter(([k]) => !["children", "node"].includes(k)));
           return (
             <a
               href={hrefStr}
               target="_blank"
               rel="noopener noreferrer"
-              className="text-primary underline decoration-primary/40 underline-offset-2 hover:decoration-primary"
-              {...safeProps}
+              className={MARKDOWN_LINK_CLASS}
+              {...omitNonDomProps(rest)}
             >
               {children as ReactNode}
             </a>
@@ -397,21 +408,21 @@ export const MessageResponse = memo(
       <StreamdownErrorBoundary fallback={children}>
         <Suspense
           fallback={
-            <div className={cn("chat-markdown-response whitespace-pre-wrap break-words", className)}>{children}</div>
+            // 兜底分支沿用 `.chat-markdown-response` 的元素级声明（未分层 → 压过 `break-words`，按生效值写）。
+            <div className={cn("min-w-0 max-w-full whitespace-pre-wrap wrap-anywhere [word-break:normal]", className)}>
+              {children}
+            </div>
           }
         >
           <LazyStreamdown
             allowedTags={allowedTags}
             components={components}
             urlTransform={urlTransform}
-            // `chat-markdown-content` 在源仓库由宿主容器（MessageBubble）提供，markdown 排版
-            // （标题/列表/引用/代码块/表格，chat-message-content.css 内 32 条规则）全挂在它上面。
-            // 包内自带该容器类，才能在宿主未提供时也渲染出正确排版；宿主已提供时重复声明同值，
-            // 且该样式表未包 @layer，其 color/font-size 在两侧都压过 text-text-primary，故为无副作用。
-            className={cn(
-              "chat-markdown-content chat-markdown-response chat-markdown-response--rendered size-full break-words [&>*:first-child]:mt-0 [&>*:last-child]:mb-0",
-              className,
-            )}
+            // markdown 排版（标题/列表/引用/代码块/表格与 streamdown 内部 DOM）全部挂在容器上：
+            // 这些节点由 streamdown 自己渲染，本包只能给容器——见 `./internal/markdown-classes`。
+            // 说明：streamdown 的根节点只接收它自己的 props（未知属性不落到 DOM），所以 markdown
+            // 容器无法挂 `data-slot`；对它的结构断言由 markdown 元素上的 `data-streamdown="…"` 承担。
+            className={cn(MARKDOWN_CONTENT_CLASS, "message-response size-full", className)}
             {...props}
           >
             {children}

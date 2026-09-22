@@ -1,24 +1,21 @@
-import { WorkflowVersions } from "@fenix/resource-workflow/web";
-import { createFileRoute, useNavigate } from "@tanstack/react-router";
-import { Loader } from "lucide-react";
-import { Suspense, useCallback } from "react";
+import { createFileRoute } from "@tanstack/react-router";
+import { lazy, Suspense } from "react";
+import { PanelRouteFallback } from "@/src/components/panel-route-fallback";
+import { useOpenWorkflowEditor } from "@/src/hooks/use-open-workflow-editor";
+
+// 页面实现属 owner 包，路由壳只做懒加载与边界（见前端规范 §2.4）。
+const WorkflowVersions = lazy(() =>
+  import("@fenix/resource-workflow/web").then((m) => ({ default: m.WorkflowVersions })),
+);
 
 function WorkflowVersionsPage() {
   const { id } = Route.useParams();
-  const navigate = useNavigate();
 
-  const onEditWorkflow = useCallback(
-    (workflowId: string) => {
-      void navigate({
-        to: "/agent/workflow/$id/edit",
-        params: { id: workflowId },
-      });
-    },
-    [navigate],
-  );
+  // 与列表页同一份落点（实现见 `@/src/hooks/use-open-workflow-editor`）
+  const onEditWorkflow = useOpenWorkflowEditor();
 
   return (
-    <div className="h-full overflow-auto bg-[#f4f7fb] px-8 py-7 text-[#14213d] dark:bg-[#1a1d23]">
+    <div className="h-full overflow-auto bg-slate-100 px-8 py-7 text-slate-800 dark:bg-zinc-900">
       <WorkflowVersions workflowId={id} onEditWorkflow={onEditWorkflow} />
     </div>
   );
@@ -26,13 +23,7 @@ function WorkflowVersionsPage() {
 
 export const Route = createFileRoute("/agent/_panel/workflow_/$id/versions")({
   component: () => (
-    <Suspense
-      fallback={
-        <div className="flex flex-1 items-center justify-center">
-          <Loader className="h-8 w-8 rounded-full border-2 border-brand border-t-transparent animate-spin" />
-        </div>
-      }
-    >
+    <Suspense fallback={<PanelRouteFallback />}>
       <WorkflowVersionsPage />
     </Suspense>
   ),

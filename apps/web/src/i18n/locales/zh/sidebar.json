@@ -3,6 +3,8 @@
   "expand": "展开侧边栏",
   "resizeAgentArea": "拖动调整智能体区域高度",
   "changePassword": "修改密码",
+  "switchOrgHint": "点击切换组织",
+  "brandSubtitle": "凤凰Agent操作系统",
   "logout": "退出登录",
   "navGroupCore": "核心",
   "navGroupConfig": "配置"

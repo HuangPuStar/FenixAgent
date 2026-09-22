@@ -24,13 +24,17 @@ export function WorkbenchL1Section() {
   const { t } = useTranslation(DEMO_NS);
 
   return (
-    <section className="demo-section">
-      <h1 className="demo-section-title">{t("sections.workbenchL1")}</h1>
-      <p className="demo-hint">{t("sectionHints.workbenchL1")}</p>
+    <section>
+      <h1 data-slot="demo-section-title" className="mb-6 text-[24px] font-semibold">
+        {t("sections.workbenchL1")}
+      </h1>
+      <p className="mt-3 text-text-muted text-[12px]">{t("sectionHints.workbenchL1")}</p>
 
-      <div className="demo-example">
-        <h2 className="demo-example-title">MasterDetailWorkspace (agent-master-detail-workspace)</h2>
-        <p className="demo-hint">
+      <div className="mb-5 p-5 border border-border rounded-lg bg-surface-1">
+        <h2 data-slot="demo-example-title" className="mb-4 text-text-secondary text-[13px] font-medium">
+          MasterDetailWorkspace (agent-master-detail-workspace)
+        </h2>
+        <p className="mt-3 text-text-muted text-[12px]">
           该组件自带 `calc(100dvh - 210px)` 高度，用于宿主整页布局；示例按原样渲染，未做尺寸改写。
         </p>
         <AgentMasterDetailWorkspace

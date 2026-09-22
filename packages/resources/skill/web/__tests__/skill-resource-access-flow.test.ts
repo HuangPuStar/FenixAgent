@@ -86,4 +86,31 @@ describe("skill resource access flow", () => {
     expect(call[1].method).toBe("PUT");
     expect(JSON.parse(call[1].body)).toEqual({ publicReadable: true });
   });
+
+  // 下载由域模块解包为 Blob，失败抛带后端 code 的 ApiError：组件不再判断 Response.ok，
+  // 授权拒绝（FORBIDDEN）也不会在下载路径上被兜底成 SERVER_ERROR。
+  test("unwraps skill download into a blob and keeps the backend error code", async () => {
+    globalThis.fetch = mock(() =>
+      Promise.resolve(
+        new Response(new Blob(["zip-bytes"]), { status: 200, headers: { "Content-Type": "application/zip" } }),
+      ),
+    ) as unknown as typeof fetch;
+
+    const blob = await skillConfigApi.download("org/skill-1");
+    expect(blob.size).toBe(9);
+    const call = (globalThis.fetch as unknown as ReturnType<typeof mock>).mock.calls[0];
+    expect(call[0]).toBe("/web/config/skills/org%2Fskill-1/download");
+    expect(call[1].credentials).toBe("include");
+
+    globalThis.fetch = mock(() =>
+      Promise.resolve(
+        new Response(JSON.stringify({ success: false, error: { code: "FORBIDDEN", message: "denied" } }), {
+          status: 403,
+          headers: { "Content-Type": "application/json" },
+        }),
+      ),
+    ) as unknown as typeof fetch;
+
+    await expect(skillConfigApi.download("org/skill-1")).rejects.toMatchObject({ name: "ApiError", code: "FORBIDDEN" });
+  });
 });

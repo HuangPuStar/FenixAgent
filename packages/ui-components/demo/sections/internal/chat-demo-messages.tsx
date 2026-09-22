@@ -18,8 +18,10 @@ export function ChatMessagesExamples() {
   const [lastAction, setLastAction] = useState<string | null>(null);
 
   return (
-    <div className="demo-example">
-      <h2 className="demo-example-title">ChatView（完整时间线 + 工具轨 + 活动链）</h2>
+    <div className="mb-5 p-5 border border-border rounded-lg bg-surface-1">
+      <h2 data-slot="demo-example-title" className="mb-4 text-text-secondary text-[13px] font-medium">
+        ChatView（完整时间线 + 工具轨 + 活动链）
+      </h2>
       {/* ChatView 内部的滚动区高度为 100%，外层必须给出确定高度并作为 flex 容器。 */}
       <div className="flex h-[520px] flex-col overflow-hidden rounded-lg border border-border">
         <ChatView
@@ -32,7 +34,9 @@ export function ChatMessagesExamples() {
           onApplySuggestedPrompt={(prompt) => setLastAction(`建议提示词：${prompt}`)}
         />
       </div>
-      <p className="demo-hint">{lastAction ?? "点击消息上的「引用」或正文里的文件链接，回调会显示在这里。"}</p>
+      <p className="mt-3 text-text-muted text-[12px]">
+        {lastAction ?? "点击消息上的「引用」或正文里的文件链接，回调会显示在这里。"}
+      </p>
     </div>
   );
 }

@@ -1,10 +1,13 @@
 /**
  * ChatInterface 的提交与"待发送缓存"逻辑。
  *
- * 来源：从 `packages/chat-channel/web/components/ChatInterface.tsx` 的 `handleChatInputSubmit`、
+ * 来源：从 `packages/chat-channel/web/components/ChatInterface.tsx`（旧路径，已于 2026-09-21 由 8f364c109 删除） 的 `handleChatInputSubmit`、
  * 两个 pending-send effect 与相关 ref 原样抽出（抽出后 ChatInterface 保持在单文件 500 行红线内）。
  * 纯化改动点：
  * - 图片准备失败不再调用 sonner toast，改为把宿主已翻译的文案经 `onNotice` 抛出（hook 不依赖 i18n）。
+ * - 补上提交链路上三处「消息被静默丢弃」的失败反馈：会话创建失败、显式发送失败、会话就绪后的自动补发失败。
+ *   三者原先只有 `console.error`，用户既看不到提示也拿不回已缓存的 prompt（`pendingSendRef` 已被清空）。
+ *   文案同样经 `onNotice` 抛出（沿用上面那条纯化约定，hook 自身不引 i18n）。
  * - 其余顺序与失败语义逐字保留：正文 + 附件引用 → 图片 ContentBlock → 空提交拦截 →
  *   quoteContext / 场景提示词 / 上下文队列 unshift → 无活跃会话时缓存 prompt 并等待会话就绪（10s 超时保护）。
  * - 源在提交路径上还会写 `userCancelledRef.current = false`；该 ref 在源与包内均为只写状态（无读取点），
@@ -48,6 +51,10 @@ export interface ChatInputSubmitOptions {
   onNotice?: (notice: ChatNotice) => void;
   /** 图片准备失败的提示文案（由组件翻译后传入，hook 自身不依赖 i18n） */
   imagePrepareFailedMessage: string;
+  /** 会话创建失败的提示文案（同上，由组件翻译后传入） */
+  sessionCreateFailedMessage: string;
+  /** 发送 prompt 失败的提示文案（同上；含会话就绪后的自动补发失败） */
+  sendPromptFailedMessage: string;
 }
 
 /**
@@ -66,6 +73,8 @@ export function useChatInputSubmit({
   onSendPrompt,
   onNotice,
   imagePrepareFailedMessage,
+  sessionCreateFailedMessage,
+  sendPromptFailedMessage,
 }: ChatInputSubmitOptions): (message: ChatInputMessage) => Promise<void> {
   // 场景提示词是否已注入（仅首条消息）
   const scenePromptUsedRef = useRef(false);
@@ -78,31 +87,40 @@ export function useChatInputSubmit({
     scenePromptUsedRef.current = false;
   }, []);
 
+  /**
+   * 丢弃缓存的 pending prompt 并清掉超时定时器。
+   *
+   * 2026-09-22 库内去重：本文件此前在「会话就绪后发出」「卸载/contextKey 变化清理」
+   * 「建会话失败」三处各写了一份逐字相同的清理块，收敛到此；清理顺序与判空口径不变。
+   * 只操作两个 ref，故 `useCallback` 依赖为空、身份稳定。
+   */
+  const clearPendingSend = useCallback(() => {
+    pendingSendRef.current = null;
+    if (pendingSendTimerRef.current) {
+      clearTimeout(pendingSendTimerRef.current);
+      pendingSendTimerRef.current = null;
+    }
+  }, []);
+
   // 当 activeSessionId 从无到有时（首次发送自动创建会话），发送缓存的 prompt
   useEffect(() => {
     if (activeSessionId && pendingSendRef.current) {
       const blocks = pendingSendRef.current;
-      pendingSendRef.current = null;
-      if (pendingSendTimerRef.current) {
-        clearTimeout(pendingSendTimerRef.current);
-        pendingSendTimerRef.current = null;
-      }
+      clearPendingSend();
       onSendPrompt(blocks).catch((err) => {
         console.error("[ChatInterface] Pending send failed:", err);
+        // 走到这里说明用户先前提交的消息已被丢弃（pendingSendRef 已清空），必须给回执
+        onNotice?.({ level: "error", message: sendPromptFailedMessage });
       });
     }
-  }, [activeSessionId, onSendPrompt]);
+  }, [activeSessionId, onSendPrompt, onNotice, sendPromptFailedMessage, clearPendingSend]);
 
   // 组件卸载或 contextKey 变化时清理 pending prompt（避免内存泄漏 / 错误发送）
   useEffect(() => {
     return () => {
-      pendingSendRef.current = null;
-      if (pendingSendTimerRef.current) {
-        clearTimeout(pendingSendTimerRef.current);
-        pendingSendTimerRef.current = null;
-      }
+      clearPendingSend();
     };
-  }, []);
+  }, [clearPendingSend]);
 
   return useCallback(
     async (message: ChatInputMessage) => {
@@ -168,11 +186,8 @@ export function useChatInputSubmit({
           await onCreateSession();
         } catch (err) {
           console.error("[ChatInterface] Failed to create session:", err);
-          pendingSendRef.current = null;
-          if (pendingSendTimerRef.current) {
-            clearTimeout(pendingSendTimerRef.current);
-            pendingSendTimerRef.current = null;
-          }
+          onNotice?.({ level: "error", message: sessionCreateFailedMessage });
+          clearPendingSend();
         }
         return;
       }
@@ -181,6 +196,7 @@ export function useChatInputSubmit({
         await onSendPrompt(contentBlocks);
       } catch (error) {
         console.error("[ChatInterface] Failed to send prompt:", error);
+        onNotice?.({ level: "error", message: sendPromptFailedMessage });
       }
     },
     [
@@ -194,6 +210,9 @@ export function useChatInputSubmit({
       compressImage,
       onNotice,
       imagePrepareFailedMessage,
+      sessionCreateFailedMessage,
+      sendPromptFailedMessage,
+      clearPendingSend,
     ],
   );
 }

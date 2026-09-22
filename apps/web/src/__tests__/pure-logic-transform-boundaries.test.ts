@@ -8,7 +8,6 @@ import {
   parseTodosFromRawInput,
 } from "@fenix/web-runtime/chat/todo";
 import type { ModelEntry } from "@fenix/web-runtime/types/config";
-import { err, ok, unwrapApiResult } from "../lib/api-result";
 
 const baseModel: ModelEntry = {
   id: "model-1",
@@ -32,53 +31,6 @@ const todo = (content: string, status: TodoItem["status"] = "pending", activeFor
   content,
   status,
   ...(activeForm === undefined ? {} : { activeForm }),
-});
-
-describe("api-result 纯转换边界", () => {
-  // 成功结果必须保留字符串数据的原始值。
-  test.each([[""], ["0"], ["内容"], ["\n"]])("解包字符串成功结果 %#", (data) => {
-    expect(unwrapApiResult(ok(data))).toBe(data);
-  });
-
-  // 成功结果必须保留数字数据的原始值。
-  test.each([[0], [-1], [1], [Number.MAX_SAFE_INTEGER]])("解包数字成功结果 %#", (data) => {
-    expect(unwrapApiResult(ok(data))).toBe(data);
-  });
-
-  // 成功结果可以承载空值或布尔值而不被误判为错误。
-  test.each([[null], [undefined], [false], [true]])("解包可假值成功结果 %#", (data) => {
-    expect(unwrapApiResult(ok(data))).toBe(data);
-  });
-
-  // 失败结果必须使用非空服务端消息构造 Error。
-  test.each([
-    ["NOT_FOUND", "未找到资源"],
-    ["VALIDATION_ERROR", "字段无效"],
-    ["UNAUTHORIZED", "无权访问"],
-    ["INTERNAL", "内部错误"],
-  ])("失败结果抛出服务端消息 %#", (code, message) => {
-    expect(() => unwrapApiResult(err(code, message))).toThrow(message);
-  });
-
-  // 空字符串消息必须回退为稳定的通用错误文本。
-  test("空字符串错误消息回退通用错误", () => {
-    expect(() => unwrapApiResult(err("FAILED", ""))).toThrow("Unknown API error");
-  });
-
-  // 空白消息仍是非空服务端文本，必须原样保留而不能被擅自清洗。
-  test.each([["\n"], ["   "]])("空白错误消息原样保留 %#", (message) => {
-    expect(() => unwrapApiResult(err("FAILED", message))).toThrow(message);
-  });
-
-  // 错误构造器不得为未传入 data 伪造 data 字段。
-  test.each([[undefined], [null], [0], [false], [""]])("错误构造器准确保留 data 存在性 %#", (data) => {
-    const result = err("FAILED", "失败", 400, data);
-    expect(result.error).toEqual(
-      data === undefined
-        ? { code: "FAILED", message: "失败", status: 400 }
-        : { code: "FAILED", message: "失败", status: 400, data },
-    );
-  });
 });
 
 describe("模型选项转换与不可变性", () => {

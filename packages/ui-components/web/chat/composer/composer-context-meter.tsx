@@ -6,7 +6,7 @@ import { formatTokenCount } from "../lib/token-stats";
 /**
  * 上下文占用计（Context meter）。
  *
- * 来源：复制自 `packages/agent-runtime/web/components/chat/composer-context-meter.tsx`。
+ * 来源：复制自 `packages/agent-runtime/web/components/chat/composer-context-meter.tsx`（旧路径，已于 2026-09-21 由 f2741a82d 删除）。
  * 纯化改动点：命名空间改为包内 `UI_COMPONENTS_NS`（键 `chat.components.chatComposer.context*`）；
  * `@/src/lib/token-stats` 的 `formatTokenCount` 改为包内 `../lib/token-stats`（由消息视图组产出）；
  * 局部 `ContextUsage` 结构类型与渲染结构逐字保留。
@@ -34,10 +34,19 @@ export function ComposerContextMeter({ usage }: { usage?: ContextUsage | null })
     : t("chat.components.chatComposer.contextUsedUnknownLimit", { count: formatTokenCount(total) });
 
   return (
-    <span className="chat-composer-context" data-known title={title}>
-      <CircleGauge />
-      <span>{t("chat.components.chatComposer.context")}</span>
-      <strong>{`${formatTokenCount(total)}${knownLimit ? ` / ${formatTokenCount(limit)}` : ""}`}</strong>
+    // 计数与图标色取自源 `.chat-composer-context` 及其 `[data-known]` 两支：组件在 `!known` 时直接返回 null，
+    // 故 `data-known` 恒存在、图标恒为主题蓝 `#3e75dc`（源的灰支 `#a4afbf` 不可达），此处按生效值直写。
+    <span
+      className="group inline-flex h-7 shrink-0 items-center gap-1.25 px-1.5 text-3xs text-gray-400"
+      data-known
+      data-slot="chat-composer-context"
+      title={title}
+    >
+      <CircleGauge className="h-4 w-4 text-blue-500" />
+      <span className="hidden group-hover:inline">{t("chat.components.chatComposer.context")}</span>
+      <strong className="text-3xs font-medium max-md:hidden">
+        {`${formatTokenCount(total)}${knownLimit ? ` / ${formatTokenCount(limit)}` : ""}`}
+      </strong>
     </span>
   );
 }

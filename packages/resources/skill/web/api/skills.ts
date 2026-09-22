@@ -6,7 +6,7 @@
  * 上传使用 FormData，PUT 上传文件到 Skill 目录。
  */
 
-import { request } from "@fenix/web-runtime/api/request";
+import { ApiError, request } from "@fenix/web-runtime/api/request";
 import type {
   ResourceAccessView,
   SkillDetail,
@@ -63,10 +63,24 @@ export const skillConfigApi = {
   /**
    * 下载 Skill 打包文件（GET /config/skills/:name/download）
    *
-   * 返回原始 Response（二进制 zip），绕过 JSON 解包，由调用方自行处理下载。
+   * 返回解包后的 `Blob`，调用方不再接触原始 `Response`，也不必自己做 `ok` 判断。
+   *
+   * 为什么不走 `request()`：下载端点的成功响应体是二进制 zip，而 `request()` 对非 JSON 响应会先按
+   * JSON 试探解析并归一为 `SERVER_ERROR`，字节在这一步就被消费掉，拿不到可下载的内容。失败路径仍接回
+   * 统一层：非 2xx 一律抛 `ApiError`，code 取自 `/web/config/*` 的 `{ success, error }` 信封（这样
+   * `FORBIDDEN` 这类授权码不会在下载路径上丢失），信封不可用时按状态码兜底。
+   *
+   * 抛错即契约：调用方必须接住（`useRequest` 的 onError 或 try/catch）。本函数不吞错、也不自己弹提示
+   * ——用户可见文案归页面（`t()`）。
    */
-  download: (name: string) =>
-    fetch(`/web/config/skills/${encodeURIComponent(name)}/download`, { method: "GET", credentials: "include" }),
+  download: async (name: string): Promise<Blob> => {
+    const response = await fetch(`/web/config/skills/${encodeURIComponent(name)}/download`, {
+      method: "GET",
+      credentials: "include",
+    });
+    if (!response.ok) throw await buildDownloadError(response);
+    return response.blob();
+  },
 
   /**
    * 批量上传 Skill（FormData 上传）
@@ -80,3 +94,24 @@ export const skillConfigApi = {
       body: formData,
     }),
 };
+
+/**
+ * 把下载失败响应归一为统一错误。
+ *
+ * 错误体是 `/web/config/*` 的 `{ success: false, error: { code, message } }` 信封；被网关/代理拦截时
+ * 可能返回 HTML，那时解析会抛错。解析失败不掩盖原始失败：记下响应状态与解析异常作为诊断上下文，
+ * 再以状态码兜底（401/403 归 UNAUTHORIZED，其余归 SERVER_ERROR）。兜底刻意保守——未知失败按服务端
+ * 错误处理，不会把「凭据失效」误判成「服务异常」或反之。
+ */
+async function buildDownloadError(response: Response): Promise<ApiError> {
+  try {
+    const payload = (await response.json()) as { error?: { code?: string; message?: string } };
+    if (payload.error?.code) {
+      return new ApiError(payload.error.message ?? `请求失败 (${response.status})`, payload.error.code);
+    }
+  } catch (err) {
+    console.error(`[skills] 下载失败响应无法按错误信封解析 (${response.status})`, err);
+  }
+  const fallbackCode = response.status === 401 || response.status === 403 ? "UNAUTHORIZED" : "SERVER_ERROR";
+  return new ApiError(`请求失败 (${response.status})`, fallbackCode);
+}

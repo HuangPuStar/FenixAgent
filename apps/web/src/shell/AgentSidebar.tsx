@@ -135,7 +135,7 @@ export const AgentSidebar = memo(function AgentSidebar({
                   className="px-3 py-2.5 focus:outline-none focus-visible:ring-0"
                 >
                   <KeyRound className="w-4 h-4" />
-                  {tSidebar("changePassword", { defaultValue: "修改密码" })}
+                  {tSidebar("changePassword")}
                 </DropdownMenuItem>
                 <DropdownMenuItem
                   variant="destructive"
@@ -160,9 +160,7 @@ export const AgentSidebar = memo(function AgentSidebar({
                   </button>
                 </DropdownMenuTrigger>
                 <DropdownMenuContent side="right" align="end" sideOffset={4} className="min-w-48 p-1.5">
-                  <div className="px-3 py-2 text-xs text-muted-foreground font-medium">
-                    {tSidebar("switchOrgHint", { defaultValue: "点击切换组织" })}
-                  </div>
+                  <div className="px-3 py-2 text-xs text-muted-foreground font-medium">{tSidebar("switchOrgHint")}</div>
                   {orgs.map((item) => (
                     <DropdownMenuItem
                       key={item.id}
@@ -186,6 +184,7 @@ export const AgentSidebar = memo(function AgentSidebar({
 });
 
 function FenixSidebarLogo() {
+  const { t: tSidebar } = useTranslation(NS.SIDEBAR);
   const assetBase = import.meta.env.BASE_URL;
 
   return (
@@ -198,7 +197,7 @@ function FenixSidebarLogo() {
       />
       <span className="fenix-sidebar-logo-text">
         <span className="fenix-sidebar-logo-main">Fenix AOS</span>
-        <span className="fenix-sidebar-logo-sub">凤凰Agent操作系统</span>
+        <span className="fenix-sidebar-logo-sub">{tSidebar("brandSubtitle")}</span>
       </span>
     </span>
   );

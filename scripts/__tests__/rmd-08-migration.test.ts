@@ -75,6 +75,35 @@ import { existsSync } from "node:fs";
  *         补进去只会制造第二处重复守护。
  *     迁入后的新文件经包出口消费兄弟包（`@fenix/{model-management,resource-mcp,resource-skill}/web`），
  *     这四个 workspace 依赖本已声明在 `agent-config/package.json` 的 `dependencies`，未新增跨包依赖。
+ * 17. 任务 1.6 收口后经用户裁定，宿主 `web/src/lib/api-result.ts`（`ApiResult` 联合 + `ok` / `err` /
+ *     `unwrapApiResult`）与其专属测试 `web/src/__tests__/api-result-utils.test.ts` 一并删除：请求错误建模
+ *     已由 `@fenix/web-runtime/api/request` 的 `ApiError` / `unwrap` 承担，宿主消费方（如 `api/fs.ts`）
+ *     改指该包出口，这两份 RMD-08 快照里的应用壳文件删除后全仓零引用（逐标识符 grep 只剩设计文档、
+ *     包内一处历史注释与本表）。它们没有包内 owner 落点（`packages/**` 下不存在同名文件），故不进
+ *     `RMD_08_RELOCATED`，而是按「已裁定删除」口径改挂 `RMD_08_TARGETS_LATER_DELETED`：MOVES 表 58 → 56、
+ *     在册总数仍为 58，复活由下方 `later-deleted migration targets ... stay absent` 断言拦住——第 16 条里
+ *     作为等价对照提到的 `api-result-utils`，即本轮退役的这一份。
+ * 18. CE 收官后 `@fenix/ui-components/web/chat/**` 的设计层样式逐片迁成 Tailwind 工具类，15 份样式表删除
+ *     （迁移台账见该包 `README.md`）。其中 `primitives/chat-message-content.css` 正是 RMD-08 的 relocated
+ *     目标之一：它的元素级与后代排版规则改由 `primitives/internal/markdown-classes.ts` 的容器 arbitrary
+ *     variant 承接，文件本身随片删除。于是本表出现唯一一条「host 副本已删、包内 owner 也已被后续迁移删除」
+ *     的条目——它不再满足 `RMD_08_RELOCATED` 的「owner 必须存在」，改挂
+ *     `RMD_08_RELOCATED_TARGETS_LATER_DELETED`（88 + 1 = 89，在册总数不变，只是断言方向翻转为三条路径
+ *     全不得存在）。这两张表的长度之和才是 relocated 的在册数，改表时都要看。
+ * 19. 前端重复实现去重（本表第 8 项口径的延续）：`apps/web/src/pages/agent-panel/shared/agent-master-detail-workspace.tsx`
+ *     与 `@fenix/ui-components/web/components/agent-master-detail-workspace` 同名同 props，且视觉已分叉
+ *     （宿主版硬编码 `bg-white` 与十六进制灰，包内版走主题 token），包外零消费者的宿主副本整份删除——它是
+ *     「唯一消费者升级为第二个包」之前就该退场的那一类（`frontend-development.md` §1.3 已登记）。条目从
+ *     `RMD_08_MOVES` 移入 `RMD_08_RELOCATED`（MOVES 58 → 57，RELOCATED 89 → 90，在册总数不因换表而变），
+ *     宿主两条旧路径都不得复活、包侧 owner 必须存在。
+ * 20. 漏登记补正（第 19 条之后本侧在册数由 58 降到 57 时的遗漏）：`4ff58f6f` 按本表口径搬到
+ *     `apps/web/src/__tests__/utils.test.ts` 的宿主杂项函数自指测试，其被测实现 `apps/web/src/lib/utils.ts`
+ *     在 `dd3ad35d`（宿主 lib 三处重复实现退场）整体删除、该测试随之一并删除，但清单没跟着换表——
+ *     `RMD_08_MOVES` 里留了一条「源已删、目标也不存在」的记录，让 `removes every legacy source and retains
+ *     its exact owner target` 的「目标必须存在」断言恒假。本次按本表语义移入
+ *     `RMD_08_TARGETS_LATER_DELETED`：MOVES 55 → 54、豁免表 2 → 3，两侧一增一减，
+ *     `MOVES + LATER_DELETED` 之和仍是 57；全表扫描确认这是清单里唯一一条目标缺失的条目，其余 54 条的
+ *     源均已删除且目标仍在。
  */
 const RMD_08_MOVES = [
   ["web/src/App.tsx", "apps/web/src/App.tsx"],
@@ -83,7 +112,6 @@ const RMD_08_MOVES = [
     "apps/web/src/__tests__/agent-sidebar-instance-order.test.ts",
   ],
   ["web/src/__tests__/api-client.test.ts", "apps/web/src/__tests__/api-client.test.ts"],
-  ["web/src/__tests__/api-result-utils.test.ts", "apps/web/src/__tests__/api-result-utils.test.ts"],
   ["web/src/__tests__/auth-preference.test.ts", "apps/web/src/__tests__/auth-preference.test.ts"],
   ["web/src/__tests__/config-routing.test.ts", "apps/web/src/__tests__/config-routing.test.ts"],
   ["web/src/__tests__/dark-mode-components.test.tsx", "apps/web/src/__tests__/dark-mode-components.test.tsx"],
@@ -100,7 +128,6 @@ const RMD_08_MOVES = [
   ["web/src/__tests__/random-uuid-polyfill.test.ts", "apps/web/src/__tests__/random-uuid-polyfill.test.ts"],
   ["web/src/__tests__/retry.test.ts", "apps/web/src/__tests__/retry.test.ts"],
   ["web/src/__tests__/use-task-views.test.tsx", "apps/web/src/__tests__/use-task-views.test.tsx"],
-  ["web/src/__tests__/utils.test.ts", "apps/web/src/__tests__/utils.test.ts"],
   ["web/src/api/fs.ts", "apps/web/src/api/fs.ts"],
   ["web/src/api/instances.ts", "apps/web/src/api/instances.ts"],
   ["web/src/api/peri-task-details.ts", "apps/web/src/api/peri-task-details.ts"],
@@ -130,7 +157,6 @@ const RMD_08_MOVES = [
   ["web/src/i18n/locales/zh/components.json", "apps/web/src/i18n/locales/zh/components.json"],
   ["web/src/i18n/locales/zh/login.json", "apps/web/src/i18n/locales/zh/login.json"],
   ["web/src/i18n/locales/zh/sidebar.json", "apps/web/src/i18n/locales/zh/sidebar.json"],
-  ["web/src/lib/api-result.ts", "apps/web/src/lib/api-result.ts"],
   ["web/src/lib/auth-preference.ts", "apps/web/src/lib/auth-preference.ts"],
   ["web/src/lib/form-utils.ts", "apps/web/src/lib/form-utils.ts"],
   ["web/src/lib/password-crypto.ts", "packages/platform/identity/web/lib/password-crypto.ts"],
@@ -142,14 +168,35 @@ const RMD_08_MOVES = [
   ["web/src/pages/agent-panel/ArtifactsPanel.tsx", "apps/web/src/shell/ArtifactsPanel.tsx"],
   ["web/src/pages/agent-panel/agent-panel.css", "apps/web/src/shell/agent-panel.css"],
   ["web/src/pages/agent-panel/artifacts-workspace.css", "apps/web/src/shell/artifacts-workspace.css"],
-  [
-    "web/src/pages/agent-panel/shared/agent-master-detail-workspace.tsx",
-    "apps/web/src/pages/agent-panel/shared/agent-master-detail-workspace.tsx",
-  ],
   ["web/src/types/global.d.ts", "apps/web/src/types/global.d.ts"],
   ["web/src/types/index.ts", "apps/web/src/types/index.ts"],
   ["web/src/vite-env.d.ts", "apps/web/src/vite-env.d.ts"],
   ["web/tsconfig.json", "apps/web/tsconfig.json"],
+] as const;
+
+/**
+ * RMD-08 在册后迁移目标又被后续提交删除、且无包内 owner 落点可挂的条目（迁移记录保留在此，只豁免
+ * 「目标必须存在」断言，断言方向翻转为源与目标双向缺席）。
+ *
+ * 前两条同为宿主自有的请求结果工具与其专属测试：`ApiResult` 联合 + `ok` / `err` / `unwrapApiResult` 的失败
+ * 语义（把 `ok: false` 转 Error）已由 `@fenix/web-runtime/api/request` 的 `ApiError` / `unwrap` 承担，宿主
+ * 消费方早已改指该包出口，删除后全仓零引用（逐标识符 grep 只剩设计文档与包内一处历史注释）。`packages/**`
+ * 下不存在同名文件，没有 owner 落点可挂——所以是退役而非 relocated，记录留在此处是为了不让「RMD-08 快照
+ * 里本来有这两条」的事实随清单长度流失（同 `rmd-05` 的 `RMD_05_TARGETS_LATER_DELETED` 口径）。
+ *
+ * 第三条 `utils.test.ts` 是同一类但成因不同的补登记：它随 `4ff58f6f` 与其他 MOVES 条目一同搬到
+ * `apps/web/src/__tests__/`，守护的是宿主 `apps/web/src/lib/utils.ts` 里 `cn` / `esc` / `formatTime` /
+ * `statusClass` 等杂项函数的宿主副本（全文件只从 `@/src/lib/utils` 取符号，属自指测试）。`dd3ad35d`
+ * 按 owner 拆解该聚合模块——`cn` 归 `@fenix/ui-components/lib/cn`，其余函数语义由
+ * `@fenix/ui-components/web/chat/*` 与 `@fenix/web-runtime/web/chat/structured-to-thread.ts` 承担——
+ * 宿主模块与这份测试一并删除，迁移目标因此不再存在。留在 `RMD_08_MOVES` 会让「目标必须存在」断言恒假
+ * （既非迁移丢失，也无包内同名 owner 可挂），故按本表口径收编；它是 MOVES 在册条目里唯一一条「目标已迁到
+ * apps/web 又被后续提交删掉」的记录，其余目标均仍在。
+ */
+const RMD_08_TARGETS_LATER_DELETED = [
+  ["web/src/__tests__/api-result-utils.test.ts", "apps/web/src/__tests__/api-result-utils.test.ts"],
+  ["web/src/lib/api-result.ts", "apps/web/src/lib/api-result.ts"],
+  ["web/src/__tests__/utils.test.ts", "apps/web/src/__tests__/utils.test.ts"],
 ] as const;
 
 /**
@@ -181,6 +228,11 @@ const RMD_08_MOVES = [
  * `web/pages/agent-panel/agent-editor/**`，此前只能从宿主以四级相对路径反向读取包内实现，迁入后改为一跳。
  */
 const RMD_08_RELOCATED = [
+  [
+    "web/src/pages/agent-panel/shared/agent-master-detail-workspace.tsx",
+    "apps/web/src/pages/agent-panel/shared/agent-master-detail-workspace.tsx",
+    "packages/ui-components/web/components/agent-master-detail-workspace.tsx",
+  ],
   [
     "web/components/MetaAgentPanel.tsx",
     "apps/web/components/MetaAgentPanel.tsx",
@@ -222,11 +274,6 @@ const RMD_08_RELOCATED = [
     "web/src/__tests__/task-form-schema.test.ts",
     "apps/web/src/__tests__/task-form-schema.test.ts",
     "packages/resources/task/web/__tests__/agent-tasks-utils.test.ts",
-  ],
-  [
-    "web/components/ai-elements/chat-message-content.css",
-    "apps/web/components/ai-elements/chat-message-content.css",
-    "packages/ui-components/web/chat/primitives/chat-message-content.css",
   ],
   [
     "web/components/ai-elements/conversation.tsx",
@@ -604,6 +651,27 @@ const RMD_08_RELOCATED = [
   ],
 ] as const;
 
+/**
+ * `RMD_08_RELOCATED` 在册、但其包内 owner 落点在本轮 chat 样式迁移中被删除的条目（三元组口径同上）。
+ *
+ * `chat-message-content.css` 的排版声明在 RMD-08 时确实迁到了 `@fenix/ui-components`，本表记录的是那之后的
+ * 第二段事实：CE 之后 `packages/ui-components/web/chat/**` 的 15 份设计层样式表逐片迁成 Tailwind 工具类并
+ * 删除（本条目属阶段三，见 `review/` 与包内 `README.md` 的迁移台账），这份样式表是其中一份——它的元素级与
+ * 后代规则改由 `primitives/internal/markdown-classes.ts` 的容器 arbitrary variant 承接。于是「owner 必须存在」
+ * 在这条上不再是事实：owner 的**声明**仍在，只是换了载体。
+ *
+ * 仍留在册、不与 `RMD_08_RELOCATED` 合并的理由是反过来的一半——历史副本与包内副本必须**同时**不存在。
+ * 若哪天它从任一侧复活，等于把「未分层 CSS 压过 @layer utilities」的旧排版层重新接回应用壳或组件包，
+ * 与容器工具类形成两份真相，因此本表的断言方向是三条路径全为 absent。
+ */
+const RMD_08_RELOCATED_TARGETS_LATER_DELETED = [
+  [
+    "web/components/ai-elements/chat-message-content.css",
+    "apps/web/components/ai-elements/chat-message-content.css",
+    "packages/ui-components/web/chat/primitives/chat-message-content.css",
+  ],
+] as const;
+
 describe("RMD-08 apps/web migration", () => {
   // 100 个保留的应用壳源文件都必须从旧根路径移除，并保留在唯一的 owner 目标。
   // 任务 1.3 收口移出的一项：`__tests__/task-form-schema.test.ts` 是内联的表单校验 schema 副本，宿主侧
@@ -622,8 +690,13 @@ describe("RMD-08 apps/web migration", () => {
   // 页面与其自有字典归位到 `@fenix/agent-config`（见文件头第 14 条），70 → 60；T12 把最后一份
   // agent-config 归属的宿主测试 `agent-form-dialog-ssr.test.tsx` 归位（见文件头第 15 条），60 → 59；
   // T12 再把 `agent-form-dialog-pure-logic.test.ts` 按 owner 拆开搬迁（见文件头第 16 条），59 → 58。
+  // 用户裁定的退役（见文件头第 17 条）：宿主 `lib/api-result.ts` 与其专属测试无包内 owner 落点，从本清单
+  // 移入 `RMD_08_TARGETS_LATER_DELETED`——只豁免这两条的「目标必须存在」断言；第 19 条再把
+  // `agent-master-detail-workspace.tsx` 换挂到 `RMD_08_RELOCATED`（只换表不销记），本侧在册数 58 → 57。
+  // 本轮补登记：`utils.test.ts` 的迁移目标随宿主 `lib/utils.ts` 被 `dd3ad35d` 删除（见豁免表第三条），
+  // 从本清单移出 → MOVES 55 → 54、豁免表 2 → 3，一增一减，下面断言的两表之和仍是 57。
   test("removes every legacy source and retains its exact owner target", () => {
-    expect(RMD_08_MOVES).toHaveLength(58);
+    expect(RMD_08_MOVES.length + RMD_08_TARGETS_LATER_DELETED.length).toBe(57);
     for (const [source, target] of RMD_08_MOVES) {
       expect(existsSync(source), `legacy source still exists: ${source}`).toBe(false);
       expect(existsSync(target), `apps/web target is missing: ${target}`).toBe(true);
@@ -660,6 +733,17 @@ describe("RMD-08 apps/web migration", () => {
     expect(existsSync("apps/web/src/__tests__/new-session-dialog-form.test.ts")).toBe(false);
   });
 
+  // 在册后目标被删除的条目（见文件头第 17 条与 `RMD_08_TARGETS_LATER_DELETED`）：源与目标都必须保持
+  // 不存在——记录的是「已裁定删除 / 目标已被后续提交删除」，不是「迁移丢失」。第一条一旦复活，宿主就会
+  // 重新出现第二套「失败结果如何转 Error」的约定（`unwrapApiResult` 与 `ApiError` 各自抛错）；第三条一旦
+  // 复活，等于恢复一份只测宿主杂项函数副本的自指用例（同 `narrators-i18n.test.ts` 口径）。
+  test("later-deleted migration targets and their legacy sources stay absent", () => {
+    for (const [source, target] of RMD_08_TARGETS_LATER_DELETED) {
+      expect(existsSync(source), `legacy source came back: ${source}`).toBe(false);
+      expect(existsSync(target), `deleted target came back: ${target}`).toBe(false);
+    }
+  });
+
   // 沙盒请求构造测试的 owner 已从应用壳交给资源包：旧根路径与旧 app 壳路径都不得复活，包内必须有唯一落点。
   test("relocates the sandbox request helper test to the resource package", () => {
     expect(existsSync("web/src/__tests__/system-sandbox.test.ts")).toBe(false);
@@ -680,12 +764,24 @@ describe("RMD-08 apps/web migration", () => {
   // 与按 owner 拆开搬迁的 `agent-form-dialog-pure-logic.test.ts`（见文件头第 16 条），88 → 89：
   // 旧根路径与应用壳路径都不得复活，且包侧 owner 落点必须存在。副本与 owner 并存是「两份实现各自能跑」
   // 的最坏形态，删除与断言必须成对出现。
+  // 在册总数改用两张表的**和**守住（见文件头第 18 条）：一条换到 `..._TARGETS_LATER_DELETED` 只改变它的
+  // 断言方向，不等于在册数变小，更不能让它在两张表之间凭空消失。
   test("relocates the leftover host copies to their package owners", () => {
-    expect(RMD_08_RELOCATED).toHaveLength(89);
+    expect(RMD_08_RELOCATED.length + RMD_08_RELOCATED_TARGETS_LATER_DELETED.length).toBe(90);
     for (const [legacy, shell, owner] of RMD_08_RELOCATED) {
       expect(existsSync(legacy), `legacy source still exists: ${legacy}`).toBe(false);
       expect(existsSync(shell), `host copy still exists: ${shell}`).toBe(false);
       expect(existsSync(owner), `package owner is missing: ${owner}`).toBe(true);
+    }
+  });
+  // 包内 owner 落点被本轮 chat 样式迁移删除的那条（见文件头第 18 条与 `RMD_08_RELOCATED_TARGETS_LATER_DELETED`）：
+  // 三条路径都不得复活——宿主或包内任一侧重新出现这份未分层样式表，都等同于把旧排版层接回来，与
+  // `primitives/internal/markdown-classes.ts` 的容器工具类形成两份真相（未分层声明会静默压过 @layer utilities）。
+  test("relocated targets deleted by the chat style migration stay absent", () => {
+    for (const [legacy, shell, owner] of RMD_08_RELOCATED_TARGETS_LATER_DELETED) {
+      expect(existsSync(legacy), `legacy source came back: ${legacy}`).toBe(false);
+      expect(existsSync(shell), `host copy came back: ${shell}`).toBe(false);
+      expect(existsSync(owner), `package owner came back: ${owner}`).toBe(false);
     }
   });
   // 拆分归属的用例无法用 relocated 三元组表达：`context-queue` 的宿主副本连同「队列状态」一半一并删除

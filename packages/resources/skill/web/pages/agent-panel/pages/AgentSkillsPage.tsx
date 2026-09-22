@@ -240,9 +240,9 @@ export function AgentSkillsPage() {
       const skillKey = getSkillKey(skill);
       setDownloadingSkillKey(skillKey);
       try {
-        const response = await skillConfigApi.download(getSkillLookupKey(skill));
-        if (!response.ok) throw new Error(`Download failed: ${response.status}`);
-        const blobUrl = URL.createObjectURL(await response.blob());
+        // 域模块返回已解包的 Blob，失败抛 ApiError；组件不再判断 Response 状态。
+        const blob = await skillConfigApi.download(getSkillLookupKey(skill));
+        const blobUrl = URL.createObjectURL(blob);
         const link = document.createElement("a");
         link.href = blobUrl;
         link.download = `${skill.name}.zip`;

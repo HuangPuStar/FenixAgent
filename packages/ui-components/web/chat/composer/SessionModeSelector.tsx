@@ -1,3 +1,5 @@
+import "./SessionModeSelector.css";
+
 import { Check, ChevronDown, ChevronUp, Shield } from "lucide-react";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
@@ -9,7 +11,7 @@ import type { SessionMode } from "../types";
 /**
  * Session Mode Selector — 从 agent 动态获取的会话模式下拉选择器。
  *
- * 来源：复制自 `packages/agent-runtime/web/components/chat/SessionModeSelector.tsx`。
+ * 来源：复制自 `packages/agent-runtime/web/components/chat/SessionModeSelector.tsx`（旧路径，已于 2026-09-21 由 f2741a82d 删除）。
  *
  * 归属说明：该文件不在输入岛组的分组清单内，但它是 `composer-toolbar.tsx`（readOnly 用法）
  * 的唯一消费方，且没有任何并行分组负责复制它——为保证输入岛可用，本组一并复制到
@@ -49,9 +51,13 @@ export function SessionModeSelector({
   if (readOnly) {
     const label = current?.name ?? t("chat.components.sessionModeSelector.default");
     return (
-      <span className="chat-composer-security-policy" title={label}>
-        <Shield />
-        <span>{label}</span>
+      <span
+        className="inline-flex h-7 max-w-33 min-w-0 items-center gap-1.25 px-1.75 text-3xs leading-none text-slate-500 max-md:px-1.25"
+        data-slot="chat-composer-security-policy"
+        title={label}
+      >
+        <Shield className="chat-session-mode-shield-icon h-3.25 w-3.25 text-gray-400" />
+        <span className="overflow-hidden text-ellipsis whitespace-nowrap max-md:hidden">{label}</span>
       </span>
     );
   }

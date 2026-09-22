@@ -90,4 +90,38 @@ describe("knowledge base API client", () => {
       "/web/knowledgeBases/kb%2Fa/resources/res%2Fb/pdf",
     );
   });
+
+  // 预览读取收敛在域模块：文本/二进制各按自己的方式取体，失败归一为带后端 code 的 ApiError，
+  // PDF 探测把「未转换」当正常分支——组件因此不再接触 Response，也不会把授权失败当成服务异常。
+  test("reads resource file content in the domain module and normalizes failures", async () => {
+    const { fetchResourceFileBinary, fetchResourceFileText, isResourcePdfPreviewAvailable } = await import(
+      "../api/knowledge-bases"
+    );
+    const respond = (body: BodyInit | null, init?: ResponseInit) => {
+      globalThis.fetch = mock((url: string, requestInit: RequestInit) => {
+        fetchCalls.push([url, requestInit]);
+        return Promise.resolve(new Response(body, init));
+      }) as unknown as typeof fetch;
+    };
+    const target = { kbId: "kb/a", resourceId: "res/b" };
+
+    respond("hello", { headers: { "Content-Type": "text/plain" } });
+    await expect(fetchResourceFileText(target)).resolves.toBe("hello");
+    expect(fetchCalls[0]?.[0]).toBe("/web/knowledgeBases/kb%2Fa/resources/res%2Fb/file");
+    expect(fetchCalls[0]?.[1].credentials).toBe("include");
+
+    respond(new Uint8Array([1, 2, 3]));
+    await expect(fetchResourceFileBinary(target)).resolves.toBeInstanceOf(ArrayBuffer);
+
+    respond("not-a-pdf", { headers: { "Content-Type": "text/html" } });
+    await expect(isResourcePdfPreviewAvailable(target)).resolves.toBe(false);
+    respond("pdf", { headers: { "Content-Type": "application/pdf" } });
+    await expect(isResourcePdfPreviewAvailable(target)).resolves.toBe(true);
+
+    respond(JSON.stringify({ success: false, error: { code: "FORBIDDEN", message: "denied" } }), {
+      status: 403,
+      headers: { "Content-Type": "application/json" },
+    });
+    await expect(fetchResourceFileText(target)).rejects.toMatchObject({ name: "ApiError", code: "FORBIDDEN" });
+  });
 });

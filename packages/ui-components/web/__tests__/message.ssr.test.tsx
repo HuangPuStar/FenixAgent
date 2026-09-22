@@ -128,8 +128,8 @@ describe("消息组件的服务端渲染", () => {
       }),
     );
 
-    expect(markup).toContain("chat-user-message-frame");
-    expect(markup).toContain("chat-user-message-content");
+    expect(markup).toContain('data-slot="chat-user-message-frame"');
+    expect(markup).toContain('data-slot="chat-user-message-content"');
     expect(markup).toContain("output.md\n请继续检查");
   });
 
@@ -180,7 +180,8 @@ describe("消息组件的服务端渲染", () => {
     ].join("\n");
     const markup = await renderStreaming(createElement(MessageResponse, null, markdown));
 
-    expect(markup).toContain("chat-markdown-response");
+    // 原断言的是容器类名 `chat-markdown-response`：该类名已随样式迁移删除，而 streamdown 的根节点
+    // 不转发未知属性（挂不上 data-slot），故容器存在性由下面这些容器**内部**的结构断言覆盖。
     expect(markup).toContain('<h1 class="mt-6 mb-2 font-semibold text-3xl" data-streamdown="heading-1">部署结果</h1>');
     expect(markup).toContain('<span class="font-semibold" data-streamdown="strong">验证通过</span>');
     expect(markup).toContain('data-streamdown="unordered-list"');
@@ -253,14 +254,14 @@ describe("消息组件的服务端渲染", () => {
     );
 
     expect(markup).toContain("我引用了什么");
-    expect(markup).toContain("chat-quote-message");
+    expect(markup).toContain('data-slot="chat-quote-message"');
     expect(markup).toContain("需要单独展示的引用正文");
     // 截断徽标（`omittedCharacterCount: 23`）必须渲染出译文。此处恢复 T6c1 前删掉的那条断言：
     // 旧断言固化的是「key 回显」（`composerAssets.quoteTruncatedBadge` 当时在宿主字典里缺键），
     // T9 补齐 zh 译文后改断言真实译文（用例的 i18next 实例 `lng: "en"`，故取英文文案）。
     expect(markup).toContain("23 chars omitted");
     expect(markup).not.toContain("quoteTruncatedBadge");
-    expect(markup).not.toContain("chat-system-reminder");
+    expect(markup).not.toContain('data-slot="chat-system-reminder"');
   });
 
   // 非引用 system-reminder 恢复为系统提醒胶囊，但内部原始内容仍不暴露。
@@ -277,7 +278,7 @@ describe("消息组件的服务端渲染", () => {
 
     expect(markup).toContain("我引用了什么");
     expect(markup).not.toContain("引用正文");
-    expect(markup).toContain("chat-system-reminder");
+    expect(markup).toContain('data-slot="chat-system-reminder"');
   });
 
   // 系统消息默认隐藏原始注入内容，并与助手消息正文左边界对齐。

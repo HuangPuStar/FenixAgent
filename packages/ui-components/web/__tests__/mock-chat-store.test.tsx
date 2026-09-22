@@ -132,16 +132,22 @@ test("首屏渲染权限面板与状态面板", () => {
 // 权限优先于问答：应答后应露出问题面板，问题决议后交互区回落到状态面板。
 test("应答权限后切到问答面板，应答后交互区清空", () => {
   act(() => root.render(<Harness />));
-  expect(container.querySelectorAll(".chat-interaction-region").length).toBe(1);
+  expect(
+    container.querySelectorAll('[data-slot="chat-permission-region"], [data-slot="chat-question-region"]').length,
+  ).toBe(1);
   act(() => session?.respondPermission("perm-demo-1", "allow_once"));
   expect(session?.chatState.permissions[0]?.status).toBe("approved");
   // 轮到 AskUserQuestion 面板（时间线里的工具卡片同样含问题原文，故用面板容器判定）
-  expect(container.querySelectorAll(".chat-interaction-region").length).toBe(1);
+  expect(
+    container.querySelectorAll('[data-slot="chat-permission-region"], [data-slot="chat-question-region"]').length,
+  ).toBe(1);
   expect(text()).toContain("补测试入口");
 
   act(() => session?.respondQuestion("question-demo-1", ["补测试入口"]));
   expect(session?.sessionState.pendingQuestions.size).toBe(0);
-  expect(container.querySelectorAll(".chat-interaction-region").length).toBe(0);
+  expect(
+    container.querySelectorAll('[data-slot="chat-permission-region"], [data-slot="chat-question-region"]').length,
+  ).toBe(0);
   // 阻塞型交互清空后回落到状态面板（待办来自 plan 快照）
   expect(text()).toContain("把投影抽成可注入的 projectEntries");
 });

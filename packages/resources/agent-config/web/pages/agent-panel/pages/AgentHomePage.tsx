@@ -73,29 +73,18 @@ export function AgentHomePage() {
   const { data: templatesData } = useRequest(() => unwrap(agentApi.templates()), {
     onError: (err) => {
       console.error("[agent-home] Failed to load templates:", err);
+      // 模板区失败后只剩「或从模板快速开始」标签 + 空容器，与「确实没有模板」在界面上同形；
+      // 该分支没有可重试的失败区，故补一次可见提示，避免把加载失败读成产品没有模板。
+      toast.error(t("templatesFailed"));
     },
   });
   const templates = templatesData?.templates ?? [];
 
   // AI 生成
   const { run: runGenerate } = useRequest(
-    async (prompt: string) => {
-      const response = await fetch("/web/agent-generation", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        credentials: "include",
-        body: JSON.stringify({ prompt }),
-      });
-      const json = (await response.json()) as {
-        success: boolean;
-        data?: GenerationFormData;
-        error?: { message: string };
-      };
-      if (!json.success || !json.data) {
-        throw new Error(json.error?.message ?? t("generationFailed"));
-      }
-      return json.data;
-    },
+    // 请求落在本包域模块 `agentApi.generate`（组件不写 fetch、不拼后端 URL）。失败由 `unwrap` 归一为
+    // ApiError，页面只消费成功数据与错误分类。
+    async (prompt: string) => unwrap(agentApi.generate(prompt)),
     {
       manual: true,
       onSuccess: (data) => {
@@ -273,8 +262,8 @@ export function AgentHomePage() {
         {phase === "generating" && (
           <div className="agent-home-loading">
             <div className="agent-home-spinner" />
-            <div className="text-[14px] font-semibold text-[#0c1a3a]">{t("loadingTitle")}</div>
-            <div className="text-[12px] text-[#8a96b0]">{t("loadingSubtitle")}</div>
+            <div className="text-sm font-semibold text-slate-900">{t("loadingTitle")}</div>
+            <div className="text-xs text-slate-400">{t("loadingSubtitle")}</div>
           </div>
         )}
 

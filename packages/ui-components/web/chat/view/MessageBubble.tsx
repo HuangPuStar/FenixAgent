@@ -1,7 +1,12 @@
-import { ChevronDown, Copy, File, Quote } from "lucide-react";
+import "./MessageBubble.css";
+
+import { ChevronDown, Copy, File, Quote, TriangleAlert } from "lucide-react";
 import { type MutableRefObject, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { UI_COMPONENTS_NS } from "../../i18n/namespace";
+import { copyTextToClipboard } from "../../lib/clipboard";
+import { cn } from "../../lib/cn";
+import { isWorkspaceRelativeFilePath } from "../../lib/workspace-relative-path";
 import { Button } from "../../ui/button";
 import { Dialog, DialogContent, DialogTitle } from "../../ui/dialog";
 import { isVisibleContentBlock, parseChatQuotes } from "../lib/context-queue";
@@ -12,7 +17,7 @@ import { Reasoning, ReasoningContent, ReasoningTrigger } from "../primitives/rea
 import type { AssistantMessageEntry, UserMessageEntry, UserMessageImage } from "../types";
 import { ChatQuoteMessage } from "./ChatQuoteMessage";
 import { type CardEmitter, createCardEmitter } from "./internal/card-emitter";
-import { publicErrorText } from "./public-error-text";
+import { PublicErrorCard } from "./PublicErrorCard";
 import { SystemMessage } from "./SystemMessage";
 
 /**
@@ -27,33 +32,35 @@ export type { CardEmitter } from "./internal/card-emitter";
 const COLLAPSED_MAX_HEIGHT = 200;
 // 思考内容流式显示的最大高度（≈4 行）
 const THOUGHT_STREAMING_MAX_HEIGHT = 96;
+/** 复制失败态的停留时间（ms）：够看清一次，又不让按钮长期停在错误态。 */
+const COPY_FAILURE_RESET_MS = 2000;
 const FILE_REFERENCE_PATTERN = /@\.\/[^\s]+/g;
 
 /**
- * 工作区相对路径判定。
+ * 助手消息操作条的样式（源 `chat-design-messages.css` 的 `.chat-message-actions` 段）。
  *
- * 复制自 `apps/web/src/lib/artifacts-preview-events.ts` 的 `isWorkspaceRelativeFilePath`（逐字）。
- * 纯化改动点：源函数与「预览事件派发」同文件，本包只保留其词法校验部分（无 `..`、无绝对路径、
- * 无控制字符、无空段），避免把宿主的自定义事件总线拖进包内依赖图。
+ * - `.chat-message-action-bar`（同目录 `./MessageBubble.css`）承接定位偏移、阴影与
+ *   `@media (hover: none)`（触屏上始终可见）那一组；`prefers-reduced-motion` 取消过渡仍是工具类。
+ * - 显示态由助手消息根节点的**具名 group**（`group/assistant`）驱动，替代源
+ *   `.chat-assistant-message:hover / :focus-within` 的父选子；用具名 group 避免命中外层无关的 group。
  */
-function isWorkspaceRelativeFilePath(path: string): boolean {
-  if (
-    !path ||
-    path.startsWith("/") ||
-    [...path].some((character) => {
-      const code = character.charCodeAt(0);
-      return code <= 0x1f || code === 0x7f;
-    })
-  ) {
-    return false;
-  }
-  return path.split("/").every((segment) => segment !== "" && segment !== "." && segment !== "..");
-}
+const MESSAGE_ACTIONS_CLASS = [
+  "chat-message-action-bar pointer-events-none absolute left-0 z-[4] flex w-max max-w-full min-w-0 gap-0.75",
+  "rounded-md border border-slate-200 bg-white p-0.75 opacity-0",
+  "-translate-y-0.5 [transition:opacity_120ms_ease,visibility_120ms_ease,transform_120ms_ease]",
+  "group-hover/assistant:pointer-events-auto group-hover/assistant:translate-y-0 group-hover/assistant:opacity-100",
+  "group-focus-within/assistant:pointer-events-auto group-focus-within/assistant:translate-y-0 group-focus-within/assistant:opacity-100",
+  "motion-reduce:[transition:none]",
+].join(" ");
+
+/** 操作条里的图标按钮（源 `.chat-message-actions button` 与 `… svg`）。 */
+const MESSAGE_ACTION_BUTTON_CLASS =
+  "grid h-6 w-6 place-items-center rounded-md text-gray-400 hover:bg-slate-100 hover:text-slate-600";
 
 /**
  * 将权威消息正文中的既有文件引用拆成文本和附件展示片段，不改变消息协议。
  *
- * 复制自 `packages/agent-runtime/web/components/chat/MessageBubble.tsx`；纯化改动点：无。
+ * 复制自 `packages/agent-runtime/web/components/chat/MessageBubble.tsx`（旧路径，已于 2026-09-21 由 f2741a82d 删除）；纯化改动点：无。
  */
 export function splitFileReferences(content: string): Array<{ type: "text" | "file"; value: string; offset: number }> {
   const parts: Array<{ type: "text" | "file"; value: string; offset: number }> = [];
@@ -85,7 +92,7 @@ interface UserBubbleProps {
 /**
  * 用户消息气泡（右对齐、可折叠、图片缩略图）。
  *
- * 复制自 `packages/agent-runtime/web/components/chat/MessageBubble.tsx`。
+ * 复制自 `packages/agent-runtime/web/components/chat/MessageBubble.tsx`（旧路径，已于 2026-09-21 由 f2741a82d 删除）。
  * 纯化改动点：
  * - 文件引用的打开动作由宿主事件总线改为 `onOpenWorkspaceFile` 回调 prop。
  * - i18n 命名空间收敛为包内单一命名空间并加 `chat.components.` 前缀。
@@ -125,7 +132,7 @@ export function UserBubble({ entry, envId, onOpenWorkspaceFile }: UserBubbleProp
     <div className="flex flex-col gap-2">
       {systemSegments.map(({ segment, quotes: segmentQuotes }) =>
         segmentQuotes.length > 0 ? (
-          <div key={segment.text} className="chat-quote-messages">
+          <div key={segment.text} className="flex flex-wrap justify-end gap-1.5">
             {segmentQuotes.map((quote, quoteIndex) => (
               <ChatQuoteMessage key={`${quote.text}-${quote.omittedCharacterCount}`} quote={quote} index={quoteIndex} />
             ))}
@@ -137,7 +144,7 @@ export function UserBubble({ entry, envId, onOpenWorkspaceFile }: UserBubbleProp
       {/* 用户文本与图片附件 — 右对齐气泡（正文） */}
       {visibleContent && (
         <div className="flex justify-end">
-          <div className="chat-user-message-frame">
+          <div className="w-fit min-w-0 max-w-[90%] overflow-hidden" data-slot="chat-user-message-frame">
             {/* 图片附件 — 与消息附件共用同一套 attach 基元，横向排布、按需换行 */}
             {entry.images && entry.images.length > 0 && (
               <MessageAttachments className="mb-2">
@@ -147,10 +154,11 @@ export function UserBubble({ entry, envId, onOpenWorkspaceFile }: UserBubbleProp
               </MessageAttachments>
             )}
             {/* 文本内容 — 品牌色淡底 + 折叠 */}
-            <div className="chat-user-bubble message-bubble-enter">
+            <div className="chat-user-message-shell relative overflow-hidden border border-slate-200 bg-white text-slate-700">
               <div
                 ref={contentRef}
-                className="chat-user-message-content px-4 py-2.5 text-sm font-display leading-relaxed"
+                className="min-w-0 max-w-full px-4 py-2.5 text-sm font-display leading-relaxed whitespace-pre-wrap wrap-anywhere [word-break:break-word]"
+                data-slot="chat-user-message-content"
                 style={!expanded && overflowing ? { maxHeight: `${COLLAPSED_MAX_HEIGHT}px` } : undefined}
               >
                 {visibleParts.map((part) =>
@@ -219,12 +227,19 @@ interface AssistantBubbleProps {
   cardEmitterRef?: MutableRefObject<CardEmitter | null>;
   /** 点击「引用」时回调，替代源实现的 `chat:quote` window 自定义事件。 */
   onQuote?: (text: string, sessionId?: string) => void;
+  /**
+   * 紧凑密度（可选，默认 false）：正文块间距 4px 而非 16px。
+   *
+   * 对应源 `.chat-entry--activity .chat-assistant-chunks { gap: 4px }`——该规则由**外层渲染项**
+   * （ChatView 的活动链）决定，迁移后不再用祖先类名选择子元素，改由 ChatView 显式传参（纯增量）。
+   */
+  compact?: boolean;
 }
 
 /**
  * 助手消息气泡（左对齐、思考块、系统提醒标签、复制/引用动作、turn 错误）。
  *
- * 复制自 `packages/agent-runtime/web/components/chat/MessageBubble.tsx`。
+ * 复制自 `packages/agent-runtime/web/components/chat/MessageBubble.tsx`（旧路径，已于 2026-09-21 由 f2741a82d 删除）。
  * 纯化改动点：
  * - 移除宿主 `MessageEmitterContext.Provider` 包裹：改由 `cardEmitter` prop 注入，未注入时自建实例，
  *   并通过 `cardEmitterRef` 供外部订阅（不再向子树下发 React Context，包内无该通道消费方）。
@@ -239,6 +254,7 @@ export function AssistantBubble({
   cardEmitter,
   cardEmitterRef,
   onQuote,
+  compact = false,
 }: AssistantBubbleProps) {
   const { t } = useTranslation(UI_COMPONENTS_NS);
   // 每个助手消息创建独立的 emitter 实例
@@ -267,14 +283,33 @@ export function AssistantBubble({
     };
   }, [emitter, internalEmitter, cardEmitterRef]);
 
-  // turn 失败正文按稳定的 `error.type` 取本地化文案：`error.message` 是 wire/日志字段且恒为英文
-  // （`isPublicError` 以它做帧完整性校验），直接渲染会让中文界面永远显示英文，见 `./public-error-text`。
-  const errorText = useMemo(() => (entry.error ? publicErrorText(t, entry.error) : ""), [entry.error, t]);
+  // 复制失败态：按钮自持的瞬时状态（同 `CodeBlockCopyButton` 的成功态口径）。本组件在库层，
+  // 包内不直接调宿主 toast（§5.8），失败只能由组件自己给出可见反馈。
+  const [copyFailed, setCopyFailed] = useState(false);
+  const copyFailureTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(
+    () => () => {
+      if (copyFailureTimerRef.current) clearTimeout(copyFailureTimerRef.current);
+    },
+    [],
+  );
+
+  const handleCopy = async () => {
+    // 写入与「API 缺失 / 被拒」的判定收进 `lib/clipboard`（回传 false 而不抛错）。
+    if (await copyTextToClipboard(visibleText)) return;
+    setCopyFailed(true);
+    if (copyFailureTimerRef.current) clearTimeout(copyFailureTimerRef.current);
+    copyFailureTimerRef.current = setTimeout(() => setCopyFailed(false), COPY_FAILURE_RESET_MS);
+  };
+
+  const copyLabel = copyFailed
+    ? t("chat.components.messageBubble.copyFailed")
+    : t("chat.components.messageBubble.copy");
 
   return (
-    <div className="chat-assistant-message message-bubble-enter">
+    <div className="group/assistant relative min-w-0">
       {/* 内容 — 无卡片背景，直接排版；system-reminder 块渲染为系统消息而非隐藏 */}
-      <div className="chat-assistant-chunks flex-1 min-w-0">
+      <div className={cn("grid w-full flex-1 min-w-0", compact ? "gap-1" : "gap-4")}>
         {entry.chunks.map((chunk, i, all) => {
           if (chunk.type === "thought") {
             // 只有最后一个 thought chunk 且全局 streaming 时才标记为 streaming
@@ -283,9 +318,9 @@ export function AssistantBubble({
             return (
               // Chunks lack a unique identifier.
               // biome-ignore lint/suspicious/noArrayIndexKey: 协议块本身没有唯一 id（源文件同款写法）。本包 package.json 声明了 react 依赖，biome 因而启用 react 域规则；源宿主 packages/agent-runtime 未声明 react，规则未启用。chunks 只整体替换、不重排，索引键不会引起元素错位。
-              <Reasoning key={i} isStreaming={thoughtStreaming} className="chat-thinking-block">
-                <ReasoningTrigger className="chat-thinking-trigger" />
-                <ReasoningContent className="chat-thinking-content">
+              <Reasoning key={i} isStreaming={thoughtStreaming} className="mb-0">
+                <ReasoningTrigger className="chat-thought-trigger text-xs leading-normal text-gray-400 hover:text-slate-500" />
+                <ReasoningContent className="mt-1.5 text-slate-500">
                   <ThoughtContent text={chunk.text} isStreaming={thoughtStreaming} />
                 </ReasoningContent>
               </Reasoning>
@@ -303,43 +338,33 @@ export function AssistantBubble({
           return (
             // Chunks lack a unique identifier.
             // biome-ignore lint/suspicious/noArrayIndexKey: 同上前提——协议块无唯一 id，且本包启用了 react 域规则；chunks 不重排。
-            <div key={i} className="message-content chat-markdown-content text-text-primary leading-[1.75]">
+            <div key={i} className="min-w-0 max-w-full text-sm text-slate-700 leading-relaxed">
               <MessageResponse envId={envId}>{chunk.text}</MessageResponse>
             </div>
           );
         })}
         {/* turn 失败错误（后端 ChatEntry.error 脱敏投影）— 展示在消息末尾 */}
-        {entry.error && (
-          <div
-            className="rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive"
-            role="alert"
-          >
-            <span className="font-medium">{t("chat.components.messageBubble.turnError")}</span>
-            {errorText && <p className="mt-1 whitespace-pre-wrap">{errorText}</p>}
-            <div className="mt-4 flex flex-wrap gap-x-4 gap-y-1 text-xs">
-              <span>Type: {entry.error.type}</span>
-              <span>ID: {entry.error.id}</span>
-            </div>
-          </div>
-        )}
+        {entry.error && <PublicErrorCard error={entry.error} t={t} />}
       </div>
       {visibleText && (
-        <div className="chat-message-actions" role="group" aria-label={t("chat.components.messageBubble.actions")}>
+        <div className={MESSAGE_ACTIONS_CLASS} role="group" aria-label={t("chat.components.messageBubble.actions")}>
           <button
             type="button"
-            title={t("chat.components.messageBubble.copy")}
-            aria-label={t("chat.components.messageBubble.copy")}
-            onClick={() => void navigator.clipboard.writeText(visibleText)}
+            className={cn(MESSAGE_ACTION_BUTTON_CLASS, copyFailed && "text-red-600 hover:text-red-700")}
+            title={copyLabel}
+            aria-label={copyLabel}
+            onClick={() => void handleCopy()}
           >
-            <Copy />
+            {copyFailed ? <TriangleAlert className="h-3.5 w-3.5" /> : <Copy className="h-3.5 w-3.5" />}
           </button>
           <button
             type="button"
+            className={MESSAGE_ACTION_BUTTON_CLASS}
             title={t("chat.components.messageBubble.quote")}
             aria-label={t("chat.components.messageBubble.quote")}
             onClick={() => onQuote?.(visibleText, sessionId)}
           >
-            <Quote />
+            <Quote className="h-3.5 w-3.5" />
           </button>
         </div>
       )}
@@ -370,7 +395,7 @@ function UserImageAttachment({ image }: { image: UserMessageImage }) {
         <MessageAttachment alt={alt} data={{ type: "file", mediaType: image.mimeType, url: src }} />
       </Button>
       <Dialog open={open} onOpenChange={setOpen}>
-        <DialogContent className="max-w-[min(92vw,960px)] p-3 bg-white">
+        <DialogContent className="chat-message-image-dialog p-3 bg-white">
           <DialogTitle className="sr-only">{t("chat.components.messageBubble.imagePreview")}</DialogTitle>
           <img src={src} alt={alt} className="max-h-[82vh] w-full object-contain" />
         </DialogContent>

@@ -1,3 +1,9 @@
+// web/__tests__/workflow-engine-api.test.ts
+// 本包 `web/api/` 客户端的契约用例：请求映射（引擎动作分发）与响应形状（定义 / 自定义工具查询）。
+//
+// 同处一个文件：两者都是 `request()` 的薄封装，夹具（全局 fetch 替身 + 动态 import）与断言口径一致。
+// 用例走真实 `request()`，不替身域模块——这样钉住的才是「响应形状 → 域模块返回值」这条链路本身。
+
 import { beforeEach, describe, expect, mock, test } from "bun:test";
 
 const fetchCalls: Array<[string, RequestInit]> = [];
@@ -70,5 +76,49 @@ describe("workflow engine API client", () => {
     expectRequest(3, "/web/workflow-runs/run%2Fa/nodes/node%2Fb/output", "GET");
     expectRequest(4, "/web/workflow-runs/run%2Fa/approvals", "GET");
     expectRequest(5, "/web/workflow-runs?page=2&pageSize=20&status=RUNNING&q=nightly", "GET");
+  });
+});
+
+describe("custom tools API client 的响应形状", () => {
+  /** 用给定响应体替换全局 fetch（同样记进 `fetchCalls`，URL 与请求头口径与上方用例一致）。 */
+  function respondWith(body: unknown, status = 200) {
+    globalThis.fetch = mock((url: string, init: RequestInit) => {
+      fetchCalls.push([url, init]);
+      return Promise.resolve(
+        new Response(JSON.stringify(body), { status, headers: { "Content-Type": "application/json" } }),
+      );
+    }) as unknown as typeof fetch;
+  }
+
+  // 列表端点返回成功但缺 data 时，`request()` 会把整个信封当 data 透出；域模块必须收敛成数组，
+  // 否则消费方 `for (const t of tools)` 会在渲染期抛 TypeError（编辑器整页崩，而不只是少一个分区）。
+  test("成功但缺 data：收敛成空列表，不透出信封", async () => {
+    const { customToolsApi } = await import("../api/workflow-defs");
+    respondWith({ success: true });
+
+    expect(await customToolsApi.list()).toEqual({ success: true, data: [] });
+    expect(fetchCalls[0]?.[0]).toBe("/web/workflow-custom-tools");
+  });
+
+  // 形状正常的成功响应必须原样透出工具列表，不能被形状兜底吃掉。
+  test("成功且 data 为数组：原样透出工具列表", async () => {
+    const { customToolsApi } = await import("../api/workflow-defs");
+    const tools = [{ name: "slurm", description: "提交作业", inputs: {}, produces: [] }];
+    respondWith({ success: true, data: tools });
+
+    expect(await customToolsApi.list()).toEqual({ success: true, data: tools });
+  });
+
+  // 失败仍必须表达成 `{ success: false }` 交给消费方 `unwrap()` 抛错：「失败映射成 empty」是在途项 25
+  // 点名的缺陷形态，形状兜底只允许作用于成功分支。
+  test("业务失败：保持 { success: false }，不兜成空列表", async () => {
+    const { customToolsApi } = await import("../api/workflow-defs");
+    respondWith({ success: false, error: { code: "FORBIDDEN", message: "无权限查看 custom 工具" } }, 403);
+
+    const result = await customToolsApi.list();
+
+    expect(result.success).toBe(false);
+    expect(result.data).toBeUndefined();
+    expect(result.error?.code).toBe("FORBIDDEN");
   });
 });

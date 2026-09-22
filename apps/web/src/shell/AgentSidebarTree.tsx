@@ -1,4 +1,12 @@
-import { agentApi, ensureMetaAgent } from "@fenix/agent-config/web";
+/**
+ * Agent 侧边栏树的容器组件。
+ *
+ * 拆分后（§4.7 文件规模）本文件只做装配与渲染：数据与操作来自 `useAgentSidebarTree`，
+ * 派生工具来自 `agent-sidebar-tree-model`，确认弹窗来自 `AgentSidebarTreeDialogs`。
+ * 树展开状态与 Meta Agent 开关只影响渲染，仍由本组件持有。
+ *
+ * 导出面与拆分前一致：`AgentSidebarTree` 与 `orderInstancesByRunningStatus`（后者在此转发）。
+ */
 import { shouldShowRemoteNode } from "@fenix/agent-config/web/lib/agent-node";
 import {
   getAgentAccessBadgeKey,
@@ -6,24 +14,12 @@ import {
   getAgentDisplayName,
   isAgentWritable,
 } from "@fenix/agent-config/web/lib/agent-resource-access";
-import { envApi } from "@fenix/agent-runtime/web/api/environments";
 import { useOrg } from "@fenix/identity/web";
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from "@fenix/ui-components/ui/alert-dialog";
-import { Checkbox } from "@fenix/ui-components/ui/checkbox";
+import type { StatusTone } from "@fenix/ui-components/config/StatusBadge";
+import { StatusBadge } from "@fenix/ui-components/config/StatusBadge";
+import { Spinner } from "@fenix/ui-components/ui/spinner";
+import { StatusDot } from "@fenix/ui-components/ui/status-dot";
 import { Switch } from "@fenix/ui-components/ui/switch";
-import { unwrap } from "@fenix/web-runtime/api/request";
-import { dispatchConfigChange, useConfigChangeListener } from "@fenix/web-runtime/lib/config-events";
-import type { AgentNode, ResourceAccessActions, ResourceScopeView } from "@fenix/web-runtime/types/config";
-import { useRequest } from "ahooks";
 import {
   Bot,
   ChevronDown,
@@ -37,45 +33,50 @@ import {
   Square,
   Trash2,
 } from "lucide-react";
-import { memo, useEffect, useRef, useState } from "react";
+import { memo, useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { toast } from "sonner";
-import { instanceApi } from "@/src/api/instances";
 import { NS } from "@/src/i18n";
-import type { Environment, EnvironmentInstance } from "../types/index";
+import { AgentSidebarDeleteDialog, AgentSidebarRestartDialog } from "./AgentSidebarTreeDialogs";
+import { getInstanceStatusTone, getRunningInstances, orderInstancesByRunningStatus } from "./agent-sidebar-tree-model";
+import { useAgentSidebarTree } from "./use-agent-sidebar-tree";
 
-interface AgentConfigItem {
-  id: string;
-  name: string;
-  builtIn: boolean;
-  model: string | null;
-  modelId?: string | null;
-  modelLabel?: string | null;
-  description: string | null;
-  /** 归属范围；缺失按本组织私有保守降级（授权判断只依据 `scope` + `access`）。 */
-  scope?: ResourceScopeView;
-  access?: { actions?: ResourceAccessActions };
-  /** 归属组织展示名；身份名录不可用时后端整字段省略。 */
-  organizationName?: string;
-  agentNode: AgentNode;
-}
+// 转发排序工具的唯一实现：既有消费方（含 `agent-sidebar-instance-order` 用例）仍从本模块导入。
+export { orderInstancesByRunningStatus } from "./agent-sidebar-tree-model";
 
-interface AgentTreeNode {
-  agent: AgentConfigItem;
-  environment: Environment | null;
-  instances: EnvironmentInstance[];
-}
+/**
+ * 卡片主标题刻度（元智能体卡片与 agent 卡片两处同名同级）。
+ *
+ * 两行文字在两张卡片里逐字相同，抽成常量是为了让「13px 半粗」只有一处定义——否则调其中一张
+ * 的标题层级时，另一张会静默地停在旧刻度上。
+ */
+const CARD_TITLE_CLASS = "text-xs font-semibold text-text-primary truncate";
 
-/** 运行中实例稳定置前；其余状态保持 API 原始顺序。 */
-export function orderInstancesByRunningStatus(instances: EnvironmentInstance[]): EnvironmentInstance[] {
-  const running: EnvironmentInstance[] = [];
-  const other: EnvironmentInstance[] = [];
-  for (const instance of instances) {
-    if (instance.status === "running") running.push(instance);
-    else other.push(instance);
-  }
-  return [...running, ...other];
-}
+/**
+ * agent 卡片悬浮操作栏的图标按钮刻度（展开 / 重启 / 配置三个按钮同名同级）。
+ *
+ * 三个按钮此前各写一遍同一串类名，调其中一处（比如把 `w-6` 改成 `w-7`）会让另外两个静默停在旧刻度上。
+ * 配置按钮永不进入禁用态，仍带上 `disabled:opacity-50`——该变体只在 `:disabled` 命中时生效，写成同一份
+ * 刻度比让它少一条更像「另一类按钮」。删除按钮是红色调的危险动作，不并入本刻度。
+ */
+const AGENT_ACTION_BUTTON_CLASS =
+  "flex items-center justify-center w-6 h-6 border-none rounded-md bg-surface-2 text-text-dim cursor-pointer hover:bg-surface-hover hover:text-text-primary transition-colors disabled:opacity-50";
+
+/** 实例行悬浮操作栏的图标按钮刻度（重启 / 停止两处同名同级）。 */
+const INSTANCE_ACTION_BUTTON_CLASS =
+  "flex items-center justify-center w-5.5 h-5.5 border-none rounded bg-transparent text-text-dim cursor-pointer hover:bg-surface-hover hover:text-text-primary transition-colors disabled:opacity-50";
+
+/**
+ * 访问级别的色调词表：`resource.public` = 可对外/被他组织引用，`resource.external` = 外部组织资源。
+ *
+ * 用色调而不是色名（`text-blue-700` / `bg-amber-100` 这类）：色名一旦写进业务，同一语义会在各页面
+ * 各演化一套绿/蓝，深浅色变体也要跟着各写一份。色调只声明「这类访问级别算哪一类信息」，
+ * 具体色值（含深浅色）由组件库的 `StatusBadge` 决定。`resource.internal` 不展示徽标、故不登记——
+ * 未命中一律按 `neutral`，不会臆断成某一类。
+ */
+const ACCESS_BADGE_TONES: Record<string, StatusTone> = {
+  "resource.public": "info",
+  "resource.external": "warning",
+};
 
 interface AgentSidebarTreeProps {
   selectedInstanceId: string | null;
@@ -101,99 +102,10 @@ export const AgentSidebarTree = memo(function AgentSidebarTree({
 
   // 交互状态
   const [expandedAgents, setExpandedAgents] = useState<Record<string, boolean>>({});
-  const [restartDialogOpen, setRestartDialogOpen] = useState(false);
-  const [restartTargetNode, setRestartTargetNode] = useState<AgentTreeNode | null>(null);
-  const [selectedRestartInstances, setSelectedRestartInstances] = useState<Set<string>>(new Set());
-  const [deleteTarget, setDeleteTarget] = useState<AgentConfigItem | null>(null);
-
-  // 进入/重启/停止操作的标识追踪：记录正在操作的目标及操作类型
-  const [enteringTargetId, setEnteringTargetId] = useState<string | null>(null);
-  const [pendingInstanceId, setPendingInstanceId] = useState<{ id: string; type: "restart" | "stop" } | null>(null);
 
   // Meta Agent 显示控制
   const [showMetaAgent, setShowMetaAgent] = useState(
     () => localStorage.getItem("agent-panel:show-meta-agent") === "true",
-  );
-
-  // environmentId → agentConfigId 映射：用于判断当前对话页打开的环境属于哪个 agent 配置。
-  // 相比 treeNodes 每个 agent 只保留单个环境，这里覆盖全部环境，避免多环境场景漏判。
-  const envConfigMapRef = useRef<Map<string, string>>(new Map());
-
-  // 跟踪首次加载是否已完成。用于避免轮询刷新时替换已有 UI，消除闪烁。
-  const initialLoadDoneRef = useRef(false);
-
-  // ---- 数据加载（带 15s 轮询）----
-  const {
-    data: treeNodes = [],
-    loading,
-    refresh,
-  } = useRequest(
-    async (): Promise<AgentTreeNode[]> => {
-      const [agentsResult, envs] = await Promise.all([unwrap(agentApi.list()), unwrap(envApi.list())]);
-
-      const agents = Array.isArray(agentsResult.agents) ? agentsResult.agents : [];
-
-      // 过滤内置智能体
-      const userAgents = agents.filter((a) => !a.builtIn);
-
-      // 建立 agentConfigId → environment 映射
-      const envByConfigId = new Map<string, Environment>();
-      // 同步刷新 environmentId → agentConfigId 全量映射（含同一 agent 的多个环境）
-      const envConfigMap = new Map<string, string>();
-      for (const env of envs) {
-        const configId = env.agentConfigId;
-        if (configId) {
-          envByConfigId.set(configId, env as unknown as Environment);
-          if (env.id) envConfigMap.set(env.id, configId);
-        }
-      }
-      envConfigMapRef.current = envConfigMap;
-
-      // 构建 tree nodes
-      const nodes: AgentTreeNode[] = userAgents.map((agent) => ({
-        agent,
-        environment: envByConfigId.get(agent.id) ?? null,
-        instances: [],
-      }));
-
-      // 加载有活跃实例的 environment 的 instances
-      const activeEnvs = envs.filter((e) => (e.instancesCount ?? 0) > 0);
-      if (activeEnvs.length > 0) {
-        const results = await Promise.allSettled(activeEnvs.map((env) => unwrap(envApi.listInstances({ id: env.id }))));
-        const instMap: Record<string, EnvironmentInstance[]> = {};
-        activeEnvs.forEach((env, i) => {
-          const r = results[i];
-          if (r.status === "fulfilled") {
-            instMap[env.id] = (r.value.instances ?? []) as unknown as EnvironmentInstance[];
-          }
-        });
-
-        for (const node of nodes) {
-          if (node.environment) {
-            node.instances = instMap[node.environment.id] ?? [];
-          }
-        }
-      }
-
-      return nodes;
-    },
-    {
-      pollingInterval: 15_000,
-      refreshDeps: [orgId],
-      ready: !!orgId,
-      loadingDelay: 300,
-      onSuccess: () => {
-        initialLoadDoneRef.current = true;
-      },
-    },
-  );
-
-  // 监听配置变更事件，agents 变更时立即刷新
-  useConfigChangeListener(
-    (module) => {
-      if (module === "agents") refresh();
-    },
-    [refresh],
   );
 
   // 持久化 Meta Agent 显示状态
@@ -201,199 +113,39 @@ export const AgentSidebarTree = memo(function AgentSidebarTree({
     localStorage.setItem("agent-panel:show-meta-agent", String(showMetaAgent));
   }, [showMetaAgent]);
 
-  // ---- 实例状态辅助 ----
-  const getInstanceStatus = (instance: EnvironmentInstance) => {
-    if (instance.status === "running") return "running";
-    if (instance.status === "starting") return "starting";
-    if (instance.status === "unknown") return "error";
-    return "stopped";
-  };
-
-  const getRunningInstances = (node: AgentTreeNode) => {
-    return node.instances.filter((inst) => inst.status === "running" || inst.status === "starting");
-  };
-
-  // ---- 进入智能体（manual useRequest）----
-  const { run: runEnter, loading: entering } = useRequest(
-    async (node: AgentTreeNode, opts?: { instanceUid?: string; spawnNew?: boolean }) => {
-      const { agent, environment } = node;
-      const { instanceUid, spawnNew } = opts ?? {};
-      setEnteringTargetId(agent.id);
-
-      let envId = environment?.id;
-
-      // 没有 environment，自动创建
-      if (!envId) {
-        const newEnv = await unwrap(
-          envApi.create({
-            name: `env-${agent.id.slice(0, 8)}`,
-            agentConfigId: agent.id,
-            autoStart: true,
-          }),
-        );
-        envId = newEnv.id;
-        if (!envId) {
-          throw new Error("Failed to create environment");
-        }
-        // 刷新数据以关联新建的 environment
-        await refresh();
-      }
-
-      let enterResult: { instanceUid: string; environmentId: string };
-
-      if (spawnNew) {
-        const spawned = await unwrap(instanceApi.spawn({ environmentId: envId }));
-        enterResult = await unwrap(envApi.enter({ id: envId }, { instanceUid: spawned.instanceUid }));
-      } else {
-        enterResult = await unwrap(envApi.enter({ id: envId }, instanceUid ? { instanceUid } : undefined));
-      }
-
-      onSelectInstance(enterResult.instanceUid, enterResult.environmentId ?? envId, enterResult.instanceUid);
-
-      // 刷新列表以展示新实例
-      refresh();
-    },
-    {
-      manual: true,
-      onFinally: () => setEnteringTargetId(null),
-      onError: (err) => {
-        console.error("Failed to enter instance:", err);
-        toast.error(
-          t("enterInstanceFailed", {
-            message: (err as Error).message,
-          }),
-        );
-      },
-    },
-  );
-
-  // ---- 重启实例（manual useRequest）----
-  const { run: runRestart, loading: restarting } = useRequest(
-    async (node: AgentTreeNode, instance: EnvironmentInstance) => {
-      const envId = node.environment?.id;
-      if (!envId) throw new Error("No environment found for restart");
-
-      setPendingInstanceId({ id: instance.instanceUid, type: "restart" });
-
-      await unwrap(instanceApi.restart({ id: instance.instanceUid }));
-
-      // 通知 ChatPanel 重新连接
-      window.dispatchEvent(new window.CustomEvent("agent:reconnect", { detail: { envId } }));
-
-      await refresh();
-      toast.success(t("restartSuccess"));
-    },
-    {
-      manual: true,
-      onFinally: () => setPendingInstanceId(null),
-      onError: (err) => {
-        console.error("Failed to restart instance:", err);
-        toast.error(t("restartFailed", { message: (err as Error).message }));
-      },
-    },
-  );
-
-  // ---- 停止实例（manual useRequest）----
-  const { run: runStop, loading: _stopping } = useRequest(
-    async (instanceId: string) => {
-      setPendingInstanceId({ id: instanceId, type: "stop" });
-
-      await unwrap(instanceApi.stop({ id: instanceId }));
-      await refresh();
-      toast.success(t("stopSuccess"));
-    },
-    {
-      manual: true,
-      onFinally: () => setPendingInstanceId(null),
-      onError: (err) => {
-        console.error("Failed to stop instance:", err);
-        toast.error(t("stopInstanceFailed", { message: (err as Error).message }));
-      },
-    },
-  );
-
-  // ---- 删除智能体（manual useRequest）----
-  const { run: runDeleteAgent, loading: deleting } = useRequest(
-    async (agent: AgentConfigItem) => {
-      const deletingEnvironmentIds = [...envConfigMapRef.current.entries()]
-        .filter(([, agentConfigId]) => agentConfigId === agent.id)
-        .map(([environmentId]) => environmentId);
-
-      await unwrap(agentApi.delete(agent.name));
-      toast.success(t("deleteSuccess"));
-      onDeleteAgentEnvironments?.(deletingEnvironmentIds);
-
-      // 通知其它页面（如智能体管理页）刷新列表
-      dispatchConfigChange("agents");
-      await refresh();
-    },
-    {
-      manual: true,
-      onFinally: () => setDeleteTarget(null),
-      onError: (err) => {
-        console.error("Failed to delete agent:", err);
-        toast.error(t("deleteFailed", { message: (err as Error).message }));
-      },
-    },
-  );
-
-  // ---- Meta Agent（manual useRequest）----
-  const { run: runMetaAgent, loading: metaAgentLoading } = useRequest(
-    async () => {
-      const result = await ensureMetaAgent();
-      onSelectInstance(result.instanceId ?? "", result.environmentId, null);
-    },
-    {
-      manual: true,
-      onError: (err) => {
-        console.error("Failed to start Meta Agent:", err);
-        toast.error(t("metaAgentFailed"));
-      },
-    },
-  );
-
-  // ---- 批量重启辅助函数 ----
-  const handleRestartAgent = (node: AgentTreeNode) => {
-    const running = getRunningInstances(node);
-    if (running.length === 0) {
-      toast.info(t("noInstancesToRestart"));
-      return;
-    }
-    if (running.length === 1) {
-      runRestart(node, running[0]);
-      return;
-    }
-    setRestartTargetNode(node);
-    setSelectedRestartInstances(new Set(running.map((i) => i.instanceUid)));
-    setRestartDialogOpen(true);
-  };
-
-  const handleRestartConfirm = async () => {
-    if (!restartTargetNode) return;
-    const running = getRunningInstances(restartTargetNode);
-    const targets = running.filter((inst) => selectedRestartInstances.has(inst.instanceUid));
-    setRestartDialogOpen(false);
-    // 逐个重启选中实例；onError 已处理 toast 通知
-    for (const inst of targets) {
-      try {
-        await runRestart(restartTargetNode, inst);
-      } catch {
-        // onError 已弹出 toast，此处仅阻止异常中断循环
-      }
-    }
-    setRestartTargetNode(null);
-  };
+  // 树数据、五组 mutation 与重启/删除会话状态（实现见 use-agent-sidebar-tree.ts）
+  const {
+    treeNodes,
+    loading,
+    showInitialLoading,
+    runEnter,
+    entering,
+    enteringTargetId,
+    runRestart,
+    restarting,
+    pendingInstanceId,
+    runStop,
+    runDeleteAgent,
+    deleting,
+    runMetaAgent,
+    metaAgentLoading,
+    handleRestartAgent,
+    handleRestartConfirm,
+    restartDialogOpen,
+    setRestartDialogOpen,
+    restartTargetNode,
+    selectedRestartInstances,
+    setSelectedRestartInstances,
+    deleteTarget,
+    setDeleteTarget,
+  } = useAgentSidebarTree({ orgId, onSelectInstance, onDeleteAgentEnvironments });
 
   // ---- 渲染 ----
 
-  // 只有首次加载（尚未完成过任何一次数据加载）才显示全屏 loading 动画。
+  // 只有首次加载（尚未完成过任何一次数据加载）才显示全屏 loading 动画，判据由 useAgentSidebarTree 维护。
   // 轮询刷新、手动 refresh() 时已有数据保留在 DOM 中，不替换，避免闪烁。
-  if (loading && !initialLoadDoneRef.current) {
-    return (
-      <div className="flex items-center justify-center py-6">
-        <Loader2 className="h-4 w-4 animate-spin text-text-muted" />
-      </div>
-    );
+  if (showInitialLoading) {
+    return <Spinner variant="panel" size="xs" className="py-6" />;
   }
 
   // 非加载状态下的空列表
@@ -449,7 +201,7 @@ export const AgentSidebarTree = memo(function AgentSidebarTree({
             onClick={runMetaAgent}
             className={[
               "flex items-center gap-2.5 w-full p-2.5",
-              "border border-brand/30 rounded-[10px] bg-gradient-to-r from-brand/5 to-brand/10",
+              "border border-brand/30 rounded-lg bg-gradient-to-r from-brand/5 to-brand/10",
               "cursor-pointer text-left font-[inherit]",
               "transition-all duration-150",
               "hover:border-brand/50 hover:shadow-sm",
@@ -460,8 +212,8 @@ export const AgentSidebarTree = memo(function AgentSidebarTree({
               {metaAgentLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Sparkles className="w-4 h-4" />}
             </div>
             <div className="flex-1 min-w-0">
-              <div className="text-[13px] font-semibold text-text-primary truncate">{t("metaAgent")}</div>
-              <div className="text-[11px] text-text-dim truncate mt-0.5">{t("metaAgentDesc")}</div>
+              <div className={CARD_TITLE_CLASS}>{t("metaAgent")}</div>
+              <div className="text-3xs text-text-dim truncate mt-0.5">{t("metaAgentDesc")}</div>
             </div>
           </button>
         </div>
@@ -499,7 +251,7 @@ export const AgentSidebarTree = memo(function AgentSidebarTree({
               onClick={() => runEnter(node)}
               className={[
                 "agent-sidebar-agent-card flex items-center gap-2.5 w-full",
-                "border border-border-subtle rounded-[10px] bg-surface-1",
+                "border border-border-subtle rounded-lg bg-surface-1",
                 "cursor-pointer text-left font-[inherit]",
                 "transition-all duration-150",
                 "hover:bg-surface-hover hover:border-border-default hover:shadow-sm",
@@ -510,23 +262,19 @@ export const AgentSidebarTree = memo(function AgentSidebarTree({
               {/* 两行：显示名 + 标识键 */}
               <div className="flex-1 min-w-0">
                 <div className="flex items-center gap-1.5">
-                  <div className="text-[13px] font-semibold text-text-primary truncate">{agentLabel}</div>
-                  {/* 仅公有/外部显示标签，用高对比配色区分（public=蓝，external=琥珀），避免与灰底混淆看不清 */}
+                  <div className={CARD_TITLE_CLASS}>{agentLabel}</div>
+                  {/* 仅公有/外部显示标签；色调语义见 `ACCESS_BADGE_TONES` */}
                   {accessBadgeKey !== "resource.internal" && (
-                    <span
-                      className={`shrink-0 rounded-md px-1.5 py-0.5 text-[10px] font-medium ${
-                        accessBadgeKey === "resource.public"
-                          ? "bg-blue-100 text-blue-700 dark:bg-blue-950/50 dark:text-blue-300"
-                          : "bg-amber-100 text-amber-700 dark:bg-amber-950/50 dark:text-amber-300"
-                      }`}
-                    >
-                      {tComponents(accessBadgeKey)}
-                    </span>
+                    <StatusBadge
+                      status={accessBadgeKey}
+                      label={tComponents(accessBadgeKey)}
+                      toneMap={ACCESS_BADGE_TONES}
+                    />
                   )}
                 </div>
                 {/* 第二行：标识键 + 远程标记 */}
                 {(agentKey || shouldShowRemoteNode(agent.agentNode)) && (
-                  <div className="text-[10px] text-text-muted truncate flex items-center gap-1.5">
+                  <div className="text-3xs text-text-muted truncate flex items-center gap-1.5">
                     {agentKey && <span className="font-mono truncate">{agentKey}</span>}
                     {shouldShowRemoteNode(agent.agentNode) && (
                       <>
@@ -543,7 +291,7 @@ export const AgentSidebarTree = memo(function AgentSidebarTree({
             <div className="agent-sidebar-actions absolute top-1.5 right-1.5 flex gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity">
               <button
                 type="button"
-                className="flex items-center justify-center w-6 h-6 border-none rounded-md bg-surface-2 text-text-dim cursor-pointer hover:bg-surface-hover hover:text-text-primary transition-colors disabled:opacity-50"
+                className={AGENT_ACTION_BUTTON_CLASS}
                 onClick={() =>
                   setExpandedAgents((prev) => ({
                     ...prev,
@@ -556,7 +304,7 @@ export const AgentSidebarTree = memo(function AgentSidebarTree({
               </button>
               <button
                 type="button"
-                className="flex items-center justify-center w-6 h-6 border-none rounded-md bg-surface-2 text-text-dim cursor-pointer hover:bg-surface-hover hover:text-text-primary transition-colors disabled:opacity-50"
+                className={AGENT_ACTION_BUTTON_CLASS}
                 disabled={isRestarting}
                 onClick={(e) => {
                   e.stopPropagation();
@@ -568,7 +316,7 @@ export const AgentSidebarTree = memo(function AgentSidebarTree({
               </button>
               <button
                 type="button"
-                className="flex items-center justify-center w-6 h-6 border-none rounded-md bg-surface-2 text-text-dim cursor-pointer hover:bg-surface-hover hover:text-text-primary transition-colors"
+                className={AGENT_ACTION_BUTTON_CLASS}
                 onClick={(e) => {
                   e.stopPropagation();
                   onEditAgent?.(getAgentConfigLookupKey(agent));
@@ -606,19 +354,19 @@ export const AgentSidebarTree = memo(function AgentSidebarTree({
                         <div
                           key={inst.instanceUid}
                           className={[
-                            "agent-sidebar-instance group flex items-center gap-2 px-3 py-1.5 ml-2 text-[13px] rounded-md cursor-pointer transition-colors",
+                            "agent-sidebar-instance group flex items-center gap-2 px-3 py-1.5 ml-2 text-xs rounded-md cursor-pointer transition-colors",
                             selectedInstanceId === inst.instanceUid
                               ? "bg-brand-subtle text-brand"
                               : "text-text-primary hover:bg-surface-hover",
                           ].join(" ")}
                           onClick={() => runEnter(node, { instanceUid: inst.instanceUid })}
                         >
-                          <span className={`status-dot ${getInstanceStatus(inst)}`} />
+                          <StatusDot tone={getInstanceStatusTone(inst)} />
                           <span className="truncate">{inst.name}</span>
                           <div className="ml-auto flex gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity shrink-0">
                             <button
                               type="button"
-                              className="flex items-center justify-center w-5.5 h-5.5 border-none rounded bg-transparent text-text-dim cursor-pointer hover:bg-surface-hover hover:text-text-primary transition-colors disabled:opacity-50"
+                              className={INSTANCE_ACTION_BUTTON_CLASS}
                               disabled={isInstRestarting}
                               onClick={(e) => {
                                 e.stopPropagation();
@@ -630,7 +378,7 @@ export const AgentSidebarTree = memo(function AgentSidebarTree({
                             </button>
                             <button
                               type="button"
-                              className="flex items-center justify-center w-5.5 h-5.5 border-none rounded bg-transparent text-text-dim cursor-pointer hover:bg-surface-hover hover:text-text-primary transition-colors disabled:opacity-50"
+                              className={INSTANCE_ACTION_BUTTON_CLASS}
                               disabled={isInstStopping}
                               onClick={(e) => {
                                 e.stopPropagation();
@@ -650,7 +398,7 @@ export const AgentSidebarTree = memo(function AgentSidebarTree({
                   disabled={isEntering}
                   onClick={() => runEnter(node, { spawnNew: true })}
                   title={t("newInstance")}
-                  className="agent-sidebar-new-instance flex items-center gap-1.5 px-3 py-1 ml-2 text-[13px] text-text-dim cursor-pointer border-none rounded-md bg-transparent hover:bg-surface-hover hover:text-text-secondary transition-colors whitespace-nowrap"
+                  className="agent-sidebar-new-instance flex items-center gap-1.5 px-3 py-1 ml-2 text-xs text-text-dim cursor-pointer border-none rounded-md bg-transparent hover:bg-surface-hover hover:text-text-secondary transition-colors whitespace-nowrap"
                 >
                   <Plus className="w-3.5 h-3.5 shrink-0" />
                   <span>{t("newInstance")}</span>
@@ -662,82 +410,22 @@ export const AgentSidebarTree = memo(function AgentSidebarTree({
       })}
 
       {/* 多实例重启选择弹窗 */}
-      <AlertDialog open={restartDialogOpen} onOpenChange={setRestartDialogOpen}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>{t("restartTitle")}</AlertDialogTitle>
-            <AlertDialogDescription>{t("restartDescription")}</AlertDialogDescription>
-          </AlertDialogHeader>
-          {restartTargetNode && (
-            <div className="space-y-2 max-h-48 overflow-y-auto">
-              <label className="flex items-center gap-2 px-2 py-1 text-sm font-medium">
-                <Checkbox
-                  checked={
-                    getRunningInstances(restartTargetNode).length > 0 &&
-                    getRunningInstances(restartTargetNode).every((inst) =>
-                      selectedRestartInstances.has(inst.instanceUid),
-                    )
-                  }
-                  onCheckedChange={(checked) => {
-                    if (checked) {
-                      setSelectedRestartInstances(
-                        new Set(getRunningInstances(restartTargetNode).map((i) => i.instanceUid)),
-                      );
-                    } else {
-                      setSelectedRestartInstances(new Set());
-                    }
-                  }}
-                />
-                {t("selectAll")}
-              </label>
-              {getRunningInstances(restartTargetNode).map((inst) => (
-                <label key={inst.instanceUid} className="flex items-center gap-2 px-2 py-1 text-sm">
-                  <Checkbox
-                    checked={selectedRestartInstances.has(inst.instanceUid)}
-                    onCheckedChange={(checked) => {
-                      setSelectedRestartInstances((prev) => {
-                        const next = new Set(prev);
-                        if (checked) next.add(inst.instanceUid);
-                        else next.delete(inst.instanceUid);
-                        return next;
-                      });
-                    }}
-                  />
-                  {inst.name}
-                </label>
-              ))}
-            </div>
-          )}
-          <AlertDialogFooter>
-            <AlertDialogCancel>{t("restartLater")}</AlertDialogCancel>
-            <AlertDialogAction onClick={handleRestartConfirm} disabled={selectedRestartInstances.size === 0}>
-              {t("restartConfirm")}
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
+      <AgentSidebarRestartDialog
+        open={restartDialogOpen}
+        onOpenChange={setRestartDialogOpen}
+        restartTargetNode={restartTargetNode}
+        selectedRestartInstances={selectedRestartInstances}
+        setSelectedRestartInstances={setSelectedRestartInstances}
+        onConfirm={handleRestartConfirm}
+      />
 
       {/* 删除智能体确认弹窗 */}
-      <AlertDialog open={deleteTarget !== null} onOpenChange={(open) => !open && setDeleteTarget(null)}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>{t("deleteAgent")}</AlertDialogTitle>
-            <AlertDialogDescription>
-              {t("deleteAgentConfirm", { name: deleteTarget ? getAgentDisplayName(deleteTarget) : "" })}
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel disabled={deleting}>{t("cancel")}</AlertDialogCancel>
-            <AlertDialogAction
-              disabled={deleting}
-              onClick={() => deleteTarget && runDeleteAgent(deleteTarget)}
-              className="bg-red-600 hover:bg-red-700"
-            >
-              {deleting ? <Loader2 className="w-4 h-4 animate-spin" /> : t("deleteAgent")}
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
+      <AgentSidebarDeleteDialog
+        deleteTarget={deleteTarget}
+        onOpenChange={(open) => !open && setDeleteTarget(null)}
+        deleting={deleting}
+        onConfirm={runDeleteAgent}
+      />
     </div>
   );
 });

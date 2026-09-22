@@ -1,8 +1,12 @@
-import { WorkflowBreadcrumb } from "@fenix/resource-workflow/web";
 import { createFileRoute, useSearch } from "@tanstack/react-router";
-import { Loader } from "lucide-react";
 import { lazy, Suspense } from "react";
+import { PanelRouteFallback } from "@/src/components/panel-route-fallback";
 
+// 与下面同源的页面组件一样只经 lazy 进入：静态导入同一 barrel 会在路由壳上留下一条无法代码分割
+// 的静态边，整个包入口会被打进首屏 chunk（见前端规范 §2.4）。
+const WorkflowBreadcrumb = lazy(() =>
+  import("@fenix/resource-workflow/web").then((m) => ({ default: m.WorkflowBreadcrumb })),
+);
 const WorkflowEditor = lazy(() => import("@fenix/resource-workflow/web").then((m) => ({ default: m.WorkflowEditor })));
 
 // Meta Agent 聊天面板由宿主注入：workflow 包不得依赖 apps（`web-package-not-to-app`），
@@ -26,13 +30,7 @@ function WorkflowEditPage() {
 
 export const Route = createFileRoute("/agent/_panel/workflow_/$id/edit")({
   component: () => (
-    <Suspense
-      fallback={
-        <div className="flex flex-1 items-center justify-center">
-          <Loader className="h-8 w-8 rounded-full border-2 border-brand border-t-transparent animate-spin" />
-        </div>
-      }
-    >
+    <Suspense fallback={<PanelRouteFallback />}>
       <WorkflowEditPage />
     </Suspense>
   ),

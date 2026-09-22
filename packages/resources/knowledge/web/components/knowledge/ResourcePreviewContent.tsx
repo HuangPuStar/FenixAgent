@@ -1,9 +1,13 @@
+import "./ResourcePreviewContent.css";
+
+import { getFileExtension } from "@fenix/ui-components/components/file-icon-helper";
+import { EmptyState } from "@fenix/ui-components/config/EmptyState";
 import { Button } from "@fenix/ui-components/ui/button";
 import { Skeleton } from "@fenix/ui-components/ui/skeleton";
+import { Spinner } from "@fenix/ui-components/ui/spinner";
 import { NS } from "@fenix/web-runtime/i18n/namespace";
 import { useRequest } from "ahooks";
 import DOMPurify from "dompurify";
-import { Loader2 } from "lucide-react";
 import mammoth from "mammoth";
 import { useCallback, useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
@@ -11,7 +15,12 @@ import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { toast } from "sonner";
 import * as XLSX from "xlsx";
-import { kbApi } from "../../api/knowledge-bases";
+import {
+  fetchResourceFileBinary,
+  fetchResourceFileText,
+  isResourcePdfPreviewAvailable,
+  kbApi,
+} from "../../api/knowledge-bases";
 import type { KnowledgeResourceInfo } from "../../types/knowledge";
 
 /** 视频扩展名 → MIME 类型映射 */
@@ -86,7 +95,7 @@ type FileCategory = "pdf" | "image" | "markdown" | "text" | "html" | "office" | 
 type OfficeKind = "word" | "powerpoint";
 
 export function getFileCategory(filename: string): FileCategory {
-  const ext = filename.split(".").pop()?.toLowerCase() ?? "";
+  const ext = getFileExtension(filename);
 
   if (ext === "pdf") return "pdf";
 
@@ -134,7 +143,7 @@ export function getFileCategory(filename: string): FileCategory {
 
 /** 确定 Office 文档子类型（仅 Word/PPT） */
 function getOfficeKind(filename: string): OfficeKind {
-  const ext = filename.split(".").pop()?.toLowerCase() ?? "";
+  const ext = getFileExtension(filename);
   if (ext === "docx" || ext === "doc") return "word";
   return "powerpoint";
 }
@@ -157,7 +166,7 @@ interface ResourcePreviewContentProps {
  *
  * 预览策略：
  * - PDF/图片/视频：直接 URL 渲染
- * - Markdown/文本/HTML：fetch 内容后渲染
+ * - Markdown/文本/HTML：经域模块读取内容后渲染
  * - 表格(xlsx/xls/csv)：用 xlsx 库前端解析为 HTML 表格
  * - Office(Word/PPT)：优先服务端 PDF 转换，不可用时 docx 用 mammoth，其余降级为下载
  */
@@ -174,21 +183,14 @@ export function ResourcePreviewContent({ resource, kbId }: ResourcePreviewConten
     loading: fetchLoading,
     error: fetchError,
     run: runFetch,
-  } = useRequest(
-    async () => {
-      const response = await fetch(fileUrl, { credentials: "include" });
-      if (!response.ok) throw new Error(`HTTP ${response.status}`);
-      return response.text();
+  } = useRequest(() => fetchResourceFileText({ kbId, resourceId: resource.id }), {
+    manual: true,
+    onSuccess: setFetchedContent,
+    onError: (err) => {
+      console.error("Failed to fetch preview content", err);
+      toast.error(t("preview.loadError"));
     },
-    {
-      manual: true,
-      onSuccess: setFetchedContent,
-      onError: (err) => {
-        console.error("Failed to fetch preview content", err);
-        toast.error(t("preview.loadError"));
-      },
-    },
-  );
+  });
 
   // —— Office 文档预览：先尝试 PDF 转换，不可用时用 mammoth(docx) 或降级 ——
   const isOffice = category === "office";
@@ -200,16 +202,13 @@ export function ResourcePreviewContent({ resource, kbId }: ResourcePreviewConten
   // 检查 PDF 转换端点是否可用
   const { loading: officeLoading, run: runOfficeCheck } = useRequest(
     async (): Promise<OfficeMode> => {
-      const resp = await fetch(pdfUrl, { credentials: "include" });
-      if (resp.ok && resp.headers.get("content-type")?.includes("pdf")) {
+      if (await isResourcePdfPreviewAvailable({ kbId, resourceId: resource.id })) {
         return "pdf";
       }
       // PDF 不可用，对 Word 文档尝试 mammoth 客户端转换
       if (officeKind === "word") {
         try {
-          const fileResp = await fetch(fileUrl, { credentials: "include" });
-          if (!fileResp.ok) throw new Error(`HTTP ${fileResp.status}`);
-          const arrayBuffer = await fileResp.arrayBuffer();
+          const arrayBuffer = await fetchResourceFileBinary({ kbId, resourceId: resource.id });
           const result = await mammoth.convertToHtml({ arrayBuffer });
           setDocxHtml(result.value);
           return "docxHtml";
@@ -263,7 +262,7 @@ export function ResourcePreviewContent({ resource, kbId }: ResourcePreviewConten
         );
 
       case "video": {
-        const ext = resource.sourceName.split(".").pop()?.toLowerCase() ?? "mp4";
+        const ext = getFileExtension(resource.sourceName) || "mp4";
         return (
           <div className="flex-1 flex items-center justify-center bg-black/90 rounded-md p-4 min-h-0">
             <video controls preload="metadata" style={{ maxWidth: "100%", maxHeight: "100%", borderRadius: 8 }}>
@@ -274,11 +273,11 @@ export function ResourcePreviewContent({ resource, kbId }: ResourcePreviewConten
       }
 
       case "spreadsheet":
-        return <SpreadsheetPreview url={fileUrl} filename={resource.sourceName} />;
+        return <SpreadsheetPreview kbId={kbId} resourceId={resource.id} filename={resource.sourceName} />;
 
       case "image":
         return (
-          <div className="flex-1 flex items-center justify-center bg-[#f8fafc] rounded-md p-4 min-h-0 overflow-auto">
+          <div className="flex-1 flex items-center justify-center bg-slate-50 rounded-md p-4 min-h-0 overflow-auto">
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img
               src={fileUrl}
@@ -290,10 +289,10 @@ export function ResourcePreviewContent({ resource, kbId }: ResourcePreviewConten
 
       case "markdown":
         if (fetchLoading) return <MarkdownSkeleton />;
-        if (fetchError || !fetchedContent) return <ErrorPlaceholder message={t("preview.loadError")} />;
+        if (fetchError || !fetchedContent) return <PreviewPlaceholder message={t("preview.loadError")} />;
         return (
           <div className="flex-1 overflow-auto p-6">
-            <div className="prose prose-sm max-w-none dark:prose-invert prose-headings:text-text-primary prose-p:text-text-primary prose-strong:text-text-primary prose-li:text-text-primary [&_pre]:bg-surface-2 [&_pre]:rounded-lg [&_pre]:p-4 [&_pre]:text-text-primary [&_code]:bg-surface-2 [&_code]:rounded [&_code]:px-1.5 [&_code]:py-0.5 [&_code]:text-text-primary [&_code]:text-xs [&_pre_code]:bg-transparent [&_pre_code]:p-0 [&_pre_code]:text-text-primary [&_table]:w-full [&_th]:border [&_th]:border-border [&_th]:px-3 [&_th]:py-2 [&_th]:text-left [&_th]:bg-surface-2 [&_td]:border [&_td]:border-border [&_td]:px-3 [&_td]:py-2 [&_img]:max-w-full [&_img]:rounded-lg [&_blockquote]:border-l-4 [&_blockquote]:border-primary/30 [&_blockquote]:pl-4 [&_blockquote]:text-text-muted [&_hr]:border-border [&_a]:text-primary [&_a]:underline">
+            <div className="resource-preview-content-markdown prose prose-sm max-w-none dark:prose-invert prose-headings:text-text-primary prose-p:text-text-primary prose-strong:text-text-primary prose-li:text-text-primary">
               <ReactMarkdown remarkPlugins={[remarkGfm]}>{fetchedContent}</ReactMarkdown>
             </div>
           </div>
@@ -301,7 +300,7 @@ export function ResourcePreviewContent({ resource, kbId }: ResourcePreviewConten
 
       case "text":
         if (fetchLoading) return <TextSkeleton />;
-        if (fetchError || !fetchedContent) return <ErrorPlaceholder message={t("preview.loadError")} />;
+        if (fetchError || !fetchedContent) return <PreviewPlaceholder message={t("preview.loadError")} />;
         return (
           <pre className="flex-1 overflow-auto m-0 p-4 bg-surface-2 text-text-primary text-xs font-mono whitespace-pre-wrap break-all rounded-md border border-border">
             {fetchedContent}
@@ -310,7 +309,7 @@ export function ResourcePreviewContent({ resource, kbId }: ResourcePreviewConten
 
       case "html":
         if (fetchLoading) return <TextSkeleton />;
-        if (fetchError || !fetchedContent) return <ErrorPlaceholder message={t("preview.loadError")} />;
+        if (fetchError || !fetchedContent) return <PreviewPlaceholder message={t("preview.loadError")} />;
         return (
           <iframe
             srcDoc={fetchedContent}
@@ -323,12 +322,7 @@ export function ResourcePreviewContent({ resource, kbId }: ResourcePreviewConten
       case "office": {
         // Office 文档：优先级 PDF 转换 > mammoth(docx) > 下载
         if (officeMode === "checking" || officeLoading) {
-          return (
-            <div className="flex-1 flex flex-col items-center justify-center gap-3 text-text-muted">
-              <div className="h-10 w-10 rounded-full border-[3px] border-[#e2e8f0] border-t-[#6366f1] animate-spin shadow-sm" />
-              <p className="text-sm">{t("preview.converting")}</p>
-            </div>
-          );
+          return <Spinner variant="panel" size="lg" label={t("preview.converting")} />;
         }
 
         if (officeMode === "pdf") {
@@ -345,7 +339,7 @@ export function ResourcePreviewContent({ resource, kbId }: ResourcePreviewConten
           return (
             <div className="flex-1 overflow-auto p-6">
               <div
-                className="prose prose-sm max-w-none dark:prose-invert [&_table]:w-full [&_th]:border [&_th]:border-border [&_th]:px-3 [&_th]:py-2 [&_th]:text-left [&_th]:bg-surface-2 [&_td]:border [&_td]:border-border [&_td]:px-3 [&_td]:py-2 [&_img]:max-w-full [&_img]:rounded-lg"
+                className="resource-preview-content-docx prose prose-sm max-w-none dark:prose-invert"
                 // Mammoth 的输出不是可信 HTML（docx 可携带任意标签与属性），与切片预览一致先经 DOMPurify 再注入。
                 // biome-ignore lint/security/noDangerouslySetInnerHtml: 同一行的 DOMPurify.sanitize 已清洗（mammoth 输出不可直接注入）
                 dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(docxHtml) }}
@@ -355,29 +349,11 @@ export function ResourcePreviewContent({ resource, kbId }: ResourcePreviewConten
         }
 
         // fallback：PDF 转换不可用且非 Word 文档（或 mammoth 也失败）
-        return (
-          <div className="flex-1 flex flex-col items-center justify-center gap-3 text-text-muted">
-            <p className="text-sm">{t("preview.unsupported")}</p>
-            <Button variant="outline" size="sm" asChild>
-              <a href={fileUrl} download={resource.sourceName} target="_blank" rel="noreferrer">
-                {t("preview.download")}
-              </a>
-            </Button>
-          </div>
-        );
+        return <UnsupportedPreview fileUrl={fileUrl} filename={resource.sourceName} />;
       }
 
       default:
-        return (
-          <div className="flex-1 flex flex-col items-center justify-center gap-3 text-text-muted">
-            <p className="text-sm">{t("preview.unsupported")}</p>
-            <Button variant="outline" size="sm" asChild>
-              <a href={fileUrl} download={resource.sourceName} target="_blank" rel="noreferrer">
-                {t("preview.download")}
-              </a>
-            </Button>
-          </div>
-        );
+        return <UnsupportedPreview fileUrl={fileUrl} filename={resource.sourceName} />;
     }
   };
 
@@ -421,30 +397,58 @@ function TextSkeleton() {
   );
 }
 
-function ErrorPlaceholder({ message }: { message: string }) {
-  return <div className="flex-1 flex items-center justify-center text-text-muted text-sm">{message}</div>;
+function PreviewPlaceholder({ message, tone = "danger" }: { message: string; tone?: "danger" | "neutral" }) {
+  return (
+    <EmptyState
+      tone={tone}
+      role={tone === "danger" ? "alert" : undefined}
+      className="flex flex-1 flex-col items-center justify-center"
+      title={message}
+    />
+  );
+}
+
+/**
+ * 「该类型暂不支持预览」+ 下载兜底：office 降级与其余未知类型两处逐字相同，收成一份。
+ *
+ * 为什么不并进 `EmptyState` 的 `action`：`action` 只收 `Button` + `onClick`，而这里的下载语义是
+ * `<a download>`（浏览器直接落盘、不发 XHR），用按钮包一个 `window.open` 会换掉浏览器行为。
+ */
+function UnsupportedPreview({ fileUrl, filename }: { fileUrl: string; filename: string }) {
+  const { t } = useTranslation(NS.KNOWLEDGE);
+  return (
+    <div className="flex-1 flex flex-col items-center justify-center gap-3 text-text-muted">
+      <p className="text-sm">{t("preview.unsupported")}</p>
+      <Button variant="outline" size="sm" asChild>
+        <a href={fileUrl} download={filename} target="_blank" rel="noreferrer">
+          {t("preview.download")}
+        </a>
+      </Button>
+    </div>
+  );
 }
 
 // ── 表格预览组件：支持 xlsx/xls/csv，用 xlsx 库前端解析 ──
 
 interface SpreadsheetPreviewProps {
-  url: string;
+  kbId: string;
+  resourceId: string;
   filename: string;
 }
 
 /**
  * 表格文件预览组件。
  *
- * xlsx/xls：fetch 二进制 → xlsx 库解析第一个 sheet → HTML 表格
- * csv：fetch 文本 → CSV 解析 → HTML 表格
+ * xlsx/xls：读取二进制 → xlsx 库解析第一个 sheet → HTML 表格
+ * csv：读取文本 → CSV 解析 → HTML 表格
  * 最多渲染 500 行，超出部分显示截断提示。
  */
-function SpreadsheetPreview({ url, filename }: SpreadsheetPreviewProps) {
+function SpreadsheetPreview({ kbId, resourceId, filename }: SpreadsheetPreviewProps) {
   const { t } = useTranslation(NS.KNOWLEDGE);
   const [rows, setRows] = useState<string[][] | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const ext = filename.split(".").pop()?.toLowerCase() ?? "";
+  const ext = getFileExtension(filename);
 
   useEffect(() => {
     let cancelled = false;
@@ -455,18 +459,14 @@ function SpreadsheetPreview({ url, filename }: SpreadsheetPreviewProps) {
     (async () => {
       try {
         if (ext === "csv") {
-          // CSV：fetch 文本内容后解析
-          const res = await fetch(url, { credentials: "include" });
-          if (!res.ok) throw new Error(`HTTP ${res.status}`);
-          const text = await res.text();
+          // CSV：读取文本内容后解析
+          const text = await fetchResourceFileText({ kbId, resourceId });
           const parsed = parseCSV(text);
           const maxCols = Math.max(...parsed.map((r) => r.length), 0);
           if (!cancelled) setRows(normalizeRows(parsed, maxCols));
         } else {
-          // xlsx / xls / xlsm：fetch 二进制后用 xlsx 库解析
-          const res = await fetch(url, { credentials: "include" });
-          if (!res.ok) throw new Error(`HTTP ${res.status}`);
-          const buf = await res.arrayBuffer();
+          // xlsx / xls / xlsm：读取二进制后用 xlsx 库解析
+          const buf = await fetchResourceFileBinary({ kbId, resourceId });
           const wb = XLSX.read(new Uint8Array(buf), { type: "array" });
           const firstSheet = wb.SheetNames[0];
           if (!firstSheet) {
@@ -490,22 +490,18 @@ function SpreadsheetPreview({ url, filename }: SpreadsheetPreviewProps) {
     return () => {
       cancelled = true;
     };
-  }, [url, ext, t]);
+  }, [kbId, resourceId, ext, t]);
 
   if (loading) {
-    return (
-      <div className="flex-1 flex items-center justify-center">
-        <Loader2 className="h-5 w-5 animate-spin text-text-muted" />
-      </div>
-    );
+    return <Spinner variant="panel" size="sm" />;
   }
 
   if (error) {
-    return <ErrorPlaceholder message={error} />;
+    return <PreviewPlaceholder message={error} />;
   }
 
   if (!rows || rows.length === 0) {
-    return <ErrorPlaceholder message={t("preview.emptyTable")} />;
+    return <PreviewPlaceholder message={t("preview.emptyTable")} tone="neutral" />;
   }
 
   const maxRows = Math.min(rows.length, 500);

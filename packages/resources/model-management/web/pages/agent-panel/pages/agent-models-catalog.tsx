@@ -2,6 +2,8 @@ import {
   AgentMasterDetailHeader,
   AgentMasterDetailWorkspace,
 } from "@fenix/ui-components/components/agent-master-detail-workspace";
+import { EMPTY_STATE_FILL_CLASS, EmptyState } from "@fenix/ui-components/config/EmptyState";
+import { ScopeFilterBar, type ScopeFilterOption } from "@fenix/ui-components/config/ScopeFilterBar";
 import { AppHeader } from "@fenix/ui-components/layout/app-header";
 import { AppPage } from "@fenix/ui-components/layout/app-page";
 import { Button } from "@fenix/ui-components/ui/button";
@@ -84,6 +86,12 @@ export function AgentModelsCatalog(props: ModelsCatalogProps) {
     },
     { all: 0, organization: 0, public: 0 },
   );
+  // 作用域清单与展示文案归本页所有（组件只负责渲染），`satisfies` 同时校验形状。
+  const scopeOptions = SCOPES.map((item) => ({
+    value: item,
+    label: t(`scope.${item}`),
+    count: counts[item],
+  })) satisfies readonly ScopeFilterOption[];
   return (
     <AppPage className="agent-models-page">
       <AppHeader
@@ -96,29 +104,18 @@ export function AgentModelsCatalog(props: ModelsCatalogProps) {
           </Button>
         }
       />
-      <div className="models-search-toolbar">
-        <label className="models-search-field">
-          <Search />
-          <span className="sr-only">{t("searchLabel")}</span>
-          <input
-            value={props.query}
-            onChange={(event) => props.onQueryChange(event.target.value)}
-            placeholder={t("searchPlaceholder")}
-          />
-        </label>
-        <div className="models-scope-filter" role="group" aria-label={t("scope.label")}>
-          {SCOPES.map((item) => (
-            <button
-              key={item}
-              type="button"
-              aria-pressed={props.scope === item}
-              onClick={() => props.onScopeChange(item)}
-            >
-              {t(`scope.${item}`)} <small>{counts[item]}</small>
-            </button>
-          ))}
-        </div>
-      </div>
+      <ScopeFilterBar
+        query={props.query}
+        onQueryChange={props.onQueryChange}
+        placeholder={t("searchPlaceholder")}
+        searchLabel={t("searchLabel")}
+        // 作用域清单与展示文案归本页所有（组件只负责渲染）；`SCOPES` 已带 `ProviderScope` 类型，
+        // 回调处保留字面量类型而不把 `string` 漏进业务状态。
+        scopes={scopeOptions}
+        scope={props.scope}
+        onScopeChange={(value) => props.onScopeChange(value as ProviderScope)}
+        scopeGroupLabel={t("scope.label")}
+      />
       {props.detailFailures.length > 0 && (
         <div className="models-partial-error" role="alert">
           <span>{t("partialLoadError", { count: props.detailFailures.length })}</span>
@@ -145,7 +142,13 @@ export function AgentModelsCatalog(props: ModelsCatalogProps) {
         {props.selectedProvider ? (
           <ProviderDetail {...props} provider={props.selectedProvider} />
         ) : (
-          <CatalogEmpty query={props.query} />
+          // 详情区没有可展示的 Provider：区分「一个都没有」与「筛选后没有匹配」，前者不要误导用户去创建。
+          <EmptyState
+            icon={<FileSearch />}
+            title={props.query ? t("empty.filteredTitle") : t("empty.title")}
+            description={props.query ? t("empty.filteredDescription") : t("empty.description")}
+            className={EMPTY_STATE_FILL_CLASS}
+          />
         )}
       </AgentMasterDetailWorkspace>
     </AppPage>
@@ -212,10 +215,7 @@ function ProviderIndex({
           })}
         </nav>
       ) : (
-        <div className="models-provider-empty">
-          <FileSearch />
-          <span>{t("providerIndex.empty")}</span>
-        </div>
+        <EmptyState icon={<FileSearch />} title={t("providerIndex.empty")} className={EMPTY_STATE_FILL_CLASS} />
       )}
     </aside>
   );
@@ -350,11 +350,12 @@ function ProviderDetail(props: ModelsCatalogProps & { provider: ProviderInfo; he
             ))}
           </div>
         ) : (
-          <div className="models-model-empty">
-            <CircleOff />
-            <strong>{t("modelSubrow.emptyTitle")}</strong>
-            <span>{writable ? t("modelSubrow.emptyMessage") : t("modelSubrow.emptyReadOnly")}</span>
-          </div>
+          <EmptyState
+            icon={<CircleOff />}
+            title={t("modelSubrow.emptyTitle")}
+            description={writable ? t("modelSubrow.emptyMessage") : t("modelSubrow.emptyReadOnly")}
+            className={EMPTY_STATE_FILL_CLASS}
+          />
         )}
       </section>
     </article>
@@ -392,6 +393,8 @@ function ModelRow({
         <span className="models-model-identity">
           <strong>{model.name || model.id}</strong>
           <code>{model.id}</code>
+          {/* 失败原因在列表里直接可见（单行截断 + 徽标 title 给出全文），不是只藏在 tooltip 里。 */}
+          {test?.status === "error" && test.detail && <small className="models-model-test-detail">{test.detail}</small>}
         </span>
       </div>
       <div className="models-model-actions">
@@ -425,17 +428,6 @@ function ModelRow({
           </button>
         )}
       </div>
-    </div>
-  );
-}
-
-function CatalogEmpty({ query }: { query: string }) {
-  const { t } = useTranslation(MODELS_NS);
-  return (
-    <div className="models-catalog-empty">
-      <FileSearch />
-      <strong>{query ? t("empty.filteredTitle") : t("empty.title")}</strong>
-      <span>{query ? t("empty.filteredDescription") : t("empty.description")}</span>
     </div>
   );
 }

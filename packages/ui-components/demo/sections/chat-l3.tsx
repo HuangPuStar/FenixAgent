@@ -27,9 +27,11 @@ export function ChatL3Section() {
   const session = useMockChatSession();
 
   return (
-    <section className="demo-section">
-      <h1 className="demo-section-title">{t("sections.chatL3")}</h1>
-      <p className="demo-hint">{t("sectionHints.chatL3")}</p>
+    <section>
+      <h1 data-slot="demo-section-title" className="mb-6 text-[24px] font-semibold">
+        {t("sections.chatL3")}
+      </h1>
+      <p className="mt-3 text-text-muted text-[12px]">{t("sectionHints.chatL3")}</p>
 
       <ChatBubblesExamples />
       <ChatTimelineExamples />

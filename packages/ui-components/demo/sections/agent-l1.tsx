@@ -42,12 +42,16 @@ export function AgentL1Section() {
   const [selectedAgents, setSelectedAgents] = useState<DemoAgent[]>([]);
 
   return (
-    <section className="demo-section">
-      <h1 className="demo-section-title">{t("sections.agentL1")}</h1>
-      <p className="demo-hint">{t("sectionHints.agentL1")}</p>
+    <section>
+      <h1 data-slot="demo-section-title" className="mb-6 text-[24px] font-semibold">
+        {t("sections.agentL1")}
+      </h1>
+      <p className="mt-3 text-text-muted text-[12px]">{t("sectionHints.agentL1")}</p>
 
-      <div className="demo-example">
-        <h2 className="demo-example-title">AgentCardList</h2>
+      <div className="mb-5 p-5 border border-border rounded-lg bg-surface-1">
+        <h2 data-slot="demo-example-title" className="mb-4 text-text-secondary text-[13px] font-medium">
+          AgentCardList
+        </h2>
         {/* AgentCardList 自身是 flex-1 + min-h-0，需要有确定高度的 flex 容器才会出现列表内滚动。 */}
         <div className="flex h-[420px] flex-col overflow-hidden rounded-lg border border-border">
           <AgentCardList
@@ -81,7 +85,7 @@ export function AgentL1Section() {
             )}
           />
         </div>
-        <p className="demo-hint">
+        <p className="mt-3 text-text-muted text-[12px]">
           选中态由调用方持有（selectable + selectedItems + onSelectionChange）；搜索框按 searchFn 过滤，无匹配时走
           emptyMessage；batchActions 在选中后出现，卡片网格列数由 gridCols 决定。
         </p>

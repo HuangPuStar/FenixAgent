@@ -136,6 +136,7 @@
     "triggered": "任务已手动触发",
     "logsCleared": "日志已清空",
     "saveFailed": "保存失败",
+    "agentListLoadFailed": "加载 Agent 列表失败",
     "triggerResult": "执行{{status}}，耗时 {{duration}}ms"
   },
   "error": {

@@ -1,6 +1,8 @@
 import { AgentMasterDetailWorkspace } from "@fenix/ui-components/components/agent-master-detail-workspace";
 import { ConfirmDialog } from "@fenix/ui-components/config/ConfirmDialog";
+import { EmptyState } from "@fenix/ui-components/config/EmptyState";
 import { FormDialog } from "@fenix/ui-components/config/FormDialog";
+import { StatusBadge } from "@fenix/ui-components/config/StatusBadge";
 import { AppHeader } from "@fenix/ui-components/layout/app-header";
 import { AppPage } from "@fenix/ui-components/layout/app-page";
 import {
@@ -26,24 +28,27 @@ import {
   SelectValue,
 } from "@fenix/ui-components/ui/select";
 import { Skeleton } from "@fenix/ui-components/ui/skeleton";
+import { Spinner } from "@fenix/ui-components/ui/spinner";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@fenix/ui-components/ui/tabs";
 import { Textarea } from "@fenix/ui-components/ui/textarea";
-import { unwrap } from "@fenix/web-runtime/api/request";
+import { ApiError, unwrap } from "@fenix/web-runtime/api/request";
 import { useOrgSession } from "@fenix/web-runtime/contexts/org-session";
 import { NS } from "@fenix/web-runtime/i18n/namespace";
 import { useNavigate, useSearch } from "@tanstack/react-router";
 import { useRequest } from "ahooks";
-import { BookOpen, Braces, Cpu, Download, File, Globe, Layers, Plus, RefreshCw, Scissors } from "lucide-react";
+import { BookOpen, Braces, Cpu, Download, File, Globe, Layers, Plus, Scissors } from "lucide-react";
 import type { ReactNode } from "react";
 import { Fragment, useCallback, useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
 import { kbApi } from "../../../api/knowledge-bases";
 import { ResourcePreviewDialog } from "../../../components/knowledge/ResourcePreviewDialog";
+import { type ResourcePollStop, startResourcePolling } from "../../../lib/poll-resources";
 import { ChunkDetailSheet } from "../../../src/pages/agent-panel/components/ChunkDetailSheet";
 import { EmbeddingModelManager } from "../../../src/pages/agent-panel/components/EmbeddingModelManager";
 import { RetrievalTestPanel } from "../../../src/pages/agent-panel/components/RetrievalTestPanel";
 import type {
+  KnowledgeBaseCreateBody,
   KnowledgeBaseDetail,
   KnowledgeBaseInfo,
   KnowledgeFormOptions,
@@ -56,37 +61,39 @@ import { AgentKnowledgeAccessDenied, isKnowledgeAccessDenied } from "./agent-kno
 import { AgentKnowledgeDirectory } from "./agent-knowledge-directory";
 import { KnowledgeLoadFailure } from "./agent-knowledge-load-failure";
 import { AgentKnowledgeResources } from "./agent-knowledge-resources";
+import { KB_STATUS_TONES, kbStatusLabel } from "./knowledge-status";
+import { FIELD_LABEL_CLASS } from "./knowledge-typography";
+import "./AgentKnowledgeBasesPage.css";
 import "./agent-knowledge.css";
 
-/** 资源状态 → 语义色 badge 样式 */
-function getStatusBadge(status: string) {
-  switch (status) {
-    case "ready":
-      return "bg-emerald-50 text-emerald-700 ring-1 ring-emerald-200";
-    case "processing":
-    case "pending":
-    case "indexing":
-      return "bg-amber-50 text-amber-700 ring-1 ring-amber-200";
-    case "error":
-      return "bg-red-50 text-red-700 ring-1 ring-red-200";
+/**
+ * 重新解析失败的提示文案：按统一请求层归一后的**稳定错误码**取字典键（§9.3）。
+ *
+ * 为什么不能直接上屏 `err.message`：`unwrap()` 抛出的 `ApiError.message` 就是后端错误信封里的原文，
+ * 重新解析接口的 `REPARSE_FAILED` 分支会把 RAGFlow 的异常文本透传进来
+ * （`packages/resources/knowledge/src/server/routes/web/knowledge-bases.ts` 的 reparse 路由），
+ * 404 分支的「资源不存在 / 知识库不存在」也只是服务端内部措辞。原始 message 与堆栈留给调用方的
+ * `console.error`，界面只认码。
+ *
+ * 只映射「用户下一步动作不同」的五个码：不存在要刷新列表、未同步要等同步、远端拒绝与网络异常要重试、
+ * 无权限要找管理员。其余（`SERVER_ERROR` / `VALIDATION_ERROR` / `UNKNOWN` 与后续新增的业务码）一律
+ * 走通用文案 `reparse.failed`——不认识的失败不该被翻译成一句看似精确的承诺。
+ */
+function getReparseErrorMessage(err: unknown, t: (key: string) => string): string {
+  const code = err instanceof ApiError ? err.code : null;
+  switch (code) {
+    case "NOT_FOUND":
+      return t("reparse.failedNotFound");
+    case "NOT_SYNCED":
+      return t("reparse.failedNotSynced");
+    case "REPARSE_FAILED":
+      return t("reparse.failedRemote");
+    case "NETWORK_ERROR":
+      return t("reparse.failedNetwork");
+    case "UNAUTHORIZED":
+      return t("reparse.failedUnauthorized");
     default:
-      return "bg-surface-2 text-text-muted";
-  }
-}
-
-/** 知识库状态 → 圆点装饰色 */
-function getStatusDot(status: string) {
-  switch (status) {
-    case "ready":
-      return "bg-emerald-500";
-    case "processing":
-    case "pending":
-    case "indexing":
-      return "bg-amber-500";
-    case "error":
-      return "bg-red-500";
-    default:
-      return "bg-slate-300";
+      return t("reparse.failed");
   }
 }
 
@@ -173,7 +180,7 @@ export function AgentKnowledgeBasesPage() {
   // 组件卸载时清理轮询
   useEffect(() => {
     return () => {
-      if (pollingRef.current) clearInterval(pollingRef.current);
+      pollingRef.current?.();
     };
   }, []);
   const items: KnowledgeBaseInfo[] = Array.isArray(listData) ? listData : [];
@@ -230,15 +237,7 @@ export function AgentKnowledgeBasesPage() {
 
   // 创建知识库
   const { run: runCreate, loading: createSaving } = useRequest(
-    (payload: {
-      name: string;
-      slug?: string;
-      description?: string;
-      embeddingModel?: string | null;
-      parseMethod?: KnowledgeParseMethod | null;
-      pipelineId?: string | null;
-      chunkMethod?: string | null;
-    }) => unwrap(kbApi.create(payload)),
+    (payload: KnowledgeBaseCreateBody) => unwrap(kbApi.create(payload)),
     {
       manual: true,
       onSuccess: () => {
@@ -312,31 +311,24 @@ export function AgentKnowledgeBasesPage() {
     },
   );
 
+  /** 轮询句柄由 `startResourcePolling` 给出（调用即停止），两段轮询共用同一个 ref */
+  const pollingRef = useRef<ResourcePollStop | null>(null);
+  /** 停止当前轮询并清空句柄；重复调用是安全的 */
+  const stopStatusPoll = () => {
+    pollingRef.current?.();
+    pollingRef.current = null;
+  };
+
   /** 上传/重新解析后轮询刷新资源状态，直到所有文档解析完成 */
-  const pollingRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const startStatusPoll = (kbId: string) => {
-    // 先清理之前的轮询
-    if (pollingRef.current) clearInterval(pollingRef.current);
-    let ticks = 0;
-    pollingRef.current = setInterval(async () => {
-      try {
-        ticks += 1;
-        const resList = await unwrap(kbApi.listResources({ id: kbId }));
-        if (!Array.isArray(resList)) return;
-        setResources(resList);
-        // 所有文档都已不在解析中（DONE/FAIL/空），停止轮询
-        const hasRunning = resList.some((r) => r.runStatus === "RUNNING" || r.runStatus === "UNSTART");
-        if (!hasRunning || ticks > 150) {
-          // 最多轮询 5 分钟 (150 * 2s)
-          clearInterval(pollingRef.current!);
-          pollingRef.current = null;
-          runLoadDetail(kbId);
-        }
-      } catch {
-        if (pollingRef.current) clearInterval(pollingRef.current);
-        pollingRef.current = null;
-      }
-    }, 2000);
+    stopStatusPoll();
+    pollingRef.current = startResourcePolling({
+      fetchResources: () => unwrap(kbApi.listResources({ id: kbId })),
+      onResources: (resList) => setResources(resList),
+      // 所有文档都已不在解析中（DONE/FAIL/空），停止轮询
+      isSettled: (resList) => !resList.some((r) => r.runStatus === "RUNNING" || r.runStatus === "UNSTART"),
+      onSettled: () => runLoadDetail(kbId),
+    });
   };
 
   // 删除资源
@@ -357,30 +349,22 @@ export function AgentKnowledgeBasesPage() {
     },
   );
 
-  // 重新解析轮询：每隔 2s 刷新资源列表，直到 runStatus 为 DONE/FAIL（最多 5 分钟）
+  // 重新解析轮询：停止条件与「上传后轮询」共用同一份实现，差异只在判据（本次资源是否落定）
   const reparseAndPoll = (kbId: string, resourceId: string) => {
-    if (pollingRef.current) clearInterval(pollingRef.current);
-    let ticks = 0;
-    pollingRef.current = setInterval(async () => {
-      try {
-        ticks += 1;
-        const resList = await unwrap(kbApi.listResources({ id: kbId }));
-        if (!Array.isArray(resList)) return;
-        setResources(resList);
+    stopStatusPoll();
+    pollingRef.current = startResourcePolling({
+      fetchResources: () => unwrap(kbApi.listResources({ id: kbId })),
+      onResources: (resList) => setResources(resList),
+      isSettled: (resList) => {
         const target = resList.find((r) => r.id === resourceId);
-        if (!target || target.runStatus === "DONE" || target.runStatus === "FAIL" || ticks > 150) {
-          clearInterval(pollingRef.current!);
-          pollingRef.current = null;
-          setReparsingResourceId(null);
-          if (target) runLoadDetail(kbId);
-          return;
-        }
-      } catch {
-        clearInterval(pollingRef.current!);
-        pollingRef.current = null;
+        return !target || target.runStatus === "DONE" || target.runStatus === "FAIL";
+      },
+      onSettled: (resList) => {
         setReparsingResourceId(null);
-      }
-    }, 2000);
+        if (resList.some((r) => r.id === resourceId)) runLoadDetail(kbId);
+      },
+      onError: () => setReparsingResourceId(null),
+    });
   };
 
   // 进入详情
@@ -455,15 +439,15 @@ export function AgentKnowledgeBasesPage() {
             <Skeleton className="h-7 w-28 rounded-lg" />
             <Skeleton className="mt-2 h-3.5 w-56 rounded-md" />
           </div>
-          <Skeleton className="h-9 w-[260px] rounded-lg" />
+          <Skeleton className="h-9 w-65 rounded-lg" />
         </div>
         <div className="grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
           {Array.from({ length: 8 }, (_, i) => `kb-skeleton-${i}`).map((placeholderKey) => (
             <div
               key={placeholderKey}
-              className="rounded-2xl bg-white shadow-[0_1px_3px_rgba(0,0,0,0.04)] ring-1 ring-inset ring-[#e8edf4]/80 overflow-hidden"
+              className="knowledge-base-card-skeleton rounded-2xl bg-white ring-1 ring-inset ring-slate-200/80 overflow-hidden"
             >
-              <div className="h-1 w-full bg-[#e2e8f0]" />
+              <div className="h-1 w-full bg-slate-200" />
               <div className="flex items-center gap-4 p-5 pt-4">
                 <Skeleton className="h-14 w-14 rounded-2xl" />
                 <div className="flex-1 space-y-2.5">
@@ -555,12 +539,11 @@ export function AgentKnowledgeBasesPage() {
         }
       >
         {!kbId ? (
-          <div className="grid min-h-full place-items-center p-8 text-center">
-            <div>
-              <BookOpen className="mx-auto h-10 w-10 text-[#94a3b8]" />
-              <p className="mt-4 text-sm font-medium text-[#475569]">{t("selectHint")}</p>
-            </div>
-          </div>
+          <EmptyState
+            className="grid min-h-full place-content-center p-8"
+            icon={<BookOpen />}
+            title={t("selectHint")}
+          />
         ) : detailLoading ? (
           <div className="space-y-4 p-7" aria-busy="true">
             <Skeleton className="h-24 w-full" />
@@ -568,29 +551,19 @@ export function AgentKnowledgeBasesPage() {
             <Skeleton className="h-72 w-full" />
           </div>
         ) : detailError ? (
-          <div className="grid min-h-full place-items-center p-8 text-center" role="alert">
-            <div>
-              <p className="text-sm font-medium text-red-600">{detailError}</p>
-              <Button className="mt-4" variant="outline" onClick={() => kbId && runLoadDetail(kbId)}>
-                <RefreshCw className="h-4 w-4" />
-                {t("actions.retry")}
-              </Button>
-            </div>
-          </div>
+          <KnowledgeLoadFailure
+            error={detailError}
+            title={t("loadDetailError")}
+            onRetry={() => kbId && runLoadDetail(kbId)}
+            className="grid min-h-full place-content-center p-8"
+          />
         ) : null}
 
         {/* ===== 详情视图 ===== */}
         {selectedDetail && (
           <div className="flex flex-col flex-1 min-h-0">
             {/* 加载中 */}
-            {detailLoading && (
-              <div className="flex items-center justify-center h-64">
-                <div className="flex flex-col items-center gap-3">
-                  <div className="h-10 w-10 rounded-full border-[3px] border-[#e2e8f0] border-t-[#1677ff] animate-spin shadow-sm" />
-                  <p className="text-[13px] text-[#94a3b8]">{t("detail.loading")}</p>
-                </div>
-              </div>
-            )}
+            {detailLoading && <Spinner size="lg" label={t("detail.loading")} className="flex h-64" />}
 
             {!detailLoading && (
               <div className="flex-1 min-h-0 overflow-y-auto pr-1">
@@ -599,21 +572,25 @@ export function AgentKnowledgeBasesPage() {
                     <div className="flex flex-wrap items-start justify-between gap-4">
                       <div className="min-w-0">
                         <div className="flex items-center gap-2">
-                          <span className={`size-2 rounded-full ${getStatusDot(selectedDetail.status)}`} />
-                          <h2 className="truncate text-xl font-semibold text-[#17233a]">{selectedDetail.name}</h2>
-                          <span
-                            className={`rounded-full px-2 py-0.5 text-[11px] font-medium ${getStatusBadge(selectedDetail.status)}`}
-                          >
-                            {t(`status.${selectedDetail.status}`, { defaultValue: selectedDetail.status })}
-                          </span>
+                          <h2 className="truncate text-xl font-semibold text-slate-800">{selectedDetail.name}</h2>
+                          {/* 圆点与文案此前拆在两处：一个只给圆点上色的 `getStatusDot`，一个手写
+                              `bg-emerald-50 ring-emerald-200` 的 `getStatusBadge`（第三份状态色表）。
+                              色表收敛到 `knowledge-status.ts` 后由 StatusBadge 一并承担，圆点回到
+                              它真正属于的位置——状态的胶囊内部。 */}
+                          <StatusBadge
+                            status={selectedDetail.status}
+                            label={kbStatusLabel(t, selectedDetail.status)}
+                            toneMap={KB_STATUS_TONES}
+                            indicator="dot"
+                          />
                         </div>
-                        <p className="mt-1 font-mono text-[11px] text-[#94a3b8]">{selectedDetail.slug}</p>
+                        <p className="mt-1 font-mono text-3xs text-slate-400">{selectedDetail.slug}</p>
                         {selectedDetail.description && (
-                          <p className="mt-2 max-w-3xl text-[13px] leading-5 text-[#64748b]">
+                          <p className="mt-2 max-w-3xl text-xs leading-5 text-slate-500">
                             {selectedDetail.description}
                           </p>
                         )}
-                        <div className="mt-3 flex flex-wrap items-center gap-3 text-[12px] text-[#64748b]">
+                        <div className="mt-3 flex flex-wrap items-center gap-3 text-xs text-slate-500">
                           <span className="inline-flex items-center gap-1.5">
                             <File className="size-3.5" />
                             {t("card.resourcesUnit", { count: selectedDetail.resourcesCount })}
@@ -625,7 +602,7 @@ export function AgentKnowledgeBasesPage() {
                             </span>
                           )}
                           {selectedDetail.remoteId && (
-                            <span className="inline-flex min-w-0 items-center gap-1.5 text-[#94a3b8]">
+                            <span className="inline-flex min-w-0 items-center gap-1.5 text-slate-400">
                               <Globe className="size-3.5 shrink-0" />
                               <span className="truncate">Remote ID: {selectedDetail.remoteId}</span>
                             </span>
@@ -653,19 +630,19 @@ export function AgentKnowledgeBasesPage() {
                     </div>
                     <div className="knowledge-detail-summary">
                       <ConfigItem
-                        icon={<Cpu className="size-4 text-[#4f7edb]" />}
+                        icon={<Cpu className="size-4 text-blue-500" />}
                         label={t("detailConfig.embeddingModel")}
                       >
                         {selectedDetail.embeddingModel ?? t("detailConfig.notSet")}
                       </ConfigItem>
                       <ConfigItem
-                        icon={<Layers className="size-4 text-[#6f72d9]" />}
+                        icon={<Layers className="size-4 text-indigo-500" />}
                         label={t("detailConfig.parseMethod")}
                       >
                         {parseMethodLabel(selectedDetail.parseMethod)}
                       </ConfigItem>
                       <ConfigItem
-                        icon={<Scissors className="size-4 text-[#23a67a]" />}
+                        icon={<Scissors className="size-4 text-teal-600" />}
                         label={t("detailConfig.chunkMethod")}
                       >
                         {chunkMethodLabel(selectedDetail.chunkMethod)}
@@ -734,7 +711,7 @@ export function AgentKnowledgeBasesPage() {
 
                     <TabsContent value="graph" forceMount className="data-[state=inactive]:hidden">
                       {detailTab === "graph" && selectedDetail && (
-                        <div className="rounded-2xl bg-white p-6 shadow-sm ring-1 ring-inset ring-[#e8edf4]/80">
+                        <div className="rounded-2xl bg-white p-6 shadow-sm ring-1 ring-inset ring-slate-200/80">
                           <KnowledgeGraphPanel knowledgeBaseId={selectedDetail.id} canManage={canManageDetail} />
                         </div>
                       )}
@@ -834,7 +811,7 @@ export function AgentKnowledgeBasesPage() {
               value={formDescription}
               onChange={(e) => setFormDescription(e.target.value)}
               placeholder={t("form.descriptionPlaceholder")}
-              className="min-h-[72px] resize-none"
+              className="min-h-18 resize-none"
             />
           </FieldGroup>
 
@@ -848,7 +825,7 @@ export function AgentKnowledgeBasesPage() {
               />
             ) : (
               <>
-                <p className="text-[12px] text-[#94a3b8]">{t("form.configLockedAfterCreate")}</p>
+                <p className="text-xs text-slate-400">{t("form.configLockedAfterCreate")}</p>
 
                 {/* 嵌入模型 */}
                 <FieldGroup label={t("form.embeddingModel")} hint={t("form.embeddingModelHint")} required>
@@ -860,7 +837,7 @@ export function AgentKnowledgeBasesPage() {
                     <SelectTrigger className="h-10 w-full">
                       <SelectValue placeholder={t("form.embeddingModelPlaceholder")} />
                     </SelectTrigger>
-                    <SelectContent className="max-h-[320px]">
+                    <SelectContent className="max-h-80">
                       {(() => {
                         const models = options?.embeddingModels ?? [];
                         const grouped = new Map<string, Map<string, typeof models>>();
@@ -874,27 +851,25 @@ export function AgentKnowledgeBasesPage() {
                         }
                         const providers = Array.from(grouped.entries());
                         return providers.length === 0 ? (
-                          <div className="px-2 py-4 text-center text-[13px] text-muted-foreground">
-                            {t("form.noEmbeddingModels")}
-                          </div>
+                          <EmptyState className="px-2 py-4" title={t("form.noEmbeddingModels")} />
                         ) : (
                           providers.map(([provider, instMap], providerIdx) => (
                             <SelectGroup key={provider}>
                               <SelectLabel
                                 className={
-                                  "px-2 text-[11px] font-semibold uppercase tracking-wider text-[#64748b]" +
-                                  (providerIdx > 0 ? " mt-1 border-t border-[#eef2f8] pt-2.5" : "")
+                                  "px-2 text-3xs font-semibold uppercase tracking-wider text-slate-500" +
+                                  (providerIdx > 0 ? " mt-1 border-t border-slate-100 pt-2.5" : "")
                                 }
                               >
                                 {provider}
                               </SelectLabel>
                               {Array.from(instMap.entries()).map(([instance, items]) => (
                                 <Fragment key={instance}>
-                                  <SelectLabel className="pl-5 text-[11px] font-medium text-[#94a3b8]">
+                                  <SelectLabel className="pl-5 text-3xs font-medium text-slate-400">
                                     {instance}
                                   </SelectLabel>
                                   {items.map((m) => (
-                                    <SelectItem key={m.name} value={m.name} className="pl-8 text-[13px]">
+                                    <SelectItem key={m.name} value={m.name} className="pl-8 text-xs">
                                       {m.name.split("@")[0] || m.name}
                                     </SelectItem>
                                   ))}
@@ -911,25 +886,25 @@ export function AgentKnowledgeBasesPage() {
                 {/* 解析方法 */}
                 <FieldGroup label={t("form.parseMethod")} hint={t("form.parseMethodHint")}>
                   <div className="flex gap-6">
-                    <label className="inline-flex cursor-pointer items-center gap-2 rounded-md text-[13px] text-foreground select-none">
+                    <label className="inline-flex cursor-pointer items-center gap-2 rounded-md text-xs text-foreground select-none">
                       <input
                         type="radio"
                         name="parseMethod"
                         value="builtin"
                         checked={formParseMethod === "builtin"}
                         onChange={() => setFormParseMethod("builtin")}
-                        className="h-4 w-4 accent-[#1677ff]"
+                        className="h-4 w-4 accent-blue-500"
                       />
                       {t("form.parseMethodBuiltin")}
                     </label>
-                    <label className="inline-flex cursor-pointer items-center gap-2 rounded-md text-[13px] text-foreground select-none">
+                    <label className="inline-flex cursor-pointer items-center gap-2 rounded-md text-xs text-foreground select-none">
                       <input
                         type="radio"
                         name="parseMethod"
                         value="pipeline"
                         checked={formParseMethod === "pipeline"}
                         onChange={() => setFormParseMethod("pipeline")}
-                        className="h-4 w-4 accent-[#1677ff]"
+                        className="h-4 w-4 accent-blue-500"
                       />
                       {t("form.parseMethodPipeline")}
                     </label>
@@ -958,9 +933,12 @@ export function AgentKnowledgeBasesPage() {
                 {formParseMethod === "pipeline" && (
                   <FieldGroup label={t("form.pipeline")} hint={t("form.pipelineHint")}>
                     {(options?.pipelines?.length ?? 0) === 0 ? (
-                      <div className="rounded-xl border border-dashed border-[#cbd5e1] bg-[#f8fafc] px-5 py-5 text-center shadow-sm">
-                        <p className="text-[13px] font-medium text-[#64748b]">{t("form.noPipelines")}</p>
-                        <p className="mt-1 text-[12px] text-[#94a3b8]">{t("form.noPipelinesHint")}</p>
+                      <div className="rounded-xl border border-dashed border-slate-300 bg-slate-50 px-5 py-5 shadow-sm">
+                        <EmptyState
+                          className="py-0"
+                          title={t("form.noPipelines")}
+                          description={t("form.noPipelinesHint")}
+                        />
                       </div>
                     ) : (
                       <Select value={formPipeline} onValueChange={setFormPipeline}>
@@ -1039,7 +1017,7 @@ export function AgentKnowledgeBasesPage() {
               checked={reparseDeleteOld}
               onCheckedChange={(v) => setReparseDeleteOld(!!v)}
             />
-            <label htmlFor="reparse-delete" className="text-[13px] cursor-pointer">
+            <label htmlFor="reparse-delete" className="text-xs cursor-pointer">
               {t("reparse.deleteCheckbox")}
             </label>
           </div>
@@ -1050,15 +1028,20 @@ export function AgentKnowledgeBasesPage() {
                 if (!reparseTarget || !kbId) return;
                 setReparseConfirmOpen(false);
                 setReparsingResourceId(reparseTarget.id);
-                kbApi
-                  .reparseResource({ kbId: kbId, resourceId: reparseTarget.id }, { delete: reparseDeleteOld })
+                // 必须解包：`request()` 对 4xx/5xx 返回 `{ success: false }` 而不 throw，直接 then 会把失败
+                // 当成功——既弹「已触发」成功提示，又启动一轮注定无结果的状态轮询。
+                unwrap(
+                  kbApi.reparseResource({ kbId: kbId, resourceId: reparseTarget.id }, { delete: reparseDeleteOld }),
+                )
                   .then(() => {
                     toast.success(t("reparse.started"));
                     reparseAndPoll(kbId, reparseTarget.id);
                     setReparseDeleteOld(false);
                   })
                   .catch((err) => {
-                    toast.error(err instanceof Error ? err.message : t("reparse.failed"));
+                    // 服务端原文（含 RAGFlow 异常）只进 console，界面按错误码取文案（§9.3）。
+                    console.error("Reparse failed", err);
+                    toast.error(getReparseErrorMessage(err, t));
                     setReparsingResourceId(null);
                     setReparseDeleteOld(false);
                   });
@@ -1095,39 +1078,31 @@ export function AgentKnowledgeBasesPage() {
       <Dialog open={importDialogOpen} onOpenChange={setImportDialogOpen}>
         <DialogContent className="sm:max-w-lg">
           <DialogHeader>
-            <DialogTitle>从 RAGFlow 导入知识库</DialogTitle>
-            <DialogDescription>选择下方未关联的知识库导入到当前平台空间</DialogDescription>
+            <DialogTitle>{t("importDialog.title")}</DialogTitle>
+            <DialogDescription>{t("importDialog.description")}</DialogDescription>
           </DialogHeader>
-          <div className="max-h-[400px] overflow-y-auto -mx-6 px-6">
+          <div className="max-h-100 overflow-y-auto -mx-6 px-6">
             {importLoading ? (
-              <div className="flex items-center justify-center py-16">
-                <div className="flex flex-col items-center gap-3">
-                  <div className="h-8 w-8 rounded-full border-[3px] border-[#e2e8f0] border-t-[#6366f1] animate-spin" />
-                  <p className="text-[13px] text-[#94a3b8]">正在获取 RAGFlow 知识库列表...</p>
-                </div>
-              </div>
+              <Spinner label={t("importDialog.loading")} className="flex py-16" />
             ) : unassociatedList.length === 0 ? (
-              <div className="flex flex-col items-center justify-center py-16 gap-4">
-                <div className="flex h-16 w-16 items-center justify-center rounded-2xl bg-gradient-to-br from-[#f1f5f9] to-[#e2e8f0] shadow-inner">
-                  <BookOpen className="h-7 w-7 text-[#94a3b8]" />
-                </div>
-                <p className="text-[14px] font-medium text-[#64748b]">没有可导入的知识库</p>
-                <p className="text-[12px] text-[#94a3b8] max-w-[300px] text-center">
-                  RAGFlow 上暂无未关联的知识库，或所有知识库已在平台中关联
-                </p>
-              </div>
+              <EmptyState
+                className="py-16"
+                icon={<BookOpen />}
+                title={t("importDialog.emptyTitle")}
+                description={t("importDialog.emptyDescription")}
+              />
             ) : (
               <div className="space-y-2 py-2">
                 {unassociatedList.map((ds) => (
                   <div
                     key={ds.id}
-                    className="flex items-center justify-between rounded-xl border border-[#e2e8f0] bg-white px-4 py-3 transition-colors hover:border-[#6366f1]/30 hover:bg-[#f8f9ff]"
+                    className="flex items-center justify-between rounded-xl border border-slate-200 bg-white px-4 py-3 transition-colors hover:border-indigo-500/30 hover:bg-slate-50"
                   >
                     <div className="flex items-center gap-3 flex-1 min-w-0">
-                      <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-indigo-50 to-violet-50 ring-1 ring-inset ring-[#6366f1]/10">
-                        <BookOpen className="h-4 w-4 text-[#6366f1]" />
+                      <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-indigo-50 to-violet-50 ring-1 ring-inset ring-indigo-500/10">
+                        <BookOpen className="h-4 w-4 text-indigo-500" />
                       </div>
-                      <span className="text-[14px] font-medium text-[#0f172a] break-all">{ds.name}</span>
+                      <span className="text-sm font-medium text-slate-900 break-all">{ds.name}</span>
                     </div>
                     <Button
                       size="sm"
@@ -1137,7 +1112,7 @@ export function AgentKnowledgeBasesPage() {
                         setRenameValue(ds.name);
                         setRenameDialogOpen(true);
                       }}
-                      className="h-8 gap-1.5 text-[12px] rounded-lg shrink-0 ml-3"
+                      className="h-8 gap-1.5 text-xs rounded-lg shrink-0 ml-3"
                     >
                       <Download className="h-3.5 w-3.5" />
                       导入
@@ -1154,12 +1129,12 @@ export function AgentKnowledgeBasesPage() {
       <Dialog open={renameDialogOpen} onOpenChange={setRenameDialogOpen}>
         <DialogContent className="sm:max-w-sm">
           <DialogHeader>
-            <DialogTitle>导入知识库</DialogTitle>
-            <DialogDescription>为知识库设置一个名称，方便在平台中识别</DialogDescription>
+            <DialogTitle>{t("importDialog.renameTitle")}</DialogTitle>
+            <DialogDescription>{t("importDialog.renameDescription")}</DialogDescription>
           </DialogHeader>
           <div className="space-y-4">
             <div className="space-y-2">
-              <label className="text-[13px] font-medium text-[#475569]">知识库名称</label>
+              <label className="text-xs font-medium text-slate-600">{t("importDialog.nameLabel")}</label>
               <Input
                 value={renameValue}
                 onChange={(e) => setRenameValue(e.target.value)}
@@ -1168,8 +1143,8 @@ export function AgentKnowledgeBasesPage() {
                     handleImport(renameTarget!.id, renameValue.trim());
                   }
                 }}
-                placeholder="输入知识库名称"
-                className="h-10 text-[14px]"
+                placeholder={t("importDialog.namePlaceholder")}
+                className="h-10 text-sm"
                 autoFocus
                 onFocus={(e) => e.target.select()}
               />
@@ -1181,7 +1156,7 @@ export function AgentKnowledgeBasesPage() {
                   setRenameDialogOpen(false);
                   setRenameTarget(null);
                 }}
-                className="h-9 text-[13px] rounded-lg"
+                className="h-9 text-xs rounded-lg"
               >
                 取消
               </Button>
@@ -1192,11 +1167,12 @@ export function AgentKnowledgeBasesPage() {
                     handleImport(renameTarget.id, renameValue.trim());
                   }
                 }}
-                className="h-9 text-[13px] rounded-lg"
+                className="h-9 text-xs rounded-lg"
               >
                 {importingRemoteId === renameTarget?.id ? (
                   <>
-                    <div className="h-3.5 w-3.5 rounded-full border-2 border-white border-t-transparent animate-spin" />
+                    {/* text-current：跟随按钮前景色，环在填充底上才看得见 */}
+                    <Spinner size="xs" className="text-current" />
                     导入中
                   </>
                 ) : (
@@ -1214,11 +1190,11 @@ export function AgentKnowledgeBasesPage() {
 /** 详情头部配置项：图标 + 标签 + 值 */
 function ConfigItem({ icon, label, children }: { icon: ReactNode; label: string; children: ReactNode }) {
   return (
-    <div className="flex min-w-0 items-center gap-3 rounded-lg bg-[#f7f9fc] px-3 py-2.5">
-      <div className="grid size-8 shrink-0 place-items-center rounded-md border border-[#e2e8f0] bg-white">{icon}</div>
+    <div className="flex min-w-0 items-center gap-3 rounded-lg bg-slate-50 px-3 py-2.5">
+      <div className="grid size-8 shrink-0 place-items-center rounded-md border border-slate-200 bg-white">{icon}</div>
       <div className="min-w-0">
-        <div className="text-[10px] font-medium uppercase tracking-[0.06em] text-[#94a3b8]">{label}</div>
-        <div className="mt-0.5 truncate text-[12px] font-medium text-[#334155]" title={String(children)}>
+        <div className="text-3xs font-medium uppercase tracking-wider text-slate-400">{label}</div>
+        <div className="mt-0.5 truncate text-xs font-medium text-gray-700" title={String(children)}>
           {children}
         </div>
       </div>
@@ -1245,11 +1221,11 @@ function FieldGroup({
   return (
     <div>
       <div className="mb-1.5 flex items-center gap-1.5">
-        {icon && <span className="shrink-0 text-[#1677ff]">{icon}</span>}
-        <span className="text-[13px] font-semibold text-[#0f172a]">{label}</span>
-        {required && <span className="text-[13px] text-red-500">*</span>}
+        {icon && <span className="shrink-0 text-blue-500">{icon}</span>}
+        <span className={FIELD_LABEL_CLASS}>{label}</span>
+        {required && <span className="text-xs text-red-500">*</span>}
       </div>
-      {hint && <p className="mb-2 text-[12px] leading-relaxed text-[#94a3b8]">{hint}</p>}
+      {hint && <p className="mb-2 text-xs leading-relaxed text-slate-400">{hint}</p>}
       {children}
     </div>
   );

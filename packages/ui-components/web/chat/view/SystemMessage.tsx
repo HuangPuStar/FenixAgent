@@ -13,7 +13,7 @@ interface SystemMessageProps {
 /**
  * 系统消息默认展示弱化胶囊，双击后可检查完整原始内容。
  *
- * 复制自 `packages/agent-runtime/web/components/chat/SystemMessage.tsx`。
+ * 复制自 `packages/agent-runtime/web/components/chat/SystemMessage.tsx`（旧路径，已于 2026-09-21 由 f2741a82d 删除）。
  * 纯化改动点：
  * - `@/components/ui/dialog` → 包内 `../../ui/dialog`，`@/src/lib/utils` 的 `cn` → `../../lib/cn`。
  * - i18n 命名空间从宿主 `NS.COMPONENTS` 改为包内单一命名空间，键加 `chat.components.` 前缀。
@@ -29,7 +29,8 @@ export const SystemMessage = memo(function SystemMessage({ rawText, className }:
       <div className={cn("flex justify-start", className)}>
         <button
           type="button"
-          className="chat-system-reminder"
+          className="inline-flex min-h-5.5 cursor-pointer items-center rounded-full border border-slate-200 bg-white px-2.5 py-0.5 text-slate-500 tracking-wider [font:700_10px/1.4_ui-monospace,monospace] hover:border-slate-300 hover:text-slate-600 focus-visible:border-slate-300 focus-visible:text-slate-600"
+          data-slot="chat-system-reminder"
           onDoubleClick={() => setDetailsOpen(true)}
           aria-expanded={detailsOpen}
           aria-haspopup="dialog"

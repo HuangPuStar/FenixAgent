@@ -54,6 +54,13 @@ const STEPS = [
     filter: (out: string) => (out.includes("✓ architecture-check") ? null : out),
   },
   {
+    // Web 样式禁止行为（FCP-WEB-01/02/03）：台账登记存量，只阻断新增；规则与反例见
+    // docs/developer/guide/forbidden-code-patterns.md。
+    name: "web-style",
+    cmd: "bun run check:web-style",
+    filter: (out: string) => (out.includes("✓ web-style") ? null : out),
+  },
+  {
     name: "tsc (server)",
     cmd: "tsc --noEmit",
     filter: (out: string) => {
@@ -106,7 +113,7 @@ const STEPS = [
   },
   {
     name: "package-tests",
-    cmd: "bun test packages/ 2>&1",
+    cmd: "bun test packages/ --path-ignore-patterns 'tmp/**' 2>&1",
     filter: filterTestSummary,
   },
   {

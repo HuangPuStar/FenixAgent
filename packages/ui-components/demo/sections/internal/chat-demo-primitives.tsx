@@ -44,8 +44,10 @@ export function ChatPrimitivesExamples() {
 
   return (
     <>
-      <div className="demo-example">
-        <h2 className="demo-example-title">PromptInput</h2>
+      <div className="mb-5 p-5 border border-border rounded-lg bg-surface-1">
+        <h2 data-slot="demo-example-title" className="mb-4 text-text-secondary text-[13px] font-medium">
+          PromptInput
+        </h2>
         <PromptInput
           multiple
           onSubmit={(message) => {
@@ -62,15 +64,17 @@ export function ChatPrimitivesExamples() {
             </PromptInputTools>
           </PromptInputFooter>
         </PromptInput>
-        <p className="demo-hint">
+        <p className="mt-3 text-text-muted text-[12px]">
           {submittedText === null
             ? "Type a message and press Enter — the payload is logged to the console."
             : `Last submitted: ${submittedText}`}
         </p>
       </div>
 
-      <div className="demo-example">
-        <h2 className="demo-example-title">Reasoning</h2>
+      <div className="mb-5 p-5 border border-border rounded-lg bg-surface-1">
+        <h2 data-slot="demo-example-title" className="mb-4 text-text-secondary text-[13px] font-medium">
+          Reasoning
+        </h2>
         <Reasoning defaultOpen>
           <ReasoningTrigger />
           <ReasoningContent>
@@ -81,8 +85,10 @@ export function ChatPrimitivesExamples() {
         </Reasoning>
       </div>
 
-      <div className="demo-example">
-        <h2 className="demo-example-title">Tool / PermissionRequest</h2>
+      <div className="mb-5 p-5 border border-border rounded-lg bg-surface-1">
+        <h2 data-slot="demo-example-title" className="mb-4 text-text-secondary text-[13px] font-medium">
+          Tool / PermissionRequest
+        </h2>
         <Tool defaultOpen>
           <ToolHeader type="tool-weather" state="output-available" title="weather" />
           <ToolContent>
@@ -106,7 +112,9 @@ export function ChatPrimitivesExamples() {
             />
           </ToolContent>
         </Tool>
-        {permissionReply === null ? null : <p className="demo-hint">Responded with {permissionReply}</p>}
+        {permissionReply === null ? null : (
+          <p className="mt-3 text-text-muted text-[12px]">Responded with {permissionReply}</p>
+        )}
       </div>
     </>
   );

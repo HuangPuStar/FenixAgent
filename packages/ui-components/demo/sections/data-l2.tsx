@@ -61,8 +61,9 @@ export function DataL2Section() {
   const { t } = useTranslation(DEMO_NS);
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   /**
-   * 两个 EmptyState 示例的 action 都是重试入口：源示例用它把同一份数据切回 loading 态，
-   * 而那个三态表格演示属于 P3，这里没有可取数的数据源，因此回调只记录最后一次触发，保证 action 可交互。
+   * 两个 EmptyState 示例只差一个 tone（neutral / danger），action 都是重试入口：
+   * 源示例用它把同一份数据切回 loading 态，而那个三态表格演示属于 P3，这里没有可取数的数据源，
+   * 因此回调只记录最后一次触发，保证 action 可交互。
    */
   const [lastRetry, setLastRetry] = useState<string | null>(null);
 
@@ -75,12 +76,16 @@ export function DataL2Section() {
   const handleErrorRetry = () => setLastRetry("Retry from error state");
 
   return (
-    <section className="demo-section">
-      <h1 className="demo-section-title">{t("sections.dataL2")}</h1>
-      <p className="demo-hint">{t("sectionHints.dataL2")}</p>
+    <section>
+      <h1 data-slot="demo-section-title" className="mb-6 text-[24px] font-semibold">
+        {t("sections.dataL2")}
+      </h1>
+      <p className="mt-3 text-text-muted text-[12px]">{t("sectionHints.dataL2")}</p>
 
-      <div className="demo-example">
-        <h2 className="demo-example-title">Table + Checkbox + BatchActionBar</h2>
+      <div className="mb-5 p-5 border border-border rounded-lg bg-surface-1">
+        <h2 data-slot="demo-example-title" className="mb-4 text-text-secondary text-[13px] font-medium">
+          Table + Checkbox + BatchActionBar
+        </h2>
         <Table>
           <TableCaption>
             勾选任意行后 BatchActionBar 出现（组件自身固定在视口底部居中）；示例里点 action 等同于操作完成并清空选择。
@@ -127,21 +132,25 @@ export function DataL2Section() {
         ) : null}
       </div>
 
-      <div className="demo-example">
-        <h2 className="demo-example-title">StatusBadge</h2>
-        <div className="demo-row">
+      <div className="mb-5 p-5 border border-border rounded-lg bg-surface-1">
+        <h2 data-slot="demo-example-title" className="mb-4 text-text-secondary text-[13px] font-medium">
+          StatusBadge
+        </h2>
+        <div className="flex flex-wrap items-center gap-3">
           {STATUS_SAMPLES.map((status) => (
             <StatusBadge key={status} status={status} />
           ))}
         </div>
-        <p className="demo-hint">
+        <p className="mt-3 text-text-muted text-[12px]">
           文案按 statusBadge.&lt;status&gt; 查表，未命中的状态回退为状态原文（如 builtIn 与包内 builtin 键大小写不同）。
         </p>
       </div>
 
-      <div className="demo-example">
-        <h2 className="demo-example-title">FileTypeIcon</h2>
-        <div className="demo-row">
+      <div className="mb-5 p-5 border border-border rounded-lg bg-surface-1">
+        <h2 data-slot="demo-example-title" className="mb-4 text-text-secondary text-[13px] font-medium">
+          FileTypeIcon
+        </h2>
+        <div className="flex flex-wrap items-center gap-3">
           {FILE_TYPE_SAMPLES.map((filename) => (
             <span key={filename} className="text-muted-foreground flex items-center gap-2 text-xs">
               <FileTypeIcon filename={filename} />
@@ -151,27 +160,32 @@ export function DataL2Section() {
         </div>
       </div>
 
-      <div className="demo-example">
-        <h2 className="demo-example-title">EmptyState：No components yet</h2>
+      <div className="mb-5 p-5 border border-border rounded-lg bg-surface-1">
+        <h2 data-slot="demo-example-title" className="mb-4 text-text-secondary text-[13px] font-medium">
+          EmptyState（neutral）：No components yet
+        </h2>
         <EmptyState
-          icon={<Inbox className="h-8 w-8" />}
+          icon={<Inbox />}
           title="No components yet"
-          description="EmptyState 负责空态：图标、标题、描述与一个可选 action。"
+          description="空态与错误态是同一个组件，语义差异只由 tone 表达（这里用默认的 neutral）；组件不自带卡片外壳，这块带边框的区域由示例自己提供。"
           action={{ label: "Reload", onClick: handleEmptyRetry }}
         />
       </div>
 
-      <div className="demo-example">
-        <h2 className="demo-example-title">EmptyState：Failed to load components</h2>
+      <div className="mb-5 p-5 border border-border rounded-lg bg-surface-1">
+        <h2 data-slot="demo-example-title" className="mb-4 text-text-secondary text-[13px] font-medium">
+          EmptyState（danger）：Failed to load components
+        </h2>
         <EmptyState
-          icon={<TriangleAlert className="h-8 w-8 text-destructive" />}
+          icon={<TriangleAlert />}
+          tone="danger"
           title="Failed to load components"
-          description="错误态同样可以落在 EmptyState 上，action 即重试入口。"
+          description="读取失败 / 无权限换成 danger：图标与主文案的配色由 tone 决定，调用方不再手写颜色类；action 在这里是重试入口。"
           action={{ label: "Retry", onClick: handleErrorRetry }}
         />
       </div>
 
-      {lastRetry ? <p className="demo-hint">Last callback: {lastRetry}</p> : null}
+      {lastRetry ? <p className="mt-3 text-text-muted text-[12px]">Last callback: {lastRetry}</p> : null}
     </section>
   );
 }

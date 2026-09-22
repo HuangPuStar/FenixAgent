@@ -497,9 +497,46 @@ describe("RelayEventHandler", () => {
     expect((modeState.get("availableModes") as Y.Array<Y.Map<unknown>>).length).toBe(1);
   });
 
-  // 会话同步分支必须校验在途请求登记（JSON-RPC 响应无 method 字段）：rename 响应
-  // 同样携带 sessionId/title 但未经登记，不得 clobber registry 活跃会话、不得误开
-  // 回放窗口、不得投影 title——否则重命名非当前会话时，活跃会话绑定被改写、
+  // 迟到的会话同步响应（已被更晚的 load/create/resume 取代，如用户在响应到达前再次
+  // 切换会话）不得提交：否则活跃会话回绑到旧 ACP session、投影 sessionId 被改写，
+  // 当前会话的回放与流式增量随后被绑定校验全部丢弃（消息区空白）。
+  test("stale session sync response does not rebind the active session", async () => {
+    const registry = new ConnectionRegistry();
+    const broadcaster = new YjsBroadcaster(registry);
+    const { docManager, sessionDoc } = await createBoundDocs("rcs-1");
+    const handler = createRelayEvents(registry, broadcaster, [], { docManager });
+    registry.addClient("ws-1", createClient({ acpSessionId: "ses-B" }));
+    const shared = relayOn("rcs-1");
+    // 两次在途会话同步请求：id=11 为当前目标，id=10 已被用户切走
+    shared.pendingSessionSyncIds = new Set([10, 11]);
+    shared.latestSessionSyncRpcId = 11;
+
+    await handler.createMessageHandler(shared)({
+      jsonrpc: "2.0",
+      id: 10,
+      result: { sessionId: "ses-A" },
+    } as unknown as RelayMessage);
+
+    expect(registry.getClient("ws-1")?.acpSessionId).toBe("ses-B");
+    expect(shared.replayWindowUntil).toBeNull();
+    const session = sessionDoc.getMap("root").get("session") as Y.Map<unknown>;
+    expect(session.get("sessionId")).toBeUndefined();
+    // stale 响应同样消费登记，避免 id 空间残留
+    expect(shared.pendingSessionSyncIds.has(10)).toBe(false);
+
+    await handler.createMessageHandler(shared)({
+      jsonrpc: "2.0",
+      id: 11,
+      result: { sessionId: "ses-B" },
+    } as unknown as RelayMessage);
+
+    expect(registry.getClient("ws-1")?.acpSessionId).toBe("ses-B");
+    expect(session.get("sessionId")).toBe("ses-B");
+    expect(shared.replayWindowUntil).not.toBeNull();
+  });
+
+  // rename 响应同样携带 sessionId/title 但未经登记，不得 clobber registry 活跃会话、
+  // 不得误开回放窗口、不得投影 title——否则重命名非当前会话时，活跃会话绑定被改写、
   // 绑定校验丢弃其全部 session/update 增量（输出流冻结），标题也被错误覆盖（M1）。
   test("rename result without pending session sync does not hijack the session sync branch", async () => {
     const registry = new ConnectionRegistry();
@@ -641,6 +678,65 @@ describe("RelayEventHandler replay window", () => {
 
     expect(shared.replayWindowUntil).not.toBeNull();
     expect(shared.replayWindowUntil!).toBeGreaterThan(Date.now());
+  });
+
+  // 判定「是否跳过回放合成」只在窗口开启时捕获一次：回放流本身会写 Chat Doc，
+  // result 分支幂等重开窗口时若重新判定，会把回放自己写入的内容当作「重连前已有内容」，
+  // 切换后剩余回放轮次全被拒绝（历史消息消失）。
+  test("reopening the replay window keeps the synthesis decision captured at open time", async () => {
+    const registry = new ConnectionRegistry();
+    const broadcaster = new YjsBroadcaster(registry);
+    const { docManager } = await createBoundDocs("rcs-1");
+    const handler = createRelayEvents(registry, broadcaster, [], { docManager });
+    const shared = relayOn("rcs-1");
+    registry.addClient("ws-1", createClient({ acpSessionId: "ses-1" }));
+
+    // 窗口开启时 doc 为空 → 允许合成
+    handler.openReplayWindow(shared);
+    expect(shared.replaySkipSynthesis).toBe(false);
+
+    // 回放首帧写入时间线后，会话同步 result 分支重开窗口（真实时序：result 晚于回放流）
+    await handler.createMessageHandler(shared)({
+      jsonrpc: "2.0",
+      method: "session/update",
+      params: {
+        sessionId: "ses-1",
+        update: { sessionUpdate: "user_message_chunk", content: { type: "text", text: "历史用户消息" } },
+      },
+    } as unknown as RelayMessage);
+    handler.openReplayWindow(shared);
+
+    expect(shared.replaySkipSynthesis).toBe(false);
+    expect(shared.replayTurnId).toBeTruthy();
+  });
+
+  // 窗口开启时 doc 已有时间线内容（重连复用持久化投影）→ 保持跳过合成，
+  // 迟到的回放帧不得重复投影历史；重开窗口同样不得解除该判定。
+  test("reopening the replay window does not clear a cached skip decision", async () => {
+    const registry = new ConnectionRegistry();
+    const broadcaster = new YjsBroadcaster(registry);
+    const { docManager, chatDoc } = await createBoundDocs("rcs-1");
+    const handler = createRelayEvents(registry, broadcaster, [], { docManager });
+    docManager.registerUserMessage("rcs-1", "上一轮已投影的消息");
+    const shared = relayOn("rcs-1");
+    registry.addClient("ws-1", createClient({ acpSessionId: "ses-1" }));
+
+    handler.openReplayWindow(shared);
+    expect(shared.replaySkipSynthesis).toBe(true);
+    handler.openReplayWindow(shared);
+
+    await handler.createMessageHandler(shared)({
+      jsonrpc: "2.0",
+      method: "session/update",
+      params: {
+        sessionId: "ses-1",
+        update: { sessionUpdate: "user_message_chunk", content: { type: "text", text: "重复回放的历史消息" } },
+      },
+    } as unknown as RelayMessage);
+
+    expect(shared.replaySkipSynthesis).toBe(true);
+    expect(countEntriesByRole(chatDoc, "user")).toBe(1);
+    expect(entriesText(chatDoc, "user")).toBe("上一轮已投影的消息");
   });
 
   // 中断 turn 的无头回放（无 user_message 开头）：窗口内增量到达且无活动 turn 可写时，

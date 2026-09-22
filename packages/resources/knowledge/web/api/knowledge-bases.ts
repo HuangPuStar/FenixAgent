@@ -5,13 +5,13 @@
  * 所有方法严格遵循 RESTful 风格。
  */
 
-import { request } from "@fenix/web-runtime/api/request";
+import { ApiError, request } from "@fenix/web-runtime/api/request";
 import type {
+  KnowledgeBaseCreateBody,
   KnowledgeBaseDetail,
   KnowledgeBaseInfo,
   KnowledgeBaseListResponse,
   KnowledgeFormOptions,
-  KnowledgeParseMethod,
   KnowledgeResourceInfo,
   KnowledgeSearchBody,
   KnowledgeSearchResultData,
@@ -20,21 +20,14 @@ import type {
   UnassociatedKnowledgeBase,
 } from "../types/knowledge";
 
-/** 创建知识库请求体 */
-export interface KnowledgeBaseCreateBody {
-  name: string;
-  slug?: string;
-  description?: string;
-  /** 嵌入模型名；创建后不可改 */
-  embeddingModel?: string | null;
-  /** 解析方法；创建后不可改 */
-  parseMethod?: KnowledgeParseMethod | null;
-  /** 自定义解析 pipeline ID；仅 parseMethod=pipeline 时生效 */
-  pipelineId?: string | null;
-  /** 内置分块方法 parser_id；仅 parseMethod=builtin 时生效 */
-  chunkMethod?: string | null;
-  /** 知识库层级：global / org / user */
-}
+/**
+ * 创建知识库请求体由 `types/knowledge` 唯一持有，这里只 re-export。
+ *
+ * 收敛前本文件原地再声明了一份逐字相同的副本（含各自的字段注释），页面侧还有第三份内联副本；
+ * 三处字段、可选性、类型完全一致，因此合并成一份不会放宽任何类型。类型定义集中在 types 目录，
+ * 也让「请求体形状」只有一个改动点。
+ */
+export type { KnowledgeBaseCreateBody };
 
 /** 更新知识库请求体（部分字段可选） */
 export type KnowledgeBaseUpdateBody = Partial<KnowledgeBaseCreateBody>;
@@ -185,3 +178,68 @@ export const kbApi = {
       params,
     }),
 };
+
+// ============================================================
+// 资源文件内容读取（预览用）
+// ============================================================
+//
+// 这三个函数供预览组件读取资源文件本体，方法是**模块级导出而不是 `kbApi` 的方法**：`kbApi` 已经
+// 出了包 `./web` 出口（跨包消费方是 agent-config），把只有包内预览组件使用的读取适配挂上去会把
+// 私有能力写进对外契约（§1.2「导出面按包外真实消费点收敛」）。它们只在包内经相对路径引用。
+
+/**
+ * 读取资源文件的文本内容（Markdown / 文本 / HTML / CSV 预览）。
+ *
+ * 为什么不走 `request()`：预览端点的成功响应体是文件本体（`text/markdown`、`text/csv` 等），而
+ * `request()` 对非 JSON 响应体会先按 JSON 试探解析，读到的文本在这一步被消费掉并归一为
+ * `SERVER_ERROR`，拿不到内容。失败路径仍接回统一层：非 2xx 一律抛 `ApiError`。
+ *
+ * 抛错即契约：调用方必须接住（`useRequest` 的 onError 或 try/catch）。本函数不吞错、不弹提示。
+ */
+export async function fetchResourceFileText(params: { kbId: string; resourceId: string }): Promise<string> {
+  const response = await fetch(kbApi.getFileUrl(params), { credentials: "include" });
+  if (!response.ok) throw await buildResourceReadError(response);
+  return response.text();
+}
+
+/**
+ * 读取资源文件的二进制内容（xlsx 表格解析、docx 客户端转换）。失败语义与
+ * `fetchResourceFileText` 相同；`request()` 读不到字节的理由见该函数说明。
+ */
+export async function fetchResourceFileBinary(params: { kbId: string; resourceId: string }): Promise<ArrayBuffer> {
+  const response = await fetch(kbApi.getFileUrl(params), { credentials: "include" });
+  if (!response.ok) throw await buildResourceReadError(response);
+  return response.arrayBuffer();
+}
+
+/**
+ * 探测 Office 资源的服务端 PDF 转换是否可用（预览优先用转换后的 PDF）。
+ *
+ * 未转换/非 Office 资源返回 `false` 是**正常分支**而不是错误——调用方据此降级到客户端转换或下载，
+ * 因此这里不对非 2xx 抛错；只有网络层失败才会抛出。
+ */
+export async function isResourcePdfPreviewAvailable(params: { kbId: string; resourceId: string }): Promise<boolean> {
+  const response = await fetch(kbApi.getPdfUrl(params), { credentials: "include" });
+  return response.ok && (response.headers.get("content-type") ?? "").includes("pdf");
+}
+
+/**
+ * 把资源文件读取失败归一为统一错误。
+ *
+ * 错误体是 `/web/knowledgeBases/*` 的 `{ success: false, error: { code, message } }` 信封；被网关或
+ * 代理拦截时可能返回 HTML，那时解析会抛错。解析失败不掩盖原始失败：记下响应状态与解析异常作为
+ * 诊断上下文，再以状态码兜底（401/403 归 UNAUTHORIZED，其余归 SERVER_ERROR），与 `request()` 层
+ * 「凭据失效不误判成服务异常」的口径一致。
+ */
+async function buildResourceReadError(response: Response): Promise<ApiError> {
+  try {
+    const payload = (await response.json()) as { error?: { code?: string; message?: string } };
+    if (payload.error?.code) {
+      return new ApiError(payload.error.message ?? `请求失败 (${response.status})`, payload.error.code);
+    }
+  } catch (err) {
+    console.error(`[knowledge] 资源文件读取失败响应无法按错误信封解析 (${response.status})`, err);
+  }
+  const fallbackCode = response.status === 401 || response.status === 403 ? "UNAUTHORIZED" : "SERVER_ERROR";
+  return new ApiError(`请求失败 (${response.status})`, fallbackCode);
+}

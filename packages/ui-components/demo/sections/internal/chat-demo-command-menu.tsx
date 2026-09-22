@@ -19,8 +19,10 @@ export function ChatCommandMenuExamples() {
   const [notice, setNotice] = useState<string | null>(null);
 
   return (
-    <div className="demo-example">
-      <h2 className="demo-example-title">CommandMenu（独立形态）</h2>
+    <div className="mb-5 p-5 border border-border rounded-lg bg-surface-1">
+      <h2 data-slot="demo-example-title" className="mb-4 text-text-secondary text-[13px] font-medium">
+        CommandMenu（独立形态）
+      </h2>
       <CommandMenu
         commands={MOCK_AVAILABLE_COMMANDS}
         mcps={MOCK_BOUND_MCPS}
@@ -29,11 +31,11 @@ export function ChatCommandMenuExamples() {
         onToggleMcp={(mcp) => setSelectedMcp(mcp)}
         onClose={() => setNotice("命令菜单已关闭")}
       />
-      <p className="demo-hint">
+      <p className="mt-3 text-text-muted text-[12px]">
         {selectedCommand ? `已选命令：/${selectedCommand.name}` : "点命令即回调 onSelect；MCP 行为开关切换。"}
         {selectedMcp ? `（最近切换：${selectedMcp.name}）` : ""}
       </p>
-      <p className="demo-hint">{notice ?? "等待交互…"}</p>
+      <p className="mt-3 text-text-muted text-[12px]">{notice ?? "等待交互…"}</p>
     </div>
   );
 }

@@ -69,22 +69,22 @@ describe("ToolCallRow 服务端渲染", () => {
   test("完成的读取工具展示可点击文件名与详情入口", () => {
     const html = renderTool(tool());
 
-    expect(html).toContain('class="chat-tool-call-row"');
+    expect(html).toContain('data-slot="chat-tool-call-row"');
     expect(html).toContain('data-kind="read-file"');
-    expect(html).toContain('class="tool-call-row-file-link"');
+    expect(html).toContain('data-slot="chat-tool-call-file-link"');
     expect(html).toContain("app.ts");
-    expect(html).toContain('class="chat-tool-call-row-details-button"');
+    expect(html).toContain('data-slot="chat-tool-call-details-button"');
     expect(html).not.toContain("toolCallRow.openFile");
   });
 
   // Read 的行号范围应紧跟文件名展示，不再被推到工具行中间的独立列。
-  // 行号范围是唯一渲染进 `.tool-call-row-meta` 的内容（见 components/chat/ToolCallRow.tsx），
+  // 行号范围是唯一渲染进行内 meta 槽的内容（见 components/chat/ToolCallRow.tsx），
   // 因此按承载元素定位即可验证顺序，不依赖随 i18n 状态变化的范围文案本身。
   test("读取工具将行号范围显示在文件名之后", () => {
     const html = renderTool(tool({ rawInput: { file_path: "src/app.ts", offset: 68, limit: 140 } }));
 
-    expect(html).toContain("tool-call-row-copy is-file-preview");
-    expect(html).toMatch(/tool-call-row-file-link[\s\S]*app\.ts[\s\S]*tool-call-row-meta/);
+    expect(html).toContain('data-slot="chat-tool-call-copy"');
+    expect(html).toMatch(/chat-tool-call-file-link[\s\S]*app\.ts[\s\S]*chat-tool-call-meta/);
   });
 
   // 所有工具的补充详情都应紧跟工具名称，避免在宽屏下形成远离名称的独立列。
@@ -99,7 +99,7 @@ describe("ToolCallRow 服务端渲染", () => {
     );
 
     expect(html).toMatch(
-      /tool-call-row-heading[\s\S]*<span class="tool-call-row-title"[\s\S]*<\/span>[\s\S]*tool-call-row-meta/,
+      /chat-tool-call-heading[\s\S]*data-slot="chat-tool-call-title"[\s\S]*<\/span>[\s\S]*chat-tool-call-meta/,
     );
     expect(html).not.toContain("<strong");
   });
@@ -124,8 +124,9 @@ describe("ToolCallRow 服务端渲染", () => {
       }),
     );
 
-    expect(html).toContain('class="chat-tool-call-row" data-kind="bash"');
-    expect(html).not.toContain('class="chat-tool-call-row-details-button"');
+    // 同一元素上同时带锚点与 kind（属性顺序不固定，故用同一标签内的正则匹配）。
+    expect(html).toMatch(/data-kind="bash"[^>]*data-slot="chat-tool-call-row"/);
+    expect(html).not.toContain('data-slot="chat-tool-call-details-button"');
   });
 
   // data-kind 只描述工具语义；同一 kind 是否展示详情入口取决于是否存在参数或结果。
@@ -136,9 +137,9 @@ describe("ToolCallRow 服务端渲染", () => {
     );
 
     expect(enabled).toContain('data-kind="unknown"');
-    expect(enabled).toContain('class="chat-tool-call-row-details-button"');
+    expect(enabled).toContain('data-slot="chat-tool-call-details-button"');
     expect(disabled).toContain('data-kind="unknown"');
-    expect(disabled).not.toContain('class="chat-tool-call-row-details-button"');
+    expect(disabled).not.toContain('data-slot="chat-tool-call-details-button"');
   });
 
   // TodoWrite 的变更记录必须在工具卡片内部限高滚动，避免长变更列表撑满会话。
@@ -162,7 +163,7 @@ describe("ToolCallRow 服务端渲染", () => {
   });
 
   // 等待确认工具只保留状态，权限选项统一由输入框上方交互区域承载。
-  // 状态文案随 i18n 状态变化，这里按承载它的 `.tool-call-row-status` 断言状态区仍存在，
+  // 状态文案随 i18n 状态变化，这里按承载它的状态槽锚点断言状态区仍存在，
   // 否则两条否定断言在整行未渲染时也会通过。
   test("等待确认工具不重复渲染权限操作", () => {
     const html = renderTool(
@@ -180,7 +181,7 @@ describe("ToolCallRow 服务端渲染", () => {
       }),
     );
 
-    expect(html).toContain("tool-call-row-status");
+    expect(html).toContain('data-slot="chat-tool-call-status"');
     expect(html).not.toContain("允许");
     expect(html).not.toContain("拒绝");
   });

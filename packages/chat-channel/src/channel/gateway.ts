@@ -386,6 +386,7 @@ export class Gateway {
     }
     // 在途会话同步请求登记随 relay 释放一并清空，避免残留条目无界增长
     shared.pendingSessionSyncIds?.clear();
+    shared.latestSessionSyncRpcId = null;
     // 在途 prompt 登记随 relay 释放一并清空
     shared.pendingPromptIds?.clear();
     shared.pendingPromptTurns?.clear();
@@ -425,7 +426,9 @@ export class Gateway {
       reportLog: this.dependencies.reportLog,
     });
     if (shared && (action.action === "load_session" || action.action === "resume_session")) {
-      this.dependencies.relayEvents.openReplayWindow(shared);
+      // resampleSkip：命令已执行完成（换代/清空生效），按当代投影重新采样「跳过回放合成」
+      // 判定；否则 10s 窗口内的连续切换会继承旧会话的判定，新会话回放被整体跳过。
+      this.dependencies.relayEvents.openReplayWindow(shared, { resampleSkip: true });
     }
   }
   private async flushPending(entry: ClientConnection, pending: string[], ws: WsConnection): Promise<void> {
@@ -455,6 +458,8 @@ export class Gateway {
         if (!shared) return;
         if (!shared.pendingSessionSyncIds) shared.pendingSessionSyncIds = new Set();
         shared.pendingSessionSyncIds.add(rpcId);
+        // 最新目标单独登记：响应到达时据此判定是否已被后续切换取代（迟到响应不得提交）
+        shared.latestSessionSyncRpcId = rpcId;
       },
       registerPendingPrompt: (rpcId, turnId) => {
         if (!shared) return;

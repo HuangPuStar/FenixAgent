@@ -1,7 +1,7 @@
 /**
  * 单张工具卡片 — 调用 narrate() 生成统一格式的人话文案。
  *
- * 来源：`packages/agent-runtime/web/components/chat/ToolCallRow.tsx` 逐字复制。
+ * 来源：`packages/agent-runtime/web/components/chat/ToolCallRow.tsx`（旧路径，已于 2026-09-21 由 f2741a82d 删除） 逐字复制。
  * 纯化改动点：
  * - `window` CustomEvent（`artifacts:preview-file`，源实现由 ArtifactsPanel 监听）改为
  *   `onPreviewFile` 回调 prop：宿主注入回调时才渲染文件链接，宿主自行决定如何打开预览；
@@ -12,7 +12,15 @@
  * - 移除 `tool.publicError` 错误块（源实现在卡片右侧渲染「message + Type + ID」）：该块是
  *   `.tool-call-row-compact` 网格的第二列，与标题下方第二行的错误信息重复（`narrate` 的
  *   `errorDetail` 优先取 `publicError.message`），故只保留第二行；脱敏错误的 Type / ID 不再展示。
+ *
+ * 深层样式（两处网格列定义、图标 `flex` 基准值、图标尺寸与文件链接态的 `flex`）下沉到同目录
+ * `./ToolCallRow.css`，语义类名为 `.chat-tool-call-shell`（源 `.tool-call-row-compact`）、
+ * `.chat-tool-call-grid`（源 `.chat-tool-call-row`）、`.chat-tool-call-icon`（源 `.tool-call-row-icon`）
+ * 与 `.chat-tool-call-meta-inline`（源 `:where(.tool-call-row-copy.is-file-preview) .tool-call-row-meta`
+ * 的 `flex`，随 `showFileLink` 条件挂上）。
  */
+
+import "./ToolCallRow.css";
 
 import { CircleX, CodeXml, Loader2 } from "lucide-react";
 import { type ReactNode, useCallback, useRef, useState } from "react";
@@ -26,6 +34,7 @@ import { Shimmer } from "../primitives/shimmer";
 import type { ToolCallData, ToolCardKind } from "../types";
 import { SubAgentPanel } from "./SubAgentPanel";
 import { TodoChanges } from "./TodoChanges";
+import { ToolJsonBlock } from "./tool-json-block";
 
 /**
  * 从工具调用的 rawInput 中提取文件路径。
@@ -57,10 +66,19 @@ interface ToolCallRowProps {
   tool: ToolCallData;
   /** 宿主注入的文件预览回调（源实现为 `artifacts:preview-file` 事件）；缺省时不渲染文件链接。 */
   onPreviewFile?: (path: string) => void;
+  /**
+   * 是否位于活动链内（可选，默认 false）：行容器左移 32px 并取消左内边距，
+   * 抵消 `ChatView` 活动链的 `pl-8`，让工具行与正文左边缘对齐。
+   *
+   * 对应源 `.chat-activity-chain .tool-call-row-compact { margin-left: -32px; padding-left: 0 }`——
+   * 原实现靠祖先类名选子元素，迁移后由 `ChatView` 显式传参（纯增量；子 Agent 面板里的工具组
+   * 经 `SubAgentToolCallGroupContext` 的作用域化渲染器一并传入，保持与源后代选择器一致）。
+   */
+  inActivityChain?: boolean;
 }
 
-/** 工具调用卡片：图标 + 人话标题 + 状态/耗时徽章 + 参数弹窗，可选文件预览链接与子 Agent 面板。复制自 `packages/agent-runtime/web/components/chat/ToolCallRow.tsx`。 */
-export function ToolCallRow({ tool, onPreviewFile }: ToolCallRowProps) {
+/** 工具调用卡片：图标 + 人话标题 + 状态/耗时徽章 + 参数弹窗，可选文件预览链接与子 Agent 面板。复制自 `packages/agent-runtime/web/components/chat/ToolCallRow.tsx`（旧路径，已于 2026-09-21 由 f2741a82d 删除）。 */
+export function ToolCallRow({ tool, onPreviewFile, inActivityChain = false }: ToolCallRowProps) {
   const { t } = useTranslation(UI_COMPONENTS_NS);
   const [dialogOpen, setDialogOpen] = useState(false);
 
@@ -126,20 +144,42 @@ export function ToolCallRow({ tool, onPreviewFile }: ToolCallRowProps) {
 
   return (
     <div>
-      <div className={cn("tool-call-row-compact", isError && "is-error", isCanceled && "is-cancelled")}>
-        <div className="chat-tool-call-row" data-kind={kind}>
-          <span className="tool-call-row-icon" aria-hidden>
+      {/* 源 `.tool-call-row-compact`（`is-error` / `is-cancelled` 两态互斥）+ 活动链内的对齐补偿；列定义在 ./ToolCallRow.css。 */}
+      <div
+        className={cn(
+          "chat-tool-call-shell grid items-center gap-2.25 rounded-md hover:bg-slate-50",
+          inActivityChain ? "-ml-8 py-0.5 pr-0.5 pl-0" : "p-0.5",
+          isCanceled && "opacity-[0.55]",
+        )}
+      >
+        <div
+          className="chat-tool-call-grid grid w-full min-w-0 cursor-pointer items-center gap-2.25 rounded-md text-left text-inherit focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-slate-400"
+          data-kind={kind}
+          data-slot="chat-tool-call-row"
+        >
+          <span
+            className={cn(
+              "chat-tool-call-icon grid h-5.5 w-5.5 place-items-center rounded-full bg-white",
+              isError ? "text-red-400" : "text-slate-500",
+            )}
+            aria-hidden
+          >
             {isRunning ? <Loader2 className="animate-spin" /> : <RowIcon />}
           </span>
 
-          <span className={cn("tool-call-row-copy", showFileLink && "is-file-preview")}>
-            <span className="tool-call-row-heading">
+          <span className="block min-w-0 overflow-hidden" data-slot="chat-tool-call-copy">
+            <span className="flex min-w-0 items-baseline gap-2.25 overflow-hidden" data-slot="chat-tool-call-heading">
               {showFileLink ? (
-                <span className="tool-call-row-title" title={titleText}>
+                <span
+                  className="inline-flex min-w-0 items-baseline gap-1.25 overflow-hidden text-xs font-normal text-ellipsis whitespace-nowrap text-slate-500"
+                  data-slot="chat-tool-call-title"
+                  title={titleText}
+                >
                   <span>{withLoadingShimmer(fileAction, isRunning)} </span>
                   <button
                     type="button"
-                    className="tool-call-row-file-link"
+                    className="inline max-w-full overflow-hidden text-ellipsis whitespace-nowrap align-bottom text-sky-600 hover:text-sky-700 hover:underline hover:underline-offset-2 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-slate-400"
+                    data-slot="chat-tool-call-file-link"
                     onClick={handlePreviewFile}
                     title={t("chat.components.toolCallRow.previewFile", { path: previewPath })}
                   >
@@ -147,34 +187,48 @@ export function ToolCallRow({ tool, onPreviewFile }: ToolCallRowProps) {
                   </button>
                 </span>
               ) : (
-                <span className="tool-call-row-title" title={titleText}>
+                <span
+                  className="min-w-0 overflow-hidden text-xs font-normal text-ellipsis whitespace-nowrap text-slate-500"
+                  data-slot="chat-tool-call-title"
+                  title={titleText}
+                >
                   {withLoadingShimmer(result.title, isRunning)}
                 </span>
               )}
               {result.subtitle ? (
-                <span className="tool-call-row-meta">
+                <span
+                  className={cn(
+                    "flex min-w-0 items-baseline gap-1.25 overflow-hidden text-xs font-normal text-gray-400",
+                    showFileLink && "chat-tool-call-meta-inline whitespace-nowrap",
+                  )}
+                  data-slot="chat-tool-call-meta"
+                >
                   <span className="truncate">{result.subtitle}</span>
                 </span>
               ) : null}
             </span>
             {/* 错误信息独占第二行：源实现内联在标题行内，长错误会把标题挤到看不见 */}
             {result.errorDetail && (
-              <span className="tool-call-row-error" title={result.errorDetail}>
+              <span
+                className="block min-w-0 overflow-hidden text-3xs font-normal text-ellipsis whitespace-nowrap text-red-400"
+                title={result.errorDetail}
+              >
                 {result.errorDetail}
               </span>
             )}
           </span>
 
-          <span className="tool-call-row-end">
+          <span className="flex items-baseline justify-self-end gap-3">
             {result.badge && (
               <span
                 className={cn(
-                  "tool-call-row-duration text-[10px] shrink-0",
+                  "min-w-10.5 text-right text-3xs shrink-0",
                   result.badge.tone === "success" && "text-emerald-600 dark:text-emerald-400",
                   result.badge.tone === "error" && "text-status-error",
                   result.badge.tone === "warn" && "text-amber-600 dark:text-amber-400",
                   result.badge.tone === "info" && "text-text-dim",
                 )}
+                data-slot="chat-tool-call-duration"
               >
                 {result.badge.text}
               </span>
@@ -183,12 +237,15 @@ export function ToolCallRow({ tool, onPreviewFile }: ToolCallRowProps) {
             {!isComplete && (
               <span
                 className={cn(
-                  "tool-call-row-status text-[10px] font-medium shrink-0",
-                  isError && "text-status-error",
+                  "min-w-10 text-right text-3xs font-medium shrink-0",
+                  // 源 `.tool-call-row-compact.is-error .tool-call-row-status { color: #d5534f }` 未分层、压过
+                  // `text-status-error`（#ef4444），故按生效值直写。
+                  isError && "text-red-400",
                   isPending && "text-brand",
                   isCanceled && "text-text-dim",
                   !isError && !isPending && !isCanceled && "text-text-dim",
                 )}
+                data-slot="chat-tool-call-status"
               >
                 {result.statusLabel}
               </span>
@@ -198,12 +255,13 @@ export function ToolCallRow({ tool, onPreviewFile }: ToolCallRowProps) {
           {hasDetails && (
             <button
               type="button"
-              className="chat-tool-call-row-details-button"
+              className="grid h-5.5 w-5.5 place-items-center rounded-sm text-gray-400 hover:bg-slate-100 hover:text-gray-500 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-slate-400"
+              data-slot="chat-tool-call-details-button"
               onClick={openDialog}
               title={t("chat.components.toolCallRow.viewParams")}
               aria-label={t("chat.components.toolCallRow.viewParams")}
             >
-              <CodeXml className="chat-tool-call-row-details-icon" aria-hidden />
+              <CodeXml className="h-3.25 w-3.25 text-gray-400" aria-hidden />
             </button>
           )}
         </div>
@@ -253,7 +311,7 @@ interface ToolCallDialogProps {
   t: (key: string) => string;
 }
 
-/** 工具调用参数弹窗：展示原始入参/出参 JSON 与可读工具名。复制自 `packages/agent-runtime/web/components/chat/ToolCallRow.tsx`。 */
+/** 工具调用参数弹窗：展示原始入参/出参 JSON 与可读工具名。复制自 `packages/agent-runtime/web/components/chat/ToolCallRow.tsx`（旧路径，已于 2026-09-21 由 f2741a82d 删除）。 */
 function ToolCallDialog({ open, onOpenChange, tool, kind, style, icon: Icon, title, t }: ToolCallDialogProps) {
   const isError = tool.status === "error";
   const isRunning = tool.status === "running";
@@ -270,7 +328,7 @@ function ToolCallDialog({ open, onOpenChange, tool, kind, style, icon: Icon, tit
             {/* 主标题为人性化句子；下方附原始工具名，便于用户识别工具类型 */}
             <div className="flex flex-col min-w-0 gap-0.5">
               <span className="truncate">{title}</span>
-              <span className="text-[10px] text-text-dim font-mono truncate leading-tight">
+              <span className="text-3xs text-text-dim font-mono truncate leading-tight">
                 {kindLabel(kind)
                   ? `${t("chat.components.toolCallRow.toolName")}: ${kindLabel(kind)}`
                   : t("chat.components.toolCallRow.toolName")}
@@ -281,29 +339,17 @@ function ToolCallDialog({ open, onOpenChange, tool, kind, style, icon: Icon, tit
 
         <div className="px-4 py-3 space-y-3 max-h-[60vh] overflow-y-auto">
           {tool.rawInput && Object.keys(tool.rawInput).length > 0 && (
-            <div>
-              <div className="text-[9px] font-semibold uppercase tracking-widest text-text-dim mb-1.5">
-                {t("chat.components.toolCallGroup.input")}
-              </div>
-              <pre className="tool-call-detail-code text-[11px] bg-surface-2 rounded-md px-3 py-2.5 overflow-auto font-mono text-text-secondary leading-relaxed">
-                {truncate(JSON.stringify(tool.rawInput, null, 2), 3000)}
-              </pre>
-            </div>
+            <ToolJsonBlock
+              label={t("chat.components.toolCallGroup.input")}
+              content={truncate(JSON.stringify(tool.rawInput, null, 2), 3000)}
+            />
           )}
           {hasOutput && (
-            <div>
-              <div className="text-[9px] font-semibold uppercase tracking-widest text-text-dim mb-1.5">
-                {t("chat.components.toolCallGroup.output")}
-              </div>
-              <pre
-                className={cn(
-                  "tool-call-detail-code text-[11px] rounded-md px-3 py-2.5 overflow-auto font-mono leading-relaxed",
-                  isError ? "bg-status-error/6 text-status-error" : "bg-surface-2 text-text-secondary",
-                )}
-              >
-                {formatOutput(tool)}
-              </pre>
-            </div>
+            <ToolJsonBlock
+              label={t("chat.components.toolCallGroup.output")}
+              content={formatOutput(tool)}
+              error={isError}
+            />
           )}
           {isRunning && !hasOutput && (
             <p className="text-xs text-text-dim italic">{t("chat.components.toolCallRow.running")}</p>

@@ -131,8 +131,10 @@ function messageText(message: UIMessage): string {
 export function ChatDescendedExamples() {
   return (
     <>
-      <div className="demo-example">
-        <h2 className="demo-example-title">Conversation / Message / MessageResponse</h2>
+      <div className="mb-5 p-5 border border-border rounded-lg bg-surface-1">
+        <h2 data-slot="demo-example-title" className="mb-4 text-text-secondary text-[13px] font-medium">
+          Conversation / Message / MessageResponse
+        </h2>
         {/* Conversation 内部滚动区高度为 100%，因此外层必须给出确定高度并作为 flex 容器。 */}
         <div className="flex h-[420px] flex-col overflow-hidden rounded-lg border border-border">
           <Conversation>
@@ -157,8 +159,10 @@ export function ChatDescendedExamples() {
         </div>
       </div>
 
-      <div className="demo-example">
-        <h2 className="demo-example-title">MessageAttachments</h2>
+      <div className="mb-5 p-5 border border-border rounded-lg bg-surface-1">
+        <h2 data-slot="demo-example-title" className="mb-4 text-text-secondary text-[13px] font-medium">
+          MessageAttachments
+        </h2>
         <Message from="user">
           <MessageAttachments>
             {SAMPLE_ATTACHMENTS.map((attachment) => (
@@ -175,19 +179,27 @@ export function ChatDescendedExamples() {
         </Message>
       </div>
 
-      <div className="demo-example">
-        <h2 className="demo-example-title">CodeBlock</h2>
+      <div className="mb-5 p-5 border border-border rounded-lg bg-surface-1">
+        <h2 data-slot="demo-example-title" className="mb-4 text-text-secondary text-[13px] font-medium">
+          CodeBlock
+        </h2>
         <CodeBlock code={SAMPLE_CODE} language="ts" />
       </div>
 
-      <div className="demo-example">
-        <h2 className="demo-example-title">Shimmer</h2>
+      <div className="mb-5 p-5 border border-border rounded-lg bg-surface-1">
+        <h2 data-slot="demo-example-title" className="mb-4 text-text-secondary text-[13px] font-medium">
+          Shimmer
+        </h2>
         <Shimmer>Waiting for the first token…</Shimmer>
       </div>
 
-      <div className="demo-example">
-        <h2 className="demo-example-title">IframePreview</h2>
-        <p className="demo-hint">Hover the frame and use the expand button to open the resizable preview dialog.</p>
+      <div className="mb-5 p-5 border border-border rounded-lg bg-surface-1">
+        <h2 data-slot="demo-example-title" className="mb-4 text-text-secondary text-[13px] font-medium">
+          IframePreview
+        </h2>
+        <p className="mt-3 text-text-muted text-[12px]">
+          Hover the frame and use the expand button to open the resizable preview dialog.
+        </p>
         <IframePreview src={SAMPLE_IFRAME_SRC} title="Inline preview" width="100%" height="240" />
       </div>
     </>

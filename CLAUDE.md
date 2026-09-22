@@ -45,7 +45,7 @@ FenixAgent 是基于 Elysia + Bun 的多租户 ACP Agent 平台，前端使用 R
 - `apps/web/src/routes/`：TanStack Router 文件路由；`routeTree.gen.ts` 为生成文件，严禁手改。
 - `apps/web/src/pages/`：页面和业务容器。
 - `apps/web/src/shell/`：本版本最终 Shell（布局、导航容器、Provider、鉴权后壳）；通用 UI 与业务组件归 `@fenix/ui-components`，宿主不再保留副本。
-- `packages/web-runtime/web/api/`：前端 API 建模层（经 `@fenix/web-runtime/api/*` 出口引用，宿主不再保留副本）。
+- `packages/web-runtime/web/api/`：前端请求基建（`request<T>()` / `unwrap` / `ApiError`，经 `@fenix/web-runtime/api/*` 出口引用）。**API 建模层不在这里**——域模块按资源归属放在各 owner 包的 `web/api/`；宿主 `apps/web/src/api/` 只保留无资源包归属的宿主专有域（`branding` / `fs` / `instances` / `peri-task-details` / `helpers`）。
 - `apps/web/src/i18n/`：国际化配置与语言资源。
 - `apps/web/src/__tests__/`：前端关键流程测试。
 
@@ -107,7 +107,7 @@ bun run run-data-migrations         # 执行已登记的存量数据迁移
 ### 前端边界与体验
 
 - 导航只使用 `<Link to>`、`useNavigate()` 和 `router.invalidate()`；禁止 `window.location.href`、`window.location.replace`、`window.location.reload` 和 `window.history.pushState`。Sidebar 导航项必须提供 `to`。
-- 请求统一通过 `@fenix/web-runtime/api/request`（真身 `packages/web-runtime/web/api/request.ts`）；`request<T>()` 已处理路径参数、query、JSON、错误标准化和响应解包。
+- 请求统一通过 `@fenix/web-runtime/api/request`（真身 `packages/web-runtime/web/api/request.ts`）；`request<T>()` 处理路径参数、query、JSON、超时与错误标准化，但**返回 `ApiResponse` 而非已解包数据**——失败时返回 `{ success: false }` 而不 throw，调用方必须 `unwrap()` 或显式判断 `success`；直接 `await` 并依赖 `catch`/`onError` 会把 4xx/5xx 当成成功（在途项 `docs/need-to-change/25`，目标为单一异常语义）。
 - 数据获取优先遵循前端规范和现有 `ahooks` / `useRequest` 模式，避免重复请求与竞态覆盖。
 - 用户可见字符串必须通过 `t()`；i18n 插值使用 `{{var}}`，单花括号 `{var}` 会被当作字面文本。
 - 基础组件优先复用 `@fenix/ui-components/ui/<name>`（该包无根出口，逐文件子路径）；通用图标使用 `lucide-react`；模型品牌图标使用 `packages/resources/model-management/web/components/model-icon/ModelIcon.tsx`。

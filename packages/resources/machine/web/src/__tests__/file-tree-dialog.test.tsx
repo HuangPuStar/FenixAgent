@@ -21,10 +21,11 @@
 //   `src/server/__tests__/file-path-validator.test.ts` 覆盖。
 // - 弹窗 `maxLength={255}`：`FileTreeInputDialog` 走 radix Dialog 门户，SSR 输出为空串，无法在此断言；
 //   属 owner `@fenix/ui-components`（见报告「遗留」）。
-// - CSS 断言（sticky 目录条、悬浮操作、浮层阴影）：样式归 `@fenix/ui-components` 的 `file-tree.css` 与
-//   宿主 `artifacts-workspace.css`，旧断言是宿主的源码文本扫描。
+// - CSS 断言（sticky 目录条、悬浮操作、浮层阴影）：样式已随 `@fenix/ui-components` 的迁移改为 Tailwind
+//   工具类（原 `file-tree.css` 已删除），本文件改为断言 `data-slot` 结构锚点；宿主
+//   `artifacts-workspace.css` 里的同名规则类名已不再匹配（死规则），旧断言是宿主的源码文本扫描。
 // - 节点级操作（每个节点的刷新 / 删除按钮）与右键菜单门户：react-arborist 在 SSR 下不渲染节点
-//   （实测 `.file-tree-arborist` 为空），需 DOM 环境；面板 owner 已迁出本包。
+//   （实测 `data-slot="file-tree-arborist"` 为空），需 DOM 环境；面板 owner 已迁出本包。
 // - 宿主容器行为（下载状态、重试、`FileTabsBar` 与预览面板顺序）：`FileTreeTab` / `artifacts-files-workspace.tsx`
 //   未迁移，归 §1.6。
 import { describe, expect, test } from "bun:test";
@@ -90,7 +91,7 @@ describe("文件树视图（消费方契约）", () => {
   // 顶部工具条的首个动作是刷新当前列表：刷新入口不是文件变更操作，位置变到新建之后会让误触代价升高。
   test("工具条首个动作是刷新，且没有根级新建文件入口", () => {
     const html = renderTree();
-    const actionsStart = html.indexOf('class="file-tree-panel__actions"');
+    const actionsStart = html.indexOf('data-slot="file-tree-panel-actions"');
     const actions = html.slice(actionsStart, html.indexOf("<input", actionsStart));
 
     expect(actionsStart).toBeGreaterThan(-1);
@@ -108,24 +109,24 @@ describe("文件树视图（消费方契约）", () => {
     const workspaceSection = html.indexOf('data-upload-target=""');
     const userSection = html.indexOf('data-upload-target="user"');
 
-    expect(html).toContain("file-tree-sections-layout");
+    expect(html).toContain('data-slot="file-tree-sections-layout"');
     expect(workspaceSection).toBeGreaterThan(-1);
     expect(workspaceSection).toBeLessThan(userSection);
-    expect(html.match(/class="file-tree-arborist"/g)?.length).toBe(2);
+    expect(html.match(/data-slot="file-tree-arborist"/g)?.length).toBe(2);
     const userBlock = html.slice(userSection);
-    expect(userBlock.slice(0, userBlock.indexOf("</section>"))).toContain("file-tree-section-upload");
+    expect(userBlock.slice(0, userBlock.indexOf("</section>"))).toContain('data-slot="file-tree-section-upload"');
   });
 
   // 文件服务断连重连中的提示必须占据文件内容区：旧实现把它挂在搜索框下，与工作区标题重叠。
   test("陈旧状态横幅落在文件内容区内并可重试", () => {
     const html = renderTree({ stale: true });
-    const sectionsStart = html.indexOf('class="file-tree-sections"');
+    const sectionsStart = html.indexOf('data-slot="file-tree-sections"');
     const content = html.slice(sectionsStart);
 
     expect(sectionsStart).toBeGreaterThan(-1);
-    expect(html.slice(0, sectionsStart)).not.toContain("file-tree-feedback");
+    expect(html.slice(0, sectionsStart)).not.toContain('data-slot="file-tree-feedback"');
     expect(content).toContain("fileTree.staleBanner");
-    expect(content).toContain("file-tree-feedback-action");
+    expect(content).toContain('data-slot="file-tree-feedback-action"');
     expect(content).toContain("fileTree.retry");
   });
 
@@ -137,6 +138,6 @@ describe("文件树视图（消费方契约）", () => {
     expect(html).toContain("fileTree.emptyState");
     expect(html).toContain("fileTree.emptyHint");
     expect(html).toContain("fileTree.userEmptyState");
-    expect(html).not.toContain("file-tree-arborist");
+    expect(html).not.toContain('data-slot="file-tree-arborist"');
   });
 });

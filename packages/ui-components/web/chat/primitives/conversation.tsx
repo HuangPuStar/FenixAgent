@@ -1,12 +1,12 @@
 import { ArrowDownIcon, UserIcon } from "lucide-react";
 import type { ComponentProps, ReactNode } from "react";
+import "./conversation-scroll.css";
 import { useCallback } from "react";
 import { useTranslation } from "react-i18next";
 import { StickToBottom, useStickToBottomContext } from "use-stick-to-bottom";
 import { UI_COMPONENTS_NS } from "../../i18n/namespace";
 import { cn } from "../../lib/cn";
 import { Button } from "../../ui/button";
-import "./conversation.css";
 
 export type ConversationProps = ComponentProps<typeof StickToBottom>;
 
@@ -82,7 +82,12 @@ export const ConversationScrollButton = ({ className, ...props }: ConversationSc
 
   return (
     <Button
-      className={cn("chat-scroll-to-latest rounded-full", className)}
+      // 尺寸/底色/阴影/backdrop 与 hover 配色在 `conversation-scroll.css`；
+      // 该表未分层，因此其 `padding-inline: 11px` 稳定压过 Button `size="sm"` 的 `has-[>svg]:px-2.5`。
+      className={cn(
+        "chat-conversation-scroll-button w-auto gap-1.5 rounded-full border-0 font-medium hover:bg-white",
+        className,
+      )}
       onClick={handleScrollToBottom}
       size="sm"
       type="button"
@@ -156,7 +161,14 @@ export const ConversationScrollButtons = ({
   if (isAtBottom) return null;
 
   return (
-    <div className={cn("chat-scroll-navigation", className)} {...props}>
+    <div
+      // 源 `conversation.css` 的 `.chat-scroll-navigation`：贴底居中，预留宿主浮动产物面板宽度。
+      className={cn(
+        "absolute bottom-3 left-[calc((100%-var(--chat-floating-artifacts-width,0px))/2)] z-[24] flex -translate-x-1/2",
+        className,
+      )}
+      {...props}
+    >
       <ConversationScrollButton />
     </div>
   );

@@ -54,12 +54,32 @@ interface AgentRestartResult {
   restartedInstanceIds: string[];
 }
 
+/**
+ * 智能生成结果：与后端 `AgentGenerationResultSchema`
+ * （`packages/resources/agent-config/src/server/schemas/agent-generation.schema.ts`）逐字段对称。
+ * 这里写仓库根相对路径而非包内相对路径：本文件是包内 `web/` 交付物，读者（含宿主消费方）从
+ * 仓库根找的是同一个 owner 包的 `src/server/`，只写 `src/server/...` 会被误当成宿主 `apps/server/src/`。
+ *
+ * 与表单侧的 `GenerationFormData`（`web/pages/agent-panel/components/AgentGenerationForm.tsx`）形状相同但
+ * 归属不同：这里是端点契约（后端改字段名时随 schema 一起改），那里是表单视图模型。域模块不从页面取类型，
+ * 页面直接消费本结果即可（结构相容）。
+ */
+interface AgentGenerationResult {
+  name: string;
+  systemPrompt: string;
+  skills: { id: string; name: string; description: string }[];
+}
+
 /** 删除响应：后端返回 data: null */
 type AgentDeleteResult = null;
 
 export const agentApi = {
   /** 获取 Agent 模板列表 */
   templates: () => request<AgentTemplatesResult>("/web/config/agents/templates", { method: "GET" }),
+
+  /** 按一句话描述智能生成 Agent 配置（名称、系统提示词、推荐 Skill） */
+  generate: (prompt: string) =>
+    request<AgentGenerationResult>("/web/agent-generation", { method: "POST", body: { prompt } }),
 
   /** 获取 Agent 列表，包含默认 Agent 信息和关联资源标签 */
   list: () => request<AgentListResult>("/web/config/agents", { method: "GET" }),

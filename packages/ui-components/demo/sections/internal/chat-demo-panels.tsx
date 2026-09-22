@@ -40,8 +40,10 @@ export function ChatPanelsExamples({ session }: { session: MockChatSession }) {
 
   return (
     <>
-      <div className="demo-example">
-        <h2 className="demo-example-title">ChatStatusPanel（todo / tasks / changes 三 Tab）</h2>
+      <div className="mb-5 p-5 border border-border rounded-lg bg-surface-1">
+        <h2 data-slot="demo-example-title" className="mb-4 text-text-secondary text-[13px] font-medium">
+          ChatStatusPanel（todo / tasks / changes 三 Tab）
+        </h2>
         <ChatStatusPanel
           todos={todos}
           tasks={session.periTasks}
@@ -50,37 +52,43 @@ export function ChatPanelsExamples({ session }: { session: MockChatSession }) {
           onOpenTask={(task) => setLastAction(`打开任务详情：${task.title}`)}
           onPreviewFile={(path) => setLastAction(`预览文件：${path}`)}
         />
-        <p className="demo-hint">
+        <p className="mt-3 text-text-muted text-[12px]">
           {lastAction ?? "三个 tab 都可点：todo 折叠清单、tasks 打开详情、changes 触发文件预览回调。"}
         </p>
       </div>
 
-      <div className="demo-example">
-        <h2 className="demo-example-title">PermissionPanel</h2>
+      <div className="mb-5 p-5 border border-border rounded-lg bg-surface-1">
+        <h2 data-slot="demo-example-title" className="mb-4 text-text-secondary text-[13px] font-medium">
+          PermissionPanel
+        </h2>
         <PermissionPanel requests={permissions} onRespond={session.respondPermission} />
-        <p className="demo-hint">
+        <p className="mt-3 text-text-muted text-[12px]">
           {permissions.length === 0
             ? "权限已应答（空列表时组件返回 null，不占位）。"
             : "点击「允许一次 / 本会话始终允许 / 拒绝」会把该请求从 mock 快照中移除。"}
         </p>
       </div>
 
-      <div className="demo-example">
-        <h2 className="demo-example-title">QuestionPanel</h2>
+      <div className="mb-5 p-5 border border-border rounded-lg bg-surface-1">
+        <h2 data-slot="demo-example-title" className="mb-4 text-text-secondary text-[13px] font-medium">
+          QuestionPanel
+        </h2>
         <QuestionPanel questions={questions} onRespond={session.respondQuestion} />
-        <p className="demo-hint">
+        <p className="mt-3 text-text-muted text-[12px]">
           {questions.length === 0
             ? "问题已提交（空列表时组件返回 null）。"
             : "每个问题项都要选中一个选项，提交按钮才会启用。"}
         </p>
       </div>
 
-      <div className="demo-example">
-        <h2 className="demo-example-title">重置 mock 会话</h2>
+      <div className="mb-5 p-5 border border-border rounded-lg bg-surface-1">
+        <h2 data-slot="demo-example-title" className="mb-4 text-text-secondary text-[13px] font-medium">
+          重置 mock 会话
+        </h2>
         <Button size="sm" variant="outline" onClick={session.reset}>
           恢复初始消息 / 权限 / 问答
         </Button>
-        <p className="demo-hint">重置后时间线、待应答权限与问题都会回到 mock 的初始样本。</p>
+        <p className="mt-3 text-text-muted text-[12px]">重置后时间线、待应答权限与问题都会回到 mock 的初始样本。</p>
       </div>
     </>
   );

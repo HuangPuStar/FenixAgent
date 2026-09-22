@@ -21,6 +21,7 @@
   "connecting": "Connecting...",
   "loading_agent_panel": "Loading agent panel...",
   "createAgent": "New Agent",
+  "agentCreatedNavFailed": "Agent created, but the chat failed to open. Reopen it from the list.",
   "agentConfig": "Agent Config",
   "viewAgentConfig": "View agent details",
   "newInstance": "New Instance",

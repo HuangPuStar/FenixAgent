@@ -154,7 +154,7 @@ async function enterEmptySession(): Promise<void> {
 
 /** 读第一条空状态建议提示词的文案，并返回其按钮。 */
 function firstSuggestion(): HTMLButtonElement {
-  const button = container.querySelector<HTMLButtonElement>(".chat-empty-suggestions button");
+  const button = container.querySelector<HTMLButtonElement>('[data-slot="chat-empty-suggestions"] button');
   expect(button).not.toBeNull();
   return button as HTMLButtonElement;
 }

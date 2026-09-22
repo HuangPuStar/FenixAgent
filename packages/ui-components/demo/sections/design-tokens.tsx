@@ -61,7 +61,7 @@ function ThemeSamples() {
         <CardDescription>bg-card · text-card-foreground · border-border</CardDescription>
       </CardHeader>
       <CardContent className="flex flex-col gap-3">
-        <div className="demo-row">
+        <div className="flex flex-wrap items-center gap-3">
           <Button size="sm">Primary</Button>
           <Button size="sm" variant="secondary">
             Secondary
@@ -70,7 +70,7 @@ function ThemeSamples() {
             Outline
           </Button>
         </div>
-        <div className="demo-row">
+        <div className="flex flex-wrap items-center gap-3">
           <Badge variant="secondary">Secondary</Badge>
           <Badge variant="outline">Outline</Badge>
           <StatusBadge status="enabled" />
@@ -110,13 +110,17 @@ export function DesignTokensSection() {
   const { theme, resolvedTheme, setTheme } = useTheme();
 
   return (
-    <section className="demo-section">
-      <h1 className="demo-section-title">{t("sections.designTokens")}</h1>
-      <p className="demo-hint">{t("sectionHints.designTokens")}</p>
+    <section>
+      <h1 data-slot="demo-section-title" className="mb-6 text-[24px] font-semibold">
+        {t("sections.designTokens")}
+      </h1>
+      <p className="mt-3 text-text-muted text-[12px]">{t("sectionHints.designTokens")}</p>
 
-      <div className="demo-example">
-        <h2 className="demo-example-title">ThemeToggle / useTheme</h2>
-        <div className="demo-row">
+      <div className="mb-5 p-5 border border-border rounded-lg bg-surface-1">
+        <h2 data-slot="demo-example-title" className="mb-4 text-text-secondary text-[13px] font-medium">
+          ThemeToggle / useTheme
+        </h2>
+        <div className="flex flex-wrap items-center gap-3">
           <ThemeToggle />
           <Badge variant="outline">{`theme: ${theme} · resolved: ${resolvedTheme}`}</Badge>
           {THEME_OPTIONS.map((option) => (
@@ -130,13 +134,15 @@ export function DesignTokensSection() {
             </Button>
           ))}
         </div>
-        <p className="demo-hint">
+        <p className="mt-3 text-text-muted text-[12px]">
           ThemeToggle 内部调用的是同一个 useTheme().setTheme，两者读写同一份上下文，因此这里的读数会同步变化。
         </p>
       </div>
 
-      <div className="demo-example">
-        <h2 className="demo-example-title">light / dark 对组件的影响</h2>
+      <div className="mb-5 p-5 border border-border rounded-lg bg-surface-1">
+        <h2 data-slot="demo-example-title" className="mb-4 text-text-secondary text-[13px] font-medium">
+          light / dark 对组件的影响
+        </h2>
         <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
           <ThemePreviewPanel title={`跟随当前主题（resolved: ${resolvedTheme}）`}>
             <ThemeSamples />
@@ -145,27 +151,31 @@ export function DesignTokensSection() {
             <ThemeSamples />
           </ThemePreviewPanel>
         </div>
-        <p className="demo-hint">
+        <p className="mt-3 text-text-muted text-[12px]">
           切换主题只是改写 document.documentElement 上的 light / dark 类，面板里的背景、文字、边框与状态色都来自包内
           token 变量；强制作用域同样只作用于 token，`dark:` 前缀的工具类跟随 prefers-color-scheme，不受作用域或
           ThemeToggle 影响。
         </p>
       </div>
 
-      <div className="demo-example">
-        <h2 className="demo-example-title">Design tokens</h2>
-        <div className="demo-token-grid">
+      <div className="mb-5 p-5 border border-border rounded-lg bg-surface-1">
+        <h2 data-slot="demo-example-title" className="mb-4 text-text-secondary text-[13px] font-medium">
+          Design tokens
+        </h2>
+        <div className="grid grid-cols-[repeat(auto-fill,minmax(150px,1fr))] gap-3">
           {TOKENS.map((token) => (
-            <div key={token.name} className="demo-token">
-              <div className="demo-token-swatch" style={token.swatch} />
-              <div className="demo-token-label">{token.name}</div>
+            <div key={token.name} className="overflow-hidden border border-border rounded-[var(--radius)]">
+              <div className="h-12" style={token.swatch} />
+              <div className="px-2 py-1.5 text-text-secondary text-[12px]">{token.name}</div>
             </div>
           ))}
         </div>
       </div>
 
-      <div className="demo-example">
-        <h2 className="demo-example-title">ThemeProvider：与源应用的差异</h2>
+      <div className="mb-5 p-5 border border-border rounded-lg bg-surface-1">
+        <h2 data-slot="demo-example-title" className="mb-4 text-text-secondary text-[13px] font-medium">
+          ThemeProvider：与源应用的差异
+        </h2>
         {/*
           长段说明按句子拆成字符串片段而不是直接写 JSX 文本：格式化器会重排 JSX 文本，
           中英混排时容易在句中插空格，字符串片段能保持我在源码里写下的断句。

@@ -97,7 +97,7 @@ describe("ChatComposer 纯化接缝", () => {
     act(() => emit?.({ type: "suggested-prompt", prompt: "hello agent" }));
     expect(container.querySelector("textarea")?.value).toBe("hello agent");
 
-    const send = container.querySelector(".chat-composer-send");
+    const send = container.querySelector('[data-slot="chat-composer-send"]');
     expectText(send?.getAttribute("aria-label"), "components.chatComposer.send");
     act(() => (send as unknown as HTMLButtonElement).click());
 
@@ -120,12 +120,12 @@ describe("ChatComposer 纯化接缝", () => {
     });
 
     act(() => emit?.({ type: "quote", quote: { text: "first quote" } }));
-    expect(container.querySelectorAll(".chat-composer-asset.is-quote").length).toBe(1);
+    expect(container.querySelectorAll('[data-slot="chat-composer-quote"]').length).toBe(1);
 
     for (let i = 0; i < 8; i += 1) {
       act(() => emit?.({ type: "quote", quote: { text: `extra ${i}` } }));
     }
-    expect(container.querySelectorAll(".chat-composer-asset.is-quote").length).toBe(8);
+    expect(container.querySelectorAll('[data-slot="chat-composer-quote"]').length).toBe(8);
     expect(notices.at(-1)?.level).toBe("info");
     expectText(notices.at(-1)?.message, "components.composerAssets.quoteLimitReached");
   });
@@ -148,7 +148,7 @@ describe("ChatComposer 纯化接缝", () => {
       emit?.({ type: "quote", quote: { text: "丙".repeat(4_000) } });
     });
 
-    const assets = container.querySelectorAll(".chat-composer-asset.is-quote");
+    const assets = container.querySelectorAll('[data-slot="chat-composer-quote"]');
     expect(assets.length).toBe(2);
     const rendered = container.textContent ?? "";
     expect(rendered).toContain("甲".repeat(100));
@@ -169,18 +169,18 @@ describe("ChatComposer 纯化接缝", () => {
 
     act(() => emit?.({ type: "file-reference", file: { name: "index.ts", path: "src/index.ts" } }));
     expect(container.querySelector("textarea")?.value).toBe("@./src/index.ts ");
-    expect(container.querySelectorAll(".chat-composer-asset").length).toBe(1);
+    expect(container.querySelectorAll('[data-slot="chat-composer-asset"]').length).toBe(1);
   });
 
   // 未注入 uploadFiles 时附件按钮禁用（源实现以 envId 是否存在判定），注入后可用
   test("attachment button follows uploadFiles injection", () => {
     mount({ onSubmit: () => {} });
-    expect((container.querySelector(".chat-composer-file") as unknown as HTMLButtonElement).disabled).toBe(true);
+    expect(findFileButton(container).disabled).toBe(true);
 
     act(() => root.unmount());
     root = createRoot(container);
     mount({ onSubmit: () => {}, uploadFiles: async () => [] });
-    expect((container.querySelector(".chat-composer-file") as unknown as HTMLButtonElement).disabled).toBe(false);
+    expect(findFileButton(container).disabled).toBe(false);
   });
 
   // 受控 draft 传入时以宿主值为准（半受控语义）
@@ -263,7 +263,12 @@ function expectCopy(html: string, key: string) {
   ).toBe(true);
 }
 
-/** 找到发送/停止按钮（含 lucide 图标的 button）；包内该按钮带稳定类名 `chat-composer-send`。 */
+/** 找到附件入口按钮（包内该按钮带稳定锚点 `data-slot="chat-composer-file"`）。 */
+function findFileButton(container: HTMLElement): HTMLButtonElement {
+  return container.querySelector('[data-slot="chat-composer-file"]') as unknown as HTMLButtonElement;
+}
+
+/** 找到发送/停止按钮（含 lucide 图标的 button）；包内该按钮带稳定锚点 `data-slot="chat-composer-send"`。 */
 function findActionButton(container: HTMLElement): HTMLElement | null {
   return (
     Array.from(container.querySelectorAll("button")).find((b) =>
@@ -301,8 +306,8 @@ describe("ChatComposer", () => {
       />,
     );
 
-    expect(html).toContain("chat-composer-asset is-quote");
-    expect(html).toContain("chat-composer-quote-preview");
+    expect(html).toContain('data-slot="chat-composer-quote"');
+    expect(html).toContain('data-slot="chat-composer-quote-preview"');
     expect(html).toContain("不应展示的引用正文");
     expect(html).toContain("…");
   });
@@ -334,7 +339,8 @@ describe("ChatComposer", () => {
       <ChatComposer onSubmit={() => {}} contextUsage={{ totalTokens: 12300, inputTokens: 5000, outputTokens: 7300 }} />,
     );
     expect(html).toContain("12.3k");
-    expect(html).not.toContain("%");
+    // 只断言「正文里没有百分比数值」：先剥掉 class 属性，工具类里合规的 `92%` 之类不该算作伪造百分比。
+    expect(html.replace(/class="[^"]*"/g, "")).not.toMatch(/\d\s*%/);
   });
 
   // 元信息条：新会话按钮文案（i18n 译文或 key 回显，见 expectCopy）
@@ -366,16 +372,16 @@ describe("ChatComposer", () => {
     const html = ReactDOMServer.renderToString(<ChatComposer onSubmit={() => {}} commands={mockCommands} />);
     expectCopy(html, "components.chatComposer.skillButton");
     expectCopy(html, "components.chatComposer.attach");
-    // 「入口被禁用」按稳定类名断言：aria-label 的取值随 i18n 状态变化，不作为禁用与否的判据。
-    expect(html).toMatch(/<button[^>]*chat-composer-file[^>]*disabled=""/);
+    // 「入口被禁用」按稳定锚点断言：aria-label 的取值随 i18n 状态变化，不作为禁用与否的判据。
+    expect(html).toMatch(/<button[^>]*data-slot="chat-composer-file"[^>]*disabled=""/);
   });
 
   // 浮动按钮组：仅有 envId 无 commands 时，只有文件按钮
   // （迁移：旧断言 `not.toContain("chatComposer.commandButton")` 在包内恒真——该 key 两端都不存在，
-  //  改为按稳定类名断言技能入口不渲染。）
+  //  改为按稳定锚点断言技能入口不渲染。）
   test("renders only file button when no commands", () => {
     const html = ReactDOMServer.renderToString(<ChatComposer onSubmit={() => {}} uploadFiles={async () => []} />);
-    expect(html).not.toContain("chat-composer-plugin");
+    expect(html).not.toContain('data-slot="chat-composer-plugin"');
     expectCopy(html, "components.chatComposer.attach");
   });
 
@@ -383,7 +389,7 @@ describe("ChatComposer", () => {
   // （迁移：无 envId 时包内仍渲染文件入口（禁用态），故断言口径同下：入口在、技能入口不在。）
   test("renders no buttons when commands empty array and no envId", () => {
     const html = ReactDOMServer.renderToString(<ChatComposer onSubmit={() => {}} commands={[]} />);
-    expect(html).not.toContain("chat-composer-plugin");
+    expect(html).not.toContain('data-slot="chat-composer-plugin"');
     expectCopy(html, "components.chatComposer.attach");
   });
 
@@ -402,8 +408,13 @@ describe("ChatComposer", () => {
     const html = ReactDOMServer.renderToString(
       <ChatComposer onSubmit={() => {}} canCancel={true} onInterrupt={() => {}} />,
     );
-    expect(html).toContain('chat-composer-send is-stop" type="button"');
+    // 「停止态」由 aria-label 承担（原断言的是 `chat-composer-send is-stop` 类名组合）；
+    // 「可点击」按发送/停止锚点所在按钮不带 disabled 断言。
     expectCopy(html, "components.chatComposer.stop");
+    const sendTag = html.match(/<button[^>]*data-slot="chat-composer-send"[^>]*>/)?.[0];
+    expect(sendTag).toBeDefined();
+    // 只查布尔属性本身（`disabled=""`）：class 里的 `disabled:*` 工具类不算禁用。
+    expect(sendTag).not.toContain('disabled=""');
   });
 
   // cancelling（isLoading 且 canCancel=false）：渲染 Square 且 disabled，防止重复点发重取消
@@ -452,8 +463,8 @@ describe("ChatComposer interaction", () => {
       emit?.({ type: "quote", quote: { text: "丙".repeat(4_000) } });
     });
 
-    expect(container.querySelectorAll(".chat-composer-asset.is-quote").length).toBe(2);
-    expect(container.querySelectorAll(".chat-composer-quote-preview").length).toBe(2);
+    expect(container.querySelectorAll('[data-slot="chat-composer-quote"]').length).toBe(2);
+    expect(container.querySelectorAll('[data-slot="chat-composer-quote-preview"]').length).toBe(2);
     const button = findActionButton(container);
     act(() => (button as unknown as HTMLButtonElement).click());
     expect(submitted?.quoteContext).toContain("甲".repeat(100));
@@ -480,10 +491,10 @@ describe("ChatComposer interaction", () => {
     act(() => {
       emit?.({ type: "quote", quote: { text: "旧会话" } });
     });
-    expect(container.querySelectorAll(".chat-composer-asset.is-quote").length).toBe(1);
+    expect(container.querySelectorAll('[data-slot="chat-composer-quote"]').length).toBe(1);
 
     mount({ ...props, contextScope: "session-b" });
-    expect(container.querySelectorAll(".chat-composer-asset.is-quote").length).toBe(0);
+    expect(container.querySelectorAll('[data-slot="chat-composer-quote"]').length).toBe(0);
   });
 
   // canCancel（running 输出中）时点击按钮：只触发 onInterrupt，不触发 onSubmit——

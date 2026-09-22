@@ -214,7 +214,7 @@ export function ControlsExamples() {
 
       <ComponentBlock name="Label" description="表单标签；文本与控件通过 htmlFor / id 关联，点击标签可聚焦控件。">
         <Example title="Associated control" description="htmlFor 指向控件 id，这是让辅助技术正确朗读字段名的最低要求。">
-          <div className="demo-field">
+          <div className="flex flex-col gap-1.5">
             <Label htmlFor="demo-label-email">Email</Label>
             <Input id="demo-label-email" placeholder="you@example.com" />
           </div>
@@ -381,10 +381,12 @@ export function ControlsExamples() {
         </Example>
       </ComponentBlock>
 
-      <div className="demo-example">
-        <h2 className="demo-example-title">Resizable</h2>
-        <div className="demo-field">
-          <p className="demo-hint">
+      <div className="mb-5 p-5 border border-border rounded-lg bg-surface-1">
+        <h2 data-slot="demo-example-title" className="mb-4 text-text-secondary text-[13px] font-medium">
+          Resizable
+        </h2>
+        <div className="flex flex-col gap-1.5">
+          <p className="mt-3 text-text-muted text-[12px]">
             面板尺寸由 react-resizable-panels 维护，拖拽中间手柄调整比例；withHandle 只是手柄的外观开关。
           </p>
           <ResizablePanelGroup orientation="horizontal" className="h-36 rounded-lg border">
@@ -399,10 +401,14 @@ export function ControlsExamples() {
         </div>
       </div>
 
-      <div className="demo-example">
-        <h2 className="demo-example-title">Tabs</h2>
-        <div className="demo-field">
-          <p className="demo-hint">line 变体：面板切换是纯客户端行为，不产生浮层；内容面板可放任意组合内容。</p>
+      <div className="mb-5 p-5 border border-border rounded-lg bg-surface-1">
+        <h2 data-slot="demo-example-title" className="mb-4 text-text-secondary text-[13px] font-medium">
+          Tabs
+        </h2>
+        <div className="flex flex-col gap-1.5">
+          <p className="mt-3 text-text-muted text-[12px]">
+            line 变体：面板切换是纯客户端行为，不产生浮层；内容面板可放任意组合内容。
+          </p>
           <Tabs defaultValue="preview">
             <TabsList variant="line">
               <TabsTrigger value="preview">Preview</TabsTrigger>

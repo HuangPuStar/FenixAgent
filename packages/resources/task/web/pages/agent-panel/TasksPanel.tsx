@@ -1,48 +1,31 @@
+import { EmptyState } from "@fenix/ui-components/config/EmptyState";
+import { StatusBadge } from "@fenix/ui-components/config/StatusBadge";
 import { cn } from "@fenix/ui-components/lib/cn";
-import { Badge } from "@fenix/ui-components/ui/badge";
 import { Button } from "@fenix/ui-components/ui/button";
 import { ScrollArea } from "@fenix/ui-components/ui/scroll-area";
 import { Skeleton } from "@fenix/ui-components/ui/skeleton";
 import { Switch } from "@fenix/ui-components/ui/switch";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@fenix/ui-components/ui/table";
 import { unwrap } from "@fenix/web-runtime/api/request";
 import { NS } from "@fenix/web-runtime/i18n/namespace";
 import { Link } from "@tanstack/react-router";
 import { useRequest } from "ahooks";
-import { AlertTriangle, CheckCircle2, Clock, Play, RefreshCw, Settings2, XCircle } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
+import { AlertTriangle, CheckCircle2, Clock, Play, Settings2, XCircle } from "lucide-react";
+import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
-import type { ExecutionLogInfo, TaskV2Info } from "../../api/tasks-v2";
+import type { TaskV2Info } from "../../api/tasks-v2";
 import { taskV2Api } from "../../api/tasks-v2";
 import { describeCron } from "./components/CronEditor";
-import { isUnauthorizedError } from "./pages/agent-tasks-utils";
+import { ExecutionLogTable } from "./components/ExecutionLogTable";
+import {
+  formatTaskRelativeTime,
+  isUnauthorizedError,
+  removeIdFromSet,
+  TASK_ENABLED_TONES,
+} from "./pages/agent-tasks-utils";
 
 interface TasksPanelProps {
   agentId: string | null;
-}
-
-/** 相对时间格式化：Unix 秒级时间戳 */
-function formatRelativeTime(
-  ts: number | null | undefined,
-  t: (key: string, opts?: Record<string, unknown>) => string,
-): string {
-  if (ts == null) return "";
-  const now = Date.now();
-  const diff = now - ts * 1000;
-  if (diff < 60_000) return t("relativeTime.justNow");
-  if (diff < 3_600_000) return t("relativeTime.minutesAgo", { count: Math.floor(diff / 60_000) });
-  if (diff < 86_400_000) return t("relativeTime.hoursAgo", { count: Math.floor(diff / 3_600_000) });
-  const d = new Date(ts * 1000);
-  const pad = (n: number) => String(n).padStart(2, "0");
-  return `${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
-}
-
-/** createdAt 为 Unix 秒级时间戳 */
-function formatTime(timestamp: number): string {
-  const d = new Date(timestamp * 1000);
-  const pad = (n: number) => String(n).padStart(2, "0");
-  return `${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
 }
 
 export function TasksPanel({ agentId }: TasksPanelProps) {
@@ -85,32 +68,27 @@ export function TasksPanel({ agentId }: TasksPanelProps) {
   const handleTrigger = async (taskId: string) => {
     setTriggeringIds((prev) => new Set(prev).add(taskId));
     try {
-      await taskV2Api.trigger(taskId);
+      // 必须解包：`request()` 对 4xx/5xx 返回 `{ success: false }` 而不 throw，直接 await 会把失败当成功，
+      // catch 永远不可达，用户既看不到失败提示、也会基于未变更的状态刷新。
+      await unwrap(taskV2Api.trigger(taskId));
       refresh();
     } catch {
       toast.error(taskT("panelMode.tasksTriggerFailed") ?? "Trigger failed");
     } finally {
-      setTriggeringIds((prev) => {
-        const next = new Set(prev);
-        next.delete(taskId);
-        return next;
-      });
+      setTriggeringIds((prev) => removeIdFromSet(prev, taskId));
     }
   };
 
   const handleToggle = async (taskId: string) => {
     setTogglingIds((prev) => new Set(prev).add(taskId));
     try {
-      await taskV2Api.toggle(taskId);
+      // 同 handleTrigger：不解包则失败被当成成功，状态未变却刷新列表、也不提示。
+      await unwrap(taskV2Api.toggle(taskId));
       refresh();
     } catch {
       toast.error(taskT("panelMode.tasksToggleFailed"));
     } finally {
-      setTogglingIds((prev) => {
-        const next = new Set(prev);
-        next.delete(taskId);
-        return next;
-      });
+      setTogglingIds((prev) => removeIdFromSet(prev, taskId));
     }
   };
 
@@ -129,9 +107,9 @@ export function TasksPanel({ agentId }: TasksPanelProps) {
 
   /** 最后执行状态展示 */
   const renderLastRun = (task: TaskV2Info) => {
-    const relTime = formatRelativeTime(task.lastRunAt, taskT);
+    const relTime = formatTaskRelativeTime(task.lastRunAt, taskT, { fallback: "", dateFormat: "compact" });
     if (!task.lastStatus) {
-      return relTime ? <span className="text-[11px] text-text-muted">{relTime}</span> : null;
+      return relTime ? <span className="text-3xs text-text-muted">{relTime}</span> : null;
     }
     const Icon =
       task.lastStatus === "success"
@@ -150,7 +128,7 @@ export function TasksPanel({ agentId }: TasksPanelProps) {
             ? "text-amber-500"
             : "text-text-muted";
     return (
-      <span className={`flex items-center gap-1 text-[11px] ${colorClass}`}>
+      <span className={`flex items-center gap-1 text-3xs ${colorClass}`}>
         {Icon && <Icon className="size-3" />}
         {taskT(`status.${task.lastStatus}`)}
         {relTime && ` · ${relTime}`}
@@ -171,20 +149,15 @@ export function TasksPanel({ agentId }: TasksPanelProps) {
         {error ? (
           // 持久错误分支（`role="alert"`）：失败不能落进下面的「暂无任务」空态，否则用户分不清
           // 「加载失败」与「确实没有绑定任务」；非授权失败必须给重试入口，授权失败只说明原因。
-          <div className="flex-1 flex flex-col items-center justify-center gap-3 py-8 px-4 text-center" role="alert">
-            <AlertTriangle className="h-6 w-6 text-text-dim" />
-            <p className="text-sm text-text-muted">
-              {unauthorized ? taskT("loadState.unauthorizedTitle") : taskT("panelMode.tasksLoadFailed")}
-            </p>
-            {unauthorized ? (
-              <p className="text-xs text-text-muted">{taskT("loadState.unauthorizedHint")}</p>
-            ) : (
-              <Button size="sm" variant="outline" onClick={refresh} disabled={loading}>
-                <RefreshCw className="mr-1 h-3.5 w-3.5" />
-                {taskT("loadState.retry")}
-              </Button>
-            )}
-          </div>
+          <EmptyState
+            icon={<AlertTriangle className="size-6" />}
+            title={unauthorized ? taskT("loadState.unauthorizedTitle") : taskT("panelMode.tasksLoadFailed")}
+            description={unauthorized ? taskT("loadState.unauthorizedHint") : undefined}
+            tone="danger"
+            role="alert"
+            action={unauthorized ? undefined : { label: taskT("loadState.retry"), onClick: refresh, disabled: loading }}
+            className="flex-1 flex flex-col items-center justify-center py-8 px-4"
+          />
         ) : loading ? (
           <div className="p-3 space-y-2.5" aria-busy="true">
             {Array.from({ length: 3 }).map((_, i) => (
@@ -225,8 +198,14 @@ export function TasksPanel({ agentId }: TasksPanelProps) {
                     aria-pressed={selectedTask?.id === task.id}
                     onClick={() => handleTaskClick(task)}
                   >
-                    <span
-                      className={cn("shrink-0 size-2 rounded-full", task.enabled ? "bg-emerald-500" : "bg-slate-400")}
+                    {/* 状态不再手写色值：色调走 `TASK_ENABLED_TONES`，点在组件库内用 `bg-current`
+                        取当前文字色，本包只管「启用算好消息、停用算中性」。文案不传，由 StatusBadge
+                        查自己的 `statusBadge.enabled` / `disabled`（本包不新增同义 i18n key）。 */}
+                    <StatusBadge
+                      status={task.enabled ? "enabled" : "disabled"}
+                      toneMap={TASK_ENABLED_TONES}
+                      indicator="dot"
+                      className="shrink-0 h-5 px-1.5"
                     />
                     <span className="flex-1 min-w-0">
                       <span className="block text-sm font-medium text-text-primary truncate">{task.name}</span>
@@ -264,7 +243,17 @@ export function TasksPanel({ agentId }: TasksPanelProps) {
       {/* ── 下半部分：日志区 ── */}
       <div className="flex-1 min-h-0 border-t border-border/40 flex flex-col">
         {selectedTask ? (
-          <TaskLogView key={selectedTask.id} taskId={selectedTask.id} taskName={selectedTask.name} t={taskT} />
+          <>
+            {/* 头部留在面板侧（弹窗侧同理，只保留自己的头部差异）；取数、表格、分页与三态由
+                `ExecutionLogTable` 统一承担。条数随之只出现一次（分页栏），表头不再重复展示。
+                `key` 保证换任务时回到第 1 页，而不是沿用上一个任务的页码。 */}
+            <div className="flex items-center px-3 py-2 border-b border-border/40 flex-shrink-0">
+              <span className="text-xs font-medium text-text-primary truncate">
+                {taskT("log.title", { name: selectedTask.name })}
+              </span>
+            </div>
+            <ExecutionLogTable key={selectedTask.id} taskId={selectedTask.id} />
+          </>
         ) : (
           <div className="flex-1 flex items-center justify-center">
             <p className="text-xs text-text-muted">选择上方任务查看日志</p>
@@ -272,163 +261,5 @@ export function TasksPanel({ agentId }: TasksPanelProps) {
         )}
       </div>
     </div>
-  );
-}
-
-// ── 内联日志查看器 ──
-
-interface TaskLogViewProps {
-  taskId: string;
-  taskName: string;
-  t: (key: string, opts?: Record<string, unknown>) => string;
-}
-
-function TaskLogView({ taskId, taskName, t }: TaskLogViewProps) {
-  const PAGE_SIZE = 20;
-  const [page, setPage] = useState(1);
-
-  // 与任务列表同理：经 `unwrap` 抛出 ApiError，失败才带得出错误码（无权限分支据此判定），
-  // 自造 `new Error(...)` 会把 401/403 与普通故障混成同一类，页面只能一律给重试。
-  const { data, loading, error, run } = useRequest(
-    async (p: number) => unwrap(taskV2Api.logs(taskId, { page: p, pageSize: PAGE_SIZE })),
-    {
-      defaultParams: [1],
-      refreshDeps: [taskId],
-    },
-  );
-
-  const totalPages = data ? Math.max(1, Math.ceil(data.total / PAGE_SIZE)) : 1;
-  // 与列表侧同口径：401/403 是持久授权状态，只说明原因（标题 + 提示）且不给重试；其余失败给一次重试。
-  const unauthorized = isUnauthorizedError(error);
-
-  return (
-    <>
-      {/* 日志表头 */}
-      <div className="flex items-center justify-between px-3 py-2 border-b border-border/40 flex-shrink-0">
-        <span className="text-xs font-medium text-text-primary truncate">{t("log.title", { name: taskName })}</span>
-        {data && data.total > 0 && (
-          <span className="text-xs text-text-muted flex-shrink-0">{t("log.total", { count: data.total })}</span>
-        )}
-      </div>
-
-      {/* 日志内容 */}
-      <div className="flex-1 min-h-0 overflow-y-auto">
-        {error ? (
-          // 权限态与瞬时故障分开：401/403 只说明原因，其余失败给一次重试（沿用分页按钮的 run(page) 入口）。
-          <div className="flex flex-col items-center gap-2 py-8 px-3 text-center" role="alert">
-            <p className="text-sm text-destructive">
-              {unauthorized ? t("loadState.unauthorizedTitle") : t("loadState.failed", { message: error.message })}
-            </p>
-            {unauthorized ? (
-              <p className="text-xs text-text-muted">{t("loadState.unauthorizedHint")}</p>
-            ) : (
-              <Button variant="outline" size="sm" className="h-7 text-xs" onClick={() => run(page)}>
-                {t("loadState.retry")}
-              </Button>
-            )}
-          </div>
-        ) : loading ? (
-          <div className="py-4 px-3 space-y-2" aria-busy="true">
-            <Skeleton className="h-4 w-full" />
-            <Skeleton className="h-4 w-3/4" />
-            <Skeleton className="h-4 w-1/2" />
-          </div>
-        ) : !data?.items?.length ? (
-          <p className="text-center text-text-muted py-8 text-sm">{t("log.empty")}</p>
-        ) : (
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead className="text-xs">{t("log.time")}</TableHead>
-                <TableHead className="text-xs">{t("log.triggeredBy")}</TableHead>
-                <TableHead className="text-xs">{t("log.status")}</TableHead>
-                <TableHead className="text-xs">{t("log.result")}</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {data.items.map((log: ExecutionLogInfo) => (
-                <TableRow key={log.id}>
-                  <TableCell className="text-xs whitespace-nowrap">{formatTime(log.createdAt)}</TableCell>
-                  <TableCell>
-                    <span className="text-xs text-text-muted">
-                      {log.triggeredBy === "cron" ? t("triggeredBy.cron") : t("triggeredBy.manual")}
-                    </span>
-                  </TableCell>
-                  <TableCell>
-                    <LogStatusBadge status={log.status} t={t} />
-                  </TableCell>
-                  <TableCell className="max-w-[150px]">
-                    <div className="truncate text-xs">
-                      {log.error ? (
-                        <span className="text-destructive">{log.error}</span>
-                      ) : log.skipReason ? (
-                        <span className="text-text-muted">{log.skipReason}</span>
-                      ) : (
-                        log.resultSummary || t("log.noResult")
-                      )}
-                    </div>
-                  </TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
-        )}
-      </div>
-
-      {/* 分页控件 */}
-      {data && data.total > 0 && (
-        <div className="flex items-center justify-center gap-2 py-2 border-t border-border/40 flex-shrink-0">
-          <Button
-            variant="outline"
-            size="sm"
-            className="h-7 text-xs"
-            onClick={() => {
-              const p = page - 1;
-              setPage(p);
-              run(p);
-            }}
-            disabled={page <= 1}
-          >
-            {t("log.prev")}
-          </Button>
-          <span className="text-xs text-text-muted">
-            {page}/{totalPages}
-          </span>
-          <Button
-            variant="outline"
-            size="sm"
-            className="h-7 text-xs"
-            onClick={() => {
-              const p = page + 1;
-              setPage(p);
-              run(p);
-            }}
-            disabled={page >= totalPages}
-          >
-            {t("log.next")}
-          </Button>
-        </div>
-      )}
-    </>
-  );
-}
-
-function LogStatusBadge({ status, t }: { status: string; t: (key: string) => string }) {
-  const labelMap = useMemo<Record<string, string>>(
-    () => ({
-      success: t("status.success"),
-      failed: t("status.failed"),
-      timeout: t("status.timeout"),
-      skipped: t("status.skipped"),
-      pending: t("status.pending"),
-    }),
-    [t],
-  );
-  const variant: "default" | "destructive" | "secondary" =
-    status === "success" ? "default" : status === "failed" || status === "timeout" ? "destructive" : "secondary";
-  return (
-    <Badge variant={variant} className="text-[11px] h-5">
-      {labelMap[status] || labelMap.pending}
-    </Badge>
   );
 }

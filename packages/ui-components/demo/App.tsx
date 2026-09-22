@@ -106,15 +106,22 @@ export function App() {
   const ActiveSection = SECTION_COMPONENTS[activeSection];
 
   return (
-    <div className="demo-shell">
-      <nav className="demo-nav">
-        <div className="demo-nav-title">{t("appTitle")}</div>
+    <div className="flex min-h-screen">
+      <nav className="sticky top-0 flex-none w-[220px] h-screen overflow-y-auto px-4 py-6 border-r border-border bg-surface-1">
+        <div className="mb-5 text-[15px] font-semibold leading-[1.4]">{t("appTitle")}</div>
         {SECTION_IDS.map((id) => (
           <button
             key={id}
             type="button"
-            className="demo-nav-item"
+            data-slot="demo-nav-item"
             data-active={id === activeSection}
+            className={`block w-full mb-0.5 px-2.5 py-[7px] border-0 rounded-[var(--radius)] bg-transparent text-[14px] text-left cursor-pointer ${
+              // 原 CSS 里 `[data-active="true"]` 排在 `:hover` 之后，选中项在悬停时也保持品牌色；
+              // 这里按互斥两态写，避免两条同属性工具类靠生成顺序决定胜负。
+              id === activeSection
+                ? "bg-brand-subtle text-brand font-medium"
+                : "text-text-secondary hover:bg-surface-2 hover:text-text-primary"
+            }`}
             onClick={() => setActiveSection(id)}
           >
             {t(`sections.${id}`)}
@@ -122,9 +129,9 @@ export function App() {
         ))}
       </nav>
 
-      <main className="demo-main">
-        <header className="demo-topbar">
-          <span className="demo-topbar-label">{t("language")}</span>
+      <main className="flex-1 min-w-0">
+        <header className="sticky top-0 z-10 flex items-center justify-end gap-2 h-[var(--navbar-height)] px-6 border-b border-border bg-background">
+          <span className="mr-1 text-text-muted text-[12px]">{t("language")}</span>
           {LANGUAGES.map((option) => (
             <Button
               key={option.value}
@@ -140,7 +147,7 @@ export function App() {
           <ThemeToggle />
         </header>
 
-        <div className="demo-content">
+        <div className="max-w-[960px] px-6 pt-8 pb-[72px]">
           <ActiveSection />
         </div>
       </main>

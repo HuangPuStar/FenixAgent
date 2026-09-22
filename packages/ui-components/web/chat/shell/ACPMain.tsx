@@ -21,10 +21,10 @@ import { ChatHeader } from "./ChatHeader";
 import { ChatInterface, type ChatInterfaceHandle } from "./ChatInterface";
 import type { BoundMcpOption, ChatNotice, ChatStatsSummary } from "./chat-interface-types";
 import { AcpMainMobileSidebar } from "./internal/acp-main-mobile-sidebar";
-import { SidebarSessionList } from "./sidebar-session-list";
+import { type SessionSelectFallback, SessionSelectFallbackProvider, SidebarSessionList } from "./sidebar-session-list";
 
 /**
- * ACPMain 属性。复制自 `packages/chat-channel/web/components/ACPMain.tsx`。
+ * ACPMain 属性。复制自 `packages/chat-channel/web/components/ACPMain.tsx`（旧路径，已于 2026-09-21 由 8f364c109 删除）。
  * 纯化改动点：`sidebarOpen` / `onSidebarOpenChange` 取代 localStorage `acp-sidebar-open`；
  * `onNotice` 取代 sonner toast；并把宿主端口（`boundMcps` / `projectEntries` / `flushContext` /
  * Composer 上传相关回调 / `onStatsChange` / `onOpenWorkspaceFile`）透传给 ChatInterface。
@@ -112,7 +112,7 @@ interface ACPMainProps {
  * Main container — Anthropic sidebar + chat layout.
  * Sidebar: sectioned by recency, orange active state, warm raised bg.
  *
- * 复制自 `packages/chat-channel/web/components/ACPMain.tsx`。
+ * 复制自 `packages/chat-channel/web/components/ACPMain.tsx`（旧路径，已于 2026-09-21 由 8f364c109 删除）。
  * 纯化改动点：localStorage `acp-sidebar-open` → 受控 `sidebarOpen` / `onSidebarOpenChange`；
  * sonner `toast.warning` → `onNotice` 回调；UI 组件、类型与 i18n 收敛到包内；
  * 会话 bootstrap 策略（300ms 防抖选最近会话 / 列表确认后自动建会话）逐字保留。
@@ -180,6 +180,9 @@ export function ACPMain({
   );
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
   const [initialActiveSessionId, setInitialActiveSessionId] = useState<string | null>(null);
+  // 会话切换失败的回退信号（见 `SessionSelectFallback`）：侧边栏高亮是点击时的乐观置位，
+  // 失败后必须显式下发信号把它拉回真实会话，否则高亮与消息区长期不一致。
+  const [sessionSelectFallback, setSessionSelectFallback] = useState<SessionSelectFallback | null>(null);
   const chatRef = useRef<ChatInterfaceHandle>(null);
   // 已进入过某个 session 的标记（包括 bootstrap 自动选择和用户手动切换）
   // 用于防止重复进入 session 以及处理延迟到达的 activeSessionId
@@ -188,16 +191,27 @@ export function ACPMain({
   // 等待 300ms 稳定后再执行 bootstrap，避免在只收到第一条 session 时就过早加载
   const bootstrapTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
+  /**
+   * 取消尚未触发的 bootstrap 防抖。
+   *
+   * 2026-09-22 库内去重：`connectionState` 重置 effect 与该 effect 的 cleanup 此前各写了一份
+   * 逐字相同的 `if (bootstrapTimerRef.current) { clearTimeout(…); bootstrapTimerRef.current = null; }`，
+   * 收敛到此（`useCallback([])`，只碰一个 ref，身份稳定）。
+   */
+  const clearBootstrapTimer = useCallback(() => {
+    if (bootstrapTimerRef.current) {
+      clearTimeout(bootstrapTimerRef.current);
+      bootstrapTimerRef.current = null;
+    }
+  }, []);
+
   // 该 effect 的依赖是有意的：connectionState 仅作为"重连时重置 bootstrap 状态"的触发器，
   // 函数体不读取它（源 `ACPMain.tsx` 同款写法）。
   // biome-ignore lint/correctness/useExhaustiveDependencies: connectionState 作为重连触发器参与依赖，非冗余依赖
   useEffect(() => {
     sessionEnteredRef.current = false;
-    if (bootstrapTimerRef.current) {
-      clearTimeout(bootstrapTimerRef.current);
-      bootstrapTimerRef.current = null;
-    }
-  }, [connectionState]);
+    clearBootstrapTimer();
+  }, [connectionState, clearBootstrapTimer]);
 
   // 侧边栏状态的持久化（源为 localStorage `acp-sidebar-open`）已移交宿主：见 `onSidebarOpenChange`。
 
@@ -228,6 +242,13 @@ export function ACPMain({
     [onRespondPermission],
   );
 
+  // 切换失败后的高亮回退目标：取会话投影实际展示的会话（也是输入/prompt 路由的目标），
+  // 保证「高亮 = 消息区」；宿主未注入 chatState 时退回本组件已跟踪的会话。
+  const rollbackSessionHighlight = useCallback(() => {
+    const currentSessionId = chatState?.activeSessionId ?? initialActiveSessionId ?? null;
+    setSessionSelectFallback((prev) => ({ sessionId: currentSessionId, token: (prev?.token ?? 0) + 1 }));
+  }, [chatState?.activeSessionId, initialActiveSessionId]);
+
   // Handle session selection. 刷新后的会话恢复必须继续加载正在进行的会话；
   // 仅用户主动切换时，才需要以 loading 保护当前对话不被切走。
   const handleSelectSession = useCallback(
@@ -236,22 +257,37 @@ export function ACPMain({
         onNotice?.({ level: "warning", message: t("chat.components.acpMain.chatBusy") });
         return;
       }
+      // 引擎既无 loadSession 也无 resumeSession 时没有任何可执行的切换动作：必须给用户
+      // 明确反馈并回退高亮，否则点击只留下控制台日志、界面停在错误的高亮上（静默失败）。
+      // 该提示只在用户主动切换时下发——自动恢复（restore）失败在页面打开瞬间发生，
+      // 弹提示属于噪声，其失败仍保留下方同一份 console.error 诊断。
+      if (!supportsLoadSession && !supportsResumeSession) {
+        console.error("Failed to load/resume session: Loading or resuming sessions is not supported by this agent.");
+        if (source === "user") {
+          onNotice?.({ level: "warning", message: t("chat.components.acpMain.sessionSwitchUnsupported") });
+        }
+        rollbackSessionHighlight();
+        return;
+      }
       try {
         if (supportsLoadSession) {
           onLoadSession(session.sessionId);
-        } else if (supportsResumeSession) {
-          onResumeSession(session.sessionId);
         } else {
-          throw new Error("Loading or resuming sessions is not supported by this agent.");
+          onResumeSession(session.sessionId);
         }
         sessionEnteredRef.current = true;
         setInitialActiveSessionId(session.sessionId);
         if (source === "user") setMobileSidebarOpen(false);
       } catch (error) {
+        // 意外失败（宿主回调抛错等）：提示与诊断上下文一并保留，并回退乐观高亮。
         console.error("Failed to load/resume session:", error);
+        if (source === "user") {
+          onNotice?.({ level: "error", message: t("chat.components.acpMain.sessionSwitchFailed") });
+        }
+        rollbackSessionHighlight();
       }
     },
-    [supportsLoadSession, supportsResumeSession, onLoadSession, onResumeSession, t, onNotice],
+    [supportsLoadSession, supportsResumeSession, onLoadSession, onResumeSession, t, onNotice, rollbackSessionHighlight],
   );
 
   // Bootstrap: 通过 YJS chatState 获取会话列表，自动进入最近会话。
@@ -314,10 +350,7 @@ export function ACPMain({
     }, 300);
 
     return () => {
-      if (bootstrapTimerRef.current) {
-        clearTimeout(bootstrapTimerRef.current);
-        bootstrapTimerRef.current = null;
-      }
+      clearBootstrapTimer();
     };
   }, [
     connectionState,
@@ -326,6 +359,7 @@ export function ACPMain({
     chatState?.sessionListLoaded,
     handleSelectSession,
     handleCreateSession,
+    clearBootstrapTimer,
   ]);
 
   // 延迟 activeSessionId 处理：bootstrap 在 sessions 为空时不创建会话而是等待。
@@ -351,132 +385,138 @@ export function ACPMain({
   }, [chatState?.activeSessionId, sessions, connectionState, handleSelectSession]);
 
   return (
-    // root 加 p-3 gap-3：让顶部 ChatHeader 浮动卡片与下方内容统一外边距，
-    // 形成上下两个玻璃磨砂卡片悬浮在子页面背景上的视觉效果。
-    // acp-main-root：作为窄屏容器（如 MetaAgentPanel）收紧 padding 的 CSS 作用域钩子
-    <div className="acp-main-root flex h-full w-full flex-col">
-      {/* 顶部 ChatHeader — 仅展示当前会话标题；会话列表统一从侧边栏进入 */}
-      {/* readonly 时整体隐藏 */}
-      {!readonly && (
-        <ChatHeader
-          activeSessionId={initialActiveSessionId}
-          onSelectSession={handleSelectSession}
-          onNewSession={() => chatRef.current?.newSession()}
-          onToggleSidebar={
-            !hideSidebar
-              ? () => {
-                  if (window.matchMedia("(max-width: 767px)").matches) {
-                    setMobileSidebarOpen((open) => !open);
-                  } else {
-                    setSidebarOpen((open) => !open);
+    // 会话切换失败回退信号在根节点注入一次：侧边栏列表由桌面侧栏、移动端抽屉与 ChatHeader
+    // 三处渲染（后两处是包内包装组件，本组件无法逐层透传新 prop），Context 覆盖全部实例。
+    <SessionSelectFallbackProvider fallback={sessionSelectFallback}>
+      {/* root 加 p-3 gap-3：让顶部 ChatHeader 浮动卡片与下方内容统一外边距，
+          形成上下两个玻璃磨砂卡片悬浮在子页面背景上的视觉效果。
+          acp-main-root：作为窄屏容器（如 MetaAgentPanel）收紧 padding 的 CSS 作用域钩子 */}
+      <div className="acp-main-root flex h-full w-full flex-col bg-white text-gray-800">
+        {/* 顶部 ChatHeader — 仅展示当前会话标题；会话列表统一从侧边栏进入 */}
+        {/* readonly 时整体隐藏 */}
+        {!readonly && (
+          <ChatHeader
+            activeSessionId={initialActiveSessionId}
+            onSelectSession={handleSelectSession}
+            onNewSession={() => chatRef.current?.newSession()}
+            onToggleSidebar={
+              !hideSidebar
+                ? () => {
+                    if (window.matchMedia("(max-width: 767px)").matches) {
+                      setMobileSidebarOpen((open) => !open);
+                    } else {
+                      setSidebarOpen((open) => !open);
+                    }
                   }
-                }
-              : undefined
-          }
-          sidebarOpen={sidebarOpen || mobileSidebarOpen}
-          sessions={sessions}
-          onRenameSession={onRenameSession}
-          onDeleteSession={onDeleteSession}
-          onNotice={onNotice}
-          showSessionList={false}
-        />
-      )}
-
-      {!readonly && !hideSidebar && (
-        <AcpMainMobileSidebar
-          open={mobileSidebarOpen}
-          onOpenChange={setMobileSidebarOpen}
-          onNewSession={() => chatRef.current?.newSession()}
-          sessions={sessions}
-          initialActiveSessionId={initialActiveSessionId}
-          onSelectSession={handleSelectSession}
-          onRenameSession={onRenameSession}
-          onDeleteSession={onDeleteSession}
-          onNotice={onNotice}
-        />
-      )}
-
-      {/* 主体：横向 sidebar + chat */}
-      <div className="flex flex-1 min-h-0">
-        {/* 左侧 sidebar — 仅在 sidebarOpen 且非 readonly/hideSidebar 时渲染，关闭时完全不占位 */}
-        {!readonly && !hideSidebar && sidebarOpen && (
-          <div className="chat-session-sidebar hidden md:flex flex-col transition-all duration-200 flex-shrink-0">
-            {/* 头部：标题 + 新会话按钮 */}
-            <div className="flex items-center justify-between px-3 py-2.5">
-              <span className="text-xs font-display font-semibold text-text-muted uppercase tracking-widest px-1">
-                {t("chat.components.acpMain.sessions")}
-              </span>
-              <div className="flex items-center gap-1">
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  onClick={() => chatRef.current?.newSession()}
-                  className="h-7 w-7 text-text-muted hover:text-brand hover:bg-brand/10"
-                  title={t("chat.components.acpMain.newSession")}
-                >
-                  <Plus className="h-4 w-4" />
-                </Button>
-              </div>
-            </div>
-
-            {/* 会话列表 */}
-            <ScrollArea className="flex-1">
-              <SidebarSessionList
-                initialActiveSessionId={initialActiveSessionId}
-                onSelectSession={handleSelectSession}
-                sessions={sessions}
-                onRenameSession={onRenameSession}
-                onDeleteSession={onDeleteSession}
-                onNotice={onNotice}
-              />
-            </ScrollArea>
-          </div>
+                : undefined
+            }
+            sidebarOpen={sidebarOpen || mobileSidebarOpen}
+            sessions={sessions}
+            onRenameSession={onRenameSession}
+            onDeleteSession={onDeleteSession}
+            onNotice={onNotice}
+            showSessionList={false}
+          />
         )}
 
-        {/* 聊天区域 */}
-        <div className="chat-main-column flex-1 flex flex-col min-w-0">
-          <ChatInterface
-            ref={chatRef}
-            agentId={agentId}
-            readonly={readonly}
-            rcsSessionId={rcsSessionId}
-            detailSessionId={detailSessionId}
-            scenePrompt={scenePrompt}
-            contextKey={contextKey}
-            onSessionCreated={(sessionId) => setInitialActiveSessionId(sessionId)}
-            onPromptComplete={onPromptComplete}
-            sessionState={sessionState}
-            chatState={chatState}
-            onSendPrompt={handleSendPrompt}
-            onCancel={handleCancel}
-            onCreateSession={handleCreateSession}
-            onRespondPermission={handleRespondPermission}
-            onRespondQuestion={onRespondQuestion}
-            availableCommands={availableCommands}
-            availableModes={availableModes}
-            currentModeId={currentModeId}
-            onSetMode={onSetMode}
-            supportsModeSelection={supportsModeSelection}
-            supportsImages={supportsImages}
-            modelName={modelName}
-            tokenUsage={tokenUsage}
-            connectionState={connectionState}
-            periTasks={periTasks}
-            periTasksLoaded={periTasksLoaded}
-            renderPeriTaskDetail={renderPeriTaskDetail}
-            boundMcps={boundMcps}
-            projectEntries={projectEntries}
-            flushContext={flushContext}
-            uploadFiles={uploadFiles}
-            compressImage={compressImage}
-            renderFilePicker={renderFilePicker}
-            subscribeExternal={subscribeExternal}
+        {!readonly && !hideSidebar && (
+          <AcpMainMobileSidebar
+            open={mobileSidebarOpen}
+            onOpenChange={setMobileSidebarOpen}
+            onNewSession={() => chatRef.current?.newSession()}
+            sessions={sessions}
+            initialActiveSessionId={initialActiveSessionId}
+            onSelectSession={handleSelectSession}
+            onRenameSession={onRenameSession}
+            onDeleteSession={onDeleteSession}
             onNotice={onNotice}
-            onStatsChange={onStatsChange}
-            onOpenWorkspaceFile={onOpenWorkspaceFile}
           />
+        )}
+
+        {/* 主体：横向 sidebar + chat */}
+        <div className="flex flex-1 min-h-0">
+          {/* 左侧 sidebar — 仅在 sidebarOpen 且非 readonly/hideSidebar 时渲染，关闭时完全不占位 */}
+          {!readonly && !hideSidebar && sidebarOpen && (
+            <div className="hidden w-54.5 border-r border-gray-100 bg-white md:flex flex-col transition-all duration-200 flex-shrink-0">
+              {/* 头部：标题 + 新会话按钮 */}
+              <div className="flex items-center justify-between px-3 py-2.5">
+                <span className="text-xs font-display font-semibold text-text-muted uppercase tracking-widest px-1">
+                  {t("chat.components.acpMain.sessions")}
+                </span>
+                <div className="flex items-center gap-1">
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    onClick={() => chatRef.current?.newSession()}
+                    className="h-7 w-7 text-text-muted hover:text-brand hover:bg-brand/10"
+                    title={t("chat.components.acpMain.newSession")}
+                  >
+                    <Plus className="h-4 w-4" />
+                  </Button>
+                </div>
+              </div>
+
+              {/* 会话列表 */}
+              <ScrollArea className="flex-1">
+                <SidebarSessionList
+                  initialActiveSessionId={initialActiveSessionId}
+                  onSelectSession={handleSelectSession}
+                  sessions={sessions}
+                  onRenameSession={onRenameSession}
+                  onDeleteSession={onDeleteSession}
+                  onNotice={onNotice}
+                />
+              </ScrollArea>
+            </div>
+          )}
+
+          {/* 聊天区域 */}
+          {/* chat-main-column 保留为类名：`web/chat/css/chat-layout.css`（下一阶段迁移）与宿主同款
+              样式表仍以它作为「唯一高度链」选择器；本行新增的几何工具类即原 `chat-design-shell.css` 的声明。 */}
+          <div className="chat-main-column relative flex flex-1 min-h-0 min-w-0 flex-col overflow-hidden bg-white">
+            <ChatInterface
+              ref={chatRef}
+              agentId={agentId}
+              readonly={readonly}
+              rcsSessionId={rcsSessionId}
+              detailSessionId={detailSessionId}
+              scenePrompt={scenePrompt}
+              contextKey={contextKey}
+              onSessionCreated={(sessionId) => setInitialActiveSessionId(sessionId)}
+              onPromptComplete={onPromptComplete}
+              sessionState={sessionState}
+              chatState={chatState}
+              onSendPrompt={handleSendPrompt}
+              onCancel={handleCancel}
+              onCreateSession={handleCreateSession}
+              onRespondPermission={handleRespondPermission}
+              onRespondQuestion={onRespondQuestion}
+              availableCommands={availableCommands}
+              availableModes={availableModes}
+              currentModeId={currentModeId}
+              onSetMode={onSetMode}
+              supportsModeSelection={supportsModeSelection}
+              supportsImages={supportsImages}
+              modelName={modelName}
+              tokenUsage={tokenUsage}
+              connectionState={connectionState}
+              periTasks={periTasks}
+              periTasksLoaded={periTasksLoaded}
+              renderPeriTaskDetail={renderPeriTaskDetail}
+              boundMcps={boundMcps}
+              projectEntries={projectEntries}
+              flushContext={flushContext}
+              uploadFiles={uploadFiles}
+              compressImage={compressImage}
+              renderFilePicker={renderFilePicker}
+              subscribeExternal={subscribeExternal}
+              onNotice={onNotice}
+              onStatsChange={onStatsChange}
+              onOpenWorkspaceFile={onOpenWorkspaceFile}
+            />
+          </div>
         </div>
       </div>
-    </div>
+    </SessionSelectFallbackProvider>
   );
 }
