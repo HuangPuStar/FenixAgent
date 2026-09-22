@@ -1,4 +1,5 @@
 import { ConfirmDialog } from "@fenix/ui-components/config/ConfirmDialog";
+import { EmptyState } from "@fenix/ui-components/config/EmptyState";
 import { FormDialog } from "@fenix/ui-components/config/FormDialog";
 import { AppHeader } from "@fenix/ui-components/layout/app-header";
 import { AppPage } from "@fenix/ui-components/layout/app-page";
@@ -58,10 +59,11 @@ function ApiKeyTable({
   return (
     <section className="api-key-table" aria-label={t("title")}>
       {keys.length === 0 ? (
-        <div className="api-key-empty">
-          <KeyRound className="size-6" />
-          <span>{t("emptyMessage")}</span>
-        </div>
+        <EmptyState
+          icon={<KeyRound />}
+          title={t("emptyMessage")}
+          className="flex min-h-64 flex-col items-center justify-center"
+        />
       ) : (
         <Table>
           <TableHeader>
@@ -218,13 +220,17 @@ export function AgentApiKeysPage() {
         </div>
       </div>
       {error ? (
-        <div className="api-key-error">
-          <AlertTriangle className="size-5" />
-          <span>{t("toast.loadFailed")}</span>
-          <Button variant="ghost" size="sm" onClick={refresh}>
-            <RefreshCw className="size-4" />
-            {t("btn.retry")}
-          </Button>
+        // 卡片外壳由调用方给（EmptyState 只负责块内排版）：与上方的表格、下方的空态保持同一种边框，
+        // 此前这层外壳是 CSS 里 `.api-key-error` 单独抄的一份。
+        <div className="rounded-lg border border-border bg-surface-0">
+          <EmptyState
+            tone="danger"
+            role="alert"
+            icon={<AlertTriangle />}
+            title={t("toast.loadFailed")}
+            action={{ label: t("btn.retry"), icon: <RefreshCw />, onClick: refresh }}
+            className="flex min-h-64 flex-col items-center justify-center"
+          />
         </div>
       ) : (
         <ApiKeyTable

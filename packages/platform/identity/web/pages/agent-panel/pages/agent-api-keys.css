@@ -73,8 +73,7 @@
 }
 
 .api-key-table,
-.api-key-table-loading,
-.api-key-error {
+.api-key-table-loading {
   overflow: hidden;
   border: 1px solid #e2e8f1;
   border-radius: 10px;
@@ -150,28 +149,10 @@
 .api-key-table .api-key-action-column button:hover {
   color: #bf4e55;
 }
-.api-key-empty {
-  display: grid;
-  place-content: center;
-  justify-items: center;
-  gap: 8px;
-  min-height: 220px;
-  color: #9aa6b7;
-  font-size: 12px;
-}
 .api-key-table-loading {
   display: grid;
   gap: 1px;
   padding: 10px;
-}
-.api-key-error {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 10px;
-  min-height: 180px;
-  color: #9a6268;
-  font-size: 12px;
 }
 
 .api-key-create-field {

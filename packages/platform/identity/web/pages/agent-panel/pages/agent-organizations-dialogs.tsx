@@ -15,8 +15,8 @@ import { Input } from "@fenix/ui-components/ui/input";
 import { NS } from "@fenix/web-runtime/i18n/namespace";
 import { Check, Copy, Search, X } from "lucide-react";
 import { useTranslation } from "react-i18next";
-import { toast } from "sonner";
 import type { OrgMemberCandidate } from "../../../api/organizations";
+import { copyTextToClipboard } from "../../../lib/clipboard";
 import type { MachineFormState, OrganizationsDialogsProps } from "./agent-organizations-types";
 
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
@@ -191,11 +191,8 @@ function ConfirmDialogs({ props }: { props: OrganizationsDialogsProps }) {
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel>{t("cancel")}</AlertDialogCancel>
-            <AlertDialogAction
-              onClick={props.onDelete}
-              disabled={props.deleteLoading}
-              className="bg-destructive text-white hover:bg-destructive/90"
-            >
+            {/* destructive 变体即 Button 的破坏性配色，不再逐处手抄一份色值类串。 */}
+            <AlertDialogAction variant="destructive" onClick={props.onDelete} disabled={props.deleteLoading}>
               {props.deleteLoading ? t("deleteDialog.deleting") : t("deleteDialog.confirmDelete")}
             </AlertDialogAction>
           </AlertDialogFooter>
@@ -217,9 +214,9 @@ function ConfirmDialogs({ props }: { props: OrganizationsDialogsProps }) {
           <AlertDialogFooter>
             <AlertDialogCancel>{t("cancel")}</AlertDialogCancel>
             <AlertDialogAction
+              variant="destructive"
               onClick={props.onConfirmRemoveMember}
               disabled={props.removeMemberLoading}
-              className="bg-destructive text-white hover:bg-destructive/90"
             >
               {props.removeMemberLoading ? t("removeMemberDialog.removing") : t("removeMemberDialog.confirmRemove")}
             </AlertDialogAction>
@@ -242,9 +239,9 @@ function ConfirmDialogs({ props }: { props: OrganizationsDialogsProps }) {
           <AlertDialogFooter>
             <AlertDialogCancel>{t("cancel")}</AlertDialogCancel>
             <AlertDialogAction
+              variant="destructive"
               onClick={props.onDeleteMachine}
               disabled={props.deleteMachineLoading}
-              className="bg-destructive text-white hover:bg-destructive/90"
             >
               {props.deleteMachineLoading ? t("deleteMachineDialog.deleting") : t("deleteMachineDialog.confirmDelete")}
             </AlertDialogAction>
@@ -303,10 +300,8 @@ function CopyValue({ label, value }: { label: string; value: string }) {
         <Button
           size="icon-sm"
           variant="ghost"
-          onClick={() => {
-            navigator.clipboard.writeText(value);
-            toast.success(t("copied"));
-          }}
+          aria-label={t("copy")}
+          onClick={() => copyTextToClipboard(value, { copied: t("copied"), failed: t("copyFailed") })}
         >
           <Copy className="size-4" />
         </Button>
