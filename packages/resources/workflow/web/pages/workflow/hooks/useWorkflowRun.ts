@@ -358,7 +358,15 @@ export function useWorkflowRun(params: UseWorkflowRunParams): UseWorkflowRunRetu
     [activeRunId, loadRunData, setRunApprovals],
   );
 
-  const handleBackToEdit = useCallback(() => {
+  /**
+   * 退出运行视图：停轮询、复位运行态、清 dry-run 结果，并摘掉画布节点上的运行标记。
+   *
+   * 「回到编辑」（面板头部的编辑按钮）与「回到运行列表」（返回箭头）要复位的东西**逐字相同**
+   * ——2026-09-22 去重，此前是两个各 18 行的副本。两者的差别只在调用方，不在复位内容：
+   * 编辑器在「回到编辑」之后额外关掉运行抽屉（`WorkflowEditor` 的包装），返回列表则直接用。
+   * 因此这里只留一份实现，两个对外名字都指向它；新增一个「退出运行视图要清什么」的字段时只改这一处。
+   */
+  const handleExitRunView = useCallback(() => {
     if (pollRef.current) clearTimeout(pollRef.current);
     setRunning(false);
     setActiveRunId(null);
@@ -378,25 +386,8 @@ export function useWorkflowRun(params: UseWorkflowRunParams): UseWorkflowRunRetu
     );
   }, [setActiveRunId, runViewSetters, setNodes]);
 
-  const handleBackToList = useCallback(() => {
-    if (pollRef.current) clearTimeout(pollRef.current);
-    setRunning(false);
-    setActiveRunId(null);
-    resetRunView(runViewSetters);
-    setDryRunResult(null);
-    setNodes((nds) =>
-      nds.map((n) => ({
-        ...n,
-        data: {
-          ...n.data,
-          _runStatus: undefined,
-          _exitCode: undefined,
-          _onViewOutput: undefined,
-          _onRerunFrom: undefined,
-        },
-      })),
-    );
-  }, [setActiveRunId, runViewSetters, setNodes]);
+  const handleBackToEdit = handleExitRunView;
+  const handleBackToList = handleExitRunView;
 
   const handleRerunFrom = useCallback(
     async (fromNodeId: string) => {
