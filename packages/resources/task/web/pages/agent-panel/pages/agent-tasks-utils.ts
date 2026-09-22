@@ -120,6 +120,16 @@ export const LOG_STATUS_TONES: Record<string, StatusTone> = {
   pending: "warning",
 };
 
+/**
+ * 任务启用状态 → 色调。`enabled` / `disabled` 虽已在内置词表里，这里仍显式声明：
+ * 「停用」是本包语义下的**中性**状态（用户自己关的，不是坏消息），本包自己承担这个判断，
+ * 库侧日后调整内置映射时侧栏配色不会跟着漂移。
+ */
+export const TASK_ENABLED_TONES: Record<string, StatusTone> = {
+  enabled: "success",
+  disabled: "neutral",
+};
+
 const LOG_STATUS_LABEL_KEYS: Record<string, string> = {
   success: "status.success",
   failed: "status.failed",

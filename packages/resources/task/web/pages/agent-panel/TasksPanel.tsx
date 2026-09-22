@@ -5,7 +5,6 @@ import { Button } from "@fenix/ui-components/ui/button";
 import { ScrollArea } from "@fenix/ui-components/ui/scroll-area";
 import { Skeleton } from "@fenix/ui-components/ui/skeleton";
 import { Switch } from "@fenix/ui-components/ui/switch";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@fenix/ui-components/ui/table";
 import { unwrap } from "@fenix/web-runtime/api/request";
 import { NS } from "@fenix/web-runtime/i18n/namespace";
 import { Link } from "@tanstack/react-router";
@@ -14,10 +13,11 @@ import { AlertTriangle, CheckCircle2, Clock, Play, Settings2, XCircle } from "lu
 import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
-import type { ExecutionLogInfo, TaskV2Info } from "../../api/tasks-v2";
+import type { TaskV2Info } from "../../api/tasks-v2";
 import { taskV2Api } from "../../api/tasks-v2";
 import { describeCron } from "./components/CronEditor";
-import { formatTaskLogTime, isUnauthorizedError, LOG_STATUS_TONES, logStatusLabelKey } from "./pages/agent-tasks-utils";
+import { ExecutionLogTable } from "./components/ExecutionLogTable";
+import { isUnauthorizedError, TASK_ENABLED_TONES } from "./pages/agent-tasks-utils";
 
 interface TasksPanelProps {
   agentId: string | null;
@@ -217,8 +217,14 @@ export function TasksPanel({ agentId }: TasksPanelProps) {
                     aria-pressed={selectedTask?.id === task.id}
                     onClick={() => handleTaskClick(task)}
                   >
-                    <span
-                      className={cn("shrink-0 size-2 rounded-full", task.enabled ? "bg-emerald-500" : "bg-slate-400")}
+                    {/* 状态不再手写色值：色调走 `TASK_ENABLED_TONES`，点在组件库内用 `bg-current`
+                        取当前文字色，本包只管「启用算好消息、停用算中性」。文案不传，由 StatusBadge
+                        查自己的 `statusBadge.enabled` / `disabled`（本包不新增同义 i18n key）。 */}
+                    <StatusBadge
+                      status={task.enabled ? "enabled" : "disabled"}
+                      toneMap={TASK_ENABLED_TONES}
+                      indicator="dot"
+                      className="shrink-0 h-5 px-1.5"
                     />
                     <span className="flex-1 min-w-0">
                       <span className="block text-sm font-medium text-text-primary truncate">{task.name}</span>
@@ -256,7 +262,17 @@ export function TasksPanel({ agentId }: TasksPanelProps) {
       {/* ── 下半部分：日志区 ── */}
       <div className="flex-1 min-h-0 border-t border-border/40 flex flex-col">
         {selectedTask ? (
-          <TaskLogView key={selectedTask.id} taskId={selectedTask.id} taskName={selectedTask.name} t={taskT} />
+          <>
+            {/* 头部留在面板侧（弹窗侧同理，只保留自己的头部差异）；取数、表格、分页与三态由
+                `ExecutionLogTable` 统一承担。条数随之只出现一次（分页栏），表头不再重复展示。
+                `key` 保证换任务时回到第 1 页，而不是沿用上一个任务的页码。 */}
+            <div className="flex items-center px-3 py-2 border-b border-border/40 flex-shrink-0">
+              <span className="text-xs font-medium text-text-primary truncate">
+                {taskT("log.title", { name: selectedTask.name })}
+              </span>
+            </div>
+            <ExecutionLogTable key={selectedTask.id} taskId={selectedTask.id} />
+          </>
         ) : (
           <div className="flex-1 flex items-center justify-center">
             <p className="text-xs text-text-muted">选择上方任务查看日志</p>
@@ -264,144 +280,5 @@ export function TasksPanel({ agentId }: TasksPanelProps) {
         )}
       </div>
     </div>
-  );
-}
-
-// ── 内联日志查看器 ──
-
-interface TaskLogViewProps {
-  taskId: string;
-  taskName: string;
-  t: (key: string, opts?: Record<string, unknown>) => string;
-}
-
-function TaskLogView({ taskId, taskName, t }: TaskLogViewProps) {
-  const PAGE_SIZE = 20;
-  const [page, setPage] = useState(1);
-
-  // 与任务列表同理：经 `unwrap` 抛出 ApiError，失败才带得出错误码（无权限分支据此判定），
-  // 自造 `new Error(...)` 会把 401/403 与普通故障混成同一类，页面只能一律给重试。
-  const { data, loading, error, run } = useRequest(
-    async (p: number) => unwrap(taskV2Api.logs(taskId, { page: p, pageSize: PAGE_SIZE })),
-    {
-      defaultParams: [1],
-      refreshDeps: [taskId],
-    },
-  );
-
-  const totalPages = data ? Math.max(1, Math.ceil(data.total / PAGE_SIZE)) : 1;
-  // 与列表侧同口径：401/403 是持久授权状态，只说明原因（标题 + 提示）且不给重试；其余失败给一次重试。
-  const unauthorized = isUnauthorizedError(error);
-
-  return (
-    <>
-      {/* 日志表头 */}
-      <div className="flex items-center justify-between px-3 py-2 border-b border-border/40 flex-shrink-0">
-        <span className="text-xs font-medium text-text-primary truncate">{t("log.title", { name: taskName })}</span>
-        {data && data.total > 0 && (
-          <span className="text-xs text-text-muted flex-shrink-0">{t("log.total", { count: data.total })}</span>
-        )}
-      </div>
-
-      {/* 日志内容 */}
-      <div className="flex-1 min-h-0 overflow-y-auto">
-        {error ? (
-          // 权限态与瞬时故障分开：401/403 只说明原因，其余失败给一次重试（沿用分页按钮的 run(page) 入口）。
-          <EmptyState
-            title={unauthorized ? t("loadState.unauthorizedTitle") : t("loadState.failed", { message: error.message })}
-            description={unauthorized ? t("loadState.unauthorizedHint") : undefined}
-            tone="danger"
-            role="alert"
-            action={unauthorized ? undefined : { label: t("loadState.retry"), onClick: () => run(page) }}
-            className="py-8 px-3"
-          />
-        ) : loading ? (
-          <div className="py-4 px-3 space-y-2" aria-busy="true">
-            <Skeleton className="h-4 w-full" />
-            <Skeleton className="h-4 w-3/4" />
-            <Skeleton className="h-4 w-1/2" />
-          </div>
-        ) : !data?.items?.length ? (
-          <EmptyState title={t("log.empty")} className="py-8" />
-        ) : (
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead className="text-xs">{t("log.time")}</TableHead>
-                <TableHead className="text-xs">{t("log.triggeredBy")}</TableHead>
-                <TableHead className="text-xs">{t("log.status")}</TableHead>
-                <TableHead className="text-xs">{t("log.result")}</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {data.items.map((log: ExecutionLogInfo) => (
-                <TableRow key={log.id}>
-                  <TableCell className="text-xs whitespace-nowrap">{formatTaskLogTime(log.createdAt)}</TableCell>
-                  <TableCell>
-                    <span className="text-xs text-text-muted">
-                      {log.triggeredBy === "cron" ? t("triggeredBy.cron") : t("triggeredBy.manual")}
-                    </span>
-                  </TableCell>
-                  <TableCell>
-                    <StatusBadge
-                      status={log.status}
-                      label={t(logStatusLabelKey(log.status))}
-                      toneMap={LOG_STATUS_TONES}
-                      className="text-[11px] h-5"
-                    />
-                  </TableCell>
-                  <TableCell className="max-w-[150px]">
-                    <div className="truncate text-xs">
-                      {log.error ? (
-                        <span className="text-destructive">{log.error}</span>
-                      ) : log.skipReason ? (
-                        <span className="text-text-muted">{log.skipReason}</span>
-                      ) : (
-                        log.resultSummary || t("log.noResult")
-                      )}
-                    </div>
-                  </TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
-        )}
-      </div>
-
-      {/* 分页控件 */}
-      {data && data.total > 0 && (
-        <div className="flex items-center justify-center gap-2 py-2 border-t border-border/40 flex-shrink-0">
-          <Button
-            variant="outline"
-            size="sm"
-            className="h-7 text-xs"
-            onClick={() => {
-              const p = page - 1;
-              setPage(p);
-              run(p);
-            }}
-            disabled={page <= 1}
-          >
-            {t("log.prev")}
-          </Button>
-          <span className="text-xs text-text-muted">
-            {page}/{totalPages}
-          </span>
-          <Button
-            variant="outline"
-            size="sm"
-            className="h-7 text-xs"
-            onClick={() => {
-              const p = page + 1;
-              setPage(p);
-              run(p);
-            }}
-            disabled={page >= totalPages}
-          >
-            {t("log.next")}
-          </Button>
-        </div>
-      )}
-    </>
   );
 }
