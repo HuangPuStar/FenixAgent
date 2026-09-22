@@ -33,45 +33,66 @@ const MAX_WEBHOOK_PAYLOAD_BYTES = 1024 * 1024;
  * 触发」以及触发语义都在 `services/workflow-trigger`。
  */
 export function createHookRoutes() {
-  return new Elysia({ name: "hooks" }).post("/hooks/:publicHash", async ({ params, request, body, set }) => {
-    const { publicHash } = params as { publicHash: string };
+  return new Elysia({ name: "hooks" }).post(
+    "/hooks/:publicHash",
+    async ({ params, request, body, set }) => {
+      const { publicHash } = params as { publicHash: string };
 
-    const contentLength = request.headers.get("content-length");
-    if (contentLength && parseInt(contentLength, 10) > MAX_WEBHOOK_PAYLOAD_BYTES) {
-      set.status = 413;
-      return { error: "payload too large" };
-    }
-
-    // headers / query 以扁平字符串映射传给领域层：WebhookPayload 是对外契约的一部分（会随 trigger
-    // 输入进入 workflow 上下文），不透传 Headers / URL 这类与运行时绑定的对象。
-    const headers: Record<string, string> = {};
-    request.headers.forEach((v, k) => {
-      headers[k] = v;
-    });
-
-    // body 可能是 JSON 对象或字符串；字符串优先按 JSON 解析，失败则原样传递（保持迁移前的语义）。
-    let parsedBody: unknown = body;
-    if (typeof body === "string") {
-      try {
-        parsedBody = JSON.parse(body);
-      } catch {
-        parsedBody = body;
+      const contentLength = request.headers.get("content-length");
+      if (contentLength && parseInt(contentLength, 10) > MAX_WEBHOOK_PAYLOAD_BYTES) {
+        set.status = 413;
+        return { error: "payload too large" };
       }
-    }
 
-    const url = new URL(request.url);
-    const queryObj: Record<string, string> = {};
-    url.searchParams.forEach((v, k) => {
-      queryObj[k] = v;
-    });
+      // headers / query 以扁平字符串映射传给领域层：WebhookPayload 是对外契约的一部分（会随 trigger
+      // 输入进入 workflow 上下文），不透传 Headers / URL 这类与运行时绑定的对象。
+      const headers: Record<string, string> = {};
+      request.headers.forEach((v, k) => {
+        headers[k] = v;
+      });
 
-    const result = await handleWebhookRequest(publicHash, headers, parsedBody, queryObj);
+      // body 可能是 JSON 对象或字符串；字符串优先按 JSON 解析，失败则原样传递（保持迁移前的语义）。
+      let parsedBody: unknown = body;
+      if (typeof body === "string") {
+        try {
+          parsedBody = JSON.parse(body);
+        } catch {
+          parsedBody = body;
+        }
+      }
 
-    if (!result.accepted) {
-      set.status = 404;
-      return { error: result.error };
-    }
+      const url = new URL(request.url);
+      const queryObj: Record<string, string> = {};
+      url.searchParams.forEach((v, k) => {
+        queryObj[k] = v;
+      });
 
-    return { received: true };
-  });
+      const result = await handleWebhookRequest(publicHash, headers, parsedBody, queryObj);
+
+      if (!result.accepted) {
+        set.status = 404;
+        return { error: result.error };
+      }
+
+      return { received: true };
+    },
+    {
+      // 本路由的 `detail` 不是文档修饰而是**必需**：`@elysiajs/openapi` 在配置了 `exclude.tags` 时
+      // 无条件读 `hooks.detail.tags`（1.4.15 `toOpenAPISchema`），任意一条缺 `detail` 的路由都会让
+      // 整份 spec 生成抛 `TypeError: undefined is not an object`，`/docs/openapi/web/json` 与
+      // `/docs/openapi/external/json` 同时 500。1.5f-1b 恢复本路由挂载时曾漏掉，故在此留说明。
+      //
+      // 与 `/acp`、`/skills/:name/download` 等协议入口一致：无认证是协议语义（`publicHash` 即凭据），
+      // 不按 REST 建模，`hide: true` 使其不出现在公开文档中。
+      detail: {
+        hide: true,
+        tags: ["Workflow Engine"],
+        summary: "Workflow Webhook 接收入口",
+        description:
+          "供外部系统触发已发布 workflow 的 Webhook 入口，路径中的 `publicHash` 即凭据（无其他认证）。" +
+          "命中已启用的 trigger 时异步触发对应 workflow 并返回 200，未命中或已禁用统一返回 404。" +
+          "该接口属内部协议面，默认不在公开文档中展示。",
+      },
+    },
+  );
 }
