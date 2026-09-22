@@ -83,7 +83,6 @@
 
 ### 1.3 现状偏离
 
-- **存在一份零消费者的组件副本**：`apps/web/src/pages/agent-panel/shared/agent-master-detail-workspace.tsx` 与 `@fenix/ui-components/components/agent-master-detail-workspace` 同名同 props，且视觉实现已分叉（宿主版硬编码 `bg-white`，包内版用主题 token）。包外无任何 import；删除需同步更新 `scripts/__tests__/rmd-08-migration.test.ts` 的快照。
 - **`apps/web/src/api/helpers.ts` 零生产消费方**（仅别名声明与测试引用），是事实死代码。
 - **浏览器安全入口守卫未覆盖全部带 web 面的包**：13 份 `web/__tests__/*-browser-surface.test.ts` 全在 `packages/resources/*`；`platform/identity` 有完整 `./web` 面但无守卫，`ui-components` / `web-runtime` / `agent-runtime` 的 web 面同样无守卫（当前只作为别人导入图里的共享基础设施被间接断言）。
 - **`apps/web/src/types/index.ts` 仍持有 channel 域类型**（`ChannelProviderInfo` / `ChannelInfo` / `ChannelBinding` 等），而 channel 已有 `@fenix/resource-channel/web`；归属待裁定。

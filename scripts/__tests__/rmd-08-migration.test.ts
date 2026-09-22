@@ -89,7 +89,13 @@ import { existsSync } from "node:fs";
  *     variant 承接，文件本身随片删除。于是本表出现唯一一条「host 副本已删、包内 owner 也已被后续迁移删除」
  *     的条目——它不再满足 `RMD_08_RELOCATED` 的「owner 必须存在」，改挂
  *     `RMD_08_RELOCATED_TARGETS_LATER_DELETED`（88 + 1 = 89，在册总数不变，只是断言方向翻转为三条路径
- *     全不得存在）。这两张表的长度之和才是 relocated 的在册数，改表时两边都要看。
+ *     全不得存在）。这两张表的长度之和才是 relocated 的在册数，改表时都要看。
+ * 19. 前端重复实现去重（本表第 8 项口径的延续）：`apps/web/src/pages/agent-panel/shared/agent-master-detail-workspace.tsx`
+ *     与 `@fenix/ui-components/web/components/agent-master-detail-workspace` 同名同 props，且视觉已分叉
+ *     （宿主版硬编码 `bg-white` 与十六进制灰，包内版走主题 token），包外零消费者的宿主副本整份删除——它是
+ *     「唯一消费者升级为第二个包」之前就该退场的那一类（`frontend-development.md` §1.3 已登记）。条目从
+ *     `RMD_08_MOVES` 移入 `RMD_08_RELOCATED`（MOVES 58 → 57，RELOCATED 89 → 90，在册总数不因换表而变），
+ *     宿主两条旧路径都不得复活、包侧 owner 必须存在。
  */
 const RMD_08_MOVES = [
   ["web/src/App.tsx", "apps/web/src/App.tsx"],
@@ -155,10 +161,6 @@ const RMD_08_MOVES = [
   ["web/src/pages/agent-panel/ArtifactsPanel.tsx", "apps/web/src/shell/ArtifactsPanel.tsx"],
   ["web/src/pages/agent-panel/agent-panel.css", "apps/web/src/shell/agent-panel.css"],
   ["web/src/pages/agent-panel/artifacts-workspace.css", "apps/web/src/shell/artifacts-workspace.css"],
-  [
-    "web/src/pages/agent-panel/shared/agent-master-detail-workspace.tsx",
-    "apps/web/src/pages/agent-panel/shared/agent-master-detail-workspace.tsx",
-  ],
   ["web/src/types/global.d.ts", "apps/web/src/types/global.d.ts"],
   ["web/src/types/index.ts", "apps/web/src/types/index.ts"],
   ["web/src/vite-env.d.ts", "apps/web/src/vite-env.d.ts"],
@@ -208,6 +210,11 @@ const RMD_08_TARGETS_LATER_DELETED = [
  * `web/pages/agent-panel/agent-editor/**`，此前只能从宿主以四级相对路径反向读取包内实现，迁入后改为一跳。
  */
 const RMD_08_RELOCATED = [
+  [
+    "web/src/pages/agent-panel/shared/agent-master-detail-workspace.tsx",
+    "apps/web/src/pages/agent-panel/shared/agent-master-detail-workspace.tsx",
+    "packages/ui-components/web/components/agent-master-detail-workspace.tsx",
+  ],
   [
     "web/components/MetaAgentPanel.tsx",
     "apps/web/components/MetaAgentPanel.tsx",
@@ -668,7 +675,7 @@ describe("RMD-08 apps/web migration", () => {
   // 用户裁定的退役（见文件头第 17 条）：宿主 `lib/api-result.ts` 与其专属测试无包内 owner 落点，从本清单
   // 移入 `RMD_08_TARGETS_LATER_DELETED`——在册总数仍是 58，只豁免这两条的「目标必须存在」断言。
   test("removes every legacy source and retains its exact owner target", () => {
-    expect(RMD_08_MOVES.length + RMD_08_TARGETS_LATER_DELETED.length).toBe(58);
+    expect(RMD_08_MOVES.length + RMD_08_TARGETS_LATER_DELETED.length).toBe(57);
     for (const [source, target] of RMD_08_MOVES) {
       expect(existsSync(source), `legacy source still exists: ${source}`).toBe(false);
       expect(existsSync(target), `apps/web target is missing: ${target}`).toBe(true);
@@ -738,7 +745,7 @@ describe("RMD-08 apps/web migration", () => {
   // 在册总数改用两张表的**和**守住（见文件头第 18 条）：一条换到 `..._TARGETS_LATER_DELETED` 只改变它的
   // 断言方向，不等于在册数变小，更不能让它在两张表之间凭空消失。
   test("relocates the leftover host copies to their package owners", () => {
-    expect(RMD_08_RELOCATED.length + RMD_08_RELOCATED_TARGETS_LATER_DELETED.length).toBe(89);
+    expect(RMD_08_RELOCATED.length + RMD_08_RELOCATED_TARGETS_LATER_DELETED.length).toBe(90);
     for (const [legacy, shell, owner] of RMD_08_RELOCATED) {
       expect(existsSync(legacy), `legacy source still exists: ${legacy}`).toBe(false);
       expect(existsSync(shell), `host copy still exists: ${shell}`).toBe(false);
