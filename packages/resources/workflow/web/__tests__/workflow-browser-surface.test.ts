@@ -105,7 +105,6 @@ describe("workflow web 入口浏览器可达面", () => {
       "api/workflow-defs.ts",
       "api/workflow-engine.ts",
       "api/workflow-sse.ts",
-      "api/workflows.ts",
       "lib/use-workflow-events.ts",
       "pages/workflow/WorkflowBreadcrumb.tsx",
       "pages/workflow/WorkflowList.tsx",

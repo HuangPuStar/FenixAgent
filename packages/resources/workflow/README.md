@@ -12,7 +12,7 @@
 - **触发与 Webhook**：`services/workflow-trigger.ts` 管理 `workflow_trigger`，对外只暴露 masked hash；`handleWebhookRequest` 供宿主 `POST /hooks/:publicHash` 调用，异步触发后立即 200。
 - **自定义节点**：`custom-tools.ts` 扫描模块配置的 `toolsDir`（缺省 `<cwd>/tools`），实例化 `CustomNode` 子类注册进 registry；目录缺失或加载失败降级为空 registry，不阻塞启动。
 - **HTTP 交付物**：会话守卫保护的 `/web/*` 控制台路由（宿主挂载在 `/web` 前缀下）：`GET|POST|PUT|PATCH|DELETE /workflow-defs*`、`GET|POST /workflow-runs*`、`POST /workflow-engine`、`GET /workflow/:workflowId/events`（SSE）、`GET /workflow-custom-tools`，以及 `/workflow-ui` 静态代理；`POST /api/workflows/:workflowId/execute` 是对外 API。
-- **浏览器侧**：`web/index.ts` 是浏览器出口（`exports["./web"]`），导出四个 API client、`WorkflowList` / `WorkflowRuns` / `WorkflowVersions` / `WorkflowBreadcrumb` 与画布纯逻辑（布局、预设、事件格式化），另经 `@fenix/resource-workflow/web/i18n` 交付 `workflowResources` / `WORKFLOW_NS`；页面与组件在 `web/pages/workflow/**`，事件钩子在 `web/lib/use-workflow-events.ts`。
+- **浏览器侧**：`web/index.ts` 是浏览器出口（`exports["./web"]`），导出三个 API client（`workflowDefApi` / `workflowEngineApi` / `customToolsApi`）、SSE 连接函数、`WorkflowList` / `WorkflowRuns` / `WorkflowVersions` / `WorkflowBreadcrumb` 与画布纯逻辑（布局、预设、事件格式化），另经 `@fenix/resource-workflow/web/i18n` 交付 `workflowResources` / `WORKFLOW_NS`；页面与组件在 `web/pages/workflow/**`，事件钩子在 `web/lib/use-workflow-events.ts`。
 - **模块组合根**：`src/module.ts` 的 `createWorkflowModule()` 返回进程级单例（`engines` / `customTools`），`fenix.module.ts` 是它的惰性描述符。
 
 ## 依赖边界
