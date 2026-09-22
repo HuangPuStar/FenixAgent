@@ -573,7 +573,7 @@ sequenceDiagram
 
 ## 代码集成点
 
-### 1. `src/db/schema.ts` —— 数据模型
+### 1. `packages/resources/model-management/db/schema.ts` —— 数据模型
 
 ```typescript
 // 位置：packages/resources/model-management/db/schema.ts（任务 1.7 B3 起 provider 表与其枚举归 owner 包；

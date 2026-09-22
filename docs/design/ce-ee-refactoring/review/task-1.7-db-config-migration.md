@@ -1754,6 +1754,57 @@ server-and-script-tests（806 pass / 0 fail，65 files）/ package-tests（7999 
 （本批前 33 文件；新增文件 10 用例全部为新增）。README 的「边界残留」第 2 条同步补一句「该结论已由测试
 守护」，把原先只写在文档里的取证接进可执行断言。
 
+### 7.27 B 块收尾（2）：schema 真相来源的文档同步（2026-09-22，本批）
+
+**触发**：`CLAUDE.md` 的「数据库与迁移」段仍写着「Schema 真相来源有两个，共同汇入同一条迁移链：业务表在
+`apps/server/src/db/schema.ts`，身份表在 `packages/platform/identity/db/schema.ts`」——B1–B13 之后这句已是
+错的事实（真相来源变成「宿主 + 14 个 owner 包」，`drizzle.config.ts` 必须声明 15 条路径），而同段落后半句
+「改身份表就到 identity 包改，不得在宿主复制一份」正是 B 块整批在推广的规则。**方法是先做一次全仓扫描再改**
+（用只读子代理按「必须改 / 需重新生成 / 无需改」三类产出定位，排除 `docs/design/ce-ee-refactoring/review/**`
+的迁移记录本身），避免只改主文档、漏掉同一事实的其它复述点。
+
+**改动的 15 个文件**：
+
+- **规则层**：`CLAUDE.md`（两处——「后端地图」的宿主 schema 条目改为「只留三类内容」；「数据库与迁移」段改写为
+  「一张表的定义只在一个 owner 手里」+ `drizzle.config.ts` 必须声明全部 15 条 + 新增两条：`check:schema-ddl-drift`
+  的门禁语义、§6.1 的「组装期 vs 调用期」跨包表访问口径。`AGENTS.md` 是指向 `CLAUDE.md` 的符号链接，改一处即可，
+  已实测确认）、`docs/developer/guide/backend-development.md`（§3 开头、「表结构定义」条目、§3.5 流程第 1 步）。
+- **架构文档**：`docs/arch/tech-stack-backend.md`（Schema 定义条）、`docs/arch/tech-stack-overview.md`
+  （技术债表「单体 schema 文件过大」一行按已解决标注并写清拆分结果）、`docs/developer/arch/agent-engine-architecture.md`
+  （`agent_config.engine_type` 的位置表行 + 新增引擎字段的操作清单第 5 步）、
+  `docs/developer/arch/hindsight-memory-architecture.md`（「无专用记忆表」段——原写「`src/db/schema.ts` 中没有
+  memory 专用表」，现改为「没有记忆数据表；唯一相关的 `agent_memory_config` 是开关表，B10 起归 memory 包」）、
+  `docs/developer/arch/litellm-integration.md`（小节标题改为 owner 包路径，正文早已注明）。
+- **贡献与清单**：`CONTRIBUTING.md`（生成迁移的前置说明改为「改哪张表就到它的 owner 包」）、
+  `FUNCTIONAL_MODULE_INVENTORY.md`（`apikey` 的真相来源改为 identity 包；「数据持久化」行的实现位置补
+  `packages/**/db/schema.ts`。第 94 行 `resourcePermission` / `shareLink` 按其 D3 裁定**确实仍在宿主**，不改）。
+- **台账一处失效说明**：`scripts/architecture/exceptions.json` 的 knowledge 自环条目里写着「本包现仅剩 1 处
+  `@server/db/schema` 表定义导入，见本台账同包的 apps-boundary 条目」——B9 后两者都已不存在（宿主导入归零、
+  条目删除），按「文档与代码不一致先核实意图再修文档」就地订正该括号并注明 2026-09-22。改写后仍满足
+  `json.dumps(d, ensure_ascii=False, indent=2) + "\n"` 逐字一致断言（python 校验通过，条目数仍 16）。
+- **整改总账的路径口径**：`docs/need-to-change/README.md` 加一段 2026-09-22 补记（这批文档的证据行号写于审计
+  当时，此后经过阶段 1 包化与任务 1.7 表迁移两次路径变更；**结论仍成立**，因为判据是 DDL 与调用路径而不是文件
+  位置），并在 4 篇直接引用被迁表的文档（第 7、36、37、40 篇）的对应证据行下补一行表位置注记。
+
+**决定不做（非显然取舍之三）**：`docs/superpowers/{specs,plans}/**`、`docs/design/2026-0*`、`spec/global/adr/2026-08-03-*`
+等**日期化历史快照不回改**——它们锚定当时的现状，回改会让「当时为什么这么设计」无法复原；其中
+`plans/2026-09-17-phy-10-final-acceptance.md:213-214` 对宿主 schema 取 shasum 做验收指纹，重放会失败，一并
+登记为「不可重放的历史快照」而不是修改对象。
+
+**新增缺口登记（§8.1 第 13 条）**：扫描同时暴露两处**与本批无关、但同属文档与代码不一致**的过期路径——其一是
+`docs/need-to-change/*` 里除表定义外的大量实现路径（`src/routes/**`、`src/services/**`…）仍按阶段 1 之前的
+布局书写，本批只补了路径口径说明与表位置注记，逐篇订正归 1.8 的文档全量更新；其二是
+`FUNCTIONAL_MODULE_INVENTORY.md` 多处仍指向 `packages/resources/identity-admin/**`（该包已随任务 1.2 删除）。
+两者都按「超出当前任务的改进只记录」登记，不在本批实现。
+
+**验证**：`grep -rn "真相来源有两" --include="*.md"`（排除历史存档与迁移记录）→ **0 命中**；
+`grep -rn "业务表在 \`apps/server/src/db/schema.ts\`\|自定义业务表在"` → **0 命中**；全量
+`env -u ANTHROPIC_MODEL bun run precheck` **15 步全绿（84963ms）**、lint 零警告
+（server-and-script-tests 806 pass / 0 fail；package-tests 8009 tests：8007 pass / 2 skip / 0 fail / 19450
+expect，与 §7.26 的读数相同，本批未动代码；web-app-tests 319 pass）。文档改动不涉代码，`architecture:check`
+与 `check:dependencies` 的读数与 §7.25 一致（2143 files / 6 条例外、2285 modules / 0 条新增违规）——台账那处
+只改 rationale 文本，不增删条目，python 断言序列化口径逐字一致、条目数仍 16。
+
 ## 八、已知缺口与未完成项（逐条登记 owner 与移除条件）
 
 > 依据 `ce-ee-engineering-standards.md` §10.7.4：边界豁免与依赖残留必须逐条登记并写明 owner
@@ -1776,6 +1827,7 @@ server-and-script-tests（806 pass / 0 fail，65 files）/ package-tests（7999 
 | 11 | ~~**`model-management` 没有 source-migration 契约测试**（machine / mcp / sandbox / agent-config / workflow / task 六个包均有），因此 §4.7.1 ③ 的「残留数 > 0」正向控制在 B3 无从收缩，该包与宿主的边界在测试层无人守护（只靠 `apps-boundary` 台账 + `check:dependencies`）~~ **已闭环（§7.26，2026-09-22）**：补 `src/__tests__/model-management-source-migration.test.ts`（10 用例），断言为零容忍「包内不存在宿主 `@server` 导入」+ 宿主别名 / 穿透相对路径 / 跨包 `db` 出口，正向控制改用 `@fenix/platform-sdk`、包内相对导入与本包 `db` 出口自我引用三条必然存在的说明符 | 已交付 | 变异实验已验证判别力：注入一条 `import { db } from "@server/db"` 即让该用例单独转红，删除后复绿 |
 
 | 12 | **`observer` 的 `drizzle-orm` 声明在本批后成为未使用依赖**：B7 删掉该包唯一的 DB 句柄与仓储后，全包 `src/**`、`web/**` 再无 `drizzle-orm` 导入（仅一处浏览器面测试的注释提到它）。删除声明需要跑 `bun install` 更新 `bun.lock`，本批不动锁文件 | B 块收尾（依赖清理） | 删 `packages/resources/observer/package.json` 的 `drizzle-orm` 条目并 `bun install`，与其它包的未使用依赖一并清理 |
+| 13 | **文档路径过期（本批扫描暴露，非本批引入）**：`docs/need-to-change/*` 的大量实现路径（`src/routes/**`、`src/services/**`、`src/repositories/**`）仍按阶段 1 之前的宿主布局书写，行号同样失效（§7.27 只补了路径口径说明与被迁表的 4 处注记）；`FUNCTIONAL_MODULE_INVENTORY.md` 多处仍指向 `packages/resources/identity-admin/**`（该包已随任务 1.2 删除）。同族第 3 条（`scripts/root-source-owner-rules.ts` 的说明文本）已单列 | 1.8（文档全量更新） | 逐篇按当前布局订正路径，或为该类文档加统一的口径声明并停止在正文承载体现在代码里的行号 |
 
 ### 8.2 1.7 未完成条目（本档位不做）
 

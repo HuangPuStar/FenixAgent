@@ -153,7 +153,7 @@ flowchart LR
 
 | 现状 | 问题 | 方向 |
 |------|------|------|
-| 单体 schema 文件过大 | DB schema 定义集中在一个文件，随业务增长维护困难 | 按业务域拆分 schema |
+| ~~单体 schema 文件过大~~ **已解决（2026-09-22）** | DB schema 定义曾集中在一个文件 | 任务 1.7 的 B1–B13 已把业务表按 owner 包拆分到 `packages/**/db/schema.ts`，宿主只剩身份表转出、`data_migrate_record` 与三张经裁定的旧授权栈表 |
 | workspace 包无版本管理 | 内部 `@fenix/*` 包全部 `private`、版本号固定，改接口需手动确认所有消费方 | 引入 changeset 或内部版本号 |
 | Redis 可选 | 无缓存层下高频查询直接打 DB | Instance 状态缓存、Session 元数据热数据 |
 | 路由级懒加载未启用 | Vite 仅有 vendor chunk 拆分，无 TanStack Router lazy 加载 | 推进路由级 code splitting |

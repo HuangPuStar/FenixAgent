@@ -17,6 +17,8 @@ Agent 保存按顺序更新主记录、memory、knowledge、skill、MCP、SiteAp
 - `src/services/config/agent-config-skill.ts:14-26`、`agent-config-mcp.ts:14-26`、`agent-config-site-app.ts:22-35`：绑定替换无 transaction 参数。
 - `src/services/agent-knowledge.ts:121-157`：knowledge 绑定同样独立修改。
 - `src/db/schema.ts:443-523,745-799`：引用存在的 FK 不能保证聚合版本原子性或组织一致性。
+  （引用位置按审计当时的工作区；`agent_config` 与四张 join 表现位于 `packages/resources/agent-config/db/schema.ts`，
+  路径口径见 [README](./README.md) 顶部补记。DDL 未变，判断仍成立。）
 
 ## 架构诊断
 

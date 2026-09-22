@@ -107,11 +107,23 @@
 
 ## 3. 数据库设计说明
 
-数据库以 PostgreSQL + Drizzle ORM 为标准方案，Schema 真相来源有两处、共同汇入同一条 Drizzle 迁移链：
-业务表在 `apps/server/src/db/schema.ts`，身份表（`user` / `session` / `account` / `verification` /
+数据库以 PostgreSQL + Drizzle ORM 为标准方案。**一张表的定义只在一个 owner 手里**：业务表定义在所属
+模块的 `packages/<...>/db/schema.ts`（如 `packages/resources/task/db/schema.ts`、`packages/agent-runtime/db/schema.ts`），
+经该包 `package.json` 的 `exports["./db"]` 公开；身份表（`user` / `session` / `account` / `verification` /
 `organization` / `member` / `invitation` / `apikey` / `user_config`）在
-`packages/platform/identity/db/schema.ts`（CE 阶段 2 任务 1.2 迁出）。`drizzle.config.ts` 的 `schema`
-必须同时声明两者，否则 `db:generate` 会误判其中一族已删除。
+`packages/platform/identity/db/schema.ts`。宿主 `apps/server/src/db/schema.ts` 自 CE 阶段 2 任务 1.7 的表
+迁移收口（B1–B13）后**不再持有任何业务表定义**，只留三类内容：从 `@fenix/identity/db` 转出身份表、
+宿主自有表 `data_migrate_record`、以及 review 裁定暂留的三张旧授权栈表（`resource_permission`、`share_link`、
+`share_event_snapshot`，随旧授权栈下线删除）。
+
+`drizzle.config.ts` 的 `schema` 必须声明**全部** owner 的 schema 路径与宿主 schema，否则 `db:generate` 会把
+漏声明的一族误判为已删除；`bun run check:schema-ddl-drift` 用它比对「声明集合 → 最新 snapshot」的 DDL 差异，
+保证表定义换手不改变 DDL。
+
+跨包外键（表 A 的列引用别包表 B 的主键）只允许在 `db/**` 的**组装期**导入 B 的表对象（Drizzle 的
+`.references()` 只接受列对象、没有字符串形式），组装期例外口径见
+`docs/design/ce-ee-refactoring/ce-ee-engineering-standards.md` §6.1；调用期（`src/**`、`web/**`）读别包的表
+一律违规，必须改经该 owner 的公开服务端入口或宿主注入的端口。
 
 ### 3.1 表设计基本原则
 
@@ -140,7 +152,8 @@
 
 ### 3.4 数据库相关文件放置位置
 
-- 表结构定义：`apps/server/src/db/schema.ts`
+- 表结构定义：所属 owner 包的 `db/schema.ts`（`packages/<...>/db/schema.ts`，经该包 `exports["./db"]` 公开）；
+  宿主 `apps/server/src/db/schema.ts` 只剩身份表转出、`data_migrate_record` 与上述三张旧授权栈表
 - 数据库连接与导出：`apps/server/src/db/`
 - DDL 迁移文件：`drizzle/`
 - 迁移执行入口：`scripts/migrate.ts`
@@ -151,7 +164,8 @@
 
 表结构变更按下面流程执行：
 
-1. 修改 `apps/server/src/db/schema.ts`
+1. 修改该表所属 owner 包的 `db/schema.ts`（身份表改 `packages/platform/identity/db/schema.ts`；宿主自有
+   `data_migrate_record` 与三张旧授权栈表改 `apps/server/src/db/schema.ts`）
 2. 执行 `bun run db:generate --name <migration-name>` 生成迁移
 3. 执行 `bun run db:migrate` 应用迁移并在本地开发环境验证
 4. 检查生成的 `drizzle/*.sql` 与 `drizzle/meta/*`

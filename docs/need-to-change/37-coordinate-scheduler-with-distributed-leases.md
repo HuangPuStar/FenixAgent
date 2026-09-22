@@ -16,6 +16,8 @@
 - 同文件 `:29-43`：每个进程加载全部 enabled task。
 - 同文件 `:106-127`：防重只检查本进程 Set。
 - `src/db/schema.ts:325-339`：执行日志无 invocation identity/唯一幂等约束。
+  （引用位置按审计当时的工作区；`task_execution_log` / `scheduled_task_v2` 现位于
+  `packages/resources/task/db/schema.ts`，路径口径见 [README](./README.md) 顶部补记。DDL 未变，判断仍成立。）
 - 当前测试覆盖单进程 stale job 清理，未发现 DB lease、advisory lock、队列 claim 或多实例测试。
 
 ## 架构诊断

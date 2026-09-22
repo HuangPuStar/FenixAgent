@@ -12,6 +12,11 @@
 
 ## 已核验证据
 
+> 引用位置按审计当时的工作区（路径与行号口径见 [README](./README.md) 顶部补记）：`user_config` 现位于
+> `packages/platform/identity/db/schema.ts`，四张 join 表与 `agentKnowledgeBinding` 现分别位于
+> `packages/resources/agent-config/db/schema.ts` 与 `packages/resources/knowledge/db/schema.ts`；DDL 未变，
+> 下列判断（缺复合唯一键 / 缺共同 organizationId）仍成立。
+
 - `src/db/schema.ts:942-953`：`user_config.organization_id` 是单列主键，`user_id` 不是唯一键组成部分。
 - `src/services/config/user-config.ts:18-51`：读取只按组织；upsert 冲突目标也只有组织，虽接收 AuthContext 却忽略 userId 过滤。
 - `src/db/schema.ts` 中 `agentKnowledgeBinding`、`agentConfigSkill`、`agentConfigMcp`、`agentConfigSiteApp`、`agentConfigExpert` 等关联通过全局 ID 外键连接，未携带/约束共同 organizationId。
