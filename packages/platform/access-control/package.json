@@ -9,7 +9,6 @@
   },
   "dependencies": {
     "@fenix/identity": "workspace:*",
-    "@fenix/logger": "workspace:*",
     "@fenix/platform-sdk": "workspace:*",
     "drizzle-orm": "^0.45.2"
   }

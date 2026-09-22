@@ -1883,6 +1883,37 @@ expect，与 §7.26 的读数相同，本批未动代码；web-app-tests 319 pas
 `unknown`、`InstanceSupplement` 断言、`web/yjs/yjs-ws.ts` 缺 DOM lib 等）。已逐条核对错误行均**不落在本批新增行上**；
 该包 tsconfig 不在 `precheck` 的 tsc 步骤内，故属既有门禁盲区，登记为 §8.1 第 14 条。
 
+### 7.29 B 块收尾（4）：未使用依赖清理（2026-09-22，本批）
+
+**触发**：§8.1 第 12 条的移除条件「删 `observer` 的 `drizzle-orm` 条目并 `bun install`，与其它包的未使用依赖一并清理」。
+
+**方法**：扫描每个 `packages/**/package.json` 的 `dependencies`，与包内 `src` / `web` / `db` 全部 `.ts` / `.tsx` / `.js` / `.mjs` / `.cjs` 文本比对，匹配
+`from "…"`、`require("…")`、`import("…")` 三种说明符形态（含子路径）。**扫描结果必须再过两道人工判据**，见下。
+
+**删除 9 条声明 / 7 个包**：
+
+| 包 | 删除的声明 | 说明 |
+|---|---|---|
+| `@fenix/resource-observer` | `drizzle-orm` | §8.1 #12 的登记项：B7 删掉该包唯一的 DB 句柄与仓储后全包再无导入 |
+| `@fenix/agent-runtime` | `@fenix/resource-knowledge` / `-machine` / `-memory` / `-skill` | 四者的取数在 B 块各批已全部改经宿主注入端口或 owner 公开入口，包内只剩注释提及；`@fenix/resource-sandbox` 有真实导入，保留 |
+| `@fenix/access-control` | `@fenix/logger` | 零导入 |
+| `@fenix/ccb` / `@fenix/claude-code` / `@fenix/opencode` | `@fenix/core` | 三个插件的 `EnginePlugin` 类型取自 `@fenix/plugin-sdk`，`@fenix/core` 零导入 |
+| `@fenix/agent-config` | `@fenix/orchestration` | 零导入 |
+
+**保留 2 条（扫描判「未使用」但实为在用）——本批最重要的取舍**：
+
+- **`access-control` 的 `@fenix/identity`：零 import，但必须声明。** 该包的模块描述符 `dependsOn: ["identity"]` 表达的是「Identity 与 AccessControl 成套替换」的**装配契约**（CE 实现只消费已解析的 `ActorContext`，不读身份表），而 `scripts/generate-module-registry.ts` 的 `assertDependsOnDeclared` 要求 `dependsOn` 的每条都落在 `package.json` 的 `workspace:` 声明上。
+  **首轮按 import 扫描把这条一起删了，`module-registry` 步骤当场拦下**（`error: 模块 access-control 依赖 identity，但 @fenix/access-control 的 package.json 未声明编译依赖 "@fenix/identity": "workspace:*"`），已回退保留本条与其余 6 包的删除。
+  结论：**workspace 依赖有两种消费面——真实 import 与装配契约声明；「无 import 即可删」是错的判据。**
+- **`ui-components` 的 `@tailwindcss/typography`：零 import，但必须声明。** 它经 `web/styles/theme.css` 的 `@plugin "@tailwindcss/typography"` 指令使用（消费方编译本包 CSS 时要能解析到该包），README 第 128–129 行已有记载；纯 TS/JS 扫描看不到 CSS，属**扫描器的已知盲区**，不是遗漏。
+
+**顺带发现：HEAD 的 `bun.lock` 与各包 `package.json` 存在漂移。** 实测 **11 个包、12 条** `workspace:*` 声明写在 `package.json` 里但不在锁的对应 workspace 条目内——10 条 `@fenix/identity`（`agent-runtime`、`agent-config`、`model-management` 与 `resource-{channel,knowledge,mcp,memory,sandbox,skill,task,workflow}` 八个资源包）+ 2 条 `@fenix/agent-config`（`resource-{knowledge,memory}`），`bun install` 把它们补齐；`bun install --frozen-lockfile` **不检测这个方向**（它只校验能否按锁解析，不校验锁的依赖表是否等于 `package.json`）。本机 bun 与 `.github/workflows/ci.yml` 钉住的版本同为 **1.4.2**，锁格式 `lockfileVersion: 1` 未变，故这批归一化对 CI 是等价改动。
+
+**验证**：快速门禁全绿（`module-registry` / `web-contributions` / `owner-inventory` / `schema-ddl-drift` / `architecture` / `check:dependencies`），
+`env -u ANTHROPIC_MODEL bun run precheck` → **15 步全绿（83434ms）**：
+server-and-script-tests 806 pass / 0 fail、package-tests 8007 pass / 2 skip / 0 fail（8009 tests / 19450 expect，与 §7.26–§7.28 读数一致）、
+web-app-tests 319 pass / 0 fail。改动只涉及 7 个 `package.json` 与 `bun.lock`，无源码变更。
+
 ## 八、已知缺口与未完成项（逐条登记 owner 与移除条件）
 
 > 依据 `ce-ee-engineering-standards.md` §10.7.4：边界豁免与依赖残留必须逐条登记并写明 owner
@@ -1904,7 +1935,7 @@ expect，与 §7.26 的读数相同，本批未动代码；web-app-tests 319 pas
 | 10 | 环境变量整段继承的残余：不传 `env` 的隐式继承 10 处、`docker/sandbox-dsh/scripts/dsh-acp-wrapper.js`、`apps/server/src/services/agent-generation.ts:63` 的 `new OpenAI()` 隐式读 `OPENAI_API_KEY` | 1.7 剩余 | 逐处改为白名单或显式注入；`new OpenAI()` 改由注入配置构造 |
 | 11 | ~~**`model-management` 没有 source-migration 契约测试**（machine / mcp / sandbox / agent-config / workflow / task 六个包均有），因此 §4.7.1 ③ 的「残留数 > 0」正向控制在 B3 无从收缩，该包与宿主的边界在测试层无人守护（只靠 `apps-boundary` 台账 + `check:dependencies`）~~ **已闭环（§7.26，2026-09-22）**：补 `src/__tests__/model-management-source-migration.test.ts`（10 用例），断言为零容忍「包内不存在宿主 `@server` 导入」+ 宿主别名 / 穿透相对路径 / 跨包 `db` 出口，正向控制改用 `@fenix/platform-sdk`、包内相对导入与本包 `db` 出口自我引用三条必然存在的说明符 | 已交付 | 变异实验已验证判别力：注入一条 `import { db } from "@server/db"` 即让该用例单独转红，删除后复绿 |
 
-| 12 | **`observer` 的 `drizzle-orm` 声明在本批后成为未使用依赖**：B7 删掉该包唯一的 DB 句柄与仓储后，全包 `src/**`、`web/**` 再无 `drizzle-orm` 导入（仅一处浏览器面测试的注释提到它）。删除声明需要跑 `bun install` 更新 `bun.lock`，本批不动锁文件 | B 块收尾（依赖清理） | 删 `packages/resources/observer/package.json` 的 `drizzle-orm` 条目并 `bun install`，与其它包的未使用依赖一并清理 |
+| 12 | ~~**`observer` 的 `drizzle-orm` 声明在本批后成为未使用依赖**：B7 删掉该包唯一的 DB 句柄与仓储后，全包 `src/**`、`web/**` 再无 `drizzle-orm` 导入（仅一处浏览器面测试的注释提到它）。删除声明需要跑 `bun install` 更新 `bun.lock`，本批不动锁文件~~ **已闭环（B 块收尾（4），2026-09-22）**：按移除条件做了整仓未使用依赖扫描，共删 **9 条声明 / 7 个包**（`observer` 的 `drizzle-orm`；`agent-runtime` 的 `@fenix/resource-{knowledge,machine,memory,skill}`；`access-control` 的 `@fenix/logger`；三个插件包的 `@fenix/core`；`agent-config` 的 `@fenix/orchestration`），`bun install` 同批更新锁文件。**判据不能只看 import**：`access-control` 的 `@fenix/identity` 零 import，但被模块注册表的 `dependsOn: ["identity"]`（装配契约）要求声明，首轮按 import 扫描删除后被 `module-registry` 步骤拦下（`assertDependsOnDeclared`）并回退；`ui-components` 的 `@tailwindcss/typography` 只经 CSS `@plugin` 指令使用，静态扫描同样看不到 | 已交付 | 已交付，见 §7.29 |
 | 13 | **文档路径过期（本批扫描暴露，非本批引入）**：`docs/need-to-change/*` 的大量实现路径（`src/routes/**`、`src/services/**`、`src/repositories/**`）仍按阶段 1 之前的宿主布局书写，行号同样失效（§7.27 只补了路径口径说明与被迁表的 4 处注记）；`FUNCTIONAL_MODULE_INVENTORY.md` 多处仍指向 `packages/resources/identity-admin/**`（该包已随任务 1.2 删除）。同族第 3 条（`scripts/root-source-owner-rules.ts` 的说明文本）已单列 | 1.8（文档全量更新） | 逐篇按当前布局订正路径，或为该类文档加统一的口径声明并停止在正文承载体现在代码里的行号 |
 | 14 | **包级 tsconfig 不在任何门禁内（§7.28 顺带发现，非本批引入）**：`precheck` 的 tsc 步骤只跑 server / web / app skeletons，`tsc -p packages/<pkg>/tsconfig.json` 无人执行。`agent-runtime` 实测：`tsconfig.json` 的 `baseUrl` 已弃用（TS5101，整体失败），`--ignoreDeprecations 6.0` 后仍有 26 条既有错误（`res.json()` 类型为 `unknown`、`InstanceSupplement` 断言不重叠、`web/yjs/yjs-ws.ts` 缺 DOM lib、`chat-channel-bootstrap.test.ts` 找不到 `../transport/ws-types`）。与第 2 条（根 `scripts/` 不在 `include` 内）同族 | 1.8（测试入口与 CI 目录扫描） | 把各包 tsconfig 纳入静态检查，或明确登记「只检查三张宿主 tsconfig」为接受的口径；并入第 2 条同批处理 |
 
