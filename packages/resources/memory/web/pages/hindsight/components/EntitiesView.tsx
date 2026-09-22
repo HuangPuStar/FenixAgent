@@ -7,8 +7,9 @@ import { List, ScatterChart, X } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { hindsightApi } from "../../../api/hindsight";
+import { useElementHeight } from "../element-height";
 import { type HindsightFailure, toHindsightFailure } from "../failure";
-import { recencyEndpoints, recencyHeat } from "../recency";
+import { recencyEndpoints, recencyHeat, toRecencyLookup } from "../recency";
 import type { EntityGraphResponse, EntityItem } from "../types";
 import { Constellation } from "./Constellation";
 import { convertHindsightGraphData, type GraphNode } from "./Graph2d";
@@ -34,7 +35,7 @@ export function EntitiesView() {
   const [graphLoading, setGraphLoading] = useState(false);
   const [graphFailure, setGraphFailure] = useState<HindsightFailure | null>(null);
   const graphPaneRef = useRef<HTMLDivElement>(null);
-  const [graphHeight, setGraphHeight] = useState(1);
+  const graphHeight = useElementHeight(graphPaneRef);
 
   // Pagination state
   const [currentPage, setCurrentPage] = useState(1);
@@ -113,19 +114,6 @@ export function EntitiesView() {
     }
   }, [viewMode, graphData, graphLoading, graphFailure, loadGraph]);
 
-  useEffect(() => {
-    const element = graphPaneRef.current;
-    if (!element) return;
-    const updateHeight = () => {
-      const nextHeight = Math.floor(element.getBoundingClientRect().height);
-      if (nextHeight > 0) setGraphHeight(nextHeight);
-    };
-    updateHeight();
-    const observer = new ResizeObserver(updateHeight);
-    observer.observe(element);
-    return () => observer.disconnect();
-  }, []);
-
   const constellationData = useMemo(() => {
     if (!graphData) return { nodes: [], links: [] };
     return convertHindsightGraphData(graphData);
@@ -180,8 +168,7 @@ export function EntitiesView() {
       if (t < minT) minT = t;
       if (t > maxT) maxT = t;
     }
-    if (!Number.isFinite(minT) || !Number.isFinite(maxT) || maxT === minT) return null;
-    return { times, minT, maxT };
+    return toRecencyLookup(times, minT, maxT);
   }, [graphData]);
 
   const nodeHeatFn = useCallback((node: GraphNode) => recencyHeat(recencyLookup, node.id), [recencyLookup]);

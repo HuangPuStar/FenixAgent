@@ -23,7 +23,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { hindsightApi } from "../../../api/hindsight";
 import { type HindsightFailure, toHindsightFailure } from "../failure";
-import { recencyEndpoints, recencyHeat } from "../recency";
+import { recencyEndpoints, recencyHeat, toRecencyLookup } from "../recency";
 import type { GraphApiData, MemoryTableRow } from "../types";
 import { Constellation } from "./Constellation";
 import { convertHindsightGraphData, Graph2D, type GraphNode } from "./Graph2d";
@@ -247,10 +247,7 @@ export function DataView({
       if (tt < minT) minT = tt;
       if (tt > maxT) maxT = tt;
     }
-    if (!Number.isFinite(minT) || !Number.isFinite(maxT) || maxT === minT) {
-      return null;
-    }
-    return { times, minT, maxT };
+    return toRecencyLookup(times, minT, maxT);
   }, [data, recencyBasis]);
 
   const recencyHeatFn = useCallback((node: GraphNode) => recencyHeat(recencyLookup, node.id), [recencyLookup]);
@@ -293,6 +290,16 @@ export function DataView({
     }
   }, [data, graph2DData.nodes.length, maxNodes]);
 
+  // 展开 / 收起两个按钮共用的切换口径：调用方给了 `onExpandToggle` 就交给它（此时紧凑态由外层持有），
+  // 否则切内部状态。此前两处 onClick 各写一份同样的判断，只有落点不同。
+  const toggleCompactMode = (next: boolean) => {
+    if (onExpandToggle) {
+      onExpandToggle();
+      return;
+    }
+    setCompactMode(next);
+  };
+
   return (
     <div className="flex h-full min-h-0 min-w-0 flex-col overflow-hidden">
       {loading && !data ? (
@@ -329,13 +336,7 @@ export function DataView({
               <Button
                 variant="ghost"
                 size="sm"
-                onClick={() => {
-                  if (onExpandToggle) {
-                    onExpandToggle();
-                  } else {
-                    setCompactMode(false);
-                  }
-                }}
+                onClick={() => toggleCompactMode(false)}
                 className="h-6 px-2 text-xs gap-1"
               >
                 {t("dataView.expand", { defaultValue: "Expand" })}
@@ -348,13 +349,7 @@ export function DataView({
                   <Button
                     variant="ghost"
                     size="sm"
-                    onClick={() => {
-                      if (onExpandToggle) {
-                        onExpandToggle();
-                      } else {
-                        setCompactMode(true);
-                      }
-                    }}
+                    onClick={() => toggleCompactMode(true)}
                     className="h-7 px-2 text-xs gap-1"
                   >
                     {t("dataView.compact", { defaultValue: "Compact" })}

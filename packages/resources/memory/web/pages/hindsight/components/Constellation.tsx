@@ -1,6 +1,7 @@
 import { layoutWithLines, prepare, prepareWithSegments } from "@chenglou/pretext";
 import { useTheme } from "@fenix/ui-components/lib/theme";
 import { NS } from "@fenix/web-runtime/i18n/namespace";
+import { Maximize2, Minimize2 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import type { GraphData, GraphLink, GraphNode } from "./Graph2d";
@@ -919,7 +920,8 @@ export function Constellation({
     >
       <canvas ref={canvasRef} style={{ width: "100%", height: "100%", display: "block" }} />
 
-      {/* Fullscreen toggle — inline SVG from Hindsight, kept as-is for ported component */}
+      {/* Fullscreen toggle — 图标改用 lucide 的 `Maximize2` / `Minimize2`（原为两份逐字相同的内联
+          SVG 属性块，只差 polyline/line 子元素；路径与 14px 尺寸逐点对应，见 commit 正文）。 */}
       <button
         onClick={toggleFullscreen}
         style={{
@@ -948,39 +950,7 @@ export function Constellation({
         }}
         title={isFullscreen ? t("constellation.exitFullscreenTitle") : t("constellation.enterFullscreenTitle")}
       >
-        {isFullscreen ? (
-          <svg
-            width="14"
-            height="14"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="2"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-          >
-            <polyline points="4 14 10 14 10 20" />
-            <polyline points="20 10 14 10 14 4" />
-            <line x1="14" y1="10" x2="21" y2="3" />
-            <line x1="3" y1="21" x2="10" y2="14" />
-          </svg>
-        ) : (
-          <svg
-            width="14"
-            height="14"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="2"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-          >
-            <polyline points="15 3 21 3 21 9" />
-            <polyline points="9 21 3 21 3 15" />
-            <line x1="21" y1="3" x2="14" y2="10" />
-            <line x1="3" y1="21" x2="10" y2="14" />
-          </svg>
-        )}
+        {isFullscreen ? <Minimize2 className="h-3.5 w-3.5" /> : <Maximize2 className="h-3.5 w-3.5" />}
         {isFullscreen ? t("constellation.exitFullscreenLabel") : t("constellation.enterFullscreenLabel")}
       </button>
 

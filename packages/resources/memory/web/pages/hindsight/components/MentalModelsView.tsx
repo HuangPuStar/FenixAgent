@@ -253,9 +253,9 @@ export function MentalModelsView() {
       {/* 卡片网格 */}
       <div className="flex-1 overflow-auto p-4">
         {loading ? (
-          <div className="flex items-center justify-center py-12" role="status">
-            <Spinner size="sm" />
-          </div>
+          // 手写的居中容器改用库 `Spinner` 的 `panel` 形态：无文案的转圈原本挂在 `role="status"`
+          // 上（区域里没有可播报文本），现在由库按「无文案即装饰」处理成 `aria-hidden`。
+          <Spinner size="sm" variant="panel" className="py-12" />
         ) : failure ? (
           <HindsightFailureNotice
             failure={failure}

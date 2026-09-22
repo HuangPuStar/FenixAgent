@@ -21,6 +21,18 @@ export function recencyHeat(lookup: RecencyLookup | null, nodeId: string): numbe
   return (ts - lookup.minT) / (lookup.maxT - lookup.minT);
 }
 
+/**
+ * 查表收口：两个视图各自扫完数据后，都用这一处判断「有没有可用的时间范围」。
+ *
+ * 没有可用范围（一条时间都没取到，或全部落在同一个时间点）时必须返回 `null` 而不是一个
+ * `maxT === minT` 的查表——否则 `recencyHeat` 会拿它算出 `0/0 = NaN`，节点颜色退化成
+ * 「既不是冷也不是热」的未定义态。这条口径此前在表格视图与实体视图里逐字各写一份。
+ */
+export function toRecencyLookup(times: Map<string, number>, minT: number, maxT: number): RecencyLookup | null {
+  if (!Number.isFinite(minT) || !Number.isFinite(maxT) || maxT === minT) return null;
+  return { times, minT, maxT };
+}
+
 /** 热力图例两端的日期（ISO 日期串）；没有可用范围时不传图例。 */
 export function recencyEndpoints(lookup: RecencyLookup | null): [string, string] | undefined {
   if (!lookup) return;

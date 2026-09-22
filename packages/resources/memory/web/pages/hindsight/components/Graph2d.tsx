@@ -5,6 +5,7 @@ import cytoscape from "cytoscape";
 import fcose from "cytoscape-fcose";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
+import type { GraphApiData } from "../types";
 
 // Register the fcose extension
 cytoscape.use(fcose);
@@ -670,22 +671,16 @@ export function Graph2D({
 // Utility Functions
 // ============================================================================
 
-export function convertHindsightGraphData(hindsightData: {
-  nodes?: Array<{ data: { id: string; label?: string; color?: string } }>;
-  edges?: Array<{
-    data: {
-      source: string;
-      target: string;
-      color?: string;
-      lineStyle?: string;
-      linkType?: string;
-      entityName?: string;
-      weight?: number;
-      similarity?: number;
-    };
-  }>;
+/**
+ * 转换入参：`nodes` / `edges` 直接取 `types.ts` 的 `GraphApiData`（此前在这里逐字重抄了 11 行同样的
+ * 字段表，与共享类型各改各的），只把 `table_rows` 收窄成转换真正读到的字段——API 的
+ * `entities` 是 `string | string[]` 而这里只当纯文本用，收窄后调用方仍需显式断言。
+ */
+type HindsightGraphSource = Pick<GraphApiData, "nodes" | "edges"> & {
   table_rows?: Array<{ id: string; text: string; entities?: string; context?: string }>;
-}): GraphData {
+};
+
+export function convertHindsightGraphData(hindsightData: HindsightGraphSource): GraphData {
   const nodes: GraphNode[] = (hindsightData.nodes || []).map((n) => {
     const tableRow = hindsightData.table_rows?.find((r) => r.id === n.data.id);
     // Use memory text as label, truncated to ~40 chars

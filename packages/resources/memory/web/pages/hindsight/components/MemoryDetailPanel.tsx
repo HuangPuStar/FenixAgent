@@ -88,10 +88,7 @@ export function MemoryDetailPanel({ memory, onClose, compact = false, inPanel = 
         </div>
 
         {loading ? (
-          <div className="flex items-center justify-center py-12">
-            <Spinner size="sm" />
-            <span className="ml-2 text-muted-foreground">{t("memoryDetailPanel.loadingDetails")}</span>
-          </div>
+          <Spinner size="sm" variant="panel" className="py-12" label={t("memoryDetailPanel.loadingDetails")} />
         ) : failure ? (
           <HindsightFailureNotice
             failure={failure}
@@ -144,10 +141,7 @@ export function MemoryDetailPanel({ memory, onClose, compact = false, inPanel = 
       </div>
 
       {loading ? (
-        <div className="flex items-center justify-center py-8">
-          <Spinner size="sm" />
-          <span className="ml-2 text-sm text-muted-foreground">{t("memoryDetailPanel.loading")}</span>
-        </div>
+        <Spinner size="sm" variant="panel" className="py-8" label={t("memoryDetailPanel.loading")} />
       ) : (
         <div className={compact ? "space-y-2" : "space-y-4"}>
           {/* 文本 */}
