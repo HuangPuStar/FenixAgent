@@ -52,6 +52,20 @@ export { orderInstancesByRunningStatus } from "./agent-sidebar-tree-model";
 const CARD_TITLE_CLASS = "text-[13px] font-semibold text-text-primary truncate";
 
 /**
+ * agent 卡片悬浮操作栏的图标按钮刻度（展开 / 重启 / 配置三个按钮同名同级）。
+ *
+ * 三个按钮此前各写一遍同一串类名，调其中一处（比如把 `w-6` 改成 `w-7`）会让另外两个静默停在旧刻度上。
+ * 配置按钮永不进入禁用态，仍带上 `disabled:opacity-50`——该变体只在 `:disabled` 命中时生效，写成同一份
+ * 刻度比让它少一条更像「另一类按钮」。删除按钮是红色调的危险动作，不并入本刻度。
+ */
+const AGENT_ACTION_BUTTON_CLASS =
+  "flex items-center justify-center w-6 h-6 border-none rounded-md bg-surface-2 text-text-dim cursor-pointer hover:bg-surface-hover hover:text-text-primary transition-colors disabled:opacity-50";
+
+/** 实例行悬浮操作栏的图标按钮刻度（重启 / 停止两处同名同级）。 */
+const INSTANCE_ACTION_BUTTON_CLASS =
+  "flex items-center justify-center w-5.5 h-5.5 border-none rounded bg-transparent text-text-dim cursor-pointer hover:bg-surface-hover hover:text-text-primary transition-colors disabled:opacity-50";
+
+/**
  * 访问级别的色调词表：`resource.public` = 可对外/被他组织引用，`resource.external` = 外部组织资源。
  *
  * 用色调而不是色名（`text-blue-700` / `bg-amber-100` 这类）：色名一旦写进业务，同一语义会在各页面
@@ -277,7 +291,7 @@ export const AgentSidebarTree = memo(function AgentSidebarTree({
             <div className="agent-sidebar-actions absolute top-1.5 right-1.5 flex gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity">
               <button
                 type="button"
-                className="flex items-center justify-center w-6 h-6 border-none rounded-md bg-surface-2 text-text-dim cursor-pointer hover:bg-surface-hover hover:text-text-primary transition-colors disabled:opacity-50"
+                className={AGENT_ACTION_BUTTON_CLASS}
                 onClick={() =>
                   setExpandedAgents((prev) => ({
                     ...prev,
@@ -290,7 +304,7 @@ export const AgentSidebarTree = memo(function AgentSidebarTree({
               </button>
               <button
                 type="button"
-                className="flex items-center justify-center w-6 h-6 border-none rounded-md bg-surface-2 text-text-dim cursor-pointer hover:bg-surface-hover hover:text-text-primary transition-colors disabled:opacity-50"
+                className={AGENT_ACTION_BUTTON_CLASS}
                 disabled={isRestarting}
                 onClick={(e) => {
                   e.stopPropagation();
@@ -302,7 +316,7 @@ export const AgentSidebarTree = memo(function AgentSidebarTree({
               </button>
               <button
                 type="button"
-                className="flex items-center justify-center w-6 h-6 border-none rounded-md bg-surface-2 text-text-dim cursor-pointer hover:bg-surface-hover hover:text-text-primary transition-colors"
+                className={AGENT_ACTION_BUTTON_CLASS}
                 onClick={(e) => {
                   e.stopPropagation();
                   onEditAgent?.(getAgentConfigLookupKey(agent));
@@ -352,7 +366,7 @@ export const AgentSidebarTree = memo(function AgentSidebarTree({
                           <div className="ml-auto flex gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity shrink-0">
                             <button
                               type="button"
-                              className="flex items-center justify-center w-5.5 h-5.5 border-none rounded bg-transparent text-text-dim cursor-pointer hover:bg-surface-hover hover:text-text-primary transition-colors disabled:opacity-50"
+                              className={INSTANCE_ACTION_BUTTON_CLASS}
                               disabled={isInstRestarting}
                               onClick={(e) => {
                                 e.stopPropagation();
@@ -364,7 +378,7 @@ export const AgentSidebarTree = memo(function AgentSidebarTree({
                             </button>
                             <button
                               type="button"
-                              className="flex items-center justify-center w-5.5 h-5.5 border-none rounded bg-transparent text-text-dim cursor-pointer hover:bg-surface-hover hover:text-text-primary transition-colors disabled:opacity-50"
+                              className={INSTANCE_ACTION_BUTTON_CLASS}
                               disabled={isInstStopping}
                               onClick={(e) => {
                                 e.stopPropagation();

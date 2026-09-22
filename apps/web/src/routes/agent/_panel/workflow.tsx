@@ -1,17 +1,19 @@
 import { AppHeader } from "@fenix/ui-components/layout/app-header";
 import { AppPage } from "@fenix/ui-components/layout/app-page";
 import { Button } from "@fenix/ui-components/ui/button";
-import { Spinner } from "@fenix/ui-components/ui/spinner";
 import { createFileRoute, Link, useNavigate, useSearch } from "@tanstack/react-router";
 import { History, Pencil, Plus } from "lucide-react";
 import { lazy, Suspense, useCallback, useState } from "react";
 import { useTranslation } from "react-i18next";
+import { PanelRouteFallback } from "@/src/components/panel-route-fallback";
+import { useOpenWorkflowEditor } from "@/src/hooks/use-open-workflow-editor";
 
 const WorkflowList = lazy(() => import("@fenix/resource-workflow/web").then((m) => ({ default: m.WorkflowList })));
 const WorkflowRuns = lazy(() => import("@fenix/resource-workflow/web").then((m) => ({ default: m.WorkflowRuns })));
 
+// tab 内容区的等待态：环径取 `sm`（标签页内容区档）、`py-20` 保留原顶部留白，其余按 §2.5 的 panel 口径。
 function TabContentFallback() {
-  return <Spinner variant="panel" size="sm" className="py-20" />;
+  return <PanelRouteFallback size="sm" className="py-20" />;
 }
 
 function WorkflowTabPage() {
@@ -22,15 +24,8 @@ function WorkflowTabPage() {
 
   const [createTrigger, setCreateTrigger] = useState(0);
 
-  const onEditWorkflow = useCallback(
-    (workflowId: string) => {
-      void navigate({
-        to: "/agent/workflow/$id/edit",
-        params: { id: workflowId },
-      });
-    },
-    [navigate],
-  );
+  // 与版本页同一份落点（实现见 `@/src/hooks/use-open-workflow-editor`）
+  const onEditWorkflow = useOpenWorkflowEditor();
 
   const onViewVersions = useCallback(
     (workflowId: string) => {

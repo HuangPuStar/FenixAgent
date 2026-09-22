@@ -1,9 +1,9 @@
 import { Button } from "@fenix/ui-components/ui/button";
-import { Spinner } from "@fenix/ui-components/ui/spinner";
 import { createFileRoute } from "@tanstack/react-router";
 import { lazy, Suspense } from "react";
 import { ErrorBoundary, type FallbackProps } from "react-error-boundary";
 import { useTranslation } from "react-i18next";
+import { PanelRouteFallback } from "@/src/components/panel-route-fallback";
 import { NS } from "@/src/i18n";
 import "@/src/shell/agent-panel.css";
 
@@ -44,7 +44,7 @@ export const Route = createFileRoute("/view/$prodViewId")({
         fallback={
           <div className="agent-panel-layout">
             <div className="agent-panel-body">
-              <Spinner variant="panel" />
+              <PanelRouteFallback />
             </div>
           </div>
         }

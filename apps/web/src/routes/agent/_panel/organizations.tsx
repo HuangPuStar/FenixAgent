@@ -1,6 +1,6 @@
-import { Spinner } from "@fenix/ui-components/ui/spinner";
 import { createFileRoute } from "@tanstack/react-router";
 import { lazy, Suspense } from "react";
+import { PanelRouteFallback } from "@/src/components/panel-route-fallback";
 
 /**
  * 组织页在这里装配：机器注册表能力由本适配器注入，而不是 identity 包直接依赖
@@ -20,7 +20,7 @@ const Page = lazy(async () => {
 
 export const Route = createFileRoute("/agent/_panel/organizations")({
   component: () => (
-    <Suspense fallback={<Spinner variant="panel" />}>
+    <Suspense fallback={<PanelRouteFallback />}>
       <Page />
     </Suspense>
   ),

@@ -1,6 +1,6 @@
-import { Spinner } from "@fenix/ui-components/ui/spinner";
 import { createFileRoute, useSearch } from "@tanstack/react-router";
 import { lazy, Suspense } from "react";
+import { PanelRouteFallback } from "@/src/components/panel-route-fallback";
 
 // 与下面同源的页面组件一样只经 lazy 进入：静态导入同一 barrel 会在路由壳上留下一条无法代码分割
 // 的静态边，整个包入口会被打进首屏 chunk（见前端规范 §2.4）。
@@ -30,7 +30,7 @@ function WorkflowEditPage() {
 
 export const Route = createFileRoute("/agent/_panel/workflow_/$id/edit")({
   component: () => (
-    <Suspense fallback={<Spinner variant="panel" />}>
+    <Suspense fallback={<PanelRouteFallback />}>
       <WorkflowEditPage />
     </Suspense>
   ),

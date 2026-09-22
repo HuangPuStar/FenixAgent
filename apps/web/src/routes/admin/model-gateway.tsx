@@ -10,8 +10,9 @@ const AdminModelGatewayPage = lazy(() =>
 export const Route = createFileRoute("/admin/model-gateway")({
   component: () => {
     const { t } = useTranslation("observer");
+    // 与同目录其余三个 admin 路由壳同一形态：整屏等待（`screen` + 可见文案）
     return (
-      <Suspense fallback={<Spinner variant="inline" label={t("states.loading")} className="p-6" />}>
+      <Suspense fallback={<Spinner variant="screen" label={t("states.loading")} />}>
         <AdminModelGatewayPage />
       </Suspense>
     );

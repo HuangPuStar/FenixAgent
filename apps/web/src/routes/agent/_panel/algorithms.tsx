@@ -1,6 +1,6 @@
-import { Spinner } from "@fenix/ui-components/ui/spinner";
 import { createFileRoute } from "@tanstack/react-router";
 import { lazy, Suspense } from "react";
+import { PanelRouteFallback } from "@/src/components/panel-route-fallback";
 
 const AlgorithmsPage = lazy(() =>
   import("@fenix/model-management/web").then((module) => ({
@@ -10,7 +10,7 @@ const AlgorithmsPage = lazy(() =>
 
 export const Route = createFileRoute("/agent/_panel/algorithms")({
   component: () => (
-    <Suspense fallback={<Spinner variant="panel" />}>
+    <Suspense fallback={<PanelRouteFallback />}>
       <AlgorithmsPage />
     </Suspense>
   ),

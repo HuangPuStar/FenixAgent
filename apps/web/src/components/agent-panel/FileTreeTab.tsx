@@ -14,6 +14,7 @@ import { forwardRef, useCallback, useEffect, useImperativeHandle, useRef, useSta
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
 import { downloadWorkspacePath, fsApi } from "@/src/api/fs";
+import { useDragCounter } from "@/src/hooks/use-drag-counter";
 import { NS } from "@/src/i18n";
 import { useFileTreeEvents } from "./use-file-tree-events";
 import { useFileUploads } from "./use-file-uploads";
@@ -281,39 +282,18 @@ export const FileTreeTab = forwardRef<FileTreeTabHandle, FileTreeTabProps>(funct
     setContextMenu(null);
   }, [contextMenu, onReferenceFile]);
 
-  // 拖拽上传
-  const [dragOver, setDragOver] = useState(false);
-  const dragCounterRef = useRef(0);
-
-  const handleDragOver = useCallback((e: React.DragEvent) => {
-    e.preventDefault();
-    if (e.dataTransfer) {
-      e.dataTransfer.dropEffect = "copy";
-    }
-  }, []);
-
-  const handleDragEnter = useCallback((e: React.DragEvent) => {
-    e.preventDefault();
-    dragCounterRef.current++;
-    if (dragCounterRef.current === 1) setDragOver(true);
-  }, []);
-
-  const handleDragLeave = useCallback((e: React.DragEvent) => {
-    e.preventDefault();
-    dragCounterRef.current--;
-    if (dragCounterRef.current === 0) setDragOver(false);
-  }, []);
+  // 拖拽上传：进入/离开计数与遮罩态由 useDragCounter 统一维护（实现见 `@/src/hooks/use-drag-counter`）
+  const { isDragging: dragOver, handleDragEnter, handleDragOver, handleDragLeave, resetDragCounter } = useDragCounter();
 
   const handleDrop = useCallback(
     (e: React.DragEvent, targetDir?: string) => {
       e.preventDefault();
-      dragCounterRef.current = 0;
-      setDragOver(false);
+      resetDragCounter();
       if (!e.dataTransfer) return;
       const files = Array.from(e.dataTransfer.files);
       void uploadFiles(files, undefined, undefined, targetDir);
     },
-    [uploadFiles],
+    [resetDragCounter, uploadFiles],
   );
 
   const handleUploadClick = useCallback(
