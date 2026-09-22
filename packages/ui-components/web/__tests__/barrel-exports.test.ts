@@ -211,6 +211,7 @@ const EXPECTED_EXPORTS: Record<string, readonly string[]> = {
     "DataTable",
     "EmptyState",
     "FormDialog",
+    "LabeledField",
     "ScopeFilterBar",
     "StatusBadge",
     "buildInitialExpandedState",

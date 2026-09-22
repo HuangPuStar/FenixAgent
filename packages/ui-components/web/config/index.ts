@@ -8,6 +8,8 @@ export type { EmptyStateAction, EmptyStateProps, EmptyStateTone } from "./EmptyS
 export { EmptyState } from "./EmptyState";
 export type { FormDialogFormConfig } from "./FormDialog";
 export { FormDialog } from "./FormDialog";
+export type { LabeledFieldProps } from "./LabeledField";
+export { LabeledField } from "./LabeledField";
 export type { ScopeFilterBarProps, ScopeFilterOption } from "./ScopeFilterBar";
 export { ScopeFilterBar } from "./ScopeFilterBar";
 export type { StatusIndicatorKind, StatusTone } from "./StatusBadge";

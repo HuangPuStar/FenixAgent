@@ -104,6 +104,7 @@ export * from "./config/ConfirmDialog";
 export * from "./config/DataTable";
 export * from "./config/EmptyState";
 export * from "./config/FormDialog";
+export * from "./config/LabeledField";
 export * from "./config/ScopeFilterBar";
 export * from "./config/StatusBadge";
 export * from "./i18n/namespace";

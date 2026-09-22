@@ -416,6 +416,10 @@
       "types": "./web/config/FormDialog.tsx",
       "default": "./web/config/FormDialog.tsx"
     },
+    "./config/LabeledField": {
+      "types": "./web/config/LabeledField.tsx",
+      "default": "./web/config/LabeledField.tsx"
+    },
     "./config/ScopeFilterBar": {
       "types": "./web/config/ScopeFilterBar.tsx",
       "default": "./web/config/ScopeFilterBar.tsx"
