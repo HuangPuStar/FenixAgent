@@ -62,7 +62,7 @@ const webSandboxPools = createWebSandboxPoolsRoutes({ authGuardPlugin });
   3. `packages/web-runtime/web/i18n/namespace.ts` 的 `NS` 表未登记 `SANDBOX`；宿主当前直接取 `SANDBOX_NS`，登记后可与其余命名空间同形（跨包文件，不在本包切片内）。
   4. 文档侧旧路径引用（`docs/arch/root-source-owner-inventory.md:53`、`FUNCTIONAL_MODULE_INVENTORY.md:54,104`）随目录收敛更新。
 - **`web/src/api/system-organizations.ts` 是组织目录客户端的窄投影副本**：它与 observer 的 `web/api/system-people-tree.ts` 请求同一端点 `GET /api/system/people-tree/`，本文件只保留组织下拉用到的 `id` / `name` / `slug` 三个字段，因此不合并（合并会把 observer 的视图模型带进本包依赖图）。**保留理由 = 包级环**：observer 的 `dependencies` 已含 `@fenix/resource-sandbox`（其面板经 `@fenix/resource-sandbox/web` 消费本包组件与工具函数），本包反向 import 会形成两个包互相依赖，违反依赖矩阵且装配顺序不确定。**影响面**：`people-tree` 的组织层字段形状变化需两处同步，且本文件按字段取值、未知字段静默忽略，上游改名不会在编译期报错。**移除条件**：组织目录的 owner（identity）提供无环的公开组织目录客户端后，删除本文件，并把 `use-sandbox-dashboard` / `PoolDialog` / `OrganizationSelect` 的类型与调用改指该客户端。
-- **未声明 `manifest.contributions` 与 `manifest.web`**：消费方分别是 §1.5 的宿主挂载（`mountContribution`）与 §1.6 的 WebShell 装配，形状需与消费端同时定型；当前宿主按显式调用装配（路由工厂注入守卫），不形成第二套装配路径。
+- **未声明 `manifest.web`（`contributions` 已声明，2026-09-22 订正）**：四条 `app-route` 贡献（一条挂 `web-config`、三条挂 `api`）已随 1.5e / 1.5f 落地，见 `fenix.module.ts`；本行此前记的「未声明 contributions」已过期。仍缺的 `web` 字段消费方是 §1.6 的 WebShell 装配，形状需与消费端同时定型；当前宿主按贡献装配（路由工厂注入守卫），不形成第二套装配路径。
 
 ## 已知项
 

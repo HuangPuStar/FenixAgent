@@ -572,7 +572,7 @@ export function AgentTasksPage() {
 ### 4.8 现状偏离
 
 - **17 个生产文件超 500 行**（快照，从大到小）：`model-management/AdminModelGatewayPage.tsx` 1247、`knowledge/AgentKnowledgeBasesPage.tsx` 1231、`workflow/components/NodeConfigCard.tsx` 1182、`workflow/WorkflowEditor.tsx` 1117、`memory/hindsight/components/Constellation.tsx` 978、`memory/hindsight/components/DataView.tsx` 968、`memory/hindsight/components/Graph2d.tsx` 713、`agent-config/AgentHomePage.tsx` 675、`workflow/hooks/useWorkflowRun.ts` 576、`knowledge/ResourcePreviewContent.tsx` 558、`workflow/components/NodeConfigPanel.tsx` 557、`knowledge/EmbeddingModelManager.tsx` 542、`web-runtime/chat/structured-to-thread.ts` 537、`knowledge/RetrievalTestPanel.tsx` 522、`ui-components/chat/shell/ACPMain.tsx` 513、`agent-runtime/hooks/use-chat-state.ts` 509、`model-management/agent-models-dialogs.tsx` 501。400–499 行区间另有 25 个（口径：`apps/web/src` + `packages/**/web/**`，排除测试、生成文件与服务端路径；行数是文件总行数）。
-- **2 个 config 组件生产零消费**：`DataTable` / `BatchActionBar` 目前只有包内测试与 demo 引用。`EmptyState` 已不再是零消费——2026-09-22 重写为内联状态块后接入 workflow / observer / task 三个包（调用点在 `workflow/pages/workflow/WorkflowList.tsx`、`WorkflowRuns.tsx`、`WorkflowVersions.tsx`，`observer/pages/admin/AdminObserverPage.tsx`，`task/pages/agent-panel/TasksPanel.tsx`、`components/TaskLogDialog.tsx`），`AdminObserverPage.tsx` 此前的同名本地实现已删除。收口前先确认包内 API 是否够用（`StatusBadge` 已在 2026-09 泛化后接入 task / workflow / prod-view 三处生产消费方，不再是零消费）。
+- **2 个 config 组件生产零消费**：`DataTable` / `BatchActionBar` 目前只有包内测试与 demo 引用。`EmptyState` 早已不是零消费——2026-09-22 重写为内联状态块后，它已是本仓页面状态块的统一实现：实测 `grep -rln 'from "@fenix/ui-components/config/EmptyState"' packages apps` 命中 **37 个生产文件**（workflow 的 `WorkflowList.tsx` / `WorkflowRuns.tsx` / `WorkflowVersions.tsx`，observer 的 `AdminObserverPage.tsx`（此前的同名本地实现已删除），task 的 `TasksPanel.tsx` / `components/ExecutionLogTable.tsx`，agent-config 的 `pages/agent-sites-catalog.tsx`（空态与失败态，`542772c7`），以及 knowledge / memory / mcp / model-management / prod-view / channel / skill / identity 各包的页面与状态块；原记的 `task/components/TaskLogDialog.tsx` 已不直接消费它，日志弹窗经 `ExecutionLogTable` 间接复用）。收口前先确认包内 API 是否够用（`StatusBadge` 已在 2026-09 泛化后接入 task / workflow / prod-view 三处生产消费方，不再是零消费）。
 - **`task` 包的域类型未从包出口导出**：`TaskV2Info` 的权威定义在服务端 zod schema，web 侧页面用相对路径 `from "../../../api/tasks-v2"` 取，未过 `@fenix/resource-task/web`。与 §4.5 的"经包 exports 导出"不一致，新增类型不要照抄这种取法。
 - **刻意分叉（已裁定，不要以"去重"为由重开）**：`workflow/pages/workflow/components/` 的三种节点配置容器 `NodeConfigPopover`（浮层）/ `NodeConfigSheet`（侧栏）/ `NodeConfigCard`（卡片）服务不同交互场景——props 解构块虽 17 行逐字相同，合并会把差异藏进参数。2026-09-22 的两次收敛（`524127a7` / `6095073b`）都按此口径留手写并登记。
 - **刻意分叉（已裁定）：`memory/hindsight/components/` 的两套图谱**——`Graph2d.tsx`（Cytoscape.js）与 `Constellation.tsx`（自绘 canvas）的图形逻辑不做归一，只收敛它们外围的重复（可视化高度读取、暗色判定、加载块）。两者的渲染模型不同，抽公共层只会得到一层薄转发。
@@ -954,7 +954,7 @@ function ChatPanelFallback({ error, resetErrorBoundary }: FallbackProps) {
 
 ### 8.3 重连与终态码
 
-客户端指数退避重连（1s → 2s → 4s → 8s → 16s → 30s），连续 6 次短连接（<30s）后停止（`chat-channel/src/transport/ws.ts` 的 `NO_RECONNECT_CODES` 与 `RECONNECT_DELAYS`）。以下关闭码为**终态**，停止自动重连并由 UI 提供恢复入口：
+客户端指数退避重连（1s → 2s → 4s → 8s → 16s → 30s），连续 6 次短连接（<30s）后停止（`chat-channel/src/transport/ws.ts` 的 `NO_RECONNECT_CODES` 与 `RECONNECT_DELAYS`）。**终态判定与 UI 语义的唯一来源是同一张策略表**：`chat-channel/src/transport/ws-close-codes.ts` 的 `WS_CLOSE_CODE_POLICY`（逐码两列 `stopReconnect` / `uiCode`，另有 `nonTerminalReason`）；`ws.ts` 的 `NO_RECONNECT_CODES` 与 `agent-runtime/web/yjs/yjs-ws.ts` 的 UI 语义视图都由它派生（2026-09-22 收敛，`88d59ff6`），**改行为只改这张表**。下表是它的可读视图：
 
 | 关闭码 | 语义 | 前端行为 |
 |--------|------|----------|
@@ -963,11 +963,13 @@ function ChatPanelFallback({ error, resetErrorBoundary }: FallbackProps) {
 | 4500 | 机器离线（`machine_unavailable`） | 停自动重连，手动重试 |
 | 4501 | 客户端 keepalive 超时（`client_keepalive_timeout`） | 停自动重连；**切回前台时自动重连** |
 | 4502 | spawn 永久拒绝（`spawn_rejected`，autoStart 关闭 / 并发上限等） | 停自动重连，按 `payload.code` 展示原因 |
-| 4503 | 机器已被占用（`machine_already_connected`） | 停自动重连（**当前无 UI 语义，见下**） |
-| 1013 | 连接数超限（`too_many_connections`） | 停自动重连 |
-| **1013（例外）** | 慢消费者追赶超时（close reason = `slow consumer resync timeout`） | **非终态**：自动重连后走全量快照同步，不得展示"须手动恢复" |
+| 4503 | 机器已被占用（`machine_already_connected`） | 停自动重连（`stopReconnect: true`）；`uiCode` 在策略表里**显式为 `null`**——缺口登记在该行，不是散落的遗漏（见下与 §8.6） |
+| 1013 | 连接数超限（`too_many_connections`） | **不停自动重连**（`stopReconnect: false`，靠退避 + 短连接计数收敛）；只有 UI 语义是终态（`uiCode: "too_many_connections"`） |
+| **1013（例外）** | 慢消费者追赶超时（close reason = `slow consumer resync timeout`） | **非终态**（`nonTerminalReason` 命中时 `uiCode` 取 `null`）：自动重连后走全量快照同步，不得展示"须手动恢复" |
 
-**终态判定有两处，改一处必须同步另一处**：传输层 `NO_RECONNECT_CODES` 决定"停不停自动重连"，`getTerminalYjsWsErrorCode()`（`agent-runtime/web/yjs/yjs-ws.ts`）决定"给 UI 什么语义"。目前 4503 只在第一处、不在第二处——连接会停重连但拿不到可展示的错误码，属已知缺口（见 §8.6）。可见性触发的自动重连规则见 `apps/web/src/pages/agent-panel/chat-visible-reconnect.ts`。
+**两个问题、两张视图、一张表**：传输层问的是"停不停自动重连"（`stopReconnect`），UI 层问的是"给用户什么语义"（`uiCode`），成员集合可以不同，所以 `WS_CLOSE_CODE_POLICY` 逐码登记两列、两个消费方各自派生自己的视图，`chat-channel/src/__tests__/ws-close-codes.test.ts` 把这两列与收敛前的字面量钉成基线（改表即同时改两层行为，两处基线测试必须一起过）。4503 的缺口在表内被显式登记（`uiCode: null`），见 §8.6。
+
+**当前零调用点（按本仓「零消费导出保留 + 登记」的口径处置，不要顺手删）**：`getTerminalYjsWsErrorCode()`（`agent-runtime/web/yjs/yjs-ws.ts`）与可见性触发的自动重连规则 `shouldAutoReconnectOnVisible()`（`apps/web/src/pages/agent-panel/chat-visible-reconnect.ts`）在生产代码里都没有调用方——前者只剩包内用例逐码断言（`agent-runtime/web/__tests__/yjs-ws.test.ts`），后者只剩 `apps/web/src/__tests__/chat-visible-reconnect.test.ts`（该模块仍被 `use-chat-panel-runtime.ts:39` 取用其状态类型）。线上连接错误展示走服务端 `error` 帧 → `classifiedError` → `PublicErrorCard`（`use-chat-panel-runtime.ts:281`、`ChatPanel.tsx:120`），不经过这两个入口；是否重新接线或退场待裁定。
 
 ### 8.4 消息类型
 
@@ -1005,7 +1007,7 @@ function ChatPanelFallback({ error, resetErrorBoundary }: FallbackProps) {
 - **`/web/file-events` 的 URL 拼装写在组件里**（`use-file-tree-events.ts`），违反"不在组件中拼装后端 URL"。
 - **前端零背压实现**：发送只判 `readyState`，依赖服务端 `close(1013)` 兜底。
 - **`clearSessionDocContent` 仍在 `chat-writer.ts` 中导出并保留生产引用**：它零生产**调用**，但 chat-channel bootstrap 把 `prepareClearSessionSnapshot` 作为回调注入快照写入路径——删函数会打断生产编译，收口时要连引用一起清。
-- **终态码两处判定不同步**：4503（`machine_already_connected`）进了传输层的 `NO_RECONNECT_CODES`，但没进 `getTerminalYjsWsErrorCode()`，用户会看到"连接停了但没有任何提示"（见 §8.3）。
+- **4503 的 UI 语义缺口（缺口本身已显式登记，本批不补）**：4503（`machine_already_connected`）在 `WS_CLOSE_CODE_POLICY` 里是 `stopReconnect: true` + `uiCode: null`（`chat-channel/src/transport/ws-close-codes.ts`），用户会看到"连接停了但没有任何提示"。**补齐 `uiCode` 是行为变化**（原先静默的路径会开始出现错误提示），必须单独一批、单独授权，不要以"消缺口"为由顺手补；裁定前保持 `null` 并在策略表注释里保留指向本节的位置（见 §8.3）。
 - **`CLAUDE.md` 的 YJS/Chat 不变量第 7 条仍写"清理会话内容使用 `clearSessionDocContent`"**，与 `docs/arch/19-yjs-chat-streaming.md` 及当前实现冲突；以本文档 §8.5 第 7 条为准，`CLAUDE.md` 待同步。
 
 ## 9. i18n 国际化

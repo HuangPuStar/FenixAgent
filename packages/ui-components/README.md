@@ -58,12 +58,23 @@ demo/                     Vite 展示页（非库产物）
 
 抽取过程中曾把 `packages/resources/{sandbox,memory,task}/web` 的 5 个组件一并纳入
 （`SearchableSelect`、`TagFilterInput`、`SegmentedSwitcher`、`CronEditor`、`CollapsibleSidePanel`）。
-这 5 个在 `apps/web` 中既无同名实现也无功能等价物，且 `apps/web` 不依赖任何 `@fenix/resources` 包
+这 5 个在 `apps/web` 中既无同名实现也无功能等价物，且**当时** `apps/web` 不依赖任何 `@fenix/resources` 包
 （`apps/web/package.json` 无相关依赖，源码中零 import），因此不属于「web 的通用前端组件」，已于 2026-09-18 删除，
 连同它们的 barrel 出口、demo 示例、`cron` / `tagInput` 文案键与 `cron-parser` 依赖。
 
-- 影响范围：这 5 个组件在源包（如 `packages/resources/task/web/pages/agent-panel/components/CronEditor.tsx`）
-  中仍各自存在，删除只影响本包的覆盖面，不影响任何消费方——本包尚未被接入。
+- **2026-09-22 订正：上面两条前提都已失效，但删除的结论不变。** `12b56dbc` 起 `apps/web/package.json` 逐条声明了
+  `@fenix/resource-*`，路由适配器与 i18n 引导直接 import 各包 web 出口——「apps/web 不依赖资源包」不再成立；
+  「本包尚未被接入」也不再成立（本包已是各资源包 web 面的共享依赖）。**不要再用这两条已失效的理由回推删除决定**；
+  重新纳入与否仍按下面第二条的条件逐案评估（真问题是「消费方是否跨包 / 是否属于宿主 web 的通用件」，不是
+  「apps/web 有没有依赖资源包」）。
+- 影响范围：这 5 个组件的**源实现**在源包中仍各自存在，但只有两个与库内同名
+  （`packages/resources/memory/web/pages/hindsight/components/TagFilterInput.tsx`、
+  `packages/resources/task/web/pages/agent-panel/components/CronEditor.tsx`）；另外三个在源包用的是原名，
+  按库内名字 grep 会零命中（易误判成「源实现已消失」）：`SearchableSelect` ←
+  `sandbox/web/src/pages/admin/components/SearchableUsageFilter.tsx`、`SegmentedSwitcher` ←
+  `memory/web/pages/hindsight/components/MemoryViewSwitcher.tsx`、`CollapsibleSidePanel` ←
+  `memory/web/pages/hindsight/components/MemoryVisualizationShell.tsx`。删除只影响本包的覆盖面，
+  实测全仓无任何消费方引用被删的 5 个库内说明符（`grep -rn "searchable-select\|tag-filter-input\|segmented-switcher\|cron-editor\|collapsible-side-panel" packages apps` 去掉库内与源包自身后零命中）。
 - 重新纳入的条件：先确认这些组件的宿主归属与真实消费方（谁渲染、谁提供文案与数据），
   再按同一套纯化约定单独评估，不要因为「看起来通用」而再次越过 `apps/web` 这条范围线。
 
