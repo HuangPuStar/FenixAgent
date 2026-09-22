@@ -63,6 +63,7 @@
     "@fenix/model-management": "workspace:*",
     "@fenix/orchestration": "workspace:*",
     "@fenix/opencode": "workspace:*",
+    "@fenix/peri": "workspace:*",
     "@fenix/plugin-sdk": "workspace:*",
     "@fenix/resource-memory": "workspace:*",
     "@fenix/resource-channel": "workspace:*",

@@ -63,6 +63,7 @@
     "@fenix/ccb": "workspace:*",
     "@fenix/claude-code": "workspace:*",
     "@fenix/opencode": "workspace:*",
+    "@fenix/peri": "workspace:*",
     "@fenix/plugin-sdk": "workspace:*"
   },
   "peerDependencies": {
