@@ -23,6 +23,7 @@ import {
 } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import type { SiteApp } from "../../../api/sites";
+import { buildAgentSiteUrl } from "../../../lib/agent-site-url";
 import "./agent-sites.css";
 
 export type SiteVisibilityFilter = "all" | SiteApp["visibility"];
@@ -185,7 +186,7 @@ export function AgentSitesCatalog(props: Props) {
                 )}
                 <a
                   className="ml-auto inline-flex items-center gap-1 text-[var(--site-muted)] hover:text-[var(--site-blue)] [&_svg]:w-3"
-                  href={`/web/site/deploy/${encodeURIComponent(app.remoteAppId)}/`}
+                  href={buildAgentSiteUrl(app.remoteAppId)}
                   target="_blank"
                   rel="noreferrer"
                 >

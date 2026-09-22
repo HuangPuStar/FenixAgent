@@ -183,6 +183,7 @@ describe("agent-config web 入口浏览器可达面", () => {
       "api/agents.ts",
       "api/sites.ts",
       "hooks/use-meta-agent.ts",
+      "lib/agent-site-url.ts",
       "lib/meta-agent.ts",
       "src/api/sidebar-config.ts",
       "components/agent-panel/SiteFrame.tsx",
