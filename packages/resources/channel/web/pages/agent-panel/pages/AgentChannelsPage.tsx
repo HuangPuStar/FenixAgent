@@ -17,17 +17,8 @@ import { AlertTriangle, RefreshCw } from "lucide-react";
 import { useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
-import { channelApi } from "../../../api/channels";
+import { type ChannelBinding, channelApi } from "../../../api/channels";
 import { resolveChannelListState } from "../../../lib/channel-list-state";
-
-type ChannelBinding = {
-  id: string;
-  platform: string;
-  chatId: string | null;
-  agentId: string;
-  enabled: boolean;
-  agentName?: string | null;
-};
 
 type EnvironmentSummary = { id: string; name: string };
 
