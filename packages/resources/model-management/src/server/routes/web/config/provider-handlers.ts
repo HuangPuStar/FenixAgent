@@ -6,6 +6,7 @@ import { getModelManagementModule } from "../../../module-runtime";
 import { invalidateAvailableModelsCache } from "../../../services/available-models-cache";
 import { modelWriteDataFromWebConfig } from "../../../services/model-write-data";
 import {
+  credentialUnresolvedError,
   fetchProviderModels,
   normalizeProviderBaseUrl,
   type ProviderProbeTarget,
@@ -25,8 +26,8 @@ import { toWebProviderDetail, toWebProviderListItem } from "./provider-views";
  * 且写路径无法预知哪些主体会受影响，因此整体清空，见 `../../../services/available-models-cache`。
  *
  * 需要 `resolveSecretReference` 的 5 个 handler 把它作为末位参数收下（列表 / 详情 / 保存的 `keyHint`，
- * 探测两个入口的库中凭据）：密钥引用解析落在宿主一侧，包内不得读 `process.env`（1.3 硬条件 4），
- * 注入点见 `../../dependencies`。
+ * 探测两个入口的凭据——内联与库中各一条路径）：密钥引用解析落在宿主一侧，包内不得读 `process.env`
+ * （1.3 硬条件 4），注入点见 `../../dependencies`。
  */
 
 /** 探测类 handler 的内联凭据参数；配置面板用它实现"先测后存"。 */
@@ -135,10 +136,30 @@ export async function handleProviderDelete(actor: ActorContext, name: string) {
 }
 
 /**
+ * 解析探测凭据：`null` 表示**引用无法解析**，`""` 表示**本来就没有配置凭据**。
+ *
+ * 两者必须分开：无凭据的端点（本地推理服务之类）带空 `Authorization` 是既有且必要的行为；而
+ * `{env:NAME}` 引用未配置时同样被压成空字符串，就会发出 `Authorization: Bearer `，用户在上游拿到的
+ * 是 401——"先测后存"因此看起来像功能坏了。
+ *
+ * 判据取"原文非空 + 解析结果为空"：按 `SecretReferenceResolver` 的约定，非空明文必然解析回自身，所以
+ * 这个组合只可能来自解析不出的引用，包内不必复制宿主的 `{env:...}` 引用语法。
+ */
+function resolveProbeApiKey(
+  raw: string | undefined | null,
+  resolveSecretReference: SecretReferenceResolver,
+): string | null {
+  const resolved = resolveSecretReference(raw);
+  if (resolved !== null) return resolved;
+  return raw ? null : "";
+}
+
+/**
  * 列出上游模型。
  *
  * 内联凭据分支（面板"先测后存"）不读库也不鉴权：Provider 尚未落库，没有资源可授权，凭据由请求方
- * 自带。落库分支要求 Provider 的 `update` 动作。
+ * 自带。落库分支要求 Provider 的 `update` 动作。两条分支的凭据都过 `resolveProbeApiKey`，所以
+ * `{env:NAME}` 引用在"测"与"存"两侧行为一致。
  *
  * **已知缺陷（迁移前既有，本切片保持行为并记录）**：内联分支允许任一已认证用户让服务器带任意
  * apiKey 请求任意 URL，非 2xx 时响应体会被截取 200 字符回显——这是一个 SSRF 读取原语。修复需要
@@ -156,16 +177,20 @@ export async function handleFetchModels(
 
   let target: ProviderProbeTarget;
   if (inlineApiKey !== "" || inlineBaseUrl !== "") {
+    const apiKey = resolveProbeApiKey(inlineApiKey, resolveSecretReference);
+    if (apiKey === null) return credentialUnresolvedError({ target: "provider", protocol: inlineProtocol });
     target = {
-      apiKey: inlineApiKey,
+      apiKey,
       baseUrl: normalizeProviderBaseUrl(inlineBaseUrl, inlineProtocol),
       protocol: inlineProtocol,
     };
   } else {
     const detail = await getModelManagementModule().facade.getForProbe(actor, { by: "nameOrKey", value: name });
     if (!detail) return configError("NOT_FOUND", `Provider '${name}' not found`);
+    const apiKey = resolveProbeApiKey(detail.apiKey, resolveSecretReference);
+    if (apiKey === null) return credentialUnresolvedError({ target: "provider", protocol: detail.protocol });
     target = {
-      apiKey: resolveSecretReference(detail.apiKey) ?? "",
+      apiKey,
       baseUrl: normalizeProviderBaseUrl(detail.baseUrl, detail.protocol),
       protocol: detail.protocol,
     };
@@ -190,8 +215,13 @@ export async function handleTestModel(
     return configError("NOT_FOUND", `Model '${modelId}' not found`);
   }
 
+  const apiKey = resolveProbeApiKey(detail.apiKey, resolveSecretReference);
+  if (apiKey === null) {
+    return credentialUnresolvedError({ target: "model", protocol: detail.protocol, modelId });
+  }
+
   const target = {
-    apiKey: resolveSecretReference(detail.apiKey) ?? "",
+    apiKey,
     baseUrl: normalizeProviderBaseUrl(detail.baseUrl, detail.protocol),
     protocol: detail.protocol,
     modelId,

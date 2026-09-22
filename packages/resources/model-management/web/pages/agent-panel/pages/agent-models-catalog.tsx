@@ -392,6 +392,8 @@ function ModelRow({
         <span className="models-model-identity">
           <strong>{model.name || model.id}</strong>
           <code>{model.id}</code>
+          {/* 失败原因在列表里直接可见（单行截断 + 徽标 title 给出全文），不是只藏在 tooltip 里。 */}
+          {test?.status === "error" && test.detail && <small className="models-model-test-detail">{test.detail}</small>}
         </span>
       </div>
       <div className="models-model-actions">

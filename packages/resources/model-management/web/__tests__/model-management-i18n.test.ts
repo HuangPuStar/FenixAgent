@@ -135,8 +135,9 @@ describe("本包 i18n 字典（models 命名空间）", () => {
     // + `algorithms.{introHeading,paramsHeading,scenesHeading,copyCode,copied}` 5 键 +
     // `algorithms.columns.{param,defaultValue,description}` 3 键共 404（页内演示数据仍是中文常量）；
     // 探测失败诊断再把密钥引用解析失败的处置文案补进 `testDialog.errors.credentialUnresolved` 1 键共 405
-    // ——该键由 `agent-models-errors.ts` 消费，不是新孤儿键；同组的其余键（除 `modelMessageEmpty`，它属
-    // "2xx 无文本仍判通过"的另一条线）本轮一并启用。
+    // ——该键由 `agent-models-errors.ts` 消费，不是新孤儿键；同组的其余键本轮一并启用，
+    // 含此前零引用的 `modelMessageEmpty`（"2xx 但无文本"那条线落定后，由
+    // `MODEL_TEST_MESSAGE_RESPONSE_INVALID` 分支消费）。两条 P1 修复不新增、不迁移键，总数保持 405。
     expect(enKeys.size).toBe(405);
     expect(zhKeys.size).toBe(405);
   });

@@ -153,7 +153,9 @@ describe("Provider 配置 Web 路由", () => {
 
     expect(response.status).toBe(200);
     expect(body.data.id).toBe("demo");
-    expect(body.data.models).toEqual([{ id: "gpt-4o", name: "GPT-4o", modalities: null, limit: null, cost: null }]);
+    expect(body.data.models).toEqual([
+      { id: "gpt-4o", name: "GPT-4o", modalities: null, limit: null, cost: null, options: null },
+    ]);
   });
 
   // Facade 的 undefined 是"授权后不可见"，协议层必须映射为 404 而不是 500 或空对象。

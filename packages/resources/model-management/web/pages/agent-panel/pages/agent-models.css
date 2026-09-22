@@ -440,6 +440,15 @@
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+/* 测试失败原因：单行截断，换行符折叠成空格，全文由徽标的 title 提供。 */
+.models-model-test-detail {
+  overflow: hidden;
+  margin-top: 2px;
+  color: #c44747;
+  font-size: 9px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
 .models-model-identity strong {
   font-size: 12px;
 }

@@ -25,6 +25,8 @@ import {
   ModelModalityField as ModalityField,
   ModelNumberField as NumberField,
 } from "./agent-model-fields";
+import { readLimitRecord } from "./agent-models-data";
+import { useProviderTestErrorText } from "./agent-models-errors";
 import type {
   DiscoveryState,
   ModelDialogTarget,
@@ -52,14 +54,15 @@ interface ProviderEditorDialogProps {
 
 export function ProviderEditorDialog({ target, providers, saving, onClose, onSave }: ProviderEditorDialogProps) {
   const { t } = useTranslation(MODELS_NS);
+  const probeErrorText = useProviderTestErrorText();
   const editing = target && target.mode !== "create" ? target.provider : null;
   const readOnly = target?.mode === "view";
   const [draft, setDraft] = useState<ProviderDraft>({
     id: "",
-    displayName: "",
+    displayName: { edited: false, value: "" },
     protocol: "openai",
     apiKey: "",
-    baseURL: "",
+    baseURL: { edited: false, value: "" },
     selectedModels: [],
   });
   const [availableModels, setAvailableModels] = useState<string[]>([]);
@@ -69,10 +72,10 @@ export function ProviderEditorDialog({ target, providers, saving, onClose, onSav
     if (!target) return;
     setDraft({
       id: editing?.id ?? "",
-      displayName: editing && editing.name !== editing.id ? editing.name : "",
+      displayName: { edited: false, value: editing && editing.name !== editing.id ? editing.name : "" },
       protocol: editing?.protocol ?? "openai",
       apiKey: "",
-      baseURL: editing?.baseURL ?? "",
+      baseURL: { edited: false, value: editing?.baseURL ?? "" },
       selectedModels: [],
     });
     setAvailableModels([]);
@@ -82,7 +85,17 @@ export function ProviderEditorDialog({ target, providers, saving, onClose, onSav
   const fetchModels = useRequest(
     async () => {
       if (!draft.id.trim()) throw new Error(t("validation.nameEmpty"));
-      const inline = !editing || draft.apiKey.trim() ? buildProviderInlineTestPayload(draft) : undefined;
+      // 编辑态下只要 Base URL 被改动过就带内联参数：Key 留空是常态（详情只回掩码、占位符就是「留空表示不
+      // 修改」），只按 Key 判断会让"改了 Base URL 但没重填 Key"这次探测落到库中的旧地址上。后端的内联分支
+      // 只用请求自带的凭据（空 Key 会原样发出去），因此这里改成"带新端点、凭据随表单"。
+      const useInline = !editing || Boolean(draft.apiKey.trim()) || draft.baseURL.edited;
+      const inline = useInline
+        ? buildProviderInlineTestPayload({
+            apiKey: draft.apiKey,
+            baseURL: draft.baseURL.value,
+            protocol: draft.protocol,
+          })
+        : undefined;
       return unwrap(providerApi.fetchModels(editing ? getProviderKey(editing) : draft.id.trim(), inline));
     },
     {
@@ -94,7 +107,8 @@ export function ProviderEditorDialog({ target, providers, saving, onClose, onSav
       onError: (error) => {
         console.error(t("form.fetchModelsError"), error);
         setAvailableModels([]);
-        setFetchError(error instanceof Error ? error.message : t("unknownError"));
+        // 探测失败的原因（上游状态码 / 响应正文摘要 / 超时 / 引用未配置）来自 `ApiError.data`。
+        setFetchError(probeErrorText(error));
       },
     },
   );
@@ -141,8 +155,8 @@ export function ProviderEditorDialog({ target, providers, saving, onClose, onSav
             </Field>
             <Field label={t("form.displayName")}>
               <Input
-                value={draft.displayName}
-                onChange={(event) => update("displayName", event.target.value)}
+                value={draft.displayName.value}
+                onChange={(event) => update("displayName", { edited: true, value: event.target.value })}
                 disabled={readOnly}
                 placeholder={t("form.displayNamePlaceholder")}
               />
@@ -175,8 +189,8 @@ export function ProviderEditorDialog({ target, providers, saving, onClose, onSav
             <div className="sm:col-span-2">
               <Field label={t("form.baseUrl")}>
                 <Input
-                  value={draft.baseURL}
-                  onChange={(event) => update("baseURL", event.target.value)}
+                  value={draft.baseURL.value}
+                  onChange={(event) => update("baseURL", { edited: true, value: event.target.value })}
                   disabled={readOnly}
                   placeholder={t("form.baseUrlPlaceholder")}
                 />
@@ -257,16 +271,17 @@ interface ModelEditorDialogProps {
 }
 
 function modelDraft(model?: ProviderModel): ModelDraft {
-  const limit = (model?.limit ?? {}) as Record<string, unknown>;
+  const limit = readLimitRecord(model?.limit);
   const modalities = (model?.modalities ?? {}) as { input?: string[]; output?: string[] };
   return {
     id: model?.id ?? "",
     name: model?.name ?? "",
-    context: formatOptionalNumber(limit.context),
-    output: formatOptionalNumber(limit.output),
+    // 编辑时按列中真实值回显，并标记为「未触碰」：只有用户动过数字框才允许提交该列。
+    limit: { edited: false, context: formatOptionalNumber(limit.context), output: formatOptionalNumber(limit.output) },
     inputModalities: modalities.input ?? ["text"],
     outputModalities: modalities.output ?? ["text"],
-    thinkingEnabled: model ? supportsThinking(model) : true,
+    // 新建时开关默认打开；编辑时按真实 `options.thinking.enabled` 回显，并标记为「未触碰」。
+    thinking: { edited: false, enabled: model ? supportsThinking(model) : true },
   };
 }
 
@@ -319,15 +334,15 @@ export function ModelEditorDialog({ target, saving, onClose, onSave }: ModelEdit
             </Field>
             <NumberField
               label={t("modelSubrow.contextLimit")}
-              value={draft.context}
+              value={draft.limit.context}
               disabled={readOnly}
-              onChange={(value) => update("context", value)}
+              onChange={(value) => update("limit", { edited: true, context: value, output: draft.limit.output })}
             />
             <NumberField
               label={t("modelSubrow.outputLimit")}
-              value={draft.output}
+              value={draft.limit.output}
               disabled={readOnly}
-              onChange={(value) => update("output", value)}
+              onChange={(value) => update("limit", { edited: true, context: draft.limit.context, output: value })}
             />
             <ModalityField
               label={t("modelSubrow.inputModality")}
@@ -349,9 +364,9 @@ export function ModelEditorDialog({ target, saving, onClose, onSave }: ModelEdit
                 <small>{t("modelSubrow.thinkingDescription")}</small>
               </div>
               <Switch
-                checked={draft.thinkingEnabled}
+                checked={draft.thinking.enabled}
                 disabled={readOnly}
-                onCheckedChange={(value) => update("thinkingEnabled", value)}
+                onCheckedChange={(value) => update("thinking", { edited: true, enabled: value })}
               />
             </div>
           </div>

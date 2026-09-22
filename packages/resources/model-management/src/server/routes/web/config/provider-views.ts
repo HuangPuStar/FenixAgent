@@ -34,6 +34,17 @@ export function toWebProviderListItem(
 }
 
 /**
+ * `options` 是自由形状的 jsonb 列：非对象（含数组）一律投影为 `null`。
+ *
+ * 判据与 `/api/models` 的 `toModelDetail` 逐字一致——同一列在两条路由上不能给出两种形状。前端读它
+ * 回显「启用思考模式」开关，并按子键合并写回，缺这一列会让开关永远显示为关。
+ */
+function toModelOptions(options: unknown): Record<string, unknown> | null {
+  if (options === null || typeof options !== "object" || Array.isArray(options)) return null;
+  return options as Record<string, unknown>;
+}
+
+/**
  * 详情视图。
  *
  * `label` 是调用方用来定位这份配置的名称或资源键，与列表项的 `id` 同义（用户看到的是配置名）。
@@ -61,6 +72,7 @@ export function toWebProviderDetail(
       modalities: model.modalities ?? null,
       limit: model.limitConfig ?? null,
       cost: model.cost ?? null,
+      options: toModelOptions(model.options),
     })),
   };
 }
