@@ -42,6 +42,12 @@ import {
 
 const SCOPES: ProviderScope[] = ["all", "organization", "public"];
 
+/**
+ * 目录三处占位块（详情区无 Provider / 索引为空 / 模型列表为空）共用的排布：
+ * `EmptyState` 自带的是 `py-10` 内联块，这一屏的三个位置都要撑满各自的内容区并居中。
+ */
+const EMPTY_STATE_FILL_CLASS = "flex min-h-64 flex-col items-center justify-center";
+
 interface ModelsCatalogProps {
   providers: ProviderInfo[];
   allProviders: ProviderInfo[];
@@ -147,7 +153,7 @@ export function AgentModelsCatalog(props: ModelsCatalogProps) {
             icon={<FileSearch />}
             title={props.query ? t("empty.filteredTitle") : t("empty.title")}
             description={props.query ? t("empty.filteredDescription") : t("empty.description")}
-            className="flex min-h-64 flex-col items-center justify-center"
+            className={EMPTY_STATE_FILL_CLASS}
           />
         )}
       </AgentMasterDetailWorkspace>
@@ -215,11 +221,7 @@ function ProviderIndex({
           })}
         </nav>
       ) : (
-        <EmptyState
-          icon={<FileSearch />}
-          title={t("providerIndex.empty")}
-          className="flex min-h-64 flex-col items-center justify-center"
-        />
+        <EmptyState icon={<FileSearch />} title={t("providerIndex.empty")} className={EMPTY_STATE_FILL_CLASS} />
       )}
     </aside>
   );
@@ -358,7 +360,7 @@ function ProviderDetail(props: ModelsCatalogProps & { provider: ProviderInfo; he
             icon={<CircleOff />}
             title={t("modelSubrow.emptyTitle")}
             description={writable ? t("modelSubrow.emptyMessage") : t("modelSubrow.emptyReadOnly")}
-            className="flex min-h-64 flex-col items-center justify-center"
+            className={EMPTY_STATE_FILL_CLASS}
           />
         )}
       </section>

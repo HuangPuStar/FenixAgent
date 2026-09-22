@@ -8,12 +8,13 @@ import { Pagination } from "@fenix/ui-components/ui/pagination";
 import { Spinner } from "@fenix/ui-components/ui/spinner";
 import { ApiError } from "@fenix/web-runtime/api/request";
 import { useRequest } from "ahooks";
-import { RefreshCw, Trash2 } from "lucide-react";
+import { Trash2 } from "lucide-react";
 import { useCallback, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
 import { listModelGatewayKeys, type ModelGatewayManagedKey, removeModelGatewayKeys } from "../../api/model-gateway.ts";
 import { MODELS_NS } from "../../i18n/namespace";
+import { GATEWAY_LOADING_CLASS, GatewayRefreshButton, ModelGatewayTable } from "./model-gateway-shared";
 
 function keyReason(key: ModelGatewayManagedKey): string {
   return key.usable ? "usable" : (key.invalidReason ?? "unusable");
@@ -69,10 +70,9 @@ export function ModelGatewayKeyManagementPanel({ onAuthFailure }: { onAuthFailur
           <p className="mt-1 text-xs text-text-muted">{t("modelGateway.keysPage.description")}</p>
         </div>
         <div className="flex gap-2">
-          <Button size="sm" variant="outline" onClick={() => keysRequest.run()} disabled={keysRequest.loading}>
-            <RefreshCw className={keysRequest.loading ? "size-3.5 animate-spin" : "size-3.5"} />
+          <GatewayRefreshButton loading={keysRequest.loading} onClick={() => keysRequest.run()}>
             {t("modelGateway.keysPage.refresh")}
-          </Button>
+          </GatewayRefreshButton>
           <Button
             size="sm"
             variant="destructive"
@@ -89,66 +89,61 @@ export function ModelGatewayKeyManagementPanel({ onAuthFailure }: { onAuthFailur
           // 失败态不再给重试按钮：本卡片头部常驻的「刷新」就是同一个动作，`keysRequest.run` 是它的入口。
           <EmptyState tone="danger" role="alert" title={t("modelGateway.keysPage.loadError")} className="py-8" />
         ) : keysRequest.loading && !keysRequest.data ? (
-          <Spinner label={t("admin.loading")} className="flex py-8" />
+          <Spinner label={t("admin.loading")} className={GATEWAY_LOADING_CLASS} />
         ) : (keysRequest.data?.items.length ?? 0) === 0 ? (
           <EmptyState title={t("modelGateway.keysPage.empty")} className="py-8" />
         ) : (
           <>
-            <div className="overflow-x-auto rounded-md border">
-              <table className="w-full text-left text-sm">
-                <thead className="bg-muted/40">
-                  <tr>
-                    <th className="w-10 px-3 py-2" />
-                    <th className="px-3 py-2">{t("modelGateway.keysPage.columns.id")}</th>
-                    <th className="px-3 py-2">{t("modelGateway.keysPage.columns.subject")}</th>
-                    <th className="px-3 py-2">{t("modelGateway.keysPage.columns.key")}</th>
-                    <th className="px-3 py-2">{t("modelGateway.keysPage.columns.availability")}</th>
-                    <th className="px-3 py-2">{t("modelGateway.keysPage.columns.createdAt")}</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y">
-                  {keysRequest.data?.items.map((item) => (
-                    <tr key={item.id}>
-                      <td className="px-3 py-2">
-                        <Checkbox
-                          checked={selectedIds.includes(item.id)}
-                          onCheckedChange={(value) => toggle(item.id, value === true)}
-                          aria-label={t("modelGateway.keysPage.select", { id: item.externalCredentialId })}
-                        />
-                      </td>
-                      <td className="px-3 py-2 font-mono text-xs">{item.id}</td>
-                      <td className="px-3 py-2 text-xs align-top">
-                        <div>
-                          <span className="font-semibold">
-                            {t("modelGateway.keysPage.subjectLabels.organization")}：
-                          </span>
-                          {item.organizationName ?? t("modelGateway.keysPage.unknownSubject")}（{item.organizationId}）
-                        </div>
-                        <div>
-                          <span className="font-semibold">{t("modelGateway.keysPage.subjectLabels.user")}：</span>
-                          {item.userName ?? t("modelGateway.keysPage.unknownSubject")}（{item.userId}）
-                        </div>
-                        <div>
-                          <span className="font-semibold">{t("modelGateway.keysPage.subjectLabels.agent")}：</span>
-                          {item.agentName ?? t("modelGateway.keysPage.unknownSubject")}（{item.agentConfigId}）
-                        </div>
-                      </td>
-                      <td className="px-3 py-2 font-mono text-xs">
-                        <div className="w-[20ch] truncate" title={item.externalCredentialId}>
-                          {item.externalCredentialId}
-                        </div>
-                      </td>
-                      <td className="px-3 py-2">
-                        <Badge variant={item.usable ? "secondary" : "destructive"}>
-                          {t(`modelGateway.keysPage.reasons.${keyReason(item)}`)}
-                        </Badge>
-                      </td>
-                      <td className="px-3 py-2 text-xs text-text-muted">{new Date(item.createdAt).toLocaleString()}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
+            <ModelGatewayTable
+              head={
+                <>
+                  <th className="w-10 px-3 py-2" />
+                  <th className="px-3 py-2">{t("modelGateway.keysPage.columns.id")}</th>
+                  <th className="px-3 py-2">{t("modelGateway.keysPage.columns.subject")}</th>
+                  <th className="px-3 py-2">{t("modelGateway.keysPage.columns.key")}</th>
+                  <th className="px-3 py-2">{t("modelGateway.keysPage.columns.availability")}</th>
+                  <th className="px-3 py-2">{t("modelGateway.keysPage.columns.createdAt")}</th>
+                </>
+              }
+            >
+              {keysRequest.data?.items.map((item) => (
+                <tr key={item.id}>
+                  <td className="px-3 py-2">
+                    <Checkbox
+                      checked={selectedIds.includes(item.id)}
+                      onCheckedChange={(value) => toggle(item.id, value === true)}
+                      aria-label={t("modelGateway.keysPage.select", { id: item.externalCredentialId })}
+                    />
+                  </td>
+                  <td className="px-3 py-2 font-mono text-xs">{item.id}</td>
+                  <td className="px-3 py-2 text-xs align-top">
+                    <div>
+                      <span className="font-semibold">{t("modelGateway.keysPage.subjectLabels.organization")}：</span>
+                      {item.organizationName ?? t("modelGateway.keysPage.unknownSubject")}（{item.organizationId}）
+                    </div>
+                    <div>
+                      <span className="font-semibold">{t("modelGateway.keysPage.subjectLabels.user")}：</span>
+                      {item.userName ?? t("modelGateway.keysPage.unknownSubject")}（{item.userId}）
+                    </div>
+                    <div>
+                      <span className="font-semibold">{t("modelGateway.keysPage.subjectLabels.agent")}：</span>
+                      {item.agentName ?? t("modelGateway.keysPage.unknownSubject")}（{item.agentConfigId}）
+                    </div>
+                  </td>
+                  <td className="px-3 py-2 font-mono text-xs">
+                    <div className="w-[20ch] truncate" title={item.externalCredentialId}>
+                      {item.externalCredentialId}
+                    </div>
+                  </td>
+                  <td className="px-3 py-2">
+                    <Badge variant={item.usable ? "secondary" : "destructive"}>
+                      {t(`modelGateway.keysPage.reasons.${keyReason(item)}`)}
+                    </Badge>
+                  </td>
+                  <td className="px-3 py-2 text-xs text-text-muted">{new Date(item.createdAt).toLocaleString()}</td>
+                </tr>
+              ))}
+            </ModelGatewayTable>
             <Pagination
               page={page}
               totalPages={totalPages}

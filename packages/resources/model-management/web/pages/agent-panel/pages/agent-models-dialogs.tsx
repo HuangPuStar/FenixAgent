@@ -44,6 +44,61 @@ import {
 const INPUT_MODALITIES = ["text", "image", "audio", "video", "pdf"];
 const OUTPUT_MODALITIES = ["text", "image"];
 
+/**
+ * 两个编辑弹窗（Provider / 模型）共用的外壳。
+ *
+ * 这两处此前逐字同构：`Dialog` + `DialogContent.flex max-h-[88vh] flex-col sm:max-w-2xl` + `DialogHeader`
+ * + `form.flex min-h-0 flex-1 flex-col` + `div.grid min-h-0 gap-4 overflow-y-auto pr-1 sm:grid-cols-2`
+ * + 同一个 `DialogFooter`（取消 + 保存，`readOnly` 时不出提交按钮）。收在这里之后，两个弹窗只留各自的
+ * 字段与提交逻辑——改外壳（高度上限、栅格、页脚）不必再同步两个函数。
+ *
+ * `description` 只有 Provider 弹窗有（模型弹窗不写说明），故为可选：不传就不渲染 `DialogDescription`。
+ */
+function EditorFormDialog({
+  open,
+  title,
+  description,
+  readOnly,
+  saving,
+  onClose,
+  onSubmit,
+  children,
+}: {
+  open: boolean;
+  title: string;
+  description?: string;
+  readOnly: boolean;
+  saving: boolean;
+  onClose: () => void;
+  onSubmit: (event: React.FormEvent) => void;
+  children: React.ReactNode;
+}) {
+  const { t } = useTranslation(MODELS_NS);
+  return (
+    <Dialog open={open} onOpenChange={(next) => !next && onClose()}>
+      <DialogContent className="flex max-h-[88vh] flex-col sm:max-w-2xl">
+        <DialogHeader>
+          <DialogTitle>{title}</DialogTitle>
+          {description && <DialogDescription>{description}</DialogDescription>}
+        </DialogHeader>
+        <form className="flex min-h-0 flex-1 flex-col" onSubmit={onSubmit}>
+          <div className="grid min-h-0 gap-4 overflow-y-auto pr-1 sm:grid-cols-2">{children}</div>
+          <DialogFooter className="mt-4 border-t pt-4">
+            <Button type="button" variant="outline" onClick={onClose}>
+              {t("actions.close")}
+            </Button>
+            {!readOnly && (
+              <Button type="submit" disabled={saving}>
+                {saving ? t("actions.saving") : t("actions.save")}
+              </Button>
+            )}
+          </DialogFooter>
+        </form>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
 interface ProviderEditorDialogProps {
   target: ProviderDialogTarget | null;
   providers: ProviderInfo[];
@@ -135,131 +190,117 @@ export function ProviderEditorDialog({ target, providers, saving, onClose, onSav
   };
 
   return (
-    <Dialog open={Boolean(target)} onOpenChange={(open) => !open && onClose()}>
-      <DialogContent className="flex max-h-[88vh] flex-col sm:max-w-2xl">
-        <DialogHeader>
-          <DialogTitle>
-            {target?.mode === "create" ? t("form.createTitle") : readOnly ? t("form.detailTitle") : t("form.editTitle")}
-          </DialogTitle>
-          <DialogDescription>{readOnly ? t("form.readOnlyDescription") : t("form.description")}</DialogDescription>
-        </DialogHeader>
-        <form className="flex min-h-0 flex-1 flex-col" onSubmit={handleSubmit}>
-          <div className="grid min-h-0 gap-4 overflow-y-auto pr-1 sm:grid-cols-2">
-            <Field label={t("form.id")}>
-              <Input
-                value={draft.id}
-                onChange={(event) => update("id", event.target.value)}
-                disabled={Boolean(editing) || readOnly}
-                required
-              />
-            </Field>
-            <Field label={t("form.displayName")}>
-              <Input
-                value={draft.displayName.value}
-                onChange={(event) => update("displayName", { edited: true, value: event.target.value })}
-                disabled={readOnly}
-                placeholder={t("form.displayNamePlaceholder")}
-              />
-            </Field>
-            <Field label={t("form.protocol")}>
-              <Select
-                value={draft.protocol}
-                disabled={readOnly}
-                onValueChange={(value) => update("protocol", value as ProviderDraft["protocol"])}
-              >
-                <SelectTrigger>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="openai">{t("protocolOptions.openai")}</SelectItem>
-                  <SelectItem value="anthropic">{t("protocolOptions.anthropic")}</SelectItem>
-                </SelectContent>
-              </Select>
-            </Field>
-            <Field label={t("form.apiKey")}>
-              <Input
-                type="password"
-                autoComplete="new-password"
-                value={draft.apiKey}
-                onChange={(event) => update("apiKey", event.target.value)}
-                disabled={readOnly}
-                placeholder={editing ? t("form.apiKeyEditPlaceholder") : t("form.apiKeyCreatePlaceholder")}
-              />
-            </Field>
-            <div className="sm:col-span-2">
-              <Field label={t("form.baseUrl")}>
-                <Input
-                  value={draft.baseURL.value}
-                  onChange={(event) => update("baseURL", { edited: true, value: event.target.value })}
-                  disabled={readOnly}
-                  placeholder={t("form.baseUrlPlaceholder")}
-                />
-              </Field>
+    <EditorFormDialog
+      open={Boolean(target)}
+      title={target?.mode === "create" ? t("form.createTitle") : readOnly ? t("form.detailTitle") : t("form.editTitle")}
+      description={readOnly ? t("form.readOnlyDescription") : t("form.description")}
+      readOnly={readOnly}
+      saving={saving}
+      onClose={onClose}
+      onSubmit={handleSubmit}
+    >
+      <Field label={t("form.id")}>
+        <Input
+          value={draft.id}
+          onChange={(event) => update("id", event.target.value)}
+          disabled={Boolean(editing) || readOnly}
+          required
+        />
+      </Field>
+      <Field label={t("form.displayName")}>
+        <Input
+          value={draft.displayName.value}
+          onChange={(event) => update("displayName", { edited: true, value: event.target.value })}
+          disabled={readOnly}
+          placeholder={t("form.displayNamePlaceholder")}
+        />
+      </Field>
+      <Field label={t("form.protocol")}>
+        <Select
+          value={draft.protocol}
+          disabled={readOnly}
+          onValueChange={(value) => update("protocol", value as ProviderDraft["protocol"])}
+        >
+          <SelectTrigger>
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="openai">{t("protocolOptions.openai")}</SelectItem>
+            <SelectItem value="anthropic">{t("protocolOptions.anthropic")}</SelectItem>
+          </SelectContent>
+        </Select>
+      </Field>
+      <Field label={t("form.apiKey")}>
+        <Input
+          type="password"
+          autoComplete="new-password"
+          value={draft.apiKey}
+          onChange={(event) => update("apiKey", event.target.value)}
+          disabled={readOnly}
+          placeholder={editing ? t("form.apiKeyEditPlaceholder") : t("form.apiKeyCreatePlaceholder")}
+        />
+      </Field>
+      <div className="sm:col-span-2">
+        <Field label={t("form.baseUrl")}>
+          <Input
+            value={draft.baseURL.value}
+            onChange={(event) => update("baseURL", { edited: true, value: event.target.value })}
+            disabled={readOnly}
+            placeholder={t("form.baseUrlPlaceholder")}
+          />
+        </Field>
+      </div>
+      {!readOnly && (
+        <section className="model-dialog-section sm:col-span-2" aria-label={t("form.modelsSection")}>
+          <div className="model-dialog-section__header">
+            <div>
+              <strong>{t("form.modelsSection")}</strong>
+              <small>{t("form.modelsSectionHint")}</small>
             </div>
-            {!readOnly && (
-              <section className="model-dialog-section sm:col-span-2" aria-label={t("form.modelsSection")}>
-                <div className="model-dialog-section__header">
-                  <div>
-                    <strong>{t("form.modelsSection")}</strong>
-                    <small>{t("form.modelsSectionHint")}</small>
-                  </div>
-                  <Button
-                    type="button"
-                    variant="outline"
-                    size="sm"
-                    onClick={() => fetchModels.run()}
-                    disabled={fetchModels.loading}
-                  >
-                    {fetchModels.loading ? <LoaderCircle className="animate-spin" /> : <Search />}
-                    {fetchModels.loading ? t("form.fetching") : t("form.fetchModels")}
-                  </Button>
-                </div>
-                {fetchError && (
-                  <p className="model-dialog-error" role="alert">
-                    {fetchError}
-                  </p>
-                )}
-                {availableModels.length > 0 && (
-                  <div className="model-discovery-list">
-                    {availableModels.map((modelId) => {
-                      const selected = draft.selectedModels.includes(modelId);
-                      return (
-                        <button
-                          key={modelId}
-                          type="button"
-                          className={selected ? "is-selected" : ""}
-                          onClick={() =>
-                            update(
-                              "selectedModels",
-                              selected
-                                ? draft.selectedModels.filter((id) => id !== modelId)
-                                : [...draft.selectedModels, modelId],
-                            )
-                          }
-                        >
-                          <span>{modelId}</span>
-                          {selected && <Check />}
-                        </button>
-                      );
-                    })}
-                  </div>
-                )}
-              </section>
-            )}
-          </div>
-          <DialogFooter className="mt-4 border-t pt-4">
-            <Button type="button" variant="outline" onClick={onClose}>
-              {t("actions.close")}
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={() => fetchModels.run()}
+              disabled={fetchModels.loading}
+            >
+              {fetchModels.loading ? <LoaderCircle className="animate-spin" /> : <Search />}
+              {fetchModels.loading ? t("form.fetching") : t("form.fetchModels")}
             </Button>
-            {!readOnly && (
-              <Button type="submit" disabled={saving}>
-                {saving ? t("actions.saving") : t("actions.save")}
-              </Button>
-            )}
-          </DialogFooter>
-        </form>
-      </DialogContent>
-    </Dialog>
+          </div>
+          {fetchError && (
+            <p className="model-dialog-error" role="alert">
+              {fetchError}
+            </p>
+          )}
+          {availableModels.length > 0 && (
+            <div className="model-discovery-list">
+              {availableModels.map((modelId) => {
+                const selected = draft.selectedModels.includes(modelId);
+                return (
+                  <button
+                    key={modelId}
+                    type="button"
+                    className={selected ? "is-selected" : ""}
+                    onClick={() =>
+                      update(
+                        "selectedModels",
+                        selected
+                          ? draft.selectedModels.filter((id) => id !== modelId)
+                          : [...draft.selectedModels, modelId],
+                      )
+                    }
+                  >
+                    <span>{modelId}</span>
+                    {selected && <Check />}
+                  </button>
+                );
+              })}
+            </div>
+          )}
+        </section>
+      )}
+    </EditorFormDialog>
   );
 }
 
@@ -308,81 +349,69 @@ export function ModelEditorDialog({ target, saving, onClose, onSave }: ModelEdit
     }
   };
   return (
-    <Dialog open={Boolean(target)} onOpenChange={(open) => !open && onClose()}>
-      <DialogContent className="flex max-h-[88vh] flex-col sm:max-w-2xl">
-        <DialogHeader>
-          <DialogTitle>
-            {target?.mode === "create"
-              ? t("modelSubrow.createTitle")
-              : readOnly
-                ? t("modelSubrow.detailTitle", { id: original?.id })
-                : t("modelSubrow.editTitle", { id: original?.id })}
-          </DialogTitle>
-        </DialogHeader>
-        <form className="flex min-h-0 flex-1 flex-col" onSubmit={submit}>
-          <div className="grid min-h-0 gap-4 overflow-y-auto pr-1 sm:grid-cols-2">
-            <Field label={t("modelSubrow.modelId")}>
-              <Input
-                value={draft.id}
-                disabled={Boolean(original) || readOnly}
-                required
-                onChange={(event) => update("id", event.target.value)}
-              />
-            </Field>
-            <Field label={t("modelSubrow.displayName")}>
-              <Input value={draft.name} disabled={readOnly} onChange={(event) => update("name", event.target.value)} />
-            </Field>
-            <NumberField
-              label={t("modelSubrow.contextLimit")}
-              value={draft.limit.context}
-              disabled={readOnly}
-              onChange={(value) => update("limit", { edited: true, context: value, output: draft.limit.output })}
-            />
-            <NumberField
-              label={t("modelSubrow.outputLimit")}
-              value={draft.limit.output}
-              disabled={readOnly}
-              onChange={(value) => update("limit", { edited: true, context: draft.limit.context, output: value })}
-            />
-            <ModalityField
-              label={t("modelSubrow.inputModality")}
-              values={INPUT_MODALITIES}
-              selected={draft.inputModalities}
-              disabled={readOnly}
-              onToggle={(value) => toggle("inputModalities", value)}
-            />
-            <ModalityField
-              label={t("modelSubrow.outputModality")}
-              values={OUTPUT_MODALITIES}
-              selected={draft.outputModalities}
-              disabled={readOnly}
-              onToggle={(value) => toggle("outputModalities", value)}
-            />
-            <div className="model-thinking-field sm:col-span-2">
-              <div>
-                <strong>{t("modelSubrow.thinkingEnabled")}</strong>
-                <small>{t("modelSubrow.thinkingDescription")}</small>
-              </div>
-              <Switch
-                checked={draft.thinking.enabled}
-                disabled={readOnly}
-                onCheckedChange={(value) => update("thinking", { edited: true, enabled: value })}
-              />
-            </div>
-          </div>
-          <DialogFooter className="mt-4 border-t pt-4">
-            <Button type="button" variant="outline" onClick={onClose}>
-              {t("actions.close")}
-            </Button>
-            {!readOnly && (
-              <Button type="submit" disabled={saving}>
-                {saving ? t("actions.saving") : t("actions.save")}
-              </Button>
-            )}
-          </DialogFooter>
-        </form>
-      </DialogContent>
-    </Dialog>
+    <EditorFormDialog
+      open={Boolean(target)}
+      title={
+        target?.mode === "create"
+          ? t("modelSubrow.createTitle")
+          : readOnly
+            ? t("modelSubrow.detailTitle", { id: original?.id })
+            : t("modelSubrow.editTitle", { id: original?.id })
+      }
+      readOnly={readOnly}
+      saving={saving}
+      onClose={onClose}
+      onSubmit={submit}
+    >
+      <Field label={t("modelSubrow.modelId")}>
+        <Input
+          value={draft.id}
+          disabled={Boolean(original) || readOnly}
+          required
+          onChange={(event) => update("id", event.target.value)}
+        />
+      </Field>
+      <Field label={t("modelSubrow.displayName")}>
+        <Input value={draft.name} disabled={readOnly} onChange={(event) => update("name", event.target.value)} />
+      </Field>
+      <NumberField
+        label={t("modelSubrow.contextLimit")}
+        value={draft.limit.context}
+        disabled={readOnly}
+        onChange={(value) => update("limit", { edited: true, context: value, output: draft.limit.output })}
+      />
+      <NumberField
+        label={t("modelSubrow.outputLimit")}
+        value={draft.limit.output}
+        disabled={readOnly}
+        onChange={(value) => update("limit", { edited: true, context: draft.limit.context, output: value })}
+      />
+      <ModalityField
+        label={t("modelSubrow.inputModality")}
+        values={INPUT_MODALITIES}
+        selected={draft.inputModalities}
+        disabled={readOnly}
+        onToggle={(value) => toggle("inputModalities", value)}
+      />
+      <ModalityField
+        label={t("modelSubrow.outputModality")}
+        values={OUTPUT_MODALITIES}
+        selected={draft.outputModalities}
+        disabled={readOnly}
+        onToggle={(value) => toggle("outputModalities", value)}
+      />
+      <div className="model-thinking-field sm:col-span-2">
+        <div>
+          <strong>{t("modelSubrow.thinkingEnabled")}</strong>
+          <small>{t("modelSubrow.thinkingDescription")}</small>
+        </div>
+        <Switch
+          checked={draft.thinking.enabled}
+          disabled={readOnly}
+          onCheckedChange={(value) => update("thinking", { edited: true, enabled: value })}
+        />
+      </div>
+    </EditorFormDialog>
   );
 }
 
