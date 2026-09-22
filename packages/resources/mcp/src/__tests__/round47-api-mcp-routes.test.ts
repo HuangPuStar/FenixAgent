@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import type { ActorContext } from "@fenix/platform-sdk";
-import { AppError, ForbiddenError, NotFoundError } from "@fenix/platform-sdk";
+import { AppError, ForbiddenError, NotFoundError, ValidationError } from "@fenix/platform-sdk";
 import { readJson, resetAllStubs } from "@fenix/platform-sdk/testing";
 import { createApiMcpRoutes } from "../server/routes/api/mcp";
 import { authorizedServer, installMcpModuleStub, resetMcpModuleStub, testActor } from "./fixtures";
@@ -227,6 +227,24 @@ describe("round47 API MCP 路由", () => {
     expect((await request("//")).status).toBe(404);
   });
 
+  // 领域校验归 Facade，但对外入口必须把它映射为 400：否则非法名称/配置会以 500 返回，
+  // 调用方无从判断是自己的请求有问题还是服务故障。
+  test("创建被 Facade 领域校验拒绝返回 400", async () => {
+    installMcpModuleStub({
+      facade: {
+        get: async () => undefined,
+        create: async () => {
+          throw new ValidationError("INVALID_URL");
+        },
+      },
+    });
+
+    const response = await jsonRequest("/", "POST", { name: "demo", type: "remote" });
+
+    expect(response.status).toBe(400);
+    expect(await readJson(response)).toEqual({ error: { code: "VALIDATION_ERROR", message: "INVALID_URL" } });
+  });
+
   // 同组织同名已存在时返回 409，避免创建请求静默改写既有配置。
   test("创建重复名称返回 409", async () => {
     let created = false;
@@ -364,6 +382,22 @@ describe("round47 API MCP 路由", () => {
     const forbidden = await jsonRequest("/shared", "PUT", { timeout: 1000 });
     expect(forbidden.status).toBe(403);
     expect(await readJson(forbidden)).toMatchObject({ error: { code: "FORBIDDEN" } });
+  });
+
+  // 更新路径的领域校验同样必须映射为 400：这是 `/api` 与 `/web` 曾分叉的那条校验。
+  test("更新被 Facade 领域校验拒绝返回 400", async () => {
+    installMcpModuleStub({
+      facade: {
+        updateById: async () => {
+          throw new ValidationError("INVALID_COMMAND");
+        },
+      },
+    });
+
+    const response = await jsonRequest("/mcp-1", "PUT", { type: "local" });
+
+    expect(response.status).toBe(400);
+    expect(await readJson(response)).toEqual({ error: { code: "VALIDATION_ERROR", message: "INVALID_COMMAND" } });
   });
 
   // 更新超时为零必须在请求 schema 层拒绝，避免写入不可用的连接配置。

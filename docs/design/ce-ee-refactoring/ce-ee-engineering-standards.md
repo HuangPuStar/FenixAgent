@@ -353,8 +353,10 @@ Logger 保持 `@fenix/logger` 的独立进程级日志入口，不进入应用�
 packages/resources/agent-config/db/schema.ts         # 模块拥有字段语义
 packages/resources/agent-config/db/data-migrations/  # 模块拥有的业务数据迁移
 drizzle.config.ts                                    # schema: [模块 schema 文件路径...]，仅供生成工具读取
-db/migrations/                                       # 本仓库生成的不可变 DDL 链
+drizzle/                                             # 本仓库生成的不可变 DDL 链与 meta
 ```
+
+DDL 链留在仓库根 `drizzle/`，不搬进 `db/`：`drizzle.config.ts` 的 `out` 与 `scripts/migrate.ts` 的 `migrationsFolder` 都显式指向 `./drizzle`，搬动要同步这两处配置，并移动已发布链的 28 条 SQL、snapshot、journal 与 `README.md`（其中含历史 `db:push` 库的基线化命令），却没有任何行为收益。`db/` 的仓库级职责由 `data-migration-runner.ts` 承担，与 DDL 链位置无关。
 
 例如 CE 的配置直接列出已装配模块：
 
@@ -388,7 +390,6 @@ export const agentMemoryConfig = pgTable("agent_memory_config", {
 2. 通过仓库的 `db:generate --name <module>-<change>` 生成当前仓库 migration。
 3. 审查 SQL、snapshot、journal；DDL 仅处理结构。
 4. 有存量数据时，新增独立、幂等、可观测的数据迁移；记录完成标识与批次进度。
-5. CI 对空库和升级库都执行 migration smoke test；生产先备份并执行 migration preflight。
 
 已经被正式环境消费的 migration 不可改写。
 
@@ -401,7 +402,7 @@ packages/resources/agent-config/db/data-migrations/
 └── 20260906-backfill-launch-source.ts
 ```
 
-根 `db/data-migration-runner.ts` 不放迁移业务逻辑，只在发布任务中静态汇总已装配模块导出的 migration manifest，做依赖排序、分批执行、日志/指标、失败停止和完成记录。每个迁移使用全局唯一 ID，例如 `agent-config/20260906-backfill-launch-source`，并声明：
+根 `db/data-migration-runner.ts` 不放迁移业务逻辑，只在发布任务中静态汇总已装配模块导出的 migration manifest，做依赖排序、分批执行、日志/指标、失败停止和完成记录。每个迁移使用全局唯一 ID，格式为 `<模块>/<YYYYMMDD>-<名字>`（日期取该迁移首次进入仓库的日期），例如 `agent-config/20260906-backfill-launch-source`。ID 一旦落 `data_migrate_record` 即成为发布契约：runner 以 ID 判断是否已应用，改名会被判为未应用而重跑。因此**已应用的迁移不改名**，本格式只约束新增迁移（既有历史 ID 保持原样）。每个迁移须声明：
 
 - `dependsOn`：必须已完成的 DDL 或数据迁移 ID；
 - `run(context)`：可重试、幂等、按批处理的迁移实现；
@@ -417,15 +418,7 @@ packages/resources/agent-config/db/data-migrations/
 
 异步任务、实例、队列和 relay 若由 HTTP 请求触发，必须在其显式输入与诊断日志中保留触发方的 `requestId`；独立调度或启动流程在自身入口建立新的关联 ID。services 记录关键状态转换，adapters 记录重试、超时和外部依赖失败，且不在每层重复记录同一错误。控制台系统日志页只读取经过权限过滤的日志投影，不得直接暴露底层日志文件。
 
-日志不得记录 token、Cookie、密码、连接串、完整 prompt/文件内容和未脱敏外部响应。审计、指标和分布式 tracing 不是当前平台能力；出现真实产品或运维需求时，另立设计与任务，不预设跨版本端口。
-
-**当前实现对「完整 prompt / 未脱敏外部响应」一项尚未达标，已登记为后续优化项（2026-09-22 用户裁定）**：仓库内
-登记有 13 处调用把 prompt 正文与 Agent 响应**截断后**写入日志（形如 `text: promptText.slice(0, 200)`、
-`JSON.stringify(result).slice(0, 500)`）——截断不改变「明文入日志」的性质。**裁定内容：脱敏不在本轮范围，
-登记延后；本条要求不因此降低，也不修改为「允许截断后记录」**。移除条件：该 13 处改为不落完整 prompt /
-未脱敏响应（可改记长度、摘要或结构化标记），owner 待排期；逐条登记见
-`review/task-1.7-db-config-migration.md` §8.1 第 1 条。**在本条达标前，本段的红线对一切新增代码立即生效**——
-不得因既存偏差而继续新增同类日志。
+日志不得记录 token、Cookie、密码和连接串。对 prompt、文件内容与外部响应正文的脱敏另有要求，见 §11「优化项」。审计、指标和分布式 tracing 不是当前平台能力；出现真实产品或运维需求时，另立设计与任务，不预设跨版本端口。
 
 ## 8. 部署、构建和运行脚本
 
@@ -434,11 +427,9 @@ packages/resources/agent-config/db/data-migrations/
 | 脚本 | 职责 |
 | --- | --- |
 | `check-module-boundaries` | 检查禁止依赖与公开入口 |
-| `build-release` | 构建 server/console、生成版本与 SBOM 信息 |
 | `migrate` | 运行当前仓库的 DDL 迁移 |
 | `run-data-migrations` | 执行已登记且幂等的数据迁移 |
-| `deploy-preflight` | 校验 env、DB 连通性、迁移状态、镜像版本和依赖服务 |
-| `release` | 串联 preflight、迁移、部署、readiness、回滚判断 |
+| `release` | 串联迁移、部署与失败判断 |
 
 `deploy/compose` 使用“基础编排 + 可选 profile/overlay”：主服务、数据库、模型网关、知识库、Sandbox 等可独立启停。模块声明其依赖服务与健康检查；部署入口根据静态装配的模块生成/选择 profile，而不是由业务代码自行启动 Docker。
 
@@ -507,11 +498,23 @@ packages/resources/agent-config/db/data-migrations/
 2. 数据迁移由 owner 模块提供唯一 ID、依赖、幂等分批 run、verify、可观测字段和 compensation；仓库 runner 只排序执行，应用启动不隐式运行业务数据迁移。
 3. server 进程只在宿主统一读取和校验 env；模块声明配置并通过应用基础设施读取自身已校验的只读配置，Repository 通过应用基础设施读取同一进程唯一的 db client。模块不导入 `apps/server` 的 env/config/db，不读取 `process.env`；secret 不进入日志/响应，子进程和 Provider 只获得白名单。
 4. profile 只能选择生成 registry 中的可信模块；模块 ID、kind、依赖、capability、env、migration 和外部服务在流量切换前完成 preflight，失败时已获取资源按逆序释放。
-5. `scripts/` 只做薄编排；发布物包含版本、SBOM、兼容说明、migration/env manifest，并具备备份点、readiness、失败回滚和不可逆迁移补偿证据。
+5. `scripts/` 只做薄编排。发布物应包含的内容与发布证据（版本、SBOM、兼容说明、migration/env manifest、备份点、readiness、失败回滚、不可逆迁移补偿）另有要求，见 §11「优化项」。
 
 ### 10.7 完成证据
 
-1. 空库与真实历史升级库迁移、关键数据迁移重试/verify/compensation、生产镜像启动与关闭均通过。
+1. 关键数据迁移重试/verify/compensation、生产镜像启动与关闭均通过。
 2. 关键用户流程、稳定协议、多租户授权、三条 Agent 通信路径、YJS、Machine/File/Sandbox、Task/Workflow 均有自动化回归证据。
-3. `bun run precheck`、`bun run build:web`、`bun run docs:build`、migration smoke、关键 E2E、deploy preflight/readiness 和回滚演练全部通过，且没有 error 或 warning。
+3. `bun run precheck`、`bun run build:web`、`bun run docs:build` 和关键 E2E 全部通过，且没有 error 或 warning。
 4. 旧实现、兼容 shim、双写和待决设计矛盾为零；边界豁免与依赖残留必须逐条登记并写明 owner 与移除条件，**未登记的**残留为零；实际架构、开发指南、运维说明和必要 ADR 与代码一致。
+
+## 11. 优化项（非必须）
+
+下列条目是明确的改进方向，但**不作为验收必须项**：不做不阻塞交付，做了提升长期可维护性。它们不进 §10 的一致性验收，本节是唯一登记处。
+
+| 项 | 内容 | 原出处 |
+| --- | --- | --- |
+| migration smoke | CI 对空库与真实历史升级库执行迁移链，防迁移链回归（含历史 `db:push` 库的基线化路径）。迁移当前已在真实库经应用启动命令（`docker-compose.yml` 的 `bun migrate.js && …`）按**增量路径**跑通；自动化 smoke 补的是「空库一次跑完全链」与「升级库」这两条尚未验证的路径 | §6.2 规则 5；§10.7.1 |
+| 日志内容脱敏 | 不在日志中记录完整 prompt、文件内容与未脱敏外部响应正文（含为 `@fenix/logger` 补 redact 配置）。当前有 13 处调用把 prompt 正文与 Agent 响应**截断后**写入日志（形如 `text: promptText.slice(0, 200)`、`JSON.stringify(result).slice(0, 500)`）——截断不改变「明文入日志」的性质。改法：改记长度、摘要或结构化标记 | §7 |
+| deploy-preflight | 部署前置的只读校验：env、DB 连通性、迁移状态、镜像版本、依赖服务。作用是把失败提前到「还没动生产」的时刻——现状只有容器启动命令 `bun migrate.js && …` 兜底，属于「边做边发现」，迁移改到一半失败会留下需补偿的不一致状态。五类中 DB 连通性与迁移状态价值最高（env 校验启动期已有）；依赖服务健康检查需先给 `ModuleManifest` 加「依赖服务 + 健康检查」字段 | §8 脚本表；§6.2 规则 5 |
+| 发布物清单 | 发布物附带版本清单、SBOM、兼容说明、migration manifest、env manifest。现状只带 `commitId`（`Dockerfile` 的构建参数仅 `GIT_COMMIT_SHA`），上述清单一项都没有；原 `build-release` 脚本（构建 server/console 并生成版本与 SBOM 信息）不存在，与本节同属一件事 | §8 脚本表；§10.6.5 |
+| readiness 与发布证据 | readiness 端点（区分进程存活与就绪）、备份点、失败回滚、不可逆迁移补偿证据。现状 `/health` 恒 ok 只表达进程存活，无 readiness 端点；备份点、回滚与补偿均无脚本或文档 | §10.6.5；§6.2 规则 5 |

@@ -6,6 +6,7 @@ import {
   type ResourceAccess,
   ResourceAccessDeniedError,
   type ResourceQueryConstraint,
+  ValidationError,
 } from "@fenix/platform-sdk";
 import { mcpServerResource } from "../server/access/mcp-server-resource";
 import { McpServerFacade } from "../server/facades/mcp-server-facade";
@@ -299,6 +300,46 @@ describe("McpServerFacade", () => {
     ).rejects.toThrow(ConflictError);
   });
 
+  // 名称格式是领域不变量：收口在 Facade 后任何协议入口都绕不过，且拒绝发生在写入之前。
+  test("create 拒绝非法名称且不写入", async () => {
+    let inserted = false;
+    const { facade } = buildFacade({
+      service: {
+        create: async () => {
+          inserted = true;
+          return "mcp-new";
+        },
+      },
+    });
+
+    await expect(
+      facade.create(actor, {
+        name: "Bad_Name",
+        type: "remote",
+        config: { type: "remote", url: "https://x.test" },
+      }),
+    ).rejects.toThrow(ValidationError);
+    expect(inserted).toBeFalse();
+  });
+
+  // 配置结构非法（remote 缺 url）返回错误码原文，调用方据此定位是地址还是命令的问题。
+  test("create 拒绝结构非法的配置且不写入", async () => {
+    let inserted = false;
+    const { facade } = buildFacade({
+      service: {
+        create: async () => {
+          inserted = true;
+          return "mcp-new";
+        },
+      },
+    });
+
+    await expect(facade.create(actor, { name: "demo", type: "remote", config: { type: "remote" } })).rejects.toThrow(
+      "INVALID_URL",
+    );
+    expect(inserted).toBeFalse();
+  });
+
   // 组织资源缺少归属组织说明装配或身份上下文有误，必须显式失败而不是写入孤儿行。
   test("create 缺少归属组织时报错", async () => {
     let inserted = false;
@@ -357,6 +398,23 @@ describe("McpServerFacade", () => {
     await expect(facade.update(actor, "demo", { type: "remote", url: "https://x.test" })).rejects.toThrow(
       NotFoundError,
     );
+  });
+
+  // 更新路径同样收口：非法配置不得覆盖已存的连接配置（`update` 是整份替换，不是字段合并）。
+  test("update 拒绝结构非法的配置且不写入", async () => {
+    let patched = false;
+    const { facade } = buildFacade({
+      service: {
+        findByName: async () => scopedServer(),
+        update: async () => {
+          patched = true;
+          return true;
+        },
+      },
+    });
+
+    await expect(facade.update(actor, "demo", { type: "remote" })).rejects.toThrow("INVALID_URL");
+    expect(patched).toBeFalse();
   });
 
   // 删除把归属组织与资源名一并交给领域服务：tools 缓存清理与主表删除在同一事务内完成。

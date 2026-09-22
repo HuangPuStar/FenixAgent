@@ -1,7 +1,5 @@
-import { agentConfig } from "@fenix/agent-config/db";
 import type { ActorContext, WebErr } from "@fenix/platform-sdk";
-import { inArray } from "drizzle-orm";
-import { getAgentConfigDatabase } from "../../db";
+import { findAgentConfigNamesByIds } from "../../repositories/agent-config";
 import type { AgentSiteAppRow } from "../../repositories/agent-site-app";
 import { agentSiteAppRepo } from "../../repositories/agent-site-app";
 import type { AgentSiteApp } from "../../schemas/agent-site.schema";
@@ -75,11 +73,7 @@ async function resolveSiteApp(siteAppId: string) {
 async function attachCreatorNames(items: AgentSiteApp[]): Promise<void> {
   const ids = [...new Set(items.map((i) => i.createdByAgentConfigId).filter((id): id is string => !!id))];
   if (ids.length === 0) return;
-  const rows = await getAgentConfigDatabase()
-    .select({ id: agentConfig.id, name: agentConfig.name })
-    .from(agentConfig)
-    .where(inArray(agentConfig.id, ids));
-  const nameMap = new Map(rows.map((r) => [r.id, r.name]));
+  const nameMap = await findAgentConfigNamesByIds(ids);
   for (const item of items) {
     if (item.createdByAgentConfigId) {
       item.createdByAgentConfigName = nameMap.get(item.createdByAgentConfigId) ?? null;
