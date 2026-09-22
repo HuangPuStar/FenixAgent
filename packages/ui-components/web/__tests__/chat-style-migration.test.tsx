@@ -4,7 +4,7 @@
 // 阶段二/三/四的用例分别在同目录的 `chat-style-migration-{shell,messages,status-tools}.test.tsx`。
 
 import { describe, expect, test } from "bun:test";
-import { existsSync, readdirSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
@@ -161,6 +161,9 @@ describe("chat 样式迁移：CSS 文件台账", () => {
       "chat-navigation-aids.css",
       "chat-loading.css",
       "chat-design-responsive.css",
+      // 阶段五（命令面板形态退役 + 工牌关键帧并入 chat-animations.css）
+      "chat-design-command-menu.css",
+      "chat-agent-badge.css",
     ]) {
       expect(existsSync(join(CSS_DIR, file))).toBe(false);
     }
@@ -279,28 +282,86 @@ describe("chat 样式迁移：CSS 文件台账", () => {
       ".chat-loading-dots",
       ".loading-text-shimmer",
       ".chat-conversation",
+      // 阶段五退役的命令面板三形态外壳（原 chat-design-command-menu.css）
+      ".chat-command-popover",
+      ".chat-command-menu--popover",
+      ".chat-command-menu--inline",
+      ".chat-command-menu-header",
+      ".chat-command-menu-title",
+      ".chat-command-menu-count",
+      ".chat-command-menu-footer",
     ]) {
       expect(allCss).not.toContain(selector);
     }
   });
 
-  // 无法迁移的片段必须仍在（否则是静默丢失）：`@keyframes` 与未渲染外壳的残留。
-  test("无法迁移的片段被原样保留", () => {
+  // 无法迁移的片段必须仍在（否则是静默丢失）：包内唯一的关键帧文件里五个 `@keyframes` 一个都不能少。
+  test("关键帧片段被原样保留", () => {
     const animations = readChatCss("chat-animations.css");
-    for (const keyframes of ["loadingDotBounce", "loadingDotBounceDark", "shimmerSlide", "chat-active-prompt-flash"]) {
+
+    for (const keyframes of [
+      "loadingDotBounce",
+      "loadingDotBounceDark",
+      "shimmerSlide",
+      "chat-active-prompt-flash",
+      "agent-badge-pulse",
+    ]) {
       expect(animations).toContain(`@keyframes ${keyframes}`);
     }
+    // 已迁移的声明（例如工牌卡自身的尺寸/描边）不得借「关键帧」名义回流到本文件。
+    expect(animations).not.toContain("stroke-width");
+    expect(animations).not.toContain("border-radius");
+  });
 
-    const commandMenu = readChatCss("chat-design-command-menu.css");
-    expect(commandMenu).toContain(".chat-command-popover");
-    expect(commandMenu).toContain(".chat-command-menu--inline");
-    expect(commandMenu).toContain(".chat-command-menu-footer");
-    // 已迁移的面板选择器不得借「残留」名义留在同一个文件里。
-    expect(commandMenu).not.toContain("min-height: 34px");
+  // 关键帧合并后的两侧对齐：JSX 里按名引用的动画，必须在 chat-animations.css 里有同名 `@keyframes`
+  // （改名只改一侧会让动画静默失效，这条用例就是那个接缝的守卫）。
+  test("JSX 引用的动画名都能在关键帧文件里解析到", () => {
+    const animations = readChatCss("chat-animations.css");
+    const declared = new Set([...animations.matchAll(/@keyframes\s+([\w-]+)/g)].map((match) => match[1]));
+    expect(declared.size).toBeGreaterThanOrEqual(5);
 
-    const badge = readChatCss("chat-agent-badge.css");
-    expect(badge).toContain("@keyframes agent-badge-pulse");
-    expect(badge).not.toContain("stroke-width");
+    const sources = ["view/ChatView.tsx", "view/chat-navigation-aids.tsx", "shell/AgentBadge.tsx"];
+    const referenced = sources.flatMap((rel) =>
+      [...readFileSync(join(CHAT_DIR, rel), "utf8").matchAll(/animate-\[([\w-]+?)[_\]]/g)].map((match) => match[1]),
+    );
+
+    expect(referenced.length).toBeGreaterThan(0);
+    for (const name of new Set(referenced)) {
+      expect(declared).toContain(name);
+    }
+  });
+
+  // 阶段五退役的命令面板三形态不得回流：既不在任何 chat 样式表里，也不在 chat 组件的 className 里。
+  test("已退役的命令面板形态不得回流", () => {
+    const retired = [
+      "chat-command-popover",
+      "chat-command-menu--popover",
+      "chat-command-menu--inline",
+      "chat-command-menu-header",
+      "chat-command-menu-title",
+      "chat-command-menu-count",
+      "chat-command-menu-footer",
+    ];
+    // 1) 样式表侧（任一存活分片）
+    const allCss = readdirSync(CSS_DIR)
+      .filter((file) => file.endsWith(".css"))
+      .map((file) => readChatCss(file))
+      .join("\n");
+    for (const name of retired) {
+      expect(allCss).not.toContain(`.${name}`);
+    }
+    // 2) JSX 侧：只看 `className=` 表达式（注释与 `data-slot` 值里出现不算）
+    const classExpressions = readdirSync(join(CHAT_DIR, "composer"))
+      .filter((file) => file.endsWith(".tsx"))
+      .map((file) =>
+        [...readFileSync(join(CHAT_DIR, "composer", file), "utf8").matchAll(/className=(?:"([^"]*)")/g)]
+          .map((match) => match[1])
+          .join(" "),
+      )
+      .join(" ");
+    for (const name of retired) {
+      expect(classExpressions).not.toContain(name);
+    }
   });
 
   // 聚合入口的 @import 必须都指向存在的文件（本阶段删了 5 个分片，漏删会 404）。

@@ -1,15 +1,24 @@
 /*
- * Chat 动画定义（`@keyframes` 无法用工具类表达，按既定口径留在 CSS）。
+ * Chat 关键帧定义 —— 包内**唯一**无法用 Tailwind 工具类表达的样式类别。
  *
- * 来源：阶段四删除的 `chat-loading.css`（`loadingDotBounce` / `loadingDotBounceDark` / `shimmerSlide`）
- * 与 `chat-navigation-aids.css`（`chat-active-prompt-flash`），逐字搬迁，未改任何关键帧数值。
- * 消费方以 arbitrary animation 工具类按名引用：
+ * 为什么留在这里：`@keyframes` 是全局命名空间里的动画定义，工具类只能按名引用（`animate-[name_…]`），
+ * 没有等价写法；因此按既定口径把 chat 簇用到的全部关键帧集中到这一个文件，其余样式一律由组件
+ * `className` 承担（迁移台账见 `chat.css` 的「迁移进度」）。
+ *
+ * 来源（均逐字搬迁，未改任何关键帧数值）：
+ *   - 阶段四删除的 `chat-loading.css`：`loadingDotBounce` / `loadingDotBounceDark` / `shimmerSlide`；
+ *   - 阶段四删除的 `chat-navigation-aids.css`：`chat-active-prompt-flash`；
+ *   - 阶段五并入的 `chat-agent-badge.css`：`agent-badge-pulse`。
+ *
+ * 消费方（按名引用，改名必须同步这几处）：
  *   - `view/ChatView.tsx`：三点脉冲 `animate-[loadingDotBounce_…]`（暗色换 `loadingDotBounceDark`）、
  *     思考中微光 `animate-[shimmerSlide_2s_ease-in-out_infinite]`；
  *   - `view/ChatView.tsx` + `view/chat-navigation-aids.tsx`：提示词导航高亮
- *     `data-[active-prompt]:animate-[chat-active-prompt-flash_900ms_ease-out]`。
+ *     `data-[active-prompt]:animate-[chat-active-prompt-flash_900ms_ease-out]`；
+ *   - `shell/AgentBadge.tsx`：骨架屏 `animate-[agent-badge-pulse_2s_cubic-bezier(0.4,0,0.6,1)_infinite]`。
  *
- * `chat-agent-badge.css` 的 `agent-badge-pulse` 本轮不在改动范围，仍留在原文件；后续阶段可并入本文件。
+ * 收拢条件：宿主/包内改用 Tailwind v4 的 `@theme { --animate-* }` 命名动画 token（需改
+ * `web/styles/theme.css`，属包内主题入口而非 chat 簇），届时可删本文件并在 JSX 使用命名动画类。
  */
 /* ============================================================
    Chat loading dots — 品牌色脉冲波纹（浅色 / 暗色各一套关键帧）
@@ -62,5 +71,16 @@
   }
   100% {
     background-color: transparent;
+  }
+}
+
+/* 工牌卡骨架屏脉冲（原 `chat-agent-badge.css`） */
+@keyframes agent-badge-pulse {
+  0%,
+  100% {
+    opacity: 0.6;
+  }
+  50% {
+    opacity: 1;
   }
 }

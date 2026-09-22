@@ -31,8 +31,10 @@ import type { AvailableCommand } from "../types";
  * - 三形态差异：基础形态（popover/inline 共用的基类）的声明写在 `<div>` 的基类里；
  *   「能力面板」形态（`variant="panel"`）在基类之后追加覆盖，两者靠 `cn()`（tailwind-merge）
  *   的「后者胜出」消解同族冲突，等价于源实现的 `.chat-command-menu--panel` 特指度覆盖。
- *   未渲染的 popover/inline 外壳（容器、头部、标题、计数、底部快捷键条）无挂载点，
- *   仍在 `../css/chat-design-command-menu.css` 内原样保留（见该文件头「迁移遗留」）。
+ *   未渲染的 popover/inline 外壳（容器、头部、标题、计数、底部快捷键条）无挂载点，阶段五已随
+ *   `../css/chat-design-command-menu.css` 整文件删除（团队确认该形态退役）。
+ *   **若将来要渲染这些外壳**：按现行约定把声明写进**该渲染点**的 `className`（Tailwind 工具类），
+ *   不要恢复那份样式表，也不要重新引入 `.chat-command-*` 语义类名。
  * - `is-active` 状态改为条件类组合，`is-selected` 在原样式表中没有任何声明（纯语义钩子）故直接删除；
  *   两者原有的状态语义由既有的 `data-active` 与 `aria-pressed` 承担。
  */

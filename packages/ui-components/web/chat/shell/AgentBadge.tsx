@@ -113,7 +113,7 @@ const BADGE_ACTION_CLASS = cn(
 
 const BADGE_ACTION_PRIMARY_CLASS = "border-none bg-brand text-white hover:bg-[#0f67df]";
 
-/** 骨架屏共用的脉冲动画（`@keyframes agent-badge-pulse` 定义在 `../css/chat-agent-badge.css`）。 */
+/** 骨架屏共用的脉冲动画（`@keyframes agent-badge-pulse` 定义在 `../css/chat-animations.css`）。 */
 const SKELETON_ANIMATION_CLASS = "animate-[agent-badge-pulse_2s_cubic-bezier(0.4,0,0.6,1)_infinite]";
 
 const SKELETON_CIRCLE_CLASS =

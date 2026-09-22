@@ -38,10 +38,11 @@ void i18n.use(initReactI18next).init({
  * - `acp-main-root` / `chat-main-column` / `chat-interface-column` / `chat-interface-root`：宿主
  *   `apps/web/src/index.css`、包内与宿主的 `chat-layout.css` 仍以它们作「唯一高度链」选择器——
  *   这两个样式表属后续阶段；移除条件见 `ACPMain` / `ChatInterface` 与 `chat.css` 的注释。
- * - 命令面板里未渲染的 popover/inline 外壳与头部/底部（`chat-command-popover`、
- *   `chat-command-menu--popover`、`chat-command-menu--inline`、`chat-command-menu-header`、
- *   `chat-command-menu-title`、`chat-command-menu-count`、`chat-command-menu-footer`）：本仓库内
- *   没有渲染者，声明保留在 `chat-design-command-menu.css`，待后续阶段处置。
+ * 阶段五起**没有命令面板形态的例外**：popover/inline 外壳（`chat-command-popover`、
+ * `chat-command-menu--popover`、`chat-command-menu--inline`、`chat-command-menu-header`、
+ * `chat-command-menu-title`、`chat-command-menu-count`、`chat-command-menu-footer`）经复核无渲染者、
+ * 属死代码，随 `chat-design-command-menu.css` 整文件删除，其类名因此也进入下面的「不得回流」清单
+ * （不得再出现在任何 chat 样式表或 JSX `className` 里）。
  *
  * 阶段四已解除的两条跨边界合约不再列入例外：`chat-activity-chain`（唯一外部引用方是工具片）、
  * `chat-conversation`（唯一外部引用方是加载片）都随本阶段迁移一并删除。
@@ -159,6 +160,13 @@ export const MIGRATED_CLASS_NAMES = [
   "tool-call-row-meta",
   "tool-call-row-status",
   "tool-call-row-title",
+  "chat-command-menu--inline",
+  "chat-command-menu--popover",
+  "chat-command-menu-count",
+  "chat-command-menu-footer",
+  "chat-command-menu-header",
+  "chat-command-menu-title",
+  "chat-command-popover",
   "chat-assistant-chunks",
   "chat-assistant-message",
   "chat-activity-chain--after-message",

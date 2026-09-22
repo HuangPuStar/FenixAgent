@@ -9,18 +9,18 @@
  *   - 阶段一：composer / 命令面板 / 工牌卡三片的选择器迁入组件 `className`。
  *   - 阶段二：shell 片与 composer 残留片迁入消费方 JSX，两个样式表删除。
  *   - 阶段三：消息片、markdown 片、Conversation 滚动按钮片、划词浮层片迁入组件，四个样式表删除。
- *   - 阶段四：状态面板片、工具时间线片、提示词导航片、加载指示片与窄屏适配片迁入组件，
- *     五个样式表删除；两处跨边界合约（`chat-activity-chain` / `chat-conversation`）随其唯一外部
- *     引用方（工具片 / 加载片）一并解除，`@keyframes` 收进 `chat-animations.css`。
- *   - 仍在推进：`chat-layout.css`（`.acp-main-root` / `.chat-main-column` / `.chat-interface-*` 的
- *     高度链，类名同时是宿主 `apps/web/src/index.css` 与宿主 `chat-layout.css` 的钩子）、
- *     `chat-design-command-menu.css`（未渲染的 popover/inline 外壳残留）、`chat-agent-badge.css`
- *     （只剩骨架动画 `@keyframes`）。
+ *   - 阶段四：状态面板片、工具时间线片、提示词导航片、加载指示片与窄屏适配片迁入组件，五个样式表删除；
+ *     两处跨边界合约（`chat-activity-chain` / `chat-conversation`）随之解除，`@keyframes` 收进
+ *     `chat-animations.css`。
+ *   - 阶段五：命令面板的 popover/inline 外壳（无渲染者的死代码）与工牌卡的关键帧残留删除，
+ *     包内只余本入口、`chat-layout.css` 与 `chat-animations.css`。
+ *   - 唯一未完成项：`chat-layout.css`（`.acp-main-root` / `.chat-main-column` / `.chat-interface-*` 的
+ *     高度链）。这些类名同时是**宿主** `apps/web/src/index.css` 与宿主
+ *     `apps/web/src/pages/agent-panel/chat-layout.css` 的选择器，删类名需要宿主侧同步——
+ *     移除条件见 `ACPMain` / `ChatInterface` 的注释与包 README「已知限制」。
  *
- * 导入顺序：剩余分片之间已无同特指度冲突，顺序不再有语义（原「responsive 必须最后」的约束随
- * 响应式片迁入组件工具类而消失）。
+ * 导入顺序：两个分片之间无同特指度冲突，顺序不再有语义（原「responsive 必须最后」的约束
+ * 随响应式片迁入组件工具类而消失）。
  */
-@import "./chat-design-command-menu.css";
 @import "./chat-layout.css";
-@import "./chat-agent-badge.css";
 @import "./chat-animations.css";
