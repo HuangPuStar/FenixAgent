@@ -93,30 +93,6 @@
   font-size: 10px;
 }
 
-.site-empty-state {
-  display: grid;
-  min-height: 380px;
-  place-content: center;
-  justify-items: center;
-  gap: 7px;
-  color: var(--site-faint);
-  text-align: center;
-}
-.site-empty-state > svg {
-  width: 28px;
-  color: #7d91ae;
-}
-.site-empty-state strong {
-  color: var(--site-ink);
-  font-size: 14px;
-}
-.site-empty-state p {
-  max-width: 420px;
-  font-size: 10px;
-}
-.site-empty-state button {
-  margin-top: 8px;
-}
 .site-pagination {
   display: flex;
   align-items: center;

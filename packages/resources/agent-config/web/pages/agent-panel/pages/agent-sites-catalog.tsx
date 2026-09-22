@@ -1,3 +1,4 @@
+import { EmptyState } from "@fenix/ui-components/config/EmptyState";
 import { AppHeader } from "@fenix/ui-components/layout/app-header";
 import { AppPage } from "@fenix/ui-components/layout/app-page";
 import { Button } from "@fenix/ui-components/ui/button";
@@ -28,6 +29,13 @@ import "./agent-sites.css";
 
 export type SiteVisibilityFilter = "all" | SiteApp["visibility"];
 
+/**
+ * 目录页两处状态块（读取失败 / 本页目录为空）共用的排布：`EmptyState` 自带的是 `py-10` 内联块，
+ * 这一屏两个位置都要撑满内容区并居中。与 mcp / skills 目录页同款——原 `.site-empty-state` 的
+ * `min-height: 380px` 按既有口径取标准刻度 `min-h-96`（384px）。
+ */
+const EMPTY_STATE_FILL_CLASS = "flex min-h-96 flex-col items-center justify-center";
+
 type Props = {
   apps: SiteApp[];
   loading: boolean;
@@ -53,15 +61,15 @@ export function AgentSitesCatalog(props: Props) {
   if (props.error && props.apps.length === 0) {
     return (
       <AppPage className="agent-sites-page">
-        <section className="site-empty-state" role="alert">
-          <AlertTriangle />
-          <strong>{t("siteDeployment.errors.load")}</strong>
-          <p>{props.error.message}</p>
-          <Button onClick={props.onRetry}>
-            <RefreshCw />
-            {t("siteDeployment.actions.retry")}
-          </Button>
-        </section>
+        <EmptyState
+          icon={<AlertTriangle />}
+          title={t("siteDeployment.errors.load")}
+          description={props.error.message}
+          tone="danger"
+          role="alert"
+          action={{ label: t("siteDeployment.actions.retry"), onClick: props.onRetry, icon: <RefreshCw /> }}
+          className={EMPTY_STATE_FILL_CLASS}
+        />
       </AppPage>
     );
   }
@@ -107,18 +115,22 @@ export function AgentSitesCatalog(props: Props) {
         </div>
       </header>
       {props.apps.length === 0 ? (
-        <section className="site-empty-state">
-          <Globe2 />
-          <strong>
-            {props.query.trim() || props.visibility !== "all"
+        <EmptyState
+          icon={<Globe2 />}
+          title={
+            props.query.trim() || props.visibility !== "all"
               ? t("siteDeployment.emptySearch")
-              : t("siteDeployment.empty")}
-          </strong>
-          <p>{t("siteDeployment.emptyHint")}</p>
-          {!props.query.trim() && props.visibility === "all" && (
-            <Button onClick={props.onCreate}>{t("siteDeployment.actions.create")}</Button>
-          )}
-        </section>
+              : t("siteDeployment.empty")
+          }
+          description={t("siteDeployment.emptyHint")}
+          // 只有「确实没有站点」才给创建入口：筛选无结果时用户要的是改条件，不是新建。
+          action={
+            !props.query.trim() && props.visibility === "all"
+              ? { label: t("siteDeployment.actions.create"), onClick: props.onCreate }
+              : undefined
+          }
+          className={EMPTY_STATE_FILL_CLASS}
+        />
       ) : (
         <section className="grid grid-cols-2 gap-3.5 pt-4 max-[950px]:grid-cols-1">
           {props.apps.map((app) => (

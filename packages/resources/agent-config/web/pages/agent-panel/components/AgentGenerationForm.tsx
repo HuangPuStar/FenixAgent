@@ -27,6 +27,12 @@ interface AgentGenerationFormProps {
   loading?: boolean;
 }
 
+/**
+ * 名称与 System Prompt 两个字段名共用的标签配方：两处逐字重复（skills 那处多一档下边距，
+ * 是既存差异、保持原样），字号 / 字重 / 字距 / 颜色要一起变，抽一处避免只改到一个。
+ */
+const FIELD_LABEL_CLASS = "mb-1.5 text-xs font-bold tracking-[0.04em] text-[#5a6785]";
+
 /** 截取 description 前 N 个字符 */
 function truncate(text: string, max: number) {
   if (!text) return "";
@@ -57,7 +63,7 @@ export function AgentGenerationForm({ initialData, onCreate, loading }: AgentGen
       <div className="flex flex-col gap-5">
         {/* 名称 */}
         <div>
-          <Label className="mb-1.5 text-xs font-bold tracking-[0.04em] text-[#5a6785]">{t("nameLabel")}</Label>
+          <Label className={FIELD_LABEL_CLASS}>{t("nameLabel")}</Label>
           <Input
             value={name}
             onChange={(e) => setName(e.target.value)}
@@ -67,7 +73,7 @@ export function AgentGenerationForm({ initialData, onCreate, loading }: AgentGen
 
         {/* System Prompt */}
         <div>
-          <Label className="mb-1.5 text-xs font-bold tracking-[0.04em] text-[#5a6785]">{t("promptLabel")}</Label>
+          <Label className={FIELD_LABEL_CLASS}>{t("promptLabel")}</Label>
           <Textarea
             value={systemPrompt}
             onChange={(e) => setSystemPrompt(e.target.value)}
