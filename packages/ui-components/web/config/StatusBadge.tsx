@@ -41,8 +41,13 @@ export function getStatusTone(status: string, toneMap?: Record<string, StatusTon
   return toneMap?.[status] ?? BUILT_IN_TONES[status] ?? "neutral";
 }
 
-/** 指示点形态：`dot` 静态、`pulse` 呼吸（进行中），`none` 只出文字。 */
-export type StatusIndicator = "none" | "dot" | "pulse";
+/**
+ * 指示点形态：`dot` 静态、`pulse` 呼吸（进行中），`none` 只出文字。
+ *
+ * 名字带 `Kind` 是为让开 `StatusIndicator`——`ui/connection-status` 的连接态指示器组件已用该名，
+ * 两者都经根 `web/index.ts` 的 `export *` 暴露，同名会让整包出口报 TS2308。
+ */
+export type StatusIndicatorKind = "none" | "dot" | "pulse";
 
 interface StatusBadgeProps {
   status: string;
@@ -52,7 +57,7 @@ interface StatusBadgeProps {
   tone?: StatusTone;
   /** 业务状态词表 → 色调 */
   toneMap?: Record<string, StatusTone>;
-  indicator?: StatusIndicator;
+  indicator?: StatusIndicatorKind;
   className?: string;
 }
 

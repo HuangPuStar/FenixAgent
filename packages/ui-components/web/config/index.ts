@@ -8,5 +8,5 @@ export type { FormDialogFormConfig } from "./FormDialog";
 export { FormDialog } from "./FormDialog";
 export type { ScopeFilterBarProps, ScopeFilterOption } from "./ScopeFilterBar";
 export { ScopeFilterBar } from "./ScopeFilterBar";
-export type { StatusIndicator, StatusTone } from "./StatusBadge";
+export type { StatusIndicatorKind, StatusTone } from "./StatusBadge";
 export { getStatusTone, StatusBadge } from "./StatusBadge";
