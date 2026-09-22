@@ -1,11 +1,13 @@
-import { ConfirmDialog } from "@fenix/ui-components/config/ConfirmDialog";
+import { Button } from "@fenix/ui-components/ui/button";
 import { Popover, PopoverContent, PopoverTrigger } from "@fenix/ui-components/ui/popover";
 import { unwrap } from "@fenix/web-runtime/api/request";
-import { GitBranch, Loader, RotateCcw, Star } from "lucide-react";
+import { GitBranch, Loader } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
 import { type WorkflowVersionItem, workflowDefApi } from "../../../api/workflow-defs";
+import { VersionConfirmDialog } from "./VersionConfirmDialog";
+import { VersionRow } from "./VersionRow";
 
 export interface VersionIndicatorProps {
   workflowId?: string;
@@ -59,7 +61,6 @@ export function VersionIndicator({
   const handleSetLatest = useCallback(
     async (version: number) => {
       if (!workflowId) return;
-      setConfirmAction(null);
       try {
         await unwrap(workflowDefApi.setLatest(workflowId, version));
         toast.success(t("versions.set_latest"));
@@ -75,7 +76,6 @@ export function VersionIndicator({
   const handleRestoreToDraft = useCallback(
     async (version: number) => {
       if (!workflowId) return;
-      setConfirmAction(null);
       try {
         await unwrap(workflowDefApi.restoreToDraft(workflowId, version));
         toast.success(t("versions.restore_success"));
@@ -168,99 +168,43 @@ export function VersionIndicator({
                 const isLatest = latestVersion === v.version;
                 const isCurrentPreview = previewVersion === v.version;
                 return (
-                  <div
+                  <VersionRow
                     key={v.id}
-                    style={{
-                      padding: "6px 12px",
-                      borderBottom: "1px solid #f3f4f6",
-                      display: "flex",
-                      alignItems: "center",
-                      gap: 6,
-                      background: isCurrentPreview ? "#eff6ff" : undefined,
+                    version={v}
+                    isLatest={isLatest}
+                    labels={{
+                      latest: t("versions.latest"),
+                      setLatest: t("editor.vi_set_latest"),
+                      restoreToDraft: t("editor.vi_restore_to_draft"),
                     }}
-                  >
-                    <span
-                      style={{
-                        fontFamily: "ui-monospace, monospace",
-                        fontWeight: 600,
-                        color: "#111827",
-                        fontSize: 11,
-                        minWidth: 28,
-                      }}
-                    >
-                      v{v.version}
-                    </span>
-                    {isLatest && (
-                      <span
-                        style={{
-                          fontSize: 9,
-                          fontWeight: 500,
-                          color: "#22c55e",
-                          background: "#f0fdf4",
-                          padding: "1px 4px",
-                          borderRadius: 99,
-                        }}
-                      >
-                        {t("versions.latest")}
-                      </span>
-                    )}
-                    <div style={{ marginLeft: "auto", display: "flex", gap: 3 }}>
-                      <button
-                        type="button"
+                    // 预览态整行高亮是与「展开了原文」不同的语义，且只有弹层有这一态
+                    active={isCurrentPreview}
+                    // 窄弹层：破坏性动作只留图标位（可访问名由 VersionRow 的 aria-label 承载）
+                    iconActions
+                    extraActions={
+                      <Button
+                        size="xs"
+                        variant={isCurrentPreview ? "default" : "outline"}
+                        title={t("editor.vi_preview")}
                         onClick={() => {
                           onPreview(v.version);
                           setOpen(false);
                         }}
-                        style={{
-                          padding: "2px 6px",
-                          border: "1px solid #e5e7eb",
-                          borderRadius: 3,
-                          background: isCurrentPreview ? "#3b82f6" : "#fff",
-                          color: isCurrentPreview ? "#fff" : "#6b7280",
-                          fontSize: 9,
-                          cursor: "pointer",
-                        }}
                       >
                         {t("editor.vi_preview")}
-                      </button>
-                      {isCurrentPreview && (
-                        <>
-                          <button
-                            type="button"
-                            onClick={() => setConfirmAction({ type: "setLatest", version: v.version })}
-                            style={{
-                              padding: "2px 6px",
-                              border: "1px solid #e5e7eb",
-                              borderRadius: 3,
-                              background: "#fff",
-                              color: "#6b7280",
-                              fontSize: 9,
-                              cursor: "pointer",
-                            }}
-                            title={t("editor.vi_set_latest")}
-                          >
-                            <Star size={9} style={{ verticalAlign: "middle" }} />
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => setConfirmAction({ type: "restore", version: v.version })}
-                            style={{
-                              padding: "2px 6px",
-                              border: "1px solid #e5e7eb",
-                              borderRadius: 3,
-                              background: "#fff",
-                              color: "#6b7280",
-                              fontSize: 9,
-                              cursor: "pointer",
-                            }}
-                            title={t("editor.vi_restore_to_draft")}
-                          >
-                            <RotateCcw size={9} style={{ verticalAlign: "middle" }} />
-                          </button>
-                        </>
-                      )}
-                    </div>
-                  </div>
+                      </Button>
+                    }
+                    // 破坏性动作只对「当前预览的那一版」提供：弹层内一行放不下四个按钮，
+                    // 且先预览再决定也避免在看错版本时误改 latest
+                    onSetLatest={
+                      isCurrentPreview ? () => setConfirmAction({ type: "setLatest", version: v.version }) : undefined
+                    }
+                    onRestore={
+                      isCurrentPreview ? () => setConfirmAction({ type: "restore", version: v.version }) : undefined
+                    }
+                    // 弹层行更紧：行分隔与内衬在行上；没有行底色 hover（弹层没有整行点击/展开位）
+                    className="border-b border-border-light px-3 py-1.5"
+                  />
                 );
               })
             )}
@@ -291,23 +235,19 @@ export function VersionIndicator({
         </PopoverContent>
       </Popover>
 
-      {/* 确认对话框 */}
-      <ConfirmDialog
-        open={confirmAction !== null}
-        onOpenChange={(o) => {
-          if (!o) setConfirmAction(null);
+      {/* 确认对话框：与版本页 / 版本面板同一份接线（确认后由它关闭待确认动作） */}
+      <VersionConfirmDialog
+        action={confirmAction}
+        labels={{
+          setLatestTitle: t("editor.vi_set_latest"),
+          restoreTitle: t("editor.vi_restore_to_draft"),
+          setLatestDescription: (version) => t("versions.set_latest_confirm", { version }),
+          restoreDescription: (version) => t("editor.vi_restore_confirm", { version }),
         }}
-        title={confirmAction?.type === "setLatest" ? t("editor.vi_set_latest") : t("editor.vi_restore_to_draft")}
-        description={
-          confirmAction?.type === "restore"
-            ? t("editor.vi_restore_confirm", { version: confirmAction?.version ?? 0 })
-            : t("versions.set_latest_confirm", { version: confirmAction?.version ?? 0 })
-        }
-        variant={confirmAction?.type === "restore" ? "destructive" : "default"}
-        onConfirm={() => {
-          if (!confirmAction) return;
-          if (confirmAction.type === "setLatest") handleSetLatest(confirmAction.version);
-          else if (confirmAction.type === "restore") handleRestoreToDraft(confirmAction.version);
+        onClose={() => setConfirmAction(null)}
+        onConfirm={(action) => {
+          if (action.type === "setLatest") handleSetLatest(action.version);
+          else handleRestoreToDraft(action.version);
         }}
       />
     </>

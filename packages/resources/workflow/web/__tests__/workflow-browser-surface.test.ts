@@ -112,6 +112,11 @@ describe("workflow web 入口浏览器可达面", () => {
       "pages/workflow/WorkflowRuns.tsx",
       "pages/workflow/WorkflowVersions.tsx",
       "pages/workflow/components/SkeletonRows.tsx",
+      // 2026-09-22：版本行三处（版本页 / 编辑器版本面板 / 版本弹层）收敛出的共享件——它们只被
+      // 上面这几个页面经相对路径引用，不在 `web/index.ts` 的导出面里，列在这里是为了让「共享件
+      // 仍在浏览器图内」这件事在遍历失效时立刻变红，而不是靠别处的间接断言。
+      "pages/workflow/components/VersionRow.tsx",
+      "pages/workflow/components/VersionConfirmDialog.tsx",
     ]) {
       expect(reachedWebFiles).toContain(expected);
     }
