@@ -6,7 +6,7 @@
  */
 
 import { ApiError, request, UPLOAD_TIMEOUT_MS, unwrap, WRITE_TIMEOUT_MS } from "@fenix/web-runtime/api/request";
-import { randomUUID } from "@/src/lib/utils";
+import { randomUUID } from "@/src/lib/random-uuid";
 
 /**
  * 单次上传大小上限（100MB），与后端保持一致的同源常量。

@@ -1,12 +1,12 @@
 import type { ChangedFile } from "@fenix/ui-components/chat/lib/extract-changed-files";
 import { FileTypeIcon } from "@fenix/ui-components/components/file-icon-helper";
+import { cn } from "@fenix/ui-components/lib/cn";
 import { Button } from "@fenix/ui-components/ui/button";
 import { Popover, PopoverContent, PopoverTrigger } from "@fenix/ui-components/ui/popover";
 import { ChevronDown, FilePen, X } from "lucide-react";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import { NS } from "@/src/i18n";
-import { cn } from "@/src/lib/utils";
 
 /** 可见的 tab 数量上限，超出部分折叠到 +N popover 中（伪多 tab，避免横向滚动溢出） */
 const MAX_VISIBLE_TABS = 5;

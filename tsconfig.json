@@ -22,8 +22,6 @@
       "@/src/i18n": ["./apps/web/src/i18n/index.ts"],
       "@/src/i18n/locales/*": ["./apps/web/src/i18n/locales/*"],
       "@/src/lib/random-uuid-polyfill": ["./apps/web/src/lib/random-uuid-polyfill.ts"],
-      "@/src/lib/theme": ["./apps/web/src/lib/theme.ts"],
-      "@/src/lib/utils": ["./apps/web/src/lib/utils.ts"],
       // 只保留宿主自有别名。指向 `packages/**` 的一批桥接别名（`@/src/api/*`、`@/src/pages/**`、
       // `@/src/lib/*`、`@/src/components/**`、`@/src/types/*`）已随 §1.6 T11e 全部删除：消费方改直连
       // 各包公开出口后它们零消费，留着只会让「包内实现」在宿主侧有一个永不过期的写法。同批删除了

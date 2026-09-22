@@ -1,9 +1,9 @@
 import { OrgProvider, useSession } from "@fenix/identity/web";
+import { ThemeProvider } from "@fenix/ui-components/lib/theme";
 import { createRootRoute, Outlet, useNavigate, useRouterState } from "@tanstack/react-router";
 import { useEffect } from "react";
 import { useTranslation } from "react-i18next";
 import { Toaster } from "sonner";
-import { ThemeProvider } from "@/src/lib/theme";
 
 export const Route = createRootRoute({
   component: RootComponent,
