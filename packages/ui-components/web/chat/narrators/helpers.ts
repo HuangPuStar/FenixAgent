@@ -226,6 +226,25 @@ export interface ToolCallDisplayMeta {
 }
 
 /**
+ * 把一层 `display` 原始对象解析为 `ToolCallDisplayMeta`：`type` 不是字符串时回传 `undefined`。
+ *
+ * 三处来源（① ACP 顶层 / ② `rawOutput.metadata.display` / ③ `_meta.display`）的字段校验逐字相同，
+ * 2026-09-22 库内去重收敛到此；逐字段的 `typeof` 兜底与回退口径保持不变。
+ */
+function readDisplayMeta(d: Record<string, unknown>): ToolCallDisplayMeta | undefined {
+  if (typeof d.type !== "string") return;
+  return {
+    type: d.type,
+    path: typeof d.path === "string" ? d.path : undefined,
+    lineStart: typeof d.lineStart === "number" ? d.lineStart : undefined,
+    lineEnd: typeof d.lineEnd === "number" ? d.lineEnd : undefined,
+    totalLines: typeof d.totalLines === "number" ? d.totalLines : undefined,
+    text: typeof d.text === "string" ? d.text : undefined,
+    truncated: typeof d.truncated === "boolean" ? d.truncated : undefined,
+  };
+}
+
+/**
  * 从多个来源逐级提取 display 元数据。
  * 优先级：
  * ① toolCallDisplay（ACP 顶层 toolCall.display，opencode 风格）
@@ -241,18 +260,8 @@ export function extractDisplayMeta(
 ): ToolCallDisplayMeta | undefined {
   // ① 顶层 toolCall.display（opencode 新版本，直接挂载在 toolCall 对象上）
   if (toolCallDisplay && typeof toolCallDisplay === "object") {
-    const d = toolCallDisplay;
-    if (typeof d.type === "string") {
-      return {
-        type: d.type,
-        path: typeof d.path === "string" ? d.path : undefined,
-        lineStart: typeof d.lineStart === "number" ? d.lineStart : undefined,
-        lineEnd: typeof d.lineEnd === "number" ? d.lineEnd : undefined,
-        totalLines: typeof d.totalLines === "number" ? d.totalLines : undefined,
-        text: typeof d.text === "string" ? d.text : undefined,
-        truncated: typeof d.truncated === "boolean" ? d.truncated : undefined,
-      };
-    }
+    const displayMeta = readDisplayMeta(toolCallDisplay);
+    if (displayMeta) return displayMeta;
   }
 
   // ② rawOutput.metadata.display
@@ -260,35 +269,15 @@ export function extractDisplayMeta(
     const o = rawOutput as Record<string, unknown>;
     const metadata = o.metadata as Record<string, unknown> | undefined;
     if (metadata && typeof metadata.display === "object" && metadata.display !== null) {
-      const d = metadata.display as Record<string, unknown>;
-      if (typeof d.type === "string") {
-        return {
-          type: d.type,
-          path: typeof d.path === "string" ? d.path : undefined,
-          lineStart: typeof d.lineStart === "number" ? d.lineStart : undefined,
-          lineEnd: typeof d.lineEnd === "number" ? d.lineEnd : undefined,
-          totalLines: typeof d.totalLines === "number" ? d.totalLines : undefined,
-          text: typeof d.text === "string" ? d.text : undefined,
-          truncated: typeof d.truncated === "boolean" ? d.truncated : undefined,
-        };
-      }
+      const displayMeta = readDisplayMeta(metadata.display as Record<string, unknown>);
+      if (displayMeta) return displayMeta;
     }
   }
 
   // ③ _meta.display
   if (meta && typeof meta.display === "object" && meta.display !== null) {
-    const d = meta.display as Record<string, unknown>;
-    if (typeof d.type === "string") {
-      return {
-        type: d.type,
-        path: typeof d.path === "string" ? d.path : undefined,
-        lineStart: typeof d.lineStart === "number" ? d.lineStart : undefined,
-        lineEnd: typeof d.lineEnd === "number" ? d.lineEnd : undefined,
-        totalLines: typeof d.totalLines === "number" ? d.totalLines : undefined,
-        text: typeof d.text === "string" ? d.text : undefined,
-        truncated: typeof d.truncated === "boolean" ? d.truncated : undefined,
-      };
-    }
+    const displayMeta = readDisplayMeta(meta.display as Record<string, unknown>);
+    if (displayMeta) return displayMeta;
   }
 
   return;

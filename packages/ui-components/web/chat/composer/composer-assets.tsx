@@ -3,6 +3,7 @@ import { useTranslation } from "react-i18next";
 import { UI_COMPONENTS_NS } from "../../i18n/namespace";
 import { createQuotePreview } from "../lib/context-queue";
 import type { FileAttachment, UserMessageImage } from "../types";
+import { QuoteTruncatedBadge } from "./quote-truncated-badge";
 
 /**
  * 待发送 Assets 行（图片、文件引用、聊天引用）。
@@ -107,11 +108,7 @@ export function ComposerAssets({
             role="tooltip"
           >
             {createQuotePreview(quote.text)}
-            {quote.omittedCharacterCount > 0 && (
-              <small className="mt-1 block text-[10px] text-[#8a5b16]">
-                {t("chat.components.composerAssets.quoteTruncatedBadge", { count: quote.omittedCharacterCount })}
-              </small>
-            )}
+            <QuoteTruncatedBadge omittedCharacterCount={quote.omittedCharacterCount} />
           </span>
           {quote.omittedCharacterCount > 0 && (
             // 引用被截断时右上角的溢出角标（源 `.chat-composer-asset.is-quote > small`）。

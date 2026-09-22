@@ -87,33 +87,40 @@ export function useChatInputSubmit({
     scenePromptUsedRef.current = false;
   }, []);
 
+  /**
+   * 丢弃缓存的 pending prompt 并清掉超时定时器。
+   *
+   * 2026-09-22 库内去重：本文件此前在「会话就绪后发出」「卸载/contextKey 变化清理」
+   * 「建会话失败」三处各写了一份逐字相同的清理块，收敛到此；清理顺序与判空口径不变。
+   * 只操作两个 ref，故 `useCallback` 依赖为空、身份稳定。
+   */
+  const clearPendingSend = useCallback(() => {
+    pendingSendRef.current = null;
+    if (pendingSendTimerRef.current) {
+      clearTimeout(pendingSendTimerRef.current);
+      pendingSendTimerRef.current = null;
+    }
+  }, []);
+
   // 当 activeSessionId 从无到有时（首次发送自动创建会话），发送缓存的 prompt
   useEffect(() => {
     if (activeSessionId && pendingSendRef.current) {
       const blocks = pendingSendRef.current;
-      pendingSendRef.current = null;
-      if (pendingSendTimerRef.current) {
-        clearTimeout(pendingSendTimerRef.current);
-        pendingSendTimerRef.current = null;
-      }
+      clearPendingSend();
       onSendPrompt(blocks).catch((err) => {
         console.error("[ChatInterface] Pending send failed:", err);
         // 走到这里说明用户先前提交的消息已被丢弃（pendingSendRef 已清空），必须给回执
         onNotice?.({ level: "error", message: sendPromptFailedMessage });
       });
     }
-  }, [activeSessionId, onSendPrompt, onNotice, sendPromptFailedMessage]);
+  }, [activeSessionId, onSendPrompt, onNotice, sendPromptFailedMessage, clearPendingSend]);
 
   // 组件卸载或 contextKey 变化时清理 pending prompt（避免内存泄漏 / 错误发送）
   useEffect(() => {
     return () => {
-      pendingSendRef.current = null;
-      if (pendingSendTimerRef.current) {
-        clearTimeout(pendingSendTimerRef.current);
-        pendingSendTimerRef.current = null;
-      }
+      clearPendingSend();
     };
-  }, []);
+  }, [clearPendingSend]);
 
   return useCallback(
     async (message: ChatInputMessage) => {
@@ -180,11 +187,7 @@ export function useChatInputSubmit({
         } catch (err) {
           console.error("[ChatInterface] Failed to create session:", err);
           onNotice?.({ level: "error", message: sessionCreateFailedMessage });
-          pendingSendRef.current = null;
-          if (pendingSendTimerRef.current) {
-            clearTimeout(pendingSendTimerRef.current);
-            pendingSendTimerRef.current = null;
-          }
+          clearPendingSend();
         }
         return;
       }
@@ -209,6 +212,7 @@ export function useChatInputSubmit({
       imagePrepareFailedMessage,
       sessionCreateFailedMessage,
       sendPromptFailedMessage,
+      clearPendingSend,
     ],
   );
 }

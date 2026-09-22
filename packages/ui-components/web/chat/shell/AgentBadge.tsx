@@ -2,6 +2,7 @@ import { Loader2, MessageSquare, Pencil } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { UI_COMPONENTS_NS } from "../../i18n/namespace";
 import { cn } from "../../lib/cn";
+import { AgentLogo } from "./internal/agent-logo";
 
 // =============================================================================
 // AgentBadge — 工牌卡组件，双模式：空状态展示（ChatView）+ 管理卡片（AgentManagementPage）
@@ -174,16 +175,7 @@ export function AgentBadge({
       {/* 头像 + 名称 + 描述 */}
       <div className={BADGE_BODY_CLASS}>
         <div className={BADGE_AVATAR_CLASS}>
-          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" aria-hidden="true">
-            <circle cx="12" cy="6" r="2.5" fill="var(--color-brand)" />
-            <circle cx="6" cy="16" r="2.5" fill="var(--color-brand)" opacity=".85" />
-            <circle cx="18" cy="16" r="2.5" fill="var(--color-brand)" opacity=".85" />
-            <circle cx="12" cy="12" r="1.5" fill="var(--color-brand)" opacity=".6" />
-            <line x1="12" y1="8.5" x2="12" y2="10.5" stroke="var(--color-brand)" strokeWidth="1.2" opacity=".5" />
-            <line x1="12" y1="13.5" x2="7.2" y2="15.2" stroke="var(--color-brand)" strokeWidth="1.2" opacity=".5" />
-            <line x1="12" y1="13.5" x2="16.8" y2="15.2" stroke="var(--color-brand)" strokeWidth="1.2" opacity=".5" />
-            <line x1="8.2" y1="16" x2="15.8" y2="16" stroke="var(--color-brand)" strokeWidth="1" opacity=".3" />
-          </svg>
+          <AgentLogo size={24} />
         </div>
         {sourceOrg && <div className={BADGE_SOURCE_CLASS}>{sourceOrg}</div>}
         <div className={BADGE_NAME_CLASS}>{name}</div>

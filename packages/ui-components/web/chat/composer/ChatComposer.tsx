@@ -2,13 +2,13 @@ import { X } from "lucide-react";
 import { type ReactNode, useRef } from "react";
 import { useTranslation } from "react-i18next";
 import { UI_COMPONENTS_NS } from "../../i18n/namespace";
-import type { AvailableCommand, ChatInputMessage, FileAttachment, SessionMode } from "../types";
+import type { AvailableCommand, ChatInputMessage, SessionMode } from "../types";
 import { CommandMenu, type McpOption } from "./CommandMenu";
-import { ComposerAssets, type ComposerQuote } from "./composer-assets";
+import { ComposerAssets } from "./composer-assets";
 import type { ComposerExternalSubscribe } from "./composer-effects";
 import type { ComposerFileInfo, CompressImage, UploadComposerFiles } from "./composer-file-processing";
 import { type ComposerNoticeHandler, useComposerHandlers } from "./composer-handlers";
-import { type ComposerState, useComposerState } from "./composer-state";
+import { type ComposerState, type ComposerStateOptions, useComposerState } from "./composer-state";
 import { ComposerToolbar } from "./composer-toolbar";
 import { removeSlashCommand } from "./internal/remove-slash-command";
 import { useDragUpload } from "./useDragUpload";
@@ -41,7 +41,7 @@ export interface ComposerFilePickerRenderProps {
 }
 
 /** ChatComposer 属性 — 新玻璃磨砂命令岛输入组件 */
-export interface ChatComposerProps {
+export interface ChatComposerProps extends ComposerStateOptions {
   onSubmit: (message: ChatInputMessage) => void;
   isLoading?: boolean;
   onInterrupt?: () => void;
@@ -82,20 +82,8 @@ export interface ChatComposerProps {
   subscribeExternal?: ComposerExternalSubscribe;
   /** 提示回调（纯化替代 sonner toast）。 */
   onNotice?: ComposerNoticeHandler;
-  /** 受控草稿文本；传入时组件不再自持文本状态。 */
-  draft?: string;
-  /** 非受控草稿初始值（受控时忽略）。 */
-  defaultDraft?: string;
-  onDraftChange?: (text: string) => void;
-  /** 受控待发送附件列表。 */
-  attachments?: FileAttachment[];
-  onAttachmentsChange?: (attachments: FileAttachment[]) => void;
-  /** 受控待发送引用列表。 */
-  quotes?: ComposerQuote[];
-  onQuotesChange?: (quotes: ComposerQuote[]) => void;
-  /** 受控命令/能力面板开关。 */
-  commandPanelOpen?: boolean;
-  onCommandPanelOpenChange?: (open: boolean) => void;
+  // 半受控输入状态端口（`draft` / `attachments` / `quotes` / `commandPanelOpen` 及其回调）
+  // 与 `ComposerStateOptions` 逐字相同，2026-09-22 库内去重后由 `extends` 承接，本文件不再复述。
 }
 
 export function ChatComposer({

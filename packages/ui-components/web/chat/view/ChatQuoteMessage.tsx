@@ -2,6 +2,7 @@ import { Quote } from "lucide-react";
 import { memo } from "react";
 import { useTranslation } from "react-i18next";
 import { UI_COMPONENTS_NS } from "../../i18n/namespace";
+import { QuoteTruncatedBadge } from "../composer/quote-truncated-badge";
 import { createQuotePreview, type SerializedChatQuote } from "../lib/context-queue";
 
 interface ChatQuoteMessageProps {
@@ -29,11 +30,7 @@ export const ChatQuoteMessage = memo(function ChatQuoteMessage({ quote, index }:
       </summary>
       <div className="absolute top-[calc(100%+6px)] right-0 z-20 hidden max-h-[132px] w-[min(340px,calc(100vw-48px))] overflow-hidden rounded-[9px] border border-[#dfe5ed] bg-white px-[11px] py-[9px] text-[#526178] shadow-[0_8px_24px_rgb(38_52_77_/_14%)] group-hover:block group-focus-within:block group-open:block">
         <p className="m-0 text-[12px] leading-[1.5] wrap-anywhere">{createQuotePreview(quote.text)}</p>
-        {quote.omittedCharacterCount > 0 && (
-          <small className="mt-1 block text-[10px] text-[#8a5b16]">
-            {t("chat.components.composerAssets.quoteTruncatedBadge", { count: quote.omittedCharacterCount })}
-          </small>
-        )}
+        <QuoteTruncatedBadge omittedCharacterCount={quote.omittedCharacterCount} />
       </div>
     </details>
   );

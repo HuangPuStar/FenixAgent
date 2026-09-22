@@ -318,6 +318,35 @@ export type MessageResponseProps = {
   envId?: string;
 };
 
+/**
+ * 正文链接外观（`a` 与无法内联渲染的 `video` / `audio` 降级链接共用同一条配方）。
+ * 2026-09-22 库内去重：原为三处逐字重复的 `className` 字面量。
+ */
+const MARKDOWN_LINK_CLASS = "text-primary underline decoration-primary/40 underline-offset-2 hover:decoration-primary";
+
+/**
+ * 丢弃 streamdown 注入的非 DOM 透传属性（`children` / `node`），其余原样展开到宿主元素。
+ * 2026-09-22 库内去重：原为四处逐字重复的 `Object.fromEntries(...)` 表达式。
+ */
+const omitNonDomProps = (rest: Record<string, unknown>) =>
+  Object.fromEntries(Object.entries(rest).filter(([k]) => !["children", "node"].includes(k)));
+
+/**
+ * `video` / `audio` 在 streamdown 组件表里的降级渲染：不内联播放器，改为新窗口链接。
+ * 2026-09-22 库内去重：两个键的处理体此前逐字相同（唯一差异是键名），收敛为同一实现。
+ */
+const renderMediaLink = ({ src, children, className: _cx, ...rest }: Record<string, unknown>) => (
+  <a
+    href={src as string}
+    target="_blank"
+    rel="noopener noreferrer"
+    className={MARKDOWN_LINK_CLASS}
+    {...omitNonDomProps(rest)}
+  >
+    {(children as ReactNode) || (src as string)}
+  </a>
+);
+
 export const MessageResponse = memo(
   ({ className, children, envId, ...props }: MessageResponseProps) => {
     const urlTransform = useCallback(
@@ -355,42 +384,21 @@ export const MessageResponse = memo(
             src={src as string}
             alt={(alt as string) || ""}
             style={{ maxWidth: "100%", maxHeight: "50vh", objectFit: "contain" }}
-            {...Object.fromEntries(Object.entries(rest).filter(([k]) => !["children", "node"].includes(k)))}
+            {...omitNonDomProps(rest)}
           />
         ),
         iframe: (props: Record<string, unknown>) => <IframePreview {...props} />,
-        video: ({ src, children, className: _cx, ...rest }: Record<string, unknown>) => (
-          <a
-            href={src as string}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="text-primary underline decoration-primary/40 underline-offset-2 hover:decoration-primary"
-            {...Object.fromEntries(Object.entries(rest).filter(([k]) => !["children", "node"].includes(k)))}
-          >
-            {(children as ReactNode) || (src as string)}
-          </a>
-        ),
-        audio: ({ src, children, className: _cx, ...rest }: Record<string, unknown>) => (
-          <a
-            href={src as string}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="text-primary underline decoration-primary/40 underline-offset-2 hover:decoration-primary"
-            {...Object.fromEntries(Object.entries(rest).filter(([k]) => !["children", "node"].includes(k)))}
-          >
-            {(children as ReactNode) || (src as string)}
-          </a>
-        ),
+        video: renderMediaLink,
+        audio: renderMediaLink,
         a: ({ href, children, className: _cx, ...rest }: Record<string, unknown>) => {
           const hrefStr = typeof href === "string" ? href : "";
-          const safeProps = Object.fromEntries(Object.entries(rest).filter(([k]) => !["children", "node"].includes(k)));
           return (
             <a
               href={hrefStr}
               target="_blank"
               rel="noopener noreferrer"
-              className="text-primary underline decoration-primary/40 underline-offset-2 hover:decoration-primary"
-              {...safeProps}
+              className={MARKDOWN_LINK_CLASS}
+              {...omitNonDomProps(rest)}
             >
               {children as ReactNode}
             </a>
