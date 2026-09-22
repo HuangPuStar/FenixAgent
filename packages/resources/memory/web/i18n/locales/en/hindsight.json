@@ -190,11 +190,13 @@
     "all": "All",
     "memoryComposition": "Memory composition"
   },
-  "memoryDetailModal": {
-    "defaultTitle": "Memory Details",
+  "memoryDetail": {
     "typeObservation": "Observation",
     "typeWorldFact": "World Fact",
     "typeExperience": "Experience",
+    "defaultTitle": "Memory Details"
+  },
+  "memoryDetailModal": {
     "errorPrefix": "Error: {{message}}",
     "sectionText": "Text",
     "sectionOccurred": "Occurred",
@@ -206,7 +208,6 @@
   },
   "memoryDetailPanel": {
     "close": "Close memory details",
-    "title": "Memory Details",
     "subtitle": "Full memory content and metadata",
     "loadingDetails": "Loading memory details...",
     "loading": "Loading...",
@@ -226,7 +227,9 @@
     "sourceMentioned": "Mentioned",
     "viewDocumentButton": "View Document",
     "viewChunkButton": "View Chunk",
-    "viewHistory": "View History"
+    "viewHistory": "View History",
+    "loadFailed": "Failed to load memory details",
+    "retry": "Retry"
   },
   "entitiesView": {
     "viewSwitcher": "Entity view switcher",

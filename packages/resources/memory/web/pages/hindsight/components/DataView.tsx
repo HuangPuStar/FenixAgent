@@ -1,3 +1,4 @@
+import { EmptyState } from "@fenix/ui-components/config/EmptyState";
 import { Button } from "@fenix/ui-components/ui/button";
 import { Label } from "@fenix/ui-components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@fenix/ui-components/ui/select";
@@ -303,20 +304,15 @@ export function DataView({
       {loading && !data ? (
         <Spinner label={t("dataView.loadingMemories")} className="flex py-12" />
       ) : failure ? (
-        <div className="flex flex-col items-center justify-center gap-3 py-16 text-center" role="alert">
-          <HindsightFailureNotice
-            failure={failure}
-            titleKey="dataView.loadFailed"
-            retryKey="dataView.retry"
-            onRetry={() => void loadData()}
-          />
-        </div>
+        <HindsightFailureNotice
+          failure={failure}
+          titleKey="dataView.loadFailed"
+          retryKey="dataView.retry"
+          onRetry={() => void loadData()}
+          className="py-16"
+        />
       ) : !data ? (
-        <div className="flex items-center justify-center py-20">
-          <div className="text-center">
-            <div className="text-sm text-muted-foreground">{t("dataView.noDataAvailable")}</div>
-          </div>
-        </div>
+        <EmptyState className="py-20" title={t("dataView.noDataAvailable")} />
       ) : data.table_rows?.length === 0 ? (
         /* 空状态 */
         <div className="flex flex-col items-center justify-center py-16 text-center">
@@ -712,11 +708,14 @@ export function DataView({
                       );
                     })()
                   ) : (
-                    <div className="text-center py-12 text-muted-foreground">
-                      {(data.table_rows?.length ?? 0) > 0
-                        ? t("dataView.noMemoriesMatchFilter")
-                        : t("dataView.noMemoriesFound")}
-                    </div>
+                    <EmptyState
+                      className="py-12"
+                      title={
+                        (data.table_rows?.length ?? 0) > 0
+                          ? t("dataView.noMemoriesMatchFilter")
+                          : t("dataView.noMemoriesFound")
+                      }
+                    />
                   )}
                 </div>
               </div>
@@ -857,13 +856,12 @@ function TimelineView({
 
   if (sortedItems.length === 0) {
     return (
-      <div className="flex flex-col items-center justify-center py-12">
-        <Calendar className="w-12 h-12 text-muted-foreground mb-3" />
-        <div className="text-base font-medium text-foreground mb-1">{t("dataView.noTimelineData")}</div>
-        <div className="text-xs text-muted-foreground text-center max-w-md">
-          {t("dataView.noTimelineDataDescription")}
-        </div>
-      </div>
+      <EmptyState
+        className="py-12"
+        icon={<Calendar />}
+        title={t("dataView.noTimelineData")}
+        description={t("dataView.noTimelineDataDescription")}
+      />
     );
   }
 

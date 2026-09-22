@@ -1,4 +1,5 @@
 import { WorkbenchPanel } from "@fenix/ui-components/components/WorkbenchPanel";
+import { EmptyState } from "@fenix/ui-components/config/EmptyState";
 import { Input } from "@fenix/ui-components/ui/input";
 import { Skeleton } from "@fenix/ui-components/ui/skeleton";
 import { NS } from "@fenix/web-runtime/i18n/namespace";
@@ -106,14 +107,13 @@ export function MemoriesPage() {
   if (statusFailure) {
     return (
       <div className="grid h-full min-h-0 place-items-center overflow-hidden bg-muted/30 px-4 py-5 text-foreground sm:px-8 sm:py-7">
-        <div className="flex flex-col items-center justify-center gap-3 py-16 text-center" role="alert">
-          <HindsightFailureNotice
-            failure={statusFailure}
-            titleKey="status.loadFailed"
-            retryKey="status.retry"
-            onRetry={() => void loadStatus()}
-          />
-        </div>
+        <HindsightFailureNotice
+          failure={statusFailure}
+          titleKey="status.loadFailed"
+          retryKey="status.retry"
+          onRetry={() => void loadStatus()}
+          className="py-16"
+        />
       </div>
     );
   }
@@ -121,9 +121,7 @@ export function MemoriesPage() {
   if (!enabled) {
     return (
       <div className="grid h-full min-h-0 place-items-center overflow-hidden bg-muted/30 px-4 py-5 text-foreground sm:px-8 sm:py-7">
-        <div className="flex flex-col items-center justify-center py-16 text-muted-foreground">
-          <p className="text-sm">{t("status.notConfigured")}</p>
-        </div>
+        <EmptyState className="py-16" title={t("status.notConfigured")} />
       </div>
     );
   }

@@ -1,3 +1,4 @@
+import { EmptyState } from "@fenix/ui-components/config/EmptyState";
 import { Badge } from "@fenix/ui-components/ui/badge";
 import { Button } from "@fenix/ui-components/ui/button";
 import { Input } from "@fenix/ui-components/ui/input";
@@ -141,9 +142,7 @@ export function DocumentsView() {
         {loading ? (
           <Spinner size="sm" className="flex py-12" />
         ) : documents.length === 0 ? (
-          <div className="flex items-center justify-center py-12 text-muted-foreground text-sm">
-            {t("documents.noDocuments")}
-          </div>
+          <EmptyState className="py-12" title={t("documents.noDocuments")} />
         ) : (
           <Table>
             <TableHeader>

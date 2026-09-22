@@ -1,3 +1,4 @@
+import { EmptyState } from "@fenix/ui-components/config/EmptyState";
 import { Button } from "@fenix/ui-components/ui/button";
 import { Spinner } from "@fenix/ui-components/ui/spinner";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@fenix/ui-components/ui/table";
@@ -221,21 +222,15 @@ export function EntitiesView() {
       {viewMode === "relations" && (
         <div ref={graphPaneRef} className="min-h-0 flex-1 overflow-hidden rounded-lg border border-border">
           {graphLoading ? (
-            <div className="flex items-center justify-center py-20" role="status">
-              <div className="text-center">
-                <div className="text-4xl mb-2">...</div>
-                <div className="text-sm text-muted-foreground">{t("entitiesView.loadingEntityGraph")}</div>
-              </div>
-            </div>
+            <Spinner variant="panel" className="py-20" label={t("entitiesView.loadingEntityGraph")} />
           ) : graphFailure ? (
-            <div className="flex flex-col items-center justify-center gap-3 py-20 text-center" role="alert">
-              <HindsightFailureNotice
-                failure={graphFailure}
-                titleKey="entitiesView.graphLoadFailed"
-                retryKey="entitiesView.retry"
-                onRetry={() => void loadGraph()}
-              />
-            </div>
+            <HindsightFailureNotice
+              failure={graphFailure}
+              titleKey="entitiesView.graphLoadFailed"
+              retryKey="entitiesView.retry"
+              onRetry={() => void loadGraph()}
+              className="py-20"
+            />
           ) : constellationData.nodes.length > 0 ? (
             <Constellation
               data={constellationData}
@@ -256,12 +251,11 @@ export function EntitiesView() {
               compactLabels
             />
           ) : (
-            <div className="flex items-center justify-center py-20">
-              <div className="text-center">
-                <div className="text-sm text-muted-foreground">{t("entitiesView.noCooccurrences")}</div>
-                <div className="text-xs text-muted-foreground mt-1">{t("entitiesView.noCooccurrencesDescription")}</div>
-              </div>
-            </div>
+            <EmptyState
+              className="py-20"
+              title={t("entitiesView.noCooccurrences")}
+              description={t("entitiesView.noCooccurrencesDescription")}
+            />
           )}
         </div>
       )}
@@ -270,21 +264,15 @@ export function EntitiesView() {
       {viewMode === "list" && (
         <div className="min-h-0 min-w-0 flex-1 overflow-auto">
           {loading ? (
-            <div className="flex items-center justify-center py-20" role="status">
-              <div className="text-center">
-                <div className="text-4xl mb-2">...</div>
-                <div className="text-sm text-muted-foreground">{t("entitiesView.loadingEntities")}</div>
-              </div>
-            </div>
+            <Spinner variant="panel" className="py-20" label={t("entitiesView.loadingEntities")} />
           ) : entitiesFailure ? (
-            <div className="flex flex-col items-center justify-center gap-3 py-20 text-center" role="alert">
-              <HindsightFailureNotice
-                failure={entitiesFailure}
-                titleKey="entitiesView.listLoadFailed"
-                retryKey="entitiesView.retry"
-                onRetry={() => void loadEntities(currentPage)}
-              />
-            </div>
+            <HindsightFailureNotice
+              failure={entitiesFailure}
+              titleKey="entitiesView.listLoadFailed"
+              retryKey="entitiesView.retry"
+              onRetry={() => void loadEntities(currentPage)}
+              className="py-20"
+            />
           ) : entities.length > 0 ? (
             <>
               <div className="mb-4 text-sm text-muted-foreground">
@@ -370,13 +358,11 @@ export function EntitiesView() {
               )}
             </>
           ) : (
-            <div className="flex items-center justify-center py-20">
-              <div className="text-center">
-                <div className="text-4xl mb-2">...</div>
-                <div className="text-sm text-muted-foreground">{t("entitiesView.noEntitiesFound")}</div>
-                <div className="text-xs text-muted-foreground mt-1">{t("entitiesView.noEntitiesDescription")}</div>
-              </div>
-            </div>
+            <EmptyState
+              className="py-20"
+              title={t("entitiesView.noEntitiesFound")}
+              description={t("entitiesView.noEntitiesDescription")}
+            />
           )}
         </div>
       )}
@@ -392,6 +378,7 @@ export function EntitiesView() {
               titleKey="entitiesView.detailLoadFailed"
               retryKey="entitiesView.retry"
               onRetry={() => void loadEntityDetail(selectedEntityId)}
+              className="py-0"
             />
           ) : (
             <>

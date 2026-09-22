@@ -1,3 +1,4 @@
+import { EmptyState } from "@fenix/ui-components/config/EmptyState";
 import { Badge } from "@fenix/ui-components/ui/badge";
 import { Button } from "@fenix/ui-components/ui/button";
 import { Card, CardAction, CardContent, CardFooter, CardHeader, CardTitle } from "@fenix/ui-components/ui/card";
@@ -256,19 +257,15 @@ export function MentalModelsView() {
             <Spinner size="sm" />
           </div>
         ) : failure ? (
-          <div className="flex flex-col items-center justify-center py-16 text-center" role="alert">
-            <HindsightFailureNotice
-              failure={failure}
-              titleKey="mentalModels.loadFailed"
-              retryKey="mentalModels.retry"
-              onRetry={() => void loadModels()}
-            />
-          </div>
+          <HindsightFailureNotice
+            failure={failure}
+            titleKey="mentalModels.loadFailed"
+            retryKey="mentalModels.retry"
+            onRetry={() => void loadModels()}
+            className="py-16"
+          />
         ) : filteredModels.length === 0 ? (
-          <div className="flex flex-col items-center justify-center py-16 text-muted-foreground">
-            <Brain className="size-10 mb-3 opacity-40" />
-            <p className="text-sm">{t("mentalModels.noModels")}</p>
-          </div>
+          <EmptyState className="py-16" icon={<Brain />} title={t("mentalModels.noModels")} />
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
             {filteredModels.map((model) => (

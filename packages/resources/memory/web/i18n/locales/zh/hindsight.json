@@ -190,11 +190,13 @@
     "all": "全部",
     "memoryComposition": "记忆构成"
   },
-  "memoryDetailModal": {
-    "defaultTitle": "记忆详情",
+  "memoryDetail": {
     "typeObservation": "观察",
     "typeWorldFact": "世界事实",
     "typeExperience": "经历",
+    "defaultTitle": "记忆详情"
+  },
+  "memoryDetailModal": {
     "errorPrefix": "错误：{{message}}",
     "sectionText": "文本",
     "sectionOccurred": "发生时间",
@@ -206,7 +208,6 @@
   },
   "memoryDetailPanel": {
     "close": "关闭记忆详情",
-    "title": "记忆详情",
     "subtitle": "完整记忆内容及元数据",
     "loadingDetails": "正在加载记忆详情...",
     "loading": "加载中...",
@@ -226,7 +227,9 @@
     "sourceMentioned": "提及时间",
     "viewDocumentButton": "查看文档",
     "viewChunkButton": "查看块",
-    "viewHistory": "查看历史"
+    "viewHistory": "查看历史",
+    "loadFailed": "加载记忆详情失败",
+    "retry": "重试"
   },
   "entitiesView": {
     "viewSwitcher": "实体视图切换",
