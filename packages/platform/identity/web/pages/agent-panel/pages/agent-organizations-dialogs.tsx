@@ -91,8 +91,10 @@ function InviteMemberDialog({ props }: { props: OrganizationsDialogsProps }) {
           <DialogTitle>{t("inviteDialog.title")}</DialogTitle>
         </DialogHeader>
         <div className="org-dialog-fields">
-          <div className="org-dialog-field">
-            <span>{t("inviteDialog.searchLabel")}</span>
+          {/* 字段名走**显式关联**：字段名标注的是搜索框，而接口区里还有已选成员的移除按钮与结果列表
+              （都是可标记元素），包进 `<label>` 会把它们的文案并进搜索框的可访问名。
+              字段名刻度随之与同文件其余字段统一（原 `.org-dialog-field > span` 的 12px/600/#516079）。 */}
+          <LabeledField label={t("inviteDialog.searchLabel")} htmlFor="org-member-search">
             <div className="org-member-command">
               {props.selectedCandidates.length > 0 ? (
                 <div className="org-selected-members">
@@ -113,6 +115,7 @@ function InviteMemberDialog({ props }: { props: OrganizationsDialogsProps }) {
               <div className="org-member-search">
                 <Search className="size-4" aria-hidden="true" />
                 <Input
+                  id="org-member-search"
                   value={props.inviteKeyword}
                   onChange={(event) => props.onInviteKeywordChange(event.target.value)}
                   placeholder={
@@ -149,7 +152,7 @@ function InviteMemberDialog({ props }: { props: OrganizationsDialogsProps }) {
                 })}
               </div>
             </div>
-          </div>
+          </LabeledField>
           <LabeledField label={t("inviteDialog.role")}>
             <select value={props.inviteRole} onChange={(event) => props.onInviteRoleChange(event.target.value)}>
               <option value="admin">{t("roles.admin")}</option>

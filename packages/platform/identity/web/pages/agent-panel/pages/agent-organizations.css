@@ -382,15 +382,6 @@
   gap: 14px;
   padding: 8px 0;
 }
-.org-dialog-field {
-  display: grid;
-  gap: 6px;
-}
-.org-dialog-field > span {
-  color: #516079;
-  font-size: 12px;
-  font-weight: 600;
-}
 .org-member-command {
   overflow: hidden;
   border: 1px solid #dfe6f0;
