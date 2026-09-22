@@ -1,7 +1,7 @@
+import { environment } from "@fenix/agent-runtime/db";
 import { log, error as logError } from "@fenix/logger";
 import { NotFoundError } from "@fenix/platform-sdk";
 import type { EngineRelayHandle, EngineRelayMessage } from "@fenix/plugin-sdk";
-import { environment } from "@server/db/schema";
 import { and, eq } from "drizzle-orm";
 import { getAgentRuntimeDatabase } from "../server/db";
 import { agentInstanceService } from "../server/services/agent-instance-service";

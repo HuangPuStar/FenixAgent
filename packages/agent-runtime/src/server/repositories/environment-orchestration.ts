@@ -1,5 +1,5 @@
+import { environment } from "@fenix/agent-runtime/db";
 import type { EnvironmentData, EnvironmentRepo } from "@fenix/orchestration";
-import { environment } from "@server/db/schema";
 import { eq } from "drizzle-orm";
 import { getAgentRuntimeConfig } from "../config";
 import { getAgentRuntimeDatabase } from "../db";

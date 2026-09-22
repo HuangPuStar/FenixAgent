@@ -1,4 +1,8 @@
 import { agentConfig } from "@fenix/agent-config/db";
+import {
+  deleteEnvironmentsByAgentConfig,
+  listEnvironmentIdsByAgentConfig,
+} from "@fenix/agent-runtime/server/environment";
 import type {
   AuthorizedResourceQuery,
   QueryStorageTypes,
@@ -6,11 +10,10 @@ import type {
   ResourceQueryConstraint,
   ScopedRow,
 } from "@fenix/platform-sdk";
-import { environment } from "@server/db/schema";
 import { and, asc, desc, eq, type SQL } from "drizzle-orm";
 import type { PgColumn, PgTable } from "drizzle-orm/pg-core";
 import { AGENT_CONFIG_RESOURCE_TYPE, agentConfigResource } from "../access/agent-config-resource";
-import { getAgentConfigDatabase } from "../db";
+import { type AgentConfigDatabase, getAgentConfigDatabase } from "../db";
 
 /**
  * AgentConfig **资源行**的持久化访问层。
@@ -236,12 +239,15 @@ export function createAgentConfigRepository(
     },
 
     async removeWithEnvironments(input) {
-      return getAgentConfigDatabase().transaction(async (tx) => {
-        await tx
-          .delete(environment)
-          .where(
-            and(eq(environment.organizationId, input.organizationId), eq(environment.agentConfigId, input.resourceId)),
-          );
+      // 事务句柄显式标注为本包句柄类型：agent-runtime 的删除入口按同一类型接收集合（两包的句柄类型
+      // 同为 `NodePgDatabase<Record<string, never>>`，见 `../db.ts`），因此「删环境 + 删配置」仍在
+      // 同一个事务里，语义与迁移前直读 environment 表时一致。`environment` 的删除实现在 owner 侧
+      // （`@fenix/agent-runtime/server/environment`），本包只决定顺序与事务边界。
+      return getAgentConfigDatabase().transaction(async (tx: AgentConfigDatabase) => {
+        await deleteEnvironmentsByAgentConfig(tx, {
+          organizationId: input.organizationId,
+          agentConfigId: input.resourceId,
+        });
         const rows = await tx
           .delete(agentConfig)
           .where(eq(agentConfig.id, input.resourceId))
@@ -251,13 +257,10 @@ export function createAgentConfigRepository(
     },
 
     async listBoundEnvironmentIds(input) {
-      const rows = await getAgentConfigDatabase()
-        .select({ id: environment.id })
-        .from(environment)
-        .where(
-          and(eq(environment.organizationId, input.organizationId), eq(environment.agentConfigId, input.resourceId)),
-        );
-      return rows.map((row) => row.id);
+      return listEnvironmentIdsByAgentConfig({
+        organizationId: input.organizationId,
+        agentConfigId: input.resourceId,
+      });
     },
 
     async findByIdUnscoped(input) {

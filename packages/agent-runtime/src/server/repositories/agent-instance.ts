@@ -1,4 +1,4 @@
-import { agentInstance } from "@server/db/schema";
+import { agentInstance } from "@fenix/agent-runtime/db";
 import { and, eq } from "drizzle-orm";
 import { getAgentRuntimeDatabase } from "../db";
 

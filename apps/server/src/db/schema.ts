@@ -1,4 +1,5 @@
 import { agentConfig } from "@fenix/agent-config/db";
+import { environment } from "@fenix/agent-runtime/db";
 import { user } from "@fenix/identity/db";
 import { sql } from "drizzle-orm";
 
@@ -6,15 +7,19 @@ import { sql } from "drizzle-orm";
  * 宿主只从已迁出的 owner 包**取用**表对象，不重复定义。
  *
  * 身份表由 `@fenix/identity/db` 拥有（CE 阶段 2 任务 1.2），这里只转出、不重复定义；Agent 配置聚合的
- * 五张表由 `@fenix/agent-config/db` 拥有（任务 1.7 B7）。宿主是唯一同时持有两侧表定义的层：宿主的业务表
+ * 五张表由 `@fenix/agent-config/db` 拥有（任务 1.7 B7）；`environment` / `agent_instance` 由
+ * `@fenix/agent-runtime/db` 拥有（任务 1.7 B8）。宿主是唯一同时持有全部 owner 表定义的层：宿主的业务表
  * 需要它们作为外键目标，而 Drizzle 的 `.references()` 只接受列对象、没有字符串形式。它们与宿主表共用
  * 同一条迁移链（`drizzle.config.ts` 同时声明全部 schema 文件），因此并置不会产生第二份真相；跨包读取
- * 身份数据仍必须走 `IdentityDirectory`，读 Agent 配置仍必须走本包的服务端入口，不得依赖本文件。
+ * 身份数据仍必须走 `IdentityDirectory`，读 Agent 配置仍必须走 `@fenix/agent-config` 的服务端入口，
+ * 读运行环境与实例仍必须走 `@fenix/agent-runtime` 的服务端入口，不得依赖本文件。
  * 组装期例外的口径与边界见 `docs/design/ce-ee-refactoring/ce-ee-engineering-standards.md` §6.1。
  *
- * 本文件里 `agentConfig` 的五个使用点都是宿主自有表的外键：`environment.agent_config_id`、
- * `agent_knowledge_binding`、`task_execution_log`、`agent_memory_config`、`prod_view`（后四张表各引用一次
- * `agent_config.id`），它们随 B8–B13 按拓扑序迁出宿主。
+ * 本文件里 `agentConfig` 的四个使用点都是宿主自有表的外键：`agent_knowledge_binding`、
+ * `task_execution_log`、`agent_memory_config`、`prod_view`（各引用一次 `agent_config.id`），它们随
+ * B9–B12 按拓扑序迁出宿主；`environment.agent_config_id` 那一处在 B8 随该表迁入
+ * `@fenix/agent-runtime/db`。`environment` 这个 import 只剩一个使用点：`im_channel_route.environment_id`
+ * （B13 迁 channel 后本文件连这一行也不再需要）。
  *
  * **B7 之后本文件不再导入的包**：`@fenix/model-management/db`、`@fenix/resource-machine/db`、
  * `@fenix/resource-mcp/db`、`@fenix/resource-skill/db`——它们此前只被 `agent_config.model_id` /
@@ -22,8 +27,9 @@ import { sql } from "drizzle-orm";
  * 取用，这四张表随 B7 迁入 `@fenix/agent-config/db` 后，本文件连 `import` 一行也不再需要（宿主其它
  * 位置仍是这些包的合法消费方，例如 `services/data-migrates/` 直接按归属取它们的 `db/` 出口）。
  *
- * 任务 1.7 B6 的 Workflow 九张领域表从未出现在这份清单里：它们的表间外键在
- * `@fenix/resource-workflow/db` 内闭合，宿主任何表都不引用它们。
+ * 任务 1.7 B6 的 Workflow 九张领域表与 B8 的 `agent_instance` 从未出现在这份清单里：B6 九张表的表间外键在
+ * `@fenix/resource-workflow/db` 内闭合，宿主任何表都不引用它们；`agent_instance` 的外键目标是
+ * `environment` 与 `user`，两者都不是宿主表。
  */
 export {
   account,
@@ -38,7 +44,6 @@ export {
 
 import {
   boolean,
-  check,
   index,
   integer,
   jsonb,
@@ -93,80 +98,6 @@ export const shareEventSnapshot = pgTable("share_event_snapshot", {
   events: jsonb("events").notNull(),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });
-
-export const agentInstanceCreationSourceEnum = pgEnum("agent_instance_creation_source", ["user", "api", "workflow"]);
-
-// Environment 持久化表
-export const environment = pgTable(
-  "environment",
-  {
-    id: varchar("id").primaryKey(),
-    name: varchar("name").notNull(),
-    description: text("description"),
-    // 已废弃：不再被读取，实际路径由 rowToRecord 用 resolveWorkspacePath(orgId, userId, envId) 实时计算
-    workspacePath: varchar("workspace_path").notNull(),
-    // UUID 强绑定 AgentConfig
-    agentConfigId: uuid("agent_config_id").references(() => agentConfig.id, { onDelete: "set null" }),
-    status: varchar("status", { length: 50 }).notNull().default("idle"),
-    machineName: varchar("machine_name"),
-    branch: varchar("branch"),
-    gitRepoUrl: varchar("git_repo_url"),
-    workerType: varchar("worker_type", { length: 50 }).notNull().default("acp"),
-    capabilities: jsonb("capabilities"),
-    secret: varchar("secret").notNull(),
-    userId: text("user_id")
-      .notNull()
-      .references(() => user.id, { onDelete: "cascade" }),
-    organizationId: text("organization_id").notNull(),
-    autoStart: boolean("auto_start").notNull().default(true),
-    lastPollAt: timestamp("last_poll_at", { withTimezone: true }),
-    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
-    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
-  },
-  (table) => ({
-    orgUserAgentConfigIdx: uniqueIndex("idx_environment_org_user_agent_config")
-      .on(table.organizationId, table.userId, table.agentConfigId)
-      .where(sql`${table.agentConfigId} is not null`),
-  }),
-);
-
-export const agentInstance = pgTable(
-  "agent_instance",
-  {
-    id: varchar("id", { length: 80 }).primaryKey(),
-    environmentId: varchar("environment_id")
-      .notNull()
-      .references(() => environment.id, { onDelete: "cascade" }),
-    ownerUserId: text("owner_user_id")
-      .notNull()
-      .references(() => user.id, { onDelete: "restrict" }),
-    creationSource: agentInstanceCreationSourceEnum("creation_source").notNull(),
-    name: varchar("name", { length: 100 }).notNull(),
-    isDefault: boolean("is_default").notNull().default(false),
-    createdByUserId: text("created_by_user_id").references(() => user.id, { onDelete: "set null" }),
-    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
-    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
-  },
-  (table) => ({
-    creationKeyIdx: uniqueIndex("idx_agent_instance_creation_key").on(
-      table.environmentId,
-      table.ownerUserId,
-      table.creationSource,
-      table.name,
-    ),
-    defaultOwnerIdx: uniqueIndex("idx_agent_instance_default_owner")
-      .on(table.environmentId, table.ownerUserId)
-      .where(sql`${table.isDefault} = true`),
-    defaultConstraint: check(
-      "agent_instance_default_check",
-      sql`${table.isDefault} = (${table.creationSource} = 'user' AND ${table.name} = 'default')`,
-    ),
-    nameConstraint: check("agent_instance_name_check", sql`char_length(btrim(${table.name})) BETWEEN 1 AND 100`),
-  }),
-);
-
-export type AgentInstance = typeof agentInstance.$inferSelect;
-export type NewAgentInstance = typeof agentInstance.$inferInsert;
 
 export const knowledgeBase = pgTable(
   "knowledge_base",
