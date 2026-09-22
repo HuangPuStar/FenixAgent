@@ -100,8 +100,17 @@ function targetRoot(value: string): NonEmptyTargetRoot {
   return value as NonEmptyTargetRoot;
 }
 
+/**
+ * 尚未补齐 `targetPrefix` 的规则。
+ *
+ * 必须逐成员 `Omit` 后取并集，不能写 `Omit<RootOwnerRule, "targetPrefix">`：后者会把联合
+ * 摊平成单个形状（`owner` 变成全字面量并集、`targetRoot` 变成 `NonEmptyTargetRoot | null`），
+ * `owner` 的判别式随之丢失，`ROOT_OWNER_RULES` 的补齐逻辑就无法把每条规则落回对应成员。
+ */
+type PendingRootOwnerRule = Omit<DeleteRootOwnerRule, "targetPrefix"> | Omit<RelocateRootOwnerRule, "targetPrefix">;
+
 /** 根目录 `src/` 与 `web/` 源码的最终 owner 和迁移任务。 */
-const ROOT_OWNER_RULES_BASE: readonly Omit<RootOwnerRule, "targetPrefix">[] = [
+const ROOT_OWNER_RULES_BASE: readonly PendingRootOwnerRule[] = [
   {
     prefix: "src/.DS_Store",
     owner: "delete",
@@ -902,16 +911,23 @@ const TARGET_PREFIX_OVERRIDES: Readonly<Record<string, string>> = {
     "packages/resources/agent-config/web/components/agent-panel/SiteTabsBar.tsx",
 };
 
-export const ROOT_OWNER_RULES: readonly RootOwnerRule[] = ROOT_OWNER_RULES_BASE.map((rule) => ({
-  ...rule,
-  targetPrefix:
-    TARGET_PREFIX_OVERRIDES[rule.prefix] ??
-    (rule.owner === "delete"
-      ? ""
-      : rule.owner === "apps-web"
+export const ROOT_OWNER_RULES: readonly RootOwnerRule[] = ROOT_OWNER_RULES_BASE.map((rule): RootOwnerRule => {
+  // 必须按 `owner` 分支返回：`{ ...rule, ... }` 会把联合成员摊平成「合并形状」
+  // （`owner` 变成全字面量联合、`targetRoot` 变成 `NonEmptyTargetRoot | null`），
+  // 判别式随之丢失，整条规则无法落回 `RootOwnerRule` 的任一成员。
+  if (rule.owner === "delete") {
+    return { ...rule, targetPrefix: TARGET_PREFIX_OVERRIDES[rule.prefix] ?? "" };
+  }
+
+  return {
+    ...rule,
+    targetPrefix:
+      TARGET_PREFIX_OVERRIDES[rule.prefix] ??
+      (rule.owner === "apps-web"
         ? `apps/web/${rule.prefix.slice("web/".length)}`
         : `${rule.targetRoot}/${rule.prefix}`),
-}));
+  };
+});
 
 /** 返回路径的最长匹配规则；没有归属规则时返回 `undefined`。 */
 export function getMostSpecificRootOwnerRule(path: string): RootOwnerRule | undefined {

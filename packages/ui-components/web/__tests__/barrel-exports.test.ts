@@ -120,6 +120,7 @@ const EXPECTED_EXPORTS: Record<string, readonly string[]> = {
     "ReasoningContent",
     "ReasoningTrigger",
     "SessionModeSelector",
+    "SessionSelectFallbackProvider",
     "Shimmer",
     "SidebarSessionList",
     "SubAgentPanel",

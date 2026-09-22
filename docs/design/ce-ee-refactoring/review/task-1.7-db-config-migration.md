@@ -2108,6 +2108,152 @@ web-app-tests 319 pass / 0 fail。改动只涉及 7 个 `package.json` 与 `bun.
 - `RCS_YJS_SNAPSHOT_*`：§7.32 归入「多模块共享或无唯一 owner」，实际是**单一 owner**——`packages/chat-channel/src/persist/snapshot-config.ts:27-29` 按动态键直读（全仓唯一消费包）。它留在宿主的真实理由是「该包无 manifest（同第二条的结构性阻塞）+ 既定修法是宿主 DI 注入 options」，`CLAUDE.md` 环境变量段已载明这两点，§7.32 的归类应改成同一条结构口径。
 - `RCS_API_KEYS`：生产消费面实际只有 skill 模块（`bootstrap/module-configs.ts:79` 投影 → `packages/resources/skill/src/server/services/skill-download-token.ts`），§7.32 的「多消费面」缺证据（其余命中全是注释与 acp-link 的密钥剥除说明）。但它是宿主**必填**项、由部署面承诺（`env.ts:44` 的校验消息即写明用途），是否迁入 skill 的 `envDefinitions` 属**待裁定**，本块不动。
 
+### 7.35 1.8 第④条证据：migration smoke 与 E2E 冒烟（2026-09-22）
+
+按用户裁定「只测不写代码」：本节**不新增任何产品代码文件**，全部在隔离工作区 `ce-ee/18-gates-build`
+（基 `b9ff2f12c`）与隔离库容器 `ce18-migsmoke-pg`（`127.0.0.1:55432`）上执行，未触碰用户正在编辑的主检出。
+诊断用的临时迁移配置与裁剪目录跑完即删，未进任何提交。
+
+**一、空库 migration smoke**
+
+`bunx drizzle-kit migrate` → 28 条 DDL 全部应用，50 张表；`bun run db/data-migration-runner.ts` → 3 条数据迁移
+finished、`data_migrate_record` 3 行；**重跑全部跳过**（幂等成立、无重复写）。首跑曾以
+`ZodError: RCS_API_KEYS expected string, received undefined` 失败，补 `RCS_API_KEYS` 后通过——该失败本身是
+「入口经过完整 env 校验」的证据，不是缺陷。
+
+**二、升级路径 migration smoke（本轮新增，覆盖 §10.7.1 的「历史升级库」方向）**
+
+无历史库 dump 可用（见下方「未覆盖」），故用**迁移链前缀**构造历史中间态：把 `drizzle/` 复制到临时目录并把
+`meta/_journal.json` 裁剪到 idx 0..13（等价于「部署停留在 idx 13 那个版本」），用临时 config 推进到该中间态，
+再用仓库**真实** `drizzle.config.ts` 补齐剩余 14 条。
+
+| 断言 | 实测 |
+|---|---|
+| 中间态 | 44 张表 / 14 条迁移记录 |
+| 补齐后 | 50 张表 / 28 条迁移记录 |
+| 与空库冒烟库的一致性 | 两库 `public` 表名集合 `diff` **为空**（逐表一致） |
+| 数据迁移在历史行上的转换 | 手工插入 2 条 skill（1 条 `private`、1 条 `public`），各带旧栈 `resource_permission` 的 `principal_type='all', action='read'` 读授权 → 运行后 `private` 那条变 **public**（日志 `backfilled resource visibility type='skill' rows=1`），已 `public` 的那条未被重复写 |
+| 守卫失败路径 | 插入 1 条 `principal_type='organization'`（超出迁移假设）→ runner **exit 1**、报错文本精确到条数与处置要求、**零写入**（历史行仍 `private`、完成记录数不变）；移除该行复跑 → exit 0、只执行 1 条（其余 2 条按记录跳过）、最终记录 3 行 |
+
+**未覆盖（如实登记）**：仓库内除 `drizzle/`（与 `packages/opensandbox-cluster/drizzle/` 这一无关包）外**不存在
+任何 SQL dump / pg_dump 产物**，因此无法复现「真实生产历史库」——上面的历史行是按表结构手工构造的最小形态，
+不覆盖旧版本应用长期写入的数据形态、数据漂移，以及体量相关的锁与超时行为。要覆盖这一段需要一份脱敏历史库 dump。
+
+**三、E2E 冒烟（源码启动，未走镜像）**
+
+以 `RCS_PORT=3155 DATABASE_URL=postgres://rcs:rcs@127.0.0.1:55432/rcs RCS_API_KEYS=… bun run apps/server/src/main.ts` 启动：
+
+| 检查 | 结果 |
+|---|---|
+| `/health` | 200 `{"status":"ok","commitId":"b9ff2f12c…","version":"0.1.0"}` |
+| 认证链 | 按格式从凭证文件 `data/password.txt` 取 `password:` 行 → `POST /api/auth/sign-in/email` **200 + 会话 cookie** |
+| 已认证读路径 | `GET /web/environments` 200 `{"success":true,"data":[]}`；`GET /api/agents` 200 `{"items":[],"total":0,"page":1,"pageSize":20}`（外部 API 信封） |
+| 未认证拒绝 | `/web/environments`、`/api/agents`、`/api/skills` → 401 `{"error":{"type":"unauthorized",…}}` |
+| 控制台静态 | `/ctrl/` 200 `text/html;charset=utf-8` |
+| SPA 回退 | `/ctrl/agent/home`（深层刷新）200 同上 |
+| 分享短链 | `/view/abc123` → 302 `Location: /ctrl/view/abc123` |
+| 缺失资源不回退 | `/ctrl/assets/<不存在>.js` → **404**（带扩展名不落回 index.html，与 `plugins/static.ts` 口径一致） |
+| 前端生产构建 | `bun run build:web` exit 0（1.91s，`apps/web/dist` 58M） |
+| 优雅关闭 | 收到 SIGTERM 后日志 `Received SIGTERM, shutting down...` + `[SchedulerService] Stopped, cancelled 0 jobs`，进程自行退出（非崩溃） |
+| 日志 | 3 条 WARN 行（RagFlow 不可达；未设 `RCS_BASE_URL`/`BETTER_AUTH_URL` 时 better-auth 的 baseURL 提示；org 上下文回落到首个组织）+ 2 条 ERROR 行——**均为刻意制造的失败登录**（先用整份凭证文件当口令登录两次），无其它异常 |
+
+**四、本轮冒烟暴露的既有缺陷（两条，非本批引入，按裁定只登记不改代码）**
+
+1. **OpenAPI spec 端点 500**（`/docs/openapi/external/json` 与 `/docs/openapi/web/json`）：报
+   `undefined is not an object (evaluating 'hooks.detail.tags')`。根因是 `@elysiajs/openapi` 的 `exclude.tags`
+   分支（`node_modules/@elysiajs/openapi/dist/index.mjs:3118`）直接读 `hooks.detail.tags`，而 app 的 315 条路由里
+   有 4 条无 `detail`：`OPTIONS /`、`OPTIONS /*`、`GET /health`（`main.ts:94`）、`POST /hooks/:publicHash`。
+   **判据**：`git diff main:src/openapi.ts apps/server/src/openapi.ts` 为空（配置逐字相同），
+   `git show main:src/index.ts` 的 `.get("/health", …)` 与 `git show main:src/routes/hooks.ts` 的
+   `app.post("/hooks/:publicHash", …)` 同样无 `detail` → 主干上同样 500。**影响**：`/docs/openapi/external`
+   的 HTML 页可打开，但它加载的 spec 是 500，OpenAPI 文档面实际不可用（不影响业务接口本身）。登记 §8.1 第 17 条。
+2. **未匹配路径返回 200 空 body，掩盖 404**：`plugins/auth.ts:332` 的 better-auth 通用入口 `.all("/*")` 兜住所有
+   未被真实路由匹配的路径，better-auth 对未知路径返回空 → 客户端收到 `200` + `Content-Length: 0`（实测 `/nope`、
+   `/api/agents/x/instances/connect`、`/web/control` 全为 200 空）。真实路由仍优先匹配（故上表的 401 / 静态 / SPA
+   行为不受影响），但**拼错的 API 路径不会被判为 404**，排查时容易误读成「接口存在但无内容」。
+   `main:src/plugins/auth.ts:327` 同样存在该 catch-all → 非本批引入。登记 §8.1 第 18 条。
+
+### 7.36 1.8 第④⑤条的末次读数：两条构建断链与三项门禁/构建（2026-09-22）
+
+#### 一、两条构建断链（第⑤条）
+
+两条断链都只在实际构建镜像时才暴露，源码模式与 `bun test` 都不会碰到。
+
+1. **镜像 build 阶段缺 `apps/generated`**：该目录是受版本控制的装配产物，`apps/web/src/shell/shell-navigation.ts` 与
+   `apps/server/src/bootstrap*.ts` 静态 import 它，缺了整个 build 阶段解析失败。**判据**（在 `/tmp/copycheck/repo` 逐条
+   复刻 build 阶段 COPY 集后实测）：缺 `apps/generated` 时 `bun run build:web` 报
+   `[UNRESOLVED_IMPORT] Could not resolve '../../../generated/web-contributions'`、
+   `bun build apps/server/src/main.ts` 报 `Cannot resolve "../../generated/module-registry"`（两条 exit 1）；补上后
+   `✓ built in 1.76s` 与 `index.js 10.0 MB`（两条 exit 0）。修复 = `Dockerfile` 的 build 阶段补
+   `COPY apps/generated ./apps/generated`（含一行说明为何是构建必需）。这不是唯一的 COPY 遗漏点被漏掉的那一个：
+   同批复测 `bun build db/data-migration-runner.ts`（data-migrate-build 阶段）与 `scripts/migrate.ts` 在无该目录时
+   均成功（383 modules / 只依赖 drizzle-orm 与 pg），故只此一处需要补。
+2. **装配 profile 的路径解析**：`apps/server/src/assembly-config.ts` 原先按相对 cwd 的路径推导，而镜像内 bundle 的
+   `import.meta.dir` 是 `/app/dist`，三级上跳落到容器根 → 找不到 `deploy/assembly/ce.json`。修复 = 新增单一解析基准
+   `RCS_APPLICATION_ROOT ?? resolve(import.meta.dir, "../../..")`（`assembly-config.ts:18`），并让 `Dockerfile` 的
+   runtime 阶段补 `COPY deploy/assembly ./deploy/assembly`（落到 `/app/deploy/assembly/ce.json`；镜像已在
+   `Dockerfile:67` 设 `ENV RCS_APPLICATION_ROOT=/app`）。**`RCS_APPLICATION_ROOT` 是已声明的合法键**，非「未声明的
+   env 直读」：`apps/server/src/env.ts:59` 声明并带 `isAbsolute` refine，`plugins/static.ts:17` 同口径读它——本次
+   只是让第二处读点对齐既有规则，且**不设候选回退链**（源码模式从模块位置推导、打包部署读同一绝对根）。
+
+| 实证 | 读数 |
+|---|---|
+| `docker build --target build -t fenix-check:build .` | **exit 0**（`#15 COPY apps/generated`、`#17 RUN bun run build:web` → `✓ built in 2.96s`、`#18 Bundled 2840 modules`） |
+| `docker build --target runtime -t fenix-check:runtime .` | **exit 0** |
+| `docker run --rm --entrypoint ls fenix-check:runtime -l /app/deploy/assembly/ce.json` | **470 字节存在** |
+| `docker run -d -e RCS_API_KEYS=probe fenix-check:runtime` | 日志出现 `SchedulerService Registered executor`（模块装配已推进）；`grep -c ENOENT` = **0**；仅停在无 postgres 的 `ECONNREFUSED`（环境预期） |
+| 反向对照（复刻 runtime 的同一 COPY 行、只去掉 profile） | `ENOENT: no such file or directory, open '/app/deploy/assembly/ce.json'`，exit 1 |
+| `bunx tsc --noEmit -p tsconfig.json` | 干净 |
+| `bun test apps/server/src/__tests__/{assembly-env,module-assembly,bootstrap}.test.ts` | 19 pass / 0 fail |
+| `bun test scripts/__tests__/app-entry-paths.test.ts` / `bunx biome check apps/server/src/assembly-config.ts` | 通过 / 无问题 |
+
+**未覆盖面**：完整生产栈启动（无可用 postgres 与模型网关）未验证——上表只能证明「profile 已加载、装配已推进、
+失败点前移到 DB 连接」，不能证明服务可对外服务。
+
+#### 二、三项门禁 / 构建的末次读数（第④条）
+
+| 命令 | 末次读数 |
+|---|---|
+| `env -u ANTHROPIC_MODEL bun run precheck` | **15 步全绿**（rebase 后同树两次：84390ms / 88542ms；rebase 前一次 85988ms）。分步：`server-and-script-tests` 808 pass / 0 fail；`package-tests` 8006 pass / 2 skip / 0 fail（641 files）；`web-app-tests` 319 pass / 0 fail |
+| `bun run build:web` | `✓ built in 1.62s` |
+| `bun run docs:build` | `build complete in 10.46s` |
+
+**一次未复现的失败（据实记录）**：rebase 到 `refactor/arch` 后的首次 `precheck` 报 `✗ Some steps failed`，但那次输出仅
+保留了末尾 12 行、**未捕获失败步骤名与失败用例**；随后在同一棵树上**连续两次 15 步全绿**（84390ms / 88542ms，逐项
+读数与上表一致）。故登记为一次**未定位、未复现**的失败：不据此判断本批改动质量，也不掩盖它——若后续再遇，应在
+失败当下保留完整输出（含 `✗` 步骤名与 `(fail)` 用例）再定论。
+
+**文档写作约束（本次踩到，供后续维护者）**：VitePress 会把**行内代码里的 Vue 插值语法**当模板求值——本次在
+§8.6.1 第 8 条写出该语法后 `docs:build` 报 `Cannot read properties of undefined (reading 'KEY')`，去掉包裹即恢复。
+引用工作流的 secrets 时应写成 `secrets.KEY` 这种不带花括号的形式。
+
+#### 三、两次环境态修复（非代码改动，据实记录）
+
+末态 precheck 的两次红灯都不是本批代码引入，修复也都不在版本控制内，但**不记录就会让后来者误判**：
+
+1. **本 worktree 的根 `node_modules/@fenix/ui-components` 软链缺失** → `prod-view-package-contract.test.ts:327`
+   报 23 条「目标包 package.json 未找到」。根因是安装态改用**按消费者就近链接**（`apps/web/node_modules` 与
+   `packages/resources/prod-view/node_modules` 各有链），而该测试的 `declaredExportKeys`（`:162`）硬编码读
+   `join(REPO_ROOT, "node_modules", pkg, "package.json")`。判据：`ls node_modules/@fenix/` 31 项 vs lock 里 35 个
+   `@fenix/*` 名，差集 = `ui-components` / `web-app` / `server-app` / `opensandbox-cluster`（四者都不是根
+   `package.json` 的直接依赖）；**主检出同样缺**，`bun install` 报 `no changes` 不补链。本地点链
+   （`ln -sfn ../../packages/ui-components node_modules/@fenix/ui-components`）后该测试 14 pass / 0 fail。
+   **归属判定**：与本批无关——我的 12 个改动文件不含该测试、该包或该链接，`git diff package.json` 只有两行补充
+   声明（`@fenix/identity` / `@fenix/web-runtime`）。**转后续优化**：该测试对链接布局的假设在 isolated 布局下
+   不成立，建议改为经 consumer 侧解析或 `import.meta.resolve`；按「本轮不写代码」裁定未改。**影响面订正（同日用户
+   反馈）**：用户在其主检出跑全局 `precheck` 全绿，并明确其在修的测试缺陷与本条无关——故本条只作为**本 worktree
+   的安装态记录**，不推定它会影响其它工作区的门禁结果。
+2. **worktree 缺 `.env`**（未跟踪文件不随 worktree 复制）→ `route-contributions.test.ts` 因 `DATABASE_URL` 未设抛
+   `ZodError: expected string, received undefined`。补齐后 9 pass / 0 fail。`.env` 已被 `.gitignore:5` 忽略，不进
+   版本控制。**口径**：worktree 内跑 `precheck` 前必须先自备 `.env`，否则该步必红。
+
+#### 四、一条被否决的读数（防止后续误引）
+
+「默认 skip 的测试 2 处」既未证实也未证伪：`package-tests` 步稳定报 **2 skip**（8008 个用例中），但全仓**一切
+声明式跳过写法零命中**——`.skip(` / `.todo(` / `.skipIf(` / 选项式 `skip:` / `xit|xtest|xdescribe` / `.only(` 全部
+无匹配，`--reporter=junit` 也未呈现 skipped 用例。故 §8.6.2 只登记「2 skip 存在、来源未定位」，**不据它推断测试
+质量**。
+
 ## 八、已知缺口与未完成项（逐条登记 owner 与移除条件）
 
 > 依据 `ce-ee-engineering-standards.md` §10.7.4：边界豁免与依赖残留必须逐条登记并写明 owner
@@ -2117,11 +2263,11 @@ web-app-tests 319 pass / 0 fail。改动只涉及 7 个 `package.json` 与 `bun.
 
 | # | 缺口 | owner | 移除条件 |
 |---|---|---|---|
-| 1 | **日志泄露**：13 处调用把 prompt 正文与 Agent 响应**截断后**打入日志（如 `acp-link/src/server.ts` 的 `text: promptText.slice(0, 200)`、`JSON.stringify(result).slice(0, 500)`）。用户裁定不做脱敏，故保留现状 | 1.8（日志规范） | 1.8 第①条落地时按「不记录完整 prompt / 未脱敏响应」收敛 |
-| 2 | 根 `scripts/` 不在 tsconfig 的 `include` 内，`tsc --noEmit` 不检查它们（本批已把新增的 `db/` 纳入 globs 与 include） | 1.8（测试入口与 CI 扫描新目录） | 1.8 第②条落地时把 `scripts/` 纳入静态检查或给出等效门禁 |
-| 3 | `scripts/root-source-owner-rules.ts:29` 的说明文本「apps/server data-migrate 启动迁移编排」已随 A4 过期；改动它会改变生成的 `docs/arch/root-source-owner-inventory.md` 并影响清单门禁 | 1.8（文档全量更新） | 与规则文本同批修改并重新生成清单 |
+| 1 | **日志泄露**：13 处调用把 prompt 正文与 Agent 响应**截断后**打入日志（如 `acp-link/src/server.ts` 的 `text: promptText.slice(0, 200)`、`JSON.stringify(result).slice(0, 500)`）。用户裁定不做脱敏，故保留现状 | 后续优化（未排期） | 裁定与移除条件已同步到 `ce-ee-engineering-standards.md` §7：那 13 处改为不落完整 prompt / 未脱敏响应（可改记长度、摘要或结构化标记）即达标 |
+| 2 | ~~根 `scripts/` 不在 tsconfig 的 `include` 内，`tsc --noEmit` 不检查它们（本批已把新增的 `db/` 纳入 globs 与 include）~~ **已闭环（1.8 第②条，2026-09-22）**：根 `tsconfig.json` 的 `include` 加入 `scripts/**/*.ts`（与原有 `apps/server/src/**/*.ts` / `db/**/*.ts` 并列），precheck 的 `tsc --noEmit` 步骤与 CI 的 `Typecheck (backend)` 因此自动覆盖 `scripts/`——两者本就走同一入口，无需新增步骤。纳入即暴露 **10 条**既有类型错误并同批修掉：`check-dependency-boundaries.ts` 5 条（`Awaited<ReturnType<typeof readdir>>` 落到 `Dirent<NonSharedBuffer>` 重载，改显式 `Dirent<string>[]`）、`migrate-workspace-layout.ts` 3 条（`const idx` 与 `p.subarray` 形成循环推断 TS7022；`Record<string, unknown>` 不能作 sqlite 绑定参数，改 `SqliteRow` 别名）、`check-architecture.ts` 1 条（内联规则缺 `id`，会让该规则下的台账条目不参与「已失效」判定）、`root-source-owner-rules.ts` 1 条（`Omit<RootOwnerRule, "targetPrefix">` 把联合摊平成单形状导致判别式丢失，改逐成员 `Omit` 取并集）。全部为类型面修正、零行为变化，复跑证据：`tsc --noEmit` 0 错误、`architecture:check` 10 rules / 5 条已登记例外、`check:root-owner-inventory` unowned=0 ambiguous=0、`check:dependencies` 2287 modules / 0 条新增违规、`bun test scripts/__tests__/` 113 pass；另做变异实验（在 `scripts/` 放一条断言错误）确认新 include 真的生效。**口径例外（本轮不纳入）**：`exclude` 同时加了 `scripts/__tests__/`——该目录纳入前另有 **4 条**既有类型错误（`root-source-owner-inventory.test.ts` 2 条：`getRootOwnerTargetPath()` 返回 `string \| null` 未收窄、`findUnsafeDeleteDiagnostics(assignments)` 传的是 `{file, rule}` 缺 `targetPath` / `consumers` / `testOwner`；`module-registry-generator.test.ts` 1 条：`toEqual` 实参 `string[]` 与 `ModuleKind` 字面量联合不匹配；`rmd-06-migration.test.ts` 1 条：`currentTarget !== rmd06Target` 两侧字面量类型被 TS 判为无重叠），逐条修复要改测试断言与 fixture 形状或放宽生产函数签名，按本次口径不动测试文件；该目录仍由 `bun test scripts/__tests__/`（precheck 与 CI 的 `server, script, and platform SDK tests` 步骤）运行时覆盖 | 已交付 | 移除条件：上述 4 条测试侧错误修复后删掉 `tsconfig.json` 的 `exclude` 里 `scripts/__tests__` 条目，`scripts/**/*.ts` 即可整体纳入（该移除条件已同步写在 `tsconfig.json` 的 `include` 注释里） |
+| 3 | `scripts/root-source-owner-rules.ts:29` 的说明文本「apps/server data-migrate 启动迁移编排」已随 A4 过期；改动它会改变生成的 `docs/arch/root-source-owner-inventory.md` 并影响清单门禁 | 后续优化（未排期） | 与规则文本同批修改并重新生成清单 |
 | 4 | `claude-code-runtime.ts:72` 的 `spawn("acp-link", [])` 指向不存在的可执行名（全仓无 `bin`、无全局安装；sandbox 镜像把 acp-link 当**库** bundle 进 `acp-runtime.js`）。收窄前后同样无法解析，**非本批引入** | 接入时 | 改为按 workspace 解析入口 |
-| 5 | `drizzle.config.ts` 与 `apps/server/src/db/index.ts:7` 仍有本地回退连接串（含默认口令）；本批只清了两个生产入口 | 1.8（无密钥 env 模板 / preflight） | 改为必填 + 提供无密钥 env 模板后删除回退 |
+| 5 | `drizzle.config.ts` 与 `apps/server/src/db/index.ts:7` 仍有本地回退连接串（含默认口令）；本批只清了两个生产入口 | 后续优化（未排期） | 改为必填 + 提供无密钥 env 模板后删除回退 |
 | 6 | 数据迁移自身无锁/租约：release job 并行重试时两个进程可并发（完成记录表使其**大体**幂等，但 skill 文件复制不是） | §6.3 claim 状态机 | 实现 claim 状态机（§8.2） |
 | 7 | 工作流节点不再继承宿主环境变量（§10.6.3 的既定方向）。依赖宿主变量的既有工作流会失效 | 已交付的行为变化 | 补偿通道：节点 `env` / `secrets` 字段显式声明 |
 | 8 | `EnvDefinition` 的 `secret` / `restartRequired` 无任何消费者 | C 块 | 见 §8.4 |
@@ -2130,23 +2276,36 @@ web-app-tests 319 pass / 0 fail。改动只涉及 7 个 `package.json` 与 `bun.
 | 11 | ~~**`model-management` 没有 source-migration 契约测试**（machine / mcp / sandbox / agent-config / workflow / task 六个包均有），因此 §4.7.1 ③ 的「残留数 > 0」正向控制在 B3 无从收缩，该包与宿主的边界在测试层无人守护（只靠 `apps-boundary` 台账 + `check:dependencies`）~~ **已闭环（§7.26，2026-09-22）**：补 `src/__tests__/model-management-source-migration.test.ts`（10 用例），断言为零容忍「包内不存在宿主 `@server` 导入」+ 宿主别名 / 穿透相对路径 / 跨包 `db` 出口，正向控制改用 `@fenix/platform-sdk`、包内相对导入与本包 `db` 出口自我引用三条必然存在的说明符 | 已交付 | 变异实验已验证判别力：注入一条 `import { db } from "@server/db"` 即让该用例单独转红，删除后复绿 |
 
 | 12 | ~~**`observer` 的 `drizzle-orm` 声明在本批后成为未使用依赖**：B7 删掉该包唯一的 DB 句柄与仓储后，全包 `src/**`、`web/**` 再无 `drizzle-orm` 导入（仅一处浏览器面测试的注释提到它）。删除声明需要跑 `bun install` 更新 `bun.lock`，本批不动锁文件~~ **已闭环（B 块收尾（4），2026-09-22）**：按移除条件做了整仓未使用依赖扫描，共删 **9 条声明 / 7 个包**（`observer` 的 `drizzle-orm`；`agent-runtime` 的 `@fenix/resource-{knowledge,machine,memory,skill}`；`access-control` 的 `@fenix/logger`；三个插件包的 `@fenix/core`；`agent-config` 的 `@fenix/orchestration`），`bun install` 同批更新锁文件。**判据不能只看 import**：`access-control` 的 `@fenix/identity` 零 import，但被模块注册表的 `dependsOn: ["identity"]`（装配契约）要求声明，首轮按 import 扫描删除后被 `module-registry` 步骤拦下（`assertDependsOnDeclared`）并回退；`ui-components` 的 `@tailwindcss/typography` 只经 CSS `@plugin` 指令使用，静态扫描同样看不到 | 已交付 | 已交付，见 §7.29 |
-| 13 | **文档路径过期（本批扫描暴露，非本批引入）**：`docs/need-to-change/*` 的大量实现路径（`src/routes/**`、`src/services/**`、`src/repositories/**`）仍按阶段 1 之前的宿主布局书写，行号同样失效（§7.27 只补了路径口径说明与被迁表的 4 处注记）；`FUNCTIONAL_MODULE_INVENTORY.md` 多处仍指向 `packages/resources/identity-admin/**`（该包已随任务 1.2 删除）。同族第 3 条（`scripts/root-source-owner-rules.ts` 的说明文本）已单列 | 1.8（文档全量更新） | 逐篇按当前布局订正路径，或为该类文档加统一的口径声明并停止在正文承载体现在代码里的行号 |
-| 14 | **包级 tsconfig 不在任何门禁内（§7.28 顺带发现，非本批引入）**：`precheck` 的 tsc 步骤只跑 server / web / app skeletons，`tsc -p packages/<pkg>/tsconfig.json` 无人执行。`agent-runtime` 实测：`tsconfig.json` 的 `baseUrl` 已弃用（TS5101，整体失败），`--ignoreDeprecations 6.0` 后仍有 26 条既有错误（`res.json()` 类型为 `unknown`、`InstanceSupplement` 断言不重叠、`web/yjs/yjs-ws.ts` 缺 DOM lib、`chat-channel-bootstrap.test.ts` 找不到 `../transport/ws-types`）。与第 2 条（根 `scripts/` 不在 `include` 内）同族 | 1.8（测试入口与 CI 目录扫描） | 把各包 tsconfig 纳入静态检查，或明确登记「只检查三张宿主 tsconfig」为接受的口径；并入第 2 条同批处理 |
+| 13 | **文档路径过期（本批扫描暴露，非本批引入）**：`docs/need-to-change/*` 的大量实现路径（`src/routes/**`、`src/services/**`、`src/repositories/**`）仍按阶段 1 之前的宿主布局书写，行号同样失效（§7.27 只补了路径口径说明与被迁表的 4 处注记）；`FUNCTIONAL_MODULE_INVENTORY.md` 多处仍指向 `packages/resources/identity-admin/**`（该包已随任务 1.2 删除）。同族第 3 条（`scripts/root-source-owner-rules.ts` 的说明文本）已单列 | 后续优化（未排期） | 逐篇按当前布局订正路径，或为该类文档加统一的口径声明并停止在正文承载体现在代码里的行号 |
+| 14 | ~~**包级 tsconfig 不在任何门禁内（§7.28 顺带发现，非本批引入）**：`precheck` 的 tsc 步骤只跑 server / web / app skeletons，`tsc -p packages/<pkg>/tsconfig.json` 无人执行。`agent-runtime` 实测：`tsconfig.json` 的 `baseUrl` 已弃用（TS5101，整体失败），`--ignoreDeprecations 6.0` 后仍有 26 条既有错误（`res.json()` 类型为 `unknown`、`InstanceSupplement` 断言不重叠、`web/yjs/yjs-ws.ts` 缺 DOM lib、`chat-channel-bootstrap.test.ts` 找不到 `../transport/ws-types`）。与第 2 条（根 `scripts/` 不在 `include` 内）同族~~ **已闭环（1.8 第②条，2026-09-22，口径裁定：接受「只检查三张宿主 tsconfig」，本轮不改代码）**：`packages/` 下共 **21 张** tsconfig（`packages/*` 与 `packages/*/*`），逐张实测 `tsc --noEmit -p <pkg>/tsconfig.json --ignoreDeprecations 6.0` 合计 **188 条**既有错误：plugin-opencode **62**、workflow-engine **30**、agent-runtime **26**（原文 26 条属实：`baseUrl` 弃用的 TS5101 会让整次运行只报 1 条，加 `--ignoreDeprecations 6.0` 后才见全量）、chat-channel **22**、core **11**、acp-link **10**、remote-runtime **8**、resources/agent-config **8**、plugin-ccb **5**、plugin-claude-code **2**、resources/memory **2**、acp-runtime-cli **1**、ui-components **1**，其余 8 张（logger / model-gateway-litellm / model-gateway-sdk / opensandbox-cluster / orchestration / plugin-sdk / sandbox-provider / web-runtime）为 **0**。错误性质分两类，都不是可批量机械修复的代码债：其一**绝大多数落在 `__tests__/` 与 `integration/`**（测试 fixture 与领域类型长期漂移，如 `'workspace' does not exist on type 'AgentLaunchSpec'`、`NormalizedEvent` 上的 `taskId`——`bun test` 不做类型检查所以一直潜伏）；其二**是 tsconfig 自身口径问题**：`tsconfig.base.json` 声明 `declaration: true` 却未配 `rootDir`，跨包源码经 `paths` 拉入即报 TS6059（acp-link 8 条、remote-runtime 8 条全属此类），agent-runtime 的 `web/**` 缺 DOM lib。**裁定**：本次不把包级 tsconfig 纳入门禁，接受的口径 = **只检查三张宿主 tsconfig**（根 `tsconfig.json`〔含 `apps/server/src`、`db/`、`scripts/`〕、`apps/server/tsconfig.json`、`apps/web/tsconfig.json`）——包级入口要么覆盖不到（多数包没有 tsconfig），要么按现有配置运行会先报配置伪影；把 188 条按包订正等于每包一个独立任务，超出 1.8 第②条的范围。第 2 条（`scripts/` 纳入静态检查）已按本条同批闭环 | 口径裁定，见左列 | 移除条件：若要改成强制包级检查，需先按包订正（a）各包 tsconfig 的 `rootDir` / `lib` / 是否 `declaration`，与（b）测试 fixture 相对领域类型的漂移，再统一接入 precheck 与 CI；在此之前「只检查三张宿主 tsconfig」是显式接受的口径，不是遗漏 |
 
 | 15 | **`YJS_MAX_CLIENTS` 声明后引入启动期收紧（C 块，本批引入）**：该键原先只在 `chat-channel-bootstrap.ts` 以 `parseInt(process.env.YJS_MAX_CLIENTS, 10)` 兜底到 200 的方式直读——非法值静默回落到 200、负值被原样接受。迁入 `agent-runtime` 的 `envDefinitions` 后改由 `loadServerEnv()` 在启动期按 schema 校验，非法值将**拒绝启动**。这是「不留已知缺陷」的应然方向，但属可观测的行为变化，故登记 | C 块 | 与 C1「`YJS_MAX_CLIENTS` 改为经 options 注入」同批落盘；若部署侧确需兼容旧输入，应在模块 schema 内用 `z.preprocess` 归一而不是放宽校验。**已闭环（§7.33，2026-09-22）**：`chat-channel-bootstrap.ts` 改经 `AgentRuntimeModuleConfig.yjsMaxClients` 取数，启动期 schema 收紧随之生效 |
 
 | 16 | ~~**4 个宿主 env 键零消费者（C 块交付后独立复核发现，非本批引入）**：`RCS_POLL_TIMEOUT` / `RCS_HEARTBEAT_INTERVAL` / `RCS_WS_IDLE_TIMEOUT` / `RCS_DISCONNECT_TIMEOUT` 在全仓只有 `env.ts:64-66,68` 的声明与 `config.ts:57,58,63,71` 的投影赋值，`AppConfig` 的四个同名字段**零读取点**（已排除整体序列化 / 前端经 API 取用两条路径）。`RCS_WS_IDLE_TIMEOUT` 尤甚：`config.ts` 注释写明它须「高于 `wsKeepaliveInterval * 3` 才能在 Bun 关闭连接前判死」，但 `main.ts` 的 `Bun.serve` 只设了 `maxPayloadLength`、**从未传 `idleTimeout`**——部署侧改这个键不生效~~ **已闭环（§7.34 四，2026-09-22）**：按用户裁定「本任务内删除」落盘——删 4 个 env 键 + 4 个 `AppConfig` 字段（`AppConfig` 为 `ReturnType<typeof buildConfig>`，删字段即删类型面），并在 `env.ts` / `config.ts` 的维护者注释写明删除原因与重建条件；`.env.example` 与 `docker/**` 未列这 4 键、无需同步。宿主末态 **40 → 36 键** | 已交付 | 已交付，见 §7.34 四；验证：`tsc --noEmit` 0 错误、宿主 641 pass / 0 fail、完整 `precheck` 全绿 |
 
+| 17 | **`/docs/openapi/{external,web}/json` 返回 500（本批 E2E 冒烟暴露，非本批引入）**：`@elysiajs/openapi` 的 `exclude.tags` 分支直接读 `hooks.detail.tags`，而 `OPTIONS /`、`OPTIONS /*`、`GET /health`（`main.ts:94`）、`POST /hooks/:publicHash` 四条路由无 `detail` → spec 生成抛错。主干同形（`git diff main:src/openapi.ts` 为空，且两条路由在 main 上同样无 `detail`）。影响面是 OpenAPI 文档页加载不出 spec，不影响业务接口 | 后续优化（未排期） | 给 `GET /health` 与 `POST /hooks/:publicHash` 补 `detail`（或把这两条并入 `DOC_EXCLUDED_PATHS`），使 spec 生成不再命中该分支；两条均为机械改动，但按「本轮不写代码」裁定未做 |
+| 18 | **未匹配路径被 better-auth catch-all 兜成 200 空 body（本批 E2E 冒烟暴露，非本批引入）**：`plugins/auth.ts:332` 的 `.all("/*")` 兜住所有未被真实路由匹配的路径，未知路径返回 `200` + `Content-Length: 0`，拼错的 API 路径不会被判为 404（`main:src/plugins/auth.ts:327` 同样如此）。真实路由仍优先匹配，不影响既有接口行为 | 后续优化 | 让 catch-all 只匹配 `/api/auth/*`（或在它之前对 `/api/*`、`/web/*` 前缀做 404 短路）；改动会触及认证入口匹配范围，须与 better-auth 路由表一并核对后再做 |
+
 ### 8.2 1.7 未完成条目（本档位不做）
 
-migration smoke（空库 + 真实历史升级库）、`deploy-preflight`、readiness、SBOM / 备份 / 回滚与
-不可逆补偿、`deploy/compose/` 与镜像构建整理、无密钥 env 模板、关键 E2E；数据迁移的
-`dependsOn` 声明与拓扑排序、`verify`、`compensation`、迁移指标、claim 状态机。
+**已交付（2026-09-22，证据见 §7.35）**：migration smoke 的空库部分，以及「迁移链前缀构造的历史中间态 →
+补齐剩余迁移 → 数据迁移在历史行上的转换与守卫失败路径」的升级冒烟；源码启动的关键 E2E（认证链、
+未认证拒绝、控制台静态与 SPA 回退、分享短链、优雅关闭）。
 
-### 8.3 1.8 范围（全部登记）
+**仍未做（登记）**：真实历史生产库的升级（仓库内无 dump，§7.35 二已说明不可复现）、镜像内启动的 E2E
+（`deploy/compose/` 与镜像构建整理、`deploy-preflight`、readiness）、SBOM / 备份 / 回滚与不可逆补偿、
+无密钥 env 模板；数据迁移的 `dependsOn` 声明与拓扑排序、`verify`、`compensation`、迁移指标、claim 状态机
+（见 §8.1 第 6 条）。
 
-日志与 ALS 规范、测试迁移与 CI 目录扫描、架构 / 开发 / 运维 / README / ADR 全量更新与过期说明
-移除、最终证据（含 `precheck` / `build:web` / `docs:build` 与 migration / E2E 检查）。
+### 8.3 1.8 范围与末态处置（2026-09-22）
+
+| 条 | 内容 | 处置 |
+|---|---|---|
+| ① | 日志与 ALS 规范 | **不做，登记为后续优化**（用户裁定）：`ce-ee-engineering-standards.md` §7 已写明「完整 prompt / 未脱敏外部响应」一项尚未达标、13 处调用清单与移除条件，并声明该红线对新增代码立即生效；审计 / 指标 / tracing 不预设跨版本端口 |
+| ② | 测试迁移与 CI 目录扫描 | **已交付**：`scripts/**/*.ts` 纳入根 tsconfig（例外 `scripts/__tests__/`，见 §8.1 第 2 条），CI 补 `check:schema-ddl-drift` 与 `build:web`；包级 tsconfig 按「只检查三张宿主 tsconfig」口径裁定（§8.1 第 14 条） |
+| ③ | 架构 / 开发 / 运维 / README / ADR 全量更新与过期说明移除 | **不做，转后续优化（未排期）**：见 §8.1 第 3、13 条，两行 owner 已从「1.8」改为「后续优化」 |
+| ④ | 最终证据（`precheck` / `build:web` / `docs:build` 与 migration / E2E 检查） | **已交付**：migration 与 E2E 全量见 §7.35；三项门禁/构建的末次读数见 §7.36 |
+| ⑤ | 两条构建断链（镜像缺 `apps/generated`、profile 路径解析） | **已交付**：见 §7.36 |
 
 ### 8.4 B / C 块缺口
 
@@ -2191,3 +2350,44 @@ schema 里符合判据的模块专属键已全部迁出（53 键），宿主余�
   15 条是「门禁修复后被如实暴露出来的既有债务，不属于任何在排任务的范围」。本批不动，按 §10.7.4
   在此登记：**建议在阶段 2 收口时统一排期，或明确写入「接受为长期例外」的理由**，不留在
   「未排期」这一无归属状态。
+
+### 8.6 只登记不修的后续优化台账（2026-09-22）
+
+> 本轮对安全面与工程债做了**只读取证**，未改任何代码（用户裁定：代码方面只做第②⑤两条，其余只登记）。
+> 本节按 `ce-ee-engineering-standards.md` §10.7.4 逐条写明缺陷、触发面、可达性、判据与移除条件，供后续排期。
+> 八条安全项的锚点均落在活代码上，判据命令在末态工作区实测可用。
+
+#### 8.6.1 安全与权限类（8 条）
+
+| # | 缺陷、触发面与判据 | 移除条件 | 置信度 |
+|---|---|---|---|
+| 1 | **知识库跨组织访问检查被硬编码关闭**：`packages/resources/knowledge/src/server/services/knowledge-runtime.ts:24` 的 `const isGlobal = true /* was global KB check */` 使紧随其后的 `if (!isGlobal && kb.organizationId !== organizationId) return null` 永不生效。**触发面**：任意已认证用户把任意 `knowledgeBaseId` 传入 `/web/knowledgeBases/:id/graph*`（`routes/web/knowledge-bases.ts:1199 / 1225 / 1249 / 1275` → 运行时导出函数 `:323 / 349 / 375 / 401`），即可跨组织读该 KB 的知识图谱、在他组织 KB 上触发 `POST graph/generate`、用 `DELETE graph` 删除其图谱数据；不需要与目标 KB 的组织有任何成员关系。**可达**：可达（`ce.json` 的 `resources` / `web` 均含 `knowledge`）。**判据**：`git grep -n "isGlobal" packages/resources/knowledge/src` 只命中 `:24-25` 两行、无其它守卫；`git grep -n "kb.organizationId !== organizationId" packages/resources/knowledge` 只命中同路由文件 `:76` —— 同一守卫存在两份定义（`:69` 那份带真实校验，供其它路由使用），是缺陷的直接证据 | 删除 `isGlobal` 常量，运行时与路由共用一份「`kb.organizationId !== organizationId` 即拒绝」的实现 | 已确认 |
+| 2 | **acp-link 文件操作守卫只剩词法校验，且校验根从 `user/` 放宽到 workspace 根**：`packages/acp-link/src/client/file-operations.ts:65-74` 的 `resolveAndValidate` 只用 ``resolved.startsWith(`${workspace}/`)`` 做字符串前缀判断，不看真实落点。**触发面**：`read` / `read_binary` / `write` / `delete` / `rename` / `mkdir` / `stat` / `list` 全部走此处（`opWrite` 在线 302 行还有 `mkdir(resolve(filePath,".."))`）——workspace 内任一符号链接即可把服务端下发的相对路径重定向到工作区之外，`readFile` 跟随链接后把内容回给调用方；**次生影响**：`9ae111034` 把校验根从 `{workspace}/user` 改为 `{workspace}`，agent 运行时自持的 `.claude/`、`.agents/` 等目录随之从「不可达」变为可读写（`opList` 仅对根级 `.opencode` 做了隐藏）。触发方需通过 `getOwnedEnvironment`（member 角色被拒）且能由自己的 agent 在机器上造出符号链接（文件操作开关本身无创建 symlink 的能力，须 agent 侧 shell / 写权限）。**可达**：可达——远程路径 `file-backends.ts:491 resolveExecutionBackend → RemoteBackend` 只把相对路径发成 `file_op` 帧、**不做** realpath 校验（`file-backends.ts:379+`），机器侧唯一边界就是本函数；同文件 `:329-358`（upload）与 `:534-556`（zip）都显式做 `realpath` + 逐段 `lstat` symlink 拒绝并定义了 `unsafe_symlink` / 503 语义，**只有本守卫是词法-only**。受影响面写成「同机 acp-link 进程可读的文件与其它租户的工作区目录」；其中「跨租户泄露已实际发生」未实证。**判据**：`git show 9ae111034 -- packages/acp-link/src/client/file-operations.ts`（提交信息即「resolveAndValidate 从限定 user/ 改为允许 workspace 根目录下任意路径」，diff 中删除 `USER_DIR` 与 `shouldHideEntry`）；`git grep -n "realpath" packages/acp-link/src/client/file-operations.ts` 只出现于 `assertUploadDestination`（330 / 347）与 `opZip`（537 / 543）。服务端 `agent-file-service.ts:36` 的注释「越界防护由 realpath 承担」只在 LocalBackend 成立 | `resolveAndValidate` 增加与 upload / zip 同规约的 `realpath` 落点校验并逐段拒绝 symlink，或让所有操作统一走已带校验的那条通道 | 已确认（守卫为词法-only、根已放宽、符号链接可由 agent 创建三件事均可由代码与提交证明；「共享机器上具体哪个受害文件」未实证） |
+| 3 | **本地打包下载：`zip -r` 未限制符号链接与排除项**：`packages/resources/machine/src/server/services/file-backends.ts:338-345` 的 `spawn("zip", ["-r","-q","-","."], { cwd: resolved.resolved })` 只对**目标目录本身**做了 realpath 落点校验（经 `workspace-fs.ts:208-245` + `isRealPathInside`），对目录**内部条目**没有任何 symlink 检查、也不套用 `WORKSPACE_BLACKLIST`（该黑名单只作用于 `list` / `tree`，见 `workspace-fs.ts:306 shouldHidePath`）；`zip` 未加 `-y`，即未声明「只存链接、不跟随」。**触发面**：文件 API 的下载用户（权限门槛同第 2 条），环境解析到本机 LocalBackend 时命中；受影响数据是**宿主进程**自身可读的文件（工作区外的租户目录、部署 `.env` 等），比第 2 条更靠近服务端。**可达**：可达但取决于执行后端——`resolveExecutionBackend`（`:491`）在「`agentConfig.machineId` / `RCS_DEFAULT_MACHINE_ID` 均未解析出机器」时用 LocalBackend，配了远程机器则走 RemoteBackend（届时打包在机器侧由 acp-link 的 `opZip` 完成）。**判据**：`git grep -n "realpath" packages/resources/machine/src/server/services/workspace-fs.ts` → `:239-240` 只校验入参路径；`git grep -n "workspace\|shouldHidePath" packages/resources/machine/src/server/services/file-backends.ts` → 命中 `:403-407`（仅 tree 过滤），zip 分支无引用 | 打包前对目录树内的 symlink 逐个拒绝（或让 `zip` 只存链接不跟随并在解包侧拒绝），且下载包同样套用黑名单与排除规则 | **待复核**——代码侧可证的只是「打包前没有任何 symlink 检查与排除」；`zip -r` 默认是否跟随符号链接属外部工具语义，只读侦察无法在本仓取证。复核方式：在测试机对含 symlink 的目录执行 `zip -r - .` 并观察归档条目 |
+| 4 | **meta-agent API Key 明文缓存只按组织分桶**（侦察中原列为两条的第 4、5 条实为同一缺陷的声明点与使用点，此处合并为一条、两处 `file:line` 均记）：`packages/resources/agent-config/src/server/services/meta-agent.ts:102` 的模块级 `const metaApiKeyCache = new Map<string, string>()`（orgId → 明文 key）与 `:399-414` 的 `ensureMetaApiKey` 以 `ctx.organizationId` 为唯一键读写（`:400` 读、`:413` 写，全程无 `userId` 参与）。**两个侧面**：(a) **跨用户复用**——同组织内第二个调用 `POST /web/meta-agent/ensure` 的用户命中前一人写入的缓存，直接拿到**由第一人身份签发**的 API Key 明文（`rotateCallerApiKey` 用其 `headers` 创建，metadata 里带第一人的 `role`），并在响应 `data.apiKey` 中回显（`schemas/meta-agent.schema.ts` 的 `apiKey` 字段）→ 后续用该 key 发起的请求以第一人身份 / 角色被鉴权，低权限者可借高权限者的 key 行事；(b) **明文常驻内存无 TTL / 无淘汰**——`expiresIn: 86400` 的 24h 过期后缓存也不轮换（手里发出去的是一把已死的 key）。**触发面**：任意已认证、有组织上下文的成员（路由只有 `sessionAuth`，无角色限制），一次 POST 即可。**可达**：可达（`ce.json` 的 `web` 含 `agent-config`；`routes/web/meta-agent.ts:38-39` 注入 `deps.rotateCallerApiKey` ← 宿主 `bootstrap/route-host.ts:1,40` ← `@fenix/identity/server`；`ensureMetaEnvironment` 在 `:418-424` 先取 key 再查 / 建环境）。**判据**：`git grep -n "metaApiKeyCache" packages/resources/agent-config/src/server/services/meta-agent.ts` → 仅 `:102` 声明、`:400` 读、`:413` 写；`packages/platform/identity/src/services/caller-api-keys.ts:154-167` 的 `listCallerApiKeys(input.headers)` 只列举 / 删除**调用者自己**的同名 key，证明 key 的身份归属就是 headers 里的那个人 | 缓存键改为 `(organizationId, userId)` 并按 `expiresIn` 设 TTL，或干脆不缓存明文（每次向 identity 换取短期 key，且不在响应体回显明文） | 已确认 |
+| 5 | **成员候选搜索：全站用户 PII 枚举，无组织归属校验**：`packages/platform/identity/src/routes/web/organizations.ts:409-419` 的 `GET /organizations/:id/member-candidates`（选项块 `:420-434` 仅 `sessionAuth: true`）——`keyword` 非空即触发 `searchAvailableOrganizationMemberCandidates`，落到 `repositories/organization-member.ts:71-97` 对 `user` 表**全表**按姓名 / 邮箱 / 手机号 `ilike` 查询并返回 `name` / `email` / `phoneNumber`。**触发面**：任意已认证用户（不需是该组织成员、不需任何角色），`params.id` 可以是自己不属于、甚至不存在的组织 id（它只被用于算 `isMember` 标记，从不参与授权）；单个 GET、逐关键词分页式枚举即可拼出全平台用户库。**可达**：可达（`ce.json` 的 `identity` 为必需项、`web` 含 `identity`；同文件其它成员类路由同样只有 `sessionAuth`）。**判据**：`git grep -n "sessionAuth" packages/platform/identity/src/routes/web/organizations.ts` → 该路由块内无任何角色 / 成员判断；`repositories/organization-member.ts:71-97` 的查询条件只有 `ilike(name / email / phone)`，`from(user)` 无 org join 或过滤 | 入参 `:id` 必须先在认证边界校验调用者是该组织成员并具备邀请权限（owner / admin），且把「全站搜索」收敛为「仅返回可邀请范围内的用户」 | 已确认 |
+| 6 | **`keyHint` 由解析后的真实密钥派生，随 `/web` 响应回显 7 个字符**：`packages/resources/model-management/src/server/config-envelope.ts:36`（注入类型 `SecretReferenceResolver`）与 `:44-51`（`toKeyHint`：`:48` 先 `resolveSecretReference(apiKey)`，`:50` 返回 `` `${realKey.slice(0,4)}***${realKey.slice(-3)}` ``）。**触发面**：对目标 Provider 行有 read 权限的已认证用户——同组织成员列 `GET /web/config/providers` 即批量命中；库中存的是 `{env:NAME}` 引用时，泄露的是**宿主进程环境变量**的 7 个字符。同组织内还有一个完全由普通成员走通的闭环：先 `PUT /web/config/providers?name=x` 写入 `apiKey: "{env:<变量名>}"`，再 GET 读回提示。**可达**：可达（`ce.json` 的 `resources` / `web` 均含 `model-management`；消费点 `provider-views.ts:28,54`（list / detail）与 `provider-handlers.ts:127`（保存回包）；解析器由宿主注入：`assembly.ts:57` ← `route-host.ts:38` ← `services/resource-module-ports.ts:100`）。与第 7 条**同源**（同一 `resolveApiKey` 既作 Provider 凭据、又作提示取值）。**判据**：`git grep -n "toKeyHint" packages/resources/model-management/src` → 三个消费点全部把 `resolveSecretReference` 传入；`config-envelope.ts` 的 `:44-51` 证实提示取自 `realKey` 而非固定掩码 | 提示改回固定掩码，或只暴露「已配置 / 未配置」布尔与引用名，绝不由解析后的明文派生 | 已确认（机制与同组织触发路径）；跨组织触发面为部分确认——未逐行核对 `facade.get/list` 的授权谓词细节 |
+| 7 | **`{env:NAME}` 解引用无白名单，宿主任意环境变量可被当作 Provider 凭据**：`apps/server/src/services/config-utils.ts:19-20`（`/^\{env:(.+)\}$/` + `process.env[envMatch[1]] ?? null`）——文件未迁走、未改名，注释（`:1-14`）明确它是宿主唯一实现，此前同文件的 `/web/config/*` 工具已于任务 1.5c 删除，**只剩这一个导出**。**触发面**：`NAME` 可以是任意字符串（无前缀白名单、无存在性收敛），只要调用方能写下 Provider / MCP 的配置字段，就能让宿主把**任意**进程环境变量的值解引用出来当凭据：`GET /web/config/providers` 泄露其前 4 后 3 位（第 6 条），而 `packages/resources/agent-config/src/server/services/model-resolution.ts:67`（及 `:153`）把**完整值**放进 launchSpec 的 `model.apiKey`，与用户可写的 Provider `baseUrl` 一起下发给机器侧 Agent 进程 → 宿主环境变量（`DATABASE_URL` / `RCS_API_KEYS` / `RCS_SYSTEM_API_KEYS` / `RCS_SECRET_*`）随模型调用被送往调用方可控的地址。**可达**：可达（`pre-launch-ports.ts:71-72` 把 `resolveSecretReference` 作为 `resolveProviderApiKey` 注入 launch spec 组装器；`model-resolution.ts:81` 一并输出 `baseUrl`，`assembler.ts:113` 把该 model 对象放进 launchSpec）。**判据**：`git grep -n "resolveSecretReference" apps/server/src` → 同一函数被 route-host 与 pre-launch-ports 两处共享；`apps/server/src/services/config-utils.ts` 的 `:16-21`；`packages/resources/agent-config/src/__tests__/fixtures.ts:327` 的替身复刻同一语义（只认完整引用、不做名字过滤）互为佐证 | 解引用前强制名字白名单（例如仅允许 `RCS_SECRET_*` 前缀且存在于宿主 env schema 声明的键），拒绝其它键名与非法引用 | 已确认（无白名单 + 解引用后的值进入 Provider 凭据 / launchSpec）；其中「调用方能读回完整明文」为部分确认——该值最终以哪个变量名注入 Agent 进程由引擎侧（peri / opencode，不在本仓）决定；「值被发往用户可控 baseUrl」依赖模型调用的通用语义，本仓只证到 `baseUrl` 与 `apiKey` 同时进 launchSpec |
+| 8 | **workflow `secrets` 声明即宿主任意环境变量读取（无白名单）**：`packages/workflow-engine/src/secrets/secrets-resolver.ts:91` 的 `const value = process.env[key] ?? envFileValues[key]`（函数 `resolve` 位于 `:83-105`）。**触发面**：工作流 YAML 由请求体直接提供（`workflow-engine.ts:52` / `workflow-runs.ts:118` 的 `engine.runAsync(yaml, ...)`），`parser/yaml-parser.ts:107` 对 `secrets:` 数组**原样收下**、不做名字校验 → 任何能提交工作流 YAML 的用户可声明 `secrets: ["DATABASE_URL", "RCS_API_KEYS", ...]`，值随后被注入节点子进程环境（`executor/process-executor.ts:70`、`executor/python-executor.ts:62`）并可在表达式里取用（`secrets.KEY` 形式，见 `expression-parser.ts:393`）→ 经节点输出或任意出网请求把宿主密钥完整读出。**可达**：可达（`ce.json` 的 `resources` / `web` 均含 `workflow`；`workflow-engine.ts:42 resolveYaml(payload, ...)` 直接用请求体里的 `yaml`，定时 / 触发式运行复用同一解析器，见 `workflow-trigger.ts:154`；两条入口路由均只 `sessionAuth` + 组织引擎）。**与 §8.1 第 10 条的交互（非显然取舍）**：§10.6.3 的方向是「节点不再继承宿主环境变量」，而 `secrets` 是显式声明通道——通道本身无白名单，等于把隐式继承换成了按需直读，安全面并未因此变紧；`executor/node-env.ts:10` 的宿主白名单还明确放行 `secrets` 字段。**判据**：`git grep -n "Array.isArray(raw.secrets)" packages/workflow-engine/src/parser/yaml-parser.ts` → `:107` 无过滤；`git grep -n "process.env\[key\]" packages/workflow-engine/src/secrets/secrets-resolver.ts` → `:91`；`git grep -n "ctx.secrets" packages/workflow-engine/src/executor` | `resolve()` 前对声明键做白名单 / 前缀校验（例如只允许 `RCS_SECRET_*` 或组织级 secret 存储），并禁止读取宿主进程环境与工作目录 `.env` | 已确认 |
+
+#### 8.6.2 工程债实测读数（口径与复现命令一并给出）
+
+- **超长文件**（CLAUDE.md 核心工程原则 2：单个文件不得超过 500 行）：**生产源码 49 个**超 500 行。口径 =
+  `find apps packages -type f \( -name '*.ts' -o -name '*.tsx' \) -not -path '*/node_modules/*' -not -path '*/__tests__/*'
+  -not -name '*.test.ts' -not -name '*.test.tsx' -not -name '*.gen.ts'` 经 `xargs wc -l | awk '$1>500'`。最大
+  `packages/acp-link/src/server.ts` **1741**，其后 `resources/knowledge/src/server/services/knowledge-provider/ragflow.ts`
+  1477、`resources/knowledge/src/server/routes/web/knowledge-bases.ts` 1442。若把 `__tests__/` 与同目录 `*.test.ts` 一并
+  计入则为 **82 个**。注意 `acp-link/src/server.ts` 正是 §8.6.1 第 2 条缺陷所在文件——两个读数指向同一处维护热点。
+  **不写死「必须拆」**：拆分属独立重构任务，超出 1.8 范围。
+- **默认被跳过的测试**：`package-tests` 步稳定报 **2 skip**（8008 个用例中），但全仓**一切声明式跳过写法零命中**
+  （`.skip(` / `.todo(` / `.skipIf(` / 选项式 `skip:` / `xit|xtest|xdescribe` / `.only(`），来源未定位——排查过程见
+  §7.36 四。此前台账讨论中的「默认 skip 测试 2 处」因此**既未证实也未证伪**，不据它推断测试质量。
+- **门禁覆盖差集**：precheck = `scripts/ci.ts` 的 **15 步**；CI 相对 precheck 多 `import-sort` 与 `tsc (app skeletons)`
+  两项，实测差集仅此两项、其余步骤一一对应。
+- **类型检查范围的显式例外**：`scripts/__tests__/` 的 4 条既有类型错误（§8.1 第 2 条）；`packages/` 下 21 张包级
+  tsconfig 的 188 条既有错误，口径裁定为「只检查三张宿主 tsconfig」（§8.1 第 14 条）。两项都是**显式接受的口径**，
+  不是遗漏。
+- **边界豁免残留**：`scripts/architecture/exceptions.json` 共 15 条，全部 owner=`未排期`（10 条 `no-circular` +
+  5 条 `undeclared-workspace-dependency`），见 §8.5。
+- **整批未做的部署与旧栈条目**：3 张旧授权栈表仍留在宿主（§8.4 B 块第 1 条）；`deploy/compose/` 与镜像内启动的
+  E2E、`deploy-preflight`、readiness、SBOM / 备份 / 回滚、无密钥 env 模板为整批未做（§8.2）。

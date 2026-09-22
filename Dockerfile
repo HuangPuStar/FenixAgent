@@ -15,6 +15,9 @@ ARG GIT_COMMIT_SHA=unknown
 COPY tsconfig.json tsconfig.base.json ./
 COPY apps/server ./apps/server
 COPY apps/web ./apps/web
+# 装配产物（生成物，受版本控制）：apps/web/src/shell/shell-navigation.ts 与
+# apps/server/src/bootstrap*.ts 静态 import 它们，缺了 browser bundle 与 server bundle 都解析失败。
+COPY apps/generated ./apps/generated
 COPY components.json drizzle.config.ts ./
 RUN bun run build:web
 RUN bun build apps/server/src/main.ts --target=bun --sourcemap=external --outdir dist --entry-naming index.js \
@@ -107,6 +110,9 @@ COPY --from=build /app/apps/web/dist ./apps/web/dist
 COPY --from=migrate-build /tmp/migrate-bundle/migrate.js ./
 COPY --from=data-migrate-build /tmp/data-migrate-bundle/data-migration-runner.js ./
 COPY drizzle ./drizzle
+# 装配 profile：启动时由 assembly-config.ts 按 RCS_APPLICATION_ROOT（本阶段 ENV 已设为 /app）解析
+# /app/deploy/assembly/ce.json，缺失会使 main.ts 的顶层 await resolveAssemblyEnv() 抛 ENOENT 直接退出。
+COPY deploy/assembly ./deploy/assembly
 
 RUN mkdir -p /root/.config/opencode /root/.local/share/opencode /app/data /app/workflow /app/workspaces
 RUN mkdir -p /app/data/skills /app/.agents/agents /app/.agents/skills
