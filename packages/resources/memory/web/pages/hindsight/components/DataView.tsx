@@ -23,12 +23,14 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { hindsightApi } from "../../../api/hindsight";
 import { type HindsightFailure, toHindsightFailure } from "../failure";
+import { recencyEndpoints, recencyHeat } from "../recency";
 import type { GraphApiData, MemoryTableRow } from "../types";
 import { Constellation } from "./Constellation";
 import { convertHindsightGraphData, Graph2D, type GraphNode } from "./Graph2d";
 import { HindsightFailureNotice } from "./HindsightFailureNotice";
 import { MemoryDetailModal } from "./MemoryDetailModal";
 import { MemoryDetailPanel } from "./MemoryDetailPanel";
+import { MemoryPagination } from "./MemoryPagination";
 import { MemoryViewSwitcher } from "./MemoryViewSwitcher";
 import { MemoryVisualizationShell } from "./MemoryVisualizationShell";
 
@@ -251,15 +253,7 @@ export function DataView({
     return { times, minT, maxT };
   }, [data, recencyBasis]);
 
-  const recencyHeatFn = useCallback(
-    (node: GraphNode) => {
-      if (!recencyLookup) return 0.5;
-      const tt = recencyLookup.times.get(node.id);
-      if (tt === undefined) return 0;
-      return (tt - recencyLookup.minT) / (recencyLookup.maxT - recencyLookup.minT);
-    },
-    [recencyLookup],
-  );
+  const recencyHeatFn = useCallback((node: GraphNode) => recencyHeat(recencyLookup, node.id), [recencyLookup]);
 
   const observationNodeSizeFn = useCallback(
     (node: GraphNode) => {
@@ -499,14 +493,7 @@ export function DataView({
                           ? t("dataView.recencyLabel", { basis: RECENCY_BASIS_LABEL[recencyBasis] })
                           : undefined
                       }
-                      heatLegendEndpoints={
-                        recencyLookup
-                          ? [
-                              new Date(recencyLookup.minT).toISOString().slice(0, 10),
-                              new Date(recencyLookup.maxT).toISOString().slice(0, 10),
-                            ]
-                          : undefined
-                      }
+                      heatLegendEndpoints={recencyEndpoints(recencyLookup)}
                     />
                   )
                 }
@@ -655,55 +642,12 @@ export function DataView({
                           </Table>
 
                           {/* 分页 */}
-                          {totalPages > 1 && (
-                            <div className="flex items-center justify-between mt-3 pt-3 border-t">
-                              <div className="text-xs text-muted-foreground">
-                                {startIndex + 1}-{Math.min(endIndex, filteredTableRows.length)} {t("dataView.of")}{" "}
-                                {filteredTableRows.length}
-                              </div>
-                              <div className="flex items-center gap-1">
-                                <Button
-                                  variant="outline"
-                                  size="sm"
-                                  onClick={() => setCurrentPage(1)}
-                                  disabled={currentPage === 1}
-                                  className="h-7 w-7 p-0"
-                                >
-                                  <ChevronsLeft className="h-3 w-3" />
-                                </Button>
-                                <Button
-                                  variant="outline"
-                                  size="sm"
-                                  onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
-                                  disabled={currentPage === 1}
-                                  className="h-7 w-7 p-0"
-                                >
-                                  <ChevronLeft className="h-3 w-3" />
-                                </Button>
-                                <span className="text-xs px-2">
-                                  {currentPage} / {totalPages}
-                                </span>
-                                <Button
-                                  variant="outline"
-                                  size="sm"
-                                  onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
-                                  disabled={currentPage === totalPages}
-                                  className="h-7 w-7 p-0"
-                                >
-                                  <ChevronRight className="h-3 w-3" />
-                                </Button>
-                                <Button
-                                  variant="outline"
-                                  size="sm"
-                                  onClick={() => setCurrentPage(totalPages)}
-                                  disabled={currentPage === totalPages}
-                                  className="h-7 w-7 p-0"
-                                >
-                                  <ChevronsRight className="h-3 w-3" />
-                                </Button>
-                              </div>
-                            </div>
-                          )}
+                          <MemoryPagination
+                            currentPage={currentPage}
+                            totalPages={totalPages}
+                            onPageChange={setCurrentPage}
+                            rangeLabel={`${startIndex + 1}-${Math.min(endIndex, filteredTableRows.length)} ${t("dataView.of")} ${filteredTableRows.length}`}
+                          />
                         </>
                       );
                     })()

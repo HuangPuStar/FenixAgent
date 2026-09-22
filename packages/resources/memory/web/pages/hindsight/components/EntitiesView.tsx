@@ -3,15 +3,17 @@ import { Button } from "@fenix/ui-components/ui/button";
 import { Spinner } from "@fenix/ui-components/ui/spinner";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@fenix/ui-components/ui/table";
 import { NS } from "@fenix/web-runtime/i18n/namespace";
-import { ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight, List, ScatterChart, X } from "lucide-react";
+import { List, ScatterChart, X } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { hindsightApi } from "../../../api/hindsight";
 import { type HindsightFailure, toHindsightFailure } from "../failure";
+import { recencyEndpoints, recencyHeat } from "../recency";
 import type { EntityGraphResponse, EntityItem } from "../types";
 import { Constellation } from "./Constellation";
 import { convertHindsightGraphData, type GraphNode } from "./Graph2d";
 import { HindsightFailureNotice } from "./HindsightFailureNotice";
+import { MemoryPagination } from "./MemoryPagination";
 import { MemoryViewSwitcher } from "./MemoryViewSwitcher";
 
 type ViewMode = "relations" | "list";
@@ -182,15 +184,7 @@ export function EntitiesView() {
     return { times, minT, maxT };
   }, [graphData]);
 
-  const nodeHeatFn = useCallback(
-    (node: GraphNode) => {
-      if (!recencyLookup) return 0.5;
-      const t = recencyLookup.times.get(node.id);
-      if (t === undefined) return 0;
-      return (t - recencyLookup.minT) / (recencyLookup.maxT - recencyLookup.minT);
-    },
-    [recencyLookup],
-  );
+  const nodeHeatFn = useCallback((node: GraphNode) => recencyHeat(recencyLookup, node.id), [recencyLookup]);
 
   const handleConstellationNodeClick = useCallback(
     (node: GraphNode) => {
@@ -239,14 +233,7 @@ export function EntitiesView() {
               nodeSizeFn={nodeSizeFn}
               nodeHeatFn={recencyLookup ? nodeHeatFn : undefined}
               heatLegendLabel={recencyLookup ? t("entitiesView.heatLegendLabel") : undefined}
-              heatLegendEndpoints={
-                recencyLookup
-                  ? [
-                      new Date(recencyLookup.minT).toISOString().slice(0, 10),
-                      new Date(recencyLookup.maxT).toISOString().slice(0, 10),
-                    ]
-                  : undefined
-              }
+              heatLegendEndpoints={recencyEndpoints(recencyLookup)}
               sizeLegendLabel={t("entitiesView.sizeLegendLabel")}
               compactLabels
             />
@@ -308,54 +295,13 @@ export function EntitiesView() {
               </div>
 
               {/* Pagination Controls */}
-              {totalPages > 1 && (
-                <div className="flex items-center justify-between mt-3 pt-3 border-t">
-                  <div className="text-xs text-muted-foreground">
-                    {offset + 1}-{Math.min(offset + ITEMS_PER_PAGE, total)} {t("entitiesView.of")} {total}
-                  </div>
-                  <div className="flex items-center gap-1">
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => handlePageChange(1)}
-                      disabled={currentPage === 1 || loading}
-                      className="h-7 w-7 p-0"
-                    >
-                      <ChevronsLeft className="h-3 w-3" />
-                    </Button>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => handlePageChange(currentPage - 1)}
-                      disabled={currentPage === 1 || loading}
-                      className="h-7 w-7 p-0"
-                    >
-                      <ChevronLeft className="h-3 w-3" />
-                    </Button>
-                    <span className="text-xs px-2">
-                      {currentPage} / {totalPages}
-                    </span>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => handlePageChange(currentPage + 1)}
-                      disabled={currentPage === totalPages || loading}
-                      className="h-7 w-7 p-0"
-                    >
-                      <ChevronRight className="h-3 w-3" />
-                    </Button>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => handlePageChange(totalPages)}
-                      disabled={currentPage === totalPages || loading}
-                      className="h-7 w-7 p-0"
-                    >
-                      <ChevronsRight className="h-3 w-3" />
-                    </Button>
-                  </div>
-                </div>
-              )}
+              <MemoryPagination
+                currentPage={currentPage}
+                totalPages={totalPages}
+                onPageChange={handlePageChange}
+                rangeLabel={`${offset + 1}-${Math.min(offset + ITEMS_PER_PAGE, total)} ${t("entitiesView.of")} ${total}`}
+                disabled={loading}
+              />
             </>
           ) : (
             <EmptyState
