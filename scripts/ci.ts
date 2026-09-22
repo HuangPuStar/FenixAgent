@@ -99,7 +99,7 @@ const STEPS = [
   },
   {
     name: "package-tests",
-    cmd: "bun test packages/ 2>&1",
+    cmd: "bun test packages/ --path-ignore-patterns 'tmp/**' 2>&1",
     filter: filterTestSummary,
   },
   {
