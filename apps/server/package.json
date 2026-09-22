@@ -18,6 +18,7 @@
     "@fenix/logger": "workspace:*",
     "@fenix/model-management": "workspace:*",
     "@fenix/opencode": "workspace:*",
+    "@fenix/peri": "workspace:*",
     "@fenix/plugin-sdk": "workspace:*",
     "@fenix/remote-runtime": "workspace:*",
     "@fenix/resource-channel": "workspace:*",
