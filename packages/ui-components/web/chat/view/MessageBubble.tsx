@@ -1,7 +1,8 @@
-import { ChevronDown, Copy, File, Quote } from "lucide-react";
+import { ChevronDown, Copy, File, Quote, TriangleAlert } from "lucide-react";
 import { type MutableRefObject, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { UI_COMPONENTS_NS } from "../../i18n/namespace";
+import { copyTextToClipboard } from "../../lib/clipboard";
 import { cn } from "../../lib/cn";
 import { Button } from "../../ui/button";
 import { Dialog, DialogContent, DialogTitle } from "../../ui/dialog";
@@ -28,6 +29,8 @@ export type { CardEmitter } from "./internal/card-emitter";
 const COLLAPSED_MAX_HEIGHT = 200;
 // 思考内容流式显示的最大高度（≈4 行）
 const THOUGHT_STREAMING_MAX_HEIGHT = 96;
+/** 复制失败态的停留时间（ms）：够看清一次，又不让按钮长期停在错误态。 */
+const COPY_FAILURE_RESET_MS = 2000;
 const FILE_REFERENCE_PATTERN = /@\.\/[^\s]+/g;
 
 /**
@@ -299,6 +302,29 @@ export function AssistantBubble({
     };
   }, [emitter, internalEmitter, cardEmitterRef]);
 
+  // 复制失败态：按钮自持的瞬时状态（同 `CodeBlockCopyButton` 的成功态口径）。本组件在库层，
+  // 包内不直接调宿主 toast（§5.8），失败只能由组件自己给出可见反馈。
+  const [copyFailed, setCopyFailed] = useState(false);
+  const copyFailureTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(
+    () => () => {
+      if (copyFailureTimerRef.current) clearTimeout(copyFailureTimerRef.current);
+    },
+    [],
+  );
+
+  const handleCopy = async () => {
+    // 写入与「API 缺失 / 被拒」的判定收进 `lib/clipboard`（回传 false 而不抛错）。
+    if (await copyTextToClipboard(visibleText)) return;
+    setCopyFailed(true);
+    if (copyFailureTimerRef.current) clearTimeout(copyFailureTimerRef.current);
+    copyFailureTimerRef.current = setTimeout(() => setCopyFailed(false), COPY_FAILURE_RESET_MS);
+  };
+
+  const copyLabel = copyFailed
+    ? t("chat.components.messageBubble.copyFailed")
+    : t("chat.components.messageBubble.copy");
+
   return (
     <div className="group/assistant relative min-w-0">
       {/* 内容 — 无卡片背景，直接排版；system-reminder 块渲染为系统消息而非隐藏 */}
@@ -343,12 +369,12 @@ export function AssistantBubble({
         <div className={MESSAGE_ACTIONS_CLASS} role="group" aria-label={t("chat.components.messageBubble.actions")}>
           <button
             type="button"
-            className={MESSAGE_ACTION_BUTTON_CLASS}
-            title={t("chat.components.messageBubble.copy")}
-            aria-label={t("chat.components.messageBubble.copy")}
-            onClick={() => void navigator.clipboard.writeText(visibleText)}
+            className={cn(MESSAGE_ACTION_BUTTON_CLASS, copyFailed && "text-red-600 hover:text-red-700")}
+            title={copyLabel}
+            aria-label={copyLabel}
+            onClick={() => void handleCopy()}
           >
-            <Copy className="h-3.5 w-3.5" />
+            {copyFailed ? <TriangleAlert className="h-3.5 w-3.5" /> : <Copy className="h-3.5 w-3.5" />}
           </button>
           <button
             type="button"

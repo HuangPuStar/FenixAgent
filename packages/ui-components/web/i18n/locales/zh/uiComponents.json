@@ -146,6 +146,7 @@
         "actions": "消息操作",
         "addToConversation": "添加到对话",
         "copy": "复制",
+        "copyFailed": "复制失败",
         "expand": "展开",
         "imagePreview": "图片预览",
         "openSystemMessage": "双击查看系统提醒详情",

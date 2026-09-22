@@ -146,6 +146,7 @@
         "actions": "Message actions",
         "addToConversation": "Add to conversation",
         "copy": "Copy",
+        "copyFailed": "Copy failed",
         "expand": "Expand",
         "imagePreview": "Image preview",
         "openSystemMessage": "Double-click to view system reminder details",

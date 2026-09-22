@@ -9,6 +9,7 @@ import {
 } from "react";
 import { useTranslation } from "react-i18next";
 import { UI_COMPONENTS_NS } from "../../i18n/namespace";
+import { copyTextToClipboard } from "../../lib/clipboard";
 import { cn } from "../../lib/cn";
 import type { Button } from "../../ui/button";
 
@@ -79,19 +80,16 @@ export const CodeBlockCopyButton = ({
   const { code } = useContext(CodeBlockContext);
 
   const copyToClipboard = async () => {
-    if (typeof window === "undefined" || !navigator?.clipboard?.writeText) {
-      onError?.(new Error("Clipboard API not available"));
+    // 判空与 `writeText` 调用收进 `lib/clipboard`：原语在 API 缺失与写入被拒时都回传 `false`，
+    // 调用方只判断结果（此处结果经 `onError` 端口上报，反馈形态仍由调用方决定）。
+    if (!(await copyTextToClipboard(code))) {
+      onError?.(new Error("Clipboard write failed"));
       return;
     }
 
-    try {
-      await navigator.clipboard.writeText(code);
-      setIsCopied(true);
-      onCopy?.();
-      setTimeout(() => setIsCopied(false), timeout);
-    } catch (error) {
-      onError?.(error as Error);
-    }
+    setIsCopied(true);
+    onCopy?.();
+    setTimeout(() => setIsCopied(false), timeout);
   };
 
   return (
