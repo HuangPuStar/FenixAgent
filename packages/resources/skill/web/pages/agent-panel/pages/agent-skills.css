@@ -8,25 +8,6 @@
   color: var(--skills-ink);
 }
 
-.skills-directory-heading {
-  display: flex;
-  min-height: 54px;
-  align-items: center;
-  justify-content: space-between;
-  box-shadow: inset 0 -1px var(--skills-line);
-}
-
-.skills-directory-heading h2 {
-  font-size: 15px;
-  font-weight: 700;
-}
-
-.skills-directory-heading p {
-  margin-top: 3px;
-  color: var(--skills-faint);
-  font-size: 11px;
-}
-
 .skills-detail-markdown {
   max-width: 860px;
   color: var(--skills-muted);
