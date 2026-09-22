@@ -54,6 +54,19 @@ const zhFlat = flatten(ZH);
 const dictKeys = [...enFlat.keys()].filter((key) => key.startsWith(KEY_PREFIX)).sort();
 
 /**
+ * 字典取值；缺键当场失败。
+ *
+ * `Map#get` 的静态类型是 `string | undefined`，直接写进 `expect(...).toBe(...)` 会被当成合法期望值
+ * ——键被删掉时断言退化成「与 `undefined` 比较」，报错信息看不出根因（`tsc` 也会判红）。这里在取值处
+ * 显式失败，断言强度只增不减：命中路径要求键**必须**存在，而不再是「存在则相等」。
+ */
+function dictText(dict: Map<string, string>, key: string): string {
+  const value = dict.get(key);
+  if (value === undefined) throw new Error(`字典缺少键：${key}`);
+  return value;
+}
+
+/**
  * 从内联契约源码取 `PublicErrorType` 的取值集合。
  *
  * 本包对 chat 契约整体「逐字内联」（见 `web/chat/internal/types-chat-projection.ts` 头注），不 import
@@ -110,7 +123,7 @@ describe("公开错误正文的本地化取值", () => {
   test("已登记 type 取字典译文，且键是前缀加 type", () => {
     const seen: string[] = [];
     const error = { type: "AGENT_RUNTIME.REQUEST_FAILED", message: "The Agent request failed." };
-    expect(publicErrorText(stubTranslator(zhFlat, seen), error)).toBe(zhFlat.get(`${KEY_PREFIX}${error.type}`));
+    expect(publicErrorText(stubTranslator(zhFlat, seen), error)).toBe(dictText(zhFlat, `${KEY_PREFIX}${error.type}`));
     expect(seen).toEqual([`${KEY_PREFIX}AGENT_RUNTIME.REQUEST_FAILED`]);
   });
 

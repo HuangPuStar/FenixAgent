@@ -68,9 +68,15 @@ describe("chat 样式迁移：状态与交互面板", () => {
       createElement(QuestionPanel, {
         questions: [
           {
+            // 夹具按真实 `QuestionProjection` 对齐（2026-09-22）：原夹具写的是 `createdAt: 0` /
+            // `expiresAt: 0` 并省略 `status` / `description` / `answer` —— 该形状在本包里不存在
+            // （`createdAt` 全包零命中），是被测类型早已不含的字段。本用例只断言渲染出的类名，
+            // 故补齐必填项即可，断言一条未动。
             questionId: "q-1",
-            createdAt: 0,
-            expiresAt: 0,
+            status: "pending",
+            description: null,
+            expiresAt: "2026-01-01T00:00:00.000Z",
+            answer: null,
             questions: [
               {
                 header: "范围",
@@ -96,7 +102,10 @@ describe("chat 样式迁移：状态与交互面板", () => {
     const html = renderToStaticMarkup(
       createElement(ChatStatusPanel, {
         todos: [
-          { content: "检查待办", status: "completed", activeForm: null },
+          // `TodoItem.activeForm` 是 `string | undefined`（生产侧也只把字符串当有效值，见
+          // `packages/web-runtime/web/chat/todo.ts` 的 `typeof item.activeForm === "string" ? … : undefined`），
+          // 夹具原先写 `null` 与真实类型不符，改为「显式缺省」。
+          { content: "检查待办", status: "completed", activeForm: undefined },
           { content: "进行中", status: "in_progress", activeForm: "在跑" },
         ],
         tasks: [

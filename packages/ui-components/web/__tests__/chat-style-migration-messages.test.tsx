@@ -46,7 +46,10 @@ describe("chat 样式迁移：消息簇", () => {
   // 引用胶囊与系统提醒换成锚点；语义类名与死类名（`message-bubble-enter` 等）都已清空。
   test("引用胶囊与系统提醒使用锚点", () => {
     const quote = renderToStaticMarkup(
-      createElement(ChatQuoteMessage, { quote: { id: "q1", text: "引用正文", omittedCharacterCount: 12 }, index: 0 }),
+      // 夹具去掉 `id`（2026-09-22）：`ChatQuoteMessageProps.quote` 是 `SerializedChatQuote` =
+      // `LimitedQuotedText`（`{ text, omittedCharacterCount }`），没有 `id`；带 `id` 的是输入岛侧的
+      // `ComposerQuote`（`composer-assets.tsx`，用它当列表 key）。本组件不读 `id`，断言一条未动。
+      createElement(ChatQuoteMessage, { quote: { text: "引用正文", omittedCharacterCount: 12 }, index: 0 }),
     );
     const reminder = renderToStaticMarkup(
       createElement(SystemMessage, { rawText: "<system-reminder>x</system-reminder>" }),
