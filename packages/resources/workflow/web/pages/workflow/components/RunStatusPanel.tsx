@@ -1,6 +1,6 @@
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@fenix/ui-components/ui/tabs";
 import { unwrap } from "@fenix/web-runtime/api/request";
-import { ArrowLeft, Edit3, Loader, RefreshCw, ShieldCheck, Square } from "lucide-react";
+import { ArrowLeft, Edit3, RefreshCw, ShieldCheck, Square } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
 import {
@@ -13,6 +13,7 @@ import {
 import { resetRunView } from "../run-view";
 import { DAG_STATUS_CFG, dedupEvents, formatEventType, formatMeta } from "../utils";
 import { EventIcon } from "./EventIcon";
+import { InlineLoader } from "./InlineLoader";
 import { NodeOutputView } from "./NodeOutputView";
 import { RunListPanel } from "./RunListPanel";
 
@@ -275,7 +276,7 @@ export function RunStatusPanel({
             <div className="py-5 text-center text-text-secondary">{t("editor.click_node_output")}</div>
           ) : nodeOutputLoading ? (
             <div className="py-5 text-center text-text-secondary">
-              <Loader size={14} className="animate-spin inline-block" />
+              <InlineLoader size={14} />
             </div>
           ) : !selectedNodeOutput ? (
             <div className="py-5 text-center text-text-secondary">{t("editor.no_output")}</div>
