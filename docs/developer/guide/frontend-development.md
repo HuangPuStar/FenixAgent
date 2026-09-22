@@ -1,8 +1,9 @@
 # 前端开发规范
 
-> **版本**：v3.0.1 | **最后更新**：2026-09-22 | **维护者**：前端团队
+> **版本**：v3.0.2 | **最后更新**：2026-09-22 | **维护者**：前端团队
 >
 > **最近变更**：
+> - v3.0.2 (2026-09-22)：把「失败必须有用户可见反馈」从隐含口径写成**可 review 的规则**（§5.8 新增：三条件判据 + 三类必然豁免 + `/login`、`/admin` 下无 `Toaster` 的坑）。据此做了一轮全量处理：4 处原生 `confirm()` 全部迁 `ConfirmDialog`（删除 §6.5 对应偏离项），逐点复核全仓 `console.error` 并补齐缺失反馈，未动的残留登记到 §5.9。§11.2 补「`react-i18next` 替身必须返回稳定 `t`」——该替身缺陷会让测试陷入反复拉取且生产不复现。
 > - v3.0.1 (2026-09-22)：精简第 1 章与第 10 章——原 §1.1 应用根 / §1.2 宿主源码目录 / §1.3 包边界与引用纪律，以及原 §10.1～§10.5，改写为几段说明与规则列表，只保留可据以 review 的硬规则；§1 子节重编号为 §1.1 装配产物与构建、§1.2 路径别名纪律、§1.3 现状偏离。同步移除 `packages/supaflow/web` 与 `e2e/` 的排除项（两者已从仓库移除），并补充"新增 `.css` 的落位"与"禁止 `@apply`"两条纪律。
 > - v3.0.0 (2026-09-22)：按 CE/EE 1.6 / 1.7 收口后的**代码事实**全面重写。删除全部 target / transitional 标记与 `docs/need-to-change/*` 引用（该目录已删除），规范只描述**当前不变量**；每章新增「现状偏离」记录规则尚未落地的已知位置；新增适用范围声明（§0.1）、装配产物（§1.1）、侧栏装配（§2.6）、iframe 沙箱（§6.2）、实时通道登记（§8.1）、CSS 文件边界（§10）。
 > - v2.0.0 (2026-09-22)：按 CE/EE 任务 1.6 T11e 收口后的架构校订。
@@ -735,11 +736,23 @@ const { run: saveTask, loading: saving } = useRequest(
 - **禁止**绕过包 `exports` 深引 `@fenix/<pkg>/src/*`、`@fenix/<pkg>/web/src/*`
 - **禁止**直接 `await` 域模块并依赖 `catch`（必须解包，见 §5.2）
 - **禁止**把失败静默映射成 empty 或成功状态
+- **禁止**在用户可感知失败的位置只写 `console.error` 而不给用户可见反馈。判据是三条**同时**成立：① 位置在组件 / 页面 / hook 的 `catch` 或异步失败分支里；② 失败由用户操作触发，或使用户正在看的内容不可用；③ 同作用域（同一函数内）没有别的用户可见反馈（`toast` / 内联错误态 / 降级 UI）。
+
+这条规则**没有门禁，只能人工 review**：`console.error` 是诊断信号，天然合法，工具无法区分"记录了"与"只记录了"。三类位置**必然豁免**，不需要也不该补提示：
+
+| 豁免 | 理由 |
+|------|------|
+| 域模块与请求基建 | 模块内禁止 UI 反馈（见上一条与 §5.2 的 `request()` 契约） |
+| ErrorBoundary 的 `onError` | 降级 UI 本身就是用户可见反馈（§7.1） |
+| 后台触发路径（轮询、WS/SSE 回调、定时器、订阅） | 失败不改变用户此刻在做的事，弹提示属噪声 |
+
+补反馈时用 `toast.error(t("<key>"))`，**保留原有 `console.error`**（它承载诊断上下文）；`packages/ui-components/**` 内部不直接调宿主 `toast`，只经 `onNotice` / `onError` 端口抛出文案。`/login` 与 `/admin` 下没有 `Toaster`（§3.1），这两条路径上的失败必须用内联错误态——在那里 `toast.error` 是静默 no-op。
 
 ### 5.9 现状偏离
 
 - **`headers` 覆盖内部头的实现缺陷**（§5.2）：文档过去把"内部头不会被覆盖"写成已实现，实际相反。
 - **实现与注释不一致的三处**（以代码为准，不要以注释为承诺）：① `request()` 的 catch 注释承诺"网络错误/超时自动重试 1 次并复用同一 opId"，**实现里没有第二次执行**；② 超时定时器在收到响应头后即清除，**不覆盖 body 消费**，慢 `json()` / `text()` 不受超时约束；③ `anySignal` 合并后的监听器在请求成功后不移除，会挂在调用方的 `signal` 上直到其 abort。
+- **两处"失败被吞掉"的已知残留**（§5.8 判据命中，补法需改对外契约或属后台路径，2026-09-22 全量复核时未动）：① `platform/identity/web/contexts/OrgContext.tsx` 的 `refreshOrgs` 失败只 `console.error`，组织页会按"无组织"渲染（落到 `noOrgs` 空态、无失败态）——要补持久失败态必须扩 `OrgContextValue`；② `agent-config/web/components/agent-panel/SiteFrame.tsx` 的挂载二维码在后台预生成，失败只留 `console.error`，分享弹层会停在永久 spinner（补法建议在弹层内落"最近一次生成失败"静态态，而不是 toast——弹层可能在失败之后才被打开）。
 - **解包归属存在两代写法**：9 个模块在域内 `unwrap()`（宿主 `fs.ts` / `peri-task-details.ts`、`model-gateway`、`observer`、`system-logs`、`system-people-tree`、`hindsight`、sandbox 的 `system-organizations` / `system-sandbox`），另有 3 个 blob 家族模块（`knowledge-bases`、`skills`、`system-sandbox` 的部分方法）在域内抛错。注意 `system-sandbox` 同时属于两组，去重后**合计 11 个模块的对外签名是数据或抛错，不是 Result**，与 §5.4 的"新增返回 `ApiResponse`"并存。
 - **5 个模块用函数式导出而非 `*Api` 对象**：`model-gateway.ts`（12 个具名函数）、`observer.ts`、`system-logs.ts`、`system-people-tree.ts`、`system-organizations.ts`。与 §5.5 的命名规则不符。
 - **`workflow/web/api/workflows.ts` 是零消费者的重复实现**：`workflowApi` 全仓无引用（消费方都用 `workflowDefApi`），其类型定义与 `workflow-defs.ts` 逐字重复。待清理。
@@ -817,7 +830,6 @@ import DOMPurify from "dompurify";
 - **存在 `streamdown` 之外的第二条 Markdown 渲染链**：`memory/web/pages/hindsight/components/CompactMarkdown.tsx` 用 `react-markdown` + `remark-gfm`（无 sanitize），且在包 README 里自述为零消费者的死文件。要么删除，要么接入 `MessageResponse`。
 - **最大 XSS 面未收口**：`ui-components/web/chat/primitives/iframe-preview.tsx` 对 Markdown 里的 `<iframe>` 同时给 `allow-scripts` 与 `allow-same-origin`，且**前端不对 `src` 做任何校验**；来源是 Agent / LLM 输出。同上文件放大弹窗的 Dialog 内还有一份同样配置。
 - **knowledge 预览的 Markdown 走 `react-markdown` 且未接 `rehype-sanitize`**（`ResourcePreviewContent.tsx`），输入是用户上传的知识库文件正文。属待收口项。
-- **3 个文件 4 处原生 `confirm()`**：`knowledge/EmbeddingModelManager.tsx`、`workflow/TriggerPanel.tsx`（2 处）、`workflow/YamlSlidePanel.tsx`。
 - **错误文案回显**：Chat 域已按稳定 `error.type` 映射字典（`public-error-text.ts` + 协议侧明确"不得使用原始异常文本"，并有 `public-error-i18n.test.ts` 守护）；但域模块与页面的 `onError` 仍普遍直接显示 `err.message`（见 §5.9）。
 - **`apps/web/src/lib/utils.ts` 的 `esc()` 是死代码**（无调用点）。
 
@@ -1099,6 +1111,7 @@ i18n.use(initReactI18next).init({
 - 框架是 **`bun test`**（无 vitest / jest）；`bunfig.toml` 只 preload 服务端侧垫片，**没有全局 DOM**。
 - 需要 DOM 的用例自建 happy-dom Window，唯一入口是 `@fenix/ui-components/testing` 的 `initializeHappyDomWindow`（`HTMLElement` 与 `customElements` 必须**成对**注入，否则 streamdown 链路在用例之间崩）。
 - 只测关键交互、状态与数据流，不写纯 UI 结构断言或仅重复类型检查的测试。
+- **`react-i18next` 替身必须返回稳定的 `t`**：真身的 `t` 只在切语言时换身份，替身不能在 `useTranslation()` 里每次渲染新建对象或函数。"把 `t` 写进 `useCallback` 依赖、再用该回调喂 `useEffect`"的组件一旦碰上不稳定替身就会陷入反复拉取，**生产不复现**——纯属替身造成的假阳性（2026-09-22 在 `workflow/web/__tests__/workflow-versions-a11y.test.tsx` 上踩到，表现是 3 个用例 5s 超时，曾被误判成并发改动）。当前仍有 10 份 mock 用 `useTranslation: () => ({ ... })` 的写法，改到相关组件时顺手收口。
 
 ### 11.3 尚未自动化的规则
 
@@ -1111,10 +1124,10 @@ i18n.use(initReactI18next).init({
 | `window.location` 写操作 | 无**全仓**门禁（当前生产代码零命中；`workflow/web/__tests__/workflow-page-route.test.ts` 只守 workflow 页面，`ui-components/web/testing.ts` 里的一处属测试工具） |
 | `dangerouslySetInnerHTML` 不经清洗 | 未自动化（当前 3 处均已清洗） |
 | `localStorage` 读写组织身份 | 未自动化（当前 2 处违规，见 §3.6） |
-| 原生 `confirm()` | 未自动化（当前 4 处，见 §6.5） |
+| 原生 `confirm()` / `alert()` / `prompt()` | 未自动化。2026-09-22 已全量复核：全仓零命中（4 处已迁 `ConfirmDialog`）；新增只能靠 review |
+| `console.error` 缺配对用户可见反馈 | 未自动化，判据见 §5.8；2026-09-22 全量复核后仍有已知残留（见 §5.9） |
 | iframe 的 `sandbox` 取值 | 未自动化 |
 | 单文件 500 行上限 | 未自动化（当前 16 处超限，见 §4.8） |
 | 组件重复开发检测 | 未自动化（当前 2 处本地重复实现，见 §4.8） |
-| `console.error` 缺配对 `toast.error` | 需语义分析，保持人工 review |
 | i18n 全仓 key 对称、`[object Object]` | 包级与宿主各有测试（13 份包内 + `host-i18n.test.ts`），**跨包漏注册**无门禁（见 §9.4） |
 | import 分组顺序、格式化 | 已由 Biome 覆盖（`import-sort` + `format`） |
