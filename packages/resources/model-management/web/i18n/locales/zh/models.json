@@ -194,7 +194,7 @@
     "added": "已添加",
     "addModelSuccess": "模型 {{modelId}} 已添加",
     "addModelError": "添加失败: {{message}}",
-    "testError": "测试失败",
+    "testError": "测试失败: {{message}}",
     "modelTestPassed": "测试通过",
     "modelTestFailed": "测试失败",
     "modelTesting": "测试中",
@@ -209,7 +209,8 @@
       "detailPrefix": "错误信息：",
       "requestTimeout": "测试请求超时",
       "requestFailed": "测试请求失败",
-      "configureModelThenTest": "该提供商可能没有提供模型查询接口，请先手动配置模型，再通过模型测试验证消息调用。"
+      "configureModelThenTest": "该提供商可能没有提供模型查询接口，请先手动配置模型，再通过模型测试验证消息调用。",
+      "credentialUnresolved": "密钥引用无法解析：请确认该 {env:NAME} 引用的环境变量已在服务端配置"
     }
   },
   "modelSubrow": {
@@ -487,12 +488,27 @@
   "verticalModels": {
     "subtitle": "以企业专有数据精调，将通用AI转化为懂企业业务的专业推理引擎",
     "searchLabel": "搜索垂直模型",
+    "searchPlaceholder": "搜索模型名称、描述、标签、场景...",
+    "deployedBadge": "已落地",
+    "introHeading": "模型简介",
+    "capabilitiesHeading": "核心能力",
+    "scenesHeading": "适用场景",
     "emptyTitle": "没有匹配的模型",
     "emptyDescription": "换个关键词试试，或清空搜索查看全部模型。",
     "clearSearch": "清空搜索"
   },
   "algorithms": {
-    "subtitle": "汇集主流机器学习算法，Agent 任务驱动即插即用"
+    "subtitle": "汇集主流机器学习算法，Agent 任务驱动即插即用",
+    "introHeading": "算法简介",
+    "paramsHeading": "核心参数",
+    "scenesHeading": "适用场景",
+    "copyCode": "复制代码",
+    "copied": "已复制",
+    "columns": {
+      "param": "参数",
+      "defaultValue": "默认值",
+      "description": "说明"
+    }
   },
   "nav": {
     "models": "模型库",

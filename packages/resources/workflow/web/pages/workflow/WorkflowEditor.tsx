@@ -299,8 +299,7 @@ function WorkflowEditorInner({ workflowId, runId, chatPanel }: WorkflowEditorPro
   // 拉取已注册的 custom 工具，供 palette 和节点配置下拉使用
   // 失败时静默退化（palette 不显示 custom 分区），不阻塞编辑器
   useEffect(() => {
-    customToolsApi
-      .list()
+    unwrap(customToolsApi.list())
       .then(setCustomTools)
       .catch((err) => {
         console.error("Failed to load custom tools:", err);

@@ -22,7 +22,15 @@ export function getAdminKey(): string | null {
   return sessionStorage.getItem(ADMIN_KEY_STORAGE_KEY);
 }
 
-/** 写入 master key（仅当前标签页 session）。 */
+/**
+ * 写入 master key（仅当前标签页 session）。
+ *
+ * 这是前端规范 §6.2「禁止把凭据写入本地存储」的**显式例外**（已登记，见该节）：取舍是
+ * ——换来刷新页面免重输（master key 无法走 better-auth 会话，重输代价高），代价是同源脚本
+ * 与 XSS 可直接读走该值。因此本模块只允许服务系统管理员页（sandbox / observer 的 master key 门），
+ * 不得用于普通用户凭据；XSS 面由 §6.1 的清洗与禁用 dangerouslySetInnerHTML 控制。
+ * 移除条件：master key 改由服务端 HttpOnly Cookie 或仅内存态承载后，删除本模块及其消费方。
+ */
 export function setAdminKey(key: string): void {
   sessionStorage.setItem(ADMIN_KEY_STORAGE_KEY, key);
 }

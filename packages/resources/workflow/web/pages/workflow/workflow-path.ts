@@ -1,11 +1,16 @@
 // web/pages/workflow/workflow-path.ts
-// WorkflowPage 的视图解析（纯函数，无 React / Router / 宿主依赖）。
+// 工作流页面的视图解析（纯函数，无 React / Router / 宿主依赖）。
 //
 // **为什么单独成文件**：解析逻辑原先内联在 `pages/WorkflowPage.tsx` 里，直接从 `window.location` 读地址。
-// 改成「视图从 Router 派生」之后，这段解析是本页唯一的状态来源，必须能被单独测到；而 WorkflowPage 本身
-// 的值导入图会经 `WorkflowEditor → @fenix/agent-runtime → @fenix/chat-channel` 一路穿到别的包（`web/index.ts`
+// 改成「视图从 Router 派生」之后，这段解析是当时唯一的视图状态来源，必须能被单独测到；而整页组件的值
+// 导入图会经 `WorkflowEditor → @fenix/agent-runtime → @fenix/chat-channel` 一路穿到别的包（`web/index.ts`
 // 的说明与 `workflow-browser-surface.test.ts` 的守卫都记录了这件事），测试从页面入口导入会连带加载那整条
-// 链。把纯逻辑拆出来后，用例只依赖本文件。
+// 链。把纯逻辑拆出来后，用例只依赖本文件（`web/__tests__/workflow-page-route.test.ts`）。
+//
+// **当前状态（2026-09-22，整页实现归宿主的裁定落地后）**：整页实现由宿主三份路由壳持有
+// （`apps/web/src/routes/agent/_panel/workflow*.tsx`），包内整页副本已删除，本模块因此不再有生产消费方，
+// 只剩上面那个守卫用例在跑它。保留还是随页面一并退役（连用例一并处置）由 owner 裁定：本轮只随删除同步
+// 记下事实，行为与导出面未动。
 
 /**
  * 工作流视图。

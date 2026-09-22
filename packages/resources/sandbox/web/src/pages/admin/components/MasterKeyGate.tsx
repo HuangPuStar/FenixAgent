@@ -27,6 +27,8 @@ export function MasterKeyGate({ onUnlock, error }: MasterKeyGateProps) {
     event.preventDefault();
     const trimmed = key.trim();
     if (!trimmed) return;
+    // 显式例外（前端规范 §6.2）：master key 落 sessionStorage 以支持刷新免重输，代价是同源
+    // 脚本/XSS 可读；本页是系统管理员入口，故保留该取舍，撤销路径见该节。
     setAdminKey(trimmed);
     onUnlock();
   };

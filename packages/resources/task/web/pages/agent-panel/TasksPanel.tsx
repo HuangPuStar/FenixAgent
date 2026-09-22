@@ -85,7 +85,9 @@ export function TasksPanel({ agentId }: TasksPanelProps) {
   const handleTrigger = async (taskId: string) => {
     setTriggeringIds((prev) => new Set(prev).add(taskId));
     try {
-      await taskV2Api.trigger(taskId);
+      // 必须解包：`request()` 对 4xx/5xx 返回 `{ success: false }` 而不 throw，直接 await 会把失败当成功，
+      // catch 永远不可达，用户既看不到失败提示、也会基于未变更的状态刷新。
+      await unwrap(taskV2Api.trigger(taskId));
       refresh();
     } catch {
       toast.error(taskT("panelMode.tasksTriggerFailed") ?? "Trigger failed");
@@ -101,7 +103,8 @@ export function TasksPanel({ agentId }: TasksPanelProps) {
   const handleToggle = async (taskId: string) => {
     setTogglingIds((prev) => new Set(prev).add(taskId));
     try {
-      await taskV2Api.toggle(taskId);
+      // 同 handleTrigger：不解包则失败被当成成功，状态未变却刷新列表、也不提示。
+      await unwrap(taskV2Api.toggle(taskId));
       refresh();
     } catch {
       toast.error(taskT("panelMode.tasksToggleFailed"));

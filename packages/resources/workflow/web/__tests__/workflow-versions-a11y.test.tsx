@@ -64,6 +64,8 @@ const REACT_I18NEXT_UNION = {
 mock.module("react-i18next", () => ({
   ...REACT_I18NEXT_UNION,
   useTranslation: () => ({
+    // 真身总会返回 i18n 实例；替身少了它，组件的 locale 相关格式化（§9.3）会在渲染期抛错
+    i18n: { language: "zh-CN" },
     t: (key: string, opts?: Record<string, unknown>) => {
       let result = MOCK_TRANSLATIONS[key] ?? key;
       if (opts) {

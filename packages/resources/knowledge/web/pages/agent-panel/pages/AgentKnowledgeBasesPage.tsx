@@ -28,7 +28,7 @@ import {
 import { Skeleton } from "@fenix/ui-components/ui/skeleton";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@fenix/ui-components/ui/tabs";
 import { Textarea } from "@fenix/ui-components/ui/textarea";
-import { unwrap } from "@fenix/web-runtime/api/request";
+import { ApiError, unwrap } from "@fenix/web-runtime/api/request";
 import { useOrgSession } from "@fenix/web-runtime/contexts/org-session";
 import { NS } from "@fenix/web-runtime/i18n/namespace";
 import { useNavigate, useSearch } from "@tanstack/react-router";
@@ -71,6 +71,37 @@ function getStatusBadge(status: string) {
       return "bg-red-50 text-red-700 ring-1 ring-red-200";
     default:
       return "bg-surface-2 text-text-muted";
+  }
+}
+
+/**
+ * 重新解析失败的提示文案：按统一请求层归一后的**稳定错误码**取字典键（§9.3）。
+ *
+ * 为什么不能直接上屏 `err.message`：`unwrap()` 抛出的 `ApiError.message` 就是后端错误信封里的原文，
+ * 重新解析接口的 `REPARSE_FAILED` 分支会把 RAGFlow 的异常文本透传进来
+ * （`packages/resources/knowledge/src/server/routes/web/knowledge-bases.ts` 的 reparse 路由），
+ * 404 分支的「资源不存在 / 知识库不存在」也只是服务端内部措辞。原始 message 与堆栈留给调用方的
+ * `console.error`，界面只认码。
+ *
+ * 只映射「用户下一步动作不同」的五个码：不存在要刷新列表、未同步要等同步、远端拒绝与网络异常要重试、
+ * 无权限要找管理员。其余（`SERVER_ERROR` / `VALIDATION_ERROR` / `UNKNOWN` 与后续新增的业务码）一律
+ * 走通用文案 `reparse.failed`——不认识的失败不该被翻译成一句看似精确的承诺。
+ */
+function getReparseErrorMessage(err: unknown, t: (key: string) => string): string {
+  const code = err instanceof ApiError ? err.code : null;
+  switch (code) {
+    case "NOT_FOUND":
+      return t("reparse.failedNotFound");
+    case "NOT_SYNCED":
+      return t("reparse.failedNotSynced");
+    case "REPARSE_FAILED":
+      return t("reparse.failedRemote");
+    case "NETWORK_ERROR":
+      return t("reparse.failedNetwork");
+    case "UNAUTHORIZED":
+      return t("reparse.failedUnauthorized");
+    default:
+      return t("reparse.failed");
   }
 }
 
@@ -1048,15 +1079,20 @@ export function AgentKnowledgeBasesPage() {
                 if (!reparseTarget || !kbId) return;
                 setReparseConfirmOpen(false);
                 setReparsingResourceId(reparseTarget.id);
-                kbApi
-                  .reparseResource({ kbId: kbId, resourceId: reparseTarget.id }, { delete: reparseDeleteOld })
+                // 必须解包：`request()` 对 4xx/5xx 返回 `{ success: false }` 而不 throw，直接 then 会把失败
+                // 当成功——既弹「已触发」成功提示，又启动一轮注定无结果的状态轮询。
+                unwrap(
+                  kbApi.reparseResource({ kbId: kbId, resourceId: reparseTarget.id }, { delete: reparseDeleteOld }),
+                )
                   .then(() => {
                     toast.success(t("reparse.started"));
                     reparseAndPoll(kbId, reparseTarget.id);
                     setReparseDeleteOld(false);
                   })
                   .catch((err) => {
-                    toast.error(err instanceof Error ? err.message : t("reparse.failed"));
+                    // 服务端原文（含 RAGFlow 异常）只进 console，界面按错误码取文案（§9.3）。
+                    console.error("Reparse failed", err);
+                    toast.error(getReparseErrorMessage(err, t));
                     setReparsingResourceId(null);
                     setReparseDeleteOld(false);
                   });
@@ -1093,15 +1129,15 @@ export function AgentKnowledgeBasesPage() {
       <Dialog open={importDialogOpen} onOpenChange={setImportDialogOpen}>
         <DialogContent className="sm:max-w-lg">
           <DialogHeader>
-            <DialogTitle>从 RAGFlow 导入知识库</DialogTitle>
-            <DialogDescription>选择下方未关联的知识库导入到当前平台空间</DialogDescription>
+            <DialogTitle>{t("importDialog.title")}</DialogTitle>
+            <DialogDescription>{t("importDialog.description")}</DialogDescription>
           </DialogHeader>
           <div className="max-h-[400px] overflow-y-auto -mx-6 px-6">
             {importLoading ? (
               <div className="flex items-center justify-center py-16">
                 <div className="flex flex-col items-center gap-3">
                   <div className="h-8 w-8 rounded-full border-[3px] border-[#e2e8f0] border-t-[#6366f1] animate-spin" />
-                  <p className="text-[13px] text-[#94a3b8]">正在获取 RAGFlow 知识库列表...</p>
+                  <p className="text-[13px] text-[#94a3b8]">{t("importDialog.loading")}</p>
                 </div>
               </div>
             ) : unassociatedList.length === 0 ? (
@@ -1109,9 +1145,9 @@ export function AgentKnowledgeBasesPage() {
                 <div className="flex h-16 w-16 items-center justify-center rounded-2xl bg-gradient-to-br from-[#f1f5f9] to-[#e2e8f0] shadow-inner">
                   <BookOpen className="h-7 w-7 text-[#94a3b8]" />
                 </div>
-                <p className="text-[14px] font-medium text-[#64748b]">没有可导入的知识库</p>
+                <p className="text-[14px] font-medium text-[#64748b]">{t("importDialog.emptyTitle")}</p>
                 <p className="text-[12px] text-[#94a3b8] max-w-[300px] text-center">
-                  RAGFlow 上暂无未关联的知识库，或所有知识库已在平台中关联
+                  {t("importDialog.emptyDescription")}
                 </p>
               </div>
             ) : (
@@ -1152,12 +1188,12 @@ export function AgentKnowledgeBasesPage() {
       <Dialog open={renameDialogOpen} onOpenChange={setRenameDialogOpen}>
         <DialogContent className="sm:max-w-sm">
           <DialogHeader>
-            <DialogTitle>导入知识库</DialogTitle>
-            <DialogDescription>为知识库设置一个名称，方便在平台中识别</DialogDescription>
+            <DialogTitle>{t("importDialog.renameTitle")}</DialogTitle>
+            <DialogDescription>{t("importDialog.renameDescription")}</DialogDescription>
           </DialogHeader>
           <div className="space-y-4">
             <div className="space-y-2">
-              <label className="text-[13px] font-medium text-[#475569]">知识库名称</label>
+              <label className="text-[13px] font-medium text-[#475569]">{t("importDialog.nameLabel")}</label>
               <Input
                 value={renameValue}
                 onChange={(e) => setRenameValue(e.target.value)}
@@ -1166,7 +1202,7 @@ export function AgentKnowledgeBasesPage() {
                     handleImport(renameTarget!.id, renameValue.trim());
                   }
                 }}
-                placeholder="输入知识库名称"
+                placeholder={t("importDialog.namePlaceholder")}
                 className="h-10 text-[14px]"
                 autoFocus
                 onFocus={(e) => e.target.select()}

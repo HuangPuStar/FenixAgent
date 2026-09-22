@@ -194,7 +194,7 @@
     "added": "Added",
     "addModelSuccess": "Model {{modelId}} added",
     "addModelError": "Add failed: {{message}}",
-    "testError": "Test failed",
+    "testError": "Test failed: {{message}}",
     "modelTestPassed": "Test Passed",
     "modelTestFailed": "Test Failed",
     "modelTesting": "Testing",
@@ -209,7 +209,8 @@
       "detailPrefix": "Error: ",
       "requestTimeout": "Test request timed out",
       "requestFailed": "Test request failed",
-      "configureModelThenTest": "This provider may not expose a model listing API. Please configure a model manually, then validate it with model testing."
+      "configureModelThenTest": "This provider may not expose a model listing API. Please configure a model manually, then validate it with model testing.",
+      "credentialUnresolved": "The credential reference could not be resolved. Check that the environment variable referenced by {env:NAME} is configured on the server."
     }
   },
   "modelSubrow": {
@@ -487,12 +488,27 @@
   "verticalModels": {
     "subtitle": "Fine-tuned on enterprise data, transforming general AI into business-specialized reasoning engines",
     "searchLabel": "Search vertical models",
+    "searchPlaceholder": "Search model name, description, tag, or scenario...",
+    "deployedBadge": "Deployed",
+    "introHeading": "Model overview",
+    "capabilitiesHeading": "Core capabilities",
+    "scenesHeading": "Use cases",
     "emptyTitle": "No matching models",
     "emptyDescription": "Try a different keyword, or clear the search to see all models.",
     "clearSearch": "Clear search"
   },
   "algorithms": {
-    "subtitle": "A collection of mainstream ML algorithms — plug & play for Agent tasks"
+    "subtitle": "A collection of mainstream ML algorithms — plug & play for Agent tasks",
+    "introHeading": "Algorithm overview",
+    "paramsHeading": "Core parameters",
+    "scenesHeading": "Use cases",
+    "copyCode": "Copy code",
+    "copied": "Copied",
+    "columns": {
+      "param": "Parameter",
+      "defaultValue": "Default",
+      "description": "Description"
+    }
   },
   "nav": {
     "models": "Model Library",

@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef } from "react";
+import { revalidateWorkspaceTree } from "@/src/api/fs";
 
 interface UseFileTreeEventsOptions {
   envId: string | null;
@@ -22,21 +23,12 @@ export function useFileTreeEvents({ envId, applyTree, onUnavailable }: UseFileTr
     if (now - lastRevalidateAtRef.current < 30_000) return;
     lastRevalidateAtRef.current = now;
     try {
-      const headers: Record<string, string> = {};
-      if (etagRef.current) headers["If-None-Match"] = etagRef.current;
-      const response = await fetch(`/web/environments/${encodeURIComponent(envId)}/fs/tree`, {
-        credentials: "include",
-        headers,
-      });
-      if (response.status === 304) return;
-      if (!response.ok) throw new Error(`Tree revalidate failed: ${response.status}`);
-      const payload = (await response.json()) as {
-        success?: boolean;
-        data?: { paths?: string[]; mtimes?: Record<string, number> };
-      };
-      if (payload.success === false) throw new Error("Tree revalidate rejected");
-      etagRef.current = response.headers.get("etag");
-      applyTree(payload.data?.paths ?? [], payload.data?.mtimes);
+      // 条件请求与 304/ETag 处理在域模块（@/src/api/fs）内完成，这里只消费结果：
+      // not-modified 保留上一份可用树，updated 用新指纹与快照更新。
+      const result = await revalidateWorkspaceTree(envId, etagRef.current);
+      if (result.status === "not-modified") return;
+      etagRef.current = result.etag;
+      applyTree(result.tree.paths, result.tree.mtimes);
     } catch (error) {
       onUnavailable(error);
     }

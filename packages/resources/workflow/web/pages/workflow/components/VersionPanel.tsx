@@ -29,7 +29,7 @@ export function VersionPanel({
     type: "setLatest" | "restore";
     version: number;
   } | null>(null);
-  const { t } = useTranslation("workflows");
+  const { t, i18n } = useTranslation("workflows");
 
   const loadData = useCallback(async () => {
     if (!workflowId) return;
@@ -72,7 +72,7 @@ export function VersionPanel({
     async (version: number) => {
       if (!workflowId) return;
       try {
-        await workflowDefApi.setLatest(workflowId, version);
+        await unwrap(workflowDefApi.setLatest(workflowId, version));
         loadData();
       } catch (err) {
         console.error(err);
@@ -86,7 +86,7 @@ export function VersionPanel({
     async (version: number) => {
       if (!workflowId) return;
       try {
-        await workflowDefApi.restoreToDraft(workflowId, version);
+        await unwrap(workflowDefApi.restoreToDraft(workflowId, version));
         toast.success(t("versions.restore_success"));
       } catch (err) {
         console.error(err);
@@ -190,7 +190,7 @@ export function VersionPanel({
           }}
         >
           <span>
-            latest:{" "}
+            {t("versions.latest")}:{" "}
             <strong style={{ color: wf.latestVersion ? "#22c55e" : "#d1d5db" }}>
               {wf.latestVersion ? `v${wf.latestVersion}` : t("editor.no_published")}
             </strong>
@@ -277,11 +277,12 @@ export function VersionPanel({
                           borderRadius: 99,
                         }}
                       >
-                        latest
+                        {t("versions.latest")}
                       </span>
                     )}
                     <span style={{ marginLeft: "auto", fontSize: 9, color: "#d1d5db" }}>
-                      {new Date(v.createdAt).toLocaleString("zh-CN", {
+                      {/* 日期取当前 locale（§9.3）：固定 zh-CN 会让英文界面显示中文格式 */}
+                      {new Date(v.createdAt).toLocaleString(i18n.language, {
                         month: "numeric",
                         day: "numeric",
                         hour: "2-digit",

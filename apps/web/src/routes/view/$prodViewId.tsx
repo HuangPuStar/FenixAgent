@@ -2,6 +2,8 @@ import { Button } from "@fenix/ui-components/ui/button";
 import { createFileRoute } from "@tanstack/react-router";
 import { lazy, Suspense } from "react";
 import { ErrorBoundary, type FallbackProps } from "react-error-boundary";
+import { useTranslation } from "react-i18next";
+import { NS } from "@/src/i18n";
 import "@/src/shell/agent-panel.css";
 
 const Page = lazy(() => import("@fenix/resource-prod-view/web").then((m) => ({ default: m.ProdViewPage })));
@@ -10,7 +12,9 @@ const Page = lazy(() => import("@fenix/resource-prod-view/web").then((m) => ({ d
 const ChatArea = lazy(() => import("@/src/pages/agent-panel/ChatArea").then((m) => ({ default: m.ChatArea })));
 
 /** ProdView 错误回退 UI：复用 agent-panel 布局 */
-function ProdViewErrorFallback({ error, resetErrorBoundary }: FallbackProps) {
+function ProdViewErrorFallback({ resetErrorBoundary }: FallbackProps) {
+  const { t } = useTranslation(NS.COMMON);
+
   return (
     <div className="agent-panel-layout !flex-col">
       <div className="flex h-10 shrink-0 items-center border-b border-border/40 bg-surface-1 px-4 text-sm">
@@ -19,9 +23,9 @@ function ProdViewErrorFallback({ error, resetErrorBoundary }: FallbackProps) {
       </div>
       <div className="agent-panel-body">
         <div className="flex flex-1 flex-col items-center justify-center gap-4 p-6">
-          <p className="text-sm text-text-muted">{(error as Error)?.message ?? "页面加载失败"}</p>
+          <p className="text-sm text-text-muted">{t("load_failed")}</p>
           <Button variant="outline" onClick={resetErrorBoundary}>
-            重试
+            {t("retry")}
           </Button>
         </div>
       </div>
@@ -31,7 +35,10 @@ function ProdViewErrorFallback({ error, resetErrorBoundary }: FallbackProps) {
 
 export const Route = createFileRoute("/view/$prodViewId")({
   component: () => (
-    <ErrorBoundary FallbackComponent={ProdViewErrorFallback}>
+    <ErrorBoundary
+      FallbackComponent={ProdViewErrorFallback}
+      onError={(error) => console.error("[ProdView] 页面渲染失败", error)}
+    >
       <Suspense
         fallback={
           <div className="agent-panel-layout">

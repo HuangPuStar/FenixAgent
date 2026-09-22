@@ -5,7 +5,13 @@
 // 旧实现抛的是裸 `Error("日志下载失败")`——页面既不 await 也不 catch，失败既没有提示、也无法识别
 // 凭据失效，界面完全没有反馈。这里把这条契约钉住，回归时直接失败。
 //
-// 不做 UI 结构断言：bun test 没有 DOM，组件渲染不在本包测试口径内（见 CLAUDE.md 前端测试规范）。
+// 分层边界（§5.1）：域模块只取数——成功回 `Blob`、失败抛 `ApiError`；触发浏览器落盘的锚点与
+// `revokeObjectURL` 归页面（`AdminLogsPage` 的 `saveBlobAsFile`）。成功用例因此断言到 Blob 为止，
+// 并且**不注入任何 DOM 替身**：域模块一旦再碰 `document` / 锚点，用例会直接抛错——这比断言
+// 「点击了几次锚点」更贴近本层职责（后者原本把 UI 细节钉在了域模块的用例里）。
+//
+// 页面的落盘动作不做单测：bun test 没有 DOM，组件渲染不在本包测试口径内（见 CLAUDE.md 前端测试规范），
+// 该函数只依赖 `URL` / `document` 两个平台 API，无分支可测。
 
 import { afterEach, describe, expect, test } from "bun:test";
 import { ApiError } from "@fenix/web-runtime/api/request";
@@ -42,18 +48,12 @@ function errorEnvelope(status: number, code: string, message: string): Response 
 }
 
 const originalSessionStorage = Object.getOwnPropertyDescriptor(globalThis, "sessionStorage");
-const originalDocument = Object.getOwnPropertyDescriptor(globalThis, "document");
-/** 测试进程没有浏览器全局：master key 与下载锚点都按最小替身注入，用完恢复。 */
+/** 测试进程没有浏览器全局：master key 按最小替身注入，用完恢复。 */
 const globalScope = globalThis as Record<string, unknown>;
 
 afterEach(() => {
-  for (const [key, descriptor] of [
-    ["sessionStorage", originalSessionStorage],
-    ["document", originalDocument],
-  ] as const) {
-    if (descriptor) Object.defineProperty(globalThis, key, descriptor);
-    else Reflect.deleteProperty(globalThis, key);
-  }
+  if (originalSessionStorage) Object.defineProperty(globalThis, "sessionStorage", originalSessionStorage);
+  else Reflect.deleteProperty(globalThis, "sessionStorage");
 });
 
 describe("downloadSystemLog", () => {
@@ -93,31 +93,24 @@ describe("downloadSystemLog", () => {
     fetcher.restore();
   });
 
-  // 成功路径：带同一份 admin key 请求（与列表/搜索同一鉴权口径），并把响应体落成一次浏览器下载。
-  test("成功时带 master key 触发浏览器下载", async () => {
+  // 成功路径：带同一份 admin key 请求（与列表/搜索同一鉴权口径），把响应体原样作为 Blob 交回调用方
+  // 供其落盘。用例不注入 DOM 替身，域模块一旦回退到「调用即落盘」就会在此失败。
+  test("成功时带 master key 返回日志 Blob", async () => {
     globalScope.sessionStorage = {
       getItem: () => "master-key",
       setItem: () => {},
       removeItem: () => {},
     };
-    const clicks: { href: string; download: string }[] = [];
-    const anchor = {
-      href: "",
-      download: "",
-      click: () => clicks.push({ href: anchor.href, download: anchor.download }),
-    };
-    globalScope.document = { createElement: () => anchor };
     const fetcher = stubFetch(
       () => new Response(new Blob(["2026-09-20 booted\n"]), { status: 200, headers: { "content-type": "text/plain" } }),
     );
 
-    await downloadSystemLog("app.log");
+    const blob = await downloadSystemLog("app.log");
 
     expect(new Headers(fetcher.calls[0].init?.headers).get("authorization")).toBe("Bearer master-key");
     expect(fetcher.calls[0].init?.credentials).toBe("include");
-    expect(clicks).toHaveLength(1);
-    expect(clicks[0].download).toBe("app.log");
-    expect(clicks[0].href.startsWith("blob:")).toBe(true);
+    expect(blob).toBeInstanceOf(Blob);
+    expect(await blob.text()).toBe("2026-09-20 booted\n");
     fetcher.restore();
   });
 });

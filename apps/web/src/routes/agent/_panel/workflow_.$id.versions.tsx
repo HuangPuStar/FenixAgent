@@ -1,7 +1,11 @@
-import { WorkflowVersions } from "@fenix/resource-workflow/web";
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { Loader } from "lucide-react";
-import { Suspense, useCallback } from "react";
+import { lazy, Suspense, useCallback } from "react";
+
+// 页面实现属 owner 包，路由壳只做懒加载与边界（见前端规范 §2.4）。
+const WorkflowVersions = lazy(() =>
+  import("@fenix/resource-workflow/web").then((m) => ({ default: m.WorkflowVersions })),
+);
 
 function WorkflowVersionsPage() {
   const { id } = Route.useParams();

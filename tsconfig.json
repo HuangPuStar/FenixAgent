@@ -21,7 +21,6 @@
       "@/src/api/helpers": ["./apps/web/src/api/helpers.ts"],
       "@/src/i18n": ["./apps/web/src/i18n/index.ts"],
       "@/src/i18n/locales/*": ["./apps/web/src/i18n/locales/*"],
-      "@/src/lib/card-renderer/*": ["./apps/web/src/lib/card-renderer/*"],
       "@/src/lib/random-uuid-polyfill": ["./apps/web/src/lib/random-uuid-polyfill.ts"],
       "@/src/lib/theme": ["./apps/web/src/lib/theme.ts"],
       "@/src/lib/utils": ["./apps/web/src/lib/utils.ts"],
@@ -30,6 +29,9 @@
       // 各包公开出口后它们零消费，留着只会让「包内实现」在宿主侧有一个永不过期的写法。同批删除了
       // `apps/web/vite.config.ts` 里的对应条目——两张表必须一致，dependency-cruiser 也读这张表。
       // 宿主自有别名必须列在这里（`@/src/*` 通配只覆盖宿主 `src/`）。
+      // 两表的键写法无法机械对账——vite 表用前缀键（`@/src/i18n/locales`），本表用带 `*` 的路径键
+      // （`@/src/i18n/locales/*`）——所以每增删一条都必须同批改 `apps/web/vite.config.ts` 的
+      // `resolve.alias`，否则会出现「门禁能解析、生产构建解析不到」。
       "@server/*": ["./apps/server/src/*"]
     }
   },

@@ -1,29 +1,26 @@
 import { unwrap } from "@fenix/web-runtime/api/request";
 import { Link } from "@tanstack/react-router";
+import { useRequest } from "ahooks";
 import { AlertTriangle, ExternalLink, Inbox, Loader, X } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { useTranslation } from "react-i18next";
-import { type RunSummary, workflowEngineApi } from "../../../api/workflow-engine";
+import { workflowEngineApi } from "../../../api/workflow-engine";
 import { DAG_STATUS_CFG, relativeTime } from "../utils";
 
 export function RunListPanel({ onClose, onSelect }: { onClose: () => void; onSelect: (runId: string) => void }) {
   const { t } = useTranslation("workflows");
-  const [runs, setRuns] = useState<RunSummary[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
   const [statusFilter, setStatusFilter] = useState("all");
 
-  useEffect(() => {
-    setLoading(true);
-    setError(null);
-    unwrap(workflowEngineApi.listRuns())
-      .then((data) => setRuns(Array.isArray(data.items) ? data.items : []))
-      .catch((err) => {
-        console.error(err);
-        setError(err.message);
-      })
-      .finally(() => setLoading(false));
-  }, []);
+  // 运行列表的 loading / error / data 三态交给 useRequest 管理（§3.2）；失败必须是 rejected Promise，
+  // 因此经 unwrap 解包，不能直接 await 域模块（双语义期，见 §5.2）。
+  const {
+    data: runs = [],
+    loading,
+    error,
+  } = useRequest(async () => {
+    const page = await unwrap(workflowEngineApi.listRuns());
+    return Array.isArray(page.items) ? page.items : [];
+  });
 
   const filtered = runs.filter((r) => {
     if (statusFilter !== "all" && r.status !== statusFilter) return false;
@@ -40,6 +37,8 @@ export function RunListPanel({ onClose, onSelect }: { onClose: () => void; onSel
         <button
           type="button"
           onClick={onClose}
+          // 纯图标按钮：可访问名只能由 aria-label 提供（面板标题已由 wf-prop-title 承载，X 只表示关闭）
+          aria-label={t("editor.run_panel_close")}
           style={{
             display: "flex",
             alignItems: "center",
@@ -105,9 +104,30 @@ export function RunListPanel({ onClose, onSelect }: { onClose: () => void; onSel
             const cfg = DAG_STATUS_CFG[r.status] ?? DAG_STATUS_CFG.PENDING;
             const isRunning = r.status === "RUNNING";
             return (
+              /*
+                整行点击 = 打开该次运行的详情，行内没有等价的键盘入口，所以行自身必须可聚焦：
+                role="button" + tabIndex + Enter/Space（Space 默认滚动页面，需 preventDefault）。
+                行内无嵌套可聚焦控件，键盘事件不需要像 VersionPanel 那样做后代隔离。
+              */
               <div
                 key={r.run_id}
+                role="button"
+                tabIndex={0}
                 onClick={() => onSelect(r.run_id)}
+                onKeyDown={(e) => {
+                  if (e.key !== "Enter" && e.key !== " ") return;
+                  e.preventDefault();
+                  onSelect(r.run_id);
+                }}
+                // 本组件沿用内联样式（非 Tailwind）：焦点反馈必须显式写出，否则 Tab 到这里没有可见提示
+                onFocus={(e) => {
+                  e.currentTarget.style.outline = "2px solid #3b82f6";
+                  e.currentTarget.style.outlineOffset = "-2px";
+                }}
+                onBlur={(e) => {
+                  e.currentTarget.style.outline = "";
+                  e.currentTarget.style.outlineOffset = "";
+                }}
                 style={{
                   padding: "8px 12px",
                   borderBottom: "1px solid #f3f4f6",

@@ -224,7 +224,12 @@ describe("Workflow 包边界契约（任务 1.3 §1 静态条件）", () => {
       "src/__tests__/guard-stubs.ts",
       "web/index.ts",
       "web/lib/use-workflow-events.ts",
-      "web/pages/WorkflowPage.tsx",
+      // `web/pages/**` 的整页副本 `web/pages/WorkflowPage.tsx` 已删除（零导出、零消费者）：整页实现归宿主
+      // 三份路由壳（`apps/web/src/routes/agent/_panel/workflow.tsx` 与同目录的 `.edit` / `.versions`），
+      // 本包只提供壳渲染的视图块。归属与「重复页面不得复活」的断言在
+      // `web/__tests__/workflow-page-route.test.ts`；这里改钉视图块，保证 `web/pages/` 整体掉出扫描集时
+      // 仍有断言报红。
+      "web/pages/workflow/WorkflowList.tsx",
     ]) {
       expect(sourceFiles).toContain(resolve(PKG_ROOT, expected));
     }

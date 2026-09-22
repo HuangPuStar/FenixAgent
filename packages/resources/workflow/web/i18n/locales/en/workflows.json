@@ -274,6 +274,7 @@
     "chat_expand": "Expand Chat panel",
     "version_management": "Version Management",
     "version_panel_close": "Close version panel",
+    "run_panel_close": "Close run history panel",
     "load_failed": "Load failed",
     "load_failed_short": "Load failed",
     "no_match": "No matching records",

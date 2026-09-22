@@ -70,7 +70,7 @@ export function RunStatusPanel({
   updateNodesFromSnapshot,
   setRightTab,
 }: RunStatusPanelProps) {
-  const { t } = useTranslation("workflows");
+  const { t, i18n } = useTranslation("workflows");
 
   if (!isRunMode) {
     return (
@@ -240,7 +240,8 @@ export function RunStatusPanel({
                     <div className="flex justify-between mb-px">
                       <span className="font-medium text-text-secondary">{formatEventType(t, evt.type)}</span>
                       <span className="text-text-muted text-[9px] shrink-0">
-                        {new Date(evt.timestamp).toLocaleTimeString("zh-CN", {
+                        {/* 时间取当前 locale（§9.3）：固定 zh-CN 会让英文界面显示中文格式 */}
+                        {new Date(evt.timestamp).toLocaleTimeString(i18n.language, {
                           hour: "2-digit",
                           minute: "2-digit",
                           second: "2-digit",

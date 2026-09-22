@@ -75,6 +75,14 @@ import { existsSync } from "node:fs";
  *         补进去只会制造第二处重复守护（订正记于 review 文档 §7.31）。
  *     迁入后的新文件经包出口消费兄弟包（`@fenix/{model-management,resource-mcp,resource-skill}/web`），
  *     这四个 workspace 依赖本已声明在 `agent-config/package.json` 的 `dependencies`，未新增跨包依赖。
+ * 17. 任务 1.6 收口后经用户裁定，宿主 `web/src/lib/api-result.ts`（`ApiResult` 联合 + `ok` / `err` /
+ *     `unwrapApiResult`）与其专属测试 `web/src/__tests__/api-result-utils.test.ts` 一并删除：请求错误建模
+ *     已由 `@fenix/web-runtime/api/request` 的 `ApiError` / `unwrap` 承担，宿主消费方（如 `api/fs.ts`）
+ *     改指该包出口，这两份 RMD-08 快照里的应用壳文件删除后全仓零引用（逐标识符 grep 只剩设计文档、
+ *     包内一处历史注释与本表）。它们没有包内 owner 落点（`packages/**` 下不存在同名文件），故不进
+ *     `RMD_08_RELOCATED`，而是按「已裁定删除」口径改挂 `RMD_08_TARGETS_LATER_DELETED`：MOVES 表 58 → 56、
+ *     在册总数仍为 58，复活由下方 `later-deleted migration targets ... stay absent` 断言拦住——第 16 条里
+ *     作为等价对照提到的 `api-result-utils`，即本轮退役的这一份。
  */
 const RMD_08_MOVES = [
   ["web/src/App.tsx", "apps/web/src/App.tsx"],
@@ -83,7 +91,6 @@ const RMD_08_MOVES = [
     "apps/web/src/__tests__/agent-sidebar-instance-order.test.ts",
   ],
   ["web/src/__tests__/api-client.test.ts", "apps/web/src/__tests__/api-client.test.ts"],
-  ["web/src/__tests__/api-result-utils.test.ts", "apps/web/src/__tests__/api-result-utils.test.ts"],
   ["web/src/__tests__/auth-preference.test.ts", "apps/web/src/__tests__/auth-preference.test.ts"],
   ["web/src/__tests__/config-routing.test.ts", "apps/web/src/__tests__/config-routing.test.ts"],
   ["web/src/__tests__/dark-mode-components.test.tsx", "apps/web/src/__tests__/dark-mode-components.test.tsx"],
@@ -130,7 +137,6 @@ const RMD_08_MOVES = [
   ["web/src/i18n/locales/zh/components.json", "apps/web/src/i18n/locales/zh/components.json"],
   ["web/src/i18n/locales/zh/login.json", "apps/web/src/i18n/locales/zh/login.json"],
   ["web/src/i18n/locales/zh/sidebar.json", "apps/web/src/i18n/locales/zh/sidebar.json"],
-  ["web/src/lib/api-result.ts", "apps/web/src/lib/api-result.ts"],
   ["web/src/lib/auth-preference.ts", "apps/web/src/lib/auth-preference.ts"],
   ["web/src/lib/form-utils.ts", "apps/web/src/lib/form-utils.ts"],
   ["web/src/lib/password-crypto.ts", "packages/platform/identity/web/lib/password-crypto.ts"],
@@ -150,6 +156,20 @@ const RMD_08_MOVES = [
   ["web/src/types/index.ts", "apps/web/src/types/index.ts"],
   ["web/src/vite-env.d.ts", "apps/web/src/vite-env.d.ts"],
   ["web/tsconfig.json", "apps/web/tsconfig.json"],
+] as const;
+
+/**
+ * RMD-08 在册后经用户裁定删除的目标（迁移记录保留在此，只豁免「目标必须存在」断言）。
+ *
+ * 两条同为宿主自有的请求结果工具与其专属测试：`ApiResult` 联合 + `ok` / `err` / `unwrapApiResult` 的失败
+ * 语义（把 `ok: false` 转 Error）已由 `@fenix/web-runtime/api/request` 的 `ApiError` / `unwrap` 承担，宿主
+ * 消费方早已改指该包出口，删除后全仓零引用（逐标识符 grep 只剩设计文档与包内一处历史注释）。`packages/**`
+ * 下不存在同名文件，没有 owner 落点可挂——所以是退役而非 relocated，记录留在此处是为了不让「RMD-08 快照
+ * 里本来有这两条」的事实随清单长度流失（同 `rmd-05` 的 `RMD_05_TARGETS_LATER_DELETED` 口径）。
+ */
+const RMD_08_TARGETS_LATER_DELETED = [
+  ["web/src/__tests__/api-result-utils.test.ts", "apps/web/src/__tests__/api-result-utils.test.ts"],
+  ["web/src/lib/api-result.ts", "apps/web/src/lib/api-result.ts"],
 ] as const;
 
 /**
@@ -622,8 +642,10 @@ describe("RMD-08 apps/web migration", () => {
   // 页面与其自有字典归位到 `@fenix/agent-config`（见文件头第 14 条），70 → 60；T12 把最后一份
   // agent-config 归属的宿主测试 `agent-form-dialog-ssr.test.tsx` 归位（见文件头第 15 条），60 → 59；
   // T12 再把 `agent-form-dialog-pure-logic.test.ts` 按 owner 拆开搬迁（见文件头第 16 条），59 → 58。
+  // 用户裁定的退役（见文件头第 17 条）：宿主 `lib/api-result.ts` 与其专属测试无包内 owner 落点，从本清单
+  // 移入 `RMD_08_TARGETS_LATER_DELETED`——在册总数仍是 58，只豁免这两条的「目标必须存在」断言。
   test("removes every legacy source and retains its exact owner target", () => {
-    expect(RMD_08_MOVES).toHaveLength(58);
+    expect(RMD_08_MOVES.length + RMD_08_TARGETS_LATER_DELETED.length).toBe(58);
     for (const [source, target] of RMD_08_MOVES) {
       expect(existsSync(source), `legacy source still exists: ${source}`).toBe(false);
       expect(existsSync(target), `apps/web target is missing: ${target}`).toBe(true);
@@ -658,6 +680,16 @@ describe("RMD-08 apps/web migration", () => {
   test("keeps the self-referential session form schema test deleted", () => {
     expect(existsSync("web/src/__tests__/new-session-dialog-form.test.ts")).toBe(false);
     expect(existsSync("apps/web/src/__tests__/new-session-dialog-form.test.ts")).toBe(false);
+  });
+
+  // 用户裁定删除的宿主请求结果工具与其专属测试（见文件头第 17 条与 `RMD_08_TARGETS_LATER_DELETED`）：
+  // 源与目标都必须保持不存在——记录的是「已裁定删除」，不是「迁移丢失」；两者一旦复活，宿主就会重新
+  // 出现第二套「失败结果如何转 Error」的约定（`unwrapApiResult` 与 `ApiError` 各自抛错）。
+  test("later-deleted migration targets and their legacy sources stay absent", () => {
+    for (const [source, target] of RMD_08_TARGETS_LATER_DELETED) {
+      expect(existsSync(source), `legacy source came back: ${source}`).toBe(false);
+      expect(existsSync(target), `deleted target came back: ${target}`).toBe(false);
+    }
   });
 
   // 沙盒请求构造测试的 owner 已从应用壳交给资源包：旧根路径与旧 app 壳路径都不得复活，包内必须有唯一落点。

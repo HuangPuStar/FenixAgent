@@ -2,6 +2,8 @@ import { Button } from "@fenix/ui-components/ui/button";
 import { XLDialog, XLDialogContent, XLDialogHeader, XLDialogTitle } from "@fenix/ui-components/ui/dialog-xl";
 import { Copy } from "lucide-react";
 import { useState } from "react";
+import { useTranslation } from "react-i18next";
+import { MODELS_NS } from "../../../../i18n/namespace";
 import type { Algorithm } from "./AlgorithmsPage";
 
 interface AlgorithmDetailDialogProps {
@@ -11,6 +13,7 @@ interface AlgorithmDetailDialogProps {
 }
 
 export function AlgorithmDetailDialog({ algorithm, open, onClose }: AlgorithmDetailDialogProps) {
+  const { t } = useTranslation(MODELS_NS);
   const [copied, setCopied] = useState(false);
 
   const handleCopy = async () => {
@@ -34,7 +37,7 @@ export function AlgorithmDetailDialog({ algorithm, open, onClose }: AlgorithmDet
             </div>
             <Button variant="outline" size="sm" className="gap-1.5 h-8 text-xs flex-shrink-0" onClick={handleCopy}>
               <Copy className="w-3.5 h-3.5" />
-              {copied ? "已复制" : "复制代码"}
+              {copied ? t("algorithms.copied") : t("algorithms.copyCode")}
             </Button>
           </div>
         </XLDialogHeader>
@@ -43,16 +46,18 @@ export function AlgorithmDetailDialog({ algorithm, open, onClose }: AlgorithmDet
         <div className="flex gap-5 mt-4">
           {/* 左栏 */}
           <div className="flex-1 min-w-0">
-            <h4 className="text-xs font-bold text-text-primary mb-1.5">算法简介</h4>
+            <h4 className="text-xs font-bold text-text-primary mb-1.5">{t("algorithms.introHeading")}</h4>
             <p className="text-xs text-text-secondary leading-relaxed mb-4">{algorithm.description}</p>
 
-            <h4 className="text-xs font-bold text-text-primary mb-2">核心参数</h4>
+            <h4 className="text-xs font-bold text-text-primary mb-2">{t("algorithms.paramsHeading")}</h4>
             <table className="w-full text-xs">
               <thead>
                 <tr className="bg-surface-0 border-b border-border">
-                  <th className="text-left p-2 font-semibold text-text-muted">参数</th>
-                  <th className="text-left p-2 font-semibold text-text-muted">默认值</th>
-                  <th className="text-left p-2 font-semibold text-text-muted">说明</th>
+                  <th className="text-left p-2 font-semibold text-text-muted">{t("algorithms.columns.param")}</th>
+                  <th className="text-left p-2 font-semibold text-text-muted">
+                    {t("algorithms.columns.defaultValue")}
+                  </th>
+                  <th className="text-left p-2 font-semibold text-text-muted">{t("algorithms.columns.description")}</th>
                 </tr>
               </thead>
               <tbody>
@@ -68,7 +73,7 @@ export function AlgorithmDetailDialog({ algorithm, open, onClose }: AlgorithmDet
 
             {algorithm.scenes.length > 0 && (
               <>
-                <h4 className="text-xs font-bold text-text-primary mt-4 mb-2">适用场景</h4>
+                <h4 className="text-xs font-bold text-text-primary mt-4 mb-2">{t("algorithms.scenesHeading")}</h4>
                 <div className="flex gap-1.5 flex-wrap">
                   {algorithm.scenes.map((s) => (
                     <span key={s} className="text-[11px] text-text-secondary bg-surface-1 px-2 py-0.5 rounded">

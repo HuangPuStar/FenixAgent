@@ -79,23 +79,9 @@ export function AgentHomePage() {
 
   // AI 生成
   const { run: runGenerate } = useRequest(
-    async (prompt: string) => {
-      const response = await fetch("/web/agent-generation", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        credentials: "include",
-        body: JSON.stringify({ prompt }),
-      });
-      const json = (await response.json()) as {
-        success: boolean;
-        data?: GenerationFormData;
-        error?: { message: string };
-      };
-      if (!json.success || !json.data) {
-        throw new Error(json.error?.message ?? t("generationFailed"));
-      }
-      return json.data;
-    },
+    // 请求落在本包域模块 `agentApi.generate`（组件不写 fetch、不拼后端 URL）。失败由 `unwrap` 归一为
+    // ApiError，页面只消费成功数据与错误分类。
+    async (prompt: string) => unwrap(agentApi.generate(prompt)),
     {
       manual: true,
       onSuccess: (data) => {

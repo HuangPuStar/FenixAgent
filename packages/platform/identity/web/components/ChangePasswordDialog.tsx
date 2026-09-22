@@ -3,6 +3,7 @@ import { Eye, EyeOff } from "lucide-react";
 import { useCallback, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { SETTINGS_NS } from "../i18n/namespace";
+import { authClient } from "../lib/auth-client";
 import { encryptPassword } from "../lib/password-crypto";
 
 interface ChangePasswordDialogProps {
@@ -51,20 +52,16 @@ export function ChangePasswordDialog({ open, onOpenChange }: ChangePasswordDialo
         const encCurrent = await encryptPassword(currentPassword);
         const encNew = await encryptPassword(newPassword);
 
-        const res = await fetch("/api/auth/change-password", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          credentials: "include",
-          body: JSON.stringify({
-            currentPassword: encCurrent,
-            newPassword: encNew,
-            revokeOtherSessions: false,
-          }),
+        // 经 better-auth 客户端提交：该端点属库内核路由，客户端方法自带同一 POST 与 { error } 契约，
+        // 传输由库内的 createFetch 持有（不经 request()，见前端规范 §5.3 例外登记）。
+        // 服务端消息仍从 error.message 原样取出，失败提示与手写 fetch 版本一致。
+        const { error: submitError } = await authClient.changePassword({
+          currentPassword: encCurrent,
+          newPassword: encNew,
+          revokeOtherSessions: false,
         });
-
-        const data = await res.json();
-        if (!res.ok) {
-          setError(data.message || t("changeFailed"));
+        if (submitError) {
+          setError(submitError.message || t("changeFailed"));
           return;
         }
 

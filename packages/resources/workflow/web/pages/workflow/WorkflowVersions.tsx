@@ -46,7 +46,7 @@ export function WorkflowVersions({ workflowId }: WorkflowVersionsProps) {
   const unauthorized = isUnauthorizedError(versionsError);
 
   // 设为最新版本
-  const { run: runSetLatest } = useRequest((version: number) => workflowDefApi.setLatest(workflowId, version), {
+  const { run: runSetLatest } = useRequest((version: number) => unwrap(workflowDefApi.setLatest(workflowId, version)), {
     manual: true,
     onSuccess: () => {
       // 列表刷新会换掉 latest 徽标，但「哪一次操作生效了」仍需一句明说（同页恢复操作同口径）
@@ -62,7 +62,7 @@ export function WorkflowVersions({ workflowId }: WorkflowVersionsProps) {
 
   // 恢复到草稿
   const { run: runRestoreToDraft } = useRequest(
-    (version: number) => workflowDefApi.restoreToDraft(workflowId, version),
+    (version: number) => unwrap(workflowDefApi.restoreToDraft(workflowId, version)),
     {
       manual: true,
       onSuccess: () => toast.success(t("versions.restore_success")),

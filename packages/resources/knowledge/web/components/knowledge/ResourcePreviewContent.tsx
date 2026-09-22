@@ -11,7 +11,12 @@ import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { toast } from "sonner";
 import * as XLSX from "xlsx";
-import { kbApi } from "../../api/knowledge-bases";
+import {
+  fetchResourceFileBinary,
+  fetchResourceFileText,
+  isResourcePdfPreviewAvailable,
+  kbApi,
+} from "../../api/knowledge-bases";
 import type { KnowledgeResourceInfo } from "../../types/knowledge";
 
 /** 视频扩展名 → MIME 类型映射 */
@@ -157,7 +162,7 @@ interface ResourcePreviewContentProps {
  *
  * 预览策略：
  * - PDF/图片/视频：直接 URL 渲染
- * - Markdown/文本/HTML：fetch 内容后渲染
+ * - Markdown/文本/HTML：经域模块读取内容后渲染
  * - 表格(xlsx/xls/csv)：用 xlsx 库前端解析为 HTML 表格
  * - Office(Word/PPT)：优先服务端 PDF 转换，不可用时 docx 用 mammoth，其余降级为下载
  */
@@ -174,21 +179,14 @@ export function ResourcePreviewContent({ resource, kbId }: ResourcePreviewConten
     loading: fetchLoading,
     error: fetchError,
     run: runFetch,
-  } = useRequest(
-    async () => {
-      const response = await fetch(fileUrl, { credentials: "include" });
-      if (!response.ok) throw new Error(`HTTP ${response.status}`);
-      return response.text();
+  } = useRequest(() => fetchResourceFileText({ kbId, resourceId: resource.id }), {
+    manual: true,
+    onSuccess: setFetchedContent,
+    onError: (err) => {
+      console.error("Failed to fetch preview content", err);
+      toast.error(t("preview.loadError"));
     },
-    {
-      manual: true,
-      onSuccess: setFetchedContent,
-      onError: (err) => {
-        console.error("Failed to fetch preview content", err);
-        toast.error(t("preview.loadError"));
-      },
-    },
-  );
+  });
 
   // —— Office 文档预览：先尝试 PDF 转换，不可用时用 mammoth(docx) 或降级 ——
   const isOffice = category === "office";
@@ -200,16 +198,13 @@ export function ResourcePreviewContent({ resource, kbId }: ResourcePreviewConten
   // 检查 PDF 转换端点是否可用
   const { loading: officeLoading, run: runOfficeCheck } = useRequest(
     async (): Promise<OfficeMode> => {
-      const resp = await fetch(pdfUrl, { credentials: "include" });
-      if (resp.ok && resp.headers.get("content-type")?.includes("pdf")) {
+      if (await isResourcePdfPreviewAvailable({ kbId, resourceId: resource.id })) {
         return "pdf";
       }
       // PDF 不可用，对 Word 文档尝试 mammoth 客户端转换
       if (officeKind === "word") {
         try {
-          const fileResp = await fetch(fileUrl, { credentials: "include" });
-          if (!fileResp.ok) throw new Error(`HTTP ${fileResp.status}`);
-          const arrayBuffer = await fileResp.arrayBuffer();
+          const arrayBuffer = await fetchResourceFileBinary({ kbId, resourceId: resource.id });
           const result = await mammoth.convertToHtml({ arrayBuffer });
           setDocxHtml(result.value);
           return "docxHtml";
@@ -274,7 +269,7 @@ export function ResourcePreviewContent({ resource, kbId }: ResourcePreviewConten
       }
 
       case "spreadsheet":
-        return <SpreadsheetPreview url={fileUrl} filename={resource.sourceName} />;
+        return <SpreadsheetPreview kbId={kbId} resourceId={resource.id} filename={resource.sourceName} />;
 
       case "image":
         return (
@@ -428,18 +423,19 @@ function ErrorPlaceholder({ message }: { message: string }) {
 // ── 表格预览组件：支持 xlsx/xls/csv，用 xlsx 库前端解析 ──
 
 interface SpreadsheetPreviewProps {
-  url: string;
+  kbId: string;
+  resourceId: string;
   filename: string;
 }
 
 /**
  * 表格文件预览组件。
  *
- * xlsx/xls：fetch 二进制 → xlsx 库解析第一个 sheet → HTML 表格
- * csv：fetch 文本 → CSV 解析 → HTML 表格
+ * xlsx/xls：读取二进制 → xlsx 库解析第一个 sheet → HTML 表格
+ * csv：读取文本 → CSV 解析 → HTML 表格
  * 最多渲染 500 行，超出部分显示截断提示。
  */
-function SpreadsheetPreview({ url, filename }: SpreadsheetPreviewProps) {
+function SpreadsheetPreview({ kbId, resourceId, filename }: SpreadsheetPreviewProps) {
   const { t } = useTranslation(NS.KNOWLEDGE);
   const [rows, setRows] = useState<string[][] | null>(null);
   const [loading, setLoading] = useState(true);
@@ -455,18 +451,14 @@ function SpreadsheetPreview({ url, filename }: SpreadsheetPreviewProps) {
     (async () => {
       try {
         if (ext === "csv") {
-          // CSV：fetch 文本内容后解析
-          const res = await fetch(url, { credentials: "include" });
-          if (!res.ok) throw new Error(`HTTP ${res.status}`);
-          const text = await res.text();
+          // CSV：读取文本内容后解析
+          const text = await fetchResourceFileText({ kbId, resourceId });
           const parsed = parseCSV(text);
           const maxCols = Math.max(...parsed.map((r) => r.length), 0);
           if (!cancelled) setRows(normalizeRows(parsed, maxCols));
         } else {
-          // xlsx / xls / xlsm：fetch 二进制后用 xlsx 库解析
-          const res = await fetch(url, { credentials: "include" });
-          if (!res.ok) throw new Error(`HTTP ${res.status}`);
-          const buf = await res.arrayBuffer();
+          // xlsx / xls / xlsm：读取二进制后用 xlsx 库解析
+          const buf = await fetchResourceFileBinary({ kbId, resourceId });
           const wb = XLSX.read(new Uint8Array(buf), { type: "array" });
           const firstSheet = wb.SheetNames[0];
           if (!firstSheet) {
@@ -490,7 +482,7 @@ function SpreadsheetPreview({ url, filename }: SpreadsheetPreviewProps) {
     return () => {
       cancelled = true;
     };
-  }, [url, ext, t]);
+  }, [kbId, resourceId, ext, t]);
 
   if (loading) {
     return (

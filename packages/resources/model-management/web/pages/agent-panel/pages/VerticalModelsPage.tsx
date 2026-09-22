@@ -23,6 +23,8 @@ interface VerticalModel {
   scenes: string[];
 }
 
+// 内置模型目录：下面是随页展示的内容数据（名称 / 简介 / 能力 / 场景），不是界面文案——本页的 i18n
+// 收口只覆盖标题、占位符、徽标这类界面文案，目录内容仍是中文常量。
 const ALL_MODELS: VerticalModel[] = [
   {
     id: "wind-logistics",
@@ -121,7 +123,7 @@ export function VerticalModelsPage() {
           <Input
             className="pl-9"
             aria-label={t("verticalModels.searchLabel")}
-            placeholder="搜索模型名称、描述、标签、场景..."
+            placeholder={t("verticalModels.searchPlaceholder")}
             value={search}
             onChange={(e) => setSearch(e.target.value)}
           />
@@ -159,7 +161,7 @@ export function VerticalModelsPage() {
                         variant="outline"
                         className="bg-amber-50 text-amber-700 border-amber-200 text-xs px-1.5 py-0 h-auto"
                       >
-                        已落地
+                        {t("verticalModels.deployedBadge")}
                       </Badge>
                     </div>
                     <p className="text-sm text-text-secondary mt-0.5 flex items-center gap-1.5 flex-wrap">
@@ -171,12 +173,14 @@ export function VerticalModelsPage() {
                   </div>
                 </div>
 
-                <h4 className="text-sm font-bold text-text-primary mt-4 mb-2">模型简介</h4>
+                <h4 className="text-sm font-bold text-text-primary mt-4 mb-2">{t("verticalModels.introHeading")}</h4>
                 <p className="text-sm text-text-secondary leading-relaxed mb-5">{model.description}</p>
 
                 {model.capabilities.length > 0 && (
                   <>
-                    <h4 className="text-sm font-bold text-text-primary mb-2">核心能力</h4>
+                    <h4 className="text-sm font-bold text-text-primary mb-2">
+                      {t("verticalModels.capabilitiesHeading")}
+                    </h4>
                     <div className="grid grid-cols-2 gap-1.5">
                       {model.capabilities.map((c) => (
                         <div key={c} className="flex items-center gap-1.5 text-sm text-text-secondary">
@@ -190,7 +194,7 @@ export function VerticalModelsPage() {
 
                 {model.scenes.length > 0 && (
                   <div className="mt-4">
-                    <h4 className="text-sm font-bold text-text-primary mb-2">适用场景</h4>
+                    <h4 className="text-sm font-bold text-text-primary mb-2">{t("verticalModels.scenesHeading")}</h4>
                     <div className="flex gap-1.5 flex-wrap">
                       {model.scenes.map((s) => (
                         <span key={s} className="text-sm text-text-secondary bg-surface-1 px-2.5 py-1 rounded">

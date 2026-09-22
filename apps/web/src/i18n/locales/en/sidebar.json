@@ -3,6 +3,8 @@
   "expand": "Expand sidebar",
   "resizeAgentArea": "Drag to resize the Agent area",
   "changePassword": "Change Password",
+  "switchOrgHint": "Click to switch organization",
+  "brandSubtitle": "Phoenix Agent OS",
   "logout": "Sign Out",
   "navGroupCore": "Core",
   "navGroupConfig": "Configuration"

@@ -10,9 +10,11 @@ import { lazy, Suspense } from "react";
 const Page = lazy(async () => {
   const [identity, machine] = await Promise.all([import("@fenix/identity/web"), import("@fenix/resource-machine/web")]);
 
-  return {
-    default: () => <identity.AgentOrganizationsPage machineRegistry={machine.registryApi} />,
-  };
+  function OrganizationsPage() {
+    return <identity.AgentOrganizationsPage machineRegistry={machine.registryApi} />;
+  }
+
+  return { default: OrganizationsPage };
 });
 
 export const Route = createFileRoute("/agent/_panel/organizations")({

@@ -129,9 +129,16 @@ describe("本包 i18n 字典（models 命名空间）", () => {
     // §1.6 T11b2 侧栏导航随项下沉再新增 `nav.{models,algorithms,verticalModels}` 3 键共 389
     // （文案逐字取自宿主 `agentPanel` 的同名键，见 `web/contribution.ts`）；§1.6 T12 结清
     // `AlgorithmsPage` / `VerticalModelsPage` 的两条跨包借键——页标题改指本包 `nav.*`，副标题落在
-    // 本包 `algorithms.subtitle` / `verticalModels.subtitle`（文案逐字取自宿主同名键）共 391。
-    expect(enKeys.size).toBe(391);
-    expect(zhKeys.size).toBe(391);
+    // 本包 `algorithms.subtitle` / `verticalModels.subtitle`（文案逐字取自宿主同名键）共 391；
+    // i18n 违规项修复把 `VerticalModelsPage` / `AlgorithmDetailDialog` 的硬编码中文界面文案收进 `t()`：
+    // `verticalModels.{searchPlaceholder,deployedBadge,introHeading,capabilitiesHeading,scenesHeading}` 5 键
+    // + `algorithms.{introHeading,paramsHeading,scenesHeading,copyCode,copied}` 5 键 +
+    // `algorithms.columns.{param,defaultValue,description}` 3 键共 404（页内演示数据仍是中文常量）；
+    // 探测失败诊断再把密钥引用解析失败的处置文案补进 `testDialog.errors.credentialUnresolved` 1 键共 405
+    // ——该键由 `agent-models-errors.ts` 消费，不是新孤儿键；同组的其余键（除 `modelMessageEmpty`，它属
+    // "2xx 无文本仍判通过"的另一条线）本轮一并启用。
+    expect(enKeys.size).toBe(405);
+    expect(zhKeys.size).toBe(405);
   });
 
   // 字典内不得再嵌一层命名空间前缀：宿主按 MODELS_NS 注册本文件，多一层前缀会让所有键变成 key 回显。

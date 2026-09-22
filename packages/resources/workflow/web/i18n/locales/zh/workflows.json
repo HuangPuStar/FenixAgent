@@ -274,6 +274,7 @@
     "chat_expand": "展开 Chat 面板",
     "version_management": "版本管理",
     "version_panel_close": "关闭版本面板",
+    "run_panel_close": "关闭运行记录面板",
     "load_failed": "加载失败",
     "load_failed_short": "加载失败",
     "no_match": "没有匹配的记录",

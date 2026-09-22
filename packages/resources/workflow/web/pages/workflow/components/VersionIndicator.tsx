@@ -59,7 +59,7 @@ export function VersionIndicator({
       if (!workflowId) return;
       setConfirmAction(null);
       try {
-        await workflowDefApi.setLatest(workflowId, version);
+        await unwrap(workflowDefApi.setLatest(workflowId, version));
         toast.success(t("versions.set_latest"));
         loadVersions();
       } catch (err) {
@@ -75,7 +75,7 @@ export function VersionIndicator({
       if (!workflowId) return;
       setConfirmAction(null);
       try {
-        await workflowDefApi.restoreToDraft(workflowId, version);
+        await unwrap(workflowDefApi.restoreToDraft(workflowId, version));
         toast.success(t("versions.restore_success"));
         onBackToDraft();
         setOpen(false);
@@ -199,7 +199,7 @@ export function VersionIndicator({
                           borderRadius: 99,
                         }}
                       >
-                        latest
+                        {t("versions.latest")}
                       </span>
                     )}
                     <div style={{ marginLeft: "auto", display: "flex", gap: 3 }}>

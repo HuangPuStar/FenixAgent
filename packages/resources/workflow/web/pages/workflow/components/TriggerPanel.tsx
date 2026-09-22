@@ -34,7 +34,7 @@ export function TriggerPanel({ workflowId, onClose }: { workflowId?: string; onC
     if (!workflowId) return;
     setCreating(true);
     try {
-      await workflowDefApi.createTrigger(workflowId);
+      await unwrap(workflowDefApi.createTrigger(workflowId));
       toast.success(t("editor.trigger_created"));
       loadData();
     } catch (err) {
@@ -49,7 +49,7 @@ export function TriggerPanel({ workflowId, onClose }: { workflowId?: string; onC
     async (triggerId: string) => {
       if (!workflowId || !confirm(t("editor.trigger_delete_confirm"))) return;
       try {
-        await workflowDefApi.deleteTrigger(workflowId, triggerId);
+        await unwrap(workflowDefApi.deleteTrigger(workflowId, triggerId));
         toast.success(t("editor.trigger_deleted"));
         loadData();
       } catch (err) {
@@ -80,10 +80,10 @@ export function TriggerPanel({ workflowId, onClose }: { workflowId?: string; onC
       if (!workflowId) return;
       try {
         if (trigger.enabled) {
-          await workflowDefApi.disableTrigger(workflowId, trigger.id);
+          await unwrap(workflowDefApi.disableTrigger(workflowId, trigger.id));
           toast.success(t("editor.trigger_disabled_ok"));
         } else {
-          await workflowDefApi.enableTrigger(workflowId, trigger.id);
+          await unwrap(workflowDefApi.enableTrigger(workflowId, trigger.id));
           toast.success(t("editor.trigger_enabled_ok"));
         }
         loadData();
@@ -225,6 +225,8 @@ export function TriggerPanel({ workflowId, onClose }: { workflowId?: string; onC
                     <button
                       type="button"
                       onClick={() => handleCopy(trigger)}
+                      // 纯图标按钮：可访问名只能由 aria-label 提供（Webhook URL 已由上一行标签承载）
+                      aria-label={t("editor.trigger_copy")}
                       style={{
                         border: "none",
                         background: "none",

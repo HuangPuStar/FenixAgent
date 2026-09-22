@@ -68,8 +68,11 @@ function LogsDashboard({ onAuthFailure }: { onAuthFailure: () => void }) {
   // 下载是浏览器二进制读取（见 api/system-logs.ts 的说明），走 manual 请求只为拿到稳定的
   // loading 态与错误分类：`run()` 内部接住 rejection，不会像裸 promise 那样变成未处理的 rejection；
   // 401 与其它调用同样回门，其余失败给一次可见提示（否则点击后界面毫无反应）。
+  // 落盘归本层（§5.1：域模块只回 Blob）；`params[0]` 是本次 `run()` 传入的文件名，与请求参数同源，
+  // 不读 `selectedFile` state，避免请求进行中用户切换文件时下载出名字与内容不符。
   const downloadRequest = useRequest(downloadSystemLog, {
     manual: true,
+    onSuccess: (blob, params) => saveBlobAsFile(blob, params[0]),
     onError: (error) => {
       if (error instanceof ApiError && error.code === "UNAUTHORIZED") onAuthFailure();
       else toast.error(t("logs.downloadError"));
@@ -244,4 +247,23 @@ function LogResults({ result }: { result: SystemLogSearchResult }) {
       </div>
     </div>
   );
+}
+
+/**
+ * 触发浏览器落盘（本文件唯一的 DOM 操作）。
+ *
+ * 归口在页面而不是域模块：按前端规范 5.1「组件负责：调用域模块 → 处理结果 → 更新 UI」，
+ * 锚点与 object URL 的生命周期是 UI 细节，域模块的 `downloadSystemLog` 只回 `Blob`（见其注释）。
+ *
+ * `click()` 与 `revokeObjectURL` 同步完成：锚点不插入文档，浏览器在 `click()` 时同步取走 URL 对应的
+ * blob，随即释放即可，无需等待下载完成（与 sandbox 的 `ClusterPanel.downloadTunnelConfig` 同形）。
+ * 这里不做失败分支——该动作不会 reject，取数失败已由 `useRequest` 的 `onError` 处理。
+ */
+function saveBlobAsFile(blob: Blob, fileName: string): void {
+  const url = URL.createObjectURL(blob);
+  const anchor = document.createElement("a");
+  anchor.href = url;
+  anchor.download = fileName;
+  anchor.click();
+  URL.revokeObjectURL(url);
 }
