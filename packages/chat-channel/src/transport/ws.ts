@@ -2,20 +2,18 @@
 // 同构 Yjs WebSocket 客户端，兼容浏览器和 Bun。
 // URL 由调用方传入，解决 client/server 不同端口/环境的问题。
 
-import { WEBSOCKET_CODES } from "acp-link/websocket-code";
 import type { ActionAck, ActionError } from "../channel/types";
 import { decodeYjsSyncFrame, encodeYjsStateVectorFrame } from "../protocol/update-frame";
 import { isPublicError, type PublicError } from "../public-error";
+import { WS_CLOSE_CODE_POLICY } from "./ws-close-codes";
 
-/** 服务端已明确告知当前连接不可恢复时，前端不应自动重连的关闭码。 */
-const NO_RECONNECT_CODES = new Set<number>([
-  WEBSOCKET_CODES.INSTANCE_RECLAIMED.code,
-  WEBSOCKET_CODES.INVALID_REFERENCE.code,
-  WEBSOCKET_CODES.MACHINE_UNAVAILABLE.code,
-  WEBSOCKET_CODES.KEEPALIVE_TIMEOUT.code,
-  WEBSOCKET_CODES.SPAWN_REJECTED.code,
-  WEBSOCKET_CODES.MACHINE_ALREADY_CONNECTED.code,
-]);
+/**
+ * 服务端已明确告知当前连接不可恢复时，前端不应自动重连的关闭码。
+ * 码集合来自 `./ws-close-codes.ts` 的策略表（与 UI 语义同源），不在此处另立字面量。
+ */
+const NO_RECONNECT_CODES = new Set<number>(
+  WS_CLOSE_CODE_POLICY.filter((entry) => entry.stopReconnect).map((entry) => entry.code),
+);
 
 /** 重连间隔（指数退避），单位毫秒 */
 const RECONNECT_DELAYS = [1000, 2000, 4000, 8000, 16000, 30000];
