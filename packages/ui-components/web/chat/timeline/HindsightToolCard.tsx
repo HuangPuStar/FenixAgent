@@ -18,6 +18,7 @@ import { cn } from "../../lib/cn";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "../../ui/dialog";
 import { formatOutput, truncate } from "../lib/tool-call-utils";
 import type { ToolCallData } from "../types";
+import { ToolJsonBlock } from "./tool-json-block";
 
 // =============================================================================
 // Hindsight 工具卡片 — 记忆系统专属展示，紫色知识主题
@@ -109,25 +110,10 @@ export function HindsightToolCard({ tool }: HindsightToolCardProps) {
             </DialogHeader>
             <div className="px-4 py-3 space-y-3 max-h-[60vh] overflow-y-auto">
               {tool.rawInput && Object.keys(tool.rawInput).length > 0 && (
-                <div>
-                  <div className="text-[9px] font-semibold uppercase tracking-widest text-text-dim mb-1.5">Input</div>
-                  <pre className="text-[11px] bg-surface-2 rounded-md px-3 py-2.5 overflow-auto font-mono text-text-secondary leading-relaxed">
-                    {truncate(JSON.stringify(tool.rawInput, null, 2), 3000)}
-                  </pre>
-                </div>
+                <ToolJsonBlock label="Input" content={truncate(JSON.stringify(tool.rawInput, null, 2), 3000)} />
               )}
               {!isRunning && (tool.rawOutput || tool.content) && (
-                <div>
-                  <div className="text-[9px] font-semibold uppercase tracking-widest text-text-dim mb-1.5">Output</div>
-                  <pre
-                    className={cn(
-                      "text-[11px] rounded-md px-3 py-2.5 overflow-auto font-mono leading-relaxed",
-                      isError ? "bg-status-error/6 text-status-error" : "bg-surface-2 text-text-secondary",
-                    )}
-                  >
-                    {formatOutput(tool)}
-                  </pre>
-                </div>
+                <ToolJsonBlock label="Output" content={formatOutput(tool)} error={isError} />
               )}
             </div>
           </DialogContent>

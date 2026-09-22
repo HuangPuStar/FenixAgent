@@ -26,6 +26,7 @@ import { Shimmer } from "../primitives/shimmer";
 import type { ToolCallData, ToolCardKind } from "../types";
 import { SubAgentPanel } from "./SubAgentPanel";
 import { TodoChanges } from "./TodoChanges";
+import { ToolJsonBlock } from "./tool-json-block";
 
 /**
  * 从工具调用的 rawInput 中提取文件路径。
@@ -330,29 +331,17 @@ function ToolCallDialog({ open, onOpenChange, tool, kind, style, icon: Icon, tit
 
         <div className="px-4 py-3 space-y-3 max-h-[60vh] overflow-y-auto">
           {tool.rawInput && Object.keys(tool.rawInput).length > 0 && (
-            <div>
-              <div className="text-[9px] font-semibold uppercase tracking-widest text-text-dim mb-1.5">
-                {t("chat.components.toolCallGroup.input")}
-              </div>
-              <pre className="text-[11px] bg-surface-2 rounded-md px-3 py-2.5 overflow-auto font-mono text-text-secondary leading-relaxed whitespace-pre-wrap break-all [tab-size:2]">
-                {truncate(JSON.stringify(tool.rawInput, null, 2), 3000)}
-              </pre>
-            </div>
+            <ToolJsonBlock
+              label={t("chat.components.toolCallGroup.input")}
+              content={truncate(JSON.stringify(tool.rawInput, null, 2), 3000)}
+            />
           )}
           {hasOutput && (
-            <div>
-              <div className="text-[9px] font-semibold uppercase tracking-widest text-text-dim mb-1.5">
-                {t("chat.components.toolCallGroup.output")}
-              </div>
-              <pre
-                className={cn(
-                  "text-[11px] rounded-md px-3 py-2.5 overflow-auto font-mono leading-relaxed whitespace-pre-wrap break-all [tab-size:2]",
-                  isError ? "bg-status-error/6 text-status-error" : "bg-surface-2 text-text-secondary",
-                )}
-              >
-                {formatOutput(tool)}
-              </pre>
-            </div>
+            <ToolJsonBlock
+              label={t("chat.components.toolCallGroup.output")}
+              content={formatOutput(tool)}
+              error={isError}
+            />
           )}
           {isRunning && !hasOutput && (
             <p className="text-xs text-text-dim italic">{t("chat.components.toolCallRow.running")}</p>

@@ -188,6 +188,10 @@
       "types": "./web/chat/panels/QuestionPanel.tsx",
       "default": "./web/chat/panels/QuestionPanel.tsx"
     },
+    "./chat/panels/chat-interaction-region": {
+      "types": "./web/chat/panels/chat-interaction-region.tsx",
+      "default": "./web/chat/panels/chat-interaction-region.tsx"
+    },
     "./chat/panels/chat-status-panel": {
       "types": "./web/chat/panels/chat-status-panel.tsx",
       "default": "./web/chat/panels/chat-status-panel.tsx"
@@ -287,6 +291,10 @@
     "./chat/timeline/sub-agent-tool-call-context": {
       "types": "./web/chat/timeline/sub-agent-tool-call-context.ts",
       "default": "./web/chat/timeline/sub-agent-tool-call-context.ts"
+    },
+    "./chat/timeline/tool-json-block": {
+      "types": "./web/chat/timeline/tool-json-block.tsx",
+      "default": "./web/chat/timeline/tool-json-block.tsx"
     },
     "./chat/types": {
       "types": "./web/chat/types.ts",
@@ -563,6 +571,10 @@
     "./ui/spinner": {
       "types": "./web/ui/spinner.tsx",
       "default": "./web/ui/spinner.tsx"
+    },
+    "./ui/status-dot": {
+      "types": "./web/ui/status-dot.tsx",
+      "default": "./web/ui/status-dot.tsx"
     },
     "./ui/switch": {
       "types": "./web/ui/switch.tsx",
