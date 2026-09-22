@@ -37,6 +37,10 @@ export function parseDatabaseConnectionPoolConfig(input: unknown = process.env):
  * **同名键不得两处声明**：`assertNoHostKeyOverride()` 会在启动期直接拒绝，部署也会失败。要改哪个变量就去
  * 它的 owner 模块改，不要往本文件加回同名行——本文件里留下的只有宿主自身参数与多模块共享键
  * （见 `config.ts` 的 `buildConfig` 说明与 agent-runtime manifest 的「不迁的兄弟键」）。
+ *
+ * 1.7 C 块收尾另删了四个**零消费者**的传输层参数键（`RCS_POLL_TIMEOUT` / `RCS_HEARTBEAT_INTERVAL` /
+ * `RCS_WS_IDLE_TIMEOUT` / `RCS_DISCONNECT_TIMEOUT`）——它们的宿主字段已无任何读取点，理由与重建条件见
+ * `config.ts` 的同名说明，不要加回。
  */
 const envSchema = databaseConnectionPoolSchema.extend({
   // ── 必填 ──
@@ -61,11 +65,7 @@ const envSchema = databaseConnectionPoolSchema.extend({
   APP_LOGO_PATH: z.string().default(""),
 
   // ── 可选：HTTP/WebSocket ──
-  RCS_POLL_TIMEOUT: z.coerce.number().int().positive().default(8),
-  RCS_HEARTBEAT_INTERVAL: z.coerce.number().int().positive().default(20),
-  RCS_WS_IDLE_TIMEOUT: z.coerce.number().int().positive().default(255),
   RCS_WS_MAX_PAYLOAD_MB: z.coerce.number().int().positive().default(128),
-  RCS_DISCONNECT_TIMEOUT: z.coerce.number().int().positive().default(120),
   RCS_DISABLE_SCHEDULER: z
     .string()
     .default("false")

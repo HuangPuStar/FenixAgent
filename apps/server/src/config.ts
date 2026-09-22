@@ -13,12 +13,19 @@ import { readDeclaredEnv, type ServerEnv } from "./env-loader";
  * `bootstrap/module-configs.ts` 与 `services/pre-launch-ports.ts` 继续从本对象读——它们的职责与本批无关。
  *
  * 保留为**宿主自有**的字段（不从 `readDeclaredEnv` 取）有明确理由，不要"顺手统一"：
- * `version` / `port` / `host` / `baseUrl` / `pollTimeout` / `heartbeatInterval` / `wsIdleTimeout` /
- * `wsMaxPayloadMb` / `disconnectTimeout` 是宿主自身运行参数；`fileWsIdleTimeoutMs` / `fileWsSweepIntervalMs` /
- * `fileWsSweepEnabled` 由宿主的 file-ws 巡检直接消费（`host-startup.ts` 的 `startFileWsSweep`），
- * machine 模块只读身份绑定与订阅上限两项；`disableSignup` 同时被宿主 `plugins/auth.ts` 消费；
+ * `version` / `port` / `host` / `baseUrl` / `wsMaxPayloadMb` 是宿主自身运行参数；
+ * `fileWsIdleTimeoutMs` / `fileWsSweepIntervalMs` / `fileWsSweepEnabled` 由宿主的 file-ws 巡检直接消费
+ * （`host-startup.ts` 的 `startFileWsSweep`），machine 模块只读身份绑定与订阅上限两项；
+ * `disableSignup` 同时被宿主 `plugins/auth.ts` 消费；
  * `defaultMachineId` / `defaultEngineType` / `disableLocalExecution` 为多模块共享的 Agent 路由类键，
  * 无唯一 owner（见 agent-runtime manifest 的「不迁的兄弟键」）。
+ *
+ * **1.7 C 块收尾删除了四个零消费者的字段**（`pollTimeout` / `heartbeatInterval` / `wsIdleTimeout` /
+ * `disconnectTimeout`，对应 `RCS_POLL_TIMEOUT` / `RCS_HEARTBEAT_INTERVAL` / `RCS_WS_IDLE_TIMEOUT` /
+ * `RCS_DISCONNECT_TIMEOUT`）：它们自 WS 层改用 Bun 原生配置后就没有读取点——`RCS_WS_IDLE_TIMEOUT`
+ * 从未传给 `Bun.serve` 的 `idleTimeout`（注释曾声称它须高于 `wsKeepaliveInterval * 3`），改了不生效。
+ * 现行保活旋钮是模块声明的 `wsKeepaliveInterval`。若要重建一个被运行时层取代的旋钮，先落实它的消费者
+ * （例如真的把值接进 `Bun.serve`），不要只留一个声明。
  */
 /** 单例占位期的路径兜底：`buildConfig({} as ServerEnv)` 下声明键全为 undefined，而 `resolve()` 对 undefined 会抛 `ERR_INVALID_ARG_TYPE`；给空串只求「不崩且同形」。刻意不用真实默认值兜底——`SKILL_DIR` / `RCS_SYSTEM_ADMIN_PASSWORD_FILE` 的默认值归各自模块 manifest 的 `defaultValue`，在这里再写一份就是第二个来源。 */
 const PLACEHOLDER_PATH = "";
@@ -54,21 +61,11 @@ function buildConfig(env: ServerEnv) {
       env,
       "RCS_MODEL_GATEWAY_DEFAULT_BUDGET_DURATION",
     ),
-    pollTimeout: env.RCS_POLL_TIMEOUT,
-    heartbeatInterval: env.RCS_HEARTBEAT_INTERVAL,
-    /** Bun WebSocket idle timeout (seconds). Bun sends protocol-level pings after
-     *  this many seconds of no received data. Set higher than
-     *  wsKeepaliveInterval * 3 so that application-level keepalive detects dead
-     *  connections before Bun closes them. Default 255s (Bun's built-in default). */
-    wsIdleTimeout: env.RCS_WS_IDLE_TIMEOUT,
     /** 单条 WebSocket 消息最大大小（MB），由 Bun 配置入口转换为字节。 */
     wsMaxPayloadMb: env.RCS_WS_MAX_PAYLOAD_MB,
     /** Server→client keep_alive data-frame interval (seconds). Keeps reverse
      *  proxies from closing idle connections. Default 20s. */
     wsKeepaliveInterval: readDeclaredEnv<number>(env, "RCS_WS_KEEPALIVE_INTERVAL"),
-    /** Disconnect timeout (seconds). Environments/sessions with no activity for
-     *  this long are considered disconnected. Default 120s. */
-    disconnectTimeout: env.RCS_DISCONNECT_TIMEOUT,
     /** Idle timeout in seconds before an unobserved non-interactive ACP instance is auto-stopped. */
     acpIdleTimeoutSeconds: readDeclaredEnv<number>(env, "RCS_ACP_IDLE_TIMEOUT_SECONDS"),
     /** Sweep interval in seconds for non-interactive ACP instance cleanup. */

@@ -2004,7 +2004,7 @@ web-app-tests 319 pass / 0 fail。改动只涉及 7 个 `package.json` 与 `bun.
 
 **路线裁定**（用户四问，全选推荐项）：配置桥走**路线 A 的窄口径**——`envDefinitions` 只承担启动期校验与汇总，值仍由宿主 `bootstrap/module-configs.ts` 手工投影成模块配置，不引入通用拆分器、不改各模块 `config.ts` 的形态；收敛范围取「只迁**有唯一模块 owner** 的键」；宿主直读点只改与本次迁移直接相关的那些；收口以「不破既有测试」为限。
 
-**迁出面**：宿主 `apps/server/src/env.ts` 删 **53 键**（93 → 40）并同批删掉因之失效的 import（`255` → `164` 行）。44 个模块专属字段在 `config.ts` 改经 `readDeclaredEnv()` 取值，`module-configs.ts` 与 `host-startup.ts` 的直读点同批改。留在宿主的 40 键逐条有理由，已写入 `env.ts` 的维护者注释与 `config.ts` 的 `buildConfig` 说明：宿主自身运行参数（`RCS_VERSION` / `RCS_PORT` / `RCS_FILE_WS_*` 巡检与载荷上限 …）与**多模块共享或无唯一 owner 的键**——`RCS_DEFAULT_MACHINE_ID`（本包兜底 + machine 模块 + 宿主 core-bootstrap 三方消费）、`RCS_DEFAULT_ENGINE_TYPE`、`RCS_DISABLE_LOCAL_EXECUTION`（本包 `environment-orchestration.ts` 与 machine 的 `local-node-service.ts` 同时读）、`RCS_BASE_URL`、`RCS_REDIS_*`、`RCS_YJS_SNAPSHOT_*`（包内持久层直读）、`RCS_API_KEYS`（skill 下载 token 的 HMAC 签名）等。**归属理由的独立复核见 §7.34**：`RCS_CCB_*` 不属「宿主自身运行参数」而是双通道的插件部署值，`RCS_YJS_SNAPSHOT_*` 是「单一 owner + 无 manifest + 待 DI 收口」而非「多模块共享」，另有 4 个宿主死键登记为 §8.1 第 16 条。**判据是「唯一 owner」而不是「包内专属」**：无唯一 owner 的键按裁定留在宿主，不属本块待办。
+**迁出面**：宿主 `apps/server/src/env.ts` 删 **53 键**（93 → 40；收尾又删 4 个零消费者键，末态 36，见 §7.34 四）并同批删掉因之失效的 import（`255` → `164` 行）。44 个模块专属字段在 `config.ts` 改经 `readDeclaredEnv()` 取值，`module-configs.ts` 与 `host-startup.ts` 的直读点同批改。留在宿主的 40 键逐条有理由，已写入 `env.ts` 的维护者注释与 `config.ts` 的 `buildConfig` 说明：宿主自身运行参数（`RCS_VERSION` / `RCS_PORT` / `RCS_FILE_WS_*` 巡检与载荷上限 …）与**多模块共享或无唯一 owner 的键**——`RCS_DEFAULT_MACHINE_ID`（本包兜底 + machine 模块 + 宿主 core-bootstrap 三方消费）、`RCS_DEFAULT_ENGINE_TYPE`、`RCS_DISABLE_LOCAL_EXECUTION`（本包 `environment-orchestration.ts` 与 machine 的 `local-node-service.ts` 同时读）、`RCS_BASE_URL`、`RCS_REDIS_*`、`RCS_YJS_SNAPSHOT_*`（包内持久层直读）、`RCS_API_KEYS`（skill 下载 token 的 HMAC 签名）等。**归属理由的独立复核见 §7.34**：`RCS_CCB_*` 不属「宿主自身运行参数」而是双通道的插件部署值，`RCS_YJS_SNAPSHOT_*` 是「单一 owner + 无 manifest + 待 DI 收口」而非「多模块共享」，另有 4 个宿主死键登记为 §8.1 第 16 条。**判据是「唯一 owner」而不是「包内专属」**：无唯一 owner 的键按裁定留在宿主，不属本块待办。
 
 **6 键是「补齐声明」而非迁移**——宿主 `env.ts` 从未声明，取值靠直读或 `??` 兜底：`GOTENBERG_URL`、`RCS_WORKFLOW_HMAC_SECRET`、`LANGFUSE_PUBLIC_KEY` / `LANGFUSE_SECRET_KEY` / `LANGFUSE_BASE_URL`（与已声明的 `HINDSIGHT_API_TOKEN` 同属 `services/pre-launch-ports.ts` 的同一个 `env:` 对象，原批漏声明）、`YJS_MAX_CLIENTS`（收口见 §7.33）。这一条同时闭环 §六「与计划的偏差」第 3 条（宿主 env schema 缺 2 键）。
 
@@ -2070,7 +2070,7 @@ web-app-tests 319 pass / 0 fail。改动只涉及 7 个 `package.json` 与 `bun.
 | 面 | 读数 | 与前置断言的关系 |
 |---|---|---|
 | 各 `fenix.module.ts` 的 `envDefinitions` 声明键 | **59** | = 53 迁出 + 6 补齐，逐键无重复（跨 manifest 重复声明 **0**） |
-| 宿主 `apps/server/src/env.ts` 顶层声明键 | **40** | 与「93 → 40」一致 |
+| 宿主 `apps/server/src/env.ts` 顶层声明键 | **40**（**该时点**读数；末态 36，见四） | 与「93 → 40」一致 |
 | 宿主 ↔ manifest **同名键** | **0 处** | `assertNoHostKeyOverride()` 的拒绝面当前为空 |
 
 末行是 C 块「加声明与删宿主同名行必须成对落地」这一要求在末态的机器证据——**漏删任意一行都会让服务启动直接失败**，因此「precheck 全绿」本身就是该面为空的旁证；本批另用脚本独立复核，不再依赖单一推理。
@@ -2098,7 +2098,11 @@ web-app-tests 319 pass / 0 fail。改动只涉及 7 个 `package.json` 与 `bun.
 
 **四、4 个宿主死键（新发现，登记为 §8.1 第 16 条）**：
 `RCS_POLL_TIMEOUT` / `RCS_HEARTBEAT_INTERVAL` / `RCS_WS_IDLE_TIMEOUT` / `RCS_DISCONNECT_TIMEOUT` 在全仓只有两种形态：`env.ts:64-66,68` 的声明与 `config.ts:57,58,63,71` 的投影赋值。（`heartbeatInterval` 的其余命中全是 machine 自己的 `heartbeatIntervalMs` 常量族，非同一符号；`config.ts:16-17` 的命中是文件头注释。）`AppConfig` 的四个同名字段**零读取点**——已排除两条伪证路径：`AppConfig` 的消费方只有 `host-wiring.ts`（逐字段取用）与 `module-configs.ts`（显式投影，不含这四个字段），全仓无 `{ ...config }` 式整体下发，前端也不经 API 取用。
-`RCS_WS_IDLE_TIMEOUT` 最典型：`config.ts` 的注释写明它须「高于 `wsKeepaliveInterval * 3`，以便应用层保活在 Bun 关闭连接前判死」，但 `main.ts` 的 `Bun.serve` **只设了 `maxPayloadLength`、从未传 `idleTimeout`**（`env.RCS_FILE_WS_MAX_PAYLOAD_MB`）——Bun 用自己的默认值（注释自述同为 255s），因此**部署侧改这个键不生效**。疑为 WS 层改用 Bun 原生配置后遗留；现行保活旋钮是 `RCS_WS_KEEPALIVE_INTERVAL`（已由 agent-runtime manifest 声明）。**本块不删**：删除属部署面收缩、超出「只迁有唯一 owner 的键」的裁定范围，登记待裁定。
+`RCS_WS_IDLE_TIMEOUT` 最典型：`config.ts` 的注释写明它须「高于 `wsKeepaliveInterval * 3`，以便应用层保活在 Bun 关闭连接前判死」，但 `main.ts` 的 `Bun.serve` **只设了 `maxPayloadLength`、从未传 `idleTimeout`**（`env.RCS_FILE_WS_MAX_PAYLOAD_MB`）——Bun 用自己的默认值（注释自述同为 255s），因此**部署侧改这个键不生效**。疑为 WS 层改用 Bun 原生配置后遗留；现行保活旋钮是 `RCS_WS_KEEPALIVE_INTERVAL`（已由 agent-runtime manifest 声明）。
+
+**裁定与落点（本任务内删除）**：用户裁定删除，判据是「删除优于兼容」——**零读取点意味着删除不可能改变运行行为**（部署侧即便设过这些键，其值本来就没有到达任何消费者）。已删除 `env.ts` 的 4 行声明（原 64-66、68 行）与 `config.ts` 的 4 个 `AppConfig` 字段（`pollTimeout` / `heartbeatInterval` / `wsIdleTimeout` / `disconnectTimeout`，`AppConfig` 是 `ReturnType<typeof buildConfig>`，删字段即删类型面），并在两处维护者注释里写明**删除原因与重建条件**（「要重建一个被运行时层取代的旋钮，先落实它的消费者，不要只留一个声明」），避免后人加回。`.env.example` 与 `docker/**` 均未列这 4 个键，无需同步。
+
+宿主末态为 **93 → 40 → 36 键**：§7.32 记的「40」是 `0f822e61d` 时点的读数，36 是本任务最终态；§7.32 的 40 键举例中原本含 `RCS_WS_IDLE_TIMEOUT`，同批已从举例中移出。
 
 **五、两处「理由表述不精确」（不是缺陷，但口径要改）**：
 - `RCS_YJS_SNAPSHOT_*`：§7.32 归入「多模块共享或无唯一 owner」，实际是**单一 owner**——`packages/chat-channel/src/persist/snapshot-config.ts:27-29` 按动态键直读（全仓唯一消费包）。它留在宿主的真实理由是「该包无 manifest（同第二条的结构性阻塞）+ 既定修法是宿主 DI 注入 options」，`CLAUDE.md` 环境变量段已载明这两点，§7.32 的归类应改成同一条结构口径。
@@ -2131,7 +2135,7 @@ web-app-tests 319 pass / 0 fail。改动只涉及 7 个 `package.json` 与 `bun.
 
 | 15 | **`YJS_MAX_CLIENTS` 声明后引入启动期收紧（C 块，本批引入）**：该键原先只在 `chat-channel-bootstrap.ts` 以 `parseInt(process.env.YJS_MAX_CLIENTS, 10)` 兜底到 200 的方式直读——非法值静默回落到 200、负值被原样接受。迁入 `agent-runtime` 的 `envDefinitions` 后改由 `loadServerEnv()` 在启动期按 schema 校验，非法值将**拒绝启动**。这是「不留已知缺陷」的应然方向，但属可观测的行为变化，故登记 | C 块 | 与 C1「`YJS_MAX_CLIENTS` 改为经 options 注入」同批落盘；若部署侧确需兼容旧输入，应在模块 schema 内用 `z.preprocess` 归一而不是放宽校验。**已闭环（§7.33，2026-09-22）**：`chat-channel-bootstrap.ts` 改经 `AgentRuntimeModuleConfig.yjsMaxClients` 取数，启动期 schema 收紧随之生效 |
 
-| 16 | **4 个宿主 env 键零消费者（C 块交付后独立复核发现，非本批引入）**：`RCS_POLL_TIMEOUT` / `RCS_HEARTBEAT_INTERVAL` / `RCS_WS_IDLE_TIMEOUT` / `RCS_DISCONNECT_TIMEOUT` 在全仓只有 `env.ts:64-66,68` 的声明与 `config.ts:57,58,63,71` 的投影赋值，`AppConfig` 的四个同名字段**零读取点**（已排除整体序列化 / 前端经 API 取用两条路径）。`RCS_WS_IDLE_TIMEOUT` 尤甚：`config.ts` 注释写明它须「高于 `wsKeepaliveInterval * 3` 才能在 Bun 关闭连接前判死」，但 `main.ts` 的 `Bun.serve` 只设了 `maxPayloadLength`、**从未传 `idleTimeout`**——部署侧改这个键不生效。详见 §7.34 四 | 待裁定（C 块边缘） | 删除 4 个 env 键 + 4 个 `AppConfig` 字段 + `.env.example` 对应行；或明确「保留为 Bun 默认值的书面记录」并删掉注释中的「设置」语义。**属部署面收缩，超出「只迁有唯一 owner 的键」的裁定范围，本块只登记不动手** |
+| 16 | ~~**4 个宿主 env 键零消费者（C 块交付后独立复核发现，非本批引入）**：`RCS_POLL_TIMEOUT` / `RCS_HEARTBEAT_INTERVAL` / `RCS_WS_IDLE_TIMEOUT` / `RCS_DISCONNECT_TIMEOUT` 在全仓只有 `env.ts:64-66,68` 的声明与 `config.ts:57,58,63,71` 的投影赋值，`AppConfig` 的四个同名字段**零读取点**（已排除整体序列化 / 前端经 API 取用两条路径）。`RCS_WS_IDLE_TIMEOUT` 尤甚：`config.ts` 注释写明它须「高于 `wsKeepaliveInterval * 3` 才能在 Bun 关闭连接前判死」，但 `main.ts` 的 `Bun.serve` 只设了 `maxPayloadLength`、**从未传 `idleTimeout`**——部署侧改这个键不生效~~ **已闭环（§7.34 四，2026-09-22）**：按用户裁定「本任务内删除」落盘——删 4 个 env 键 + 4 个 `AppConfig` 字段（`AppConfig` 为 `ReturnType<typeof buildConfig>`，删字段即删类型面），并在 `env.ts` / `config.ts` 的维护者注释写明删除原因与重建条件；`.env.example` 与 `docker/**` 未列这 4 键、无需同步。宿主末态 **40 → 36 键** | 已交付 | 已交付，见 §7.34 四；验证：`tsc --noEmit` 0 错误、宿主 641 pass / 0 fail、完整 `precheck` 全绿 |
 
 ### 8.2 1.7 未完成条目（本档位不做）
 
