@@ -50,7 +50,7 @@ export const agentConfig = pgTable(
     agentNode: jsonb("agent_node"),
     // 预留给未来可变扩展，避免为低频碎片配置反复加列。
     extra: jsonb("extra"),
-    engineType: varchar("engine_type", { length: 32 }).default("opencode"),
+    engineType: varchar("engine_type", { length: 32 }).default("peri"),
     // 资源可见范围：授权实现的唯一公开受众声明（public 对任意已认证主体开放公开默认动作）。
     visibility: varchar("visibility", { length: 20 }).notNull().default("private"),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),

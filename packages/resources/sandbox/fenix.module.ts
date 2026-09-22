@@ -34,7 +34,7 @@ import { z } from "zod/v4";
  * 各键 schema 逐字照抄宿主 `apps/server/src/env.ts:87-102` 的原行（含 `.optional()` / `.default()` 与
  * `.min(1)` 强度），故与宿主同名行等价。**默认值语义有两类，不能一律照 schema 读**：
  *   1. 写在 schema 里的（`RCS_SANDBOX_ENABLED` 的 `"false"`、`RCS_DEFAULT_SANDBOX_AGENT_TYPE` 的
- *      `"opencode"`）：`defaultValue` 填 schema `parse()` 的**输入**（原始字符串），由 loader 再 parse 一次，
+ *      `"peri"`）：`defaultValue` 填 schema `parse()` 的**输入**（原始字符串），由 loader 再 parse 一次，
  *      与宿主原行为一致；
  *   2. **不在 env schema 里、而在宿主 `apps/server/src/config.ts` 的 `??` 里**的五个 timeout：
  *      `RCS_SANDBOX_RUNTIME_CONNECT_TIMEOUT_MS ?? 10000`（config.ts:68）、`PROVIDER_REQUEST ?? 10000`(86)、
@@ -107,13 +107,13 @@ export const moduleManifest = {
     {
       moduleId: "sandbox",
       key: "RCS_DEFAULT_SANDBOX_AGENT_TYPE",
-      // 与宿主 env.ts:94 逐字等价：默认值写在 schema 内，故 defaultValue 填其 parse 输入 `"opencode"`。
-      schema: z.string().min(1).default("opencode"),
-      defaultValue: "opencode",
+      // 默认值写在 schema 内，故 defaultValue 填其 parse 输入 `"peri"`。
+      schema: z.string().min(1).default("peri"),
+      defaultValue: "peri",
       secret: false,
       restartRequired: true,
       description:
-        "默认沙盒 Agent 类型。默认 opencode（宿主 schema 内建默认）；写入默认 Pool 并用于生成 Sandbox Machine 身份，由本模块在启动期读取。",
+        "默认沙盒 Agent 类型。默认 peri（本模块 schema 内建默认）；写入默认 Pool 并用于生成 Sandbox Machine 身份，由本模块在启动期读取。",
     },
     {
       moduleId: "sandbox",

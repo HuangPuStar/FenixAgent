@@ -63,7 +63,7 @@ export interface AgentRuntimeModuleConfig {
   readonly fileWsMaxPayloadMb: number;
   /** `/yjs/*` 的连接上限（`YJS_MAX_CLIENTS`）；超限关闭新连接并回 `too_many_connections`。 */
   readonly yjsMaxClients: number;
-  /** 本地执行的默认引擎类型（`RCS_DEFAULT_ENGINE_TYPE`）；缺省时调用方回退 `"opencode"`。 */
+  /** 本地执行的默认引擎类型（`RCS_DEFAULT_ENGINE_TYPE`）；缺省时调用方回退 `"peri"`。 */
   readonly defaultEngineType?: string;
   /** 平台对外基址（宿主 `getBaseUrl()` 的已解析结果），注入 launch spec 的 `USER_META_BASE_URL`。 */
   readonly baseUrl: string;

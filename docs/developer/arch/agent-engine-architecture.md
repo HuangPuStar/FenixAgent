@@ -41,7 +41,7 @@ graph TB
         OP["@fenix/opencode<br/>OpenCode CLI 适配"]
         CC["@fenix/claude-code<br/>Claude Code CLI 适配"]
         CCB["@fenix/ccb<br/>CCB CLI 适配"]
-        PERI["@fenix/peri<br/>Peri CLI 适配 (规划中)"]
+        PERI["@fenix/peri<br/>Peri CLI 适配"]
     end
 
     subgraph BRIDGE["🌉 ACP 桥接层 — acp-link"]
@@ -261,9 +261,9 @@ interface EngineRuntime {
 }
 ```
 
-#### OpenCode 插件实现（当前默认引擎）
+#### OpenCode 插件实现（参考实现）
 
-`@fenix/opencode` 是引擎插件的**参考实现**，也是当前默认引擎：
+`@fenix/opencode` 是引擎插件的**参考实现**（本地默认引擎自 peri 纳入一等公民后改为 `peri`，见 §7）：
 
 ```mermaid
 graph TB
@@ -312,7 +312,7 @@ graph TB
 | **opencode** | `@fenix/opencode` | 进程中启动 `AcpServer`，桥接 opencode acp stdio |
 | **claude-code** | `@fenix/claude-code` | spawn `acp-link` 子进程，设置 `ACP_ENGINE_TYPE=claude-code` |
 | **ccb** | `@fenix/ccb` | 进程中启动 `AcpServer`，桥接 ccb acp stdio |
-| **peri** | `@fenix/peri` (待实现) | 预期对标 opencode 模式：进程中启动 AcpServer + peri acp |
+| **peri** | `@fenix/peri` | 进程中启动 `AcpServer`，桥接 `peri acp` stdio；workspace 物化写 `.claude/settings.local.json` + `.peri/settings.json` |
 
 ---
 
@@ -425,19 +425,43 @@ Environment (DB) →  organizationId / userId / secret
 - `skills`：本地安装路径引用
 - `systemPrompt`：Agent 系统提示词
 
-### 3.2 Peri 配置（参考）
+### 3.2 Peri 配置
 
-已有运行时生成的 peri 配置示例（`tmp/.../.peri/settings.json`）：
+`@fenix/peri` 的 workspace 物化写两份配置：
+
+```text
+{workspace}/
+  .claude/
+    settings.local.json   ← Claude 兼容面：模型环境变量 / 插件开关 / 权限
+    skills/               ← skill 文件（peri 按 Claude Code 布局读取）
+  .peri/
+    settings.json         ← Peri 自己的 provider / profile / 运行时环境变量
+  .mcp.json               ← MCP server 配置
+  CLAUDE.md               ← Agent 系统提示词
+```
+
+`.peri/settings.json` 由 `buildPeriSettingsConfig()` 从 `AgentLaunchSpec` 生成：
 
 ```json
 {
-  "provider": { "type": "anthropic", "baseUrl": "...", "apiKey": "..." },
-  "model": { "name": "claude-sonnet-4-20250514" },
-  "thinking": { "type": "enabled", "budgetTokens": 16000 }
+  "config": {
+    "active_alias": "opus",
+    "providers": [{ "id": "<provider>", "type": "<protocol>", "apiKey": "...", "baseUrl": "...", "name": "<provider>",
+                    "models": { "opus": "<model>", "sonnet": "<model>", "haiku": "<model>", "fable": "<model>" } }],
+    "profiles": {
+      "opus": { "provider": "<provider>", "model": "<model>", "effort": "medium" },
+      "sonnet": { "provider": "<provider>", "effort": "max" },
+      "haiku": { "provider": "<provider>", "effort": "low" }
+    },
+    "skills_dir": null,
+    "env": { "...": "<launchSpec.env 透传>" }
+  }
 }
 ```
 
-peri 插件迁移时，需实现 `buildPeriSettings()` 将 `AgentLaunchSpec` 转换为 `.{peri}/settings.json` 格式。
+`skills_dir: null` 是刻意的：skills 统一装到 `.claude/skills`，交给 peri 的 Claude 兼容布局发现，避免第二条发现路径。
+
+**与 `@fenix/ccb` 的同名逻辑的关系**：ccb 包里也有一份写 `.peri/settings.json` 的实现（`writePeriSettings`，受 `IS_PERI` 门控），服务的是沙箱里「用 ccb 槽位跑 peri」的历史路径；peri 引擎一侧无条件写出。两处格式必须保持一致，改动 provider/profile 结构时同步修改 `packages/plugin-ccb/src/runtime/environment-preparer.ts` 与 `packages/plugin-peri/src/runtime/environment-preparer.ts`。
 
 ---
 
@@ -487,7 +511,7 @@ interface EngineRelayHandle {
 graph TB
     subgraph RCS["RCS 主服务"]
         CORE["@fenix/core"]
-        LOCAL["local-default node<br/>mode=local<br/>engineTypes: [opencode, ccb, claude-code]"]
+        LOCAL["local-default node<br/>mode=local<br/>engineTypes: [opencode, ccb, claude-code, peri]"]
         REMOTE_REG["remote node 注册表"]
     end
 
@@ -527,7 +551,7 @@ interface CoreNode {
 
 ```
 createCoreRuntime({
-  nodes: [{ id: "local-default", mode: "local", engineTypes: ["opencode", "claude-code", "ccb"] }]
+  nodes: [{ id: "local-default", mode: "local", engineTypes: ["opencode", "claude-code", "ccb", "peri"] }]
 })
 ```
 
@@ -582,8 +606,8 @@ sequenceDiagram
 | `RCS_URL` | 是 | FenixAgent 主服务器 WS 地址，如 `ws://localhost:3000` |
 | `RCS_SECRET` | 是 | 客户端鉴权 secret |
 | `RCS_TENANT_ID` | 是 | 注册机器的组织 ID |
-| `AGENT_TYPE` | 否 | 引擎类型，默认 `"opencode"`，可选 `"opencode"` / `"ccb"` / `"claude-code"` |
-| `SUPPORTED_ENGINE_TYPES` | 否 | JSON 数组，声明该节点支持的引擎清单，默认全部三种 |
+| `AGENT_TYPE` | 否 | 引擎类型，默认 `"peri"`，可选 `"peri"` / `"opencode"` / `"ccb"` / `"claude-code"` |
+| `SUPPORTED_ENGINE_TYPES` | 否 | JSON 数组，声明该节点支持的引擎清单，默认全部四种 |
 | `RCS_MACHINE_NAME` | 否 | 机器显示名称，不传使用 hostname |
 
 **acp-runtime 在引擎体系中的位置**：
@@ -592,14 +616,11 @@ sequenceDiagram
 - **远程模式**：acp-runtime 替代了 `EnginePlugin` 在远程机器上的角色——它接收 FenixAgent 派发的启动指令，在本机 spawn Agent CLI 并建立 stdio ↔ WS 桥接
 - **引擎无关**：acp-runtime 本身不绑定特定引擎，`<agent-command>` 参数决定了实际启动哪个 CLI
 
-**与 peri 迁移的关系**：
+**peri 引擎**：
 
-当前 `acp-runtime` 的 `AGENT_TYPE` 类型约束为 `"opencode" | "ccb" | "claude-code"`，`SUPPORTED_ENGINE_TYPES` 默认值也是这三种。迁移到 peri 时需要：
+`AGENT_TYPE` 已可选 `"peri"`，`SUPPORTED_ENGINE_TYPES` 默认值含 `{"type": "peri"}`，acp-link 的 handler 映射里已有 `peri: createPeriHandler(config.command, config.args)`（远程节点以 `acp-runtime peri acp` 启动即可注册为 peri 节点）。
 
-1. `AGENT_TYPE` 联合类型新增 `"peri"`
-2. `SUPPORTED_ENGINE_TYPES` 默认值新增 `{"type": "peri"}`
-3. 沙箱容器 `CMD` 从 `acp-runtime ccb --acp` 改为 `acp-runtime peri acp`（`sandbox-peri/Dockerfile` 已完成）
-4. `AGENT_TYPE` 环境变量在 peri 沙箱中设为 `"peri"`
+**尚未切换的一处**：`docker/sandbox-peri/` 仍走「ccb 槽位跑 peri」——容器里 `AGENT_TYPE=ccb`、由 `RCS_CCB_COMMAND=peri` / `RCS_CCB_ARGS=acp`（`docker-compose.yml`）让 ccb handler spawn peri，并靠 `IS_PERI=1` 让 ccb 侧补写 `.peri/settings.json`。改用 `AGENT_TYPE=peri` 后不再需要 `IS_PERI` 与 `RCS_CCB_*`，但节点会以 `agent_name=peri` 注册（machine 绑定按 agent 名匹配），会影响既有部署的机器绑定，故留作独立改动。
 
 **远程节点重连逻辑**：断连时标记 node 离线 + 清理本地实例记录，重连后自动重建。
 
@@ -616,7 +637,7 @@ erDiagram
     Environment ||--o{ Session : "包含"
     AgentConfig {
         string id
-        string engineType "引擎类型: opencode / ccb / claude-code"
+        string engineType "引擎类型: opencode / ccb / claude-code / peri"
         string modelId "模型配置引用"
         jsonb extra "扩展配置"
     }
@@ -635,21 +656,21 @@ erDiagram
 
 | 层级 | 位置 | 当前值 |
 |------|------|--------|
-| DB Schema | `packages/resources/agent-config/db/schema.ts` → `agent_config.engine_type`（任务 1.7 B7 起归 owner 包，宿主 schema 不再定义本表） | `varchar(32) DEFAULT 'opencode'` |
-| 类型常量 | `src/services/config/types.ts` → `ENGINE_TYPES` | `["opencode", "ccb", "claude-code"]` |
-| 环境变量 | `src/env.ts` → `RCS_ENGINE_TYPE` | `z.enum(["opencode", "ccb"])` |
+| DB Schema | `packages/resources/agent-config/db/schema.ts` → `agent_config.engine_type`（任务 1.7 B7 起归 owner 包，宿主 schema 不再定义本表） | `varchar(32) DEFAULT 'peri'` |
+| 类型常量 | `src/services/config/types.ts` → `ENGINE_TYPES` | `["opencode", "ccb", "claude-code", "peri"]` |
+| 环境变量 | `src/env.ts` → `RCS_DEFAULT_ENGINE_TYPE`（本地执行的默认引擎，缺省 `peri`） | `z.enum(ENGINE_TYPES).optional()` |
 | Schema 校验 | `packages/resources/model-management/src/server/schemas/config.schema.ts` | `z.string().optional().describe(...)` |
 | 前端类型 | `packages/web-runtime/web/types/config.ts` | `engineType?: string \| null` |
-| Core 注册 | `src/services/core-bootstrap.ts` | `plugins: [createOpencodePlugin(), createClaudeCodePlugin(), createCcbPlugin()]` |
-| ACP 桥接层 | `packages/acp-link/src/client/instance-manager.ts` | `type AgentType = "opencode" \| "ccb" \| "claude-code"` |
-| acp-runtime | `packages/acp-runtime-cli/src/bin.ts` | `AGENT_TYPE = "opencode" \| "ccb" \| "claude-code"`<br/>`SUPPORTED_ENGINE_TYPES` 默认值 |
+| Core 注册 | `src/services/core-bootstrap.ts` | `plugins: [createOpencodePlugin(), createClaudeCodePlugin(), createCcbPlugin(), createPeriPlugin()]` |
+| ACP 桥接层 | `packages/acp-link/src/client/instance-manager.ts` | `type AgentType = "opencode" \| "ccb" \| "claude-code" \| "peri"` |
+| acp-runtime | `packages/acp-runtime-cli/src/bin.ts` | `AGENT_TYPE = "opencode" \| "ccb" \| "claude-code" \| "peri"`<br/>`SUPPORTED_ENGINE_TYPES` 默认值 |
 
 **新增引擎时需同步更新的位置（共 8 处）**：
 
 1. 新建 `packages/plugin-<name>/` 并实现 `EnginePlugin`
 2. `src/services/core-bootstrap.ts`：注册 plugin + 加入 node.engineTypes
 3. `src/services/config/types.ts`：`ENGINE_TYPES` 数组
-4. `src/env.ts`：`RCS_ENGINE_TYPE` enum（如需要全局默认引擎切换）
+4. `src/env.ts`：`RCS_DEFAULT_ENGINE_TYPE` enum（新增引擎会随 `ENGINE_TYPES` 自动进入可选值；如需要改本地默认引擎）
 5. `packages/resources/agent-config/db/schema.ts`（`agent_config.engine_type` 的 owner）：生成迁移（DDL 允许任意 varchar，实际约束在应用层）
 6. `packages/acp-link/src/client/instance-manager.ts`：`AgentType` 联合类型
 7. 前端：`AgentFormDialog` 下拉选项 + `packages/resources/agent-config/web/lib/agent-utils.ts` 默认值
@@ -661,16 +682,20 @@ erDiagram
 
 | 引擎 | CLI 命令 | 包名 | Bridge 方式 | 状态 |
 |------|----------|------|-------------|------|
-| **OpenCode** | `opencode acp` | `@fenix/opencode` | 进程中 `createAcpServer(command: "opencode")` | ✅ 默认引擎 |
+| **OpenCode** | `opencode acp` | `@fenix/opencode` | 进程中 `createAcpServer(command: "opencode")` | ✅ 已支持（沙箱镜像 `docker/sandbox/`） |
 | **Claude Code** | `claude` (via `acp-link`) | `@fenix/claude-code` | spawn `acp-link` 子进程，`ACP_ENGINE_TYPE=claude-code` | ✅ 已支持 |
 | **CCB** | `ccb acp` | `@fenix/ccb` | 进程中 `createAcpServer(command: "ccb")` | ✅ 已支持 |
-| **Peri** | `peri acp` | `@fenix/peri` (待实现) | 预期对标 opencode：进程中 `createAcpServer(command: "peri")` | 🔲 规划中 |
+| **Peri** | `peri acp` | `@fenix/peri` | 进程中 `createAcpServer(command: "peri")` | ✅ **本地默认引擎** |
+
+**本地默认引擎的解析**：`local-default` 节点上 `spawnInstanceViaCore` 用 `getAgentRuntimeConfig().defaultEngineType ?? "peri"`
+（`packages/agent-runtime/src/services/orchestration-instance.ts`），部署用 `RCS_DEFAULT_ENGINE_TYPE` 覆盖。
+`agent_config.engine_type` 目前不参与本地引擎选择（该列仍是装饰性的，远程节点由 machine 端 `AGENT_TYPE` 自行决定）。
 
 **差异要点**：
 
-- OpenCode / CCB 在进程内直接启动 `AcpServer`，由 `acp-link` 库完成 stdio ↔ WS 桥接
+- OpenCode / CCB / Peri 在进程内直接启动 `AcpServer`，由 `acp-link` 库完成 stdio ↔ WS 桥接
 - Claude Code 走独立 `acp-link` 子进程路径，插件只负责 spawn 和 relay
-- 所有引擎共享同一套 `AgentLaunchSpec` 配置载体，差异仅在配置文件的写盘格式（`.opencode/opencode.json` / `.peri/settings.json` 等）
+- 所有引擎共享同一套 `AgentLaunchSpec` 配置载体，差异仅在配置文件的写盘格式（`.opencode/opencode.json` / `.claude/settings.local.json` + `.peri/settings.json` 等）
 
 ---
 
@@ -692,7 +717,7 @@ erDiagram
 ┌──────────────┐ ┌──────────────┐ ┌──────────────┐
 │  Machine A   │ │  Machine B   │ │  Machine C   │
 │  opencode    │ │  ccb         │ │  peri        │
-│  (默认引擎)   │ │  (CCB 引擎)   │ │  (Peri 引擎)  │
+│ (OpenCode引擎)│ │  (CCB 引擎)   │ │  (Peri 引擎)  │
 │              │ │              │ │              │
 │ CMD:         │ │ CMD:         │ │ CMD:         │
 │ acp-runtime  │ │ acp-runtime  │ │ acp-runtime  │
@@ -709,9 +734,15 @@ Machine 启动时的典型配置：
 ENV AGENT_TYPE=opencode
 CMD ["bun", "/usr/local/bin/acp-runtime.js", "opencode", "acp"]
 
-# docker/sandbox-peri/Dockerfile — peri 专用沙箱
+# docker/sandbox-peri/Dockerfile — peri 专用沙箱（当前仍走 ccb 槽位，见下）
 ENV AGENT_TYPE=ccb
 ENV IS_PERI=1
+CMD ["bun", "/usr/local/bin/acp-runtime.js", "peri", "acp"]
+# docker-compose.yml 里另设 RCS_CCB_COMMAND=peri / RCS_CCB_ARGS=acp，
+# 让 ccb handler 实际 spawn 的是 peri
+
+# docker/sandbox-peri/ 改为 peri 原生节点后的形态（尚未切换）
+ENV AGENT_TYPE=peri
 CMD ["bun", "/usr/local/bin/acp-runtime.js", "peri", "acp"]
 ```
 
@@ -720,8 +751,8 @@ CMD ["bun", "/usr/local/bin/acp-runtime.js", "peri", "acp"]
 `docker/sandbox-peri/` 为 peri 引擎准备了独立的沙箱容器模板：
 - 预装 `peri` CLI（通过官方安装脚本）
 - 本地构建 `acp-runtime-cli`（multi-stage 用 `bun build packages/acp-runtime-cli/src/bin.ts` 产出 bundle，不依赖 npm 发布的 `@fenix-agent/acp-runtime-cli`）
-- `CMD ["bun", "/usr/local/bin/acp-runtime.js", "peri", "acp"]` — 自动注册为 peri 引擎 node
-- `ENV IS_PERI=1` — 额外生成 `.peri/settings.json` 客户端配置
+- `CMD ["bun", "/usr/local/bin/acp-runtime.js", "peri", "acp"]` — 实际 spawn 的是 peri CLI
+- 注册身份仍是 `AGENT_TYPE=ccb`（ccb 槽位），配 `IS_PERI=1` 让 ccb 侧额外生成 `.peri/settings.json`；改用 `ENV AGENT_TYPE=peri` 可去掉这两项，但节点会以 `agent_name=peri` 注册，影响既有 machine 绑定，属独立改动
 
 其他沙箱变体：`docker/sandbox/`（opencode）、`docker/sandbox-ccb/`（CCB）结构一致，仅替换 CLI 和 `AGENT_TYPE`。
 
@@ -872,7 +903,7 @@ flowchart LR
 ```typescript
 // 全量远程后精简为仅远程调度
 nodes: [
-  // { id: "local-default", mode: "local", engineTypes: ["opencode", "claude-code", "ccb"] }, // 已废弃
+  // { id: "local-default", mode: "local", engineTypes: ["opencode", "claude-code", "ccb", "peri"] }, // 已废弃
 ],
 ```
 

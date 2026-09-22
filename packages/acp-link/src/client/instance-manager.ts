@@ -6,8 +6,8 @@ import type { AgentLaunchSpec } from "@fenix/plugin-sdk";
 import { type AcpDispatcher, type AcpSessionState, createAcpSessionState } from "../acp-dispatcher.js";
 import { registerWorkspace, unregisterWorkspace } from "./workspace-registry.js";
 
-// 三种引擎类型
-export type AgentType = "opencode" | "ccb" | "claude-code";
+// 四种引擎类型
+export type AgentType = "opencode" | "ccb" | "claude-code" | "peri";
 
 // ── EngineHandler 接口 ────────────────────────────────────────
 
@@ -21,7 +21,7 @@ export interface EngineStartContext {
 
 /**
  * 引擎 handler：每种引擎类型提供自己的 prepare / start / stop 实现。
- * 实现类放在各自的 plugin 包中（@fenix/opencode、@fenix/ccb、@fenix/claude-code），
+ * 实现类放在各自的 plugin 包中（@fenix/opencode、@fenix/ccb、@fenix/claude-code、@fenix/peri），
  * InstanceManager 只做调度，不感知具体引擎逻辑。
  */
 export interface EngineHandler {
@@ -68,11 +68,11 @@ export class InstanceManager {
   private readonly handlers: Map<string, EngineHandler>;
 
   /**
-   * @param handlers 引擎类型 → EngineHandler 的映射，如 { opencode: ..., ccb: ..., "claude-code": ... }
+   * @param handlers 引擎类型 → EngineHandler 的映射，如 { opencode: ..., ccb: ..., "claude-code": ..., peri: ... }
    * @param workspaceRoot workspace 根目录
    * @param defaultEngine 默认引擎类型（未指定 engineType 时使用）
    */
-  constructor(handlers: Record<string, EngineHandler>, workspaceRoot: string, defaultEngine = "opencode") {
+  constructor(handlers: Record<string, EngineHandler>, workspaceRoot: string, defaultEngine = "peri") {
     this.handlers = new Map(Object.entries(handlers));
     this.workspaceRoot = workspaceRoot;
     this.defaultEngine = defaultEngine;

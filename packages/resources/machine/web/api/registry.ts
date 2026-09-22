@@ -77,7 +77,7 @@ export interface CreateMachineRequest {
   name: string;
   /** 标签列表 */
   labels?: string[];
-  /** 引擎名称，默认 opencode */
+  /** 引擎名称，默认 peri */
   agentName?: string;
 }
 

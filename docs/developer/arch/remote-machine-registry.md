@@ -84,8 +84,8 @@ sequenceDiagram
 | `RCS_MACHINE_NAME` | ❌ | — | 显示名称，不传使用 hostname |
 | `RCS_LABELS` | ❌ | `remote-runtime` | 逗号分隔的标签 |
 | `RCS_USER_ID` | ❌ | — | 关联用户 |
-| `AGENT_TYPE` | ❌ | `opencode` | 引擎类型：`opencode` / `ccb` / `claude-code` |
-| `SUPPORTED_ENGINE_TYPES` | ❌ | 全部三种 | JSON 数组，声明该节点支持的引擎清单 |
+| `AGENT_TYPE` | ❌ | `peri` | 引擎类型：`peri` / `opencode` / `ccb` / `claude-code` |
+| `SUPPORTED_ENGINE_TYPES` | ❌ | 全部四种 | JSON 数组，声明该节点支持的引擎清单 |
 
 ### 1.2 启动流程
 
@@ -111,7 +111,7 @@ bin.ts 读取 env → 健康检查(FenixAgent 可达) → startServer(ServerConf
 ```typescript
 {
   type: "register",
-  agent_name: "opencode",              // 引擎命令名
+  agent_name: "peri",                  // 引擎命令名
   name: "sandbox-01",                  // 显示名称（可选）
   max_sessions: 5,
   capabilities: { streaming: true },
@@ -125,6 +125,7 @@ bin.ts 读取 env → 健康检查(FenixAgent 可达) → startServer(ServerConf
   labels: ["sandbox", "production"],
   heartbeat_interval_ms: 30000,
   supported_engine_types: [
+    { type: "peri" },
     { type: "opencode" },
     { type: "ccb" },
     { type: "claude-code" }
@@ -169,7 +170,7 @@ if (ws.data.query.secret !== REGISTRY_SECRET) {
 | `user_id` | `as string \|\| null` | `userId` |
 | `node_id` | `as string \|\| null` | `nodeId`（去重用） |
 | `machine_id` | `as string \|\| null` | `machineId`（固定 ID） |
-| `supported_engine_types` | 默认 `[{ type: "opencode" }]` | 节点能力 |
+| `supported_engine_types` | 默认 `[{ type: "peri" }]` | 节点能力 |
 
 ### 2.3 registerMachine 激活分支
 
@@ -318,7 +319,7 @@ performMachineCleanup()
 | `id` | text PK | `mach_xxx` |
 | `organizationId` | text? | 组织归属，NULL = 全局可见 |
 | `userId` | text? | 关联用户 |
-| `agentName` | varchar | 如 `opencode` |
+| `agentName` | varchar | 如 `peri` |
 | `name` | varchar? | 显示名称 |
 | `type` | varchar(32) | 机器类型，默认 `machine` |
 | `status` | varchar | `online` / `offline` |

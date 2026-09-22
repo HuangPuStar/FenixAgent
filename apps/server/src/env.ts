@@ -105,7 +105,7 @@ const envSchema = databaseConnectionPoolSchema.extend({
       .optional(),
   ),
 
-  // 默认引擎类型。agent config 未指定 engineType 时覆盖硬编码默认值
+  // 本地执行（local-default）的默认引擎类型，缺省 peri；设置后覆盖硬编码默认值
   RCS_DEFAULT_ENGINE_TYPE: z.enum(ENGINE_TYPES).optional(),
   // 禁用 local-default 本地节点。设为 "true" 后所有实例必须路由到远程 machine
   RCS_DISABLE_LOCAL_EXECUTION: z

@@ -48,7 +48,7 @@ export function buildAgentPayload(input: {
     modelId: input.modelId || undefined,
     prompt: input.prompt || undefined,
     description: input.description || undefined,
-    engineType: input.engineType ?? "opencode",
+    engineType: input.engineType ?? "peri",
     knowledge: {
       knowledgeBaseIds: input.knowledge.knowledgeBaseIds,
       policy: {

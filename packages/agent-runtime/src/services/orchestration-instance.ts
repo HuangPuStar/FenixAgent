@@ -121,10 +121,11 @@ export async function spawnInstanceViaCore(
   const facade = getCoreRuntime();
   try {
     if (nodeId === "local-default") {
-      // engineType 仅 local 执行时由上层传入；remote 时不传，由 machine 端自行决定
+      // engineType 仅 local 执行时由上层传入；remote 时不传，由 machine 端自行决定。
+      // 兜底值 = 本地默认引擎（peri）；部署可用 RCS_DEFAULT_ENGINE_TYPE 覆盖。
       await facade.launchInstance({
         instanceId,
-        engineType: getAgentRuntimeConfig().defaultEngineType ?? "opencode",
+        engineType: getAgentRuntimeConfig().defaultEngineType ?? "peri",
         nodeId,
         launchSpec: agentLaunchSpec,
       });
