@@ -26,12 +26,16 @@ const REPO_ROOT = resolve(PKG_ROOT, "../../..");
 const SOURCE_ENTRIES = ["src", "web", "db", "fenix.module.ts"];
 
 /**
- * 唯一允许的宿主导入。
+ * 本包 `./db` 出口（§1.7 B12 起表定义归本包）。
  *
- * 表定义迁出归任务 1.7，本任务把它作为**显式残留**保留（见任务 1.3 实施记录 §四），且只允许这一条精确
- * 路径：`@server/db/schema` 之下的任何深路径都意味着重新伸手取宿主内部。
+ * 包内仓储经该出口**自我引用**取表对象与行类型（`db/` 不在本包 `tsconfig.json` 的 `include` 里，走出口
+ * 与外部消费方同一条解析路径）；宿主的 `task-schema.test.ts` 也引用它。
+ *
+ * 它同时充当条件 1 的**正向控制**：B12 之前这里放的是「唯一允许的宿主残留」`@server/db/schema`（迁出前
+ * 6 处导入，见任务 1.3 实施记录 §四），残留归零后若继续沿用它，正向控制会恒为 0——说明符提取一旦失效
+ * （而不是「真的没有宿主导入」），条件 1 就会静默通过。故改钉这条必然存在的包内引用。
  */
-const ALLOWED_HOST_IMPORT = "@server/db/schema";
+const PKG_DB_EXPORT = "@fenix/resource-task/db";
 
 /**
  * 迁移映射（宿主旧路径 → 包内新 owner 路径），依据迁移提交 `d7a2194fe` 的 rename 记录。
@@ -430,6 +434,7 @@ describe("Task 包边界契约（任务 1.3 §1 静态条件）", () => {
       "src/server/services/scheduler/index.ts",
       "src/__tests__/guard-stubs.ts",
       "src/__tests__/db-stub.ts",
+      "db/schema.ts",
       "web/index.ts",
       "web/i18n/index.ts",
       "web/api/tasks-v2.ts",
@@ -439,8 +444,14 @@ describe("Task 包边界契约（任务 1.3 §1 静态条件）", () => {
       expect(sourceFiles).toContain(resolve(PKG_ROOT, expected));
     }
     expect(sourceFiles.length).toBeGreaterThanOrEqual(40);
-    // 正向控制：表定义残留必然存在，扫不到就说明说明符提取失效（而不是「没有宿主导入」）。
-    expect(refs.filter((ref) => ref.specifier === ALLOWED_HOST_IMPORT).length).toBeGreaterThan(0);
+    // 正向控制：条件 1 的目标（`@server/**`）自 B12 起恒为空，故改钉一条必然存在的包内值导入——说明符
+    // 提取失效时它会先变红，而不是让「不存在违规引用」退化成恒真。
+    expect(refs).toContainEqual(
+      expect.objectContaining({
+        file: resolve(PKG_ROOT, "src/server/repositories/task-v2.ts"),
+        specifier: PKG_DB_EXPORT,
+      }),
+    );
   });
 
   // 迁移完成后宿主侧不得保留 Task 的第二份实现，否则新旧两套会各自漂移（§1 静态条件 8）。
@@ -459,11 +470,10 @@ describe("Task 包边界契约（任务 1.3 §1 静态条件）", () => {
     expect(missing).toEqual([]);
   });
 
-  // 宿主实现只能经平台契约（`@fenix/platform-sdk`）或注入进入本包；除表定义残留外一律违规（§1 静态条件 1）。
-  test("包内不存在表定义以外的宿主 @server 导入", () => {
-    const offenders = refs.filter(
-      (ref) => ref.specifier.startsWith("@server/") && ref.specifier !== ALLOWED_HOST_IMPORT,
-    );
+  // 宿主实现只能经平台契约（`@fenix/platform-sdk`）或注入进入本包（§1 静态条件 1）。表定义自 §1.7 B12
+  // 起归本包 `db/`，原先「表定义残留」这条唯一例外随之消失，断言改为零容忍：任何 `@server/**` 都违规。
+  test("包内不存在宿主 @server 导入", () => {
+    const offenders = refs.filter((ref) => ref.specifier.startsWith("@server/"));
     expect(offenders.map(describeRef)).toEqual([]);
   });
 

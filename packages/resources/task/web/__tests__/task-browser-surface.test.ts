@@ -233,10 +233,17 @@ describe("task web 入口浏览器可达面", () => {
     expect(poisoned.files).toContain(join(PKG_ROOT, "src", "server.ts"));
     const serverDir = `${join(PKG_ROOT, "src", "server")}${sep}`;
     expect(poisoned.files.filter((file) => file.startsWith(serverDir)).length).toBeGreaterThan(0);
+    // 「递归够深」由两条深度断言承担：走到包内仓储，并经仓储对 `./db` 出口的**自我引用**到达表定义
+    // （跨包 exports 的解析路径与外部消费方同一条）。§1.7 B12 起宿主 `@server/*` 在包内归零，若只用
+    // 「`@server/` 非空」证明递归有效，载体消失后断言会恒真；故改为零容忍 + 深度断言。
+    expect(poisoned.files).toContain(join(PKG_ROOT, "src", "server", "repositories", "task-v2.ts"));
+    expect(poisoned.files).toContain(join(PKG_ROOT, "db", "schema.ts"));
     const nodeBuiltins = poisoned.references.filter((ref) => ref.specifier.startsWith("node:"));
     const hostServer = poisoned.references.filter((ref) => ref.specifier.startsWith("@server/"));
     expect(offendersOf(nodeBuiltins).length).toBeGreaterThan(0);
-    expect(offendersOf(hostServer).length).toBeGreaterThan(0);
+    // §1.7 B12 实测（探针，2026-09-22）：注入前后为 495 文件 / 2111 引用、`@server/` 恰 2 条（两条都发自
+    // 本包仓储的 `@server/db/schema` 表定义导入）；表迁出后 496 文件 / 2114 引用、`@server/` **0 条**。
+    expect(offendersOf(hostServer)).toEqual([]);
   });
 
   // ./web 出口的契约：package.json 必须指向 web/index.ts，否则宿主解析到别的文件时守卫失去意义。

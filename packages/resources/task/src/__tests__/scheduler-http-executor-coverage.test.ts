@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, mock, test } from "bun:test";
-import type { ScheduledTaskV2Row } from "@server/db/schema";
+import type { ScheduledTaskV2Row } from "@fenix/resource-task/db";
 import { httpExecutor } from "../server/services/scheduler/http-executor";
 
 const originalFetch = globalThis.fetch;

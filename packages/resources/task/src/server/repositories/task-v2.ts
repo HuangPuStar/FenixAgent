@@ -1,5 +1,5 @@
-import type { ScheduledTaskV2Insert, ScheduledTaskV2Row } from "@server/db/schema";
-import { scheduledTaskV2 } from "@server/db/schema";
+import type { ScheduledTaskV2Insert, ScheduledTaskV2Row } from "@fenix/resource-task/db";
+import { scheduledTaskV2 } from "@fenix/resource-task/db";
 import { and, desc, eq, ilike, sql } from "drizzle-orm";
 import { getTaskDatabase } from "../db";
 

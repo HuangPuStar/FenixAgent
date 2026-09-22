@@ -160,14 +160,6 @@
     },
     {
       "rule": "apps-boundary",
-      "from": "@fenix/resource-task",
-      "to": "@fenix/server-app",
-      "owner": "1.7",
-      "removeWhen": "表定义迁出（§1.7）后，包不再引用 `@server/**`",
-      "rationale": "实测 6 处导入 / 6 个文件，全部为 `@server/db/schema` 表定义导入。宿主中的资源领域实现已随任务 1.3 迁回包内，残留仅剩表定义；表定义迁出归 §1.7，本条目保留至该步骤完成，不新建通配条目。"
-    },
-    {
-      "rule": "apps-boundary",
       "from": "@fenix/resource-channel",
       "to": "@fenix/server-app",
       "owner": "1.7",

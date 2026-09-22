@@ -1,4 +1,3 @@
-import { agentConfig } from "@fenix/agent-config/db";
 import { environment } from "@fenix/agent-runtime/db";
 import { user } from "@fenix/identity/db";
 
@@ -14,12 +13,14 @@ import { user } from "@fenix/identity/db";
  * 读运行环境与实例仍必须走 `@fenix/agent-runtime` 的服务端入口，不得依赖本文件。
  * 组装期例外的口径与边界见 `docs/design/ce-ee-refactoring/ce-ee-engineering-standards.md` §6.1。
  *
- * 本文件里 `agentConfig` 的使用点只剩宿主自有表的外键：`task_execution_log`（引用一次
- * `agent_config.id`），随 B12 迁出宿主；其余随表迁走——
- * `prod_view.agent_id` 在 B11 随该表迁入 `@fenix/resource-prod-view/db`，
+ * 本文件里 `agentConfig` 的最后一个使用点（`scheduled_task_v2.agent_id`，`onDelete: "set null"`）在 B12 随该表
+ * 迁入 `@fenix/resource-task/db`，因此 `@fenix/agent-config/db` 这个 import 同批删除——宿主侧其余四处
+ * `agent_config.id` 外键早已随表迁走：`prod_view.agent_id` 在 B11 随该表迁入 `@fenix/resource-prod-view/db`，
  * `agent_memory_config.agent_config_id` 在 B10 随该表迁入 `@fenix/resource-memory/db`，
  * `environment.agent_config_id` 在 B8 随该表迁入 `@fenix/agent-runtime/db`，
  * `agent_knowledge_binding.agent_config_id` 在 B9 随三张知识库表迁入 `@fenix/resource-knowledge/db`。
+ * 订正：B11 之前本段曾把 `task_execution_log` 记为 `agentConfig` 的使用点，实测该表**没有** `agent_config`
+ * 外键（`task_id` 无外键，v1/v2 任务 ID 混存），宿主侧唯一真正的使用点是 `scheduled_task_v2.agent_id`。
  * `environment` 这个 import 只剩一个使用点：`im_channel_route.environment_id`（B13 迁 channel 后本文件
  * 连这一行也不再需要）。
  *
@@ -107,56 +108,6 @@ export const shareEventSnapshot = pgTable("share_event_snapshot", {
   events: jsonb("events").notNull(),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });
-
-// 任务执行日志表（v2 调度器使用；v1 调度器已下线）
-export const taskExecutionLog = pgTable("task_execution_log", {
-  id: uuid("id").primaryKey().defaultRandom(),
-  taskId: uuid("task_id").notNull(),
-  status: varchar("status").notNull(),
-  error: text("error"),
-  duration: integer("duration"),
-  triggeredBy: varchar("triggered_by").notNull().default("cron"),
-  workspacePath: varchar("workspace_path"),
-  workspaceName: varchar("workspace_name"),
-  taskSnapshot: jsonb("task_snapshot"),
-  skipReason: text("skip_reason"),
-  resultSummary: text("result_summary"),
-  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
-});
-
-// 定时任务表 v2（HTTP + Agent 双类型）。
-// v1 的 scheduled_task 表已下线（见迁移 remove-scheduled-task-v1），历史数据不迁移。
-export const scheduledTaskV2 = pgTable(
-  "scheduled_task_v2",
-  {
-    id: uuid("id").primaryKey().defaultRandom(),
-    userId: text("user_id")
-      .notNull()
-      .references(() => user.id, { onDelete: "cascade" }),
-    organizationId: text("organization_id").notNull(),
-    name: varchar("name").notNull(),
-    description: text("description"),
-    cron: varchar("cron").notNull(),
-    timezone: varchar("timezone"),
-    enabled: boolean("enabled").notNull().default(true),
-    timeoutSeconds: integer("timeout_seconds").notNull().default(300),
-    agentId: uuid("agent_id").references(() => agentConfig.id, { onDelete: "set null" }),
-    type: varchar("type").notNull(),
-    definition: jsonb("definition").notNull(),
-    lastRunAt: timestamp("last_run_at", { withTimezone: true }),
-    nextRunAt: timestamp("next_run_at", { withTimezone: true }),
-    lastStatus: varchar("last_status"),
-    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
-    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
-  },
-  (table) => ({
-    userOrgIdx: index("idx_scheduled_task_v2_user_org").on(table.userId, table.organizationId),
-    agentIdx: index("idx_scheduled_task_v2_agent_id").on(table.agentId),
-  }),
-);
-
-export type ScheduledTaskV2Row = typeof scheduledTaskV2.$inferSelect;
-export type ScheduledTaskV2Insert = typeof scheduledTaskV2.$inferInsert;
 
 // IMChannel 一等资源表（升级自 channel_binding）
 export const imChannel = pgTable(

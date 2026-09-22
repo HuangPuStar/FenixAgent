@@ -5,7 +5,7 @@
 // 因为 createTaskV2/updateTaskV2 是公共导出，可能被非 HTTP 入口调用。
 import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
 import { resetAllStubs, stubDb } from "@fenix/platform-sdk/testing";
-import type { ScheduledTaskV2Row } from "@server/db/schema";
+import type { ScheduledTaskV2Row } from "@fenix/resource-task/db";
 import { createTaskV2, updateTaskV2 } from "../server/services/task-v2";
 import { resetStubsWithDb } from "./db-stub";
 

@@ -6,7 +6,7 @@
 （`README.md` / `package.json` / `fenix.module.ts` + 2 个源码文件 + 1 个测试文件；其中真正 import 的只有
 `src/server/services/scheduler/index.ts`，`scheduler/utils.ts` 与 `src/__tests__/task-v2-validation.test.ts`
 只在注释里提到），宿主 `apps/server/src` 为 0，`/web/tasks/v2` 系列路由与 `scheduled_task_v2` /
-`task_execution_log` 的读写也只在包内（表定义除外，见下文残留）。
+`task_execution_log` 的读写也只在包内（表定义亦归本包 `db/schema.ts`，§1.7 B12 起）。
 
 ## 职责
 
@@ -42,7 +42,9 @@
   `PaginationParamsSchema`；`safeTaskOp` 把 Postgres `invalid input syntax` 归一为 404。宿主挂载点是
   `apps/server/src/routes/web/index.ts:17,52,79`（已按工厂形态接线，见「守卫由宿主注入」）。
 - **组合根**：`src/module.ts` 的 `createTaskModule()` 返回包内既有单例（`schedulerService` + 两个仓储）；
-  `fenix.module.ts` 的 `create` 惰性指向它。服务端出口是 `src/server.ts`（`exports["./server"]`）。
+  `fenix.module.ts` 的 `create` 惰性指向它。服务端出口是 `src/server.ts`（`exports["./server"]`）；表定义出口是
+  `db/schema.ts`（`exports["./db"]`，§1.7 B12 起：`scheduledTaskV2` / `taskExecutionLog` 与
+  `ScheduledTaskV2Row` / `ScheduledTaskV2Insert`）。
 - **浏览器侧**：`web/index.ts`（`exports["./web"]`）导出 `AgentTasksPage`、`TasksPanel`、`taskV2Api` 与 i18n
   资源；页面在 `web/pages/agent-panel/**`，api client 在 `web/api/tasks-v2.ts`。命名空间 `tasksV2` 的 123
   个键（en / zh 逐键对齐，`web/__tests__/task-i18n.test.ts` 守护）由本包自持，其中 6 个
@@ -60,7 +62,8 @@
   （`src/__tests__/task-source-migration.test.ts`，逐条对应计划 §1 的静态条件）、浏览器面守卫
   （`web/__tests__/task-browser-surface.test.ts`，走值导入图 + 外部白名单）与列表状态用例
   （`web/__tests__/task-list-states.test.tsx`，真实渲染）；最近一次全绿为
-  320 pass / 0 fail / 511 expect（2026-09-20）。若整批用例同时报 `Cannot find module`，先确认是否有
+  321 pass / 0 fail / 519 expect（2026-09-22，§1.7 B12 收尾；此前的「320 pass / 511 expect（2026-09-20）」
+  在 B12 改动前实测已为 321 pass / 516 expect，属过期数字，已订正）。若整批用例同时报 `Cannot find module`，先确认是否有
   并行包正处于迁移中间态：`bunfig.toml` 的仓库共享 preload（`apps/server/src/test-utils/setup-mocks.ts`）
   会把它拉进每个用例文件，与本包改动无关。
   浏览器面守卫的两条「可构建性」断言（宿主别名 / 外部依赖白名单）只对本包与共享基础设施包
@@ -72,9 +75,13 @@
 
 本包属 `resources` 类别，类别禁则只有一条（`scripts/lib/architecture-boundary-rules.ts`）：
 `resources → platform-impl`。实测 `git grep -nE 'from "@fenix/(identity|access-control)' --
-packages/resources/task` 为 0（按 import 形态而不是裸包名核对：裸名会把本 README 与守卫注释里
-「identity 是上游迁移中间态」的说明文字也算成依赖）：组织与用户上下文只从路由注入的
-`store.authContext` 取用，不做角色解释。
+packages/resources/task/src packages/resources/task/web` 为 0（按 import 形态而不是裸包名核对：裸名会把本
+README 与守卫注释里「identity 是上游迁移中间态」的说明文字也算成依赖）：组织与用户上下文只从路由注入的
+`store.authContext` 取用，不做角色解释。**`db/schema.ts` 是唯一的例外，且不是调用期依赖**：B12 迁入的
+`scheduled_task_v2.user_id` 外键列对象来自 `@fenix/identity/db`（Drizzle 的 `.references()` 只接受列对象、
+没有字符串名），属 §6.1 的**跨模块外键 schema 组装期例外**——检查器按 `packages/**/db/**` 路径整体放行
+（`scripts/lib/architecture-boundary-rules.ts` 的 `isSchemaAssemblyPath`），`special-dependency` 与
+`apps-boundary` 都不对它判定；同口径见 agent-config / knowledge / memory 的 `db/schema.ts`。
 
 - **跨包值导入 26 条说明符、6 个目标包**（`grep -rhoE '"@fenix/[^"]+"' packages/resources/task/src
   packages/resources/task/web | grep -v resource-task | sort -u | wc -l` → 26；未过滤时 27 条，多出的一条是
@@ -85,11 +92,14 @@ packages/resources/task` 为 0（按 import 形态而不是裸包名核对：裸
 - **`dependsOn: []`**：本包服务端生产代码没有任何指向已注册资源模块的值导入；唯一的 workspace 值导入是
   agent 执行器的 `@fenix/agent-runtime/server`，而 agent-runtime 是 profile 的固定基础槽位（生成器
   `assertDependsOnComplete` 也只对 `kind: "resource"` 目标生效）。理由与反例写在 `fenix.module.ts`。
-- **宿主导入只剩表定义**：`git grep -nE "from \"@server/" -- packages/resources/task/src` 命中 6 处 =
-  生产代码 3 处（`repositories/task-v2.ts` 2 条、`repositories/task.ts` 1 条）+ 测试 3 处（三个用例文件的
-  `import type`），全部是 `@server/db/schema`（`scheduled_task_v2` / `task_execution_log` 表定义，迁出归
-  任务 1.7）；另 1 处是 `src/server/db.ts` 注释里的旧写法示例（该文件尚未纳入索引，`git grep` 看不见它，
-  按工作树 grep 口径共 7 行），它不是可解析导入。
+- **宿主内部导入已归零（§1.7 B12）**：`scheduled_task_v2` / `task_execution_log` 两张表的定义迁入本包
+  `db/schema.ts`（出口 `./db`），原先 6 处 `@server/db/schema`（生产 3 条：`repositories/task-v2.ts` 2 条 +
+  `repositories/task.ts` 1 条；包内测试 3 条 `import type`）同批改指本包出口——仓储经该出口**自我引用**
+  （`db/` 不在本包 `tsconfig.json` 的 `include` 里，走出口与外部消费方同一条解析路径）。复核命令：
+  `git grep -nE "from \"@server/" -- packages/resources/task` → 仅 1 行命中，是 `src/server/db.ts` 注释里
+  点名的旧写法示例（`import { db } from "@server/db"`），不是可解析导入；可解析导入 **0 处**，
+  契约测试（条件 1）与台账（`apps-boundary @fenix/resource-task`）
+  同批由「白名单放行一条残留」改为「零例外 / 条目删除」。
   W2 已切断另外两条宿主内部依赖：`@server/plugins/auth`（改工厂注入）与 `@server/db`（改 `getDatabase()`）。
 - **零宿主别名与零环境变量**：包内 `web/` 的 `@/` **import 说明符** 0 处（`git grep -nE "from \"@/"
   -- packages/resources/task/web` 为 0）、`src/` 的 `process.env` 0 处、穿透到包外的相对引用 0 处，均由
@@ -124,7 +134,8 @@ packages/resources/task` 为 0（按 import 形态而不是裸包名核对：裸
   `main.ts:354-358` 经 `bootstrap/scheduler-startup.ts` 决定是否调用 `schedulerService.start()`，
   `main.ts:555` 停止）；本包只提供 `start()` / `stop()`。
 - DB 句柄经 `src/server/db.ts` 的 `getTaskDatabase()` → `@fenix/platform-sdk/server` 的 `getDatabase()`
-  在调用时获取；表对象暂时仍来自 `@server/db/schema`（§1.7 残留）。
+  在调用时获取；表对象自 §1.7 B12 起来自本包出口 `@fenix/resource-task/db`（`src/server/repositories/**`
+  的唯一取表来源）。
 - `src/server/repositories/**` 是唯一数据访问点，`routes` 与 `services` 既不取 DB 句柄也不直接操作表。
 - 测试基建：`src/__tests__/db-stub.ts` 用转发代理把每次属性读取转发到当前 DB 替身，从而在
   `initializeTestApplicationInfrastructure()` 已注入句柄之后，用例仍可随时 `stubDb(...)` 更换替身
@@ -173,9 +184,12 @@ packages/resources/task` 为 0（按 import 形态而不是裸包名核对：裸
 - **6 个 `error.*` 键无读取方**（`invalidHeaders` / `nameRequired` / `cronRequired` / `urlRequired` /
   `agentRequired` / `promptRequired`）：迁移前的宿主 `TaskForm` 也只渲染 zod message，属既有死键；保留是为了
   不与 EE 侧可能的使用方冲突，删除需一次全仓核对（W5 收口或 EE 复盘）。
-- **表定义仍导入 `@server/db/schema`**（6 处，见上）：迁出归任务 1.7，台账 `apps-boundary` 条目保留至完成，
-  owner 已为 1.7、rationale 记为「仅剩表定义导入」（`scripts/architecture/exceptions.json`，属计划 §4 的
-  W3 独占写入范围，本包只读不改）。
+- **表定义已迁入本包（§1.7 B12），台账条目随之删除**：`apps-boundary @fenix/resource-task` 的条目
+  （owner 1.7、rationale「实测 6 处导入 / 6 个文件，全部为 `@server/db/schema` 表定义导入」）已失效并删除，
+  台账至此 17 条。`package.json` 因此新增 `@fenix/identity`（`workspace:*`）——`scheduled_task_v2.user_id`
+  的外键列对象来自 `@fenix/identity/db`，属组装期例外（见「依赖边界」首段），**不进** `dependsOn`（装配校验
+  只扫 `src/**`）。浏览器面守卫的负例（注入 `./server` 出口）原先靠「图里存在 `@server/` 引用」证明递归有效，
+  载体消失后改为零容忍 `toEqual([])` + 两条深度断言（走到包内仓储与 `db/schema.ts`）。
 - **浏览器面守卫的断言范围收在「本包 + 共享基础设施包」**（2026-09-20 W2.5 实测并已按此实现）：本包经
   `@fenix/agent-config/web` 消费兄弟资源包，而兄弟包的文件不属本包红线（一个文件只有一个 owner），其内部
   卫生由各自的 `web/__tests__/*-browser-surface` 守卫负责；本包对它们只保留「解析 / 穿透 / node 内建 /
@@ -189,5 +203,7 @@ packages/resources/task` 为 0（按 import 形态而不是裸包名核对：裸
 - **`manifest.web` / `contributions` 未声明**：形状必须与 `mountContribution`（§1.5）与 WebShell（§1.6）的
   消费端同时定型，单方面发明会返工。
 - **宿主侧两处随波次收口**：`deploy/assembly/ce.json` 的 `resources` 仍是空列表，登记本模块属 W3 装配清单；
-  宿主 `apps/server/src/__tests__/task-schema.test.ts:3,21` 仍从宿主 `db/schema` 取 `taskExecutionLog` 并
-  手写建表 DDL，随表定义迁出（§1.7）一并改指本包——两处都不在本包可写范围内。
+  宿主 `apps/server/src/__tests__/task-schema.test.ts:3` 已随 §1.7 B12 改从本包出口 `@fenix/resource-task/db`
+  取 `taskExecutionLog`（宿主经 owner `./db` 读写，§6.1 组装期例外的既有形态；该文件仍留在宿主是既有分工——
+  `scripts/__tests__/rmd-07-migration.test.ts` 与 `scripts/root-source-owner-rules.ts` 都按宿主路径登记它）；
+  文件内自写的 SQLite 建表 DDL 与列名断言不变（不取 Drizzle 表对象的断言本来就不受迁移影响）。

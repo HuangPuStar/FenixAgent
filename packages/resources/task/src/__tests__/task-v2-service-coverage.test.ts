@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
 import { resetAllStubs, stubDb } from "@fenix/platform-sdk/testing";
-import type { ScheduledTaskV2Row } from "@server/db/schema";
+import type { ScheduledTaskV2Row } from "@fenix/resource-task/db";
 import {
   clearExecutionLogsV2,
   createTaskV2,

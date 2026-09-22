@@ -10,7 +10,8 @@ export default defineConfig({
   // （任务 1.7 B6）、Agent 配置聚合五张表 `@fenix/agent-config/db`（任务 1.7 B7）、运行环境/实例表
   // `@fenix/agent-runtime/db`（任务 1.7 B8）、知识库三张表 `@fenix/resource-knowledge/db`（任务 1.7 B9）
   // 与 Agent 记忆开关表 `@fenix/resource-memory/db`（任务 1.7 B10）、发布视图表
-  // `@fenix/resource-prod-view/db`（任务 1.7 B11）。
+  // `@fenix/resource-prod-view/db`（任务 1.7 B11）、定时任务与执行日志两张表
+  // `@fenix/resource-task/db`（任务 1.7 B12）。
   schema: [
     "./apps/server/src/db/schema.ts",
     "./packages/platform/identity/db/schema.ts",
@@ -24,6 +25,7 @@ export default defineConfig({
     "./packages/resources/prod-view/db/schema.ts",
     "./packages/resources/skill/db/schema.ts",
     "./packages/resources/sandbox/db/schema.ts",
+    "./packages/resources/task/db/schema.ts",
     "./packages/resources/workflow/db/schema.ts",
   ],
   out: "./drizzle",

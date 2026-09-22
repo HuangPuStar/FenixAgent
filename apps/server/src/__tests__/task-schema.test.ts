@@ -1,6 +1,6 @@
 import { Database } from "bun:sqlite";
 import { beforeEach, describe, expect, it } from "bun:test";
-import { taskExecutionLog } from "../db/schema";
+import { taskExecutionLog } from "@fenix/resource-task/db";
 
 function getColumnNames(table: object): string[] {
   return Object.keys(table as Record<string, unknown>);
