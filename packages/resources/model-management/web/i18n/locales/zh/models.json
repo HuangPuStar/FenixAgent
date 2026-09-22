@@ -483,6 +483,10 @@
   },
   "admin": {
     "gateAuthFailed": "master key 无效或已失效",
+    "gateTitle": "需要 Master Key",
+    "gateDescription": "输入系统 master key（RCS_SYSTEM_API_KEYS）后进入管理面板。key 仅存于 sessionStorage，不落日志。",
+    "gateInputPlaceholder": "系统 master key",
+    "gateSubmit": "进入面板",
     "loading": "加载中…"
   },
   "verticalModels": {

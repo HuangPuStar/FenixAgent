@@ -483,6 +483,10 @@
   },
   "admin": {
     "gateAuthFailed": "Invalid or expired master key",
+    "gateTitle": "Master Key Required",
+    "gateDescription": "Enter the system master key (RCS_SYSTEM_API_KEYS) to view the admin panel. The key is kept only in sessionStorage and is never logged.",
+    "gateInputPlaceholder": "System master key",
+    "gateSubmit": "Enter panel",
     "loading": "Loading…"
   },
   "verticalModels": {

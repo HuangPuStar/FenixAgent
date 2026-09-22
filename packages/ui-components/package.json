@@ -388,6 +388,10 @@
       "types": "./web/components/preview/preview-source.ts",
       "default": "./web/components/preview/preview-source.ts"
     },
+    "./config/AdminKeyGate": {
+      "types": "./web/config/AdminKeyGate.tsx",
+      "default": "./web/config/AdminKeyGate.tsx"
+    },
     "./config/BatchActionBar": {
       "types": "./web/config/BatchActionBar.tsx",
       "default": "./web/config/BatchActionBar.tsx"

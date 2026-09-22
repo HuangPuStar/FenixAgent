@@ -1,4 +1,4 @@
-import { MasterKeyGate } from "@fenix/resource-sandbox/web";
+import { AdminKeyGate } from "@fenix/ui-components/config/AdminKeyGate";
 import { Badge } from "@fenix/ui-components/ui/badge";
 import { Button } from "@fenix/ui-components/ui/button";
 import { Card, CardContent } from "@fenix/ui-components/ui/card";
@@ -7,7 +7,7 @@ import { Input } from "@fenix/ui-components/ui/input";
 import { Label } from "@fenix/ui-components/ui/label";
 import { Skeleton } from "@fenix/ui-components/ui/skeleton";
 import { ApiError } from "@fenix/web-runtime/api/request";
-import { clearAdminKey, getAdminKey } from "@fenix/web-runtime/lib/admin-key";
+import { useAdminKeyGate } from "@fenix/web-runtime/hooks/use-admin-key-gate";
 import { useRequest } from "ahooks";
 import { Bot, Building2, ChevronRight, KeyRound, RefreshCw, UserPlus, UserRound } from "lucide-react";
 import { type FormEvent, useState } from "react";
@@ -24,29 +24,20 @@ import {
 
 export function AdminPeoplePage() {
   const { t } = useTranslation("observer");
-  const [unlocked, setUnlocked] = useState(() => getAdminKey() !== null);
-  const [gateError, setGateError] = useState<string | null>(null);
-
-  if (!unlocked) {
-    return (
-      <MasterKeyGate
-        error={gateError}
-        onUnlock={() => {
-          setGateError(null);
-          setUnlocked(true);
-        }}
-      />
-    );
-  }
+  const gate = useAdminKeyGate(t("login.error"));
 
   return (
-    <PeopleDashboard
-      onAuthFailure={() => {
-        clearAdminKey();
-        setGateError(t("login.error"));
-        setUnlocked(false);
-      }}
-    />
+    <AdminKeyGate
+      unlocked={gate.unlocked}
+      error={gate.error}
+      onUnlock={gate.unlock}
+      title={t("login.title")}
+      description={t("login.description")}
+      inputPlaceholder={t("login.inputPlaceholder")}
+      submitLabel={t("login.submit")}
+    >
+      <PeopleDashboard onAuthFailure={gate.fail} />
+    </AdminKeyGate>
   );
 }
 

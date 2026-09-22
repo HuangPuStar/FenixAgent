@@ -1,5 +1,6 @@
 import { fetchSystemPeopleTree } from "@fenix/resource-observer/web";
-import { MasterKeyGate, SearchableUsageFilter } from "@fenix/resource-sandbox/web";
+import { SearchableUsageFilter } from "@fenix/resource-sandbox/web";
+import { AdminKeyGate } from "@fenix/ui-components/config/AdminKeyGate";
 import { EmptyState } from "@fenix/ui-components/config/EmptyState";
 import { Badge } from "@fenix/ui-components/ui/badge";
 import { Button } from "@fenix/ui-components/ui/button";
@@ -17,7 +18,7 @@ import { Pagination } from "@fenix/ui-components/ui/pagination";
 import { Progress } from "@fenix/ui-components/ui/progress";
 import { Spinner } from "@fenix/ui-components/ui/spinner";
 import { ApiError } from "@fenix/web-runtime/api/request";
-import { clearAdminKey, getAdminKey } from "@fenix/web-runtime/lib/admin-key";
+import { useAdminKeyGate } from "@fenix/web-runtime/hooks/use-admin-key-gate";
 import { useDebounce, useRequest } from "ahooks";
 import { ExternalLink, Info, RefreshCw, Search, TriangleAlert } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
@@ -53,28 +54,20 @@ const READONLY_FIELD_CLASS = "h-8 w-28 rounded-md border bg-muted px-2 text-sm";
 /** 系统模型网关管理页一期壳：模型目录仍由 LiteLLM 管理，Fenix 只负责检查和投影同步。 */
 export function AdminModelGatewayPage() {
   const { t } = useTranslation(MODELS_NS);
-  const [unlocked, setUnlocked] = useState(() => getAdminKey() !== null);
-  const [gateError, setGateError] = useState<string | null>(null);
+  const gate = useAdminKeyGate(t("admin.gateAuthFailed"));
 
-  if (!unlocked) {
-    return (
-      <MasterKeyGate
-        error={gateError}
-        onUnlock={() => {
-          setGateError(null);
-          setUnlocked(true);
-        }}
-      />
-    );
-  }
   return (
-    <ModelGatewayDashboard
-      onAuthFailure={() => {
-        clearAdminKey();
-        setGateError(t("admin.gateAuthFailed"));
-        setUnlocked(false);
-      }}
-    />
+    <AdminKeyGate
+      unlocked={gate.unlocked}
+      error={gate.error}
+      onUnlock={gate.unlock}
+      title={t("admin.gateTitle")}
+      description={t("admin.gateDescription")}
+      inputPlaceholder={t("admin.gateInputPlaceholder")}
+      submitLabel={t("admin.gateSubmit")}
+    >
+      <ModelGatewayDashboard onAuthFailure={gate.fail} />
+    </AdminKeyGate>
   );
 }
 

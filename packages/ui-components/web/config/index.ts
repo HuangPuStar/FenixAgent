@@ -1,3 +1,5 @@
+export type { AdminKeyGateProps } from "./AdminKeyGate";
+export { AdminKeyGate } from "./AdminKeyGate";
 export { BatchActionBar } from "./BatchActionBar";
 export { ConfirmDialog } from "./ConfirmDialog";
 export type { Column, DataTableProps } from "./DataTable";

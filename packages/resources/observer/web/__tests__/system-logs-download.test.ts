@@ -57,7 +57,7 @@ afterEach(() => {
 });
 
 describe("downloadSystemLog", () => {
-  // 401 必须归一为 UNAUTHORIZED：页面靠这个码清 admin key 并退回 MasterKeyGate。
+  // 401 必须归一为 UNAUTHORIZED：页面靠这个码清 admin key 并退回 AdminKeyGate。
   test("401 归一为 UNAUTHORIZED", async () => {
     const fetcher = stubFetch(() => errorEnvelope(401, "UNAUTHORIZED", "Invalid system API key"));
 

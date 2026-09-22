@@ -204,6 +204,7 @@ const EXPECTED_EXPORTS: Record<string, readonly string[]> = {
     "shouldLoadPreviewAsBlob",
   ],
   config: [
+    "AdminKeyGate",
     "BatchActionBar",
     "ConfirmDialog",
     "DataTable",

@@ -1,11 +1,11 @@
-import { MasterKeyGate } from "@fenix/resource-sandbox/web";
+import { AdminKeyGate } from "@fenix/ui-components/config/AdminKeyGate";
 import { Badge } from "@fenix/ui-components/ui/badge";
 import { Button } from "@fenix/ui-components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@fenix/ui-components/ui/card";
 import { Input } from "@fenix/ui-components/ui/input";
 import { Skeleton } from "@fenix/ui-components/ui/skeleton";
 import { ApiError } from "@fenix/web-runtime/api/request";
-import { clearAdminKey, getAdminKey } from "@fenix/web-runtime/lib/admin-key";
+import { useAdminKeyGate } from "@fenix/web-runtime/hooks/use-admin-key-gate";
 import { useRequest } from "ahooks";
 import { AlertCircle, Download, FileText, RefreshCw, Search } from "lucide-react";
 import { useEffect, useState } from "react";
@@ -20,29 +20,20 @@ import {
 
 export function AdminLogsPage() {
   const { t } = useTranslation("observer");
-  const [unlocked, setUnlocked] = useState(() => getAdminKey() !== null);
-  const [gateError, setGateError] = useState<string | null>(null);
-
-  if (!unlocked) {
-    return (
-      <MasterKeyGate
-        error={gateError}
-        onUnlock={() => {
-          setGateError(null);
-          setUnlocked(true);
-        }}
-      />
-    );
-  }
+  const gate = useAdminKeyGate(t("login.error"));
 
   return (
-    <LogsDashboard
-      onAuthFailure={() => {
-        clearAdminKey();
-        setGateError(t("login.error"));
-        setUnlocked(false);
-      }}
-    />
+    <AdminKeyGate
+      unlocked={gate.unlocked}
+      error={gate.error}
+      onUnlock={gate.unlock}
+      title={t("login.title")}
+      description={t("login.description")}
+      inputPlaceholder={t("login.inputPlaceholder")}
+      submitLabel={t("login.submit")}
+    >
+      <LogsDashboard onAuthFailure={gate.fail} />
+    </AdminKeyGate>
   );
 }
 
@@ -118,7 +109,7 @@ function LogsDashboard({ onAuthFailure }: { onAuthFailure: () => void }) {
             ) : filesRequest.error && !filesRequest.data ? (
               // 持久错误分支：非 401 的失败（500 等）必须与「目录里没有可读日志」区分开，
               // 否则服务端故障会被渲染成 empty，用户以为日志就是空的。401 不经此处——它已在
-              // onError 里清 key 回 MasterKeyGate，所以这里给重试而不给「无权限」占位。
+              // onError 里清 key 回 AdminKeyGate，所以这里给重试而不给「无权限」占位。
               <div role="alert" className="flex flex-col items-center gap-3 py-6 text-center">
                 <p className="text-sm text-destructive">{t("logs.filesError")}</p>
                 <Button variant="outline" size="sm" onClick={() => filesRequest.refresh()}>

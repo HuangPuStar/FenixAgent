@@ -97,6 +97,7 @@ export * from "./components/preview/native-pdf-plugin";
 export * from "./components/preview/preview-source";
 export * from "./components/WorkbenchPanel";
 // config —— 配置型业务无关容器
+export * from "./config/AdminKeyGate";
 export * from "./config/BatchActionBar";
 export * from "./config/ConfirmDialog";
 export * from "./config/DataTable";
