@@ -1,3 +1,4 @@
+import { LabeledField } from "@fenix/ui-components/config/LabeledField";
 import { Input } from "@fenix/ui-components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@fenix/ui-components/ui/select";
 import { Tabs, TabsList, TabsTrigger } from "@fenix/ui-components/ui/tabs";
@@ -30,7 +31,29 @@ interface TaskFormProps {
   initialType?: "http" | "agent";
 }
 
-const LABEL_CLASS = "block text-sm font-medium text-text-muted mb-1";
+/**
+ * 字段名样式，与实际迁移后仍需手写的三个字段（执行时间 / 时区 / URL）配套。
+ *
+ * 颜色取 `text-text-primary`：这是 `LabeledField` 里字段名的色，本表单 7 个字段已改用该组件，
+ * 三者若继续用 `text-text-muted` 会在同一个表单里出现两种深浅的字段名。字号与字重本就一致。
+ * 间距仍为 `mb-1`（4px），与 `LabeledField` 的 `gap-1.5`（6px）差 2px——这 4 个字段的形态不是
+ * 「label + 单个控件」（见下方各自的注释），故未迁移，间距差异一并保留。
+ */
+const LABEL_CLASS = "block text-sm font-medium text-text-primary mb-1";
+
+/**
+ * 表单错误行。8 个字段此前各写一份同样的
+ * `{errors.x && <p className="mt-0.5 text-xs text-destructive">{errors.x.message}</p>}`，
+ * 收敛成组件而不只抽类串常量，是因为连取值分支也只该写一次。
+ *
+ * 必须渲染在 `LabeledField` **之外**：`<p>` 一旦落进 `<label>`，错误文案会被算进控件的可访问名。
+ * 判空按 `message`（原先按 `errors.x` 对象）——zodResolver 校验失败时恒带 message，无可观察差异。
+ */
+function FieldError({ message }: { message?: string }) {
+  if (!message) return null;
+  return <p className="mt-0.5 text-xs text-destructive">{message}</p>;
+}
+
 const COMMON_TIMEZONES = [
   "Asia/Shanghai",
   "Asia/Tokyo",
@@ -116,17 +139,20 @@ export function TaskForm({ agents, isEditing, initialType = "http" }: TaskFormPr
     <div className="space-y-4">
       {/* 公共字段 */}
       <div>
-        <label className={LABEL_CLASS}>{t("form.nameLabel")}</label>
-        <Input
-          {...register("name")}
-          placeholder={t("form.namePlaceholder")}
-          className={`w-full ${errors.name ? "border-destructive" : ""}`}
-        />
-        {errors.name && <p className="mt-0.5 text-xs text-destructive">{errors.name.message}</p>}
+        <LabeledField label={t("form.nameLabel")}>
+          <Input
+            {...register("name")}
+            placeholder={t("form.namePlaceholder")}
+            className={`w-full ${errors.name ? "border-destructive" : ""}`}
+          />
+        </LabeledField>
+        <FieldError message={errors.name?.message} />
       </div>
 
       <div className="rounded-lg border border-border/40 bg-surface-0 p-3 space-y-3">
         <div>
+          {/* 本字段的字段名仍手写：children 是「预设 chip 行 + 输入框」的复合控件，chip 是可标记的
+              `<button>`，`LabeledField` 的隐式关联会把预设文案并进输入框的可访问名。 */}
           <label className={LABEL_CLASS}>{t("form.timeLabel")}</label>
           <CronEditor
             value={cronValue || ""}
@@ -137,6 +163,9 @@ export function TaskForm({ agents, isEditing, initialType = "http" }: TaskFormPr
         </div>
 
         <div>
+          {/* 本字段的字段名仍手写：它有既有的显式关联（`htmlFor` + 控件 `id`），而 `LabeledField`
+              只走隐式关联、不接 `htmlFor`；children 里的选项面板是绝对定位的，内含可标记的
+              `<button>`，聚焦即展开，包进 `<label>` 会把选项文案并进输入框的可访问名。 */}
           <label className={LABEL_CLASS} htmlFor="task-timezone">
             {t("form.timezoneLabel")}
           </label>
@@ -187,28 +216,30 @@ export function TaskForm({ agents, isEditing, initialType = "http" }: TaskFormPr
             )}
           </div>
           <p className="mt-1 text-xs text-muted-foreground">可搜索 IANA 时区，留空使用默认时区</p>
-          {errors.timezone && <p className="mt-0.5 text-xs text-destructive">{errors.timezone.message}</p>}
+          <FieldError message={errors.timezone?.message} />
         </div>
 
         <div>
-          <label className={LABEL_CLASS}>{t("form.timeoutLabel")}</label>
-          <Input
-            type="number"
-            {...register("timeoutSeconds", { valueAsNumber: true })}
-            className={`w-full ${errors.timeoutSeconds ? "border-destructive" : ""}`}
-          />
-          {errors.timeoutSeconds && <p className="mt-0.5 text-xs text-destructive">{errors.timeoutSeconds.message}</p>}
+          <LabeledField label={t("form.timeoutLabel")}>
+            <Input
+              type="number"
+              {...register("timeoutSeconds", { valueAsNumber: true })}
+              className={`w-full ${errors.timeoutSeconds ? "border-destructive" : ""}`}
+            />
+          </LabeledField>
+          <FieldError message={errors.timeoutSeconds?.message} />
         </div>
       </div>
 
       <div>
-        <label className={LABEL_CLASS}>{t("form.descLabel")}</label>
-        <Input
-          {...register("description")}
-          placeholder={t("form.descPlaceholder")}
-          className={`w-full ${errors.description ? "border-destructive" : ""}`}
-        />
-        {errors.description && <p className="mt-0.5 text-xs text-destructive">{errors.description.message}</p>}
+        <LabeledField label={t("form.descLabel")}>
+          <Input
+            {...register("description")}
+            placeholder={t("form.descPlaceholder")}
+            className={`w-full ${errors.description ? "border-destructive" : ""}`}
+          />
+        </LabeledField>
+        <FieldError message={errors.description?.message} />
       </div>
 
       {/* Type Tabs */}
@@ -235,6 +266,8 @@ export function TaskForm({ agents, isEditing, initialType = "http" }: TaskFormPr
       {effectiveType === "http" && (
         <div className="space-y-4">
           <div>
+            {/* 本字段的字段名仍手写：children 是 URL 输入框 + 方法选择器（可标记的 `<button>`），
+                不是「label + 单个控件」；包进 `<label>` 会把方法文案并进 URL 输入框的可访问名。 */}
             <label className={LABEL_CLASS}>{t("form.urlLabel")}</label>
             <div className="flex gap-2">
               <Input
@@ -258,24 +291,26 @@ export function TaskForm({ agents, isEditing, initialType = "http" }: TaskFormPr
                 </SelectContent>
               </Select>
             </div>
-            {errors.url && <p className="mt-0.5 text-xs text-destructive">{errors.url.message}</p>}
+            <FieldError message={errors.url?.message} />
           </div>
           <div>
-            <label className={LABEL_CLASS}>{t("form.headersLabel")}</label>
-            <Textarea
-              {...register("headers")}
-              placeholder={t("form.headersPlaceholder")}
-              className={`font-mono text-xs h-16 w-full ${errors.headers ? "border-destructive" : ""}`}
-            />
-            {errors.headers && <p className="mt-0.5 text-xs text-destructive">{errors.headers.message}</p>}
+            <LabeledField label={t("form.headersLabel")}>
+              <Textarea
+                {...register("headers")}
+                placeholder={t("form.headersPlaceholder")}
+                className={`font-mono text-xs h-16 w-full ${errors.headers ? "border-destructive" : ""}`}
+              />
+            </LabeledField>
+            <FieldError message={errors.headers?.message} />
           </div>
           <div>
-            <label className={LABEL_CLASS}>{t("form.bodyLabel")}</label>
-            <Textarea
-              {...register("body")}
-              placeholder={t("form.bodyPlaceholder")}
-              className="font-mono text-xs h-20 w-full"
-            />
+            <LabeledField label={t("form.bodyLabel")}>
+              <Textarea
+                {...register("body")}
+                placeholder={t("form.bodyPlaceholder")}
+                className="font-mono text-xs h-20 w-full"
+              />
+            </LabeledField>
           </div>
         </div>
       )}
@@ -284,30 +319,32 @@ export function TaskForm({ agents, isEditing, initialType = "http" }: TaskFormPr
       {effectiveType === "agent" && (
         <div className="space-y-4">
           <div>
-            <label className={LABEL_CLASS}>{t("form.agentLabel")}</label>
-            <Select value={agentIdValue as string} onValueChange={(v) => setValue("agentId", v)}>
-              <SelectTrigger className={`w-full ${errors.agentId ? "border-destructive" : ""}`}>
-                <SelectValue placeholder={t("form.agentPlaceholder")} />
-              </SelectTrigger>
-              <SelectContent>
-                {agents.map((a) => (
-                  <SelectItem key={a.id} value={a.id}>
-                    {a.name}
-                    {a.model ? ` (${a.model})` : ""}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-            {errors.agentId && <p className="mt-0.5 text-xs text-destructive">{errors.agentId.message}</p>}
+            <LabeledField label={t("form.agentLabel")}>
+              <Select value={agentIdValue as string} onValueChange={(v) => setValue("agentId", v)}>
+                <SelectTrigger className={`w-full ${errors.agentId ? "border-destructive" : ""}`}>
+                  <SelectValue placeholder={t("form.agentPlaceholder")} />
+                </SelectTrigger>
+                <SelectContent>
+                  {agents.map((a) => (
+                    <SelectItem key={a.id} value={a.id}>
+                      {a.name}
+                      {a.model ? ` (${a.model})` : ""}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </LabeledField>
+            <FieldError message={errors.agentId?.message} />
           </div>
           <div>
-            <label className={LABEL_CLASS}>{t("form.promptLabel")}</label>
-            <Textarea
-              {...register("prompt")}
-              placeholder={t("form.promptPlaceholder")}
-              className={`h-32 w-full ${errors.prompt ? "border-destructive" : ""}`}
-            />
-            {errors.prompt && <p className="mt-0.5 text-xs text-destructive">{errors.prompt.message}</p>}
+            <LabeledField label={t("form.promptLabel")}>
+              <Textarea
+                {...register("prompt")}
+                placeholder={t("form.promptPlaceholder")}
+                className={`h-32 w-full ${errors.prompt ? "border-destructive" : ""}`}
+              />
+            </LabeledField>
+            <FieldError message={errors.prompt?.message} />
           </div>
         </div>
       )}
