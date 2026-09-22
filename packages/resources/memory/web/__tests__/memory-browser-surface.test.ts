@@ -175,17 +175,27 @@ describe("memory web 入口浏览器可达面", () => {
   });
 
   // 负例（人为注入，不建 fixture 文件）：`<pkg>/server` 是本包真实存在的 exports 出口，其后是
-  // elysia / drizzle / 宿主 @server/* 与平台 sdk。两条断言缺一不可——只断言「有违规」会被
-  // 「递归失效、说明符本身被当成外部依赖」满足；只断言「进到了服务端实现」则漏掉拦截能力。
-  // 本包的服务端子图不触及 `node:` 内建（实测 2026-09-20），因此这里用「宿主路径 + 未白名单外部依赖」
+  // elysia / drizzle / 平台 sdk。两条断言缺一不可——只断言「有违规」会被「递归失效、说明符本身被当成
+  // 外部依赖」满足；只断言「进到了服务端实现」则漏掉拦截能力。
+  // 本包的服务端子图不触及 `node:` 内建（实测 2026-09-20），因此这里用「未白名单外部依赖 + 递归深度」
   // 作为违规信号，而不是照抄沙盒样本的 node: 断言。
+  // 原先还有第三条「服务端必然出现 `@server/*` 说明符」：§1.7 B10 把 `agent_memory_config` 的定义迁入本包
+  // `db/` 之后，本包 `src/**` 对宿主已零引用，该断言不再可能成立。它当初证明的是**递归深度够深**（不是
+  // 「停在第一跳」），这个职责改由下面两条承担（同形处置见 B9 的 knowledge 负例与评审文档 §7.21 / §7.22）：
+  // `src/server/repositories/agent-memory-config.ts` 是服务端子图里最深的一层，`db/schema.ts` 只能经它
+  // 的 `@fenix/resource-memory/db` **自我引用**到达——两者都在，说明递归既进了实现、又跨出了包边界。
+  // 至于原断言的**取样形态**（宿主路径必须出现），本批与其余八个包统一改写为下面的零容忍形态。
   test("负例：注入真实的 ./server 出口时递归进入服务端实现并触发拦截", () => {
     const poisoned = walkValueGraph(WEB_ENTRY, [`${PKG_NAME}/server`]);
     expect(poisoned.files).toContain(join(PKG_ROOT, "src", "server.ts"));
     const serverDir = `${join(PKG_ROOT, "src", "server")}${sep}`;
     expect(poisoned.files.filter((file) => file.startsWith(serverDir)).length).toBeGreaterThan(0);
+    expect(poisoned.files).toContain(join(PKG_ROOT, "src", "server", "repositories", "agent-memory-config.ts"));
+    expect(poisoned.files).toContain(join(PKG_ROOT, "db", "schema.ts"));
+    // `@server/*` 在 poisoned 图里必须为空：本包的宿主导入（`agent_memory_config` 表定义）随 B10 迁出，
+    // 连强制加载整个服务端子图也不该再命中宿主路径——与上面正向图的同名断言同口径。
     const hostServer = poisoned.references.filter((ref) => ref.specifier.startsWith("@server/"));
-    expect(offendersOf(hostServer).length).toBeGreaterThan(0);
+    expect(offendersOf(hostServer)).toEqual([]);
     const poisonedExternals = poisoned.references.filter(
       (ref) => ref.kind === "external" && !BROWSER_SAFE_EXTERNAL.has(ref.root),
     );

@@ -1,8 +1,8 @@
+import { environment } from "@fenix/agent-runtime/db";
 import { getIdentityDirectory } from "@fenix/platform-sdk/server";
-import { environment } from "@server/db/schema";
 import { and, eq } from "drizzle-orm";
 import { v4 as uuid } from "uuid";
-import { getAgentRuntimeDatabase } from "../db";
+import { type AgentRuntimeDatabase, getAgentRuntimeDatabase } from "../db";
 import { resolveWorkspacePath } from "../services/workspace-resolver";
 
 /** Environment 持久化记录 */
@@ -270,3 +270,48 @@ class PgEnvironmentRepo implements IEnvironmentRepo {
 }
 
 export const environmentRepo: IEnvironmentRepo = new PgEnvironmentRepo();
+
+/**
+ * 按 Agent 配置取绑定 Environment 的 id 列表（跨包**只读**入口，消费方是 `@fenix/agent-config` 的删除与
+ * 重启编排）。
+ *
+ * **无授权判定**：调用方（`AgentConfigFacade`）已完成资源可见性与 `delete` / `use` 动作判定，本函数只回答
+ * 「这条 Agent 配置在其组织下绑了哪些环境」，与迁移前 agent-config 直读 `environment` 表的同口径。
+ * 只取 id：调用方把这些 id 交给运行时的连接关闭与实例停止入口，不需要环境行本身。
+ */
+export async function listEnvironmentIdsByAgentConfig(input: {
+  organizationId: string;
+  agentConfigId: string;
+}): Promise<string[]> {
+  const rows = await getAgentRuntimeDatabase()
+    .select({ id: environment.id })
+    .from(environment)
+    .where(
+      and(eq(environment.organizationId, input.organizationId), eq(environment.agentConfigId, input.agentConfigId)),
+    );
+  return rows.map((row) => row.id);
+}
+
+/**
+ * 在**调用方的事务**内删除某 Agent 配置绑定的 Environment 行（跨包**写**入口）。
+ *
+ * 为什么接收集合句柄而不是自己开事务：agent-config 的删除路径要在同一事务里完成「删环境 + 删配置」，
+ * 拆成两次独立事务会让「配置已删、环境还在」（界面残留无主环境）或「环境已删、配置还在」（workspace 路径与
+ * `secret` 已丢、Agent 却仍存在）成为可见中间态。调用方把自己的事务句柄传进来，语义与迁移前它在自己
+ * 事务里 `tx.delete(environment)` 完全一致；两个包的句柄类型同为 `NodePgDatabase<Record<string, never>>`
+ * （见 `src/server/db.ts` 的类型说明），因此无需跨包共享自定义类型。
+ *
+ * 只删环境行，删除顺序由调用方决定；`agent_instance` 经 `environment_id` 的 `onDelete: "cascade"` 随之清理。
+ * 归属条件同时收 `organization_id` 与 `agent_config_id`：本入口不做授权（调用方 Facade 已判 `delete`），
+ * 双条件让「组织与配置配错」的调用退化成空操作，而不是一次跨组织的删除。
+ */
+export async function deleteEnvironmentsByAgentConfig(
+  database: AgentRuntimeDatabase,
+  input: { organizationId: string; agentConfigId: string },
+): Promise<void> {
+  await database
+    .delete(environment)
+    .where(
+      and(eq(environment.organizationId, input.organizationId), eq(environment.agentConfigId, input.agentConfigId)),
+    );
+}

@@ -26,8 +26,12 @@ import type { ServerRouteHost } from "@fenix/platform-sdk/server";
  *   资源模块的装配依赖校验范围；该跨类别边由 §2.3 依赖矩阵与架构台账负责（owner 1.4）。
  * - 另有 3 处 `@fenix/platform-sdk` 值导入（`src/server/db.ts` 的 `getDatabase`，两个路由文件的
  *   `WebErrSchema`）；platform-sdk 是契约包，没有模块 ID 可声明，同样不进 `dependsOn`。
- * - 表定义仍取自宿主 `@server/db/schema`（`prod_view`，迁出归 §1.7，台账条目 `apps-boundary` 的 owner
- *   已改为 1.7）：这是 §5 明确保留的残留，不是可编码的装配依赖。
+ * - 表定义自 §1.7 B11 起由本包 `db/schema.ts` 持有（出口 `@fenix/resource-prod-view/db`）：仓储经该出口
+ *   **自我引用**取 `prodView` 与行类型，本包 `src/**` 对宿主已零内部导入，台账 `apps-boundary` 的条目随之
+ *   删除。`db/schema.ts` 的 `agent_id` 外键列对象来自 `@fenix/agent-config/db`——那是迁移链层面的列对象
+ *   来源，不是运行期耦合（装配校验只扫 `src/**`），故**不进** `dependsOn`（同口径见 agent-config /
+ *   knowledge / memory 的 manifest 注释）；`package.json` 的 `dependencies` 则必须声明 `@fenix/agent-config`，
+ *   否则命中 `undeclared-workspace-dependency`。
  * - web 侧的跨包耦合只有一条，且不进服务端装配：`@fenix/agent-config/web`
  *   （`web/pages/agent-panel/**` 的 `agentApi`，取 agent 名称做创建时的默认值）。web 贡献的启用由
  *   profile 的 `web` 列表表达（§1.6）。原先的第二条——`web/pages/prod-view/ProdViewPage.tsx`

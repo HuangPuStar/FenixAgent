@@ -1,5 +1,5 @@
 import type { DbStub } from "@fenix/platform-sdk/testing";
-import type { ProdViewRow } from "@server/db/schema";
+import type { ProdViewRow } from "@fenix/resource-prod-view/db";
 
 /**
  * `prod_view` 表的 Drizzle 链式替身与配套的 SQL 片段读取助手。
@@ -16,7 +16,7 @@ import type { ProdViewRow } from "@server/db/schema";
 /** 固定 Agent 配置 ID：`CreateProdViewSchema.agentId` 要求 uuid，路由用例需要一份合法值。 */
 export const AGENT_ID = "11111111-1111-4111-8111-111111111111";
 
-/** `prod_view` 行的最小完整夹具；未列出的列按建表默认值补齐（对齐 `apps/server/src/db/schema.ts`）。 */
+/** `prod_view` 行的最小完整夹具；未列出的列按建表默认值补齐（对齐本包 `db/schema.ts`，§1.7 B11 起表定义归本包）。 */
 export function prodViewRow(overrides: Partial<ProdViewRow> = {}): ProdViewRow {
   return {
     id: "pv-1",

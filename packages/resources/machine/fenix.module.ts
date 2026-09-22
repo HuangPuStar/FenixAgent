@@ -8,8 +8,12 @@ import type { ServerRouteHost } from "@fenix/platform-sdk/server";
  * 装配面上的消费者是宿主 `apps/server`（注册 machine 路由与 file-ws 接入、启动心跳清扫）与
  * `@fenix/resource-sandbox`（执行请求等待机器回连后寻址）。
  *
- * `dependsOn: ["agent-config"]`：本包 `src/server/services/remote-file-service.ts` 经
- * `@fenix/agent-config/server` 读取 Agent 配置并解析 AgentNode。这是本包唯一的包间**运行时**依赖。
+ * `dependsOn: ["agent-config"]`：本包两个文件经 `@fenix/agent-config/server` 取数——
+ * `src/server/services/remote-file-service.ts` 读取 Agent 配置并解析 AgentNode（`getAgentConfigById` /
+ * `resolveAgentNode`）；`src/server/services/registry.ts` 在机器删除的归属校验与机器绑定写入上走 owner 的
+ * 服务入口（`isAgentConfigBoundToMachine` / `bindMachineIdByAgentName`，1.7 B7 从直读 `agent_config` 表
+ * 收敛而来——`src/**` 的跨模块表访问不适用 §6.1 只覆盖 `db/**` 的组装期例外）。这是本包唯一的包间
+ * **运行时**依赖。
  *
  * 装配契约（1.4 起）：本包不再导入 `@fenix/agent-runtime`，宿主运行态（workspace 根、Core runtime 节点、
  * file-ws 连接索引、断连清理）与 environment 读取改由 `apps/server` 经 `bindMachineHostPort` /

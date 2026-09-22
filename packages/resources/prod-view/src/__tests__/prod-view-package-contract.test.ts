@@ -27,12 +27,13 @@ const REPO_ROOT = resolve(PKG_ROOT, "../../..");
 const SOURCE_ENTRIES = ["src", "web", "db", "fenix.module.ts"];
 
 /**
- * 唯一允许的宿主导入。
+ * 本包自己 `db/` 出口的说明符。
  *
- * 表定义迁出归任务 1.7（计划 §5 残留），本任务把它作为**显式残留**保留，且只允许这一条精确路径：
- * `@server/db/schema` 之下的任何深路径都意味着重新伸手取宿主内部。
+ * `prod_view` 的表定义自任务 1.7 B11 起由本包 `db/schema.ts` 持有，宿主导入的**白名单随残留迁出而
+ * 删除**：条件 1 从此是零例外——任何 `@server/**` 说明符（含深路径与动态 `import()`）都是违规。
+ * 这个常量剩下的用途是把「表对象的取用面」钉在本包出口上（条件 8 的其六 / 其一）。
  */
-const ALLOWED_HOST_IMPORT = "@server/db/schema";
+const PKG_DB_EXPORT = "@fenix/resource-prod-view/db";
 
 /** 去掉行注释与块注释；字符串字面量内的内容原样保留（说明符本身就在引号里）。 */
 function stripComments(source: string): string {
@@ -164,16 +165,20 @@ function declaredExportKeys(packageName: string): string[] | undefined {
   return Object.keys(target.exports ?? {});
 }
 
+/** 正则字面量化：说明符里的 `.` `-` `/` 等字符不得被当成模式语法。 */
+const escapeRegExp = (value: string): string => value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+
 /**
- * 取出某文件里 `@server/db/schema` 具名导入的本地名字（`type X` 前缀与 `a as b` 均归一为本地名）。
+ * 取出某文件里 `specifier` 具名导入的本地名字（`type X` 前缀与 `a as b` 均归一为本地名）。
  *
  * 只认具名导入：命名空间导入（`import * as schema`）会让「读了哪张表」不可静态判定，一旦出现应当被
  * 用例拦下——此时返回空列表，断言自然失败。
  */
-function schemaImportNames(file: string): string[] {
+function importNames(file: string, specifier: string): string[] {
   const code = stripComments(readFileSync(file, "utf8"));
   const names: string[] = [];
-  for (const match of code.matchAll(/import\s+(?:type\s+)?\{([^}]*)\}\s*from\s*["']@server\/db\/schema["']/g)) {
+  const pattern = new RegExp(`import\\s+(?:type\\s+)?\\{([^}]*)\\}\\s*from\\s*["']${escapeRegExp(specifier)}["']`, "g");
+  for (const match of code.matchAll(pattern)) {
     for (const raw of match[1].split(",")) {
       const name =
         raw
@@ -189,7 +194,7 @@ function schemaImportNames(file: string): string[] {
 }
 
 const EIGHT_CONDITIONS = [
-  "1 宿主导入只允许 @server/db/schema",
+  "1 包内零宿主导入",
   "2 web 面零宿主别名",
   "3 无包外相对路径",
   "4 包内不直读宿主环境变量",
@@ -201,8 +206,8 @@ const EIGHT_CONDITIONS = [
 
 describe("ProdView 包边界契约（任务 1.3 §1 静态条件）", () => {
   // 遍历有效性自检：walker 若只返回入口文件，后续「不存在违规引用」的断言会全部退化为恒真；
-  // 同时用正向控制（必然存在的表定义残留）证明说明符提取真的在工作。
-  test("扫描有效性自检：源码集合覆盖全包，且已知的表定义残留能被扫到", () => {
+  // 同时用正向控制证明说明符提取真的在工作。
+  test("扫描有效性自检：源码集合覆盖全包，且已知的取表出口能被扫到", () => {
     for (const expected of [
       "fenix.module.ts",
       "src/module.ts",
@@ -219,15 +224,24 @@ describe("ProdView 包边界契约（任务 1.3 §1 静态条件）", () => {
       expect(sourceFiles).toContain(resolve(PKG_ROOT, expected));
     }
     expect(sourceFiles.length).toBeGreaterThanOrEqual(25);
-    expect(refs.filter((ref) => ref.specifier === ALLOWED_HOST_IMPORT).length).toBeGreaterThan(0);
+    // 正向控制：必须有一条已知存在的说明符能被扫到，否则下面「零宿主导入」的断言会退化成恒真。
+    // 载体随残留迁出而更换：表定义残留（`@server/db/schema`）已随 §1.7 B11 迁入本包 `db/`，于是改钉本次
+    // 收口的实际落点——仓储是唯一的数据访问点，它取表必须经本包出口，而不是回头直读宿主 schema。
+    expect(refs).toContainEqual(
+      expect.objectContaining({
+        file: resolve(PKG_ROOT, "src/server/repositories/prod-view.ts"),
+        specifier: PKG_DB_EXPORT,
+      }),
+    );
     expect(EIGHT_CONDITIONS).toHaveLength(8);
   });
 
-  // 条件 1：宿主实现只能作为类型来源（表定义残留），其余一律违规。
-  test("包内不存在表定义以外的宿主 @server 导入", () => {
-    const offenders = refs.filter(
-      (ref) => ref.specifier.startsWith("@server/") && ref.specifier !== ALLOWED_HOST_IMPORT,
-    );
+  // 条件 1：§1.7 B11 收口前这里放行唯一残留 `@server/db/schema`（表定义）；表迁入本包 `db/` 后白名单随之
+  // 删除——从此是**零例外**：任何 `@server` 说明符（含深路径与动态 `import()`）都是违规。宿主实现只能经
+  // 平台契约（`@fenix/platform-sdk`）或宿主注入进入本包。
+  test("包内不存在宿主 @server 导入", () => {
+    const offenders = refs.filter((ref) => ref.specifier.startsWith("@server"));
+
     expect(offenders.map(describeRef)).toEqual([]);
   });
 
@@ -313,22 +327,23 @@ describe("ProdView 包边界契约（任务 1.3 §1 静态条件）", () => {
     expect(unresolved).toEqual([]);
   });
 
-  // 条件 8（其六，放在这里与其余数据访问断言相邻）：表定义残留只允许读本模块 owner 的 `prodView`
-  // 一族符号。读到别的包的表的列，就是第二次直读表：表 owner 与规则 owner 分离，且本包的 repository
-  // 不再是该数据的唯一访问点（§6.4「无跨包直读表」）。
-  test("表定义残留只读取本包 owner 的表", () => {
-    const schemaRefs = refs.filter((ref) => ref.specifier === ALLOWED_HOST_IMPORT);
-    expect(schemaRefs.length).toBeGreaterThan(0);
-    const importedNames = schemaRefs.flatMap((ref) => schemaImportNames(ref.file));
+  // 条件 8（其六，放在这里与其余数据访问断言相邻）：本包 `db/` 出口只允许取用 `prodView` 一族符号。
+  // 表对象的取用面就是「谁能读这张表」；读到别的包的表的列，就是跨包直读表——表 owner 与规则 owner 分离，
+  // 且本包的 repository 不再是该数据的唯一访问点（§6.4「无跨包直读表」）。
+  test("本包 db 出口只被取用 prodView 一族符号", () => {
+    const dbRefs = refs.filter((ref) => ref.specifier === PKG_DB_EXPORT);
+    expect(dbRefs.length).toBeGreaterThan(0);
+    const importedNames = dbRefs.flatMap((ref) => importNames(ref.file, PKG_DB_EXPORT));
     expect([...new Set(importedNames)].sort()).toEqual(["ProdViewRow", "prodView"]);
   });
 
-  // 条件 8（其一）：路由只做协议接入，取表必须经 repository——路由直读 `@server/db/schema` 会把持久化
-  // 形状泄漏进协议层，也让「repository 是唯一数据访问点」失效。
+  // 条件 8（其一）：路由只做协议接入，取表必须经 repository——路由直读 `db/schema.ts`（经本包出口或任何
+  // 深路径）会把持久化形状泄漏进协议层，也让「repository 是唯一数据访问点」失效。
   test("路由层不直接引用表定义", () => {
     const offenders = refs.filter(
       (ref) =>
-        ref.specifier === ALLOWED_HOST_IMPORT && ref.file.startsWith(`${resolve(PKG_ROOT, "src/server/routes")}/`),
+        (ref.specifier === PKG_DB_EXPORT || ref.specifier.startsWith(`${PKG_DB_EXPORT}/`)) &&
+        ref.file.startsWith(`${resolve(PKG_ROOT, "src/server/routes")}/`),
     );
     expect(offenders.map(describeRef)).toEqual([]);
   });

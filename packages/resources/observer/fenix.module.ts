@@ -12,10 +12,12 @@ import type { ServerRouteHost } from "@fenix/platform-sdk/server";
  *
  * `dependsOn: ["agent-config","machine"]`：两条边都是 `src/**` 的静态值导入，方向与 §2.3 依赖矩阵一致。
  *
- * - `agent-config`：`src/server/services/observer/observer-service.ts` 导入 `@fenix/agent-config/server`
- *   的 `getAgentConfigById` 与 `findAgentConfigNamesByIds`——前者是 machine 解析链
- *   `environment.agentConfigId → agentConfig.machineId` 的一环（`resolveHostMachineId`），后者把
- *   `agentConfigId` 角色解析为可读名称。
+ * - `agent-config`：两处值导入。`src/server/services/observer/observer-service.ts` 导入
+ *   `@fenix/agent-config/server` 的 `getAgentConfigById` 与 `findAgentConfigNamesByIds`——前者是
+ *   machine 解析链 `environment.agentConfigId → agentConfig.machineId` 的一环（`resolveHostMachineId`），
+ *   后者把 `agentConfigId` 角色解析为可读名称；`src/server/services/system-people-tree-service.ts`
+ *   导入同出口的 `listAgentConfigsByOrganization` 与 `AgentConfigOwnershipRow`（1.7 B7 起人员树的
+ *   `agent_config` 取数由「本包直读表」改为「owner 的组织维度只读列举」）。
  * - `machine`：同一个文件导入 `@fenix/resource-machine/server` 的 `findMachineNamesByIds`，为
  *   `machineId` 角色提供展示名称；缺名时前端回退显示原始 id，因此该依赖只影响展示层，不参与采集。
  *
@@ -35,8 +37,12 @@ import type { ServerRouteHost } from "@fenix/platform-sdk/server";
  * - 宿主内部路径（`@server/**`）必须消除而不是编码成装配依赖——台账受「不再违规即删除」校验，
  *   无法用来长期豁免。W2 切片已把 `@server/plugins/system-api-auth` 改为路由工厂注入（守卫由宿主传入）、
  *   `@server/db` 改为 `@fenix/platform-sdk/server` 的 `getDatabase()`、`@server/config` 与
- *   `@server/types/store` 的用法改为平台契约或包内结构类型；剩余唯一命中是 `@server/db/schema`
- *   表定义（1 处 / 1 个文件，迁移归 §1.7，台账 owner 改 1.7）。
+ *   `@server/types/store` 的用法改为平台契约或包内结构类型；最后一个命中是 `@server/db/schema`
+ *   表定义（1 处 / 1 个文件），已随 1.7 B7 消失——人员树的 `agent_config` 读取收敛回 owner
+ *   （`@fenix/agent-config/server` 的 `listAgentConfigsByOrganization()`），句柄层 `src/server/db.ts`
+ *   与仓储 `src/server/repositories/system-people-repository.ts` 因此失去消费方、随实现一并删除。
+ *   本包 `@server/**` 导入现已归零（实测 `grep -rn 'from "@server' src web fenix.module.ts | grep -v __tests__`
+ *   → 0 条），`apps-boundary` 台账条目同批删除。
  *
  * 声明 `contributions`（1.5f）：三条只读接口的路由实例由本模块以惰性构造函数
  * `(host) => import("./src/server/assembly").then(...)` 给出，三者都挂宿主 `api` 聚合槽——路由路径自带

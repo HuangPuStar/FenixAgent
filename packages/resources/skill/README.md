@@ -1,6 +1,6 @@
 # @fenix/resource-skill
 
-Skill 资源（`skill` 表行 + SKILL.md 文档 + 同级归档文件）与 Agent ↔ Skill 绑定表（`agent_config_skill`）的唯一 owner；`fenix.module.ts` 声明 `capabilities: ["resource.skill"]`。
+Skill 资源（`skill` 表行 + SKILL.md 文档 + 同级归档文件）的唯一 owner（Agent ↔ Skill 绑定表 `agent_config_skill` 随 `agent_config` 聚合归 `@fenix/agent-config`，任务 1.7 B7）；`fenix.module.ts` 声明 `capabilities: ["resource.skill"]`。
 
 ## 定位与 owner
 
@@ -17,7 +17,7 @@ Skill 资源（`skill` 表行 + SKILL.md 文档 + 同级归档文件）与 Agent
   - `skillDownloadRoutes` → `/skills/:name/download`（凭令牌自授权，无 session，故不注入守卫）。
   - 两条带认证的路由都是**工厂**，守卫由宿主注入（`SkillRouteDependencies.authGuardPlugin`），包内不导入 `@server/plugins/auth`。理由：Elysia 的 `macro` / `state` 是实例作用域的，父实例无法向已构造的子实例回填；两份同名实例会被按 plugin `name` 去重，先构造的一方静默生效。
 - **组合根**：`createSkillServerModule(deps)`（`src/server/module.ts`，注入 `accessControl` / `scopeStore` / `authorizedQuery` / `identity`）经 `src/server/runtime.ts` 的 `installSkillServerModule` 装入进程单例。`src/module.ts` 的 `createSkillModule()` 给 registry 补 `id` 并转出 install / get / reset 三个生命周期入口，不复制构造逻辑。未装配即抛错，不静默退化。
-- **数据访问**：`src/server/repositories/**` 是包内唯一直接拼 SQL、唯一持有 DB 句柄的位置——`skill.ts`（受控读取经 `AuthorizedResourceQuery` 端口 + 写路径）、`agent-config-skill.ts`（绑定表读写）、启动迁移用的 `listAllSkillOrgAndNameUnscoped()`；service 与 route 不再各自持句柄。受控读取只交出主表、归属列与业务条件，授权谓词、排序与分页由平台实现编译进同一条 SQL。
+- **数据访问**：`src/server/repositories/**` 是包内唯一直接拼 SQL、唯一持有 DB 句柄的位置——`skill.ts`（受控读取经 `AuthorizedResourceQuery` 端口 + 写路径，含启动迁移用的 `listAllSkillOrgAndNameUnscoped()`）；service 与 route 不再各自持句柄。原 `agent-config-skill.ts`（绑定表读写）随 §1.7 B7 与该关联表一并移入 `@fenix/agent-config`，本包仓储目录现只剩 `skill.ts`。受控读取只交出主表、归属列与业务条件，授权谓词、排序与分页由平台实现编译进同一条 SQL。
 - **配置**：`SkillModuleConfig { skillDir, baseUrl, downloadTokenSigningKeys }` 经 `getModuleConfig("skill")` 读取并 `strictObject` 校验；校验失败只报字段路径与错误码，不回显字段值（含签名密钥）。签名密钥取首个非空项，与宿主 `RCS_API_KEYS` 的既有语义一致，默认 300 秒有效。
 - **测试入口（`@fenix/resource-skill/server/testing`）**：Facade / Service / System / ServerModule 替身、身份目录替身，以及 `createSkillModuleConfig` / `initializeSkillModuleConfig`（宿主测试与本包用例共用同一份「必填字段 + 缺省值」）。包内用例的守卫替身在 `src/__tests__/guard-stubs.ts`。
 - **内容层**：`skill-content.ts`（SKILL.md 编排、备份写入与回滚）、`skill-fs.ts`（frontmatter 解析、目录扫描、归档读写）、`skill-download-token.ts`（HMAC 令牌签发与校验）。
@@ -32,11 +32,11 @@ Skill 资源（`skill` 表行 + SKILL.md 文档 + 同级归档文件）与 Agent
 
 ## 边界残留
 
-- **`@server/*` 只剩关联表的表定义（任务 1.7 B5，2026-09-22）**：`skill` 资源行的表定义已迁入本包 `db/schema.ts`（出口 `@fenix/resource-skill/db`，`drizzle.config.ts` 已声明，DDL 逐字保留、`bun run check:schema-ddl-drift` 零差异），两处导入改指本包出口；`package.json` 同批新增该出口与 `@fenix/identity` 声明（`skill.user_id → user.id` 是唯一的跨包外键；`organization_id` 历史上就无外键）。现在全包只剩 **1 处 / 1 文件** 引用 `@server/db/schema`——`repositories/agent-config-skill.ts` 读**关联表** `agent_config_skill`，其定义归属随 join 表裁定（评审文档 §8.4 第 8 条）留待 B7。`@server/db`、`@server/config`、`@server/plugins/auth`、`@server/services/org-context`、`@server/test-utils/*` 已全部切断，包内 `process.env` 读 0 处。
+- **`@server/*` 已归零（任务 1.7 B7，2026-09-22）**：`skill` 资源行的表定义已迁入本包 `db/schema.ts`（出口 `@fenix/resource-skill/db`，`drizzle.config.ts` 已声明，DDL 逐字保留、`bun run check:schema-ddl-drift` 零差异），两处导入改指本包出口；`package.json` 同批新增该出口与 `@fenix/identity` 声明（`skill.user_id → user.id` 是唯一的跨包外键；`organization_id` 历史上就无外键）。B5 时仅剩的 1 处 / 1 文件（`repositories/agent-config-skill.ts` 读关联表 `agent_config_skill`）已随 B7 收口：该关联表按评审文档 §8.4 第 8 条的 join 表裁定与其读写一并归 `@fenix/agent-config`，本包不再有该文件。实测 `grep -rn 'from "@server/' src web fenix.module.ts | grep -v __tests__` → **0 条**；`@server/db`、`@server/config`、`@server/plugins/auth`、`@server/services/org-context`、`@server/test-utils/*` 亦已全部切断，包内 `process.env` 读 0 处。
 - **`resource → platform-impl` 已消除（§1.6 T7）**：本包 web 面原经 `@fenix/identity/web` 取 `useOrg`（`AgentSkillsPage.tsx` 1 处 / 1 文件），命中架构门禁 `special-dependency`（§2.3 禁止 resource → platform-impl）。现改为 `@fenix/web-runtime/contexts/org-session` 的 `useOrgSession()`：契约落在平台中立的 web-runtime，**实现方仍是身份包的 `OrgProvider`**（它包一层 `OrgSessionProvider`），因此包内拿到的依旧是宿主挂载的同一份 context 实例（§6.5 的同实例约束不变），同时不再依赖任何具体平台实现。本波次 skill / mcp / knowledge / model-management / agent-config 同形，覆盖 `special-dependency → @fenix/identity` 台账的全部 5 条。
 - **宿主装配已接线**：`apps/server/src/main.ts:106-112` 从 `@fenix/resource-skill/server` 取 `createApiSkillsRoutes` / `createSkillServerModule` / `installSkillServerModule` / `skillDownloadRoutes` / `skillResource`，`:196-200` 在 `moduleConfigs` 里给出 `skill` 键，`:310` 调 `installSkillServerModule(createSkillServerModule(moduleDeps))`，`:493` 挂 `skillDownloadRoutes`（凭令牌自授权，无守卫），`:499` 挂 `createApiSkillsRoutes({ authGuardPlugin })`；`apps/server/src/routes/web/config/index.ts:6` / `:22` / `:31` 取 `createWebSkillsConfigRoutes({ authGuardPlugin })` 并 `use`。宿主不再引用 `apiSkillsRoutes` / `webSkillsConfigRoutes` 这两个已删除的默认导出，工厂注入守卫的接线已闭环。
-- **架构例外台账已按实测收敛**：`web-package-not-to-app @fenix/resource-skill → @fenix/web-app` 这条已随包内宿主别名清零一并删除（现不在 `scripts/architecture/exceptions.json` 中）；`apps-boundary @fenix/resource-skill → @fenix/server-app` 保留，`owner` 由 1.5 调整为 1.7，`rationale` 已改写为「实测 3 处导入 / 3 个文件，全部为 `@server/db/schema` 表定义」；**B5 后该条目的成因只剩关联表这一处**，删除时机是「本包最后一个跨模块表读取消失」（B7），故本批保留条目但 `rationale` 需随批更新；`special-dependency @fenix/resource-skill → @fenix/identity` 已在 §1.6 T7 随 org/session 契约切换删除（见上一条）。
-- **命名提示**：`src/server/config.ts`（模块配置）与包导出面 `@fenix/resource-skill/server/config`（`src/server-config.ts`，`@fenix/resource-agent-config` 的取数面：绑定表读写 + `findSkillLabelsByIds` 标签投影，形状同 mcp 的 `./server/config`）同名但不是一回事。B5 起 agent-config 的关联资源视图改经该出口取技能标签，不再直读本包表对象。
+- **架构例外台账已清零（§1.7 B7，2026-09-22）**：`web-package-not-to-app @fenix/resource-skill → @fenix/web-app` 随包内宿主别名清零删除，`special-dependency @fenix/resource-skill → @fenix/identity` 随 §1.6 T7 的 org/session 契约切换删除（见上一条），`apps-boundary @fenix/resource-skill → @fenix/server-app` 随 B7 的关联表迁出（本包最后一个跨模块表读取消失）一并删除。可复核：`python3 -c "import json;d=json.load(open('scripts/architecture/exceptions.json'));print([e['rule'] for e in d['exceptions'] if e.get('from')=='@fenix/resource-skill'])"` → `[]`。B5 时该条目曾按「包对」粒度保留、`owner` 改为 1.7、`rationale` 记为「只剩关联表这一处」，B7 落地后成因与条目同时消失。
+- **命名提示**：`src/server/config.ts`（模块配置）与包导出面 `@fenix/resource-skill/server/config`（`src/server-config.ts`，`@fenix/resource-agent-config` 的取数面：只剩 `findSkillLabelsByIds` 标签投影，形状同 mcp 的 `./server/config`）同名但不是一回事。B5 起 agent-config 的关联资源视图改经该出口取技能标签、不再直读本包表对象；B7 起该出口也不再承载绑定表读写——`agent_config_skill` 随聚合归 agent-config，出口因此只余标签投影。
 
 ## 已知项
 

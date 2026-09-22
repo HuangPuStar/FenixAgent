@@ -1,9 +1,10 @@
 // 系统级人员管理树：按组织聚合成员与归属智能体，供 Admin 只读展示。
-// 查询显式在服务层完成，避免路由直接接触持久化模型。
+// 取数经平台契约与资源包公开入口，路由与服务都不接触持久化模型。
 
+import { type AgentConfigOwnershipRow, listAgentConfigsByOrganization } from "@fenix/agent-config/server";
 import { getIdentityDirectory } from "@fenix/platform-sdk/server";
-import { listAgentConfigsByOrganization } from "../repositories/system-people-repository";
 
+/** 人员树上的智能体节点：只保留界面展示与分组的列，不把 owner 的归属投影直接交给协议层。 */
 export interface SystemPeopleAgent {
   id: string;
   name: string;
@@ -33,13 +34,31 @@ export interface SystemPeopleTreeService {
 }
 
 /**
+ * 把 agent-config 的归属投影转成本包的展示视图。
+ *
+ * 边界处显式转换：owner 的行类型（含 `userId`，属归属判定用）不进入本包的视图层，
+ * 视图只取界面渲染的列，两侧各自演进（§4.8 第 4 条：调用期经 owner 公开入口取数，
+ * 但取到的 DTO 不得替代本包的视图模型）。
+ */
+function toSystemPeopleAgent(row: AgentConfigOwnershipRow): SystemPeopleAgent {
+  return {
+    id: row.id,
+    name: row.name,
+    description: row.description,
+    machineId: row.machineId,
+    engineType: row.engineType,
+  };
+}
+
+/**
  * 构建组织 → 用户 → 智能体树。
  *
  * 用户集合取组织成员与智能体 owner 的并集：历史数据即使缺少 member 行，也不会让
  * 该组织中的 agent_config 从系统管理视图中消失；这类用户的 role 为 null，其展示信息
  * 由目录的批量投影补齐（名字/邮箱），手机号按目录契约不进入该投影，补位项为 null。
  *
- * 组织与成员来自身份目录（身份表读取的唯一合法落点），智能体归属由本包读取，两者在服务层合并。
+ * 组织与成员来自身份目录（身份表读取的唯一合法落点），智能体归属经 agent-config 的公开取数面
+ * （B7 起本包不再持有 `agent_config` 的 SQL），两者在服务层合并。
  */
 export function createSystemPeopleTreeService(): SystemPeopleTreeService {
   return {
@@ -82,13 +101,7 @@ export function createSystemPeopleTreeService(): SystemPeopleTreeService {
         }
 
         for (const agent of agents) {
-          users.get(agent.userId)?.agents.push({
-            id: agent.id,
-            name: agent.name,
-            description: agent.description,
-            machineId: agent.machineId,
-            engineType: agent.engineType,
-          });
+          users.get(agent.userId)?.agents.push(toSystemPeopleAgent(agent));
         }
 
         result.push({

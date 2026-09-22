@@ -221,17 +221,23 @@ describe("skill web 入口浏览器可达面", () => {
   });
 
   // 负例（人为注入，不建 fixture 文件）：`<pkg>/server` 是本包真实存在的 exports 出口，其后是
-  // elysia / drizzle / 宿主 @server/* / node 内建。两条断言缺一不可——只断言「有违规」会被
-  // 「递归失效、说明符本身被当成外部依赖」满足；只断言「进到了服务端实现」则漏掉拦截能力。
+  // elysia / drizzle / node 内建。两条断言缺一不可——只断言「有违规」会被「递归失效、说明符本身
+  // 被当成外部依赖」满足；只断言「进到了服务端实现」则漏掉拦截能力。
+  //
+  // 服务端专属标记取 `node:` 内建与服务端框架/ORM（`elysia` / `drizzle-orm`）：§1.7 B7 之前这里
+  // 还断言宿主 `@server/*`，但关联表随表归 `agent-config` 后本包已零宿主导入（由同包
+  // `skill-source-boundary.test.ts` 的「包内不存在宿主 @server 引用」钉住），该标记不再可用。
   test("负例：注入真实的 ./server 出口时递归进入服务端实现并触发拦截", () => {
     const poisoned = walkValueGraph(WEB_ENTRY, [`${PKG_NAME}/server`]);
     expect(poisoned.files).toContain(join(PKG_ROOT, "src", "server.ts"));
     const serverDir = `${join(PKG_ROOT, "src", "server")}${sep}`;
     expect(poisoned.files.filter((file) => file.startsWith(serverDir)).length).toBeGreaterThan(0);
     const nodeBuiltins = poisoned.references.filter((ref) => ref.specifier.startsWith("node:"));
-    const hostServer = poisoned.references.filter((ref) => ref.specifier.startsWith("@server/"));
+    const serverOnlyExternals = poisoned.references.filter(
+      (ref) => ref.specifier === "elysia" || ref.specifier === "drizzle-orm",
+    );
     expect(offendersOf(nodeBuiltins).length).toBeGreaterThan(0);
-    expect(offendersOf(hostServer).length).toBeGreaterThan(0);
+    expect(offendersOf(serverOnlyExternals).length).toBeGreaterThan(0);
   });
 
   // ./web 出口的契约：package.json 必须指向 web/index.ts，否则宿主解析到别的文件时守卫失去意义。

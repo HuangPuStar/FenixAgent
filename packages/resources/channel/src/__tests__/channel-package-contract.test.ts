@@ -19,21 +19,31 @@ const PKG_ROOT = resolve(import.meta.dir, "../..");
 const SOURCE_ENTRIES = ["src", "web", "db", "fenix.module.ts"];
 
 /**
- * 唯一允许的宿主导入。
+ * 本包 `./db` 出口（§1.7 B13 起表定义归本包）。
  *
- * 表定义迁出归任务 1.7，本任务把它作为**显式残留**保留（见 README「边界残留」），且只允许这一条
- * 精确路径：`@server/db/schema` 之下的任何深路径都意味着重新伸手取宿主内部。
+ * 包内仓储经该出口**自我引用**取 `channelBinding`（本包没有 `tsconfig.json`，解析口径本来就只有包
+ * `exports` 一条）。
+ *
+ * 它同时充当条件 1 的**正向控制**：B13 之前这里放的是「唯一允许的宿主残留」`@server/db/schema`（迁出前
+ * 1 处导入），残留归零后若继续沿用它，正向控制会恒为 0——说明符提取一旦失效（而不是「真的没有宿主导入」），
+ * 条件 1 就会静默通过。故改钉这条必然存在的包内引用。
  */
-const ALLOWED_HOST_IMPORT = "@server/db/schema";
+const PKG_DB_EXPORT = "@fenix/resource-channel/db";
 
 /**
- * 允许从宿主 schema 读取的表符号白名单。
+ * 已迁出的表定义出口形态：`@fenix/<包>/db`。
  *
- * 本包 owner 的表目前只有 `channel_binding`（`im_channel` / `im_channel_route` 已在宿主 schema
- * 声明但尚无实现，见 README）。白名单把「读到别的包的表」变成显式失败：跨表读取会让表 owner 与
- * 规则 owner 分离，正是 §1 静态条件 8 要拦的情况。
+ * 包内 `src/**`、`web/**` 的文件**只允许**引用本包自己的 `db` 出口（`PKG_DB_EXPORT`）——读别包的 `db`
+ * 出口等于调用期跨包读表。这条断言取代了迁表前「表定义残留只读本包 owner 的表」那条白名单（当时宿主
+ * schema 里既有本包表也有别包表，故需按符号判）。
+ *
+ * **`db/**` 自身不受此限**：本包 `db/schema.ts` 必须引用 `@fenix/agent-runtime/db` / `@fenix/identity/db`
+ * 才能表达 `im_channel_route.environment_id` 与 `im_channel.user_id` 两条跨包外键——Drizzle 的
+ * `.references()` 只接受列对象、没有字符串形式。这是 `ce-ee-engineering-standards.md` §6.1 明确允许的
+ * **组装期**例外（agent-config / knowledge / task 三包同形，零台账条目），与「调用期跨包读表」是两件事；
+ * 断言按路径把两者分开，正是为了让这条豁免有正确的边界而不是整包放行。
  */
-const ALLOWED_HOST_TABLES = new Set(["channelBinding"]);
+const CROSS_PACKAGE_DB_EXPORT = /^@fenix\/[^/]+\/db$/;
 
 /** web 面的宿主别名（由 apps/web 的 tsconfig/vite 提供），包离开宿主后解析不了。 */
 const HOST_ALIAS_PREFIX = "@/";
@@ -121,7 +131,6 @@ function listPackageFiles(absDir: string): string[] {
 interface ImportRef {
   file: string;
   specifier: string;
-  code: string;
 }
 
 const sourceFiles = SOURCE_ENTRIES.flatMap((entry) => {
@@ -130,10 +139,9 @@ const sourceFiles = SOURCE_ENTRIES.flatMap((entry) => {
   return statSync(abs).isDirectory() ? listPackageFiles(abs) : [abs];
 });
 
-const refs: ImportRef[] = sourceFiles.flatMap((file) => {
-  const code = stripComments(readFileSync(file, "utf8"));
-  return extractSpecifiers(code).map((specifier) => ({ file, specifier, code }));
-});
+const refs: ImportRef[] = sourceFiles.flatMap((file) =>
+  extractSpecifiers(stripComments(readFileSync(file, "utf8"))).map((specifier) => ({ file, specifier })),
+);
 
 const describeRef = (ref: ImportRef) => `${relative(PKG_ROOT, ref.file)} → ${ref.specifier}`;
 
@@ -158,22 +166,6 @@ const manifest = JSON.parse(readFileSync(join(PKG_ROOT, "package.json"), "utf8")
 };
 const exportEntries = Object.entries(manifest.exports ?? {});
 
-/** 从 `@server/db/schema` 的命名导入里取符号名（去掉 `type` 前缀与 `as` 别名）。 */
-function hostTableSymbols(code: string): string[] {
-  const symbols: string[] = [];
-  for (const match of code.matchAll(/import\s+(?:type\s+)?\{([^}]*)\}\s*from\s*["']@server\/db\/schema["']/g)) {
-    for (const raw of match[1].split(",")) {
-      const name = raw
-        .trim()
-        .replace(/^type\s+/, "")
-        .split(/\s+as\s+/)[0]
-        ?.trim();
-      if (name) symbols.push(name);
-    }
-  }
-  return symbols;
-}
-
 describe("Channel 包边界契约（任务 1.3 §1 静态条件）", () => {
   // 遍历有效性自检：walker 若只返回入口文件，后续「不存在违规引用」的断言会全部退化为恒真。
   test("扫描有效性自检：源码集合覆盖全包，且已知残留宿主导入能被扫到", () => {
@@ -187,6 +179,7 @@ describe("Channel 包边界契约（任务 1.3 §1 静态条件）", () => {
       "src/server/routes/web/channels.ts",
       "src/server/repositories/channel-binding.ts",
       "src/__tests__/guard-stubs.ts",
+      "db/schema.ts",
       "web/index.ts",
       "web/i18n/index.ts",
       "web/api/channels.ts",
@@ -195,32 +188,51 @@ describe("Channel 包边界契约（任务 1.3 §1 静态条件）", () => {
       expect(sourceFiles).toContain(resolve(PKG_ROOT, expected));
     }
     expect(sourceFiles.length).toBeGreaterThanOrEqual(20);
-    // 正向控制：表定义残留必然存在，扫不到就说明说明符提取失效（而不是「没有宿主导入」）。
-    expect(refs.filter((ref) => ref.specifier === ALLOWED_HOST_IMPORT).length).toBeGreaterThan(0);
+    // 正向控制：条件 1 的目标（`@server/**`）自 B13 起恒为空，故改钉一条必然存在的包内值导入——说明符
+    // 提取失效时它会先变红，而不是让「不存在违规引用」退化成恒真。
+    expect(refs).toContainEqual(
+      expect.objectContaining({
+        file: resolve(PKG_ROOT, "src/server/repositories/channel-binding.ts"),
+        specifier: PKG_DB_EXPORT,
+      }),
+    );
   });
 
-  // 宿主实现只能经平台契约（`@fenix/platform-sdk`）或注入进入本包；除表定义残留外一律违规。
-  test("包内不存在表定义以外的宿主 @server 导入", () => {
-    const offenders = refs.filter(
-      (ref) => ref.specifier.startsWith("@server/") && ref.specifier !== ALLOWED_HOST_IMPORT,
-    );
+  // 宿主实现只能经平台契约（`@fenix/platform-sdk`）或注入进入本包（§1 静态条件 1）。表定义自 §1.7 B13
+  // 起归本包 `db/`，原先「表定义残留」这条唯一例外随之消失，断言改为零容忍：任何 `@server/**` 都违规。
+  test("包内不存在宿主 @server 导入", () => {
+    const offenders = refs.filter((ref) => ref.specifier.startsWith("@server/"));
     expect(offenders.map(describeRef)).toEqual([]);
   });
 
-  // 表定义残留只允许读本包 owner 的表：读到别包的表会让表 owner 与规则 owner 分离。
-  test("表定义残留只读本包 owner 的表", () => {
-    const offenders = refs
-      .filter((ref) => ref.specifier === ALLOWED_HOST_IMPORT)
-      .flatMap((ref) =>
-        hostTableSymbols(ref.code)
-          .filter((symbol) => !ALLOWED_HOST_TABLES.has(symbol))
-          .map((symbol) => `${relative(PKG_ROOT, ref.file)} → ${symbol}`),
-      );
-    expect(offenders).toEqual([]);
-    // 反向控制：白名单若与真实导入完全脱节，上面的断言同样会恒真。
+  // 跨包表读取：本包的 `src/**` / `web/**` 只允许引用自己的 `db` 出口，读别包的 `db` 出口等于调用期
+  // 跨包读表。`db/**` 自身是 §6.1 的组装期例外（外键列对象来源），由下一条用例单独钉住。
+  test("包内调用期只引用本包自己的 db 出口", () => {
+    const dbFiles = new Set(filesUnder("db"));
+    const offenders = refs.filter(
+      (ref) => CROSS_PACKAGE_DB_EXPORT.test(ref.specifier) && ref.specifier !== PKG_DB_EXPORT && !dbFiles.has(ref.file),
+    );
+    expect(offenders.map(describeRef)).toEqual([]);
+    // 反向控制：断言对象必须真的存在于扫描结果里，否则上面的空列表恒真（与条件 1 的正向控制同源）。
+    expect(refs.some((ref) => ref.specifier === PKG_DB_EXPORT)).toBe(true);
+  });
+
+  // 上一条把 `db/**` 排除在外，因此这里必须钉住该豁免的**对象**：组装期确实只剩这两条跨包外键的列对象
+  // 来源。若哪天有人在 `db/schema.ts` 里顺手读别包表，缺了这条就会从豁免的口子漏过去。
+  test("db/schema.ts 的跨包导入只用于外键列对象", () => {
+    const dbRefs = refs.filter((ref) => filesUnder("db").includes(ref.file));
     expect(
-      refs.filter((ref) => ref.specifier === ALLOWED_HOST_IMPORT).flatMap((ref) => hostTableSymbols(ref.code)).length,
-    ).toBeGreaterThan(0);
+      dbRefs
+        .filter((ref) => CROSS_PACKAGE_DB_EXPORT.test(ref.specifier))
+        .map((ref) => ref.specifier)
+        .sort(),
+    ).toEqual(["@fenix/agent-runtime/db", "@fenix/identity/db"]);
+    // 这两条导入的唯一用途是 `.references(() => X.id)`：没有表对象被本文件之外的地方取用（本包仓储一律
+    // 走 `PKG_DB_EXPORT` 自我引用，见上一条），故只需确认导入的符号确实出现在 `.references` 里。
+    const code = stripComments(readFileSync(resolve(PKG_ROOT, "db/schema.ts"), "utf8"));
+    for (const symbol of ["environment", "user"]) {
+      expect(code).toMatch(new RegExp(`references\\(\\(\\) => ${symbol}\\.`));
+    }
   });
 
   // 宿主别名（`@/src`、`@/components`）由 apps/web 的 tsconfig/vite 提供，包离开宿主就解析不了。

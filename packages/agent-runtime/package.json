@@ -8,6 +8,10 @@
       "types": "./src/index.ts",
       "default": "./src/index.ts"
     },
+    "./db": {
+      "types": "./db/schema.ts",
+      "default": "./db/schema.ts"
+    },
     "./module": {
       "types": "./fenix.module.ts",
       "default": "./fenix.module.ts"
@@ -45,6 +49,7 @@
     "@fenix/agent-config": "workspace:*",
     "@fenix/chat-channel": "workspace:*",
     "@fenix/core": "workspace:*",
+    "@fenix/identity": "workspace:*",
     "@fenix/logger": "workspace:*",
     "@fenix/orchestration": "workspace:*",
     "@fenix/platform-sdk": "workspace:*",

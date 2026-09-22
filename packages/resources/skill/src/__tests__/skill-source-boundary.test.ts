@@ -12,15 +12,6 @@ import { join, relative, resolve } from "node:path";
 const PKG_ROOT = resolve(import.meta.dir, "../..");
 const SOURCE_DIRS = ["src", "web", "db"];
 
-/**
- * 表定义迁出归任务 1.7，本任务作为显式残留保留这一条精确路径（§5）。
- *
- * B5（2026-09-22）把 `skill` 本体的表定义迁到 `@fenix/resource-skill/db` 后，这条放行只剩**关联表**
- * `agent_config_skill` 一个消费者（`repositories/agent-config-skill.ts`）：关联表的定义归属随 join 表
- * 裁定（评审文档 §8.4 第 8 条）留待 agent-config 批（B7），届时本条放行常量随之删除。
- */
-const ALLOWED_HOST_IMPORT = "@server/db/schema";
-
 /** 剥掉行注释与块注释：注释里会举例写出宿主别名与旧路径，直接匹配会误报。 */
 function stripComments(code: string): string {
   return code.replace(/\/\*[\s\S]*?\*\//g, "").replace(/^[ \t]*\/\/.*$/gm, "");
@@ -49,21 +40,17 @@ const ALL_SOURCE_FILES = SOURCE_DIRS.flatMap((dir) => {
 });
 
 describe("skill 包边界契约", () => {
-  // 生产代码只允许表定义这一条宿主导入：任何别的 `@server/*` 都意味着包重新伸手取宿主内部实现。
-  test("@server 引用面只剩表定义", () => {
-    const offenders: string[] = [];
-    const allowedFiles = new Set<string>();
+  // 生产代码不得有任何宿主导入：包必须能在没有宿主解析环境时独立构建。
+  test("包内不存在宿主 @server 引用", () => {
+    const hostImports: string[] = [];
     for (const file of ALL_SOURCE_FILES) {
       for (const specifier of specifiers(stripComments(readFileSync(file, "utf8")))) {
-        if (!specifier.startsWith("@server/")) continue;
-        if (specifier === ALLOWED_HOST_IMPORT) allowedFiles.add(relative(PKG_ROOT, file));
-        else offenders.push(`${relative(PKG_ROOT, file)} → ${specifier}`);
+        if (specifier.startsWith("@server/")) hostImports.push(`${relative(PKG_ROOT, file)} → ${specifier}`);
       }
     }
-    expect(offenders).toEqual([]);
-    // 残留清单写死：新增一处表定义引用（例如第二个模块也直接摸表）必须让这条断言失败并被复核。
-    // B5 后只剩关联表一处——本包资源行自己的定义已改由 `@fenix/resource-skill/db` 提供（§1.7 B5）。
-    expect([...allowedFiles].sort()).toEqual(["src/server/repositories/agent-config-skill.ts"]);
+    // 残留清单写死为空：曾长期存在的唯一例外是 `agent_config_skill` 关联表的定义引用，它随 §1.7 B7
+    // 与表一起归 `agent-config`（`repositories/agent-config-skill.ts`），本条自此不得再放行任何路径。
+    expect(hostImports.sort()).toEqual([]);
   });
 
   // 会话鉴权路由必须可注入守卫（工厂 + 无 default export）：宿主要接回自己的认证实例，而不是包自建一份。

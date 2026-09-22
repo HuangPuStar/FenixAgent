@@ -11,16 +11,25 @@ import { agentConfigResource } from "./src/server/access/agent-config-resource";
  * `/web/site/deploy`，并注入 `AgentConfigServerModule`）以及其它资源模块（machine 解析 AgentNode、
  * model-management 与 observer 读取 Agent 配置）。
  *
- * `dependsOn: ["knowledge","mcp","memory","skill"]` 的四条边都由 `src/**` 的值导入证明——绑定表分散在
- * 各自资源包，本模块只做读写编排，因此这是「成套启用」的真实耦合，而不是可选软依赖：
+ * `dependsOn: ["knowledge","mcp","memory","skill"]` 的四条边都由 `src/**` 的值导入证明——被关联资源的
+ * 读取一律走各自 owner 的公开出口，本模块只做读写编排，因此这是「成套启用」的真实耦合，而不是可选软依赖。
+ * 绑定表本身的归属是另一件事：`agent_config_mcp` 与 `agent_config_skill` 已随 Agent 配置聚合归本包
+ * （1.7 B7，表在 `db/schema.ts`、读写在本包 `src/server/repositories/`），它们的读写不再构成对 mcp /
+ * skill 包的导入边：
  * - knowledge：`src/server/services/agent-associations.ts` 读写 Agent 的知识库绑定，
  *   `src/server/services/config/agent-config.ts` 取 `resolveAgentKnowledgePolicy` 解析知识库策略，
  *   `src/server/routes/api/agents.ts` 把 `InvalidKnowledgeBindingError` 映射成协议错误；
- * - mcp：`src/server/services/agent-associations.ts` 的 `listAgentMcpIds` / `syncAgentMcps`；
- * - memory：同文件的 `isAgentMemoryEnabled` / `setAgentMemoryEnabled`（记忆开关归 memory）；
- * - skill：同文件的 `listAgentSkillIds` / `syncAgentSkills`，`src/server/services/skill-directory.ts`
- *   经 Skill Facade 取可见 Skill 投影，`src/server/services/meta-agent.ts` 用 Skill 归档与 frontmatter
- *   解析装载内置 Skill。
+ * - mcp：`src/server/services/agent-related-resources.ts` 经 `@fenix/resource-mcp/server/config` 取
+ *   `findMcpServerLabelsByIds` 做关联 id 的标签投影（关联边自身由本包
+ *   `src/server/repositories/agent-config-mcp.ts` 的 `listAgentMcpIds` / `syncAgentMcps` 读写）；
+ * - memory：`src/server/services/agent-associations.ts` 的 `isMemoryEnabled` / `setMemoryEnabled` 转发
+ *   memory 的 `isAgentMemoryEnabled` / `setEnabled`（记忆开关归 memory）；
+ * - skill：`src/server/services/skill-directory.ts` 经 `@fenix/resource-skill/server/runtime` 的
+ *   `getSkillServerModule` 取可见 Skill 投影，`src/server/services/meta-agent.ts` 与
+ *   `src/server/services/agent-launch-spec/skill-resolution.ts` 用 `@fenix/resource-skill/server/content`
+ *   的归档与 frontmatter 解析装载内置 Skill，`src/server/services/agent-related-resources.ts` 另经
+ *   `@fenix/resource-skill/server/config` 取 `findSkillLabelsByIds`（关联边自身由本包
+ *   `src/server/repositories/agent-config-skill.ts` 的 `listAgentSkillIds` / `syncAgentSkills` 读写）。
  *
  * 不声明其它反向边：machine、model-management、observer 各自导入 `@fenix/agent-config/server`，方向固定为
  * 它们 → 本模块，写进本模块会反转装配方向并成环；`sandbox` 同样不声明——`use-agent-editor.ts` 导入的是

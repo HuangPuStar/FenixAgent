@@ -244,17 +244,27 @@ describe("prod-view web 入口浏览器可达面", () => {
   });
 
   // 负例（人为注入，不建 fixture 文件）：`<pkg>/server` 是本包真实存在的 exports 出口，其后是
-  // elysia / drizzle / @server/* 与 agent-runtime 的实例编排链。两条断言缺一不可——只断言「有违规」
-  // 会被「递归失效、说明符本身被当成外部依赖」满足；只断言「进到了服务端实现」则漏掉拦截能力。
+  // elysia / drizzle 与 agent-runtime 的实例编排链。两条断言缺一不可——只断言「有违规」会被「递归失效、
+  // 说明符本身被当成外部依赖」满足；只断言「进到了服务端实现」则漏掉拦截能力。
+  // §1.7 B11 把 `prod_view` 的表定义迁入本包 `db/` 后，本包 `src/**` 对宿主已零引用，原先「服务端必然出现
+  // `@server/*` 说明符」那条断言不再可能成立——它当初证明的是**递归深度够深**（不是「停在第一跳」），这个
+  // 职责改由下面两条 `poisoned.files` 断言承担：`src/server/repositories/prod-view.ts` 是服务端子图里最深
+  // 的一层，`db/schema.ts` 只能经它的 `@fenix/resource-prod-view/db` **自我引用**到达——两者都在，说明递归
+  // 既进了实现、又跨出了包边界。至于原断言的**取样形态**（宿主路径必须出现），本批与其余八个包统一改写为
+  // 下面的零容忍形态（同形处置见 §1.7 B9 的 knowledge 与 B10 的 memory 负例、评审文档 §7.21 / §7.22）。
   test("负例：注入真实的 ./server 出口时递归进入服务端实现并触发拦截", () => {
     const poisoned = walkValueGraph(WEB_ENTRY, [`${PKG_NAME}/server`]);
     expect(poisoned.files).toContain(join(PKG_ROOT, "src", "server.ts"));
     const serverDir = `${join(PKG_ROOT, "src", "server")}${sep}`;
     expect(poisoned.files.filter((file) => file.startsWith(serverDir)).length).toBeGreaterThan(0);
+    expect(poisoned.files).toContain(join(PKG_ROOT, "src", "server", "repositories", "prod-view.ts"));
+    expect(poisoned.files).toContain(join(PKG_ROOT, "db", "schema.ts"));
     const nodeBuiltins = poisoned.references.filter((ref) => ref.specifier.startsWith("node:"));
-    const hostServer = poisoned.references.filter((ref) => ref.specifier.startsWith("@server/"));
     expect(offendersOf(nodeBuiltins).length).toBeGreaterThan(0);
-    expect(offendersOf(hostServer).length).toBeGreaterThan(0);
+    // `@server/*` 在 poisoned 图里必须为空：本包唯一的宿主导入（`prod_view` 表定义）随 B11 迁入本包 `db/`，
+    // 连强制加载整个服务端子图也不该再命中宿主路径——与上面正向图的同名断言同口径。
+    const hostServer = poisoned.references.filter((ref) => ref.specifier.startsWith("@server/"));
+    expect(offendersOf(hostServer)).toEqual([]);
   });
 
   // ./web 出口的契约：package.json 必须指向 web/index.ts，否则宿主解析到别的文件时守卫失去意义。

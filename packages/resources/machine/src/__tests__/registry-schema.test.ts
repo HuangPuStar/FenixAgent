@@ -46,14 +46,13 @@ describe("registry_event 表", () => {
   });
 });
 
-describe("agentConfig 新增 machineId 外键列", () => {
-  // agentConfig 新增 machineId 外键列
-  test("agentConfig 包含 machineId 列", async () => {
-    const { agentConfig } = await import("@server/db/schema");
-    const columns = Object.keys(agentConfig);
-    expect(columns).toContain("machineId");
-  });
-});
+// 已删除「agentConfig 包含 machineId 列」（原经 `await import("@server/db/schema")` 断言）：§1.7 B7 把
+// `agent_config` 迁给 owner `@fenix/agent-config` 后，它不再是本包的表，断言别包表结构正是本文件在 B1
+// 已经撤掉过一次的形状（见上方 machine 表用例里对 `machine.type` 的说明）。改指 `@fenix/agent-config/db`
+// 会让本包为了断言对方的列而常驻一条跨包 schema 导入，与本次收口要切断的耦合同形。**断言已由 owner
+// 接回**（`packages/resources/agent-config/src/__tests__/agent-config-schema.test.ts`，与 B1 删
+// `machine.type` 时把断言接回本文件的处置一致）；列名映射（属性名 → DB 列名）另有比单列存在性更强的
+// 门禁 `bun run check:schema-ddl-drift`（逐字段比对迁移快照）。
 
 // 已删除「REGISTRY_SECRET 环境变量」两条用例（默认值 / 可覆盖）：该变量由 agent-runtime 的 `/acp/ws`、
 // `/acp/ws/fs` 端点校验（`packages/agent-runtime/src/routes/acp/index.ts` 读 `validateEnv().REGISTRY_SECRET`），

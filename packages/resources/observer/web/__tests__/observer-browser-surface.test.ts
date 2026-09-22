@@ -184,8 +184,12 @@ describe("observer web 入口浏览器可达面", () => {
   });
 
   // 负例（人为注入，不建 fixture 文件）：`<pkg>/server` 是本包真实存在的 exports 出口，其后是
-  // elysia / drizzle / 宿主 @server/* / node 内建。两条断言缺一不可——只断言「有违规」会被
-  // 「递归失效、说明符本身被当成外部依赖」满足；只断言「进到了服务端实现」则漏掉拦截能力。
+  // elysia / drizzle / node 内建。两条断言缺一不可——只断言「有违规」会被「递归失效、说明符本身被
+  // 当成外部依赖」满足；只断言「进到了服务端实现」则漏掉拦截能力。
+  // `@server/*` 的断言在 §1.7 B10 由「必须出现」改为「必须为空」（零容忍）：它原先的载体不是本包自己的
+  // 宿主导入，而是 `@fenix/resource-memory` 那条残留（poisoned 图经上游包递归到 memory 的仓储，见 §7.22），
+  // B10 清掉它之后本包的 poisoned 图不再命中 `@server/`。断言因此从「取样」升级为「全图零容忍」，与上面
+  // 正向图的同名断言同口径；「递归够深」仍由上面两条 `poisoned.files` 断言承担。
   test("负例：注入真实的 ./server 出口时递归进入服务端实现并触发拦截", () => {
     const poisoned = walkValueGraph(WEB_ENTRY, [`${PKG_NAME}/server`]);
     expect(poisoned.files).toContain(join(PKG_ROOT, "src", "server.ts"));
@@ -194,7 +198,7 @@ describe("observer web 入口浏览器可达面", () => {
     const nodeBuiltins = poisoned.references.filter((ref) => ref.specifier.startsWith("node:"));
     const hostServer = poisoned.references.filter((ref) => ref.specifier.startsWith("@server/"));
     expect(offendersOf(nodeBuiltins).length).toBeGreaterThan(0);
-    expect(offendersOf(hostServer).length).toBeGreaterThan(0);
+    expect(offendersOf(hostServer)).toEqual([]);
   });
 
   // admin-key 迁出的回归点（T2g / §6.5）：观察包 6 个文件从 `@fenix/web-runtime/lib/admin-key` 取用，

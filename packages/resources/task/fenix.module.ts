@@ -23,10 +23,12 @@ import type { ServerRouteHost } from "@fenix/platform-sdk/server";
  * 生成器的 `assertDependsOnComplete` 同样只对 `kind: "resource"` 的目标包生效，写进来只会给 profile
  * 增加一条恒真的边，不产生任何保护。
  *
- * 另一个方向的残留只剩表定义：`src/server/repositories/task-v2.ts` 与 `task.ts` 仍 import
- * `@server/db/schema`（`scheduled_task_v2` / `task_execution_log` 表定义，共 6 处导入，迁出归 §1.7）——
- * 对应 `apps-boundary` 台账条目保留至该步骤完成，其 owner 与 rationale 已为「1.7 / 仅剩表定义导入」
- * （`scripts/architecture/exceptions.json`；该文件属计划 §4 的 W3 独占写入范围，包切片只读不改）。
+ * 另一个方向的残留已随 §1.7 B12 归零：`scheduled_task_v2` / `task_execution_log` 两张表的定义迁入本包
+ * `db/schema.ts`（出口 `./db`），原先 6 处 `@server/db/schema` 导入（2 个生产仓储 + 3 个包内用例 +
+ * 宿主测试 `task-schema.test.ts`）同批改指本包出口，台账 `apps-boundary @fenix/resource-task` 条目随之删除。
+ * 两张表的跨包外键列对象来自 `@fenix/identity/db`（`user.id`）与 `@fenix/agent-config/db`（`agentConfig.id`），
+ * 属迁移链层面的列对象来源、不是运行期耦合（装配校验只扫 `src/**`），故**不进** `dependsOn`；
+ * `package.json` 的 `dependencies` 则必须声明 `@fenix/identity`（`@fenix/agent-config` 原本已声明）。
  * W2 已切断另外两条宿主内部依赖：路由不再
  * `.use()` 宿主的 `authGuardPlugin`（改为工厂注入，`src/server/routes/dependencies.ts` 只声明
  * `AnyElysia`），仓储不再 import 宿主的 `db`（改为调用时 `getTaskDatabase()` →

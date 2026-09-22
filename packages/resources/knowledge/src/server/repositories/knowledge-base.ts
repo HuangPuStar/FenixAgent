@@ -1,4 +1,4 @@
-import { agentKnowledgeBinding, knowledgeBase, knowledgeResource } from "@server/db/schema";
+import { agentKnowledgeBinding, knowledgeBase, knowledgeResource } from "@fenix/resource-knowledge/db";
 import { and, count, desc, eq, inArray, sql } from "drizzle-orm";
 import { getKnowledgeDatabase } from "../db";
 
@@ -440,3 +440,43 @@ class PgAgentKnowledgeBindingRepo implements IAgentKnowledgeBindingRepo {
 export const knowledgeBaseRepo = new PgKnowledgeBaseRepo();
 export const knowledgeResourceRepo = new PgKnowledgeResourceRepo();
 export const agentKnowledgeBindingRepo = new PgAgentKnowledgeBindingRepo();
+
+/** 知识库的展示投影：`name` 渲染标签、`slug` 作为次级标识；字段随消费方视图而定，不随表结构自动扩张。 */
+export interface KnowledgeBaseSummary {
+  readonly name: string;
+  readonly slug: string;
+}
+
+/**
+ * 按 id 集合取知识库摘要（**跨包只读**入口，消费方是 `@fenix/resource-agent-config` 的
+ * `services/agent-related-resources.ts`，经 `@fenix/resource-knowledge/server/summaries` 出口）。
+ *
+ * 与 `@fenix/resource-mcp/server/config` 的 `findMcpServerLabelsByIds`、
+ * `@fenix/resource-skill/server/config` 的 `findSkillLabelsByIds` 是同族的「关联 id 展示投影」，
+ * 两处刻意的差异：
+ * - **多一个 `organizationId` 条件**。skill / mcp 的投影只按 id 取、不做归属判断（那两张表有
+ *   `visibility`，跨组织可见性由授权面表达）；`knowledge_base` 没有 `visibility` 列，归属就是
+ *   `organization_id`，因此这里把「资源归属组织」一起下推——调用方配错组织时结果是**空 Map**
+ *   （标签退化成裸 id），而不是把别的组织的知识库名渲染出来。
+ * - **多返回一个 `slug`**。消费方的视图（`AgentRelatedResourceView.knowledgeBases`）要 `slug` 作为
+ *   次级标识，与 `agent_site_app` 的 `remoteAppId` 同属「视图需要、标签本身不需要」的字段。
+ *
+ * 返回 `Map<id, Summary>`（键是 id）而不是数组：消费方按输入顺序拼标签，缺项要能退化成裸 id。
+ * 空 `knowledgeBaseIds` 直接返回空 Map，不发查询——与两条同族投影一致。
+ */
+export async function findKnowledgeBaseSummariesByIds(input: {
+  organizationId: string;
+  knowledgeBaseIds: readonly string[];
+}): Promise<Map<string, KnowledgeBaseSummary>> {
+  if (input.knowledgeBaseIds.length === 0) return new Map();
+  const rows = await getKnowledgeDatabase()
+    .select({ id: knowledgeBase.id, name: knowledgeBase.name, slug: knowledgeBase.slug })
+    .from(knowledgeBase)
+    .where(
+      and(
+        eq(knowledgeBase.organizationId, input.organizationId),
+        inArray(knowledgeBase.id, [...input.knowledgeBaseIds]),
+      ),
+    );
+  return new Map(rows.map((row) => [row.id, { name: row.name, slug: row.slug }]));
+}

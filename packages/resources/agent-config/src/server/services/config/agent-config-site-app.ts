@@ -1,4 +1,4 @@
-import { agentConfigSiteApp } from "@server/db/schema";
+import { agentConfigSiteApp } from "@fenix/agent-config/db";
 import { and, eq } from "drizzle-orm";
 import { getAgentConfigDatabase } from "../../db";
 

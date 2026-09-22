@@ -21,17 +21,6 @@ const REPO_ROOT = resolve(PKG_ROOT, "../../..");
 const SOURCE_ENTRIES = ["src", "web", "db", "fenix.module.ts"];
 
 /**
- * 唯一允许的宿主导入。
- *
- * 本包自己的表（`mcp_server` / `mcp_tool`）已随 §1.7 B2 迁到 `db/schema.ts`，因此这条残留现在只剩
- * **一处**：`services/config/agent-config-mcp.ts` 读宿主自己的 `agent_config_mcp` 关联表（它归
- * agent-config 批）。只允许这一条精确路径：`@server/db/schema` 之下的任何深路径都意味着重新伸手取
- * 宿主内部。`agent_config_mcp` 迁出后本包的 `@server/` 引用应降到 0，届时下方「扫描有效性自检」的
- * 正向控制会失效，须改为反向断言。
- */
-const ALLOWED_HOST_IMPORT = "@server/db/schema";
-
-/**
  * 迁移映射（宿主旧路径 → 包内新 owner 路径）。
  *
  * 记成「一对」而不是两份清单：旧路径残留（第二份实现复活）与新路径缺失是同一次迁移失败的两种
@@ -49,7 +38,6 @@ const MIGRATION_PAIRS: ReadonlyArray<readonly [hostPath: string, packagePath: st
   ["apps/server/src/routes/mcp/knowledge.ts", "src/server/routes/mcp/knowledge.ts"],
   ["apps/server/src/routes/web/config/mcp.ts", "src/server/routes/web/config/mcp.ts"],
   ["apps/server/src/schemas/mcp-knowledge.schema.ts", "src/server/schemas/mcp-knowledge.schema.ts"],
-  ["apps/server/src/services/config/agent-config-mcp.ts", "src/server/services/config/agent-config-mcp.ts"],
   ["apps/server/src/services/config/mcp-server.ts", "src/server/services/config/mcp-config.ts"],
   ["apps/server/src/services/mcp-inspector.ts", "src/server/services/mcp-inspector.ts"],
   ["apps/server/src/__tests__/mcp-inspector.test.ts", "src/__tests__/mcp-inspector.test.ts"],
@@ -211,8 +199,11 @@ describe("MCP 包边界契约（任务 1.3 §1 静态条件）", () => {
       expect(sourceFiles).toContain(resolve(PKG_ROOT, expected));
     }
     expect(sourceFiles.length).toBeGreaterThanOrEqual(40);
-    // 正向控制：表定义残留必然存在，扫不到就说明说明符提取失效（而不是「没有宿主导入」）。
-    expect(refs.filter((ref) => ref.specifier === ALLOWED_HOST_IMPORT).length).toBeGreaterThan(0);
+    // 正向控制：说明符提取若失效，下面「不存在违规引用」的断言会全部退化为恒真。本包对宿主的最后
+    // 一处引用已随 §1.7 B7（`agent_config_mcp` 迁出）消失，因此改用两条必然存在的说明符钉住扫描器：
+    // 跨包依赖（`@fenix/platform-sdk`）与包内相对导入。
+    expect(refs.some((ref) => ref.specifier === "@fenix/platform-sdk")).toBe(true);
+    expect(refs.some((ref) => ref.specifier.startsWith("."))).toBe(true);
   });
 
   // 宿主侧不得保留第二份实现，否则新旧两套会各自漂移（“删除优于兼容”，不留兼容层）。
@@ -231,11 +222,11 @@ describe("MCP 包边界契约（任务 1.3 §1 静态条件）", () => {
     expect(missing).toEqual([]);
   });
 
-  // 宿主实现只能经平台契约（`@fenix/platform-sdk`）或注入进入本包；除表定义残留外一律违规。
-  test("包内不存在表定义以外的宿主 @server 导入", () => {
-    const offenders = refs.filter(
-      (ref) => ref.specifier.startsWith("@server/") && ref.specifier !== ALLOWED_HOST_IMPORT,
-    );
+  // 宿主实现只能经平台契约（`@fenix/platform-sdk`）或注入进入本包：包内不得出现任何宿主导入。
+  // 本包对宿主 schema 的最后一处引用（`agent_config_mcp` 的只读投影）已随 §1.7 B7 迁往 agent-config，
+  // 因此这条断言从「只允许一条精确路径」收紧为「一条都不允许」。
+  test("包内不存在宿主 @server 导入", () => {
+    const offenders = refs.filter((ref) => ref.specifier.startsWith("@server/"));
     expect(offenders.map(describeRef)).toEqual([]);
   });
 
@@ -286,7 +277,7 @@ describe("MCP 包边界契约（任务 1.3 §1 静态条件）", () => {
     expect(offenders.map(describeRef)).toEqual([]);
   });
 
-  // 跨包直读表是授权与 schema 双份真相的来源：本包只允许读自己的表（`@server/db/schema` 残留）。
+  // 跨包直读表是授权与 schema 双份真相的来源：本包只允许读自己 `db/schema.ts` 的表。
   test("不引用其他包的 schema 出口", () => {
     const offenders = refs.filter((ref) => /^@fenix\/[^/]+\/(server\/)?schema(\/|$)/.test(ref.specifier));
     expect(offenders.map(describeRef)).toEqual([]);

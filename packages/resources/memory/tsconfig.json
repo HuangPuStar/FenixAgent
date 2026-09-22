@@ -4,8 +4,9 @@
   // 的相对路径）：那会让「包的编译设置」由宿主应用的 tsconfig 决定，宿主改一行就联动本包，
   // 而本包在 §1.6 后已不归属 apps/web。这里把真正需要的选项内联（对照 HEAD：本文件本来就没有 extends）。
   // - `web/` 是浏览器面，需要 JSX 与 DOM 类型；`types: ["bun"]` 供服务端代码与包内测试使用 Bun 全局；
-  // - `paths` 只映射唯一残留的宿主导入（表定义，归任务 1.7），其余一律走包内相对路径或
-  //   `@fenix/*` 的包 exports；原 `@/` 别名表随切片切断（失效映射留着会掩盖新的别名回潮）；
+  // - 无 `paths`：本包 `src/**` 对宿主已零导入（§1.7 B10 迁出 `agent_memory_config` 表定义），跨包一律走
+  //   各包 `exports`、包内走相对路径。原先那张表只有一条 `@server/db/schema` 映射，同 `@/` 别名表一样随
+  //   切片删除——失效映射留着会掩盖新的宿主导入回潮；
   // - 不写 `baseUrl`：paths 的值在无 baseUrl 时相对本文件解析，且 TS 6.0 起 baseUrl 已弃用。
   "compilerOptions": {
     "target": "ES2022",
@@ -22,10 +23,7 @@
     "verbatimModuleSyntax": true,
     "allowImportingTsExtensions": true,
     "noEmit": true,
-    "rootDir": "../../..",
-    "paths": {
-      "@server/db/schema": ["../../../apps/server/src/db/schema.ts"]
-    }
+    "rootDir": "../../.."
   },
   "include": ["fenix.module.ts", "src/**/*.ts", "src/**/*.tsx", "web/**/*.ts", "web/**/*.tsx"]
 }

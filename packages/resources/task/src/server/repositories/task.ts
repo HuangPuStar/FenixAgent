@@ -1,4 +1,4 @@
-import { taskExecutionLog } from "@server/db/schema";
+import { taskExecutionLog } from "@fenix/resource-task/db";
 import { desc, eq, sql } from "drizzle-orm";
 import { getTaskDatabase } from "../db";
 
