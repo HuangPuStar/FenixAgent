@@ -1,9 +1,10 @@
 import { unwrap } from "@fenix/web-runtime/api/request";
-import { Inbox, Loader, Rocket } from "lucide-react";
+import { Inbox, Rocket } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
 import { workflowDefApi } from "../../../api/workflow-defs";
+import { InlineLoader } from "./InlineLoader";
 import { PanelHeader } from "./PanelHeader";
 import { VersionConfirmDialog } from "./VersionConfirmDialog";
 import { VersionRow } from "./VersionRow";
@@ -188,7 +189,7 @@ export function VersionPanel({
       <div style={{ flex: 1, overflowY: "auto" }}>
         {loading ? (
           <div style={{ textAlign: "center", padding: 24, color: "#9ca3af", fontSize: 11 }}>
-            <Loader size={16} style={{ animation: "wf-spin 1s linear infinite", display: "inline-block" }} />
+            <InlineLoader />
             <p style={{ marginTop: 4 }}>{t("editor.load_failed")}</p>
           </div>
         ) : versions.length === 0 ? (

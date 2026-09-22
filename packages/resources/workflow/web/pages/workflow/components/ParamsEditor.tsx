@@ -3,9 +3,10 @@ import { Checkbox } from "@fenix/ui-components/ui/checkbox";
 import { Input } from "@fenix/ui-components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@fenix/ui-components/ui/select";
 import { Textarea } from "@fenix/ui-components/ui/textarea";
-import { Plus, Trash2 } from "lucide-react";
+import { Trash2 } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
+import { EntryAddButton } from "./EntryActions";
 
 export type ParamType = "string" | "number" | "boolean" | "object";
 
@@ -341,11 +342,7 @@ export function ParamsEditor({
           </div>
         );
       })}
-      {!readOnly && (
-        <Button type="button" variant="ghost" size="sm" onClick={addEntry} className="gap-1 text-gray-500 text-xs h-7">
-          <Plus size={12} /> {addLabel}
-        </Button>
-      )}
+      {!readOnly && <EntryAddButton label={addLabel} onClick={addEntry} />}
     </div>
   );
 }

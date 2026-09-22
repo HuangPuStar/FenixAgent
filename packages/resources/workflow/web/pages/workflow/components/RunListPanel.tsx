@@ -1,11 +1,12 @@
 import { unwrap } from "@fenix/web-runtime/api/request";
 import { Link } from "@tanstack/react-router";
 import { useRequest } from "ahooks";
-import { AlertTriangle, ExternalLink, Inbox, Loader } from "lucide-react";
+import { AlertTriangle, ExternalLink, Inbox } from "lucide-react";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import { workflowEngineApi } from "../../../api/workflow-engine";
 import { DAG_STATUS_CFG, relativeTime } from "../utils";
+import { InlineLoader } from "./InlineLoader";
 import { PanelHeader } from "./PanelHeader";
 import { RUN_STATUS_FILTERS, StatusFilterRow } from "./StatusFilterRow";
 
@@ -48,7 +49,7 @@ export function RunListPanel({ onClose, onSelect }: { onClose: () => void; onSel
       <div style={{ flex: 1, overflowY: "auto" }}>
         {loading ? (
           <div style={{ textAlign: "center", padding: 24, color: "#4b5563", fontSize: 11 }}>
-            <Loader size={16} style={{ animation: "wf-spin 1s linear infinite", display: "inline-block" }} />
+            <InlineLoader />
             <p style={{ marginTop: 4 }}>{t("editor.load_failed")}</p>
           </div>
         ) : error ? (

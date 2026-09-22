@@ -1,10 +1,11 @@
 import { ConfirmDialog } from "@fenix/ui-components/config/ConfirmDialog";
 import { unwrap } from "@fenix/web-runtime/api/request";
-import { Copy, Globe, Inbox, Loader, Power, RefreshCw, Trash2 } from "lucide-react";
+import { Copy, Globe, Inbox, Power, RefreshCw, Trash2 } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
 import { type TriggerItem, workflowDefApi } from "../../../api/workflow-defs";
+import { InlineLoader } from "./InlineLoader";
 import { PanelHeader } from "./PanelHeader";
 
 export function TriggerPanel({ workflowId, onClose }: { workflowId?: string; onClose: () => void }) {
@@ -184,7 +185,7 @@ export function TriggerPanel({ workflowId, onClose }: { workflowId?: string; onC
       <div style={{ flex: 1, overflowY: "auto" }}>
         {loading ? (
           <div style={{ textAlign: "center", padding: 24, color: "#9ca3af", fontSize: 11 }}>
-            <Loader size={16} style={{ animation: "wf-spin 1s linear infinite", display: "inline-block" }} />
+            <InlineLoader />
           </div>
         ) : triggers.length === 0 ? (
           <div style={{ textAlign: "center", padding: 24, color: "#d1d5db", fontSize: 11 }}>

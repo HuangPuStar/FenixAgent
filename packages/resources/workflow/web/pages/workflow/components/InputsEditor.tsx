@@ -1,8 +1,7 @@
-import { Button } from "@fenix/ui-components/ui/button";
 import { Input } from "@fenix/ui-components/ui/input";
-import { Plus, Trash2 } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
+import { EntryAddButton, EntryDeleteButton } from "./EntryActions";
 
 /**
  * 工作流节点 inputs 编辑器。
@@ -177,26 +176,11 @@ export function InputsEditor({
               title={t("editor.inputs_enter_to_add")}
               className="flex-1 h-8 text-xs"
             />
-            {!readOnly && (
-              <Button
-                type="button"
-                variant="ghost"
-                size="icon"
-                onClick={() => handleDeleteClick(i)}
-                title={isConfirming ? t("editor.delete_confirm_hint") : undefined}
-                className={`size-6 flex-shrink-0 ${isConfirming ? "bg-amber-50 text-red-500" : "text-gray-400"}`}
-              >
-                <Trash2 size={13} />
-              </Button>
-            )}
+            {!readOnly && <EntryDeleteButton confirming={isConfirming} onClick={() => handleDeleteClick(i)} />}
           </div>
         );
       })}
-      {!readOnly && (
-        <Button type="button" variant="ghost" size="sm" onClick={addEntry} className="gap-1 text-gray-500 text-xs h-7">
-          <Plus size={12} /> {addLabel}
-        </Button>
-      )}
+      {!readOnly && <EntryAddButton label={addLabel} onClick={addEntry} />}
     </div>
   );
 }

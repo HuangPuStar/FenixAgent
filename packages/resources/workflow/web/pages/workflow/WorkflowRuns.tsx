@@ -1,29 +1,19 @@
 import { EmptyState } from "@fenix/ui-components/config/EmptyState";
-import { StatusBadge, type StatusTone } from "@fenix/ui-components/config/StatusBadge";
+import { StatusBadge } from "@fenix/ui-components/config/StatusBadge";
 import { Button } from "@fenix/ui-components/ui/button";
 import { Input } from "@fenix/ui-components/ui/input";
 import { Pagination } from "@fenix/ui-components/ui/pagination";
 import { Skeleton } from "@fenix/ui-components/ui/skeleton";
 import { unwrap } from "@fenix/web-runtime/api/request";
-import { useRequest } from "ahooks";
+import { useDebounce, useRequest } from "ahooks";
 import { AlertTriangle, ArrowRight, Inbox, RefreshCw, Search, Square } from "lucide-react";
 import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
 import { type DAGStatus, workflowEngineApi } from "../../api/workflow-engine";
+import { WORKFLOW_RUN_STATUS_TONES } from "../../lib/status-tones";
 import { RUN_STATUS_FILTERS, StatusFilterRow } from "./components/StatusFilterRow";
 import { relativeTime } from "./utils";
-
-/** 运行状态 → 色调：只声明语义，具体配色（含 dark 变体）由 `StatusBadge` 决定。 */
-const RUN_STATUS_TONES: Record<string, StatusTone> = {
-  PENDING: "neutral",
-  RUNNING: "info",
-  SUSPENDED: "warning",
-  SUCCESS: "success",
-  FAILED: "danger",
-  CANCELLED: "neutral",
-  ERROR: "danger",
-};
 
 const STATUS_LABEL_KEYS: Record<string, string> = {
   PENDING: "runs.status_pending",
@@ -53,15 +43,13 @@ export function WorkflowRuns({ onSelectRun }: WorkflowRunsProps) {
   const { t } = useTranslation("workflows");
   const [statusFilter, setStatusFilter] = useState<string>("all");
   const [searchQuery, setSearchQuery] = useState("");
-  const [debouncedSearch, setDebouncedSearch] = useState("");
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(20);
 
-  // 搜索防抖：输入即时更新，API 请求 300ms 后触发
-  useEffect(() => {
-    const timer = setTimeout(() => setDebouncedSearch(searchQuery), 300);
-    return () => clearTimeout(timer);
-  }, [searchQuery]);
+  // 搜索防抖：输入即时更新，API 请求 300ms 后触发。此前这里是手写的 `setTimeout` + `clearTimeout`
+  // 配对（effect 里再 `clearTimeout`），改用 ahooks 的 `useDebounce`（本包与仓库根依赖的 ahooks@^3.9.7）：
+  // 首帧直接返回当前值、卸载时取消挂起的定时器，语义与原实现一致，少一份需要各自维护的定时器状态。
+  const debouncedSearch = useDebounce(searchQuery, { wait: 300 });
 
   // 筛选条件或搜索词变化时，重置到第 1 页。
   // debouncedSearch / statusFilter 是「变化即重置页码」的触发条件，不是 effect 读取的值；按 biome 的建议删掉
@@ -203,7 +191,7 @@ export function WorkflowRuns({ onSelectRun }: WorkflowRunsProps) {
                       <StatusBadge
                         status={r.status}
                         label={t(STATUS_LABEL_KEYS[r.status] ?? r.status)}
-                        toneMap={RUN_STATUS_TONES}
+                        toneMap={WORKFLOW_RUN_STATUS_TONES}
                         indicator={r.status === "RUNNING" ? "pulse" : "none"}
                         className="text-[11px]"
                       />

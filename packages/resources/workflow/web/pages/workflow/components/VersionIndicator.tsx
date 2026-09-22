@@ -1,11 +1,12 @@
 import { Button } from "@fenix/ui-components/ui/button";
 import { Popover, PopoverContent, PopoverTrigger } from "@fenix/ui-components/ui/popover";
 import { unwrap } from "@fenix/web-runtime/api/request";
-import { GitBranch, Loader } from "lucide-react";
+import { GitBranch } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
 import { type WorkflowVersionItem, workflowDefApi } from "../../../api/workflow-defs";
+import { InlineLoader } from "./InlineLoader";
 import { VersionConfirmDialog } from "./VersionConfirmDialog";
 import { VersionRow } from "./VersionRow";
 
@@ -156,7 +157,7 @@ export function VersionIndicator({
           <div style={{ maxHeight: 240, overflowY: "auto" }}>
             {loading ? (
               <div style={{ textAlign: "center", padding: 16, color: "#9ca3af", fontSize: 11 }}>
-                <Loader size={14} style={{ animation: "wf-spin 1s linear infinite", display: "inline-block" }} />
+                <InlineLoader size={14} />
               </div>
             ) : visibleVersions.length === 0 ? (
               <div style={{ textAlign: "center", padding: 16, color: "#d1d5db", fontSize: 11 }}>

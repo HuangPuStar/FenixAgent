@@ -1,6 +1,7 @@
 import { AgentCardList } from "@fenix/ui-components/components/AgentCardList";
 import { ConfirmDialog } from "@fenix/ui-components/config/ConfirmDialog";
 import { EmptyState } from "@fenix/ui-components/config/EmptyState";
+import { StatusBadge } from "@fenix/ui-components/config/StatusBadge";
 import { Button } from "@fenix/ui-components/ui/button";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@fenix/ui-components/ui/dialog";
 import { Input } from "@fenix/ui-components/ui/input";
@@ -13,6 +14,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
 import { type WorkflowDefItem, workflowDefApi } from "../../api/workflow-defs";
+import { WORKFLOW_PUBLISH_STATUS_TONES } from "../../lib/status-tones";
 import { SkeletonTable } from "./components/SkeletonRows";
 import { isUnauthorizedError, relativeTime } from "./utils";
 
@@ -285,15 +287,13 @@ export function WorkflowList({ onEditWorkflow, onViewVersions, createRequested }
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-2">
                     <span className="text-sm font-medium text-text-bright">{wf.name}</span>
-                    <span
-                      className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium ${
-                        wf.latestVersion
-                          ? "bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400"
-                          : "bg-surface-2 text-text-muted"
-                      }`}
-                    >
-                      {wf.latestVersion ? `v${wf.latestVersion}` : t("list.not_published")}
-                    </span>
+                    {/* 发布态药丸：手写色值（`bg-green-100 … dark:bg-green-900/30 …`）改由 `StatusBadge`
+                        按色调出配色，文案与键名 `list.not_published` 不变；状态名是调用点归一出来的两态。 */}
+                    <StatusBadge
+                      status={wf.latestVersion ? "published" : "unpublished"}
+                      label={wf.latestVersion ? `v${wf.latestVersion}` : t("list.not_published")}
+                      toneMap={WORKFLOW_PUBLISH_STATUS_TONES}
+                    />
                   </div>
                   {wf.description && <div className="text-xs text-text-muted mt-1 truncate">{wf.description}</div>}
                   <div className="flex items-center gap-3 mt-1.5 text-xs text-text-dim">
