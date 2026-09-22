@@ -85,6 +85,15 @@ export interface SharedRelay {
    */
   pendingSessionSyncIds?: Set<number | string>;
   /**
+   * 最近一次发出的会话同步请求 rpcId（create/load/resume）。
+   * 同一 relay 上可能同时存在多个在途会话同步请求（用户在响应到达前再次切换会话，
+   * 或引导流程的自动恢复与用户点击重叠）。响应帧只有 id，无法区分「最新目标」与
+   * 「已被用户切走的旧目标」：迟到的旧响应若照常提交，会把 registry 活跃会话回绑到
+   * 旧 ACP session 并改写投影 sessionId，此后当前会话的回放/流式增量全部被绑定校验
+   * 丢弃——客户端消息区空白。因此只有该 id 的响应才允许提交会话同步结果。
+   */
+  latestSessionSyncRpcId?: number | string | null;
+  /**
    * 在途 prompt 请求（send_prompt）的 rpcId 集合。Agent 子进程死亡等场景下 acp-link
    * 以 JSON-RPC error 响应（-32000 No active session / -32603 Prompt failed）拒绝
    * prompt，该错误无法归一化为终态事件，若不收敛则 turn 永久卡 accepting、前端

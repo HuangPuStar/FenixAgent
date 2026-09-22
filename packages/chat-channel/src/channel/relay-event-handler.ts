@@ -591,6 +591,16 @@ export class RelayEventHandler {
       }
       const syncRequested = rpcId !== undefined && rpcId !== null && shared.pendingSessionSyncIds?.has(rpcId) === true;
       if (syncRequested) shared.pendingSessionSyncIds?.delete(rpcId);
+      // 会话同步响应的新鲜度校验（连续切换/响应乱序）：用户在响应到达前已切到别的
+      // 会话时，旧响应不得提交——否则 registry 活跃会话回绑到旧 ACP session、投影
+      // sessionId 被改写，当前会话的回放与流式增量随后被绑定校验全部丢弃（消息区空白）。
+      // 登记仍然消费（避免 id 空间残留），只是不落任何副作用。未登记最新 id 的调用方
+      // （无新鲜度信息）保持原语义放行。
+      if (syncRequested && shared.latestSessionSyncRpcId !== undefined && shared.latestSessionSyncRpcId !== rpcId) {
+        this.dependencies.log?.("[YJS-FE] stale session sync response ignored");
+        return;
+      }
+      if (syncRequested) shared.latestSessionSyncRpcId = null;
       if (typeof newSessionId === "string" && newSessionId.length > 0 && syncRequested) {
         // load/resume 成功后开启回放窗口：Agent 即将回放历史增量（无持久化快照时
         // 历史恢复的唯一来源），窗口内由 dispatchReplayAware 补全 turn 上下文投影时间线；
@@ -646,12 +656,21 @@ export class RelayEventHandler {
    * 否则回放 turn 永久卡 running、前端一直显示输出中。期间用户发出新消息时
    * 聚合层按 turnId 归属拒绝该终态（见 aggregator.applyTurnTerminal），不误伤新 turn。
    */
-  openReplayWindow(shared: SharedRelay): void {
+  openReplayWindow(shared: SharedRelay, options: { resampleSkip?: boolean } = {}): void {
     shared.replayWindowUntil = Date.now() + REPLAY_WINDOW_MS;
     // 窗口开启瞬间判定一次 Chat Doc 是否已有时间线内容（重连跳过回放语义）并缓存：
     // 合成投影本身会写 Chat Doc，若窗口内实时检查，回放自己写入的第一条会把后续
     // 回放帧全部误判为"已有内容"挡住——多轮历史回放只投影第一条（后续全丢）。
-    shared.replaySkipSynthesis = this.dependencies.docManager.hasTimelineContent(shared.rcsSessionId);
+    // 判定只在窗口未开启时捕获：JSON-RPC result 分支会幂等重开窗口，而 result 必然
+    // 晚于已开始的回放流，重开时重算会把回放自己写入的内容当作"已有内容"，切换后
+    // 回放剩余轮次全被拒绝（历史消息消失、助手增量落到上一轮 entry）。
+    // resampleSkip：action 路径（命令执行完成、换代已生效）调用时作废上一窗口的判定
+    // 重新采样——10s 窗口内连续切换时上一窗口的判定属于旧会话（如复用持久化投影的
+    // 「已有内容」），继承会让新会话回放被整体跳过（消息区空白）。
+    if (options.resampleSkip) shared.replaySkipSynthesis = undefined;
+    if (shared.replaySkipSynthesis === undefined) {
+      shared.replaySkipSynthesis = this.dependencies.docManager.hasTimelineContent(shared.rcsSessionId);
+    }
     if (shared.replayWindowTimer) clearTimeout(shared.replayWindowTimer);
     shared.replayWindowTimer = setTimeout(() => {
       this.convergeReplayWindow(shared);
