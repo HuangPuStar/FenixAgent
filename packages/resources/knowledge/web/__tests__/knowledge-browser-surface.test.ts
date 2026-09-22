@@ -119,15 +119,19 @@ describe("knowledge web 入口浏览器可达面", () => {
       "pages/agent-panel/pages/agent-knowledge-load-failure.tsx",
       "pages/agent-panel/pages/agent-knowledge-resources.tsx",
       "pages/agent-panel/pages/knowledge-status.ts",
+      "pages/agent-panel/pages/knowledge-typography.ts",
       "components/knowledge/ResourcePreviewContent.tsx",
       "components/knowledge/ResourcePreviewDialog.tsx",
+      "lib/poll-resources.ts",
       "src/pages/agent-panel/components/ChunkDetailSheet.tsx",
       "src/pages/agent-panel/components/EmbeddingModelManager.tsx",
       "src/pages/agent-panel/components/RetrievalTestPanel.tsx",
     ]) {
       expect(reachedWebFiles).toContain(expected);
     }
-    expect(reachedWebFiles.size).toBe(19);
+    // 21 = 原有 19 个模块 + 2026-09-22 前端去重抽出的两个模块（`knowledge-typography.ts` 的字段名
+    // 排版常量、`lib/poll-resources.ts` 的资源轮询）：两者都被页面/检索面板以值导入引用，必须在图内。
+    expect(reachedWebFiles.size).toBe(21);
 
     // 跨包递归的有效性：只钉稳定路径——本包实际消费的四个跨包入口。
     // 少了这一段，「@fenix/* 被当成外部依赖放过」会以「包内断言全绿」的形式漏网。

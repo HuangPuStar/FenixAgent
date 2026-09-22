@@ -15,13 +15,14 @@ import { Button } from "@fenix/ui-components/ui/button";
 import { Spinner } from "@fenix/ui-components/ui/spinner";
 import { unwrap } from "@fenix/web-runtime/api/request";
 import { NS } from "@fenix/web-runtime/i18n/namespace";
-import { AlertTriangle, Loader2, Network, RefreshCw, Sparkles, Trash2 } from "lucide-react";
+import { Loader2, Network, Sparkles, Trash2 } from "lucide-react";
 import { useCallback, useEffect, useId, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
 import { kbApi } from "../../api/knowledge-bases";
 import type { KnowledgeGraphData, KnowledgeGraphProgress } from "../../types/knowledge";
 import { isKnowledgeGraphNotFound } from "./knowledge-graph-state";
+import { KnowledgeLoadFailure } from "./pages/agent-knowledge-load-failure";
 
 interface KnowledgeGraphPanelProps {
   knowledgeBaseId: string;
@@ -76,15 +77,24 @@ export function KnowledgeGraphPanel({ knowledgeBaseId, canManage = false }: Know
     }
   }, [knowledgeBaseId, t]);
 
-  useEffect(() => {
-    if (pollRef.current) {
-      clearInterval(pollRef.current);
-      pollRef.current = null;
-    }
+  /**
+   * 停止进度轮询并收起生成态。
+   *
+   * 为什么抽出来：生成成功、进度轮询失败、以及 `knowledgeBaseId` 变化时的重置，三处此前各写一遍同样的
+   * 「cleanup 定时器 + 置空 ref + `setGenerating(false)` + `setProgress(null)`」（其中两处逐字相同）。
+   * 这四步必须同时发生：漏掉清理会留下无人回收的定时器，漏掉复位会留下一条永不消失的进度条。
+   */
+  const stopProgressPolling = useCallback(() => {
+    if (pollRef.current) clearInterval(pollRef.current);
+    pollRef.current = null;
     setGenerating(false);
     setProgress(null);
+  }, []);
+
+  useEffect(() => {
+    stopProgressPolling();
     void fetchGraph();
-  }, [fetchGraph]);
+  }, [fetchGraph, stopProgressPolling]);
 
   useEffect(() => {
     return () => {
@@ -304,18 +314,12 @@ export function KnowledgeGraphPanel({ knowledgeBaseId, canManage = false }: Know
           const progressData = await unwrap(kbApi.getGraphProgress({ id: knowledgeBaseId }));
           setProgress(progressData);
           if (progressData.progress >= 1) {
-            if (pollRef.current) clearInterval(pollRef.current);
-            pollRef.current = null;
-            setGenerating(false);
-            setProgress(null);
+            stopProgressPolling();
             await fetchGraph();
             toast.success(t("graph.generateSuccess"));
           }
         } catch (error) {
-          if (pollRef.current) clearInterval(pollRef.current);
-          pollRef.current = null;
-          setGenerating(false);
-          setProgress(null);
+          stopProgressPolling();
           console.error("[KnowledgeGraphPanel] progress polling failed", error);
           toast.error(t("graph.progressFailed"));
         }
@@ -326,7 +330,7 @@ export function KnowledgeGraphPanel({ knowledgeBaseId, canManage = false }: Know
       setGenerating(false);
       setProgress(null);
     }
-  }, [knowledgeBaseId, fetchGraph, t]);
+  }, [knowledgeBaseId, fetchGraph, t, stopProgressPolling]);
 
   const handleDelete = useCallback(async () => {
     try {
@@ -400,13 +404,7 @@ export function KnowledgeGraphPanel({ knowledgeBaseId, canManage = false }: Know
 
       {graphError && !graphLoading && (
         <div className="grid min-h-96 place-content-center rounded-xl border border-red-100 bg-red-50/50 p-6">
-          <EmptyState
-            tone="danger"
-            role="alert"
-            icon={<AlertTriangle />}
-            title={graphError}
-            action={{ label: t("graph.retry"), onClick: () => void fetchGraph(), icon: <RefreshCw /> }}
-          />
+          <KnowledgeLoadFailure error={graphError} title={t("graph.loadFailed")} onRetry={() => void fetchGraph()} />
         </div>
       )}
 

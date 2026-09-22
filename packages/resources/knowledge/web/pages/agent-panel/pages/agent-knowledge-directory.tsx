@@ -2,9 +2,10 @@ import { EmptyState } from "@fenix/ui-components/config/EmptyState";
 import { Button } from "@fenix/ui-components/ui/button";
 import { Skeleton } from "@fenix/ui-components/ui/skeleton";
 import { NS } from "@fenix/web-runtime/i18n/namespace";
-import { BookOpen, RefreshCw, Trash2 } from "lucide-react";
+import { BookOpen, Trash2 } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import type { KnowledgeBaseInfo } from "../../../types/knowledge";
+import { KnowledgeLoadFailure } from "./agent-knowledge-load-failure";
 
 interface AgentKnowledgeDirectoryProps {
   items: KnowledgeBaseInfo[];
@@ -44,12 +45,11 @@ export function AgentKnowledgeDirectory(props: AgentKnowledgeDirectoryProps) {
           <Skeleton />
         </div>
       ) : props.error ? (
-        <EmptyState
-          tone="danger"
-          role="alert"
+        <KnowledgeLoadFailure
+          error={props.error}
+          title={t("loadError")}
+          onRetry={props.onRetry}
           className="px-2 py-8"
-          title={props.error instanceof Error ? props.error.message : t("loadError")}
-          action={{ label: t("actions.retry"), onClick: props.onRetry, icon: <RefreshCw /> }}
         />
       ) : props.items.length === 0 ? (
         <EmptyState className="px-2 py-8" title={t("emptyMessage")} />

@@ -15,6 +15,7 @@ import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
 import { kbApi } from "../../../../api/knowledge-bases";
 import { KnowledgeLoadFailure } from "../../../../pages/agent-panel/pages/agent-knowledge-load-failure";
+import { FIELD_LABEL_CLASS } from "../../../../pages/agent-panel/pages/knowledge-typography";
 import type {
   KnowledgeRetrievalChunk,
   KnowledgeSearchResultData,
@@ -212,7 +213,7 @@ export function RetrievalTestPanel({ knowledgeBaseId }: RetrievalTestPanelProps)
         {/* 相似度阈值 */}
         <div className="space-y-2">
           <div className="flex items-center justify-between">
-            <label className="text-[13px] font-semibold text-[#0f172a]">{t("retrieval.similarityThreshold")}</label>
+            <label className={FIELD_LABEL_CLASS}>{t("retrieval.similarityThreshold")}</label>
             <span className="text-[13px] font-mono text-[#64748b]">{similarityThreshold.toFixed(2)}</span>
           </div>
           <Slider
@@ -227,7 +228,7 @@ export function RetrievalTestPanel({ knowledgeBaseId }: RetrievalTestPanelProps)
         {/* 向量 / 全文权重 */}
         <div className="space-y-2">
           <div className="flex items-center justify-between">
-            <label className="text-[13px] font-semibold text-[#0f172a]">{t("retrieval.vectorWeight")}</label>
+            <label className={FIELD_LABEL_CLASS}>{t("retrieval.vectorWeight")}</label>
             <span className="text-[13px] font-mono text-[#64748b]">
               {t("retrieval.vectorPercent", { pct: (vectorSimilarityWeight * 100).toFixed(0) })} /{" "}
               {t("retrieval.fullTextPercent", { pct: ((1 - vectorSimilarityWeight) * 100).toFixed(0) })}
@@ -244,7 +245,7 @@ export function RetrievalTestPanel({ knowledgeBaseId }: RetrievalTestPanelProps)
 
         {/* Rerank 模型 */}
         <div className="space-y-1.5">
-          <label className="text-[13px] font-semibold text-[#0f172a]">{t("retrieval.rerankModel")}</label>
+          <label className={FIELD_LABEL_CLASS}>{t("retrieval.rerankModel")}</label>
           <Select value={rerankId} onValueChange={setRerankId}>
             <SelectTrigger className="h-9 text-[13px]">
               <SelectValue placeholder={t("retrieval.noRerank")} />
@@ -264,7 +265,7 @@ export function RetrievalTestPanel({ knowledgeBaseId }: RetrievalTestPanelProps)
         {rerankId !== "__none__" && (
           <div className="space-y-2">
             <div className="flex items-center justify-between">
-              <label className="text-[13px] font-semibold text-[#0f172a]">{t("retrieval.topK")}</label>
+              <label className={FIELD_LABEL_CLASS}>{t("retrieval.topK")}</label>
               <span className="text-[13px] font-mono text-[#64748b]">{topK}</span>
             </div>
             <Slider value={[topK]} onValueChange={(vals: number[]) => setTopK(vals[0])} min={1} max={2048} step={1} />
@@ -273,7 +274,7 @@ export function RetrievalTestPanel({ knowledgeBaseId }: RetrievalTestPanelProps)
 
         {/* 每页返回数 */}
         <div className="space-y-1.5">
-          <label className="text-[13px] font-semibold text-[#0f172a]">{t("retrieval.pageSize")}</label>
+          <label className={FIELD_LABEL_CLASS}>{t("retrieval.pageSize")}</label>
           <Select value={String(pageSize)} onValueChange={(v) => setPageSize(Number(v))}>
             <SelectTrigger className="h-9 text-[13px] w-20">
               <SelectValue />
@@ -290,19 +291,19 @@ export function RetrievalTestPanel({ knowledgeBaseId }: RetrievalTestPanelProps)
 
         {/* 关键词匹配开关 */}
         <div className="flex items-center justify-between">
-          <label className="text-[13px] font-semibold text-[#0f172a]">{t("retrieval.keywordMatch")}</label>
+          <label className={FIELD_LABEL_CLASS}>{t("retrieval.keywordMatch")}</label>
           <Switch checked={keyword} onCheckedChange={setKeyword} />
         </div>
 
         {/* 知识图谱检索 */}
         <div className="flex items-center justify-between">
-          <label className="text-[13px] font-semibold text-[#0f172a]">{t("retrieval.useKg")}</label>
+          <label className={FIELD_LABEL_CLASS}>{t("retrieval.useKg")}</label>
           <Switch checked={useKg} onCheckedChange={setUseKg} />
         </div>
 
         {/* 跨语言搜索 */}
         <div className="space-y-1.5">
-          <label className="text-[13px] font-semibold text-[#0f172a]">{t("retrieval.crossLanguages")}</label>
+          <label className={FIELD_LABEL_CLASS}>{t("retrieval.crossLanguages")}</label>
           <div className="flex flex-wrap gap-1.5">
             {/* "全部"快捷按钮 */}
             <button
@@ -344,7 +345,7 @@ export function RetrievalTestPanel({ knowledgeBaseId }: RetrievalTestPanelProps)
 
         {/* 元数据过滤 */}
         <div className="space-y-1.5">
-          <label className="text-[13px] font-semibold text-[#0f172a]">{t("retrieval.metaDataFilter")}</label>
+          <label className={FIELD_LABEL_CLASS}>{t("retrieval.metaDataFilter")}</label>
           <Select value={metaFilterMethod} onValueChange={(v) => setMetaFilterMethod(v as MetaDataFilterMethod)}>
             <SelectTrigger className="h-9 text-[13px]">
               <SelectValue />

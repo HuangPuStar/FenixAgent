@@ -17,6 +17,12 @@
  * 2026-09-22 前端去重：块骨架改用库的 `EmptyState`（`tone="danger"` + `role="alert"` + 重试 action），
  * 配色与图标尺寸（原先散在本文件的 `#ef4444` / `#b91c1c` / `#94a3b8` 与 `text-[12px]` 等任意值类）
  * 交给组件；「读得出原因就多显示一行」的结构不变，仍是两行说明。
+ *
+ * 同日第二轮：另有 3 处仍手写同一骨架（详情区、左侧目录、图谱面板，见各调用点），也收敛到这里。
+ * 三处手上已是**字符串**标题（`err.message ?? 字典兜底`），故上面的 `readErrorMessage` 兼容字符串；
+ * `title` 由各调用点传自己的字典键（区分同一页面上的多个失败区），原先当标题用的服务端原文改为说明行
+ * 首行、与既有 3 个消费方一致——原文没有丢，只是换了行位；图谱那处顺带把重试文案从等值的
+ * `graph.retry` 改用 `actions.retry`（两种语言下逐字相同），图标随组件统一为 `AlertCircle`。
  */
 
 import { EmptyState } from "@fenix/ui-components/config/EmptyState";
@@ -26,7 +32,11 @@ import { useTranslation } from "react-i18next";
 import { AgentKnowledgeAccessDenied, isKnowledgeAccessDenied } from "./agent-knowledge-access-denied";
 
 interface KnowledgeLoadFailureProps {
-  /** 失败原因：`unwrap` 抛出的 `ApiError`、原始异常，或后端错误信封（`{ code, message }`）。 */
+  /**
+   * 失败原因：`unwrap` 抛出的 `ApiError`、原始异常、后端错误信封（`{ code, message }`），
+   * 或调用方已归一的**字符串消息**（详情 / 目录 / 图谱三处把 `err.message ?? 字典兜底` 先合成字符串
+   * 再展示，2026-09-22 收敛时按原样接住，不改调用方的状态形状）。
+   */
   error: unknown;
   /** 失败区标题（各调用点用自己的字典键，便于区分同一页面上的多个失败区）。 */
   title: string;
@@ -71,11 +81,12 @@ export function KnowledgeLoadFailure({ error, title, onRetry, className }: Knowl
 /**
  * 读取可展示的失败原因。
  *
- * 三条来源都必须认得：`unwrap` 抛出的 `ApiError`（Error 实例）、检索接口手检 `success` 时拿到的
- * 错误信封（普通对象，`code` + `message`，不是 Error 实例）、以及网络层异常。读不出消息时返回
- * `null`（只显示标题与重试），不用占位文案冒充原因。
+ * 四条来源都必须认得：`unwrap` 抛出的 `ApiError`（Error 实例）、调用方先归一好的字符串消息、
+ * 检索接口手检 `success` 时拿到的错误信封（普通对象，`code` + `message`，不是 Error 实例）、
+ * 以及网络层异常。读不出消息时返回 `null`（只显示标题与重试），不用占位文案冒充原因。
  */
 function readErrorMessage(error: unknown): string | null {
+  if (typeof error === "string") return error.trim() || null;
   if (error instanceof Error) return error.message.trim() || null;
   if (typeof error === "object" && error !== null && "message" in error) {
     const { message } = error as { message?: unknown };

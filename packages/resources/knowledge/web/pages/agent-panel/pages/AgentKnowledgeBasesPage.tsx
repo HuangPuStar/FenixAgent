@@ -36,17 +36,19 @@ import { useOrgSession } from "@fenix/web-runtime/contexts/org-session";
 import { NS } from "@fenix/web-runtime/i18n/namespace";
 import { useNavigate, useSearch } from "@tanstack/react-router";
 import { useRequest } from "ahooks";
-import { BookOpen, Braces, Cpu, Download, File, Globe, Layers, Plus, RefreshCw, Scissors } from "lucide-react";
+import { BookOpen, Braces, Cpu, Download, File, Globe, Layers, Plus, Scissors } from "lucide-react";
 import type { ReactNode } from "react";
 import { Fragment, useCallback, useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
 import { kbApi } from "../../../api/knowledge-bases";
 import { ResourcePreviewDialog } from "../../../components/knowledge/ResourcePreviewDialog";
+import { type ResourcePollStop, startResourcePolling } from "../../../lib/poll-resources";
 import { ChunkDetailSheet } from "../../../src/pages/agent-panel/components/ChunkDetailSheet";
 import { EmbeddingModelManager } from "../../../src/pages/agent-panel/components/EmbeddingModelManager";
 import { RetrievalTestPanel } from "../../../src/pages/agent-panel/components/RetrievalTestPanel";
 import type {
+  KnowledgeBaseCreateBody,
   KnowledgeBaseDetail,
   KnowledgeBaseInfo,
   KnowledgeFormOptions,
@@ -60,6 +62,7 @@ import { AgentKnowledgeDirectory } from "./agent-knowledge-directory";
 import { KnowledgeLoadFailure } from "./agent-knowledge-load-failure";
 import { AgentKnowledgeResources } from "./agent-knowledge-resources";
 import { KB_STATUS_TONES, kbStatusLabel } from "./knowledge-status";
+import { FIELD_LABEL_CLASS } from "./knowledge-typography";
 import "./agent-knowledge.css";
 
 /**
@@ -174,7 +177,7 @@ export function AgentKnowledgeBasesPage() {
   // 组件卸载时清理轮询
   useEffect(() => {
     return () => {
-      if (pollingRef.current) clearInterval(pollingRef.current);
+      pollingRef.current?.();
     };
   }, []);
   const items: KnowledgeBaseInfo[] = Array.isArray(listData) ? listData : [];
@@ -231,15 +234,7 @@ export function AgentKnowledgeBasesPage() {
 
   // 创建知识库
   const { run: runCreate, loading: createSaving } = useRequest(
-    (payload: {
-      name: string;
-      slug?: string;
-      description?: string;
-      embeddingModel?: string | null;
-      parseMethod?: KnowledgeParseMethod | null;
-      pipelineId?: string | null;
-      chunkMethod?: string | null;
-    }) => unwrap(kbApi.create(payload)),
+    (payload: KnowledgeBaseCreateBody) => unwrap(kbApi.create(payload)),
     {
       manual: true,
       onSuccess: () => {
@@ -313,31 +308,24 @@ export function AgentKnowledgeBasesPage() {
     },
   );
 
+  /** 轮询句柄由 `startResourcePolling` 给出（调用即停止），两段轮询共用同一个 ref */
+  const pollingRef = useRef<ResourcePollStop | null>(null);
+  /** 停止当前轮询并清空句柄；重复调用是安全的 */
+  const stopStatusPoll = () => {
+    pollingRef.current?.();
+    pollingRef.current = null;
+  };
+
   /** 上传/重新解析后轮询刷新资源状态，直到所有文档解析完成 */
-  const pollingRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const startStatusPoll = (kbId: string) => {
-    // 先清理之前的轮询
-    if (pollingRef.current) clearInterval(pollingRef.current);
-    let ticks = 0;
-    pollingRef.current = setInterval(async () => {
-      try {
-        ticks += 1;
-        const resList = await unwrap(kbApi.listResources({ id: kbId }));
-        if (!Array.isArray(resList)) return;
-        setResources(resList);
-        // 所有文档都已不在解析中（DONE/FAIL/空），停止轮询
-        const hasRunning = resList.some((r) => r.runStatus === "RUNNING" || r.runStatus === "UNSTART");
-        if (!hasRunning || ticks > 150) {
-          // 最多轮询 5 分钟 (150 * 2s)
-          clearInterval(pollingRef.current!);
-          pollingRef.current = null;
-          runLoadDetail(kbId);
-        }
-      } catch {
-        if (pollingRef.current) clearInterval(pollingRef.current);
-        pollingRef.current = null;
-      }
-    }, 2000);
+    stopStatusPoll();
+    pollingRef.current = startResourcePolling({
+      fetchResources: () => unwrap(kbApi.listResources({ id: kbId })),
+      onResources: (resList) => setResources(resList),
+      // 所有文档都已不在解析中（DONE/FAIL/空），停止轮询
+      isSettled: (resList) => !resList.some((r) => r.runStatus === "RUNNING" || r.runStatus === "UNSTART"),
+      onSettled: () => runLoadDetail(kbId),
+    });
   };
 
   // 删除资源
@@ -358,30 +346,22 @@ export function AgentKnowledgeBasesPage() {
     },
   );
 
-  // 重新解析轮询：每隔 2s 刷新资源列表，直到 runStatus 为 DONE/FAIL（最多 5 分钟）
+  // 重新解析轮询：停止条件与「上传后轮询」共用同一份实现，差异只在判据（本次资源是否落定）
   const reparseAndPoll = (kbId: string, resourceId: string) => {
-    if (pollingRef.current) clearInterval(pollingRef.current);
-    let ticks = 0;
-    pollingRef.current = setInterval(async () => {
-      try {
-        ticks += 1;
-        const resList = await unwrap(kbApi.listResources({ id: kbId }));
-        if (!Array.isArray(resList)) return;
-        setResources(resList);
+    stopStatusPoll();
+    pollingRef.current = startResourcePolling({
+      fetchResources: () => unwrap(kbApi.listResources({ id: kbId })),
+      onResources: (resList) => setResources(resList),
+      isSettled: (resList) => {
         const target = resList.find((r) => r.id === resourceId);
-        if (!target || target.runStatus === "DONE" || target.runStatus === "FAIL" || ticks > 150) {
-          clearInterval(pollingRef.current!);
-          pollingRef.current = null;
-          setReparsingResourceId(null);
-          if (target) runLoadDetail(kbId);
-          return;
-        }
-      } catch {
-        clearInterval(pollingRef.current!);
-        pollingRef.current = null;
+        return !target || target.runStatus === "DONE" || target.runStatus === "FAIL";
+      },
+      onSettled: (resList) => {
         setReparsingResourceId(null);
-      }
-    }, 2000);
+        if (resList.some((r) => r.id === resourceId)) runLoadDetail(kbId);
+      },
+      onError: () => setReparsingResourceId(null),
+    });
   };
 
   // 进入详情
@@ -568,12 +548,11 @@ export function AgentKnowledgeBasesPage() {
             <Skeleton className="h-72 w-full" />
           </div>
         ) : detailError ? (
-          <EmptyState
-            tone="danger"
-            role="alert"
+          <KnowledgeLoadFailure
+            error={detailError}
+            title={t("loadDetailError")}
+            onRetry={() => kbId && runLoadDetail(kbId)}
             className="grid min-h-full place-content-center p-8"
-            title={detailError}
-            action={{ label: t("actions.retry"), onClick: () => kbId && runLoadDetail(kbId), icon: <RefreshCw /> }}
           />
         ) : null}
 
@@ -1240,7 +1219,7 @@ function FieldGroup({
     <div>
       <div className="mb-1.5 flex items-center gap-1.5">
         {icon && <span className="shrink-0 text-[#1677ff]">{icon}</span>}
-        <span className="text-[13px] font-semibold text-[#0f172a]">{label}</span>
+        <span className={FIELD_LABEL_CLASS}>{label}</span>
         {required && <span className="text-[13px] text-red-500">*</span>}
       </div>
       {hint && <p className="mb-2 text-[12px] leading-relaxed text-[#94a3b8]">{hint}</p>}
