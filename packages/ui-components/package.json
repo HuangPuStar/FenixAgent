@@ -464,6 +464,10 @@
       "types": "./web/lib/theme.tsx",
       "default": "./web/lib/theme.tsx"
     },
+    "./lib/workspace-relative-path": {
+      "types": "./web/lib/workspace-relative-path.ts",
+      "default": "./web/lib/workspace-relative-path.ts"
+    },
     "./testing": {
       "types": "./web/testing.ts",
       "default": "./web/testing.ts"

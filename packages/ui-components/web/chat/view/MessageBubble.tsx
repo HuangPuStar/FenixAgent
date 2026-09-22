@@ -4,6 +4,7 @@ import { useTranslation } from "react-i18next";
 import { UI_COMPONENTS_NS } from "../../i18n/namespace";
 import { copyTextToClipboard } from "../../lib/clipboard";
 import { cn } from "../../lib/cn";
+import { isWorkspaceRelativeFilePath } from "../../lib/workspace-relative-path";
 import { Button } from "../../ui/button";
 import { Dialog, DialogContent, DialogTitle } from "../../ui/dialog";
 import { isVisibleContentBlock, parseChatQuotes } from "../lib/context-queue";
@@ -54,27 +55,6 @@ const MESSAGE_ACTIONS_CLASS = [
 /** 操作条里的图标按钮（源 `.chat-message-actions button` 与 `… svg`）。 */
 const MESSAGE_ACTION_BUTTON_CLASS =
   "grid h-6 w-6 place-items-center rounded-md text-[#8a97aa] hover:bg-[#f3f6fa] hover:text-[#52627a]";
-
-/**
- * 工作区相对路径判定。
- *
- * 复制自 `apps/web/src/lib/artifacts-preview-events.ts`（旧路径，已于 2026-09-21 由 6679b4648 删除） 的 `isWorkspaceRelativeFilePath`（逐字）。
- * 纯化改动点：源函数与「预览事件派发」同文件，本包只保留其词法校验部分（无 `..`、无绝对路径、
- * 无控制字符、无空段），避免把宿主的自定义事件总线拖进包内依赖图。
- */
-function isWorkspaceRelativeFilePath(path: string): boolean {
-  if (
-    !path ||
-    path.startsWith("/") ||
-    [...path].some((character) => {
-      const code = character.charCodeAt(0);
-      return code <= 0x1f || code === 0x7f;
-    })
-  ) {
-    return false;
-  }
-  return path.split("/").every((segment) => segment !== "" && segment !== "." && segment !== "..");
-}
 
 /**
  * 将权威消息正文中的既有文件引用拆成文本和附件展示片段，不改变消息协议。

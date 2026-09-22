@@ -1,5 +1,5 @@
 import { ConfirmDialog } from "@fenix/ui-components/config/ConfirmDialog";
-import { EmptyState } from "@fenix/ui-components/config/EmptyState";
+import { EMPTY_STATE_FILL_CLASS, EmptyState } from "@fenix/ui-components/config/EmptyState";
 import { FormDialog } from "@fenix/ui-components/config/FormDialog";
 import { AppHeader } from "@fenix/ui-components/layout/app-header";
 import { AppPage } from "@fenix/ui-components/layout/app-page";
@@ -61,11 +61,7 @@ function ApiKeyTable({
   return (
     <section className="api-key-table" aria-label={t("title")}>
       {keys.length === 0 ? (
-        <EmptyState
-          icon={<KeyRound />}
-          title={t("emptyMessage")}
-          className="flex min-h-64 flex-col items-center justify-center"
-        />
+        <EmptyState icon={<KeyRound />} title={t("emptyMessage")} className={EMPTY_STATE_FILL_CLASS} />
       ) : (
         <Table>
           <TableHeader>
@@ -233,7 +229,7 @@ export function AgentApiKeysPage() {
             icon={<AlertTriangle />}
             title={t("toast.loadFailed")}
             action={{ label: t("btn.retry"), icon: <RefreshCw />, onClick: refresh }}
-            className="flex min-h-64 flex-col items-center justify-center"
+            className={EMPTY_STATE_FILL_CLASS}
           />
         </div>
       ) : (

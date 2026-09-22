@@ -117,6 +117,7 @@ export * from "./lib/clipboard";
 export * from "./lib/cn";
 export * from "./lib/format";
 export * from "./lib/theme";
+export * from "./lib/workspace-relative-path";
 // ui —— 基础控件
 export * from "./ui/accordion";
 export * from "./ui/alert-dialog";
