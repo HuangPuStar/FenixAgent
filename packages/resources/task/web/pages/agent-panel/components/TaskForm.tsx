@@ -32,16 +32,6 @@ interface TaskFormProps {
 }
 
 /**
- * 字段名样式，与实际迁移后仍需手写的三个字段（执行时间 / 时区 / URL）配套。
- *
- * 颜色取 `text-text-primary`：这是 `LabeledField` 里字段名的色，本表单 7 个字段已改用该组件，
- * 三者若继续用 `text-text-muted` 会在同一个表单里出现两种深浅的字段名。字号与字重本就一致。
- * 间距仍为 `mb-1`（4px），与 `LabeledField` 的 `gap-1.5`（6px）差 2px——这 4 个字段的形态不是
- * 「label + 单个控件」（见下方各自的注释），故未迁移，间距差异一并保留。
- */
-const LABEL_CLASS = "block text-sm font-medium text-text-primary mb-1";
-
-/**
  * 表单错误行。8 个字段此前各写一份同样的
  * `{errors.x && <p className="mt-0.5 text-xs text-destructive">{errors.x.message}</p>}`，
  * 收敛成组件而不只抽类串常量，是因为连取值分支也只该写一次。
@@ -151,71 +141,76 @@ export function TaskForm({ agents, isEditing, initialType = "http" }: TaskFormPr
 
       <div className="rounded-lg border border-border/40 bg-surface-0 p-3 space-y-3">
         <div>
-          {/* 本字段的字段名仍手写：children 是「预设 chip 行 + 输入框」的复合控件，chip 是可标记的
-              `<button>`，`LabeledField` 的隐式关联会把预设文案并进输入框的可访问名。 */}
-          <label className={LABEL_CLASS}>{t("form.timeLabel")}</label>
-          <CronEditor
-            value={cronValue || ""}
-            timezone={timezoneValue || ""}
-            onChange={(v) => setValue("cron", v)}
-            error={errors.cron?.message}
-          />
+          {/* 字段名走**显式关联**：children 是「预设 chip 行 + 输入框」的复合控件，chip 是可标记的
+              `<button>`，包进 `<label>` 会把预设文案并进输入框的可访问名。`htmlFor` 指向 CronEditor
+              内部的 cron 输入框（该 id 经 `inputId` 传下去）。 */}
+          <LabeledField label={t("form.timeLabel")} htmlFor="task-cron">
+            <CronEditor
+              inputId="task-cron"
+              value={cronValue || ""}
+              timezone={timezoneValue || ""}
+              onChange={(v) => setValue("cron", v)}
+              error={errors.cron?.message}
+            />
+          </LabeledField>
         </div>
 
         <div>
-          {/* 本字段的字段名仍手写：它有既有的显式关联（`htmlFor` + 控件 `id`），而 `LabeledField`
-              只走隐式关联、不接 `htmlFor`；children 里的选项面板是绝对定位的，内含可标记的
-              `<button>`，聚焦即展开，包进 `<label>` 会把选项文案并进输入框的可访问名。 */}
-          <label className={LABEL_CLASS} htmlFor="task-timezone">
-            {t("form.timezoneLabel")}
-          </label>
-          <div className="relative">
-            <Input
-              id="task-timezone"
-              ref={timezoneInputRef}
-              value={timezoneValue || ""}
-              onFocus={() => setTimezonePickerOpen(true)}
-              onChange={(event) => {
-                setValue("timezone", event.target.value, { shouldValidate: true });
-                setTimezonePickerOpen(true);
-              }}
-              onBlur={() => window.setTimeout(() => setTimezonePickerOpen(false), 150)}
-              placeholder="使用默认时区"
-              className={`w-full ${errors.timezone ? "border-destructive" : ""}`}
-            />
-            {timezonePickerOpen && (
-              <div className="absolute left-0 right-0 top-full z-50 mt-1 max-h-72 overflow-y-auto rounded-md border bg-popover p-1 shadow-md">
-                <button
-                  type="button"
-                  className="w-full rounded-sm px-2 py-1.5 text-left text-sm hover:bg-accent"
-                  onMouseDown={(event) => event.preventDefault()}
-                  onClick={() => {
-                    setValue("timezone", "", { shouldValidate: true });
-                    setTimezonePickerOpen(false);
-                  }}
-                >
-                  使用默认时区
-                </button>
-                {timezoneOptions
-                  .filter(({ timezone }) => timezone.toLowerCase().includes((timezoneValue || "").toLowerCase()))
-                  .map(({ timezone }) => (
-                    <button
-                      type="button"
-                      key={timezone}
-                      className="block w-full truncate rounded-sm px-2 py-1.5 text-left text-sm hover:bg-accent"
-                      onMouseDown={(event) => event.preventDefault()}
-                      onClick={() => {
-                        setValue("timezone", timezone, { shouldValidate: true });
-                        setTimezonePickerOpen(false);
-                      }}
-                    >
-                      {timezone}
-                    </button>
-                  ))}
-              </div>
-            )}
-          </div>
-          <p className="mt-1 text-xs text-muted-foreground">可搜索 IANA 时区，留空使用默认时区</p>
+          {/* 字段名走**显式关联**：字段名标注的是下方那个输入框（`htmlFor` + 控件 `id`），children 里的
+              选项面板是绝对定位的、内含可标记的 `<button>`，包进 `<label>` 会把选项文案并进输入框的
+              可访问名。提示走 `hint`，仍渲染在 `</label>` 之外。 */}
+          <LabeledField
+            label={t("form.timezoneLabel")}
+            htmlFor="task-timezone"
+            hint="可搜索 IANA 时区，留空使用默认时区"
+          >
+            <div className="relative">
+              <Input
+                id="task-timezone"
+                ref={timezoneInputRef}
+                value={timezoneValue || ""}
+                onFocus={() => setTimezonePickerOpen(true)}
+                onChange={(event) => {
+                  setValue("timezone", event.target.value, { shouldValidate: true });
+                  setTimezonePickerOpen(true);
+                }}
+                onBlur={() => window.setTimeout(() => setTimezonePickerOpen(false), 150)}
+                placeholder="使用默认时区"
+                className={`w-full ${errors.timezone ? "border-destructive" : ""}`}
+              />
+              {timezonePickerOpen && (
+                <div className="absolute left-0 right-0 top-full z-50 mt-1 max-h-72 overflow-y-auto rounded-md border bg-popover p-1 shadow-md">
+                  <button
+                    type="button"
+                    className="w-full rounded-sm px-2 py-1.5 text-left text-sm hover:bg-accent"
+                    onMouseDown={(event) => event.preventDefault()}
+                    onClick={() => {
+                      setValue("timezone", "", { shouldValidate: true });
+                      setTimezonePickerOpen(false);
+                    }}
+                  >
+                    使用默认时区
+                  </button>
+                  {timezoneOptions
+                    .filter(({ timezone }) => timezone.toLowerCase().includes((timezoneValue || "").toLowerCase()))
+                    .map(({ timezone }) => (
+                      <button
+                        type="button"
+                        key={timezone}
+                        className="block w-full truncate rounded-sm px-2 py-1.5 text-left text-sm hover:bg-accent"
+                        onMouseDown={(event) => event.preventDefault()}
+                        onClick={() => {
+                          setValue("timezone", timezone, { shouldValidate: true });
+                          setTimezonePickerOpen(false);
+                        }}
+                      >
+                        {timezone}
+                      </button>
+                    ))}
+                </div>
+              )}
+            </div>
+          </LabeledField>
           <FieldError message={errors.timezone?.message} />
         </div>
 
@@ -266,31 +261,33 @@ export function TaskForm({ agents, isEditing, initialType = "http" }: TaskFormPr
       {effectiveType === "http" && (
         <div className="space-y-4">
           <div>
-            {/* 本字段的字段名仍手写：children 是 URL 输入框 + 方法选择器（可标记的 `<button>`），
-                不是「label + 单个控件」；包进 `<label>` 会把方法文案并进 URL 输入框的可访问名。 */}
-            <label className={LABEL_CLASS}>{t("form.urlLabel")}</label>
-            <div className="flex gap-2">
-              <Input
-                {...register("url")}
-                placeholder="https://example.com/webhook"
-                className={`flex-1 ${errors.url ? "border-destructive" : ""}`}
-              />
-              <Select
-                value={methodValue}
-                onValueChange={(v) => setValue("method", v as "GET" | "POST" | "PUT" | "DELETE" | "PATCH")}
-              >
-                <SelectTrigger className="w-[110px]">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="GET">GET</SelectItem>
-                  <SelectItem value="POST">POST</SelectItem>
-                  <SelectItem value="PUT">PUT</SelectItem>
-                  <SelectItem value="DELETE">DELETE</SelectItem>
-                  <SelectItem value="PATCH">PATCH</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
+            {/* 字段名走**显式关联**：children 是 URL 输入框 + 方法选择器（可标记的 `<button>`），
+                字段名只该标注输入框；包进 `<label>` 会把方法文案并进它的可访问名。 */}
+            <LabeledField label={t("form.urlLabel")} htmlFor="task-url">
+              <div className="flex gap-2">
+                <Input
+                  id="task-url"
+                  {...register("url")}
+                  placeholder="https://example.com/webhook"
+                  className={`flex-1 ${errors.url ? "border-destructive" : ""}`}
+                />
+                <Select
+                  value={methodValue}
+                  onValueChange={(v) => setValue("method", v as "GET" | "POST" | "PUT" | "DELETE" | "PATCH")}
+                >
+                  <SelectTrigger className="w-[110px]">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="GET">GET</SelectItem>
+                    <SelectItem value="POST">POST</SelectItem>
+                    <SelectItem value="PUT">PUT</SelectItem>
+                    <SelectItem value="DELETE">DELETE</SelectItem>
+                    <SelectItem value="PATCH">PATCH</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            </LabeledField>
             <FieldError message={errors.url?.message} />
           </div>
           <div>

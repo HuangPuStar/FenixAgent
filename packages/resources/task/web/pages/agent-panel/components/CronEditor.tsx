@@ -92,6 +92,8 @@ export function describeCron(cron: string, t: (key: string) => string): string |
 export interface CronEditorProps {
   value: string;
   timezone?: string;
+  /** 手动输入框的 `id`：供调用方用 `LabeledField htmlFor` 把字段名显式关联到这个输入框；不给则不渲染 `id`。 */
+  inputId?: string;
   onChange: (cron: string) => void;
   error?: string;
 }
@@ -108,7 +110,7 @@ function validateCron(value: string, timezone: string): string | undefined {
   }
 }
 
-export function CronEditor({ value, timezone = "", onChange, error }: CronEditorProps) {
+export function CronEditor({ value, timezone = "", inputId, onChange, error }: CronEditorProps) {
   const { t } = useTranslation(NS.TASKS_V2);
   const [editingCustom, setEditingCustom] = useState(false);
   const [debouncedError, setDebouncedError] = useState<string>();
@@ -194,6 +196,7 @@ export function CronEditor({ value, timezone = "", onChange, error }: CronEditor
           <div className="flex items-center gap-1.5 flex-1">
             <span className="text-[11px] text-text-muted shrink-0 font-mono">cron:</span>
             <Input
+              id={inputId}
               value={isComposing ? composingValue : value}
               onCompositionStart={() => {
                 setIsComposing(true);
