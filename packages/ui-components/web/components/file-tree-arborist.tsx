@@ -19,13 +19,27 @@ import { Tree as ArboristTree } from "react-arborist";
 import { useTranslation } from "react-i18next";
 
 import { UI_COMPONENTS_NS } from "../i18n/namespace";
+import { cn } from "../lib/cn";
 import { FileTypeIcon } from "./file-icon-helper";
 import type { ParsedFileNode } from "./file-tree-model";
-import "./file-tree.css";
 
 /** 行高与缩进；行高同时用于 sticky 目录条的可见行索引换算。 */
 const ROW_HEIGHT = 32;
 const INDENT = 12;
+
+/**
+ * 行内操作按钮（新建 / 刷新）的样式；由原先的 `.file-tree-row-action` 及其 `:hover` / `:focus-visible`
+ * / `svg` 规则逐条翻译而来，26px 方块 + 14px 图标。
+ */
+const ROW_ACTION_CLASS =
+  "inline-grid size-[26px] place-items-center rounded-[5px] text-text-muted hover:bg-surface-2 hover:text-text-primary focus-visible:bg-surface-2 focus-visible:text-text-primary [&_svg]:size-[14px]";
+
+/**
+ * 删除按钮样式。原 `.file-tree-row-action--delete` 在靠后的规则里整体覆盖了悬停配色（底色改危险色浅底、
+ * 文字改危险色），这里直接写成独立一份，避免与通用悬停类在同属性上争夺优先级。
+ */
+const ROW_ACTION_DANGER_CLASS =
+  "inline-grid size-[26px] place-items-center rounded-[5px] text-text-muted hover:bg-destructive/10 hover:text-destructive focus-visible:bg-destructive/10 focus-visible:text-destructive [&_svg]:size-[14px]";
 
 export interface FileTreeArboristProps {
   data: ParsedFileNode[];
@@ -105,11 +119,18 @@ export function FileTreeArborist({
   );
 
   return (
-    <div ref={containerRef} className="file-tree-arborist">
+    <div
+      ref={containerRef}
+      data-slot="file-tree-arborist"
+      className="relative size-full min-h-0 min-w-0 overflow-hidden"
+    >
       {stickyFolder && (
-        <div className="file-tree-arborist-sticky-folder" aria-hidden>
+        <div
+          className="pointer-events-none absolute inset-x-0 top-0 z-[2] flex h-8 items-center gap-0.5 border-b border-border-subtle bg-surface-2 px-2.5 text-[12px] font-normal text-text-secondary [&_svg]:size-4 [&_svg]:text-inherit"
+          aria-hidden
+        >
           <FolderOpen />
-          <span>{stickyFolder.path}</span>
+          <span className="ml-auto">{stickyFolder.path}</span>
         </div>
       )}
       {height > 0 && (
@@ -168,7 +189,12 @@ function FileTreeNode({
     <div
       ref={dragHandle}
       style={{ ...style, paddingLeft: node.level * INDENT + 8 }}
-      className={`file-tree-arborist-row group${node.isSelected ? " is-selected" : ""}`}
+      className={cn(
+        "group/row relative box-border flex max-w-full min-w-0 cursor-pointer items-center gap-0.5 overflow-hidden rounded-[2px] pe-1.5",
+        // 原 `.is-selected` 与 `:hover` 两条规则里，选中态在靠后位置整体覆盖悬停底色与文字色，
+        // 这里按互斥两态写出，避免两条同属性工具类靠生成顺序决定胜负。
+        node.isSelected ? "bg-brand/10 text-brand" : "text-text-secondary hover:bg-surface-2/70",
+      )}
       data-tree-item
       data-node-id={data.path}
       data-is-dir={data.isDir ? "true" : "false"}
@@ -176,7 +202,7 @@ function FileTreeNode({
     >
       <button
         type="button"
-        className="file-tree-arborist-toggle"
+        className="inline-grid size-6 shrink-0 place-items-center [&>svg]:size-4"
         aria-label={data.name}
         onClick={data.isDir ? handleToggle : undefined}
       >
@@ -187,19 +213,25 @@ function FileTreeNode({
             <Folder aria-hidden />
           )
         ) : (
-          <span className="file-tree-arborist-icon file-real-file-icon">
+          <span className="size-3">
             <FileTypeIcon filename={data.name} />
           </span>
         )}
       </button>
-      <span className="file-tree-arborist-name" title={data.name}>
+      <span
+        className="block w-0 min-w-0 flex-auto overflow-hidden text-ellipsis whitespace-nowrap text-[12px]"
+        title={data.name}
+      >
         {data.name}
       </span>
-      <span data-slot="tree-item-actions" className="file-tree-arborist-actions">
+      <span
+        data-slot="tree-item-actions"
+        className="absolute top-1/2 right-1 z-[1] flex shrink-0 -translate-y-1/2 items-center gap-px bg-[linear-gradient(90deg,transparent,var(--color-surface-2)_18px)] pl-[18px] opacity-0 transition-opacity duration-[120ms] ease-[ease] group-hover/row:opacity-100 group-focus-within/row:opacity-100"
+      >
         {data.isDir && (
           <button
             type="button"
-            className="file-tree-row-action"
+            className={ROW_ACTION_CLASS}
             title={t("fileTree.newFile")}
             onClick={(event) => {
               event.stopPropagation();
@@ -211,7 +243,7 @@ function FileTreeNode({
         )}
         <button
           type="button"
-          className="file-tree-row-action"
+          className={ROW_ACTION_CLASS}
           title={t("fileTree.refresh")}
           onClick={(event) => {
             event.stopPropagation();
@@ -222,7 +254,7 @@ function FileTreeNode({
         </button>
         <button
           type="button"
-          className="file-tree-row-action file-tree-row-action--delete"
+          className={ROW_ACTION_DANGER_CLASS}
           title={t("fileTree.contextMenu.delete")}
           onClick={(event) => {
             event.stopPropagation();

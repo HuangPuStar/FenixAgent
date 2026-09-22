@@ -20,11 +20,26 @@ import { useTranslation } from "react-i18next";
 
 import { ConfirmDialog } from "../config/ConfirmDialog";
 import { UI_COMPONENTS_NS } from "../i18n/namespace";
+import { cn } from "../lib/cn";
 import { FileTreeArborist } from "./file-tree-arborist";
 import type { FileTreeContextMenuState, FileTreeDownloadState } from "./file-tree-context-menu";
 import { FileTreeContextMenu } from "./file-tree-context-menu";
 import type { ParsedFileNode } from "./file-tree-model";
-import "./file-tree.css";
+
+/**
+ * 面板标题栏按钮样式（原 `.file-tree-panel__actions button` 及其 `:hover` / `:focus-visible`
+ * / `:disabled` 规则）：26px 方块，图标 14px。
+ */
+const PANEL_ACTION_CLASS =
+  "inline-grid size-[26px] place-items-center rounded-[5px] text-text-muted hover:bg-surface-2 hover:text-text-primary focus-visible:bg-surface-2 focus-visible:text-text-primary disabled:opacity-[0.45]";
+
+/**
+ * 分区标题（工作区 / 我的文件）公共样式，两者只有文字色与右内边距不同。
+ *
+ * 原规则里的 `font-family: inherit` 未翻译：font-family 本就是继承属性，没有宿主覆盖时该声明是空操作。
+ */
+const SECTION_HEADING_CLASS =
+  "flex h-8 min-w-0 shrink-0 items-center gap-1.5 ps-5 text-[12px] font-semibold normal-case tracking-normal";
 
 export interface FileTreeViewProps {
   /** 首屏或刷新中；影响刷新按钮转圈与空态展示。 */
@@ -89,12 +104,13 @@ export function FileTreeView(props: FileTreeViewProps) {
   };
 
   return (
-    <div className="file-tree-panel flex-1 flex flex-col overflow-hidden h-full">
-      <div className="file-tree-panel__header">
+    <div className="flex h-full min-h-0 flex-1 flex-col overflow-hidden text-text-secondary">
+      <div className="flex min-h-[38px] shrink-0 items-center justify-between ps-2.5 pe-1.5 text-[12px] text-text-primary [font-weight:650]">
         <span>{t("fileTree.title")}</span>
-        <div className="file-tree-panel__actions">
+        <div data-slot="file-tree-panel-actions" className="flex items-center gap-px [&_svg]:size-[14px]">
           <button
             type="button"
+            className={PANEL_ACTION_CLASS}
             onClick={props.onRefresh}
             disabled={props.loading || !canMutate}
             title={t("fileTree.refresh")}
@@ -104,6 +120,7 @@ export function FileTreeView(props: FileTreeViewProps) {
           </button>
           <button
             type="button"
+            className={PANEL_ACTION_CLASS}
             onClick={() => createAtSelected("folder")}
             disabled={!canMutate}
             title={t("fileTree.contextMenu.newFolder")}
@@ -112,6 +129,7 @@ export function FileTreeView(props: FileTreeViewProps) {
           </button>
           <button
             type="button"
+            className={PANEL_ACTION_CLASS}
             onClick={() => props.onUploadClick()}
             disabled={props.uploading || !canMutate}
             title={t("fileTree.upload")}
@@ -120,6 +138,7 @@ export function FileTreeView(props: FileTreeViewProps) {
           </button>
           <button
             type="button"
+            className={PANEL_ACTION_CLASS}
             onClick={() => props.onFolderUploadClick()}
             disabled={props.uploading || !canMutate}
             title={t("fileTree.uploadFolder")}
@@ -140,10 +159,11 @@ export function FileTreeView(props: FileTreeViewProps) {
         </div>
       </div>
 
-      <label className="file-tree-search">
+      <label className="mx-2 mb-2 flex h-[30px] shrink-0 items-center gap-1.5 rounded-[6px] bg-surface-2 px-2 text-text-muted focus-within:shadow-[inset_0_0_0_1px_color-mix(in_srgb,var(--color-brand)_32%,transparent)] [&>button>svg]:size-[13px] [&>svg]:size-[13px]">
         <Search aria-hidden />
         <input
           type="search"
+          className="w-full min-w-0 border-0 bg-transparent text-[12px] text-text-primary outline-none"
           value={props.searchQuery}
           onChange={(event) => props.onSearchChange(event.target.value)}
           placeholder={t("fileTree.searchPlaceholder")}
@@ -157,7 +177,8 @@ export function FileTreeView(props: FileTreeViewProps) {
       </label>
 
       <div
-        className="file-tree-sections"
+        data-slot="file-tree-sections"
+        className="relative flex min-h-0 flex-1 flex-col overflow-hidden"
         onDragOver={props.onDragOver}
         onDragEnter={props.onDragEnter}
         onDragLeave={props.onDragLeave}
@@ -170,13 +191,22 @@ export function FileTreeView(props: FileTreeViewProps) {
         }}
         onContextMenu={props.onContextMenu}
       >
-        {props.dragOver && <div className="file-tree-drop-overlay">{t("fileTree.dropToUpload")}</div>}
+        {props.dragOver && (
+          <div className="pointer-events-none absolute inset-0 z-[3] grid place-items-center rounded-[var(--radius)] border border-dashed border-border-active bg-brand/10 text-[12px] text-brand">
+            {t("fileTree.dropToUpload")}
+          </div>
+        )}
         {props.stale ? (
           <Feedback
             icon={<Loader2 className="animate-spin" />}
             text={t("fileTree.staleBanner")}
             action={
-              <button type="button" className="file-tree-feedback-action" onClick={props.onRefresh}>
+              <button
+                type="button"
+                data-slot="file-tree-feedback-action"
+                className="min-h-7 rounded-[6px] border border-border-subtle bg-surface-1 px-2.5 text-[11px] text-text-secondary hover:border-[color-mix(in_srgb,var(--color-brand)_35%,var(--color-border-subtle))] hover:text-brand focus-visible:border-[color-mix(in_srgb,var(--color-brand)_35%,var(--color-border-subtle))] focus-visible:text-brand"
+                onClick={props.onRefresh}
+              >
                 {t("fileTree.retry")}
               </button>
             }
@@ -225,10 +255,13 @@ function FileTreeSections(props: FileTreeViewProps) {
   const { t } = useTranslation(UI_COMPONENTS_NS);
 
   return (
-    <div className="file-tree-sections-layout">
-      <section data-upload-target="" className="file-tree-section file-tree-section--workspace">
-        <div className="file-tree-workspace-label">{t("fileTree.workspace")}</div>
-        <div className="file-tree-section-scroll">
+    <div
+      data-slot="file-tree-sections-layout"
+      className="grid min-h-0 flex-1 grid-rows-[minmax(112px,3fr)_minmax(68px,2fr)] overflow-hidden"
+    >
+      <section data-upload-target="" className="flex h-full min-h-0 flex-col">
+        <div className={cn(SECTION_HEADING_CLASS, "text-text-secondary")}>{t("fileTree.workspace")}</div>
+        <div className="min-h-0 min-w-0 flex-1 overflow-hidden">
           {props.showTree && props.workspaceHasNodes ? (
             <FileTreeArborist
               key={`workspace:${props.treeVersion}:${props.normalizedSearch}`}
@@ -245,12 +278,13 @@ function FileTreeSections(props: FileTreeViewProps) {
           )}
         </div>
       </section>
-      <section data-upload-target="user" className="file-tree-section file-tree-section--user">
-        <div className="file-tree-user-heading">
+      <section data-upload-target="user" className="flex h-full min-h-0 flex-col border-t border-border-subtle">
+        <div className={cn(SECTION_HEADING_CLASS, "pe-2.5 text-text-primary")}>
           <span>{t("fileTree.user")}</span>
           <button
             type="button"
-            className="file-tree-section-upload"
+            data-slot="file-tree-section-upload"
+            className="ml-auto inline-grid size-[26px] shrink-0 place-items-center rounded-[5px] text-brand hover:bg-transparent focus-visible:bg-transparent focus-visible:[outline:2px_solid_var(--color-surface-3)] focus-visible:outline-offset-[-2px] disabled:opacity-[0.45] [&_svg]:size-4"
             title={t("fileTree.upload")}
             aria-label={t("fileTree.upload")}
             onClick={() => props.onUploadClick("user")}
@@ -259,7 +293,7 @@ function FileTreeSections(props: FileTreeViewProps) {
             <Upload aria-hidden />
           </button>
         </div>
-        <div className="file-tree-section-scroll">
+        <div className="min-h-0 min-w-0 flex-1 overflow-hidden">
           {props.showTree && props.userHasNodes ? (
             <FileTreeArborist
               key={`user:${props.treeVersion}:${props.normalizedSearch}`}
@@ -272,7 +306,12 @@ function FileTreeSections(props: FileTreeViewProps) {
               onDeleteRequest={props.onDeleteRequest}
             />
           ) : (
-            <Feedback icon={<Folder />} text={t("fileTree.userEmptyState")} />
+            <Feedback
+              icon={<Folder />}
+              text={t("fileTree.userEmptyState")}
+              // 「我的文件」分区高度只有工作区的一半：复用同一反馈组件但压缩间距，并隐去图标与第二行说明。
+              className="min-h-11 p-2 [&>svg]:hidden [&_p+p]:hidden"
+            />
           )}
         </div>
       </section>
@@ -285,14 +324,24 @@ function Feedback({
   text,
   detail,
   action,
+  className,
 }: {
   icon: ReactNode;
   text: string;
   detail?: string;
   action?: ReactNode;
+  /** 分区级外观覆盖（由调用方传入），用于压缩「我的文件」分区的空态。 */
+  className?: string;
 }) {
   return (
-    <div className="file-tree-feedback" role="status">
+    <div
+      data-slot="file-tree-feedback"
+      className={cn(
+        "flex h-full flex-col items-center justify-center gap-2 p-5 text-center text-[12px] text-text-muted [&>svg]:size-6 [&>svg]:opacity-[0.65]",
+        className,
+      )}
+      role="status"
+    >
       {icon}
       <p>{text}</p>
       {detail && <p>{detail}</p>}
