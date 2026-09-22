@@ -20,6 +20,21 @@
  *    （技能行与 MCP 行的名称列因此对齐），尾列提示与勾选合并为 `.chat-command-menu-tail`；
  *    选中勾选由蓝色 `#5f83bd` 改为与 MCP「已连接」同源的绿 `#25856e`；
  *    `.is-active` 的左侧强调条改用包内 token `var(--color-brand)`（唯一的蓝，来自主题色）。
+ * 5. 能力面板字号下调（2026-09-22）：`--panel` 变体此前比同一基类的 popover/inline 形态整体大一档
+ *    （名称 14px > 基础 12px、描述 12px > 基础 11px、搜索框 14px > 基础 13px），与它「follows the
+ *    ui-sandbox composer slot and density」的定位相反，也大于紧邻的同槽位 composer（10-12px）。
+ *    本次把面板内字号对齐基础菜单尺度：名称 14→12px、描述与尾列提示 12→11px、搜索框 14→13px；
+ *    分区标题（`skills`/`mcps` 两段的行内标题）强字重 13→12px、副标题保持 11px。
+ *    分区标题选择器未加 `--panel` 前缀，但它只在 `showSearch` 为真时渲染，而 `showSearch` 的唯一
+ *    调用点是 `ChatComposer` 的能力面板，故等效于面板内调整，未改选择器结构。
+ *    仅调字号，未动行高/内边距/网格列（面板行高由 `min-height: 34px` 决定，不受影响）。
+ * 6. 行首图标固定为灰（2026-09-22）：`.chat-command-menu-command-icon` / `-mcp-icon` 此前无自身颜色，
+ *    继承 `.chat-command-menu-item` 的文字色——静止 `#687286`，hover 与 `.is-active` 被推到近黑
+ *    `#263247`（第 153-154、296-297 行），图标因此在鼠标经过时变成强色、压过同一行的名称。
+ *    现固定为 `#8a96a8`（同文件搜索框图标的灰，即「非交互图标」用色），不再随行文字色变化；
+ *    当前行的指示仍由 `.is-active` 的左侧 `var(--color-brand)` 强调条与底色承担，未削弱状态可见性。
+ *    该类名由 popover/inline 与 `--panel` 两种形态共用，故此处是两形态一致的调整；若后续只需要
+ *    面板内生效，再加 `--panel` 前缀覆盖，不要复制一份选择器。
  */
 .chat-command-popover {
   width: min(600px, calc(100vw - 32px));
@@ -254,7 +269,7 @@
 
 .chat-command-menu--panel .chat-command-menu-input {
   height: 38px;
-  font-size: 14px;
+  font-size: 13px;
 }
 
 .chat-command-menu--panel .chat-command-menu-scroll {
@@ -293,13 +308,13 @@
 
 .chat-command-menu--panel .chat-command-menu-name {
   color: #263247;
-  font-size: 14px;
+  font-size: 12px;
   font-weight: 400;
 }
 
 .chat-command-menu--panel .chat-command-menu-description,
 .chat-command-menu--panel .chat-command-menu-hint {
-  font-size: 12px;
+  font-size: 11px;
 }
 
 .chat-command-menu-section + .chat-command-menu-section {
@@ -317,7 +332,7 @@
 
 .chat-command-menu-section-title strong {
   color: #263247;
-  font-size: 13px;
+  font-size: 12px;
   font-weight: 650;
 }
 
@@ -332,6 +347,11 @@
   width: 16px;
   height: 16px;
   flex: none;
+}
+
+.chat-command-menu-command-icon,
+.chat-command-menu-mcp-icon {
+  color: #8a96a8;
 }
 
 .chat-command-menu-check {
