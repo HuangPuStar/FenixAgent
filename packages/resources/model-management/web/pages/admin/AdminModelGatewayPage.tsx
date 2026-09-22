@@ -1,5 +1,6 @@
 import { fetchSystemPeopleTree } from "@fenix/resource-observer/web";
 import { MasterKeyGate, SearchableUsageFilter } from "@fenix/resource-sandbox/web";
+import { EmptyState } from "@fenix/ui-components/config/EmptyState";
 import { Badge } from "@fenix/ui-components/ui/badge";
 import { Button } from "@fenix/ui-components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@fenix/ui-components/ui/card";
@@ -14,9 +15,10 @@ import {
 } from "@fenix/ui-components/ui/dialog";
 import { Pagination } from "@fenix/ui-components/ui/pagination";
 import { Progress } from "@fenix/ui-components/ui/progress";
+import { Spinner } from "@fenix/ui-components/ui/spinner";
 import { ApiError } from "@fenix/web-runtime/api/request";
 import { clearAdminKey, getAdminKey } from "@fenix/web-runtime/lib/admin-key";
-import { useRequest } from "ahooks";
+import { useDebounce, useRequest } from "ahooks";
 import { ExternalLink, Info, RefreshCw, Search, TriangleAlert } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
@@ -39,6 +41,14 @@ import { buildRecentUsageDateRange } from "../../lib/model-gateway-usage";
 import { ModelGatewayKeyManagementPanel } from "./ModelGatewayKeyManagementPanel";
 import { getModelGatewayConnectionFeedback } from "./model-gateway-feedback";
 import { buildModelGatewayOverviewUsageQuery, buildSevenDayUsageTrend } from "./model-gateway-overview";
+
+/**
+ * 原生表单控件的类串：本页的筛选条刻意用原生 `input` / `select`（保留原生下拉与日期选择），
+ * 同一种形状此前逐处手抄（`h-8` 那份 6 处、`h-9` 与只读回显各 2 处），收成三个常量。
+ */
+const FILTER_FIELD_CLASS = "h-8 rounded-md border bg-background px-2 text-sm";
+const DIALOG_FIELD_CLASS = "h-9 rounded-md border bg-background px-3 text-sm";
+const READONLY_FIELD_CLASS = "h-8 w-28 rounded-md border bg-muted px-2 text-sm";
 
 /** 系统模型网关管理页一期壳：模型目录仍由 LiteLLM 管理，Fenix 只负责检查和投影同步。 */
 export function AdminModelGatewayPage() {
@@ -233,19 +243,21 @@ function ModelGatewayDashboard({ onAuthFailure }: { onAuthFailure: () => void })
     if (tab === "budgets" && hasQueriedBudgets && budgetQueryKey) void budgetsRequest.run();
   }, [budgetQueryKey, budgetsRequest.run, hasQueriedBudgets, tab]);
 
-  useEffect(() => {
-    if (userSearchKeyword === null) return;
-    // 主体搜索走后端关键词查询；3 秒静默后才发起请求，避免输入时持续压测系统 API。
-    const timer = window.setTimeout(() => void usersRequest.run(userSearchKeyword.trim()), 3000);
-    return () => window.clearTimeout(timer);
-  }, [userSearchKeyword, usersRequest.run]);
+  // 主体搜索走后端关键词查询：3 秒静默后才发起请求，避免输入时持续压测系统 API。
+  // 防抖交给 ahooks 的 `useDebounce`（本包与仓库根依赖的 ahooks@^3.9.7），不再手写 setTimeout + clearTimeout
+  // 两遍；Agent 与用户共用同一策略，旧请求先取消，避免慢响应覆盖最新关键词结果。
+  const debouncedUserSearchKeyword = useDebounce(userSearchKeyword, { wait: 3000 });
+  const debouncedAgentSearchKeyword = useDebounce(agentSearchKeyword, { wait: 3000 });
 
   useEffect(() => {
-    if (agentSearchKeyword === null) return;
-    // Agent 与用户共用同一防抖策略，旧请求先取消，避免慢响应覆盖最新关键词结果。
-    const timer = window.setTimeout(() => void agentsRequest.run(agentSearchKeyword.trim()), 3000);
-    return () => window.clearTimeout(timer);
-  }, [agentSearchKeyword, agentsRequest.run]);
+    if (debouncedUserSearchKeyword === null) return;
+    void usersRequest.run(debouncedUserSearchKeyword.trim());
+  }, [debouncedUserSearchKeyword, usersRequest.run]);
+
+  useEffect(() => {
+    if (debouncedAgentSearchKeyword === null) return;
+    void agentsRequest.run(debouncedAgentSearchKeyword.trim());
+  }, [debouncedAgentSearchKeyword, agentsRequest.run]);
 
   return (
     <div className="min-h-screen bg-background p-6">
@@ -354,7 +366,7 @@ function ModelGatewayDashboard({ onAuthFailure }: { onAuthFailure: () => void })
                     onChange={(event) => setModelSearch(event.target.value)}
                   />
                   <select
-                    className="h-8 rounded-md border bg-background px-2 text-sm"
+                    className={FILTER_FIELD_CLASS}
                     value={modelFilter}
                     onChange={(event) => setModelFilter(event.target.value)}
                   >
@@ -364,7 +376,7 @@ function ModelGatewayDashboard({ onAuthFailure }: { onAuthFailure: () => void })
                   </select>
                 </div>
                 {!status ? (
-                  <p className="py-8 text-center text-sm text-text-muted">{t("modelGateway.checkHint")}</p>
+                  <EmptyState title={t("modelGateway.checkHint")} className="py-8" />
                 ) : status.status === "unknown" ? (
                   <ErrorMessage message={status.error ?? t("modelGateway.unknown")} />
                 ) : (
@@ -396,8 +408,8 @@ function ModelGatewayDashboard({ onAuthFailure }: { onAuthFailure: () => void })
                         })}
                         {displayedModels.length === 0 && (
                           <tr>
-                            <td colSpan={3} className="px-3 py-8 text-center text-text-muted">
-                              {t("modelGateway.modelsPage.noMatches")}
+                            <td colSpan={3} className="px-3">
+                              <EmptyState title={t("modelGateway.modelsPage.noMatches")} className="py-8" />
                             </td>
                           </tr>
                         )}
@@ -432,7 +444,7 @@ function ModelGatewayDashboard({ onAuthFailure }: { onAuthFailure: () => void })
                   <input
                     aria-label={t("modelGateway.budgetsPage.defaultAmountLabel")}
                     disabled
-                    className="h-8 w-28 rounded-md border bg-muted px-2 text-sm"
+                    className={READONLY_FIELD_CLASS}
                     type="text"
                     value={
                       configRequest.data?.defaultBudget.maxBudgetUsd === null
@@ -446,7 +458,7 @@ function ModelGatewayDashboard({ onAuthFailure }: { onAuthFailure: () => void })
                   <input
                     aria-label={t("modelGateway.budgetsPage.defaultDurationLabel")}
                     disabled
-                    className="h-8 w-28 rounded-md border bg-muted px-2 text-sm"
+                    className={READONLY_FIELD_CLASS}
                     type="text"
                     value={
                       configRequest.data?.defaultBudget.duration === "30d"
@@ -495,7 +507,7 @@ function ModelGatewayDashboard({ onAuthFailure }: { onAuthFailure: () => void })
                   onValueChange={setBudgetUserId}
                 />
                 <select
-                  className="h-8 rounded-md border bg-background px-2 text-sm"
+                  className={FILTER_FIELD_CLASS}
                   value={budgetFilter}
                   onChange={(event) => setBudgetFilter(event.target.value as typeof budgetFilter)}
                 >
@@ -549,7 +561,7 @@ function ModelGatewayDashboard({ onAuthFailure }: { onAuthFailure: () => void })
                 </Button>
               </div>
               {budgetsRequest.loading ? (
-                <p className="py-8 text-center text-sm text-text-muted">{t("admin.loading")}</p>
+                <Spinner label={t("admin.loading")} className="flex py-8" />
               ) : (
                 <>
                   <div className="overflow-x-auto rounded-md border">
@@ -699,8 +711,8 @@ function ModelGatewayDashboard({ onAuthFailure }: { onAuthFailure: () => void })
                         })}
                         {visibleBudgetItems.length === 0 && (
                           <tr>
-                            <td className="px-3 py-8 text-center text-text-muted" colSpan={8}>
-                              {t("modelGateway.budgetsPage.noMatches")}
+                            <td className="px-3" colSpan={8}>
+                              <EmptyState title={t("modelGateway.budgetsPage.noMatches")} className="py-8" />
                             </td>
                           </tr>
                         )}
@@ -737,7 +749,7 @@ function ModelGatewayDashboard({ onAuthFailure }: { onAuthFailure: () => void })
                   </DialogHeader>
                   <div className="grid gap-3">
                     <input
-                      className="h-9 rounded-md border bg-background px-3 text-sm"
+                      className={DIALOG_FIELD_CLASS}
                       type="number"
                       min="0"
                       placeholder={t("modelGateway.amount")}
@@ -745,7 +757,7 @@ function ModelGatewayDashboard({ onAuthFailure }: { onAuthFailure: () => void })
                       onChange={(event) => setBudgetAmount(event.target.value)}
                     />
                     <select
-                      className="h-9 rounded-md border bg-background px-3 text-sm"
+                      className={DIALOG_FIELD_CLASS}
                       value={budgetDuration}
                       onChange={(event) => setBudgetDuration(event.target.value)}
                     >
@@ -796,7 +808,7 @@ function ModelGatewayDashboard({ onAuthFailure }: { onAuthFailure: () => void })
               <div className="mb-3 flex flex-wrap items-start justify-between gap-2">
                 <div className="grid flex-1 gap-2 sm:grid-cols-2 lg:grid-cols-4">
                   <select
-                    className="h-8 rounded-md border bg-background px-2 text-sm"
+                    className={FILTER_FIELD_CLASS}
                     value={usageRange}
                     onChange={(event) => setUsageRange(event.target.value)}
                   >
@@ -807,13 +819,13 @@ function ModelGatewayDashboard({ onAuthFailure }: { onAuthFailure: () => void })
                   {usageRange === "custom" && (
                     <>
                       <input
-                        className="h-8 rounded-md border bg-background px-2 text-sm"
+                        className={FILTER_FIELD_CLASS}
                         type="date"
                         value={customStart}
                         onChange={(event) => setCustomStart(event.target.value)}
                       />
                       <input
-                        className="h-8 rounded-md border bg-background px-2 text-sm"
+                        className={FILTER_FIELD_CLASS}
                         type="date"
                         value={customEnd}
                         onChange={(event) => setCustomEnd(event.target.value)}
@@ -884,7 +896,7 @@ function ModelGatewayDashboard({ onAuthFailure }: { onAuthFailure: () => void })
                     return (
                       <select
                         key={key}
-                        className="h-8 rounded-md border bg-background px-2 text-sm"
+                        className={FILTER_FIELD_CLASS}
                         value={usageFilters[key]}
                         onChange={(event) => setUsageFilters((current) => ({ ...current, [key]: event.target.value }))}
                       >
@@ -1118,9 +1130,11 @@ function OverviewPanel({
           </CardHeader>
           <CardContent>
             {!usage ? (
-              <p className="py-12 text-center text-sm text-text-muted">
-                {loading ? t("admin.loading") : t("modelGateway.overview.noUsage")}
-              </p>
+              loading ? (
+                <Spinner label={t("admin.loading")} className="flex py-12" />
+              ) : (
+                <EmptyState title={t("modelGateway.overview.noUsage")} className="py-12" />
+              )
             ) : (
               <div className="h-52">
                 <ChartContainer>

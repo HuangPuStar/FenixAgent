@@ -503,6 +503,7 @@
     "paramsHeading": "Core parameters",
     "scenesHeading": "Use cases",
     "copyCode": "Copy code",
+    "copyFailed": "Copy failed. Select the code and copy it manually.",
     "copied": "Copied",
     "columns": {
       "param": "Parameter",

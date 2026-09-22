@@ -1,6 +1,6 @@
+import { EmptyState } from "@fenix/ui-components/config/EmptyState";
 import { AppHeader } from "@fenix/ui-components/layout/app-header";
 import { Badge } from "@fenix/ui-components/ui/badge";
-import { Button } from "@fenix/ui-components/ui/button";
 import { Input } from "@fenix/ui-components/ui/input";
 import { Search } from "lucide-react";
 import { useState } from "react";
@@ -136,13 +136,12 @@ export function VerticalModelsPage() {
         role={filtered.length === 0 ? undefined : "list"}
       >
         {filtered.length === 0 ? (
-          <div className="flex flex-col items-center gap-3 py-16 text-center" role="status">
-            <p className="text-base font-semibold text-text-primary">{t("verticalModels.emptyTitle")}</p>
-            <p className="text-sm text-text-secondary">{t("verticalModels.emptyDescription")}</p>
-            <Button variant="outline" size="sm" onClick={() => setSearch("")}>
-              {t("verticalModels.clearSearch")}
-            </Button>
-          </div>
+          <EmptyState
+            role="status"
+            title={t("verticalModels.emptyTitle")}
+            description={t("verticalModels.emptyDescription")}
+            action={{ label: t("verticalModels.clearSearch"), onClick: () => setSearch("") }}
+          />
         ) : null}
         {filtered.map((model) => (
           <div key={model.id} className="rounded-lg border bg-card p-5 max-w-5xl w-full" role="listitem">

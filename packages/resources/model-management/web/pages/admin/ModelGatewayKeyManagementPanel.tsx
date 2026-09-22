@@ -1,9 +1,11 @@
 import { ConfirmDialog } from "@fenix/ui-components/config/ConfirmDialog";
+import { EmptyState } from "@fenix/ui-components/config/EmptyState";
 import { Badge } from "@fenix/ui-components/ui/badge";
 import { Button } from "@fenix/ui-components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@fenix/ui-components/ui/card";
 import { Checkbox } from "@fenix/ui-components/ui/checkbox";
 import { Pagination } from "@fenix/ui-components/ui/pagination";
+import { Spinner } from "@fenix/ui-components/ui/spinner";
 import { ApiError } from "@fenix/web-runtime/api/request";
 import { useRequest } from "ahooks";
 import { RefreshCw, Trash2 } from "lucide-react";
@@ -84,11 +86,12 @@ export function ModelGatewayKeyManagementPanel({ onAuthFailure }: { onAuthFailur
       </CardHeader>
       <CardContent>
         {keysRequest.error ? (
-          <p className="py-8 text-center text-sm text-destructive">{t("modelGateway.keysPage.loadError")}</p>
+          // 失败态不再给重试按钮：本卡片头部常驻的「刷新」就是同一个动作，`keysRequest.run` 是它的入口。
+          <EmptyState tone="danger" role="alert" title={t("modelGateway.keysPage.loadError")} className="py-8" />
         ) : keysRequest.loading && !keysRequest.data ? (
-          <p className="py-8 text-center text-sm text-text-muted">{t("admin.loading")}</p>
+          <Spinner label={t("admin.loading")} className="flex py-8" />
         ) : (keysRequest.data?.items.length ?? 0) === 0 ? (
-          <p className="py-8 text-center text-sm text-text-muted">{t("modelGateway.keysPage.empty")}</p>
+          <EmptyState title={t("modelGateway.keysPage.empty")} className="py-8" />
         ) : (
           <>
             <div className="overflow-x-auto rounded-md border">

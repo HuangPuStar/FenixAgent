@@ -6,6 +6,7 @@ import { Search } from "lucide-react";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import { MODELS_NS } from "../../../../i18n/namespace";
+import { copyTextToClipboard } from "../../../../lib/clipboard";
 import { AlgorithmDetailDialog } from "./AlgorithmDetailDialog";
 
 interface Algorithm {
@@ -434,9 +435,9 @@ export function AlgorithmsPage() {
                 variant="ghost"
                 size="sm"
                 className="h-auto p-0 text-xs text-brand font-medium hover:bg-transparent hover:text-brand/80"
-                onClick={() => {
-                  void navigator.clipboard.writeText(algo.code);
-                }}
+                onClick={() =>
+                  copyTextToClipboard(algo.code, { copied: t("algorithms.copied"), failed: t("algorithms.copyFailed") })
+                }
               >
                 复制代码
               </Button>

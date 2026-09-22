@@ -1,9 +1,9 @@
 import { Button } from "@fenix/ui-components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@fenix/ui-components/ui/dialog";
 import { Copy } from "lucide-react";
-import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import { MODELS_NS } from "../../../../i18n/namespace";
+import { copyTextToClipboard } from "../../../../lib/clipboard";
 import type { Algorithm } from "./AlgorithmsPage";
 
 interface AlgorithmDetailDialogProps {
@@ -14,13 +14,6 @@ interface AlgorithmDetailDialogProps {
 
 export function AlgorithmDetailDialog({ algorithm, open, onClose }: AlgorithmDetailDialogProps) {
   const { t } = useTranslation(MODELS_NS);
-  const [copied, setCopied] = useState(false);
-
-  const handleCopy = async () => {
-    await navigator.clipboard.writeText(algorithm.code);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 2000);
-  };
 
   return (
     <Dialog open={open} onOpenChange={(v) => !v && onClose()}>
@@ -39,9 +32,20 @@ export function AlgorithmDetailDialog({ algorithm, open, onClose }: AlgorithmDet
               <DialogTitle className="text-base font-bold">{algorithm.name}</DialogTitle>
               <p className="text-xs text-text-secondary mt-0.5">{algorithm.categories.join(" · ")}</p>
             </div>
-            <Button variant="outline" size="sm" className="gap-1.5 h-8 text-xs flex-shrink-0" onClick={handleCopy}>
+            {/* 复制反馈走 toast（与算法卡片的复制按钮共用 lib/clipboard）：按钮文案不再为 2 秒回落切成「已复制」。 */}
+            <Button
+              variant="outline"
+              size="sm"
+              className="gap-1.5 h-8 text-xs flex-shrink-0"
+              onClick={() =>
+                copyTextToClipboard(algorithm.code, {
+                  copied: t("algorithms.copied"),
+                  failed: t("algorithms.copyFailed"),
+                })
+              }
+            >
               <Copy className="w-3.5 h-3.5" />
-              {copied ? t("algorithms.copied") : t("algorithms.copyCode")}
+              {t("algorithms.copyCode")}
             </Button>
           </div>
         </DialogHeader>

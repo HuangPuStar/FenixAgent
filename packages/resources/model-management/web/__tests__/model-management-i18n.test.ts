@@ -138,8 +138,9 @@ describe("本包 i18n 字典（models 命名空间）", () => {
     // ——该键由 `agent-models-errors.ts` 消费，不是新孤儿键；同组的其余键本轮一并启用，
     // 含此前零引用的 `modelMessageEmpty`（"2xx 但无文本"那条线落定后，由
     // `MODEL_TEST_MESSAGE_RESPONSE_INVALID` 分支消费）。两条 P1 修复不新增、不迁移键，总数保持 405。
-    expect(enKeys.size).toBe(405);
-    expect(zhKeys.size).toBe(405);
+    // 2026-09-22 前端去重（算法页复制按钮补失败反馈）新增 `algorithms.copyFailed` 1 键共 406。
+    expect(enKeys.size).toBe(406);
+    expect(zhKeys.size).toBe(406);
   });
 
   // 字典内不得再嵌一层命名空间前缀：宿主按 MODELS_NS 注册本文件，多一层前缀会让所有键变成 key 回显。
