@@ -96,6 +96,7 @@ export * from "./view/ChatView";
 export * from "./view/CitationLink";
 export * from "./view/chat-navigation-aids";
 export * from "./view/MessageBubble";
+export * from "./view/PublicErrorCard";
 export * from "./view/SystemMessage";
 // 设计层样式：作为分组 barrel 的副作用依赖加载，见文件头说明。
 import "./css/chat.css";

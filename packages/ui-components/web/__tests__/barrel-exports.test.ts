@@ -115,6 +115,7 @@ const EXPECTED_EXPORTS: Record<string, readonly string[]> = {
     "PromptInputTextarea",
     "PromptInputTools",
     "PromptJumpRail",
+    "PublicErrorCard",
     "QuestionPanel",
     "Reasoning",
     "ReasoningContent",

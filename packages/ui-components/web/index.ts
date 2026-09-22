@@ -73,6 +73,7 @@ export * from "./chat/view/ChatView";
 export * from "./chat/view/CitationLink";
 export * from "./chat/view/chat-navigation-aids";
 export * from "./chat/view/MessageBubble";
+export * from "./chat/view/PublicErrorCard";
 export * from "./chat/view/SystemMessage";
 // chat 设计层样式在包内没有唯一宿主组件（见 `web/chat/index.ts` 文件头），由根 barrel 一并加载，
 // 保证「导入 @fenix/ui-components 即得完整 chat 视觉」；组件自导入的样式不在此重复导入。

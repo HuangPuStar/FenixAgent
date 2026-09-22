@@ -308,6 +308,10 @@
       "types": "./web/chat/view/MessageBubble.tsx",
       "default": "./web/chat/view/MessageBubble.tsx"
     },
+    "./chat/view/PublicErrorCard": {
+      "types": "./web/chat/view/PublicErrorCard.tsx",
+      "default": "./web/chat/view/PublicErrorCard.tsx"
+    },
     "./chat/view/SystemMessage": {
       "types": "./web/chat/view/SystemMessage.tsx",
       "default": "./web/chat/view/SystemMessage.tsx"

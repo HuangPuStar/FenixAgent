@@ -11,10 +11,9 @@
 // （`web-package-not-to-app`），故改为宿主经 `WorkflowEditor` 的 `chatPanel` 端口注入——与
 // `ProdViewPage` 的 `chatArea` 端口同型（用户 2026-09-21 裁定）。
 
-import type { PublicErrorInfo } from "@fenix/chat-channel";
 import { ACPMain } from "@fenix/ui-components/chat/shell/ACPMain";
 import type { BoundMcpOption } from "@fenix/ui-components/chat/shell/chat-interface-types";
-import { publicErrorText } from "@fenix/ui-components/chat/view/public-error-text";
+import { PublicErrorCard } from "@fenix/ui-components/chat/view/PublicErrorCard";
 import { Spinner } from "@fenix/ui-components/ui/spinner";
 import { TooltipProvider } from "@fenix/ui-components/ui/tooltip";
 import { Bot } from "lucide-react";
@@ -22,6 +21,15 @@ import { useTranslation } from "react-i18next";
 import { NS } from "@/src/i18n";
 import { useChatPanelPorts } from "./chat-panel-ports";
 import { useChatPanelRuntime } from "./use-chat-panel-runtime";
+
+/**
+ * 已连接会话内那几张错误卡片的外边距。
+ *
+ * 卡片本体在 `@fenix/ui-components`（`chat/view/PublicErrorCard`），按库内约定**不带外边距**——
+ * 同一组件在 `MessageBubble` 里嵌在消息末尾、不需要外边距；本面板把它直接放在面板顶部，
+ * 需要与消息区对齐的左右留白与顶距。三个调用点共用一份，避免同一间距写三遍而各自漂移。
+ */
+const INLINE_ERROR_CARD_CLASS = "mx-4 mt-3";
 
 interface ChatPanelProps {
   agentId: string | null;
@@ -50,6 +58,9 @@ export function ChatPanel({
   boundMcps,
 }: ChatPanelProps) {
   const { t } = useTranslation(NS.AGENT_PANEL);
+  // 错误卡片的标题键 `chat.components.messageBubble.turnError` 归 ui-components 命名空间（卡片本体也在
+  // 那个包里），故单独取一本字典；`tUi` 连同 error 一起喂给 `PublicErrorCard`。
+  const { t: tUi } = useTranslation(NS.UI_COMPONENTS);
   const {
     authState,
     connectionState,
@@ -81,7 +92,7 @@ export function ChatPanel({
 
   // 错误状态
   if ((connectionState === "error" || connectionState === "disconnected") && classifiedError) {
-    return <PublicErrorCard error={classifiedError} className="agent-welcome-empty" />;
+    return <PublicErrorCard error={classifiedError} t={tUi} className="agent-welcome-empty" />;
   }
 
   // 登录态未就绪（user session 加载中）——与"连接中"（WS 建连）语义分离，
@@ -112,12 +123,12 @@ export function ChatPanel({
   if (connectionState === "connected") {
     return (
       <TooltipProvider>
-        {classifiedError && <PublicErrorCard error={classifiedError} />}
-        {actionError && <PublicErrorCard error={actionError.error} />}
+        {classifiedError && <PublicErrorCard error={classifiedError} t={tUi} className={INLINE_ERROR_CARD_CLASS} />}
+        {actionError && <PublicErrorCard error={actionError.error} t={tUi} className={INLINE_ERROR_CARD_CLASS} />}
         {sessionState.agentPublicError &&
           sessionState.agentPublicError.id !== classifiedError?.id &&
           sessionState.agentPublicError.id !== actionError?.error.id && (
-            <PublicErrorCard error={sessionState.agentPublicError} />
+            <PublicErrorCard error={sessionState.agentPublicError} t={tUi} className={INLINE_ERROR_CARD_CLASS} />
           )}
         <ACPMain
           agentId={agentId}
@@ -155,32 +166,6 @@ export function ChatPanel({
     <div className="agent-welcome-empty">
       <p className="title">{autoReconnecting ? t("reconnecting") : t("agentDisconnected")}</p>
       <p className="desc">{autoReconnecting ? t("reconnectingDesc") : t("agentOfflineDesc")}</p>
-    </div>
-  );
-}
-
-function PublicErrorCard({ error, className }: { error: PublicErrorInfo; className?: string }) {
-  // 标题取 `uiComponents` 命名空间：同一张卡片（同样的 class、`role="alert"`、Type/ID 尾注）在
-  // `@fenix/ui-components` 的 `MessageBubble` 里渲染 turn 失败错误，键 `chat.components.messageBubble.turnError`
-  // 的 owner 是该包；宿主旧的 `components.messageBubble.*` 子树在 T6 搬迁后已无宿主消费方（T9c 收敛）。
-  // 命名空间常量经中心表 `NS.UI_COMPONENTS` 取，与 `NS.AGENTS` 等宿主消费包命名空间的先例一致。
-  const { t } = useTranslation(NS.UI_COMPONENTS);
-  return (
-    <div
-      className={
-        className ??
-        "mx-4 mt-3 rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive"
-      }
-      role="alert"
-    >
-      <p className="font-medium">{t("chat.components.messageBubble.turnError")}</p>
-      {/* 正文同样按 `type` 取字典而非 `error.message`：后者是 wire/日志字段且恒为英文，与包内
-          `MessageBubble` 共用 `publicErrorText`，两处卡片的中文界面不再一英一中。 */}
-      <p className="mt-1 whitespace-pre-wrap">{publicErrorText(t, error)}</p>
-      <div className="mt-4 flex flex-wrap gap-x-4 gap-y-1">
-        <span className="break-all">Type: {error.type}</span>
-        <span className="break-all">ID: {error.id}</span>
-      </div>
     </div>
   );
 }

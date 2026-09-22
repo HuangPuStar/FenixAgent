@@ -13,7 +13,7 @@ import { Reasoning, ReasoningContent, ReasoningTrigger } from "../primitives/rea
 import type { AssistantMessageEntry, UserMessageEntry, UserMessageImage } from "../types";
 import { ChatQuoteMessage } from "./ChatQuoteMessage";
 import { type CardEmitter, createCardEmitter } from "./internal/card-emitter";
-import { publicErrorText } from "./public-error-text";
+import { PublicErrorCard } from "./PublicErrorCard";
 import { SystemMessage } from "./SystemMessage";
 
 /**
@@ -299,10 +299,6 @@ export function AssistantBubble({
     };
   }, [emitter, internalEmitter, cardEmitterRef]);
 
-  // turn 失败正文按稳定的 `error.type` 取本地化文案：`error.message` 是 wire/日志字段且恒为英文
-  // （`isPublicError` 以它做帧完整性校验），直接渲染会让中文界面永远显示英文，见 `./public-error-text`。
-  const errorText = useMemo(() => (entry.error ? publicErrorText(t, entry.error) : ""), [entry.error, t]);
-
   return (
     <div className="group/assistant relative min-w-0">
       {/* 内容 — 无卡片背景，直接排版；system-reminder 块渲染为系统消息而非隐藏 */}
@@ -341,19 +337,7 @@ export function AssistantBubble({
           );
         })}
         {/* turn 失败错误（后端 ChatEntry.error 脱敏投影）— 展示在消息末尾 */}
-        {entry.error && (
-          <div
-            className="rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive"
-            role="alert"
-          >
-            <span className="font-medium">{t("chat.components.messageBubble.turnError")}</span>
-            {errorText && <p className="mt-1 whitespace-pre-wrap">{errorText}</p>}
-            <div className="mt-4 flex flex-wrap gap-x-4 gap-y-1 text-xs">
-              <span>Type: {entry.error.type}</span>
-              <span>ID: {entry.error.id}</span>
-            </div>
-          </div>
-        )}
+        {entry.error && <PublicErrorCard error={entry.error} t={t} />}
       </div>
       {visibleText && (
         <div className={MESSAGE_ACTIONS_CLASS} role="group" aria-label={t("chat.components.messageBubble.actions")}>
