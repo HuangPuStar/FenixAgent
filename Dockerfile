@@ -92,8 +92,14 @@ RUN printf 'registry=%s\n' \
 RUN ln -sf /usr/local/bin/bun /usr/local/bin/node \
     && ln -sf /usr/local/bin/bun /usr/local/bin/npm \
     && ln -sf /usr/local/bin/bunx /usr/local/bin/npx
-RUN bun install -g opencode-ai@1.17.12 --registry=https://registry.npmmirror.com
-RUN opencode plugin @konghayao/opencode-hindsight -g
+# peri：本地执行的默认引擎（`RCS_DEFAULT_ENGINE_TYPE` 缺省的 `peri`），
+# 安装方式与 docker/sandbox-peri/Dockerfile 一致；未预装则默认引擎启动即失败。
+RUN export PERI_INSTALL_DIR=/opt/.peri-binary && curl -fsSL https://raw.githubusercontent.com/konghayao/peri/main/scripts/install.sh | bash
+ENV PATH=/opt/.peri-binary:${PATH}
+# 记忆插件：launchSpec.env 带 HINDSIGHT_API_URL 时
+# peri 的 settings.local.json 会开启 hindsight-memory@hindsight
+RUN peri plugin marketplace add vectorize-io/hindsight
+RUN peri plugin install hindsight-memory
 RUN rm -rf /root/.bun/install/cache /tmp/bun-*
 
 COPY --from=build /app/dist ./dist

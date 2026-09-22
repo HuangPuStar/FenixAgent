@@ -127,8 +127,8 @@ describe("registry 服务第 39 轮真实业务覆盖", () => {
 
     expect(result).toMatchObject({ name: "builder", status: "pending" });
     expect(result.initCommand).toContain(`RCS_MACHINE_ID=${result.id}`);
-    expect(result.initCommand).toContain("AGENT_TYPE=opencode");
-    expect(inserts).toEqual([expect.objectContaining({ agentName: "opencode", labels: [], status: "pending" })]);
+    expect(result.initCommand).toContain("AGENT_TYPE=peri");
+    expect(inserts).toEqual([expect.objectContaining({ agentName: "peri", labels: [], status: "pending" })]);
   });
 
   // 自定义引擎和标签必须同时保留在机器记录与初始化命令中。

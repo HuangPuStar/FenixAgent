@@ -284,6 +284,7 @@ function MachineFields({
       </Field>
       <Field label={t(`${prefix}.agentName`)}>
         <select value={form.agentName} onChange={(event) => onChange({ ...form, agentName: event.target.value })}>
+          <option value="peri">Peri</option>
           <option value="opencode">OpenCode</option>
           <option value="ccb">CCB</option>
           <option value="claude-code">Claude Code</option>

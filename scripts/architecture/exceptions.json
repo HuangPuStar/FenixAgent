@@ -111,6 +111,22 @@
       "rationale": "4 处环（环长 2–5）。参与包：@fenix/opencode ↔ acp-link（3 处）；@fenix/opencode（1 处）。环上出现的主要跨包边：@fenix/opencode → acp-link（3 处）、acp-link → @fenix/opencode（3 处）。根因：包内入口自环（handler 以包名导入自身根入口）或包内组合面自环；插件包 ↔ acp-link 双向依赖（acp-link 根入口值导入 handler，handler 反向导入 acp-link）。环的代表边语义、归属依据、上报粒度与环长定义见本台账 `_comment` 的「环的代表边与 owner 归属」段：`from` / `to` 只是 dependency-cruiser 为该环挑出的代表边，不是参与者集合；归属看 `cycle` 数组的参与者包集合。"
     },
     {
+      "rule": "no-circular",
+      "from": "@fenix/peri",
+      "to": "@fenix/peri",
+      "owner": "未排期",
+      "removeWhen": "包的进程管理面不再值导入 acp-link 根入口（`process/acp-link-process-manager.ts` 的 createAcpServer），或 acp-link 根入口不再值导入插件 handler；跨 acp-link 的 2 处按既有裁定不改动",
+      "rationale": "2 处环（环长 4–5）。参与包：@fenix/peri ↔ acp-link（2 处）。环上出现的主要跨包边：@fenix/peri → acp-link（2 处）、acp-link → @fenix/peri（2 处）。根因与本台账中 @fenix/ccb / @fenix/opencode / @fenix/claude-code 同族条目一致：插件包 ↔ acp-link 双向依赖（acp-link 根入口值导入 handler，`process/acp-link-process-manager.ts` 反向导入 acp-link 的 createAcpServer），代表边在包对之间迁移故落在本包内。与同族条目的差异：@fenix/peri 的 handler 用相对路径导入包内模块，不产生「以包名导入自身根入口」的包内自环，因此本包只有这一个指纹。环的代表边语义、归属依据、上报粒度与环长定义见本台账 `_comment` 的「环的代表边与 owner 归属」段。"
+    },
+    {
+      "rule": "no-circular",
+      "from": "acp-link",
+      "to": "@fenix/peri",
+      "owner": "未排期",
+      "removeWhen": "acp-link 根入口不再值导入插件 handler，或 @fenix/peri 的进程管理面不再值导入 acp-link 根入口（同一族的闭合边，与 `@fenix/peri → @fenix/peri` 那条一并消失）",
+      "rationale": "1 处环（环长 4）。参与包：acp-link ↔ @fenix/peri（1 处）。环上相邻的真实边：acp-link/src/server.ts 值导入 createPeriHandler（新增 peri 引擎时按既有四引擎 handler 映射加入），@fenix/peri 经 process/acp-link-process-manager.ts → index.ts 回到 acp-link 根入口。根因与同族条目一致（插件包 ↔ acp-link 双向依赖），本条只是代表边落在 acp-link 侧的那一环。环的代表边语义、归属依据、上报粒度与环长定义见本台账 `_comment` 的「环的代表边与 owner 归属」段。"
+    },
+    {
       "rule": "undeclared-workspace-dependency",
       "from": "@fenix-agent/acp-runtime-cli",
       "to": "acp-link",

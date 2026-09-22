@@ -105,6 +105,15 @@ describe("env validation", () => {
     expect(env.RCS_DEFAULT_ENGINE_TYPE).toBe("ccb");
   });
 
+  // peri 引擎纳入枚举后，把本地默认引擎切到 peri 的部署配置必须能通过校验
+  test("RCS_DEFAULT_ENGINE_TYPE 合法值 'peri' 通过校验", () => {
+    process.env.DATABASE_URL = TEST_DATABASE_URL;
+    process.env.RCS_API_KEYS = TEST_API_KEY;
+    process.env.RCS_DEFAULT_ENGINE_TYPE = "peri";
+    const env = validateEnv();
+    expect(env.RCS_DEFAULT_ENGINE_TYPE).toBe("peri");
+  });
+
   // RCS_DEFAULT_ENGINE_TYPE 非法值
   test("RCS_DEFAULT_ENGINE_TYPE 非法值时校验失败", () => {
     process.env.DATABASE_URL = TEST_DATABASE_URL;

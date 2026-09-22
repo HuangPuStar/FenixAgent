@@ -23,7 +23,7 @@ import type {
 import { nameToSlug, parseLabels, readDefaultMachineId } from "./agent-organizations-utils";
 import { OrganizationsWorkspace } from "./agent-organizations-workspace";
 
-const EMPTY_MACHINE_FORM: MachineFormState = { name: "", labels: "", agentName: "opencode" };
+const EMPTY_MACHINE_FORM: MachineFormState = { name: "", labels: "", agentName: "peri" };
 
 /** 组织页的宿主注入点。 */
 export interface AgentOrganizationsPageProps {
