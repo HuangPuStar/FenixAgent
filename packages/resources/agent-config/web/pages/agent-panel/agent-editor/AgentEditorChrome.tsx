@@ -1,3 +1,4 @@
+import { cn } from "@fenix/ui-components/lib/cn";
 import { Button } from "@fenix/ui-components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@fenix/ui-components/ui/dialog";
 import { Input } from "@fenix/ui-components/ui/input";
@@ -32,6 +33,7 @@ export function AgentEditorHeader({
   name,
   agentId,
   readOnly,
+  loading = false,
   showTemplate,
   templateTriggerRef,
   onTemplate,
@@ -41,6 +43,8 @@ export function AgentEditorHeader({
   name: string;
   agentId: string | null;
   readOnly: boolean;
+  /** 加载壳复用同一头部：运行状态 pill 与保存说明先占位隐藏，避免加载态闪出另一套排版。 */
+  loading?: boolean;
   showTemplate: boolean;
   templateTriggerRef: RefObject<HTMLButtonElement | null>;
   onTemplate: () => void;
@@ -56,7 +60,9 @@ export function AgentEditorHeader({
         <div className="min-w-0">
           <div className="agent-editor-title-row">
             <h2>{title}</h2>
-            <em>{readOnly ? t("editor.readOnlyStatus") : t("editor.runningStatus")}</em>
+            <em className={loading ? "invisible" : undefined}>
+              {readOnly ? t("editor.readOnlyStatus") : t("editor.runningStatus")}
+            </em>
           </div>
           <p>
             {name || t("editor.unnamedAgent")}
@@ -65,7 +71,7 @@ export function AgentEditorHeader({
         </div>
       </div>
       <div className="agent-editor-header-actions">
-        <div className="agent-editor-save-meta">
+        <div className={cn("agent-editor-save-meta", loading && "invisible")}>
           <span>
             <CircleDot />
             {t("editor.runtimeInstances")}

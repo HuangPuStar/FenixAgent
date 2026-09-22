@@ -38,14 +38,14 @@
 .agent-editor-header p {
   margin-top: 2px;
   color: #5e6d85;
-  font-size: 12px;
+  font-size: 11px;
 }
 .agent-editor-save-meta span {
   display: flex;
   align-items: center;
   gap: 5px;
   color: #34445e;
-  font-size: 12px;
+  font-size: 11px;
   font-weight: 650;
 }
 .agent-editor-save-meta span svg {
@@ -54,7 +54,7 @@
 }
 .agent-editor-save-meta small {
   color: #96a1b2;
-  font-size: 12px;
+  font-size: 11px;
 }
 .agent-editor-template-button[data-slot="button"] {
   height: 32px;
@@ -64,7 +64,7 @@
   padding: 0 10px;
   color: #3264bf;
   background: #f5f8ff;
-  font-size: 14px;
+  font-size: 13px;
   font-weight: 700;
   white-space: nowrap;
 }
@@ -114,7 +114,7 @@
 .agent-editor-map-label {
   padding: 0 8px 5px;
   color: #9aa5b6;
-  font-size: 11px;
+  font-size: 10px;
   letter-spacing: 0.14em;
 }
 .agent-editor-map [data-slot="tabs-list"] {
@@ -177,14 +177,14 @@
 }
 .agent-editor-map-copy strong {
   color: inherit;
-  font-size: 14px;
+  font-size: 13px;
   font-weight: 680;
   line-height: 1.35;
 }
 .agent-editor-map-copy small {
   overflow: hidden;
   color: #8d99ab;
-  font-size: 12px;
+  font-size: 11px;
   font-weight: 400;
   line-height: 1.35;
   text-overflow: ellipsis;
@@ -192,7 +192,7 @@
 }
 .agent-editor-map [data-slot="tabs-trigger"] > em {
   color: #929daf;
-  font-size: 11px;
+  font-size: 10px;
   font-weight: 400;
 }
 .agent-editor-readiness {
@@ -202,11 +202,11 @@
   background: #fff;
 }
 .agent-editor-readiness div {
-  font-size: 12px;
+  font-size: 11px;
   line-height: 1.4;
 }
 .agent-editor-readiness div strong {
-  font-size: 12px;
+  font-size: 11px;
   font-weight: 680;
 }
 .agent-editor-readiness i {
@@ -215,7 +215,7 @@
 }
 .agent-editor-readiness p {
   gap: 6px;
-  font-size: 12px;
+  font-size: 11px;
   line-height: 1.45;
 }
 .agent-editor-readiness svg {
@@ -249,7 +249,7 @@
 .agent-editor-section__intro h3 {
   margin: 6px 0 0;
   color: #17233b;
-  font-size: 22px;
+  font-size: 18px;
   font-weight: 730;
   line-height: 1.2;
   letter-spacing: -0.035em;
@@ -258,13 +258,13 @@
   max-width: 590px;
   margin: 8px 0 0;
   color: #738098;
-  font-size: 14px;
+  font-size: 12px;
   line-height: 1.65;
 }
 .agent-editor-summary h3 {
   margin: 7px 0 0;
   color: #17233b;
-  font-size: 22px;
+  font-size: 18px;
   font-weight: 730;
   line-height: 1.2;
   letter-spacing: -0.035em;
@@ -273,7 +273,7 @@
   max-width: 590px;
   margin: 8px 0 0;
   color: #738098;
-  font-size: 14px;
+  font-size: 12px;
   line-height: 1.65;
 }
 .agent-editor-summary {
@@ -329,7 +329,7 @@
 }
 .agent-editor-summary-cards small {
   color: #8996a9;
-  font-size: 12px;
+  font-size: 11px;
   font-weight: 500;
   letter-spacing: 0;
 }
@@ -337,7 +337,7 @@
   margin-top: 2px;
   overflow: hidden;
   color: #32425a;
-  font-size: 14px;
+  font-size: 13px;
   font-weight: 680;
   line-height: 1.35;
   text-overflow: ellipsis;
@@ -348,7 +348,7 @@
   overflow: hidden;
   margin-top: 2px;
   color: #8b97a8;
-  font-size: 12px;
+  font-size: 11px;
   line-height: 1.35;
   white-space: normal;
   -webkit-box-orient: vertical;
@@ -363,11 +363,11 @@
 }
 .agent-editor-summary-note p,
 .agent-editor-summary-safety {
-  font-size: 12px;
+  font-size: 11px;
 }
 .agent-editor-summary-note strong {
   margin-bottom: 2px;
-  font-size: 14px;
+  font-size: 13px;
 }
 .agent-editor-template-picker[data-slot="dialog-content"] {
   gap: 14px;
@@ -388,7 +388,7 @@
 .agent-editor-template-picker__header h2 {
   margin-top: 6px;
   color: #17233b;
-  font-size: 20px;
+  font-size: 17px;
   letter-spacing: -0.025em;
 }
 .agent-editor-template-picker__header p,
@@ -398,10 +398,10 @@
   line-height: 1.55;
 }
 .agent-editor-template-picker__header p {
-  font-size: 14px;
+  font-size: 12px;
 }
 .agent-editor-template-picker__search p {
-  font-size: 12px;
+  font-size: 11px;
 }
 .agent-editor-template-picker__search input {
   border-color: #dce4ef;
@@ -434,14 +434,14 @@
 }
 .agent-editor-template-picker__list strong {
   color: #31425d;
-  font-size: 14px;
+  font-size: 13px;
 }
 .agent-editor-template-picker__list p {
   display: -webkit-box;
   overflow: hidden;
   margin-top: 4px;
   color: #7e8ca1;
-  font-size: 12px;
+  font-size: 11px;
   line-height: 1.5;
   -webkit-box-orient: vertical;
   -webkit-line-clamp: 2;
@@ -450,13 +450,13 @@
   display: block;
   margin-top: 7px;
   color: #2764e7;
-  font-size: 11px;
+  font-size: 10px;
   font-weight: 680;
 }
 .agent-editor-template-picker__list > p {
   padding: 32px 12px;
   color: #8a97aa;
-  font-size: 12px;
+  font-size: 11px;
   text-align: center;
 }
 .agent-editor-footer {
@@ -485,7 +485,7 @@
   border-radius: 9px;
   color: #245bbf;
   background: #eaf2ff;
-  font-size: 14px;
+  font-size: 13px;
   font-weight: 750;
 }
 .agent-editor-footer__state p {
@@ -496,11 +496,11 @@
 }
 .agent-editor-footer__state strong {
   color: #3a4a62;
-  font-size: 14px;
+  font-size: 13px;
 }
 .agent-editor-footer__state small {
   color: #95a0b0;
-  font-size: 12px;
+  font-size: 11px;
 }
 .agent-editor-footer__actions {
   display: flex;
@@ -512,7 +512,7 @@
   height: 32px;
   border-radius: 9px;
   padding-inline: 11px;
-  font-size: 14px;
+  font-size: 13px;
 }
 .agent-editor-footer__actions .is-primary {
   min-width: 127px;

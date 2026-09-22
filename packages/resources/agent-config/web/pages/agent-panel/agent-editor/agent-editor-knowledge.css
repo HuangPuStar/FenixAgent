@@ -46,12 +46,12 @@
 }
 .agent-editor-root .agent-knowledge-block__heading strong {
   color: #31425b;
-  font-size: 14px;
+  font-size: 13px;
   font-weight: 680;
 }
 .agent-editor-root .agent-knowledge-block__heading small {
   color: #8492a7;
-  font-size: 12px;
+  font-size: 11px;
   line-height: 1.5;
 }
 .agent-editor-root .agent-knowledge-block__body {
@@ -93,7 +93,7 @@
   align-items: center;
   gap: 8px;
   color: #33445c;
-  font-size: 14px;
+  font-size: 13px;
   font-weight: 680;
 }
 .agent-editor-root .agent-knowledge-switch strong em {
@@ -101,13 +101,13 @@
   padding: 2px 7px;
   color: #285fbf;
   background: #e4efff;
-  font-size: 11px;
+  font-size: 10px;
   font-weight: 500;
   font-style: normal;
 }
 .agent-editor-root .agent-knowledge-switch small {
   color: #8996a9;
-  font-size: 12px;
+  font-size: 11px;
   line-height: 1.5;
 }
 .agent-editor-root .agent-knowledge-switch > i {

@@ -37,7 +37,7 @@
 }
 .agent-editor-root .agent-editor-group-filter button span {
   overflow: hidden;
-  font-size: 14px;
+  font-size: 13px;
   font-weight: 650;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -48,7 +48,7 @@
   padding: 2px 6px;
   color: #77869c;
   background: #fff;
-  font-size: 11px;
+  font-size: 10px;
   font-style: normal;
   text-align: center;
 }
