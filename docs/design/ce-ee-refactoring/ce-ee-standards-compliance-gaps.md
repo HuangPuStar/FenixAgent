@@ -31,7 +31,7 @@
 | # | 缺口 | 规范条款 | 现状证据 |
 | --- | --- | --- | --- |
 | A1 | `release` 不存在：迁移 → 部署 → 失败判断无统一入口 | §8 脚本表 | 发布编排实为容器启动命令内嵌迁移 |
-| A2 | `deploy/` 只有 `assembly/`，缺 `compose/`、`images/`、`env/`、`manifests/`；编排散落仓库根与 `docker/**`，无 profile/overlay 可独立启停模块 | §8；目录结构 §1 | `find deploy -type f` 仅得 `assembly/ce.json` + `README.md` |
+| A2 | `deploy/` 只有 `assembly/`，缺 `compose/`、`env/`、`manifests/`；编排散落仓库根与 `docker/**`，无 profile/overlay 可独立启停模块（原列于此的 `images/` 属发布物范畴，已按 2026-09-22 裁定降级，见「三」） | §8；目录结构 §1 | `find deploy -type f` 仅得 `assembly/ce.json` + `README.md` |
 | A3 | manifest 无「依赖服务 + 健康检查」字段，部署入口未按装配 profile 生成编排；profile 路径硬编码在应用源码 | §8 | `ModuleManifest` 类型无相关字段 |
 | A4 | 无 `deploy/env` 模板；根 `.env.example` 与 `docker/prod/.env.example` 相对模块 `envDefinitions` 已整体过期（分别缺 20/59、28/59 键） | §5.4、§8 | 部署模板无单一真相来源，env manifest 无可交付物 |
 
@@ -100,7 +100,6 @@
 | H1 | `docs/operations/`（部署、升级、迁移、备份、排障）不存在 | 目录结构 §1 | `docs/` 下无该目录 |
 | H2 | ADR 仅 1 篇（`0001-ce-local-refactoring-and-api-boundaries.md`） | §10.7.4 关键架构决策同步 ADR | `docs/adr/` |
 | H3 | 15 条架构例外 owner 均为「未排期」（10 条 `no-circular` + 5 条 `undeclared-workspace-dependency`），无一有在排承接任务 | §10.7.4「必须逐条登记并写明 owner 与移除条件」 | `scripts/architecture/exceptions.json` |
-| H4 | 根 `scripts/` 不在 tsconfig 的 `include` 内（`tsc --noEmit` 不检查）；包级 tsconfig 不在任何门禁内 | §10.7.4 | `tsc -p packages/agent-runtime/tsconfig.json` 实测 26 条既有错误 |
 
 ---
 
@@ -113,8 +112,9 @@
 | 6 条 `machine ↔ agent-config ↔ agent-runtime ↔ sandbox` 的 `no-circular` 指纹 | owner「未排期」，共同闭合边为 E1 | E1 消除后一并退场 |
 | **migration smoke**（2026-09-22 裁定降级为**优化项**） | 迁移已在真实库经 `docker-compose.yml:65` 增量路径跑通；CI 对空库/升级库的自动化 smoke 不再作为验收必须项，登记见 `standards.md` §11「优化项（非必须）」 | 无。若落地，验收口径为 `standards.md` §11 |
 | **日志内容脱敏**（2026-09-22 裁定降级为**优化项**） | 13 处把 prompt 正文与 Agent 响应截断后写入日志；脱敏不在本轮范围，登记见 `standards.md` §11。注意 §7 的 token / Cookie / 密码 / 连接串红线不受影响，仍为必须 | 无。若落地，验收口径为 `standards.md` §11 |
-| **deploy-preflight**（2026-09-22 裁定降级为**优化项**） | 部署前置的只读校验（env / DB 连通性 / 迁移状态 / 镜像版本 / 依赖服务）；现状由容器启动命令 `bun migrate.js && …` 兜底，属「边做边发现」。五类校验中依赖服务健康检查还需先给 `ModuleManifest` 加字段，不宜作为本轮必须先决项；登记见 `standards.md` §11 | 无。若落地，验收口径为 `standards.md` §11 |
+| **deploy-preflight**（2026-09-22 裁定降级为**优化项**） | 部署前置的只读校验（env / DB 连通性 / 迁移状态 / 镜像版本 / 依赖服务）；现状由容器启动命令 `bun migrate.js && …` 兜底，属「边做边发现」。五类校验中依赖服务健康检查需先给 `ModuleManifest` 加字段，故「部署前置主动探测」不宜作为本轮必须先决项；**该字段本身的必须性来自 §8 明文（未降级），不被本次降级带走，A3 仍计为阻塞缺口**；登记见 `standards.md` §11 | 无。若落地，验收口径为 `standards.md` §11 |
 | **发布物清单 / `build-release`**（2026-09-22 裁定降级为**优化项**） | 发布物附带版本清单 / SBOM / 兼容说明 / migration manifest / env manifest，由 `build-release` 脚本产出；现状只带 `commitId` 且脚本不存在。§8 脚本表与 §10.6.5 已同步收窄，登记见 `standards.md` §11 | 无。若落地，验收口径为 `standards.md` §11 |
+| **`deploy/images/`**（2026-09-22 裁定降级为**优化项**） | 镜像清单与版本信息属发布物范畴，随上条「发布物清单」一并降级。A2 因此只保留 `compose/`（§8 编排与 profile/overlay）、`env/`（§5.4「`deploy/env/*.example` 是部署模板的真相来源」）、`manifests/`（§2.3 `kind`/`capabilities` 参与 profile 与 preflight 校验）三个有明文出处的子目录 | 无。若落地，验收口径为 `standards.md` §11 |
 | **readiness 与发布证据**（2026-09-22 裁定降级为**优化项**） | readiness 端点、备份点、失败回滚、不可逆迁移补偿证据；现状 `/health` 只表达进程存活。§10.6.5、§10.7.3 与 §6.2 规则 5 已同步收窄，登记见 `standards.md` §11 | 无。若落地，验收口径为 `standards.md` §11 |
 | **§6.2 迁移规则「生产先备份并执行 migration preflight」**（2026-09-22 裁定整条移入**优化项**） | 备份点归 §11「readiness 与发布证据」，preflight 归 §11「deploy-preflight」；§6.2 现只保留规则 1–4 | 无。若落地，验收口径为 `standards.md` §11 |
 | **2 个历史迁移 ID 不按 §6.3 命名**（`migrate-agent-config-model-id`、`migrate-skill-storage-by-organization`）（2026-09-22 裁定**规范豁免**） | 二者已在 `data_migrate_record` 落库，改名会被 runner 判为未应用而重跑。§6.3 已修正为「ID 落库即发布契约、已应用的迁移不改名，命名格式只约束新增迁移」，因此不计为未满足 | 无 |
@@ -125,7 +125,7 @@
 ## 四、优先级建议
 
 1. **先修 E1**（`machine → agent-config` 反向边）：它是 6 条例外指纹的共同闭合边，也是 §10.2 唯一未达的「无环 + 特殊依赖经评审」条目；一次删除可同时清掉 6 条台账。修法二选一——改指 agent-config 的窄入口（`./server/runtime`），或改为宿主注入 lookup 端口（与 E2 的归属校验同批）。
-2. **补交付链路 A1–A4**：这是阻塞点最密集的一组，且 §10.6.5 的验收证据几乎全部落在这里。
+2. **补交付链路 A1–A4**：这是阻塞点最密集的一组。四项均有未降级的明文出处——A1（§8 脚本表的 `release`）、A2（§8 的 `deploy/compose` 基础编排 + profile/overlay、§5.4 的 `deploy/env/*.example` 模板、§2.3 的 manifest 参与校验）、A3（§8「模块声明其依赖服务与健康检查；部署入口根据静态装配的模块生成/选择 profile」）、A4（§5.4、§8）。§10.6.5 现已把发布物与发布证据整体指向 §11「优化项」，验收压力只落在这四项本身。
 3. **补数据迁移 B1–B2**：契约字段（`dependsOn`/`verify`/`compensation`）与 `data_migrations/` 目录落位是 §6.3、§10.6.2 的硬要求，需与 carve-out 迁移一并处理。
 4. **收敛 C1**（agent-config 站点路由）：这是唯一一处「资源包自行解释成员角色与可见性」的违规，涉及安全边界（原「协议层直查 DB」一半已于 2026-09-22 修复，见核查附注；原 C2「`/api/mcp` 缺领域校验」已于 2026-09-22 修复）。
 5. **收敛 C2**（route → repository 越层）：面最广的一处——多个资源包的协议层直接调持久化函数并自行拼装组织条件，是「无 Facade/service 收口」的入口，与 C1 的站点路由残留同源。
@@ -135,7 +135,7 @@
 
 ## 核查附注
 
-- 本次核查**不采信** `docs/design/ce-ee-refactoring/review/task-1.*.md` 与阶段计划的结论，全部以规范文档对照当前代码得出；上述各条均带可复核的文件路径或命令证据。
+- 本次核查**不采信**已废弃的逐任务 review 台账与阶段计划的结论（二者已于 `64c1cd44e` 删除），全部以规范文档对照当前代码得出；上述各条均带可复核的文件路径或命令证据。
 - 复核阶段驳回 2 条误报，已订正：
   - `packages/platform/access-control` 的 `@fenix/identity` **不是**死声明——它是 `fenix.module.ts` 的 `dependsOn` 所需的配套编译依赖，`generate-module-registry` 的 `assertDependsOnDeclared` 强制校验（该误报原与下条的 `apps/server` 死声明同列为一项，后者已于 2026-09-22 修复）。
   - `AuthorizedResourceQuery` 的 `access` 可省略是设计认可口径（`ce-access-control-design.md` §3.4），四资源包的边界测试已落地，C9 因此只保留「SQL 层无测试覆盖」的实际差距。
@@ -147,3 +147,12 @@
 - **2026-09-22 已修复**：`web/` 交付物的第三方依赖声明与真实导入面漂移（原 E4）。按 §2.1 的三类判定逐包比对导入面后共修改 12 个 manifest——规则 3（只在测试文件中导入）把 `happy-dom@^20.9.0` 补进 `devDependencies`：agent-config、agent-runtime、channel、knowledge、mcp、model-management、prod-view、skill、task；规则 1（与宿主共用实例的框架库）把 `react-dom@^19.2.6` 补进 `peerDependencies`：agent-runtime、channel、identity、machine、mcp、model-management、prod-view、skill、task，把 `react@^19.2.6` 补进 agent-runtime 与 machine，把 `@tanstack/react-router@^1.170.7` 补进 identity。版本均与根 `package.json` 逐字一致。本条原文有两处需订正：identity 的 `happy-dom` **早已声明**，其真实缺口是 `react-dom` 与 `@tanstack/react-router`，且按规则 1 归 `peerDependencies` 而非 `devDependencies`；`happy-dom` 缺口还包括 `agent-runtime`，不只原文列的 8 个包。判定口径：规则 1 的「该包 `web/` 实际导入」不区分测试与否——同批先例是 `knowledge` 在非测试代码零导入 `react-dom` 的情况下仍把它声明为 peer；规则 3 只覆盖非框架库（原文即举例 `happy-dom` 等 DOM 环境）。`web-runtime` 未纳入：规则 1–3 限定「**资源包** `web/` 交付物」，它是独立 SDK 包，`i18next` 走 `dependencies`、`react-dom` 走 `devDependencies` 的既有形态不受该节约束。
   - 顺带修正三处因补声明而失真的注释（`channel/web/lib/channel-list-state.ts`、`channel/web/__tests__/channel-list-state.test.ts`、`model-management/web/__tests__/vertical-models-filter.test.ts`）：原文以「本包 `package.json` 不含 happy-dom，且任务约束禁止改 `package.json`」解释为何只测纯函数，该理由已不成立，改为陈述稳定理由（被测对象是状态与数据流而非 UI 结构）。
   - 连锁影响（同批处理）：给 agent-runtime 补 `react` peer 后，Biome 的 react domain 由未启用转为启用（该 domain 依包 manifest 内的 react 声明自动判定），由此暴露两个 hooks 中 4 处既有的 `useExhaustiveDependencies` 诊断（`use-chat-state.ts:483`、`:485`，`use-session-state.ts:220`、`:222`）。该模式是刻意的引用驱动依赖——`cleanup` 期 destroy 会清空 store listeners，而 `useSyncExternalStore` 只在 subscribe 引用变化时重订阅，故必须让引用随 `bindEpoch` 变化（SP-B1 回归用例捕获过的真实缺陷）；Biome 对同一行同时给出「未指定 `stores.X.subscribe`」与「`bindEpoch` 多余」两条互相矛盾的建议，属误报，照建议改列 `stores.X.subscribe` 会让每次渲染都重订阅。处置为 4 处带原因的 `biome-ignore` 行级抑制，未改逻辑。
+- **2026-09-22 已修复**：根 `scripts/` 不在任何 tsconfig 的 `include` 内、包级 tsconfig 不在任何门禁内（原 H4，两半均闭合；行已删）。前半由 `1f168fa87` 把 `scripts/**/*.ts` 纳入根 `include`（唯一例外 `scripts/__tests__/` 的 4 条既有错误已在 `tsconfig.json` 注释里登记移除条件），后半为本批。
+  - **覆盖实测**：`packages/` 下 35 个包中有 **14 个此前连 `tsconfig.json` 都没有**（`packages/platform` 3 个 + `packages/resources` 11 个）。根 `tsc --noEmit` 与 `tsc -p apps/web/tsconfig.json` 都从宿主入口**顺 import** 覆盖包源码，未被 import 到的文件、`db/`、`fenix.module.ts` 全无静态检查——覆盖范围取决于「谁引了它」，是结构性盲区而非配置笔误。原文「`tsc -p packages/agent-runtime/tsconfig.json` 实测 26 条既有错误」也未反映真实规模：该配置含 `baseUrl`（TS5101 弃用），**配置级错误会让 tsc 跳过整个程序的语义检查**，把同一程序里 6 条真实类型错误一起藏住；修掉该配置项后立刻暴露。
+  - **门禁**：新增 `scripts/typecheck-packages.ts`（`bun run typecheck:packages`），以**每个包自己的 tsconfig** 为入口逐个 `tsc -p <pkg>/tsconfig.json --noEmit`（8 路并发），按「文件:行:错误码」去重后逐条列出「哪些包的程序报了它」。凡有 `package.json` 的包缺 `tsconfig.json` 即失败（缺包不报等于门禁可被删配置绕过；分组目录与空目录 `packages/acp-server/` 无 `package.json`，自然跳过）。已接入 `scripts/ci.ts`（precheck）与 `.github/workflows/ci.yml` 的 `check` job，验收出处为 §10.7.3 与 §10.2.3（见脚本头部）。
+  - **包级 tsconfig 口径**：新建 14 个、重写 agent-runtime、扩面 agent-config 与 memory，全部**自包含**（不 `extends` 任何包外 tsconfig——包的编译设置不得由宿主应用决定）；`web/**` 面开 `lib: DOM` + `jsx`，`types: ["bun"]`，`rootDir` 指向仓库根，不写 `baseUrl`（TS 6.0 起弃用）。缺 `*.css` 环境声明与第三方声明的包补了 6 个 `web/css.d.ts`，并把「各包自带垫片」（`../../*/web/**/*.d.ts`、`../../*/*/web/**/*.d.ts`）写进各包 `include`——本包经 `exports` 引到的对端文件会在本程序内解析自己的 import，垫片不可见就报 TS2882 / TS7016；垫片归属仍是各包，不保留副本（宿主 `apps/web/tsconfig.json` 已有同款两条）。
+  - **顺带修掉的两处配置级陷阱**：① 上述 agent-runtime 的 `baseUrl`（TS5101）；② `packages/acp-link` 与 `packages/remote-runtime` 的 `outDir`——它在 `noEmit` 下无效，却会让 TS 从 `include` 反推 `rootDir`，把经 `exports` 拉进来的别包源码报成 TS6059（「not under rootDir」的真实触发条件是 `outDir` 存在，不是 `rootDir` 本身；实测删掉 `rootDir` 无效、删掉 `outDir` 即消）。
+  - **生产源码既有错误 7 处于本批逐条修复**：`acp-link/src/client/resolve-executable.ts`（`noUncheckedIndexedAccess` 下 `[0]` 为 `string | undefined`，空结果不得当路径返回）、`acp-link/src/config-options-utils.ts`（同型）、`plugin-ccb/src/process/executable.ts`（同型）、`acp-runtime-cli/src/bin.ts`（`startServer` 的 `tenantId?: string`）、`chat-channel/src/channel/connection-test-helpers.ts`（删掉已从 `ClientConnection` 移除的 `lastClientKeepalive` 残留赋值，全仓只有写、无读）、`knowledge/.../AgentKnowledgeBasesPage.tsx`（`useSearch({ strict: false })` 的参数隐式 any，显式标注）、`skill/src/server/routes/web/config/skills.ts`（同一份服务端源码被两套 lib 编译：包级 DOM 的 `BodyInit` 不接受 `Buffer<ArrayBufferLike>`，宿主无 DOM 连 `BodyInit` 这个名字都没有，故收窄到两侧都存在且在 DOM `BodyInit` 之内的 `ReadableStream`，与同包 `src/server/routes/skills.ts` 既有做法一致）。
+  - **测试文件的既有诊断不修，但不静默**：每次运行打印被忽略条数（当前 `ignored-tests=227`，去重后），移除条件写在脚本头部——测试文件错误清零后删掉 `TEST_FILE_PATTERN` 与该行统计，与根 `tsconfig.json` 的 `scripts/__tests__` 条目同一口径。
+  - **同批删除零消费死页**：`packages/resources/workflow/web/pages/WorkflowPage.tsx`（宿主改文件路由后遗留，四个视图现由 `apps/web/src/routes/agent/_panel/workflow*.tsx` 各自渲染；该页自持子路由、渲染编辑器时缺宿主经 `chatPanel` 端口注入的面板，在包级门禁下报 TS2741），连带删除只被它与自身用例引用的 `web/pages/workflow/workflow-path.ts`，以及 `web/__tests__/workflow-page-route.test.ts` 中随页消失的视图解析断言——该文件里与死页无关的 location 写操作 P0 守卫保留并改名为 `web/__tests__/web-location-write-guard.test.ts`（`web/pages/workflow/WorkflowEditor.tsx` 顶替原死页钉在 `workflow-source-migration.test.ts` 的扫描集自检里）。
+  - **证据**：`bun run typecheck:packages` → `✓ typecheck-packages (pkg=35 errors=0 ignored-tests=227)`（wall 约 32s）；`bun run precheck` 全绿（120s，含新步骤）；`bun run build:web` 通过；`bun test packages/resources/workflow` 722 pass / 0 fail。`apps/server/src/__tests__/architecture-check.test.ts` 的 precheck 步骤清单断言已同步加入 `tsc (packages)`（该用例的作用正是钉住步骤被误删）。

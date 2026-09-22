@@ -99,17 +99,18 @@ function flattenOptions(rawOptions: unknown): Array<Record<string, unknown>> {
 function sanitizeCurrentId(rawId: string, validIds: string[], kind: "model" | "mode"): string {
   if (!rawId) return rawId;
 
-  if (validIds.length === 0) {
+  // 先取首个有效 id：它既是「无可用选项」的判据，也是回退目标。本包 tsconfig 开了
+  // noUncheckedIndexedAccess，`validIds[0]` 的类型是 `string | undefined`，先判空即可同时
+  // 覆盖原「列表为空」分支，无需再单独判 `validIds.length === 0`。
+  const fallback = validIds[0];
+  if (fallback === undefined) {
     // 无可用选项时保留原始值（无法修正）
-    if (rawId) {
-      console.warn(`[config-options] no available ${kind}s to validate current ${kind}Id: "${rawId}"`);
-    }
+    console.warn(`[config-options] no available ${kind}s to validate current ${kind}Id: "${rawId}"`);
     return rawId;
   }
 
   if (validIds.includes(rawId)) return rawId;
 
-  const fallback = validIds[0];
   console.warn(
     `[config-options] current ${kind}Id "${rawId}" not found in available ${kind}s, ` + `falling back to "${fallback}"`,
   );

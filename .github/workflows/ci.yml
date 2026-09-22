@@ -36,6 +36,11 @@ jobs:
       - name: Typecheck (frontend)
         run: bun run typecheck:web
 
+      # 前两步都从宿主入口出发、**顺 import** 覆盖包源码，没有消费方的包/文件因此天然落在检查之外
+      # （14 个包此前连 tsconfig 都没有）。这一步以每个包自己的 tsconfig 为入口逐个检查。
+      - name: Typecheck (packages)
+        run: bun run typecheck:packages
+
       # 装配相关的四项检查必须与 precheck 走同一入口：registry、web contributions 与根源码归属清单
       # 都是生成物，架构门禁与依赖边界门禁共用同一份例外台账，只在本机生效等于没有门禁。
       - name: Generated module registry is up to date

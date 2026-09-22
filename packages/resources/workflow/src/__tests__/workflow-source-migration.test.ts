@@ -224,7 +224,10 @@ describe("Workflow 包边界契约（任务 1.3 §1 静态条件）", () => {
       "src/__tests__/guard-stubs.ts",
       "web/index.ts",
       "web/lib/use-workflow-events.ts",
-      "web/pages/WorkflowPage.tsx",
+      // `web/pages/WorkflowPage.tsx` 曾钉在这里；该页是宿主改文件路由后遗留的零消费死页，
+      // 2026-09-22 随 tsconfig 门禁修复批删除（连带 `pages/workflow/workflow-path.ts` 与其用例），
+      // 这里换上同目录的编辑器，继续钉住 `web/pages/**` 不掉出扫描集。
+      "web/pages/workflow/WorkflowEditor.tsx",
     ]) {
       expect(sourceFiles).toContain(resolve(PKG_ROOT, expected));
     }
