@@ -1,4 +1,4 @@
-import { channelBinding } from "@server/db/schema";
+import { channelBinding } from "@fenix/resource-channel/db";
 import { and, eq } from "drizzle-orm";
 import { getChannelDatabase } from "../db";
 
@@ -21,8 +21,8 @@ export interface IChannelBindingRepo {
  *
  * DB 句柄在每个方法内取（`getChannelDatabase()` → `@fenix/platform-sdk/server`），不在模块作用域
  * 缓存：句柄只能由宿主在基础设施初始化后提供，而平台 registry 会提前导入模块图；同时避免测试里
- * 提前缓存句柄导致宿主替换替身后读到旧连接（宿主 `@server/db` 导出的对象是模块级单例，无法在
- * 包内测试中替换）。
+ * 提前缓存句柄导致宿主替换替身后读到旧连接（旧写法 `import { db } from "@server/db"` 拿到的是宿主的
+ * 模块级单例，无法在包内测试中替换）。
  */
 class PgChannelBindingRepo implements IChannelBindingRepo {
   async list() {

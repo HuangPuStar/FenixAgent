@@ -5,7 +5,7 @@ IM 通道能力的唯一 owner：通道平台描述、Hermes 网关连接与消�
 ## 定位与 owner
 
 - **本包拥有的领域**：通道平台清单与启用状态（`src/server/services/channel-provider.ts`）、Hermes 网关客户端（`services/hermes-client.ts`：连接、心跳、指数退避重连、平台订阅、入站消息分发、出站 `send`）、通道绑定 CRUD 与消息匹配规则（`services/channel-binding.ts`，精确 `chatId` 优先、`chatId === null` 通配其次）、`/web/channels/*` 的六个端点、控制台页面 `web/pages/agent-panel/pages/AgentChannelsPage.tsx` 与 `channels` 命名空间的语言资源。
-- **数据面**：`channel_binding` 表上的规则与唯一数据访问点（`src/server/repositories/channel-binding.ts`）归本包；表定义本身仍在宿主（见「边界残留」）。
+- **数据面**：`channel_binding` 表上的规则与唯一数据访问点（`src/server/repositories/channel-binding.ts`）归本包；表定义自 §1.7 B13 起也归本包 `db/schema.ts`（出口 `@fenix/resource-channel/db`，见「服务端交付物」）。
 - **不属本包**：Environment 的归属查询归 `@fenix/agent-runtime`（本包只声明用到的三个字段）、会话认证守卫归宿主 `apps/server`、基础 UI 归 `@fenix/ui-components`、请求封装归 `@fenix/web-runtime`、身份与授权归 `@fenix/identity` / `@fenix/access-control`（本包不导入，组织隔离靠 Environment 归属比对实现）。
 - **装配面**：`fenix.module.ts` 的 `id: "channel"` / `kind: "resource"` / `dependsOn: []` / `capabilities: ["resource.channel"]`；本包是叶子模块，不要求其它资源模块同批启用。
 
@@ -20,6 +20,7 @@ IM 通道能力的唯一 owner：通道平台描述、Hermes 网关连接与消�
 - **ACP 事件总线端口** `bindAcpEventBusPort` / `getAcpEventBusPort` / `resetAcpEventBusPort`：出站回投的绑定点由宿主持有（`apps/server/src/main.ts`），未绑定时 `get` fail-fast，本包不反向导入 Machine。
 - **组合根** `src/module.ts` 的 `createChannelModule()` 返回进程级单例入口（`hermesClient` / `acpEventBus`），`fenix.module.ts` 通过惰性 `create` 导入，避免 registry 索引把 Elysia 与 Hermes 客户端拖进模块图。
 - **DB 句柄** `getChannelDatabase()`（`@fenix/platform-sdk/server` 的 `getDatabase()`），类型 `NodePgDatabase<Record<string, never>>`，不耦合宿主的 schema 聚合类型；句柄在每个方法内取，不在模块作用域缓存（宿主基础设施初始化前导入模块图是常态）。
+- **表定义出口** `./db`（`db/schema.ts`，§1.7 B13 起）：`channel_binding`、`im_channel`、`im_channel_route` 三张表的定义与 DDL 逐字从宿主迁入，`drizzle.config.ts` 已声明本包 schema 路径，`bun run check:schema-ddl-drift` 零差异。`db/` 不在包 `tsconfig.json` 的 `include` 里（本包没有该文件），包内仓储与外部消费方走同一条 `exports` 解析路径——`src/server/repositories/channel-binding.ts` 用 `@fenix/resource-channel/db` **自我引用**取 `channelBinding`。两条跨包外键（`im_channel.user_id → user.id`、`im_channel_route.environment_id → environment.id`）使 `db/schema.ts` 在**组装期**导入 `@fenix/identity/db` 与 `@fenix/agent-runtime/db` 的列对象（§6.1 例外，不进 `dependsOn`）；`channel_binding.agent_id` 是 varchar 无外键。
 - **宿主的接线要求**（本包不改 `apps/**`，待编排者同批落地）：`createWebChannelsRoutes({ authGuardPlugin, environmentLookup: environmentRepo })`、`initHermesClient(hermesUrl, { platforms: env.HERMES_PLATFORMS })`、`bindAcpEventBusPort(...)`。
 
 ## web 面与 i18n
@@ -35,16 +36,16 @@ IM 通道能力的唯一 owner：通道平台描述、Hermes 网关连接与消�
 
 ## 边界残留
 
-- **表定义仍在宿主**：`@server/db/schema` 是本包唯一的宿主导入（1 处 / 1 个文件，`src/server/repositories/channel-binding.ts`），属任务 1.3 §1 静态条件 1 允许的残留，迁出归 §1.7；契约测试用白名单限定只能读到本包 owner 的 `channelBinding`，读别包的表会直接失败。
+- **宿主内部导入已归零（§1.7 B13）**：迁表前三张表定义在宿主，`@server/db/schema` 是本包唯一的宿主导入（1 处 / 1 个文件，`src/server/repositories/channel-binding.ts`）；B13 把表定义迁入本包 `db/schema.ts` 后该导入随之消失。实测 `command grep -rnE 'from "@server/' packages/resources/channel/{src,web,db} packages/resources/channel/fenix.module.ts | grep -v __tests__` → **0 条**（唯一命中是仓储注释里点名的旧写法示例，不是导入语句）。全仓范围内 `channelBinding` / `imChannel` / `im_channel` 的剩余命中只有两处注释（本包 README、宿主 `apps/server/src/db/schema.ts:12` 与 `packages/agent-runtime/db/schema.ts:34-35` 的迁移说明），无任何代码消费点。契约测试因此改为**零容忍**（任何 `@server/**` 都违规），并新增一条判定：`src/**` / `web/**` 只允许引用本包自己的 `db` 出口，`db/**` 自身的跨包导入限于外键列对象。
 - **宿主接线**（本包不改 `apps/**`，登记给编排者；行号以编写时的 `grep -n` 复核，落盘时再复核一次）：
   - **已切换 — 服务端装配**：`apps/server/src/routes/web/index.ts:8` 取具名工厂、`:42` 为 `createWebChannelsRoutes({ authGuardPlugin, environmentLookup })`；`apps/server/src/main.ts:261` 已 `bindAcpEventBusPort({ getAcpBus })`、`:401` 已 `initHermesClient(hermesUrl, { platforms: env.HERMES_PLATFORMS })`；`apps/generated/module-registry.ts:8` 已含 `@fenix/resource-channel/module`。
   - **已切换 — 宿主 i18n 注册**（`apps/web/src/i18n/index.ts`，§4 共享文件）：`:15` 从子路径导入 `{ CHANNELS_NS, channelsResources }`（`@fenix/resource-channel/web/i18n`），`:121` / `:135` 按 `[CHANNELS_NS]` 登记 `channelsResources.en` / `.zh`。此前 README 记为「待落盘」且称宿主按相对路径 import 已删除的 `web/i18n/{en,zh}/channels.json`，与实测不符，已订正。宿主的 `NS.CHANNELS` 字面量仍是 `"channels"`（`packages/web-runtime/web/i18n/namespace.ts:26`），与包内 `CHANNELS_NS` 一致。
   - **§1.6 WebShell 收敛 — 页面部分已落地**：`apps/web/src/routes/agent/_panel/channels.tsx` 的懒加载说明符已随 T11e 改指 `@fenix/resource-channel/web`。宿主 `apps/web/vite.config.ts` 与根 tsconfig 中 `@/src/api/channels`、`@/src/pages/agent-panel/pages/AgentChannelsPage` 两条文件级 alias 已无消费方，并随 §1.6 T11e-4b 的别名表删除批次一并移除（2026-09-21 实测：`git grep -n '"@/src/api/channels"'`、`"@/src/pages/agent-panel/pages/AgentChannelsPage"` 均 0 命中）。宿主两份别名表（`apps/web/vite.config.ts`、根 `tsconfig.json`）现在只保留宿主自有别名（宿主 `src/`、宿主 i18n 字典、`@server`），本包 `./web` 出口是唯一公开面。
-  - **待落盘 — CE 装配清单**：`deploy/assembly/ce.json` 的 `"resources": []` 需登记 `channel`（复核：`grep -n channel deploy/assembly/ce.json` 当前无命中）。
+  - **已切换 — CE 装配清单**：`deploy/assembly/ce.json` 的 `resources` 已登记 `"channel"`（2026-09-22 B13 复核：`grep -n channel deploy/assembly/ce.json` → 第 8 行）。本条原记为「待落盘」且称 `resources` 为空、grep 无命中，与实测不符，已订正。
 - **架构台账**（`scripts/architecture/exceptions.json`，编排者所有；W2.5 复测现状 = 已达标）：
-  - `web-package-not-to-app`（channel）：entry 已从工作区文件删除（复测：`grep -n '@fenix/resource-channel'` 只剩 2 处——`handwrittenRegistryBaseline` 与 `apps-boundary` 条目，规则为 `web-package-not-to-app` 的 channel 条目不存在）。归零依据：`grep -rnE 'from "@/' packages/resources/channel/web` → 0 命中。**2026-09-21 更新：`handwrittenRegistryBaseline` 已随 1.5f 的 `main.ts` 切换整体删除，复测命中数随之减 1；不影响本条的归零结论。**
-  - `apps-boundary`（channel，owner 1.7）：条目 rationale 已是「实测 1 处导入 / 1 个文件，全部为 `@server/db/schema` 表定义导入」，与复测一致（`grep -rnE 'from "@server/' packages/resources/channel/src` → 仅 `src/server/repositories/channel-binding.ts:1`）。若上游回退这两处削减，需按门禁规则重做（stale 条目与未登记违规都会直接失败）。
-- **`im_channel` / `im_channel_route` 无实现**：宿主 `apps/server/src/db/schema.ts` 已声明这两个「升级目标」表，但除 schema 内部外没有任何代码引用；本包仍以遗留表 `channel_binding` 为数据面。补实现或删表都不在本任务范围，需先确认归属。
+  - `web-package-not-to-app`（channel）：entry 已从工作区文件删除（复测：`grep -n '@fenix/resource-channel' scripts/architecture/exceptions.json` 已无命中——`apps-boundary` 条目也随 §1.7 B13 删除，见下条）。归零依据：`grep -rnE 'from "@/' packages/resources/channel/web` → 0 命中。
+  - `apps-boundary`（channel，owner 1.7）：**已于 §1.7 B13 删除**。删除条件就是上一条「宿主内部导入归零」，B13 迁表后达成（实测 `src`/`web` 零 `@server/**`），台账 17 → 16 条。若上游回退这次削减，门禁会因 stale 条目或未登记违规直接失败。
+- **`im_channel` / `im_channel_route` 仍是死表**：两张「升级目标」表的定义已随 §1.7 B13 从宿主迁入本包 `db/schema.ts`（保持「一张表的定义只在一个 owner 手里」），但全仓除 schema 内部外没有任何代码引用它们，本包仍以遗留表 `channel_binding` 为数据面，也不提供这两张表的仓储。迁入**不是**新增能力，只是表定义换手；补实现或删表都不在本任务范围（移除条件写在 `db/schema.ts` 的头部注释里，归 1.8 之后的独立任务）。
 
 ## 已知项
 

@@ -9,8 +9,10 @@ assembly 使用 `agentRuntime` 槽位，以及稳定 module ID 和 module kind `
 - **本包持有两张表（§1.7 B8，2026-09-22）**：`environment`（运行环境）、`agent_instance`（持久实例）与
   `agentInstanceCreationSourceEnum` 的定义随 B8 从宿主 `apps/server/src/db/schema.ts` 迁到本包
   `db/schema.ts`（出口 `@fenix/agent-runtime/db`，`drizzle.config.ts` 已声明本包 schema 路径，DDL 逐字保留、
-  `bun run check:schema-ddl-drift` 零差异）。包内 6 个文件（5 个生产 + 1 个用例）的取表点随之改指本包出口，
-  宿主 `schema.ts` 改为导入该出口以维持 `im_channel_route.environment_id` 的外键表达（该 FK 随 B13 迁出）。
+  `bun run check:schema-ddl-drift` 零差异）。包内 6 个文件（5 个生产 + 1 个用例）的取表点随之改指本包出口；
+  宿主 `schema.ts` 当时改为导入该出口以维持 `im_channel_route.environment_id` 的外键表达，**该 FK 已随
+  §1.7 B13 迁出**——`im_channel_route` 迁入 `@fenix/resource-channel/db`，列对象的取用方随之转移，宿主那一行
+  import 同批删除（B13 起宿主 schema 不再导入任何 owner 包的表对象）。本包 `db/schema.ts` 的注释已同步订正。
   `src/server/db.ts` 的句柄类型 `AgentRuntimeDatabase` 刻意不写 `typeof schema`，因此迁表未改形状。
 - **两条跨包外键，都只在组装期导入列对象**：`environment.agent_config_id → agent_config.id`（owner
   `@fenix/agent-config`）与两张表的 `user_id` / `owner_user_id` / `created_by_user_id → user.id`（owner

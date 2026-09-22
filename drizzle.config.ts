@@ -11,12 +11,15 @@ export default defineConfig({
   // `@fenix/agent-runtime/db`（任务 1.7 B8）、知识库三张表 `@fenix/resource-knowledge/db`（任务 1.7 B9）
   // 与 Agent 记忆开关表 `@fenix/resource-memory/db`（任务 1.7 B10）、发布视图表
   // `@fenix/resource-prod-view/db`（任务 1.7 B11）、定时任务与执行日志两张表
-  // `@fenix/resource-task/db`（任务 1.7 B12）。
+  // `@fenix/resource-task/db`（任务 1.7 B12）、IM 通道三张表 `@fenix/resource-channel/db`
+  // （任务 1.7 B13，B 块最后一批）。
+  // B13 之后宿主 schema 只剩身份表转出、`data_migrate_record` 与 D3 裁定的三张旧授权栈表。
   schema: [
     "./apps/server/src/db/schema.ts",
     "./packages/platform/identity/db/schema.ts",
     "./packages/agent-runtime/db/schema.ts",
     "./packages/resources/agent-config/db/schema.ts",
+    "./packages/resources/channel/db/schema.ts",
     "./packages/resources/knowledge/db/schema.ts",
     "./packages/resources/machine/db/schema.ts",
     "./packages/resources/mcp/db/schema.ts",

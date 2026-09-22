@@ -31,8 +31,10 @@ import {
  * `db/**`**，其注释点名的就是 `environment.agent_config_id` 这条跨模块外键——即本文件是其唯一的合法落点；
  * `src/**` 侧的反向禁则不变（本包读 Agent 配置只经宿主注入的 `AgentConfigLookupPort`）。
  *
- * 宿主在 B8 之后仍导入 `environment`：它的 `im_channel_route.environment_id` 需要该表对象，而
- * `im_channel_route` 属 B13（channel）迁移批次；届时宿主这一行 import 也随之删除。
+ * 宿主在 B8 与 B13 之间曾导入 `environment`：它的 `im_channel_route.environment_id` 需要该表对象，而
+ * `im_channel_route` 属 B13（channel）迁移批次。B13 已交付——该表迁入 `@fenix/resource-channel/db`，
+ * 外键列对象的取用方随之转移，宿主 `apps/server/src/db/schema.ts` 那一行 import 同批删除（B13 起宿主
+ * schema 不再导入任何 owner 包的表对象）。
  */
 
 /** 实例创建来源：`user` 手工新建、`api` 由 HTTP 入口自动创建、`workflow` 由工作流节点创建。 */

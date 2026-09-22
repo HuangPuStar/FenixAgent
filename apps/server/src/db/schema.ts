@@ -1,46 +1,23 @@
-import { environment } from "@fenix/agent-runtime/db";
-import { user } from "@fenix/identity/db";
-
 /**
- * 宿主只从已迁出的 owner 包**取用**表对象，不重复定义。
+ * 宿主 schema（任务 1.7 B 块收口后的最终形态）。
  *
- * 身份表由 `@fenix/identity/db` 拥有（CE 阶段 2 任务 1.2），这里只转出、不重复定义；Agent 配置聚合的
- * 五张表由 `@fenix/agent-config/db` 拥有（任务 1.7 B7）；`environment` / `agent_instance` 由
- * `@fenix/agent-runtime/db` 拥有（任务 1.7 B8）。宿主是唯一同时持有全部 owner 表定义的层：宿主的业务表
- * 需要它们作为外键目标，而 Drizzle 的 `.references()` 只接受列对象、没有字符串形式。它们与宿主表共用
- * 同一条迁移链（`drizzle.config.ts` 同时声明全部 schema 文件），因此并置不会产生第二份真相；跨包读取
- * 身份数据仍必须走 `IdentityDirectory`，读 Agent 配置仍必须走 `@fenix/agent-config` 的服务端入口，
- * 读运行环境与实例仍必须走 `@fenix/agent-runtime` 的服务端入口，不得依赖本文件。
- * 组装期例外的口径与边界见 `docs/design/ce-ee-refactoring/ce-ee-engineering-standards.md` §6.1。
+ * 本文件只留三类内容：① 身份表定义由 `@fenix/identity/db` 拥有（CE 阶段 2 任务 1.2），这里只**
+ * 转出**、不重复定义；② 宿主自有表 `data_migrate_record`（部署期数据迁移执行记录）；③ D3 裁定留在
+ * 宿主的三张旧授权栈表（`resource_permission` + 3 个 pgEnum、`share_link`、`share_event_snapshot`，
+ * 见 review/task-1.7-db-config-migration.md §8.1 第 1 条——它们无 owner、也无任何外键指向，因此不参与
+ * 1.7 的批次）。
  *
- * 本文件里 `agentConfig` 的最后一个使用点（`scheduled_task_v2.agent_id`，`onDelete: "set null"`）在 B12 随该表
- * 迁入 `@fenix/resource-task/db`，因此 `@fenix/agent-config/db` 这个 import 同批删除——宿主侧其余四处
- * `agent_config.id` 外键早已随表迁走：`prod_view.agent_id` 在 B11 随该表迁入 `@fenix/resource-prod-view/db`，
- * `agent_memory_config.agent_config_id` 在 B10 随该表迁入 `@fenix/resource-memory/db`，
- * `environment.agent_config_id` 在 B8 随该表迁入 `@fenix/agent-runtime/db`，
- * `agent_knowledge_binding.agent_config_id` 在 B9 随三张知识库表迁入 `@fenix/resource-knowledge/db`。
- * 订正：B11 之前本段曾把 `task_execution_log` 记为 `agentConfig` 的使用点，实测该表**没有** `agent_config`
- * 外键（`task_id` 无外键，v1/v2 任务 ID 混存），宿主侧唯一真正的使用点是 `scheduled_task_v2.agent_id`。
- * `environment` 这个 import 只剩一个使用点：`im_channel_route.environment_id`（B13 迁 channel 后本文件
- * 连这一行也不再需要）。
+ * **B13 之后本文件不再导入任何 owner 包的表对象**：业务表定义随任务 1.7 的 B1–B13 全部迁至各 owner
+ * 包的 `db/schema.ts`，跨包外键的列对象来源也随之离开（`@fenix/agent-config/db` 随 B12、`environment`
+ * 随 B13 删除——后者的最后使用点是 `im_channel_route.environment_id`，随该表迁入
+ * `@fenix/resource-channel/db`）。因此宿主不再是「同时持有全部 owner 表定义的装配层」：那条组装期
+ * 例外的说明只对**调用期**仍然成立（§6.1）。跨包读身份数据走 `IdentityDirectory`，读各 owner 领域
+ * 数据走各自的服务端入口或注入端口，不得依赖本文件。
  *
- * **B7 之后本文件不再导入的包**：`@fenix/model-management/db`、`@fenix/resource-machine/db`、
- * `@fenix/resource-mcp/db`、`@fenix/resource-skill/db`——它们此前只被 `agent_config.model_id` /
- * `agent_config.machine_id` / `agent_config_mcp.mcp_server_id` / `agent_config_skill.skill_id` 四处外键
- * 取用，这四张表随 B7 迁入 `@fenix/agent-config/db` 后，本文件连 `import` 一行也不再需要（宿主其它
- * 位置仍是这些包的合法消费方，例如 `services/data-migrates/` 直接按归属取它们的 `db/` 出口）。
- * **B9 之后同理**：`knowledge_base` / `knowledge_resource` / `agent_knowledge_binding` 三张表迁入
- * `@fenix/resource-knowledge/db`，宿主对它们本就只有定义、没有任何引用方（`apps/server/src/__tests__/
- * db-schema.test.ts` 用自写的 SQLite DDL，不取 Drizzle 表对象），因此本文件连一个 import 都不留。
- *
- * 任务 1.7 B6 的 Workflow 九张领域表、B8 的 `agent_instance` 与 B9 的知识库三张表从未出现在这份清单里：
- * B6 九张表的表间外键在 `@fenix/resource-workflow/db` 内闭合；`agent_instance` 的外键目标是 `environment`
- * 与 `user`，知识库三张表的外键目标是 `agent_config` / `user` 与自身——都不是宿主表，宿主任何表都不引用
- * 它们。**B10 之后同理**：`agent_memory_config` 迁入 `@fenix/resource-memory/db`，宿主对它的唯一引用方
- * 是 memory 包的仓储（已改指该出口），因此这里不留转出、连 import 也不必新增。**B11 同理**：`prod_view`
- * 迁入 `@fenix/resource-prod-view/db`，宿主对它的唯一引用方是 prod-view 包的仓储与包内测试替身（均已改指
- * 该出口），本文件同批删掉表定义与两个行类型。
+ * 迁移链是全部 owner schema 与宿主 schema 的共同产物：`drizzle.config.ts` 必须同时声明它们，否则
+ * `db:generate` 会把漏声明的一族误判为已删除。各批的迁移记录与实测见上引 review 文档 §7.10–§7.25。
  */
+
 export {
   account,
   apikey,
@@ -53,7 +30,6 @@ export {
 } from "@fenix/identity/db";
 
 import {
-  boolean,
   index,
   integer,
   jsonb,
@@ -108,70 +84,6 @@ export const shareEventSnapshot = pgTable("share_event_snapshot", {
   events: jsonb("events").notNull(),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });
-
-// IMChannel 一等资源表（升级自 channel_binding）
-export const imChannel = pgTable(
-  "im_channel",
-  {
-    id: uuid("id").primaryKey().defaultRandom(),
-    userId: text("user_id")
-      .notNull()
-      .references(() => user.id, { onDelete: "cascade" }),
-    organizationId: text("organization_id").notNull(),
-    name: varchar("name").notNull(),
-    description: text("description"),
-    platform: varchar("platform").notNull(),
-    credentials: jsonb("credentials").notNull(),
-    status: varchar("status", { length: 20 }).notNull().default("disconnected"),
-    lastError: text("last_error"),
-    enabled: boolean("enabled").notNull().default(true),
-    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
-    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
-  },
-  (table) => ({
-    orgPlatformIdx: index("idx_im_channel_org_platform").on(table.organizationId, table.platform),
-  }),
-);
-
-// IMChannel 路由规则表
-export const imChannelRoute = pgTable(
-  "im_channel_route",
-  {
-    id: uuid("id").primaryKey().defaultRandom(),
-    channelId: uuid("channel_id")
-      .notNull()
-      .references(() => imChannel.id, { onDelete: "cascade" }),
-    chatId: varchar("chat_id"),
-    environmentId: varchar("environment_id")
-      .notNull()
-      .references(() => environment.id, { onDelete: "cascade" }),
-    enabled: boolean("enabled").notNull().default(true),
-    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
-    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
-  },
-  (table) => ({
-    channelIdx: index("idx_im_channel_route_channel").on(table.channelId),
-    chatIdx: index("idx_im_channel_route_chat").on(table.channelId, table.chatId),
-  }),
-);
-
-// Hermes 通道绑定表（遗留，保留兼容）
-export const channelBinding = pgTable(
-  "channel_binding",
-  {
-    id: uuid("id").primaryKey().defaultRandom(),
-    platform: varchar("platform").notNull(),
-    chatId: varchar("chat_id"),
-    agentId: varchar("agent_id").notNull(),
-    enabled: boolean("enabled").notNull().default(true),
-    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
-    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
-  },
-  (table) => ({
-    platformIdx: index("idx_channel_binding_platform").on(table.platform),
-    agentIdx: index("idx_channel_binding_agent_id").on(table.agentId),
-  }),
-);
 
 // 一次性数据迁移执行记录（由部署期入口 `db/data-migration-runner.ts` 写入，不随应用启动执行）
 export const dataMigrateRecord = pgTable(

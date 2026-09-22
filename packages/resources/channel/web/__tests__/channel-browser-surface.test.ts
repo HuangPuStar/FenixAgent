@@ -161,15 +161,24 @@ describe("channel web 入口浏览器可达面", () => {
   });
 
   // 负例（人为注入，不建 fixture 文件）：`<pkg>/server` 是本包真实存在的 exports 出口，其后是
-  // elysia / drizzle / agent-runtime 的仓储链（含 `@server/db`）。两条断言缺一不可——只断言「有违规」
-  // 会被「递归失效、说明符本身被当成外部依赖」满足；只断言「进到了服务端实现」则漏掉拦截能力。
+  // elysia / drizzle / agent-runtime 的仓储链。两条断言缺一不可——只断言「有违规」会被「递归失效、
+  // 说明符本身被当成外部依赖」满足；只断言「进到了服务端实现」则漏掉拦截能力。
   test("负例：注入真实的 ./server 出口时递归进入服务端实现并触发拦截", () => {
     const poisoned = walkValueGraph(WEB_ENTRY, [`${PKG_NAME}/server`]);
     expect(poisoned.files).toContain(join(PKG_ROOT, "src", "server.ts"));
     const serverDir = `${join(PKG_ROOT, "src", "server")}${sep}`;
     expect(poisoned.files.filter((file) => file.startsWith(serverDir)).length).toBeGreaterThan(0);
+    // 「递归够深」由两条深度断言承担：走到包内仓储，并经仓储对 `./db` 出口的**自我引用**到达表定义（跨包
+    // exports 的解析路径与外部消费方同一条）。§1.7 B13 起宿主 `@server/*` 在包内归零，若只用「`@server/`
+    // 非空」证明递归有效，载体消失后断言会恒真；故改为零容忍 + 深度断言（B11 / B12 同形）。
+    expect(poisoned.files).toContain(join(PKG_ROOT, "src", "server", "repositories", "channel-binding.ts"));
+    expect(poisoned.files).toContain(join(PKG_ROOT, "db", "schema.ts"));
+    const nodeBuiltins = poisoned.references.filter((ref) => ref.specifier.startsWith("node:"));
     const hostServer = poisoned.references.filter((ref) => ref.specifier.startsWith("@server/"));
-    expect(offendersOf(hostServer).length).toBeGreaterThan(0);
+    expect(offendersOf(nodeBuiltins).length).toBeGreaterThan(0);
+    // §1.7 B13 实测（探针，2026-09-22）：注入前为 304 文件 / 981 引用、`@server/` 恰 1 条（发自本包仓储的
+    // `@server/db/schema` 表定义导入）；表迁出后 305 文件 / 984 引用、`@server/` **0 条**。
+    expect(offendersOf(hostServer)).toEqual([]);
   });
 
   // ./web 出口的契约：package.json 必须指向 web/index.ts，否则宿主解析到别的文件时守卫失去意义。

@@ -4,9 +4,9 @@ import type { NodePgDatabase } from "drizzle-orm/node-postgres";
 /**
  * Channel 仓储使用的 DB 句柄类型。
  *
- * 表定义当前仍由宿主 `@server/db/schema` 提供（表定义迁出归任务 1.7，见任务 1.3 实施记录 §四），
- * 但句柄类型刻意不写成 `typeof schema` 聚合类型：本包仓储只做 `select` / `insert` / `update` /
- * `delete`，不使用 `db.query.*` 关系查询，表定义迁出后这里无需改动。
+ * 表定义自任务 1.7 B13 起由本包 `db/schema.ts` 持有（出口 `@fenix/resource-channel/db`），句柄类型仍刻意
+ * 不写成 `typeof schema` 聚合类型：本包仓储只做 `select` / `insert` / `update` / `delete`，不使用
+ * `db.query.*` 关系查询——表定义从宿主迁入本包时这里确实一行未改（与 task / prod-view 同形）。
  */
 export type ChannelDatabase = NodePgDatabase<Record<string, never>>;
 
