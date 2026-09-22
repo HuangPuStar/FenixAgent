@@ -1,4 +1,5 @@
 import { AdminKeyGate } from "@fenix/ui-components/config/AdminKeyGate";
+import { formatDateTime } from "@fenix/ui-components/lib/format";
 import { Badge } from "@fenix/ui-components/ui/badge";
 import { Button } from "@fenix/ui-components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@fenix/ui-components/ui/card";
@@ -203,9 +204,7 @@ function LogResults({ result }: { result: SystemLogSearchResult }) {
               className="space-y-2 rounded-md border border-border bg-card p-3"
             >
               <div className="flex flex-wrap items-center gap-2 text-xs text-text-muted">
-                {entry.timestamp && (
-                  <time dateTime={entry.timestamp}>{new Date(entry.timestamp).toLocaleString()}</time>
-                )}
+                {entry.timestamp && <time dateTime={entry.timestamp}>{formatDateTime(entry.timestamp)}</time>}
                 {entry.level && (
                   <Badge variant={entry.level.toLowerCase() === "error" ? "destructive" : "secondary"}>
                     {entry.level}

@@ -8,6 +8,7 @@
 import { integrityRows, machineReverseIndex, mergeFlatRows } from "@fenix/resource-sandbox/web";
 import { AdminKeyGate } from "@fenix/ui-components/config/AdminKeyGate";
 import { EmptyState } from "@fenix/ui-components/config/EmptyState";
+import { formatClockTime } from "@fenix/ui-components/lib/format";
 import { Badge } from "@fenix/ui-components/ui/badge";
 import { Button } from "@fenix/ui-components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@fenix/ui-components/ui/card";
@@ -207,7 +208,7 @@ function OverviewCards({ view }: { view: AcpLinkSnapshot }) {
     { label: t("overview.total"), value: view.total },
     { label: t("overview.machines"), value: view.trees.byEntity.length },
     { label: t("overview.mismatched"), value: view.integrity.mismatched },
-    { label: t("overview.lastUpdated"), value: formatTime(view.generatedAt) },
+    { label: t("overview.lastUpdated"), value: formatClockTime(view.generatedAt) },
   ];
   return (
     <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
@@ -221,10 +222,6 @@ function OverviewCards({ view }: { view: AcpLinkSnapshot }) {
       ))}
     </div>
   );
-}
-
-function formatTime(iso: string): string {
-  return new Date(iso).toLocaleTimeString();
 }
 
 function LoadingSkeleton() {

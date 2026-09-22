@@ -4,6 +4,7 @@ import { FormDialog } from "@fenix/ui-components/config/FormDialog";
 import { AppHeader } from "@fenix/ui-components/layout/app-header";
 import { AppPage } from "@fenix/ui-components/layout/app-page";
 import { copyTextToClipboard } from "@fenix/ui-components/lib/clipboard";
+import { formatDate } from "@fenix/ui-components/lib/format";
 import { Button } from "@fenix/ui-components/ui/button";
 import { Input } from "@fenix/ui-components/ui/input";
 import { Label } from "@fenix/ui-components/ui/label";
@@ -16,7 +17,7 @@ import { useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
 import { type ApiKeyInfo, apiKeyApi } from "../../../api/api-keys";
-import { filterApiKeys, formatApiKeyDate, getApiKeyCreateErrorMessage } from "./agent-api-keys-utils";
+import { filterApiKeys, getApiKeyCreateErrorMessage } from "./agent-api-keys-utils";
 import "./agent-api-keys.css";
 import { NS } from "@fenix/web-runtime/i18n/namespace";
 
@@ -93,13 +94,13 @@ function ApiKeyTable({
                   <code>{key.prefix.slice(0, 10)}••••••••</code>
                 </TableCell>
                 <TableCell>
-                  <time>{formatApiKeyDate(key.createdAt, i18n.language, t("date.never"))}</time>
+                  <time>{formatDate(key.createdAt, { locale: i18n.language, fallback: t("date.never") })}</time>
                 </TableCell>
                 <TableCell>
-                  <time>{formatApiKeyDate(key.lastUsedAt, i18n.language, t("date.neverUsed"))}</time>
+                  <time>{formatDate(key.lastUsedAt, { locale: i18n.language, fallback: t("date.neverUsed") })}</time>
                 </TableCell>
                 <TableCell>
-                  <time>{formatApiKeyDate(key.expiresAt, i18n.language, t("date.neverExpires"))}</time>
+                  <time>{formatDate(key.expiresAt, { locale: i18n.language, fallback: t("date.neverExpires") })}</time>
                 </TableCell>
                 <TableCell className="api-key-action-column">
                   <Button variant="ghost" size="icon-sm" onClick={() => onRevoke(key.id)} aria-label={t("btn.revoke")}>

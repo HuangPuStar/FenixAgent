@@ -2,6 +2,7 @@
 // 实例行：左侧实例/用户，中间 Machine/外部沙盒 ID/心跳，右侧状态点与动作。
 // 自原 AdminSandboxPage.tsx 拆出，字段与布局保持原样。
 
+import { formatDateTime } from "@fenix/ui-components/lib/format";
 import { Button } from "@fenix/ui-components/ui/button";
 import { useTranslation } from "react-i18next";
 
@@ -50,7 +51,7 @@ export function InstanceRow({ instance, onDetail, onProviderPayload, onDelete, o
         </span>
         <span className="block">
           <b>{t("lastHeartbeatAt")}：</b>
-          {instance.lastHeartbeatAt ? new Date(instance.lastHeartbeatAt).toLocaleString() : "-"}
+          {formatDateTime(instance.lastHeartbeatAt, { fallback: "-" })}
         </span>
       </span>
       <span className="pt-1">
