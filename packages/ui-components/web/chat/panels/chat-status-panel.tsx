@@ -37,6 +37,27 @@ export function fileNameFromPath(path: string): string {
   return normalized.slice(normalized.lastIndexOf("/") + 1) || path;
 }
 
+/**
+ * 行首状态图标配色（源 `.chat-status-list [data-status="…"] svg`）。
+ *
+ * 未列出的状态（含 `pending` / `cancelled`）沿用默认灰 `#8c9bb0`；尺寸与配色一起给出，
+ * 因为原规则同时作用于 `.chat-status-list svg`（15px）与状态色。
+ */
+function statusIconClass(status: string): string {
+  if (status === "completed") return "h-[15px] w-[15px] text-[#25a47a]";
+  if (status === "in_progress" || status === "running") return "h-[15px] w-[15px] text-[#d28a27]";
+  if (status === "failed") return "h-[15px] w-[15px] text-[#db5d56]";
+  return "h-[15px] w-[15px] text-[#8c9bb0]";
+}
+
+/** 状态列表容器（三支共用）：源 `.chat-status-list` 的 grid/内边距 + 组件原有的滚动约束。 */
+const STATUS_LIST_CLASS =
+  "grid max-h-[min(16rem,35vh)] overflow-y-auto overscroll-contain px-3 pt-0.5 pb-2.5 [scrollbar-gutter:stable]";
+
+/** 列表行（todos 的 div / tasks 与 changes 的 button）：源 `.chat-status-list > div, > button`。 */
+const STATUS_ROW_CLASS =
+  "grid min-h-[29px] grid-cols-[18px_minmax(0,1fr)_auto] items-center gap-2 text-left text-[#526178]";
+
 interface ChatStatusPanelProps {
   todos: TodoItem[];
   tasks: readonly PeriTaskViewProjection[];
@@ -125,9 +146,18 @@ export function ChatStatusPanel({
   const completedTodos = todos.filter((todo) => todo.status === "completed").length;
 
   return (
-    <section className="chat-status-panel" aria-label={t("chat.components.chatStatus.title")}>
-      <header className="chat-status-header">
-        <div className="chat-status-tabs" role="tablist" aria-label={t("chat.components.chatStatus.title")}>
+    <section
+      // 源 `.chat-interaction-stack/​.chat-status-panel`（宽度台阶）与 `.chat-status-panel`（半圆卡）两段。
+      className="mx-auto w-[min(756px,calc(100%-64px))] [@media(max-width:720px)]:w-[calc(100%-52px)] overflow-hidden rounded-t-[14px] border-x border-t border-b-0 border-[#dde4ee] bg-white shadow-[0_12px_34px_rgb(30_64_120_/_8%)]"
+      data-slot="chat-status-panel"
+      aria-label={t("chat.components.chatStatus.title")}
+    >
+      <header className="flex min-h-[40px] w-full items-center gap-[9px] px-[9px] py-1 text-[#33445d]">
+        <div
+          className="flex min-w-0 items-center gap-0.5"
+          role="tablist"
+          aria-label={t("chat.components.chatStatus.title")}
+        >
           {todos.length > 0 && (
             <StatusTabButton
               active={activeTab === "todo"}
@@ -158,7 +188,7 @@ export function ChatStatusPanel({
         </div>
         <button
           type="button"
-          className="chat-status-collapse"
+          className="ml-auto grid h-7 w-7 place-items-center text-[#8290a5] [&>svg]:w-[15px]"
           aria-label={t("chat.components.chatStatus.toggle")}
           aria-expanded={!collapsed}
           onClick={() => setCollapsed((value) => !value)}
@@ -194,12 +224,16 @@ function StatusTabButton({
       type="button"
       role="tab"
       aria-selected={active}
-      className={active ? "is-active" : undefined}
+      // 源 `.chat-status-tabs button` 与 `.is-active` 两态（互斥，不靠生成顺序）；窄屏隐藏页签文字。
+      className={cn(
+        "flex min-h-[30px] items-center gap-1.5 rounded-[7px] px-2 py-1 text-[12px]",
+        active ? "bg-[#f1f5fc] text-[#285eb8]" : "text-[#748197]",
+      )}
       onClick={onClick}
     >
-      <Icon />
-      <span>{label}</span>
-      <small>{count}</small>
+      <Icon className="h-[15px] w-[15px]" />
+      <span className="[@media(max-width:720px)]:hidden">{label}</span>
+      <small className="text-[10px] text-[#8a96a8]">{count}</small>
     </button>
   );
 }
@@ -207,17 +241,18 @@ function StatusTabButton({
 function TodoRows({ todos }: { todos: TodoItem[] }) {
   const { t } = useTranslation(UI_COMPONENTS_NS);
   return (
-    <div
-      className="chat-status-list max-h-[min(16rem,35vh)] overflow-y-auto overscroll-contain [scrollbar-gutter:stable]"
-      role="tabpanel"
-    >
+    <div className={STATUS_LIST_CLASS} data-slot="chat-status-list" role="tabpanel">
       {todos.map((todo) => {
         const Icon = todo.status === "completed" ? CheckCircle2 : todo.status === "in_progress" ? Clock3 : Circle;
         return (
-          <div key={todo.content} data-status={todo.status}>
-            <Icon />
-            <span>{todo.status === "in_progress" && todo.activeForm ? todo.activeForm : todo.content}</span>
-            <small>{t(`chat.components.chatStatus.todoStatus.${todo.status}`)}</small>
+          <div key={todo.content} className={STATUS_ROW_CLASS} data-status={todo.status}>
+            <Icon className={statusIconClass(todo.status)} />
+            <span className="overflow-hidden text-[11.5px] text-ellipsis whitespace-nowrap">
+              {todo.status === "in_progress" && todo.activeForm ? todo.activeForm : todo.content}
+            </span>
+            <small className="text-[10px] text-[#8a96a8]">
+              {t(`chat.components.chatStatus.todoStatus.${todo.status}`)}
+            </small>
           </div>
         );
       })}
@@ -237,13 +272,13 @@ function TaskRows({
   onOpenTask?: (task: PeriTaskViewProjection) => void;
 }) {
   const { t } = useTranslation(UI_COMPONENTS_NS);
-  if (!loaded) return <p className="chat-status-note">{t("chat.components.periTask.loading")}</p>;
+  if (!loaded)
+    return <p className="px-3 pt-1.5 pb-2.5 text-[11px] text-[#7f8ca0]">{t("chat.components.periTask.loading")}</p>;
   return (
-    <div
-      className="chat-status-list max-h-[min(16rem,35vh)] overflow-y-auto overscroll-contain [scrollbar-gutter:stable]"
-      role="tabpanel"
-    >
-      {reconnecting && <p className="chat-status-note">{t("chat.components.periTask.reconnecting")}</p>}
+    <div className={STATUS_LIST_CLASS} data-slot="chat-status-list" role="tabpanel">
+      {reconnecting && (
+        <p className="px-3 pt-1.5 pb-2.5 text-[11px] text-[#7f8ca0]">{t("chat.components.periTask.reconnecting")}</p>
+      )}
       {tasks.map((task) => {
         const Icon =
           task.status === "completed"
@@ -258,13 +293,16 @@ function TaskRows({
           <button
             key={task.taskId}
             type="button"
+            className={STATUS_ROW_CLASS}
             data-status={task.status}
             disabled={!canOpen}
             onClick={() => canOpen && onOpenTask(task)}
           >
-            <Icon />
-            <span>{task.title || t("chat.components.periTask.unknownTitle")}</span>
-            <small>{t(`chat.components.periTask.status.${task.status}`)}</small>
+            <Icon className={statusIconClass(task.status)} />
+            <span className="overflow-hidden text-[11.5px] text-ellipsis whitespace-nowrap">
+              {task.title || t("chat.components.periTask.unknownTitle")}
+            </span>
+            <small className="text-[10px] text-[#8a96a8]">{t(`chat.components.periTask.status.${task.status}`)}</small>
           </button>
         );
       })}
@@ -275,15 +313,15 @@ function TaskRows({
 function ChangeRows({ files, onPreviewFile }: { files: ChangedFile[]; onPreviewFile?: (path: string) => void }) {
   const { t } = useTranslation(UI_COMPONENTS_NS);
   return (
-    <div
-      className="chat-status-list max-h-[min(16rem,35vh)] overflow-y-auto overscroll-contain [scrollbar-gutter:stable]"
-      role="tabpanel"
-    >
+    <div className={STATUS_LIST_CLASS} data-slot="chat-status-list" role="tabpanel">
       {files.map((file) => (
-        <button key={file.path} type="button" onClick={() => onPreviewFile?.(file.path)}>
-          <FileDiff />
-          <span title={file.path}>{fileNameFromPath(file.path)}</span>
-          <small className={cn(file.type === "write" && "is-added")}>
+        <button key={file.path} type="button" className={STATUS_ROW_CLASS} onClick={() => onPreviewFile?.(file.path)}>
+          <FileDiff className="h-[15px] w-[15px] text-[#8c9bb0]" />
+          <span className="overflow-hidden text-[11.5px] text-ellipsis whitespace-nowrap" title={file.path}>
+            {fileNameFromPath(file.path)}
+          </span>
+          {/* 源 `.chat-status-list small.is-added`：写操作标绿，其余沿用默认灰（互斥两态）。 */}
+          <small className={file.type === "write" ? "text-[10px] text-[#259a70]" : "text-[10px] text-[#8a96a8]"}>
             {t(file.type === "write" ? "chat.components.chatStatus.added" : "chat.components.chatStatus.modified")}
           </small>
         </button>

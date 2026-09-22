@@ -46,7 +46,11 @@ export function QuestionPanel({ questions, onRespond, className }: QuestionPanel
   if (questions.length === 0) return null;
 
   return (
-    <div className={cn("chat-interaction-stack", className)}>
+    <div
+      // 源 `chat-design-status.css` 的 `.chat-interaction-stack`：比输入岛卡片每侧窄 16px 的台阶。
+      className={cn("mx-auto w-[min(756px,calc(100%-64px))] [@media(max-width:720px)]:w-[calc(100%-52px)]", className)}
+      data-slot="chat-interaction-stack"
+    >
       <div className="space-y-2">
         {questions.map((question) => (
           <QuestionCard key={question.questionId} question={question} onRespond={onRespond} />
@@ -79,30 +83,47 @@ function QuestionCard({ question, onRespond }: QuestionCardProps) {
   if (!item) return null;
 
   return (
-    <section className="chat-interaction-region chat-question-region" aria-label={t("chat.components.askUser.title")}>
+    <section
+      // 源 `.chat-interaction-region`：只有上半有圆角的「用户权威」半圆卡。
+      className="overflow-hidden rounded-t-[14px] border-x border-t border-b-0 border-[#dde4ee] bg-white shadow-[0_12px_34px_rgb(30_64_120_/_8%)]"
+      data-slot="chat-question-region"
+      aria-label={t("chat.components.askUser.title")}
+    >
       <header>
-        <button type="button" aria-expanded={!collapsed} onClick={() => setCollapsed((value) => !value)}>
-          <strong>{t("chat.components.askUser.title")}</strong>
-          <small>
+        <button
+          type="button"
+          // 源 `.chat-interaction-region > header button`（+ strong/small/末位 svg 与折叠态旋转）
+          className="flex min-h-[40px] w-full items-center gap-[9px] px-3 py-1.5 text-[#33445d]"
+          aria-expanded={!collapsed}
+          onClick={() => setCollapsed((value) => !value)}
+        >
+          <strong className="text-[13px]">{t("chat.components.askUser.title")}</strong>
+          <small className="text-[11px] text-[#8a96a8]">
             {questionIndex + 1}/{question.questions.length}
           </small>
-          <ChevronDown className={collapsed ? "is-collapsed" : undefined} />
+          <ChevronDown className={cn("ml-auto w-[15px]", collapsed && "-rotate-90")} />
         </button>
       </header>
       {!collapsed && (
-        <div className="chat-question-body">
-          <div className="chat-question-copy">
-            {item.header && <span>{item.header}</span>}
-            <strong>{item.question}</strong>
+        <div className="px-[14px] pt-0.5 pb-[13px]">
+          <div>
+            {item.header && <span className="block text-[11px] text-[#8a96a8]">{item.header}</span>}
+            <strong className="mt-[3px] block text-[14px] text-[#26364f]">{item.question}</strong>
           </div>
-          <div className="chat-question-options">
+          <div className="mt-[9px] grid gap-[5px]">
             {item.options.map((option, optionIndex) => {
               const isSelected = selected[questionIndex]?.includes(option.label) ?? false;
               return (
                 <button
                   key={option.label}
                   type="button"
-                  className={isSelected ? "is-selected" : undefined}
+                  // 源 `.chat-question-options > button`（+ `:hover`/`.is-selected` 两态；两态互斥，不靠生成顺序）
+                  className={cn(
+                    "flex items-start gap-[9px] rounded-lg p-2 text-left",
+                    isSelected
+                      ? "bg-[#f0f5ff] text-[#245fc9]"
+                      : "text-[#53627a] hover:bg-[#f0f5ff] hover:text-[#245fc9]",
+                  )}
                   aria-pressed={isSelected}
                   onClick={() =>
                     setSelected((previous) => {
@@ -116,17 +137,21 @@ function QuestionCard({ question, onRespond }: QuestionCardProps) {
                     })
                   }
                 >
-                  <span>{isSelected ? <Check /> : String.fromCharCode(65 + optionIndex)}</span>
+                  <span className="grid h-[21px] w-[21px] flex-[0_0_21px] place-items-center rounded-[5px] bg-[#eef1f5] text-[11px]">
+                    {isSelected ? <Check className="h-[13px] w-[13px]" /> : String.fromCharCode(65 + optionIndex)}
+                  </span>
                   <div>
-                    <strong>{option.label}</strong>
-                    {option.description && <small>{option.description}</small>}
+                    <strong className="block text-[12px]">{option.label}</strong>
+                    {option.description && (
+                      <small className="mt-0.5 block text-[11px] text-[#8a96a8]">{option.description}</small>
+                    )}
                   </div>
                 </button>
               );
             })}
           </div>
-          <footer>
-            <div>
+          <footer className="mt-[11px] flex justify-end gap-[7px]">
+            <div className="mr-auto flex">
               <Button
                 type="button"
                 variant="ghost"

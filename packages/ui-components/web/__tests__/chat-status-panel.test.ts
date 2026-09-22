@@ -123,7 +123,12 @@ describe("ChatStatusPanel 文件名称", () => {
       ],
     });
     for (const markup of [todoMarkup, taskMarkup]) {
-      expect(markup).toContain("max-h-[min(16rem,35vh)] overflow-y-auto overscroll-contain [scrollbar-gutter:stable]");
+      // 迁移后容器类里还含有列表自身的 grid/内边距工具类，故逐条断言限高与滚动契约（同一条不可少）。
+      expect(markup).toContain("max-h-[min(16rem,35vh)]");
+      expect(markup).toContain("overflow-y-auto");
+      expect(markup).toContain("overscroll-contain");
+      expect(markup).toContain("[scrollbar-gutter:stable]");
+      expect(markup).toContain('data-slot="chat-status-list"');
     }
   });
 });

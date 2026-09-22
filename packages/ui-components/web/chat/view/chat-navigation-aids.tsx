@@ -2,10 +2,9 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { useTranslation } from "react-i18next";
 import { UI_COMPONENTS_NS } from "../../i18n/namespace";
+import { cn } from "../../lib/cn";
 import type { UserMessageEntry } from "../types";
-import "../css/chat-navigation-aids.css";
 
-const PROMPT_JUMP_CLASS = "chat-prompt-jump-index";
 // 过多刻度会把导航误读成贯穿整屏的时间轴；保留首尾的均匀采样即可支持长会话定位。
 const MAX_VISIBLE_PROMPT_JUMPS = 14;
 const SYSTEM_REMINDER_PREFIX = "<system-reminder>";
@@ -67,11 +66,12 @@ export function PromptJumpRail({ entries }: PromptJumpRailProps) {
 
   useEffect(() => {
     // 跨组件契约：`chat-entry-<entryId>` 由 ChatView 的消息节点提供（见 view/ChatView.tsx），
-    // 本组件只负责按 activeId 给该节点打上 `chat-entry--active-prompt` 高亮类（样式在 ../css/chat-navigation-aids.css）。
+    // 本组件只负责按 activeId 给该节点打上 `data-active-prompt`（样式由 ChatView 的
+    // `data-[active-prompt]:` 工具类承担，原 `chat-entry--active-prompt` 类名已随样式迁移删除）。
     // 迁移到本包时保持该约定不变，宿主必须沿用 `chat-entry-${entryId}` 作为消息节点 id。
     const activePrompt = activeId ? document.getElementById(`chat-entry-${activeId}`) : null;
-    activePrompt?.classList.add("chat-entry--active-prompt");
-    return () => activePrompt?.classList.remove("chat-entry--active-prompt");
+    activePrompt?.setAttribute("data-active-prompt", "");
+    return () => activePrompt?.removeAttribute("data-active-prompt");
   }, [activeId]);
 
   useEffect(() => {
@@ -128,17 +128,28 @@ export function PromptJumpRail({ entries }: PromptJumpRailProps) {
   if (promptEntries.length <= 1) return null;
   return (
     <>
-      <nav ref={railRef} className={PROMPT_JUMP_CLASS} aria-label={t("chat.components.promptJump.title")}>
-        <ol className={`${PROMPT_JUMP_CLASS}__list`}>
+      <nav
+        ref={railRef}
+        // 源 `chat-navigation-aids.css` 的 `.chat-prompt-jump-index`：贴会话左缘的刻度轨（宽屏才显示）。
+        className="absolute left-[max(8px,calc(50%-446px))] top-1/2 z-[8] hidden h-max max-h-[min(232px,44vh)] w-7 -translate-y-1/2 [@media(min-width:1180px)_and_(min-height:620px)]:block"
+        data-slot="chat-prompt-jump-rail"
+        aria-label={t("chat.components.promptJump.title")}
+      >
+        <ol
+          className="m-0 grid list-none grid-flow-row auto-rows-[10px] content-start gap-y-1.5 py-[3px]"
+          data-slot="chat-prompt-jump-list"
+        >
           {visiblePrompts.map(({ entry, sourceIndex }) => {
             const summary = entry.content.replace(/\s+/g, " ").trim();
             const displaySummary = summary || t("chat.components.promptJump.untitled");
             const isActive = entry.id === activeId;
             return (
-              <li key={entry.id}>
+              <li key={entry.id} className="h-2.5 w-[26px]">
                 <button
                   type="button"
-                  className={`${PROMPT_JUMP_CLASS}__item${isActive ? " is-active" : ""}`}
+                  // 源 `__item`：整条刻度是按钮，父选子（hover / focus-visible）由 `group` 承担。
+                  className="group relative inline-flex h-2.5 w-[26px] min-w-0 min-h-0 cursor-pointer items-center self-start border-0 bg-transparent p-0 focus-visible:outline-none"
+                  data-slot="chat-prompt-jump-item"
                   aria-controls={`chat-entry-${entry.id}`}
                   aria-current={isActive ? "location" : undefined}
                   aria-label={`${t("chat.components.promptJump.title")} ${sourceIndex + 1}/${promptEntries.length}: ${displaySummary}`}
@@ -159,7 +170,18 @@ export function PromptJumpRail({ entries }: PromptJumpRailProps) {
                   }}
                   onMouseLeave={() => setPreview(null)}
                 >
-                  <span className={`${PROMPT_JUMP_CLASS}__tick`} aria-hidden="true" />
+                  {/* 源 `__tick` 与 `:hover/:focus-visible`、`.is-active` 三态：选中态与其余态**互斥**列出，
+                      不依赖两条工具类的生成顺序（选中项悬停时仍是选中态的宽度/颜色，与源一致）。 */}
+                  <span
+                    className={cn(
+                      "h-0.5 shrink-0 rounded-full [transition:width_150ms_ease,background-color_150ms_ease] [@media(prefers-reduced-motion:reduce)]:[transition:none]",
+                      isActive
+                        ? "w-[19px] bg-[#202936]"
+                        : "w-2 max-w-[19px] bg-[#cbd1d9] group-hover:w-[13px] group-hover:bg-[#6f7886] group-focus-visible:w-[13px] group-focus-visible:bg-[#6f7886]",
+                    )}
+                    data-slot="chat-prompt-jump-tick"
+                    aria-hidden="true"
+                  />
                 </button>
               </li>
             );
@@ -169,14 +191,18 @@ export function PromptJumpRail({ entries }: PromptJumpRailProps) {
       {preview &&
         createPortal(
           <span
-            className={`${PROMPT_JUMP_CLASS}__preview`}
+            // 源 `__preview`（含 `> small` 与 `> span` 的三行截断）。
+            className="pointer-events-none fixed z-30 grid w-[226px] -translate-y-1/2 gap-1 rounded-[10px] border border-[#e0e5ec] bg-[rgb(255_255_255_/_97%)] px-[11px] py-[9px] text-left text-[#536178] shadow-[0_10px_28px_rgb(30_50_80_/_12%)] backdrop-blur-[10px] [@media(prefers-reduced-motion:reduce)]:[transition:none]"
             style={{ left: preview.left, top: preview.top }}
+            data-slot="chat-prompt-jump-preview"
             aria-hidden="true"
           >
-            <small>
+            <small className="text-[9px] leading-[1.3] text-[#9aa5b5]">
               {preview.sourceIndex + 1}/{promptEntries.length}
             </small>
-            <span>{preview.entry.content.replace(/\s+/g, " ").trim() || t("chat.components.promptJump.untitled")}</span>
+            <span className="line-clamp-3 overflow-hidden text-[11px] leading-[1.5] text-[#59677c]">
+              {preview.entry.content.replace(/\s+/g, " ").trim() || t("chat.components.promptJump.untitled")}
+            </span>
           </span>,
           document.body,
         )}

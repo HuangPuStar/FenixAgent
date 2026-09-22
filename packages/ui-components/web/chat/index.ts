@@ -10,12 +10,14 @@
  * 唯一的显式排除：`primitives/permission-request` 的组件层 `PermissionOption` 与 `./types` 内联的协议
  * 同名类型冲突（结构兼容、声明独立），权威类型由 `./types` 提供，需要组件层声明的消费方深链该模块。
  *
- * 末尾的 `import "./css/chat.css"` 是刻意的副作用导入：尚未迁移到工具类的 chat 设计层样式
- * （工具时间线、状态面板、窄屏适配、高度链、加载指示、工牌动画）在包内没有唯一宿主组件，
+ * 末尾的 `import "./css/chat.css"` 是刻意的副作用导入：尚未迁移到工具类的 chat 样式
+ * （高度链、命令面板未渲染外壳的残留、`@keyframes` 动画）在包内没有唯一宿主组件，
  * 由本聚合入口负责加载，保证「消费方导入本 barrel 即得完整视觉」；随阶段推进逐步缩小
- * （阶段一至三已迁走 composer / 命令面板 / 工牌卡 / 会话外壳 / 消息视图 / markdown 排版 /
- * Conversation 滚动按钮 / 划词浮层，见 `css/chat.css` 的「迁移进度」）。
- * 组件自导入的样式（现仅剩 `css/chat-navigation-aids.css`）不在此重复导入。
+ * （阶段一至四已迁走 composer / 命令面板 / 工牌卡 / 会话外壳 / 消息视图 / markdown 排版 /
+ * Conversation 滚动按钮 / 划词浮层 / 状态面板 / 工具时间线 / 提示词导航 / 加载指示 / 窄屏适配，
+ * 见 `css/chat.css` 的「迁移进度」）。
+ * 阶段四起包内已无「组件自导入」的 chat 样式表（`conversation.css`、`chat-message-content.css`、
+ * `chat-navigation-aids.css` 先后迁空并删除），全部由本入口统一加载。
  *
  * 维护约定：新增或删除 `web/chat/` 下的模块时必须同步本文件与根 `web/index.ts`，
  * 否则深链与整包导入会出现能力差异。

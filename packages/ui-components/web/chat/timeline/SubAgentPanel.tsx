@@ -43,7 +43,7 @@ function SubAgentTimeline({ entries }: { entries: ThreadEntry[] }) {
 
         return (
           // biome-ignore lint/suspicious/noArrayIndexKey: 工具分组条目无唯一 key（源文件同款写法）；源宿主 packages/agent-runtime 未声明 react 依赖，biome 未启用 react 域规则。分组仅追加、不重排，索引键不会引起元素错位。
-          <div key={`sub-tool-group-${index}`} className="[&_.tool-call-group]:!pl-0">
+          <div key={`sub-tool-group-${index}`} className="[&_[data-slot=chat-tool-group]]:pl-0">
             {renderToolGroup?.(item.entries)}
           </div>
         );

@@ -19,10 +19,12 @@ interface ToolCallGroupProps {
   entries: ToolCallEntry[];
   /** 宿主注入的文件预览回调，透传给每张工具卡片；缺省时不渲染文件链接。 */
   onPreviewFile?: (path: string) => void;
+  /** 是否位于活动链内，透传给每行（见 `ToolCallRow` 的 `inActivityChain`）。 */
+  inActivityChain?: boolean;
 }
 
 /** 工具调用分组：hindsight 记忆工具与普通工具分开渲染。复制自 `packages/agent-runtime/web/components/chat/ToolCallGroup.tsx`。 */
-export function ToolCallGroup({ entries, onPreviewFile }: ToolCallGroupProps) {
+export function ToolCallGroup({ entries, onPreviewFile, inActivityChain }: ToolCallGroupProps) {
   // 将 hindsight 工具与普通工具分离，各自独立渲染
   const hindsightEntries = entries.filter((e) => isHindsightTool(e.toolCall.title));
   const toolEntries = entries.filter((e) => !isHindsightTool(e.toolCall.title));
@@ -30,11 +32,16 @@ export function ToolCallGroup({ entries, onPreviewFile }: ToolCallGroupProps) {
   if (entries.length === 0) return null;
 
   return (
-    <div className="tool-call-group">
+    <div className="relative mx-0 mt-[2px] mb-1" data-slot="chat-tool-group">
       {toolEntries.length > 0 && (
-        <div className="tool-call-group-list">
+        <div className="grid gap-px">
           {toolEntries.map((entry, i) => (
-            <ToolCallRow key={entry.toolCall.id || i} tool={entry.toolCall} onPreviewFile={onPreviewFile} />
+            <ToolCallRow
+              key={entry.toolCall.id || i}
+              tool={entry.toolCall}
+              onPreviewFile={onPreviewFile}
+              inActivityChain={inActivityChain}
+            />
           ))}
         </div>
       )}

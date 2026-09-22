@@ -44,6 +44,11 @@ function renderSubAgentToolGroup(entries: ToolCallEntry[]) {
   return <ToolCallGroup entries={entries} />;
 }
 
+/** 活动链作用域内的子 Agent 工具组渲染器：与链内其它工具行一致地带上对齐补偿。 */
+function renderChainToolGroup(entries: ToolCallEntry[]) {
+  return <ToolCallGroup entries={entries} inActivityChain />;
+}
+
 /**
  * 把宿主的 `onOpenWorkspaceFile(envId, path)` 绑定为工具卡片所需的 `onPreviewFile(path)`。
  *
@@ -104,7 +109,7 @@ export const ChatView = React.memo(
 
     return (
       <SubAgentToolCallGroupContext.Provider value={renderSubAgentToolGroup}>
-        <Conversation className="chat-conversation min-h-0 flex-1">
+        <Conversation className="min-h-0 flex-1">
           <PromptJumpRail entries={userEntries} />
           <ConversationContent
             // 源 `.chat-conversation-content` 的声明；`sm:` 级重复是为了压过 `ConversationContent`
@@ -136,29 +141,33 @@ export const ChatView = React.memo(
                     return (
                       <div
                         key={`activity-${renderItemKey(block.items[0], blockIndex)}`}
-                        // `chat-activity-chain` 类名保留：`web/chat/css/chat-design-tools.css`（工具簇，下一阶段迁移）
-                        // 仍以 `.chat-activity-chain .tool-call-*` 的形式做负边距对齐；本行工具类即原
-                        // `chat-design-messages.css` 的 `.chat-activity-chain` 声明。
+                        // 本行工具类即源 `chat-design-messages.css` 的 `.chat-activity-chain` 声明；
+                        // 链内工具行的负边距对齐改由 `inActivityChain` 透传（源为后代选择器）。
                         className={cn(
-                          "chat-activity-chain relative grid gap-px mx-0 mt-0.5 mb-2 pl-8",
+                          "relative grid gap-px mx-0 mt-0.5 mb-2 pl-8",
                           "before:absolute before:top-[11px] before:bottom-[11px] before:left-[11px] before:w-px before:bg-[#dce3ec] before:content-['']",
                           followsAssistantMessage && "-mt-3.5",
                         )}
                         data-slot="chat-activity-chain"
                         data-after-message={followsAssistantMessage || undefined}
                       >
-                        {block.items.map((item, itemIndex) => (
-                          <ChatRenderItemView
-                            key={renderItemKey(item, itemIndex)}
-                            item={item}
-                            isLoading={isLoading && item.type === "entry" && item.entry === entries.at(-1)}
-                            sessionId={sessionId}
-                            envId={envId}
-                            cardEmitter={cardEmitter}
-                            onQuote={onQuote}
-                            onOpenWorkspaceFile={onOpenWorkspaceFile}
-                          />
-                        ))}
+                        {/* 链内的子 Agent 面板若再渲染工具组，同样属于「链内」——用作用域化的渲染器覆盖
+                            Context（源的后代选择器对嵌套工具组一视同仁）。 */}
+                        <SubAgentToolCallGroupContext.Provider value={renderChainToolGroup}>
+                          {block.items.map((item, itemIndex) => (
+                            <ChatRenderItemView
+                              key={renderItemKey(item, itemIndex)}
+                              item={item}
+                              inActivityChain
+                              isLoading={isLoading && item.type === "entry" && item.entry === entries.at(-1)}
+                              sessionId={sessionId}
+                              envId={envId}
+                              cardEmitter={cardEmitter}
+                              onQuote={onQuote}
+                              onOpenWorkspaceFile={onOpenWorkspaceFile}
+                            />
+                          ))}
+                        </SubAgentToolCallGroupContext.Provider>
                       </div>
                     );
                   }
@@ -284,19 +293,29 @@ function ChatEmptyState({
 // 间距逻辑 — 用户消息前后间距大，工具调用紧贴
 // =============================================================================
 
+/**
+ * 消息条目的外层容器类名（源 `chat-design-messages.css` 的 `.chat-entry*` 间距 + 提示词导航高亮）。
+ *
+ * `data-[active-prompt]:` 一组承接源 `.chat-entry--active-prompt`：该状态由 `PromptJumpRail` 在运行时
+ * 用 `setAttribute("data-active-prompt", "")` 打在本节点上（跨组件契约，用 data 属性替代类名）。
+ */
+const ENTRY_ACTIVE_PROMPT_CLASS =
+  "data-[active-prompt]:rounded-xl data-[active-prompt]:animate-[chat-active-prompt-flash_900ms_ease-out] [@media(prefers-reduced-motion:reduce)]:data-[active-prompt]:animate-none [@media(prefers-reduced-motion:reduce)]:data-[active-prompt]:bg-[rgb(100_116_139_/_10%)]";
+
 /** 按渲染项密度与条目类型给出外层容器类名（源实现的间距规则逐字保留）。 */
 function entryClassName(item: Extract<ChatRenderItem, { type: "entry" }>): string {
-  if (item.density === "activity") return "py-0.5";
+  const base = ENTRY_ACTIVE_PROMPT_CLASS;
+  if (item.density === "activity") return `py-0.5 ${base}`;
   const { entry } = item;
   // 用户消息前后大留白 — Claude.ai 式宽松间距
   if (entry?.type === "user_message") {
-    return "py-3";
+    return `py-3 ${base}`;
   }
   // 助手消息 — 工具调用紧贴，否则多留白
   if (entry?.type === "assistant_message") {
-    return "py-3";
+    return `py-3 ${base}`;
   }
-  return "py-2";
+  return `py-2 ${base}`;
 }
 
 /** 生成渲染项 key：优先使用协议 id，缺失时回落到下标。 */
@@ -308,6 +327,8 @@ function renderItemKey(item: ChatRenderItem | undefined, fallbackIndex: number):
 
 interface ChatRenderItemViewProps {
   item: ChatRenderItem;
+  /** 是否位于活动链内：透传给本项渲染出的工具组（工具行据此做对齐补偿）。 */
+  inActivityChain?: boolean;
   isLoading: boolean;
   sessionId?: string;
   envId?: string;
@@ -325,6 +346,7 @@ interface ChatRenderItemViewProps {
  */
 function ChatRenderItemView({
   item,
+  inActivityChain,
   isLoading,
   sessionId,
   envId,
@@ -335,7 +357,11 @@ function ChatRenderItemView({
   if (item.type === "tool_group") {
     return (
       <div>
-        <ToolCallGroup entries={item.entries} onPreviewFile={bindPreviewFile(envId, onOpenWorkspaceFile)} />
+        <ToolCallGroup
+          entries={item.entries}
+          onPreviewFile={bindPreviewFile(envId, onOpenWorkspaceFile)}
+          inActivityChain={inActivityChain}
+        />
       </div>
     );
   }
@@ -347,6 +373,7 @@ function ChatRenderItemView({
       <EntryRenderer
         entry={item.entry}
         density={item.density}
+        inActivityChain={inActivityChain}
         isLoading={entryIsStreaming}
         sessionId={sessionId}
         envId={envId}
@@ -366,6 +393,7 @@ const EntryRenderer = React.memo(
   function EntryRenderer({
     entry,
     density,
+    inActivityChain,
     isLoading,
     sessionId,
     envId,
@@ -376,6 +404,8 @@ const EntryRenderer = React.memo(
     entry: ThreadEntry;
     /** 渲染密度（来自 `ChatRenderItem`）：`activity` 表示条目并入活动链，助手消息正文块间距收紧 */
     density: "normal" | "activity";
+    /** 是否位于活动链内（透传给工具组，见 `ToolCallGroup` 的 `inActivityChain`）。 */
+    inActivityChain?: boolean;
     isLoading: boolean;
     sessionId?: string;
     envId?: string;
@@ -403,6 +433,7 @@ const EntryRenderer = React.memo(
           <ToolCallGroup
             entries={[entry as ToolCallEntry]}
             onPreviewFile={bindPreviewFile(envId, onOpenWorkspaceFile)}
+            inActivityChain={inActivityChain}
           />
         );
       case "plan":
@@ -415,6 +446,7 @@ const EntryRenderer = React.memo(
   (prev, next) =>
     prev.entry === next.entry &&
     prev.density === next.density &&
+    prev.inActivityChain === next.inActivityChain &&
     prev.isLoading === next.isLoading &&
     prev.sessionId === next.sessionId &&
     prev.envId === next.envId &&
@@ -432,12 +464,17 @@ function LoadingIndicator() {
   const { t } = useTranslation(UI_COMPONENTS_NS);
   return (
     <div className="flex items-center gap-3 pt-3">
-      <div className="chat-loading-dots" aria-hidden="true">
-        <span />
-        <span />
-        <span />
+      {/* 源 `chat-loading.css` 的 `.chat-loading-dots`：三点品牌色脉冲（暗色换 loadingDotBounceDark）。
+          每点的延迟写进 animation 简写，避免与 animate 工具类的生成顺序相关。 */}
+      <div className="inline-flex h-5 items-center gap-1.5" aria-hidden="true">
+        <span className="h-2 w-2 rounded-full bg-brand animate-[loadingDotBounce_1.4s_ease-in-out_-0.32s_infinite_both] [.dark_&]:animate-[loadingDotBounceDark_1.4s_ease-in-out_-0.32s_infinite_both]" />
+        <span className="h-2 w-2 rounded-full bg-brand animate-[loadingDotBounce_1.4s_ease-in-out_-0.16s_infinite_both] [.dark_&]:animate-[loadingDotBounceDark_1.4s_ease-in-out_-0.16s_infinite_both]" />
+        <span className="h-2 w-2 rounded-full bg-brand animate-[loadingDotBounce_1.4s_ease-in-out_infinite_both] [.dark_&]:animate-[loadingDotBounceDark_1.4s_ease-in-out_infinite_both]" />
       </div>
-      <span className="text-xs text-text-muted loading-text-shimmer">{t("chat.components.chatView.thinking")}</span>
+      {/* 源 `:where(.chat-conversation) .loading-text-shimmer`：文字微光扫过（类名已随之删除）。 */}
+      <span className="text-xs text-text-muted [background:linear-gradient(90deg,var(--color-text-muted)_0%,var(--color-brand-light)_50%,var(--color-text-muted)_100%)] [background-size:200%_100%] bg-clip-text text-transparent [-webkit-background-clip:text] [-webkit-text-fill-color:transparent] animate-[shimmerSlide_2s_ease-in-out_infinite]">
+        {t("chat.components.chatView.thinking")}
+      </span>
     </div>
   );
 }
