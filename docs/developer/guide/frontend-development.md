@@ -1,8 +1,9 @@
 # 前端开发规范
 
-> **版本**：v3.0.3 | **最后更新**：2026-09-22 | **维护者**：前端团队
+> **版本**：v3.0.4 | **最后更新**：2026-09-22 | **维护者**：前端团队
 >
 > **最近变更**：
+> - v3.0.4 (2026-09-22)：前端去重批次（约 65 个 commit）后的文档对账。§4.1 补登本轮新下沉的原语（`config/AdminKeyGate`、`config/LabeledField`、`ui/status-dot`、`components/ClosableTabPill`、`lib/clipboard`、`lib/format`、`chat/view/PublicErrorCard`、`chat/panels/chat-interaction-region`、`chat/timeline/tool-json-block`），并把「空态 / 失败 / 无权限刻意共用一个骨架」与「无权限不给重试、失败给重试」写进该节的口径——**不要新建第二个空态/失败组件**；子路径数与 barrel 行数改为实测值（145→**156** 条 `exports` 子路径、151→**160** 行 barrel）。§4.8 新增「刻意分叉 / 刻意不进库」四条冻结项（三种节点配置容器、cytoscape 与自绘 canvas 两套图谱、红描边危险按钮、形态未定型包内共享件）。`MasterKeyGate` 全量订正为 `@fenix/ui-components/config/AdminKeyGate` + `@fenix/web-runtime/hooks/use-admin-key-gate`（§2.3、§6.3 与 `docs/arch/21-observability-observer-service.md`）。§5.6 / §5.9 删去已随 `ac642962` 删除的 `workflow/web/api/workflows.ts`，§4.8 的文件规模快照（16→**17** 个超 500 行、400–499 区间 27→**25**）与 §10.1 的页面级 `.css` 计数按实测口径重写。
 > - v3.0.3 (2026-09-22)：§2.5 的加载壳口径改写——原「三种壳形态都合规」**作废**（它把逐字复制的圆环类名固化成规范），路由 `Suspense` fallback 与整块加载提示一律改用 `Spinner`（`@fenix/ui-components/ui/spinner`），并补 `variant` / `size` / `label` 的选择口径；§2.7 登记存量未迁移位置。
 > - v3.0.2 (2026-09-22)：把「失败必须有用户可见反馈」从隐含口径写成**可 review 的规则**（§5.8 新增：三条件判据 + 三类必然豁免 + `/login`、`/admin` 下无 `Toaster` 的坑）。据此做了一轮全量处理：4 处原生 `confirm()` 全部迁 `ConfirmDialog`（删除 §6.5 对应偏离项），逐点复核全仓 `console.error` 并补齐缺失反馈，未动的残留登记到 §5.9。§11.2 补「`react-i18next` 替身必须返回稳定 `t`」——该替身缺陷会让测试陷入反复拉取且生产不复现。
 > - v3.0.1 (2026-09-22)：精简第 1 章与第 10 章——原 §1.1 应用根 / §1.2 宿主源码目录 / §1.3 包边界与引用纪律，以及原 §10.1～§10.5，改写为几段说明与规则列表，只保留可据以 review 的硬规则；§1 子节重编号为 §1.1 装配产物与构建、§1.2 路径别名纪律、§1.3 现状偏离。同步移除 `packages/supaflow/web` 与 `e2e/` 的排除项（两者已从仓库移除），并补充"新增 `.css` 的落位"与"禁止 `@apply`"两条纪律。
@@ -55,7 +56,7 @@
 
 - 标准三件套 `./web` + `./web/contribution` + `./web/i18n`：`resources/*` 的 8 个包（agent-config / knowledge / mcp / memory / model-management / skill / task / workflow）与 `platform/identity`，合计 9 个，与 `ce.json` 的 `web` 列表等长。
 - 只有 `./web`、无 contribution：`machine` / `observer` / `prod-view` / `sandbox` / `channel`——有 web 面但不在 CE 的 web profile 里。
-- 不走 `web` 前缀：`ui-components`（根 barrel + 145 条子路径，按需深链优先）、`web-runtime`（`./api/request`、`./contexts/org-session`、`./types/config`…）、`agent-runtime`（web 面仅 `./web/api/environments` 一条窄口，浏览器不得依赖其反向 `export *` 的服务端根入口）、`chat-channel`（无 web 面，根入口必须浏览器安全，见 §8.6）。
+- 不走 `web` 前缀：`ui-components`（根 barrel + 156 条 `exports` 子路径，按需深链优先）、`web-runtime`（`./api/request`、`./contexts/org-session`、`./types/config`…）、`agent-runtime`（web 面仅 `./web/api/environments` 一条窄口，浏览器不得依赖其反向 `export *` 的服务端根入口）、`chat-channel`（无 web 面，根入口必须浏览器安全，见 §8.6）。
 
 ### 1.1 装配产物与构建
 
@@ -124,7 +125,7 @@ const { prodViewId } = useParams({ from: "/view/$prodViewId" }) as { prodViewId:
 **全局守卫只有一处**，在 `apps/web/src/routes/__root.tsx`，用 `useEffect` + `navigate` 实现（不是 `beforeLoad`）：
 
 - 会话未就绪 → 渲染 spinner；未登录且非 `/login` 非 `/admin` → 渲染 `null` 并跳 `/login`；已登录访问 `/login` → 跳 `/agent`。
-- `/admin` **豁免 better-auth 会话**，由页面内 `MasterKeyGate` 把关（见 §6.3）。
+- `/admin` **豁免 better-auth 会话**，由页面内 `AdminKeyGate`（`@fenix/ui-components/config/AdminKeyGate` 配 `@fenix/web-runtime/hooks/use-admin-key-gate`）把关（见 §6.3）。
 
 **路由壳内**的重定向一律用 `beforeLoad` + `throw redirect`：
 
@@ -426,11 +427,12 @@ if (!data?.length) return <EmptyState icon={<FolderOpen />} title={t("empty.titl
 
 - 基础 UI 原语：`@fenix/ui-components/ui/<name>`（含 `chat/**` 下的聊天基元，均逐文件子路径）。
 - 通用业务组件：`@fenix/ui-components/config/<name>`。
-- 该包**有根出口**（`@fenix/ui-components`，151 行 barrel），也存在 145 条子路径。**按需深链优先**；根出口适合一次取多个组件的场景。新增/删除组件时必须同批改 `web/index.ts` 与 `package.json` 的 `exports`——两者的不一致会让"深链可用、整包导入不可用"，由 `web/__tests__/barrel-exports.test.ts` 的显式名单守护。
+- 无渲染工具：`@fenix/ui-components/lib/<name>`；不可归入 `ui/` 或 `config/` 的共享件：`components/<name>`。
+- 该包**有根出口**（`@fenix/ui-components`，160 行 barrel），也存在 156 条 `exports` 子路径（口径：`package.json` 的 `exports` 键数，含根出口 `.` 与样式表 `./styles.css` 两条非组件条目）。**按需深链优先**；根出口适合一次取多个组件的场景。新增/删除组件时必须同批改 `web/index.ts` 与 `package.json` 的 `exports`——两者的不一致会让"深链可用、整包导入不可用"，由 `web/__tests__/barrel-exports.test.ts` 的显式名单守护。
 
 **归属由消费者集合决定**：出现第二个包消费时就下沉到 `ui-components`，而不是在消费方各留一份；只有一个消费者时留在原处，不做推测性抽象。
 
-`config/` 下当前 7 个组件的真实契约：
+`config/` 下当前 9 个组件的真实契约：
 
 | 组件 | 用途 | 关键 props |
 |------|------|-----------|
@@ -441,12 +443,23 @@ if (!data?.length) return <EmptyState icon={<FolderOpen />} title={t("empty.titl
 | `ScopeFilterBar` | 配置型目录页的「搜索框 + 作用域过滤条」 | `query` / `onQueryChange` / `placeholder` / `searchLabel` / `scopes: { value, label, count? }[]` / `scope` / `onScopeChange` / `scopeGroupLabel` / 其余 `<div>` 属性透传 |
 | `DataTable` | TanStack Table 封装（含搜索/选择/分页/展开） | `columns` / `data` / `searchable` / `selectable` / `actions` / `expandableRow` / `rowKey` / `pageSize` |
 | `BatchActionBar` | 批量操作条 | 见包内实现 |
+| `AdminKeyGate` | 系统 Master Key 输入门（纯展示，受控） | `unlocked` / `onUnlock(key)` / **`title`（必填）** / **`description`（必填）** / **`inputPlaceholder`（必填）** / **`submitLabel`（必填）** / `error?: string \| null` / `children`（解锁后渲染）；不取数、不 import `web-runtime`，状态机见 `@fenix/web-runtime/hooks/use-admin-key-gate` |
+| `LabeledField` | 表单字段名与控件的关联包装 | `label` / `hint?` / `htmlFor?`（不传＝隐式关联：`<label>` 包裹单个可标记控件；传＝显式关联，children 与独立 `<label htmlFor>` 同层）/ 其余 `<div>` 属性透传 |
 
 > `StatusBadge` 只收语义（色调），不收色值：业务状态词表经 `toneMap` 注入，配色（含 dark 变体）留在包内。
 > 需要在包外判定色调时用 `getStatusTone(status, toneMap)`，不要复刻配色类。
 > `EmptyState` 同样只收语义：`tone` 默认 `neutral`（确实没有数据、筛选后没有匹配），`danger` 用于读取失败、无权限；持久错误再补 `role="alert"`。图标不传尺寸类时沿用 lucide 默认的 24px（组件只负责居中与配色），颜色一律不要手写——配色（含 dark 变体）归 `tone` 管。
 > 它**不自带 Card 外壳**：容器（卡片、边框、外边距）由调用方给——面板内联直接用，需要卡片形态时把 `<EmptyState>` 放进调用方的 `Card` / `CardContent`。默认内边距是 `py-10`，紧一点的场景用 `className` 覆盖（如 `className="py-8"`）。
 > `ScopeFilterBar` **不接 i18n**：文案（`placeholder` / `searchLabel` / `scopeGroupLabel` 与每个 `label`）全由 props 传入，key 与语言资源只留在调用方——库内组件自带命名空间会把两边的 key 绑死，同一处文案在两侧各留一份。它也不认识业务作用域（不知道「组织 / 公开」是什么），只把受控的 `query` / `scope` 渲染成统一形态。
+> **空态 / 失败 / 无权限刻意共用一个骨架**（2026-09-22 冻结）：不要新建第二个「空态组件」或「加载失败组件」——三套语义的结构相同，差别只在措辞与「要不要给重试」。判据：**无权限不给重试**（401/403 重试只会重复被拒，该做的是重新登录或找管理员），**失败给重试**。
+
+**2026-09-22 去重批次新下沉共享库的原语**（逐个实测存在，下列名字即 `exports` 子路径或具名导出）：
+
+- `ui/status-dot`（`StatusDot` / `StatusDotTone`）：状态圆点收敛为唯一原语，页面级圆点 CSS 随之删除。
+- `ui/spinner`（`Spinner`）：独立成块的加载圆环（§2.5），不再手写圆环类名。
+- `components/ClosableTabPill`（`ClosableTabPill`）：可关闭的页签药丸。
+- `lib/clipboard`（`copyTextToClipboard`）与 `lib/format`（`formatDate` / `formatDateTime` / `formatClockTime`）：无渲染的跨包工具，复制与时间展示口径不再各包一份。
+- `chat/view/PublicErrorCard`、`chat/panels/chat-interaction-region`（`ChatInteractionRegion` / `ChatInteractionStack`）、`chat/timeline/tool-json-block`（`ToolJsonBlock`）：聊天域的错误卡、交互区与工具 JSON 块骨架。
 
 ### 4.2 Dialog 状态管理
 
@@ -558,9 +571,13 @@ export function AgentTasksPage() {
 
 ### 4.8 现状偏离
 
-- **16 个生产文件超 500 行**（快照，从大到小）：`knowledge/AgentKnowledgeBasesPage.tsx` 1292、`model-management/AdminModelGatewayPage.tsx` 1241、`workflow/components/NodeConfigCard.tsx` 1182、`workflow/WorkflowEditor.tsx` 1116、`memory/hindsight/components/DataView.tsx` 1034、`memory/hindsight/components/Constellation.tsx` 1023、`memory/hindsight/components/Graph2d.tsx` 737、`agent-config/AgentHomePage.tsx` 672、`workflow/hooks/useWorkflowRun.ts` 624、`workflow/components/NodeConfigPanel.tsx` 557、`knowledge/ResourcePreviewContent.tsx` 556、`web-runtime/chat/structured-to-thread.ts` 537、`knowledge/EmbeddingModelManager.tsx` 529、`knowledge/RetrievalTestPanel.tsx` 525、`ui-components/chat/shell/ACPMain.tsx` 511、`agent-runtime/hooks/use-chat-state.ts` 509。400–499 行区间另有 27 个（口径：`apps/web/src` + `packages/**/web/**`，排除测试、生成文件与服务端路径）。
+- **17 个生产文件超 500 行**（快照，从大到小）：`model-management/AdminModelGatewayPage.tsx` 1247、`knowledge/AgentKnowledgeBasesPage.tsx` 1231、`workflow/components/NodeConfigCard.tsx` 1182、`workflow/WorkflowEditor.tsx` 1117、`memory/hindsight/components/Constellation.tsx` 978、`memory/hindsight/components/DataView.tsx` 968、`memory/hindsight/components/Graph2d.tsx` 713、`agent-config/AgentHomePage.tsx` 675、`workflow/hooks/useWorkflowRun.ts` 576、`knowledge/ResourcePreviewContent.tsx` 558、`workflow/components/NodeConfigPanel.tsx` 557、`knowledge/EmbeddingModelManager.tsx` 542、`web-runtime/chat/structured-to-thread.ts` 537、`knowledge/RetrievalTestPanel.tsx` 522、`ui-components/chat/shell/ACPMain.tsx` 513、`agent-runtime/hooks/use-chat-state.ts` 509、`model-management/agent-models-dialogs.tsx` 501。400–499 行区间另有 25 个（口径：`apps/web/src` + `packages/**/web/**`，排除测试、生成文件与服务端路径；行数是文件总行数）。
 - **2 个 config 组件生产零消费**：`DataTable` / `BatchActionBar` 目前只有包内测试与 demo 引用。`EmptyState` 已不再是零消费——2026-09-22 重写为内联状态块后接入 workflow / observer / task 三个包（调用点在 `workflow/pages/workflow/WorkflowList.tsx`、`WorkflowRuns.tsx`、`WorkflowVersions.tsx`，`observer/pages/admin/AdminObserverPage.tsx`，`task/pages/agent-panel/TasksPanel.tsx`、`components/TaskLogDialog.tsx`），`AdminObserverPage.tsx` 此前的同名本地实现已删除。收口前先确认包内 API 是否够用（`StatusBadge` 已在 2026-09 泛化后接入 task / workflow / prod-view 三处生产消费方，不再是零消费）。
 - **`task` 包的域类型未从包出口导出**：`TaskV2Info` 的权威定义在服务端 zod schema，web 侧页面用相对路径 `from "../../../api/tasks-v2"` 取，未过 `@fenix/resource-task/web`。与 §4.5 的"经包 exports 导出"不一致，新增类型不要照抄这种取法。
+- **刻意分叉（已裁定，不要以"去重"为由重开）**：`workflow/pages/workflow/components/` 的三种节点配置容器 `NodeConfigPopover`（浮层）/ `NodeConfigSheet`（侧栏）/ `NodeConfigCard`（卡片）服务不同交互场景——props 解构块虽 17 行逐字相同，合并会把差异藏进参数。2026-09-22 的两次收敛（`524127a7` / `6095073b`）都按此口径留手写并登记。
+- **刻意分叉（已裁定）：`memory/hindsight/components/` 的两套图谱**——`Graph2d.tsx`（Cytoscape.js）与 `Constellation.tsx`（自绘 canvas）的图形逻辑不做归一，只收敛它们外围的重复（可视化高度读取、暗色判定、加载块）。两者的渲染模型不同，抽公共层只会得到一层薄转发。
+- **刻意不进库：红描边危险按钮**——`sandbox/web/src/pages/admin/components/RowDeleteButton.tsx` 的 `size="sm"` + `variant="outline"` + 红描边类串全仓只有本包在用（同包另有一处 `InstanceDetailDialog` 的 clearOverride 配方相同）；其余包的红按钮要么是 `ghost` + `text-destructive`、要么是无描边实心 `destructive`，换上红描边会单独改变这一颗按钮的视觉权重。按"抽象延迟到第二个真实用例"的既有口径留在包内，理由与复核结论写在文件头注释里（`94a0c020`）。
+- **刻意不上移：形态未定型、第二个真实用例仍在本包内的共享件**——如 sandbox 的 `JsonPreview`（管理面板四处 JSON 展示块收敛而来），先用包内共享件而不是进 `ui-components`。这与"归属由消费者集合决定"是同一条口径，不是遗漏。
 
 ## 5. API 建模层
 
@@ -721,7 +738,7 @@ export const taskV2Api = {
 | `@fenix/resource-mcp` | `mcp.ts` | MCP server |
 | `@fenix/resource-knowledge` | `knowledge-bases.ts`、`knowledge-models.ts` | 知识库与嵌入模型 |
 | `@fenix/resource-task` | `tasks-v2.ts` | 定时任务（v2） |
-| `@fenix/resource-workflow` | `workflow-defs.ts`、`workflow-engine.ts`、`workflow-sse.ts`、`workflows.ts`（零消费，待清理） | 工作流定义、引擎、SSE |
+| `@fenix/resource-workflow` | `workflow-defs.ts`、`workflow-engine.ts`、`workflow-sse.ts` | 工作流定义、引擎、SSE |
 | `@fenix/resource-channel` | `channels.ts` | IM 通道 |
 | `@fenix/resource-machine` | `registry.ts` | 机器注册表 |
 | `@fenix/resource-memory` | `hindsight.ts` | 记忆 |
@@ -786,7 +803,7 @@ const { run: saveTask, loading: saving } = useRequest(
 - **两处"失败被吞掉"的已知残留**（§5.8 判据命中，补法需改对外契约或属后台路径，2026-09-22 全量复核时未动）：① `platform/identity/web/contexts/OrgContext.tsx` 的 `refreshOrgs` 失败只 `console.error`，组织页会按"无组织"渲染（落到 `noOrgs` 空态、无失败态）——要补持久失败态必须扩 `OrgContextValue`；② `agent-config/web/components/agent-panel/SiteFrame.tsx` 的挂载二维码在后台预生成，失败只留 `console.error`，分享弹层会停在永久 spinner（补法建议在弹层内落"最近一次生成失败"静态态，而不是 toast——弹层可能在失败之后才被打开）。
 - **解包归属存在两代写法**：9 个模块在域内 `unwrap()`（宿主 `fs.ts` / `peri-task-details.ts`、`model-gateway`、`observer`、`system-logs`、`system-people-tree`、`hindsight`、sandbox 的 `system-organizations` / `system-sandbox`），另有 3 个 blob 家族模块（`knowledge-bases`、`skills`、`system-sandbox` 的部分方法）在域内抛错。注意 `system-sandbox` 同时属于两组，去重后**合计 11 个模块的对外签名是数据或抛错，不是 Result**，与 §5.4 的"新增返回 `ApiResponse`"并存。
 - **5 个模块用函数式导出而非 `*Api` 对象**：`model-gateway.ts`（12 个具名函数）、`observer.ts`、`system-logs.ts`、`system-people-tree.ts`、`system-organizations.ts`。与 §5.5 的命名规则不符。
-- **`workflow/web/api/workflows.ts` 是零消费者的重复实现**：`workflowApi` 全仓无引用（消费方都用 `workflowDefApi`），其类型定义与 `workflow-defs.ts` 逐字重复。待清理。
+- **`workflow/web/api/workflows.ts` 已删除**（`ac642962`，2026-09-22）：它是迁移期留下的第二份 `workflow-defs` 客户端，`WorkflowDefItem` / `WorkflowVersionItem` / `VersionYamlResponse` 与 `ENDPOINT` 常量同 `api/workflow-defs.ts` 逐字重复，导出的 `workflowApi` 全仓零引用（消费方一直用 `workflowDefApi`）。按"删除优于兼容"未留 shim 与别名，入口的三个 API client 是 `workflowDefApi` / `workflowEngineApi` / `customToolsApi`。**不要再以"补齐第二份客户端"为由重建**。
 - **`frontend-no-legacy-api-prefix` 规则只识别裸 `request(...)` 调用**：写成成员调用（`this.request("/v1/...")`）或裸 `fetch("/v1/...")` 会绕过。当前控制台代码无 `/v1`、`/v2` 命中，但不要依赖这条规则做全量保证。
 - **域模块路径仍普遍回显服务端 `err.message`**：32 个前端文件、102 处把 `err.message` 直接交给 `toast.error`（`FileTreeTab.tsx`、`AgentTasksPage.tsx`、`AgentKnowledgeBasesPage.tsx`、`agent-models-data.ts`、`EmbeddingModelManager.tsx`、`useWorkflowPersistence.ts` 等），另有模板字符串形态未被统计。与 §9.3「错误按稳定 code 映射文案」的要求不一致；Chat 域已按 error type 收敛（见 §6.5）。
 
@@ -832,7 +849,7 @@ import DOMPurify from "dompurify";
 
 **唯一的凭据类例外**（用户裁定保留，不得作为新代码先例）：
 
-- 系统 Master Key 存 `sessionStorage`（键 `rcs_admin_master_key`）：实现见 `packages/web-runtime/web/lib/admin-key.ts`，写入点在 sandbox 的 `MasterKeyGate.tsx`，经 `request()` 的 `bearerToken` 注入 `Authorization`；401 时调用方 `clearAdminKey()` 回门。master key 不进 better-auth 会话体系，落在标签页 session 内换取"刷新免重输"；代价是同源脚本与 XSS 可直接读走该值，因此**只允许服务系统管理员页**（sandbox / observer 的 master key 门），不得用于普通用户凭据。XSS 面由 §6.1 与 §6.2 控制。
+- 系统 Master Key 存 `sessionStorage`（键 `rcs_admin_master_key`）：实现见 `packages/web-runtime/web/lib/admin-key.ts`，写入点是 `@fenix/web-runtime/hooks/use-admin-key-gate` 的 `unlock()`（门组件为 `@fenix/ui-components/config/AdminKeyGate`，5 处消费：sandbox / observer ×3 / model-management），经 `request()` 的 `bearerToken` 注入 `Authorization`；401 时调用方经 `fail()` 清 key 回门。master key 不进 better-auth 会话体系，落在标签页 session 内换取"刷新免重输"；代价是同源脚本与 XSS 可直接读走该值，因此**只允许服务系统管理员页**（sandbox / observer / model-management 的 master key 门），不得用于普通用户凭据。XSS 面由 §6.1 与 §6.2 控制。
 - **移除条件**：master key 改由服务端 HttpOnly Cookie 或仅内存态承载（接受刷新重输）后，删除 `admin-key.ts` 及其全部消费方，并同步删除本条登记。
 
 **`localStorage` 的合法用途白名单**（除 master key 外一律非凭据）：
@@ -1069,7 +1086,7 @@ i18n.use(initReactI18next).init({
 - **`cn()` 唯一来自 `@fenix/ui-components/lib/cn`**；宿主 `apps/web/src/lib/utils.ts` 的遗留副本与 `@/src/lib/utils` 别名已随 2026-09 去重删除，不要再建第二份。
 - **独立 `.css` 文件只许三类**：① token 入口（`index.css`、`theme.css`）；② **第三方渲染覆盖表**，判据是第三方 DOM **没有 className 挂载点**且第三方 CSS **未分层**（当前唯一实例：`ui-components/web/components/preview/overrides.css`，它也是 `web/components/` 下仅存的 `.css`）；③ 迁移未完成的历史页面级样式表——**不鼓励**，见下。
 - **类别 ② 的三条约束**（照 `overrides.css` 文件头执行）：保留未分层、靠导入顺序取胜，**不要改写成工具类**；**拒绝 `!important`**（全仓现有 6 处 `!` 修饰工具类都属待清理遗留，不要增加）；覆盖选择器必须带第三方类名前缀（如 `ofv-*`）。
-- **新增 `.css` 的落位**：现有三种形态——`ui-components/web/chat/css/*.css`（11 份，模块级）、`web/styles/theme.css`（token）、与页面同目录的 `xxx.css`（历史遗留）。**新代码只用前两种**；确实必须写 CSS 时优先放组件同目录、命名与组件同名，不要新增页面级样式表。
+- **新增 `.css` 的落位**：现有三种形态——`ui-components/web/chat/css/*.css`（3 份，模块级）、`web/styles/theme.css`（token）、与页面同目录的 `xxx.css`（历史遗留）。**新代码只用前两种**；确实必须写 CSS 时优先放组件同目录、命名与组件同名，不要新增页面级样式表。
 - **图标**：通用图标只用 `lucide-react`，**禁止内联 SVG**；模型图标走 `<ModelIcon modelId size variant>`（`model-management/web/components/model-icon/ModelIcon.tsx`），**禁止直接 `import "@lobehub/icons"`**（`model-icon-boundary` 规则强制，见 §11.2）。**纯逻辑模块不得依赖 UI 图标包**（后端与纯逻辑测试也不得**间接**加载）——`@lobehub/icons` 依赖 `antd-style`，后者在模块加载期裸调 `matchMedia`，无 DOM 的 `bun test` 进程里加载即崩。
 - **字体**：系统字体栈，**禁止外部字体链接与 `@font-face`**；`--font-sans` / `--font-display` / `--font-body` 三者同值，`--font-mono` 独立，均应用在 `html, body`。
 - **禁止 `@apply`**（当前零使用，不要引入——它会把"工具类 vs CSS"变成第三种说不清的形态）。
@@ -1077,7 +1094,7 @@ i18n.use(initReactI18next).init({
 ### 10.1 现状偏离
 
 - **`dark:` 变体与 `.dark` 类不同源**：全仓无 `@custom-variant dark` 声明，30 个文件使用 `dark:`（含 `ui/button.tsx`、`ui/tabs.tsx`、`StatusBadge.tsx`、`HindsightToolCard.tsx`），用户在手动切浅色时仍可能按系统偏好渲染。另见 §3.2 的"宿主强制浅色"——当前深色路径整体不可用。
-- **页面级 `.css` 大量残留且无登记**：`apps/web` 6 个（合计 3255 行，含 `shell/agent-panel.css` 919 行、`shell/artifacts-workspace.css` 664 行）、资源侧 21 个（合计 6257 行，含 `workflow/workflow.css` 642 行、`agent-config/agent-editor-design.css` 528 行；口径为 `packages/**/web/**` 加 `platform/identity` 的 2 份）。它们与业务 tsx 里的自定义类名联动（如 `agent-tasks-page`），迁移时两者必须同批改。
+- **页面级 `.css` 大量残留且无登记**：`apps/web` 5 个（合计 1810 行，含 `shell/agent-panel.css` 676 行、`shell/artifacts-workspace.css` 376 行）、资源侧 14 个（合计 3370 行，含 `workflow/workflow.css` 642 行、`platform/identity/.../agent-organizations.css` 513 行）。口径：`apps/web/src/**/*.css` 与 `packages/**/web/**/*.css`，排除 §10 允许的 token 入口（`index.css` 837 行、`styles/theme.css` 247 行）、`chat/css/*.css`（3 份）与 `components/preview/overrides.css`。它们与业务 tsx 里的自定义类名联动（如 `agent-tasks-page`），迁移时两者必须同批改。2026-09 的 Tailwind 迁移已把此前的基数压下来（`agent-editor.css` / `-design.css` / `-responsive.css` 三表随 `bfd63e52` 删除；`agent-panel.css` 由 919 行降到 676、`artifacts-workspace.css` 由 664 行降到 376），但**剩余部分仍未登记**。
 - **`tw-animate-css` 声明了依赖但源仓库从未 `@import` 它**（只在包内 demo 的 CSS 里导入过），因此 shadcn 过渡动画工具类在应用中是空操作（已在 `ui-components` README 登记）。包内已知限制的完整清单见 `packages/ui-components/README.md`，以那里为准，不在此重复。
 
 ## 11. 开发落地清单
