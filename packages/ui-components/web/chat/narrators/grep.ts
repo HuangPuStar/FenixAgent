@@ -15,7 +15,8 @@
  */
 
 import { Search } from "lucide-react";
-import { compactDetailValue, truncate } from "./helpers";
+import { truncate } from "../lib/tool-call-utils";
+import { compactDetailValue } from "./helpers";
 import type { ToolNarrator } from "./types";
 
 export const grepNarrator: ToolNarrator = {

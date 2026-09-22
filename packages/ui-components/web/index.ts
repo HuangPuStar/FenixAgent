@@ -123,7 +123,6 @@ export * from "./ui/command";
 export * from "./ui/connection-status";
 export * from "./ui/date-picker";
 export * from "./ui/dialog";
-export * from "./ui/dialog-xl";
 export * from "./ui/dropdown-menu";
 export * from "./ui/form";
 export * from "./ui/hover-card";

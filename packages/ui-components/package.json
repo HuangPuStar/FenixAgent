@@ -488,10 +488,6 @@
       "types": "./web/ui/dialog.tsx",
       "default": "./web/ui/dialog.tsx"
     },
-    "./ui/dialog-xl": {
-      "types": "./web/ui/dialog-xl.tsx",
-      "default": "./web/ui/dialog-xl.tsx"
-    },
     "./ui/dropdown-menu": {
       "types": "./web/ui/dropdown-menu.tsx",
       "default": "./web/ui/dropdown-menu.tsx"

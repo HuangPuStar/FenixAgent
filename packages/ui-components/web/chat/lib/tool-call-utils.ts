@@ -172,7 +172,12 @@ export function kindLabel(kind: ToolCardKind): string {
 // 工具函数
 // =============================================================================
 
-/** 截断字符串，超长加省略号。复制自 `packages/agent-runtime/web/components/chat/tool-call-utils.ts`。 */
+/**
+ * 截断字符串，超长加省略号。
+ *
+ * 全包唯一的实现（2026-09-22 前端去重）：`chat/narrators/helpers.ts` 曾逐字复制一份，
+ * 两份各自演化会让同一条文案在两处截断长度不一致，故收敛到此处，narrator 侧直接引用。
+ */
 export function truncate(str: string, max: number): string {
   return str.length > max ? `${str.slice(0, max)}…` : str;
 }

@@ -2,10 +2,13 @@
  * Narrator 共享工具函数。
  *
  * 来源：`packages/agent-runtime/web/components/chat/narrators/helpers.ts` 逐字复制
- * `extractFileName` / `extractLineRange` / `extractErrorMessage` / `formatElapsed` / `truncate` /
+ * `extractFileName` / `extractLineRange` / `extractErrorMessage` / `formatElapsed` /
  * `compactDetailValue` / `findFirstStringValue` / `extractDirectoryEntryCount` /
  * `isOpencodeDirectoryOutput` / `isOpencodeFileOutput` / `extractDisplayMeta` / `resolveToolCardKind`
  * 与 `ToolCallDisplayMeta`。
+ *
+ * `truncate` 不属于本模块：它与 `../lib/tool-call-utils` 中的同名函数逐字相同，
+ * 收敛为 `../lib/tool-call-utils` 一份（2026-09-22 前端去重），narrator 侧改为直接引用。
  *
  * 所有函数都是纯函数，无副作用，便于单测。
  * 设计原则：宽容处理 rawInput / rawOutput 的字段变体
@@ -16,6 +19,7 @@
  * 因此本模块不依赖任何宿主模块。类型改从 `../types` 导入。
  */
 
+import { truncate } from "../lib/tool-call-utils";
 import { classifyToolSemantic, semanticToToolCardKind } from "../lib/tool-semantic";
 import type { ToolCallData, ToolCardKind } from "../types";
 
@@ -94,13 +98,6 @@ export function formatElapsed(ms: number): string {
   if (ms < 1000) return `${ms}ms`;
   if (ms < 60_000) return `${(ms / 1000).toFixed(1)}s`;
   return `${Math.floor(ms / 60_000)}m${Math.floor((ms % 60_000) / 1000)}s`;
-}
-
-/**
- * 截断字符串，超长加省略号。
- */
-export function truncate(s: string, max: number): string {
-  return s.length > max ? `${s.slice(0, max)}…` : s;
 }
 
 /**

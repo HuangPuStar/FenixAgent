@@ -60,24 +60,18 @@ import {
   TooltipContent,
   TooltipProvider,
   TooltipTrigger,
-  XLDialog,
-  XLDialogClose,
-  XLDialogContent,
-  XLDialogHeader,
-  XLDialogTitle,
-  XLDialogTrigger,
 } from "@fenix/ui-components";
 import { useState } from "react";
 
 /**
- * Base UI P3 · 弹窗与浮层：AlertDialog / Dialog / XLDialog / Sheet / Popover / Tooltip / HoverCard /
+ * Base UI P3 · 弹窗与浮层：AlertDialog / Dialog（含 size="xl"）/ Sheet / Popover / Tooltip / HoverCard /
  * DropdownMenu / Command（cmdk）。
  *
  * 动画依赖：Popover、Tooltip、HoverCard、DropdownMenu 与 Sheet 的进出场类来自 tw-animate-css
  * （demo.css 已 @import）。包本身不引入该依赖，宿主缺少它时组件功能完整但没有过渡动画。
  *
  * 覆盖「确认」与「危险操作」两类状态：危险操作由 AlertDialog 的 destructive 动作承担，
- * 普通确认由 Dialog / XLDialog / Sheet 承担。带 loading 的确认与表单弹窗自持异步流程，
+ * 普通确认由 Dialog / Sheet 承担。带 loading 的确认与表单弹窗自持异步流程，
  * 属于组合容器层（Base UI P2），不在本子文件。
  *
  * 已知限制：包内没有 Toast / Notification 类组件。
@@ -165,11 +159,12 @@ export function FeedbackOverlayExamples() {
 
       <div className="mb-5 p-5 border border-border rounded-lg bg-surface-1">
         <h2 data-slot="demo-example-title" className="mb-4 text-text-secondary text-[13px] font-medium">
-          Dialog / XLDialog
+          Dialog（默认 / size=&quot;xl&quot;）
         </h2>
         <div className="flex flex-col gap-1.5">
           <p className="mt-3 text-text-muted text-[12px]">
-            常规弹窗与 960px 的超大弹窗；两者都是 Radix Dialog 的封装，XLDialog 只放开宽度与内边距。
+            常规弹窗与 960px 的超大弹窗是同一实现的两种尺寸：size=&quot;xl&quot; 只放开宽度、圆角与内边距，
+            其余开关（showOverlay / disableOverlayClose / disableEscapeClose）两者一致。
           </p>
           <div className="flex flex-wrap items-center gap-3">
             <Dialog>
@@ -190,24 +185,24 @@ export function FeedbackOverlayExamples() {
               </DialogContent>
             </Dialog>
 
-            <XLDialog>
-              <XLDialogTrigger asChild>
+            <Dialog>
+              <DialogTrigger asChild>
                 <Button variant="outline">Open XL dialog</Button>
-              </XLDialogTrigger>
-              <XLDialogContent>
-                <XLDialogHeader className="border-b p-6">
-                  <XLDialogTitle>Agent trace</XLDialogTitle>
-                </XLDialogHeader>
+              </DialogTrigger>
+              <DialogContent size="xl">
+                <DialogHeader className="border-b p-6">
+                  <DialogTitle>Agent trace</DialogTitle>
+                </DialogHeader>
                 <div className="min-h-0 flex-1 overflow-y-auto p-6 text-sm text-muted-foreground">
-                  XLDialog 主体自行滚动，适合长内容与图文混排；下面的页脚保持固定高度。
+                  size=&quot;xl&quot; 的弹窗宽 960px，主体自行滚动，适合长内容与图文混排；下面的页脚保持固定高度。
                 </div>
                 <div className="flex justify-end gap-2 border-t p-4">
-                  <XLDialogClose asChild>
+                  <DialogClose asChild>
                     <Button variant="outline">Close</Button>
-                  </XLDialogClose>
+                  </DialogClose>
                 </div>
-              </XLDialogContent>
-            </XLDialog>
+              </DialogContent>
+            </Dialog>
           </div>
         </div>
       </div>

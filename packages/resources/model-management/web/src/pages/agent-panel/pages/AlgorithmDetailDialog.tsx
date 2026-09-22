@@ -1,5 +1,5 @@
 import { Button } from "@fenix/ui-components/ui/button";
-import { XLDialog, XLDialogContent, XLDialogHeader, XLDialogTitle } from "@fenix/ui-components/ui/dialog-xl";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@fenix/ui-components/ui/dialog";
 import { Copy } from "lucide-react";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
@@ -23,16 +23,20 @@ export function AlgorithmDetailDialog({ algorithm, open, onClose }: AlgorithmDet
   };
 
   return (
-    <XLDialog open={open} onOpenChange={(v) => !v && onClose()}>
-      <XLDialogContent className="p-6 max-w-[680px] max-h-[85vh] overflow-auto">
+    <Dialog open={open} onOpenChange={(v) => !v && onClose()}>
+      {/* className 与 size="xl" 的合并结果：sm 断点以上仍是 960px（`sm:max-w-[960px]` 与无修饰符的
+          `max-w-[680px]` 分属两个分组，谁也压不过谁），680px 只在窄屏生效；`max-h-[85vh]` / `overflow-auto`
+          则确实覆盖了变体默认的 90vh / overflow-hidden。这是原 XLDialog 版本的实际渲染结果，
+          size 变体化时逐字保留，未顺手改动视觉。 */}
+      <DialogContent size="xl" className="p-6 max-w-[680px] max-h-[85vh] overflow-auto">
         {/* 头部 */}
-        <XLDialogHeader>
+        <DialogHeader>
           <div className="flex items-center gap-3">
             <div className="w-8 h-8 rounded-md bg-gradient-to-br from-blue-50 to-blue-100 flex items-center justify-center text-lg flex-shrink-0">
               {algorithm.emoji}
             </div>
             <div className="flex-1 min-w-0">
-              <XLDialogTitle className="text-base font-bold">{algorithm.name}</XLDialogTitle>
+              <DialogTitle className="text-base font-bold">{algorithm.name}</DialogTitle>
               <p className="text-xs text-text-secondary mt-0.5">{algorithm.categories.join(" · ")}</p>
             </div>
             <Button variant="outline" size="sm" className="gap-1.5 h-8 text-xs flex-shrink-0" onClick={handleCopy}>
@@ -40,7 +44,7 @@ export function AlgorithmDetailDialog({ algorithm, open, onClose }: AlgorithmDet
               {copied ? t("algorithms.copied") : t("algorithms.copyCode")}
             </Button>
           </div>
-        </XLDialogHeader>
+        </DialogHeader>
 
         {/* 内容两栏 */}
         <div className="flex gap-5 mt-4">
@@ -95,7 +99,7 @@ export function AlgorithmDetailDialog({ algorithm, open, onClose }: AlgorithmDet
             </pre>
           </div>
         </div>
-      </XLDialogContent>
-    </XLDialog>
+      </DialogContent>
+    </Dialog>
   );
 }
