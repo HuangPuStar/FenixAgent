@@ -208,7 +208,7 @@ const EXPECTED_EXPORTS: Record<string, readonly string[]> = {
     "StatusBadge",
     "buildInitialExpandedState",
     "filterData",
-    "getBadgeVariant",
+    "getStatusTone",
     "paginateData",
     "sortData",
   ],

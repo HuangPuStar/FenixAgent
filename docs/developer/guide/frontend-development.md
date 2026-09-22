@@ -267,15 +267,13 @@ deploy/assembly/ce.json 的 web 列表（9 个包）
 **不是 Provider 的两个全局能力**（不要给它们补 Provider）：
 
 - i18n 走 `initReactI18next` 单例（`apps/web/src/i18n/index.ts`），无 `I18nextProvider`。
-- 主题走宿主的 `@/src/lib/theme`。
+- 主题走 `@fenix/ui-components/lib/theme` 的 `ThemeProvider`。
 
 ### 3.2 主题
 
-宿主实现是 `apps/web/src/lib/theme.ts`，导出 `ThemeProvider` / `useTheme()`；`useTheme` 在 Provider 外抛错，不静默回落。
+实现只有一份：`packages/ui-components/web/lib/theme.tsx`（读 `localStorage`、跟随 `matchMedia`），导出 `ThemeProvider` / `useTheme()`；`useTheme` 在 Provider 外抛错，不静默回落。宿主 `apps/web/src/routes/__root.tsx` 在三处挂载点上显式传 `defaultTheme="light"`。
 
-**当前实现强制浅色**：`defaultTheme` 参数被改名丢弃、初始 state 硬编码 `"light"`、`localStorage` 只写不读，因此 `system` / `dark` 在运行时不可达。`__root.tsx` 三处显式传的 `defaultTheme="light"` 不生效。
-
-**主题只能有一份实现**。`packages/ui-components/web/lib/theme.tsx` 是第二份（读持久化、跟随 `matchMedia`），`ThemeToggle` 只认它且在生产无消费点——在宿主渲染 `ThemeToggle` 会因缺 Provider 直接抛错。开启深色模式时必须先把宿主切到同一份实现并删除另一份，不要在调用点各补一个。
+**宿主当前仍是浅色外观**：`defaultTheme="light"` 只决定「无持久化记录时的初值」，一旦 `localStorage.theme` 里存在 `dark` 就会被读回（去重前的宿主副本曾硬编码 `"light"` 并让 `localStorage` 只写不读，该 hack 已随副本删除）。系统的 `prefers-color-scheme` 只在 `theme === "system"` 时跟随。开启/关闭深色前先确认这条差异是否可接受，不要再在调用点各补一份实现。
 
 ### 3.3 组织与会话上下文
 
@@ -410,11 +408,12 @@ if (!data?.length) return <EmptyState icon={<FolderOpen />} title={t("empty.titl
 | `FormDialog` | 通用表单对话框 | `open` / `onOpenChange` / `title` / `children` / `formConfig?` / `onSubmit?` / `submitLabel?` / `cancelLabel?` / `loading?` / `disabled?` / `hideSubmit?` / `width?`（默认 `sm:max-w-lg`） |
 | `ConfirmDialog` | 危险操作确认 | `open` / `onOpenChange` / **`title`（必填）** / **`description`（必填）** / `onConfirm` / `variant?: "default" \| "destructive"` / `confirmLabel?` / `cancelLabel?` / `loading?` |
 | `EmptyState` | 空状态占位 | `icon?` / `title` / `description?` / `action?: { label, onClick }` |
-| `StatusBadge` | 状态徽标 | `status: string`（颜色由内置 `getBadgeVariant()` 表决定） |
+| `StatusBadge` | 状态徽标 | `status` / `label?`（覆盖 i18n `statusBadge.<status>`）/ `tone?: "success" \| "info" \| "warning" \| "danger" \| "neutral"` / `toneMap?`（业务状态词表 → 色调）/ `indicator?: "none" \| "dot" \| "pulse"` |
 | `DataTable` | TanStack Table 封装（含搜索/选择/分页/展开） | `columns` / `data` / `searchable` / `selectable` / `actions` / `expandableRow` / `rowKey` / `pageSize` |
 | `BatchActionBar` | 批量操作条 | 见包内实现 |
 
-> `StatusBadge` 的 `colorMap` prop 虽在类型里声明但函数未消费，传它不会生效——需要自定义颜色时先改包内实现。
+> `StatusBadge` 只收语义（色调），不收色值：业务状态词表经 `toneMap` 注入，配色（含 dark 变体）留在包内。
+> 需要在包外判定色调时用 `getStatusTone(status, toneMap)`，不要复刻配色类。
 
 ### 4.2 Dialog 状态管理
 
@@ -527,7 +526,7 @@ export function AgentTasksPage() {
 ### 4.8 现状偏离
 
 - **16 个生产文件超 500 行**（快照，从大到小）：`knowledge/AgentKnowledgeBasesPage.tsx` 1292、`model-management/AdminModelGatewayPage.tsx` 1241、`workflow/components/NodeConfigCard.tsx` 1182、`workflow/WorkflowEditor.tsx` 1116、`memory/hindsight/components/DataView.tsx` 1034、`memory/hindsight/components/Constellation.tsx` 1023、`memory/hindsight/components/Graph2d.tsx` 737、`agent-config/AgentHomePage.tsx` 672、`workflow/hooks/useWorkflowRun.ts` 624、`workflow/components/NodeConfigPanel.tsx` 557、`knowledge/ResourcePreviewContent.tsx` 556、`web-runtime/chat/structured-to-thread.ts` 537、`knowledge/EmbeddingModelManager.tsx` 529、`knowledge/RetrievalTestPanel.tsx` 525、`ui-components/chat/shell/ACPMain.tsx` 511、`agent-runtime/hooks/use-chat-state.ts` 509。400–499 行区间另有 27 个（口径：`apps/web/src` + `packages/**/web/**`，排除测试、生成文件与服务端路径）。
-- **4 个 config 组件生产零消费**：`DataTable` / `BatchActionBar` / `StatusBadge` / `EmptyState` 目前只有包内测试与 demo 引用。同时存在 **2 处同名本地重复实现**：`observer/AdminObserverPage.tsx` 的 `function EmptyState()`、`workflow/WorkflowRuns.tsx` 的 `function StatusBadge()`，直接违反"禁止重复开发"。收口前先确认包内 API 是否够用。
+- **3 个 config 组件生产零消费**：`DataTable` / `BatchActionBar` / `EmptyState` 目前只有包内测试与 demo 引用。同时存在 **1 处同名本地重复实现**：`observer/AdminObserverPage.tsx` 的 `function EmptyState()`，直接违反"禁止重复开发"。收口前先确认包内 API 是否够用（`StatusBadge` 已在 2026-09 泛化后接入 task / workflow / prod-view 三处生产消费方，不再是零消费）。
 - **`task` 包的域类型未从包出口导出**：`TaskV2Info` 的权威定义在服务端 zod schema，web 侧页面用相对路径 `from "../../../api/tasks-v2"` 取，未过 `@fenix/resource-task/web`。与 §4.5 的"经包 exports 导出"不一致，新增类型不要照抄这种取法。
 
 ## 5. API 建模层
@@ -830,7 +829,6 @@ import DOMPurify from "dompurify";
 - **最大 XSS 面未收口**：`ui-components/web/chat/primitives/iframe-preview.tsx` 对 Markdown 里的 `<iframe>` 同时给 `allow-scripts` 与 `allow-same-origin`，且**前端不对 `src` 做任何校验**；来源是 Agent / LLM 输出。同上文件放大弹窗的 Dialog 内还有一份同样配置。
 - **knowledge 预览的 Markdown 走 `react-markdown` 且未接 `rehype-sanitize`**（`ResourcePreviewContent.tsx`），输入是用户上传的知识库文件正文。属待收口项。
 - **错误文案回显**：Chat 域已按稳定 `error.type` 映射字典（`public-error-text.ts` + 协议侧明确"不得使用原始异常文本"，并有 `public-error-i18n.test.ts` 守护）；但域模块与页面的 `onError` 仍普遍直接显示 `err.message`（见 §5.9）。
-- **`apps/web/src/lib/utils.ts` 的 `esc()` 是死代码**（无调用点）。
 
 ## 7. 错误边界
 
@@ -1035,7 +1033,7 @@ i18n.use(initReactI18next).init({
 - **两个入口，两份副本**：宿主 `apps/web/src/index.css` 与包入口 `packages/ui-components/web/styles/theme.css`（经 `@fenix/ui-components/styles.css` 暴露）持有**逐字重复**的 token——含品牌色、`surface-0..3`、`text-bright/primary/secondary/muted/dim`、`status-*`、shadcn 语义族、布局变量（`--navbar-height` 等）与字体变量。改 token 必须同批改两份，**没有任何一致性测试兜底**。
 - **`@source` 只扫 `packages/**/web/**`**：组件源码放错位置（如 `packages/<pkg>/components/`）其工具类**不会被生成**——症状是样式静默消失，不是报错。这条由 `scripts/__tests__/app-entry-paths.test.ts` 固化，也是 §1 那条硬规则的由来。
 - **优先 token 类而不是 `dark:` 变体**：`.dark` 类由 `ThemeProvider` 切换，但 `dark:` 变体没有 `@custom-variant dark` 声明、仍绑定 `prefers-color-scheme`，两者不同源。写 `bg-surface-1` / `text-muted`。
-- **`cn()` 统一从 `@fenix/ui-components/lib/cn` 导入**；宿主 `@/src/lib/utils` 的那个是遗留，禁止新增使用。
+- **`cn()` 唯一来自 `@fenix/ui-components/lib/cn`**；宿主 `apps/web/src/lib/utils.ts` 的遗留副本与 `@/src/lib/utils` 别名已随 2026-09 去重删除，不要再建第二份。
 - **独立 `.css` 文件只许三类**：① token 入口（`index.css`、`theme.css`）；② **第三方渲染覆盖表**，判据是第三方 DOM **没有 className 挂载点**且第三方 CSS **未分层**（当前唯一实例：`ui-components/web/components/preview/overrides.css`，它也是 `web/components/` 下仅存的 `.css`）；③ 迁移未完成的历史页面级样式表——**不鼓励**，见下。
 - **类别 ② 的三条约束**（照 `overrides.css` 文件头执行）：保留未分层、靠导入顺序取胜，**不要改写成工具类**；**拒绝 `!important`**（全仓现有 6 处 `!` 修饰工具类都属待清理遗留，不要增加）；覆盖选择器必须带第三方类名前缀（如 `ofv-*`）。
 - **新增 `.css` 的落位**：现有三种形态——`ui-components/web/chat/css/*.css`（11 份，模块级）、`web/styles/theme.css`（token）、与页面同目录的 `xxx.css`（历史遗留）。**新代码只用前两种**；确实必须写 CSS 时优先放组件同目录、命名与组件同名，不要新增页面级样式表。
@@ -1047,8 +1045,6 @@ i18n.use(initReactI18next).init({
 
 - **`dark:` 变体与 `.dark` 类不同源**：全仓无 `@custom-variant dark` 声明，30 个文件使用 `dark:`（含 `ui/button.tsx`、`ui/tabs.tsx`、`StatusBadge.tsx`、`HindsightToolCard.tsx`），用户在手动切浅色时仍可能按系统偏好渲染。另见 §3.2 的"宿主强制浅色"——当前深色路径整体不可用。
 - **页面级 `.css` 大量残留且无登记**：`apps/web` 6 个（合计 3255 行，含 `shell/agent-panel.css` 919 行、`shell/artifacts-workspace.css` 664 行）、资源侧 21 个（合计 6257 行，含 `workflow/workflow.css` 642 行、`agent-config/agent-editor-design.css` 528 行；口径为 `packages/**/web/**` 加 `platform/identity` 的 2 份）。它们与业务 tsx 里的自定义类名联动（如 `agent-tasks-page`），迁移时两者必须同批改。
-- **`cn()` 有 3 处遗留用法**：`apps/web/src/routes/admin.tsx`、`components/agent-panel/FileTabsBar.tsx`、`components/agent-panel/TopModeTabs.tsx`，均从 `@/src/lib/utils` 导入（迁移设计已登记该别名条目应删除）。
-- **`StatusBadge` 使用未定义的类 `status-badge-active`**（已在 `ui-components` README 登记）。
 - **`tw-animate-css` 声明了依赖但源仓库从未 `@import` 它**（只在包内 demo 的 CSS 里导入过），因此 shadcn 过渡动画工具类在应用中是空操作（已在 `ui-components` README 登记）。包内已知限制的完整清单见 `packages/ui-components/README.md`，以那里为准，不在此重复。
 
 ## 11. 开发落地清单

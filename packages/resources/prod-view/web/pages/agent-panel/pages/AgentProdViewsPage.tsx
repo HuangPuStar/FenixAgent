@@ -1,6 +1,7 @@
 import { agentApi } from "@fenix/agent-config/web";
 import { AgentCardList } from "@fenix/ui-components/components/AgentCardList";
 import { ConfirmDialog } from "@fenix/ui-components/config/ConfirmDialog";
+import { StatusBadge } from "@fenix/ui-components/config/StatusBadge";
 import { AppHeader } from "@fenix/ui-components/layout/app-header";
 import { AppPage } from "@fenix/ui-components/layout/app-page";
 import { Button } from "@fenix/ui-components/ui/button";
@@ -245,11 +246,11 @@ export function AgentProdViewsPage() {
             <div className="flex-1 min-w-0">
               <div className="flex items-center gap-2">
                 <span className="font-medium text-sm truncate">{view.name}</span>
-                <span
-                  className={`text-xs px-1.5 py-0.5 rounded ${view.enabled ? "bg-green-100 text-green-700" : "bg-gray-100 text-gray-500"}`}
-                >
-                  {view.enabled ? t("enabled") : t("disabled")}
-                </span>
+                <StatusBadge
+                  status={view.enabled ? "enabled" : "disabled"}
+                  label={view.enabled ? t("enabled") : t("disabled")}
+                  className="text-xs px-1.5 py-0.5"
+                />
               </div>
               <div className="text-xs text-text-muted mt-0.5">{view.agentId}</div>
               <div className="text-xs text-text-muted mt-0.5">

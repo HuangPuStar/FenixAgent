@@ -1,3 +1,4 @@
+import type { StatusTone } from "@fenix/ui-components/config/StatusBadge";
 import { ApiError } from "@fenix/web-runtime/api/request";
 import { parseExpression } from "cron-parser";
 import { z } from "zod/v4";
@@ -104,6 +105,46 @@ export const INITIAL_TASK_FORM_VALUES: TaskFormValues = {
   agentId: "",
   prompt: "",
 };
+
+/**
+ * 执行日志状态 → 色调 / 文案 key。
+ *
+ * 内联日志面板（`TasksPanel`）与日志弹窗（`TaskLogDialog`）此前各持一份，
+ * 靠肉眼保持「timeout 也算失败」这类判断一致；归一到这里后，新增状态只改一处。
+ */
+export const LOG_STATUS_TONES: Record<string, StatusTone> = {
+  success: "success",
+  failed: "danger",
+  timeout: "danger",
+  skipped: "neutral",
+  pending: "warning",
+};
+
+const LOG_STATUS_LABEL_KEYS: Record<string, string> = {
+  success: "status.success",
+  failed: "status.failed",
+  timeout: "status.timeout",
+  skipped: "status.skipped",
+  pending: "status.pending",
+};
+
+/**
+ * 日志状态对应的文案 key；未知状态按 `pending` 展示，与去重前的回退口径一致
+ * （后端新增状态时先落到「等待中」，而不是露出原始英文状态码）。
+ */
+export function logStatusLabelKey(status: string): string {
+  return LOG_STATUS_LABEL_KEYS[status] ?? LOG_STATUS_LABEL_KEYS.pending;
+}
+
+/**
+ * 日志时间戳（Unix 秒）格式化为 `MM-DD HH:mm`。
+ * 不用 `toLocaleString`：日志表格列宽固定，本地化格式的长度不稳定。
+ */
+export function formatTaskLogTime(timestamp: number): string {
+  const d = new Date(timestamp * 1000);
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return `${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
 
 /** 将任务表单转换为后端 definition 联合类型。 */
 export function buildTaskDefinition(values: TaskFormValues): HttpDefinition | AgentDefinition {

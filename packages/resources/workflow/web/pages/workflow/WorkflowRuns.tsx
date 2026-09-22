@@ -1,3 +1,4 @@
+import { StatusBadge, type StatusTone } from "@fenix/ui-components/config/StatusBadge";
 import { Button } from "@fenix/ui-components/ui/button";
 import { Input } from "@fenix/ui-components/ui/input";
 import { Pagination } from "@fenix/ui-components/ui/pagination";
@@ -10,14 +11,15 @@ import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
 import { type DAGStatus, workflowEngineApi } from "../../api/workflow-engine";
 
-const STATUS_CONFIG: Record<string, { color: string; bg: string }> = {
-  PENDING: { color: "#94a3b8", bg: "#f1f5f9" },
-  RUNNING: { color: "#3b82f6", bg: "#eff6ff" },
-  SUSPENDED: { color: "#f59e0b", bg: "#fffbeb" },
-  SUCCESS: { color: "#22c55e", bg: "#f0fdf4" },
-  FAILED: { color: "#ef4444", bg: "#fef2f2" },
-  CANCELLED: { color: "#94a3b8", bg: "#f8fafc" },
-  ERROR: { color: "#ef4444", bg: "#fef2f2" },
+/** 运行状态 → 色调：只声明语义，具体配色（含 dark 变体）由 `StatusBadge` 决定。 */
+const RUN_STATUS_TONES: Record<string, StatusTone> = {
+  PENDING: "neutral",
+  RUNNING: "info",
+  SUSPENDED: "warning",
+  SUCCESS: "success",
+  FAILED: "danger",
+  CANCELLED: "neutral",
+  ERROR: "danger",
 };
 
 const STATUS_LABEL_KEYS: Record<string, string> = {
@@ -29,21 +31,6 @@ const STATUS_LABEL_KEYS: Record<string, string> = {
   CANCELLED: "runs.status_cancelled",
   ERROR: "runs.status_error",
 };
-
-function StatusBadge({ status }: { status: string }) {
-  const { t } = useTranslation("workflows");
-  const cfg = STATUS_CONFIG[status] ?? STATUS_CONFIG.PENDING;
-  const isRunning = status === "RUNNING";
-  return (
-    <span
-      className="inline-flex items-center gap-1.5 text-[11px] font-medium px-2 py-0.5 rounded-full"
-      style={{ color: cfg.color, background: cfg.bg }}
-    >
-      {isRunning && <span className="w-1.5 h-1.5 rounded-full animate-pulse" style={{ background: cfg.color }} />}
-      {t(STATUS_LABEL_KEYS[status] ?? status)}
-    </span>
-  );
-}
 
 function relativeTime(
   iso: string | undefined | null,
@@ -233,7 +220,13 @@ export function WorkflowRuns({ onSelectRun }: WorkflowRunsProps) {
                       <span className="text-sm font-medium">{r.workflow_name}</span>
                     </td>
                     <td className="py-3 px-4">
-                      <StatusBadge status={r.status} />
+                      <StatusBadge
+                        status={r.status}
+                        label={t(STATUS_LABEL_KEYS[r.status] ?? r.status)}
+                        toneMap={RUN_STATUS_TONES}
+                        indicator={r.status === "RUNNING" ? "pulse" : "none"}
+                        className="text-[11px]"
+                      />
                     </td>
                     <td className="py-3 px-4">
                       <span className="text-xs text-muted-foreground font-mono">

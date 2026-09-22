@@ -123,11 +123,9 @@ i18n.addResourceBundle("zh", UI_COMPONENTS_NS, zh, true, true);
    demo 例外：`demo/demo.css` 为展示过渡效果单独 `@import` 了它，该依赖因此只声明在 devDependencies，不随包产物分发。
    - 影响范围：依赖这些类的过渡动画（dialog、accordion 等）在源仓库同样没有动画。
    - 移除条件：源仓库正式引入 `tw-animate-css` 并在主题入口 `@import` 之后再同步。
-2. **`status-badge-active` 是未定义类**：`config/StatusBadge.tsx` 使用该类，但源仓库与本包都没有定义它，不产生样式。
-   - 移除条件：宿主提供该工具类，或改为包内 token 驱动的高亮。
-3. **`@plugin "@tailwindcss/typography"`**：`tool` / `reasoning` 组件使用 `prose` 系列类名，主题入口因此声明了该插件，
+2. **`@plugin "@tailwindcss/typography"`**：`tool` / `reasoning` 组件使用 `prose` 系列类名，主题入口因此声明了该插件，
    消费方编译本包 CSS 时需能解析到 `@tailwindcss/typography`（已列入 dependencies）。
-4. **宿主外观只迁移「组件强依赖」的部分**：`theme.css` 带走了三条缺失即静默走样的全局规则——
+3. **宿主外观只迁移「组件强依赖」的部分**：`theme.css` 带走了三条缺失即静默走样的全局规则——
    `*, ::before, ::after { border-color: var(--color-border) }`（包内 51 处只写宽度的 `border` / `divide-*` 依赖它，
    否则回落到 `currentColor`）、`:focus-visible { outline: none }`（组件自带 ring，缺它会双层描边）与
    `prefers-reduced-motion` 降级；两条原本全局的 streamdown 规则（隐藏 streamdown 代码块头部、放行浮动
@@ -141,43 +139,43 @@ i18n.addResourceBundle("zh", UI_COMPONENTS_NS, zh, true, true);
      （`ToolCallRow`、`AgentBadge` 等），本包 `ui/`、`config/`、`chat/` 下组件均不引用；
      后续批次若引入依赖它们的组件需重新评估。
    - demo 为观感一致，自行复制了 `html, body` 基准字号与滚动条，不随包分发。
-5. **`ui/pagination.tsx` 的 `translationPrefix` 默认值为 `"runs"`**，其文案来自调用方注入的 `t`（非本包命名空间），
+4. **`ui/pagination.tsx` 的 `translationPrefix` 默认值为 `"runs"`**，其文案来自调用方注入的 `t`（非本包命名空间），
    本包字典不含该命名空间；消费方必须自行传入 `t`。
-6. **未迁移 streamdown 表格全屏补丁**：源宿主在 `apps/web/src/main.tsx` 入口调用 `installStreamdownTablePatch()`，
+5. **未迁移 streamdown 表格全屏补丁**：源宿主在 `apps/web/src/main.tsx` 入口调用 `installStreamdownTablePatch()`，
    为 streamdown 全屏表格对话框补上缺失的 `data-streamdown="table-wrapper"`（缺失时全屏视图下的复制/下载按钮无响应）。
    该补丁依赖 streamdown 内部 DOM 结构，属于应用壳，未随组件进入本包。
    - 影响范围：仅 `chat/primitives/message.tsx`（`MessageResponse` 渲染 streamdown）的表格全屏视图；demo 未安装该补丁，
      需要该行为的宿主必须在自己的入口安装等价补丁。
    - 移除条件：streamdown 修复全屏表格缺失 `data-streamdown="table-wrapper"` 的行为。
-7. **`MessageResponse` 的 `envId` 指向宿主文件代理路由**：传入 `envId` 时相对资源路径会被改写为
+6. **`MessageResponse` 的 `envId` 指向宿主文件代理路由**：传入 `envId` 时相对资源路径会被改写为
    `/web/environments/<envId>/fs/<path>?preview=true`（源宿主应用约定），本包不定义该路由。
    - 影响范围：不传 `envId` 时 URL 原样透传，组件不依赖任何宿主路由；传 `envId` 的宿主需自行提供该路由。
    - 移除条件：宿主改为注入自定义 `urlTransform`，或把代理前缀提升为 prop。
-8. **markdown 排版改由 `MessageResponse` 自带的容器工具类承担**：阶段三把原
+7. **markdown 排版改由 `MessageResponse` 自带的容器工具类承担**：阶段三把原
    `chat/primitives/chat-message-content.css`（标题/列表/引用/行内代码/代码块/表格与 streamdown 内部 DOM）
    全部改写成容器上的 arbitrary variant，落在 `chat/primitives/internal/markdown-classes.ts`
    （导出 `MARKDOWN_CONTENT_CLASS`）。宿主因此**不再需要**给 markdown 注入包裹类名。
    - 影响范围：`streamdown` 的根节点只接收它自己的 props（未知属性不落到 DOM），所以 markdown 容器
      挂不上 `data-slot`；对它的断言改用容器内部 `data-streamdown="…"` 结构标记（见守卫用例）。
    - 移除条件：无（这是终态；若将来 streamdown 支持自定义属性透传，可补一个 `data-slot` 锚点）。
-9. **`FileViewerPreview` 的默认 `buildPreviewUrl` 指向宿主文件代理路由**：不传该 prop 时预览 URL 为
+8. **`FileViewerPreview` 的默认 `buildPreviewUrl` 指向宿主文件代理路由**：不传该 prop 时预览 URL 为
    `/web/environments/<envId>/fs/<path>?preview=true`（源宿主应用约定），本包不定义该路由。
    - 影响范围：仅默认值；与第 7 条 `MessageResponse.envId` 属同类取舍。宿主传入自定义 `buildPreviewUrl`
      即完全解除该路由依赖。组件同时带 `import "@open-file-viewer/core/style.css"` 副作用导入，
      消费方（含 demo）编译时需能解析该 CSS —— 依赖已列入 dependencies。
    - 移除条件：宿主统一注入自定义构建器，或把代理前缀提升为必填 prop。
-10. **`FileViewerPreview` 的内置预览文案默认简体中文**：`locale` 默认 `"zh-CN"`、`messages` 默认值为内置中文；
+9. **`FileViewerPreview` 的内置预览文案默认简体中文**：`locale` 默认 `"zh-CN"`、`messages` 默认值为内置中文；
     React 错误边界内的提示（「预览组件加载失败」等）是硬编码中文，不随 `locale` / `messages` 变化。
     - 影响范围：非中文宿主需显式传 `locale` / `messages`；边界提示需要多语言时由宿主在外层再包一层本地化边界。
     - 移除条件：错误边界提示纳入 `messages` props（需要先定义边界提示的键位契约）。
-11. **`UserMessageImage.url` 是包内新增的展示用字段**：源类型只有 `mimeType` + `data`（base64），
+10. **`UserMessageImage.url` 是包内新增的展示用字段**：源类型只有 `mimeType` + `data`（base64），
     想展示一张真实网络图片就必须把二进制内联进源码。包内加可选 `url`，渲染方统一按「`url` 优先、
     缺省回退到 `data` 拼出的 data URL」取地址（消息气泡与输入岛附件行同规则），发送路径仍只读 `data`。
     - 影响范围：新增字段可选，宿主既有 `UserMessageImage` 可直接传入，不构成破坏性变更。
     - demo 例外：mock 与输入岛示例的图片因此指向 `https://picsum.photos/...`（见 `MOCK_USER_IMAGE_URL`），
       是 demo 里唯一的远程资源——断网时该图退化为 alt 文案，其余示例仍全部离线可渲染。
     - 移除条件：宿主把展示地址纳入协议（例如 Chat 历史直接下发可访问 URL），包内即可退化为直接透传该字段。
-12. **`ChatHeader` 的外壳形态依赖祖先类名 `.acp-main-root`**：阶段五后该页的样式已全部落在
+11. **`ChatHeader` 的外壳形态依赖祖先类名 `.acp-main-root`**：阶段五后该页的样式已全部落在
     `ChatHeader.tsx` 的 `HEADER_CARD_CLASS` 里，其中「外壳内形态」（`height: 45px`、仅底边分隔线、圆角置零、
     去除玻璃底与 `backdrop-filter`）用祖先变体 `[.acp-main-root_&…]` 表达——`acp-main-root` 是 `ACPMain`
     根节点的类名，同时是宿主 `apps/web/src/index.css`（`.meta-agent-panel .acp-main-root`）的作用域钩子，

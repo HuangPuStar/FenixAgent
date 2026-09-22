@@ -1,4 +1,4 @@
-import { Badge } from "@fenix/ui-components/ui/badge";
+import { StatusBadge } from "@fenix/ui-components/config/StatusBadge";
 import { Button } from "@fenix/ui-components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@fenix/ui-components/ui/dialog";
 import { Skeleton } from "@fenix/ui-components/ui/skeleton";
@@ -10,6 +10,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import type { ExecutionLogInfo } from "../../../api/tasks-v2";
 import { taskV2Api } from "../../../api/tasks-v2";
+import { formatTaskLogTime, LOG_STATUS_TONES, logStatusLabelKey } from "../pages/agent-tasks-utils";
 
 type StatusFilter = "all" | "success" | "failed" | "timeout" | "skipped";
 
@@ -21,13 +22,6 @@ interface TaskLogDialogProps {
   onClearLogs?: () => void;
   /** 外部触发刷新（如清空日志后） */
   refreshKey?: number;
-}
-
-/** createdAt 为 Unix 秒级时间戳，后端 toUnixTimestamp 输出 */
-function formatTime(timestamp: number): string {
-  const d = new Date(timestamp * 1000);
-  const pad = (n: number) => String(n).padStart(2, "0");
-  return `${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
 }
 
 /** 耗时格式化，单位语言无关，直接拼接 */
@@ -225,14 +219,19 @@ function LogRow({
             </span>
           )}
         </TableCell>
-        <TableCell className="text-xs">{formatTime(log.createdAt)}</TableCell>
+        <TableCell className="text-xs">{formatTaskLogTime(log.createdAt)}</TableCell>
         <TableCell>
           <span className="text-xs text-text-muted">
             {log.triggeredBy === "cron" ? t("triggeredBy.cron") : t("triggeredBy.manual")}
           </span>
         </TableCell>
         <TableCell>
-          <LogStatusBadge status={log.status} />
+          <StatusBadge
+            status={log.status}
+            label={t(logStatusLabelKey(log.status))}
+            toneMap={LOG_STATUS_TONES}
+            className="text-[11px] h-5"
+          />
         </TableCell>
         <TableCell className="text-xs">
           {log.duration != null ? formatDuration(log.duration) : t("log.noResult")}
@@ -281,26 +280,5 @@ function LogRow({
         </TableRow>
       )}
     </>
-  );
-}
-
-function LogStatusBadge({ status }: { status: string }) {
-  const { t } = useTranslation(NS.TASKS_V2);
-  const labelMap = useMemo<Record<string, string>>(
-    () => ({
-      success: t("status.success"),
-      failed: t("status.failed"),
-      timeout: t("status.timeout"),
-      skipped: t("status.skipped"),
-      pending: t("status.pending"),
-    }),
-    [t],
-  );
-  const variant: "default" | "destructive" | "secondary" =
-    status === "success" ? "default" : status === "failed" || status === "timeout" ? "destructive" : "secondary";
-  return (
-    <Badge variant={variant} className="text-[11px] h-5">
-      {labelMap[status] || labelMap.pending}
-    </Badge>
   );
 }

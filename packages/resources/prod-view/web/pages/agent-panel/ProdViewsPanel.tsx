@@ -1,5 +1,6 @@
 import { agentApi } from "@fenix/agent-config/web";
 import { ConfirmDialog } from "@fenix/ui-components/config/ConfirmDialog";
+import { StatusBadge } from "@fenix/ui-components/config/StatusBadge";
 import { cn } from "@fenix/ui-components/lib/cn";
 import { Button } from "@fenix/ui-components/ui/button";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@fenix/ui-components/ui/dialog";
@@ -260,14 +261,12 @@ export function ProdViewsPanel({ agentId }: ProdViewsPanelProps) {
                     className={cn("shrink-0 size-2 rounded-full", view.enabled ? "bg-emerald-500" : "bg-slate-400")}
                   />
                   <span className="text-sm font-medium text-text-primary truncate">{view.name}</span>
-                  <span
-                    className={cn(
-                      "shrink-0 text-[10px] px-1.5 py-px rounded-full",
-                      view.enabled ? "bg-emerald-100 text-emerald-700" : "bg-gray-100 text-gray-500",
-                    )}
-                  >
-                    {view.enabled ? t("panel.enabled") : t("panel.disabled")}
-                  </span>
+                  <StatusBadge
+                    status={view.enabled ? "enabled" : "disabled"}
+                    label={view.enabled ? t("panel.enabled") : t("panel.disabled")}
+                    indicator="dot"
+                    className="shrink-0 text-[10px] px-1.5 py-px"
+                  />
                 </div>
                 {/* 描述 */}
                 {view.description && <p className="text-xs text-text-muted truncate mt-1">{view.description}</p>}

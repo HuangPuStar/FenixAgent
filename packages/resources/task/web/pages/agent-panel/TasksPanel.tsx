@@ -1,5 +1,5 @@
+import { StatusBadge } from "@fenix/ui-components/config/StatusBadge";
 import { cn } from "@fenix/ui-components/lib/cn";
-import { Badge } from "@fenix/ui-components/ui/badge";
 import { Button } from "@fenix/ui-components/ui/button";
 import { ScrollArea } from "@fenix/ui-components/ui/scroll-area";
 import { Skeleton } from "@fenix/ui-components/ui/skeleton";
@@ -10,13 +10,13 @@ import { NS } from "@fenix/web-runtime/i18n/namespace";
 import { Link } from "@tanstack/react-router";
 import { useRequest } from "ahooks";
 import { AlertTriangle, CheckCircle2, Clock, Play, RefreshCw, Settings2, XCircle } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
 import type { ExecutionLogInfo, TaskV2Info } from "../../api/tasks-v2";
 import { taskV2Api } from "../../api/tasks-v2";
 import { describeCron } from "./components/CronEditor";
-import { isUnauthorizedError } from "./pages/agent-tasks-utils";
+import { formatTaskLogTime, isUnauthorizedError, LOG_STATUS_TONES, logStatusLabelKey } from "./pages/agent-tasks-utils";
 
 interface TasksPanelProps {
   agentId: string | null;
@@ -34,13 +34,6 @@ function formatRelativeTime(
   if (diff < 3_600_000) return t("relativeTime.minutesAgo", { count: Math.floor(diff / 60_000) });
   if (diff < 86_400_000) return t("relativeTime.hoursAgo", { count: Math.floor(diff / 3_600_000) });
   const d = new Date(ts * 1000);
-  const pad = (n: number) => String(n).padStart(2, "0");
-  return `${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
-}
-
-/** createdAt 为 Unix 秒级时间戳 */
-function formatTime(timestamp: number): string {
-  const d = new Date(timestamp * 1000);
   const pad = (n: number) => String(n).padStart(2, "0");
   return `${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
 }
@@ -351,14 +344,19 @@ function TaskLogView({ taskId, taskName, t }: TaskLogViewProps) {
             <TableBody>
               {data.items.map((log: ExecutionLogInfo) => (
                 <TableRow key={log.id}>
-                  <TableCell className="text-xs whitespace-nowrap">{formatTime(log.createdAt)}</TableCell>
+                  <TableCell className="text-xs whitespace-nowrap">{formatTaskLogTime(log.createdAt)}</TableCell>
                   <TableCell>
                     <span className="text-xs text-text-muted">
                       {log.triggeredBy === "cron" ? t("triggeredBy.cron") : t("triggeredBy.manual")}
                     </span>
                   </TableCell>
                   <TableCell>
-                    <LogStatusBadge status={log.status} t={t} />
+                    <StatusBadge
+                      status={log.status}
+                      label={t(logStatusLabelKey(log.status))}
+                      toneMap={LOG_STATUS_TONES}
+                      className="text-[11px] h-5"
+                    />
                   </TableCell>
                   <TableCell className="max-w-[150px]">
                     <div className="truncate text-xs">
@@ -413,25 +411,5 @@ function TaskLogView({ taskId, taskName, t }: TaskLogViewProps) {
         </div>
       )}
     </>
-  );
-}
-
-function LogStatusBadge({ status, t }: { status: string; t: (key: string) => string }) {
-  const labelMap = useMemo<Record<string, string>>(
-    () => ({
-      success: t("status.success"),
-      failed: t("status.failed"),
-      timeout: t("status.timeout"),
-      skipped: t("status.skipped"),
-      pending: t("status.pending"),
-    }),
-    [t],
-  );
-  const variant: "default" | "destructive" | "secondary" =
-    status === "success" ? "default" : status === "failed" || status === "timeout" ? "destructive" : "secondary";
-  return (
-    <Badge variant={variant} className="text-[11px] h-5">
-      {labelMap[status] || labelMap.pending}
-    </Badge>
   );
 }
