@@ -37,6 +37,14 @@ export interface WsCloseCodePolicyEntry {
 }
 
 /**
+ * 慢消费者追赶超时的关闭原因（1013，broadcaster SP-A7）。这串文本是**线上协议的一部分**：
+ * 生产方 `channel/broadcaster.ts` 以它作为 `close(1013, ...)` 的 reason 发出，消费方
+ * `getTerminalYjsWsErrorCode` 拿收到的 reason 与策略表逐字比较——发送方与判定方必须
+ * 引用同一常量，不得各自另立字面量（比对是逐字的，任何一侧改写都会静默失效）。
+ */
+export const SLOW_CONSUMER_RESYNC_TIMEOUT_REASON = "slow consumer resync timeout";
+
+/**
  * 关闭码策略表。**改这张表会同时改变传输层与 UI 两层行为**，两处基线测试必须一起过：
  * `src/__tests__/ws-close-codes.test.ts`（两个派生视图 vs 改前字面量）与
  * `packages/agent-runtime/web/__tests__/yjs-ws.test.ts`（`getTerminalYjsWsErrorCode` 逐码结果）。
@@ -85,6 +93,6 @@ export const WS_CLOSE_CODE_POLICY: readonly WsCloseCodePolicyEntry[] = [
     code: 1013,
     stopReconnect: false,
     uiCode: "too_many_connections",
-    nonTerminalReason: "slow consumer resync timeout",
+    nonTerminalReason: SLOW_CONSUMER_RESYNC_TIMEOUT_REASON,
   },
 ];
