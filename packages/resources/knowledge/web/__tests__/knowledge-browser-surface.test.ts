@@ -70,10 +70,13 @@ const BROWSER_SAFE_EXTERNAL: ReadonlyMap<string, string> = new Map([
   ["tailwind-merge", "Tailwind 类名去重（lib/cn 传递依赖），纯函数"],
   ["react-hook-form", "表单状态（ui-components/config 传递依赖），浏览器实现"],
   ["@hookform/resolvers", "react-hook-form 的 zod 适配（同上），纯函数"],
-  ["@lobehub/icons", "模型品牌图标（model-management 的 ModelIcon 传递依赖），SVG 组件"],
-  ["better-auth", "浏览器端会话客户端（identity/web 传递依赖）"],
-  ["@better-auth/api-key", "better-auth 的 api-key 客户端插件（同上），浏览器实现"],
-  ["@noble/ciphers", "better-auth 客户端的加密实现（同上），纯 JS"],
+  // 2026-09-22 台账收敛：删除 4 条已不在值导入图里的登记项——
+  // `@lobehub/icons`（原注「model-management 的 ModelIcon 传递依赖」）、
+  // `better-auth` / `@better-auth/api-key` / `@noble/ciphers`（原注「identity/web 传递依赖」）。
+  // 本包的组织/会话上下文已改取 `@fenix/web-runtime/contexts/org-session` 契约，图里不再经
+  // identity/web 与 model-management 的 ModelIcon，四条登记同时失去对象。
+  // 注意本守卫的「本包直连的包外运行时依赖在白名单内」只评审 `ownRefs(externals)`（见该用例注释），
+  // 所以这 4 条即便留也不会让测试变红——正因如此才更要主动收，否则台账会长期漂移。
 ]);
 
 const graph = walkValueGraph(WEB_ENTRY);
@@ -118,15 +121,20 @@ describe("knowledge web 入口浏览器可达面", () => {
       "pages/agent-panel/pages/agent-knowledge-directory.tsx",
       "pages/agent-panel/pages/agent-knowledge-load-failure.tsx",
       "pages/agent-panel/pages/agent-knowledge-resources.tsx",
+      "pages/agent-panel/pages/knowledge-status.ts",
+      "pages/agent-panel/pages/knowledge-typography.ts",
       "components/knowledge/ResourcePreviewContent.tsx",
       "components/knowledge/ResourcePreviewDialog.tsx",
+      "lib/poll-resources.ts",
       "src/pages/agent-panel/components/ChunkDetailSheet.tsx",
       "src/pages/agent-panel/components/EmbeddingModelManager.tsx",
       "src/pages/agent-panel/components/RetrievalTestPanel.tsx",
     ]) {
       expect(reachedWebFiles).toContain(expected);
     }
-    expect(reachedWebFiles.size).toBe(18);
+    // 21 = 原有 19 个模块 + 2026-09-22 前端去重抽出的两个模块（`knowledge-typography.ts` 的字段名
+    // 排版常量、`lib/poll-resources.ts` 的资源轮询）：两者都被页面/检索面板以值导入引用，必须在图内。
+    expect(reachedWebFiles.size).toBe(21);
 
     // 跨包递归的有效性：只钉稳定路径——本包实际消费的四个跨包入口。
     // 少了这一段，「@fenix/* 被当成外部依赖放过」会以「包内断言全绿」的形式漏网。

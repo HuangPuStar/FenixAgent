@@ -90,7 +90,9 @@
   },
   "orgId": "Organization ID",
   "copyId": "Copy ID",
+  "copy": "Copy",
   "copied": "Copied",
+  "copyFailed": "Copy failed. Select the text and copy it manually.",
   "editName": {
     "placeholder": "Organization name"
   },

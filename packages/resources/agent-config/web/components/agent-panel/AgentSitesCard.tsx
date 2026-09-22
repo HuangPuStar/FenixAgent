@@ -1,8 +1,9 @@
 import { useCardEmit } from "@fenix/ui-components/lib/card-renderer";
 import { cn } from "@fenix/ui-components/lib/cn";
 import { AlertCircle, ArrowRight, Globe, Loader2 } from "lucide-react";
-import { useCallback, useEffect, useState } from "react";
+import { type ReactNode, useCallback, useEffect, useState } from "react";
 import { agentSitesApi } from "../../api/sites";
+import { buildAgentSiteUrl } from "../../lib/agent-site-url";
 
 interface AgentSitesCardProps {
   /** 远端 site 的 remoteAppId（由 streamdown 从 HTML attribute agent-site-id 传入），前端据此拼出同源地址 */
@@ -14,11 +15,11 @@ interface AgentSitesCardProps {
  * 由 streamdown 根据 <agent-sites agent-site-id="app-xxxx"/> 标签渲染。
  *
  * 卡片布局：上方小尺寸 iframe 实时预览 + 下方信息栏（图标 + 名称 +「查看站点」按钮）。
- * iframe 地址由前端同源路径 `/web/site/deploy/{agent-site-id}/` 拼接，不再依赖 agent 传入 url。
+ * iframe 地址由 `buildAgentSiteUrl` 统一拼装（口径见 `web/lib/agent-site-url.ts`），不再依赖 agent 传入 url。
  */
 export function AgentSitesCard(props: AgentSitesCardProps) {
   const agentSiteId = props["agent-site-id"];
-  const siteUrl = agentSiteId ? `/web/site/deploy/${agentSiteId}/` : null;
+  const siteUrl = agentSiteId ? buildAgentSiteUrl(agentSiteId) : null;
   const emit = useCardEmit();
 
   const [loading, setLoading] = useState(true);
@@ -67,9 +68,9 @@ export function AgentSitesCard(props: AgentSitesCardProps) {
     return (
       <div className="w-full rounded-lg border border-border/40 bg-surface-1 p-3">
         <div className="flex items-center gap-3">
-          <div className="h-8 w-8 rounded-full bg-brand/10 flex items-center justify-center shrink-0">
+          <SiteBadge className="bg-brand/10">
             <Loader2 className="h-4 w-4 text-brand animate-spin" />
-          </div>
+          </SiteBadge>
           <div className="text-sm text-text-muted">正在获取站点信息…</div>
         </div>
       </div>
@@ -87,14 +88,9 @@ export function AgentSitesCard(props: AgentSitesCardProps) {
         )}
       >
         <div className="flex items-center gap-3">
-          <div
-            className={cn(
-              "h-8 w-8 rounded-full flex items-center justify-center shrink-0",
-              isMissingAttr ? "bg-yellow-500/10" : "bg-red-500/10",
-            )}
-          >
+          <SiteBadge className={isMissingAttr ? "bg-yellow-500/10" : "bg-red-500/10"}>
             <AlertCircle className={cn("h-4 w-4", isMissingAttr ? "text-yellow-500" : "text-red-500")} />
-          </div>
+          </SiteBadge>
           <div className="text-sm text-text-muted">{isMissingAttr ? "缺少站点 ID" : "站点信息加载失败"}</div>
         </div>
       </div>
@@ -123,9 +119,9 @@ export function AgentSitesCard(props: AgentSitesCardProps) {
       <div className="flex items-center justify-between gap-3 p-3">
         {/* 左侧：图标 + 信息 */}
         <div className="flex items-center gap-3 min-w-0">
-          <div className="h-8 w-8 rounded-full bg-brand/10 flex items-center justify-center shrink-0">
+          <SiteBadge className="bg-brand/10">
             <Globe className="h-4 w-4 text-brand" />
-          </div>
+          </SiteBadge>
           <div className="min-w-0">
             <div className="text-sm text-text-primary">您的站点已生成</div>
             <div className="text-xs text-text-muted truncate mt-0.5">
@@ -145,5 +141,17 @@ export function AgentSitesCard(props: AgentSitesCardProps) {
         </button>
       </div>
     </div>
+  );
+}
+
+/**
+ * 卡片三态（loading / error / success）共用的圆形图标底座。
+ *
+ * 底座骨架（尺寸 + 圆形 + 居中 + 不收缩）原先在三种状态里各写了一遍，只有背景色与图标不同；
+ * 背景色由调用方经 className 传入（error 态还要按 isMissingAttr 二选一）。
+ */
+function SiteBadge({ className, children }: { className?: string; children: ReactNode }) {
+  return (
+    <div className={cn("h-8 w-8 rounded-full flex items-center justify-center shrink-0", className)}>{children}</div>
   );
 }

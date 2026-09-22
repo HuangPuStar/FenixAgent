@@ -1,17 +1,15 @@
 /**
- * 文件预览的「源判定」工具集（从 apps/web 的 `agent-panel/preview/utils.ts` 复制并纯化，
- * 只取 L1–L167 这段：扩展名分类表、`classifyFile`、`getPreviewMimeType`、
- * `shouldLoadPreviewAsBlob`、`loadByteAccuratePreviewSource`）。
+ * 文件预览的「源判定」工具集（自 apps/web 的 `agent-panel/preview/utils.ts` 抽取并纯化）。
  *
- * 纯化取舍：
- * 1. 源文件其余部分刻意**未**随包迁移，宿主 `ArtifactsPanel.tsx` 与宿主测试
- *    `apps/web/src/__tests__/preview-utils-normalize.test.ts` 仍引用原文件，原文件保持不动：
- *    - `encodePathSegment`：URL 路径段编码细节，只有宿主路由实现需要；
- *    - `buildPreviewUrl`：硬编码宿主路由，已改为 `FileViewerPreview` 的可选 prop 默认值；
- *    - `normalizeToUserPath` / `formatFileSize`：宿主路径规范与展示约定，与预览渲染无关。
- * 2. 本模块不依赖 React、路由和请求单例；`loadByteAccuratePreviewSource` 的 fetch 由调用方注入，
+ * 抽取时的纯化取舍：
+ * 1. 只取源实现的扩展名分类表、`classifyFile`、`getPreviewMimeType`、`shouldLoadPreviewAsBlob`、
+ *    `loadByteAccuratePreviewSource`。`buildPreviewUrl` 硬编码宿主路由，改为 `FileViewerPreview`
+ *    的可选 prop 默认值；`encodePathSegment` 只有宿主路由实现需要，两处都已随宿主副本删除。
+ * 2. **宿主副本已删除**（2026-09-22 前端去重）：`apps/web/src/components/agent-panel/preview/utils.ts`
+ *    的对应段落原本逐字保留，但它当时已无生产消费方（`ArtifactsPanel` 走 `PreviewTab` → 本包），
+ *    留下只会让扩展名分类表出现两份真相。该文件现在只剩宿主专有的 `normalizeToUserPath`。
+ * 3. 本模块不依赖 React、路由和请求单例；`loadByteAccuratePreviewSource` 的 fetch 由调用方注入，
  *    因此可独立测试，也不会把宿主的鉴权/代理策略带进包内。
- * 3. 分类表与判定顺序逐字保留源实现，避免宿主与本包对同一文件的预览方式分叉。
  */
 
 export type FileCategory = "code" | "image" | "pdf" | "binary" | "table" | "markdown" | "html" | "office";

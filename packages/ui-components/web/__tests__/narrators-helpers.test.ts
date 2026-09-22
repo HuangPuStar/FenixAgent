@@ -6,7 +6,6 @@ import {
   extractLineRange,
   findFirstStringValue,
   formatElapsed,
-  truncate,
 } from "../chat/narrators/helpers";
 
 /**
@@ -16,7 +15,8 @@ import {
  * 仅把导入路径从 `@/components/chat/narrators/helpers` 换成包内 `../chat/narrators/helpers`。
  * 所有用例平移到包内同名实现（该实现为源文件逐字复制），断言与中文意图注释均保持不变。
  *
- * 测试范围：6 个工具函数全覆盖。
+ * 测试范围：本模块导出的工具函数全覆盖。
+ * `truncate` 已收敛到 `../chat/lib/tool-call-utils`，其用例见 `tool-call-utils-pure.test.tsx`。
  * 不使用 mock（纯函数），遵循前端测试规范（参考 config-helpers.test.ts）。
  * 全程无 DOM / i18n 依赖（被测模块只 import 包内纯逻辑），因此不引入 happy-dom 引导。
  */
@@ -169,28 +169,6 @@ describe("narrators/helpers", () => {
     // 边界值：刚好 1000ms
     test("边界值 1000ms 显示为 1.0s", () => {
       expect(formatElapsed(1000)).toBe("1.0s");
-    });
-  });
-
-  describe("truncate", () => {
-    // 未超长原样返回
-    test("长度未超阈值原样返回", () => {
-      expect(truncate("hello", 10)).toBe("hello");
-    });
-
-    // 超长加省略号
-    test("超长截断加省略号", () => {
-      expect(truncate("hello world", 5)).toBe("hello…");
-    });
-
-    // 刚好等于阈值不截断
-    test("长度等于阈值不截断", () => {
-      expect(truncate("hello", 5)).toBe("hello");
-    });
-
-    // 空字符串边界
-    test("空字符串原样返回", () => {
-      expect(truncate("", 10)).toBe("");
     });
   });
 

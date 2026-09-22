@@ -1,4 +1,4 @@
-import { MasterKeyGate } from "@fenix/resource-sandbox/web";
+import { AdminKeyGate } from "@fenix/ui-components/config/AdminKeyGate";
 import { Badge } from "@fenix/ui-components/ui/badge";
 import { Button } from "@fenix/ui-components/ui/button";
 import { Card, CardContent } from "@fenix/ui-components/ui/card";
@@ -7,7 +7,7 @@ import { Input } from "@fenix/ui-components/ui/input";
 import { Label } from "@fenix/ui-components/ui/label";
 import { Skeleton } from "@fenix/ui-components/ui/skeleton";
 import { ApiError } from "@fenix/web-runtime/api/request";
-import { clearAdminKey, getAdminKey } from "@fenix/web-runtime/lib/admin-key";
+import { useAdminKeyGate } from "@fenix/web-runtime/hooks/use-admin-key-gate";
 import { useRequest } from "ahooks";
 import { Bot, Building2, ChevronRight, KeyRound, RefreshCw, UserPlus, UserRound } from "lucide-react";
 import { type FormEvent, useState } from "react";
@@ -21,32 +21,24 @@ import {
   type SystemPeopleOrganization,
   type SystemUserIdentifierType,
 } from "../../api/system-people-tree";
+import { OBSERVER_META_CLASS } from "./observer-meta-classes";
 
 export function AdminPeoplePage() {
   const { t } = useTranslation("observer");
-  const [unlocked, setUnlocked] = useState(() => getAdminKey() !== null);
-  const [gateError, setGateError] = useState<string | null>(null);
-
-  if (!unlocked) {
-    return (
-      <MasterKeyGate
-        error={gateError}
-        onUnlock={() => {
-          setGateError(null);
-          setUnlocked(true);
-        }}
-      />
-    );
-  }
+  const gate = useAdminKeyGate(t("login.error"));
 
   return (
-    <PeopleDashboard
-      onAuthFailure={() => {
-        clearAdminKey();
-        setGateError(t("login.error"));
-        setUnlocked(false);
-      }}
-    />
+    <AdminKeyGate
+      unlocked={gate.unlocked}
+      error={gate.error}
+      onUnlock={gate.unlock}
+      title={t("login.title")}
+      description={t("login.description")}
+      inputPlaceholder={t("login.inputPlaceholder")}
+      submitLabel={t("login.submit")}
+    >
+      <PeopleDashboard onAuthFailure={gate.fail} />
+    </AdminKeyGate>
   );
 }
 
@@ -259,7 +251,7 @@ function PeopleTree({ organizations }: { organizations: SystemPeopleOrganization
             <Building2 className="size-4 text-brand" />
             <span className="font-medium text-text-primary">{organization.name}</span>
             <span className="font-mono text-xs text-text-muted">{organization.slug}</span>
-            <span className="font-mono text-[10px] text-text-muted">{organization.id}</span>
+            <span className={OBSERVER_META_CLASS}>{organization.id}</span>
             <Badge variant="secondary" className="ml-auto">
               {t("people.users", { count: organization.users.length })}
             </Badge>
@@ -279,17 +271,17 @@ function PeopleTree({ organizations }: { organizations: SystemPeopleOrganization
                         <span className="text-xs text-text-muted">
                           {person.phoneNumber ? `${person.email} · ${person.phoneNumber}` : person.email}
                         </span>
-                        <span className="font-mono text-[10px] text-text-muted">{person.id}</span>
+                        <span className={OBSERVER_META_CLASS}>{person.id}</span>
                         {person.role ? (
-                          <Badge variant="outline" className="text-[10px]">
+                          <Badge variant="outline" className="text-3xs">
                             {person.role}
                           </Badge>
                         ) : (
-                          <Badge variant="outline" className="text-[10px]">
+                          <Badge variant="outline" className="text-3xs">
                             {t("people.unassignedRole")}
                           </Badge>
                         )}
-                        <Badge variant="secondary" className="ml-auto text-[10px]">
+                        <Badge variant="secondary" className="ml-auto text-3xs">
                           {t("people.agents", { count: person.agents.length })}
                         </Badge>
                       </summary>
@@ -301,15 +293,13 @@ function PeopleTree({ organizations }: { organizations: SystemPeopleOrganization
                             <li key={agent.id} className="flex flex-wrap items-center gap-2 rounded-md py-1 text-sm">
                               <Bot className="size-3.5 text-accent-green" />
                               <span className="text-text-primary">{agent.name}</span>
-                              <span className="font-mono text-[10px] text-text-muted">{agent.id}</span>
+                              <span className={OBSERVER_META_CLASS}>{agent.id}</span>
                               {agent.engineType ? (
-                                <Badge variant="outline" className="text-[10px]">
+                                <Badge variant="outline" className="text-3xs">
                                   {agent.engineType}
                                 </Badge>
                               ) : null}
-                              {agent.machineId ? (
-                                <span className="font-mono text-[10px] text-text-muted">{agent.machineId}</span>
-                              ) : null}
+                              {agent.machineId ? <span className={OBSERVER_META_CLASS}>{agent.machineId}</span> : null}
                               {agent.description ? (
                                 <span className="w-full pl-5 text-xs text-text-muted">{agent.description}</span>
                               ) : null}

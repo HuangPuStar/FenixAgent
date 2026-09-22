@@ -44,7 +44,8 @@ const PKG_NAME = (JSON.parse(readFileSync(join(PKG_ROOT, "package.json"), "utf8"
  * knowledge / memory / model-management 的整片 web 图与其浏览器库，白名单因此一度膨胀到 46 条。T12 为该
  * 函数加了窄子路径出口 `@fenix/agent-config/web/lib/meta-agent`，agent-config 侧现在只到达
  * `web/lib/meta-agent.ts` 一个文件，26 条「可达面传递进来的库」随之退场（46 → 20）。
- * 现在的 20 条重新回到两类来源：本包/宿主自己的依赖，以及本包编辑器经 `@fenix/ui-components` 共享原语
+ * 2026-09-22：运行面板的事件/输出页签由手写 button 改为 `ui/tabs`，带入 `@radix-ui/react-tabs`（+1）。
+ * 现在的 21 条重新回到两类来源：本包/宿主自己的依赖，以及本包编辑器经 `@fenix/ui-components` 共享原语
  * 传递进入的库——即下面各组注释所示。
  */
 const BROWSER_SAFE_EXTERNAL: ReadonlyMap<string, string> = new Map([
@@ -64,6 +65,7 @@ const BROWSER_SAFE_EXTERNAL: ReadonlyMap<string, string> = new Map([
   ["@radix-ui/react-dialog", "无样式原语（ui/dialog、config/ConfirmDialog 传递依赖）"],
   ["@radix-ui/react-alert-dialog", "无样式原语（ui/alert-dialog 传递依赖）"],
   ["@radix-ui/react-label", "无样式原语（ui/label 传递依赖）"],
+  ["@radix-ui/react-tabs", "无样式原语（ui/tabs 传递依赖，运行面板的事件/输出页签）"],
   ["class-variance-authority", "类名变体工具（ui/* 传递依赖），纯函数"],
   ["clsx", "类名拼接工具（lib/cn 传递依赖），纯函数"],
   ["tailwind-merge", "Tailwind 类名去重（lib/cn 传递依赖），纯函数"],
@@ -103,13 +105,29 @@ describe("workflow web 入口浏览器可达面", () => {
       "api/workflow-defs.ts",
       "api/workflow-engine.ts",
       "api/workflow-sse.ts",
-      "api/workflows.ts",
       "lib/use-workflow-events.ts",
       "pages/workflow/WorkflowBreadcrumb.tsx",
       "pages/workflow/WorkflowList.tsx",
       "pages/workflow/WorkflowRuns.tsx",
       "pages/workflow/WorkflowVersions.tsx",
       "pages/workflow/components/SkeletonRows.tsx",
+      // 2026-09-22：版本行三处（版本页 / 编辑器版本面板 / 版本弹层）收敛出的共享件——它们只被
+      // 上面这几个页面经相对路径引用，不在 `web/index.ts` 的导出面里，列在这里是为了让「共享件
+      // 仍在浏览器图内」这件事在遍历失效时立刻变红，而不是靠别处的间接断言。
+      "pages/workflow/components/VersionRow.tsx",
+      "pages/workflow/components/VersionConfirmDialog.tsx",
+      // 本批新增的两件包内共享件：运行记录页与编辑器运行面板的状态筛选行、三个面板的面板头
+      // （编辑器经 `WorkflowEditor` 的 Sheet 与 `RunStatusPanel` 的侧栏消费，同样不在入口导出面里）。
+      "pages/workflow/components/StatusFilterRow.tsx",
+      "pages/workflow/components/PanelHeader.tsx",
+      // 运行视图态的整组复位（`resetRunView`）：编辑器页面、运行 hook 与运行面板三处消费，
+      // 同样只走包内相对路径，不在入口导出面里。
+      "pages/workflow/run-view.ts",
+      // 弹层头骨架（标题行）：文件菜单 / 版本指示器 / 元数据三个弹层消费。
+      "pages/workflow/components/PopoverHeader.tsx",
+      // 参数分组标题行（ParamsEditor 与 RunParamsDialog 消费）与三份编辑器的行内字段样式配方。
+      "pages/workflow/components/ParamGroupHeader.tsx",
+      "pages/workflow/components/entry-field-classes.ts",
     ]) {
       expect(reachedWebFiles).toContain(expected);
     }

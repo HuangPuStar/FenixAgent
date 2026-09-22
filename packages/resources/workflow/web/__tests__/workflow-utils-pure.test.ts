@@ -55,6 +55,11 @@ describe("workflow utils", () => {
     expect(relativeTime(translate, isoBefore(8 * 86_400_000))).toBe(
       new Date(isoBefore(8 * 86_400_000)).toLocaleDateString(),
     );
+    // key 族由 scope 决定：列表页与版本页各读自己那族文案（实现只有这一份）。
+    // 小时/天两档同时锁住被删除的两份本地副本的取整错误：小时档曾用 /86400（恒为 0），
+    // 版本页还把小时档的 key 写成了 *_days。
+    expect(relativeTime(translate, isoBefore(3 * 3_600_000), "list")).toBe('list.relative_hours:{"count":3}');
+    expect(relativeTime(translate, isoBefore(2 * 86_400_000), "versions")).toBe('versions.relative_days:{"count":2}');
   });
 
   // 已知事件应通过 i18n key 转换，未知事件必须保留原值避免丢失诊断信息。

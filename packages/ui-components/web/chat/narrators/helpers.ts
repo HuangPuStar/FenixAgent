@@ -1,11 +1,14 @@
 /**
  * Narrator 共享工具函数。
  *
- * 来源：`packages/agent-runtime/web/components/chat/narrators/helpers.ts` 逐字复制
- * `extractFileName` / `extractLineRange` / `extractErrorMessage` / `formatElapsed` / `truncate` /
+ * 来源：`packages/agent-runtime/web/components/chat/narrators/helpers.ts`（旧路径，已于 2026-09-21 由 f2741a82d 删除） 逐字复制
+ * `extractFileName` / `extractLineRange` / `extractErrorMessage` / `formatElapsed` /
  * `compactDetailValue` / `findFirstStringValue` / `extractDirectoryEntryCount` /
  * `isOpencodeDirectoryOutput` / `isOpencodeFileOutput` / `extractDisplayMeta` / `resolveToolCardKind`
  * 与 `ToolCallDisplayMeta`。
+ *
+ * `truncate` 不属于本模块：它与 `../lib/tool-call-utils` 中的同名函数逐字相同，
+ * 收敛为 `../lib/tool-call-utils` 一份（2026-09-22 前端去重），narrator 侧改为直接引用。
  *
  * 所有函数都是纯函数，无副作用，便于单测。
  * 设计原则：宽容处理 rawInput / rawOutput 的字段变体
@@ -16,6 +19,7 @@
  * 因此本模块不依赖任何宿主模块。类型改从 `../types` 导入。
  */
 
+import { truncate } from "../lib/tool-call-utils";
 import { classifyToolSemantic, semanticToToolCardKind } from "../lib/tool-semantic";
 import type { ToolCallData, ToolCardKind } from "../types";
 
@@ -94,13 +98,6 @@ export function formatElapsed(ms: number): string {
   if (ms < 1000) return `${ms}ms`;
   if (ms < 60_000) return `${(ms / 1000).toFixed(1)}s`;
   return `${Math.floor(ms / 60_000)}m${Math.floor((ms % 60_000) / 1000)}s`;
-}
-
-/**
- * 截断字符串，超长加省略号。
- */
-export function truncate(s: string, max: number): string {
-  return s.length > max ? `${s.slice(0, max)}…` : s;
 }
 
 /**
@@ -229,6 +226,25 @@ export interface ToolCallDisplayMeta {
 }
 
 /**
+ * 把一层 `display` 原始对象解析为 `ToolCallDisplayMeta`：`type` 不是字符串时回传 `undefined`。
+ *
+ * 三处来源（① ACP 顶层 / ② `rawOutput.metadata.display` / ③ `_meta.display`）的字段校验逐字相同，
+ * 2026-09-22 库内去重收敛到此；逐字段的 `typeof` 兜底与回退口径保持不变。
+ */
+function readDisplayMeta(d: Record<string, unknown>): ToolCallDisplayMeta | undefined {
+  if (typeof d.type !== "string") return;
+  return {
+    type: d.type,
+    path: typeof d.path === "string" ? d.path : undefined,
+    lineStart: typeof d.lineStart === "number" ? d.lineStart : undefined,
+    lineEnd: typeof d.lineEnd === "number" ? d.lineEnd : undefined,
+    totalLines: typeof d.totalLines === "number" ? d.totalLines : undefined,
+    text: typeof d.text === "string" ? d.text : undefined,
+    truncated: typeof d.truncated === "boolean" ? d.truncated : undefined,
+  };
+}
+
+/**
  * 从多个来源逐级提取 display 元数据。
  * 优先级：
  * ① toolCallDisplay（ACP 顶层 toolCall.display，opencode 风格）
@@ -244,18 +260,8 @@ export function extractDisplayMeta(
 ): ToolCallDisplayMeta | undefined {
   // ① 顶层 toolCall.display（opencode 新版本，直接挂载在 toolCall 对象上）
   if (toolCallDisplay && typeof toolCallDisplay === "object") {
-    const d = toolCallDisplay;
-    if (typeof d.type === "string") {
-      return {
-        type: d.type,
-        path: typeof d.path === "string" ? d.path : undefined,
-        lineStart: typeof d.lineStart === "number" ? d.lineStart : undefined,
-        lineEnd: typeof d.lineEnd === "number" ? d.lineEnd : undefined,
-        totalLines: typeof d.totalLines === "number" ? d.totalLines : undefined,
-        text: typeof d.text === "string" ? d.text : undefined,
-        truncated: typeof d.truncated === "boolean" ? d.truncated : undefined,
-      };
-    }
+    const displayMeta = readDisplayMeta(toolCallDisplay);
+    if (displayMeta) return displayMeta;
   }
 
   // ② rawOutput.metadata.display
@@ -263,35 +269,15 @@ export function extractDisplayMeta(
     const o = rawOutput as Record<string, unknown>;
     const metadata = o.metadata as Record<string, unknown> | undefined;
     if (metadata && typeof metadata.display === "object" && metadata.display !== null) {
-      const d = metadata.display as Record<string, unknown>;
-      if (typeof d.type === "string") {
-        return {
-          type: d.type,
-          path: typeof d.path === "string" ? d.path : undefined,
-          lineStart: typeof d.lineStart === "number" ? d.lineStart : undefined,
-          lineEnd: typeof d.lineEnd === "number" ? d.lineEnd : undefined,
-          totalLines: typeof d.totalLines === "number" ? d.totalLines : undefined,
-          text: typeof d.text === "string" ? d.text : undefined,
-          truncated: typeof d.truncated === "boolean" ? d.truncated : undefined,
-        };
-      }
+      const displayMeta = readDisplayMeta(metadata.display as Record<string, unknown>);
+      if (displayMeta) return displayMeta;
     }
   }
 
   // ③ _meta.display
   if (meta && typeof meta.display === "object" && meta.display !== null) {
-    const d = meta.display as Record<string, unknown>;
-    if (typeof d.type === "string") {
-      return {
-        type: d.type,
-        path: typeof d.path === "string" ? d.path : undefined,
-        lineStart: typeof d.lineStart === "number" ? d.lineStart : undefined,
-        lineEnd: typeof d.lineEnd === "number" ? d.lineEnd : undefined,
-        totalLines: typeof d.totalLines === "number" ? d.totalLines : undefined,
-        text: typeof d.text === "string" ? d.text : undefined,
-        truncated: typeof d.truncated === "boolean" ? d.truncated : undefined,
-      };
-    }
+    const displayMeta = readDisplayMeta(meta.display as Record<string, unknown>);
+    if (displayMeta) return displayMeta;
   }
 
   return;

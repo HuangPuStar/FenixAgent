@@ -18,7 +18,9 @@ import { providerResource } from "./src/server/access/provider-resource";
  * `page` / `pageSize` → `limit` / `offset` 的换算）。两者必须成套启用。
  *
  * 不声明 `resource-sandbox`：只有 `web/pages/admin/AdminModelGatewayPage.tsx` 值导入
- * `@fenix/resource-sandbox/web` 复用 `MasterKeyGate` / `SearchableUsageFilter`，本包 `src/**` 无该
+ * `@fenix/resource-sandbox/web` 复用 `SearchableUsageFilter`（同页的 Master Key 门 2026-09-22 起改取
+ * `@fenix/ui-components/config/AdminKeyGate` 与 `@fenix/web-runtime/hooks/use-admin-key-gate`，
+ * 不再经沙盒包），本包 `src/**` 无该
  * 导入；浏览器侧的模块依赖由装配 profile 的 web 列表表达（§1.6），不进入服务端装配顺序。
  * 不声明平台基础模块（`identity` / `access-control`）：它们在 profile 里是固定槽位，本包只经
  * `@fenix/platform-sdk` 的窄契约（`IdentityDirectory`、`AccessControlModule`）使用。

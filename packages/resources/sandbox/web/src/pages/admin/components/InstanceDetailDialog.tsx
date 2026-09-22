@@ -17,6 +17,8 @@ import {
   type SandboxInstance,
   type SandboxResourcePatch,
 } from "../../../api/system-sandbox";
+import { DialogViewFooter } from "./DialogViewFooter";
+import { JsonPreview } from "./JsonPreview";
 
 type ResourceKey = keyof SandboxResourcePatch;
 
@@ -197,19 +199,17 @@ export function InstanceDetailDialog({ instance, editMode, loading, onOpenChange
             </div>
             <div>
               <Label>{t("environmentReadonly")}</Label>
-              <pre className="mt-1 max-h-32 max-w-full overflow-auto whitespace-pre-wrap break-all rounded bg-muted p-3 text-xs">
-                {JSON.stringify(
-                  (effectiveResources as Record<string, unknown> | undefined)?.environment ?? {},
-                  null,
-                  2,
-                )}
-              </pre>
+              <JsonPreview
+                value={(effectiveResources as Record<string, unknown> | undefined)?.environment ?? {}}
+                className="mt-1 max-h-32"
+              />
             </div>
             <div>
               <Label>{t("volumesReadonly")}</Label>
-              <pre className="mt-1 max-h-32 max-w-full overflow-auto whitespace-pre-wrap break-all rounded bg-muted p-3 text-xs">
-                {JSON.stringify((effectiveResources as Record<string, unknown> | undefined)?.volumes ?? [], null, 2)}
-              </pre>
+              <JsonPreview
+                value={(effectiveResources as Record<string, unknown> | undefined)?.volumes ?? []}
+                className="mt-1 max-h-32"
+              />
             </div>
           </div>
         ) : null}
@@ -234,12 +234,7 @@ export function InstanceDetailDialog({ instance, editMode, loading, onOpenChange
               </Button>
             </>
           ) : (
-            <>
-              <Button variant="outline" onClick={() => onOpenChange(false)}>
-                {t("close")}
-              </Button>
-              <Button onClick={() => setEditing(true)}>{t("edit")}</Button>
-            </>
+            <DialogViewFooter onClose={() => onOpenChange(false)} onEdit={() => setEditing(true)} />
           )}
         </DialogFooter>
       </DialogContent>

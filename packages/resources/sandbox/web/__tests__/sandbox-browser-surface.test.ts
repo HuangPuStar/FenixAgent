@@ -87,7 +87,6 @@ describe("sandbox web 入口浏览器可达面", () => {
       "src/pages/admin/components/PoolTree.tsx",
       "src/pages/admin/components/ClusterPanel.tsx",
       "src/pages/admin/components/RemoteSandboxPanel.tsx",
-      "src/pages/admin/components/MasterKeyGate.tsx",
     ]) {
       expect(reachedWebFiles).toContain(expected);
     }

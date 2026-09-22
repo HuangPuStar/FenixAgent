@@ -1,9 +1,9 @@
 import { MODELS_NS } from "@fenix/model-management/web/i18n";
 import { SANDBOX_NS } from "@fenix/resource-sandbox/web/i18n";
+import { cn } from "@fenix/ui-components/lib/cn";
 import { createFileRoute, Link, Outlet } from "@tanstack/react-router";
 import { Activity, ArrowLeft, Box, FileText, Gauge, type LucideIcon, Network } from "lucide-react";
 import { useTranslation } from "react-i18next";
-import { cn } from "@/src/lib/utils";
 
 // Admin 布局（docs/arch/21 §5）：左侧边栏导航 + 内容区 Outlet。
 // 导航项数组是扩展点：后续新增 admin 子页面时在此追加 { to, labelKey, ns, icon }。

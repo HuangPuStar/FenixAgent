@@ -46,6 +46,7 @@ import {
   useState,
 } from "react";
 import { useTranslation } from "react-i18next";
+import { PanelRouteFallback } from "@/src/components/panel-route-fallback";
 import { NS } from "@/src/i18n";
 import { evictDeletedEnvironmentSlots, resolveActiveChatEnvironmentId, type SessionSlot } from "./chat-area-lifecycle";
 import "@/src/shell/artifacts-workspace.css";
@@ -227,30 +228,29 @@ export function ChatArea({ agentId, sessionId, visible, deletedEnvironmentIds, m
     );
   });
 
+  // 展开右侧面板：`artifacts:select-site` 与 `artifacts:preview-file` 两个事件共用。
+  // ref 与 state 必须一起改——只 setState 的话，同一轮里读 ref 的分支仍会看到「已折叠」。
+  const expandArtifacts = useCallback(() => {
+    if (!artifactsCollapsedRef.current) return;
+    artifactsCollapsedRef.current = false;
+    setArtifactsCollapsed(false);
+  }, []);
+
   // artifacts:select-site → 展开右侧面板
   useEffect(() => {
-    const handler = () => {
-      if (artifactsCollapsedRef.current) {
-        artifactsCollapsedRef.current = false;
-        setArtifactsCollapsed(false);
-      }
-    };
-    window.addEventListener("artifacts:select-site", handler);
-    return () => window.removeEventListener("artifacts:select-site", handler);
-  }, []);
+    window.addEventListener("artifacts:select-site", expandArtifacts);
+    return () => window.removeEventListener("artifacts:select-site", expandArtifacts);
+  }, [expandArtifacts]);
 
   // artifacts:preview-file → 展开右侧面板
   useEffect(() => {
     const handler = (event: Event) => {
       if (!getArtifactsPreviewFileDetail(event, activeAgentId)) return;
-      if (artifactsCollapsedRef.current) {
-        artifactsCollapsedRef.current = false;
-        setArtifactsCollapsed(false);
-      }
+      expandArtifacts();
     };
     window.addEventListener(ARTIFACTS_PREVIEW_FILE_EVENT, handler);
     return () => window.removeEventListener(ARTIFACTS_PREVIEW_FILE_EVENT, handler);
-  }, [activeAgentId]);
+  }, [activeAgentId, expandArtifacts]);
 
   // 小屏只允许浮动模式。模式选择被保留，回到大屏时恢复用户偏好。
   useEffect(() => {
@@ -324,13 +324,7 @@ export function ChatArea({ agentId, sessionId, visible, deletedEnvironmentIds, m
   }, []);
 
   return (
-    <Suspense
-      fallback={
-        <div className="flex flex-1 items-center justify-center">
-          <div className="h-8 w-8 rounded-full border-2 border-brand border-t-transparent animate-spin" />
-        </div>
-      }
-    >
+    <Suspense fallback={<PanelRouteFallback />}>
       <ChatPageVisibleContext.Provider value={visible}>
         <div
           className="agent-panel-content agent-panel-content--chat"

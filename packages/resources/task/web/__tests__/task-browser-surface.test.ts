@@ -60,7 +60,8 @@ const BROWSER_SAFE_EXTERNAL: ReadonlyMap<string, string> = new Map([
   ["@tanstack/react-router", "路由运行时（本包 peerDependency；TasksPanel 的 <Link to>）"],
   // 本包 dependencies：可独立打进浏览器 bundle 的普通库
   ["ahooks", "React hooks 工具库（本包 dependencies 直接使用）"],
-  ["cron-parser", "cron 表达式解析（本包 dependencies；CronEditor 与 agent-tasks-utils 使用）"],
+  // 2026-09-22 起 CronEditor 的校验经 agent-tasks-utils 的 validateCronExpression 走，web 面只剩这一处直接引用。
+  ["cron-parser", "cron 表达式解析（本包 dependencies；agent-tasks-utils 使用）"],
   ["lucide-react", "SVG 图标库（本包 dependencies 直接使用）"],
   ["sonner", "Toast 渲染（本包 dependencies 直接使用）"],
   ["zod", "运行期 schema 校验（本包 dependencies；agent-tasks-utils 的解析边界）"],
@@ -89,6 +90,11 @@ const BROWSER_SAFE_EXTERNAL: ReadonlyMap<string, string> = new Map([
   ["recharts", "图表渲染（ui/chart 传递依赖；ui-components 的 dependencies），浏览器安全"],
   ["streamdown", "流式 Markdown 渲染（chat/primitives/message 传递依赖），浏览器安全"],
   ["tailwind-merge", "Tailwind 类名去重（lib/cn 传递依赖），纯函数"],
+  [
+    "react-file-icon",
+    "文件类型图标（ui-components components/file-icon-helper 传递依赖，经 @fenix/agent-config/web → knowledge 资源列表引入）：" +
+      "纯浏览器 SVG 组件，运行时依赖只有 react / prop-types / colord（后者提供颜色解析），无 node 专有能力",
+  ],
 ]);
 
 const graph = walkValueGraph(WEB_ENTRY);

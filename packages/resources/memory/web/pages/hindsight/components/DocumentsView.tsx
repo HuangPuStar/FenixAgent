@@ -1,6 +1,8 @@
+import { EmptyState } from "@fenix/ui-components/config/EmptyState";
 import { Badge } from "@fenix/ui-components/ui/badge";
 import { Button } from "@fenix/ui-components/ui/button";
 import { Input } from "@fenix/ui-components/ui/input";
+import { Spinner } from "@fenix/ui-components/ui/spinner";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@fenix/ui-components/ui/table";
 import { NS } from "@fenix/web-runtime/i18n/namespace";
 import { Loader2, Search, Trash2, Upload, X } from "lucide-react";
@@ -138,13 +140,9 @@ export function DocumentsView() {
       {/* 文档表格 */}
       <div className="flex-1 overflow-auto">
         {loading ? (
-          <div className="flex items-center justify-center py-12">
-            <Loader2 className="size-6 animate-spin text-muted-foreground" />
-          </div>
+          <Spinner size="sm" className="flex py-12" />
         ) : documents.length === 0 ? (
-          <div className="flex items-center justify-center py-12 text-muted-foreground text-sm">
-            {t("documents.noDocuments")}
-          </div>
+          <EmptyState className="py-12" title={t("documents.noDocuments")} />
         ) : (
           <Table>
             <TableHeader>
@@ -176,12 +174,12 @@ export function DocumentsView() {
                   <TableCell>
                     <div className="flex flex-wrap gap-0.5">
                       {doc.tags.slice(0, 3).map((tag) => (
-                        <Badge key={tag} variant="outline" className="text-[10px] px-1 py-0">
+                        <Badge key={tag} variant="outline" className="text-3xs px-1 py-0">
                           {tag}
                         </Badge>
                       ))}
                       {doc.tags.length > 3 && (
-                        <Badge variant="outline" className="text-[10px] px-1 py-0">
+                        <Badge variant="outline" className="text-3xs px-1 py-0">
                           +{doc.tags.length - 3}
                         </Badge>
                       )}

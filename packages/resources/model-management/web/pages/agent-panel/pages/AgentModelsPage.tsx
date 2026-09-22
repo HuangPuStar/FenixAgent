@@ -1,4 +1,5 @@
-import { Button } from "@fenix/ui-components/ui/button";
+import { EmptyState } from "@fenix/ui-components/config/EmptyState";
+import { AppPage } from "@fenix/ui-components/layout/app-page";
 import { Skeleton } from "@fenix/ui-components/ui/skeleton";
 import { useOrgSession } from "@fenix/web-runtime/contexts/org-session";
 import type { ProviderInfo, ProviderModel } from "@fenix/web-runtime/types/config";
@@ -59,16 +60,20 @@ export function AgentModelsPage() {
 
   if (data.catalog.loading) return <ModelsLoading />;
   if (data.catalog.error && !data.catalog.data) {
+    // 页面级失败态与目录态用同一套壳：原来这里是一段只有自己的背景与内边距的裸 div，
+    // 与 AppPage（`bg-surface-0` + 页面留白）对不齐；现在统一走 AppPage + EmptyState。
     return (
-      <div className="agent-models-load-error" role="alert">
-        <AlertTriangle />
-        <h1>{t("loadState.title")}</h1>
-        <p>{data.catalog.error.message}</p>
-        <Button onClick={data.catalog.refresh}>
-          <RefreshCw />
-          {t("actions.retry")}
-        </Button>
-      </div>
+      <AppPage>
+        <EmptyState
+          icon={<AlertTriangle />}
+          title={t("loadState.title")}
+          description={data.catalog.error.message}
+          tone="danger"
+          role="alert"
+          className="flex min-h-96 flex-col items-center justify-center"
+          action={{ label: t("actions.retry"), onClick: data.catalog.refresh, icon: <RefreshCw /> }}
+        />
+      </AppPage>
     );
   }
 
@@ -177,7 +182,7 @@ function ModelsLoading() {
         <Skeleton className="mt-2 h-4 w-80" />
       </div>
       <Skeleton className="h-10 w-full" />
-      <div className="grid min-h-[560px] grid-cols-[238px_1fr] overflow-hidden rounded-[10px]">
+      <div className="models-loading-grid grid min-h-140 overflow-hidden rounded-lg">
         <Skeleton className="h-full rounded-none" />
         <Skeleton className="h-full rounded-none bg-white" />
       </div>

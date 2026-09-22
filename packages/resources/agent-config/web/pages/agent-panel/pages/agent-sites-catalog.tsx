@@ -1,3 +1,4 @@
+import { EmptyState } from "@fenix/ui-components/config/EmptyState";
 import { AppHeader } from "@fenix/ui-components/layout/app-header";
 import { AppPage } from "@fenix/ui-components/layout/app-page";
 import { Button } from "@fenix/ui-components/ui/button";
@@ -23,9 +24,21 @@ import {
 } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import type { SiteApp } from "../../../api/sites";
+import { buildAgentSiteUrl } from "../../../lib/agent-site-url";
 import "./agent-sites.css";
 
 export type SiteVisibilityFilter = "all" | SiteApp["visibility"];
+
+/**
+ * 目录页两处状态块（读取失败 / 本页目录为空）共用的排布：`EmptyState` 自带的是 `py-10` 内联块，
+ * 这一屏两个位置都要撑满内容区并居中。与 mcp / skills 目录页同款——原 `.site-empty-state` 的
+ * `min-height: 380px` 按既有口径取标准刻度 `min-h-96`（384px）。
+ *
+ * 与库内同名常量**不是逐字重复**，故不改为消费它：`@fenix/ui-components/config/EmptyState` 的
+ * `EMPTY_STATE_FILL_CLASS` 是 `min-h-64`（256px），换用它会把这一屏的撑高缩掉 128px、改掉布局意图
+ * （`76427173` 下沉该常量时已按同口径登记为「未做」）。
+ */
+const EMPTY_STATE_FILL_CLASS = "flex min-h-96 flex-col items-center justify-center";
 
 type Props = {
   apps: SiteApp[];
@@ -52,15 +65,15 @@ export function AgentSitesCatalog(props: Props) {
   if (props.error && props.apps.length === 0) {
     return (
       <AppPage className="agent-sites-page">
-        <section className="site-empty-state" role="alert">
-          <AlertTriangle />
-          <strong>{t("siteDeployment.errors.load")}</strong>
-          <p>{props.error.message}</p>
-          <Button onClick={props.onRetry}>
-            <RefreshCw />
-            {t("siteDeployment.actions.retry")}
-          </Button>
-        </section>
+        <EmptyState
+          icon={<AlertTriangle />}
+          title={t("siteDeployment.errors.load")}
+          description={props.error.message}
+          tone="danger"
+          role="alert"
+          action={{ label: t("siteDeployment.actions.retry"), onClick: props.onRetry, icon: <RefreshCw /> }}
+          className={EMPTY_STATE_FILL_CLASS}
+        />
       </AppPage>
     );
   }
@@ -106,34 +119,36 @@ export function AgentSitesCatalog(props: Props) {
         </div>
       </header>
       {props.apps.length === 0 ? (
-        <section className="site-empty-state">
-          <Globe2 />
-          <strong>
-            {props.query.trim() || props.visibility !== "all"
+        <EmptyState
+          icon={<Globe2 />}
+          title={
+            props.query.trim() || props.visibility !== "all"
               ? t("siteDeployment.emptySearch")
-              : t("siteDeployment.empty")}
-          </strong>
-          <p>{t("siteDeployment.emptyHint")}</p>
-          {!props.query.trim() && props.visibility === "all" && (
-            <Button onClick={props.onCreate}>{t("siteDeployment.actions.create")}</Button>
-          )}
-        </section>
+              : t("siteDeployment.empty")
+          }
+          description={t("siteDeployment.emptyHint")}
+          // 只有「确实没有站点」才给创建入口：筛选无结果时用户要的是改条件，不是新建。
+          action={
+            !props.query.trim() && props.visibility === "all"
+              ? { label: t("siteDeployment.actions.create"), onClick: props.onCreate }
+              : undefined
+          }
+          className={EMPTY_STATE_FILL_CLASS}
+        />
       ) : (
-        <section className="grid grid-cols-2 gap-3.5 pt-4 max-[950px]:grid-cols-1">
+        <section className="grid grid-cols-2 gap-3.5 pt-4 max-lg:grid-cols-1">
           {props.apps.map((app) => (
             <article
-              className="min-w-0 overflow-hidden rounded-lg border border-[var(--site-line)] bg-white shadow-[0_5px_18px_rgb(36_57_92/5%)]"
+              className="site-deployment-card min-w-0 overflow-hidden rounded-lg border border-[var(--site-line)] bg-white"
               key={app.id}
             >
-              <header className="grid grid-cols-[38px_minmax(0,1fr)_30px] items-center gap-3 px-4 pt-4">
-                <span className="grid size-[38px] place-items-center rounded-lg bg-[#edf3ff] text-[var(--site-blue)] [&_svg]:w-[17px]">
+              <header className="grid items-center gap-3 px-4 pt-4">
+                <span className="site-card-icon grid size-9.5 place-items-center rounded-lg bg-indigo-50 text-[var(--site-blue)]">
                   <Globe2 />
                 </span>
                 <div className="min-w-0">
-                  <strong className="block overflow-hidden text-ellipsis whitespace-nowrap text-[13px]">
-                    {app.name}
-                  </strong>
-                  <small className="mt-0.5 block overflow-hidden text-ellipsis whitespace-nowrap font-mono text-[10px] text-[var(--site-faint)]">
+                  <strong className="block overflow-hidden text-ellipsis whitespace-nowrap text-xs">{app.name}</strong>
+                  <small className="mt-0.5 block overflow-hidden text-ellipsis whitespace-nowrap font-mono text-3xs text-[var(--site-faint)]">
                     {app.remoteAppId}
                   </small>
                 </div>
@@ -142,7 +157,7 @@ export function AgentSitesCatalog(props: Props) {
                     <Button
                       variant="ghost"
                       size="icon"
-                      className="size-[30px] text-[var(--site-muted)] [&_svg]:w-4"
+                      className="site-more-button size-7.5 text-[var(--site-muted)]"
                       aria-label={t("siteDeployment.actions.more")}
                     >
                       <MoreHorizontal />
@@ -165,12 +180,12 @@ export function AgentSitesCatalog(props: Props) {
                   </DropdownMenuContent>
                 </DropdownMenu>
               </header>
-              <p className="min-h-10 px-4 pt-3 text-[11px] text-[var(--site-muted)] leading-5">
+              <p className="min-h-10 px-4 pt-3 text-3xs text-[var(--site-muted)] leading-5">
                 {app.description || t("siteDeployment.directory.noDescription")}
               </p>
-              <footer className="mt-3 flex min-h-11 items-center gap-2.5 border-[var(--site-line)] border-t bg-[#fafbfd] px-4 text-[10px] text-[var(--site-faint)]">
-                <span className="inline-flex items-center gap-1 text-[#278d70]">
-                  <i className="size-1.5 rounded-full bg-[#31a984]" />
+              <footer className="mt-3 flex min-h-11 items-center gap-2.5 border-[var(--site-line)] border-t bg-gray-50 px-4 text-3xs text-[var(--site-faint)]">
+                <span className="inline-flex items-center gap-1 text-emerald-600">
+                  <i className="size-1.5 rounded-full bg-teal-600" />
                   {t("siteDeployment.status.published")}
                 </span>
                 <span>{t(`siteDeployment.visibility.${app.visibility}`)}</span>
@@ -184,8 +199,8 @@ export function AgentSitesCatalog(props: Props) {
                   </button>
                 )}
                 <a
-                  className="ml-auto inline-flex items-center gap-1 text-[var(--site-muted)] hover:text-[var(--site-blue)] [&_svg]:w-3"
-                  href={`/web/site/deploy/${encodeURIComponent(app.remoteAppId)}/`}
+                  className="site-open-button ml-auto inline-flex items-center gap-1 text-[var(--site-muted)] hover:text-[var(--site-blue)]"
+                  href={buildAgentSiteUrl(app.remoteAppId)}
                   target="_blank"
                   rel="noreferrer"
                 >
@@ -233,7 +248,7 @@ function SitesLoading() {
       <div className="mt-7 grid grid-cols-2 gap-4">
         {Array.from({ length: 4 }).map((_, index) => (
           // biome-ignore lint/suspicious/noArrayIndexKey: 骨架屏是静态装饰、不重排，无领域标识可用作 key，索引键不会引起元素错位；源文件位于 apps/web 时未声明 react 依赖、规则未启用。
-          <Skeleton key={index} className="h-64 rounded-[10px]" />
+          <Skeleton key={index} className="h-64 rounded-lg" />
         ))}
       </div>
     </AppPage>

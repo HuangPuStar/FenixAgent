@@ -98,6 +98,11 @@ const BROWSER_SAFE_EXTERNAL: ReadonlyMap<string, string> = new Map([
   ["remark-gfm", "GitHub 风格 Markdown 插件（同上）"],
   ["xlsx", "表格解析（同上），纯浏览器实现"],
   [
+    "react-file-icon",
+    "文件类型图标（knowledge 资源列表 → ui-components components/file-icon-helper 传递依赖）：纯浏览器 SVG 组件，" +
+      "运行时依赖只有 react / prop-types / colord（后者提供颜色解析），无 node 专有能力",
+  ],
+  [
     "@antv/g6",
     "图可视化（knowledge 图谱面板传递依赖）：浏览器实现、无 node 内建；它在无 DOM 的测试环境导入即崩，" +
       "由 knowledge 侧改为懒加载处理，与本守卫的打包期结论无关",

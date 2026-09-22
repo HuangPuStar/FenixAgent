@@ -1,5 +1,7 @@
 import { AgentCardList } from "@fenix/ui-components/components/AgentCardList";
 import { ConfirmDialog } from "@fenix/ui-components/config/ConfirmDialog";
+import { EmptyState } from "@fenix/ui-components/config/EmptyState";
+import { StatusBadge } from "@fenix/ui-components/config/StatusBadge";
 import { Button } from "@fenix/ui-components/ui/button";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@fenix/ui-components/ui/dialog";
 import { Input } from "@fenix/ui-components/ui/input";
@@ -12,8 +14,9 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
 import { type WorkflowDefItem, workflowDefApi } from "../../api/workflow-defs";
+import { WORKFLOW_PUBLISH_STATUS_TONES } from "../../lib/status-tones";
 import { SkeletonTable } from "./components/SkeletonRows";
-import { isUnauthorizedError } from "./utils";
+import { isUnauthorizedError, relativeTime } from "./utils";
 
 interface WorkflowListProps {
   onEditWorkflow: (workflowId: string) => void;
@@ -132,15 +135,6 @@ export function WorkflowList({ onEditWorkflow, onViewVersions, createRequested }
     },
   );
 
-  function relativeTime(iso?: string | null): string {
-    if (!iso) return "--";
-    const diff = (Date.now() - new Date(iso).getTime()) / 1000;
-    if (diff < 60) return t("list.relative_now");
-    if (diff < 3600) return t("list.relative_minutes", { count: Math.floor(diff / 60) });
-    if (diff < 86400) return t("list.relative_hours", { count: Math.floor(diff / 86400) });
-    return new Date(iso).toLocaleDateString();
-  }
-
   return (
     <div className="flex flex-col flex-1 min-h-0">
       {/* 恢复面板 */}
@@ -167,7 +161,7 @@ export function WorkflowList({ onEditWorkflow, onViewVersions, createRequested }
                       });
                     }}
                   />
-                  <span className="font-mono text-[11px]">{id}</span>
+                  <span className="font-mono text-3xs">{id}</span>
                 </label>
               ))}
               <Button
@@ -261,27 +255,25 @@ export function WorkflowList({ onEditWorkflow, onViewVersions, createRequested }
         // 失败必须是**持久**分支：只弹 toast 会落回「暂无工作流」空态，用户看到的是「没有数据」
         // 而不是「没取到数据」。无权限单独成一个分支且不给重试（原因见 isUnauthorizedError）。
         unauthorized ? (
-          <div className="text-center py-10" role="alert">
-            <ShieldAlert size={32} className="text-status-error mx-auto mb-2" />
-            <p className="text-[13px] text-text-secondary font-medium">{t("list.unauthorized_title")}</p>
-            <p className="text-[11px] text-text-dim mt-1">{t("list.unauthorized_hint")}</p>
-          </div>
+          <EmptyState
+            icon={<ShieldAlert />}
+            title={t("list.unauthorized_title")}
+            description={t("list.unauthorized_hint")}
+            tone="danger"
+            role="alert"
+          />
         ) : (
-          <div className="text-center py-10" role="alert">
-            <AlertTriangle size={32} className="text-status-error mx-auto mb-2" />
-            <p className="text-[13px] text-text-secondary">{t("list.load_failed", { error: errorMsg })}</p>
-            {/* 重试入口：轮询是静默的，用户手里必须有一个能主动重发的按钮，否则只能刷新整页 */}
-            <Button variant="outline" size="sm" className="mt-3" onClick={refresh}>
-              <RefreshCw size={13} className="mr-1" /> {t("list.retry")}
-            </Button>
-          </div>
+          <EmptyState
+            icon={<AlertTriangle />}
+            title={t("list.load_failed", { error: errorMsg })}
+            tone="danger"
+            role="alert"
+            // 重试入口：轮询是静默的，用户手里必须有一个能主动重发的按钮，否则只能刷新整页
+            action={{ label: t("list.retry"), onClick: refresh, icon: <RefreshCw /> }}
+          />
         )
       ) : workflowsSafe.length === 0 ? (
-        <div className="text-center py-10">
-          <Inbox size={32} className="text-text-muted mx-auto mb-2" />
-          <p className="text-[13px] text-text-muted font-medium">{t("list.no_workflows")}</p>
-          <p className="text-[11px] text-text-dim mt-1">{t("list.no_workflows_hint")}</p>
-        </div>
+        <EmptyState icon={<Inbox />} title={t("list.no_workflows")} description={t("list.no_workflows_hint")} />
       ) : (
         <AgentCardList
           items={workflowsSafe}
@@ -295,20 +287,18 @@ export function WorkflowList({ onEditWorkflow, onViewVersions, createRequested }
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-2">
                     <span className="text-sm font-medium text-text-bright">{wf.name}</span>
-                    <span
-                      className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium ${
-                        wf.latestVersion
-                          ? "bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400"
-                          : "bg-surface-2 text-text-muted"
-                      }`}
-                    >
-                      {wf.latestVersion ? `v${wf.latestVersion}` : t("list.not_published")}
-                    </span>
+                    {/* 发布态药丸：手写色值（`bg-green-100 … dark:bg-green-900/30 …`）改由 `StatusBadge`
+                        按色调出配色，文案与键名 `list.not_published` 不变；状态名是调用点归一出来的两态。 */}
+                    <StatusBadge
+                      status={wf.latestVersion ? "published" : "unpublished"}
+                      label={wf.latestVersion ? `v${wf.latestVersion}` : t("list.not_published")}
+                      toneMap={WORKFLOW_PUBLISH_STATUS_TONES}
+                    />
                   </div>
                   {wf.description && <div className="text-xs text-text-muted mt-1 truncate">{wf.description}</div>}
                   <div className="flex items-center gap-3 mt-1.5 text-xs text-text-dim">
                     <span>
-                      {t("list.table_modified")}: {relativeTime(wf.updatedAt)}
+                      {t("list.table_modified")}: {relativeTime(t, wf.updatedAt, "list")}
                     </span>
                   </div>
                 </div>

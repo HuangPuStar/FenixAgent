@@ -14,6 +14,7 @@ import { forwardRef, useCallback, useEffect, useImperativeHandle, useRef, useSta
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
 import { downloadWorkspacePath, fsApi } from "@/src/api/fs";
+import { useDragCounter } from "@/src/hooks/use-drag-counter";
 import { NS } from "@/src/i18n";
 import { useFileTreeEvents } from "./use-file-tree-events";
 import { useFileUploads } from "./use-file-uploads";
@@ -120,6 +121,13 @@ export const FileTreeTab = forwardRef<FileTreeTabHandle, FileTreeTabProps>(funct
 
   useImperativeHandle(ref, () => ({ uploadFiles }), [uploadFiles]);
 
+  // 重命名 / 移动 / 新建目录 / 新建文件共用的收尾：关掉输入弹窗并重取树。
+  // 四处逐字相同（此前各写一份 `() => { setInputDialog(null); refreshTree(); }`），只有失败分支不同。
+  const closeInputDialogAndRefresh = useCallback(() => {
+    setInputDialog(null);
+    refreshTree();
+  }, [refreshTree]);
+
   // ── 重命名 ──
   const { run: runRename, loading: renaming } = useRequest(
     (oldPath: string, newName: string) => {
@@ -129,10 +137,7 @@ export const FileTreeTab = forwardRef<FileTreeTabHandle, FileTreeTabProps>(funct
     },
     {
       manual: true,
-      onSuccess: () => {
-        setInputDialog(null);
-        refreshTree();
-      },
+      onSuccess: closeInputDialogAndRefresh,
       onError: (err) => {
         console.error("Rename failed:", err);
         toast.error(err.message || t("fileTree.renameFailed"));
@@ -145,10 +150,7 @@ export const FileTreeTab = forwardRef<FileTreeTabHandle, FileTreeTabProps>(funct
     (oldPath: string, newPath: string) => unwrap(fsApi.rename(envId!, oldPath, newPath)),
     {
       manual: true,
-      onSuccess: () => {
-        setInputDialog(null);
-        refreshTree();
-      },
+      onSuccess: closeInputDialogAndRefresh,
       onError: (err) => {
         console.error("Move failed:", err);
         toast.error(err.message || t("fileTree.moveFailed"));
@@ -180,10 +182,7 @@ export const FileTreeTab = forwardRef<FileTreeTabHandle, FileTreeTabProps>(funct
   // ── 创建目录 ──
   const { run: runMkdir, loading: makingDirectory } = useRequest((path: string) => unwrap(fsApi.mkdir(envId!, path)), {
     manual: true,
-    onSuccess: () => {
-      setInputDialog(null);
-      refreshTree();
-    },
+    onSuccess: closeInputDialogAndRefresh,
     onError: (err) => {
       console.error("Mkdir failed:", err);
       toast.error(err.message || t("fileTree.mkdirFailed"));
@@ -195,10 +194,7 @@ export const FileTreeTab = forwardRef<FileTreeTabHandle, FileTreeTabProps>(funct
     (path: string) => unwrap(fsApi.writeFile(envId!, path, "")),
     {
       manual: true,
-      onSuccess: () => {
-        setInputDialog(null);
-        refreshTree();
-      },
+      onSuccess: closeInputDialogAndRefresh,
       onError: (err) => {
         console.error("New file failed:", err);
         toast.error(err.message || t("fileTree.newFileFailed"));
@@ -281,39 +277,18 @@ export const FileTreeTab = forwardRef<FileTreeTabHandle, FileTreeTabProps>(funct
     setContextMenu(null);
   }, [contextMenu, onReferenceFile]);
 
-  // 拖拽上传
-  const [dragOver, setDragOver] = useState(false);
-  const dragCounterRef = useRef(0);
-
-  const handleDragOver = useCallback((e: React.DragEvent) => {
-    e.preventDefault();
-    if (e.dataTransfer) {
-      e.dataTransfer.dropEffect = "copy";
-    }
-  }, []);
-
-  const handleDragEnter = useCallback((e: React.DragEvent) => {
-    e.preventDefault();
-    dragCounterRef.current++;
-    if (dragCounterRef.current === 1) setDragOver(true);
-  }, []);
-
-  const handleDragLeave = useCallback((e: React.DragEvent) => {
-    e.preventDefault();
-    dragCounterRef.current--;
-    if (dragCounterRef.current === 0) setDragOver(false);
-  }, []);
+  // 拖拽上传：进入/离开计数与遮罩态由 useDragCounter 统一维护（实现见 `@/src/hooks/use-drag-counter`）
+  const { isDragging: dragOver, handleDragEnter, handleDragOver, handleDragLeave, resetDragCounter } = useDragCounter();
 
   const handleDrop = useCallback(
     (e: React.DragEvent, targetDir?: string) => {
       e.preventDefault();
-      dragCounterRef.current = 0;
-      setDragOver(false);
+      resetDragCounter();
       if (!e.dataTransfer) return;
       const files = Array.from(e.dataTransfer.files);
       void uploadFiles(files, undefined, undefined, targetDir);
     },
-    [uploadFiles],
+    [resetDragCounter, uploadFiles],
   );
 
   const handleUploadClick = useCallback(

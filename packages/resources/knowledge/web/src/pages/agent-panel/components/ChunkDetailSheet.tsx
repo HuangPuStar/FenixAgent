@@ -1,5 +1,9 @@
 "use client";
 
+import "./ChunkDetailSheet.css";
+
+import { EmptyState } from "@fenix/ui-components/config/EmptyState";
+import { StatusBadge } from "@fenix/ui-components/config/StatusBadge";
 import { Button } from "@fenix/ui-components/ui/button";
 import { Input } from "@fenix/ui-components/ui/input";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@fenix/ui-components/ui/sheet";
@@ -127,14 +131,14 @@ export function ChunkDetailSheet({ open, onClose, kbId, resource }: ChunkDetailS
     <Sheet open={open} onOpenChange={(v) => !v && onClose()}>
       <SheetContent className="w-full sm:max-w-full p-0 flex flex-col gap-0">
         {/* ── 顶部 Header：文件名（Sheet 右上角自带 X 关闭按钮，无需重复添加） ── */}
-        <SheetHeader className="px-6 py-4 border-b border-[#e8edf4] shrink-0 bg-gradient-to-r from-[#fafbfc] to-white pr-12">
-          <SheetTitle className="text-[16px] font-bold text-[#0f172a] truncate">{resource.sourceName}</SheetTitle>
-          <p className="text-[12px] text-[#94a3b8] mt-0.5">
+        <SheetHeader className="px-6 py-4 border-b border-slate-200 shrink-0 bg-gradient-to-r from-gray-50 to-white pr-12">
+          <SheetTitle className="text-base font-bold text-slate-900 truncate">{resource.sourceName}</SheetTitle>
+          <p className="text-xs text-slate-400 mt-0.5">
             {data ? t("chunk.totalCount", { count: data.total }) : ""}
             {hasKeyword && (
-              <span className="ml-2 inline-flex items-center gap-1 text-[#6366f1]">
+              <span className="ml-2 inline-flex items-center gap-1 text-indigo-500">
                 · {t("chunk.searchFor", { keyword })}
-                <button type="button" className="hover:text-[#4f46e5]" onClick={handleClearSearch}>
+                <button type="button" className="hover:text-indigo-600" onClick={handleClearSearch}>
                   <X className="h-3 w-3" />
                 </button>
               </span>
@@ -145,11 +149,11 @@ export function ChunkDetailSheet({ open, onClose, kbId, resource }: ChunkDetailS
         {/* ── 主体：双栏布局，左预览右切片 ── */}
         <div className="flex-1 flex min-h-0">
           {/* 左侧：文档预览（40%） */}
-          <div className="w-[40%] flex flex-col border-r border-[#e8edf4] min-h-0 bg-white">
+          <div className="w-[40%] flex flex-col border-r border-slate-200 min-h-0 bg-white">
             {/* 预览头部 */}
-            <div className="px-5 py-4 border-b border-[#eef2f6] shrink-0">
-              <h3 className="text-[13px] font-bold text-[#0f172a]">{t("chunk.docPreview")}</h3>
-              <p className="text-[11px] text-[#94a3b8] mt-0.5">
+            <div className="px-5 py-4 border-b border-slate-100 shrink-0">
+              <h3 className="text-xs font-bold text-slate-900">{t("chunk.docPreview")}</h3>
+              <p className="text-3xs text-slate-400 mt-0.5">
                 {resource.sourceName} · {t("chunk.chunkCount", { count: resource.chunkCount ?? 0 })}
               </p>
             </div>
@@ -161,15 +165,15 @@ export function ChunkDetailSheet({ open, onClose, kbId, resource }: ChunkDetailS
           </div>
 
           {/* 右侧：切片列表（60%） */}
-          <div className="flex-1 flex flex-col min-h-0 bg-[#fafbfd]">
+          <div className="flex-1 flex flex-col min-h-0 bg-gray-50">
             {/* 工具栏 */}
-            <div className="flex items-center gap-3 px-5 py-3 border-b border-[#eef2f6] shrink-0 bg-white">
+            <div className="flex items-center gap-3 px-5 py-3 border-b border-slate-100 shrink-0 bg-white">
               {/* 全文 / 省略 切换 */}
-              <div className="flex items-center rounded-lg border border-[#e2e8f0] overflow-hidden shrink-0">
+              <div className="flex items-center rounded-lg border border-slate-200 overflow-hidden shrink-0">
                 <button
                   type="button"
-                  className={`px-3 py-1.5 text-[11px] font-medium transition-colors ${
-                    textMode === "ellipse" ? "bg-[#6366f1] text-white" : "text-[#64748b] hover:bg-[#f1f5f9]"
+                  className={`px-3 py-1.5 text-3xs font-medium transition-colors ${
+                    textMode === "ellipse" ? "bg-indigo-500 text-white" : "text-slate-500 hover:bg-slate-100"
                   }`}
                   onClick={() => setTextMode("ellipse")}
                 >
@@ -177,8 +181,8 @@ export function ChunkDetailSheet({ open, onClose, kbId, resource }: ChunkDetailS
                 </button>
                 <button
                   type="button"
-                  className={`px-3 py-1.5 text-[11px] font-medium transition-colors ${
-                    textMode === "full" ? "bg-[#6366f1] text-white" : "text-[#64748b] hover:bg-[#f1f5f9]"
+                  className={`px-3 py-1.5 text-3xs font-medium transition-colors ${
+                    textMode === "full" ? "bg-indigo-500 text-white" : "text-slate-500 hover:bg-slate-100"
                   }`}
                   onClick={() => setTextMode("full")}
                 >
@@ -187,18 +191,18 @@ export function ChunkDetailSheet({ open, onClose, kbId, resource }: ChunkDetailS
               </div>
 
               {/* 搜索框 */}
-              <div className="relative flex-1 max-w-[260px]">
-                <Search className="pointer-events-none absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-[#94a3b8]" />
+              <div className="relative flex-1 max-w-65">
+                <Search className="pointer-events-none absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-slate-400" />
                 <Input
                   value={searchInput}
                   onChange={(e) => setSearchInput(e.target.value)}
                   onKeyDown={(e) => e.key === "Enter" && handleSearch()}
                   placeholder={t("chunk.searchPlaceholder")}
-                  className="h-8 pl-9 pr-3 text-[12px] rounded-lg border-[#e2e8f0] focus-visible:ring-[#6366f1]"
+                  className="h-8 pl-9 pr-3 text-xs rounded-lg border-slate-200 focus-visible:ring-indigo-500"
                 />
               </div>
 
-              <span className="ml-auto text-[11px] text-[#94a3b8] shrink-0">
+              <span className="ml-auto text-3xs text-slate-400 shrink-0">
                 {data ? `${data.total} ${t("chunk.chunksUnit")}` : ""}
               </span>
             </div>
@@ -219,29 +223,31 @@ export function ChunkDetailSheet({ open, onClose, kbId, resource }: ChunkDetailS
 
               {/* 空态只表达「确实没有数据」：请求失败时不得落回空态，因此在 error == null 时才渲染。 */}
               {!loading && error == null && data && data.items.length === 0 && (
-                <div className="flex flex-col items-center justify-center py-20 gap-2">
-                  <Search className="h-8 w-8 text-[#cbd5e1]" />
-                  <p className="text-[13px] text-[#94a3b8]">{hasKeyword ? t("chunk.noMatch") : t("chunk.empty")}</p>
-                </div>
+                <EmptyState
+                  className="py-20"
+                  icon={<Search />}
+                  title={hasKeyword ? t("chunk.noMatch") : t("chunk.empty")}
+                />
               )}
 
               {!loading &&
                 data?.items.map((chunk) => (
                   <div
                     key={chunk.id}
-                    className="relative rounded-xl border border-[#eef2f6] bg-white p-4 shadow-sm transition-shadow hover:shadow-md"
+                    className="relative rounded-xl border border-slate-100 bg-white p-4 shadow-sm transition-shadow hover:shadow-md"
                   >
                     {/* 卡片头部：序号 + 状态徽章 */}
                     <div className="flex items-center justify-between mb-2.5">
-                      <span className="text-[11px] font-bold text-[#6366f1] tabular-nums">#{chunk.chunkIndex}</span>
+                      <span className="text-3xs font-bold text-indigo-500 tabular-nums">#{chunk.chunkIndex}</span>
                       <div className="flex items-center gap-2">
-                        <span
-                          className={`text-[10px] font-medium px-1.5 py-0.5 rounded ${
-                            chunk.enabled ? "bg-emerald-50 text-emerald-600" : "bg-gray-100 text-gray-400"
-                          }`}
-                        >
-                          {chunk.enabled ? t("chunk.enabled") : t("chunk.disabled")}
-                        </span>
+                        {/* 启用态此前是行内三元写死的 `bg-emerald-50 text-emerald-600` / `bg-gray-100 text-gray-400`，
+                            与本包其它状态展示同形不同值；改走库的 StatusBadge（enabled/disabled 是库内置词表），
+                            文案仍取本包的 chunk.* 键。 */}
+                        <StatusBadge
+                          status={chunk.enabled ? "enabled" : "disabled"}
+                          label={chunk.enabled ? t("chunk.enabled") : t("chunk.disabled")}
+                          className="text-3xs"
+                        />
                         <Switch
                           checked={chunk.enabled}
                           onCheckedChange={(v) => handleToggleEnabled(chunk.id, v)}
@@ -252,9 +258,10 @@ export function ChunkDetailSheet({ open, onClose, kbId, resource }: ChunkDetailS
 
                     {/* 内容预览（全文 / 省略模式）。
                         RAGFlow 切片内容可能包含 HTML（表格、视频标签、富文本），
-                        用 DOMPurify 清洗后渲染，与 RAGFlow chunk-card 行为一致。 */}
+                        用 DOMPurify 清洗后渲染，与 RAGFlow chunk-card 行为一致。
+                        内层 media / 表格 / 链接样式见同目录 ChunkDetailSheet.css 的 `.chunk-detail-content`。 */}
                     <div
-                      className={`text-[12px] text-[#475569] leading-relaxed break-words [&_video]:max-w-full [&_video]:rounded-lg [&_img]:max-w-full [&_img]:rounded-lg [&_table]:w-full [&_a]:text-[#6366f1] [&_a]:underline ${
+                      className={`chunk-detail-content text-xs text-slate-600 leading-relaxed break-words ${
                         textMode === "ellipse" ? "line-clamp-3" : ""
                       }`}
                       // biome-ignore lint/security/noDangerouslySetInnerHtml: 同一行的 DOMPurify.sanitize 已清洗（RAGFlow 切片内容含后端 HTML，不可直接注入）
@@ -267,7 +274,7 @@ export function ChunkDetailSheet({ open, onClose, kbId, resource }: ChunkDetailS
                         {chunk.importantKeywords.map((kw) => (
                           <span
                             key={`${chunk.id}-${kw}`}
-                            className="inline-flex items-center rounded-md bg-[#f0f4ff] px-2 py-0.5 text-[10px] font-medium text-[#6366f1]"
+                            className="inline-flex items-center rounded-md bg-blue-50 px-2 py-0.5 text-3xs font-medium text-indigo-500"
                           >
                             {kw}
                           </span>
@@ -280,8 +287,8 @@ export function ChunkDetailSheet({ open, onClose, kbId, resource }: ChunkDetailS
 
             {/* 分页器 */}
             {data && data.total > 0 && (
-              <div className="flex items-center justify-between px-5 py-3 border-t border-[#eef2f6] shrink-0 bg-white">
-                <span className="text-[11px] text-[#94a3b8]">
+              <div className="flex items-center justify-between px-5 py-3 border-t border-slate-100 shrink-0 bg-white">
+                <span className="text-3xs text-slate-400">
                   {data.total} {t("chunk.chunksUnit")} · {t("chunk.pageOf", { page, total: totalPages })}
                 </span>
                 <div className="flex items-center gap-1.5">
@@ -294,7 +301,7 @@ export function ChunkDetailSheet({ open, onClose, kbId, resource }: ChunkDetailS
                   >
                     <ChevronLeft className="h-3.5 w-3.5" />
                   </Button>
-                  <span className="text-[11px] font-medium text-[#64748b] tabular-nums min-w-[40px] text-center">
+                  <span className="text-3xs font-medium text-slate-500 tabular-nums min-w-10 text-center">
                     {page}/{totalPages}
                   </span>
                   <Button
@@ -367,7 +374,7 @@ function ChunkListSkeleton() {
     <div className="space-y-3">
       {Array.from({ length: 4 }).map((_, i) => (
         // biome-ignore lint/suspicious/noArrayIndexKey: 骨架屏是静态装饰、不重排，占位块无领域标识，索引键不会引起元素错位
-        <div key={`skeleton-${i}`} className="rounded-xl border border-[#eef2f6] bg-white p-4 shadow-sm">
+        <div key={`skeleton-${i}`} className="rounded-xl border border-slate-100 bg-white p-4 shadow-sm">
           <div className="flex items-center justify-between mb-2.5">
             <Skeleton className="h-3 w-8 rounded" />
             <Skeleton className="h-3 w-12 rounded" />

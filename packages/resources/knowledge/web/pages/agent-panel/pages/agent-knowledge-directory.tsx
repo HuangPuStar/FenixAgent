@@ -1,9 +1,14 @@
+import { EmptyState } from "@fenix/ui-components/config/EmptyState";
+import { getStatusTone } from "@fenix/ui-components/config/StatusBadge";
 import { Button } from "@fenix/ui-components/ui/button";
 import { Skeleton } from "@fenix/ui-components/ui/skeleton";
+import { StatusDot } from "@fenix/ui-components/ui/status-dot";
 import { NS } from "@fenix/web-runtime/i18n/namespace";
-import { BookOpen, RefreshCw, Trash2 } from "lucide-react";
+import { BookOpen, Trash2 } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import type { KnowledgeBaseInfo } from "../../../types/knowledge";
+import { KnowledgeLoadFailure } from "./agent-knowledge-load-failure";
+import { KB_STATUS_TONES } from "./knowledge-status";
 
 interface AgentKnowledgeDirectoryProps {
   items: KnowledgeBaseInfo[];
@@ -14,13 +19,6 @@ interface AgentKnowledgeDirectoryProps {
   onRetry: () => void;
   onSelect: (item: KnowledgeBaseInfo) => void;
   onDelete: (item: KnowledgeBaseInfo) => void;
-}
-
-function statusClass(status: string): string {
-  if (status === "ready") return "is-ready";
-  if (["processing", "pending", "indexing"].includes(status)) return "is-processing";
-  if (status === "error") return "is-error";
-  return "";
 }
 
 export function AgentKnowledgeDirectory(props: AgentKnowledgeDirectoryProps) {
@@ -43,15 +41,14 @@ export function AgentKnowledgeDirectory(props: AgentKnowledgeDirectoryProps) {
           <Skeleton />
         </div>
       ) : props.error ? (
-        <div className="knowledge-directory__state" role="alert">
-          <p>{props.error instanceof Error ? props.error.message : t("loadError")}</p>
-          <Button size="sm" variant="outline" onClick={props.onRetry}>
-            <RefreshCw />
-            {t("actions.retry")}
-          </Button>
-        </div>
+        <KnowledgeLoadFailure
+          error={props.error}
+          title={t("loadError")}
+          onRetry={props.onRetry}
+          className="px-2 py-8"
+        />
       ) : props.items.length === 0 ? (
-        <div className="knowledge-directory__state">{t("emptyMessage")}</div>
+        <EmptyState className="px-2 py-8" title={t("emptyMessage")} />
       ) : (
         <nav aria-label={t("directory.title")}>
           {props.items.map((item) => {
@@ -74,7 +71,9 @@ export function AgentKnowledgeDirectory(props: AgentKnowledgeDirectoryProps) {
                   <span className="knowledge-directory-item__copy">
                     <strong>{item.name}</strong>
                     <small>
-                      <i className={statusClass(item.status)} />
+                      {/* 纯装饰圆点：不传 `label` 故整块 `aria-hidden`（旁边的资源数已承担可读信息），
+                          6px 装饰尺度由 `size-1.5` 覆盖库默认的 8px；色调查本包唯一词表。 */}
+                      <StatusDot tone={getStatusTone(item.status, KB_STATUS_TONES)} className="size-1.5" />
                       {t("card.resourcesUnit", { count: item.resourcesCount })}
                     </small>
                   </span>

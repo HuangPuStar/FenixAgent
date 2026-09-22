@@ -30,9 +30,12 @@ import type { ServerRouteHost } from "@fenix/platform-sdk/server";
  *   agent-runtime 是 `agent-runtime` 类别的基础模块，在 profile 里是固定槽位
  *   （`requireFoundation(profile.agentRuntime)` 总是启用），不进入资源模块的装配依赖校验范围；
  *   跨类别边由 §2.3 矩阵与架构台账负责（owner 1.4）。
- * - `resource-sandbox` 只被 `web/**` 引用（`MasterKeyGate`、`mergeFlatRows` 等控制台组件），web 贡献
+ * - `resource-sandbox` 只被 `web/**` 引用（`mergeFlatRows` / `machineReverseIndex` / `integrityRows` 等
+ *   observer 视图工具的寄居地，`AdminObserverPage` 与 4 个展示组件消费），web 贡献
  *   不进入服务端装配顺序，其启用由 profile 的 `web` 列表表达（§1.6）；写进 `dependsOn` 等于凭空声明
- *   一条服务端不具备的边。
+ *   一条服务端不具备的边。三个 admin 页面原先还取该包的 `MasterKeyGate`，该门 2026-09-22 下沉为
+ *   `@fenix/ui-components/config/AdminKeyGate` + `@fenix/web-runtime/hooks/use-admin-key-gate`，
+ *   `AdminLogsPage` / `AdminPeoplePage` 已完全不依赖沙盒包。
  * - `@fenix/platform-sdk` 与 `@fenix/logger` 是契约与工具包，不是模块，没有模块 ID 可声明。
  * - 宿主内部路径（`@server/**`）必须消除而不是编码成装配依赖——台账受「不再违规即删除」校验，
  *   无法用来长期豁免。W2 切片已把 `@server/plugins/system-api-auth` 改为路由工厂注入（守卫由宿主传入）、

@@ -1,7 +1,10 @@
 import { ConfirmDialog } from "@fenix/ui-components/config/ConfirmDialog";
+import { EMPTY_STATE_FILL_CLASS, EmptyState } from "@fenix/ui-components/config/EmptyState";
 import { FormDialog } from "@fenix/ui-components/config/FormDialog";
 import { AppHeader } from "@fenix/ui-components/layout/app-header";
 import { AppPage } from "@fenix/ui-components/layout/app-page";
+import { copyTextToClipboard } from "@fenix/ui-components/lib/clipboard";
+import { formatDate } from "@fenix/ui-components/lib/format";
 import { Button } from "@fenix/ui-components/ui/button";
 import { Input } from "@fenix/ui-components/ui/input";
 import { Label } from "@fenix/ui-components/ui/label";
@@ -14,7 +17,7 @@ import { useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
 import { type ApiKeyInfo, apiKeyApi } from "../../../api/api-keys";
-import { filterApiKeys, formatApiKeyDate, getApiKeyCreateErrorMessage } from "./agent-api-keys-utils";
+import { filterApiKeys, getApiKeyCreateErrorMessage } from "./agent-api-keys-utils";
 import "./agent-api-keys.css";
 import { NS } from "@fenix/web-runtime/i18n/namespace";
 
@@ -58,10 +61,7 @@ function ApiKeyTable({
   return (
     <section className="api-key-table" aria-label={t("title")}>
       {keys.length === 0 ? (
-        <div className="api-key-empty">
-          <KeyRound className="size-6" />
-          <span>{t("emptyMessage")}</span>
-        </div>
+        <EmptyState icon={<KeyRound />} title={t("emptyMessage")} className={EMPTY_STATE_FILL_CLASS} />
       ) : (
         <Table>
           <TableHeader>
@@ -90,13 +90,13 @@ function ApiKeyTable({
                   <code>{key.prefix.slice(0, 10)}••••••••</code>
                 </TableCell>
                 <TableCell>
-                  <time>{formatApiKeyDate(key.createdAt, i18n.language, t("date.never"))}</time>
+                  <time>{formatDate(key.createdAt, { locale: i18n.language, fallback: t("date.never") })}</time>
                 </TableCell>
                 <TableCell>
-                  <time>{formatApiKeyDate(key.lastUsedAt, i18n.language, t("date.neverUsed"))}</time>
+                  <time>{formatDate(key.lastUsedAt, { locale: i18n.language, fallback: t("date.neverUsed") })}</time>
                 </TableCell>
                 <TableCell>
-                  <time>{formatApiKeyDate(key.expiresAt, i18n.language, t("date.neverExpires"))}</time>
+                  <time>{formatDate(key.expiresAt, { locale: i18n.language, fallback: t("date.neverExpires") })}</time>
                 </TableCell>
                 <TableCell className="api-key-action-column">
                   <Button variant="ghost" size="icon-sm" onClick={() => onRevoke(key.id)} aria-label={t("btn.revoke")}>
@@ -169,16 +169,18 @@ export function AgentApiKeysPage() {
     if (!name) return toast.error(t("validation.nameRequired"));
     runCreate(name);
   };
+  /**
+   * 复制新建的 API Key。
+   *
+   * 安全上下文（HTTPS / localhost）走统一剪贴板原语，最稳；非安全上下文（HTTP）下
+   * `navigator.clipboard` 是宿主 polyfill（隐藏 textarea + execCommand），它在**本页的模态对话框里
+   * 会因焦点陷阱复制失败**，故不试、直接退回「选中框内 `<code>`」的方式——不移动焦点，也按真实结果提示。
+   */
   const copyKey = async () => {
     if (!newKeyValue) return;
-    if (window.isSecureContext && typeof navigator.clipboard?.writeText === "function") {
-      try {
-        await navigator.clipboard.writeText(newKeyValue);
-        toast.success(t("toast.copied"));
-        return;
-      } catch {
-        // Continue to the in-dialog selection fallback below.
-      }
+    if (window.isSecureContext && (await copyTextToClipboard(newKeyValue))) {
+      toast.success(t("toast.copied"));
+      return;
     }
     if (copyElementText(keyCodeRef.current)) toast.success(t("toast.copied"));
     else toast.error(t("toast.copyFailed"));
@@ -218,13 +220,17 @@ export function AgentApiKeysPage() {
         </div>
       </div>
       {error ? (
-        <div className="api-key-error">
-          <AlertTriangle className="size-5" />
-          <span>{t("toast.loadFailed")}</span>
-          <Button variant="ghost" size="sm" onClick={refresh}>
-            <RefreshCw className="size-4" />
-            {t("btn.retry")}
-          </Button>
+        // 卡片外壳由调用方给（EmptyState 只负责块内排版）：与上方的表格、下方的空态保持同一种边框，
+        // 此前这层外壳是 CSS 里 `.api-key-error` 单独抄的一份。
+        <div className="rounded-lg border border-border bg-surface-0">
+          <EmptyState
+            tone="danger"
+            role="alert"
+            icon={<AlertTriangle />}
+            title={t("toast.loadFailed")}
+            action={{ label: t("btn.retry"), icon: <RefreshCw />, onClick: refresh }}
+            className={EMPTY_STATE_FILL_CLASS}
+          />
         </div>
       ) : (
         <ApiKeyTable

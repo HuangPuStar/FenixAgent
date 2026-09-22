@@ -1,15 +1,20 @@
+import { EmptyState } from "@fenix/ui-components/config/EmptyState";
 import { Button } from "@fenix/ui-components/ui/button";
+import { Spinner } from "@fenix/ui-components/ui/spinner";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@fenix/ui-components/ui/table";
 import { NS } from "@fenix/web-runtime/i18n/namespace";
-import { ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight, List, RefreshCw, ScatterChart, X } from "lucide-react";
+import { List, ScatterChart, X } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { hindsightApi } from "../../../api/hindsight";
+import { useElementHeight } from "../element-height";
 import { type HindsightFailure, toHindsightFailure } from "../failure";
+import { recencyEndpoints, recencyHeat, toRecencyLookup } from "../recency";
 import type { EntityGraphResponse, EntityItem } from "../types";
 import { Constellation } from "./Constellation";
 import { convertHindsightGraphData, type GraphNode } from "./Graph2d";
 import { HindsightFailureNotice } from "./HindsightFailureNotice";
+import { MemoryPagination } from "./MemoryPagination";
 import { MemoryViewSwitcher } from "./MemoryViewSwitcher";
 
 type ViewMode = "relations" | "list";
@@ -30,7 +35,7 @@ export function EntitiesView() {
   const [graphLoading, setGraphLoading] = useState(false);
   const [graphFailure, setGraphFailure] = useState<HindsightFailure | null>(null);
   const graphPaneRef = useRef<HTMLDivElement>(null);
-  const [graphHeight, setGraphHeight] = useState(1);
+  const graphHeight = useElementHeight(graphPaneRef);
 
   // Pagination state
   const [currentPage, setCurrentPage] = useState(1);
@@ -109,19 +114,6 @@ export function EntitiesView() {
     }
   }, [viewMode, graphData, graphLoading, graphFailure, loadGraph]);
 
-  useEffect(() => {
-    const element = graphPaneRef.current;
-    if (!element) return;
-    const updateHeight = () => {
-      const nextHeight = Math.floor(element.getBoundingClientRect().height);
-      if (nextHeight > 0) setGraphHeight(nextHeight);
-    };
-    updateHeight();
-    const observer = new ResizeObserver(updateHeight);
-    observer.observe(element);
-    return () => observer.disconnect();
-  }, []);
-
   const constellationData = useMemo(() => {
     if (!graphData) return { nodes: [], links: [] };
     return convertHindsightGraphData(graphData);
@@ -176,19 +168,10 @@ export function EntitiesView() {
       if (t < minT) minT = t;
       if (t > maxT) maxT = t;
     }
-    if (!Number.isFinite(minT) || !Number.isFinite(maxT) || maxT === minT) return null;
-    return { times, minT, maxT };
+    return toRecencyLookup(times, minT, maxT);
   }, [graphData]);
 
-  const nodeHeatFn = useCallback(
-    (node: GraphNode) => {
-      if (!recencyLookup) return 0.5;
-      const t = recencyLookup.times.get(node.id);
-      if (t === undefined) return 0;
-      return (t - recencyLookup.minT) / (recencyLookup.maxT - recencyLookup.minT);
-    },
-    [recencyLookup],
-  );
+  const nodeHeatFn = useCallback((node: GraphNode) => recencyHeat(recencyLookup, node.id), [recencyLookup]);
 
   const handleConstellationNodeClick = useCallback(
     (node: GraphNode) => {
@@ -220,21 +203,15 @@ export function EntitiesView() {
       {viewMode === "relations" && (
         <div ref={graphPaneRef} className="min-h-0 flex-1 overflow-hidden rounded-lg border border-border">
           {graphLoading ? (
-            <div className="flex items-center justify-center py-20" role="status">
-              <div className="text-center">
-                <div className="text-4xl mb-2">...</div>
-                <div className="text-sm text-muted-foreground">{t("entitiesView.loadingEntityGraph")}</div>
-              </div>
-            </div>
+            <Spinner variant="panel" className="py-20" label={t("entitiesView.loadingEntityGraph")} />
           ) : graphFailure ? (
-            <div className="flex flex-col items-center justify-center gap-3 py-20 text-center" role="alert">
-              <HindsightFailureNotice
-                failure={graphFailure}
-                titleKey="entitiesView.graphLoadFailed"
-                retryKey="entitiesView.retry"
-                onRetry={() => void loadGraph()}
-              />
-            </div>
+            <HindsightFailureNotice
+              failure={graphFailure}
+              titleKey="entitiesView.graphLoadFailed"
+              retryKey="entitiesView.retry"
+              onRetry={() => void loadGraph()}
+              className="py-20"
+            />
           ) : constellationData.nodes.length > 0 ? (
             <Constellation
               data={constellationData}
@@ -243,24 +220,16 @@ export function EntitiesView() {
               nodeSizeFn={nodeSizeFn}
               nodeHeatFn={recencyLookup ? nodeHeatFn : undefined}
               heatLegendLabel={recencyLookup ? t("entitiesView.heatLegendLabel") : undefined}
-              heatLegendEndpoints={
-                recencyLookup
-                  ? [
-                      new Date(recencyLookup.minT).toISOString().slice(0, 10),
-                      new Date(recencyLookup.maxT).toISOString().slice(0, 10),
-                    ]
-                  : undefined
-              }
+              heatLegendEndpoints={recencyEndpoints(recencyLookup)}
               sizeLegendLabel={t("entitiesView.sizeLegendLabel")}
               compactLabels
             />
           ) : (
-            <div className="flex items-center justify-center py-20">
-              <div className="text-center">
-                <div className="text-sm text-muted-foreground">{t("entitiesView.noCooccurrences")}</div>
-                <div className="text-xs text-muted-foreground mt-1">{t("entitiesView.noCooccurrencesDescription")}</div>
-              </div>
-            </div>
+            <EmptyState
+              className="py-20"
+              title={t("entitiesView.noCooccurrences")}
+              description={t("entitiesView.noCooccurrencesDescription")}
+            />
           )}
         </div>
       )}
@@ -269,21 +238,15 @@ export function EntitiesView() {
       {viewMode === "list" && (
         <div className="min-h-0 min-w-0 flex-1 overflow-auto">
           {loading ? (
-            <div className="flex items-center justify-center py-20" role="status">
-              <div className="text-center">
-                <div className="text-4xl mb-2">...</div>
-                <div className="text-sm text-muted-foreground">{t("entitiesView.loadingEntities")}</div>
-              </div>
-            </div>
+            <Spinner variant="panel" className="py-20" label={t("entitiesView.loadingEntities")} />
           ) : entitiesFailure ? (
-            <div className="flex flex-col items-center justify-center gap-3 py-20 text-center" role="alert">
-              <HindsightFailureNotice
-                failure={entitiesFailure}
-                titleKey="entitiesView.listLoadFailed"
-                retryKey="entitiesView.retry"
-                onRetry={() => void loadEntities(currentPage)}
-              />
-            </div>
+            <HindsightFailureNotice
+              failure={entitiesFailure}
+              titleKey="entitiesView.listLoadFailed"
+              retryKey="entitiesView.retry"
+              onRetry={() => void loadEntities(currentPage)}
+              className="py-20"
+            />
           ) : entities.length > 0 ? (
             <>
               <div className="mb-4 text-sm text-muted-foreground">
@@ -319,63 +282,20 @@ export function EntitiesView() {
               </div>
 
               {/* Pagination Controls */}
-              {totalPages > 1 && (
-                <div className="flex items-center justify-between mt-3 pt-3 border-t">
-                  <div className="text-xs text-muted-foreground">
-                    {offset + 1}-{Math.min(offset + ITEMS_PER_PAGE, total)} {t("entitiesView.of")} {total}
-                  </div>
-                  <div className="flex items-center gap-1">
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => handlePageChange(1)}
-                      disabled={currentPage === 1 || loading}
-                      className="h-7 w-7 p-0"
-                    >
-                      <ChevronsLeft className="h-3 w-3" />
-                    </Button>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => handlePageChange(currentPage - 1)}
-                      disabled={currentPage === 1 || loading}
-                      className="h-7 w-7 p-0"
-                    >
-                      <ChevronLeft className="h-3 w-3" />
-                    </Button>
-                    <span className="text-xs px-2">
-                      {currentPage} / {totalPages}
-                    </span>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => handlePageChange(currentPage + 1)}
-                      disabled={currentPage === totalPages || loading}
-                      className="h-7 w-7 p-0"
-                    >
-                      <ChevronRight className="h-3 w-3" />
-                    </Button>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => handlePageChange(totalPages)}
-                      disabled={currentPage === totalPages || loading}
-                      className="h-7 w-7 p-0"
-                    >
-                      <ChevronsRight className="h-3 w-3" />
-                    </Button>
-                  </div>
-                </div>
-              )}
+              <MemoryPagination
+                currentPage={currentPage}
+                totalPages={totalPages}
+                onPageChange={handlePageChange}
+                rangeLabel={`${offset + 1}-${Math.min(offset + ITEMS_PER_PAGE, total)} ${t("entitiesView.of")} ${total}`}
+                disabled={loading}
+              />
             </>
           ) : (
-            <div className="flex items-center justify-center py-20">
-              <div className="text-center">
-                <div className="text-4xl mb-2">...</div>
-                <div className="text-sm text-muted-foreground">{t("entitiesView.noEntitiesFound")}</div>
-                <div className="text-xs text-muted-foreground mt-1">{t("entitiesView.noEntitiesDescription")}</div>
-              </div>
-            </div>
+            <EmptyState
+              className="py-20"
+              title={t("entitiesView.noEntitiesFound")}
+              description={t("entitiesView.noEntitiesDescription")}
+            />
           )}
         </div>
       )}
@@ -391,10 +311,11 @@ export function EntitiesView() {
               titleKey="entitiesView.detailLoadFailed"
               retryKey="entitiesView.retry"
               onRetry={() => void loadEntityDetail(selectedEntityId)}
+              className="py-0"
             />
           ) : (
             <>
-              <RefreshCw className="size-8 animate-spin" />
+              <Spinner />
               <p className="text-sm font-medium">{t("entitiesView.loadingEntityDetail")}</p>
             </>
           )}
@@ -413,7 +334,7 @@ export function EntitiesView() {
 
       {/* Entity Detail Panel - Fixed overlay */}
       {selectedEntity && (
-        <div className="fixed right-0 top-0 h-screen w-[420px] bg-card border-l-2 border-primary shadow-2xl z-50 overflow-y-auto animate-in slide-in-from-right duration-300 ease-out">
+        <div className="fixed right-0 top-0 h-screen w-105 bg-card border-l-2 border-primary shadow-2xl z-50 overflow-y-auto animate-in slide-in-from-right duration-300 ease-out">
           <div className="p-5">
             {/* Header */}
             <div className="flex justify-between items-center mb-6 pb-4 border-b border-border">

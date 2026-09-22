@@ -33,6 +33,10 @@
       "types": "./web/lib/chat-stats.ts",
       "default": "./web/lib/chat-stats.ts"
     },
+    "./hooks/use-admin-key-gate": {
+      "types": "./web/hooks/use-admin-key-gate.ts",
+      "default": "./web/hooks/use-admin-key-gate.ts"
+    },
     "./hooks/use-changed-files-stats": {
       "types": "./web/hooks/use-changed-files-stats.ts",
       "default": "./web/hooks/use-changed-files-stats.ts"

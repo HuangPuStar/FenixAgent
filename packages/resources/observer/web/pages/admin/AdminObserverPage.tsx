@@ -2,17 +2,20 @@
 // Observer 观察中心仪表盘壳（docs/arch/21 §5）：
 // - useRequest 拉取 acp-link 快照 + 定时轮询（15s）+ 手动刷新；
 // - kind tab、概览卡、归属树 / machine 树 / 平坦表、一致性告警区；
-// - 请求 401（UNAUTHORIZED）→ clearAdminKey() 回 MasterKeyGate；
+// - 请求 401（UNAUTHORIZED）→ clearAdminKey() 回门（`useAdminKeyGate().fail`）；
 // - 覆盖 loading / empty / error / retry 状态。
 
-import { integrityRows, MasterKeyGate, machineReverseIndex, mergeFlatRows } from "@fenix/resource-sandbox/web";
+import { integrityRows, machineReverseIndex, mergeFlatRows } from "@fenix/resource-sandbox/web";
+import { AdminKeyGate } from "@fenix/ui-components/config/AdminKeyGate";
+import { EmptyState } from "@fenix/ui-components/config/EmptyState";
+import { formatClockTime } from "@fenix/ui-components/lib/format";
 import { Badge } from "@fenix/ui-components/ui/badge";
 import { Button } from "@fenix/ui-components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@fenix/ui-components/ui/card";
 import { Skeleton } from "@fenix/ui-components/ui/skeleton";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@fenix/ui-components/ui/tabs";
 import { ApiError } from "@fenix/web-runtime/api/request";
-import { clearAdminKey, getAdminKey } from "@fenix/web-runtime/lib/admin-key";
+import { useAdminKeyGate } from "@fenix/web-runtime/hooks/use-admin-key-gate";
 import { useRequest } from "ahooks";
 import { LogOut, RefreshCw } from "lucide-react";
 import { useMemo, useState } from "react";
@@ -28,31 +31,20 @@ const POLLING_INTERVAL_MS = 15_000;
 
 export function AdminObserverPage() {
   const { t } = useTranslation("observer");
-  const [unlocked, setUnlocked] = useState(() => getAdminKey() !== null);
-  const [gateError, setGateError] = useState<string | null>(null);
-
-  if (!unlocked) {
-    return (
-      <div className="min-h-screen bg-background">
-        <MasterKeyGate
-          error={gateError}
-          onUnlock={() => {
-            setGateError(null);
-            setUnlocked(true);
-          }}
-        />
-      </div>
-    );
-  }
+  const gate = useAdminKeyGate(t("login.error"));
 
   return (
-    <ObserverDashboard
-      onAuthFailure={() => {
-        clearAdminKey();
-        setGateError(t("login.error"));
-        setUnlocked(false);
-      }}
-    />
+    <AdminKeyGate
+      unlocked={gate.unlocked}
+      error={gate.error}
+      onUnlock={gate.unlock}
+      title={t("login.title")}
+      description={t("login.description")}
+      inputPlaceholder={t("login.inputPlaceholder")}
+      submitLabel={t("login.submit")}
+    >
+      <ObserverDashboard onAuthFailure={gate.fail} />
+    </AdminKeyGate>
   );
 }
 
@@ -78,8 +70,8 @@ function ObserverDashboard({ onAuthFailure }: { onAuthFailure: () => void }) {
   const flatRows = useMemo(() => (data ? mergeFlatRows(data) : []), [data]);
   const mismatchRows = useMemo(() => (data ? integrityRows(data) : []), [data]);
 
+  // 退出即失效：走与 401 同一条失败路径（清 key → 带提示回门），避免两处各写一遍清理顺序。
   const logout = () => {
-    clearAdminKey();
     onAuthFailure();
   };
 
@@ -115,9 +107,15 @@ function ObserverDashboard({ onAuthFailure }: { onAuthFailure: () => void }) {
         ) : loading ? (
           <LoadingSkeleton />
         ) : error ? (
-          <ErrorState onRetry={refresh} />
+          <EmptyState
+            title={t("states.error")}
+            tone="danger"
+            role="alert"
+            action={{ label: t("states.retry"), onClick: refresh, icon: <RefreshCw /> }}
+            className="rounded-md border border-destructive/40 bg-card px-4 py-10"
+          />
         ) : (
-          <EmptyState />
+          <EmptyState title={t("tree.noData")} className="rounded-md border border-border bg-card px-4 py-6" />
         )}
       </main>
     </div>
@@ -143,7 +141,7 @@ function ObserverContent({
 
   // 无观察数据（total=0）时展示空状态
   if (view.total === 0) {
-    return <EmptyState />;
+    return <EmptyState title={t("tree.noData")} className="rounded-md border border-border bg-card px-4 py-6" />;
   }
 
   return (
@@ -210,7 +208,7 @@ function OverviewCards({ view }: { view: AcpLinkSnapshot }) {
     { label: t("overview.total"), value: view.total },
     { label: t("overview.machines"), value: view.trees.byEntity.length },
     { label: t("overview.mismatched"), value: view.integrity.mismatched },
-    { label: t("overview.lastUpdated"), value: formatTime(view.generatedAt) },
+    { label: t("overview.lastUpdated"), value: formatClockTime(view.generatedAt) },
   ];
   return (
     <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
@@ -226,10 +224,6 @@ function OverviewCards({ view }: { view: AcpLinkSnapshot }) {
   );
 }
 
-function formatTime(iso: string): string {
-  return new Date(iso).toLocaleTimeString();
-}
-
 function LoadingSkeleton() {
   return (
     <div className="space-y-6">
@@ -239,28 +233,6 @@ function LoadingSkeleton() {
         ))}
       </div>
       <Skeleton className="h-64 w-full" />
-    </div>
-  );
-}
-
-function EmptyState() {
-  const { t } = useTranslation("observer");
-  return (
-    <p className="rounded-md border border-border bg-card px-4 py-6 text-center text-sm text-text-muted">
-      {t("tree.noData")}
-    </p>
-  );
-}
-
-function ErrorState({ onRetry }: { onRetry: () => void }) {
-  const { t } = useTranslation("observer");
-  return (
-    <div className="flex flex-col items-center gap-3 rounded-md border border-destructive/40 bg-card px-4 py-10 text-center">
-      <p className="text-sm text-text-primary">{t("states.error")}</p>
-      <Button variant="outline" size="sm" onClick={onRetry}>
-        <RefreshCw className="size-3.5" />
-        {t("states.retry")}
-      </Button>
     </div>
   );
 }

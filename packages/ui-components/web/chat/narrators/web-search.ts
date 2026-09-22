@@ -1,6 +1,6 @@
 /**
  * WebSearch 工具 narrator。处理互联网搜索场景。
- * 复制自 `packages/agent-runtime/web/components/chat/narrators/web-search.ts`。
+ * 复制自 `packages/agent-runtime/web/components/chat/narrators/web-search.ts`（旧路径，已于 2026-09-21 由 f2741a82d 删除）。
  *
  * title 行："搜索 \"query\""（运行中："正在搜索 ..."）
  * detail 行（subtitle）：complete 状态下显示结果数
@@ -12,7 +12,7 @@
  */
 
 import { Search } from "lucide-react";
-import { truncate } from "./helpers";
+import { truncate } from "../lib/tool-call-utils";
 import type { ToolNarrator } from "./types";
 
 export const webSearchNarrator: ToolNarrator = {

@@ -1,5 +1,9 @@
 import { fetchSystemPeopleTree } from "@fenix/resource-observer/web";
-import { MasterKeyGate, SearchableUsageFilter } from "@fenix/resource-sandbox/web";
+import { SearchableUsageFilter } from "@fenix/resource-sandbox/web";
+import { AdminKeyGate } from "@fenix/ui-components/config/AdminKeyGate";
+import { ConfirmDialog } from "@fenix/ui-components/config/ConfirmDialog";
+import { EmptyState } from "@fenix/ui-components/config/EmptyState";
+import { StatusBadge } from "@fenix/ui-components/config/StatusBadge";
 import { Badge } from "@fenix/ui-components/ui/badge";
 import { Button } from "@fenix/ui-components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@fenix/ui-components/ui/card";
@@ -14,9 +18,10 @@ import {
 } from "@fenix/ui-components/ui/dialog";
 import { Pagination } from "@fenix/ui-components/ui/pagination";
 import { Progress } from "@fenix/ui-components/ui/progress";
+import { Spinner } from "@fenix/ui-components/ui/spinner";
 import { ApiError } from "@fenix/web-runtime/api/request";
-import { clearAdminKey, getAdminKey } from "@fenix/web-runtime/lib/admin-key";
-import { useRequest } from "ahooks";
+import { useAdminKeyGate } from "@fenix/web-runtime/hooks/use-admin-key-gate";
+import { useDebounce, useRequest } from "ahooks";
 import { ExternalLink, Info, RefreshCw, Search, TriangleAlert } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
@@ -35,36 +40,45 @@ import {
   updateModelGatewayBudgets,
 } from "../../api/model-gateway";
 import { MODELS_NS } from "../../i18n/namespace";
+import { MODEL_GATEWAY_SYNC_TONES } from "../../lib/model-gateway-status-tones";
 import { buildRecentUsageDateRange } from "../../lib/model-gateway-usage";
 import { ModelGatewayKeyManagementPanel } from "./ModelGatewayKeyManagementPanel";
 import { getModelGatewayConnectionFeedback } from "./model-gateway-feedback";
 import { buildModelGatewayOverviewUsageQuery, buildSevenDayUsageTrend } from "./model-gateway-overview";
+import {
+  GATEWAY_LOADING_CLASS,
+  GATEWAY_TABLE_SHELL_CLASS,
+  GatewayRefreshButton,
+  ModelGatewayEmptyRow,
+  ModelGatewayTable,
+} from "./model-gateway-shared";
+import "./AdminModelGatewayPage.css";
+
+/**
+ * 原生表单控件的类串：本页的筛选条刻意用原生 `input` / `select`（保留原生下拉与日期选择），
+ * 同一种形状此前逐处手抄（`h-8` 那份 6 处、`h-9` 与只读回显各 2 处），收成三个常量。
+ */
+const FILTER_FIELD_CLASS = "h-8 rounded-md border bg-background px-2 text-sm";
+const DIALOG_FIELD_CLASS = "h-9 rounded-md border bg-background px-3 text-sm";
+const READONLY_FIELD_CLASS = "h-8 w-28 rounded-md border bg-muted px-2 text-sm";
 
 /** 系统模型网关管理页一期壳：模型目录仍由 LiteLLM 管理，Fenix 只负责检查和投影同步。 */
 export function AdminModelGatewayPage() {
   const { t } = useTranslation(MODELS_NS);
-  const [unlocked, setUnlocked] = useState(() => getAdminKey() !== null);
-  const [gateError, setGateError] = useState<string | null>(null);
+  const gate = useAdminKeyGate(t("admin.gateAuthFailed"));
 
-  if (!unlocked) {
-    return (
-      <MasterKeyGate
-        error={gateError}
-        onUnlock={() => {
-          setGateError(null);
-          setUnlocked(true);
-        }}
-      />
-    );
-  }
   return (
-    <ModelGatewayDashboard
-      onAuthFailure={() => {
-        clearAdminKey();
-        setGateError(t("admin.gateAuthFailed"));
-        setUnlocked(false);
-      }}
-    />
+    <AdminKeyGate
+      unlocked={gate.unlocked}
+      error={gate.error}
+      onUnlock={gate.unlock}
+      title={t("admin.gateTitle")}
+      description={t("admin.gateDescription")}
+      inputPlaceholder={t("admin.gateInputPlaceholder")}
+      submitLabel={t("admin.gateSubmit")}
+    >
+      <ModelGatewayDashboard onAuthFailure={gate.fail} />
+    </AdminKeyGate>
   );
 }
 
@@ -233,19 +247,21 @@ function ModelGatewayDashboard({ onAuthFailure }: { onAuthFailure: () => void })
     if (tab === "budgets" && hasQueriedBudgets && budgetQueryKey) void budgetsRequest.run();
   }, [budgetQueryKey, budgetsRequest.run, hasQueriedBudgets, tab]);
 
-  useEffect(() => {
-    if (userSearchKeyword === null) return;
-    // 主体搜索走后端关键词查询；3 秒静默后才发起请求，避免输入时持续压测系统 API。
-    const timer = window.setTimeout(() => void usersRequest.run(userSearchKeyword.trim()), 3000);
-    return () => window.clearTimeout(timer);
-  }, [userSearchKeyword, usersRequest.run]);
+  // 主体搜索走后端关键词查询：3 秒静默后才发起请求，避免输入时持续压测系统 API。
+  // 防抖交给 ahooks 的 `useDebounce`（本包与仓库根依赖的 ahooks@^3.9.7），不再手写 setTimeout + clearTimeout
+  // 两遍；Agent 与用户共用同一策略，旧请求先取消，避免慢响应覆盖最新关键词结果。
+  const debouncedUserSearchKeyword = useDebounce(userSearchKeyword, { wait: 3000 });
+  const debouncedAgentSearchKeyword = useDebounce(agentSearchKeyword, { wait: 3000 });
 
   useEffect(() => {
-    if (agentSearchKeyword === null) return;
-    // Agent 与用户共用同一防抖策略，旧请求先取消，避免慢响应覆盖最新关键词结果。
-    const timer = window.setTimeout(() => void agentsRequest.run(agentSearchKeyword.trim()), 3000);
-    return () => window.clearTimeout(timer);
-  }, [agentSearchKeyword, agentsRequest.run]);
+    if (debouncedUserSearchKeyword === null) return;
+    void usersRequest.run(debouncedUserSearchKeyword.trim());
+  }, [debouncedUserSearchKeyword, usersRequest.run]);
+
+  useEffect(() => {
+    if (debouncedAgentSearchKeyword === null) return;
+    void agentsRequest.run(debouncedAgentSearchKeyword.trim());
+  }, [debouncedAgentSearchKeyword, agentsRequest.run]);
 
   return (
     <div className="min-h-screen bg-background p-6">
@@ -331,10 +347,9 @@ function ModelGatewayDashboard({ onAuthFailure }: { onAuthFailure: () => void })
                   <p className="mt-1 text-xs text-text-muted">{t("modelGateway.modelsPage.description")}</p>
                 </div>
                 <div className="flex gap-2">
-                  <Button variant="outline" size="sm" onClick={() => void runConnectionCheck()} disabled={busy}>
-                    <RefreshCw className={checking ? "size-3.5 animate-spin" : "size-3.5"} />
+                  <GatewayRefreshButton loading={checking} disabled={busy} onClick={() => void runConnectionCheck()}>
                     {t("modelGateway.check")}
-                  </Button>
+                  </GatewayRefreshButton>
                   <Button
                     size="sm"
                     onClick={() => syncRequest.run()}
@@ -354,7 +369,7 @@ function ModelGatewayDashboard({ onAuthFailure }: { onAuthFailure: () => void })
                     onChange={(event) => setModelSearch(event.target.value)}
                   />
                   <select
-                    className="h-8 rounded-md border bg-background px-2 text-sm"
+                    className={FILTER_FIELD_CLASS}
                     value={modelFilter}
                     onChange={(event) => setModelFilter(event.target.value)}
                   >
@@ -364,46 +379,49 @@ function ModelGatewayDashboard({ onAuthFailure }: { onAuthFailure: () => void })
                   </select>
                 </div>
                 {!status ? (
-                  <p className="py-8 text-center text-sm text-text-muted">{t("modelGateway.checkHint")}</p>
+                  <EmptyState title={t("modelGateway.checkHint")} className="py-8" />
                 ) : status.status === "unknown" ? (
-                  <ErrorMessage message={status.error ?? t("modelGateway.unknown")} />
+                  <EmptyState
+                    tone="danger"
+                    role="alert"
+                    icon={<TriangleAlert />}
+                    title={status.error ?? t("modelGateway.unknown")}
+                    className="py-8"
+                  />
                 ) : (
-                  <div className="overflow-x-auto rounded-md border">
-                    <table className="w-full text-left text-sm">
-                      <thead className="bg-muted/40">
-                        <tr>
-                          <th className="px-3 py-2">{t("modelGateway.modelsPage.columns.model")}</th>
-                          <th className="px-3 py-2">{t("modelGateway.modelsPage.columns.source")}</th>
-                          <th className="px-3 py-2">{t("modelGateway.modelsPage.columns.syncStatus")}</th>
+                  <ModelGatewayTable
+                    head={
+                      <>
+                        <th className="px-3 py-2">{t("modelGateway.modelsPage.columns.model")}</th>
+                        <th className="px-3 py-2">{t("modelGateway.modelsPage.columns.source")}</th>
+                        <th className="px-3 py-2">{t("modelGateway.modelsPage.columns.syncStatus")}</th>
+                      </>
+                    }
+                  >
+                    {displayedModels.map((model) => {
+                      const change = status.changes.find((item) => item.modelId === model.id);
+                      return (
+                        <tr key={model.id}>
+                          <td className="px-3 py-2 font-medium">{model.displayName ?? model.id}</td>
+                          <td className="px-3 py-2 text-text-muted">LiteLLM</td>
+                          <td className="px-3 py-2">
+                            {change ? (
+                              <Badge variant="outline">{t(`modelGateway.change.${change.kind}`)}</Badge>
+                            ) : (
+                              <StatusBadge
+                                status="synced"
+                                label={t("modelGateway.synced")}
+                                toneMap={MODEL_GATEWAY_SYNC_TONES}
+                              />
+                            )}
+                          </td>
                         </tr>
-                      </thead>
-                      <tbody className="divide-y">
-                        {displayedModels.map((model) => {
-                          const change = status.changes.find((item) => item.modelId === model.id);
-                          return (
-                            <tr key={model.id}>
-                              <td className="px-3 py-2 font-medium">{model.displayName ?? model.id}</td>
-                              <td className="px-3 py-2 text-text-muted">LiteLLM</td>
-                              <td className="px-3 py-2">
-                                {change ? (
-                                  <Badge variant="outline">{t(`modelGateway.change.${change.kind}`)}</Badge>
-                                ) : (
-                                  <span className="text-green-700">{t("modelGateway.synced")}</span>
-                                )}
-                              </td>
-                            </tr>
-                          );
-                        })}
-                        {displayedModels.length === 0 && (
-                          <tr>
-                            <td colSpan={3} className="px-3 py-8 text-center text-text-muted">
-                              {t("modelGateway.modelsPage.noMatches")}
-                            </td>
-                          </tr>
-                        )}
-                      </tbody>
-                    </table>
-                  </div>
+                      );
+                    })}
+                    {displayedModels.length === 0 && (
+                      <ModelGatewayEmptyRow colSpan={3} title={t("modelGateway.modelsPage.noMatches")} />
+                    )}
+                  </ModelGatewayTable>
                 )}
                 {status && (status.changes.length > 0 || status.providerBaseUrlChanged) && (
                   <p className="mt-3 text-sm text-amber-700">
@@ -432,7 +450,7 @@ function ModelGatewayDashboard({ onAuthFailure }: { onAuthFailure: () => void })
                   <input
                     aria-label={t("modelGateway.budgetsPage.defaultAmountLabel")}
                     disabled
-                    className="h-8 w-28 rounded-md border bg-muted px-2 text-sm"
+                    className={READONLY_FIELD_CLASS}
                     type="text"
                     value={
                       configRequest.data?.defaultBudget.maxBudgetUsd === null
@@ -446,7 +464,7 @@ function ModelGatewayDashboard({ onAuthFailure }: { onAuthFailure: () => void })
                   <input
                     aria-label={t("modelGateway.budgetsPage.defaultDurationLabel")}
                     disabled
-                    className="h-8 w-28 rounded-md border bg-muted px-2 text-sm"
+                    className={READONLY_FIELD_CLASS}
                     type="text"
                     value={
                       configRequest.data?.defaultBudget.duration === "30d"
@@ -495,7 +513,7 @@ function ModelGatewayDashboard({ onAuthFailure }: { onAuthFailure: () => void })
                   onValueChange={setBudgetUserId}
                 />
                 <select
-                  className="h-8 rounded-md border bg-background px-2 text-sm"
+                  className={FILTER_FIELD_CLASS}
                   value={budgetFilter}
                   onChange={(event) => setBudgetFilter(event.target.value as typeof budgetFilter)}
                 >
@@ -549,11 +567,12 @@ function ModelGatewayDashboard({ onAuthFailure }: { onAuthFailure: () => void })
                 </Button>
               </div>
               {budgetsRequest.loading ? (
-                <p className="py-8 text-center text-sm text-text-muted">{t("admin.loading")}</p>
+                <Spinner label={t("admin.loading")} className={GATEWAY_LOADING_CLASS} />
               ) : (
                 <>
-                  <div className="overflow-x-auto rounded-md border">
-                    <table className="w-full min-w-[900px] table-fixed text-sm">
+                  {/* 预算表的 `table-fixed` / 带 `font-medium` 的表头与密钥表不同，只共用最外层容器类。 */}
+                  <div className={GATEWAY_TABLE_SHELL_CLASS}>
+                    <table className="w-full min-w-225 table-fixed text-sm">
                       <thead className="border-b bg-muted/30 text-left text-text-muted">
                         <tr>
                           <th className="w-10 px-3 py-2">
@@ -698,11 +717,7 @@ function ModelGatewayDashboard({ onAuthFailure }: { onAuthFailure: () => void })
                           );
                         })}
                         {visibleBudgetItems.length === 0 && (
-                          <tr>
-                            <td className="px-3 py-8 text-center text-text-muted" colSpan={8}>
-                              {t("modelGateway.budgetsPage.noMatches")}
-                            </td>
-                          </tr>
+                          <ModelGatewayEmptyRow colSpan={8} title={t("modelGateway.budgetsPage.noMatches")} />
                         )}
                       </tbody>
                     </table>
@@ -737,7 +752,7 @@ function ModelGatewayDashboard({ onAuthFailure }: { onAuthFailure: () => void })
                   </DialogHeader>
                   <div className="grid gap-3">
                     <input
-                      className="h-9 rounded-md border bg-background px-3 text-sm"
+                      className={DIALOG_FIELD_CLASS}
                       type="number"
                       min="0"
                       placeholder={t("modelGateway.amount")}
@@ -745,7 +760,7 @@ function ModelGatewayDashboard({ onAuthFailure }: { onAuthFailure: () => void })
                       onChange={(event) => setBudgetAmount(event.target.value)}
                     />
                     <select
-                      className="h-9 rounded-md border bg-background px-3 text-sm"
+                      className={DIALOG_FIELD_CLASS}
                       value={budgetDuration}
                       onChange={(event) => setBudgetDuration(event.target.value)}
                     >
@@ -768,26 +783,18 @@ function ModelGatewayDashboard({ onAuthFailure }: { onAuthFailure: () => void })
                   </DialogFooter>
                 </DialogContent>
               </Dialog>
-              <Dialog open={resetBudgetDialogOpen} onOpenChange={setResetBudgetDialogOpen}>
-                <DialogContent>
-                  <DialogHeader>
-                    <DialogTitle>{t("modelGateway.budgetsPage.resetTitle")}</DialogTitle>
-                    <DialogDescription>
-                      {t("modelGateway.budgetsPage.resetDescription", {
-                        count: selectedUsers.length,
-                      })}
-                    </DialogDescription>
-                  </DialogHeader>
-                  <DialogFooter>
-                    <Button variant="outline" onClick={() => setResetBudgetDialogOpen(false)}>
-                      {t("modelGateway.budgetsPage.cancel")}
-                    </Button>
-                    <Button disabled={budgetResetRequest.loading} onClick={() => budgetResetRequest.run()}>
-                      {t("modelGateway.budgetsPage.resetBudget")}
-                    </Button>
-                  </DialogFooter>
-                </DialogContent>
-              </Dialog>
+              {/* 与密钥移除确认同一形态：库内 `ConfirmDialog` 就是这套「标题 + 说明 + 取消/确认 + loading」，
+                  此前本页手写了第二份（与同屏的密钥面板各写各的）。 */}
+              <ConfirmDialog
+                open={resetBudgetDialogOpen}
+                onOpenChange={setResetBudgetDialogOpen}
+                loading={budgetResetRequest.loading}
+                title={t("modelGateway.budgetsPage.resetTitle")}
+                description={t("modelGateway.budgetsPage.resetDescription", { count: selectedUsers.length })}
+                confirmLabel={t("modelGateway.budgetsPage.resetBudget")}
+                cancelLabel={t("modelGateway.budgetsPage.cancel")}
+                onConfirm={() => budgetResetRequest.run()}
+              />
             </CardContent>
           </Card>
         ) : (
@@ -796,7 +803,7 @@ function ModelGatewayDashboard({ onAuthFailure }: { onAuthFailure: () => void })
               <div className="mb-3 flex flex-wrap items-start justify-between gap-2">
                 <div className="grid flex-1 gap-2 sm:grid-cols-2 lg:grid-cols-4">
                   <select
-                    className="h-8 rounded-md border bg-background px-2 text-sm"
+                    className={FILTER_FIELD_CLASS}
                     value={usageRange}
                     onChange={(event) => setUsageRange(event.target.value)}
                   >
@@ -807,13 +814,13 @@ function ModelGatewayDashboard({ onAuthFailure }: { onAuthFailure: () => void })
                   {usageRange === "custom" && (
                     <>
                       <input
-                        className="h-8 rounded-md border bg-background px-2 text-sm"
+                        className={FILTER_FIELD_CLASS}
                         type="date"
                         value={customStart}
                         onChange={(event) => setCustomStart(event.target.value)}
                       />
                       <input
-                        className="h-8 rounded-md border bg-background px-2 text-sm"
+                        className={FILTER_FIELD_CLASS}
                         type="date"
                         value={customEnd}
                         onChange={(event) => setCustomEnd(event.target.value)}
@@ -884,7 +891,7 @@ function ModelGatewayDashboard({ onAuthFailure }: { onAuthFailure: () => void })
                     return (
                       <select
                         key={key}
-                        className="h-8 rounded-md border bg-background px-2 text-sm"
+                        className={FILTER_FIELD_CLASS}
                         value={usageFilters[key]}
                         onChange={(event) => setUsageFilters((current) => ({ ...current, [key]: event.target.value }))}
                       >
@@ -1013,12 +1020,12 @@ function UsageBreakdown({ title, items }: { title: string; items: Array<[string,
       ) : (
         <div className="space-y-4">
           {items.map(([name, spend]) => (
-            <div className="grid grid-cols-[24rem_minmax(8rem,1fr)_auto] items-center gap-4" key={name}>
+            <div className="model-gateway-usage-row grid items-center gap-4" key={name}>
               <span className="truncate font-medium" title={name}>
                 {name}
               </span>
               <Progress
-                className="h-2 bg-muted [&>[data-slot=progress-indicator]]:bg-gradient-to-r [&>[data-slot=progress-indicator]]:from-[#4b7df3] [&>[data-slot=progress-indicator]]:to-[#7565e8]"
+                className="h-2 bg-muted [&>[data-slot=progress-indicator]]:bg-gradient-to-r [&>[data-slot=progress-indicator]]:from-blue-500 [&>[data-slot=progress-indicator]]:to-indigo-500"
                 value={maxSpend > 0 ? (spend / maxSpend) * 100 : 0}
               />
               <span className="min-w-20 text-right tabular-nums text-text-muted">${spend.toFixed(2)}</span>
@@ -1104,7 +1111,13 @@ function OverviewPanel({
       </div>
 
       {error && (
-        <ErrorMessage message={error instanceof ApiError ? error.message : t("modelGateway.overview.loadFailed")} />
+        <EmptyState
+          tone="danger"
+          role="alert"
+          icon={<TriangleAlert />}
+          title={error instanceof ApiError ? error.message : t("modelGateway.overview.loadFailed")}
+          className="py-8"
+        />
       )}
 
       <div className="grid gap-4 lg:grid-cols-2">
@@ -1118,9 +1131,11 @@ function OverviewPanel({
           </CardHeader>
           <CardContent>
             {!usage ? (
-              <p className="py-12 text-center text-sm text-text-muted">
-                {loading ? t("admin.loading") : t("modelGateway.overview.noUsage")}
-              </p>
+              loading ? (
+                <Spinner label={t("admin.loading")} className="flex py-12" />
+              ) : (
+                <EmptyState title={t("modelGateway.overview.noUsage")} className="py-12" />
+              )
             ) : (
               <div className="h-52">
                 <ChartContainer>
@@ -1162,10 +1177,12 @@ function OverviewPanel({
             <div>
               <CardTitle className="text-sm">{t("modelGateway.overview.gatewayProvider")}</CardTitle>
             </div>
-            <Badge variant={status?.status === "synced" ? "default" : "secondary"}>
-              <span className="mr-1">●</span>
-              {statusLabel}
-            </Badge>
+            <StatusBadge
+              status={status?.status ?? "unknown"}
+              label={statusLabel}
+              toneMap={MODEL_GATEWAY_SYNC_TONES}
+              indicator="dot"
+            />
           </CardHeader>
           <CardContent>
             <div className="flex items-center gap-3">
@@ -1177,7 +1194,7 @@ function OverviewPanel({
                 <p className="text-xs text-text-muted">{provider?.name ?? "—"}</p>
               </div>
             </div>
-            <dl className="mt-4 grid grid-cols-[auto_1fr] gap-x-4 gap-y-2 text-sm">
+            <dl className="model-gateway-overview-facts mt-4 grid gap-x-4 gap-y-2 text-sm">
               <dt className="text-text-muted">{t("modelGateway.overview.owner")}</dt>
               <dd>{provider ? `${provider.owner.email} / ${provider.owner.organizationSlug}` : "—"}</dd>
               <dt className="text-text-muted">{t("modelGateway.overview.gatewayType")}</dt>
@@ -1195,10 +1212,9 @@ function OverviewPanel({
               <Button variant="outline" size="sm" onClick={onModels}>
                 {t("modelGateway.overview.manageModels")}
               </Button>
-              <Button variant="outline" size="sm" onClick={onRefresh} disabled={loading}>
-                <RefreshCw className={loading ? "size-3.5 animate-spin" : "size-3.5"} />
+              <GatewayRefreshButton loading={loading} onClick={onRefresh}>
                 {t("modelGateway.overview.refreshStatus")}
-              </Button>
+              </GatewayRefreshButton>
             </div>
           </CardContent>
         </Card>
@@ -1227,15 +1243,6 @@ function Metric({ label, value, foot }: { label: string; value: string | number;
       <p className="text-xs text-text-muted">{label}</p>
       <p className="mt-1 text-xl font-semibold">{value}</p>
       {foot && <p className="mt-1 text-xs text-text-muted">{foot}</p>}
-    </div>
-  );
-}
-
-function ErrorMessage({ message }: { message: string }) {
-  return (
-    <div className="flex items-center gap-2 rounded-md border border-destructive/30 bg-destructive/5 p-4 text-sm text-destructive">
-      <TriangleAlert className="size-4" />
-      {message}
     </div>
   );
 }

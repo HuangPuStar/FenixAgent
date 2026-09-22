@@ -1,14 +1,5 @@
 import { MountSiteDialog } from "@fenix/agent-config/web";
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from "@fenix/ui-components/ui/alert-dialog";
+import { ConfirmDialog } from "@fenix/ui-components/config/ConfirmDialog";
 import { useTranslation } from "react-i18next";
 import { NS } from "@/src/i18n";
 
@@ -47,25 +38,21 @@ export function ArtifactsDialogs({
           onMounted={onMounted}
         />
       )}
-      <AlertDialog open={unmountTarget !== null} onOpenChange={onUnmountOpenChange}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>{t("panelMode.unmountConfirmTitle")}</AlertDialogTitle>
-            <AlertDialogDescription>
-              {unmountTarget ? t("panelMode.unmountConfirm", { name: unmountTarget.name }) : ""}
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel disabled={unmounting}>{t("confirmDialog.cancel")}</AlertDialogCancel>
-            <AlertDialogAction
-              onClick={() => unmountTarget && onConfirmUnmount(unmountTarget.id)}
-              disabled={unmounting}
-            >
-              {unmounting ? t("confirmDialog.processing") : t("panelMode.unmountSite")}
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
+      {/* 卸载确认走库里的 `ConfirmDialog`（原为手写 AlertDialog：与库组件同构，且自己复刻了一份
+          `confirmDialog.cancel` / `confirmDialog.processing` 文案）。文案仍由宿主字典提供，
+          避免弹窗里中英混排。 */}
+      <ConfirmDialog
+        open={unmountTarget !== null}
+        onOpenChange={onUnmountOpenChange}
+        title={t("panelMode.unmountConfirmTitle")}
+        description={unmountTarget ? t("panelMode.unmountConfirm", { name: unmountTarget.name }) : ""}
+        confirmLabel={t("panelMode.unmountSite")}
+        cancelLabel={t("confirmDialog.cancel")}
+        loading={unmounting}
+        onConfirm={() => {
+          if (unmountTarget) onConfirmUnmount(unmountTarget.id);
+        }}
+      />
     </>
   );
 }

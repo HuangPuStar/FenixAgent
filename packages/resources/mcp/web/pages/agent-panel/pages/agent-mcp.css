@@ -1,3 +1,6 @@
+/* biome-ignore-all lint/style/noDescendingSpecificity: 目录侧栏的选择器按组件层级书写，`.mcp-directory > header small`
+   与 `.mcp-directory-copy small` 命中的是不同元素（标题区摘要 / 列表项描述），不存在互相覆盖；该规则只看末尾
+   复合选择器，会把这对写成 (0,1,2) 在前、(0,1,1) 在后的选择器判成降序。 */
 .agent-mcp-page {
   --mcp-blue: #2463eb;
   --mcp-blue-soft: #edf3ff;
@@ -19,78 +22,6 @@
 
 .mcp-create-button svg {
   width: 15px;
-}
-
-.mcp-commandbar {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  margin: 14px 0 12px;
-}
-
-.mcp-search-field {
-  position: relative;
-  display: block;
-  width: min(560px, 100%);
-}
-
-.mcp-search-field > svg {
-  position: absolute;
-  top: 50%;
-  left: 14px;
-  width: 16px;
-  color: #8d9bb0;
-  transform: translateY(-50%);
-}
-
-.mcp-search-field input {
-  width: 100%;
-  height: 40px;
-  border: 1px solid #dce4ef;
-  border-radius: 8px;
-  outline: 0;
-  padding: 0 14px 0 41px;
-  color: var(--mcp-ink);
-  background: #fff;
-  font-size: 13px;
-}
-
-.mcp-search-field input:focus-visible {
-  box-shadow: 0 0 0 3px rgb(36 99 235 / 12%);
-}
-
-.mcp-scope-filter {
-  display: flex;
-  height: 40px;
-  align-items: center;
-  gap: 2px;
-  border-radius: 8px;
-  padding: 4px;
-  background: #e9edf4;
-}
-
-.mcp-scope-filter button {
-  height: 32px;
-  border: 0;
-  border-radius: 6px;
-  padding: 0 13px;
-  color: var(--mcp-muted);
-  background: transparent;
-  font-size: 12px;
-  white-space: nowrap;
-}
-
-.mcp-scope-filter button[aria-pressed="true"] {
-  color: var(--mcp-blue);
-  background: #fff;
-  box-shadow: 0 1px 4px rgb(32 48 76 / 8%);
-  font-weight: 650;
-}
-
-.mcp-scope-filter small {
-  margin-left: 4px;
-  color: var(--mcp-faint);
-  font-size: 10px;
 }
 
 .mcp-master-detail {
@@ -230,43 +161,4 @@
 
 .mcp-directory nav > button.is-selected > svg {
   opacity: 1;
-}
-
-.mcp-empty-state,
-.mcp-load-error {
-  display: grid;
-  min-height: 380px;
-  place-content: center;
-  justify-items: center;
-  gap: 7px;
-  color: var(--mcp-faint);
-  text-align: center;
-}
-
-.mcp-empty-state > svg,
-.mcp-load-error > svg {
-  width: 28px;
-  color: #7d91ae;
-}
-
-.mcp-empty-state strong,
-.mcp-load-error strong {
-  color: var(--mcp-ink);
-  font-size: 14px;
-}
-
-.mcp-empty-state p,
-.mcp-load-error p {
-  font-size: 11px;
-}
-
-@media (max-width: 900px) {
-  .mcp-commandbar {
-    align-items: stretch;
-    flex-direction: column;
-  }
-
-  .mcp-scope-filter {
-    overflow-x: auto;
-  }
 }

@@ -1,22 +1,15 @@
+import { FileTypeIcon } from "@fenix/ui-components/components/file-icon-helper";
+import { EmptyState } from "@fenix/ui-components/config/EmptyState";
+import { StatusBadge } from "@fenix/ui-components/config/StatusBadge";
 import { Button } from "@fenix/ui-components/ui/button";
 import { Switch } from "@fenix/ui-components/ui/switch";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@fenix/ui-components/ui/table";
 import { NS } from "@fenix/web-runtime/i18n/namespace";
-import {
-  ExternalLink,
-  File,
-  FileCode,
-  FileImage,
-  FileSpreadsheet,
-  FileText,
-  Presentation,
-  RefreshCw,
-  Trash2,
-  Upload,
-} from "lucide-react";
+import { ExternalLink, File, RefreshCw, Trash2, Upload } from "lucide-react";
 import type { RefObject } from "react";
 import { useTranslation } from "react-i18next";
 import type { KnowledgeResourceInfo } from "../../../types/knowledge";
+import { KB_STATUS_TONES, kbStatusLabel } from "./knowledge-status";
 
 interface AgentKnowledgeResourcesProps {
   resources: KnowledgeResourceInfo[];
@@ -36,24 +29,6 @@ interface AgentKnowledgeResourcesProps {
 function formatTimestamp(timestamp: number | null | undefined): string {
   if (!timestamp) return "—";
   return new Date(timestamp * 1000).toLocaleString();
-}
-
-function FileIcon({ filename }: { filename: string }) {
-  const ext = filename.split(".").pop()?.toLowerCase() ?? "";
-  if (["png", "jpg", "jpeg", "gif", "webp", "svg", "bmp", "ico"].includes(ext)) return <FileImage />;
-  if (["pdf", "docx", "doc"].includes(ext)) return <FileText />;
-  if (["xlsx", "xls", "csv"].includes(ext)) return <FileSpreadsheet />;
-  if (["pptx", "ppt"].includes(ext)) return <Presentation />;
-  if (["md", "txt", "json", "xml", "yaml", "yml", "html", "js", "ts", "tsx", "py", "go", "rs", "sh"].includes(ext))
-    return <FileCode />;
-  return <File />;
-}
-
-function statusClass(status: string): string {
-  if (status === "ready") return "is-ready";
-  if (["processing", "pending", "indexing"].includes(status)) return "is-processing";
-  if (status === "error") return "is-error";
-  return "";
 }
 
 export function AgentKnowledgeResources(props: AgentKnowledgeResourcesProps) {
@@ -83,10 +58,7 @@ export function AgentKnowledgeResources(props: AgentKnowledgeResourcesProps) {
         </Button>
       </header>
       {props.resources.length === 0 ? (
-        <div className="knowledge-resources__empty">
-          <File />
-          <strong>{t("resources.empty")}</strong>
-        </div>
+        <EmptyState className="grid min-h-56 place-content-center" icon={<File />} title={t("resources.empty")} />
       ) : (
         <Table>
           <TableHeader>
@@ -105,7 +77,7 @@ export function AgentKnowledgeResources(props: AgentKnowledgeResourcesProps) {
                 <TableCell>
                   <div className="knowledge-resource-name">
                     <span className="knowledge-resource-name__icon">
-                      <FileIcon filename={resource.sourceName} />
+                      <FileTypeIcon filename={resource.sourceName} />
                     </span>
                     {resource.chunkCount != null && resource.chunkCount > 0 ? (
                       <button type="button" onClick={() => props.onOpenChunks(resource)} title={resource.sourceName}>
@@ -116,7 +88,7 @@ export function AgentKnowledgeResources(props: AgentKnowledgeResourcesProps) {
                     )}
                   </div>
                 </TableCell>
-                <TableCell className="text-center text-[#8090a7]">{resource.chunkCount ?? "—"}</TableCell>
+                <TableCell className="text-center text-slate-400">{resource.chunkCount ?? "—"}</TableCell>
                 <TableCell>
                   {resource.runStatus === "RUNNING" && resource.parseProgress != null ? (
                     <div className="knowledge-resource-progress">
@@ -127,10 +99,15 @@ export function AgentKnowledgeResources(props: AgentKnowledgeResourcesProps) {
                       <small>{Math.round(resource.parseProgress * 100)}%</small>
                     </div>
                   ) : (
-                    <span className={`knowledge-resource-status ${statusClass(resource.status)}`}>
-                      <i />
-                      {resource.status}
-                    </span>
+                    // 状态胶囊此前是本包手写的 `.knowledge-resource-status.is-*` 色表（还带一份逐字
+                    // 相同的 `statusClass` 副本），改由库的 StatusBadge 承担配色；文案随之与详情头部
+                    // 同口径走字典（原先这里直接上屏后端原文 `ready`，中文界面里另一处写「就绪」）。
+                    <StatusBadge
+                      status={resource.status}
+                      label={kbStatusLabel(t, resource.status)}
+                      toneMap={KB_STATUS_TONES}
+                      indicator="dot"
+                    />
                   )}
                 </TableCell>
                 <TableCell className="text-center">
@@ -140,7 +117,7 @@ export function AgentKnowledgeResources(props: AgentKnowledgeResourcesProps) {
                     onCheckedChange={(checked) => props.onToggleEnabled(resource, checked)}
                   />
                 </TableCell>
-                <TableCell className="text-[#8090a7]">{formatTimestamp(resource.createdAt)}</TableCell>
+                <TableCell className="text-slate-400">{formatTimestamp(resource.createdAt)}</TableCell>
                 <TableCell>
                   <div className="knowledge-resource-actions">
                     <Button

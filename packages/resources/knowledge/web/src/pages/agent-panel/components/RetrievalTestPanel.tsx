@@ -1,8 +1,12 @@
 "use client";
 
+import "./RetrievalTestPanel.css";
+
+import { EmptyState } from "@fenix/ui-components/config/EmptyState";
 import { Button } from "@fenix/ui-components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@fenix/ui-components/ui/select";
 import { Slider } from "@fenix/ui-components/ui/slider";
+import { Spinner } from "@fenix/ui-components/ui/spinner";
 import { Switch } from "@fenix/ui-components/ui/switch";
 import { Textarea } from "@fenix/ui-components/ui/textarea";
 import { NS } from "@fenix/web-runtime/i18n/namespace";
@@ -13,6 +17,7 @@ import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
 import { kbApi } from "../../../../api/knowledge-bases";
 import { KnowledgeLoadFailure } from "../../../../pages/agent-panel/pages/agent-knowledge-load-failure";
+import { FIELD_LABEL_CLASS } from "../../../../pages/agent-panel/pages/knowledge-typography";
 import type {
   KnowledgeRetrievalChunk,
   KnowledgeSearchResultData,
@@ -204,14 +209,14 @@ export function RetrievalTestPanel({ knowledgeBaseId }: RetrievalTestPanelProps)
   );
 
   return (
-    <div className="grid grid-cols-1 gap-6 lg:grid-cols-[340px_1fr]">
+    <div className="retrieval-test-layout grid grid-cols-1 gap-6">
       {/* ===== 左侧：检索参数面板 ===== */}
-      <div className="rounded-2xl bg-white shadow-[0_1px_3px_rgba(0,0,0,0.04),0_4px_12px_rgba(0,0,0,0.03)] ring-1 ring-inset ring-[#e8edf4]/80 p-5 space-y-5">
+      <div className="retrieval-test-card rounded-2xl bg-white ring-1 ring-inset ring-slate-200/80 p-5 space-y-5">
         {/* 相似度阈值 */}
         <div className="space-y-2">
           <div className="flex items-center justify-between">
-            <label className="text-[13px] font-semibold text-[#0f172a]">{t("retrieval.similarityThreshold")}</label>
-            <span className="text-[13px] font-mono text-[#64748b]">{similarityThreshold.toFixed(2)}</span>
+            <label className={FIELD_LABEL_CLASS}>{t("retrieval.similarityThreshold")}</label>
+            <span className="text-xs font-mono text-slate-500">{similarityThreshold.toFixed(2)}</span>
           </div>
           <Slider
             value={[similarityThreshold]}
@@ -225,8 +230,8 @@ export function RetrievalTestPanel({ knowledgeBaseId }: RetrievalTestPanelProps)
         {/* 向量 / 全文权重 */}
         <div className="space-y-2">
           <div className="flex items-center justify-between">
-            <label className="text-[13px] font-semibold text-[#0f172a]">{t("retrieval.vectorWeight")}</label>
-            <span className="text-[13px] font-mono text-[#64748b]">
+            <label className={FIELD_LABEL_CLASS}>{t("retrieval.vectorWeight")}</label>
+            <span className="text-xs font-mono text-slate-500">
               {t("retrieval.vectorPercent", { pct: (vectorSimilarityWeight * 100).toFixed(0) })} /{" "}
               {t("retrieval.fullTextPercent", { pct: ((1 - vectorSimilarityWeight) * 100).toFixed(0) })}
             </span>
@@ -242,9 +247,9 @@ export function RetrievalTestPanel({ knowledgeBaseId }: RetrievalTestPanelProps)
 
         {/* Rerank 模型 */}
         <div className="space-y-1.5">
-          <label className="text-[13px] font-semibold text-[#0f172a]">{t("retrieval.rerankModel")}</label>
+          <label className={FIELD_LABEL_CLASS}>{t("retrieval.rerankModel")}</label>
           <Select value={rerankId} onValueChange={setRerankId}>
-            <SelectTrigger className="h-9 text-[13px]">
+            <SelectTrigger className="h-9 text-xs">
               <SelectValue placeholder={t("retrieval.noRerank")} />
             </SelectTrigger>
             <SelectContent>
@@ -262,8 +267,8 @@ export function RetrievalTestPanel({ knowledgeBaseId }: RetrievalTestPanelProps)
         {rerankId !== "__none__" && (
           <div className="space-y-2">
             <div className="flex items-center justify-between">
-              <label className="text-[13px] font-semibold text-[#0f172a]">{t("retrieval.topK")}</label>
-              <span className="text-[13px] font-mono text-[#64748b]">{topK}</span>
+              <label className={FIELD_LABEL_CLASS}>{t("retrieval.topK")}</label>
+              <span className="text-xs font-mono text-slate-500">{topK}</span>
             </div>
             <Slider value={[topK]} onValueChange={(vals: number[]) => setTopK(vals[0])} min={1} max={2048} step={1} />
           </div>
@@ -271,9 +276,9 @@ export function RetrievalTestPanel({ knowledgeBaseId }: RetrievalTestPanelProps)
 
         {/* 每页返回数 */}
         <div className="space-y-1.5">
-          <label className="text-[13px] font-semibold text-[#0f172a]">{t("retrieval.pageSize")}</label>
+          <label className={FIELD_LABEL_CLASS}>{t("retrieval.pageSize")}</label>
           <Select value={String(pageSize)} onValueChange={(v) => setPageSize(Number(v))}>
-            <SelectTrigger className="h-9 text-[13px] w-20">
+            <SelectTrigger className="h-9 text-xs w-20">
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
@@ -288,19 +293,19 @@ export function RetrievalTestPanel({ knowledgeBaseId }: RetrievalTestPanelProps)
 
         {/* 关键词匹配开关 */}
         <div className="flex items-center justify-between">
-          <label className="text-[13px] font-semibold text-[#0f172a]">{t("retrieval.keywordMatch")}</label>
+          <label className={FIELD_LABEL_CLASS}>{t("retrieval.keywordMatch")}</label>
           <Switch checked={keyword} onCheckedChange={setKeyword} />
         </div>
 
         {/* 知识图谱检索 */}
         <div className="flex items-center justify-between">
-          <label className="text-[13px] font-semibold text-[#0f172a]">{t("retrieval.useKg")}</label>
+          <label className={FIELD_LABEL_CLASS}>{t("retrieval.useKg")}</label>
           <Switch checked={useKg} onCheckedChange={setUseKg} />
         </div>
 
         {/* 跨语言搜索 */}
         <div className="space-y-1.5">
-          <label className="text-[13px] font-semibold text-[#0f172a]">{t("retrieval.crossLanguages")}</label>
+          <label className={FIELD_LABEL_CLASS}>{t("retrieval.crossLanguages")}</label>
           <div className="flex flex-wrap gap-1.5">
             {/* "全部"快捷按钮 */}
             <button
@@ -310,10 +315,10 @@ export function RetrievalTestPanel({ knowledgeBaseId }: RetrievalTestPanelProps)
                   prev.length === ALL_LANGUAGE_VALUES.length ? [] : [...ALL_LANGUAGE_VALUES],
                 )
               }
-              className={`inline-flex items-center rounded-md px-2.5 py-1 text-[11px] font-medium border transition-all duration-150 ${
+              className={`inline-flex items-center rounded-md px-2.5 py-1 text-3xs font-medium border transition-all duration-150 ${
                 crossLanguages.length === ALL_LANGUAGE_VALUES.length
-                  ? "border-[#6366f1] bg-[#6366f1]/10 text-[#6366f1] shadow-sm"
-                  : "border-[#e2e8f0] bg-white text-[#64748b] hover:border-[#c0c8d4] hover:bg-[#f8fafc]"
+                  ? "border-indigo-500 bg-indigo-500/10 text-indigo-500 shadow-sm"
+                  : "border-slate-200 bg-white text-slate-500 hover:border-slate-300 hover:bg-slate-50"
               }`}
             >
               {t("retrieval.selectAll")}
@@ -327,10 +332,10 @@ export function RetrievalTestPanel({ knowledgeBaseId }: RetrievalTestPanelProps)
                   onClick={() =>
                     setCrossLanguages((prev) => (active ? prev.filter((v) => v !== lang.value) : [...prev, lang.value]))
                   }
-                  className={`inline-flex items-center rounded-md px-2.5 py-1 text-[11px] font-medium border transition-all duration-150 ${
+                  className={`inline-flex items-center rounded-md px-2.5 py-1 text-3xs font-medium border transition-all duration-150 ${
                     active
-                      ? "border-[#6366f1] bg-[#6366f1]/10 text-[#6366f1] shadow-sm"
-                      : "border-[#e2e8f0] bg-white text-[#64748b] hover:border-[#c0c8d4] hover:bg-[#f8fafc]"
+                      ? "border-indigo-500 bg-indigo-500/10 text-indigo-500 shadow-sm"
+                      : "border-slate-200 bg-white text-slate-500 hover:border-slate-300 hover:bg-slate-50"
                   }`}
                 >
                   {lang.label}
@@ -342,9 +347,9 @@ export function RetrievalTestPanel({ knowledgeBaseId }: RetrievalTestPanelProps)
 
         {/* 元数据过滤 */}
         <div className="space-y-1.5">
-          <label className="text-[13px] font-semibold text-[#0f172a]">{t("retrieval.metaDataFilter")}</label>
+          <label className={FIELD_LABEL_CLASS}>{t("retrieval.metaDataFilter")}</label>
           <Select value={metaFilterMethod} onValueChange={(v) => setMetaFilterMethod(v as MetaDataFilterMethod)}>
-            <SelectTrigger className="h-9 text-[13px]">
+            <SelectTrigger className="h-9 text-xs">
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
@@ -361,7 +366,7 @@ export function RetrievalTestPanel({ knowledgeBaseId }: RetrievalTestPanelProps)
               value={metaFilterManualJson}
               onChange={(e) => setMetaFilterManualJson(e.target.value)}
               placeholder={t("retrieval.metaFilterManualPlaceholder")}
-              className="mt-2 min-h-[60px] resize-none text-[12px] font-mono"
+              className="mt-2 min-h-15 resize-none text-xs font-mono"
             />
           )}
         </div>
@@ -373,10 +378,10 @@ export function RetrievalTestPanel({ knowledgeBaseId }: RetrievalTestPanelProps)
             onChange={(e) => setQuery(e.target.value)}
             onKeyDown={handleKeyDown}
             placeholder={t("retrieval.queryPlaceholder")}
-            className="min-h-[80px] resize-none text-[13px]"
+            className="min-h-20 resize-none text-xs"
           />
           <Button
-            className="w-full text-[13px] rounded-xl shadow-sm"
+            className="w-full text-xs rounded-xl shadow-sm"
             size="default"
             onClick={runSearch}
             disabled={!query.trim() || loading}
@@ -388,16 +393,14 @@ export function RetrievalTestPanel({ knowledgeBaseId }: RetrievalTestPanelProps)
       </div>
 
       {/* ===== 右侧：检索结果列表 ===== */}
-      <div className="rounded-2xl bg-white shadow-[0_1px_3px_rgba(0,0,0,0.04),0_4px_12px_rgba(0,0,0,0.03)] ring-1 ring-inset ring-[#e8edf4]/80 p-5">
+      <div className="retrieval-test-card rounded-2xl bg-white ring-1 ring-inset ring-slate-200/80 p-5">
         {!hasRun && !loading && (
-          <div className="flex items-center justify-center min-h-[200px]">
-            <p className="text-[13px] text-[#94a3b8]">{t("retrieval.enterQueryHint")}</p>
-          </div>
+          <EmptyState className="grid min-h-48 place-content-center" title={t("retrieval.enterQueryHint")} />
         )}
 
         {loading && (
-          <div className="flex items-center justify-center min-h-[200px]">
-            <Loader2 className="h-6 w-6 text-[#1677ff] animate-spin" />
+          <div className="flex items-center justify-center min-h-50">
+            <Spinner size="sm" />
           </div>
         )}
 
@@ -410,20 +413,18 @@ export function RetrievalTestPanel({ knowledgeBaseId }: RetrievalTestPanelProps)
           <div className="space-y-4">
             {/* 结果统计 */}
             <div className="flex items-center justify-between">
-              <p className="text-[14px] font-semibold text-[#0f172a]">
+              <p className="text-sm font-semibold text-slate-900">
                 {t("retrieval.resultCount", { count: result.total })}
               </p>
             </div>
 
             {/* 无结果 */}
             {result.chunks.length === 0 && (
-              <div className="flex items-center justify-center min-h-[150px]">
-                <p className="text-[13px] text-[#94a3b8]">{t("retrieval.noResults")}</p>
-              </div>
+              <EmptyState className="grid min-h-36 place-content-center" title={t("retrieval.noResults")} />
             )}
 
             {/* chunk 列表 */}
-            <div className="space-y-3 max-h-[calc(100vh-340px)] overflow-y-auto pr-1">
+            <div className="retrieval-test-results space-y-3 overflow-y-auto pr-1">
               {result.chunks.map((chunk, idx) => (
                 <RetrievalChunkCard key={chunk.chunkId || String(idx)} chunk={chunk} t={t} />
               ))}
@@ -433,9 +434,7 @@ export function RetrievalTestPanel({ knowledgeBaseId }: RetrievalTestPanelProps)
 
         {/* 空态只表达「确实没有命中」：失败（error != null）由上面的失败区分支接管。 */}
         {error == null && hasRun && !result && (
-          <div className="flex items-center justify-center min-h-[150px]">
-            <p className="text-[13px] text-[#94a3b8]">{t("retrieval.noResults")}</p>
-          </div>
+          <EmptyState className="grid min-h-36 place-content-center" title={t("retrieval.noResults")} />
         )}
       </div>
     </div>
@@ -457,6 +456,7 @@ function fmtScore(s: number | null | undefined): string {
  *
  * 后端返回的是带 `<em>` / `<span class>` 高亮标记的 HTML，必须经 DOMPurify 清洗后再注入：
  * 检索结果包含知识库原文，不能视为受控内容（清洗保留高亮标签与 class，见 dompurify 默认白名单）。
+ * `<em>` 的高亮样式按调用方传入的类名（`.retrieval-test-highlight`，见同目录 RetrievalTestPanel.css）落在 CSS 里。
  */
 function HighlightSpan({ html, className }: { html: string; className: string }) {
   // biome-ignore lint/security/noDangerouslySetInnerHtml: 同一行的 DOMPurify.sanitize 已清洗（保留 <em>/class 高亮标签）
@@ -474,21 +474,21 @@ interface ChunkCardProps {
 
 function RetrievalChunkCard({ chunk, t }: ChunkCardProps) {
   return (
-    <div className="rounded-xl border border-[#e8edf4] bg-white p-4 space-y-3 shadow-sm hover:shadow-md transition-shadow">
+    <div className="rounded-xl border border-slate-200 bg-white p-4 space-y-3 shadow-sm hover:shadow-md transition-shadow">
       {/* 文档名 + 三种相似度 */}
       <div className="flex items-center justify-between gap-2 flex-wrap">
-        <span className="text-[12px] font-semibold text-[#0f172a] truncate max-w-[55%]">{chunk.documentName}</span>
+        <span className="text-xs font-semibold text-slate-900 truncate max-w-[55%]">{chunk.documentName}</span>
         <div className="flex items-center gap-1.5 flex-shrink-0">
-          <span className="inline-flex items-center gap-1 rounded-md bg-gradient-to-r from-[#6366f1]/10 to-[#8b5cf6]/10 px-2 py-0.5 text-[11px] font-semibold text-[#6366f1] border border-[#6366f1]/15">
+          <span className="inline-flex items-center gap-1 rounded-md bg-gradient-to-r from-indigo-500/10 to-violet-500/10 px-2 py-0.5 text-3xs font-semibold text-indigo-500 border border-indigo-500/15">
             {t("retrieval.hybridSimilarity")}: {fmtScore(chunk.similarity)}
           </span>
           {chunk.vectorSimilarity != null && (
-            <span className="inline-flex items-center gap-1 rounded-md bg-[#10b981]/10 px-2 py-0.5 text-[11px] font-semibold text-[#10b981] border border-[#10b981]/15">
+            <span className="inline-flex items-center gap-1 rounded-md bg-emerald-500/10 px-2 py-0.5 text-3xs font-semibold text-emerald-500 border border-emerald-500/15">
               {t("retrieval.vectorSimilarity")}: {fmtScore(chunk.vectorSimilarity)}
             </span>
           )}
           {chunk.termSimilarity != null && (
-            <span className="inline-flex items-center gap-1 rounded-md bg-[#f59e0b]/10 px-2 py-0.5 text-[11px] font-semibold text-[#f59e0b] border border-[#f59e0b]/15">
+            <span className="inline-flex items-center gap-1 rounded-md bg-amber-500/10 px-2 py-0.5 text-3xs font-semibold text-amber-500 border border-amber-500/15">
               {t("retrieval.termSimilarity")}: {fmtScore(chunk.termSimilarity)}
             </span>
           )}
@@ -496,12 +496,9 @@ function RetrievalChunkCard({ chunk, t }: ChunkCardProps) {
       </div>
 
       {/* chunk 内容（有高亮则渲染 HTML，无则纯文本） */}
-      <div className="text-[13px] text-[#334155] leading-relaxed whitespace-pre-wrap break-words">
+      <div className="text-xs text-gray-700 leading-relaxed whitespace-pre-wrap break-words">
         {chunk.highlight ? (
-          <HighlightSpan
-            html={chunk.highlight}
-            className="[&_em]:not-italic [&_em]:bg-yellow-200 [&_em]:text-[#0f172a] [&_em]:rounded [&_em]:px-0.5"
-          />
+          <HighlightSpan html={chunk.highlight} className="retrieval-test-highlight" />
         ) : (
           chunk.content
         )}
@@ -513,7 +510,7 @@ function RetrievalChunkCard({ chunk, t }: ChunkCardProps) {
           {chunk.importantKeywords.map((kw) => (
             <span
               key={kw}
-              className="inline-block rounded-md bg-[#f1f5f9] border border-[#e2e8f0] px-2 py-0.5 text-[11px] font-medium text-[#64748b]"
+              className="inline-block rounded-md bg-slate-100 border border-slate-200 px-2 py-0.5 text-3xs font-medium text-slate-500"
             >
               {kw}
             </span>

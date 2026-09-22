@@ -1,0 +1,28 @@
+/*
+ * 「新建 Agent」面板迁移后唯一保留的样式表（A2 迁移）。
+ *
+ * 只放**无法用 Tailwind 工具类表达**的两类东西；任何能迁到渲染点的声明都不许落在这里：
+ *
+ * ① 分区入场动画的关键帧：动画定义无法用工具类表达，工具类只能按名引用
+ *    （渲染点用 `animate-[agent-editor-section-enter_180ms_ease_both]`，见 agent-editor-classes.ts 的 SECTION）。
+ *    移除条件：迁到 Tailwind v4 的 `@theme { --animate-section-enter: … }` 命名动画 token，
+ *    但需要改 `packages/ui-components/web/styles/theme.css` 或 `apps/web/src/index.css`（本次写入禁区）。
+ *
+ * ② `.agent-panel-body` 的宿主钩子：这个类名**不在本包 JSX 里**——它由宿主
+ *    `apps/web/src/shell/DefaultAppShell.tsx:145` 与 `apps/web/src/routes/view/$prodViewId.tsx:24,45` 渲染，
+ *    并被宿主 `apps/web/src/shell/agent-panel.css:40` 与 `apps/web/src/pages/agent-panel/chat-layout.css:5` 选中。
+ *    迁移前这两条声明写在本包的 `agent-editor.css:1-4`（未分层，跨包生效）；直接删除会改变宿主的层叠上下文
+ *    （`isolation: isolate` 新建 stacking context，牵连宿主元素与面板 overlay 的 z-index 关系），属宿主视觉行为。
+ *    移除条件：宿主样式表补上 `position: relative; isolation: isolate` 后删除本段。
+ */
+.agent-panel-body {
+  position: relative;
+  isolation: isolate;
+}
+
+@keyframes agent-editor-section-enter {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+}

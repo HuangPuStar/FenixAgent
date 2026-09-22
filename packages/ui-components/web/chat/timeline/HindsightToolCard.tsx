@@ -1,7 +1,7 @@
 /**
  * Hindsight 工具卡片 — 记忆系统专属展示，紫色知识主题。
  *
- * 来源：`packages/agent-runtime/web/components/chat/HindsightToolCard.tsx` 逐字复制。
+ * 来源：`packages/agent-runtime/web/components/chat/HindsightToolCard.tsx`（旧路径，已于 2026-09-21 由 f2741a82d 删除） 逐字复制。
  * 纯化改动点：
  * - `cn` / Dialog / 类型改从包内相对路径导入；
  * - i18n 命名空间改为 `uiComponents`，key 加 `chat.components.` 前缀；
@@ -18,6 +18,7 @@ import { cn } from "../../lib/cn";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "../../ui/dialog";
 import { formatOutput, truncate } from "../lib/tool-call-utils";
 import type { ToolCallData } from "../types";
+import { ToolJsonBlock } from "./tool-json-block";
 
 // =============================================================================
 // Hindsight 工具卡片 — 记忆系统专属展示，紫色知识主题
@@ -27,7 +28,7 @@ interface HindsightToolCardProps {
   tool: ToolCallData;
 }
 
-/** Hindsight 记忆工具卡片：展示动作徽标与有界摘要，详情弹窗输出原始入参/出参。复制自 `packages/agent-runtime/web/components/chat/HindsightToolCard.tsx`。 */
+/** Hindsight 记忆工具卡片：展示动作徽标与有界摘要，详情弹窗输出原始入参/出参。复制自 `packages/agent-runtime/web/components/chat/HindsightToolCard.tsx`（旧路径，已于 2026-09-21 由 f2741a82d 删除）。 */
 export function HindsightToolCard({ tool }: HindsightToolCardProps) {
   const { t } = useTranslation(UI_COMPONENTS_NS);
   const [dialogOpen, setDialogOpen] = useState(false);
@@ -59,25 +60,25 @@ export function HindsightToolCard({ tool }: HindsightToolCardProps) {
         {/* Brain 图标 */}
         <div className="h-9 w-9 rounded-full bg-violet-100 dark:bg-violet-900/40 flex items-center justify-center shrink-0">
           {isRunning ? (
-            <Loader2 className="h-[18px] w-[18px] animate-spin text-violet-500 dark:text-violet-400" />
+            <Loader2 className="h-4.5 w-4.5 animate-spin text-violet-500 dark:text-violet-400" />
           ) : (
-            <Brain className="h-[18px] w-[18px] text-violet-600 dark:text-violet-400" />
+            <Brain className="h-4.5 w-4.5 text-violet-600 dark:text-violet-400" />
           )}
         </div>
 
         {/* 内容 */}
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2">
-            <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium leading-none bg-violet-100/80 dark:bg-violet-900/50 text-violet-700 dark:text-violet-300">
+            <span className="inline-flex items-center px-1.5 py-0.5 rounded text-3xs font-medium leading-none bg-violet-100/80 dark:bg-violet-900/50 text-violet-700 dark:text-violet-300">
               {action}
             </span>
             {isError && (
-              <span className="text-[10px] text-status-error font-medium">
+              <span className="text-3xs text-status-error font-medium">
                 {t("chat.components.hindsightToolCard.failed")}
               </span>
             )}
           </div>
-          <div className="text-[12px] text-text-secondary mt-1.5 leading-relaxed">{summary}</div>
+          <div className="text-xs text-text-secondary mt-1.5 leading-relaxed">{summary}</div>
         </div>
 
         {/* 展开按钮 */}
@@ -109,25 +110,10 @@ export function HindsightToolCard({ tool }: HindsightToolCardProps) {
             </DialogHeader>
             <div className="px-4 py-3 space-y-3 max-h-[60vh] overflow-y-auto">
               {tool.rawInput && Object.keys(tool.rawInput).length > 0 && (
-                <div>
-                  <div className="text-[9px] font-semibold uppercase tracking-widest text-text-dim mb-1.5">Input</div>
-                  <pre className="text-[11px] bg-surface-2 rounded-md px-3 py-2.5 overflow-auto font-mono text-text-secondary leading-relaxed">
-                    {truncate(JSON.stringify(tool.rawInput, null, 2), 3000)}
-                  </pre>
-                </div>
+                <ToolJsonBlock label="Input" content={truncate(JSON.stringify(tool.rawInput, null, 2), 3000)} />
               )}
               {!isRunning && (tool.rawOutput || tool.content) && (
-                <div>
-                  <div className="text-[9px] font-semibold uppercase tracking-widest text-text-dim mb-1.5">Output</div>
-                  <pre
-                    className={cn(
-                      "text-[11px] rounded-md px-3 py-2.5 overflow-auto font-mono leading-relaxed",
-                      isError ? "bg-status-error/6 text-status-error" : "bg-surface-2 text-text-secondary",
-                    )}
-                  >
-                    {formatOutput(tool)}
-                  </pre>
-                </div>
+                <ToolJsonBlock label="Output" content={formatOutput(tool)} error={isError} />
               )}
             </div>
           </DialogContent>

@@ -39,7 +39,9 @@ describe("ProdView 实例连接数据流", () => {
     const source = readFileSync(PROD_VIEW_PAGE_PATH, "utf8");
 
     expect(source).toContain("refresh,");
-    expect(source).toContain("onClick={refresh}");
+    // 两个失败分支的重试入口都是 `EmptyState` 的 action（2026-09-22 起由组件统一渲染按钮）：
+    // 被钉住的语义是「重试走原请求的 refresh」，不是按钮的 JSX 形状，故断言落在 action 的 onClick 上。
+    expect(source).toContain("onClick: refresh");
     expect(source).not.toContain("window.location.reload()");
   });
 });
