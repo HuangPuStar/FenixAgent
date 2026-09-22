@@ -8,6 +8,7 @@ import { useTranslation } from "react-i18next";
 
 import { SANDBOX_NS } from "../../../../i18n/namespace";
 import type { SandboxInstance } from "../../../api/system-sandbox";
+import { RowDeleteButton } from "./RowDeleteButton";
 
 interface InstanceRowProps {
   instance: SandboxInstance;
@@ -73,14 +74,7 @@ export function InstanceRow({ instance, onDetail, onProviderPayload, onDelete, o
           <Button size="sm" variant="outline" onClick={onRebuild}>
             {t("rebuildAction")}
           </Button>
-          <Button
-            size="sm"
-            variant="outline"
-            className="border-red-200 bg-red-50 text-red-700 hover:bg-red-100"
-            onClick={onDelete}
-          >
-            {t("delete")}
-          </Button>
+          <RowDeleteButton onClick={onDelete} />
         </span>
       </span>
     </div>

@@ -17,6 +17,7 @@ import {
   type SandboxInstance,
   type SandboxResourcePatch,
 } from "../../../api/system-sandbox";
+import { DialogViewFooter } from "./DialogViewFooter";
 import { JsonPreview } from "./JsonPreview";
 
 type ResourceKey = keyof SandboxResourcePatch;
@@ -233,12 +234,7 @@ export function InstanceDetailDialog({ instance, editMode, loading, onOpenChange
               </Button>
             </>
           ) : (
-            <>
-              <Button variant="outline" onClick={() => onOpenChange(false)}>
-                {t("close")}
-              </Button>
-              <Button onClick={() => setEditing(true)}>{t("edit")}</Button>
-            </>
+            <DialogViewFooter onClose={() => onOpenChange(false)} onEdit={() => setEditing(true)} />
           )}
         </DialogFooter>
       </DialogContent>

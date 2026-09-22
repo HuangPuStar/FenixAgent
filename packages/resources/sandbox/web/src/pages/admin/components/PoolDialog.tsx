@@ -16,6 +16,7 @@ import { useTranslation } from "react-i18next";
 import { SANDBOX_NS } from "../../../../i18n/namespace";
 import type { SystemOrganizationOption } from "../../../api/system-organizations";
 import type { SandboxPool } from "../../../api/system-sandbox";
+import { DialogViewFooter } from "./DialogViewFooter";
 import { OrganizationSelect } from "./OrganizationSelect";
 
 type JsonFieldResult = { ok: true; value: unknown } | { ok: false; reason: string };
@@ -68,6 +69,14 @@ export function PoolDialog({ open, pool, organizations, onOpenChange, onSave }: 
     setJsonError(null);
     setEditing(false);
   };
+  // 两个 JSON 文本域共用同一个错误标志（见文件头），失败提示也共用同一份渲染。
+  // 此前这段 5 行 JSX 在两个域下各写了一遍，逐字相同。
+  const jsonErrorHint =
+    jsonError !== null ? (
+      <p className="text-xs text-destructive" role="alert" title={jsonError}>
+        {t("invalidJson")}
+      </p>
+    ) : null;
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-h-[85vh] max-w-2xl overflow-y-auto">
@@ -132,11 +141,7 @@ export function PoolDialog({ open, pool, organizations, onOpenChange, onSave }: 
                   }
                 }}
               />
-              {jsonError !== null ? (
-                <p className="text-xs text-destructive" role="alert" title={jsonError}>
-                  {t("invalidJson")}
-                </p>
-              ) : null}
+              {jsonErrorHint}
             </div>
             <div>
               <Label>{t("fieldExtraJson")}</Label>
@@ -162,11 +167,7 @@ export function PoolDialog({ open, pool, organizations, onOpenChange, onSave }: 
                   }
                 }}
               />
-              {jsonError !== null ? (
-                <p className="text-xs text-destructive" role="alert" title={jsonError}>
-                  {t("invalidJson")}
-                </p>
-              ) : null}
+              {jsonErrorHint}
             </div>
           </div>
         ) : null}
@@ -181,12 +182,7 @@ export function PoolDialog({ open, pool, organizations, onOpenChange, onSave }: 
               </Button>
             </>
           ) : (
-            <>
-              <Button variant="outline" onClick={() => onOpenChange(false)}>
-                {t("close")}
-              </Button>
-              <Button onClick={() => setEditing(true)}>{t("edit")}</Button>
-            </>
+            <DialogViewFooter onClose={() => onOpenChange(false)} onEdit={() => setEditing(true)} />
           )}
         </DialogFooter>
       </DialogContent>
