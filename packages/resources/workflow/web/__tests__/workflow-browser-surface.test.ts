@@ -123,6 +123,8 @@ describe("workflow web 入口浏览器可达面", () => {
       // 运行视图态的整组复位（`resetRunView`）：编辑器页面、运行 hook 与运行面板三处消费，
       // 同样只走包内相对路径，不在入口导出面里。
       "pages/workflow/run-view.ts",
+      // 弹层头骨架（标题行）：文件菜单 / 版本指示器 / 元数据三个弹层消费。
+      "pages/workflow/components/PopoverHeader.tsx",
     ]) {
       expect(reachedWebFiles).toContain(expected);
     }

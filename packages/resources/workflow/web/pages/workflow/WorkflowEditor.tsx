@@ -52,6 +52,7 @@ import {
 import { connectWorkflowSSE, disconnectWorkflowSSE } from "../../api/workflow-sse";
 import { type MetaAgentChatPanelProps, MetaAgentPanel } from "./components/MetaAgentPanel";
 import { NodeConfigSheet } from "./components/NodeConfigSheet";
+import { PopoverHeader } from "./components/PopoverHeader";
 import { RunParamsDialog } from "./components/RunParamsDialog";
 import { RunStatusPanel } from "./components/RunStatusPanel";
 import { TriggerPanel } from "./components/TriggerPanel";
@@ -884,9 +885,7 @@ function WorkflowEditorInner({ workflowId, runId, chatPanel }: WorkflowEditorPro
               className="wf-meta-popover"
               style={{ width: 180 }}
             >
-              <div className="wf-popover-header">
-                <span className="wf-popover-title">{t("editor.file_menu_title")}</span>
-              </div>
+              <PopoverHeader title={t("editor.file_menu_title")} />
               <div className="flex flex-col gap-0.5 py-1">
                 <button
                   type="button"

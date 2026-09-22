@@ -7,6 +7,7 @@ import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
 import { type WorkflowVersionItem, workflowDefApi } from "../../../api/workflow-defs";
 import { InlineLoader } from "./InlineLoader";
+import { PopoverHeader } from "./PopoverHeader";
 import { VersionConfirmDialog } from "./VersionConfirmDialog";
 import { VersionRow } from "./VersionRow";
 
@@ -123,9 +124,7 @@ export function VersionIndicator({
           style={{ width: 280 }}
         >
           {/* 当前状态 */}
-          <div className="wf-popover-header">
-            <span className="wf-popover-title">{titleText}</span>
-          </div>
+          <PopoverHeader title={titleText} />
 
           {/* 返回草稿按钮（预览模式时可用） */}
           {isPreviewing && (
