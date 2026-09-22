@@ -25,6 +25,7 @@ import {
   buildTaskDefinition,
   INITIAL_TASK_FORM_VALUES,
   isUnauthorizedError,
+  removeIdFromSet,
   taskFormSchema,
   taskToFormValues,
 } from "./agent-tasks-utils";
@@ -219,11 +220,7 @@ export function AgentTasksPage() {
       // ahooks v3 onFinally 签名: (params, data, error)，第一个参数是输入参数
       onFinally: (params) => {
         const id = (Array.isArray(params) ? params[0] : params) as string;
-        setTriggeredTasks((prev) => {
-          const next = new Set(prev);
-          next.delete(id);
-          return next;
-        });
+        setTriggeredTasks((prev) => removeIdFromSet(prev, id));
       },
     },
   );

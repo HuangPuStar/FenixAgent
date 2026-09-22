@@ -188,22 +188,52 @@ export function taskToFormValues(task: TaskV2Info): TaskFormValues {
   };
 }
 
-/** Unix 秒级时间戳的紧凑相对时间展示。 */
+/** 相对时间展示的可选口径；两处消费方（表格单元格 / 行内窄栏）各自的行差见各字段说明。 */
+export interface TaskRelativeTimeOptions {
+  /** 空值回退文案：表格单元格用 `—`（默认），行内列表用空串表示「整段不渲染」。 */
+  fallback?: string;
+  /**
+   * 日期分支的格式：`locale` 走 `Intl` 本地化（默认，表格列），
+   * `compact` 用定长 `MM-DD HH:mm`（行内窄栏，长度稳定，与日志时间列同口径）。
+   */
+  dateFormat?: "locale" | "compact";
+}
+
+/**
+ * Unix 秒级时间戳的紧凑相对时间展示。
+ *
+ * 两个口径合成一份（2026-09-22 去重）：`TasksPanel` 曾有一份同名实现——前 3 个分支逐字相同，
+ * 只有空值回退与日期分支不同，i18n key 却重复了两份。差异保留为 `fallback` / `dateFormat` 两个参数，
+ * 两处渲染逐字不变；`compact` 分支复用 `formatTaskLogTime`，第三份「手写 pad + 同一模板」随之消失。
+ */
 export function formatTaskRelativeTime(
   timestamp: number | null | undefined,
   t: (key: string, options?: Record<string, unknown>) => string,
+  options: TaskRelativeTimeOptions = {},
 ): string {
-  if (timestamp == null) return "—";
+  const { fallback = "—", dateFormat = "locale" } = options;
+  if (timestamp == null) return fallback;
   const diff = Date.now() - timestamp * 1000;
   if (diff < 60_000) return t("relativeTime.justNow");
   if (diff < 3_600_000) return t("relativeTime.minutesAgo", { count: Math.floor(diff / 60_000) });
   if (diff < 86_400_000) return t("relativeTime.hoursAgo", { count: Math.floor(diff / 3_600_000) });
+  if (dateFormat === "compact") return formatTaskLogTime(timestamp);
   return new Intl.DateTimeFormat(undefined, {
     month: "2-digit",
     day: "2-digit",
     hour: "2-digit",
     minute: "2-digit",
   }).format(new Date(timestamp * 1000));
+}
+
+/**
+ * 从 `Set` 状态里移除一个 id 并返回**新实例**（`Set.delete` 原地改，直接返回旧引用不会触发重渲染）。
+ * 同一段 4 行 reducer 此前在三个请求收尾块里各写一份（面板的「执行」/「启停」、页面的「执行」）。
+ */
+export function removeIdFromSet(prev: ReadonlySet<string>, id: string): Set<string> {
+  const next = new Set(prev);
+  next.delete(id);
+  return next;
 }
 
 /** 将绝对时间投影到从当前时刻开始的可选未来时间窗。 */

@@ -3,6 +3,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@fenix/ui-comp
 import { NS } from "@fenix/web-runtime/i18n/namespace";
 import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
+import { CHOICE_CHIP_CLASS } from "./chip-classes";
 import { ExecutionLogTable } from "./ExecutionLogTable";
 
 type StatusFilter = "all" | "success" | "failed" | "timeout" | "skipped";
@@ -53,7 +54,7 @@ export function TaskLogDialog({ open, onOpenChange, taskId, taskName, onClearLog
               type="button"
               size="sm"
               variant={statusFilter === chip.value ? "default" : "outline"}
-              className="rounded-full h-6 px-3 text-xs font-normal"
+              className={CHOICE_CHIP_CLASS}
               onClick={() => setStatusFilter(chip.value)}
             >
               {chip.label}

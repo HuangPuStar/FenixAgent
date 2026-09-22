@@ -17,26 +17,15 @@ import type { TaskV2Info } from "../../api/tasks-v2";
 import { taskV2Api } from "../../api/tasks-v2";
 import { describeCron } from "./components/CronEditor";
 import { ExecutionLogTable } from "./components/ExecutionLogTable";
-import { isUnauthorizedError, TASK_ENABLED_TONES } from "./pages/agent-tasks-utils";
+import {
+  formatTaskRelativeTime,
+  isUnauthorizedError,
+  removeIdFromSet,
+  TASK_ENABLED_TONES,
+} from "./pages/agent-tasks-utils";
 
 interface TasksPanelProps {
   agentId: string | null;
-}
-
-/** 相对时间格式化：Unix 秒级时间戳 */
-function formatRelativeTime(
-  ts: number | null | undefined,
-  t: (key: string, opts?: Record<string, unknown>) => string,
-): string {
-  if (ts == null) return "";
-  const now = Date.now();
-  const diff = now - ts * 1000;
-  if (diff < 60_000) return t("relativeTime.justNow");
-  if (diff < 3_600_000) return t("relativeTime.minutesAgo", { count: Math.floor(diff / 60_000) });
-  if (diff < 86_400_000) return t("relativeTime.hoursAgo", { count: Math.floor(diff / 3_600_000) });
-  const d = new Date(ts * 1000);
-  const pad = (n: number) => String(n).padStart(2, "0");
-  return `${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
 }
 
 export function TasksPanel({ agentId }: TasksPanelProps) {
@@ -86,11 +75,7 @@ export function TasksPanel({ agentId }: TasksPanelProps) {
     } catch {
       toast.error(taskT("panelMode.tasksTriggerFailed") ?? "Trigger failed");
     } finally {
-      setTriggeringIds((prev) => {
-        const next = new Set(prev);
-        next.delete(taskId);
-        return next;
-      });
+      setTriggeringIds((prev) => removeIdFromSet(prev, taskId));
     }
   };
 
@@ -103,11 +88,7 @@ export function TasksPanel({ agentId }: TasksPanelProps) {
     } catch {
       toast.error(taskT("panelMode.tasksToggleFailed"));
     } finally {
-      setTogglingIds((prev) => {
-        const next = new Set(prev);
-        next.delete(taskId);
-        return next;
-      });
+      setTogglingIds((prev) => removeIdFromSet(prev, taskId));
     }
   };
 
@@ -126,7 +107,7 @@ export function TasksPanel({ agentId }: TasksPanelProps) {
 
   /** 最后执行状态展示 */
   const renderLastRun = (task: TaskV2Info) => {
-    const relTime = formatRelativeTime(task.lastRunAt, taskT);
+    const relTime = formatTaskRelativeTime(task.lastRunAt, taskT, { fallback: "", dateFormat: "compact" });
     if (!task.lastStatus) {
       return relTime ? <span className="text-[11px] text-text-muted">{relTime}</span> : null;
     }
