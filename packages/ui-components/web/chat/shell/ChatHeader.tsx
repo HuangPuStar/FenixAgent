@@ -254,6 +254,33 @@ export function ChatHeader({
     }
   }, [deleteTarget, onDeleteSession, onNotice]);
 
+  /**
+   * 侧边栏收起/展开按钮。
+   *
+   * 2026-09-22 库内去重：`showSessionList` 的 popover 分支与 `!showSessionList` 的窄标题分支此前
+   * 各渲染了一份逐字相同的 `<Button>`（className 的 `pinned` 两态、`title` / `aria-label` / `aria-pressed`
+   * 与图标全部一致，唯一差异是 `title` 那行的换行排版）。两个分支互斥，故可在渲染前建一次、两处复用；
+   * `onToggleSidebar` 缺省时两处原本都不渲染，这里保持同一判空。
+   */
+  const sidebarToggleButton = onToggleSidebar ? (
+    <Button
+      variant="ghost"
+      size="icon"
+      onClick={handlePinToggle}
+      className={cn(
+        "h-7 w-7 flex-shrink-0",
+        pinned
+          ? "text-brand bg-brand/10 hover:bg-brand/20"
+          : "text-text-muted hover:text-text-primary hover:bg-surface-2/60",
+      )}
+      title={t(pinned ? "chat.components.chatHeader.hideSessions" : "chat.components.chatHeader.showSessions")}
+      aria-label={t(pinned ? "chat.components.chatHeader.hideSessions" : "chat.components.chatHeader.showSessions")}
+      aria-pressed={pinned}
+    >
+      <SidebarToggleIcon className="h-3.5 w-3.5" />
+    </Button>
+  ) : null;
+
   return (
     <div
       className={cn(
@@ -319,29 +346,7 @@ export function ChatHeader({
                     <Plus className="h-3.5 w-3.5" />
                   </Button>
                 )}
-                {/* 侧边栏收起/展开按钮 */}
-                {onToggleSidebar && (
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    onClick={handlePinToggle}
-                    className={cn(
-                      "h-7 w-7 flex-shrink-0",
-                      pinned
-                        ? "text-brand bg-brand/10 hover:bg-brand/20"
-                        : "text-text-muted hover:text-text-primary hover:bg-surface-2/60",
-                    )}
-                    title={t(
-                      pinned ? "chat.components.chatHeader.hideSessions" : "chat.components.chatHeader.showSessions",
-                    )}
-                    aria-label={t(
-                      pinned ? "chat.components.chatHeader.hideSessions" : "chat.components.chatHeader.showSessions",
-                    )}
-                    aria-pressed={pinned}
-                  >
-                    <SidebarToggleIcon className="h-3.5 w-3.5" />
-                  </Button>
-                )}
+                {sidebarToggleButton}
               </div>
 
               {/* 会话列表 */}
@@ -393,26 +398,7 @@ export function ChatHeader({
       )}
       {!showSessionList && (
         <div className="flex items-center gap-1.5 h-8 px-2 text-text-primary max-w-[70%]">
-          {onToggleSidebar && (
-            <Button
-              variant="ghost"
-              size="icon"
-              onClick={handlePinToggle}
-              className={cn(
-                "h-7 w-7 flex-shrink-0",
-                pinned
-                  ? "text-brand bg-brand/10 hover:bg-brand/20"
-                  : "text-text-muted hover:text-text-primary hover:bg-surface-2/60",
-              )}
-              title={t(pinned ? "chat.components.chatHeader.hideSessions" : "chat.components.chatHeader.showSessions")}
-              aria-label={t(
-                pinned ? "chat.components.chatHeader.hideSessions" : "chat.components.chatHeader.showSessions",
-              )}
-              aria-pressed={pinned}
-            >
-              <SidebarToggleIcon className="h-3.5 w-3.5" />
-            </Button>
-          )}
+          {sidebarToggleButton}
           <div className="flex items-center gap-1.5 min-w-0" title={activeTitle}>
             <MessageSquare className="h-3.5 w-3.5 text-text-muted flex-shrink-0" />
             <span className="text-[13px] font-display truncate min-w-0">{activeTitle}</span>

@@ -191,16 +191,27 @@ export function ACPMain({
   // 等待 300ms 稳定后再执行 bootstrap，避免在只收到第一条 session 时就过早加载
   const bootstrapTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
+  /**
+   * 取消尚未触发的 bootstrap 防抖。
+   *
+   * 2026-09-22 库内去重：`connectionState` 重置 effect 与该 effect 的 cleanup 此前各写了一份
+   * 逐字相同的 `if (bootstrapTimerRef.current) { clearTimeout(…); bootstrapTimerRef.current = null; }`，
+   * 收敛到此（`useCallback([])`，只碰一个 ref，身份稳定）。
+   */
+  const clearBootstrapTimer = useCallback(() => {
+    if (bootstrapTimerRef.current) {
+      clearTimeout(bootstrapTimerRef.current);
+      bootstrapTimerRef.current = null;
+    }
+  }, []);
+
   // 该 effect 的依赖是有意的：connectionState 仅作为"重连时重置 bootstrap 状态"的触发器，
   // 函数体不读取它（源 `ACPMain.tsx` 同款写法）。
   // biome-ignore lint/correctness/useExhaustiveDependencies: connectionState 作为重连触发器参与依赖，非冗余依赖
   useEffect(() => {
     sessionEnteredRef.current = false;
-    if (bootstrapTimerRef.current) {
-      clearTimeout(bootstrapTimerRef.current);
-      bootstrapTimerRef.current = null;
-    }
-  }, [connectionState]);
+    clearBootstrapTimer();
+  }, [connectionState, clearBootstrapTimer]);
 
   // 侧边栏状态的持久化（源为 localStorage `acp-sidebar-open`）已移交宿主：见 `onSidebarOpenChange`。
 
@@ -339,10 +350,7 @@ export function ACPMain({
     }, 300);
 
     return () => {
-      if (bootstrapTimerRef.current) {
-        clearTimeout(bootstrapTimerRef.current);
-        bootstrapTimerRef.current = null;
-      }
+      clearBootstrapTimer();
     };
   }, [
     connectionState,
@@ -351,6 +359,7 @@ export function ACPMain({
     chatState?.sessionListLoaded,
     handleSelectSession,
     handleCreateSession,
+    clearBootstrapTimer,
   ]);
 
   // 延迟 activeSessionId 处理：bootstrap 在 sessions 为空时不创建会话而是等待。
