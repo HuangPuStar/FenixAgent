@@ -96,6 +96,14 @@ import { existsSync } from "node:fs";
  *     「唯一消费者升级为第二个包」之前就该退场的那一类（`frontend-development.md` §1.3 已登记）。条目从
  *     `RMD_08_MOVES` 移入 `RMD_08_RELOCATED`（MOVES 58 → 57，RELOCATED 89 → 90，在册总数不因换表而变），
  *     宿主两条旧路径都不得复活、包侧 owner 必须存在。
+ * 20. 漏登记补正（第 19 条之后本侧在册数由 58 降到 57 时的遗漏）：`4ff58f6f` 按本表口径搬到
+ *     `apps/web/src/__tests__/utils.test.ts` 的宿主杂项函数自指测试，其被测实现 `apps/web/src/lib/utils.ts`
+ *     在 `dd3ad35d`（宿主 lib 三处重复实现退场）整体删除、该测试随之一并删除，但清单没跟着换表——
+ *     `RMD_08_MOVES` 里留了一条「源已删、目标也不存在」的记录，让 `removes every legacy source and retains
+ *     its exact owner target` 的「目标必须存在」断言恒假。本次按本表语义移入
+ *     `RMD_08_TARGETS_LATER_DELETED`：MOVES 55 → 54、豁免表 2 → 3，两侧一增一减，
+ *     `MOVES + LATER_DELETED` 之和仍是 57；全表扫描确认这是清单里唯一一条目标缺失的条目，其余 54 条的
+ *     源均已删除且目标仍在。
  */
 const RMD_08_MOVES = [
   ["web/src/App.tsx", "apps/web/src/App.tsx"],
@@ -120,7 +128,6 @@ const RMD_08_MOVES = [
   ["web/src/__tests__/random-uuid-polyfill.test.ts", "apps/web/src/__tests__/random-uuid-polyfill.test.ts"],
   ["web/src/__tests__/retry.test.ts", "apps/web/src/__tests__/retry.test.ts"],
   ["web/src/__tests__/use-task-views.test.tsx", "apps/web/src/__tests__/use-task-views.test.tsx"],
-  ["web/src/__tests__/utils.test.ts", "apps/web/src/__tests__/utils.test.ts"],
   ["web/src/api/fs.ts", "apps/web/src/api/fs.ts"],
   ["web/src/api/instances.ts", "apps/web/src/api/instances.ts"],
   ["web/src/api/peri-task-details.ts", "apps/web/src/api/peri-task-details.ts"],
@@ -168,17 +175,28 @@ const RMD_08_MOVES = [
 ] as const;
 
 /**
- * RMD-08 在册后经用户裁定删除的目标（迁移记录保留在此，只豁免「目标必须存在」断言）。
+ * RMD-08 在册后迁移目标又被后续提交删除、且无包内 owner 落点可挂的条目（迁移记录保留在此，只豁免
+ * 「目标必须存在」断言，断言方向翻转为源与目标双向缺席）。
  *
- * 两条同为宿主自有的请求结果工具与其专属测试：`ApiResult` 联合 + `ok` / `err` / `unwrapApiResult` 的失败
+ * 前两条同为宿主自有的请求结果工具与其专属测试：`ApiResult` 联合 + `ok` / `err` / `unwrapApiResult` 的失败
  * 语义（把 `ok: false` 转 Error）已由 `@fenix/web-runtime/api/request` 的 `ApiError` / `unwrap` 承担，宿主
  * 消费方早已改指该包出口，删除后全仓零引用（逐标识符 grep 只剩设计文档与包内一处历史注释）。`packages/**`
  * 下不存在同名文件，没有 owner 落点可挂——所以是退役而非 relocated，记录留在此处是为了不让「RMD-08 快照
  * 里本来有这两条」的事实随清单长度流失（同 `rmd-05` 的 `RMD_05_TARGETS_LATER_DELETED` 口径）。
+ *
+ * 第三条 `utils.test.ts` 是同一类但成因不同的补登记：它随 `4ff58f6f` 与其他 MOVES 条目一同搬到
+ * `apps/web/src/__tests__/`，守护的是宿主 `apps/web/src/lib/utils.ts` 里 `cn` / `esc` / `formatTime` /
+ * `statusClass` 等杂项函数的宿主副本（全文件只从 `@/src/lib/utils` 取符号，属自指测试）。`dd3ad35d`
+ * 按 owner 拆解该聚合模块——`cn` 归 `@fenix/ui-components/lib/cn`，其余函数语义由
+ * `@fenix/ui-components/web/chat/*` 与 `@fenix/web-runtime/web/chat/structured-to-thread.ts` 承担——
+ * 宿主模块与这份测试一并删除，迁移目标因此不再存在。留在 `RMD_08_MOVES` 会让「目标必须存在」断言恒假
+ * （既非迁移丢失，也无包内同名 owner 可挂），故按本表口径收编；它是 MOVES 在册条目里唯一一条「目标已迁到
+ * apps/web 又被后续提交删掉」的记录，其余目标均仍在。
  */
 const RMD_08_TARGETS_LATER_DELETED = [
   ["web/src/__tests__/api-result-utils.test.ts", "apps/web/src/__tests__/api-result-utils.test.ts"],
   ["web/src/lib/api-result.ts", "apps/web/src/lib/api-result.ts"],
+  ["web/src/__tests__/utils.test.ts", "apps/web/src/__tests__/utils.test.ts"],
 ] as const;
 
 /**
@@ -673,7 +691,10 @@ describe("RMD-08 apps/web migration", () => {
   // agent-config 归属的宿主测试 `agent-form-dialog-ssr.test.tsx` 归位（见文件头第 15 条），60 → 59；
   // T12 再把 `agent-form-dialog-pure-logic.test.ts` 按 owner 拆开搬迁（见文件头第 16 条），59 → 58。
   // 用户裁定的退役（见文件头第 17 条）：宿主 `lib/api-result.ts` 与其专属测试无包内 owner 落点，从本清单
-  // 移入 `RMD_08_TARGETS_LATER_DELETED`——在册总数仍是 58，只豁免这两条的「目标必须存在」断言。
+  // 移入 `RMD_08_TARGETS_LATER_DELETED`——只豁免这两条的「目标必须存在」断言；第 19 条再把
+  // `agent-master-detail-workspace.tsx` 换挂到 `RMD_08_RELOCATED`（只换表不销记），本侧在册数 58 → 57。
+  // 本轮补登记：`utils.test.ts` 的迁移目标随宿主 `lib/utils.ts` 被 `dd3ad35d` 删除（见豁免表第三条），
+  // 从本清单移出 → MOVES 55 → 54、豁免表 2 → 3，一增一减，下面断言的两表之和仍是 57。
   test("removes every legacy source and retains its exact owner target", () => {
     expect(RMD_08_MOVES.length + RMD_08_TARGETS_LATER_DELETED.length).toBe(57);
     for (const [source, target] of RMD_08_MOVES) {
@@ -712,9 +733,10 @@ describe("RMD-08 apps/web migration", () => {
     expect(existsSync("apps/web/src/__tests__/new-session-dialog-form.test.ts")).toBe(false);
   });
 
-  // 用户裁定删除的宿主请求结果工具与其专属测试（见文件头第 17 条与 `RMD_08_TARGETS_LATER_DELETED`）：
-  // 源与目标都必须保持不存在——记录的是「已裁定删除」，不是「迁移丢失」；两者一旦复活，宿主就会重新
-  // 出现第二套「失败结果如何转 Error」的约定（`unwrapApiResult` 与 `ApiError` 各自抛错）。
+  // 在册后目标被删除的条目（见文件头第 17 条与 `RMD_08_TARGETS_LATER_DELETED`）：源与目标都必须保持
+  // 不存在——记录的是「已裁定删除 / 目标已被后续提交删除」，不是「迁移丢失」。第一条一旦复活，宿主就会
+  // 重新出现第二套「失败结果如何转 Error」的约定（`unwrapApiResult` 与 `ApiError` 各自抛错）；第三条一旦
+  // 复活，等于恢复一份只测宿主杂项函数副本的自指用例（同 `narrators-i18n.test.ts` 口径）。
   test("later-deleted migration targets and their legacy sources stay absent", () => {
     for (const [source, target] of RMD_08_TARGETS_LATER_DELETED) {
       expect(existsSync(source), `legacy source came back: ${source}`).toBe(false);
