@@ -111,8 +111,7 @@
   },
   "confirmDialog": {
     "confirm": "Confirm",
-    "cancel": "Cancel",
-    "processing": "Processing..."
+    "cancel": "Cancel"
   },
   "formDialog": {
     "save": "Save",

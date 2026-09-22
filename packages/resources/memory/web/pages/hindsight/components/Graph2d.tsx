@@ -1,3 +1,4 @@
+import { useTheme } from "@fenix/ui-components/lib/theme";
 import { Spinner } from "@fenix/ui-components/ui/spinner";
 import { NS } from "@fenix/web-runtime/i18n/namespace";
 import cytoscape from "cytoscape";
@@ -7,27 +8,6 @@ import { useTranslation } from "react-i18next";
 
 // Register the fcose extension
 cytoscape.use(fcose);
-
-// Hook to detect dark mode
-function useIsDarkMode() {
-  const [isDark, setIsDark] = useState(false);
-
-  useEffect(() => {
-    const checkDark = () => {
-      setIsDark(document.documentElement.classList.contains("dark"));
-    };
-
-    checkDark();
-
-    // Watch for theme changes
-    const observer = new MutationObserver(checkDark);
-    observer.observe(document.documentElement, { attributes: true, attributeFilter: ["class"] });
-
-    return () => observer.disconnect();
-  }, []);
-
-  return isDark;
-}
 
 // ============================================================================
 // Types & Interfaces
@@ -110,7 +90,10 @@ export function Graph2D({
   const [isLoading, setIsLoading] = useState(true);
   const [isMounted, setIsMounted] = useState(false);
   const [isFocusMode, setIsFocusMode] = useState(false);
-  const isDarkMode = useIsDarkMode();
+  // 暗色判定改读主题上下文（原为本地 MutationObserver 观察 `documentElement` 的 class——
+  // 那是主题实现的内部细节，且全仓另有一份逐字副本在 Constellation.tsx）。
+  const { resolvedTheme } = useTheme();
+  const isDarkMode = resolvedTheme === "dark";
 
   // Use refs to store callbacks and data to prevent re-renders from resetting the graph
   const onNodeClickRef = useRef(onNodeClick);

@@ -1,11 +1,13 @@
 /**
  * Agent 侧边栏树的破坏性操作确认弹窗。
  *
- * 从 `AgentSidebarTree.tsx` 拆出的渲染模块（§4.7 文件规模）：两个 `AlertDialog` 只在容器里挂载，
+ * 从 `AgentSidebarTree.tsx` 拆出的渲染模块（§4.7 文件规模）：弹窗只在容器里挂载，
  * 自身不持有状态、不发请求——打开态、目标节点、选中集合与确认回调都由容器经 `useAgentSidebarTree`
- * 提供。JSX 与拆分前逐字一致：文案、className、禁用条件与确认语义均未改动。
+ * 提供。重启弹窗含实例勾选区，保留手写 `AlertDialog`；删除弹窗已改用库里的 `ConfirmDialog`
+ * （见 `AgentSidebarDeleteDialog` 内注释）。
  */
 import { getAgentDisplayName } from "@fenix/agent-config/web/lib/agent-resource-access";
+import { ConfirmDialog } from "@fenix/ui-components/config/ConfirmDialog";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -17,7 +19,6 @@ import {
   AlertDialogTitle,
 } from "@fenix/ui-components/ui/alert-dialog";
 import { Checkbox } from "@fenix/ui-components/ui/checkbox";
-import { Loader2 } from "lucide-react";
 import type { Dispatch, SetStateAction } from "react";
 import { useTranslation } from "react-i18next";
 import { NS } from "@/src/i18n";
@@ -122,26 +123,22 @@ export function AgentSidebarDeleteDialog({
 }: AgentSidebarDeleteDialogProps) {
   const { t } = useTranslation(NS.AGENT_PANEL);
 
+  // 2026-09-22 前端去重：此前是手写 AlertDialog + 裸色号 `bg-red-600 hover:bg-red-700` 的确认按钮 +
+  // `Loader2` 图标转圈，与库里的 `ConfirmDialog` 同构（仓库另有约 20 处在用它）。改用库组件后
+  // 危险动作走 `variant="destructive"` 语义色，进行中态由库统一成「处理中…」文案（不再是图标转圈）。
   return (
-    <AlertDialog open={deleteTarget !== null} onOpenChange={onOpenChange}>
-      <AlertDialogContent>
-        <AlertDialogHeader>
-          <AlertDialogTitle>{t("deleteAgent")}</AlertDialogTitle>
-          <AlertDialogDescription>
-            {t("deleteAgentConfirm", { name: deleteTarget ? getAgentDisplayName(deleteTarget) : "" })}
-          </AlertDialogDescription>
-        </AlertDialogHeader>
-        <AlertDialogFooter>
-          <AlertDialogCancel disabled={deleting}>{t("cancel")}</AlertDialogCancel>
-          <AlertDialogAction
-            disabled={deleting}
-            onClick={() => deleteTarget && onConfirm(deleteTarget)}
-            className="bg-red-600 hover:bg-red-700"
-          >
-            {deleting ? <Loader2 className="w-4 h-4 animate-spin" /> : t("deleteAgent")}
-          </AlertDialogAction>
-        </AlertDialogFooter>
-      </AlertDialogContent>
-    </AlertDialog>
+    <ConfirmDialog
+      open={deleteTarget !== null}
+      onOpenChange={onOpenChange}
+      title={t("deleteAgent")}
+      description={t("deleteAgentConfirm", { name: deleteTarget ? getAgentDisplayName(deleteTarget) : "" })}
+      variant="destructive"
+      confirmLabel={t("deleteAgent")}
+      cancelLabel={t("cancel")}
+      loading={deleting}
+      onConfirm={() => {
+        if (deleteTarget) onConfirm(deleteTarget);
+      }}
+    />
   );
 }

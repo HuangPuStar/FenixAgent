@@ -5,6 +5,7 @@ import { createRootRoute, Outlet, useNavigate, useRouterState } from "@tanstack/
 import { useEffect } from "react";
 import { useTranslation } from "react-i18next";
 import { Toaster } from "sonner";
+import { ErrorPage } from "@/src/components/error-page";
 
 export const Route = createRootRoute({
   component: RootComponent,
@@ -60,20 +61,8 @@ function RootComponent() {
   );
 }
 
+// 404 与 403 共用 `ErrorPage`（此前两份逐字复制的整屏错误页）。
 function NotFoundPage() {
-  const navigate = useNavigate();
   const { t } = useTranslation("common");
-  return (
-    <div className="flex h-screen flex-col items-center justify-center gap-4">
-      <h1 className="text-2xl font-bold text-text-primary">404</h1>
-      <p className="text-sm text-text-muted">{t("not_found")}</p>
-      <button
-        type="button"
-        onClick={() => void navigate({ to: "/agent" })}
-        className="rounded-md bg-brand px-4 py-2 text-sm font-medium text-white hover:bg-brand/90"
-      >
-        {t("back_home")}
-      </button>
-    </div>
-  );
+  return <ErrorPage code="404" message={t("not_found")} backLabel={t("back_home")} />;
 }

@@ -1,4 +1,5 @@
 import { layoutWithLines, prepare, prepareWithSegments } from "@chenglou/pretext";
+import { useTheme } from "@fenix/ui-components/lib/theme";
 import { NS } from "@fenix/web-runtime/i18n/namespace";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
@@ -110,24 +111,6 @@ function hashStr(s: string): number {
   return h;
 }
 
-// Dark mode hook
-function useIsDarkMode() {
-  const [isDark, setIsDark] = useState(false);
-
-  useEffect(() => {
-    const check = () => setIsDark(document.documentElement.classList.contains("dark"));
-    check();
-    const obs = new MutationObserver(check);
-    obs.observe(document.documentElement, {
-      attributes: true,
-      attributeFilter: ["class"],
-    });
-    return () => obs.disconnect();
-  }, []);
-
-  return isDark;
-}
-
 // ============================================================================
 // Constants
 // ============================================================================
@@ -167,7 +150,9 @@ export function Constellation({
   const wrapperRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const tooltipRef = useRef<HTMLDivElement>(null);
-  const isDark = useIsDarkMode();
+  // 暗色判定改读主题上下文（原为本地 MutationObserver 副本，与 Graph2d.tsx 里的那份逐字相同）。
+  const { resolvedTheme } = useTheme();
+  const isDark = resolvedTheme === "dark";
   const animRef = useRef<number>(0);
   const [isFullscreen, setIsFullscreen] = useState(false);
 
