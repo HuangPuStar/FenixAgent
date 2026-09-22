@@ -34,3 +34,14 @@ export function getMachineRegistryPort(): MachineRegistryPort {
   if (!machineRegistryPort) throw new Error("MachineRegistryPort has not been bound");
   return machineRegistryPort;
 }
+
+/**
+ * 测试用：清空宿主绑定，使用例可以重新绑定替身端口。
+ *
+ * 与 `core-runtime-port` 的 `resetCoreRuntimePortForTest` 同口径——`bindMachineRegistryPort` 对「已绑定
+ * 另一个 port」抛错，而宿主 preload 在进程启动时就绑好了转发端口，没有这个入口包内用例无法改绑。
+ * 复位方（`@fenix/agent-runtime/server/testing` 的 `resetMachineRegistryPortStub`）负责把宿主端口绑回去。
+ */
+export function resetMachineRegistryPortForTest(): void {
+  machineRegistryPort = null;
+}

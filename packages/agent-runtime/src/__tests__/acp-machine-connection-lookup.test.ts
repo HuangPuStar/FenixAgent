@@ -1,17 +1,16 @@
 import { beforeEach, describe, expect, mock, test } from "bun:test";
 import { stubDb } from "@fenix/platform-sdk/testing";
 import {
-  stubCoreBootstrap,
-  stubEnvironmentService,
-  stubRegistry,
-  stubRegistryHeartbeat,
-} from "@server/test-utils/stubs/module-stubs";
-import { initializeAgentRuntimeModuleConfig } from "../server/testing";
+  initializeAgentRuntimeModuleConfig,
+  stubCoreRuntimeFacade,
+  stubEnvironmentRepo,
+  stubMachineRegistryPort,
+} from "../server/testing";
 import type { AcpConnectionEntry } from "../types/acp-connection";
 import type { WsConnection } from "../types/ws-types";
 
-// registry / registry-heartbeat / environment / core-bootstrap 已在 setup-mocks.ts 中
-// 通过 preload mock 注册（createLazyMock 模式），stub 行为通过 stubXxx() 在 beforeEach 中配置。
+// registry / registry-heartbeat / core-bootstrap 这些替身由包内 `../server/testing` 提供
+// （§1.7 收尾：接缝归本包），stub 行为通过 stubXxx() 在 beforeEach 中配置。
 
 beforeEach(() => {
   // 内含 resetAllStubs：本包模块配置与 DB 替身都按「每个用例重新装配」处理（WS 保活间隔沿用迁移前的 30s）。
@@ -21,25 +20,18 @@ beforeEach(() => {
       throw new Error("unexpected db call in test");
     }),
   });
-  stubRegistry({
-    registerMachine: async () => ({ id: "mach_test_001" }),
+  // findMachineConnectionByAgentId 会查 environmentRepo（本文件不校验该路径的取数语义，只要求
+  // 查无此环境时返回 null）；宿主 preload 删除按模块路径的整份空替身后，未登记替身即回退真实实现
+  // 而落到 stubDb 的抛错 select 上——这里登记等价于迁移前 preload 默认 `{ getById: async () => null }`。
+  stubEnvironmentRepo({ getById: async () => null });
+  stubMachineRegistryPort({
+    registerMachine: async () => ({ id: "mach_test_001", isNew: true }),
     disconnectMachine: async () => {},
-  });
-  stubRegistryHeartbeat({
     startHeartbeat: () => {},
     handleHeartbeat: async () => {},
     stopHeartbeat: () => {},
-    startMachineSweep: () => {},
-    stopMachineSweep: () => {},
   });
-  stubEnvironmentService({
-    touchEnvironmentPoll: async () => {},
-  });
-  stubCoreBootstrap({
-    getCoreRuntime: () => null,
-    registerRemoteNode: () => {},
-    unregisterRemoteNode: () => {},
-  });
+  stubCoreRuntimeFacade(null);
 });
 
 function createMockWs(readyState = 1): WsConnection {
@@ -182,7 +174,7 @@ describe("handleRegister 走 machine 路径", () => {
 
   // 同一 machine 已有在线连接时，第二个连接必须收到明确错误并以终态关闭码断开。
   test("重复 machine 连接被拒绝且不替换已有连接", async () => {
-    stubRegistry({
+    stubMachineRegistryPort({
       registerMachine: async ({ machineId }: { machineId: string }) => ({ id: machineId, isNew: true }),
     });
     const { handleAcpWsMessage, handleAcpWsOpen } = await import("../server/transport/acp-ws-handler");
@@ -217,7 +209,7 @@ describe("handleRegister 走 machine 路径", () => {
   // 两个新连接同时注册时，数据库 await 期间也必须由 pending 占位保证只有一个继续注册。
   test("并发 machine 注册在数据库完成前拒绝第二个连接", async () => {
     let resolveRegistration: ((result: { id: string; isNew: boolean }) => void) | undefined;
-    stubRegistry({
+    stubMachineRegistryPort({
       registerMachine: ({ machineId }: { machineId: string }) =>
         new Promise((resolve) => {
           resolveRegistration = (result) => resolve(result ?? { id: machineId, isNew: true });

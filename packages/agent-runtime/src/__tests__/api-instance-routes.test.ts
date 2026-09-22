@@ -2,8 +2,8 @@ import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { createApiInstanceRoutes } from "@fenix/agent-runtime/server";
 import { resetAllStubs } from "@fenix/platform-sdk/testing";
 import { SandboxProviderNotConfiguredError, SandboxRuntimeNotReadyError } from "@fenix/resource-sandbox/server";
-import { stubCoreBootstrap } from "@server/test-utils/stubs/module-stubs";
 import { setApiInstanceDeps } from "../server/services/api-instance";
+import { stubCoreRuntimeFacade } from "../server/testing";
 import { createStubAgentRuntimeAuthGuardPlugin, resetTestAuth, setTestAuth } from "./guard-stubs";
 
 // 服务端诊断日志的收集器：生产装配注入宿主 `plugins/logger` 的 `logError`，测试注入 spy 以断言
@@ -24,11 +24,9 @@ function request(path: string, init?: RequestInit) {
 describe("API Instance Routes", () => {
   beforeEach(() => {
     resetAllStubs();
-    // getRunningInstancesByEnvironment 依赖 core runtime 的实例快照；
-    // core-bootstrap 已在 setup-mocks.ts 中 preload mock，这里提供可控的空快照
-    stubCoreBootstrap({
-      getCoreRuntime: () => ({ listInstances: () => [] }),
-    });
+    // getRunningInstancesByEnvironment 依赖 Core runtime 的实例快照；
+    // facade 由包内替身层（`../server/testing` 的 `stubCoreRuntimeFacade`）注入可控的空快照
+    stubCoreRuntimeFacade({ listInstances: () => [] });
     loggedErrors.length = 0;
     setTestAuth({ organizationId: "org-1", userId: "user-1" });
     setApiInstanceDeps({

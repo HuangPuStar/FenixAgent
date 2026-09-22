@@ -13,18 +13,22 @@
  *   - setOrchestrationInstanceDeps：覆盖 environmentRepo / getOrchestrationController；
  *   - 保留真实 buildAgentLaunchSpecForCore（它先读环境行，再经 AgentLaunchSpecPort 组装，
  *     组装端口用替身——W4b 后未装配即失败），使 launch 窗口的时序仍经过真实编排代码；
- *   - stubCoreBootstrap("getCoreRuntime") 注入假 facade：launchInstance 挂在可控
- *     deferred（launchGate）上模拟慢启动窗口，listInstances 动态返回已 launch 的
- *     实例快照（与真实 core 快照语义一致）。
+ *   - core 单例经包内 `../server/testing` 的 `stubCoreRuntimeFacade` 注入假 facade：
+ *     launchInstance 挂在可控 deferred（launchGate）上模拟慢启动窗口，listInstances 动态
+ *     返回已 launch 的实例快照（与真实 core 快照语义一致）。
  */
 
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import type { CoreRuntimeFacade, RuntimeInstanceSnapshot } from "@fenix/core";
 import type { AgentController, Instance } from "@fenix/orchestration";
 import { resetAllStubs } from "@fenix/platform-sdk/testing";
-import { stubCoreBootstrap } from "@server/test-utils/stubs/module-stubs";
 import type { EnvironmentRecord, IEnvironmentRepo } from "../server/repositories/environment";
-import { initializeAgentRuntimeModuleConfig, stubAgentLaunchSpecPort, stubAgentRuntimeConfig } from "../server/testing";
+import {
+  initializeAgentRuntimeModuleConfig,
+  stubAgentLaunchSpecPort,
+  stubAgentRuntimeConfig,
+  stubCoreRuntimeFacade,
+} from "../server/testing";
 import {
   beginSpawnReservation,
   getActiveAgentCount,
@@ -148,7 +152,7 @@ describe("spawn concurrency TOCTOU (A-P2.1)", () => {
     launchShouldFail = false;
     controllerShouldFail = false;
     launchedInstances.length = 0;
-    stubCoreBootstrap({ getCoreRuntime: () => fakeFacade });
+    stubCoreRuntimeFacade(fakeFacade);
     // 组装端口装配替身：本文件断言的是并发预留的可见性窗口与释放，spec 内容无关；
     // 真实组装器已迁往 agent-config，未装配即失败（W4b）
     stubAgentLaunchSpecPort();

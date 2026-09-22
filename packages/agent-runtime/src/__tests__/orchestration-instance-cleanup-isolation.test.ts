@@ -9,7 +9,7 @@ import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import type { CoreRuntimeFacade, RuntimeInstanceSnapshot } from "@fenix/core";
 import type { AgentController } from "@fenix/orchestration";
 import { resetAllStubs } from "@fenix/platform-sdk/testing";
-import { stubCoreBootstrap } from "@server/test-utils/stubs/module-stubs";
+import { stubCoreRuntimeFacade } from "../server/testing";
 import { globalInstanceRegistry } from "../services/instance-registry";
 import {
   resetOrchestrationInstanceDeps,
@@ -87,7 +87,7 @@ describe("stopInstancesForEnvironments", () => {
     stopGate = null;
     resetAllStubs();
     resetOrchestrationInstanceDeps();
-    stubCoreBootstrap({ getCoreRuntime: () => fakeFacade });
+    stubCoreRuntimeFacade(fakeFacade);
     setOrchestrationInstanceDeps({
       getOrchestrationController: () => fakeController as AgentController,
       closeRelayConnectionsForStoppedInstance: async (instanceId) => {

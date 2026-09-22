@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
+import { stubEnvironmentRepo } from "@fenix/agent-runtime/server/testing";
 import { readJson, resetAllStubs, stubAuthApi, stubAuthHandler, stubDb } from "@fenix/platform-sdk/testing";
 import Elysia from "elysia";
 import {
@@ -10,7 +11,6 @@ import {
   setTestAuth,
 } from "../plugins/auth";
 import { setTestOrgContext } from "../services/org-context";
-import { stubEnvironmentRepo } from "../test-utils/stubs/module-stubs";
 
 const user = { id: "user-1", email: "user-1@example.test", name: "测试用户" };
 

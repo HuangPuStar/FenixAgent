@@ -13,16 +13,15 @@
  *     序号注入可达——若连环境行读取一起替换掉，getById 只剩 registerSupplement 一个调用方，
  *     无法区分失败点。组装端口本身用替身（W4b 后未装配即失败），本文件不断言 spec 内容；
  *   - core-bootstrap 被 setup-mocks.ts 全局 mock，setCoreRuntimeFactory 不可用，
- *     改用 stubCoreBootstrap("getCoreRuntime") 注入假 facade。
+ *     改用包内 `../server/testing` 的 stubCoreRuntimeFacade 注入假 facade。
  */
 
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import type { CoreRuntimeFacade } from "@fenix/core";
 import type { AgentController, Instance } from "@fenix/orchestration";
 import { resetAllStubs } from "@fenix/platform-sdk/testing";
-import { stubCoreBootstrap } from "@server/test-utils/stubs/module-stubs";
 import type { EnvironmentRecord, IEnvironmentRepo } from "../server/repositories/environment";
-import { initializeAgentRuntimeModuleConfig, stubAgentLaunchSpecPort } from "../server/testing";
+import { initializeAgentRuntimeModuleConfig, stubAgentLaunchSpecPort, stubCoreRuntimeFacade } from "../server/testing";
 import { globalInstanceRegistry } from "../services/instance-registry";
 import {
   resetOrchestrationInstanceDeps,
@@ -97,7 +96,7 @@ describe("spawnInstanceViaController rollback", () => {
     launchShouldFail = false;
     controllerStopCalls.length = 0;
     facadeStopCalls.length = 0;
-    stubCoreBootstrap({ getCoreRuntime: () => fakeFacade });
+    stubCoreRuntimeFacade(fakeFacade);
     // 无 agentConfigId 的环境走最小 spec 分支，但走不走哪一支不是本文件的事：装配替身后
     // 组装链不再是失败点，getById 的序号注入才能锚定到 registerSupplement
     stubAgentLaunchSpecPort();

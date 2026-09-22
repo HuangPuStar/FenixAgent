@@ -7,16 +7,16 @@
  * sweep 排除，成为永久泄漏路径）。terminateLocalDeadInstance 是远程机器断连
  * 清理的本地对应物，按实例粒度（而非节点粒度）清理已确认死亡的本地实例。
  *
- * 本测试通过 stubCoreBootstrap + setOrchestrationInstanceDeps 注入 fake facade /
- * fake controller，验证前置校验（nodeId / 状态 / 活跃表）、幂等与 fire-and-forget
- * 语义；不 mock 模块。
+ * 本测试通过包内 `../server/testing` 的 stubCoreRuntimeFacade + setOrchestrationInstanceDeps
+ * 注入 fake facade / fake controller，验证前置校验（nodeId / 状态 / 活跃表）、幂等与
+ * fire-and-forget 语义；不 mock 模块。
  */
 
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import type { CoreRuntimeFacade, RuntimeInstanceSnapshot } from "@fenix/core";
 import type { AgentController } from "@fenix/orchestration";
 import { resetAllStubs } from "@fenix/platform-sdk/testing";
-import { stubCoreBootstrap } from "@server/test-utils/stubs/module-stubs";
+import { stubCoreRuntimeFacade } from "../server/testing";
 import {
   resetOrchestrationInstanceDeps,
   setOrchestrationInstanceDeps,
@@ -80,7 +80,7 @@ describe("terminateLocalDeadInstance", () => {
     controllerStopImpl = async (id) => {
       controllerStopCalls.push(id);
     };
-    stubCoreBootstrap({ getCoreRuntime: () => fakeFacade });
+    stubCoreRuntimeFacade(fakeFacade);
     setOrchestrationInstanceDeps({
       getOrchestrationController: () => fakeController,
       // 隔离 SP-C2 回收接线：默认实现会惰性装配真实 ChatChannelController，
