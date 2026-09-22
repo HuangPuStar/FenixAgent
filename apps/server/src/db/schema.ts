@@ -15,9 +15,10 @@ import { sql } from "drizzle-orm";
  * 读运行环境与实例仍必须走 `@fenix/agent-runtime` 的服务端入口，不得依赖本文件。
  * 组装期例外的口径与边界见 `docs/design/ce-ee-refactoring/ce-ee-engineering-standards.md` §6.1。
  *
- * 本文件里 `agentConfig` 的三个使用点都是宿主自有表的外键：`task_execution_log`、
- * `agent_memory_config`、`prod_view`（各引用一次 `agent_config.id`），它们随 B10–B12 按拓扑序迁出宿主；
- * 另两处随表迁走——`environment.agent_config_id` 在 B8 随该表迁入 `@fenix/agent-runtime/db`，
+ * 本文件里 `agentConfig` 的使用点只剩宿主自有表的外键：`task_execution_log`、`prod_view`
+ * （各引用一次 `agent_config.id`），随 B11–B12 按拓扑序迁出宿主；其余随表迁走——
+ * `agent_memory_config.agent_config_id` 在 B10 随该表迁入 `@fenix/resource-memory/db`，
+ * `environment.agent_config_id` 在 B8 随该表迁入 `@fenix/agent-runtime/db`，
  * `agent_knowledge_binding.agent_config_id` 在 B9 随三张知识库表迁入 `@fenix/resource-knowledge/db`。
  * `environment` 这个 import 只剩一个使用点：`im_channel_route.environment_id`（B13 迁 channel 后本文件
  * 连这一行也不再需要）。
@@ -34,7 +35,8 @@ import { sql } from "drizzle-orm";
  * 任务 1.7 B6 的 Workflow 九张领域表、B8 的 `agent_instance` 与 B9 的知识库三张表从未出现在这份清单里：
  * B6 九张表的表间外键在 `@fenix/resource-workflow/db` 内闭合；`agent_instance` 的外键目标是 `environment`
  * 与 `user`，知识库三张表的外键目标是 `agent_config` / `user` 与自身——都不是宿主表，宿主任何表都不引用
- * 它们。
+ * 它们。**B10 之后同理**：`agent_memory_config` 迁入 `@fenix/resource-memory/db`，宿主对它的唯一引用方
+ * 是 memory 包的仓储（已改指该出口），因此这里不留转出、连 import 也不必新增。
  */
 export {
   account,
@@ -217,18 +219,6 @@ export const channelBinding = pgTable(
     agentIdx: index("idx_channel_binding_agent_id").on(table.agentId),
   }),
 );
-
-// Agent 记忆配置（独立表，承载记忆开关状态，为后续扩展预留）
-export const agentMemoryConfig = pgTable("agent_memory_config", {
-  id: uuid("id").primaryKey().defaultRandom(),
-  agentConfigId: uuid("agent_config_id")
-    .notNull()
-    .unique()
-    .references(() => agentConfig.id, { onDelete: "cascade" }),
-  enabled: boolean("enabled").notNull().default(false),
-  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
-  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
-});
 
 // 一次性数据迁移执行记录（由部署期入口 `db/data-migration-runner.ts` 写入，不随应用启动执行）
 export const dataMigrateRecord = pgTable(

@@ -234,6 +234,9 @@ describe("knowledge web 入口浏览器可达面", () => {
   // 之后，本包 `src/**` 对宿主已零引用，该断言不再可能成立。它当初证明的是**递归深度够深**（挖到宿主
   // 说明符说明确实走进了服务端实现），这个职责改由「递归到底层仓储文件」+「node 内建确实发自
   // `src/server/**` 内部」两条承担——否则「递归只走了一层」与「服务端确实干净」就分不开。
+  // §1.7 B10 起再加一条**零容忍**断言：那批清掉了 `@fenix/resource-memory` 的残留宿主导入（见 §7.22），
+  // 本包的 poisoned 图也随之不再命中 `@server/`，于是家族里原先的「必须出现」统一改写为「必须为空」
+  // （`resource-task` / `resource-prod-view` / `resource-channel` 因自身仍持有宿主表定义，暂保持原形）。
   test("负例：注入真实的 ./server 出口时递归进入服务端实现并触发拦截", () => {
     const poisoned = walkValueGraph(WEB_ENTRY, [`${PKG_NAME}/server`]);
     expect(poisoned.files).toContain(join(PKG_ROOT, "src", "server.ts"));
@@ -244,6 +247,8 @@ describe("knowledge web 入口浏览器可达面", () => {
       (ref) => ref.specifier.startsWith("node:") && ref.from.startsWith(serverDir),
     );
     expect(offendersOf(nodeBuiltins).length).toBeGreaterThan(0);
+    const hostServer = poisoned.references.filter((ref) => ref.specifier.startsWith("@server/"));
+    expect(offendersOf(hostServer)).toEqual([]);
   });
 
   // ./web 出口的契约：package.json 必须指向 web/index.ts，否则宿主解析到别的文件时守卫失去意义。

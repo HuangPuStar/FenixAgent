@@ -1,15 +1,16 @@
-import { agentMemoryConfig } from "@server/db/schema";
+import { agentMemoryConfig } from "@fenix/resource-memory/db";
 import { eq } from "drizzle-orm";
 import { getMemoryDatabase } from "../db";
 
 /**
  * Agent 记忆开关的唯一数据访问点。
  *
- * 句柄经 `getMemoryDatabase()`（= 平台契约的 `getDatabase()`）获取，不再 import 宿主 `@server/db`：
+ * 句柄经 `getMemoryDatabase()`（= 平台契约的 `getDatabase()`）获取，不 import 宿主 `@server/db`：
  * 包离开宿主后仍可测试（包内用例 stub DB），宿主也能替换连接实现而不影响本包。
  *
- * 表对象仍来自 `@server/db/schema`（`agent_memory_config` 的迁出归任务 1.7），这是本包唯一保留的
- * 宿主内部导入，台账 `apps-boundary` 逐条记录。
+ * 表对象自 §1.7 B10 起由本包 `db/schema.ts` 持有（`@fenix/resource-memory/db` 自引用而非相对路径：
+ * `db/` 不进 `tsconfig.json` 的 `include`，走包 `exports` 才能被解析）。本包至此对宿主已零内部导入，
+ * 台账 `apps-boundary` 的条目随之删除。
  */
 
 export type AgentMemoryConfig = typeof agentMemoryConfig.$inferSelect;
