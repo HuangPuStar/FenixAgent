@@ -224,6 +224,7 @@ const EXPECTED_EXPORTS: Record<string, readonly string[]> = {
     "ThemeProvider",
     "UI_COMPONENTS_NS",
     "cn",
+    "copyTextToClipboard",
     "getRegisteredAllowedTags",
     "getRegisteredComponents",
     "getRegisteredTags",

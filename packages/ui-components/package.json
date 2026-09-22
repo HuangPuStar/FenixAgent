@@ -436,6 +436,10 @@
       "types": "./web/lib/card-renderer.tsx",
       "default": "./web/lib/card-renderer.tsx"
     },
+    "./lib/clipboard": {
+      "types": "./web/lib/clipboard.ts",
+      "default": "./web/lib/clipboard.ts"
+    },
     "./lib/cn": {
       "types": "./web/lib/cn.ts",
       "default": "./web/lib/cn.ts"

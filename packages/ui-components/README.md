@@ -15,7 +15,7 @@
 ```
 web/                      组件源码；必须在 web/ 下
   index.ts                barrel
-  lib/                    cn / i18n 命名空间常量 / theme / card-renderer
+  lib/                    cn / i18n 命名空间常量 / theme / card-renderer / clipboard
   styles/theme.css        设计 token（唯一样式入口）
   i18n/locales/{en,zh}/   包内文案，命名空间 uiComponents
   ui/ config/ chat/ components/ layout/

@@ -110,6 +110,7 @@ export * from "./layout/app-header";
 export * from "./layout/app-page";
 // lib —— 包内基础设施
 export * from "./lib/card-renderer";
+export * from "./lib/clipboard";
 export * from "./lib/cn";
 export * from "./lib/theme";
 // ui —— 基础控件
