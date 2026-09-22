@@ -59,7 +59,7 @@
 - **文件图标与扩展名提取**：`agent-knowledge-resources.tsx` 的本地 `FileIcon`（extension → lucide 单色图标的 if-else 表，是本包第三份扩展名清单）退场，改用库的 `FileTypeIcon`（`@fenix/ui-components/components/file-icon-helper`，与文件树 / 文件页签 / 文件选择器同一套彩色图标）；`ResourcePreviewContent.tsx` 的 4 处 `filename.split(".").pop()` 改用库的 `getFileExtension()`。**口径差异**：无点号的文件名（如 `Makefile`）旧写法把整个名字当扩展名（恰与某个已知扩展名同名时会被误判成该类型），新写法返回空串、落到 `other`。
 - **状态块收敛到 `EmptyState`**：`KnowledgeLoadFailure` / `AgentKnowledgeAccessDenied` / 目录面板的错与空态 / `.knowledge-resources__empty` / 图谱面板的错与空态 / 嵌入模型空态 / 检索面板三处空态 / 切片列表空态 / 页面「请选择知识库」/ 详情失败 / 导入弹窗空态 / 无向量模型 / 无 pipeline 均改由 `config/EmptyState` 渲染（失败 `tone="danger"` + `role="alert"` + 重试；无权限不给重试）。随之删除 `.knowledge-directory__state`、`.knowledge-resources__empty` 两组死样式；`.knowledge-resource-name__icon` 去掉 `color` 与对 `svg` 的宽度覆盖（尺寸与配色归组件）。`KnowledgeLoadFailure` 的「判定 → 短路无权限 → 一般失败带重试」口径不变，只换骨架。
 - **`ResourcePreviewContent` 的两处「不支持预览 + 下载」收成 `UnsupportedPreview`**：不并进 `EmptyState` 的 `action`，因为下载语义是 `<a download>`（`action` 只收 `Button` + `onClick`）。
-- **刻意保留**：目录列表项的纯装饰状态圆点（无文案，等待库的圆点原语）与其 `statusClass` 类映射。
+- **状态圆点收敛到库原语（前一条登记的闭环）**：目录列表项的纯装饰状态圆点（无文案）改由 `@fenix/ui-components/ui/status-dot` 渲染——6px 装饰尺度经 `className="size-1.5"` 覆盖库默认 8px，不传 `label` 故整块 `aria-hidden`（保持不播报）；`agent-knowledge-directory.tsx` 的 `statusClass` 类映射与 `agent-knowledge.css` 的四条圆点规则随之删除，色调查本包唯一词表 `KB_STATUS_TONES`（经 `getStatusTone` 兜底 `neutral`），不新增第二套映射。**有意归一化**（视觉变更，非副作用）：`ready` `#10b981` / `error` `#ef4444` 不变；`processing` / `indexing` 由琥珀 `#f59e0b` → info 蓝 `#1677ff`（暗色 `#4096ff`）；`pending` 由琥珀 → `neutral`；`empty` 等未收录状态由 `#b8c3d2` → `neutral`（`#94a3b8` / 暗色 `#64748b`）。圆点自此跟随 token 获得暗色自适应。
 
 ## W2.5 处置与刻意偏离（2026-09-20）
 
