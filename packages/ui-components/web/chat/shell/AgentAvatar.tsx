@@ -6,7 +6,7 @@ import { AgentLogo } from "./internal/agent-logo";
 
 /**
  * AgentAvatar 属性。
- * 复制自 `packages/agent-runtime/web/components/chat/AgentAvatar.tsx`；纯化改动点：无。
+ * 复制自 `packages/agent-runtime/web/components/chat/AgentAvatar.tsx`（旧路径，已于 2026-09-21 由 f2741a82d 删除）；纯化改动点：无。
  */
 interface AgentAvatarProps {
   className?: string;
@@ -15,7 +15,7 @@ interface AgentAvatarProps {
 /**
  * 品牌 Agent 头像（多圆 + 连线组成的网络节点图案）。
  *
- * 复制自 `packages/agent-runtime/web/components/chat/AgentAvatar.tsx`。
+ * 复制自 `packages/agent-runtime/web/components/chat/AgentAvatar.tsx`（旧路径，已于 2026-09-21 由 f2741a82d 删除）。
  * 纯化改动点：`cn` 由宿主 `@/src/lib/utils` 改为包内 `../../lib/cn`。
  * 内联 SVG 改为 `./internal/agent-logo`（2026-09-22 库内去重，尺寸 20 不变）。
  */

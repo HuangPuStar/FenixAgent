@@ -13,7 +13,7 @@ interface ChatQuoteMessageProps {
 /**
  * 已发送引用的专用投影：默认仅展示胶囊，hover、键盘聚焦或点击后展示受限摘要。
  *
- * 复制自 `packages/agent-runtime/web/components/chat/ChatQuoteMessage.tsx`。
+ * 复制自 `packages/agent-runtime/web/components/chat/ChatQuoteMessage.tsx`（旧路径，已于 2026-09-21 由 f2741a82d 删除）。
  * 纯化改动点：
  * - `@/src/lib/context-queue` → 包内 `../lib/context-queue`。
  * - i18n 命名空间从宿主 `components` 改为包内单一命名空间，键加 `chat.components.` 前缀。

@@ -16,7 +16,7 @@ import { useDragUpload } from "./useDragUpload";
 /**
  * ChatComposer — 玻璃磨砂命令岛输入组件。
  *
- * 来源：复制自 `packages/agent-runtime/web/components/chat/ChatComposer.tsx`（597 行）。
+ * 来源：复制自 `packages/agent-runtime/web/components/chat/ChatComposer.tsx`（旧路径，已于 2026-09-21 由 f2741a82d 删除）（597 行）。
  * 拆分说明（500 行红线）：输入状态切到 `./composer-state.ts`，事件处理器切到
  * `./composer-handlers.ts`（其内部再用 `./composer-effects.ts` 订阅外部输入）；
  * 本文件只保留 props、状态装配与渲染结构——渲染结构、类名、文案插值与源实现逐字一致。

@@ -1,6 +1,6 @@
 /**
  * Loaded Skill 工具 narrator。处理技能加载通知。
- * 复制自 `packages/agent-runtime/web/components/chat/narrators/skill.ts`。
+ * 复制自 `packages/agent-runtime/web/components/chat/narrators/skill.ts`（旧路径，已于 2026-09-21 由 f2741a82d 删除）。
  *
  * 现有 ACP 协议下 title 格式为 "Loaded Skill: <name>"。
  * 优先用 tool.description（Agent 提供的技能描述，更可读），

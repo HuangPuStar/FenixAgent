@@ -1,7 +1,7 @@
 // =============================================================================
 // 权限请求面板 — 固定在输入框上方（Anthropic warm token style）
 //
-// 复制自 packages/agent-runtime/web/components/chat/PermissionPanel.tsx。
+// 复制自 packages/agent-runtime/web/components/chat/PermissionPanel.tsx（旧路径，已于 2026-09-21 由 f2741a82d 删除）。
 // 纯化改动：PendingPermission 改从包内 ../types 导入（不依赖 @fenix/* 与宿主 @/src）；
 //   cn 改为包内 ../../lib/cn；Button 改为包内 ../../ui/button；
 //   i18n 由宿主 ns=components 收敛到 UI_COMPONENTS_NS 的 chat.components.* key。
@@ -25,7 +25,7 @@ interface PermissionPanelProps {
 /**
  * 权限请求面板：把待确认的 ACP 权限请求渲染成输入框上方的暖色警示卡片列表。
  *
- * 复制自 `packages/agent-runtime/web/components/chat/PermissionPanel.tsx`。
+ * 复制自 `packages/agent-runtime/web/components/chat/PermissionPanel.tsx`（旧路径，已于 2026-09-21 由 f2741a82d 删除）。
  * 纯化改动：类型、cn、Button 与 i18n 改为包内导入；请求数据与应答全部由 props 注入，
  * 组件自身不订阅任何传输或会话状态；空列表返回 null（不占位）。
  */

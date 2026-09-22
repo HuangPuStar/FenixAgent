@@ -1,7 +1,7 @@
 /**
  * 工具卡片展示工具集（纯函数 + 样式表）：卡片配色、可读工具名、输出格式化。
  *
- * 来源：`packages/agent-runtime/web/components/chat/tool-call-utils.ts` 逐字复制
+ * 来源：`packages/agent-runtime/web/components/chat/tool-call-utils.ts`（旧路径，已于 2026-09-21 由 f2741a82d 删除） 逐字复制
  * `CardStyle` / `CARD_STYLES` / `cardKindToStyle` / `supportsFilePreview` / `KIND_LABELS` /
  * `simplifyToolName` / `kindLabel` / `truncate` / `isHindsightTool` / `formatOutput`。
  *
@@ -16,7 +16,7 @@ import type { ToolCallData, ToolCardKind } from "../types";
 // 工具卡片样式 — 基于 ToolCardKind
 // =============================================================================
 
-/** 工具卡片配色。复制自 `packages/agent-runtime/web/components/chat/tool-call-utils.ts`。 */
+/** 工具卡片配色。复制自 `packages/agent-runtime/web/components/chat/tool-call-utils.ts`（旧路径，已于 2026-09-21 由 f2741a82d 删除）。 */
 export interface CardStyle {
   /** 图标容器背景 */
   iconBg: string;
@@ -102,13 +102,13 @@ const CARD_STYLES: Record<ToolCardKind, CardStyle> = {
 
 /**
  * 通过 ToolCardKind 获取卡片样式。
- * 替代旧 getCardCategory()。复制自 `packages/agent-runtime/web/components/chat/tool-call-utils.ts`。
+ * 替代旧 getCardCategory()。复制自 `packages/agent-runtime/web/components/chat/tool-call-utils.ts`（旧路径，已于 2026-09-21 由 f2741a82d 删除）。
  */
 export function cardKindToStyle(kind: ToolCardKind): CardStyle {
   return CARD_STYLES[kind] ?? CARD_STYLES.unknown;
 }
 
-/** 仅文件读写工具可在 ArtifactsPanel 中打开文件。复制自 `packages/agent-runtime/web/components/chat/tool-call-utils.ts`。 */
+/** 仅文件读写工具可在 ArtifactsPanel 中打开文件。复制自 `packages/agent-runtime/web/components/chat/tool-call-utils.ts`（旧路径，已于 2026-09-21 由 f2741a82d 删除）。 */
 export function supportsFilePreview(kind: ToolCardKind): boolean {
   return kind === "read-file" || kind === "edit" || kind === "write";
 }
@@ -138,7 +138,7 @@ const KIND_LABELS: Record<ToolCardKind, string> = {
 /**
  * 工具名简化为可读显示名。
  * 兼容旧调用方式（传入 title 字符串）和新方式（传入 kind）。
- * 复制自 `packages/agent-runtime/web/components/chat/tool-call-utils.ts`。
+ * 复制自 `packages/agent-runtime/web/components/chat/tool-call-utils.ts`（旧路径，已于 2026-09-21 由 f2741a82d 删除）。
  */
 export function simplifyToolName(titleOrKind: string): string {
   // 新路径：如果是已知 kind 值则直接映射
@@ -163,7 +163,7 @@ export function simplifyToolName(titleOrKind: string): string {
   return titleOrKind;
 }
 
-/** 通过 kind 获取可读工具名。复制自 `packages/agent-runtime/web/components/chat/tool-call-utils.ts`。 */
+/** 通过 kind 获取可读工具名。复制自 `packages/agent-runtime/web/components/chat/tool-call-utils.ts`（旧路径，已于 2026-09-21 由 f2741a82d 删除）。 */
 export function kindLabel(kind: ToolCardKind): string {
   return KIND_LABELS[kind] || "";
 }
@@ -182,7 +182,7 @@ export function truncate(str: string, max: number): string {
   return str.length > max ? `${str.slice(0, max)}…` : str;
 }
 
-/** 判断是否为 hindsight 工具（HindsightToolCard 用此函数过滤）。复制自 `packages/agent-runtime/web/components/chat/tool-call-utils.ts`。 */
+/** 判断是否为 hindsight 工具（HindsightToolCard 用此函数过滤）。复制自 `packages/agent-runtime/web/components/chat/tool-call-utils.ts`（旧路径，已于 2026-09-21 由 f2741a82d 删除）。 */
 export function isHindsightTool(title: string): boolean {
   return title.toLowerCase().startsWith("hindsight_");
 }
@@ -190,7 +190,7 @@ export function isHindsightTool(title: string): boolean {
 /**
  * 把工具调用的输出（content 数组或 rawOutput）格式化为单行字符串，
  * 供 ToolCallDialog 的"输出"区域渲染。
- * 复制自 `packages/agent-runtime/web/components/chat/tool-call-utils.ts`。
+ * 复制自 `packages/agent-runtime/web/components/chat/tool-call-utils.ts`（旧路径，已于 2026-09-21 由 f2741a82d 删除）。
  */
 export function formatOutput(tool: ToolCallData): string {
   if (tool.content && tool.content.length > 0) {

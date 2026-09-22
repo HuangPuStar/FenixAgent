@@ -1,6 +1,6 @@
 /**
  * WebFetch / Fetch / Curl 工具 narrator。处理 URL 抓取场景。
- * 复制自 `packages/agent-runtime/web/components/chat/narrators/web-fetch.ts`。
+ * 复制自 `packages/agent-runtime/web/components/chat/narrators/web-fetch.ts`（旧路径，已于 2026-09-21 由 f2741a82d 删除）。
  *
  * match 用 includes("fetch") 而非 includes("webfetch")，因为某些 Agent 用 Fetch 简称；
  * WebSearch 用 includes("search")，与 fetch 不冲突，所以注册顺序无强约束。

@@ -1,4 +1,4 @@
-// 复制自 packages/agent-runtime/web/components/chat/chat-status-panel.tsx。
+// 复制自 packages/agent-runtime/web/components/chat/chat-status-panel.tsx（旧路径，已于 2026-09-21 由 f2741a82d 删除）。
 // 纯化改动：
 //   - PeriTaskViewProjection / ChangedFile / TodoItem 改从包内 ../types 导入；
 //   - cn 改为包内 ../../lib/cn；i18n 由宿主 ns=components 收敛到 UI_COMPONENTS_NS 的
@@ -30,7 +30,7 @@ type StatusTab = "todo" | "tasks" | "changes";
 /**
  * 从路径中提取文件名（兼容 Windows 反斜杠与结尾斜杠）。
  *
- * 复制自 `packages/agent-runtime/web/components/chat/chat-status-panel.tsx`；纯化改动：无。
+ * 复制自 `packages/agent-runtime/web/components/chat/chat-status-panel.tsx`（旧路径，已于 2026-09-21 由 f2741a82d 删除）；纯化改动：无。
  */
 export function fileNameFromPath(path: string): string {
   const normalized = path.replace(/\\/g, "/").replace(/\/+$/, "");
@@ -72,7 +72,7 @@ interface ChatStatusPanelProps {
 /**
  * 输入框上方唯一的非阻塞状态面板，只消费当前 Y.Doc 投影与消息派生数据。
  *
- * 复制自 `packages/agent-runtime/web/components/chat/chat-status-panel.tsx`。
+ * 复制自 `packages/agent-runtime/web/components/chat/chat-status-panel.tsx`（旧路径，已于 2026-09-21 由 f2741a82d 删除）。
  * 纯化改动：类型、cn 与 i18n 改为包内导入；文件预览由 `onPreviewFile` 回调注入替代窗口事件；
  * props 全量注入，组件不读取任何传输层状态；无可用 tab 时返回 null。
  */

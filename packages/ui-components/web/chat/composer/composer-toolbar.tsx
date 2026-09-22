@@ -11,7 +11,7 @@ import { SessionModeSelector } from "./SessionModeSelector";
 /**
  * Composer 底部操作行。
  *
- * 来源：复制自 `packages/agent-runtime/web/components/chat/composer-toolbar.tsx`。
+ * 来源：复制自 `packages/agent-runtime/web/components/chat/composer-toolbar.tsx`（旧路径，已于 2026-09-21 由 f2741a82d 删除）。
  * 纯化改动点：`@fenix/chat-channel` 类型 → 包内 `../types`；`@/components/ui/button` →
  * `../../ui/button`；`@/src/lib/model-config-utils` 的 `simplifyModelDisplayName` →
  * 包内纯函数 `../lib/simplify-model-display-name`；命名空间改为 `UI_COMPONENTS_NS`

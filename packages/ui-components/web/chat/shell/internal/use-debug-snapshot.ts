@@ -1,7 +1,7 @@
 /**
  * Chat 面板的调试快照（Ctrl + Alt + Shift + D 即时输出当前完整状态）。
  *
- * 来源：从 `packages/chat-channel/web/components/ChatInterface.tsx` 抽出（原为组件内的
+ * 来源：从 `packages/chat-channel/web/components/ChatInterface.tsx`（旧路径，已于 2026-09-21 由 8f364c109 删除） 抽出（原为组件内的
  * `DEBUG_SENSITIVE_KEY`、`createDebugSnapshot` 与 keydown effect；抽出后 ChatInterface 保持在
  * 单文件 500 行红线内）。
  * 纯化改动点：effect 的依赖数组由"列出全部状态字段"改为"渲染期快照工厂 + 空依赖"，避免

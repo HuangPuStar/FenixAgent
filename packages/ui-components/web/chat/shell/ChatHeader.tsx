@@ -50,7 +50,7 @@ const HEADER_CARD_CLASS = cn(
 
 /**
  * ChatHeader 属性。
- * 复制自 `packages/agent-runtime/web/components/chat/ChatHeader.tsx`。
+ * 复制自 `packages/agent-runtime/web/components/chat/ChatHeader.tsx`（旧路径，已于 2026-09-21 由 f2741a82d 删除）。
  */
 interface ChatHeaderProps {
   /** 当前激活的会话 ID（与 ChatInterface 内 activeSessionId 对齐） */
@@ -91,7 +91,7 @@ interface ChatHeaderProps {
  * 数据自包含：组件内部独立监听 capabilitiesChange / connectionState / 30s 轮询，
  * 避免与 ChatInterface 的会话状态耦合。
  *
- * 复制自 `packages/agent-runtime/web/components/chat/ChatHeader.tsx`。
+ * 复制自 `packages/agent-runtime/web/components/chat/ChatHeader.tsx`（旧路径，已于 2026-09-21 由 f2741a82d 删除）。
  * 纯化改动点：`toast.error` 改为 `onNotice` 回调（文案逐字保留）；`cn` / UI 组件 / `stripHtmlTags`
  * 改为包内导入；i18n 收敛到 `UI_COMPONENTS_NS`（键前缀 `chat.components.`）；单行渲染抽到
  * `./internal/chat-header-session-row` 以满足单文件 500 行约束。

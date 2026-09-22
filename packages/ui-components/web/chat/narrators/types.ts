@@ -1,7 +1,7 @@
 /**
  * Narrator 类型契约。
  *
- * 来源：`packages/agent-runtime/web/components/chat/narrators/types.ts` 逐字复制。
+ * 来源：`packages/agent-runtime/web/components/chat/narrators/types.ts`（旧路径，已于 2026-09-21 由 f2741a82d 删除） 逐字复制。
  * 纯化改动点：`ToolCallData` / `ToolCardKind` 改为从包内 `../types` 导入，其余字段与语义不变。
  */
 
@@ -41,10 +41,10 @@ export interface NarrationContext {
   t: TFunction;
 }
 
-/** 徽章色调。复制自 `packages/agent-runtime/web/components/chat/narrators/types.ts`。 */
+/** 徽章色调。复制自 `packages/agent-runtime/web/components/chat/narrators/types.ts`（旧路径，已于 2026-09-21 由 f2741a82d 删除）。 */
 export type BadgeTone = "info" | "warn" | "error" | "success";
 
-/** 状态/耗时徽章。复制自 `packages/agent-runtime/web/components/chat/narrators/types.ts`。 */
+/** 状态/耗时徽章。复制自 `packages/agent-runtime/web/components/chat/narrators/types.ts`（旧路径，已于 2026-09-21 由 f2741a82d 删除）。 */
 export interface NarrationBadge {
   tone: BadgeTone;
   text: string;
@@ -68,7 +68,7 @@ export interface ToolDisplay {
 
 /**
  * Narration 结果。中央 narrate() 返回，ToolCallRow 直接渲染。
- * 复制自 `packages/agent-runtime/web/components/chat/narrators/types.ts`。
+ * 复制自 `packages/agent-runtime/web/components/chat/narrators/types.ts`（旧路径，已于 2026-09-21 由 f2741a82d 删除）。
  */
 export interface NarrationResult {
   icon?: LucideIcon;

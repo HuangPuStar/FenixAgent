@@ -21,6 +21,15 @@
  * 已在阶段一至五迁成组件 `className` 里的工具类；包内也没有「组件自导入」的 chat 样式表了
  * （`conversation.css`、`chat-message-content.css`、`chat-navigation-aids.css` 先后迁空并删除）。
  *
+ * 出处注释的读法（2026-09-22 全量对账）：本目录大量注释以「复制自 `X`」「来源：`X`」记录迁移出处，
+ * 而 X 指向的源文件多数已随迁移批次退场（见下）。这些注释此后按统一格式在路径后标注
+ * 「（旧路径，已于 <日期> 由 <commit> 删除）」——标注只说明**该路径已不存在**，出处正文的语义不变。
+ * 需要读原文时用 `git show <commit>^:<path>`，例如
+ * `git show f2741a82d^:packages/agent-runtime/web/components/chat/tool-call-utils.ts`。
+ * 涉及的退场批次：`f2741a82d`（agent-runtime 旧 chat 全目录，53 源文件）、`8f364c10`（chat-channel/web）、
+ * `6679b464` 与 `5c6aa908`（宿主 `apps/web/src/{api,lib,types,pages,components}`）、
+ * `9998926e`（PeriTaskDetailSheet 迁入本包）。
+ *
  * 维护约定：新增或删除 `web/chat/` 下的模块时必须同步本文件与根 `web/index.ts`，
  * 否则深链与整包导入会出现能力差异。
  */

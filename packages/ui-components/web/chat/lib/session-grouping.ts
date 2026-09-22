@@ -1,7 +1,7 @@
 /**
  * 会话列表按"今天 / 昨天 / 更早"三档分组（纯函数）。
  *
- * 来源：逐字复制 `packages/agent-runtime/web/components/chat/session-grouping.ts`。
+ * 来源：逐字复制 `packages/agent-runtime/web/components/chat/session-grouping.ts`（旧路径，已于 2026-09-21 由 f2741a82d 删除）。
  * 纯化改动点：`SessionSummary` 由 `@fenix/chat-channel` 改为包内 `../types`，函数体不变。
  */
 

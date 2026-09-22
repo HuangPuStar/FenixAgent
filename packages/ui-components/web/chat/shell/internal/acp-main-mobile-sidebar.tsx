@@ -1,7 +1,7 @@
 /**
  * ACPMain 的移动端会话侧边栏（Sheet 抽屉 + 会话列表）。
  *
- * 来源：从 `packages/chat-channel/web/components/ACPMain.tsx` 的移动端 `Sheet` 分支原样抽出
+ * 来源：从 `packages/chat-channel/web/components/ACPMain.tsx`（旧路径，已于 2026-09-21 由 8f364c109 删除） 的移动端 `Sheet` 分支原样抽出
  * （抽出后 ACPMain 保持在单文件 500 行红线内）。
  * 纯化改动点：UI 组件与 i18n 改为包内导入（键前缀 `chat.components.`）；JSX、类名与文案逐字保留。
  */

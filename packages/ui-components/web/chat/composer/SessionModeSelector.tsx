@@ -9,7 +9,7 @@ import type { SessionMode } from "../types";
 /**
  * Session Mode Selector — 从 agent 动态获取的会话模式下拉选择器。
  *
- * 来源：复制自 `packages/agent-runtime/web/components/chat/SessionModeSelector.tsx`。
+ * 来源：复制自 `packages/agent-runtime/web/components/chat/SessionModeSelector.tsx`（旧路径，已于 2026-09-21 由 f2741a82d 删除）。
  *
  * 归属说明：该文件不在输入岛组的分组清单内，但它是 `composer-toolbar.tsx`（readOnly 用法）
  * 的唯一消费方，且没有任何并行分组负责复制它——为保证输入岛可用，本组一并复制到

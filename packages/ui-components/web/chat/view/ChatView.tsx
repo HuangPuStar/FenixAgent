@@ -66,7 +66,7 @@ function bindPreviewFile(
 /**
  * 统一聊天视图（消息时间线 + 空状态 + 加载指示 + 选区动作 + 提示词导航）。
  *
- * 复制自 `packages/agent-runtime/web/components/chat/ChatView.tsx`。
+ * 复制自 `packages/agent-runtime/web/components/chat/ChatView.tsx`（旧路径，已于 2026-09-21 由 f2741a82d 删除）。
  * 纯化改动点：
  * - `@/components/ai-elements/conversation` → 包内 `../primitives/conversation`；`@/src/lib/*` → 包内相对路径。
  * - `chat:apply-suggested-prompt` / `chat:quote` window 自定义事件改为 `onApplySuggestedPrompt` /
@@ -224,7 +224,7 @@ const DEFAULT_EMPTY_LOGO_SRC = `${import.meta.env.BASE_URL}brand/fenix-agent-log
 /**
  * 会话空状态：品牌图 + 标题 + 说明 + 三条建议提示词。
  *
- * 复制自 `packages/agent-runtime/web/components/chat/ChatView.tsx` 内的 `ChatEmptyState`。
+ * 复制自 `packages/agent-runtime/web/components/chat/ChatView.tsx`（旧路径，已于 2026-09-21 由 f2741a82d 删除） 内的 `ChatEmptyState`。
  * 纯化改动点：建议提示词的 `chat:apply-suggested-prompt` window 事件改为 `onApplySuggestedPrompt`
  * 回调；品牌图地址提为 `logoSrc`（默认值与源表达式一致）；i18n 键加 `chat.components.` 前缀。
  */
@@ -340,7 +340,7 @@ interface ChatRenderItemViewProps {
 /**
  * 渲染单个渲染项：工具组走 ToolCallGroup，其余走 EntryRenderer。
  *
- * 复制自 `packages/agent-runtime/web/components/chat/ChatView.tsx`。
+ * 复制自 `packages/agent-runtime/web/components/chat/ChatView.tsx`（旧路径，已于 2026-09-21 由 f2741a82d 删除）。
  * 纯化改动点：新增向下透传 `cardEmitter` / `onQuote` / `onOpenWorkspaceFile`（宿主注入点）；
  * 消息节点 id `chat-entry-${entryId}` 为跨组件契约（PromptJumpRail 依赖），保持不变。
  */

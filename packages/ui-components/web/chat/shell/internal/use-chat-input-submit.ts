@@ -1,7 +1,7 @@
 /**
  * ChatInterface 的提交与"待发送缓存"逻辑。
  *
- * 来源：从 `packages/chat-channel/web/components/ChatInterface.tsx` 的 `handleChatInputSubmit`、
+ * 来源：从 `packages/chat-channel/web/components/ChatInterface.tsx`（旧路径，已于 2026-09-21 由 8f364c109 删除） 的 `handleChatInputSubmit`、
  * 两个 pending-send effect 与相关 ref 原样抽出（抽出后 ChatInterface 保持在单文件 500 行红线内）。
  * 纯化改动点：
  * - 图片准备失败不再调用 sonner toast，改为把宿主已翻译的文案经 `onNotice` 抛出（hook 不依赖 i18n）。

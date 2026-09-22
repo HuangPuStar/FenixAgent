@@ -1,7 +1,7 @@
 /**
  * 会话消息 → 渲染项的纯函数投影（含思考块合并与活动链分组）。
  *
- * 来源：逐字复制 `packages/agent-runtime/web/components/chat/chat-render-layout.ts`。
+ * 来源：逐字复制 `packages/agent-runtime/web/components/chat/chat-render-layout.ts`（旧路径，已于 2026-09-21 由 f2741a82d 删除）。
  * 纯化改动点：唯一改动是把 `@/src/lib/types` 收敛为包内 `../types`；逻辑、注释与判定顺序不变。
  */
 
@@ -33,7 +33,7 @@ function isThoughtOnlyEntry(entry: ThreadEntry): entry is AssistantMessageEntry 
  * Thought-only entries adjacent to tools form one compact activity chain, while
  * assistant entries containing visible text keep the regular reading rhythm.
  *
- * 复制自 `packages/agent-runtime/web/components/chat/chat-render-layout.ts`；纯化改动点：无（仅模块路径调整）。
+ * 复制自 `packages/agent-runtime/web/components/chat/chat-render-layout.ts`（旧路径，已于 2026-09-21 由 f2741a82d 删除）；纯化改动点：无（仅模块路径调整）。
  */
 export function buildChatRenderItems(entries: readonly ThreadEntry[]): ChatRenderItem[] {
   const grouped: UngradedChatRenderItem[] = [];
@@ -70,7 +70,7 @@ export function buildChatRenderItems(entries: readonly ThreadEntry[]): ChatRende
 /**
  * Groups adjacent activity items so the view can render one continuous tool rail.
  *
- * 复制自 `packages/agent-runtime/web/components/chat/chat-render-layout.ts`；纯化改动点：无（仅模块路径调整）。
+ * 复制自 `packages/agent-runtime/web/components/chat/chat-render-layout.ts`（旧路径，已于 2026-09-21 由 f2741a82d 删除）；纯化改动点：无（仅模块路径调整）。
  */
 export function buildChatRenderBlocks(entries: readonly ThreadEntry[]): ChatRenderBlock[] {
   const blocks: ChatRenderBlock[] = [];

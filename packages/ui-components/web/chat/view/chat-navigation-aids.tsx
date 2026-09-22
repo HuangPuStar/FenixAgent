@@ -46,7 +46,7 @@ interface PromptPreview {
 /**
  * 宽屏会话提示词导航，不参与消息数据写入。
  *
- * 复制自 `packages/agent-runtime/web/components/chat/chat-navigation-aids.tsx`。
+ * 复制自 `packages/agent-runtime/web/components/chat/chat-navigation-aids.tsx`（旧路径，已于 2026-09-21 由 f2741a82d 删除）。
  * 纯化改动点：`@/src/lib/types` → 包内 `../types`；命名空间常量与样式表路径收敛到包内
  * （`../../i18n/namespace`、`../css/chat-navigation-aids.css`）；键加 `chat.components.` 前缀。
  */
@@ -227,7 +227,7 @@ export interface ChatSelectionActionProps {
 /**
  * 只对聊天正文内的用户选区显示“添加到对话”，popover 使用 fixed 避免被滚动层裁剪。
  *
- * 复制自 `packages/agent-runtime/web/components/chat/chat-navigation-aids.tsx`。
+ * 复制自 `packages/agent-runtime/web/components/chat/chat-navigation-aids.tsx`（旧路径，已于 2026-09-21 由 f2741a82d 删除）。
  * 纯化改动点：`chat:quote` window 自定义事件改为 `onQuote` 回调 prop（不再 `window.dispatchEvent`）；
  * 命名空间与键前缀收敛到包内；选区判定改为依赖消息容器的稳定锚点
  * `data-slot="chat-conversation-content"`（由 `view/ChatView.tsx` 的 `ConversationContent` 提供，

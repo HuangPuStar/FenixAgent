@@ -14,7 +14,7 @@
 // - 空列表返回 null；pendingQuestions 投影过滤后自动隐藏（用户应答 resolved
 //   或 60s 过期 expired）
 //
-// 复制自 packages/agent-runtime/web/components/chat/QuestionPanel.tsx。
+// 复制自 packages/agent-runtime/web/components/chat/QuestionPanel.tsx（旧路径，已于 2026-09-21 由 f2741a82d 删除）。
 // 纯化改动：QuestionProjection 改从包内 ../types 导入（不再 import @fenix/chat-channel）；
 //   cn 改为包内 ../../lib/cn；Button 改为包内 ../../ui/button；
 //   i18n 由宿主 ns=components 收敛到 UI_COMPONENTS_NS 的 chat.components.* key。
@@ -39,7 +39,7 @@ interface QuestionPanelProps {
 /**
  * 交互问题面板：把待应答的 AskUserQuestion 投影渲染成输入框上方的问题卡片列表。
  *
- * 复制自 `packages/agent-runtime/web/components/chat/QuestionPanel.tsx`。
+ * 复制自 `packages/agent-runtime/web/components/chat/QuestionPanel.tsx`（旧路径，已于 2026-09-21 由 f2741a82d 删除）。
  * 纯化改动：类型、cn、Button 与 i18n 改为包内导入；问题数据与应答由 props 注入，
  * 组件不做投影过滤、不订阅传输层；空列表返回 null（不占位）。
  */

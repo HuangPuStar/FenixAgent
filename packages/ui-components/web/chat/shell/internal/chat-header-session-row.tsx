@@ -1,7 +1,7 @@
 /**
  * ChatHeader 弹窗会话列表的单行（内联重命名态 + 常规行 + 悬浮操作按钮）。
  *
- * 来源：从 `packages/agent-runtime/web/components/chat/ChatHeader.tsx` 的 popover 列表分支
+ * 来源：从 `packages/agent-runtime/web/components/chat/ChatHeader.tsx`（旧路径，已于 2026-09-21 由 f2741a82d 删除） 的 popover 列表分支
  * （`group.sessions.map(...)` 内部 JSX）原样抽出，用于把 ChatHeader 控制在 500 行红线内。
  * 纯化改动点：`cn` / UI 组件 / `stripHtmlTags` 改为包内导入；i18n 收敛到 `UI_COMPONENTS_NS`
  * （键前缀 `chat.components.`）；JSX 结构与类名逐字保留（含源有意的硬编码 `aria-label="取消"`）。

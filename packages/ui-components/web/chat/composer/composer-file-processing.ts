@@ -3,7 +3,7 @@ import type { FileAttachment, UserMessageImage } from "../types";
 /**
  * 输入岛的文件处理：图片压缩为 ACP 可直接发送的 base64，普通附件上传为 workspace 相对路径。
  *
- * 来源：复制自 `packages/agent-runtime/web/components/chat/composer-file-processing.ts`。
+ * 来源：复制自 `packages/agent-runtime/web/components/chat/composer-file-processing.ts`（旧路径，已于 2026-09-21 由 f2741a82d 删除）。
  * 纯化改动点：
  * - `browser-image-compression` 与 `@/src/api/fs`（`uploadChatFiles`）改为注入点
  *   （`CompressImage` / `UploadComposerFiles`），包内不再持有网络与压缩依赖；

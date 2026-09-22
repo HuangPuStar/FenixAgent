@@ -1,7 +1,7 @@
 /**
  * FilePickerPanel — 会话附件选择面板（目录浏览 + 上传）。
  *
- * 来源：逐字复制 `packages/agent-runtime/web/components/chat/FilePickerPanel.tsx`（JSX 与类名不变）。
+ * 来源：逐字复制 `packages/agent-runtime/web/components/chat/FilePickerPanel.tsx`（旧路径，已于 2026-09-21 由 f2741a82d 删除）（JSX 与类名不变）。
  * 纯化改动点：
  * - `ahooks` 的 `useRequest` 移除，改为内部 `useState` + `useRef` 管理请求生命周期
  *   （保留源语义：手动触发、loading/error 状态、上传成功回到文件所在目录）。
@@ -58,7 +58,7 @@ export interface FilePickerPanelProps {
 }
 
 /**
- * 结构判定宿主 `ApiError`（`apps/web/src/api/request.ts` 的实例携带 `code`）。
+ * 结构判定宿主 `ApiError`（`apps/web/src/api/request.ts`（旧路径，已于 2026-09-21 由 6679b4648 删除） 的实例携带 `code`）。
  * 包内不 import 宿主错误类，仅按 `code` 存在性区分"服务端错误"与"未知错误"。
  */
 function isApiErrorLike(error: unknown): error is { code?: string; message: string } {
@@ -80,7 +80,7 @@ function formatFileSize(bytes: number): string {
 /**
  * 会话附件选择面板：面包屑目录浏览、搜索过滤、上传与体积校验。
  *
- * 复制自 `packages/agent-runtime/web/components/chat/FilePickerPanel.tsx`；纯化改动点见文件头。
+ * 复制自 `packages/agent-runtime/web/components/chat/FilePickerPanel.tsx`（旧路径，已于 2026-09-21 由 f2741a82d 删除）；纯化改动点见文件头。
  */
 export function FilePickerPanel({ listDir, uploadFiles, onSelect, onClose, className }: FilePickerPanelProps) {
   const { t } = useTranslation(UI_COMPONENTS_NS);

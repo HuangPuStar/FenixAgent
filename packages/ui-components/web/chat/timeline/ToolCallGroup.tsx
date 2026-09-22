@@ -1,7 +1,7 @@
 /**
  * 工具调用列表 — 卡片式布局，每种工具有专属视觉风格，点击弹窗查看参数。
  *
- * 来源：`packages/agent-runtime/web/components/chat/ToolCallGroup.tsx` 逐字复制。
+ * 来源：`packages/agent-runtime/web/components/chat/ToolCallGroup.tsx`（旧路径，已于 2026-09-21 由 f2741a82d 删除） 逐字复制。
  * 纯化改动点：`envId` prop 替换为宿主注入的 `onPreviewFile` 回调（透传给 ToolCallRow），
  * `HindsightToolCard` / `ToolCallRow` 改从同目录导入。
  */
@@ -23,7 +23,7 @@ interface ToolCallGroupProps {
   inActivityChain?: boolean;
 }
 
-/** 工具调用分组：hindsight 记忆工具与普通工具分开渲染。复制自 `packages/agent-runtime/web/components/chat/ToolCallGroup.tsx`。 */
+/** 工具调用分组：hindsight 记忆工具与普通工具分开渲染。复制自 `packages/agent-runtime/web/components/chat/ToolCallGroup.tsx`（旧路径，已于 2026-09-21 由 f2741a82d 删除）。 */
 export function ToolCallGroup({ entries, onPreviewFile, inActivityChain }: ToolCallGroupProps) {
   // 将 hindsight 工具与普通工具分离，各自独立渲染
   const hindsightEntries = entries.filter((e) => isHindsightTool(e.toolCall.title));

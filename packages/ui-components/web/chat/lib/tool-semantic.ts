@@ -1,7 +1,7 @@
 /**
  * 工具语义分类（纯函数）——把工具名 / display / rawInput 归一化为稳定的语义标签。
  *
- * 来源：`apps/web/src/lib/tool-semantic.ts` 逐字复制 `normalizeToolName` /
+ * 来源：`apps/web/src/lib/tool-semantic.ts`（旧路径，已于 2026-09-21 由 6679b4648 删除） 逐字复制 `normalizeToolName` /
  * `classifyToolSemantic` / `semanticToToolCardKind`。
  *
  * 纯化改动点：
@@ -13,14 +13,14 @@
 
 import type { ToolCardKind, ToolSemantic, ToolSemanticInput } from "../types";
 
-/** 将工具名归一化为稳定标识，兼容大小写、snake_case 和分隔符变体。复制自 `apps/web/src/lib/tool-semantic.ts`。 */
+/** 将工具名归一化为稳定标识，兼容大小写、snake_case 和分隔符变体。复制自 `apps/web/src/lib/tool-semantic.ts`（旧路径，已于 2026-09-21 由 6679b4648 删除）。 */
 export function normalizeToolName(name: string | undefined): string {
   return (name ?? "").replace(/[^a-z0-9]/gi, "").toLowerCase();
 }
 
 /**
  * 工具语义的唯一前端分类入口。名称是权威信号，display/rawInput 仅在名称未知时兜底。
- * 复制自 `apps/web/src/lib/tool-semantic.ts`。
+ * 复制自 `apps/web/src/lib/tool-semantic.ts`（旧路径，已于 2026-09-21 由 6679b4648 删除）。
  */
 export function classifyToolSemantic({ name, rawInput, display }: ToolSemanticInput): ToolSemantic {
   const normalized = normalizeToolName(name);
@@ -56,7 +56,7 @@ export function classifyToolSemantic({ name, rawInput, display }: ToolSemanticIn
   return "other";
 }
 
-/** 语义标签 → 工具卡片类型；`other` 无对应卡片类型，返回 undefined。复制自 `apps/web/src/lib/tool-semantic.ts`。 */
+/** 语义标签 → 工具卡片类型；`other` 无对应卡片类型，返回 undefined。复制自 `apps/web/src/lib/tool-semantic.ts`（旧路径，已于 2026-09-21 由 6679b4648 删除）。 */
 export function semanticToToolCardKind(semantic: ToolSemantic): ToolCardKind | undefined {
   switch (semantic) {
     case "ask-user-question":

@@ -1,7 +1,7 @@
 /**
  * TodoWrite 工具卡片的增量列表：只展示本次调用相较上一轮变动的待办。
  *
- * 来源：`packages/agent-runtime/web/components/chat/TodoChanges.tsx` 逐字复制。
+ * 来源：`packages/agent-runtime/web/components/chat/TodoChanges.tsx`（旧路径，已于 2026-09-21 由 f2741a82d 删除） 逐字复制。
  * 纯化改动点：
  * - `cn` 改从包内 `../../lib/cn` 导入；色值与样式表逐字保留。
  * - 去掉每条待办右侧的变更标签（源实现为带底色的 badge）：变更语义已由左侧图标与文案样式表达，
@@ -50,7 +50,7 @@ const CHANGE_STYLES: Record<TodoChangeKind, { Icon: typeof Circle; iconClassName
   },
 };
 
-/** TodoWrite 工具卡片的增量列表；只展示本次调用相较上一轮变动的待办。复制自 `packages/agent-runtime/web/components/chat/TodoChanges.tsx`。 */
+/** TodoWrite 工具卡片的增量列表；只展示本次调用相较上一轮变动的待办。复制自 `packages/agent-runtime/web/components/chat/TodoChanges.tsx`（旧路径，已于 2026-09-21 由 f2741a82d 删除）。 */
 export function TodoChanges({ changes }: TodoChangesProps) {
   if (changes.length === 0) return null;
 

@@ -11,7 +11,7 @@ import type { AvailableCommand } from "../types";
 /**
  * Slash 命令 / 技能 / MCP 选择菜单。
  *
- * 来源：复制自 `packages/agent-runtime/web/components/chat/CommandMenu.tsx`。
+ * 来源：复制自 `packages/agent-runtime/web/components/chat/CommandMenu.tsx`（旧路径，已于 2026-09-21 由 f2741a82d 删除）。
  * 纯化改动点：`@fenix/chat-channel` 的 `AvailableCommand` → 包内 `../types`；
  * `@/components/ui/{input,scroll-area,use-roving-list-navigation}` → 包内 `../../ui/*`；
  * 命名空间改为 `UI_COMPONENTS_NS`（键 `chat.components.commandMenu.*`）；
@@ -19,7 +19,7 @@ import type { AvailableCommand } from "../types";
  *
  * 纯化改动（2026-09-18，命令/技能行改版）：
  * 1. 行首的 `/` 前缀文字改为图标：这些行在能力面板里就是「技能」（区间标题即 `Skills`），
- *    故用技能目录页的代表图标 `Sparkles`（见 `packages/resources/skill/.../agent-skills-catalog.tsx`
+ *    故用技能目录页的代表图标 `Sparkles`（见 `packages/resources/skill/web/pages/agent-panel/pages/agent-skills-catalog.tsx`
  *    的 `getSkillIcon` 兜底分支），与 MCP 行的 `Plug` 同构（MCP 行一直是「图标 + 名称」）。
  * 2. 图标独立占网格首列（源里只有 MCP 行有图标列），技能行与 MCP 行的名称因此左对齐；
  *    名称不再带 `/{name}`，插入草稿的文本仍由 `ChatComposer` 拼 `/${name} `，协议不变。

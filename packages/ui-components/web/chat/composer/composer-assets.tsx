@@ -8,7 +8,7 @@ import { QuoteTruncatedBadge } from "./quote-truncated-badge";
 /**
  * 待发送 Assets 行（图片、文件引用、聊天引用）。
  *
- * 来源：复制自 `packages/agent-runtime/web/components/chat/composer-assets.tsx`。
+ * 来源：复制自 `packages/agent-runtime/web/components/chat/composer-assets.tsx`（旧路径，已于 2026-09-21 由 f2741a82d 删除）。
  * 纯化改动点：`react-i18next` 命名空间 `components` → 包内 `UI_COMPONENTS_NS`，
  * 文案键按 `chat.components.composerAssets.*` 搬运；`@/src/lib/context-queue` →
  * `../lib/context-queue`；其余结构、类名、图标与文案插值逐字保留。

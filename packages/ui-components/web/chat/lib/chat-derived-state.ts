@@ -1,7 +1,7 @@
 /**
  * 从会话投影派生交互区所需的只读视图（todo 快照与待处理权限）。
  *
- * 来源：逐字复制 `packages/agent-runtime/web/components/chat/chat-derived-state.ts`。
+ * 来源：逐字复制 `packages/agent-runtime/web/components/chat/chat-derived-state.ts`（旧路径，已于 2026-09-21 由 f2741a82d 删除）。
  * 纯化改动点：
  * - `@fenix/chat-channel` 的 `PermissionRequest` 收敛为包内 `../types` 的同构类型（去掉 `@fenix/*` 依赖）。
  * - 移除对宿主 `@/src/lib/tool-semantic` 的 `classifyToolSemantic` 直接依赖，改为调用方注入
@@ -24,7 +24,7 @@ export interface DerivePendingPermissionsOptions {
 /**
  * 从当前消息投影读取最新的标准 ACP plan 完整快照。
  *
- * 复制自 `packages/agent-runtime/web/components/chat/chat-derived-state.ts`；纯化改动点：无（仅模块路径调整）。
+ * 复制自 `packages/agent-runtime/web/components/chat/chat-derived-state.ts`（旧路径，已于 2026-09-21 由 f2741a82d 删除）；纯化改动点：无（仅模块路径调整）。
  */
 export function deriveTodoItems(entries: ThreadEntry[]): TodoItem[] {
   for (let index = entries.length - 1; index >= 0; index -= 1) {
@@ -38,7 +38,7 @@ export function deriveTodoItems(entries: ThreadEntry[]): TodoItem[] {
 /**
  * 将 Chat Doc 权限投影转换为交互区域使用的只读视图。
  *
- * 复制自 `packages/agent-runtime/web/components/chat/chat-derived-state.ts`；
+ * 复制自 `packages/agent-runtime/web/components/chat/chat-derived-state.ts`（旧路径，已于 2026-09-21 由 f2741a82d 删除）；
  * 纯化改动点：工具语义过滤改由 `options.shouldSuppress` 注入，未注入时保留全部 pending 权限。
  */
 export function derivePendingPermissions(

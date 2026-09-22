@@ -15,7 +15,7 @@ import { DeleteSessionDialog } from "./internal/delete-session-dialog";
 
 /**
  * 侧边栏会话列表属性。
- * 复制自 `packages/agent-runtime/web/components/chat/sidebar-session-list.tsx`。
+ * 复制自 `packages/agent-runtime/web/components/chat/sidebar-session-list.tsx`（旧路径，已于 2026-09-21 由 f2741a82d 删除）。
  */
 interface SidebarSessionListProps {
   initialActiveSessionId: string | null;
@@ -65,7 +65,7 @@ export function SessionSelectFallbackProvider({
 /**
  * 紧凑的会话历史列表，负责重命名与删除确认交互。
  *
- * 复制自 `packages/agent-runtime/web/components/chat/sidebar-session-list.tsx`。
+ * 复制自 `packages/agent-runtime/web/components/chat/sidebar-session-list.tsx`（旧路径，已于 2026-09-21 由 f2741a82d 删除）。
  * 纯化改动点：`toast.error` 改为 `onNotice` 回调；`stripHtmlTags` / `cn` / UI 组件 / 类型
  * 全部改为包内导入；i18n 收敛到 `UI_COMPONENTS_NS`（键前缀 `chat.components.`）。
  */

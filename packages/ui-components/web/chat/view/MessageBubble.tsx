@@ -58,7 +58,7 @@ const MESSAGE_ACTION_BUTTON_CLASS =
 /**
  * 工作区相对路径判定。
  *
- * 复制自 `apps/web/src/lib/artifacts-preview-events.ts` 的 `isWorkspaceRelativeFilePath`（逐字）。
+ * 复制自 `apps/web/src/lib/artifacts-preview-events.ts`（旧路径，已于 2026-09-21 由 6679b4648 删除） 的 `isWorkspaceRelativeFilePath`（逐字）。
  * 纯化改动点：源函数与「预览事件派发」同文件，本包只保留其词法校验部分（无 `..`、无绝对路径、
  * 无控制字符、无空段），避免把宿主的自定义事件总线拖进包内依赖图。
  */
@@ -79,7 +79,7 @@ function isWorkspaceRelativeFilePath(path: string): boolean {
 /**
  * 将权威消息正文中的既有文件引用拆成文本和附件展示片段，不改变消息协议。
  *
- * 复制自 `packages/agent-runtime/web/components/chat/MessageBubble.tsx`；纯化改动点：无。
+ * 复制自 `packages/agent-runtime/web/components/chat/MessageBubble.tsx`（旧路径，已于 2026-09-21 由 f2741a82d 删除）；纯化改动点：无。
  */
 export function splitFileReferences(content: string): Array<{ type: "text" | "file"; value: string; offset: number }> {
   const parts: Array<{ type: "text" | "file"; value: string; offset: number }> = [];
@@ -111,7 +111,7 @@ interface UserBubbleProps {
 /**
  * 用户消息气泡（右对齐、可折叠、图片缩略图）。
  *
- * 复制自 `packages/agent-runtime/web/components/chat/MessageBubble.tsx`。
+ * 复制自 `packages/agent-runtime/web/components/chat/MessageBubble.tsx`（旧路径，已于 2026-09-21 由 f2741a82d 删除）。
  * 纯化改动点：
  * - 文件引用的打开动作由宿主事件总线改为 `onOpenWorkspaceFile` 回调 prop。
  * - i18n 命名空间收敛为包内单一命名空间并加 `chat.components.` 前缀。
@@ -258,7 +258,7 @@ interface AssistantBubbleProps {
 /**
  * 助手消息气泡（左对齐、思考块、系统提醒标签、复制/引用动作、turn 错误）。
  *
- * 复制自 `packages/agent-runtime/web/components/chat/MessageBubble.tsx`。
+ * 复制自 `packages/agent-runtime/web/components/chat/MessageBubble.tsx`（旧路径，已于 2026-09-21 由 f2741a82d 删除）。
  * 纯化改动点：
  * - 移除宿主 `MessageEmitterContext.Provider` 包裹：改由 `cardEmitter` prop 注入，未注入时自建实例，
  *   并通过 `cardEmitterRef` 供外部订阅（不再向子树下发 React Context，包内无该通道消费方）。

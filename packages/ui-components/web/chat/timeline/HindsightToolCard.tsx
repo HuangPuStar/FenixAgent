@@ -1,7 +1,7 @@
 /**
  * Hindsight 工具卡片 — 记忆系统专属展示，紫色知识主题。
  *
- * 来源：`packages/agent-runtime/web/components/chat/HindsightToolCard.tsx` 逐字复制。
+ * 来源：`packages/agent-runtime/web/components/chat/HindsightToolCard.tsx`（旧路径，已于 2026-09-21 由 f2741a82d 删除） 逐字复制。
  * 纯化改动点：
  * - `cn` / Dialog / 类型改从包内相对路径导入；
  * - i18n 命名空间改为 `uiComponents`，key 加 `chat.components.` 前缀；
@@ -28,7 +28,7 @@ interface HindsightToolCardProps {
   tool: ToolCallData;
 }
 
-/** Hindsight 记忆工具卡片：展示动作徽标与有界摘要，详情弹窗输出原始入参/出参。复制自 `packages/agent-runtime/web/components/chat/HindsightToolCard.tsx`。 */
+/** Hindsight 记忆工具卡片：展示动作徽标与有界摘要，详情弹窗输出原始入参/出参。复制自 `packages/agent-runtime/web/components/chat/HindsightToolCard.tsx`（旧路径，已于 2026-09-21 由 f2741a82d 删除）。 */
 export function HindsightToolCard({ tool }: HindsightToolCardProps) {
   const { t } = useTranslation(UI_COMPONENTS_NS);
   const [dialogOpen, setDialogOpen] = useState(false);

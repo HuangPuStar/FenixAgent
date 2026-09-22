@@ -4,7 +4,7 @@ import { type ComposerFileInfo, getChatUploadPath, type UploadComposerFiles } fr
 /**
  * 处理操作系统文件拖入 → 上传 → 进度状态管理。
  *
- * 来源：复制自 `packages/agent-runtime/web/components/chat/useDragUpload.ts`。
+ * 来源：复制自 `packages/agent-runtime/web/components/chat/useDragUpload.ts`（旧路径，已于 2026-09-21 由 f2741a82d 删除）。
  * 纯化改动点：
  * - `@/src/api/fs`（`uploadChatFiles` / `getChatUploadPath`）与 `envId` 改为注入的
  *   `uploadFiles` 回调；未注入时拖拽上传整体禁用（对应源实现 `if (!envId) return`）。

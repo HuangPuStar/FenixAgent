@@ -1,6 +1,6 @@
 /**
  * Glob / Find / ListFiles 工具 narrator。处理文件通配符匹配。
- * 复制自 `packages/agent-runtime/web/components/chat/narrators/glob.ts`。
+ * 复制自 `packages/agent-runtime/web/components/chat/narrators/glob.ts`（旧路径，已于 2026-09-21 由 f2741a82d 删除）。
  *
  * title 行："查找 {pattern}"（运行中："正在查找 ..."）
  * detail 行（subtitle）：complete 状态下从 rawOutput.files 提取文件数

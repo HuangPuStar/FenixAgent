@@ -1,6 +1,6 @@
 /**
  * Task / Agent / SubAgent 工具 narrator。处理子任务派发。
- * 复制自 `packages/agent-runtime/web/components/chat/narrators/task.ts`。
+ * 复制自 `packages/agent-runtime/web/components/chat/narrators/task.ts`（旧路径，已于 2026-09-21 由 f2741a82d 删除）。
  *
  * 优先用 tool.description（Agent 提供的简短描述）作为展示文本，
  * 其次从 rawInput.description 取，最后兜底"子任务"中性词。

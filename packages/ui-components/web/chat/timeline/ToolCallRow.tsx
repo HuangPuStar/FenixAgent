@@ -1,7 +1,7 @@
 /**
  * 单张工具卡片 — 调用 narrate() 生成统一格式的人话文案。
  *
- * 来源：`packages/agent-runtime/web/components/chat/ToolCallRow.tsx` 逐字复制。
+ * 来源：`packages/agent-runtime/web/components/chat/ToolCallRow.tsx`（旧路径，已于 2026-09-21 由 f2741a82d 删除） 逐字复制。
  * 纯化改动点：
  * - `window` CustomEvent（`artifacts:preview-file`，源实现由 ArtifactsPanel 监听）改为
  *   `onPreviewFile` 回调 prop：宿主注入回调时才渲染文件链接，宿主自行决定如何打开预览；
@@ -69,7 +69,7 @@ interface ToolCallRowProps {
   inActivityChain?: boolean;
 }
 
-/** 工具调用卡片：图标 + 人话标题 + 状态/耗时徽章 + 参数弹窗，可选文件预览链接与子 Agent 面板。复制自 `packages/agent-runtime/web/components/chat/ToolCallRow.tsx`。 */
+/** 工具调用卡片：图标 + 人话标题 + 状态/耗时徽章 + 参数弹窗，可选文件预览链接与子 Agent 面板。复制自 `packages/agent-runtime/web/components/chat/ToolCallRow.tsx`（旧路径，已于 2026-09-21 由 f2741a82d 删除）。 */
 export function ToolCallRow({ tool, onPreviewFile, inActivityChain = false }: ToolCallRowProps) {
   const { t } = useTranslation(UI_COMPONENTS_NS);
   const [dialogOpen, setDialogOpen] = useState(false);
@@ -303,7 +303,7 @@ interface ToolCallDialogProps {
   t: (key: string) => string;
 }
 
-/** 工具调用参数弹窗：展示原始入参/出参 JSON 与可读工具名。复制自 `packages/agent-runtime/web/components/chat/ToolCallRow.tsx`。 */
+/** 工具调用参数弹窗：展示原始入参/出参 JSON 与可读工具名。复制自 `packages/agent-runtime/web/components/chat/ToolCallRow.tsx`（旧路径，已于 2026-09-21 由 f2741a82d 删除）。 */
 function ToolCallDialog({ open, onOpenChange, tool, kind, style, icon: Icon, title, t }: ToolCallDialogProps) {
   const isError = tool.status === "error";
   const isRunning = tool.status === "running";

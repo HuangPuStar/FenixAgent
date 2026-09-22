@@ -1,7 +1,7 @@
 /**
  * 子 Agent 执行轨迹 — 作为父级工具调用的可折叠详情，避免嵌套消息流造成视觉噪音。
  *
- * 来源：`packages/agent-runtime/web/components/chat/SubAgentPanel.tsx` 逐字复制。
+ * 来源：`packages/agent-runtime/web/components/chat/SubAgentPanel.tsx`（旧路径，已于 2026-09-21 由 f2741a82d 删除） 逐字复制。
  * 纯化改动点：Collapsible / 类型改从包内相对路径导入；i18n 命名空间改为 `uiComponents`，
  * key 加 `chat.components.` 前缀；工具分组渲染仍由宿主经 SubAgentToolCallGroupContext 注入。
  */
@@ -88,7 +88,7 @@ function summarizeEntries(entries: ThreadEntry[]): SubAgentSummary {
   );
 }
 
-/** 子 Agent 轨迹折叠面板：头部显示消息/工具计数与运行态，展开后渲染子时间线。复制自 `packages/agent-runtime/web/components/chat/SubAgentPanel.tsx`。 */
+/** 子 Agent 轨迹折叠面板：头部显示消息/工具计数与运行态，展开后渲染子时间线。复制自 `packages/agent-runtime/web/components/chat/SubAgentPanel.tsx`（旧路径，已于 2026-09-21 由 f2741a82d 删除）。 */
 export const SubAgentPanel = memo(function SubAgentPanel({ entries }: SubAgentPanelProps) {
   const { t } = useTranslation(UI_COMPONENTS_NS);
   const [open, setOpen] = useState(false);

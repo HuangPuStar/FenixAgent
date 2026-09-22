@@ -1,7 +1,7 @@
 /**
  * ChatInterface — 会话消息区 + 输入岛 + 上下文面板的组合容器。
  *
- * 来源：逐字复制 `packages/chat-channel/web/components/ChatInterface.tsx`（结构、类名、交互与文案不变）。
+ * 来源：逐字复制 `packages/chat-channel/web/components/ChatInterface.tsx`（旧路径，已于 2026-09-21 由 8f364c109 删除）（结构、类名、交互与文案不变）。
  * 纯化改动点：
  * - 包内 API 客户端（`envApi` / `agentApi` / `mcpApi` / `unwrap`）与 agent 配置查询逻辑移除，
  *   绑定 MCP 列表改为 `boundMcps` prop 由宿主注入（原查询链见 `ChatInterfaceProps.boundMcps`）。

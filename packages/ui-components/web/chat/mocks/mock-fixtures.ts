@@ -1,7 +1,7 @@
 /**
  * Demo 用静态样本：覆盖 Chat UI 全部展示形态的内存态数据。
  *
- * 来源：字段形状来自 `web/chat/types.ts`（由 `apps/web/src/lib/types.ts`、`@fenix/chat-channel`
+ * 来源：字段形状来自 `web/chat/types.ts`（由 `apps/web/src/lib/types.ts`（旧路径，已于 2026-09-21 由 6679b4648 删除）、`@fenix/chat-channel`
  * 与 `packages/acp-link/src/types.ts` 逐字复制而来）；文案与工具入参按真实会话的形态编写，
  * 使组件在 demo 中呈现与产品一致的结构、密度与文案。
  *

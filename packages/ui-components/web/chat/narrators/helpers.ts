@@ -1,7 +1,7 @@
 /**
  * Narrator 共享工具函数。
  *
- * 来源：`packages/agent-runtime/web/components/chat/narrators/helpers.ts` 逐字复制
+ * 来源：`packages/agent-runtime/web/components/chat/narrators/helpers.ts`（旧路径，已于 2026-09-21 由 f2741a82d 删除） 逐字复制
  * `extractFileName` / `extractLineRange` / `extractErrorMessage` / `formatElapsed` /
  * `compactDetailValue` / `findFirstStringValue` / `extractDirectoryEntryCount` /
  * `isOpencodeDirectoryOutput` / `isOpencodeFileOutput` / `extractDisplayMeta` / `resolveToolCardKind`

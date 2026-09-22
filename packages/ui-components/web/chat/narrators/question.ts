@@ -1,6 +1,6 @@
 /**
  * Question / Ask 工具 narrator。处理 Agent 向用户提问的场景。
- * 复制自 `packages/agent-runtime/web/components/chat/narrators/question.ts`。
+ * 复制自 `packages/agent-runtime/web/components/chat/narrators/question.ts`（旧路径，已于 2026-09-21 由 f2741a82d 删除）。
  *
  * 主要状态是 waiting_for_confirmation（等用户回答）。
  * 优先用 tool.description（Agent 显式提供的完整问题），

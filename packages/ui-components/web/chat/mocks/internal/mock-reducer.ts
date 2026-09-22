@@ -4,8 +4,8 @@
  * 仅供 `../mock-chat-store` 消费，不属于对外模块。拆分原因：状态机与 React 绑定（定时器、快照派生）
  * 是两件不同的事，分开也避免单文件超过 500 行红线。
  *
- * 来源：状态字段与动作语义来自 `packages/agent-runtime/web/components/chat/chat-interface-types.ts`
- * 与 `packages/chat-channel/web/components/ChatInterface.tsx`；纯化改动点：不复制传输内核，
+ * 来源：状态字段与动作语义来自 `packages/agent-runtime/web/components/chat/chat-interface-types.ts`（旧路径，已于 2026-09-21 由 f2741a82d 删除）
+ * 与 `packages/chat-channel/web/components/ChatInterface.tsx`（旧路径，已于 2026-09-21 由 8f364c109 删除）；纯化改动点：不复制传输内核，
  * 改为在内存里回放 `createMockStreamScript()` 的步骤表。
  *
  * 演示语义与真实系统的对齐点：

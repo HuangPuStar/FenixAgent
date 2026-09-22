@@ -24,7 +24,7 @@ import { AcpMainMobileSidebar } from "./internal/acp-main-mobile-sidebar";
 import { type SessionSelectFallback, SessionSelectFallbackProvider, SidebarSessionList } from "./sidebar-session-list";
 
 /**
- * ACPMain 属性。复制自 `packages/chat-channel/web/components/ACPMain.tsx`。
+ * ACPMain 属性。复制自 `packages/chat-channel/web/components/ACPMain.tsx`（旧路径，已于 2026-09-21 由 8f364c109 删除）。
  * 纯化改动点：`sidebarOpen` / `onSidebarOpenChange` 取代 localStorage `acp-sidebar-open`；
  * `onNotice` 取代 sonner toast；并把宿主端口（`boundMcps` / `projectEntries` / `flushContext` /
  * Composer 上传相关回调 / `onStatsChange` / `onOpenWorkspaceFile`）透传给 ChatInterface。
@@ -112,7 +112,7 @@ interface ACPMainProps {
  * Main container — Anthropic sidebar + chat layout.
  * Sidebar: sectioned by recency, orange active state, warm raised bg.
  *
- * 复制自 `packages/chat-channel/web/components/ACPMain.tsx`。
+ * 复制自 `packages/chat-channel/web/components/ACPMain.tsx`（旧路径，已于 2026-09-21 由 8f364c109 删除）。
  * 纯化改动点：localStorage `acp-sidebar-open` → 受控 `sidebarOpen` / `onSidebarOpenChange`；
  * sonner `toast.warning` → `onNotice` 回调；UI 组件、类型与 i18n 收敛到包内；
  * 会话 bootstrap 策略（300ms 防抖选最近会话 / 列表确认后自动建会话）逐字保留。

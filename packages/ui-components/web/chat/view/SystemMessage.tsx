@@ -13,7 +13,7 @@ interface SystemMessageProps {
 /**
  * 系统消息默认展示弱化胶囊，双击后可检查完整原始内容。
  *
- * 复制自 `packages/agent-runtime/web/components/chat/SystemMessage.tsx`。
+ * 复制自 `packages/agent-runtime/web/components/chat/SystemMessage.tsx`（旧路径，已于 2026-09-21 由 f2741a82d 删除）。
  * 纯化改动点：
  * - `@/components/ui/dialog` → 包内 `../../ui/dialog`，`@/src/lib/utils` 的 `cn` → `../../lib/cn`。
  * - i18n 命名空间从宿主 `NS.COMPONENTS` 改为包内单一命名空间，键加 `chat.components.` 前缀。

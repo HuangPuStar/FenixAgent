@@ -8,7 +8,7 @@ import { AgentLogo } from "./internal/agent-logo";
 // AgentBadge — 工牌卡组件，双模式：空状态展示（ChatView）+ 管理卡片（AgentManagementPage）
 // 渐变头部 + 挂绳孔 + AgentAvatar SVG + 水印 + Skills tag + 可选操作按钮
 //
-// 来源：逐字复制 `packages/agent-runtime/web/components/chat/AgentBadge.tsx`。
+// 来源：逐字复制 `packages/agent-runtime/web/components/chat/AgentBadge.tsx`（旧路径，已于 2026-09-21 由 f2741a82d 删除）。
 // 纯化改动点：`chat:inject-skill` window CustomEvent 总线改为 `onInjectSkill` 回调；
 // i18n 收敛到包内单一命名空间（键前缀 `chat.components.`）。
 //
@@ -133,7 +133,7 @@ export interface AgentSkillInfo {
 /**
  * 工牌卡 — 空状态/管理模式共用。
  *
- * 复制自 `packages/agent-runtime/web/components/chat/AgentBadge.tsx`。
+ * 复制自 `packages/agent-runtime/web/components/chat/AgentBadge.tsx`（旧路径，已于 2026-09-21 由 f2741a82d 删除）。
  * 纯化改动点：非管理模式下点击技能标签原本派发 window `chat:inject-skill` 事件，
  * 现改为调用 `onInjectSkill`（宿主自行决定注入实现，如写入 Composer）。
  */
@@ -264,7 +264,7 @@ export function AgentBadge({
 /**
  * 工牌骨架屏 — 加载态。
  *
- * 复制自 `packages/agent-runtime/web/components/chat/AgentBadge.tsx`；纯化改动点：无。
+ * 复制自 `packages/agent-runtime/web/components/chat/AgentBadge.tsx`（旧路径，已于 2026-09-21 由 f2741a82d 删除）；纯化改动点：无。
  */
 export function AgentBadgeSkeleton() {
   return (

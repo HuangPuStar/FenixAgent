@@ -1,6 +1,6 @@
 /**
  * TodoWrite 工具 narrator。处理待办列表更新场景。
- * 复制自 `packages/agent-runtime/web/components/chat/narrators/todo-write.ts`。
+ * 复制自 `packages/agent-runtime/web/components/chat/narrators/todo-write.ts`（旧路径，已于 2026-09-21 由 f2741a82d 删除）。
  *
  * 用本次相较上一轮的变更数渲染到 object，与 verb "更新" 拼成完整 title：
  *   [图标] 更新 2 项                    [完成]

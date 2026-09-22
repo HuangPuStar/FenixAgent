@@ -1,6 +1,6 @@
 /**
  * Narrator 注册表与中央 narrate 入口。
- * 复制自 `packages/agent-runtime/web/components/chat/narrators/index.ts`。
+ * 复制自 `packages/agent-runtime/web/components/chat/narrators/index.ts`（旧路径，已于 2026-09-21 由 f2741a82d 删除）。
  *
  * 纯化改动点：
  * - i18n key 加 `chat.toolNarrator.` 前缀（原 key 路径不变）。

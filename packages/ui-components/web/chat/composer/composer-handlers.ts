@@ -31,7 +31,7 @@ import { removeSlashCommand } from "./internal/remove-slash-command";
 /**
  * 输入岛事件处理器。
  *
- * 来源：从 `packages/agent-runtime/web/components/chat/ChatComposer.tsx` 的 handlers 段切出
+ * 来源：从 `packages/agent-runtime/web/components/chat/ChatComposer.tsx`（旧路径，已于 2026-09-21 由 f2741a82d 删除） 的 handlers 段切出
  * （拆分原因是源文件 597 行超过 500 行红线）。处理器逻辑、分支顺序与注释逐字保留，
  * 只把「直接调宿主 api/toast」替换为注入回调。
  * 纯化改动点：sonner toast → `onNotice`；`@/src/api/fs` → `uploadFiles`；

@@ -4,7 +4,7 @@ import { blobToBase64, type CompressImage } from "./composer-file-processing";
 /**
  * 将 composer 中已持有的图片转换为 ACP `ImageContent`，必要时做二次压缩。
  *
- * 来源：复制自 `packages/agent-runtime/web/components/chat/chat-image-content.ts`。
+ * 来源：复制自 `packages/agent-runtime/web/components/chat/chat-image-content.ts`（旧路径，已于 2026-09-21 由 f2741a82d 删除）。
  * 纯化改动点：
  * - `@fenix/chat-channel` 的 `ImageContent` 改为从包内 `../types` 导入（不引 @fenix/*）。
  * - `browser-image-compression` 改为注入点 `compress`：未注入时直接返回原图内容；

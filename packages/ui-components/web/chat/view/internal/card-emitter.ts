@@ -1,7 +1,7 @@
 /**
  * 包内最小卡片事件通道（契约 + 默认实现）。
  *
- * 来源：方法签名复制自宿主 `apps/web/src/lib/card-renderer/emitter.ts` 的 `CardEventEmitter`
+ * 来源：方法签名复制自宿主 `apps/web/src/lib/card-renderer/emitter.ts`（旧路径，已于 2026-09-21 由 6679b4648 删除） 的 `CardEventEmitter`
  * （`on` / `off` / `emit` / `destroy`），实现为本包按同一语义的最小重写 —— 源实现的类是宿主
  * 会话层代码，不能作为 `@fenix/*` 依赖引入。
  *
