@@ -9,7 +9,8 @@ export default defineConfig({
   // `@fenix/resource-skill/db`（任务 1.7 B5）、Workflow 九张领域表 `@fenix/resource-workflow/db`
   // （任务 1.7 B6）、Agent 配置聚合五张表 `@fenix/agent-config/db`（任务 1.7 B7）、运行环境/实例表
   // `@fenix/agent-runtime/db`（任务 1.7 B8）、知识库三张表 `@fenix/resource-knowledge/db`（任务 1.7 B9）
-  // 与 Agent 记忆开关表 `@fenix/resource-memory/db`（任务 1.7 B10）。
+  // 与 Agent 记忆开关表 `@fenix/resource-memory/db`（任务 1.7 B10）、发布视图表
+  // `@fenix/resource-prod-view/db`（任务 1.7 B11）。
   schema: [
     "./apps/server/src/db/schema.ts",
     "./packages/platform/identity/db/schema.ts",
@@ -20,6 +21,7 @@ export default defineConfig({
     "./packages/resources/mcp/db/schema.ts",
     "./packages/resources/memory/db/schema.ts",
     "./packages/resources/model-management/db/schema.ts",
+    "./packages/resources/prod-view/db/schema.ts",
     "./packages/resources/skill/db/schema.ts",
     "./packages/resources/sandbox/db/schema.ts",
     "./packages/resources/workflow/db/schema.ts",

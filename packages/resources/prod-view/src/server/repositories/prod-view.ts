@@ -1,4 +1,4 @@
-import { type ProdViewRow, prodView } from "@server/db/schema";
+import { type ProdViewRow, prodView } from "@fenix/resource-prod-view/db";
 import { and, eq } from "drizzle-orm";
 import { getProdViewDatabase } from "../db";
 

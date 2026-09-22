@@ -1,7 +1,6 @@
 import { agentConfig } from "@fenix/agent-config/db";
 import { environment } from "@fenix/agent-runtime/db";
 import { user } from "@fenix/identity/db";
-import { sql } from "drizzle-orm";
 
 /**
  * 宿主只从已迁出的 owner 包**取用**表对象，不重复定义。
@@ -15,8 +14,9 @@ import { sql } from "drizzle-orm";
  * 读运行环境与实例仍必须走 `@fenix/agent-runtime` 的服务端入口，不得依赖本文件。
  * 组装期例外的口径与边界见 `docs/design/ce-ee-refactoring/ce-ee-engineering-standards.md` §6.1。
  *
- * 本文件里 `agentConfig` 的使用点只剩宿主自有表的外键：`task_execution_log`、`prod_view`
- * （各引用一次 `agent_config.id`），随 B11–B12 按拓扑序迁出宿主；其余随表迁走——
+ * 本文件里 `agentConfig` 的使用点只剩宿主自有表的外键：`task_execution_log`（引用一次
+ * `agent_config.id`），随 B12 迁出宿主；其余随表迁走——
+ * `prod_view.agent_id` 在 B11 随该表迁入 `@fenix/resource-prod-view/db`，
  * `agent_memory_config.agent_config_id` 在 B10 随该表迁入 `@fenix/resource-memory/db`，
  * `environment.agent_config_id` 在 B8 随该表迁入 `@fenix/agent-runtime/db`，
  * `agent_knowledge_binding.agent_config_id` 在 B9 随三张知识库表迁入 `@fenix/resource-knowledge/db`。
@@ -36,7 +36,9 @@ import { sql } from "drizzle-orm";
  * B6 九张表的表间外键在 `@fenix/resource-workflow/db` 内闭合；`agent_instance` 的外键目标是 `environment`
  * 与 `user`，知识库三张表的外键目标是 `agent_config` / `user` 与自身——都不是宿主表，宿主任何表都不引用
  * 它们。**B10 之后同理**：`agent_memory_config` 迁入 `@fenix/resource-memory/db`，宿主对它的唯一引用方
- * 是 memory 包的仓储（已改指该出口），因此这里不留转出、连 import 也不必新增。
+ * 是 memory 包的仓储（已改指该出口），因此这里不留转出、连 import 也不必新增。**B11 同理**：`prod_view`
+ * 迁入 `@fenix/resource-prod-view/db`，宿主对它的唯一引用方是 prod-view 包的仓储与包内测试替身（均已改指
+ * 该出口），本文件同批删掉表定义与两个行类型。
  */
 export {
   account,
@@ -271,26 +273,3 @@ export const resourcePermission = pgTable(
     resourceIdx: index("idx_resource_permission_resource").on(table.resourceType, table.resourceId),
   }),
 );
-
-// ProdView 智能体发布视图
-export const prodView = pgTable(
-  "prod_view",
-  {
-    id: uuid("id").primaryKey().defaultRandom(),
-    organizationId: text("organization_id").notNull(),
-    name: varchar("name").notNull(),
-    description: text("description"),
-    agentId: uuid("agent_id")
-      .notNull()
-      .references(() => agentConfig.id, { onDelete: "cascade" }),
-    modulesConfig: jsonb("modules_config").notNull().default(sql`'{}'`),
-    enabled: boolean("enabled").notNull().default(true),
-    createdBy: text("created_by").notNull(),
-    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
-    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
-  },
-  (t) => [index("idx_prod_view_org_id").on(t.organizationId), index("idx_prod_view_agent_id").on(t.agentId)],
-);
-
-export type ProdViewRow = typeof prodView.$inferSelect;
-export type ProdViewInsert = typeof prodView.$inferInsert;
