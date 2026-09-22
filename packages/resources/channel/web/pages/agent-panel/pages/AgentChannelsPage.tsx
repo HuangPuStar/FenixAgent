@@ -1,6 +1,7 @@
 import { envApi } from "@fenix/agent-runtime/web/api/environments";
 import { AgentCardList } from "@fenix/ui-components/components/AgentCardList";
 import { ConfirmDialog } from "@fenix/ui-components/config/ConfirmDialog";
+import { EmptyState } from "@fenix/ui-components/config/EmptyState";
 import { FormDialog } from "@fenix/ui-components/config/FormDialog";
 import { AppHeader } from "@fenix/ui-components/layout/app-header";
 import { AppPage } from "@fenix/ui-components/layout/app-page";
@@ -140,24 +141,25 @@ export function AgentChannelsPage() {
   if (listState === "unauthorized" || listState === "error") {
     return (
       <AppPage>
-        <div className="flex flex-col items-center justify-center gap-2 py-16 text-center" role="alert">
-          <AlertTriangle className="h-6 w-6 text-text-muted" />
-          {listState === "unauthorized" ? (
-            <>
-              <p className="text-sm font-medium text-text-bright">{t("unauthorized")}</p>
-              <p className="text-xs text-text-muted">{t("unauthorizedHint")}</p>
-            </>
-          ) : (
-            <>
-              <p className="text-sm font-medium text-text-bright">{t("loadBindingsFailed")}</p>
-              <p className="text-xs text-text-muted">{error instanceof Error ? error.message : t("unknownError")}</p>
-              <Button className="mt-2" variant="outline" size="sm" onClick={refresh}>
-                <RefreshCw />
-                {t("retry")}
-              </Button>
-            </>
-          )}
-        </div>
+        <EmptyState
+          tone="danger"
+          role="alert"
+          icon={<AlertTriangle />}
+          title={listState === "unauthorized" ? t("unauthorized") : t("loadBindingsFailed")}
+          description={
+            listState === "unauthorized"
+              ? t("unauthorizedHint")
+              : error instanceof Error
+                ? error.message
+                : t("unknownError")
+          }
+          action={
+            listState === "unauthorized"
+              ? undefined
+              : { label: t("retry"), icon: <RefreshCw />, onClick: refresh, disabled: loading }
+          }
+          className="flex min-h-96 flex-col items-center justify-center"
+        />
       </AppPage>
     );
   }
