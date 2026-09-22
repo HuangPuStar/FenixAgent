@@ -119,6 +119,9 @@ const HARD_RULES: readonly ArchitectureRule[] = [
     message: () => "模型品牌图标只能由 model-management 的 model-icon 组件封装",
   }),
   {
+    // `id` 必须与诊断里的 `ruleId` 一致：`collectStaleExceptions()` 按规则名过滤台账，
+    // 缺 id 会让本条规则下的台账条目永远不参与「已失效」判定。
+    id: "frontend-no-legacy-api-prefix",
     check(context) {
       if (!isBrowserEntry(context.relativePath) || isTestFile(context.relativePath)) return [];
 

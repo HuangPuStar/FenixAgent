@@ -52,13 +52,21 @@
  *   7. .opencode（opencode 项目配置）与 .DS_Store 不参与迁移，整体忽略。
  */
 
-import { Database } from "bun:sqlite";
+import { Database, type SQLQueryBindings } from "bun:sqlite";
 import { createHash } from "node:crypto";
 import { createReadStream } from "node:fs";
 import { homedir } from "node:os";
 import { dirname, join, resolve, sep } from "node:path";
 
 // ─── CLI 解析 ──────────────────────────────────────────────────────────────────
+
+/**
+ * 源库查询结果的一行：列名为键，值为 `bun:sqlite` 可绑定的标量。
+ *
+ * 值类型必须是 `SQLQueryBindings` 而不是 `unknown`——回写时按列名逐个绑定
+ * （`stmt.run(...cols.map((c) => row[c]))`），`unknown` 无法作为绑定参数。
+ */
+type SqliteRow = Record<string, SQLQueryBindings>;
 
 interface Options {
   src: string;
@@ -298,7 +306,9 @@ async function mkdirRecursive(destP: Buffer, force: boolean): Promise<void> {
         } catch {
           console.error(`  [不存在] ${p.toString()}`);
         }
-        const idx = p.lastIndexOf(47);
+        // 显式标注 `number`：`p` 在下方由 `p.subarray(0, idx)` 回写，控制流分析会与本行
+        // 形成循环推断（TS7022），标注即断开。
+        const idx: number = p.lastIndexOf(47);
         if (idx <= 0) break;
         p = p.subarray(0, idx);
       }
@@ -516,20 +526,20 @@ async function writeUserThreadsDb(
   const selThread = srcDb.prepare(
     `SELECT ${threadsCols.join(",")} FROM threads WHERE id IN (${ids.map(() => "?").join(",")})`,
   );
-  const threadRows = ids.length ? (selThread.all(...ids) as Record<string, unknown>[]) : [];
+  const threadRows = ids.length ? (selThread.all(...ids) as SqliteRow[]) : [];
 
   // messages 按 thread_id 分块查询（IN 子句长度受限）
   const selMessages = srcDb.prepare(
     `SELECT ${messagesCols.join(",")} FROM messages WHERE thread_id IN (${Array(400).fill("?").join(",")})`,
   );
-  const messageRows: Record<string, unknown>[] = [];
+  const messageRows: SqliteRow[] = [];
   for (let i = 0; i < ids.length; i += 400) {
     const chunk = ids.slice(i, i + 400);
     if (chunk.length < 400) {
       const sql = `SELECT ${messagesCols.join(",")} FROM messages WHERE thread_id IN (${chunk.map(() => "?").join(",")})`;
-      messageRows.push(...(srcDb.prepare(sql).all(...chunk) as Record<string, unknown>[]));
+      messageRows.push(...(srcDb.prepare(sql).all(...chunk) as SqliteRow[]));
     } else {
-      messageRows.push(...(selMessages.all(...chunk) as Record<string, unknown>[]));
+      messageRows.push(...(selMessages.all(...chunk) as SqliteRow[]));
     }
   }
 

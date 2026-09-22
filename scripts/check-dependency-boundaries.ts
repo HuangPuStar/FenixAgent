@@ -17,6 +17,7 @@
  */
 
 import { spawnSync } from "node:child_process";
+import type { Dirent } from "node:fs";
 import { readdir, readFile } from "node:fs/promises";
 import { createRequire } from "node:module";
 import { isAbsolute, join, relative, resolve } from "node:path";
@@ -55,7 +56,9 @@ const HOST_ENV_SPREAD_PATTERN = /(?:^|[\s{,(])\.\.\.\s*\(?\s*(?:process|Bun)\.en
 async function collectHostEnvScanFiles(root: string): Promise<string[]> {
   const files: string[] = [];
   const walk = async (directory: string, inSourceTree: boolean): Promise<void> => {
-    let entries: Awaited<ReturnType<typeof readdir>>;
+    // 显式给出 `Dirent<string>`：`Awaited<ReturnType<typeof readdir>>` 会落到最后一条重载
+    // （`Dirent<NonSharedBuffer>`），与实际返回的 `Dirent<string>[]` 冲突。
+    let entries: Dirent<string>[];
     try {
       entries = await readdir(directory, { withFileTypes: true });
     } catch {
