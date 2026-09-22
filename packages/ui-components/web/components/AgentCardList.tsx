@@ -1,6 +1,6 @@
 import { Search } from "lucide-react";
 import type * as React from "react";
-import { useState } from "react";
+import { Fragment, useState } from "react";
 
 interface AgentCardListProps<T> {
   items: T[];
@@ -118,7 +118,16 @@ export function AgentCardList<T>({
           </div>
         ) : (
           <div className={`grid gap-3 ${gridCols ?? ""}`}>
-            {filtered.map((item) => renderCard(item, selectedSet.has(cardKey(item)), () => toggleSelect(item)))}
+            {filtered.map((item) => (
+              // 修复 `packages/resources/prod-view/README.md`「已知项」里登记的
+              // 「AgentCardList 内部列表缺 key（非本包缺陷）」：原实现直接返回 renderCard 的结果，
+              // 列表项拿不到 key，渲染有数据的列表时 React 会打印 "Each child in a list should have a
+              // unique \"key\" prop"。这里按该条给出的移除条件补 `key={cardKey(item)}`；卡片 DOM 由
+              // 调用方 renderCard 决定，Fragment 不产生节点，渲染结果与原先一致。
+              <Fragment key={cardKey(item)}>
+                {renderCard(item, selectedSet.has(cardKey(item)), () => toggleSelect(item))}
+              </Fragment>
+            ))}
           </div>
         )}
       </div>
