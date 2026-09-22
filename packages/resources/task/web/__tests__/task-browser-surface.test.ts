@@ -89,6 +89,11 @@ const BROWSER_SAFE_EXTERNAL: ReadonlyMap<string, string> = new Map([
   ["recharts", "图表渲染（ui/chart 传递依赖；ui-components 的 dependencies），浏览器安全"],
   ["streamdown", "流式 Markdown 渲染（chat/primitives/message 传递依赖），浏览器安全"],
   ["tailwind-merge", "Tailwind 类名去重（lib/cn 传递依赖），纯函数"],
+  [
+    "react-file-icon",
+    "文件类型图标（ui-components components/file-icon-helper 传递依赖，经 @fenix/agent-config/web → knowledge 资源列表引入）：" +
+      "纯浏览器 SVG 组件，运行时依赖只有 react / prop-types / colord（后者提供颜色解析），无 node 专有能力",
+  ],
 ]);
 
 const graph = walkValueGraph(WEB_ENTRY);

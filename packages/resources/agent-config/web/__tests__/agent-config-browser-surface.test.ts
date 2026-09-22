@@ -85,6 +85,11 @@ const BROWSER_SAFE_EXTERNAL: ReadonlyMap<string, string> = new Map([
   ["cytoscape-fcose", "cytoscape 布局插件（同上）"],
   ["@antv/g6", "图可视化（ui-components 图谱面板传递依赖），纯浏览器实现"],
   ["@chenglou/pretext", "排版测量库（ui-components 文本层传递依赖），纯浏览器实现"],
+  [
+    "react-file-icon",
+    "文件类型图标（ui-components components/file-icon-helper 传递依赖，经本包编辑器消费的 knowledge 资源列表引入）：" +
+      "纯浏览器 SVG 组件，运行时依赖只有 react / prop-types / colord（后者提供颜色解析），无 node 专有能力",
+  ],
   // 经 @fenix/model-management/web 子路径传递进入（编辑器模型选择器的品牌图标）
   // `@lobehub/icons` 的 dependencies 里还有 `antd-style`，后者在 import 期就求值
   // `window.matchMedia`：浏览器构建无影响（window 齐备），但无 DOM 的 `bun test` 进程只要被宿主
