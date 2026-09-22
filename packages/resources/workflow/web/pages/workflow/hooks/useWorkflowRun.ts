@@ -245,9 +245,14 @@ export function useWorkflowRun(params: UseWorkflowRunParams): UseWorkflowRunRetu
     setRunRightTab("output");
     unwrap(workflowEngineApi.getOutput(activeRunId, selectedRunNodeId))
       .then((out) => setSelectedNodeOutput(out ?? null))
-      .catch((err) => console.error(err))
+      .catch((err) => {
+        console.error(err);
+        // 选中节点后的拉取失败会让输出面板停在空态。这是画布点节点 / 点事件行两条入口的公共路径，
+        // 提示放在这里（而不是 handleViewNodeOutput）才能覆盖全两条且一次操作只报一条
+        toast.error(t("editor.output_load_failed"));
+      })
       .finally(() => setNodeOutputLoading(false));
-  }, [activeRunId, selectedRunNodeId, setSelectedNodeOutput, setNodeOutputLoading]);
+  }, [activeRunId, selectedRunNodeId, setSelectedNodeOutput, setNodeOutputLoading, t]);
 
   /** 解析 meta.params 中的默认值，生成运行时 params */
   const resolveDefaultParams = useCallback((): Record<string, unknown> | undefined => {
@@ -546,12 +551,16 @@ export function useWorkflowRun(params: UseWorkflowRunParams): UseWorkflowRunRetu
             if (snap) updateNodesFromSnapshotRef.current(snap);
           } catch (err) {
             console.error(`${t("editor.restore_run_failed")}:`, err);
+            // 草稿已刷新成功，但运行状态没跟上，画布上的节点状态会与真实运行状态不一致
+            toast.error(t("editor.restore_run_failed"));
           }
         }
         setTimeout(() => fitView({ padding: 0.15, duration: 300 }), 50);
       }
     } catch (err) {
       console.error(`${t("editor.refresh_failed")}:`, err);
+      // 用户点了刷新却什么都没变，必须给出可见反馈
+      toast.error(t("editor.refresh_failed"));
     }
   }, [workflowId, isRunMode, isRunDone, activeRunId, setNodes, setEdges, setMeta, setLastSavedYaml, fitView, t]);
 

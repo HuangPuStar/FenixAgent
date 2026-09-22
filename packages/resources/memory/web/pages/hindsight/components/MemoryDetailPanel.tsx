@@ -4,6 +4,7 @@ import { NS } from "@fenix/web-runtime/i18n/namespace";
 import { Calendar, Check, Copy, Loader2, X } from "lucide-react";
 import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
+import { toast } from "sonner";
 import { hindsightApi } from "../../../api/hindsight";
 import type { MemoryDetail, MemoryTableRow } from "../types";
 
@@ -63,6 +64,9 @@ export function MemoryDetailPanel({ memory, onClose, compact = false, inPanel = 
       setTimeout(() => setCopiedId(null), 2000);
     } catch (err) {
       console.error("Failed to copy:", err);
+      // 复制按钮的成功能见（`copiedId` 换成对勾），失败此前只剩 console：点一下什么也不发生，
+      // 用户无法区分「没复制上」与「点了没反应」，故补一次可见提示。
+      toast.error(t("memoryDetailPanel.copyFailed"));
     }
   };
 

@@ -21,6 +21,7 @@
   "connecting": "正在连接...",
   "loading_agent_panel": "加载智能体面板...",
   "createAgent": "新建智能体",
+  "agentCreatedNavFailed": "智能体已创建，但打开会话失败，请从列表重新进入",
   "agentConfig": "智能体配置",
   "viewAgentConfig": "查看智能体详情",
   "newInstance": "新建实例",

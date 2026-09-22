@@ -43,10 +43,12 @@ export function VersionIndicator({
       setVersions(Array.isArray(list) ? list : []);
     } catch (err) {
       console.error(err);
+      // popover 由用户点开，失败时列表会变成「暂无发布版本」，不给提示会被当成真的没有版本
+      toast.error(t("versions.load_data_failed"));
     } finally {
       setLoading(false);
     }
-  }, [workflowId]);
+  }, [workflowId, t]);
 
   useEffect(() => {
     if (open) loadVersions();

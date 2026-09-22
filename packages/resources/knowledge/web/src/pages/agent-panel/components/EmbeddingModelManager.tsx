@@ -19,6 +19,7 @@
  * 任何内部模块，因此这次移动只是包归属变更，未改行为。
  */
 
+import { ConfirmDialog } from "@fenix/ui-components/config/ConfirmDialog";
 import { Button } from "@fenix/ui-components/ui/button";
 import {
   Dialog,
@@ -64,6 +65,8 @@ export function EmbeddingModelManager({ canManage, inDialog, onModelsChanged }: 
   const { t } = useTranslation(NS.KNOWLEDGE);
   const [refreshKey, setRefreshKey] = useState(0);
   const [addOpen, setAddOpen] = useState(false);
+  // 待确认删除的实例：原生 confirm 的同步返回值无法保留，改为挂起目标实例 + 受控 ConfirmDialog。
+  const [deleteTarget, setDeleteTarget] = useState<ConfiguredInstanceNode | null>(null);
 
   const { data: tree, loading } = useRequest(() => unwrap(embeddingModelApi.list()), {
     refreshDeps: [refreshKey],
@@ -76,18 +79,8 @@ export function EmbeddingModelManager({ canManage, inDialog, onModelsChanged }: 
   const providerCount = treeSafe.length;
   const instanceCount = treeSafe.reduce((sum, p) => sum + (p.instances?.length ?? 0), 0);
 
-  const handleDeleteInstance = async (inst: ConfiguredInstanceNode) => {
-    const modelCount = inst.models?.length ?? 0;
-    if (
-      !confirm(
-        t("embeddingModel.deleteConfirm", {
-          instance: inst.instanceName,
-          provider: inst.provider,
-          count: modelCount,
-        }),
-      )
-    )
-      return;
+  // 真正的删除：只在 ConfirmDialog 确认后调用（原先由本函数内联的 confirm 决定是否继续）。
+  const runDeleteInstance = async (inst: ConfiguredInstanceNode) => {
     try {
       await unwrap(embeddingModelApi.delete({ provider: inst.provider, instanceName: inst.instanceName }));
       toast.success(t("embeddingModel.instanceDeleted"));
@@ -162,7 +155,7 @@ export function EmbeddingModelManager({ canManage, inDialog, onModelsChanged }: 
                 key={p.provider}
                 provider={p}
                 canManage={canManage}
-                onDeleteInstance={handleDeleteInstance}
+                onDeleteInstance={(inst) => setDeleteTarget(inst)}
                 onModelsChanged={onModelsChanged}
               />
             ))}
@@ -176,6 +169,26 @@ export function EmbeddingModelManager({ canManage, inDialog, onModelsChanged }: 
         onAdded={() => {
           setRefreshKey((k) => k + 1);
           onModelsChanged?.();
+        }}
+      />
+
+      {/* 删除实例二次确认：文案沿用删除按钮的 tooltip 作标题、原 confirm 文案作描述（含实例名/供应商/模型数插值）。 */}
+      <ConfirmDialog
+        open={deleteTarget !== null}
+        onOpenChange={(open) => {
+          if (!open) setDeleteTarget(null);
+        }}
+        title={t("embeddingModel.deleteInstanceTitle")}
+        description={t("embeddingModel.deleteConfirm", {
+          instance: deleteTarget?.instanceName ?? "",
+          provider: deleteTarget?.provider ?? "",
+          count: deleteTarget?.models?.length ?? 0,
+        })}
+        variant="destructive"
+        onConfirm={() => {
+          const target = deleteTarget;
+          setDeleteTarget(null);
+          if (target) runDeleteInstance(target);
         }}
       />
     </div>

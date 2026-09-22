@@ -140,6 +140,20 @@ export function useComposerHandlers({
   );
 
   /**
+   * 图片准备的部分失败回执：`processImageFiles` 对处理失败的单张图片只留 `console.error`
+   * 并把该张从结果里剔除；调用方不比对数量的话，失败的图片会静默消失
+   * （粘贴 3 张成功 2 张时，用户以为已全部进入待发送区）。
+   */
+  const notifySkippedImages = useCallback(
+    (requested: number, produced: number) => {
+      if (produced < requested) {
+        notify("error", t("chat.components.composerAssets.processImagePartialFailed"));
+      }
+    },
+    [notify, t],
+  );
+
+  /**
    * 上传失败文案：本包校验抛出的 `chatComposer.*` i18n key 走翻译；
    * 宿主上传回调抛出的业务错误只回通用失败文案，原文进控制台保留诊断上下文。
    */
@@ -305,9 +319,10 @@ export function useComposerHandlers({
 
       e.preventDefault();
       const newImages: UserMessageImage[] = await processImageFiles(files, compressImage);
+      notifySkippedImages(files.length, newImages.length);
       addImages(newImages);
     },
-    [addImages, compressImage, supportsImages],
+    [addImages, compressImage, supportsImages, notifySkippedImages],
   );
 
   // 选择文件（图片走 base64，其他文件上传到 workspace 根目录）
@@ -330,6 +345,7 @@ export function useComposerHandlers({
     // 图片：走 base64 压缩流程
     if (imageFiles.length > 0) {
       const newImages = await processImageFiles(imageFiles, compressImage);
+      notifySkippedImages(imageFiles.length, newImages.length);
       addImages(newImages);
     }
 
@@ -349,7 +365,17 @@ export function useComposerHandlers({
 
     // 清空 input 以便重复选择
     fileInputRef.current.value = "";
-  }, [addAttachments, addImages, compressImage, fileInputRef, notify, resolveUploadErrorMessage, setText, uploadFiles]);
+  }, [
+    addAttachments,
+    addImages,
+    compressImage,
+    fileInputRef,
+    notify,
+    notifySkippedImages,
+    resolveUploadErrorMessage,
+    setText,
+    uploadFiles,
+  ]);
 
   const removeQuote = useCallback(
     (id: string) => {

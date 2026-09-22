@@ -500,6 +500,8 @@ function WorkflowEditorInner({ workflowId, runId, chatPanel }: WorkflowEditorPro
         if (Array.isArray(evts)) setRunEvents(dedupEvents(evts));
       } catch (err) {
         console.error(`${t("editor.load_run_failed")}:`, err);
+        // 从运行记录进入编辑器时，这一拉是运行面板的唯一数据源：失败必须让用户知道面板是空的
+        toast.error(t("editor.load_run_failed"));
       }
     })();
     return () => {

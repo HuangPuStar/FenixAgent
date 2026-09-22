@@ -1,6 +1,7 @@
 import { unwrap } from "@fenix/web-runtime/api/request";
 import { ArrowLeft, Edit3, Loader, RefreshCw, ShieldCheck, Square } from "lucide-react";
 import { useTranslation } from "react-i18next";
+import { toast } from "sonner";
 import {
   type DAGEvent,
   type DAGSnapshot,
@@ -94,6 +95,8 @@ export function RunStatusPanel({
             if (Array.isArray(evts)) setRunEvents(dedupEvents(evts));
           } catch (err) {
             console.error(`${t("editor.load_run_data_failed")}:`, err);
+            // 点击运行记录后 runId 已切换，拉取失败会让右侧面板停在空态，必须有可见反馈
+            toast.error(t("editor.load_run_data_failed"));
           }
         }}
         onClose={() => setRightTab("config")}

@@ -108,6 +108,9 @@ export function ArtifactsPanel({
       manual: true,
       onError: (err: unknown) => {
         console.error("[ArtifactsPanel] 加载 agent 绑定 sites 失败", err);
+        // 加载失败在 0 站点时不会命中下面的行内错误条（那条要求 sites.length > 0），
+        // 此时界面会落进「未绑定站点」空态，把失败伪装成空数据；toast 是这里唯一的失败信号。
+        toast.error(t("panelMode.sitesLoadFailed"));
       },
     },
   );
@@ -154,6 +157,9 @@ export function ArtifactsPanel({
       },
       onError: (err: unknown) => {
         console.error("[ArtifactsPanel] 自动挂载站点失败", err);
+        // 失败由用户点击 <agent-sites> 卡片触发，已切到 Sites 模式但选不中站点，
+        // 不提示会让用户以为点击没生效。
+        toast.error(t("panelMode.mountFailed"));
       },
     },
   );

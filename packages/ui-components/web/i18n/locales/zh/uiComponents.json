@@ -79,6 +79,8 @@
       "chatInterface": {
         "agentPlaceholder": "给智能体发送消息…",
         "readonlyMode": "只读模式 — 无法发送消息",
+        "sendPromptFailed": "消息发送失败，请重试",
+        "sessionCreateFailed": "创建会话失败，消息未发送",
         "waitingSession": "等待会话..."
       },
       "chatStatus": {
@@ -114,6 +116,7 @@
         "image": "待发送图片",
         "imageNumber": "图片 {{count}}",
         "prepareImageFailed": "图片处理失败，请移除后重试",
+        "processImagePartialFailed": "部分图片处理失败，已跳过",
         "quoteLimitReached": "本轮引用内容已达上限，请先发送或移除部分引用",
         "quoteNumber": "引用 {{count}}",
         "quoteTruncated": "引用过长，已省略 {{count}} 个字符",

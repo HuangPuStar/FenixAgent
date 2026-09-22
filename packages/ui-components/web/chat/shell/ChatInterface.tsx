@@ -184,6 +184,8 @@ export const ChatInterface = forwardRef<ChatInterfaceHandle, ChatInterfaceProps>
     onSendPrompt,
     onNotice,
     imagePrepareFailedMessage: t("chat.components.composerAssets.prepareImageFailed"),
+    sessionCreateFailedMessage: t("chat.components.chatInterface.sessionCreateFailed"),
+    sendPromptFailedMessage: t("chat.components.chatInterface.sendPromptFailed"),
   });
 
   // Todo 面板状态 — 从当前聊天渲染条目中提取最新 TodoWrite 工具调用。

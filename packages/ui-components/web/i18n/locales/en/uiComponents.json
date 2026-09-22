@@ -79,6 +79,8 @@
       "chatInterface": {
         "agentPlaceholder": "Send a message to the agent...",
         "readonlyMode": "Read-only mode — cannot send messages",
+        "sendPromptFailed": "The message could not be sent. Please try again.",
+        "sessionCreateFailed": "The session could not be created; the message was not sent.",
         "waitingSession": "Waiting for session..."
       },
       "chatStatus": {
@@ -114,6 +116,7 @@
         "image": "Image to send",
         "imageNumber": "Image {{count}}",
         "prepareImageFailed": "The image could not be processed. Remove it and try again.",
+        "processImagePartialFailed": "Some images could not be processed and were skipped.",
         "quoteLimitReached": "The quote limit for this turn has been reached. Send or remove a quote first.",
         "quoteNumber": "Quote {{count}}",
         "quoteTruncated": "The quote was too long; {{count}} characters were omitted.",

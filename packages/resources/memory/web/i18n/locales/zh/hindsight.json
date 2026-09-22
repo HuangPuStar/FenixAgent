@@ -210,6 +210,7 @@
     "subtitle": "完整记忆内容及元数据",
     "loadingDetails": "正在加载记忆详情...",
     "loading": "加载中...",
+    "copyFailed": "复制到剪贴板失败",
     "sectionFullText": "完整文本",
     "sectionContext": "上下文",
     "sectionOccurred": "发生时间",

@@ -49,8 +49,12 @@ export function VersionPanel({
     } else {
       console.error("VersionPanel: 获取版本列表失败", versionsResult.reason);
     }
+    if (wfResult.status === "rejected" || versionsResult.status === "rejected") {
+      // 失败会让面板退化成「暂无发布版本」的空态，用户无从分辨；两项都失败也只报一条
+      toast.error(t("versions.load_data_failed"));
+    }
     setLoading(false);
-  }, [workflowId]);
+  }, [workflowId, t]);
 
   useEffect(() => {
     loadData();
@@ -110,9 +114,11 @@ export function VersionPanel({
         setViewingYaml(result.yaml);
       } catch (err) {
         console.error(err);
+        // 整行点击展开 YAML 是用户主动操作，失败时行不会展开，不给提示会被当成点击没响应
+        toast.error(t("versions.yaml_load_failed"));
       }
     },
-    [workflowId, viewingVersion],
+    [workflowId, viewingVersion, t],
   );
 
   const isBusy = publishing || publishingLocal;

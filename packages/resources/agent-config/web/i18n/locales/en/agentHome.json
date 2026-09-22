@@ -15,6 +15,7 @@
   "createFailed": "Failed to create Agent",
   "noModel": "No model available, please configure a model first",
   "generationFailed": "Failed to generate configuration, please try again",
+  "templatesFailed": "Failed to load templates",
   "greeting": "<strong>Hello,</strong> tell me what kind of agent you want to create. Describe what it does and who it serves, and I'll help generate the configuration.",
   "oneClickCreate": "One-Click Create",
   "back": "Back"

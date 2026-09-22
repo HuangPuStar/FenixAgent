@@ -1,3 +1,4 @@
+import { ConfirmDialog } from "@fenix/ui-components/config/ConfirmDialog";
 import { unwrap } from "@fenix/web-runtime/api/request";
 import { Copy, Globe, Inbox, Loader, Power, RefreshCw, Trash2, X } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
@@ -10,6 +11,10 @@ export function TriggerPanel({ workflowId, onClose }: { workflowId?: string; onC
   const [loading, setLoading] = useState(true);
   const [creating, setCreating] = useState(false);
   const [copiedId, setCopiedId] = useState<string | null>(null);
+  // 待确认的目标触发器 id：原生 confirm 的同步返回值无法保留，改成「先挂起目标、由 ConfirmDialog 回调再执行」。
+  // 删除与重新生成是两个语义不同的动作，各自独立一份状态（不合并，否则关闭动画期间标题/描述会串成另一动作的文案）。
+  const [deleteTargetId, setDeleteTargetId] = useState<string | null>(null);
+  const [regenerateTargetId, setRegenerateTargetId] = useState<string | null>(null);
   const { t } = useTranslation("workflows");
 
   const loadData = useCallback(async () => {
@@ -45,9 +50,9 @@ export function TriggerPanel({ workflowId, onClose }: { workflowId?: string; onC
     }
   }, [workflowId, loadData, t]);
 
-  const handleDelete = useCallback(
+  const runDelete = useCallback(
     async (triggerId: string) => {
-      if (!workflowId || !confirm(t("editor.trigger_delete_confirm"))) return;
+      if (!workflowId) return;
       try {
         await unwrap(workflowDefApi.deleteTrigger(workflowId, triggerId));
         toast.success(t("editor.trigger_deleted"));
@@ -60,9 +65,9 @@ export function TriggerPanel({ workflowId, onClose }: { workflowId?: string; onC
     [workflowId, loadData, t],
   );
 
-  const handleRegenerate = useCallback(
+  const runRegenerate = useCallback(
     async (triggerId: string) => {
-      if (!workflowId || !confirm(t("editor.trigger_regenerate_confirm"))) return;
+      if (!workflowId) return;
       try {
         const updated = await unwrap(workflowDefApi.regenerateTriggerHash(workflowId, triggerId));
         toast.success(t("editor.trigger_hash_regenerated"));
@@ -73,6 +78,24 @@ export function TriggerPanel({ workflowId, onClose }: { workflowId?: string; onC
       }
     },
     [workflowId, t],
+  );
+
+  // 点击只挂起目标，由 ConfirmDialog 确认后才调用上面的执行函数。
+  // `!workflowId` 守卫从原先「缺 id 或用户未确认就直接返回」的写法平移到这里：缺 id 时不进入确认流程。
+  const requestDelete = useCallback(
+    (triggerId: string) => {
+      if (!workflowId) return;
+      setDeleteTargetId(triggerId);
+    },
+    [workflowId],
+  );
+
+  const requestRegenerate = useCallback(
+    (triggerId: string) => {
+      if (!workflowId) return;
+      setRegenerateTargetId(triggerId);
+    },
+    [workflowId],
   );
 
   const handleToggle = useCallback(
@@ -89,6 +112,7 @@ export function TriggerPanel({ workflowId, onClose }: { workflowId?: string; onC
         loadData();
       } catch (err) {
         console.error(err);
+        toast.error(t("editor.trigger_toggle_failed"));
       }
     },
     [workflowId, loadData, t],
@@ -103,8 +127,12 @@ export function TriggerPanel({ workflowId, onClose }: { workflowId?: string; onC
         setCopiedId(trigger.id);
         toast.success(t("editor.trigger_copied"));
         setTimeout(() => setCopiedId(null), 2000);
-      } catch {
-        // clipboard fallback
+      } catch (err) {
+        // 剪贴板写入会被权限策略拒绝（非安全上下文 / 用户未授权），原实现是空 catch
+        // 加一句"clipboard fallback"注释——既没有 fallback，也没有诊断与反馈，
+        // 用户点「复制」后按钮毫无反应。这里补诊断与提示。
+        console.error("[TriggerPanel] 复制 Webhook URL 失败", err);
+        toast.error(t("editor.trigger_copy_failed"));
       }
     },
     [t],
@@ -286,7 +314,7 @@ export function TriggerPanel({ workflowId, onClose }: { workflowId?: string; onC
                 </button>
                 <button
                   type="button"
-                  onClick={() => handleRegenerate(trigger.id)}
+                  onClick={() => requestRegenerate(trigger.id)}
                   style={{
                     padding: "2px 6px",
                     border: "1px solid #e5e7eb",
@@ -305,7 +333,7 @@ export function TriggerPanel({ workflowId, onClose }: { workflowId?: string; onC
                 </button>
                 <button
                   type="button"
-                  onClick={() => handleDelete(trigger.id)}
+                  onClick={() => requestDelete(trigger.id)}
                   style={{
                     padding: "2px 6px",
                     border: "1px solid #fecaca",
@@ -327,6 +355,37 @@ export function TriggerPanel({ workflowId, onClose }: { workflowId?: string; onC
           ))
         )}
       </div>
+
+      {/* Delete trigger confirmation */}
+      <ConfirmDialog
+        open={deleteTargetId !== null}
+        onOpenChange={(open) => {
+          if (!open) setDeleteTargetId(null);
+        }}
+        title={t("editor.trigger_delete_title")}
+        description={t("editor.trigger_delete_confirm")}
+        variant="destructive"
+        onConfirm={() => {
+          const triggerId = deleteTargetId;
+          setDeleteTargetId(null);
+          if (triggerId) runDelete(triggerId);
+        }}
+      />
+
+      {/* Regenerate trigger hash confirmation */}
+      <ConfirmDialog
+        open={regenerateTargetId !== null}
+        onOpenChange={(open) => {
+          if (!open) setRegenerateTargetId(null);
+        }}
+        title={t("editor.trigger_regenerate_title")}
+        description={t("editor.trigger_regenerate_confirm")}
+        onConfirm={() => {
+          const triggerId = regenerateTargetId;
+          setRegenerateTargetId(null);
+          if (triggerId) runRegenerate(triggerId);
+        }}
+      />
     </>
   );
 }

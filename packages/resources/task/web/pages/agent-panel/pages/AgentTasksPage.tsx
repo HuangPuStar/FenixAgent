@@ -90,6 +90,8 @@ export function AgentTasksPage() {
     {
       onError: (err: Error) => {
         console.error("agent list load failed", err);
+        // agent 列表喂的是任务表单里的 agent 下拉，静默失败会让用户以为「没有可用 agent」
+        toast.error(t("toast.agentListLoadFailed"));
       },
     },
   );

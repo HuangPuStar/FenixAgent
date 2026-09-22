@@ -73,6 +73,9 @@ export function AgentHomePage() {
   const { data: templatesData } = useRequest(() => unwrap(agentApi.templates()), {
     onError: (err) => {
       console.error("[agent-home] Failed to load templates:", err);
+      // 模板区失败后只剩「或从模板快速开始」标签 + 空容器，与「确实没有模板」在界面上同形；
+      // 该分支没有可重试的失败区，故补一次可见提示，避免把加载失败读成产品没有模板。
+      toast.error(t("templatesFailed"));
     },
   });
   const templates = templatesData?.templates ?? [];
