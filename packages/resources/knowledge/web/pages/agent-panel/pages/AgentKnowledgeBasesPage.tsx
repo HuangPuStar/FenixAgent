@@ -1,6 +1,7 @@
 import { AgentMasterDetailWorkspace } from "@fenix/ui-components/components/agent-master-detail-workspace";
 import { ConfirmDialog } from "@fenix/ui-components/config/ConfirmDialog";
 import { FormDialog } from "@fenix/ui-components/config/FormDialog";
+import { StatusBadge } from "@fenix/ui-components/config/StatusBadge";
 import { AppHeader } from "@fenix/ui-components/layout/app-header";
 import { AppPage } from "@fenix/ui-components/layout/app-page";
 import {
@@ -57,23 +58,8 @@ import { AgentKnowledgeAccessDenied, isKnowledgeAccessDenied } from "./agent-kno
 import { AgentKnowledgeDirectory } from "./agent-knowledge-directory";
 import { KnowledgeLoadFailure } from "./agent-knowledge-load-failure";
 import { AgentKnowledgeResources } from "./agent-knowledge-resources";
+import { KB_STATUS_TONES, kbStatusLabel } from "./knowledge-status";
 import "./agent-knowledge.css";
-
-/** 资源状态 → 语义色 badge 样式 */
-function getStatusBadge(status: string) {
-  switch (status) {
-    case "ready":
-      return "bg-emerald-50 text-emerald-700 ring-1 ring-emerald-200";
-    case "processing":
-    case "pending":
-    case "indexing":
-      return "bg-amber-50 text-amber-700 ring-1 ring-amber-200";
-    case "error":
-      return "bg-red-50 text-red-700 ring-1 ring-red-200";
-    default:
-      return "bg-surface-2 text-text-muted";
-  }
-}
 
 /**
  * 重新解析失败的提示文案：按统一请求层归一后的**稳定错误码**取字典键（§9.3）。
@@ -103,22 +89,6 @@ function getReparseErrorMessage(err: unknown, t: (key: string) => string): strin
       return t("reparse.failedUnauthorized");
     default:
       return t("reparse.failed");
-  }
-}
-
-/** 知识库状态 → 圆点装饰色 */
-function getStatusDot(status: string) {
-  switch (status) {
-    case "ready":
-      return "bg-emerald-500";
-    case "processing":
-    case "pending":
-    case "indexing":
-      return "bg-amber-500";
-    case "error":
-      return "bg-red-500";
-    default:
-      return "bg-slate-300";
   }
 }
 
@@ -622,13 +592,17 @@ export function AgentKnowledgeBasesPage() {
                     <div className="flex flex-wrap items-start justify-between gap-4">
                       <div className="min-w-0">
                         <div className="flex items-center gap-2">
-                          <span className={`size-2 rounded-full ${getStatusDot(selectedDetail.status)}`} />
                           <h2 className="truncate text-xl font-semibold text-[#17233a]">{selectedDetail.name}</h2>
-                          <span
-                            className={`rounded-full px-2 py-0.5 text-[11px] font-medium ${getStatusBadge(selectedDetail.status)}`}
-                          >
-                            {t(`status.${selectedDetail.status}`, { defaultValue: selectedDetail.status })}
-                          </span>
+                          {/* 圆点与文案此前拆在两处：一个只给圆点上色的 `getStatusDot`，一个手写
+                              `bg-emerald-50 ring-emerald-200` 的 `getStatusBadge`（第三份状态色表）。
+                              色表收敛到 `knowledge-status.ts` 后由 StatusBadge 一并承担，圆点回到
+                              它真正属于的位置——状态的胶囊内部。 */}
+                          <StatusBadge
+                            status={selectedDetail.status}
+                            label={kbStatusLabel(t, selectedDetail.status)}
+                            toneMap={KB_STATUS_TONES}
+                            indicator="dot"
+                          />
                         </div>
                         <p className="mt-1 font-mono text-[11px] text-[#94a3b8]">{selectedDetail.slug}</p>
                         {selectedDetail.description && (

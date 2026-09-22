@@ -1,3 +1,4 @@
+import { StatusBadge } from "@fenix/ui-components/config/StatusBadge";
 import { Button } from "@fenix/ui-components/ui/button";
 import { Switch } from "@fenix/ui-components/ui/switch";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@fenix/ui-components/ui/table";
@@ -17,6 +18,7 @@ import {
 import type { RefObject } from "react";
 import { useTranslation } from "react-i18next";
 import type { KnowledgeResourceInfo } from "../../../types/knowledge";
+import { KB_STATUS_TONES, kbStatusLabel } from "./knowledge-status";
 
 interface AgentKnowledgeResourcesProps {
   resources: KnowledgeResourceInfo[];
@@ -47,13 +49,6 @@ function FileIcon({ filename }: { filename: string }) {
   if (["md", "txt", "json", "xml", "yaml", "yml", "html", "js", "ts", "tsx", "py", "go", "rs", "sh"].includes(ext))
     return <FileCode />;
   return <File />;
-}
-
-function statusClass(status: string): string {
-  if (status === "ready") return "is-ready";
-  if (["processing", "pending", "indexing"].includes(status)) return "is-processing";
-  if (status === "error") return "is-error";
-  return "";
 }
 
 export function AgentKnowledgeResources(props: AgentKnowledgeResourcesProps) {
@@ -127,10 +122,15 @@ export function AgentKnowledgeResources(props: AgentKnowledgeResourcesProps) {
                       <small>{Math.round(resource.parseProgress * 100)}%</small>
                     </div>
                   ) : (
-                    <span className={`knowledge-resource-status ${statusClass(resource.status)}`}>
-                      <i />
-                      {resource.status}
-                    </span>
+                    // 状态胶囊此前是本包手写的 `.knowledge-resource-status.is-*` 色表（还带一份逐字
+                    // 相同的 `statusClass` 副本），改由库的 StatusBadge 承担配色；文案随之与详情头部
+                    // 同口径走字典（原先这里直接上屏后端原文 `ready`，中文界面里另一处写「就绪」）。
+                    <StatusBadge
+                      status={resource.status}
+                      label={kbStatusLabel(t, resource.status)}
+                      toneMap={KB_STATUS_TONES}
+                      indicator="dot"
+                    />
                   )}
                 </TableCell>
                 <TableCell className="text-center">

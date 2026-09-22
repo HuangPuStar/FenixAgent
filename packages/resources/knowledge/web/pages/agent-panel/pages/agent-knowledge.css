@@ -112,23 +112,20 @@
   color: #8090a7;
   font-size: 11px;
 }
-.knowledge-directory-item__copy i,
-.knowledge-resource-status i {
+/* 目录列表项的状态圆点（纯圆点、不带文案，故不经 StatusBadge 的胶囊形态） */
+.knowledge-directory-item__copy i {
   width: 6px;
   height: 6px;
   border-radius: 50%;
   background: #b8c3d2;
 }
-.knowledge-directory-item__copy i.is-ready,
-.knowledge-resource-status.is-ready i {
+.knowledge-directory-item__copy i.is-ready {
   background: #10b981;
 }
-.knowledge-directory-item__copy i.is-processing,
-.knowledge-resource-status.is-processing i {
+.knowledge-directory-item__copy i.is-processing {
   background: #f59e0b;
 }
-.knowledge-directory-item__copy i.is-error,
-.knowledge-resource-status.is-error i {
+.knowledge-directory-item__copy i.is-error {
   background: #ef4444;
 }
 .knowledge-detail {
@@ -234,28 +231,6 @@
 }
 .knowledge-resource-name button:hover {
   color: #2563c7;
-}
-.knowledge-resource-status {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  border-radius: 999px;
-  padding: 3px 8px;
-  background: #f1f5f9;
-  color: #64748b;
-  font-size: 11px;
-}
-.knowledge-resource-status.is-ready {
-  background: #ecfdf5;
-  color: #047857;
-}
-.knowledge-resource-status.is-processing {
-  background: #fffbeb;
-  color: #b45309;
-}
-.knowledge-resource-status.is-error {
-  background: #fef2f2;
-  color: #b91c1c;
 }
 .knowledge-resource-progress {
   display: flex;

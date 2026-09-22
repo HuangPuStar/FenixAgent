@@ -1,5 +1,6 @@
 "use client";
 
+import { StatusBadge } from "@fenix/ui-components/config/StatusBadge";
 import { Button } from "@fenix/ui-components/ui/button";
 import { Input } from "@fenix/ui-components/ui/input";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@fenix/ui-components/ui/sheet";
@@ -235,13 +236,14 @@ export function ChunkDetailSheet({ open, onClose, kbId, resource }: ChunkDetailS
                     <div className="flex items-center justify-between mb-2.5">
                       <span className="text-[11px] font-bold text-[#6366f1] tabular-nums">#{chunk.chunkIndex}</span>
                       <div className="flex items-center gap-2">
-                        <span
-                          className={`text-[10px] font-medium px-1.5 py-0.5 rounded ${
-                            chunk.enabled ? "bg-emerald-50 text-emerald-600" : "bg-gray-100 text-gray-400"
-                          }`}
-                        >
-                          {chunk.enabled ? t("chunk.enabled") : t("chunk.disabled")}
-                        </span>
+                        {/* 启用态此前是行内三元写死的 `bg-emerald-50 text-emerald-600` / `bg-gray-100 text-gray-400`，
+                            与本包其它状态展示同形不同值；改走库的 StatusBadge（enabled/disabled 是库内置词表），
+                            文案仍取本包的 chunk.* 键。 */}
+                        <StatusBadge
+                          status={chunk.enabled ? "enabled" : "disabled"}
+                          label={chunk.enabled ? t("chunk.enabled") : t("chunk.disabled")}
+                          className="text-[10px]"
+                        />
                         <Switch
                           checked={chunk.enabled}
                           onCheckedChange={(v) => handleToggleEnabled(chunk.id, v)}

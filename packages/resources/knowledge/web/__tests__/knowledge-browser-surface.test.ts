@@ -118,6 +118,7 @@ describe("knowledge web 入口浏览器可达面", () => {
       "pages/agent-panel/pages/agent-knowledge-directory.tsx",
       "pages/agent-panel/pages/agent-knowledge-load-failure.tsx",
       "pages/agent-panel/pages/agent-knowledge-resources.tsx",
+      "pages/agent-panel/pages/knowledge-status.ts",
       "components/knowledge/ResourcePreviewContent.tsx",
       "components/knowledge/ResourcePreviewDialog.tsx",
       "src/pages/agent-panel/components/ChunkDetailSheet.tsx",
@@ -126,7 +127,7 @@ describe("knowledge web 入口浏览器可达面", () => {
     ]) {
       expect(reachedWebFiles).toContain(expected);
     }
-    expect(reachedWebFiles.size).toBe(18);
+    expect(reachedWebFiles.size).toBe(19);
 
     // 跨包递归的有效性：只钉稳定路径——本包实际消费的四个跨包入口。
     // 少了这一段，「@fenix/* 被当成外部依赖放过」会以「包内断言全绿」的形式漏网。
