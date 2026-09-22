@@ -399,6 +399,43 @@ describe("architecture check CLI", () => {
     expect(result.stdout).toContain("[special-dependency]");
   });
 
+  // 组装期跨模块外键只能用裸说明符 `@fenix/<pkg>/db`（§6.1 的例外口径）。这条固化「db 只对相对
+  // 路径生效」这一半：同一个目标换成公开出口就不再是内部穿透，避免日后把 db 一并加进说明符分支。
+  test("accepts db specifiers that go through the package export", async () => {
+    const root = await createFixture({
+      "package.json": WORKSPACE_ROOT_MANIFEST,
+      "packages/agent-runtime/package.json": '{"name":"@fenix/agent-runtime"}\n',
+      "packages/agent-runtime/db/schema.ts": "export const environment = {};\n",
+      "packages/resources/channel/package.json":
+        '{"name":"@fenix/resource-channel","dependencies":{"@fenix/agent-runtime":"workspace:*"}}\n',
+      "packages/resources/channel/db/schema.ts":
+        'import { environment } from "@fenix/agent-runtime/db";\nvoid environment;\n',
+    });
+
+    const result = await runCheck(root);
+
+    expect(result.exitCode).toBe(0);
+  });
+
+  // 另一半：相对路径伸进对方 db/ 与伸进 src/ 同罪——都绕过了公开导出。这条在收窄前 exit 0，
+  // 是 §8.4 第 5 条登记的判别力缺口（跨包内部路径判定原先只认 src / web/src）。
+  test("rejects relative imports into another workspace package db/", async () => {
+    const root = await createFixture({
+      "package.json": WORKSPACE_ROOT_MANIFEST,
+      "packages/agent-runtime/package.json": '{"name":"@fenix/agent-runtime"}\n',
+      "packages/agent-runtime/db/schema.ts": "export const environment = {};\n",
+      "packages/resources/channel/package.json": '{"name":"@fenix/resource-channel"}\n',
+      "packages/resources/channel/db/schema.ts":
+        'import { environment } from "../../../agent-runtime/db/schema";\nvoid environment;\n',
+    });
+
+    const result = await runCheck(root);
+
+    expect(result.exitCode).toBe(1);
+    expect(result.stdout).toContain("package-no-internal-imports");
+    expect(result.stdout).toContain("../../../agent-runtime/db/schema");
+  });
+
   // §158 要求同类别内部的方向也能被门禁判定：identity 与 access-control 同属 platform-impl，
   // 矩阵只允许 access-control → identity，反向边必须被拒。
   test("rejects identity imports of the access control implementation", async () => {
