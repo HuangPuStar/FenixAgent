@@ -91,13 +91,13 @@ export function filterTestSummary(out: string): string | null {
   if (summary.length > 0) sections.push(summary.join("\n"));
 
   if (sections.length === 0) {
-    const firstError = out
-      .replaceAll("\r\n", "\n")
-      .split("\n")
-      .findIndex((line) => ERROR_SIGNAL.test(line));
+    // 注意：firstError 是行号，切片必须按行进行。此前误用 out.slice(firstError) 按字符切片，
+    // 会让无摘要的失败输出从任意字符位置截起（从半行开始、丢失上文），掩盖真实错误。
+    const lines = out.replaceAll("\r\n", "\n").split("\n");
+    const firstError = lines.findIndex((line) => ERROR_SIGNAL.test(line));
     if (firstError === -1) return null;
 
-    const fallback = trimOuterBlankLines(out.replaceAll("\r\n", "\n").split("\n").slice(firstError)).join("\n");
+    const fallback = trimOuterBlankLines(lines.slice(firstError)).join("\n");
     return boundTestDiagnostic(fallback);
   }
 
