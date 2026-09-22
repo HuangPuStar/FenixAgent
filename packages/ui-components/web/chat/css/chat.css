@@ -1,31 +1,31 @@
 /*
  * Chat 样式聚合入口。
  *
- * 用途：加载「没有唯一宿主组件」的那一层 chat 样式（消息视图、工具时间线、状态面板、命令面板残留、
- * 划词浮层、窄屏适配、高度链、加载指示、工牌动画）。历史上这些规则来自宿主
+ * 用途：加载「没有唯一宿主组件」的那一层 chat 样式（工具时间线、状态面板、命令面板残留、窄屏适配、
+ * 高度链、加载指示、工牌动画）。历史上这些规则来自宿主
  * `apps/web/src/shell/agent-panel.css` 的 `@import ".../chat-design.css"` 与该文件 1022 行版本的第
  * 920-1022 行 chat 段（该段已随 T5c2 `1fd40fb8b` 删除，故本入口是唯一存续处）。
  *
- * 不在本入口重复导入的样式表（保持「由组件自行导入」模式，避免同一 CSS 模块出现两个导入来源）：
- *   - web/chat/primitives/conversation.css（conversation.tsx 导入）：.chat-scroll-navigation 等
- *   - web/chat/primitives/chat-message-content.css（message.tsx 导入）：.chat-markdown-* 等
- *   - web/chat/css/chat-navigation-aids.css（view/chat-navigation-aids.tsx 导入）
+ * 不在本入口重复导入的样式表（保持「由组件自行导入」模式）：仅剩
+ *   - web/chat/css/chat-navigation-aids.css（view/chat-navigation-aids.tsx 导入）：划词浮层的
+ *     提示词导航与 `.chat-entry--active-prompt` 高亮。
+ * （`primitives/conversation.css` 与 `primitives/chat-message-content.css` 已随后续阶段迁移删除。）
  *
  * 迁移进度（手写 CSS + 语义类名 → JSX 工具类，逐阶段推进）：
  *   - 阶段一：composer / 命令面板 / 工牌卡三片的选择器已迁入组件 `className`。
- *   - 阶段二：shell 片（`chat-design-shell.css`）与 composer 残留片（`chat-design-composer.css`）已全部
- *     迁入消费方 JSX（`shell/**`、`view/**`、宿主 `FileTabsBar`），两个文件随之删除，对应 @import 一并移除。
- *   - 仍在推进：messages / tools / status / selection / responsive / layout / loading / agent-badge
- *     （后者只剩 `@keyframes`），以及命令面板里 popover/inline 外壳的最小残留。
+ *   - 阶段二：shell 片与 composer 残留片迁入消费方 JSX，两个样式表删除。
+ *   - 阶段三：消息片（`chat-design-messages.css`）、markdown 片（`primitives/chat-message-content.css`）、
+ *     Conversation 滚动按钮片（`primitives/conversation.css`）与划词浮层片（`chat-design-selection.css`）
+ *     全部迁入组件 `className`（markdown 排版落在 `primitives/internal/markdown-classes.ts`），四个文件删除。
+ *   - 仍在推进：tools / status / responsive / layout / loading / agent-badge（后者只剩 `@keyframes`），
+ *     以及命令面板里 popover/inline 外壳的最小残留。
  *
  * 导入顺序按源 `chat-design.css` 的分片顺序 + 源宿主中的实际级联顺序排列，勿随意调整：
- *   1. messages → tools：对应源第 1、2 片；messages-tools 因 500 行红线拆为两片，保持源内先后。
+ *   1. tools：对应源第 2 片（messages 片已迁完并在阶段三删除）。
  *   2. status：对应源第 3 片。
  *   3. command-menu：对应源第 4 片（composer 片已随阶段二删除）。
- *   4. selection、responsive：对应源第 5、6 片；responsive 的媒体查询依赖「排在最后」以覆盖
- *      status 的同特指度规则，必须保持在 status 之后。阶段二已删除其中针对
- *      `.chat-composer-wrapper` / `.chat-composer-context` 的两条死规则——那条行为已内化进
- *      `ChatComposer` / `ComposerContextMeter` 的 `[@media(max-width:720px)]:` 工具类。
+ *   4. responsive：对应源第 6 片；其媒体查询依赖「排在最后」以覆盖 status 的同特指度规则，
+ *      必须保持在 status 之后。
  *   5. chat-layout：源由宿主 apps/web 的 ChatArea.tsx 导入（T5b 起该组件属宿主 Shell），
  *      属性与其余分片无值冲突，位置不敏感。**尚未迁移**：其 `.acp-main-root` / `.chat-main-column` /
  *      `.chat-interface-root` / `.chat-interface-column` 类名仍由组件 JSX 保留（同时是宿主
@@ -35,11 +35,9 @@
  *      不重叠，位置同样不敏感，此处统一收拢在末尾。**尚未迁移**（loading 是位置算子 + `@keyframes`，
  *      agent-badge 只剩骨架动画的 `@keyframes`）。
  */
-@import "./chat-design-messages.css";
 @import "./chat-design-tools.css";
 @import "./chat-design-status.css";
 @import "./chat-design-command-menu.css";
-@import "./chat-design-selection.css";
 @import "./chat-design-responsive.css";
 @import "./chat-layout.css";
 @import "./chat-loading.css";

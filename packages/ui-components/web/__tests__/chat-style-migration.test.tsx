@@ -1,7 +1,8 @@
 // 样式迁移守卫测试（2026-09-22）：`@fenix/ui-components` chat 簇从手写 CSS + 语义类名
 // 迁到 Tailwind 工具类后，锁定三件事：
 //   1. 渲染结果里不再出现被迁移掉的语义类名（改用 `data-slot` / ARIA / role / 文本做锚点）；
-//   2. 已迁空的样式表被真正删除（阶段二删除了 `chat-design-shell.css` 与 `chat-design-composer.css`）；
+//   2. 已迁空的样式表被真正删除（阶段二删除 shell / composer 残留两片，阶段三删除消息 / markdown /
+//      Conversation 滚动按钮 / 划词浮层四片）；
 //   3. 剩余样式表只剩「无法迁移的最小片段」（`@keyframes`、必须控制非我方节点的透传规则），
 //      已迁移的选择器不再回流。
 //
@@ -13,14 +14,18 @@ import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { createInstance } from "i18next";
 import { createElement } from "react";
-import { renderToStaticMarkup } from "react-dom/server";
+import { renderToReadableStream, renderToStaticMarkup } from "react-dom/server";
 import { initReactI18next } from "react-i18next/initReactI18next";
 import { ChatComposer } from "../chat/composer/ChatComposer";
 import { CommandMenu } from "../chat/composer/CommandMenu";
 import { ComposerAssets } from "../chat/composer/composer-assets";
+import { MessageResponse } from "../chat/primitives/message";
 import { AgentBadge, AgentBadgeSkeleton } from "../chat/shell/AgentBadge";
 import { ChatHeader } from "../chat/shell/ChatHeader";
+import { ChatQuoteMessage } from "../chat/view/ChatQuoteMessage";
 import { ChatView } from "../chat/view/ChatView";
+import { AssistantBubble, UserBubble } from "../chat/view/MessageBubble";
+import { SystemMessage } from "../chat/view/SystemMessage";
 import en from "../i18n/locales/en/uiComponents.json";
 import { UI_COMPONENTS_NS } from "../i18n/namespace";
 
@@ -112,8 +117,36 @@ const MIGRATED_CLASS_NAMES = [
   "chat-composer-security-policy",
   "chat-composer-send",
   "chat-composer-textarea",
+  "chat-assistant-chunks",
+  "chat-assistant-message",
+  "chat-activity-chain--after-message",
   "chat-composer-wrapper",
   "chat-composer-divider",
+  "chat-entry",
+  "chat-entry--activity",
+  "chat-entry--assistant",
+  "chat-entry--tool-group",
+  "chat-entry--user",
+  "chat-markdown-content",
+  "chat-markdown-response",
+  "chat-markdown-response--rendered",
+  "chat-message-actions",
+  "chat-message-content",
+  "chat-quote-message",
+  "chat-quote-message-preview",
+  "chat-quote-messages",
+  "chat-scroll-navigation",
+  "chat-scroll-to-latest",
+  "chat-selection-action",
+  "chat-system-reminder",
+  "chat-thinking-block",
+  "chat-thinking-content",
+  "chat-thinking-trigger",
+  "chat-user-bubble",
+  "chat-user-message-content",
+  "chat-user-message-frame",
+  "message-bubble-enter",
+  "message-content",
   "chat-conversation-content",
   "chat-empty-mark",
   "chat-empty-state",
@@ -323,8 +356,14 @@ describe("chat 样式迁移：外壳与空状态", () => {
 describe("chat 样式迁移：CSS 只剩文档化的最小片段", () => {
   // 阶段二已把 shell 片与 composer 残留片全部迁空，两个样式表必须真的删除（否则同一属性会有两个来源）。
   test("已迁空的样式表被删除", () => {
+    // 阶段二
     expect(existsSync(join(CSS_DIR, "chat-design-shell.css"))).toBe(false);
     expect(existsSync(join(CSS_DIR, "chat-design-composer.css"))).toBe(false);
+    // 阶段三（消息簇；后两个与组件同目录，不在 css/ 下）
+    expect(existsSync(join(CSS_DIR, "chat-design-messages.css"))).toBe(false);
+    expect(existsSync(join(CSS_DIR, "chat-design-selection.css"))).toBe(false);
+    expect(existsSync(join(import.meta.dir, "..", "chat", "primitives", "conversation.css"))).toBe(false);
+    expect(existsSync(join(import.meta.dir, "..", "chat", "primitives", "chat-message-content.css"))).toBe(false);
   });
 
   // 任何 chat 样式表里都不得回流已迁移的选择器（回流意味着同一属性有了两个来源）。
@@ -372,6 +411,22 @@ describe("chat 样式迁移：CSS 只剩文档化的最小片段", () => {
       ".chat-empty-mark",
       ".chat-empty-suggestions",
       ".chat-input-dock",
+      ".chat-user-bubble",
+      ".chat-user-message-frame",
+      ".chat-user-message-content",
+      ".chat-assistant-message",
+      ".chat-assistant-chunks",
+      ".chat-entry--activity",
+      ".chat-thinking-trigger",
+      ".chat-message-actions",
+      ".chat-quote-message ",
+      ".chat-system-reminder",
+      ".chat-message-content",
+      ".chat-markdown-content",
+      ".chat-markdown-response",
+      ".chat-selection-action",
+      ".chat-scroll-to-latest",
+      ".chat-scroll-navigation",
     ]) {
       expect(commandMenuCss).not.toContain(selector);
       expect(survivorCss).not.toContain(selector);
@@ -426,5 +481,105 @@ describe("chat 样式迁移：CSS 只剩文档化的最小片段", () => {
     // 状态面板簇的两条仍在（属后续阶段）。
     expect(responsiveCss).toContain(".chat-interaction-stack");
     expect(responsiveCss).toContain(".chat-status-tabs button span");
+  });
+});
+
+/** 流式渲染（`MessageResponse` 内部是 lazy(streamdown)，同步渲染只会拿到 Suspense 兜底）。 */
+async function renderStreaming(element: Parameters<typeof renderToReadableStream>[0]): Promise<string> {
+  const stream = await renderToReadableStream(element);
+  await stream.allReady;
+
+  const reader = stream.getReader();
+  const decoder = new TextDecoder();
+  let markup = "";
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    markup += decoder.decode(value, { stream: true });
+  }
+  return markup + decoder.decode();
+}
+
+describe("chat 样式迁移：消息簇", () => {
+  // 用户气泡与助手消息（含思考块/操作条）渲染后不带语义类名，锚点与新密度参数生效。
+  test("消息气泡渲染结果不含已迁移的语义类名", () => {
+    const entry = {
+      type: "assistant_message" as const,
+      id: "a1",
+      chunks: [{ type: "message" as const, text: "正文" }],
+    };
+    const user = renderToStaticMarkup(
+      createElement(UserBubble, { entry: { type: "user_message", id: "u1", content: "保留\n换行" } }),
+    );
+    const assistant = renderToStaticMarkup(createElement(AssistantBubble, { entry }));
+    const compact = renderToStaticMarkup(createElement(AssistantBubble, { entry, compact: true }));
+
+    for (const html of [user, assistant, compact]) {
+      for (const name of MIGRATED_CLASS_NAMES) {
+        expect(classTokens(html)).not.toContain(name);
+      }
+    }
+    expect(user).toContain('data-slot="chat-user-message-frame"');
+    expect(user).toContain('data-slot="chat-user-message-content"');
+    expect(user).toContain("保留\n换行");
+    // 正文块间距：默认 16px（`gap-4`），活动链内收紧为 4px（`gap-1`，源 `.chat-entry--activity` 那条）。
+    expect(assistant).toContain("gap-4");
+    expect(compact).toContain("gap-1");
+    // 操作条默认隐藏、由助手根节点的具名 group 驱动显示（替代源 `:hover / :focus-within` 父选子）。
+    expect(assistant).toContain("group/assistant");
+    expect(assistant).toContain("group-hover/assistant:opacity-100");
+  });
+
+  // 引用胶囊与系统提醒换成锚点；语义类名与死类名（`message-bubble-enter` 等）都已清空。
+  test("引用胶囊与系统提醒使用锚点", () => {
+    const quote = renderToStaticMarkup(
+      createElement(ChatQuoteMessage, { quote: { id: "q1", text: "引用正文", omittedCharacterCount: 12 }, index: 0 }),
+    );
+    const reminder = renderToStaticMarkup(
+      createElement(SystemMessage, { rawText: "<system-reminder>x</system-reminder>" }),
+    );
+
+    expect(quote).toContain('data-slot="chat-quote-message"');
+    expect(quote).toContain("12 chars omitted");
+    expect(reminder).toContain('data-slot="chat-system-reminder"');
+    for (const html of [quote, reminder]) {
+      for (const name of MIGRATED_CLASS_NAMES) {
+        expect(classTokens(html)).not.toContain(name);
+      }
+    }
+  });
+
+  // markdown 排版（含 streamdown 内部 DOM）必须挂在容器上：逐条断言几条代表性声明。
+  test("markdown 排版容器带后代排版工具类", async () => {
+    const html = await renderStreaming(createElement(MessageResponse, null, "# 标题\n\n- 项\n\n> 引用"));
+    const tokens = classTokens(html);
+
+    for (const name of MIGRATED_CLASS_NAMES) {
+      expect(tokens).not.toContain(name);
+    }
+    // 元素级（源 `.chat-markdown-content` / `.chat-markdown-response`）
+    expect(tokens).toContain("text-[#27364f]");
+    expect(tokens).toContain("text-[14px]");
+    expect(tokens).toContain("wrap-anywhere");
+    // 后代：标题、列表、引用、streamdown 代码块头部
+    expect(tokens).toContain("[&_h1]:text-[22px]");
+    expect(tokens).toContain("[&_ul]:list-disc");
+    expect(tokens).toContain("[&_blockquote]:pl-0");
+    expect(tokens).toContain("[&_[data-streamdown=code-block-header]]:hidden");
+  });
+
+  // Conversation 的滚动按钮只在「已向上滚动」时渲染（SSR 到不了那一支），故以源码级检查守住类名不回流。
+  test("Conversation 滚动按钮的源码里不再使用语义类名", () => {
+    const src = readFileSync(join(import.meta.dir, "..", "chat", "primitives", "conversation.tsx"), "utf8");
+    // 只看 className 表达式里的类名（注释中会写「源 `.chat-scroll-to-latest`」这类溯源说明）。
+    const classExpressions = [...src.matchAll(/className=(?:"([^"]*)"|\{`([^`]*)`\}|\{cn\(([\s\S]*?)\)\})/g)]
+      .flatMap((match) => match.slice(1).filter((value): value is string => typeof value === "string"))
+      .join(" ")
+      .replace(/\/\/[^\n]*/g, "")
+      .replace(/\/\*[\s\S]*?\*\//g, "");
+
+    expect(classExpressions).not.toContain("chat-scroll-to-latest");
+    expect(classExpressions).not.toContain("chat-scroll-navigation");
+    expect(src).not.toContain('import "./conversation.css"');
   });
 });

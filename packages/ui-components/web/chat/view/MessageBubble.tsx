@@ -2,6 +2,7 @@ import { ChevronDown, Copy, File, Quote } from "lucide-react";
 import { type MutableRefObject, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { UI_COMPONENTS_NS } from "../../i18n/namespace";
+import { cn } from "../../lib/cn";
 import { Button } from "../../ui/button";
 import { Dialog, DialogContent, DialogTitle } from "../../ui/dialog";
 import { isVisibleContentBlock, parseChatQuotes } from "../lib/context-queue";
@@ -28,6 +29,28 @@ const COLLAPSED_MAX_HEIGHT = 200;
 // 思考内容流式显示的最大高度（≈4 行）
 const THOUGHT_STREAMING_MAX_HEIGHT = 96;
 const FILE_REFERENCE_PATTERN = /@\.\/[^\s]+/g;
+
+/**
+ * 助手消息操作条的样式（源 `chat-design-messages.css` 的 `.chat-message-actions` 段）。
+ *
+ * - 常驻声明 + `@media (hover: none)`（触屏上始终可见）与 `prefers-reduced-motion`（取消过渡）两条
+ *   媒体查询按源逐字表达；媒体查询不改变特指度，故它们排在基础声明之后、按生成顺序生效。
+ * - 显示态由助手消息根节点的**具名 group**（`group/assistant`）驱动，替代源
+ *   `.chat-assistant-message:hover / :focus-within` 的父选子；用具名 group 避免命中外层无关的 group。
+ */
+const MESSAGE_ACTIONS_CLASS = [
+  "pointer-events-none absolute left-0 top-[calc(100%-2px)] z-[4] flex w-max max-w-full min-w-0 gap-[3px]",
+  "rounded-[9px] border border-[#e4eaf2] bg-white p-[3px] opacity-0 shadow-[0_6px_18px_rgb(30_50_80_/_12%)]",
+  "-translate-y-0.5 [transition:opacity_120ms_ease,visibility_120ms_ease,transform_120ms_ease]",
+  "group-hover/assistant:pointer-events-auto group-hover/assistant:translate-y-0 group-hover/assistant:opacity-100",
+  "group-focus-within/assistant:pointer-events-auto group-focus-within/assistant:translate-y-0 group-focus-within/assistant:opacity-100",
+  "[@media(hover:none)]:pointer-events-auto [@media(hover:none)]:translate-y-0 [@media(hover:none)]:opacity-100",
+  "[@media(prefers-reduced-motion:reduce)]:[transition:none]",
+].join(" ");
+
+/** 操作条里的图标按钮（源 `.chat-message-actions button` 与 `… svg`）。 */
+const MESSAGE_ACTION_BUTTON_CLASS =
+  "grid h-6 w-6 place-items-center rounded-md text-[#8a97aa] hover:bg-[#f3f6fa] hover:text-[#52627a]";
 
 /**
  * 工作区相对路径判定。
@@ -125,7 +148,7 @@ export function UserBubble({ entry, envId, onOpenWorkspaceFile }: UserBubbleProp
     <div className="flex flex-col gap-2">
       {systemSegments.map(({ segment, quotes: segmentQuotes }) =>
         segmentQuotes.length > 0 ? (
-          <div key={segment.text} className="chat-quote-messages">
+          <div key={segment.text} className="flex flex-wrap justify-end gap-1.5">
             {segmentQuotes.map((quote, quoteIndex) => (
               <ChatQuoteMessage key={`${quote.text}-${quote.omittedCharacterCount}`} quote={quote} index={quoteIndex} />
             ))}
@@ -137,7 +160,7 @@ export function UserBubble({ entry, envId, onOpenWorkspaceFile }: UserBubbleProp
       {/* 用户文本与图片附件 — 右对齐气泡（正文） */}
       {visibleContent && (
         <div className="flex justify-end">
-          <div className="chat-user-message-frame">
+          <div className="w-fit min-w-0 max-w-[90%] overflow-hidden" data-slot="chat-user-message-frame">
             {/* 图片附件 — 与消息附件共用同一套 attach 基元，横向排布、按需换行 */}
             {entry.images && entry.images.length > 0 && (
               <MessageAttachments className="mb-2">
@@ -147,10 +170,11 @@ export function UserBubble({ entry, envId, onOpenWorkspaceFile }: UserBubbleProp
               </MessageAttachments>
             )}
             {/* 文本内容 — 品牌色淡底 + 折叠 */}
-            <div className="chat-user-bubble message-bubble-enter">
+            <div className="relative overflow-hidden rounded-[14px_14px_4px_14px] border border-[#e4eaf2] bg-white text-[#27364f]">
               <div
                 ref={contentRef}
-                className="chat-user-message-content px-4 py-2.5 text-sm font-display leading-relaxed"
+                className="min-w-0 max-w-full px-4 py-2.5 text-sm font-display leading-relaxed whitespace-pre-wrap wrap-anywhere [word-break:break-word]"
+                data-slot="chat-user-message-content"
                 style={!expanded && overflowing ? { maxHeight: `${COLLAPSED_MAX_HEIGHT}px` } : undefined}
               >
                 {visibleParts.map((part) =>
@@ -219,6 +243,13 @@ interface AssistantBubbleProps {
   cardEmitterRef?: MutableRefObject<CardEmitter | null>;
   /** 点击「引用」时回调，替代源实现的 `chat:quote` window 自定义事件。 */
   onQuote?: (text: string, sessionId?: string) => void;
+  /**
+   * 紧凑密度（可选，默认 false）：正文块间距 4px 而非 16px。
+   *
+   * 对应源 `.chat-entry--activity .chat-assistant-chunks { gap: 4px }`——该规则由**外层渲染项**
+   * （ChatView 的活动链）决定，迁移后不再用祖先类名选择子元素，改由 ChatView 显式传参（纯增量）。
+   */
+  compact?: boolean;
 }
 
 /**
@@ -239,6 +270,7 @@ export function AssistantBubble({
   cardEmitter,
   cardEmitterRef,
   onQuote,
+  compact = false,
 }: AssistantBubbleProps) {
   const { t } = useTranslation(UI_COMPONENTS_NS);
   // 每个助手消息创建独立的 emitter 实例
@@ -272,9 +304,9 @@ export function AssistantBubble({
   const errorText = useMemo(() => (entry.error ? publicErrorText(t, entry.error) : ""), [entry.error, t]);
 
   return (
-    <div className="chat-assistant-message message-bubble-enter">
+    <div className="group/assistant relative min-w-0">
       {/* 内容 — 无卡片背景，直接排版；system-reminder 块渲染为系统消息而非隐藏 */}
-      <div className="chat-assistant-chunks flex-1 min-w-0">
+      <div className={cn("grid w-full flex-1 min-w-0", compact ? "gap-1" : "gap-4")}>
         {entry.chunks.map((chunk, i, all) => {
           if (chunk.type === "thought") {
             // 只有最后一个 thought chunk 且全局 streaming 时才标记为 streaming
@@ -283,9 +315,9 @@ export function AssistantBubble({
             return (
               // Chunks lack a unique identifier.
               // biome-ignore lint/suspicious/noArrayIndexKey: 协议块本身没有唯一 id（源文件同款写法）。本包 package.json 声明了 react 依赖，biome 因而启用 react 域规则；源宿主 packages/agent-runtime 未声明 react，规则未启用。chunks 只整体替换、不重排，索引键不会引起元素错位。
-              <Reasoning key={i} isStreaming={thoughtStreaming} className="chat-thinking-block">
-                <ReasoningTrigger className="chat-thinking-trigger" />
-                <ReasoningContent className="chat-thinking-content">
+              <Reasoning key={i} isStreaming={thoughtStreaming} className="mb-0">
+                <ReasoningTrigger className="text-[13px] leading-[1.45] text-[#8d9aab] hover:text-[#748297] [&>svg:first-child]:hidden [&>svg:last-child]:ml-0.5" />
+                <ReasoningContent className="mt-1.5 text-[#68768b]">
                   <ThoughtContent text={chunk.text} isStreaming={thoughtStreaming} />
                 </ReasoningContent>
               </Reasoning>
@@ -303,7 +335,7 @@ export function AssistantBubble({
           return (
             // Chunks lack a unique identifier.
             // biome-ignore lint/suspicious/noArrayIndexKey: 同上前提——协议块无唯一 id，且本包启用了 react 域规则；chunks 不重排。
-            <div key={i} className="message-content chat-markdown-content text-text-primary leading-[1.75]">
+            <div key={i} className="min-w-0 max-w-full text-[14px] text-[#27364f] leading-[1.75]">
               <MessageResponse envId={envId}>{chunk.text}</MessageResponse>
             </div>
           );
@@ -324,22 +356,24 @@ export function AssistantBubble({
         )}
       </div>
       {visibleText && (
-        <div className="chat-message-actions" role="group" aria-label={t("chat.components.messageBubble.actions")}>
+        <div className={MESSAGE_ACTIONS_CLASS} role="group" aria-label={t("chat.components.messageBubble.actions")}>
           <button
             type="button"
+            className={MESSAGE_ACTION_BUTTON_CLASS}
             title={t("chat.components.messageBubble.copy")}
             aria-label={t("chat.components.messageBubble.copy")}
             onClick={() => void navigator.clipboard.writeText(visibleText)}
           >
-            <Copy />
+            <Copy className="h-3.5 w-3.5" />
           </button>
           <button
             type="button"
+            className={MESSAGE_ACTION_BUTTON_CLASS}
             title={t("chat.components.messageBubble.quote")}
             aria-label={t("chat.components.messageBubble.quote")}
             onClick={() => onQuote?.(visibleText, sessionId)}
           >
-            <Quote />
+            <Quote className="h-3.5 w-3.5" />
           </button>
         </div>
       )}

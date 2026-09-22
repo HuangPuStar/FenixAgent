@@ -6,7 +6,6 @@ import { StickToBottom, useStickToBottomContext } from "use-stick-to-bottom";
 import { UI_COMPONENTS_NS } from "../../i18n/namespace";
 import { cn } from "../../lib/cn";
 import { Button } from "../../ui/button";
-import "./conversation.css";
 
 export type ConversationProps = ComponentProps<typeof StickToBottom>;
 
@@ -82,7 +81,12 @@ export const ConversationScrollButton = ({ className, ...props }: ConversationSc
 
   return (
     <Button
-      className={cn("chat-scroll-to-latest rounded-full", className)}
+      // 源 `conversation.css` 的 `.chat-scroll-to-latest`：尺寸/底色/阴影/backdrop 与 hover 配色。
+      // `has-[>svg]:px-[11px]` 用于压过 Button `size="sm"` 的 `has-[>svg]:px-2.5`（同变体同级）。
+      className={cn(
+        "h-[30px] w-auto gap-1.5 rounded-full border-0 bg-[rgb(255_255_255_/_96%)] px-[11px] text-[12px] font-medium text-[#475569] shadow-[0_6px_18px_rgb(30_50_80_/_12%)] backdrop-blur-[10px] hover:bg-white hover:text-[#334155] has-[>svg]:px-[11px]",
+        className,
+      )}
       onClick={handleScrollToBottom}
       size="sm"
       type="button"
@@ -156,7 +160,14 @@ export const ConversationScrollButtons = ({
   if (isAtBottom) return null;
 
   return (
-    <div className={cn("chat-scroll-navigation", className)} {...props}>
+    <div
+      // 源 `conversation.css` 的 `.chat-scroll-navigation`：贴底居中，预留宿主浮动产物面板宽度。
+      className={cn(
+        "absolute bottom-3 left-[calc((100%-var(--chat-floating-artifacts-width,0px))/2)] z-[24] flex -translate-x-1/2",
+        className,
+      )}
+      {...props}
+    >
       <ConversationScrollButton />
     </div>
   );

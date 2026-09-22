@@ -77,6 +77,9 @@ describe("Chat 空状态", () => {
     ];
     const markup = renderToStaticMarkup(<ChatView entries={entries} />);
 
-    expect(markup).toContain("chat-activity-chain chat-activity-chain--after-message");
+    // 类名 `chat-activity-chain--after-message` 已迁为条件工具类，紧凑边界改按数据状态断言；
+    // `chat-activity-chain` 类名保留（工具簇样式表仍以它作作用域钩子），锚点为 `data-slot`。
+    expect(markup).toContain('data-slot="chat-activity-chain"');
+    expect(markup).toContain('data-after-message="true"');
   });
 });

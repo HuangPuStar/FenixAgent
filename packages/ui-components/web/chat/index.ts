@@ -10,11 +10,12 @@
  * 唯一的显式排除：`primitives/permission-request` 的组件层 `PermissionOption` 与 `./types` 内联的协议
  * 同名类型冲突（结构兼容、声明独立），权威类型由 `./types` 提供，需要组件层声明的消费方深链该模块。
  *
- * 末尾的 `import "./css/chat.css"` 是刻意的副作用导入：chat 设计层样式（会话外壳、消息视图、
- * 工具时间线、状态面板、输入岛、命令面板、划词浮层、窄屏适配）在包内没有唯一宿主组件，
- * 由本聚合入口负责加载，保证「消费方导入本 barrel 即得完整视觉」。
- * 组件自导入的样式（`primitives/conversation.css`、`primitives/chat-message-content.css`、
- * `css/chat-navigation-aids.css`）不在此重复导入。
+ * 末尾的 `import "./css/chat.css"` 是刻意的副作用导入：尚未迁移到工具类的 chat 设计层样式
+ * （工具时间线、状态面板、窄屏适配、高度链、加载指示、工牌动画）在包内没有唯一宿主组件，
+ * 由本聚合入口负责加载，保证「消费方导入本 barrel 即得完整视觉」；随阶段推进逐步缩小
+ * （阶段一至三已迁走 composer / 命令面板 / 工牌卡 / 会话外壳 / 消息视图 / markdown 排版 /
+ * Conversation 滚动按钮 / 划词浮层，见 `css/chat.css` 的「迁移进度」）。
+ * 组件自导入的样式（现仅剩 `css/chat-navigation-aids.css`）不在此重复导入。
  *
  * 维护约定：新增或删除 `web/chat/` 下的模块时必须同步本文件与根 `web/index.ts`，
  * 否则深链与整包导入会出现能力差异。

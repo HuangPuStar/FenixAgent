@@ -22,15 +22,15 @@ export const ChatQuoteMessage = memo(function ChatQuoteMessage({ quote, index }:
   const { t } = useTranslation(UI_COMPONENTS_NS);
 
   return (
-    <details className="chat-quote-message">
-      <summary>
+    <details className="group relative" data-slot="chat-quote-message">
+      <summary className="inline-flex min-h-[26px] cursor-pointer list-none items-center gap-[5px] rounded-full border border-[#d8e3f1] bg-[#f4f8fd] px-[10px] py-[3px] text-[11px] font-bold text-[#4d72b2] [&::-webkit-details-marker]:hidden [&>svg]:w-3.5">
         <Quote aria-hidden="true" />
         <span>{t("chat.components.composerAssets.quoteNumber", { count: index + 1 })}</span>
       </summary>
-      <div className="chat-quote-message-preview">
-        <p>{createQuotePreview(quote.text)}</p>
+      <div className="absolute top-[calc(100%+6px)] right-0 z-20 hidden max-h-[132px] w-[min(340px,calc(100vw-48px))] overflow-hidden rounded-[9px] border border-[#dfe5ed] bg-white px-[11px] py-[9px] text-[#526178] shadow-[0_8px_24px_rgb(38_52_77_/_14%)] group-hover:block group-focus-within:block group-open:block">
+        <p className="m-0 text-[12px] leading-[1.5] wrap-anywhere">{createQuotePreview(quote.text)}</p>
         {quote.omittedCharacterCount > 0 && (
-          <small>
+          <small className="mt-1 block text-[10px] text-[#8a5b16]">
             {t("chat.components.composerAssets.quoteTruncatedBadge", { count: quote.omittedCharacterCount })}
           </small>
         )}

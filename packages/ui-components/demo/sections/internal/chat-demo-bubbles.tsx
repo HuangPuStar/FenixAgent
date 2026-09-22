@@ -92,7 +92,7 @@ export function ChatBubblesExamples() {
         <h2 data-slot="demo-example-title" className="mb-4 text-text-secondary text-[13px] font-medium">
           ChatQuoteMessage / CitationLink
         </h2>
-        <div className="chat-quote-messages">
+        <div className="flex flex-wrap justify-end gap-1.5">
           {MOCK_QUOTE_ITEMS.map((item) => (
             <ChatQuoteMessage key={item.id} quote={item.quote} index={item.index} />
           ))}

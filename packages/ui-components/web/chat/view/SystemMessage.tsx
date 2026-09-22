@@ -29,7 +29,8 @@ export const SystemMessage = memo(function SystemMessage({ rawText, className }:
       <div className={cn("flex justify-start", className)}>
         <button
           type="button"
-          className="chat-system-reminder"
+          className="inline-flex min-h-[22px] cursor-pointer items-center rounded-full border border-[#e1e7ef] bg-white px-[10px] py-0.5 text-[#63728a] tracking-[0.04em] [font:700_10px/1.4_ui-monospace,monospace] hover:border-[#c5cfdd] hover:text-[#46566d] focus-visible:border-[#c5cfdd] focus-visible:text-[#46566d]"
+          data-slot="chat-system-reminder"
           onDoubleClick={() => setDetailsOpen(true)}
           aria-expanded={detailsOpen}
           aria-haspopup="dialog"

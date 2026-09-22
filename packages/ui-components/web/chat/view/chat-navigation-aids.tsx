@@ -246,9 +246,13 @@ export function ChatSelectionAction({ contextScope, onQuote }: ChatSelectionActi
 
   if (!selectionAction) return null;
   return (
-    <div className="chat-selection-action" style={{ left: selectionAction.left, top: selectionAction.top }}>
+    <div
+      className="fixed z-[100] overflow-hidden rounded-[9px] border border-[#dfe5ed] bg-white shadow-[0_9px_26px_rgb(30_50_80_/_14%)]"
+      style={{ left: selectionAction.left, top: selectionAction.top }}
+    >
       <button
         type="button"
+        className="px-3 py-2 text-[12px] font-semibold text-[#275ebd]"
         onClick={() => {
           onQuote?.(selectionAction.text, contextScope);
           window.getSelection()?.removeAllRanges();

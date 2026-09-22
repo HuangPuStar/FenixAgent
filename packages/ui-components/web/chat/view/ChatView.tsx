@@ -2,6 +2,7 @@ import { ArrowUpRight } from "lucide-react";
 import React, { useMemo } from "react";
 import { useTranslation } from "react-i18next";
 import { UI_COMPONENTS_NS } from "../../i18n/namespace";
+import { cn } from "../../lib/cn";
 import { buildChatRenderBlocks, type ChatRenderItem } from "../lib/chat-render-layout";
 import { Conversation, ConversationContent, ConversationScrollButtons } from "../primitives/conversation";
 import { AgentBadgeSkeleton, type AgentSkillInfo } from "../shell/AgentBadge";
@@ -135,7 +136,16 @@ export const ChatView = React.memo(
                     return (
                       <div
                         key={`activity-${renderItemKey(block.items[0], blockIndex)}`}
-                        className={`chat-activity-chain${followsAssistantMessage ? " chat-activity-chain--after-message" : ""}`}
+                        // `chat-activity-chain` 类名保留：`web/chat/css/chat-design-tools.css`（工具簇，下一阶段迁移）
+                        // 仍以 `.chat-activity-chain .tool-call-*` 的形式做负边距对齐；本行工具类即原
+                        // `chat-design-messages.css` 的 `.chat-activity-chain` 声明。
+                        className={cn(
+                          "chat-activity-chain relative grid gap-px mx-0 mt-0.5 mb-2 pl-8",
+                          "before:absolute before:top-[11px] before:bottom-[11px] before:left-[11px] before:w-px before:bg-[#dce3ec] before:content-['']",
+                          followsAssistantMessage && "-mt-3.5",
+                        )}
+                        data-slot="chat-activity-chain"
+                        data-after-message={followsAssistantMessage || undefined}
                       >
                         {block.items.map((item, itemIndex) => (
                           <ChatRenderItemView
@@ -276,17 +286,17 @@ function ChatEmptyState({
 
 /** 按渲染项密度与条目类型给出外层容器类名（源实现的间距规则逐字保留）。 */
 function entryClassName(item: Extract<ChatRenderItem, { type: "entry" }>): string {
-  if (item.density === "activity") return "chat-entry chat-entry--activity";
+  if (item.density === "activity") return "py-0.5";
   const { entry } = item;
   // 用户消息前后大留白 — Claude.ai 式宽松间距
   if (entry?.type === "user_message") {
-    return "chat-entry chat-entry--user py-3";
+    return "py-3";
   }
   // 助手消息 — 工具调用紧贴，否则多留白
   if (entry?.type === "assistant_message") {
-    return "chat-entry chat-entry--assistant py-3";
+    return "py-3";
   }
-  return "chat-entry py-2";
+  return "py-2";
 }
 
 /** 生成渲染项 key：优先使用协议 id，缺失时回落到下标。 */
@@ -324,7 +334,7 @@ function ChatRenderItemView({
 }: ChatRenderItemViewProps) {
   if (item.type === "tool_group") {
     return (
-      <div className="chat-entry chat-entry--tool-group">
+      <div>
         <ToolCallGroup entries={item.entries} onPreviewFile={bindPreviewFile(envId, onOpenWorkspaceFile)} />
       </div>
     );
@@ -336,6 +346,7 @@ function ChatRenderItemView({
     <div id={`chat-entry-${entryId}`} className={entryClassName(item)}>
       <EntryRenderer
         entry={item.entry}
+        density={item.density}
         isLoading={entryIsStreaming}
         sessionId={sessionId}
         envId={envId}
@@ -354,6 +365,7 @@ function ChatRenderItemView({
 const EntryRenderer = React.memo(
   function EntryRenderer({
     entry,
+    density,
     isLoading,
     sessionId,
     envId,
@@ -362,6 +374,8 @@ const EntryRenderer = React.memo(
     onOpenWorkspaceFile,
   }: {
     entry: ThreadEntry;
+    /** 渲染密度（来自 `ChatRenderItem`）：`activity` 表示条目并入活动链，助手消息正文块间距收紧 */
+    density: "normal" | "activity";
     isLoading: boolean;
     sessionId?: string;
     envId?: string;
@@ -376,6 +390,7 @@ const EntryRenderer = React.memo(
         return (
           <AssistantBubble
             entry={entry}
+            compact={density === "activity"}
             isStreaming={isLoading}
             sessionId={sessionId}
             envId={envId}
@@ -399,6 +414,7 @@ const EntryRenderer = React.memo(
   // 比较所有 prop 引用（含 onPermissionRespond），调用方传入稳定 useCallback
   (prev, next) =>
     prev.entry === next.entry &&
+    prev.density === next.density &&
     prev.isLoading === next.isLoading &&
     prev.sessionId === next.sessionId &&
     prev.envId === next.envId &&
