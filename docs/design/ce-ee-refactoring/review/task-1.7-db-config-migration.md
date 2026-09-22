@@ -1720,6 +1720,40 @@ server-and-script-tests（806 pass / 0 fail，65 files）/ package-tests（7999 
 **未新增缺口**：本批没有引入新的门禁盲区或既有缺陷；§8.4 第 3 条（余 2 条 → **余 1 条**）与第 4 条（B13
 收口 **0 处**）按本批事实改写；§8.5 的台账总数与 `apps-boundary` 余项同步为 16 / 1。
 
+### 7.26 B 块收尾（1）：`model-management` 补宿主边界契约测试（2026-09-22，本批）
+
+**缺口与范围**：§8.1 第 11 条——machine / mcp / sandbox / agent-config / workflow / task 六个包各有同形的
+「source-migration」契约测试，`model-management` 没有，于是「本包与宿主的边界」在测试层无人守护，只靠编排者
+侧的两个门禁（架构台账 + `check:dependencies`）：改包的人跑 `bun test` 时看不到任何约束。
+
+**新增 `packages/resources/model-management/src/__tests__/model-management-source-migration.test.ts`**
+（10 用例 / 37 expect），断言集合按 §8.1 第 11 条预先写定的口径（B7 之后该包 `src/**` 的 `@server/**` 已
+归零，故为**零容忍**而非「只允许某一条路径」）：
+
+- 扫描有效性自检（10 个必然存在的文件 + 文件数下界）+ **三条正向控制**：`@fenix/platform-sdk`、包内相对
+  导入、本包 `db` 出口的自我引用。B3 时那套「残留数 > 0」的正向控制已随残留归零而不可用，这三条钉住的是
+  「说明符提取没失效」本身。
+- 零 `@server` 导入（`src/**` / `web/**` / `db/**` / `fenix.module.ts` 全扫描面）、web 面零宿主别名、
+  零穿透包外的相对路径、调用期只引用本包自己的 `db` 出口。
+- `db/**` 组装期豁免的对象单独钉住：本包 schema 的跨包 `db` 导入排序后**恰为** `@fenix/identity/db`
+  （`provider.user_id` 外键的列对象来源），且导入符号确实出现在 `.references(() => user.…)` 里——这条沿用
+  §7.25 在 channel 上学到的「豁免必须有界」写法。
+- 结构性断言：exports 每条目标存在、六个面入口指向约定文件、`fenix.module.ts` 的 `id` 与惰性 `create`、
+  README 五段式且非占位（本包此前没有任何测试读 README）。
+
+**与同形测试的差异（非显然取舍）**：**不含 `MIGRATION_PAIRS`**（宿主旧路径 → 包内新路径的成对清单）。
+那份清单服务的是「第二份实现复活」的守护，本包的迁移面已在 README「边界残留」逐条记录、且有宿主侧的
+`owner-inventory` 门禁覆盖；本文件只承担没人管的那一段（引用面）。若日后需要，补 `MIGRATION_PAIRS` 的
+权威来源是 PHY-05 闭包的 rename 记录。
+
+**变异实验（判别力取证）**：临时写入 `src/server/__probe-host-import.ts`（内容一行
+`import { db } from "@server/db";`）→ 目标用例 `包内不存在宿主 @server 导入` **单独转红**、其余 9 条仍绿；
+删除探针后复跑 10 pass / 0 fail，工作区无残留。这排除了「零容忍断言恒真」的可能。
+
+**验证**：`bun test packages/resources/model-management` → **243 pass / 0 fail / 34 文件 / 703 expect**
+（本批前 33 文件；新增文件 10 用例全部为新增）。README 的「边界残留」第 2 条同步补一句「该结论已由测试
+守护」，把原先只写在文档里的取证接进可执行断言。
+
 ## 八、已知缺口与未完成项（逐条登记 owner 与移除条件）
 
 > 依据 `ce-ee-engineering-standards.md` §10.7.4：边界豁免与依赖残留必须逐条登记并写明 owner
@@ -1739,7 +1773,7 @@ server-and-script-tests（806 pass / 0 fail，65 files）/ package-tests（7999 
 | 8 | `EnvDefinition` 的 `secret` / `restartRequired` 无任何消费者 | C 块 | 见 §8.4 |
 | 9 | `packages/agent-runtime/src/server/services/workspace-resolver.ts:9` 直读 `process.env.WORKSPACE_ROOT`——server 装配面内**唯一**真违规 | C 块 | 见 §8.4 |
 | 10 | 环境变量整段继承的残余：不传 `env` 的隐式继承 10 处、`docker/sandbox-dsh/scripts/dsh-acp-wrapper.js`、`apps/server/src/services/agent-generation.ts:63` 的 `new OpenAI()` 隐式读 `OPENAI_API_KEY` | 1.7 剩余 | 逐处改为白名单或显式注入；`new OpenAI()` 改由注入配置构造 |
-| 11 | **`model-management` 没有 source-migration 契约测试**（machine / mcp / sandbox / agent-config / workflow / task 六个包均有），因此 §4.7.1 ③ 的「残留数 > 0」正向控制在 B3 无从收缩，该包与宿主的边界在测试层无人守护（只靠 `apps-boundary` 台账 + `check:dependencies`） | B 块收尾 | 按同形测试补一份。**口径已随 B7 更新**：该包 `src/**` 的 `@server/**` 残留已归零（B7 把 `repositories/subject-agent-search.ts` 收窄为薄适配层，检索 SQL 归 agent-config 的 `searchAgentConfigsSystem`，见 §7.19），因此新用例的断言是「零宿主导入」（与 machine / mcp / skill / observer 同形），不再有「残留数 > 0」的正向控制可收缩——正向控制改用一条非宿主说明符（如 `@fenix/platform-sdk`）与实际存在的相对导入 |
+| 11 | ~~**`model-management` 没有 source-migration 契约测试**（machine / mcp / sandbox / agent-config / workflow / task 六个包均有），因此 §4.7.1 ③ 的「残留数 > 0」正向控制在 B3 无从收缩，该包与宿主的边界在测试层无人守护（只靠 `apps-boundary` 台账 + `check:dependencies`）~~ **已闭环（§7.26，2026-09-22）**：补 `src/__tests__/model-management-source-migration.test.ts`（10 用例），断言为零容忍「包内不存在宿主 `@server` 导入」+ 宿主别名 / 穿透相对路径 / 跨包 `db` 出口，正向控制改用 `@fenix/platform-sdk`、包内相对导入与本包 `db` 出口自我引用三条必然存在的说明符 | 已交付 | 变异实验已验证判别力：注入一条 `import { db } from "@server/db"` 即让该用例单独转红，删除后复绿 |
 
 | 12 | **`observer` 的 `drizzle-orm` 声明在本批后成为未使用依赖**：B7 删掉该包唯一的 DB 句柄与仓储后，全包 `src/**`、`web/**` 再无 `drizzle-orm` 导入（仅一处浏览器面测试的注释提到它）。删除声明需要跑 `bun install` 更新 `bun.lock`，本批不动锁文件 | B 块收尾（依赖清理） | 删 `packages/resources/observer/package.json` 的 `drizzle-orm` 条目并 `bun install`，与其它包的未使用依赖一并清理 |
 
