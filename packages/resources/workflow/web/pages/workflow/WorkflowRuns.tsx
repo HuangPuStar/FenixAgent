@@ -11,6 +11,7 @@ import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
 import { type DAGStatus, workflowEngineApi } from "../../api/workflow-engine";
+import { RUN_STATUS_FILTERS, StatusFilterRow } from "./components/StatusFilterRow";
 import { relativeTime } from "./utils";
 
 /** 运行状态 → 色调：只声明语义，具体配色（含 dark 变体）由 `StatusBadge` 决定。 */
@@ -123,22 +124,15 @@ export function WorkflowRuns({ onSelectRun }: WorkflowRunsProps) {
               className="h-8 pl-8 text-xs"
             />
           </div>
-          <div className="flex gap-1">
-            {["all", "RUNNING", "SUSPENDED", "SUCCESS", "FAILED"].map((s) => (
-              <button
-                key={s}
-                type="button"
-                onClick={() => setStatusFilter(s)}
-                className={`rounded-md border px-2.5 py-1 text-[11px] font-medium transition-colors ${
-                  statusFilter === s
-                    ? "border-brand bg-brand-subtle text-brand"
-                    : "border-border-subtle bg-surface-1 text-text-secondary hover:bg-surface-hover"
-                }`}
-              >
-                {s === "all" ? t("runs.filter_all") : t(STATUS_LABEL_KEYS[s] ?? s)}
-              </button>
-            ))}
-          </div>
+          {/* 筛选：取词路径是本页自己的（runs.status_*），由这里翻译后交给共享件 */}
+          <StatusFilterRow
+            value={statusFilter}
+            onChange={setStatusFilter}
+            options={RUN_STATUS_FILTERS.map((s) => ({
+              value: s,
+              label: s === "all" ? t("runs.filter_all") : t(STATUS_LABEL_KEYS[s] ?? s),
+            }))}
+          />
         </div>
         <Button variant="outline" size="sm" onClick={refresh}>
           <RefreshCw size={13} className="mr-1" /> {t("runs.refresh")}

@@ -117,6 +117,10 @@ describe("workflow web 入口浏览器可达面", () => {
       // 仍在浏览器图内」这件事在遍历失效时立刻变红，而不是靠别处的间接断言。
       "pages/workflow/components/VersionRow.tsx",
       "pages/workflow/components/VersionConfirmDialog.tsx",
+      // 本批新增的两件包内共享件：运行记录页与编辑器运行面板的状态筛选行、三个面板的面板头
+      // （编辑器经 `WorkflowEditor` 的 Sheet 与 `RunStatusPanel` 的侧栏消费，同样不在入口导出面里）。
+      "pages/workflow/components/StatusFilterRow.tsx",
+      "pages/workflow/components/PanelHeader.tsx",
     ]) {
       expect(reachedWebFiles).toContain(expected);
     }

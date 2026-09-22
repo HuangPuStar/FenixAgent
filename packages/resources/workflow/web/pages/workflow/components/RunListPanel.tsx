@@ -1,11 +1,13 @@
 import { unwrap } from "@fenix/web-runtime/api/request";
 import { Link } from "@tanstack/react-router";
 import { useRequest } from "ahooks";
-import { AlertTriangle, ExternalLink, Inbox, Loader, X } from "lucide-react";
+import { AlertTriangle, ExternalLink, Inbox, Loader } from "lucide-react";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import { workflowEngineApi } from "../../../api/workflow-engine";
 import { DAG_STATUS_CFG, relativeTime } from "../utils";
+import { PanelHeader } from "./PanelHeader";
+import { RUN_STATUS_FILTERS, StatusFilterRow } from "./StatusFilterRow";
 
 export function RunListPanel({ onClose, onSelect }: { onClose: () => void; onSelect: (runId: string) => void }) {
   const { t } = useTranslation("workflows");
@@ -29,58 +31,18 @@ export function RunListPanel({ onClose, onSelect }: { onClose: () => void; onSel
 
   return (
     <>
-      <div
-        className="wf-prop-header"
-        style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}
-      >
-        <span className="wf-prop-title">{t("editor.run_history")}</span>
-        <button
-          type="button"
-          onClick={onClose}
-          // 纯图标按钮：可访问名只能由 aria-label 提供（面板标题已由 wf-prop-title 承载，X 只表示关闭）
-          aria-label={t("editor.run_panel_close")}
-          style={{
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            width: 24,
-            height: 24,
-            border: "none",
-            background: "#f3f4f6",
-            borderRadius: 4,
-            color: "#6b7280",
-            cursor: "pointer",
-          }}
-        >
-          <X size={11} />
-        </button>
-      </div>
+      <PanelHeader title={t("editor.run_history")} closeLabel={t("editor.run_panel_close")} onClose={onClose} />
 
-      {/* 筛选 */}
-      <div
-        style={{ display: "flex", gap: 3, padding: "6px 12px", borderBottom: "1px solid #f3f4f6", flexWrap: "wrap" }}
-      >
-        {["all", "RUNNING", "SUSPENDED", "SUCCESS", "FAILED"].map((s) => (
-          <button
-            key={s}
-            type="button"
-            onClick={() => setStatusFilter(s)}
-            style={{
-              padding: "2px 6px",
-              border: "1px solid",
-              borderColor: statusFilter === s ? "#3b82f6" : "#e5e7eb",
-              borderRadius: 4,
-              background: statusFilter === s ? "#eff6ff" : "#fff",
-              color: statusFilter === s ? "#3b82f6" : "#6b7280",
-              fontSize: 10,
-              fontWeight: 500,
-              cursor: "pointer",
-            }}
-          >
-            {s === "all" ? t("runs.filter_all") : DAG_STATUS_CFG[s] ? t(DAG_STATUS_CFG[s].labelKey) : s}
-          </button>
-        ))}
-      </div>
+      {/* 筛选：取词路径是本页自己的（editor.dag_status_*），由这里翻译后交给共享件 */}
+      <StatusFilterRow
+        value={statusFilter}
+        onChange={setStatusFilter}
+        className="border-b border-border-light px-3 py-1.5"
+        options={RUN_STATUS_FILTERS.map((s) => ({
+          value: s,
+          label: s === "all" ? t("runs.filter_all") : DAG_STATUS_CFG[s] ? t(DAG_STATUS_CFG[s].labelKey) : s,
+        }))}
+      />
 
       {/* 列表 */}
       <div style={{ flex: 1, overflowY: "auto" }}>

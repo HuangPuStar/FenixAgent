@@ -1,9 +1,10 @@
 import { unwrap } from "@fenix/web-runtime/api/request";
-import { Inbox, Loader, Rocket, X } from "lucide-react";
+import { Inbox, Loader, Rocket } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
 import { workflowDefApi } from "../../../api/workflow-defs";
+import { PanelHeader } from "./PanelHeader";
 import { VersionConfirmDialog } from "./VersionConfirmDialog";
 import { VersionRow } from "./VersionRow";
 
@@ -125,32 +126,11 @@ export function VersionPanel({
 
   return (
     <>
-      <div
-        className="wf-prop-header"
-        style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}
-      >
-        <span className="wf-prop-title">{t("editor.version_management")}</span>
-        <button
-          type="button"
-          onClick={onClose}
-          // 纯图标按钮：可访问名只能由 aria-label 提供（面板标题已由 wf-prop-title 承载，X 只表示关闭）
-          aria-label={t("editor.version_panel_close")}
-          style={{
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            width: 24,
-            height: 24,
-            border: "none",
-            background: "#f3f4f6",
-            borderRadius: 4,
-            color: "#6b7280",
-            cursor: "pointer",
-          }}
-        >
-          <X size={11} />
-        </button>
-      </div>
+      <PanelHeader
+        title={t("editor.version_management")}
+        closeLabel={t("editor.version_panel_close")}
+        onClose={onClose}
+      />
 
       {workflowId && (
         <div style={{ padding: "8px 12px", borderBottom: "1px solid #f3f4f6" }}>

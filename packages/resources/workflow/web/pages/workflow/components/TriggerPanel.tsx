@@ -1,10 +1,11 @@
 import { ConfirmDialog } from "@fenix/ui-components/config/ConfirmDialog";
 import { unwrap } from "@fenix/web-runtime/api/request";
-import { Copy, Globe, Inbox, Loader, Power, RefreshCw, Trash2, X } from "lucide-react";
+import { Copy, Globe, Inbox, Loader, Power, RefreshCw, Trash2 } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
 import { type TriggerItem, workflowDefApi } from "../../../api/workflow-defs";
+import { PanelHeader } from "./PanelHeader";
 
 export function TriggerPanel({ workflowId, onClose }: { workflowId?: string; onClose: () => void }) {
   const [triggers, setTriggers] = useState<TriggerItem[]>([]);
@@ -138,36 +139,17 @@ export function TriggerPanel({ workflowId, onClose }: { workflowId?: string; onC
     [t],
   );
 
+  // 面板头三处合一（见 ./PanelHeader）：本面板是唯一带标题图标（Globe）的消费方；
+  // 原关闭按钮**没有任何可访问名**——读屏只会播报「按钮」，本批新增 `editor.trigger_panel_close` 补齐。
   return (
     <>
-      {/* Header */}
-      <div
-        className="wf-prop-header"
-        style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}
-      >
-        <span className="wf-prop-title">
-          <Globe size={13} style={{ marginRight: 4, verticalAlign: -1 }} />
-          {t("editor.trigger_title")}
-        </span>
-        <button
-          type="button"
-          onClick={onClose}
-          style={{
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            width: 24,
-            height: 24,
-            border: "none",
-            background: "#f3f4f6",
-            borderRadius: 4,
-            color: "#6b7280",
-            cursor: "pointer",
-          }}
-        >
-          <X size={11} />
-        </button>
-      </div>
+      {/* Panel header: the only consumer with a title icon, plus its own close accessible name. */}
+      <PanelHeader
+        title={t("editor.trigger_title")}
+        icon={<Globe size={13} />}
+        closeLabel={t("editor.trigger_panel_close")}
+        onClose={onClose}
+      />
 
       {/* Create button */}
       {workflowId && (
