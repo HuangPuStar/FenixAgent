@@ -135,8 +135,7 @@
   height: 18px;
 }
 
-.auth-light-options,
-.auth-light-terms {
+.auth-light-options {
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -144,13 +143,6 @@
   margin-bottom: 8px;
   color: rgba(26, 26, 46, 0.45);
   font-size: 13px;
-}
-
-.auth-light-terms {
-  align-items: flex-start;
-  justify-content: flex-start;
-  gap: 8px;
-  line-height: 1.5;
 }
 
 .auth-light-checkbox {
@@ -161,22 +153,15 @@
   transition: color 0.2s;
 }
 
-.auth-light-checkbox:hover,
-.auth-light-terms:hover {
+.auth-light-checkbox:hover {
   color: rgba(26, 26, 46, 0.65);
 }
 
-.auth-light-checkbox input,
-.auth-light-terms input {
+.auth-light-checkbox input {
   width: 16px;
   height: 16px;
   accent-color: #1355d8;
   cursor: pointer;
-}
-
-.auth-light-terms input {
-  flex: 0 0 auto;
-  margin-top: 2px;
 }
 
 .auth-light-link {
