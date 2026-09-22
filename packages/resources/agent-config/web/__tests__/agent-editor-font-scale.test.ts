@@ -367,7 +367,7 @@ const ROLE_ANCHORS: Array<{ slice: string; slot: string; note: string; patterns:
     slice: "A2",
     slot: "editor-summary-title",
     note: "右栏标题（760–1399px 压 16px）",
-    patterns: [/text-\[18px\]/, /\[@media\(min-width:760px\)and\(max-width:1399px\)\]:text-\[16px\]/],
+    patterns: [/text-\[18px\]/, /\[@media\(min-width:760px\)_and_\(max-width:1399px\)\]:text-\[16px\]/],
   },
   {
     slice: "A2",
@@ -398,7 +398,7 @@ const ROLE_ANCHORS: Array<{ slice: string; slot: string; note: string; patterns:
       /\[&[>_]span\]:text-\[8px\]/,
       /\[&[>_]h3\]:text-\[18px\]/,
       /\[&[>_]p\]:text-\[12px\]/,
-      /\[@media\(min-width:760px\)and\(max-width:1399px\)\]:\[&[>_]h3\]:text-\[16px\]/,
+      /\[@media\(min-width:760px\)_and_\(max-width:1399px\)\]:\[&[>_]h3\]:text-\[16px\]/,
     ],
   },
   { slice: "B", slot: "editor-field-label", note: "字段标签", patterns: [/:?text-\[12px\]/] },
