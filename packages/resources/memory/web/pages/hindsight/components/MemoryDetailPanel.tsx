@@ -1,3 +1,4 @@
+import { copyTextToClipboard } from "@fenix/ui-components/lib/clipboard";
 import { Button } from "@fenix/ui-components/ui/button";
 import { Spinner } from "@fenix/ui-components/ui/spinner";
 import { NS } from "@fenix/web-runtime/i18n/namespace";
@@ -57,16 +58,15 @@ export function MemoryDetailPanel({ memory, onClose, compact = false, inPanel = 
   const displayMemory = fullMemory || ({ ...memory, type: memory.fact_type } as MemoryDetail & MemoryTableRow);
 
   const copyToClipboard = async (text: string) => {
-    try {
-      await navigator.clipboard.writeText(text);
+    if (await copyTextToClipboard(text)) {
       setCopiedId(text);
       setTimeout(() => setCopiedId(null), 2000);
-    } catch (err) {
-      console.error("Failed to copy:", err);
-      // 复制按钮的成功能见（`copiedId` 换成对勾），失败此前只剩 console：点一下什么也不发生，
-      // 用户无法区分「没复制上」与「点了没反应」，故补一次可见提示。
-      toast.error(t("memoryDetailPanel.copyFailed"));
+      return;
     }
+    // 复制按钮的成功能见（`copiedId` 换成对勾），失败此前只剩 console：点一下什么也不发生，
+    // 用户无法区分「没复制上」与「点了没反应」，故补一次可见提示。
+    console.error("Failed to copy memory id", text);
+    toast.error(t("memoryDetailPanel.copyFailed"));
   };
 
   if (!memory) return null;

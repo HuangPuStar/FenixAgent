@@ -1,9 +1,10 @@
+import { copyTextToClipboard } from "@fenix/ui-components/lib/clipboard";
 import { Button } from "@fenix/ui-components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@fenix/ui-components/ui/dialog";
 import { Copy } from "lucide-react";
 import { useTranslation } from "react-i18next";
+import { toast } from "sonner";
 import { MODELS_NS } from "../../../../i18n/namespace";
-import { copyTextToClipboard } from "../../../../lib/clipboard";
 import type { Algorithm } from "./AlgorithmsPage";
 
 interface AlgorithmDetailDialogProps {
@@ -32,16 +33,15 @@ export function AlgorithmDetailDialog({ algorithm, open, onClose }: AlgorithmDet
               <DialogTitle className="text-base font-bold">{algorithm.name}</DialogTitle>
               <p className="text-xs text-text-secondary mt-0.5">{algorithm.categories.join(" · ")}</p>
             </div>
-            {/* 复制反馈走 toast（与算法卡片的复制按钮共用 lib/clipboard）：按钮文案不再为 2 秒回落切成「已复制」。 */}
+            {/* 复制反馈走 toast（与算法卡片的复制按钮共用 @fenix/ui-components/lib/clipboard）：按钮文案不再为 2 秒回落切成「已复制」。 */}
             <Button
               variant="outline"
               size="sm"
               className="gap-1.5 h-8 text-xs flex-shrink-0"
               onClick={() =>
-                copyTextToClipboard(algorithm.code, {
-                  copied: t("algorithms.copied"),
-                  failed: t("algorithms.copyFailed"),
-                })
+                void copyTextToClipboard(algorithm.code).then((ok) =>
+                  ok ? toast.success(t("algorithms.copied")) : toast.error(t("algorithms.copyFailed")),
+                )
               }
             >
               <Copy className="w-3.5 h-3.5" />

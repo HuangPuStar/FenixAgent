@@ -1,5 +1,6 @@
 import { AppHeader } from "@fenix/ui-components/layout/app-header";
 import { AppPage } from "@fenix/ui-components/layout/app-page";
+import { copyTextToClipboard } from "@fenix/ui-components/lib/clipboard";
 import { Button } from "@fenix/ui-components/ui/button";
 import { unwrap } from "@fenix/web-runtime/api/request";
 import { NS } from "@fenix/web-runtime/i18n/namespace";
@@ -11,7 +12,6 @@ import { toast } from "sonner";
 import { type OrgMember, type OrgMemberCandidate, orgApi } from "../../../api/organizations";
 import { useOrg } from "../../../contexts/OrgContext";
 import { useSession } from "../../../lib/auth-client";
-import { copyTextToClipboard } from "../../../lib/clipboard";
 import { OrganizationsDialogs } from "./agent-organizations-dialogs";
 import "./agent-organizations.css";
 import type {
@@ -305,11 +305,13 @@ export function AgentOrganizationsPage({ machineRegistry }: AgentOrganizationsPa
     }
   }, [defaultMachineId, detail, refreshDetail, selectedOrgId, t]);
 
-  // 复制反馈统一走 toast（见 lib/clipboard）：此前的 2 秒「已复制」文本回落只覆盖成功路径，
+  // 复制反馈统一走 toast（见 @fenix/ui-components/lib/clipboard）：此前的 2 秒「已复制」文本回落只覆盖成功路径，
   // 非安全上下文里复制会静默失败，用户看到的却仍是成功。
   const handleCopyId = useCallback(() => {
     if (!selectedOrgId) return;
-    copyTextToClipboard(selectedOrgId, { copied: t("copied"), failed: t("copyFailed") });
+    void copyTextToClipboard(selectedOrgId).then((ok) =>
+      ok ? toast.success(t("copied")) : toast.error(t("copyFailed")),
+    );
   }, [selectedOrgId, t]);
 
   return (

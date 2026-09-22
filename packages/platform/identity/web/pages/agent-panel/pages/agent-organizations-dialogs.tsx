@@ -1,3 +1,4 @@
+import { copyTextToClipboard } from "@fenix/ui-components/lib/clipboard";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -15,8 +16,8 @@ import { Input } from "@fenix/ui-components/ui/input";
 import { NS } from "@fenix/web-runtime/i18n/namespace";
 import { Check, Copy, Search, X } from "lucide-react";
 import { useTranslation } from "react-i18next";
+import { toast } from "sonner";
 import type { OrgMemberCandidate } from "../../../api/organizations";
-import { copyTextToClipboard } from "../../../lib/clipboard";
 import type { MachineFormState, OrganizationsDialogsProps } from "./agent-organizations-types";
 
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
@@ -301,7 +302,11 @@ function CopyValue({ label, value }: { label: string; value: string }) {
           size="icon-sm"
           variant="ghost"
           aria-label={t("copy")}
-          onClick={() => copyTextToClipboard(value, { copied: t("copied"), failed: t("copyFailed") })}
+          onClick={() =>
+            void copyTextToClipboard(value).then((ok) =>
+              ok ? toast.success(t("copied")) : toast.error(t("copyFailed")),
+            )
+          }
         >
           <Copy className="size-4" />
         </Button>

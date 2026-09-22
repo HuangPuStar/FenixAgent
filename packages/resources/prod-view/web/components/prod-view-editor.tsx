@@ -21,6 +21,7 @@
  */
 
 import { ConfirmDialog } from "@fenix/ui-components/config/ConfirmDialog";
+import { copyTextToClipboard } from "@fenix/ui-components/lib/clipboard";
 import { Button } from "@fenix/ui-components/ui/button";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@fenix/ui-components/ui/dialog";
 import { Input } from "@fenix/ui-components/ui/input";
@@ -394,10 +395,7 @@ export function ProdViewDeleteDialog({ state, title, description }: ProdViewDele
  */
 export function copyProdViewLink(id: string, messages: { copied: string; failed: string }) {
   const url = `${window.location.origin}/view/${id}`;
-  navigator.clipboard.writeText(url).then(
-    () => toast.success(messages.copied),
-    () => toast.error(messages.failed),
-  );
+  void copyTextToClipboard(url).then((ok) => (ok ? toast.success(messages.copied) : toast.error(messages.failed)));
 }
 
 /** 在新标签页打开公开视图。 */

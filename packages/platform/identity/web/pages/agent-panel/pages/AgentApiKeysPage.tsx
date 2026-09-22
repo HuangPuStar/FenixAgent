@@ -3,6 +3,7 @@ import { EmptyState } from "@fenix/ui-components/config/EmptyState";
 import { FormDialog } from "@fenix/ui-components/config/FormDialog";
 import { AppHeader } from "@fenix/ui-components/layout/app-header";
 import { AppPage } from "@fenix/ui-components/layout/app-page";
+import { copyTextToClipboard } from "@fenix/ui-components/lib/clipboard";
 import { Button } from "@fenix/ui-components/ui/button";
 import { Input } from "@fenix/ui-components/ui/input";
 import { Label } from "@fenix/ui-components/ui/label";
@@ -171,16 +172,18 @@ export function AgentApiKeysPage() {
     if (!name) return toast.error(t("validation.nameRequired"));
     runCreate(name);
   };
+  /**
+   * 复制新建的 API Key。
+   *
+   * 安全上下文（HTTPS / localhost）走统一剪贴板原语，最稳；非安全上下文（HTTP）下
+   * `navigator.clipboard` 是宿主 polyfill（隐藏 textarea + execCommand），它在**本页的模态对话框里
+   * 会因焦点陷阱复制失败**，故不试、直接退回「选中框内 `<code>`」的方式——不移动焦点，也按真实结果提示。
+   */
   const copyKey = async () => {
     if (!newKeyValue) return;
-    if (window.isSecureContext && typeof navigator.clipboard?.writeText === "function") {
-      try {
-        await navigator.clipboard.writeText(newKeyValue);
-        toast.success(t("toast.copied"));
-        return;
-      } catch {
-        // Continue to the in-dialog selection fallback below.
-      }
+    if (window.isSecureContext && (await copyTextToClipboard(newKeyValue))) {
+      toast.success(t("toast.copied"));
+      return;
     }
     if (copyElementText(keyCodeRef.current)) toast.success(t("toast.copied"));
     else toast.error(t("toast.copyFailed"));

@@ -2,6 +2,7 @@ import {
   AgentMasterDetailHeader,
   AgentMasterDetailWorkspace,
 } from "@fenix/ui-components/components/agent-master-detail-workspace";
+import { copyTextToClipboard } from "@fenix/ui-components/lib/clipboard";
 import { Button } from "@fenix/ui-components/ui/button";
 import { Input } from "@fenix/ui-components/ui/input";
 import { Skeleton } from "@fenix/ui-components/ui/skeleton";
@@ -20,8 +21,8 @@ import {
   UserPlus,
 } from "lucide-react";
 import { useTranslation } from "react-i18next";
+import { toast } from "sonner";
 import type { OrgMember } from "../../../api/organizations";
-import { copyTextToClipboard } from "../../../lib/clipboard";
 import type { MachineView, OrganizationsWorkspaceProps } from "./agent-organizations-types";
 import { canOperateMachine } from "./agent-organizations-utils";
 
@@ -163,7 +164,11 @@ function MachineRow({ machine, props }: { machine: MachineView; props: Organizat
           variant="ghost"
           size="icon-sm"
           aria-label={t("copyId")}
-          onClick={() => copyTextToClipboard(machine.id, { copied: t("copied"), failed: t("copyFailed") })}
+          onClick={() =>
+            void copyTextToClipboard(machine.id).then((ok) =>
+              ok ? toast.success(t("copied")) : toast.error(t("copyFailed")),
+            )
+          }
         >
           <Copy className="size-4" />
         </Button>
