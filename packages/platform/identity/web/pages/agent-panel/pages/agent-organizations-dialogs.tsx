@@ -1,3 +1,4 @@
+import { LabeledField } from "@fenix/ui-components/config/LabeledField";
 import { copyTextToClipboard } from "@fenix/ui-components/lib/clipboard";
 import {
   AlertDialog,
@@ -20,15 +21,6 @@ import { toast } from "sonner";
 import type { OrgMemberCandidate } from "../../../api/organizations";
 import type { MachineFormState, OrganizationsDialogsProps } from "./agent-organizations-types";
 
-function Field({ label, children }: { label: string; children: React.ReactNode }) {
-  return (
-    <label className="org-dialog-field">
-      <span>{label}</span>
-      {children}
-    </label>
-  );
-}
-
 function CreateOrganizationDialog({ props }: { props: OrganizationsDialogsProps }) {
   const { t } = useTranslation(NS.ORGS);
   return (
@@ -38,20 +30,20 @@ function CreateOrganizationDialog({ props }: { props: OrganizationsDialogsProps 
           <DialogTitle>{t("createDialog.title")}</DialogTitle>
         </DialogHeader>
         <div className="org-dialog-fields">
-          <Field label={t("createDialog.name")}>
+          <LabeledField label={t("createDialog.name")}>
             <Input
               value={props.formName}
               onChange={(event) => props.onFormNameChange(event.target.value)}
               placeholder={t("createDialog.namePlaceholder")}
             />
-          </Field>
-          <Field label={t("createDialog.slug")}>
+          </LabeledField>
+          <LabeledField label={t("createDialog.slug")}>
             <Input
               value={props.formSlug}
               onChange={(event) => props.onFormSlugChange(event.target.value)}
               placeholder="url-identifier"
             />
-          </Field>
+          </LabeledField>
         </div>
         <DialogFooter>
           <Button variant="ghost" onClick={() => props.onCreateOpenChange(false)}>
@@ -158,12 +150,12 @@ function InviteMemberDialog({ props }: { props: OrganizationsDialogsProps }) {
               </div>
             </div>
           </div>
-          <Field label={t("inviteDialog.role")}>
+          <LabeledField label={t("inviteDialog.role")}>
             <select value={props.inviteRole} onChange={(event) => props.onInviteRoleChange(event.target.value)}>
               <option value="admin">{t("roles.admin")}</option>
               <option value="member">{t("roles.member")}</option>
             </select>
-          </Field>
+          </LabeledField>
         </div>
         <DialogFooter>
           <Button variant="ghost" onClick={() => props.onInviteOpenChange(false)}>
@@ -265,29 +257,29 @@ function MachineFields({
   const { t } = useTranslation(NS.ORGS);
   return (
     <div className="org-dialog-fields">
-      <Field label={t(`${prefix}.name`)}>
+      <LabeledField label={t(`${prefix}.name`)}>
         <Input
           value={form.name}
           onChange={(event) => onChange({ ...form, name: event.target.value })}
           placeholder={t(`${prefix}.namePlaceholder`)}
           maxLength={64}
         />
-      </Field>
-      <Field label={t(`${prefix}.labels`)}>
+      </LabeledField>
+      <LabeledField label={t(`${prefix}.labels`)}>
         <Input
           value={form.labels}
           onChange={(event) => onChange({ ...form, labels: event.target.value })}
           placeholder={t(`${prefix}.labelsPlaceholder`)}
         />
-      </Field>
-      <Field label={t(`${prefix}.agentName`)}>
+      </LabeledField>
+      <LabeledField label={t(`${prefix}.agentName`)}>
         <select value={form.agentName} onChange={(event) => onChange({ ...form, agentName: event.target.value })}>
           <option value="peri">Peri</option>
           <option value="opencode">OpenCode</option>
           <option value="ccb">CCB</option>
           <option value="claude-code">Claude Code</option>
         </select>
-      </Field>
+      </LabeledField>
     </div>
   );
 }
@@ -295,7 +287,7 @@ function MachineFields({
 function CopyValue({ label, value }: { label: string; value: string }) {
   const { t } = useTranslation(NS.ORGS);
   return (
-    <Field label={label}>
+    <LabeledField label={label}>
       <div className="org-copy-value">
         <code>{value}</code>
         <Button
@@ -311,7 +303,7 @@ function CopyValue({ label, value }: { label: string; value: string }) {
           <Copy className="size-4" />
         </Button>
       </div>
-    </Field>
+    </LabeledField>
   );
 }
 

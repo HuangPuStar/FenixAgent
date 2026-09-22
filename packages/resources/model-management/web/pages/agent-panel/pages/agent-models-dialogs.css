@@ -1,11 +1,4 @@
 /* Model editor and responsive workbench styles are separated to keep page modules reviewable. */
-.model-form-field {
-  display: grid;
-  gap: 6px;
-  color: var(--model-ink);
-  font-size: 12px;
-  font-weight: 600;
-}
 .model-dialog-section {
   padding: 14px;
   background: #f7f9fc;

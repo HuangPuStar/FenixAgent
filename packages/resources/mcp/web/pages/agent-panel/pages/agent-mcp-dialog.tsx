@@ -1,4 +1,5 @@
 import { FormDialog } from "@fenix/ui-components/config/FormDialog";
+import { LabeledField } from "@fenix/ui-components/config/LabeledField";
 import { Button } from "@fenix/ui-components/ui/button";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@fenix/ui-components/ui/collapsible";
 import { Input } from "@fenix/ui-components/ui/input";
@@ -238,7 +239,7 @@ export function AgentMcpDialog({ target, onClose, onSaved }: Props) {
         </div>
       ) : !server && createMode === "json" ? (
         <div className="space-y-3">
-          <Field label={t("form.jsonConfig")} hint={t("form.jsonConfigHint")}>
+          <LabeledField label={t("form.jsonConfig")} hint={t("form.jsonConfigHint")}>
             <Textarea
               value={jsonInput}
               onChange={(event) => setJsonInput(event.target.value)}
@@ -248,11 +249,11 @@ export function AgentMcpDialog({ target, onClose, onSaved }: Props) {
               className="min-h-72 resize-y font-mono text-xs"
               spellCheck={false}
             />
-          </Field>
+          </LabeledField>
         </div>
       ) : (
         <div className="space-y-4" aria-busy={loadingDetail}>
-          <Field label={t("form.name")}>
+          <LabeledField label={t("form.name")} hint={server ? t("dialog.nameImmutable") : undefined}>
             <Input
               value={form.name}
               onChange={(event) => setForm({ ...form, name: event.target.value })}
@@ -260,10 +261,9 @@ export function AgentMcpDialog({ target, onClose, onSaved }: Props) {
               placeholder="my-mcp-server"
               className="font-mono text-sm"
             />
-            {server && <p className="mt-1 text-xs text-text-muted">{t("dialog.nameImmutable")}</p>}
-          </Field>
+          </LabeledField>
 
-          <Field
+          <LabeledField
             label={t("form.type")}
             hint={form.type === "local" ? t("form.typeLocalDesc") : t("form.typeRemoteDesc")}
           >
@@ -280,11 +280,11 @@ export function AgentMcpDialog({ target, onClose, onSaved }: Props) {
                 <SelectItem value="remote">{t("form.typeRemoteOption")}</SelectItem>
               </SelectContent>
             </Select>
-          </Field>
+          </LabeledField>
 
           {form.type === "local" ? (
             <>
-              <Field label={t("form.command")} hint={t("form.commandHint")}>
+              <LabeledField label={t("form.command")} hint={t("form.commandHint")}>
                 <Input
                   value={form.command}
                   onChange={(event) => setForm({ ...form, command: event.target.value })}
@@ -292,7 +292,7 @@ export function AgentMcpDialog({ target, onClose, onSaved }: Props) {
                   placeholder="npx @modelcontextprotocol/server-filesystem"
                   className="font-mono text-sm"
                 />
-              </Field>
+              </LabeledField>
               <KeyValueEditor
                 label={t("form.environment")}
                 entries={form.environment}
@@ -302,7 +302,7 @@ export function AgentMcpDialog({ target, onClose, onSaved }: Props) {
             </>
           ) : (
             <>
-              <Field label={t("form.url")}>
+              <LabeledField label={t("form.url")}>
                 <div className="flex gap-2">
                   <Input
                     value={form.url}
@@ -320,7 +320,7 @@ export function AgentMcpDialog({ target, onClose, onSaved }: Props) {
                     {testUrl.loading ? t("btn.testing") : t("btn.test")}
                   </Button>
                 </div>
-              </Field>
+              </LabeledField>
               <KeyValueEditor
                 label={t("form.headers")}
                 entries={form.headers}
@@ -339,7 +339,7 @@ export function AgentMcpDialog({ target, onClose, onSaved }: Props) {
             </>
           )}
 
-          <Field label={t("form.timeout")} hint={t("form.timeoutHint")}>
+          <LabeledField label={t("form.timeout")} hint={t("form.timeoutHint")}>
             <Input
               type="number"
               min={1}
@@ -349,7 +349,7 @@ export function AgentMcpDialog({ target, onClose, onSaved }: Props) {
               placeholder="5000"
               className="font-mono text-sm"
             />
-          </Field>
+          </LabeledField>
         </div>
       )}
     </FormDialog>
@@ -357,16 +357,6 @@ export function AgentMcpDialog({ target, onClose, onSaved }: Props) {
 }
 
 type Props = { target: McpEditorTarget; onClose: () => void; onSaved: () => void };
-
-function Field({ label, hint, children }: { label: string; hint?: string; children: React.ReactNode }) {
-  return (
-    <div>
-      <label className="text-sm font-medium text-text-primary">{label}</label>
-      {hint && <p className="mb-1.5 text-xs text-text-muted">{hint}</p>}
-      <div className={hint ? "" : "mt-1"}>{children}</div>
-    </div>
-  );
-}
 
 function KeyValueEditor({
   label,
@@ -455,7 +445,7 @@ function OAuthEditor({
         <CollapsibleContent>
           <div className="grid grid-cols-2 gap-3 border-t border-border-light px-4 pb-4 pt-4">
             {(["oauthClientId", "oauthClientSecret", "oauthScope", "oauthRedirectUri"] as const).map((key) => (
-              <Field
+              <LabeledField
                 key={key}
                 label={t(
                   `form.${key === "oauthClientId" ? "clientId" : key === "oauthClientSecret" ? "clientSecret" : key === "oauthScope" ? "scope" : "redirectUri"}`,
@@ -468,7 +458,7 @@ function OAuthEditor({
                   placeholder={t("form.optional")}
                   onChange={(event) => onChange({ ...form, [key]: event.target.value })}
                 />
-              </Field>
+              </LabeledField>
             ))}
           </div>
         </CollapsibleContent>

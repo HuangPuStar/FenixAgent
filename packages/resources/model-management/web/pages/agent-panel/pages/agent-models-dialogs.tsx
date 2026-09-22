@@ -1,4 +1,5 @@
 import { ConfirmDialog } from "@fenix/ui-components/config/ConfirmDialog";
+import { LabeledField } from "@fenix/ui-components/config/LabeledField";
 import { Button } from "@fenix/ui-components/ui/button";
 import {
   Dialog,
@@ -20,11 +21,7 @@ import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
 import { providerApi } from "../../../api/providers.ts";
 import { MODELS_NS } from "../../../i18n/namespace";
-import {
-  ModelField as Field,
-  ModelModalityField as ModalityField,
-  ModelNumberField as NumberField,
-} from "./agent-model-fields";
+import { ModelModalityField as ModalityField, ModelNumberField as NumberField } from "./agent-model-fields";
 import { readLimitRecord } from "./agent-models-data";
 import { useProviderTestErrorText } from "./agent-models-errors";
 import type {
@@ -199,23 +196,23 @@ export function ProviderEditorDialog({ target, providers, saving, onClose, onSav
       onClose={onClose}
       onSubmit={handleSubmit}
     >
-      <Field label={t("form.id")}>
+      <LabeledField label={t("form.id")}>
         <Input
           value={draft.id}
           onChange={(event) => update("id", event.target.value)}
           disabled={Boolean(editing) || readOnly}
           required
         />
-      </Field>
-      <Field label={t("form.displayName")}>
+      </LabeledField>
+      <LabeledField label={t("form.displayName")}>
         <Input
           value={draft.displayName.value}
           onChange={(event) => update("displayName", { edited: true, value: event.target.value })}
           disabled={readOnly}
           placeholder={t("form.displayNamePlaceholder")}
         />
-      </Field>
-      <Field label={t("form.protocol")}>
+      </LabeledField>
+      <LabeledField label={t("form.protocol")}>
         <Select
           value={draft.protocol}
           disabled={readOnly}
@@ -229,8 +226,8 @@ export function ProviderEditorDialog({ target, providers, saving, onClose, onSav
             <SelectItem value="anthropic">{t("protocolOptions.anthropic")}</SelectItem>
           </SelectContent>
         </Select>
-      </Field>
-      <Field label={t("form.apiKey")}>
+      </LabeledField>
+      <LabeledField label={t("form.apiKey")}>
         <Input
           type="password"
           autoComplete="new-password"
@@ -239,16 +236,16 @@ export function ProviderEditorDialog({ target, providers, saving, onClose, onSav
           disabled={readOnly}
           placeholder={editing ? t("form.apiKeyEditPlaceholder") : t("form.apiKeyCreatePlaceholder")}
         />
-      </Field>
+      </LabeledField>
       <div className="sm:col-span-2">
-        <Field label={t("form.baseUrl")}>
+        <LabeledField label={t("form.baseUrl")}>
           <Input
             value={draft.baseURL.value}
             onChange={(event) => update("baseURL", { edited: true, value: event.target.value })}
             disabled={readOnly}
             placeholder={t("form.baseUrlPlaceholder")}
           />
-        </Field>
+        </LabeledField>
       </div>
       {!readOnly && (
         <section className="model-dialog-section sm:col-span-2" aria-label={t("form.modelsSection")}>
@@ -363,17 +360,17 @@ export function ModelEditorDialog({ target, saving, onClose, onSave }: ModelEdit
       onClose={onClose}
       onSubmit={submit}
     >
-      <Field label={t("modelSubrow.modelId")}>
+      <LabeledField label={t("modelSubrow.modelId")}>
         <Input
           value={draft.id}
           disabled={Boolean(original) || readOnly}
           required
           onChange={(event) => update("id", event.target.value)}
         />
-      </Field>
-      <Field label={t("modelSubrow.displayName")}>
+      </LabeledField>
+      <LabeledField label={t("modelSubrow.displayName")}>
         <Input value={draft.name} disabled={readOnly} onChange={(event) => update("name", event.target.value)} />
-      </Field>
+      </LabeledField>
       <NumberField
         label={t("modelSubrow.contextLimit")}
         value={draft.limit.context}

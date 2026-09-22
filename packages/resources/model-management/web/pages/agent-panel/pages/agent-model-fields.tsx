@@ -1,14 +1,6 @@
+import { LabeledField } from "@fenix/ui-components/config/LabeledField";
 import { Input } from "@fenix/ui-components/ui/input";
 import { Check } from "lucide-react";
-
-export function ModelField({ label, children }: { label: string; children: React.ReactNode }) {
-  return (
-    <label className="model-form-field">
-      <span>{label}</span>
-      {children}
-    </label>
-  );
-}
 
 export function ModelNumberField({
   label,
@@ -24,7 +16,7 @@ export function ModelNumberField({
   onChange: (value: string) => void;
 }) {
   return (
-    <ModelField label={label}>
+    <LabeledField label={label}>
       <Input
         type="number"
         min="0"
@@ -33,7 +25,7 @@ export function ModelNumberField({
         disabled={disabled}
         onChange={(event) => onChange(event.target.value)}
       />
-    </ModelField>
+    </LabeledField>
   );
 }
 
