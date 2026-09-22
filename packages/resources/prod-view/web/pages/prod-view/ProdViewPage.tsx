@@ -1,4 +1,5 @@
 import { Button } from "@fenix/ui-components/ui/button";
+import { Spinner } from "@fenix/ui-components/ui/spinner";
 import { ApiError, unwrap } from "@fenix/web-runtime/api/request";
 import { useParams } from "@tanstack/react-router";
 import { useRequest } from "ahooks";
@@ -68,10 +69,7 @@ export function ProdViewPage({ chatArea: ChatArea }: ProdViewPageProps) {
 
       <div className="agent-panel-body">
         {loading ? (
-          <div className="flex h-full items-center justify-center" role="status" aria-live="polite">
-            <div className="h-8 w-8 rounded-full border-2 border-brand border-t-transparent animate-spin" aria-hidden />
-            <span className="sr-only">{t("loading")}</span>
-          </div>
+          <Spinner variant="panel" label={<span className="sr-only">{t("loading")}</span>} />
         ) : loadError ? (
           // 持久错误分支（role="alert"）与 401/403 的无权限分支分开：后者给重试按钮是无意义的入口。
           <div className="flex h-full flex-col items-center justify-center gap-4" role="alert">
@@ -94,17 +92,7 @@ export function ProdViewPage({ chatArea: ChatArea }: ProdViewPageProps) {
             </Button>
           </div>
         ) : (
-          <Suspense
-            fallback={
-              <div className="flex h-full items-center justify-center" role="status" aria-live="polite">
-                <div
-                  className="h-8 w-8 rounded-full border-2 border-brand border-t-transparent animate-spin"
-                  aria-hidden
-                />
-                <span className="sr-only">{t("loading")}</span>
-              </div>
-            }
-          >
+          <Suspense fallback={<Spinner variant="panel" label={<span className="sr-only">{t("loading")}</span>} />}>
             <ChatArea
               key={`${prodViewId}:${viewConfig.environmentId}:${viewConfig.instanceUid}`}
               agentId={viewConfig.environmentId}

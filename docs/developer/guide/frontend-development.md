@@ -1,8 +1,9 @@
 # 前端开发规范
 
-> **版本**：v3.0.2 | **最后更新**：2026-09-22 | **维护者**：前端团队
+> **版本**：v3.0.3 | **最后更新**：2026-09-22 | **维护者**：前端团队
 >
 > **最近变更**：
+> - v3.0.3 (2026-09-22)：§2.5 的加载壳口径改写——原「三种壳形态都合规」**作废**（它把逐字复制的圆环类名固化成规范），路由 `Suspense` fallback 与整块加载提示一律改用 `Spinner`（`@fenix/ui-components/ui/spinner`），并补 `variant` / `size` / `label` 的选择口径；§2.7 登记存量未迁移位置。
 > - v3.0.2 (2026-09-22)：把「失败必须有用户可见反馈」从隐含口径写成**可 review 的规则**（§5.8 新增：三条件判据 + 三类必然豁免 + `/login`、`/admin` 下无 `Toaster` 的坑）。据此做了一轮全量处理：4 处原生 `confirm()` 全部迁 `ConfirmDialog`（删除 §6.5 对应偏离项），逐点复核全仓 `console.error` 并补齐缺失反馈，未动的残留登记到 §5.9。§11.2 补「`react-i18next` 替身必须返回稳定 `t`」——该替身缺陷会让测试陷入反复拉取且生产不复现。
 > - v3.0.1 (2026-09-22)：精简第 1 章与第 10 章——原 §1.1 应用根 / §1.2 宿主源码目录 / §1.3 包边界与引用纪律，以及原 §10.1～§10.5，改写为几段说明与规则列表，只保留可据以 review 的硬规则；§1 子节重编号为 §1.1 装配产物与构建、§1.2 路径别名纪律、§1.3 现状偏离。同步移除 `packages/supaflow/web` 与 `e2e/` 的排除项（两者已从仓库移除），并补充"新增 `.css` 的落位"与"禁止 `@apply`"两条纪律。
 > - v3.0.0 (2026-09-22)：按 CE/EE 1.6 / 1.7 收口后的**代码事实**全面重写。删除全部 target / transitional 标记与 `docs/need-to-change/*` 引用（该目录已删除），规范只描述**当前不变量**；每章新增「现状偏离」记录规则尚未落地的已知位置；新增适用范围声明（§0.1）、装配产物（§1.1）、侧栏装配（§2.6）、iframe 沙箱（§6.2）、实时通道登记（§8.1）、CSS 文件边界（§10）。
@@ -155,6 +156,7 @@ void navigate({ to: "/agent/workflow/$id/edit", params: { id }, search: { runId 
 
 ```tsx
 // apps/web/src/routes/agent/_panel/models.tsx
+import { Spinner } from "@fenix/ui-components/ui/spinner";
 import { createFileRoute } from "@tanstack/react-router";
 import { lazy, Suspense } from "react";
 
@@ -162,26 +164,49 @@ const Page = lazy(() => import("@fenix/model-management/web").then((m) => ({ def
 
 export const Route = createFileRoute("/agent/_panel/models")({
   component: () => (
-    <Suspense
-      fallback={
-        <div className="flex flex-1 items-center justify-center">
-          <div className="h-8 w-8 rounded-full border-2 border-brand border-t-transparent animate-spin" />
-        </div>
-      }
-    >
+    <Suspense fallback={<Spinner variant="panel" />}>
       <Page />
     </Suspense>
   ),
 });
 ```
 
-三种已存在的壳形态都合规：
+**加载提示一律用 `Spinner`**：路由 `Suspense` fallback 与页面内整块加载提示都走它，**不要手写圆环类名**。组件在 `@fenix/ui-components/ui/spinner`（深链优先，也可从包根 barrel 取），属 §4.1 的 `ui/*` 基础原语，不是业务组件。
+
+`variant` 决定容器形态，三选一，**不要用 `className` 复刻**：
+
+| `variant` | 容器 | 用在哪 |
+|-----------|------|--------|
+| `panel` | `flex flex-1`，撑满父级剩余空间 | 路由 `Suspense` fallback、`_panel/*` 内容区、tab 内容区 |
+| `screen` | `flex h-screen` | 整屏等待：`__root.tsx` 的会话加载分支、全屏路由壳 |
+| `inline`（组件默认） | `inline-flex`，跟随内容流 | 按钮内联、卡片/表单局部；**外边距由调用方 `className` 给** |
+
+`size` 四档：`xs` 14px（按钮内联）· `sm` 24px（小面板、标签页内容区）· `md` 32px（默认，面板级内容区）· `lg` 40px（整屏等待）。环径只在这四档里选，不要在 `className` 里另写 `size-*` / `h-* w-*`。
+
+环色跟随容器文字色（组件兜底 `text-brand`，即默认就是品牌色）：**落在填充按钮之类的有色底上时传 `className="text-current"`** 跟随该处前景色——不要去调用点重写环的 `border-*` 类名。
+
+**`label` 的有无同时决定读屏行为**（三者互斥，按场景选一）：
+
+- **有可见文案** → 传 `label`，组件渲染在环下方并自带 `role="status"`；不要再自己包一层 `<p role="status">`。
+- **只有读屏文案** → `label={<span className="sr-only">{t("loading")}</span>}`。
+- **纯装饰的转圈**（旁边已有可见文案）→ **不传** `label`；整块对读屏隐藏（`aria-hidden`），念一个空的加载区只是噪音。
+
+```tsx
+// 整屏等待（apps/web/src/routes/__root.tsx 的会话加载分支）：有可见文案
+// t 来自 useTranslation("common")，"connecting" = 正在连接控制面板…
+<Spinner variant="screen" size="lg" label={t("connecting")} />
+
+// 面板 fallback：只有读屏文案
+<Spinner variant="panel" label={<span className="sr-only">{t("loading")}</span>} />
+```
+
+> **原「三种壳形态都合规」的判断作废**。它把「加载提示长什么样」也划成自由项：三种写法并列合规、示例直接给出那串圆环类名，于是**复制粘贴被写成了规范**——同一段类名散到 21 个路由壳与多张业务页面，尺寸、容器、文案各写各的（`admin/{logs,people,sandbox}.tsx` 只剩一行文字、连指示器都没有；`workflow_.$id.edit.tsx` 把 lucide `Loader` 图标按圆环类名渲染，与环形边框叠成双圈）。加载提示不再有第二个写法。**壳的接线形态仍只有下面三种**——那是结构选择，与加载提示无关：
 
 | 形态 | 例子 | 说明 |
 |------|------|------|
 | 标准 | 多数 `_panel/*.tsx` | 单懒组件 + `Suspense` |
 | **组合根端口注入** | `_panel/organizations.tsx` | `Promise.all([import("@fenix/identity/web"), import("@fenix/resource-machine/web")])`，把 `machine.registryApi` 作为端口传给页面。跨包装配是壳的职责 |
-| 极简（无 `Suspense`） | `_panel/agents.tsx` | 直接 `component: XxxPage`；仅当页面自身已处理加载态时使用 |
+| 极简（无 `Suspense`） | `_panel/agents.tsx` | 直接 `component: XxxPage`；仅当页面自身已处理加载态时使用，此时页面内的加载提示同样按上面的口径用 `Spinner` |
 
 **壳里可以有接线，但不做取数**：tab 状态、创建回调、端口注入属壳；数据获取必须在页面或域模块内完成（`workflow.tsx`、`workflow_.$id.versions.tsx`、`view/$prodViewId.tsx` 是当前较重的壳，改动前先看它们的接线方式）。
 
@@ -246,6 +271,7 @@ deploy/assembly/ce.json 的 web 列表（9 个包）
 - **`CLAUDE.md` 的「Sidebar 导航项必须提供 `to`」与实现不符**：`ShellNavigation.tsx` 用 `<button onClick={onNavigate(item.id)}>`，路由目标由 `id` 拼装，没有 `to`。以本文档为准，`CLAUDE.md` 待同步。
 - **三个页面有路由但无导航项**（`_panel/dashboard.tsx`、`channels.tsx`、`views.tsx`），只能靠输入 URL 到达。是刻意保留深链入口还是迁移遗漏，无记录。
 - **`DefaultAppShell.tsx` 用 `navigate({ to: \`/agent/${pageId}\` as never })`** 绕过 TanStack 类型检查，是反面样例，不要照抄。
+- **按钮 / 行内的「图标转圈」尚未收敛**：`Spinner` 管的是**独立成块的环形指示**，而 `Loader2` / `LoaderCircle` / `Loader` + `animate-spin` 这类**图标转圈**（约 25 处，如 `ui-components/web/chat/shell/ChatHeader.tsx`、`ui-components/web/chat/timeline/SubAgentPanel.tsx`、`resources/agent-config/web/components/agent-panel/MountSiteDialog.tsx`）是另一种视觉形态，两者是否合并尚无裁定；存量尺寸（`h-4 w-4` / `size-3.5` / `h-[18px] w-[18px]`）与间距（`mr-2`）也各写各的。当前口径：**按钮内联**的加载提示优先用 `Spinner size="xs"`（环，落在填充底上传 `className="text-current"` 跟随前景色）；若沿用图标转圈，在 `Button` 内不要再写 `h-* w-*`——`Button` 的 `[&_svg:not([class*='size-'])]:size-4` 会统一成 16px，写了反而与其它按钮图标不一致。收敛完成前不要新增第二套写法。
 
 ## 3. 状态管理
 

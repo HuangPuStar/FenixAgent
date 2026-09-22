@@ -1,7 +1,8 @@
 import { Button } from "@fenix/ui-components/ui/button";
+import { Spinner } from "@fenix/ui-components/ui/spinner";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@fenix/ui-components/ui/table";
 import { NS } from "@fenix/web-runtime/i18n/namespace";
-import { ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight, List, RefreshCw, ScatterChart, X } from "lucide-react";
+import { ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight, List, ScatterChart, X } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { hindsightApi } from "../../../api/hindsight";
@@ -394,7 +395,7 @@ export function EntitiesView() {
             />
           ) : (
             <>
-              <RefreshCw className="size-8 animate-spin" />
+              <Spinner />
               <p className="text-sm font-medium">{t("entitiesView.loadingEntityDetail")}</p>
             </>
           )}

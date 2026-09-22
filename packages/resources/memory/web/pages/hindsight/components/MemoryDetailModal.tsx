@@ -1,7 +1,8 @@
 import { Badge } from "@fenix/ui-components/ui/badge";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@fenix/ui-components/ui/dialog";
+import { Spinner } from "@fenix/ui-components/ui/spinner";
 import { NS } from "@fenix/web-runtime/i18n/namespace";
-import { Calendar, Loader2, Users } from "lucide-react";
+import { Calendar, Users } from "lucide-react";
 import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { hindsightApi } from "../../../api/hindsight";
@@ -62,9 +63,7 @@ export function MemoryDetailModal({ memoryId, onClose }: MemoryDetailModalProps)
         </DialogHeader>
 
         {loading ? (
-          <div className="flex items-center justify-center py-20">
-            <Loader2 className="w-8 h-8 animate-spin text-muted-foreground" />
-          </div>
+          <Spinner className="flex py-20" />
         ) : failure ? (
           failure.kind === "forbidden" ? (
             // 授权失败不给「Error: Cannot resolve bank ID」这类回显，改走统一的无权限文案（无重试）。

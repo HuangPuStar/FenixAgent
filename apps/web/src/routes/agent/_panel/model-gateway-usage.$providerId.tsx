@@ -1,3 +1,4 @@
+import { Spinner } from "@fenix/ui-components/ui/spinner";
 import { createFileRoute } from "@tanstack/react-router";
 import { lazy, Suspense } from "react";
 
@@ -7,7 +8,7 @@ export const Route = createFileRoute("/agent/_panel/model-gateway-usage/$provide
   component: () => {
     const { providerId } = Route.useParams();
     return (
-      <Suspense fallback={<div className="flex flex-1 items-center justify-center" />}>
+      <Suspense fallback={<Spinner variant="panel" />}>
         <Page providerId={providerId} />
       </Suspense>
     );

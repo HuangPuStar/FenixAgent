@@ -1,3 +1,4 @@
+import { Spinner } from "@fenix/ui-components/ui/spinner";
 import { NS } from "@fenix/web-runtime/i18n/namespace";
 import cytoscape from "cytoscape";
 import fcose from "cytoscape-fcose";
@@ -610,10 +611,7 @@ export function Graph2D({
       {/* Loading state */}
       {isLoading && (
         <div className="absolute inset-0 flex items-center justify-center bg-background z-10">
-          <div className="text-center">
-            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary mx-auto mb-4" />
-            <p className="text-sm text-muted-foreground">{t("graph2d.loading")}</p>
-          </div>
+          <Spinner label={t("graph2d.loading")} />
         </div>
       )}
 

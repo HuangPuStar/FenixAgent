@@ -1,6 +1,7 @@
 import { Button } from "@fenix/ui-components/ui/button";
 import { Label } from "@fenix/ui-components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@fenix/ui-components/ui/select";
+import { Spinner } from "@fenix/ui-components/ui/spinner";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@fenix/ui-components/ui/table";
 import { NS } from "@fenix/web-runtime/i18n/namespace";
 import {
@@ -13,7 +14,6 @@ import {
   Clock,
   List,
   Network,
-  RefreshCw,
   ScatterChart,
   ZoomIn,
   ZoomOut,
@@ -301,10 +301,7 @@ export function DataView({
   return (
     <div className="flex h-full min-h-0 min-w-0 flex-col overflow-hidden">
       {loading && !data ? (
-        <div className="text-center py-12" role="status">
-          <RefreshCw className="w-8 h-8 mx-auto mb-3 text-muted-foreground animate-spin" />
-          <p className="text-muted-foreground">{t("dataView.loadingMemories")}</p>
-        </div>
+        <Spinner label={t("dataView.loadingMemories")} className="flex py-12" />
       ) : failure ? (
         <div className="flex flex-col items-center justify-center gap-3 py-16 text-center" role="alert">
           <HindsightFailureNotice

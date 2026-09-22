@@ -1,7 +1,8 @@
 import { Badge } from "@fenix/ui-components/ui/badge";
 import { Button } from "@fenix/ui-components/ui/button";
+import { Spinner } from "@fenix/ui-components/ui/spinner";
 import { NS } from "@fenix/web-runtime/i18n/namespace";
-import { Calendar, Check, Copy, Loader2, X } from "lucide-react";
+import { Calendar, Check, Copy, X } from "lucide-react";
 import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
@@ -88,7 +89,7 @@ export function MemoryDetailPanel({ memory, onClose, compact = false, inPanel = 
 
         {loading ? (
           <div className="flex items-center justify-center py-12">
-            <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+            <Spinner size="sm" />
             <span className="ml-2 text-muted-foreground">{t("memoryDetailPanel.loadingDetails")}</span>
           </div>
         ) : (
@@ -237,7 +238,7 @@ export function MemoryDetailPanel({ memory, onClose, compact = false, inPanel = 
 
       {loading ? (
         <div className="flex items-center justify-center py-8">
-          <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
+          <Spinner size="sm" />
           <span className="ml-2 text-sm text-muted-foreground">{t("memoryDetailPanel.loading")}</span>
         </div>
       ) : (

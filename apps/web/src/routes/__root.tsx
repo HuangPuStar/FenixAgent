@@ -1,5 +1,6 @@
 import { OrgProvider, useSession } from "@fenix/identity/web";
 import { ThemeProvider } from "@fenix/ui-components/lib/theme";
+import { Spinner } from "@fenix/ui-components/ui/spinner";
 import { createRootRoute, Outlet, useNavigate, useRouterState } from "@tanstack/react-router";
 import { useEffect } from "react";
 import { useTranslation } from "react-i18next";
@@ -32,10 +33,7 @@ function RootComponent() {
   if (isPending) {
     return (
       <ThemeProvider defaultTheme="light">
-        <div className="flex h-screen flex-col items-center justify-center gap-4">
-          <div className="h-10 w-10 rounded-full border-2 border-brand border-t-transparent animate-spin" />
-          <p className="text-sm text-text-muted">{t("connecting")}</p>
-        </div>
+        <Spinner variant="screen" size="lg" label={t("connecting")} className="gap-4" />
       </ThemeProvider>
     );
   }

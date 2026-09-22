@@ -15,6 +15,7 @@ import {
   isAgentWritable,
 } from "@fenix/agent-config/web/lib/agent-resource-access";
 import { useOrg } from "@fenix/identity/web";
+import { Spinner } from "@fenix/ui-components/ui/spinner";
 import { Switch } from "@fenix/ui-components/ui/switch";
 import {
   Bot,
@@ -106,11 +107,7 @@ export const AgentSidebarTree = memo(function AgentSidebarTree({
   // 只有首次加载（尚未完成过任何一次数据加载）才显示全屏 loading 动画，判据由 useAgentSidebarTree 维护。
   // 轮询刷新、手动 refresh() 时已有数据保留在 DOM 中，不替换，避免闪烁。
   if (showInitialLoading) {
-    return (
-      <div className="flex items-center justify-center py-6">
-        <Loader2 className="h-4 w-4 animate-spin text-text-muted" />
-      </div>
-    );
+    return <Spinner variant="panel" size="xs" className="py-6" />;
   }
 
   // 非加载状态下的空列表

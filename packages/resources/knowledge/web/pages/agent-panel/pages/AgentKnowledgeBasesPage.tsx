@@ -26,6 +26,7 @@ import {
   SelectValue,
 } from "@fenix/ui-components/ui/select";
 import { Skeleton } from "@fenix/ui-components/ui/skeleton";
+import { Spinner } from "@fenix/ui-components/ui/spinner";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@fenix/ui-components/ui/tabs";
 import { Textarea } from "@fenix/ui-components/ui/textarea";
 import { ApiError, unwrap } from "@fenix/web-runtime/api/request";
@@ -612,14 +613,7 @@ export function AgentKnowledgeBasesPage() {
         {selectedDetail && (
           <div className="flex flex-col flex-1 min-h-0">
             {/* 加载中 */}
-            {detailLoading && (
-              <div className="flex items-center justify-center h-64">
-                <div className="flex flex-col items-center gap-3">
-                  <div className="h-10 w-10 rounded-full border-[3px] border-[#e2e8f0] border-t-[#1677ff] animate-spin shadow-sm" />
-                  <p className="text-[13px] text-[#94a3b8]">{t("detail.loading")}</p>
-                </div>
-              </div>
-            )}
+            {detailLoading && <Spinner size="lg" label={t("detail.loading")} className="flex h-64" />}
 
             {!detailLoading && (
               <div className="flex-1 min-h-0 overflow-y-auto pr-1">
@@ -1134,12 +1128,7 @@ export function AgentKnowledgeBasesPage() {
           </DialogHeader>
           <div className="max-h-[400px] overflow-y-auto -mx-6 px-6">
             {importLoading ? (
-              <div className="flex items-center justify-center py-16">
-                <div className="flex flex-col items-center gap-3">
-                  <div className="h-8 w-8 rounded-full border-[3px] border-[#e2e8f0] border-t-[#6366f1] animate-spin" />
-                  <p className="text-[13px] text-[#94a3b8]">{t("importDialog.loading")}</p>
-                </div>
-              </div>
+              <Spinner label={t("importDialog.loading")} className="flex py-16" />
             ) : unassociatedList.length === 0 ? (
               <div className="flex flex-col items-center justify-center py-16 gap-4">
                 <div className="flex h-16 w-16 items-center justify-center rounded-2xl bg-gradient-to-br from-[#f1f5f9] to-[#e2e8f0] shadow-inner">
@@ -1230,7 +1219,8 @@ export function AgentKnowledgeBasesPage() {
               >
                 {importingRemoteId === renameTarget?.id ? (
                   <>
-                    <div className="h-3.5 w-3.5 rounded-full border-2 border-white border-t-transparent animate-spin" />
+                    {/* text-current：跟随按钮前景色，环在填充底上才看得见 */}
+                    <Spinner size="xs" className="text-current" />
                     导入中
                   </>
                 ) : (

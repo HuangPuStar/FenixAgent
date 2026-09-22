@@ -349,6 +349,7 @@ const EXPECTED_EXPORTS: Record<string, readonly string[]> = {
     "SheetTrigger",
     "Skeleton",
     "Slider",
+    "Spinner",
     "StatusDot",
     "StatusIndicator",
     "Switch",

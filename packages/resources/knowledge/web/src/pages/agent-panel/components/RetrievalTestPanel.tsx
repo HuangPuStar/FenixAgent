@@ -3,6 +3,7 @@
 import { Button } from "@fenix/ui-components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@fenix/ui-components/ui/select";
 import { Slider } from "@fenix/ui-components/ui/slider";
+import { Spinner } from "@fenix/ui-components/ui/spinner";
 import { Switch } from "@fenix/ui-components/ui/switch";
 import { Textarea } from "@fenix/ui-components/ui/textarea";
 import { NS } from "@fenix/web-runtime/i18n/namespace";
@@ -397,7 +398,7 @@ export function RetrievalTestPanel({ knowledgeBaseId }: RetrievalTestPanelProps)
 
         {loading && (
           <div className="flex items-center justify-center min-h-[200px]">
-            <Loader2 className="h-6 w-6 text-[#1677ff] animate-spin" />
+            <Spinner size="sm" />
           </div>
         )}
 

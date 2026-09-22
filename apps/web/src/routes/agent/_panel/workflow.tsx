@@ -1,8 +1,9 @@
 import { AppHeader } from "@fenix/ui-components/layout/app-header";
 import { AppPage } from "@fenix/ui-components/layout/app-page";
 import { Button } from "@fenix/ui-components/ui/button";
+import { Spinner } from "@fenix/ui-components/ui/spinner";
 import { createFileRoute, Link, useNavigate, useSearch } from "@tanstack/react-router";
-import { History, Loader, Pencil, Plus } from "lucide-react";
+import { History, Pencil, Plus } from "lucide-react";
 import { lazy, Suspense, useCallback, useState } from "react";
 import { useTranslation } from "react-i18next";
 
@@ -10,11 +11,7 @@ const WorkflowList = lazy(() => import("@fenix/resource-workflow/web").then((m) 
 const WorkflowRuns = lazy(() => import("@fenix/resource-workflow/web").then((m) => ({ default: m.WorkflowRuns })));
 
 function TabContentFallback() {
-  return (
-    <div className="flex items-center justify-center py-20">
-      <Loader className="h-6 w-6 animate-spin text-text-muted" />
-    </div>
-  );
+  return <Spinner variant="panel" size="sm" className="py-20" />;
 }
 
 function WorkflowTabPage() {

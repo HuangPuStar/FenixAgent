@@ -1,6 +1,7 @@
 import { Badge } from "@fenix/ui-components/ui/badge";
 import { Button } from "@fenix/ui-components/ui/button";
 import { Input } from "@fenix/ui-components/ui/input";
+import { Spinner } from "@fenix/ui-components/ui/spinner";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@fenix/ui-components/ui/table";
 import { NS } from "@fenix/web-runtime/i18n/namespace";
 import { Loader2, Search, Trash2, Upload, X } from "lucide-react";
@@ -138,9 +139,7 @@ export function DocumentsView() {
       {/* 文档表格 */}
       <div className="flex-1 overflow-auto">
         {loading ? (
-          <div className="flex items-center justify-center py-12">
-            <Loader2 className="size-6 animate-spin text-muted-foreground" />
-          </div>
+          <Spinner size="sm" className="flex py-12" />
         ) : documents.length === 0 ? (
           <div className="flex items-center justify-center py-12 text-muted-foreground text-sm">
             {t("documents.noDocuments")}

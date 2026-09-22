@@ -1,9 +1,9 @@
 import { Button } from "@fenix/ui-components/ui/button";
 import { Skeleton } from "@fenix/ui-components/ui/skeleton";
+import { Spinner } from "@fenix/ui-components/ui/spinner";
 import { NS } from "@fenix/web-runtime/i18n/namespace";
 import { useRequest } from "ahooks";
 import DOMPurify from "dompurify";
-import { Loader2 } from "lucide-react";
 import mammoth from "mammoth";
 import { useCallback, useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
@@ -318,12 +318,7 @@ export function ResourcePreviewContent({ resource, kbId }: ResourcePreviewConten
       case "office": {
         // Office 文档：优先级 PDF 转换 > mammoth(docx) > 下载
         if (officeMode === "checking" || officeLoading) {
-          return (
-            <div className="flex-1 flex flex-col items-center justify-center gap-3 text-text-muted">
-              <div className="h-10 w-10 rounded-full border-[3px] border-[#e2e8f0] border-t-[#6366f1] animate-spin shadow-sm" />
-              <p className="text-sm">{t("preview.converting")}</p>
-            </div>
-          );
+          return <Spinner variant="panel" size="lg" label={t("preview.converting")} />;
         }
 
         if (officeMode === "pdf") {
@@ -485,11 +480,7 @@ function SpreadsheetPreview({ kbId, resourceId, filename }: SpreadsheetPreviewPr
   }, [kbId, resourceId, ext, t]);
 
   if (loading) {
-    return (
-      <div className="flex-1 flex items-center justify-center">
-        <Loader2 className="h-5 w-5 animate-spin text-text-muted" />
-      </div>
-    );
+    return <Spinner variant="panel" size="sm" />;
   }
 
   if (error) {

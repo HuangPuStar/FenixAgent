@@ -1,4 +1,5 @@
 import { Button } from "@fenix/ui-components/ui/button";
+import { Spinner } from "@fenix/ui-components/ui/spinner";
 import { createFileRoute } from "@tanstack/react-router";
 import { lazy, Suspense } from "react";
 import { ErrorBoundary, type FallbackProps } from "react-error-boundary";
@@ -43,9 +44,7 @@ export const Route = createFileRoute("/view/$prodViewId")({
         fallback={
           <div className="agent-panel-layout">
             <div className="agent-panel-body">
-              <div className="flex h-full items-center justify-center">
-                <div className="h-8 w-8 rounded-full border-2 border-brand border-t-transparent animate-spin" />
-              </div>
+              <Spinner variant="panel" />
             </div>
           </div>
         }

@@ -11,7 +11,7 @@
  * - i18n 收敛到 `UI_COMPONENTS_NS`（键前缀 `chat.components.`）。
  */
 
-import { ArrowLeft, ChevronRight, Folder, Loader2, Upload } from "lucide-react";
+import { ArrowLeft, ChevronRight, Folder, Upload } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { FileTypeIcon } from "../../components/file-icon-helper";
@@ -19,6 +19,7 @@ import { UI_COMPONENTS_NS } from "../../i18n/namespace";
 import { cn } from "../../lib/cn";
 import { Button } from "../../ui/button";
 import { Input } from "../../ui/input";
+import { Spinner } from "../../ui/spinner";
 
 /**
  * 文件条目。逐字复制宿主 `apps/web/src/types/index.ts` 的 `FileInfo`
@@ -279,11 +280,7 @@ export function FilePickerPanel({ listDir, uploadFiles, onSelect, onClose, class
 
       {/* 文件列表 */}
       <div className="max-h-80 overflow-y-auto px-2 pb-2">
-        {(loading || uploadLoading) && (
-          <div className="flex items-center justify-center py-8">
-            <Loader2 className="h-5 w-5 animate-spin text-text-muted" />
-          </div>
-        )}
+        {(loading || uploadLoading) && <Spinner size="sm" className="flex py-8" />}
         {error && <div className="px-2 py-4 text-center text-sm text-status-error">{error}</div>}
         {!loading && !uploadLoading && !error && filteredEntries.length === 0 && (
           <div className="px-2 py-4 text-center text-sm text-text-muted">{t("chat.components.filePicker.noFiles")}</div>

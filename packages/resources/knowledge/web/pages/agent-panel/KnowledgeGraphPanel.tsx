@@ -11,6 +11,7 @@ import {
   AlertDialogTitle,
 } from "@fenix/ui-components/ui/alert-dialog";
 import { Button } from "@fenix/ui-components/ui/button";
+import { Spinner } from "@fenix/ui-components/ui/spinner";
 import { unwrap } from "@fenix/web-runtime/api/request";
 import { NS } from "@fenix/web-runtime/i18n/namespace";
 import { AlertTriangle, Loader2, Network, RefreshCw, Sparkles, Trash2 } from "lucide-react";
@@ -392,10 +393,7 @@ export function KnowledgeGraphPanel({ knowledgeBaseId, canManage = false }: Know
       {/* 加载态 */}
       {graphLoading && (
         <div className="flex items-center justify-center min-h-[400px]">
-          <div className="flex flex-col items-center gap-3">
-            <div className="h-10 w-10 rounded-full border-[3px] border-[#e2e8f0] border-t-[#6366f1] animate-spin" />
-            <p className="text-[13px] text-[#94a3b8]">{t("graph.loading")}</p>
-          </div>
+          <Spinner size="lg" label={t("graph.loading")} />
         </div>
       )}
 

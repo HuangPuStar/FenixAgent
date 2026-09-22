@@ -15,8 +15,9 @@ import type { PublicErrorInfo } from "@fenix/chat-channel";
 import { ACPMain } from "@fenix/ui-components/chat/shell/ACPMain";
 import type { BoundMcpOption } from "@fenix/ui-components/chat/shell/chat-interface-types";
 import { publicErrorText } from "@fenix/ui-components/chat/view/public-error-text";
+import { Spinner } from "@fenix/ui-components/ui/spinner";
 import { TooltipProvider } from "@fenix/ui-components/ui/tooltip";
-import { Bot, Loader2 } from "lucide-react";
+import { Bot } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { NS } from "@/src/i18n";
 import { useChatPanelPorts } from "./chat-panel-ports";
@@ -84,14 +85,12 @@ export function ChatPanel({
   }
 
   // 登录态未就绪（user session 加载中）——与"连接中"（WS 建连）语义分离，
-  // 避免 auth 悬挂时 UI 永驻"正在连接 Agent"转圈
+  // 避免 auth 悬挂时 UI 永驻"正在连接 Agent"转圈。
+  // 容器形态对齐被替换掉的 `.agent-welcome-empty`（block 级 flex + `height:100%`）：`panel` 提供块级宽度与
+  // 居中，`h-full` 兜住宿主不是 flex 容器的情况——本面板还会经 `chatPanel` 端口注入 workflow 编辑器，
+  // 那里的宿主容器没有 flex 上下文，`flex-1` 不生效。
   if (authState === "loading") {
-    return (
-      <div className="agent-welcome-empty">
-        <Loader2 className="h-8 w-8 animate-spin text-brand" />
-        <p className="title">{t("loadingUser")}</p>
-      </div>
-    );
+    return <Spinner variant="panel" className="h-full" label={t("loadingUser")} />;
   }
 
   // 登录态失败（useSession 报错 / 未登录）——明确错误态 + 重试出口
@@ -106,12 +105,7 @@ export function ChatPanel({
 
   // 连接中
   if (connectionState === "connecting") {
-    return (
-      <div className="agent-welcome-empty">
-        <Loader2 className="h-8 w-8 animate-spin text-brand" />
-        <p className="title">{t("connectingAgent")}</p>
-      </div>
-    );
+    return <Spinner variant="panel" className="h-full" label={t("connectingAgent")} />;
   }
 
   // 已连接 → 渲染 ACPMain

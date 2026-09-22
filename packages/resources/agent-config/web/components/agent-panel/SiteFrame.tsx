@@ -1,6 +1,7 @@
 import { envApi } from "@fenix/agent-runtime/web/api/environments";
 import { cn } from "@fenix/ui-components/lib/cn";
 import { Button } from "@fenix/ui-components/ui/button";
+import { Spinner } from "@fenix/ui-components/ui/spinner";
 import { unwrap } from "@fenix/web-runtime/api/request";
 import { NS } from "@fenix/web-runtime/i18n/namespace";
 import { useNavigate } from "@tanstack/react-router";
@@ -212,8 +213,7 @@ export function SiteFrame({ remoteAppId, name, createdByAgentConfigId, createdBy
       <div className="relative flex-1 min-h-0 min-w-0">
         {isLoading && (
           <div className="absolute inset-0 z-10 flex flex-col items-center justify-center gap-2 bg-surface-1/80">
-            <Loader2 className="h-6 w-6 text-brand animate-spin" />
-            <span className="text-xs text-text-muted">{t("siteFrame.loading")}</span>
+            <Spinner size="sm" label={t("siteFrame.loading")} />
           </div>
         )}
         {isTimeout && (

@@ -2,6 +2,7 @@ import { type EnvironmentDetail, envApi } from "@fenix/agent-runtime/web/api/env
 import { AgentBadge } from "@fenix/ui-components/chat/shell/AgentBadge";
 import { AppHeader } from "@fenix/ui-components/layout/app-header";
 import { AppPage } from "@fenix/ui-components/layout/app-page";
+import { Spinner } from "@fenix/ui-components/ui/spinner";
 import { unwrap } from "@fenix/web-runtime/api/request";
 import { useOrgSession } from "@fenix/web-runtime/contexts/org-session";
 import { NS } from "@fenix/web-runtime/i18n/namespace";
@@ -9,7 +10,7 @@ import { useConfigChangeListener } from "@fenix/web-runtime/lib/config-events";
 import type { AgentInfo } from "@fenix/web-runtime/types/config";
 import { useNavigate } from "@tanstack/react-router";
 import { useRequest } from "ahooks";
-import { Bot, Loader2, Plus, Search, Sparkles } from "lucide-react";
+import { Bot, Plus, Search, Sparkles } from "lucide-react";
 import { useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
@@ -221,10 +222,7 @@ export function AgentManagementPage() {
         </div>
 
         {loading ? (
-          <div className="flex h-72 items-center justify-center text-text-muted" role="status" aria-busy="true">
-            <Loader2 className="mr-2 h-5 w-5 animate-spin" />
-            {t("management.loading")}
-          </div>
+          <Spinner size="sm" label={t("management.loading")} className="flex h-72" aria-busy="true" />
         ) : filteredNodes.length === 0 ? (
           <div className="flex h-72 flex-col items-center justify-center rounded-xl border border-dashed border-border bg-background/65 text-text-muted">
             <Bot className="mb-3 h-10 w-10 opacity-50" />

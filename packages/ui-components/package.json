@@ -552,6 +552,10 @@
       "types": "./web/ui/slider.tsx",
       "default": "./web/ui/slider.tsx"
     },
+    "./ui/spinner": {
+      "types": "./web/ui/spinner.tsx",
+      "default": "./web/ui/spinner.tsx"
+    },
     "./ui/switch": {
       "types": "./web/ui/switch.tsx",
       "default": "./web/ui/switch.tsx"

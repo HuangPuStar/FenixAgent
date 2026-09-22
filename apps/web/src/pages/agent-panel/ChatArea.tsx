@@ -25,6 +25,7 @@
 import { loadBoundMcps } from "@fenix/agent-config/web";
 import { envApi } from "@fenix/agent-runtime/web/api/environments";
 import type { ProdViewModulesConfig } from "@fenix/resource-prod-view/web";
+import { Spinner } from "@fenix/ui-components/ui/spinner";
 import { unwrap } from "@fenix/web-runtime/api/request";
 import { useChangedFilesFromStats } from "@fenix/web-runtime/hooks/use-changed-files-stats";
 import { ChatPageVisibleContext } from "@fenix/web-runtime/hooks/use-page-visible";
@@ -324,13 +325,7 @@ export function ChatArea({ agentId, sessionId, visible, deletedEnvironmentIds, m
   }, []);
 
   return (
-    <Suspense
-      fallback={
-        <div className="flex flex-1 items-center justify-center">
-          <div className="h-8 w-8 rounded-full border-2 border-brand border-t-transparent animate-spin" />
-        </div>
-      }
-    >
+    <Suspense fallback={<Spinner variant="panel" />}>
       <ChatPageVisibleContext.Provider value={visible}>
         <div
           className="agent-panel-content agent-panel-content--chat"

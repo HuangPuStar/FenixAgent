@@ -14,6 +14,7 @@ import {
   AlertDialogTitle,
 } from "../../ui/alert-dialog";
 import { Button } from "../../ui/button";
+import { Spinner } from "../../ui/spinner";
 import { Tooltip, TooltipContent, TooltipTrigger } from "../../ui/tooltip";
 import { canDeleteSession } from "../lib/session-actions";
 import { groupByRecency } from "../lib/session-grouping";
@@ -166,9 +167,8 @@ export function SidebarSessionList({
   );
 
   if (loading && sessions.length === 0) {
-    return (
-      <div className="mx-auto my-8 h-5 w-5 animate-spin rounded-full border-2 border-brand border-t-transparent" />
-    );
+    // `inline-flex` 上的 `mx-auto` 不产生水平居中（auto 外边距只对块级盒生效），补 `flex` 保持原先「随外层居中」的视觉。
+    return <Spinner size="sm" className="mx-auto my-8 flex" />;
   }
   if (sessions.length === 0) {
     return (

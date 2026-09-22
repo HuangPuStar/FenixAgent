@@ -10,6 +10,7 @@ import {
   DialogTitle,
 } from "@fenix/ui-components/ui/dialog";
 import { Input } from "@fenix/ui-components/ui/input";
+import { Spinner } from "@fenix/ui-components/ui/spinner";
 import { NS } from "@fenix/web-runtime/i18n/namespace";
 import { Brain, Loader2, Search, Trash2, X } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
@@ -252,7 +253,7 @@ export function MentalModelsView() {
       <div className="flex-1 overflow-auto p-4">
         {loading ? (
           <div className="flex items-center justify-center py-12" role="status">
-            <Loader2 className="size-6 animate-spin text-muted-foreground" />
+            <Spinner size="sm" />
           </div>
         ) : failure ? (
           <div className="flex flex-col items-center justify-center py-16 text-center" role="alert">
