@@ -25,6 +25,26 @@ import { AgentEditorHeader, AgentEditorSummary, AgentTemplatePicker } from "./Ag
 import { AgentEditorLoadingShell } from "./AgentEditorLoadingShell";
 import { type AgentEditorSection, AgentEditorSections } from "./AgentEditorSections";
 import {
+  CONFIG_MAP,
+  CONTENT,
+  EDITOR_ROOT,
+  ERROR_STATE,
+  FOOTER,
+  FOOTER_ACTIONS,
+  FOOTER_STATE,
+  MAP_BADGE,
+  MAP_COPY,
+  MAP_ICON,
+  MAP_LABEL,
+  MAP_TABS_LIST,
+  MAP_TRIGGER,
+  NOTICE_BAR,
+  PANEL_DESKTOP,
+  PANEL_SHEET,
+  PANEL_SHELL,
+  WORKSPACE_TABS,
+} from "./agent-editor-classes";
+import {
   type AgentEditorValues,
   type AgentTemplate,
   agentEditorSchema,
@@ -34,14 +54,12 @@ import {
   shouldShowAgentEditorLoading,
 } from "./agent-editor-model";
 import { useAgentEditor } from "./use-agent-editor";
-import "./agent-editor.css";
-import "./agent-editor-design.css";
-import "./agent-editor-responsive.css";
 import "./agent-editor-form-fields.css";
 import "./agent-editor-form-surfaces.css";
 import "./agent-editor-library.css";
 import "./agent-editor-knowledge.css";
 import "./agent-editor-form-responsive.css";
+import "./agent-editor-retained.css";
 
 export type AgentFormDialogProps =
   | {
@@ -217,7 +235,7 @@ function AgentEditorBody(
     );
   if (editor.loadError)
     return (
-      <div className="agent-editor-state" role="alert">
+      <div className={ERROR_STATE} role="alert">
         <AlertTriangle className="size-6 text-destructive" />
         <strong>{t("editor.loadFailed")}</strong>
         <p>{editor.loadError.message}</p>
@@ -241,14 +259,11 @@ function AgentEditorBody(
 
   return (
     <FormProvider {...form}>
-      <form
-        className="agent-editor-root"
-        onSubmit={submit}
-        aria-busy={editor.loading || editor.saving || editor.restarting}
-      >
+      <form className={EDITOR_ROOT} onSubmit={submit} aria-busy={editor.loading || editor.saving || editor.restarting}>
         <fieldset disabled={shouldDisableAgentEditor(editor.saving, editor.restarting)} className="contents">
           {data.resourceErrors.length > 0 && (
-            <div className="agent-editor-resource-error" role="alert">
+            // 源里 background/color 引用未定义 token（--color-warning），实际不生效，故只迁有效声明。
+            <div className={NOTICE_BAR} role="alert">
               {t("editor.optionalResourcesFailed", { resources: data.resourceErrors.join(", ") })}
             </div>
           )}
@@ -263,7 +278,7 @@ function AgentEditorBody(
             onClose={requestClose}
           />
           {readOnly && (
-            <div className="agent-editor-readonly">
+            <div className={`${NOTICE_BAR} bg-surface-2 text-text-muted`}>
               {t("resource.readOnlyAgent", { source: data.organizationName ?? values.name })}
             </div>
           )}
@@ -271,26 +286,28 @@ function AgentEditorBody(
             value={activeSection}
             onValueChange={(value) => setActiveSection(value as AgentEditorSection)}
             orientation={mobile ? "horizontal" : "vertical"}
-            className="agent-editor-workspace"
+            className={WORKSPACE_TABS}
           >
-            <nav className="agent-editor-map" aria-label={t("editor.configurationMap")}>
-              <span className="agent-editor-map-label">{t("editor.configurationMap")}</span>
-              <TabsList variant="line">
+            <nav className={CONFIG_MAP} aria-label={t("editor.configurationMap")}>
+              <span className={MAP_LABEL} data-slot="editor-map-label">
+                {t("editor.configurationMap")}
+              </span>
+              <TabsList variant="line" className={MAP_TABS_LIST}>
                 {SECTIONS.map(({ id, icon: Icon }) => (
-                  <TabsTrigger key={id} value={id}>
-                    <span className="agent-editor-map-icon">
+                  <TabsTrigger key={id} value={id} className={MAP_TRIGGER}>
+                    <span className={MAP_ICON}>
                       <Icon />
                     </span>
-                    <span className="agent-editor-map-copy">
+                    <span className={MAP_COPY} data-slot="editor-map-copy">
                       <strong>{t(`editor.sections.${id}`)}</strong>
                       <small>{t(`editor.sectionCaptions.${id}`)}</small>
                     </span>
-                    <em>{getSectionStatus(id)}</em>
+                    <em className={MAP_BADGE}>{getSectionStatus(id)}</em>
                   </TabsTrigger>
                 ))}
               </TabsList>
             </nav>
-            <main className="agent-editor-content">
+            <main className={CONTENT}>
               {SECTIONS.map(({ id }) => (
                 <TabsContent key={id} value={id} className="h-full">
                   <AgentEditorSections
@@ -312,8 +329,8 @@ function AgentEditorBody(
             </main>
             <AgentEditorSummary values={values} data={data} onSectionChange={setActiveSection} />
           </Tabs>
-          <footer className="agent-editor-footer">
-            <div className="agent-editor-footer__state">
+          <footer className={FOOTER}>
+            <div className={FOOTER_STATE} data-slot="editor-footer-state">
               <span>{form.formState.isDirty ? "1" : <Check />}</span>
               <p>
                 <strong>{form.formState.isDirty ? t("editor.unsaved") : t("editor.savedState")}</strong>
@@ -321,8 +338,9 @@ function AgentEditorBody(
               </p>
             </div>
             {!readOnly && form.formState.isDirty && (
+              // design 层 `.agent-editor-root .agent-editor-reset`：灰字 + 透明底。
               <Button
-                className="agent-editor-reset"
+                className="!bg-transparent !text-[#7d8b9f]"
                 type="button"
                 variant="ghost"
                 onClick={() => form.reset()}
@@ -332,13 +350,14 @@ function AgentEditorBody(
                 {t("editor.reset")}
               </Button>
             )}
-            <div className="agent-editor-footer__actions">
+            <div className={FOOTER_ACTIONS}>
               <Button type="button" variant="outline" onClick={requestClose}>
                 {readOnly ? t("editor.close") : t("dialog.cancel")}
               </Button>
               {!readOnly && (
                 <Button
-                  className="is-primary"
+                  // design 层 `.agent-editor-footer__actions .is-primary`：品牌底 + 127px 最小宽度 + 投影。
+                  className="!min-w-[127px] !border-[#2764e7] !bg-[#2764e7] !text-[#fff] !shadow-[0_6px_16px_rgb(39_100_231_/_22%)]"
                   type="submit"
                   disabled={editor.loading || editor.saving || !!editor.loadError}
                 >
@@ -432,7 +451,7 @@ export function AgentFormDialog(props: AgentFormDialogProps) {
             event.preventDefault();
             closeHandlerRef.current();
           }}
-          className="agent-editor-shell agent-editor-panel agent-editor-mobile"
+          className={PANEL_SHEET}
         >
           <SheetTitle className="sr-only">
             {props.mode === "create" ? t("dialog.createTitle") : t("dialog.editTitle")}
@@ -447,7 +466,7 @@ export function AgentFormDialog(props: AgentFormDialogProps) {
   const dialogTitle = props.mode === "create" ? t("dialog.createTitle") : t("dialog.editTitle");
   return createPortal(
     <section
-      className="agent-editor-shell agent-editor-panel"
+      className={`${PANEL_SHELL} ${PANEL_DESKTOP}`}
       role="dialog"
       aria-modal="false"
       tabIndex={-1}

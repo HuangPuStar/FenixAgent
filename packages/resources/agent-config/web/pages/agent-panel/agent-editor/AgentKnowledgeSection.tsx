@@ -4,6 +4,7 @@ import type { ReactNode } from "react";
 import { Controller, type UseFormReturn } from "react-hook-form";
 import { useTranslation } from "react-i18next";
 import { AgentResourcePicker } from "./AgentResourcePicker";
+import { SECTION } from "./agent-editor-classes";
 import { EditorStepperField, EditorTextarea, Field, Intro } from "./agent-editor-controls";
 import type { AgentEditorValues } from "./agent-editor-model";
 import type { AgentEditorData } from "./use-agent-editor";
@@ -82,7 +83,7 @@ function CompactSwitch({
 export function AgentKnowledgeSection({ form, data, disabled }: AgentKnowledgeSectionProps) {
   const { t } = useTranslation(NS.AGENTS);
   return (
-    <section className="agent-editor-section">
+    <section className={SECTION}>
       <Intro
         eyebrow="CONTEXT"
         title={t("editor.sections.knowledge")}
@@ -90,12 +91,7 @@ export function AgentKnowledgeSection({ form, data, disabled }: AgentKnowledgeSe
       />
       <div className="agent-knowledge-layout">
         {data.hindsightEnabled && (
-          <KnowledgeBlock
-            icon={<Brain />}
-            title={t("memory.enableTitle")}
-            description={t("memory.enableDescription")}
-            className="agent-knowledge-block--memory"
-          >
+          <KnowledgeBlock icon={<Brain />} title={t("memory.enableTitle")} description={t("memory.enableDescription")}>
             <Controller
               name="enableMemory"
               control={form.control}
@@ -138,7 +134,6 @@ export function AgentKnowledgeSection({ form, data, disabled }: AgentKnowledgeSe
           icon={<Search />}
           title={t("editor.retrievalPolicy")}
           description={t("editor.retrievalPolicyDescription")}
-          className="agent-knowledge-block--retrieval"
         >
           <div className="agent-retrieval-fields">
             <Field label={t("knowledge.defaultNamespaces")} hint={t("knowledge.defaultNamespacesDescription")}>

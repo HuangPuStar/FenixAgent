@@ -7,6 +7,7 @@ import { selectionToValue, valueToSelection } from "../../../lib/agent-node";
 import { canManageAgentSharing } from "../../../lib/agent-resource-access";
 import { AgentKnowledgeSection } from "./AgentKnowledgeSection";
 import { AgentResourcePicker } from "./AgentResourcePicker";
+import { IDENTITY_FIELDS, SECTION } from "./agent-editor-classes";
 import { EditorButton, EditorInput, EditorTextarea, Field, Intro, SinglePicker, Toggle } from "./agent-editor-controls";
 import type { AgentEditorValues } from "./agent-editor-model";
 import type { AgentEditorData } from "./use-agent-editor";
@@ -44,18 +45,14 @@ function Identity({
 }) {
   const { t } = useTranslation(NS.AGENTS);
   return (
-    <section className="agent-editor-section">
+    <section className={SECTION}>
       <Intro
         eyebrow="IDENTITY"
         title={t("editor.sections.identity")}
         description={t("editor.sectionDescriptions.identity")}
       />
-      <div className="agent-editor-form-grid agent-editor-identity-fields">
-        <Field
-          className="agent-editor-field--name"
-          label={t("form.name")}
-          hint={mode === "edit" ? t("editor.nameImmutable") : undefined}
-        >
+      <div className={`agent-editor-form-grid ${IDENTITY_FIELDS}`}>
+        <Field label={t("form.name")} hint={mode === "edit" ? t("editor.nameImmutable") : undefined}>
           <EditorInput
             id="agent-editor-name"
             disabled={mode === "edit" || disabled}
@@ -64,7 +61,11 @@ function Identity({
           />
         </Field>
         {mode === "edit" && data.agentId && (
-          <Field className="agent-editor-field--agent-id" label={t("editor.agentId")} hint={t("editor.agentIdHint")}>
+          <Field
+            className="[@media(max-width:759px)]:col-start-1"
+            label={t("editor.agentId")}
+            hint={t("editor.agentIdHint")}
+          >
             <div className="agent-editor-agent-id-row">
               <EditorInput value={data.agentId} disabled />
               <EditorButton type="button" onClick={onCopy}>
@@ -105,7 +106,7 @@ function Identity({
 function Model({ form, data, disabled }: { form: Props["form"]; data: Props["data"]; disabled: boolean }) {
   const { t } = useTranslation(NS.AGENTS);
   return (
-    <section className="agent-editor-section">
+    <section className={SECTION}>
       <Intro eyebrow="MODEL" title={t("editor.sections.model")} description={t("editor.sectionDescriptions.model")} />
       <Controller
         name="modelId"
@@ -122,12 +123,7 @@ function Model({ form, data, disabled }: { form: Props["form"]; data: Props["dat
             requireGroup
             renderIcon={(item) => (
               <Suspense fallback={<Cpu />}>
-                <ModelIcon
-                  modelId={item.iconKey}
-                  size={20}
-                  variant="mono"
-                  className="agent-model-options__brand-icon"
-                />
+                <ModelIcon modelId={item.iconKey} size={20} variant="mono" />
               </Suspense>
             )}
             disabled={disabled}
@@ -161,7 +157,7 @@ function Capabilities({ form, data, disabled }: { form: Props["form"]; data: Pro
   const tabId = (item: keyof typeof config) => `${tabsId}-tab-${item}`;
   const panelId = (item: keyof typeof config) => `${tabsId}-panel-${item}`;
   return (
-    <section className="agent-editor-section">
+    <section className={SECTION}>
       <Intro
         eyebrow="CAPABILITIES"
         title={t("editor.sections.capabilities")}
@@ -220,7 +216,7 @@ function Capabilities({ form, data, disabled }: { form: Props["form"]; data: Pro
 function Runtime({ form, data, disabled }: { form: Props["form"]; data: Props["data"]; disabled: boolean }) {
   const { t } = useTranslation(NS.AGENTS);
   return (
-    <section className="agent-editor-section">
+    <section className={SECTION}>
       <Intro
         eyebrow="RUNTIME"
         title={t("editor.sections.runtime")}
@@ -265,7 +261,7 @@ function Sharing({
   const manageable =
     mode === "create" || canManageAgentSharing({ name: form.watch("name"), scope: data.scope, access: data.access });
   return (
-    <section className="agent-editor-section">
+    <section className={SECTION}>
       <Intro
         eyebrow="ACCESS"
         title={t("editor.sections.sharing")}

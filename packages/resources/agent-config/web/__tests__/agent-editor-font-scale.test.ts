@@ -263,7 +263,15 @@ const SLICES = [
   {
     name: "A2 外壳 / 头部 / 汇总",
     cssFiles: ["agent-editor.css", "agent-editor-design.css", "agent-editor-responsive.css"],
-    tsxFiles: ["AgentEditorChrome.tsx", "AgentFormDialog.tsx", "AgentEditorLoadingShell.tsx"],
+    tsxFiles: [
+      "AgentEditorChrome.tsx",
+      "AgentFormDialog.tsx",
+      "AgentEditorLoadingShell.tsx",
+      "agent-editor-classes.ts",
+      "agent-editor-controls.tsx",
+      "AgentEditorSections.tsx",
+      "AgentKnowledgeSection.tsx",
+    ],
   },
   {
     name: "B 表单字段与卡片表面",
@@ -283,8 +291,10 @@ const SLICES = [
   },
 ] as const;
 
-/** 迁移完成后唯一允许保留的样式表（关键帧无法用工具类表达）。 */
-const ANIMATIONS_FILE = "agent-editor-animations.css";
+/** 迁移完成后唯一允许保留的样式表：关键帧 + 登记过的宿主钩子（两者都无法用工具类表达）。 */
+const RETAINED_FILE = "agent-editor-retained.css";
+/** 保留文件里唯一登记的宿主钩子选择器（`.agent-panel-body` 由宿主 `apps/web` 渲染，见文件注释）。 */
+const RETAINED_HOST_HOOK = ".agent-panel-body {";
 
 /** 冻结刻度：八档 + 窄屏图标化按钮的 0。 */
 const SCALE = [8, 10, 11, 12, 13, 14, 16, 17, 18];
@@ -357,14 +367,16 @@ const ROLE_ANCHORS: Array<{ slice: string; slot: string; note: string; patterns:
     slice: "A2",
     slot: "editor-template-header",
     note: "模板对话框头部（对话框标题 17px）",
-    patterns: [/\[&[>_]span\]:text-\[8px\]/, /\[&[>_]h2\]:text-\[17px\]/, /\[&[>_]p\]:text-\[12px\]/],
+    // 眉标（8px）在本模板对话框里是直接挂在 `<span>` 上的 `EYEBROW` 常量（与右栏共用），
+    // 由 `editor-summary-eyebrow` 锚点 + 全局刻度断言锁定，故此处不再要求父级写 `[&>span]:` 变体。
+    patterns: [/\[&[>_]h2\]:text-\[17px\]/, /\[&[>_]p\]:text-\[12px\]/],
   },
   { slice: "A2", slot: "editor-template-empty", note: "模板列表空态（曾挂 text-sm）", patterns: [/:?text-\[11px\]/] },
   {
     slice: "A2",
     slot: "editor-mobile-template",
     note: "头部模板按钮（759px 图标化归 0）",
-    patterns: [/\[&[>_]button\]:text-\[13px\]/, /\[@media\(max-width:759px\)\]:\[&[>_]button\]:text-\[0px\]/],
+    patterns: [/\[&[>_]button\]:!?text-\[13px\]/, /\[@media\(max-width:759px\)\]:\[&[>_]button\]:!?text-\[0px\]/],
   },
   {
     slice: "A2",
@@ -392,6 +404,18 @@ const ROLE_ANCHORS: Array<{ slice: string; slot: string; note: string; patterns:
   },
 ];
 
+/** 守卫扫描的源码文件（锚点与类串常量求值共用；常量集中在 agent-editor-classes.ts）。 */
+const SCAN_FILES = [
+  "AgentEditorChrome.tsx",
+  "AgentEditorLoadingShell.tsx",
+  "AgentFormDialog.tsx",
+  "AgentEditorSections.tsx",
+  "AgentKnowledgeSection.tsx",
+  "AgentResourcePicker.tsx",
+  "agent-editor-classes.ts",
+  "agent-editor-controls.tsx",
+] as const;
+
 /** 面板里允许出现的 Tailwind 文字刻度类：无（字号一律显式 px，便于刻度守卫覆盖）。 */
 const TEXT_SCALE_UTILITY = /\btext-(?:xs|sm|base|lg|xl|[2-9]xl)\b/;
 
@@ -399,7 +423,7 @@ const TEXT_SCALE_UTILITY = /\btext-(?:xs|sm|base|lg|xl|[2-9]xl)\b/;
  * 扫出一个 JSX 源码里所有开标签的文本（属性区），逐标签提取 `className` 值。
  * 自写扫描而非正则：属性里有箭头函数（`=>`）与对象字面量，`[^>]*` 会在 `=>` 处截断。
  */
-function jsxTags(source: string): Array<{ attrs: string; className: string }> {
+function jsxTags(source: string, constants: Map<string, string>): Array<{ attrs: string; className: string }> {
   const tags: Array<{ attrs: string; className: string }> = [];
   for (let i = 0; i < source.length; i++) {
     if (source[i] !== "<" || /[</!=]/.test(source[i + 1] ?? "")) continue;
@@ -422,12 +446,42 @@ function jsxTags(source: string): Array<{ attrs: string; className: string }> {
     }
     if (end < 0) continue;
     const attrs = source.slice(i + 1, end);
-    // className 只取字符串字面量形态；`cn(...)` 形态由 classNameLiterals 另行覆盖。
-    const match = attrs.match(/className=(?:"([^"]*)"|\{`([^`]*)`\})/);
-    tags.push({ attrs, className: match?.[1] ?? match?.[2] ?? "" });
+    tags.push({ attrs, className: classNameOf(attrs, constants) });
     i = end;
   }
   return tags;
+}
+
+/**
+ * 取一个开标签属性区里的 `className` 值：字符串字面量直取；`{…}` 表达式则取其中的字符串字面量
+ * 与常量引用（`className={MAP_COPY}`、`className={cn("…", loading && "…")}`），常量经 {@link constantValues} 求值。
+ */
+function classNameOf(attrs: string, constants: Map<string, string>): string {
+  const marker = attrs.indexOf("className=");
+  if (marker < 0) return "";
+  const expression = attrs.slice(marker + "className=".length);
+  if (expression.startsWith('"')) return expression.slice(1, expression.indexOf('"', 1));
+  if (!expression.startsWith("{")) return "";
+  let depth = 0;
+  let end = -1;
+  for (let k = 0; k < expression.length; k++) {
+    if (expression[k] === "{") depth++;
+    else if (expression[k] === "}") {
+      depth--;
+      if (depth === 0) {
+        end = k;
+        break;
+      }
+    }
+  }
+  const body = end > 0 ? expression.slice(1, end) : "";
+  const parts: string[] = [...body.matchAll(/(["'`])([^"'`]*)\1/g)].map((match) => match[2]);
+  for (const ref of body.matchAll(/\$\{([A-Za-z_$][\w$]*)\}|\b([A-Z][A-Z0-9_]*)\b/g)) {
+    const name = ref[1] ?? ref[2];
+    const value = constants.get(name);
+    if (value !== undefined) parts.push(value);
+  }
+  return resolveClassRefs(parts.join(" "), constants);
 }
 
 /**
@@ -435,16 +489,59 @@ function jsxTags(source: string): Array<{ attrs: string; className: string }> {
  * ① `className="…"` / `className={`…`}`；② `cn(…)` / `clsx(…)` 的字符串参数；
  * ③ 模块级常量与其数组里的字符串——类串提成常量后 `className` 里只剩标识符，
  * 不单独收就会变成「把类串提成常量即可绕开刻度守卫」的缺口（红证时实测到过这个缺口）。
+ *
+ * 模板串里的 `${…}` 插值先剥掉再切词：`agent-editor-toggle-row${checked ? " is-on" : ""}`
+ * 这类写法若直接按空白切，会切出 `agent-editor-toggle-row${checked` 这种假 token。
  */
 function classNameLiterals(source: string): string[] {
-  const out = [...source.matchAll(/className=(?:"([^"]*)"|\{`([^`]*)`\})/g)].map((m) => m[1] ?? m[2]);
+  const literal = (text: string) => text.replace(/\$\{[^{}]*\}/g, " ");
+  const out = [...source.matchAll(/className=(?:"([^"]*)"|\{`([^`]*)`\})/g)].map((m) => literal(m[1] ?? m[2]));
   for (const call of source.matchAll(/(?:cn|clsx)\(([\s\S]*?)\)/g)) {
-    for (const literal of call[1].matchAll(/(["'`])([^"'`]*)\1/g)) out.push(literal[2]);
+    for (const match of call[1].matchAll(/(["'`])([^"'`]*)\1/g)) out.push(literal(match[2]));
   }
   for (const decl of source.matchAll(/\bconst\s+[A-Za-z_$][\w$]*\s*=\s*[^;]+;/g)) {
-    for (const literal of decl[0].matchAll(/(["'`])([^"'`]*)\1/g)) out.push(literal[2]);
+    for (const match of decl[0].matchAll(/(["'`])([^"'`]*)\1/g)) out.push(literal(match[2]));
   }
   return out;
+}
+
+/**
+ * 类串常量表：`const NAME = "…" + "…"` / 模板串（可引用另一个常量名）求值成最终类串。
+ * 锚点断言必须能看穿常量——否则 `className={MAP_COPY}` 这类写法会让字号断言假失败。
+ */
+function constantValues(sources: string[]): Map<string, string> {
+  const raw = new Map<string, string>();
+  for (const source of sources) {
+    for (const match of source.matchAll(/\bconst\s+([A-Za-z_$][\w$]*)\s*=\s*([\s\S]*?);\s*(?:\n|$)/g)) {
+      raw.set(match[1], match[2]);
+    }
+  }
+  const evaluate = (expression: string, seen: Set<string> = new Set()): string => {
+    let out = "";
+    for (const chunk of expression.split("+")) {
+      for (const part of chunk.matchAll(/"([^"]*)"|`([^`]*)`|\$\{([A-Za-z_$][\w$]*)\}|([A-Za-z_$][\w$]*)/g)) {
+        if (part[1] !== undefined || part[2] !== undefined) {
+          out += part[1] ?? part[2];
+          continue;
+        }
+        const name = part[3] ?? part[4];
+        const referenced = raw.get(name);
+        if (referenced !== undefined && !seen.has(name)) {
+          out += evaluate(referenced, new Set([...seen, name]));
+        }
+      }
+    }
+    return out;
+  };
+  return new Map([...raw].map(([name, expression]) => [name, evaluate(expression)]));
+}
+
+/** 把 `{NAME}` / `${NAME}` 形式的类串引用替换成常量值（未登记的标识符原样保留）。 */
+function resolveClassRefs(className: string, constants: Map<string, string>): string {
+  return className.replace(/\$\{([A-Za-z_$][\w$]*)\}|\{([A-Za-z_$][\w$]*)\}/g, (whole, dollar, plain) => {
+    const name = dollar ?? plain;
+    return constants.get(name) ?? whole;
+  });
 }
 
 /** 类名 token 里的字号类：`text-[Npx]`（可带变体前缀），Tailwind 刻度类另算。 */
@@ -549,17 +646,10 @@ describe("Agent Editor：Tailwind 迁移与字号刻度", () => {
     const missing: string[] = [];
     for (const anchor of ROLE_ANCHORS) {
       if (!migratedSlices.some((slice) => slice.name.startsWith(anchor.slice))) continue;
-      const candidates = [
-        "AgentEditorChrome.tsx",
-        "AgentEditorLoadingShell.tsx",
-        "AgentFormDialog.tsx",
-        "AgentEditorSections.tsx",
-        "agent-editor-controls.tsx",
-        "AgentResourcePicker.tsx",
-        "AgentKnowledgeSection.tsx",
-      ]
-        .filter((file) => existsSync(join(EDITOR_DIR, file)))
-        .flatMap((file) => jsxTags(readEditorFile(file)).map((tag) => ({ file, ...tag })))
+      const scanned = SCAN_FILES.filter((file) => existsSync(join(EDITOR_DIR, file)));
+      const constants = constantValues(scanned.map(readEditorFile));
+      const candidates = scanned
+        .flatMap((file) => jsxTags(readEditorFile(file), constants).map((tag) => ({ file, ...tag })))
         .filter((tag) => tag.attrs.includes(`data-slot="${anchor.slot}"`));
       if (candidates.length === 0) {
         missing.push(`${anchor.slot}（${anchor.note}）锚点不存在`);
@@ -576,26 +666,27 @@ describe("Agent Editor：Tailwind 迁移与字号刻度", () => {
     expect(missing).toEqual([]);
   });
 
-  // 迁移完成后目录里只允许留下登记的关键帧文件：它是唯一无法用工具类表达的声明（动画定义）。
-  test("迁移完成后只剩登记的关键帧样式表", () => {
+  // 迁移完成后目录里只允许留下登记文件：关键帧 + `.agent-panel-body` 宿主钩子（两者都在文件头写了移除条件）。
+  test("迁移完成后只剩登记的关键帧与宿主钩子样式表", () => {
     if (!allMigrated) return;
     const remaining = readdirSync(EDITOR_DIR).filter((name) => name.endsWith(".css"));
-    expect(remaining).toEqual([ANIMATIONS_FILE]);
+    expect(remaining).toEqual([RETAINED_FILE]);
 
-    // 保留文件只能是 @keyframes：出现任何选择器规则都说明有声明没迁完。
-    const css = readFileSync(join(EDITOR_DIR, ANIMATIONS_FILE), "utf8").replace(/\/\*[\s\S]*?\*\//g, "");
+    // 保留文件只能是 @keyframes + 那一条宿主钩子：出现其它选择器规则就说明有声明没迁完。
+    const css = readFileSync(join(EDITOR_DIR, RETAINED_FILE), "utf8").replace(/\/\*[\s\S]*?\*\//g, "");
     expect(css).toContain("@keyframes agent-editor-section-enter");
-    const selectorRules = css
-      .replace(/@keyframes[\s\S]*?\{[\s\S]*?\n\}/g, "")
+    const ruleHeads = css
       .split("\n")
-      .filter((line) => /^\s*[.#a-z[][^{}]*\{\s*$/.test(line));
-    expect(selectorRules).toEqual([]);
+      .map((line) => line.trim())
+      .filter((line) => line.endsWith("{") && !line.startsWith("@"))
+      .filter((line) => !/^(from|to|\d+%)/.test(line));
+    expect([...new Set(ruleHeads)]).toEqual([RETAINED_HOST_HOOK]);
   });
 
   // 分区入场动画：关键帧留在保留文件里，引用写在渲染点；两侧缺一都会让分区标题不再淡入。
   test("分区入场动画的关键帧与引用都在", () => {
     if (!allMigrated) return;
-    expect(readFileSync(join(EDITOR_DIR, ANIMATIONS_FILE), "utf8")).toContain("@keyframes agent-editor-section-enter");
+    expect(readFileSync(join(EDITOR_DIR, RETAINED_FILE), "utf8")).toContain("@keyframes agent-editor-section-enter");
     const referenced = SLICES.flatMap((slice) => slice.tsxFiles)
       .filter((file, index, all) => all.indexOf(file) === index)
       .some((file) => readEditorFile(file).includes("animate-[agent-editor-section-enter_180ms_ease_both]"));
@@ -613,7 +704,8 @@ describe("Agent Editor：Tailwind 迁移与字号刻度", () => {
     expect(readEditorFile("AgentEditorLoadingShell.tsx")).toContain("<AgentEditorHeader");
   });
 
-  // 面板 CSS 的副作用导入必须随文件一起消失，否则构建期会去找已删除的文件。
+  // 面板 CSS 的副作用导入必须随文件一起消失，否则构建期会去找已删除的文件；
+  // 只有保留文件允许继续被副作用导入（关键帧与宿主钩子仍要进构建）。
   test("AgentFormDialog 不再副作用导入已删除的面板 CSS", () => {
     const imports = [...readFileSync(DIALOG_FILE, "utf8").matchAll(/^import "\.\/(agent-editor[\w-]*\.css)";$/gm)].map(
       (match) => match[1],
@@ -622,6 +714,6 @@ describe("Agent Editor：Tailwind 迁移与字号刻度", () => {
       slice.cssFiles.filter((file) => imports.includes(file)).map((file) => `${slice.name} → ${file}`),
     );
     expect(orphaned).toEqual([]);
-    if (allMigrated) expect(imports).toEqual([]);
+    if (allMigrated) expect(imports).toEqual([RETAINED_FILE]);
   });
 });
