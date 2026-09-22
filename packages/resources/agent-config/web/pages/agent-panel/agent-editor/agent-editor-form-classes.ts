@@ -44,18 +44,18 @@ export const STEPPER_CONTROL =
 export const STEPPER_BUTTON = "grid place-items-center cursor-pointer";
 /** `.agent-editor-prompt-editor`：提示词文本域更高（180px，短视口 112px）。 */
 export const PROMPT_EDITOR =
-  "min-h-[180px] [font-family:inherit] [@media(min-width:760px)and(max-height:700px)]:min-h-[112px]";
+  "min-h-[180px] [font-family:inherit] [@media(min-width:760px)_and_(max-height:700px)]:min-h-[112px]";
 /** `.agent-editor-guidance`：提示行（图标 + 文案，短视口收紧）。 */
 export const GUIDANCE =
   "flex items-start gap-2 mt-[14px] text-[11px] leading-[1.6] text-[#6f7f96] " +
   "[&>svg]:w-[15px] [&>svg]:flex-none [&>svg]:basis-[15px] [&>svg]:text-[#3e72cf] " +
-  "[@media(min-width:760px)and(max-height:700px)]:mt-2 [@media(min-width:760px)and(max-height:700px)]:leading-[1.45]";
+  "[@media(min-width:760px)_and_(max-height:700px)]:mt-2 [@media(min-width:760px)_and_(max-height:700px)]:leading-[1.45]";
 /** `.agent-editor-form-grid`：两列字段网格（16/20 间距；≤759 与 760–1119 单列；短视口收间距；子字段列位）。 */
 export const FORM_GRID =
   "grid grid-cols-[repeat(2,minmax(0,1fr))] gap-x-4 gap-y-5 " +
-  "[@media(max-width:759px)]:grid-cols-1 [@media(min-width:760px)and(max-width:1119px)]:grid-cols-1 " +
-  "[@media(min-width:760px)and(max-width:1119px)]:[&>label]:col-start-1 " +
-  "[@media(min-width:760px)and(max-height:700px)]:gap-x-3 [@media(min-width:760px)and(max-height:700px)]:gap-y-[10px]";
+  "[@media(max-width:759px)]:grid-cols-1 [@media(min-width:760px)_and_(max-width:1119px)]:grid-cols-1 " +
+  "[@media(min-width:760px)_and_(max-width:1119px)]:[&>label]:col-start-1 " +
+  "[@media(min-width:760px)_and_(max-height:700px)]:gap-x-3 [@media(min-width:760px)_and_(max-height:700px)]:gap-y-[10px]";
 /** `.agent-editor-agent-id-row`：ID 输入 + 复制按钮一行。 */
 export const AGENT_ID_ROW = "flex gap-[7px]";
 /** `.agent-editor-agent-id-row .agent-editor-input`：等宽字体 + 占满剩余宽度。 */
@@ -131,10 +131,10 @@ export const CAPABILITY_TABS =
 /** `.agent-model-options`：两列选项网格（≤759 单列，短视口 210px 上限）。 */
 export const MODEL_OPTIONS =
   "grid max-h-[310px] grid-cols-[repeat(2,minmax(0,1fr))] gap-2 overflow-y-auto " +
-  "[@media(max-width:759px)]:grid-cols-1 [@media(min-width:760px)and(max-height:700px)]:max-h-[210px]";
+  "[@media(max-width:759px)]:grid-cols-1 [@media(min-width:760px)_and_(max-height:700px)]:max-h-[210px]";
 /** `.agent-node-list`：单列选项网格（短视口 210px 上限）。 */
 export const NODE_LIST =
-  "grid max-h-[310px] grid-cols-1 gap-[6px] overflow-y-auto [@media(min-width:760px)and(max-height:700px)]:max-h-[210px]";
+  "grid max-h-[310px] grid-cols-1 gap-[6px] overflow-y-auto [@media(min-width:760px)_and_(max-height:700px)]:max-h-[210px]";
 /** 选项行公共外观（模型 32/16 列、节点 34/18 列，由调用点补 `grid-cols-*`）。 */
 export const OPTION_ROW =
   "grid min-h-[52px] items-center gap-2 border border-[#e0e6ef] rounded-[10px] bg-[#fff] px-[9px] py-2 text-left " +
@@ -186,7 +186,7 @@ export const SINGLE_PICKER_CURRENT_UNAVAILABLE =
 /** `.agent-resource-picker`：资源选择器外壳。 */
 export const PICKER = "overflow-hidden border border-[#e0e6ef] rounded-xl bg-[#fff]";
 /** `.agent-resource-picker__selected`：已选区（116px 说明列；760–1119 收窄并隐藏小注）。 */
-const PICKER_NARROW = "@media(min-width:760px)and(max-width:1119px)";
+const PICKER_NARROW = "@media(min-width:760px)_and_(max-width:1119px)";
 export const PICKER_SELECTED =
   "grid min-h-16 grid-cols-[116px_minmax(0,1fr)] items-center gap-3 border-b border-[#edf1f5] bg-[#f9fbfe] px-3 py-[10px] " +
   "[&>div:first-child]:flex [&>div:first-child]:min-w-0 [&>div:first-child]:flex-col [&>div:first-child]:gap-[3px] " +
@@ -217,8 +217,8 @@ export const PICKER_LIST =
   "grid max-h-[282px] gap-[3px] p-[5px] overflow-y-auto " +
   // 宽度档与高度档必须互斥：760–1119 的 180px 覆盖短视口的 210px（源里后者在前，故宽度档更晚生效）。
   `[${PICKER_NARROW}]:max-h-[180px] [${PICKER_NARROW}]:p-[3px] [${PICKER_NARROW}]:[&_small]:max-w-[24ch] ` +
-  "[@media(min-width:1400px)and(max-height:700px)]:max-h-[210px] " +
-  "[@media(min-width:1120px)and(max-width:1399px)and(max-height:700px)]:max-h-[210px]";
+  "[@media(min-width:1400px)_and_(max-height:700px)]:max-h-[210px] " +
+  "[@media(min-width:1120px)_and_(max-width:1399px)_and_(max-height:700px)]:max-h-[210px]";
 /** 列表行外观（label；选中/不可用/禁用见下）。 */
 export const PICKER_ROW =
   "grid min-h-[53px] grid-cols-[minmax(0,1fr)_21px] items-center gap-2 border border-transparent rounded-lg " +
@@ -257,7 +257,7 @@ export const RETRIEVAL_OPTIONS_FIELDS =
   "[&>label]:grid [&>label]:grid-cols-[minmax(0,1fr)_auto] [&>label]:items-center [&>label]:gap-[10px] " +
   "[&>label]:border-t [&>label]:border-[#edf1f5] [&>label]:pt-[9px]";
 /** `#agent-editor-default-namespaces` 的 760–1119 覆盖。 */
-export const DEFAULT_NAMESPACES_TEXTAREA = "[@media(min-width:760px)and(max-width:1119px)]:min-h-[72px]";
+export const DEFAULT_NAMESPACES_TEXTAREA = "[@media(min-width:760px)_and_(max-width:1119px)]:min-h-[72px]";
 
 /* ── 分页（类名属 C 的 library.css，声明来自 B 的 form-responsive.css，故由 B 先落地） ── */
 

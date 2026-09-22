@@ -66,9 +66,9 @@ const INTRO =
   "[&>span]:tracking-[0.16em] [&>span]:text-[#3470da] " +
   "[&>h3]:mt-[6px] [&>h3]:text-[18px] [&>h3]:[font-weight:730] [&>h3]:leading-[1.2] [&>h3]:tracking-[-0.035em] [&>h3]:text-[#17233b] " +
   "[&>p]:mt-2 [&>p]:max-w-[590px] [&>p]:text-[12px] [&>p]:leading-[1.65] [&>p]:text-[#738098] " +
-  "[@media(min-width:760px)and(max-width:1399px)]:[&>h3]:text-[16px] " +
-  "[@media(min-width:760px)and(max-width:1399px)]:[&>p]:mt-[6px] " +
-  "[@media(min-width:760px)and(max-width:1119px)]:[&>p]:max-w-[52ch]";
+  "[@media(min-width:760px)_and_(max-width:1399px)]:[&>h3]:text-[16px] " +
+  "[@media(min-width:760px)_and_(max-width:1399px)]:[&>p]:mt-[6px] " +
+  "[@media(min-width:760px)_and_(max-width:1119px)]:[&>p]:max-w-[52ch]";
 /** 模型列表（`agent-model-options`）的校验态：focus ring 之外再描一圈红（源为 `[aria-invalid="true"]` 规则）。 */
 const MODEL_OPTIONS_INVALID =
   "aria-invalid:rounded-[12px] aria-invalid:outline-2 aria-invalid:outline-offset-[3px] " +

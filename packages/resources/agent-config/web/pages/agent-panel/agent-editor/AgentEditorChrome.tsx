@@ -37,8 +37,8 @@ const HEADER =
   "flex flex-none items-center justify-between gap-[14px] border-b border-[#e8edf4] bg-[rgb(255_255_255_/_95%)] " +
   "basis-[62px] min-h-[62px] py-0 pl-[18px] pr-[14px] " +
   "[@media(max-width:759px)]:pt-[max(12px,env(safe-area-inset-top))] " +
-  "[@media(min-width:760px)and(max-height:700px)]:basis-[58px] " +
-  "[@media(min-width:760px)and(max-height:700px)]:min-h-[58px]";
+  "[@media(min-width:760px)_and_(max-height:700px)]:basis-[58px] " +
+  "[@media(min-width:760px)_and_(max-height:700px)]:min-h-[58px]";
 /** 头部「从模板创建」按钮：design 生效值（32px / 6px gap / 8px 圆角 / 13px / #3264bf on #f5f8ff），
  *  ≤759px 图标化（32px 宽、无内边距、字号归零）。挂在父 `<span class="contents">` 上，用子选择器压过 Button 自带工具类。 */
 const TEMPLATE_TRIGGER =
@@ -65,9 +65,9 @@ const SUMMARY_CARD =
   "[&:hover]:-translate-x-[2px] [&:hover]:border-[#aac3ef] [&:hover]:shadow-[0_8px_20px_rgb(35_60_105_/_9%)] " +
   "[&>span]:grid [&>span]:size-8 [&>span]:place-items-center [&>span]:rounded-[9px] [&>span]:bg-[#eaf2ff] [&>span]:text-[#2f69d2] " +
   "[&>div]:flex [&>div]:min-w-0 [&>div]:flex-col [&>svg]:w-[11px] [&>svg]:text-[#a2adbd] " +
-  "[@media(min-width:760px)and(max-width:1119px)]:min-h-[48px] [@media(min-width:760px)and(max-width:1119px)]:grid-cols-[24px_minmax(0,1fr)_10px] " +
-  "[@media(min-width:760px)and(max-width:1119px)]:px-[7px] [@media(min-width:760px)and(max-width:1119px)]:py-[6px] " +
-  "[@media(min-width:760px)and(max-width:1119px)]:[&>span]:size-6";
+  "[@media(min-width:760px)_and_(max-width:1119px)]:min-h-[48px] [@media(min-width:760px)_and_(max-width:1119px)]:grid-cols-[24px_minmax(0,1fr)_10px] " +
+  "[@media(min-width:760px)_and_(max-width:1119px)]:px-[7px] [@media(min-width:760px)_and_(max-width:1119px)]:py-[6px] " +
+  "[@media(min-width:760px)_and_(max-width:1119px)]:[&>span]:size-6";
 
 export function AgentEditorHeader({
   title,
@@ -271,20 +271,20 @@ export function AgentEditorSummary({
     },
   ];
   return (
-    <aside className="min-h-0 overflow-y-auto overscroll-contain border-l border-[#e5ebf3] bg-[#f7f9fc] bg-[radial-gradient(circle_at_90%_0%,rgb(50_108_221_/_8%),transparent_36%)] px-[12px] pb-[14px] pt-[16px] [@media(min-width:760px)and(max-width:1119px)]:block">
+    <aside className="min-h-0 overflow-y-auto overscroll-contain border-l border-[#e5ebf3] bg-[#f7f9fc] bg-[radial-gradient(circle_at_90%_0%,rgb(50_108_221_/_8%),transparent_36%)] px-[12px] pb-[14px] pt-[16px] [@media(min-width:760px)_and_(max-width:1119px)]:block">
       <span className={EYEBROW} data-slot="editor-summary-eyebrow">
         {t("editor.configurationOverview")}
       </span>
       <h3
-        className="mt-[7px] text-[18px] [font-weight:730] leading-[1.2] tracking-[-0.035em] text-[#17233b] [@media(min-width:760px)and(max-width:1399px)]:text-[16px]"
+        className="mt-[7px] text-[18px] [font-weight:730] leading-[1.2] tracking-[-0.035em] text-[#17233b] [@media(min-width:760px)_and_(max-width:1399px)]:text-[16px]"
         data-slot="editor-summary-title"
       >
         {t("editor.summaryTitle")}
       </h3>
-      <p className="mt-2 max-w-[590px] text-[12px] leading-[1.65] text-[#738098] [@media(min-width:760px)and(max-width:1119px)]:hidden">
+      <p className="mt-2 max-w-[590px] text-[12px] leading-[1.65] text-[#738098] [@media(min-width:760px)_and_(max-width:1119px)]:hidden">
         {t("editor.summaryDescription")}
       </p>
-      <div className="mt-[10px] grid gap-2 [@media(min-width:760px)and(max-width:1119px)]:gap-[6px] [@media(min-width:760px)and(max-width:1119px)]:mt-2">
+      <div className="mt-[10px] grid gap-2 [@media(min-width:760px)_and_(max-width:1119px)]:gap-[6px] [@media(min-width:760px)_and_(max-width:1119px)]:mt-2">
         {cards.map((card) => (
           <button type="button" key={card.label} className={SUMMARY_CARD} onClick={() => onSectionChange(card.section)}>
             <span>{card.icon}</span>
@@ -296,7 +296,7 @@ export function AgentEditorSummary({
               >
                 {card.value}
               </strong>
-              <em className="mt-[2px] line-clamp-2 text-[11px] leading-[1.35] text-[#8b97a8] not-italic [@media(min-width:760px)and(max-width:1119px)]:hidden">
+              <em className="mt-[2px] line-clamp-2 text-[11px] leading-[1.35] text-[#8b97a8] not-italic [@media(min-width:760px)_and_(max-width:1119px)]:hidden">
                 {card.meta}
               </em>
             </div>
@@ -305,14 +305,14 @@ export function AgentEditorSummary({
         ))}
       </div>
       {/* 便签的 background 引用未定义 token（--color-primary-subtle），实际透明，故只迁 color。 */}
-      <div className="mt-[14px] flex gap-2 rounded-[10px] p-[10px] text-primary [&>svg]:w-[13px] [&>svg]:shrink-0 [@media(min-width:760px)and(max-width:1119px)]:hidden">
+      <div className="mt-[14px] flex gap-2 rounded-[10px] p-[10px] text-primary [&>svg]:w-[13px] [&>svg]:shrink-0 [@media(min-width:760px)_and_(max-width:1119px)]:hidden">
         <Brain />
         <p className="text-[11px] leading-[1.5] text-text-muted">
           <strong className="mb-[2px] block text-[13px] text-text-primary">{t("editor.summaryHowItWorks")}</strong>
           {t("editor.summaryHowItWorksDescription")}
         </p>
       </div>
-      <div className="mt-[9px] flex items-center gap-[5px] text-[11px] text-text-muted [&>svg]:w-[10px] [@media(min-width:760px)and(max-width:1119px)]:hidden">
+      <div className="mt-[9px] flex items-center gap-[5px] text-[11px] text-text-muted [&>svg]:w-[10px] [@media(min-width:760px)_and_(max-width:1119px)]:hidden">
         <Check />
         {t("editor.summarySafety")}
       </div>
