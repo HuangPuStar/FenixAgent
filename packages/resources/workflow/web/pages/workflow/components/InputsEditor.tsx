@@ -2,6 +2,7 @@ import { Input } from "@fenix/ui-components/ui/input";
 import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { EntryAddButton, EntryDeleteButton } from "./EntryActions";
+import { ENTRY_FIELD_CLASS, entryKeyInputClass } from "./entry-field-classes";
 
 /**
  * 工作流节点 inputs 编辑器。
@@ -163,7 +164,7 @@ export function InputsEditor({
               placeholder={keyPlaceholder}
               readOnly={readOnly}
               autoFocus={i === focusKeyIdx}
-              className={`h-8 text-xs ${isEmptyKey(entry.key) ? "border-red-300 bg-red-50" : ""}`}
+              className={entryKeyInputClass(isEmptyKey(entry.key))}
               style={{ width: "30%" }}
             />
             <Input
@@ -174,7 +175,7 @@ export function InputsEditor({
               placeholder={valuePlaceholder}
               readOnly={readOnly}
               title={t("editor.inputs_enter_to_add")}
-              className="flex-1 h-8 text-xs"
+              className={ENTRY_FIELD_CLASS}
             />
             {!readOnly && <EntryDeleteButton confirming={isConfirming} onClick={() => handleDeleteClick(i)} />}
           </div>

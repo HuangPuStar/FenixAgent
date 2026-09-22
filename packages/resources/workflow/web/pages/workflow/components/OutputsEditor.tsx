@@ -3,6 +3,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { EntryAddButton, EntryDeleteButton } from "./EntryActions";
+import { ENTRY_FIELD_CLASS, ENTRY_TYPE_SELECT_CLASS, entryKeyInputClass } from "./entry-field-classes";
 
 export type OutputType = "file" | "file-list" | "dir" | "value";
 
@@ -157,7 +158,7 @@ export function OutputsEditor({
                   commitKeyRename(i);
                 }
               }}
-              className={`h-8 text-xs ${isEmptyKey(displayKey) && !isEditing ? "border-red-300 bg-red-50" : ""}`}
+              className={entryKeyInputClass(isEmptyKey(displayKey) && !isEditing)}
               style={{ width: isValueType(v.type) ? undefined : "28%" }}
             />
             {isValueType(v.type) ? null : (
@@ -166,7 +167,7 @@ export function OutputsEditor({
                 onChange={(e) => updateEntry(i, { pattern: e.target.value })}
                 placeholder={patternPlaceholder}
                 readOnly={readOnly}
-                className="flex-1 h-8 text-xs"
+                className={ENTRY_FIELD_CLASS}
               />
             )}
             <Select
@@ -174,7 +175,7 @@ export function OutputsEditor({
               onValueChange={(val) => updateEntry(i, { type: val as OutputType })}
               disabled={readOnly}
             >
-              <SelectTrigger className="h-8 text-xs w-[84px]">
+              <SelectTrigger className={ENTRY_TYPE_SELECT_CLASS}>
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>

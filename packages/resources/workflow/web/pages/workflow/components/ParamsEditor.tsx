@@ -7,6 +7,8 @@ import { Trash2 } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { EntryAddButton } from "./EntryActions";
+import { ENTRY_FIELD_CLASS, ENTRY_TYPE_SELECT_CLASS, entryKeyInputClass } from "./entry-field-classes";
+import { ParamGroupHeader } from "./ParamGroupHeader";
 
 export type ParamType = "string" | "number" | "boolean" | "object";
 
@@ -159,7 +161,7 @@ export function ParamsEditor({
           onChange={(e) => updateDefault(index, e.target.value ? Number(e.target.value) : undefined)}
           placeholder={defaultPlaceholder}
           readOnly={readOnly}
-          className="flex-1 h-8 text-xs"
+          className={ENTRY_FIELD_CLASS}
         />
       );
     }
@@ -193,7 +195,7 @@ export function ParamsEditor({
         onChange={(e) => updateDefault(index, e.target.value || undefined)}
         placeholder={defaultPlaceholder}
         readOnly={readOnly}
-        className="flex-1 h-8 text-xs"
+        className={ENTRY_FIELD_CLASS}
       />
     );
   };
@@ -235,7 +237,7 @@ export function ParamsEditor({
             placeholder={namePlaceholder}
             readOnly={readOnly}
             autoFocus={i === focusKeyIdx}
-            className={`h-8 text-xs ${isEmptyKey(k) ? "border-red-300 bg-red-50" : ""}`}
+            className={entryKeyInputClass(isEmptyKey(k))}
             style={{ width: "28%" }}
           />
           <Select
@@ -243,7 +245,7 @@ export function ParamsEditor({
             onValueChange={(val) => changeType(i, val as ParamType)}
             disabled={readOnly}
           >
-            <SelectTrigger className="h-8 text-xs w-[84px]">
+            <SelectTrigger className={ENTRY_TYPE_SELECT_CLASS}>
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
@@ -297,35 +299,12 @@ export function ParamsEditor({
           // 有名称的分组：渲染折叠容器
           return (
             <div key={groupKey} style={{ marginBottom: 4 }}>
-              <div
-                onClick={() => toggleGroupCollapse(groupKey)}
-                style={{
-                  display: "flex",
-                  alignItems: "center",
-                  gap: 4,
-                  cursor: "pointer",
-                  fontWeight: 600,
-                  color: "#374151",
-                  fontSize: 12,
-                  padding: "6px 0",
-                  borderBottom: "1px solid #e5e7eb",
-                  marginBottom: 4,
-                }}
-              >
-                <span
-                  style={{
-                    fontSize: 10,
-                    transition: "transform 0.15s",
-                    transform: isCollapsed ? "rotate(0deg)" : "rotate(90deg)",
-                  }}
-                >
-                  ▶
-                </span>
-                {label}
-                {isCollapsed && (
-                  <span style={{ fontWeight: 400, color: "#9ca3af", marginLeft: 4 }}>({entryIndices.length})</span>
-                )}
-              </div>
+              <ParamGroupHeader
+                label={label}
+                open={!isCollapsed}
+                count={entryIndices.length}
+                onToggle={() => toggleGroupCollapse(groupKey)}
+              />
               {!isCollapsed && (
                 <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
                   {entryIndices.map((i) => renderParamRow(i, entries[i][1] as ParamEntry, entries[i][0]))}

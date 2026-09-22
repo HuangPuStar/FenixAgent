@@ -125,6 +125,9 @@ describe("workflow web 入口浏览器可达面", () => {
       "pages/workflow/run-view.ts",
       // 弹层头骨架（标题行）：文件菜单 / 版本指示器 / 元数据三个弹层消费。
       "pages/workflow/components/PopoverHeader.tsx",
+      // 参数分组标题行（ParamsEditor 与 RunParamsDialog 消费）与三份编辑器的行内字段样式配方。
+      "pages/workflow/components/ParamGroupHeader.tsx",
+      "pages/workflow/components/entry-field-classes.ts",
     ]) {
       expect(reachedWebFiles).toContain(expected);
     }
