@@ -103,7 +103,7 @@ function paginationT(key: string, opts?: Record<string, unknown>): string {
   return key;
 }
 
-/** 同一份数据的三种非就绪态：loading 用 Skeleton 占位，empty / error 复用 EmptyState。 */
+/** 同一份数据的三种非就绪态：loading 用 Skeleton 占位，empty / error 复用 EmptyState，差异只在 tone。 */
 function StatePreview({ state, onRetry }: { state: ViewState; onRetry: () => void }) {
   if (state === "loading") {
     return (
@@ -137,9 +137,9 @@ function StatePreview({ state, onRetry }: { state: ViewState; onRetry: () => voi
   if (state === "empty") {
     return (
       <EmptyState
-        icon={<Inbox className="h-8 w-8" />}
+        icon={<Inbox />}
         title="No components yet"
-        description="EmptyState 负责空态：图标、标题、描述与一个可选 action。"
+        description="空态与错误态是同一个组件，语义差异只由 tone 表达（这里用默认的 neutral）；组件不自带卡片外壳，容器由调用方给。"
         action={{ label: "Reload", onClick: onRetry }}
       />
     );
@@ -148,9 +148,10 @@ function StatePreview({ state, onRetry }: { state: ViewState; onRetry: () => voi
   if (state === "error") {
     return (
       <EmptyState
-        icon={<TriangleAlert className="h-8 w-8 text-destructive" />}
+        icon={<TriangleAlert />}
+        tone="danger"
         title="Failed to load components"
-        description="错误态同样可以落在 EmptyState 上，action 即重试入口。"
+        description="同一组件换成 danger 色调即错误态：配色（含深色变体）留给 tone，调用方不再手写颜色类；action 在这里是重试入口。"
         action={{ label: "Retry", onClick: onRetry }}
       />
     );

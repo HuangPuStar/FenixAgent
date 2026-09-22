@@ -1,5 +1,6 @@
 import { AgentCardList } from "@fenix/ui-components/components/AgentCardList";
 import { ConfirmDialog } from "@fenix/ui-components/config/ConfirmDialog";
+import { EmptyState } from "@fenix/ui-components/config/EmptyState";
 import { Button } from "@fenix/ui-components/ui/button";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@fenix/ui-components/ui/dialog";
 import { Input } from "@fenix/ui-components/ui/input";
@@ -261,27 +262,25 @@ export function WorkflowList({ onEditWorkflow, onViewVersions, createRequested }
         // 失败必须是**持久**分支：只弹 toast 会落回「暂无工作流」空态，用户看到的是「没有数据」
         // 而不是「没取到数据」。无权限单独成一个分支且不给重试（原因见 isUnauthorizedError）。
         unauthorized ? (
-          <div className="text-center py-10" role="alert">
-            <ShieldAlert size={32} className="text-status-error mx-auto mb-2" />
-            <p className="text-[13px] text-text-secondary font-medium">{t("list.unauthorized_title")}</p>
-            <p className="text-[11px] text-text-dim mt-1">{t("list.unauthorized_hint")}</p>
-          </div>
+          <EmptyState
+            icon={<ShieldAlert />}
+            title={t("list.unauthorized_title")}
+            description={t("list.unauthorized_hint")}
+            tone="danger"
+            role="alert"
+          />
         ) : (
-          <div className="text-center py-10" role="alert">
-            <AlertTriangle size={32} className="text-status-error mx-auto mb-2" />
-            <p className="text-[13px] text-text-secondary">{t("list.load_failed", { error: errorMsg })}</p>
-            {/* 重试入口：轮询是静默的，用户手里必须有一个能主动重发的按钮，否则只能刷新整页 */}
-            <Button variant="outline" size="sm" className="mt-3" onClick={refresh}>
-              <RefreshCw size={13} className="mr-1" /> {t("list.retry")}
-            </Button>
-          </div>
+          <EmptyState
+            icon={<AlertTriangle />}
+            title={t("list.load_failed", { error: errorMsg })}
+            tone="danger"
+            role="alert"
+            // 重试入口：轮询是静默的，用户手里必须有一个能主动重发的按钮，否则只能刷新整页
+            action={{ label: t("list.retry"), onClick: refresh, icon: <RefreshCw /> }}
+          />
         )
       ) : workflowsSafe.length === 0 ? (
-        <div className="text-center py-10">
-          <Inbox size={32} className="text-text-muted mx-auto mb-2" />
-          <p className="text-[13px] text-text-muted font-medium">{t("list.no_workflows")}</p>
-          <p className="text-[11px] text-text-dim mt-1">{t("list.no_workflows_hint")}</p>
-        </div>
+        <EmptyState icon={<Inbox />} title={t("list.no_workflows")} description={t("list.no_workflows_hint")} />
       ) : (
         <AgentCardList
           items={workflowsSafe}

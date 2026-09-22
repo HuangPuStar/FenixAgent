@@ -1,3 +1,4 @@
+import { EmptyState } from "@fenix/ui-components/config/EmptyState";
 import { StatusBadge } from "@fenix/ui-components/config/StatusBadge";
 import { cn } from "@fenix/ui-components/lib/cn";
 import { Button } from "@fenix/ui-components/ui/button";
@@ -9,7 +10,7 @@ import { unwrap } from "@fenix/web-runtime/api/request";
 import { NS } from "@fenix/web-runtime/i18n/namespace";
 import { Link } from "@tanstack/react-router";
 import { useRequest } from "ahooks";
-import { AlertTriangle, CheckCircle2, Clock, Play, RefreshCw, Settings2, XCircle } from "lucide-react";
+import { AlertTriangle, CheckCircle2, Clock, Play, Settings2, XCircle } from "lucide-react";
 import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
@@ -167,20 +168,15 @@ export function TasksPanel({ agentId }: TasksPanelProps) {
         {error ? (
           // 持久错误分支（`role="alert"`）：失败不能落进下面的「暂无任务」空态，否则用户分不清
           // 「加载失败」与「确实没有绑定任务」；非授权失败必须给重试入口，授权失败只说明原因。
-          <div className="flex-1 flex flex-col items-center justify-center gap-3 py-8 px-4 text-center" role="alert">
-            <AlertTriangle className="h-6 w-6 text-text-dim" />
-            <p className="text-sm text-text-muted">
-              {unauthorized ? taskT("loadState.unauthorizedTitle") : taskT("panelMode.tasksLoadFailed")}
-            </p>
-            {unauthorized ? (
-              <p className="text-xs text-text-muted">{taskT("loadState.unauthorizedHint")}</p>
-            ) : (
-              <Button size="sm" variant="outline" onClick={refresh} disabled={loading}>
-                <RefreshCw className="mr-1 h-3.5 w-3.5" />
-                {taskT("loadState.retry")}
-              </Button>
-            )}
-          </div>
+          <EmptyState
+            icon={<AlertTriangle className="size-6" />}
+            title={unauthorized ? taskT("loadState.unauthorizedTitle") : taskT("panelMode.tasksLoadFailed")}
+            description={unauthorized ? taskT("loadState.unauthorizedHint") : undefined}
+            tone="danger"
+            role="alert"
+            action={unauthorized ? undefined : { label: taskT("loadState.retry"), onClick: refresh, disabled: loading }}
+            className="flex-1 flex flex-col items-center justify-center py-8 px-4"
+          />
         ) : loading ? (
           <div className="p-3 space-y-2.5" aria-busy="true">
             {Array.from({ length: 3 }).map((_, i) => (
@@ -311,18 +307,14 @@ function TaskLogView({ taskId, taskName, t }: TaskLogViewProps) {
       <div className="flex-1 min-h-0 overflow-y-auto">
         {error ? (
           // 权限态与瞬时故障分开：401/403 只说明原因，其余失败给一次重试（沿用分页按钮的 run(page) 入口）。
-          <div className="flex flex-col items-center gap-2 py-8 px-3 text-center" role="alert">
-            <p className="text-sm text-destructive">
-              {unauthorized ? t("loadState.unauthorizedTitle") : t("loadState.failed", { message: error.message })}
-            </p>
-            {unauthorized ? (
-              <p className="text-xs text-text-muted">{t("loadState.unauthorizedHint")}</p>
-            ) : (
-              <Button variant="outline" size="sm" className="h-7 text-xs" onClick={() => run(page)}>
-                {t("loadState.retry")}
-              </Button>
-            )}
-          </div>
+          <EmptyState
+            title={unauthorized ? t("loadState.unauthorizedTitle") : t("loadState.failed", { message: error.message })}
+            description={unauthorized ? t("loadState.unauthorizedHint") : undefined}
+            tone="danger"
+            role="alert"
+            action={unauthorized ? undefined : { label: t("loadState.retry"), onClick: () => run(page) }}
+            className="py-8 px-3"
+          />
         ) : loading ? (
           <div className="py-4 px-3 space-y-2" aria-busy="true">
             <Skeleton className="h-4 w-full" />
@@ -330,7 +322,7 @@ function TaskLogView({ taskId, taskName, t }: TaskLogViewProps) {
             <Skeleton className="h-4 w-1/2" />
           </div>
         ) : !data?.items?.length ? (
-          <p className="text-center text-text-muted py-8 text-sm">{t("log.empty")}</p>
+          <EmptyState title={t("log.empty")} className="py-8" />
         ) : (
           <Table>
             <TableHeader>

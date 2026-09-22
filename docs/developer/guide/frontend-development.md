@@ -361,10 +361,13 @@ const { run: createTask, loading: creating } = useRequest(
 if (loading) return <Skeleton className="h-32 w-full" />;
 if (error) {
   return (
-    <div className="flex flex-col items-center gap-2 py-8 text-muted">
-      <p>{t("loadState.failed", { message: error.message })}</p>
-      <Button variant="outline" onClick={refresh}>{t("common.retry")}</Button>
-    </div>
+    <EmptyState
+      icon={<TriangleAlert />}
+      title={t("loadState.failed", { message: error.message })}
+      tone="danger"
+      role="alert"
+      action={{ label: t("common.retry"), onClick: refresh }}
+    />
   );
 }
 if (!data?.length) return <EmptyState icon={<FolderOpen />} title={t("empty.title")} />;
@@ -407,13 +410,15 @@ if (!data?.length) return <EmptyState icon={<FolderOpen />} title={t("empty.titl
 |------|------|-----------|
 | `FormDialog` | 通用表单对话框 | `open` / `onOpenChange` / `title` / `children` / `formConfig?` / `onSubmit?` / `submitLabel?` / `cancelLabel?` / `loading?` / `disabled?` / `hideSubmit?` / `width?`（默认 `sm:max-w-lg`） |
 | `ConfirmDialog` | 危险操作确认 | `open` / `onOpenChange` / **`title`（必填）** / **`description`（必填）** / `onConfirm` / `variant?: "default" \| "destructive"` / `confirmLabel?` / `cancelLabel?` / `loading?` |
-| `EmptyState` | 空状态占位 | `icon?` / `title` / `description?` / `action?: { label, onClick }` |
+| `EmptyState` | 内联状态块：空态 / 无匹配 / 读取失败 / 无权限共用一个组件 | `title` / `description?` / `icon?` / `action?: { label, onClick, icon?, disabled? }` / `tone?: "neutral" \| "danger"` / 其余 `<div>` 属性透传（`role`、`className` 等） |
 | `StatusBadge` | 状态徽标 | `status` / `label?`（覆盖 i18n `statusBadge.<status>`）/ `tone?: "success" \| "info" \| "warning" \| "danger" \| "neutral"` / `toneMap?`（业务状态词表 → 色调）/ `indicator?: "none" \| "dot" \| "pulse"` |
 | `DataTable` | TanStack Table 封装（含搜索/选择/分页/展开） | `columns` / `data` / `searchable` / `selectable` / `actions` / `expandableRow` / `rowKey` / `pageSize` |
 | `BatchActionBar` | 批量操作条 | 见包内实现 |
 
 > `StatusBadge` 只收语义（色调），不收色值：业务状态词表经 `toneMap` 注入，配色（含 dark 变体）留在包内。
 > 需要在包外判定色调时用 `getStatusTone(status, toneMap)`，不要复刻配色类。
+> `EmptyState` 同样只收语义：`tone` 默认 `neutral`（确实没有数据、筛选后没有匹配），`danger` 用于读取失败、无权限；持久错误再补 `role="alert"`。图标不传尺寸类时沿用 lucide 默认的 24px（组件只负责居中与配色），颜色一律不要手写——配色（含 dark 变体）归 `tone` 管。
+> 它**不自带 Card 外壳**：容器（卡片、边框、外边距）由调用方给——面板内联直接用，需要卡片形态时把 `<EmptyState>` 放进调用方的 `Card` / `CardContent`。默认内边距是 `py-10`，紧一点的场景用 `className` 覆盖（如 `className="py-8"`）。
 
 ### 4.2 Dialog 状态管理
 
@@ -526,7 +531,7 @@ export function AgentTasksPage() {
 ### 4.8 现状偏离
 
 - **16 个生产文件超 500 行**（快照，从大到小）：`knowledge/AgentKnowledgeBasesPage.tsx` 1292、`model-management/AdminModelGatewayPage.tsx` 1241、`workflow/components/NodeConfigCard.tsx` 1182、`workflow/WorkflowEditor.tsx` 1116、`memory/hindsight/components/DataView.tsx` 1034、`memory/hindsight/components/Constellation.tsx` 1023、`memory/hindsight/components/Graph2d.tsx` 737、`agent-config/AgentHomePage.tsx` 672、`workflow/hooks/useWorkflowRun.ts` 624、`workflow/components/NodeConfigPanel.tsx` 557、`knowledge/ResourcePreviewContent.tsx` 556、`web-runtime/chat/structured-to-thread.ts` 537、`knowledge/EmbeddingModelManager.tsx` 529、`knowledge/RetrievalTestPanel.tsx` 525、`ui-components/chat/shell/ACPMain.tsx` 511、`agent-runtime/hooks/use-chat-state.ts` 509。400–499 行区间另有 27 个（口径：`apps/web/src` + `packages/**/web/**`，排除测试、生成文件与服务端路径）。
-- **3 个 config 组件生产零消费**：`DataTable` / `BatchActionBar` / `EmptyState` 目前只有包内测试与 demo 引用。同时存在 **1 处同名本地重复实现**：`observer/AdminObserverPage.tsx` 的 `function EmptyState()`，直接违反"禁止重复开发"。收口前先确认包内 API 是否够用（`StatusBadge` 已在 2026-09 泛化后接入 task / workflow / prod-view 三处生产消费方，不再是零消费）。
+- **2 个 config 组件生产零消费**：`DataTable` / `BatchActionBar` 目前只有包内测试与 demo 引用。`EmptyState` 已不再是零消费——2026-09-22 重写为内联状态块后接入 workflow / observer / task 三个包（调用点在 `workflow/pages/workflow/WorkflowList.tsx`、`WorkflowRuns.tsx`、`WorkflowVersions.tsx`，`observer/pages/admin/AdminObserverPage.tsx`，`task/pages/agent-panel/TasksPanel.tsx`、`components/TaskLogDialog.tsx`），`AdminObserverPage.tsx` 此前的同名本地实现已删除。收口前先确认包内 API 是否够用（`StatusBadge` 已在 2026-09 泛化后接入 task / workflow / prod-view 三处生产消费方，不再是零消费）。
 - **`task` 包的域类型未从包出口导出**：`TaskV2Info` 的权威定义在服务端 zod schema，web 侧页面用相对路径 `from "../../../api/tasks-v2"` 取，未过 `@fenix/resource-task/web`。与 §4.5 的"经包 exports 导出"不一致，新增类型不要照抄这种取法。
 
 ## 5. API 建模层

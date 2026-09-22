@@ -1,3 +1,4 @@
+import { EmptyState } from "@fenix/ui-components/config/EmptyState";
 import { StatusBadge } from "@fenix/ui-components/config/StatusBadge";
 import { Button } from "@fenix/ui-components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@fenix/ui-components/ui/dialog";
@@ -106,7 +107,7 @@ export function TaskLogDialog({ open, onOpenChange, taskId, taskName, onClearLog
 
         <div className="min-h-0 flex-1 overflow-y-auto">
           {error ? (
-            <p className="text-center text-destructive py-8 text-sm">{error.message}</p>
+            <EmptyState title={error.message} tone="danger" className="py-8" role="alert" />
           ) : loading ? (
             <div className="py-8">
               <Skeleton className="h-4 w-full mb-2" />
@@ -114,7 +115,7 @@ export function TaskLogDialog({ open, onOpenChange, taskId, taskName, onClearLog
               <Skeleton className="h-4 w-1/2" />
             </div>
           ) : !filteredItems.length ? (
-            <p className="text-center text-text-muted py-8 text-sm">{t("log.empty")}</p>
+            <EmptyState title={t("log.empty")} className="py-8" />
           ) : (
             <Table>
               <TableHeader>

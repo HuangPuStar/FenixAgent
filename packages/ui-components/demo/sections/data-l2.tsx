@@ -61,8 +61,9 @@ export function DataL2Section() {
   const { t } = useTranslation(DEMO_NS);
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   /**
-   * 两个 EmptyState 示例的 action 都是重试入口：源示例用它把同一份数据切回 loading 态，
-   * 而那个三态表格演示属于 P3，这里没有可取数的数据源，因此回调只记录最后一次触发，保证 action 可交互。
+   * 两个 EmptyState 示例只差一个 tone（neutral / danger），action 都是重试入口：
+   * 源示例用它把同一份数据切回 loading 态，而那个三态表格演示属于 P3，这里没有可取数的数据源，
+   * 因此回调只记录最后一次触发，保证 action 可交互。
    */
   const [lastRetry, setLastRetry] = useState<string | null>(null);
 
@@ -161,24 +162,25 @@ export function DataL2Section() {
 
       <div className="mb-5 p-5 border border-border rounded-lg bg-surface-1">
         <h2 data-slot="demo-example-title" className="mb-4 text-text-secondary text-[13px] font-medium">
-          EmptyState：No components yet
+          EmptyState（neutral）：No components yet
         </h2>
         <EmptyState
-          icon={<Inbox className="h-8 w-8" />}
+          icon={<Inbox />}
           title="No components yet"
-          description="EmptyState 负责空态：图标、标题、描述与一个可选 action。"
+          description="空态与错误态是同一个组件，语义差异只由 tone 表达（这里用默认的 neutral）；组件不自带卡片外壳，这块带边框的区域由示例自己提供。"
           action={{ label: "Reload", onClick: handleEmptyRetry }}
         />
       </div>
 
       <div className="mb-5 p-5 border border-border rounded-lg bg-surface-1">
         <h2 data-slot="demo-example-title" className="mb-4 text-text-secondary text-[13px] font-medium">
-          EmptyState：Failed to load components
+          EmptyState（danger）：Failed to load components
         </h2>
         <EmptyState
-          icon={<TriangleAlert className="h-8 w-8 text-destructive" />}
+          icon={<TriangleAlert />}
+          tone="danger"
           title="Failed to load components"
-          description="错误态同样可以落在 EmptyState 上，action 即重试入口。"
+          description="读取失败 / 无权限换成 danger：图标与主文案的配色由 tone 决定，调用方不再手写颜色类；action 在这里是重试入口。"
           action={{ label: "Retry", onClick: handleErrorRetry }}
         />
       </div>

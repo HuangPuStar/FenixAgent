@@ -6,6 +6,7 @@
 // - 覆盖 loading / empty / error / retry 状态。
 
 import { integrityRows, MasterKeyGate, machineReverseIndex, mergeFlatRows } from "@fenix/resource-sandbox/web";
+import { EmptyState } from "@fenix/ui-components/config/EmptyState";
 import { Badge } from "@fenix/ui-components/ui/badge";
 import { Button } from "@fenix/ui-components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@fenix/ui-components/ui/card";
@@ -115,9 +116,15 @@ function ObserverDashboard({ onAuthFailure }: { onAuthFailure: () => void }) {
         ) : loading ? (
           <LoadingSkeleton />
         ) : error ? (
-          <ErrorState onRetry={refresh} />
+          <EmptyState
+            title={t("states.error")}
+            tone="danger"
+            role="alert"
+            action={{ label: t("states.retry"), onClick: refresh, icon: <RefreshCw /> }}
+            className="rounded-md border border-destructive/40 bg-card px-4 py-10"
+          />
         ) : (
-          <EmptyState />
+          <EmptyState title={t("tree.noData")} className="rounded-md border border-border bg-card px-4 py-6" />
         )}
       </main>
     </div>
@@ -143,7 +150,7 @@ function ObserverContent({
 
   // 无观察数据（total=0）时展示空状态
   if (view.total === 0) {
-    return <EmptyState />;
+    return <EmptyState title={t("tree.noData")} className="rounded-md border border-border bg-card px-4 py-6" />;
   }
 
   return (
@@ -239,28 +246,6 @@ function LoadingSkeleton() {
         ))}
       </div>
       <Skeleton className="h-64 w-full" />
-    </div>
-  );
-}
-
-function EmptyState() {
-  const { t } = useTranslation("observer");
-  return (
-    <p className="rounded-md border border-border bg-card px-4 py-6 text-center text-sm text-text-muted">
-      {t("tree.noData")}
-    </p>
-  );
-}
-
-function ErrorState({ onRetry }: { onRetry: () => void }) {
-  const { t } = useTranslation("observer");
-  return (
-    <div className="flex flex-col items-center gap-3 rounded-md border border-destructive/40 bg-card px-4 py-10 text-center">
-      <p className="text-sm text-text-primary">{t("states.error")}</p>
-      <Button variant="outline" size="sm" onClick={onRetry}>
-        <RefreshCw className="size-3.5" />
-        {t("states.retry")}
-      </Button>
     </div>
   );
 }

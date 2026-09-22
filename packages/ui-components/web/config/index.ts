@@ -2,6 +2,7 @@ export { BatchActionBar } from "./BatchActionBar";
 export { ConfirmDialog } from "./ConfirmDialog";
 export type { Column, DataTableProps } from "./DataTable";
 export { DataTable, filterData, paginateData, sortData } from "./DataTable";
+export type { EmptyStateAction, EmptyStateProps, EmptyStateTone } from "./EmptyState";
 export { EmptyState } from "./EmptyState";
 export type { FormDialogFormConfig } from "./FormDialog";
 export { FormDialog } from "./FormDialog";

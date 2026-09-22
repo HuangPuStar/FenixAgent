@@ -1,4 +1,5 @@
 import { ConfirmDialog } from "@fenix/ui-components/config/ConfirmDialog";
+import { EmptyState } from "@fenix/ui-components/config/EmptyState";
 import { AppHeader } from "@fenix/ui-components/layout/app-header";
 import { Button } from "@fenix/ui-components/ui/button";
 import { Skeleton } from "@fenix/ui-components/ui/skeleton";
@@ -162,26 +163,24 @@ export function WorkflowVersions({ workflowId }: WorkflowVersionsProps) {
         // 持久错误分支：不能只弹 toast 就落回「暂无发布版本」，否则用户以为是没有版本可用。
         // 无权限单独渲染且不带重试（401 需重新登录、403 是永久拒绝，重试不会改变结果）。
         unauthorized ? (
-          <div className="text-center py-10" role="alert">
-            <ShieldAlert size={32} className="text-status-error mx-auto mb-2" />
-            <p className="text-[13px] text-text-secondary font-medium">{t("versions.unauthorized_title")}</p>
-            <p className="text-[11px] text-text-dim mt-1">{t("versions.unauthorized_hint")}</p>
-          </div>
+          <EmptyState
+            icon={<ShieldAlert />}
+            title={t("versions.unauthorized_title")}
+            description={t("versions.unauthorized_hint")}
+            tone="danger"
+            role="alert"
+          />
         ) : (
-          <div className="text-center py-10" role="alert">
-            <AlertTriangle size={32} className="text-status-error mx-auto mb-2" />
-            <p className="text-[13px] text-text-secondary">{t("versions.load_failed", { error: versionsErrorMsg })}</p>
-            <Button variant="outline" size="sm" className="mt-3" onClick={versionsRefresh}>
-              <RefreshCw size={13} className="mr-1" /> {t("versions.retry")}
-            </Button>
-          </div>
+          <EmptyState
+            icon={<AlertTriangle />}
+            title={t("versions.load_failed", { error: versionsErrorMsg })}
+            tone="danger"
+            role="alert"
+            action={{ label: t("versions.retry"), onClick: versionsRefresh, icon: <RefreshCw /> }}
+          />
         )
       ) : versions.length === 0 ? (
-        <div className="text-center py-10">
-          <Inbox size={32} className="text-text-muted mx-auto mb-2" />
-          <p className="text-[13px] text-text-muted font-medium">{t("versions.no_versions")}</p>
-          <p className="text-[11px] text-text-dim mt-1">{t("versions.no_versions_hint")}</p>
-        </div>
+        <EmptyState icon={<Inbox />} title={t("versions.no_versions")} description={t("versions.no_versions_hint")} />
       ) : (
         <div className="space-y-2">
           {versions.map((v) => {

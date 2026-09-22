@@ -1,3 +1,4 @@
+import { EmptyState } from "@fenix/ui-components/config/EmptyState";
 import { StatusBadge, type StatusTone } from "@fenix/ui-components/config/StatusBadge";
 import { Button } from "@fenix/ui-components/ui/button";
 import { Input } from "@fenix/ui-components/ui/input";
@@ -118,6 +119,8 @@ export function WorkflowRuns({ onSelectRun }: WorkflowRunsProps) {
 
   const totalPages = Math.max(1, Math.ceil(total / pageSize));
   const showEmpty = !loading && !error && runs.length === 0;
+  // 「筛选/搜索后没有匹配」与「一条运行都没有」是两种空态：前者要提示清空筛选，后者要提示去发起运行。
+  const isFiltered = statusFilter !== "all" || Boolean(debouncedSearch);
 
   return (
     <div className="flex flex-col flex-1 min-h-0">
@@ -164,24 +167,20 @@ export function WorkflowRuns({ onSelectRun }: WorkflowRunsProps) {
           ))}
         </div>
       ) : error ? (
-        <div className="text-center py-10">
-          <AlertTriangle size={32} className="text-status-error mx-auto mb-2" />
-          <p className="text-[13px] text-text-secondary">{t("runs.load_failed", { error: errorMsg })}</p>
-        </div>
+        // 失败是持久分支：不能与下面的「暂无运行」空态合并，否则用户分不清「没有数据」与「没取到数据」。
+        // 本页不额外给重试按钮——工具栏上的刷新是同一入口，再放一个只会让错误态里出现两个「重试」。
+        <EmptyState
+          icon={<AlertTriangle />}
+          title={t("runs.load_failed", { error: errorMsg })}
+          tone="danger"
+          role="alert"
+        />
       ) : showEmpty ? (
-        <div className="text-center py-10">
-          {statusFilter !== "all" || debouncedSearch ? (
-            <Search size={32} className="text-text-secondary mx-auto mb-2" />
-          ) : (
-            <Inbox size={32} className="text-text-secondary mx-auto mb-2" />
-          )}
-          <p className="text-[13px] text-text-secondary font-medium">
-            {statusFilter !== "all" || debouncedSearch ? t("runs.no_match") : t("runs.no_runs")}
-          </p>
-          <p className="text-[11px] text-text-dim mt-1">
-            {statusFilter !== "all" || debouncedSearch ? t("runs.no_runs_filter_hint") : t("runs.no_runs_hint")}
-          </p>
-        </div>
+        <EmptyState
+          icon={isFiltered ? <Search /> : <Inbox />}
+          title={isFiltered ? t("runs.no_match") : t("runs.no_runs")}
+          description={isFiltered ? t("runs.no_runs_filter_hint") : t("runs.no_runs_hint")}
+        />
       ) : (
         <div className="flex-1 flex flex-col min-h-0 overflow-hidden">
           {/* 数据表格 */}
