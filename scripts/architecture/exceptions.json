@@ -133,38 +133,6 @@
       "owner": "未排期",
       "removeWhen": "该包不再把 acp-link 作为构建期输入（改为 external 发布），或 acp-link 正式发布后改为普通 dependencies",
       "rationale": "实测 1 处导入 / 1 个文件。src/bin.ts 从 acp-link 根入口导入 startServer，但 package.json 只把它声明在 devDependencies。这在该包是正确声明：`bun build` 把 acp-link 连同其插件依赖打进单一产物 dist/bin.js（实测 dist/bin.js 内无裸 `acp-link` 导入），发布物自包含，消费者不需要 acp-link。把 `workspace:*` 提升为运行时 dependencies 会改变已发布 npm 包的依赖语义，超出 1.1 范围，故登记为豁免。此条由 1.1 修掉「只认 @fenix/ 前缀」的解析盲区后暴露。"
-    },
-    {
-      "rule": "undeclared-workspace-dependency",
-      "from": "acp-link",
-      "to": "@fenix/ccb",
-      "owner": "未排期",
-      "removeWhen": "acp-link 转为 private（不再发布），或 @fenix/ccb 发布后把该边改为 dependencies",
-      "rationale": "实测 1 处导入 / 1 个文件。acp-link 是仓库里两个未标 `private` 的包之一（另一个是 @fenix-agent/acp-runtime-cli，见同组上一条），`files` 直接发布 `src/`、`exports[\".\"]` 指向 src/server.ts 并在顶层值导入这三个 plugin 包（src/server.ts:5-7），因此这四条边在发布语义上确实存在。不把它们提升为 `dependencies` 的原因是四个目标包都是 `private: true` 的未发布包：提升后发布物会带上 `workspace:*` 依赖并指向 registry 上不存在的包——不是修好而是把「无法在 workspace 外运行」写进已发布清单。仓库内消费方（docker/sandbox*/Dockerfile 的`bun build` 独立 bundle、acp-runtime-cli 的 dist/bin.js）都从源码打包，devDependencies 已足够解析。改变已发布包的依赖语义超出 1.1 范围，故登记豁免。与 no-circular 里“@fenix/ccb / @fenix/opencode / @fenix/claude-code ↔ acp-link”的环条目是同一批边的声明面，故 owner 同为「未排期」。 导入点：src/server.ts:5 值导入 createCcbHandler。"
-    },
-    {
-      "rule": "undeclared-workspace-dependency",
-      "from": "acp-link",
-      "to": "@fenix/claude-code",
-      "owner": "未排期",
-      "removeWhen": "acp-link 转为 private（不再发布），或 @fenix/claude-code 发布后把该边改为 dependencies",
-      "rationale": "实测 1 处导入 / 1 个文件。acp-link 是仓库里两个未标 `private` 的包之一（另一个是 @fenix-agent/acp-runtime-cli，见同组上一条），`files` 直接发布 `src/`、`exports[\".\"]` 指向 src/server.ts 并在顶层值导入这三个 plugin 包（src/server.ts:5-7），因此这四条边在发布语义上确实存在。不把它们提升为 `dependencies` 的原因是四个目标包都是 `private: true` 的未发布包：提升后发布物会带上 `workspace:*` 依赖并指向 registry 上不存在的包——不是修好而是把「无法在 workspace 外运行」写进已发布清单。仓库内消费方（docker/sandbox*/Dockerfile 的`bun build` 独立 bundle、acp-runtime-cli 的 dist/bin.js）都从源码打包，devDependencies 已足够解析。改变已发布包的依赖语义超出 1.1 范围，故登记豁免。与 no-circular 里“@fenix/ccb / @fenix/opencode / @fenix/claude-code ↔ acp-link”的环条目是同一批边的声明面，故 owner 同为「未排期」。 导入点：src/server.ts:6 值导入 createClaudeCodeHandler。"
-    },
-    {
-      "rule": "undeclared-workspace-dependency",
-      "from": "acp-link",
-      "to": "@fenix/opencode",
-      "owner": "未排期",
-      "removeWhen": "acp-link 转为 private（不再发布），或 @fenix/opencode 发布后把该边改为 dependencies",
-      "rationale": "实测 1 处导入 / 1 个文件。acp-link 是仓库里两个未标 `private` 的包之一（另一个是 @fenix-agent/acp-runtime-cli，见同组上一条），`files` 直接发布 `src/`、`exports[\".\"]` 指向 src/server.ts 并在顶层值导入这三个 plugin 包（src/server.ts:5-7），因此这四条边在发布语义上确实存在。不把它们提升为 `dependencies` 的原因是四个目标包都是 `private: true` 的未发布包：提升后发布物会带上 `workspace:*` 依赖并指向 registry 上不存在的包——不是修好而是把「无法在 workspace 外运行」写进已发布清单。仓库内消费方（docker/sandbox*/Dockerfile 的`bun build` 独立 bundle、acp-runtime-cli 的 dist/bin.js）都从源码打包，devDependencies 已足够解析。改变已发布包的依赖语义超出 1.1 范围，故登记豁免。与 no-circular 里“@fenix/ccb / @fenix/opencode / @fenix/claude-code ↔ acp-link”的环条目是同一批边的声明面，故 owner 同为「未排期」。 导入点：src/server.ts:7 值导入 createOpencodeHandler。"
-    },
-    {
-      "rule": "undeclared-workspace-dependency",
-      "from": "acp-link",
-      "to": "@fenix/plugin-sdk",
-      "owner": "未排期",
-      "removeWhen": "acp-link 转为 private（不再发布），或 @fenix/plugin-sdk 发布后把该边改为 dependencies",
-      "rationale": "实测 2 处导入 / 2 个文件。acp-link 是仓库里两个未标 `private` 的包之一（另一个是 @fenix-agent/acp-runtime-cli，见同组上一条），`files` 直接发布 `src/`、`exports[\".\"]` 指向 src/server.ts 并在顶层值导入这三个 plugin 包（src/server.ts:5-7），因此这四条边在发布语义上确实存在。不把它们提升为 `dependencies` 的原因是四个目标包都是 `private: true` 的未发布包：提升后发布物会带上 `workspace:*` 依赖并指向 registry 上不存在的包——不是修好而是把「无法在 workspace 外运行」写进已发布清单。仓库内消费方（docker/sandbox*/Dockerfile 的`bun build` 独立 bundle、acp-runtime-cli 的 dist/bin.js）都从源码打包，devDependencies 已足够解析。改变已发布包的依赖语义超出 1.1 范围，故登记豁免。与 no-circular 里“@fenix/ccb / @fenix/opencode / @fenix/claude-code ↔ acp-link”的环条目是同一批边的声明面，故 owner 同为「未排期」。 导入点：src/server.ts:8 与 src/client/instance-manager.ts:5，两处均为 `import type`（AgentLaunchSpec）；后者位于已发布的 `./client` 子路径内。"
     }
   ]
 }
