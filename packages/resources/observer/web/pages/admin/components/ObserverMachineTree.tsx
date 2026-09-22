@@ -8,6 +8,7 @@ import { Badge } from "@fenix/ui-components/ui/badge";
 import { Server } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import type { ObserverMachineTree as ObserverMachineTreeView, ObserverNames } from "../../../api/observer";
+import { OBSERVER_META_CLASS } from "../observer-meta-classes";
 
 interface ObserverMachineTreeProps {
   machines: ObserverMachineTreeView[];
@@ -43,9 +44,9 @@ export function ObserverMachineTree({ machines, selectedMachineId, onSelectMachi
               >
                 <span className="font-mono text-text-primary">{display}</span>
                 {display !== machine.machineId ? (
-                  <span className="font-mono text-[10px] text-text-muted">{machine.machineId}</span>
+                  <span className={OBSERVER_META_CLASS}>{machine.machineId}</span>
                 ) : null}
-                <Badge variant="secondary" className="text-[10px]">
+                <Badge variant="secondary" className="text-3xs">
                   {machine.count}
                 </Badge>
               </button>
@@ -54,7 +55,7 @@ export function ObserverMachineTree({ machines, selectedMachineId, onSelectMachi
               {machine.leaves.map((leaf) => (
                 <li key={leaf.id} className="flex flex-wrap items-center gap-2 rounded-md px-2 py-1 text-xs">
                   <span className="font-mono text-text-primary">{leaf.id}</span>
-                  <Badge variant="outline" className="text-[10px]">
+                  <Badge variant="outline" className="text-3xs">
                     {t(`source.${leaf.source}`, { defaultValue: leaf.source })}
                   </Badge>
                 </li>

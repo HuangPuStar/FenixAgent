@@ -25,6 +25,7 @@ import type {
   ObserverOrgNode,
   ObserverUserNode,
 } from "../../../api/observer";
+import { OBSERVER_META_CLASS } from "../observer-meta-classes";
 
 interface ObserverOrgTreeProps {
   orgs: ObserverOrgNode[];
@@ -60,7 +61,7 @@ function NodeTitle({ display, id, maxLength }: { display: string; id: string; ma
       <span className="font-mono text-text-primary" title={isTruncated ? display : undefined}>
         {shown}
       </span>
-      {display !== id ? <span className="ml-1 font-mono text-[10px] text-text-muted">{id}</span> : null}
+      {display !== id ? <span className={`ml-1 ${OBSERVER_META_CLASS}`}>{id}</span> : null}
     </span>
   );
 }
@@ -81,7 +82,7 @@ function ChatRelayStats({ leaf, tabCount }: { leaf: ObserverLeaf; tabCount: numb
   if (!info?.openTime) return null;
   const duration = formatDuration(now - info.openTime);
   return (
-    <span className="ml-auto flex shrink-0 items-center gap-2 text-[10px] text-text-muted">
+    <span className="ml-auto flex shrink-0 items-center gap-2 text-3xs text-text-muted">
       <span title={t("stats.openTime")}>{formatClockTime(info.openTime)}</span>
       <span>{t(`stats.unit.${duration.unit}`, { value: duration.value })}</span>
       {info.rcsSessionId ? (
@@ -90,7 +91,7 @@ function ChatRelayStats({ leaf, tabCount }: { leaf: ObserverLeaf; tabCount: numb
         </span>
       ) : null}
       {tabCount > 1 ? (
-        <Badge variant="outline" className="text-[10px]">
+        <Badge variant="outline" className="text-3xs">
           {t("stats.tabs", { count: tabCount })}
         </Badge>
       ) : null}
@@ -124,13 +125,13 @@ function LeafRow({
       <span className="font-mono text-text-primary" title={leafIdTruncated ? leaf.id : undefined}>
         {leafIdTruncated ? `${leaf.id.slice(0, 40)}…` : leaf.id}
       </span>
-      <Badge variant="outline" className="text-[10px]">
+      <Badge variant="outline" className="text-3xs">
         {t(`source.${leaf.source}`, { defaultValue: leaf.source })}
       </Badge>
       {leaf.machineId ? (
         <span className="font-mono text-text-muted">
           machine: {machineDisplay}
-          {machineDisplay !== leaf.machineId ? <span className="ml-1 text-[10px]">{leaf.machineId}</span> : null}
+          {machineDisplay !== leaf.machineId ? <span className="ml-1 text-3xs">{leaf.machineId}</span> : null}
         </span>
       ) : null}
       {sessionInfo ? (
@@ -160,11 +161,11 @@ function YjsSessionStats({ session }: { session: YjsSessionGroup }) {
   const earliestOpen = Math.min(...openTimes);
   const duration = formatDuration(now - earliestOpen);
   return (
-    <span className="ml-auto flex shrink-0 items-center gap-2 text-[10px] text-text-muted">
+    <span className="ml-auto flex shrink-0 items-center gap-2 text-3xs text-text-muted">
       <span title={t("stats.openTime")}>{formatClockTime(earliestOpen)}</span>
       <span>{t(`stats.unit.${duration.unit}`, { value: duration.value })}</span>
       {session.leaves.length > 1 ? (
-        <Badge variant="outline" className="text-[10px]">
+        <Badge variant="outline" className="text-3xs">
           {t("stats.tabs", { count: session.leaves.length })}
         </Badge>
       ) : null}
