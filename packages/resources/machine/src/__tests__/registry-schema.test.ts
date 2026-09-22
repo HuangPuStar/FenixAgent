@@ -55,7 +55,9 @@ describe("registry_event 表", () => {
 // 门禁 `bun run check:schema-ddl-drift`（逐字段比对迁移快照）。
 
 // 已删除「REGISTRY_SECRET 环境变量」两条用例（默认值 / 可覆盖）：该变量由 agent-runtime 的 `/acp/ws`、
-// `/acp/ws/fs` 端点校验（`packages/agent-runtime/src/routes/acp/index.ts` 读 `validateEnv().REGISTRY_SECRET`），
+// `/acp/ws/fs` 端点校验（`packages/agent-runtime/src/routes/acp/index.ts` 读
+// `getAgentRuntimeConfig().acpRegistrySecret`——该键的声明自 1.7 C 块起归 agent-runtime 的
+// `fenix.module.ts`，宿主 schema 不再持有它），
 // 迁移前本包注册路由经它做机器侧接入鉴权，收敛后本包已无任何读取点（全仓 grep 确认）。留在包内只能经
 // `@server/env` 断言宿主内部变量，正是本任务要切断的宿主依赖；宿主 env 的默认值断言应归宿主 env 用例
 //（见交付说明的 sharedPatches：建议宿主补上，本任务不写 apps/**）。

@@ -115,15 +115,33 @@ function runStep(step: (typeof STEPS)[number]): { ok: boolean; output: string | 
     const raw = execSync(step.cmd, {
       encoding: "utf-8",
       timeout: 300_000,
+      // execSync 默认 maxBuffer 只有 1MB，而本仓库 bun test 已是 600+ 文件、8000+ 用例。
+      // 输出一旦越过上限就抛 ENOBUFS，且只保留前 1MB：末尾的 pass/fail 摘要整体丢失，
+      // filter 只能退化成日志片段，步骤被误报成"测试失败"。这里的上限按当前规模的十倍余量设置。
+      maxBuffer: 64 * 1024 * 1024,
       stdio: ["pipe", "pipe", "pipe"],
     });
     const ms = Date.now() - start;
     return { ok: true, output: step.filter(raw), ms };
   } catch (err: unknown) {
     const ms = Date.now() - start;
-    const e = err as { stdout?: string; stderr?: string; status?: number };
+    const e = err as {
+      stdout?: string;
+      stderr?: string;
+      status?: number | null;
+      signal?: string | null;
+      message?: string;
+    };
     const combined = [e.stdout ?? "", e.stderr ?? ""].join("\n");
-    return { ok: false, output: step.filter(combined), ms };
+    // 进程被信号终止、超时或 stdout 溢出时，bun 的 summary 会整体缺失，filter 只能退化成日志片段，
+    // 真实原因（退出码 / 信号 / ETIMEDOUT / ENOBUFS）随 e.status、e.signal、e.message 一起被丢弃。
+    // 这里把失败判据显式前置，使其不被测试日志淹没。status/signal 均为 null 而 exit code 非 0 时，
+    // 说明子进程被信号杀死（如 OOM 的 SIGKILL）。
+    const diagnosis =
+      `[${step.name}] ${e.message ?? "step failed"} | status=${e.status ?? "-"} signal=${e.signal ?? "-"}` +
+      ` stdout=${(e.stdout ?? "").length}ch stderr=${(e.stderr ?? "").length}ch`;
+    const filtered = step.filter(combined);
+    return { ok: false, output: [diagnosis, filtered].filter(Boolean).join("\n\n"), ms };
   }
 }
 

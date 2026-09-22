@@ -47,11 +47,37 @@ jobs:
       - name: Root source owner inventory is up to date
         run: bun run check:root-owner-inventory
 
+      # 表搬迁只搬位置、不改结构：`drizzle.config.ts` 声明的 schema 集合与已发布迁移链必须零
+      # DDL 差异。这一步本地 `precheck`（scripts/ci.ts）已有，CI 此前缺它，等于 PR 阶段对
+      # 「表定义换手时顺手改了 DDL」没有门禁。
+      - name: Schema DDL drift
+        run: bun run check:schema-ddl-drift
+
       - name: Architecture boundaries
         run: bun run architecture:check
 
       - name: Workspace dependency boundaries
         run: bun run check:dependencies
+
+  build:
+    name: Web production build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: "1.4.2"
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+
+      # 后端从 `apps/web/dist/` 挂载静态资源；「包被浏览器 bundle 拉进 server-only 依赖」
+      # 这类事故只在真实构建下暴露（vite 的解析与外置规则和 `bun test` 不同），此前只有
+      # `Dockerfile` 在镜像构建时才跑，PR 阶段没有构建级门禁。`build:web` 只依赖已安装依赖
+      # 与仓库内已提交的生成物，不需要 env（`Dockerfile` 同样在 install 之后直接执行）。
+      - name: Web production build
+        run: bun run build:web
 
   test:
     name: Test

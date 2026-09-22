@@ -432,7 +432,7 @@ W3 只动 `apps/**`、`scripts/**` 与编排者独占的共享文件，`packages
 1. `packages/resources/machine/src/__tests__/fs-symlink-escape.test.ts`：「WORKSPACE_ROOT 本身为 symlink 时读写正常」用例在运行中把根切到软链目录，却直接写 `process.env.WORKSPACE_ROOT`——违反本任务引入的根锁契约（`workspace-root-lock.ts` 明文要求「含按用例切换根的」必须经锁）。改为先 `unlock` 释放本文件 `beforeEach` 持有的根、再 `lock` 独占软链根（**不能**直接二次取锁：那会等自己的释放而空等到锁的等待上限）；`afterEach` 里的手动 `delete process.env.WORKSPACE_ROOT` 一并去掉，交由解锁处理。
 2. `packages/platform/platform-sdk/src/testing/workspace-root-lock.ts`：`unlockTestWorkspaceRoot()` 此前无论是否持锁都会写根，一个从未取锁的用例（或同一文件里不参与锁的用例）在 `afterEach` 调用它就等于替并发持有者改根——正是本锁要排除的争用。改为**未持锁时是空操作**；`file-ws-events.test.ts` 那种「只有一组用例持锁、其余不参与」的写法随之不再可能误删他人的根（该文件的手动 `delete` 同步移除）。现有 11 个调用点全部是「持锁后调用」且无一处传 `previous`，行为不变；改动后全量为 7274 pass / 0 fail。
 
-**仍存在的、登记不动的风险**：`packages/plugin-ccb`、`packages/plugin-opencode`、`packages/agent-runtime/src/__tests__/workspace-resolver.test.ts` 会改 `process.env.WORKSPACE_ROOT` 而不参与锁。前两者所在类别不在依赖矩阵允许 `platform-sdk` 的集合内（工程标准 §2.3：`platform-sdk` 的依赖方是 `platform` 实现、`agent-runtime`、`resources`、`apps`），补锁必须先定依赖边界，不在本任务动手；后者是同步「设置并读回」，属锁契约明文豁免的形态。
+**仍存在的、登记不动的风险**：`packages/plugin-ccb`、`packages/plugin-opencode` 会改 `process.env.WORKSPACE_ROOT` 而不参与锁。两者所在类别不在依赖矩阵允许 `platform-sdk` 的集合内（工程标准 §2.3：`platform-sdk` 的依赖方是 `platform` 实现、`agent-runtime`、`resources`、`apps`），补锁必须先定依赖边界，不在本任务动手。~~第三条 `packages/agent-runtime/src/__tests__/workspace-resolver.test.ts` 是同步「设置并读回」，属锁契约明文豁免的形态~~ **（2026-09-22 订正）该用例已随 1.7 C1 退出本清单**：它改为经 `initializeAgentRuntimeModuleConfig({ workspaceRoot })` 装配模块配置后断言，不再触碰 `WORKSPACE_ROOT`（1.7 review §7.33）。
 
 #### 6.11.10 第二波：验证缺口修复与测试基础设施缺陷（2026-09-20）
 

@@ -23,6 +23,10 @@ function buildAuth() {
   return betterAuth({
     // baseURL 用于生成回调/重定向 URL。线上必须通过 BETTER_AUTH_URL 环境变量设置。
     baseURL: config.betterAuthUrl,
+    // secret 显式取自模块配置（`BETTER_AUTH_SECRET`），让密钥来源与其余字段一致、可被启动期校验兜住形状。
+    // 未设置时它是 `undefined`，与不传等价：better-auth 内部仍按 `options.secret || env.BETTER_AUTH_SECRET
+    // || env.AUTH_SECRET || 内置默认串` 回落（默认串在生产环境会被拒绝），本模块不代为补默认值。
+    secret: config.betterAuthSecret,
     database: drizzleAdapter(getIdentityDatabase(), {
       provider: "pg",
       schema,

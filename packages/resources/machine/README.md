@@ -155,8 +155,10 @@ agent-config 再反向声明 `dependsOn: ["machine"]` 会在模块
   5. `apps/web/src/api/registry.ts`：宿主副本删除，消费方（agent-config 的 `use-agent-editor.ts`、identity 的
      `AgentOrganizationsPage.tsx` 等组织机器页）改指 `@fenix/resource-machine/web`；agent-config 的 `package.json`
      需补 `@fenix/resource-machine` 依赖声明。
-  6. 宿主 env 用例补 `REGISTRY_SECRET` 的默认值 / 可覆盖断言：该变量由 agent-runtime 的 `/acp/ws` 校验，本包已无
-     读取点，包内两条断言随迁移删除（见 `src/__tests__/registry-schema.test.ts` 的注释）。
+  6. `REGISTRY_SECRET` 的默认值 / 可覆盖断言归 agent-runtime：该变量由它的 `/acp/ws`、`/acp/ws/fs` 校验，本包已无
+     读取点，包内两条断言随迁移删除（见 `src/__tests__/registry-schema.test.ts` 的注释）。1.7 C 块后该键的声明与
+     默认值也在 agent-runtime 的 `fenix.module.ts`（宿主 schema 不再持有）；**不必再按键补断言**——模块声明的
+     默认值、归一与非法值拒绝已由宿主 `apps/server/src/__tests__/assembly-env.test.ts` 对全部声明键统一覆盖。
   7. `apps/server/src/main.ts`：`initializeApplicationInfrastructure({ moduleConfigs })`（现状只登记 identity 与
      sandbox）增加本包条目 `machine: { defaultMachineId, fileWsIdentityStrict, fileEventsMaxClients }`。
      缺它时 `getMachineConfig()` → `getModuleConfig("machine")` 在请求 / 连接路径上抛「模块 machine 未声明应用

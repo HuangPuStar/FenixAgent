@@ -34,7 +34,16 @@
     }
   },
   // `db/` 只放部署期数据迁移入口（release 步骤，不进应用启动序列），其类型正确性直接影响
-  // 运维可执行性，故纳入检查；根 `scripts/` 仍由 bun 运行时与定向测试覆盖，不在本 include 内。
-  "include": ["apps/server/src/**/*.ts", "db/**/*.ts"],
-  "exclude": ["node_modules", "dist"]
+  // 运维可执行性，故纳入检查；根 `scripts/` 同为运维可执行面（门禁脚本 + 生产迁移入口
+  // `scripts/migrate.ts`），一并纳入 —— 此前它不在任何 tsconfig 的 include 内，`tsc --noEmit`
+  // 从不检查它们（登记为 task-1.7 review §8.1 第 2 条，本次闭环）。
+  //
+  // `scripts/__tests__/` 是本 include 的唯一例外：纳入前实测该目录有 4 条既有类型错误
+  // （2 条 `root-source-owner-inventory.test.ts`、各 1 条 `module-registry-generator.test.ts` /
+  // `rmd-06-migration.test.ts`），逐条修复要改测试断言与 fixture 形状，超出本次范围（本次口径
+  // 不动测试文件）。移除条件：4 条错误修复后删掉 `exclude` 里的 `scripts/__tests__` 条目，
+  // 届时 `scripts/**/*.ts` 可整体纳入。该目录当前仍由 `bun test scripts/__tests__/`（precheck
+  // 与 CI 的 `server, script, and platform SDK tests` 步骤）在运行时覆盖。
+  "include": ["apps/server/src/**/*.ts", "db/**/*.ts", "scripts/**/*.ts"],
+  "exclude": ["node_modules", "dist", "scripts/__tests__"]
 }

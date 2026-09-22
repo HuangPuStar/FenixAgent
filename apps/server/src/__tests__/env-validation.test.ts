@@ -13,11 +13,8 @@ describe("env validation", () => {
     delete process.env.RCS_HOST;
     delete process.env.RCS_PORT;
     delete process.env.RCS_CORS_ORIGIN;
-    delete process.env.RCS_TRUSTED_ORIGINS;
-    delete process.env.SKILL_DIR;
     delete process.env.APP_BRAND_NAME;
     delete process.env.APP_LOGO_PATH;
-    delete process.env.APP_HIDDEN_SIDEBAR_TABS;
     delete process.env.RCS_DISABLE_SCHEDULER;
   });
 
@@ -52,11 +49,8 @@ describe("env validation", () => {
     expect(env.RCS_PORT).toBe(3000);
     expect(env.RCS_HOST).toBe("0.0.0.0");
     expect(env.RCS_CORS_ORIGIN).toBe("*");
-    expect(env.RCS_TRUSTED_ORIGINS).toBe("");
-    expect(env.SKILL_DIR).toBe("./data/skills");
     expect(env.APP_BRAND_NAME).toBe("Fenix");
     expect(env.APP_LOGO_PATH).toBe("");
-    expect(env.APP_HIDDEN_SIDEBAR_TABS).toBe("");
     expect(env.RCS_DISABLE_SCHEDULER).toBe(false);
   });
 
@@ -119,32 +113,9 @@ describe("env validation", () => {
     expect(() => validateEnv()).toThrow(/RCS_DEFAULT_ENGINE_TYPE/);
   });
 
-  // RCS_AGENT_MAX_CONCURRENCY 合法值时应通过校验
-  test("RCS_AGENT_MAX_CONCURRENCY 合法值时通过校验", () => {
-    process.env.DATABASE_URL = TEST_DATABASE_URL;
-    process.env.RCS_API_KEYS = TEST_API_KEY;
-    process.env.RCS_AGENT_MAX_CONCURRENCY = "3";
-    const env = validateEnv();
-    expect(env.RCS_AGENT_MAX_CONCURRENCY).toBe(3);
-  });
-
-  // RCS_USER_AGENT_MAX_CONCURRENCY 合法值时应通过校验
-  test("RCS_USER_AGENT_MAX_CONCURRENCY 合法值时通过校验", () => {
-    process.env.DATABASE_URL = TEST_DATABASE_URL;
-    process.env.RCS_API_KEYS = TEST_API_KEY;
-    process.env.RCS_USER_AGENT_MAX_CONCURRENCY = "2";
-    const env = validateEnv();
-    expect(env.RCS_USER_AGENT_MAX_CONCURRENCY).toBe(2);
-  });
-
-  // 未设置 RCS_USER_AGENT_MAX_CONCURRENCY 时应使用默认值 10
-  test("RCS_USER_AGENT_MAX_CONCURRENCY 未设置时使用默认值 10", () => {
-    process.env.DATABASE_URL = TEST_DATABASE_URL;
-    process.env.RCS_API_KEYS = TEST_API_KEY;
-    delete process.env.RCS_USER_AGENT_MAX_CONCURRENCY;
-    const env = validateEnv();
-    expect(env.RCS_USER_AGENT_MAX_CONCURRENCY).toBe(10);
-  });
+  // 三个并发上限的校验与默认值（RCS_AGENT_MAX_CONCURRENCY / RCS_USER_AGENT_MAX_CONCURRENCY）自 1.7 C 块起
+  // 归 agent-runtime 的 `envDefinitions` 声明，宿主 `envSchema` 不再持有它们——对应断言已下沉到
+  // `assembly-env.test.ts`，那里经真实清单取合并 env。
 
   // 未配置连接池变量时使用项目约定的连接池默认值。
   test("数据库连接池变量未设置时使用项目默认值", () => {
@@ -213,13 +184,8 @@ describe("env validation", () => {
     expect(() => validateEnv()).toThrow(/RCS_DB_LOCK_TIMEOUT_SECONDS/);
   });
 
-  // RCS_SCHEDULED_AGENT_MAX_CONCURRENCY 非法值时应校验失败
-  test("RCS_SCHEDULED_AGENT_MAX_CONCURRENCY 非法值时校验失败", () => {
-    process.env.DATABASE_URL = TEST_DATABASE_URL;
-    process.env.RCS_API_KEYS = TEST_API_KEY;
-    process.env.RCS_SCHEDULED_AGENT_MAX_CONCURRENCY = "0";
-    expect(() => validateEnv()).toThrow(/RCS_SCHEDULED_AGENT_MAX_CONCURRENCY/);
-  });
+  // RCS_SCHEDULED_AGENT_MAX_CONCURRENCY 非法值时校验失败——该键自 1.7 C 块起归 agent-runtime 声明，
+  // 对应断言已下沉到 `assembly-env.test.ts` 的「声明键的非法值在启动期被拒绝」。
 
   // 空串 RCS_DEFAULT_MACHINE_ID（compose ${VAR:-} 空默认值透传）应视为未设置，
   // 而不是触发 mach_ 前缀 regex 校验导致服务拒绝启动（断裂点 1 配套修复）。

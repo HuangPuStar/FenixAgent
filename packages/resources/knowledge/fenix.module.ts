@@ -1,5 +1,6 @@
 import type { ModuleManifest } from "@fenix/platform-sdk";
 import type { ServerRouteHost } from "@fenix/platform-sdk/server";
+import { z } from "zod/v4";
 
 /**
  * Knowledge 资源模块描述符。
@@ -41,7 +42,25 @@ import type { ServerRouteHost } from "@fenix/platform-sdk/server";
  * `lucide-react` / React 载荷只存在于 `@fenix/resource-knowledge/web/contribution` 导出的值里，不会沿
  * registry 进入服务端装配图（server 侧拿到的只有这一条字符串）。
  *
- * `envDefinitions` 的留白保持不变，env 收敛归 §1.7。
+ * 声明 `envDefinitions`（§1.7 路线 A）：RAGFlow 三键与 Gotenberg 地址合起来就是 `KnowledgeModuleConfig`
+ * 的完整部署面（`src/server/config.ts` 只认这四个字段），宿主既不第二处读取、也没有别的模块消费，因此
+ * 唯一 owner 是本模块——这三个宿主键（`RAGFLOW_API_URL` / `RAGFLOW_API_KEY` / `RAGFLOW_REQUEST_TIMEOUT_MS`）
+ * 的宿主 `apps/server/src/env.ts` 同名行必须**同批**删除，否则 `assertNoHostKeyOverride` 会在启动期抛
+ * 「同一变量只能有一个声明处」。没有留在宿主的兄弟键：本模块的部署面就是这四个，也不与多模块共享键
+ * （`DATABASE_URL`、`RCS_REDIS_*` 一类）重叠。声明只承担启动期校验与汇总，值仍由宿主
+ * `bootstrap/module-configs.ts` 手工投影成模块配置（路线 A 的窄口径：不引入通用拆分器、不改模块 config.ts 形态）。
+ *
+ * 键的 zod 形状**逐字转写**宿主 env schema 的原文，只在一处做有意的偏离：`RAGFLOW_API_URL` 与
+ * `GOTENBERG_URL` 加 `z.preprocess` 归一空串。宿主的 `z.string().default(...)` 只对 `undefined` 生效，而
+ * 迁移前这两个键的取值实现是 `apps/server/src/config.ts` 的 `process.env.X || "<默认>"`——`||` 把空串当
+ * 未设置。照抄 `.default(...)` 会让 `RAGFLOW_API_URL=` 从「回退默认地址」变成「空字符串」，`GOTENBERG_URL=`
+ * 更会撞上模块配置的 `z.string().min(1)` 而拒绝启动，属真实行为回归。归一手法与宿主同名先例
+ * `RCS_DEFAULT_MACHINE_ID`（`apps/server/src/env.ts`）一致：docker-compose 的 `${VAR:-}` 在 .env 未设置时
+ * 透传的是空串而非 undefined。`RAGFLOW_API_KEY` 的 `.default("")` 保持原样：空串是「未配置 RAGFlow」这一
+ * 真实部署状态的表达，`resolveRagflowApiKey()` 靠它快速失败，不得收紧成必填（`.env.example` 即为空）。
+ * `GOTENBERG_URL` 是**补齐**而非迁移：宿主 env schema 从未声明它，默认值取自迁移前的宿主直读实现。
+ * 四个键都在装配期被读一次并固化进模块配置（请求期不再读 env），故 `restartRequired: true`；只有
+ * `RAGFLOW_API_KEY` 是密钥材料，`secret: true`（禁止进日志、响应与错误文案）。
  *
  * `create` 指向 `src/module.ts` 的组合根（进程级仓储单例），并保持惰性：registry 会被大量位置导入，
  * 不能在索引层就把 Drizzle、Elysia 与知识库服务图拖进来。
@@ -69,6 +88,59 @@ export const moduleManifest = {
       slot: "api",
       value: (host: ServerRouteHost) =>
         import("./src/server/assembly").then((assembly) => assembly.createKnowledgeApiRoutes(host)),
+    },
+  ],
+  // 形状逐字对齐宿主 apps/server/src/env.ts 的同名行；GOTENBERG_URL 的默认值取自迁移前的宿主直读实现。
+  envDefinitions: [
+    {
+      moduleId: "knowledge",
+      key: "RAGFLOW_API_URL",
+      schema: z.preprocess((value) => (value === "" ? undefined : value), z.string().default("http://localhost:9380")),
+      defaultValue: "http://localhost:9380",
+      secret: false,
+      restartRequired: true,
+      description:
+        "RAGFlow 检索服务的 API 基址（如 http://localhost:9380）。装配期由宿主投影为模块配置 ragflowApiUrl。" +
+        "未设置或为空串时取默认值——空串归一为 undefined，保持迁移前 `process.env.RAGFLOW_API_URL || 默认值` 的" +
+        "语义（.env 未设置时 docker-compose 的 :- 缺省语法会透传空串而非 undefined）。",
+    },
+    {
+      moduleId: "knowledge",
+      key: "RAGFLOW_API_KEY",
+      schema: z.string().default(""),
+      defaultValue: "",
+      secret: true,
+      restartRequired: true,
+      description:
+        "RAGFlow API key。装配期由宿主投影为模块配置 ragflowApiKey。空串是合法值，表达「未配置 RAGFlow」，" +
+        "由 resolveRagflowApiKey() 快速失败，不得收紧成必填。密钥材料，禁止进日志、响应与错误文案。",
+    },
+    {
+      moduleId: "knowledge",
+      key: "RAGFLOW_REQUEST_TIMEOUT_MS",
+      schema: z.coerce.number().int().positive().default(30000),
+      defaultValue: 30000,
+      secret: false,
+      restartRequired: true,
+      description:
+        "RAGFlow 单次 HTTP 请求超时（毫秒，正整数）。装配期由宿主投影为模块配置 ragflowRequestTimeoutMs。" +
+        "字符串数字经 z.coerce 归一；非正整数在启动期即被拒绝。",
+    },
+    {
+      moduleId: "knowledge",
+      key: "GOTENBERG_URL",
+      schema: z.preprocess(
+        (value) => (value === "" ? undefined : value),
+        z.string().min(1).default("http://127.0.0.1:3200"),
+      ),
+      defaultValue: "http://127.0.0.1:3200",
+      secret: false,
+      restartRequired: true,
+      description:
+        "Gotenberg（Office 转 PDF）服务基址，装配期由宿主投影为模块配置 gotenbergUrl；不可用时调用方回退" +
+        " LibreOffice CLI。此处为补齐声明：默认值取自迁移前宿主直读实现（http://127.0.0.1:3200）。空串归一为" +
+        " undefined 而非原样保留——模块配置对 gotenbergUrl 有 `.min(1)` 约束，原样透传空串会让服务在首次请求期" +
+        "报错，而迁移前的 `process.env.GOTENBERG_URL || 默认值` 是回退默认地址。",
     },
   ],
   // 工厂保持惰性：registry 会被大量位置导入，不能在索引层就把 Drizzle、Elysia 与知识库服务图拖进模块图。

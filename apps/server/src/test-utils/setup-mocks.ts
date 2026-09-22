@@ -410,7 +410,6 @@ const {
   getAgentNodeService,
   getAllEventBuses,
   removeEventBus,
-  resolveWorkspacePath,
   triggerMachineCleanupByMachineId,
 } = await import("@fenix/agent-runtime/server");
 // 运行 port 从它自己的入口取：宿主测试进程也要按生产装配路径绑定（见下方 bindAgentRuntime 处）。
@@ -421,6 +420,10 @@ const { bindMachineEnvironmentPort, bindMachineHostPort, findMachineAgentNamesBy
 const { bindMachineLookupPort, bindModelLookupPort } = await import("@fenix/agent-config/server");
 const { findModelLabelsByIds } = await import("@fenix/model-management/server");
 const { setRegistryRouteDeps } = await import("@fenix/resource-machine/server/testing");
+// Machine host port 的 workspace 根解析（1.7 C1）：宿主自有实现，与生产装配 `host-wiring.ts` 同一份。
+// 不复用 agent-runtime 的 `resolveWorkspacePath`——它读模块配置快照，而 machine 的 fs 用例按用例把根切到
+// `mkdtemp` 目录（`lockMachineWorkspaceRoot`），快照读法会让锁静默失效。
+const { resolveWorkspacePathFromEnv } = await import("../bootstrap/workspace-path");
 const cacheModule = await import("../services/cache");
 bindCoreRuntimePort({
   getCoreRuntime: () => coreBootstrapRegistry.get("getCoreRuntime")(),
@@ -457,7 +460,7 @@ bindAgentRuntime(createAgentRuntime());
 // 转发方向与上面的 core runtime 端口一致：Core runtime 句柄走 coreBootstrapRegistry（用例经
 // stubCoreBootstrap 配置），环境读取走 environmentRepo 的实时 Proxy（用例经 stubEnvironmentRepo 配置）。
 bindMachineHostPort({
-  resolveWorkspacePath,
+  resolveWorkspacePath: resolveWorkspacePathFromEnv,
   // 可选链保留「未配置 stub 时查无此机」的既有语义：`createStubRegistry` 是 throwOnMissing=false
   // （未配置返回空函数），无 stub 时 `getCoreRuntime()` 求值为 undefined，对账面据此判定节点不存在；
   // 直接取 `.getNode` 会 TypeError 把「未配置」变成测试崩溃。

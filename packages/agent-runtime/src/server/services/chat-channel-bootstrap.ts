@@ -28,6 +28,7 @@ import {
   touchInstanceActivity,
 } from "../../services/acp-idle-monitor";
 import { refreshInstanceEnvironment, terminateLocalDeadInstance } from "../../services/orchestration-instance";
+import { getAgentRuntimeConfig } from "../config";
 import { environmentRepo } from "../repositories/environment";
 import { connectAgentRelay } from "../transport/agent-relay";
 import { bindRelayLifecyclePort } from "../transport/relay/lifecycle-port";
@@ -78,7 +79,10 @@ const defaultDeps: ChatChannelBootstrapDeps = {
   classifyPermanentSpawnFailure,
   log,
   logError,
-  maxClients: () => parseInt(process.env.YJS_MAX_CLIENTS || "", 10) || 200,
+  // 连接上限取模块配置（1.7 C1）：原先直读 `process.env.YJS_MAX_CLIENTS` 并 `|| 200` 兜底——非法值静默回落
+  // 到 200、负值被原样接受。schema 已随 `envDefinitions` 迁到本模块 manifest，启动期校验保证此处必是正整数。
+  // 闭包保持惰性：`defaultDeps` 是模块级常量，装配期求值会撞上「基础设施尚未初始化」。
+  maxClients: () => getAgentRuntimeConfig().yjsMaxClients,
 };
 
 let deps: ChatChannelBootstrapDeps = defaultDeps;
