@@ -1,6 +1,7 @@
 "use client";
 
 import type { ElementDatum, Graph, IElementEvent } from "@antv/g6";
+import { EmptyState } from "@fenix/ui-components/config/EmptyState";
 import {
   AlertDialog,
   AlertDialogCancel,
@@ -398,27 +399,21 @@ export function KnowledgeGraphPanel({ knowledgeBaseId, canManage = false }: Know
       )}
 
       {graphError && !graphLoading && (
-        <div
-          className="flex min-h-[400px] flex-col items-center justify-center gap-4 rounded-xl border border-red-100 bg-red-50/50 p-6 text-center"
-          role="alert"
-        >
-          <AlertTriangle className="h-9 w-9 text-red-500" />
-          <p className="text-[13px] font-medium text-red-700">{graphError}</p>
-          <Button variant="outline" size="sm" onClick={() => void fetchGraph()}>
-            <RefreshCw className="mr-1.5 h-3.5 w-3.5" />
-            {t("graph.retry")}
-          </Button>
+        <div className="grid min-h-96 place-content-center rounded-xl border border-red-100 bg-red-50/50 p-6">
+          <EmptyState
+            tone="danger"
+            role="alert"
+            icon={<AlertTriangle />}
+            title={graphError}
+            action={{ label: t("graph.retry"), onClick: () => void fetchGraph(), icon: <RefreshCw /> }}
+          />
         </div>
       )}
 
       {/* 空态 */}
       {!graphLoading && !graphError && !graphData && !generating && (
-        <div className="flex flex-col items-center justify-center min-h-[400px] gap-4 rounded-xl bg-[#f8fafc] border border-[#eef2f6]">
-          <div className="flex h-20 w-20 items-center justify-center rounded-2xl bg-gradient-to-br from-[#f1f5f9] to-[#e2e8f0] shadow-inner">
-            <Network className="h-9 w-9 text-[#94a3b8]" />
-          </div>
-          <p className="text-[14px] font-medium text-[#64748b]">{t("graph.empty")}</p>
-          <p className="text-[12px] text-[#94a3b8] -mt-1">{t("graph.emptyHint")}</p>
+        <div className="grid min-h-96 place-content-center rounded-xl bg-[#f8fafc] border border-[#eef2f6]">
+          <EmptyState icon={<Network />} title={t("graph.empty")} description={t("graph.emptyHint")} />
         </div>
       )}
 

@@ -1,3 +1,4 @@
+import { EmptyState } from "@fenix/ui-components/config/EmptyState";
 import { Button } from "@fenix/ui-components/ui/button";
 import { Skeleton } from "@fenix/ui-components/ui/skeleton";
 import { NS } from "@fenix/web-runtime/i18n/namespace";
@@ -43,15 +44,15 @@ export function AgentKnowledgeDirectory(props: AgentKnowledgeDirectoryProps) {
           <Skeleton />
         </div>
       ) : props.error ? (
-        <div className="knowledge-directory__state" role="alert">
-          <p>{props.error instanceof Error ? props.error.message : t("loadError")}</p>
-          <Button size="sm" variant="outline" onClick={props.onRetry}>
-            <RefreshCw />
-            {t("actions.retry")}
-          </Button>
-        </div>
+        <EmptyState
+          tone="danger"
+          role="alert"
+          className="px-2 py-8"
+          title={props.error instanceof Error ? props.error.message : t("loadError")}
+          action={{ label: t("actions.retry"), onClick: props.onRetry, icon: <RefreshCw /> }}
+        />
       ) : props.items.length === 0 ? (
-        <div className="knowledge-directory__state">{t("emptyMessage")}</div>
+        <EmptyState className="px-2 py-8" title={t("emptyMessage")} />
       ) : (
         <nav aria-label={t("directory.title")}>
           {props.items.map((item) => {

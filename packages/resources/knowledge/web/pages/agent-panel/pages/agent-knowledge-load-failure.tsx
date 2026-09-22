@@ -13,9 +13,13 @@
  *
  * 为什么抽成组件：三处失败态的判据、`role="alert"` 契约与「无权限不给重试」必须逐字一致，
  * 各写一份迟早漂移；第二个真实用例已经出现，抽象不再提前。
+ *
+ * 2026-09-22 前端去重：块骨架改用库的 `EmptyState`（`tone="danger"` + `role="alert"` + 重试 action），
+ * 配色与图标尺寸（原先散在本文件的 `#ef4444` / `#b91c1c` / `#94a3b8` 与 `text-[12px]` 等任意值类）
+ * 交给组件；「读得出原因就多显示一行」的结构不变，仍是两行说明。
  */
 
-import { Button } from "@fenix/ui-components/ui/button";
+import { EmptyState } from "@fenix/ui-components/config/EmptyState";
 import { NS } from "@fenix/web-runtime/i18n/namespace";
 import { AlertCircle, RefreshCw } from "lucide-react";
 import { useTranslation } from "react-i18next";
@@ -37,18 +41,30 @@ export function KnowledgeLoadFailure({ error, title, onRetry, className }: Knowl
   // 无权限：只解释原因、不给重试（与页面级无权限态共用同一判定与文案）。
   if (isKnowledgeAccessDenied(error)) return <AgentKnowledgeAccessDenied />;
 
+  // 失败原因原样展示：服务端消息（如 `请求失败 (500)`）是排障上下文，不该只在 console 里。
+  // 读不出原因时只显示标题、说明行退化为提示本身，不用占位文案冒充原因（`readErrorMessage` 的取舍）。
+  const message = readErrorMessage(error);
+
   return (
-    <div role="alert" className={`flex flex-col items-center gap-2 py-10 text-center ${className ?? ""}`}>
-      <AlertCircle className="h-6 w-6 text-[#ef4444]" />
-      <p className="text-[13px] font-medium text-[#b91c1c]">{title}</p>
-      {/* 失败原因原样展示：服务端消息（如 `请求失败 (500)`）是排障上下文，不该只在 console 里。 */}
-      {readErrorMessage(error) && <p className="text-[12px] text-[#94a3b8]">{readErrorMessage(error)}</p>}
-      <p className="text-[12px] text-[#94a3b8]">{t("loadFailure.hint")}</p>
-      <Button variant="outline" size="sm" className="mt-1" onClick={onRetry}>
-        <RefreshCw className="h-3.5 w-3.5" />
-        {t("actions.retry")}
-      </Button>
-    </div>
+    <EmptyState
+      tone="danger"
+      role="alert"
+      className={className}
+      icon={<AlertCircle />}
+      title={title}
+      description={
+        message ? (
+          <>
+            {message}
+            <br />
+            {t("loadFailure.hint")}
+          </>
+        ) : (
+          t("loadFailure.hint")
+        )
+      }
+      action={{ label: t("actions.retry"), onClick: onRetry, icon: <RefreshCw /> }}
+    />
   );
 }
 

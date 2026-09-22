@@ -1,5 +1,6 @@
 "use client";
 
+import { EmptyState } from "@fenix/ui-components/config/EmptyState";
 import { Button } from "@fenix/ui-components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@fenix/ui-components/ui/select";
 import { Slider } from "@fenix/ui-components/ui/slider";
@@ -391,9 +392,7 @@ export function RetrievalTestPanel({ knowledgeBaseId }: RetrievalTestPanelProps)
       {/* ===== 右侧：检索结果列表 ===== */}
       <div className="rounded-2xl bg-white shadow-[0_1px_3px_rgba(0,0,0,0.04),0_4px_12px_rgba(0,0,0,0.03)] ring-1 ring-inset ring-[#e8edf4]/80 p-5">
         {!hasRun && !loading && (
-          <div className="flex items-center justify-center min-h-[200px]">
-            <p className="text-[13px] text-[#94a3b8]">{t("retrieval.enterQueryHint")}</p>
-          </div>
+          <EmptyState className="grid min-h-48 place-content-center" title={t("retrieval.enterQueryHint")} />
         )}
 
         {loading && (
@@ -418,9 +417,7 @@ export function RetrievalTestPanel({ knowledgeBaseId }: RetrievalTestPanelProps)
 
             {/* 无结果 */}
             {result.chunks.length === 0 && (
-              <div className="flex items-center justify-center min-h-[150px]">
-                <p className="text-[13px] text-[#94a3b8]">{t("retrieval.noResults")}</p>
-              </div>
+              <EmptyState className="grid min-h-36 place-content-center" title={t("retrieval.noResults")} />
             )}
 
             {/* chunk 列表 */}
@@ -434,9 +431,7 @@ export function RetrievalTestPanel({ knowledgeBaseId }: RetrievalTestPanelProps)
 
         {/* 空态只表达「确实没有命中」：失败（error != null）由上面的失败区分支接管。 */}
         {error == null && hasRun && !result && (
-          <div className="flex items-center justify-center min-h-[150px]">
-            <p className="text-[13px] text-[#94a3b8]">{t("retrieval.noResults")}</p>
-          </div>
+          <EmptyState className="grid min-h-36 place-content-center" title={t("retrieval.noResults")} />
         )}
       </div>
     </div>

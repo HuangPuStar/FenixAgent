@@ -54,6 +54,13 @@
 - **`resource → @fenix/identity` 已消除**：见「依赖边界」（§1.6 T7 改经 `@fenix/web-runtime` 的 org/session 契约，台账条目已删除）。上一版 README 记的「machine 改名中间态留下 17 处无法解析导入、门禁结论不可信」本轮实测已不成立：脚本扫描 `packages/resources/machine/src/**/*.ts`（85 个文件）相对导入解析失败 0 处，`machine/web` 仅 1 处（`web/__tests__/machine-browser-surface.test.ts -> ./api/registry`，在该包自己的用例内）。本包 `src`（43 文件）与 `web`（20 文件）各 0 处。门禁本身的结论需由编排者复跑 `bun run check:dependencies` 确认，本包只给静态扫描结果。
 - **包内 lint 已清零（W2.5 修复）**：上一版 README 列的 8 条 error（`web/components/knowledge/ResourcePreviewContent.tsx` ×5、`web/src/pages/agent-panel/components/ChunkDetailSheet.tsx` ×2、`web/src/pages/agent-panel/components/RetrievalTestPanel.tsx` ×1）本轮全部处置，`./node_modules/.bin/biome check packages/resources/knowledge`（W2.5 时 69 个文件，本轮新增两个文件后为 71 个文件）0 error / 0 warning。处置口径与一处**刻意偏离**见下节。
 
+## 前端去重（2026-09-22）
+
+- **文件图标与扩展名提取**：`agent-knowledge-resources.tsx` 的本地 `FileIcon`（extension → lucide 单色图标的 if-else 表，是本包第三份扩展名清单）退场，改用库的 `FileTypeIcon`（`@fenix/ui-components/components/file-icon-helper`，与文件树 / 文件页签 / 文件选择器同一套彩色图标）；`ResourcePreviewContent.tsx` 的 4 处 `filename.split(".").pop()` 改用库的 `getFileExtension()`。**口径差异**：无点号的文件名（如 `Makefile`）旧写法把整个名字当扩展名（恰与某个已知扩展名同名时会被误判成该类型），新写法返回空串、落到 `other`。
+- **状态块收敛到 `EmptyState`**：`KnowledgeLoadFailure` / `AgentKnowledgeAccessDenied` / 目录面板的错与空态 / `.knowledge-resources__empty` / 图谱面板的错与空态 / 嵌入模型空态 / 检索面板三处空态 / 切片列表空态 / 页面「请选择知识库」/ 详情失败 / 导入弹窗空态 / 无向量模型 / 无 pipeline 均改由 `config/EmptyState` 渲染（失败 `tone="danger"` + `role="alert"` + 重试；无权限不给重试）。随之删除 `.knowledge-directory__state`、`.knowledge-resources__empty` 两组死样式；`.knowledge-resource-name__icon` 去掉 `color` 与对 `svg` 的宽度覆盖（尺寸与配色归组件）。`KnowledgeLoadFailure` 的「判定 → 短路无权限 → 一般失败带重试」口径不变，只换骨架。
+- **`ResourcePreviewContent` 的两处「不支持预览 + 下载」收成 `UnsupportedPreview`**：不并进 `EmptyState` 的 `action`，因为下载语义是 `<a download>`（`action` 只收 `Button` + `onClick`）。
+- **刻意保留**：目录列表项的纯装饰状态圆点（无文案，等待库的圆点原语）与其 `statusClass` 类映射。
+
 ## W2.5 处置与刻意偏离（2026-09-20）
 
 - **`@antv/g6` 改惰性加载**：`web/pages/agent-panel/KnowledgeGraphPanel.tsx` 原先静态 `import { Graph } from "@antv/g6"`——`g6 → @antv/g → html2canvas` 在导入期读 `window.document.createElement`，在无 DOM 的 bun 环境下一加载 `@fenix/resource-knowledge/web` 即崩，连带消费方（`model-management`、`agent-config`）的用例 0 断言。现改为 `const { Graph } = await import("@antv/g6")`，并以 `renderTokenRef` 取消令牌丢弃过期结果（`await` 期间组件卸载或资源已切换时不建图）。新增静态守卫「本包 web 源码不得静态导入 g6」，已负向验证（临时插入静态导入即红）。
@@ -79,8 +86,8 @@
 **`error && 无数据` 才让失败区整区接管（`role="alert"` + 连回原请求的重试按钮）；已有数据后的刷新失败保留旧数据，
 只 toast 兜底**。401/403（`request()` 已归一为 `UNAUTHORIZED`）走既有 `isKnowledgeAccessDenied` / `AgentKnowledgeAccessDenied`
 无权限态并**刻意不给重试按钮**，不新增第二套权限分支。三条共用同一个受控组件
-`web/pages/agent-panel/pages/agent-knowledge-load-failure.tsx`（`KnowledgeLoadFailure`，实测 34-52 行为判定与渲染主体；
-无权限在 `:38` 短路、一般失败在 `:41` 起为 `role="alert"`、重试按钮在 `:47-50`），保证判据、可访问性契约与
+`web/pages/agent-panel/pages/agent-knowledge-load-failure.tsx`（`KnowledgeLoadFailure`：判定与渲染主体在 `readErrorMessage` 之上；
+无权限分支短路在最前、一般失败由 `EmptyState` 带 `tone="danger"` + `role="alert"` + 重试 action 渲染），保证判据、可访问性契约与
 「无权限不给重试」逐字一致，而不是在三处各写一遍。
 
 - **`AgentKnowledgeBasesPage.tsx` 表单选项（`kbApi.getFormOptions`）已闭环**：请求在 `:183-190`，`onError` 只留
@@ -92,11 +99,11 @@
 - **`ChunkDetailSheet.tsx:55-57` 切片列表已闭环**：`fetchChunks` 的 `catch` 在 `:61-65` 保留 `console.error` +
   toast（有旧数据时这是唯一可见反馈）；新增 `error` state 于 `:41-43`，失败判据在 `:212`
   `!loading && error != null && data == null` → `KnowledgeLoadFailure`（`:213-217`，`onRetry` 用当前
-  `page` / `keyword` 重发原请求）；`chunk.empty` 空态在 `:221` 追加 `error == null` 前置条件，空态从此只表达
+  `page` / `keyword` 重发原请求）；`chunk.empty` 空态带 `error == null` 前置条件，空态从此只表达
   「确实没有数据」。
 - **`RetrievalTestPanel.tsx:150-166` 检索测试已闭环**：`search` 失败的两条分支（业务错误 `:161-166`、异常
   `:173-175`）都写入新增的 `error` state（`:88-90`）；结果区在 `:404-406` 整区接管为
-  `KnowledgeLoadFailure` + `onRetry={runSearch}`；`retrieval.noResults` 的两处渲染入口（`:421`、`:435-437`）
+  `KnowledgeLoadFailure` + `onRetry={runSearch}`；`retrieval.noResults` 的两处渲染入口
   都加了 `error == null` 前置条件，失败不再冒充「没有命中」。
 - **本轮实测（2026-09-20，命令均带 `env -u ANTHROPIC_MODEL`）**：
   `bun test packages/resources/knowledge` → **425 pass / 0 fail**（29 文件）；只跑上一轮已有的 27 个文件为
@@ -119,10 +126,10 @@
   真实实例的代价是 `resources` 形状必须是 `{ [语言]: { [命名空间]: 字典 } }`（少一层语言维度时 `t()` 静默回显 key，
   已在两个用例里写明），收益是断言直接取本包字典文案、不再需要逐字复刻的替身表。
 - **仍未接同一组件的两处（同口径核对后不闭环，理由与移除条件在下面）**：
-  - `web/components/knowledge/ResourcePreviewContent.tsx` 的预览内容拉取失败（`fetchError` 在 `:175`、
-    内容分支 `:293` / `:304` / `:313`）已经有**持久错误占位**（`ErrorPlaceholder`，`:424-426`），不会落回空态，
-    因此不属于本轮的「失败落回空态」缺口；它缺的只是「重试接回原请求」与 `role="alert"`，且预览区不是整个区域
-    可以无条件接管的对象（office 分支还有 PDF/docx 多条降级路径）。移除条件：把 `ErrorPlaceholder` 换成
+  - `web/components/knowledge/ResourcePreviewContent.tsx` 的预览内容拉取失败（`fetchError`、内容分支）已经有
+    **持久错误占位**（现名 `PreviewPlaceholder`，2026-09-22 起由库的 `EmptyState` 渲染并带 `role="alert"`），
+    不会落回空态，因此不属于本轮的「失败落回空态」缺口；它缺的只是「重试接回原请求」，且预览区不是整个区域
+    可以无条件接管的对象（office 分支还有 PDF/docx 多条降级路径）。移除条件：把 `PreviewPlaceholder` 换成
     `KnowledgeLoadFailure` 并接上 `run`/`refresh`，同时确认三条 office 降级路径的语义不被接管吃掉。
   - `web/src/pages/agent-panel/components/EmbeddingModelManager.tsx` 的模型列表 / 厂商列表失败仍是
     **只弹 toast**（`:68`、`:362`），未接持久错误态与重试。它同样在创建弹窗的渲染面上，但不在本轮委派点名的

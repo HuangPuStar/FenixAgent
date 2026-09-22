@@ -1,5 +1,6 @@
 "use client";
 
+import { EmptyState } from "@fenix/ui-components/config/EmptyState";
 import { StatusBadge } from "@fenix/ui-components/config/StatusBadge";
 import { Button } from "@fenix/ui-components/ui/button";
 import { Input } from "@fenix/ui-components/ui/input";
@@ -220,10 +221,11 @@ export function ChunkDetailSheet({ open, onClose, kbId, resource }: ChunkDetailS
 
               {/* 空态只表达「确实没有数据」：请求失败时不得落回空态，因此在 error == null 时才渲染。 */}
               {!loading && error == null && data && data.items.length === 0 && (
-                <div className="flex flex-col items-center justify-center py-20 gap-2">
-                  <Search className="h-8 w-8 text-[#cbd5e1]" />
-                  <p className="text-[13px] text-[#94a3b8]">{hasKeyword ? t("chunk.noMatch") : t("chunk.empty")}</p>
-                </div>
+                <EmptyState
+                  className="py-20"
+                  icon={<Search />}
+                  title={hasKeyword ? t("chunk.noMatch") : t("chunk.empty")}
+                />
               )}
 
               {!loading &&

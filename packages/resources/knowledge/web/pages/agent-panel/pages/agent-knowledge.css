@@ -45,15 +45,6 @@
 .knowledge-directory__loading > * {
   height: 64px;
 }
-.knowledge-directory__state {
-  padding: 32px 10px;
-  text-align: center;
-  color: #8090a7;
-  font-size: 12px;
-}
-.knowledge-directory__state button {
-  margin-top: 12px;
-}
 .knowledge-directory-item {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
@@ -188,24 +179,14 @@
   padding-inline: 14px;
   font-size: 12px;
 }
-.knowledge-resources__empty {
-  display: grid;
-  min-height: 230px;
-  place-content: center;
-  justify-items: center;
-  gap: 10px;
-  color: #94a3b8;
-}
-.knowledge-resources__empty svg {
-  width: 28px;
-  opacity: 0.45;
-}
 .knowledge-resource-name {
   display: flex;
   min-width: 220px;
   align-items: center;
   gap: 10px;
 }
+/* 文件图标改用库的 FileTypeIcon（react-file-icon 自带配色与 16px 外框），尺寸与颜色不再由本表决定：
+   `color` 对彩色 SVG 无效，`svg { width: 15px }` 会越过组件的尺寸类把图标压成 15px——两条一并删除。 */
 .knowledge-resource-name__icon {
   display: grid;
   width: 32px;
@@ -214,10 +195,6 @@
   place-items: center;
   border-radius: 8px;
   background: #f1f5f9;
-  color: #687b97;
-}
-.knowledge-resource-name__icon svg {
-  width: 15px;
 }
 .knowledge-resource-name button,
 .knowledge-resource-name strong {

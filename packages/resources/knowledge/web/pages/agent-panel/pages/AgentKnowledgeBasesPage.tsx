@@ -1,5 +1,6 @@
 import { AgentMasterDetailWorkspace } from "@fenix/ui-components/components/agent-master-detail-workspace";
 import { ConfirmDialog } from "@fenix/ui-components/config/ConfirmDialog";
+import { EmptyState } from "@fenix/ui-components/config/EmptyState";
 import { FormDialog } from "@fenix/ui-components/config/FormDialog";
 import { StatusBadge } from "@fenix/ui-components/config/StatusBadge";
 import { AppHeader } from "@fenix/ui-components/layout/app-header";
@@ -555,12 +556,11 @@ export function AgentKnowledgeBasesPage() {
         }
       >
         {!kbId ? (
-          <div className="grid min-h-full place-items-center p-8 text-center">
-            <div>
-              <BookOpen className="mx-auto h-10 w-10 text-[#94a3b8]" />
-              <p className="mt-4 text-sm font-medium text-[#475569]">{t("selectHint")}</p>
-            </div>
-          </div>
+          <EmptyState
+            className="grid min-h-full place-content-center p-8"
+            icon={<BookOpen />}
+            title={t("selectHint")}
+          />
         ) : detailLoading ? (
           <div className="space-y-4 p-7" aria-busy="true">
             <Skeleton className="h-24 w-full" />
@@ -568,15 +568,13 @@ export function AgentKnowledgeBasesPage() {
             <Skeleton className="h-72 w-full" />
           </div>
         ) : detailError ? (
-          <div className="grid min-h-full place-items-center p-8 text-center" role="alert">
-            <div>
-              <p className="text-sm font-medium text-red-600">{detailError}</p>
-              <Button className="mt-4" variant="outline" onClick={() => kbId && runLoadDetail(kbId)}>
-                <RefreshCw className="h-4 w-4" />
-                {t("actions.retry")}
-              </Button>
-            </div>
-          </div>
+          <EmptyState
+            tone="danger"
+            role="alert"
+            className="grid min-h-full place-content-center p-8"
+            title={detailError}
+            action={{ label: t("actions.retry"), onClick: () => kbId && runLoadDetail(kbId), icon: <RefreshCw /> }}
+          />
         ) : null}
 
         {/* ===== 详情视图 ===== */}
@@ -871,9 +869,7 @@ export function AgentKnowledgeBasesPage() {
                         }
                         const providers = Array.from(grouped.entries());
                         return providers.length === 0 ? (
-                          <div className="px-2 py-4 text-center text-[13px] text-muted-foreground">
-                            {t("form.noEmbeddingModels")}
-                          </div>
+                          <EmptyState className="px-2 py-4" title={t("form.noEmbeddingModels")} />
                         ) : (
                           providers.map(([provider, instMap], providerIdx) => (
                             <SelectGroup key={provider}>
@@ -955,9 +951,12 @@ export function AgentKnowledgeBasesPage() {
                 {formParseMethod === "pipeline" && (
                   <FieldGroup label={t("form.pipeline")} hint={t("form.pipelineHint")}>
                     {(options?.pipelines?.length ?? 0) === 0 ? (
-                      <div className="rounded-xl border border-dashed border-[#cbd5e1] bg-[#f8fafc] px-5 py-5 text-center shadow-sm">
-                        <p className="text-[13px] font-medium text-[#64748b]">{t("form.noPipelines")}</p>
-                        <p className="mt-1 text-[12px] text-[#94a3b8]">{t("form.noPipelinesHint")}</p>
+                      <div className="rounded-xl border border-dashed border-[#cbd5e1] bg-[#f8fafc] px-5 py-5 shadow-sm">
+                        <EmptyState
+                          className="py-0"
+                          title={t("form.noPipelines")}
+                          description={t("form.noPipelinesHint")}
+                        />
                       </div>
                     ) : (
                       <Select value={formPipeline} onValueChange={setFormPipeline}>
@@ -1104,15 +1103,12 @@ export function AgentKnowledgeBasesPage() {
             {importLoading ? (
               <Spinner label={t("importDialog.loading")} className="flex py-16" />
             ) : unassociatedList.length === 0 ? (
-              <div className="flex flex-col items-center justify-center py-16 gap-4">
-                <div className="flex h-16 w-16 items-center justify-center rounded-2xl bg-gradient-to-br from-[#f1f5f9] to-[#e2e8f0] shadow-inner">
-                  <BookOpen className="h-7 w-7 text-[#94a3b8]" />
-                </div>
-                <p className="text-[14px] font-medium text-[#64748b]">{t("importDialog.emptyTitle")}</p>
-                <p className="text-[12px] text-[#94a3b8] max-w-[300px] text-center">
-                  {t("importDialog.emptyDescription")}
-                </p>
-              </div>
+              <EmptyState
+                className="py-16"
+                icon={<BookOpen />}
+                title={t("importDialog.emptyTitle")}
+                description={t("importDialog.emptyDescription")}
+              />
             ) : (
               <div className="space-y-2 py-2">
                 {unassociatedList.map((ds) => (

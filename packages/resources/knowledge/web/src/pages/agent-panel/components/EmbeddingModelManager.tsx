@@ -20,6 +20,7 @@
  */
 
 import { ConfirmDialog } from "@fenix/ui-components/config/ConfirmDialog";
+import { EmptyState } from "@fenix/ui-components/config/EmptyState";
 import { Button } from "@fenix/ui-components/ui/button";
 import {
   Dialog,
@@ -140,13 +141,12 @@ export function EmbeddingModelManager({ canManage, inDialog, onModelsChanged }: 
           ))}
         </div>
       ) : providerCount === 0 ? (
-        <div className="flex flex-col items-center justify-center py-16 text-center">
-          <div className="flex h-16 w-16 items-center justify-center rounded-2xl bg-[#f1f5f9] mb-3">
-            <Cpu className="h-7 w-7 text-[#94a3b8]" />
-          </div>
-          <p className="text-[14px] font-medium text-[#475569]">{t("embeddingModel.emptyTitle")}</p>
-          <p className="text-[12px] text-[#94a3b8] mt-1 max-w-[360px]">{t("embeddingModel.emptyDescription")}</p>
-        </div>
+        <EmptyState
+          className="py-16"
+          icon={<Cpu />}
+          title={t("embeddingModel.emptyTitle")}
+          description={t("embeddingModel.emptyDescription")}
+        />
       ) : (
         <div className="embedding-model-tree">
           <div className="divide-y divide-[#f0f3f8]">

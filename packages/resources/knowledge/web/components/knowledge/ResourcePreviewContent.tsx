@@ -1,3 +1,5 @@
+import { getFileExtension } from "@fenix/ui-components/components/file-icon-helper";
+import { EmptyState } from "@fenix/ui-components/config/EmptyState";
 import { Button } from "@fenix/ui-components/ui/button";
 import { Skeleton } from "@fenix/ui-components/ui/skeleton";
 import { Spinner } from "@fenix/ui-components/ui/spinner";
@@ -91,7 +93,7 @@ type FileCategory = "pdf" | "image" | "markdown" | "text" | "html" | "office" | 
 type OfficeKind = "word" | "powerpoint";
 
 export function getFileCategory(filename: string): FileCategory {
-  const ext = filename.split(".").pop()?.toLowerCase() ?? "";
+  const ext = getFileExtension(filename);
 
   if (ext === "pdf") return "pdf";
 
@@ -139,7 +141,7 @@ export function getFileCategory(filename: string): FileCategory {
 
 /** 确定 Office 文档子类型（仅 Word/PPT） */
 function getOfficeKind(filename: string): OfficeKind {
-  const ext = filename.split(".").pop()?.toLowerCase() ?? "";
+  const ext = getFileExtension(filename);
   if (ext === "docx" || ext === "doc") return "word";
   return "powerpoint";
 }
@@ -258,7 +260,7 @@ export function ResourcePreviewContent({ resource, kbId }: ResourcePreviewConten
         );
 
       case "video": {
-        const ext = resource.sourceName.split(".").pop()?.toLowerCase() ?? "mp4";
+        const ext = getFileExtension(resource.sourceName) || "mp4";
         return (
           <div className="flex-1 flex items-center justify-center bg-black/90 rounded-md p-4 min-h-0">
             <video controls preload="metadata" style={{ maxWidth: "100%", maxHeight: "100%", borderRadius: 8 }}>
@@ -285,7 +287,7 @@ export function ResourcePreviewContent({ resource, kbId }: ResourcePreviewConten
 
       case "markdown":
         if (fetchLoading) return <MarkdownSkeleton />;
-        if (fetchError || !fetchedContent) return <ErrorPlaceholder message={t("preview.loadError")} />;
+        if (fetchError || !fetchedContent) return <PreviewPlaceholder message={t("preview.loadError")} />;
         return (
           <div className="flex-1 overflow-auto p-6">
             <div className="prose prose-sm max-w-none dark:prose-invert prose-headings:text-text-primary prose-p:text-text-primary prose-strong:text-text-primary prose-li:text-text-primary [&_pre]:bg-surface-2 [&_pre]:rounded-lg [&_pre]:p-4 [&_pre]:text-text-primary [&_code]:bg-surface-2 [&_code]:rounded [&_code]:px-1.5 [&_code]:py-0.5 [&_code]:text-text-primary [&_code]:text-xs [&_pre_code]:bg-transparent [&_pre_code]:p-0 [&_pre_code]:text-text-primary [&_table]:w-full [&_th]:border [&_th]:border-border [&_th]:px-3 [&_th]:py-2 [&_th]:text-left [&_th]:bg-surface-2 [&_td]:border [&_td]:border-border [&_td]:px-3 [&_td]:py-2 [&_img]:max-w-full [&_img]:rounded-lg [&_blockquote]:border-l-4 [&_blockquote]:border-primary/30 [&_blockquote]:pl-4 [&_blockquote]:text-text-muted [&_hr]:border-border [&_a]:text-primary [&_a]:underline">
@@ -296,7 +298,7 @@ export function ResourcePreviewContent({ resource, kbId }: ResourcePreviewConten
 
       case "text":
         if (fetchLoading) return <TextSkeleton />;
-        if (fetchError || !fetchedContent) return <ErrorPlaceholder message={t("preview.loadError")} />;
+        if (fetchError || !fetchedContent) return <PreviewPlaceholder message={t("preview.loadError")} />;
         return (
           <pre className="flex-1 overflow-auto m-0 p-4 bg-surface-2 text-text-primary text-xs font-mono whitespace-pre-wrap break-all rounded-md border border-border">
             {fetchedContent}
@@ -305,7 +307,7 @@ export function ResourcePreviewContent({ resource, kbId }: ResourcePreviewConten
 
       case "html":
         if (fetchLoading) return <TextSkeleton />;
-        if (fetchError || !fetchedContent) return <ErrorPlaceholder message={t("preview.loadError")} />;
+        if (fetchError || !fetchedContent) return <PreviewPlaceholder message={t("preview.loadError")} />;
         return (
           <iframe
             srcDoc={fetchedContent}
@@ -345,29 +347,11 @@ export function ResourcePreviewContent({ resource, kbId }: ResourcePreviewConten
         }
 
         // fallback：PDF 转换不可用且非 Word 文档（或 mammoth 也失败）
-        return (
-          <div className="flex-1 flex flex-col items-center justify-center gap-3 text-text-muted">
-            <p className="text-sm">{t("preview.unsupported")}</p>
-            <Button variant="outline" size="sm" asChild>
-              <a href={fileUrl} download={resource.sourceName} target="_blank" rel="noreferrer">
-                {t("preview.download")}
-              </a>
-            </Button>
-          </div>
-        );
+        return <UnsupportedPreview fileUrl={fileUrl} filename={resource.sourceName} />;
       }
 
       default:
-        return (
-          <div className="flex-1 flex flex-col items-center justify-center gap-3 text-text-muted">
-            <p className="text-sm">{t("preview.unsupported")}</p>
-            <Button variant="outline" size="sm" asChild>
-              <a href={fileUrl} download={resource.sourceName} target="_blank" rel="noreferrer">
-                {t("preview.download")}
-              </a>
-            </Button>
-          </div>
-        );
+        return <UnsupportedPreview fileUrl={fileUrl} filename={resource.sourceName} />;
     }
   };
 
@@ -411,8 +395,35 @@ function TextSkeleton() {
   );
 }
 
-function ErrorPlaceholder({ message }: { message: string }) {
-  return <div className="flex-1 flex items-center justify-center text-text-muted text-sm">{message}</div>;
+function PreviewPlaceholder({ message, tone = "danger" }: { message: string; tone?: "danger" | "neutral" }) {
+  return (
+    <EmptyState
+      tone={tone}
+      role={tone === "danger" ? "alert" : undefined}
+      className="flex flex-1 flex-col items-center justify-center"
+      title={message}
+    />
+  );
+}
+
+/**
+ * 「该类型暂不支持预览」+ 下载兜底：office 降级与其余未知类型两处逐字相同，收成一份。
+ *
+ * 为什么不并进 `EmptyState` 的 `action`：`action` 只收 `Button` + `onClick`，而这里的下载语义是
+ * `<a download>`（浏览器直接落盘、不发 XHR），用按钮包一个 `window.open` 会换掉浏览器行为。
+ */
+function UnsupportedPreview({ fileUrl, filename }: { fileUrl: string; filename: string }) {
+  const { t } = useTranslation(NS.KNOWLEDGE);
+  return (
+    <div className="flex-1 flex flex-col items-center justify-center gap-3 text-text-muted">
+      <p className="text-sm">{t("preview.unsupported")}</p>
+      <Button variant="outline" size="sm" asChild>
+        <a href={fileUrl} download={filename} target="_blank" rel="noreferrer">
+          {t("preview.download")}
+        </a>
+      </Button>
+    </div>
+  );
 }
 
 // ── 表格预览组件：支持 xlsx/xls/csv，用 xlsx 库前端解析 ──
@@ -435,7 +446,7 @@ function SpreadsheetPreview({ kbId, resourceId, filename }: SpreadsheetPreviewPr
   const [rows, setRows] = useState<string[][] | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const ext = filename.split(".").pop()?.toLowerCase() ?? "";
+  const ext = getFileExtension(filename);
 
   useEffect(() => {
     let cancelled = false;
@@ -484,11 +495,11 @@ function SpreadsheetPreview({ kbId, resourceId, filename }: SpreadsheetPreviewPr
   }
 
   if (error) {
-    return <ErrorPlaceholder message={error} />;
+    return <PreviewPlaceholder message={error} />;
   }
 
   if (!rows || rows.length === 0) {
-    return <ErrorPlaceholder message={t("preview.emptyTable")} />;
+    return <PreviewPlaceholder message={t("preview.emptyTable")} tone="neutral" />;
   }
 
   const maxRows = Math.min(rows.length, 500);
