@@ -11,7 +11,7 @@ import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
 import { workflowDefApi } from "../../api/workflow-defs";
-import { isUnauthorizedError } from "./utils";
+import { isUnauthorizedError, relativeTime } from "./utils";
 
 interface WorkflowVersionsProps {
   workflowId: string;
@@ -90,15 +90,6 @@ export function WorkflowVersions({ workflowId }: WorkflowVersionsProps) {
       toast.error(t("versions.yaml_load_failed"), { description: (err as Error).message });
     }
   };
-
-  function relativeTime(iso?: string | null): string {
-    if (!iso) return "--";
-    const diff = (Date.now() - new Date(iso).getTime()) / 1000;
-    if (diff < 60) return t("versions.relative_now");
-    if (diff < 3600) return t("versions.relative_minutes", { count: Math.floor(diff / 60) });
-    if (diff < 86400) return t("versions.relative_days", { count: Math.floor(diff / 86400) });
-    return new Date(iso).toLocaleDateString();
-  }
 
   if (wfLoading && !wf) {
     return (
@@ -224,7 +215,7 @@ export function WorkflowVersions({ workflowId }: WorkflowVersionsProps) {
                   )}
                   <span className="text-text-muted text-[11px]">
                     <Clock size={10} className="mr-0.5 align-[-1px]" />
-                    {relativeTime(v.createdAt)}
+                    {relativeTime(t, v.createdAt, "versions")}
                   </span>
                   <div className="ml-auto flex gap-1.5" onClick={(e) => e.stopPropagation()}>
                     {!isLatest && (

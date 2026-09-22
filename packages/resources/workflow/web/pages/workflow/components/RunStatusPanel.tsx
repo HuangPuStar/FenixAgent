@@ -1,3 +1,4 @@
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@fenix/ui-components/ui/tabs";
 import { unwrap } from "@fenix/web-runtime/api/request";
 import { ArrowLeft, Edit3, Loader, RefreshCw, ShieldCheck, Square } from "lucide-react";
 import { useTranslation } from "react-i18next";
@@ -13,6 +14,21 @@ import { DAG_STATUS_CFG, dedupEvents, formatEventType, formatMeta } from "../uti
 import { EventIcon } from "./EventIcon";
 import { NodeOutputView } from "./NodeOutputView";
 import { RunListPanel } from "./RunListPanel";
+
+/**
+ * 事件/输出子 Tab 的触发项样式。
+ *
+ * 视觉沿用改造前手写的 tab 条——选中态是 2px 品牌色下划线 + 加粗，未选态是透明下划线，
+ * 只把表达方式换成标准刻度（`text-xs` 取代 `text-[11px]`）。两处刻意分叉：
+ * - `after:hidden`：组件 line 变体自带的 ::after 指示条固定在触发项底部 -5px（落到条带下边框之外），
+ *   与本面板「下划线压在下边框上」的视觉不符，故关掉它、改用 border 表达同一效果；
+ * - `whitespace-normal`：组件默认 nowrap，长节点 id（如 `输出 (custom_transform_1)`）会溢出触发项框，
+ *   而改造前是普通可换行文本，这里显式恢复。
+ *
+ * 高度不写死：`h-auto` + 列表 `items-stretch` 让触发项撑满组件标准条高（h-9），下划线因此压在条带下沿。
+ */
+const RUN_TAB_TRIGGER =
+  "h-auto rounded-none border-0 border-b-2 border-transparent bg-transparent px-2 text-xs font-normal text-text-secondary whitespace-normal transition-colors data-[state=active]:border-brand data-[state=active]:font-semibold data-[state=active]:text-text-primary";
 
 export interface RunStatusPanelProps {
   activeRunId: string | null;
@@ -189,39 +205,30 @@ export function RunStatusPanel({
         </div>
       )}
 
-      {/* 事件/输出子 Tab */}
-      <div className="flex border-b border-border-subtle">
-        <button
-          type="button"
-          onClick={() => setRunRightTab("events")}
-          className={`flex-1 py-[7px] border-none bg-transparent text-[11px] cursor-pointer transition-colors ${
-            runRightTab === "events"
-              ? "font-semibold text-text-primary border-b-2 border-brand"
-              : "font-normal text-text-secondary border-b-2 border-transparent"
-          }`}
-        >
-          {t("editor.events_tab", {
-            count: selectedRunNodeId
-              ? runEvents.filter((e) => e.node_id === selectedRunNodeId).length
-              : runEvents.length,
-          })}
-        </button>
-        <button
-          type="button"
-          onClick={() => setRunRightTab("output")}
-          className={`flex-1 py-[7px] border-none bg-transparent text-[11px] cursor-pointer transition-colors ${
-            runRightTab === "output"
-              ? "font-semibold text-text-primary border-b-2 border-brand"
-              : "font-normal text-text-secondary border-b-2 border-transparent"
-          }`}
-        >
-          {selectedRunNodeId ? t("editor.output_tab_selected", { nodeId: selectedRunNodeId }) : t("editor.output_tab")}
-        </button>
-      </div>
+      {/* 事件/输出子 Tab：tablist / aria-selected 等 tab 语义由 Radix 原语提供
+          （改造前是两个裸 button，屏幕阅读器读不出「页签」也读不出选中项） */}
+      <Tabs
+        value={runRightTab}
+        onValueChange={(value) => setRunRightTab(value as "events" | "output")}
+        className="flex-1 min-h-0 gap-0"
+      >
+        <TabsList variant="line" className="w-full items-stretch gap-0 rounded-none border-b border-border-subtle p-0">
+          <TabsTrigger value="events" className={RUN_TAB_TRIGGER}>
+            {t("editor.events_tab", {
+              count: selectedRunNodeId
+                ? runEvents.filter((e) => e.node_id === selectedRunNodeId).length
+                : runEvents.length,
+            })}
+          </TabsTrigger>
+          <TabsTrigger value="output" className={RUN_TAB_TRIGGER}>
+            {selectedRunNodeId
+              ? t("editor.output_tab_selected", { nodeId: selectedRunNodeId })
+              : t("editor.output_tab")}
+          </TabsTrigger>
+        </TabsList>
 
-      {/* 事件列表 */}
-      {runRightTab === "events" && (
-        <div className="flex-1 overflow-y-auto text-[11px]">
+        {/* 事件列表 */}
+        <TabsContent value="events" className="overflow-y-auto text-[11px]">
           {(() => {
             const filtered = selectedRunNodeId ? runEvents.filter((e) => e.node_id === selectedRunNodeId) : runEvents;
             return filtered.length === 0 ? (
@@ -262,12 +269,10 @@ export function RunStatusPanel({
               ))
             );
           })()}
-        </div>
-      )}
+        </TabsContent>
 
-      {/* 节点输出 */}
-      {runRightTab === "output" && (
-        <div className="flex-1 overflow-y-auto text-[11px]">
+        {/* 节点输出 */}
+        <TabsContent value="output" className="overflow-y-auto text-[11px]">
           {!selectedRunNodeId ? (
             <div className="py-5 text-center text-text-secondary">{t("editor.click_node_output")}</div>
           ) : nodeOutputLoading ? (
@@ -292,8 +297,8 @@ export function RunStatusPanel({
               <NodeOutputView output={selectedNodeOutput} />
             </>
           )}
-        </div>
-      )}
+        </TabsContent>
+      </Tabs>
     </>
   );
 }

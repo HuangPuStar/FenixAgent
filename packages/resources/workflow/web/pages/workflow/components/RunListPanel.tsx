@@ -168,7 +168,7 @@ export function RunListPanel({ onClose, onSelect }: { onClose: () => void; onSel
                     {r.node_summary.completed}/{r.node_summary.total}
                   </span>
                   <span style={{ marginLeft: "auto", fontSize: 9, color: "#6b7280" }}>
-                    {relativeTime(t, r.started_at)}
+                    {relativeTime(t, r.started_at, "runs")}
                   </span>
                 </div>
                 <div

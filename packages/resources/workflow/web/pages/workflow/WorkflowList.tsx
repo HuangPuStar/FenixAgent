@@ -14,7 +14,7 @@ import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
 import { type WorkflowDefItem, workflowDefApi } from "../../api/workflow-defs";
 import { SkeletonTable } from "./components/SkeletonRows";
-import { isUnauthorizedError } from "./utils";
+import { isUnauthorizedError, relativeTime } from "./utils";
 
 interface WorkflowListProps {
   onEditWorkflow: (workflowId: string) => void;
@@ -132,15 +132,6 @@ export function WorkflowList({ onEditWorkflow, onViewVersions, createRequested }
       },
     },
   );
-
-  function relativeTime(iso?: string | null): string {
-    if (!iso) return "--";
-    const diff = (Date.now() - new Date(iso).getTime()) / 1000;
-    if (diff < 60) return t("list.relative_now");
-    if (diff < 3600) return t("list.relative_minutes", { count: Math.floor(diff / 60) });
-    if (diff < 86400) return t("list.relative_hours", { count: Math.floor(diff / 86400) });
-    return new Date(iso).toLocaleDateString();
-  }
 
   return (
     <div className="flex flex-col flex-1 min-h-0">
@@ -307,7 +298,7 @@ export function WorkflowList({ onEditWorkflow, onViewVersions, createRequested }
                   {wf.description && <div className="text-xs text-text-muted mt-1 truncate">{wf.description}</div>}
                   <div className="flex items-center gap-3 mt-1.5 text-xs text-text-dim">
                     <span>
-                      {t("list.table_modified")}: {relativeTime(wf.updatedAt)}
+                      {t("list.table_modified")}: {relativeTime(t, wf.updatedAt, "list")}
                     </span>
                   </div>
                 </div>

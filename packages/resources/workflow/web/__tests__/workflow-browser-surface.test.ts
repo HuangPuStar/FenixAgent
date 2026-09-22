@@ -44,7 +44,8 @@ const PKG_NAME = (JSON.parse(readFileSync(join(PKG_ROOT, "package.json"), "utf8"
  * knowledge / memory / model-management 的整片 web 图与其浏览器库，白名单因此一度膨胀到 46 条。T12 为该
  * 函数加了窄子路径出口 `@fenix/agent-config/web/lib/meta-agent`，agent-config 侧现在只到达
  * `web/lib/meta-agent.ts` 一个文件，26 条「可达面传递进来的库」随之退场（46 → 20）。
- * 现在的 20 条重新回到两类来源：本包/宿主自己的依赖，以及本包编辑器经 `@fenix/ui-components` 共享原语
+ * 2026-09-22：运行面板的事件/输出页签由手写 button 改为 `ui/tabs`，带入 `@radix-ui/react-tabs`（+1）。
+ * 现在的 21 条重新回到两类来源：本包/宿主自己的依赖，以及本包编辑器经 `@fenix/ui-components` 共享原语
  * 传递进入的库——即下面各组注释所示。
  */
 const BROWSER_SAFE_EXTERNAL: ReadonlyMap<string, string> = new Map([
@@ -64,6 +65,7 @@ const BROWSER_SAFE_EXTERNAL: ReadonlyMap<string, string> = new Map([
   ["@radix-ui/react-dialog", "无样式原语（ui/dialog、config/ConfirmDialog 传递依赖）"],
   ["@radix-ui/react-alert-dialog", "无样式原语（ui/alert-dialog 传递依赖）"],
   ["@radix-ui/react-label", "无样式原语（ui/label 传递依赖）"],
+  ["@radix-ui/react-tabs", "无样式原语（ui/tabs 传递依赖，运行面板的事件/输出页签）"],
   ["class-variance-authority", "类名变体工具（ui/* 传递依赖），纯函数"],
   ["clsx", "类名拼接工具（lib/cn 传递依赖），纯函数"],
   ["tailwind-merge", "Tailwind 类名去重（lib/cn 传递依赖），纯函数"],

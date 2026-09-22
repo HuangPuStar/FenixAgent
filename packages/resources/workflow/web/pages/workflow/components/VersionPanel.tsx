@@ -5,7 +5,6 @@ import { useCallback, useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
 import { workflowDefApi } from "../../../api/workflow-defs";
-import { DAG_STATUS_CFG } from "../utils";
 
 export function VersionPanel({
   workflowId,
@@ -221,7 +220,6 @@ export function VersionPanel({
           versions.map((v) => {
             const isLatest = wf?.latestVersion === v.version;
             const isViewing = viewingVersion === v.version;
-            const _cfg = DAG_STATUS_CFG[v.status === "active" ? "SUCCESS" : "CANCELLED"] ?? DAG_STATUS_CFG.PENDING;
             return (
               <div key={v.id} style={{ borderBottom: "1px solid #f3f4f6" }}>
                 {/*

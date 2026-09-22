@@ -17,6 +17,7 @@ import {
 } from "lucide-react";
 import { useMemo } from "react";
 import { useTranslation } from "react-i18next";
+import { DAG_STATUS_CFG } from "./utils";
 
 /**
  * 工具颜色缓存 — 模块级 Map，前端加载 custom tools 后填充。
@@ -75,13 +76,27 @@ const NODE_LABEL_KEYS: Record<string, string> = {
   end: "nodes.end",
 };
 
-const RUN_STATUS_COLORS: Record<string, { color: string; bg: string }> = {
-  PENDING: { color: "#94a3b8", bg: "#f1f5f9" },
-  RUNNING: { color: "#1677ff", bg: "rgba(22,119,255,0.08)" },
-  COMPLETED: { color: "#10b981", bg: "rgba(16,185,129,0.08)" },
-  FAILED: { color: "#ef4444", bg: "rgba(239,68,68,0.08)" },
-  CANCELLED: { color: "#94a3b8", bg: "#f8fafc" },
-  SKIPPED: { color: "#d1d5db", bg: "#f9fafb" },
+/**
+ * 节点运行状态（`NodeStatus`，api/workflow-engine）→ DAG 状态配置键（`DAG_STATUS_CFG`，utils）。
+ *
+ * 两套词表来自后端两个语义域，不能互相顶替：节点域是
+ * `PENDING / RUNNING / COMPLETED / FAILED / CANCELLED / SKIPPED`，DAG 域是
+ * `PENDING / RUNNING / SUSPENDED / SUCCESS / FAILED / CANCELLED / ERROR`。
+ * 所以这里显式列出映射，而不是拿节点状态去直查 DAG 表——`COMPLETED` 在 DAG 表里查不到，
+ * 静默回退成 PENDING 会把「已完成」的节点画成「等待中」。
+ * 词表差异只有两处：
+ * - `COMPLETED → SUCCESS`：同义不同名，配色改用 DAG 表的绿（原节点表是 #10b981，现为 #22c55e）；
+ * - `SKIPPED → CANCELLED`：SKIPPED 是「上游失败后未执行」的终态，DAG 域没有对应项，
+ *   借 CANCELLED 的灰阶表达「未运行」（原节点表是 #d1d5db，现为 #94a3b8，同族不同值）。
+ * 节点文案仍走 `nodes.status_*`（见下方状态条），与配色表无关。
+ */
+const NODE_STATUS_TO_DAG: Record<string, string> = {
+  PENDING: "PENDING",
+  RUNNING: "RUNNING",
+  COMPLETED: "SUCCESS",
+  FAILED: "FAILED",
+  CANCELLED: "CANCELLED",
+  SKIPPED: "CANCELLED",
 };
 
 function StatusDot({ status }: { status: string }) {
@@ -113,7 +128,7 @@ export function WorkflowNode({ data, id, selected, type }: NodeProps) {
   const icon = NODE_ICONS[nodeType] ?? <Terminal size={12} />;
 
   const runStatus = d._runStatus as string | undefined;
-  const statusColors = runStatus ? (RUN_STATUS_COLORS[runStatus] ?? RUN_STATUS_COLORS.PENDING) : null;
+  const statusColors = runStatus ? DAG_STATUS_CFG[NODE_STATUS_TO_DAG[runStatus] ?? "PENDING"] : null;
 
   // 节点主标题文本：优先展示用户填写的 description，没填则回退到节点 id（如 shell_1），
   // 作为节点头部主标题；类型名（label）降级为副标题。

@@ -11,6 +11,7 @@ import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
 import { type DAGStatus, workflowEngineApi } from "../../api/workflow-engine";
+import { relativeTime } from "./utils";
 
 /** 运行状态 → 色调：只声明语义，具体配色（含 dark 变体）由 `StatusBadge` 决定。 */
 const RUN_STATUS_TONES: Record<string, StatusTone> = {
@@ -32,20 +33,6 @@ const STATUS_LABEL_KEYS: Record<string, string> = {
   CANCELLED: "runs.status_cancelled",
   ERROR: "runs.status_error",
 };
-
-function relativeTime(
-  iso: string | undefined | null,
-  t: (key: string, opts?: Record<string, unknown>) => string,
-): string {
-  if (!iso) return "--";
-  const diff = (Date.now() - new Date(iso).getTime()) / 1000;
-  if (diff < 0) return t("runs.relative_now");
-  if (diff < 60) return t("runs.relative_now");
-  if (diff < 3600) return t("runs.relative_minutes", { count: Math.floor(diff / 60) });
-  if (diff < 86400) return t("runs.relative_hours", { count: Math.floor(diff / 3600) });
-  if (diff < 604800) return t("runs.relative_days", { count: Math.floor(diff / 86400) });
-  return new Date(iso).toLocaleDateString();
-}
 
 function formatDuration(startedAt?: string | null, completedAt?: string | null): string {
   if (!startedAt) return "--";
@@ -233,7 +220,7 @@ export function WorkflowRuns({ onSelectRun }: WorkflowRunsProps) {
                       </span>
                     </td>
                     <td className="py-3 px-4">
-                      <span className="text-xs text-muted-foreground">{relativeTime(r.started_at, t)}</span>
+                      <span className="text-xs text-muted-foreground">{relativeTime(t, r.started_at, "runs")}</span>
                     </td>
                     <td className="py-3 px-4">
                       <span className="text-xs text-muted-foreground font-mono">
