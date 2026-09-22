@@ -315,7 +315,9 @@ export const ChatInterface = forwardRef<ChatInterfaceHandle, ChatInterfaceProps>
 
   return (
     <div className="chat-interface-root flex h-full min-h-0 min-w-0 flex-1">
-      <div className="chat-interface-column flex flex-col flex-1 min-w-0">
+      {/* chat-interface-column 保留为类名：`web/chat/css/chat-layout.css`（下一阶段迁移）与宿主同款
+          样式表仍以它作为「唯一高度链」选择器；本行新增的几何工具类即原 `chat-design-shell.css` 的声明。 */}
+      <div className="chat-interface-column relative flex flex-1 min-h-0 min-w-0 flex-col overflow-hidden bg-white">
         {/* Peri Task 详情抽屉（宿主渲染；未注入时任务行只读） */}
         {renderPeriTaskDetail && selectedPeriTask
           ? renderPeriTaskDetail(selectedPeriTask, () => setSelectedPeriTask(null))
@@ -334,7 +336,7 @@ export const ChatInterface = forwardRef<ChatInterfaceHandle, ChatInterfaceProps>
           onQuote={handleQuote}
         />
 
-        <div className="chat-input-dock">
+        <div className="relative z-20 shrink-0 bg-white">
           {/* 交互区域只显示一种状态：阻塞型权限/提问覆盖非阻塞任务状态。 */}
           {pendingPermissions.length > 0 ? (
             <PermissionPanel requests={pendingPermissions} onRespond={onRespondPermission} />

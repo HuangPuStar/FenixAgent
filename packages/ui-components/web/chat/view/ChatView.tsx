@@ -103,9 +103,14 @@ export const ChatView = React.memo(
 
     return (
       <SubAgentToolCallGroupContext.Provider value={renderSubAgentToolGroup}>
-        <Conversation className="chat-conversation flex-1">
+        <Conversation className="chat-conversation min-h-0 flex-1">
           <PromptJumpRail entries={userEntries} />
-          <ConversationContent className="chat-conversation-content">
+          <ConversationContent
+            // 源 `.chat-conversation-content` 的声明；`sm:` 级重复是为了压过 `ConversationContent`
+            // 自带的 `sm:py-12`（变体工具类在样式表里晚于基础工具类，仅写基础 `pt/pb` 会被它顶掉）。
+            className="min-h-full max-w-[820px] gap-0 pt-[30px] pb-2 sm:pt-[30px] sm:pb-2"
+            data-slot="chat-conversation-content"
+          >
             {!hasMessages ? (
               isLoading && !agentName ? (
                 <AgentBadgeSkeleton />
@@ -225,22 +230,39 @@ function ChatEmptyState({
   ];
 
   return (
-    <section className="chat-empty-state" aria-labelledby="chat-empty-title">
-      <span className="chat-empty-mark" aria-hidden="true">
-        <img src={logoSrc} alt="" />
+    <section
+      className="flex min-h-0 flex-1 flex-col items-center justify-center p-10 text-center [@media(max-width:640px)]:px-2 [@media(max-width:640px)]:py-7"
+      data-slot="chat-empty-state"
+      aria-labelledby="chat-empty-title"
+    >
+      <span
+        className="grid h-[46px] w-[46px] rotate-[-5deg] place-items-center rounded-[15px] border border-[#d3daf3] bg-white text-[#2463eb]"
+        aria-hidden="true"
+      >
+        <img className="h-[27px] w-[27px] rotate-[5deg] object-contain" src={logoSrc} alt="" />
       </span>
-      <small>
+      <small className="mt-[18px] text-[#2463eb] tracking-[0.1em] uppercase [font:700_11px_ui-monospace,monospace]">
         {agentName
           ? t("chat.components.chatEmpty.readyWithAgent", { agentName })
           : t("chat.components.chatEmpty.eyebrow")}
       </small>
-      <h2 id="chat-empty-title">{title}</h2>
-      <p>{description}</p>
-      <div className="chat-empty-suggestions">
+      <h2
+        id="chat-empty-title"
+        className="my-[7px] font-[Georgia,'Songti_SC',serif] text-[32px] font-medium tracking-[-0.03em] text-[#24324a] [@media(max-width:640px)]:text-[27px]"
+      >
+        {title}
+      </h2>
+      <p className="m-0 max-w-[460px] text-[14px] leading-[1.6] text-[#7d889b]">{description}</p>
+      <div className="mt-6 grid w-[min(460px,100%)] gap-2" data-slot="chat-empty-suggestions">
         {suggestions.map((suggestion) => (
-          <button key={suggestion} type="button" onClick={() => onApplySuggestedPrompt?.(suggestion)}>
+          <button
+            key={suggestion}
+            type="button"
+            className="flex min-w-0 cursor-pointer items-center justify-between gap-4 rounded-[10px] border border-[#dfe3e9] bg-white px-[14px] py-[11px] text-left text-[13px] text-[#444d60] [transition:border-color_150ms_ease,box-shadow_150ms_ease,transform_150ms_ease] hover:-translate-y-px hover:border-[#b9c5ed] hover:shadow-[0_6px_18px_rgb(36_99_235_/_8%)] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#2463eb]"
+            onClick={() => onApplySuggestedPrompt?.(suggestion)}
+          >
             <span>{suggestion}</span>
-            <ArrowUpRight aria-hidden="true" />
+            <ArrowUpRight className="h-3.5 w-3.5 flex-none" aria-hidden="true" />
           </button>
         ))}
       </div>

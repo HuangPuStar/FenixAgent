@@ -1,14 +1,15 @@
-// 样式迁移守卫测试（2026-09-22）：`@fenix/ui-components` chat 簇的输入岛 / 命令面板 / 工牌卡
-// 从手写 CSS + 语义类名迁到 Tailwind 工具类后，锁定两件事：
+// 样式迁移守卫测试（2026-09-22）：`@fenix/ui-components` chat 簇从手写 CSS + 语义类名
+// 迁到 Tailwind 工具类后，锁定三件事：
 //   1. 渲染结果里不再出现被迁移掉的语义类名（改用 `data-slot` / ARIA / role / 文本做锚点）；
-//   2. 三个 CSS 文件只剩「无法迁移的最小片段」（`@keyframes`、宿主/禁改文件消费的规则），
+//   2. 已迁空的样式表被真正删除（阶段二删除了 `chat-design-shell.css` 与 `chat-design-composer.css`）；
+//   3. 剩余样式表只剩「无法迁移的最小片段」（`@keyframes`、必须控制非我方节点的透传规则），
 //      已迁移的选择器不再回流。
 //
 // 与 `file-tree-view-slots.test.tsx` 同款口径：把「已删除的类名清单」显式写进测试，
 // 让「顺手把语义钩子加回来」或「迁移回退」都能被这一层发现。
 
 import { describe, expect, test } from "bun:test";
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { createInstance } from "i18next";
 import { createElement } from "react";
@@ -18,6 +19,8 @@ import { ChatComposer } from "../chat/composer/ChatComposer";
 import { CommandMenu } from "../chat/composer/CommandMenu";
 import { ComposerAssets } from "../chat/composer/composer-assets";
 import { AgentBadge, AgentBadgeSkeleton } from "../chat/shell/AgentBadge";
+import { ChatHeader } from "../chat/shell/ChatHeader";
+import { ChatView } from "../chat/view/ChatView";
 import en from "../i18n/locales/en/uiComponents.json";
 import { UI_COMPONENTS_NS } from "../i18n/namespace";
 
@@ -38,9 +41,10 @@ const CSS_DIR = join(import.meta.dir, "..", "chat", "css");
  * 本轮迁移后不应再出现在 `class` 属性里的语义类名（源三个样式表的选择器）。
  *
  * 例外（仍在用，故不列入）：
- * - `chat-header-card`：消费方 `shell/ChatHeader.tsx` 不在本轮可改范围，规则原样保留在
- *   `chat-design-composer.css`；
- * - `chat-composer-divider`：消费方是宿主 `apps/web/.../FileTabsBar.tsx`，规则同样保留；
+ * - `acp-main-root` / `chat-main-column` / `chat-interface-column`：声明已迁成工具类，但类名保留为
+ *   **其它样式表的作用域钩子**（宿主 `apps/web/src/index.css` 的 `.meta-agent-panel .acp-main-root`、
+ *   包内 `web/chat/css/chat-layout.css` 与宿主同名文件的「唯一高度链」）——这些样式表不在本阶段范围；
+ * - `chat-conversation`：同上，`chat-loading.css` 仍以 `:where(.chat-conversation)` 作用域化 shimmer；
  * - popover / inline 外壳与命令面板头部/底部（`chat-command-popover`、`chat-command-menu--popover`、
  *   `chat-command-menu--inline`、`chat-command-menu-header`、`chat-command-menu-title`、
  *   `chat-command-menu-count`、`chat-command-menu-footer`）：本仓库内没有渲染者，声明保留在
@@ -109,6 +113,15 @@ const MIGRATED_CLASS_NAMES = [
   "chat-composer-send",
   "chat-composer-textarea",
   "chat-composer-wrapper",
+  "chat-composer-divider",
+  "chat-conversation-content",
+  "chat-empty-mark",
+  "chat-empty-state",
+  "chat-empty-suggestions",
+  "chat-header-card",
+  "chat-input-dock",
+  "chat-session-row",
+  "chat-session-sidebar",
   "is-active",
   "is-mcp",
   "is-quote",
@@ -119,9 +132,23 @@ const MIGRATED_CLASS_NAMES = [
   "skill-tag-static",
 ] as const;
 
-/** 抽取 SSR 结果里所有 `class` 属性的值，按空白切成 token 列表（逐个精确比对，避免子串误判）。 */
+/**
+ * 抽取 SSR 结果里所有 `class` 属性的值，按空白切成 token 列表（逐个精确比对，避免子串误判）。
+ *
+ * React 会把属性值里的 `&` / `>` / `'` 等做 HTML 转义（如 `[.dark_&]:` → `[.dark_&amp;]:`），
+ * 因此先还原实体再切分，否则带 `&` 的工具类断言会假失败。
+ */
 function classTokens(html: string): string[] {
-  return [...html.matchAll(/class="([^"]*)"/g)].flatMap((match) => match[1].split(/\s+/).filter(Boolean));
+  return [...html.matchAll(/class="([^"]*)"/g)].flatMap((match) =>
+    match[1]
+      .replaceAll("&amp;", "&")
+      .replaceAll("&gt;", ">")
+      .replaceAll("&lt;", "<")
+      .replaceAll("&quot;", '"')
+      .replaceAll("&#x27;", "'")
+      .split(/\s+/)
+      .filter(Boolean),
+  );
 }
 
 /** 去掉 CSS 注释：文件头会以说明文字引用源选择器，静态检查只能看真实声明。 */
@@ -260,12 +287,66 @@ describe("chat 样式迁移：Agent 工牌卡", () => {
   });
 });
 
+describe("chat 样式迁移：外壳与空状态", () => {
+  // 顶部卡片：`chat-header-card` 类名已删除，独立渲染的玻璃形态与外壳内（ACP 子树）平面形态都由工具类表达。
+  test("ChatHeader 卡片样式已内联为工具类", () => {
+    const html = renderToStaticMarkup(createElement(ChatHeader, { activeSessionId: null, onSelectSession: () => {} }));
+    const tokens = classTokens(html);
+
+    for (const name of MIGRATED_CLASS_NAMES) {
+      expect(tokens).not.toContain(name);
+    }
+    // 玻璃形态（独立渲染）：半透明底 + blur + 圆角；外壳内形态：45px、直角、白底、单独底边。
+    expect(tokens).toContain("backdrop-blur-[16px]");
+    expect(tokens).toContain("[.acp-main-root_&]:h-[45px]");
+    expect(tokens).toContain("[.acp-main-root_&:not(.dark_*)]:bg-white");
+    expect(tokens).toContain("[.dark_&]:bg-[rgba(45,45,47,0.72)]");
+    expect(tokens).toContain(
+      "[@supports_not_((backdrop-filter:blur(16px))_or_(-webkit-backdrop-filter:blur(16px)))]:bg-[var(--color-surface-1)]",
+    );
+  });
+
+  // 空状态与消息容器：语义类名换成 `data-slot` 锚点 + 工具类（选区判定与宿主测试都依赖锚点）。
+  test("空状态与消息容器使用锚点与工具类", () => {
+    const html = renderToStaticMarkup(createElement(ChatView, { entries: [] }));
+    const tokens = classTokens(html);
+
+    for (const name of MIGRATED_CLASS_NAMES) {
+      expect(tokens).not.toContain(name);
+    }
+    expect(html).toContain('data-slot="chat-empty-state"');
+    expect(html).toContain('data-slot="chat-empty-suggestions"');
+    expect(html).toContain('data-slot="chat-conversation-content"');
+  });
+});
+
 describe("chat 样式迁移：CSS 只剩文档化的最小片段", () => {
-  // 三个样式表里被迁走的选择器不得回流（回流意味着同一属性有了两个来源）。
+  // 阶段二已把 shell 片与 composer 残留片全部迁空，两个样式表必须真的删除（否则同一属性会有两个来源）。
+  test("已迁空的样式表被删除", () => {
+    expect(existsSync(join(CSS_DIR, "chat-design-shell.css"))).toBe(false);
+    expect(existsSync(join(CSS_DIR, "chat-design-composer.css"))).toBe(false);
+  });
+
+  // 任何 chat 样式表里都不得回流已迁移的选择器（回流意味着同一属性有了两个来源）。
   test("已迁移的选择器不再出现在样式表里", () => {
-    const composerCss = withoutComments(readFileSync(join(CSS_DIR, "chat-design-composer.css"), "utf8"));
     const commandMenuCss = withoutComments(readFileSync(join(CSS_DIR, "chat-design-command-menu.css"), "utf8"));
     const agentBadgeCss = withoutComments(readFileSync(join(CSS_DIR, "chat-agent-badge.css"), "utf8"));
+    // 阶段二迁走的选择器：所属文件已删除，故对「全部仍在的样式表」做联合断言，防止被搬到别处复活。
+    const survivorCss = [
+      "chat.css",
+      "chat-design-messages.css",
+      "chat-design-tools.css",
+      "chat-design-status.css",
+      "chat-design-command-menu.css",
+      "chat-design-selection.css",
+      "chat-design-responsive.css",
+      "chat-layout.css",
+      "chat-loading.css",
+      "chat-agent-badge.css",
+    ]
+      .filter((file) => existsSync(join(CSS_DIR, file)))
+      .map((file) => withoutComments(readFileSync(join(CSS_DIR, file), "utf8")))
+      .join("\n");
 
     for (const selector of [
       ".chat-composer-wrapper",
@@ -282,8 +363,18 @@ describe("chat 样式迁移：CSS 只剩文档化的最小片段", () => {
       ".chat-composer-asset",
       ".chat-composer-capabilities",
       ".chat-composer-new-session",
+      ".chat-header-card",
+      ".chat-composer-divider",
+      ".chat-session-sidebar",
+      ".chat-session-row",
+      ".chat-conversation-content",
+      ".chat-empty-state",
+      ".chat-empty-mark",
+      ".chat-empty-suggestions",
+      ".chat-input-dock",
     ]) {
-      expect(composerCss).not.toContain(selector);
+      expect(commandMenuCss).not.toContain(selector);
+      expect(survivorCss).not.toContain(selector);
     }
 
     for (const selector of [
@@ -312,20 +403,28 @@ describe("chat 样式迁移：CSS 只剩文档化的最小片段", () => {
     }
   });
 
-  // 无法迁移的片段必须仍在（否则是静默丢失）：动画、宿主消费的分隔线、禁改文件消费的卡片、未渲染外壳。
+  // 无法迁移的片段必须仍在（否则是静默丢失）：动画与「必须控制非我方节点」的透传规则。
   test("无法迁移的片段被原样保留", () => {
-    const composerCss = readFileSync(join(CSS_DIR, "chat-design-composer.css"), "utf8");
     const commandMenuCss = readFileSync(join(CSS_DIR, "chat-design-command-menu.css"), "utf8");
     const agentBadgeCss = readFileSync(join(CSS_DIR, "chat-agent-badge.css"), "utf8");
 
-    expect(composerCss).toContain(".chat-header-card");
-    expect(composerCss).toContain(".chat-composer-divider");
     expect(commandMenuCss).toContain(".chat-command-popover");
     expect(commandMenuCss).toContain(".chat-command-menu--inline");
     expect(commandMenuCss).toContain(".chat-command-menu-footer");
     expect(agentBadgeCss).toContain("@keyframes agent-badge-pulse");
     // 已迁移的声明不应借「残留」名义留在样式表里。
-    expect(composerCss).not.toContain("backdrop-filter: blur(14px)");
     expect(agentBadgeCss).not.toContain("stroke-width");
+    expect(commandMenuCss).not.toContain("min-height: 34px");
+  });
+
+  // 窄屏适配里针对输入岛的两条已随类名删除而失效，阶段二必须删掉（否则是死规则）。
+  test("responsive 表里已无输入岛的死规则", () => {
+    const responsiveCss = withoutComments(readFileSync(join(CSS_DIR, "chat-design-responsive.css"), "utf8"));
+
+    expect(responsiveCss).not.toContain(".chat-composer-wrapper");
+    expect(responsiveCss).not.toContain(".chat-composer-context");
+    // 状态面板簇的两条仍在（属后续阶段）。
+    expect(responsiveCss).toContain(".chat-interaction-stack");
+    expect(responsiveCss).toContain(".chat-status-tabs button span");
   });
 });

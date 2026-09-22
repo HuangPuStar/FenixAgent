@@ -211,9 +211,13 @@ export function SidebarSessionList({
                   </div>
                 ) : (
                   <div
+                    // 选中底色取源 `.chat-session-row:has(button[aria-current="true"]), .chat-session-row.bg-brand/8`
+                    // 的生效值 `#eef4ff`（该规则特指度高于 `bg-brand/8` 工具类）。源规则的 `:has()` 分支在本包内
+                    // 不可达（子按钮用的是 `aria-current="page"`，见下方 SessionTitleButton），按「死规则删除」
+                    // 处理；行状态保留互斥两态：选中 / 未选中（hover）。
                     className={cn(
-                      "chat-session-row flex items-center",
-                      isActive ? "bg-brand/8" : "hover:bg-surface-2/60",
+                      "mx-[7px] my-px flex items-center rounded-md",
+                      isActive ? "bg-[#eef4ff]" : "hover:bg-surface-2/60",
                     )}
                   >
                     <SessionTitleButton

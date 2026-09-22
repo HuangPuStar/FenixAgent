@@ -25,6 +25,39 @@ import type { ChatNotice } from "./chat-interface-types";
 import { type ChatHeaderSessionItem, ChatHeaderSessionRow } from "./internal/chat-header-session-row";
 
 /**
+ * 顶部卡片样式（源两段规则按级联的**生效值**落地）：
+ * - `chat-design-composer.css` 的 `.chat-header-card` 段：独立渲染时是玻璃磨砂卡片
+ *   （半透明底 + `blur(16px) saturate(180%)` + 16px 圆角），高度沿用组件原有的 `h-11`（44px）。
+ * - `chat-design-shell.css` 的 `.acp-main-root .chat-header-card` 段：在外壳内（宿主真实用法）
+ *   特指度更高，压过玻璃样式 —— 45px 高、直角、白底、无 backdrop-filter、只留底边 `#eef1f5`，
+ *   `:hover` 阴影归零。用祖先变体 `[.acp-main-root_&]:` 表达（`acp-main-root` 是外壳根节点的既有类名，
+ *   同时是宿主 `index.css` 的作用域钩子，故保留）。
+ * - 暗色：源为 `.dark` 类切换（本仓库 `dark:` 变体语义是 `prefers-color-scheme`，不可替换），
+ *   故写 `[.dark_&]:`。暗色下两段的生效值一致（外壳段不改暗色取值），故几何类规则不排除暗色，
+ *   只有「白底 / 无边框 / 底边分隔线」这三条颜色类规则用 `:not(.dark *)` 与暗色互斥，
+ *   避免依赖两条同级工具类的生成顺序。
+ * - `:hover` 阴影：源文件里 `.chat-header-card:hover` 有两支（前者 `0.06`、后者 `0.3` 且无 `.dark` 前缀），
+ *   后者靠文件顺序对所有模式生效，故取 `rgba(0,0,0,0.3)`；外壳内的 `:hover { box-shadow: none }`
+ *   特指度更高，由外壳变体覆盖。
+ * - `@supports` 回退：`backdrop-filter` 不支持时改用 `--color-surface-1`（源条件逐字表达；
+ *   外壳内该值与外壳白底一致，或让位于暗色规则）。
+ */
+const HEADER_CARD_CLASS = cn(
+  "flex h-11 shrink-0 items-center gap-2 overflow-hidden px-3",
+  "rounded-[16px] border border-[rgba(255,255,255,0.9)] bg-[rgba(255,255,255,0.72)] shadow-none",
+  "backdrop-blur-[16px] backdrop-saturate-[180%] hover:shadow-[0_4px_20px_rgba(0,0,0,0.3)]",
+  "[transition:border-color_0.2s_ease,box-shadow_0.2s_ease]",
+  // 外壳内（宿主 ACPMain 的 .acp-main-root 子树）：几何与 hover 阴影对明暗两态一致。
+  "[.acp-main-root_&]:h-[45px] [.acp-main-root_&]:rounded-none [.acp-main-root_&]:[backdrop-filter:none] [.acp-main-root_&]:hover:shadow-none",
+  // 外壳内浅色：白底 + 仅底边分隔线（源 `border: 0; border-bottom: 1px solid #eef1f5`）。
+  "[.acp-main-root_&:not(.dark_*)]:bg-white [.acp-main-root_&:not(.dark_*)]:border-x-0 [.acp-main-root_&:not(.dark_*)]:border-t-0 [.acp-main-root_&:not(.dark_*)]:border-b [.acp-main-root_&:not(.dark_*)]:border-b-[#eef1f5]",
+  // 暗色（源 `:root.dark .chat-header-card, .dark .chat-header-card`）。
+  "[.dark_&]:border-[rgba(255,255,255,0.08)] [.dark_&]:bg-[rgba(45,45,47,0.72)]",
+  // backdrop-filter 不支持时的回退（源 `@supports not ((backdrop-filter: blur(16px)) or (-webkit-backdrop-filter: blur(16px)))`）。
+  "[@supports_not_((backdrop-filter:blur(16px))_or_(-webkit-backdrop-filter:blur(16px)))]:bg-[var(--color-surface-1)]",
+);
+
+/**
  * ChatHeader 属性。
  * 复制自 `packages/agent-runtime/web/components/chat/ChatHeader.tsx`。
  */
@@ -233,9 +266,9 @@ export function ChatHeader({
   return (
     <div
       className={cn(
-        // chat-header-card：玻璃磨砂浮动卡片（圆角 + 阴影），替代原 border-b 横条；
-        // 外层 ACPMain 的 padding 负责让卡片悬浮于子页面顶部
-        "chat-header-card flex items-center gap-2 h-11 px-3 flex-shrink-0",
+        // 顶部卡片：玻璃磨砂浮动卡片（独立渲染）／外壳内的平面标题栏（`.acp-main-root` 子树），
+        // 两种形态与暗色覆写见 HEADER_CARD_CLASS 注释
+        HEADER_CARD_CLASS,
         className,
       )}
     >

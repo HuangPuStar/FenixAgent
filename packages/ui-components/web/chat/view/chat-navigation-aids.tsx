@@ -203,7 +203,9 @@ export interface ChatSelectionActionProps {
  *
  * 复制自 `packages/agent-runtime/web/components/chat/chat-navigation-aids.tsx`。
  * 纯化改动点：`chat:quote` window 自定义事件改为 `onQuote` 回调 prop（不再 `window.dispatchEvent`）；
- * 命名空间与键前缀收敛到包内；选区判定仍依赖宿主消息容器的 `.chat-conversation-content` 类名。
+ * 命名空间与键前缀收敛到包内；选区判定改为依赖消息容器的稳定锚点
+ * `data-slot="chat-conversation-content"`（由 `view/ChatView.tsx` 的 `ConversationContent` 提供，
+ * 原实现锚定的是 `.chat-conversation-content` 语义类名，样式迁移后类名已删除）。
  */
 export function ChatSelectionAction({ contextScope, onQuote }: ChatSelectionActionProps) {
   const { t } = useTranslation(UI_COMPONENTS_NS);
@@ -221,7 +223,7 @@ export function ChatSelectionAction({ contextScope, onQuote }: ChatSelectionActi
         range.commonAncestorContainer.nodeType === Node.TEXT_NODE
           ? range.commonAncestorContainer.parentElement
           : range.commonAncestorContainer;
-      if (!(ancestor instanceof Element) || !ancestor.closest(".chat-conversation-content")) {
+      if (!(ancestor instanceof Element) || !ancestor.closest('[data-slot="chat-conversation-content"]')) {
         setSelectionAction(null);
         return;
       }

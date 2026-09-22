@@ -1,10 +1,17 @@
 /*
- * Chat 窄屏适配：交互栈/状态面板宽度、输入岛内边距、次要文案与页签文字的收缩。
+ * Chat 窄屏适配：交互栈/状态面板宽度、状态页签文字收缩。
  *
  * 复制自 packages/chat-channel/web/src/pages/agent-panel/chat-design-responsive.css，逐字复制。
- * 纯化改动：无（保持源选择器前缀不变）。媒体查询内的规则与 chat-design-status.css、
- * chat-design-composer.css 中的同名选择器构成特指度相同的级联，源侧依赖导入顺序；本文件在
- * web/chat/css/chat.css 中最后导入，与源聚合器 chat-design.css 的导入顺序一致。
+ * 纯化改动：无（保持源选择器前缀不变）。媒体查询内的规则与 chat-design-status.css 中的同名选择器
+ * 构成特指度相同的级联，源侧依赖导入顺序；本文件在 web/chat/css/chat.css 中最后导入（responsive 分片内），
+ * 与源聚合器 chat-design.css 的导入顺序一致。
+ *
+ * 迁移记录（2026-09-22 阶段二）：原文件另有两条针对输入岛的规则
+ *   - `.chat-composer-wrapper { padding-inline: 10px }`
+ *   - `.chat-composer-context strong, .chat-composer-context > span { display: none }`
+ * 在阶段一已把等效行为内化进 `ChatComposer` / `ComposerContextMeter` 的 `[@media(max-width:720px)]:`
+ * 工具类（选择器本身已随 `.chat-composer-wrapper` / `.chat-composer-context` 类名删除而失效），
+ * 故此处删除这两条死规则。剩余两条属状态面板簇，随该簇迁移时一并处理。
  */
 @media (max-width: 720px) {
   .chat-interaction-stack,
@@ -12,13 +19,6 @@
     /* 纯化改动（2026-09-18）：本断点输入岛 padding 收成 10px（卡片宽 = 100% - 20px），
      * 面板仍按每侧再窄 16px 取值，与宽列下的台阶保持一致。源为 `calc(100% - 20px)`（与卡片齐平）。 */
     width: calc(100% - 52px);
-  }
-  .chat-composer-wrapper {
-    padding-inline: 10px;
-  }
-  .chat-composer-context strong,
-  .chat-composer-context > span {
-    display: none;
   }
   .chat-status-tabs button span {
     display: none;

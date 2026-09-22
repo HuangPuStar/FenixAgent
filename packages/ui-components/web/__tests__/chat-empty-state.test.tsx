@@ -51,7 +51,7 @@ describe("Chat 空状态", () => {
       />,
     );
 
-    expect(markup).toContain("chat-empty-state");
+    expect(markup).toContain('data-slot="chat-empty-state"');
     expect(markup).toContain("brand/fenix-agent-logo-mark.png");
     expect(markup).toContain("今天想完成什么？");
     expect(markup).not.toContain('data-slot="agent-badge"');

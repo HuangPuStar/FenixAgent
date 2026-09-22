@@ -110,7 +110,7 @@ export function FileTabsBar({
       )}
 
       {/* 分隔符：左侧操作区与 tab 区视觉分隔（始终展示，让 toggle / 变更 badge 与 tab 列表视觉分组） */}
-      <span className="chat-composer-divider mx-0.5" />
+      <span className="mx-0.5 h-3 w-px shrink-0 bg-[rgba(0,0,0,0.08)] [.dark_&]:bg-[rgba(255,255,255,0.08)]" />
 
       {/* 3. 文件 tab 列表 + 折叠 */}
       <div className="flex items-center gap-0.5 flex-1 min-w-0 overflow-x-auto scrollbar-none">
