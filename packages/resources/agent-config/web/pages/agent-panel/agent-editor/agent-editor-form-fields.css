@@ -177,6 +177,7 @@
   border-right: 1px solid #e7ebf1;
   border-left: 1px solid #e7ebf1;
   color: #263750;
+  font-size: 14px;
   text-align: center;
   appearance: textfield;
 }
@@ -308,6 +309,9 @@
 .agent-editor-root .agent-resource-picker__chips button.is-unavailable:hover:not(:disabled) {
   color: #754608;
   background: #ffedca;
+}
+.agent-editor-root .agent-resource-picker__empty {
+  font-size: 12px;
 }
 .agent-editor-root .agent-resource-picker__search {
   display: flex;

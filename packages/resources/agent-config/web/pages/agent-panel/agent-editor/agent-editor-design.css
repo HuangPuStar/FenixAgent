@@ -395,8 +395,13 @@
 .agent-editor-template-picker__search p {
   margin-top: 6px;
   color: #738098;
-  font-size: 12px;
   line-height: 1.55;
+}
+.agent-editor-template-picker__header p {
+  font-size: 14px;
+}
+.agent-editor-template-picker__search p {
+  font-size: 12px;
 }
 .agent-editor-template-picker__search input {
   border-color: #dce4ef;

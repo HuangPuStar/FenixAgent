@@ -401,6 +401,9 @@
   max-width: 480px;
   font-size: 12px;
 }
+.agent-editor-state strong {
+  font-size: 14px;
+}
 .agent-editor-readonly,
 .agent-editor-resource-error,
 .agent-editor-validation-summary {

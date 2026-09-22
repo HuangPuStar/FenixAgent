@@ -29,7 +29,8 @@
   .agent-editor-root .agent-editor-section__intro {
     margin-bottom: 20px;
   }
-  .agent-editor-root .agent-editor-section__intro h3 {
+  .agent-editor-root .agent-editor-section__intro h3,
+  .agent-editor-root .agent-editor-summary h3 {
     font-size: 20px;
   }
   .agent-editor-root .agent-editor-section__intro p {
