@@ -36,6 +36,34 @@ export type PromptInputMessage = {
   files: FileUIPart[];
 };
 
+/** 拖动内容里含文件时才接管浏览器默认行为（否则保留浏览器原生文本拖放）。 */
+const isFileDrag = (event: DragEvent) => Boolean(event.dataTransfer?.types?.includes("Files"));
+
+/**
+ * 一次拖放监听（`dragover` / `drop`）的两个处理器。
+ *
+ * 2026-09-22 库内去重：表单内拖放与 `globalDrop` 全文档拖放此前各写了一份逐字相同的
+ * `onDragOver` + `onDrop`（唯一差异是挂载目标），收敛到此；`preventDefault` 条件、
+ * 空文件列表判定与 `add` 调用口径逐字保留。
+ */
+function createDropHandlers(add: (files: FileList) => void) {
+  return {
+    onDragOver: (event: DragEvent) => {
+      if (isFileDrag(event)) {
+        event.preventDefault();
+      }
+    },
+    onDrop: (event: DragEvent) => {
+      if (isFileDrag(event)) {
+        event.preventDefault();
+      }
+      if (event.dataTransfer?.files && event.dataTransfer.files.length > 0) {
+        add(event.dataTransfer.files);
+      }
+    },
+  };
+}
+
 export type PromptInputProps = Omit<HTMLAttributes<HTMLFormElement>, "onSubmit" | "onError"> & {
   accept?: string; // e.g., "image/*" or leave undefined for any
   multiple?: boolean;
@@ -194,19 +222,7 @@ export const PromptInput = ({
     const form = formRef.current;
     if (!form) return;
 
-    const onDragOver = (e: DragEvent) => {
-      if (e.dataTransfer?.types?.includes("Files")) {
-        e.preventDefault();
-      }
-    };
-    const onDrop = (e: DragEvent) => {
-      if (e.dataTransfer?.types?.includes("Files")) {
-        e.preventDefault();
-      }
-      if (e.dataTransfer?.files && e.dataTransfer.files.length > 0) {
-        add(e.dataTransfer.files);
-      }
-    };
+    const { onDragOver, onDrop } = createDropHandlers(add);
     form.addEventListener("dragover", onDragOver);
     form.addEventListener("drop", onDrop);
     return () => {
@@ -218,19 +234,7 @@ export const PromptInput = ({
   useEffect(() => {
     if (!globalDrop) return;
 
-    const onDragOver = (e: DragEvent) => {
-      if (e.dataTransfer?.types?.includes("Files")) {
-        e.preventDefault();
-      }
-    };
-    const onDrop = (e: DragEvent) => {
-      if (e.dataTransfer?.types?.includes("Files")) {
-        e.preventDefault();
-      }
-      if (e.dataTransfer?.files && e.dataTransfer.files.length > 0) {
-        add(e.dataTransfer.files);
-      }
-    };
+    const { onDragOver, onDrop } = createDropHandlers(add);
     document.addEventListener("dragover", onDragOver);
     document.addEventListener("drop", onDrop);
     return () => {

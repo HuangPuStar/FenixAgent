@@ -2,6 +2,31 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import type { ChildrenLoader, NodeState, TreeNodeData, TreeNodeState } from "./tree-types";
 
 // ---------------------------------------------------------------------------
+// 纯函数
+// ---------------------------------------------------------------------------
+
+/**
+ * 按 `parentId` 原位替换父节点的 `loading` / `error`（不改动 Map 里的其他节点）。
+ *
+ * 2026-09-22 库内去重：`loadChildren` 的「发起加载」与「加载失败」两个分支此前各写了一份
+ * 逐字相同的 `setNodes((prev) => { const next = new Map(prev); if (parentId) { … } return next; })`，
+ * 唯一差异是内层 patch（`{ loading: true, error: null }` / `{ loading: false, error: String(err) }`）。
+ * `parentId` 为 null（根层）时两者都不写节点，语义保持不变。
+ */
+function patchParentNode(
+  prev: Map<string, TreeNodeState>,
+  parentId: string | null,
+  patch: Pick<TreeNodeState, "loading" | "error">,
+): Map<string, TreeNodeState> {
+  const next = new Map(prev);
+  if (parentId) {
+    const node = next.get(parentId);
+    if (node) next.set(parentId, { ...node, ...patch });
+  }
+  return next;
+}
+
+// ---------------------------------------------------------------------------
 // State Hook
 // ---------------------------------------------------------------------------
 
@@ -42,14 +67,7 @@ export function useTreeState(opts: {
       if (loadingRef.current.has(key)) return;
       loadingRef.current.add(key);
 
-      setNodes((prev) => {
-        const next = new Map(prev);
-        if (parentId) {
-          const node = next.get(parentId);
-          if (node) next.set(parentId, { ...node, loading: true, error: null });
-        }
-        return next;
-      });
+      setNodes((prev) => patchParentNode(prev, parentId, { loading: true, error: null }));
 
       try {
         const items = await getChildren(parentId);
@@ -85,14 +103,7 @@ export function useTreeState(opts: {
           setRootIds(items.map((i) => i.id));
         }
       } catch (err) {
-        setNodes((prev) => {
-          const next = new Map(prev);
-          if (parentId) {
-            const node = next.get(parentId);
-            if (node) next.set(parentId, { ...node, loading: false, error: String(err) });
-          }
-          return next;
-        });
+        setNodes((prev) => patchParentNode(prev, parentId, { loading: false, error: String(err) }));
         console.error("[Tree] Failed to load children:", err);
       } finally {
         loadingRef.current.delete(key);

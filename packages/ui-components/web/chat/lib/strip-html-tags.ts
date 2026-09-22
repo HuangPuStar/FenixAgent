@@ -1,7 +1,7 @@
 /**
  * 从会话标题/消息文本中剔除或切分 `<system-reminder>` 上下文块。
  *
- * 来源：全文复制 `apps/web/src/lib/strip-html-tags.ts`（含 `stripHtmlTags`、`splitSystemReminderBlocks`）。
+ * 来源：全文复制 `apps/web/src/lib/strip-html-tags.ts`（旧路径，已于 2026-09-21 由 6679b4648 删除）（含 `stripHtmlTags`、`splitSystemReminderBlocks`）。
  * 纯化改动点：无逻辑改动；仅补包内来源标注（源文件本身不依赖 React、i18n 或任何业务模块，可直接复制）。
  */
 

@@ -1,9 +1,10 @@
 import { Button } from "@fenix/ui-components/ui/button";
 import { Input } from "@fenix/ui-components/ui/input";
 import { NS } from "@fenix/web-runtime/i18n/namespace";
-import { parseExpression } from "cron-parser";
 import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
+import { validateCronExpression } from "../pages/agent-tasks-utils";
+import { CHOICE_CHIP_CLASS } from "./chip-classes";
 
 /** cron 预设：内部 ID → cron 表达式 */
 export const PRESETS: Record<string, string> = {
@@ -13,6 +14,19 @@ export const PRESETS: Record<string, string> = {
   weekday9am: "0 9 * * 1-5",
   monthly1st: "0 0 1 * *",
 };
+
+/**
+ * 12 小时制展示三元组。`describeCron` 的四个分支（每天 / 每周 / 每月 / 指定月）此前各抄一份同样的 3 行换算
+ * （2026-09-22 去重）；`minStr` 只在分钟是具体值时出现。各分支的模板本身保持原样——它们之间已有既存差异
+ * （指定月分支的时段与时刻之间没有空格），归一那处会改用户可见文案，不在本批范围内。
+ */
+function twelveHourParts(h: number, min: string): { period: string; h12: number; minStr: string } {
+  return {
+    period: h < 12 ? "上午" : h === 12 ? "中午" : "下午",
+    h12: h === 0 ? 12 : h > 12 ? h - 12 : h,
+    minStr: min === "*" ? "" : `:${min.padStart(2, "0")}`,
+  };
+}
 
 /** 根据 cron 表达式返回人类可读的描述，需要 t 函数做国际化 */
 export function describeCron(cron: string, t: (key: string) => string): string | null {
@@ -31,9 +45,7 @@ export function describeCron(cron: string, t: (key: string) => string): string |
   if (hour !== "*" && day === "*" && month === "*" && weekday === "*") {
     const h = Number.parseInt(hour, 10);
     if (!Number.isNaN(h)) {
-      const period = h < 12 ? "上午" : h === 12 ? "中午" : "下午";
-      const h12 = h === 0 ? 12 : h > 12 ? h - 12 : h;
-      const minStr = min === "*" ? "" : `:${min.padStart(2, "0")}`;
+      const { period, h12, minStr } = twelveHourParts(h, min);
       return `每天${period} ${h12}${minStr}`;
     }
   }
@@ -50,9 +62,7 @@ export function describeCron(cron: string, t: (key: string) => string): string |
         }
         return [days[Number(d)]];
       });
-      const period = h < 12 ? "上午" : h === 12 ? "中午" : "下午";
-      const h12 = h === 0 ? 12 : h > 12 ? h - 12 : h;
-      const minStr = min === "*" ? "" : `:${min.padStart(2, "0")}`;
+      const { period, h12, minStr } = twelveHourParts(h, min);
       return `每周${dayNames.join("、")}${period} ${h12}${minStr}`;
     }
   }
@@ -61,9 +71,7 @@ export function describeCron(cron: string, t: (key: string) => string): string |
     const h = Number.parseInt(hour, 10);
     const d = Number.parseInt(day, 10);
     if (!Number.isNaN(h) && !Number.isNaN(d)) {
-      const period = h < 12 ? "上午" : h === 12 ? "中午" : "下午";
-      const h12 = h === 0 ? 12 : h > 12 ? h - 12 : h;
-      const minStr = min === "*" ? "" : `:${min.padStart(2, "0")}`;
+      const { period, h12, minStr } = twelveHourParts(h, min);
       return `每月 ${d} 号${period} ${h12}${minStr}`;
     }
   }
@@ -73,9 +81,7 @@ export function describeCron(cron: string, t: (key: string) => string): string |
     const d = Number.parseInt(day, 10);
     const m = Number.parseInt(month, 10);
     if (!Number.isNaN(h) && !Number.isNaN(d) && !Number.isNaN(m)) {
-      const period = h < 12 ? "上午" : h === 12 ? "中午" : "下午";
-      const h12 = h === 0 ? 12 : h > 12 ? h - 12 : h;
-      const minStr = min === "*" ? "" : `:${min.padStart(2, "0")}`;
+      const { period, h12, minStr } = twelveHourParts(h, min);
       return `${m}月${d}号${period}${h12}${minStr}`;
     }
   }
@@ -86,29 +92,19 @@ export function describeCron(cron: string, t: (key: string) => string): string |
 export interface CronEditorProps {
   value: string;
   timezone?: string;
+  /** 手动输入框的 `id`：供调用方用 `LabeledField htmlFor` 把字段名显式关联到这个输入框；不给则不渲染 `id`。 */
+  inputId?: string;
   onChange: (cron: string) => void;
   error?: string;
 }
 
-function validateCron(value: string, timezone: string): string | undefined {
-  const parts = value.trim().split(/\s+/);
-  if (!value.trim()) return "Cron 不能为空";
-  if (parts.length !== 5) return "Cron 表达式必须为 5 个字段";
-  try {
-    parseExpression(value, timezone.trim() ? { tz: timezone.trim() } : undefined);
-    return;
-  } catch {
-    return "Cron 表达式无效，请检查字段取值范围";
-  }
-}
-
-export function CronEditor({ value, timezone = "", onChange, error }: CronEditorProps) {
+export function CronEditor({ value, timezone = "", inputId, onChange, error }: CronEditorProps) {
   const { t } = useTranslation(NS.TASKS_V2);
   const [editingCustom, setEditingCustom] = useState(false);
   const [debouncedError, setDebouncedError] = useState<string>();
 
   useEffect(() => {
-    const timer = setTimeout(() => setDebouncedError(validateCron(value, timezone)), 400);
+    const timer = setTimeout(() => setDebouncedError(validateCronExpression(value, timezone)), 400);
     return () => clearTimeout(timer);
   }, [value, timezone]);
 
@@ -151,7 +147,7 @@ export function CronEditor({ value, timezone = "", onChange, error }: CronEditor
                 type="button"
                 size="sm"
                 variant={active ? "default" : "outline"}
-                className="rounded-full h-6 px-3 text-xs font-normal"
+                className={CHOICE_CHIP_CLASS}
                 onClick={() => handlePresetClick(key)}
               >
                 {t(`cron.presets.${key}`)}
@@ -162,7 +158,7 @@ export function CronEditor({ value, timezone = "", onChange, error }: CronEditor
             type="button"
             size="sm"
             variant={editingCustom || !isPreset ? "default" : "outline"}
-            className="rounded-full h-6 px-3 text-xs font-normal"
+            className={CHOICE_CHIP_CLASS}
             onClick={handleCustomClick}
           >
             {t("cron.custom")}
@@ -177,17 +173,16 @@ export function CronEditor({ value, timezone = "", onChange, error }: CronEditor
             {desc ? (
               <>
                 <div className="text-sm font-medium text-text-bright">{desc}</div>
-                <div className="text-[11px] text-text-muted">
-                  {isPreset ? t("cron.preset") : t("cron.parsedResult")}
-                </div>
+                <div className="text-3xs text-text-muted">{isPreset ? t("cron.preset") : t("cron.parsedResult")}</div>
               </>
             ) : (
               <div className="text-sm text-text-muted">{t("cron.customCron")}</div>
             )}
           </div>
           <div className="flex items-center gap-1.5 flex-1">
-            <span className="text-[11px] text-text-muted shrink-0 font-mono">cron:</span>
+            <span className="text-3xs text-text-muted shrink-0 font-mono">cron:</span>
             <Input
+              id={inputId}
               value={isComposing ? composingValue : value}
               onCompositionStart={() => {
                 setIsComposing(true);

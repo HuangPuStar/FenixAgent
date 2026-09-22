@@ -109,9 +109,14 @@ const CROSS_NAMESPACE_KEYS = ["common:cancel", "common:next", "common:previous"]
 
 describe("hindsight 字典完整性与归属", () => {
   // 两份字典键集必须逐字一致：缺键的语言会静默回显 key。
+  //
+  // 基线 240 → 211（2026-09-22 孤儿键清理）：本次删掉 42 个全仓零引用的键
+  // （`memories.*` / `documents.*` / `mentalModels.*` / `recall.*` / `retain.*` /
+  // `memoryDetailPanel.*` / `constellation.*`），基线随之下调到清理后的实际键数（211），
+  // 保持「只认当前真实规模、缩水即失败」的口径不变。
   test("en / zh 键集完全一致且规模未缩水", () => {
     expect([...zhFlat.keys()].sort()).toEqual([...enFlat.keys()].sort());
-    expect(enFlat.size).toBeGreaterThanOrEqual(240);
+    expect(enFlat.size).toBeGreaterThanOrEqual(211);
   });
 
   // 插值占位符必须成对出现，否则某一语言会显示 `{{var}}` 字面量。

@@ -21,13 +21,22 @@ export interface KnowledgeResourceInfo {
 /** 知识库解析方法：内置分块器或自定义 pipeline */
 export type KnowledgeParseMethod = "builtin" | "pipeline";
 
-/** 创建表单可选的嵌入模型选项 */
-export interface EmbeddingModelOption {
+/**
+ * 模型选项的公共四要素：模型名、展示名、所属厂商与所属实例。
+ *
+ * 为什么抽这一层：`EmbeddingModelOption` / `ConfiguredEmbeddingModel` / `RerankModelOption`
+ * 此前各自抄了这四行（2026-09-22 前端去重），三份逐字相同；第二、第三个用例早已出现，
+ * 抽象不再提前。差异只在各自追加的字段（如 `modelType` / `status`），由子类型自行声明。
+ */
+export interface ModelOptionBase {
   name: string;
   label: string;
   provider: string;
   instance: string;
 }
+
+/** 创建表单可选的嵌入模型选项 */
+export interface EmbeddingModelOption extends ModelOptionBase {}
 
 /** 创建表单可选的分块方法选项（RagFlow chunk_method） */
 export interface ChunkMethodOption {
@@ -50,13 +59,24 @@ export interface KnowledgeFormOptions {
   pipelines: KnowledgePipelineOption[];
 }
 
+/**
+ * 创建知识库请求体。
+ *
+ * 本文件是**唯一 owner**：`api/knowledge-bases.ts`（原地再声明一份逐字相同的副本）与
+ * `pages/agent-panel/pages/AgentKnowledgeBasesPage.tsx`（回调入参处又内联一份第三份）在
+ * 2026-09-22 的去重里收敛到这里，api 模块改为 re-export，页面直接用本类型。
+ */
 export interface KnowledgeBaseCreateBody {
   name: string;
   slug?: string;
   description?: string;
+  /** 嵌入模型名；创建后不可改 */
   embeddingModel?: string | null;
+  /** 解析方法；创建后不可改 */
   parseMethod?: KnowledgeParseMethod | null;
+  /** 自定义解析 pipeline ID；仅 parseMethod=pipeline 时生效 */
   pipelineId?: string | null;
+  /** 内置分块方法 parser_id；仅 parseMethod=builtin 时生效 */
   chunkMethod?: string | null;
 }
 
@@ -131,11 +151,7 @@ export interface ConfiguredProviderNode {
 }
 
 /** 已配置的 embedding 模型（模型管理列表项） */
-export interface ConfiguredEmbeddingModel {
-  name: string;
-  label: string;
-  provider: string;
-  instance: string;
+export interface ConfiguredEmbeddingModel extends ModelOptionBase {
   modelType: string;
   status?: string | null;
 }
@@ -154,12 +170,7 @@ export interface KnowledgeUploadResponse {
 }
 
 /** rerank 重排序模型选项（检索测试用） */
-export interface RerankModelOption {
-  name: string;
-  label: string;
-  provider: string;
-  instance: string;
-}
+export interface RerankModelOption extends ModelOptionBase {}
 
 /** 元数据过滤 4 种模式 */
 export type MetaDataFilterMethod = "disabled" | "auto" | "semi_auto" | "manual";

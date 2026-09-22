@@ -10,6 +10,7 @@
  */
 
 import type { PreviewContext, PreviewInstance, PreviewPlugin } from "@open-file-viewer/core";
+import { PREVIEW_FRAME_CONTAINER_STYLE, PREVIEW_FRAME_IFRAME_STYLE } from "./internal/frame-styles";
 
 /**
  * HTML 文件预览插件。
@@ -50,7 +51,7 @@ export function htmlPreviewPlugin(): PreviewPlugin {
 
       // 创建 iframe 容器
       const container = document.createElement("div");
-      container.style.cssText = "width:100%;height:100%;display:flex;flex-direction:column;";
+      container.style.cssText = PREVIEW_FRAME_CONTAINER_STYLE;
 
       // 源码 / 预览 切换标签栏
       // 标签文案硬编码中文（见文件头注释第 2 条）；style 与源实现一致，依赖 ofv-* 变量回退到源配色。
@@ -79,7 +80,7 @@ export function htmlPreviewPlugin(): PreviewPlugin {
       // 仅允许脚本执行，禁止 allow-same-origin 以防止访问父页面 DOM
       iframe.setAttribute("sandbox", "allow-scripts");
       iframe.setAttribute("referrerpolicy", "no-referrer");
-      iframe.style.cssText = "flex:1;width:100%;border:none;background:#fff;";
+      iframe.style.cssText = PREVIEW_FRAME_IFRAME_STYLE;
       iframe.title = file.name;
 
       // 源码预览区（初始隐藏）

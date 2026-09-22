@@ -3,7 +3,7 @@ import { useEffect, useRef } from "react";
 /**
  * 外部输入注入通道（纯化替代源实现的 window CustomEvent 总线）。
  *
- * 来源：从 `packages/agent-runtime/web/components/chat/ChatComposer.tsx` 的三个
+ * 来源：从 `packages/agent-runtime/web/components/chat/ChatComposer.tsx`（旧路径，已于 2026-09-21 由 f2741a82d 删除） 的三个
  * `window.addEventListener` effect 中切出——拆分原因是源文件 597 行超过 500 行红线。
  * 纯化改动点（把「如何订阅」交给宿主，把「订阅到什么」留在包内）：
  * - 源 `chat:apply-suggested-prompt` → `{ type: "suggested-prompt", prompt }`。

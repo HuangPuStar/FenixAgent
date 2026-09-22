@@ -80,39 +80,61 @@ export function ModelConfigDialog({
             <DialogDescription>{t("modelConfig.description")}</DialogDescription>
           </DialogHeader>
           <div className="space-y-4">
-            <div className="space-y-2">
-              <label className="text-sm font-medium">{t("modelConfig.primaryModel")}</label>
-              <Select value={currentModel ?? ""} onValueChange={(v) => runSet("model", v)}>
-                <SelectTrigger className="w-full">
-                  <SelectValue placeholder={t("modelConfig.primaryModelPlaceholder")} />
-                </SelectTrigger>
-                <SelectContent>
-                  {modelOptions.map((opt) => (
-                    <SelectItem key={opt.value} value={opt.value}>
-                      {opt.label}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="space-y-2">
-              <label className="text-sm font-medium">{t("modelConfig.lightweightModel")}</label>
-              <Select value={currentSmallModel ?? ""} onValueChange={(v) => runSet("small_model", v)}>
-                <SelectTrigger className="w-full">
-                  <SelectValue placeholder={t("modelConfig.lightweightModelPlaceholder")} />
-                </SelectTrigger>
-                <SelectContent>
-                  {modelOptions.map((opt) => (
-                    <SelectItem key={opt.value} value={opt.value}>
-                      {opt.label}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
+            <ModelConfigSelectField
+              label={t("modelConfig.primaryModel")}
+              placeholder={t("modelConfig.primaryModelPlaceholder")}
+              value={currentModel ?? ""}
+              options={modelOptions}
+              onChange={(value) => runSet("model", value)}
+            />
+            <ModelConfigSelectField
+              label={t("modelConfig.lightweightModel")}
+              placeholder={t("modelConfig.lightweightModelPlaceholder")}
+              value={currentSmallModel ?? ""}
+              options={modelOptions}
+              onChange={(value) => runSet("small_model", value)}
+            />
           </div>
         </DialogContent>
       </Dialog>
     </>
+  );
+}
+
+/**
+ * 主模型 / 轻量模型两栏共用的选择字段。
+ *
+ * 两栏的骨架此前逐字相同（标签 + 全宽 `SelectTrigger` + 遍历同一份 `modelOptions`），
+ * 只有取值、占位符与写回的字段名不同；收在这里后，改选项渲染或触发器宽度只需动一处。
+ */
+function ModelConfigSelectField({
+  label,
+  placeholder,
+  value,
+  options,
+  onChange,
+}: {
+  label: string;
+  placeholder: string;
+  value: string;
+  options: Array<{ value: string; label: string }>;
+  onChange: (value: string) => void;
+}) {
+  return (
+    <div className="space-y-2">
+      <label className="text-sm font-medium">{label}</label>
+      <Select value={value} onValueChange={onChange}>
+        <SelectTrigger className="w-full">
+          <SelectValue placeholder={placeholder} />
+        </SelectTrigger>
+        <SelectContent>
+          {options.map((opt) => (
+            <SelectItem key={opt.value} value={opt.value}>
+              {opt.label}
+            </SelectItem>
+          ))}
+        </SelectContent>
+      </Select>
+    </div>
   );
 }

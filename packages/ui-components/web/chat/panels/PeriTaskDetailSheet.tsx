@@ -1,7 +1,7 @@
 // =============================================================================
 // Peri Task 详情抽屉 — 聊天面板的右侧 Sheet（任务行点击后按需读取详情）
 //
-// 复制自 packages/agent-runtime/web/components/chat/PeriTaskDetailSheet.tsx（CE 阶段 2
+// 复制自 packages/agent-runtime/web/components/chat/PeriTaskDetailSheet.tsx（旧路径，已于 2026-09-21 由 9998926ec 删除）（CE 阶段 2
 // 任务 1.6 T6a 迁入）。纯化改动：
 //   - `PeriTaskViewProjection` 改从包内 ../types 导入；
 //   - Button / Sheet 改为包内 ../../ui/*；

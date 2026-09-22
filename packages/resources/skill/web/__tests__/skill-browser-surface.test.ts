@@ -47,11 +47,16 @@ const BROWSER_SAFE_EXTERNAL: ReadonlyMap<string, string> = new Map([
   ["lucide-react", "SVG 图标库（本包依赖，宿主亦直接依赖）"],
   ["sonner", "Toast 渲染（本包依赖，宿主亦直接依赖）"],
   // 经 @fenix/ui-components 子路径传递进入：无 node 依赖的浏览器库
+  //
+  // 2026-09-22 台账收敛：删除 `@radix-ui/react-popover`（原注「ui/popover 传递依赖」）与
+  // `@radix-ui/react-label`（原注「ui/label 传递依赖」）两条。本守卫的「包外运行时依赖在白名单内」
+  // 断言是**全图**口径（`externals.filter(ref => !BROWSER_SAFE_EXTERNAL.has(ref.root))`：
+  // 任何到达的包外依赖都必须已登记），因此条目是否过期可直接由图判定：实测这两条已不在
+  // `externals` 集合里，属留着的空条目——它们会让守卫对「以后又引入 ui/popover、ui/label」失去告警能力。
+  // 只删不可达项，白名单因此更严（可放行集合变小），断言结构未动。
   ["@radix-ui/react-slot", "无样式原语（ui/button 传递依赖），只依赖 react/DOM"],
   ["@radix-ui/react-dialog", "无样式原语（ui/dialog、config/ConfirmDialog 传递依赖）"],
   ["@radix-ui/react-alert-dialog", "无样式原语（ui/alert-dialog 传递依赖）"],
-  ["@radix-ui/react-popover", "无样式原语（ui/popover 传递依赖）"],
-  ["@radix-ui/react-label", "无样式原语（ui/label 传递依赖）"],
   ["@radix-ui/react-tooltip", "无样式原语（ui/tooltip 传递依赖，目录卡片提示）"],
   ["@radix-ui/react-scroll-area", "无样式原语（ui/scroll-area 传递依赖，详情滚动区）"],
   ["@radix-ui/react-separator", "无样式原语（ui/separator 传递依赖）"],

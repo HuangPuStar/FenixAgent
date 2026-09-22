@@ -1,6 +1,6 @@
 /**
  * Write 工具 narrator。处理文件创建/覆盖写入。
- * 复制自 `packages/agent-runtime/web/components/chat/narrators/write.ts`。
+ * 复制自 `packages/agent-runtime/web/components/chat/narrators/write.ts`（旧路径，已于 2026-09-21 由 f2741a82d 删除）。
  *
  * 与 Edit 区分：Write 是整文件覆盖，Edit 是局部替换；
  * 视觉上用 FilePlus（新建/覆盖）vs FilePen（编辑）的图标差异体现。

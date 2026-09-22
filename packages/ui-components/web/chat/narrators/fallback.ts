@@ -1,6 +1,6 @@
 /**
  * 兜底 narrator。注册表最后位，match 永远返回 true。
- * 复制自 `packages/agent-runtime/web/components/chat/narrators/fallback.ts`。
+ * 复制自 `packages/agent-runtime/web/components/chat/narrators/fallback.ts`（旧路径，已于 2026-09-21 由 f2741a82d 删除）。
  *
  * 用于未知工具或未在注册表中显式声明的工具。
  * "使用"作为动词，简洁且适用面广。

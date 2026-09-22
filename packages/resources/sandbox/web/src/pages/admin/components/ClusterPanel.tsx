@@ -7,7 +7,6 @@ import { ConfirmDialog } from "@fenix/ui-components/config/ConfirmDialog";
 import { Badge } from "@fenix/ui-components/ui/badge";
 import { Button } from "@fenix/ui-components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@fenix/ui-components/ui/card";
-import { Skeleton } from "@fenix/ui-components/ui/skeleton";
 import { ChevronRight, Database, Plus } from "lucide-react";
 import { useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
@@ -17,8 +16,11 @@ import { SANDBOX_NS } from "../../../../i18n/namespace";
 import { type ClusterPool, type ClusterServer, systemSandboxApi } from "../../../api/system-sandbox";
 import type { ClusterActionFeedback, ClusterServerForm } from "../sandbox-admin-types";
 import { formatHealthCheckResult, toClusterServerForm } from "../sandbox-admin-utils";
+import "./ClusterPanel.css";
 import { ClusterPoolDialog, ClusterServerDialog } from "./ClusterDialogs";
 import { ClusterServerRow } from "./ClusterServerRow";
+import { PanelErrorState, PanelLoadingState } from "./PanelStates";
+import { RowDeleteButton } from "./RowDeleteButton";
 
 interface ClusterPanelProps {
   data?: { pools: ClusterPool[]; servers: ClusterServer[] };
@@ -94,30 +96,9 @@ export function ClusterPanel({ data, loading, error, onRefresh, onAction }: Clus
       });
     }
   };
-  // 已有数据时保留面板内容，只在首屏（无 data）时占位，避免刷新闪回骨架。
-  if (loading && !data)
-    return (
-      <div aria-busy="true">
-        <Skeleton className="h-72 w-full" />
-        <span className="sr-only" role="status">
-          {t("states.loading")}
-        </span>
-      </div>
-    );
-  if (error && !data)
-    return (
-      <Card>
-        <CardContent className="space-y-3 py-8 text-center">
-          <p className="text-sm text-destructive" role="alert">
-            {t("clusterError")}
-          </p>
-          <p className="text-xs text-text-muted">{t("errorHint")}</p>
-          <Button variant="outline" onClick={onRefresh}>
-            {t("states.retry")}
-          </Button>
-        </CardContent>
-      </Card>
-    );
+  // 已有数据时保留面板内容，只在首屏（无 data）时占位，避免刷新闪回骨架（占位块见 PanelStates）。
+  if (loading && !data) return <PanelLoadingState />;
+  if (error && !data) return <PanelErrorState message={t("clusterError")} onRetry={onRefresh} />;
   return (
     <div className="space-y-6">
       <Card>
@@ -144,7 +125,7 @@ export function ClusterPanel({ data, loading, error, onRefresh, onAction }: Clus
             const servers = serversByPool.get(pool.id) ?? [];
             return (
               <details key={pool.id} open className="rounded border border-border">
-                <summary className="flex cursor-pointer list-none items-center gap-3 p-3 text-sm [&::-webkit-details-marker]:hidden">
+                <summary className="cluster-pool-summary flex cursor-pointer list-none items-center gap-3 p-3 text-sm">
                   <ChevronRight className="size-4 shrink-0 transition-transform [[open]>&]:rotate-90" />
                   <span className="font-medium">{pool.name}</span>
                   <span className="font-mono text-xs text-text-muted">{pool.id}</span>
@@ -170,14 +151,7 @@ export function ClusterPanel({ data, loading, error, onRefresh, onAction }: Clus
                     >
                       {t("edit")}
                     </Button>
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      className="border-red-200 bg-red-50 text-red-700 hover:bg-red-100"
-                      onClick={() => setDeleteTarget({ kind: "pool", id: pool.id, name: pool.name })}
-                    >
-                      {t("delete")}
-                    </Button>
+                    <RowDeleteButton onClick={() => setDeleteTarget({ kind: "pool", id: pool.id, name: pool.name })} />
                   </span>
                 </summary>
                 <div className="space-y-2 border-t border-border bg-muted/20 p-3">

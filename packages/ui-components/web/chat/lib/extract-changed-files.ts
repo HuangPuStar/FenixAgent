@@ -1,7 +1,7 @@
 /**
  * 从会话渲染条目中提取被 Agent 修改过的文件列表（纯函数）。
  *
- * 来源：逐字复制 `apps/web/src/lib/extract-changed-files.ts`（该文件只依赖 tool-semantic 与类型，
+ * 来源：逐字复制 `apps/web/src/lib/extract-changed-files.ts`（旧路径，已于 2026-09-21 由 6679b4648 删除）（该文件只依赖 tool-semantic 与类型，
  * 属纯逻辑，随 ChatInterface 一并进入包内）。
  * 纯化改动点：模块路径 `./types` 收敛为包内 `../types`；`ChangedFileType` / `ChangedFile`
  * 直接复用 `../types` 的既有定义（phase1 已从本文件复制），删除重复声明后原样 re-export，

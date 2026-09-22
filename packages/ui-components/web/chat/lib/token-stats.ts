@@ -1,8 +1,8 @@
 /**
  * 对话 token 用量估算与格式化（纯函数）。
  *
- * 来源：逐字复制 `apps/web/src/lib/token-stats.ts`。
- * 纯化改动点：唯一改动是把同目录 `./types`（宿主 `apps/web/src/lib/types.ts`）收敛为包内 `../types`；
+ * 来源：逐字复制 `apps/web/src/lib/token-stats.ts`（旧路径，已于 2026-09-21 由 6679b4648 删除）。
+ * 纯化改动点：唯一改动是把同目录 `./types`（宿主 `apps/web/src/lib/types.ts`（旧路径，已于 2026-09-21 由 6679b4648 删除））收敛为包内 `../types`；
  * 估算口径（字符数 / 4）、输入输出拆分规则与格式化阈值保持不变。
  */
 
@@ -25,7 +25,7 @@ export interface TokenStats {
  *
  * 估算方式为 字符数 / 4（粗略近似，沿用了早期 StatusHeader 的估算口径）。
  *
- * 复制自 `apps/web/src/lib/token-stats.ts`；纯化改动点：无（仅模块路径调整）。
+ * 复制自 `apps/web/src/lib/token-stats.ts`（旧路径，已于 2026-09-21 由 6679b4648 删除）；纯化改动点：无（仅模块路径调整）。
  *
  * @param entries 对话线程条目列表
  * @returns 按 input/output 拆分的 token 估算
@@ -72,7 +72,7 @@ export function computeStats(entries: ThreadEntry[]): TokenStats {
  * - 小于 1000：显示原值（如 `"999"`）
  * - 大于等于 1000：显示为 `Nk` 并保留一位小数（如 `"12.3k"`）
  *
- * 复制自 `apps/web/src/lib/token-stats.ts`；纯化改动点：无（仅模块路径调整）。
+ * 复制自 `apps/web/src/lib/token-stats.ts`（旧路径，已于 2026-09-21 由 6679b4648 删除）；纯化改动点：无（仅模块路径调整）。
  *
  * @param n token 数量
  * @returns 格式化后的字符串

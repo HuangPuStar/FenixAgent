@@ -7,13 +7,14 @@
 import { Badge } from "@fenix/ui-components/ui/badge";
 import { Button } from "@fenix/ui-components/ui/button";
 import { Card, CardContent } from "@fenix/ui-components/ui/card";
-import { Skeleton } from "@fenix/ui-components/ui/skeleton";
 import { ChevronRight, Database, Plus } from "lucide-react";
 import { useTranslation } from "react-i18next";
 
 import { SANDBOX_NS } from "../../../../i18n/namespace";
 import type { SandboxInstance, SandboxPool } from "../../../api/system-sandbox";
 import { InstanceRow } from "./InstanceRow";
+import { PanelErrorState, PanelLoadingState } from "./PanelStates";
+import { RowDeleteButton } from "./RowDeleteButton";
 
 interface PoolTreeProps {
   pools: SandboxPool[];
@@ -48,29 +49,8 @@ export function PoolTree({
 }: PoolTreeProps) {
   const { t } = useTranslation(SANDBOX_NS);
   // 已有数据时保留列表、把刷新状态交给 header 的按钮（避免整屏闪回骨架）；只有首屏加载才占位。
-  if (loading && pools.length === 0)
-    return (
-      <div aria-busy="true">
-        <Skeleton className="h-72 w-full" />
-        <span className="sr-only" role="status">
-          {t("states.loading")}
-        </span>
-      </div>
-    );
-  if (error && pools.length === 0)
-    return (
-      <Card>
-        <CardContent className="space-y-3 py-8 text-center">
-          <p className="text-sm text-destructive" role="alert">
-            {t("error")}
-          </p>
-          <p className="text-xs text-text-muted">{t("errorHint")}</p>
-          <Button variant="outline" onClick={onRetry}>
-            {t("states.retry")}
-          </Button>
-        </CardContent>
-      </Card>
-    );
+  if (loading && pools.length === 0) return <PanelLoadingState />;
+  if (error && pools.length === 0) return <PanelErrorState message={t("error")} onRetry={onRetry} />;
   return (
     <div className="space-y-3">
       <div className="flex justify-end">
@@ -108,18 +88,11 @@ export function PoolTree({
                   <Button size="sm" variant="outline" onClick={() => onPoolRebuild(pool.id)}>
                     {t("rebuildAction")}
                   </Button>
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    className="border-red-200 bg-red-50 text-red-700 hover:bg-red-100"
-                    onClick={() => onPoolDelete(pool)}
-                  >
-                    {t("delete")}
-                  </Button>
+                  <RowDeleteButton onClick={() => onPoolDelete(pool)} />
                 </span>
               </summary>
               <div className="overflow-x-auto border-t border-border px-4 py-2">
-                <div className="min-w-[850px]">
+                <div className="min-w-212.5">
                   {(instancesByPool.get(pool.id) ?? []).map((instance) => (
                     <InstanceRow
                       key={instance.id}

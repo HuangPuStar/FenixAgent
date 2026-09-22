@@ -1,6 +1,6 @@
 /**
  * Edit / StrReplace / MultiEdit 工具 narrator。
- * 复制自 `packages/agent-runtime/web/components/chat/narrators/edit.ts`。
+ * 复制自 `packages/agent-runtime/web/components/chat/narrators/edit.ts`（旧路径，已于 2026-09-21 由 f2741a82d 删除）。
  *
  * 从 content 数组中数 type === "diff" 的条目（每个对应一处编辑）。
  * complete 状态下把"N 处变更"作为 detail 显示在 subtitle 行，

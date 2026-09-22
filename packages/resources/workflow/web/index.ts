@@ -31,8 +31,13 @@
  * （`components/**`）除页面已引用的之外不逐个导出——没有包外消费方时提前铺开会把内部结构固化成公共
  * 契约（CLAUDE.md 原则 7）。
  *
- * 命名冲突说明：`api/workflow-defs` 与 `api/workflows` 都定义了 `WorkflowDefItem` / `WorkflowVersionItem` /
- * `VersionYamlResponse`，因此这里全部用显式命名导出，不用 `export *`。
+ * 为什么全部用显式命名导出而不是 `export *`：入口是**被守护的契约面**，上面那条「按消费方实际需要收敛」的
+ * 原则要求新增导出是一次显式决定；`export *` 会让包内模块的实现细节自动变成公共契约。
+ *
+ * 2026-09-22：此前 `api/workflows.ts` 与 `api/workflow-defs.ts` 曾各自定义 `WorkflowDefItem` /
+ * `WorkflowVersionItem` / `VersionYamlResponse` 三个同名接口（显式导出的一大动因）。该文件是迁移期的
+ * 重复实现、`workflowApi` 全仓零消费，已删除；入口的三个 API client 现在是
+ * `workflowDefApi` / `workflowEngineApi` / `customToolsApi`（外加 SSE 的四个连接函数）。
  */
 
 export {
@@ -68,7 +73,6 @@ export {
   resetWorkflowSSE,
   type WorkflowSSEEvent,
 } from "./api/workflow-sse";
-export { workflowApi } from "./api/workflows";
 export { WORKFLOW_NS, type WorkflowResources, workflowResources } from "./i18n";
 export {
   buildRunSummary,

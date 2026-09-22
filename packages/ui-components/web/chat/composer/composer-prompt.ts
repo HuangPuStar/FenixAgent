@@ -3,7 +3,7 @@ import type { ChatInputMessage } from "../types";
 /**
  * 发送边界的能力注入：把本轮选中的 MCP 编码为 Agent 可见的上下文。
  *
- * 来源：复制自 `packages/agent-runtime/web/components/chat/composer-prompt.ts`。
+ * 来源：复制自 `packages/agent-runtime/web/components/chat/composer-prompt.ts`（旧路径，已于 2026-09-21 由 f2741a82d 删除）。
  * 纯化改动点：`@/src/lib/types` → 包内 `../types`；其余逐字保留。
  */
 

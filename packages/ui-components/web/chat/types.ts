@@ -6,8 +6,8 @@
  * 宿主可零适配直接传值。
  *
  * 来源：
- * - `apps/web/src/lib/types.ts`（统一 Chat 数据模型）、`apps/web/src/lib/tool-semantic.ts`、
- *   `apps/web/src/lib/extract-changed-files.ts`
+ * - `apps/web/src/lib/types.ts`（旧路径，已于 2026-09-21 由 6679b4648 删除）（统一 Chat 数据模型）、`apps/web/src/lib/tool-semantic.ts`（旧路径，已于 2026-09-21 由 6679b4648 删除）、
+ *   `apps/web/src/lib/extract-changed-files.ts`（旧路径，已于 2026-09-21 由 6679b4648 删除）
  * - `@fenix/chat-channel` 公开类型（`src/types.ts` / `src/schema.ts` / `src/public-error.ts`）
  * - `packages/acp-link/src/types.ts` 的协议块类型（经 chat-channel 转导后为 Chat UI 消费面）
  *

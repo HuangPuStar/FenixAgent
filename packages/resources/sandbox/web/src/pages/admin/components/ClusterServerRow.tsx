@@ -12,6 +12,7 @@ import { useTranslation } from "react-i18next";
 import { SANDBOX_NS } from "../../../../i18n/namespace";
 import type { ClusterServer } from "../../../api/system-sandbox";
 import { RemoteSandboxPanel } from "./RemoteSandboxPanel";
+import { RowDeleteButton } from "./RowDeleteButton";
 
 interface ClusterServerRowProps {
   server: ClusterServer;
@@ -64,14 +65,7 @@ export function ClusterServerRow({
               {t("tunnelConfig")}
             </Button>
           ) : null}
-          <Button
-            size="sm"
-            variant="outline"
-            className="border-red-200 bg-red-50 text-red-700 hover:bg-red-100"
-            onClick={onDelete}
-          >
-            {t("delete")}
-          </Button>
+          <RowDeleteButton onClick={onDelete} />
         </span>
       </div>
       <RemoteSandboxPanel server={server} />

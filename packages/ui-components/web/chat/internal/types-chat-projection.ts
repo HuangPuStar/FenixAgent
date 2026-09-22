@@ -59,7 +59,7 @@ export interface PublicError {
   message: string;
 }
 
-/** 前端展示直接使用公开错误 DTO，不重新分类。复制自 `apps/web/src/lib/types.ts`。 */
+/** 前端展示直接使用公开错误 DTO，不重新分类。复制自 `apps/web/src/lib/types.ts`（旧路径，已于 2026-09-21 由 6679b4648 删除）。 */
 export type PublicErrorInfo = PublicError;
 
 // =============================================================================

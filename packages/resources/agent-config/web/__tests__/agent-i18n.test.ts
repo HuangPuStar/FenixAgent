@@ -18,8 +18,18 @@ import { readdirSync, readFileSync, statSync } from "node:fs";
 import { join, relative, resolve } from "node:path";
 
 const WEB_ROOT = resolve(import.meta.dir, "..");
-/** 迁入基线：宿主 agents.json 的完整键数（271）。只许增不许减——减少意味着搬走了本包消费的键。 */
-const MIGRATED_KEY_BASELINE = 271;
+/**
+ * 迁入基线：宿主 agents.json 迁入本包时的完整键数（271）。只许增不许减——减少意味着搬走了本包消费的键。
+ *
+ * 下调到 228（2026-09-22 孤儿键清理）：本次删掉 46 个**全仓零引用**的键（`loadErrorShort` /
+ * `columns.*` 5 个 / `actions.setDefault` / `batchDelete*` 4 个 / `dialog.tabs.*` 3 个 /
+ * `templates.title` / `editor.*` 10 个 / `knowledge|skills|mcps|sites.*` 12 个 /
+ * `resource.sharedSourceTitle` / `save.*` / `setDefault.*` / `delete.*` 5 个 / `categories.all`）。
+ * 它们不是「本包消费的键」而是重构后失去引用的死键，因此这里下调常量并保留原判据
+ * （仍为下界断言，继续拦住静默缩水）；`editor.sections.*`、`editor.sectionCaptions.*`、
+ * `editor.siteVisibility.*` 等动态模板键族未被触碰。
+ */
+const MIGRATED_KEY_BASELINE = 228;
 
 const EN = JSON.parse(readFileSync(join(WEB_ROOT, "i18n/locales/en/agents.json"), "utf8")) as Record<string, unknown>;
 const ZH = JSON.parse(readFileSync(join(WEB_ROOT, "i18n/locales/zh/agents.json"), "utf8")) as Record<string, unknown>;

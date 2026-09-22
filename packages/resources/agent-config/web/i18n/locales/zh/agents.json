@@ -5,42 +5,23 @@
   "searchPlaceholder": "搜索智能体...",
   "emptyMessage": "暂无智能体，点击「新建智能体模板」添加",
   "loadError": "加载Agent列表失败: {{message}}",
-  "loadErrorShort": "加载Agent列表失败",
   "unknownError": "未知错误",
   "columns": {
-    "name": "名称",
-    "type": "类型",
-    "model": "模型",
-    "mode": "模式",
-    "knowledgeBase": "知识库",
-    "default": "默认"
+    "name": "名称"
   },
   "actions": {
-    "setDefault": "设为默认",
     "edit": "编辑",
     "view": "查看",
     "save": "保存",
     "delete": "删除"
   },
   "batchDelete": "批量删除",
-  "batchDeleteCount": "已删除 {{count}} 个Agent",
-  "batchDeleteConfirmTitle": "批量删除确认",
-  "batchDeleteConfirmDesc": "确定要删除选中的 {{count}} 个自定义Agent吗？",
-  "batchDeleteError": "批量删除失败: {{message}}",
   "dialog": {
     "editTitle": "编辑Agent",
     "detailTitle": "查看Agent详情",
     "cancel": "取消",
     "createTitle": "新建Agent",
-    "createConfirm": "创建",
-    "tabs": {
-      "basic": "基础",
-      "knowledge": "知识库",
-      "advanced": "高级配置"
-    }
-  },
-  "templates": {
-    "title": "快速模板"
+    "createConfirm": "创建"
   },
   "editor": {
     "sections": {
@@ -58,8 +39,7 @@
       "capabilities": "绑定 Skills、MCP Servers 与 Agent Sites。",
       "knowledge": "配置知识库检索策略和跨会话记忆。",
       "runtime": "选择默认调度策略、Sandbox Pool 或在线 Machine。",
-      "sharing": "管理智能体的读取范围；公开后完整配置可被授权方读取。",
-      "advanced": "配置传递给运行时的扩展 JSON。"
+      "sharing": "管理智能体的读取范围；公开后完整配置可被授权方读取。"
     },
     "configurationMap": "配置地图",
     "configurationOverview": "配置概览",
@@ -109,11 +89,8 @@
     "templateSkillCount": "包含 {{count}} 个 Skill",
     "selectedCount": "已选 {{count}} 项",
     "resultCount": "显示 {{count}} / 共 {{total}} 项",
-    "pageCount": "第 {{page}} / {{count}} 页",
     "previousPage": "上一页",
     "nextPage": "下一批（最多 {{count}} 项）",
-    "moreSelected": "另有 {{count}} 项已选，可在搜索中移除",
-    "selectResources": "选择资源",
     "changeSelection": "搜索或更改选择",
     "searchPlaceholder": "搜索{{resource}}",
     "noMatchingResources": "没有匹配的资源",
@@ -154,14 +131,9 @@
     "currentTeam": "当前团队",
     "organizationWide": "全组织",
     "currentTeamOnly": "仅当前团队",
-    "formatJson": "格式化",
-    "runtimeJson": "运行时 JSON",
     "decreaseMaxResults": "减少最大返回条数",
     "increaseMaxResults": "增加最大返回条数",
-    "jsonValid": "JSON 格式有效",
     "notConfigured": "未配置",
-    "enabled": "已启用",
-    "disabled": "未启用",
     "agentId": "内部标识",
     "agentIdHint": "用于 API 与日志定位",
     "nameImmutable": "创建后不可修改",
@@ -185,8 +157,7 @@
     "continueEditing": "继续编辑",
     "discard": "放弃修改",
     "searchFirstDescription": "回答前优先查询已绑定知识库。",
-    "sharingNotManageable": "当前共享智能体的公开范围不可由此组织管理。",
-    "extraSecurityWarning": "请勿在扩展配置中填写密钥、Token、密码或连接串。"
+    "sharingNotManageable": "当前共享智能体的公开范围不可由此组织管理。"
   },
   "form": {
     "name": "名称",
@@ -237,31 +208,20 @@
   },
   "knowledge": {
     "bindTitle": "绑定知识库",
-    "selectedCount": "已选择 {{count}} 个知识库",
-    "noOptions": "暂无可选知识库",
     "searchFirst": "优先检索知识库",
     "defaultNamespaces": "默认命名空间",
     "defaultNamespacesPlaceholder": "每行一个命名空间",
     "defaultNamespacesDescription": "检索时默认使用的命名空间；留空表示不限制。",
-    "maxResults": "最大返回条数",
-    "maxResultsValidationError": "知识库检索条数须在 1-20 之间",
-    "loadError": "加载Agent详情失败: {{message}}"
+    "maxResults": "最大返回条数"
   },
   "skills": {
-    "tabTitle": "绑定技能",
-    "selectedCount": "已选择 {{count}} 个技能",
-    "noOptions": "暂无可用技能"
+    "tabTitle": "绑定技能"
   },
   "mcps": {
-    "tabTitle": "绑定 MCP",
-    "selectedCount": "已选择 {{count}} 个 MCP",
-    "noOptions": "暂无可用 MCP"
+    "tabTitle": "绑定 MCP"
   },
   "sites": {
-    "tabTitle": "绑定 Sites",
-    "selectedCount": "已选择 {{count}} 个 Site",
-    "noOptions": "暂无可用 Site — 请先在 Sites 页面创建",
-    "toggleList": "展开 / 收起 Site 列表"
+    "tabTitle": "绑定 Sites"
   },
   "memory": {
     "enableTitle": "智能体记忆",
@@ -270,28 +230,14 @@
   "resource": {
     "publicTitle": "公开读取",
     "publicDescription": "允许其他团队读取此智能体",
-    "sharedSourceTitle": "共享智能体",
     "readOnlyAgent": "该智能体来自 {{source}} 的共享，当前团队无法编辑。"
   },
   "save": {
     "successCreate": "Agent已创建",
     "successUpdate": "Agent已更新",
-    "errorCreate": "创建失败: {{message}}",
-    "errorUpdate": "更新失败: {{message}}",
     "errorGeneric": "保存失败: {{message}}"
   },
-  "setDefault": {
-    "success": "已将 \"{{name}}\" 设为默认Agent",
-    "error": "设置失败: {{message}}"
-  },
-  "delete": {
-    "confirmTitle": "确认删除",
-    "confirmDesc": "确定要删除Agent \"{{name}}\" 吗？",
-    "success": "Agent已删除",
-    "error": "删除失败: {{message}}"
-  },
   "categories": {
-    "all": "全部",
     "general": "通用助理",
     "data": "数据分析",
     "search": "搜索检索",

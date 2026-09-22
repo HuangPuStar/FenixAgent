@@ -1,7 +1,7 @@
 /**
  * ChatHeader 弹窗会话列表的单行（内联重命名态 + 常规行 + 悬浮操作按钮）。
  *
- * 来源：从 `packages/agent-runtime/web/components/chat/ChatHeader.tsx` 的 popover 列表分支
+ * 来源：从 `packages/agent-runtime/web/components/chat/ChatHeader.tsx`（旧路径，已于 2026-09-21 由 f2741a82d 删除） 的 popover 列表分支
  * （`group.sessions.map(...)` 内部 JSX）原样抽出，用于把 ChatHeader 控制在 500 行红线内。
  * 纯化改动点：`cn` / UI 组件 / `stripHtmlTags` 改为包内导入；i18n 收敛到 `UI_COMPONENTS_NS`
  * （键前缀 `chat.components.`）；JSX 结构与类名逐字保留（含源有意的硬编码 `aria-label="取消"`）。
@@ -64,7 +64,7 @@ export function ChatHeaderSessionRow({
       <div className="flex items-center gap-1 px-4 py-1.5">
         <MessageSquare className="h-3.5 w-3.5 flex-shrink-0 opacity-50 text-text-muted" />
         <input
-          className="flex-1 text-[13px] font-display bg-transparent border-b border-brand text-text-primary outline-none px-1 py-0.5"
+          className="flex-1 text-xs font-display bg-transparent border-b border-brand text-text-primary outline-none px-1 py-0.5"
           value={editTitle}
           onChange={(e) => onEditTitleChange(e.target.value)}
           onKeyDown={(e) => {
@@ -99,7 +99,7 @@ export function ChatHeaderSessionRow({
         title={session.title || session.sessionId}
       >
         <MessageSquare className="h-3.5 w-3.5 flex-shrink-0 opacity-50" />
-        <span className="text-[13px] font-display truncate leading-snug flex-1 min-w-0">{displayTitle}</span>
+        <span className="text-xs font-display truncate leading-snug flex-1 min-w-0">{displayTitle}</span>
         {isActive && <span className="h-1.5 w-1.5 rounded-full bg-brand flex-shrink-0" aria-hidden />}
       </Button>
       {/* 悬停时显示操作按钮 */}

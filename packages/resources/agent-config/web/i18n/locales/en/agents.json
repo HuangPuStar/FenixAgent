@@ -5,42 +5,23 @@
   "searchPlaceholder": "Search agents...",
   "emptyMessage": "No agents yet. Click \"New Agent Template\" to add one",
   "loadError": "Failed to load agent list: {{message}}",
-  "loadErrorShort": "Failed to load agent list",
   "unknownError": "Unknown error",
   "columns": {
-    "name": "Name",
-    "type": "Type",
-    "model": "Model",
-    "mode": "Mode",
-    "knowledgeBase": "Knowledge Base",
-    "default": "Default"
+    "name": "Name"
   },
   "actions": {
-    "setDefault": "Set Default",
     "edit": "Edit",
     "view": "View",
     "save": "Save",
     "delete": "Delete"
   },
   "batchDelete": "Batch Delete",
-  "batchDeleteCount": "{{count}} agents deleted",
-  "batchDeleteConfirmTitle": "Confirm Batch Delete",
-  "batchDeleteConfirmDesc": "Are you sure you want to delete {{count}} selected custom agents?",
-  "batchDeleteError": "Batch delete failed: {{message}}",
   "dialog": {
     "editTitle": "Edit Agent",
     "detailTitle": "View Agent Details",
     "cancel": "Cancel",
     "createTitle": "New Agent",
-    "createConfirm": "Create",
-    "tabs": {
-      "basic": "Basic",
-      "knowledge": "Knowledge Base",
-      "advanced": "Advanced"
-    }
-  },
-  "templates": {
-    "title": "Quick Templates"
+    "createConfirm": "Create"
   },
   "editor": {
     "sections": {
@@ -58,8 +39,7 @@
       "capabilities": "Bind Skills, MCP Servers, and Agent Sites.",
       "knowledge": "Configure knowledge retrieval and cross-session memory.",
       "runtime": "Choose default scheduling, a Sandbox Pool, or an online Machine.",
-      "sharing": "Manage read access. Authorized readers can access the full configuration.",
-      "advanced": "Configure extra JSON passed to the runtime."
+      "sharing": "Manage read access. Authorized readers can access the full configuration."
     },
     "configurationMap": "Configuration map",
     "configurationOverview": "Configuration overview",
@@ -109,11 +89,8 @@
     "templateSkillCount": "Includes {{count}} Skill(s)",
     "selectedCount": "{{count}} selected",
     "resultCount": "Showing {{count}} of {{total}}",
-    "pageCount": "Page {{page}} of {{count}}",
     "previousPage": "Previous",
     "nextPage": "Next batch (up to {{count}})",
-    "moreSelected": "{{count}} more selected; search to remove them",
-    "selectResources": "Select resources",
     "changeSelection": "Search or change selection",
     "searchPlaceholder": "Search {{resource}}",
     "noMatchingResources": "No matching resources",
@@ -154,14 +131,9 @@
     "currentTeam": "Current team",
     "organizationWide": "Entire organization",
     "currentTeamOnly": "Current team only",
-    "formatJson": "Format",
-    "runtimeJson": "Runtime JSON",
     "decreaseMaxResults": "Decrease maximum results",
     "increaseMaxResults": "Increase maximum results",
-    "jsonValid": "Valid JSON",
     "notConfigured": "Not configured",
-    "enabled": "Enabled",
-    "disabled": "Disabled",
     "agentId": "Internal identifier",
     "agentIdHint": "Used for APIs and log tracing",
     "nameImmutable": "Cannot be changed after creation",
@@ -185,8 +157,7 @@
     "continueEditing": "Continue editing",
     "discard": "Discard changes",
     "searchFirstDescription": "Search bound knowledge bases before answering.",
-    "sharingNotManageable": "This organization cannot manage the sharing scope of this agent.",
-    "extraSecurityWarning": "Do not put secrets, tokens, passwords, or connection strings in extra configuration."
+    "sharingNotManageable": "This organization cannot manage the sharing scope of this agent."
   },
   "form": {
     "name": "Name",
@@ -237,31 +208,20 @@
   },
   "knowledge": {
     "bindTitle": "Bind Knowledge Bases",
-    "selectedCount": "{{count}} knowledge base(s) selected",
-    "noOptions": "No knowledge bases available",
     "searchFirst": "Search knowledge base first",
     "defaultNamespaces": "Default namespaces",
     "defaultNamespacesPlaceholder": "One namespace per line",
     "defaultNamespacesDescription": "Namespaces used by default during retrieval; leave empty for no restriction.",
-    "maxResults": "Max Results",
-    "maxResultsValidationError": "Max results must be between 1-20",
-    "loadError": "Failed to load agent details: {{message}}"
+    "maxResults": "Max Results"
   },
   "skills": {
-    "tabTitle": "Bind Skills",
-    "selectedCount": "{{count}} skill(s) selected",
-    "noOptions": "No skills available"
+    "tabTitle": "Bind Skills"
   },
   "mcps": {
-    "tabTitle": "Bind MCP Servers",
-    "selectedCount": "{{count}} MCP server(s) selected",
-    "noOptions": "No MCP servers available"
+    "tabTitle": "Bind MCP Servers"
   },
   "sites": {
-    "tabTitle": "Bind Sites",
-    "selectedCount": "{{count}} site(s) selected",
-    "noOptions": "No sites available — create one on the Sites page first",
-    "toggleList": "Toggle site list"
+    "tabTitle": "Bind Sites"
   },
   "memory": {
     "enableTitle": "Agent Memory",
@@ -270,28 +230,14 @@
   "resource": {
     "publicTitle": "Public read access",
     "publicDescription": "Allow other teams to read this agent",
-    "sharedSourceTitle": "Shared agent",
     "readOnlyAgent": "This agent is shared from {{source}} and cannot be edited here."
   },
   "save": {
     "successCreate": "Agent created",
     "successUpdate": "Agent updated",
-    "errorCreate": "Failed to create: {{message}}",
-    "errorUpdate": "Failed to update: {{message}}",
     "errorGeneric": "Save failed: {{message}}"
   },
-  "setDefault": {
-    "success": "\"{{name}}\" set as default agent",
-    "error": "Failed to set default: {{message}}"
-  },
-  "delete": {
-    "confirmTitle": "Confirm Delete",
-    "confirmDesc": "Are you sure you want to delete agent \"{{name}}\"?",
-    "success": "Agent deleted",
-    "error": "Delete failed: {{message}}"
-  },
   "categories": {
-    "all": "All",
     "general": "General Assistant",
     "data": "Data Analysis",
     "search": "Search & Retrieval",

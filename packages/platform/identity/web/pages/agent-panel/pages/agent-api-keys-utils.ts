@@ -19,11 +19,3 @@ export function filterApiKeys(keys: ApiKeyInfo[], query: string): ApiKeyInfo[] {
     (key) => key.name.toLocaleLowerCase().includes(normalized) || key.prefix.toLocaleLowerCase().includes(normalized),
   );
 }
-
-/** Format flexible backend dates without assuming whether the response uses ISO or timestamps. */
-export function formatApiKeyDate(value: number | string | null, locale: string, emptyLabel: string): string {
-  if (value === null || value === "") return emptyLabel;
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return emptyLabel;
-  return new Intl.DateTimeFormat(locale, { year: "numeric", month: "short", day: "numeric" }).format(date);
-}

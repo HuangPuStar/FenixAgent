@@ -1,6 +1,7 @@
 import { Button } from "@fenix/ui-components/ui/button";
 import { ChevronLeft, ChevronRight } from "lucide-react";
-import { type ReactNode, useEffect, useRef, useState } from "react";
+import { type ReactNode, useRef } from "react";
+import { useElementHeight } from "../element-height";
 
 interface MemoryVisualizationShellProps {
   panelOpen: boolean;
@@ -19,20 +20,7 @@ export function MemoryVisualizationShell({
   children,
 }: MemoryVisualizationShellProps) {
   const graphicRef = useRef<HTMLDivElement>(null);
-  const [height, setHeight] = useState(1);
-
-  useEffect(() => {
-    const element = graphicRef.current;
-    if (!element) return;
-    const updateHeight = () => {
-      const nextHeight = Math.floor(element.getBoundingClientRect().height);
-      if (nextHeight > 0) setHeight(nextHeight);
-    };
-    updateHeight();
-    const observer = new ResizeObserver(updateHeight);
-    observer.observe(element);
-    return () => observer.disconnect();
-  }, []);
+  const height = useElementHeight(graphicRef);
 
   return (
     <div className="flex h-full min-h-0 min-w-0 overflow-hidden rounded-lg border border-border bg-background">

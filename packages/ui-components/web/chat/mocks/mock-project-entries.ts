@@ -1,8 +1,8 @@
 /**
  * Demo 专用投影：`StructuredMessage[]` → `ThreadEntry[]`（纯函数，无副作用）。
  *
- * 来源：`apps/web/src/lib/structured-to-thread.ts` 的 `structuredToThreadEntries` 语义子集，
- * 以及 `apps/web/src/lib/todo.ts` 的 `getTodosFromRawInput` / `getTodoChanges`。
+ * 来源：`apps/web/src/lib/structured-to-thread.ts`（旧路径，已于 2026-09-21 由 6679b4648 删除） 的 `structuredToThreadEntries` 语义子集，
+ * 以及 `apps/web/src/lib/todo.ts`（旧路径，已于 2026-09-21 由 6679b4648 删除） 的 `getTodosFromRawInput` / `getTodoChanges`。
  * 这三段逻辑都属宿主投影层：`ChatInterfaceProps.projectEntries` 要求宿主注入，包内刻意不复制
  * （源实现还依赖 YJS doc 助手与 i18n 单例）。mock 只服务 demo，需要一份与真实宿主输出同形状的
  * 投影，才能让 mock 会话在真实组件上完整渲染，故在此单独实现——**不属于包内公开能力**。
@@ -47,13 +47,13 @@ const TOOL_STATUS_MAP: Record<ToolCallMessage["status"], ToolCallStatus> = {
   rejected: "rejected",
 };
 
-/** TodoWrite 协议状态校验；未知取值回退 `pending`。复制自 `apps/web/src/lib/todo.ts` 的 `validateTodoStatus`。 */
+/** TodoWrite 协议状态校验；未知取值回退 `pending`。复制自 `apps/web/src/lib/todo.ts`（旧路径，已于 2026-09-21 由 6679b4648 删除） 的 `validateTodoStatus`。 */
 function validateTodoStatus(status: unknown): TodoStatus {
   if (status === "pending" || status === "in_progress" || status === "completed") return status;
   return "pending";
 }
 
-/** 从 TodoWrite 原始入参解析待办列表；不存在待办字段时返回 null。复制自 `apps/web/src/lib/todo.ts`。 */
+/** 从 TodoWrite 原始入参解析待办列表；不存在待办字段时返回 null。复制自 `apps/web/src/lib/todo.ts`（旧路径，已于 2026-09-21 由 6679b4648 删除）。 */
 function readTodosFromRawInput(rawInput?: Record<string, unknown>): TodoItem[] | null {
   const rawTodos = rawInput?.todos ?? rawInput?.tasks;
   if (!Array.isArray(rawTodos)) return null;
@@ -66,7 +66,7 @@ function readTodosFromRawInput(rawInput?: Record<string, unknown>): TodoItem[] |
     }));
 }
 
-/** 单条待办的变更类型（复制自 `apps/web/src/lib/todo.ts` 的 `getTodoChangeKind`）。 */
+/** 单条待办的变更类型（复制自 `apps/web/src/lib/todo.ts`（旧路径，已于 2026-09-21 由 6679b4648 删除） 的 `getTodoChangeKind`）。 */
 function todoChangeKind(previous: TodoItem, current: TodoItem): TodoChange["kind"] | null {
   if (previous.status !== current.status) return current.status;
   if (previous.activeForm !== current.activeForm) return "updated";
@@ -74,7 +74,7 @@ function todoChangeKind(previous: TodoItem, current: TodoItem): TodoChange["kind
 }
 
 /**
- * 对比两次 TodoWrite 快照生成增量（按 content 对齐，复制自 `apps/web/src/lib/todo.ts` 的 `getTodoChanges`）。
+ * 对比两次 TodoWrite 快照生成增量（按 content 对齐，复制自 `apps/web/src/lib/todo.ts`（旧路径，已于 2026-09-21 由 6679b4648 删除） 的 `getTodoChanges`）。
  *
  * 仅用于历史工具卡片展示（`TodoChanges` 组件）。
  */
@@ -166,7 +166,7 @@ function projectToolCall(
 /**
  * 把 mock 结构化消息投影为渲染条目。
  *
- * 来源：`apps/web/src/lib/structured-to-thread.ts` 的 `structuredToThreadEntries`（语义子集）。
+ * 来源：`apps/web/src/lib/structured-to-thread.ts`（旧路径，已于 2026-09-21 由 6679b4648 删除） 的 `structuredToThreadEntries`（语义子集）。
  * 纯化改动点：`kind` 一次性解析到全部 `ToolCardKind`，内容块用显式字段映射替代双层断言。
  *
  * @param messages 会话时间线（有序）
