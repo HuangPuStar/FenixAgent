@@ -4,9 +4,11 @@
   "type": "module",
   "exports": {
     ".": "./src/index.ts",
+    "./db": "./db/schema.ts",
     "./module": "./fenix.module.ts",
     "./server": "./src/server.ts",
     "./server/schema": "./src/server/schemas/knowledge.schema.ts",
+    "./server/summaries": "./src/server/knowledge-summaries.ts",
     "./server/testing": "./src/server/testing.ts",
     "./web": "./web/index.ts",
     "./web/contribution": "./web/contribution.ts",
@@ -14,6 +16,8 @@
   },
   "dependencies": {
     "@antv/g6": "^5.0.49",
+    "@fenix/agent-config": "workspace:*",
+    "@fenix/identity": "workspace:*",
     "@fenix/platform-sdk": "workspace:*",
     "@fenix/ui-components": "workspace:*",
     "@fenix/web-runtime": "workspace:*",

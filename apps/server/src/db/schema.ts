@@ -15,21 +15,26 @@ import { sql } from "drizzle-orm";
  * 读运行环境与实例仍必须走 `@fenix/agent-runtime` 的服务端入口，不得依赖本文件。
  * 组装期例外的口径与边界见 `docs/design/ce-ee-refactoring/ce-ee-engineering-standards.md` §6.1。
  *
- * 本文件里 `agentConfig` 的四个使用点都是宿主自有表的外键：`agent_knowledge_binding`、
- * `task_execution_log`、`agent_memory_config`、`prod_view`（各引用一次 `agent_config.id`），它们随
- * B9–B12 按拓扑序迁出宿主；`environment.agent_config_id` 那一处在 B8 随该表迁入
- * `@fenix/agent-runtime/db`。`environment` 这个 import 只剩一个使用点：`im_channel_route.environment_id`
- * （B13 迁 channel 后本文件连这一行也不再需要）。
+ * 本文件里 `agentConfig` 的三个使用点都是宿主自有表的外键：`task_execution_log`、
+ * `agent_memory_config`、`prod_view`（各引用一次 `agent_config.id`），它们随 B10–B12 按拓扑序迁出宿主；
+ * 另两处随表迁走——`environment.agent_config_id` 在 B8 随该表迁入 `@fenix/agent-runtime/db`，
+ * `agent_knowledge_binding.agent_config_id` 在 B9 随三张知识库表迁入 `@fenix/resource-knowledge/db`。
+ * `environment` 这个 import 只剩一个使用点：`im_channel_route.environment_id`（B13 迁 channel 后本文件
+ * 连这一行也不再需要）。
  *
  * **B7 之后本文件不再导入的包**：`@fenix/model-management/db`、`@fenix/resource-machine/db`、
  * `@fenix/resource-mcp/db`、`@fenix/resource-skill/db`——它们此前只被 `agent_config.model_id` /
  * `agent_config.machine_id` / `agent_config_mcp.mcp_server_id` / `agent_config_skill.skill_id` 四处外键
  * 取用，这四张表随 B7 迁入 `@fenix/agent-config/db` 后，本文件连 `import` 一行也不再需要（宿主其它
  * 位置仍是这些包的合法消费方，例如 `services/data-migrates/` 直接按归属取它们的 `db/` 出口）。
+ * **B9 之后同理**：`knowledge_base` / `knowledge_resource` / `agent_knowledge_binding` 三张表迁入
+ * `@fenix/resource-knowledge/db`，宿主对它们本就只有定义、没有任何引用方（`apps/server/src/__tests__/
+ * db-schema.test.ts` 用自写的 SQLite DDL，不取 Drizzle 表对象），因此本文件连一个 import 都不留。
  *
- * 任务 1.7 B6 的 Workflow 九张领域表与 B8 的 `agent_instance` 从未出现在这份清单里：B6 九张表的表间外键在
- * `@fenix/resource-workflow/db` 内闭合，宿主任何表都不引用它们；`agent_instance` 的外键目标是
- * `environment` 与 `user`，两者都不是宿主表。
+ * 任务 1.7 B6 的 Workflow 九张领域表、B8 的 `agent_instance` 与 B9 的知识库三张表从未出现在这份清单里：
+ * B6 九张表的表间外键在 `@fenix/resource-workflow/db` 内闭合；`agent_instance` 的外键目标是 `environment`
+ * 与 `user`，知识库三张表的外键目标是 `agent_config` / `user` 与自身——都不是宿主表，宿主任何表都不引用
+ * 它们。
  */
 export {
   account,
@@ -98,82 +103,6 @@ export const shareEventSnapshot = pgTable("share_event_snapshot", {
   events: jsonb("events").notNull(),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });
-
-export const knowledgeBase = pgTable(
-  "knowledge_base",
-  {
-    id: uuid("id").primaryKey().defaultRandom(),
-    userId: text("user_id")
-      .notNull()
-      .references(() => user.id, { onDelete: "cascade" }),
-    organizationId: text("organization_id").notNull(),
-    name: varchar("name").notNull(),
-    slug: varchar("slug").notNull(),
-    description: text("description"),
-    provider: varchar("provider").notNull().default("ragflow"),
-    remoteId: varchar("remote_id"),
-    remoteAccountId: varchar("remote_account_id"),
-    remoteUserId: varchar("remote_user_id"),
-    status: varchar("status", { length: 50 }).notNull().default("empty"),
-    lastError: text("last_error"),
-    metadata: jsonb("metadata"),
-    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
-    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
-  },
-  (table) => ({
-    orgSlugIdx: uniqueIndex("idx_knowledge_base_org_slug").on(table.organizationId, table.slug),
-    orgStatusIdx: index("idx_knowledge_base_org_status").on(table.organizationId, table.status),
-  }),
-);
-
-export const knowledgeResource = pgTable(
-  "knowledge_resource",
-  {
-    id: uuid("id").primaryKey().defaultRandom(),
-    knowledgeBaseId: uuid("knowledge_base_id")
-      .notNull()
-      .references(() => knowledgeBase.id, { onDelete: "cascade" }),
-    sourceType: varchar("source_type").notNull(),
-    sourceName: varchar("source_name").notNull(),
-    sourcePath: text("source_path"),
-    remoteId: varchar("remote_id"),
-    status: varchar("status").notNull().default("pending"),
-    lastError: text("last_error"),
-    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
-    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
-  },
-  (table) => ({
-    kbIdx: index("idx_knowledge_resource_kb").on(table.knowledgeBaseId),
-    statusIdx: index("idx_knowledge_resource_status").on(table.status),
-  }),
-);
-
-export const agentKnowledgeBinding = pgTable(
-  "agent_knowledge_binding",
-  {
-    id: uuid("id").primaryKey().defaultRandom(),
-    agentConfigId: uuid("agent_config_id")
-      .notNull()
-      .references(() => agentConfig.id, { onDelete: "cascade" }),
-    knowledgeBaseId: uuid("knowledge_base_id")
-      .notNull()
-      .references(() => knowledgeBase.id, { onDelete: "cascade" }),
-    // 仅保存知识库策略等配置；knowledgeBaseId 仍由绑定关系本身表达，避免重复存 ID 列表。
-    config: jsonb("config"),
-    priority: integer("priority").notNull().default(0),
-    enabled: boolean("enabled").notNull().default(true),
-    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
-    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
-  },
-  (table) => ({
-    agentConfigIdx: index("idx_agent_knowledge_binding_agent_config").on(table.agentConfigId),
-    kbIdx: index("idx_agent_knowledge_binding_kb").on(table.knowledgeBaseId),
-    agentConfigKbIdx: uniqueIndex("idx_agent_knowledge_binding_agent_config_kb").on(
-      table.agentConfigId,
-      table.knowledgeBaseId,
-    ),
-  }),
-);
 
 // 任务执行日志表（v2 调度器使用；v1 调度器已下线）
 export const taskExecutionLog = pgTable("task_execution_log", {

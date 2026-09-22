@@ -227,17 +227,23 @@ describe("knowledge web 入口浏览器可达面", () => {
   });
 
   // 负例（人为注入，不建 fixture 文件）：`<pkg>/server` 是本包真实存在的 exports 出口，其后是
-  // elysia / drizzle / 宿主 @server/* / node 内建。两条断言缺一不可——只断言「有违规」会被
-  // 「递归失效、说明符本身被当成外部依赖」满足；只断言「进到了服务端实现」则漏掉拦截能力。
+  // elysia / drizzle / node 内建。两条断言缺一不可——只断言「有违规」会被「递归失效、说明符本身被当成
+  // 外部依赖」满足；只断言「进到了服务端实现」则漏掉拦截能力。
+  //
+  // 原先还有第三条「服务端必然出现 `@server/*` 说明符」：§1.7 B9 把三张知识库表的定义迁入本包 `db/`
+  // 之后，本包 `src/**` 对宿主已零引用，该断言不再可能成立。它当初证明的是**递归深度够深**（挖到宿主
+  // 说明符说明确实走进了服务端实现），这个职责改由「递归到底层仓储文件」+「node 内建确实发自
+  // `src/server/**` 内部」两条承担——否则「递归只走了一层」与「服务端确实干净」就分不开。
   test("负例：注入真实的 ./server 出口时递归进入服务端实现并触发拦截", () => {
     const poisoned = walkValueGraph(WEB_ENTRY, [`${PKG_NAME}/server`]);
     expect(poisoned.files).toContain(join(PKG_ROOT, "src", "server.ts"));
     const serverDir = `${join(PKG_ROOT, "src", "server")}${sep}`;
     expect(poisoned.files.filter((file) => file.startsWith(serverDir)).length).toBeGreaterThan(0);
-    const nodeBuiltins = poisoned.references.filter((ref) => ref.specifier.startsWith("node:"));
-    const hostServer = poisoned.references.filter((ref) => ref.specifier.startsWith("@server/"));
+    expect(poisoned.files).toContain(join(PKG_ROOT, "src", "server", "repositories", "knowledge-base.ts"));
+    const nodeBuiltins = poisoned.references.filter(
+      (ref) => ref.specifier.startsWith("node:") && ref.from.startsWith(serverDir),
+    );
     expect(offendersOf(nodeBuiltins).length).toBeGreaterThan(0);
-    expect(offendersOf(hostServer).length).toBeGreaterThan(0);
   });
 
   // ./web 出口的契约：package.json 必须指向 web/index.ts，否则宿主解析到别的文件时守卫失去意义。

@@ -1,7 +1,7 @@
 import { agentSiteApp } from "@fenix/agent-config/db";
+import { findKnowledgeBaseSummariesByIds } from "@fenix/resource-knowledge/server/summaries";
 import { findMcpServerLabelsByIds } from "@fenix/resource-mcp/server/config";
 import { findSkillLabelsByIds } from "@fenix/resource-skill/server/config";
-import { knowledgeBase } from "@server/db/schema";
 import { and, eq, inArray } from "drizzle-orm";
 import { getAgentConfigDatabase } from "../db";
 import { getMachineLookupPort } from "../ports/machine-lookup";
@@ -23,11 +23,14 @@ import type { AgentNode } from "./config/types";
  *   {@link getModelLookupPort}）——这两个包的 `dependsOn` 都已含本包，反向声明会闭合装配环。
  * - 走对方已声明的公开入口：MCP 标签经 `@fenix/resource-mcp/server/config` 的
  *   {@link findMcpServerLabelsByIds}（本包 `dependsOn` 已含 mcp），Skill 标签经
- *   `@fenix/resource-skill/server/config` 的 {@link findSkillLabelsByIds}（同因，B5）——两条边方向都合法。
- * `agent_site_app` 随 B7 与聚合根一起归本包（`@fenix/agent-config/db`，从本包自己的 db 出口取）；只剩
- * `knowledge_base` 仍经 `@server/db/schema`，它的所有权随知识库包迁移属后续批次（B9），届时按同一口径
- * 改为经 owner 的公开入口或端口取数。DB 句柄改经 `getAgentConfigDatabase()` 请求期取得（`@server/db`
- * 的模块级句柄已切断）。
+ *   `@fenix/resource-skill/server/config` 的 {@link findSkillLabelsByIds}（同因，B5），知识库摘要经
+ *   `@fenix/resource-knowledge/server/summaries` 的 {@link findKnowledgeBaseSummariesByIds}（B9，
+ *   本包 `dependsOn` 已含 knowledge）——三条边方向都合法。
+ * `agent_site_app` 随 B7 与聚合根一起归本包（`@fenix/agent-config/db`，从本包自己的 db 出口取）。
+ * 本模块因此已**不再导入任何宿主表对象**：最后一条 `knowledge_base` 在 B9 随三张知识库表迁入
+ * `@fenix/resource-knowledge/db`，读取改经上条的 owner 公开入口。DB 句柄仍经
+ * `getAgentConfigDatabase()` 请求期取得（`@server/db` 的模块级句柄已切断），但只剩 `agent_site_app`
+ * 一条查询在用它。
  */
 
 /** 关联资源标签视图；字段与 `/web/config/agents` 响应的 `relatedResources` 一一对应。 */
@@ -54,7 +57,7 @@ export interface AgentRelatedResourceInput {
   readonly skillIds: readonly string[];
   readonly mcpIds: readonly string[];
   readonly siteAppIds: readonly string[];
-  /** 知识库绑定 ID；由调用方从绑定表读出后传入，本模块不反向依赖 knowledge 资源包。 */
+  /** 知识库绑定 ID；由调用方从绑定表读出后传入。本模块只把 id 交给 knowledge 的公开投影入口。 */
   readonly knowledgeBaseIds: readonly string[];
 }
 
@@ -110,19 +113,10 @@ export async function buildAgentRelatedResourceView(
       findMcpServerLabelsByIds(input.mcpIds),
     ]);
 
-    const knowledgeBaseRows =
-      input.knowledgeBaseIds.length > 0
-        ? await db
-            .select({ id: knowledgeBase.id, name: knowledgeBase.name, slug: knowledgeBase.slug })
-            .from(knowledgeBase)
-            .where(
-              and(
-                inArray(knowledgeBase.id, [...input.knowledgeBaseIds]),
-                eq(knowledgeBase.organizationId, input.organizationId),
-              ),
-            )
-        : [];
-    const knowledgeBaseMap = new Map(knowledgeBaseRows.map((row) => [row.id, row]));
+    const knowledgeBaseSummaries = await findKnowledgeBaseSummariesByIds({
+      organizationId: input.organizationId,
+      knowledgeBaseIds: input.knowledgeBaseIds,
+    });
 
     const siteAppRows =
       input.siteAppIds.length > 0
@@ -144,8 +138,8 @@ export async function buildAgentRelatedResourceView(
       skills: input.skillIds.map((id) => ({ id, label: skillLabelMap.get(id) ?? id })),
       mcps: input.mcpIds.map((id) => ({ id, label: mcpLabelMap.get(id) ?? id })),
       knowledgeBases: input.knowledgeBaseIds.map((id) => {
-        const row = knowledgeBaseMap.get(id);
-        return { id, label: row?.name ?? id, slug: row?.slug ?? null };
+        const summary = knowledgeBaseSummaries.get(id);
+        return { id, label: summary?.name ?? id, slug: summary?.slug ?? null };
       }),
       siteApps: input.siteAppIds.map((id) => {
         const row = siteAppMap.get(id);

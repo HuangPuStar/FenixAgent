@@ -160,22 +160,6 @@
     },
     {
       "rule": "apps-boundary",
-      "from": "@fenix/agent-config",
-      "to": "@fenix/server-app",
-      "owner": "1.7",
-      "removeWhen": "表定义迁出（§1.7）后，包不再引用 `@server/**`。B7 交付后为 4 处（生产 2 + 测试 2），B8 已降为**生产 1 + 测试 1**，两处都取宿主自有表 `knowledge_base`（`services/agent-related-resources.ts` 与 `__tests__/round45-agent-config-routes-coverage.test.ts`）；该表随知识库批 B9 迁出后本条即可删除。",
-      "rationale": "实测 11 处导入 / 11 个文件，全部为 `@server/db/schema` 表定义导入。宿主中的资源领域实现已随任务 1.3 迁回包内，残留仅剩表定义；表定义迁出归 §1.7，本条目保留至该步骤完成，不新建通配条目。\n\n**（§1.7 B7 进度，2026-09-22）本包的 `agent_config` + 三张关联表（`agent_config_skill` / `agent_config_mcp` / `agent_config_site_app`）+ `agent_site_app` 已迁至 `@fenix/agent-config/db`，引用由 11 处降为 **4 处**：生产 2 处（`repositories/agent-config-resource.ts` 取宿主自有表 `environment`、`services/agent-related-resources.ts` 取 `knowledge_base`）、测试 2 处（同两张表的两条用例断言，`agent-config-delete.test.ts` / `round45-agent-config-routes-coverage.test.ts`）。剩余成因是**宿主自有表**：`environment` 随 agent-runtime 批迁出、`knowledge_base` 随知识库批（B9）迁出，届时本包才可能零 `@server/**`，本条继续保留。\n\n**（§1.7 B8 进度，2026-09-22）由 4 处降为 2 处，剩下的都取 `knowledge_base`**：`environment` 随 B8 迁入 `@fenix/agent-runtime/db` 后，本包的删除路径（`repositories/agent-config-resource.ts` 的 `removeWithEnvironments`）改经 `@fenix/agent-runtime/server/environment` 的 `deleteEnvironmentsByAgentConfig(tx, {...})`（把本包事务句柄传给 owner，保留「删环境 + 删配置」同事务语义），重启前的枚举改经同出口的 `listEnvironmentIdsByAgentConfig`，因此该文件与 `__tests__/agent-config-delete.test.ts`（`environment` 导入改指 `@fenix/agent-runtime/db`，断言对象同一性仍成立）双双不再引用 `@server/db/schema`。实测 `grep -rnE 'from \"@server/' packages/resources/agent-config/src | grep -v __tests__` → 2 行（1 行真导入 + 1 行 `server/db.ts:19` 的文档注释），测试侧真导入 1 处。残留成因只剩宿主自有表 `knowledge_base`，`agent-related-resources.ts` 与 `round45-agent-config-routes-coverage.test.ts` 各 1 处，随 B9 迁出后本条归零。"
-    },
-    {
-      "rule": "apps-boundary",
-      "from": "@fenix/resource-knowledge",
-      "to": "@fenix/server-app",
-      "owner": "1.7",
-      "removeWhen": "表定义迁出（§1.7）后，包不再引用 `@server/**`",
-      "rationale": "实测 1 处导入 / 1 个文件，全部为 `@server/db/schema` 表定义导入。宿主中的资源领域实现已随任务 1.3 迁回包内，残留仅剩表定义；表定义迁出归 §1.7，本条目保留至该步骤完成，不新建通配条目。"
-    },
-    {
-      "rule": "apps-boundary",
       "from": "@fenix/resource-task",
       "to": "@fenix/server-app",
       "owner": "1.7",

@@ -31,16 +31,31 @@ const REPO_ROOT = resolve(PKG_ROOT, "../../..");
 const SOURCE_ENTRIES = ["src", "web", "db", "fenix.module.ts"];
 
 /**
- * 唯一允许的宿主导入。
+ * 扫描器负例夹具（§4.7.1 ③ 的收缩形态，与 `sandbox-source-migration.test.ts` 同形）。
  *
- * 本包自己的表已于 §1.7 B7 全部迁出（`agent_config` / `agent_config_skill` / `agent_config_mcp` /
- * `agent_config_site_app` / `agent_site_app` 归本包 `db/` 出口）。这条豁免现在只为 **`knowledge_base`**
- * （`services/agent-related-resources.ts` / `__tests__/round45-agent-config-routes-coverage.test.ts`）一张表
- * 存在，它随 B9 迁出后一并删除。原豁免的第二张表 `environment` 已随 B8 迁入 `@fenix/agent-runtime/db`：
- * 包侧改经 `@fenix/agent-runtime/server/environment` 的取数 / 删除两个入口，不再是宿主导入。
- * 语义仍是「只允许这一条精确路径」：`@server/db/schema` 之下的任何深路径都意味着重新伸手取宿主内部。
+ * 本包对宿主表定义的引用已随 §1.7 B8 / B9 归零：`agent_config` 一族五张表随 B7、`environment` 随 B8、
+ * `knowledge_base` 随 B9 迁出，最后一条宿主导入（`services/agent-related-resources.ts` 的知识库投影）
+ * 改为经 `@fenix/resource-knowledge/server/summaries`。原白名单常量 `ALLOWED_HOST_IMPORT` 与那条
+ * 「残留必然存在」的正向控制随之失效——它的作用是「扫不到就说明说明符提取失效」，而此刻扫不到才是
+ * 正确结果。改用负例夹具承担同一职责：一段真实源码形状的字符串，含一条宿主导入与一条**块注释里**形似
+ * 导入的文本，断言语义是「前者必须被捞出、后者必须被剥掉」。
+ *
+ * **注释必须是块注释形状**（黄金样本 B4 主体审计整改，2026-09-22）：`SPECIFIER_PATTERNS` 的 `from`
+ * 形式带 `^[ \t]*` 行首锚点，行注释 `// import …` 的行首是 `/`，未剥注释时本来就不在候选集里；块注释
+ * 的中间行行首正是 `import`，未剥注释时会被捞出，剥掉后才消失，两半缺一不可。
+ *
+ * 夹具按行以字符串字面量拼成，源码里 `import` 前面始终有引号，因此不会被本文件的真实扫描误判引用。
  */
-const ALLOWED_HOST_IMPORT = "@server/db/schema";
+const SCANNER_FIXTURE = [
+  'import { x } from "@server/db/schema";',
+  "/*",
+  'import { y } from "@server/db/in-block-comment";',
+  "*/",
+  "const z = 1;",
+].join("\n");
+
+/** 夹具里那条藏在块注释中的形似导入：未剥注释时会被 `extractSpecifiers` 一并捞出。 */
+const SCANNER_FIXTURE_COMMENTED = "@server/db/in-block-comment";
 
 /**
  * 宿主旧路径 → 包内新 owner 路径（实测映射；宿主侧文件均已从工作区删除）。
@@ -238,9 +253,13 @@ const exportEntries = Object.entries(manifest.exports ?? {});
 
 describe("AgentConfig 包边界契约（任务 1.3 §1 静态条件）", () => {
   // 遍历有效性自检：walker 若只返回入口文件，后续「不存在违规引用」的断言会全部退化为恒真。
-  test("扫描有效性自检：源码集合覆盖全包，且已知残留宿主导入能被扫到", () => {
+  test("扫描有效性自检：源码集合覆盖全包，且扫描器夹具两半都成立", () => {
+    // `db/**` 也必须被钉住：它是本包表定义的落点，一旦从 `SOURCE_ENTRIES` 掉出去，往 `db/schema.ts`
+    // 插一条真宿主导入不会有任何断言报红——「本包确实零宿主导入」与「db/ 根本没进扫描集」就分不开了
+    // （黄金样本 B4 主体审计发现，2026-09-22；`sourceFiles.length` 的阈值兜不住单目录缺失）。
     for (const expected of [
       "fenix.module.ts",
+      "db/schema.ts",
       "src/server.ts",
       "src/server/routes/dependencies.ts",
       "src/server/routes/web/agent-sites.ts",
@@ -255,9 +274,11 @@ describe("AgentConfig 包边界契约（任务 1.3 §1 静态条件）", () => {
       expect(sourceFiles).toContain(resolve(PKG_ROOT, expected));
     }
     expect(sourceFiles.length).toBeGreaterThanOrEqual(100);
-    // 正向控制：宿主**自有**表（`knowledge_base`，见 ALLOWED_HOST_IMPORT 的说明）的导入必然存在，
-    // 扫不到就说明说明符提取失效（而不是「本包已零宿主依赖」）。
-    expect(refs.filter((ref) => ref.specifier === ALLOWED_HOST_IMPORT).length).toBeGreaterThan(0);
+    // 扫描器自检（负例夹具）分两半，缺一不可：
+    //   1) 未剥注释时，块注释里的形似导入**必须**被捞出——证明夹具本身有区分力，而不是「恰好扫不到」；
+    //   2) 剥掉注释后只剩真实导入——证明 `stripComments` 真的在起作用。
+    expect(extractSpecifiers(SCANNER_FIXTURE)).toEqual(["@server/db/schema", SCANNER_FIXTURE_COMMENTED]);
+    expect(extractSpecifiers(stripComments(SCANNER_FIXTURE))).toEqual(["@server/db/schema"]);
   });
 
   // 宿主旧路径不得复活：新旧两套实现并存时，改一侧不会让另一侧失败，两边会各自漂移。
@@ -276,11 +297,9 @@ describe("AgentConfig 包边界契约（任务 1.3 §1 静态条件）", () => {
     expect(missing).toEqual([]);
   });
 
-  // 宿主实现只能经平台契约（`@fenix/platform-sdk`）或注入进入本包；除表定义残留外一律违规。
-  test("包内不存在表定义以外的宿主 @server 导入", () => {
-    const offenders = refs.filter(
-      (ref) => ref.specifier.startsWith("@server/") && ref.specifier !== ALLOWED_HOST_IMPORT,
-    );
+  // 宿主实现只能经平台契约（`@fenix/platform-sdk`）或注入进入本包；§1.7 B9 之后**零容忍**。
+  test("包内不存在任何宿主 @server 导入", () => {
+    const offenders = refs.filter((ref) => ref.specifier.startsWith("@server/"));
     expect(offenders.map(describeRef)).toEqual([]);
   });
 

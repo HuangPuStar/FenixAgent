@@ -23,9 +23,14 @@ agent 编辑器 / 站点页面的浏览器实现方。
   纯取数面：对方的标签投影（`@fenix/resource-mcp/server/config` 与 `@fenix/resource-skill/server/config`）、
   LaunchSpec 解析里的对方 service / row 类型、Skill Facade 与内容能力。反向边由消费方声明：machine、
   model-management、observer 导入本包入口，本包不写这些边。
-- **边界守护**：`src/__tests__/agent-config-source-migration.test.ts` 静态扫描 `src`、`web`、
-  `fenix.module.ts`（含用例）的 import/export 说明符，断言：非表定义的 `@server/*` 导入为零、web 面
-  `@/` 别名为零、穿透包外的相对引用为零、`src` 内环境变量直读为零、跨包不深入对方 `src/**`。
+- **边界守护**：`src/__tests__/agent-config-source-migration.test.ts` 静态扫描 `src`、`web`、`db`、
+  `fenix.module.ts`（含用例）的 import/export 说明符，断言：**任何** `@server/*` 导入为零（B9 起零容忍，
+  见下条）、web 面 `@/` 别名为零、穿透包外的相对引用为零、`src` 内环境变量直读为零、跨包不深入对方
+  `src/**`。原「非表定义的 `@server/*` 导入为零 + 白名单常量 `ALLOWED_HOST_IMPORT`」的写法随本包残留
+  归零而收缩：白名单常量与「残留必然存在」的正向控制一并删除，正向控制改由扫描器负例夹具
+  (`SCANNER_FIXTURE`，块注释形状，两半断言) 承担——此刻「扫不到宿主导入」才是正确结果，旧控制会把
+  正确结果判成失效。`db/schema.ts` 与其它入口一样被钉在自检清单里，避免「本包确实零宿主导入」与
+  「`db/` 根本没进扫描集」分不开。
 
 ## 服务端交付物
 
@@ -59,17 +64,18 @@ agent 编辑器 / 站点页面的浏览器实现方。
 - **模块配置**：`src/server/config.ts` 经 `getModuleConfig("agent-config")` 读取，并用 zod `strictObject`
   校验四个字段（`hiddenSidebarTabs`、`agentSitesBaseUrl`、`agentSitesMasterKey`、`agentGenerationModel`）。
   包内不读运行环境变量，值由宿主装配阶段注入。
-- **表定义**：1 个生产文件**真实 import** `@server/db/schema`，取宿主自有表 `knowledge_base`（知识库绑定
-  投影，`agent-related-resources.ts`）。这是本包唯一允许的宿主导入。复核：
-  `grep -rnE 'from "@server' packages/resources/agent-config/src | grep -v __tests__` → 2 行，其中 1 行是真导入，
-  第 2 行是 `src/server/db.ts:19` 的文档注释（举例说明不该有的形状）。按裸字符串
-  `grep -rl '@server/' packages/resources/agent-config/src --include='*.ts' | grep -v __tests__` → 8 个生产文件，
-  除这 1 处导入外全是注释/文档提及，没有第二处真实导入。B7 前本包有 8 个生产文件真实 import 该路径
-  （`agent_config` 及关联表、`agent_site_app` 都在宿主 schema 里），随 §1.7 B7 的五表迁出降为 2 处；
-  B8 又把第二处（`agent-config-resource.ts` 取 `environment`）改为经 `@fenix/agent-runtime` 的公开入口，
-  只剩 `knowledge_base` 一处。五张表的跨包外键目标共五个——`user`（身份表）、`model`、`machine`、
-  `mcpServer`、`skill`——都只在组装期导入、只取列对象表达级联语义，`package.json` 因此需声明对应依赖
-  （B7 为此新增的只有 `@fenix/identity`，其余四条此前已在）。
+- **表定义：本包对宿主表定义已零引用（§1.7 B9，2026-09-22）**：五张自有表在 `db/schema.ts`（出口
+  `@fenix/agent-config/db`）；此前的最后一处宿主导入——`agent-related-resources.ts` 取
+  `knowledge_base` 做知识库绑定投影——随该表迁入 `@fenix/resource-knowledge/db` 改为经
+  `@fenix/resource-knowledge/server/summaries` 的只读投影入口（本包 `dependsOn` 已含 knowledge，
+  边方向合法）。复核：`grep -rnE 'from "@server' packages/resources/agent-config/src | grep -v __tests__`
+  → 1 行，是 `src/server/db.ts:19` 的文档注释（举例说明不该有的形状），**真实导入 0 处**；按裸字符串
+  `grep -rl '@server/' packages/resources/agent-config/src --include='*.ts' | grep -v __tests__` → 8 个生产
+  文件，全是注释/文档提及。历史降级链：B7 前有 8 个生产文件真实 import 该路径（`agent_config` 及关联表、
+  `agent_site_app` 都在宿主 schema 里）→ B7 五表迁出降为 2 处 → B8 把 `agent-config-resource.ts` 取
+  `environment` 改经 `@fenix/agent-runtime/server/environment` → B9 归零。五张表的跨包外键目标共五个——
+  `user`（身份表）、`model`、`machine`、`mcpServer`、`skill`——都只在组装期导入、只取列对象表达级联语义，
+  `package.json` 因此需声明对应依赖（B7 为此新增的只有 `@fenix/identity`，其余四条此前已在）。
 - **测试基建**：`./server/testing` 提供 `createAgentConfigModuleConfig` /
   `initializeAgentConfigModuleConfig`（复位替身 + 以模块配置初始化应用基础设施，DB 句柄经转发代理）、
   Facade / Service / Associations / Identity 替身与模块替身装载器；未打桩的方法调用即失败。
@@ -122,11 +128,12 @@ agent 编辑器 / 站点页面的浏览器实现方。
 
 ## 边界残留
 
-- **表定义已迁出，残留只剩宿主自有表（§1.7 B7 / B8，2026-09-22）**：`agent_config`、三张关联表
+- **表定义已全部迁出，宿主表定义引用归零（§1.7 B7 / B8 / B9，2026-09-22）**：`agent_config`、三张关联表
   （`agent_config_skill` / `agent_config_mcp` / `agent_config_site_app`）与 `agent_site_app` 的定义已迁到
   `db/schema.ts`（出口 `@fenix/agent-config/db`，DDL 逐字保留、`bun run check:schema-ddl-drift` 零差异）。
-  本包与宿主的持久化耦合只剩一处宿主自有表：`knowledge_base`（`agent-related-resources.ts` 的知识库绑定
-  投影，该表所有权随知识库批 B9 迁出）。复核命令见「服务端交付物」的表定义条。
+  此前唯一的宿主自有表残留 `knowledge_base` 已随 B9 迁入 `@fenix/resource-knowledge/db`，本包改经该包
+  `./server/summaries` 的只读投影入口取 `{ name, slug }`，因此**本包已不再导入任何宿主 `@server/*`**。
+  复核命令见「服务端交付物」的表定义条。
 - **编排环境的读写改经 agent-runtime 公开入口（§1.7 B8，2026-09-22）**：`environment` / `agent_instance`
   两张表的定义已迁入 `@fenix/agent-runtime/db`，本包不再直读表对象。删除路径
   （`repositories/agent-config-resource.ts` 的 `removeWithEnvironments`）经

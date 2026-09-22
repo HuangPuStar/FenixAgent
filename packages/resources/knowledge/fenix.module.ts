@@ -20,6 +20,10 @@ import type { ServerRouteHost } from "@fenix/platform-sdk/server";
  * embedding 模型管理面已收归本包，原先那条 web 侧跨包引用随之消失（原本也因 web 贡献不进服务端装配
  * 顺序而不成边）。生成器的装配依赖反向校验（`assertDependsOnComplete`）
  * 会持续守着这一点：日后 `src/**` 真实值导入任一已注册资源模块，就必须在此处补声明。
+ * `db/schema.ts`（§1.7 B9 新增）是唯一的例外面：它按外键目标导入 `@fenix/agent-config/db` 与
+ * `@fenix/identity/db` 的列对象，两者已写入 `package.json` 的 `dependencies`，但**不进** `dependsOn`——
+ * 上述校验只扫 `src/**`，且表定义表达的是「列对象来自谁的迁移链」，不是运行期耦合（同口径：agent-config
+ * 的 `dependsOn` 也未列 `machine` / `model-management`，尽管它的 schema 取了两者的列对象）。
  *
  * 不声明反向边：`@fenix/resource-mcp`、`@fenix/resource-agent-config`、`@fenix/resource-workflow` 的
  * workspace 依赖指向上游，方向必须由它们在各自 manifest 里写 `dependsOn: ["knowledge"]`。本包是资源装配
