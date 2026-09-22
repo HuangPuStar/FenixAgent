@@ -3,6 +3,8 @@ import {
   AgentMasterDetailHeader,
   AgentMasterDetailWorkspace,
 } from "@fenix/ui-components/components/agent-master-detail-workspace";
+import { EmptyState } from "@fenix/ui-components/config/EmptyState";
+import { ScopeFilterBar, type ScopeFilterOption } from "@fenix/ui-components/config/ScopeFilterBar";
 import { AppHeader } from "@fenix/ui-components/layout/app-header";
 import { AppPage } from "@fenix/ui-components/layout/app-page";
 import { Button } from "@fenix/ui-components/ui/button";
@@ -131,29 +133,40 @@ export function AgentSkillsCatalog(props: AgentSkillsCatalogProps) {
   if (props.error && props.skills.length === 0 && isSkillAccessDenied(props.error)) {
     return (
       <AppPage className="agent-skills-page">
-        <section className="skills-load-error" role="alert">
-          <ShieldAlert />
-          <strong>{t("accessDenied.title")}</strong>
-          <p>{t("accessDenied.description")}</p>
-        </section>
+        <EmptyState
+          icon={<ShieldAlert />}
+          title={t("accessDenied.title")}
+          description={t("accessDenied.description")}
+          tone="danger"
+          role="alert"
+          className="flex min-h-96 flex-col items-center justify-center"
+        />
       </AppPage>
     );
   }
   if (props.error && props.skills.length === 0) {
     return (
       <AppPage className="agent-skills-page">
-        <section className="skills-load-error" role="alert">
-          <AlertTriangle />
-          <strong>{t("loadState.title")}</strong>
-          <p>{props.error.message}</p>
-          <Button onClick={props.onRetry}>
-            <RefreshCw />
-            {t("loadState.retry")}
-          </Button>
-        </section>
+        <EmptyState
+          icon={<AlertTriangle />}
+          title={t("loadState.title")}
+          description={props.error.message}
+          tone="danger"
+          role="alert"
+          className="flex min-h-96 flex-col items-center justify-center"
+          action={{ label: t("loadState.retry"), onClick: props.onRetry, icon: <RefreshCw /> }}
+        />
       </AppPage>
     );
   }
+
+  // 作用域清单与展示文案归本页所有（组件只负责渲染）：`satisfies` 保留字面量类型，
+  // 让下面的回调可以按本页的联合类型收窄，而不是把 `string` 漏进业务状态。
+  const scopeOptions = [
+    { value: "all", label: t("scope.all"), count: props.skills.length },
+    { value: "organization", label: t("scope.organization"), count: organizationCount },
+    { value: "public", label: t("scope.public"), count: publicCount },
+  ] satisfies readonly ScopeFilterOption[];
 
   return (
     <AppPage className="agent-skills-page">
@@ -174,43 +187,29 @@ export function AgentSkillsCatalog(props: AgentSkillsCatalogProps) {
         }
       />
 
-      <section className="skills-commandbar" aria-label={t("toolbar.label")}>
-        <label className="skills-search-field">
-          <Search />
-          <input
-            aria-label={t("search")}
-            value={props.query}
-            onChange={(event) => props.onQueryChange(event.target.value)}
-            placeholder={t("search")}
-          />
-        </label>
-        <div className="skills-scope-filter" role="group" aria-label={t("scope.label")}>
-          {(
-            [
-              ["all", t("scope.all"), props.skills.length],
-              ["organization", t("scope.organization"), organizationCount],
-              ["public", t("scope.public"), publicCount],
-            ] as const
-          ).map(([value, label, count]) => (
-            <button
-              key={value}
-              type="button"
-              aria-pressed={props.scope === value}
-              onClick={() => props.onScopeChange(value)}
-            >
-              {label}
-              <small>{count}</small>
-            </button>
-          ))}
-        </div>
-      </section>
+      {/* 工具栏的地标名由调用方给出：`role="search"` 与 `aria-label` 都是根节点透传属性，
+          原来承载这层语义的 `<section aria-label>` 已随重复实现一起收敛进组件。 */}
+      <ScopeFilterBar
+        role="search"
+        aria-label={t("toolbar.label")}
+        query={props.query}
+        onQueryChange={props.onQueryChange}
+        placeholder={t("search")}
+        searchLabel={t("search")}
+        scopes={scopeOptions}
+        scope={props.scope}
+        // 组件只透传字符串（它不认识业务作用域），取值来自上面的同一份清单，此处按本页联合类型收窄。
+        onScopeChange={(value) => props.onScopeChange(value as SkillCatalogScope)}
+        scopeGroupLabel={t("scope.label")}
+      />
 
       {filtered.length === 0 ? (
-        <section className="skills-empty-state">
-          <Sparkles />
-          <strong>{props.skills.length === 0 ? t("empty") : t("emptySearch")}</strong>
-          <p>{props.skills.length === 0 ? t("emptyHint") : t("emptySearchHint")}</p>
-        </section>
+        <EmptyState
+          icon={<Sparkles />}
+          title={props.skills.length === 0 ? t("empty") : t("emptySearch")}
+          description={props.skills.length === 0 ? t("emptyHint") : t("emptySearchHint")}
+          className="flex min-h-80 flex-col items-center justify-center"
+        />
       ) : (
         <AgentMasterDetailWorkspace
           detailHeader={selectedSkill ? <SkillDetailView skill={selectedSkill} props={props} headerOnly /> : null}

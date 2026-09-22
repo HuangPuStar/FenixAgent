@@ -2,6 +2,8 @@ import {
   AgentMasterDetailHeader,
   AgentMasterDetailWorkspace,
 } from "@fenix/ui-components/components/agent-master-detail-workspace";
+import { EmptyState } from "@fenix/ui-components/config/EmptyState";
+import { ScopeFilterBar, type ScopeFilterOption } from "@fenix/ui-components/config/ScopeFilterBar";
 import { AppHeader } from "@fenix/ui-components/layout/app-header";
 import { AppPage } from "@fenix/ui-components/layout/app-page";
 import { Button } from "@fenix/ui-components/ui/button";
@@ -17,7 +19,6 @@ import {
   Pencil,
   Plus,
   RefreshCw,
-  Search,
   Share2,
   ShieldAlert,
   TerminalSquare,
@@ -81,28 +82,39 @@ export function AgentMcpCatalog(props: Props) {
     if (isUnauthorizedError(props.error)) {
       return (
         <AppPage className="agent-mcp-page">
-          <section className="mcp-load-error" role="alert">
-            <ShieldAlert />
-            <strong>{t("loadState.unauthorizedTitle")}</strong>
-            <p>{t("loadState.unauthorizedHint")}</p>
-          </section>
+          <EmptyState
+            icon={<ShieldAlert />}
+            title={t("loadState.unauthorizedTitle")}
+            description={t("loadState.unauthorizedHint")}
+            tone="danger"
+            role="alert"
+            className="flex min-h-96 flex-col items-center justify-center"
+          />
         </AppPage>
       );
     }
     return (
       <AppPage className="agent-mcp-page">
-        <section className="mcp-load-error" role="alert">
-          <AlertTriangle />
-          <strong>{t("loadState.title")}</strong>
-          <p>{props.error.message}</p>
-          <Button onClick={props.onRetry}>
-            <RefreshCw />
-            {t("loadState.retry")}
-          </Button>
-        </section>
+        <EmptyState
+          icon={<AlertTriangle />}
+          title={t("loadState.title")}
+          description={props.error.message}
+          tone="danger"
+          role="alert"
+          className="flex min-h-96 flex-col items-center justify-center"
+          action={{ label: t("loadState.retry"), onClick: props.onRetry, icon: <RefreshCw /> }}
+        />
       </AppPage>
     );
   }
+
+  // 作用域清单与展示文案归本页所有（组件只负责渲染）：`satisfies` 保留字面量类型，
+  // 让下面的回调可以按本页的联合类型收窄，而不是把 `string` 漏进业务状态。
+  const scopeOptions = [
+    { value: "all", label: t("scope.all"), count: props.servers.length },
+    { value: "organization", label: t("scope.organization"), count: counts.organization },
+    { value: "public", label: t("scope.public"), count: counts.public },
+  ] satisfies readonly ScopeFilterOption[];
 
   // 这里已不是加载态（loading 在上方提前返回），因此不标 aria-busy：恒真的 busy 会让屏幕阅读器
   // 把整页更新一直当作「未完成」而推迟播报。加载态的 aria-busy 由 McpCatalogLoading 承担。
@@ -119,43 +131,29 @@ export function AgentMcpCatalog(props: Props) {
         }
       />
 
-      <section className="mcp-commandbar" aria-label={t("toolbar.label")}>
-        <label className="mcp-search-field">
-          <Search />
-          <input
-            aria-label={t("search")}
-            value={props.query}
-            onChange={(event) => props.onQueryChange(event.target.value)}
-            placeholder={t("search")}
-          />
-        </label>
-        <div className="mcp-scope-filter" role="group" aria-label={t("scope.label")}>
-          {(
-            [
-              ["all", t("scope.all"), props.servers.length],
-              ["organization", t("scope.organization"), counts.organization],
-              ["public", t("scope.public"), counts.public],
-            ] as const
-          ).map(([value, label, count]) => (
-            <button
-              key={value}
-              type="button"
-              aria-pressed={props.scope === value}
-              onClick={() => props.onScopeChange(value)}
-            >
-              {label}
-              <small>{count}</small>
-            </button>
-          ))}
-        </div>
-      </section>
+      {/* 工具栏的地标名由调用方给出：`role="search"` 与 `aria-label` 都是根节点透传属性，
+          原来承载这层语义的 `<section aria-label>` 已随重复实现一起收敛进组件。 */}
+      <ScopeFilterBar
+        role="search"
+        aria-label={t("toolbar.label")}
+        query={props.query}
+        onQueryChange={props.onQueryChange}
+        placeholder={t("search")}
+        searchLabel={t("search")}
+        scopes={scopeOptions}
+        scope={props.scope}
+        // 组件只透传字符串（它不认识业务作用域），取值来自上面的同一份清单，此处按本页联合类型收窄。
+        onScopeChange={(value) => props.onScopeChange(value as McpCatalogScope)}
+        scopeGroupLabel={t("scope.label")}
+      />
 
       {filtered.length === 0 ? (
-        <section className="mcp-empty-state">
-          <Wrench />
-          <strong>{props.servers.length === 0 ? t("empty") : t("emptySearch")}</strong>
-          <p>{props.servers.length === 0 ? t("emptyHint") : t("emptySearchHint")}</p>
-        </section>
+        <EmptyState
+          icon={<Wrench />}
+          title={props.servers.length === 0 ? t("empty") : t("emptySearch")}
+          description={props.servers.length === 0 ? t("emptyHint") : t("emptySearchHint")}
+          className="flex min-h-96 flex-col items-center justify-center"
+        />
       ) : (
         <AgentMasterDetailWorkspace
           className="mcp-master-detail"

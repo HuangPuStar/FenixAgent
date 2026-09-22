@@ -396,6 +396,10 @@
       "types": "./web/config/FormDialog.tsx",
       "default": "./web/config/FormDialog.tsx"
     },
+    "./config/ScopeFilterBar": {
+      "types": "./web/config/ScopeFilterBar.tsx",
+      "default": "./web/config/ScopeFilterBar.tsx"
+    },
     "./config/StatusBadge": {
       "types": "./web/config/StatusBadge.tsx",
       "default": "./web/config/StatusBadge.tsx"

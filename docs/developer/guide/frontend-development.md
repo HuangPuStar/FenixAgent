@@ -430,7 +430,7 @@ if (!data?.length) return <EmptyState icon={<FolderOpen />} title={t("empty.titl
 
 **归属由消费者集合决定**：出现第二个包消费时就下沉到 `ui-components`，而不是在消费方各留一份；只有一个消费者时留在原处，不做推测性抽象。
 
-`config/` 下当前 6 个组件的真实契约：
+`config/` 下当前 7 个组件的真实契约：
 
 | 组件 | 用途 | 关键 props |
 |------|------|-----------|
@@ -438,6 +438,7 @@ if (!data?.length) return <EmptyState icon={<FolderOpen />} title={t("empty.titl
 | `ConfirmDialog` | 危险操作确认 | `open` / `onOpenChange` / **`title`（必填）** / **`description`（必填）** / `onConfirm` / `variant?: "default" \| "destructive"` / `confirmLabel?` / `cancelLabel?` / `loading?` |
 | `EmptyState` | 内联状态块：空态 / 无匹配 / 读取失败 / 无权限共用一个组件 | `title` / `description?` / `icon?` / `action?: { label, onClick, icon?, disabled? }` / `tone?: "neutral" \| "danger"` / 其余 `<div>` 属性透传（`role`、`className` 等） |
 | `StatusBadge` | 状态徽标 | `status` / `label?`（覆盖 i18n `statusBadge.<status>`）/ `tone?: "success" \| "info" \| "warning" \| "danger" \| "neutral"` / `toneMap?`（业务状态词表 → 色调）/ `indicator?: "none" \| "dot" \| "pulse"` |
+| `ScopeFilterBar` | 配置型目录页的「搜索框 + 作用域过滤条」 | `query` / `onQueryChange` / `placeholder` / `searchLabel` / `scopes: { value, label, count? }[]` / `scope` / `onScopeChange` / `scopeGroupLabel` / 其余 `<div>` 属性透传 |
 | `DataTable` | TanStack Table 封装（含搜索/选择/分页/展开） | `columns` / `data` / `searchable` / `selectable` / `actions` / `expandableRow` / `rowKey` / `pageSize` |
 | `BatchActionBar` | 批量操作条 | 见包内实现 |
 
@@ -445,6 +446,7 @@ if (!data?.length) return <EmptyState icon={<FolderOpen />} title={t("empty.titl
 > 需要在包外判定色调时用 `getStatusTone(status, toneMap)`，不要复刻配色类。
 > `EmptyState` 同样只收语义：`tone` 默认 `neutral`（确实没有数据、筛选后没有匹配），`danger` 用于读取失败、无权限；持久错误再补 `role="alert"`。图标不传尺寸类时沿用 lucide 默认的 24px（组件只负责居中与配色），颜色一律不要手写——配色（含 dark 变体）归 `tone` 管。
 > 它**不自带 Card 外壳**：容器（卡片、边框、外边距）由调用方给——面板内联直接用，需要卡片形态时把 `<EmptyState>` 放进调用方的 `Card` / `CardContent`。默认内边距是 `py-10`，紧一点的场景用 `className` 覆盖（如 `className="py-8"`）。
+> `ScopeFilterBar` **不接 i18n**：文案（`placeholder` / `searchLabel` / `scopeGroupLabel` 与每个 `label`）全由 props 传入，key 与语言资源只留在调用方——库内组件自带命名空间会把两边的 key 绑死，同一处文案在两侧各留一份。它也不认识业务作用域（不知道「组织 / 公开」是什么），只把受控的 `query` / `scope` 渲染成统一形态。
 
 ### 4.2 Dialog 状态管理
 
