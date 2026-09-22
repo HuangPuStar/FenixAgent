@@ -120,6 +120,9 @@ describe("workflow web 入口浏览器可达面", () => {
       // （编辑器经 `WorkflowEditor` 的 Sheet 与 `RunStatusPanel` 的侧栏消费，同样不在入口导出面里）。
       "pages/workflow/components/StatusFilterRow.tsx",
       "pages/workflow/components/PanelHeader.tsx",
+      // 运行视图态的整组复位（`resetRunView`）：编辑器页面、运行 hook 与运行面板三处消费，
+      // 同样只走包内相对路径，不在入口导出面里。
+      "pages/workflow/run-view.ts",
     ]) {
       expect(reachedWebFiles).toContain(expected);
     }

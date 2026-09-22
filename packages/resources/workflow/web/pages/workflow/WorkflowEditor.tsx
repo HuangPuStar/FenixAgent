@@ -67,6 +67,7 @@ import { useWorkflowRun } from "./hooks/useWorkflowRun";
 import { autoLayout } from "./layout";
 import { nodeTypes, setToolColors } from "./nodes";
 import { TRANSFORM_PRESETS } from "./presets";
+import { type RunViewSetters, resetRunView } from "./run-view";
 import { dedupEvents } from "./utils";
 import {
   createStartNode,
@@ -122,6 +123,13 @@ function WorkflowEditorInner({ workflowId, runId, chatPanel }: WorkflowEditorPro
   const [selectedRunNodeId, setSelectedRunNodeId] = useState<string | null>(null);
   const [selectedNodeOutput, setSelectedNodeOutput] = useState<NodeOutput | null>(null);
   const [nodeOutputLoading, setNodeOutputLoading] = useState(false);
+
+  // 运行视图态的 setter 打包一次，供下面两处复位共用（定义与理由见 ./run-view.ts）。
+  // 依赖为空：5 个 setter 都是 useState 的稳定 setter，打包结果在组件生命周期内不变。
+  const runViewSetters: RunViewSetters = useMemo(
+    () => ({ setRunSnapshot, setRunEvents, setRunApprovals, setSelectedRunNodeId, setSelectedNodeOutput }),
+    [],
+  );
   const [runSheetOpen, setRunSheetOpen] = useState(false);
   const [versionsSheetOpen, setVersionsSheetOpen] = useState(false);
   const [triggersSheetOpen, setTriggersSheetOpen] = useState(false);
@@ -437,11 +445,7 @@ function WorkflowEditorInner({ workflowId, runId, chatPanel }: WorkflowEditorPro
     // workflowId 切换时清理所有旧状态
     setPreviewVersion(null);
     setActiveRunId(null);
-    setRunSnapshot(null);
-    setRunEvents([]);
-    setRunApprovals([]);
-    setSelectedRunNodeId(null);
-    setSelectedNodeOutput(null);
+    resetRunView(runViewSetters);
     setNodeConfigSheetOpen(false);
     setSelectedNode(null);
     setYamlOpen(false);
@@ -472,7 +476,7 @@ function WorkflowEditorInner({ workflowId, runId, chatPanel }: WorkflowEditorPro
         toast.error(t("editor.load_failed", { error: (err as Error).message }));
       }
     })();
-  }, [workflowId, fitView, setEdges, setNodes, setLastSavedYaml, t]);
+  }, [workflowId, fitView, setEdges, setNodes, setLastSavedYaml, t, runViewSetters]);
 
   // Load historical run data (point-in-time replay)
   useEffect(() => {
@@ -481,11 +485,7 @@ function WorkflowEditorInner({ workflowId, runId, chatPanel }: WorkflowEditorPro
     (async () => {
       try {
         setActiveRunId(runId);
-        setRunSnapshot(null);
-        setRunEvents([]);
-        setRunApprovals([]);
-        setSelectedRunNodeId(null);
-        setSelectedNodeOutput(null);
+        resetRunView(runViewSetters);
         setRunSheetOpen(true);
 
         const [snap, evts] = await Promise.all([
@@ -507,7 +507,7 @@ function WorkflowEditorInner({ workflowId, runId, chatPanel }: WorkflowEditorPro
     return () => {
       abort = true;
     };
-  }, [runId, t, updateNodesFromSnapshot]);
+  }, [runId, t, updateNodesFromSnapshot, runViewSetters]);
 
   // ── Update meta ──
   const updateMeta = useCallback((updates: Partial<WfMeta>) => {

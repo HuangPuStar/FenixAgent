@@ -1,6 +1,6 @@
 import { unwrap } from "@fenix/web-runtime/api/request";
 import type { Edge, Node } from "@xyflow/react";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
 import { workflowDefApi } from "../../../api/workflow-defs";
@@ -19,6 +19,7 @@ import {
   pushWorkflowRunStatus,
 } from "../../../lib/use-workflow-events";
 import { autoLayout } from "../layout";
+import { type RunViewSetters, resetRunView } from "../run-view";
 import { dedupEvents } from "../utils";
 import { START_NODE_ID } from "../yaml-utils";
 
@@ -104,6 +105,12 @@ export function useWorkflowRun(params: UseWorkflowRunParams): UseWorkflowRunRetu
   } = params;
 
   const { t } = useTranslation("workflows");
+
+  // 运行视图态的 setter 打包一次，供 5 处复位共用（定义与理由见 ../run-view.ts）
+  const runViewSetters: RunViewSetters = useMemo(
+    () => ({ setRunSnapshot, setRunEvents, setRunApprovals, setSelectedRunNodeId, setSelectedNodeOutput }),
+    [setRunSnapshot, setRunEvents, setRunApprovals, setSelectedRunNodeId, setSelectedNodeOutput],
+  );
 
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const isSubmittingRef = useRef(false);
@@ -298,11 +305,7 @@ export function useWorkflowRun(params: UseWorkflowRunParams): UseWorkflowRunRetu
         const runParams = params ?? resolveDefaultParams();
         const result = await unwrap(workflowEngineApi.run(y, runParams, workflowId));
         setActiveRunId(result.runId);
-        setRunSnapshot(null);
-        setRunEvents([]);
-        setRunApprovals([]);
-        setSelectedRunNodeId(null);
-        setSelectedNodeOutput(null);
+        resetRunView(runViewSetters);
         openRunSheet();
         await loadRunData(result.runId);
         // running 保持 true，轮询检测到终止状态时重置
@@ -320,11 +323,7 @@ export function useWorkflowRun(params: UseWorkflowRunParams): UseWorkflowRunRetu
       workflowId,
       setNodes,
       setActiveRunId,
-      setRunSnapshot,
-      setRunEvents,
-      setRunApprovals,
-      setSelectedRunNodeId,
-      setSelectedNodeOutput,
+      runViewSetters,
       openRunSheet,
       loadRunData,
       resolveDefaultParams,
@@ -363,11 +362,7 @@ export function useWorkflowRun(params: UseWorkflowRunParams): UseWorkflowRunRetu
     if (pollRef.current) clearTimeout(pollRef.current);
     setRunning(false);
     setActiveRunId(null);
-    setRunSnapshot(null);
-    setRunEvents([]);
-    setRunApprovals([]);
-    setSelectedRunNodeId(null);
-    setSelectedNodeOutput(null);
+    resetRunView(runViewSetters);
     setDryRunResult(null);
     setNodes((nds) =>
       nds.map((n) => ({
@@ -381,25 +376,13 @@ export function useWorkflowRun(params: UseWorkflowRunParams): UseWorkflowRunRetu
         },
       })),
     );
-  }, [
-    setActiveRunId,
-    setRunSnapshot,
-    setRunEvents,
-    setRunApprovals,
-    setSelectedRunNodeId,
-    setSelectedNodeOutput,
-    setNodes,
-  ]);
+  }, [setActiveRunId, runViewSetters, setNodes]);
 
   const handleBackToList = useCallback(() => {
     if (pollRef.current) clearTimeout(pollRef.current);
     setRunning(false);
     setActiveRunId(null);
-    setRunSnapshot(null);
-    setRunEvents([]);
-    setRunApprovals([]);
-    setSelectedRunNodeId(null);
-    setSelectedNodeOutput(null);
+    resetRunView(runViewSetters);
     setDryRunResult(null);
     setNodes((nds) =>
       nds.map((n) => ({
@@ -413,15 +396,7 @@ export function useWorkflowRun(params: UseWorkflowRunParams): UseWorkflowRunRetu
         },
       })),
     );
-  }, [
-    setActiveRunId,
-    setRunSnapshot,
-    setRunEvents,
-    setRunApprovals,
-    setSelectedRunNodeId,
-    setSelectedNodeOutput,
-    setNodes,
-  ]);
+  }, [setActiveRunId, runViewSetters, setNodes]);
 
   const handleRerunFrom = useCallback(
     async (fromNodeId: string) => {
@@ -473,11 +448,7 @@ export function useWorkflowRun(params: UseWorkflowRunParams): UseWorkflowRunRetu
       try {
         const result = await unwrap(workflowEngineApi.rerunFrom(activeRunId, y, fromNodeId, workflowId));
         setActiveRunId(result.runId);
-        setRunSnapshot(null);
-        setRunEvents([]);
-        setRunApprovals([]);
-        setSelectedRunNodeId(null);
-        setSelectedNodeOutput(null);
+        resetRunView(runViewSetters);
         openRunSheet();
         await loadRunData(result.runId);
       } catch (err) {
@@ -488,22 +459,7 @@ export function useWorkflowRun(params: UseWorkflowRunParams): UseWorkflowRunRetu
         isSubmittingRef.current = false;
       }
     },
-    [
-      activeRunId,
-      syncYaml,
-      workflowId,
-      edges,
-      setNodes,
-      setActiveRunId,
-      setRunSnapshot,
-      setRunEvents,
-      setRunApprovals,
-      setSelectedRunNodeId,
-      setSelectedNodeOutput,
-      openRunSheet,
-      loadRunData,
-      t,
-    ],
+    [activeRunId, syncYaml, workflowId, edges, setNodes, setActiveRunId, runViewSetters, openRunSheet, loadRunData, t],
   );
 
   const handleViewNodeOutput = useCallback(
@@ -573,11 +529,7 @@ export function useWorkflowRun(params: UseWorkflowRunParams): UseWorkflowRunRetu
           const runId = event.runId as string;
           if (runId && runId !== activeRunId) {
             setActiveRunId(runId);
-            setRunSnapshot(null);
-            setRunEvents([]);
-            setRunApprovals([]);
-            setSelectedRunNodeId(null);
-            setSelectedNodeOutput(null);
+            resetRunView(runViewSetters);
             loadRunData(runId);
           }
           break;
@@ -594,16 +546,7 @@ export function useWorkflowRun(params: UseWorkflowRunParams): UseWorkflowRunRetu
         }
       }
     },
-    [
-      activeRunId,
-      setActiveRunId,
-      setRunSnapshot,
-      setRunEvents,
-      setRunApprovals,
-      setSelectedRunNodeId,
-      setSelectedNodeOutput,
-      loadRunData,
-    ],
+    [activeRunId, setActiveRunId, runViewSetters, loadRunData],
   );
 
   return {

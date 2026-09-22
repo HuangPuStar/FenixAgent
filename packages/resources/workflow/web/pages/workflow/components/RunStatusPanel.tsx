@@ -10,6 +10,7 @@ import {
   type PendingApproval,
   workflowEngineApi,
 } from "../../../api/workflow-engine";
+import { resetRunView } from "../run-view";
 import { DAG_STATUS_CFG, dedupEvents, formatEventType, formatMeta } from "../utils";
 import { EventIcon } from "./EventIcon";
 import { NodeOutputView } from "./NodeOutputView";
@@ -94,11 +95,8 @@ export function RunStatusPanel({
       <RunListPanel
         onSelect={async (runId) => {
           setActiveRunId(runId);
-          setRunSnapshot(null);
-          setRunEvents([]);
-          setRunApprovals([]);
-          setSelectedRunNodeId(null);
-          setSelectedNodeOutput(null);
+          // 点选一条运行记录 = 进入一次运行视图：整组清空后由下面的拉取填值（见 ../run-view.ts）
+          resetRunView({ setRunSnapshot, setRunEvents, setRunApprovals, setSelectedRunNodeId, setSelectedNodeOutput });
           try {
             const [snap, evts] = await Promise.all([
               unwrap(workflowEngineApi.getRunStatus(runId)),
