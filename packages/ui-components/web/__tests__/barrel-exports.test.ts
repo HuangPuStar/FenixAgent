@@ -190,6 +190,7 @@ const EXPECTED_EXPORTS: Record<string, readonly string[]> = {
     "AgentCardList",
     "AgentMasterDetailHeader",
     "AgentMasterDetailWorkspace",
+    "ClosableTabPill",
     "FileTreeInputDialog",
     "FileTypeIcon",
     "FileViewerPreview",

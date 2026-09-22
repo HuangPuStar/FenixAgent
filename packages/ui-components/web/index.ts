@@ -84,6 +84,7 @@ import "./chat/css/chat.css";
 // components —— 复合组件
 export * from "./components/AgentCardList";
 export * from "./components/agent-master-detail-workspace";
+export * from "./components/ClosableTabPill";
 export * from "./components/file-icon-helper";
 export * from "./components/file-tree-arborist";
 export * from "./components/file-tree-context-menu";

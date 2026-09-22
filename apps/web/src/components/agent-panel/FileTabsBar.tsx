@@ -1,9 +1,10 @@
 import type { ChangedFile } from "@fenix/ui-components/chat/lib/extract-changed-files";
+import { ClosableTabPill } from "@fenix/ui-components/components/ClosableTabPill";
 import { FileTypeIcon } from "@fenix/ui-components/components/file-icon-helper";
 import { cn } from "@fenix/ui-components/lib/cn";
 import { Button } from "@fenix/ui-components/ui/button";
 import { Popover, PopoverContent, PopoverTrigger } from "@fenix/ui-components/ui/popover";
-import { ChevronDown, FilePen, X } from "lucide-react";
+import { ChevronDown, FilePen } from "lucide-react";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import { NS } from "@/src/i18n";
@@ -118,41 +119,23 @@ export function FileTabsBar({
           const fileName = path.split("/").pop() ?? path;
           const isActive = path === activeFile;
           return (
-            <div
+            <ClosableTabPill
               key={path}
-              role="button"
-              tabIndex={0}
-              onClick={() => onSelectFile(path)}
-              onKeyDown={(e) => {
-                if (e.key === "Enter" || e.key === " ") {
-                  e.preventDefault();
-                  onSelectFile(path);
-                }
-              }}
-              className={cn(
-                "group flex items-center gap-1 px-2.5 h-7 rounded-md cursor-pointer text-xs whitespace-nowrap flex-shrink-0",
-                isActive
-                  ? "bg-surface-2 text-text-primary"
-                  : "text-text-muted hover:bg-surface-2/60 hover:text-text-primary",
-              )}
+              active={isActive}
+              // 宿主侧的差异：整枚 tab 可点（指针光标）＋ 右侧留 10px（与左侧内边距对称）。
+              className="cursor-pointer pr-2.5"
               title={path}
-            >
-              <span className="h-3 w-3 flex-shrink-0 inline-flex items-center justify-center">
-                <FileTypeIcon filename={fileName} />
-              </span>
-              <span className="truncate max-w-[140px]">{fileName}</span>
-              <button
-                type="button"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  onCloseFile(path);
-                }}
-                className="h-4 w-4 flex items-center justify-center rounded hover:bg-surface-3 opacity-0 group-hover:opacity-100 transition-opacity"
-                aria-label={t("fileTree.closeTab")}
-              >
-                <X className="h-3 w-3" />
-              </button>
-            </div>
+              icon={
+                <span className="h-3 w-3 flex-shrink-0 inline-flex items-center justify-center">
+                  <FileTypeIcon filename={fileName} />
+                </span>
+              }
+              label={<span className="truncate max-w-[140px]">{fileName}</span>}
+              onSelect={() => onSelectFile(path)}
+              onClose={() => onCloseFile(path)}
+              closeLabel={t("fileTree.closeTab")}
+              closeClassName="h-4 w-4 transition-opacity hover:bg-surface-3"
+            />
           );
         })}
 

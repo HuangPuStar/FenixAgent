@@ -1,8 +1,9 @@
+import { ClosableTabPill } from "@fenix/ui-components/components/ClosableTabPill";
 import { cn } from "@fenix/ui-components/lib/cn";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@fenix/ui-components/ui/tooltip";
 import { NS } from "@fenix/web-runtime/i18n/namespace";
 import { useNavigate } from "@tanstack/react-router";
-import { ArrowLeftToLine, Globe, Info, Plus, X } from "lucide-react";
+import { ArrowLeftToLine, Globe, Info, Plus } from "lucide-react";
 import { useTranslation } from "react-i18next";
 
 export interface SiteEntry {
@@ -71,58 +72,36 @@ export function SiteTabsBar({
         const isNotCreator =
           site.createdByAgentConfigId != null && site.createdByAgentConfigId !== currentAgentConfigId;
         return (
-          <div
+          <ClosableTabPill
             key={site.id}
-            className={cn(
-              "group/tab flex items-center gap-1 pl-2.5 pr-1 h-7 rounded-md text-xs whitespace-nowrap flex-shrink-0 transition-colors max-w-[220px]",
-              isActive
-                ? "bg-surface-2 text-text-primary"
-                : "text-text-muted hover:bg-surface-2/60 hover:text-text-primary",
-            )}
-          >
-            <button
-              type="button"
-              role="tab"
-              aria-selected={isActive}
-              onClick={() => onChange(site.id)}
-              className="flex items-center gap-1.5 min-w-0 flex-1"
-              title={site.name}
-            >
-              <Globe className="h-3.5 w-3.5 flex-shrink-0" />
-              <span className="truncate">{site.name}</span>
-            </button>
-            {/* 非创建者标识 */}
-            {isNotCreator && (
-              <TooltipProvider>
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <Info className="h-3 w-3 text-amber-500 flex-shrink-0" />
-                  </TooltipTrigger>
-                  <TooltipContent side="bottom">
-                    <p className="text-xs">{t("siteFrame.notCreatorTooltip")}</p>
-                  </TooltipContent>
-                </Tooltip>
-              </TooltipProvider>
-            )}
-            {/* 卸载按钮 */}
-            <button
-              type="button"
-              onClick={(e) => {
-                e.stopPropagation();
-                onUnmountClick(site.id);
-              }}
-              className={cn(
-                "flex-shrink-0 flex items-center justify-center h-5 w-5 rounded transition-colors",
-                isActive
-                  ? "opacity-100 hover:bg-border/40"
-                  : "opacity-0 group-hover/tab:opacity-100 hover:bg-border/40",
-              )}
-              title={t("panelMode.unmountSite")}
-              aria-label={t("panelMode.unmountSiteAriaLabel")}
-            >
-              <X className="h-3 w-3" />
-            </button>
-          </div>
+            active={isActive}
+            // 站点名整体上限 220px（超长名在 pill 内截断，而不是把 tab 栏撑宽）＋ 与迁移前一致的配色过渡。
+            className="max-w-[220px] transition-colors"
+            title={site.name}
+            icon={<Globe className="h-3.5 w-3.5 flex-shrink-0" />}
+            label={site.name}
+            selectRole="tab"
+            trailing={
+              isNotCreator ? (
+                <TooltipProvider>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <Info className="h-3 w-3 text-amber-500 flex-shrink-0" />
+                    </TooltipTrigger>
+                    <TooltipContent side="bottom">
+                      <p className="text-xs">{t("siteFrame.notCreatorTooltip")}</p>
+                    </TooltipContent>
+                  </Tooltip>
+                </TooltipProvider>
+              ) : null
+            }
+            onSelect={() => onChange(site.id)}
+            onClose={() => onUnmountClick(site.id)}
+            closeLabel={t("panelMode.unmountSiteAriaLabel")}
+            closeTitle={t("panelMode.unmountSite")}
+            // 选中 tab 的卸载按钮常显，其余 hover 才现：覆盖 pill 默认的 opacity-0。
+            closeClassName={cn("h-5 w-5 transition-colors hover:bg-border/40", isActive && "opacity-100")}
+          />
         );
       })}
 
