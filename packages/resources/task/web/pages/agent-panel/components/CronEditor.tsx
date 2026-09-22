@@ -1,9 +1,9 @@
 import { Button } from "@fenix/ui-components/ui/button";
 import { Input } from "@fenix/ui-components/ui/input";
 import { NS } from "@fenix/web-runtime/i18n/namespace";
-import { parseExpression } from "cron-parser";
 import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
+import { validateCronExpression } from "../pages/agent-tasks-utils";
 import { CHOICE_CHIP_CLASS } from "./chip-classes";
 
 /** cron 预设：内部 ID → cron 表达式 */
@@ -98,25 +98,13 @@ export interface CronEditorProps {
   error?: string;
 }
 
-function validateCron(value: string, timezone: string): string | undefined {
-  const parts = value.trim().split(/\s+/);
-  if (!value.trim()) return "Cron 不能为空";
-  if (parts.length !== 5) return "Cron 表达式必须为 5 个字段";
-  try {
-    parseExpression(value, timezone.trim() ? { tz: timezone.trim() } : undefined);
-    return;
-  } catch {
-    return "Cron 表达式无效，请检查字段取值范围";
-  }
-}
-
 export function CronEditor({ value, timezone = "", inputId, onChange, error }: CronEditorProps) {
   const { t } = useTranslation(NS.TASKS_V2);
   const [editingCustom, setEditingCustom] = useState(false);
   const [debouncedError, setDebouncedError] = useState<string>();
 
   useEffect(() => {
-    const timer = setTimeout(() => setDebouncedError(validateCron(value, timezone)), 400);
+    const timer = setTimeout(() => setDebouncedError(validateCronExpression(value, timezone)), 400);
     return () => clearTimeout(timer);
   }, [value, timezone]);
 

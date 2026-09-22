@@ -22,15 +22,37 @@ export function isUnauthorizedError(error: unknown): boolean {
   return error instanceof ApiError && UNAUTHORIZED_CODES.has(error.code);
 }
 
-function isValidCronExpression(cron: string, timezone: string): boolean {
+/**
+ * Cron 表达式校验的**唯一实现**：5 个字段 + `parseExpression`（时区非空时才带 `tz`）。
+ *
+ * 为什么返回文案而不是布尔：`CronEditor` 要把失败原因显示在输入框下方，三种失败（空 / 字段数不对 /
+ * 解析不通过）措辞不同，只有它能给出「差在哪」。布尔形态由它派生（下面的 `isValidCronExpression`），
+ * 供 zod `superRefine` 用——那条路径的文案由 schema 自己给，不消费这里的字符串。
+ *
+ * 2026-09-22 去重：此前 `CronEditor` 与模块内各写一份同样的「切 5 段 + parseExpression」，
+ * cron-parser 的口径变更要改两处；文案与分支原样保留（空值优先判、字段数其次、解析最后）。
+ */
+export function validateCronExpression(cron: string, timezone: string): string | undefined {
   const parts = cron.trim().split(/\s+/);
-  if (parts.length !== 5) return false;
+  if (!cron.trim()) return "Cron 不能为空";
+  if (parts.length !== 5) return "Cron 表达式必须为 5 个字段";
   try {
     parseExpression(cron, timezone.trim() ? { tz: timezone.trim() } : undefined);
-    return true;
+    return;
   } catch {
-    return false;
+    return "Cron 表达式无效，请检查字段取值范围";
   }
+}
+
+/**
+ * 布尔形态，由文案形态派生：`superRefine` 只关心对错。
+ *
+ * 等价性：文案形态只在「空值 / 字段数 ≠ 5 / 解析抛错」三种情况下返回字符串，而这三种情况在
+ * 原布尔实现里同样是 `false`（空值 `""` 切出 `[""]`，长度 1 ≠ 5），因此
+ * `=== undefined` 与原实现逐例同值。
+ */
+function isValidCronExpression(cron: string, timezone: string): boolean {
+  return validateCronExpression(cron, timezone) === undefined;
 }
 
 function isValidTimezone(timezone: string): boolean {

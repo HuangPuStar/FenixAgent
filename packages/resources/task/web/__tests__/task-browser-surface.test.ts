@@ -60,7 +60,8 @@ const BROWSER_SAFE_EXTERNAL: ReadonlyMap<string, string> = new Map([
   ["@tanstack/react-router", "路由运行时（本包 peerDependency；TasksPanel 的 <Link to>）"],
   // 本包 dependencies：可独立打进浏览器 bundle 的普通库
   ["ahooks", "React hooks 工具库（本包 dependencies 直接使用）"],
-  ["cron-parser", "cron 表达式解析（本包 dependencies；CronEditor 与 agent-tasks-utils 使用）"],
+  // 2026-09-22 起 CronEditor 的校验经 agent-tasks-utils 的 validateCronExpression 走，web 面只剩这一处直接引用。
+  ["cron-parser", "cron 表达式解析（本包 dependencies；agent-tasks-utils 使用）"],
   ["lucide-react", "SVG 图标库（本包 dependencies 直接使用）"],
   ["sonner", "Toast 渲染（本包 dependencies 直接使用）"],
   ["zod", "运行期 schema 校验（本包 dependencies；agent-tasks-utils 的解析边界）"],
