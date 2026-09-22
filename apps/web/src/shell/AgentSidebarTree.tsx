@@ -15,7 +15,10 @@ import {
   isAgentWritable,
 } from "@fenix/agent-config/web/lib/agent-resource-access";
 import { useOrg } from "@fenix/identity/web";
+import type { StatusTone } from "@fenix/ui-components/config/StatusBadge";
+import { StatusBadge } from "@fenix/ui-components/config/StatusBadge";
 import { Spinner } from "@fenix/ui-components/ui/spinner";
+import { StatusDot } from "@fenix/ui-components/ui/status-dot";
 import { Switch } from "@fenix/ui-components/ui/switch";
 import {
   Bot,
@@ -34,11 +37,32 @@ import { memo, useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { NS } from "@/src/i18n";
 import { AgentSidebarDeleteDialog, AgentSidebarRestartDialog } from "./AgentSidebarTreeDialogs";
-import { getInstanceStatus, getRunningInstances, orderInstancesByRunningStatus } from "./agent-sidebar-tree-model";
+import { getInstanceStatusTone, getRunningInstances, orderInstancesByRunningStatus } from "./agent-sidebar-tree-model";
 import { useAgentSidebarTree } from "./use-agent-sidebar-tree";
 
 // 转发排序工具的唯一实现：既有消费方（含 `agent-sidebar-instance-order` 用例）仍从本模块导入。
 export { orderInstancesByRunningStatus } from "./agent-sidebar-tree-model";
+
+/**
+ * 卡片主标题刻度（元智能体卡片与 agent 卡片两处同名同级）。
+ *
+ * 两行文字在两张卡片里逐字相同，抽成常量是为了让「13px 半粗」只有一处定义——否则调其中一张
+ * 的标题层级时，另一张会静默地停在旧刻度上。
+ */
+const CARD_TITLE_CLASS = "text-[13px] font-semibold text-text-primary truncate";
+
+/**
+ * 访问级别的色调词表：`resource.public` = 可对外/被他组织引用，`resource.external` = 外部组织资源。
+ *
+ * 用色调而不是色名（`text-blue-700` / `bg-amber-100` 这类）：色名一旦写进业务，同一语义会在各页面
+ * 各演化一套绿/蓝，深浅色变体也要跟着各写一份。色调只声明「这类访问级别算哪一类信息」，
+ * 具体色值（含深浅色）由组件库的 `StatusBadge` 决定。`resource.internal` 不展示徽标、故不登记——
+ * 未命中一律按 `neutral`，不会臆断成某一类。
+ */
+const ACCESS_BADGE_TONES: Record<string, StatusTone> = {
+  "resource.public": "info",
+  "resource.external": "warning",
+};
 
 interface AgentSidebarTreeProps {
   selectedInstanceId: string | null;
@@ -174,7 +198,7 @@ export const AgentSidebarTree = memo(function AgentSidebarTree({
               {metaAgentLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Sparkles className="w-4 h-4" />}
             </div>
             <div className="flex-1 min-w-0">
-              <div className="text-[13px] font-semibold text-text-primary truncate">{t("metaAgent")}</div>
+              <div className={CARD_TITLE_CLASS}>{t("metaAgent")}</div>
               <div className="text-[11px] text-text-dim truncate mt-0.5">{t("metaAgentDesc")}</div>
             </div>
           </button>
@@ -224,18 +248,14 @@ export const AgentSidebarTree = memo(function AgentSidebarTree({
               {/* 两行：显示名 + 标识键 */}
               <div className="flex-1 min-w-0">
                 <div className="flex items-center gap-1.5">
-                  <div className="text-[13px] font-semibold text-text-primary truncate">{agentLabel}</div>
-                  {/* 仅公有/外部显示标签，用高对比配色区分（public=蓝，external=琥珀），避免与灰底混淆看不清 */}
+                  <div className={CARD_TITLE_CLASS}>{agentLabel}</div>
+                  {/* 仅公有/外部显示标签；色调语义见 `ACCESS_BADGE_TONES` */}
                   {accessBadgeKey !== "resource.internal" && (
-                    <span
-                      className={`shrink-0 rounded-md px-1.5 py-0.5 text-[10px] font-medium ${
-                        accessBadgeKey === "resource.public"
-                          ? "bg-blue-100 text-blue-700 dark:bg-blue-950/50 dark:text-blue-300"
-                          : "bg-amber-100 text-amber-700 dark:bg-amber-950/50 dark:text-amber-300"
-                      }`}
-                    >
-                      {tComponents(accessBadgeKey)}
-                    </span>
+                    <StatusBadge
+                      status={accessBadgeKey}
+                      label={tComponents(accessBadgeKey)}
+                      toneMap={ACCESS_BADGE_TONES}
+                    />
                   )}
                 </div>
                 {/* 第二行：标识键 + 远程标记 */}
@@ -327,7 +347,7 @@ export const AgentSidebarTree = memo(function AgentSidebarTree({
                           ].join(" ")}
                           onClick={() => runEnter(node, { instanceUid: inst.instanceUid })}
                         >
-                          <span className={`status-dot ${getInstanceStatus(inst)}`} />
+                          <StatusDot tone={getInstanceStatusTone(inst)} />
                           <span className="truncate">{inst.name}</span>
                           <div className="ml-auto flex gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity shrink-0">
                             <button

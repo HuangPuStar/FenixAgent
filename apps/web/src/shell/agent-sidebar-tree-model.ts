@@ -5,6 +5,7 @@
  * 节点上能派生出什么"，不含请求、React 状态与渲染，因此可被排序测试与其它消费方直接引用。
  * `AgentSidebarTree.tsx` 仍转发 `orderInstancesByRunningStatus`，既有导入路径与导出面不变。
  */
+import type { StatusDotTone } from "@fenix/ui-components/ui/status-dot";
 import type { AgentNode, ResourceAccessActions, ResourceScopeView } from "@fenix/web-runtime/types/config";
 import type { Environment, EnvironmentInstance } from "../types/index";
 
@@ -41,12 +42,21 @@ export function orderInstancesByRunningStatus(instances: EnvironmentInstance[]):
   return [...running, ...other];
 }
 
-/** 实例状态点到样式的映射键；`unknown` 归入错误态（`.status-dot.error`）。 */
-export function getInstanceStatus(instance: EnvironmentInstance) {
-  if (instance.status === "running") return "running";
-  if (instance.status === "starting") return "starting";
-  if (instance.status === "unknown") return "error";
-  return "stopped";
+/**
+ * 实例状态 → 圆点色调（`@fenix/ui-components/ui/status-dot` 的入参）。
+ *
+ * 返回色调而不是 CSS 类名/样式键：配色的权威在组件库，宿主只回答「跑着算好消息、
+ * 起不来算坏消息」。此前返回的是页面 CSS 的 `.status-dot.<status>` 后缀（running / starting /
+ * stopped / error），于是色值跟着 `agent-panel.css` 走、每个消费方各认一套状态词。
+ *
+ * `stopping` 与 `unknown` 的取舍：`stopping` 是过渡终态、不需要报警，与 `stopped` 同归 `neutral`；
+ * `unknown`（后端没给状态）按 `danger` 处理，与迁移前的 `.status-dot.error` 一致。
+ */
+export function getInstanceStatusTone(instance: EnvironmentInstance): StatusDotTone {
+  if (instance.status === "running") return "success";
+  if (instance.status === "starting") return "warning";
+  if (instance.status === "unknown") return "danger";
+  return "neutral";
 }
 
 /** 该 agent 下可重启 / 需停止的实例（`running` 与 `starting` 同等对待）。 */
