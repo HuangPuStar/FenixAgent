@@ -1,5 +1,6 @@
 import type { ModuleManifest } from "@fenix/platform-sdk";
 import type { ServerRouteHost } from "@fenix/platform-sdk/server";
+import { z } from "zod/v4";
 
 /**
  * Memory 资源模块描述符。
@@ -50,12 +51,50 @@ import type { ServerRouteHost } from "@fenix/platform-sdk/server";
  * 只对 manifest 做 AST 静态读取、不执行它，所以入口只能是「声明」而不是「推断」，取值必须是字符串字面量。
  * 它**不是**浏览器依赖：`lucide-react` / React 载荷只存在于 `@fenix/resource-memory/web/contribution` 导出
  * 的值里，不会沿 registry 进入服务端装配图（server 侧拿到的只有这一条字符串）。
+ *
+ * 声明 `envDefinitions`（任务 1.7 C 块，路线 A）：只登记 `HINDSIGHT_MCP_URL` 一键——它是本模块**唯一**只由
+ * 本模块消费的部署变量，三处消费点（`/web/hindsight/**` 代理的上游基址、系统级记忆可用性判据
+ * `isHindsightAvailable()`、Hindsight MCP server 的登记地址）全在本包 `src/server/**`，宿主只负责投影
+ * （`apps/server/src/bootstrap/module-configs.ts` 的 `memory: { hindsightMcpUrl: env.HINDSIGHT_MCP_URL }`），
+ * 没有第二个读原始 env 的消费者。模块声明与宿主 schema 同名即启动期抛错（`apps/server/src/env-loader.ts` 的
+ * `assertNoHostKeyOverride`），因此把本键从宿主 `apps/server/src/env.ts` 的「可选：Hindsight 记忆 MCP」段
+ * 删除是这条声明的另一半，两处必须同批。
+ *
+ * 契约逐字照抄宿主同名行（`z.string().optional()`），因此**省略** `defaultValue`：宿主那一行本就没有默认值，
+ * 补 `.default("")` 会让 `loadDeclaredEnv` 从 `schema.parse(rawValue)` 转到 `schema.parse(defaultValue)`
+ * 分支，把「未部署记忆」的取值从 `undefined` 改成空串。空串归一（docker-compose 的 `${HINDSIGHT_MCP_URL:-}`
+ * 在 .env 未设置时透传空串）是**消费侧**的责任，留在 `src/server/config.ts` 的 `MemoryModuleConfigSchema` 与
+ * `src/server/services/hindsight.ts`，声明处不再叠加第二套归一。
+ *
+ * `secret: false`（值是 MCP 服务地址而非凭据材料：它本就出现在 `/web/hindsight` 的响应体里）、
+ * `restartRequired: true`（值在装配期投影进模块配置后即冻结，`getModuleConfig("memory")` 取的是启动期快照，
+ * 运行期改环境变量不生效）。两个字段目前没有运行期消费者（`assertDefinitions` 只比较其跨模块一致性），
+ * 按声明语义填写供后续 preflight / readiness 消费。
+ *
+ * 不迁的同族键 `HINDSIGHT_API_TOKEN`：它的唯一运行期消费者是 agent-config——宿主
+ * `apps/server/src/bootstrap/host-startup.ts` 在启动期读出后经 launch spec 端口注入 agent 进程，本包只消费
+ * 派生结果（`getHindsightConfig().url`）。按「键归唯一模块」的口径由该模块声明，本包不重复：两处声明意味着
+ * 同一契约的校验强度与默认值语义要维护两份，而 `assertDefinitions` 只在逐字段完全一致时才放行。
  */
 export const moduleManifest = {
   id: "memory",
   kind: "resource",
   dependsOn: [],
   capabilities: ["resource.memory"],
+  envDefinitions: [
+    {
+      moduleId: "memory",
+      key: "HINDSIGHT_MCP_URL",
+      // 与宿主 apps/server/src/env.ts 的同名行逐字等价（z.string().optional()）；省略 defaultValue 的理由见文件头。
+      schema: z.string().optional(),
+      secret: false,
+      restartRequired: true,
+      description:
+        "Hindsight 长期记忆 MCP 服务地址；无默认值——未设置（含 docker-compose 透传的空串）即「记忆能力整体未启用」。" +
+        '装配期由宿主投影为 memory 模块配置，本包在启动后经 getModuleConfig("memory") 读取，用于 /web/hindsight ' +
+        "代理上游、系统级记忆可用性判据与 Hindsight MCP server 的登记。",
+    },
+  ],
   web: {
     id: "memory",
     contribution: "@fenix/resource-memory/web/contribution",

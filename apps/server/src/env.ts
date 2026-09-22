@@ -1,5 +1,4 @@
 import { isAbsolute } from "node:path";
-import { DEFAULT_AGENT_SYSTEM_PROMPT } from "@fenix/agent-config/server/system-prompt";
 import { z } from "zod/v4";
 import { ENGINE_TYPES } from "./services/config/types";
 
@@ -25,34 +24,31 @@ export function parseDatabaseConnectionPoolConfig(input: unknown = process.env):
   return databaseConnectionPoolSchema.parse(input);
 }
 
+/**
+ * 宿主进程自身运行参数的 env schema。
+ *
+ * **模块专属变量不在这里**：自 1.7 C 块（`docs/design/ce-ee-refactoring/review/task-1.7-db-config-migration.md`）
+ * 起，有唯一模块 owner 的部署变量由该模块的 `fenix.module.ts` 经 `envDefinitions` 声明——agent-runtime 的
+ * 运行态旋钮与 workspace 根、knowledge 的 RAGFlow/Gotenberg、sandbox 与 model-management 的整族配置、
+ * machine 的 file-ws 治理项、identity 的认证项、channel 的 Hermes 网关、workflow 的工具目录与签名密钥、
+ * agent-config 的生成模型与观测透传等。声明与校验仍统一在启动期由 `loadServerEnv()` 汇总
+ * （`./env-loader.ts`），宿主消费点经 `readDeclaredEnv()` 取值。
+ *
+ * **同名键不得两处声明**：`assertNoHostKeyOverride()` 会在启动期直接拒绝，部署也会失败。要改哪个变量就去
+ * 它的 owner 模块改，不要往本文件加回同名行——本文件里留下的只有宿主自身参数与多模块共享键
+ * （见 `config.ts` 的 `buildConfig` 说明与 agent-runtime manifest 的「不迁的兄弟键」）。
+ */
 const envSchema = databaseConnectionPoolSchema.extend({
   // ── 必填 ──
   DATABASE_URL: z.string().min(1, "DATABASE_URL is required"),
   RCS_API_KEYS: z.string().min(1, "RCS_API_KEYS is required — used for skill download token HMAC signing"),
   RCS_SYSTEM_API_KEYS: z.string().optional(),
-  RCS_MODEL_GATEWAY_CREDENTIAL_ENCRYPTION_KEY: z.string().optional(),
-  RCS_MODEL_GATEWAY_TYPE: z.string().default("litellm"),
-  RCS_MODEL_GATEWAY_BASE_URL: z.string().url().default("http://localhost:4000"),
-  // Fenix 后端和沙盒 Agent 可能处于不同网络命名空间，公开给 Agent 的地址允许单独配置。
-  RCS_MODEL_GATEWAY_PUBLIC_BASE_URL: z.string().url().optional(),
-  RCS_MODEL_GATEWAY_ADMIN_KEY: z.string().optional(),
-  RCS_MODEL_GATEWAY_ADMIN_UI_URL: z.string().url().default("http://localhost:4000/ui/"),
-  RCS_MODEL_GATEWAY_DEFAULT_USER_BUDGET_USD: z.coerce.number().nonnegative().optional(),
-  RCS_MODEL_GATEWAY_DEFAULT_BUDGET_DURATION: z
-    .string()
-    .optional()
-    .transform((value) => {
-      const normalized = value?.trim().toLowerCase();
-      return !normalized || normalized === "permanent" || normalized === "once" ? undefined : value;
-    })
-    .optional(),
 
   // ── 可选：服务器 ──
   NODE_ENV: z.enum(["development", "production", "test"]).default("development"),
   RCS_HOST: z.string().default("0.0.0.0"),
   RCS_PORT: z.coerce.number().int().min(1).max(65535).default(3000),
   RCS_CORS_ORIGIN: z.string().default("*"),
-  RCS_TRUSTED_ORIGINS: z.string().default(""),
   RCS_BASE_URL: z.string().default(""),
   RCS_VERSION: z.string().default("0.1.0"),
   // Bun bundle 输出在应用源码目录外，静态资源需通过此绝对根目录定位，避免依赖启动 cwd。
@@ -61,45 +57,19 @@ const envSchema = databaseConnectionPoolSchema.extend({
     .min(1)
     .refine(isAbsolute, "RCS_APPLICATION_ROOT must be an absolute path")
     .optional(),
-  SKILL_DIR: z.string().default("./data/skills"),
-  RCS_SYSTEM_ADMIN_PASSWORD_FILE: z.string().default("./data/password.txt"),
   APP_BRAND_NAME: z.string().default("Fenix"),
   APP_LOGO_PATH: z.string().default(""),
-  APP_HIDDEN_SIDEBAR_TABS: z.string().default(""),
 
   // ── 可选：HTTP/WebSocket ──
   RCS_POLL_TIMEOUT: z.coerce.number().int().positive().default(8),
   RCS_HEARTBEAT_INTERVAL: z.coerce.number().int().positive().default(20),
   RCS_WS_IDLE_TIMEOUT: z.coerce.number().int().positive().default(255),
-  RCS_WS_KEEPALIVE_INTERVAL: z.coerce.number().int().positive().default(20),
   RCS_WS_MAX_PAYLOAD_MB: z.coerce.number().int().positive().default(128),
   RCS_DISCONNECT_TIMEOUT: z.coerce.number().int().positive().default(120),
-  RCS_ACP_IDLE_TIMEOUT_SECONDS: z.coerce.number().int().positive().default(300),
-  RCS_ACP_IDLE_SWEEP_INTERVAL_SECONDS: z.coerce.number().int().positive().default(300),
-  RCS_ACP_ACTIVITY_TIMEOUT_SECONDS: z.coerce.number().int().positive().default(1200),
-  RCS_AGENT_MAX_CONCURRENCY: z.coerce.number().int().positive().optional(),
-  RCS_USER_AGENT_MAX_CONCURRENCY: z.coerce.number().int().positive().default(10),
-  RCS_SCHEDULED_AGENT_MAX_CONCURRENCY: z.coerce.number().int().positive().optional(),
   RCS_DISABLE_SCHEDULER: z
     .string()
     .default("false")
     .transform((value) => value === "true"),
-  RCS_SANDBOX_RUNTIME_CONNECT_TIMEOUT_MS: z.coerce.number().int().positive().optional(),
-  RCS_SANDBOX_ENABLED: z
-    .string()
-    .default("false")
-    .transform((value) => value === "true"),
-  RCS_DEFAULT_SANDBOX_POOL_ID: z.string().min(1).optional(),
-  RCS_DEFAULT_SANDBOX_IMAGE: z.string().min(1).optional(),
-  RCS_DEFAULT_SANDBOX_AGENT_TYPE: z.string().min(1).default("opencode"),
-  RCS_DEFAULT_SANDBOX_RESOURCES_JSON: z.string().min(1).optional(),
-  RCS_DEFAULT_SANDBOX_EXTRA_JSON: z.string().min(1).optional(),
-  RCS_SANDBOX_CLUSTER_URL: z.string().min(1).optional(),
-  RCS_SANDBOX_CLUSTER_API_KEY: z.string().min(1).optional(),
-  RCS_SANDBOX_PROVIDER_REQUEST_TIMEOUT_MS: z.coerce.number().int().positive().optional(),
-  RCS_SANDBOX_PROVIDER_CREATE_TIMEOUT_MS: z.coerce.number().int().positive().optional(),
-  RCS_SANDBOX_PROVIDER_RESUME_TIMEOUT_MS: z.coerce.number().int().positive().optional(),
-  RCS_SANDBOX_PROVIDER_DESTROY_TIMEOUT_MS: z.coerce.number().int().positive().optional(),
 
   // ── 可选：file-ws 心跳巡检（P0-1）──
   // keep_alive 间隔 ≤30s 是跨仓库软契约（acp-link 独立仓库），3 倍间隔（90s）判定僵尸；
@@ -117,58 +87,11 @@ const envSchema = databaseConnectionPoolSchema.extend({
   // 默认值须与 src/transport/file-ws-payload.ts 的 DEFAULT_FILE_WS_MAX_PAYLOAD_MB 保持一致。
   RCS_FILE_WS_MAX_PAYLOAD_MB: z.coerce.number().int().positive().default(32),
 
-  // ── 可选：file-ws 身份绑定（P2-14，§7.1）──
-  // register 对账 core runtime node 注册（registerRemoteNode 产物），未知 machine
-  // 严格模式 close(4404)；默认 false（宽松）放行 + 告警。两阶段过渡软开关：
-  // 旧机器端（acp-link）无 4404 退避语义、可能 file-ws 先连，服务端先上严格校验会
-  // 硬阻塞旧机器端——须机器端先行升级后再开启（见 docs/arch/12-files.md §7.1/§10）。
-  RCS_FILE_WS_IDENTITY_STRICT: z
-    .string()
-    .default("false")
-    .transform((v) => v === "true"),
-
-  // ── 可选：file-events 订阅端点（P1-6b）──
-  // 服务级连接上限，与 YJS_MAX_CLIENTS 分池（互不挤占）；超限 close 1013。
-  RCS_FILE_EVENTS_MAX_CLIENTS: z.coerce.number().int().positive().default(200),
-
-  // ── 可选：知识库（RagFlow）──
-  RAGFLOW_API_URL: z.string().default("http://localhost:9380"),
-  RAGFLOW_API_KEY: z.string().default(""),
-  RAGFLOW_REQUEST_TIMEOUT_MS: z.coerce.number().int().positive().default(30000),
-
   // ── 可选：认证 ──
-  // better-auth 的 baseURL（回调/重定向 URL 基址）。该变量由 better-auth 约定俗成，历史上一直由
-  // `process.env` 直读；CE 阶段 2 任务 1.2 把它并入 env 真相来源，由宿主解析后作为 identity 模块
-  // 配置注入。未设置时 better-auth 自行回退到 RCS_BASE_URL。
-  BETTER_AUTH_URL: z.string().optional(),
   RCS_DISABLE_SIGNUP: z
     .string()
     .default("false")
     .transform((v) => v === "true"),
-
-  // ── 可选：Hermes ──
-  HERMES_URL: z.string().optional(),
-  HERMES_PLATFORMS: z.string().optional(),
-
-  // ── 可选：Hindsight 记忆 MCP ──
-  HINDSIGHT_MCP_URL: z.string().optional(),
-  HINDSIGHT_API_TOKEN: z.string().optional(),
-
-  // ── 可选：Agent Sites 代理 ──
-  AGENT_SITES_BASE_URL: z.string().optional(),
-  AGENT_SITES_MASTER_KEY: z.string().optional(),
-
-  // ── 可选：Agent 智能生成（使用标准 OpenAI 环境变量）──
-  // OPENAI_API_KEY 和 OPENAI_BASE_URL 由 OpenAI SDK 自动读取，此处仅声明模型名
-  OPENAI_MODEL: z.string().optional(),
-
-  // ── 可选：Workflow ──
-  // 自定义节点（CustomNode）工具目录，启动时扫描 .ts 文件并实例化注册到 CustomNodeRegistry
-  WORKFLOW_TOOLS_DIR: z.string().default("./tools"),
-
-  // ── 可选：注册中心 ──
-  REGISTRY_SECRET: z.string().default("rcs-registry-secret"),
-  ACPX_G_URL: z.string().default("http://localhost:8848"),
 
   // ── 可选：引擎 ──
   // 默认 fallback 机器 ID。agent config 未绑定 machineId 时使用此机器替代 local-default
@@ -184,7 +107,6 @@ const envSchema = databaseConnectionPoolSchema.extend({
 
   // 默认引擎类型。agent config 未指定 engineType 时覆盖硬编码默认值
   RCS_DEFAULT_ENGINE_TYPE: z.enum(ENGINE_TYPES).optional(),
-  RCS_AGENT_SYSTEM_PROMPT: z.string().min(1).default(DEFAULT_AGENT_SYSTEM_PROMPT),
   // 禁用 local-default 本地节点。设为 "true" 后所有实例必须路由到远程 machine
   RCS_DISABLE_LOCAL_EXECUTION: z
     .string()
@@ -205,16 +127,6 @@ const envSchema = databaseConnectionPoolSchema.extend({
   RCS_YJS_SNAPSHOT_INTERVAL_MS: z.coerce.number().int().positive().default(2000),
   RCS_YJS_SNAPSHOT_IDLE_MS: z.coerce.number().int().positive().default(500),
   RCS_YJS_SNAPSHOT_TTL_SECONDS: z.coerce.number().int().positive().default(604800),
-
-  // ── 可选：Workspace 路径 ──
-  WORKSPACE_ROOT: z.string().optional(),
-
-  // ── 可选：Langfuse 观测透传（统一派发到 machine 上 agent 进程）──
-  // 主服务声明后由启动参数组装器（`@fenix/agent-config` 的 `agent-launch-spec`）经 launchSpec.env
-  // 透传到 machine 上 agent 进程（peri 的 langfuse-client 直读同名变量）；未设置则不注入。
-  LANGFUSE_PUBLIC_KEY: z.string().optional(),
-  LANGFUSE_SECRET_KEY: z.string().optional(),
-  LANGFUSE_BASE_URL: z.string().optional(),
 });
 
 export type Env = z.infer<typeof envSchema>;

@@ -1,5 +1,6 @@
 import type { ModuleManifest } from "@fenix/platform-sdk";
 import type { ServerRouteHost } from "@fenix/platform-sdk/server";
+import { z } from "zod/v4";
 import { providerResource } from "./src/server/access/provider-resource";
 
 /**
@@ -51,6 +52,31 @@ import { providerResource } from "./src/server/access/provider-resource";
  * 只对 manifest 做 AST 静态读取、不执行它，所以入口只能是「声明」而不是「推断」，取值必须是字符串字面量。
  * 它**不是**浏览器依赖：`lucide-react` / React 载荷只存在于 `@fenix/model-management/web/contribution` 导出
  * 的值里，不会沿 registry 进入服务端装配图（server 侧拿到的只有这一条字符串）。
+ *
+ * 声明 `envDefinitions`（§1.7 路线 A）：`RCS_MODEL_GATEWAY_*` 八键就是 `ModelManagementModuleConfig`
+ * 的完整部署面（`src/server/config.ts` 的 strictObject 只认这八个字段），全仓唯一读取点是宿主
+ * `apps/server/src/config.ts:22-29` 的 `buildConfig`，再经 `bootstrap/module-configs.ts:110-118` 投影进
+ * 本模块配置——包内既不直读 `process.env`，也没有第二个模块消费它们，因此唯一 owner 是本模块。八行宿主
+ * 声明必须**同批**从 `apps/server/src/env.ts:33-48` 删除，否则 `assertNoHostKeyOverride` 会在启动期抛
+ * 「同一变量只能有一个声明处」。没有留在宿主的兄弟键：这八个就是全部 `RCS_MODEL_GATEWAY_*`。
+ *
+ * 宿主 `bootstrap/host-startup.ts:151-157` 的兜底 Provider 投影也读 `modelGatewayPublicBaseUrl` /
+ * `modelGatewayType`，但它读的是同一份宿主配置（不是第二处 env 读取），值最终仍落在模型网关域内，不改变
+ * 归属。路线 A 的窄口径：`envDefinitions` 只承担启动期校验与汇总，值继续由宿主手工投影，本模块继续经
+ * `getModelManagementConfig()` 读取；不引入通用拆分器、不改模块 config.ts 形态。
+ *
+ * 八条 schema **逐字转写**宿主 env.ts 的同名行，不做「顺手改进」：`RCS_MODEL_GATEWAY_TYPE` /
+ * `_BASE_URL` / `_ADMIN_UI_URL` 的 `.default(...)` 只对 `undefined` 生效，空串仍按原样落成空串（`""`
+ * 会在模块配置校验里失败，这是宿主今天已有的行为，本声明不代为收紧）；`_PUBLIC_BASE_URL` 的
+ * 「未配置时回退 Base URL」是宿主 `buildConfig` 的 `??` 语义，属于投影层，故此处保持 `optional()`；
+ * `_CREDENTIAL_ENCRYPTION_KEY` / `_ADMIN_KEY` / `_PUBLIC_BASE_URL` / `_DEFAULT_USER_BUDGET_USD` /
+ * `_DEFAULT_BUDGET_DURATION` 在宿主行都没有默认值，一律**省略** `defaultValue`（写 `null` 会让
+ * `loadDeclaredEnv` 的 `parse(null)` 与今天漂移）；`_DEFAULT_USER_BUDGET_USD` 的 `z.coerce` 必须保留
+ * （部署模板给的是字符串）；`_DEFAULT_BUDGET_DURATION` 的 `transform` 把 `permanent` / `once` 归一成
+ * `undefined`（＝「不创建默认预算周期」），整条表达式逐字照抄。八键都在装配期被读一次并固化进模块配置
+ * （请求期不再读 env），故 `restartRequired: true`；只有 `_ADMIN_KEY` 与 `_CREDENTIAL_ENCRYPTION_KEY`
+ * 是密钥材料，`secret: true`（禁止进日志、响应与错误文案，`src/server/config.ts` 的报错已只回字段路径与
+ * 错误码）。
  */
 export const moduleManifest = {
   id: "model-management",
@@ -62,6 +88,94 @@ export const moduleManifest = {
     contribution: "@fenix/model-management/web/contribution",
   },
   accessControlBindings: [providerResource.storage],
+  // 形状逐字对齐宿主 apps/server/src/env.ts:33-48 的同名行；无默认值的宿主行一律省略 defaultValue，
+  // 避免 loadDeclaredEnv 走 parse(defaultValue) 分支而与今天的 parse(undefined) 语义漂移。
+  envDefinitions: [
+    {
+      moduleId: "model-management",
+      key: "RCS_MODEL_GATEWAY_CREDENTIAL_ENCRYPTION_KEY",
+      schema: z.string().optional(),
+      secret: true,
+      restartRequired: true,
+      description:
+        "网关写库凭据（Virtual Key）的本地加密密钥；未配置时网关运行时整体不启用（runtime.ts 以「admin key 与加密密钥都缺失」判定不启用）。宿主行无可省略默认值（z.string().optional()），故本声明不写 defaultValue。密钥材料，禁止进日志、响应与错误文案。装配期由宿主投影为模块配置，改后需重启。",
+    },
+    {
+      moduleId: "model-management",
+      key: "RCS_MODEL_GATEWAY_TYPE",
+      schema: z.string().default("litellm"),
+      defaultValue: "litellm",
+      secret: false,
+      restartRequired: true,
+      description:
+        "模型网关类型标识（当前为 litellm），决定选用哪个适配器；未设置时默认 litellm。注意 .default() 只对 undefined 生效，空串仍按原样落成空串（模块配置校验会拒绝），与宿主原行等价。装配期由宿主投影为模块配置 modelGatewayType，改后需重启。",
+    },
+    {
+      moduleId: "model-management",
+      key: "RCS_MODEL_GATEWAY_BASE_URL",
+      schema: z.string().url().default("http://localhost:4000"),
+      defaultValue: "http://localhost:4000",
+      secret: false,
+      restartRequired: true,
+      description:
+        "Fenix 后端访问模型网关的 API 基址；未设置时默认 http://localhost:4000，非 URL 串在启动期即被拒绝。装配期由宿主投影为模块配置 modelGatewayBaseUrl，改后需重启。",
+    },
+    {
+      moduleId: "model-management",
+      key: "RCS_MODEL_GATEWAY_PUBLIC_BASE_URL",
+      schema: z.string().url().optional(),
+      secret: false,
+      restartRequired: true,
+      description:
+        "暴露给沙盒 Agent 的网关地址（后端与 Agent 可能处于不同网络命名空间）；未配置时由宿主 buildConfig 回退到 RCS_MODEL_GATEWAY_BASE_URL——回退属投影层语义，故本声明保持 optional() 且不写 defaultValue。装配期由宿主投影为模块配置 modelGatewayPublicBaseUrl，改后需重启。",
+    },
+    {
+      moduleId: "model-management",
+      key: "RCS_MODEL_GATEWAY_ADMIN_KEY",
+      schema: z.string().optional(),
+      secret: true,
+      restartRequired: true,
+      description:
+        "网关管理密钥（LiteLLM master key 一类）；未配置时网关运行时整体不启用。宿主行无可省略默认值（z.string().optional()），故本声明不写 defaultValue。密钥材料，禁止进日志、响应与错误文案（src/server/config.ts 的报错只回字段路径与错误码）。装配期由宿主投影为模块配置，改后需重启。",
+    },
+    {
+      moduleId: "model-management",
+      key: "RCS_MODEL_GATEWAY_ADMIN_UI_URL",
+      schema: z.string().url().default("http://localhost:4000/ui/"),
+      defaultValue: "http://localhost:4000/ui/",
+      secret: false,
+      restartRequired: true,
+      description:
+        "管理员浏览器打开网关控制台的地址，系统管理页据此生成跳转链接；未设置时默认 http://localhost:4000/ui/，非 URL 串启动期即被拒。装配期由宿主投影为模块配置 modelGatewayAdminUiUrl（宿主保证恒有值，故模块契约里该字段必填），改后需重启。",
+    },
+    {
+      moduleId: "model-management",
+      key: "RCS_MODEL_GATEWAY_DEFAULT_USER_BUDGET_USD",
+      schema: z.coerce.number().nonnegative().optional(),
+      secret: false,
+      restartRequired: true,
+      description:
+        "首次激活用户的默认预算（美元，非负数）；未配置时不创建默认预算，因此无默认值。z.coerce 必须保留——部署模板给的是字符串（空串经 coerce 归一为数字 0，与宿主原行等价）。装配期由宿主投影为模块配置 modelGatewayDefaultUserBudgetUsd，改后需重启。",
+    },
+    {
+      moduleId: "model-management",
+      key: "RCS_MODEL_GATEWAY_DEFAULT_BUDGET_DURATION",
+      // 与宿主 env.ts:41-48 逐字等价：先 trim + 小写归一，再把空值 / permanent / once 折成 undefined
+      // （＝「不创建默认预算周期」），其余取值原样透传；无默认值，故不写 defaultValue。
+      schema: z
+        .string()
+        .optional()
+        .transform((value) => {
+          const normalized = value?.trim().toLowerCase();
+          return !normalized || normalized === "permanent" || normalized === "once" ? undefined : value;
+        })
+        .optional(),
+      secret: false,
+      restartRequired: true,
+      description:
+        "新用户默认预算周期（如 30d / monthly）；permanent、once 与空串被归一成 undefined，表达「不创建周期性预算」。装配期由宿主投影为模块配置 modelGatewayDefaultBudgetDuration，改后需重启。",
+    },
+  ],
   contributions: [
     {
       id: "model-management.web-config-models",

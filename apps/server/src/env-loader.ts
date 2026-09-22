@@ -31,6 +31,30 @@ function assertNoHostKeyOverride(
 }
 
 /**
+ * 「声明键」的唯一读取入口（路线 A）。
+ *
+ * `loadServerEnv` 已经把各模块 `envDefinitions` 声明的键合并进返回对象，但 `ServerEnv` 的类型是
+ * `Readonly<Record<string, unknown>> & Env`——声明键在类型上落回 `unknown`，宿主消费点直接 `env[key]`
+ * 拿不到可用类型。本函数把这层窄化收敛到一处，供 C 块的全部消费点（C2–C18）统一使用。
+ *
+ * 只做类型收敛、**不二次校验**：值的校验已由 `loadServerEnv` 在启动期用声明方给出的 zod schema 完成，
+ * 校验失败即启动失败，因此这里再 parse 一次只会重复同一份判定，并把「校验时机」这件事分裂成两处。
+ * 类型参数 `T` 由调用方按 `EnvDefinition.schema` 的推断结果显式给出；调用方传错类型不会在运行期被兜住，
+ * 这是为避免在每个消费点散布断言的取舍（注解里的 `as` 是全仓唯一一处声明键断言）。
+ *
+ * 不使用 `as any`：断言目标是调用方声明的具体类型，属 CLAUDE.md 允许的最小范围类型收窄
+ * （第三方缺陷以外的 `any` 一律禁止）。
+ *
+ * 路线 A 下 `envDefinitions` 只承担「启动期校验 + 汇总」，值仍由宿主经 `bootstrap/module-configs.ts`
+ * 手工投影成模块配置；本函数是宿主侧消费点（例如 `bootstrap/host-startup.ts` 的 Hermes 网关地址）
+ * 读取声明键的通道。背景与验收口径见
+ * `docs/design/ce-ee-refactoring/review/task-1.7-db-config-migration.md`。
+ */
+export function readDeclaredEnv<T>(env: ServerEnv, key: string): T {
+  return env[key] as T;
+}
+
+/**
  * server 唯一环境加载边界：先解析宿主配置，再解析静态 assembly 启用模块声明。
  * 模块只能消费返回对象，不能在 factory 内读取 process.env。
  */

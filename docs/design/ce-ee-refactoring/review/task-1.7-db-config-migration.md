@@ -2024,6 +2024,8 @@ web-app-tests 319 pass / 0 fail。改动只涉及 7 个 `package.json` 与 `bun.
 | 13 | **文档路径过期（本批扫描暴露，非本批引入）**：`docs/need-to-change/*` 的大量实现路径（`src/routes/**`、`src/services/**`、`src/repositories/**`）仍按阶段 1 之前的宿主布局书写，行号同样失效（§7.27 只补了路径口径说明与被迁表的 4 处注记）；`FUNCTIONAL_MODULE_INVENTORY.md` 多处仍指向 `packages/resources/identity-admin/**`（该包已随任务 1.2 删除）。同族第 3 条（`scripts/root-source-owner-rules.ts` 的说明文本）已单列 | 1.8（文档全量更新） | 逐篇按当前布局订正路径，或为该类文档加统一的口径声明并停止在正文承载体现在代码里的行号 |
 | 14 | **包级 tsconfig 不在任何门禁内（§7.28 顺带发现，非本批引入）**：`precheck` 的 tsc 步骤只跑 server / web / app skeletons，`tsc -p packages/<pkg>/tsconfig.json` 无人执行。`agent-runtime` 实测：`tsconfig.json` 的 `baseUrl` 已弃用（TS5101，整体失败），`--ignoreDeprecations 6.0` 后仍有 26 条既有错误（`res.json()` 类型为 `unknown`、`InstanceSupplement` 断言不重叠、`web/yjs/yjs-ws.ts` 缺 DOM lib、`chat-channel-bootstrap.test.ts` 找不到 `../transport/ws-types`）。与第 2 条（根 `scripts/` 不在 `include` 内）同族 | 1.8（测试入口与 CI 目录扫描） | 把各包 tsconfig 纳入静态检查，或明确登记「只检查三张宿主 tsconfig」为接受的口径；并入第 2 条同批处理 |
 
+| 15 | **`YJS_MAX_CLIENTS` 声明后引入启动期收紧（C 块，本批引入）**：该键原先只在 `chat-channel-bootstrap.ts` 以 `parseInt(process.env.YJS_MAX_CLIENTS, 10)` 兜底到 200 的方式直读——非法值静默回落到 200、负值被原样接受。迁入 `agent-runtime` 的 `envDefinitions` 后改由 `loadServerEnv()` 在启动期按 schema 校验，非法值将**拒绝启动**。这是「不留已知缺陷」的应然方向，但属可观测的行为变化，故登记 | C 块 | 与 C1「`YJS_MAX_CLIENTS` 改为经 options 注入」同批落盘；若部署侧确需兼容旧输入，应在模块 schema 内用 `z.preprocess` 归一而不是放宽校验 |
+
 ### 8.2 1.7 未完成条目（本档位不做）
 
 migration smoke（空库 + 真实历史升级库）、`deploy-preflight`、readiness、SBOM / 备份 / 回滚与

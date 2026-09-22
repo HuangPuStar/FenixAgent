@@ -1,6 +1,6 @@
 import type { AppConfig } from "../config";
 import { getBaseUrl } from "../config";
-import type { ServerEnv } from "../env-loader";
+import { readDeclaredEnv, type ServerEnv } from "../env-loader";
 
 /**
  * 模块配置表：把宿主 env / config 投影成各模块 `getModuleConfig()` 读得到的那一份。
@@ -12,17 +12,25 @@ import type { ServerEnv } from "../env-loader";
  * 只列出模块契约声明的字段，不把整个宿主 config 传进去——模块只能读自己的那一份，宿主字段改名必须在
  * 这里被 typecheck 拦住（1.5b 起的既定口径）。
  *
+ * 取值有两个来源，选哪个由「值在宿主侧有无加工」决定，不要互串：
+ * - `config.*`：宿主已在 `buildConfig` 里做过路径 `resolve()` 或 `??` 兜底（如 `skillDir`、沙盒超时）；
+ * - `env.*` / `readDeclaredEnv(env, ...)`：宿主原生键直接透传。模块声明键（1.7 C 块迁出的那批）在
+ *   `Env` 类型上已不存在，必须走 `readDeclaredEnv`。
+ *
  * 各键的取舍理由随原注释保留（它们解释的是「为什么是这些字段、为什么某些字段故意省略」）。
  */
 export function buildModuleConfigs(env: ServerEnv, config: AppConfig): Readonly<Record<string, unknown>> {
   const baseUrl = getBaseUrl();
   return {
+    // `betterAuthSecret` 是 better-auth 的签名密钥（1.7 C 块补齐声明 `BETTER_AUTH_SECRET`）：未配置时
+    // 不下发，better-auth 按自身语义处理（详见该 manifest 的键说明）。
     identity: {
-      betterAuthUrl: env.BETTER_AUTH_URL,
+      betterAuthUrl: readDeclaredEnv<string | undefined>(env, "BETTER_AUTH_URL"),
       rcsBaseUrl: env.RCS_BASE_URL,
-      trustedOrigins: env.RCS_TRUSTED_ORIGINS,
+      trustedOrigins: readDeclaredEnv<string>(env, "RCS_TRUSTED_ORIGINS"),
       systemAdminPasswordFile: config.systemAdminPasswordFile,
       disableSignup: config.disableSignup,
+      betterAuthSecret: readDeclaredEnv<string | undefined>(env, "BETTER_AUTH_SECRET"),
     },
     // Agent Runtime 模块配置：运行态旋钮（三项并发上限、ACP 空闲/巡检/业务超时、WS 保活间隔）、环境解析与
     // `/acp/*` 协议入口的部署值（本地节点开关、兜底机器、workspace 根、注册密钥、file-ws 帧上限），以及启动
@@ -44,7 +52,7 @@ export function buildModuleConfigs(env: ServerEnv, config: AppConfig): Readonly<
       disableLocalExecution: config.disableLocalExecution,
       workspaceRoot: config.workspaceRoot,
       baseUrl,
-      acpRegistrySecret: env.REGISTRY_SECRET,
+      acpRegistrySecret: readDeclaredEnv<string>(env, "REGISTRY_SECRET"),
       fileWsMaxPayloadMb: env.RCS_FILE_WS_MAX_PAYLOAD_MB,
     },
     // 机器模块配置：远程机器兜底 ID 与 file-ws 治理参数，全部来自宿主已校验的 env/config。
@@ -53,8 +61,8 @@ export function buildModuleConfigs(env: ServerEnv, config: AppConfig): Readonly<
       fileWsIdentityStrict: config.fileWsIdentityStrict,
       fileEventsMaxClients: config.fileEventsMaxClients,
     },
-    // 知识模块配置：RAGFlow 三项与 Gotenberg 地址。`GOTENBERG_URL` 尚未进宿主 env schema
-    // （变量收敛归 §1.7），这里先按迁移前的默认值读取，避免把部署知识搬进资源包。
+    // 知识模块配置：RAGFlow 三项与 Gotenberg 地址。四个键的 schema 都归 knowledge 模块声明
+    // （1.7 C 块），宿主 `buildConfig` 只做透传，两个地址类键的空串归一已在声明侧完成。
     knowledge: {
       ragflowApiUrl: config.ragflowApiUrl,
       ragflowApiKey: config.ragflowApiKey,
@@ -62,7 +70,7 @@ export function buildModuleConfigs(env: ServerEnv, config: AppConfig): Readonly<
       gotenbergUrl: config.gotenbergUrl,
     },
     // 记忆模块配置：未配置（或缺省空串）时按「未启用」处理，包侧把空串归一为 undefined。
-    memory: { hindsightMcpUrl: env.HINDSIGHT_MCP_URL },
+    memory: { hindsightMcpUrl: readDeclaredEnv<string | undefined>(env, "HINDSIGHT_MCP_URL") },
     // Skill 模块配置：下载目录、对外 baseUrl 与下载 token 的 HMAC 签名密钥候选。
     skill: {
       skillDir: config.skillDir,
@@ -71,12 +79,15 @@ export function buildModuleConfigs(env: ServerEnv, config: AppConfig): Readonly<
     },
     // AgentConfig 模块配置：侧边栏隐藏项、站点应用代理凭据与 Agent 智能生成用的模型名。
     // 生成模型只在 OpenAI Key 存在时下发，等价于迁移前 `OPENAI_API_KEY && OPENAI_MODEL` 的判定
-    // （API Key 由 OpenAI SDK 自行从环境读取，包侧只认模型名是否下发）。
+    // （API Key 由 OpenAI SDK 自行从环境读取，包侧只认模型名是否下发）。`OPENAI_API_KEY` 的声明本身
+    // 修好了这条门控：宿主 schema 从未声明过它，迁入声明前该表达式恒为 falsy，生成功能实际不可用。
     "agent-config": {
-      hiddenSidebarTabs: env.APP_HIDDEN_SIDEBAR_TABS,
-      agentSitesBaseUrl: env.AGENT_SITES_BASE_URL,
-      agentSitesMasterKey: env.AGENT_SITES_MASTER_KEY,
-      agentGenerationModel: env.OPENAI_API_KEY ? env.OPENAI_MODEL : undefined,
+      hiddenSidebarTabs: readDeclaredEnv<string>(env, "APP_HIDDEN_SIDEBAR_TABS"),
+      agentSitesBaseUrl: readDeclaredEnv<string | undefined>(env, "AGENT_SITES_BASE_URL"),
+      agentSitesMasterKey: readDeclaredEnv<string | undefined>(env, "AGENT_SITES_MASTER_KEY"),
+      agentGenerationModel: readDeclaredEnv<string | undefined>(env, "OPENAI_API_KEY")
+        ? readDeclaredEnv<string | undefined>(env, "OPENAI_MODEL")
+        : undefined,
     },
     // 沙盒模块配置：显式列出模块契约需要的字段，而不是把整个宿主 config 传进去——
     // 模块只能读自己的那一份，宿主字段改名必须在这里被 typecheck 拦住。
@@ -95,14 +106,14 @@ export function buildModuleConfigs(env: ServerEnv, config: AppConfig): Readonly<
       sandboxProviderResumeTimeoutMs: config.sandboxProviderResumeTimeoutMs,
       sandboxProviderDestroyTimeoutMs: config.sandboxProviderDestroyTimeoutMs,
     },
-    // Workflow 模块配置：对外基址（webhook 回调 URL 展示）、acpx-g 代理目标与自定义节点工具目录。
-    // `hmacSecret` 这里省略：宿主 env schema 尚未声明 `RCS_WORKFLOW_HMAC_SECRET`（变量声明与 preflight
-    // 收敛归任务 1.7），省略即回到迁移前的「每进程随机签名密钥」——单实例自洽；多实例部署补声明该变量后
-    // 必须在这里一并下发，否则跨实例恢复的 run 会签名校验失败。
+    // Workflow 模块配置：对外基址（webhook 回调 URL 展示）、acpx-g 代理目标、自定义节点工具目录与
+    // run 恢复的 HMAC 签名密钥。`hmacSecret` 未配置时省略，包侧回落「每进程随机签名密钥」——
+    // 单实例自洽；多实例部署必须配置该变量，否则跨实例恢复的 run 会签名校验失败。
     workflow: {
       baseUrl,
       acpxGUrl: config.acpxGUrl,
-      toolsDir: env.WORKFLOW_TOOLS_DIR,
+      toolsDir: readDeclaredEnv<string>(env, "WORKFLOW_TOOLS_DIR"),
+      hmacSecret: readDeclaredEnv<string | undefined>(env, "RCS_WORKFLOW_HMAC_SECRET"),
     },
     // 模型管理模块配置：网关适配器参数与默认预算。管理密钥与凭据加密密钥未配置时是 `undefined`，
     // 包侧据此判定「网关未启用」而不会退化成无鉴权网关；默认预算周期已由 env schema 把

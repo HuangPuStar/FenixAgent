@@ -1,5 +1,6 @@
 import type { ModuleManifest } from "@fenix/platform-sdk";
 import type { ServerRouteHost } from "@fenix/platform-sdk/server";
+import { z } from "zod/v4";
 import { skillResource } from "./src/server/access/skill-resource";
 
 /**
@@ -59,13 +60,45 @@ import { skillResource } from "./src/server/access/skill-resource";
  * 只存在于 `@fenix/resource-skill/web/contribution` 导出的值里，不会沿 registry 进入服务端装配图（server
  * 侧拿到的只有这一条字符串）。
  *
- * `envDefinitions` 的留白保持不变：消费方是 §1.7 的宿主 env 登记，形状必须与消费端同时定型。
+ * 声明 `envDefinitions`（任务 1.7 C 块，路线 A）：只登记 `SKILL_DIR` 一键——它是本模块**唯一**只由本模块
+ * 消费的部署变量。「技能源目录」这一语义的消费者全在本包 `src/server/**`（`src/server/services/skill-content.ts`
+ * 经 `getSkillConfig().skillDir` 定位技能源目录与归档），宿主只负责投影
+ * （`apps/server/src/bootstrap/module-configs.ts` 的 `skill: { skillDir: config.skillDir }`），没有第二个读原始
+ * env 的消费者，因此按「键归唯一模块」的口径归本模块。模块声明与宿主 schema 同名即启动期抛错
+ * （`apps/server/src/env-loader.ts` 的 `assertNoHostKeyOverride`），把本键从宿主 `apps/server/src/env.ts` 的
+ * 「可选：服务器」段删除是这条声明的另一半，两处必须同批。
+ *
+ * 契约逐字照抄宿主同名行（`z.string().default("./data/skills")`），`defaultValue` 同写：`loadDeclaredEnv` 的
+ * 两条分支（有值时 `schema.parse(rawValue)`、无值时 `schema.parse(defaultValue)`）因此得到同一结果。空串
+ * **不**归一（宿主行也没有 `z.preprocess`）：`""` 是合法值，交宿主的 `resolve("")` 归一为进程 cwd，声明处不叠加
+ * 第二套判定。相对路径 → 绝对路径的归一仍留在宿主（`apps/server/src/config.ts` 的 `resolve(...)`），包侧只消费
+ * 归一后的绝对路径（`SkillModuleConfig.skillDir` 仅要求 `min(1)`），两处职责不重叠。
+ *
+ * `secret: false`（值是目录路径而非凭据材料）、`restartRequired: true`（值在装配期投影进模块配置后即冻结，
+ * `getModuleConfig("skill")` 取的是启动期快照，运行期改环境变量不生效）。两个字段目前没有运行期消费者
+ * （`assertDefinitions` 只比较其跨模块一致性），按声明语义填写供后续 preflight / readiness 消费。
  */
 export const moduleManifest = {
   id: "skill",
   kind: "resource",
   dependsOn: [],
   capabilities: ["resource.skill"],
+  // 形状逐字对齐宿主 apps/server/src/env.ts 的同名行；defaultValue 与 schema 的 .default() 同写（宿主那一行本就有默认值）。
+  envDefinitions: [
+    {
+      moduleId: "skill",
+      key: "SKILL_DIR",
+      // 与宿主 apps/server/src/env.ts 的同名行逐字等价：z.string().default("./data/skills")，空串不归一。
+      schema: z.string().default("./data/skills"),
+      defaultValue: "./data/skills",
+      secret: false,
+      restartRequired: true,
+      description:
+        "技能源目录与归档文件的根目录，默认 ./data/skills（相对路径由宿主按进程 cwd 归一为绝对路径）。" +
+        '装配期由宿主投影为 skill 模块配置 skillDir，本包在启动后经 getModuleConfig("skill") 读取，' +
+        "用于定位技能源目录、写入 SKILL.md 与生成归档；空串按原样保留（不等价于未配置），路径本身不是凭据材料。",
+    },
+  ],
   web: {
     id: "skill",
     contribution: "@fenix/resource-skill/web/contribution",

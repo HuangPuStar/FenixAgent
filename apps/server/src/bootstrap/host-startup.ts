@@ -29,7 +29,7 @@ import { bootstrapServerAssembly } from "../bootstrap";
 import { config } from "../config";
 import { initDb, client as pgClient } from "../db";
 import { findDeprecatedEnvVars } from "../env";
-import type { ServerEnv } from "../env-loader";
+import { readDeclaredEnv, type ServerEnv } from "../env-loader";
 import { closeCache } from "../services/cache";
 import { initCoreRuntime } from "../services/core-bootstrap";
 import { createModelGatewaySubjectVerification } from "../services/model-gateway-subject-verification";
@@ -163,7 +163,8 @@ export async function startHostRuntime(
   // skill / mcp / model-management 四个模块才装配完成；也必须在这里才能拿到模型网关凭证解析器。
   const preLaunchPorts = createPreLaunchPorts({
     runtimeCredentialResolver,
-    hindsightApiToken: env.HINDSIGHT_API_TOKEN,
+    // 声明键（1.7 C 块）：schema 归 agent-config 模块，本行只从合并 env 取已校验值。
+    hindsightApiToken: readDeclaredEnv<string | undefined>(env, "HINDSIGHT_API_TOKEN"),
   });
   bindAgentLaunchSpecPort(preLaunchPorts.launchSpec);
   bindAgentConfigLookupPort(preLaunchPorts.lookup);
@@ -210,11 +211,18 @@ export async function startHostRuntime(
   startupLog.info("Custom tools registry initialized");
 
   // Initialize Hermes client if configured
-  // biome-ignore lint/suspicious/noExplicitAny: config channels shape is dynamic
-  const hermesUrl = process.env.HERMES_URL ?? (config as any).channels?.hermesUrl;
+  //
+  // Hermes 两项都是「声明键」：它们有唯一消费方（channel 模块），1.7 C 块把它们从宿主 schema 迁到
+  // channel 模块的 `envDefinitions`。因此这里经 `readDeclaredEnv` 从合并 env 取值，而不是直读宿主
+  // 字段或 `process.env`——校验已在 `loadServerEnv` 用声明方的 schema 完成，迁移前后本行的语义与类型
+  // 都不变（键还没迁出时读的是宿主 schema 的值，迁出后读的是模块声明的值）。
+  //
+  // 原来这里写 `process.env.HERMES_URL ?? (config as any).channels?.hermesUrl`：后半个分支既是 `as any`
+  // （CLAUDE.md 禁令），也是死代码——`AppConfig` 上没有 `channels` 字段，`??` 永远不会取到它。
+  const hermesUrl = readDeclaredEnv<string | undefined>(env, "HERMES_URL");
   if (hermesUrl) {
     // 平台清单是**部署配置值**（不是环境变量名）：包侧不读 process.env，由宿主在这里下发。
-    initHermesClient(hermesUrl, { platforms: env.HERMES_PLATFORMS });
+    initHermesClient(hermesUrl, { platforms: readDeclaredEnv<string | undefined>(env, "HERMES_PLATFORMS") });
   }
 
   // Verify RagFlow connectivity (non-blocking — logs warning on failure)

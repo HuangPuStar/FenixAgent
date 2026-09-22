@@ -1,5 +1,6 @@
 import type { ModuleManifest } from "@fenix/platform-sdk";
 import type { ServerRouteHost } from "@fenix/platform-sdk/server";
+import { z } from "zod/v4";
 
 /**
  * Machine 资源模块描述符。
@@ -34,6 +35,19 @@ import type { ServerRouteHost } from "@fenix/platform-sdk/server";
  * 1.5f 追加一条 `api` 槽贡献：`/api/environments/:environmentId/workspace/files`（对外工作区文件接口，
  * 与 `/web` 面共用同一份会话守卫）。
  *
+ * 声明 `envDefinitions`（1.7 C 块，路线 A）：本包实测只有两个部署级变量，且都只被本模块消费——
+ * `RCS_FILE_WS_IDENTITY_STRICT`（file-ws `register` 帧的身份绑定严格模式，默认宽松）由
+ * `src/server/services/file-machine-events.ts` 在未知 machine 的 register 上判定是否 close(4404)；
+ * `RCS_FILE_EVENTS_MAX_CLIENTS`（`/web/file-events` 订阅端点的服务级连接上限，默认 200）由
+ * `src/server/routes/web/file-events.ts` 在超限时 close 1013。两条 schema 与默认值逐字照抄宿主
+ * `apps/server/src/env.ts` 的原行，本包既不读 `process.env` 也不做第二份归一；route A 下
+ * `envDefinitions` 只承担启动期校验与汇总，值仍由宿主 `bootstrap/module-configs.ts` 投影进模块配置，
+ * 本包继续经 `getMachineConfig()` 读取。两键都是启动期快照（改后需重启），故 `restartRequired: true`。
+ *
+ * 有意**不**声明三个同族旋钮（`RCS_FILE_WS_IDLE_TIMEOUT_MS` / `RCS_FILE_WS_SWEEP_INTERVAL_MS` /
+ * `RCS_FILE_WS_SWEEP_ENABLED`）：它们的真实消费者是宿主启动序（`apps/server/src/config.ts` →
+ * `bootstrap/host-startup.ts` 的 `startFileWsSweep`），本包只在注释里提到，并非机器域配置，归属宿主。
+ *
  * 不声明 `web`：消费方是 §1.6 的 WebShell 装配，形状必须与消费端同时定型。
  */
 export const moduleManifest = {
@@ -41,6 +55,33 @@ export const moduleManifest = {
   kind: "resource",
   dependsOn: ["agent-config"],
   capabilities: ["resource.machine"],
+  envDefinitions: [
+    {
+      moduleId: "machine",
+      key: "RCS_FILE_WS_IDENTITY_STRICT",
+      // 与宿主 env.ts:125-128 逐字等价：先补默认字符串再归一为布尔，空串/未设置都落在宽松 false。
+      schema: z
+        .string()
+        .default("false")
+        .transform((v) => v === "true"),
+      defaultValue: "false",
+      secret: false,
+      restartRequired: true,
+      description:
+        "file-ws register 的身份绑定严格模式（§7.1）：未知 machine 的注册帧是否按 close(4404) 拒绝。默认 false（宽松放行 + 告警）；两阶段过渡软开关，须机器端先行升级后再开启。由本模块在 register 处理时读取。",
+    },
+    {
+      moduleId: "machine",
+      key: "RCS_FILE_EVENTS_MAX_CLIENTS",
+      // 与宿主 env.ts:132 逐字等价：字符串数字（含空串归一）中的正整数，超限关闭码由路由侧决定。
+      schema: z.coerce.number().int().positive().default(200),
+      defaultValue: 200,
+      secret: false,
+      restartRequired: true,
+      description:
+        "/web/file-events 文件变更事件订阅端点的服务级并发连接上限，与 YJS_MAX_CLIENTS 分池互不挤占。默认 200，超限 close 1013。由本模块在 WS 升级时读取。",
+    },
+  ],
   contributions: [
     {
       id: "machine.web-fs",
