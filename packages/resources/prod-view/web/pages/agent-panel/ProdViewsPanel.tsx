@@ -1,4 +1,5 @@
 import { agentApi } from "@fenix/agent-config/web";
+import { EmptyState } from "@fenix/ui-components/config/EmptyState";
 import { StatusBadge } from "@fenix/ui-components/config/StatusBadge";
 import { cn } from "@fenix/ui-components/lib/cn";
 import { Button } from "@fenix/ui-components/ui/button";
@@ -22,6 +23,7 @@ import {
   useProdViewEditor,
 } from "../../components/prod-view-editor";
 import { PROD_VIEWS_NS } from "../../i18n/namespace";
+import { PROD_VIEW_STATUS_TONES } from "../../lib/status-tones";
 
 interface ProdViewsPanelProps {
   agentId: string | null;
@@ -119,14 +121,14 @@ export function ProdViewsPanel({ agentId }: ProdViewsPanelProps) {
       ) : error ? (
         // 持久错误分支（role="alert"）：失败不能落进下面的「点击 + 创建」空态，否则用户分不清
         // 「加载失败」与「确实没有数据」，也没有恢复入口；已解构的 refresh 必须接到这里。
-        <div className="flex-1 flex flex-col items-center justify-center gap-3 py-8 px-4" role="alert">
-          <p className="text-sm text-text-muted">{unauthorized ? t("noPermission") : t("panel.loadFailed")}</p>
-          {unauthorized ? null : (
-            <Button size="xs" variant="outline" onClick={refresh}>
-              {t("retry")}
-            </Button>
-          )}
-        </div>
+        // 401/403（UNAUTHORIZED）不给重试：重试不会改变授权结果。
+        <EmptyState
+          tone="danger"
+          role="alert"
+          title={unauthorized ? t("noPermission") : t("panel.loadFailed")}
+          action={unauthorized ? undefined : { label: t("retry"), onClick: refresh }}
+          className="flex flex-1 flex-col justify-center px-4"
+        />
       ) : views.length === 0 ? (
         <button
           type="button"
@@ -147,15 +149,13 @@ export function ProdViewsPanel({ agentId }: ProdViewsPanelProps) {
                   !view.enabled && "opacity-50",
                 )}
               >
-                {/* 头部：状态圆点 + 名称 + 启用 badge */}
+                {/* 头部：名称 + 启用 badge（状态圆点由 badge 的 `indicator` 提供，不再另画一个手写色值的圆点） */}
                 <div className="flex items-center gap-2 min-w-0">
-                  <span
-                    className={cn("shrink-0 size-2 rounded-full", view.enabled ? "bg-emerald-500" : "bg-slate-400")}
-                  />
                   <span className="text-sm font-medium text-text-primary truncate">{view.name}</span>
                   <StatusBadge
                     status={view.enabled ? "enabled" : "disabled"}
                     label={view.enabled ? t("panel.enabled") : t("panel.disabled")}
+                    toneMap={PROD_VIEW_STATUS_TONES}
                     indicator="dot"
                     className="shrink-0 text-[10px] px-1.5 py-px"
                   />
@@ -180,7 +180,7 @@ export function ProdViewsPanel({ agentId }: ProdViewsPanelProps) {
                     <Button
                       variant="ghost"
                       size="xs"
-                      className="text-red-500 hover:text-red-600"
+                      className="text-destructive hover:text-destructive"
                       onClick={() => deletion.request(view)}
                       title={t("panel.delete")}
                     >

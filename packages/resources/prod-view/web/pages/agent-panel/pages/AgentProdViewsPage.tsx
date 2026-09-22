@@ -1,5 +1,6 @@
 import { agentApi } from "@fenix/agent-config/web";
 import { AgentCardList } from "@fenix/ui-components/components/AgentCardList";
+import { EmptyState } from "@fenix/ui-components/config/EmptyState";
 import { StatusBadge } from "@fenix/ui-components/config/StatusBadge";
 import { AppHeader } from "@fenix/ui-components/layout/app-header";
 import { AppPage } from "@fenix/ui-components/layout/app-page";
@@ -23,6 +24,7 @@ import {
   useProdViewEditor,
 } from "../../../components/prod-view-editor";
 import { PROD_VIEWS_NS } from "../../../i18n/namespace";
+import { PROD_VIEW_STATUS_TONES } from "../../../lib/status-tones";
 
 export function AgentProdViewsPage() {
   const { t } = useTranslation(PROD_VIEWS_NS);
@@ -87,20 +89,17 @@ export function AgentProdViewsPage() {
     return (
       <AppPage>
         <AppHeader title={t("title")} subtitle={t("subtitle")} />
-        <div className="mt-6 flex flex-col items-center gap-3 py-12" role="alert">
-          <AlertTriangle className="h-8 w-8 text-text-dim" />
-          <p className="text-sm font-medium text-text-bright">
-            {unauthorized ? t("noPermission") : t("loadError", { message: loadError.message })}
-          </p>
-          {unauthorized ? (
-            <p className="text-xs text-text-muted">{t("noPermissionHint")}</p>
-          ) : (
-            <Button variant="outline" size="sm" onClick={refresh} disabled={loading}>
-              <RefreshCw className="h-3.5 w-3.5" />
-              {t("retry")}
-            </Button>
-          )}
-        </div>
+        <EmptyState
+          tone="danger"
+          role="alert"
+          icon={<AlertTriangle />}
+          title={unauthorized ? t("noPermission") : t("loadError", { message: loadError.message })}
+          description={unauthorized ? t("noPermissionHint") : undefined}
+          action={
+            unauthorized ? undefined : { label: t("retry"), icon: <RefreshCw />, onClick: refresh, disabled: loading }
+          }
+          className="flex min-h-96 flex-col items-center justify-center"
+        />
       </AppPage>
     );
   }
@@ -131,6 +130,7 @@ export function AgentProdViewsPage() {
                 <StatusBadge
                   status={view.enabled ? "enabled" : "disabled"}
                   label={view.enabled ? t("enabled") : t("disabled")}
+                  toneMap={PROD_VIEW_STATUS_TONES}
                   className="text-xs px-1.5 py-0.5"
                 />
               </div>
@@ -159,7 +159,7 @@ export function AgentProdViewsPage() {
               <Button
                 size="xs"
                 variant="ghost"
-                className="text-red-500 hover:text-red-600"
+                className="text-destructive hover:text-destructive"
                 onClick={() => deletion.request(view)}
                 aria-label={t("delete")}
               >

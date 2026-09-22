@@ -1,4 +1,4 @@
-import { Button } from "@fenix/ui-components/ui/button";
+import { EmptyState } from "@fenix/ui-components/config/EmptyState";
 import { Spinner } from "@fenix/ui-components/ui/spinner";
 import { ApiError, unwrap } from "@fenix/web-runtime/api/request";
 import { useParams } from "@tanstack/react-router";
@@ -72,25 +72,21 @@ export function ProdViewPage({ chatArea: ChatArea }: ProdViewPageProps) {
           <Spinner variant="panel" label={<span className="sr-only">{t("loading")}</span>} />
         ) : loadError ? (
           // 持久错误分支（role="alert"）与 401/403 的无权限分支分开：后者给重试按钮是无意义的入口。
-          <div className="flex h-full flex-col items-center justify-center gap-4" role="alert">
-            <p className="text-sm text-text-muted">
-              {unauthorized ? t("noPermission") : ((loadError as Error)?.message ?? t("loadError"))}
-            </p>
-            {unauthorized ? (
-              <p className="text-xs text-text-dim">{t("noPermissionHint")}</p>
-            ) : (
-              <Button variant="outline" onClick={refresh} disabled={loading}>
-                {t("retry")}
-              </Button>
-            )}
-          </div>
+          <EmptyState
+            tone="danger"
+            role="alert"
+            title={unauthorized ? t("noPermission") : ((loadError as Error)?.message ?? t("loadError"))}
+            description={unauthorized ? t("noPermissionHint") : undefined}
+            action={unauthorized ? undefined : { label: t("retry"), onClick: refresh, disabled: loading }}
+            className="flex h-full flex-col justify-center"
+          />
         ) : !viewConfig?.environmentId ? (
-          <div className="flex h-full flex-col items-center justify-center gap-4">
-            <p className="text-sm text-text-muted">{t("instanceNotFound")}</p>
-            <Button variant="outline" onClick={refresh} disabled={loading}>
-              {t("retry")}
-            </Button>
-          </div>
+          <EmptyState
+            tone="danger"
+            title={t("instanceNotFound")}
+            action={{ label: t("retry"), onClick: refresh, disabled: loading }}
+            className="flex h-full flex-col justify-center"
+          />
         ) : (
           <Suspense fallback={<Spinner variant="panel" label={<span className="sr-only">{t("loading")}</span>} />}>
             <ChatArea
