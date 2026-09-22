@@ -34,7 +34,7 @@
   padding: 6px 9px;
   color: #54709e;
   background: #f1f6ff;
-  font-size: 11px;
+  font-size: 12px;
 }
 .agent-editor-root .agent-single-picker-current strong {
   color: #285bb6;
@@ -134,7 +134,7 @@
   display: -webkit-box;
   overflow: hidden;
   color: #31425d;
-  font-size: 17px;
+  font-size: 14px;
   line-height: 1.35;
   overflow-wrap: anywhere;
   -webkit-box-orient: vertical;
@@ -154,7 +154,7 @@
 .agent-editor-root .agent-model-options > :where(button) > em,
 .agent-editor-root .agent-node-list > :where(button) > em {
   color: #6d7d94;
-  font-size: 12px;
+  font-size: 11px;
   font-style: normal;
   white-space: nowrap;
 }
@@ -220,7 +220,7 @@
 }
 .agent-editor-root .agent-model-summary strong {
   color: #34455f;
-  font-size: 18px;
+  font-size: 16px;
   font-weight: 680;
 }
 .agent-editor-root .agent-model-summary p {
@@ -272,7 +272,7 @@
   align-items: center;
   gap: 7px;
   color: #33445c;
-  font-size: 13px;
+  font-size: 14px;
 }
 .agent-editor-root .agent-editor-toggle-row__copy small {
   color: #8996a9;
@@ -318,7 +318,7 @@
 }
 .agent-editor-root .agent-runtime-note strong {
   color: #315f53;
-  font-size: 13px;
+  font-size: 14px;
 }
 .agent-editor-root .agent-runtime-note p {
   margin: 4px 0 0;
@@ -344,7 +344,7 @@
   border-radius: 12px;
   color: #fff;
   background: linear-gradient(145deg, #3c78e4, #274eaa);
-  font-size: 13px;
+  font-size: 14px;
   font-weight: 720;
 }
 .agent-editor-root .agent-owner-card > div {
@@ -355,7 +355,7 @@
 }
 .agent-editor-root .agent-owner-card small {
   color: #98a3b3;
-  font-size: 11px;
+  font-size: 12px;
 }
 .agent-editor-root .agent-owner-card strong {
   color: #33435b;
@@ -371,7 +371,7 @@
   padding: 4px 7px;
   color: #2762c8;
   background: #eaf2ff;
-  font-size: 12px;
+  font-size: 11px;
   font-style: normal;
 }
 .agent-editor-root .agent-access-preview {
@@ -396,7 +396,7 @@
   color: #39516f;
   background: #fff;
   box-shadow: inset 0 0 0 1px #e0e6ee;
-  font-size: 13px;
+  font-size: 14px;
 }
 .agent-editor-root .agent-access-preview > div i {
   width: 24px;

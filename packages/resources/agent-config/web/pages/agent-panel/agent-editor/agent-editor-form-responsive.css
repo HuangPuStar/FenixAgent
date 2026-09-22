@@ -21,7 +21,7 @@
     height: 26px;
   }
   .agent-editor-root .agent-editor-map-copy strong {
-    font-size: 10px;
+    font-size: 14px;
   }
   .agent-editor-root .agent-editor-content {
     padding: 14px 18px 16px;
@@ -34,7 +34,7 @@
   }
   .agent-editor-root .agent-editor-section__intro p {
     margin-top: 6px;
-    font-size: 10px;
+    font-size: 14px;
   }
   .agent-editor-root .agent-editor-footer {
     min-height: 52px;
@@ -64,7 +64,7 @@
   }
   .agent-editor-root .agent-editor-guidance {
     margin-top: 8px;
-    font-size: 8px;
+    font-size: 12px;
     line-height: 1.45;
   }
   .agent-editor-root .agent-model-options,
@@ -137,7 +137,7 @@
   }
   .agent-editor-root .agent-editor-summary-cards button strong {
     overflow: hidden;
-    font-size: 9px;
+    font-size: 14px;
     text-overflow: ellipsis;
     white-space: nowrap;
   }
@@ -184,7 +184,7 @@
   border-top: 1px solid #edf1f5;
   padding: 0 8px;
   color: #8996a8;
-  font-size: 8px;
+  font-size: 12px;
 }
 :where(.agent-editor-root, .agent-editor-template-picker) .agent-editor-pagination > div {
   display: flex;

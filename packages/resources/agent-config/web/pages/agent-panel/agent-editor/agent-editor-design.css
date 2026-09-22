@@ -54,7 +54,7 @@
 }
 .agent-editor-save-meta small {
   color: #96a1b2;
-  font-size: 11px;
+  font-size: 12px;
 }
 .agent-editor-template-button[data-slot="button"] {
   height: 32px;
@@ -64,7 +64,7 @@
   padding: 0 10px;
   color: #3264bf;
   background: #f5f8ff;
-  font-size: 12px;
+  font-size: 14px;
   font-weight: 700;
   white-space: nowrap;
 }
@@ -184,7 +184,7 @@
 .agent-editor-map-copy small {
   overflow: hidden;
   color: #8d99ab;
-  font-size: 10px;
+  font-size: 12px;
   font-weight: 400;
   line-height: 1.35;
   text-overflow: ellipsis;
@@ -192,7 +192,7 @@
 }
 .agent-editor-map [data-slot="tabs-trigger"] > em {
   color: #929daf;
-  font-size: 10px;
+  font-size: 11px;
   font-weight: 400;
 }
 .agent-editor-readiness {
@@ -348,7 +348,7 @@
   overflow: hidden;
   margin-top: 2px;
   color: #8b97a8;
-  font-size: 10px;
+  font-size: 12px;
   line-height: 1.35;
   white-space: normal;
   -webkit-box-orient: vertical;
@@ -363,11 +363,11 @@
 }
 .agent-editor-summary-note p,
 .agent-editor-summary-safety {
-  font-size: 10px;
+  font-size: 12px;
 }
 .agent-editor-summary-note strong {
   margin-bottom: 2px;
-  font-size: 13px;
+  font-size: 14px;
 }
 .agent-editor-template-picker[data-slot="dialog-content"] {
   gap: 14px;
@@ -395,7 +395,7 @@
 .agent-editor-template-picker__search p {
   margin-top: 6px;
   color: #738098;
-  font-size: 13px;
+  font-size: 12px;
   line-height: 1.55;
 }
 .agent-editor-template-picker__search input {
@@ -451,7 +451,7 @@
 .agent-editor-template-picker__list > p {
   padding: 32px 12px;
   color: #8a97aa;
-  font-size: 13px;
+  font-size: 12px;
   text-align: center;
 }
 .agent-editor-footer {
@@ -480,7 +480,7 @@
   border-radius: 9px;
   color: #245bbf;
   background: #eaf2ff;
-  font-size: 13px;
+  font-size: 14px;
   font-weight: 750;
 }
 .agent-editor-footer__state p {
@@ -491,11 +491,11 @@
 }
 .agent-editor-footer__state strong {
   color: #3a4a62;
-  font-size: 12px;
+  font-size: 14px;
 }
 .agent-editor-footer__state small {
   color: #95a0b0;
-  font-size: 11px;
+  font-size: 12px;
 }
 .agent-editor-footer__actions {
   display: flex;
@@ -507,7 +507,7 @@
   height: 32px;
   border-radius: 9px;
   padding-inline: 11px;
-  font-size: 12px;
+  font-size: 14px;
 }
 .agent-editor-footer__actions .is-primary {
   min-width: 127px;

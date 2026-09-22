@@ -71,7 +71,7 @@
 }
 .agent-editor-header h2 {
   color: var(--color-text-bright);
-  font-size: 16px;
+  font-size: 14px;
   font-weight: 720;
 }
 .agent-editor-title-row em {
@@ -79,7 +79,7 @@
   padding: 2px 6px;
   color: var(--color-success);
   background: color-mix(in srgb, var(--color-success) 10%, transparent);
-  font-size: 9px;
+  font-size: 11px;
   font-style: normal;
 }
 .agent-editor-header p {
@@ -88,7 +88,7 @@
   margin-top: 2px;
   overflow: hidden;
   color: var(--color-text-muted);
-  font-size: 10px;
+  font-size: 12px;
   white-space: nowrap;
 }
 .agent-editor-header code {
@@ -107,11 +107,11 @@
   align-items: flex-end;
   flex-direction: column;
   color: var(--color-text-primary);
-  font-size: 10px;
+  font-size: 12px;
 }
 .agent-editor-save-meta small {
   color: var(--color-text-muted);
-  font-size: 8px;
+  font-size: 12px;
 }
 .agent-editor-template-button {
   height: 32px;
@@ -140,7 +140,7 @@
 .agent-editor-map-label {
   padding: 0 8px 6px;
   color: var(--color-text-muted);
-  font-size: 9px;
+  font-size: 11px;
   font-weight: 700;
   letter-spacing: 0.08em;
 }
@@ -182,18 +182,18 @@
 }
 .agent-editor-map-copy strong {
   color: var(--color-text-primary);
-  font-size: 12px;
+  font-size: 14px;
 }
 .agent-editor-map-copy small {
   overflow: hidden;
   color: var(--color-text-muted);
-  font-size: 9px;
+  font-size: 12px;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 .agent-editor-map [data-slot="tabs-trigger"] > em {
   color: var(--color-text-muted);
-  font-size: 8px;
+  font-size: 11px;
   font-style: normal;
 }
 .agent-editor-content {
@@ -222,7 +222,7 @@
   max-width: 590px;
   margin-top: 8px;
   color: var(--color-text-muted);
-  font-size: 11px;
+  font-size: 14px;
   line-height: 1.65;
 }
 .agent-editor-identity-fields {
@@ -235,7 +235,7 @@
   grid-column: 1 / -1;
 }
 .agent-editor-identity-fields label {
-  font-size: 10px;
+  font-size: 14px;
 }
 .agent-editor-identity-fields input {
   height: 39px;
@@ -265,13 +265,13 @@
 .agent-editor-summary h3 {
   margin-top: 4px;
   color: var(--color-text-bright);
-  font-size: 20px;
+  font-size: 22px;
   font-weight: 700;
 }
 .agent-editor-summary > p {
   margin-top: 4px;
   color: var(--color-text-muted);
-  font-size: 9px;
+  font-size: 14px;
 }
 .agent-editor-summary-cards {
   display: grid;
@@ -311,18 +311,18 @@
 }
 .agent-editor-summary-cards small {
   color: var(--color-text-muted);
-  font-size: 8px;
+  font-size: 12px;
 }
 .agent-editor-summary-cards strong {
   overflow: hidden;
   color: var(--color-text-bright);
-  font-size: 12px;
+  font-size: 14px;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 .agent-editor-summary-cards em {
   color: var(--color-text-muted);
-  font-size: 8px;
+  font-size: 12px;
   font-style: normal;
 }
 .agent-editor-summary-note {
@@ -340,7 +340,7 @@
 }
 .agent-editor-summary-note p {
   color: var(--color-text-muted);
-  font-size: 8px;
+  font-size: 12px;
   line-height: 1.5;
 }
 .agent-editor-summary-note strong {
@@ -353,7 +353,7 @@
   gap: 5px;
   margin-top: 9px;
   color: var(--color-text-muted);
-  font-size: 8px;
+  font-size: 12px;
 }
 .agent-editor-summary-safety svg {
   width: 10px;
@@ -399,7 +399,7 @@
 }
 .agent-editor-state p {
   max-width: 480px;
-  font-size: 13px;
+  font-size: 12px;
 }
 .agent-editor-readonly,
 .agent-editor-resource-error,
