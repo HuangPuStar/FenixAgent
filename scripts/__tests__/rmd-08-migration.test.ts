@@ -83,6 +83,13 @@ import { existsSync } from "node:fs";
  *     `RMD_08_RELOCATED`，而是按「已裁定删除」口径改挂 `RMD_08_TARGETS_LATER_DELETED`：MOVES 表 58 → 56、
  *     在册总数仍为 58，复活由下方 `later-deleted migration targets ... stay absent` 断言拦住——第 16 条里
  *     作为等价对照提到的 `api-result-utils`，即本轮退役的这一份。
+ * 18. CE 收官后 `@fenix/ui-components/web/chat/**` 的设计层样式逐片迁成 Tailwind 工具类，15 份样式表删除
+ *     （迁移台账见该包 `README.md`）。其中 `primitives/chat-message-content.css` 正是 RMD-08 的 relocated
+ *     目标之一：它的元素级与后代排版规则改由 `primitives/internal/markdown-classes.ts` 的容器 arbitrary
+ *     variant 承接，文件本身随片删除。于是本表出现唯一一条「host 副本已删、包内 owner 也已被后续迁移删除」
+ *     的条目——它不再满足 `RMD_08_RELOCATED` 的「owner 必须存在」，改挂
+ *     `RMD_08_RELOCATED_TARGETS_LATER_DELETED`（88 + 1 = 89，在册总数不变，只是断言方向翻转为三条路径
+ *     全不得存在）。这两张表的长度之和才是 relocated 的在册数，改表时两边都要看。
  */
 const RMD_08_MOVES = [
   ["web/src/App.tsx", "apps/web/src/App.tsx"],
@@ -242,11 +249,6 @@ const RMD_08_RELOCATED = [
     "web/src/__tests__/task-form-schema.test.ts",
     "apps/web/src/__tests__/task-form-schema.test.ts",
     "packages/resources/task/web/__tests__/agent-tasks-utils.test.ts",
-  ],
-  [
-    "web/components/ai-elements/chat-message-content.css",
-    "apps/web/components/ai-elements/chat-message-content.css",
-    "packages/ui-components/web/chat/primitives/chat-message-content.css",
   ],
   [
     "web/components/ai-elements/conversation.tsx",
@@ -624,6 +626,27 @@ const RMD_08_RELOCATED = [
   ],
 ] as const;
 
+/**
+ * `RMD_08_RELOCATED` 在册、但其包内 owner 落点在本轮 chat 样式迁移中被删除的条目（三元组口径同上）。
+ *
+ * `chat-message-content.css` 的排版声明在 RMD-08 时确实迁到了 `@fenix/ui-components`，本表记录的是那之后的
+ * 第二段事实：CE 之后 `packages/ui-components/web/chat/**` 的 15 份设计层样式表逐片迁成 Tailwind 工具类并
+ * 删除（本条目属阶段三，见 `review/` 与包内 `README.md` 的迁移台账），这份样式表是其中一份——它的元素级与
+ * 后代规则改由 `primitives/internal/markdown-classes.ts` 的容器 arbitrary variant 承接。于是「owner 必须存在」
+ * 在这条上不再是事实：owner 的**声明**仍在，只是换了载体。
+ *
+ * 仍留在册、不与 `RMD_08_RELOCATED` 合并的理由是反过来的一半——历史副本与包内副本必须**同时**不存在。
+ * 若哪天它从任一侧复活，等于把「未分层 CSS 压过 @layer utilities」的旧排版层重新接回应用壳或组件包，
+ * 与容器工具类形成两份真相，因此本表的断言方向是三条路径全为 absent。
+ */
+const RMD_08_RELOCATED_TARGETS_LATER_DELETED = [
+  [
+    "web/components/ai-elements/chat-message-content.css",
+    "apps/web/components/ai-elements/chat-message-content.css",
+    "packages/ui-components/web/chat/primitives/chat-message-content.css",
+  ],
+] as const;
+
 describe("RMD-08 apps/web migration", () => {
   // 100 个保留的应用壳源文件都必须从旧根路径移除，并保留在唯一的 owner 目标。
   // 任务 1.3 收口移出的一项：`__tests__/task-form-schema.test.ts` 是内联的表单校验 schema 副本，宿主侧
@@ -712,12 +735,24 @@ describe("RMD-08 apps/web migration", () => {
   // 与按 owner 拆开搬迁的 `agent-form-dialog-pure-logic.test.ts`（见文件头第 16 条），88 → 89：
   // 旧根路径与应用壳路径都不得复活，且包侧 owner 落点必须存在。副本与 owner 并存是「两份实现各自能跑」
   // 的最坏形态，删除与断言必须成对出现。
+  // 在册总数改用两张表的**和**守住（见文件头第 18 条）：一条换到 `..._TARGETS_LATER_DELETED` 只改变它的
+  // 断言方向，不等于在册数变小，更不能让它在两张表之间凭空消失。
   test("relocates the leftover host copies to their package owners", () => {
-    expect(RMD_08_RELOCATED).toHaveLength(89);
+    expect(RMD_08_RELOCATED.length + RMD_08_RELOCATED_TARGETS_LATER_DELETED.length).toBe(89);
     for (const [legacy, shell, owner] of RMD_08_RELOCATED) {
       expect(existsSync(legacy), `legacy source still exists: ${legacy}`).toBe(false);
       expect(existsSync(shell), `host copy still exists: ${shell}`).toBe(false);
       expect(existsSync(owner), `package owner is missing: ${owner}`).toBe(true);
+    }
+  });
+  // 包内 owner 落点被本轮 chat 样式迁移删除的那条（见文件头第 18 条与 `RMD_08_RELOCATED_TARGETS_LATER_DELETED`）：
+  // 三条路径都不得复活——宿主或包内任一侧重新出现这份未分层样式表，都等同于把旧排版层接回来，与
+  // `primitives/internal/markdown-classes.ts` 的容器工具类形成两份真相（未分层声明会静默压过 @layer utilities）。
+  test("relocated targets deleted by the chat style migration stay absent", () => {
+    for (const [legacy, shell, owner] of RMD_08_RELOCATED_TARGETS_LATER_DELETED) {
+      expect(existsSync(legacy), `legacy source came back: ${legacy}`).toBe(false);
+      expect(existsSync(shell), `host copy came back: ${shell}`).toBe(false);
+      expect(existsSync(owner), `package owner came back: ${owner}`).toBe(false);
     }
   });
   // 拆分归属的用例无法用 relocated 三元组表达：`context-queue` 的宿主副本连同「队列状态」一半一并删除
