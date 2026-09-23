@@ -456,8 +456,14 @@ export function ACPMain({
                 </div>
               </div>
 
-              {/* 会话列表 */}
-              <ScrollArea className="flex-1">
+              {/* 会话列表。`min-h-0` 不是修饰：本 ScrollArea 根是列向 flex 的子项（`flex-1`），
+                  不写它时 `min-height: auto`（CSS 的自动最小尺寸）会把根撑到**整个列表的内容高度**，
+                  视口因此与内容等高、永远没有可滚动溢出 —— 表现为「会话一多就滚不动、且看不到滚动条」
+                  （实测：侧栏高 863px，45 条会话时 ScrollArea 根被撑到 1494px，视口 clientHeight ==
+                  scrollHeight == 1494，滚轮与 `scrollTop` 赋值都无效）。同包另三处 ScrollArea
+                  （`internal/acp-main-mobile-sidebar`、`ChatHeader`、`components/agent-master-detail-workspace`）
+                  都带 `min-h-0`，此处补齐同一条约定。会话数少时无差别，故只在「无滚动条 → 有滚动条」时暴露。 */}
+              <ScrollArea className="flex-1 min-h-0">
                 <SidebarSessionList
                   initialActiveSessionId={initialActiveSessionId}
                   onSelectSession={handleSelectSession}
