@@ -3,6 +3,10 @@
 // 换成下面的 Tailwind 工具类：该 CSS 与其 import 已删除，只剩同目录的 `agent-organizations-workspace.css`
 // 承载 ≤900px 断点那一组声明（原因为那里的断点不是 Tailwind 标准档、且单列改造必须压过库内未分层的列定义）。
 //
+// **下面这套档位现在只管详情区**：左侧目录栏的取值 2026-09-23 已全部归还共享构件集
+// `@fenix/ui-components/components/agent-catalog-index`（五页同一份，含字号），本页不再为目录栏写任何取值，
+// 唯一保留的目录侧页面语义是行首图标的角色三态色（落在 TSX 的工具类上）。
+//
 // **字号档位是怎么定的**（这条结论没有随那份 CSS 消失，改字号前先读）：
 // 宿主 `apps/web/src/index.css` 的 `html, body { font-size: 13px }` 让全部 rem 刻度按 13/16 渲染——
 // 2026-09-23 用 dist 产物在 Chromium 读 `getComputedStyle` 实测：`text-xs` 9.75px、`text-3xs` 10px
@@ -19,6 +23,7 @@
 // `agent-sites.css` 等页面存在 13/16 的口径差，那批属另一批存量，本批未动。
 import {
   AgentCatalogIndex,
+  AgentCatalogIndexArrow,
   AgentCatalogIndexCopy,
   AgentCatalogIndexIcon,
   AgentCatalogIndexItem,
@@ -55,10 +60,17 @@ import type { MachineView, OrganizationsWorkspaceProps } from "./agent-organizat
 import { canOperateMachine } from "./agent-organizations-utils";
 import "./agent-organizations-workspace.css";
 
+/**
+ * 目录行首的角色图标。
+ *
+ * 只负责**着色**——三态色是本页独有的语义，共享图标盒刻意不声明 `color`，因此这里的工具类不会被
+ * 未分层的共享 CSS 压过。尺寸不在这里给：图标盒把内层 svg 统一到 16.25px（`size-4` 那类工具类
+ * 写在 `@layer utilities`，即便留着也不生效，故一并移除以免误导）。
+ */
 function RoleIcon({ role }: { role: string }) {
-  if (role === "owner") return <Shield className="size-4 shrink-0 text-yellow-600" />;
-  if (role === "admin") return <ShieldCheck className="size-4 shrink-0 text-blue-500" />;
-  return <User className="size-4 shrink-0 text-text-muted" />;
+  if (role === "owner") return <Shield className="text-yellow-600" />;
+  if (role === "admin") return <ShieldCheck className="text-blue-500" />;
+  return <User className="text-text-muted" />;
 }
 
 function RoleBadge({ role }: { role: string }) {
@@ -86,56 +98,44 @@ export function OrganizationIdCopy({ id, onCopy }: { id: string; onCopy: () => v
 
 function OrganizationDirectory({ props }: { props: OrganizationsWorkspaceProps }) {
   const { t } = useTranslation(NS.ORGS);
-  // 目录栏骨架（头部几何、条目列模板、两行截断、窄屏横置）已下沉共享构件集 `agent-catalog-index`，本页只给
-  // 取值与配色。形态差异各有去处：没有箭头 → `columns="icon-copy-meta"`；行尾角色文字 → `Meta`；
-  // `font-mono` 的 slug 副标题 → `subtitleClassName`；行首是**裸图标**（`size-4`，没有图标盒，宽度不等于
-  // 共享默认的 28px 图标列）→ 由页面 CSS 把 `--agent-catalog-index-icon-column` 设成 `1rem`；
-  // 大写小标题的字号与「计数不是徽标」→ 同目录伴生 CSS 的两条覆盖（共享 CSS 未分层，工具类压不过它）。
+  // 目录栏外观（内边距 / 底色 / 分隔线 / 头部 / 行距 / 条目三态 / 图标盒 / 字号）全在共享构件集的伴生 CSS。
+  // 本页此前那三处高特异性覆盖（首列宽 `1rem`、大写字距、计数退回纯文字）已随本版删除：它们存在的
+  // 理由是「本页转入了 13/16 rem 刻度，与共享的 px 刻度不同」，而共享默认值现在本身就是 rem 刻度
+  // （见 `agent-catalog-index.css` 文件头），层级单调由共享那一套档位保证，不再需要页面纠偏。
+  // 本页保留的只有：行首图标的**角色三态色**（着色语义，图标盒刻意不声明 `color`），以及 ≤900px 的
+  // 单列 + 目录横置那一组声明（非标准断点 + 必须压过库内未分层的列定义，见伴生 CSS）。
   // 随骨架而来、**不是**「原样」的两处语义变化：目录列表由 `<div>` 变成 `<nav aria-label>`（多一个地标，
   // 名字复用 `t("myOrgs")`），选中行多出 `aria-current="page"`（此前选中只体现在配色上）。
   return (
     <AgentCatalogIndex
-      className="org-directory flex min-h-0 flex-col border-r border-slate-100 bg-surface-0 px-3 py-5"
-      // 大写字距与颜色是继承属性，共享头部没写过，工具类照常生效；被共享头部写死的字号
-      // （13px）只能由页面 CSS 覆盖，见 `agent-organizations-workspace.css`。
-      headerClassName="uppercase tracking-wider text-text-muted"
+      // `org-directory` 不再承载任何外观，只作 ≤900px 那条布局规则的挂载点（见伴生 CSS）。
+      className="org-directory"
       label={t("myOrgs")}
       title={t("myOrgs")}
       count={props.organizations.length}
     >
-      <AgentCatalogIndexNav className="org-directory-list gap-1" label={t("myOrgs")} stripOnNarrow="900px">
+      {/* `gap-1` 那类工具类在这里不再需要：行距由共享 CSS 的 `.agent-catalog-index-nav` 统一给，
+          工具类位于 `@layer utilities`、会被未分层声明整条压过。`org-directory-list` 只作窄屏那条
+          `min-width` 规则的挂载点。 */}
+      <AgentCatalogIndexNav className="org-directory-list" label={t("myOrgs")} stripOnNarrow="900px">
         {props.organizations.map((organization) => {
           const selected = organization.id === props.selectedOrgId;
           return (
             <AgentCatalogIndexItem
               key={organization.id}
-              columns="icon-copy-meta"
               selected={selected}
-              // 行高、内边距、圆角、列间距、配色是本页刻度；`display: grid`、三列模板、`min-width: 0`、
-              // `align-items: center`、`border: 0`、`text-align: left` 已由共享组件声明，故不再重复。
-              // 首列宽度由页面 CSS 的 `--agent-catalog-index-icon-column: 1rem` 压回裸图标宽度（见 CSS）。
-              // 行宽（窄屏 `min-width: 11.875rem`）不走工具类：共享 `.agent-catalog-index-item { min-width: 0 }`
-              // 未分层，会压过 `@layer utilities` 的 `min-w-47.5`，那份声明因此留在页面 CSS 的 900px 段里。
-              // 行上的 `w-full` 一并移除以配合 `flex: 0 0 auto`：否则窄屏横置时每行都会顶满一屏。
-              className={`org-directory-row min-h-13 gap-2.5 rounded-md px-2.5 py-2 transition-colors ${
-                selected
-                  ? "bg-surface-hover text-blue-800"
-                  : "bg-transparent text-slate-600 hover:bg-surface-2 hover:text-text-primary"
-              }`}
+              // `org-directory-row` 不承载外观，只作窄屏行宽规则的挂载点（见伴生 CSS）。
+              className="org-directory-row"
               onClick={() => props.onSelectOrg(organization.id)}
             >
               <AgentCatalogIndexIcon>
                 <RoleIcon role={organization.role} />
               </AgentCatalogIndexIcon>
-              <AgentCatalogIndexCopy
-                title={organization.name}
-                subtitle={organization.slug}
-                titleClassName="text-base font-semibold"
-                subtitleClassName="mt-0.5 font-mono text-sm text-text-muted"
-              />
-              <AgentCatalogIndexMeta className="text-xs text-text-muted">
-                {t(`roles.${organization.role}`, organization.role)}
+              <AgentCatalogIndexCopy title={organization.name} subtitle={organization.slug} />
+              <AgentCatalogIndexMeta>
+                <span>{t(`roles.${organization.role}`, organization.role)}</span>
               </AgentCatalogIndexMeta>
+              <AgentCatalogIndexArrow />
             </AgentCatalogIndexItem>
           );
         })}

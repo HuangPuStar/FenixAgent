@@ -177,11 +177,10 @@ function ProviderIndex({
   onSelect: (provider: ProviderInfo) => void;
 }) {
   const { t } = useTranslation(MODELS_NS);
-  // 目录栏骨架（头部几何、条目四列模板、两行截断、箭头显隐）已下沉到共享构件集，本页只给取值与配色，
-  // 对应的本页刻度集中在 `agent-models.css` 的 `.models-provider-index` 一段。
+  // 目录栏外观（内边距 / 底色 / 分隔线 / 行距 / 条目三态 / 图标盒 / 字号）全在共享构件集的伴生 CSS，
+  // 本页不再给任何取值——2026-09-23 的裁定是「全部样式统一，不要观感不统一」。
   return (
     <AgentCatalogIndex
-      className="models-provider-index"
       title={t("providerIndex.title")}
       count={providers.length}
       description={t("providerIndex.description")}
@@ -199,15 +198,17 @@ function ProviderIndex({
             return (
               <AgentCatalogIndexItem
                 key={key}
+                // 选中配色与箭头显隐由共享 CSS 按 `aria-current="page"` 驱动（本页此前的 `is-selected` 已删）。
                 selected={active}
-                className={active ? "is-selected" : ""}
                 onClick={() => onSelect(provider)}
               >
-                <AgentCatalogIndexIcon className="models-provider-brand [--ant-color-text-description:currentColor] text-secondary">
-                  <ModelIcon modelId={iconModelId} size={18} />
+                {/* 品牌图标是彩色 svg，`--ant-color-text-description` 只影响它的
+                    单色兜底分支；图标盒的尺寸 / 圆角 / 白底由共享 CSS 给。`size` 与图标盒内层 svg
+                    同尺（共享 CSS 也会把 svg 统一到该尺寸，这里显式传入是为了让彩色图标按同一视框渲染）。 */}
+                <AgentCatalogIndexIcon className="[--ant-color-text-description:currentColor]">
+                  <ModelIcon modelId={iconModelId} size={16} />
                 </AgentCatalogIndexIcon>
                 <AgentCatalogIndexCopy
-                  className="models-provider-copy"
                   title={provider.name || provider.id}
                   // 副标题在 238px 列里会被截断，全文仍由 `title` 提供；共享组件的 `<small>` 没有属性插槽，
                   // 所以把它落在内层的 span 上（对外行为与迁移前的 `<small title>` 一致）。
@@ -218,12 +219,10 @@ function ProviderIndex({
                   }
                 />
                 <AgentCatalogIndexMeta>
-                  {external && !publiclyReadable ? (
-                    <span className="models-provider-scope">{t("scope.shared")}</span>
-                  ) : null}
-                  {publiclyReadable ? <span className="models-provider-scope">{t("scope.public")}</span> : null}
+                  {external && !publiclyReadable ? <span>{t("scope.shared")}</span> : null}
+                  {publiclyReadable ? <span>{t("scope.public")}</span> : null}
                 </AgentCatalogIndexMeta>
-                <AgentCatalogIndexArrow className="models-provider-arrow" />
+                <AgentCatalogIndexArrow />
               </AgentCatalogIndexItem>
             );
           })}

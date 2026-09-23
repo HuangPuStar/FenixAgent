@@ -70,13 +70,6 @@
   background: transparent;
 }
 
-/* 目录项图标，源 `[&_svg]:w-4`。四列模板与图标盒排布已下沉共享目录组件
-   （`agent-catalog-index.css`），留在这里的是**本页刻度**：图标 svg 的宽度在
-   MCP(16px) / 模型库(18px) / 知识库(16px) 各不相同，共享不了。 */
-.skills-directory-item-icon svg {
-  width: calc(var(--spacing) * 4);
-}
-
 /* 详情头部图标，源 `[&_svg]:w-6`。 */
 .skills-detail-icon svg {
   width: calc(var(--spacing) * 6);

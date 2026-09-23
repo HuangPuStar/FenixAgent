@@ -223,13 +223,14 @@ export function AgentSkillsCatalog(props: AgentSkillsCatalogProps) {
           detailHeader={selectedSkill ? <SkillDetailView skill={selectedSkill} props={props} headerOnly /> : null}
           detailFooter={selectedSkill ? <SkillDetailActions skill={selectedSkill} props={props} /> : null}
           index={
+            // 目录栏外观（内边距 / 底色 / 分隔线 / 行距 / 条目三态 / 字号）全在共享构件集的伴生 CSS，
+            // 页面不再给目录栏与条目任何取值——2026-09-23 的裁定是「全部样式统一」。
             <AgentCatalogIndex
-              className="px-2.5 py-4.75"
               title={t("directory.title")}
               count={filtered.length}
               description={t("directory.summary", { visible: filtered.length, total: props.skills.length })}
             >
-              <AgentCatalogIndexNav className="gap-0.75" label={t("directory.title")}>
+              <AgentCatalogIndexNav label={t("directory.title")}>
                 {filtered.map((skill) => {
                   const external = isExternalSkill(skill, props.activeOrganizationId);
                   const SkillIcon = getSkillIcon(skill);
@@ -241,37 +242,17 @@ export function AgentSkillsCatalog(props: AgentSkillsCatalogProps) {
                     <AgentCatalogIndexItem
                       key={getSkillKey(skill)}
                       selected={active}
-                      className={`min-h-14.25 gap-2 rounded-md p-2 ${active ? "bg-indigo-50 text-[var(--skills-blue)]" : "text-[var(--skills-muted)] hover:bg-white"}`}
                       onClick={() => setSelectedKey(getSkillKey(skill))}
                     >
-                      <AgentCatalogIndexIcon className="skills-directory-item-icon size-7 rounded-md bg-white">
-                        {external ? <Share2 /> : <SkillIcon />}
-                      </AgentCatalogIndexIcon>
+                      <AgentCatalogIndexIcon>{external ? <Share2 /> : <SkillIcon />}</AgentCatalogIndexIcon>
                       <AgentCatalogIndexCopy
                         title={display.name}
                         subtitle={skill.description || t("directory.noDescription")}
-                        titleClassName="text-xs text-[var(--skills-ink)]"
-                        subtitleClassName="mt-0.75 text-3xs text-[var(--skills-faint)]"
                       />
-                      <AgentCatalogIndexMeta className="gap-1 text-3xs leading-none">
-                        {display.namespace ? (
-                          <span
-                            className="max-w-32 overflow-hidden text-ellipsis whitespace-nowrap text-[var(--skills-muted)]"
-                            title={organizationName}
-                          >
-                            {display.namespace}
-                          </span>
-                        ) : null}
-                        {external && !publiclyReadable ? (
-                          <span className="rounded border border-blue-200 bg-blue-50 px-1.5 py-1 text-blue-700">
-                            {t("scope.shared")}
-                          </span>
-                        ) : null}
-                        {publiclyReadable ? (
-                          <span className="rounded border border-blue-200 bg-blue-50 px-1.5 py-1 text-blue-700">
-                            {t("scope.public")}
-                          </span>
-                        ) : null}
+                      <AgentCatalogIndexMeta>
+                        {display.namespace ? <span title={organizationName}>{display.namespace}</span> : null}
+                        {external && !publiclyReadable ? <span>{t("scope.shared")}</span> : null}
+                        {publiclyReadable ? <span>{t("scope.public")}</span> : null}
                       </AgentCatalogIndexMeta>
                       <AgentCatalogIndexArrow />
                     </AgentCatalogIndexItem>

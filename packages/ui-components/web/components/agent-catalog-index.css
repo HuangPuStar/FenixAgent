@@ -1,133 +1,192 @@
 /*
  * 目录索引构件集的深层样式（对应 `agent-catalog-index.tsx`）。
  *
- * 为什么下沉：四列模板 `28px minmax(0, 1fr) auto 12px` 含 `minmax()`（复合值，仓库禁令
- * FCP-WEB-02 无扁平等价物），此前在 `agent-mcp.css` / `agent-models.css` / `agent-skills.css`
- * 三处逐字重复；同一原因，各页的两列/三列变体（知识库、组织页）此前也各写一份。
- * 子代选择器（`> div > span`、`> small`、`> strong`）与手写媒体查询同样没有工具类等价物。
+ * ## 这里放什么
  *
- * 分工（决定了哪些值写在这里、哪些留给调用方）：
- * - 这里只写**跨页一致**的骨架：列模板、行与槽盒的排布、文案截断、箭头显隐、头部几何与配色。
- * - 字号 / 内边距 / 行高 / 圆角 / 选中配色 / 行间距是各页自己的刻度（px 字面量与 13/16 rem
- *   刻度长期并存，同一角色在两套刻度下取值本来就不同），仍由调用方的工具类或页面 CSS 提供。
- *   本文件不写它们，就顺带避免了下面「未分层」带来的覆盖难题。
+ * **目录栏「常态观感」的全部取值**：容器（内边距 / 底色 / 分隔线）、头部（标题、计数、说明行的几何与
+ * 配色）、列表行距、条目（列模板、行高、内边距、圆角、三态配色、过渡）、图标盒（尺寸 / 圆角 / 底色 /
+ * 内层 svg）、文案（标题 / 副标题的字号 / 字重 / 颜色 / 行高 / 间距）、尾注列与其标签、箭头。
  *
- * 层叠：本文件不包 `@layer`（同 `agent-master-detail-workspace.css` 与
- * `agent-organizations-workspace.css`），未分层声明压过 `@layer utilities`。三个后果：
- * 1. 调用方**不能**用工具类覆盖本文件写过的属性（同属性工具类会被整条压过，与类名在 className 里
- *    的先后无关）。需要改这些属性时，用「页面 CSS + 更高特异性选择器」，例如
- *    `.mcp-directory .agent-catalog-index-header [data-slot="catalog-index-count"] { ... }`。
- *    **最容易撞上的一条是 `min-width`**：`.agent-catalog-index` 与 `.agent-catalog-index-item` 都写了
- *    `min-width: 0`（防止一处长不可断文本把 238px 的目录列撑开），于是「给窄屏横置的行一个固定宽度」
- *    写工具类 `min-w-47.5` 完全无效——它落在 `@layer utilities`，被那条未分层声明整条压过。只能在页面
- *    CSS 里带上下文提特异性，例如组织页的 `.org-directory-list > .org-directory-row { min-width: … }`。
- * 2. 本文件没写过的属性（字号、内边距、圆角、背景色……）调用方照常用工具类，互不干扰。
- * 3. 唯一**不需要抢特异性**的旋钮是图标列宽 `--agent-catalog-index-icon-column`：默认值写在 `var()`
- *    的**回退位**上（见下方列模板）。页面因此在任意祖先上设一次即可生效——自定义属性在元素自身上的
- *    声明会压过继承值，若把默认值写成 `.agent-catalog-index-item { --…: 28px }` 这样一条真实声明，
- *    页面就必须靠更高特异性去抢、还得恰好命中条目元素本身。
+ * 判据只有一条：**五页在这些字段上必须渲染出同一组计算值**。页面的差异不在这一层——结构差异
+ * （知识库的行尾删除按钮、组织页没有说明行）由 TSX 的槽位与 props 表达，布局差异（窄屏横置 / 隐藏）
+ * 由 `data-strip` 与页面 CSS 的媒体查询表达。**「各页刻度」不再是理由**：2026-09-23 的裁定是
+ * 「全部样式统一，不要观感不统一」，此前的「字号 / 内边距 / 行高 / 圆角 / 配色归各页」分工随之作废。
  *
- * 可覆盖的内部结构（`data-slot`）：头部是页面唯一需要改内部取值的地方，故给稳定钩子，而不是让页面
- * 依赖 `header > div > strong/span` 那层标签结构——那种选择器会随组件重构静默失配、且不报错。
- * 钩子取值：`catalog-index-header` / `catalog-index-title-row` / `catalog-index-title` /
- * `catalog-index-count` / `catalog-index-description`，各自对应下方一条规则。
+ * 页面仍可覆盖（共享 CSS 未分层，见下），但只应覆盖**页面独有的语义**：
+ * 图标着色（组织页的角色三态色）、行尾动作与不可用态（知识库）、窄屏布局（组织页 ≤900px、
+ * 知识库 ≤760px）。凡是「本页刻度与别页不同」的覆盖都应在这一版之后消失。
  *
- * 已知偏差：头部的 13px 标题 / 22×20 徽标 / 11px 说明行取自 MCP 与模型库那份逐字相同的取值；
- * 技能库收编前是 13/16 rem 刻度下的更小取值（9.75px 标题、17.875×16.25 徽标），收编后按本规范
- * 统一——这是「消掉四处同构」的直接结果，逐条前后对照见交付说明。
- * 标题字重显式钉 600（见 `[data-slot="catalog-index-title"]`）：`<strong>` 的 UA 字重是 `bolder`，
- * 在 600 的父级上按 CSS Fonts 的映射表会解析成 900——那是继承来的偶然值而不是设计值。钉死之后
- * 本组件的取值与注释一致，页面不必再各自纠偏；代价是原先落在 900 的页面计算字重变为 600。
- * 移除条件：无。承载的是仓库禁令下的必要下沉；若将来 `grid-template-columns` 有了扁平等价物，
- * 可把列模板改回工具类，其余选择器（槽位、媒体查询）仍需留在本文件。
+ * ## 刻度
+ *
+ * 一律用 rem：宿主 `apps/web/src/index.css` 的 `html, body { font-size: 13px }` 让 1rem = 13px，
+ * 因此本文件的取值都是 13/16 刻度下的值，随根字号缩放（px 字面量不会）。基准取自迁移前 MCP 与
+ * 模型库那份**逐字相同**的 px 刻度（13px 标题、28×28 图标盒、57px 行高、8px 内边距、7px 圆角、
+ * `#65728a` / `#e9edf4` / `#e8f0ff` / `#2463eb`），逐值换算到最近的 rem。换算误差都在 0.7px 以内，
+ * 换算表见交付说明。**没有用 `text-3xs`**：它固定 10px，在 13px 根字号下反而大于 `text-xs`(9.75px)，
+ * 而本组件的副标题与尾注都低于标题一档，用它会让层级在运行期反序。
+ *
+ * ## 层叠
+ *
+ * 本文件不包 `@layer`（同 `agent-master-detail-workspace.css` 与 `agent-organizations-workspace.css`），
+ * 未分层声明压过 `@layer utilities`。两个后果：
+ * 1. 页面**不能**用工具类覆盖本文件写过的属性（同属性工具类会被整条压过，与类名在 className 里的
+ *    先后无关）。需要改时必须用「页面 CSS + 更高特异性选择器」。这也是本文件把默认值一次写全的代价：
+ *    既然目标是「默认即唯一真相」，页面本来就不该再改这些属性。
+ * 2. 本文件与页面 CSS **同为未分层**时按源序决胜，产物里页面 CSS 在共享 CSS 之后，同特异性下页面胜。
+ *    页面覆盖因此写普通类名即可，不必刻意提特异性（组织页 ≤900px 那组是为压过 `.agent-catalog-index-item`
+ *    的 `min-width: 0` 才带的列表上下文）。
+ *
+ * 唯一**不需要抢层叠**的旋钮是图标列宽 `--agent-catalog-index-icon-column`：默认值写在 `var()` 的
+ * 回退位上，页面在任意祖先设一次即可生效。当前无页面使用（组织页改用图标盒后已删除该覆盖）。
+ *
+ * ## 可覆盖的内部结构（`data-slot`）
+ *
+ * 头部是页面唯一需要改内部取值的地方，故给稳定钩子，而不是让页面依赖 `header > div > strong/span`
+ * 那层标签结构——那种选择器会随组件重构静默失配、且不报错。钩子取值：`catalog-index-header` /
+ * `catalog-index-title-row` / `catalog-index-title` / `catalog-index-count` /
+ * `catalog-index-description`，各自对应下方一条规则。当前无页面使用这些钩子。
+ *
+ * 移除条件：无。承载的是仓库禁令（FCP-WEB-02 无扁平等价物）下的必要下沉；若将来
+ * `grid-template-columns` 有了扁平等价物，可把列模板改回工具类，其余选择器（槽位、`var()` 回退位、
+ * 媒体查询）仍需留在本文件。
  */
 
 /* 目录栏：作为壳左列的网格项，必须允许收缩到 min-content 以下，否则一处长不可断文本
-   （组织 slug、外部技能名）就会把右列挤变形。其余外观（内边距/背景/边框）归页面。 */
+   （组织 slug、外部技能名）就会把右列挤变形。
+   底色与内嵌分隔线在这里定：底色要略深于详情区（`bg-surface-1` = #fff），否则行悬停到白色时看不见；
+   分隔线用 `box-shadow: inset` 而不是 `border-right`，因为它不占布局宽度（238px 的列定义是固定的）。 */
 .agent-catalog-index {
   min-width: 0;
+  padding: 1.4375rem 0.75rem;
+  background: #f6f8fb;
+  box-shadow: inset -1px 0 #e7ecf3;
 }
 
-/* 头部：标题行左右两端对齐（标题 ↔ 计数徽标），说明行另起一行。
-   选择器一律走 `data-slot` 钩子而不是 `> div > span` 这层标签结构：钩子是页面写覆盖时的落点，
-   结构选择器会在组件重构时静默失配（详见文件头「可覆盖的内部结构」）。 */
+/* 单列态（<48rem，与主从壳的断点严格对齐）目录栏占满整行，那条内嵌线会变成贴着页面右缘的一条
+   竖线，故在单列时撤掉。组织页在 768~900px 仍是单列（自己的断点在 900px），由它的页面 CSS 撤。 */
+@media (width < 48rem) {
+  .agent-catalog-index {
+    box-shadow: none;
+  }
+}
+
+/* 头部：标题行左右两端对齐（标题 ↔ 计数徽标），说明行另起一行。 */
 .agent-catalog-index-header {
-  padding: 0 8px 14px;
+  padding: 0 0.625rem 1.0625rem;
 }
 
 .agent-catalog-index-header [data-slot="catalog-index-title-row"] {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  font-size: 13px;
+  font-size: 1rem;
   font-weight: 600;
 }
 
-/* 标题字重钉死在 600：`<strong>` 在 600 的父级上按 `bolder` 映射表会变成 900，那是偶然值。
-   本规则同时也把「某页想要别的字重」变成一次普通的带上下文覆盖（见组织页的 CSS）。 */
+/* 标题字重钉死在 600：`<strong>` 的 UA 字重是 `bolder`，在 600 的父级上按 CSS Fonts 的映射表会
+   解析成 900——那是继承来的偶然值而不是设计值。同一条理由适用于**条目标题**（见
+   `.agent-catalog-index-copy > strong`）：那里的父级是 400，`bolder` 会落到 700。 */
+/* 颜色也在这里钉：页面的基准文字色是继承来的（技能库/MCP/模型库/知识库各自的页面类设了 `#17233a`，
+   组织页没有那一层、继承的是宿主 `body` 的色值），不钉就会让目录标题在五页里深浅不一。 */
 .agent-catalog-index-header [data-slot="catalog-index-title"] {
+  color: #17233a;
   font-weight: 600;
 }
 
 .agent-catalog-index-header [data-slot="catalog-index-count"] {
   display: grid;
-  min-width: 22px;
-  height: 20px;
+  min-width: 1.6875rem;
+  height: 1.5625rem;
   place-items: center;
-  border-radius: 5px;
+  border-radius: 0.375rem;
   color: #65728a;
   background: #e9edf4;
-  font-size: 11px;
+  font-size: 0.875rem;
 }
 
 .agent-catalog-index-header [data-slot="catalog-index-description"] {
   display: block;
-  margin-top: 4px;
+  margin-top: 0.3125rem;
   color: #96a2b5;
-  font-size: 11px;
+  font-size: 0.875rem;
 }
 
-/* 列表：行间距归页面（各页 3px / 2.4375px / 4px），这里只固定纵向流。 */
+/* 列表：行距是目录栏刻度的一部分，五页同值。 */
 .agent-catalog-index-nav {
   display: grid;
+  row-gap: 0.25rem;
 }
 
 /* 条目：列模板是本组件要消掉的那处逐字重复。
-   图标列宽走自定义属性 `--agent-catalog-index-icon-column`，三个预设的缺省值与迁移前逐字相同
-   （前两档 28px、`icon-copy` 34px）——所以「不设该变量」就等于今天的观感。
-   组织页是反例：它的行首是一枚**裸的 13px 图标**（`size-4`，没有图标盒），写死 28px 会把文案
-   整体右推 15px，故它把该变量设成 `1rem`（见 `agent-organizations-workspace.css`）。 */
+   图标列宽走自定义属性 `--agent-catalog-index-icon-column`，默认值与图标盒同尺——三档预设共用同一
+   个默认值，预设之间的差别只剩「有没有尾注列 / 箭头列」。 */
 .agent-catalog-index-item {
   display: grid;
   min-width: 0;
+  min-height: 4.375rem;
   align-items: center;
-  grid-template-columns: var(--agent-catalog-index-icon-column, 28px) minmax(0, 1fr) auto 12px;
+  grid-template-columns: var(--agent-catalog-index-icon-column, 2.125rem) minmax(0, 1fr) auto 0.9375rem;
+  gap: 0.625rem;
   border: 0;
+  border-radius: 0.5rem;
+  padding: 0.625rem;
+  color: #65728a;
+  background: transparent;
   text-align: left;
+  /* 只过渡会被悬停/选中改动的两项：`all` 会把布局属性的变化也做成动画。 */
+  transition:
+    background-color 150ms ease,
+    color 150ms ease;
 }
 
-/* 无箭头档（组织页）：尾列是纯文本角色标签。 */
+/* 悬停底色必须与目录栏底色不同才看得见：目录栏是 `#f6f8fb`，这里是白（浅于底色＝抬起来）。 */
+.agent-catalog-index-item:hover {
+  background: #fff;
+}
+
+/* 选中态：`aria-current="page"` 是唯一与选中耦合的钩子（箭头显隐也读它），页面因此不必把
+   `selected` 再喂给别的组件。写在 `:hover` 之后、且特异性更高，选中行被悬停时保持选中配色。 */
+.agent-catalog-index-item[aria-current="page"] {
+  color: #2463eb;
+  background: #e8f0ff;
+}
+
+/* 无箭头档：尾列是纯文本标签。 */
 .agent-catalog-index-item[data-columns="icon-copy-meta"] {
-  grid-template-columns: var(--agent-catalog-index-icon-column, 28px) minmax(0, 1fr) auto;
+  grid-template-columns: var(--agent-catalog-index-icon-column, 2.125rem) minmax(0, 1fr) auto;
 }
 
-/* 图标+文案档（知识库）：图标更大，没有独立的尾注列，动作在按钮之外。 */
+/* 图标+文案档：没有尾注列与箭头列（动作在按钮之外时用）。 */
 .agent-catalog-index-item[data-columns="icon-copy"] {
-  grid-template-columns: var(--agent-catalog-index-icon-column, 34px) minmax(0, 1fr);
+  grid-template-columns: var(--agent-catalog-index-icon-column, 2.125rem) minmax(0, 1fr);
 }
 
-/* 带行尾动作的条目的外壳：按钮占满第一列，动作贴右。底色/悬停由页面画在外壳上。
-   何时渲染它由 TSX 的 `shell` 开关决定，与「有没有行尾动作」解耦——知识库每一行都要这层壳
-   （悬停/选中底色画在壳上），哪怕那一行没有删除按钮。 */
+/* 带行尾动作的条目的外壳：按钮占满第一列，动作贴右。底色/悬停由条目按钮自己画，
+   外壳只是一层排布（不再承担视觉，否则同一行的三态配色会分裂到两个元素上）。
+   何时渲染它由 TSX 的 `shell` 开关决定，与「有没有行尾动作」解耦——知识库每一行都要这层壳，
+   哪怕那一行没有删除按钮。 */
 .agent-catalog-index-item-shell {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
   align-items: center;
 }
 
+/* 图标盒：五页同规格（尺寸 / 圆角 / 底色 / 内层 svg）。**不设 `color`**：着色是页面语义
+   （组织页的角色三态色落在图标本体上），共享设了就会以未分层声明压过页面的工具类。 */
 .agent-catalog-index-icon {
   display: grid;
+  width: var(--agent-catalog-index-icon-column, 2.125rem);
+  height: 2.125rem;
   place-items: center;
+  border-radius: 0.5rem;
+  background: #fff;
+}
+
+/* 用后代选择器而不是 `> svg`：品牌图标组件（`@lobehub/icons`）会把 svg 包在自己的容器里，
+   子选择器在那种结构上不命中、且不报错。 */
+.agent-catalog-index-icon svg {
+  width: 1.25rem;
+  height: 1.25rem;
 }
 
 .agent-catalog-index-copy {
@@ -144,16 +203,57 @@
   white-space: nowrap;
 }
 
+/* 条目标题的字重显式钉 600，理由同头部标题（`<strong>` 的 `bolder` 在 400 的父级上会解析成 700，
+   五页里唯一显式写了 `font-semibold` 的那页反而是 600——同一组件出现两个字重就是这么来的）。 */
+.agent-catalog-index-copy > strong {
+  color: #17233a;
+  font-size: 0.875rem;
+  font-weight: 600;
+  line-height: 1.25rem;
+}
+
+.agent-catalog-index-copy > small {
+  margin-top: 0.25rem;
+  color: #96a2b5;
+  font-size: 0.75rem;
+  font-weight: 400;
+  line-height: 1rem;
+}
+
+/* 尾注列：右对齐的窄列，每行一条元信息（归属、公开/共享标签、角色）。
+   宽度上限与下方标签的截断都在这里——标签内容来自运行时数据（组织名、角色名），不给上限会把
+   `auto` 列撑开、把文案列挤到无法辨认。 */
 .agent-catalog-index-meta {
   display: flex;
   min-width: 0;
+  max-width: 8.4375rem;
   flex-direction: column;
   align-items: flex-end;
+  gap: 0.25rem;
+  color: #65728a;
+  font-size: 0.75rem;
+  line-height: 1;
+}
+
+/* 尾注里的标签形态：每个标签都是一个 `<span>`（纯文本标签要自己包一层）。
+   形态统一是这一版的重点之一——此前技能库/MCP/模型库是带底色的徽标、组织页是裸文字。 */
+.agent-catalog-index-meta > span {
+  max-width: 100%;
+  overflow: hidden;
+  border: 1px solid #bfdbfe;
+  border-radius: 0.375rem;
+  padding: 0.25rem 0.5rem;
+  color: #1d4ed8;
+  background: #eff6ff;
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 /* 箭头只在选中行出现：唯一与选中态耦合的样式，靠 `aria-current` 命中，
-   调用方因此不必把 `selected` 再喂给箭头组件。 */
+   调用方因此不必把 `selected` 再喂给箭头组件。宽度是列模板第四列的宽度。 */
 .agent-catalog-index-arrow {
+  width: 0.9375rem;
   opacity: 0;
 }
 

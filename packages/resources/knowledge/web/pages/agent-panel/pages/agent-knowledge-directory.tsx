@@ -1,5 +1,6 @@
 import {
   AgentCatalogIndex,
+  AgentCatalogIndexArrow,
   AgentCatalogIndexCopy,
   AgentCatalogIndexIcon,
   AgentCatalogIndexItem,
@@ -31,11 +32,11 @@ interface AgentKnowledgeDirectoryProps {
 /**
  * 知识库目录栏。
  *
- * 目录头部（标题 + 计数徽标）、条目两列网格与两行截断已收敛到 `AgentCatalogIndex` 一族——本页
- * 此前是同一套结构四处手写拷贝之一。留在本页的是：目录级三态（加载 / 失败 / 空）仍然画在目录栏
- * **内部**（共享组件的 `children` 是自由内容，不必学技能库/MCP/模型库改成页面级提前返回，那是
- * 各页既有的形态差异）；条目外观（行外壳底色与圆角、按钮行高与内边距、图标盒、文案字号）与头部
- * 徽标的两处尺度覆盖，一并在 `agent-knowledge.css`。
+ * 目录头部、四列模板、两行截断、条目三态配色与箭头显隐都归 `AgentCatalogIndex` 一族，取值在它的
+ * 伴生 CSS 里（2026-09-23 起五页同一份）。留在本页的只有两件**页面语义**：目录级三态（加载 / 失败 /
+ * 空）仍然画在目录栏**内部**（共享组件的 `children` 是自由内容，不必学技能库/MCP/模型库改成页面级
+ * 提前返回，那是各页既有的形态差异）；行尾删除按钮渲染在条目按钮**之外**（`shell` + `trailing`，
+ * 按钮里套按钮是非法 HTML），以及该行「远端已消失」时的不可用态。两者的样式在 `agent-knowledge.css`。
  */
 export function AgentKnowledgeDirectory(props: AgentKnowledgeDirectoryProps) {
   const { t } = useTranslation(NS.KNOWLEDGE);
@@ -69,14 +70,14 @@ export function AgentKnowledgeDirectory(props: AgentKnowledgeDirectoryProps) {
             return (
               <AgentCatalogIndexItem
                 key={item.id}
-                // 两列网格（34px 图标列 + 文案）由 `columns` 预设给；本页没有尾注列与箭头。
-                columns="icon-copy"
+                // 四列模板（图标 / 文案 / 尾注 / 箭头）是默认档：本页没有尾注内容，尾注列因此是空列，
+                // 箭头列与其他四页一致（此前本页用 `columns="icon-copy"` 两列版，选中行尾没有箭头）。
                 selected={active}
-                // `selected` 只产出 `aria-current="page"`；本页选中底色历来画在行外壳上，
-                // 故仍用 `is-active` 类选择器，不改成属性选择器（无收益的改动）。
+                // `selected` 只产出 `aria-current="page"`：选中底色/文字色与箭头显隐都由共享 CSS
+                // 按这个属性驱动，本页此前的 `is-active` 类已删除。外壳只留「不可用」这一个本页状态。
                 aria-disabled={unavailable}
                 onClick={() => props.onSelect(item)}
-                shellClassName={`knowledge-directory-item ${active ? "is-active" : ""} ${unavailable ? "is-unavailable" : ""}`}
+                shellClassName={`knowledge-directory-item ${unavailable ? "is-unavailable" : ""}`}
                 // 行尾删除按钮必须渲染在条目 `<button>` **之外**（按钮里套按钮是非法 HTML，浏览器会把
                 // 内层按钮甩到外层之外，点击区与焦点顺序都会错），共享组件为此给了「外壳 + trailing」。
                 //
@@ -99,7 +100,7 @@ export function AgentKnowledgeDirectory(props: AgentKnowledgeDirectoryProps) {
                   ) : null
                 }
               >
-                <AgentCatalogIndexIcon className="knowledge-directory-item__icon">
+                <AgentCatalogIndexIcon>
                   <BookOpen />
                 </AgentCatalogIndexIcon>
                 <AgentCatalogIndexCopy
@@ -114,6 +115,7 @@ export function AgentKnowledgeDirectory(props: AgentKnowledgeDirectoryProps) {
                     </>
                   }
                 />
+                <AgentCatalogIndexArrow />
               </AgentCatalogIndexItem>
             );
           })}

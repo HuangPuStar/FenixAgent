@@ -1,26 +1,15 @@
 /*
- * 组织页里**无法用工具类表达**的深层样式，共三类。
+ * 组织页里**无法用工具类表达**的深层样式，现在只剩一类：≤900px 的一组布局声明。
  *
- * 〇、目录行的首列宽度（`.org-directory { --agent-catalog-index-icon-column }`）
- * 本页行首是一枚裸图标（`size-4`＝1rem，没有图标盒），而共享条目预设的首列是给「图标盒」留的
- * 28px；照用会把文案整体右推 15px、名称列相应变窄。共享组件为此把首列宽度做成了自定义属性
- * （三个预设的默认值写在 `var()` 回退位上），页面设一次即可，**不需要**提特异性——这也是它和
- * 下面两类走不同做法的原因：属性默认值不落在元素自身，就不会与页面声明抢同一条规则。
- * 取值 `1rem` 与图标 `size-4` 同刻度（13px 根字号下 13px），两端字号同步缩放。
+ * 目录栏的取值（容器内边距 / 底色 / 内嵌分隔线、头部几何、行距、条目三态、图标盒、字号）**不在这里**：
+ * 2026-09-23 的裁定是「全部样式统一，不要观感不统一」，那批取值已全部成为共享构件集
+ * `agent-catalog-index.css` 的默认值，五页同一份。本文件此前为目录栏写的三条覆盖——首列宽 `1rem`
+ * （裸图标）、大写小标题字距、计数退回纯文字——随之删除：它们成立的前提是「共享是 px 刻度、本页是
+ * 13/16 rem 刻度，两套相差 18.75%」，而共享默认值现在本身就是 rem 刻度，档位单调（1rem > 0.875rem >
+ * 0.75rem）由共享那一套保证。本页剩下的页面语义只有行首图标的角色三态色，它落在 TSX 的工具类上
+ * （共享图标盒刻意不声明 `color`，所以工具类生效）。
  *
- * 一、目录头部的大写小标题变体（下方两条 `[data-slot="catalog-index-*"]` 规则）
- * 目录栏骨架已下沉共享构件集 `agent-catalog-index`，其头部几何（13px 标题、22×20 计数徽标、11px 说明行、
- * `0 8px 14px` 内边距）取自 MCP / 模型库的 **px 刻度**，与本页 2026-09-23 转入的 13/16 rem 刻度不是同一套
- * （档位与理由见 `agent-organizations-workspace.tsx` 文件头）。共享 CSS **未分层**，工具类位于
- * `@layer utilities`，同属性工具类会被整条压过，因此只能走「页面 CSS + 更高特异性选择器」——这正是
- * `agent-catalog-index.css` 层叠段给出的写法。选择器指 `data-slot` 钩子而不是 `> div > span` 那层标签结构：
- * 钩子是共享组件承诺的覆盖落点，标签结构会随组件重构静默失配。
- * 为什么必须覆盖：本页层级依赖 16.25 > 14.625 > 13 > 11.375 > 9.75 单调，照搬共享头部会让目录标题与
- * 条目名称同尺（13px），并让 11px 的计数徽标大于 9.75px 的小标题，运行期层级反序。
- * 标题字重（600）不再在这里钉：共享组件已把 `[data-slot="catalog-index-title"]` 显式钉成 600，
- * 与本页迁移前继承 `font-semibold` 的结果一致，页面无需再纠偏。
- *
- * 二、≤900px 的一组声明
+ * ≤900px 的一组声明为什么留在 CSS 而不是工具类：
  * 1. 断点 900px 不在 Tailwind 标准档（sm 640 / md 768 / lg 1024）上，而 FCP-WEB-03 禁止任意断点变体；
  *    按仓库口径应「先在 @theme 声明命名断点」——那要改两个全局 token 入口
  *    （`apps/web/src/index.css` 与 `packages/ui-components/web/styles/theme.css`，两条必须同批改且无一致性
@@ -31,49 +20,25 @@
  *    （`@media (width <= 900px)`，与本文件同宽咬合）承担；留下的行宽 `min-width` 必须带列表上下文——
  *    它要压过共享的 `.agent-catalog-index-item { min-width: 0 }`（同为未分层），而工具类 `min-w-47.5`
  *    落在 `@layer utilities`、无论如何都压不过，所以那份值只存在于本文件。
+ * 3. 分隔线在单列态要撤掉：共享 CSS 只在 `<48rem` 撤它的内嵌分隔线，而本页的列定义到 900px 才收回，
+ *    768~900px 这一段落在共享断点之外，必须在这里补，并改回下边框（迁移前的形态）。
  *
- * 层叠：本文件不包 `@layer`（同 `agent-master-detail-workspace.css`），逐条与迁移前的 `.org-*` 规则等价。
- * 类名沿用原选择器名，仅作这组规则的挂载点，元素上的基础外观全部在 TSX 的工具类里。
- * 长度值一律写 rem 而不是 px：与工具类的刻度同源（`1.5rem` ≡ 迁移前的 24px 名义值），
- * 避免同一元素在断点两侧落在两套刻度上。
+ * 层叠：本文件不包 `@layer`（同 `agent-master-detail-workspace.css`）。长度值一律写 rem 而不是 px：
+ * 与工具类刻度同源，避免同一元素在断点两侧落在两套刻度上。
  *
- * 移除条件：「二」——① 两个 token 入口同批补上命名断点（`--breakpoint-*`），或 ② 库内主从工作区改为按
- * 容器查询决定列数；任一落地后本节即可删除（规则改写成命名断点变体，横置那两条随共享组件同步改写）。
- * 「一」——共享头部补上「大写小标题」预设，或本页改用共享头部的 px 刻度。
- * 「〇」——共享条目预设提供「裸图标」档（首列宽＝图标宽）时，这条即可删除。
+ * 移除条件：① 两个 token 入口同批补上命名断点（`--breakpoint-*`），或 ② 库内主从工作区改为按容器查询
+ * 决定列数——任一落地后本文件即可删除（规则改写成命名断点变体，横置那两条随共享组件同步改写）。
  */
-
-/* 行首是裸图标：把共享条目三列的**首列**压回图标自身的宽度（`size-4`＝1rem）。
-   设在目录栏上靠继承生效，不动条目的 `grid-template-columns`，因此不必与未分层声明抢特异性。 */
-.org-directory {
-  --agent-catalog-index-icon-column: 1rem;
-}
-
-/* 小标题字号回到本页 `text-xs`（= 0.75rem，13px 根字号下 9.75px）；共享头部写死在
-   `.agent-catalog-index-header` 槽位上的 13px 未分层，工具类压不过，故用 (0,3,0) 覆盖。 */
-.org-directory .agent-catalog-index-header [data-slot="catalog-index-title-row"] {
-  font-size: 0.75rem;
-}
-
-/* 计数退回迁移前的形态：无样式的普通文字（9.75px、`text-text-muted`），不是徽标。共享头部的
-   22×20 徽标（底色 `#e9edf4`、圆角 5px、11px、`#65728a`）取自 MCP / 模型库，其 11px 也大于本页
-   9.75px 的小标题。除字号与颜色取 `inherit`（即回到小标题自身的取值）外，其余逐条退回初始值。 */
-.org-directory .agent-catalog-index-header [data-slot="catalog-index-count"] {
-  display: inline;
-  min-width: auto;
-  height: auto;
-  border-radius: 0;
-  color: inherit;
-  background: transparent;
-  font-size: inherit;
-}
 
 @media (max-width: 900px) {
   .org-workspace {
     grid-template-columns: 1fr;
   }
+  /* 单列时目录栏占满整行：撤掉共享那条「贴右缘」的内嵌分隔线，改用下边框分栏。
+     （共享 CSS 只在 <48rem 撤它，而本页的列定义到 900px 才收回，768~900px 这段落在共享断点之外，
+     所以必须在这里补。） */
   .org-directory {
-    border-right: 0;
+    box-shadow: none;
     border-bottom: 1px solid var(--color-slate-100);
   }
   /* 列表横置（`display: flex` + `overflow-x: auto` + 行 `flex: 0 0 auto`）已由共享组件的

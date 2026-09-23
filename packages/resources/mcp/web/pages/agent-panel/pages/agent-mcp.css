@@ -1,7 +1,3 @@
-/* biome-ignore-all lint/style/noDescendingSpecificity: 目录侧栏的选择器按组件层级书写，`.mcp-directory-copy small`
-   与 `.mcp-directory-meta` 命中的是不同元素（列表项描述 / 尾注列），不存在互相覆盖；该规则只看末尾
-   复合选择器，会把这对写成 (0,1,1) 在前、(0,1,0) 在后的选择器判成降序。
-   原注释引用的 `.mcp-directory > header small` 已随目录头部一起删除，此处改指迁移后仍在的这对。 */
 .agent-mcp-page {
   --mcp-blue: #2463eb;
   --mcp-blue-soft: #edf3ff;
@@ -30,103 +26,9 @@
   flex: 1;
 }
 
-.mcp-directory {
-  padding: 19px 10px;
-}
-
-/* 目录头部（标题 + 计数徽标 + 说明行）整段删除，交给共享目录组件（`AgentCatalogIndex`）：
-   那四组声明此前与模型库逐字相同，而 `agent-catalog-index.css` 的头部几何正是照这两页的取值
-   定的（13px 标题、22×20 徽标、11px 说明行、`0 8px 14px` 内边距、`#e9edf4` 徽标底色），
-   因此删除后不需要任何页面覆盖。徽标的 `#65728a` / `#96a2b5` 与 `--mcp-muted` / `--mcp-faint`
-   同值，只是共享组件把它们写成了字面量。 */
-
-/* 行间距 3px 是本页 px 刻度的取值（技能库那份换算成工具类是 2.4375px），故留在页面；
-   `display: grid` 已由共享组件声明，这里不再重复。 */
-.mcp-directory nav {
-  gap: 3px;
-}
-
-/* 条目外观：行高、内边距、圆角、间距与配色是本页刻度；`display: grid`、四列网格
-   `28px minmax(0, 1fr) auto 12px`、`min-width: 0`、`align-items: center`、`border: 0`、
-   `text-align: left` 已下沉共享组件（与模型库、技能库逐字相同的那份）。
-   `is-selected` 保留：共享组件只驱动 `aria-current="page"`，本页选中配色历来挂在类选择器上，
-   换成属性选择器是没有收益的改动。 */
-.mcp-directory nav > button {
-  min-height: 57px;
-  gap: 8px;
-  border-radius: 7px;
-  padding: 8px;
-  color: var(--mcp-muted);
-  background: transparent;
-}
-
-.mcp-directory nav > button:hover {
-  background: #fff;
-}
-
-.mcp-directory nav > button.is-selected {
-  color: var(--mcp-blue);
-  background: #e8f0ff;
-}
-
-/* 图标盒只留本页刻度：28×28、6px 圆角与蓝底白块；`display: grid` + 居中已由共享组件给
-   （列模板的 28px 图标列由共享组件固定，尺寸与此处一致）。 */
-.mcp-directory-icon {
-  width: 28px;
-  height: 28px;
-  border-radius: 6px;
-  color: var(--mcp-blue);
-  background: #fff;
-}
-
-.mcp-directory-icon svg {
-  width: 16px;
-}
-
-/* 归属名的截断留在页面：它不在文案槽里，而在 110px 上限的 meta 列中；
-   文案槽自身的两行单行截断（`> strong` / `> small`）已由共享组件承担，故从这组选择器里移除。 */
-.mcp-directory-meta .mcp-directory-organization {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-/* 文案槽只留本页 px 刻度的字号与颜色：纵向排布、`min-width: 0` 与截断都在共享组件里，
-   所以原来的 `.mcp-directory-copy { display: flex; ... }` 整条已删除。 */
-.mcp-directory-copy strong {
-  color: var(--mcp-ink);
-  font-size: 12px;
-}
-
-.mcp-directory-copy small {
-  margin-top: 3px;
-  color: var(--mcp-faint);
-  font-size: 9px;
-}
-
-/* meta 列只留本页刻度：宽度上限 110px、行距 4px、9px 字号；右对齐与纵向排布归共享组件。 */
-.mcp-directory-meta {
-  max-width: 110px;
-  gap: 4px;
-  color: var(--mcp-muted);
-  font-size: 9px;
-  line-height: 1;
-}
-
-.mcp-directory-meta b {
-  border: 1px solid #bfdbfe;
-  border-radius: 5px;
-  padding: 3px 6px;
-  color: #1d4ed8;
-  background: #eff6ff;
-  font-size: 9px;
-  font-weight: 600;
-  white-space: nowrap;
-}
-
-/* 箭头只留宽度：12px 是本页 px 刻度，共享组件默认 `w-3` 在 13px 根字号下只有 9.75px。
-   显隐不在这里写——共享组件已按 `aria-current="page"` 负责，本页 `selected` 产出的正是同一个
-   属性，所以原来那两条 `nav > button > svg { opacity }` / `.is-selected > svg { opacity }` 一并删除。 */
-.mcp-directory-arrow {
-  width: 12px;
-}
+/* 目录栏（容器、头部、列表、条目、图标盒、文案、尾注、箭头）的取值全部由共享构件集
+   `agent-catalog-index.css` 提供，五页同一份——2026-09-23 的裁定是「全部样式统一，不要观感不统一」。
+   本页因此**没有任何** `.mcp-directory*` 规则：此前的 19/10 内边距、57px 行高、3px 行距、7px 圆角、
+   12px/9px 字号、选中配色、110px 尾注宽度与 12px 箭头宽度都已成为共享默认值的 rem 等值
+   （换算表见该文件头）。需要给目录换个样式时改共享 CSS，不要再在这里长出一份。
+   本页独有的东西不在这一层：目录的加载 / 空 / 失败三态是页面级提前返回（见 TSX）。 */

@@ -6,13 +6,16 @@ import "./agent-catalog-index.css";
 /**
  * 主从工作台（`agent-master-detail-workspace`）左侧「目录索引」的共享构件集。
  *
- * 为什么是一组小组件而不是一个「传数据」的大组件：五个消费方的目录行形态并不相同——
- * 模型库/MCP/技能库是「图标 / 文案 / 尾注 / 箭头」四列，组织页没有箭头（行尾是纯文本角色标签），
- * 知识库的行尾是**渲染在按钮之外**的删除按钮（行内嵌套 `<button>` 是非法 HTML，所以那条按钮
- * 只能当兄弟节点）。如果按「icon/title/subtitle/meta」传 props，就要为每一种差异再加一个 prop，
- * 而且文案的字号/颜色也得跟着参数化——那是把重复从 CSS 挪进 props。因此这里只把**跨页一致的
- * 骨架**（列模板、槽盒排布、截断、箭头显隐、头部几何）做成组件，字号/内边距/圆角/选中配色仍归
- * 各页自己的刻度（px 字面量与 13/16 rem 刻度长期并存，短期无法统一）。
+ * 为什么是一组小组件而不是一个「传数据」的大组件：五个消费方的目录行形态并不相同——模型库/MCP/技能库
+ * 是「图标 / 文案 / 尾注 / 箭头」四列，知识库的行尾动作**渲染在按钮之外**（行内嵌套 `<button>` 是非法
+ * HTML，所以那条按钮只能当兄弟节点），组织页的头部没有说明行。如果按「icon/title/subtitle/meta」传 props，
+ * 就要为每一种差异再加一个 prop；因此这里只把**跨页一致的骨架**做成组件，差异靠槽位与 props 表达。
+ *
+ * **取值全部在伴生 CSS 里，且五页渲染结果必须一样**（2026-09-23 裁定：全部样式统一，不要观感不统一）。
+ * 此前「字号/内边距/行高/圆角/配色归各页刻度」的分工已作废——那种分工的代价是同一个组件在五页长出五套
+ * 观感，实测差值最大的字段（条目标题 9.75 vs 13px、图标盒 22.75 vs 34px）肉眼即可分辨。现在页面只表达
+ * **页面语义**：图标着色（组织页角色三态色）、行尾动作与不可用态（知识库）、窄屏布局（组织页 ≤900px、
+ * 知识库 ≤760px）。判据与取值表见 `agent-catalog-index.css` 文件头。
  *
  * 边界：
  * - 目录级三态（加载 / 空 / 失败）**不由本组组件决定**。容器 `children` 是自由内容，调用方可以
@@ -27,8 +30,8 @@ import "./agent-catalog-index.css";
  *
  * 头部为什么是 props 而不是插槽：五页的目录头部都是同一个结构（标题 + 计数徽标 + 可选说明行），
  * 且**都位于目录栏内部**（`>header` 是各页选择器的一级子元素）。做成插槽等于让五个调用方各写一遍
- * 同样的三行标记，重新长出这处重复；做成 props 则只有一个写法。形态确有差异的页面（组织页的大写
- * 小标题、知识库的徽标尺寸）见 `agent-catalog-index.css` 里「层叠」段给出的覆盖写法。
+ * 同样的三行标记，重新长出这处重复；做成 props 则只有一个写法。需要改头部**内部**取值时，
+ * 用 `agent-catalog-index.css` 给出的 `data-slot` 钩子（当前无页面使用）。
  */
 type AgentCatalogIndexProps = {
   /** 目录地标名（`<aside aria-label>`）。不传时容器不带名字，与只给 `<nav>` 命名的最小写法一致。 */
@@ -49,13 +52,8 @@ type AgentCatalogIndexProps = {
 /**
  * 目录栏外层。
  *
- * `min-w-0` 是必须的：目录栏固定在壳的左列（238px），只要有一处不可断的长文本（组织 slug、
- * 外部技能的内置名）就会把 `minmax(0, 1fr)` 的另一列挤变形。内边距、背景、边框、窄屏走向
- * （组织页在 ≤900px 要换成下边框）都属各页外观，由 `className` 提供。
- *
- * 头部取值取自 MCP / 模型库两页原本**逐字相同**的那份规范（13px 标题、22×20 计数徽标、11px 说明行、
- * `0 8px 14px` 内边距），它同时是四处同构里唯一被复制过两次的版本。技能库原来那份是 13/16 根字号下
- * rem 刻度的产物（9.75px 标题等），收编后按本规范统一。
+ * `min-w-0`、内边距、底色、内嵌分隔线、单列态撤掉分隔线——都在伴生 CSS 里，五页同一份。
+ * `className` 仍保留给页面的**独有语义**（当前五个消费方都不再需要它给目录栏加外观）。
  */
 export function AgentCatalogIndex({
   label,
@@ -105,9 +103,9 @@ type AgentCatalogIndexNavProps = {
 /**
  * 目录列表。
  *
- * 只声明 `display: grid`：行间距（3px / 2.4375px / 4px）属各页刻度，由 `className` 给。
+ * `display: grid` 与行距都在伴生 CSS 里（五页同一份）。
  * `stripOnNarrow` 给出的横置表达见 `agent-catalog-index.css`：列表变横向滚动条、行不再收缩；
- * 单行多宽由页面决定（组织页给 `min-w-47.5`，记忆页按内容宽）。
+ * 单行多宽由页面决定（组织页给 `min-width`，记忆页按内容宽）。
  */
 export function AgentCatalogIndexNav({ label, stripOnNarrow, children, className }: AgentCatalogIndexNavProps) {
   return (
@@ -120,25 +118,27 @@ export function AgentCatalogIndexNav({ label, stripOnNarrow, children, className
 /**
  * 条目列模板预设，取值与伴生 CSS 里的 `data-columns` 一一对应。
  *
- * - `icon-copy-meta-arrow`：`28px minmax(0, 1fr) auto 12px`——图标 / 文案 / 尾注 / 箭头，
- *   模型库、MCP、技能库的公共形态（本组件要消掉的那三处逐字重复）。
- * - `icon-copy-meta`：`28px minmax(0, 1fr) auto`——没有箭头列，尾注是纯文本（组织页的角色标签）。
- * - `icon-copy`：`34px minmax(0, 1fr)`——只有图标与文案，图标更大，行尾动作在按钮之外（知识库）。
+ * - `icon-copy-meta-arrow`（**默认**）：图标 / 文案 / 尾注 / 箭头。技能库、MCP、模型库、
+ *   组织页、知识库都用它——组织页的尾注是角色标签，知识库的尾注为空。
+ * - `icon-copy-meta`：没有箭头列（尾注是最后一个可见列）。
+ * - `icon-copy`：只有图标与文案（没有尾注与箭头列）。
  *
- * 三档的首列宽度都取自 CSS 自定义属性 `--agent-catalog-index-icon-column`，缺省即上列数值；
- * 行首是**裸图标**（没有图标盒）的页面把该变量设成图标自身的宽度即可（组织页 `1rem`），
- * 不必为新宽度再造一个预设。设置办法与「为什么默认值写在 var() 回退位」见 CSS 文件头。
+ * 三档共用同一个图标列默认宽度（`2.125rem`，与图标盒同尺），差别只剩尾列数量；列宽仍可用
+ * CSS 自定义属性 `--agent-catalog-index-icon-column` 覆盖，设置办法与「为什么默认值写在 var()
+ * 回退位」见 CSS 文件头。后两档目前**无消费方**，保留是为了给「确实不需要尾注/箭头」的目录留出口。
  */
 type AgentCatalogIndexItemColumns = "icon-copy-meta-arrow" | "icon-copy-meta" | "icon-copy";
 
 /**
  * 「行外壳」的取用契约。
  *
- * 为什么把「渲染外壳」与「有没有行尾动作」拆成两件事：外壳是**行的视觉容器**（页面把悬停/选中
- * 底色、圆角、过渡画在它上面），行尾动作只是它顺带承载的一个插槽。此前的写法把两者绑在一起
- * （`trailing` 不传就不渲染外壳），于是「这一行没有动作、但必须保住外壳」只能靠传 `trailing={null}`
- * 这种隐式技巧表达——一旦实现改成 `trailing == null`，整页的行样式会静默消失且不报错。
- * 现在改成显式开关 + 判别联合：不写 `shell` 就没有外壳、也就不能给 `trailing`（编译期即报错）。
+ * 为什么把「渲染外壳」与「有没有行尾动作」拆成两件事：外壳是**行的排布容器**（按钮占满第一列、
+ * 行尾动作贴右），行尾动作只是它顺带承载的一个插槽。此前的写法把两者绑在一起（`trailing` 不传就
+ * 不渲染外壳），于是「这一行没有动作、但必须保住外壳」只能靠传 `trailing={null}` 这种隐式技巧表达
+ * ——一旦实现改成 `trailing == null`，整页的行结构会静默变形且不报错。现在改成显式开关 + 判别联合：
+ * 不写 `shell` 就没有外壳、也就不能给 `trailing`（编译期即报错）。
+ *
+ * 外壳**不承担视觉**：三态底色与圆角画在条目按钮上（五页同一条规则），外壳只做排布。
  */
 type AgentCatalogIndexShellProps =
   | {
@@ -147,7 +147,7 @@ type AgentCatalogIndexShellProps =
       trailing?: never;
     }
   | {
-      /** 渲染外壳：即使没有行尾动作也渲染（知识库每一行都要这层壳来落底色）。 */
+      /** 渲染外壳：即使没有行尾动作也渲染（知识库每一行都要这层壳来挂行尾删除按钮）。 */
       shell: true;
       /** 行尾动作（如知识库的删除按钮）；没有动作时传 `null` 或干脆不传。 */
       trailing?: ReactNode;
@@ -158,9 +158,9 @@ type AgentCatalogIndexItemProps = Omit<ComponentPropsWithoutRef<"button">, "type
   selected?: boolean;
   /** 列模板预设，默认四列。 */
   columns?: AgentCatalogIndexItemColumns;
-  /** 按钮本体的附加类名（字号、内边距、圆角、选中配色等各页刻度）。 */
+  /** 按钮本体的附加类名——只用于**页面独有语义**（如知识库的不可用态），外观取值一律在伴生 CSS。 */
   className?: string;
-  /** 外壳的类名（行容器底色/圆角/过渡），仅在渲染外壳时有意义。 */
+  /** 外壳的类名——同上，只用于页面独有语义（如知识库的 `is-unavailable`）。 */
   shellClassName?: string;
   children: ReactNode;
 } & AgentCatalogIndexShellProps;
@@ -168,10 +168,8 @@ type AgentCatalogIndexItemProps = Omit<ComponentPropsWithoutRef<"button">, "type
 /**
  * 目录条目。
  *
- * 骨架（`display: grid` / 列模板 / `min-width: 0` / `align-items: center` / `border: 0` /
- * `text-align: left`）在伴生 CSS 里；行高、内边距、圆角、配色、字号按页给——这几个值恰恰是
- * 各页差异所在（列表行高 57px / 46.3px / 64px，行距 3px / 2.4px / 4px），共享不了，
- * 也不该为它们发明统一档位。
+ * 骨架与外观（`display: grid` / 列模板 / `min-width: 0` / `min-height` / `padding` / `gap` /
+ * `border-radius` / 三态配色 / 过渡 / `text-align: left`）全在伴生 CSS 里，五页同一份。
  *
  * 需要「行尾动作渲染在按钮之外」的页面（知识库）用 `shell` + `trailing`：嵌套 `<button>` 是非法
  * HTML，浏览器会把内层按钮甩到外层之外，点击区域与焦点顺序都会错乱。
@@ -208,7 +206,11 @@ export function AgentCatalogIndexItem({
   );
 }
 
-/** 条目图标槽：占列模板给定的图标列，盒子本身只负责居中。 */
+/**
+ * 条目图标槽：28px 档的图标盒（尺寸 / 圆角 / 白底 / 内层 svg 尺寸都在伴生 CSS，五页同一份）。
+ * `className` 只用于页面独有的着色（组织页的角色三态色）；共享 CSS 刻意不声明 `color`，
+ * 否则未分层的它会把页面的着色类整条压过。
+ */
 export function AgentCatalogIndexIcon({ children, className }: { children: ReactNode; className?: string }) {
   return <span className={cn("agent-catalog-index-icon", className)}>{children}</span>;
 }
@@ -217,11 +219,11 @@ export function AgentCatalogIndexIcon({ children, className }: { children: React
 type AgentCatalogIndexCopyProps = {
   /** 标题（`<strong>`）。 */
   title: ReactNode;
-  /** 副标题（`<small>`），组织页放的是 `font-mono` 的 slug，技能库放的是描述。 */
+  /** 副标题（`<small>`）：技能库放描述、MCP 放摘要、知识库放资源数、组织页放 slug。 */
   subtitle: ReactNode;
-  /** 标题行的字号/颜色类名——各页刻度不同，故不设共享默认值。 */
+  /** 标题行的附加类名——只用于页面独有语义；字号/字重/颜色/行高都在伴生 CSS。 */
   titleClassName?: string;
-  /** 副标题行的字号/颜色/上边距类名。 */
+  /** 副标题行的附加类名——同上。 */
   subtitleClassName?: string;
   className?: string;
 };
@@ -229,8 +231,9 @@ type AgentCatalogIndexCopyProps = {
 /**
  * 条目文案槽。
  *
- * 截断（`overflow: hidden` + `text-overflow: ellipsis` + `white-space: nowrap`）下沉到伴生 CSS：
- * 它在四处实现里逐字相同，且是「238px 列里塞长名字」不撑破布局的前提；字号与颜色留给页面。
+ * 截断（`overflow: hidden` + `text-overflow: ellipsis` + `white-space: nowrap`）与两行的字号 /
+ * 字重 / 颜色 / 行高 / 间距都在伴生 CSS：截断是「238px 列里塞长名字」不撑破布局的前提，
+ * 字号与间距则是五页必须一致的那批取值。
  */
 export function AgentCatalogIndexCopy({
   title,
@@ -247,7 +250,12 @@ export function AgentCatalogIndexCopy({
   );
 }
 
-/** 条目尾注槽：右对齐的窄列，每行一条元信息（归属、公开/共享标签、角色）。 */
+/**
+ * 条目尾注槽：右对齐的窄列，每行一条元信息（归属、公开/共享标签、角色）。
+ *
+ * 列宽上限、字号、行距与**标签形态**都在伴生 CSS——标签必须是一个 `<span>`（裸文本要自己包一层），
+ * 这条约定是「五页尾注长得一样」的落点，见 CSS 里 `.agent-catalog-index-meta > span` 的说明。
+ */
 export function AgentCatalogIndexMeta({ children, className }: { children: ReactNode; className?: string }) {
   return <span className={cn("agent-catalog-index-meta", className)}>{children}</span>;
 }
@@ -256,10 +264,10 @@ export function AgentCatalogIndexMeta({ children, className }: { children: React
  * 条目的行尾箭头。
  *
  * 只拥有「未选中时不可见」这一条行为（它是唯一与选中态耦合的部分，靠
- * `[aria-current="page"]` 命中，不再需要调用方把 `selected` 再传一遍）；宽度按各页字号刻度给，
- * 默认 `w-3`（13/16 rem 刻度下的 9.75px），px 字面量页面在自己的页面 CSS 里覆盖成 12px。
+ * `[aria-current="page"]` 命中，不再需要调用方把 `selected` 再传一遍）；宽度取自伴生 CSS，
+ * 与列模板的第四列同值。
  * 箭头本身对读屏无信息量，故标记 `aria-hidden`。
  */
 export function AgentCatalogIndexArrow({ className }: { className?: string }) {
-  return <ChevronRight aria-hidden className={cn("agent-catalog-index-arrow w-3", className)} />;
+  return <ChevronRight aria-hidden className={cn("agent-catalog-index-arrow", className)} />;
 }

@@ -13,32 +13,15 @@
   margin-bottom: 18px;
   border-bottom: 1px solid #e4eaf2;
 }
-.knowledge-directory {
-  padding: 18px 10px;
-}
-/* 目录头部（标题 + 计数徽标）整段交给共享目录组件（`AgentCatalogIndex`）：flex 两端对齐、
-   13px 标题、徽标底色 / 字号都取自 `agent-catalog-index.css`（那份是照 MCP 与模型库逐字相同的
-   取值定的，本页原写法与它同源）。下面两条只压回本页与之不同的三处取值。
-   为什么必须写成「页面类名 + 组件类名」：共享 CSS 未分层，压过 `@layer utilities`，工具类改不动
-   它写过的属性；特异性算下来 (0,2,0) 与 (0,3,0) 都高于它的 (0,1,0)/(0,2,0)。两条都依赖
-   `AgentCatalogIndex` 把 `knowledge-directory` 挂在与头部同源的 aside 上。
-   第二条指向 `data-slot` 钩子而不是 `header > div > span` 那层标签结构：钩子是共享组件承诺的
-   覆盖落点，标签结构会随组件重构静默失配。 */
-.knowledge-directory .agent-catalog-index-header {
-  padding: 0 8px 12px;
-}
-.knowledge-directory .agent-catalog-index-header [data-slot="catalog-index-count"] {
-  min-width: 24px;
-  height: 22px;
-  border-radius: 6px;
-  /* 本页徽标原色（slate-500）；共享默认 `#65728a` 来自 MCP/模型库那份，差异肉眼不可分。
-     留着只为不引入视觉变更，若要把头部彻底归一，删掉这一行即可。 */
-  color: #64748b;
-}
-/* 行间距 4px 是本页刻度（MCP 3px、技能库 2.4375px），故留在页面；
-   `display: grid` 已由共享组件声明，这里不再重复。 */
-.knowledge-directory nav {
-  gap: 4px;
+/* 目录栏（容器 / 头部 / 列表 / 条目 / 图标盒 / 文案 / 箭头）的取值全部由共享构件集
+   `agent-catalog-index.css` 提供，五页同一份——2026-09-23 的裁定是「全部样式统一，不要观感不统一」。
+   本页因此不再为目录头部、行距、行高、图标盒与文案写任何取值；此前的 `18px 10px` 内边距、`0 8px 12px`
+   头部内边距、24×22 徽标、4px 行距、64px 行高、9px 内边距、34×34 图标盒与 13px/11px 字号都已成为
+   共享默认值（换算表见该文件头）。目录换个样式请改共享 CSS，不要再在这里长出一份。
+
+   下面是本页**独有**的两条：不可用态，与副标题行里的状态圆点排布。 */
+.knowledge-directory-item.is-unavailable {
+  opacity: 0.58;
 }
 .knowledge-directory__loading {
   display: grid;
@@ -48,60 +31,14 @@
 .knowledge-directory__loading > * {
   height: 64px;
 }
-/* 行外壳：圆角、过渡与三种状态底色是本页刻度；两列 `minmax(0, 1fr) auto`（按钮占满、行尾删除
-   按钮贴右）与 `align-items` 已下沉共享组件（`.agent-catalog-index-item-shell`）。
-   外壳**每一行都在**——TSX 里每一行都写 `shell` 就是这个意思：渲染外壳由它单独开关，
-   与「这一行有没有删除按钮」（`trailing`）无关，没有按钮的行传 `trailing={null}` 即可。 */
-.knowledge-directory-item {
-  border-radius: 8px;
-  transition: background 120ms ease;
-}
-.knowledge-directory-item:hover {
-  background: #fff;
-}
-.knowledge-directory-item.is-active {
-  background: #e8f0ff;
-}
-.knowledge-directory-item.is-unavailable {
-  opacity: 0.58;
-}
-/* 条目按钮：行高、内边距、列间距是本页刻度；`display: grid`、`34px minmax(0, 1fr)`（对应
-   `columns="icon-copy"` 预设）、`min-width: 0`、`align-items: center`、`border: 0`、
-   `text-align: left` 已由共享组件声明。选择器仍走 `.knowledge-directory-item > button`：
-   按钮始终是外壳的直接子元素（也仅在外壳里出现），故不必再加一个类。 */
-.knowledge-directory-item > button {
-  min-height: 64px;
-  gap: 9px;
-  padding: 9px;
-}
-/* 图标盒只留本页刻度：34×34、8px 圆角与描边底色；`display: grid` + 居中已由共享组件给。 */
-.knowledge-directory-item__icon {
-  width: 34px;
-  height: 34px;
-  border: 1px solid #e4eaf2;
-  border-radius: 8px;
-  background: #fff;
-  color: #60728e;
-}
-.knowledge-directory-item__icon svg {
-  width: 16px;
-}
-/* 文案槽只留本页字号与配色；`min-width: 0`、纵向排布与两行截断
-   （`overflow` / `text-overflow` / `white-space`）已由共享组件 `.agent-catalog-index-copy` 承担。 */
-.knowledge-directory-item__copy strong {
-  color: #334155;
-  font-size: 13px;
-}
-/* 副标题行只留本页排布与配色（flex 对齐 + 7px 间隔 + 上边距）；两行截断的三条声明由共享组件的
-   `.agent-catalog-index-copy > small` 提供。本页此前这一行没有截断，超长文案会溢出按钮，
-   收编后改为裁切——这是本次唯一的视觉行为变化（不影响 `StatusDot` 的装饰语义）。 */
+/* 副标题行在本页是「状态圆点 + 资源数」两个元素并排，故只在这里补横向排布；
+   前面那条竖线的间距（`margin-top`）、字号与颜色由共享 CSS 的
+   `.agent-catalog-index-copy > small` 统一给。两行截断的三条声明同样来自共享组件——
+   本页此前这一行没有截断，超长文案会溢出按钮，收编后改为裁切（不影响 `StatusDot` 的装饰语义）。 */
 .knowledge-directory-item__copy small {
   display: flex;
   align-items: center;
   gap: 7px;
-  margin-top: 5px;
-  color: #8090a7;
-  font-size: 11px;
 }
 .knowledge-detail {
   display: flex;
