@@ -1,0 +1,15 @@
+/*
+ * FileTabsBar 的深层样式（与同目录 `FileTabsBar.tsx` 同名，由该文件 import）。
+ *
+ * 来源：tab 栏分隔符 `<span>` 上的 `[.dark_&]:bg-white/8`——祖先选择器无法用扁平工具类表达
+ * （仓库禁令 FCP-WEB-02），落回本文件；浅色半透黑 `bg-black/8` 是一眼可读的扁平工具类，
+ * 按口径留在 `className`，两侧共同表达「分隔线：浅色半透黑 / 暗色半透白」这一对取值。
+ *
+ * 层叠：本文件不包 `@layer`（源样式本就没有分层），未分层声明压过 `@layer utilities` 里的
+ * `bg-black/8`；`.dark .file-tabs-bar-separator` 又是 2 个类的特指度，暗色下 8% 白稳定胜出。
+ * 值取 Tailwind 对 `bg-white/8` 的生成结果（`color-mix` 形态；它同时输出的十六进制回退是同一
+ * 取值的旧浏览器兜底，宿主 shell 样式表已在用 `color-mix`，故不重复），与原工具类逐字等价。
+ */
+.dark .file-tabs-bar-separator {
+  background-color: color-mix(in oklab, var(--color-white) 8%, transparent);
+}

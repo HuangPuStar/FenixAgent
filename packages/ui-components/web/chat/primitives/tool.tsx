@@ -1,5 +1,6 @@
 import type { ToolUIPart } from "ai";
 import { CheckCircleIcon, ChevronDownIcon, CircleIcon, ClockIcon, WrenchIcon, XCircleIcon } from "lucide-react";
+import "./tool.css";
 import type { ComponentProps, ReactNode } from "react";
 import { isValidElement } from "react";
 import { useTranslation } from "react-i18next";
@@ -128,7 +129,7 @@ export const ToolOutput = ({ className, output, errorText, ...props }: ToolOutpu
       </h4>
       <div
         className={cn(
-          "overflow-hidden rounded-md text-xs [&_table]:w-full",
+          "tool-output-content overflow-hidden rounded-md text-xs",
           errorText ? "bg-destructive/10 text-destructive" : "bg-muted/50 text-foreground",
         )}
       >

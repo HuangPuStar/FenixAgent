@@ -1,3 +1,5 @@
+import "./AgentBadge.css";
+
 import { Loader2, MessageSquare, Pencil } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { UI_COMPONENTS_NS } from "../../i18n/namespace";
@@ -12,77 +14,64 @@ import { AgentLogo } from "./internal/agent-logo";
 // 纯化改动点：`chat:inject-skill` window CustomEvent 总线改为 `onInjectSkill` 回调；
 // i18n 收敛到包内单一命名空间（键前缀 `chat.components.`）。
 //
-// 样式迁移（2026-09-22）：原 `../css/chat-agent-badge.css` 中由本文件渲染的选择器已逐条改写为
-// 下方常量与 `className` 的 Tailwind 工具类，数值/色值逐字保持。
-// - `.agent-badge::before/::after` 水印用同一条 `[&::before,&::after]:` 变体表达（两条伪元素声明相同，
-//   仅 `top` 与 `.before/.after` 不同），`content` 的四段 `attr(data-badge-name)` 用引号内下划线还原空格。
+// 样式迁移：本文件渲染的选择器源自 `web/css/chat-agent-badge.css`（阶段五删除，`@keyframes` 并入
+// `web/css/chat-animations.css`）。阶段一曾把它们逐条改写成 Tailwind 工具类（数值/色值逐字保持）；
+// 2026-09-23 又按仓库禁令 FCP-WEB-02 把「需要伪元素选择器或复合值」的那部分下沉回同目录
+// `AgentBadge.css`（点阵底与卡片阴影、水印、渐变头部、虚线分隔线、骨架屏脉冲），扁平工具类仍在下方 `className`。
+// - `.agent-badge::before/::after` 水印：两条伪元素共用一组声明（仅 `top` 不同），现写在 `AgentBadge.css`；
+//   `content` 的四段 `attr(data-badge-name)` 之间是两个空格。
 // - `.skill-tag` 的暗色规则源文件用 `@media (prefers-color-scheme: dark)`，包内主题是 `.dark` 类切换，
 //   两者语义不同，故保留媒体查询写法（`[@media(prefers-color-scheme:dark)]:`）而非 `dark:`。
-// - `.agent-badge-skeleton` 的 `agent-badge-pulse` 动画定义仍在 `../css/chat-agent-badge.css`
-//   （`@keyframes` 属 CSS，本仓库动画定义统一留在样式表内），此处只引用动画名。
+// - 骨架屏的 `agent-badge-pulse` 动画定义仍在 `web/css/chat-animations.css`
+//   （`@keyframes` 属 CSS，本仓库动画定义统一留在样式表内），按名引用它的 `animation` 写在 `AgentBadge.css`。
+// - 类名不复用源 `.agent-badge*` / `.skill-tag`：宿主 `apps/web/src/index.css` 仍有同名的旧规则，
+//   复用会让那批已下线的声明重新命中；迁移守卫也把源类名列为「不得回流」。故用组件前缀的新语义名。
 // =============================================================================
 
-/** 工牌容器（源 `.agent-badge`）：水印伪元素 + 子元素统一 `relative z-1` 层叠。 */
-const BADGE_CLASS = cn(
-  "relative flex min-h-[340px] w-56 flex-col overflow-hidden rounded-[14px] border border-border",
-  "shadow-[0_1px_3px_rgba(0,0,0,0.04),0_4px_16px_rgba(0,0,0,0.03)]",
-  "[background:radial-gradient(circle,var(--color-border,#e2e8f0)_0.8px,transparent_0.8px)_0_0/60px_60px,var(--color-surface-1,#fff)]",
-  "[&>*]:relative [&>*]:z-[1]",
-);
+/**
+ * 工牌容器（源 `.agent-badge`）：点阵底、卡片阴影、水印伪元素与「子元素抬到水印之上」的层叠
+ * 都在 `AgentBadge.css`（同一条规则即可表达，无需再拆单独的常量）。
+ */
+const BADGE_CLASS =
+  "agent-badge-card relative flex min-h-85 w-56 flex-col overflow-hidden rounded-lg border border-border";
 
-/** 水印伪元素共有声明（源 `.agent-badge::before, .agent-badge::after`）。 */
-const BADGE_WATERMARK_CLASS = cn(
-  "[&::before,&::after]:pointer-events-none [&::before,&::after]:absolute [&::before,&::after]:inset-x-0",
-  "[&::before,&::after]:z-0 [&::before,&::after]:flex [&::before,&::after]:items-center [&::before,&::after]:justify-center",
-  "[&::before,&::after]:overflow-hidden [&::before,&::after]:whitespace-nowrap [&::before,&::after]:rotate-[-10deg]",
-  "[&::before,&::after]:text-[80px] [&::before,&::after]:font-black [&::before,&::after]:tracking-[-0.02em]",
-  "[&::before,&::after]:text-[var(--color-border,#e2e8f0)] [&::before,&::after]:opacity-[0.16]",
-  '[&::before,&::after]:content-[attr(data-badge-name)_"__"_attr(data-badge-name)_"__"_attr(data-badge-name)_"__"_attr(data-badge-name)]',
-  "[&::before]:top-[41%] [&::after]:top-[80%]",
-);
-
-/** 渐变头部（源 `.agent-badge-header`）与挂绳孔伪元素。 */
+/** 渐变头部（源 `.agent-badge-header`）：渐变底与挂绳孔内阴影在 `AgentBadge.css`。 */
 const BADGE_HEADER_CLASS = cn(
-  "relative shrink-0 px-[18px] pt-6 pb-8 text-center",
-  "[background:radial-gradient(220px_circle_at_50%_0%,rgba(107,230,255,0.22),transparent_68%),linear-gradient(180deg,#1759dc,#0d2a6e)]",
+  "agent-badge-banner relative shrink-0 px-4.5 pt-6 pb-8 text-center",
   "after:absolute after:top-3 after:left-1/2 after:h-3.5 after:w-3.5 after:-translate-x-1/2 after:rounded-full",
-  "after:bg-[#cbd5e1] after:shadow-[inset_0_1px_2px_rgba(0,0,0,0.1)] after:content-['']",
+  "after:bg-slate-300 after:content-['']",
 );
 
 const BADGE_TAG_CLASS =
-  "inline-block rounded-full bg-[rgba(255,255,255,0.18)] px-[14px] py-1 text-[10px] font-bold tracking-[0.15em] text-white uppercase backdrop-blur-[4px]";
+  "inline-block rounded-full bg-white/18 px-3.5 py-1 text-3xs font-bold tracking-widest text-white uppercase backdrop-blur-xs";
 
 const BADGE_BODY_CLASS = "flex flex-1 flex-col items-center justify-center px-5";
 
 const BADGE_AVATAR_CLASS =
-  "relative z-[2] -mt-[30px] flex h-[50px] w-[50px] shrink-0 items-center justify-center rounded-full border-[3px] border-white bg-white shadow-[0_0_0_1.5px_var(--color-border,#e2e8f0),0_2px_12px_rgba(23,89,220,0.08)]";
+  "relative z-[2] -mt-7.5 flex h-12.5 w-12.5 shrink-0 items-center justify-center rounded-full border-3 border-white bg-white shadow-[0_0_0_1.5px_var(--color-border,#e2e8f0),0_2px_12px_rgba(23,89,220,0.08)]";
 
-const BADGE_NAME_CLASS = "mt-1 shrink-0 text-[13px] font-bold text-text-primary";
+const BADGE_NAME_CLASS = "mt-1 shrink-0 text-xs font-bold text-text-primary";
 
-const BADGE_SOURCE_CLASS = "mt-2 shrink-0 text-[9px] tracking-[0.08em] text-text-muted uppercase";
+const BADGE_SOURCE_CLASS = "mt-2 shrink-0 text-3xs tracking-widest text-text-muted uppercase";
 
-const BADGE_DESC_CLASS = "mt-[5px] shrink-0 text-center text-[10px] leading-[1.5] text-text-muted";
+const BADGE_DESC_CLASS = "mt-1.25 shrink-0 text-center text-3xs leading-normal text-text-muted";
 
-/** 分隔线（源 `.agent-badge-divider` 的 `::before`/`::after` 虚线段）。 */
-const BADGE_DIVIDER_CLASS = cn(
-  "mx-5 flex shrink-0 items-center",
-  "[&::before,&::after]:flex-1 [&::before,&::after]:border-t [&::before,&::after]:border-dashed [&::before,&::after]:border-border",
-  "[&::before,&::after]:content-['']",
-);
+/** 分隔线（源 `.agent-badge-divider` 的 `::before`/`::after` 虚线段，声明在 `AgentBadge.css`）。 */
+const BADGE_DIVIDER_CLASS = "agent-badge-rule mx-5 flex shrink-0 items-center";
 
 const BADGE_DOTS_CLASS = "mx-2.5 flex gap-1.5";
 
-const BADGE_DOT_CLASS = "h-[5px] w-[5px] shrink-0 rounded-full bg-[#cbd5e1]";
+const BADGE_DOT_CLASS = "h-1.25 w-1.25 shrink-0 rounded-full bg-slate-300";
 
-const BADGE_SKILLS_CLASS = "flex shrink-0 flex-col items-center gap-2 px-5 pt-2.5 pb-[18px]";
+const BADGE_SKILLS_CLASS = "flex shrink-0 flex-col items-center gap-2 px-5 pt-2.5 pb-4.5";
 
-const BADGE_SKILLS_LABEL_CLASS = "text-[10px] font-bold tracking-[0.12em] text-text-muted uppercase";
+const BADGE_SKILLS_LABEL_CLASS = "text-3xs font-bold tracking-widest text-text-muted uppercase";
 
 const BADGE_SKILLS_ROW_CLASS = "flex max-w-full flex-nowrap justify-center gap-1.5 overflow-hidden";
 
-const BADGE_SKILLS_HINT_CLASS = "text-[10px] text-text-muted";
+const BADGE_SKILLS_HINT_CLASS = "text-3xs text-text-muted";
 
-const BADGE_SKILLS_NONE_CLASS = "text-[12px] text-text-muted";
+const BADGE_SKILLS_NONE_CLASS = "text-xs text-text-muted";
 
 /**
  * 技能标签（源 `:where(.agent-badge) .skill-tag`）。
@@ -91,34 +80,34 @@ const BADGE_SKILLS_NONE_CLASS = "text-[12px] text-text-muted";
  * 由 `cn()` 的后者胜出保证结果确定。
  */
 const SKILL_TAG_CLASS = cn(
-  "inline-flex shrink-0 items-center rounded-full border border-border bg-surface-2 px-[9px] py-[3px]",
-  "font-display text-[11px] leading-[1.4] whitespace-nowrap text-text-secondary",
+  "inline-flex shrink-0 items-center rounded-full border border-border bg-surface-2 px-2.25 py-0.75",
+  "font-display text-3xs leading-snug whitespace-nowrap text-text-secondary",
   "[transition:background_0.15s,border-color_0.15s,color_0.15s]",
-  "[@media(prefers-color-scheme:dark)]:border-[rgba(255,255,255,0.08)] [@media(prefers-color-scheme:dark)]:bg-[rgba(255,255,255,0.06)]",
+  "dark:border-white/8 dark:bg-white/6",
 );
 
 const SKILL_TAG_INTERACTIVE_CLASS = cn(
   "cursor-pointer hover:border-[var(--color-border-hover,#d1d5db)] hover:bg-surface-3 hover:text-text-primary",
-  "[@media(prefers-color-scheme:dark)]:hover:border-[rgba(255,255,255,0.16)] [@media(prefers-color-scheme:dark)]:hover:bg-[rgba(255,255,255,0.12)]",
+  "dark:hover:border-white/16 dark:hover:bg-white/12",
 );
 
 const SKILL_TAG_STATIC_CLASS = "cursor-default hover:border-border hover:bg-surface-2 hover:text-text-secondary";
 
-const BADGE_ACTIONS_CLASS = "flex shrink-0 gap-1 px-5 pt-2.5 pb-[14px]";
+const BADGE_ACTIONS_CLASS = "flex shrink-0 gap-1 px-5 pt-2.5 pb-3.5";
 
 const BADGE_ACTION_CLASS = cn(
-  "flex h-[26px] flex-1 cursor-pointer items-center justify-center gap-0.5 rounded-md border border-[#d9e2ee]",
-  "bg-white text-[10px] font-semibold text-[#65748a] [transition:background_0.15s,border-color_0.15s]",
-  "hover:border-[#b9cee8] hover:text-brand disabled:cursor-not-allowed disabled:opacity-60",
+  "flex h-6.5 flex-1 cursor-pointer items-center justify-center gap-0.5 rounded-md border border-slate-200",
+  "bg-white text-3xs font-semibold text-slate-500 [transition:background_0.15s,border-color_0.15s]",
+  "hover:border-slate-300 hover:text-brand disabled:cursor-not-allowed disabled:opacity-60",
 );
 
-const BADGE_ACTION_PRIMARY_CLASS = "border-none bg-brand text-white hover:bg-[#0f67df]";
+const BADGE_ACTION_PRIMARY_CLASS = "border-none bg-brand text-white hover:bg-blue-600";
 
-/** 骨架屏共用的脉冲动画（`@keyframes agent-badge-pulse` 定义在 `../css/chat-animations.css`）。 */
-const SKELETON_ANIMATION_CLASS = "animate-[agent-badge-pulse_2s_cubic-bezier(0.4,0,0.6,1)_infinite]";
+/** 骨架屏共用的脉冲动画（`@keyframes agent-badge-pulse` 定义在 `../css/chat-animations.css`，按名引用写在 `AgentBadge.css`）。 */
+const SKELETON_ANIMATION_CLASS = "agent-badge-skeleton-pulse";
 
 const SKELETON_CIRCLE_CLASS =
-  "h-[50px] w-[50px] shrink-0 rounded-full border-[3px] border-white bg-border shadow-[0_2px_12px_rgba(0,0,0,0.04)]";
+  "agent-badge-skeleton-avatar h-12.5 w-12.5 shrink-0 rounded-full border-3 border-white bg-border";
 
 const SKELETON_LINE_CLASS = "shrink-0 rounded-md bg-border";
 
@@ -166,7 +155,7 @@ export function AgentBadge({
   const isManagement = status !== undefined || onEnter !== undefined || onEdit !== undefined;
 
   const badge = (
-    <div className={cn(BADGE_CLASS, BADGE_WATERMARK_CLASS)} data-badge-name={name} data-slot="agent-badge">
+    <div className={BADGE_CLASS} data-badge-name={name} data-slot="agent-badge">
       {/* 渐变头部 + 挂绳孔 */}
       <div className={BADGE_HEADER_CLASS}>
         <span className={BADGE_TAG_CLASS}>AGENT</span>
@@ -269,7 +258,7 @@ export function AgentBadge({
 export function AgentBadgeSkeleton() {
   return (
     <div className="flex size-full items-center justify-center p-8">
-      <div className={cn(BADGE_CLASS, BADGE_WATERMARK_CLASS)} data-badge-name="" data-slot="agent-badge">
+      <div className={BADGE_CLASS} data-badge-name="" data-slot="agent-badge">
         <div className={BADGE_HEADER_CLASS}>
           <span className={BADGE_TAG_CLASS}>AGENT</span>
         </div>

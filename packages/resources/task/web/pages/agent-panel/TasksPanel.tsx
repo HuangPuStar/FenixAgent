@@ -109,7 +109,7 @@ export function TasksPanel({ agentId }: TasksPanelProps) {
   const renderLastRun = (task: TaskV2Info) => {
     const relTime = formatTaskRelativeTime(task.lastRunAt, taskT, { fallback: "", dateFormat: "compact" });
     if (!task.lastStatus) {
-      return relTime ? <span className="text-[11px] text-text-muted">{relTime}</span> : null;
+      return relTime ? <span className="text-3xs text-text-muted">{relTime}</span> : null;
     }
     const Icon =
       task.lastStatus === "success"
@@ -128,7 +128,7 @@ export function TasksPanel({ agentId }: TasksPanelProps) {
             ? "text-amber-500"
             : "text-text-muted";
     return (
-      <span className={`flex items-center gap-1 text-[11px] ${colorClass}`}>
+      <span className={`flex items-center gap-1 text-3xs ${colorClass}`}>
         {Icon && <Icon className="size-3" />}
         {taskT(`status.${task.lastStatus}`)}
         {relTime && ` · ${relTime}`}

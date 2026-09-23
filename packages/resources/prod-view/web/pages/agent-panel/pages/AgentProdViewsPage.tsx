@@ -71,7 +71,7 @@ export function AgentProdViewsPage() {
   if (loading) {
     return (
       <AppPage busy>
-        <Skeleton className="h-[22px] w-28 rounded-md" />
+        <Skeleton className="h-5.5 w-28 rounded-md" />
         <Skeleton className="mt-1.5 h-3 w-56 rounded-md" />
         <div className="mt-6 space-y-3">
           {Array.from({ length: 5 }).map((_, i) => (

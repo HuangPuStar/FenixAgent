@@ -63,7 +63,7 @@ export function TodoChanges({ changes }: TodoChangesProps) {
         return (
           <div key={change.id} className="flex items-start gap-2 py-1">
             <Icon className={cn("mt-0.5 h-3.5 w-3.5 shrink-0", iconClassName)} />
-            <span className={cn("min-w-0 flex-1 text-[11px] leading-relaxed", itemClassName)}>{text}</span>
+            <span className={cn("min-w-0 flex-1 text-3xs leading-relaxed", itemClassName)}>{text}</span>
           </div>
         );
       })}

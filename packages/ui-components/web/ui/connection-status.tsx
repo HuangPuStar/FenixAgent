@@ -1,5 +1,6 @@
 import { cn } from "../lib/cn";
 import { StatusDot, type StatusDotTone } from "./status-dot";
+import "./connection-status.css";
 
 /**
  * 包内同构联合类型，替代原先从业务层聊天包引入的连接状态类型。
@@ -25,10 +26,13 @@ const CONNECTION_TONES: Record<ConnectionState, StatusDotTone> = {
   error: "danger",
 };
 
-/** 连接态特有的装饰：已连/出错时给圆点加光晕。通用圆点不带装饰，故由本模块按状态附加。 */
+/**
+ * 连接态特有的装饰：已连/出错时给圆点加光晕（色值落在 `connection-status.css`）。
+ * 通用圆点不带装饰，故由本模块按状态附加。
+ */
 const CONNECTION_DOT_GLOW: Partial<Record<ConnectionState, string>> = {
-  connected: "shadow-[0_0_8px_rgba(34,197,94,0.6)]",
-  error: "shadow-[0_0_8px_rgba(239,68,68,0.6)]",
+  connected: "connection-dot-glow-connected",
+  error: "connection-dot-glow-error",
 };
 
 /** 连接态圆点：色调 + 过渡态呼吸 + 光晕三个决定都在本模块，圆点本体来自 `./status-dot`。 */
@@ -88,7 +92,7 @@ export function ConnectionStatusBar({
       <ConnectionDot state={state} />
       <span className="text-sm font-medium">{getConnectionStateLabel(state)}</span>
       {state === "connected" && displayUrl && (
-        <span className="text-xs text-muted-foreground truncate max-w-[150px]">{displayUrl}</span>
+        <span className="text-xs text-muted-foreground truncate max-w-37.5">{displayUrl}</span>
       )}
     </div>
   );

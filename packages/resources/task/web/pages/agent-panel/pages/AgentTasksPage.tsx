@@ -286,7 +286,7 @@ export function AgentTasksPage() {
   const initialLoadDone = useRef(false);
   if (!initialLoadDone.current && loading) {
     return (
-      <div className="min-h-full overflow-auto bg-[#f4f7fb] px-8 py-7 text-[#14213d]" aria-busy="true">
+      <div className="min-h-full overflow-auto bg-slate-100 px-8 py-7 text-slate-800" aria-busy="true">
         <AppHeader title={t("title")} subtitle={t("subtitle")} />
         <div className="space-y-3">
           {Array.from({ length: 5 }).map((_, i) => (

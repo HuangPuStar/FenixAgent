@@ -32,10 +32,10 @@ export function ToolJsonBlock({
 }) {
   return (
     <div>
-      <div className="text-[9px] font-semibold uppercase tracking-widest text-text-dim mb-1.5">{label}</div>
+      <div className="text-3xs font-semibold uppercase tracking-widest text-text-dim mb-1.5">{label}</div>
       <pre
         className={cn(
-          "text-[11px] rounded-md px-3 py-2.5 overflow-auto font-mono leading-relaxed whitespace-pre-wrap break-all [tab-size:2]",
+          "text-3xs rounded-md px-3 py-2.5 overflow-auto font-mono leading-relaxed whitespace-pre-wrap break-all [tab-size:2]",
           error ? "bg-status-error/6 text-status-error" : "bg-surface-2 text-text-secondary",
         )}
       >

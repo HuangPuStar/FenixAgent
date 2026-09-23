@@ -165,7 +165,7 @@ export function SidebarSessionList({
     return (
       <div className="flex flex-col items-center justify-center gap-1 py-8">
         <span className="text-xs font-display text-text-muted">{t("chat.components.acpMain.noSessions")}</span>
-        <span className="text-[10px] text-text-muted">{t("chat.components.acpMain.clickToCreate")}</span>
+        <span className="text-3xs text-text-muted">{t("chat.components.acpMain.clickToCreate")}</span>
       </div>
     );
   }
@@ -175,9 +175,7 @@ export function SidebarSessionList({
       {groups.map((group) => (
         <div key={group.label}>
           <div className="px-3 pb-1.5 pt-3">
-            <span className="text-[10px] font-semibold uppercase tracking-widest text-text-muted/70">
-              {group.label}
-            </span>
+            <span className="text-3xs font-semibold uppercase tracking-widest text-text-muted/70">{group.label}</span>
           </div>
           {group.sessions.map((session) => {
             const isActive = session.sessionId === activeId;
@@ -186,7 +184,7 @@ export function SidebarSessionList({
                 {editingId === session.sessionId ? (
                   <div className="flex items-center gap-1 px-3 py-1">
                     <input
-                      className="min-w-0 flex-1 border-b border-brand bg-transparent px-1 py-0.5 text-[13px] outline-none"
+                      className="min-w-0 flex-1 border-b border-brand bg-transparent px-1 py-0.5 text-xs outline-none"
                       value={editTitle}
                       aria-label={t("chat.components.acpMain.rename")}
                       onChange={(event) => setEditTitle(event.target.value)}
@@ -207,8 +205,8 @@ export function SidebarSessionList({
                     // 不可达（子按钮用的是 `aria-current="page"`，见下方 SessionTitleButton），按「死规则删除」
                     // 处理；行状态保留互斥两态：选中 / 未选中（hover）。
                     className={cn(
-                      "mx-[7px] my-px flex items-center rounded-md",
-                      isActive ? "bg-[#eef4ff]" : "hover:bg-surface-2/60",
+                      "mx-1.75 my-px flex items-center rounded-md",
+                      isActive ? "bg-indigo-50" : "hover:bg-surface-2/60",
                     )}
                   >
                     <SessionTitleButton
@@ -283,10 +281,10 @@ function SessionTitleButton({
               : "text-text-secondary hover:bg-transparent hover:text-text-primary",
           )}
         >
-          <span className="min-w-0 truncate text-[13px] leading-snug">{displayTitle}</span>
+          <span className="min-w-0 truncate text-xs leading-snug">{displayTitle}</span>
         </Button>
       </TooltipTrigger>
-      <TooltipContent side="right" className="max-w-[280px] break-words">
+      <TooltipContent side="right" className="max-w-70 break-words">
         {displayTitle}
       </TooltipContent>
     </Tooltip>

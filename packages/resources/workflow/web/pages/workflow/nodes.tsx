@@ -105,7 +105,7 @@ function StatusDot({ status }: { status: string }) {
   if (status === "FAILED") return <XCircle size={11} className="text-white" />;
   return (
     <span
-      className="w-[7px] h-[7px] rounded-full inline-block"
+      className="w-1.75 h-1.75 rounded-full inline-block"
       style={{ background: status === "PENDING" ? "rgba(255,255,255,0.5)" : "rgba(255,255,255,0.3)" }}
     />
   );

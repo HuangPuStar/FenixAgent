@@ -18,6 +18,11 @@
 // 纯化改动：QuestionProjection 改从包内 ../types 导入（不再 import @fenix/chat-channel）；
 //   cn 改为包内 ../../lib/cn；Button 改为包内 ../../ui/button；
 //   i18n 由宿主 ns=components 收敛到 UI_COMPONENTS_NS 的 chat.components.* key。
+//
+// 深层样式（选项序号徽标的 `flex` 基准值）下沉到同目录 `./QuestionPanel.css`，语义类名为
+// `.chat-question-option-index`，源选择器 `.chat-question-options > button > span`。
+
+import "./QuestionPanel.css";
 
 import { Check, ChevronLeft, ChevronRight } from "lucide-react";
 import { useState } from "react";
@@ -137,10 +142,10 @@ function QuestionCard({ question, onRespond }: QuestionCardProps) {
       }
     >
       <div>
-        {item.header && <span className="block text-[11px] text-[#8a96a8]">{item.header}</span>}
-        <strong className="mt-[3px] block text-[14px] text-[#26364f]">{item.question}</strong>
+        {item.header && <span className="block text-3xs text-gray-400">{item.header}</span>}
+        <strong className="mt-0.75 block text-sm text-slate-700">{item.question}</strong>
       </div>
-      <div className="mt-[9px] grid gap-[5px]">
+      <div className="mt-2.25 grid gap-1.25">
         {item.options.map((option, optionIndex) => {
           const isSelected = selected[questionIndex]?.includes(option.label) ?? false;
           return (
@@ -149,8 +154,8 @@ function QuestionCard({ question, onRespond }: QuestionCardProps) {
               type="button"
               // 源 `.chat-question-options > button`（+ `:hover`/`.is-selected` 两态；两态互斥，不靠生成顺序）
               className={cn(
-                "flex items-start gap-[9px] rounded-lg p-2 text-left",
-                isSelected ? "bg-[#f0f5ff] text-[#245fc9]" : "text-[#53627a] hover:bg-[#f0f5ff] hover:text-[#245fc9]",
+                "flex items-start gap-2.25 rounded-lg p-2 text-left",
+                isSelected ? "bg-blue-50 text-blue-700" : "text-slate-600 hover:bg-blue-50 hover:text-blue-700",
               )}
               aria-pressed={isSelected}
               onClick={() =>
@@ -165,13 +170,14 @@ function QuestionCard({ question, onRespond }: QuestionCardProps) {
                 })
               }
             >
-              <span className="grid h-[21px] w-[21px] flex-[0_0_21px] place-items-center rounded-[5px] bg-[#eef1f5] text-[11px]">
-                {isSelected ? <Check className="h-[13px] w-[13px]" /> : String.fromCharCode(65 + optionIndex)}
+              {/* 源 `.chat-question-options > button > span`（序号/勾选徽标；`flex` 基准值在 ./QuestionPanel.css）。 */}
+              <span className="chat-question-option-index grid h-5.25 w-5.25 place-items-center rounded-sm bg-gray-100 text-3xs">
+                {isSelected ? <Check className="h-3.25 w-3.25" /> : String.fromCharCode(65 + optionIndex)}
               </span>
               <div>
-                <strong className="block text-[12px]">{option.label}</strong>
+                <strong className="block text-xs">{option.label}</strong>
                 {option.description && (
-                  <small className="mt-0.5 block text-[11px] text-[#8a96a8]">{option.description}</small>
+                  <small className="mt-0.5 block text-3xs text-gray-400">{option.description}</small>
                 )}
               </div>
             </button>

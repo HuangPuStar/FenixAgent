@@ -1,0 +1,149 @@
+/*
+ * 「新建 Agent」面板 C 片（资源库 / 知识区）的深层样式。
+ *
+ * 源：迁移前的 `agent-editor-library.css`(96) + `agent-editor-knowledge.css`(161)，选择器沿用源类名；
+ * 值取 `agent-editor-library-classes.ts` 那批类串的生效值（口径见 `/tmp/agent-editor-effective-spec.md`）。
+ * 扁平工具类仍留在 `className`，本文件只承载子代选择器、伪态、复合值与媒体查询。
+ *
+ * 三条约定：
+ *
+ * ① 不包 `@layer`：源样式表本就没有分层，未分层才能在层叠中压过 `@layer utilities`
+ *    —— 迁移前由 CSS 压过工具类的声明，迁移后仍由 CSS 压过（胜负关系保持不变）。
+ *
+ * ② 颜色与圆角写字面量，不写 `var(--color-*)` / `var(--tw-*)`：Tailwind v4 只输出**被工具类用到**
+ *    的主题变量（`--color-sky-700`、`--color-gray-400` 在本仓库当前构建里根本不存在，见 `dist/assets/main-*.css`），
+ *    引用被裁掉的变量会在计算期静默失效（颜色回落到继承值）。注释里的工具类名即换算来源，改 token 时按名搜索同步。
+ *
+ * ③ 有两处基准列宽故意包一层 `:where()`（特异性降到 0）：`.agent-editor-library-picker` 与
+ *    `.agent-retrieval-fields`。它们的覆盖方今天仍是「压过基准才生效」的写法 —— 单列态 `grid-cols-1`
+ *    与窄桌面覆盖 `agent-editor-library-picker-narrow` / `max-lg:grid-cols-1`。若基准用普通类选择器
+ *    （特异性 0,1,0），这些覆盖会退化成「按样式表顺序决胜负」而可能静默失效，故基准必须让位。
+ */
+
+/* ── 来源导航（library） ───────────────────────────────────────────────── */
+
+/* 源 `.agent-editor-group-filter button`：40px 行 / 两列（标签 + 计数）。
+   声明落到按钮自己的类名上（BEM 元素名），不靠 `.agent-editor-group-filter > button` 的 DOM 结构匹配 ——
+   容器上还挂着 B 的 `GROUP_FILTER_NARROW`（同样是 `> button` 的后代规则），两条声明各归各的类名，互不误伤。 */
+.agent-editor-group-filter__button {
+  grid-template-columns: minmax(0, 1fr) auto;
+}
+
+/* 源 `.agent-editor-group-filter button:hover`（`button.is-active` 由 `GROUP_FILTER_BUTTON_ACTIVE` 承载，同色）。 */
+.agent-editor-group-filter__button:hover {
+  background-color: oklch(96.2% 0.018 272.314); /* bg-indigo-50 */
+  color: oklch(37.9% 0.146 265.522); /* text-blue-900 */
+}
+
+/* ── 两层资源库（library） ─────────────────────────────────────────────── */
+
+/* 源 `.agent-editor-library-picker`：168px 左来源栏 + 结果区。见文件头约定 ③（`:where()` 让位）。 */
+:where(.agent-editor-library-picker) {
+  grid-template-columns: 168px minmax(0, 1fr);
+}
+
+/* ── 知识区（knowledge） ──────────────────────────────────────────────── */
+
+/* 源 `.agent-knowledge-block__heading`：36px 图标列。 */
+.agent-knowledge-block__heading {
+  grid-template-columns: 36px minmax(0, 1fr);
+}
+
+/* 源 `.agent-knowledge-block__heading > span`：34px 图标格。 */
+.agent-knowledge-block__heading > span {
+  display: grid;
+  width: 34px; /* size-8.5 */
+  height: 34px; /* size-8.5 */
+  place-items: center;
+  border-radius: 0.375rem; /* rounded-md */
+  background-color: oklch(96.2% 0.018 272.314); /* bg-indigo-50 */
+  color: oklch(50% 0.134 242.749); /* text-sky-700 */
+}
+
+/* 源 `.agent-knowledge-block__heading svg`（类串里写作 `[&>span>svg]`，图标只在 span 里）。 */
+.agent-knowledge-block__heading > span > svg {
+  width: 14px; /* size-3.5 */
+  height: 14px; /* size-3.5 */
+}
+
+/* 源 `.agent-knowledge-block__heading > div`：标题 + 说明列。 */
+.agent-knowledge-block__heading > div {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 2px; /* gap-0.5 */
+}
+
+/* 源 `.agent-knowledge-block__heading strong`。 */
+.agent-knowledge-block__heading > div > strong {
+  font-size: 0.75rem; /* text-xs */
+  line-height: calc(1 / 0.75); /* text-xs 自带的行高（此元素没有 leading-* 覆盖） */
+  font-weight: 680;
+  color: oklch(37.2% 0.044 257.287); /* text-slate-700 */
+}
+
+/* 源 `.agent-knowledge-block__heading small`。 */
+.agent-knowledge-block__heading > div > small {
+  font-size: 10px; /* text-3xs（仓库在 Tailwind 刻度下自补的 10px 档） */
+  line-height: 1.5; /* leading-normal */
+  color: oklch(70.4% 0.04 256.788); /* text-slate-400 */
+}
+
+/* 源 `.agent-knowledge-switch`：64px 高、两列（文案列 + 36px 轨道列）。 */
+.agent-knowledge-switch {
+  grid-template-columns: minmax(0, 1fr) 36px;
+}
+
+/* 源 `.agent-knowledge-switch:hover`（`.is-on` 由 `KNOWLEDGE_SWITCH_ON` 承载，同色）。 */
+.agent-knowledge-switch:hover {
+  background-color: oklch(97% 0.014 254.604); /* bg-blue-50 */
+}
+
+/* 源 `.agent-knowledge-switch > span`：文案列。 */
+.agent-knowledge-switch > span {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 3px; /* gap-0.75 */
+}
+
+/* 源 `.agent-knowledge-switch strong`：标题行 + 徽标。 */
+.agent-knowledge-switch > span > strong {
+  display: flex;
+  align-items: center;
+  gap: 8px; /* gap-2 */
+  font-size: 0.75rem; /* text-xs */
+  line-height: calc(1 / 0.75); /* text-xs 自带的行高 */
+  font-weight: 680;
+  color: oklch(37.2% 0.044 257.287); /* text-slate-700 */
+}
+
+/* 源 `.agent-knowledge-switch strong em`：徽标药丸。
+   `rounded-full` 编译成 `calc(infinity * 1px)`；这里沿用源文件的 `999px` —— 同为「胶囊」几何，且不依赖
+   `infinity` 这个较新的 calc 常量支持度。 */
+.agent-knowledge-switch > span > strong > em {
+  border-radius: 999px;
+  padding: 2px 7px; /* py-0.5 px-1.75 */
+  font-size: 10px; /* text-3xs */
+  font-weight: 500;
+  font-style: normal; /* not-italic */
+  color: oklch(50% 0.134 242.749); /* text-sky-700 */
+  background-color: oklch(95.1% 0.026 236.824); /* bg-sky-100 */
+}
+
+/* 源 `.agent-knowledge-switch small`。 */
+.agent-knowledge-switch > span > small {
+  font-size: 10px; /* text-3xs */
+  line-height: 1.5; /* leading-normal */
+  color: oklch(70.7% 0.022 261.325); /* text-gray-400 */
+}
+
+/* 源 `.agent-knowledge-switch > i b`：圆钮（尺寸/底色留 `KNOWLEDGE_SWITCH_KNOB`，只有阴影属深层值）。 */
+.agent-knowledge-switch__knob {
+  box-shadow: 0 1px 4px rgb(25 43 75 / 20%);
+}
+
+/* 源 `.agent-retrieval-fields`：说明字段列 + 选项列。≤1024px 单列（`max-lg:grid-cols-1`）见文件头约定 ③。 */
+:where(.agent-retrieval-fields) {
+  grid-template-columns: minmax(0, 1fr) minmax(210px, 0.7fr);
+}

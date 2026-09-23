@@ -1,0 +1,49 @@
+/*
+ * chat-status-panel 的深层样式（与同目录 `chat-status-panel.tsx` 同名，由该文件 import）。
+ *
+ * 来源：源 `chat-design-status.css` 与 `chat-design-responsive.css`（均在阶段四随迁移删除）的
+ * `.chat-status-panel` / `.chat-status-list` / `.chat-status-collapse` 段。只搬「工具类无法表达」的
+ * 复合值，扁平工具类（圆角、边框、底色、内边距、`mx-auto`）仍留在 `chat-status-panel.tsx` 里：
+ *   - `.chat-status-panel-card`      ← `w-[min(756px,calc(100%-64px))]`、`max-md:w-[calc(100%-52px)]`
+ *     与 `shadow-[0_12px_34px_rgb(30_64_120_/_8%)]`（源 `.chat-interaction-stack, .chat-status-panel`
+ *     的宽度台阶 + 窄屏收窄 + `.chat-status-panel` 的投影；包内无等价阴影 token，逐字保留不改视觉）；
+ *   - `.chat-status-rows`            ← `max-h-[min(16rem,35vh)]`（滚动容器限高，随组件原有滚动约束）；
+ *   - `.chat-status-row`             ← `grid-cols-[18px_minmax(0,1fr)_auto]`（源 `.chat-status-list > div,
+ *     > button` 的三列：状态图标 / 文本 / 尾注）；
+ *   - `.chat-status-collapse-toggle` ← `[&>svg]:w-3.75`（源 `.chat-status-collapse svg` 的 `width: 15px`，
+ *     即 `3.75 × --spacing`）。
+ * 值逐字等价换算（刻度保留 `calc(var(--spacing) * n)`），未调整任何数值。源类名 `.chat-status-panel` /
+ * `.chat-status-list` / `.chat-status-collapse` 已作废，故各取新名。
+ *
+ * 窄屏断点：源规则写作 `@media (max-width: 720px)`，迁移到工具类后一直是 Tailwind 的 `max-md`
+ * （`width < 48rem`，即 768px）——两条并非同一断点，此处按**迁移后的现状**逐字保留 `max-md` 语义，
+ * 不顺手改回 720px（那会改变 720–767px 区间的宽度，属视觉变更）。与
+ * `chat-interaction-region.css` 的 `.chat-interaction-cards` 保持同一口径（两条台阶必须同步收窄）。
+ *
+ * 层叠：本文件不包 `@layer`（源样式表也未分层），未分层声明压过 `@layer utilities`；面板上同时生效的
+ * 扁平工具类与本文件声明的属性不重叠（`STATUS_ROW_CLASS` 里的 `grid` / `min-h-7.25` 不受列定义影响），
+ * 胜负关系与迁移前一致。
+ */
+.chat-status-panel-card {
+  width: min(756px, calc(100% - 64px));
+  box-shadow: 0 12px 34px rgb(30 64 120 / 8%);
+}
+
+/* `max-md` 展开：窄屏下与交互栈同步收窄（卡片 padding 收成 10px，面板每侧再窄 16px）。 */
+@media (width < 48rem) {
+  .chat-status-panel-card {
+    width: calc(100% - 52px);
+  }
+}
+
+.chat-status-rows {
+  max-height: min(16rem, 35vh);
+}
+
+.chat-status-row {
+  grid-template-columns: 18px minmax(0, 1fr) auto;
+}
+
+.chat-status-collapse-toggle > svg {
+  width: calc(var(--spacing) * 3.75);
+}

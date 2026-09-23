@@ -1,3 +1,5 @@
+import "./SessionModeSelector.css";
+
 import { Check, ChevronDown, ChevronUp, Shield } from "lucide-react";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
@@ -50,14 +52,12 @@ export function SessionModeSelector({
     const label = current?.name ?? t("chat.components.sessionModeSelector.default");
     return (
       <span
-        className="inline-flex h-7 max-w-[132px] min-w-0 items-center gap-[5px] px-[7px] text-[11px] leading-none text-[#7b8799] [@media(max-width:720px)]:px-[5px]"
+        className="inline-flex h-7 max-w-33 min-w-0 items-center gap-1.25 px-1.75 text-3xs leading-none text-slate-500 max-md:px-1.25"
         data-slot="chat-composer-security-policy"
         title={label}
       >
-        <Shield className="h-[13px] w-[13px] flex-[0_0_13px] text-[#909bab]" />
-        <span className="overflow-hidden text-ellipsis whitespace-nowrap [@media(max-width:720px)]:hidden">
-          {label}
-        </span>
+        <Shield className="chat-session-mode-shield-icon h-3.25 w-3.25 text-gray-400" />
+        <span className="overflow-hidden text-ellipsis whitespace-nowrap max-md:hidden">{label}</span>
       </span>
     );
   }

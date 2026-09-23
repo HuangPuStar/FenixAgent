@@ -1,0 +1,43 @@
+/*
+ * ToolCallRow 的深层样式（与同目录 `ToolCallRow.tsx` 同名，由该文件 import）。
+ *
+ * 来源：源 `chat-design-tools.css`（阶段四随迁移删除）的 `.tool-call-row-compact` /
+ * `.chat-tool-call-row` / `.tool-call-row-icon` / `:where(.tool-call-row-copy.is-file-preview)
+ * .tool-call-row-meta` 四段。只搬「工具类无法表达」的复合值，扁平工具类（间距、圆角、悬停底色、
+ * 文字刻度、焦点环）仍留在 `ToolCallRow.tsx` 的 `className` 里：
+ *   - `.chat-tool-call-shell`     ← `grid-cols-[minmax(0,1fr)_auto]`（源 `.tool-call-row-compact` 的两列：
+ *     行主体 / 右侧状态位）；
+ *   - `.chat-tool-call-grid`      ← `grid-cols-[22px_minmax(0,1fr)_auto_auto]`（源 `.chat-tool-call-row`
+ *     的四列：图标 / 标题副本 / 状态位 / 详情按钮）；
+ *   - `.chat-tool-call-icon`      ← `flex-[0_0_22px]` 与 `[&>svg]:h-3.75 [&>svg]:w-3.75`
+ *     （源 `.tool-call-row-icon` 的 `flex: 0 0 22px` 与 `.tool-call-row-icon svg` 的
+ *     `width/height: 15px`，即 `3.75 × --spacing`）；
+ *   - `.chat-tool-call-meta-inline` ← `flex-[0_1_auto]`（源 `:where(.tool-call-row-copy.is-file-preview)
+ *     .tool-call-row-meta` 的 `flex: 0 1 auto`；源规则里同块的 `white-space: nowrap` 仍是并列的
+ *     `whitespace-nowrap` 工具类，一起由 `showFileLink` 条件挂上）。
+ * 值逐字等价换算（刻度保留 `calc(var(--spacing) * n)`），未调整任何数值。源类名已在阶段四作废，故各取新名。
+ *
+ * 层叠：本文件不包 `@layer`（源样式表也未分层），未分层声明压过 `@layer utilities`；行容器上同时生效的
+ * 扁平工具类与本文件声明的属性不重叠（`grid` 与列定义互补，`h-5.5 w-5.5` 与 `flex` 基准值互不冲突），
+ * 胜负关系与迁移前一致。
+ */
+.chat-tool-call-shell {
+  grid-template-columns: minmax(0, 1fr) auto;
+}
+
+.chat-tool-call-grid {
+  grid-template-columns: 22px minmax(0, 1fr) auto auto;
+}
+
+.chat-tool-call-icon {
+  flex: 0 0 22px;
+}
+
+.chat-tool-call-icon > svg {
+  width: calc(var(--spacing) * 3.75);
+  height: calc(var(--spacing) * 3.75);
+}
+
+.chat-tool-call-meta-inline {
+  flex: 0 1 auto;
+}

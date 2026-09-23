@@ -1,0 +1,43 @@
+/*
+ * AlertDialog 深层样式。
+ *
+ * ① 头部栅格（原 `grid-rows-[auto_1fr]` 及两个 `has-data-` / `sm:group-data-` 覆盖）：三处都是复合表达式值
+ *    （FCP-WEB-02），且互为「同一属性」的「基础值 + 条件覆盖」，必须整组下沉 —— 只搬基础值会让它作为
+ *    未分层声明反过来压过留在 `@layer utilities` 里的两个覆盖，`sm` 档与带图标的排布会静默走样。
+ *    三者在原 className 里的胜负由变体特指度决定（基础 < `:has()` < `sm:group-data-…:has()`），
+ *    本文件用同样的特指度阶梯表达，顺序不变。
+ *    `sm` 档的祖先条件用 `.alert-dialog-content[data-size="default"]`（组件稳定输出 `data-slot` 与 `data-size`），
+ *    与 Tailwind 为 `group-data-[size=default]/alert-dialog-content` 生成的
+ *    `:is(:where(.group\/alert-dialog-content)[data-size=default] *)` 等价。
+ *
+ * ② 宽度上限 `max-w-[calc(100%-2rem)]` 是复合表达式值，但不能直接写成
+ *    `.alert-dialog-content { max-width: calc(100% - 2rem) }`：同元素上还有 `data-[size=sm]:max-w-xs`、
+ *    `data-[size=default]:sm:max-w-lg` 与消费方 `className` 传入的宽度类。本文件未分层（`@layer` 被仓库
+ *    规范禁止），未分层声明在层叠中一定压过 `@layer utilities`，直接下沉会把它们全部压掉
+ *    （小尺寸弹窗与 ≥640px 的尺寸档都会顶到 `calc(100% - 2rem)`）。故只把「值」下沉到变量里，
+ *    `className` 保留引用该变量的工具类，声明仍留在 utilities 层，层叠位置与迁移前一致。
+ *    移除条件：Tailwind 主题里出现等价的命名宽度 token，可改为扁平的 `max-w-<name>` 工具类。
+ */
+
+/* 窄屏兜底宽度（原 `max-w-[calc(100%-2rem)]`）：只提供值，声明位置见文件头 ②。 */
+.alert-dialog-content {
+  --alert-dialog-content-max-width: calc(100% - 2rem);
+}
+
+/* 头部两行：标题 + 描述（原 `grid-rows-[auto_1fr]`）。 */
+.alert-dialog-header {
+  grid-template-rows: auto 1fr;
+}
+
+/* 带图标槽时多出一行给图标（原 `has-data-[slot=alert-dialog-media]:grid-rows-[auto_auto_1fr]`）。 */
+.alert-dialog-header:has([data-slot="alert-dialog-media"]) {
+  grid-template-rows: auto auto 1fr;
+}
+
+/* ≥sm 且在 default 尺寸弹窗内：图标改由 `row-span-2` 占据，栅格回到两行
+   （原 `sm:group-data-[size=default]/alert-dialog-content:has-data-[slot=alert-dialog-media]:grid-rows-[auto_1fr]`）。 */
+@media (min-width: 40rem) {
+  .alert-dialog-content[data-size="default"] .alert-dialog-header:has([data-slot="alert-dialog-media"]) {
+    grid-template-rows: auto 1fr;
+  }
+}

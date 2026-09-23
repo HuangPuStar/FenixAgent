@@ -1,8 +1,9 @@
 # 前端开发规范
 
-> **版本**：v3.0.4 | **最后更新**：2026-09-22 | **维护者**：前端团队
+> **版本**：v3.0.5 | **最后更新**：2026-09-23 | **维护者**：前端团队
 >
 > **最近变更**：
+> - v3.0.5 (2026-09-23)：Web 样式禁止行为门禁（`bun run check:web-style`）接入后，§10 新增**类别 ③「深层样式伴随表」**——与源文件同目录同名的 `.css`，承载无法用扁平工具类表达的选择器嵌套／复合表达式值／无标准变体的媒体查询，并给出三条约束（严格同名同目录、优先沿用源选择器名、不包 `@layer` 且逐处确认胜负关系）；「新增 `.css` 的落位」由「只用前两种」放宽为「只用前三类」。§10.1 的页面级 `.css` 计数按实测口径重写（资源侧 14 → **9** 个 / 3370 → **2496** 行；token 入口与新增伴随表同步实测）。规则口径与存量清理过程见 `forbidden-code-patterns.md`。
 > - v3.0.4 (2026-09-22)：前端去重批次（约 65 个 commit）后的文档对账。§4.1 补登本轮新下沉的原语（`config/AdminKeyGate`、`config/LabeledField`、`ui/status-dot`、`components/ClosableTabPill`、`lib/clipboard`、`lib/format`、`chat/view/PublicErrorCard`、`chat/panels/chat-interaction-region`、`chat/timeline/tool-json-block`），并把「空态 / 失败 / 无权限刻意共用一个骨架」与「无权限不给重试、失败给重试」写进该节的口径——**不要新建第二个空态/失败组件**；子路径数与 barrel 行数改为实测值（145→**156** 条 `exports` 子路径、151→**160** 行 barrel）。§4.8 新增「刻意分叉 / 刻意不进库」四条冻结项（三种节点配置容器、cytoscape 与自绘 canvas 两套图谱、红描边危险按钮、形态未定型包内共享件）。`MasterKeyGate` 全量订正为 `@fenix/ui-components/config/AdminKeyGate` + `@fenix/web-runtime/hooks/use-admin-key-gate`（§2.3、§6.3 与 `docs/arch/21-observability-observer-service.md`）。§5.6 / §5.9 删去已随 `ac642962` 删除的 `workflow/web/api/workflows.ts`，§4.8 的文件规模快照（16→**17** 个超 500 行、400–499 区间 27→**25**）与 §10.1 的页面级 `.css` 计数按实测口径重写。
 > - v3.0.3 (2026-09-22)：§2.5 的加载壳口径改写——原「三种壳形态都合规」**作废**（它把逐字复制的圆环类名固化成规范），路由 `Suspense` fallback 与整块加载提示一律改用 `Spinner`（`@fenix/ui-components/ui/spinner`），并补 `variant` / `size` / `label` 的选择口径；§2.7 登记存量未迁移位置。
 > - v3.0.2 (2026-09-22)：把「失败必须有用户可见反馈」从隐含口径写成**可 review 的规则**（§5.8 新增：三条件判据 + 三类必然豁免 + `/login`、`/admin` 下无 `Toaster` 的坑）。据此做了一轮全量处理：4 处原生 `confirm()` 全部迁 `ConfirmDialog`（删除 §6.5 对应偏离项），逐点复核全仓 `console.error` 并补齐缺失反馈，未动的残留登记到 §5.9。§11.2 补「`react-i18next` 替身必须返回稳定 `t`」——该替身缺陷会让测试陷入反复拉取且生产不复现。
@@ -1086,9 +1087,10 @@ i18n.use(initReactI18next).init({
 - **`@source` 只扫 `packages/**/web/**`**：组件源码放错位置（如 `packages/<pkg>/components/`）其工具类**不会被生成**——症状是样式静默消失，不是报错。这条由 `scripts/__tests__/app-entry-paths.test.ts` 固化，也是 §1 那条硬规则的由来。
 - **优先 token 类而不是 `dark:` 变体**：`.dark` 类由 `ThemeProvider` 切换，但 `dark:` 变体没有 `@custom-variant dark` 声明、仍绑定 `prefers-color-scheme`，两者不同源。写 `bg-surface-1` / `text-muted`。
 - **`cn()` 唯一来自 `@fenix/ui-components/lib/cn`**；宿主 `apps/web/src/lib/utils.ts` 的遗留副本与 `@/src/lib/utils` 别名已随 2026-09 去重删除，不要再建第二份。
-- **独立 `.css` 文件只许三类**：① token 入口（`index.css`、`theme.css`）；② **第三方渲染覆盖表**，判据是第三方 DOM **没有 className 挂载点**且第三方 CSS **未分层**（当前唯一实例：`ui-components/web/components/preview/overrides.css`，它也是 `web/components/` 下仅存的 `.css`）；③ 迁移未完成的历史页面级样式表——**不鼓励**，见下。
+- **独立 `.css` 文件只许四类**：① token 入口（`index.css`、`theme.css`）；② **第三方渲染覆盖表**，判据是第三方 DOM **没有 className 挂载点**且第三方 CSS **未分层**（当前唯一实例：`ui-components/web/components/preview/overrides.css`，它也是 `web/components/` 下仅存的 `.css`）；③ **深层样式伴随表**——与源文件同目录、同名的 `.css`，承载**无法用扁平工具类表达**的选择器嵌套／复合表达式值／无标准变体的媒体查询（判据与口径见 `forbidden-code-patterns.md` §「存量清理结果」，门禁 `bun run check:web-style`）；④ 迁移未完成的历史页面级样式表——**不鼓励**，见下。
 - **类别 ② 的三条约束**（照 `overrides.css` 文件头执行）：保留未分层、靠导入顺序取胜，**不要改写成工具类**；**拒绝 `!important`**（全仓现有 6 处 `!` 修饰工具类都属待清理遗留，不要增加）；覆盖选择器必须带第三方类名前缀（如 `ofv-*`）。
-- **新增 `.css` 的落位**：现有三种形态——`ui-components/web/chat/css/*.css`（3 份，模块级）、`web/styles/theme.css`（token）、与页面同目录的 `xxx.css`（历史遗留）。**新代码只用前两种**；确实必须写 CSS 时优先放组件同目录、命名与组件同名，不要新增页面级样式表。
+- **类别 ③ 的三条约束**：文件名与源文件严格同名同目录（`AgentEditorChrome.tsx` ↔ `AgentEditorChrome.css`），由持有该样式的模块顶部 `import` 引入；类名优先沿用源码注释里记录的**源选择器名**，否则用 `kebab-case` 语义名；**不包 `@layer`**（未分层才能压过 `@layer utilities`），但每处下沉都要逐条确认胜负关系没变——原写法若会被消费方 `className` 覆盖，就不能整条下沉。
+- **新增 `.css` 的落位**：现有形态——`ui-components/web/chat/css/*.css`（3 份，模块级）、`web/styles/theme.css`（token）、**与源文件同目录同名的伴随表**（类别 ③）、以及与页面同目录的 `xxx.css`（历史遗留，类别 ④）。**新代码只用前三类**；确实必须写 CSS 时优先放组件同目录、命名与组件同名，不要新增页面级样式表。
 - **图标**：通用图标只用 `lucide-react`，**禁止内联 SVG**；模型图标走 `<ModelIcon modelId size variant>`（`model-management/web/components/model-icon/ModelIcon.tsx`），**禁止直接 `import "@lobehub/icons"`**（`model-icon-boundary` 规则强制，见 §11.2）。**纯逻辑模块不得依赖 UI 图标包**（后端与纯逻辑测试也不得**间接**加载）——`@lobehub/icons` 依赖 `antd-style`，后者在模块加载期裸调 `matchMedia`，无 DOM 的 `bun test` 进程里加载即崩。
 - **字体**：系统字体栈，**禁止外部字体链接与 `@font-face`**；`--font-sans` / `--font-display` / `--font-body` 三者同值，`--font-mono` 独立，均应用在 `html, body`。
 - **禁止 `@apply`**（当前零使用，不要引入——它会把"工具类 vs CSS"变成第三种说不清的形态）。
@@ -1096,7 +1098,7 @@ i18n.use(initReactI18next).init({
 ### 10.1 现状偏离
 
 - **`dark:` 变体与 `.dark` 类不同源**：全仓无 `@custom-variant dark` 声明，30 个文件使用 `dark:`（含 `ui/button.tsx`、`ui/tabs.tsx`、`StatusBadge.tsx`、`HindsightToolCard.tsx`），用户在手动切浅色时仍可能按系统偏好渲染。另见 §3.2 的"宿主强制浅色"——当前深色路径整体不可用。
-- **页面级 `.css` 大量残留且无登记**：`apps/web` 5 个（合计 1810 行，含 `shell/agent-panel.css` 676 行、`shell/artifacts-workspace.css` 376 行）、资源侧 14 个（合计 3370 行，含 `workflow/workflow.css` 642 行、`platform/identity/.../agent-organizations.css` 513 行）。口径：`apps/web/src/**/*.css` 与 `packages/**/web/**/*.css`，排除 §10 允许的 token 入口（`index.css` 837 行、`styles/theme.css` 247 行）、`chat/css/*.css`（3 份）与 `components/preview/overrides.css`。它们与业务 tsx 里的自定义类名联动（如 `agent-tasks-page`），迁移时两者必须同批改。2026-09 的 Tailwind 迁移已把此前的基数压下来（`agent-editor.css` / `-design.css` / `-responsive.css` 三表随 `bfd63e52` 删除；`agent-panel.css` 由 919 行降到 676、`artifacts-workspace.css` 由 664 行降到 376），但**剩余部分仍未登记**。
+- **页面级 `.css` 大量残留且无登记**：`apps/web` 5 个（合计 1810 行，含 `shell/agent-panel.css` 676 行、`shell/artifacts-workspace.css` 376 行）、资源侧 9 个（合计 2496 行，含 `workflow/workflow.css` 642 行、`platform/identity/.../agent-organizations.css` 513 行）。口径：`apps/web/src/**/*.css` 与 `packages/**/web/**/*.css`，排除 §10 允许的 token 入口（`index.css` 842 行、`styles/theme.css` 252 行）、`chat/css/*.css`（3 份）、`components/preview/overrides.css` 与类别 ③ 的伴随表（66 份，合计 3348 行）。它们与业务 tsx 里的自定义类名联动（如 `agent-tasks-page`），迁移时两者必须同批改。2026-09 的 Tailwind 迁移已把此前的基数压下来（`agent-editor.css` / `-design.css` / `-responsive.css` 三表随 `bfd63e52` 删除；`agent-panel.css` 由 919 行降到 676、`artifacts-workspace.css` 由 664 行降到 376），但**剩余部分仍未登记**。
 - **`tw-animate-css` 声明了依赖但源仓库从未 `@import` 它**（只在包内 demo 的 CSS 里导入过），因此 shadcn 过渡动画工具类在应用中是空操作（已在 `ui-components` README 登记）。包内已知限制的完整清单见 `packages/ui-components/README.md`，以那里为准，不在此重复。
 
 ## 11. 开发落地清单

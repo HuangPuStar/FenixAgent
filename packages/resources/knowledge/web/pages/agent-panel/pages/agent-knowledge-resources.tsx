@@ -88,7 +88,7 @@ export function AgentKnowledgeResources(props: AgentKnowledgeResourcesProps) {
                     )}
                   </div>
                 </TableCell>
-                <TableCell className="text-center text-[#8090a7]">{resource.chunkCount ?? "—"}</TableCell>
+                <TableCell className="text-center text-slate-400">{resource.chunkCount ?? "—"}</TableCell>
                 <TableCell>
                   {resource.runStatus === "RUNNING" && resource.parseProgress != null ? (
                     <div className="knowledge-resource-progress">
@@ -117,7 +117,7 @@ export function AgentKnowledgeResources(props: AgentKnowledgeResourcesProps) {
                     onCheckedChange={(checked) => props.onToggleEnabled(resource, checked)}
                   />
                 </TableCell>
-                <TableCell className="text-[#8090a7]">{formatTimestamp(resource.createdAt)}</TableCell>
+                <TableCell className="text-slate-400">{formatTimestamp(resource.createdAt)}</TableCell>
                 <TableCell>
                   <div className="knowledge-resource-actions">
                     <Button

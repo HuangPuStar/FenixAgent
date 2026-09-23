@@ -215,22 +215,22 @@ export function AgentSkillsCatalog(props: AgentSkillsCatalogProps) {
           detailHeader={selectedSkill ? <SkillDetailView skill={selectedSkill} props={props} headerOnly /> : null}
           detailFooter={selectedSkill ? <SkillDetailActions skill={selectedSkill} props={props} /> : null}
           index={
-            <aside className="px-[10px] py-[19px]">
-              <header className="px-2 pb-[14px]">
-                <div className="flex items-center justify-between text-[13px] font-semibold">
+            <aside className="px-2.5 py-4.75">
+              <header className="px-2 pb-3.5">
+                <div className="flex items-center justify-between text-xs font-semibold">
                   <strong>{t("directory.title")}</strong>
-                  <span className="grid h-5 min-w-[22px] place-items-center rounded-[5px] bg-[#e9edf4] text-[11px] text-[var(--skills-muted)]">
+                  <span className="grid h-5 min-w-5.5 place-items-center rounded-sm bg-slate-200 text-3xs text-[var(--skills-muted)]">
                     {filtered.length}
                   </span>
                 </div>
-                <small className="mt-1 block text-[11px] text-[var(--skills-faint)]">
+                <small className="mt-1 block text-3xs text-[var(--skills-faint)]">
                   {t("directory.summary", {
                     visible: filtered.length,
                     total: props.skills.length,
                   })}
                 </small>
               </header>
-              <nav className="grid gap-[3px]" aria-label={t("directory.title")}>
+              <nav className="grid gap-0.75" aria-label={t("directory.title")}>
                 {filtered.map((skill) => {
                   const external = isExternalSkill(skill, props.activeOrganizationId);
                   const SkillIcon = getSkillIcon(skill);
@@ -243,21 +243,21 @@ export function AgentSkillsCatalog(props: AgentSkillsCatalogProps) {
                       type="button"
                       key={getSkillKey(skill)}
                       aria-current={active ? "page" : undefined}
-                      className={`grid min-h-[57px] min-w-0 grid-cols-[28px_minmax(0,1fr)_auto_12px] items-center gap-2 rounded-[7px] border-0 p-2 text-left ${active ? "bg-[#e8f0ff] text-[var(--skills-blue)]" : "text-[var(--skills-muted)] hover:bg-white"}`}
+                      className={`skills-directory-item grid min-h-14.25 min-w-0 items-center gap-2 rounded-md border-0 p-2 text-left ${active ? "bg-indigo-50 text-[var(--skills-blue)]" : "text-[var(--skills-muted)] hover:bg-white"}`}
                       onClick={() => setSelectedKey(getSkillKey(skill))}
                     >
-                      <span className="grid size-7 place-items-center rounded-md bg-white [&_svg]:w-4">
+                      <span className="skills-directory-item-icon grid size-7 place-items-center rounded-md bg-white">
                         {external ? <Share2 /> : <SkillIcon />}
                       </span>
                       <span className="flex min-w-0 flex-col">
-                        <strong className="overflow-hidden text-ellipsis whitespace-nowrap text-[12px] text-[var(--skills-ink)]">
+                        <strong className="overflow-hidden text-ellipsis whitespace-nowrap text-xs text-[var(--skills-ink)]">
                           {display.name}
                         </strong>
-                        <small className="mt-[3px] overflow-hidden text-ellipsis whitespace-nowrap text-[9px] text-[var(--skills-faint)]">
+                        <small className="mt-0.75 overflow-hidden text-ellipsis whitespace-nowrap text-3xs text-[var(--skills-faint)]">
                           {skill.description || t("directory.noDescription")}
                         </small>
                       </span>
-                      <span className="flex min-w-0 flex-col items-end gap-1 text-[9px] leading-none">
+                      <span className="flex min-w-0 flex-col items-end gap-1 text-3xs leading-none">
                         {display.namespace ? (
                           <span
                             className="max-w-32 overflow-hidden text-ellipsis whitespace-nowrap text-[var(--skills-muted)]"
@@ -267,12 +267,12 @@ export function AgentSkillsCatalog(props: AgentSkillsCatalogProps) {
                           </span>
                         ) : null}
                         {external && !publiclyReadable ? (
-                          <span className="rounded border border-[#bfdbfe] bg-[#eff6ff] px-1.5 py-1 text-[#1d4ed8]">
+                          <span className="rounded border border-blue-200 bg-blue-50 px-1.5 py-1 text-blue-700">
                             {t("scope.shared")}
                           </span>
                         ) : null}
                         {publiclyReadable ? (
-                          <span className="rounded border border-[#bfdbfe] bg-[#eff6ff] px-1.5 py-1 text-[#1d4ed8]">
+                          <span className="rounded border border-blue-200 bg-blue-50 px-1.5 py-1 text-blue-700">
                             {t("scope.public")}
                           </span>
                         ) : null}
@@ -326,24 +326,24 @@ function SkillDetailView({
   const header = (
     <AgentMasterDetailHeader className="flex items-center justify-between gap-6 border-b border-[var(--skills-line)] px-8 py-6">
       <div className="flex min-w-0 items-center gap-4">
-        <span className="grid size-14 shrink-0 place-items-center rounded-[10px] bg-[var(--skills-blue-soft)] text-[var(--skills-blue)] [&_svg]:w-6">
+        <span className="skills-detail-icon grid size-14 shrink-0 place-items-center rounded-lg bg-[var(--skills-blue-soft)] text-[var(--skills-blue)]">
           {external ? <Share2 /> : <SkillIcon />}
         </span>
         <div className="min-w-0">
-          <h2 className="mt-1 overflow-hidden text-ellipsis whitespace-nowrap text-[22px] font-bold text-[var(--skills-ink)]">
+          <h2 className="mt-1 overflow-hidden text-ellipsis whitespace-nowrap text-xl font-bold text-[var(--skills-ink)]">
             {display.name}
           </h2>
-          <div className="flex items-center gap-2 text-[11px] text-[var(--skills-faint)]">
+          <div className="flex items-center gap-2 text-3xs text-[var(--skills-faint)]">
             <span className="max-w-64 overflow-hidden text-ellipsis whitespace-nowrap" title={organizationName}>
               {organizationName}
             </span>
             {external ? (
-              <span className="shrink-0 rounded border border-[#bfdbfe] bg-[#eff6ff] px-2 py-0.5 text-[10px] font-medium text-[#1d4ed8]">
+              <span className="shrink-0 rounded border border-blue-200 bg-blue-50 px-2 py-0.5 text-3xs font-medium text-blue-700">
                 {t("scope.shared")}
               </span>
             ) : null}
             {publiclyReadable ? (
-              <span className="shrink-0 rounded border border-[#bfdbfe] bg-[#eff6ff] px-2 py-0.5 text-[10px] font-medium text-[#1d4ed8]">
+              <span className="shrink-0 rounded border border-blue-200 bg-blue-50 px-2 py-0.5 text-3xs font-medium text-blue-700">
                 {t("scope.public")}
               </span>
             ) : null}
@@ -360,19 +360,19 @@ function SkillDetailView({
   return (
     <article className="min-w-0">
       <div className="p-8">
-        <section className="rounded-lg bg-[#f5f8fc] px-5 py-4">
-          <span className="text-[10px] font-bold tracking-[0.1em] text-[var(--skills-blue)] uppercase">Skill</span>
-          <p className="mt-3 max-w-3xl text-[13px] leading-6 text-[var(--skills-muted)]">
+        <section className="rounded-lg bg-slate-50 px-5 py-4">
+          <span className="text-3xs font-bold tracking-widest text-[var(--skills-blue)] uppercase">Skill</span>
+          <p className="mt-3 max-w-3xl text-xs leading-6 text-[var(--skills-muted)]">
             {skill.description || t("directory.noDescription")}
           </p>
         </section>
         <section className="mt-6 border-t border-[var(--skills-line)] pt-6">
           <div className="mb-4 flex items-center justify-between">
             <div>
-              <h3 className="text-[13px] font-semibold text-[var(--skills-ink)]">{t("detail.contentTitle")}</h3>
-              <p className="mt-1 text-[10px] text-[var(--skills-faint)]">{t("detail.contentHint")}</p>
+              <h3 className="text-xs font-semibold text-[var(--skills-ink)]">{t("detail.contentTitle")}</h3>
+              <p className="mt-1 text-3xs text-[var(--skills-faint)]">{t("detail.contentHint")}</p>
             </div>
-            <span className="rounded bg-[#eef1f6] px-2 py-1 font-mono text-[9px] text-[#68758b]">SKILL.md</span>
+            <span className="rounded bg-slate-100 px-2 py-1 font-mono text-3xs text-slate-500">SKILL.md</span>
           </div>
           {loading ? (
             <div className="space-y-3" aria-busy="true">
@@ -382,7 +382,7 @@ function SkillDetailView({
             </div>
           ) : error ? (
             <div
-              className="flex items-center justify-between rounded-lg bg-[#fff7ed] px-4 py-3 text-[11px] text-[#9a5a16]"
+              className="flex items-center justify-between rounded-lg bg-orange-50 px-4 py-3 text-3xs text-yellow-700"
               role="alert"
             >
               <span>{t("detail.loadError")}</span>
@@ -397,7 +397,7 @@ function SkillDetailView({
           )}
         </section>
         <div className="mt-7 flex flex-wrap items-center gap-2">
-          <span className="rounded-md bg-[#f3f5f8] px-2.5 py-1.5 text-[10px] text-[var(--skills-muted)]">
+          <span className="rounded-md bg-gray-100 px-2.5 py-1.5 text-3xs text-[var(--skills-muted)]">
             {isPublicSkill(skill)
               ? tComponents("resource.public")
               : writable
@@ -452,7 +452,7 @@ function SkillsLoading() {
           <div
             // 骨架占位行无领域标识，键由行下标派生：`key={index}` 会被 biome 的 lint/suspicious/noArrayIndexKey 拦下。
             key={rowKey}
-            className="flex h-[62px] items-center gap-3 border-[var(--skills-line)] border-b px-4 last:border-b-0"
+            className="flex h-15.5 items-center gap-3 border-[var(--skills-line)] border-b px-4 last:border-b-0"
           >
             <Skeleton className="size-9 rounded-lg" />
             <div className="flex-1">

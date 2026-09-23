@@ -76,7 +76,7 @@ export function SiteTabsBar({
             key={site.id}
             active={isActive}
             // 站点名整体上限 220px（超长名在 pill 内截断，而不是把 tab 栏撑宽）＋ 与迁移前一致的配色过渡。
-            className="max-w-[220px] transition-colors"
+            className="max-w-55 transition-colors"
             title={site.name}
             icon={<Globe className="h-3.5 w-3.5 flex-shrink-0" />}
             label={site.name}

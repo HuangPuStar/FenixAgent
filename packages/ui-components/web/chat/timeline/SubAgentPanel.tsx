@@ -34,7 +34,7 @@ function SubAgentTimeline({ entries }: { entries: ThreadEntry[] }) {
   const renderToolGroup = useContext(SubAgentToolCallGroupContext);
 
   return (
-    <div className="relative space-y-3 border-l border-border/70 py-1 pl-4 before:absolute before:-left-[3px] before:top-0 before:h-1.5 before:w-1.5 before:rounded-full before:bg-brand">
+    <div className="relative space-y-3 border-l border-border/70 py-1 pl-4 before:absolute before:-left-0.75 before:top-0 before:h-1.5 before:w-1.5 before:rounded-full before:bg-brand">
       {grouped.map((item, index) => {
         if (item.type === "single") {
           if (item.entry.type !== "assistant_message") return null;
@@ -114,7 +114,7 @@ export const SubAgentPanel = memo(function SubAgentPanel({ entries }: SubAgentPa
             <span className="block text-xs font-medium text-text-primary">
               {t("chat.components.subAgentPanel.title")}
             </span>
-            <span className="mt-0.5 block text-[11px] text-text-dim">
+            <span className="mt-0.5 block text-3xs text-text-dim">
               {t("chat.components.subAgentPanel.summary", {
                 messages: summary.messageCount,
                 tools: summary.toolCount,

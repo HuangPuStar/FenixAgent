@@ -74,11 +74,7 @@ function Identity({
           />
         </Field>
         {mode === "edit" && data.agentId && (
-          <Field
-            className="[@media(max-width:759px)]:col-start-1"
-            label={t("editor.agentId")}
-            hint={t("editor.agentIdHint")}
-          >
+          <Field className="max-md:col-start-1" label={t("editor.agentId")} hint={t("editor.agentIdHint")}>
             <div className={AGENT_ID_ROW}>
               <EditorInput value={data.agentId} className={AGENT_ID_INPUT} disabled />
               <EditorButton type="button" className={AGENT_ID_BUTTON} onClick={onCopy}>

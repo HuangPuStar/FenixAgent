@@ -1,3 +1,5 @@
+import "./CommandMenu.css";
+
 import { CheckCircle2, Plug, Search, Sparkles } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
@@ -37,6 +39,12 @@ import type { AvailableCommand } from "../types";
  *   不要恢复那份样式表，也不要重新引入 `.chat-command-*` 语义类名。
  * - `is-active` 状态改为条件类组合，`is-selected` 在原样式表中没有任何声明（纯语义钩子）故直接删除；
  *   两者原有的状态语义由既有的 `data-active` 与 `aria-pressed` 承担。
+ *
+ * 样式下沉（2026-09-22，禁令 FCP-WEB-02）：网格列定义、投影与 `min/max` 复合值改由同目录
+ * `CommandMenu.css` 承载——容器投影（`.chat-command-surface`）、行网格（`.chat-command-row`）、
+ * 搜索行图标基准（`.chat-command-search-icon`）、滚动区高度（`.chat-command-scroll`）。
+ * 面板形态的覆盖改为「根节点挂 `--panel` 修饰类、样式表里按源顺序覆盖基类」，
+ * 与原 `cn()`（tailwind-merge）的「后者胜出」等价，扁平工具类仍留在 `className`。
  */
 
 /** Agent 已绑定的 MCP 连接（本轮上下文候选）。 */
@@ -82,7 +90,7 @@ function commandMatches(query: string, command: AvailableCommand): boolean {
  * 面板形态：只有底色，无强调条（源 `box-shadow: none`）。
  */
 function activeClassName(panel: boolean): string {
-  return panel ? "bg-[#f7f8fa] text-[#263247]" : "bg-[#f5f7fa] text-[#263247] shadow-[inset_2px_0_var(--color-brand)]";
+  return panel ? "bg-slate-50 text-slate-800" : "bg-slate-100 text-slate-800 shadow-[inset_2px_0_var(--color-brand)]";
 }
 
 /**
@@ -163,35 +171,37 @@ export function CommandMenu({
   // 消解同族冲突，等价于源实现「`.chat-command-menu--panel` 特指度覆盖基础类名」的级联结果。
   // active（键盘/悬停命中）的强调样式按行追加，见下方 `cn(itemClass, active && …)`。
   const itemClass = cn(
-    "grid w-full items-center text-left text-[#687286] [transition:background_100ms_ease,color_100ms_ease]",
-    "min-h-[42px] grid-cols-[16px_minmax(120px,max-content)_minmax(0,1fr)_auto] gap-2.5 rounded-md px-[9px] py-1.5",
-    "hover:bg-[#f5f7fa] hover:text-[#263247]",
-    panel &&
-      "min-h-[34px] grid-cols-[16px_minmax(150px,max-content)_minmax(0,1fr)_auto] gap-1.5 rounded-[5px] px-2 py-0.5",
-    panel && "hover:bg-[#f7f8fa]",
+    "grid w-full items-center text-left text-gray-500 [transition:background_100ms_ease,color_100ms_ease]",
+    "min-h-10.5 chat-command-row gap-2.5 rounded-md px-2.25 py-1.5",
+    "hover:bg-slate-100 hover:text-slate-800",
+    panel && "min-h-8.5 chat-command-row--panel gap-1.5 rounded-sm px-2 py-0.5",
+    panel && "hover:bg-slate-50",
   );
-  const nameClass = "overflow-hidden text-ellipsis whitespace-nowrap text-[12px] font-normal text-[#263247]";
-  const descriptionClass = "overflow-hidden text-ellipsis whitespace-nowrap text-[11px] leading-[1.45] text-[#8b94a3]";
-  const iconClass = "h-4 w-4 flex-none text-[#8a96a8]";
+  const nameClass = "overflow-hidden text-ellipsis whitespace-nowrap text-xs font-normal text-slate-800";
+  const descriptionClass = "overflow-hidden text-ellipsis whitespace-nowrap text-3xs leading-normal text-gray-400";
+  const iconClass = "h-4 w-4 flex-none text-gray-400";
 
   return (
     <div
       ref={containerRef}
       className={cn(
-        "overflow-hidden rounded-[11px] border border-[#e3e7ed] bg-white text-[#263247] shadow-[0_8px_28px_rgb(41_58_88_/_10%)]",
-        panel && "mb-[6px] w-full shadow-[0_5px_20px_rgb(41_58_88_/_5%)]",
+        "chat-command-surface overflow-hidden rounded-lg border border-gray-200 bg-white text-slate-800",
+        panel && "chat-command-surface--panel mb-1.5 w-full",
         className,
       )}
     >
       {showSearch && (
         <div
           className={cn(
-            "mx-2 mt-[7px] mb-[3px] flex h-[46px] items-center gap-2 rounded-[7px] bg-[#f6f8fb] px-[10px]",
-            panel && "m-0 h-[38px] rounded-none border-b border-[#eceef2] bg-white px-3",
+            "mx-2 mt-1.75 mb-0.75 flex h-11.5 items-center gap-2 rounded-md bg-slate-50 px-2.5",
+            panel && "m-0 h-9.5 rounded-none border-b border-gray-100 bg-white px-3",
           )}
         >
           <Search
-            className={cn("h-[15px] w-[15px] flex-[0_0_15px] text-[#8a96a8]", panel && "h-4 w-4 flex-[0_0_16px]")}
+            className={cn(
+              "h-3.75 w-3.75 chat-command-search-icon text-gray-400",
+              panel && "h-4 w-4 chat-command-search-icon--panel",
+            )}
           />
           <Input
             type="text"
@@ -199,17 +209,17 @@ export function CommandMenu({
             value={searchQuery}
             onChange={(event) => setSearchQuery(event.target.value)}
             className={cn(
-              "h-9 flex-1 border-0 bg-transparent p-0 text-[13px] text-[#33445f] shadow-none focus-visible:ring-0",
-              panel && "h-[38px]",
+              "h-9 flex-1 border-0 bg-transparent p-0 text-xs text-slate-700 shadow-none focus-visible:ring-0",
+              panel && "h-9.5",
             )}
             autoFocus
           />
         </div>
       )}
-      <ScrollArea className={cn("h-[min(322px,46vh)]", panel && "h-[min(210px,34vh)]")}>
-        <div className={cn("px-2 pt-1 pb-[7px]", panel && "px-2 py-0.5")}>
+      <ScrollArea className={cn("chat-command-scroll", panel && "chat-command-scroll--panel")}>
+        <div className={cn("px-2 pt-1 pb-1.75", panel && "px-2 py-0.5")}>
           {empty ? (
-            <div className="px-[18px] py-[34px] text-center text-[12px] text-[#8b97a9]">
+            <div className="px-4.5 py-8.5 text-center text-xs text-gray-400">
               {t("chat.components.commandMenu.noMatch")}
             </div>
           ) : (
@@ -217,13 +227,11 @@ export function CommandMenu({
               {filteredCommands.length > 0 && (
                 <section>
                   {showSearch && (
-                    <div className="flex items-baseline gap-1.5 px-2 pt-[3px] pb-1">
-                      <strong className="text-[12px] font-[650] text-[#263247]">
+                    <div className="flex items-baseline gap-1.5 px-2 pt-0.75 pb-1">
+                      <strong className="text-xs font-[650] text-slate-800">
                         {t("chat.components.commandMenu.skills")}
                       </strong>
-                      <span className="text-[11px] text-[#8b94a5]">
-                        {t("chat.components.commandMenu.skillsCaption")}
-                      </span>
+                      <span className="text-3xs text-gray-400">{t("chat.components.commandMenu.skillsCaption")}</span>
                     </div>
                   )}
                   {filteredCommands.map((command) => {
@@ -248,11 +256,11 @@ export function CommandMenu({
                         {(hint || selected) && (
                           <span className="flex items-center justify-self-end gap-2">
                             {hint && (
-                              <span className={cn("text-[10px] not-italic text-[#a1a7b1]", panel && "text-[11px]")}>
+                              <span className={cn("text-3xs not-italic text-gray-400", panel && "text-3xs")}>
                                 {hint}
                               </span>
                             )}
-                            {selected && <CheckCircle2 className="h-4 w-4 flex-none text-[#25856e]" />}
+                            {selected && <CheckCircle2 className="h-4 w-4 flex-none text-teal-700" />}
                           </span>
                         )}
                       </button>
@@ -265,14 +273,14 @@ export function CommandMenu({
                   className={
                     // 源 `.chat-command-menu-section + .chat-command-menu-section`：仅当 MCP 分区前面
                     // 还有技能分区（相邻兄弟）时才加分隔线与间距。
-                    filteredCommands.length > 0 ? "mt-[3px] border-t border-[#edf0f4] pt-[3px]" : undefined
+                    filteredCommands.length > 0 ? "mt-0.75 border-t border-gray-100 pt-0.75" : undefined
                   }
                 >
-                  <div className="flex items-baseline gap-1.5 px-2 pt-[3px] pb-1">
-                    <strong className="text-[12px] font-[650] text-[#263247]">
+                  <div className="flex items-baseline gap-1.5 px-2 pt-0.75 pb-1">
+                    <strong className="text-xs font-[650] text-slate-800">
                       {t("chat.components.commandMenu.mcps")}
                     </strong>
-                    <span className="text-[11px] text-[#8b94a5]">{t("chat.components.commandMenu.mcpsCaption")}</span>
+                    <span className="text-3xs text-gray-400">{t("chat.components.commandMenu.mcpsCaption")}</span>
                   </div>
                   {filteredMcps.map((mcp) => {
                     const navigationKey = `mcp:${mcp.id}`;
@@ -287,16 +295,12 @@ export function CommandMenu({
                         aria-pressed={selected}
                         onClick={() => onToggleMcp?.(mcp)}
                         onMouseEnter={() => setActiveKey(navigationKey)}
-                        className={cn(
-                          itemClass,
-                          panel && "grid-cols-[16px_minmax(120px,220px)_minmax(0,1fr)_auto]",
-                          active && activeClassName(panel),
-                        )}
+                        className={cn(itemClass, panel && "chat-command-row--mcp", active && activeClassName(panel))}
                       >
                         <Plug className={iconClass} />
                         <span className={nameClass}>{mcp.name}</span>
                         <span className={descriptionClass}>{mcp.description}</span>
-                        <em className="ml-auto text-[11px] not-italic text-[#25856e]">
+                        <em className="ml-auto text-3xs not-italic text-teal-700">
                           {t("chat.components.commandMenu.connected")}
                         </em>
                       </button>

@@ -1,3 +1,5 @@
+import "./ResourcePreviewContent.css";
+
 import { getFileExtension } from "@fenix/ui-components/components/file-icon-helper";
 import { EmptyState } from "@fenix/ui-components/config/EmptyState";
 import { Button } from "@fenix/ui-components/ui/button";
@@ -275,7 +277,7 @@ export function ResourcePreviewContent({ resource, kbId }: ResourcePreviewConten
 
       case "image":
         return (
-          <div className="flex-1 flex items-center justify-center bg-[#f8fafc] rounded-md p-4 min-h-0 overflow-auto">
+          <div className="flex-1 flex items-center justify-center bg-slate-50 rounded-md p-4 min-h-0 overflow-auto">
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img
               src={fileUrl}
@@ -290,7 +292,7 @@ export function ResourcePreviewContent({ resource, kbId }: ResourcePreviewConten
         if (fetchError || !fetchedContent) return <PreviewPlaceholder message={t("preview.loadError")} />;
         return (
           <div className="flex-1 overflow-auto p-6">
-            <div className="prose prose-sm max-w-none dark:prose-invert prose-headings:text-text-primary prose-p:text-text-primary prose-strong:text-text-primary prose-li:text-text-primary [&_pre]:bg-surface-2 [&_pre]:rounded-lg [&_pre]:p-4 [&_pre]:text-text-primary [&_code]:bg-surface-2 [&_code]:rounded [&_code]:px-1.5 [&_code]:py-0.5 [&_code]:text-text-primary [&_code]:text-xs [&_pre_code]:bg-transparent [&_pre_code]:p-0 [&_pre_code]:text-text-primary [&_table]:w-full [&_th]:border [&_th]:border-border [&_th]:px-3 [&_th]:py-2 [&_th]:text-left [&_th]:bg-surface-2 [&_td]:border [&_td]:border-border [&_td]:px-3 [&_td]:py-2 [&_img]:max-w-full [&_img]:rounded-lg [&_blockquote]:border-l-4 [&_blockquote]:border-primary/30 [&_blockquote]:pl-4 [&_blockquote]:text-text-muted [&_hr]:border-border [&_a]:text-primary [&_a]:underline">
+            <div className="resource-preview-content-markdown prose prose-sm max-w-none dark:prose-invert prose-headings:text-text-primary prose-p:text-text-primary prose-strong:text-text-primary prose-li:text-text-primary">
               <ReactMarkdown remarkPlugins={[remarkGfm]}>{fetchedContent}</ReactMarkdown>
             </div>
           </div>
@@ -337,7 +339,7 @@ export function ResourcePreviewContent({ resource, kbId }: ResourcePreviewConten
           return (
             <div className="flex-1 overflow-auto p-6">
               <div
-                className="prose prose-sm max-w-none dark:prose-invert [&_table]:w-full [&_th]:border [&_th]:border-border [&_th]:px-3 [&_th]:py-2 [&_th]:text-left [&_th]:bg-surface-2 [&_td]:border [&_td]:border-border [&_td]:px-3 [&_td]:py-2 [&_img]:max-w-full [&_img]:rounded-lg"
+                className="resource-preview-content-docx prose prose-sm max-w-none dark:prose-invert"
                 // Mammoth 的输出不是可信 HTML（docx 可携带任意标签与属性），与切片预览一致先经 DOMPurify 再注入。
                 // biome-ignore lint/security/noDangerouslySetInnerHtml: 同一行的 DOMPurify.sanitize 已清洗（mammoth 输出不可直接注入）
                 dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(docxHtml) }}

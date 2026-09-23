@@ -3,29 +3,40 @@
 // 共享工具见 `./chat-style-migration-helpers`。
 
 import { describe, expect, test } from "bun:test";
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { ChatHeader } from "../chat/shell/ChatHeader";
 import { ChatView } from "../chat/view/ChatView";
-import { classTokens, MIGRATED_CLASS_NAMES } from "./chat-style-migration-helpers";
+import { CHAT_DIR, classTokens, MIGRATED_CLASS_NAMES } from "./chat-style-migration-helpers";
 
 describe("chat 样式迁移：外壳与空状态", () => {
-  // 顶部卡片：`chat-header-card` 类名已删除，独立渲染的玻璃形态与外壳内（ACP 子树）平面形态都由工具类表达。
-  test("ChatHeader 卡片样式已内联为工具类", () => {
+  // 顶部卡片：玻璃形态的扁平工具类留在 className，外壳内/暗色/`@supports` 覆写下沉到同目录 CSS。
+  test("ChatHeader 卡片深层样式下沉为同目录 CSS", () => {
     const html = renderToStaticMarkup(createElement(ChatHeader, { activeSessionId: null, onSelectSession: () => {} }));
     const tokens = classTokens(html);
 
     for (const name of MIGRATED_CLASS_NAMES) {
       expect(tokens).not.toContain(name);
     }
-    // 玻璃形态（独立渲染）：半透明底 + blur + 圆角；外壳内形态：45px、直角、白底、单独底边。
-    expect(tokens).toContain("backdrop-blur-[16px]");
-    expect(tokens).toContain("[.acp-main-root_&]:h-[45px]");
-    expect(tokens).toContain("[.acp-main-root_&:not(.dark_*)]:bg-white");
-    expect(tokens).toContain("[.dark_&]:bg-[rgba(45,45,47,0.72)]");
-    expect(tokens).toContain(
-      "[@supports_not_((backdrop-filter:blur(16px))_or_(-webkit-backdrop-filter:blur(16px)))]:bg-[var(--color-surface-1)]",
-    );
+    // 独立渲染的玻璃形态：磨砂底 + blur + 圆角仍是 className 里的扁平工具类。
+    expect(tokens).toContain("chat-header-panel");
+    expect(tokens).toContain("bg-white/72");
+    expect(tokens).toContain("rounded-2xl");
+    expect(tokens).toContain("backdrop-blur-lg");
+
+    // 外壳内形态（45px、直角、白底、仅底边分隔线）、暗色覆写与 `@supports` 回退在样式表里。
+    const css = readFileSync(join(CHAT_DIR, "shell", "ChatHeader.css"), "utf8");
+    expect(css).toContain(".acp-main-root .chat-header-panel {");
+    expect(css).toContain("height: calc(var(--spacing) * 11.25);");
+    expect(css).toContain("border-radius: 0;");
+    expect(css).toContain("backdrop-filter: none;");
+    expect(css).toContain(".acp-main-root .chat-header-panel:not(.dark *) {");
+    expect(css).toContain("background-color: var(--color-white);");
+    expect(css).toContain("border-bottom-color: var(--color-gray-100);");
+    expect(css).toContain(".dark .chat-header-panel {");
+    expect(css).toContain("@supports not ((backdrop-filter: blur(16px)) or (-webkit-backdrop-filter: blur(16px)))");
   });
 
   // 空状态与消息容器：语义类名换成 `data-slot` 锚点 + 工具类（选区判定与宿主测试都依赖锚点）。

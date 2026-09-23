@@ -1,0 +1,22 @@
+/*
+ * Card 深层样式（原写在 `CardHeader` 的 className 字符串里）。
+ *
+ * 为什么下沉：`grid-rows-[auto_auto]` 与 `has-data-[slot=card-action]:grid-cols-[1fr_auto]` 都是
+ * 复合表达式值（`_` 空格转义），属仓库禁令 FCP-WEB-02。改用扁平等价物会改视觉
+ * （`grid-rows-2` 是 `repeat(2, minmax(0, 1fr))`，与两行 `auto` 不同），故按原值落 CSS。
+ * 其余扁平工具类（`@container/card-header grid auto-rows-min items-start gap-2 px-6`、
+ * `[.border-b]:pb-6`）仍留在 `card.tsx` 的 `className`。
+ *
+ * 层叠：本文件未分层（不包 `@layer`），未分层声明压过 `@layer utilities`；两条规则之间的胜负由特指度决定
+ * （带 `:has()` 的规则特指度更高，与原 `has-data-[…]` 变体的效果一致）。
+ */
+
+/* 头部两行：标题 + 内容各占一行（原 `grid-rows-[auto_auto]`）。 */
+.card-header {
+  grid-template-rows: auto auto;
+}
+
+/* 有右上角操作位时改成两列，让操作位与标题同行（原 `has-data-[slot=card-action]:grid-cols-[1fr_auto]`）。 */
+.card-header:has([data-slot="card-action"]) {
+  grid-template-columns: 1fr auto;
+}

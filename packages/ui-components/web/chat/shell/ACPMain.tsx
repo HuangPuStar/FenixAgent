@@ -391,7 +391,7 @@ export function ACPMain({
       {/* root 加 p-3 gap-3：让顶部 ChatHeader 浮动卡片与下方内容统一外边距，
           形成上下两个玻璃磨砂卡片悬浮在子页面背景上的视觉效果。
           acp-main-root：作为窄屏容器（如 MetaAgentPanel）收紧 padding 的 CSS 作用域钩子 */}
-      <div className="acp-main-root flex h-full w-full flex-col bg-white text-[#1e293b]">
+      <div className="acp-main-root flex h-full w-full flex-col bg-white text-gray-800">
         {/* 顶部 ChatHeader — 仅展示当前会话标题；会话列表统一从侧边栏进入 */}
         {/* readonly 时整体隐藏 */}
         {!readonly && (
@@ -437,7 +437,7 @@ export function ACPMain({
         <div className="flex flex-1 min-h-0">
           {/* 左侧 sidebar — 仅在 sidebarOpen 且非 readonly/hideSidebar 时渲染，关闭时完全不占位 */}
           {!readonly && !hideSidebar && sidebarOpen && (
-            <div className="hidden w-[218px] border-r border-[#eef1f5] bg-white md:flex flex-col transition-all duration-200 flex-shrink-0">
+            <div className="hidden w-54.5 border-r border-gray-100 bg-white md:flex flex-col transition-all duration-200 flex-shrink-0">
               {/* 头部：标题 + 新会话按钮 */}
               <div className="flex items-center justify-between px-3 py-2.5">
                 <span className="text-xs font-display font-semibold text-text-muted uppercase tracking-widest px-1">

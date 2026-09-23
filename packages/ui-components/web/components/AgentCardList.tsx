@@ -77,7 +77,7 @@ export function AgentCardList<T>({
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
                 placeholder={searchPlaceholder}
-                className="h-10 w-full rounded-lg border border-border bg-surface-1 pl-10 pr-4 text-[13px] text-text-bright outline-none transition placeholder:text-text-muted focus:border-brand focus:ring-4 focus:ring-brand/10"
+                className="h-10 w-full rounded-lg border border-border bg-surface-1 pl-10 pr-4 text-xs text-text-bright outline-none transition placeholder:text-text-muted focus:border-brand focus:ring-4 focus:ring-brand/10"
               />
             </div>
           )}

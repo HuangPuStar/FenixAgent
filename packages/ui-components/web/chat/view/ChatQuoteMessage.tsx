@@ -1,3 +1,5 @@
+import "./ChatQuoteMessage.css";
+
 import { Quote } from "lucide-react";
 import { memo } from "react";
 import { useTranslation } from "react-i18next";
@@ -18,18 +20,20 @@ interface ChatQuoteMessageProps {
  * - `@/src/lib/context-queue` → 包内 `../lib/context-queue`。
  * - i18n 命名空间从宿主 `components` 改为包内单一命名空间，键加 `chat.components.` 前缀。
  * - `<details>` / `<summary>` 结构、类名与插值参数逐字保留。
+ * - 深层样式（`::-webkit-details-marker`、`> svg` 宽度、浮层的定位/宽度/阴影）下沉到同目录
+ *   `./ChatQuoteMessage.css`，由 `.chat-quote-summary` / `.chat-quote-preview` 两个语义类承载。
  */
 export const ChatQuoteMessage = memo(function ChatQuoteMessage({ quote, index }: ChatQuoteMessageProps) {
   const { t } = useTranslation(UI_COMPONENTS_NS);
 
   return (
     <details className="group relative" data-slot="chat-quote-message">
-      <summary className="inline-flex min-h-[26px] cursor-pointer list-none items-center gap-[5px] rounded-full border border-[#d8e3f1] bg-[#f4f8fd] px-[10px] py-[3px] text-[11px] font-bold text-[#4d72b2] [&::-webkit-details-marker]:hidden [&>svg]:w-3.5">
+      <summary className="chat-quote-summary inline-flex min-h-6.5 cursor-pointer list-none items-center gap-1.25 rounded-full border border-slate-200 bg-sky-50 px-2.5 py-0.75 text-3xs font-bold text-slate-500">
         <Quote aria-hidden="true" />
         <span>{t("chat.components.composerAssets.quoteNumber", { count: index + 1 })}</span>
       </summary>
-      <div className="absolute top-[calc(100%+6px)] right-0 z-20 hidden max-h-[132px] w-[min(340px,calc(100vw-48px))] overflow-hidden rounded-[9px] border border-[#dfe5ed] bg-white px-[11px] py-[9px] text-[#526178] shadow-[0_8px_24px_rgb(38_52_77_/_14%)] group-hover:block group-focus-within:block group-open:block">
-        <p className="m-0 text-[12px] leading-[1.5] wrap-anywhere">{createQuotePreview(quote.text)}</p>
+      <div className="chat-quote-preview absolute right-0 z-20 hidden max-h-33 overflow-hidden rounded-md border border-slate-200 bg-white px-2.75 py-2.25 text-slate-600 group-hover:block group-focus-within:block group-open:block">
+        <p className="m-0 text-xs leading-normal wrap-anywhere">{createQuotePreview(quote.text)}</p>
         <QuoteTruncatedBadge omittedCharacterCount={quote.omittedCharacterCount} />
       </div>
     </details>

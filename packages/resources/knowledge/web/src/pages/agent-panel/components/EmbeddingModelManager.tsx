@@ -98,18 +98,18 @@ export function EmbeddingModelManager({ canManage, inDialog, onModelsChanged }: 
       {!inDialog && (
         <div className="flex items-center justify-between">
           <div>
-            <h3 className="text-[14px] font-semibold text-[#0f172a]">
+            <h3 className="text-sm font-semibold text-slate-900">
               {providerCount > 0
                 ? t("embeddingModel.titleWithCount", { providers: providerCount, instances: instanceCount })
                 : t("embeddingModel.title")}
             </h3>
-            <p className="text-[12px] text-[#94a3b8] mt-0.5">{t("embeddingModel.subtitle")}</p>
+            <p className="text-xs text-slate-400 mt-0.5">{t("embeddingModel.subtitle")}</p>
           </div>
           {canManage && (
             <Button
               size="sm"
               onClick={() => setAddOpen(true)}
-              className="h-8 gap-1.5 text-[12px] rounded-lg bg-[#6366f1] hover:bg-[#5558e6]"
+              className="h-8 gap-1.5 text-xs rounded-lg bg-indigo-500 hover:bg-indigo-500"
             >
               <Plus className="h-3.5 w-3.5" />
               {t("embeddingModel.addProvider")}
@@ -149,7 +149,7 @@ export function EmbeddingModelManager({ canManage, inDialog, onModelsChanged }: 
         />
       ) : (
         <div className="embedding-model-tree">
-          <div className="divide-y divide-[#f0f3f8]">
+          <div className="divide-y divide-slate-100">
             {treeSafe.map((p) => (
               <ProviderRow
                 key={p.provider}
@@ -214,25 +214,25 @@ function ProviderRow({ provider, canManage, onDeleteInstance, onModelsChanged }:
       <button
         type="button"
         onClick={() => setExpanded((v) => !v)}
-        className="group flex w-full items-center gap-3 px-5 py-3.5 hover:bg-[#fafbfd] transition-colors border-l-[3px] border-l-transparent hover:border-l-[#6366f1]"
+        className="group flex w-full items-center gap-3 px-5 py-3.5 hover:bg-gray-50 transition-colors border-l-3 border-l-transparent hover:border-l-indigo-500"
       >
-        <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-indigo-50 to-violet-50 text-[#6366f1]">
+        <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-indigo-50 to-violet-50 text-indigo-500">
           <Boxes className="h-4 w-4" />
         </div>
         <div className="flex-1 min-w-0 text-left">
           <div className="flex items-center gap-2">
-            <span className="text-[13px] font-semibold text-[#0f172a] truncate">{provider.provider}</span>
+            <span className="text-xs font-semibold text-slate-900 truncate">{provider.provider}</span>
           </div>
-          <div className="flex items-center gap-2 mt-0.5 text-[11px] text-[#94a3b8]">
+          <div className="flex items-center gap-2 mt-0.5 text-3xs text-slate-400">
             <span>{t("embeddingModel.instanceCount", { count: instances.length })}</span>
-            <span className="text-[#e2e8f0]">·</span>
+            <span className="text-slate-200">·</span>
             <span>{t("embeddingModel.modelCount", { count: totalModels })}</span>
           </div>
         </div>
-        <ChevronRight className={`h-4 w-4 text-[#94a3b8] transition-transform ${expanded ? "rotate-90" : ""}`} />
+        <ChevronRight className={`h-4 w-4 text-slate-400 transition-transform ${expanded ? "rotate-90" : ""}`} />
       </button>
       {expanded && (
-        <div className="bg-[#fafbfd]/50">
+        <div className="bg-gray-50/50">
           {instances.map((inst) => (
             <InstanceRow
               key={inst.instanceName}
@@ -293,7 +293,7 @@ function InstanceRow({ instance, canManage, onDelete, onModelsChanged }: Instanc
   };
 
   return (
-    <div className="border-t border-[#f0f3f8]">
+    <div className="border-t border-slate-100">
       <div className="group flex items-center gap-3 pl-10 pr-5 py-2.5 hover:bg-white transition-colors">
         <button
           type="button"
@@ -301,11 +301,11 @@ function InstanceRow({ instance, canManage, onDelete, onModelsChanged }: Instanc
           className="flex flex-1 items-center gap-2.5 min-w-0 text-left"
         >
           <ChevronRight
-            className={`h-3.5 w-3.5 text-[#cbd5e1] transition-transform shrink-0 ${expanded ? "rotate-90" : ""}`}
+            className={`h-3.5 w-3.5 text-slate-300 transition-transform shrink-0 ${expanded ? "rotate-90" : ""}`}
           />
-          <KeyRound className="h-3.5 w-3.5 text-[#94a3b8] shrink-0" />
-          <span className="text-[12.5px] font-medium text-[#334155] truncate font-mono">{instance.instanceName}</span>
-          <span className="text-[11px] text-[#94a3b8]">
+          <KeyRound className="h-3.5 w-3.5 text-slate-400 shrink-0" />
+          <span className="text-xs font-medium text-gray-700 truncate font-mono">{instance.instanceName}</span>
+          <span className="text-3xs text-slate-400">
             {t("embeddingModel.enabledRatio", { active: activeCount, total: models.length })}
           </span>
         </button>
@@ -313,7 +313,7 @@ function InstanceRow({ instance, canManage, onDelete, onModelsChanged }: Instanc
           <Button
             size="sm"
             variant="ghost"
-            className="h-7 w-7 p-0 text-[#cbd5e1] hover:text-red-500 hover:bg-red-50 opacity-0 group-hover:opacity-100 transition-all"
+            className="h-7 w-7 p-0 text-slate-300 hover:text-red-500 hover:bg-red-50 opacity-0 group-hover:opacity-100 transition-all"
             onClick={onDelete}
             title={t("embeddingModel.deleteInstanceTitle")}
           >
@@ -322,7 +322,7 @@ function InstanceRow({ instance, canManage, onDelete, onModelsChanged }: Instanc
         )}
       </div>
       {expanded && models.length > 0 && (
-        <div className="pl-[68px] pr-5 pb-2.5 space-y-0.5">
+        <div className="pl-17 pr-5 pb-2.5 space-y-0.5">
           {models.map((m) => {
             const st = modelStatus[m.name] ?? m.status;
             return (
@@ -330,14 +330,14 @@ function InstanceRow({ instance, canManage, onDelete, onModelsChanged }: Instanc
                 key={m.name}
                 className="group flex items-center gap-3 py-1.5 px-2 rounded-lg hover:bg-white transition-colors"
               >
-                <Cpu className={`h-3.5 w-3.5 shrink-0 ${st === "active" ? "text-[#6366f1]" : "text-[#cbd5e1]"}`} />
+                <Cpu className={`h-3.5 w-3.5 shrink-0 ${st === "active" ? "text-indigo-500" : "text-slate-300"}`} />
                 <span
-                  className={`text-[12px] font-mono truncate ${st === "active" ? "text-[#475569]" : "text-[#94a3b8] line-through"}`}
+                  className={`text-xs font-mono truncate ${st === "active" ? "text-slate-600" : "text-slate-400 line-through"}`}
                 >
                   {m.name}
                 </span>
                 {m.modelType && !m.modelType.includes("embedding") && (
-                  <span className="text-[10px] text-[#94a3b8] bg-[#f1f5f9] rounded px-1.5 py-0.5 shrink-0">
+                  <span className="text-3xs text-slate-400 bg-slate-100 rounded px-1.5 py-0.5 shrink-0">
                     {m.modelType}
                   </span>
                 )}
@@ -353,7 +353,7 @@ function InstanceRow({ instance, canManage, onDelete, onModelsChanged }: Instanc
               </div>
             );
           })}
-          <p className="text-[10.5px] text-[#94a3b8] pl-2 pt-1.5 leading-relaxed">{t("embeddingModel.disableNote")}</p>
+          <p className="text-3xs text-slate-400 pl-2 pt-1.5 leading-relaxed">{t("embeddingModel.disableNote")}</p>
         </div>
       )}
     </div>
@@ -447,10 +447,10 @@ function AddProviderDialog({ open, onOpenChange, onAdded }: AddProviderDialogPro
 
   return (
     <Dialog open={open} onOpenChange={handleClose}>
-      <DialogContent className="max-w-[520px]">
+      <DialogContent className="max-w-130">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
-            <Plus className="h-4 w-4 text-[#6366f1]" />
+            <Plus className="h-4 w-4 text-indigo-500" />
             {t("embeddingModel.addDialogTitle")}
           </DialogTitle>
           <DialogDescription>{t("embeddingModel.addDialogDescription")}</DialogDescription>
@@ -458,7 +458,7 @@ function AddProviderDialog({ open, onOpenChange, onAdded }: AddProviderDialogPro
 
         <div className="space-y-4 py-2">
           <div className="space-y-1.5">
-            <label className="text-[12px] font-medium text-[#475569]">{t("embeddingModel.providerLabel")}</label>
+            <label className="text-xs font-medium text-slate-600">{t("embeddingModel.providerLabel")}</label>
             <Select
               value={selectedFactory}
               onValueChange={(v) => {
@@ -486,7 +486,7 @@ function AddProviderDialog({ open, onOpenChange, onAdded }: AddProviderDialogPro
             </Select>
           </div>
           <div className="space-y-1.5">
-            <label className="text-[12px] font-medium text-[#475569]">API Key</label>
+            <label className="text-xs font-medium text-slate-600">API Key</label>
             <Input
               type="password"
               value={apiKey}
@@ -496,7 +496,7 @@ function AddProviderDialog({ open, onOpenChange, onAdded }: AddProviderDialogPro
             />
           </div>
           <div className="space-y-1.5">
-            <label className="text-[12px] font-medium text-[#475569]">{t("embeddingModel.instanceNameLabel")}</label>
+            <label className="text-xs font-medium text-slate-600">{t("embeddingModel.instanceNameLabel")}</label>
             <Input
               value={instanceName}
               onChange={(e) => setInstanceName(e.target.value)}
@@ -505,11 +505,11 @@ function AddProviderDialog({ open, onOpenChange, onAdded }: AddProviderDialogPro
               onBlur={() => setTouched(true)}
             />
             {touched && !instanceName.trim() && (
-              <p className="text-[11px] text-red-500">{t("embeddingModel.instanceNameInvalid")}</p>
+              <p className="text-3xs text-red-500">{t("embeddingModel.instanceNameInvalid")}</p>
             )}
           </div>
           <div className="space-y-1.5">
-            <label className="text-[12px] font-medium text-[#475569]">{t("embeddingModel.baseUrlLabel")}</label>
+            <label className="text-xs font-medium text-slate-600">{t("embeddingModel.baseUrlLabel")}</label>
             <Input
               value={baseUrl}
               onChange={(e) => setBaseUrl(e.target.value)}
@@ -517,7 +517,7 @@ function AddProviderDialog({ open, onOpenChange, onAdded }: AddProviderDialogPro
               className="h-10"
             />
           </div>
-          <div className="flex items-start gap-2 text-[12px] text-[#475569] bg-[#f8fafc] rounded-lg px-3 py-2.5 ring-1 ring-inset ring-[#eef2f6]">
+          <div className="flex items-start gap-2 text-xs text-slate-600 bg-slate-50 rounded-lg px-3 py-2.5 ring-1 ring-inset ring-slate-100">
             <ShieldCheck className="h-4 w-4 shrink-0 text-emerald-500 mt-0.5" />
             <span>{t("embeddingModel.verifyNote")}</span>
           </div>
@@ -530,7 +530,7 @@ function AddProviderDialog({ open, onOpenChange, onAdded }: AddProviderDialogPro
           <Button
             onClick={handleSubmit}
             disabled={submitting || !selectedFactory || !apiKey.trim() || !instanceName.trim()}
-            className="h-9 gap-1.5 bg-[#6366f1] hover:bg-[#5558e6]"
+            className="h-9 gap-1.5 bg-indigo-500 hover:bg-indigo-500"
           >
             {submitting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />}
             {t("embeddingModel.submit")}

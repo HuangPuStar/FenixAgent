@@ -15,6 +15,7 @@ import { useTranslation } from "react-i18next";
 
 import { UI_COMPONENTS_NS } from "../i18n/namespace";
 import { cn } from "../lib/cn";
+import "./file-tree-context-menu.css";
 
 export interface FileTreeContextMenuState {
   x: number;
@@ -34,7 +35,7 @@ export interface FileTreeDownloadState {
  * 文字色单独留给调用方：危险项需要整项保持危险色（原 `.is-danger` 规则在悬停规则之后，覆盖了悬停文字色）。
  */
 const MENU_ITEM_CLASS =
-  "flex min-h-8 w-full items-center gap-2 rounded-[5px] px-[9px] py-1.5 text-left text-[12px] whitespace-nowrap hover:bg-surface-2 focus-visible:bg-surface-2 focus-visible:[outline:2px_solid_color-mix(in_srgb,var(--color-brand)_45%,transparent)] focus-visible:outline-offset-[-2px] disabled:opacity-[0.55]";
+  "flex min-h-8 w-full items-center gap-2 rounded-sm px-2.25 py-1.5 text-left text-xs whitespace-nowrap hover:bg-surface-2 focus-visible:bg-surface-2 focus-visible:[outline:2px_solid_color-mix(in_srgb,var(--color-brand)_45%,transparent)] focus-visible:outline-offset--2 disabled:opacity-[0.55]";
 
 export interface FileTreeContextMenuProps {
   state: FileTreeContextMenuState;
@@ -80,7 +81,7 @@ export function FileTreeContextMenu({
   return createPortal(
     <div
       ref={menuRef}
-      className="fixed z-[1000] flex min-w-[152px] flex-col gap-0.5 rounded-[8px] border border-border-subtle bg-surface-1 p-[5px] shadow-[0_12px_32px_rgb(15_23_42/18%)] [&_svg]:size-[15px] [&_svg]:shrink-0"
+      className="file-tree-context-menu-panel fixed z-[1000] flex min-w-38 flex-col gap-0.5 rounded-md border border-border-subtle bg-surface-1 p-1.25"
       role="menu"
       style={{ left: position.left, top: position.top }}
     >

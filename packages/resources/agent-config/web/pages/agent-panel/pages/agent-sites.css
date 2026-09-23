@@ -93,6 +93,32 @@
   font-size: 10px;
 }
 
+/* 卡片投影：源 `.site-deployment-card`（后被改写成 `shadow-[0_5px_18px_rgb(36_57_92/5%)]`）。
+   元素上没有 ring 工具类，投影不参与 Tailwind 的 box-shadow 合成链，裸写法即等价。 */
+.site-deployment-card {
+  box-shadow: 0 5px 18px rgb(36 57 92 / 5%);
+}
+
+/* 卡头三列：源 `.site-card-body > header` 的 `grid-template-columns`（当前结构下 header 是卡片直接子元素）。 */
+.site-deployment-card > header {
+  grid-template-columns: 38px minmax(0, 1fr) 30px;
+}
+
+/* 卡头图标，源 `.site-card-icon svg`；刻度取自被替换的 `[&_svg]:w-4.25`。 */
+.site-card-icon svg {
+  width: calc(var(--spacing) * 4.25);
+}
+
+/* 卡片右上「更多」按钮内的图标，源 `[&_svg]:w-4`。 */
+.site-more-button svg {
+  width: calc(var(--spacing) * 4);
+}
+
+/* 页脚「打开」链接内的图标，源 `.site-open-button svg`；刻度取自被替换的 `[&_svg]:w-3`。 */
+.site-open-button svg {
+  width: calc(var(--spacing) * 3);
+}
+
 .site-pagination {
   display: flex;
   align-items: center;

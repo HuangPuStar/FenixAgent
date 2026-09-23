@@ -1,3 +1,5 @@
+import "./FileTabsBar.css";
+
 import type { ChangedFile } from "@fenix/ui-components/chat/lib/extract-changed-files";
 import { ClosableTabPill } from "@fenix/ui-components/components/ClosableTabPill";
 import { FileTypeIcon } from "@fenix/ui-components/components/file-icon-helper";
@@ -72,7 +74,7 @@ export function FileTabsBar({
             </Button>
           </PopoverTrigger>
           <PopoverContent align="start" className="w-72 p-1">
-            <div className="px-2 py-1.5 text-[11px] uppercase tracking-widest text-text-muted font-semibold">
+            <div className="px-2 py-1.5 text-3xs uppercase tracking-widest text-text-muted font-semibold">
               {tAgentPanel("changedFiles.title")}
               <span className="ml-1.5 normal-case tracking-normal font-normal">({changedFiles.length})</span>
             </div>
@@ -110,8 +112,9 @@ export function FileTabsBar({
         </Popover>
       )}
 
-      {/* 分隔符：左侧操作区与 tab 区视觉分隔（始终展示，让 toggle / 变更 badge 与 tab 列表视觉分组） */}
-      <span className="mx-0.5 h-3 w-px shrink-0 bg-[rgba(0,0,0,0.08)] [.dark_&]:bg-[rgba(255,255,255,0.08)]" />
+      {/* 分隔符：左侧操作区与 tab 区视觉分隔（始终展示，让 toggle / 变更 badge 与 tab 列表视觉分组）。
+          浅色半透黑随类串，暗色半透白是祖先选择器表达，见同目录 FileTabsBar.css。 */}
+      <span className="file-tabs-bar-separator mx-0.5 h-3 w-px shrink-0 bg-black/8" />
 
       {/* 3. 文件 tab 列表 + 折叠 */}
       <div className="flex items-center gap-0.5 flex-1 min-w-0 overflow-x-auto scrollbar-none">
@@ -130,7 +133,7 @@ export function FileTabsBar({
                   <FileTypeIcon filename={fileName} />
                 </span>
               }
-              label={<span className="truncate max-w-[140px]">{fileName}</span>}
+              label={<span className="truncate max-w-35">{fileName}</span>}
               onSelect={() => onSelectFile(path)}
               onClose={() => onCloseFile(path)}
               closeLabel={t("fileTree.closeTab")}

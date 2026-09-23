@@ -21,12 +21,12 @@ export function ResourcePreviewDialog({ open, onOpenChange, resource, kbId }: Re
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent
-        className="sm:max-w-[1000px] max-w-[1000px] h-[90vh] flex flex-col p-0 gap-0 rounded-2xl overflow-hidden shadow-2xl"
+        className="sm:max-w-250 max-w-250 h-[90vh] flex flex-col p-0 gap-0 rounded-2xl overflow-hidden shadow-2xl"
         showCloseButton={false}
       >
         {/* Header：标题 + 下载 + 关闭 */}
-        <DialogHeader className="flex-row items-center justify-between px-6 py-4 border-b border-[#e8edf4] shrink-0 bg-gradient-to-r from-[#fafbfc] to-white">
-          <DialogTitle className="truncate flex-1 min-w-0 text-[15px] font-semibold text-[#0f172a]">
+        <DialogHeader className="flex-row items-center justify-between px-6 py-4 border-b border-slate-200 shrink-0 bg-gradient-to-r from-gray-50 to-white">
+          <DialogTitle className="truncate flex-1 min-w-0 text-sm font-semibold text-slate-900">
             {t("preview.title", { name: resource.sourceName })}
           </DialogTitle>
           <div className="flex items-center gap-2 shrink-0">

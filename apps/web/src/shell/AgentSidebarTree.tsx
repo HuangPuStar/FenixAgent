@@ -49,7 +49,7 @@ export { orderInstancesByRunningStatus } from "./agent-sidebar-tree-model";
  * 两行文字在两张卡片里逐字相同，抽成常量是为了让「13px 半粗」只有一处定义——否则调其中一张
  * 的标题层级时，另一张会静默地停在旧刻度上。
  */
-const CARD_TITLE_CLASS = "text-[13px] font-semibold text-text-primary truncate";
+const CARD_TITLE_CLASS = "text-xs font-semibold text-text-primary truncate";
 
 /**
  * agent 卡片悬浮操作栏的图标按钮刻度（展开 / 重启 / 配置三个按钮同名同级）。
@@ -201,7 +201,7 @@ export const AgentSidebarTree = memo(function AgentSidebarTree({
             onClick={runMetaAgent}
             className={[
               "flex items-center gap-2.5 w-full p-2.5",
-              "border border-brand/30 rounded-[10px] bg-gradient-to-r from-brand/5 to-brand/10",
+              "border border-brand/30 rounded-lg bg-gradient-to-r from-brand/5 to-brand/10",
               "cursor-pointer text-left font-[inherit]",
               "transition-all duration-150",
               "hover:border-brand/50 hover:shadow-sm",
@@ -213,7 +213,7 @@ export const AgentSidebarTree = memo(function AgentSidebarTree({
             </div>
             <div className="flex-1 min-w-0">
               <div className={CARD_TITLE_CLASS}>{t("metaAgent")}</div>
-              <div className="text-[11px] text-text-dim truncate mt-0.5">{t("metaAgentDesc")}</div>
+              <div className="text-3xs text-text-dim truncate mt-0.5">{t("metaAgentDesc")}</div>
             </div>
           </button>
         </div>
@@ -251,7 +251,7 @@ export const AgentSidebarTree = memo(function AgentSidebarTree({
               onClick={() => runEnter(node)}
               className={[
                 "agent-sidebar-agent-card flex items-center gap-2.5 w-full",
-                "border border-border-subtle rounded-[10px] bg-surface-1",
+                "border border-border-subtle rounded-lg bg-surface-1",
                 "cursor-pointer text-left font-[inherit]",
                 "transition-all duration-150",
                 "hover:bg-surface-hover hover:border-border-default hover:shadow-sm",
@@ -274,7 +274,7 @@ export const AgentSidebarTree = memo(function AgentSidebarTree({
                 </div>
                 {/* 第二行：标识键 + 远程标记 */}
                 {(agentKey || shouldShowRemoteNode(agent.agentNode)) && (
-                  <div className="text-[10px] text-text-muted truncate flex items-center gap-1.5">
+                  <div className="text-3xs text-text-muted truncate flex items-center gap-1.5">
                     {agentKey && <span className="font-mono truncate">{agentKey}</span>}
                     {shouldShowRemoteNode(agent.agentNode) && (
                       <>
@@ -354,7 +354,7 @@ export const AgentSidebarTree = memo(function AgentSidebarTree({
                         <div
                           key={inst.instanceUid}
                           className={[
-                            "agent-sidebar-instance group flex items-center gap-2 px-3 py-1.5 ml-2 text-[13px] rounded-md cursor-pointer transition-colors",
+                            "agent-sidebar-instance group flex items-center gap-2 px-3 py-1.5 ml-2 text-xs rounded-md cursor-pointer transition-colors",
                             selectedInstanceId === inst.instanceUid
                               ? "bg-brand-subtle text-brand"
                               : "text-text-primary hover:bg-surface-hover",
@@ -398,7 +398,7 @@ export const AgentSidebarTree = memo(function AgentSidebarTree({
                   disabled={isEntering}
                   onClick={() => runEnter(node, { spawnNew: true })}
                   title={t("newInstance")}
-                  className="agent-sidebar-new-instance flex items-center gap-1.5 px-3 py-1 ml-2 text-[13px] text-text-dim cursor-pointer border-none rounded-md bg-transparent hover:bg-surface-hover hover:text-text-secondary transition-colors whitespace-nowrap"
+                  className="agent-sidebar-new-instance flex items-center gap-1.5 px-3 py-1 ml-2 text-xs text-text-dim cursor-pointer border-none rounded-md bg-transparent hover:bg-surface-hover hover:text-text-secondary transition-colors whitespace-nowrap"
                 >
                   <Plus className="w-3.5 h-3.5 shrink-0" />
                   <span>{t("newInstance")}</span>

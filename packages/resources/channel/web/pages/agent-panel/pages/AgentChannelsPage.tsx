@@ -110,12 +110,12 @@ export function AgentChannelsPage() {
       <AppPage busy>
         <div className="mb-3 flex items-start justify-between gap-4">
           <div>
-            <Skeleton className="h-[22px] w-28 rounded-md" />
+            <Skeleton className="h-5.5 w-28 rounded-md" />
             <Skeleton className="mt-1.5 h-3 w-56 rounded-md" />
           </div>
           <Skeleton className="h-10 w-28 rounded-lg" />
         </div>
-        <div className="mb-3.5 h-px bg-[#e8edf4]" />
+        <div className="mb-3.5 h-px bg-slate-200" />
         <div className="space-y-3">
           {Array.from({ length: 5 }).map((_, i) => (
             // Static skeleton placeholders have no domain identifier.

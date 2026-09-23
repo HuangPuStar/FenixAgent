@@ -92,7 +92,7 @@ export function PoolTree({
                 </span>
               </summary>
               <div className="overflow-x-auto border-t border-border px-4 py-2">
-                <div className="min-w-[850px]">
+                <div className="min-w-212.5">
                   {(instancesByPool.get(pool.id) ?? []).map((instance) => (
                     <InstanceRow
                       key={instance.id}

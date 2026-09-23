@@ -360,7 +360,7 @@ function McpCatalogLoading() {
       <Skeleton className="h-7 w-36" />
       <Skeleton className="mt-2 h-4 w-80" />
       <Skeleton className="mt-7 h-10 w-full" />
-      <Skeleton className="mt-7 h-[520px] w-full rounded-[10px]" />
+      <Skeleton className="mt-7 h-130 w-full rounded-lg" />
       <span className="sr-only" role="status">
         {t("loadState.loading")}
       </span>

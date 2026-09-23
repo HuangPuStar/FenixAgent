@@ -1,3 +1,4 @@
+import "./AgentEditorLoadingShell.css";
 import { cn } from "@fenix/ui-components/lib/cn";
 import { Skeleton } from "@fenix/ui-components/ui/skeleton";
 import { NS } from "@fenix/web-runtime/i18n/namespace";
@@ -58,7 +59,7 @@ export function AgentEditorLoadingShell({
           <span className={MAP_LABEL} data-slot="editor-map-label">
             {t("editor.configurationMap")}
           </span>
-          <div className="grid gap-[3px]">
+          <div className="grid gap-0.75">
             {LOADING_SECTIONS.map(({ id, icon: Icon }, index) => (
               <div className={cn(LOADING_MAP_ROW, index === 0 && LOADING_MAP_ROW_ACTIVE)} key={id}>
                 <span className={MAP_ICON}>
@@ -79,7 +80,7 @@ export function AgentEditorLoadingShell({
             <Skeleton className="h-3 w-72 max-w-full" />
           </div>
           {/* 字段骨架：两列 62px 高，末行跨列且高 170px（与加载后的字段网格同构）。 */}
-          <div className="grid grid-cols-[repeat(2,minmax(0,1fr))] gap-[14px] [&>div]:h-[62px] [&>div:last-child]:col-span-full [&>div:last-child]:h-[170px] [@media(max-width:759px)]:grid-cols-1">
+          <div className="agent-editor-loading-fields grid gap-3.5 max-md:grid-cols-1">
             <Skeleton />
             <Skeleton />
             <Skeleton />

@@ -1,0 +1,75 @@
+/*
+ * ChatView 的深层样式（与同目录 `ChatView.tsx` 同名，由该文件 import）。
+ *
+ * 来源：源 `chat-design-messages.css`（阶段三删除）、`chat-loading.css`（阶段四删除；关键帧仍在
+ * `../css/chat-animations.css`）与宿主 `apps/web/src/index.css` 的同名段。只搬「工具类无法表达」
+ * 的部分，扁平工具类（`hidden`、`grid`、尺寸/颜色刻度）仍留在 `className`：
+ *   - `.chat-empty-heading`        ← `font-[Georgia,'Songti_SC',serif]`；
+ *   - `.chat-empty-prompt-list`    ← `w-[min(460px,100%)]`（源 `.chat-empty-suggestions` 的宽度）；
+ *   - `.chat-empty-prompt-button`  ← `hover:shadow-[0_6px_18px_rgb(36_99_235_/_8%)]`；
+ *   - `.chat-active-prompt-entry`  ← `data-[active-prompt]:animate-[chat-active-prompt-flash_…]`
+ *     及其减弱动效覆盖（源 `.chat-entry--active-prompt` 与它的 `prefers-reduced-motion` 块）；
+ *   - `.chat-loading-indicator > span` ← 三点脉冲（源 `.chat-loading-dots span` 与 `:nth-child` 延迟）；
+ *   - `.chat-loading-shimmer`      ← `animate-[shimmerSlide_2s_ease-in-out_infinite]`。
+ * 值逐字等价换算：复合值按 Tailwind 的生成结果展开（`_` → 空格、`calc()` 内补全运算符两侧空格），
+ * 未调整任何数值。
+ *
+ * 层叠注意（为什么减弱动效的覆盖必须跟着搬家）：本文件不包 `@layer`，`animation` 一旦写在这里就
+ * 稳赢 `@layer utilities`；若把 `motion-reduce:data-[active-prompt]:animate-none` 留在 `className`，
+ * 它会输给下面的基础声明，系统的「减弱动效」偏好将失效。故两者同址，胜负关系与迁移前一致。
+ *
+ * 未下沉：`[font:…]`（`<small>` 的 eyebrow）、`[background:…]` / `[background-size:…]` /
+ * `[-webkit-background-clip:…]` / `[-webkit-text-fill-color:…]`（微光文字的渐变）都是「任意属性」
+ * （`[prop:value]` 形式），不是 FCP-WEB-02 打击的任意值，保持原样。
+ */
+.chat-empty-heading {
+  font-family: Georgia, "Songti SC", serif;
+}
+
+.chat-empty-prompt-list {
+  width: min(460px, 100%);
+}
+
+.chat-empty-prompt-button:hover {
+  box-shadow: 0 6px 18px rgb(36 99 235 / 8%);
+}
+
+/* 提示词导航在运行时给消息节点打上 `data-active-prompt`（跨组件契约，见 `chat-navigation-aids.tsx`）；
+   源 `.chat-entry--active-prompt` 的 900ms 高亮闪动（关键帧定义见 `../css/chat-animations.css`）。 */
+.chat-active-prompt-entry[data-active-prompt] {
+  animation: chat-active-prompt-flash 900ms ease-out;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .chat-active-prompt-entry[data-active-prompt] {
+    animation: none;
+  }
+}
+
+/* 三点脉冲（源 `.chat-loading-dots span`）：延迟与源一致落在 `:nth-child` 上。 */
+.chat-loading-indicator > span {
+  animation: loadingDotBounce 1.4s ease-in-out infinite both;
+}
+
+.chat-loading-indicator > span:nth-child(1) {
+  animation-delay: -0.32s;
+}
+
+.chat-loading-indicator > span:nth-child(2) {
+  animation-delay: -0.16s;
+}
+
+.chat-loading-indicator > span:nth-child(3) {
+  animation-delay: 0s;
+}
+
+/* 暗色换一套关键帧（源 `.dark .chat-loading-dots span { animation-name: loadingDotBounceDark }`）；
+   与上面的 `:nth-child` 规则特指度相同，靠位置取胜，因此必须排在其后。 */
+.dark .chat-loading-indicator > span {
+  animation-name: loadingDotBounceDark;
+}
+
+/* "思考中" 文字微光扫过（源 `:where(.chat-conversation) .loading-text-shimmer` 的动画部分）。 */
+.chat-loading-shimmer {
+  animation: shimmerSlide 2s ease-in-out infinite;
+}

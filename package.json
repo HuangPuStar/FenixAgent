@@ -33,6 +33,7 @@
     "typecheck": "tsc --noEmit",
     "typecheck:web": "tsc -p apps/web/tsconfig.json --noEmit",
     "check:dependencies": "bun run scripts/check-dependency-boundaries.ts",
+    "check:web-style": "bun run scripts/check-web-style.ts",
     "lint": "biome check apps/server/src/ apps/web/src/ apps/ packages/ scripts/ db/",
     "lint:fix": "biome check --write apps/server/src/ apps/web/src/ apps/ packages/ scripts/ db/",
     "format": "biome format --write apps/server/src/ apps/web/src/ apps/ packages/ scripts/ db/",

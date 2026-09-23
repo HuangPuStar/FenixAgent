@@ -275,7 +275,7 @@ export function TaskForm({ agents, isEditing, initialType = "http" }: TaskFormPr
                   value={methodValue}
                   onValueChange={(v) => setValue("method", v as "GET" | "POST" | "PUT" | "DELETE" | "PATCH")}
                 >
-                  <SelectTrigger className="w-[110px]">
+                  <SelectTrigger className="w-27.5">
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>

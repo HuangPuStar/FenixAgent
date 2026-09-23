@@ -317,6 +317,23 @@ const migratedSlices = SLICES.filter(migrated);
 const allMigrated = migratedSlices.length === SLICES.length;
 
 /**
+ * 目录内样式表**当前真实定义**的类名（读文件而不是查表）。
+ *
+ * 与 {@link CSS_CLASS_NAMES}（源 CSS 定义过的类名，用于判断「迁移完成了没有」）不同：这里回答的是
+ * 「这个类名今天还有没有承载样式的定义」。深层样式下沉（`tmp/phase-b-recipe.md`）让语义类名重新成为
+ * 合法载体——类名只要还被某份样式表定义，就不算「迁移残留」，所以 ① 的判据必须按它来收口。
+ */
+function definedClassNames(): Set<string> {
+  const names = new Set<string>();
+  for (const file of readdirSync(EDITOR_DIR).filter((name) => name.endsWith(".css"))) {
+    const css = readFileSync(join(EDITOR_DIR, file), "utf8").replace(/\/\*[\s\S]*?\*\//g, "");
+    for (const match of css.matchAll(/\.(-?[A-Za-z_][\w-]*)/g)) names.add(match[1]);
+  }
+  return names;
+}
+const DEFINED_CLASS_NAMES = definedClassNames();
+
+/**
  * 迁移后不应再出现在 `className` 里的语义类名前缀（各 CSS 文件的源选择器）。
  * 例外：无——保留项只有关键帧文件，没有靠类名当钩子的样式表。
  */
@@ -568,7 +585,8 @@ function readEditorFile(name: string): string {
 
 describe("Agent Editor：Tailwind 迁移与字号刻度", () => {
   // 分片必须整片迁移：删了一半的 CSS 会让「哪些声明还生效」变得不可推断，迁移期也必须保持可推理。
-  test("每个分片的 CSS 文件整片删除，且删干净后不再残留语义类名", () => {
+  // 语义类名的判据是「今天还有没有样式表定义它」：Web 样式下沉后它们重新成为合法的深层样式载体。
+  test("每个分片的 CSS 文件整片删除，且删干净后不再残留无人定义的语义类名", () => {
     const half = SLICES.filter((slice) => slice.cssFiles.some((file) => !existsSync(join(EDITOR_DIR, file))))
       .filter((slice) => !migrated(slice))
       .map((slice) => slice.name);
@@ -590,6 +608,8 @@ describe("Agent Editor：Tailwind 迁移与字号刻度", () => {
         const hits = new Set<string>();
         for (const literal of classNameLiterals(readEditorFile(file))) {
           for (const token of literal.split(/\s+/)) {
+            // 仍被样式表定义的语义类名是合法的下沉载体（见 DEFINED_CLASS_NAMES），不算残留。
+            if (DEFINED_CLASS_NAMES.has(token)) continue;
             if (retired.has(token) || RETIRED_PREFIXES.some((prefix) => token === prefix || token.startsWith(prefix))) {
               if (!remaining.has(token)) hits.add(token);
             }
@@ -676,11 +696,15 @@ describe("Agent Editor：Tailwind 迁移与字号刻度", () => {
     expect(missing).toEqual([]);
   });
 
-  // 迁移完成后目录里只允许留下登记文件：关键帧 + `.agent-panel-body` 宿主钩子（两者都在文件头写了移除条件）。
-  test("迁移完成后只剩登记的关键帧与宿主钩子样式表", () => {
+  // 迁移完成后目录里只允许留下登记文件：关键帧 + `.agent-panel-body` 宿主钩子（两者都在文件头写了移除条件），
+  // 外加「与源文件同名的伴随样式表」——它们是 Web 样式下沉的合法载体（见 DEFINED_CLASS_NAMES）。
+  test("迁移完成后只剩登记的关键帧、宿主钩子与源文件伴随样式表", () => {
     if (!allMigrated) return;
-    const remaining = readdirSync(EDITOR_DIR).filter((name) => name.endsWith(".css"));
-    expect(remaining).toEqual([RETAINED_FILE]);
+    const sourceNames = new Set(SCAN_FILES.map((file) => file.replace(/\.tsx?$/, "")));
+    const remaining = readdirSync(EDITOR_DIR).filter(
+      (name) => name.endsWith(".css") && name !== RETAINED_FILE && !sourceNames.has(name.replace(/\.css$/, "")),
+    );
+    expect(remaining).toEqual([]);
 
     // 保留文件只能是 @keyframes + 那一条宿主钩子：出现其它选择器规则就说明有声明没迁完。
     const css = readFileSync(join(EDITOR_DIR, RETAINED_FILE), "utf8").replace(/\/\*[\s\S]*?\*\//g, "");
@@ -693,13 +717,18 @@ describe("Agent Editor：Tailwind 迁移与字号刻度", () => {
     expect([...new Set(ruleHeads)]).toEqual([RETAINED_HOST_HOOK]);
   });
 
-  // 分区入场动画：关键帧留在保留文件里，引用写在渲染点；两侧缺一都会让分区标题不再淡入。
+  // 分区入场动画：关键帧留在保留文件里，引用随 `SECTION` 的深层样式下沉到伴随样式表（`animation` 简写里含关键帧名）；
+  // 两侧缺一都会让分区标题不再淡入。
   test("分区入场动画的关键帧与引用都在", () => {
     if (!allMigrated) return;
     expect(readFileSync(join(EDITOR_DIR, RETAINED_FILE), "utf8")).toContain("@keyframes agent-editor-section-enter");
-    const referenced = SLICES.flatMap((slice) => slice.tsxFiles)
-      .filter((file, index, all) => all.indexOf(file) === index)
-      .some((file) => readEditorFile(file).includes("animate-[agent-editor-section-enter_180ms_ease_both]"));
+    const referenced = readdirSync(EDITOR_DIR)
+      .filter((name) => name.endsWith(".css") && name !== RETAINED_FILE)
+      .some((name) =>
+        /animation:[^;]*agent-editor-section-enter/.test(
+          readFileSync(join(EDITOR_DIR, name), "utf8").replace(/\/\*[\s\S]*?\*\//g, ""),
+        ),
+      );
     expect(referenced).toBe(true);
   });
 

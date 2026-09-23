@@ -25,13 +25,14 @@ import { FileTreeArborist } from "./file-tree-arborist";
 import type { FileTreeContextMenuState, FileTreeDownloadState } from "./file-tree-context-menu";
 import { FileTreeContextMenu } from "./file-tree-context-menu";
 import type { ParsedFileNode } from "./file-tree-model";
+import "./file-tree-view.css";
 
 /**
  * 面板标题栏按钮样式（原 `.file-tree-panel__actions button` 及其 `:hover` / `:focus-visible`
  * / `:disabled` 规则）：26px 方块，图标 14px。
  */
 const PANEL_ACTION_CLASS =
-  "inline-grid size-[26px] place-items-center rounded-[5px] text-text-muted hover:bg-surface-2 hover:text-text-primary focus-visible:bg-surface-2 focus-visible:text-text-primary disabled:opacity-[0.45]";
+  "inline-grid size-6.5 place-items-center rounded-sm text-text-muted hover:bg-surface-2 hover:text-text-primary focus-visible:bg-surface-2 focus-visible:text-text-primary disabled:opacity-[0.45]";
 
 /**
  * 分区标题（工作区 / 我的文件）公共样式，两者只有文字色与右内边距不同。
@@ -39,7 +40,7 @@ const PANEL_ACTION_CLASS =
  * 原规则里的 `font-family: inherit` 未翻译：font-family 本就是继承属性，没有宿主覆盖时该声明是空操作。
  */
 const SECTION_HEADING_CLASS =
-  "flex h-8 min-w-0 shrink-0 items-center gap-1.5 ps-5 text-[12px] font-semibold normal-case tracking-normal";
+  "flex h-8 min-w-0 shrink-0 items-center gap-1.5 ps-5 text-xs font-semibold normal-case tracking-normal";
 
 export interface FileTreeViewProps {
   /** 首屏或刷新中；影响刷新按钮转圈与空态展示。 */
@@ -105,9 +106,9 @@ export function FileTreeView(props: FileTreeViewProps) {
 
   return (
     <div className="flex h-full min-h-0 flex-1 flex-col overflow-hidden text-text-secondary">
-      <div className="flex min-h-[38px] shrink-0 items-center justify-between ps-2.5 pe-1.5 text-[12px] text-text-primary [font-weight:650]">
+      <div className="flex min-h-9.5 shrink-0 items-center justify-between ps-2.5 pe-1.5 text-xs text-text-primary [font-weight:650]">
         <span>{t("fileTree.title")}</span>
-        <div data-slot="file-tree-panel-actions" className="flex items-center gap-px [&_svg]:size-[14px]">
+        <div data-slot="file-tree-panel-actions" className="file-tree-panel__actions flex items-center gap-px">
           <button
             type="button"
             className={PANEL_ACTION_CLASS}
@@ -159,11 +160,11 @@ export function FileTreeView(props: FileTreeViewProps) {
         </div>
       </div>
 
-      <label className="mx-2 mb-2 flex h-[30px] shrink-0 items-center gap-1.5 rounded-[6px] bg-surface-2 px-2 text-text-muted focus-within:shadow-[inset_0_0_0_1px_color-mix(in_srgb,var(--color-brand)_32%,transparent)] [&>button>svg]:size-[13px] [&>svg]:size-[13px]">
+      <label className="file-tree-search mx-2 mb-2 flex h-7.5 shrink-0 items-center gap-1.5 rounded-md bg-surface-2 px-2 text-text-muted focus-within:shadow-[inset_0_0_0_1px_color-mix(in_srgb,var(--color-brand)_32%,transparent)]">
         <Search aria-hidden />
         <input
           type="search"
-          className="w-full min-w-0 border-0 bg-transparent text-[12px] text-text-primary outline-none"
+          className="w-full min-w-0 border-0 bg-transparent text-xs text-text-primary outline-none"
           value={props.searchQuery}
           onChange={(event) => props.onSearchChange(event.target.value)}
           placeholder={t("fileTree.searchPlaceholder")}
@@ -192,7 +193,7 @@ export function FileTreeView(props: FileTreeViewProps) {
         onContextMenu={props.onContextMenu}
       >
         {props.dragOver && (
-          <div className="pointer-events-none absolute inset-0 z-[3] grid place-items-center rounded-[var(--radius)] border border-dashed border-border-active bg-brand/10 text-[12px] text-brand">
+          <div className="pointer-events-none absolute inset-0 z-[3] grid place-items-center rounded-[var(--radius)] border border-dashed border-border-active bg-brand/10 text-xs text-brand">
             {t("fileTree.dropToUpload")}
           </div>
         )}
@@ -204,7 +205,7 @@ export function FileTreeView(props: FileTreeViewProps) {
               <button
                 type="button"
                 data-slot="file-tree-feedback-action"
-                className="min-h-7 rounded-[6px] border border-border-subtle bg-surface-1 px-2.5 text-[11px] text-text-secondary hover:border-[color-mix(in_srgb,var(--color-brand)_35%,var(--color-border-subtle))] hover:text-brand focus-visible:border-[color-mix(in_srgb,var(--color-brand)_35%,var(--color-border-subtle))] focus-visible:text-brand"
+                className="min-h-7 rounded-md border border-border-subtle bg-surface-1 px-2.5 text-3xs text-text-secondary hover:border-[color-mix(in_srgb,var(--color-brand)_35%,var(--color-border-subtle))] hover:text-brand focus-visible:border-[color-mix(in_srgb,var(--color-brand)_35%,var(--color-border-subtle))] focus-visible:text-brand"
                 onClick={props.onRefresh}
               >
                 {t("fileTree.retry")}
@@ -255,10 +256,7 @@ function FileTreeSections(props: FileTreeViewProps) {
   const { t } = useTranslation(UI_COMPONENTS_NS);
 
   return (
-    <div
-      data-slot="file-tree-sections-layout"
-      className="grid min-h-0 flex-1 grid-rows-[minmax(112px,3fr)_minmax(68px,2fr)] overflow-hidden"
-    >
+    <div data-slot="file-tree-sections-layout" className="file-tree-sections-grid grid min-h-0 flex-1 overflow-hidden">
       <section data-upload-target="" className="flex h-full min-h-0 flex-col">
         <div className={cn(SECTION_HEADING_CLASS, "text-text-secondary")}>{t("fileTree.workspace")}</div>
         <div className="min-h-0 min-w-0 flex-1 overflow-hidden">
@@ -284,7 +282,7 @@ function FileTreeSections(props: FileTreeViewProps) {
           <button
             type="button"
             data-slot="file-tree-section-upload"
-            className="ml-auto inline-grid size-[26px] shrink-0 place-items-center rounded-[5px] text-brand hover:bg-transparent focus-visible:bg-transparent focus-visible:[outline:2px_solid_var(--color-surface-3)] focus-visible:outline-offset-[-2px] disabled:opacity-[0.45] [&_svg]:size-4"
+            className="file-tree-section-upload-button ml-auto inline-grid size-6.5 shrink-0 place-items-center rounded-sm text-brand hover:bg-transparent focus-visible:bg-transparent focus-visible:[outline:2px_solid_var(--color-surface-3)] focus-visible:outline-offset--2 disabled:opacity-[0.45]"
             title={t("fileTree.upload")}
             aria-label={t("fileTree.upload")}
             onClick={() => props.onUploadClick("user")}
@@ -310,7 +308,7 @@ function FileTreeSections(props: FileTreeViewProps) {
               icon={<Folder />}
               text={t("fileTree.userEmptyState")}
               // 「我的文件」分区高度只有工作区的一半：复用同一反馈组件但压缩间距，并隐去图标与第二行说明。
-              className="min-h-11 p-2 [&>svg]:hidden [&_p+p]:hidden"
+              className="file-tree-view-feedback--compact min-h-11 p-2"
             />
           )}
         </div>
@@ -337,7 +335,7 @@ function Feedback({
     <div
       data-slot="file-tree-feedback"
       className={cn(
-        "flex h-full flex-col items-center justify-center gap-2 p-5 text-center text-[12px] text-text-muted [&>svg]:size-6 [&>svg]:opacity-[0.65]",
+        "file-tree-view-feedback flex h-full flex-col items-center justify-center gap-2 p-5 text-center text-xs text-text-muted",
         className,
       )}
       role="status"

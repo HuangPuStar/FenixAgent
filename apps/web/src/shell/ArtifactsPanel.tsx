@@ -26,7 +26,7 @@ import { type TopMode, TopModeTabs } from "../components/agent-panel/TopModeTabs
 const MAX_OPEN_FILES = 8;
 
 /** Sites 模式下的状态条刻度（「加载中」与「加载失败」两条同名同级，改刻度时两处一起动） */
-const SITES_STATUS_STRIP_CLASS = "px-3 py-1 text-[11px] text-text-dim border-b border-border/30";
+const SITES_STATUS_STRIP_CLASS = "px-3 py-1 text-3xs text-text-dim border-b border-border/30";
 
 interface ArtifactsPanelProps {
   envId: string | null;

@@ -174,12 +174,12 @@ export function DocumentsView() {
                   <TableCell>
                     <div className="flex flex-wrap gap-0.5">
                       {doc.tags.slice(0, 3).map((tag) => (
-                        <Badge key={tag} variant="outline" className="text-[10px] px-1 py-0">
+                        <Badge key={tag} variant="outline" className="text-3xs px-1 py-0">
                           {tag}
                         </Badge>
                       ))}
                       {doc.tags.length > 3 && (
-                        <Badge variant="outline" className="text-[10px] px-1 py-0">
+                        <Badge variant="outline" className="text-3xs px-1 py-0">
                           +{doc.tags.length - 3}
                         </Badge>
                       )}

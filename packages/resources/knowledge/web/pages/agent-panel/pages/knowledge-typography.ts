@@ -15,4 +15,4 @@
  * 实际命中数低于登记数，合并后总量只降不升。纯逻辑的 `web/lib/poll-resources.ts` 不含样式值，
  * 仍按兄弟包的 `web/lib/` 约定放置。
  */
-export const FIELD_LABEL_CLASS = "text-[13px] font-semibold text-[#0f172a]";
+export const FIELD_LABEL_CLASS = "text-xs font-semibold text-slate-900";

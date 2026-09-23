@@ -6,6 +6,13 @@
 //   - 变更文件点击由源实现的 `window.dispatchEvent(new CustomEvent("artifacts:preview-file"))`
 //     改为 `onPreviewFile` 回调注入（包内不得触碰宿主事件总线与路由）；
 //   - 保留 `.chat-status-list [data-status="..."]` 的 data-* 契约，CSS 消费方无需改动。
+//
+// 深层样式（宽度台阶、投影、列表限高、行内网格列与折叠图标宽度）下沉到同目录
+// `./chat-status-panel.css`，语义类名为 `.chat-status-panel-card`（源 `.chat-status-panel`）、
+// `.chat-status-rows` / `.chat-status-row`（源 `.chat-status-list` 及其 `> div, > button`）与
+// `.chat-status-collapse-toggle`（源 `.chat-status-collapse`）。
+
+import "./chat-status-panel.css";
 
 import {
   Ban,
@@ -44,19 +51,18 @@ export function fileNameFromPath(path: string): string {
  * 因为原规则同时作用于 `.chat-status-list svg`（15px）与状态色。
  */
 function statusIconClass(status: string): string {
-  if (status === "completed") return "h-[15px] w-[15px] text-[#25a47a]";
-  if (status === "in_progress" || status === "running") return "h-[15px] w-[15px] text-[#d28a27]";
-  if (status === "failed") return "h-[15px] w-[15px] text-[#db5d56]";
-  return "h-[15px] w-[15px] text-[#8c9bb0]";
+  if (status === "completed") return "h-3.75 w-3.75 text-teal-600";
+  if (status === "in_progress" || status === "running") return "h-3.75 w-3.75 text-yellow-600";
+  if (status === "failed") return "h-3.75 w-3.75 text-red-400";
+  return "h-3.75 w-3.75 text-slate-400";
 }
 
-/** 状态列表容器（三支共用）：源 `.chat-status-list` 的 grid/内边距 + 组件原有的滚动约束。 */
+/** 状态列表容器（三支共用）：源 `.chat-status-list` 的 grid/内边距 + 组件原有的滚动约束；限高在 `./chat-status-panel.css`。 */
 const STATUS_LIST_CLASS =
-  "grid max-h-[min(16rem,35vh)] overflow-y-auto overscroll-contain px-3 pt-0.5 pb-2.5 [scrollbar-gutter:stable]";
+  "chat-status-rows grid overflow-y-auto overscroll-contain px-3 pt-0.5 pb-2.5 [scrollbar-gutter:stable]";
 
-/** 列表行（todos 的 div / tasks 与 changes 的 button）：源 `.chat-status-list > div, > button`。 */
-const STATUS_ROW_CLASS =
-  "grid min-h-[29px] grid-cols-[18px_minmax(0,1fr)_auto] items-center gap-2 text-left text-[#526178]";
+/** 列表行（todos 的 div / tasks 与 changes 的 button）：源 `.chat-status-list > div, > button`；列定义在 `./chat-status-panel.css`。 */
+const STATUS_ROW_CLASS = "chat-status-row grid min-h-7.25 items-center gap-2 text-left text-slate-600";
 
 interface ChatStatusPanelProps {
   todos: TodoItem[];
@@ -147,12 +153,13 @@ export function ChatStatusPanel({
 
   return (
     <section
-      // 源 `.chat-interaction-stack/​.chat-status-panel`（宽度台阶）与 `.chat-status-panel`（半圆卡）两段。
-      className="mx-auto w-[min(756px,calc(100%-64px))] [@media(max-width:720px)]:w-[calc(100%-52px)] overflow-hidden rounded-t-[14px] border-x border-t border-b-0 border-[#dde4ee] bg-white shadow-[0_12px_34px_rgb(30_64_120_/_8%)]"
+      // 源 `.chat-interaction-stack/.chat-status-panel`（宽度台阶）与 `.chat-status-panel`（半圆卡）两段；
+      // 宽度与投影在 ./chat-status-panel.css 的 `.chat-status-panel-card`。
+      className="chat-status-panel-card mx-auto overflow-hidden rounded-t-lg border-x border-t border-b-0 border-slate-200 bg-white"
       data-slot="chat-status-panel"
       aria-label={t("chat.components.chatStatus.title")}
     >
-      <header className="flex min-h-[40px] w-full items-center gap-[9px] px-[9px] py-1 text-[#33445d]">
+      <header className="flex min-h-10 w-full items-center gap-2.25 px-2.25 py-1 text-slate-700">
         <div
           className="flex min-w-0 items-center gap-0.5"
           role="tablist"
@@ -188,7 +195,8 @@ export function ChatStatusPanel({
         </div>
         <button
           type="button"
-          className="ml-auto grid h-7 w-7 place-items-center text-[#8290a5] [&>svg]:w-[15px]"
+          // 源 `.chat-status-collapse`（`margin-left: auto` + 图标宽度 15px；尺寸在 ./chat-status-panel.css）。
+          className="chat-status-collapse-toggle ml-auto grid h-7 w-7 place-items-center text-slate-400"
           aria-label={t("chat.components.chatStatus.toggle")}
           aria-expanded={!collapsed}
           onClick={() => setCollapsed((value) => !value)}
@@ -226,14 +234,14 @@ function StatusTabButton({
       aria-selected={active}
       // 源 `.chat-status-tabs button` 与 `.is-active` 两态（互斥，不靠生成顺序）；窄屏隐藏页签文字。
       className={cn(
-        "flex min-h-[30px] items-center gap-1.5 rounded-[7px] px-2 py-1 text-[12px]",
-        active ? "bg-[#f1f5fc] text-[#285eb8]" : "text-[#748197]",
+        "flex min-h-7.5 items-center gap-1.5 rounded-md px-2 py-1 text-xs",
+        active ? "bg-slate-100 text-sky-700" : "text-slate-500",
       )}
       onClick={onClick}
     >
-      <Icon className="h-[15px] w-[15px]" />
-      <span className="[@media(max-width:720px)]:hidden">{label}</span>
-      <small className="text-[10px] text-[#8a96a8]">{count}</small>
+      <Icon className="h-3.75 w-3.75" />
+      <span className="max-md:hidden">{label}</span>
+      <small className="text-3xs text-gray-400">{count}</small>
     </button>
   );
 }
@@ -247,10 +255,10 @@ function TodoRows({ todos }: { todos: TodoItem[] }) {
         return (
           <div key={todo.content} className={STATUS_ROW_CLASS} data-status={todo.status}>
             <Icon className={statusIconClass(todo.status)} />
-            <span className="overflow-hidden text-[11.5px] text-ellipsis whitespace-nowrap">
+            <span className="overflow-hidden text-xs text-ellipsis whitespace-nowrap">
               {todo.status === "in_progress" && todo.activeForm ? todo.activeForm : todo.content}
             </span>
-            <small className="text-[10px] text-[#8a96a8]">
+            <small className="text-3xs text-gray-400">
               {t(`chat.components.chatStatus.todoStatus.${todo.status}`)}
             </small>
           </div>
@@ -273,11 +281,11 @@ function TaskRows({
 }) {
   const { t } = useTranslation(UI_COMPONENTS_NS);
   if (!loaded)
-    return <p className="px-3 pt-1.5 pb-2.5 text-[11px] text-[#7f8ca0]">{t("chat.components.periTask.loading")}</p>;
+    return <p className="px-3 pt-1.5 pb-2.5 text-3xs text-slate-400">{t("chat.components.periTask.loading")}</p>;
   return (
     <div className={STATUS_LIST_CLASS} data-slot="chat-status-list" role="tabpanel">
       {reconnecting && (
-        <p className="px-3 pt-1.5 pb-2.5 text-[11px] text-[#7f8ca0]">{t("chat.components.periTask.reconnecting")}</p>
+        <p className="px-3 pt-1.5 pb-2.5 text-3xs text-slate-400">{t("chat.components.periTask.reconnecting")}</p>
       )}
       {tasks.map((task) => {
         const Icon =
@@ -299,10 +307,10 @@ function TaskRows({
             onClick={() => canOpen && onOpenTask(task)}
           >
             <Icon className={statusIconClass(task.status)} />
-            <span className="overflow-hidden text-[11.5px] text-ellipsis whitespace-nowrap">
+            <span className="overflow-hidden text-xs text-ellipsis whitespace-nowrap">
               {task.title || t("chat.components.periTask.unknownTitle")}
             </span>
-            <small className="text-[10px] text-[#8a96a8]">{t(`chat.components.periTask.status.${task.status}`)}</small>
+            <small className="text-3xs text-gray-400">{t(`chat.components.periTask.status.${task.status}`)}</small>
           </button>
         );
       })}
@@ -316,12 +324,12 @@ function ChangeRows({ files, onPreviewFile }: { files: ChangedFile[]; onPreviewF
     <div className={STATUS_LIST_CLASS} data-slot="chat-status-list" role="tabpanel">
       {files.map((file) => (
         <button key={file.path} type="button" className={STATUS_ROW_CLASS} onClick={() => onPreviewFile?.(file.path)}>
-          <FileDiff className="h-[15px] w-[15px] text-[#8c9bb0]" />
-          <span className="overflow-hidden text-[11.5px] text-ellipsis whitespace-nowrap" title={file.path}>
+          <FileDiff className="h-3.75 w-3.75 text-slate-400" />
+          <span className="overflow-hidden text-xs text-ellipsis whitespace-nowrap" title={file.path}>
             {fileNameFromPath(file.path)}
           </span>
           {/* 源 `.chat-status-list small.is-added`：写操作标绿，其余沿用默认灰（互斥两态）。 */}
-          <small className={file.type === "write" ? "text-[10px] text-[#259a70]" : "text-[10px] text-[#8a96a8]"}>
+          <small className={file.type === "write" ? "text-3xs text-emerald-600" : "text-3xs text-gray-400"}>
             {t(file.type === "write" ? "chat.components.chatStatus.added" : "chat.components.chatStatus.modified")}
           </small>
         </button>

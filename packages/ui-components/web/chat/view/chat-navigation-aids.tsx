@@ -1,3 +1,5 @@
+import "./chat-navigation-aids.css";
+
 import { useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { useTranslation } from "react-i18next";
@@ -131,12 +133,13 @@ export function PromptJumpRail({ entries }: PromptJumpRailProps) {
       <nav
         ref={railRef}
         // 源 `chat-navigation-aids.css` 的 `.chat-prompt-jump-index`：贴会话左缘的刻度轨（宽屏才显示）。
-        className="absolute left-[max(8px,calc(50%-446px))] top-1/2 z-[8] hidden h-max max-h-[min(232px,44vh)] w-7 -translate-y-1/2 [@media(min-width:1180px)_and_(min-height:620px)]:block"
+        // 定位偏移、高度上限与宽屏媒体查询在 `./chat-navigation-aids.css` 的 `.chat-prompt-rail`。
+        className="chat-prompt-rail absolute top-1/2 z-[8] hidden h-max w-7 -translate-y-1/2"
         data-slot="chat-prompt-jump-rail"
         aria-label={t("chat.components.promptJump.title")}
       >
         <ol
-          className="m-0 grid list-none grid-flow-row auto-rows-[10px] content-start gap-y-1.5 py-[3px]"
+          className="m-0 grid list-none grid-flow-row auto-rows-2.5 content-start gap-y-1.5 py-0.75"
           data-slot="chat-prompt-jump-list"
         >
           {visiblePrompts.map(({ entry, sourceIndex }) => {
@@ -144,11 +147,11 @@ export function PromptJumpRail({ entries }: PromptJumpRailProps) {
             const displaySummary = summary || t("chat.components.promptJump.untitled");
             const isActive = entry.id === activeId;
             return (
-              <li key={entry.id} className="h-2.5 w-[26px]">
+              <li key={entry.id} className="h-2.5 w-6.5">
                 <button
                   type="button"
                   // 源 `__item`：整条刻度是按钮，父选子（hover / focus-visible）由 `group` 承担。
-                  className="group relative inline-flex h-2.5 w-[26px] min-w-0 min-h-0 cursor-pointer items-center self-start border-0 bg-transparent p-0 focus-visible:outline-none"
+                  className="group relative inline-flex h-2.5 w-6.5 min-w-0 min-h-0 cursor-pointer items-center self-start border-0 bg-transparent p-0 focus-visible:outline-none"
                   data-slot="chat-prompt-jump-item"
                   aria-controls={`chat-entry-${entry.id}`}
                   aria-current={isActive ? "location" : undefined}
@@ -174,10 +177,10 @@ export function PromptJumpRail({ entries }: PromptJumpRailProps) {
                       不依赖两条工具类的生成顺序（选中项悬停时仍是选中态的宽度/颜色，与源一致）。 */}
                   <span
                     className={cn(
-                      "h-0.5 shrink-0 rounded-full [transition:width_150ms_ease,background-color_150ms_ease] [@media(prefers-reduced-motion:reduce)]:[transition:none]",
+                      "h-0.5 shrink-0 rounded-full [transition:width_150ms_ease,background-color_150ms_ease] motion-reduce:[transition:none]",
                       isActive
-                        ? "w-[19px] bg-[#202936]"
-                        : "w-2 max-w-[19px] bg-[#cbd1d9] group-hover:w-[13px] group-hover:bg-[#6f7886] group-focus-visible:w-[13px] group-focus-visible:bg-[#6f7886]",
+                        ? "w-4.75 bg-gray-800"
+                        : "w-2 max-w-4.75 bg-gray-300 group-hover:w-3.25 group-hover:bg-gray-500 group-focus-visible:w-3.25 group-focus-visible:bg-gray-500",
                     )}
                     data-slot="chat-prompt-jump-tick"
                     aria-hidden="true"
@@ -191,16 +194,16 @@ export function PromptJumpRail({ entries }: PromptJumpRailProps) {
       {preview &&
         createPortal(
           <span
-            // 源 `__preview`（含 `> small` 与 `> span` 的三行截断）。
-            className="pointer-events-none fixed z-30 grid w-[226px] -translate-y-1/2 gap-1 rounded-[10px] border border-[#e0e5ec] bg-[rgb(255_255_255_/_97%)] px-[11px] py-[9px] text-left text-[#536178] shadow-[0_10px_28px_rgb(30_50_80_/_12%)] backdrop-blur-[10px] [@media(prefers-reduced-motion:reduce)]:[transition:none]"
+            // 源 `__preview`（含 `> small` 与 `> span` 的三行截断）；阴影在 `./chat-navigation-aids.css`。
+            className="chat-prompt-preview pointer-events-none fixed z-30 grid w-56.5 -translate-y-1/2 gap-1 rounded-lg border border-slate-200 bg-white/97 px-2.75 py-2.25 text-left text-slate-600 backdrop-blur-sm motion-reduce:[transition:none]"
             style={{ left: preview.left, top: preview.top }}
             data-slot="chat-prompt-jump-preview"
             aria-hidden="true"
           >
-            <small className="text-[9px] leading-[1.3] text-[#9aa5b5]">
+            <small className="text-3xs leading-tight text-gray-400">
               {preview.sourceIndex + 1}/{promptEntries.length}
             </small>
-            <span className="line-clamp-3 overflow-hidden text-[11px] leading-[1.5] text-[#59677c]">
+            <span className="line-clamp-3 overflow-hidden text-3xs leading-normal text-gray-500">
               {preview.entry.content.replace(/\s+/g, " ").trim() || t("chat.components.promptJump.untitled")}
             </span>
           </span>,
@@ -273,12 +276,12 @@ export function ChatSelectionAction({ contextScope, onQuote }: ChatSelectionActi
   if (!selectionAction) return null;
   return (
     <div
-      className="fixed z-[100] overflow-hidden rounded-[9px] border border-[#dfe5ed] bg-white shadow-[0_9px_26px_rgb(30_50_80_/_14%)]"
+      className="chat-selection-quote-popover fixed z-[100] overflow-hidden rounded-md border border-slate-200 bg-white"
       style={{ left: selectionAction.left, top: selectionAction.top }}
     >
       <button
         type="button"
-        className="px-3 py-2 text-[12px] font-semibold text-[#275ebd]"
+        className="px-3 py-2 text-xs font-semibold text-sky-700"
         onClick={() => {
           onQuote?.(selectionAction.text, contextScope);
           window.getSelection()?.removeAllRanges();

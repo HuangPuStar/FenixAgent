@@ -161,7 +161,7 @@ export function WorkflowList({ onEditWorkflow, onViewVersions, createRequested }
                       });
                     }}
                   />
-                  <span className="font-mono text-[11px]">{id}</span>
+                  <span className="font-mono text-3xs">{id}</span>
                 </label>
               ))}
               <Button

@@ -1,0 +1,27 @@
+/*
+ * Calendar 深层样式（原写在 `classNames` / `CalendarDayButton` 的 className 字符串里）。
+ *
+ * 为什么下沉：两处都是子代选择器（`[&>svg]:`、`[&>span]:`），属仓库禁令 FCP-WEB-02；
+ * 目标元素的类名由 react-day-picker 生成，工具类侧没有稳定的兄弟选择器可用。
+ * 其余扁平工具类（字号、间距、颜色、`rdp-*` 结构类）仍留在 `calendar.tsx` 的 `className`。
+ *
+ * 挂载点：`caption_label`（下拉标题里的箭头图标）与 `CalendarDayButton`（日期按钮）各带一个语义类名，
+ * 由本包传入 `classNames` / `className`，react-day-picker 会原样落在对应元素上。
+ *
+ * 层叠：本文件未分层（不包 `@layer`），未分层声明压过 `@layer utilities`。图标尺寸此处为 `3.5`，
+ * 与 `Chevron` 组件自带的 `size-4` 相比仍是「祖先规则胜出」，迁移前后一致。
+ */
+
+/* 下拉标题里的箭头：14px、次要色（原 `[&>svg]:size-3.5 [&>svg]:text-muted-foreground`）。 */
+.calendar-caption-label > svg {
+  width: calc(var(--spacing) * 3.5);
+  height: calc(var(--spacing) * 3.5);
+  color: var(--color-muted-foreground);
+}
+
+/* 日期按钮内的文字：小字号、弱化（原 `[&>span]:text-xs [&>span]:opacity-70`）。 */
+.calendar-day-button > span {
+  font-size: var(--text-xs);
+  line-height: var(--tw-leading, var(--text-xs--line-height));
+  opacity: 0.7;
+}

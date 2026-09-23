@@ -1,0 +1,17 @@
+/*
+ * AdminModelGatewayPage 的深层样式（与同目录 `AdminModelGatewayPage.tsx` 同名，由该文件 import）。
+ *
+ * 只搬「工具类无法表达」的两处栅格（`minmax()` / 下划线复合表达式），值逐字等价换算：
+ *   - `.model-gateway-usage-row` ← `grid-cols-[24rem_minmax(8rem,1fr)_auto]`（用量明细行）；
+ *   - `.model-gateway-overview-facts` ← `grid-cols-[auto_1fr]`（概览的键值对 `<dl>`）。
+ * 扁平工具类（`grid` / `items-center` / `gap-*` / `text-sm` 等）仍留在 `className`。
+ *
+ * 本文件不包 `@layer`：未分层才能在层叠中压过 `@layer utilities`。
+ */
+.model-gateway-usage-row {
+  grid-template-columns: 24rem minmax(8rem, 1fr) auto;
+}
+
+.model-gateway-overview-facts {
+  grid-template-columns: auto 1fr;
+}

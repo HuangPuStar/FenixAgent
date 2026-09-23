@@ -45,7 +45,7 @@ export function YamlSlidePanel({
       <div className="wf-yaml-slide-header">
         <span className="wf-yaml-slide-title">
           {t("editor.yaml_title")}
-          {hasEdits && !readOnly && <span className="ml-1 text-amber-500 text-[10px]">●</span>}
+          {hasEdits && !readOnly && <span className="ml-1 text-amber-500 text-3xs">●</span>}
         </span>
         <div style={{ display: "flex", gap: 4 }}>
           {!readOnly && (

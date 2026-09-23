@@ -1,0 +1,5 @@
+/* Keep the remove icon size scoped to the message attachment button. */
+.message-attachment-remove-button > svg {
+  width: 0.75rem;
+  height: 0.75rem;
+}

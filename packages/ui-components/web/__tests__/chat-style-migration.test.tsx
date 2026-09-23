@@ -76,18 +76,27 @@ describe("chat 样式迁移：输入岛与命令面板", () => {
       }),
     );
 
-    // 基类密度：行高 42px、搜索行 46px、滚动区 322px。
-    expect(base).toContain("min-h-[42px]");
-    expect(base).toContain("h-[46px]");
-    expect(base).toContain("h-[min(322px,46vh)]");
+    // 基类密度：行高 42px、搜索行 46px、滚动区 322px（滚动区是复合值，随样式下沉到样式表）。
+    expect(classTokens(base)).toContain("min-h-10.5");
+    expect(classTokens(base)).toContain("h-11.5");
+    expect(classTokens(base)).toContain("chat-command-scroll");
     // 面板覆盖：行高 34px、搜索行 38px、滚动区 210px、面板阴影。
-    expect(panel).toContain("min-h-[34px]");
-    expect(panel).toContain("h-[38px]");
-    expect(panel).toContain("h-[min(210px,34vh)]");
-    expect(panel).toContain("shadow-[0_5px_20px_rgb(41_58_88_/_5%)]");
+    expect(classTokens(panel)).toContain("min-h-8.5");
+    expect(classTokens(panel)).toContain("h-9.5");
+    expect(classTokens(panel)).toContain("chat-command-scroll--panel");
     // 面板字号与行首图标灰（56e6b649 的效果）逐字保留。
-    expect(panel).toContain("text-[12px]");
-    expect(panel).toContain("text-[#8a96a8]");
+    expect(classTokens(panel)).toContain("text-xs");
+    expect(classTokens(panel)).toContain("text-gray-400");
+
+    // 下沉到 `composer/CommandMenu.css` 的三组复合值（行网格 / 滚动区高度 / 容器投影）逐字核对，
+    // 避免「类名在、声明丢」——`cn()` 的同族消解在语义类上不再发生，覆盖关系改由样式表顺序决定。
+    const css = readFileSync(join(CHAT_DIR, "composer", "CommandMenu.css"), "utf8");
+    expect(css).toContain("grid-template-columns: 16px minmax(120px, max-content) minmax(0, 1fr) auto;");
+    expect(css).toContain("grid-template-columns: 16px minmax(150px, max-content) minmax(0, 1fr) auto;");
+    expect(css).toContain("grid-template-columns: 16px minmax(120px, 220px) minmax(0, 1fr) auto;");
+    expect(css).toContain("height: min(322px, 46vh);");
+    expect(css).toContain("height: min(210px, 34vh);");
+    expect(css).toContain("box-shadow: 0 5px 20px rgb(41 58 88 / 5%);");
 
     for (const name of MIGRATED_CLASS_NAMES) {
       expect(classTokens(base)).not.toContain(name);
@@ -140,8 +149,10 @@ describe("chat 样式迁移：Agent 工牌卡", () => {
     // 水印依赖 `data-badge-name` + `content: attr(...)`，契约必须保留；锚点供空状态用例断言。
     expect(badge).toContain('data-badge-name="Code Agent"');
     expect(badge).toContain('data-slot="agent-badge"');
-    // 骨架屏动画：`@keyframes` 仍在 CSS，组件按名引用。
-    expect(skeleton).toContain("animate-[agent-badge-pulse_2s_cubic-bezier(0.4,0,0.6,1)_infinite]");
+    // 骨架屏动画：`@keyframes` 仍在 CSS，按名引用它的 `animation` 随样式下沉搬进了 `shell/AgentBadge.css`
+    // （任意值写法 `animate-[…]` 已被 FCP-WEB-02 禁止，JSX 侧只剩语义类）。
+    expect(classTokens(skeleton)).toContain("agent-badge-skeleton-pulse");
+    expect(readFileSync(join(CHAT_DIR, "shell", "AgentBadge.css"), "utf8")).toContain("animation: agent-badge-pulse");
   });
 });
 
@@ -324,9 +335,16 @@ describe("chat 样式迁移：CSS 文件台账", () => {
     const referenced = sources.flatMap((rel) =>
       [...readFileSync(join(CHAT_DIR, rel), "utf8").matchAll(/animate-\[([\w-]+?)[_\]]/g)].map((match) => match[1]),
     );
+    // 工牌骨架屏的动画引用随样式下沉搬进了 `shell/AgentBadge.css`（`animation: <name> …`），两侧口径一致；
+    // 同理，chat 视图的三点脉冲/微光/高亮闪动搬进了 `view/ChatView.css`（其中暗色分支是 `animation-name`）。
+    // `animation: none`（减弱动效覆盖）不是动画名，排除。
+    const referencedFromCss = ["shell/AgentBadge.css", "view/ChatView.css"]
+      .flatMap((rel) => [...readFileSync(join(CHAT_DIR, rel), "utf8").matchAll(/animation(?:-name)?:\s*([\w-]+)/g)])
+      .map((match) => match[1])
+      .filter((name) => name !== "none");
 
-    expect(referenced.length).toBeGreaterThan(0);
-    for (const name of new Set(referenced)) {
+    expect(referenced.length + referencedFromCss.length).toBeGreaterThan(0);
+    for (const name of new Set([...referenced, ...referencedFromCss])) {
       expect(declared).toContain(name);
     }
   });

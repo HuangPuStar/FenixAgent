@@ -160,19 +160,19 @@ export function WorkflowRuns({ onSelectRun }: WorkflowRunsProps) {
                   <th className="text-left py-3 px-4 text-xs font-medium text-muted-foreground">
                     {t("runs.col_workflow")}
                   </th>
-                  <th className="text-left py-3 px-4 text-xs font-medium text-muted-foreground w-[100px]">
+                  <th className="text-left py-3 px-4 text-xs font-medium text-muted-foreground w-25">
                     {t("runs.col_status")}
                   </th>
-                  <th className="text-left py-3 px-4 text-xs font-medium text-muted-foreground w-[90px]">
+                  <th className="text-left py-3 px-4 text-xs font-medium text-muted-foreground w-22.5">
                     {t("runs.col_progress")}
                   </th>
-                  <th className="text-left py-3 px-4 text-xs font-medium text-muted-foreground w-[130px]">
+                  <th className="text-left py-3 px-4 text-xs font-medium text-muted-foreground w-32.5">
                     {t("runs.col_started")}
                   </th>
-                  <th className="text-left py-3 px-4 text-xs font-medium text-muted-foreground w-[100px]">
+                  <th className="text-left py-3 px-4 text-xs font-medium text-muted-foreground w-25">
                     {t("runs.col_duration")}
                   </th>
-                  <th className="text-right py-3 px-4 text-xs font-medium text-muted-foreground w-[80px]">
+                  <th className="text-right py-3 px-4 text-xs font-medium text-muted-foreground w-20">
                     {t("runs.col_actions")}
                   </th>
                 </tr>
@@ -193,7 +193,7 @@ export function WorkflowRuns({ onSelectRun }: WorkflowRunsProps) {
                         label={t(STATUS_LABEL_KEYS[r.status] ?? r.status)}
                         toneMap={WORKFLOW_RUN_STATUS_TONES}
                         indicator={r.status === "RUNNING" ? "pulse" : "none"}
-                        className="text-[11px]"
+                        className="text-3xs"
                       />
                     </td>
                     <td className="py-3 px-4">

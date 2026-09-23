@@ -1,3 +1,5 @@
+import "./composer-assets.css";
+
 import { FileText, Quote, X } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { UI_COMPONENTS_NS } from "../../i18n/namespace";
@@ -12,6 +14,10 @@ import { QuoteTruncatedBadge } from "./quote-truncated-badge";
  * 纯化改动点：`react-i18next` 命名空间 `components` → 包内 `UI_COMPONENTS_NS`，
  * 文案键按 `chat.components.composerAssets.*` 搬运；`@/src/lib/context-queue` →
  * `../lib/context-queue`；其余结构、类名、图标与文案插值逐字保留。
+ *
+ * 样式下沉（2026-09-22，禁令 FCP-WEB-02/03）：卡片基准宽度、图标尺寸、移除按钮的触屏常驻与
+ * 引用预览浮层的定位搬进同目录 `composer-assets.css`（类名 `.chat-composer-tile*` /
+ * `.chat-composer-quote-tooltip`），扁平工具类仍留在下方 `className`。
  */
 
 /** 输入岛中待发送的单条聊天引用。 */
@@ -42,14 +48,15 @@ export function ComposerAssets({
   const { t } = useTranslation(UI_COMPONENTS_NS);
   if (images.length === 0 && files.length === 0 && quotes.length === 0) return null;
   // 源样式表的共享声明：`.chat-composer-asset` 基类、`> img` 与 `-icon` 的同一组声明、`-remove` 按钮。
-  const assetClass = "group relative w-[76px] flex-[0_0_76px]";
-  const previewClass = "grid h-[58px] w-16 place-items-center rounded-[9px] bg-[#f1f4f8] object-cover";
-  const labelClass = "mt-1 block w-16 overflow-hidden text-[10px] text-ellipsis whitespace-nowrap text-[#526178]";
+  // 需要子代选择器 / 手写媒体查询的那部分（图标尺寸、触屏常驻、预览浮层定位）在同目录 `composer-assets.css`。
+  const assetClass = "chat-composer-tile group relative w-19";
+  const previewClass = "grid h-14.5 w-16 place-items-center rounded-md bg-slate-100 object-cover";
+  const labelClass = "mt-1 block w-16 overflow-hidden text-3xs text-ellipsis whitespace-nowrap text-slate-600";
   const removeClass =
-    "absolute -top-[6px] right-1 grid h-[22px] w-[22px] place-items-center rounded-full bg-[#3d485b] text-white opacity-0 [transition:opacity_120ms_ease] group-hover:opacity-100 group-focus-within:opacity-100 focus-visible:opacity-100 [@media(hover:none)]:opacity-100 [&>svg]:w-[13px]";
+    "chat-composer-tile-remove absolute -top-1.5 right-1 grid h-5.5 w-5.5 place-items-center rounded-full bg-gray-700 text-white opacity-0 [transition:opacity_120ms_ease] group-hover:opacity-100 group-focus-within:opacity-100 focus-visible:opacity-100";
   return (
     <div
-      className="flex flex-wrap gap-[9px] overflow-visible px-[14px] pt-3 pb-1"
+      className="flex flex-wrap gap-2.25 overflow-visible px-3.5 pt-3 pb-1"
       role="group"
       aria-label={t("chat.components.composerAssets.title")}
     >
@@ -77,7 +84,7 @@ export function ComposerAssets({
       ))}
       {files.map((file) => (
         <article key={file.path} className={assetClass} data-slot="chat-composer-asset">
-          <span className={`${previewClass} [&>svg]:w-[23px] [&>svg]:text-[#4d72b2]`}>
+          <span className={`${previewClass} chat-composer-tile-preview text-slate-500`}>
             <FileText />
           </span>
           <strong className={labelClass} title={file.name}>
@@ -91,19 +98,15 @@ export function ComposerAssets({
         </article>
       ))}
       {quotes.map((quote, index) => (
-        <article
-          key={quote.id}
-          className={`${assetClass} w-[76px] min-w-[76px] basis-[76px]`}
-          data-slot="chat-composer-quote"
-        >
-          <span className={`${previewClass} [&>svg]:w-[23px] [&>svg]:text-[#4d72b2]`}>
+        <article key={quote.id} className={`${assetClass} w-19 min-w-19 basis-19`} data-slot="chat-composer-quote">
+          <span className={`${previewClass} chat-composer-tile-preview text-slate-500`}>
             <Quote />
           </span>
           <strong className={labelClass}>
             {t("chat.components.composerAssets.quoteNumber", { count: index + 1 })}
           </strong>
           <span
-            className="absolute bottom-[calc(100%+8px)] left-0 z-20 hidden w-[min(320px,calc(100vw-48px))] max-h-[120px] overflow-hidden rounded-[9px] border border-[#dfe5ed] bg-white px-[11px] py-[9px] text-left text-[12px] leading-[1.5] text-[#526178] shadow-[0_8px_24px_rgb(38_52_77_/_14%)] [overflow-wrap:anywhere] group-hover:block group-focus-within:block"
+            className="chat-composer-quote-tooltip absolute left-0 z-20 hidden max-h-30 overflow-hidden rounded-md border border-slate-200 bg-white px-2.75 py-2.25 text-left text-xs leading-normal text-slate-600 [overflow-wrap:anywhere] group-hover:block group-focus-within:block"
             data-slot="chat-composer-quote-preview"
             role="tooltip"
           >
@@ -113,7 +116,7 @@ export function ComposerAssets({
           {quote.omittedCharacterCount > 0 && (
             // 引用被截断时右上角的溢出角标（源 `.chat-composer-asset.is-quote > small`）。
             <small
-              className="absolute top-[3px] left-12 grid h-4 w-4 place-items-center rounded-full bg-[#dbe8f8] text-[11px] font-bold text-[#4d72b2]"
+              className="absolute top-0.75 left-12 grid h-4 w-4 place-items-center rounded-full bg-blue-100 text-3xs font-bold text-slate-500"
               aria-hidden="true"
             >
               …

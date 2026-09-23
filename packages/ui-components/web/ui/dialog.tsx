@@ -3,6 +3,7 @@ import { XIcon } from "lucide-react";
 import type * as React from "react";
 
 import { cn } from "../lib/cn";
+import "./dialog.css";
 
 function Dialog({ ...props }: React.ComponentProps<typeof DialogPrimitive.Root>) {
   return <DialogPrimitive.Root data-slot="dialog" {...props} />;
@@ -43,7 +44,7 @@ function DialogOverlay({ className, ...props }: React.ComponentProps<typeof Dial
  */
 const DIALOG_CONTENT_SIZE = {
   default: "gap-4 rounded-lg p-6 shadow-lg sm:max-w-lg",
-  xl: "gap-0 rounded-xl shadow-xl sm:max-w-[960px] max-h-[90vh] overflow-hidden flex flex-col",
+  xl: "gap-0 rounded-xl shadow-xl sm:max-w-240 max-h-[90vh] overflow-hidden flex flex-col",
 } as const;
 
 function DialogContent({
@@ -74,7 +75,8 @@ function DialogContent({
         ref={ref}
         data-slot="dialog-content"
         className={cn(
-          "fixed top-[50%] left-[50%] z-50 grid w-full max-w-[calc(100%-2rem)] translate-x-[-50%] translate-y-[-50%] border bg-background duration-200 outline-none data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=closed]:zoom-out-95 data-[state=open]:animate-in data-[state=open]:fade-in-0 data-[state=open]:zoom-in-95",
+          // 宽度上限引用 `dialog.css` 的变量（不是就地写死值）：见该文件头 ② 的层叠说明。
+          "dialog-content fixed top-[50%] left-[50%] z-50 grid w-full max-w-(--dialog-content-max-width) translate-x-[-50%] translate-y-[-50%] border bg-background duration-200 outline-none data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=closed]:zoom-out-95 data-[state=open]:animate-in data-[state=open]:fade-in-0 data-[state=open]:zoom-in-95",
           DIALOG_CONTENT_SIZE[size],
           className,
         )}
@@ -87,7 +89,7 @@ function DialogContent({
           <DialogPrimitive.Close
             data-slot="dialog-close"
             className={cn(
-              "absolute top-4 right-4 rounded-xs opacity-70 ring-offset-background transition-opacity hover:opacity-100 focus:ring-2 focus:ring-ring focus:ring-offset-2 focus:outline-hidden disabled:pointer-events-none data-[state=open]:bg-accent data-[state=open]:text-muted-foreground [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4",
+              "dialog-close absolute top-4 right-4 rounded-xs opacity-70 ring-offset-background transition-opacity hover:opacity-100 focus:ring-2 focus:ring-ring focus:ring-offset-2 focus:outline-hidden disabled:pointer-events-none data-[state=open]:bg-accent data-[state=open]:text-muted-foreground [&_svg:not([class*='size-'])]:size-4",
               // xl 变体主体自成一个滚动容器且内容可为图文混排，关闭按钮需要压在内容之上
               size === "xl" && "z-10",
             )}

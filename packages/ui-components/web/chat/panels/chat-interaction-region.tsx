@@ -1,3 +1,5 @@
+import "./chat-interaction-region.css";
+
 import { ChevronDown } from "lucide-react";
 import type * as React from "react";
 import { cn } from "../../lib/cn";
@@ -19,15 +21,16 @@ import { cn } from "../../lib/cn";
  *
  * 只收敛「两张卡逐字相同的部分」，不强行统一各自的内容：权限卡有图标徽标、问题卡没有；
  * 问题卡的正文是多问题分页与选项组，这些差异仍是各自组件的事。
+ *
+ * 深层样式（宽度台阶与投影两条复合值）下沉到同目录 `./chat-interaction-region.css`，语义类名为
+ * `.chat-interaction-cards`（栈容器，源 `.chat-interaction-stack`）与 `.chat-interaction-card`
+ * （半圆卡，源 `.chat-interaction-region`）；两个源类名已在阶段四的迁移中作废，不得回流。
  */
 
-/** 卡片栈容器：比输入岛卡片每侧窄 16px 的台阶（源 `chat-design-status.css` 的 `.chat-interaction-stack`）。 */
+/** 卡片栈容器：比输入岛卡片每侧窄 16px 的台阶（源 `chat-design-status.css` 的 `.chat-interaction-stack`，宽度在 `./chat-interaction-region.css`）。 */
 export function ChatInteractionStack({ className, children }: { className?: string; children: React.ReactNode }) {
   return (
-    <div
-      className={cn("mx-auto w-[min(756px,calc(100%-64px))] [@media(max-width:720px)]:w-[calc(100%-52px)]", className)}
-      data-slot="chat-interaction-stack"
-    >
+    <div className={cn("chat-interaction-cards mx-auto", className)} data-slot="chat-interaction-stack">
       <div className="space-y-2">{children}</div>
     </div>
   );
@@ -70,7 +73,8 @@ export function ChatInteractionRegion({
 }: ChatInteractionRegionProps) {
   return (
     <section
-      className="overflow-hidden rounded-t-[14px] border-x border-t border-b-0 border-[#dde4ee] bg-white shadow-[0_12px_34px_rgb(30_64_120_/_8%)]"
+      // 源 `.chat-interaction-region` 的半圆卡（投影在 ./chat-interaction-region.css）。
+      className="chat-interaction-card overflow-hidden rounded-t-lg border-x border-t border-b-0 border-slate-200 bg-white"
       data-slot={slot}
       aria-label={label}
     >
@@ -78,20 +82,20 @@ export function ChatInteractionRegion({
         <button
           type="button"
           // 源 `.chat-interaction-region > header button`（+ strong/small/末位 svg 与折叠态旋转）
-          className="flex min-h-[40px] w-full items-center gap-[9px] px-3 py-1.5 text-[#33445d]"
+          className="flex min-h-10 w-full items-center gap-2.25 px-3 py-1.5 text-slate-700"
           aria-expanded={!collapsed}
           onClick={onToggleCollapsed}
         >
           {badge}
-          <strong className="text-[13px]">{title}</strong>
-          {hint && <small className="text-[11px] text-[#8a96a8]">{hint}</small>}
-          <ChevronDown className={cn("ml-auto w-[15px]", collapsed && "-rotate-90")} />
+          <strong className="text-xs">{title}</strong>
+          {hint && <small className="text-3xs text-gray-400">{hint}</small>}
+          <ChevronDown className={cn("ml-auto w-3.75", collapsed && "-rotate-90")} />
         </button>
       </header>
       {!collapsed && (
-        <div className="px-[14px] pt-0.5 pb-[13px]">
+        <div className="px-3.5 pt-0.5 pb-3.25">
           {children}
-          {footer && <footer className="mt-[11px] flex justify-end gap-[7px]">{footer}</footer>}
+          {footer && <footer className="mt-2.75 flex justify-end gap-1.75">{footer}</footer>}
         </div>
       )}
     </section>

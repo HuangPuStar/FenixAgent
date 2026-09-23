@@ -1,0 +1,21 @@
+/*
+ * ConnectionStatus 深层样式（原写在 `CONNECTION_DOT_GLOW` 常量里）。
+ *
+ * 为什么下沉：`shadow-[0_0_8px_rgba(...)]` 是复合表达式值（函数调用），属仓库禁令 FCP-WEB-02，
+ * 且两个连接态的差异只有色值，落在 CSS 里比在 TS 常量里拼字符串更直白。
+ * 常量本身（状态 → 光晕类名）仍留在 `connection-status.tsx`，只把类名换成语义名。
+ *
+ * 层叠：本文件未分层（不包 `@layer`），未分层声明压过 `@layer utilities`。原 `shadow-[…]` 工具类会写
+ * `--tw-shadow` 再把它拼进 `box-shadow` 复合链；圆点自身既无环也无内阴影（`StatusDot` 不带这些工具类），
+ * 复合链化简后就是这里的单条 `box-shadow`。
+ */
+
+/* 已连接：绿色光晕（原 `shadow-[0_0_8px_rgba(34,197,94,0.6)]`）。 */
+.connection-dot-glow-connected {
+  box-shadow: 0 0 8px rgba(34, 197, 94, 0.6);
+}
+
+/* 连接出错：红色光晕（原 `shadow-[0_0_8px_rgba(239,68,68,0.6)]`）。 */
+.connection-dot-glow-error {
+  box-shadow: 0 0 8px rgba(239, 68, 68, 0.6);
+}

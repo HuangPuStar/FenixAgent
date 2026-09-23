@@ -1,0 +1,26 @@
+/*
+ * Tabs 深层样式。
+ *
+ * ① `[&_svg]:pointer-events-none [&_svg]:shrink-0` 是子代选择器（FCP-WEB-02），常规下沉为
+ *    `.tabs-trigger svg`；其余扁平工具类仍留在 `tabs.tsx` 的 `className`。
+ *
+ * ② 触发器高度 `h-[calc(100%-1px)]` 是复合表达式值（FCP-WEB-02），但不能直接写成
+ *    `.tabs-trigger { height: calc(100% - 1px) }`：调用方会在 `className` 上传 `h-6` 覆盖它
+ *    （`packages/resources/task/web/pages/agent-panel/pages/agent-task-runtime-board.tsx`），
+ *    这类覆盖依赖 `tailwind-merge` 的同族冲突消解。本文件未分层（`@layer` 被仓库规范禁止），
+ *    未分层声明在层叠中一定压过 `@layer utilities`，直接下沉会把覆盖一起压掉
+ *    （触发器会从 1.5rem 顶满 TabsList 的 2.25rem）。故只把「值」下沉到变量里，`className` 保留
+ *    引用该变量的工具类：声明仍在 utilities 层，层叠位置与被覆盖能力与迁移前完全一致。
+ *    移除条件：Tailwind 主题里出现等价的命名高度 token，或调用方不再覆盖高度。
+ */
+
+/* 高度值（原 `h-[calc(100%-1px)]`）：只提供值，声明位置见文件头 ②。 */
+.tabs-trigger {
+  --tabs-trigger-height: calc(100% - 1px);
+}
+
+/* 触发器里的图标不吃指针事件、不参与收缩（原 `[&_svg]:pointer-events-none [&_svg]:shrink-0`）。 */
+.tabs-trigger svg {
+  pointer-events: none;
+  flex-shrink: 0;
+}

@@ -1,0 +1,8 @@
+/* 原 design 层 `.agent-editor-footer__actions .is-primary` 的投影；
+ * ui-components Button 自带阴影工具类，保留 !important 覆盖。 */
+.agent-form-dialog-submit {
+  --tw-shadow: 0 6px 16px var(--tw-shadow-color, rgb(39 100 231 / 22%)) !important;
+  box-shadow:
+    var(--tw-inset-shadow, 0 0 #0000), var(--tw-inset-ring-shadow, 0 0 #0000), var(--tw-ring-offset-shadow, 0 0 #0000),
+    var(--tw-ring-shadow, 0 0 #0000), var(--tw-shadow) !important;
+}

@@ -182,7 +182,7 @@ function ModelsLoading() {
         <Skeleton className="mt-2 h-4 w-80" />
       </div>
       <Skeleton className="h-10 w-full" />
-      <div className="grid min-h-[560px] grid-cols-[238px_1fr] overflow-hidden rounded-[10px]">
+      <div className="models-loading-grid grid min-h-140 overflow-hidden rounded-lg">
         <Skeleton className="h-full rounded-none" />
         <Skeleton className="h-full rounded-none bg-white" />
       </div>

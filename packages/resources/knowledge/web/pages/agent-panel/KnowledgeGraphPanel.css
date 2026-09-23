@@ -1,0 +1,13 @@
+/*
+ * KnowledgeGraphPanel 的深层样式（与同目录 `KnowledgeGraphPanel.tsx` 同名，由该文件 import）。
+ *
+ * 来源：生成进度条填充上的 `shadow-[0_0_10px_rgba(99,102,241,0.35)]`——含函数调用的复合值无法用
+ * 扁平工具类表达（仓库禁令 FCP-WEB-02）。渐变（`bg-gradient-to-r from-indigo-500 to-violet-500`）、
+ * 圆角、过渡等扁平工具类仍在 `className`；条宽是运行时数据，继续由 `style` 注入。
+ *
+ * 层叠：本文件不包 `@layer`，未分层声明压过 `@layer utilities`；该元素上没有其它 shadow-* 工具类，
+ * 不存在胜负问题。值 `0 0 10px rgb(99 102 241 / 35%)` 与原任意值逐字等价。
+ */
+.knowledge-graph-progress-fill {
+  box-shadow: 0 0 10px rgb(99 102 241 / 35%);
+}

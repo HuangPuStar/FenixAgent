@@ -52,6 +52,7 @@ import {
   ModelGatewayEmptyRow,
   ModelGatewayTable,
 } from "./model-gateway-shared";
+import "./AdminModelGatewayPage.css";
 
 /**
  * 原生表单控件的类串：本页的筛选条刻意用原生 `input` / `select`（保留原生下拉与日期选择），
@@ -571,7 +572,7 @@ function ModelGatewayDashboard({ onAuthFailure }: { onAuthFailure: () => void })
                 <>
                   {/* 预算表的 `table-fixed` / 带 `font-medium` 的表头与密钥表不同，只共用最外层容器类。 */}
                   <div className={GATEWAY_TABLE_SHELL_CLASS}>
-                    <table className="w-full min-w-[900px] table-fixed text-sm">
+                    <table className="w-full min-w-225 table-fixed text-sm">
                       <thead className="border-b bg-muted/30 text-left text-text-muted">
                         <tr>
                           <th className="w-10 px-3 py-2">
@@ -1019,12 +1020,12 @@ function UsageBreakdown({ title, items }: { title: string; items: Array<[string,
       ) : (
         <div className="space-y-4">
           {items.map(([name, spend]) => (
-            <div className="grid grid-cols-[24rem_minmax(8rem,1fr)_auto] items-center gap-4" key={name}>
+            <div className="model-gateway-usage-row grid items-center gap-4" key={name}>
               <span className="truncate font-medium" title={name}>
                 {name}
               </span>
               <Progress
-                className="h-2 bg-muted [&>[data-slot=progress-indicator]]:bg-gradient-to-r [&>[data-slot=progress-indicator]]:from-[#4b7df3] [&>[data-slot=progress-indicator]]:to-[#7565e8]"
+                className="h-2 bg-muted [&>[data-slot=progress-indicator]]:bg-gradient-to-r [&>[data-slot=progress-indicator]]:from-blue-500 [&>[data-slot=progress-indicator]]:to-indigo-500"
                 value={maxSpend > 0 ? (spend / maxSpend) * 100 : 0}
               />
               <span className="min-w-20 text-right tabular-nums text-text-muted">${spend.toFixed(2)}</span>
@@ -1193,7 +1194,7 @@ function OverviewPanel({
                 <p className="text-xs text-text-muted">{provider?.name ?? "—"}</p>
               </div>
             </div>
-            <dl className="mt-4 grid grid-cols-[auto_1fr] gap-x-4 gap-y-2 text-sm">
+            <dl className="model-gateway-overview-facts mt-4 grid gap-x-4 gap-y-2 text-sm">
               <dt className="text-text-muted">{t("modelGateway.overview.owner")}</dt>
               <dd>{provider ? `${provider.owner.email} / ${provider.owner.organizationSlug}` : "—"}</dd>
               <dt className="text-text-muted">{t("modelGateway.overview.gatewayType")}</dt>

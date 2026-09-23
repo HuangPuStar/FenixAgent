@@ -3,6 +3,8 @@
  *
  * 按职责拆分为四个部分（前端规范 §4.7 单文件 500 行）：
  *   - 品牌样式层：auth-light-brand.css（页面外壳 + 品牌列）、auth-light-form.css（表单列）
+ *   - 工具类层：LoginPage.css（同目录同名，承载本文件里以工具类写成的那部分中无法用扁平工具类
+ *     表达的深层样式，如登录方式切换 tab 的阴影）
  *   - 展示组件：login-widgets.tsx（LoginBrandPanel / LoginBrandMark / AuthInput）
  *   - 传输适配：login-transport.ts（注册开关探测、登录/注册提交）
  * 本文件只保留表单状态机与页面布局组合。
@@ -14,6 +16,7 @@ import { useTranslation } from "react-i18next";
 import { type AuthMethod, getPreferredAuthMethod, setPreferredAuthMethod } from "../lib/auth-preference";
 import "./auth-light-brand.css";
 import "./auth-light-form.css";
+import "./LoginPage.css";
 import { fetchSignupAllowed, submitLogin } from "./login-transport";
 import { AuthInput, LoginBrandMark, LoginBrandPanel } from "./login-widgets";
 
@@ -100,15 +103,13 @@ export function LoginPage() {
           <h1 className="auth-light-title">{isSignUp ? t("createAccountTitle") : t("welcomeBack")}</h1>
           <p className="auth-light-sub">{isSignUp ? t("createAccountSubtitle") : t("welcomeBackSubtitle")}</p>
 
-          <div className="mb-6 grid grid-cols-2 gap-2 rounded-xl bg-[#eef4fb] p-1.5">
+          <div className="mb-6 grid grid-cols-2 gap-2 rounded-xl bg-slate-100 p-1.5">
             <button
               type="button"
               onClick={() => switchMethod("email")}
               className={[
-                "h-10 rounded-lg text-[14px] font-semibold transition",
-                authMethod === "email"
-                  ? "bg-white text-[#176cff] shadow-[0_8px_20px_rgba(30,108,255,0.12)]"
-                  : "text-[#6d7f99]",
+                "login-method-tab h-10 rounded-lg text-sm font-semibold transition",
+                authMethod === "email" ? "bg-white text-blue-600 is-active" : "text-slate-500",
               ].join(" ")}
             >
               {t("emailTab")}
@@ -117,10 +118,8 @@ export function LoginPage() {
               type="button"
               onClick={() => switchMethod("phone")}
               className={[
-                "h-10 rounded-lg text-[14px] font-semibold transition",
-                authMethod === "phone"
-                  ? "bg-white text-[#176cff] shadow-[0_8px_20px_rgba(30,108,255,0.12)]"
-                  : "text-[#6d7f99]",
+                "login-method-tab h-10 rounded-lg text-sm font-semibold transition",
+                authMethod === "phone" ? "bg-white text-blue-600 is-active" : "text-slate-500",
               ].join(" ")}
             >
               {t("phoneTab")}

@@ -8,6 +8,7 @@ import { useTranslation } from "react-i18next";
 
 import { SANDBOX_NS } from "../../../../i18n/namespace";
 import type { SandboxInstance } from "../../../api/system-sandbox";
+import "./InstanceRow.css";
 import { RowDeleteButton } from "./RowDeleteButton";
 
 interface InstanceRowProps {
@@ -30,7 +31,7 @@ export function InstanceRow({ instance, onDetail, onProviderPayload, onDelete, o
   // 状态点既是颜色也是按钮，读屏用户只能靠 aria-label 得知状态与点击后果。
   const statusLabel = t("statusDotTitle", { status: instance.status });
   return (
-    <div className="grid grid-cols-[minmax(220px,1fr)_minmax(260px,1.2fr)_24px_auto] items-start gap-4 border-b border-border py-3 text-xs last:border-0">
+    <div className="sandbox-instance-row grid items-start gap-4 border-b border-border py-3 text-xs last:border-0">
       <span className="space-y-1">
         <span className="block">
           <b>{t("instanceId")}：</b>
@@ -66,7 +67,7 @@ export function InstanceRow({ instance, onDetail, onProviderPayload, onDelete, o
           onClick={onProviderPayload}
         />
       </span>
-      <span className="flex min-w-[260px] flex-col items-end justify-end gap-2 self-stretch">
+      <span className="flex min-w-65 flex-col items-end justify-end gap-2 self-stretch">
         <span className="flex flex-wrap justify-end gap-2">
           <Button size="sm" variant="outline" onClick={onDetail}>
             {t("detail")}

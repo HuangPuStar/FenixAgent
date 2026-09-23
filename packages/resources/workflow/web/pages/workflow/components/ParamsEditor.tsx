@@ -255,7 +255,7 @@ export function ParamsEditor({
               <SelectItem value="object">object</SelectItem>
             </SelectContent>
           </Select>
-          <label className="flex items-center gap-1 text-[10px] text-gray-500 w-16 cursor-pointer">
+          <label className="flex items-center gap-1 text-3xs text-gray-500 w-16 cursor-pointer">
             <Checkbox
               checked={v.required === true}
               onCheckedChange={(checked) => updateEntry(i, { required: !!checked })}
@@ -278,7 +278,7 @@ export function ParamsEditor({
         </div>
         {/* 第二行：默认值 */}
         <div className="flex gap-1.5 mt-1 items-start">
-          <span className="text-[10px] text-gray-400 text-right leading-8" style={{ width: "28%" }}>
+          <span className="text-3xs text-gray-400 text-right leading-8" style={{ width: "28%" }}>
             {t("editor.params_default_label")}
           </span>
           <div className="flex-1 flex">{renderDefaultControl(i, v)}</div>

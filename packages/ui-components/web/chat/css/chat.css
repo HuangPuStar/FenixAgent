@@ -13,7 +13,10 @@
  *     两处跨边界合约（`chat-activity-chain` / `chat-conversation`）随之解除，`@keyframes` 收进
  *     `chat-animations.css`。
  *   - 阶段五：命令面板的 popover/inline 外壳（无渲染者的死代码）与工牌卡的关键帧残留删除，
- *     包内只余本入口、`chat-layout.css` 与 `chat-animations.css`。
+ *     包内聚合入口只余本入口、`chat-layout.css` 与 `chat-animations.css`。
+ *   - 阶段六（2026-09 禁令整改）：无法用扁平工具类表达的深层样式按 FCP-WEB-02 下沉为
+ *     **组件同目录同名伴随表**（如 `primitives/conversation-scroll.css`），由持有该样式的模块自行
+ *     `import`。这批伴随表不经过本入口聚合，故「包内只余三份」只描述本目录的聚合层。
  *   - 唯一未完成项：`chat-layout.css`（`.acp-main-root` / `.chat-main-column` / `.chat-interface-*` 的
  *     高度链）。这些类名同时是**宿主** `apps/web/src/index.css` 与宿主
  *     `apps/web/src/pages/agent-panel/chat-layout.css` 的选择器，删类名需要宿主侧同步——

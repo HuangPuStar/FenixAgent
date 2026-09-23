@@ -23,4 +23,4 @@ export function entryKeyInputClass(invalidKey: boolean): string {
 export const ENTRY_FIELD_CLASS = "flex-1 h-8 text-xs";
 
 /** 参数类型下拉的触发项：与同一行的输入框同高同字号，宽度按最长选项（`file-list`）定死。 */
-export const ENTRY_TYPE_SELECT_CLASS = "h-8 text-xs w-[84px]";
+export const ENTRY_TYPE_SELECT_CLASS = "h-8 text-xs w-21";

@@ -123,6 +123,14 @@
   padding: 28px 32px;
   background: #f5f7fb;
 }
+
+/* 骨架屏的两栏占位：源 `grid-cols-[238px_1fr]`，与被它模拟的 `.models-workspace` 同排布
+   （左栏定宽 238px、右栏自适应）。规则与 `.agent-models-loading` 同处一文件，
+   便于改动骨架屏时一处看全。 */
+.models-loading-grid {
+  grid-template-columns: 238px 1fr;
+}
+
 @media (max-width: 980px) {
   .models-workspace {
     grid-template-columns: 1fr;

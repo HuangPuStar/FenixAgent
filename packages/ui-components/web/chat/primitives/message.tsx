@@ -14,6 +14,7 @@
 
 import type { UIMessage } from "ai";
 import { ChevronLeftIcon, ChevronRightIcon } from "lucide-react";
+import "./message.css";
 import type { ComponentProps, ErrorInfo, HTMLAttributes, ReactElement, ReactNode } from "react";
 import {
   Component,
@@ -202,7 +203,7 @@ export const MessageBranch = ({ defaultBranch = 0, onBranchChange, className, ..
 
   return (
     <MessageBranchContext.Provider value={contextValue}>
-      <div className={cn("grid w-full gap-2 [&>div]:pb-0", className)} {...props} />
+      <div className={cn("message-branch grid w-full gap-2", className)} {...props} />
     </MessageBranchContext.Provider>
   );
 };
@@ -222,7 +223,7 @@ export const MessageBranchContent = ({ children, ...props }: MessageBranchConten
 
   return childrenArray.map((branch, index) => (
     <div
-      className={cn("grid gap-2 overflow-hidden [&>div]:pb-0", index === currentBranch ? "block" : "hidden")}
+      className={cn("message-branch-content grid gap-2 overflow-hidden", index === currentBranch ? "block" : "hidden")}
       key={branch.key}
       {...props}
     >
@@ -243,13 +244,7 @@ export const MessageBranchSelector = ({ className, from, ...props }: MessageBran
     return null;
   }
 
-  return (
-    <ButtonGroup
-      className="[&>*:not(:first-child)]:rounded-l-md [&>*:not(:last-child)]:rounded-r-md"
-      orientation="horizontal"
-      {...props}
-    />
-  );
+  return <ButtonGroup className="message-branch-selector" orientation="horizontal" {...props} />;
 };
 
 export type MessageBranchPreviousProps = ComponentProps<typeof Button>;
@@ -427,7 +422,7 @@ export const MessageResponse = memo(
             // 这些节点由 streamdown 自己渲染，本包只能给容器——见 `./internal/markdown-classes`。
             // 说明：streamdown 的根节点只接收它自己的 props（未知属性不落到 DOM），所以 markdown
             // 容器无法挂 `data-slot`；对它的结构断言由 markdown 元素上的 `data-streamdown="…"` 承担。
-            className={cn(MARKDOWN_CONTENT_CLASS, "size-full [&>*:first-child]:mt-0 [&>*:last-child]:mb-0", className)}
+            className={cn(MARKDOWN_CONTENT_CLASS, "message-response size-full", className)}
             {...props}
           >
             {children}

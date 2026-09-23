@@ -136,21 +136,19 @@ export function AgentSitesCatalog(props: Props) {
           className={EMPTY_STATE_FILL_CLASS}
         />
       ) : (
-        <section className="grid grid-cols-2 gap-3.5 pt-4 max-[950px]:grid-cols-1">
+        <section className="grid grid-cols-2 gap-3.5 pt-4 max-lg:grid-cols-1">
           {props.apps.map((app) => (
             <article
-              className="min-w-0 overflow-hidden rounded-lg border border-[var(--site-line)] bg-white shadow-[0_5px_18px_rgb(36_57_92/5%)]"
+              className="site-deployment-card min-w-0 overflow-hidden rounded-lg border border-[var(--site-line)] bg-white"
               key={app.id}
             >
-              <header className="grid grid-cols-[38px_minmax(0,1fr)_30px] items-center gap-3 px-4 pt-4">
-                <span className="grid size-[38px] place-items-center rounded-lg bg-[#edf3ff] text-[var(--site-blue)] [&_svg]:w-[17px]">
+              <header className="grid items-center gap-3 px-4 pt-4">
+                <span className="site-card-icon grid size-9.5 place-items-center rounded-lg bg-indigo-50 text-[var(--site-blue)]">
                   <Globe2 />
                 </span>
                 <div className="min-w-0">
-                  <strong className="block overflow-hidden text-ellipsis whitespace-nowrap text-[13px]">
-                    {app.name}
-                  </strong>
-                  <small className="mt-0.5 block overflow-hidden text-ellipsis whitespace-nowrap font-mono text-[10px] text-[var(--site-faint)]">
+                  <strong className="block overflow-hidden text-ellipsis whitespace-nowrap text-xs">{app.name}</strong>
+                  <small className="mt-0.5 block overflow-hidden text-ellipsis whitespace-nowrap font-mono text-3xs text-[var(--site-faint)]">
                     {app.remoteAppId}
                   </small>
                 </div>
@@ -159,7 +157,7 @@ export function AgentSitesCatalog(props: Props) {
                     <Button
                       variant="ghost"
                       size="icon"
-                      className="size-[30px] text-[var(--site-muted)] [&_svg]:w-4"
+                      className="site-more-button size-7.5 text-[var(--site-muted)]"
                       aria-label={t("siteDeployment.actions.more")}
                     >
                       <MoreHorizontal />
@@ -182,12 +180,12 @@ export function AgentSitesCatalog(props: Props) {
                   </DropdownMenuContent>
                 </DropdownMenu>
               </header>
-              <p className="min-h-10 px-4 pt-3 text-[11px] text-[var(--site-muted)] leading-5">
+              <p className="min-h-10 px-4 pt-3 text-3xs text-[var(--site-muted)] leading-5">
                 {app.description || t("siteDeployment.directory.noDescription")}
               </p>
-              <footer className="mt-3 flex min-h-11 items-center gap-2.5 border-[var(--site-line)] border-t bg-[#fafbfd] px-4 text-[10px] text-[var(--site-faint)]">
-                <span className="inline-flex items-center gap-1 text-[#278d70]">
-                  <i className="size-1.5 rounded-full bg-[#31a984]" />
+              <footer className="mt-3 flex min-h-11 items-center gap-2.5 border-[var(--site-line)] border-t bg-gray-50 px-4 text-3xs text-[var(--site-faint)]">
+                <span className="inline-flex items-center gap-1 text-emerald-600">
+                  <i className="size-1.5 rounded-full bg-teal-600" />
                   {t("siteDeployment.status.published")}
                 </span>
                 <span>{t(`siteDeployment.visibility.${app.visibility}`)}</span>
@@ -201,7 +199,7 @@ export function AgentSitesCatalog(props: Props) {
                   </button>
                 )}
                 <a
-                  className="ml-auto inline-flex items-center gap-1 text-[var(--site-muted)] hover:text-[var(--site-blue)] [&_svg]:w-3"
+                  className="site-open-button ml-auto inline-flex items-center gap-1 text-[var(--site-muted)] hover:text-[var(--site-blue)]"
                   href={buildAgentSiteUrl(app.remoteAppId)}
                   target="_blank"
                   rel="noreferrer"
@@ -250,7 +248,7 @@ function SitesLoading() {
       <div className="mt-7 grid grid-cols-2 gap-4">
         {Array.from({ length: 4 }).map((_, index) => (
           // biome-ignore lint/suspicious/noArrayIndexKey: 骨架屏是静态装饰、不重排，无领域标识可用作 key，索引键不会引起元素错位；源文件位于 apps/web 时未声明 react 依赖、规则未启用。
-          <Skeleton key={index} className="h-64 rounded-[10px]" />
+          <Skeleton key={index} className="h-64 rounded-lg" />
         ))}
       </div>
     </AppPage>

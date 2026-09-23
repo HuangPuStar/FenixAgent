@@ -262,8 +262,8 @@ export function AgentHomePage() {
         {phase === "generating" && (
           <div className="agent-home-loading">
             <div className="agent-home-spinner" />
-            <div className="text-[14px] font-semibold text-[#0c1a3a]">{t("loadingTitle")}</div>
-            <div className="text-[12px] text-[#8a96b0]">{t("loadingSubtitle")}</div>
+            <div className="text-sm font-semibold text-slate-900">{t("loadingTitle")}</div>
+            <div className="text-xs text-slate-400">{t("loadingSubtitle")}</div>
           </div>
         )}
 

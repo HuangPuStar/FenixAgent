@@ -63,6 +63,7 @@ import { KnowledgeLoadFailure } from "./agent-knowledge-load-failure";
 import { AgentKnowledgeResources } from "./agent-knowledge-resources";
 import { KB_STATUS_TONES, kbStatusLabel } from "./knowledge-status";
 import { FIELD_LABEL_CLASS } from "./knowledge-typography";
+import "./AgentKnowledgeBasesPage.css";
 import "./agent-knowledge.css";
 
 /**
@@ -436,15 +437,15 @@ export function AgentKnowledgeBasesPage() {
             <Skeleton className="h-7 w-28 rounded-lg" />
             <Skeleton className="mt-2 h-3.5 w-56 rounded-md" />
           </div>
-          <Skeleton className="h-9 w-[260px] rounded-lg" />
+          <Skeleton className="h-9 w-65 rounded-lg" />
         </div>
         <div className="grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
           {Array.from({ length: 8 }, (_, i) => `kb-skeleton-${i}`).map((placeholderKey) => (
             <div
               key={placeholderKey}
-              className="rounded-2xl bg-white shadow-[0_1px_3px_rgba(0,0,0,0.04)] ring-1 ring-inset ring-[#e8edf4]/80 overflow-hidden"
+              className="knowledge-base-card-skeleton rounded-2xl bg-white ring-1 ring-inset ring-slate-200/80 overflow-hidden"
             >
-              <div className="h-1 w-full bg-[#e2e8f0]" />
+              <div className="h-1 w-full bg-slate-200" />
               <div className="flex items-center gap-4 p-5 pt-4">
                 <Skeleton className="h-14 w-14 rounded-2xl" />
                 <div className="flex-1 space-y-2.5">
@@ -569,7 +570,7 @@ export function AgentKnowledgeBasesPage() {
                     <div className="flex flex-wrap items-start justify-between gap-4">
                       <div className="min-w-0">
                         <div className="flex items-center gap-2">
-                          <h2 className="truncate text-xl font-semibold text-[#17233a]">{selectedDetail.name}</h2>
+                          <h2 className="truncate text-xl font-semibold text-slate-800">{selectedDetail.name}</h2>
                           {/* 圆点与文案此前拆在两处：一个只给圆点上色的 `getStatusDot`，一个手写
                               `bg-emerald-50 ring-emerald-200` 的 `getStatusBadge`（第三份状态色表）。
                               色表收敛到 `knowledge-status.ts` 后由 StatusBadge 一并承担，圆点回到
@@ -581,13 +582,13 @@ export function AgentKnowledgeBasesPage() {
                             indicator="dot"
                           />
                         </div>
-                        <p className="mt-1 font-mono text-[11px] text-[#94a3b8]">{selectedDetail.slug}</p>
+                        <p className="mt-1 font-mono text-3xs text-slate-400">{selectedDetail.slug}</p>
                         {selectedDetail.description && (
-                          <p className="mt-2 max-w-3xl text-[13px] leading-5 text-[#64748b]">
+                          <p className="mt-2 max-w-3xl text-xs leading-5 text-slate-500">
                             {selectedDetail.description}
                           </p>
                         )}
-                        <div className="mt-3 flex flex-wrap items-center gap-3 text-[12px] text-[#64748b]">
+                        <div className="mt-3 flex flex-wrap items-center gap-3 text-xs text-slate-500">
                           <span className="inline-flex items-center gap-1.5">
                             <File className="size-3.5" />
                             {t("card.resourcesUnit", { count: selectedDetail.resourcesCount })}
@@ -599,7 +600,7 @@ export function AgentKnowledgeBasesPage() {
                             </span>
                           )}
                           {selectedDetail.remoteId && (
-                            <span className="inline-flex min-w-0 items-center gap-1.5 text-[#94a3b8]">
+                            <span className="inline-flex min-w-0 items-center gap-1.5 text-slate-400">
                               <Globe className="size-3.5 shrink-0" />
                               <span className="truncate">Remote ID: {selectedDetail.remoteId}</span>
                             </span>
@@ -627,19 +628,19 @@ export function AgentKnowledgeBasesPage() {
                     </div>
                     <div className="knowledge-detail-summary">
                       <ConfigItem
-                        icon={<Cpu className="size-4 text-[#4f7edb]" />}
+                        icon={<Cpu className="size-4 text-blue-500" />}
                         label={t("detailConfig.embeddingModel")}
                       >
                         {selectedDetail.embeddingModel ?? t("detailConfig.notSet")}
                       </ConfigItem>
                       <ConfigItem
-                        icon={<Layers className="size-4 text-[#6f72d9]" />}
+                        icon={<Layers className="size-4 text-indigo-500" />}
                         label={t("detailConfig.parseMethod")}
                       >
                         {parseMethodLabel(selectedDetail.parseMethod)}
                       </ConfigItem>
                       <ConfigItem
-                        icon={<Scissors className="size-4 text-[#23a67a]" />}
+                        icon={<Scissors className="size-4 text-teal-600" />}
                         label={t("detailConfig.chunkMethod")}
                       >
                         {chunkMethodLabel(selectedDetail.chunkMethod)}
@@ -708,7 +709,7 @@ export function AgentKnowledgeBasesPage() {
 
                     <TabsContent value="graph" forceMount className="data-[state=inactive]:hidden">
                       {detailTab === "graph" && selectedDetail && (
-                        <div className="rounded-2xl bg-white p-6 shadow-sm ring-1 ring-inset ring-[#e8edf4]/80">
+                        <div className="rounded-2xl bg-white p-6 shadow-sm ring-1 ring-inset ring-slate-200/80">
                           <KnowledgeGraphPanel knowledgeBaseId={selectedDetail.id} canManage={canManageDetail} />
                         </div>
                       )}
@@ -808,7 +809,7 @@ export function AgentKnowledgeBasesPage() {
               value={formDescription}
               onChange={(e) => setFormDescription(e.target.value)}
               placeholder={t("form.descriptionPlaceholder")}
-              className="min-h-[72px] resize-none"
+              className="min-h-18 resize-none"
             />
           </FieldGroup>
 
@@ -822,7 +823,7 @@ export function AgentKnowledgeBasesPage() {
               />
             ) : (
               <>
-                <p className="text-[12px] text-[#94a3b8]">{t("form.configLockedAfterCreate")}</p>
+                <p className="text-xs text-slate-400">{t("form.configLockedAfterCreate")}</p>
 
                 {/* 嵌入模型 */}
                 <FieldGroup label={t("form.embeddingModel")} hint={t("form.embeddingModelHint")} required>
@@ -834,7 +835,7 @@ export function AgentKnowledgeBasesPage() {
                     <SelectTrigger className="h-10 w-full">
                       <SelectValue placeholder={t("form.embeddingModelPlaceholder")} />
                     </SelectTrigger>
-                    <SelectContent className="max-h-[320px]">
+                    <SelectContent className="max-h-80">
                       {(() => {
                         const models = options?.embeddingModels ?? [];
                         const grouped = new Map<string, Map<string, typeof models>>();
@@ -854,19 +855,19 @@ export function AgentKnowledgeBasesPage() {
                             <SelectGroup key={provider}>
                               <SelectLabel
                                 className={
-                                  "px-2 text-[11px] font-semibold uppercase tracking-wider text-[#64748b]" +
-                                  (providerIdx > 0 ? " mt-1 border-t border-[#eef2f8] pt-2.5" : "")
+                                  "px-2 text-3xs font-semibold uppercase tracking-wider text-slate-500" +
+                                  (providerIdx > 0 ? " mt-1 border-t border-slate-100 pt-2.5" : "")
                                 }
                               >
                                 {provider}
                               </SelectLabel>
                               {Array.from(instMap.entries()).map(([instance, items]) => (
                                 <Fragment key={instance}>
-                                  <SelectLabel className="pl-5 text-[11px] font-medium text-[#94a3b8]">
+                                  <SelectLabel className="pl-5 text-3xs font-medium text-slate-400">
                                     {instance}
                                   </SelectLabel>
                                   {items.map((m) => (
-                                    <SelectItem key={m.name} value={m.name} className="pl-8 text-[13px]">
+                                    <SelectItem key={m.name} value={m.name} className="pl-8 text-xs">
                                       {m.name.split("@")[0] || m.name}
                                     </SelectItem>
                                   ))}
@@ -883,25 +884,25 @@ export function AgentKnowledgeBasesPage() {
                 {/* 解析方法 */}
                 <FieldGroup label={t("form.parseMethod")} hint={t("form.parseMethodHint")}>
                   <div className="flex gap-6">
-                    <label className="inline-flex cursor-pointer items-center gap-2 rounded-md text-[13px] text-foreground select-none">
+                    <label className="inline-flex cursor-pointer items-center gap-2 rounded-md text-xs text-foreground select-none">
                       <input
                         type="radio"
                         name="parseMethod"
                         value="builtin"
                         checked={formParseMethod === "builtin"}
                         onChange={() => setFormParseMethod("builtin")}
-                        className="h-4 w-4 accent-[#1677ff]"
+                        className="h-4 w-4 accent-blue-500"
                       />
                       {t("form.parseMethodBuiltin")}
                     </label>
-                    <label className="inline-flex cursor-pointer items-center gap-2 rounded-md text-[13px] text-foreground select-none">
+                    <label className="inline-flex cursor-pointer items-center gap-2 rounded-md text-xs text-foreground select-none">
                       <input
                         type="radio"
                         name="parseMethod"
                         value="pipeline"
                         checked={formParseMethod === "pipeline"}
                         onChange={() => setFormParseMethod("pipeline")}
-                        className="h-4 w-4 accent-[#1677ff]"
+                        className="h-4 w-4 accent-blue-500"
                       />
                       {t("form.parseMethodPipeline")}
                     </label>
@@ -930,7 +931,7 @@ export function AgentKnowledgeBasesPage() {
                 {formParseMethod === "pipeline" && (
                   <FieldGroup label={t("form.pipeline")} hint={t("form.pipelineHint")}>
                     {(options?.pipelines?.length ?? 0) === 0 ? (
-                      <div className="rounded-xl border border-dashed border-[#cbd5e1] bg-[#f8fafc] px-5 py-5 shadow-sm">
+                      <div className="rounded-xl border border-dashed border-slate-300 bg-slate-50 px-5 py-5 shadow-sm">
                         <EmptyState
                           className="py-0"
                           title={t("form.noPipelines")}
@@ -1014,7 +1015,7 @@ export function AgentKnowledgeBasesPage() {
               checked={reparseDeleteOld}
               onCheckedChange={(v) => setReparseDeleteOld(!!v)}
             />
-            <label htmlFor="reparse-delete" className="text-[13px] cursor-pointer">
+            <label htmlFor="reparse-delete" className="text-xs cursor-pointer">
               {t("reparse.deleteCheckbox")}
             </label>
           </div>
@@ -1078,7 +1079,7 @@ export function AgentKnowledgeBasesPage() {
             <DialogTitle>{t("importDialog.title")}</DialogTitle>
             <DialogDescription>{t("importDialog.description")}</DialogDescription>
           </DialogHeader>
-          <div className="max-h-[400px] overflow-y-auto -mx-6 px-6">
+          <div className="max-h-100 overflow-y-auto -mx-6 px-6">
             {importLoading ? (
               <Spinner label={t("importDialog.loading")} className="flex py-16" />
             ) : unassociatedList.length === 0 ? (
@@ -1093,13 +1094,13 @@ export function AgentKnowledgeBasesPage() {
                 {unassociatedList.map((ds) => (
                   <div
                     key={ds.id}
-                    className="flex items-center justify-between rounded-xl border border-[#e2e8f0] bg-white px-4 py-3 transition-colors hover:border-[#6366f1]/30 hover:bg-[#f8f9ff]"
+                    className="flex items-center justify-between rounded-xl border border-slate-200 bg-white px-4 py-3 transition-colors hover:border-indigo-500/30 hover:bg-slate-50"
                   >
                     <div className="flex items-center gap-3 flex-1 min-w-0">
-                      <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-indigo-50 to-violet-50 ring-1 ring-inset ring-[#6366f1]/10">
-                        <BookOpen className="h-4 w-4 text-[#6366f1]" />
+                      <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-indigo-50 to-violet-50 ring-1 ring-inset ring-indigo-500/10">
+                        <BookOpen className="h-4 w-4 text-indigo-500" />
                       </div>
-                      <span className="text-[14px] font-medium text-[#0f172a] break-all">{ds.name}</span>
+                      <span className="text-sm font-medium text-slate-900 break-all">{ds.name}</span>
                     </div>
                     <Button
                       size="sm"
@@ -1109,7 +1110,7 @@ export function AgentKnowledgeBasesPage() {
                         setRenameValue(ds.name);
                         setRenameDialogOpen(true);
                       }}
-                      className="h-8 gap-1.5 text-[12px] rounded-lg shrink-0 ml-3"
+                      className="h-8 gap-1.5 text-xs rounded-lg shrink-0 ml-3"
                     >
                       <Download className="h-3.5 w-3.5" />
                       导入
@@ -1131,7 +1132,7 @@ export function AgentKnowledgeBasesPage() {
           </DialogHeader>
           <div className="space-y-4">
             <div className="space-y-2">
-              <label className="text-[13px] font-medium text-[#475569]">{t("importDialog.nameLabel")}</label>
+              <label className="text-xs font-medium text-slate-600">{t("importDialog.nameLabel")}</label>
               <Input
                 value={renameValue}
                 onChange={(e) => setRenameValue(e.target.value)}
@@ -1141,7 +1142,7 @@ export function AgentKnowledgeBasesPage() {
                   }
                 }}
                 placeholder={t("importDialog.namePlaceholder")}
-                className="h-10 text-[14px]"
+                className="h-10 text-sm"
                 autoFocus
                 onFocus={(e) => e.target.select()}
               />
@@ -1153,7 +1154,7 @@ export function AgentKnowledgeBasesPage() {
                   setRenameDialogOpen(false);
                   setRenameTarget(null);
                 }}
-                className="h-9 text-[13px] rounded-lg"
+                className="h-9 text-xs rounded-lg"
               >
                 取消
               </Button>
@@ -1164,7 +1165,7 @@ export function AgentKnowledgeBasesPage() {
                     handleImport(renameTarget.id, renameValue.trim());
                   }
                 }}
-                className="h-9 text-[13px] rounded-lg"
+                className="h-9 text-xs rounded-lg"
               >
                 {importingRemoteId === renameTarget?.id ? (
                   <>
@@ -1187,11 +1188,11 @@ export function AgentKnowledgeBasesPage() {
 /** 详情头部配置项：图标 + 标签 + 值 */
 function ConfigItem({ icon, label, children }: { icon: ReactNode; label: string; children: ReactNode }) {
   return (
-    <div className="flex min-w-0 items-center gap-3 rounded-lg bg-[#f7f9fc] px-3 py-2.5">
-      <div className="grid size-8 shrink-0 place-items-center rounded-md border border-[#e2e8f0] bg-white">{icon}</div>
+    <div className="flex min-w-0 items-center gap-3 rounded-lg bg-slate-50 px-3 py-2.5">
+      <div className="grid size-8 shrink-0 place-items-center rounded-md border border-slate-200 bg-white">{icon}</div>
       <div className="min-w-0">
-        <div className="text-[10px] font-medium uppercase tracking-[0.06em] text-[#94a3b8]">{label}</div>
-        <div className="mt-0.5 truncate text-[12px] font-medium text-[#334155]" title={String(children)}>
+        <div className="text-3xs font-medium uppercase tracking-wider text-slate-400">{label}</div>
+        <div className="mt-0.5 truncate text-xs font-medium text-gray-700" title={String(children)}>
           {children}
         </div>
       </div>
@@ -1218,11 +1219,11 @@ function FieldGroup({
   return (
     <div>
       <div className="mb-1.5 flex items-center gap-1.5">
-        {icon && <span className="shrink-0 text-[#1677ff]">{icon}</span>}
+        {icon && <span className="shrink-0 text-blue-500">{icon}</span>}
         <span className={FIELD_LABEL_CLASS}>{label}</span>
-        {required && <span className="text-[13px] text-red-500">*</span>}
+        {required && <span className="text-xs text-red-500">*</span>}
       </div>
-      {hint && <p className="mb-2 text-[12px] leading-relaxed text-[#94a3b8]">{hint}</p>}
+      {hint && <p className="mb-2 text-xs leading-relaxed text-slate-400">{hint}</p>}
       {children}
     </div>
   );

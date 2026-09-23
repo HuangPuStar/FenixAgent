@@ -1,3 +1,5 @@
+import "./MemoryDetailPanel.css";
+
 import { copyTextToClipboard } from "@fenix/ui-components/lib/clipboard";
 import { Button } from "@fenix/ui-components/ui/button";
 import { Spinner } from "@fenix/ui-components/ui/spinner";
@@ -124,7 +126,7 @@ export function MemoryDetailPanel({ memory, onClose, compact = false, inPanel = 
 
   return (
     <div
-      className={`bg-card border-2 border-primary rounded-lg ${padding} sticky top-4 max-h-[calc(100vh-120px)] overflow-y-auto`}
+      className={`memory-detail-panel-card bg-card border-2 border-primary rounded-lg ${padding} sticky top-4 overflow-y-auto`}
     >
       <div className="flex justify-between items-start mb-4">
         <h3 className={`${titleSize} font-bold text-card-foreground`}>
@@ -146,7 +148,7 @@ export function MemoryDetailPanel({ memory, onClose, compact = false, inPanel = 
         <div className={compact ? "space-y-2" : "space-y-4"}>
           {/* 文本 */}
           <div className={`${compact ? "p-2" : "p-3"} bg-muted rounded-lg`}>
-            <div className={`${compact ? "text-[10px]" : "text-xs"} font-bold text-muted-foreground uppercase mb-1`}>
+            <div className={`${compact ? "text-3xs" : "text-xs"} font-bold text-muted-foreground uppercase mb-1`}>
               {t("memoryDetailPanel.sectionFullText")}
             </div>
             <div className={`${compact ? "text-xs" : "text-sm"} whitespace-pre-wrap`}>{displayMemory.text}</div>
@@ -155,11 +157,11 @@ export function MemoryDetailPanel({ memory, onClose, compact = false, inPanel = 
           {/* Memory ID */}
           {memoryId && (
             <div>
-              <div className={`${compact ? "text-[10px]" : "text-xs"} font-bold text-muted-foreground uppercase mb-1`}>
+              <div className={`${compact ? "text-3xs" : "text-xs"} font-bold text-muted-foreground uppercase mb-1`}>
                 {t("memoryDetailPanel.sectionMemoryId")}
               </div>
               <div className="flex items-center gap-2">
-                <code className={`${compact ? "text-[9px]" : "text-xs"} font-mono text-muted-foreground`}>
+                <code className={`${compact ? "text-3xs" : "text-xs"} font-mono text-muted-foreground`}>
                   {memoryId}
                 </code>
                 <Button

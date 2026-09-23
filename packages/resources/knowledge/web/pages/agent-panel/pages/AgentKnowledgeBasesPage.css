@@ -1,0 +1,26 @@
+/*
+ * AgentKnowledgeBasesPage 的深层样式（与本页 `AgentKnowledgeBasesPage.tsx` 同名，由该文件 import）。
+ *
+ * 与同目录 `agent-knowledge.css` 的分工：那份是设计稿样式表，承载以 `.knowledge-*` 类名标记的标记
+ * （`.agent-knowledge-page` / `.knowledge-page-header-skeleton` / `.knowledge-directory` 等）；
+ * 本文件承载本页里以**工具类**写成的那部分中无法用扁平工具类表达的声明。
+ *
+ * 来源：加载态骨架卡片的 `shadow-[0_1px_3px_rgba(0,0,0,0.04)]`。刻意不并到 `shadow-sm`：后者是两层
+ * 投影（`0 1px 3px 0 rgb(0 0 0 / 10%), 0 1px 2px -1px rgb(0 0 0 / 10%)`），与骨架屏刻意的更浅单层
+ * 投影不等价——同文件详情区知识图谱 Tab 的外框卡片用的是 `shadow-sm`，两者本就不同。
+ *
+ * 层叠：本文件不包 `@layer`，未分层声明压过 `@layer utilities`。卡片同时带 `ring-1 ring-inset
+ * ring-slate-200/80`，而环与投影共用 Tailwind 的 `box-shadow` 合成链：本规则压过工具类产出的合成链，
+ * 所以必须把链原样写出（变量缺失时退化为无环），否则 inset ring 会随自定义投影一起消失。
+ * 写法与同包 `RetrievalTestPanel.css` 的 `.retrieval-test-card` 对齐（同一族卡片、同一投影 token，
+ * 但两份各留一份：两个组件可独立演进，合并成共享类会把「同一个投影」变成事实契约）。
+ * 值逐字等价换算（`rgba(0,0,0,0.04)` → `rgb(0 0 0 / 4%)`，同值不同写法），未调整任何数值。
+ */
+.knowledge-base-card-skeleton {
+  box-shadow:
+    var(--tw-inset-shadow, 0 0 #0000),
+    var(--tw-inset-ring-shadow, 0 0 #0000),
+    var(--tw-ring-offset-shadow, 0 0 #0000),
+    var(--tw-ring-shadow, 0 0 #0000),
+    0 1px 3px rgb(0 0 0 / 4%);
+}

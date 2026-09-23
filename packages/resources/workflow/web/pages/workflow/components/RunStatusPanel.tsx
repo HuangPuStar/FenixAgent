@@ -126,20 +126,20 @@ export function RunStatusPanel({
         <button
           type="button"
           onClick={handleBackToList}
-          className="flex items-center justify-center w-[22px] h-[22px] border-none bg-surface-2 rounded text-text-secondary cursor-pointer shrink-0 hover:bg-surface-hover transition-colors"
+          className="flex items-center justify-center w-5.5 h-5.5 border-none bg-surface-2 rounded text-text-secondary cursor-pointer shrink-0 hover:bg-surface-hover transition-colors"
         >
           <ArrowLeft size={12} />
         </button>
         <span className="text-xs font-semibold text-text-primary">{t("editor.run_result")}</span>
         {runSnapshot && (
           <span
-            className="inline-flex items-center gap-1 px-1.5 py-px rounded-full text-[10px] font-medium"
+            className="inline-flex items-center gap-1 px-1.5 py-px rounded-full text-3xs font-medium"
             style={{
               color: DAG_STATUS_CFG[dagStatus!]?.color ?? "var(--color-text-secondary)",
               background: DAG_STATUS_CFG[dagStatus!]?.bg ?? "var(--color-surface-2)",
             }}
           >
-            {dagStatus === "RUNNING" && <span className="w-[5px] h-[5px] rounded-full bg-brand animate-pulse" />}
+            {dagStatus === "RUNNING" && <span className="w-1.25 h-1.25 rounded-full bg-brand animate-pulse" />}
             {DAG_STATUS_CFG[dagStatus!] ? t(DAG_STATUS_CFG[dagStatus!].labelKey) : dagStatus}
           </span>
         )}
@@ -168,11 +168,11 @@ export function RunStatusPanel({
       {/* 审批卡片 */}
       {dagStatus === "SUSPENDED" && runApprovals.length > 0 && (
         <div className="p-2.5 border-b border-warning-border bg-warning-bg">
-          <div className="text-[11px] font-semibold text-warning-text mb-1.5 flex items-center gap-1">
+          <div className="text-3xs font-semibold text-warning-text mb-1.5 flex items-center gap-1">
             <ShieldCheck size={12} /> {t("editor.waiting_approval")}
           </div>
           {runApprovals.map((a) => (
-            <div key={a.nodeId} className="text-[10px] text-amber-800 mb-1.5">
+            <div key={a.nodeId} className="text-3xs text-amber-800 mb-1.5">
               <div className="font-medium mb-0.5">{t("editor.approval_node", { nodeId: a.nodeId })}</div>
               {a.displayData != null && typeof a.displayData === "object" && (
                 <div className="text-warning-text mb-1">
@@ -182,7 +182,7 @@ export function RunStatusPanel({
               <button
                 type="button"
                 onClick={() => handleApprove(a)}
-                className="px-2 py-0.5 border border-warning-border rounded bg-warning-border text-white text-[10px] font-medium cursor-pointer hover:opacity-90 transition-opacity"
+                className="px-2 py-0.5 border border-warning-border rounded bg-warning-border text-white text-3xs font-medium cursor-pointer hover:opacity-90 transition-opacity"
               >
                 {t("editor.approve")}
               </button>
@@ -193,14 +193,14 @@ export function RunStatusPanel({
 
       {/* 进度条 */}
       {runSnapshot && (
-        <div className="px-3 py-1 border-b border-border-subtle text-[10px] text-text-secondary flex justify-between">
+        <div className="px-3 py-1 border-b border-border-subtle text-3xs text-text-secondary flex justify-between">
           <span>
             {t("editor.progress_nodes", {
               completed: Object.values(runSnapshot.node_states ?? {}).filter((s) => s.status === "COMPLETED").length,
               total: Object.keys(runSnapshot.node_states ?? {}).length,
             })}
           </span>
-          <span className="font-mono text-[9px]">{activeRunId?.substring(0, 16)}...</span>
+          <span className="font-mono text-3xs">{activeRunId?.substring(0, 16)}...</span>
         </div>
       )}
 
@@ -227,7 +227,7 @@ export function RunStatusPanel({
         </TabsList>
 
         {/* 事件列表 */}
-        <TabsContent value="events" className="overflow-y-auto text-[11px]">
+        <TabsContent value="events" className="overflow-y-auto text-3xs">
           {(() => {
             const filtered = selectedRunNodeId ? runEvents.filter((e) => e.node_id === selectedRunNodeId) : runEvents;
             return filtered.length === 0 ? (
@@ -238,7 +238,7 @@ export function RunStatusPanel({
               filtered.map((evt) => (
                 <div
                   key={evt.event_id}
-                  className="px-3 py-[5px] border-b border-border-subtle flex gap-1.5 items-start"
+                  className="px-3 py-1.25 border-b border-border-subtle flex gap-1.5 items-start"
                   style={{ cursor: evt.node_id ? "pointer" : "default" }}
                   onClick={() => {
                     if (evt.node_id) setSelectedRunNodeId(evt.node_id);
@@ -248,7 +248,7 @@ export function RunStatusPanel({
                   <div className="flex-1 min-w-0">
                     <div className="flex justify-between mb-px">
                       <span className="font-medium text-text-secondary">{formatEventType(t, evt.type)}</span>
-                      <span className="text-text-muted text-[9px] shrink-0">
+                      <span className="text-text-muted text-3xs shrink-0">
                         {/* 时间取当前 locale（§9.3）：固定 zh-CN 会让英文界面显示中文格式 */}
                         {new Date(evt.timestamp).toLocaleTimeString(i18n.language, {
                           hour: "2-digit",
@@ -257,9 +257,9 @@ export function RunStatusPanel({
                         })}
                       </span>
                     </div>
-                    {evt.node_id && <span className="text-text-secondary font-mono text-[9px]">{evt.node_id}</span>}
+                    {evt.node_id && <span className="text-text-secondary font-mono text-3xs">{evt.node_id}</span>}
                     {evt.metadata && Object.keys(evt.metadata).length > 0 && (
-                      <div className="text-text-secondary text-[9px] mt-px font-mono">
+                      <div className="text-text-secondary text-3xs mt-px font-mono">
                         {formatMeta(t, evt.type, evt.metadata)}
                       </div>
                     )}
@@ -271,7 +271,7 @@ export function RunStatusPanel({
         </TabsContent>
 
         {/* 节点输出 */}
-        <TabsContent value="output" className="overflow-y-auto text-[11px]">
+        <TabsContent value="output" className="overflow-y-auto text-3xs">
           {!selectedRunNodeId ? (
             <div className="py-5 text-center text-text-secondary">{t("editor.click_node_output")}</div>
           ) : nodeOutputLoading ? (
@@ -283,12 +283,12 @@ export function RunStatusPanel({
           ) : (
             <>
               <div className="px-3 py-1.5 border-b border-border-subtle flex items-center justify-between gap-1.5">
-                <span className="text-[10px] text-text-muted font-mono">{selectedRunNodeId}</span>
+                <span className="text-3xs text-text-muted font-mono">{selectedRunNodeId}</span>
                 <button
                   type="button"
                   onClick={() => handleRerunFrom(selectedRunNodeId)}
                   disabled={running}
-                  className="flex items-center gap-1 px-2 py-0.5 border border-brand rounded bg-brand-subtle text-brand text-[10px] font-medium cursor-pointer disabled:opacity-50 hover:bg-surface-hover transition-colors"
+                  className="flex items-center gap-1 px-2 py-0.5 border border-brand rounded bg-brand-subtle text-brand text-3xs font-medium cursor-pointer disabled:opacity-50 hover:bg-surface-hover transition-colors"
                 >
                   <RefreshCw size={10} /> {t("editor.rerun_from_here")}
                 </button>

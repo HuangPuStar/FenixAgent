@@ -317,14 +317,14 @@ export function DataView({
       ) : data.table_rows?.length === 0 ? (
         /* 空状态 */
         <div className="flex flex-col items-center justify-center py-16 text-center">
-          <p className="text-[15px] font-semibold text-foreground">{t("dataView.emptyTitle")}</p>
-          <p className="mt-1 text-[13px] text-muted-foreground">{t("dataView.emptyHint")}</p>
+          <p className="text-sm font-semibold text-foreground">{t("dataView.emptyTitle")}</p>
+          <p className="mt-1 text-xs text-muted-foreground">{t("dataView.emptyHint")}</p>
           <img
             src="/images/memories-empty.webp"
             alt={t("dataView.emptyTitle")}
             className="w-[70%] max-w-full mt-6 mb-4 opacity-80"
           />
-          <p className="text-[13px] text-muted-foreground">{t("dataView.emptyFooter")}</p>
+          <p className="text-xs text-muted-foreground">{t("dataView.emptyFooter")}</p>
         </div>
       ) : (
         <>
@@ -512,7 +512,7 @@ export function DataView({
           {/* ── Table 视图 ── */}
           {!compactMode && viewMode === "table" && (
             <div className="min-h-0 min-w-0 flex-1 overflow-auto">
-              <div className="min-w-[64rem]">
+              <div className="min-w-256">
                 <div className="pb-4">
                   {filteredTableRows.length > 0 ? (
                     (() => {
@@ -574,7 +574,7 @@ export function DataView({
                                   <TableRow
                                     key={row.id || idx}
                                     onClick={() => setModalMemoryId(row.id)}
-                                    className="h-[60px] cursor-pointer hover:bg-muted/50"
+                                    className="h-15 cursor-pointer hover:bg-muted/50"
                                   >
                                     <TableCell className="py-2 align-middle">
                                       <div className="line-clamp-2 break-words text-sm leading-snug text-foreground">
@@ -586,12 +586,12 @@ export function DataView({
                                         <div className="flex min-w-0 items-center overflow-hidden">
                                           <span
                                             title={entities[0]}
-                                            className="block min-w-0 max-w-full truncate rounded-full bg-primary/10 px-1.5 py-0.5 text-[10px] font-medium text-primary"
+                                            className="block min-w-0 max-w-full truncate rounded-full bg-primary/10 px-1.5 py-0.5 text-3xs font-medium text-primary"
                                           >
                                             {entities[0]}
                                           </span>
                                           {entities.length > 1 && (
-                                            <span className="ml-1 shrink-0 text-[10px] text-muted-foreground">
+                                            <span className="ml-1 shrink-0 text-3xs text-muted-foreground">
                                               +{entities.length - 1}
                                             </span>
                                           )}
@@ -605,12 +605,12 @@ export function DataView({
                                         <div className="flex min-w-0 items-center overflow-hidden">
                                           <span
                                             title={tags[0]}
-                                            className="block min-w-0 max-w-full truncate rounded-md border border-amber-500/20 bg-amber-500/10 px-1.5 py-0.5 font-mono text-[10px] font-medium text-amber-700"
+                                            className="block min-w-0 max-w-full truncate rounded-md border border-amber-500/20 bg-amber-500/10 px-1.5 py-0.5 font-mono text-3xs font-medium text-amber-700"
                                           >
                                             #{tags[0]}
                                           </span>
                                           {tags.length > 1 && (
-                                            <span className="ml-1 shrink-0 text-[10px] text-muted-foreground">
+                                            <span className="ml-1 shrink-0 text-3xs text-muted-foreground">
                                               +{tags.length - 1}
                                             </span>
                                           )}
@@ -834,7 +834,7 @@ function TimelineView({
             >
               <ZoomOut className="h-3 w-3" />
             </Button>
-            <span className="text-[10px] px-2 min-w-[50px] text-center border-x border-border text-foreground">
+            <span className="text-3xs px-2 min-w-12.5 text-center border-x border-border text-foreground">
               {granularityLabels[granularity]}
             </span>
             <Button
@@ -869,7 +869,7 @@ function TimelineView({
             >
               <ChevronLeft className="h-3 w-3" />
             </Button>
-            <span className="text-[10px] px-2 min-w-[60px] text-center border-x border-border text-foreground">
+            <span className="text-3xs px-2 min-w-15 text-center border-x border-border text-foreground">
               {currentIndex + 1} / {timelineGroups.length}
             </span>
             <Button
@@ -895,8 +895,8 @@ function TimelineView({
       </div>
 
       {/* 时间线条目 */}
-      <div className="relative max-h-[550px] overflow-y-auto pr-2">
-        <div className="absolute left-[60px] top-0 bottom-0 w-0.5 bg-border" />
+      <div className="relative max-h-137.5 overflow-y-auto pr-2">
+        <div className="absolute left-15 top-0 bottom-0 w-0.5 bg-border" />
         {timelineGroups.map((group, groupIdx) => (
           <div key={group.key} id={`timeline-group-${groupIdx}`} className="mb-4">
             {/* 分组头 */}
@@ -904,11 +904,11 @@ function TimelineView({
               className="flex items-center mb-2 cursor-pointer hover:opacity-80"
               onClick={() => setCurrentIndex(groupIdx)}
             >
-              <div className="w-[60px] text-right pr-3">
+              <div className="w-15 text-right pr-3">
                 <span className="text-xs font-semibold text-primary">{group.label}</span>
               </div>
               <div className="w-2 h-2 rounded-full bg-primary z-10" />
-              <span className="ml-2 text-[10px] text-muted-foreground">
+              <span className="ml-2 text-3xs text-muted-foreground">
                 {group.items.length}{" "}
                 {group.items.length === 1 ? t("dataView.timelineItem") : t("dataView.timelineItems")}
               </span>
@@ -922,14 +922,14 @@ function TimelineView({
                   onClick={() => onMemoryClick(item.id)}
                   className="flex items-start cursor-pointer group hover:opacity-80"
                 >
-                  <div className="w-[60px] text-right pr-3 pt-1 flex-shrink-0">
-                    <div className="text-[10px] text-muted-foreground">
+                  <div className="w-15 text-right pr-3 pt-1 flex-shrink-0">
+                    <div className="text-3xs text-muted-foreground">
                       {new Date(item.occurred_start!).toLocaleDateString(undefined, {
                         month: "short",
                         day: "numeric",
                       })}
                     </div>
-                    <div className="text-[9px] text-muted-foreground/70">
+                    <div className="text-3xs text-muted-foreground/70">
                       {new Date(item.occurred_start!).toLocaleTimeString(undefined, {
                         hour: "2-digit",
                         minute: "2-digit",
@@ -949,7 +949,7 @@ function TimelineView({
                           .map((entity: string, _i: number) => (
                             <span
                               key={entity}
-                              className="text-[9px] px-1.5 py-0.5 rounded-full bg-primary/10 text-primary font-medium"
+                              className="text-3xs px-1.5 py-0.5 rounded-full bg-primary/10 text-primary font-medium"
                             >
                               {entity}
                             </span>

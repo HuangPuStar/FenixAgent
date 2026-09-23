@@ -1,0 +1,5 @@
+/* Keep the remove icon size scoped to the attachment remove button. */
+.prompt-input-attachment-remove-button > svg {
+  width: 0.625rem;
+  height: 0.625rem;
+}

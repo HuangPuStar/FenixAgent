@@ -10,6 +10,7 @@ import {
 } from "react";
 import { useTranslation } from "react-i18next";
 import { SECTION_INTRO } from "./agent-editor-classes";
+import "./agent-editor-controls.css";
 import {
   BUTTON,
   FIELD,
@@ -59,19 +60,14 @@ import {
 } from "./agent-editor-library-classes";
 import { type AgentEditorOption, filterAgentEditorOptions, paginateAgentEditorOptions } from "./agent-editor-model";
 
-/** 分区说明块：眉标 8px/750/等宽 + 标题 18px（760–1399 压 16px）+ 说明 12px（760–1119 收窄到 52ch）。 */
-const INTRO =
-  `${SECTION_INTRO} ` +
-  "[&>span]:text-[8px] [&>span]:[font-weight:750] [&>span]:[font-family:ui-monospace,SFMono-Regular,Menlo,monospace] " +
-  "[&>span]:tracking-[0.16em] [&>span]:text-[#3470da] " +
-  "[&>h3]:mt-[6px] [&>h3]:text-[18px] [&>h3]:[font-weight:730] [&>h3]:leading-[1.2] [&>h3]:tracking-[-0.035em] [&>h3]:text-[#17233b] " +
-  "[&>p]:mt-2 [&>p]:max-w-[590px] [&>p]:text-[12px] [&>p]:leading-[1.65] [&>p]:text-[#738098] " +
-  "[@media(min-width:760px)_and_(max-width:1399px)]:[&>h3]:text-[16px] " +
-  "[@media(min-width:760px)_and_(max-width:1399px)]:[&>p]:mt-[6px] " +
-  "[@media(min-width:760px)_and_(max-width:1119px)]:[&>p]:max-w-[52ch]";
+/**
+ * 分区说明块：眉标 8px/750/等宽 + 标题 18px（760–1399 压 16px）+ 说明 12px（760–1119 收窄到 52ch）。
+ * `> span` / `> h3` / `> p` 与两段窄屏覆盖见 `agent-editor-controls.css`（与 A2 的 `SECTION_INTRO` 同名同类）。
+ */
+const INTRO = `${SECTION_INTRO} agent-editor-section__intro`;
 /** 模型列表（`agent-model-options`）的校验态：focus ring 之外再描一圈红（源为 `[aria-invalid="true"]` 规则）。 */
 const MODEL_OPTIONS_INVALID =
-  "aria-invalid:rounded-[12px] aria-invalid:outline-2 aria-invalid:outline-offset-[3px] " +
+  "aria-invalid:rounded-lg aria-invalid:outline-2 aria-invalid:outline-offset-3 " +
   "aria-invalid:outline-[color-mix(in_srgb,var(--color-destructive,#dc2626)_45%,transparent)]";
 
 export function Intro({ eyebrow, title, description }: { eyebrow: string; title: string; description: string }) {
@@ -417,7 +413,7 @@ export function SinglePicker({
               <button
                 className={cn(
                   OPTION_ROW,
-                  Icon === Cpu ? "grid-cols-[32px_minmax(0,1fr)_16px]" : "grid-cols-[34px_minmax(0,1fr)_18px]",
+                  Icon === Cpu ? "agent-editor-option-row--model" : "agent-editor-option-row--node",
                   item.id === value && OPTION_ROW_SELECTED,
                   item.unavailable && OPTION_ROW_UNAVAILABLE,
                   item.id === value && (disabled || item.unavailable) && OPTION_ROW_SELECTED_DISABLED,
@@ -460,7 +456,7 @@ export function SinglePicker({
             ))}
           </div>
           {invalid && errorMessage && (
-            <p id="agent-editor-model-error" className="mt-2 text-[11px] text-destructive" role="alert">
+            <p id="agent-editor-model-error" className="mt-2 text-3xs text-destructive" role="alert">
               {errorMessage}
             </p>
           )}

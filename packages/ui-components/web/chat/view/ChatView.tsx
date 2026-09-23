@@ -1,3 +1,5 @@
+import "./ChatView.css";
+
 import { ArrowUpRight } from "lucide-react";
 import React, { useMemo } from "react";
 import { useTranslation } from "react-i18next";
@@ -114,7 +116,7 @@ export const ChatView = React.memo(
           <ConversationContent
             // 源 `.chat-conversation-content` 的声明；`sm:` 级重复是为了压过 `ConversationContent`
             // 自带的 `sm:py-12`（变体工具类在样式表里晚于基础工具类，仅写基础 `pt/pb` 会被它顶掉）。
-            className="min-h-full max-w-[820px] gap-0 pt-[30px] pb-2 sm:pt-[30px] sm:pb-2"
+            className="min-h-full max-w-205 gap-0 pt-7.5 pb-2 sm:pt-7.5 sm:pb-2"
             data-slot="chat-conversation-content"
           >
             {!hasMessages ? (
@@ -145,7 +147,7 @@ export const ChatView = React.memo(
                         // 链内工具行的负边距对齐改由 `inActivityChain` 透传（源为后代选择器）。
                         className={cn(
                           "relative grid gap-px mx-0 mt-0.5 mb-2 pl-8",
-                          "before:absolute before:top-[11px] before:bottom-[11px] before:left-[11px] before:w-px before:bg-[#dce3ec] before:content-['']",
+                          "before:absolute before:top-2.75 before:bottom-2.75 before:left-2.75 before:w-px before:bg-slate-200 before:content-['']",
                           followsAssistantMessage && "-mt-3.5",
                         )}
                         data-slot="chat-activity-chain"
@@ -250,34 +252,34 @@ function ChatEmptyState({
 
   return (
     <section
-      className="flex min-h-0 flex-1 flex-col items-center justify-center p-10 text-center [@media(max-width:640px)]:px-2 [@media(max-width:640px)]:py-7"
+      className="flex min-h-0 flex-1 flex-col items-center justify-center p-10 text-center max-sm:px-2 max-sm:py-7"
       data-slot="chat-empty-state"
       aria-labelledby="chat-empty-title"
     >
       <span
-        className="grid h-[46px] w-[46px] rotate-[-5deg] place-items-center rounded-[15px] border border-[#d3daf3] bg-white text-[#2463eb]"
+        className="grid h-11.5 w-11.5 rotate-[-5deg] place-items-center rounded-2xl border border-violet-200 bg-white text-blue-600"
         aria-hidden="true"
       >
-        <img className="h-[27px] w-[27px] rotate-[5deg] object-contain" src={logoSrc} alt="" />
+        <img className="h-6.75 w-6.75 rotate-[5deg] object-contain" src={logoSrc} alt="" />
       </span>
-      <small className="mt-[18px] text-[#2463eb] tracking-[0.1em] uppercase [font:700_11px_ui-monospace,monospace]">
+      <small className="mt-4.5 text-blue-600 tracking-widest uppercase [font:700_11px_ui-monospace,monospace]">
         {agentName
           ? t("chat.components.chatEmpty.readyWithAgent", { agentName })
           : t("chat.components.chatEmpty.eyebrow")}
       </small>
       <h2
         id="chat-empty-title"
-        className="my-[7px] font-[Georgia,'Songti_SC',serif] text-[32px] font-medium tracking-[-0.03em] text-[#24324a] [@media(max-width:640px)]:text-[27px]"
+        className="chat-empty-heading my-1.75 text-3xl font-medium tracking-tight text-slate-800 max-sm:text-2xl"
       >
         {title}
       </h2>
-      <p className="m-0 max-w-[460px] text-[14px] leading-[1.6] text-[#7d889b]">{description}</p>
-      <div className="mt-6 grid w-[min(460px,100%)] gap-2" data-slot="chat-empty-suggestions">
+      <p className="m-0 max-w-115 text-sm leading-relaxed text-slate-500">{description}</p>
+      <div className="chat-empty-prompt-list mt-6 grid gap-2" data-slot="chat-empty-suggestions">
         {suggestions.map((suggestion) => (
           <button
             key={suggestion}
             type="button"
-            className="flex min-w-0 cursor-pointer items-center justify-between gap-4 rounded-[10px] border border-[#dfe3e9] bg-white px-[14px] py-[11px] text-left text-[13px] text-[#444d60] [transition:border-color_150ms_ease,box-shadow_150ms_ease,transform_150ms_ease] hover:-translate-y-px hover:border-[#b9c5ed] hover:shadow-[0_6px_18px_rgb(36_99_235_/_8%)] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#2463eb]"
+            className="chat-empty-prompt-button flex min-w-0 cursor-pointer items-center justify-between gap-4 rounded-lg border border-zinc-200 bg-white px-3.5 py-2.75 text-left text-xs text-gray-600 [transition:border-color_150ms_ease,box-shadow_150ms_ease,transform_150ms_ease] hover:-translate-y-px hover:border-indigo-200 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-600"
             onClick={() => onApplySuggestedPrompt?.(suggestion)}
           >
             <span>{suggestion}</span>
@@ -296,11 +298,13 @@ function ChatEmptyState({
 /**
  * 消息条目的外层容器类名（源 `chat-design-messages.css` 的 `.chat-entry*` 间距 + 提示词导航高亮）。
  *
- * `data-[active-prompt]:` 一组承接源 `.chat-entry--active-prompt`：该状态由 `PromptJumpRail` 在运行时
- * 用 `setAttribute("data-active-prompt", "")` 打在本节点上（跨组件契约，用 data 属性替代类名）。
+ * `.chat-active-prompt-entry` 承接源 `.chat-entry--active-prompt`：该状态由 `PromptJumpRail` 在运行时
+ * 用 `setAttribute("data-active-prompt", "")` 打在本节点上（跨组件契约，用 data 属性替代类名），
+ * 对应的闪动关键帧与「减弱动效」覆盖都在同目录 `./ChatView.css`（未分层，压过工具类）。
+ * 留在 className 的只有标准变体：选中态的圆角、减弱动效下的静态底色。
  */
 const ENTRY_ACTIVE_PROMPT_CLASS =
-  "data-[active-prompt]:rounded-xl data-[active-prompt]:animate-[chat-active-prompt-flash_900ms_ease-out] [@media(prefers-reduced-motion:reduce)]:data-[active-prompt]:animate-none [@media(prefers-reduced-motion:reduce)]:data-[active-prompt]:bg-[rgb(100_116_139_/_10%)]";
+  "chat-active-prompt-entry data-[active-prompt]:rounded-xl motion-reduce:data-[active-prompt]:bg-slate-500/10";
 
 /** 按渲染项密度与条目类型给出外层容器类名（源实现的间距规则逐字保留）。 */
 function entryClassName(item: Extract<ChatRenderItem, { type: "entry" }>): string {
@@ -465,14 +469,16 @@ function LoadingIndicator() {
   return (
     <div className="flex items-center gap-3 pt-3">
       {/* 源 `chat-loading.css` 的 `.chat-loading-dots`：三点品牌色脉冲（暗色换 loadingDotBounceDark）。
-          每点的延迟写进 animation 简写，避免与 animate 工具类的生成顺序相关。 */}
-      <div className="inline-flex h-5 items-center gap-1.5" aria-hidden="true">
-        <span className="h-2 w-2 rounded-full bg-brand animate-[loadingDotBounce_1.4s_ease-in-out_-0.32s_infinite_both] [.dark_&]:animate-[loadingDotBounceDark_1.4s_ease-in-out_-0.32s_infinite_both]" />
-        <span className="h-2 w-2 rounded-full bg-brand animate-[loadingDotBounce_1.4s_ease-in-out_-0.16s_infinite_both] [.dark_&]:animate-[loadingDotBounceDark_1.4s_ease-in-out_-0.16s_infinite_both]" />
-        <span className="h-2 w-2 rounded-full bg-brand animate-[loadingDotBounce_1.4s_ease-in-out_infinite_both] [.dark_&]:animate-[loadingDotBounceDark_1.4s_ease-in-out_infinite_both]" />
+          动画（含每点延迟与暗色关键帧）在同目录 `./ChatView.css` 的 `.chat-loading-indicator > span` 上，
+          这里只留扁平工具类。 */}
+      <div className="chat-loading-indicator inline-flex h-5 items-center gap-1.5" aria-hidden="true">
+        <span className="h-2 w-2 rounded-full bg-brand" />
+        <span className="h-2 w-2 rounded-full bg-brand" />
+        <span className="h-2 w-2 rounded-full bg-brand" />
       </div>
-      {/* 源 `:where(.chat-conversation) .loading-text-shimmer`：文字微光扫过（类名已随之删除）。 */}
-      <span className="text-xs text-text-muted [background:linear-gradient(90deg,var(--color-text-muted)_0%,var(--color-brand-light)_50%,var(--color-text-muted)_100%)] [background-size:200%_100%] bg-clip-text text-transparent [-webkit-background-clip:text] [-webkit-text-fill-color:transparent] animate-[shimmerSlide_2s_ease-in-out_infinite]">
+      {/* 源 `:where(.chat-conversation) .loading-text-shimmer`：文字微光扫过（类名已随之删除）；
+          扫过动画在 `./ChatView.css` 的 `.chat-loading-shimmer`，渐变与裁切仍是任意属性工具类。 */}
+      <span className="chat-loading-shimmer text-xs text-text-muted [background:linear-gradient(90deg,var(--color-text-muted)_0%,var(--color-brand-light)_50%,var(--color-text-muted)_100%)] [background-size:200%_100%] bg-clip-text text-transparent [-webkit-background-clip:text] [-webkit-text-fill-color:transparent]">
         {t("chat.components.chatView.thinking")}
       </span>
     </div>

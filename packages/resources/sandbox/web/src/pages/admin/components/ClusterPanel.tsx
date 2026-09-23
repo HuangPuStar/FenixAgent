@@ -16,6 +16,7 @@ import { SANDBOX_NS } from "../../../../i18n/namespace";
 import { type ClusterPool, type ClusterServer, systemSandboxApi } from "../../../api/system-sandbox";
 import type { ClusterActionFeedback, ClusterServerForm } from "../sandbox-admin-types";
 import { formatHealthCheckResult, toClusterServerForm } from "../sandbox-admin-utils";
+import "./ClusterPanel.css";
 import { ClusterPoolDialog, ClusterServerDialog } from "./ClusterDialogs";
 import { ClusterServerRow } from "./ClusterServerRow";
 import { PanelErrorState, PanelLoadingState } from "./PanelStates";
@@ -124,7 +125,7 @@ export function ClusterPanel({ data, loading, error, onRefresh, onAction }: Clus
             const servers = serversByPool.get(pool.id) ?? [];
             return (
               <details key={pool.id} open className="rounded border border-border">
-                <summary className="flex cursor-pointer list-none items-center gap-3 p-3 text-sm [&::-webkit-details-marker]:hidden">
+                <summary className="cluster-pool-summary flex cursor-pointer list-none items-center gap-3 p-3 text-sm">
                   <ChevronRight className="size-4 shrink-0 transition-transform [[open]>&]:rotate-90" />
                   <span className="font-medium">{pool.name}</span>
                   <span className="font-mono text-xs text-text-muted">{pool.id}</span>

@@ -11,7 +11,7 @@ import { MessageResponse } from "../chat/primitives/message";
 import { ChatQuoteMessage } from "../chat/view/ChatQuoteMessage";
 import { AssistantBubble, UserBubble } from "../chat/view/MessageBubble";
 import { SystemMessage } from "../chat/view/SystemMessage";
-import { classTokens, MIGRATED_CLASS_NAMES, renderStreaming } from "./chat-style-migration-helpers";
+import { CHAT_DIR, classTokens, MIGRATED_CLASS_NAMES, renderStreaming } from "./chat-style-migration-helpers";
 
 describe("chat 样式迁移：消息簇", () => {
   // 用户气泡与助手消息（含思考块/操作条）渲染后不带语义类名，锚点与新密度参数生效。
@@ -65,23 +65,65 @@ describe("chat 样式迁移：消息簇", () => {
     }
   });
 
-  // markdown 排版（含 streamdown 内部 DOM）必须挂在容器上：逐条断言几条代表性声明。
-  test("markdown 排版容器带后代排版工具类", async () => {
+  // markdown 排版（含 streamdown 内部 DOM）必须挂在容器上：容器只留语义类名与扁平工具类，
+  // 选择器／复合值／媒体查询落在同目录 CSS，逐条断言几条代表性声明。
+  test("markdown 排版容器的深层样式落在同目录 CSS 里", async () => {
     const html = await renderStreaming(createElement(MessageResponse, null, "# 标题\n\n- 项\n\n> 引用"));
     const tokens = classTokens(html);
 
     for (const name of MIGRATED_CLASS_NAMES) {
       expect(tokens).not.toContain(name);
     }
-    // 元素级（源 `.chat-markdown-content` / `.chat-markdown-response`）
-    expect(tokens).toContain("text-[#27364f]");
-    expect(tokens).toContain("text-[14px]");
+    // 容器自身：语义类名 + 仍然扁平的换行约束（源 `.chat-markdown-content` / `.chat-markdown-response`）
+    expect(tokens).toContain("chat-markdown-content-styles");
     expect(tokens).toContain("wrap-anywhere");
-    // 后代：标题、列表、引用、streamdown 代码块头部
-    expect(tokens).toContain("[&_h1]:text-[22px]");
-    expect(tokens).toContain("[&_ul]:list-disc");
-    expect(tokens).toContain("[&_blockquote]:pl-0");
-    expect(tokens).toContain("[&_[data-streamdown=code-block-header]]:hidden");
+    expect(tokens).toContain("whitespace-normal");
+    // 后代规则（标题、列表、引用、streamdown 代码块头部）落在 CSS 文件里
+    const css = readFileSync(join(CHAT_DIR, "primitives", "internal", "markdown-classes.css"), "utf8");
+    expect(css).toContain("color: #27364f;");
+    expect(css).toContain("font-size: 14px;");
+    expect(css).toContain(".chat-markdown-content-styles h1 {");
+    expect(css).toContain("list-style-type: disc;");
+    expect(css).toContain('[data-streamdown="code-block-header"]');
+  });
+
+  // 深层样式下沉：`className` 只留扁平工具类与语义类名，选择器/复合值/媒体查询落在同目录 CSS。
+  test("消息气泡与引用胶囊的深层样式落在同目录 CSS 里", () => {
+    const quote = renderToStaticMarkup(
+      createElement(ChatQuoteMessage, { quote: { text: "引用正文", omittedCharacterCount: 3 }, index: 0 }),
+    );
+    const assistant = renderToStaticMarkup(
+      createElement(AssistantBubble, {
+        entry: {
+          type: "assistant_message" as const,
+          id: "a-css",
+          chunks: [
+            { type: "thought" as const, text: "想想" },
+            { type: "message" as const, text: "正文" },
+          ],
+        },
+      }),
+    );
+
+    expect(classTokens(quote)).toContain("chat-quote-summary");
+    expect(classTokens(quote)).toContain("chat-quote-preview");
+    const quoteCss = readFileSync(join(CHAT_DIR, "view", "ChatQuoteMessage.css"), "utf8");
+    expect(quoteCss).toContain(".chat-quote-summary::-webkit-details-marker");
+    expect(quoteCss).toContain(".chat-quote-summary > svg");
+    expect(quoteCss).toContain("top: calc(100% + 6px);");
+    expect(quoteCss).toContain("width: min(340px, calc(100vw - 48px));");
+    expect(quoteCss).toContain("box-shadow: 0 8px 24px rgb(38 52 77 / 14%);");
+
+    // 操作条：`opacity` / `pointer-events` / `transform` 的基础值与 group 显示态仍是工具类。
+    expect(classTokens(assistant)).toContain("chat-message-action-bar");
+    expect(classTokens(assistant)).toContain("chat-thought-trigger");
+    expect(classTokens(assistant)).toContain("group-hover/assistant:opacity-100");
+    const bubbleCss = readFileSync(join(CHAT_DIR, "view", "MessageBubble.css"), "utf8");
+    expect(bubbleCss).toContain("top: calc(100% - 2px);");
+    expect(bubbleCss).toContain("box-shadow: 0 6px 18px rgb(30 50 80 / 12%);");
+    expect(bubbleCss).toContain("@media (hover: none)");
+    expect(bubbleCss).toContain("border-radius: 14px 14px 4px 14px;");
+    expect(bubbleCss).toContain(".chat-thought-trigger > svg:first-child");
   });
 
   // Conversation 的滚动按钮只在「已向上滚动」时渲染（SSR 到不了那一支），故以源码级检查守住类名不回流。

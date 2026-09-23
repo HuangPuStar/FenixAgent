@@ -1,0 +1,13 @@
+/*
+ * ClusterPanel 的深层样式（与同目录 `ClusterPanel.tsx` 同名，由该文件 import）。
+ *
+ * 只搬「工具类无法表达」的部分，其余仍留在 `className`：
+ *   - `.cluster-pool-summary::-webkit-details-marker` ← `[&::-webkit-details-marker]:hidden`（选择器变体）。
+ * 值逐字等价换算为 `display: none`，未调整任何数值；`<summary>` 上的 `list-none` 等扁平工具类保持
+ * 原样（标准引擎靠它去掉标记，本规则只补 WebKit 的 `::-webkit-details-marker`，两者互不重叠）。
+ *
+ * 本文件不包 `@layer`：未分层才能在层叠中压过 `@layer utilities`。
+ */
+.cluster-pool-summary::-webkit-details-marker {
+  display: none;
+}

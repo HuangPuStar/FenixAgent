@@ -15,7 +15,7 @@ function WorkflowVersionsPage() {
   const onEditWorkflow = useOpenWorkflowEditor();
 
   return (
-    <div className="h-full overflow-auto bg-[#f4f7fb] px-8 py-7 text-[#14213d] dark:bg-[#1a1d23]">
+    <div className="h-full overflow-auto bg-slate-100 px-8 py-7 text-slate-800 dark:bg-zinc-900">
       <WorkflowVersions workflowId={id} onEditWorkflow={onEditWorkflow} />
     </div>
   );

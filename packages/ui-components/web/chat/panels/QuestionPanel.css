@@ -1,0 +1,17 @@
+/*
+ * QuestionPanel 的深层样式（与同目录 `QuestionPanel.tsx` 同名，由该文件 import）。
+ *
+ * 来源：源 `chat-design-status.css`（阶段四随迁移删除）的 `.chat-question-options > button > span` 段里
+ * 「工具类无法表达」的那一条（`flex` 基准值）。徽标的尺寸/圆角/底色与选项按钮的两态配色都已是扁平
+ * 工具类，仍留在 `QuestionPanel.tsx` 的 `className` 里：
+ *   - `.chat-question-option-index` ← `flex-[0_0_21px]`（源 `flex: 0 0 21px`，序号徽标不参与伸缩）。
+ *
+ * 为什么这一条必须落 CSS：`flex: 0 0 21px` 是复合值（含空格转义），仓库禁令 FCP-WEB-02 的判据之一；
+ * 与它同时生效的 `h-5.25 w-5.25`（21px）是尺寸刻度，留在 `className`。值逐字等价换算，未调整任何数值。
+ *
+ * 层叠：本文件不包 `@layer`（源样式表也未分层），未分层声明压过 `@layer utilities`；徽标上没有其它
+ * 声明 `flex` 的工具类，胜负关系与迁移前一致。
+ */
+.chat-question-option-index {
+  flex: 0 0 21px;
+}

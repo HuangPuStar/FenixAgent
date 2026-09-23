@@ -1,0 +1,68 @@
+/*
+ * CommandMenu 的深层样式（与同目录 `CommandMenu.tsx` 同名，由该文件 import）。
+ *
+ * 来源：源 `chat-design-command-menu.css`（该文件已在阶段五随迁移删除）中由本组件渲染的
+ * 「基础形态 + `--panel` 能力面板形态」两段。阶段一曾把这些声明逐条改写成 Tailwind 工具类；
+ * 其中网格列定义、投影与 `min/max` 复合值无法用扁平工具类表达（仓库禁令 FCP-WEB-02），
+ * 本轮按口径下沉到本文件。值取类串的**生效值**，逐字等价换算，未调整任何数值。
+ * 扁平工具类（尺寸、字号、间距、圆角、hover、`[transition:…]` 任意属性）仍留在 `className`。
+ *
+ * 面板形态的覆盖关系沿用源结构：源靠 `.chat-command-menu--panel .chat-command-menu-x`
+ * （特指度覆盖）表达，这里同样是「根节点挂 `--panel` 修饰类、被覆盖元素挂自身语义类」，
+ * 修饰声明一律排在基类声明之后（同特指度时靠后胜出，与源一致）。
+ *
+ * 为什么类名不复用源 `.chat-command-menu*`：宿主 `apps/web/src/index.css` 与迁移守卫
+ * （`web/__tests__/chat-style-migration-helpers.ts` 的 `MIGRATED_CLASS_NAMES`）都把源类名列为
+ * 「不得回流」，故用新语义名。
+ *
+ * 未下沉：`activeClassName(panel)` 里的 `shadow-[inset_2px_0_var(--color-brand)]` 是 CSS 变量引用，
+ * 属允许的逃生舱口；`group-*` / `hover:` 等标准变体按口径留在 `className`。
+ */
+
+/* 菜单容器（源 `.chat-command-menu` 的投影）：基类形态 8px×28px 中性投影。 */
+.chat-command-surface {
+  box-shadow: 0 8px 28px rgb(41 58 88 / 10%);
+}
+
+/* 能力面板形态的容器（源 `.chat-command-menu--panel`）：更浅更聚拢的投影。 */
+.chat-command-surface--panel {
+  box-shadow: 0 5px 20px rgb(41 58 88 / 5%);
+}
+
+/* 行（源 `.chat-command-menu-item`）：图标列 16px + 名称列（自适应）+ 描述列（吃满剩余）+ 尾列。 */
+.chat-command-row {
+  grid-template-columns: 16px minmax(120px, max-content) minmax(0, 1fr) auto;
+}
+
+/* 面板形态的行（源 `.chat-command-menu--panel .chat-command-menu-item`）：名称列放宽到 150px。 */
+.chat-command-row--panel {
+  grid-template-columns: 16px minmax(150px, max-content) minmax(0, 1fr) auto;
+}
+
+/*
+ * 面板形态的 MCP 行（源 `.chat-command-menu--panel .chat-command-menu-mcp`）：名称列改为
+ * 「最少 120px、最多 220px」，与技能行左对齐、长名称不挤压描述列。该类名只在 panel 形态下渲染。
+ */
+.chat-command-row--mcp {
+  grid-template-columns: 16px minmax(120px, 220px) minmax(0, 1fr) auto;
+}
+
+/* 搜索行图标（源 `.chat-command-menu-search > svg`）：不参与伸缩，固定 15px 基准。 */
+.chat-command-search-icon {
+  flex: 0 0 15px;
+}
+
+/* 面板形态的搜索行图标（源同名面板规则）：基准放宽到 16px。 */
+.chat-command-search-icon--panel {
+  flex: 0 0 16px;
+}
+
+/* 结果滚动区（源 `.chat-command-menu-scroll`）：最高 322px，但不高于 46vh。 */
+.chat-command-scroll {
+  height: min(322px, 46vh);
+}
+
+/* 面板形态的滚动区（源同名面板规则）：最高 210px / 34vh，给输入岛留出空间。 */
+.chat-command-scroll--panel {
+  height: min(210px, 34vh);
+}

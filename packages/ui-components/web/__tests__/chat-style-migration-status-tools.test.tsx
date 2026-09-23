@@ -29,6 +29,11 @@ function toolRow(inActivityChain: boolean): string {
   return renderToStaticMarkup(createElement(ToolCallRow, { tool: TOOL, onPreviewFile: () => {}, inActivityChain }));
 }
 
+/** 读取 chat 组件自身的（非 `chat/css/` 聚合入口下的）样式表原文，供静态断言用。 */
+function readChatSource(relPath: string): string {
+  return readFileSync(join(CHAT_DIR, relPath), "utf8");
+}
+
 /** 断言一段渲染结果里没有任何已迁移的语义类名（逐 token 精确比对）。 */
 function expectNoLegacyClasses(html: string): void {
   const tokens = classTokens(html);
@@ -57,9 +62,13 @@ describe("chat 样式迁移：状态与交互面板", () => {
     expectNoLegacyClasses(html);
     expect(html).toContain('data-slot="chat-interaction-stack"');
     expect(html).toContain('data-slot="chat-permission-region"');
-    // 宽度台阶（源 `.chat-interaction-stack`）与窄屏收窄（源 responsive 片）都在。
-    expect(html).toContain("w-[min(756px,calc(100%-64px))]");
-    expect(html).toContain("[@media(max-width:720px)]:w-[calc(100%-52px)]");
+    // 宽度台阶（源 `.chat-interaction-stack`）与窄屏收窄（源 responsive 片）已下沉到 `panels/chat-interaction-region.css`
+    // 的 `.chat-interaction-cards`（两条复合值），`className` 里只剩扁平的 `mx-auto`。
+    expect(classTokens(html)).toContain("chat-interaction-cards");
+    const interactionCss = readChatSource("panels/chat-interaction-region.css");
+    expect(interactionCss).toContain("width: min(756px, calc(100% - 64px))");
+    expect(interactionCss).toContain("@media (width < 48rem)");
+    expect(interactionCss).toContain("width: calc(100% - 52px)");
   });
 
   // 提问面板：选项按钮的选中/未选中互斥两态、窄屏隐藏页签式文案都由工具类承担。
@@ -92,9 +101,9 @@ describe("chat 样式迁移：状态与交互面板", () => {
 
     expectNoLegacyClasses(html);
     expect(html).toContain('data-slot="chat-question-region"');
-    // 未选中态：hover 变蓝底蓝字；选中态才带 `bg-[#f0f5ff]`（两态互斥，不靠生成顺序）。
-    expect(html).toContain("hover:bg-[#f0f5ff]");
-    expect(html).not.toContain("bg-[#f0f5ff] text-[#245fc9]");
+    // 未选中态：hover 变蓝底蓝字；选中态才带 `bg-blue-50 text-blue-700`（两态互斥，不靠生成顺序）。
+    expect(html).toContain("hover:bg-blue-50 hover:text-blue-700");
+    expect(html).not.toContain("bg-blue-50 text-blue-700");
   });
 
   // 状态面板：页签互斥两态、窄屏隐藏页签文字、行内状态色都由工具类表达。
@@ -133,11 +142,11 @@ describe("chat 样式迁移：状态与交互面板", () => {
     expect(html).toContain('data-slot="chat-status-panel"');
     expect(html).toContain('data-slot="chat-status-list"');
     // 页签：默认灰 / 选中蓝底蓝字（互斥两态）+ 窄屏隐藏文字。
-    expect(html).toContain("bg-[#f1f5fc] text-[#285eb8]");
-    expect(html).toContain("[@media(max-width:720px)]:hidden");
+    expect(html).toContain("bg-slate-100 text-sky-700");
+    expect(html).toContain("max-md:hidden");
     // 行首状态色：completed → 绿、in_progress → 橙。
-    expect(html).toContain("text-[#25a47a]");
-    expect(html).toContain("text-[#d28a27]");
+    expect(html).toContain("text-teal-600");
+    expect(html).toContain("text-yellow-600");
 
     // 失败任务只在 tasks 页签下渲染（默认页签是 todo），故单独渲染一次断言红色状态色。
     const failedOnly = renderToStaticMarkup(
@@ -163,14 +172,14 @@ describe("chat 样式迁移：状态与交互面板", () => {
         changedFiles: [],
       }),
     );
-    expect(failedOnly).toContain("text-[#db5d56]");
+    expect(failedOnly).toContain("text-red-400");
     expectNoLegacyClasses(failedOnly);
 
     // 变更文件行的「新增标绿」只在 changes 页签下渲染，而该页签默认折叠（组件既有行为），
     // SSR 触达不到那一支，故按源码级断言守住这两个互斥色值。
     const source = readFileSync(join(CHAT_DIR, "panels", "chat-status-panel.tsx"), "utf8");
-    expect(source).toContain('"text-[10px] text-[#259a70]"');
-    expect(source).toContain('"text-[10px] text-[#8a96a8]"');
+    expect(source).toContain('"text-3xs text-emerald-600"');
+    expect(source).toContain('"text-3xs text-gray-400"');
   });
 });
 
@@ -183,9 +192,17 @@ describe("chat 样式迁移：工具时间线", () => {
     expect(html).toContain('data-slot="chat-tool-call-row"');
     expect(html).toContain('data-slot="chat-tool-call-file-link"');
     expect(html).toContain('data-slot="chat-tool-call-details-button"');
-    // 行容器四种网格列与图标尺寸（源 `.chat-tool-call-row` / `.tool-call-row-icon`）。
-    expect(html).toContain("grid-cols-[22px_minmax(0,1fr)_auto_auto]");
-    expect(html).toContain("h-[22px]");
+    // 行容器四种网格列与图标尺寸（源 `.chat-tool-call-row` / `.tool-call-row-icon`）已下沉到
+    // `timeline/ToolCallRow.css`，`className` 里只留语义类名。
+    const tokens = classTokens(html);
+    expect(tokens).toContain("chat-tool-call-grid");
+    expect(tokens).toContain("chat-tool-call-icon");
+    // 文件链接态下 meta 槽的 `flex: 0 1 auto`（源 `.tool-call-row-meta` 的 file-preview 分支）。
+    expect(tokens).toContain("chat-tool-call-meta-inline");
+    const toolCss = readChatSource("timeline/ToolCallRow.css");
+    expect(toolCss).toContain("grid-template-columns: 22px minmax(0, 1fr) auto auto");
+    expect(toolCss).toContain("flex: 0 0 22px");
+    expect(toolCss).toContain("width: calc(var(--spacing) * 3.75)");
   });
 
   // 活动链内的工具行左移 32px 抵消链的 pl-8（源 `.chat-activity-chain .tool-call-row-compact`）。
@@ -207,11 +224,15 @@ describe("chat 样式迁移：工具时间线", () => {
     expect(html).toContain('data-slot="chat-prompt-jump-list"');
     expect(html).toContain('data-slot="chat-prompt-jump-item"');
     expect(html).toContain('data-slot="chat-prompt-jump-tick"');
-    // 宽屏才显示（源 `@media (min-width: 1180px) and (min-height: 620px)`，含端点同义表达）。
-    expect(html).toContain("[@media(min-width:1180px)_and_(min-height:620px)]:block");
+    // 宽屏才显示：源 `@media (min-width: 1180px) and (min-height: 620px)` 已下沉到组件同目录的
+    // `chat-navigation-aids.css`（`.chat-prompt-rail`），`className` 里只留 `hidden` 兜底。
+    expect(classTokens(html)).toContain("chat-prompt-rail");
+    expect(readChatSource("view/chat-navigation-aids.css")).toContain(
+      "@media (min-width: 1180px) and (min-height: 620px)",
+    );
     // 选中刻度与其余刻度互斥（选中态不带 hover 变宽类）。
-    expect(html).toContain("w-[19px] bg-[#202936]");
-    expect(html).toContain("group-hover:w-[13px]");
+    expect(html).toContain("w-4.75 bg-gray-800");
+    expect(html).toContain("group-hover:w-3.25");
   });
 });
 
@@ -226,11 +247,16 @@ describe("chat 样式迁移：加载指示与窄屏适配", () => {
     );
 
     expectNoLegacyClasses(html);
-    // 用 token 列表断言（`&` 在 HTML 里被转义成 `&amp;`，原字符串比对会假失败）。
+    // 动画（含每点延迟与暗色关键帧）已下沉到 `ChatView.css` 的 `.chat-loading-indicator > span`
+    // 与 `.chat-loading-shimmer`；`className` 里只剩尺寸/颜色类，故这里改断言语义类与样式表契约。
     const tokens = classTokens(html);
-    expect(tokens).toContain("animate-[loadingDotBounce_1.4s_ease-in-out_-0.32s_infinite_both]");
-    expect(tokens).toContain("[.dark_&]:animate-[loadingDotBounceDark_1.4s_ease-in-out_-0.32s_infinite_both]");
-    expect(tokens).toContain("animate-[shimmerSlide_2s_ease-in-out_infinite]");
+    expect(tokens).toContain("chat-loading-indicator");
+    expect(tokens).toContain("chat-loading-shimmer");
+    const chatViewCss = readChatSource("view/ChatView.css");
+    expect(chatViewCss).toContain("animation: loadingDotBounce 1.4s ease-in-out infinite both");
+    expect(chatViewCss).toContain("animation-delay: -0.32s");
+    expect(chatViewCss).toContain("animation-name: loadingDotBounceDark");
+    expect(chatViewCss).toContain("animation: shimmerSlide 2s ease-in-out infinite");
   });
 
   // 两条旧跨边界合约已解除：类名不再出现在任何消费方的 `className` 里（源码级检查）。
@@ -255,8 +281,11 @@ describe("chat 样式迁移：加载指示与窄屏适配", () => {
       .replace(/\/\/[^\n]*/g, "")
       .replace(/\/\*[\s\S]*?\*\//g, "");
 
-    expect(classExpressions).not.toContain("chat-activity-chain");
-    expect(classExpressions).not.toContain("chat-conversation");
+    // 逐 token 精确比对：`classExpressions` 是拼接串，子串匹配会把新类的合法前缀（如
+    // `chat-conversation-scroll-button`）误判成旧类名 `chat-conversation` 回流。
+    const classTokensInSources = classExpressions.split(/\s+/).filter(Boolean);
+    expect(classTokensInSources).not.toContain("chat-activity-chain");
+    expect(classTokensInSources).not.toContain("chat-conversation");
     // 工具行改为按 `inActivityChain` 传参（属性名出现即说明替代写法在位）。
     expect(sources.map((rel) => readFileSync(join(CHAT_DIR, rel), "utf8")).join("\n")).toContain("inActivityChain");
   });

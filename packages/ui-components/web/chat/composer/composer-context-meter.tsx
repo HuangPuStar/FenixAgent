@@ -37,14 +37,14 @@ export function ComposerContextMeter({ usage }: { usage?: ContextUsage | null })
     // 计数与图标色取自源 `.chat-composer-context` 及其 `[data-known]` 两支：组件在 `!known` 时直接返回 null，
     // 故 `data-known` 恒存在、图标恒为主题蓝 `#3e75dc`（源的灰支 `#a4afbf` 不可达），此处按生效值直写。
     <span
-      className="group inline-flex h-7 shrink-0 items-center gap-[5px] px-1.5 text-[11px] text-[#8a96a8]"
+      className="group inline-flex h-7 shrink-0 items-center gap-1.25 px-1.5 text-3xs text-gray-400"
       data-known
       data-slot="chat-composer-context"
       title={title}
     >
-      <CircleGauge className="h-4 w-4 text-[#3e75dc]" />
+      <CircleGauge className="h-4 w-4 text-blue-500" />
       <span className="hidden group-hover:inline">{t("chat.components.chatComposer.context")}</span>
-      <strong className="text-[10px] font-medium [@media(max-width:720px)]:hidden">
+      <strong className="text-3xs font-medium max-md:hidden">
         {`${formatTokenCount(total)}${knownLimit ? ` / ${formatTokenCount(limit)}` : ""}`}
       </strong>
     </span>

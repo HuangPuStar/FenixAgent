@@ -1,5 +1,6 @@
 import { ArrowDownIcon, UserIcon } from "lucide-react";
 import type { ComponentProps, ReactNode } from "react";
+import "./conversation-scroll.css";
 import { useCallback } from "react";
 import { useTranslation } from "react-i18next";
 import { StickToBottom, useStickToBottomContext } from "use-stick-to-bottom";
@@ -81,10 +82,10 @@ export const ConversationScrollButton = ({ className, ...props }: ConversationSc
 
   return (
     <Button
-      // 源 `conversation.css` 的 `.chat-scroll-to-latest`：尺寸/底色/阴影/backdrop 与 hover 配色。
-      // `has-[>svg]:px-[11px]` 用于压过 Button `size="sm"` 的 `has-[>svg]:px-2.5`（同变体同级）。
+      // 尺寸/底色/阴影/backdrop 与 hover 配色在 `conversation-scroll.css`；
+      // 该表未分层，因此其 `padding-inline: 11px` 稳定压过 Button `size="sm"` 的 `has-[>svg]:px-2.5`。
       className={cn(
-        "h-[30px] w-auto gap-1.5 rounded-full border-0 bg-[rgb(255_255_255_/_96%)] px-[11px] text-[12px] font-medium text-[#475569] shadow-[0_6px_18px_rgb(30_50_80_/_12%)] backdrop-blur-[10px] hover:bg-white hover:text-[#334155] has-[>svg]:px-[11px]",
+        "chat-conversation-scroll-button w-auto gap-1.5 rounded-full border-0 font-medium hover:bg-white",
         className,
       )}
       onClick={handleScrollToBottom}

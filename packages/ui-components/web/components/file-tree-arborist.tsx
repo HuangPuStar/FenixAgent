@@ -21,6 +21,7 @@ import { useTranslation } from "react-i18next";
 import { UI_COMPONENTS_NS } from "../i18n/namespace";
 import { cn } from "../lib/cn";
 import { FileTypeIcon } from "./file-icon-helper";
+import "./file-tree-arborist.css";
 import type { ParsedFileNode } from "./file-tree-model";
 
 /** 行高与缩进；行高同时用于 sticky 目录条的可见行索引换算。 */
@@ -29,17 +30,19 @@ const INDENT = 12;
 
 /**
  * 行内操作按钮（新建 / 刷新）的样式；由原先的 `.file-tree-row-action` 及其 `:hover` / `:focus-visible`
- * / `svg` 规则逐条翻译而来，26px 方块 + 14px 图标。
+ * / `svg` 规则逐条翻译而来，26px 方块 + 14px 图标。图标尺寸下沉到 `file-tree-arborist.css`，
+ * 其余扁平工具类留在下面常量里。
  */
 const ROW_ACTION_CLASS =
-  "inline-grid size-[26px] place-items-center rounded-[5px] text-text-muted hover:bg-surface-2 hover:text-text-primary focus-visible:bg-surface-2 focus-visible:text-text-primary [&_svg]:size-[14px]";
+  "file-tree-row-action inline-grid size-6.5 place-items-center rounded-sm text-text-muted hover:bg-surface-2 hover:text-text-primary focus-visible:bg-surface-2 focus-visible:text-text-primary";
 
 /**
  * 删除按钮样式。原 `.file-tree-row-action--delete` 在靠后的规则里整体覆盖了悬停配色（底色改危险色浅底、
  * 文字改危险色），这里直接写成独立一份，避免与通用悬停类在同属性上争夺优先级。
+ * 图标尺寸与通用态同值，合并写在 `file-tree-arborist.css` 里。
  */
 const ROW_ACTION_DANGER_CLASS =
-  "inline-grid size-[26px] place-items-center rounded-[5px] text-text-muted hover:bg-destructive/10 hover:text-destructive focus-visible:bg-destructive/10 focus-visible:text-destructive [&_svg]:size-[14px]";
+  "file-tree-row-action--delete inline-grid size-6.5 place-items-center rounded-sm text-text-muted hover:bg-destructive/10 hover:text-destructive focus-visible:bg-destructive/10 focus-visible:text-destructive";
 
 export interface FileTreeArboristProps {
   data: ParsedFileNode[];
@@ -126,7 +129,7 @@ export function FileTreeArborist({
     >
       {stickyFolder && (
         <div
-          className="pointer-events-none absolute inset-x-0 top-0 z-[2] flex h-8 items-center gap-0.5 border-b border-border-subtle bg-surface-2 px-2.5 text-[12px] font-normal text-text-secondary [&_svg]:size-4 [&_svg]:text-inherit"
+          className="file-tree-arborist-sticky-folder pointer-events-none absolute inset-x-0 top-0 z-[2] flex h-8 items-center gap-0.5 border-b border-border-subtle bg-surface-2 px-2.5 text-xs font-normal text-text-secondary"
           aria-hidden
         >
           <FolderOpen />
@@ -190,7 +193,7 @@ function FileTreeNode({
       ref={dragHandle}
       style={{ ...style, paddingLeft: node.level * INDENT + 8 }}
       className={cn(
-        "group/row relative box-border flex max-w-full min-w-0 cursor-pointer items-center gap-0.5 overflow-hidden rounded-[2px] pe-1.5",
+        "group/row relative box-border flex max-w-full min-w-0 cursor-pointer items-center gap-0.5 overflow-hidden rounded-xs pe-1.5",
         // 原 `.is-selected` 与 `:hover` 两条规则里，选中态在靠后位置整体覆盖悬停底色与文字色，
         // 这里按互斥两态写出，避免两条同属性工具类靠生成顺序决定胜负。
         node.isSelected ? "bg-brand/10 text-brand" : "text-text-secondary hover:bg-surface-2/70",
@@ -202,7 +205,7 @@ function FileTreeNode({
     >
       <button
         type="button"
-        className="inline-grid size-6 shrink-0 place-items-center [&>svg]:size-4"
+        className="file-tree-arborist-toggle inline-grid size-6 shrink-0 place-items-center"
         aria-label={data.name}
         onClick={data.isDir ? handleToggle : undefined}
       >
@@ -219,14 +222,14 @@ function FileTreeNode({
         )}
       </button>
       <span
-        className="block w-0 min-w-0 flex-auto overflow-hidden text-ellipsis whitespace-nowrap text-[12px]"
+        className="block w-0 min-w-0 flex-auto overflow-hidden text-ellipsis whitespace-nowrap text-xs"
         title={data.name}
       >
         {data.name}
       </span>
       <span
         data-slot="tree-item-actions"
-        className="absolute top-1/2 right-1 z-[1] flex shrink-0 -translate-y-1/2 items-center gap-px bg-[linear-gradient(90deg,transparent,var(--color-surface-2)_18px)] pl-[18px] opacity-0 transition-opacity duration-[120ms] ease-[ease] group-hover/row:opacity-100 group-focus-within/row:opacity-100"
+        className="absolute top-1/2 right-1 z-[1] flex shrink-0 -translate-y-1/2 items-center gap-px bg-[linear-gradient(90deg,transparent,var(--color-surface-2)_18px)] pl-4.5 opacity-0 transition-opacity duration-[120ms] ease-[ease] group-hover/row:opacity-100 group-focus-within/row:opacity-100"
       >
         {data.isDir && (
           <button

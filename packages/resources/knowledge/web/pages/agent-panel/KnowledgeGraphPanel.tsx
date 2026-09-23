@@ -1,5 +1,7 @@
 "use client";
 
+import "./KnowledgeGraphPanel.css";
+
 import type { ElementDatum, Graph, IElementEvent } from "@antv/g6";
 import { EmptyState } from "@fenix/ui-components/config/EmptyState";
 import {
@@ -33,8 +35,8 @@ const POLL_INTERVAL_MS = 3000;
 
 /** tooltip 中不同元素类型的颜色 */
 const TooltipColorMap: Record<string, string> = {
-  node: "text-[#0f172a]",
-  edge: "text-[#6366f1]",
+  node: "text-slate-900",
+  edge: "text-indigo-500",
 };
 
 export function KnowledgeGraphPanel({ knowledgeBaseId, canManage = false }: KnowledgeGraphPanelProps) {
@@ -158,7 +160,7 @@ export function KnowledgeGraphPanel({ knowledgeBaseId, canManage = false }: Know
 
             return items
               .flatMap((item) => {
-                const colorCls = TooltipColorMap[e.targetType as string] ?? "text-[#0f172a]";
+                const colorCls = TooltipColorMap[e.targetType as string] ?? "text-slate-900";
                 const title = (item?.name as string) || (item?.id as string) || "";
                 const et = (item?.entity_type as string) || "";
                 const w = item?.weight as number | undefined;
@@ -356,7 +358,7 @@ export function KnowledgeGraphPanel({ knowledgeBaseId, canManage = false }: Know
             variant="outline"
             size="sm"
             disabled={!canManage}
-            className="text-[12px] h-8 rounded-lg border-[#e2e8f0] hover:border-red-300 hover:text-red-500 hover:bg-red-50 transition-all duration-150"
+            className="text-xs h-8 rounded-lg border-slate-200 hover:border-red-300 hover:text-red-500 hover:bg-red-50 transition-all duration-150"
             onClick={() => setDeleteConfirmOpen(true)}
           >
             <Trash2 className="h-3.5 w-3.5 mr-1.5" />
@@ -366,7 +368,7 @@ export function KnowledgeGraphPanel({ knowledgeBaseId, canManage = false }: Know
         <Button
           size="sm"
           disabled={generating || !canManage}
-          className="text-[12px] h-8 rounded-lg shadow-md shadow-[#6366f1]/20 bg-[#6366f1] hover:bg-[#5558e6] transition-all duration-150"
+          className="text-xs h-8 rounded-lg shadow-md shadow-indigo-500/20 bg-indigo-500 hover:bg-indigo-500 transition-all duration-150"
           onClick={handleGenerate}
         >
           {generating ? (
@@ -380,24 +382,24 @@ export function KnowledgeGraphPanel({ knowledgeBaseId, canManage = false }: Know
 
       {/* 进度条 */}
       {generating && progress && (
-        <div className="space-y-2.5 rounded-xl bg-[#f8fafc] border border-[#eef2f6] p-4">
-          <div className="flex items-center justify-between text-[12px]">
-            <span className="font-medium text-[#64748b]">{t("graph.generating")}...</span>
-            <span className="font-bold text-[#6366f1] tabular-nums">{Math.round(progress.progress * 100)}%</span>
+        <div className="space-y-2.5 rounded-xl bg-slate-50 border border-slate-100 p-4">
+          <div className="flex items-center justify-between text-xs">
+            <span className="font-medium text-slate-500">{t("graph.generating")}...</span>
+            <span className="font-bold text-indigo-500 tabular-nums">{Math.round(progress.progress * 100)}%</span>
           </div>
-          <div className="h-2 rounded-full bg-[#e2e8f0] overflow-hidden">
+          <div className="h-2 rounded-full bg-slate-200 overflow-hidden">
             <div
-              className="h-full rounded-full bg-gradient-to-r from-[#6366f1] to-[#8b5cf6] shadow-[0_0_10px_rgba(99,102,241,0.35)] transition-all duration-500"
+              className="knowledge-graph-progress-fill h-full rounded-full bg-gradient-to-r from-indigo-500 to-violet-500 transition-all duration-500"
               style={{ width: `${Math.round(progress.progress * 100)}%` }}
             />
           </div>
-          {progress.progressMsg && <p className="text-[11px] text-[#94a3b8] truncate">{progress.progressMsg}</p>}
+          {progress.progressMsg && <p className="text-3xs text-slate-400 truncate">{progress.progressMsg}</p>}
         </div>
       )}
 
       {/* 加载态 */}
       {graphLoading && (
-        <div className="flex items-center justify-center min-h-[400px]">
+        <div className="flex items-center justify-center min-h-100">
           <Spinner size="lg" label={t("graph.loading")} />
         </div>
       )}
@@ -410,27 +412,27 @@ export function KnowledgeGraphPanel({ knowledgeBaseId, canManage = false }: Know
 
       {/* 空态 */}
       {!graphLoading && !graphError && !graphData && !generating && (
-        <div className="grid min-h-96 place-content-center rounded-xl bg-[#f8fafc] border border-[#eef2f6]">
+        <div className="grid min-h-96 place-content-center rounded-xl bg-slate-50 border border-slate-100">
           <EmptyState icon={<Network />} title={t("graph.empty")} description={t("graph.emptyHint")} />
         </div>
       )}
 
       {/* G6 力导向图 */}
       {!graphLoading && graphData && nodeCount > 0 && (
-        <div className="rounded-xl bg-white border border-[#eef2f6] overflow-hidden shadow-sm">
+        <div className="rounded-xl bg-white border border-slate-100 overflow-hidden shadow-sm">
           {/* 顶栏：节点/边计数 + 操作提示 */}
-          <div className="flex items-center justify-between px-4 py-2.5 border-b border-[#eef2f6] bg-[#fafbfc]">
-            <div className="flex items-center gap-4 text-[12px] text-[#64748b]">
+          <div className="flex items-center justify-between px-4 py-2.5 border-b border-slate-100 bg-gray-50">
+            <div className="flex items-center gap-4 text-xs text-slate-500">
               <span className="flex items-center gap-1.5">
-                <span className="inline-block h-2.5 w-2.5 rounded-full bg-[#6366f1]" />
+                <span className="inline-block h-2.5 w-2.5 rounded-full bg-indigo-500" />
                 {t("graph.nodes")}: {nodeCount}
               </span>
               <span className="flex items-center gap-1.5">
-                <span className="inline-block h-0.5 w-4 rounded bg-[#94a3b8]" />
+                <span className="inline-block h-0.5 w-4 rounded bg-slate-400" />
                 {t("graph.edges")}: {edgeCount}
               </span>
             </div>
-            <span className="text-[11px] text-[#94a3b8]">{t("graph.networkHint")}</span>
+            <span className="text-3xs text-slate-400">{t("graph.networkHint")}</span>
           </div>
           {/* G6 画布 */}
           <div ref={containerRef} className="w-full" style={{ height: "560px" }}>

@@ -173,16 +173,14 @@ export function CronEditor({ value, timezone = "", inputId, onChange, error }: C
             {desc ? (
               <>
                 <div className="text-sm font-medium text-text-bright">{desc}</div>
-                <div className="text-[11px] text-text-muted">
-                  {isPreset ? t("cron.preset") : t("cron.parsedResult")}
-                </div>
+                <div className="text-3xs text-text-muted">{isPreset ? t("cron.preset") : t("cron.parsedResult")}</div>
               </>
             ) : (
               <div className="text-sm text-text-muted">{t("cron.customCron")}</div>
             )}
           </div>
           <div className="flex items-center gap-1.5 flex-1">
-            <span className="text-[11px] text-text-muted shrink-0 font-mono">cron:</span>
+            <span className="text-3xs text-text-muted shrink-0 font-mono">cron:</span>
             <Input
               id={inputId}
               value={isComposing ? composingValue : value}

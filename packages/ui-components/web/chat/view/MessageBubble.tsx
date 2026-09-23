@@ -1,3 +1,5 @@
+import "./MessageBubble.css";
+
 import { ChevronDown, Copy, File, Quote, TriangleAlert } from "lucide-react";
 import { type MutableRefObject, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
@@ -37,24 +39,23 @@ const FILE_REFERENCE_PATTERN = /@\.\/[^\s]+/g;
 /**
  * 助手消息操作条的样式（源 `chat-design-messages.css` 的 `.chat-message-actions` 段）。
  *
- * - 常驻声明 + `@media (hover: none)`（触屏上始终可见）与 `prefers-reduced-motion`（取消过渡）两条
- *   媒体查询按源逐字表达；媒体查询不改变特指度，故它们排在基础声明之后、按生成顺序生效。
+ * - `.chat-message-action-bar`（同目录 `./MessageBubble.css`）承接定位偏移、阴影与
+ *   `@media (hover: none)`（触屏上始终可见）那一组；`prefers-reduced-motion` 取消过渡仍是工具类。
  * - 显示态由助手消息根节点的**具名 group**（`group/assistant`）驱动，替代源
  *   `.chat-assistant-message:hover / :focus-within` 的父选子；用具名 group 避免命中外层无关的 group。
  */
 const MESSAGE_ACTIONS_CLASS = [
-  "pointer-events-none absolute left-0 top-[calc(100%-2px)] z-[4] flex w-max max-w-full min-w-0 gap-[3px]",
-  "rounded-[9px] border border-[#e4eaf2] bg-white p-[3px] opacity-0 shadow-[0_6px_18px_rgb(30_50_80_/_12%)]",
+  "chat-message-action-bar pointer-events-none absolute left-0 z-[4] flex w-max max-w-full min-w-0 gap-0.75",
+  "rounded-md border border-slate-200 bg-white p-0.75 opacity-0",
   "-translate-y-0.5 [transition:opacity_120ms_ease,visibility_120ms_ease,transform_120ms_ease]",
   "group-hover/assistant:pointer-events-auto group-hover/assistant:translate-y-0 group-hover/assistant:opacity-100",
   "group-focus-within/assistant:pointer-events-auto group-focus-within/assistant:translate-y-0 group-focus-within/assistant:opacity-100",
-  "[@media(hover:none)]:pointer-events-auto [@media(hover:none)]:translate-y-0 [@media(hover:none)]:opacity-100",
-  "[@media(prefers-reduced-motion:reduce)]:[transition:none]",
+  "motion-reduce:[transition:none]",
 ].join(" ");
 
 /** 操作条里的图标按钮（源 `.chat-message-actions button` 与 `… svg`）。 */
 const MESSAGE_ACTION_BUTTON_CLASS =
-  "grid h-6 w-6 place-items-center rounded-md text-[#8a97aa] hover:bg-[#f3f6fa] hover:text-[#52627a]";
+  "grid h-6 w-6 place-items-center rounded-md text-gray-400 hover:bg-slate-100 hover:text-slate-600";
 
 /**
  * 将权威消息正文中的既有文件引用拆成文本和附件展示片段，不改变消息协议。
@@ -153,7 +154,7 @@ export function UserBubble({ entry, envId, onOpenWorkspaceFile }: UserBubbleProp
               </MessageAttachments>
             )}
             {/* 文本内容 — 品牌色淡底 + 折叠 */}
-            <div className="relative overflow-hidden rounded-[14px_14px_4px_14px] border border-[#e4eaf2] bg-white text-[#27364f]">
+            <div className="chat-user-message-shell relative overflow-hidden border border-slate-200 bg-white text-slate-700">
               <div
                 ref={contentRef}
                 className="min-w-0 max-w-full px-4 py-2.5 text-sm font-display leading-relaxed whitespace-pre-wrap wrap-anywhere [word-break:break-word]"
@@ -318,8 +319,8 @@ export function AssistantBubble({
               // Chunks lack a unique identifier.
               // biome-ignore lint/suspicious/noArrayIndexKey: 协议块本身没有唯一 id（源文件同款写法）。本包 package.json 声明了 react 依赖，biome 因而启用 react 域规则；源宿主 packages/agent-runtime 未声明 react，规则未启用。chunks 只整体替换、不重排，索引键不会引起元素错位。
               <Reasoning key={i} isStreaming={thoughtStreaming} className="mb-0">
-                <ReasoningTrigger className="text-[13px] leading-[1.45] text-[#8d9aab] hover:text-[#748297] [&>svg:first-child]:hidden [&>svg:last-child]:ml-0.5" />
-                <ReasoningContent className="mt-1.5 text-[#68768b]">
+                <ReasoningTrigger className="chat-thought-trigger text-xs leading-normal text-gray-400 hover:text-slate-500" />
+                <ReasoningContent className="mt-1.5 text-slate-500">
                   <ThoughtContent text={chunk.text} isStreaming={thoughtStreaming} />
                 </ReasoningContent>
               </Reasoning>
@@ -337,7 +338,7 @@ export function AssistantBubble({
           return (
             // Chunks lack a unique identifier.
             // biome-ignore lint/suspicious/noArrayIndexKey: 同上前提——协议块无唯一 id，且本包启用了 react 域规则；chunks 不重排。
-            <div key={i} className="min-w-0 max-w-full text-[14px] text-[#27364f] leading-[1.75]">
+            <div key={i} className="min-w-0 max-w-full text-sm text-slate-700 leading-relaxed">
               <MessageResponse envId={envId}>{chunk.text}</MessageResponse>
             </div>
           );
@@ -394,7 +395,7 @@ function UserImageAttachment({ image }: { image: UserMessageImage }) {
         <MessageAttachment alt={alt} data={{ type: "file", mediaType: image.mimeType, url: src }} />
       </Button>
       <Dialog open={open} onOpenChange={setOpen}>
-        <DialogContent className="max-w-[min(92vw,960px)] p-3 bg-white">
+        <DialogContent className="chat-message-image-dialog p-3 bg-white">
           <DialogTitle className="sr-only">{t("chat.components.messageBubble.imagePreview")}</DialogTitle>
           <img src={src} alt={alt} className="max-h-[82vh] w-full object-contain" />
         </DialogContent>

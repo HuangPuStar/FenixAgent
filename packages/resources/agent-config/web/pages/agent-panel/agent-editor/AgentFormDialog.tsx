@@ -55,6 +55,7 @@ import {
 } from "./agent-editor-model";
 import { useAgentEditor } from "./use-agent-editor";
 import "./agent-editor-retained.css";
+import "./AgentFormDialog.css";
 
 export type AgentFormDialogProps =
   | {
@@ -335,7 +336,7 @@ function AgentEditorBody(
             {!readOnly && form.formState.isDirty && (
               // design 层 `.agent-editor-root .agent-editor-reset`：灰字 + 透明底。
               <Button
-                className="!bg-transparent !text-[#7d8b9f]"
+                className="!bg-transparent !text-slate-400"
                 type="button"
                 variant="ghost"
                 onClick={() => form.reset()}
@@ -352,7 +353,7 @@ function AgentEditorBody(
               {!readOnly && (
                 <Button
                   // design 层 `.agent-editor-footer__actions .is-primary`：品牌底 + 127px 最小宽度 + 投影。
-                  className="!min-w-[127px] !border-[#2764e7] !bg-[#2764e7] !text-[#fff] !shadow-[0_6px_16px_rgb(39_100_231_/_22%)]"
+                  className="agent-form-dialog-submit !min-w-31.75 !border-blue-600 !bg-blue-600 !text-white"
                   type="submit"
                   disabled={editor.loading || editor.saving || !!editor.loadError}
                 >

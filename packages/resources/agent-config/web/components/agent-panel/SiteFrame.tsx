@@ -147,13 +147,13 @@ export function SiteFrame({ remoteAppId, name, createdByAgentConfigId, createdBy
         <span className="text-xs text-text-muted truncate flex-1 min-w-0" title={name}>
           {name}
         </span>
-        <code className="rounded bg-surface-2 px-1.5 py-0.5 text-[10px] text-text-dim font-mono flex-shrink-0">
+        <code className="rounded bg-surface-2 px-1.5 py-0.5 text-3xs text-text-dim font-mono flex-shrink-0">
           {remoteAppId}
         </code>
         {createdByAgentConfigId && (
           <button
             type="button"
-            className="text-[10px] text-text-dim hover:text-primary hover:underline cursor-pointer flex-shrink-0"
+            className="text-3xs text-text-dim hover:text-primary hover:underline cursor-pointer flex-shrink-0"
             onClick={handleNavigateToCreator}
             title={`创建者: ${createdByAgentConfigName || createdByAgentConfigId}`}
           >
@@ -185,11 +185,11 @@ export function SiteFrame({ remoteAppId, name, createdByAgentConfigId, createdBy
             <div className="absolute right-0 top-full mt-1.5 z-50 bg-surface-1 rounded-md border border-border shadow-lg p-3">
               <div className="flex flex-col items-center gap-2">
                 {/* 站点名称 */}
-                <span className="text-xs font-medium text-text-primary truncate max-w-[140px]" title={name}>
+                <span className="text-xs font-medium text-text-primary truncate max-w-35" title={name}>
                   {name}
                 </span>
                 {/* 二维码区域 */}
-                <div className="w-[120px] h-[120px] rounded-md border border-border/30 bg-white flex items-center justify-center overflow-hidden">
+                <div className="w-30 h-30 rounded-md border border-border/30 bg-white flex items-center justify-center overflow-hidden">
                   {qrDataUrl ? (
                     <img src={qrDataUrl} alt={`QR code for ${name}`} className="w-full h-full object-contain" />
                   ) : (

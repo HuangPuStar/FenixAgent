@@ -16,7 +16,7 @@ export function QuoteTruncatedBadge({ omittedCharacterCount }: { omittedCharacte
   const { t } = useTranslation(UI_COMPONENTS_NS);
   if (omittedCharacterCount <= 0) return null;
   return (
-    <small className="mt-1 block text-[10px] text-[#8a5b16]">
+    <small className="mt-1 block text-3xs text-yellow-800">
       {t("chat.components.composerAssets.quoteTruncatedBadge", { count: omittedCharacterCount })}
     </small>
   );

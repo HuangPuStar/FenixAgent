@@ -157,7 +157,7 @@ export function ProdViewsPanel({ agentId }: ProdViewsPanelProps) {
                     label={view.enabled ? t("panel.enabled") : t("panel.disabled")}
                     toneMap={PROD_VIEW_STATUS_TONES}
                     indicator="dot"
-                    className="shrink-0 text-[10px] px-1.5 py-px"
+                    className="shrink-0 text-3xs px-1.5 py-px"
                   />
                 </div>
                 {/* 描述 */}

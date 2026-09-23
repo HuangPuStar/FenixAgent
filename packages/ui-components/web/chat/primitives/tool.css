@@ -1,0 +1,4 @@
+/* Tool output tables should use the full width of their result container. */
+.tool-output-content table {
+  width: 100%;
+}

@@ -413,7 +413,7 @@ export function AlgorithmsPage() {
                   <span className="text-sm font-bold text-text-primary">{algo.name}</span>
                   <Badge
                     variant="outline"
-                    className="bg-green-50 text-green-600 border-green-200 text-[10px] px-1.5 py-0 h-auto"
+                    className="bg-green-50 text-green-600 border-green-200 text-3xs px-1.5 py-0 h-auto"
                   >
                     即插即用
                   </Badge>
@@ -422,7 +422,7 @@ export function AlgorithmsPage() {
               </div>
             </div>
             <div className="flex items-center gap-2 mt-auto">
-              <span className="text-[11px] text-text-muted">{algo.categories.join(" · ")}</span>
+              <span className="text-3xs text-text-muted">{algo.categories.join(" · ")}</span>
               <div className="flex-1" />
               <Button
                 variant="ghost"

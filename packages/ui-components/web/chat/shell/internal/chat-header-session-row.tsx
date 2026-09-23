@@ -64,7 +64,7 @@ export function ChatHeaderSessionRow({
       <div className="flex items-center gap-1 px-4 py-1.5">
         <MessageSquare className="h-3.5 w-3.5 flex-shrink-0 opacity-50 text-text-muted" />
         <input
-          className="flex-1 text-[13px] font-display bg-transparent border-b border-brand text-text-primary outline-none px-1 py-0.5"
+          className="flex-1 text-xs font-display bg-transparent border-b border-brand text-text-primary outline-none px-1 py-0.5"
           value={editTitle}
           onChange={(e) => onEditTitleChange(e.target.value)}
           onKeyDown={(e) => {
@@ -99,7 +99,7 @@ export function ChatHeaderSessionRow({
         title={session.title || session.sessionId}
       >
         <MessageSquare className="h-3.5 w-3.5 flex-shrink-0 opacity-50" />
-        <span className="text-[13px] font-display truncate leading-snug flex-1 min-w-0">{displayTitle}</span>
+        <span className="text-xs font-display truncate leading-snug flex-1 min-w-0">{displayTitle}</span>
         {isActive && <span className="h-1.5 w-1.5 rounded-full bg-brand flex-shrink-0" aria-hidden />}
       </Button>
       {/* 悬停时显示操作按钮 */}

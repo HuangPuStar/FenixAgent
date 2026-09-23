@@ -22,7 +22,7 @@ export function AlgorithmDetailDialog({ algorithm, open, onClose }: AlgorithmDet
           `max-w-[680px]` 分属两个分组，谁也压不过谁），680px 只在窄屏生效；`max-h-[85vh]` / `overflow-auto`
           则确实覆盖了变体默认的 90vh / overflow-hidden。这是原 XLDialog 版本的实际渲染结果，
           size 变体化时逐字保留，未顺手改动视觉。 */}
-      <DialogContent size="xl" className="p-6 max-w-[680px] max-h-[85vh] overflow-auto">
+      <DialogContent size="xl" className="p-6 max-w-170 max-h-[85vh] overflow-auto">
         {/* 头部 */}
         <DialogHeader>
           <div className="flex items-center gap-3">
@@ -84,7 +84,7 @@ export function AlgorithmDetailDialog({ algorithm, open, onClose }: AlgorithmDet
                 <h4 className="text-xs font-bold text-text-primary mt-4 mb-2">{t("algorithms.scenesHeading")}</h4>
                 <div className="flex gap-1.5 flex-wrap">
                   {algorithm.scenes.map((s) => (
-                    <span key={s} className="text-[11px] text-text-secondary bg-surface-1 px-2 py-0.5 rounded">
+                    <span key={s} className="text-3xs text-text-secondary bg-surface-1 px-2 py-0.5 rounded">
                       {s}
                     </span>
                   ))}
@@ -96,7 +96,7 @@ export function AlgorithmDetailDialog({ algorithm, open, onClose }: AlgorithmDet
           {/* 右栏：代码块 */}
           <div className="flex-1 min-w-0">
             <div className="flex items-center justify-between mb-2">
-              <span className="text-[10px] text-text-muted font-semibold tracking-wider">PYTHON</span>
+              <span className="text-3xs text-text-muted font-semibold tracking-wider">PYTHON</span>
             </div>
             <pre className="bg-slate-900 text-slate-200 rounded-lg p-4 text-xs leading-relaxed font-mono overflow-x-auto">
               <code>{algorithm.code}</code>

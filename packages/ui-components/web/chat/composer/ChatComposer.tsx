@@ -1,3 +1,5 @@
+import "./ChatComposer.css";
+
 import { X } from "lucide-react";
 import { type ReactNode, useRef } from "react";
 import { useTranslation } from "react-i18next";
@@ -218,9 +220,7 @@ export function ChatComposer({
   // Render — 玻璃磨砂容器 + 大 textarea + 底部脚标行
   // ---------------------------------------------------------------------------
   return (
-    <div
-      className={`mx-auto w-full max-w-[820px] px-4 pt-0 pb-3 [@media(max-width:720px)]:px-[10px]${className ? ` ${className}` : ""}`}
-    >
+    <div className={`mx-auto w-full max-w-205 px-4 pt-0 pb-3 max-md:px-2.5${className ? ` ${className}` : ""}`}>
       <div className="relative">
         {commandPanelOpen && ((commands?.length ?? 0) > 0 || mcps.length > 0) && (
           <CommandMenu
@@ -238,11 +238,11 @@ export function ChatComposer({
         )}
 
         {/* 玻璃卡片：设计层（原 `.chat-composer-wrapper .chat-composer-card`，特指度 (0,2,0)）在源级联中
-            压过宿主补充段，故下方取值全部按设计层落地，暗色覆写按源 `.dark .chat-composer-card` 用
-            `[.dark_&…]`（类切换，非媒体查询）表达；`bg`/`shadow` 上的 `!` 用于保持源级联——设计层同样
-            压过 `isDragOver` 追加的 `bg-brand/5` 与 inset 阴影（那两条在源实现里被特指度压制、不可见）。 */}
+            压过宿主补充段，故取值全部按设计层落地；92% 白底、两级投影与暗色覆写（源 `.dark .chat-composer-card`，
+            类切换而非媒体查询）都写在本目录 `ChatComposer.css` 的 `.chat-composer-island` 里，含
+            「未分层声明压过 `isDragOver` 追加的 `bg-brand/5` 与 inset 阴影」这条级联说明。 */}
         <div
-          className={`relative overflow-visible rounded-[17px] border border-[#dce4ef] bg-[rgb(255_255_255_/_92%)]! shadow-[0_14px_42px_rgb(30_64_120_/_10%)]! backdrop-blur-[14px] focus-within:outline-0 [transition:border-color_0.2s_ease,box-shadow_0.2s_ease] [.dark_&:not(:focus-within)]:border-[rgba(255,255,255,0.08)] [.dark_&:not(:focus-within)]:bg-[rgba(45,45,47,0.72)]! [.dark_&:not(:focus-within)]:shadow-[0_4px_20px_rgba(0,0,0,0.3)]!${isDragOver ? " bg-brand/5 shadow-[inset_0_0_0_2px_var(--color-brand)]" : ""}`}
+          className={`chat-composer-island relative overflow-visible rounded-2xl border border-slate-200 backdrop-blur-md focus-within:outline-0 [transition:border-color_0.2s_ease,box-shadow_0.2s_ease]${isDragOver ? " bg-brand/5 shadow-[inset_0_0_0_2px_var(--color-brand)]" : ""}`}
           onDragOver={hookDragOver}
           onDragEnter={hookDragEnter}
           onDragLeave={hookDragLeave}
@@ -279,7 +279,7 @@ export function ChatComposer({
 
           {(selectedCommandNames.size > 0 || selectedMcpIds.size > 0) && (
             <div
-              className="flex flex-wrap gap-[5px] px-[14px] pt-[10px]"
+              className="flex flex-wrap gap-1.25 px-3.5 pt-2.5"
               role="group"
               aria-label={t("chat.components.commandMenu.selectedCapabilities")}
             >
@@ -287,7 +287,7 @@ export function ChatComposer({
                 <button
                   key={`skill:${name}`}
                   type="button"
-                  className="inline-flex min-h-[23px] cursor-pointer items-center gap-[5px] rounded-md border border-[#cfdaed] bg-[#f4f7fc] px-[7px] text-[9px] text-[#315a9f] [&>svg]:h-[9px] [&>svg]:w-[9px]"
+                  className="chat-composer-capability-chip inline-flex min-h-5.75 cursor-pointer items-center gap-1.25 rounded-md border border-slate-300 bg-slate-100 px-1.75 text-3xs text-blue-900"
                   onClick={() => setText((current) => removeSlashCommand(current, name))}
                 >
                   /{name}
@@ -300,7 +300,7 @@ export function ChatComposer({
                   <button
                     key={`mcp:${mcp.id}`}
                     type="button"
-                    className="inline-flex min-h-[23px] cursor-pointer items-center gap-[5px] rounded-md border border-[#cfe4dc] bg-[#f3faf7] px-[7px] text-[9px] text-[#25745f] [&>svg]:h-[9px] [&>svg]:w-[9px]"
+                    className="chat-composer-capability-chip inline-flex min-h-5.75 cursor-pointer items-center gap-1.25 rounded-md border border-gray-300 bg-green-50 px-1.75 text-3xs text-emerald-700"
                     onClick={() => toggleMcp(mcp)}
                   >
                     MCP: {mcp.name}
@@ -320,7 +320,7 @@ export function ChatComposer({
               placeholder={_placeholder}
               disabled={disabled}
               rows={1}
-              className="min-h-[58px] max-h-[200px] w-full resize-none border-none bg-transparent font-display text-sm leading-relaxed text-text-primary outline-none placeholder:text-text-muted"
+              className="min-h-14.5 max-h-50 w-full resize-none border-none bg-transparent font-display text-sm leading-relaxed text-text-primary outline-none placeholder:text-text-muted"
             />
           </div>
 
@@ -355,7 +355,7 @@ export function ChatComposer({
         {/* 上传进度提示 */}
         {isUploading && (
           <div className="text-center">
-            <span className="text-[11px] text-text-muted">
+            <span className="text-3xs text-text-muted">
               {t("chat.components.chatComposer.uploadingFiles", { count: uploadingCount })}
             </span>
           </div>
@@ -363,7 +363,7 @@ export function ChatComposer({
 
         {/* 提示文本 */}
         <div className="text-center mt-1.5">
-          <span className="text-[11px] text-text-muted">{t("chat.components.chatComposer.hint")}</span>
+          <span className="text-3xs text-text-muted">{t("chat.components.chatComposer.hint")}</span>
         </div>
       </div>
     </div>

@@ -187,7 +187,7 @@ export function TreeItem({
         className={cn(
           "group relative flex items-center gap-0.5 h-8 pr-2 rounded-sm cursor-pointer",
           "hover:bg-accent/50",
-          state.selected && "bg-primary/10 text-primary border-l-2 border-primary -ml-[2px]",
+          state.selected && "bg-primary/10 text-primary border-l-2 border-primary -ml-0.5",
           data.isDisabled && "opacity-50 pointer-events-none",
           className,
         )}
@@ -234,7 +234,7 @@ export function TreeItem({
 
         {/* Badge */}
         {data.badge !== undefined && !renderLabel && (
-          <span className="flex-shrink-0 text-[10px] px-1.5 py-0.5 rounded-full bg-muted text-muted-foreground">
+          <span className="flex-shrink-0 text-3xs px-1.5 py-0.5 rounded-full bg-muted text-muted-foreground">
             {data.badge}
           </span>
         )}

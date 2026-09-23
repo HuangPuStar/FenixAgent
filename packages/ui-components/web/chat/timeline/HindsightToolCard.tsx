@@ -60,25 +60,25 @@ export function HindsightToolCard({ tool }: HindsightToolCardProps) {
         {/* Brain 图标 */}
         <div className="h-9 w-9 rounded-full bg-violet-100 dark:bg-violet-900/40 flex items-center justify-center shrink-0">
           {isRunning ? (
-            <Loader2 className="h-[18px] w-[18px] animate-spin text-violet-500 dark:text-violet-400" />
+            <Loader2 className="h-4.5 w-4.5 animate-spin text-violet-500 dark:text-violet-400" />
           ) : (
-            <Brain className="h-[18px] w-[18px] text-violet-600 dark:text-violet-400" />
+            <Brain className="h-4.5 w-4.5 text-violet-600 dark:text-violet-400" />
           )}
         </div>
 
         {/* 内容 */}
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2">
-            <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium leading-none bg-violet-100/80 dark:bg-violet-900/50 text-violet-700 dark:text-violet-300">
+            <span className="inline-flex items-center px-1.5 py-0.5 rounded text-3xs font-medium leading-none bg-violet-100/80 dark:bg-violet-900/50 text-violet-700 dark:text-violet-300">
               {action}
             </span>
             {isError && (
-              <span className="text-[10px] text-status-error font-medium">
+              <span className="text-3xs text-status-error font-medium">
                 {t("chat.components.hindsightToolCard.failed")}
               </span>
             )}
           </div>
-          <div className="text-[12px] text-text-secondary mt-1.5 leading-relaxed">{summary}</div>
+          <div className="text-xs text-text-secondary mt-1.5 leading-relaxed">{summary}</div>
         </div>
 
         {/* 展开按钮 */}

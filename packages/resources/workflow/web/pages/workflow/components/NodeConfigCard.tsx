@@ -839,7 +839,7 @@ export function NodeConfigCard({
                         {/* 脚本环境变量 */}
                         <div className="wf-prop-field-block">
                           <label>{t("editor.slurm_script_env")}</label>
-                          <p className="text-[10px] text-gray-400 mb-1.5 leading-tight">{t("editor.slurm_env_hint")}</p>
+                          <p className="text-3xs text-gray-400 mb-1.5 leading-tight">{t("editor.slurm_env_hint")}</p>
                           <Textarea
                             value={(() => {
                               const env = (sd?.script as Record<string, unknown>)?.env as
@@ -885,9 +885,7 @@ export function NodeConfigCard({
                     <div className="wf-prop-field-block">
                       <label>{t("editor.inputs_title")}</label>
                       {sd?.tool === "slurm" && (
-                        <p className="text-[10px] text-gray-400 mb-1.5 leading-tight">
-                          {t("editor.slurm_inputs_hint")}
-                        </p>
+                        <p className="text-3xs text-gray-400 mb-1.5 leading-tight">{t("editor.slurm_inputs_hint")}</p>
                       )}
                       <InputsEditor
                         value={

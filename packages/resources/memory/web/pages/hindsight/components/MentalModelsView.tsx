@@ -287,7 +287,7 @@ export function MentalModelsView() {
                   <CardTitle className="text-sm flex items-center gap-2">
                     <span className="truncate">{model.name}</span>
                     {model.is_stale && (
-                      <Badge variant="secondary" className="text-[10px] shrink-0">
+                      <Badge variant="secondary" className="text-3xs shrink-0">
                         {t("mentalModels.stale")}
                       </Badge>
                     )}
@@ -321,12 +321,12 @@ export function MentalModelsView() {
                   {model.tags.length > 0 && (
                     <div className="flex flex-wrap gap-1">
                       {model.tags.slice(0, 3).map((tag) => (
-                        <Badge key={tag} variant="outline" className="text-[10px] px-1.5 py-0">
+                        <Badge key={tag} variant="outline" className="text-3xs px-1.5 py-0">
                           {tag}
                         </Badge>
                       ))}
                       {model.tags.length > 3 && (
-                        <Badge variant="outline" className="text-[10px] px-1.5 py-0">
+                        <Badge variant="outline" className="text-3xs px-1.5 py-0">
                           +{model.tags.length - 3}
                         </Badge>
                       )}
@@ -335,7 +335,7 @@ export function MentalModelsView() {
 
                   {/* 时间 */}
                   {model.last_refreshed_at && (
-                    <p className="text-[10px] text-muted-foreground">
+                    <p className="text-3xs text-muted-foreground">
                       {t("mentalModels.lastRefreshed")}: {new Date(model.last_refreshed_at).toLocaleDateString()}
                     </p>
                   )}

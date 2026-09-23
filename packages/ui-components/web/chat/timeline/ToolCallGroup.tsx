@@ -32,7 +32,7 @@ export function ToolCallGroup({ entries, onPreviewFile, inActivityChain }: ToolC
   if (entries.length === 0) return null;
 
   return (
-    <div className="relative mx-0 mt-[2px] mb-1" data-slot="chat-tool-group">
+    <div className="relative mx-0 mt-0.5 mb-1" data-slot="chat-tool-group">
       {toolEntries.length > 0 && (
         <div className="grid gap-px">
           {toolEntries.map((entry, i) => (
