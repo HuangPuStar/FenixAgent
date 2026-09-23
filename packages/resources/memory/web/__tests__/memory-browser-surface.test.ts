@@ -46,6 +46,8 @@ const BROWSER_SAFE_EXTERNAL: ReadonlyMap<string, string> = new Map([
   ["cytoscape", "图布局/渲染库（Constellation 的知识图谱）"],
   ["cytoscape-fcose", "cytoscape 的 fcose 布局插件"],
   ["@chenglou/pretext", "文本测量与分行（Constellation 的连线标签）"],
+  // 本包取数：`useRequest` 统一管理 loading / error / data（§3.4），纯 React 依赖，无 node 内建
+  ["ahooks", "useRequest 数据获取（本包 dependencies）"],
   // 经 @fenix/ui-components 子路径传递进入：无 node 依赖的浏览器库
   ["@radix-ui/react-slot", "无样式原语（ui/button 传递依赖），只依赖 react/DOM"],
   ["@radix-ui/react-dialog", "无样式原语（ui/dialog 传递依赖）"],

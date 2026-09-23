@@ -598,6 +598,7 @@
         "@fenix/platform-sdk": "workspace:*",
         "@fenix/ui-components": "workspace:*",
         "@fenix/web-runtime": "workspace:*",
+        "ahooks": "^3.9.7",
         "cytoscape": "^3.34.0",
         "cytoscape-fcose": "^2.2.0",
         "drizzle-orm": "^0.45.2",

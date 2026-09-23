@@ -5,15 +5,16 @@ import { EmptyState } from "@fenix/ui-components/config/EmptyState";
 import { Input } from "@fenix/ui-components/ui/input";
 import { Skeleton } from "@fenix/ui-components/ui/skeleton";
 import { NS } from "@fenix/web-runtime/i18n/namespace";
+import { useRequest } from "ahooks";
 import { Eye, Fingerprint, Globe, Lightbulb, Network, Search } from "lucide-react";
-import { useCallback, useEffect, useState } from "react";
+import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import { hindsightApi } from "../../api/hindsight";
 import { DataView as HindsightDataView } from "./components/DataView";
 import { EntitiesView } from "./components/EntitiesView";
 import { HindsightFailureNotice } from "./components/HindsightFailureNotice";
 import { MentalModelsView } from "./components/MentalModelsView";
-import { type HindsightFailure, toHindsightFailure } from "./failure";
+import { toHindsightFailure } from "./failure";
 
 type MemoryPerspective = "world" | "experience" | "observation" | "mental-models" | "entities";
 type FactPerspective = Extract<MemoryPerspective, "world" | "experience" | "observation">;
@@ -62,30 +63,25 @@ function isFactPerspective(perspective: MemoryPerspective): perspective is FactP
 
 export function MemoriesPage() {
   const { t } = useTranslation(NS.HINDSIGHT);
-  const [loading, setLoading] = useState(true);
-  const [enabled, setEnabled] = useState(false);
-  const [statusFailure, setStatusFailure] = useState<HindsightFailure | null>(null);
   const [perspective, setPerspective] = useState<MemoryPerspective>("world");
   const [searchInput, setSearchInput] = useState("");
   const [searchQuery, setSearchQuery] = useState("");
 
-  const loadStatus = useCallback(async () => {
-    setLoading(true);
-    setStatusFailure(null);
-    try {
-      const status = await hindsightApi.getStatus();
-      setEnabled(status.enabled);
-    } catch (error) {
-      console.error("Failed to get Hindsight status:", error);
-      setStatusFailure(toHindsightFailure(error));
-    } finally {
-      setLoading(false);
-    }
-  }, []);
+  // 状态取数交给 `useRequest`（§3.4）：`hindsightApi` 在域内 `unwrap()`（§5.9），失败抛 `ApiError`，
+  // 因此 `error` 分支能真正接到 4xx/5xx——手写的 `try/catch` + 三个 `setState` 不再需要。
+  const {
+    data: status,
+    loading,
+    error: statusError,
+    refresh: refreshStatus,
+  } = useRequest(() => hindsightApi.getStatus(), {
+    onError: (err) => console.error("Failed to get Hindsight status:", err),
+  });
 
-  useEffect(() => {
-    void loadStatus();
-  }, [loadStatus]);
+  // 失败态由 `error` 派生，而不是另存一份 state：`data` 在失败时保持 undefined，`enabled` 会落到 false。
+  // 若失败没有独立分支，界面会走下面的「未配置」空态——即把取数失败伪装成产品未配置（§3.4 禁止）。
+  const statusFailure = statusError ? toHindsightFailure(statusError) : null;
+  const enabled = status?.enabled ?? false;
 
   if (loading) {
     return (
@@ -113,7 +109,7 @@ export function MemoriesPage() {
           failure={statusFailure}
           titleKey="status.loadFailed"
           retryKey="status.retry"
-          onRetry={() => void loadStatus()}
+          onRetry={refreshStatus}
           className="py-16"
         />
       </div>

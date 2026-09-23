@@ -3,14 +3,14 @@ import { Button } from "@fenix/ui-components/ui/button";
 import { Spinner } from "@fenix/ui-components/ui/spinner";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@fenix/ui-components/ui/table";
 import { NS } from "@fenix/web-runtime/i18n/namespace";
+import { useRequest } from "ahooks";
 import { List, ScatterChart, X } from "lucide-react";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { hindsightApi } from "../../../api/hindsight";
 import { useElementHeight } from "../element-height";
-import { type HindsightFailure, toHindsightFailure } from "../failure";
+import { toHindsightFailure } from "../failure";
 import { recencyEndpoints, recencyHeat, toRecencyLookup } from "../recency";
-import type { EntityGraphResponse, EntityItem } from "../types";
 import { Constellation } from "./Constellation";
 import { convertHindsightGraphData, type GraphNode } from "./Graph2d";
 import { HindsightFailureNotice } from "./HindsightFailureNotice";
@@ -23,96 +23,76 @@ const ITEMS_PER_PAGE = 50;
 
 export function EntitiesView() {
   const { t } = useTranslation(NS.HINDSIGHT);
-  const [entities, setEntities] = useState<EntityItem[]>([]);
-  const [loading, setLoading] = useState(false);
-  const [entitiesFailure, setEntitiesFailure] = useState<HindsightFailure | null>(null);
-  const [selectedEntity, setSelectedEntity] = useState<EntityItem | null>(null);
   const [selectedEntityId, setSelectedEntityId] = useState<string | null>(null);
-  const [loadingDetail, setLoadingDetail] = useState(false);
-  const [detailFailure, setDetailFailure] = useState<HindsightFailure | null>(null);
   const [viewMode, setViewMode] = useState<ViewMode>("relations");
-  const [graphData, setGraphData] = useState<EntityGraphResponse | null>(null);
-  const [graphLoading, setGraphLoading] = useState(false);
-  const [graphFailure, setGraphFailure] = useState<HindsightFailure | null>(null);
   const graphPaneRef = useRef<HTMLDivElement>(null);
   const graphHeight = useElementHeight(graphPaneRef);
 
   // Pagination state
   const [currentPage, setCurrentPage] = useState(1);
-  const [total, setTotal] = useState(0);
-
-  const totalPages = Math.ceil(total / ITEMS_PER_PAGE);
   const offset = (currentPage - 1) * ITEMS_PER_PAGE;
 
-  const loadEntities = useCallback(async (page: number = 1) => {
-    setLoading(true);
-    setEntitiesFailure(null);
-    try {
-      const pageOffset = (page - 1) * ITEMS_PER_PAGE;
-      const result = await hindsightApi.listEntities({
-        limit: ITEMS_PER_PAGE,
-        offset: pageOffset,
-      });
-      setEntities(result.items || []);
-      setTotal(result.total || 0);
-    } catch (error) {
-      console.error("Failed to load entities:", error);
-      setEntitiesFailure(toHindsightFailure(error));
-    } finally {
-      setLoading(false);
-    }
-  }, []);
+  /** 实体列表取数：页码变化即重查（`refreshDeps`），不再手写 `loadEntities(newPage)`。 */
+  const {
+    data: entitiesPage,
+    loading,
+    error: entitiesError,
+    refresh: refreshEntities,
+  } = useRequest(() => hindsightApi.listEntities({ limit: ITEMS_PER_PAGE, offset }), {
+    refreshDeps: [currentPage],
+    onError: (error) => console.error("Failed to load entities:", error),
+  });
+  const entities = entitiesPage && Array.isArray(entitiesPage.items) ? entitiesPage.items : [];
+  const total = entitiesPage?.total || 0;
+  const totalPages = Math.ceil(total / ITEMS_PER_PAGE);
+  const entitiesFailure = entitiesError ? toHindsightFailure(entitiesError) : null;
 
-  const loadEntityDetail = useCallback(async (entityId: string) => {
-    setSelectedEntityId(entityId);
-    setLoadingDetail(true);
-    setDetailFailure(null);
-    try {
-      const result = await hindsightApi.getEntity(entityId);
-      setSelectedEntity(result);
-    } catch (error) {
-      console.error("Failed to load entity detail:", error);
-      setSelectedEntity(null);
-      setDetailFailure(toHindsightFailure(error));
-    } finally {
-      setLoadingDetail(false);
-    }
-  }, []);
+  /**
+   * 实体详情按需取数（`manual`）。失败时把 `selectedEntity` 置空（下面的派生），避免把上一条实体的
+   * 详情挂在新的标题下——与改造前失败路径里的 `setSelectedEntity(null)` 同形。
+   */
+  const {
+    data: loadedEntity,
+    loading: loadingDetail,
+    error: detailError,
+    run: runLoadEntityDetail,
+  } = useRequest((entityId: string) => hindsightApi.getEntity(entityId), {
+    manual: true,
+    onError: (error) => console.error("Failed to load entity detail:", error),
+  });
+  const selectedEntity = detailError || selectedEntityId === null ? null : (loadedEntity ?? null);
+  const detailFailure = detailError ? toHindsightFailure(detailError) : null;
+
+  /**
+   * 图谱取数：关系视图才需要它，故用 `ready` 做条件请求（与 `MountSiteDialog` 的 `ready: open` 同形），
+   * 失败时由失败块的重试入口重新发起。注意 `ready` 是「此刻该不该请求」而非「取过一次就缓存住」：
+   * 切到列表再切回关系视图会重新取一次（图谱本就是随时间变化的快照，刷新得到的是更近的数据）。
+   */
+  const {
+    data: loadedGraph,
+    loading: graphLoading,
+    error: graphError,
+    refresh: refreshGraph,
+  } = useRequest(() => hindsightApi.getEntityGraph({ limit: 2000, min_count: 1 }), {
+    ready: viewMode === "relations",
+    onError: (error) => console.error("Failed to load entity graph:", error),
+  });
+  const graphData = graphError ? null : (loadedGraph ?? null);
+  const graphFailure = graphError ? toHindsightFailure(graphError) : null;
+
+  /** 打开实体详情：记录「当前打开的是哪一条」，再触发详情请求。 */
+  const openEntityDetail = useCallback(
+    (entityId: string) => {
+      setSelectedEntityId(entityId);
+      runLoadEntityDetail(entityId);
+    },
+    [runLoadEntityDetail],
+  );
 
   // Handle page change
   const handlePageChange = (newPage: number) => {
     setCurrentPage(newPage);
-    loadEntities(newPage);
   };
-
-  const loadGraph = useCallback(async () => {
-    setGraphLoading(true);
-    setGraphFailure(null);
-    try {
-      const result = await hindsightApi.getEntityGraph({
-        limit: 2000,
-        min_count: 1,
-      });
-      setGraphData(result);
-    } catch (error) {
-      console.error("Failed to load entity graph:", error);
-      setGraphFailure(toHindsightFailure(error));
-    } finally {
-      setGraphLoading(false);
-    }
-  }, []);
-
-  useEffect(() => {
-    setCurrentPage(1);
-    loadEntities(1);
-    setSelectedEntity(null);
-  }, [loadEntities]);
-
-  useEffect(() => {
-    if (viewMode === "relations" && !graphData && !graphLoading && !graphFailure) {
-      loadGraph();
-    }
-  }, [viewMode, graphData, graphLoading, graphFailure, loadGraph]);
 
   const constellationData = useMemo(() => {
     if (!graphData) return { nodes: [], links: [] };
@@ -175,9 +155,9 @@ export function EntitiesView() {
 
   const handleConstellationNodeClick = useCallback(
     (node: GraphNode) => {
-      loadEntityDetail(node.id);
+      openEntityDetail(node.id);
     },
-    [loadEntityDetail],
+    [openEntityDetail],
   );
 
   const formatDate = (dateStr?: string | null) => {
@@ -209,7 +189,7 @@ export function EntitiesView() {
               failure={graphFailure}
               titleKey="entitiesView.graphLoadFailed"
               retryKey="entitiesView.retry"
-              onRetry={() => void loadGraph()}
+              onRetry={refreshGraph}
               className="py-20"
             />
           ) : constellationData.nodes.length > 0 ? (
@@ -244,7 +224,7 @@ export function EntitiesView() {
               failure={entitiesFailure}
               titleKey="entitiesView.listLoadFailed"
               retryKey="entitiesView.retry"
-              onRetry={() => void loadEntities(currentPage)}
+              onRetry={refreshEntities}
               className="py-20"
             />
           ) : entities.length > 0 ? (
@@ -266,7 +246,7 @@ export function EntitiesView() {
                     {entities.map((entity) => (
                       <TableRow
                         key={entity.id}
-                        onClick={() => loadEntityDetail(entity.id)}
+                        onClick={() => openEntityDetail(entity.id)}
                         className={`cursor-pointer hover:bg-muted/50 ${
                           selectedEntity?.id === entity.id ? "bg-primary/10" : ""
                         }`}
@@ -310,7 +290,7 @@ export function EntitiesView() {
               failure={detailFailure}
               titleKey="entitiesView.detailLoadFailed"
               retryKey="entitiesView.retry"
-              onRetry={() => void loadEntityDetail(selectedEntityId)}
+              onRetry={() => runLoadEntityDetail(selectedEntityId)}
               className="py-0"
             />
           ) : (
@@ -319,14 +299,7 @@ export function EntitiesView() {
               <p className="text-sm font-medium">{t("entitiesView.loadingEntityDetail")}</p>
             </>
           )}
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={() => {
-              setSelectedEntityId(null);
-              setDetailFailure(null);
-            }}
-          >
+          <Button variant="ghost" size="sm" onClick={() => setSelectedEntityId(null)}>
             {t("entitiesView.close")}
           </Button>
         </div>
@@ -342,7 +315,7 @@ export function EntitiesView() {
                 <h3 className="text-xl font-bold text-card-foreground">{selectedEntity.canonical_name}</h3>
                 <p className="text-sm text-muted-foreground mt-1">{t("entitiesView.entityDetails")}</p>
               </div>
-              <Button variant="ghost" size="sm" onClick={() => setSelectedEntity(null)} className="h-8 w-8 p-0">
+              <Button variant="ghost" size="sm" onClick={() => setSelectedEntityId(null)} className="h-8 w-8 p-0">
                 <X className="h-4 w-4" />
               </Button>
             </div>

@@ -5,6 +5,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Spinner } from "@fenix/ui-components/ui/spinner";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@fenix/ui-components/ui/table";
 import { NS } from "@fenix/web-runtime/i18n/namespace";
+import { useRequest } from "ahooks";
 import {
   Calendar,
   CheckCircle,
@@ -22,7 +23,7 @@ import {
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { hindsightApi } from "../../../api/hindsight";
-import { type HindsightFailure, toHindsightFailure } from "../failure";
+import { toHindsightFailure } from "../failure";
 import { recencyEndpoints, recencyHeat, toRecencyLookup } from "../recency";
 import type { GraphApiData, MemoryTableRow } from "../types";
 import { Constellation } from "./Constellation";
@@ -58,9 +59,6 @@ export function DataView({
   const { t } = useTranslation(NS.HINDSIGHT);
   const [viewMode, setViewMode] = useState<ViewMode>("constellation");
   const [compactMode, setCompactMode] = useState(compact);
-  const [data, setData] = useState<GraphApiData | null>(null);
-  const [loading, setLoading] = useState(false);
-  const [failure, setFailure] = useState<HindsightFailure | null>(null);
   const [currentPage, setCurrentPage] = useState(1);
   const [selectedGraphNode, setSelectedGraphNode] = useState<MemoryTableRow | null>(null);
   const [modalMemoryId, setModalMemoryId] = useState<string | null>(null);
@@ -77,12 +75,6 @@ export function DataView({
     occurred_end: t("dataView.recencyBasisOccurredEnd"),
   };
   const [recencyBasis, setRecencyBasis] = useState<RecencyBasis>("mentioned_at");
-
-  // 整合状态（观察类型）
-  const [consolidationStatus, setConsolidationStatus] = useState<{
-    pending_consolidation: number;
-    last_consolidated_at: string | null;
-  } | null>(null);
 
   // 图谱控制状态
   const [showLabels] = useState(true);
@@ -115,45 +107,49 @@ export function DataView({
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, [selectedGraphNode]);
 
-  const loadData = async (limit?: number, q: string | undefined = initialQuery, tags?: string[]) => {
-    setLoading(true);
-    setFailure(null);
-    try {
-      const graphData = await hindsightApi.getGraph({
+  /**
+   * 图谱取数：挂载即拉。`factType` / 检索词的变化由父级 `key`（MemoriesPage 的
+   * `perspective:searchQuery`）触发的重挂载表达，故本 hook 不需要 `refreshDeps`；
+   * 失败由下面的 `failure` 分支渲染可见的失败块，重试入口重新发起同一次请求。
+   */
+  const {
+    data,
+    loading,
+    error: loadError,
+    refresh: refreshData,
+  } = useRequest(
+    () =>
+      hindsightApi.getGraph({
         type: factType,
-        limit: limit ?? fetchLimit,
-        q: q || undefined,
-        tags,
+        limit: fetchLimit,
+        q: initialQuery || undefined,
         document_id: documentId,
         chunk_id: chunkId,
-      });
-      setData(graphData);
-
-      // 观察类型的整合状态是辅助信息，失败时不应遮盖已经成功加载的图数据。
-      if (factType === "observation") {
-        try {
-          const stats = await hindsightApi.getBankStats();
-          setConsolidationStatus({
-            pending_consolidation: stats.pending_consolidation ?? 0,
-            last_consolidated_at: stats.last_consolidated_at ?? null,
-          });
-        } catch (statsError) {
-          console.error("[DataView] getBankStats failed:", statsError);
-          setConsolidationStatus(null);
-        }
-      }
-    } catch (loadError) {
-      console.error("[DataView] loadData failed:", loadError);
-      setFailure(toHindsightFailure(loadError, t("dataView.loadFailed")));
-    } finally {
-      setLoading(false);
-    }
-  };
+      }),
+    { onError: (err) => console.error("[DataView] loadData failed:", err) },
+  );
+  const failure = loadError ? toHindsightFailure(loadError, t("dataView.loadFailed")) : null;
 
   // 表格行数据（已由服务端过滤）
   const filteredTableRows = useMemo(() => {
     return data?.table_rows ?? [];
   }, [data]);
+
+  /**
+   * 观察类型的整合状态是辅助信息：图谱拿到数据后才有意义（`ready` 的前置数据语义），
+   * 失败只回落 `console.error` 并隐藏该块，不遮盖已经加载好的图数据——与改造前嵌套 `try/catch` 同形。
+   */
+  const { data: bankStats, error: bankStatsError } = useRequest(() => hindsightApi.getBankStats(), {
+    ready: !!data && factType === "observation",
+    onError: (err) => console.error("[DataView] getBankStats failed:", err),
+  });
+  const consolidationStatus =
+    bankStats && !bankStatsError
+      ? {
+          pending_consolidation: bankStats.pending_consolidation ?? 0,
+          last_consolidated_at: bankStats.last_consolidated_at ?? null,
+        }
+      : null;
 
   // 链接类型归一化
   const getLinkTypeCategory = useCallback((type: string | undefined): string => {
@@ -270,15 +266,6 @@ export function DataView({
     return "var(--color-primary)";
   }, []);
 
-  // 挂载期单次加载：`factType` / 检索词的变化由父级 `key={`${perspective}:${searchQuery}`}`
-  // （MemoriesPage）触发的重挂载表达，本 effect 不负责感知这些 prop 的变化。
-  // `loadData` 是组件体内的普通函数（未 memo，且内部 setState），每次渲染身份都会变；把它列入依赖
-  // 会让本 effect 每次渲染都重新拉取数据，并因 setLoading 触发的新渲染形成请求循环，故显式抑制该规则。
-  // biome-ignore lint/correctness/useExhaustiveDependencies: 挂载期单次加载；列入 loadData 会造成每次渲染重新请求。
-  useEffect(() => {
-    loadData();
-  }, []);
-
   // 节点数量限制（防止 UI 不稳定）
   useEffect(() => {
     if (data && maxNodes === undefined) {
@@ -309,7 +296,7 @@ export function DataView({
           failure={failure}
           titleKey="dataView.loadFailed"
           retryKey="dataView.retry"
-          onRetry={() => void loadData()}
+          onRetry={refreshData}
           className="py-16"
         />
       ) : !data ? (
