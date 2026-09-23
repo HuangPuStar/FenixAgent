@@ -39,7 +39,7 @@ demo/                     Vite 展示页（非库产物）
 | `web/layout/`、`web/components/` 中的颜色字面量 | 源实现混用精确 hex（`#e4eaf2`、`#17233a`、`#1a2944`、`#f6f8fb`、`#e7ecf3`、`#99a8bc` 等） | 换成最近的语义 token（`border-border`、`text-text-bright`、`bg-surface-0`…）。**与宿主存在可见色差，属有意取舍**（2026-09-18 确认保持 token 化）：等值的（`#1677ff`→`brand`、`#94a3b8`→`text-muted`、`#ffffff`→`surface-1`）无差异，等值的以外的若要求与源逐像素一致，需改回 hex |
 | `web/components/preview/FileViewerPreview.tsx` | `buildPreviewUrl` 在组件内部硬编码宿主文件代理路由，且组件内直调全局 `fetch` 读该路由；重试参数固定用 `&` 拼接；`locale="zh-CN"` 与内置 `zhCNMessages` 中文写死 | `buildPreviewUrl` 提为可选 prop，默认值仍保留源实现（见「已知限制」第 8 条）；取数改由**必填** prop `fetchPreview` 注入，包内不留全局 `fetch` 兜底（见「已知限制」第 14 条）；`&retry=` 改为按 URL 是否已含 `?` 选择分隔符（自定义构建器返回无 query 的 URL 时旧拼接会产出非法地址）；内置文案与 `locale` 的默认值改由包内字典与当前语言决定、`messages` / `locale` 保留为覆盖端口（见「已知限制」第 9 条） |
 | `web/components/preview/FileViewerPreview.tsx` 错误边界内的提示 | 「预览组件加载失败」等提示硬编码中文 | 改由调用方按当前语言注入（`fallbackText`，键 `fileTree.preview.componentError`）：它是给用户看的提示，与工具栏文案同属 i18n 范围，不再随源实现固定中文（见「已知限制」第 9 条） |
-| `web/components/preview/html-plugin.ts`、`web/components/preview/preview-source.ts` | 标签「渲染预览」/「源码」、兜底串「源码加载失败」「无法获取 HTML 文件的预览地址」「HTML 预览加载失败」，以及 `loadByteAccuratePreviewSource` 抛出的「文件预览加载失败 (<status>)」 | 逐字保留硬编码中文：插件直接操作 DOM、不在 React 树内，`preview-source` 是纯逻辑模块（前端开发规范 §9.3 禁止它 import UI i18n），两者接文案都要在契约上新增参数；需要多语言的宿主应自行派生插件或按 error code 映射文案（见「已知限制」第 12、13 条） |
+| `web/components/preview/html-plugin.ts`、`web/components/preview/native-pdf-plugin.ts` | 标签「渲染预览」/「源码」、兜底串「源码加载失败」「无法获取 HTML / PDF 文件的预览地址」「HTML / PDF 预览加载失败」 | 逐字保留硬编码中文：插件直接操作 DOM、不在 React 树内，接文案要在契约上新增参数；需要多语言的宿主应自行派生插件。`preview-source.ts` 的「文件预览加载失败 (<status>)」**已不在本条**（2026-09-23 第 19 轮改为抛结构化的 `PreviewSourceError`，文案由 `FileViewerPreview` 按语言取——见「已知限制」第 13 条） |
 | `web/components/preview/overrides.css` | 宿主页面样式表里的预览工具栏修正（工具栏置底等） | 随组件收进包内，且必须与 `FileViewerPreview` 同目录并被其 `import`；缺失会导致预览工具栏回到顶部 |
 | `web/components/preview/preview-source.ts` | `agent-panel/preview/utils.ts` 全量（含 `encodePathSegment`、`buildPreviewUrl`、`normalizeToUserPath`、`formatFileSize`） | 只取 L1–167 的分类表与源加载子集：URL 构建/路径规范化属宿主路由与展示约定。宿主 `ArtifactsPanel.tsx` 与 `preview-utils-normalize.test.ts` 仍引用原文件，故原文件保持不动 |
 | `web/components/PreviewTab.tsx` | 宿主 tab 的占位容器，仅换 i18n 命名空间 | `messages` / `locale` 仍不透传（需要预览定制时直接使用 `FileViewerPreview`），但 `buildPreviewUrl` 与 `fetchPreview` 必须原样转交：本组件不取数、不拼后端 URL（前端开发规范 §5.8），只是宿主域模块实现到预览器之间的通道（见「已知限制」第 14 条） |
@@ -199,13 +199,17 @@ i18n.addResourceBundle("zh", UI_COMPONENTS_NS, zh, true, true);
     - 移除条件：共享高度链与标题栏均不再依赖 `.acp-main-root` 时，才可删除该类名。
 12. **`html-plugin` 的标签与提示硬编码中文**：标签页「渲染预览」/「源码」、源码加载失败的兜底串「源码加载失败」，
     以及 `setError` 的两条提示（「无法获取 HTML 文件的预览地址」「HTML 预览加载失败」）都写死在源码里。
-    - 影响范围：HTML 预览在非中文界面仍显示中文标签与提示；本包 demo 与宿主都用默认插件参数，切换语言看不到变化。
+    `native-pdf-plugin` 同性质的两条（「无法获取 PDF 文件的预览地址」「PDF 预览加载失败」）一并计入本条。
+    - 影响范围：HTML / PDF 预览在非中文界面仍显示中文标签与提示；本包 demo 与宿主都用默认插件参数，切换语言看不到变化。
     - 移除条件：插件工厂接受文案参数（`htmlPreviewPlugin(labels)`）并在 `FileViewerPreview` 里由 `t()` 注入——
-      需要先定义这组标签的键位契约，属契约扩张，本轮不做。
-13. **`preview-source.ts` 的加载失败文案硬编码中文**：`loadByteAccuratePreviewSource` 在非成功响应时抛
-    `文件预览加载失败 (<status>)`，`FileViewerPreview` 的失败态原样展示该消息（界面因此出现中文 + HTTP 状态码）。
-    - 影响范围：非中文宿主的预览失败态；同第 12 条，纯逻辑模块不 import UI i18n（前端开发规范 §9.3），文案只能由调用方接。
-    - 移除条件：该模块改为抛结构化错误（带 error code / status），由组件按 code 映射字典文案。
+      需要先定义这组标签的键位契约，属契约扩张，尚未做。
+13. **`preview-source.ts` 的错误是结构化的，文案归调用方**（2026-09-23 第 19 轮起；此前本条记的是「加载失败文案硬编码中文，
+    `FileViewerPreview` 原样上屏」）：`loadByteAccuratePreviewSource` 在非成功响应时抛 `PreviewSourceError`（带 `status`），
+    不再抛写死的中文文案；`FileViewerPreview` 的失败块按当前语言取 `fileTree.preview.loadFailed`（插 `{{status}}`）/
+    `loadFailedUnknown`，原始错误只进 `console.error`。
+    - 影响范围：直接调用该函数（不经 `FileViewerPreview`）的宿主必须自己把 `status` 映射成文案——这正是契约本身：
+      纯逻辑模块不 import UI i18n（前端开发规范 §9.3），文案只能由调用方接。
+    - 包内用例：`web/__tests__/preview-source.test.ts`（结构化错误 + `message` 不含中文）。
 14. **预览的取数与 URL 由宿主注入，包内不留全局 `fetch` 兜底**：预览 URL 指向后端的文件代理路由，
     取数属后端调用。本包是纯展示包、依赖矩阵不允许依赖 `@fenix/web-runtime`，因此
     `FileViewerPreview` 的 `fetchPreview`（`PreviewFetch`）是**必填** prop、`htmlPreviewPlugin(fetchPreview)`

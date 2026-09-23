@@ -172,11 +172,27 @@ export function shouldLoadPreviewAsBlob(filePath: string): boolean {
 }
 
 /**
+ * 预览源加载失败：**结构化错误，带 HTTP 状态码**。
+ *
+ * 为什么不是抛一条文案：本模块是纯逻辑模块，不 import UI i18n（§9.3），而错误是要给用户看的——
+ * 2026-09-23（第 19 轮）之前这里抛的是写死的中文 `文件预览加载失败 (500)`，调用方只能原样上屏
+ * （既固定中文、又把原始消息当界面文案）。现在文案由调用方按当前语言取字典
+ * （`FileViewerPreview` 用 `fileTree.preview.loadFailed` 插 `status`），`message` 只留给日志与调试。
+ */
+export class PreviewSourceError extends Error {
+  /** 触发失败的 HTTP 状态码（响应非 2xx 时的 `response.status`）。 */
+  readonly status: number;
+
+  constructor(status: number) {
+    super(`preview source request failed (HTTP ${status})`);
+    this.name = "PreviewSourceError";
+    this.status = status;
+  }
+}
+
+/**
  * 将文本预览响应保留为 Blob，使预览器使用原始响应字节数并自行按 BOM 解码。
  * 非成功响应必须在进入预览器前显式失败，避免把错误页当作文件内容展示。
- *
- * 注意：错误消息为中文硬编码（与源实现一致）。需要本地化的宿主要么接受该文案，
- * 要么在调用方先行探测并在失败时给出自己的错误界面 —— 本模块不引入 i18n，避免把宿主命名空间绑进工具层。
  */
 export async function loadByteAccuratePreviewSource(
   previewUrl: string,
@@ -184,6 +200,6 @@ export async function loadByteAccuratePreviewSource(
   init?: RequestInit,
 ): Promise<Blob> {
   const response = await fetchPreview(previewUrl, init);
-  if (!response.ok) throw new Error(`文件预览加载失败 (${response.status})`);
+  if (!response.ok) throw new PreviewSourceError(response.status);
   return response.blob();
 }

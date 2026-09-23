@@ -1,9 +1,10 @@
 import { Textarea } from "@fenix/ui-components/ui/textarea";
 import { useTranslation } from "react-i18next";
 import type { CustomToolItem } from "../../../api/workflow-defs";
+import { CollapsibleGroup } from "./CollapsibleGroup";
 import type { ExpandState } from "./expand-field-dialog";
 import { InputsEditor } from "./InputsEditor";
-import { BlockField, CollapsibleGroup, InlineField } from "./node-config-fields";
+import { BlockField, InlineField } from "./node-config-fields";
 import { groupInputDefs, resolveToolOutputs } from "./node-config-model";
 import { type OutputEntry, OutputsEditor } from "./OutputsEditor";
 

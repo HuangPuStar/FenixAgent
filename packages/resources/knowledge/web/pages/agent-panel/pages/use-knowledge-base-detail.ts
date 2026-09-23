@@ -174,7 +174,7 @@ export function useKnowledgeBaseDetail({ kbId, pushKbId }: UseKnowledgeBaseDetai
   // 进入详情
   const handleSelect = (kb: KnowledgeBaseInfo) => {
     if (kb.remoteExists === false) {
-      toast.error("该知识库已在 RAGFlow 中被删除，无法查看详情");
+      toast.error(t("toast.remoteDeleted"));
       return;
     }
     setDetailTab("documents");

@@ -331,6 +331,8 @@
       "loading": "加载中...",
       "noFileSelected": "选择文件以预览",
       "retry": "重试",
+      "loadFailed": "文件预览加载失败（HTTP {{status}}）",
+      "loadFailedUnknown": "文件预览加载失败",
       "componentError": "预览组件加载失败",
       "messages": {
         "loading": "加载中...",

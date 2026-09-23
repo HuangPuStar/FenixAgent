@@ -29,22 +29,26 @@ const DEFAULTS = {
   keyword: false,
 } as const;
 
-/** 跨语言搜索支持的语言选项 */
-const CROSS_LANGUAGE_OPTIONS = [
-  { value: "English", label: "英语" },
-  { value: "Chinese", label: "中文" },
-  { value: "Spanish", label: "西班牙语" },
-  { value: "French", label: "法语" },
-  { value: "German", label: "德语" },
-  { value: "Japanese", label: "日语" },
-  { value: "Korean", label: "韩语" },
-  { value: "Vietnamese", label: "越南语" },
-  { value: "Arabic", label: "阿拉伯语" },
-  { value: "Turkish", label: "土耳其语" },
+/**
+ * 跨语言搜索支持的语言选项：值是**后端认的语言名**（检索请求体原样透传），展示名按当前语言
+ * 从 `retrieval.languages.*` 取（2026-09-23 第 19 轮收口，此前 10 个中文名写死在这里，
+ * 非中文界面会读成中文）。
+ */
+const CROSS_LANGUAGE_VALUES = [
+  "English",
+  "Chinese",
+  "Spanish",
+  "French",
+  "German",
+  "Japanese",
+  "Korean",
+  "Vietnamese",
+  "Arabic",
+  "Turkish",
 ] as const;
 
 /** 所有语言值（用于"全部"选项的快捷选择） */
-const ALL_LANGUAGE_VALUES = CROSS_LANGUAGE_OPTIONS.map((l) => l.value);
+const ALL_LANGUAGE_VALUES = [...CROSS_LANGUAGE_VALUES];
 
 /** 元数据过滤 4 种模式 */
 const META_FILTER_METHODS: {
@@ -310,14 +314,14 @@ export function RetrievalTestPanel({ knowledgeBaseId }: RetrievalTestPanelProps)
             >
               {t("retrieval.selectAll")}
             </button>
-            {CROSS_LANGUAGE_OPTIONS.map((lang) => {
-              const active = crossLanguages.includes(lang.value);
+            {CROSS_LANGUAGE_VALUES.map((value) => {
+              const active = crossLanguages.includes(value);
               return (
                 <button
-                  key={lang.value}
+                  key={value}
                   type="button"
                   onClick={() =>
-                    setCrossLanguages((prev) => (active ? prev.filter((v) => v !== lang.value) : [...prev, lang.value]))
+                    setCrossLanguages((prev) => (active ? prev.filter((v) => v !== value) : [...prev, value]))
                   }
                   className={`inline-flex items-center rounded-md px-2.5 py-1 text-3xs font-medium border transition-all duration-150 ${
                     active
@@ -325,7 +329,7 @@ export function RetrievalTestPanel({ knowledgeBaseId }: RetrievalTestPanelProps)
                       : "border-slate-200 bg-white text-slate-500 hover:border-slate-300 hover:bg-slate-50"
                   }`}
                 >
-                  {lang.label}
+                  {t(`retrieval.languages.${value}`)}
                 </button>
               );
             })}

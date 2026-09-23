@@ -150,10 +150,24 @@
   "error": {
     "invalidHeaders": "Headers is not valid JSON",
     "nameRequired": "Name is required",
+    "nameTooLong": "Name cannot exceed 128 characters",
     "cronRequired": "Cron expression is required",
+    "cronFieldCount": "Cron expression must have exactly 5 fields",
+    "cronInvalid": "Invalid cron expression; check the field ranges",
     "urlRequired": "URL is required",
+    "urlInvalid": "Enter a valid HTTP or HTTPS URL",
     "agentRequired": "Please select an agent",
-    "promptRequired": "Prompt is required"
+    "promptRequired": "Prompt is required",
+    "promptTooLong": "Prompt cannot exceed 100000 characters",
+    "headersNotObject": "Headers must be a JSON object whose values are strings",
+    "headersTooLong": "Headers cannot exceed 10000 characters",
+    "bodyTooLong": "Request body cannot exceed 100000 characters",
+    "descriptionTooLong": "Description cannot exceed 2000 characters",
+    "timezoneInvalid": "Must be a valid IANA timezone",
+    "timeoutNotNumber": "Timeout must be a valid number",
+    "timeoutNotInteger": "Timeout must be an integer",
+    "timeoutMin": "Timeout must be at least 1 second",
+    "timeoutMax": "Timeout cannot exceed 3600 seconds"
   },
   "cron": {
     "quickSelect": "Quick Select",
@@ -167,6 +181,28 @@
       "daily9am": "Daily at 9:00 AM",
       "weekday9am": "Weekdays at 9:00 AM",
       "monthly1st": "1st of month"
+    },
+    "describe": {
+      "everyMinutes": "Every {{minutes}} minutes",
+      "daily": "Every day at {{time}} {{period}}",
+      "weekly": "Every {{days}} at {{time}} {{period}}",
+      "monthly": "Day {{day}} of every month at {{time}} {{period}}",
+      "monthlyOnDate": "{{time}} {{period}} on {{month}}/{{day}}",
+      "daySeparator": ", ",
+      "period": {
+        "am": "AM",
+        "noon": "PM",
+        "pm": "PM"
+      },
+      "weekday": {
+        "sun": "Sun",
+        "mon": "Mon",
+        "tue": "Tue",
+        "wed": "Wed",
+        "thu": "Thu",
+        "fri": "Fri",
+        "sat": "Sat"
+      }
     }
   },
   "nav": {

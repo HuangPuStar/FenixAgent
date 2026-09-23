@@ -148,7 +148,7 @@ export function useKnowledgeBaseCatalog({
     },
   });
 
-  // 打开创建弹窗：先检查 RAGFlow key，未配置则直接拦截
+  // 打开创建弹窗：只把表单字段复位到新草稿，是否具备创建条件（向量模型等）由提交时的校验判定
   const openCreateDialog = async () => {
     setEditingItem(null);
     setFormName("");
@@ -192,7 +192,7 @@ export function useKnowledgeBaseCatalog({
     }
     // 前端校验：嵌入模型必须含 @（RagFlow v0.26 要求 model@provider 格式）
     if (!embeddingModel.includes("@")) {
-      toast.error(t("validation.embeddingModelFormat") || "向量模型格式不对，必须包含@");
+      toast.error(t("validation.embeddingModelFormat"));
       return;
     }
     const slug = name
@@ -243,7 +243,7 @@ export function useKnowledgeBaseCatalog({
     setImportingRemoteId(remoteId);
     try {
       await unwrap(kbApi.import(remoteId, name));
-      toast.success(`「${name}」导入成功`);
+      toast.success(t("toast.imported", { name }));
       setUnassociatedList((prev) => prev.filter((ds) => ds.id !== remoteId));
       setRenameDialogOpen(false);
       setRenameTarget(null);

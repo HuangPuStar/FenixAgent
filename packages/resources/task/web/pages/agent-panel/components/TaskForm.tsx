@@ -38,10 +38,15 @@ interface TaskFormProps {
  *
  * 必须渲染在 `LabeledField` **之外**：`<p>` 一旦落进 `<label>`，错误文案会被算进控件的可访问名。
  * 判空按 `message`（原先按 `errors.x` 对象）——zodResolver 校验失败时恒带 message，无可观察差异。
+ *
+ * 入参是**校验键**不是文案：`taskFormSchema` 的 message 只装 i18n 键（见 `agent-tasks-utils`），
+ * 译文在这里按当前语言取，语言切换后错误行跟着变。此前直接把 message 渲染上屏，
+ * 等于把中文写死在 schema 里。
  */
-function FieldError({ message }: { message?: string }) {
-  if (!message) return null;
-  return <p className="mt-0.5 text-xs text-destructive">{message}</p>;
+function FieldError({ messageKey }: { messageKey?: string }) {
+  const { t } = useTranslation(NS.TASKS_V2);
+  if (!messageKey) return null;
+  return <p className="mt-0.5 text-xs text-destructive">{t(messageKey)}</p>;
 }
 
 const COMMON_TIMEZONES = [
@@ -136,7 +141,7 @@ export function TaskForm({ agents, isEditing, initialType = "http" }: TaskFormPr
             className={`w-full ${errors.name ? "border-destructive" : ""}`}
           />
         </LabeledField>
-        <FieldError message={errors.name?.message} />
+        <FieldError messageKey={errors.name?.message} />
       </div>
 
       <div className="rounded-lg border border-border/40 bg-surface-0 p-3 space-y-3">
@@ -207,7 +212,7 @@ export function TaskForm({ agents, isEditing, initialType = "http" }: TaskFormPr
               )}
             </div>
           </LabeledField>
-          <FieldError message={errors.timezone?.message} />
+          <FieldError messageKey={errors.timezone?.message} />
         </div>
 
         <div>
@@ -218,7 +223,7 @@ export function TaskForm({ agents, isEditing, initialType = "http" }: TaskFormPr
               className={`w-full ${errors.timeoutSeconds ? "border-destructive" : ""}`}
             />
           </LabeledField>
-          <FieldError message={errors.timeoutSeconds?.message} />
+          <FieldError messageKey={errors.timeoutSeconds?.message} />
         </div>
       </div>
 
@@ -230,7 +235,7 @@ export function TaskForm({ agents, isEditing, initialType = "http" }: TaskFormPr
             className={`w-full ${errors.description ? "border-destructive" : ""}`}
           />
         </LabeledField>
-        <FieldError message={errors.description?.message} />
+        <FieldError messageKey={errors.description?.message} />
       </div>
 
       {/* Type Tabs */}
@@ -284,7 +289,7 @@ export function TaskForm({ agents, isEditing, initialType = "http" }: TaskFormPr
                 </Select>
               </div>
             </LabeledField>
-            <FieldError message={errors.url?.message} />
+            <FieldError messageKey={errors.url?.message} />
           </div>
           <div>
             <LabeledField label={t("form.headersLabel")}>
@@ -294,7 +299,7 @@ export function TaskForm({ agents, isEditing, initialType = "http" }: TaskFormPr
                 className={`font-mono text-xs h-16 w-full ${errors.headers ? "border-destructive" : ""}`}
               />
             </LabeledField>
-            <FieldError message={errors.headers?.message} />
+            <FieldError messageKey={errors.headers?.message} />
           </div>
           <div>
             <LabeledField label={t("form.bodyLabel")}>
@@ -327,7 +332,7 @@ export function TaskForm({ agents, isEditing, initialType = "http" }: TaskFormPr
                 </SelectContent>
               </Select>
             </LabeledField>
-            <FieldError message={errors.agentId?.message} />
+            <FieldError messageKey={errors.agentId?.message} />
           </div>
           <div>
             <LabeledField label={t("form.promptLabel")}>
@@ -337,7 +342,7 @@ export function TaskForm({ agents, isEditing, initialType = "http" }: TaskFormPr
                 className={`h-32 w-full ${errors.prompt ? "border-destructive" : ""}`}
               />
             </LabeledField>
-            <FieldError message={errors.prompt?.message} />
+            <FieldError messageKey={errors.prompt?.message} />
           </div>
         </div>
       )}

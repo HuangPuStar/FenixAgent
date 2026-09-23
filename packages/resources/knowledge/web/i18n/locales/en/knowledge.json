@@ -38,7 +38,11 @@
     "renameTitle": "Import Knowledge Base",
     "renameDescription": "Give the knowledge base a name so it is easy to identify in the platform",
     "nameLabel": "Knowledge Base Name",
-    "namePlaceholder": "Enter knowledge base name"
+    "namePlaceholder": "Enter knowledge base name",
+    "importBtn": "Import",
+    "importing": "Importing",
+    "confirmImport": "Confirm Import",
+    "cancel": "Cancel"
   },
   "embeddingModel": {
     "listLoadFailed": "Failed to load model list",
@@ -110,6 +114,8 @@
     "deleteResourceFailed": "Failed to delete resource",
     "listUnassociatedFailed": "Failed to load importable knowledge bases",
     "importFailed": "Import failed",
+    "imported": "\"{{name}}\" imported",
+    "remoteDeleted": "This knowledge base was deleted in RAGFlow and can no longer be opened",
     "toggleResourceFailed": "Failed to update resource status"
   },
   "reparse": {
@@ -206,7 +212,10 @@
     "deleteTitle": "Confirm Delete Knowledge Base",
     "deleteDescription": "Are you sure you want to delete knowledge base \"{{name}}\"?",
     "deleteResourceTitle": "Confirm Delete Document",
-    "deleteResourceDescription": "Are you sure you want to delete document \"{{name}}\"? This action cannot be undone."
+    "deleteResourceDescription": "Are you sure you want to delete document \"{{name}}\"? This action cannot be undone.",
+    "overwriteTitle": "Overwrite Existing Files",
+    "overwriteDescription": "These files already exist; uploading will overwrite them:\n{{names}}",
+    "overwriteNameSeparator": ", "
   },
   "preview": {
     "title": "Preview: {{name}}",
@@ -237,6 +246,18 @@
     "useKg": "Knowledge Graph",
     "crossLanguages": "Cross-Language Search",
     "selectAll": "All",
+    "languages": {
+      "English": "English",
+      "Chinese": "Chinese",
+      "Spanish": "Spanish",
+      "French": "French",
+      "German": "German",
+      "Japanese": "Japanese",
+      "Korean": "Korean",
+      "Vietnamese": "Vietnamese",
+      "Arabic": "Arabic",
+      "Turkish": "Turkish"
+    },
     "metaDataFilter": "Metadata Filter",
     "metaFilterDisabled": "Disabled",
     "metaFilterAuto": "Auto",

@@ -4,31 +4,16 @@ import { useTranslation } from "react-i18next";
 import type { ExpandState } from "./expand-field-dialog";
 
 /**
- * 节点配置卡片里的三种字段外形。
+ * 节点配置卡片里的两种字段外形。
  *
  * 从 `NodeConfigCard` 抽出，因为按节点类型分开的分区组件（`node-config-*-section(s).tsx`）
- * 全都要用它们：`BlockField` 是带「展开」入口的代码块，`InlineField` 是标签与控件同排的一行，
- * `CollapsibleGroup` 是工具分组用的折叠容器。三者的 DOM 结构就是各分区共用的那份样式配方
- * （`wf-prop-field-block` / `wf-prop-field-inline`），改一处即改全部，所以留在一个文件里。
+ * 全都要用它们：`BlockField` 是带「展开」入口的代码块，`InlineField` 是标签与控件同排的一行。
+ * 两者的 DOM 结构就是各分区共用的那份样式配方（`wf-prop-field-block` / `wf-prop-field-inline`），
+ * 改一处即改全部，所以留在一个文件里。
+ *
+ * 折叠容器 `CollapsibleGroup` 不在本文件：它与运行参数弹窗的分组容器是同一种东西，
+ * 2026-09-23（第 19 轮）已收敛为 `./CollapsibleGroup` 一份实现。
  */
-
-/** 可折叠的分组容器，使用 <details> 实现 */
-export function CollapsibleGroup({
-  label,
-  defaultOpen,
-  children,
-}: {
-  label: string;
-  defaultOpen: boolean;
-  children: React.ReactNode;
-}) {
-  return (
-    <details open={defaultOpen} style={{ marginTop: 8 }}>
-      <summary style={{ fontWeight: 600, color: "#374151", cursor: "pointer", fontSize: 12 }}>{label}</summary>
-      <div style={{ marginTop: 4 }}>{children}</div>
-    </details>
-  );
-}
 
 /**
  * 代码块字段：多行文本 + 右上角的「展开编辑」按钮。

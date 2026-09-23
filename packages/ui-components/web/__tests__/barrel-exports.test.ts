@@ -205,6 +205,7 @@ const EXPECTED_EXPORTS: Record<string, readonly string[]> = {
     "FileTypeIcon",
     "FileViewerPreview",
     "PreviewRail",
+    "PreviewSourceError",
     "PreviewTab",
     "classifyFile",
     "getFileExtension",

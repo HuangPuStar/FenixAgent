@@ -331,6 +331,8 @@
       "loading": "Loading...",
       "noFileSelected": "Select a file to preview",
       "retry": "Retry",
+      "loadFailed": "Failed to load preview (HTTP {{status}})",
+      "loadFailedUnknown": "Failed to load preview",
       "componentError": "Failed to load the preview component",
       "messages": {
         "loading": "Loading...",

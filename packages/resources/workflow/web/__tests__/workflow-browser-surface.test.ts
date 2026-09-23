@@ -128,6 +128,9 @@ describe("workflow web 入口浏览器可达面", () => {
       // （`useWorkflowRun` 装配它们）。同样只走包内相对路径，不在入口导出面里。
       "pages/workflow/run-canvas-model.ts",
       "pages/workflow/components/node-config-fields.tsx",
+      // 2026-09-23（第 19 轮）：两处同名的折叠分组容器收敛为一份（节点配置卡的工具分组与运行参数
+      // 弹窗的分组共用），同样只走包内相对路径，不在入口导出面里。
+      "pages/workflow/components/CollapsibleGroup.tsx",
       "pages/workflow/hooks/use-workflow-run-transport.ts",
       "pages/workflow/hooks/use-workflow-run-lifecycle.ts",
     ]) {

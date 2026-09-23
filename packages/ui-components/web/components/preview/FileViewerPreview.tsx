@@ -23,6 +23,8 @@
  * 7. 取数函数 `fetchPreview` 为**必填 prop**（源实现在组件内直调全局 `fetch` 读宿主文件代理路由，
  *    并用 `= fetch` 作 `preview-source` 的默认参数）：本包不得依赖 `@fenix/web-runtime`，因此取数只能
  *    由宿主注入，且刻意不保留全局 `fetch` 兜底——兜底会让组件重新直连后端并自行拼 URL（§5.8）。
+ * 8. 失败态不再回显原始错误（§9.3）：`preview-source` 抛的是结构化的 `PreviewSourceError`（带 `status`），
+ *    文案按当前语言取 `fileTree.preview.loadFailed` / `loadFailedUnknown`，原始错误只进 `console.error`。
  */
 
 import type { PreviewLocale, PreviewMessages } from "@open-file-viewer/core";
@@ -40,6 +42,7 @@ import {
   getPreviewMimeType,
   loadByteAccuratePreviewSource,
   type PreviewFetch,
+  PreviewSourceError,
   shouldLoadPreviewAsBlob,
 } from "./preview-source";
 
@@ -170,7 +173,10 @@ export function FileViewerPreview({
   const mimeType = useMemo(() => getPreviewMimeType(filePath), [filePath]);
   const loadAsBlob = useMemo(() => shouldLoadPreviewAsBlob(filePath), [filePath]);
   const [previewSource, setPreviewSource] = useState<string | Blob | null>(() => (loadAsBlob ? null : previewUrl));
-  const [loadError, setLoadError] = useState<string | null>(null);
+  // 失败态只留结构（有状态码 / 无状态码），文案在渲染时按当前语言取——原始错误只进 console（§9.3：
+  // 不展示 raw message）。此前这里存的是 `error.message` 并原样上屏，界面因此会出现
+  // 「文件预览加载失败 (500)」这类写死中文，或宿主域模块的内部错误串。
+  const [loadError, setLoadError] = useState<{ status?: number } | null>(null);
   const [reloadKey, setReloadKey] = useState(0);
 
   useEffect(() => {
@@ -189,7 +195,9 @@ export function FileViewerPreview({
     void loadByteAccuratePreviewSource(requestUrl, fetchPreview, { signal: controller.signal })
       .then(setPreviewSource)
       .catch((error: unknown) => {
-        if (!controller.signal.aborted) setLoadError(error instanceof Error ? error.message : String(error));
+        if (controller.signal.aborted) return;
+        console.error("[FileViewerPreview] 预览源加载失败", error);
+        setLoadError({ status: error instanceof PreviewSourceError ? error.status : undefined });
       });
     return () => controller.abort();
   }, [fetchPreview, loadAsBlob, previewUrl, reloadKey]);
@@ -217,8 +225,12 @@ export function FileViewerPreview({
   if (loadError) {
     return (
       <div className="flex-1 flex flex-col items-center justify-center p-4 gap-3" role="alert">
-        {/* 错误消息来自 loadByteAccuratePreviewSource，为中文硬编码（与源实现一致） */}
-        <span className="text-xs font-medium text-red-500">{loadError}</span>
+        {/* 文案取包内字典：状态码来自 PreviewSourceError（宿主域模块抛的其它错误只有通用文案，原始错误进 console） */}
+        <span className="text-xs font-medium text-red-500">
+          {loadError.status === undefined
+            ? t("fileTree.preview.loadFailedUnknown")
+            : t("fileTree.preview.loadFailed", { status: loadError.status })}
+        </span>
         <button
           type="button"
           className="text-xs text-primary hover:underline"

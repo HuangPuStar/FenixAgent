@@ -81,7 +81,7 @@ export function KnowledgeImportDialog(props: KnowledgeImportDialogProps) {
                       className="h-8 gap-1.5 text-xs rounded-lg shrink-0 ml-3"
                     >
                       <Download className="h-3.5 w-3.5" />
-                      导入
+                      {t("importDialog.importBtn")}
                     </Button>
                   </div>
                 ))}
@@ -117,7 +117,7 @@ export function KnowledgeImportDialog(props: KnowledgeImportDialogProps) {
             </div>
             <div className="flex justify-end gap-3">
               <Button variant="outline" onClick={props.rename.onCancel} className="h-9 text-xs rounded-lg">
-                取消
+                {t("importDialog.cancel")}
               </Button>
               <Button
                 disabled={props.importingId === props.rename.target?.id || !props.rename.value.trim()}
@@ -128,10 +128,10 @@ export function KnowledgeImportDialog(props: KnowledgeImportDialogProps) {
                   <>
                     {/* text-current：跟随按钮前景色，环在填充底上才看得见 */}
                     <Spinner size="xs" className="text-current" />
-                    导入中
+                    {t("importDialog.importing")}
                   </>
                 ) : (
-                  "确认导入"
+                  t("importDialog.confirmImport")
                 )}
               </Button>
             </div>

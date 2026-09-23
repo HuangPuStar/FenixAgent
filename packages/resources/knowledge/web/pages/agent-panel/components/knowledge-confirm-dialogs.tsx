@@ -83,8 +83,10 @@ export function KnowledgeConfirmDialogs(props: KnowledgeConfirmDialogsProps) {
       <ConfirmDialog
         open={props.overwriteUpload.open}
         onOpenChange={props.overwriteUpload.onOpenChange}
-        title="覆盖同名文件"
-        description={`以下文件已存在，上传将覆盖原有文件：\n${props.overwriteUpload.names.join("、")}`}
+        title={t("confirm.overwriteTitle")}
+        description={t("confirm.overwriteDescription", {
+          names: props.overwriteUpload.names.join(t("confirm.overwriteNameSeparator")),
+        })}
         onConfirm={props.overwriteUpload.onConfirm}
       />
 
