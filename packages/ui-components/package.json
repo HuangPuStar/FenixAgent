@@ -540,6 +540,10 @@
       "types": "./web/ui/dropdown-menu.tsx",
       "default": "./web/ui/dropdown-menu.tsx"
     },
+    "./ui/error-fallback": {
+      "types": "./web/ui/error-fallback.tsx",
+      "default": "./web/ui/error-fallback.tsx"
+    },
     "./ui/form": {
       "types": "./web/ui/form.tsx",
       "default": "./web/ui/form.tsx"

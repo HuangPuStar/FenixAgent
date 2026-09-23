@@ -303,6 +303,10 @@
   "datePicker": {
     "placeholder": "Select date"
   },
+  "errors": {
+    "renderFailed": "Failed to render this content",
+    "retry": "Retry"
+  },
   "fileTree": {
     "accessibleName": "File tree",
     "clearSearch": "Clear file search",

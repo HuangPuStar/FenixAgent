@@ -322,6 +322,7 @@ const EXPECTED_EXPORTS: Record<string, readonly string[]> = {
     "DropdownMenuSubContent",
     "DropdownMenuSubTrigger",
     "DropdownMenuTrigger",
+    "ErrorFallback",
     "Form",
     "FormControl",
     "FormDescription",

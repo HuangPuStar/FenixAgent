@@ -4,6 +4,7 @@ import { type ProdViewModulesConfig, ProdViewsPanel } from "@fenix/resource-prod
 import { TasksPanel } from "@fenix/resource-task/web";
 import type { ChangedFile } from "@fenix/ui-components/chat/lib/extract-changed-files";
 import { Button } from "@fenix/ui-components/ui/button";
+import { ErrorFallback } from "@fenix/ui-components/ui/error-fallback";
 import { unwrap } from "@fenix/web-runtime/api/request";
 import {
   ARTIFACTS_PREVIEW_FILE_EVENT,
@@ -12,6 +13,7 @@ import {
 import { useRequest } from "ahooks";
 import { Globe, Plus, Upload } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { ErrorBoundary } from "react-error-boundary";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
 import { useDragCounter } from "@/src/hooks/use-drag-counter";
@@ -42,8 +44,26 @@ interface ArtifactsPanelProps {
   onClose?: () => void;
 }
 
+/**
+ * 输出展示面板（§7.1 放置矩阵第 4 行）：非关键面板，根组件裹一层错误边界——文件树 / 预览 / 站点 iframe
+ * 任一崩溃时收缩成统一降级 UI（一次重试即可重新挂载整块面板），聊天区与侧栏不受影响。
+ *
+ * 边界裹在导出处而不是某个 `return` 上：本组件有多个输出出口，且取数（`useRequest` / Sites 列表）
+ * 发生在组件体内，逐出口加边界既不完整也要写多遍。
+ */
+export function ArtifactsPanel(props: ArtifactsPanelProps) {
+  return (
+    <ErrorBoundary
+      FallbackComponent={ErrorFallback}
+      onError={(error, info) => console.error("[ArtifactsPanel] 渲染失败", error, info)}
+    >
+      <ArtifactsPanelView {...props} />
+    </ErrorBoundary>
+  );
+}
+
 /** Chat 右侧真实工作区；环境、Site 和文件状态均保持原有 API 数据流。 */
-export function ArtifactsPanel({
+function ArtifactsPanelView({
   envId,
   agentConfigId: agentConfigIdProp,
   changedFiles = [],

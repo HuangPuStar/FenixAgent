@@ -135,6 +135,7 @@ export * from "./ui/connection-status";
 export * from "./ui/date-picker";
 export * from "./ui/dialog";
 export * from "./ui/dropdown-menu";
+export * from "./ui/error-fallback";
 export * from "./ui/form";
 export * from "./ui/hover-card";
 export * from "./ui/input";

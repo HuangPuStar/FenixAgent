@@ -303,6 +303,10 @@
   "datePicker": {
     "placeholder": "选择日期"
   },
+  "errors": {
+    "renderFailed": "内容渲染失败",
+    "retry": "重试"
+  },
   "fileTree": {
     "accessibleName": "文件树",
     "clearSearch": "清除文件搜索",

@@ -30,6 +30,7 @@ import type { ErrorInfo, ReactNode } from "react";
 import { Component, useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { UI_COMPONENTS_NS } from "../../i18n/namespace";
+import { ErrorFallback } from "../../ui/error-fallback";
 import { htmlPreviewPlugin } from "./html-plugin";
 import { nativePdfPlugin } from "./native-pdf-plugin";
 import { getPreviewMimeType, loadByteAccuratePreviewSource, shouldLoadPreviewAsBlob } from "./preview-source";
@@ -99,20 +100,21 @@ function buildDefaultPreviewMessages(t: TFunction): Partial<PreviewMessages> {
 /**
  * 错误边界：防止 FileViewer 内部异常导致父组件状态异常。
  *
- * 兜底提示经 `fallbackText` 由调用方注入（类组件用不了 `useTranslation`，语言只在外面拿得到）：
+ * 降级 UI 用统一的 `ErrorFallback`（§7.1）：它自带重试按钮（§7.2），点重试即清掉 `hasError`、重新挂载
+ * `FileViewer`。主文案经 `fallbackText` 由调用方注入（类组件用不了 `useTranslation`，语言只在外面拿得到）：
  * 提示是渲染给用户看的，必须跟随当前语言，不能像源实现那样在边界内写死中文。
+ *
+ * **不回显错误正文**（§7.2）：原始错误只进 `componentDidCatch` 的 `console.error`。此前降级 UI 会把
+ * `error.message` 渲染成第二行文本——它可能含第三方解析器的内部细节，且不随语言变化。
  */
-class FileViewerErrorBoundary extends Component<
-  { children: ReactNode; filePath: string; fallbackText: string },
-  { hasError: boolean; errorMessage: string }
-> {
-  constructor(props: { children: ReactNode; filePath: string; fallbackText: string }) {
+class FileViewerErrorBoundary extends Component<{ children: ReactNode; fallbackText: string }, { hasError: boolean }> {
+  constructor(props: { children: ReactNode; fallbackText: string }) {
     super(props);
-    this.state = { hasError: false, errorMessage: "" };
+    this.state = { hasError: false };
   }
 
-  static getDerivedStateFromError(error: Error) {
-    return { hasError: true, errorMessage: error.message };
+  static getDerivedStateFromError() {
+    return { hasError: true };
   }
 
   componentDidCatch(error: Error, info: ErrorInfo) {
@@ -122,10 +124,10 @@ class FileViewerErrorBoundary extends Component<
   render() {
     if (this.state.hasError) {
       return (
-        <div className="flex-1 flex flex-col items-center justify-center p-4 gap-2">
-          <span className="text-xs font-medium text-red-500">{this.props.fallbackText}</span>
-          <span className="text-3xs text-text-muted break-all">{this.state.errorMessage}</span>
-        </div>
+        <ErrorFallback
+          message={this.props.fallbackText}
+          resetErrorBoundary={() => this.setState({ hasError: false })}
+        />
       );
     }
     return this.props.children;
@@ -218,7 +220,7 @@ export function FileViewerPreview({
   }
 
   return (
-    <FileViewerErrorBoundary filePath={filePath} fallbackText={t("fileTree.preview.componentError")}>
+    <FileViewerErrorBoundary fallbackText={t("fileTree.preview.componentError")}>
       <FileViewer
         file={previewSource}
         fileName={fileName}
