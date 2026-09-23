@@ -1,9 +1,10 @@
+import { RemovableChip } from "@fenix/ui-components/components/RemovableChip";
 import { EmptyState } from "@fenix/ui-components/config/EmptyState";
 import { cn } from "@fenix/ui-components/lib/cn";
 import { Checkbox } from "@fenix/ui-components/ui/checkbox";
 import { Input } from "@fenix/ui-components/ui/input";
 import { NS } from "@fenix/web-runtime/i18n/namespace";
-import { Search, X } from "lucide-react";
+import { Search } from "lucide-react";
 import { type ReactNode, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { EditorGroupFilter, EditorPagination } from "./agent-editor-controls";
@@ -119,6 +120,8 @@ export function AgentResourcePicker({
           <strong>{t("editor.selectedCount", { count: value.length })}</strong>
           <small>{t("editor.changeSelection")}</small>
         </div>
+        {/* 已选 chip 走库内共用原语 `components/RemovableChip`（整枚可点即移除）：本处、ChatComposer 的
+            技能 chip 与 MCP chip 三处此前各写一份同样的按钮 + 尾随 `X`，差异只在类串与文案。 */}
         <div className={PICKER_CHIPS} data-slot="picker-chips">
           {selectedOptions.length ? (
             selectedOptions.map((item) => {
@@ -126,12 +129,11 @@ export function AgentResourcePicker({
                 ? t("editor.selectedUnavailableResource", { name: item.label })
                 : undefined;
               return (
-                <button
-                  type="button"
+                <RemovableChip
                   key={item.id}
                   className={item.unavailable ? PICKER_CHIP_UNAVAILABLE : undefined}
                   data-unavailable={item.unavailable ? "true" : undefined}
-                  onClick={() => toggle(item)}
+                  onRemove={() => toggle(item)}
                   disabled={readOnly}
                   aria-label={
                     item.unavailable
@@ -142,8 +144,7 @@ export function AgentResourcePicker({
                 >
                   {item.label}
                   {item.unavailable && <span className="sr-only">{t("editor.unavailable")}</span>}
-                  <X />
-                </button>
+                </RemovableChip>
               );
             })
           ) : (

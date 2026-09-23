@@ -340,6 +340,10 @@
       "types": "./web/components/ClosableTabPill.tsx",
       "default": "./web/components/ClosableTabPill.tsx"
     },
+    "./components/RemovableChip": {
+      "types": "./web/components/RemovableChip.tsx",
+      "default": "./web/components/RemovableChip.tsx"
+    },
     "./components/PreviewTab": {
       "types": "./web/components/PreviewTab.tsx",
       "default": "./web/components/PreviewTab.tsx"
