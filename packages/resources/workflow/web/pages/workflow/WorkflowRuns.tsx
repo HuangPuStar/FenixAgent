@@ -1,24 +1,19 @@
+import { EmptyState } from "@fenix/ui-components/config/EmptyState";
+import { StatusBadge } from "@fenix/ui-components/config/StatusBadge";
 import { Button } from "@fenix/ui-components/ui/button";
 import { Input } from "@fenix/ui-components/ui/input";
 import { Pagination } from "@fenix/ui-components/ui/pagination";
 import { Skeleton } from "@fenix/ui-components/ui/skeleton";
 import { unwrap } from "@fenix/web-runtime/api/request";
-import { useRequest } from "ahooks";
+import { useDebounce, useRequest } from "ahooks";
 import { AlertTriangle, ArrowRight, Inbox, RefreshCw, Search, Square } from "lucide-react";
 import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
 import { type DAGStatus, workflowEngineApi } from "../../api/workflow-engine";
-
-const STATUS_CONFIG: Record<string, { color: string; bg: string }> = {
-  PENDING: { color: "#94a3b8", bg: "#f1f5f9" },
-  RUNNING: { color: "#3b82f6", bg: "#eff6ff" },
-  SUSPENDED: { color: "#f59e0b", bg: "#fffbeb" },
-  SUCCESS: { color: "#22c55e", bg: "#f0fdf4" },
-  FAILED: { color: "#ef4444", bg: "#fef2f2" },
-  CANCELLED: { color: "#94a3b8", bg: "#f8fafc" },
-  ERROR: { color: "#ef4444", bg: "#fef2f2" },
-};
+import { WORKFLOW_RUN_STATUS_TONES } from "../../lib/status-tones";
+import { RUN_STATUS_FILTERS, StatusFilterRow } from "./components/StatusFilterRow";
+import { relativeTime } from "./utils";
 
 const STATUS_LABEL_KEYS: Record<string, string> = {
   PENDING: "runs.status_pending",
@@ -29,35 +24,6 @@ const STATUS_LABEL_KEYS: Record<string, string> = {
   CANCELLED: "runs.status_cancelled",
   ERROR: "runs.status_error",
 };
-
-function StatusBadge({ status }: { status: string }) {
-  const { t } = useTranslation("workflows");
-  const cfg = STATUS_CONFIG[status] ?? STATUS_CONFIG.PENDING;
-  const isRunning = status === "RUNNING";
-  return (
-    <span
-      className="inline-flex items-center gap-1.5 text-[11px] font-medium px-2 py-0.5 rounded-full"
-      style={{ color: cfg.color, background: cfg.bg }}
-    >
-      {isRunning && <span className="w-1.5 h-1.5 rounded-full animate-pulse" style={{ background: cfg.color }} />}
-      {t(STATUS_LABEL_KEYS[status] ?? status)}
-    </span>
-  );
-}
-
-function relativeTime(
-  iso: string | undefined | null,
-  t: (key: string, opts?: Record<string, unknown>) => string,
-): string {
-  if (!iso) return "--";
-  const diff = (Date.now() - new Date(iso).getTime()) / 1000;
-  if (diff < 0) return t("runs.relative_now");
-  if (diff < 60) return t("runs.relative_now");
-  if (diff < 3600) return t("runs.relative_minutes", { count: Math.floor(diff / 60) });
-  if (diff < 86400) return t("runs.relative_hours", { count: Math.floor(diff / 3600) });
-  if (diff < 604800) return t("runs.relative_days", { count: Math.floor(diff / 86400) });
-  return new Date(iso).toLocaleDateString();
-}
 
 function formatDuration(startedAt?: string | null, completedAt?: string | null): string {
   if (!startedAt) return "--";
@@ -77,15 +43,13 @@ export function WorkflowRuns({ onSelectRun }: WorkflowRunsProps) {
   const { t } = useTranslation("workflows");
   const [statusFilter, setStatusFilter] = useState<string>("all");
   const [searchQuery, setSearchQuery] = useState("");
-  const [debouncedSearch, setDebouncedSearch] = useState("");
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(20);
 
-  // 搜索防抖：输入即时更新，API 请求 300ms 后触发
-  useEffect(() => {
-    const timer = setTimeout(() => setDebouncedSearch(searchQuery), 300);
-    return () => clearTimeout(timer);
-  }, [searchQuery]);
+  // 搜索防抖：输入即时更新，API 请求 300ms 后触发。此前这里是手写的 `setTimeout` + `clearTimeout`
+  // 配对（effect 里再 `clearTimeout`），改用 ahooks 的 `useDebounce`（本包与仓库根依赖的 ahooks@^3.9.7）：
+  // 首帧直接返回当前值、卸载时取消挂起的定时器，语义与原实现一致，少一份需要各自维护的定时器状态。
+  const debouncedSearch = useDebounce(searchQuery, { wait: 300 });
 
   // 筛选条件或搜索词变化时，重置到第 1 页。
   // debouncedSearch / statusFilter 是「变化即重置页码」的触发条件，不是 effect 读取的值；按 biome 的建议删掉
@@ -131,6 +95,8 @@ export function WorkflowRuns({ onSelectRun }: WorkflowRunsProps) {
 
   const totalPages = Math.max(1, Math.ceil(total / pageSize));
   const showEmpty = !loading && !error && runs.length === 0;
+  // 「筛选/搜索后没有匹配」与「一条运行都没有」是两种空态：前者要提示清空筛选，后者要提示去发起运行。
+  const isFiltered = statusFilter !== "all" || Boolean(debouncedSearch);
 
   return (
     <div className="flex flex-col flex-1 min-h-0">
@@ -146,22 +112,15 @@ export function WorkflowRuns({ onSelectRun }: WorkflowRunsProps) {
               className="h-8 pl-8 text-xs"
             />
           </div>
-          <div className="flex gap-1">
-            {["all", "RUNNING", "SUSPENDED", "SUCCESS", "FAILED"].map((s) => (
-              <button
-                key={s}
-                type="button"
-                onClick={() => setStatusFilter(s)}
-                className={`rounded-md border px-2.5 py-1 text-[11px] font-medium transition-colors ${
-                  statusFilter === s
-                    ? "border-brand bg-brand-subtle text-brand"
-                    : "border-border-subtle bg-surface-1 text-text-secondary hover:bg-surface-hover"
-                }`}
-              >
-                {s === "all" ? t("runs.filter_all") : t(STATUS_LABEL_KEYS[s] ?? s)}
-              </button>
-            ))}
-          </div>
+          {/* 筛选：取词路径是本页自己的（runs.status_*），由这里翻译后交给共享件 */}
+          <StatusFilterRow
+            value={statusFilter}
+            onChange={setStatusFilter}
+            options={RUN_STATUS_FILTERS.map((s) => ({
+              value: s,
+              label: s === "all" ? t("runs.filter_all") : t(STATUS_LABEL_KEYS[s] ?? s),
+            }))}
+          />
         </div>
         <Button variant="outline" size="sm" onClick={refresh}>
           <RefreshCw size={13} className="mr-1" /> {t("runs.refresh")}
@@ -177,24 +136,20 @@ export function WorkflowRuns({ onSelectRun }: WorkflowRunsProps) {
           ))}
         </div>
       ) : error ? (
-        <div className="text-center py-10">
-          <AlertTriangle size={32} className="text-status-error mx-auto mb-2" />
-          <p className="text-[13px] text-text-secondary">{t("runs.load_failed", { error: errorMsg })}</p>
-        </div>
+        // 失败是持久分支：不能与下面的「暂无运行」空态合并，否则用户分不清「没有数据」与「没取到数据」。
+        // 本页不额外给重试按钮——工具栏上的刷新是同一入口，再放一个只会让错误态里出现两个「重试」。
+        <EmptyState
+          icon={<AlertTriangle />}
+          title={t("runs.load_failed", { error: errorMsg })}
+          tone="danger"
+          role="alert"
+        />
       ) : showEmpty ? (
-        <div className="text-center py-10">
-          {statusFilter !== "all" || debouncedSearch ? (
-            <Search size={32} className="text-text-secondary mx-auto mb-2" />
-          ) : (
-            <Inbox size={32} className="text-text-secondary mx-auto mb-2" />
-          )}
-          <p className="text-[13px] text-text-secondary font-medium">
-            {statusFilter !== "all" || debouncedSearch ? t("runs.no_match") : t("runs.no_runs")}
-          </p>
-          <p className="text-[11px] text-text-dim mt-1">
-            {statusFilter !== "all" || debouncedSearch ? t("runs.no_runs_filter_hint") : t("runs.no_runs_hint")}
-          </p>
-        </div>
+        <EmptyState
+          icon={isFiltered ? <Search /> : <Inbox />}
+          title={isFiltered ? t("runs.no_match") : t("runs.no_runs")}
+          description={isFiltered ? t("runs.no_runs_filter_hint") : t("runs.no_runs_hint")}
+        />
       ) : (
         <div className="flex-1 flex flex-col min-h-0 overflow-hidden">
           {/* 数据表格 */}
@@ -205,19 +160,19 @@ export function WorkflowRuns({ onSelectRun }: WorkflowRunsProps) {
                   <th className="text-left py-3 px-4 text-xs font-medium text-muted-foreground">
                     {t("runs.col_workflow")}
                   </th>
-                  <th className="text-left py-3 px-4 text-xs font-medium text-muted-foreground w-[100px]">
+                  <th className="text-left py-3 px-4 text-xs font-medium text-muted-foreground w-25">
                     {t("runs.col_status")}
                   </th>
-                  <th className="text-left py-3 px-4 text-xs font-medium text-muted-foreground w-[90px]">
+                  <th className="text-left py-3 px-4 text-xs font-medium text-muted-foreground w-22.5">
                     {t("runs.col_progress")}
                   </th>
-                  <th className="text-left py-3 px-4 text-xs font-medium text-muted-foreground w-[130px]">
+                  <th className="text-left py-3 px-4 text-xs font-medium text-muted-foreground w-32.5">
                     {t("runs.col_started")}
                   </th>
-                  <th className="text-left py-3 px-4 text-xs font-medium text-muted-foreground w-[100px]">
+                  <th className="text-left py-3 px-4 text-xs font-medium text-muted-foreground w-25">
                     {t("runs.col_duration")}
                   </th>
-                  <th className="text-right py-3 px-4 text-xs font-medium text-muted-foreground w-[80px]">
+                  <th className="text-right py-3 px-4 text-xs font-medium text-muted-foreground w-20">
                     {t("runs.col_actions")}
                   </th>
                 </tr>
@@ -233,7 +188,13 @@ export function WorkflowRuns({ onSelectRun }: WorkflowRunsProps) {
                       <span className="text-sm font-medium">{r.workflow_name}</span>
                     </td>
                     <td className="py-3 px-4">
-                      <StatusBadge status={r.status} />
+                      <StatusBadge
+                        status={r.status}
+                        label={t(STATUS_LABEL_KEYS[r.status] ?? r.status)}
+                        toneMap={WORKFLOW_RUN_STATUS_TONES}
+                        indicator={r.status === "RUNNING" ? "pulse" : "none"}
+                        className="text-3xs"
+                      />
                     </td>
                     <td className="py-3 px-4">
                       <span className="text-xs text-muted-foreground font-mono">
@@ -241,7 +202,7 @@ export function WorkflowRuns({ onSelectRun }: WorkflowRunsProps) {
                       </span>
                     </td>
                     <td className="py-3 px-4">
-                      <span className="text-xs text-muted-foreground">{relativeTime(r.started_at, t)}</span>
+                      <span className="text-xs text-muted-foreground">{relativeTime(t, r.started_at, "runs")}</span>
                     </td>
                     <td className="py-3 px-4">
                       <span className="text-xs text-muted-foreground font-mono">

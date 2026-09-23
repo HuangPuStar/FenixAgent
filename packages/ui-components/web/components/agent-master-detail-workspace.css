@@ -1,0 +1,32 @@
+/*
+ * 主从工作台外层壳（`agent-master-detail-workspace.tsx`）的深层样式。
+ *
+ * 为什么下沉：`h-[calc(100dvh-210px)]`（复合值）与 `grid-cols-[238px_minmax(0,1fr)]` 都属仓库禁令
+ * FCP-WEB-02；列定义里的 `minmax(0, 1fr)` 也没有扁平等价物（`grid-cols-2` 是等宽两列）。
+ * 扁平工具类（`grid min-h-120 min-w-0 overflow-hidden rounded-lg bg-surface-1 max-md:grid-cols-1`）
+ * 仍留在 `agent-master-detail-workspace.tsx` 的 className 里。
+ *
+ * 已知限制（随投影自 TSX 的文档注释搬来）：外层投影 `0 12px 38px rgb(36 57 92 / 8%)` 在包内没有等价阴影
+ * token（`shadow-elevated` 的扩散与颜色不同），为不改动视觉而逐字保留。
+ * 影响范围：仅本节点的外层投影；索引栏内嵌分隔线已改为 `var(--color-border)`，深色主题下自动跟随。
+ * 移除条件：当主题 token 中补充了与源视觉等价的阴影变量后，改为引用该变量。
+ *
+ * 层叠：本文件不包 `@layer`，未分层声明压过 `@layer utilities`，与迁移前的胜负关系一致；
+ * 列定义与 JSX 里保留的 `max-md:grid-cols-1` 的配合方式见下方媒体查询处的说明。
+ */
+
+.agent-master-detail-workspace {
+  height: calc(100dvh - 210px);
+  box-shadow: 0 12px 38px rgb(36 57 92 / 8%);
+}
+
+/*
+ * 两列壳只在 `md`（≥48rem）及以上成立。JSX 保留了 `max-md:grid-cols-1`，但那条工具类位于
+ * `@layer utilities`，会被本文件未分层的 `grid-template-columns` 整条压过；基础声明因此必须带上与
+ * `max-md` 互补的媒体查询，才能维持迁移前的胜负关系（≥768px 两列、<768px 单列）。
+ */
+@media (width >= 48rem) {
+  .agent-master-detail-workspace {
+    grid-template-columns: 238px minmax(0, 1fr);
+  }
+}

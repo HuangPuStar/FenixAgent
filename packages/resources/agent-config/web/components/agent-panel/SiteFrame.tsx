@@ -1,6 +1,7 @@
 import { envApi } from "@fenix/agent-runtime/web/api/environments";
 import { cn } from "@fenix/ui-components/lib/cn";
 import { Button } from "@fenix/ui-components/ui/button";
+import { Spinner } from "@fenix/ui-components/ui/spinner";
 import { unwrap } from "@fenix/web-runtime/api/request";
 import { NS } from "@fenix/web-runtime/i18n/namespace";
 import { useNavigate } from "@tanstack/react-router";
@@ -9,6 +10,7 @@ import QRCode from "qrcode";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
+import { buildAgentSiteAbsoluteUrl, buildAgentSiteUrl } from "../../lib/agent-site-url";
 
 export interface SiteFrameProps {
   /** 远程 app id（形如 app-xxxx），拼接到同源根路径展示业务前端 */
@@ -24,13 +26,16 @@ export interface SiteFrameProps {
 /** 加载超时阈值：超过此时长 onLoad 仍未触发则认为 site 不可达 */
 const LOAD_TIMEOUT_MS = 15_000;
 
+/** 头部两个图标按钮（刷新 / 分享）共用的样式：两处逐字重复，改样式时只应改这里。 */
+const ICON_BUTTON_CLASS = "h-7 w-7 p-0 text-text-muted hover:text-text-primary";
+
 type LoadState = "loading" | "loaded" | "timeout";
 
 /**
  * SiteFrame —— 在 ArtifactsPanel 内嵌加载一个 agent-sites 应用。
  *
- * 通过同源 `/web/site/deploy/${remoteAppId}/` 路径访问业务前端，避免跨域；iframe 加载状态由
- * onLoad 回调关闭，并在外部状态切换时通过 key 重置 src 强制刷新。
+ * 通过同源部署路径访问业务前端（拼接口径见 `web/lib/agent-site-url.ts`，三处站点地址共用同一份），
+ * 避免跨域；iframe 加载状态由 onLoad 回调关闭，并在外部状态切换时通过 key 重置 src 强制刷新。
  *
  * 兜底：site 不可达时浏览器对部分连接级失败不会触发 onLoad，会让用户卡在
  * 永久 loading。这里加 15s 超时定时器 + iframe onError，超时后展示错误态 +
@@ -49,7 +54,7 @@ export function SiteFrame({ remoteAppId, name, createdByAgentConfigId, createdBy
 
   // 同源路径，避免跨域；以 / 开头确保从 RCS 域根解析
   // 调用方切换 site 时通过 key={remoteAppId} 强制重挂载，loading 自然回到 true
-  const src = `/web/site/deploy/${remoteAppId}/`;
+  const src = buildAgentSiteUrl(remoteAppId);
 
   // 二维码数据 URL：组件挂载时异步生成，url 变化时重新生成
   const [qrDataUrl, setQrDataUrl] = useState<string | null>(null);
@@ -59,7 +64,7 @@ export function SiteFrame({ remoteAppId, name, createdByAgentConfigId, createdBy
 
   useEffect(() => {
     let cancelled = false;
-    const fullUrl = `${window.location.origin}${src}`;
+    const fullUrl = buildAgentSiteAbsoluteUrl(src, window.location.origin);
     QRCode.toDataURL(fullUrl, {
       width: 140,
       margin: 1,
@@ -142,13 +147,13 @@ export function SiteFrame({ remoteAppId, name, createdByAgentConfigId, createdBy
         <span className="text-xs text-text-muted truncate flex-1 min-w-0" title={name}>
           {name}
         </span>
-        <code className="rounded bg-surface-2 px-1.5 py-0.5 text-[10px] text-text-dim font-mono flex-shrink-0">
+        <code className="rounded bg-surface-2 px-1.5 py-0.5 text-3xs text-text-dim font-mono flex-shrink-0">
           {remoteAppId}
         </code>
         {createdByAgentConfigId && (
           <button
             type="button"
-            className="text-[10px] text-text-dim hover:text-primary hover:underline cursor-pointer flex-shrink-0"
+            className="text-3xs text-text-dim hover:text-primary hover:underline cursor-pointer flex-shrink-0"
             onClick={handleNavigateToCreator}
             title={`创建者: ${createdByAgentConfigName || createdByAgentConfigId}`}
           >
@@ -158,7 +163,7 @@ export function SiteFrame({ remoteAppId, name, createdByAgentConfigId, createdBy
         <Button
           variant="ghost"
           size="sm"
-          className="h-7 w-7 p-0 text-text-muted hover:text-text-primary"
+          className={ICON_BUTTON_CLASS}
           onClick={handleReload}
           title={t("siteFrame.reload")}
           aria-label={t("siteFrame.reload")}
@@ -169,7 +174,7 @@ export function SiteFrame({ remoteAppId, name, createdByAgentConfigId, createdBy
           <Button
             variant="ghost"
             size="sm"
-            className="h-7 w-7 p-0 text-text-muted hover:text-text-primary"
+            className={ICON_BUTTON_CLASS}
             title={t("siteFrame.share")}
             aria-label={t("siteFrame.share")}
             onClick={() => setShareOpen((v) => !v)}
@@ -180,11 +185,11 @@ export function SiteFrame({ remoteAppId, name, createdByAgentConfigId, createdBy
             <div className="absolute right-0 top-full mt-1.5 z-50 bg-surface-1 rounded-md border border-border shadow-lg p-3">
               <div className="flex flex-col items-center gap-2">
                 {/* 站点名称 */}
-                <span className="text-xs font-medium text-text-primary truncate max-w-[140px]" title={name}>
+                <span className="text-xs font-medium text-text-primary truncate max-w-35" title={name}>
                   {name}
                 </span>
                 {/* 二维码区域 */}
-                <div className="w-[120px] h-[120px] rounded-md border border-border/30 bg-white flex items-center justify-center overflow-hidden">
+                <div className="w-30 h-30 rounded-md border border-border/30 bg-white flex items-center justify-center overflow-hidden">
                   {qrDataUrl ? (
                     <img src={qrDataUrl} alt={`QR code for ${name}`} className="w-full h-full object-contain" />
                   ) : (
@@ -212,8 +217,7 @@ export function SiteFrame({ remoteAppId, name, createdByAgentConfigId, createdBy
       <div className="relative flex-1 min-h-0 min-w-0">
         {isLoading && (
           <div className="absolute inset-0 z-10 flex flex-col items-center justify-center gap-2 bg-surface-1/80">
-            <Loader2 className="h-6 w-6 text-brand animate-spin" />
-            <span className="text-xs text-text-muted">{t("siteFrame.loading")}</span>
+            <Spinner size="sm" label={t("siteFrame.loading")} />
           </div>
         )}
         {isTimeout && (

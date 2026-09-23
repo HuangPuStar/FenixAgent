@@ -2,6 +2,7 @@ import {
   AgentMasterDetailHeader,
   AgentMasterDetailWorkspace,
 } from "@fenix/ui-components/components/agent-master-detail-workspace";
+import { copyTextToClipboard } from "@fenix/ui-components/lib/clipboard";
 import { Button } from "@fenix/ui-components/ui/button";
 import { Input } from "@fenix/ui-components/ui/input";
 import { Skeleton } from "@fenix/ui-components/ui/skeleton";
@@ -163,10 +164,11 @@ function MachineRow({ machine, props }: { machine: MachineView; props: Organizat
           variant="ghost"
           size="icon-sm"
           aria-label={t("copyId")}
-          onClick={() => {
-            navigator.clipboard.writeText(machine.id);
-            toast.success(t("copied"));
-          }}
+          onClick={() =>
+            void copyTextToClipboard(machine.id).then((ok) =>
+              ok ? toast.success(t("copied")) : toast.error(t("copyFailed")),
+            )
+          }
         >
           <Copy className="size-4" />
         </Button>
@@ -269,7 +271,6 @@ function OrganizationDetail({
           <div className="org-detail-meta">
             <span>{props.detail.slug}</span>
             <OrganizationIdCopy id={props.detail.id} onCopy={props.onCopyId} />
-            {props.copiedId ? <em>{t("copied")}</em> : null}
           </div>
         </div>
       </div>

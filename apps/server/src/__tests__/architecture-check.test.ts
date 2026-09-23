@@ -556,6 +556,7 @@ describe("architecture check CLI", () => {
       "owner-inventory",
       "schema-ddl-drift",
       "architecture",
+      "web-style",
       "tsc (server)",
       "tsc (web)",
       "tsc (app skeletons)",

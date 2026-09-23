@@ -1,7 +1,7 @@
 /**
  * ChatInterface / ACPMain 的宿主契约类型。
  *
- * 来源：复制自 `packages/agent-runtime/web/components/chat/chat-interface-types.ts`（ChatInterfaceProps /
+ * 来源：复制自 `packages/agent-runtime/web/components/chat/chat-interface-types.ts`（旧路径，已于 2026-09-21 由 f2741a82d 删除）（ChatInterfaceProps /
  * ChatInterfaceHandle），并按 G5 纯化要求补充宿主注入的端口类型（ChatNotice / ChatStatsSummary /
  * BoundMcpOption）。
  * 纯化改动点：
@@ -44,7 +44,7 @@ export interface BoundMcpOption {
 /**
  * chat 会话统计摘要。
  *
- * 复制自 `apps/web/src/lib/chat-stats.ts` 的 `ChatStatsSummary`（字段逐字一致）。
+ * 复制自 `apps/web/src/lib/chat-stats.ts`（旧路径，已于 2026-09-21 由 6679b4648 删除） 的 `ChatStatsSummary`（字段逐字一致）。
  * 原实现由 `ChatStatsDispatcher` 经 window `chat:stats` 事件派发（1s trailing 节流 + 幂等跳过），
  * 纯化后改为 `onStatsChange` 回调；节流与幂等由宿主决定（宿主可继续复用 `ChatStatsDispatcher`）。
  */

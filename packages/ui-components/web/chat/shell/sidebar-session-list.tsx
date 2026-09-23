@@ -1,29 +1,21 @@
 import { Pencil, Trash2, X } from "lucide-react";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { createContext, type ReactNode, useCallback, useContext, useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { UI_COMPONENTS_NS } from "../../i18n/namespace";
 import { cn } from "../../lib/cn";
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from "../../ui/alert-dialog";
 import { Button } from "../../ui/button";
+import { Spinner } from "../../ui/spinner";
 import { Tooltip, TooltipContent, TooltipTrigger } from "../../ui/tooltip";
 import { canDeleteSession } from "../lib/session-actions";
 import { groupByRecency } from "../lib/session-grouping";
 import { stripHtmlTags } from "../lib/strip-html-tags";
 import type { SessionSummary } from "../types";
 import type { ChatNotice } from "./chat-interface-types";
+import { DeleteSessionDialog } from "./internal/delete-session-dialog";
 
 /**
  * 侧边栏会话列表属性。
- * 复制自 `packages/agent-runtime/web/components/chat/sidebar-session-list.tsx`。
+ * 复制自 `packages/agent-runtime/web/components/chat/sidebar-session-list.tsx`（旧路径，已于 2026-09-21 由 f2741a82d 删除）。
  */
 interface SidebarSessionListProps {
   initialActiveSessionId: string | null;
@@ -37,9 +29,43 @@ interface SidebarSessionListProps {
 }
 
 /**
+ * 会话切换失败的回退信号（`token` 递增即表示「把高亮拉回 `sessionId`」）。
+ *
+ * 列表高亮在点击瞬间乐观置位（本组件 `activeId`），切换失败后没有任何东西会把它拉回来，
+ * 界面会持续停在错误的高亮上。仅把 `initialActiveSessionId` 设回原值不构成回退：它值未变，
+ * 依赖它的同步 effect 不会重跑，因此必须由 `ACPMain` 下发一个显式信号。
+ */
+export interface SessionSelectFallback {
+  /** 真实的当前会话（会话投影实际展示的会话）；null 表示当前没有会话 */
+  sessionId: string | null;
+  /** 回退序号，每次失败递增；同一会话连续失败也要重新生效 */
+  token: number;
+}
+
+/**
+ * 回退信号通道：用 Context 而非逐层 prop，是因为侧边栏列表还被移动端抽屉
+ * （`internal/acp-main-mobile-sidebar.tsx`）与 `ChatHeader` 间接渲染，`ACPMain` 无法在不改动
+ * 这两个包装组件的前提下把新增 prop 传进去；Context 在 `ACPMain` 根节点注入一次即可覆盖
+ * 全部 `SidebarSessionList` 实例（Radix Portal 不切断 React Context）。
+ * 未注入 Provider 时（独立使用本组件、演示页）值为 null，行为与新增信号前完全一致。
+ */
+const SessionSelectFallbackContext = createContext<SessionSelectFallback | null>(null);
+
+/** 注入会话切换失败回退信号（Provider 由 `ACPMain` 在根节点装配）。 */
+export function SessionSelectFallbackProvider({
+  fallback,
+  children,
+}: {
+  fallback: SessionSelectFallback | null;
+  children: ReactNode;
+}) {
+  return <SessionSelectFallbackContext.Provider value={fallback}>{children}</SessionSelectFallbackContext.Provider>;
+}
+
+/**
  * 紧凑的会话历史列表，负责重命名与删除确认交互。
  *
- * 复制自 `packages/agent-runtime/web/components/chat/sidebar-session-list.tsx`。
+ * 复制自 `packages/agent-runtime/web/components/chat/sidebar-session-list.tsx`（旧路径，已于 2026-09-21 由 f2741a82d 删除）。
  * 纯化改动点：`toast.error` 改为 `onNotice` 回调；`stripHtmlTags` / `cn` / UI 组件 / 类型
  * 全部改为包内导入；i18n 收敛到 `UI_COMPONENTS_NS`（键前缀 `chat.components.`）。
  */
@@ -113,6 +139,14 @@ export function SidebarSessionList({
 
   useEffect(() => setActiveId(initialActiveSessionId), [initialActiveSessionId]);
 
+  // 切换失败回退：按整体信号对象触发（token 变化），把乐观置位的高亮拉回真实会话。
+  // 失败前 initialActiveSessionId 未变（成功路径才会更新它），所以不能依赖上一行的 effect。
+  const fallback = useContext(SessionSelectFallbackContext);
+  useEffect(() => {
+    if (!fallback) return;
+    setActiveId(fallback.sessionId);
+  }, [fallback]);
+
   const groups = useMemo(
     () =>
       groupByRecency(sessions, {
@@ -124,15 +158,14 @@ export function SidebarSessionList({
   );
 
   if (loading && sessions.length === 0) {
-    return (
-      <div className="mx-auto my-8 h-5 w-5 animate-spin rounded-full border-2 border-brand border-t-transparent" />
-    );
+    // `inline-flex` 上的 `mx-auto` 不产生水平居中（auto 外边距只对块级盒生效），补 `flex` 保持原先「随外层居中」的视觉。
+    return <Spinner size="sm" className="mx-auto my-8 flex" />;
   }
   if (sessions.length === 0) {
     return (
       <div className="flex flex-col items-center justify-center gap-1 py-8">
         <span className="text-xs font-display text-text-muted">{t("chat.components.acpMain.noSessions")}</span>
-        <span className="text-[10px] text-text-muted">{t("chat.components.acpMain.clickToCreate")}</span>
+        <span className="text-3xs text-text-muted">{t("chat.components.acpMain.clickToCreate")}</span>
       </div>
     );
   }
@@ -142,9 +175,7 @@ export function SidebarSessionList({
       {groups.map((group) => (
         <div key={group.label}>
           <div className="px-3 pb-1.5 pt-3">
-            <span className="text-[10px] font-semibold uppercase tracking-widest text-text-muted/70">
-              {group.label}
-            </span>
+            <span className="text-3xs font-semibold uppercase tracking-widest text-text-muted/70">{group.label}</span>
           </div>
           {group.sessions.map((session) => {
             const isActive = session.sessionId === activeId;
@@ -153,7 +184,7 @@ export function SidebarSessionList({
                 {editingId === session.sessionId ? (
                   <div className="flex items-center gap-1 px-3 py-1">
                     <input
-                      className="min-w-0 flex-1 border-b border-brand bg-transparent px-1 py-0.5 text-[13px] outline-none"
+                      className="min-w-0 flex-1 border-b border-brand bg-transparent px-1 py-0.5 text-xs outline-none"
                       value={editTitle}
                       aria-label={t("chat.components.acpMain.rename")}
                       onChange={(event) => setEditTitle(event.target.value)}
@@ -169,9 +200,13 @@ export function SidebarSessionList({
                   </div>
                 ) : (
                   <div
+                    // 选中底色取源 `.chat-session-row:has(button[aria-current="true"]), .chat-session-row.bg-brand/8`
+                    // 的生效值 `#eef4ff`（该规则特指度高于 `bg-brand/8` 工具类）。源规则的 `:has()` 分支在本包内
+                    // 不可达（子按钮用的是 `aria-current="page"`，见下方 SessionTitleButton），按「死规则删除」
+                    // 处理；行状态保留互斥两态：选中 / 未选中（hover）。
                     className={cn(
-                      "chat-session-row flex items-center",
-                      isActive ? "bg-brand/8" : "hover:bg-surface-2/60",
+                      "mx-1.75 my-px flex items-center rounded-md",
+                      isActive ? "bg-indigo-50" : "hover:bg-surface-2/60",
                     )}
                   >
                     <SessionTitleButton
@@ -210,22 +245,12 @@ export function SidebarSessionList({
         </div>
       ))}
 
-      <AlertDialog open={deleteTarget !== null} onOpenChange={(open) => !open && setDeleteTarget(null)}>
-        <AlertDialogContent size="sm">
-          <AlertDialogHeader>
-            <AlertDialogTitle>{t("chat.components.acpMain.deleteSessionTitle")}</AlertDialogTitle>
-            <AlertDialogDescription>
-              {t("chat.components.acpMain.deleteConfirm", { title: deleteTarget?.title ?? "" })}
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel>{t("chat.components.acpMain.cancel")}</AlertDialogCancel>
-            <AlertDialogAction className="bg-red-600 text-white hover:bg-red-700" onClick={handleConfirmDelete}>
-              {t("chat.components.acpMain.delete")}
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
+      <DeleteSessionDialog
+        open={deleteTarget !== null}
+        title={deleteTarget?.title}
+        onOpenChange={(open) => !open && setDeleteTarget(null)}
+        onConfirm={handleConfirmDelete}
+      />
     </nav>
   );
 }
@@ -256,10 +281,10 @@ function SessionTitleButton({
               : "text-text-secondary hover:bg-transparent hover:text-text-primary",
           )}
         >
-          <span className="min-w-0 truncate text-[13px] leading-snug">{displayTitle}</span>
+          <span className="min-w-0 truncate text-xs leading-snug">{displayTitle}</span>
         </Button>
       </TooltipTrigger>
-      <TooltipContent side="right" className="max-w-[280px] break-words">
+      <TooltipContent side="right" className="max-w-70 break-words">
         {displayTitle}
       </TooltipContent>
     </Tooltip>

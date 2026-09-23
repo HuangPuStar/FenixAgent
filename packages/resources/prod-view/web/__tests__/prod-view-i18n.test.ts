@@ -110,9 +110,14 @@ const MIGRATED_PANEL_KEYS: ReadonlyMap<string, string> = new Map([
 
 describe("prod-view 字典完整性", () => {
   // 两份字典键集必须逐字一致：缺键的语言会静默回显 key。
+  //
+  // 基线 80 → 79（2026-09-22 孤儿键清理）：本次删掉 5 个全仓零引用的键
+  // （`noViewsDesc` / `moduleChatSection` / `suggestedNames` / `welcomeTitle` / `welcomePlaceholder`），
+  // 基线随之下调到清理后的实际键数（79）。`panel.*` 与 `modules.*` 两组键均未受影响
+  // （前者仍是 28 个的等值断言，后者仍是 12 个的点名断言）。
   test("en / zh 键集完全一致", () => {
     expect([...zhFlat.keys()].sort()).toEqual([...enFlat.keys()].sort());
-    expect(enFlat.size).toBeGreaterThanOrEqual(80);
+    expect(enFlat.size).toBeGreaterThanOrEqual(79);
   });
 
   // 插值占位符必须成对出现，否则某一语言会显示 {{var}} 字面量。

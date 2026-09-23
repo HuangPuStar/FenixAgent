@@ -1,6 +1,8 @@
+import { EmptyState } from "@fenix/ui-components/config/EmptyState";
 import { Button } from "@fenix/ui-components/ui/button";
 import { Label } from "@fenix/ui-components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@fenix/ui-components/ui/select";
+import { Spinner } from "@fenix/ui-components/ui/spinner";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@fenix/ui-components/ui/table";
 import { NS } from "@fenix/web-runtime/i18n/namespace";
 import {
@@ -13,7 +15,6 @@ import {
   Clock,
   List,
   Network,
-  RefreshCw,
   ScatterChart,
   ZoomIn,
   ZoomOut,
@@ -22,12 +23,14 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { hindsightApi } from "../../../api/hindsight";
 import { type HindsightFailure, toHindsightFailure } from "../failure";
+import { recencyEndpoints, recencyHeat, toRecencyLookup } from "../recency";
 import type { GraphApiData, MemoryTableRow } from "../types";
 import { Constellation } from "./Constellation";
 import { convertHindsightGraphData, Graph2D, type GraphNode } from "./Graph2d";
 import { HindsightFailureNotice } from "./HindsightFailureNotice";
 import { MemoryDetailModal } from "./MemoryDetailModal";
 import { MemoryDetailPanel } from "./MemoryDetailPanel";
+import { MemoryPagination } from "./MemoryPagination";
 import { MemoryViewSwitcher } from "./MemoryViewSwitcher";
 import { MemoryVisualizationShell } from "./MemoryVisualizationShell";
 
@@ -244,21 +247,10 @@ export function DataView({
       if (tt < minT) minT = tt;
       if (tt > maxT) maxT = tt;
     }
-    if (!Number.isFinite(minT) || !Number.isFinite(maxT) || maxT === minT) {
-      return null;
-    }
-    return { times, minT, maxT };
+    return toRecencyLookup(times, minT, maxT);
   }, [data, recencyBasis]);
 
-  const recencyHeatFn = useCallback(
-    (node: GraphNode) => {
-      if (!recencyLookup) return 0.5;
-      const tt = recencyLookup.times.get(node.id);
-      if (tt === undefined) return 0;
-      return (tt - recencyLookup.minT) / (recencyLookup.maxT - recencyLookup.minT);
-    },
-    [recencyLookup],
-  );
+  const recencyHeatFn = useCallback((node: GraphNode) => recencyHeat(recencyLookup, node.id), [recencyLookup]);
 
   const observationNodeSizeFn = useCallback(
     (node: GraphNode) => {
@@ -298,39 +290,41 @@ export function DataView({
     }
   }, [data, graph2DData.nodes.length, maxNodes]);
 
+  // 展开 / 收起两个按钮共用的切换口径：调用方给了 `onExpandToggle` 就交给它（此时紧凑态由外层持有），
+  // 否则切内部状态。此前两处 onClick 各写一份同样的判断，只有落点不同。
+  const toggleCompactMode = (next: boolean) => {
+    if (onExpandToggle) {
+      onExpandToggle();
+      return;
+    }
+    setCompactMode(next);
+  };
+
   return (
     <div className="flex h-full min-h-0 min-w-0 flex-col overflow-hidden">
       {loading && !data ? (
-        <div className="text-center py-12" role="status">
-          <RefreshCw className="w-8 h-8 mx-auto mb-3 text-muted-foreground animate-spin" />
-          <p className="text-muted-foreground">{t("dataView.loadingMemories")}</p>
-        </div>
+        <Spinner label={t("dataView.loadingMemories")} className="flex py-12" />
       ) : failure ? (
-        <div className="flex flex-col items-center justify-center gap-3 py-16 text-center" role="alert">
-          <HindsightFailureNotice
-            failure={failure}
-            titleKey="dataView.loadFailed"
-            retryKey="dataView.retry"
-            onRetry={() => void loadData()}
-          />
-        </div>
+        <HindsightFailureNotice
+          failure={failure}
+          titleKey="dataView.loadFailed"
+          retryKey="dataView.retry"
+          onRetry={() => void loadData()}
+          className="py-16"
+        />
       ) : !data ? (
-        <div className="flex items-center justify-center py-20">
-          <div className="text-center">
-            <div className="text-sm text-muted-foreground">{t("dataView.noDataAvailable")}</div>
-          </div>
-        </div>
+        <EmptyState className="py-20" title={t("dataView.noDataAvailable")} />
       ) : data.table_rows?.length === 0 ? (
         /* 空状态 */
         <div className="flex flex-col items-center justify-center py-16 text-center">
-          <p className="text-[15px] font-semibold text-foreground">{t("dataView.emptyTitle")}</p>
-          <p className="mt-1 text-[13px] text-muted-foreground">{t("dataView.emptyHint")}</p>
+          <p className="text-sm font-semibold text-foreground">{t("dataView.emptyTitle")}</p>
+          <p className="mt-1 text-xs text-muted-foreground">{t("dataView.emptyHint")}</p>
           <img
             src="/images/memories-empty.webp"
             alt={t("dataView.emptyTitle")}
             className="w-[70%] max-w-full mt-6 mb-4 opacity-80"
           />
-          <p className="text-[13px] text-muted-foreground">{t("dataView.emptyFooter")}</p>
+          <p className="text-xs text-muted-foreground">{t("dataView.emptyFooter")}</p>
         </div>
       ) : (
         <>
@@ -342,13 +336,7 @@ export function DataView({
               <Button
                 variant="ghost"
                 size="sm"
-                onClick={() => {
-                  if (onExpandToggle) {
-                    onExpandToggle();
-                  } else {
-                    setCompactMode(false);
-                  }
-                }}
+                onClick={() => toggleCompactMode(false)}
                 className="h-6 px-2 text-xs gap-1"
               >
                 {t("dataView.expand", { defaultValue: "Expand" })}
@@ -361,13 +349,7 @@ export function DataView({
                   <Button
                     variant="ghost"
                     size="sm"
-                    onClick={() => {
-                      if (onExpandToggle) {
-                        onExpandToggle();
-                      } else {
-                        setCompactMode(true);
-                      }
-                    }}
+                    onClick={() => toggleCompactMode(true)}
                     className="h-7 px-2 text-xs gap-1"
                   >
                     {t("dataView.compact", { defaultValue: "Compact" })}
@@ -506,14 +488,7 @@ export function DataView({
                           ? t("dataView.recencyLabel", { basis: RECENCY_BASIS_LABEL[recencyBasis] })
                           : undefined
                       }
-                      heatLegendEndpoints={
-                        recencyLookup
-                          ? [
-                              new Date(recencyLookup.minT).toISOString().slice(0, 10),
-                              new Date(recencyLookup.maxT).toISOString().slice(0, 10),
-                            ]
-                          : undefined
-                      }
+                      heatLegendEndpoints={recencyEndpoints(recencyLookup)}
                     />
                   )
                 }
@@ -537,7 +512,7 @@ export function DataView({
           {/* ── Table 视图 ── */}
           {!compactMode && viewMode === "table" && (
             <div className="min-h-0 min-w-0 flex-1 overflow-auto">
-              <div className="min-w-[64rem]">
+              <div className="min-w-256">
                 <div className="pb-4">
                   {filteredTableRows.length > 0 ? (
                     (() => {
@@ -599,7 +574,7 @@ export function DataView({
                                   <TableRow
                                     key={row.id || idx}
                                     onClick={() => setModalMemoryId(row.id)}
-                                    className="h-[60px] cursor-pointer hover:bg-muted/50"
+                                    className="h-15 cursor-pointer hover:bg-muted/50"
                                   >
                                     <TableCell className="py-2 align-middle">
                                       <div className="line-clamp-2 break-words text-sm leading-snug text-foreground">
@@ -611,12 +586,12 @@ export function DataView({
                                         <div className="flex min-w-0 items-center overflow-hidden">
                                           <span
                                             title={entities[0]}
-                                            className="block min-w-0 max-w-full truncate rounded-full bg-primary/10 px-1.5 py-0.5 text-[10px] font-medium text-primary"
+                                            className="block min-w-0 max-w-full truncate rounded-full bg-primary/10 px-1.5 py-0.5 text-3xs font-medium text-primary"
                                           >
                                             {entities[0]}
                                           </span>
                                           {entities.length > 1 && (
-                                            <span className="ml-1 shrink-0 text-[10px] text-muted-foreground">
+                                            <span className="ml-1 shrink-0 text-3xs text-muted-foreground">
                                               +{entities.length - 1}
                                             </span>
                                           )}
@@ -630,12 +605,12 @@ export function DataView({
                                         <div className="flex min-w-0 items-center overflow-hidden">
                                           <span
                                             title={tags[0]}
-                                            className="block min-w-0 max-w-full truncate rounded-md border border-amber-500/20 bg-amber-500/10 px-1.5 py-0.5 font-mono text-[10px] font-medium text-amber-700"
+                                            className="block min-w-0 max-w-full truncate rounded-md border border-amber-500/20 bg-amber-500/10 px-1.5 py-0.5 font-mono text-3xs font-medium text-amber-700"
                                           >
                                             #{tags[0]}
                                           </span>
                                           {tags.length > 1 && (
-                                            <span className="ml-1 shrink-0 text-[10px] text-muted-foreground">
+                                            <span className="ml-1 shrink-0 text-3xs text-muted-foreground">
                                               +{tags.length - 1}
                                             </span>
                                           )}
@@ -662,64 +637,24 @@ export function DataView({
                           </Table>
 
                           {/* 分页 */}
-                          {totalPages > 1 && (
-                            <div className="flex items-center justify-between mt-3 pt-3 border-t">
-                              <div className="text-xs text-muted-foreground">
-                                {startIndex + 1}-{Math.min(endIndex, filteredTableRows.length)} {t("dataView.of")}{" "}
-                                {filteredTableRows.length}
-                              </div>
-                              <div className="flex items-center gap-1">
-                                <Button
-                                  variant="outline"
-                                  size="sm"
-                                  onClick={() => setCurrentPage(1)}
-                                  disabled={currentPage === 1}
-                                  className="h-7 w-7 p-0"
-                                >
-                                  <ChevronsLeft className="h-3 w-3" />
-                                </Button>
-                                <Button
-                                  variant="outline"
-                                  size="sm"
-                                  onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
-                                  disabled={currentPage === 1}
-                                  className="h-7 w-7 p-0"
-                                >
-                                  <ChevronLeft className="h-3 w-3" />
-                                </Button>
-                                <span className="text-xs px-2">
-                                  {currentPage} / {totalPages}
-                                </span>
-                                <Button
-                                  variant="outline"
-                                  size="sm"
-                                  onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
-                                  disabled={currentPage === totalPages}
-                                  className="h-7 w-7 p-0"
-                                >
-                                  <ChevronRight className="h-3 w-3" />
-                                </Button>
-                                <Button
-                                  variant="outline"
-                                  size="sm"
-                                  onClick={() => setCurrentPage(totalPages)}
-                                  disabled={currentPage === totalPages}
-                                  className="h-7 w-7 p-0"
-                                >
-                                  <ChevronsRight className="h-3 w-3" />
-                                </Button>
-                              </div>
-                            </div>
-                          )}
+                          <MemoryPagination
+                            currentPage={currentPage}
+                            totalPages={totalPages}
+                            onPageChange={setCurrentPage}
+                            rangeLabel={`${startIndex + 1}-${Math.min(endIndex, filteredTableRows.length)} ${t("dataView.of")} ${filteredTableRows.length}`}
+                          />
                         </>
                       );
                     })()
                   ) : (
-                    <div className="text-center py-12 text-muted-foreground">
-                      {(data.table_rows?.length ?? 0) > 0
-                        ? t("dataView.noMemoriesMatchFilter")
-                        : t("dataView.noMemoriesFound")}
-                    </div>
+                    <EmptyState
+                      className="py-12"
+                      title={
+                        (data.table_rows?.length ?? 0) > 0
+                          ? t("dataView.noMemoriesMatchFilter")
+                          : t("dataView.noMemoriesFound")
+                      }
+                    />
                   )}
                 </div>
               </div>
@@ -860,13 +795,12 @@ function TimelineView({
 
   if (sortedItems.length === 0) {
     return (
-      <div className="flex flex-col items-center justify-center py-12">
-        <Calendar className="w-12 h-12 text-muted-foreground mb-3" />
-        <div className="text-base font-medium text-foreground mb-1">{t("dataView.noTimelineData")}</div>
-        <div className="text-xs text-muted-foreground text-center max-w-md">
-          {t("dataView.noTimelineDataDescription")}
-        </div>
-      </div>
+      <EmptyState
+        className="py-12"
+        icon={<Calendar />}
+        title={t("dataView.noTimelineData")}
+        description={t("dataView.noTimelineDataDescription")}
+      />
     );
   }
 
@@ -900,7 +834,7 @@ function TimelineView({
             >
               <ZoomOut className="h-3 w-3" />
             </Button>
-            <span className="text-[10px] px-2 min-w-[50px] text-center border-x border-border text-foreground">
+            <span className="text-3xs px-2 min-w-12.5 text-center border-x border-border text-foreground">
               {granularityLabels[granularity]}
             </span>
             <Button
@@ -935,7 +869,7 @@ function TimelineView({
             >
               <ChevronLeft className="h-3 w-3" />
             </Button>
-            <span className="text-[10px] px-2 min-w-[60px] text-center border-x border-border text-foreground">
+            <span className="text-3xs px-2 min-w-15 text-center border-x border-border text-foreground">
               {currentIndex + 1} / {timelineGroups.length}
             </span>
             <Button
@@ -961,8 +895,8 @@ function TimelineView({
       </div>
 
       {/* 时间线条目 */}
-      <div className="relative max-h-[550px] overflow-y-auto pr-2">
-        <div className="absolute left-[60px] top-0 bottom-0 w-0.5 bg-border" />
+      <div className="relative max-h-137.5 overflow-y-auto pr-2">
+        <div className="absolute left-15 top-0 bottom-0 w-0.5 bg-border" />
         {timelineGroups.map((group, groupIdx) => (
           <div key={group.key} id={`timeline-group-${groupIdx}`} className="mb-4">
             {/* 分组头 */}
@@ -970,11 +904,11 @@ function TimelineView({
               className="flex items-center mb-2 cursor-pointer hover:opacity-80"
               onClick={() => setCurrentIndex(groupIdx)}
             >
-              <div className="w-[60px] text-right pr-3">
+              <div className="w-15 text-right pr-3">
                 <span className="text-xs font-semibold text-primary">{group.label}</span>
               </div>
               <div className="w-2 h-2 rounded-full bg-primary z-10" />
-              <span className="ml-2 text-[10px] text-muted-foreground">
+              <span className="ml-2 text-3xs text-muted-foreground">
                 {group.items.length}{" "}
                 {group.items.length === 1 ? t("dataView.timelineItem") : t("dataView.timelineItems")}
               </span>
@@ -988,14 +922,14 @@ function TimelineView({
                   onClick={() => onMemoryClick(item.id)}
                   className="flex items-start cursor-pointer group hover:opacity-80"
                 >
-                  <div className="w-[60px] text-right pr-3 pt-1 flex-shrink-0">
-                    <div className="text-[10px] text-muted-foreground">
+                  <div className="w-15 text-right pr-3 pt-1 flex-shrink-0">
+                    <div className="text-3xs text-muted-foreground">
                       {new Date(item.occurred_start!).toLocaleDateString(undefined, {
                         month: "short",
                         day: "numeric",
                       })}
                     </div>
-                    <div className="text-[9px] text-muted-foreground/70">
+                    <div className="text-3xs text-muted-foreground/70">
                       {new Date(item.occurred_start!).toLocaleTimeString(undefined, {
                         hour: "2-digit",
                         minute: "2-digit",
@@ -1015,7 +949,7 @@ function TimelineView({
                           .map((entity: string, _i: number) => (
                             <span
                               key={entity}
-                              className="text-[9px] px-1.5 py-0.5 rounded-full bg-primary/10 text-primary font-medium"
+                              className="text-3xs px-1.5 py-0.5 rounded-full bg-primary/10 text-primary font-medium"
                             >
                               {entity}
                             </span>

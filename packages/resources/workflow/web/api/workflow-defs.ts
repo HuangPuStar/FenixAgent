@@ -73,6 +73,7 @@ export interface CustomToolItem {
 
 // ── API Client ──
 
+import type { ApiResponse } from "@fenix/web-runtime/api/request";
 import { request } from "@fenix/web-runtime/api/request";
 
 const ENDPOINT = "/web/workflow-defs";
@@ -165,12 +166,24 @@ export const workflowDefApi = {
 };
 
 export const customToolsApi = {
-  list: async (): Promise<CustomToolItem[]> => {
-    const r = await fetch("/web/workflow-custom-tools", { credentials: "include" });
-    if (!r.ok) {
-      throw new Error(`Failed to load custom tools: ${r.status}`);
-    }
-    const json = (await r.json()) as { success?: boolean; data?: CustomToolItem[] };
-    return Array.isArray(json.data) ? json.data : [];
+  /**
+   * 列出已注册的 custom 工具。
+   *
+   * 走统一 `request()` 并返回 `ApiResponse`，由消费方 `unwrap()` 解包（§5.4：解包归属不由域模块代劳）。
+   * 失败（HTTP / 业务 / 网络）由 `request()` 表达成 `{ success: false }`，`unwrap()` 会抛 `ApiError`——
+   * 不再像手写解析时代那样压成 `[]`（「失败映射成 empty」是在途项 25 点名的缺陷形态，消费方需要能分辨
+   * 失败与「没有 custom 工具」）。
+   *
+   * **数组形状防御**：列表端点缺 `data` 字段时，`request()` 会把**整个信封**当 data 透出（`request.ts`
+   * 的 `"data" in json` 规则，即 §5.3 记的「无 `data` 字段时整包即 `data`」），而本方法的签名承诺
+   * `CustomToolItem[]`——消费方 `setToolColors()` 的 `for (const t of tools)` 会在渲染期抛 TypeError。
+   * 这里只兜「成功但形状不对」：成功信封里的非数组收敛成空列表；失败分支原样返回，仍由 `unwrap()` 抛错。
+   * 收紧点选在域模块而非各消费点，是因为本方法是 `./web` 出口的公开 API——签名可信之后，每个消费方
+   * 各写一遍形状判断才是真正的重复。
+   */
+  list: async (): Promise<ApiResponse<CustomToolItem[]>> => {
+    const result = await request<CustomToolItem[]>("/web/workflow-custom-tools", { method: "GET" });
+    if (!result.success) return result;
+    return { success: true, data: Array.isArray(result.data) ? result.data : [] };
   },
 };

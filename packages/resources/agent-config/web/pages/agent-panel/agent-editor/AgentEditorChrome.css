@@ -1,0 +1,205 @@
+/* biome-ignore-all lint/complexity/noImportantStyles: 本表未分层，靠 `!important` 复刻源类串里 `!` 前缀
+ * 工具类的胜负语义；尤其窄屏块与基础块必须同级 importance，少一个 `!` 整块失效（2026-09 实测踩坑）。
+ * 口径见 docs/developer/guide/forbidden-code-patterns.md「两个层叠陷阱」。 */
+/*
+ * Agent editor chrome 的深层样式。
+ *
+ * 这些规则原先以内联 Tailwind 变体、复合值和 arbitrary property 表达；保持未分层，
+ * 让组件级样式继续压过 @layer utilities。扁平工具类仍保留在 TSX className 中。
+ */
+
+.agent-editor-chrome-eyebrow {
+  font-weight: 750;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+
+.agent-editor-chrome-header {
+  padding-top: 0;
+}
+
+.agent-editor-chrome-template-trigger > button {
+  height: 2rem !important;
+  gap: 0.375rem !important;
+  border-radius: 0.5rem !important;
+  border-color: oklch(86.9% 0.022 252.894) !important; /* border-slate-300 */
+  background-color: oklch(98.4% 0.003 247.858) !important; /* bg-slate-50 */
+  padding-inline: 0.625rem !important;
+  font-size: 0.75rem !important;
+  font-weight: 700 !important;
+  white-space: nowrap !important;
+  color: oklch(50% 0.134 242.749) !important; /* text-sky-700 */
+}
+
+.agent-editor-chrome-template-trigger > button:hover {
+  border-color: oklch(78.5% 0.115 274.713) !important; /* border-indigo-300 */
+  background-color: oklch(96.2% 0.018 272.314) !important; /* bg-indigo-50 */
+  color: oklch(42.4% 0.199 265.638) !important; /* text-blue-800 */
+}
+
+.agent-editor-chrome-close-button:hover {
+  background-color: oklch(96.8% 0.007 247.896) !important; /* bg-slate-100 */
+  color: oklch(37.9% 0.146 265.522) !important; /* text-blue-900 */
+}
+
+.agent-editor-template-card:hover,
+.agent-editor-template-card:focus-visible {
+  border-color: oklch(78.5% 0.115 274.713) !important; /* border-indigo-300 */
+  background-color: oklch(96.2% 0.018 272.314) !important; /* bg-slate-50 */
+  color: oklch(42.4% 0.199 265.638) !important; /* text-blue-800 */
+}
+
+.agent-editor-summary-card {
+  grid-template-columns: 32px minmax(0, 1fr) 12px;
+  box-shadow: 0 4px 14px rgb(35 60 105 / 5%);
+  transition:
+    border-color 140ms ease,
+    transform 140ms ease,
+    box-shadow 140ms ease;
+}
+
+.agent-editor-summary-card:hover {
+  transform: translateX(-0.125rem);
+  border-color: oklch(78.5% 0.115 274.713); /* border-indigo-300 */
+  box-shadow: 0 8px 20px rgb(35 60 105 / 9%);
+}
+
+.agent-editor-summary-card > span {
+  display: grid;
+  width: 2rem;
+  height: 2rem;
+  place-items: center;
+  border-radius: 0.375rem;
+  background-color: oklch(96.2% 0.018 272.314); /* bg-indigo-50 */
+  color: oklch(54.6% 0.245 262.881); /* text-blue-600 */
+}
+
+.agent-editor-summary-card > div {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+}
+
+.agent-editor-summary-card > svg {
+  width: 0.6875rem;
+  color: oklch(70.7% 0.022 261.325); /* text-gray-400 */
+}
+
+.agent-editor-chrome-logo {
+  background-image: linear-gradient(145deg, #367cf1, #1749b3);
+  box-shadow: 0 8px 20px rgb(39 100 231 / 24%);
+}
+
+.agent-editor-chrome-logo > svg {
+  width: 1.0625rem;
+}
+
+.agent-editor-chrome-title {
+  font-weight: 720;
+}
+
+.agent-editor-chrome-agent-id::before {
+  margin-right: 0.4375rem;
+  content: "·";
+}
+
+.agent-editor-chrome-runtime > svg {
+  width: 0.625rem;
+  color: oklch(43.7% 0.085 224.283); /* text-teal-700 */
+}
+
+.agent-editor-template-dialog {
+  box-shadow: 0 18px 48px rgb(29 64 126 / 18%);
+}
+
+.agent-editor-template-header > h2 {
+  margin-top: 0.375rem;
+  font-size: 1rem;
+  letter-spacing: -0.025em;
+  color: oklch(27.9% 0.041 260.031); /* text-slate-800 */
+}
+
+.agent-editor-template-header > p {
+  margin-top: 0.375rem;
+  font-size: 0.75rem;
+  line-height: 1.5;
+  color: oklch(55.4% 0.046 257.417); /* text-slate-500 */
+}
+
+.agent-editor-template-search > input {
+  border-color: oklch(92.9% 0.013 255.508); /* border-slate-200 */
+  background-color: white;
+}
+
+.agent-editor-template-search > p {
+  margin-top: 0.375rem;
+  font-size: 10px;
+  line-height: 1.5;
+  color: oklch(55.4% 0.046 257.417); /* text-slate-500 */
+}
+
+.agent-editor-template-count {
+  font-weight: 680;
+}
+
+.agent-editor-summary-aside {
+  background-image: radial-gradient(circle at 90% 0%, rgb(50 108 221 / 8%), transparent 36%);
+}
+
+.agent-editor-summary-title {
+  font-weight: 730;
+}
+
+.agent-editor-summary-card-label {
+  font-weight: 500;
+}
+
+.agent-editor-summary-card-value {
+  font-weight: 680;
+}
+
+.agent-editor-summary-note > svg {
+  width: 0.8125rem;
+  flex-shrink: 0;
+}
+
+.agent-editor-summary-safety > svg {
+  width: 0.625rem;
+}
+
+@media (width < 48rem) {
+  .agent-editor-chrome-header {
+    padding-top: max(12px, env(safe-area-inset-top));
+  }
+
+  .agent-editor-chrome-template-trigger > button {
+    width: 2rem;
+    /* 必须与基础规则同为 `!important`：同一选择器下 important 恒胜非 important，少写一个 `!`
+       本块这两条就是死声明（宽 32px 却留着 10px 横内边距与 12px 字号，图标化失效）。
+       源类串里窄屏覆盖本就带 `!`（`!p-0`），字号那条写作 `text-[0px]`——0 不是刻度、
+       不能被「就近取标准档」消化（就近档是 10px，偏差 10px 而非约 1px），故在此保留 0。 */
+    padding: 0 !important;
+    font-size: 0 !important;
+  }
+
+  .agent-editor-summary-card {
+    grid-template-columns: 24px minmax(0, 1fr) 10px;
+  }
+
+  .agent-editor-summary-card > span {
+    width: 1.5rem;
+    height: 1.5rem;
+  }
+}
+
+@media (min-width: 760px) and (max-height: 700px) {
+  .agent-editor-chrome-header {
+    flex-basis: 3.625rem;
+    min-height: 3.625rem;
+  }
+}
+
+@media (min-width: 48rem) and (max-width: 63.999rem) {
+  .agent-editor-summary-card {
+    min-height: 3rem;
+  }
+}

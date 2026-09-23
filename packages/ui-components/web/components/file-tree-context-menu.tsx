@@ -14,7 +14,8 @@ import { createPortal } from "react-dom";
 import { useTranslation } from "react-i18next";
 
 import { UI_COMPONENTS_NS } from "../i18n/namespace";
-import "./file-tree.css";
+import { cn } from "../lib/cn";
+import "./file-tree-context-menu.css";
 
 export interface FileTreeContextMenuState {
   x: number;
@@ -28,6 +29,13 @@ export interface FileTreeDownloadState {
   isDir: boolean;
   error: boolean;
 }
+
+/**
+ * 菜单项公共样式（原 `.file-tree-context-menu button` 及其 `:hover` / `:focus-visible` 规则）。
+ * 文字色单独留给调用方：危险项需要整项保持危险色（原 `.is-danger` 规则在悬停规则之后，覆盖了悬停文字色）。
+ */
+const MENU_ITEM_CLASS =
+  "flex min-h-8 w-full items-center gap-2 rounded-sm px-2.25 py-1.5 text-left text-xs whitespace-nowrap hover:bg-surface-2 focus-visible:bg-surface-2 focus-visible:[outline:2px_solid_color-mix(in_srgb,var(--color-brand)_45%,transparent)] focus-visible:outline-offset--2 disabled:opacity-[0.55]";
 
 export interface FileTreeContextMenuProps {
   state: FileTreeContextMenuState;
@@ -73,15 +81,24 @@ export function FileTreeContextMenu({
   return createPortal(
     <div
       ref={menuRef}
-      className="file-tree-context-menu"
+      className="file-tree-context-menu-panel fixed z-[1000] flex min-w-38 flex-col gap-0.5 rounded-md border border-border-subtle bg-surface-1 p-1.25"
       role="menu"
       style={{ left: position.left, top: position.top }}
     >
-      <button type="button" onClick={onReference}>
+      <button
+        type="button"
+        className={cn(MENU_ITEM_CLASS, "text-text-secondary hover:text-text-primary")}
+        onClick={onReference}
+      >
         <MessageSquareQuote aria-hidden />
         {t("fileTree.contextMenu.reference")}
       </button>
-      <button type="button" disabled={downloading} onClick={() => onDownload(state.path, state.isDir)}>
+      <button
+        type="button"
+        className={cn(MENU_ITEM_CLASS, "text-text-secondary hover:text-text-primary")}
+        disabled={downloading}
+        onClick={() => onDownload(state.path, state.isDir)}
+      >
         {downloading ? <Loader2 className="animate-spin" aria-hidden /> : <Download aria-hidden />}
         {download?.path === state.path
           ? download.error
@@ -91,26 +108,46 @@ export function FileTreeContextMenu({
             ? t("fileTree.downloadZip")
             : t("fileTree.download")}
       </button>
-      <button type="button" onClick={() => onRenameRequest(state.path, name)}>
+      <button
+        type="button"
+        className={cn(MENU_ITEM_CLASS, "text-text-secondary hover:text-text-primary")}
+        onClick={() => onRenameRequest(state.path, name)}
+      >
         <Pencil aria-hidden />
         {t("fileTree.contextMenu.rename")}
       </button>
-      <button type="button" onClick={() => onMoveRequest(state.path)}>
+      <button
+        type="button"
+        className={cn(MENU_ITEM_CLASS, "text-text-secondary hover:text-text-primary")}
+        onClick={() => onMoveRequest(state.path)}
+      >
         <Move aria-hidden />
         {t("fileTree.contextMenu.move")}
       </button>
-      <button type="button" className="is-danger" onClick={() => onDeleteRequest(state.path, name)}>
+      <button
+        type="button"
+        className={cn(MENU_ITEM_CLASS, "text-destructive")}
+        onClick={() => onDeleteRequest(state.path, name)}
+      >
         <Trash2 aria-hidden />
         {t("fileTree.contextMenu.delete")}
       </button>
       {state.isDir && (
-        <button type="button" onClick={() => onNewFolder(state.path)}>
+        <button
+          type="button"
+          className={cn(MENU_ITEM_CLASS, "text-text-secondary hover:text-text-primary")}
+          onClick={() => onNewFolder(state.path)}
+        >
           <FolderPlus aria-hidden />
           {t("fileTree.contextMenu.newFolder")}
         </button>
       )}
       {state.isDir && (
-        <button type="button" onClick={() => onNewFile(state.path)}>
+        <button
+          type="button"
+          className={cn(MENU_ITEM_CLASS, "text-text-secondary hover:text-text-primary")}
+          onClick={() => onNewFile(state.path)}
+        >
           <FilePlus2 aria-hidden />
           {t("fileTree.newFile")}
         </button>

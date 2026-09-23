@@ -1,0 +1,14 @@
+/*
+ * SessionModeSelector 的深层样式（与同目录 `SessionModeSelector.tsx` 同名，由该文件 import）。
+ *
+ * 来源：只读形态的安全策略 chip 里的盾牌图标原本用 `flex-[0_0_13px]` 表达（`flex: 0 0 13px`），
+ * 属仓库禁令 FCP-WEB-02 的复合值（下划线转义的空格），按本轮口径下沉为类名。
+ * 值逐字等价换算（`13px` = 3.25 × `--spacing`），未调整任何数值。
+ *
+ * 下沉理由：图标与字号同档（13px）且不参与 flex 收缩——只读 chip 在窄屏（`max-md:` 变体）会收窄内边距，
+ * 若不固定基准，`Shield` 会被压扁；改用普通选择器表达后与 `className` 里的
+ * `h-3.25 w-3.25` 尺寸工具类互不冲突（属性不重叠）。
+ */
+.chat-session-mode-shield-icon {
+  flex: 0 0 13px;
+}

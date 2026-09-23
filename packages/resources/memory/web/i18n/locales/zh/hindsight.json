@@ -21,23 +21,8 @@
     "searchPlaceholder": "搜索当前记忆视角"
   },
   "memories": {
-    "worldFacts": "世界事实",
-    "experience": "经验",
-    "observations": "观察",
-    "search": "搜索记忆...",
-    "recall": "召回",
-    "retain": "存储",
-    "reflect": "反思",
-    "noMemories": "暂无记忆",
-    "totalCount": "{{count}} 条记忆",
-    "detail": "记忆详情",
     "tags": "标签",
-    "entities": "实体",
-    "context": "上下文",
-    "createdAt": "创建时间",
-    "factType": "类型",
-    "delete": "删除",
-    "deleteConfirm": "确定要删除这条记忆吗？"
+    "createdAt": "创建时间"
   },
   "documents": {
     "upload": "上传文档",
@@ -48,44 +33,25 @@
     "noDocuments": "暂无文档",
     "totalCount": "{{count}} 个文档",
     "chunks": "分块",
-    "reprocess": "重新处理",
     "delete": "删除",
-    "deleteConfirm": "确定要删除此文档及其所有记忆吗？",
     "loadFailed": "加载文档失败",
     "uploadFailed": "上传失败",
     "deleteFailed": "删除失败"
   },
   "mentalModels": {
-    "title": "心理模型",
-    "description": "已形成的观点和认知结构",
     "search": "搜索心理模型...",
     "clearSearch": "清除心理模型搜索",
     "openDetail": "查看心理模型 {{name}}",
     "deleteNamed": "删除心理模型 {{name}}",
     "noModels": "暂无心理模型",
     "totalCount": "{{count}} 个心理模型",
-    "confidence": "置信度",
-    "content": "内容",
     "stale": "过期",
     "delete": "删除",
-    "detail": "心理模型详情",
     "deleteConfirm": "确定要删除这个心理模型吗？",
     "lastRefreshed": "上次刷新",
     "loadFailed": "加载心理模型失败",
     "deleteFailed": "删除失败",
     "retry": "重试"
-  },
-  "recall": {
-    "query": "查询",
-    "results": "结果",
-    "noResults": "未找到结果",
-    "searching": "搜索中..."
-  },
-  "retain": {
-    "content": "内容",
-    "context": "上下文",
-    "tags": "标签",
-    "submit": "存储"
   },
   "status": {
     "notConfigured": "记忆能力未开启，请联系管理员进行记忆服务部署与配置",
@@ -190,11 +156,13 @@
     "all": "全部",
     "memoryComposition": "记忆构成"
   },
-  "memoryDetailModal": {
-    "defaultTitle": "记忆详情",
+  "memoryDetail": {
     "typeObservation": "观察",
     "typeWorldFact": "世界事实",
     "typeExperience": "经历",
+    "defaultTitle": "记忆详情"
+  },
+  "memoryDetailModal": {
     "errorPrefix": "错误：{{message}}",
     "sectionText": "文本",
     "sectionOccurred": "发生时间",
@@ -206,26 +174,18 @@
   },
   "memoryDetailPanel": {
     "close": "关闭记忆详情",
-    "title": "记忆详情",
-    "subtitle": "完整记忆内容及元数据",
     "loadingDetails": "正在加载记忆详情...",
     "loading": "加载中...",
+    "copyFailed": "复制到剪贴板失败",
     "sectionFullText": "完整文本",
     "sectionContext": "上下文",
     "sectionOccurred": "发生时间",
     "sectionMentioned": "提及时间",
     "sectionEntities": "实体",
     "sectionTags": "标签",
-    "sectionSourceMemories": "源记忆（{{count}}）",
     "sectionMemoryId": "记忆 ID",
-    "notAvailable": "无",
-    "sourceViewButton": "查看",
-    "sourceContextPrefix": "上下文：{{context}}",
-    "sourceOccurred": "发生时间",
-    "sourceMentioned": "提及时间",
-    "viewDocumentButton": "查看文档",
-    "viewChunkButton": "查看块",
-    "viewHistory": "查看历史"
+    "loadFailed": "加载记忆详情失败",
+    "retry": "重试"
   },
   "entitiesView": {
     "viewSwitcher": "实体视图切换",
@@ -274,8 +234,6 @@
     "tooltipContext": "上下文",
     "tooltipOccurred": "发生时间",
     "tooltipMentioned": "提及时间",
-    "tooltipEvidence": "证据",
-    "tooltipSources": "{{count}} 个来源",
     "tooltipDocument": "文档",
     "tooltipLinks": "{{count}} 条链接"
   },

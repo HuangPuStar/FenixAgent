@@ -3,10 +3,12 @@
 // 数据来自 utils.mergeFlatRows（byOrg + byEntity 去重合并）。
 
 import { type FlatRow, name } from "@fenix/resource-sandbox/web";
+import { formatDateTime } from "@fenix/ui-components/lib/format";
 import { Badge } from "@fenix/ui-components/ui/badge";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@fenix/ui-components/ui/table";
 import { useTranslation } from "react-i18next";
 import type { ObserverNames } from "../../../api/observer";
+import { OBSERVER_META_CLASS } from "../observer-meta-classes";
 
 interface ObserverFlatTableProps {
   rows: FlatRow[];
@@ -20,7 +22,7 @@ function Cell({ roleKey, value, names }: { roleKey: keyof ObserverNames; value: 
   return (
     <TableCell className="text-xs">
       <span className="font-mono text-text-primary">{display}</span>
-      {display !== value ? <span className="ml-1 font-mono text-[10px] text-text-muted">{value}</span> : null}
+      {display !== value ? <span className={`ml-1 ${OBSERVER_META_CLASS}`}>{value}</span> : null}
     </TableCell>
   );
 }
@@ -49,7 +51,7 @@ export function ObserverFlatTable({ rows, names }: ObserverFlatTableProps) {
             <TableRow key={row.id}>
               <TableCell className="font-mono text-xs">{row.id}</TableCell>
               <TableCell>
-                <Badge variant="outline" className="text-[10px]">
+                <Badge variant="outline" className="text-3xs">
                   {t(`source.${row.source}`, { defaultValue: row.source })}
                 </Badge>
               </TableCell>
@@ -58,9 +60,7 @@ export function ObserverFlatTable({ rows, names }: ObserverFlatTableProps) {
               <Cell roleKey="agentConfigId" value={row.agentConfigId} names={names} />
               <Cell roleKey="instanceId" value={row.instanceId} names={names} />
               <Cell roleKey="machineId" value={row.machineId} names={names} />
-              <TableCell className="text-xs text-text-muted">
-                {row.openTime ? new Date(row.openTime).toLocaleString() : "—"}
-              </TableCell>
+              <TableCell className="text-xs text-text-muted">{formatDateTime(row.openTime)}</TableCell>
             </TableRow>
           ))}
         </TableBody>

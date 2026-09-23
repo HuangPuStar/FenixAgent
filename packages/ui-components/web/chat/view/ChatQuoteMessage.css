@@ -1,0 +1,30 @@
+/*
+ * ChatQuoteMessage 的深层样式（与同目录 `ChatQuoteMessage.tsx` 同名，由该文件 import）。
+ *
+ * 来源：源 `chat-design-messages.css`（阶段三随迁移删除）的 `.chat-quote-message` 段。只搬
+ * 「工具类无法表达」的部分，其余仍留在 `className`：
+ *   - `.chat-quote-summary` ← `[&::-webkit-details-marker]:hidden`、`[&>svg]:w-3.5`
+ *     （源 `.chat-quote-message > summary::-webkit-details-marker` 与 `… > summary svg`）；
+ *   - `.chat-quote-preview` ← `top-[calc(100%+6px)]`、`w-[min(340px,calc(100vw-48px))]`、
+ *     `shadow-[0_8px_24px_rgb(38_52_77_/_14%)]`（源 `.chat-quote-message-preview`）。
+ * 值逐字等价换算（`w-3.5` = 3.5 × `--spacing`），未调整任何数值。
+ *
+ * 层叠：本文件不包 `@layer`（源样式表也未分层），因此这些声明稳定压过 `@layer utilities`
+ * 里的工具类——`<summary>` 上同时生效的 `list-none` 等工具类不受影响（属性不重叠）。
+ *
+ * 未下沉：`group-hover:` / `group-focus-within:` / `group-open:` 是标准变体，按口径留在 `className`。
+ */
+.chat-quote-summary::-webkit-details-marker {
+  display: none;
+}
+
+/* 引用图标（`<Quote />` 渲染出的直接子 `<svg>`）：源 `.chat-quote-message > summary svg { width: 14px }`。 */
+.chat-quote-summary > svg {
+  width: calc(var(--spacing) * 3.5);
+}
+
+.chat-quote-preview {
+  top: calc(100% + 6px);
+  width: min(340px, calc(100vw - 48px));
+  box-shadow: 0 8px 24px rgb(38 52 77 / 14%);
+}

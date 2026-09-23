@@ -1,0 +1,31 @@
+/*
+ * Conversation 滚动条（回到底部按钮）的深层样式。
+ *
+ * 为什么单独立表：`ConversationScrollButton` 的按钮外观里有一批无法用扁平工具类表达的值
+ * （`h-[30px]` / `bg-[rgb(255_255_255_/_96%)]` / `px-[11px]` / `text-[12px]` / `text-[#475569]` /
+ * `shadow-[0_6px_18px_rgb(30_50_80_/_12%)]` / `backdrop-blur-[10px]`），属仓库禁令 FCP-WEB-02，
+ * 故收拢到本文件的语义类名下，渲染点只留 `chat-conversation-scroll-button` 与扁平工具类。
+ *
+ * 层叠：本文件不包 `@layer`（源样式也未分层），未分层声明压过 `@layer utilities`。
+ * 这一点是**必要**的而非顺带：`Button` 的 `size="sm"` 会输出 `has-[>svg]:px-2.5`，与原
+ * `has-[>svg]:px-[11px]` 同变体同级，迁移前靠生成顺序取胜；下沉到未分层后由层叠位置稳定取胜。
+ *
+ * 文件名不沿用历史上的 `conversation.css`：那个名字已被 `chat-style-migration.test.tsx` 的
+ * 「已迁空的样式表被删除」清单登记为**不得复活**（同一属性不允许出现两个来源）。本表是新的
+ * 单一来源，用新名字避免与历史条目混淆。
+ */
+
+.chat-conversation-scroll-button {
+  height: 30px;
+  background-color: rgb(255 255 255 / 96%);
+  padding-left: 11px;
+  padding-right: 11px;
+  font-size: 12px;
+  color: #475569;
+  box-shadow: 0 6px 18px rgb(30 50 80 / 12%);
+  backdrop-filter: blur(10px);
+}
+
+.chat-conversation-scroll-button:hover {
+  color: #334155;
+}

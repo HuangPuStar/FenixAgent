@@ -56,8 +56,10 @@ export function ChatBubblesExamples() {
 
   return (
     <>
-      <div className="demo-example">
-        <h2 className="demo-example-title">UserBubble / AssistantBubble</h2>
+      <div className="mb-5 p-5 border border-border rounded-lg bg-surface-1">
+        <h2 data-slot="demo-example-title" className="mb-4 text-text-secondary text-[13px] font-medium">
+          UserBubble / AssistantBubble
+        </h2>
         <div className="flex flex-col gap-6">
           {MOCK_USER_ENTRY ? (
             <UserBubble
@@ -73,18 +75,24 @@ export function ChatBubblesExamples() {
             />
           ) : null}
         </div>
-        <p className="demo-hint">首条用户消息自带引用胶囊与系统消息胶囊（注入上下文不进入可见正文）。</p>
+        <p className="mt-3 text-text-muted text-[12px]">
+          首条用户消息自带引用胶囊与系统消息胶囊（注入上下文不进入可见正文）。
+        </p>
       </div>
 
-      <div className="demo-example">
-        <h2 className="demo-example-title">SystemMessage（双击查看原始内容）</h2>
+      <div className="mb-5 p-5 border border-border rounded-lg bg-surface-1">
+        <h2 data-slot="demo-example-title" className="mb-4 text-text-secondary text-[13px] font-medium">
+          SystemMessage（双击查看原始内容）
+        </h2>
         <SystemMessage rawText={MOCK_SYSTEM_REMINDER} />
-        <p className="demo-hint">双击上方胶囊打开详情弹窗，查看完整的 system-reminder 原文。</p>
+        <p className="mt-3 text-text-muted text-[12px]">双击上方胶囊打开详情弹窗，查看完整的 system-reminder 原文。</p>
       </div>
 
-      <div className="demo-example">
-        <h2 className="demo-example-title">ChatQuoteMessage / CitationLink</h2>
-        <div className="chat-quote-messages">
+      <div className="mb-5 p-5 border border-border rounded-lg bg-surface-1">
+        <h2 data-slot="demo-example-title" className="mb-4 text-text-secondary text-[13px] font-medium">
+          ChatQuoteMessage / CitationLink
+        </h2>
+        <div className="flex flex-wrap justify-end gap-1.5">
           {MOCK_QUOTE_ITEMS.map((item) => (
             <ChatQuoteMessage key={item.id} quote={item.quote} index={item.index} />
           ))}
@@ -104,7 +112,7 @@ export function ChatBubblesExamples() {
           </CitationLink>
           ，点击回调由宿主注入（源实现走宿主的 CitationPreviewContext）。
         </p>
-        <p className="demo-hint">{lastAction ?? "点击引用链接可看到回调结果。"}</p>
+        <p className="mt-3 text-text-muted text-[12px]">{lastAction ?? "点击引用链接可看到回调结果。"}</p>
       </div>
     </>
   );

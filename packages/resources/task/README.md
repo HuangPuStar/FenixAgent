@@ -200,9 +200,7 @@ README 与守卫注释里「identity 是上游迁移中间态」的说明文字�
   `contexts/org-session` 契约，identity 不再进入任何资源包的值导入图。范围规则本身保留（它表达的是
   owner 边界，不依赖当下是否有债务），只是不再有正在生效的例外。
   反之，共享基础设施包（ui-components / web-runtime）是白名单断言的责任范围，其新增外部库必须在这里评审。
-- **`manifest.web` / `contributions` 未声明**：形状必须与 `mountContribution`（§1.5）与 WebShell（§1.6）的
-  消费端同时定型，单方面发明会返工。
-- **宿主侧两处随波次收口**：`deploy/assembly/ce.json` 的 `resources` 仍是空列表，登记本模块属 W3 装配清单；
+- **宿主侧两处已收口（2026-09-22 订正）**：`deploy/assembly/ce.json` 的 `resources` 已登记本模块（实测 13 项含 `task`，`web` 9 项亦含 `task`；本行此前记的「仍是空列表、登记本模块属 W3 装配清单」自 `c9620787` 起已闭环）；
   宿主 `apps/server/src/__tests__/task-schema.test.ts:3` 已随 §1.7 B12 改从本包出口 `@fenix/resource-task/db`
   取 `taskExecutionLog`（宿主经 owner `./db` 读写，§6.1 组装期例外的既有形态；该文件仍留在宿主是既有分工——
   `scripts/__tests__/rmd-07-migration.test.ts` 与 `scripts/root-source-owner-rules.ts` 都按宿主路径登记它）；

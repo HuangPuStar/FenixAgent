@@ -1,0 +1,16 @@
+/*
+ * 文件类型图标外框（`file-icon-helper.tsx` 的 `FileTypeIcon`）的深层样式。
+ *
+ * 为什么下沉：`[&>svg]:size-full` 需要子选择器变体，属仓库禁令 FCP-WEB-02。
+ * react-file-icon 渲染的是 `<svg width="100%">` 且没有固有高度（viewBox 40×48），外框必须让 svg 撑满，
+ * 图标尺寸才由外框决定 —— 这层约束的来由见 `file-icon-helper.tsx` 的 `DEFAULT_SIZE_CLASS` 注释。
+ *
+ * 类名：源仓库没有对应选择器（该约束原本写在使用点的工具类上），按组件名取 `.file-type-icon`。
+ *
+ * 层叠：本文件不包 `@layer`，未分层声明压过 `@layer utilities`。
+ */
+
+.file-type-icon > svg {
+  width: 100%;
+  height: 100%;
+}

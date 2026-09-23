@@ -36,13 +36,13 @@ export function ShellNavigation({ activeNav, onNavigate }: ShellNavigationProps)
                 type="button"
                 onClick={() => onNavigate(item.id)}
                 title={label}
-                className={`agent-sidebar-nav-item flex items-center gap-2 w-full px-3 py-1.5 rounded-[var(--radius)] text-[12px] font-medium transition-all duration-150 cursor-pointer ${
+                className={`agent-sidebar-nav-item flex items-center gap-2 w-full px-3 py-1.5 rounded-[var(--radius)] text-xs font-medium transition-all duration-150 cursor-pointer ${
                   isActive
                     ? "active bg-brand-subtle text-brand-light border-l-2 border-brand"
                     : "text-text-secondary hover:bg-surface-hover hover:text-text-primary"
                 }`}
               >
-                <Icon className="w-[18px] h-[18px] flex-shrink-0" />
+                <Icon className="w-4.5 h-4.5 flex-shrink-0" />
                 <span>{label}</span>
               </button>
             );

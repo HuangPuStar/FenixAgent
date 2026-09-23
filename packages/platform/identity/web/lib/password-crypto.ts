@@ -1,3 +1,4 @@
+import { request } from "@fenix/web-runtime/api/request";
 import { gcm } from "@noble/ciphers/aes.js";
 
 let cachedKey: string | null = null;
@@ -7,12 +8,15 @@ async function fetchEncryptionKey(): Promise<string> {
   if (cachedKey) return cachedKey;
   if (keyPromise) return keyPromise;
 
-  keyPromise = fetch("/api/auth/encryption-key")
-    .then(async (res) => {
-      const data = await res.json();
-      if (!data.key) throw new Error("Encryption key not available");
-      cachedKey = data.key as string;
-      return cachedKey;
+  // 取数统一走 request()（前端规范 §5.1）：该路由是自定义 auth 接口而非 better-auth 内核路由，
+  // 返回裸 `{ key }`（无 data 包装）——request() 在无 data 字段时把整包作为 data（§5.3）。
+  // 失败仍归一到本模块原有文案，保持调用方（登录 / 改密）的提示语义不变。
+  keyPromise = request<{ key?: string }>("/api/auth/encryption-key")
+    .then((response) => {
+      const key = response.success ? response.data?.key : undefined;
+      if (!key) throw new Error("Encryption key not available");
+      cachedKey = key;
+      return key;
     })
     .finally(() => {
       keyPromise = null;

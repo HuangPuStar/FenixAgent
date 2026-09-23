@@ -78,7 +78,7 @@ agent-config 再反向声明 `dependsOn: ["machine"]` 会在模块
   （`repositories/{machine-repository,agent-machine,registry-event}.ts`）是表级读写封装。
 - **模块组合根**：`src/module.ts` 的 `createMachineModule()` 返回进程级单例入口（file-ws 连接索引、心跳 /
   巡检定时器、文件事件队列三处可变状态各要求进程内唯一），`fenix.module.ts` 是它的惰性描述符。
-  不声明 `contributions` 与 `web`：消费方是 §1.5 的宿主挂载与 §1.6 的 WebShell 装配，形状需与消费端同时定型。
+  声明 `contributions`（1.5e / 1.5f，四条 `app-route`：三条挂 `web`、一条挂 `api`，见 `fenix.module.ts`）；不声明 `web`：消费方是 §1.6 的 WebShell 装配，形状需与消费端同时定型。
 - **测试装配**：`/server/testing` 提供 `createMachineModuleConfig` / `initializeMachineModuleConfig` /
   `stubMachineConfig` / `stubMachineEnvironment(Record)` / `stubFileWsTransport` 与三个句柄替换入口；
   包内用例另用 `src/__tests__/guard-stubs.ts` 注入守卫替身。

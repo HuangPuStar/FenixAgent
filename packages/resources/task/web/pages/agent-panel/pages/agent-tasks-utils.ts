@@ -1,3 +1,4 @@
+import type { StatusTone } from "@fenix/ui-components/config/StatusBadge";
 import { ApiError } from "@fenix/web-runtime/api/request";
 import { parseExpression } from "cron-parser";
 import { z } from "zod/v4";
@@ -21,15 +22,37 @@ export function isUnauthorizedError(error: unknown): boolean {
   return error instanceof ApiError && UNAUTHORIZED_CODES.has(error.code);
 }
 
-function isValidCronExpression(cron: string, timezone: string): boolean {
+/**
+ * Cron 表达式校验的**唯一实现**：5 个字段 + `parseExpression`（时区非空时才带 `tz`）。
+ *
+ * 为什么返回文案而不是布尔：`CronEditor` 要把失败原因显示在输入框下方，三种失败（空 / 字段数不对 /
+ * 解析不通过）措辞不同，只有它能给出「差在哪」。布尔形态由它派生（下面的 `isValidCronExpression`），
+ * 供 zod `superRefine` 用——那条路径的文案由 schema 自己给，不消费这里的字符串。
+ *
+ * 2026-09-22 去重：此前 `CronEditor` 与模块内各写一份同样的「切 5 段 + parseExpression」，
+ * cron-parser 的口径变更要改两处；文案与分支原样保留（空值优先判、字段数其次、解析最后）。
+ */
+export function validateCronExpression(cron: string, timezone: string): string | undefined {
   const parts = cron.trim().split(/\s+/);
-  if (parts.length !== 5) return false;
+  if (!cron.trim()) return "Cron 不能为空";
+  if (parts.length !== 5) return "Cron 表达式必须为 5 个字段";
   try {
     parseExpression(cron, timezone.trim() ? { tz: timezone.trim() } : undefined);
-    return true;
+    return;
   } catch {
-    return false;
+    return "Cron 表达式无效，请检查字段取值范围";
   }
+}
+
+/**
+ * 布尔形态，由文案形态派生：`superRefine` 只关心对错。
+ *
+ * 等价性：文案形态只在「空值 / 字段数 ≠ 5 / 解析抛错」三种情况下返回字符串，而这三种情况在
+ * 原布尔实现里同样是 `false`（空值 `""` 切出 `[""]`，长度 1 ≠ 5），因此
+ * `=== undefined` 与原实现逐例同值。
+ */
+function isValidCronExpression(cron: string, timezone: string): boolean {
+  return validateCronExpression(cron, timezone) === undefined;
 }
 
 function isValidTimezone(timezone: string): boolean {
@@ -105,6 +128,56 @@ export const INITIAL_TASK_FORM_VALUES: TaskFormValues = {
   prompt: "",
 };
 
+/**
+ * 执行日志状态 → 色调 / 文案 key。
+ *
+ * 内联日志面板（`TasksPanel`）与日志弹窗（`TaskLogDialog`）此前各持一份，
+ * 靠肉眼保持「timeout 也算失败」这类判断一致；归一到这里后，新增状态只改一处。
+ */
+export const LOG_STATUS_TONES: Record<string, StatusTone> = {
+  success: "success",
+  failed: "danger",
+  timeout: "danger",
+  skipped: "neutral",
+  pending: "warning",
+};
+
+/**
+ * 任务启用状态 → 色调。`enabled` / `disabled` 虽已在内置词表里，这里仍显式声明：
+ * 「停用」是本包语义下的**中性**状态（用户自己关的，不是坏消息），本包自己承担这个判断，
+ * 库侧日后调整内置映射时侧栏配色不会跟着漂移。
+ */
+export const TASK_ENABLED_TONES: Record<string, StatusTone> = {
+  enabled: "success",
+  disabled: "neutral",
+};
+
+const LOG_STATUS_LABEL_KEYS: Record<string, string> = {
+  success: "status.success",
+  failed: "status.failed",
+  timeout: "status.timeout",
+  skipped: "status.skipped",
+  pending: "status.pending",
+};
+
+/**
+ * 日志状态对应的文案 key；未知状态按 `pending` 展示，与去重前的回退口径一致
+ * （后端新增状态时先落到「等待中」，而不是露出原始英文状态码）。
+ */
+export function logStatusLabelKey(status: string): string {
+  return LOG_STATUS_LABEL_KEYS[status] ?? LOG_STATUS_LABEL_KEYS.pending;
+}
+
+/**
+ * 日志时间戳（Unix 秒）格式化为 `MM-DD HH:mm`。
+ * 不用 `toLocaleString`：日志表格列宽固定，本地化格式的长度不稳定。
+ */
+export function formatTaskLogTime(timestamp: number): string {
+  const d = new Date(timestamp * 1000);
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return `${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
+
 /** 将任务表单转换为后端 definition 联合类型。 */
 export function buildTaskDefinition(values: TaskFormValues): HttpDefinition | AgentDefinition {
   if (values.type === "http") {
@@ -137,22 +210,52 @@ export function taskToFormValues(task: TaskV2Info): TaskFormValues {
   };
 }
 
-/** Unix 秒级时间戳的紧凑相对时间展示。 */
+/** 相对时间展示的可选口径；两处消费方（表格单元格 / 行内窄栏）各自的行差见各字段说明。 */
+export interface TaskRelativeTimeOptions {
+  /** 空值回退文案：表格单元格用 `—`（默认），行内列表用空串表示「整段不渲染」。 */
+  fallback?: string;
+  /**
+   * 日期分支的格式：`locale` 走 `Intl` 本地化（默认，表格列），
+   * `compact` 用定长 `MM-DD HH:mm`（行内窄栏，长度稳定，与日志时间列同口径）。
+   */
+  dateFormat?: "locale" | "compact";
+}
+
+/**
+ * Unix 秒级时间戳的紧凑相对时间展示。
+ *
+ * 两个口径合成一份（2026-09-22 去重）：`TasksPanel` 曾有一份同名实现——前 3 个分支逐字相同，
+ * 只有空值回退与日期分支不同，i18n key 却重复了两份。差异保留为 `fallback` / `dateFormat` 两个参数，
+ * 两处渲染逐字不变；`compact` 分支复用 `formatTaskLogTime`，第三份「手写 pad + 同一模板」随之消失。
+ */
 export function formatTaskRelativeTime(
   timestamp: number | null | undefined,
   t: (key: string, options?: Record<string, unknown>) => string,
+  options: TaskRelativeTimeOptions = {},
 ): string {
-  if (timestamp == null) return "—";
+  const { fallback = "—", dateFormat = "locale" } = options;
+  if (timestamp == null) return fallback;
   const diff = Date.now() - timestamp * 1000;
   if (diff < 60_000) return t("relativeTime.justNow");
   if (diff < 3_600_000) return t("relativeTime.minutesAgo", { count: Math.floor(diff / 60_000) });
   if (diff < 86_400_000) return t("relativeTime.hoursAgo", { count: Math.floor(diff / 3_600_000) });
+  if (dateFormat === "compact") return formatTaskLogTime(timestamp);
   return new Intl.DateTimeFormat(undefined, {
     month: "2-digit",
     day: "2-digit",
     hour: "2-digit",
     minute: "2-digit",
   }).format(new Date(timestamp * 1000));
+}
+
+/**
+ * 从 `Set` 状态里移除一个 id 并返回**新实例**（`Set.delete` 原地改，直接返回旧引用不会触发重渲染）。
+ * 同一段 4 行 reducer 此前在三个请求收尾块里各写一份（面板的「执行」/「启停」、页面的「执行」）。
+ */
+export function removeIdFromSet(prev: ReadonlySet<string>, id: string): Set<string> {
+  const next = new Set(prev);
+  next.delete(id);
+  return next;
 }
 
 /** 将绝对时间投影到从当前时刻开始的可选未来时间窗。 */

@@ -1,6 +1,7 @@
 import { envApi } from "@fenix/agent-runtime/web/api/environments";
 import { AgentCardList } from "@fenix/ui-components/components/AgentCardList";
 import { ConfirmDialog } from "@fenix/ui-components/config/ConfirmDialog";
+import { EmptyState } from "@fenix/ui-components/config/EmptyState";
 import { FormDialog } from "@fenix/ui-components/config/FormDialog";
 import { AppHeader } from "@fenix/ui-components/layout/app-header";
 import { AppPage } from "@fenix/ui-components/layout/app-page";
@@ -16,17 +17,8 @@ import { AlertTriangle, RefreshCw } from "lucide-react";
 import { useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
-import { channelApi } from "../../../api/channels";
+import { type ChannelBinding, channelApi } from "../../../api/channels";
 import { resolveChannelListState } from "../../../lib/channel-list-state";
-
-type ChannelBinding = {
-  id: string;
-  platform: string;
-  chatId: string | null;
-  agentId: string;
-  enabled: boolean;
-  agentName?: string | null;
-};
 
 type EnvironmentSummary = { id: string; name: string };
 
@@ -118,12 +110,12 @@ export function AgentChannelsPage() {
       <AppPage busy>
         <div className="mb-3 flex items-start justify-between gap-4">
           <div>
-            <Skeleton className="h-[22px] w-28 rounded-md" />
+            <Skeleton className="h-5.5 w-28 rounded-md" />
             <Skeleton className="mt-1.5 h-3 w-56 rounded-md" />
           </div>
           <Skeleton className="h-10 w-28 rounded-lg" />
         </div>
-        <div className="mb-3.5 h-px bg-[#e8edf4]" />
+        <div className="mb-3.5 h-px bg-slate-200" />
         <div className="space-y-3">
           {Array.from({ length: 5 }).map((_, i) => (
             // Static skeleton placeholders have no domain identifier.
@@ -140,24 +132,25 @@ export function AgentChannelsPage() {
   if (listState === "unauthorized" || listState === "error") {
     return (
       <AppPage>
-        <div className="flex flex-col items-center justify-center gap-2 py-16 text-center" role="alert">
-          <AlertTriangle className="h-6 w-6 text-text-muted" />
-          {listState === "unauthorized" ? (
-            <>
-              <p className="text-sm font-medium text-text-bright">{t("unauthorized")}</p>
-              <p className="text-xs text-text-muted">{t("unauthorizedHint")}</p>
-            </>
-          ) : (
-            <>
-              <p className="text-sm font-medium text-text-bright">{t("loadBindingsFailed")}</p>
-              <p className="text-xs text-text-muted">{error instanceof Error ? error.message : t("unknownError")}</p>
-              <Button className="mt-2" variant="outline" size="sm" onClick={refresh}>
-                <RefreshCw />
-                {t("retry")}
-              </Button>
-            </>
-          )}
-        </div>
+        <EmptyState
+          tone="danger"
+          role="alert"
+          icon={<AlertTriangle />}
+          title={listState === "unauthorized" ? t("unauthorized") : t("loadBindingsFailed")}
+          description={
+            listState === "unauthorized"
+              ? t("unauthorizedHint")
+              : error instanceof Error
+                ? error.message
+                : t("unknownError")
+          }
+          action={
+            listState === "unauthorized"
+              ? undefined
+              : { label: t("retry"), icon: <RefreshCw />, onClick: refresh, disabled: loading }
+          }
+          className="flex min-h-96 flex-col items-center justify-center"
+        />
       </AppPage>
     );
   }

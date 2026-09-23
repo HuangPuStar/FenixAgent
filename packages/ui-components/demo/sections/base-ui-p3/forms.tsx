@@ -99,7 +99,7 @@ function MinimalForm() {
         <Button size="sm" type="submit">
           Submit
         </Button>
-        {submitted ? <p className="demo-hint">Submitted: {submitted}</p> : null}
+        {submitted ? <p className="mt-3 text-text-muted text-[12px]">Submitted: {submitted}</p> : null}
       </form>
     </Form>
   );
@@ -170,25 +170,25 @@ export function FormsExamples() {
     <>
       <ComponentBlock name="Checkbox" description="复选框；配合 Label 使用 htmlFor / id 建立关联。">
         <Example title="Basic" description="选中、未选中与不确定态；不确定态常用于「部分子项选中」。">
-          <div className="demo-row">
+          <div className="flex flex-wrap items-center gap-3">
             <Checkbox defaultChecked id="demo-checkbox-on" />
             <Label htmlFor="demo-checkbox-on">Checked</Label>
           </div>
-          <div className="demo-row">
+          <div className="flex flex-wrap items-center gap-3">
             <Checkbox id="demo-checkbox-off" />
             <Label htmlFor="demo-checkbox-off">Unchecked</Label>
           </div>
-          <div className="demo-row">
+          <div className="flex flex-wrap items-center gap-3">
             <Checkbox defaultChecked="indeterminate" id="demo-checkbox-mixed" />
             <Label htmlFor="demo-checkbox-mixed">Indeterminate</Label>
           </div>
         </Example>
         <Example title="Disabled" description="边界：disabled 后无法切换，勾选状态由初始值决定。">
-          <div className="demo-row">
+          <div className="flex flex-wrap items-center gap-3">
             <Checkbox defaultChecked disabled id="demo-checkbox-disabled-on" />
             <Label htmlFor="demo-checkbox-disabled-on">Disabled + checked</Label>
           </div>
-          <div className="demo-row">
+          <div className="flex flex-wrap items-center gap-3">
             <Checkbox disabled id="demo-checkbox-disabled-off" />
             <Label htmlFor="demo-checkbox-disabled-off">Disabled + unchecked</Label>
           </div>
@@ -197,21 +197,21 @@ export function FormsExamples() {
 
       <ComponentBlock name="Switch" description="开关；size 支持 default / sm，其余与复选框一致。">
         <Example title="Basic" description="开与关的两种状态，默认尺寸沿用 size=default。">
-          <div className="demo-row">
+          <div className="flex flex-wrap items-center gap-3">
             <Switch defaultChecked id="demo-switch-on" />
             <Label htmlFor="demo-switch-on">On</Label>
           </div>
-          <div className="demo-row">
+          <div className="flex flex-wrap items-center gap-3">
             <Switch id="demo-switch-off" />
             <Label htmlFor="demo-switch-off">Off</Label>
           </div>
         </Example>
         <Example title="Small / disabled" description="边界：disabled 的开关不响应点击；size=sm 用于紧凑列表。">
-          <div className="demo-row">
+          <div className="flex flex-wrap items-center gap-3">
             <Switch defaultChecked size="sm" id="demo-switch-small" />
             <Label htmlFor="demo-switch-small">Small</Label>
           </div>
-          <div className="demo-row">
+          <div className="flex flex-wrap items-center gap-3">
             <Switch defaultChecked disabled id="demo-switch-disabled" />
             <Label htmlFor="demo-switch-disabled">Disabled</Label>
           </div>

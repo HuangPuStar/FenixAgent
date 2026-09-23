@@ -19,12 +19,16 @@ export function WorkbenchL2Section() {
   const { t } = useTranslation(DEMO_NS);
 
   return (
-    <section className="demo-section">
-      <h1 className="demo-section-title">{t("sections.workbenchL2")}</h1>
-      <p className="demo-hint">{t("sectionHints.workbenchL2")}</p>
+    <section>
+      <h1 data-slot="demo-section-title" className="mb-6 text-[24px] font-semibold">
+        {t("sections.workbenchL2")}
+      </h1>
+      <p className="mt-3 text-text-muted text-[12px]">{t("sectionHints.workbenchL2")}</p>
 
-      <div className="demo-example">
-        <h2 className="demo-example-title">WorkbenchPanel</h2>
+      <div className="mb-5 p-5 border border-border rounded-lg bg-surface-1">
+        <h2 data-slot="demo-example-title" className="mb-4 text-text-secondary text-[13px] font-medium">
+          WorkbenchPanel
+        </h2>
         <WorkbenchPanel className="flex gap-4 p-4">
           <div className="w-[180px] shrink-0 rounded-md bg-surface-2 p-3 text-sm text-text-muted">Index column</div>
           <div className="min-w-0 flex-1 rounded-md bg-surface-2 p-3 text-sm text-text-muted">

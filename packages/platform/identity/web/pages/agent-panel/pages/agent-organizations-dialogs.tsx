@@ -1,3 +1,5 @@
+import { LabeledField } from "@fenix/ui-components/config/LabeledField";
+import { copyTextToClipboard } from "@fenix/ui-components/lib/clipboard";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -19,15 +21,6 @@ import { toast } from "sonner";
 import type { OrgMemberCandidate } from "../../../api/organizations";
 import type { MachineFormState, OrganizationsDialogsProps } from "./agent-organizations-types";
 
-function Field({ label, children }: { label: string; children: React.ReactNode }) {
-  return (
-    <label className="org-dialog-field">
-      <span>{label}</span>
-      {children}
-    </label>
-  );
-}
-
 function CreateOrganizationDialog({ props }: { props: OrganizationsDialogsProps }) {
   const { t } = useTranslation(NS.ORGS);
   return (
@@ -37,20 +30,20 @@ function CreateOrganizationDialog({ props }: { props: OrganizationsDialogsProps 
           <DialogTitle>{t("createDialog.title")}</DialogTitle>
         </DialogHeader>
         <div className="org-dialog-fields">
-          <Field label={t("createDialog.name")}>
+          <LabeledField label={t("createDialog.name")}>
             <Input
               value={props.formName}
               onChange={(event) => props.onFormNameChange(event.target.value)}
               placeholder={t("createDialog.namePlaceholder")}
             />
-          </Field>
-          <Field label={t("createDialog.slug")}>
+          </LabeledField>
+          <LabeledField label={t("createDialog.slug")}>
             <Input
               value={props.formSlug}
               onChange={(event) => props.onFormSlugChange(event.target.value)}
               placeholder="url-identifier"
             />
-          </Field>
+          </LabeledField>
         </div>
         <DialogFooter>
           <Button variant="ghost" onClick={() => props.onCreateOpenChange(false)}>
@@ -98,8 +91,10 @@ function InviteMemberDialog({ props }: { props: OrganizationsDialogsProps }) {
           <DialogTitle>{t("inviteDialog.title")}</DialogTitle>
         </DialogHeader>
         <div className="org-dialog-fields">
-          <div className="org-dialog-field">
-            <span>{t("inviteDialog.searchLabel")}</span>
+          {/* 字段名走**显式关联**：字段名标注的是搜索框，而接口区里还有已选成员的移除按钮与结果列表
+              （都是可标记元素），包进 `<label>` 会把它们的文案并进搜索框的可访问名。
+              字段名刻度随之与同文件其余字段统一（原 `.org-dialog-field > span` 的 12px/600/#516079）。 */}
+          <LabeledField label={t("inviteDialog.searchLabel")} htmlFor="org-member-search">
             <div className="org-member-command">
               {props.selectedCandidates.length > 0 ? (
                 <div className="org-selected-members">
@@ -120,6 +115,7 @@ function InviteMemberDialog({ props }: { props: OrganizationsDialogsProps }) {
               <div className="org-member-search">
                 <Search className="size-4" aria-hidden="true" />
                 <Input
+                  id="org-member-search"
                   value={props.inviteKeyword}
                   onChange={(event) => props.onInviteKeywordChange(event.target.value)}
                   placeholder={
@@ -156,13 +152,13 @@ function InviteMemberDialog({ props }: { props: OrganizationsDialogsProps }) {
                 })}
               </div>
             </div>
-          </div>
-          <Field label={t("inviteDialog.role")}>
+          </LabeledField>
+          <LabeledField label={t("inviteDialog.role")}>
             <select value={props.inviteRole} onChange={(event) => props.onInviteRoleChange(event.target.value)}>
               <option value="admin">{t("roles.admin")}</option>
               <option value="member">{t("roles.member")}</option>
             </select>
-          </Field>
+          </LabeledField>
         </div>
         <DialogFooter>
           <Button variant="ghost" onClick={() => props.onInviteOpenChange(false)}>
@@ -191,11 +187,8 @@ function ConfirmDialogs({ props }: { props: OrganizationsDialogsProps }) {
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel>{t("cancel")}</AlertDialogCancel>
-            <AlertDialogAction
-              onClick={props.onDelete}
-              disabled={props.deleteLoading}
-              className="bg-destructive text-white hover:bg-destructive/90"
-            >
+            {/* destructive 变体即 Button 的破坏性配色，不再逐处手抄一份色值类串。 */}
+            <AlertDialogAction variant="destructive" onClick={props.onDelete} disabled={props.deleteLoading}>
               {props.deleteLoading ? t("deleteDialog.deleting") : t("deleteDialog.confirmDelete")}
             </AlertDialogAction>
           </AlertDialogFooter>
@@ -217,9 +210,9 @@ function ConfirmDialogs({ props }: { props: OrganizationsDialogsProps }) {
           <AlertDialogFooter>
             <AlertDialogCancel>{t("cancel")}</AlertDialogCancel>
             <AlertDialogAction
+              variant="destructive"
               onClick={props.onConfirmRemoveMember}
               disabled={props.removeMemberLoading}
-              className="bg-destructive text-white hover:bg-destructive/90"
             >
               {props.removeMemberLoading ? t("removeMemberDialog.removing") : t("removeMemberDialog.confirmRemove")}
             </AlertDialogAction>
@@ -242,9 +235,9 @@ function ConfirmDialogs({ props }: { props: OrganizationsDialogsProps }) {
           <AlertDialogFooter>
             <AlertDialogCancel>{t("cancel")}</AlertDialogCancel>
             <AlertDialogAction
+              variant="destructive"
               onClick={props.onDeleteMachine}
               disabled={props.deleteMachineLoading}
-              className="bg-destructive text-white hover:bg-destructive/90"
             >
               {props.deleteMachineLoading ? t("deleteMachineDialog.deleting") : t("deleteMachineDialog.confirmDelete")}
             </AlertDialogAction>
@@ -267,28 +260,29 @@ function MachineFields({
   const { t } = useTranslation(NS.ORGS);
   return (
     <div className="org-dialog-fields">
-      <Field label={t(`${prefix}.name`)}>
+      <LabeledField label={t(`${prefix}.name`)}>
         <Input
           value={form.name}
           onChange={(event) => onChange({ ...form, name: event.target.value })}
           placeholder={t(`${prefix}.namePlaceholder`)}
           maxLength={64}
         />
-      </Field>
-      <Field label={t(`${prefix}.labels`)}>
+      </LabeledField>
+      <LabeledField label={t(`${prefix}.labels`)}>
         <Input
           value={form.labels}
           onChange={(event) => onChange({ ...form, labels: event.target.value })}
           placeholder={t(`${prefix}.labelsPlaceholder`)}
         />
-      </Field>
-      <Field label={t(`${prefix}.agentName`)}>
+      </LabeledField>
+      <LabeledField label={t(`${prefix}.agentName`)}>
         <select value={form.agentName} onChange={(event) => onChange({ ...form, agentName: event.target.value })}>
+          <option value="peri">Peri</option>
           <option value="opencode">OpenCode</option>
           <option value="ccb">CCB</option>
           <option value="claude-code">Claude Code</option>
         </select>
-      </Field>
+      </LabeledField>
     </div>
   );
 }
@@ -296,21 +290,23 @@ function MachineFields({
 function CopyValue({ label, value }: { label: string; value: string }) {
   const { t } = useTranslation(NS.ORGS);
   return (
-    <Field label={label}>
+    <LabeledField label={label}>
       <div className="org-copy-value">
         <code>{value}</code>
         <Button
           size="icon-sm"
           variant="ghost"
-          onClick={() => {
-            navigator.clipboard.writeText(value);
-            toast.success(t("copied"));
-          }}
+          aria-label={t("copy")}
+          onClick={() =>
+            void copyTextToClipboard(value).then((ok) =>
+              ok ? toast.success(t("copied")) : toast.error(t("copyFailed")),
+            )
+          }
         >
           <Copy className="size-4" />
         </Button>
       </div>
-    </Field>
+    </LabeledField>
   );
 }
 

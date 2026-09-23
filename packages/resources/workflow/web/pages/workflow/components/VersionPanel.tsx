@@ -1,11 +1,13 @@
-import { ConfirmDialog } from "@fenix/ui-components/config/ConfirmDialog";
 import { unwrap } from "@fenix/web-runtime/api/request";
-import { Inbox, Loader, Rocket, X } from "lucide-react";
+import { Inbox, Rocket } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
 import { workflowDefApi } from "../../../api/workflow-defs";
-import { DAG_STATUS_CFG } from "../utils";
+import { InlineLoader } from "./InlineLoader";
+import { PanelHeader } from "./PanelHeader";
+import { VersionConfirmDialog } from "./VersionConfirmDialog";
+import { VersionRow } from "./VersionRow";
 
 export function VersionPanel({
   workflowId,
@@ -29,7 +31,7 @@ export function VersionPanel({
     type: "setLatest" | "restore";
     version: number;
   } | null>(null);
-  const { t } = useTranslation("workflows");
+  const { t, i18n } = useTranslation("workflows");
 
   const loadData = useCallback(async () => {
     if (!workflowId) return;
@@ -49,8 +51,12 @@ export function VersionPanel({
     } else {
       console.error("VersionPanel: 获取版本列表失败", versionsResult.reason);
     }
+    if (wfResult.status === "rejected" || versionsResult.status === "rejected") {
+      // 失败会让面板退化成「暂无发布版本」的空态，用户无从分辨；两项都失败也只报一条
+      toast.error(t("versions.load_data_failed"));
+    }
     setLoading(false);
-  }, [workflowId]);
+  }, [workflowId, t]);
 
   useEffect(() => {
     loadData();
@@ -72,7 +78,7 @@ export function VersionPanel({
     async (version: number) => {
       if (!workflowId) return;
       try {
-        await workflowDefApi.setLatest(workflowId, version);
+        await unwrap(workflowDefApi.setLatest(workflowId, version));
         loadData();
       } catch (err) {
         console.error(err);
@@ -86,7 +92,7 @@ export function VersionPanel({
     async (version: number) => {
       if (!workflowId) return;
       try {
-        await workflowDefApi.restoreToDraft(workflowId, version);
+        await unwrap(workflowDefApi.restoreToDraft(workflowId, version));
         toast.success(t("versions.restore_success"));
       } catch (err) {
         console.error(err);
@@ -110,41 +116,22 @@ export function VersionPanel({
         setViewingYaml(result.yaml);
       } catch (err) {
         console.error(err);
+        // 整行点击展开 YAML 是用户主动操作，失败时行不会展开，不给提示会被当成点击没响应
+        toast.error(t("versions.yaml_load_failed"));
       }
     },
-    [workflowId, viewingVersion],
+    [workflowId, viewingVersion, t],
   );
 
   const isBusy = publishing || publishingLocal;
 
   return (
     <>
-      <div
-        className="wf-prop-header"
-        style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}
-      >
-        <span className="wf-prop-title">{t("editor.version_management")}</span>
-        <button
-          type="button"
-          onClick={onClose}
-          // 纯图标按钮：可访问名只能由 aria-label 提供（面板标题已由 wf-prop-title 承载，X 只表示关闭）
-          aria-label={t("editor.version_panel_close")}
-          style={{
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            width: 24,
-            height: 24,
-            border: "none",
-            background: "#f3f4f6",
-            borderRadius: 4,
-            color: "#6b7280",
-            cursor: "pointer",
-          }}
-        >
-          <X size={11} />
-        </button>
-      </div>
+      <PanelHeader
+        title={t("editor.version_management")}
+        closeLabel={t("editor.version_panel_close")}
+        onClose={onClose}
+      />
 
       {workflowId && (
         <div style={{ padding: "8px 12px", borderBottom: "1px solid #f3f4f6" }}>
@@ -190,7 +177,7 @@ export function VersionPanel({
           }}
         >
           <span>
-            latest:{" "}
+            {t("versions.latest")}:{" "}
             <strong style={{ color: wf.latestVersion ? "#22c55e" : "#d1d5db" }}>
               {wf.latestVersion ? `v${wf.latestVersion}` : t("editor.no_published")}
             </strong>
@@ -202,7 +189,7 @@ export function VersionPanel({
       <div style={{ flex: 1, overflowY: "auto" }}>
         {loading ? (
           <div style={{ textAlign: "center", padding: 24, color: "#9ca3af", fontSize: 11 }}>
-            <Loader size={16} style={{ animation: "wf-spin 1s linear infinite", display: "inline-block" }} />
+            <InlineLoader />
             <p style={{ marginTop: 4 }}>{t("editor.load_failed")}</p>
           </div>
         ) : versions.length === 0 ? (
@@ -215,160 +202,55 @@ export function VersionPanel({
           versions.map((v) => {
             const isLatest = wf?.latestVersion === v.version;
             const isViewing = viewingVersion === v.version;
-            const _cfg = DAG_STATUS_CFG[v.status === "active" ? "SUCCESS" : "CANCELLED"] ?? DAG_STATUS_CFG.PENDING;
             return (
-              <div key={v.id} style={{ borderBottom: "1px solid #f3f4f6" }}>
-                {/*
-                  整行点击 = 展开/收起该版本 YAML，面板内没有等价的键盘入口（下方操作列只做
-                  设为 latest / 恢复到草稿），所以整行必须自己是可聚焦控件：role="button" + tabIndex
-                  + Enter/Space（Space 默认滚动页面，需 preventDefault），并用 aria-expanded 暴露状态。
-                  本组件沿用内联样式（非 Tailwind），焦点反馈与 hover 同法通过 style 写出，
-                  否则键盘 Tab 到这里没有任何可见提示。
-                */}
-                <div
-                  role="button"
-                  tabIndex={0}
-                  aria-expanded={isViewing}
-                  aria-label={t("versions.view_yaml", { version: v.version })}
-                  style={{
-                    padding: "8px 12px",
-                    cursor: "pointer",
-                    transition: "background 0.1s",
+              // 面板的行是「下边框分隔的一段」，内衬与 hover 底色在行本身上（版本页是卡片、弹层更紧）
+              <div key={v.id} className="border-b border-border-light">
+                <VersionRow
+                  version={v}
+                  isLatest={isLatest}
+                  labels={{
+                    latest: t("versions.latest"),
+                    setLatest: t("editor.vi_set_latest"),
+                    restoreToDraft: t("editor.vi_restore_to_draft"),
                   }}
-                  onClick={() => handleViewYaml(v.version)}
-                  onKeyDown={(e) => {
-                    if (e.target !== e.currentTarget) return;
-                    // 后代隔离：下方操作列是真实的 <button>，落在它们身上的 Enter/Space 属于按钮自身，
-                    // 必须留给浏览器默认激活；整行抢过来会同时吞掉按钮激活并误展开 YAML。
-                    if (e.key !== "Enter" && e.key !== " ") return;
-                    e.preventDefault();
-                    handleViewYaml(v.version);
+                  // 面板与版本页的信息密度差异：这里给绝对日期，版本页给相对时间，弹层不给
+                  // 日期取当前 locale（§9.3）：固定 zh-CN 会让英文界面显示中文格式
+                  meta={new Date(v.createdAt).toLocaleString(i18n.language, {
+                    month: "numeric",
+                    day: "numeric",
+                    hour: "2-digit",
+                    minute: "2-digit",
+                  })}
+                  expand={{
+                    expanded: isViewing,
+                    yaml: viewingYaml,
+                    label: t("versions.view_yaml", { version: v.version }),
+                    onToggle: () => handleViewYaml(v.version),
                   }}
-                  onMouseEnter={(e) => (e.currentTarget.style.background = "#f9fafb")}
-                  onMouseLeave={(e) => (e.currentTarget.style.background = "")}
-                  onFocus={(e) => {
-                    e.currentTarget.style.background = "#f9fafb";
-                    e.currentTarget.style.outline = "2px solid #3b82f6";
-                    e.currentTarget.style.outlineOffset = "-2px";
-                  }}
-                  onBlur={(e) => {
-                    e.currentTarget.style.background = "";
-                    e.currentTarget.style.outline = "";
-                    e.currentTarget.style.outlineOffset = "";
-                  }}
-                >
-                  <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 2 }}>
-                    <span
-                      style={{ fontFamily: "ui-monospace, monospace", fontWeight: 600, color: "#111827", fontSize: 12 }}
-                    >
-                      v{v.version}
-                    </span>
-                    {isLatest && (
-                      <span
-                        style={{
-                          display: "inline-flex",
-                          alignItems: "center",
-                          gap: 2,
-                          fontSize: 9,
-                          fontWeight: 500,
-                          color: "#22c55e",
-                          background: "#f0fdf4",
-                          padding: "1px 5px",
-                          borderRadius: 99,
-                        }}
-                      >
-                        latest
-                      </span>
-                    )}
-                    <span style={{ marginLeft: "auto", fontSize: 9, color: "#d1d5db" }}>
-                      {new Date(v.createdAt).toLocaleString("zh-CN", {
-                        month: "numeric",
-                        day: "numeric",
-                        hour: "2-digit",
-                        minute: "2-digit",
-                      })}
-                    </span>
-                  </div>
-                  <div style={{ display: "flex", gap: 3 }} onClick={(e) => e.stopPropagation()}>
-                    {!isLatest && (
-                      <button
-                        type="button"
-                        onClick={() => setConfirmAction({ type: "setLatest", version: v.version })}
-                        style={{
-                          padding: "2px 6px",
-                          border: "1px solid #e5e7eb",
-                          borderRadius: 3,
-                          background: "#fff",
-                          color: "#6b7280",
-                          fontSize: 9,
-                          cursor: "pointer",
-                        }}
-                      >
-                        {t("versions.set_latest")}
-                      </button>
-                    )}
-                    <button
-                      type="button"
-                      onClick={() => setConfirmAction({ type: "restore", version: v.version })}
-                      style={{
-                        padding: "2px 6px",
-                        border: "1px solid #e5e7eb",
-                        borderRadius: 3,
-                        background: "#fff",
-                        color: "#6b7280",
-                        fontSize: 9,
-                        cursor: "pointer",
-                      }}
-                    >
-                      {t("versions.restore_to_draft")}
-                    </button>
-                  </div>
-                </div>
-                {isViewing && viewingYaml !== null && (
-                  <div style={{ padding: "0 12px 8px" }}>
-                    <pre
-                      style={{
-                        background: "#f9fafb",
-                        border: "1px solid #e5e7eb",
-                        borderRadius: 4,
-                        padding: 8,
-                        fontSize: 9,
-                        fontFamily: "ui-monospace, monospace",
-                        color: "#374151",
-                        maxHeight: 200,
-                        overflow: "auto",
-                        margin: 0,
-                        whiteSpace: "pre-wrap",
-                      }}
-                    >
-                      {viewingYaml}
-                    </pre>
-                  </div>
-                )}
+                  onSetLatest={() => setConfirmAction({ type: "setLatest", version: v.version })}
+                  onRestore={() => setConfirmAction({ type: "restore", version: v.version })}
+                  className="px-3 py-2 hover:bg-surface-2"
+                  yamlClassName="px-3 pb-2"
+                />
               </div>
             );
           })
         )}
       </div>
 
-      {/* 破坏性操作二次确认：参考 VersionIndicator 同模式 */}
-      <ConfirmDialog
-        open={confirmAction !== null}
-        onOpenChange={(o) => {
-          if (!o) setConfirmAction(null);
+      {/* 破坏性操作二次确认：与版本页 / 版本弹层同一份接线（标题与正文各取自己那族 key） */}
+      <VersionConfirmDialog
+        action={confirmAction}
+        labels={{
+          setLatestTitle: t("editor.vi_set_latest"),
+          restoreTitle: t("editor.vi_restore_to_draft"),
+          setLatestDescription: (version) => t("versions.set_latest_confirm", { version }),
+          restoreDescription: (version) => t("editor.vi_restore_confirm", { version }),
         }}
-        title={confirmAction?.type === "setLatest" ? t("editor.vi_set_latest") : t("editor.vi_restore_to_draft")}
-        description={
-          confirmAction?.type === "restore"
-            ? t("editor.vi_restore_confirm", { version: confirmAction?.version ?? 0 })
-            : t("versions.set_latest_confirm", { version: confirmAction?.version ?? 0 })
-        }
-        variant={confirmAction?.type === "restore" ? "destructive" : "default"}
-        onConfirm={() => {
-          if (!confirmAction) return;
-          if (confirmAction.type === "setLatest") handleSetLatest(confirmAction.version);
-          else if (confirmAction.type === "restore") handleRestoreToDraft(confirmAction.version);
-          setConfirmAction(null);
+        onClose={() => setConfirmAction(null)}
+        onConfirm={(action) => {
+          if (action.type === "setLatest") handleSetLatest(action.version);
+          else handleRestoreToDraft(action.version);
         }}
       />
     </>

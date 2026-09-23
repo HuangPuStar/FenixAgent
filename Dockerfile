@@ -68,8 +68,6 @@ ENV RCS_APPLICATION_ROOT=/app
 ENV DATABASE_URL=postgres://rcs:rcs@postgres:5432/rcs
 ENV BUN_INSTALL_GLOBAL=/root/.bun
 ENV PATH=/root/.bun/bin:${PATH}
-ENV OPENCODE_DISABLE_AUTOUPDATE=1
-ENV OPENCODE_DISABLE_TELEMETRY=1
 
 # Install Python 3 and common tools (Debian/glibc base, use TUNA mirror)
 RUN sed -i 's|deb.debian.org|mirrors.tuna.tsinghua.edu.cn|g' /etc/apt/sources.list.d/debian.sources 2>/dev/null; \
@@ -95,8 +93,14 @@ RUN printf 'registry=%s\n' \
 RUN ln -sf /usr/local/bin/bun /usr/local/bin/node \
     && ln -sf /usr/local/bin/bun /usr/local/bin/npm \
     && ln -sf /usr/local/bin/bunx /usr/local/bin/npx
-RUN bun install -g opencode-ai@1.17.12 --registry=https://registry.npmmirror.com
-RUN opencode plugin @konghayao/opencode-hindsight -g
+# peri：本地执行的默认引擎（`RCS_DEFAULT_ENGINE_TYPE` 缺省的 `peri`），
+# 安装方式与 docker/sandbox-peri/Dockerfile 一致；未预装则默认引擎启动即失败。
+RUN export PERI_INSTALL_DIR=/opt/.peri-binary && curl -fsSL https://raw.githubusercontent.com/konghayao/peri/main/scripts/install.sh | bash
+ENV PATH="/opt/.peri-binary:$PATH"
+# 记忆插件：launchSpec.env 带 HINDSIGHT_API_URL 时
+# peri 的 settings.local.json 会开启 hindsight-memory@hindsight
+RUN peri plugin marketplace add vectorize-io/hindsight
+RUN peri plugin install hindsight-memory
 RUN rm -rf /root/.bun/install/cache /tmp/bun-*
 
 COPY --from=build /app/dist ./dist
@@ -108,14 +112,14 @@ COPY drizzle ./drizzle
 # /app/deploy/assembly/ce.json，缺失会使 main.ts 的顶层 await resolveAssemblyEnv() 抛 ENOENT 直接退出。
 COPY deploy/assembly ./deploy/assembly
 
-RUN mkdir -p /root/.config/opencode /root/.local/share/opencode /app/data /app/workflow /app/workspaces
+RUN mkdir -p /root/.peri /app/data /app/workflow /app/workspaces
 RUN mkdir -p /app/data/skills /app/.agents/agents /app/.agents/skills
 COPY .agents/agents/ /app/.agents/agents/
 COPY .agents/skills/ /app/.agents/skills/
 COPY fenix-sandbox-ops.sh /app/fenix-sandbox-ops.sh
 RUN chmod +x /app/fenix-sandbox-ops.sh
 
-VOLUME ["/root/.config/opencode", "/root/.local/share/opencode", "/app/data", "/app/workflow", "/app/workspaces"]
+VOLUME ["/root/.peri", "/app/data", "/app/workflow", "/app/workspaces"]
 
 EXPOSE 3000
 

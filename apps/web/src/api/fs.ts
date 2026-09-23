@@ -6,7 +6,7 @@
  */
 
 import { ApiError, request, UPLOAD_TIMEOUT_MS, unwrap, WRITE_TIMEOUT_MS } from "@fenix/web-runtime/api/request";
-import { randomUUID } from "@/src/lib/utils";
+import { randomUUID } from "@/src/lib/random-uuid";
 
 /**
  * 单次上传大小上限（100MB），与后端保持一致的同源常量。
@@ -49,8 +49,8 @@ interface FileWriteResult {
   size: number;
 }
 
-/** 文件树响应 */
-interface TreeResponse {
+/** 文件树响应（被导出的 TreeRevalidation 引用，故一并公开） */
+export interface TreeResponse {
   paths: string[];
   mtimes?: Record<string, number>;
 }
@@ -190,6 +190,49 @@ export async function downloadWorkspacePath(
     throw new ApiError("", "INVALID_RESPONSE");
   }
   return response.blob();
+}
+
+/** 文件树条件请求结果：304 必须与失败区分开，调用方据此保留上一份可用树。 */
+export type TreeRevalidation =
+  | { status: "not-modified" }
+  | { status: "updated"; etag: string | null; tree: TreeResponse };
+
+/**
+ * 条件重取 workspace 文件树（If-None-Match → 304 + ETag 读回）。
+ *
+ * 该端点以 ETag/304 跳过重复载荷（后端实现见 packages/resources/machine `fs.ts` 的
+ * `conditionalResponse`），而 `request()` 既不暴露响应头、也不把 304 当可区分结果
+ * （304 非 2xx，会被归一到 `请求失败 (304)`），因此这里按与 `downloadWorkspacePath` 相同的能力缺口
+ * 用裸 fetch 实现条件语义，调用方只消费结果；补 `request()` 条件请求能力后再收口（前端规范 §5.3）。
+ *
+ * @param id - 环境 ID
+ * @param etag - 上次响应携带的 ETag；为空表示无条件请求
+ */
+export async function revalidateWorkspaceTree(id: string, etag?: string | null): Promise<TreeRevalidation> {
+  const headers: Record<string, string> = {};
+  if (etag) headers["If-None-Match"] = etag;
+
+  const response = await fetch(`/web/environments/${encodeURIComponent(id)}/fs/tree`, {
+    credentials: "include",
+    headers,
+  });
+  if (response.status === 304) return { status: "not-modified" };
+  if (!response.ok) {
+    throw new ApiError(
+      `Tree revalidate failed: ${response.status}`,
+      response.status >= 500 ? "SERVER_ERROR" : "UNKNOWN",
+    );
+  }
+
+  const payload = (await response.json()) as { success?: boolean; data?: TreeResponse };
+  if (payload.success === false) throw new ApiError("Tree revalidate rejected", "UNKNOWN");
+
+  return {
+    status: "updated",
+    etag: response.headers.get("etag"),
+    // paths 归一为数组：调用方（文件树）直接展开，缺字段时保持旧的「空树」语义
+    tree: { paths: payload.data?.paths ?? [], mtimes: payload.data?.mtimes },
+  };
 }
 
 /** 将文件名转换为 Chat 用户文件区域中的 workspace 相对路径。 */

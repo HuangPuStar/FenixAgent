@@ -2,6 +2,7 @@ import { Popover, PopoverContent, PopoverTrigger } from "@fenix/ui-components/ui
 import { Settings } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import type { WfMeta } from "../yaml-utils";
+import { PopoverHeader } from "./PopoverHeader";
 import { WorkflowMetaCard } from "./WorkflowMetaCard";
 
 export interface WorkflowMetaPopoverProps {
@@ -23,9 +24,7 @@ export function WorkflowMetaPopover({ open, onOpenChange, readOnly, meta, update
         </button>
       </PopoverTrigger>
       <PopoverContent side="top" align="end" sideOffset={8} collisionPadding={16} className="wf-meta-popover">
-        <div className="wf-popover-header">
-          <span className="wf-popover-title">{t("editor.meta_settings")}</span>
-        </div>
+        <PopoverHeader title={t("editor.meta_settings")} />
         <WorkflowMetaCard readOnly={readOnly} meta={meta} updateMeta={updateMeta} />
       </PopoverContent>
     </Popover>

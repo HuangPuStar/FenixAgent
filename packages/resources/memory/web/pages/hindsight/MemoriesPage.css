@@ -1,0 +1,44 @@
+/*
+ * MemoriesPage 的深层样式（与同目录 `MemoriesPage.tsx` 同名，由该文件 import）。
+ *
+ * 来源：三处含 `minmax()` 的多轨道网格模板——复合值无法用扁平工具类表达（仓库禁令 FCP-WEB-02）：
+ *   - `.memories-page-skeleton-grid` ← 加载骨架的 `md:grid-cols-[15rem_minmax(0,1fr)]`；
+ *   - `.memories-page-workspace` ← `WorkbenchPanel` 上的 `grid-rows-[auto_minmax(0,1fr)]` 与
+ *     `md:grid-cols-[15rem_minmax(0,1fr)]`；
+ *   - `.memories-page-perspective-tab` ← 左侧视角按钮的 `grid-cols-[2.25rem_auto]` 与
+ *     `md:grid-cols-[2.25rem_minmax(0,1fr)]`。
+ * `md:` 展开为 `@media (width >= 48rem)`（Tailwind v4 默认断点，本仓库未覆盖 `--breakpoint-md`）。
+ *
+ * 层叠要点（决定了下面为什么要把 `md:grid-rows-1` 一并折进来）：本文件不包 `@layer`，未分层声明
+ * 压过 `@layer utilities`——这与工具类之间「同属性后来者胜、跨媒体查询也照赢」的旧语义不同，
+ * 凡是被本文件写入了某个属性的工具类都会失效，必须把它的取值折进同一条规则：
+ *   - 工作区面板的 `md:grid-rows-1` 折进 `@media` 块，取值即 Tailwind 对 `grid-rows-1` 的生成结果
+ *     `repeat(1, minmax(0, 1fr))`（不是简写的 `1fr`，保持逐字等价）；
+ *   - 视角按钮的 `md:grid-cols-*` 同理折进 `@media` 块。其余 `md:min-h-14` / `md:w-auto` /
+ *     `md:px-2.5` / `md:py-2` 是别的属性，不受影响，仍留在 `className`。
+ *
+ * 值逐字等价换算：`15rem` / `2.25rem` / `auto` 原样保留，任意值里的 `minmax(0,1fr)` 展开为
+ * `minmax(0, 1fr)`，未调整任何数值。
+ */
+.memories-page-workspace {
+  grid-template-rows: auto minmax(0, 1fr);
+}
+
+.memories-page-perspective-tab {
+  grid-template-columns: 2.25rem auto;
+}
+
+@media (width >= 48rem) {
+  .memories-page-skeleton-grid {
+    grid-template-columns: 15rem minmax(0, 1fr);
+  }
+
+  .memories-page-workspace {
+    grid-template-columns: 15rem minmax(0, 1fr);
+    grid-template-rows: repeat(1, minmax(0, 1fr));
+  }
+
+  .memories-page-perspective-tab {
+    grid-template-columns: 2.25rem minmax(0, 1fr);
+  }
+}

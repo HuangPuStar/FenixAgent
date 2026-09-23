@@ -25,6 +25,7 @@ import {
   buildTaskDefinition,
   INITIAL_TASK_FORM_VALUES,
   isUnauthorizedError,
+  removeIdFromSet,
   taskFormSchema,
   taskToFormValues,
 } from "./agent-tasks-utils";
@@ -90,6 +91,8 @@ export function AgentTasksPage() {
     {
       onError: (err: Error) => {
         console.error("agent list load failed", err);
+        // agent 列表喂的是任务表单里的 agent 下拉，静默失败会让用户以为「没有可用 agent」
+        toast.error(t("toast.agentListLoadFailed"));
       },
     },
   );
@@ -217,11 +220,7 @@ export function AgentTasksPage() {
       // ahooks v3 onFinally 签名: (params, data, error)，第一个参数是输入参数
       onFinally: (params) => {
         const id = (Array.isArray(params) ? params[0] : params) as string;
-        setTriggeredTasks((prev) => {
-          const next = new Set(prev);
-          next.delete(id);
-          return next;
-        });
+        setTriggeredTasks((prev) => removeIdFromSet(prev, id));
       },
     },
   );
@@ -287,7 +286,7 @@ export function AgentTasksPage() {
   const initialLoadDone = useRef(false);
   if (!initialLoadDone.current && loading) {
     return (
-      <div className="min-h-full overflow-auto bg-[#f4f7fb] px-8 py-7 text-[#14213d]" aria-busy="true">
+      <div className="min-h-full overflow-auto bg-slate-100 px-8 py-7 text-slate-800" aria-busy="true">
         <AppHeader title={t("title")} subtitle={t("subtitle")} />
         <div className="space-y-3">
           {Array.from({ length: 5 }).map((_, i) => (

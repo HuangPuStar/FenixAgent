@@ -1,3 +1,4 @@
+import { cn } from "@fenix/ui-components/lib/cn";
 import { NS } from "@fenix/web-runtime/i18n/namespace";
 import { Check, ChevronLeft, ChevronRight, Cpu, Minus, Plus, Search } from "lucide-react";
 import {
@@ -8,11 +9,70 @@ import {
   useState,
 } from "react";
 import { useTranslation } from "react-i18next";
+import { SECTION_INTRO } from "./agent-editor-classes";
+import "./agent-editor-controls.css";
+import {
+  BUTTON,
+  FIELD,
+  FIELD_LABEL,
+  GROUP_FILTER_NARROW,
+  INPUT,
+  LIBRARY_PICKER_NARROW,
+  MODEL_OPTIONS,
+  NODE_LIST,
+  OPTION_CHECK,
+  OPTION_CHECK_SELECTED,
+  OPTION_COPY,
+  OPTION_COPY_HINT_UNAVAILABLE,
+  OPTION_ICON,
+  OPTION_ROW,
+  OPTION_ROW_SELECTED,
+  OPTION_ROW_SELECTED_DISABLED,
+  OPTION_ROW_UNAVAILABLE,
+  PAGINATION,
+  PAGINATION_BUTTON,
+  PAGINATION_COUNT,
+  PAGINATION_GROUP,
+  PICKER_INPUT,
+  SINGLE_PICKER_CURRENT,
+  SINGLE_PICKER_CURRENT_UNAVAILABLE,
+  SINGLE_PICKER_TOOLBAR,
+  STEPPER,
+  STEPPER_BUTTON,
+  STEPPER_CONTROL,
+  TEXTAREA,
+  TOGGLE_COPY,
+  TOGGLE_ICON,
+  TOGGLE_KNOB,
+  TOGGLE_ROW,
+  TOGGLE_SWITCH,
+} from "./agent-editor-form-classes";
+import {
+  GROUP_FILTER,
+  GROUP_FILTER_BUTTON,
+  GROUP_FILTER_BUTTON_ACTIVE,
+  GROUP_FILTER_COUNT,
+  GROUP_FILTER_LABEL,
+  LIBRARY_PICKER,
+  LIBRARY_PICKER_FLAT,
+  LIBRARY_PICKER_RESULTS,
+  PAGINATION_IN_RESULTS,
+} from "./agent-editor-library-classes";
 import { type AgentEditorOption, filterAgentEditorOptions, paginateAgentEditorOptions } from "./agent-editor-model";
+
+/**
+ * 分区说明块：眉标 8px/750/等宽 + 标题 18px（760–1399 压 16px）+ 说明 12px（760–1119 收窄到 52ch）。
+ * `> span` / `> h3` / `> p` 与两段窄屏覆盖见 `agent-editor-controls.css`（与 A2 的 `SECTION_INTRO` 同名同类）。
+ */
+const INTRO = `${SECTION_INTRO} agent-editor-section__intro`;
+/** 模型列表（`agent-model-options`）的校验态：focus ring 之外再描一圈红（源为 `[aria-invalid="true"]` 规则）。 */
+const MODEL_OPTIONS_INVALID =
+  "aria-invalid:rounded-lg aria-invalid:outline-2 aria-invalid:outline-offset-3 " +
+  "aria-invalid:outline-[color-mix(in_srgb,var(--color-destructive,#dc2626)_45%,transparent)]";
 
 export function Intro({ eyebrow, title, description }: { eyebrow: string; title: string; description: string }) {
   return (
-    <header className="agent-editor-section__intro">
+    <header className={INTRO} data-slot="editor-section-intro">
       <span>{eyebrow}</span>
       <h3>{title}</h3>
       <p>{description}</p>
@@ -32,8 +92,8 @@ export function EditorField({
   children: ReactNode;
 }) {
   return (
-    <label className={`agent-editor-field${className ? ` ${className}` : ""}`}>
-      <span className="agent-editor-field__label">
+    <label className={cn(FIELD, className)}>
+      <span className={FIELD_LABEL} data-slot="editor-field-label">
         {label}
         {hint && <small>{hint}</small>}
       </span>
@@ -43,15 +103,15 @@ export function EditorField({
 }
 
 export function EditorInput(props: InputHTMLAttributes<HTMLInputElement>) {
-  return <input {...props} className={`agent-editor-input${props.className ? ` ${props.className}` : ""}`} />;
+  return <input {...props} className={cn(INPUT, props.className)} />;
 }
 
 export function EditorTextarea(props: TextareaHTMLAttributes<HTMLTextAreaElement>) {
-  return <textarea {...props} className={`agent-editor-textarea${props.className ? ` ${props.className}` : ""}`} />;
+  return <textarea {...props} className={cn(TEXTAREA, props.className)} />;
 }
 
 export function EditorButton(props: ButtonHTMLAttributes<HTMLButtonElement>) {
-  return <button {...props} className={`agent-editor-button${props.className ? ` ${props.className}` : ""}`} />;
+  return <button {...props} className={cn(BUTTON, props.className)} />;
 }
 
 export function EditorStepperField({
@@ -73,9 +133,10 @@ export function EditorStepperField({
 }) {
   const update = (next: number) => onChange(Math.min(max, Math.max(min, next)));
   return (
-    <div className="agent-editor-stepper">
+    <div className={STEPPER}>
       <button
         type="button"
+        className={cn(STEPPER_CONTROL, STEPPER_BUTTON)}
         onClick={() => update(value - 1)}
         disabled={disabled || value <= min}
         aria-label={decreaseLabel}
@@ -83,6 +144,7 @@ export function EditorStepperField({
         <Minus />
       </button>
       <input
+        className={STEPPER_CONTROL}
         type="number"
         min={min}
         max={max}
@@ -92,6 +154,7 @@ export function EditorStepperField({
       />
       <button
         type="button"
+        className={cn(STEPPER_CONTROL, STEPPER_BUTTON)}
         onClick={() => update(value + 1)}
         disabled={disabled || value >= max}
         aria-label={increaseLabel}
@@ -123,23 +186,24 @@ export function Toggle({
 }) {
   return (
     <button
-      className={`agent-editor-toggle-row${checked ? " is-on" : ""}`}
+      className={TOGGLE_ROW}
+      data-state={checked ? "on" : "off"}
       type="button"
       role="switch"
       aria-checked={checked}
       disabled={disabled}
       onClick={() => onChange(!checked)}
     >
-      <span className="agent-editor-toggle-row__icon">{icon}</span>
-      <span className="agent-editor-toggle-row__copy">
+      <span className={TOGGLE_ICON}>{icon}</span>
+      <span className={TOGGLE_COPY}>
         <strong>
           {title}
           {badge && <em>{badge}</em>}
         </strong>
         <small>{description}</small>
       </span>
-      <span className="agent-editor-switch" aria-hidden="true">
-        <i />
+      <span className={TOGGLE_SWITCH} aria-hidden="true">
+        <i className={TOGGLE_KNOB} />
       </span>
     </button>
   );
@@ -150,35 +214,40 @@ export function EditorPagination({
   pageSize,
   total,
   onPageChange,
+  className,
 }: {
   page: number;
   pageSize: number;
   total: number;
   onPageChange: (value: number) => void;
+  /** 调用点补充分页条样式（如结果区贴底 / 内嵌形态收边距）。 */
+  className?: string;
 }) {
   const { t } = useTranslation(NS.AGENTS);
   const pageCount = Math.max(1, Math.ceil(total / pageSize));
   const safePage = Math.min(Math.max(0, page), pageCount - 1);
   if (total === 0 || pageCount === 1) return null;
   return (
-    <footer className="agent-editor-pagination">
+    <footer className={cn(PAGINATION, className)} data-slot="pagination">
       <span>
         {safePage * pageSize + 1}–{Math.min((safePage + 1) * pageSize, total)} / {total}
       </span>
-      <div>
+      <div className={PAGINATION_GROUP}>
         <button
           type="button"
+          className={PAGINATION_BUTTON}
           disabled={safePage === 0}
           onClick={() => onPageChange(safePage - 1)}
           aria-label={t("editor.previousPage")}
         >
           <ChevronLeft />
         </button>
-        <strong>
+        <strong className={PAGINATION_COUNT}>
           {safePage + 1} / {pageCount}
         </strong>
         <button
           type="button"
+          className={PAGINATION_BUTTON}
           disabled={safePage + 1 >= pageCount}
           onClick={() => onPageChange(safePage + 1)}
           aria-label={t("editor.nextPage")}
@@ -214,22 +283,32 @@ export function EditorGroupFilter({
   ).map(([, group]) => group);
   if (groups.length === 0) return null;
   return (
-    <nav className="agent-editor-group-filter" aria-label={t("editor.resourceSources")}>
+    <nav
+      className={cn(GROUP_FILTER, GROUP_FILTER_NARROW)}
+      data-slot="group-filter"
+      aria-label={t("editor.resourceSources")}
+    >
       {!hideAll && (
-        <button type="button" className={value === "all" ? "is-active" : ""} onClick={() => onChange("all")}>
-          <span>{t("editor.allSources")}</span>
-          <em>{options.length}</em>
+        <button
+          type="button"
+          className={cn(GROUP_FILTER_BUTTON, value === "all" && GROUP_FILTER_BUTTON_ACTIVE)}
+          data-active={value === "all" ? "true" : undefined}
+          onClick={() => onChange("all")}
+        >
+          <span className={GROUP_FILTER_LABEL}>{t("editor.allSources")}</span>
+          <em className={GROUP_FILTER_COUNT}>{options.length}</em>
         </button>
       )}
       {groups.map((group) => (
         <button
           type="button"
           key={group.id}
-          className={value === group.id ? "is-active" : ""}
+          className={cn(GROUP_FILTER_BUTTON, value === group.id && GROUP_FILTER_BUTTON_ACTIVE)}
+          data-active={value === group.id ? "true" : undefined}
           onClick={() => onChange(group.id)}
         >
-          <span>{group.label}</span>
-          <em>{group.count}</em>
+          <span className={GROUP_FILTER_LABEL}>{group.label}</span>
+          <em className={GROUP_FILTER_COUNT}>{group.count}</em>
         </button>
       ))}
     </nav>
@@ -276,13 +355,14 @@ export function SinglePicker({
       : firstPass;
   const { matching, visible, activeGroup } = filtered;
   const paged = paginateAgentEditorOptions(visible, page, size);
-  const listClass = Icon === Cpu ? "agent-model-options" : "agent-node-list";
+  const listClass = Icon === Cpu ? cn(MODEL_OPTIONS, MODEL_OPTIONS_INVALID) : NODE_LIST;
   return (
     <>
-      <div className="agent-single-picker-toolbar">
+      <div className={SINGLE_PICKER_TOOLBAR}>
         <label>
           <Search />
           <input
+            className={PICKER_INPUT}
             value={query}
             onChange={(event) => {
               setQuery(event.target.value);
@@ -294,7 +374,7 @@ export function SinglePicker({
         <span>{t("editor.optionCount", { count: visible.length })}</span>
       </div>
       {selected && (
-        <div className={`agent-single-picker-current${selected.unavailable ? " is-unavailable" : ""}`}>
+        <div className={cn(SINGLE_PICKER_CURRENT, selected.unavailable && SINGLE_PICKER_CURRENT_UNAVAILABLE)}>
           <small>{t("editor.currentSelection")}</small>
           <strong>{selected.label}</strong>
           <span>
@@ -303,7 +383,11 @@ export function SinglePicker({
           </span>
         </div>
       )}
-      <div className={`agent-editor-library-picker${showGroups ? "" : " is-flat"}`}>
+      <div
+        className={cn(LIBRARY_PICKER, LIBRARY_PICKER_NARROW, !showGroups && LIBRARY_PICKER_FLAT)}
+        data-slot="library-picker"
+        data-flat={!showGroups ? "true" : undefined}
+      >
         {showGroups && (
           <EditorGroupFilter
             options={matching}
@@ -315,7 +399,7 @@ export function SinglePicker({
             }}
           />
         )}
-        <div className="agent-editor-library-picker__results">
+        <div className={LIBRARY_PICKER_RESULTS}>
           <div
             id={Icon === Cpu ? "agent-editor-model-options" : undefined}
             className={listClass}
@@ -327,7 +411,13 @@ export function SinglePicker({
           >
             {paged.items.map((item) => (
               <button
-                className={`${item.id === value ? "is-selected " : ""}${item.unavailable ? "is-unavailable" : ""}`}
+                className={cn(
+                  OPTION_ROW,
+                  Icon === Cpu ? "agent-editor-option-row--model" : "agent-editor-option-row--node",
+                  item.id === value && OPTION_ROW_SELECTED,
+                  item.unavailable && OPTION_ROW_UNAVAILABLE,
+                  item.id === value && (disabled || item.unavailable) && OPTION_ROW_SELECTED_DISABLED,
+                )}
                 type="button"
                 role="radio"
                 aria-checked={item.id === value}
@@ -352,21 +442,31 @@ export function SinglePicker({
                   onChange(item.id);
                 }}
               >
-                <span className="agent-model-options__icon">{renderIcon ? renderIcon(item) : <Icon />}</span>
-                <span className="agent-model-options__copy">
+                <span className={OPTION_ICON}>{renderIcon ? renderIcon(item) : <Icon />}</span>
+                <span className={OPTION_COPY}>
                   <strong>{item.label}</strong>
-                  <small>{item.description ?? (item.unavailable ? t("editor.unavailable") : "")}</small>
+                  <small className={item.unavailable ? OPTION_COPY_HINT_UNAVAILABLE : undefined}>
+                    {item.description ?? (item.unavailable ? t("editor.unavailable") : "")}
+                  </small>
                 </span>
-                <i>{item.id === value && <Check />}</i>
+                <i className={cn(OPTION_CHECK, item.id === value && OPTION_CHECK_SELECTED)}>
+                  {item.id === value && <Check />}
+                </i>
               </button>
             ))}
           </div>
           {invalid && errorMessage && (
-            <p id="agent-editor-model-error" className="agent-editor-field-error" role="alert">
+            <p id="agent-editor-model-error" className="mt-2 text-3xs text-destructive" role="alert">
               {errorMessage}
             </p>
           )}
-          <EditorPagination page={page} total={visible.length} pageSize={size} onPageChange={setPage} />
+          <EditorPagination
+            page={page}
+            total={visible.length}
+            pageSize={size}
+            onPageChange={setPage}
+            className={PAGINATION_IN_RESULTS}
+          />
         </div>
       </div>
     </>

@@ -259,7 +259,7 @@ describe("Agent 表单与资源访问纯逻辑", () => {
       modelId: "model-1",
       prompt: "You are helpful",
       description: "Assistant",
-      engineType: "opencode",
+      engineType: "peri",
       knowledge: { knowledgeBaseIds: [], policy: { searchFirst: true, maxResults: 5 } },
     });
   });

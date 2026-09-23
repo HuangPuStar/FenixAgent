@@ -99,7 +99,12 @@ const engineType = (resolvedAgentConfig as Record<string, unknown> | null)?.engi
   ?? "opencode";
 ```
 
-**优先级**：agent config 指定 > `RCS_DEFAULT_ENGINE_TYPE` > `"opencode"`
+**优先级**：agent config 指定 > `RCS_DEFAULT_ENGINE_TYPE` > 平台默认引擎
+
+> **2026-09-22 后兜底值改为 `peri`**：末端硬编码兜底从 `"opencode"` 换成 `"peri"`
+> （`orchestration-instance.ts` 的 `?? "peri"`；本地节点默认引擎与 `agent_config.engine_type`、
+> machine 注册、沙箱 `agent_type`、acp-runtime `AGENT_TYPE` 的缺省值同步为 `peri`）。
+> 本文其余段落描述的是 07-08 时的取值，不再逐处回改。
 
 > **c71ee18c（07-23）后仅 local 生效**：`spawnInstanceViaCore` 的 remote 分支不传
 > engineType，远程执行引擎由机器端 `AGENT_TYPE`（acp-runtime-cli `bin.ts`，默认

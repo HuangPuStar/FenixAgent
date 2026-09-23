@@ -1,11 +1,12 @@
+import "./chat-navigation-aids.css";
+
 import { useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { useTranslation } from "react-i18next";
 import { UI_COMPONENTS_NS } from "../../i18n/namespace";
+import { cn } from "../../lib/cn";
 import type { UserMessageEntry } from "../types";
-import "../css/chat-navigation-aids.css";
 
-const PROMPT_JUMP_CLASS = "chat-prompt-jump-index";
 // 过多刻度会把导航误读成贯穿整屏的时间轴；保留首尾的均匀采样即可支持长会话定位。
 const MAX_VISIBLE_PROMPT_JUMPS = 14;
 const SYSTEM_REMINDER_PREFIX = "<system-reminder>";
@@ -47,7 +48,7 @@ interface PromptPreview {
 /**
  * 宽屏会话提示词导航，不参与消息数据写入。
  *
- * 复制自 `packages/agent-runtime/web/components/chat/chat-navigation-aids.tsx`。
+ * 复制自 `packages/agent-runtime/web/components/chat/chat-navigation-aids.tsx`（旧路径，已于 2026-09-21 由 f2741a82d 删除）。
  * 纯化改动点：`@/src/lib/types` → 包内 `../types`；命名空间常量与样式表路径收敛到包内
  * （`../../i18n/namespace`、`../css/chat-navigation-aids.css`）；键加 `chat.components.` 前缀。
  */
@@ -67,11 +68,12 @@ export function PromptJumpRail({ entries }: PromptJumpRailProps) {
 
   useEffect(() => {
     // 跨组件契约：`chat-entry-<entryId>` 由 ChatView 的消息节点提供（见 view/ChatView.tsx），
-    // 本组件只负责按 activeId 给该节点打上 `chat-entry--active-prompt` 高亮类（样式在 ../css/chat-navigation-aids.css）。
+    // 本组件只负责按 activeId 给该节点打上 `data-active-prompt`（样式由 ChatView 的
+    // `data-[active-prompt]:` 工具类承担，原 `chat-entry--active-prompt` 类名已随样式迁移删除）。
     // 迁移到本包时保持该约定不变，宿主必须沿用 `chat-entry-${entryId}` 作为消息节点 id。
     const activePrompt = activeId ? document.getElementById(`chat-entry-${activeId}`) : null;
-    activePrompt?.classList.add("chat-entry--active-prompt");
-    return () => activePrompt?.classList.remove("chat-entry--active-prompt");
+    activePrompt?.setAttribute("data-active-prompt", "");
+    return () => activePrompt?.removeAttribute("data-active-prompt");
   }, [activeId]);
 
   useEffect(() => {
@@ -128,17 +130,29 @@ export function PromptJumpRail({ entries }: PromptJumpRailProps) {
   if (promptEntries.length <= 1) return null;
   return (
     <>
-      <nav ref={railRef} className={PROMPT_JUMP_CLASS} aria-label={t("chat.components.promptJump.title")}>
-        <ol className={`${PROMPT_JUMP_CLASS}__list`}>
+      <nav
+        ref={railRef}
+        // 源 `chat-navigation-aids.css` 的 `.chat-prompt-jump-index`：贴会话左缘的刻度轨（宽屏才显示）。
+        // 定位偏移、高度上限与宽屏媒体查询在 `./chat-navigation-aids.css` 的 `.chat-prompt-rail`。
+        className="chat-prompt-rail absolute top-1/2 z-[8] hidden h-max w-7 -translate-y-1/2"
+        data-slot="chat-prompt-jump-rail"
+        aria-label={t("chat.components.promptJump.title")}
+      >
+        <ol
+          className="m-0 grid list-none grid-flow-row auto-rows-2.5 content-start gap-y-1.5 py-0.75"
+          data-slot="chat-prompt-jump-list"
+        >
           {visiblePrompts.map(({ entry, sourceIndex }) => {
             const summary = entry.content.replace(/\s+/g, " ").trim();
             const displaySummary = summary || t("chat.components.promptJump.untitled");
             const isActive = entry.id === activeId;
             return (
-              <li key={entry.id}>
+              <li key={entry.id} className="h-2.5 w-6.5">
                 <button
                   type="button"
-                  className={`${PROMPT_JUMP_CLASS}__item${isActive ? " is-active" : ""}`}
+                  // 源 `__item`：整条刻度是按钮，父选子（hover / focus-visible）由 `group` 承担。
+                  className="group relative inline-flex h-2.5 w-6.5 min-w-0 min-h-0 cursor-pointer items-center self-start border-0 bg-transparent p-0 focus-visible:outline-none"
+                  data-slot="chat-prompt-jump-item"
                   aria-controls={`chat-entry-${entry.id}`}
                   aria-current={isActive ? "location" : undefined}
                   aria-label={`${t("chat.components.promptJump.title")} ${sourceIndex + 1}/${promptEntries.length}: ${displaySummary}`}
@@ -159,7 +173,18 @@ export function PromptJumpRail({ entries }: PromptJumpRailProps) {
                   }}
                   onMouseLeave={() => setPreview(null)}
                 >
-                  <span className={`${PROMPT_JUMP_CLASS}__tick`} aria-hidden="true" />
+                  {/* 源 `__tick` 与 `:hover/:focus-visible`、`.is-active` 三态：选中态与其余态**互斥**列出，
+                      不依赖两条工具类的生成顺序（选中项悬停时仍是选中态的宽度/颜色，与源一致）。 */}
+                  <span
+                    className={cn(
+                      "h-0.5 shrink-0 rounded-full [transition:width_150ms_ease,background-color_150ms_ease] motion-reduce:[transition:none]",
+                      isActive
+                        ? "w-4.75 bg-gray-800"
+                        : "w-2 max-w-4.75 bg-gray-300 group-hover:w-3.25 group-hover:bg-gray-500 group-focus-visible:w-3.25 group-focus-visible:bg-gray-500",
+                    )}
+                    data-slot="chat-prompt-jump-tick"
+                    aria-hidden="true"
+                  />
                 </button>
               </li>
             );
@@ -169,14 +194,18 @@ export function PromptJumpRail({ entries }: PromptJumpRailProps) {
       {preview &&
         createPortal(
           <span
-            className={`${PROMPT_JUMP_CLASS}__preview`}
+            // 源 `__preview`（含 `> small` 与 `> span` 的三行截断）；阴影在 `./chat-navigation-aids.css`。
+            className="chat-prompt-preview pointer-events-none fixed z-30 grid w-56.5 -translate-y-1/2 gap-1 rounded-lg border border-slate-200 bg-white/97 px-2.75 py-2.25 text-left text-slate-600 backdrop-blur-sm motion-reduce:[transition:none]"
             style={{ left: preview.left, top: preview.top }}
+            data-slot="chat-prompt-jump-preview"
             aria-hidden="true"
           >
-            <small>
+            <small className="text-3xs leading-tight text-gray-400">
               {preview.sourceIndex + 1}/{promptEntries.length}
             </small>
-            <span>{preview.entry.content.replace(/\s+/g, " ").trim() || t("chat.components.promptJump.untitled")}</span>
+            <span className="line-clamp-3 overflow-hidden text-3xs leading-normal text-gray-500">
+              {preview.entry.content.replace(/\s+/g, " ").trim() || t("chat.components.promptJump.untitled")}
+            </span>
           </span>,
           document.body,
         )}
@@ -201,9 +230,11 @@ export interface ChatSelectionActionProps {
 /**
  * 只对聊天正文内的用户选区显示“添加到对话”，popover 使用 fixed 避免被滚动层裁剪。
  *
- * 复制自 `packages/agent-runtime/web/components/chat/chat-navigation-aids.tsx`。
+ * 复制自 `packages/agent-runtime/web/components/chat/chat-navigation-aids.tsx`（旧路径，已于 2026-09-21 由 f2741a82d 删除）。
  * 纯化改动点：`chat:quote` window 自定义事件改为 `onQuote` 回调 prop（不再 `window.dispatchEvent`）；
- * 命名空间与键前缀收敛到包内；选区判定仍依赖宿主消息容器的 `.chat-conversation-content` 类名。
+ * 命名空间与键前缀收敛到包内；选区判定改为依赖消息容器的稳定锚点
+ * `data-slot="chat-conversation-content"`（由 `view/ChatView.tsx` 的 `ConversationContent` 提供，
+ * 原实现锚定的是 `.chat-conversation-content` 语义类名，样式迁移后类名已删除）。
  */
 export function ChatSelectionAction({ contextScope, onQuote }: ChatSelectionActionProps) {
   const { t } = useTranslation(UI_COMPONENTS_NS);
@@ -221,7 +252,7 @@ export function ChatSelectionAction({ contextScope, onQuote }: ChatSelectionActi
         range.commonAncestorContainer.nodeType === Node.TEXT_NODE
           ? range.commonAncestorContainer.parentElement
           : range.commonAncestorContainer;
-      if (!(ancestor instanceof Element) || !ancestor.closest(".chat-conversation-content")) {
+      if (!(ancestor instanceof Element) || !ancestor.closest('[data-slot="chat-conversation-content"]')) {
         setSelectionAction(null);
         return;
       }
@@ -244,9 +275,13 @@ export function ChatSelectionAction({ contextScope, onQuote }: ChatSelectionActi
 
   if (!selectionAction) return null;
   return (
-    <div className="chat-selection-action" style={{ left: selectionAction.left, top: selectionAction.top }}>
+    <div
+      className="chat-selection-quote-popover fixed z-[100] overflow-hidden rounded-md border border-slate-200 bg-white"
+      style={{ left: selectionAction.left, top: selectionAction.top }}
+    >
       <button
         type="button"
+        className="px-3 py-2 text-xs font-semibold text-sky-700"
         onClick={() => {
           onQuote?.(selectionAction.text, contextScope);
           window.getSelection()?.removeAllRanges();

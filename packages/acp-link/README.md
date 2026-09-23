@@ -2,10 +2,16 @@
 
 ACP stdio-to-WebSocket bridge — spawns an ACP agent and exposes it via WebSocket.
 
-## 安装
+## Workspace 内部使用
 
-```bash
-bun add acp-link
+当前 `acp-link` 为 `private: true` 的 workspace 内部包，不再作为公开 npm 包发布；npm 上历史发布的 `1.1.0` 不代表当前源码。在本仓库的消费方 `package.json` 中声明依赖，并在仓库根目录运行 `bun install`：
+
+```json
+{
+  "dependencies": {
+    "acp-link": "workspace:*"
+  }
+}
 ```
 
 ## 编程接口

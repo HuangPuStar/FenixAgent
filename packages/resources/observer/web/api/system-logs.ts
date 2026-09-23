@@ -44,39 +44,51 @@ export function searchSystemLog(input: {
 }
 
 /**
- * 下载日志文件。
+ * 拉取日志文件内容（调用方负责落盘）。
  *
- * 为什么不走 `request()`：下载端点的成功响应是 `text/plain` 流，而 `request()` 对非 JSON 响应体
- * 会先把 body 读成文本再按 JSON 解包，二进制内容会在这一步被消费掉并归一为 SERVER_ERROR，
- * 因此响应体只能由这里直接读取。失败路径仍接回统一层：非 2xx 一律抛 `ApiError(message, code)`，
- * code 取自 `/api/system/*` 的错误信封（与 `unwrap()` 的取码规则一致），信封不可用时按状态码兜底。
- * 这样 401 → UNAUTHORIZED 的归一化与其它调用完全相同，调用方不必为下载单独写一套鉴权失败分支。
+ * 返回响应体 `Blob` 而不自己触发下载：按前端规范 5.1「组件负责：调用域模块 → 处理结果 → 更新 UI」，
+ * 创建锚点、`click()` 与用完 `revokeObjectURL` 都是 UI 职责，由调用方（`pages/admin/AdminLogsPage.tsx`）
+ * 承担；本模块只做取数与错误归一。这与沙箱域 `systemSandboxApi.cluster.downloadTunnelConfig`
+ * （同样只回内容、由 `ClusterPanel` 落盘）是同一分工，域模块内不再出现任何 DOM 调用。
+ *
+ * 函数名沿用既有导出（改名属独立的 API 调整，会动到包出口的公共面），语义以本注释与返回类型为准。
+ *
+ * 为什么这里保留裸 `fetch`（**`request()` 的能力缺口，不是本模块的取巧**）：下载端点的成功响应是
+ * `text/plain` 流，而 `request()` 只解 `{ success, data }` JSON 信封——非 JSON 分支会先把 body 读成
+ * 文本再按 `success` 字段判形，二进制内容在那一步就被消费掉并归一为 SERVER_ERROR（实现见
+ * `web-runtime/web/api/request.ts` 的非 JSON 分支）。该缺口记在前端规范 5.3「非标准响应适配」的
+ * 「已知能力缺口」里，规范给的修法是**给 `request()` 补 blob/流响应能力，不是在调用点继续手写**。
+ * 因此本函数是这一处缺口的临时收容点：全模块的裸 `fetch` 只此一处；`request()` 支持 blob 后，
+ * 本函数应整体退回 `request()` + `unwrap()`，不要在这里新增第二套下载路径。
+ *
+ * 失败语义与统一层一致：非 2xx 一律抛 `ApiError`，code 与 `unwrap()` 同源（取 `/api/system/*` 的
+ * `{ error: { code, message } }` 信封），信封不可用时按状态码兜底成 UNAUTHORIZED / SERVER_ERROR，
+ * 这样 401 → UNAUTHORIZED 的归一化与其它 `/api/system/*` 调用完全相同，调用方不必为下载单写一条
+ * 鉴权失败分支（见 `buildDownloadError` 的说明）。
  *
  * 抛错即契约：调用方必须接住（`useRequest` 的 onError 或 try/catch）。本函数不吞错、也不自己弹提示——
  * 用户可见文案归页面（`t()`），这里只提供可分类的错误。
  */
-export async function downloadSystemLog(file: string): Promise<void> {
+export async function downloadSystemLog(file: string): Promise<Blob> {
   const response = await fetch(`/api/system/logs/download?file=${encodeURIComponent(file)}`, {
     credentials: "include",
     headers: { Authorization: `Bearer ${getAdminKey() ?? ""}` },
   });
   if (!response.ok) throw await buildDownloadError(response);
 
-  const blob = await response.blob();
-  const url = URL.createObjectURL(blob);
-  const anchor = document.createElement("a");
-  anchor.href = url;
-  anchor.download = file;
-  anchor.click();
-  URL.revokeObjectURL(url);
+  return response.blob();
 }
 
 /**
  * 把下载失败响应归一为统一错误。
  *
- * 错误体是 `/api/system/*` 的 `{ error: { code, message } }` 信封；被网关/代理拦截时可能返回 HTML，
- * 那时解析会抛错。解析失败不掩盖原始失败：记下响应状态与解析异常作为诊断上下文，再以状态码兜底
- * （401/403 仍归 UNAUTHORIZED，其余归 SERVER_ERROR）。兜底码刻意保守——未知失败按服务端错误处理，
+ * 为什么不直接 `unwrap()`：`unwrap()` 只看得见响应体里的信封，看不到 HTTP 状态；而下载端点的失败
+ * 既可能是错误信封（400/404/500），也可能是网关/代理直接回的 HTML。只靠信封取码会把后者落到
+ * UNKNOWN，丢掉 401/403 → UNAUTHORIZED 这条调用方依赖的分类。因此这里与 `unwrap()` 取**同一处**
+ * 信封码，仅在信封缺失时用状态码兜底——不是另立一套取码规则。
+ *
+ * 错误体解析会抛错（非 JSON）时记下状态与异常作为诊断上下文，再以状态码兜底（401/403 归
+ * UNAUTHORIZED，其余归 SERVER_ERROR）。兜底码刻意保守——未知失败按服务端错误处理，
  * 不会把「凭据失效」误判成「服务异常」或反之。
  */
 async function buildDownloadError(response: Response): Promise<ApiError> {

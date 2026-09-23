@@ -1,0 +1,319 @@
+/*
+ * 「新建 Agent」面板 A2 片（外壳 / 三栏工作区 / 左栏导航 / 汇总 / 页脚 / 分区）的深层样式。
+ *
+ * 源：迁移前的 `agent-editor.css` + `agent-editor-design.css` + `agent-editor-responsive.css` 里
+ * 「需要选择器层级、复合值与手写媒体查询」的那些声明；选择器沿用源类名（含 BEM 形态），
+ * 值取 `agent-editor-classes.ts` 那批类串的**生效值**（口径见 `/tmp/agent-editor-effective-spec.md`）。
+ * 扁平工具类仍留在 `className`，本文件只承载子代选择器、复合表达式与断点覆盖。
+ *
+ * 三条约定（与 `agent-editor-controls.css` / `agent-editor-library-classes.css` / `agent-editor-form-classes.css` 同口径）：
+ *
+ * ① 不包 `@layer`：源样式表本就没有分层，未分层才能在层叠中压过 `@layer utilities`。
+ *    这也是类串里原本为「压过组件自带工具类」而写的 `!` 前缀（`!grid-cols-…`、`!shadow-…`、
+ *    `md:max-lg:!grid-cols-…`）在 CSS 侧不再需要的原因：未分层的普通声明已压过 utilities 层的普通声明，
+ *    胜负关系不变。与 CSS 不重叠的 `!`（`!fixed`、`!inset-0`、`!grid`、`!min-h-14.5` 等）保持原样——它们压的是同层工具类。
+ *
+ * ② 颜色与圆角写字面量，不写 `var(--color-*)`：Tailwind v4 只输出**被工具类用到**的主题变量
+ *    （`--color-gray-400`、`--color-slate-700` 在只被 CSS 引用时不在产物里），引用被裁掉的变量会在
+ *    计算期静默失效。注释里的工具类名即换算来源，改 token 时按名搜索同步。
+ *
+ * ③ 字号与行高成对写出：`text-<size>` 工具类会附带同行高
+ *    （`line-height: var(--tw-leading, var(--text-<size>--line-height))`），迁到 CSS 后必须显式补回，
+ *    否则行高回落到继承值；被同组 `leading-*` 覆盖的地方按覆盖后的值写一条即可。
+ *
+ * 断点写法：`max-md` / `md:max-lg` / `lg:max-2xl` 是规范断点，写成媒体查询时用它的区间语法
+ * （`width >= 48rem` 等，与变体逐字等价）；带高度条件的边界（760 / 1119 / 1120 / 1399 / 1400）没有规范变体，
+ * 按 `[@media(…)]` 变体里的原条件写回。
+ */
+
+/* ── 面板外壳（`PANEL_DESKTOP` / `PANEL_SHEET`） ─────────────────────────
+ *
+ * 源 design 层 `.agent-editor-panel`：箱体宽 `min(1180px, calc(100% - 24px))` + 两级阴影。
+ * 桌面 `<section>` 与移动端 `SheetContent` 的阴影同源（源里移动端靠同一个 `.agent-editor-panel`
+ * 选择器继承），故合并成一条；移动端只带 `agent-editor-mobile`，不该拿到桌面宽度——
+ * 它的定位 / 尺寸由类串里的 `!fixed` / `!inset-0` / `!w-screen` / `!h-dvh` 覆盖。
+ *
+ * 另：`.agent-editor-panel` 同时是 `AgentFormDialog` 里
+ * `querySelector(".agent-editor-panel[role='dialog']")` 的焦点恢复钩子（A2 迁移后类名消失、该选择器曾取空）。
+ */
+.agent-editor-panel,
+.agent-editor-mobile {
+  box-shadow:
+    0 18px 48px rgb(29 64 126 / 14%),
+    0 2px 8px rgb(29 64 126 / 8%);
+}
+
+.agent-editor-panel {
+  width: min(1180px, calc(100% - 24px));
+}
+
+/* ── 编辑器根（`EDITOR_ROOT`） ───────────────────────────────────────────
+ *
+ * 源 `agent-editor.css` 的组选择器 `.agent-editor-root, .agent-editor-root button,
+ * .agent-editor-root input, .agent-editor-root textarea { font-family: inherit }`，逐条写回。
+ */
+.agent-editor-root,
+.agent-editor-root button,
+.agent-editor-root input,
+.agent-editor-root textarea {
+  font-family: inherit;
+}
+
+/* ── 三栏工作区（`WORKSPACE` / `WORKSPACE_TABS`） ─────────────────────────
+ *
+ * 源 design 层的 216 / 430 / 216 基准列宽；两段窄桌面覆盖沿用 A.5 之后的规范断点
+ * （`md:max-lg` = 48–64rem、`lg:max-2xl` = 64–96rem）。移动档（`max-md`，<48rem）改纵向 flex
+ * 由类串里的工具类表达，与两条媒体查询区间互斥。
+ */
+.agent-editor-workspace {
+  grid-template-columns: 216px minmax(430px, 1fr) 216px;
+}
+
+@media (width >= 48rem) and (width < 64rem) {
+  .agent-editor-workspace {
+    grid-template-columns: 148px minmax(280px, 1fr) 190px;
+  }
+}
+
+@media (width >= 64rem) and (width < 96rem) {
+  .agent-editor-workspace {
+    grid-template-columns: 168px minmax(360px, 1fr) 220px;
+  }
+}
+
+/* ── 左栏条目（`MAP_TRIGGER`） ───────────────────────────────────────────
+ *
+ * 源 `.agent-editor-map [data-slot="tabs-trigger"]` 的列定义（32px 图标列 / 窄桌面 26px 与 24px）。
+ * 声明落在条目自己的类名上，不再依赖左栏容器的后代关系（容器另有 `max-md:!w-max` 等覆盖，
+ * 后代选择器会让覆盖面变宽）。display / 间距 / 圆角等工具类仍在类串里。
+ */
+.agent-editor-map-trigger {
+  grid-template-columns: 32px minmax(0, 1fr) auto;
+}
+
+@media (width >= 48rem) and (width < 64rem) {
+  .agent-editor-map-trigger {
+    grid-template-columns: 24px minmax(0, 1fr);
+  }
+}
+
+@media (width >= 64rem) and (width < 96rem) {
+  .agent-editor-map-trigger {
+    grid-template-columns: 26px minmax(0, 1fr) auto;
+  }
+}
+
+/* ── 左栏图标底（`MAP_ICON`） ───────────────────────────────────────────
+ *
+ * 源 design 层 `.agent-editor-map-icon svg { width: 14px }`：图标尺寸归图标，底板尺寸仍是类串里的 `size-8`。
+ */
+.agent-editor-map-icon > svg {
+  width: 14px;
+}
+
+/* ── 左栏条目文案（`MAP_COPY`） ─────────────────────────────────────────
+ *
+ * 源 design 层 `.agent-editor-map-copy strong / small`：标题 12px/680/snug，
+ * 说明 10px/400/snug + 单行省略 + 固定灰；窄桌面档（`md:max-lg`，48–64rem）隐藏说明。
+ * 标题颜色按源是 `color: inherit`（随条目的 `!text-gray-500` 与选中态走），故这里不写 color。
+ */
+.agent-editor-map-copy > strong {
+  font-size: 0.75rem; /* text-xs */
+  line-height: 1.375; /* leading-snug（接管 text-xs 自带的行高） */
+  font-weight: 680;
+}
+
+.agent-editor-map-copy > small {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 10px; /* text-3xs（仓库在 Tailwind 刻度下自补的 10px 档） */
+  line-height: 1.375; /* leading-snug */
+  font-weight: 400;
+  color: oklch(70.7% 0.022 261.325); /* text-gray-400 */
+}
+
+@media (width >= 48rem) and (width < 64rem) {
+  .agent-editor-map-copy > small {
+    display: none;
+  }
+}
+
+/* ── 中栏内容区（`CONTENT`） ─────────────────────────────────────────────
+ *
+ * 源 design 层 `.agent-editor-content { padding: 16px 20px 20px }` + 「宽度档 × 高度档」的互斥覆盖，
+ * 短视口（≤700h）与窄桌面（≤1119px）各自收一档。带高度条件的边界没有规范变体，按原条件写回。
+ *
+ * base 与移动档（`max-md`）两条内边距本身不是门禁命中项（它们是任意**属性**，不走 `-[…]` 值判定），
+ * 一并下沉是为了让 padding 只有一个真相来源：留下 base 的话，未分层的它反而会压过
+ * `max-md:[padding:14px]` 工具类，移动端内边距会静默回退成桌面值。
+ *
+ * 块序按类串里变体的书写顺序，故 760–767px 这段「≥760px 的窄桌面档」与 `max-md`（<48rem）
+ * 的重叠区间由最后的移动档（14px）胜出。
+ */
+.agent-editor-content {
+  padding: 16px 20px 20px;
+}
+
+/* 1120–1399px × 高 ≥701px */
+@media (min-width: 1120px) and (max-width: 1399px) and (min-height: 701px) {
+  .agent-editor-content {
+    padding: 14px 18px 16px;
+  }
+}
+
+/* 760–1119px × 高 ≥701px */
+@media (min-width: 760px) and (max-width: 1119px) and (min-height: 701px) {
+  .agent-editor-content {
+    padding: 14px 12px 16px;
+  }
+}
+
+/* ≥1400px × 高 ≤700px */
+@media (min-width: 1400px) and (max-height: 700px) {
+  .agent-editor-content {
+    padding: 12px 20px 14px;
+  }
+}
+
+/* 1120–1399px × 高 ≤700px */
+@media (min-width: 1120px) and (max-width: 1399px) and (max-height: 700px) {
+  .agent-editor-content {
+    padding: 12px 18px 14px;
+  }
+}
+
+/* 760–1119px × 高 ≤700px */
+@media (min-width: 760px) and (max-width: 1119px) and (max-height: 700px) {
+  .agent-editor-content {
+    padding: 12px 12px 14px;
+  }
+}
+
+/* `max-md`（<48rem）：单栏移动档 */
+@media (width < 48rem) {
+  .agent-editor-content {
+    padding: 14px;
+  }
+}
+
+/* ── 右栏汇总（`SUMMARY_ASIDE`） ─────────────────────────────────────────
+ *
+ * 源 design 层 `.agent-editor-summary` 的淡径向渐变底。底色由类串里的 `bg-slate-50` 提供，
+ * 故这里只写 `background-image`（写 `background` 简写会把底色一起重置掉）。
+ * 三段断点内边距是「规范断点 + 任意属性」写法（`lg:max-2xl:[padding:…]`），不属本片命中项，仍在类串里。
+ */
+.agent-editor-summary {
+  background-image: radial-gradient(circle at 90% 0%, rgb(50 108 221 / 8%), transparent 36%);
+}
+
+/* ── 页脚（`FOOTER`） ───────────────────────────────────────────────────
+ *
+ * 源 design 层 `.agent-editor-footer` 的上投影 + responsive 层移动档（`max-md`）的 safe-area 下内边距。
+ * 上内边距仍由类串里的 `max-md:pt-2.25` 提供（它压的是同层的 `py-0`，与这里互不干扰）。
+ */
+.agent-editor-footer {
+  box-shadow: 0 -10px 30px rgb(31 54 91 / 4%);
+}
+
+@media (width < 48rem) {
+  .agent-editor-footer {
+    padding-bottom: max(12px, env(safe-area-inset-bottom));
+  }
+}
+
+/* ── 页脚状态块（`FOOTER_STATE`） ───────────────────────────────────────
+ *
+ * 源 design 层 `.agent-editor-footer__state > span / p / strong / small`：28px 圆角数字格 + 标题 / 说明两行
+ * （行高按源是 1.35，A.5 之后由 `text-*` 与 `leading-*` 决定，这里按工具类的实际值写）。
+ */
+.agent-editor-footer__state span {
+  display: grid;
+  width: 28px; /* size-7 */
+  height: 28px; /* size-7 */
+  flex: none;
+  flex-basis: 28px; /* basis-7 */
+  place-items: center;
+  border-radius: 0.375rem; /* rounded-md */
+  background-color: oklch(96.2% 0.018 272.314); /* bg-indigo-50 */
+  font-size: 0.75rem; /* text-xs */
+  line-height: calc(1 / 0.75); /* text-xs 自带的行高 */
+  font-weight: 750;
+  color: oklch(42.4% 0.199 265.638); /* text-blue-800 */
+}
+
+.agent-editor-footer__state p {
+  display: flex;
+  flex-direction: column;
+  gap: 2px; /* gap-0.5 */
+  margin: 0;
+}
+
+.agent-editor-footer__state strong {
+  font-size: 0.75rem; /* text-xs */
+  line-height: calc(1 / 0.75); /* text-xs 自带的行高 */
+  color: oklch(37.2% 0.044 257.287); /* text-slate-700 */
+}
+
+.agent-editor-footer__state small {
+  font-size: 10px; /* text-3xs */
+  color: oklch(70.7% 0.022 261.325); /* text-gray-400 */
+}
+
+/* ── 加载失败态（`ERROR_STATE`） ────────────────────────────────────────
+ *
+ * 源 `.agent-editor-state p / strong`：说明 480px 上限，标题 14px。
+ */
+.agent-editor-state > p {
+  max-width: 480px; /* max-w-120 */
+  font-size: 10px; /* text-3xs */
+}
+
+.agent-editor-state > strong {
+  font-size: 0.875rem; /* text-sm */
+  line-height: calc(1.25 / 0.875); /* text-sm 自带的行高 */
+}
+
+/* ── 分区容器与说明块（`SECTION` / `SECTION_INTRO`） ─────────────────────
+ *
+ * 源 design 层 `.agent-editor-section { width: min(720px, 100%); animation: agent-editor-section-enter 180ms ease both }`；
+ * 关键帧定义留在 `agent-editor-retained.css`（动画定义无法用工具类表达，是唯一登记的保留项）。
+ *
+ * `SECTION_INTRO` 与 `agent-editor-controls.css` 的 `.agent-editor-section__intro` 同名同类
+ * （同源 `.agent-editor-section__intro` 的一段声明）：那边承载 `> span / > h3 / > p` 三条子规则，
+ * 这里承载 margin-bottom 与两段短视口覆盖，合并后与源一致。
+ */
+.agent-editor-section {
+  width: min(720px, 100%);
+  animation: agent-editor-section-enter 180ms ease both;
+}
+
+/* 1120–1399px × 高 ≥701px */
+@media (min-width: 1120px) and (max-width: 1399px) and (min-height: 701px) {
+  .agent-editor-section__intro {
+    margin-bottom: 20px; /* mb-5 */
+  }
+}
+
+/* 760–1119px × 高 ≥701px */
+@media (min-width: 760px) and (max-width: 1119px) and (min-height: 701px) {
+  .agent-editor-section__intro {
+    margin-bottom: 20px; /* mb-5 */
+  }
+}
+
+/* ≥760px × 高 ≤700px */
+@media (min-width: 760px) and (max-height: 700px) {
+  .agent-editor-section__intro {
+    margin-bottom: 12px; /* mb-3 */
+  }
+}
+
+/* ── 加载壳导航骨架行（`LOADING_MAP_ROW`） ──────────────────────────────
+ *
+ * 源 `agent-editor-loading.css` 的 `.agent-editor-loading-shell__map > div`：骨架行与左栏条目同构
+ * （46px 行高 / 27px 图标列）。行高与外观仍在类串里（`min-h-11.5` 等），这里只补列定义。
+ */
+.agent-editor-loading-map-row {
+  grid-template-columns: 27px minmax(0, 1fr);
+}

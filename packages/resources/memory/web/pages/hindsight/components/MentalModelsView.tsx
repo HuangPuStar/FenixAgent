@@ -1,3 +1,4 @@
+import { EmptyState } from "@fenix/ui-components/config/EmptyState";
 import { Badge } from "@fenix/ui-components/ui/badge";
 import { Button } from "@fenix/ui-components/ui/button";
 import { Card, CardAction, CardContent, CardFooter, CardHeader, CardTitle } from "@fenix/ui-components/ui/card";
@@ -10,6 +11,7 @@ import {
   DialogTitle,
 } from "@fenix/ui-components/ui/dialog";
 import { Input } from "@fenix/ui-components/ui/input";
+import { Spinner } from "@fenix/ui-components/ui/spinner";
 import { NS } from "@fenix/web-runtime/i18n/namespace";
 import { Brain, Loader2, Search, Trash2, X } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
@@ -251,23 +253,19 @@ export function MentalModelsView() {
       {/* 卡片网格 */}
       <div className="flex-1 overflow-auto p-4">
         {loading ? (
-          <div className="flex items-center justify-center py-12" role="status">
-            <Loader2 className="size-6 animate-spin text-muted-foreground" />
-          </div>
+          // 手写的居中容器改用库 `Spinner` 的 `panel` 形态：无文案的转圈原本挂在 `role="status"`
+          // 上（区域里没有可播报文本），现在由库按「无文案即装饰」处理成 `aria-hidden`。
+          <Spinner size="sm" variant="panel" className="py-12" />
         ) : failure ? (
-          <div className="flex flex-col items-center justify-center py-16 text-center" role="alert">
-            <HindsightFailureNotice
-              failure={failure}
-              titleKey="mentalModels.loadFailed"
-              retryKey="mentalModels.retry"
-              onRetry={() => void loadModels()}
-            />
-          </div>
+          <HindsightFailureNotice
+            failure={failure}
+            titleKey="mentalModels.loadFailed"
+            retryKey="mentalModels.retry"
+            onRetry={() => void loadModels()}
+            className="py-16"
+          />
         ) : filteredModels.length === 0 ? (
-          <div className="flex flex-col items-center justify-center py-16 text-muted-foreground">
-            <Brain className="size-10 mb-3 opacity-40" />
-            <p className="text-sm">{t("mentalModels.noModels")}</p>
-          </div>
+          <EmptyState className="py-16" icon={<Brain />} title={t("mentalModels.noModels")} />
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
             {filteredModels.map((model) => (
@@ -289,7 +287,7 @@ export function MentalModelsView() {
                   <CardTitle className="text-sm flex items-center gap-2">
                     <span className="truncate">{model.name}</span>
                     {model.is_stale && (
-                      <Badge variant="secondary" className="text-[10px] shrink-0">
+                      <Badge variant="secondary" className="text-3xs shrink-0">
                         {t("mentalModels.stale")}
                       </Badge>
                     )}
@@ -323,12 +321,12 @@ export function MentalModelsView() {
                   {model.tags.length > 0 && (
                     <div className="flex flex-wrap gap-1">
                       {model.tags.slice(0, 3).map((tag) => (
-                        <Badge key={tag} variant="outline" className="text-[10px] px-1.5 py-0">
+                        <Badge key={tag} variant="outline" className="text-3xs px-1.5 py-0">
                           {tag}
                         </Badge>
                       ))}
                       {model.tags.length > 3 && (
-                        <Badge variant="outline" className="text-[10px] px-1.5 py-0">
+                        <Badge variant="outline" className="text-3xs px-1.5 py-0">
                           +{model.tags.length - 3}
                         </Badge>
                       )}
@@ -337,7 +335,7 @@ export function MentalModelsView() {
 
                   {/* 时间 */}
                   {model.last_refreshed_at && (
-                    <p className="text-[10px] text-muted-foreground">
+                    <p className="text-3xs text-muted-foreground">
                       {t("mentalModels.lastRefreshed")}: {new Date(model.last_refreshed_at).toLocaleDateString()}
                     </p>
                   )}

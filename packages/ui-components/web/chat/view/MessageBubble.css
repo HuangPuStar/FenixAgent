@@ -1,0 +1,59 @@
+/*
+ * MessageBubble 的深层样式（与同目录 `MessageBubble.tsx` 同名，由该文件 import）。
+ *
+ * 来源：源 `chat-design-messages.css`（阶段三随迁移删除）的 `.chat-user-bubble` /
+ * `.chat-message-actions` / `.chat-thinking-trigger` 段。值逐字等价换算，未调整任何数值：
+ *   - `.chat-user-message-shell` ← `rounded-[14px_14px_4px_14px]`（源 `.chat-user-bubble` 的四角）；
+ *   - `.chat-message-action-bar` ← `top-[calc(100%-2px)]`、`shadow-[0_6px_18px_rgb(30_50_80_/_12%)]`
+ *     与 `[@media(hover:none)]:` 三条（源 `.chat-message-actions` 及其 `@media (hover: none)` 块）；
+ *   - `.chat-thought-trigger > svg:*` ← `[&>svg:first-child]:hidden`、`[&>svg:last-child]:ml-0.5`
+ *     （源 `.chat-thinking-trigger > svg:first-child / :last-child`）；
+ *   - `.chat-message-image-dialog` ← `max-w-[min(92vw,960px)]`（见下「层叠注意 2」）。
+ *
+ * 层叠注意 1（助手操作条）：`opacity` / `pointer-events` / `translate` 的基础值与
+ * hover / focus-within 显示态仍是工具类（`opacity-0`、`-translate-y-0.5`、`group-hover/assistant:*`），
+ * 只有「触屏常驻可见」那一组搬到这里——未分层会赢过 `@layer utilities`，与迁移前一致
+ * （原 `[@media(hover:none)]:` 变体在工具类层内晚于 group 变体出现，同样是它胜出）。
+ *
+ * 层叠注意 2（图片预览弹窗宽度）：`DialogContent` 默认带 `sm:max-w-lg`（32rem），它在 ≥640px
+ * 覆盖了调用方的 `max-w-[min(92vw,960px)]`（工具类层内 media 变体晚于基础工具类）。本类未分层，
+ * 若不加限制地声明，就会反过来压过 `sm:max-w-lg`，把 ≥640px 的弹窗从 512px 放大到 960px
+ * ——那是可见变更，故按现状只在 `sm` 断点以下生效，胜负关系与迁移前逐像素一致。
+ * 移除条件：`DialogContent` 的宽度改由调用方决定（默认里不再有 `sm:max-w-*`）后，去掉这层媒体查询，
+ * 让 `min(92vw, 960px)` 全局生效——那属于有意的设计决策，不在本次迁移范围。
+ */
+.chat-user-message-shell {
+  border-radius: 14px 14px 4px 14px;
+}
+
+.chat-message-action-bar {
+  top: calc(100% - 2px);
+  box-shadow: 0 6px 18px rgb(30 50 80 / 12%);
+}
+
+/* 无 hover 能力的设备（触屏）上操作条常驻可见：源 `.chat-message-actions` 的 `@media (hover: none)` 块。
+   `className` 的基础态带 `-translate-y-0.5`（Tailwind v4 用 `translate` 属性而非 `transform`），
+   故这里用 `translate: none` 抵消该偏移——写 `transform: none` 不会生效。 */
+@media (hover: none) {
+  .chat-message-action-bar {
+    opacity: 1;
+    pointer-events: auto;
+    translate: none;
+  }
+}
+
+/* 思考条触发器里的两个图标：首图标（brain）隐藏、尾图标（chevron）左移 2px。 */
+.chat-thought-trigger > svg:first-child {
+  display: none;
+}
+
+.chat-thought-trigger > svg:last-child {
+  margin-left: calc(var(--spacing) * 0.5);
+}
+
+/* `sm` 断点以下与 Tailwind 完全互补（`sm:` 展开为 `@media (width >= 40rem)`）。 */
+@media (width < 40rem) {
+  .chat-message-image-dialog {
+    max-width: min(92vw, 960px);
+  }
+}

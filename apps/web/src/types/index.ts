@@ -1,3 +1,10 @@
+/**
+ * 宿主视图类型。环境契约的唯一来源是 `@fenix/agent-runtime/web/api/environments`：那里已有
+ * `EnvironmentDetail` / `Create|UpdateEnvironmentRequest`，本文件只保留宿主仍有引用的
+ * `Environment` / `EnvironmentInstance`（`shell/AgentSidebarTree.tsx` 等），重复副本已删除；
+ * 后端也不再返回 `maxSessions`（drizzle/0025 已删列），不得在此复活。
+ */
+
 export interface Environment {
   id: string;
   name: string;
@@ -27,13 +34,6 @@ export interface EnvironmentInstance {
   name: string;
   status: "stopped" | "starting" | "running" | "stopping" | "unknown";
   createdAt: string;
-}
-
-export interface EnvironmentDetail extends Environment {
-  secret: string;
-  capabilities: Record<string, unknown> | null;
-  workerType: string;
-  maxSessions: number;
 }
 
 export type ChannelProviderStatus = "disabled" | "enabled";
@@ -73,22 +73,6 @@ export interface CreateChannelBindingRequest {
   chatId?: string | null;
   agentId: string;
   enabled?: boolean;
-}
-
-export interface CreateEnvironmentRequest {
-  name: string;
-  description?: string;
-  workspacePath: string;
-  agentConfigId: string;
-  autoStart?: boolean;
-}
-
-export interface UpdateEnvironmentRequest {
-  name?: string;
-  description?: string;
-  workspacePath?: string;
-  agentConfigId?: string;
-  autoStart?: boolean;
 }
 
 export interface Session {

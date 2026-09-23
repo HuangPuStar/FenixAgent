@@ -136,6 +136,7 @@
     "triggered": "Task triggered",
     "logsCleared": "Logs cleared",
     "saveFailed": "Save failed",
+    "agentListLoadFailed": "Failed to load agent list",
     "triggerResult": "Execution {{status}}, took {{duration}}ms"
   },
   "error": {

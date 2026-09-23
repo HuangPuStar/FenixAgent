@@ -34,7 +34,7 @@ import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
 import { useTaskViews } from "@/src/hooks/use-task-views";
 import { NS } from "@/src/i18n";
-import { randomUUID } from "@/src/lib/utils";
+import { randomUUID } from "@/src/lib/random-uuid";
 import { type ChatAuthState, resolveChatAuthState } from "./chat-auth-state";
 import type { ChatWsConnectionState } from "./chat-visible-reconnect";
 import { sendSessionMutationWithRefresh } from "./session-mutation-refresh";

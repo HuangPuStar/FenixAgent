@@ -145,7 +145,7 @@ export async function createMachine(
 ): Promise<{ id: string; name: string; status: "pending"; initCommand: string }> {
   const id = genId("mach");
   const now = new Date();
-  const agentName = params.agentName ?? "opencode";
+  const agentName = params.agentName ?? "peri";
   const labels = params.labels ?? [];
 
   await getMachineDatabase().insert(machine).values({

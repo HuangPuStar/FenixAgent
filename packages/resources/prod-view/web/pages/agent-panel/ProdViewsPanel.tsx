@@ -1,10 +1,8 @@
 import { agentApi } from "@fenix/agent-config/web";
-import { ConfirmDialog } from "@fenix/ui-components/config/ConfirmDialog";
+import { EmptyState } from "@fenix/ui-components/config/EmptyState";
+import { StatusBadge } from "@fenix/ui-components/config/StatusBadge";
 import { cn } from "@fenix/ui-components/lib/cn";
 import { Button } from "@fenix/ui-components/ui/button";
-import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@fenix/ui-components/ui/dialog";
-import { Input } from "@fenix/ui-components/ui/input";
-import { Label } from "@fenix/ui-components/ui/label";
 import { ScrollArea } from "@fenix/ui-components/ui/scroll-area";
 import { Skeleton } from "@fenix/ui-components/ui/skeleton";
 import { Switch } from "@fenix/ui-components/ui/switch";
@@ -16,44 +14,19 @@ import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
 import type { ProdViewInfo } from "../../api/prod-views";
 import { prodViewApi } from "../../api/prod-views";
+import {
+  copyProdViewLink,
+  openProdView,
+  ProdViewDeleteDialog,
+  ProdViewFormDialog,
+  useProdViewDelete,
+  useProdViewEditor,
+} from "../../components/prod-view-editor";
 import { PROD_VIEWS_NS } from "../../i18n/namespace";
-import { buildEnabledMap, buildModulesConfig, defaultEnabledMap, PANEL_MODULE_KEYS } from "../../lib/prod-view-modules";
+import { PROD_VIEW_STATUS_TONES } from "../../lib/status-tones";
 
 interface ProdViewsPanelProps {
   agentId: string | null;
-}
-
-/** 模块配置开关区域（创建 & 编辑共用） */
-function ModuleConfigSection({
-  enabledMap,
-  onToggle,
-}: {
-  enabledMap: Record<string, boolean>;
-  onToggle: (key: string, checked: boolean) => void;
-}) {
-  // 模块名的键组（`modules.*`）也归本包 prodViews 命名空间，与 panel.* 同源，故只需一次 useTranslation。
-  const { t } = useTranslation(PROD_VIEWS_NS);
-
-  const ModuleRow = ({ moduleKey }: { moduleKey: string }) => (
-    <div className="flex items-center justify-between rounded bg-gray-50 px-3 py-2">
-      <span className="text-sm">{t(`modules.${moduleKey}`)}</span>
-      <Switch checked={enabledMap[moduleKey]} onCheckedChange={(checked) => onToggle(moduleKey, checked)} />
-    </div>
-  );
-
-  return (
-    <div className="space-y-4">
-      {/* 附加面板 */}
-      <div className="space-y-1.5">
-        <Label className="text-xs font-semibold text-text-secondary">{t("panel.moduleSection")}</Label>
-        <div className="grid grid-cols-2 gap-2">
-          {PANEL_MODULE_KEYS.map((mk) => (
-            <ModuleRow key={mk} moduleKey={mk} />
-          ))}
-        </div>
-      </div>
-    </div>
-  );
 }
 
 export function ProdViewsPanel({ agentId }: ProdViewsPanelProps) {
@@ -95,83 +68,19 @@ export function ProdViewsPanel({ agentId }: ProdViewsPanelProps) {
     { ready: !!agentId },
   );
 
-  // ── 共用表单状态（创建 / 编辑共用同一个 Dialog） ──
-  const [dialogOpen, setDialogOpen] = useState(false);
-  const [editingView, setEditingView] = useState<ProdViewInfo | null>(null);
-  const [formName, setFormName] = useState("");
-  const [formDesc, setFormDesc] = useState("");
-  const [formModules, setFormModules] = useState<Record<string, boolean>>(defaultEnabledMap());
-  const [submitting, setSubmitting] = useState(false);
+  // 表单与删除流程与整页外壳共用（`components/prod-view-editor`）：面板的 agent 由 props 固定，
+  // 因此打开创建弹窗时把当前 agent 名预填进名称，弹窗里不再有 agent 选择器。
+  const editor = useProdViewEditor({
+    boundAgentId: agentId,
+    messages: { createSuccess: t("panel.createSuccess"), updateSuccess: t("panel.updateSuccess") },
+    onSaved: refresh,
+  });
+  const deletion = useProdViewDelete({ successMessage: t("panel.deleteSuccess"), onDeleted: refresh });
 
-  const isEditing = !!editingView;
+  const copyLink = (id: string) =>
+    copyProdViewLink(id, { copied: t("panel.linkCopied"), failed: t("panel.copyFailed") });
 
-  const openCreate = () => {
-    setEditingView(null);
-    setFormName(agentDisplayName ?? "");
-    setFormDesc("");
-    setFormModules(defaultEnabledMap());
-    setDialogOpen(true);
-  };
-
-  const openEdit = (view: ProdViewInfo) => {
-    setEditingView(view);
-    setFormName(view.name);
-    setFormDesc(view.description ?? "");
-    setFormModules(buildEnabledMap(view.modulesConfig));
-    setDialogOpen(true);
-  };
-
-  const closeDialog = () => {
-    setDialogOpen(false);
-    setEditingView(null);
-  };
-
-  const handleSubmit = async () => {
-    if (!formName.trim() || !agentId) return;
-    setSubmitting(true);
-    try {
-      const existingModulesConfig = editingView?.modulesConfig;
-      if (isEditing) {
-        await unwrap(
-          prodViewApi.update(editingView!.id, {
-            name: formName.trim(),
-            description: formDesc.trim() || undefined,
-            modulesConfig: buildModulesConfig(existingModulesConfig, formModules),
-          }),
-        );
-        toast.success(t("panel.updateSuccess"));
-      } else {
-        await unwrap(
-          prodViewApi.create({
-            name: formName.trim(),
-            agentId,
-            description: formDesc.trim() || undefined,
-            modulesConfig: buildModulesConfig(existingModulesConfig, formModules),
-          }),
-        );
-        toast.success(t("panel.createSuccess"));
-      }
-      closeDialog();
-      refresh();
-    } catch (err) {
-      toast.error((err as Error).message);
-    } finally {
-      setSubmitting(false);
-    }
-  };
-
-  // ── 删除确认 ──
-  const [deleteTarget, setDeleteTarget] = useState<ProdViewInfo | null>(null);
-
-  const handleDelete = async (id: string) => {
-    try {
-      await unwrap(prodViewApi.del(id));
-      toast.success(t("panel.deleteSuccess"));
-      refresh();
-    } catch (err) {
-      toast.error((err as Error).message);
-    }
-  };
+  const openCreate = () => editor.openCreate(agentDisplayName ?? "");
 
   // ── 开关 ──
   const handleToggle = async (view: ProdViewInfo) => {
@@ -188,20 +97,6 @@ export function ProdViewsPanel({ agentId }: ProdViewsPanelProps) {
         return next;
       });
     }
-  };
-
-  // ── 复制链接 ──
-  const copyLink = (id: string) => {
-    const url = `${window.location.origin}/view/${id}`;
-    navigator.clipboard.writeText(url).then(
-      () => toast.success(t("panel.linkCopied")),
-      () => toast.error(t("panel.copyFailed")),
-    );
-  };
-
-  // ── 打开视图 ──
-  const openView = (id: string) => {
-    window.open(`/view/${id}`, "_blank");
   };
 
   return (
@@ -226,14 +121,14 @@ export function ProdViewsPanel({ agentId }: ProdViewsPanelProps) {
       ) : error ? (
         // 持久错误分支（role="alert"）：失败不能落进下面的「点击 + 创建」空态，否则用户分不清
         // 「加载失败」与「确实没有数据」，也没有恢复入口；已解构的 refresh 必须接到这里。
-        <div className="flex-1 flex flex-col items-center justify-center gap-3 py-8 px-4" role="alert">
-          <p className="text-sm text-text-muted">{unauthorized ? t("noPermission") : t("panel.loadFailed")}</p>
-          {unauthorized ? null : (
-            <Button size="xs" variant="outline" onClick={refresh}>
-              {t("retry")}
-            </Button>
-          )}
-        </div>
+        // 401/403（UNAUTHORIZED）不给重试：重试不会改变授权结果。
+        <EmptyState
+          tone="danger"
+          role="alert"
+          title={unauthorized ? t("noPermission") : t("panel.loadFailed")}
+          action={unauthorized ? undefined : { label: t("retry"), onClick: refresh }}
+          className="flex flex-1 flex-col justify-center px-4"
+        />
       ) : views.length === 0 ? (
         <button
           type="button"
@@ -254,27 +149,23 @@ export function ProdViewsPanel({ agentId }: ProdViewsPanelProps) {
                   !view.enabled && "opacity-50",
                 )}
               >
-                {/* 头部：状态圆点 + 名称 + 启用 badge */}
+                {/* 头部：名称 + 启用 badge（状态圆点由 badge 的 `indicator` 提供，不再另画一个手写色值的圆点） */}
                 <div className="flex items-center gap-2 min-w-0">
-                  <span
-                    className={cn("shrink-0 size-2 rounded-full", view.enabled ? "bg-emerald-500" : "bg-slate-400")}
-                  />
                   <span className="text-sm font-medium text-text-primary truncate">{view.name}</span>
-                  <span
-                    className={cn(
-                      "shrink-0 text-[10px] px-1.5 py-px rounded-full",
-                      view.enabled ? "bg-emerald-100 text-emerald-700" : "bg-gray-100 text-gray-500",
-                    )}
-                  >
-                    {view.enabled ? t("panel.enabled") : t("panel.disabled")}
-                  </span>
+                  <StatusBadge
+                    status={view.enabled ? "enabled" : "disabled"}
+                    label={view.enabled ? t("panel.enabled") : t("panel.disabled")}
+                    toneMap={PROD_VIEW_STATUS_TONES}
+                    indicator="dot"
+                    className="shrink-0 text-3xs px-1.5 py-px"
+                  />
                 </div>
                 {/* 描述 */}
                 {view.description && <p className="text-xs text-text-muted truncate mt-1">{view.description}</p>}
                 {/* 底部：操作按钮 + 开关 */}
                 <div className="flex items-center justify-between mt-2.5">
                   <div className="flex items-center gap-0.5">
-                    <Button variant="ghost" size="xs" onClick={() => openView(view.id)} title={t("panel.openView")}>
+                    <Button variant="ghost" size="xs" onClick={() => openProdView(view.id)} title={t("panel.openView")}>
                       <ExternalLink className="size-3 mr-1" />
                       {t("panel.openView")}
                     </Button>
@@ -282,15 +173,15 @@ export function ProdViewsPanel({ agentId }: ProdViewsPanelProps) {
                       <Copy className="size-3 mr-1" />
                       {t("panel.copyLink")}
                     </Button>
-                    <Button variant="ghost" size="xs" onClick={() => openEdit(view)} title={t("panel.edit")}>
+                    <Button variant="ghost" size="xs" onClick={() => editor.openEdit(view)} title={t("panel.edit")}>
                       <Pencil className="size-3 mr-1" />
                       {t("panel.edit")}
                     </Button>
                     <Button
                       variant="ghost"
                       size="xs"
-                      className="text-red-500 hover:text-red-600"
-                      onClick={() => setDeleteTarget(view)}
+                      className="text-destructive hover:text-destructive"
+                      onClick={() => deletion.request(view)}
                       title={t("panel.delete")}
                     >
                       <Trash2 className="size-3 mr-1" />
@@ -311,93 +202,34 @@ export function ProdViewsPanel({ agentId }: ProdViewsPanelProps) {
       )}
 
       {/* ── 创建 / 编辑共用对话框 ── */}
-      <Dialog
-        open={dialogOpen}
-        onOpenChange={(open) => {
-          if (!open) closeDialog();
+      {/* 结构与请求在 `components/prod-view-editor`；文案逐项用本外壳的 `panel.*` 键翻译后传入，
+          不传 agentField——面板的 agent 由 props 固定，创建时不需要选择器。 */}
+      <ProdViewFormDialog
+        editor={editor}
+        labels={{
+          editTitle: t("panel.editTitle"),
+          createTitle: t("panel.createTitle"),
+          linkLabel: t("panel.linkLabel"),
+          nameLabel: t("panel.nameLabel"),
+          namePlaceholder: t("panel.namePlaceholder"),
+          descLabel: t("panel.descLabel"),
+          descPlaceholder: t("panel.descPlaceholder"),
+          modulesLabel: t("panel.modulesLabel"),
+          moduleSection: t("panel.moduleSection"),
+          copyLink: t("panel.copyLink"),
+          openView: t("panel.openView"),
+          cancel: t("panel.cancel"),
+          save: t("panel.save"),
         }}
-      >
-        <DialogContent className="max-w-lg">
-          <DialogHeader>
-            <DialogTitle>
-              {isEditing ? `${t("panel.editTitle")} — ${editingView?.name}` : t("panel.createTitle")}
-            </DialogTitle>
-          </DialogHeader>
-          <div className="space-y-4 py-4">
-            {/* 编辑时显示链接 */}
-            {isEditing && editingView && (
-              <div className="flex items-center gap-2 text-xs text-text-muted">
-                <span>{t("panel.linkLabel")}:</span>
-                <code className="text-brand">{`${window.location.origin}/view/${editingView.id}`}</code>
-                <Button
-                  size="xs"
-                  variant="ghost"
-                  onClick={() => copyLink(editingView.id)}
-                  aria-label={t("panel.copyLink")}
-                >
-                  <Copy className="h-3 w-3" />
-                </Button>
-                <Button
-                  size="xs"
-                  variant="ghost"
-                  onClick={() => openView(editingView.id)}
-                  aria-label={t("panel.openView")}
-                >
-                  <ExternalLink className="h-3 w-3" />
-                </Button>
-              </div>
-            )}
-            {/* 名称 */}
-            <div className="space-y-2">
-              <Label>{t("panel.nameLabel")}</Label>
-              <Input
-                placeholder={t("panel.namePlaceholder")}
-                value={formName}
-                onChange={(e) => setFormName(e.target.value)}
-              />
-            </div>
-            {/* 描述 */}
-            <div className="space-y-2">
-              <Label>{t("panel.descLabel")}</Label>
-              <Input
-                placeholder={t("panel.descPlaceholder")}
-                value={formDesc}
-                onChange={(e) => setFormDesc(e.target.value)}
-              />
-            </div>
-            {/* 模块配置 */}
-            <div className="space-y-1">
-              <Label className="text-sm">{t("panel.modulesLabel")}</Label>
-              <ModuleConfigSection
-                enabledMap={formModules}
-                onToggle={(key, checked) => setFormModules({ ...formModules, [key]: checked })}
-              />
-            </div>
-          </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={closeDialog}>
-              {t("panel.cancel")}
-            </Button>
-            <Button onClick={handleSubmit} disabled={submitting || !formName.trim()}>
-              {submitting ? "..." : t("panel.save")}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+        onCopyLink={copyLink}
+        onOpenView={openProdView}
+      />
 
       {/* ── 删除确认 ── */}
-      <ConfirmDialog
-        open={!!deleteTarget}
-        onOpenChange={(open) => {
-          if (!open) setDeleteTarget(null);
-        }}
+      <ProdViewDeleteDialog
+        state={deletion}
         title={t("panel.deleteTitle")}
-        description={t("panel.deleteConfirm", { name: deleteTarget?.name ?? "" })}
-        variant="destructive"
-        onConfirm={() => {
-          if (deleteTarget) handleDelete(deleteTarget.id);
-          setDeleteTarget(null);
-        }}
+        description={t("panel.deleteConfirm", { name: deletion.target?.name ?? "" })}
       />
     </div>
   );

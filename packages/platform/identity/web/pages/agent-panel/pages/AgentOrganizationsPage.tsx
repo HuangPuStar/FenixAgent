@@ -1,5 +1,6 @@
 import { AppHeader } from "@fenix/ui-components/layout/app-header";
 import { AppPage } from "@fenix/ui-components/layout/app-page";
+import { copyTextToClipboard } from "@fenix/ui-components/lib/clipboard";
 import { Button } from "@fenix/ui-components/ui/button";
 import { unwrap } from "@fenix/web-runtime/api/request";
 import { NS } from "@fenix/web-runtime/i18n/namespace";
@@ -23,7 +24,7 @@ import type {
 import { nameToSlug, parseLabels, readDefaultMachineId } from "./agent-organizations-utils";
 import { OrganizationsWorkspace } from "./agent-organizations-workspace";
 
-const EMPTY_MACHINE_FORM: MachineFormState = { name: "", labels: "", agentName: "opencode" };
+const EMPTY_MACHINE_FORM: MachineFormState = { name: "", labels: "", agentName: "peri" };
 
 /** 组织页的宿主注入点。 */
 export interface AgentOrganizationsPageProps {
@@ -46,7 +47,6 @@ export function AgentOrganizationsPage({ machineRegistry }: AgentOrganizationsPa
   const [formSlug, setFormSlug] = useState("");
   const [editingName, setEditingName] = useState(false);
   const [editName, setEditName] = useState("");
-  const [copiedId, setCopiedId] = useState(false);
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [inviteOpen, setInviteOpen] = useState(false);
   const [inviteKeyword, setInviteKeyword] = useState("");
@@ -305,12 +305,14 @@ export function AgentOrganizationsPage({ machineRegistry }: AgentOrganizationsPa
     }
   }, [defaultMachineId, detail, refreshDetail, selectedOrgId, t]);
 
+  // 复制反馈统一走 toast（见 @fenix/ui-components/lib/clipboard）：此前的 2 秒「已复制」文本回落只覆盖成功路径，
+  // 非安全上下文里复制会静默失败，用户看到的却仍是成功。
   const handleCopyId = useCallback(() => {
     if (!selectedOrgId) return;
-    navigator.clipboard.writeText(selectedOrgId);
-    setCopiedId(true);
-    window.setTimeout(() => setCopiedId(false), 2000);
-  }, [selectedOrgId]);
+    void copyTextToClipboard(selectedOrgId).then((ok) =>
+      ok ? toast.success(t("copied")) : toast.error(t("copyFailed")),
+    );
+  }, [selectedOrgId, t]);
 
   return (
     <AppPage className="agent-organizations-page">
@@ -339,7 +341,6 @@ export function AgentOrganizationsPage({ machineRegistry }: AgentOrganizationsPa
         editingName={editingName}
         editName={editName}
         updateNameLoading={updateNameLoading}
-        copiedId={copiedId}
         defaultMachineId={defaultMachineId}
         engineDirty={engineDirty}
         savingEngine={savingEngine}

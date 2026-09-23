@@ -5,8 +5,7 @@
  * 后端路由前缀为 /web/instances，返回 snake_case 字段，本模块负责键名转换。
  */
 
-import type { ApiResponse } from "@fenix/web-runtime/api/request";
-import { request } from "@fenix/web-runtime/api/request";
+import { camelResponse, request } from "@fenix/web-runtime/api/request";
 
 /** 单个 Instance 信息（camelCase 转换后） */
 export interface InstanceInfo {
@@ -15,25 +14,6 @@ export interface InstanceInfo {
   name: string;
   status: string;
   createdAt: string;
-}
-
-// ── snake_case → camelCase 键名映射 ──
-
-function toCamelKeys(obj: Record<string, unknown>): Record<string, unknown> {
-  const result: Record<string, unknown> = {};
-  for (const [key, value] of Object.entries(obj)) {
-    const camelKey = key.replace(/_([a-z])/g, (_, c: string) => c.toUpperCase());
-    result[camelKey] = value;
-  }
-  return result;
-}
-
-async function camelResponse<T>(resp: Promise<ApiResponse<T>>): Promise<ApiResponse<T>> {
-  const r = await resp;
-  if (r.success && r.data && typeof r.data === "object" && !Array.isArray(r.data)) {
-    r.data = toCamelKeys(r.data as Record<string, unknown>) as unknown as T;
-  }
-  return r;
 }
 
 export const instanceApi = {

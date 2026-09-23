@@ -25,6 +25,7 @@
     "mountSuccess": "Mounted {{count}} site(s)",
     "mountFailed": "Mount failed",
     "unmountFailed": "Unmount failed",
+    "sitesLoadFailed": "Failed to load site list",
     "tasks": "Tasks",
     "tasksEmpty": "No scheduled tasks bound to this agent",
     "tasksManage": "Manage Tasks",
@@ -110,8 +111,7 @@
   },
   "confirmDialog": {
     "confirm": "Confirm",
-    "cancel": "Cancel",
-    "processing": "Processing..."
+    "cancel": "Cancel"
   },
   "formDialog": {
     "save": "Save",

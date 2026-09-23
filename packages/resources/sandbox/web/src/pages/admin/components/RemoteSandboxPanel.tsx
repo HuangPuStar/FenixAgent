@@ -1,4 +1,5 @@
 import { ConfirmDialog } from "@fenix/ui-components/config/ConfirmDialog";
+import { formatDateTime } from "@fenix/ui-components/lib/format";
 import { Badge } from "@fenix/ui-components/ui/badge";
 import { Button } from "@fenix/ui-components/ui/button";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@fenix/ui-components/ui/dialog";
@@ -12,6 +13,7 @@ import { toast } from "sonner";
 
 import { SANDBOX_NS } from "../../../../i18n/namespace";
 import { type ClusterServer, type RemoteSandbox, systemSandboxApi } from "../../../api/system-sandbox";
+import { JsonPreview } from "./JsonPreview";
 
 type RemoteSandboxPanelProps = {
   server: ClusterServer;
@@ -30,12 +32,6 @@ function getCommandEventText(event: CommandEvent): string {
   if (typeof event.text === "string") return event.text;
   if (typeof event.data === "string") return event.data;
   return JSON.stringify(event);
-}
-
-function formatRemoteTime(value: string | null | undefined): string {
-  if (!value) return "-";
-  const date = new Date(value);
-  return Number.isNaN(date.getTime()) ? value : date.toLocaleString();
 }
 
 export function RemoteSandboxPanel({ server, onAuthFailure }: RemoteSandboxPanelProps) {
@@ -183,11 +179,11 @@ export function RemoteSandboxPanel({ server, onAuthFailure }: RemoteSandboxPanel
                 <div className="min-w-0 space-y-1">
                   <div>
                     <b>{t("createdAt")}：</b>
-                    <span>{formatRemoteTime(sandbox.createdAt)}</span>
+                    <span>{formatDateTime(sandbox.createdAt, { fallback: "-" })}</span>
                   </div>
                   <div>
                     <b>{t("lastStartedAt")}：</b>
-                    <span>{formatRemoteTime(sandbox.status.lastTransitionAt)}</span>
+                    <span>{formatDateTime(sandbox.status.lastTransitionAt, { fallback: "-" })}</span>
                   </div>
                 </div>
                 <Badge className="shrink-0" variant={sandbox.status.state === "Running" ? "secondary" : "outline"}>
@@ -216,9 +212,7 @@ export function RemoteSandboxPanel({ server, onAuthFailure }: RemoteSandboxPanel
           </DialogHeader>
           {selected ? (
             <div className="min-w-0 space-y-4">
-              <pre className="max-h-56 overflow-auto whitespace-pre-wrap break-all rounded bg-muted p-3 text-xs">
-                {JSON.stringify(detail ?? selected, null, 2)}
-              </pre>
+              <JsonPreview value={detail ?? selected} className="max-h-56" />
               {diagnostics !== null ? (
                 <div>
                   <Label>{t("diagnostics")}</Label>

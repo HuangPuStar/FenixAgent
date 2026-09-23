@@ -1,10 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { ApiError } from "@fenix/web-runtime/api/request";
-import {
-  filterApiKeys,
-  formatApiKeyDate,
-  getApiKeyCreateErrorMessage,
-} from "../pages/agent-panel/pages/agent-api-keys-utils";
+import { filterApiKeys, getApiKeyCreateErrorMessage } from "../pages/agent-panel/pages/agent-api-keys-utils";
 
 const messages: Record<string, string> = {
   "toast.createFailed": "创建 API 密钥失败",
@@ -38,11 +34,5 @@ describe("agent api keys utils", () => {
 
     expect(filterApiKeys(keys, "prod")).toEqual([keys[0]]);
     expect(filterApiKeys(keys, "TEST")).toEqual([keys[1]]);
-  });
-
-  // 空日期使用界面提供的语义标签，区分“从未使用”和“永不过期”。
-  test("formats missing flexible dates with the supplied label", () => {
-    expect(formatApiKeyDate(null, "zh-CN", "永不过期")).toBe("永不过期");
-    expect(formatApiKeyDate("invalid", "zh-CN", "—")).toBe("—");
   });
 });

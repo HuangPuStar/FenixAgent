@@ -1,10 +1,12 @@
 import { AppHeader } from "@fenix/ui-components/layout/app-header";
+import { copyTextToClipboard } from "@fenix/ui-components/lib/clipboard";
 import { Badge } from "@fenix/ui-components/ui/badge";
 import { Button } from "@fenix/ui-components/ui/button";
 import { Input } from "@fenix/ui-components/ui/input";
 import { Search } from "lucide-react";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
+import { toast } from "sonner";
 import { MODELS_NS } from "../../../../i18n/namespace";
 import { AlgorithmDetailDialog } from "./AlgorithmDetailDialog";
 
@@ -411,7 +413,7 @@ export function AlgorithmsPage() {
                   <span className="text-sm font-bold text-text-primary">{algo.name}</span>
                   <Badge
                     variant="outline"
-                    className="bg-green-50 text-green-600 border-green-200 text-[10px] px-1.5 py-0 h-auto"
+                    className="bg-green-50 text-green-600 border-green-200 text-3xs px-1.5 py-0 h-auto"
                   >
                     即插即用
                   </Badge>
@@ -420,7 +422,7 @@ export function AlgorithmsPage() {
               </div>
             </div>
             <div className="flex items-center gap-2 mt-auto">
-              <span className="text-[11px] text-text-muted">{algo.categories.join(" · ")}</span>
+              <span className="text-3xs text-text-muted">{algo.categories.join(" · ")}</span>
               <div className="flex-1" />
               <Button
                 variant="ghost"
@@ -434,9 +436,11 @@ export function AlgorithmsPage() {
                 variant="ghost"
                 size="sm"
                 className="h-auto p-0 text-xs text-brand font-medium hover:bg-transparent hover:text-brand/80"
-                onClick={() => {
-                  void navigator.clipboard.writeText(algo.code);
-                }}
+                onClick={() =>
+                  void copyTextToClipboard(algo.code).then((ok) =>
+                    ok ? toast.success(t("algorithms.copied")) : toast.error(t("algorithms.copyFailed")),
+                  )
+                }
               >
                 复制代码
               </Button>

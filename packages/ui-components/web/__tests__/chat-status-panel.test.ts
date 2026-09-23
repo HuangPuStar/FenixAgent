@@ -1,4 +1,6 @@
 import { describe, expect, test } from "bun:test";
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import { createInstance } from "i18next";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
@@ -27,6 +29,11 @@ void i18n.use(initReactI18next).init({
   interpolation: { escapeValue: false },
   resources: { en: { [UI_COMPONENTS_NS]: en } },
 });
+
+/** 读取组件同目录的样式表原文：深层样式（限高/列定义/投影等复合值）从 `className` 下沉到了那里。 */
+function readStatusPanelCss(): string {
+  return readFileSync(join(import.meta.dir, "..", "chat", "panels", "chat-status-panel.css"), "utf8");
+}
 
 function renderPanel(props: Partial<Parameters<typeof ChatStatusPanel>[0]> = {}): string {
   return renderToStaticMarkup(
@@ -123,7 +130,15 @@ describe("ChatStatusPanel 文件名称", () => {
       ],
     });
     for (const markup of [todoMarkup, taskMarkup]) {
-      expect(markup).toContain("max-h-[min(16rem,35vh)] overflow-y-auto overscroll-contain [scrollbar-gutter:stable]");
+      // 迁移后容器类里还含有列表自身的 grid/内边距工具类，故逐条断言限高与滚动契约（同一条不可少）：
+      // 限高的复合值（源 `max-h-[min(16rem,35vh)]`）已下沉到 `panels/chat-status-panel.css` 的
+      // `.chat-status-rows`，故这里改断语义类名 + 样式表原文。
+      expect(markup).toContain("chat-status-rows");
+      expect(readStatusPanelCss()).toContain("max-height: min(16rem, 35vh)");
+      expect(markup).toContain("overflow-y-auto");
+      expect(markup).toContain("overscroll-contain");
+      expect(markup).toContain("[scrollbar-gutter:stable]");
+      expect(markup).toContain('data-slot="chat-status-list"');
     }
   });
 });

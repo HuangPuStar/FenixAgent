@@ -1,0 +1,245 @@
+/*
+ * Markdown descendant styles formerly expressed as arbitrary Tailwind variants.
+ * The class is intentionally unlayered so these declarations retain the source
+ * stylesheet's precedence over streamdown utility classes.
+ */
+.chat-markdown-content-styles {
+  color: #27364f;
+  font-size: 14px;
+  overflow-wrap: anywhere;
+  white-space: normal;
+  word-break: normal;
+}
+
+.chat-markdown-content-styles h1,
+.chat-markdown-content-styles h2,
+.chat-markdown-content-styles h3,
+.chat-markdown-content-styles h4 {
+  margin-top: 1.35em;
+  margin-bottom: 0.55em;
+  font-weight: 700;
+  letter-spacing: -0.015em;
+  color: #1f2d45;
+}
+
+.chat-markdown-content-styles h1 {
+  font-size: 22px;
+  line-height: 1.35;
+}
+
+.chat-markdown-content-styles h2 {
+  font-size: 18px;
+  line-height: 1.45;
+}
+
+.chat-markdown-content-styles h3 {
+  font-size: 15px;
+  line-height: 1.5;
+}
+
+.chat-markdown-content-styles h4 {
+  font-size: 14px;
+  line-height: 1.55;
+}
+
+.chat-markdown-content-styles p {
+  margin-top: 0;
+  margin-bottom: 0.85em;
+}
+
+.chat-markdown-content-styles p,
+.chat-markdown-content-styles li,
+.chat-markdown-content-styles blockquote,
+.chat-markdown-content-styles td,
+.chat-markdown-content-styles th,
+.chat-markdown-content-styles a {
+  overflow-wrap: anywhere;
+  word-break: normal;
+}
+
+.chat-markdown-content-styles ul {
+  margin-top: 0.65em;
+  margin-bottom: 0.95em;
+  list-style-position: outside;
+  list-style-type: disc;
+  padding-left: 1.35rem;
+}
+
+.chat-markdown-content-styles ol {
+  margin-top: 0.65em;
+  margin-bottom: 0.95em;
+  list-style-position: outside;
+  list-style-type: decimal;
+  padding-left: 1.35rem;
+}
+
+.chat-markdown-content-styles ul ul {
+  list-style-type: circle;
+}
+
+.chat-markdown-content-styles ol ol {
+  list-style-type: lower-alpha;
+}
+
+.chat-markdown-content-styles li {
+  display: list-item;
+  margin-top: 0.3em;
+  margin-bottom: 0.3em;
+  padding-left: 0.1rem;
+}
+
+.chat-markdown-content-styles li::marker {
+  font-weight: 600;
+  color: #65758d;
+}
+
+.chat-markdown-content-styles li > ul,
+.chat-markdown-content-styles li > ol {
+  margin-top: 0.3em;
+  margin-bottom: 0.25em;
+}
+
+.chat-markdown-content-styles blockquote {
+  margin-top: 0.9em;
+  margin-bottom: 1em;
+  margin-left: 0;
+  padding-left: 0;
+  padding-right: 0.8rem;
+  border: 0;
+  background-color: transparent;
+  color: #5f6e84;
+  font-style: italic;
+}
+
+.chat-markdown-content-styles :not(pre) > code {
+  border-radius: 0.25rem;
+  border-width: 1px;
+  border-style: solid;
+  border-color: #e3e8ef;
+  background-color: #f7f7f7;
+  padding-left: 0.34em;
+  padding-right: 0.34em;
+  padding-top: 0.12em;
+  padding-bottom: 0.12em;
+  font-size: 0.9em;
+  color: #4d5d75;
+  overflow-wrap: anywhere;
+}
+
+.chat-markdown-content-styles pre {
+  margin-top: 0.8em;
+  margin-bottom: 1em;
+  max-width: 100%;
+  overflow-x: auto;
+  border-radius: 0;
+  border: 0;
+  background-color: transparent;
+}
+
+.chat-markdown-content-styles pre code {
+  display: block;
+  min-width: max-content;
+  border: 0;
+  background-color: transparent;
+  padding-left: 1rem;
+  padding-right: 1rem;
+  padding-top: 0.9rem;
+  padding-bottom: 0.9rem;
+  white-space: pre;
+  overflow-wrap: normal;
+  word-break: normal;
+}
+
+.chat-markdown-content-styles [data-streamdown="code-block"] {
+  margin-top: 0.8em;
+  margin-bottom: 1em;
+  gap: 0;
+  overflow: hidden;
+  border-radius: 0.5rem;
+  border-width: 1px;
+  border-style: solid;
+  border-color: #e1e6ed;
+  background-color: #ffffff;
+  padding: 0;
+}
+
+.chat-markdown-content-styles [data-streamdown="code-block-header"] {
+  display: none;
+  height: 30px;
+  border-bottom-width: 1px;
+  border-bottom-style: solid;
+  border-bottom-color: #edf0f4;
+  padding-left: 0.5rem;
+  padding-right: 0.5rem;
+}
+
+.chat-markdown-content-styles [data-streamdown="code-block-actions"] {
+  gap: 2px;
+  border: 0;
+  background-color: rgb(255 255 255 / 88%);
+  box-shadow: none;
+  pointer-events: auto;
+}
+
+.chat-markdown-content-styles [data-streamdown="mermaid-block-actions"] {
+  pointer-events: auto;
+}
+
+.chat-markdown-content-styles [data-streamdown="code-block-body"] {
+  border-radius: 0;
+  border: 0;
+  background-color: transparent;
+  padding: 0;
+}
+
+.chat-markdown-content-styles [data-streamdown="code-block-body"] pre {
+  margin: 0;
+}
+
+.chat-markdown-content-styles table {
+  width: max-content;
+  min-width: 100%;
+  border-collapse: collapse;
+  background-color: #ffffff;
+  font-size: 13px;
+}
+
+.chat-markdown-content-styles th,
+.chat-markdown-content-styles td {
+  border-bottom-width: 1px;
+  border-bottom-style: solid;
+  border-bottom-color: #e5eaf1;
+  padding-left: 0.7rem;
+  padding-right: 0.7rem;
+  padding-top: 0.55rem;
+  padding-bottom: 0.55rem;
+  text-align: left;
+  vertical-align: top;
+}
+
+.chat-markdown-content-styles th {
+  font-weight: 650;
+  color: #52627a;
+}
+
+.chat-markdown-content-styles table,
+.chat-markdown-content-styles img,
+.chat-markdown-content-styles video,
+.chat-markdown-content-styles iframe {
+  max-width: 100%;
+}
+
+.chat-markdown-content-styles img {
+  margin-left: auto;
+  margin-right: auto;
+  display: block;
+  height: auto;
+}
+
+.chat-markdown-content-styles hr {
+  margin-top: 1.4rem;
+  margin-bottom: 1.4rem;
+  height: 1px;
+  border: 0;
+  background-color: #e5eaf1;
+}

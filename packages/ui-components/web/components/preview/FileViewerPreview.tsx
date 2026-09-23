@@ -110,7 +110,7 @@ class FileViewerErrorBoundary extends Component<
         <div className="flex-1 flex flex-col items-center justify-center p-4 gap-2">
           {/* 兜底提示硬编码中文，与源实现一致（见文件头注释第 5 条） */}
           <span className="text-xs font-medium text-red-500">预览组件加载失败</span>
-          <span className="text-[11px] text-text-muted break-all">{this.state.errorMessage}</span>
+          <span className="text-3xs text-text-muted break-all">{this.state.errorMessage}</span>
         </div>
       );
     }

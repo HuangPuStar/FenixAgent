@@ -60,24 +60,18 @@ import {
   TooltipContent,
   TooltipProvider,
   TooltipTrigger,
-  XLDialog,
-  XLDialogClose,
-  XLDialogContent,
-  XLDialogHeader,
-  XLDialogTitle,
-  XLDialogTrigger,
 } from "@fenix/ui-components";
 import { useState } from "react";
 
 /**
- * Base UI P3 · 弹窗与浮层：AlertDialog / Dialog / XLDialog / Sheet / Popover / Tooltip / HoverCard /
+ * Base UI P3 · 弹窗与浮层：AlertDialog / Dialog（含 size="xl"）/ Sheet / Popover / Tooltip / HoverCard /
  * DropdownMenu / Command（cmdk）。
  *
  * 动画依赖：Popover、Tooltip、HoverCard、DropdownMenu 与 Sheet 的进出场类来自 tw-animate-css
  * （demo.css 已 @import）。包本身不引入该依赖，宿主缺少它时组件功能完整但没有过渡动画。
  *
  * 覆盖「确认」与「危险操作」两类状态：危险操作由 AlertDialog 的 destructive 动作承担，
- * 普通确认由 Dialog / XLDialog / Sheet 承担。带 loading 的确认与表单弹窗自持异步流程，
+ * 普通确认由 Dialog / Sheet 承担。带 loading 的确认与表单弹窗自持异步流程，
  * 属于组合容器层（Base UI P2），不在本子文件。
  *
  * 已知限制：包内没有 Toast / Notification 类组件。
@@ -128,16 +122,20 @@ export function FeedbackOverlayExamples() {
 
   return (
     <>
-      <p className="demo-hint">
+      <p className="mt-3 text-text-muted text-[12px]">
         本分区的浮层组件依赖 tw-animate-css 提供 animate-in / animate-out 等过渡类（demo.css 已引入）；
         宿主未安装该依赖时浮层仍可用，只是没有进出场动画。
       </p>
 
-      <div className="demo-example">
-        <h2 className="demo-example-title">AlertDialog</h2>
-        <div className="demo-field">
-          <p className="demo-hint">危险操作的二次确认：取消按钮默认聚焦，动作按钮使用 destructive 变体。</p>
-          <div className="demo-row">
+      <div className="mb-5 p-5 border border-border rounded-lg bg-surface-1">
+        <h2 data-slot="demo-example-title" className="mb-4 text-text-secondary text-[13px] font-medium">
+          AlertDialog
+        </h2>
+        <div className="flex flex-col gap-1.5">
+          <p className="mt-3 text-text-muted text-[12px]">
+            危险操作的二次确认：取消按钮默认聚焦，动作按钮使用 destructive 变体。
+          </p>
+          <div className="flex flex-wrap items-center gap-3">
             <AlertDialog>
               <AlertDialogTrigger asChild>
                 <Button variant="outline">Delete workspace</Button>
@@ -159,13 +157,16 @@ export function FeedbackOverlayExamples() {
         </div>
       </div>
 
-      <div className="demo-example">
-        <h2 className="demo-example-title">Dialog / XLDialog</h2>
-        <div className="demo-field">
-          <p className="demo-hint">
-            常规弹窗与 960px 的超大弹窗；两者都是 Radix Dialog 的封装，XLDialog 只放开宽度与内边距。
+      <div className="mb-5 p-5 border border-border rounded-lg bg-surface-1">
+        <h2 data-slot="demo-example-title" className="mb-4 text-text-secondary text-[13px] font-medium">
+          Dialog（默认 / size=&quot;xl&quot;）
+        </h2>
+        <div className="flex flex-col gap-1.5">
+          <p className="mt-3 text-text-muted text-[12px]">
+            常规弹窗与 960px 的超大弹窗是同一实现的两种尺寸：size=&quot;xl&quot; 只放开宽度、圆角与内边距，
+            其余开关（showOverlay / disableOverlayClose / disableEscapeClose）两者一致。
           </p>
-          <div className="demo-row">
+          <div className="flex flex-wrap items-center gap-3">
             <Dialog>
               <DialogTrigger asChild>
                 <Button variant="outline">Open dialog</Button>
@@ -184,35 +185,37 @@ export function FeedbackOverlayExamples() {
               </DialogContent>
             </Dialog>
 
-            <XLDialog>
-              <XLDialogTrigger asChild>
+            <Dialog>
+              <DialogTrigger asChild>
                 <Button variant="outline">Open XL dialog</Button>
-              </XLDialogTrigger>
-              <XLDialogContent>
-                <XLDialogHeader className="border-b p-6">
-                  <XLDialogTitle>Agent trace</XLDialogTitle>
-                </XLDialogHeader>
+              </DialogTrigger>
+              <DialogContent size="xl">
+                <DialogHeader className="border-b p-6">
+                  <DialogTitle>Agent trace</DialogTitle>
+                </DialogHeader>
                 <div className="min-h-0 flex-1 overflow-y-auto p-6 text-sm text-muted-foreground">
-                  XLDialog 主体自行滚动，适合长内容与图文混排；下面的页脚保持固定高度。
+                  size=&quot;xl&quot; 的弹窗宽 960px，主体自行滚动，适合长内容与图文混排；下面的页脚保持固定高度。
                 </div>
                 <div className="flex justify-end gap-2 border-t p-4">
-                  <XLDialogClose asChild>
+                  <DialogClose asChild>
                     <Button variant="outline">Close</Button>
-                  </XLDialogClose>
+                  </DialogClose>
                 </div>
-              </XLDialogContent>
-            </XLDialog>
+              </DialogContent>
+            </Dialog>
           </div>
         </div>
       </div>
 
-      <div className="demo-example">
-        <h2 className="demo-example-title">Sheet</h2>
-        <div className="demo-field">
-          <p className="demo-hint">
+      <div className="mb-5 p-5 border border-border rounded-lg bg-surface-1">
+        <h2 data-slot="demo-example-title" className="mb-4 text-text-secondary text-[13px] font-medium">
+          Sheet
+        </h2>
+        <div className="flex flex-col gap-1.5">
+          <p className="mt-3 text-text-muted text-[12px]">
             侧滑抽屉：side 支持 right / left / top / bottom，进出场动画依赖 tw-animate-css（见浮层分区说明）。
           </p>
-          <div className="demo-row">
+          <div className="flex flex-wrap items-center gap-3">
             <Sheet>
               <SheetTrigger asChild>
                 <Button variant="outline">Open sheet</Button>
@@ -223,7 +226,7 @@ export function FeedbackOverlayExamples() {
                   <SheetDescription>Adjust the filters, then apply them to the list.</SheetDescription>
                 </SheetHeader>
                 <div className="flex flex-1 flex-col gap-4 px-4">
-                  <div className="demo-field">
+                  <div className="flex flex-col gap-1.5">
                     <Label htmlFor="demo-sheet-query">Keyword</Label>
                     <Input id="demo-sheet-query" placeholder="Search sessions" />
                   </div>
@@ -240,17 +243,21 @@ export function FeedbackOverlayExamples() {
         </div>
       </div>
 
-      <div className="demo-example">
-        <h2 className="demo-example-title">Popover</h2>
-        <div className="demo-field">
-          <p className="demo-hint">点击触发，内容通过 Portal 渲染到 body，宽度与内边距由包内样式决定。</p>
-          <div className="demo-row">
+      <div className="mb-5 p-5 border border-border rounded-lg bg-surface-1">
+        <h2 data-slot="demo-example-title" className="mb-4 text-text-secondary text-[13px] font-medium">
+          Popover
+        </h2>
+        <div className="flex flex-col gap-1.5">
+          <p className="mt-3 text-text-muted text-[12px]">
+            点击触发，内容通过 Portal 渲染到 body，宽度与内边距由包内样式决定。
+          </p>
+          <div className="flex flex-wrap items-center gap-3">
             <Popover>
               <PopoverTrigger asChild>
                 <Button variant="outline">Rename session</Button>
               </PopoverTrigger>
               <PopoverContent align="start">
-                <div className="demo-field">
+                <div className="flex flex-col gap-1.5">
                   <Label htmlFor="demo-popover-name">Session name</Label>
                   <Input id="demo-popover-name" defaultValue="Nightly triage" />
                   <Button size="sm" onClick={() => setLastAction("Popover saved")}>
@@ -263,14 +270,16 @@ export function FeedbackOverlayExamples() {
         </div>
       </div>
 
-      <div className="demo-example">
-        <h2 className="demo-example-title">Tooltip</h2>
-        <div className="demo-field">
-          <p className="demo-hint">
+      <div className="mb-5 p-5 border border-border rounded-lg bg-surface-1">
+        <h2 data-slot="demo-example-title" className="mb-4 text-text-secondary text-[13px] font-medium">
+          Tooltip
+        </h2>
+        <div className="flex flex-col gap-1.5">
+          <p className="mt-3 text-text-muted text-[12px]">
             纯提示不接收交互，side 决定浮层方位；TooltipProvider 可统一设置 delayDuration（默认 400ms）。
           </p>
           <TooltipProvider delayDuration={200}>
-            <div className="demo-row">
+            <div className="flex flex-wrap items-center gap-3">
               <Tooltip>
                 <TooltipTrigger asChild>
                   <Button variant="ghost">Top</Button>
@@ -296,11 +305,15 @@ export function FeedbackOverlayExamples() {
         </div>
       </div>
 
-      <div className="demo-example">
-        <h2 className="demo-example-title">HoverCard</h2>
-        <div className="demo-field">
-          <p className="demo-hint">悬停展开、可容纳富内容；鼠标移出后延迟关闭，适合预览类信息。</p>
-          <div className="demo-row">
+      <div className="mb-5 p-5 border border-border rounded-lg bg-surface-1">
+        <h2 data-slot="demo-example-title" className="mb-4 text-text-secondary text-[13px] font-medium">
+          HoverCard
+        </h2>
+        <div className="flex flex-col gap-1.5">
+          <p className="mt-3 text-text-muted text-[12px]">
+            悬停展开、可容纳富内容；鼠标移出后延迟关闭，适合预览类信息。
+          </p>
+          <div className="flex flex-wrap items-center gap-3">
             <HoverCard openDelay={200} closeDelay={100}>
               <HoverCardTrigger asChild>
                 <Button variant="link">@fenix/ui-components</Button>
@@ -318,13 +331,15 @@ export function FeedbackOverlayExamples() {
         </div>
       </div>
 
-      <div className="demo-example">
-        <h2 className="demo-example-title">DropdownMenu（分组 / 复选 / 单选 / 子菜单）</h2>
-        <div className="demo-field">
-          <p className="demo-hint">
+      <div className="mb-5 p-5 border border-border rounded-lg bg-surface-1">
+        <h2 data-slot="demo-example-title" className="mb-4 text-text-secondary text-[13px] font-medium">
+          DropdownMenu（分组 / 复选 / 单选 / 子菜单）
+        </h2>
+        <div className="flex flex-col gap-1.5">
+          <p className="mt-3 text-text-muted text-[12px]">
             列表项分四类：普通项、CheckboxItem、RadioGroup 项与 Sub 子菜单；destructive 项用于不可逆操作。
           </p>
-          <div className="demo-row">
+          <div className="flex flex-wrap items-center gap-3">
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
                 <Button variant="outline">Open menu</Button>
@@ -366,17 +381,19 @@ export function FeedbackOverlayExamples() {
               </DropdownMenuContent>
             </DropdownMenu>
           </div>
-          <p className="demo-hint">
+          <p className="mt-3 text-text-muted text-[12px]">
             showGrid = {String(showGrid)}，density = {density}
             {lastAction ? `，最近一次动作：${lastAction}` : null}
           </p>
         </div>
       </div>
 
-      <div className="demo-example">
-        <h2 className="demo-example-title">Command（cmdk）</h2>
-        <div className="demo-field">
-          <p className="demo-hint">
+      <div className="mb-5 p-5 border border-border rounded-lg bg-surface-1">
+        <h2 data-slot="demo-example-title" className="mb-4 text-text-secondary text-[13px] font-medium">
+          Command（cmdk）
+        </h2>
+        <div className="flex flex-col gap-1.5">
+          <p className="mt-3 text-text-muted text-[12px]">
             内联面板：输入即过滤，CommandEmpty 在无匹配时接管；下面同一份条目也用于 CommandDialog 弹窗。
           </p>
           <Command className="rounded-lg border shadow-sm">
@@ -387,7 +404,7 @@ export function FeedbackOverlayExamples() {
             </CommandList>
           </Command>
 
-          <div className="demo-row">
+          <div className="flex flex-wrap items-center gap-3">
             <Button variant="outline" onClick={() => setPaletteOpen(true)}>
               Open command palette
             </Button>
@@ -413,7 +430,7 @@ export function FeedbackOverlayExamples() {
         </div>
       </div>
 
-      {lastEvent ? <p className="demo-hint">Last callback: {lastEvent}</p> : null}
+      {lastEvent ? <p className="mt-3 text-text-muted text-[12px]">Last callback: {lastEvent}</p> : null}
     </>
   );
 }

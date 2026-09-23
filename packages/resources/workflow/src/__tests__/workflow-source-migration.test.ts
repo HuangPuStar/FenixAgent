@@ -224,10 +224,12 @@ describe("Workflow 包边界契约（任务 1.3 §1 静态条件）", () => {
       "src/__tests__/guard-stubs.ts",
       "web/index.ts",
       "web/lib/use-workflow-events.ts",
-      // `web/pages/WorkflowPage.tsx` 曾钉在这里；该页是宿主改文件路由后遗留的零消费死页，
-      // 2026-09-22 随 tsconfig 门禁修复批删除（连带 `pages/workflow/workflow-path.ts` 与其用例），
-      // 这里换上同目录的编辑器，继续钉住 `web/pages/**` 不掉出扫描集。
-      "web/pages/workflow/WorkflowEditor.tsx",
+      // `web/pages/**` 的整页副本 `web/pages/WorkflowPage.tsx` 已删除（零导出、零消费者的死页）：整页实现
+      // 归宿主三份路由壳（`apps/web/src/routes/agent/_panel/workflow.tsx` 与同目录的 `.edit` / `.versions`），
+      // 本包只提供壳渲染的视图块。归属与「重复页面不得复活」的断言在
+      // `web/__tests__/web-location-write-guard.test.ts`；这里改钉视图块，保证 `web/pages/` 整体掉出扫描集时
+      // 仍有断言报红。连带删除的 `web/pages/workflow/workflow-path.ts` 只被该死页与自身用例引用，已退役。
+      "web/pages/workflow/WorkflowList.tsx",
     ]) {
       expect(sourceFiles).toContain(resolve(PKG_ROOT, expected));
     }

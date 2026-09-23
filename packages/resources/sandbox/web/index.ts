@@ -13,7 +13,6 @@ export * from "./src/api/sandbox-pools";
 export * from "./src/api/system-organizations";
 export * from "./src/api/system-sandbox";
 export { AdminSandboxPage } from "./src/pages/admin/AdminSandboxPage";
-export { MasterKeyGate } from "./src/pages/admin/components/MasterKeyGate";
 export { RemoteSandboxPanel } from "./src/pages/admin/components/RemoteSandboxPanel";
 export {
   SearchableUsageFilter,

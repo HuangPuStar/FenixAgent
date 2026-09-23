@@ -5,20 +5,11 @@ export interface ArtifactsPreviewFileDetail {
   path: string;
 }
 
-/** 校验聊天附件路径仍是 workspace 根相对路径，避免把绝对路径或越界路径送入预览入口。 */
-export function isWorkspaceRelativeFilePath(path: string): boolean {
-  if (
-    !path ||
-    path.startsWith("/") ||
-    [...path].some((character) => {
-      const code = character.charCodeAt(0);
-      return code <= 0x1f || code === 0x7f;
-    })
-  ) {
-    return false;
-  }
-  return path.split("/").every((segment) => segment !== "" && segment !== "." && segment !== "..");
-}
+// 路径校验的实现已下沉到 `@fenix/ui-components`（2026-09-22 去重）：本文件与 MessageBubble 里
+// 那份逐字相同的副本合并为一份，安全判据只剩一个改动点。此处按原样转发，本包导出的名字与子路径
+// （`@fenix/web-runtime/lib/artifacts-preview-events` 的 `isWorkspaceRelativeFilePath`）不变，
+// 消费方与包内测试零改动。
+export { isWorkspaceRelativeFilePath } from "@fenix/ui-components/lib/workspace-relative-path";
 
 /** 派发带 environment 隔离信息的文件预览请求。 */
 export function dispatchArtifactsPreviewFile(envId: string, path: string): void {

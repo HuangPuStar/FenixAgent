@@ -188,6 +188,10 @@
       "types": "./web/chat/panels/QuestionPanel.tsx",
       "default": "./web/chat/panels/QuestionPanel.tsx"
     },
+    "./chat/panels/chat-interaction-region": {
+      "types": "./web/chat/panels/chat-interaction-region.tsx",
+      "default": "./web/chat/panels/chat-interaction-region.tsx"
+    },
     "./chat/panels/chat-status-panel": {
       "types": "./web/chat/panels/chat-status-panel.tsx",
       "default": "./web/chat/panels/chat-status-panel.tsx"
@@ -288,6 +292,10 @@
       "types": "./web/chat/timeline/sub-agent-tool-call-context.ts",
       "default": "./web/chat/timeline/sub-agent-tool-call-context.ts"
     },
+    "./chat/timeline/tool-json-block": {
+      "types": "./web/chat/timeline/tool-json-block.tsx",
+      "default": "./web/chat/timeline/tool-json-block.tsx"
+    },
     "./chat/types": {
       "types": "./web/chat/types.ts",
       "default": "./web/chat/types.ts"
@@ -308,6 +316,10 @@
       "types": "./web/chat/view/MessageBubble.tsx",
       "default": "./web/chat/view/MessageBubble.tsx"
     },
+    "./chat/view/PublicErrorCard": {
+      "types": "./web/chat/view/PublicErrorCard.tsx",
+      "default": "./web/chat/view/PublicErrorCard.tsx"
+    },
     "./chat/view/SystemMessage": {
       "types": "./web/chat/view/SystemMessage.tsx",
       "default": "./web/chat/view/SystemMessage.tsx"
@@ -323,6 +335,10 @@
     "./components/AgentCardList": {
       "types": "./web/components/AgentCardList.tsx",
       "default": "./web/components/AgentCardList.tsx"
+    },
+    "./components/ClosableTabPill": {
+      "types": "./web/components/ClosableTabPill.tsx",
+      "default": "./web/components/ClosableTabPill.tsx"
     },
     "./components/PreviewTab": {
       "types": "./web/components/PreviewTab.tsx",
@@ -376,6 +392,10 @@
       "types": "./web/components/preview/preview-source.ts",
       "default": "./web/components/preview/preview-source.ts"
     },
+    "./config/AdminKeyGate": {
+      "types": "./web/config/AdminKeyGate.tsx",
+      "default": "./web/config/AdminKeyGate.tsx"
+    },
     "./config/BatchActionBar": {
       "types": "./web/config/BatchActionBar.tsx",
       "default": "./web/config/BatchActionBar.tsx"
@@ -395,6 +415,14 @@
     "./config/FormDialog": {
       "types": "./web/config/FormDialog.tsx",
       "default": "./web/config/FormDialog.tsx"
+    },
+    "./config/LabeledField": {
+      "types": "./web/config/LabeledField.tsx",
+      "default": "./web/config/LabeledField.tsx"
+    },
+    "./config/ScopeFilterBar": {
+      "types": "./web/config/ScopeFilterBar.tsx",
+      "default": "./web/config/ScopeFilterBar.tsx"
     },
     "./config/StatusBadge": {
       "types": "./web/config/StatusBadge.tsx",
@@ -420,13 +448,25 @@
       "types": "./web/lib/card-renderer.tsx",
       "default": "./web/lib/card-renderer.tsx"
     },
+    "./lib/clipboard": {
+      "types": "./web/lib/clipboard.ts",
+      "default": "./web/lib/clipboard.ts"
+    },
     "./lib/cn": {
       "types": "./web/lib/cn.ts",
       "default": "./web/lib/cn.ts"
     },
+    "./lib/format": {
+      "types": "./web/lib/format.ts",
+      "default": "./web/lib/format.ts"
+    },
     "./lib/theme": {
       "types": "./web/lib/theme.tsx",
       "default": "./web/lib/theme.tsx"
+    },
+    "./lib/workspace-relative-path": {
+      "types": "./web/lib/workspace-relative-path.ts",
+      "default": "./web/lib/workspace-relative-path.ts"
     },
     "./testing": {
       "types": "./web/testing.ts",
@@ -487,10 +527,6 @@
     "./ui/dialog": {
       "types": "./web/ui/dialog.tsx",
       "default": "./web/ui/dialog.tsx"
-    },
-    "./ui/dialog-xl": {
-      "types": "./web/ui/dialog-xl.tsx",
-      "default": "./web/ui/dialog-xl.tsx"
     },
     "./ui/dropdown-menu": {
       "types": "./web/ui/dropdown-menu.tsx",
@@ -555,6 +591,14 @@
     "./ui/slider": {
       "types": "./web/ui/slider.tsx",
       "default": "./web/ui/slider.tsx"
+    },
+    "./ui/spinner": {
+      "types": "./web/ui/spinner.tsx",
+      "default": "./web/ui/spinner.tsx"
+    },
+    "./ui/status-dot": {
+      "types": "./web/ui/status-dot.tsx",
+      "default": "./web/ui/status-dot.tsx"
     },
     "./ui/switch": {
       "types": "./web/ui/switch.tsx",

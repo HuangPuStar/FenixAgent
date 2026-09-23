@@ -13,6 +13,8 @@ describe("TriggerPanel", () => {
     expect(src).toContain('t("editor.trigger_title")');
     expect(src).toContain('t("editor.trigger_create")');
     expect(src).toContain('t("editor.trigger_empty")');
+    // 关闭按钮是纯图标按钮，可访问名只能由 aria-label 提供——面板头共享件的 closeLabel 必须接上词条
+    expect(src).toContain('closeLabel={t("editor.trigger_panel_close")}');
   });
 
   // 测试组件使用 SDK API
@@ -67,6 +69,7 @@ describe("Trigger i18n keys", () => {
     const triggerKeys = [
       "tab_triggers",
       "trigger_title",
+      "trigger_panel_close",
       "trigger_create",
       "trigger_creating",
       "trigger_empty",

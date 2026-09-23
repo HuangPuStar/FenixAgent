@@ -14,18 +14,24 @@
 // - 空列表返回 null；pendingQuestions 投影过滤后自动隐藏（用户应答 resolved
 //   或 60s 过期 expired）
 //
-// 复制自 packages/agent-runtime/web/components/chat/QuestionPanel.tsx。
+// 复制自 packages/agent-runtime/web/components/chat/QuestionPanel.tsx（旧路径，已于 2026-09-21 由 f2741a82d 删除）。
 // 纯化改动：QuestionProjection 改从包内 ../types 导入（不再 import @fenix/chat-channel）；
 //   cn 改为包内 ../../lib/cn；Button 改为包内 ../../ui/button；
 //   i18n 由宿主 ns=components 收敛到 UI_COMPONENTS_NS 的 chat.components.* key。
+//
+// 深层样式（选项序号徽标的 `flex` 基准值）下沉到同目录 `./QuestionPanel.css`，语义类名为
+// `.chat-question-option-index`，源选择器 `.chat-question-options > button > span`。
 
-import { Check, ChevronDown, ChevronLeft, ChevronRight } from "lucide-react";
+import "./QuestionPanel.css";
+
+import { Check, ChevronLeft, ChevronRight } from "lucide-react";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import { UI_COMPONENTS_NS } from "../../i18n/namespace";
 import { cn } from "../../lib/cn";
 import { Button } from "../../ui/button";
 import type { QuestionProjection } from "../types";
+import { ChatInteractionRegion, ChatInteractionStack } from "./chat-interaction-region";
 
 interface QuestionPanelProps {
   /** 待应答问题列表（已由 use-session-state 做 pending + 未过期过滤） */
@@ -38,7 +44,7 @@ interface QuestionPanelProps {
 /**
  * 交互问题面板：把待应答的 AskUserQuestion 投影渲染成输入框上方的问题卡片列表。
  *
- * 复制自 `packages/agent-runtime/web/components/chat/QuestionPanel.tsx`。
+ * 复制自 `packages/agent-runtime/web/components/chat/QuestionPanel.tsx`（旧路径，已于 2026-09-21 由 f2741a82d 删除）。
  * 纯化改动：类型、cn、Button 与 i18n 改为包内导入；问题数据与应答由 props 注入，
  * 组件不做投影过滤、不订阅传输层；空列表返回 null（不占位）。
  */
@@ -46,13 +52,11 @@ export function QuestionPanel({ questions, onRespond, className }: QuestionPanel
   if (questions.length === 0) return null;
 
   return (
-    <div className={cn("chat-interaction-stack", className)}>
-      <div className="space-y-2">
-        {questions.map((question) => (
-          <QuestionCard key={question.questionId} question={question} onRespond={onRespond} />
-        ))}
-      </div>
-    </div>
+    <ChatInteractionStack className={className}>
+      {questions.map((question) => (
+        <QuestionCard key={question.questionId} question={question} onRespond={onRespond} />
+      ))}
+    </ChatInteractionStack>
   );
 }
 
@@ -79,107 +83,107 @@ function QuestionCard({ question, onRespond }: QuestionCardProps) {
   if (!item) return null;
 
   return (
-    <section className="chat-interaction-region chat-question-region" aria-label={t("chat.components.askUser.title")}>
-      <header>
-        <button type="button" aria-expanded={!collapsed} onClick={() => setCollapsed((value) => !value)}>
-          <strong>{t("chat.components.askUser.title")}</strong>
-          <small>
-            {questionIndex + 1}/{question.questions.length}
-          </small>
-          <ChevronDown className={collapsed ? "is-collapsed" : undefined} />
-        </button>
-      </header>
-      {!collapsed && (
-        <div className="chat-question-body">
-          <div className="chat-question-copy">
-            {item.header && <span>{item.header}</span>}
-            <strong>{item.question}</strong>
+    <ChatInteractionRegion
+      slot="chat-question-region"
+      label={t("chat.components.askUser.title")}
+      collapsed={collapsed}
+      onToggleCollapsed={() => setCollapsed((value) => !value)}
+      title={t("chat.components.askUser.title")}
+      hint={`${questionIndex + 1}/${question.questions.length}`}
+      footer={
+        <>
+          <div className="mr-auto flex">
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon-sm"
+              disabled={questionIndex === 0}
+              aria-label={t("chat.components.askUser.previous")}
+              onClick={() => setQuestionIndex((index) => Math.max(0, index - 1))}
+            >
+              <ChevronLeft />
+            </Button>
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon-sm"
+              disabled={questionIndex === question.questions.length - 1}
+              aria-label={t("chat.components.askUser.nextQuestion")}
+              onClick={() => setQuestionIndex((index) => Math.min(question.questions.length - 1, index + 1))}
+            >
+              <ChevronRight />
+            </Button>
           </div>
-          <div className="chat-question-options">
-            {item.options.map((option, optionIndex) => {
-              const isSelected = selected[questionIndex]?.includes(option.label) ?? false;
-              return (
-                <button
-                  key={option.label}
-                  type="button"
-                  className={isSelected ? "is-selected" : undefined}
-                  aria-pressed={isSelected}
-                  onClick={() =>
-                    setSelected((previous) => {
-                      const current = previous[questionIndex] ?? [];
-                      const next = item.multiSelect
-                        ? current.includes(option.label)
-                          ? current.filter((label) => label !== option.label)
-                          : [...current, option.label]
-                        : [option.label];
-                      return { ...previous, [questionIndex]: next };
-                    })
-                  }
-                >
-                  <span>{isSelected ? <Check /> : String.fromCharCode(65 + optionIndex)}</span>
-                  <div>
-                    <strong>{option.label}</strong>
-                    {option.description && <small>{option.description}</small>}
-                  </div>
-                </button>
-              );
-            })}
+          <div className="flex items-center gap-2">
+            {(selected[questionIndex]?.length ?? 0) > 0 && questionIndex < question.questions.length - 1 && (
+              <Button type="button" variant="outline" size="sm" onClick={() => setQuestionIndex((index) => index + 1)}>
+                {t("chat.components.askUser.next")}
+              </Button>
+            )}
+            <Button
+              type="button"
+              size="sm"
+              disabled={!allAnswered}
+              onClick={() => {
+                if (!allAnswered) return;
+                onRespond?.(
+                  question.questionId,
+                  question.questions.map((questionItem, index) => {
+                    const answers = selected[index] ?? [];
+                    return questionItem.multiSelect ? answers : (answers[0] ?? "");
+                  }),
+                );
+              }}
+            >
+              {t("chat.components.askUser.submit")}
+            </Button>
           </div>
-          <footer>
-            <div>
-              <Button
-                type="button"
-                variant="ghost"
-                size="icon-sm"
-                disabled={questionIndex === 0}
-                aria-label={t("chat.components.askUser.previous")}
-                onClick={() => setQuestionIndex((index) => Math.max(0, index - 1))}
-              >
-                <ChevronLeft />
-              </Button>
-              <Button
-                type="button"
-                variant="ghost"
-                size="icon-sm"
-                disabled={questionIndex === question.questions.length - 1}
-                aria-label={t("chat.components.askUser.nextQuestion")}
-                onClick={() => setQuestionIndex((index) => Math.min(question.questions.length - 1, index + 1))}
-              >
-                <ChevronRight />
-              </Button>
-            </div>
-            <div className="flex items-center gap-2">
-              {(selected[questionIndex]?.length ?? 0) > 0 && questionIndex < question.questions.length - 1 && (
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  onClick={() => setQuestionIndex((index) => index + 1)}
-                >
-                  {t("chat.components.askUser.next")}
-                </Button>
+        </>
+      }
+    >
+      <div>
+        {item.header && <span className="block text-3xs text-gray-400">{item.header}</span>}
+        <strong className="mt-0.75 block text-sm text-slate-700">{item.question}</strong>
+      </div>
+      <div className="mt-2.25 grid gap-1.25">
+        {item.options.map((option, optionIndex) => {
+          const isSelected = selected[questionIndex]?.includes(option.label) ?? false;
+          return (
+            <button
+              key={option.label}
+              type="button"
+              // 源 `.chat-question-options > button`（+ `:hover`/`.is-selected` 两态；两态互斥，不靠生成顺序）
+              className={cn(
+                "flex items-start gap-2.25 rounded-lg p-2 text-left",
+                isSelected ? "bg-blue-50 text-blue-700" : "text-slate-600 hover:bg-blue-50 hover:text-blue-700",
               )}
-              <Button
-                type="button"
-                size="sm"
-                disabled={!allAnswered}
-                onClick={() => {
-                  if (!allAnswered) return;
-                  onRespond?.(
-                    question.questionId,
-                    question.questions.map((questionItem, index) => {
-                      const answers = selected[index] ?? [];
-                      return questionItem.multiSelect ? answers : (answers[0] ?? "");
-                    }),
-                  );
-                }}
-              >
-                {t("chat.components.askUser.submit")}
-              </Button>
-            </div>
-          </footer>
-        </div>
-      )}
-    </section>
+              aria-pressed={isSelected}
+              onClick={() =>
+                setSelected((previous) => {
+                  const current = previous[questionIndex] ?? [];
+                  const next = item.multiSelect
+                    ? current.includes(option.label)
+                      ? current.filter((label) => label !== option.label)
+                      : [...current, option.label]
+                    : [option.label];
+                  return { ...previous, [questionIndex]: next };
+                })
+              }
+            >
+              {/* 源 `.chat-question-options > button > span`（序号/勾选徽标；`flex` 基准值在 ./QuestionPanel.css）。 */}
+              <span className="chat-question-option-index grid h-5.25 w-5.25 place-items-center rounded-sm bg-gray-100 text-3xs">
+                {isSelected ? <Check className="h-3.25 w-3.25" /> : String.fromCharCode(65 + optionIndex)}
+              </span>
+              <div>
+                <strong className="block text-xs">{option.label}</strong>
+                {option.description && (
+                  <small className="mt-0.5 block text-3xs text-gray-400">{option.description}</small>
+                )}
+              </div>
+            </button>
+          );
+        })}
+      </div>
+    </ChatInteractionRegion>
   );
 }

@@ -1,0 +1,52 @@
+/*
+ * ComposerAssets 的深层样式（与同目录 `composer-assets.tsx` 同名，由该文件 import）。
+ *
+ * 来源：源 `chat-design-composer.css`（该文件已在阶段二随迁移删除）的 `.chat-composer-asset` /
+ * `.chat-composer-asset-icon` / `.chat-composer-asset-remove` / `.chat-composer-quote-preview` 段。
+ * 阶段一曾把这些声明逐条改写成 Tailwind 工具类；其中子代选择器（`[&>svg]:`）与手写的
+ * `@media (hover: none)` 无法用扁平工具类表达（仓库禁令 FCP-WEB-02/03），本轮按口径下沉到本文件。
+ * 值取类串的**生效值**，逐字等价换算（`76px` 即 `w-19`，`5.75 × --spacing` 即 `w-5.75`），
+ * 未调整任何数值；扁平工具类（尺寸、间距、圆角、`group-hover:` / `focus-visible:` 变体、
+ * 任意属性的 `[transition:…]` 与 `[overflow-wrap:anywhere]`）仍留在 `className`。
+ *
+ * 为什么类名不复用源 `.chat-composer-asset*` / `.chat-composer-quote-preview`：迁移守卫把源类名
+ * 列入「不得回流」清单（`web/__tests__/chat-style-migration-helpers.ts` 的 `MIGRATED_CLASS_NAMES`），
+ * 故用新语义名。
+ *
+ * 层叠：本文件不包 `@layer`，未分层声明压过 `@layer utilities` 的工具类——移除按钮的
+ * 「触屏常驻可见」因此稳定压过 `className` 里的 `opacity-0`，与迁移前 `[@media(hover:none)]:opacity-100`
+ * 变体在工具类层内晚于 `opacity-0` 出现的结果一致。
+ */
+
+/* 附件 / 引用卡片（源 `.chat-composer-asset`）：76px 基准且不参与伸缩（宽度仍由 `w-19` 提供）。 */
+.chat-composer-tile {
+  flex: 0 0 76px;
+}
+
+/*
+ * 文件 / 引用卡片的图标底座（源 `.chat-composer-asset-icon svg`）：固定 23px。
+ * 图标颜色不从本规则给出，由 `className` 里保留的 `text-slate-500` 经 `currentColor` 继承
+ * （与原 `[&>svg]:text-slate-500` 的渲染结果一致）。
+ */
+.chat-composer-tile-preview > svg {
+  width: calc(var(--spacing) * 5.75);
+}
+
+/* 移除按钮里的图标（源 `.chat-composer-asset-remove svg`）：13px。 */
+.chat-composer-tile-remove > svg {
+  width: calc(var(--spacing) * 3.25);
+}
+
+/* 无 hover 能力的设备（触屏）上移除按钮常驻可见：源 `.chat-composer-asset-remove` 的 `@media (hover: none)` 块。 */
+@media (hover: none) {
+  .chat-composer-tile-remove {
+    opacity: 1;
+  }
+}
+
+/* 引用预览浮层（源 `.chat-composer-quote-preview`）：贴卡片上沿 8px，宽度随视口收缩但不超过 320px。 */
+.chat-composer-quote-tooltip {
+  bottom: calc(100% + 8px);
+  width: min(320px, calc(100vw - 48px));
+  box-shadow: 0 8px 24px rgb(38 52 77 / 14%);
+}

@@ -1,0 +1,13 @@
+/*
+ * MemoryDetailPanel 的深层样式（与同目录 `MemoryDetailPanel.tsx` 同名，由该文件 import）。
+ *
+ * 来源：紧凑/默认模式卡片的 `max-h-[calc(100vh-120px)]`——含函数调用的复合值无法用扁平工具类表达
+ * （仓库禁令 FCP-WEB-02）。`sticky top-4` / `overflow-y-auto` 等扁平工具类仍留在 `className`；
+ * 面板模式（`inPanel`）走另一套无卡片外壳的标记，不涉及本类。
+ *
+ * 层叠：本文件不包 `@layer`，未分层声明压过 `@layer utilities`；该元素上没有其它 `max-h-*` 工具类，
+ * 不存在胜负问题。值逐字等价换算：`calc(100vh - 120px)`。
+ */
+.memory-detail-panel-card {
+  max-height: calc(100vh - 120px);
+}

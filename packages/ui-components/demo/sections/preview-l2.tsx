@@ -52,13 +52,17 @@ export function PreviewL2Section() {
   const { t } = useTranslation(DEMO_NS);
 
   return (
-    <section className="demo-section">
-      <h1 className="demo-section-title">{t("sections.previewL2")}</h1>
-      <p className="demo-hint">{t("sectionHints.previewL2")}</p>
+    <section>
+      <h1 data-slot="demo-section-title" className="mb-6 text-[24px] font-semibold">
+        {t("sections.previewL2")}
+      </h1>
+      <p className="mt-3 text-text-muted text-[12px]">{t("sectionHints.previewL2")}</p>
 
-      <div className="demo-example">
-        <h2 className="demo-example-title">FileViewerPreview — text</h2>
-        <p className="demo-hint">
+      <div className="mb-5 p-5 border border-border rounded-lg bg-surface-1">
+        <h2 data-slot="demo-example-title" className="mb-4 text-text-secondary text-[13px] font-medium">
+          FileViewerPreview — text
+        </h2>
+        <p className="mt-3 text-text-muted text-[12px]">
           预览器本体：buildPreviewUrl 注入源文件的取回方式（此处为 data: URL），locale / messages
           可覆盖内置的简体中文文案 —— 下面的示例显式传了 locale="en-US" 与部分 messages。
         </p>
@@ -71,16 +75,18 @@ export function PreviewL2Section() {
             messages={{ file: "File" }}
           />
         </div>
-        <p className="demo-hint">
+        <p className="mt-3 text-text-muted text-[12px]">
           <code>notes.txt</code> 属于文本类，组件会先把 data: URL 取回成 Blob 再交给预览器，
           以保证元数据里显示的是原始字节数；这一步之外没有任何网络请求。不传 <code>locale</code> / <code>messages</code>{" "}
           时预览器用内置简体中文。
         </p>
       </div>
 
-      <div className="demo-example">
-        <h2 className="demo-example-title">FileViewerPreview — html (html-plugin)</h2>
-        <p className="demo-hint">
+      <div className="mb-5 p-5 border border-border rounded-lg bg-surface-1">
+        <h2 data-slot="demo-example-title" className="mb-4 text-text-secondary text-[13px] font-medium">
+          FileViewerPreview — html (html-plugin)
+        </h2>
+        <p className="mt-3 text-text-muted text-[12px]">
           渲染插件示例：<code>.html</code> 由包内 <code>html-plugin</code> 接管， 在 sandbox iframe
           中渲染页面效果（不赋予 allow-scripts 之外的权限），并提供「渲染预览 / 源码」切换； 没有该插件时 HTML 会被
           textPlugin 当纯文本展示。
@@ -88,7 +94,7 @@ export function PreviewL2Section() {
         <div className="h-[320px] overflow-hidden rounded-md border border-border">
           <FileViewerPreview buildPreviewUrl={buildDemoHtmlPreviewUrl} envId="demo" filePath="demo/report.html" />
         </div>
-        <p className="demo-hint">
+        <p className="mt-3 text-text-muted text-[12px]">
           HTML 需要保留 URL 给 iframe 使用，因此不像文本类那样转成 Blob；插件标签文案是硬编码中文，
           刻意不消费宿主字典（见包内 <code>html-plugin</code> 注释）。本示例的文件路径决定扩展名与 MIME， 换掉{" "}
           <code>filePath</code> 就会落到别的插件上。

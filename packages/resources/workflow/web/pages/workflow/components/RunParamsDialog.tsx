@@ -8,6 +8,7 @@ import {
 } from "@fenix/ui-components/ui/dialog";
 import { useCallback, useState } from "react";
 import { useTranslation } from "react-i18next";
+import { ParamGroupHeader } from "./ParamGroupHeader";
 
 export interface ParamDef {
   type?: "string" | "number" | "boolean" | "object";
@@ -37,28 +38,7 @@ function CollapsibleGroup({
   const [open, setOpen] = useState(defaultOpen);
   return (
     <div style={{ marginBottom: 8 }}>
-      <div
-        onClick={() => setOpen((v) => !v)}
-        style={{
-          display: "flex",
-          alignItems: "center",
-          gap: 4,
-          cursor: "pointer",
-          fontWeight: 600,
-          color: "#374151",
-          fontSize: 12,
-          padding: "6px 0",
-          borderBottom: "1px solid #e5e7eb",
-          marginBottom: 4,
-        }}
-      >
-        <span
-          style={{ fontSize: 10, transition: "transform 0.15s", transform: open ? "rotate(90deg)" : "rotate(0deg)" }}
-        >
-          ▶
-        </span>
-        {label}
-      </div>
+      <ParamGroupHeader label={label} open={open} onToggle={() => setOpen((v) => !v)} />
       {open && <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>{children}</div>}
     </div>
   );

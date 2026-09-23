@@ -16,7 +16,7 @@ interface CitationLinkProps {
 /**
  * 知识库引用可点击链接。
  *
- * 复制自 `packages/agent-runtime/web/components/chat/CitationLink.tsx`。
+ * 复制自 `packages/agent-runtime/web/components/chat/CitationLink.tsx`（旧路径，已于 2026-09-21 由 f2741a82d 删除）。
  * 纯化改动点：
  * - 移除宿主 `@/src/lib/citation-preview-context` 依赖：打开预览改为 `onOpen` 回调 prop，
  *   预览面板的渲染与布局联动仍由宿主负责。

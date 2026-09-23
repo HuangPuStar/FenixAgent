@@ -10,7 +10,7 @@
 - **资源入库**：`knowledge-upload.ts` 负责上传落盘、URL 导入、重新解析、状态刷新与删除，并按资源汇总回写知识库状态；上传与导入是幂等的（按 sourceName / remoteId 复用 pending 资源）。
 - **Agent 绑定与检索**：`agent-knowledge.ts` 维护 binding 的读写与策略归一化（`searchFirst` / `maxResults` / `defaultNamespaces`）；`knowledge-runtime.ts` 按绑定知识库检索、读取单个资源、生成/读取/删除知识图谱并轮询进度，检索按 embedding model 分组（RAGFlow 要求同一请求的 dataset 同模型），远端失败只跳过该分组不整单失败。
 - **HTTP 交付物**：两条路由都以工厂形式导出——`createWebKnowledgeBaseRoutes(deps)`（23 条控制台端点：CRUD、资源上传与文件/PDF 预览、chunk 管理与启停、检索测试、知识图谱，以及 action 风格的 `POST /web/knowledgeBases/models` 模型管理）与 `createApiKnowledgeBaseRoutes(deps)`（`/api/knowledge-bases`，对外只读分页列表，1 条端点）。工厂出参是 Elysia 实例（`name` 分别为 `web-knowledge-bases` / `api-knowledge-bases`），宿主挂载点见「边界外的已知项」。
-- **浏览器交付物**：`web/index.ts` 是唯一公开面（页面、目录/资源面板、`kbApi`、`embeddingModelApi`、`ResourcePreview*`、图谱面板、i18n 资源与类型）；`web/i18n/{namespace,index}.ts` 提供命名空间常量与字典，字典文件仍是 `web/i18n/locales/{en,zh}/knowledge.json`（各 55 个顶层键 / 245 个叶子键，两语言键集一致，实测见下）。
+- **浏览器交付物**：`web/index.ts` 是唯一公开面（页面、目录/资源面板、`kbApi`、`embeddingModelApi`、`ResourcePreview*`、图谱面板、i18n 资源与类型）；`web/i18n/{namespace,index}.ts` 提供命名空间常量与字典，字典文件仍是 `web/i18n/locales/{en,zh}/knowledge.json`（2026-09-22 复核实测：各 39 个顶层键 / 239 个叶子键，两语言键集一致；较本行此前记录的 55 / 245 少，差额来自 `b008ff0b` 清理的 66 个零引用键，详见下）。
 - **组合根**：`src/module.ts` 的 `createKnowledgeModule()` 返回三个仓储单例（对象身份即数据访问点，跨包调用方拿到同一批实例）；`fenix.module.ts` 的惰性 `create` 指向它，`dependsOn` / `capabilities` 未变。
 
 ## 依赖边界
@@ -44,7 +44,7 @@
 
 - **宿主调用点已接线（共享文件，本轮实测）**：`apps/server/src/main.ts:62` 已改为 `import { checkRagFlowHealth, createApiKnowledgeBaseRoutes }`（实例 `.use(...)` 在 `:476`），`apps/server/src/routes/web/index.ts:9` 已改为 `createWebKnowledgeBaseRoutes`（构造在 `:50`）；`moduleConfigs.knowledge` 在 `main.ts:171/187` 注入（`ragflowApiUrl` / `ragflowApiKey` / `ragflowRequestTimeoutMs` / `gotenbergUrl`），启动期探活在 `main.ts:383`。上一版 README 记的「旧导出名导入会直接失败」已消解。
 - **`GOTENBERG_URL` 需要 env schema 声明**：见「配置与 DB」。收敛后该变量与 RAGFlow 三项一起进入宿主 env → 模块配置链（§1.7）。
-- **i18n 宿主接线已完成（共享文件，本轮实测）**：宿主 `apps/web/src/i18n/index.ts:15` 已改经包出口登记——`import { KNOWLEDGE_NS, knowledgeResources } from "@fenix/resource-knowledge/web/i18n"`，注册点在 `:122` / `:136`。字典仍只有一份：`web/i18n/locales/{en,zh}/knowledge.json`。键归属实测：`en`/`zh` 各 56 顶层 / 247 叶子键、键集一致（补 `accessDenied.*` 与 error/retry 收口的 `loadFailure.*` 后重新计数），`observer` 字典里没有本包键，故无 movedIn / movedOut。
+- **i18n 宿主接线已完成（共享文件，本轮实测）**：宿主 `apps/web/src/i18n/index.ts:15` 已改经包出口登记——`import { KNOWLEDGE_NS, knowledgeResources } from "@fenix/resource-knowledge/web/i18n"`，注册点在 `:122` / `:136`。字典仍只有一份：`web/i18n/locales/{en,zh}/knowledge.json`。键归属实测：`en`/`zh` 各 **39 顶层 / 239 叶子键**、键集一致（2026-09-22 复核；此前记的 56 / 247 是补 `accessDenied.*` 与 error/retry 收口 `loadFailure.*` 时的计数，`b008ff0b` 清掉 66 个零引用键后落到现值——清理前为 59 顶层 / 305 叶子），`observer` 字典里没有本包键，故无 movedIn / movedOut。
 - **web 面宿主 alias（§1.6 T11e 后）**：宿主 `apps/web/src/routes/agent/_panel/knowledge-bases.tsx` 已直连 `@fenix/resource-knowledge/web` 取 `AgentKnowledgeBasesPage`，`apps/web/vite.config.ts` 中指向 `web/pages/agent-panel/pages/AgentKnowledgeBasesPage.tsx` 的 alias 已无消费方；`@/src/types/knowledge`、`@/src/pages/agent-panel/components/knowledge-graph-state`、`@/src/api/knowledge-bases` 三条 alias 本轮实测全仓零消费方（属既有死条目）。跨包消费方（`agent-config`、`model-management`）本就走本包 `./web` 出口，故别名表删除后本包 web 出口是唯一公开面。**删除已随 §1.6 T11e-4b 执行**：上述三条 alias（连带其余全部桥接条目）已从宿主两份别名表移除，2026-09-21 实测 `git grep -n '"@/src/types/knowledge"'`、`"@/src/pages/agent-panel/components/knowledge-graph-state"`、`"@/src/api/knowledge-bases"` 均 0 命中；宿主别名表现在只保留宿主自有别名。
 - **表定义已迁入本包（§1.7 B9，2026-09-22，此项已关闭）**：`knowledgeBase` / `knowledgeResource` /
   `agentKnowledgeBinding` 的定义从 `apps/server/src/db/schema.ts` 逐字迁到 `db/schema.ts`（DDL 未改，
@@ -53,6 +53,13 @@
 - **「全局 KB」短路未收敛**：`knowledge-runtime.ts` 保留 `isGlobal = true` 与 `|| true` 的组织过滤短路（历史行为），跨组织可见性未经 `@fenix/access-control` 判定；属 §1.4 授权收敛范围，本任务只做边界切断。
 - **`resource → @fenix/identity` 已消除**：见「依赖边界」（§1.6 T7 改经 `@fenix/web-runtime` 的 org/session 契约，台账条目已删除）。上一版 README 记的「machine 改名中间态留下 17 处无法解析导入、门禁结论不可信」本轮实测已不成立：脚本扫描 `packages/resources/machine/src/**/*.ts`（85 个文件）相对导入解析失败 0 处，`machine/web` 仅 1 处（`web/__tests__/machine-browser-surface.test.ts -> ./api/registry`，在该包自己的用例内）。本包 `src`（43 文件）与 `web`（20 文件）各 0 处。门禁本身的结论需由编排者复跑 `bun run check:dependencies` 确认，本包只给静态扫描结果。
 - **包内 lint 已清零（W2.5 修复）**：上一版 README 列的 8 条 error（`web/components/knowledge/ResourcePreviewContent.tsx` ×5、`web/src/pages/agent-panel/components/ChunkDetailSheet.tsx` ×2、`web/src/pages/agent-panel/components/RetrievalTestPanel.tsx` ×1）本轮全部处置，`./node_modules/.bin/biome check packages/resources/knowledge`（W2.5 时 69 个文件，本轮新增两个文件后为 71 个文件）0 error / 0 warning。处置口径与一处**刻意偏离**见下节。
+
+## 前端去重（2026-09-22）
+
+- **文件图标与扩展名提取**：`agent-knowledge-resources.tsx` 的本地 `FileIcon`（extension → lucide 单色图标的 if-else 表，是本包第三份扩展名清单）退场，改用库的 `FileTypeIcon`（`@fenix/ui-components/components/file-icon-helper`，与文件树 / 文件页签 / 文件选择器同一套彩色图标）；`ResourcePreviewContent.tsx` 的 4 处 `filename.split(".").pop()` 改用库的 `getFileExtension()`。**口径差异**：无点号的文件名（如 `Makefile`）旧写法把整个名字当扩展名（恰与某个已知扩展名同名时会被误判成该类型），新写法返回空串、落到 `other`。
+- **状态块收敛到 `EmptyState`**：`KnowledgeLoadFailure` / `AgentKnowledgeAccessDenied` / 目录面板的错与空态 / `.knowledge-resources__empty` / 图谱面板的错与空态 / 嵌入模型空态 / 检索面板三处空态 / 切片列表空态 / 页面「请选择知识库」/ 详情失败 / 导入弹窗空态 / 无向量模型 / 无 pipeline 均改由 `config/EmptyState` 渲染（失败 `tone="danger"` + `role="alert"` + 重试；无权限不给重试）。随之删除 `.knowledge-directory__state`、`.knowledge-resources__empty` 两组死样式；`.knowledge-resource-name__icon` 去掉 `color` 与对 `svg` 的宽度覆盖（尺寸与配色归组件）。`KnowledgeLoadFailure` 的「判定 → 短路无权限 → 一般失败带重试」口径不变，只换骨架。
+- **`ResourcePreviewContent` 的两处「不支持预览 + 下载」收成 `UnsupportedPreview`**：不并进 `EmptyState` 的 `action`，因为下载语义是 `<a download>`（`action` 只收 `Button` + `onClick`）。
+- **状态圆点收敛到库原语（前一条登记的闭环）**：目录列表项的纯装饰状态圆点（无文案）改由 `@fenix/ui-components/ui/status-dot` 渲染——6px 装饰尺度经 `className="size-1.5"` 覆盖库默认 8px，不传 `label` 故整块 `aria-hidden`（保持不播报）；`agent-knowledge-directory.tsx` 的 `statusClass` 类映射与 `agent-knowledge.css` 的四条圆点规则随之删除，色调查本包唯一词表 `KB_STATUS_TONES`（经 `getStatusTone` 兜底 `neutral`），不新增第二套映射。**有意归一化**（视觉变更，非副作用）：`ready` `#10b981` / `error` `#ef4444` 不变；`processing` / `indexing` 由琥珀 `#f59e0b` → info 蓝 `#1677ff`（暗色 `#4096ff`）；`pending` 由琥珀 → `neutral`；`empty` 等未收录状态由 `#b8c3d2` → `neutral`（`#94a3b8` / 暗色 `#64748b`）。圆点自此跟随 token 获得暗色自适应。
 
 ## W2.5 处置与刻意偏离（2026-09-20）
 
@@ -79,8 +86,8 @@
 **`error && 无数据` 才让失败区整区接管（`role="alert"` + 连回原请求的重试按钮）；已有数据后的刷新失败保留旧数据，
 只 toast 兜底**。401/403（`request()` 已归一为 `UNAUTHORIZED`）走既有 `isKnowledgeAccessDenied` / `AgentKnowledgeAccessDenied`
 无权限态并**刻意不给重试按钮**，不新增第二套权限分支。三条共用同一个受控组件
-`web/pages/agent-panel/pages/agent-knowledge-load-failure.tsx`（`KnowledgeLoadFailure`，实测 34-52 行为判定与渲染主体；
-无权限在 `:38` 短路、一般失败在 `:41` 起为 `role="alert"`、重试按钮在 `:47-50`），保证判据、可访问性契约与
+`web/pages/agent-panel/pages/agent-knowledge-load-failure.tsx`（`KnowledgeLoadFailure`：判定与渲染主体在 `readErrorMessage` 之上；
+无权限分支短路在最前、一般失败由 `EmptyState` 带 `tone="danger"` + `role="alert"` + 重试 action 渲染），保证判据、可访问性契约与
 「无权限不给重试」逐字一致，而不是在三处各写一遍。
 
 - **`AgentKnowledgeBasesPage.tsx` 表单选项（`kbApi.getFormOptions`）已闭环**：请求在 `:183-190`，`onError` 只留
@@ -92,11 +99,11 @@
 - **`ChunkDetailSheet.tsx:55-57` 切片列表已闭环**：`fetchChunks` 的 `catch` 在 `:61-65` 保留 `console.error` +
   toast（有旧数据时这是唯一可见反馈）；新增 `error` state 于 `:41-43`，失败判据在 `:212`
   `!loading && error != null && data == null` → `KnowledgeLoadFailure`（`:213-217`，`onRetry` 用当前
-  `page` / `keyword` 重发原请求）；`chunk.empty` 空态在 `:221` 追加 `error == null` 前置条件，空态从此只表达
+  `page` / `keyword` 重发原请求）；`chunk.empty` 空态带 `error == null` 前置条件，空态从此只表达
   「确实没有数据」。
 - **`RetrievalTestPanel.tsx:150-166` 检索测试已闭环**：`search` 失败的两条分支（业务错误 `:161-166`、异常
   `:173-175`）都写入新增的 `error` state（`:88-90`）；结果区在 `:404-406` 整区接管为
-  `KnowledgeLoadFailure` + `onRetry={runSearch}`；`retrieval.noResults` 的两处渲染入口（`:421`、`:435-437`）
+  `KnowledgeLoadFailure` + `onRetry={runSearch}`；`retrieval.noResults` 的两处渲染入口
   都加了 `error == null` 前置条件，失败不再冒充「没有命中」。
 - **本轮实测（2026-09-20，命令均带 `env -u ANTHROPIC_MODEL`）**：
   `bun test packages/resources/knowledge` → **425 pass / 0 fail**（29 文件）；只跑上一轮已有的 27 个文件为
@@ -119,10 +126,10 @@
   真实实例的代价是 `resources` 形状必须是 `{ [语言]: { [命名空间]: 字典 } }`（少一层语言维度时 `t()` 静默回显 key，
   已在两个用例里写明），收益是断言直接取本包字典文案、不再需要逐字复刻的替身表。
 - **仍未接同一组件的两处（同口径核对后不闭环，理由与移除条件在下面）**：
-  - `web/components/knowledge/ResourcePreviewContent.tsx` 的预览内容拉取失败（`fetchError` 在 `:175`、
-    内容分支 `:293` / `:304` / `:313`）已经有**持久错误占位**（`ErrorPlaceholder`，`:424-426`），不会落回空态，
-    因此不属于本轮的「失败落回空态」缺口；它缺的只是「重试接回原请求」与 `role="alert"`，且预览区不是整个区域
-    可以无条件接管的对象（office 分支还有 PDF/docx 多条降级路径）。移除条件：把 `ErrorPlaceholder` 换成
+  - `web/components/knowledge/ResourcePreviewContent.tsx` 的预览内容拉取失败（`fetchError`、内容分支）已经有
+    **持久错误占位**（现名 `PreviewPlaceholder`，2026-09-22 起由库的 `EmptyState` 渲染并带 `role="alert"`），
+    不会落回空态，因此不属于本轮的「失败落回空态」缺口；它缺的只是「重试接回原请求」，且预览区不是整个区域
+    可以无条件接管的对象（office 分支还有 PDF/docx 多条降级路径）。移除条件：把 `PreviewPlaceholder` 换成
     `KnowledgeLoadFailure` 并接上 `run`/`refresh`，同时确认三条 office 降级路径的语义不被接管吃掉。
   - `web/src/pages/agent-panel/components/EmbeddingModelManager.tsx` 的模型列表 / 厂商列表失败仍是
     **只弹 toast**（`:68`、`:362`），未接持久错误态与重试。它同样在创建弹窗的渲染面上，但不在本轮委派点名的

@@ -41,7 +41,7 @@ export function AgentTaskRuntimeBoard({ tasks, loading }: Props) {
           >
             <TabsList aria-label={t("runtime.windowLabel")} className="h-8 rounded-md bg-surface-2 p-1">
               {RUNTIME_WINDOWS.map((hours) => (
-                <TabsTrigger className="h-6 rounded px-2.5 text-[10px]" key={hours} value={String(hours)}>
+                <TabsTrigger className="h-6 rounded px-2.5 text-3xs" key={hours} value={String(hours)}>
                   {t("runtime.windowHours", { hours })}
                 </TabsTrigger>
               ))}

@@ -4,6 +4,7 @@ import { unwrap } from "@fenix/web-runtime/api/request";
 import { useRequest } from "ahooks";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
+import { toast } from "sonner";
 import type { WfMeta } from "../yaml-utils";
 
 export interface UseWorkflowMetaAgentParams {
@@ -59,7 +60,8 @@ export interface UseWorkflowMetaAgentReturn {
  * model-management 的 web 面一起拖进本包的浏览器可达面，而这里只用得到这一个写死的 POST 客户端。
  *
  * `ensureMetaAgent` 只在面板展开时请求（收起状态不自建 environment），并用 ref 去重快速 toggle；
- * 失败只记录诊断，不打断编辑器——面板本身就是可选能力。
+ * 失败只记录诊断并给一条 toast（面板是用户主动展开的，静默失败会让人以为面板坏了），不打断编辑器——
+ * 面板本身就是可选能力。
  */
 export function useWorkflowMetaAgent({
   workflowId,
@@ -79,11 +81,14 @@ export function useWorkflowMetaAgent({
     metaAgentPendingRef.current = true;
     ensureMetaAgent()
       .then((res) => setMetaAgentId(res.environmentId))
-      .catch((err: unknown) => console.error("Meta Agent 环境确保失败:", err))
+      .catch((err: unknown) => {
+        console.error("Meta Agent 环境确保失败:", err);
+        toast.error(t("editor.meta_agent_failed"));
+      })
       .finally(() => {
         metaAgentPendingRef.current = false;
       });
-  }, [chatOpen, metaAgentId]);
+  }, [chatOpen, metaAgentId, t]);
 
   const scenePrompt = useMemo(() => {
     if (!workflowId) return;
@@ -115,7 +120,11 @@ export function useWorkflowMetaAgent({
         }));
     },
     {
-      onError: (err: unknown) => console.error("Failed to load environment list:", err),
+      onError: (err: unknown) => {
+        console.error("Failed to load environment list:", err);
+        // 拉不到环境，节点配置里的 agent 下拉就是空的，用户会以为没有可用 agent
+        toast.error(t("editor.load_agents_failed"));
+      },
     },
   );
 

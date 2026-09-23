@@ -36,6 +36,7 @@ export * from "./chat/lib/token-stats";
 export * from "./chat/lib/tool-call-utils";
 export * from "./chat/lib/tool-semantic";
 export * from "./chat/narrators/index";
+export * from "./chat/panels/chat-interaction-region";
 export * from "./chat/panels/chat-status-panel";
 export * from "./chat/panels/PermissionPanel";
 export * from "./chat/panels/QuestionPanel";
@@ -67,12 +68,14 @@ export * from "./chat/timeline/sub-agent-tool-call-context";
 export * from "./chat/timeline/TodoChanges";
 export * from "./chat/timeline/ToolCallGroup";
 export * from "./chat/timeline/ToolCallRow";
+export * from "./chat/timeline/tool-json-block";
 export type * from "./chat/types";
 export * from "./chat/view/ChatQuoteMessage";
 export * from "./chat/view/ChatView";
 export * from "./chat/view/CitationLink";
 export * from "./chat/view/chat-navigation-aids";
 export * from "./chat/view/MessageBubble";
+export * from "./chat/view/PublicErrorCard";
 export * from "./chat/view/SystemMessage";
 // chat 设计层样式在包内没有唯一宿主组件（见 `web/chat/index.ts` 文件头），由根 barrel 一并加载，
 // 保证「导入 @fenix/ui-components 即得完整 chat 视觉」；组件自导入的样式不在此重复导入。
@@ -81,6 +84,7 @@ import "./chat/css/chat.css";
 // components —— 复合组件
 export * from "./components/AgentCardList";
 export * from "./components/agent-master-detail-workspace";
+export * from "./components/ClosableTabPill";
 export * from "./components/file-icon-helper";
 export * from "./components/file-tree-arborist";
 export * from "./components/file-tree-context-menu";
@@ -94,11 +98,14 @@ export * from "./components/preview/native-pdf-plugin";
 export * from "./components/preview/preview-source";
 export * from "./components/WorkbenchPanel";
 // config —— 配置型业务无关容器
+export * from "./config/AdminKeyGate";
 export * from "./config/BatchActionBar";
 export * from "./config/ConfirmDialog";
 export * from "./config/DataTable";
 export * from "./config/EmptyState";
 export * from "./config/FormDialog";
+export * from "./config/LabeledField";
+export * from "./config/ScopeFilterBar";
 export * from "./config/StatusBadge";
 export * from "./i18n/namespace";
 // layout —— 页面骨架
@@ -106,8 +113,11 @@ export * from "./layout/app-header";
 export * from "./layout/app-page";
 // lib —— 包内基础设施
 export * from "./lib/card-renderer";
+export * from "./lib/clipboard";
 export * from "./lib/cn";
+export * from "./lib/format";
 export * from "./lib/theme";
+export * from "./lib/workspace-relative-path";
 // ui —— 基础控件
 export * from "./ui/accordion";
 export * from "./ui/alert-dialog";
@@ -123,7 +133,6 @@ export * from "./ui/command";
 export * from "./ui/connection-status";
 export * from "./ui/date-picker";
 export * from "./ui/dialog";
-export * from "./ui/dialog-xl";
 export * from "./ui/dropdown-menu";
 export * from "./ui/form";
 export * from "./ui/hover-card";
@@ -140,6 +149,8 @@ export * from "./ui/separator";
 export * from "./ui/sheet";
 export * from "./ui/skeleton";
 export * from "./ui/slider";
+export * from "./ui/spinner";
+export * from "./ui/status-dot";
 export * from "./ui/switch";
 export * from "./ui/table";
 export * from "./ui/tabs";

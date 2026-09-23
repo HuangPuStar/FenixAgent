@@ -52,6 +52,7 @@ import {
 import { connectWorkflowSSE, disconnectWorkflowSSE } from "../../api/workflow-sse";
 import { type MetaAgentChatPanelProps, MetaAgentPanel } from "./components/MetaAgentPanel";
 import { NodeConfigSheet } from "./components/NodeConfigSheet";
+import { PopoverHeader } from "./components/PopoverHeader";
 import { RunParamsDialog } from "./components/RunParamsDialog";
 import { RunStatusPanel } from "./components/RunStatusPanel";
 import { TriggerPanel } from "./components/TriggerPanel";
@@ -67,6 +68,7 @@ import { useWorkflowRun } from "./hooks/useWorkflowRun";
 import { autoLayout } from "./layout";
 import { nodeTypes, setToolColors } from "./nodes";
 import { TRANSFORM_PRESETS } from "./presets";
+import { type RunViewSetters, resetRunView } from "./run-view";
 import { dedupEvents } from "./utils";
 import {
   createStartNode,
@@ -122,6 +124,13 @@ function WorkflowEditorInner({ workflowId, runId, chatPanel }: WorkflowEditorPro
   const [selectedRunNodeId, setSelectedRunNodeId] = useState<string | null>(null);
   const [selectedNodeOutput, setSelectedNodeOutput] = useState<NodeOutput | null>(null);
   const [nodeOutputLoading, setNodeOutputLoading] = useState(false);
+
+  // 运行视图态的 setter 打包一次，供下面两处复位共用（定义与理由见 ./run-view.ts）。
+  // 依赖为空：5 个 setter 都是 useState 的稳定 setter，打包结果在组件生命周期内不变。
+  const runViewSetters: RunViewSetters = useMemo(
+    () => ({ setRunSnapshot, setRunEvents, setRunApprovals, setSelectedRunNodeId, setSelectedNodeOutput }),
+    [],
+  );
   const [runSheetOpen, setRunSheetOpen] = useState(false);
   const [versionsSheetOpen, setVersionsSheetOpen] = useState(false);
   const [triggersSheetOpen, setTriggersSheetOpen] = useState(false);
@@ -299,8 +308,7 @@ function WorkflowEditorInner({ workflowId, runId, chatPanel }: WorkflowEditorPro
   // 拉取已注册的 custom 工具，供 palette 和节点配置下拉使用
   // 失败时静默退化（palette 不显示 custom 分区），不阻塞编辑器
   useEffect(() => {
-    customToolsApi
-      .list()
+    unwrap(customToolsApi.list())
       .then(setCustomTools)
       .catch((err) => {
         console.error("Failed to load custom tools:", err);
@@ -438,11 +446,7 @@ function WorkflowEditorInner({ workflowId, runId, chatPanel }: WorkflowEditorPro
     // workflowId 切换时清理所有旧状态
     setPreviewVersion(null);
     setActiveRunId(null);
-    setRunSnapshot(null);
-    setRunEvents([]);
-    setRunApprovals([]);
-    setSelectedRunNodeId(null);
-    setSelectedNodeOutput(null);
+    resetRunView(runViewSetters);
     setNodeConfigSheetOpen(false);
     setSelectedNode(null);
     setYamlOpen(false);
@@ -473,7 +477,7 @@ function WorkflowEditorInner({ workflowId, runId, chatPanel }: WorkflowEditorPro
         toast.error(t("editor.load_failed", { error: (err as Error).message }));
       }
     })();
-  }, [workflowId, fitView, setEdges, setNodes, setLastSavedYaml, t]);
+  }, [workflowId, fitView, setEdges, setNodes, setLastSavedYaml, t, runViewSetters]);
 
   // Load historical run data (point-in-time replay)
   useEffect(() => {
@@ -482,11 +486,7 @@ function WorkflowEditorInner({ workflowId, runId, chatPanel }: WorkflowEditorPro
     (async () => {
       try {
         setActiveRunId(runId);
-        setRunSnapshot(null);
-        setRunEvents([]);
-        setRunApprovals([]);
-        setSelectedRunNodeId(null);
-        setSelectedNodeOutput(null);
+        resetRunView(runViewSetters);
         setRunSheetOpen(true);
 
         const [snap, evts] = await Promise.all([
@@ -501,12 +501,14 @@ function WorkflowEditorInner({ workflowId, runId, chatPanel }: WorkflowEditorPro
         if (Array.isArray(evts)) setRunEvents(dedupEvents(evts));
       } catch (err) {
         console.error(`${t("editor.load_run_failed")}:`, err);
+        // 从运行记录进入编辑器时，这一拉是运行面板的唯一数据源：失败必须让用户知道面板是空的
+        toast.error(t("editor.load_run_failed"));
       }
     })();
     return () => {
       abort = true;
     };
-  }, [runId, t, updateNodesFromSnapshot]);
+  }, [runId, t, updateNodesFromSnapshot, runViewSetters]);
 
   // ── Update meta ──
   const updateMeta = useCallback((updates: Partial<WfMeta>) => {
@@ -883,9 +885,7 @@ function WorkflowEditorInner({ workflowId, runId, chatPanel }: WorkflowEditorPro
               className="wf-meta-popover"
               style={{ width: 180 }}
             >
-              <div className="wf-popover-header">
-                <span className="wf-popover-title">{t("editor.file_menu_title")}</span>
-              </div>
+              <PopoverHeader title={t("editor.file_menu_title")} />
               <div className="flex flex-col gap-0.5 py-1">
                 <button
                   type="button"

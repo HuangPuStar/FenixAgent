@@ -1,6 +1,6 @@
 /**
  * Read 工具 narrator。处理文件 / 目录读取调用。
- * 复制自 `packages/agent-runtime/web/components/chat/narrators/read.ts`。
+ * 复制自 `packages/agent-runtime/web/components/chat/narrators/read.ts`（旧路径，已于 2026-09-21 由 f2741a82d 删除）。
  *
  * 渲染效果（title 是 verb+object 完整句子，detail 是行号或条目数补充）：
  * - 文件读取：title="读取 config.ts", detail="第 120-180 行"

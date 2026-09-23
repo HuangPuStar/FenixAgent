@@ -1,7 +1,7 @@
+import { cn } from "@fenix/ui-components/lib/cn";
 import { Calendar, Eye, FilesIcon, Globe, PanelRight, PanelRightDashed, X } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { NS } from "@/src/i18n";
-import { cn } from "@/src/lib/utils";
 
 export type TopMode = "files" | "sites" | "tasks" | "views";
 
@@ -64,7 +64,7 @@ export function TopModeTabs({
                 <span>{t(meta.labelKey)}</span>
                 {mode === "files" && pendingDiffCount > 0 && topMode !== "files" && (
                   <span
-                    className="ml-0.5 inline-flex items-center justify-center min-w-[16px] h-4 px-1 rounded-full bg-orange-500 text-white text-[10px] font-semibold leading-none"
+                    className="ml-0.5 inline-flex items-center justify-center min-w-4 h-4 px-1 rounded-full bg-orange-500 text-white text-3xs font-semibold leading-none"
                     title={t("panelMode.pendingDiff", { count: pendingDiffCount })}
                   >
                     {pendingDiffCount > 99 ? "99+" : pendingDiffCount}

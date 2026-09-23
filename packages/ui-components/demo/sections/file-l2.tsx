@@ -87,17 +87,21 @@ export function FileL2Section() {
   };
 
   return (
-    <section className="demo-section">
-      <h1 className="demo-section-title">{t("sections.fileL2")}</h1>
-      <p className="demo-hint">{t("sectionHints.fileL2")}</p>
+    <section>
+      <h1 data-slot="demo-section-title" className="mb-6 text-[24px] font-semibold">
+        {t("sections.fileL2")}
+      </h1>
+      <p className="mt-3 text-text-muted text-[12px]">{t("sectionHints.fileL2")}</p>
 
-      <div className="demo-example">
-        <h2 className="demo-example-title">FileTreeInputDialog — New folder</h2>
-        <p className="demo-hint">
+      <div className="mb-5 p-5 border border-border rounded-lg bg-surface-1">
+        <h2 data-slot="demo-example-title" className="mb-4 text-text-secondary text-[13px] font-medium">
+          FileTreeInputDialog — New folder
+        </h2>
+        <p className="mt-3 text-text-muted text-[12px]">
           宿主从树的右键菜单（<code>onNewFolder</code>）打开这个弹窗；标题与说明由宿主按操作类型派生，
           名字合法性也由宿主校验 —— 组件不做文件系统判断，只负责弹窗结构与提交事件。
         </p>
-        <div className="demo-row">
+        <div className="flex flex-wrap items-center gap-3">
           <Button variant="outline" onClick={() => setCreateOpen(true)}>
             New folder
           </Button>
@@ -122,20 +126,22 @@ export function FileL2Section() {
           }}
           onSubmit={handleCreateSubmit}
         />
-        <p className="demo-hint">
+        <p className="mt-3 text-text-muted text-[12px]">
           直接点 Create 会走必填校验（<code>error</code> prop 渲染在输入框下方）；填入名字后提交进入 1.2s 的
           pending，期间确认与取消按钮一并禁用，模拟请求结束后关闭弹窗。
         </p>
       </div>
 
-      <div className="demo-example">
-        <h2 className="demo-example-title">FileTreeInputDialog — Rename</h2>
-        <p className="demo-hint">
+      <div className="mb-5 p-5 border border-border rounded-lg bg-surface-1">
+        <h2 data-slot="demo-example-title" className="mb-4 text-text-secondary text-[13px] font-medium">
+          FileTreeInputDialog — Rename
+        </h2>
+        <p className="mt-3 text-text-muted text-[12px]">
           同一个组件的改名流程：宿主从右键菜单（<code>onRenameRequest</code>）带着原名字打开，
           <code>title</code> / <code>confirmLabel</code> 换成 Rename；重名、非法字符这类判断同样由宿主给出，
           校验失败时只回填 <code>error</code>，弹窗保持打开。
         </p>
-        <div className="demo-row">
+        <div className="flex flex-wrap items-center gap-3">
           <Button
             variant="outline"
             onClick={() => {
@@ -166,7 +172,7 @@ export function FileL2Section() {
           }}
           onSubmit={handleRenameSubmit}
         />
-        <p className="demo-hint">
+        <p className="mt-3 text-text-muted text-[12px]">
           pending 期间 <code>onOpenChange</code> 的关闭请求被忽略，避免提交中通过 Esc / 遮罩关掉弹窗。
         </p>
       </div>

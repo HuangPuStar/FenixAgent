@@ -11,6 +11,7 @@
  * 因此 401 与 403 在此共享同一个分支，口径与宿主其余页面一致。
  */
 
+import { EmptyState } from "@fenix/ui-components/config/EmptyState";
 import { ApiError } from "@fenix/web-runtime/api/request";
 import { NS } from "@fenix/web-runtime/i18n/namespace";
 import { ShieldAlert } from "lucide-react";
@@ -39,16 +40,22 @@ function isErrorLike(error: unknown): error is { code?: unknown } {
   return typeof error === "object" && error !== null && "code" in error;
 }
 
-/** 无权限整页接管状态；`role="alert"` 让屏幕阅读器在进入页面时直接播报原因。 */
+/**
+ * 无权限整页接管状态；`role="alert"` 让屏幕阅读器在进入页面时直接播报原因。
+ *
+ * 2026-09-22 前端去重：块本身改走库的 `EmptyState`（`tone="danger"`），
+ * 配色（含 dark 变体）与图标尺寸交给组件；`flex-1` 撑满 AppPage 的剩余高度是页面级布局，仍由这里给。
+ */
 export function AgentKnowledgeAccessDenied() {
   const { t } = useTranslation(NS.KNOWLEDGE);
   return (
-    <div className="flex flex-1 items-center justify-center p-8 text-center" role="alert">
-      <div>
-        <ShieldAlert className="mx-auto h-10 w-10 text-[#94a3b8]" />
-        <p className="mt-4 text-sm font-medium text-[#475569]">{t("accessDenied.title")}</p>
-        <p className="mt-2 max-w-md text-[12px] leading-5 text-[#94a3b8]">{t("accessDenied.description")}</p>
-      </div>
-    </div>
+    <EmptyState
+      tone="danger"
+      role="alert"
+      className="flex flex-1 flex-col items-center justify-center p-8"
+      icon={<ShieldAlert />}
+      title={t("accessDenied.title")}
+      description={t("accessDenied.description")}
+    />
   );
 }

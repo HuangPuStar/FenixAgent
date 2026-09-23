@@ -6,7 +6,7 @@ import type { ComposerQuote } from "./composer-assets";
 /**
  * 输入岛状态（半受控）。
  *
- * 来源：从 `packages/agent-runtime/web/components/chat/ChatComposer.tsx` 的 state / ref /
+ * 来源：从 `packages/agent-runtime/web/components/chat/ChatComposer.tsx`（旧路径，已于 2026-09-21 由 f2741a82d 删除） 的 state / ref /
  * 派生值与面板状态迁移中切出——拆分原因是源文件 597 行超过 500 行红线。行为保持源实现：
  * 未传受控 prop 时全部自持；传入受控 prop 后以宿主为准并回调（半受控）。
  * 纯化改动点：

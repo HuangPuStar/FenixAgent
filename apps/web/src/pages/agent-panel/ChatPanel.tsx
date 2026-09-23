@@ -11,16 +11,51 @@
 // （`web-package-not-to-app`），故改为宿主经 `WorkflowEditor` 的 `chatPanel` 端口注入——与
 // `ProdViewPage` 的 `chatArea` 端口同型（用户 2026-09-21 裁定）。
 
-import type { PublicErrorInfo } from "@fenix/chat-channel";
 import { ACPMain } from "@fenix/ui-components/chat/shell/ACPMain";
 import type { BoundMcpOption } from "@fenix/ui-components/chat/shell/chat-interface-types";
-import { publicErrorText } from "@fenix/ui-components/chat/view/public-error-text";
+import { PublicErrorCard } from "@fenix/ui-components/chat/view/PublicErrorCard";
+import { Spinner } from "@fenix/ui-components/ui/spinner";
 import { TooltipProvider } from "@fenix/ui-components/ui/tooltip";
-import { Bot, Loader2 } from "lucide-react";
+import { Bot } from "lucide-react";
+import type { ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import { NS } from "@/src/i18n";
 import { useChatPanelPorts } from "./chat-panel-ports";
 import { useChatPanelRuntime } from "./use-chat-panel-runtime";
+
+/**
+ * 已连接会话内那几张错误卡片的外边距。
+ *
+ * 卡片本体在 `@fenix/ui-components`（`chat/view/PublicErrorCard`），按库内约定**不带外边距**——
+ * 同一组件在 `MessageBubble` 里嵌在消息末尾、不需要外边距；本面板把它直接放在面板顶部，
+ * 需要与消息区对齐的左右留白与顶距。三个调用点共用一份，避免同一间距写三遍而各自漂移。
+ */
+const INLINE_ERROR_CARD_CLASS = "mx-4 mt-3";
+
+/**
+ * 面板级空态骨架：`.agent-welcome-empty`（`shell/agent-panel.css`）的「居中大图标 + 主文案 + 说明」。
+ *
+ * 2026-09-22 前端去重：未选中 agent、登录态失败、断开/重连中三个分支此前各写一份同样的 `<div>` +
+ * `<p className="title">` + `<p className="desc">`，改文案时要在三处同步。收敛到本组件后，
+ * 分支之间只剩「文案与要不要图标」的差别。
+ *
+ * 为什么没有改用库里的 `EmptyState`（而是保留 `.agent-welcome-empty` 与本地子组件）：那是两种不同的
+ * 东西。`EmptyState` 是**内联**状态块（`py-10 text-center`，24px 图标槽，标题 `text-sm`、说明 `text-xs`），
+ * 而这里是**撑满整个面板**的欢迎/等待屏：`height: 100%` 的居中 flex + 64px 淡图标 + 16px 主文案是它的
+ * 视觉主语。改用 `EmptyState` 会同时发生两件不受欢迎的事：① 面板高度与居中要靠调用方 className 再复刻
+ * 一遍（`flex h-full flex-col items-center justify-center`，等于把重复换个地方写，且三处都要写）；
+ * ② 图标与标题整体降一档，整屏欢迎态变得像一条内联提示，而同一面板的错误分支用的是「占满面板」的
+ * `PublicErrorCard`，两者会并排成两种版式。故此处按「克制」取舍：骨架留本地、不迁移版式。
+ */
+function PanelEmptyState({ icon, title, description }: { icon?: ReactNode; title: string; description?: string }) {
+  return (
+    <div className="agent-welcome-empty">
+      {icon}
+      <p className="title">{title}</p>
+      {description && <p className="desc">{description}</p>}
+    </div>
+  );
+}
 
 interface ChatPanelProps {
   agentId: string | null;
@@ -49,6 +84,9 @@ export function ChatPanel({
   boundMcps,
 }: ChatPanelProps) {
   const { t } = useTranslation(NS.AGENT_PANEL);
+  // 错误卡片的标题键 `chat.components.messageBubble.turnError` 归 ui-components 命名空间（卡片本体也在
+  // 那个包里），故单独取一本字典；`tUi` 连同 error 一起喂给 `PublicErrorCard`。
+  const { t: tUi } = useTranslation(NS.UI_COMPONENTS);
   const {
     authState,
     connectionState,
@@ -70,60 +108,48 @@ export function ChatPanel({
   // 未选中实例 → 欢迎空状态
   if (!agentId) {
     return (
-      <div className="agent-welcome-empty">
-        <Bot className="h-16 w-16" />
-        <p className="title">{t("selectAgent")}</p>
-        <p className="desc">{t("selectAgentDesc")}</p>
-      </div>
+      <PanelEmptyState
+        icon={<Bot className="h-16 w-16" />}
+        title={t("selectAgent")}
+        description={t("selectAgentDesc")}
+      />
     );
   }
 
   // 错误状态
   if ((connectionState === "error" || connectionState === "disconnected") && classifiedError) {
-    return <PublicErrorCard error={classifiedError} className="agent-welcome-empty" />;
+    return <PublicErrorCard error={classifiedError} t={tUi} className="agent-welcome-empty" />;
   }
 
   // 登录态未就绪（user session 加载中）——与"连接中"（WS 建连）语义分离，
-  // 避免 auth 悬挂时 UI 永驻"正在连接 Agent"转圈
+  // 避免 auth 悬挂时 UI 永驻"正在连接 Agent"转圈。
+  // 容器形态对齐被替换掉的 `.agent-welcome-empty`（block 级 flex + `height:100%`）：`panel` 提供块级宽度与
+  // 居中，`h-full` 兜住宿主不是 flex 容器的情况——本面板还会经 `chatPanel` 端口注入 workflow 编辑器，
+  // 那里的宿主容器没有 flex 上下文，`flex-1` 不生效。
   if (authState === "loading") {
-    return (
-      <div className="agent-welcome-empty">
-        <Loader2 className="h-8 w-8 animate-spin text-brand" />
-        <p className="title">{t("loadingUser")}</p>
-      </div>
-    );
+    return <Spinner variant="panel" className="h-full" label={t("loadingUser")} />;
   }
 
   // 登录态失败（useSession 报错 / 未登录）——明确错误态 + 重试出口
   if (authState === "failed") {
-    return (
-      <div className="agent-welcome-empty">
-        <p className="title">{t("authFailed")}</p>
-        <p className="desc">{t("authFailedDesc")}</p>
-      </div>
-    );
+    return <PanelEmptyState title={t("authFailed")} description={t("authFailedDesc")} />;
   }
 
   // 连接中
   if (connectionState === "connecting") {
-    return (
-      <div className="agent-welcome-empty">
-        <Loader2 className="h-8 w-8 animate-spin text-brand" />
-        <p className="title">{t("connectingAgent")}</p>
-      </div>
-    );
+    return <Spinner variant="panel" className="h-full" label={t("connectingAgent")} />;
   }
 
   // 已连接 → 渲染 ACPMain
   if (connectionState === "connected") {
     return (
       <TooltipProvider>
-        {classifiedError && <PublicErrorCard error={classifiedError} />}
-        {actionError && <PublicErrorCard error={actionError.error} />}
+        {classifiedError && <PublicErrorCard error={classifiedError} t={tUi} className={INLINE_ERROR_CARD_CLASS} />}
+        {actionError && <PublicErrorCard error={actionError.error} t={tUi} className={INLINE_ERROR_CARD_CLASS} />}
         {sessionState.agentPublicError &&
           sessionState.agentPublicError.id !== classifiedError?.id &&
           sessionState.agentPublicError.id !== actionError?.error.id && (
-            <PublicErrorCard error={sessionState.agentPublicError} />
+            <PublicErrorCard error={sessionState.agentPublicError} t={tUi} className={INLINE_ERROR_CARD_CLASS} />
           )}
         <ACPMain
           agentId={agentId}
@@ -158,35 +184,9 @@ export function ChatPanel({
 
   // 断开仅表示连接生命周期；状态机可自行重连，不生成业务错误或恢复操作。
   return (
-    <div className="agent-welcome-empty">
-      <p className="title">{autoReconnecting ? t("reconnecting") : t("agentDisconnected")}</p>
-      <p className="desc">{autoReconnecting ? t("reconnectingDesc") : t("agentOfflineDesc")}</p>
-    </div>
-  );
-}
-
-function PublicErrorCard({ error, className }: { error: PublicErrorInfo; className?: string }) {
-  // 标题取 `uiComponents` 命名空间：同一张卡片（同样的 class、`role="alert"`、Type/ID 尾注）在
-  // `@fenix/ui-components` 的 `MessageBubble` 里渲染 turn 失败错误，键 `chat.components.messageBubble.turnError`
-  // 的 owner 是该包；宿主旧的 `components.messageBubble.*` 子树在 T6 搬迁后已无宿主消费方（T9c 收敛）。
-  // 命名空间常量经中心表 `NS.UI_COMPONENTS` 取，与 `NS.AGENTS` 等宿主消费包命名空间的先例一致。
-  const { t } = useTranslation(NS.UI_COMPONENTS);
-  return (
-    <div
-      className={
-        className ??
-        "mx-4 mt-3 rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive"
-      }
-      role="alert"
-    >
-      <p className="font-medium">{t("chat.components.messageBubble.turnError")}</p>
-      {/* 正文同样按 `type` 取字典而非 `error.message`：后者是 wire/日志字段且恒为英文，与包内
-          `MessageBubble` 共用 `publicErrorText`，两处卡片的中文界面不再一英一中。 */}
-      <p className="mt-1 whitespace-pre-wrap">{publicErrorText(t, error)}</p>
-      <div className="mt-4 flex flex-wrap gap-x-4 gap-y-1">
-        <span className="break-all">Type: {error.type}</span>
-        <span className="break-all">ID: {error.id}</span>
-      </div>
-    </div>
+    <PanelEmptyState
+      title={autoReconnecting ? t("reconnecting") : t("agentDisconnected")}
+      description={autoReconnecting ? t("reconnectingDesc") : t("agentOfflineDesc")}
+    />
   );
 }

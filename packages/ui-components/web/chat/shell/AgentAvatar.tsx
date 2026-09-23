@@ -1,11 +1,12 @@
 // 品牌 Agent 头像 — 多圆+连线组成网络节点图案
-// lucide-react 无对应图标，提取为独立组件集中管理
+// lucide-react 无对应图标，图案本体集中在 `./internal/agent-logo.tsx`
 
 import { cn } from "../../lib/cn";
+import { AgentLogo } from "./internal/agent-logo";
 
 /**
  * AgentAvatar 属性。
- * 复制自 `packages/agent-runtime/web/components/chat/AgentAvatar.tsx`；纯化改动点：无。
+ * 复制自 `packages/agent-runtime/web/components/chat/AgentAvatar.tsx`（旧路径，已于 2026-09-21 由 f2741a82d 删除）；纯化改动点：无。
  */
 interface AgentAvatarProps {
   className?: string;
@@ -14,8 +15,9 @@ interface AgentAvatarProps {
 /**
  * 品牌 Agent 头像（多圆 + 连线组成的网络节点图案）。
  *
- * 复制自 `packages/agent-runtime/web/components/chat/AgentAvatar.tsx`。
+ * 复制自 `packages/agent-runtime/web/components/chat/AgentAvatar.tsx`（旧路径，已于 2026-09-21 由 f2741a82d 删除）。
  * 纯化改动点：`cn` 由宿主 `@/src/lib/utils` 改为包内 `../../lib/cn`。
+ * 内联 SVG 改为 `./internal/agent-logo`（2026-09-22 库内去重，尺寸 20 不变）。
  */
 export function AgentAvatar({ className }: AgentAvatarProps) {
   return (
@@ -23,16 +25,7 @@ export function AgentAvatar({ className }: AgentAvatarProps) {
       // agent-avatar：作为窄屏容器（如 MetaAgentPanel）隐藏头像的 CSS 作用域钩子
       className={cn("agent-avatar w-8 h-8 rounded-lg bg-brand/8 items-center justify-center flex-shrink-0", className)}
     >
-      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" aria-hidden="true">
-        <circle cx="12" cy="6" r="2.5" fill="var(--color-brand)" />
-        <circle cx="6" cy="16" r="2.5" fill="var(--color-brand)" opacity=".85" />
-        <circle cx="18" cy="16" r="2.5" fill="var(--color-brand)" opacity=".85" />
-        <circle cx="12" cy="12" r="1.5" fill="var(--color-brand)" opacity=".6" />
-        <line x1="12" y1="8.5" x2="12" y2="10.5" stroke="var(--color-brand)" strokeWidth="1.2" opacity=".5" />
-        <line x1="12" y1="13.5" x2="7.2" y2="15.2" stroke="var(--color-brand)" strokeWidth="1.2" opacity=".5" />
-        <line x1="12" y1="13.5" x2="16.8" y2="15.2" stroke="var(--color-brand)" strokeWidth="1.2" opacity=".5" />
-        <line x1="8.2" y1="16" x2="15.8" y2="16" stroke="var(--color-brand)" strokeWidth="1" opacity=".3" />
-      </svg>
+      <AgentLogo size={20} />
     </div>
   );
 }

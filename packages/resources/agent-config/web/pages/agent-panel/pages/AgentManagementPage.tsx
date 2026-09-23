@@ -2,6 +2,7 @@ import { type EnvironmentDetail, envApi } from "@fenix/agent-runtime/web/api/env
 import { AgentBadge } from "@fenix/ui-components/chat/shell/AgentBadge";
 import { AppHeader } from "@fenix/ui-components/layout/app-header";
 import { AppPage } from "@fenix/ui-components/layout/app-page";
+import { Spinner } from "@fenix/ui-components/ui/spinner";
 import { unwrap } from "@fenix/web-runtime/api/request";
 import { useOrgSession } from "@fenix/web-runtime/contexts/org-session";
 import { NS } from "@fenix/web-runtime/i18n/namespace";
@@ -9,13 +10,14 @@ import { useConfigChangeListener } from "@fenix/web-runtime/lib/config-events";
 import type { AgentInfo } from "@fenix/web-runtime/types/config";
 import { useNavigate } from "@tanstack/react-router";
 import { useRequest } from "ahooks";
-import { Bot, Loader2, Plus, Search, Sparkles } from "lucide-react";
+import { Bot, Plus, Search, Sparkles } from "lucide-react";
 import { useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
 import { agentApi } from "../../../api/agents";
 import { getAgentConfigLookupKey, getAgentDisplayName, isExternalAgent } from "../../../lib/agent-resource-access";
 import { AgentFormDialog } from "../agent-editor/AgentFormDialog";
+import "./AgentManagementPage.css";
 
 interface AgentManageNode {
   agent: AgentInfo;
@@ -173,7 +175,7 @@ export function AgentManagementPage() {
               <button
                 type="button"
                 onClick={() => navigate({ to: "/agent/home" })}
-                className="inline-flex h-10 shrink-0 items-center gap-2 rounded-lg border border-border bg-background px-[22px] text-[13px] font-semibold text-text-muted transition hover:border-primary/40 hover:text-primary"
+                className="inline-flex h-10 shrink-0 items-center gap-2 rounded-lg border border-border bg-background px-5.5 text-xs font-semibold text-text-muted transition hover:border-primary/40 hover:text-primary"
               >
                 <Sparkles className="h-4 w-4" />
                 {t("management.createByChat")}
@@ -181,7 +183,7 @@ export function AgentManagementPage() {
               <button
                 type="button"
                 onClick={() => setCreateOpen(true)}
-                className="inline-flex h-10 shrink-0 items-center gap-2 rounded-lg bg-primary px-[22px] text-[13px] font-semibold text-primary-foreground shadow-sm transition hover:bg-primary/90"
+                className="inline-flex h-10 shrink-0 items-center gap-2 rounded-lg bg-primary px-5.5 text-xs font-semibold text-primary-foreground shadow-sm transition hover:bg-primary/90"
               >
                 <Plus className="h-4 w-4" />
                 {t("management.createAgent")}
@@ -199,7 +201,7 @@ export function AgentManagementPage() {
               onChange={(e) => setQuery(e.target.value)}
               aria-label={t("management.search")}
               placeholder={t("management.searchPlaceholder")}
-              className="h-10 w-full rounded-lg border border-border bg-background pl-10 pr-4 text-[13px] text-foreground outline-none transition placeholder:text-text-muted focus:border-primary focus:ring-4 focus:ring-primary/10"
+              className="h-10 w-full rounded-lg border border-border bg-background pl-10 pr-4 text-xs text-foreground outline-none transition placeholder:text-text-muted focus:border-primary focus:ring-4 focus:ring-primary/10"
             />
           </div>
           {FILTER_IDS.map((filterId) => (
@@ -209,7 +211,7 @@ export function AgentManagementPage() {
               aria-pressed={activeFilter === filterId}
               onClick={() => setActiveFilter(filterId)}
               className={[
-                "rounded-full px-3.5 py-1.5 text-[12px] font-medium transition",
+                "rounded-full px-3.5 py-1.5 text-xs font-medium transition",
                 activeFilter === filterId
                   ? "bg-primary text-primary-foreground shadow-sm"
                   : "border border-border bg-background text-text-muted hover:border-primary/40 hover:text-primary",
@@ -221,18 +223,15 @@ export function AgentManagementPage() {
         </div>
 
         {loading ? (
-          <div className="flex h-72 items-center justify-center text-text-muted" role="status" aria-busy="true">
-            <Loader2 className="mr-2 h-5 w-5 animate-spin" />
-            {t("management.loading")}
-          </div>
+          <Spinner size="sm" label={t("management.loading")} className="flex h-72" aria-busy="true" />
         ) : filteredNodes.length === 0 ? (
           <div className="flex h-72 flex-col items-center justify-center rounded-xl border border-dashed border-border bg-background/65 text-text-muted">
             <Bot className="mb-3 h-10 w-10 opacity-50" />
-            <div className="text-[15px] font-semibold text-foreground">{t("management.emptyTitle")}</div>
-            <div className="mt-1 text-[13px]">{t("management.emptyDescription")}</div>
+            <div className="text-sm font-semibold text-foreground">{t("management.emptyTitle")}</div>
+            <div className="mt-1 text-xs">{t("management.emptyDescription")}</div>
           </div>
         ) : (
-          <div className="grid grid-cols-[repeat(auto-fill,224px)] gap-5 justify-center">
+          <div className="agent-management-grid grid gap-5 justify-center">
             {filteredNodes.map((node) => {
               const { agent } = node;
               const isBusy = enteringId === agent.id;

@@ -42,16 +42,19 @@ const BROWSER_SAFE_EXTERNAL: ReadonlyMap<string, string> = new Map([
   ["react-i18next", "React i18n 绑定（本包 peerDependency）"],
   ["i18next", "i18n 运行时（本包 peerDependency；当前图不直接引用，react-i18next 会用到）"],
   // 经 @fenix/ui-components 子路径传递进入：无 node 依赖的浏览器库
+  //
+  // 2026-09-22 台账收敛：删除 `@radix-ui/react-popover`（原注「ui/popover 传递依赖」）与
+  // `cmdk`（原注「命令面板组件（ui/command 传递依赖）」）两条——重构后本包值导入图里已不再含
+  // 这两个组件，登记项失去对象。白名单只收「确会停在图外的库」，条目留着会让守卫对
+  // 「以后又引入 ui/popover、ui/command」失去告警能力（未收录即变红）。
   ["@radix-ui/react-slot", "无样式原语（ui/button 传递依赖），只依赖 react/DOM"],
   ["@radix-ui/react-dialog", "无样式原语（ui/dialog、config/ConfirmDialog 传递依赖）"],
   ["@radix-ui/react-alert-dialog", "无样式原语（ui/alert-dialog 传递依赖）"],
-  ["@radix-ui/react-popover", "无样式原语（ui/popover 传递依赖）"],
   ["@radix-ui/react-select", "无样式原语（ui/select 传递依赖）"],
   ["@radix-ui/react-label", "无样式原语（ui/label 传递依赖）"],
   ["class-variance-authority", "类名变体工具（ui/* 传递依赖），纯函数"],
   ["clsx", "类名拼接工具（lib/cn 传递依赖），纯函数"],
   ["tailwind-merge", "Tailwind 类名去重（lib/cn 传递依赖），纯函数"],
-  ["cmdk", "命令面板组件（ui/command 传递依赖），浏览器安全"],
   ["react-hook-form", "表单状态库（config/FormDialog 传递依赖），只依赖 react/DOM"],
   ["@hookform/resolvers", "react-hook-form 的 zod 解析器（config/FormDialog 传递依赖），纯函数"],
   ["lucide-react", "SVG 图标库（本包 dependencies 与 ui-components 均直接使用）"],

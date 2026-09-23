@@ -70,12 +70,16 @@ export function DataL1Section() {
   const { t } = useTranslation(DEMO_NS);
 
   return (
-    <section className="demo-section">
-      <h1 className="demo-section-title">{t("sections.dataL1")}</h1>
-      <p className="demo-hint">{t("sectionHints.dataL1")}</p>
+    <section>
+      <h1 data-slot="demo-section-title" className="mb-6 text-[24px] font-semibold">
+        {t("sections.dataL1")}
+      </h1>
+      <p className="mt-3 text-text-muted text-[12px]">{t("sectionHints.dataL1")}</p>
 
-      <div className="demo-example">
-        <h2 className="demo-example-title">DataTable</h2>
+      <div className="mb-5 p-5 border border-border rounded-lg bg-surface-1">
+        <h2 data-slot="demo-example-title" className="mb-4 text-text-secondary text-[13px] font-medium">
+          DataTable
+        </h2>
         <DataTable
           columns={TABLE_COLUMNS}
           data={ROWS}
@@ -88,7 +92,7 @@ export function DataL1Section() {
           pageSize={5}
           emptyMessage="No component matches the filter"
         />
-        <p className="demo-hint">
+        <p className="mt-3 text-text-muted text-[12px]">
           排序、过滤、展开与分页都由 @tanstack/react-table 驱动；表头、分页条与空态文案走包内 uiComponents 命名空间。
         </p>
       </div>

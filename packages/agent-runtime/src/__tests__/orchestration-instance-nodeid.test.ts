@@ -78,7 +78,7 @@ describe("spawnInstanceViaCore nodeId snapshot", () => {
     globalInstanceRegistry.clear();
     resetOrchestrationInstanceDeps();
     // 并发上限归模块配置（缺省基线即「三个上限都不生效」）；`defaultEngineType` 1.5b 起同归模块配置，
-    // 缺省基线即 `undefined`（调用方回退 `"opencode"`），需要时用例内用 `stubAgentRuntimeConfig` 覆盖。
+    // 缺省基线即 `undefined`（调用方回退 `"peri"`），需要时用例内用 `stubAgentRuntimeConfig` 覆盖。
     initializeAgentRuntimeModuleConfig();
     launchCalls.length = 0;
     stubCoreRuntimeFacade(fakeFacade);
@@ -129,5 +129,13 @@ describe("spawnInstanceViaCore nodeId snapshot", () => {
 
     expect(launchCalls).toHaveLength(1);
     expect(launchCalls[0]).toMatchObject({ instanceId: "inst-1", nodeId: "local-default", engineType: "ccb" });
+  });
+
+  // 本地缺省引擎是 peri：未配置 defaultEngineType 时回退 peri，而不是旧默认 opencode
+  test("local-default branch falls back to peri", async () => {
+    await spawnInstanceViaCore(MINIMAL_TARGET, "inst-1", "local-default");
+
+    expect(launchCalls).toHaveLength(1);
+    expect(launchCalls[0]).toMatchObject({ instanceId: "inst-1", nodeId: "local-default", engineType: "peri" });
   });
 });

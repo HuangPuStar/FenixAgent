@@ -61,6 +61,10 @@ const SCANNER_FIXTURE_COMMENTED = "@server/db/in-block-comment";
  * 不在本清单里，不要当成残留删除。它旁边的 `apps/web/src/__tests__/system-sandbox.test.ts` 则是**反向**约束：
  * 该测试已随 RMD-08 迁入本包（`web/__tests__/system-sandbox.test.ts`），宿主路径不得复活——
  * `scripts/__tests__/rmd-08-migration.test.ts` 正向断言宿主两份旧路径都不存在、包内唯一落点存在。
+ *
+ * `MasterKeyGate` 的对应关系已从本清单移除：它随后按「归属由消费者集合决定」下沉到共享组件库，
+ * 成为 `packages/ui-components/web/config/AdminKeyGate.tsx`（四个消费方跨 sandbox / observer /
+ * model-management 三包），本包既不再落位该文件、也不再对外出口它——留着这条会要求包内保留一份死的副本。
  */
 const MIGRATION_PAIRS: ReadonlyArray<readonly [hostPath: string, packagePath: string]> = [
   ["apps/server/src/routes/api/sandbox.ts", "src/server/routes/api/sandbox.ts"],
@@ -88,7 +92,6 @@ const MIGRATION_PAIRS: ReadonlyArray<readonly [hostPath: string, packagePath: st
   ["apps/web/src/api/system-sandbox.ts", "web/src/api/system-sandbox.ts"],
   ["apps/web/src/pages/admin/AdminSandboxPage.tsx", "web/src/pages/admin/AdminSandboxPage.tsx"],
   ["apps/web/src/pages/admin/utils.ts", "web/src/pages/admin/utils.ts"],
-  ["apps/web/src/pages/admin/components/MasterKeyGate.tsx", "web/src/pages/admin/components/MasterKeyGate.tsx"],
   [
     "apps/web/src/pages/admin/components/RemoteSandboxPanel.tsx",
     "web/src/pages/admin/components/RemoteSandboxPanel.tsx",

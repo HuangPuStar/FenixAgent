@@ -14,6 +14,7 @@ import { Globe, Plus, Upload } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
+import { useDragCounter } from "@/src/hooks/use-drag-counter";
 import { NS } from "@/src/i18n";
 import { ArtifactsDialogs } from "../components/agent-panel/artifacts-dialogs";
 import { ArtifactsFilesWorkspace } from "../components/agent-panel/artifacts-files-workspace";
@@ -23,6 +24,9 @@ import { type TopMode, TopModeTabs } from "../components/agent-panel/TopModeTabs
 
 /** 打开文件 tab 的 LRU 上限：超出时丢弃最旧（数组末尾）的，与 FileTabsBar 的 MAX_VISIBLE_TABS 解耦 */
 const MAX_OPEN_FILES = 8;
+
+/** Sites 模式下的状态条刻度（「加载中」与「加载失败」两条同名同级，改刻度时两处一起动） */
+const SITES_STATUS_STRIP_CLASS = "px-3 py-1 text-3xs text-text-dim border-b border-border/30";
 
 interface ArtifactsPanelProps {
   envId: string | null;
@@ -108,6 +112,9 @@ export function ArtifactsPanel({
       manual: true,
       onError: (err: unknown) => {
         console.error("[ArtifactsPanel] 加载 agent 绑定 sites 失败", err);
+        // 加载失败在 0 站点时不会命中下面的行内错误条（那条要求 sites.length > 0），
+        // 此时界面会落进「未绑定站点」空态，把失败伪装成空数据；toast 是这里唯一的失败信号。
+        toast.error(t("panelMode.sitesLoadFailed"));
       },
     },
   );
@@ -154,6 +161,9 @@ export function ArtifactsPanel({
       },
       onError: (err: unknown) => {
         console.error("[ArtifactsPanel] 自动挂载站点失败", err);
+        // 失败由用户点击 <agent-sites> 卡片触发，已切到 Sites 模式但选不中站点，
+        // 不提示会让用户以为点击没生效。
+        toast.error(t("panelMode.mountFailed"));
       },
     },
   );
@@ -257,8 +267,8 @@ export function ArtifactsPanel({
   const [openFiles, setOpenFiles] = useState<string[]>([]);
   const [activeFile, setActiveFile] = useState<string | null>(null);
 
-  const [isDragging, setIsDragging] = useState(false);
-  const dragCounterRef = useRef(0);
+  // 拖拽上传：进入/离开计数与遮罩态由 useDragCounter 统一维护（与文件树同一份实现）
+  const { isDragging, handleDragEnter, handleDragOver, handleDragLeave, resetDragCounter } = useDragCounter();
   const fileTreeRef = useRef<FileTreeTabHandle>(null);
   const pendingUploadRef = useRef<File[]>([]);
 
@@ -319,33 +329,10 @@ export function ArtifactsPanel({
     [envId],
   );
 
-  const handleDragEnter = useCallback((e: React.DragEvent) => {
-    e.preventDefault();
-    dragCounterRef.current++;
-    setIsDragging(true);
-  }, []);
-
-  const handleDragOver = useCallback((e: React.DragEvent) => {
-    e.preventDefault();
-    if (e.dataTransfer) {
-      e.dataTransfer.dropEffect = "copy";
-    }
-  }, []);
-
-  const handleDragLeave = useCallback((e: React.DragEvent) => {
-    e.preventDefault();
-    dragCounterRef.current--;
-    if (dragCounterRef.current <= 0) {
-      dragCounterRef.current = 0;
-      setIsDragging(false);
-    }
-  }, []);
-
   const handleDrop = useCallback(
     (e: React.DragEvent) => {
       e.preventDefault();
-      dragCounterRef.current = 0;
-      setIsDragging(false);
+      resetDragCounter();
 
       const files = Array.from(e.dataTransfer?.files ?? []);
       if (files.length === 0) return;
@@ -362,7 +349,7 @@ export function ArtifactsPanel({
         setTopMode("files");
       }
     },
-    [topMode],
+    [resetDragCounter, topMode],
   );
 
   useEffect(() => {
@@ -404,12 +391,10 @@ export function ArtifactsPanel({
 
       {/* 加载中/错误提示仅在 Sites 模式下展示，避免在 Files/Tasks/Views 模式下干扰 */}
       {topMode === "sites" && sitesLoading && sites.length === 0 && (
-        <div className="px-3 py-1 text-[11px] text-text-dim border-b border-border/30">
-          {t("siteFrame.loadingSites")}
-        </div>
+        <div className={SITES_STATUS_STRIP_CLASS}>{t("siteFrame.loadingSites")}</div>
       )}
       {topMode === "sites" && sites.length > 0 && sitesLoadError && (
-        <div className="px-3 py-1 text-[11px] text-text-dim border-b border-border/30">
+        <div className={SITES_STATUS_STRIP_CLASS}>
           {t("siteFrame.loadFailed", { message: sitesLoadError.message || String(sitesLoadError) })}
         </div>
       )}

@@ -1,0 +1,346 @@
+/**
+ * auth-light-form.css -- 登录页「表单列」样式层
+ *
+ * 由 LoginPage.tsx 内联 <style> 拆出（前端规范 §4.7 单文件 500 行）：本文件只负责右侧表单列
+ * （.auth-light-panel / .auth-light-box 及其内的表单控件与页脚），页面外壳与品牌列样式在
+ * auth-light-brand.css。两层选择器互不重叠，各自文件内自带本层的响应式覆盖，因此不依赖彼此的
+ * 加载顺序；页面仍按 品牌 → 表单 的顺序导入，以保持与原单块样式表一致的层叠顺序。
+ * 修改本文件前请确认 className 与 LoginPage.tsx、login-widgets.tsx 保持同步。
+ */
+
+.auth-light-panel {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  flex: 0.95;
+  flex-direction: column;
+  justify-content: center;
+  padding: 60px 80px;
+}
+
+.auth-light-box {
+  width: 100%;
+  max-width: 420px;
+  animation: authPanelSlide 0.7s 0.2s ease-out both;
+}
+
+.auth-light-mobile-brand {
+  display: none;
+  margin-bottom: 32px;
+  text-align: center;
+}
+
+.auth-light-mobile-title {
+  color: #122e8d;
+  font-size: 20px;
+  font-weight: 700;
+  letter-spacing: 0.15em;
+}
+
+.auth-light-title {
+  margin: 0 0 4px;
+  color: #122e8d;
+  font-size: 28px;
+  font-weight: 600;
+  line-height: 1.2;
+  letter-spacing: 0.04em;
+}
+
+.auth-light-sub {
+  margin: 0 0 36px;
+  color: rgba(26, 26, 46, 0.4);
+  font-size: 13px;
+  letter-spacing: 0.02em;
+}
+
+.auth-light-form {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.auth-light-field {
+  position: relative;
+}
+
+.auth-light-field label {
+  display: block;
+  margin-bottom: 6px;
+  color: rgba(26, 26, 46, 0.5);
+  font-size: 12px;
+  font-weight: 500;
+  letter-spacing: 0.03em;
+}
+
+.auth-light-input-wrap {
+  position: relative;
+}
+
+.auth-light-input {
+  width: 100%;
+  padding: 13px 16px;
+  border: 1px solid #dce0e8;
+  border-radius: 10px;
+  outline: none;
+  background: #fff;
+  color: #1a1a2e;
+  font-size: 15px;
+  transition: all 0.25s;
+}
+
+.auth-light-input.auth-light-has-toggle {
+  padding-right: 42px;
+}
+
+.auth-light-input:focus {
+  border-color: #1355d8;
+  box-shadow: 0 0 0 3px rgba(19, 85, 216, 0.1);
+}
+
+.auth-light-input::placeholder {
+  color: rgba(26, 26, 46, 0.2);
+}
+
+.auth-light-input:-webkit-autofill {
+  /* biome-ignore lint/complexity/noImportantStyles: Chrome autofill 的 UA 内联样式只有 !important 能覆盖，去掉会退回蓝底自动填充 */
+  -webkit-box-shadow: 0 0 0 30px #fff inset !important;
+  /* biome-ignore lint/complexity/noImportantStyles: 同上，与 -webkit-box-shadow 成对覆盖 autofill 背景与文字色 */
+  -webkit-text-fill-color: #1a1a2e !important;
+}
+
+.auth-light-toggle {
+  position: absolute;
+  top: 50%;
+  right: 12px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: rgba(26, 26, 46, 0.25);
+  cursor: pointer;
+  transform: translateY(-50%);
+  transition: color 0.2s;
+}
+
+.auth-light-toggle:hover {
+  color: rgba(26, 26, 46, 0.5);
+}
+
+.auth-light-toggle svg {
+  width: 18px;
+  height: 18px;
+}
+
+.auth-light-options {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-top: -2px;
+  margin-bottom: 8px;
+  color: rgba(26, 26, 46, 0.45);
+  font-size: 13px;
+}
+
+.auth-light-checkbox {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+  transition: color 0.2s;
+}
+
+.auth-light-checkbox:hover {
+  color: rgba(26, 26, 46, 0.65);
+}
+
+.auth-light-checkbox input {
+  width: 16px;
+  height: 16px;
+  accent-color: #1355d8;
+  cursor: pointer;
+}
+
+.auth-light-link {
+  position: relative;
+  border: 0;
+  background: transparent;
+  color: #1355d8;
+  font-size: 13px;
+  text-decoration: none;
+  opacity: 0.7;
+  cursor: pointer;
+  transition: opacity 0.2s;
+}
+
+.auth-light-link::after {
+  content: "";
+  position: absolute;
+  bottom: -1px;
+  left: 0;
+  width: 0;
+  height: 1px;
+  background: #1355d8;
+  transition: width 0.25s;
+}
+
+.auth-light-link:hover {
+  opacity: 1;
+}
+
+.auth-light-link:hover::after {
+  width: 100%;
+}
+
+.auth-light-error {
+  margin: -4px 0 0;
+  padding: 10px 12px;
+  border: 1px solid rgba(239, 68, 68, 0.2);
+  border-radius: 10px;
+  background: rgba(239, 68, 68, 0.06);
+  color: rgba(200, 38, 38, 0.86);
+  font-size: 13px;
+}
+
+.auth-light-submit {
+  position: relative;
+  width: 100%;
+  min-height: 50px;
+  overflow: hidden;
+  padding: 15px;
+  border: 0;
+  border-radius: 10px;
+  background: linear-gradient(135deg, #122e8d, #1355d8);
+  color: #fff;
+  cursor: pointer;
+  font-size: 15px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  transition: all 0.35s;
+}
+
+.auth-light-submit::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.15), transparent);
+  transform: translateX(-100%);
+  transition: transform 0.6s;
+}
+
+.auth-light-submit:hover {
+  box-shadow: 0 8px 32px rgba(18, 46, 141, 0.3);
+  filter: brightness(1.08);
+  transform: translateY(-2px);
+}
+
+.auth-light-submit:hover::before {
+  transform: translateX(100%);
+}
+
+.auth-light-submit:active {
+  transform: translateY(0);
+}
+
+.auth-light-submit:disabled {
+  cursor: not-allowed;
+  opacity: 0.78;
+}
+
+.auth-light-spinner {
+  display: inline-block;
+  width: 20px;
+  height: 20px;
+  border: 2px solid rgba(255, 255, 255, 0.25);
+  border-top-color: #fff;
+  border-radius: 50%;
+  animation: authSpin 0.6s linear infinite;
+}
+
+.auth-light-switch {
+  margin-top: 24px;
+  color: rgba(26, 26, 46, 0.35);
+  font-size: 13px;
+  text-align: center;
+}
+
+.auth-light-footer {
+  position: absolute;
+  right: 0;
+  bottom: 28px;
+  left: 0;
+  z-index: 1;
+  margin: 0;
+  color: rgba(26, 26, 46, 0.15);
+  font-size: 12px;
+  letter-spacing: 0.03em;
+  text-align: center;
+}
+
+@keyframes authPanelSlide {
+  0% {
+    opacity: 0;
+    transform: translateX(20px);
+  }
+  100% {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+@keyframes authSpin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .auth-light-box {
+    animation: none;
+  }
+}
+
+@media (max-width: 1024px) {
+  .auth-light-panel {
+    padding: 40px 48px;
+  }
+}
+
+@media (max-width: 820px) {
+  .auth-light-panel {
+    flex: 1;
+    align-items: center;
+    padding: 48px 32px;
+  }
+
+  .auth-light-box {
+    max-width: 420px;
+  }
+
+  .auth-light-mobile-brand {
+    display: block;
+  }
+}
+
+@media (max-width: 480px) {
+  .auth-light-panel {
+    padding: 32px 20px 64px;
+  }
+
+  .auth-light-title {
+    font-size: 24px;
+  }
+
+  .auth-light-options {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 12px;
+  }
+
+  .auth-light-footer {
+    bottom: 18px;
+  }
+}

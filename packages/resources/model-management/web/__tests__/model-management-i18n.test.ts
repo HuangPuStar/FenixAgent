@@ -115,23 +115,35 @@ describe("本包 i18n 字典（models 命名空间）", () => {
   });
 
   // 迁移体量钉死：这三组是本次从别处收回的键，数量即「迁出方删除后迁入方不丢键」的证据。
-  test("迁入键组数量与迁移来源一致（modelGateway 171 / modelConfig 8 / admin 2）", () => {
+  test("迁入键组数量与迁移来源一致（modelGateway 171 / modelConfig 8 / admin 6）", () => {
     const count = (set: Set<string>, prefix: string) => [...set].filter((key) => key.startsWith(`${prefix}.`)).length;
     expect(count(enKeys, "modelGateway")).toBe(171);
     expect(count(enKeys, "modelConfig")).toBe(8);
-    expect(count(enKeys, "admin")).toBe(2);
+    expect(count(enKeys, "admin")).toBe(6);
     expect(count(zhKeys, "modelGateway")).toBe(171);
     expect(count(zhKeys, "modelConfig")).toBe(8);
-    expect(count(zhKeys, "admin")).toBe(2);
+    expect(count(zhKeys, "admin")).toBe(6);
     // 宿主 `models` 命名空间的 41 组 200 键原样迁入；加上三组迁入键共 381 个叶子；
     // 本次（任务 1.3 缺口修复）再新增 5 个状态/可访问名键（`gateway.forbidden` +
     // `verticalModels.{searchLabel,emptyTitle,emptyDescription,clearSearch}`）共 386；
     // §1.6 T11b2 侧栏导航随项下沉再新增 `nav.{models,algorithms,verticalModels}` 3 键共 389
     // （文案逐字取自宿主 `agentPanel` 的同名键，见 `web/contribution.ts`）；§1.6 T12 结清
     // `AlgorithmsPage` / `VerticalModelsPage` 的两条跨包借键——页标题改指本包 `nav.*`，副标题落在
-    // 本包 `algorithms.subtitle` / `verticalModels.subtitle`（文案逐字取自宿主同名键）共 391。
-    expect(enKeys.size).toBe(391);
-    expect(zhKeys.size).toBe(391);
+    // 本包 `algorithms.subtitle` / `verticalModels.subtitle`（文案逐字取自宿主同名键）共 391；
+    // i18n 违规项修复把 `VerticalModelsPage` / `AlgorithmDetailDialog` 的硬编码中文界面文案收进 `t()`：
+    // `verticalModels.{searchPlaceholder,deployedBadge,introHeading,capabilitiesHeading,scenesHeading}` 5 键
+    // + `algorithms.{introHeading,paramsHeading,scenesHeading,copyCode,copied}` 5 键 +
+    // `algorithms.columns.{param,defaultValue,description}` 3 键共 404（页内演示数据仍是中文常量）；
+    // 探测失败诊断再把密钥引用解析失败的处置文案补进 `testDialog.errors.credentialUnresolved` 1 键共 405
+    // ——该键由 `agent-models-errors.ts` 消费，不是新孤儿键；同组的其余键本轮一并启用，
+    // 含此前零引用的 `modelMessageEmpty`（"2xx 但无文本"那条线落定后，由
+    // `MODEL_TEST_MESSAGE_RESPONSE_INVALID` 分支消费）。两条 P1 修复不新增、不迁移键，总数保持 405。
+    // 2026-09-22 前端去重（算法页复制按钮补失败反馈）新增 `algorithms.copyFailed` 1 键共 406。
+    // 2026-09-22 前端去重（Master Key 门下沉共享组件库）把门的四段文案收进本包：`admin.{gateTitle,
+    // gateDescription,gateInputPlaceholder,gateSubmit}` 4 键共 410——库内组件不绑定 i18n 命名空间，
+    // 文案由消费方传入，措辞逐字沿用 sandbox 包同名键（同一条门在 sandbox / observer 的既有措辞）。
+    expect(enKeys.size).toBe(410);
+    expect(zhKeys.size).toBe(410);
   });
 
   // 字典内不得再嵌一层命名空间前缀：宿主按 MODELS_NS 注册本文件，多一层前缀会让所有键变成 key 回显。

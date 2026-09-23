@@ -82,20 +82,24 @@ describe("memory web 入口浏览器可达面", () => {
       "i18n/namespace.ts",
       "api/hindsight.ts",
       "pages/hindsight/MemoriesPage.tsx",
+      "pages/hindsight/memory-type-title.ts",
+      "pages/hindsight/recency.ts",
       "pages/hindsight/types.ts",
       "pages/hindsight/components/DataView.tsx",
       "pages/hindsight/components/EntitiesView.tsx",
       "pages/hindsight/components/MentalModelsView.tsx",
       "pages/hindsight/components/Constellation.tsx",
       "pages/hindsight/components/Graph2d.tsx",
+      "pages/hindsight/components/MemoryDetailBody.tsx",
       "pages/hindsight/components/MemoryDetailModal.tsx",
       "pages/hindsight/components/MemoryDetailPanel.tsx",
+      "pages/hindsight/components/MemoryPagination.tsx",
       "pages/hindsight/components/MemoryViewSwitcher.tsx",
       "pages/hindsight/components/MemoryVisualizationShell.tsx",
     ]) {
       expect(reachedWebFiles).toContain(expected);
     }
-    expect(reachedWebFiles.size).toBeGreaterThanOrEqual(15);
+    expect(reachedWebFiles.size).toBeGreaterThanOrEqual(19);
 
     // 跨包递归的有效性：只钉两条稳定路径——ui-components 的按钮与 web-runtime 的 request 边界。
     // 少了这一段，「@fenix/* 被当成外部依赖放过」会以「包内断言全绿」的形式漏网。

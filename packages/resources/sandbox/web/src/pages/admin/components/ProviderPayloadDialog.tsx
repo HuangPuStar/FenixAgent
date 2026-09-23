@@ -7,6 +7,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@fenix/ui-comp
 import { useTranslation } from "react-i18next";
 
 import { SANDBOX_NS } from "../../../../i18n/namespace";
+import { JsonPreview } from "./JsonPreview";
 
 interface ProviderPayloadDialogProps {
   target: { id: string; payload: unknown } | null;
@@ -21,10 +22,7 @@ export function ProviderPayloadDialog({ target, onOpenChange }: ProviderPayloadD
         <DialogHeader>
           <DialogTitle>{t("providerPayloadTitle")}</DialogTitle>
         </DialogHeader>
-        {/* <pre> 是 generic role，不支持 aria-label；内容由 DialogTitle 命名，无需重复标注。 */}
-        <pre className="max-h-[65vh] max-w-full overflow-auto whitespace-pre-wrap break-all rounded bg-muted p-4 text-xs">
-          {JSON.stringify(target?.payload, null, 2)}
-        </pre>
+        <JsonPreview value={target?.payload} className="max-h-[65vh] p-4" />
       </DialogContent>
     </Dialog>
   );

@@ -3,6 +3,7 @@ import { createEnginePlugin as createCcbPlugin } from "@fenix/ccb";
 import { createClaudeCodePlugin } from "@fenix/claude-code";
 import { type CoreRuntimeFacade, createCoreRuntime } from "@fenix/core";
 import { createEnginePlugin as createOpencodePlugin } from "@fenix/opencode";
+import { createEnginePlugin as createPeriPlugin } from "@fenix/peri";
 import {
   createRemoteRuntime,
   createWsRemoteTransport,
@@ -20,14 +21,14 @@ const remoteTransports = new Map<string, RemoteTransport>();
 
 function defaultCreateFacade(): CoreRuntimeFacade {
   return createCoreRuntime({
-    plugins: [createOpencodePlugin(), createClaudeCodePlugin(), createCcbPlugin()],
+    plugins: [createOpencodePlugin(), createClaudeCodePlugin(), createCcbPlugin(), createPeriPlugin()],
     nodes: config.disableLocalExecution
       ? []
       : [
           {
             id: "local-default",
             mode: "local",
-            engineTypes: ["opencode", "claude-code", "ccb"],
+            engineTypes: ["opencode", "claude-code", "ccb", "peri"],
             status: "online",
           },
         ],
@@ -51,7 +52,7 @@ let _facadeFactory: (() => CoreRuntimeFacade) | null = null;
 
 /**
  * 获取全局 CoreRuntimeFacade 单例。
- * 首次调用时初始化：注册 opencode plugin + local node + onInstanceStarted 回调。
+ * 首次调用时初始化：注册各引擎 plugin + local node + onInstanceStarted 回调。
  *
  * 更换引擎时只需修改此文件：替换 plugin 和 onInstanceStarted 回调，
  * instance.ts 和 relay handler 层无需改动。
@@ -84,7 +85,8 @@ export async function initCoreRuntime(): Promise<CoreRuntimeFacade> {
   if (config.defaultMachineId) {
     await ensureDefaultMachine({
       machineId: config.defaultMachineId,
-      agentName: config.defaultEngineType ?? "opencode",
+      // 兜底引擎类型与本地执行默认引擎保持一致（见 orchestration-instance 的本地 launch 分支）
+      agentName: config.defaultEngineType ?? "peri",
     });
   }
   return getCoreRuntime();
@@ -123,7 +125,8 @@ export function registerRemoteNode(
   runtime.registerNode({
     id: machineId,
     mode: "remote",
-    engineTypes: engineTypes ?? ["opencode"],
+    // 未声明引擎清单的节点按平台默认引擎（peri）对待
+    engineTypes: engineTypes ?? ["peri"],
     status: "online",
     metadata: { machineId },
   });

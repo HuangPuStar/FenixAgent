@@ -1,0 +1,49 @@
+/*
+ * ChatComposer 的深层样式（与同目录 `ChatComposer.tsx` 同名，由该文件 import）。
+ *
+ * 来源：源 `chat-design-composer.css`（该文件已在阶段二随迁移删除）的玻璃命令岛卡片两段
+ * ——设计层 `.chat-composer-wrapper .chat-composer-card`（含 `:focus-within`）与包内补充段
+ * （源为宿主 `agent-panel.css` 的 `.chat-composer-card` / `.dark .chat-composer-card`）。
+ * 阶段一曾把这些声明逐条改写成 Tailwind 工具类；其中需要祖先/暗色选择器与复合值（半透明底色、
+ * 两级投影）的那部分无法用扁平工具类表达（仓库禁令 FCP-WEB-02），本轮按口径下沉到本文件。
+ * 值取类串的**生效值**，逐字等价换算，未调整任何数值；扁平工具类（`rounded-2xl`、`border-slate-200`、
+ * `backdrop-blur-md`、`focus-within:outline-0` 与任意属性的 `[transition:…]`）仍留在 `className`。
+ *
+ * 为什么类名不复用源 `.chat-composer-card`：宿主 `apps/web/src/index.css` 至今保留
+ * `.meta-agent-panel .chat-composer-wrapper` 一族的旧规则，复用会让那批已下线声明重新生效；
+ * `web/__tests__/chat-style-migration-helpers.ts` 也把源类名列入「不得回流」清单。故用新语义名。
+ *
+ * 层叠（与迁移前逐条一致）：
+ * - 本文件不包 `@layer`：源样式表本就未分层，未分层声明在层叠中压过 `@layer utilities` 的工具类。
+ *   因此 `.chat-composer-island` 的底色与投影稳定压过 `isDragOver` 追加的 `bg-brand/5` 与
+ *   `shadow-[inset_0_0_0_2px_var(--color-brand)]`（那两条在源实现里被特指度压制、本就不可见）——
+ *   迁移前这一条由类串里的 `!`（`bg-[…]!` / `shadow-[…]!`）实现，未分层规则是同一结果，`!` 随之删除。
+ * - 暗色覆写保留 `:not(:focus-within)` 互斥：它是阶段一按源级联改写的（源里宿主补充段的
+ *   `.chat-composer-card:focus-within` 排在暗色规则之后，聚焦态只覆盖描边与阴影、不动背景）。
+ */
+
+/* 玻璃卡片（源 `.chat-composer-wrapper .chat-composer-card` 的生效值）：92% 白底 + 两级投影。 */
+.chat-composer-island {
+  background-color: rgb(255 255 255 / 92%);
+  box-shadow: 0 14px 42px rgb(30 64 120 / 10%);
+}
+
+/*
+ * 暗色（源补充段 `.dark .chat-composer-card`，类切换而非媒体查询）：8% 白描边 + rgba(45,45,47,0.72) 底
+ * + 深色投影。描边色过 `color-mix` 保持对主题 token 的引用（Tailwind 对 `border-white/8` 同样生成
+ * `color-mix`），等价于源文件里的 `rgba(255,255,255,0.08)`。
+ */
+.dark .chat-composer-island:not(:focus-within) {
+  border-color: color-mix(in oklab, var(--color-white) 8%, transparent);
+  background-color: rgb(45 45 47 / 72%);
+  box-shadow: 0 4px 20px rgb(0 0 0 / 30%);
+}
+
+/*
+ * 能力标签行里的两个按钮（源 `.chat-composer-capabilities button` 的 `svg { width/height: 9px }`）：
+ * 技能与 MCP 标签共用同一条图标尺寸声明，故共用本类名（`9px` = 2.25 × `--spacing`）。
+ */
+.chat-composer-capability-chip > svg {
+  width: calc(var(--spacing) * 2.25);
+  height: calc(var(--spacing) * 2.25);
+}

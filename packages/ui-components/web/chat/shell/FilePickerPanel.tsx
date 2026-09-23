@@ -1,7 +1,7 @@
 /**
  * FilePickerPanel — 会话附件选择面板（目录浏览 + 上传）。
  *
- * 来源：逐字复制 `packages/agent-runtime/web/components/chat/FilePickerPanel.tsx`（JSX 与类名不变）。
+ * 来源：逐字复制 `packages/agent-runtime/web/components/chat/FilePickerPanel.tsx`（旧路径，已于 2026-09-21 由 f2741a82d 删除）（JSX 与类名不变）。
  * 纯化改动点：
  * - `ahooks` 的 `useRequest` 移除，改为内部 `useState` + `useRef` 管理请求生命周期
  *   （保留源语义：手动触发、loading/error 状态、上传成功回到文件所在目录）。
@@ -11,7 +11,7 @@
  * - i18n 收敛到 `UI_COMPONENTS_NS`（键前缀 `chat.components.`）。
  */
 
-import { ArrowLeft, ChevronRight, Folder, Loader2, Upload } from "lucide-react";
+import { ArrowLeft, ChevronRight, Folder, Upload } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { FileTypeIcon } from "../../components/file-icon-helper";
@@ -19,6 +19,7 @@ import { UI_COMPONENTS_NS } from "../../i18n/namespace";
 import { cn } from "../../lib/cn";
 import { Button } from "../../ui/button";
 import { Input } from "../../ui/input";
+import { Spinner } from "../../ui/spinner";
 
 /**
  * 文件条目。逐字复制宿主 `apps/web/src/types/index.ts` 的 `FileInfo`
@@ -57,7 +58,7 @@ export interface FilePickerPanelProps {
 }
 
 /**
- * 结构判定宿主 `ApiError`（`apps/web/src/api/request.ts` 的实例携带 `code`）。
+ * 结构判定宿主 `ApiError`（`apps/web/src/api/request.ts`（旧路径，已于 2026-09-21 由 6679b4648 删除） 的实例携带 `code`）。
  * 包内不 import 宿主错误类，仅按 `code` 存在性区分"服务端错误"与"未知错误"。
  */
 function isApiErrorLike(error: unknown): error is { code?: string; message: string } {
@@ -79,7 +80,7 @@ function formatFileSize(bytes: number): string {
 /**
  * 会话附件选择面板：面包屑目录浏览、搜索过滤、上传与体积校验。
  *
- * 复制自 `packages/agent-runtime/web/components/chat/FilePickerPanel.tsx`；纯化改动点见文件头。
+ * 复制自 `packages/agent-runtime/web/components/chat/FilePickerPanel.tsx`（旧路径，已于 2026-09-21 由 f2741a82d 删除）；纯化改动点见文件头。
  */
 export function FilePickerPanel({ listDir, uploadFiles, onSelect, onClose, className }: FilePickerPanelProps) {
   const { t } = useTranslation(UI_COMPONENTS_NS);
@@ -279,11 +280,7 @@ export function FilePickerPanel({ listDir, uploadFiles, onSelect, onClose, class
 
       {/* 文件列表 */}
       <div className="max-h-80 overflow-y-auto px-2 pb-2">
-        {(loading || uploadLoading) && (
-          <div className="flex items-center justify-center py-8">
-            <Loader2 className="h-5 w-5 animate-spin text-text-muted" />
-          </div>
-        )}
+        {(loading || uploadLoading) && <Spinner size="sm" className="flex py-8" />}
         {error && <div className="px-2 py-4 text-center text-sm text-status-error">{error}</div>}
         {!loading && !uploadLoading && !error && filteredEntries.length === 0 && (
           <div className="px-2 py-4 text-center text-sm text-text-muted">{t("chat.components.filePicker.noFiles")}</div>

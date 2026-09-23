@@ -11,6 +11,7 @@
  */
 
 import type { PreviewContext, PreviewInstance, PreviewPlugin } from "@open-file-viewer/core";
+import { PREVIEW_FRAME_CONTAINER_STYLE, PREVIEW_FRAME_IFRAME_STYLE } from "./internal/frame-styles";
 
 /**
  * 使用浏览器原生 PDF 查看器的预览插件。
@@ -36,11 +37,11 @@ export function nativePdfPlugin(): PreviewPlugin {
       }
 
       const container = document.createElement("div");
-      container.style.cssText = "width:100%;height:100%;display:flex;flex-direction:column;";
+      container.style.cssText = PREVIEW_FRAME_CONTAINER_STYLE;
 
       const iframe = document.createElement("iframe");
       iframe.src = src;
-      iframe.style.cssText = "flex:1;width:100%;border:none;background:#fff;";
+      iframe.style.cssText = PREVIEW_FRAME_IFRAME_STYLE;
       iframe.title = file.name;
       iframe.addEventListener("load", () => setLoading(false));
       iframe.addEventListener("error", () => {

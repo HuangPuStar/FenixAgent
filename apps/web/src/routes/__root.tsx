@@ -1,9 +1,11 @@
 import { OrgProvider, useSession } from "@fenix/identity/web";
+import { ThemeProvider } from "@fenix/ui-components/lib/theme";
+import { Spinner } from "@fenix/ui-components/ui/spinner";
 import { createRootRoute, Outlet, useNavigate, useRouterState } from "@tanstack/react-router";
 import { useEffect } from "react";
 import { useTranslation } from "react-i18next";
 import { Toaster } from "sonner";
-import { ThemeProvider } from "@/src/lib/theme";
+import { ErrorPage } from "@/src/components/error-page";
 
 export const Route = createRootRoute({
   component: RootComponent,
@@ -16,7 +18,7 @@ function RootComponent() {
   const pathname = useRouterState({ select: (s) => s.location.pathname });
   const { t } = useTranslation("common");
   // /admin 观察面板独立于 better-auth 会话体系：无 session 也可访问，
-  // 由页面内 MasterKeyGate 把关（docs/arch/21 §5），不触发登录跳转。
+  // 由页面内 AdminKeyGate（共享组件库）把关（docs/arch/21 §5），不触发登录跳转。
   const isAdminPath = pathname.startsWith("/admin");
 
   useEffect(() => {
@@ -32,10 +34,7 @@ function RootComponent() {
   if (isPending) {
     return (
       <ThemeProvider defaultTheme="light">
-        <div className="flex h-screen flex-col items-center justify-center gap-4">
-          <div className="h-10 w-10 rounded-full border-2 border-brand border-t-transparent animate-spin" />
-          <p className="text-sm text-text-muted">{t("connecting")}</p>
-        </div>
+        <Spinner variant="screen" size="lg" label={t("connecting")} className="gap-4" />
       </ThemeProvider>
     );
   }
@@ -62,20 +61,8 @@ function RootComponent() {
   );
 }
 
+// 404 与 403 共用 `ErrorPage`（此前两份逐字复制的整屏错误页）。
 function NotFoundPage() {
-  const navigate = useNavigate();
   const { t } = useTranslation("common");
-  return (
-    <div className="flex h-screen flex-col items-center justify-center gap-4">
-      <h1 className="text-2xl font-bold text-text-primary">404</h1>
-      <p className="text-sm text-text-muted">{t("not_found")}</p>
-      <button
-        type="button"
-        onClick={() => void navigate({ to: "/agent" })}
-        className="rounded-md bg-brand px-4 py-2 text-sm font-medium text-white hover:bg-brand/90"
-      >
-        {t("back_home")}
-      </button>
-    </div>
-  );
+  return <ErrorPage code="404" message={t("not_found")} backLabel={t("back_home")} />;
 }

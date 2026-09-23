@@ -207,7 +207,8 @@ describe("demo non-chat sections", () => {
     expect(text).toContain("Table + Checkbox + BatchActionBar");
     expect(text).toContain("StatusBadge");
     expect(text).toContain("FileTypeIcon");
-    expect(text).toContain("EmptyState：No components yet");
+    expect(text).toContain("EmptyState（neutral）：No components yet");
+    expect(text).toContain("EmptyState（danger）：Failed to load components");
   });
 
   // Agent L1：智能体卡片列表（搜索、网格布局与批量选择）。

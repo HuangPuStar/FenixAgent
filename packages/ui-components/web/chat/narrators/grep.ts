@@ -1,6 +1,6 @@
 /**
  * Grep / Rg 工具 narrator。处理代码搜索。
- * 复制自 `packages/agent-runtime/web/components/chat/narrators/grep.ts`。
+ * 复制自 `packages/agent-runtime/web/components/chat/narrators/grep.ts`（旧路径，已于 2026-09-21 由 f2741a82d 删除）。
  *
  * title 行："搜索 \"pattern\""（运行中："正在搜索 ..."）
  * detail 行（subtitle）：路径 + 命中数（complete 状态才有）
@@ -15,7 +15,8 @@
  */
 
 import { Search } from "lucide-react";
-import { compactDetailValue, truncate } from "./helpers";
+import { truncate } from "../lib/tool-call-utils";
+import { compactDetailValue } from "./helpers";
 import type { ToolNarrator } from "./types";
 
 export const grepNarrator: ToolNarrator = {

@@ -90,7 +90,9 @@
   },
   "orgId": "组织 ID",
   "copyId": "复制 ID",
+  "copy": "复制",
   "copied": "已复制",
+  "copyFailed": "复制失败，请手动选中文本复制。",
   "editName": {
     "placeholder": "组织名称"
   },

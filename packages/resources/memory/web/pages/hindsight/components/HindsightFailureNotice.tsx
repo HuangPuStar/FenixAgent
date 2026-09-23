@@ -1,4 +1,4 @@
-import { Button } from "@fenix/ui-components/ui/button";
+import { EmptyState } from "@fenix/ui-components/config/EmptyState";
 import { NS } from "@fenix/web-runtime/i18n/namespace";
 import { AlertCircle, RefreshCw } from "lucide-react";
 import { useTranslation } from "react-i18next";
@@ -11,8 +11,10 @@ import type { HindsightFailure } from "../failure";
  * 「授权失败不给重试」是同一条业务判断——散落五份必然各自漂移（`Retry` 对 403 永远无效，
  * 只会在界面上制造「点了没用」的死循环）。
  *
- * 只负责失败块内部内容：`role="alert"` 与居中留白留在各调用方的容器上，与既有 DOM 结构一致，
- * 避免为了统一而改动各页面已验证的布局。
+ * 2026-09-22 前端去重：内部改用库的 `EmptyState`（`tone="danger"` 由它管配色，含 dark 变体）。
+ * 迁移前这里是「图标 + 标题 + 说明 + 可选按钮」的一段裸片段，`role="alert"` 与居中留白都由各调用方
+ * 复写（五处各写一遍同样的 `flex flex-col items-center justify-center ... text-center`），
+ * 去重后块自身就是完整的状态块：`role="alert"` 内聚在此，调用方只用 `className` 表达各自的外间距。
  */
 export interface HindsightFailureNoticeProps {
   failure: HindsightFailure;
@@ -21,26 +23,34 @@ export interface HindsightFailureNoticeProps {
   /** 通用失败分支的重试入口与按钮键；授权分支不渲染按钮。 */
   onRetry?: () => void;
   retryKey?: string;
+  /** 状态块的外间距（各调用点留白不同）；不传时用 `EmptyState` 的默认 `py-10`。 */
+  className?: string;
 }
 
-export function HindsightFailureNotice({ failure, titleKey, onRetry, retryKey }: HindsightFailureNoticeProps) {
+export function HindsightFailureNotice({
+  failure,
+  titleKey,
+  onRetry,
+  retryKey,
+  className,
+}: HindsightFailureNoticeProps) {
   const { t } = useTranslation(NS.HINDSIGHT);
   const forbidden = failure.kind === "forbidden";
   const resolvedTitleKey = forbidden ? "errors.forbiddenTitle" : titleKey;
 
   return (
-    <>
-      <AlertCircle className="size-8 text-destructive" />
-      <div>
-        <p className="text-sm font-medium">{resolvedTitleKey ? t(resolvedTitleKey) : null}</p>
-        <p className="mt-1 text-xs text-muted-foreground">{forbidden ? t("errors.forbiddenHint") : failure.detail}</p>
-      </div>
-      {!forbidden && onRetry && retryKey && (
-        <Button variant="outline" size="sm" onClick={onRetry}>
-          <RefreshCw className="size-4" />
-          {t(retryKey)}
-        </Button>
-      )}
-    </>
+    <EmptyState
+      tone="danger"
+      role="alert"
+      className={className}
+      icon={<AlertCircle />}
+      title={resolvedTitleKey ? t(resolvedTitleKey) : null}
+      description={forbidden ? t("errors.forbiddenHint") : failure.detail}
+      action={
+        !forbidden && onRetry && retryKey
+          ? { label: t(retryKey), onClick: onRetry, icon: <RefreshCw className="size-4" /> }
+          : undefined
+      }
+    />
   );
 }

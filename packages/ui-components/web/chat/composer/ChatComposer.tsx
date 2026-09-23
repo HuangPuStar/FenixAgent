@@ -1,14 +1,16 @@
+import "./ChatComposer.css";
+
 import { X } from "lucide-react";
 import { type ReactNode, useRef } from "react";
 import { useTranslation } from "react-i18next";
 import { UI_COMPONENTS_NS } from "../../i18n/namespace";
-import type { AvailableCommand, ChatInputMessage, FileAttachment, SessionMode } from "../types";
+import type { AvailableCommand, ChatInputMessage, SessionMode } from "../types";
 import { CommandMenu, type McpOption } from "./CommandMenu";
-import { ComposerAssets, type ComposerQuote } from "./composer-assets";
+import { ComposerAssets } from "./composer-assets";
 import type { ComposerExternalSubscribe } from "./composer-effects";
 import type { ComposerFileInfo, CompressImage, UploadComposerFiles } from "./composer-file-processing";
 import { type ComposerNoticeHandler, useComposerHandlers } from "./composer-handlers";
-import { type ComposerState, useComposerState } from "./composer-state";
+import { type ComposerState, type ComposerStateOptions, useComposerState } from "./composer-state";
 import { ComposerToolbar } from "./composer-toolbar";
 import { removeSlashCommand } from "./internal/remove-slash-command";
 import { useDragUpload } from "./useDragUpload";
@@ -16,7 +18,7 @@ import { useDragUpload } from "./useDragUpload";
 /**
  * ChatComposer — 玻璃磨砂命令岛输入组件。
  *
- * 来源：复制自 `packages/agent-runtime/web/components/chat/ChatComposer.tsx`（597 行）。
+ * 来源：复制自 `packages/agent-runtime/web/components/chat/ChatComposer.tsx`（旧路径，已于 2026-09-21 由 f2741a82d 删除）（597 行）。
  * 拆分说明（500 行红线）：输入状态切到 `./composer-state.ts`，事件处理器切到
  * `./composer-handlers.ts`（其内部再用 `./composer-effects.ts` 订阅外部输入）；
  * 本文件只保留 props、状态装配与渲染结构——渲染结构、类名、文案插值与源实现逐字一致。
@@ -41,7 +43,7 @@ export interface ComposerFilePickerRenderProps {
 }
 
 /** ChatComposer 属性 — 新玻璃磨砂命令岛输入组件 */
-export interface ChatComposerProps {
+export interface ChatComposerProps extends ComposerStateOptions {
   onSubmit: (message: ChatInputMessage) => void;
   isLoading?: boolean;
   onInterrupt?: () => void;
@@ -82,20 +84,8 @@ export interface ChatComposerProps {
   subscribeExternal?: ComposerExternalSubscribe;
   /** 提示回调（纯化替代 sonner toast）。 */
   onNotice?: ComposerNoticeHandler;
-  /** 受控草稿文本；传入时组件不再自持文本状态。 */
-  draft?: string;
-  /** 非受控草稿初始值（受控时忽略）。 */
-  defaultDraft?: string;
-  onDraftChange?: (text: string) => void;
-  /** 受控待发送附件列表。 */
-  attachments?: FileAttachment[];
-  onAttachmentsChange?: (attachments: FileAttachment[]) => void;
-  /** 受控待发送引用列表。 */
-  quotes?: ComposerQuote[];
-  onQuotesChange?: (quotes: ComposerQuote[]) => void;
-  /** 受控命令/能力面板开关。 */
-  commandPanelOpen?: boolean;
-  onCommandPanelOpenChange?: (open: boolean) => void;
+  // 半受控输入状态端口（`draft` / `attachments` / `quotes` / `commandPanelOpen` 及其回调）
+  // 与 `ComposerStateOptions` 逐字相同，2026-09-22 库内去重后由 `extends` 承接，本文件不再复述。
 }
 
 export function ChatComposer({
@@ -230,9 +220,7 @@ export function ChatComposer({
   // Render — 玻璃磨砂容器 + 大 textarea + 底部脚标行
   // ---------------------------------------------------------------------------
   return (
-    <div
-      className={`chat-composer-wrapper w-full max-w-3xl mx-auto px-4 sm:px-8 pb-4 pt-2${className ? ` ${className}` : ""}`}
-    >
+    <div className={`mx-auto w-full max-w-205 px-4 pt-0 pb-3 max-md:px-2.5${className ? ` ${className}` : ""}`}>
       <div className="relative">
         {commandPanelOpen && ((commands?.length ?? 0) > 0 || mcps.length > 0) && (
           <CommandMenu
@@ -245,12 +233,16 @@ export function ChatComposer({
             onSelect={handlers.handleCommandSelect}
             onToggleMcp={toggleMcp}
             onClose={closeCommandPanel}
-            className="chat-command-menu--panel"
+            variant="panel"
           />
         )}
 
+        {/* 玻璃卡片：设计层（原 `.chat-composer-wrapper .chat-composer-card`，特指度 (0,2,0)）在源级联中
+            压过宿主补充段，故取值全部按设计层落地；92% 白底、两级投影与暗色覆写（源 `.dark .chat-composer-card`，
+            类切换而非媒体查询）都写在本目录 `ChatComposer.css` 的 `.chat-composer-island` 里，含
+            「未分层声明压过 `isDragOver` 追加的 `bg-brand/5` 与 inset 阴影」这条级联说明。 */}
         <div
-          className={`chat-composer-card${isDragOver ? " bg-brand/5 shadow-[inset_0_0_0_2px_var(--color-brand)]" : ""}`}
+          className={`chat-composer-island relative overflow-visible rounded-2xl border border-slate-200 backdrop-blur-md focus-within:outline-0 [transition:border-color_0.2s_ease,box-shadow_0.2s_ease]${isDragOver ? " bg-brand/5 shadow-[inset_0_0_0_2px_var(--color-brand)]" : ""}`}
           onDragOver={hookDragOver}
           onDragEnter={hookDragEnter}
           onDragLeave={hookDragLeave}
@@ -287,7 +279,7 @@ export function ChatComposer({
 
           {(selectedCommandNames.size > 0 || selectedMcpIds.size > 0) && (
             <div
-              className="chat-composer-capabilities"
+              className="flex flex-wrap gap-1.25 px-3.5 pt-2.5"
               role="group"
               aria-label={t("chat.components.commandMenu.selectedCapabilities")}
             >
@@ -295,6 +287,7 @@ export function ChatComposer({
                 <button
                   key={`skill:${name}`}
                   type="button"
+                  className="chat-composer-capability-chip inline-flex min-h-5.75 cursor-pointer items-center gap-1.25 rounded-md border border-slate-300 bg-slate-100 px-1.75 text-3xs text-blue-900"
                   onClick={() => setText((current) => removeSlashCommand(current, name))}
                 >
                   /{name}
@@ -304,7 +297,12 @@ export function ChatComposer({
               {mcps
                 .filter((mcp) => selectedMcpIds.has(mcp.id))
                 .map((mcp) => (
-                  <button key={`mcp:${mcp.id}`} type="button" className="is-mcp" onClick={() => toggleMcp(mcp)}>
+                  <button
+                    key={`mcp:${mcp.id}`}
+                    type="button"
+                    className="chat-composer-capability-chip inline-flex min-h-5.75 cursor-pointer items-center gap-1.25 rounded-md border border-gray-300 bg-green-50 px-1.75 text-3xs text-emerald-700"
+                    onClick={() => toggleMcp(mcp)}
+                  >
                     MCP: {mcp.name}
                     <X />
                   </button>
@@ -322,7 +320,7 @@ export function ChatComposer({
               placeholder={_placeholder}
               disabled={disabled}
               rows={1}
-              className="chat-composer-textarea w-full resize-none border-none bg-transparent outline-none text-sm text-text-primary placeholder:text-text-muted min-h-[58px] max-h-[200px] leading-relaxed"
+              className="min-h-14.5 max-h-50 w-full resize-none border-none bg-transparent font-display text-sm leading-relaxed text-text-primary outline-none placeholder:text-text-muted"
             />
           </div>
 
@@ -357,7 +355,7 @@ export function ChatComposer({
         {/* 上传进度提示 */}
         {isUploading && (
           <div className="text-center">
-            <span className="text-[11px] text-text-muted">
+            <span className="text-3xs text-text-muted">
               {t("chat.components.chatComposer.uploadingFiles", { count: uploadingCount })}
             </span>
           </div>
@@ -365,7 +363,7 @@ export function ChatComposer({
 
         {/* 提示文本 */}
         <div className="text-center mt-1.5">
-          <span className="text-[11px] text-text-muted">{t("chat.components.chatComposer.hint")}</span>
+          <span className="text-3xs text-text-muted">{t("chat.components.chatComposer.hint")}</span>
         </div>
       </div>
     </div>

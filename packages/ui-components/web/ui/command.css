@@ -1,0 +1,15 @@
+/*
+ * Command 深层样式（原写在 `CommandItem` 的 className 字符串里）。
+ *
+ * 为什么下沉：`[&_svg]:pointer-events-none [&_svg]:shrink-0` 是子代选择器，属仓库禁令 FCP-WEB-02。
+ * 其余扁平工具类（布局、间距、`data-[selected=true]` 等变体）仍留在 `command.tsx` 的 `className`。
+ *
+ * 层叠：本文件未分层（不包 `@layer`），未分层声明压过 `@layer utilities`；规则只声明指针事件与收缩，
+ * 与 `className` 里保留的 `[&_svg:not([class*='size-'])]:size-4`（宽高）互不干涉。
+ */
+
+/* 菜单项图标不吃指针事件、不参与收缩（原 `[&_svg]:pointer-events-none [&_svg]:shrink-0`）。 */
+.command-item svg {
+  pointer-events: none;
+  flex-shrink: 0;
+}

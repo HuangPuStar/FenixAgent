@@ -229,7 +229,7 @@
 }
 .org-engine-strip select,
 .org-list-actions select,
-.org-dialog-field select {
+.org-dialog-fields select {
   min-height: 34px;
   padding: 0 30px 0 10px;
   border: 1px solid #dfe6f0;
@@ -381,15 +381,6 @@
   display: grid;
   gap: 14px;
   padding: 8px 0;
-}
-.org-dialog-field {
-  display: grid;
-  gap: 6px;
-}
-.org-dialog-field > span {
-  color: #516079;
-  font-size: 12px;
-  font-weight: 600;
 }
 .org-member-command {
   overflow: hidden;

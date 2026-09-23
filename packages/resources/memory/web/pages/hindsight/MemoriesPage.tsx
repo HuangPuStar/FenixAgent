@@ -1,4 +1,7 @@
+import "./MemoriesPage.css";
+
 import { WorkbenchPanel } from "@fenix/ui-components/components/WorkbenchPanel";
+import { EmptyState } from "@fenix/ui-components/config/EmptyState";
 import { Input } from "@fenix/ui-components/ui/input";
 import { Skeleton } from "@fenix/ui-components/ui/skeleton";
 import { NS } from "@fenix/web-runtime/i18n/namespace";
@@ -95,7 +98,7 @@ export function MemoriesPage() {
           <Skeleton className="h-7 w-28 rounded-md" />
           <Skeleton className="h-3 w-56 rounded-md" />
         </div>
-        <div className="grid min-h-0 flex-1 gap-4 md:grid-cols-[15rem_minmax(0,1fr)]">
+        <div className="memories-page-skeleton-grid grid min-h-0 flex-1 gap-4">
           <Skeleton className="rounded-xl" />
           <Skeleton className="rounded-xl" />
         </div>
@@ -106,14 +109,13 @@ export function MemoriesPage() {
   if (statusFailure) {
     return (
       <div className="grid h-full min-h-0 place-items-center overflow-hidden bg-muted/30 px-4 py-5 text-foreground sm:px-8 sm:py-7">
-        <div className="flex flex-col items-center justify-center gap-3 py-16 text-center" role="alert">
-          <HindsightFailureNotice
-            failure={statusFailure}
-            titleKey="status.loadFailed"
-            retryKey="status.retry"
-            onRetry={() => void loadStatus()}
-          />
-        </div>
+        <HindsightFailureNotice
+          failure={statusFailure}
+          titleKey="status.loadFailed"
+          retryKey="status.retry"
+          onRetry={() => void loadStatus()}
+          className="py-16"
+        />
       </div>
     );
   }
@@ -121,9 +123,7 @@ export function MemoriesPage() {
   if (!enabled) {
     return (
       <div className="grid h-full min-h-0 place-items-center overflow-hidden bg-muted/30 px-4 py-5 text-foreground sm:px-8 sm:py-7">
-        <div className="flex flex-col items-center justify-center py-16 text-muted-foreground">
-          <p className="text-sm">{t("status.notConfigured")}</p>
-        </div>
+        <EmptyState className="py-16" title={t("status.notConfigured")} />
       </div>
     );
   }
@@ -131,11 +131,11 @@ export function MemoriesPage() {
   return (
     <div className="flex h-full min-h-0 flex-col overflow-hidden bg-muted/30 px-4 py-5 text-foreground sm:px-8 sm:py-7">
       <header className="mb-4 shrink-0">
-        <h1 className="text-[22px] font-bold tracking-tight">{t("title")}</h1>
+        <h1 className="text-xl font-bold tracking-tight">{t("title")}</h1>
         <p className="mt-0.5 text-xs text-muted-foreground">{t("description")}</p>
       </header>
 
-      <WorkbenchPanel className="grid min-h-0 flex-1 grid-rows-[auto_minmax(0,1fr)] md:grid-cols-[15rem_minmax(0,1fr)] md:grid-rows-1">
+      <WorkbenchPanel className="memories-page-workspace grid min-h-0 flex-1">
         <aside className="flex min-h-0 min-w-0 flex-col border-b bg-muted/30 p-2 md:p-3 md:border-r md:border-b-0">
           <div className="hidden px-2 pb-3 md:block">
             <strong className="block text-sm">{t("perspectives.title")}</strong>
@@ -173,7 +173,7 @@ export function MemoriesPage() {
                   type="button"
                   aria-pressed={selected}
                   onClick={() => setPerspective(id)}
-                  className={`grid min-h-11 shrink-0 grid-cols-[2.25rem_auto] items-center gap-2 rounded-lg px-2 py-1.5 text-left transition-colors md:min-h-14 md:w-auto md:grid-cols-[2.25rem_minmax(0,1fr)] md:px-2.5 md:py-2 ${
+                  className={`memories-page-perspective-tab grid min-h-11 shrink-0 items-center gap-2 rounded-lg px-2 py-1.5 text-left transition-colors md:min-h-14 md:w-auto md:px-2.5 md:py-2 ${
                     selected
                       ? "bg-primary/10 text-primary"
                       : "text-muted-foreground hover:bg-background hover:text-foreground"
@@ -194,7 +194,7 @@ export function MemoriesPage() {
                   </span>
                   <span className="min-w-0">
                     <strong className="block text-sm text-foreground">{t(labelKey)}</strong>
-                    <small className="hidden truncate text-[11px] text-muted-foreground md:block">
+                    <small className="hidden truncate text-3xs text-muted-foreground md:block">
                       {t(descriptionKey)}
                     </small>
                   </span>

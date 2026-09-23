@@ -210,7 +210,7 @@ function TaskRow({
           <Button
             variant="ghost"
             size="sm"
-            className="h-7 w-7 p-0 [&_svg]:w-3.5"
+            className="task-icon-button h-7 w-7 p-0"
             disabled={triggering}
             onClick={onTrigger}
             title={t("action.execute")}
@@ -228,7 +228,7 @@ function TaskRow({
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               {/* 纯图标触发器：可见文本只有三个点，可访问名只能由 aria-label 提供（title 只作鼠标悬停提示）。 */}
-              <Button variant="ghost" size="sm" className="h-7 w-7 p-0 [&_svg]:w-3.5" aria-label={t("action.more")}>
+              <Button variant="ghost" size="sm" className="task-icon-button h-7 w-7 p-0" aria-label={t("action.more")}>
                 <MoreHorizontal />
               </Button>
             </DropdownMenuTrigger>

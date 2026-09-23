@@ -103,7 +103,7 @@ function paginationT(key: string, opts?: Record<string, unknown>): string {
   return key;
 }
 
-/** 同一份数据的三种非就绪态：loading 用 Skeleton 占位，empty / error 复用 EmptyState。 */
+/** 同一份数据的三种非就绪态：loading 用 Skeleton 占位，empty / error 复用 EmptyState，差异只在 tone。 */
 function StatePreview({ state, onRetry }: { state: ViewState; onRetry: () => void }) {
   if (state === "loading") {
     return (
@@ -137,9 +137,9 @@ function StatePreview({ state, onRetry }: { state: ViewState; onRetry: () => voi
   if (state === "empty") {
     return (
       <EmptyState
-        icon={<Inbox className="h-8 w-8" />}
+        icon={<Inbox />}
         title="No components yet"
-        description="EmptyState 负责空态：图标、标题、描述与一个可选 action。"
+        description="空态与错误态是同一个组件，语义差异只由 tone 表达（这里用默认的 neutral）；组件不自带卡片外壳，容器由调用方给。"
         action={{ label: "Reload", onClick: onRetry }}
       />
     );
@@ -148,9 +148,10 @@ function StatePreview({ state, onRetry }: { state: ViewState; onRetry: () => voi
   if (state === "error") {
     return (
       <EmptyState
-        icon={<TriangleAlert className="h-8 w-8 text-destructive" />}
+        icon={<TriangleAlert />}
+        tone="danger"
         title="Failed to load components"
-        description="错误态同样可以落在 EmptyState 上，action 即重试入口。"
+        description="同一组件换成 danger 色调即错误态：配色（含深色变体）留给 tone，调用方不再手写颜色类；action 在这里是重试入口。"
         action={{ label: "Retry", onClick: onRetry }}
       />
     );
@@ -195,9 +196,11 @@ export function DataDisplayExamples() {
 
   return (
     <>
-      <div className="demo-example">
-        <h2 className="demo-example-title">Table：loading / empty / error</h2>
-        <div className="demo-row mb-4">
+      <div className="mb-5 p-5 border border-border rounded-lg bg-surface-1">
+        <h2 data-slot="demo-example-title" className="mb-4 text-text-secondary text-[13px] font-medium">
+          Table：loading / empty / error
+        </h2>
+        <div className="flex flex-wrap items-center gap-3 mb-4">
           {VIEW_STATES.map((state) => (
             <Button
               key={state}
@@ -245,20 +248,24 @@ export function DataDisplayExamples() {
         </Example>
       </ComponentBlock>
 
-      <div className="demo-example">
-        <h2 className="demo-example-title">Progress</h2>
-        <div className="demo-field">
-          <p className="demo-hint">Progress 只表达确定进度（0-100）；不确定耗时的加载态用按钮或弹窗的 loading。</p>
-          <div className="demo-column">
-            <div className="demo-field">
-              <div className="demo-row">
+      <div className="mb-5 p-5 border border-border rounded-lg bg-surface-1">
+        <h2 data-slot="demo-example-title" className="mb-4 text-text-secondary text-[13px] font-medium">
+          Progress
+        </h2>
+        <div className="flex flex-col gap-1.5">
+          <p className="mt-3 text-text-muted text-[12px]">
+            Progress 只表达确定进度（0-100）；不确定耗时的加载态用按钮或弹窗的 loading。
+          </p>
+          <div className="flex flex-col gap-4 max-w-[420px]">
+            <div className="flex flex-col gap-1.5">
+              <div className="flex flex-wrap items-center gap-3">
                 <span className="text-sm">Uploading files</span>
                 <span className="text-sm text-muted-foreground">70%</span>
               </div>
               <Progress value={70} />
             </div>
-            <div className="demo-field">
-              <div className="demo-row">
+            <div className="flex flex-col gap-1.5">
+              <div className="flex flex-wrap items-center gap-3">
                 <span className="text-sm">Indexing documents</span>
                 <span className="text-sm text-muted-foreground">35%</span>
               </div>
@@ -268,19 +275,25 @@ export function DataDisplayExamples() {
         </div>
       </div>
 
-      <div className="demo-example">
-        <h2 className="demo-example-title">Tree</h2>
+      <div className="mb-5 p-5 border border-border rounded-lg bg-surface-1">
+        <h2 data-slot="demo-example-title" className="mb-4 text-text-secondary text-[13px] font-medium">
+          Tree
+        </h2>
         <Tree
           getChildren={loadTreeChildren}
           defaultExpandedIds={["src"]}
           onSelect={(nodeId) => setSelectedNode(nodeId)}
           className="w-72 rounded-md border border-border p-2"
         />
-        <p className="demo-hint">selected: {selectedNode ?? "—"}（展开节点时按需调用 getChildren）</p>
+        <p className="mt-3 text-text-muted text-[12px]">
+          selected: {selectedNode ?? "—"}（展开节点时按需调用 getChildren）
+        </p>
       </div>
 
-      <div className="demo-example">
-        <h2 className="demo-example-title">Pagination</h2>
+      <div className="mb-5 p-5 border border-border rounded-lg bg-surface-1">
+        <h2 data-slot="demo-example-title" className="mb-4 text-text-secondary text-[13px] font-medium">
+          Pagination
+        </h2>
         <Pagination
           page={page}
           totalPages={totalPages}
@@ -291,13 +304,15 @@ export function DataDisplayExamples() {
           translationPrefix="demo"
           t={paginationT}
         />
-        <p className="demo-hint">
+        <p className="mt-3 text-text-muted text-[12px]">
           page {page} / {totalPages} · rows {firstRow}–{lastRow} · pageSize {pageSize}
         </p>
       </div>
 
-      <div className="demo-example">
-        <h2 className="demo-example-title">Chart</h2>
+      <div className="mb-5 p-5 border border-border rounded-lg bg-surface-1">
+        <h2 data-slot="demo-example-title" className="mb-4 text-text-secondary text-[13px] font-medium">
+          Chart
+        </h2>
         <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
           <div className="h-56">
             <ChartContainer>
@@ -329,7 +344,7 @@ export function DataDisplayExamples() {
             </ChartContainer>
           </div>
         </div>
-        <p className="demo-hint">
+        <p className="mt-3 text-text-muted text-[12px]">
           ChartContainer 只是 ResponsiveContainer 的包装，父容器必须有确定高度（示例为 h-56）；取色直接用包内 token，
           因此图表跟随主题切换。
         </p>

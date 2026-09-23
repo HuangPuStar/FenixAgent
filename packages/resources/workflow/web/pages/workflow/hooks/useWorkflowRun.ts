@@ -1,6 +1,6 @@
 import { unwrap } from "@fenix/web-runtime/api/request";
 import type { Edge, Node } from "@xyflow/react";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
 import { workflowDefApi } from "../../../api/workflow-defs";
@@ -19,6 +19,7 @@ import {
   pushWorkflowRunStatus,
 } from "../../../lib/use-workflow-events";
 import { autoLayout } from "../layout";
+import { type RunViewSetters, resetRunView } from "../run-view";
 import { dedupEvents } from "../utils";
 import { START_NODE_ID } from "../yaml-utils";
 
@@ -104,6 +105,12 @@ export function useWorkflowRun(params: UseWorkflowRunParams): UseWorkflowRunRetu
   } = params;
 
   const { t } = useTranslation("workflows");
+
+  // 运行视图态的 setter 打包一次，供 5 处复位共用（定义与理由见 ../run-view.ts）
+  const runViewSetters: RunViewSetters = useMemo(
+    () => ({ setRunSnapshot, setRunEvents, setRunApprovals, setSelectedRunNodeId, setSelectedNodeOutput }),
+    [setRunSnapshot, setRunEvents, setRunApprovals, setSelectedRunNodeId, setSelectedNodeOutput],
+  );
 
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const isSubmittingRef = useRef(false);
@@ -245,9 +252,14 @@ export function useWorkflowRun(params: UseWorkflowRunParams): UseWorkflowRunRetu
     setRunRightTab("output");
     unwrap(workflowEngineApi.getOutput(activeRunId, selectedRunNodeId))
       .then((out) => setSelectedNodeOutput(out ?? null))
-      .catch((err) => console.error(err))
+      .catch((err) => {
+        console.error(err);
+        // 选中节点后的拉取失败会让输出面板停在空态。这是画布点节点 / 点事件行两条入口的公共路径，
+        // 提示放在这里（而不是 handleViewNodeOutput）才能覆盖全两条且一次操作只报一条
+        toast.error(t("editor.output_load_failed"));
+      })
       .finally(() => setNodeOutputLoading(false));
-  }, [activeRunId, selectedRunNodeId, setSelectedNodeOutput, setNodeOutputLoading]);
+  }, [activeRunId, selectedRunNodeId, setSelectedNodeOutput, setNodeOutputLoading, t]);
 
   /** 解析 meta.params 中的默认值，生成运行时 params */
   const resolveDefaultParams = useCallback((): Record<string, unknown> | undefined => {
@@ -293,11 +305,7 @@ export function useWorkflowRun(params: UseWorkflowRunParams): UseWorkflowRunRetu
         const runParams = params ?? resolveDefaultParams();
         const result = await unwrap(workflowEngineApi.run(y, runParams, workflowId));
         setActiveRunId(result.runId);
-        setRunSnapshot(null);
-        setRunEvents([]);
-        setRunApprovals([]);
-        setSelectedRunNodeId(null);
-        setSelectedNodeOutput(null);
+        resetRunView(runViewSetters);
         openRunSheet();
         await loadRunData(result.runId);
         // running 保持 true，轮询检测到终止状态时重置
@@ -315,11 +323,7 @@ export function useWorkflowRun(params: UseWorkflowRunParams): UseWorkflowRunRetu
       workflowId,
       setNodes,
       setActiveRunId,
-      setRunSnapshot,
-      setRunEvents,
-      setRunApprovals,
-      setSelectedRunNodeId,
-      setSelectedNodeOutput,
+      runViewSetters,
       openRunSheet,
       loadRunData,
       resolveDefaultParams,
@@ -354,15 +358,19 @@ export function useWorkflowRun(params: UseWorkflowRunParams): UseWorkflowRunRetu
     [activeRunId, loadRunData, setRunApprovals],
   );
 
-  const handleBackToEdit = useCallback(() => {
+  /**
+   * 退出运行视图：停轮询、复位运行态、清 dry-run 结果，并摘掉画布节点上的运行标记。
+   *
+   * 「回到编辑」（面板头部的编辑按钮）与「回到运行列表」（返回箭头）要复位的东西**逐字相同**
+   * ——2026-09-22 去重，此前是两个各 18 行的副本。两者的差别只在调用方，不在复位内容：
+   * 编辑器在「回到编辑」之后额外关掉运行抽屉（`WorkflowEditor` 的包装），返回列表则直接用。
+   * 因此这里只留一份实现，两个对外名字都指向它；新增一个「退出运行视图要清什么」的字段时只改这一处。
+   */
+  const handleExitRunView = useCallback(() => {
     if (pollRef.current) clearTimeout(pollRef.current);
     setRunning(false);
     setActiveRunId(null);
-    setRunSnapshot(null);
-    setRunEvents([]);
-    setRunApprovals([]);
-    setSelectedRunNodeId(null);
-    setSelectedNodeOutput(null);
+    resetRunView(runViewSetters);
     setDryRunResult(null);
     setNodes((nds) =>
       nds.map((n) => ({
@@ -376,47 +384,10 @@ export function useWorkflowRun(params: UseWorkflowRunParams): UseWorkflowRunRetu
         },
       })),
     );
-  }, [
-    setActiveRunId,
-    setRunSnapshot,
-    setRunEvents,
-    setRunApprovals,
-    setSelectedRunNodeId,
-    setSelectedNodeOutput,
-    setNodes,
-  ]);
+  }, [setActiveRunId, runViewSetters, setNodes]);
 
-  const handleBackToList = useCallback(() => {
-    if (pollRef.current) clearTimeout(pollRef.current);
-    setRunning(false);
-    setActiveRunId(null);
-    setRunSnapshot(null);
-    setRunEvents([]);
-    setRunApprovals([]);
-    setSelectedRunNodeId(null);
-    setSelectedNodeOutput(null);
-    setDryRunResult(null);
-    setNodes((nds) =>
-      nds.map((n) => ({
-        ...n,
-        data: {
-          ...n.data,
-          _runStatus: undefined,
-          _exitCode: undefined,
-          _onViewOutput: undefined,
-          _onRerunFrom: undefined,
-        },
-      })),
-    );
-  }, [
-    setActiveRunId,
-    setRunSnapshot,
-    setRunEvents,
-    setRunApprovals,
-    setSelectedRunNodeId,
-    setSelectedNodeOutput,
-    setNodes,
-  ]);
+  const handleBackToEdit = handleExitRunView;
+  const handleBackToList = handleExitRunView;
 
   const handleRerunFrom = useCallback(
     async (fromNodeId: string) => {
@@ -468,11 +439,7 @@ export function useWorkflowRun(params: UseWorkflowRunParams): UseWorkflowRunRetu
       try {
         const result = await unwrap(workflowEngineApi.rerunFrom(activeRunId, y, fromNodeId, workflowId));
         setActiveRunId(result.runId);
-        setRunSnapshot(null);
-        setRunEvents([]);
-        setRunApprovals([]);
-        setSelectedRunNodeId(null);
-        setSelectedNodeOutput(null);
+        resetRunView(runViewSetters);
         openRunSheet();
         await loadRunData(result.runId);
       } catch (err) {
@@ -483,22 +450,7 @@ export function useWorkflowRun(params: UseWorkflowRunParams): UseWorkflowRunRetu
         isSubmittingRef.current = false;
       }
     },
-    [
-      activeRunId,
-      syncYaml,
-      workflowId,
-      edges,
-      setNodes,
-      setActiveRunId,
-      setRunSnapshot,
-      setRunEvents,
-      setRunApprovals,
-      setSelectedRunNodeId,
-      setSelectedNodeOutput,
-      openRunSheet,
-      loadRunData,
-      t,
-    ],
+    [activeRunId, syncYaml, workflowId, edges, setNodes, setActiveRunId, runViewSetters, openRunSheet, loadRunData, t],
   );
 
   const handleViewNodeOutput = useCallback(
@@ -546,12 +498,16 @@ export function useWorkflowRun(params: UseWorkflowRunParams): UseWorkflowRunRetu
             if (snap) updateNodesFromSnapshotRef.current(snap);
           } catch (err) {
             console.error(`${t("editor.restore_run_failed")}:`, err);
+            // 草稿已刷新成功，但运行状态没跟上，画布上的节点状态会与真实运行状态不一致
+            toast.error(t("editor.restore_run_failed"));
           }
         }
         setTimeout(() => fitView({ padding: 0.15, duration: 300 }), 50);
       }
     } catch (err) {
       console.error(`${t("editor.refresh_failed")}:`, err);
+      // 用户点了刷新却什么都没变，必须给出可见反馈
+      toast.error(t("editor.refresh_failed"));
     }
   }, [workflowId, isRunMode, isRunDone, activeRunId, setNodes, setEdges, setMeta, setLastSavedYaml, fitView, t]);
 
@@ -564,11 +520,7 @@ export function useWorkflowRun(params: UseWorkflowRunParams): UseWorkflowRunRetu
           const runId = event.runId as string;
           if (runId && runId !== activeRunId) {
             setActiveRunId(runId);
-            setRunSnapshot(null);
-            setRunEvents([]);
-            setRunApprovals([]);
-            setSelectedRunNodeId(null);
-            setSelectedNodeOutput(null);
+            resetRunView(runViewSetters);
             loadRunData(runId);
           }
           break;
@@ -585,16 +537,7 @@ export function useWorkflowRun(params: UseWorkflowRunParams): UseWorkflowRunRetu
         }
       }
     },
-    [
-      activeRunId,
-      setActiveRunId,
-      setRunSnapshot,
-      setRunEvents,
-      setRunApprovals,
-      setSelectedRunNodeId,
-      setSelectedNodeOutput,
-      loadRunData,
-    ],
+    [activeRunId, setActiveRunId, runViewSetters, loadRunData],
   );
 
   return {

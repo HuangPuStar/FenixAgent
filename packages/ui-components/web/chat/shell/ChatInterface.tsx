@@ -1,7 +1,7 @@
 /**
  * ChatInterface — 会话消息区 + 输入岛 + 上下文面板的组合容器。
  *
- * 来源：逐字复制 `packages/chat-channel/web/components/ChatInterface.tsx`（结构、类名、交互与文案不变）。
+ * 来源：逐字复制 `packages/chat-channel/web/components/ChatInterface.tsx`（旧路径，已于 2026-09-21 由 8f364c109 删除）（结构、类名、交互与文案不变）。
  * 纯化改动点：
  * - 包内 API 客户端（`envApi` / `agentApi` / `mcpApi` / `unwrap`）与 agent 配置查询逻辑移除，
  *   绑定 MCP 列表改为 `boundMcps` prop 由宿主注入（原查询链见 `ChatInterfaceProps.boundMcps`）。
@@ -184,6 +184,8 @@ export const ChatInterface = forwardRef<ChatInterfaceHandle, ChatInterfaceProps>
     onSendPrompt,
     onNotice,
     imagePrepareFailedMessage: t("chat.components.composerAssets.prepareImageFailed"),
+    sessionCreateFailedMessage: t("chat.components.chatInterface.sessionCreateFailed"),
+    sendPromptFailedMessage: t("chat.components.chatInterface.sendPromptFailed"),
   });
 
   // Todo 面板状态 — 从当前聊天渲染条目中提取最新 TodoWrite 工具调用。
@@ -315,7 +317,9 @@ export const ChatInterface = forwardRef<ChatInterfaceHandle, ChatInterfaceProps>
 
   return (
     <div className="chat-interface-root flex h-full min-h-0 min-w-0 flex-1">
-      <div className="chat-interface-column flex flex-col flex-1 min-w-0">
+      {/* chat-interface-column 保留为类名：`web/chat/css/chat-layout.css`（下一阶段迁移）与宿主同款
+          样式表仍以它作为「唯一高度链」选择器；本行新增的几何工具类即原 `chat-design-shell.css` 的声明。 */}
+      <div className="chat-interface-column relative flex flex-1 min-h-0 min-w-0 flex-col overflow-hidden bg-white">
         {/* Peri Task 详情抽屉（宿主渲染；未注入时任务行只读） */}
         {renderPeriTaskDetail && selectedPeriTask
           ? renderPeriTaskDetail(selectedPeriTask, () => setSelectedPeriTask(null))
@@ -334,7 +338,7 @@ export const ChatInterface = forwardRef<ChatInterfaceHandle, ChatInterfaceProps>
           onQuote={handleQuote}
         />
 
-        <div className="chat-input-dock">
+        <div className="relative z-20 shrink-0 bg-white">
           {/* 交互区域只显示一种状态：阻塞型权限/提问覆盖非阻塞任务状态。 */}
           {pendingPermissions.length > 0 ? (
             <PermissionPanel requests={pendingPermissions} onRespond={onRespondPermission} />

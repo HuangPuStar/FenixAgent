@@ -9,78 +9,6 @@
   color: var(--model-ink);
 }
 
-.models-search-toolbar {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  margin: 14px 0 18px;
-}
-
-.models-search-field {
-  position: relative;
-  display: block;
-  width: min(560px, 100%);
-}
-
-.models-search-field > svg {
-  position: absolute;
-  top: 50%;
-  left: 14px;
-  width: 16px;
-  color: #8d9bb0;
-  transform: translateY(-50%);
-}
-
-.models-search-field input {
-  width: 100%;
-  height: 40px;
-  border: 1px solid #dce4ef;
-  border-radius: 8px;
-  outline: 0;
-  padding: 0 14px 0 41px;
-  color: var(--model-ink);
-  background: #fff;
-  font-size: 13px;
-  transition: box-shadow 140ms ease;
-}
-
-.models-search-field input:focus-visible {
-  box-shadow: 0 0 0 3px rgb(36 99 235 / 12%);
-}
-
-.models-scope-filter {
-  display: flex;
-  height: 40px;
-  align-items: center;
-  gap: 2px;
-  border-radius: 8px;
-  padding: 4px;
-  background: #e9edf4;
-}
-
-.models-scope-filter button {
-  height: 32px;
-  border: 0;
-  border-radius: 6px;
-  padding: 0 13px;
-  color: var(--model-muted);
-  background: transparent;
-  font-size: 12px;
-}
-
-.models-scope-filter button[aria-pressed="true"] {
-  color: var(--model-blue);
-  background: #fff;
-  box-shadow: 0 1px 4px rgb(32 48 76 / 8%);
-  font-weight: 650;
-}
-
-.models-scope-filter small {
-  margin-left: 3px;
-  color: var(--model-faint);
-  font-size: 10px;
-}
-
 .models-partial-error {
   display: flex;
   min-height: 38px;
@@ -220,26 +148,6 @@
 .is-selected .models-provider-arrow {
   opacity: 1;
 }
-.models-provider-empty,
-.models-catalog-empty {
-  display: grid;
-  min-height: 260px;
-  place-content: center;
-  justify-items: center;
-  gap: 8px;
-  color: var(--model-faint);
-  text-align: center;
-  font-size: 11px;
-}
-.models-provider-empty svg,
-.models-catalog-empty svg {
-  width: 24px;
-}
-.models-catalog-empty strong {
-  color: var(--model-ink);
-  font-size: 14px;
-}
-
 .models-provider-detail {
   min-width: 0;
   background: #fff;
@@ -437,6 +345,15 @@
 .models-model-identity strong,
 .models-model-identity code {
   overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+/* 测试失败原因：单行截断，换行符折叠成空格，全文由徽标的 title 提供。 */
+.models-model-test-detail {
+  overflow: hidden;
+  margin-top: 2px;
+  color: #c44747;
+  font-size: 9px;
   text-overflow: ellipsis;
   white-space: nowrap;
 }

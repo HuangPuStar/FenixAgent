@@ -248,7 +248,7 @@ interface LeafView { id; source; machineId; payload?: Record<string, unknown> }
 ## 5. 前端面板（独立 `/admin`）
 
 - 路由：`apps/web/src/routes/admin/index.tsx`（`routeTree.gen.ts` 由工具生成）。
-- **MasterKeyGate 登录**：输入 master key → 存 `sessionStorage` → `request.ts` 统一注入
+- **`AdminKeyGate` 登录**（门：`@fenix/ui-components/config/AdminKeyGate`；状态机：`@fenix/web-runtime/hooks/use-admin-key-gate`）：输入 master key → 存 `sessionStorage` → `request.ts` 统一注入
   `Authorization: Bearer <key>`；401 清 key 回登录。不纳入 better-auth 会话体系。
 - **仪表盘（按 kind tab 组织，首版仅 acp-link）**：
   1. 概览卡：总量、来源分布、活跃 machine 数、`integrity.mismatched`；
@@ -297,7 +297,7 @@ interface LeafView { id; source; machineId; payload?: Record<string, unknown> }
 1. **切片 A（Observer 内核 + 首 kind）**：ObserverService 内核、acp-link Provider（四来源现场收集）、
    `GET /api/system/observer/acp-link`（byEntity / byOrg / integrity）+ 单测。验证：curl 带 master
    key 返回两棵树与一致性。
-2. **切片 B（前端只读面板）**：`/admin` 路由、MasterKeyGate、概览、归属树、machine 树、平坦表、
+2. **切片 B（前端只读面板）**：`/admin` 路由、`AdminKeyGate`、概览、归属树、machine 树、平坦表、
    告警区。验证：登录后两棵树逐层钻取正确、机器归属反查清晰。
 3. **切片 C（增强）**：来源筛选、后续新 kind（workflow-run 等）、可访问性打磨。
    （定时轮询已随切片 B 落地：§5 面板刷新采用手动按钮 + 定时轮询。）

@@ -13,9 +13,9 @@
  *    需要这些定制时直接用 `FileViewerPreview`。
  */
 
-import { Loader2 } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { UI_COMPONENTS_NS } from "../i18n/namespace";
+import { Spinner } from "../ui/spinner";
 import { FileViewerPreview } from "./preview/FileViewerPreview";
 
 export interface PreviewTabProps {
@@ -35,7 +35,7 @@ export function PreviewTab({ envId, filePath }: PreviewTabProps) {
           {!filePath ? (
             <p className="text-sm text-text-muted">{t("fileTree.preview.noFileSelected")}</p>
           ) : (
-            <Loader2 className="h-5 w-5 animate-spin text-text-muted" />
+            <Spinner size="sm" />
           )}
         </div>
       </div>

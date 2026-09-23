@@ -21,23 +21,8 @@
     "searchPlaceholder": "Search this memory perspective"
   },
   "memories": {
-    "worldFacts": "World Facts",
-    "experience": "Experience",
-    "observations": "Observations",
-    "search": "Search memories...",
-    "recall": "Recall",
-    "retain": "Retain",
-    "reflect": "Reflect",
-    "noMemories": "No memories found",
-    "totalCount": "{{count}} memories",
-    "detail": "Memory Detail",
     "tags": "Tags",
-    "entities": "Entities",
-    "context": "Context",
-    "createdAt": "Created",
-    "factType": "Type",
-    "delete": "Delete",
-    "deleteConfirm": "Are you sure you want to delete this memory?"
+    "createdAt": "Created"
   },
   "documents": {
     "upload": "Upload Document",
@@ -48,44 +33,25 @@
     "noDocuments": "No documents found",
     "totalCount": "{{count}} documents",
     "chunks": "Chunks",
-    "reprocess": "Reprocess",
     "delete": "Delete",
-    "deleteConfirm": "Are you sure you want to delete this document and all its memories?",
     "loadFailed": "Failed to load documents",
     "uploadFailed": "Upload failed",
     "deleteFailed": "Delete failed"
   },
   "mentalModels": {
-    "title": "Mental Models",
-    "description": "Formed opinions and cognitive structures",
     "search": "Search mental models...",
     "clearSearch": "Clear mental model search",
     "openDetail": "View mental model {{name}}",
     "deleteNamed": "Delete mental model {{name}}",
     "noModels": "No mental models found",
     "totalCount": "{{count}} mental models",
-    "confidence": "Confidence",
-    "content": "Content",
     "stale": "Stale",
     "delete": "Delete",
-    "detail": "Mental Model Detail",
     "deleteConfirm": "Are you sure you want to delete this mental model?",
     "lastRefreshed": "Last refreshed",
     "loadFailed": "Failed to load mental models",
     "deleteFailed": "Delete failed",
     "retry": "Retry"
-  },
-  "recall": {
-    "query": "Query",
-    "results": "Results",
-    "noResults": "No results found",
-    "searching": "Searching..."
-  },
-  "retain": {
-    "content": "Content",
-    "context": "Context",
-    "tags": "Tags",
-    "submit": "Retain"
   },
   "status": {
     "notConfigured": "Hindsight is not configured. Please set HINDSIGHT_MCP_URL.",
@@ -190,11 +156,13 @@
     "all": "All",
     "memoryComposition": "Memory composition"
   },
-  "memoryDetailModal": {
-    "defaultTitle": "Memory Details",
+  "memoryDetail": {
     "typeObservation": "Observation",
     "typeWorldFact": "World Fact",
     "typeExperience": "Experience",
+    "defaultTitle": "Memory Details"
+  },
+  "memoryDetailModal": {
     "errorPrefix": "Error: {{message}}",
     "sectionText": "Text",
     "sectionOccurred": "Occurred",
@@ -206,26 +174,18 @@
   },
   "memoryDetailPanel": {
     "close": "Close memory details",
-    "title": "Memory Details",
-    "subtitle": "Full memory content and metadata",
     "loadingDetails": "Loading memory details...",
     "loading": "Loading...",
+    "copyFailed": "Failed to copy to clipboard",
     "sectionFullText": "Full Text",
     "sectionContext": "Context",
     "sectionOccurred": "Occurred",
     "sectionMentioned": "Mentioned",
     "sectionEntities": "Entities",
     "sectionTags": "Tags",
-    "sectionSourceMemories": "Source Memories ({{count}})",
     "sectionMemoryId": "Memory ID",
-    "notAvailable": "N/A",
-    "sourceViewButton": "View",
-    "sourceContextPrefix": "Context: {{context}}",
-    "sourceOccurred": "Occurred",
-    "sourceMentioned": "Mentioned",
-    "viewDocumentButton": "View Document",
-    "viewChunkButton": "View Chunk",
-    "viewHistory": "View History"
+    "loadFailed": "Failed to load memory details",
+    "retry": "Retry"
   },
   "entitiesView": {
     "viewSwitcher": "Entity view switcher",
@@ -274,8 +234,6 @@
     "tooltipContext": "Context",
     "tooltipOccurred": "Occurred",
     "tooltipMentioned": "Mentioned",
-    "tooltipEvidence": "Evidence",
-    "tooltipSources": "{{count}} sources",
     "tooltipDocument": "Document",
     "tooltipLinks": "{{count}} links"
   },

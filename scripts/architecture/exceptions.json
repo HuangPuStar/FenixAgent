@@ -110,44 +110,28 @@
       "rationale": "4 处环（环长 2–5）。参与包：@fenix/opencode ↔ acp-link（3 处）；@fenix/opencode（1 处）。环上出现的主要跨包边：@fenix/opencode → acp-link（3 处）、acp-link → @fenix/opencode（3 处）。根因：包内入口自环（handler 以包名导入自身根入口）或包内组合面自环；插件包 ↔ acp-link 双向依赖（acp-link 根入口值导入 handler，handler 反向导入 acp-link）。"
     },
     {
+      "rule": "no-circular",
+      "from": "@fenix/peri",
+      "to": "@fenix/peri",
+      "owner": "未排期",
+      "removeWhen": "包的进程管理面不再值导入 acp-link 根入口（`process/acp-link-process-manager.ts` 的 createAcpServer），或 acp-link 根入口不再值导入插件 handler；跨 acp-link 的 2 处按既有裁定不改动",
+      "rationale": "2 处环（环长 4–5）。参与包：@fenix/peri ↔ acp-link（2 处）。环上出现的主要跨包边：@fenix/peri → acp-link（2 处）、acp-link → @fenix/peri（2 处）。根因与本台账中 @fenix/ccb / @fenix/opencode / @fenix/claude-code 同族条目一致：插件包 ↔ acp-link 双向依赖（acp-link 根入口值导入 handler，`process/acp-link-process-manager.ts` 反向导入 acp-link 的 createAcpServer），代表边在包对之间迁移故落在本包内。与同族条目的差异：@fenix/peri 的 handler 用相对路径导入包内模块，不产生「以包名导入自身根入口」的包内自环，因此本包只有这一个指纹。环的代表边语义、归属依据、上报粒度与环长定义见本台账 `_comment` 的「环的代表边与 owner 归属」段。"
+    },
+    {
+      "rule": "no-circular",
+      "from": "acp-link",
+      "to": "@fenix/peri",
+      "owner": "未排期",
+      "removeWhen": "acp-link 根入口不再值导入插件 handler，或 @fenix/peri 的进程管理面不再值导入 acp-link 根入口（同一族的闭合边，与 `@fenix/peri → @fenix/peri` 那条一并消失）",
+      "rationale": "1 处环（环长 4）。参与包：acp-link ↔ @fenix/peri（1 处）。环上相邻的真实边：acp-link/src/server.ts 值导入 createPeriHandler（新增 peri 引擎时按既有四引擎 handler 映射加入），@fenix/peri 经 process/acp-link-process-manager.ts → index.ts 回到 acp-link 根入口。根因与同族条目一致（插件包 ↔ acp-link 双向依赖），本条只是代表边落在 acp-link 侧的那一环。环的代表边语义、归属依据、上报粒度与环长定义见本台账 `_comment` 的「环的代表边与 owner 归属」段。"
+    },
+    {
       "rule": "undeclared-workspace-dependency",
       "from": "@fenix-agent/acp-runtime-cli",
       "to": "acp-link",
       "owner": "未排期",
       "removeWhen": "该包不再把 acp-link 作为构建期输入（改为 external 发布），或 acp-link 正式发布后改为普通 dependencies",
       "rationale": "实测 1 处导入 / 1 个文件。src/bin.ts 从 acp-link 根入口导入 startServer，但 package.json 只把它声明在 devDependencies。这在该包是正确声明：`bun build` 把 acp-link 连同其插件依赖打进单一产物 dist/bin.js（实测 dist/bin.js 内无裸 `acp-link` 导入），发布物自包含，消费者不需要 acp-link。把 `workspace:*` 提升为运行时 dependencies 会改变已发布 npm 包的依赖语义，超出 1.1 范围，故登记为豁免。此条由 1.1 修掉「只认 @fenix/ 前缀」的解析盲区后暴露。"
-    },
-    {
-      "rule": "undeclared-workspace-dependency",
-      "from": "acp-link",
-      "to": "@fenix/ccb",
-      "owner": "未排期",
-      "removeWhen": "acp-link 转为 private（不再发布），或 @fenix/ccb 发布后把该边改为 dependencies",
-      "rationale": "实测 1 处导入 / 1 个文件。acp-link 是仓库里两个未标 `private` 的包之一（另一个是 @fenix-agent/acp-runtime-cli，见同组上一条），`files` 直接发布 `src/`、`exports[\".\"]` 指向 src/server.ts 并在顶层值导入这三个 plugin 包（src/server.ts:5-7），因此这四条边在发布语义上确实存在。不把它们提升为 `dependencies` 的原因是四个目标包都是 `private: true` 的未发布包：提升后发布物会带上 `workspace:*` 依赖并指向 registry 上不存在的包——不是修好而是把「无法在 workspace 外运行」写进已发布清单。仓库内消费方（docker/sandbox*/Dockerfile 的`bun build` 独立 bundle、acp-runtime-cli 的 dist/bin.js）都从源码打包，devDependencies 已足够解析。改变已发布包的依赖语义超出 1.1 范围，故登记豁免。与 no-circular 里“@fenix/ccb / @fenix/opencode / @fenix/claude-code ↔ acp-link”的环条目是同一批边的声明面，故 owner 同为「未排期」。 导入点：src/server.ts:5 值导入 createCcbHandler。"
-    },
-    {
-      "rule": "undeclared-workspace-dependency",
-      "from": "acp-link",
-      "to": "@fenix/claude-code",
-      "owner": "未排期",
-      "removeWhen": "acp-link 转为 private（不再发布），或 @fenix/claude-code 发布后把该边改为 dependencies",
-      "rationale": "实测 1 处导入 / 1 个文件。acp-link 是仓库里两个未标 `private` 的包之一（另一个是 @fenix-agent/acp-runtime-cli，见同组上一条），`files` 直接发布 `src/`、`exports[\".\"]` 指向 src/server.ts 并在顶层值导入这三个 plugin 包（src/server.ts:5-7），因此这四条边在发布语义上确实存在。不把它们提升为 `dependencies` 的原因是四个目标包都是 `private: true` 的未发布包：提升后发布物会带上 `workspace:*` 依赖并指向 registry 上不存在的包——不是修好而是把「无法在 workspace 外运行」写进已发布清单。仓库内消费方（docker/sandbox*/Dockerfile 的`bun build` 独立 bundle、acp-runtime-cli 的 dist/bin.js）都从源码打包，devDependencies 已足够解析。改变已发布包的依赖语义超出 1.1 范围，故登记豁免。与 no-circular 里“@fenix/ccb / @fenix/opencode / @fenix/claude-code ↔ acp-link”的环条目是同一批边的声明面，故 owner 同为「未排期」。 导入点：src/server.ts:6 值导入 createClaudeCodeHandler。"
-    },
-    {
-      "rule": "undeclared-workspace-dependency",
-      "from": "acp-link",
-      "to": "@fenix/opencode",
-      "owner": "未排期",
-      "removeWhen": "acp-link 转为 private（不再发布），或 @fenix/opencode 发布后把该边改为 dependencies",
-      "rationale": "实测 1 处导入 / 1 个文件。acp-link 是仓库里两个未标 `private` 的包之一（另一个是 @fenix-agent/acp-runtime-cli，见同组上一条），`files` 直接发布 `src/`、`exports[\".\"]` 指向 src/server.ts 并在顶层值导入这三个 plugin 包（src/server.ts:5-7），因此这四条边在发布语义上确实存在。不把它们提升为 `dependencies` 的原因是四个目标包都是 `private: true` 的未发布包：提升后发布物会带上 `workspace:*` 依赖并指向 registry 上不存在的包——不是修好而是把「无法在 workspace 外运行」写进已发布清单。仓库内消费方（docker/sandbox*/Dockerfile 的`bun build` 独立 bundle、acp-runtime-cli 的 dist/bin.js）都从源码打包，devDependencies 已足够解析。改变已发布包的依赖语义超出 1.1 范围，故登记豁免。与 no-circular 里“@fenix/ccb / @fenix/opencode / @fenix/claude-code ↔ acp-link”的环条目是同一批边的声明面，故 owner 同为「未排期」。 导入点：src/server.ts:7 值导入 createOpencodeHandler。"
-    },
-    {
-      "rule": "undeclared-workspace-dependency",
-      "from": "acp-link",
-      "to": "@fenix/plugin-sdk",
-      "owner": "未排期",
-      "removeWhen": "acp-link 转为 private（不再发布），或 @fenix/plugin-sdk 发布后把该边改为 dependencies",
-      "rationale": "实测 2 处导入 / 2 个文件。acp-link 是仓库里两个未标 `private` 的包之一（另一个是 @fenix-agent/acp-runtime-cli，见同组上一条），`files` 直接发布 `src/`、`exports[\".\"]` 指向 src/server.ts 并在顶层值导入这三个 plugin 包（src/server.ts:5-7），因此这四条边在发布语义上确实存在。不把它们提升为 `dependencies` 的原因是四个目标包都是 `private: true` 的未发布包：提升后发布物会带上 `workspace:*` 依赖并指向 registry 上不存在的包——不是修好而是把「无法在 workspace 外运行」写进已发布清单。仓库内消费方（docker/sandbox*/Dockerfile 的`bun build` 独立 bundle、acp-runtime-cli 的 dist/bin.js）都从源码打包，devDependencies 已足够解析。改变已发布包的依赖语义超出 1.1 范围，故登记豁免。与 no-circular 里“@fenix/ccb / @fenix/opencode / @fenix/claude-code ↔ acp-link”的环条目是同一批边的声明面，故 owner 同为「未排期」。 导入点：src/server.ts:8 与 src/client/instance-manager.ts:5，两处均为 `import type`（AgentLaunchSpec）；后者位于已发布的 `./client` 子路径内。"
     }
   ]
 }

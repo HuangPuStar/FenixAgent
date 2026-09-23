@@ -1,7 +1,7 @@
 /**
  * 子 Agent 执行轨迹 — 作为父级工具调用的可折叠详情，避免嵌套消息流造成视觉噪音。
  *
- * 来源：`packages/agent-runtime/web/components/chat/SubAgentPanel.tsx` 逐字复制。
+ * 来源：`packages/agent-runtime/web/components/chat/SubAgentPanel.tsx`（旧路径，已于 2026-09-21 由 f2741a82d 删除） 逐字复制。
  * 纯化改动点：Collapsible / 类型改从包内相对路径导入；i18n 命名空间改为 `uiComponents`，
  * key 加 `chat.components.` 前缀；工具分组渲染仍由宿主经 SubAgentToolCallGroupContext 注入。
  */
@@ -34,7 +34,7 @@ function SubAgentTimeline({ entries }: { entries: ThreadEntry[] }) {
   const renderToolGroup = useContext(SubAgentToolCallGroupContext);
 
   return (
-    <div className="relative space-y-3 border-l border-border/70 py-1 pl-4 before:absolute before:-left-[3px] before:top-0 before:h-1.5 before:w-1.5 before:rounded-full before:bg-brand">
+    <div className="relative space-y-3 border-l border-border/70 py-1 pl-4 before:absolute before:-left-0.75 before:top-0 before:h-1.5 before:w-1.5 before:rounded-full before:bg-brand">
       {grouped.map((item, index) => {
         if (item.type === "single") {
           if (item.entry.type !== "assistant_message") return null;
@@ -43,7 +43,7 @@ function SubAgentTimeline({ entries }: { entries: ThreadEntry[] }) {
 
         return (
           // biome-ignore lint/suspicious/noArrayIndexKey: 工具分组条目无唯一 key（源文件同款写法）；源宿主 packages/agent-runtime 未声明 react 依赖，biome 未启用 react 域规则。分组仅追加、不重排，索引键不会引起元素错位。
-          <div key={`sub-tool-group-${index}`} className="[&_.tool-call-group]:!pl-0">
+          <div key={`sub-tool-group-${index}`} className="[&_[data-slot=chat-tool-group]]:pl-0">
             {renderToolGroup?.(item.entries)}
           </div>
         );
@@ -88,7 +88,7 @@ function summarizeEntries(entries: ThreadEntry[]): SubAgentSummary {
   );
 }
 
-/** 子 Agent 轨迹折叠面板：头部显示消息/工具计数与运行态，展开后渲染子时间线。复制自 `packages/agent-runtime/web/components/chat/SubAgentPanel.tsx`。 */
+/** 子 Agent 轨迹折叠面板：头部显示消息/工具计数与运行态，展开后渲染子时间线。复制自 `packages/agent-runtime/web/components/chat/SubAgentPanel.tsx`（旧路径，已于 2026-09-21 由 f2741a82d 删除）。 */
 export const SubAgentPanel = memo(function SubAgentPanel({ entries }: SubAgentPanelProps) {
   const { t } = useTranslation(UI_COMPONENTS_NS);
   const [open, setOpen] = useState(false);
@@ -114,7 +114,7 @@ export const SubAgentPanel = memo(function SubAgentPanel({ entries }: SubAgentPa
             <span className="block text-xs font-medium text-text-primary">
               {t("chat.components.subAgentPanel.title")}
             </span>
-            <span className="mt-0.5 block text-[11px] text-text-dim">
+            <span className="mt-0.5 block text-3xs text-text-dim">
               {t("chat.components.subAgentPanel.summary", {
                 messages: summary.messageCount,
                 tools: summary.toolCount,

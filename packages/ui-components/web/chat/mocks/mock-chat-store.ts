@@ -5,8 +5,8 @@
  * `ChatStateSnapshot` / `SessionStateSnapshot` 同构的两份快照，并以定时器回放流式脚本，
  * 使 Chat UI 能在零网络、零 YJS 的条件下完整跑起来。
  *
- * 来源：状态字段与动作签名来自 `packages/agent-runtime/web/components/chat/chat-interface-types.ts`
- * 与 `packages/chat-channel/web/components/ChatInterface.tsx`（宿主如何把 YJS 投影喂给组件）。
+ * 来源：状态字段与动作签名来自 `packages/agent-runtime/web/components/chat/chat-interface-types.ts`（旧路径，已于 2026-09-21 由 f2741a82d 删除）
+ * 与 `packages/chat-channel/web/components/ChatInterface.tsx`（旧路径，已于 2026-09-21 由 8f364c109 删除）（宿主如何把 YJS 投影喂给组件）。
  * 纯化改动点：**不复制传输内核**（agent-runtime 的 ChatPanel / yjs doc-hub / hooks/use-chat-state /
  * hooks/use-session-state / session-mutation-refresh 一律未复制），因此不存在 relay、Doc、重连与
  * 多标签页语义；`projectEntries` 由包内 mock 投影提供，等价于宿主注入的 `structuredToThreadEntries`。
@@ -119,8 +119,8 @@ function resolveStepDelay(step: MockStreamStep, override?: number): number {
 /**
  * 内存态会话驱动 hook。
  *
- * 来源：`packages/agent-runtime/web/components/chat/chat-interface-types.ts` 的 `ChatInterfaceProps`
- * 与 `packages/chat-channel/web/components/ChatInterface.tsx` 的宿主接线方式。
+ * 来源：`packages/agent-runtime/web/components/chat/chat-interface-types.ts`（旧路径，已于 2026-09-21 由 f2741a82d 删除） 的 `ChatInterfaceProps`
+ * 与 `packages/chat-channel/web/components/ChatInterface.tsx`（旧路径，已于 2026-09-21 由 8f364c109 删除） 的宿主接线方式。
  * 纯化改动点：以 `useReducer` + 定时器回放替代 YJS 订阅与 relay 客户端，状态机见 `./internal/mock-reducer`。
  *
  * @param options 回放节奏等可选配置

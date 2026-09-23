@@ -88,7 +88,6 @@ export interface OrganizationsWorkspaceProps {
   editingName: boolean;
   editName: string;
   updateNameLoading: boolean;
-  copiedId: boolean;
   defaultMachineId: string;
   engineDirty: boolean;
   savingEngine: boolean;

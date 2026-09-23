@@ -1,7 +1,7 @@
 /**
  * Chat 引用（选中文本 → 隐藏上下文）的解析、预览与长度限制。
  *
- * 来源：`apps/web/src/lib/context-queue.ts` 的 ChatQuote 子集——逐字复制
+ * 来源：`apps/web/src/lib/context-queue.ts`（旧路径，已于 2026-09-21 由 6679b4648 删除） 的 ChatQuote 子集——逐字复制
  * `parseChatQuotes` / `createQuotePreview` / `isVisibleContentBlock` / `limitQuotedText` /
  * `serializeChatQuotes` 与相关常量。
  * 纯化改动点：去掉与宿主其它功能耦合的全局上下文队列（`contextQueues`、`pushContext`、
@@ -19,24 +19,24 @@ export const MAX_QUOTE_COUNT = 8;
 /** 含标题和截断说明在内的最终引用上下文硬上限。 */
 export const MAX_QUOTE_CONTEXT_PAYLOAD_LENGTH = 9_000;
 
-/** 截断后的引用正文与其被省略的字符数。复制自 `apps/web/src/lib/context-queue.ts`。 */
+/** 截断后的引用正文与其被省略的字符数。复制自 `apps/web/src/lib/context-queue.ts`（旧路径，已于 2026-09-21 由 6679b4648 删除）。 */
 export interface LimitedQuotedText {
   text: string;
   omittedCharacterCount: number;
 }
 
-/** 序列化进 system-reminder 的单条聊天引用结构。复制自 `apps/web/src/lib/context-queue.ts`。 */
+/** 序列化进 system-reminder 的单条聊天引用结构。复制自 `apps/web/src/lib/context-queue.ts`（旧路径，已于 2026-09-21 由 6679b4648 删除）。 */
 export type SerializedChatQuote = LimitedQuotedText;
 
 const CHAT_QUOTES_PREFIX = "Chat quotes for this turn (JSON): ";
 
-/** 生成仅供界面展示的短预览，不把完整长引用挂到 DOM 属性中。复制自 `apps/web/src/lib/context-queue.ts`。 */
+/** 生成仅供界面展示的短预览，不把完整长引用挂到 DOM 属性中。复制自 `apps/web/src/lib/context-queue.ts`（旧路径，已于 2026-09-21 由 6679b4648 删除）。 */
 export function createQuotePreview(text: string, maximumLength = 240): string {
   const characters = Array.from(text);
   return characters.length <= maximumLength ? text : `${characters.slice(0, maximumLength).join("")}…`;
 }
 
-/** 规范化并限制引用正文；按 Unicode code point 截断，避免破坏代理对字符。复制自 `apps/web/src/lib/context-queue.ts`。 */
+/** 规范化并限制引用正文；按 Unicode code point 截断，避免破坏代理对字符。复制自 `apps/web/src/lib/context-queue.ts`（旧路径，已于 2026-09-21 由 6679b4648 删除）。 */
 export function limitQuotedText(text: string, maximumLength = MAX_QUOTED_TEXT_LENGTH): LimitedQuotedText {
   const normalized = text.replace(/\s+/g, " ").trim();
   const characters = Array.from(normalized);
@@ -50,7 +50,7 @@ export function limitQuotedText(text: string, maximumLength = MAX_QUOTED_TEXT_LE
   };
 }
 
-/** 对结构化引用执行最终硬限制，保证发给 Agent 的完整 payload 不超过边界。复制自 `apps/web/src/lib/context-queue.ts`。 */
+/** 对结构化引用执行最终硬限制，保证发给 Agent 的完整 payload 不超过边界。复制自 `apps/web/src/lib/context-queue.ts`（旧路径，已于 2026-09-21 由 6679b4648 删除）。 */
 export function serializeChatQuotes(quotes: SerializedChatQuote[]): string | undefined {
   const accepted: SerializedChatQuote[] = [];
   for (const quote of quotes.slice(0, MAX_QUOTE_COUNT)) {
@@ -62,7 +62,7 @@ export function serializeChatQuotes(quotes: SerializedChatQuote[]): string | und
   return accepted.length > 0 ? `${CHAT_QUOTES_PREFIX}${JSON.stringify(accepted)}` : undefined;
 }
 
-/** 从 system-reminder 内容中读取 Chat 引用；其他内部提醒不会被误投影成引用卡。复制自 `apps/web/src/lib/context-queue.ts`。 */
+/** 从 system-reminder 内容中读取 Chat 引用；其他内部提醒不会被误投影成引用卡。复制自 `apps/web/src/lib/context-queue.ts`（旧路径，已于 2026-09-21 由 6679b4648 删除）。 */
 export function parseChatQuotes(text: string): SerializedChatQuote[] {
   const payloadStart = text.indexOf(CHAT_QUOTES_PREFIX);
   if (payloadStart < 0) return [];
@@ -92,7 +92,7 @@ const SYSTEM_REMINDER_CLOSE = "</system-reminder>";
 
 /**
  * 判断内容块是否应当渲染：被完整 `<system-reminder>` 包裹的文本块整体隐藏。
- * 复制自 `apps/web/src/lib/context-queue.ts`（仅截断判定，不做消息切分；切分见 `strip-html-tags.ts`）。
+ * 复制自 `apps/web/src/lib/context-queue.ts`（旧路径，已于 2026-09-21 由 6679b4648 删除）（仅截断判定，不做消息切分；切分见 `strip-html-tags.ts`）。
  */
 export function isVisibleContentBlock(block: { type: string; text?: string }): boolean {
   if (block.type !== "text" || !block.text) return true;

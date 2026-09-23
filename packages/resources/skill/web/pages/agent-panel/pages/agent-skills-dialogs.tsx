@@ -235,7 +235,7 @@ function SkillTextFields({
           value={description}
           onChange={(event) => onDescriptionChange(event.target.value)}
           disabled={readOnly}
-          className="mt-1 min-h-[80px] text-sm"
+          className="mt-1 min-h-20 text-sm"
           placeholder={t("form.descriptionPlaceholder")}
         />
       </label>
@@ -246,7 +246,7 @@ function SkillTextFields({
           value={content}
           onChange={(event) => onContentChange(event.target.value)}
           disabled={readOnly}
-          className="min-h-[300px] font-mono text-sm"
+          className="min-h-75 font-mono text-sm"
           placeholder={t("form.contentPlaceholder")}
         />
       </label>

@@ -46,8 +46,10 @@ export function ChatShellExamples({ session }: { session: MockChatSession }) {
   }, []);
 
   return (
-    <div className="demo-example">
-      <h2 className="demo-example-title">ACPMain（侧栏 + 会话头 + 消息流 + 输入岛全貌）</h2>
+    <div className="mb-5 p-5 border border-border rounded-lg bg-surface-1">
+      <h2 data-slot="demo-example-title" className="mb-4 text-text-secondary text-[13px] font-medium">
+        ACPMain（侧栏 + 会话头 + 消息流 + 输入岛全貌）
+      </h2>
       {/* ACPMain 根节点为 h-full，外层必须给出确定高度；内部分栏与滚动由组件自理。 */}
       <div className="h-[760px] overflow-hidden rounded-lg border border-border">
         <ACPMain
@@ -83,10 +85,10 @@ export function ChatShellExamples({ session }: { session: MockChatSession }) {
           onNotice={(shellNotice) => setNotice(`${shellNotice.level}: ${shellNotice.message}`)}
         />
       </div>
-      <p className="demo-hint">
+      <p className="mt-3 text-text-muted text-[12px]">
         在输入岛回车即可看到流式回放：推理 → 工具 → 计划 → 权限（暂停等待应答）→ 问答 → 完成。
       </p>
-      <p className="demo-hint">{notice ?? "等待交互…"}</p>
+      <p className="mt-3 text-text-muted text-[12px]">{notice ?? "等待交互…"}</p>
     </div>
   );
 }

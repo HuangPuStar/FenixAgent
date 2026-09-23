@@ -1,181 +1,15 @@
-export type FileCategory = "code" | "image" | "pdf" | "binary" | "table" | "markdown" | "html" | "office";
-
-/** encodeURIComponent 不编码 ()，需额外处理，用于 URL 路径 */
-export function encodePathSegment(seg: string) {
-  return encodeURIComponent(seg).split("(").join("%28").split(")").join("%29");
-}
-
-const CODE_EXTENSIONS = new Set([
-  "ts",
-  "tsx",
-  "js",
-  "jsx",
-  "mjs",
-  "cjs",
-  "py",
-  "go",
-  "rs",
-  "rb",
-  "java",
-  "c",
-  "cpp",
-  "h",
-  "hpp",
-  "cs",
-  "swift",
-  "kt",
-  "r",
-  "scala",
-  "lua",
-  "perl",
-  "sh",
-  "bash",
-  "zsh",
-  "fish",
-  "ps1",
-  "json",
-  "jsonc",
-  "yaml",
-  "yml",
-  "toml",
-  "ini",
-  "cfg",
-  "conf",
-  "css",
-  "scss",
-  "less",
-  "sass",
-  "html",
-  "htm",
-  "xml",
-  "vue",
-  "svelte",
-  "md",
-  "mdx",
-  "sql",
-  "graphql",
-  "gql",
-  "proto",
-  "dockerfile",
-  "makefile",
-  "cmake",
-  "gradle",
-  "lock",
-  "log",
-  "txt",
-  "env",
-  "gitignore",
-  "editorconfig",
-  "prettierrc",
-  "eslintrc",
-  "properties",
-  "tf",
-  "hcl",
-  "dart",
-  "zig",
-  "nim",
-  "ex",
-  "exs",
-  "erl",
-  "hs",
-  "ml",
-  "fs",
-  "clj",
-  "lisp",
-  "v",
-  "vhd",
-  "asm",
-]);
-
-const IMAGE_EXTENSIONS = new Set([
-  "png",
-  "jpg",
-  "jpeg",
-  "gif",
-  "webp",
-  "ico",
-  "bmp",
-  "svg",
-  "tiff",
-  "tif",
-  "heic",
-  "heif",
-]);
-
-const TABLE_EXTENSIONS = new Set(["csv", "xlsx", "xls", "xlsm", "xlsb"]);
-
-const OFFICE_EXTENSIONS = new Set(["docx", "doc", "pptx", "ppt", "odt", "odp", "ods", "rtf", "wps", "et", "dps"]);
-
-const MARKDOWN_EXTENSIONS = new Set(["md", "mdx", "markdown"]);
-
-const HTML_EXTENSIONS = new Set(["html", "htm"]);
-
-function getExtension(filePath: string): string {
-  const segments = filePath.split("/");
-  const fileName = segments[segments.length - 1] ?? "";
-  const dotIndex = fileName.lastIndexOf(".");
-  if (dotIndex === -1 || dotIndex === 0) return fileName.toLowerCase();
-  return fileName.slice(dotIndex + 1).toLowerCase();
-}
-
-export function classifyFile(filePath: string): FileCategory {
-  const ext = getExtension(filePath);
-  if (ext === "pdf") return "pdf";
-  if (IMAGE_EXTENSIONS.has(ext)) return "image";
-  if (TABLE_EXTENSIONS.has(ext)) return "table";
-  if (OFFICE_EXTENSIONS.has(ext)) return "office"; // officePlugin 支持，不属于 binary
-  if (HTML_EXTENSIONS.has(ext)) return "html";
-  if (MARKDOWN_EXTENSIONS.has(ext)) return "markdown";
-  if (CODE_EXTENSIONS.has(ext)) return "code";
-  return "binary";
-}
-
 /**
- * 获取预览组件使用的文本 MIME 类型。
- * @open-file-viewer 会把文件名中的 # 当作 URL fragment，导致 #123.txt 的扩展名丢失；
- * 显式传入文本 MIME 后仍能匹配 textPlugin，同时不需要修改用户看到的原始文件名。
+ * 宿主专有的预览路径工具。
+ *
+ * 文件预览的「源判定」主体（扩展名分类表、`classifyFile`、`getPreviewMimeType`、
+ * `shouldLoadPreviewAsBlob`、`loadByteAccuratePreviewSource`、`buildPreviewUrl`）的 owner 是
+ * `@fenix/ui-components/components/preview/preview-source` 与 `FileViewerPreview`：本文件此前
+ * 保留了一份逐字副本，而全仓消费方（含 `ArtifactsPanel` 走 `PreviewTab`）早已改指包出口，
+ * 副本因此只剩「两份扩展名真相各自演化」的风险，已整段删除。
+ *
+ * 此处只留 `normalizeToUserPath`——它处理的是 Agent 工具调用上报路径与宿主文件树路径的**对齐约定**，
+ * 与预览渲染无关，包内没有对应实现，也没有第二个包需要它（出现第二个消费者时再下沉）。
  */
-export function getPreviewMimeType(filePath: string): string | undefined {
-  const ext = getExtension(filePath);
-  if (MARKDOWN_EXTENSIONS.has(ext)) return "text/markdown";
-  if (HTML_EXTENSIONS.has(ext)) return "text/html";
-  if (CODE_EXTENSIONS.has(ext)) return "text/plain";
-  return;
-}
-
-/**
- * URL 形式的文本源会让 @open-file-viewer 在元数据缺失时退化为 `text.length`，
- * 把字符数误显示为字节数。HTML 需要保留 URL 供 sandbox iframe 渲染，因此不在此转换。
- */
-export function shouldLoadPreviewAsBlob(filePath: string): boolean {
-  const category = classifyFile(filePath);
-  return category === "code" || category === "markdown";
-}
-
-/**
- * 将文本预览响应保留为 Blob，使预览器使用原始响应字节数并自行按 BOM 解码。
- * 非成功响应必须在进入预览器前显式失败，避免把错误页当作文件内容展示。
- */
-export async function loadByteAccuratePreviewSource(
-  previewUrl: string,
-  fetchPreview: (url: string, init?: RequestInit) => Promise<Response> = fetch,
-  init?: RequestInit,
-): Promise<Blob> {
-  const response = await fetchPreview(previewUrl, init);
-  if (!response.ok) throw new Error(`文件预览加载失败 (${response.status})`);
-  return response.blob();
-}
-
-/**
- * 构建文件预览 URL。
- * 按路径段分别 encodeURIComponent，避免中文等非 ASCII 字符在浏览器→Vite 代理→后端
- * 的链路上产生编码歧义。分隔符 / 不编码，保持路径结构。
- */
-export function buildPreviewUrl(envId: string, filePath: string): string {
-  const encodedPath = filePath.split("/").map(encodeURIComponent).join("/");
-  return `/web/environments/${envId}/fs/${encodedPath}?preview=true`;
-}
-
 /**
  * 把 Agent 工具调用上报的任意格式路径规范化为 workspace 相对路径，
  * 与后端文件树 API 返回的路径格式保持一致。
@@ -225,10 +59,4 @@ export function normalizeToUserPath(rawPath: string): string {
 
   // 纯相对路径：直接返回（agent 工作目录即 workspace 根，路径已正确）
   return trimmed;
-}
-
-export function formatFileSize(bytes: number): string {
-  if (bytes < 1024) return `${bytes} B`;
-  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
-  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }

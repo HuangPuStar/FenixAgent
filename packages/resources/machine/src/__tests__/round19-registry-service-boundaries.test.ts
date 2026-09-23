@@ -66,9 +66,9 @@ describe("registry schema 参数与安全边界", () => {
     expect(CreateMachineSchema.parse({ name: "worker" }).labels).toEqual([]);
   });
 
-  // 创建请求为引擎提供兼容默认值。
-  test("创建机器默认使用opencode引擎", () => {
-    expect(CreateMachineSchema.parse({ name: "worker" }).agentName).toBe("opencode");
+  // 创建请求为引擎提供兼容默认值：缺省即平台默认引擎 peri。
+  test("创建机器默认使用peri引擎", () => {
+    expect(CreateMachineSchema.parse({ name: "worker" }).agentName).toBe("peri");
   });
 
   // 标签必须是字符串数组，不能把对象注入配置。

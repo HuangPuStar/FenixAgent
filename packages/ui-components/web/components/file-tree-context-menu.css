@@ -1,0 +1,24 @@
+/*
+ * 文件树右键菜单（`file-tree-context-menu.tsx`）的深层样式。
+ *
+ * 为什么下沉：`shadow-[0_12px_32px_rgb(15_23_42/18%)]` 是任意值 + 复合表达式，
+ * `[&_svg]:size-3.75 [&_svg]:shrink-0` 是子选择器变体，都属仓库禁令 FCP-WEB-02。
+ *
+ * 类名没有沿用源 `.file-tree-context-menu`：宿主 `apps/web/src/shell/artifacts-workspace.css`
+ * （仍被 `pages/agent-panel/ChatArea.tsx` 静态导入）里同名规则还活着，复用会把它的
+ * `button:hover { color: … }` 等**未分层**声明一并复活，压过本组件危险项的 `text-destructive`。
+ * 故按组件名前缀落成 `.file-tree-context-menu-panel`。
+ *
+ * 层叠：本文件不包 `@layer`，未分层声明压过 `@layer utilities`。
+ */
+
+.file-tree-context-menu-panel {
+  box-shadow: 0 12px 32px rgb(15 23 42 / 18%);
+}
+
+/* 菜单项图标：统一 15px 且不参与压缩（源 `.file-tree-context-menu svg`，其 `flex: 0 0 15px` 的伸缩两项）。 */
+.file-tree-context-menu-panel svg {
+  width: 15px;
+  height: 15px;
+  flex-shrink: 0;
+}

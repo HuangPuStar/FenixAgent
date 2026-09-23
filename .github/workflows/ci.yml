@@ -101,7 +101,7 @@ jobs:
         run: bun test apps/server/src/__tests__/ scripts/__tests__/ packages/platform/platform-sdk/src/__tests__/
 
       - name: Package tests
-        run: bun test packages/
+        run: bun test packages/ --path-ignore-patterns 'tmp/**'
 
       - name: Web app tests
         run: bun test apps/web/src/__tests__/

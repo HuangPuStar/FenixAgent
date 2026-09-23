@@ -21,6 +21,9 @@
  * 都会把 React 页面图拖进服务端图（计划 §2.3 的 exports 注记）。
  */
 
+// `simplifyModelDisplayName` 的唯一实现在 `@fenix/ui-components`（Chat 输入岛的模型标签与
+// 本包的下拉标签都要用同一份化简规则）。此处保留同名转发，本包对外出口不变。
+export { simplifyModelDisplayName } from "@fenix/ui-components/chat/lib/simplify-model-display-name";
 // API 客户端：`/web/config/models`、`/web/config/providers`、`/web/model-gateway` 与 `/api` 用量查询
 export * from "./api/model-gateway";
 export * from "./api/models";
@@ -36,9 +39,8 @@ export { ModelIcon, type ModelIconProps } from "./components/model-icon/ModelIco
 export { findModelIconEntry, modelIconMap } from "./components/model-icon/model-icon-map";
 // i18n：命名空间常量与字典（宿主经 `./web/i18n` 子路径登记，理由见 web/i18n/index.ts）
 export { MODELS_NS, type ModelManagementResources, modelManagementResources } from "./i18n";
-
 // 纯逻辑助手：Provider 归属判定、模型选项与用量日期区间（无 React 依赖，可被后端/测试直接调用）
-export { buildModelOptions, simplifyModelDisplayName } from "./lib/model-config-utils";
+export { buildModelOptions } from "./lib/model-config-utils";
 export { buildRecentUsageDateRange, type ModelGatewayUsageDateRange, toUsageDate } from "./lib/model-gateway-usage";
 export * from "./lib/provider-resource-access";
 

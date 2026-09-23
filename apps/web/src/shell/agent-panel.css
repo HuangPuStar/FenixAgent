@@ -56,13 +56,6 @@
   position: relative;
 }
 
-/* ResizablePanelGroup 占满 agent-panel-content，承载 chat + ArtifactsPanel 拖动布局 */
-.agent-panel-resizable {
-  flex: 1;
-  min-height: 0;
-  min-width: 0;
-}
-
 /* ---------- 左侧边栏 ---------- */
 .agent-sidebar {
   width: var(--agent-sidebar-width);
@@ -191,14 +184,6 @@
   opacity: 0.72;
 }
 
-.agent-sidebar-brand-text {
-  color: rgba(255, 255, 255, 0.96);
-  font-size: 13px;
-  font-weight: 700;
-  letter-spacing: 0.18em;
-  text-transform: uppercase;
-}
-
 .agent-sidebar-nav {
   height: 100%;
   max-height: none;
@@ -313,7 +298,6 @@
 }
 
 .agent-sidebar-tree-wrap,
-.agent-sidebar-more,
 .agent-sidebar-footer {
   border-color: rgba(255, 255, 255, 0.1);
 }
@@ -399,11 +383,6 @@
   border-radius: 0 2px 2px 0;
   background: linear-gradient(180deg, var(--agent-sidebar-cyan), #0f6bff);
   transform: translateY(-50%);
-}
-
-.agent-sidebar-badge {
-  background: rgba(255, 255, 255, 0.12);
-  color: rgba(255, 255, 255, 0.62);
 }
 
 .agent-sidebar-actions button,
@@ -593,10 +572,8 @@
 }
 
 .agent-sidebar.collapsed .fenix-sidebar-logo-text,
-.agent-sidebar.collapsed .agent-sidebar-brand-text,
 .agent-sidebar.collapsed .agent-sidebar-section-label,
 .agent-sidebar.collapsed .agent-sidebar-nav-item span,
-.agent-sidebar.collapsed .agent-sidebar-more,
 .agent-sidebar.collapsed .agent-sidebar-user-name,
 .agent-sidebar.collapsed .agent-sidebar-user-chevron,
 .agent-sidebar.collapsed .agent-sidebar-org-row {
@@ -665,210 +642,11 @@
   background: transparent;
 }
 
-/* ---------- 右侧 Artifacts 面板 ---------- */
-.agent-artifacts {
-  width: var(--agent-artifacts-width);
-  min-width: 0;
-  display: flex;
-  flex-direction: column;
-  background: var(--color-surface-1);
-  border-radius: 12px;
-  box-shadow: var(--shadow-card);
-  transition:
-    width 300ms cubic-bezier(0.4, 0, 0.2, 1),
-    min-width 300ms cubic-bezier(0.4, 0, 0.2, 1),
-    opacity 200ms ease;
-  overflow: hidden;
-  flex-shrink: 0;
-  position: relative;
-}
-
-.agent-artifacts.collapsed {
-  width: 0;
-  min-width: 0;
-  border-left: none;
-  opacity: 0;
-  pointer-events: none;
-}
-
-/* ---------- Artifacts 折叠展开按钮 ----------
-   按钮嵌入 ResizableHandle（Separator）内部作为 children，absolute 居中在手柄上。
-   - 手柄拖动：鼠标按下+移动触发 Separator 的 document-level mousedown listener 启动 resize
-   - toggle 切换：鼠标按下+松开（不移动）触发 button 的 click 事件
-   Separator 自身宽度仅 1px（命中区通过 after 伪元素扩展到 8px），按钮 28×56 absolute 定位
-   覆盖在手柄中央，向两侧各延伸 14px，既不阻挡 Separator 命中区又能提供更大点击区域。 */
-.agent-artifacts-expand-btn {
-  position: absolute;
-  left: 50%;
-  top: 50%;
-  transform: translate(-50%, -50%);
-  width: 28px;
-  height: 56px;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  gap: 2px;
-  border: 1px solid var(--color-border-subtle);
-  border-radius: 6px;
-  background: var(--color-surface-1);
-  color: var(--color-text-muted);
-  cursor: pointer;
-  transition:
-    background 150ms,
-    color 150ms,
-    width 150ms;
-  z-index: 10;
-  font-size: 10px;
-  font-weight: 500;
-  writing-mode: vertical-lr;
-  letter-spacing: 0.05em;
-}
-
-.agent-artifacts-expand-btn:hover {
-  background: var(--color-surface-2);
-  color: var(--color-text-primary);
-  width: 32px;
-}
-
-/* ---------- 拖拽分隔线 ---------- */
-.agent-artifacts-resize-handle {
-  width: 4px;
-  cursor: col-resize;
-  background: transparent;
-  transition: background 150ms;
-  flex-shrink: 0;
-  position: absolute;
-  left: -6px;
-  top: 0;
-  bottom: 0;
-  z-index: 2;
-}
-
-.agent-artifacts-resize-handle:hover,
-.agent-artifacts-resize-handle:active {
-  background: var(--color-brand);
-  opacity: 0.4;
-}
-
-/* ---------- Artifacts Tab 栏 ---------- */
-.agent-artifacts-tabs {
-  display: flex;
-  align-items: center;
-  border-bottom: 1px solid var(--color-border-subtle);
-  padding: 0 8px;
-  min-height: 40px;
-  flex-shrink: 0;
-}
-
-.agent-artifacts-tab {
-  padding: 8px 12px;
-  font-size: 12px;
-  font-weight: 500;
-  color: var(--color-text-muted);
-  cursor: pointer;
-  border-bottom: 2px solid transparent;
-  transition:
-    color 150ms,
-    border-color 150ms;
-  background: none;
-  border-top: none;
-  border-left: none;
-  border-right: none;
-  white-space: nowrap;
-}
-
-.agent-artifacts-tab:hover {
-  color: var(--color-text-primary);
-}
-
-.agent-artifacts-tab.active {
-  color: var(--color-brand);
-  border-bottom-color: var(--color-brand);
-}
-
-.agent-artifacts-close-btn {
-  margin-left: auto;
-  width: 28px;
-  height: 28px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  border-radius: 6px;
-  border: none;
-  background: transparent;
-  color: var(--color-text-muted);
-  cursor: pointer;
-  transition:
-    background 150ms,
-    color 150ms;
-}
-
-.agent-artifacts-close-btn:hover {
-  background: var(--color-surface-2);
-  color: var(--color-text-primary);
-}
-
 /* ---------- @pierre/trees 自定义元素 ---------- */
 file-tree-container {
   display: block;
   width: 100%;
   height: 100%;
-}
-
-/* ---------- 智能体树样式 ---------- */
-
-/* 实例行操作按钮（复用于卡片内） */
-.agent-tree-action-btn {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 22px;
-  height: 22px;
-  border: none;
-  border-radius: 4px;
-  background: none;
-  color: var(--color-text-dim);
-  cursor: pointer;
-  transition:
-    background 150ms,
-    color 150ms;
-  padding: 0;
-}
-
-.agent-tree-action-btn:hover {
-  background: var(--color-surface-hover);
-  color: var(--color-text-primary);
-}
-
-.agent-tree-action-btn:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
-}
-
-/* ---------- 状态指示灯 ---------- */
-.status-dot {
-  width: 8px;
-  height: 8px;
-  border-radius: 50%;
-  flex-shrink: 0;
-}
-
-.status-dot.running {
-  background: var(--color-status-running);
-}
-
-.status-dot.idle,
-.status-dot.starting {
-  background: var(--color-status-warning);
-}
-
-.status-dot.stopped {
-  background: var(--color-text-muted);
-}
-
-.status-dot.error {
-  background: var(--color-status-error);
 }
 
 /* ---------- 欢迎空状态 ---------- */
@@ -895,25 +673,4 @@ file-tree-container {
 .agent-welcome-empty .desc {
   font-size: 13px;
   color: var(--color-text-muted);
-}
-
-/* ---------- Artifacts split layout (tree + preview) ---------- */
-.agent-artifacts-split {
-  flex: 1;
-  display: flex;
-  overflow: hidden;
-  min-height: 0;
-}
-
-.agent-artifacts-tree-pane {
-  width: 200px;
-  min-width: 200px;
-  overflow: hidden;
-  border-right: 1px solid var(--color-border-subtle);
-}
-
-.agent-artifacts-preview-pane {
-  flex: 1;
-  min-width: 0;
-  overflow: hidden;
 }

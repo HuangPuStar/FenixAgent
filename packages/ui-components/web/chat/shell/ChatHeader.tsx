@@ -1,18 +1,10 @@
+import "./ChatHeader.css";
+
 import { ChevronDown, Loader2, MessageSquare, PanelLeft, PanelLeftClose, Plus, Search } from "lucide-react";
 import { type KeyboardEvent, useCallback, useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { UI_COMPONENTS_NS } from "../../i18n/namespace";
 import { cn } from "../../lib/cn";
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from "../../ui/alert-dialog";
 import { Button } from "../../ui/button";
 import { Input } from "../../ui/input";
 import { Popover, PopoverContent, PopoverTrigger } from "../../ui/popover";
@@ -23,10 +15,21 @@ import { stripHtmlTags } from "../lib/strip-html-tags";
 import type { AgentSessionInfo } from "../types";
 import type { ChatNotice } from "./chat-interface-types";
 import { type ChatHeaderSessionItem, ChatHeaderSessionRow } from "./internal/chat-header-session-row";
+import { DeleteSessionDialog } from "./internal/delete-session-dialog";
+
+/**
+ * 顶部卡片：扁平工具类留在 `className`；需要祖先选择器（`.acp-main-root`）、`:not(.dark *)` 互斥、
+ * `@supports` 回退与复合值（阴影、过渡）的声明全部下沉到 `./ChatHeader.css` 的 `.chat-header-panel`
+ * —— 两段源规则的生效值、层叠要点与数值来源见该文件。
+ */
+const HEADER_CARD_CLASS = cn(
+  "chat-header-panel flex h-11 shrink-0 items-center gap-2 overflow-hidden px-3",
+  "rounded-2xl border border-white/90 bg-white/72 shadow-none backdrop-blur-lg backdrop-saturate-[180%]",
+);
 
 /**
  * ChatHeader 属性。
- * 复制自 `packages/agent-runtime/web/components/chat/ChatHeader.tsx`。
+ * 复制自 `packages/agent-runtime/web/components/chat/ChatHeader.tsx`（旧路径，已于 2026-09-21 由 f2741a82d 删除）。
  */
 interface ChatHeaderProps {
   /** 当前激活的会话 ID（与 ChatInterface 内 activeSessionId 对齐） */
@@ -67,7 +70,7 @@ interface ChatHeaderProps {
  * 数据自包含：组件内部独立监听 capabilitiesChange / connectionState / 30s 轮询，
  * 避免与 ChatInterface 的会话状态耦合。
  *
- * 复制自 `packages/agent-runtime/web/components/chat/ChatHeader.tsx`。
+ * 复制自 `packages/agent-runtime/web/components/chat/ChatHeader.tsx`（旧路径，已于 2026-09-21 由 f2741a82d 删除）。
  * 纯化改动点：`toast.error` 改为 `onNotice` 回调（文案逐字保留）；`cn` / UI 组件 / `stripHtmlTags`
  * 改为包内导入；i18n 收敛到 `UI_COMPONENTS_NS`（键前缀 `chat.components.`）；单行渲染抽到
  * `./internal/chat-header-session-row` 以满足单文件 500 行约束。
@@ -230,12 +233,39 @@ export function ChatHeader({
     }
   }, [deleteTarget, onDeleteSession, onNotice]);
 
+  /**
+   * 侧边栏收起/展开按钮。
+   *
+   * 2026-09-22 库内去重：`showSessionList` 的 popover 分支与 `!showSessionList` 的窄标题分支此前
+   * 各渲染了一份逐字相同的 `<Button>`（className 的 `pinned` 两态、`title` / `aria-label` / `aria-pressed`
+   * 与图标全部一致，唯一差异是 `title` 那行的换行排版）。两个分支互斥，故可在渲染前建一次、两处复用；
+   * `onToggleSidebar` 缺省时两处原本都不渲染，这里保持同一判空。
+   */
+  const sidebarToggleButton = onToggleSidebar ? (
+    <Button
+      variant="ghost"
+      size="icon"
+      onClick={handlePinToggle}
+      className={cn(
+        "h-7 w-7 flex-shrink-0",
+        pinned
+          ? "text-brand bg-brand/10 hover:bg-brand/20"
+          : "text-text-muted hover:text-text-primary hover:bg-surface-2/60",
+      )}
+      title={t(pinned ? "chat.components.chatHeader.hideSessions" : "chat.components.chatHeader.showSessions")}
+      aria-label={t(pinned ? "chat.components.chatHeader.hideSessions" : "chat.components.chatHeader.showSessions")}
+      aria-pressed={pinned}
+    >
+      <SidebarToggleIcon className="h-3.5 w-3.5" />
+    </Button>
+  ) : null;
+
   return (
     <div
       className={cn(
-        // chat-header-card：玻璃磨砂浮动卡片（圆角 + 阴影），替代原 border-b 横条；
-        // 外层 ACPMain 的 padding 负责让卡片悬浮于子页面顶部
-        "chat-header-card flex items-center gap-2 h-11 px-3 flex-shrink-0",
+        // 顶部卡片：玻璃磨砂浮动卡片（独立渲染）／外壳内的平面标题栏（`.acp-main-root` 子树），
+        // 两种形态与暗色覆写见 `./ChatHeader.css` 与 HEADER_CARD_CLASS 注释
+        HEADER_CARD_CLASS,
         className,
       )}
     >
@@ -257,7 +287,7 @@ export function ChatHeader({
               title={activeTitle}
             >
               <MessageSquare className="h-3.5 w-3.5 text-text-muted flex-shrink-0" />
-              <span className="text-[13px] font-display truncate min-w-0">{activeTitle}</span>
+              <span className="text-xs font-display truncate min-w-0">{activeTitle}</span>
               <ChevronDown
                 className={cn(
                   "h-3.5 w-3.5 text-text-muted flex-shrink-0 transition-transform duration-150",
@@ -295,29 +325,7 @@ export function ChatHeader({
                     <Plus className="h-3.5 w-3.5" />
                   </Button>
                 )}
-                {/* 侧边栏收起/展开按钮 */}
-                {onToggleSidebar && (
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    onClick={handlePinToggle}
-                    className={cn(
-                      "h-7 w-7 flex-shrink-0",
-                      pinned
-                        ? "text-brand bg-brand/10 hover:bg-brand/20"
-                        : "text-text-muted hover:text-text-primary hover:bg-surface-2/60",
-                    )}
-                    title={t(
-                      pinned ? "chat.components.chatHeader.hideSessions" : "chat.components.chatHeader.showSessions",
-                    )}
-                    aria-label={t(
-                      pinned ? "chat.components.chatHeader.hideSessions" : "chat.components.chatHeader.showSessions",
-                    )}
-                    aria-pressed={pinned}
-                  >
-                    <SidebarToggleIcon className="h-3.5 w-3.5" />
-                  </Button>
-                )}
+                {sidebarToggleButton}
               </div>
 
               {/* 会话列表 */}
@@ -327,7 +335,7 @@ export function ChatHeader({
                     <span className="text-xs text-text-muted font-display">
                       {t("chat.components.acpMain.noSessions")}
                     </span>
-                    <span className="text-[10px] text-text-muted">{t("chat.components.acpMain.clickToCreate")}</span>
+                    <span className="text-3xs text-text-muted">{t("chat.components.acpMain.clickToCreate")}</span>
                   </div>
                 )}
 
@@ -341,7 +349,7 @@ export function ChatHeader({
                   <div key={group.label}>
                     {gi > 0 && <div className="mx-3 my-1.5 border-t border-border/40" />}
                     <div className="px-4 pt-2 pb-1">
-                      <span className="text-[10px] font-display font-semibold uppercase tracking-widest text-text-muted/70">
+                      <span className="text-3xs font-display font-semibold uppercase tracking-widest text-text-muted/70">
                         {group.label}
                       </span>
                     </div>
@@ -369,29 +377,10 @@ export function ChatHeader({
       )}
       {!showSessionList && (
         <div className="flex items-center gap-1.5 h-8 px-2 text-text-primary max-w-[70%]">
-          {onToggleSidebar && (
-            <Button
-              variant="ghost"
-              size="icon"
-              onClick={handlePinToggle}
-              className={cn(
-                "h-7 w-7 flex-shrink-0",
-                pinned
-                  ? "text-brand bg-brand/10 hover:bg-brand/20"
-                  : "text-text-muted hover:text-text-primary hover:bg-surface-2/60",
-              )}
-              title={t(pinned ? "chat.components.chatHeader.hideSessions" : "chat.components.chatHeader.showSessions")}
-              aria-label={t(
-                pinned ? "chat.components.chatHeader.hideSessions" : "chat.components.chatHeader.showSessions",
-              )}
-              aria-pressed={pinned}
-            >
-              <SidebarToggleIcon className="h-3.5 w-3.5" />
-            </Button>
-          )}
+          {sidebarToggleButton}
           <div className="flex items-center gap-1.5 min-w-0" title={activeTitle}>
             <MessageSquare className="h-3.5 w-3.5 text-text-muted flex-shrink-0" />
-            <span className="text-[13px] font-display truncate min-w-0">{activeTitle}</span>
+            <span className="text-xs font-display truncate min-w-0">{activeTitle}</span>
           </div>
         </div>
       )}
@@ -400,27 +389,12 @@ export function ChatHeader({
       <div className="flex-1" />
 
       {/* 会话删除二次确认 */}
-      <AlertDialog open={deleteTarget !== null} onOpenChange={(open) => !open && setDeleteTarget(null)}>
-        <AlertDialogContent size="sm">
-          <AlertDialogHeader>
-            <AlertDialogTitle>{t("chat.components.acpMain.deleteSessionTitle")}</AlertDialogTitle>
-            <AlertDialogDescription>
-              {t("chat.components.acpMain.deleteConfirm", { title: deleteTarget?.title ?? "" })}
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel onClick={() => setDeleteTarget(null)}>
-              {t("chat.components.acpMain.cancel")}
-            </AlertDialogCancel>
-            <AlertDialogAction
-              className="bg-red-600 text-white hover:bg-red-700 dark:bg-red-500 dark:hover:bg-red-600"
-              onClick={() => void handleConfirmDelete()}
-            >
-              {t("chat.components.acpMain.delete")}
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
+      <DeleteSessionDialog
+        open={deleteTarget !== null}
+        title={deleteTarget?.title}
+        onOpenChange={(open) => !open && setDeleteTarget(null)}
+        onConfirm={() => void handleConfirmDelete()}
+      />
     </div>
   );
 }
