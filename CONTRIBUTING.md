@@ -74,8 +74,16 @@ bun run db:migrate
 如果修改了表定义（业务表在所属 owner 包的 `packages/**/db/schema.ts`，身份表在 `packages/platform/identity/db/schema.ts`，宿主自有表在 `apps/server/src/db/schema.ts`），生成迁移文件：
 
 ```bash
-bun run db:generate --name <migration-name>
+bun run db:generate --name <module>-<change>
 ```
+
+涉及存量数据搬迁、修复或回填时，DDL 迁移完成后还要执行模块数据迁移：
+
+```bash
+bun run run-data-migrations
+```
+
+发布顺序固定为：DDL 迁移 → 数据迁移 → 启动新版本进程。数据迁移不在应用启动时自动执行。
 
 ## 本地开发
 
@@ -138,9 +146,9 @@ bun test apps/web/src/__tests__/config-mcp-page.test.ts
 
 ### 主要目录
 
-- `apps/server/`：后端应用入口和业务实现
+- `apps/server/`：进程入口、协议聚合、认证 adapter、OpenAPI 与装配边界
 - `apps/web/`：前端应用入口、Vite 配置和构建产物
-- `packages/`：内部 workspace 包
+- `packages/`：平台、资源领域、运行时与独立 SDK 的 workspace 包；业务实现归其唯一 owner
 - `scripts/`：脚本和辅助工具
 - `docs/`：文档站点
 - `drizzle/`：数据库迁移文件
@@ -150,8 +158,10 @@ bun test apps/web/src/__tests__/config-mcp-page.test.ts
 - `/web/*`：控制面板业务 API
 - `/api/*`：对外 OpenAPI / API Key 接口
 - `/acp/*`：ACP WebSocket / relay
-- `/mcp/*`：MCP 知识库查询
+- `/mcp/knowledge`：MCP 知识库协议入口
 - `/hooks/*`：Webhook 触发入口
+
+MCP 服务器资源管理使用控制台 `/web/config/mcp` 与已发布的 `/api/mcp`；它们与内部协议入口不是同一类接口。
 
 ## 开发约定
 
@@ -173,15 +183,7 @@ bun test apps/web/src/__tests__/config-mcp-page.test.ts
 bun run precheck
 ```
 
-正式提交前，建议使用项目内的 `fenix-code-review` skill 再做一次 AI 代码审查。
-
-如果使用 Codex / Claude Code 一类支持项目 skill 的 Agent，优先执行：
-
-```text
-/fenix-code-review
-```
-
-如果需要只审查某个范围，也可以显式指定 `<scope>`，例如文件路径、提交区间或分支 diff 范围。
+如开发环境提供 `fenix-code-review` 等审查能力，可作为提交前的可选辅助；它不能替代 `bun run precheck`、受影响前端的 `bun run build:web`、数据库迁移或文档构建验证。
 
 ## 提交规范
 
@@ -201,7 +203,7 @@ chore(scope): 杂项维护
 - 每个提交保持单一职责
 - 有代码改动时，提交前先通过 `bun run precheck`
 - 涉及 schema 变更时，连同 `drizzle/` 一起提交
-- 提交前执行一次 `fenix-code-review` AI 审查
+- 如可用，可额外执行 AI 审查；它不替代必需验证
 
 ## 新功能开发建议
 
@@ -214,4 +216,4 @@ chore(scope): 杂项维护
 5. 运行 `bun run precheck`
 6. 如涉及前端，执行 `bun run build:web`
 7. 自查文档、迁移和配置是否需要同步更新
-8. 提交前执行一次 `fenix-code-review` AI 审查
+8. 如可用，执行额外的 AI 审查
