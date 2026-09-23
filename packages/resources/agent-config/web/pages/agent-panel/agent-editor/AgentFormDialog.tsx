@@ -59,6 +59,15 @@ import { useAgentEditor } from "./use-agent-editor";
 import "./agent-editor-retained.css";
 import "./AgentFormDialog.css";
 
+/**
+ * 「新建 / 编辑 Agent」面板的属性。
+ *
+ * `portalContainer` 是桌面面板的 portal 宿主，**同时决定面板的定位与尺寸**：面板是它的 `absolute`
+ * 子元素、四周缩进 12px，高度 = 宿主盒高 − 1.5rem。所以宿主必须是撑满可视区的定位容器——壳层传
+ * `.agent-panel-body`（整壳右半区，一个视口高），智能体管理页传撑满页面的内容层。传一个只有内容
+ * 高度的包裹层，面板就只有那么高（2026-09-23 修的「半屏」：720px 视口下面板 333px）。省略时落到
+ * `document.body`，按视口定位（会盖住左侧导航）。
+ */
 export type AgentFormDialogProps =
   | {
       open: boolean;

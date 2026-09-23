@@ -33,6 +33,12 @@
  * 选择器继承），故合并成一条；移动端只带 `agent-editor-mobile`，不该拿到桌面宽度——
  * 它的定位 / 尺寸由类串里的 `!fixed` / `!inset-0` / `!w-screen` / `!h-dvh` 覆盖。
  *
+ * 高度（2026-09-23 补上限）：面板是 `top-3 bottom-3` 的绝对定位盒，高度 = **宿主盒子高 − 1.5rem**，
+ * 完全由调用方的 portal 宿主决定（侧栏入口传 `.agent-panel-body`，即一个视口高；智能体管理页传的是
+ * 页面内容层，那边用 `flex-1` 撑满页面）。宿主若被页面内容撑得比视口还高，面板就跟着长到视口之外——
+ * 页脚的保存 / 取消够不着（实测 720px 视口、2000px 长列表下，面板 1933px）。上限锁在视口高度减去
+ * 上下两条内缩，写 rem 才随根字号走；宿主本来就是视口高时这条不生效（侧栏入口即此）。
+ *
  * 另：`.agent-editor-panel` 同时是 `AgentFormDialog` 里
  * `querySelector(".agent-editor-panel[role='dialog']")` 的焦点恢复钩子（A2 迁移后类名消失、该选择器曾取空）。
  */
@@ -45,6 +51,7 @@
 
 .agent-editor-panel {
   width: min(1180px, calc(100% - 24px));
+  max-height: calc(100dvh - 1.5rem);
 }
 
 /* ── 编辑器根（`EDITOR_ROOT`） ───────────────────────────────────────────

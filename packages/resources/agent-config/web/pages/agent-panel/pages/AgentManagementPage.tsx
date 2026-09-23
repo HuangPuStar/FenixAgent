@@ -166,7 +166,12 @@ export function AgentManagementPage() {
 
   return (
     <AppPage>
-      <div ref={setEditorHost} className="relative">
+      {/* 这一层既是页面内容包裹层，也是「新建 / 编辑 Agent」面板的 portal 宿主（`portalContainer={editorHost}`）。
+          桌面面板是 `absolute top-3 bottom-3 left-3` 的 12px 内缩工作区，高度直接取自宿主盒子，所以宿主
+          必须**撑满页面**而不是只有内容高度：`flex-1`（`AppPage` 的 `main` 是 flex 列）让宿主在 Agent 少时
+          也占满可视区，否则面板只有内容那么高——实测 720px 视口下只有 333px，即「半屏」（2026-09-23 修）。
+          面板自身的「不得高过视口」上限在 `agent-editor-classes.css` 的 `.agent-editor-panel`。 */}
+      <div ref={setEditorHost} className="relative flex-1">
         <AppHeader
           title={t("management.title")}
           subtitle={t("management.subtitle")}

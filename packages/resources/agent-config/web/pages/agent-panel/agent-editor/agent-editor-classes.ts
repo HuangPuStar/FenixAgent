@@ -21,8 +21,10 @@ import "./agent-editor-classes.css";
 export const PANEL_SHELL = "gap-0 overflow-hidden p-0";
 /**
  * 桌面：绝对定位，四周留 12px；圆角/描边/底色取 design 层生效值。
- * 宽度 `min(1180px, calc(100% - 24px))` 与阴影见 `agent-editor-classes.css` 的 `.agent-editor-panel`
- * （该类名同时是 `AgentFormDialog` 焦点恢复选择器 `.agent-editor-panel[role='dialog']` 的钩子）。
+ * 宽度 `min(1180px, calc(100% - 24px))`、阴影与「高度上限 = 视口高 − 上下内缩」见
+ * `agent-editor-classes.css` 的 `.agent-editor-panel`（该类名同时是 `AgentFormDialog` 焦点恢复选择器
+ * `.agent-editor-panel[role='dialog']` 的钩子）。**高度取自 portal 宿主盒子**（`top-3` + `bottom-3`），
+ * 所以宿主必须撑满可视区，由调用方保证（见 `pages/AgentManagementPage.tsx` 渲染处注释）。
  */
 export const PANEL_DESKTOP =
   "agent-editor-panel absolute z-40 top-3 right-auto bottom-3 left-3 h-auto max-w-none " +
