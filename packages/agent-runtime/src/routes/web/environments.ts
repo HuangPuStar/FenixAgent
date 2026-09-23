@@ -17,7 +17,7 @@
 
 import { createLogger } from "@fenix/logger";
 import { OrchestrationError } from "@fenix/orchestration";
-import { ValidationError as AppValidationError, WebErrSchema, WebOkSchema } from "@fenix/platform-sdk";
+import { AppError, ValidationError as AppValidationError, WebErrSchema, WebOkSchema } from "@fenix/platform-sdk";
 import { SandboxProviderNotConfiguredError, SandboxRuntimeNotReadyError } from "@fenix/resource-sandbox/server";
 import Elysia from "elysia";
 import * as z from "zod/v4";
@@ -40,6 +40,35 @@ import { sanitizeResponse } from "../../services/environment-core";
 import type { AgentRuntimeAuthDependencies } from "../dependencies";
 
 const logger = createLogger("env-route");
+
+/**
+ * 已知应用错误（`AppError`）的对外文案表：只透出稳定错误码，原始 message 一律不直出。
+ *
+ * 为什么不透传 `AppError.message`：资源包抛出的启动前配置错误（`agent-config` 的
+ * `throwInvalidConfig`）系统性把 `agentConfigId` / Skill / MCP 名等内部标识拼进 message
+ * （如 `AgentConfig '<id>' references missing skills`），原样回传等于把内部标识交给前端；
+ * 原始 message 与堆栈由路由的日志保留，供服务端诊断。
+ *
+ * 状态码与错误码仍取错误对象自带的 `statusCode` / `code`（与宿主 `errorPlugin` 的 AppError
+ * 分支、`/web/config/*` 的 `safeWebHandler` 同一口径），本表只决定文案，不参与状态映射。
+ */
+const APP_ERROR_MESSAGE: Readonly<Record<string, string>> = {
+  INVALID_CONFIG:
+    "Agent configuration is invalid: check that the agent's model, skills and MCP servers are available, then retry.",
+};
+
+/** 未登记文案的 `AppError`：4xx 用通用可读文案，5xx 用通用故障文案（都不含内部细节）。 */
+const GENERIC_APP_ERROR_MESSAGE = "Request could not be completed";
+const INTERNAL_ERROR_MESSAGE = "Internal server error";
+
+/** `AppError` → 对外错误体：状态与错误码随错误对象，message 只取安全文案。 */
+function toAppErrorBody(error_: AppError): { code: string; message: string } {
+  return {
+    code: error_.code,
+    message:
+      error_.statusCode >= 500 ? INTERNAL_ERROR_MESSAGE : (APP_ERROR_MESSAGE[error_.code] ?? GENERIC_APP_ERROR_MESSAGE),
+  };
+}
 
 /**
  * 构造 `/web/environments/**` 路由。
@@ -284,7 +313,17 @@ export function createWebEnvironmentsRoutes(deps: AgentRuntimeAuthDependencies) 
             error: { code: err.code, message: mapped.message },
           });
         }
-        return error(500, { success: false, error: { code: "CONFIG_WRITE_ERROR", message: (err as Error).message } });
+        // 已知应用错误（`AppError` 家族，如 agent-config 启动前的配置问题 INVALID_CONFIG/400）
+        // 按错误自带的状态码 / 错误码映射，不再被兜底吞成 500 + CONFIG_WRITE_ERROR —— 调用方
+        // 要据此区分「请去改配置」与「服务故障」。文案只取安全模板（见 `toAppErrorBody`），
+        // 原始 message 可能携带 agentConfigId / Skill 名等内部标识，只进服务端日志。
+        if (err instanceof AppError) {
+          logger.error(`Enter environment failed: code='${err.code}', status=${err.statusCode}`, err);
+          return error(err.statusCode, { success: false, error: toAppErrorBody(err) });
+        }
+        // 未知异常：对外固定通用文案（原始 message 可能携带内部路径 / 标识），诊断进服务端日志。
+        logger.error("Enter environment failed with unexpected error", err);
+        return error(500, { success: false, error: { code: "CONFIG_WRITE_ERROR", message: INTERNAL_ERROR_MESSAGE } });
       }
     },
     {
@@ -292,6 +331,7 @@ export function createWebEnvironmentsRoutes(deps: AgentRuntimeAuthDependencies) 
       body: "enter-environment-request",
       response: {
         200: "enter-environment-response",
+        400: WebErrSchema,
         404: WebErrSchema,
         500: WebErrSchema,
         503: WebErrSchema,

@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { AgentNodeUnavailableError } from "@fenix/orchestration";
-import { NotFoundError, ValidationError } from "@fenix/platform-sdk";
+import { AppError, NotFoundError, ValidationError } from "@fenix/platform-sdk";
 import { resetAllStubs } from "@fenix/platform-sdk/testing";
 import { SandboxProviderNotConfiguredError, SandboxRuntimeNotReadyError } from "@fenix/resource-sandbox/server";
 import { createWebEnvironmentsRoutes } from "../routes/web/environments";
@@ -482,6 +482,50 @@ describe("round44 Web 环境路由", () => {
 
     expect(response.status).toBe(500);
     expect(await response.text()).not.toContain("sbi_private");
+  });
+
+  // 未配模型的 agent 走 enter 时，agent-config 抛的是 AppError(INVALID_CONFIG, 400)：路由必须按
+  // 错误本意返回 4xx + 稳定错误码（前端据此引导「先去配模型」），不得被兜底吞成 500 + CONFIG_WRITE_ERROR。
+  test("进入环境时未配模型返回 400 而非 500", async () => {
+    stubRuntime({
+      ensureInstance: async () => {
+        throw new AppError(
+          "Default agent requires at least one configured model. Please configure a model first, then retry.",
+          "INVALID_CONFIG",
+          400,
+        );
+      },
+    });
+
+    const response = await json(`/environments/${environmentId}/enter`, "POST");
+    const body = await response.json();
+
+    expect(response.status).toBe(400);
+    expect(body.success).toBe(false);
+    expect(body.error.code).toBe("INVALID_CONFIG");
+    // 对外只给安全文案：原始 message 由资源包拼接（可能携带 agentConfigId / Skill 名等内部标识），
+    // 不得回传给前端，诊断细节留在服务端日志。
+    expect(body.error.message).not.toContain("requires at least one configured model");
+    expect(typeof body.error.message).toBe("string");
+    expect(body.error.message.length).toBeGreaterThan(0);
+  });
+
+  // 无法识别的内部异常仍落 500 + CONFIG_WRITE_ERROR，但对外必须是通用文案：原始 message 可能携带
+  // 内部路径 / 标识，只能在服务端日志里保留。
+  test("进入环境时未知内部错误不外泄原始 message", async () => {
+    stubRuntime({
+      ensureInstance: async () => {
+        throw new Error("ECONNREFUSED /var/lib/fenix/internal/agent-config.sock");
+      },
+    });
+
+    const response = await json(`/environments/${environmentId}/enter`, "POST");
+    const text = await response.text();
+
+    expect(response.status).toBe(500);
+    expect(JSON.parse(text).error.code).toBe("CONFIG_WRITE_ERROR");
+    expect(text).not.toContain("ECONNREFUSED");
+    expect(text).not.toContain("/var/lib/fenix");
   });
 
   // 删除前必须按当前用户范围验证归属，随后才调用删除服务。
