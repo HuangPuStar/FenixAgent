@@ -23,7 +23,8 @@ services:
             # 与容器内 agent 看到的是同一份文件（避免 named volume 造成的文件分裂）。
             # 注意：容器以 root 运行，其创建的文件属主为 root。
             - ../../workspaces:/app/workspaces:rw
-            - sandbox-peri-global:/app/.peri
+            # peri 数据目录在 ～/.peri 下，如果不是 root 用户运行容器，需要修改成对应用户的 ～/.peri 目录。
+            - sandbox-peri-global:/root/.peri
 
 volumes:
     sandbox-peri-global:
