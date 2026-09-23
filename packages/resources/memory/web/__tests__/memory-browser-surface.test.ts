@@ -51,6 +51,7 @@ const BROWSER_SAFE_EXTERNAL: ReadonlyMap<string, string> = new Map([
   ["@radix-ui/react-dialog", "无样式原语（ui/dialog 传递依赖）"],
   ["@radix-ui/react-label", "无样式原语（ui/label 传递依赖）"],
   ["@radix-ui/react-select", "无样式原语（ui/select 传递依赖）"],
+  ["@radix-ui/react-scroll-area", "无样式原语（ui/scroll-area 传递依赖，主从壳的索引栏与详情滚动区）"],
   ["class-variance-authority", "类名变体工具（ui/* 传递依赖），纯函数"],
   ["clsx", "类名拼接工具（lib/cn 传递依赖），纯函数"],
   ["tailwind-merge", "Tailwind 类名去重（lib/cn 传递依赖），纯函数"],
