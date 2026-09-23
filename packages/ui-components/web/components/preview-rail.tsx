@@ -1,5 +1,8 @@
 "use client";
 // beui.dev/components/motion/preview-rail
+// 本地改动（其余逻辑与类名保持 beui 原样）：
+//   1. 刻度只在被指向时（hover / 触摸 / 键盘）展开长短变化，静止态一律是统一的短横线；
+//   2. `itemSize` 默认值收成 20px（beui 为 24px），横线之间的间距更紧。
 
 import { AnimatePresence, motion, useReducedMotion } from "motion/react";
 import { type MouseEvent, type PointerEvent, type ReactNode, useCallback, useId, useRef, useState } from "react";
@@ -54,6 +57,14 @@ function DefaultPreview({ item }: { item: PreviewRailItem }) {
   );
 }
 
+/**
+ * 静止态的刻度长度。
+ *
+ * 金字塔式的长短变化只在轨道被指向（hover / 触摸 / 键盘）时出现，没有指向时所有刻度都停在这一档，
+ * 免得一条静止的轨道自己排出一座金字塔。取值沿用原缩放梯度的最短一档，与展开态的下缘视觉一致。
+ */
+const REST_TICK_SCALE = 0.25;
+
 export function PreviewRail({
   items,
   label = "Section navigation",
@@ -66,7 +77,7 @@ export function PreviewRail({
   showPreview = true,
   previewSide = "after",
   highlightActive = false,
-  itemSize = 24,
+  itemSize = 16,
   children,
   className,
   railClassName,
@@ -98,7 +109,8 @@ export function PreviewRail({
   const selectedId = items.some((item) => item.id === requestedActiveId) ? requestedActiveId : (items[0]?.id ?? "");
   const displayedId = hoveredId ?? pinnedId ?? focusedId ?? "";
   const highlightedId = displayedId || (highlightActive ? selectedId : "");
-  const displayedIndex = items.findIndex((item) => item.id === highlightedId);
+  // 金字塔的顶点：只有指向某一格时才有；为 `-1` 时全轨停在静止的短横线上。
+  const rampIndex = items.findIndex((item) => item.id === displayedId);
   const rowTemplate = items.length ? `repeat(${items.length}, ${itemSize}px)` : undefined;
   const isHorizontal = orientation === "horizontal";
 
@@ -142,8 +154,8 @@ export function PreviewRail({
         {items.map((item, index) => {
           const selected = item.id === selectedId;
           const highlighted = item.id === highlightedId;
-          const distance = displayedIndex < 0 ? Number.POSITIVE_INFINITY : Math.abs(index - displayedIndex);
-          const scale = highlighted ? 1 : distance === 1 ? 0.68 : distance === 2 ? 0.44 : 0.25;
+          const distance = rampIndex < 0 ? Number.POSITIVE_INFINITY : Math.abs(index - rampIndex);
+          const scale = distance === 0 ? 1 : distance === 1 ? 0.68 : distance === 2 ? 0.44 : REST_TICK_SCALE;
 
           const itemContent = (
             <>

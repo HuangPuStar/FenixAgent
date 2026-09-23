@@ -13,7 +13,7 @@ const SYSTEM_REMINDER_PREFIX = "<system-reminder>";
  * 预览卡正文的截断上限。
  *
  * beui 的 `DefaultPreview` 对 `description` 不做 `line-clamp`，几千字的提示词会撑出一张巨卡；
- * 截断是「造 items 数据」的责任，不改组件本体（`components/preview-rail.tsx` 原样载入）。
+ * 截断是「造 items 数据」的责任，不往组件本体（`components/preview-rail.tsx`）加 `line-clamp`。
  */
 const PREVIEW_DESCRIPTION_MAX_LENGTH = 160;
 
@@ -57,8 +57,9 @@ interface PromptJumpRailProps {
 /**
  * 会话提示词导航轨，不参与消息数据写入。
  *
- * 刻度轨本体是 beui 的 `PreviewRail`（`components/preview-rail.tsx`，原样载入、未改动逻辑与类名）：
- * `w-12` 轨道、`h-0.5 w-12` 刻度、hover 时的金字塔缩放与浮出的预览卡都由它提供。
+ * 刻度轨本体是 beui 的 `PreviewRail`（`components/preview-rail.tsx`，改了「静止态统一为短横线」与「每格 20px」两处）：
+ * `w-12` 轨道、`h-0.5 w-12` 刻度、指向刻度时展开的金字塔缩放与浮出的预览卡都由它提供；
+ * 本处传 `highlightActive`，静止时只有当前阅读位置那根刻度颜色更深（长度与其余刻度一致）。
  * 本组件只做「造 items + 接回会话」：过滤 system-reminder、等距采样上限、滚动跟随（scroll-spy）、
  * 点击定位、`data-active-prompt` 跨组件契约，以及用自己的外层元素承载浮层定位
  * （beui 的根是「轨道 + 内容」并排的容器，这里是浮在会话之上的轨道，故不把 ConversationContent 塞成它的 children）。
