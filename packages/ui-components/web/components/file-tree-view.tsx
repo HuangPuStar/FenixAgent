@@ -12,6 +12,11 @@
  * 3. i18n 从宿主的 `NS.COMPONENTS` / `NS.AGENT_PANEL` 改为包内 `UI_COMPONENTS_NS`；
  *    面板标题原先取 agent-panel 命名空间的 `tabFiles`，本包改用 `fileTree.title`。
  * 4. 右键菜单与 Arborist 拆成独立模块（`file-tree-context-menu` / `file-tree-arborist`）。
+ *
+ * 字号：本视图连同 `file-tree-arborist` / `file-tree-context-menu` 整体取 `text-sm`(14px)，
+ * 是原先 `text-xs`(12px) 的相邻上一档，小按钮原来的 `text-3xs`(10px) 随之取 `text-xs`。
+ * 尺寸只写在工具类里：本包伴随 CSS（`file-tree-*.css`）不包 `@layer`、优先级高于 `@layer utilities`，
+ * 一旦把 font-size 落回那些文件，这里的工具类会被静默压过。
  */
 
 import { Folder, FolderInput, FolderPlus, Loader2, RefreshCw, Search, Upload, X } from "lucide-react";
@@ -40,7 +45,7 @@ const PANEL_ACTION_CLASS =
  * 原规则里的 `font-family: inherit` 未翻译：font-family 本就是继承属性，没有宿主覆盖时该声明是空操作。
  */
 const SECTION_HEADING_CLASS =
-  "flex h-8 min-w-0 shrink-0 items-center gap-1.5 ps-5 text-xs font-semibold normal-case tracking-normal";
+  "flex h-8 min-w-0 shrink-0 items-center gap-1.5 ps-5 text-sm font-semibold normal-case tracking-normal";
 
 export interface FileTreeViewProps {
   /** 首屏或刷新中；影响刷新按钮转圈与空态展示。 */
@@ -106,7 +111,7 @@ export function FileTreeView(props: FileTreeViewProps) {
 
   return (
     <div className="flex h-full min-h-0 flex-1 flex-col overflow-hidden text-text-secondary">
-      <div className="flex min-h-9.5 shrink-0 items-center justify-between ps-2.5 pe-1.5 text-xs text-text-primary [font-weight:650]">
+      <div className="flex min-h-9.5 shrink-0 items-center justify-between ps-2.5 pe-1.5 text-sm text-text-primary [font-weight:650]">
         <span>{t("fileTree.title")}</span>
         <div data-slot="file-tree-panel-actions" className="file-tree-panel__actions flex items-center gap-px">
           <button
@@ -164,7 +169,7 @@ export function FileTreeView(props: FileTreeViewProps) {
         <Search aria-hidden />
         <input
           type="search"
-          className="w-full min-w-0 border-0 bg-transparent text-xs text-text-primary outline-none"
+          className="w-full min-w-0 border-0 bg-transparent text-sm text-text-primary outline-none"
           value={props.searchQuery}
           onChange={(event) => props.onSearchChange(event.target.value)}
           placeholder={t("fileTree.searchPlaceholder")}
@@ -193,7 +198,7 @@ export function FileTreeView(props: FileTreeViewProps) {
         onContextMenu={props.onContextMenu}
       >
         {props.dragOver && (
-          <div className="pointer-events-none absolute inset-0 z-[3] grid place-items-center rounded-[var(--radius)] border border-dashed border-border-active bg-brand/10 text-xs text-brand">
+          <div className="pointer-events-none absolute inset-0 z-[3] grid place-items-center rounded-[var(--radius)] border border-dashed border-border-active bg-brand/10 text-sm text-brand">
             {t("fileTree.dropToUpload")}
           </div>
         )}
@@ -205,7 +210,7 @@ export function FileTreeView(props: FileTreeViewProps) {
               <button
                 type="button"
                 data-slot="file-tree-feedback-action"
-                className="min-h-7 rounded-md border border-border-subtle bg-surface-1 px-2.5 text-3xs text-text-secondary hover:border-[color-mix(in_srgb,var(--color-brand)_35%,var(--color-border-subtle))] hover:text-brand focus-visible:border-[color-mix(in_srgb,var(--color-brand)_35%,var(--color-border-subtle))] focus-visible:text-brand"
+                className="min-h-7 rounded-md border border-border-subtle bg-surface-1 px-2.5 text-xs text-text-secondary hover:border-[color-mix(in_srgb,var(--color-brand)_35%,var(--color-border-subtle))] hover:text-brand focus-visible:border-[color-mix(in_srgb,var(--color-brand)_35%,var(--color-border-subtle))] focus-visible:text-brand"
                 onClick={props.onRefresh}
               >
                 {t("fileTree.retry")}
@@ -335,7 +340,7 @@ function Feedback({
     <div
       data-slot="file-tree-feedback"
       className={cn(
-        "file-tree-view-feedback flex h-full flex-col items-center justify-center gap-2 p-5 text-center text-xs text-text-muted",
+        "file-tree-view-feedback flex h-full flex-col items-center justify-center gap-2 p-5 text-center text-sm text-text-muted",
         className,
       )}
       role="status"

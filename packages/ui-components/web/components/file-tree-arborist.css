@@ -28,8 +28,19 @@
   color: inherit;
 }
 
-/* 行首折叠 / 图标位按钮：图标 16px；文件类型图标不在本规则范围内（它由 12px 的 `size-3` 内层容器决定）。 */
-.file-tree-arborist-toggle > svg {
+/*
+ * 行首图标位：目录图标（`> svg`）与文件类型图标（`FileTypeIcon` 渲染的 `.file-type-icon` 外框）
+ * 共用同一个 16px 方块 —— 行里两种图标的墨迹左边缘与尺寸就此一致。
+ *
+ * 为什么是 px 而不是尺寸工具类：本应用根字号是 13px（`apps/web/src/index.css` 的 `@layer base`
+ * 定了 `html { font-size: 13px }`），rem 刻度整体缩到 0.8125 倍，`size-4`(1rem) 实际只有 13px，
+ * 比目录图标小 3px；而 16px 在本应用没有对应的标准刻度类（`size-5` = 16.25px）。
+ *
+ * 层叠：本文件不包 `@layer`，未分层声明压过 `@layer utilities` —— 这条**有意**压过外框自带的
+ * `size-4`。后人若要改这里的尺寸，改这一条；不要在元素上加尺寸工具类，会被本规则静默压过。
+ */
+.file-tree-arborist-toggle > svg,
+.file-tree-arborist-toggle > .file-type-icon {
   width: 16px;
   height: 16px;
 }
