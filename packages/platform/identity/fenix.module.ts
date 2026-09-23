@@ -43,6 +43,9 @@ export const moduleManifest = {
     id: "identity",
     contribution: "@fenix/identity/web/contribution",
   },
+  // identity 不声明 accessControlBindings：access-control 依赖 identity，而 organization/member 表又由本模块
+  // 持有；若 identity 反向走 access-control 会形成依赖与装配循环。组织成员管理由本包 Facade 直接从 member
+  // 表校验目标组织的 admin/owner 角色。这只是基础模块特例，skill、mcp 等资源模块仍须声明绑定。
   contributions: [
     {
       id: "identity.web-api-keys",

@@ -1,7 +1,8 @@
-import { WebErrSchema } from "@fenix/platform-sdk";
+import { type ActorContext, WebErrSchema } from "@fenix/platform-sdk";
 import { Elysia } from "elysia";
 import type * as z from "zod/v4";
 import { getAuth } from "../../auth/better-auth";
+import { OrganizationMemberManagementFacade } from "../../facades/organization-member-management-facade";
 import {
   AddMemberBodySchema,
   CreateOrganizationBodySchema,
@@ -20,12 +21,7 @@ import {
   UpdateMemberRoleBodySchema,
   UpdateOrganizationBodySchema,
 } from "../../schemas/organization.schema";
-import {
-  addOrganizationMembers,
-  enrichMembersWithPhoneNumbers,
-  enrichOrganizationsWithRoles,
-  searchAvailableOrganizationMemberCandidates,
-} from "../../services/web-organization-service";
+import { enrichMembersWithPhoneNumbers, enrichOrganizationsWithRoles } from "../../services/web-organization-service";
 import type { WebIdentityRouteDependencies } from "../dependencies";
 
 /**
@@ -99,6 +95,7 @@ function orgApi(): OrgApi {
 type AuthStore = {
   user?: { id: string } | null;
   authContext?: { organizationId?: string } | null;
+  actor?: ActorContext | null;
 };
 
 type OrganizationListResponse = z.infer<typeof OrganizationListResponseSchema>;
@@ -171,6 +168,12 @@ function extractMembers(res: unknown): {
   return [];
 }
 
+/** `sessionAuth` 负责写入 actor；缺失说明路由装配或认证守卫出现了故障，不能退化为放行。 */
+function requireActor(store: AuthStore): ActorContext {
+  if (!store.actor) throw new Error("认证主体缺失：组织成员管理需要 sessionAuth actor");
+  return store.actor;
+}
+
 // 共享的 list organizations 逻辑（REST 路由复用）
 async function handleListOrganizations(
   store: { user?: { id: string } | null },
@@ -194,6 +197,7 @@ async function handleListOrganizations(
  * 的认证解析是同一份实例，理由见 `../dependencies`。
  */
 export function createWebOrganizationsRoutes(deps: WebIdentityRouteDependencies) {
+  const memberManagement = new OrganizationMemberManagementFacade({});
   const app = new Elysia({ name: "web-organizations" }).use(deps.authGuardPlugin).model({
     "org-list-response": OrganizationListResponseSchema,
     "org-get-response": OrganizationGetResponseSchema,
@@ -408,12 +412,9 @@ export function createWebOrganizationsRoutes(deps: WebIdentityRouteDependencies)
   // GET /web/organizations/:id/member-candidates → 搜索可添加成员候选项
   app.get(
     "/organizations/:id/member-candidates",
-    async ({ params, query }) => {
+    async ({ params, query, store }) => {
       const keyword = String(query?.keyword ?? "").trim();
-      if (!keyword) {
-        return { success: true as const, data: [] } satisfies MemberCandidateListResponse;
-      }
-      const candidates = await searchAvailableOrganizationMemberCandidates(params.id, keyword);
+      const candidates = await memberManagement.searchCandidates(requireActor(store as AuthStore), params.id, keyword);
 
       return { success: true as const, data: candidates } satisfies MemberCandidateListResponse;
     },
@@ -437,9 +438,15 @@ export function createWebOrganizationsRoutes(deps: WebIdentityRouteDependencies)
   // POST /web/organizations/:id/members → 添加成员
   app.post(
     "/organizations/:id/members",
-    async ({ body, params, request }) => {
+    async ({ body, params, request, store }) => {
       const directUserIds = body.userIds.map((userId: string) => userId.trim()).filter(Boolean);
-      const result = await addOrganizationMembers(params.id, directUserIds, body.role, request.headers);
+      const result = await memberManagement.addMembers(
+        requireActor(store as AuthStore),
+        params.id,
+        directUserIds,
+        body.role,
+        request.headers,
+      );
       return {
         success: true as const,
         data: result.map(serializeMember),
@@ -493,11 +500,14 @@ export function createWebOrganizationsRoutes(deps: WebIdentityRouteDependencies)
   // PUT /web/organizations/:id/members/:memberId → 更新成员角色
   app.put(
     "/organizations/:id/members/:memberId",
-    async ({ body, params, request }) => {
-      await orgApi().updateMemberRole({
-        body: { memberId: params.memberId, organizationId: params.id, role: body.role },
-        headers: request.headers,
-      });
+    async ({ body, params, request, store }) => {
+      await memberManagement.updateMemberRole(
+        requireActor(store as AuthStore),
+        params.id,
+        params.memberId,
+        body.role,
+        request.headers,
+      );
       return { success: true as const, data: null } satisfies OrganizationVoidResponse;
     },
     {
