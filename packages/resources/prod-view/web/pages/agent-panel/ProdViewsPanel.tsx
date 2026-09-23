@@ -139,7 +139,12 @@ export function ProdViewsPanel({ agentId }: ProdViewsPanelProps) {
           <p className="text-sm text-text-muted">{t("panel.emptyHint")}</p>
         </button>
       ) : (
-        <ScrollArea className="flex-1">
+        // `min-h-0` 不是修饰：本 ScrollArea 根是列向 flex 的子项（`flex-1`），不写它时 CSS 的自动最小尺寸
+        // （`min-height: auto`）会把它撑到**整个列表的内容高度**，视口于是与内容等高、永远没有可滚动溢出，
+        // 外层 `overflow-hidden` 只是把超出部分裁掉（表现为「视图一多就滚不动、也看不到滚动条」）。
+        // 实测：可用高 876px、40 张卡片时根被撑到 3648px，视口 clientHeight == scrollHeight == 3648，
+        // 滚轮与 `scrollTop` 赋值均无效、Radix thumb 不挂载；补 `min-h-0` 后根 842.5px、视口 843:3648，可滚动。
+        <ScrollArea className="flex-1 min-h-0">
           <div className="flex flex-col gap-2 p-3">
             {views.map((view) => (
               <div
