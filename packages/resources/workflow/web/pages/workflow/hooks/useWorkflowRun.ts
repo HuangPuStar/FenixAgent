@@ -5,26 +5,39 @@ import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
 import { workflowDefApi } from "../../../api/workflow-defs";
 import {
-  type DAGEvent,
   type DAGSnapshot,
   type NodeOutput,
   type PendingApproval,
   workflowEngineApi,
 } from "../../../api/workflow-engine";
 import type { WorkflowSSEEvent } from "../../../api/workflow-sse";
-import {
-  buildRunSummary,
-  clearWorkflowEvents,
-  pushWorkflowError,
-  pushWorkflowRunStatus,
-} from "../../../lib/use-workflow-events";
+import { pushWorkflowError } from "../../../lib/use-workflow-events";
 import { autoLayout } from "../layout";
+import { applySnapshotToNodes, clearRunMarkers, isTerminalDagStatus } from "../run-canvas-model";
 import { type RunViewSetters, resetRunView } from "../run-view";
 import { dedupEvents } from "../utils";
-import { START_NODE_ID } from "../yaml-utils";
+import { useWorkflowRunLifecycle } from "./use-workflow-run-lifecycle";
+import { useWorkflowRunTransport } from "./use-workflow-run-transport";
 
+/**
+ * 工作流编辑器的**运行视图编排**：向外提供运行视图所需的全部命令与状态，向内装配三层。
+ *
+ * 拆分后的分工（按 §3.5 的三层）：
+ * - 纯模型 `../run-canvas-model.ts`：画布节点运行标记的写入 / 清除；
+ * - 传输适配 `./use-workflow-run-transport.ts`：轮询、待审批、节点输出三处取数与回写（该文件头说明了
+ *   为什么仍不换成 `useRequest`）；
+ * - 生命周期命令 `./use-workflow-run-lifecycle.ts`：发起运行 / 取消 / 审批 / 重跑；
+ * - 本文件：dry-run、退出运行视图、节点输出入口、刷新草稿、SSE 事件分发、从运行记录回放（路由带 `runId`），
+ *   以及上面三层的装配。留下来的都是「需要同时看运行态、画布数据与编辑时机」的部分。
+ *
+ * 注意状态归属：`activeRunId` / `runSnapshot` / `runEvents` / `runApprovals` / `selectedRunNodeId` /
+ * `selectedNodeOutput` / `nodeOutputLoading` 由 `WorkflowEditor` 顶层持有（`RunStatusPanel` 也会写它们），
+ * 本 hook 只按 §3.4 的口径读写，不接管所有权。
+ */
 export interface UseWorkflowRunParams {
   workflowId: string | undefined;
+  /** 路由带来的运行 id：从运行记录进入编辑器时回放那一次运行 */
+  runId?: string;
   nodes: Node[];
   edges: Edge[];
   setNodes: ReturnType<typeof import("@xyflow/react").useNodesState<Node>>[1];
@@ -33,7 +46,7 @@ export interface UseWorkflowRunParams {
   setActiveRunId: (id: string | null) => void;
   runSnapshot: DAGSnapshot | null;
   setRunSnapshot: (snap: DAGSnapshot | null) => void;
-  setRunEvents: (events: DAGEvent[]) => void;
+  setRunEvents: (events: import("../../../api/workflow-engine").DAGEvent[]) => void;
   setRunApprovals: (approvals: PendingApproval[]) => void;
   selectedRunNodeId: string | null;
   setSelectedRunNodeId: (id: string | null) => void;
@@ -43,7 +56,13 @@ export interface UseWorkflowRunParams {
   setNodeOutputLoading: (loading: boolean) => void;
   syncYaml: () => string;
   fitView: (opts?: { padding?: number; duration?: number }) => void;
+  /** dry-run 结果由编辑器顶层持有（它同时被 SSE / 提示层读取，见 WorkflowEditor 的状态归属说明） */
+  setDryRunResult: (
+    result: { valid: boolean; issues: Array<{ type: string; message: string; field?: string }> } | null,
+  ) => void;
   openRunSheet: () => void;
+  /** 回放时只打开运行抽屉，不动版本 / 触发器 Sheet（与 openRunSheet 的差别） */
+  setRunSheetOpen: (open: boolean) => void;
   setMeta: (fn: (prev: import("../yaml-utils").WfMeta) => import("../yaml-utils").WfMeta) => void;
   lastSavedYaml: string;
   setLastSavedYaml: (yaml: string) => void;
@@ -60,10 +79,6 @@ export interface UseWorkflowRunReturn {
   handleRerunFrom: (nodeId: string) => Promise<void>;
   handleViewNodeOutput: (nodeId: string) => void;
   handleRefreshDraft: () => Promise<void>;
-  dryRunResult: { valid: boolean; issues: Array<{ type: string; message: string; field?: string }> } | null;
-  setDryRunResult: (
-    result: { valid: boolean; issues: Array<{ type: string; message: string; field?: string }> } | null,
-  ) => void;
   running: boolean;
   isRunMode: boolean;
   isRunDone: boolean;
@@ -80,6 +95,7 @@ export interface UseWorkflowRunReturn {
 export function useWorkflowRun(params: UseWorkflowRunParams): UseWorkflowRunReturn {
   const {
     workflowId,
+    runId,
     edges,
     setNodes,
     setEdges,
@@ -97,7 +113,9 @@ export function useWorkflowRun(params: UseWorkflowRunParams): UseWorkflowRunRetu
     setNodeOutputLoading,
     syncYaml,
     fitView,
+    setDryRunResult,
     openRunSheet,
+    setRunSheetOpen,
     setMeta,
     lastSavedYaml: _lastSavedYaml,
     setLastSavedYaml,
@@ -112,23 +130,17 @@ export function useWorkflowRun(params: UseWorkflowRunParams): UseWorkflowRunRetu
     [setRunSnapshot, setRunEvents, setRunApprovals, setSelectedRunNodeId, setSelectedNodeOutput],
   );
 
-  const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
-  const isSubmittingRef = useRef(false);
   const nodeCallbacksRef = useRef<{
     onViewOutput: (nodeId: string) => void;
     onRerunFrom: (fromNodeId: string) => void;
   }>({ onViewOutput: () => {}, onRerunFrom: () => {} });
 
-  const [dryRunResult, setDryRunResult] = useState<{
-    valid: boolean;
-    issues: Array<{ type: string; message: string; field?: string }>;
-  } | null>(null);
   const [running, setRunning] = useState(false);
   const [runRightTab, setRunRightTab] = useState<"events" | "output">("events");
 
   const isRunMode = activeRunId !== null;
   const dagStatus = runSnapshot?.dag_status;
-  const isRunDone = dagStatus ? ["SUCCESS", "FAILED", "CANCELLED", "ERROR"].includes(dagStatus) : false;
+  const isRunDone = isTerminalDagStatus(dagStatus);
 
   const handleDryRun = useCallback(async () => {
     const y = syncYaml();
@@ -144,47 +156,11 @@ export function useWorkflowRun(params: UseWorkflowRunParams): UseWorkflowRunRetu
     } finally {
       setRunning(false);
     }
-  }, [syncYaml, workflowId]);
+  }, [syncYaml, workflowId, setDryRunResult]);
 
   const updateNodesFromSnapshot = useCallback(
     (snap: DAGSnapshot) => {
-      const dagRunning = snap.dag_status === "RUNNING";
-      setNodes((nds) =>
-        nds.map((n) => {
-          if (n.id === START_NODE_ID) return n;
-          const state = snap.node_states?.[n.id];
-          if (!state) {
-            // DAG 运行中但快照尚无此节点状态时（引擎尚未开始调度），保留现有的 RUNNING 乐观状态
-            if (dagRunning && n.data._runStatus === "RUNNING") return n;
-            return {
-              ...n,
-              data: {
-                ...n.data,
-                _runStatus: undefined,
-                _exitCode: undefined,
-                _onViewOutput: undefined,
-                _onRerunFrom: undefined,
-              },
-            };
-          }
-          // DAG 正在运行且前端已乐观设为 RUNNING 时，若 snapshot 返回 PENDING，
-          // 保持 RUNNING 避免覆盖（snapshot 可能在引擎调度该节点之前创建）
-          const prevStatus = n.data._runStatus as string | undefined;
-          if (dagRunning && state.status === "PENDING" && prevStatus === "RUNNING") {
-            return n;
-          }
-          return {
-            ...n,
-            data: {
-              ...n.data,
-              _runStatus: state.status,
-              _exitCode: state.exit_code,
-              _onViewOutput: nodeCallbacksRef.current.onViewOutput,
-              _onRerunFrom: nodeCallbacksRef.current.onRerunFrom,
-            },
-          };
-        }),
-      );
+      setNodes((nds) => applySnapshotToNodes(nds, snap, nodeCallbacksRef.current));
     },
     [setNodes],
   );
@@ -192,74 +168,56 @@ export function useWorkflowRun(params: UseWorkflowRunParams): UseWorkflowRunRetu
   const updateNodesFromSnapshotRef = useRef(updateNodesFromSnapshot);
   updateNodesFromSnapshotRef.current = updateNodesFromSnapshot;
 
-  const loadRunData = useCallback(
-    async (runId: string) => {
+  /**
+   * 从运行记录进入编辑器（路由带 runId）＝回放那一次运行：进入运行视图并装入它的快照与事件。
+   *
+   * 与传输层的 `loadRunData` 的差别：回放**不**推 `pushWorkflowRunStatus`（那会给一次历史回放追加运行
+   * 状态事件，而用户并没有在跑它）；其余取数口径一致。回放也只打开运行抽屉，不动版本 / 触发器 Sheet。
+   */
+  useEffect(() => {
+    if (!runId) return;
+    let abort = false;
+    (async () => {
       try {
+        setActiveRunId(runId);
+        resetRunView(runViewSetters);
+        setRunSheetOpen(true);
+
         const [snap, evts] = await Promise.all([
           unwrap(workflowEngineApi.getRunStatus(runId)),
           unwrap(workflowEngineApi.getEvents(runId)),
         ]);
+        if (abort) return;
         if (snap) {
           setRunSnapshot(snap);
           updateNodesFromSnapshotRef.current(snap);
-          pushWorkflowRunStatus(workflowId, buildRunSummary(snap));
         }
         if (Array.isArray(evts)) setRunEvents(dedupEvents(evts));
       } catch (err) {
-        console.error(err);
+        console.error(`${t("editor.load_run_failed")}:`, err);
+        // 从运行记录进入编辑器时，这一拉是运行面板的唯一数据源：失败必须让用户知道面板是空的
+        toast.error(t("editor.load_run_failed"));
       }
-    },
-    [setRunSnapshot, setRunEvents, workflowId],
-  );
-
-  useEffect(() => {
-    if (!activeRunId) return;
-    if (runSnapshot) {
-      const status = runSnapshot.dag_status;
-      if (["SUCCESS", "FAILED", "CANCELLED", "ERROR"].includes(status)) {
-        setRunning(false);
-        return;
-      }
-    }
-    let cancelled = false;
-    const poll = async () => {
-      if (cancelled) return;
-      await loadRunData(activeRunId);
-      if (!cancelled) pollRef.current = setTimeout(poll, 2_000);
-    };
-    // 引擎异步执行，轮询 2s 获取实时快照
-    pollRef.current = setTimeout(poll, 2_000);
+    })();
     return () => {
-      cancelled = true;
-      if (pollRef.current) clearTimeout(pollRef.current);
+      abort = true;
     };
-  }, [activeRunId, runSnapshot, loadRunData]);
+  }, [runId, t, setActiveRunId, runViewSetters, setRunSheetOpen, setRunSnapshot, setRunEvents]);
 
-  useEffect(() => {
-    if (!activeRunId || !runSnapshot || runSnapshot.dag_status !== "SUSPENDED") {
-      setRunApprovals([]);
-      return;
-    }
-    unwrap(workflowEngineApi.getPendingApprovals(activeRunId))
-      .then((list) => setRunApprovals(Array.isArray(list) ? list : []))
-      .catch((err) => console.error(err));
-  }, [activeRunId, runSnapshot, setRunApprovals]);
-
-  useEffect(() => {
-    if (!activeRunId || !selectedRunNodeId) return;
-    setNodeOutputLoading(true);
-    setSelectedNodeOutput(null);
-    setRunRightTab("output");
-    unwrap(workflowEngineApi.getOutput(activeRunId, selectedRunNodeId))
-      .then((out) => setSelectedNodeOutput(out ?? null))
-      .catch((err) => {
-        console.error(err);
-        // 选中节点后的拉取失败会让输出面板停在空态。这是画布点节点 / 点事件行两条入口的公共路径，
-        // 提示放在这里（而不是 handleViewNodeOutput）才能覆盖全两条且一次操作只报一条
-        toast.error(t("editor.output_load_failed"));
-      })
-      .finally(() => setNodeOutputLoading(false));
-  }, [activeRunId, selectedRunNodeId, setSelectedNodeOutput, setNodeOutputLoading, t]);
+  const { loadRunData, pollRef } = useWorkflowRunTransport({
+    workflowId,
+    activeRunId,
+    runSnapshot,
+    selectedRunNodeId,
+    setRunSnapshot,
+    setRunEvents,
+    setRunApprovals,
+    setSelectedNodeOutput,
+    setNodeOutputLoading,
+    setRunRightTab,
+    setRunning,
+    applySnapshotRef: updateNodesFromSnapshotRef,
+  });
 
   /** 解析 meta.params 中的默认值，生成运行时 params */
   const resolveDefaultParams = useCallback((): Record<string, unknown> | undefined => {
@@ -274,91 +232,22 @@ export function useWorkflowRun(params: UseWorkflowRunParams): UseWorkflowRunRetu
     return Object.keys(resolved).length > 0 ? resolved : undefined;
   }, [meta.params]);
 
-  const handleRun = useCallback(
-    async (params?: Record<string, unknown>) => {
-      if (isSubmittingRef.current) return;
-      isSubmittingRef.current = true;
-      const y = syncYaml();
-      setRunning(true);
-      setDryRunResult(null);
-      clearWorkflowEvents(workflowId);
-
-      if (workflowId) {
-        try {
-          await unwrap(workflowDefApi.save(workflowId, y));
-        } catch (err) {
-          console.error(`${t("editor.auto_save_failed")}:`, err);
-          // 运行前自动保存失败：只上屏字典文案（§9.3），后端信封原文留在上面的日志里。
-          toast.error(t("editor.auto_save_failed"));
-          setRunning(false);
-          isSubmittingRef.current = false;
-          return;
-        }
-      }
-
-      setNodes((nds) =>
-        nds.map((n) =>
-          n.id === START_NODE_ID ? n : { ...n, data: { ...n.data, _runStatus: "RUNNING", _exitCode: undefined } },
-        ),
-      );
-
-      try {
-        const runParams = params ?? resolveDefaultParams();
-        const result = await unwrap(workflowEngineApi.run(y, runParams, workflowId));
-        setActiveRunId(result.runId);
-        resetRunView(runViewSetters);
-        openRunSheet();
-        await loadRunData(result.runId);
-        // running 保持 true，轮询检测到终止状态时重置
-      } catch (err) {
-        console.error(err);
-        pushWorkflowError(workflowId, "run", (err as Error).message);
-        toast.error(t("editor.run_failed"));
-        setRunning(false);
-      } finally {
-        isSubmittingRef.current = false;
-      }
-    },
-    [
-      syncYaml,
-      workflowId,
-      setNodes,
-      setActiveRunId,
-      runViewSetters,
-      openRunSheet,
-      loadRunData,
-      resolveDefaultParams,
-      t,
-    ],
-  );
-
-  const handleCancelRun = useCallback(async () => {
-    if (!activeRunId) return;
-    try {
-      await unwrap(workflowEngineApi.cancel(activeRunId));
-      await loadRunData(activeRunId);
-    } catch (err) {
-      console.error(err);
-      // 原来是裸回显 `(err as Error).message`（连标题都没有）；§9.3 要求按稳定文案上屏。
-      toast.error(t("editor.cancel_run_failed"));
-    }
-  }, [activeRunId, loadRunData, t]);
-
-  const handleApprove = useCallback(
-    async (approval: PendingApproval) => {
-      if (!activeRunId) return;
-      try {
-        await unwrap(workflowEngineApi.approve(activeRunId, approval.nodeId, approval.approvalToken));
-        await loadRunData(activeRunId);
-        const list = await unwrap(workflowEngineApi.getPendingApprovals(activeRunId));
-        setRunApprovals(Array.isArray(list) ? list : []);
-      } catch (err) {
-        console.error(err);
-        toast.error(t("editor.approve_failed"));
-      }
-    },
-    [activeRunId, loadRunData, setRunApprovals, t],
-  );
+  const { handleRun, handleCancelRun, handleApprove, handleRerunFrom } = useWorkflowRunLifecycle({
+    workflowId,
+    edges,
+    activeRunId,
+    setActiveRunId,
+    setNodes,
+    setRunning,
+    setDryRunResult,
+    setRunApprovals,
+    syncYaml,
+    resolveDefaultParams,
+    pollRef,
+    runViewSetters,
+    openRunSheet,
+    loadRunData,
+  });
 
   /**
    * 退出运行视图：停轮询、复位运行态、清 dry-run 结果，并摘掉画布节点上的运行标记。
@@ -374,86 +263,11 @@ export function useWorkflowRun(params: UseWorkflowRunParams): UseWorkflowRunRetu
     setActiveRunId(null);
     resetRunView(runViewSetters);
     setDryRunResult(null);
-    setNodes((nds) =>
-      nds.map((n) => ({
-        ...n,
-        data: {
-          ...n.data,
-          _runStatus: undefined,
-          _exitCode: undefined,
-          _onViewOutput: undefined,
-          _onRerunFrom: undefined,
-        },
-      })),
-    );
-  }, [setActiveRunId, runViewSetters, setNodes]);
+    setNodes((nds) => clearRunMarkers(nds));
+  }, [setActiveRunId, runViewSetters, setNodes, pollRef, setDryRunResult]);
 
   const handleBackToEdit = handleExitRunView;
   const handleBackToList = handleExitRunView;
-
-  const handleRerunFrom = useCallback(
-    async (fromNodeId: string) => {
-      if (!activeRunId || isSubmittingRef.current) return;
-      isSubmittingRef.current = true;
-      if (pollRef.current) {
-        clearTimeout(pollRef.current);
-        pollRef.current = null;
-      }
-      const y = syncYaml();
-      if (workflowId) {
-        try {
-          await unwrap(workflowDefApi.save(workflowId, y));
-        } catch (err) {
-          console.error(`${t("editor.auto_save_failed")}:`, err);
-          toast.error(t("editor.auto_save_failed"));
-          isSubmittingRef.current = false;
-          return;
-        }
-      }
-      setRunning(true);
-      setNodes((nds) => {
-        const downstream = new Set<string>();
-        const adjMap = new Map<string, string[]>();
-        for (const e of edges) {
-          if (e.source === START_NODE_ID) continue;
-          const list = adjMap.get(e.source) ?? [];
-          list.push(e.target);
-          adjMap.set(e.source, list);
-        }
-        const q = [fromNodeId];
-        while (q.length > 0) {
-          const cur = q.shift()!;
-          for (const next of adjMap.get(cur) ?? []) {
-            if (!downstream.has(next)) {
-              downstream.add(next);
-              q.push(next);
-            }
-          }
-        }
-        return nds.map((n) => {
-          if (n.id === START_NODE_ID) return n;
-          const isTarget = n.id === fromNodeId || downstream.has(n.id);
-          if (isTarget) return { ...n, data: { ...n.data, _runStatus: "RUNNING", _exitCode: undefined } };
-          return n;
-        });
-      });
-
-      try {
-        const result = await unwrap(workflowEngineApi.rerunFrom(activeRunId, y, fromNodeId, workflowId));
-        setActiveRunId(result.runId);
-        resetRunView(runViewSetters);
-        openRunSheet();
-        await loadRunData(result.runId);
-      } catch (err) {
-        console.error(err);
-        toast.error(t("editor.rerun_failed"));
-      } finally {
-        setRunning(false);
-        isSubmittingRef.current = false;
-      }
-    },
-    [activeRunId, syncYaml, workflowId, edges, setNodes, setActiveRunId, runViewSetters, openRunSheet, loadRunData, t],
-  );
 
   const handleViewNodeOutput = useCallback(
     async (nodeId: string) => {
@@ -479,7 +293,14 @@ export function useWorkflowRun(params: UseWorkflowRunParams): UseWorkflowRunRetu
   nodeCallbacksRef.current.onViewOutput = handleViewNodeOutput;
   nodeCallbacksRef.current.onRerunFrom = handleRerunFrom;
 
-  // handleRefreshDraft — 刷新草稿（需要 persistence 的 lastSavedYaml/setLastSavedYaml）
+  /**
+   * 刷新草稿：重读服务端草稿并落画布，若正在运行则把快照重新贴回节点。
+   *
+   * 与草稿加载（`WorkflowEditor` 里 workflowId 切换、版本预览切回草稿）的落画布逻辑**刻意不合并**：
+   * 那两处还要 setWfData、处理名称与描述，且不重贴运行快照；这里多一步运行快照重贴（否则草稿刷新后
+   * 画布节点状态会与真实运行状态不一致），少几步元数据覆盖。共同部分只有「yamlToFlow → 计数器同步 →
+   * autoLayout → 落画布」四行，合并会把差异藏进参数（与 §4.8 对三种节点配置容器的裁定同一口径）。
+   */
   const handleRefreshDraft = useCallback(async () => {
     if (!workflowId) return;
     if (isRunMode && !isRunDone) return;
@@ -513,7 +334,7 @@ export function useWorkflowRun(params: UseWorkflowRunParams): UseWorkflowRunRetu
     }
   }, [workflowId, isRunMode, isRunDone, activeRunId, setNodes, setEdges, setMeta, setLastSavedYaml, fitView, t]);
 
-  const clearDryRunResult = useCallback(() => setDryRunResult(null), []);
+  const clearDryRunResult = useCallback(() => setDryRunResult(null), [setDryRunResult]);
 
   const handleWorkflowEvent = useCallback(
     (event: WorkflowSSEEvent) => {
@@ -552,8 +373,6 @@ export function useWorkflowRun(params: UseWorkflowRunParams): UseWorkflowRunRetu
     handleRerunFrom,
     handleViewNodeOutput,
     handleRefreshDraft,
-    dryRunResult,
-    setDryRunResult,
     running,
     isRunMode,
     isRunDone,

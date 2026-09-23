@@ -37,7 +37,7 @@ const ALLOWED_RAW_MESSAGE_CALLS: Record<string, { count: number; reason: string 
     count: 2,
     reason: "`ClusterActionFeedback.message` 是本地用 `t()` 拼出的文案（formatHealthCheckResult），不是服务端原文",
   },
-  "packages/resources/workflow/web/pages/workflow/WorkflowEditor.tsx": {
+  "packages/resources/workflow/web/pages/workflow/hooks/use-workflow-editor-events.ts": {
     count: 1,
     reason: "dry-run 的 `issues[].message` 是成功响应里的逐节点校验诊断（标题已由 t() 承载，另有稳定 code）",
   },
