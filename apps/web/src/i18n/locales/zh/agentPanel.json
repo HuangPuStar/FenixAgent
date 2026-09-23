@@ -47,10 +47,6 @@
   "deleteFailed": "删除智能体失败: {{message}}",
   "expandInstances": "展开实例",
   "collapseInstances": "收起实例",
-  "metaAgent": "Meta Agent",
-  "metaAgentDesc": "平台助手，可通过 API 操作平台资源",
-  "metaAgentToggle": "显示 Meta Agent",
-  "metaAgentFailed": "启动 Meta Agent 失败",
   "cancel": "取消",
   "remoteNode": "远程",
   "siteDeployment": {

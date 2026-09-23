@@ -168,8 +168,8 @@ function toRowMetadata(metadata: Record<string, unknown>): Record<string, string
 /**
  * 规范化写入参数，兼容把完整 SKILL.md 误传到 content 的 API 调用方。
  *
- * 正式契约仍是接收 Markdown 正文；这里在持久化边界剥离一个或多个已有 frontmatter，避免 Meta Agent
- * 或旧客户端再次包裹出重复头部。
+ * 正式契约仍是接收 Markdown 正文；这里在持久化边界剥离一个或多个已有 frontmatter，
+ * 避免 API 客户端再次包裹出重复头部。
  */
 export function normalizeSkillWriteData(data: {
   description: string;

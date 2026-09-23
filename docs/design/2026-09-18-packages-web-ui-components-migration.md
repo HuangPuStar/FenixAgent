@@ -122,7 +122,6 @@ chat-channel 外壳切到包内 `ChatInterface` 时，用它继续渲染 agent-r
 | `apps/web/src/lib/agent-resource-access.ts` | `agent-config/web/lib/agent-resource-access.ts` | 4 | Agent 资源访问器 |
 | `apps/web/src/lib/agent-node.ts` | `agent-config/web/lib/agent-node.ts` | 3 | AgentNode 选择逻辑 |
 | `apps/web/src/lib/agent-utils.ts` | `agent-config/web/lib/agent-utils.ts` | 2 | Agent 名称校验 + Knowledge 表单状态 |
-| `apps/web/src/hooks/useMetaAgent.ts` | `agent-config/web/hooks/use-meta-agent.ts` | 1 | 已依赖 `@fenix/agent-config/web` |
 | `apps/web/src/pages/agent-panel/AgentSidebarConfig.tsx` | `agent-config/web/pages/agent-panel/AgentSidebarConfig.tsx` | 2 | 消费方全是 agent-config |
 | `apps/web/src/lib/citation-preview-context.tsx` | **删除**（见遗留待核实 1） | 1 | 迁移后零消费方 |
 | `apps/web/src/contexts/OrgContext.tsx`（136 行） | `identity-admin/web/contexts/OrgContext.tsx` | 2 | 组织上下文 |
@@ -144,12 +143,6 @@ chat-channel 外壳切到包内 `ChatInterface` 时，用它继续渲染 agent-r
 | --- | --- | --- |
 | `apps/web/src/lib/use-context-queue.ts` | `ui-components/web/chat/lib/use-context-queue.ts` | 1 |
 | `apps/web/src/components/FilePickerDialog.tsx` | `ui-components/web/components/FilePickerDialog.tsx` | 1 |
-
-### C4 → agent-runtime
-
-| 现文件 | 新位置 | 引用数 | 理由 |
-| --- | --- | --- | --- |
-| `apps/web/components/MetaAgentPanel.tsx` | `agent-runtime/web/components/MetaAgentPanel.tsx` | 1 | 包装 agent-runtime 的 ChatPanel；消费方 workflow 反向依赖合法 |
 
 ### 不搬清单（留在 `apps/web`，属宿主职责）
 
@@ -333,7 +326,6 @@ ChatArea 保留一条宿主别名引用，已登记进上表。
 | `apps/web/src/hooks/use-task-views.ts` | `task/web/hooks/use-task-views.ts` | agent-runtime 1 |
 | `apps/web/src/lib/use-workflow-events.ts` | `workflow/web/lib/use-workflow-events.ts` | workflow 2 + 2 处测试深链 |
 | `apps/web/src/lib/use-context-queue.ts` 与 `context-queue` 的队列 API | ui-components（含 `flushContext` / `dumpContext`） | workflow 2、chat-channel 1 |
-| `apps/web/src/components/MetaAgentPanel.tsx` | `agent-runtime/web/components/MetaAgentPanel.tsx` | workflow 1 |
 | `apps/web/src/components/FilePickerDialog.tsx` | ui-components | agent-runtime 1 |
 | `apps/web/src/pages/agent-panel/components/KnowledgeGraphPanel.tsx` | knowledge | knowledge 1 |
 | `apps/web/src/pages/agent-panel/ArtifactsPanel.tsx` | **待定归属** | chat-channel 1 |

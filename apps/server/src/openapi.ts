@@ -135,10 +135,6 @@ const WEB_OPENAPI_TAGS = [
     description: "机器注册表管理，包括机器列表、详情与事件历史查询。",
   },
   {
-    name: "Meta Agent",
-    description: "Meta Agent 自举与运行环境确保接口。",
-  },
-  {
     name: "Agent Sites",
     description: "Agent Sites 应用管理、文件上传、绑定关系维护与内部代理接口。",
   },

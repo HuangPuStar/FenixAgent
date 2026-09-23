@@ -9,21 +9,18 @@ import type {
   SiteRequestIdentity,
   WebAgentConfigRouteDependencies,
   WebConfigAgentsRouteDependencies,
-  WebMetaAgentRouteDependencies,
 } from "./routes/dependencies";
 import { createWebAgentGenerationRoutes } from "./routes/web/agent-generation";
 import { createWebAgentSitesRoutes } from "./routes/web/agent-sites";
 import { createWebConfigAgentsRoutes } from "./routes/web/config/agents";
-import { createWebMetaAgentRoutes } from "./routes/web/meta-agent";
 import { createWebSidebarConfigRoutes } from "./routes/web/sidebar-config";
-import type { RotateCallerApiKey } from "./services/meta-agent";
 
 /**
  * Agent 配置的路由贡献装配面：把宿主协议面收窄为本包路由的注入依赖。
  *
  * `ServerRouteHost` 的字段全是 `unknown`（platform-sdk 不依赖 elysia，见 review §3.3），收窄只能在包内做
- * 一次。本包除会话守卫外用到两个端口：Agent 级用户偏好（`user_config` 表的 owner 是 `@fenix/identity`，
- * 包内不直读）与调用方 API Key 轮换（`apikey` 表同上）。`/web/sidebar-config` 无依赖——登录页也要用它，
+ * 一次。本包除会话守卫外还用到 Agent 级用户偏好端口（`user_config` 表的 owner 是 `@fenix/identity`，
+ * 包内不直读）。`/web/sidebar-config` 无依赖——登录页也要用它，
  * 刻意不声明 `sessionAuth`。站点代理（`/web/site/deploy/*` 与 `/app-*` 兜底）另需请求级认证函数而非
  * 守卫：它要区分「未登录」与「已登录但无权限」并分别重定向，故由 `siteAuthenticator` 把宿主的
  * `authenticateRequest` 投影成 `SiteRequestIdentity`（只取 userId / organizationId 两个标识）。这里不做
@@ -60,15 +57,6 @@ export function createAgentConfigWebSidebarConfigRoutes() {
 export function createAgentConfigWebAgentSitesRoutes(host: ServerRouteHost) {
   const deps: WebAgentConfigRouteDependencies = { authGuardPlugin: authGuard(host) };
   return createWebAgentSitesRoutes(deps);
-}
-
-/** `/web/meta-agent/ensure` meta environment 拉起与 API Key 轮换（挂宿主 `web` 聚合槽）。 */
-export function createAgentConfigWebMetaAgentRoutes(host: ServerRouteHost) {
-  const deps: WebMetaAgentRouteDependencies = {
-    authGuardPlugin: authGuard(host),
-    rotateCallerApiKey: host.rotateCallerApiKey as RotateCallerApiKey,
-  };
-  return createWebMetaAgentRoutes(deps);
 }
 
 /** `/web/agent-generation` Agent 生成（挂宿主 `web` 聚合槽）。 */

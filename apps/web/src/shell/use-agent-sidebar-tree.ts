@@ -5,12 +5,12 @@
  * 只向视图暴露数据与操作句柄，不含任何 JSX。内容与拆分前逐字一致：
  *
  * - 15s 轮询加载 agent 树并维护 `environmentId → agentConfigId` 映射（删除智能体时用它清理环境）；
- * - 五组 mutation（进入 / 重启 / 停止 / 删除智能体 / Meta Agent），失败语义与 toast 文案不变；
+ * - 四组 mutation（进入 / 重启 / 停止 / 删除智能体），失败语义与 toast 文案不变；
  * - 多实例重启所需的会话状态与编排（是否弹窗、选中集合、逐个重启）。
  *
- * 视图侧 UI 状态（树展开、Meta Agent 开关）刻意留在组件内：它们只影响渲染，与数据来源无关。
+ * 视图侧 UI 状态（树展开）刻意留在组件内：它们只影响渲染，与数据来源无关。
  */
-import { agentApi, ensureMetaAgent } from "@fenix/agent-config/web";
+import { agentApi } from "@fenix/agent-config/web";
 import { envApi } from "@fenix/agent-runtime/web/api/environments";
 import { unwrap } from "@fenix/web-runtime/api/request";
 import { dispatchConfigChange, useConfigChangeListener } from "@fenix/web-runtime/lib/config-events";
@@ -267,21 +267,6 @@ export function useAgentSidebarTree({
     },
   );
 
-  // ---- Meta Agent（manual useRequest）----
-  const { run: runMetaAgent, loading: metaAgentLoading } = useRequest(
-    async () => {
-      const result = await ensureMetaAgent();
-      onSelectInstance(result.instanceId ?? "", result.environmentId, null);
-    },
-    {
-      manual: true,
-      onError: (err) => {
-        console.error("Failed to start Meta Agent:", err);
-        toast.error(t("metaAgentFailed"));
-      },
-    },
-  );
-
   // ---- 批量重启辅助函数 ----
   const handleRestartAgent = (node: AgentTreeNode) => {
     const running = getRunningInstances(node);
@@ -327,8 +312,6 @@ export function useAgentSidebarTree({
     runStop,
     runDeleteAgent,
     deleting,
-    runMetaAgent,
-    metaAgentLoading,
     handleRestartAgent,
     handleRestartConfirm,
     restartDialogOpen,

@@ -179,8 +179,6 @@ export interface ServerRouteHost {
   readonly resolveSecretReference: unknown;
   /** Environment 归属校验；不存在、跨组织或跨用户一律抛 `NotFoundError`。 */
   readonly verifyEnvironmentOwnership: unknown;
-  /** 轮换调用方名下的 API Key；「同名 key 只保留一把」的编排只在身份侧实现一处。 */
-  readonly rotateCallerApiKey: unknown;
   /** 请求错误日志（宿主 `plugins/logger`）：读宿主中间件写入的 requestId / 耗时，包内没有来源。 */
   readonly logError: unknown;
 }

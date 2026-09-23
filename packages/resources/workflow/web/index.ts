@@ -7,25 +7,9 @@
  * 因此这里只导出可在浏览器中执行的模块；服务端能力走 `./server`，`./module` 是模块注册表的组合根出口，
  * 两者都不从这里转出。
  *
- * **编辑器纳入入口的经过（`WorkflowEditor`）**：2026-09-20 曾因两条他人债务把编辑器挡在入口外——经
- * `@fenix/agent-runtime` 的 `ChatPanel` 到 `@fenix/chat-channel` 再到 `acp-link` 的
- * `./websocket-code` 不可解析出口，以及 agent-config web 侧仍带 `@/` 宿主别名的文件。§1.6 期间两条都已
- * 消失：`ChatPanel` 归位宿主、改经 `chatPanel` 端口注入（T6d）；仓库内 `@/` 别名残留已清（T11e）。
- * 2026-09-21 T11e 实测复核：本守卫的硬断言（`node:` / `@server` / `@/` 别名 / 不可解析出口 / 不深入
- * `@fenix/<pkg>/src`）全部通过，只剩白名单需要为新增可达面补录——编辑器因此加回入口，宿主 route adapter
- * 不再经 tsconfig/vite 别名穿透到本包 `web/pages/**`。
- *
- * 编辑器可达面的构成（白名单据此分组收录）：编辑器自身引入 `@xyflow/react`；它经
- * `hooks/useWorkflowMetaAgent.ts` 取 `@fenix/agent-config/web/lib/meta-agent` 的 `ensureMetaAgent` 与
- * `@fenix/agent-runtime/web/api/environments`，其余外部库都随 `@fenix/ui-components` 的共享原语进入。
- *
- * 该跨包腿曾是 T11e 加回入口时的最大噪音源：`ensureMetaAgent` 原从 agent-config 的**包根聚合 barrel**
- * 取（§2.3 的 web 行允许资源包经对方 `./web` 取能力），一次带进 agent-config / mcp / knowledge /
- * memory / model-management 的整片 web 图，本守卫的白名单因此涨到 46 条「可达面的库全集」。T12 给该
- * 函数加了窄子路径出口（`@fenix/agent-config/web/lib/meta-agent`，只含一个 POST 客户端，无页面依赖），
- * 跨包到达面收敛到 `web/lib/meta-agent.ts` 一个文件，白名单回到 20 条「本包/宿主自己的依赖 + 经
- * ui-components 传递的库」。bundle 层面两次形态一致（宿主本来就加载同一批文件），差异在信号精度：
- * 白名单重新等于「本包引了哪些库」。
+ * 编辑器经包入口发布，宿主 route adapter 不穿透到 `web/pages/**`。
+ * 编辑器自身引入 `@xyflow/react`，经 `@fenix/agent-runtime/web/api/environments` 读取节点环境选项；
+ * 其余外部库随 `@fenix/ui-components` 的共享原语进入。
  *
  * 面按「消费方实际需要」收敛：宿主控制台经本入口消费 `pages/**` 与 `api/**`。包内其余组件
  * （`components/**`）除页面已引用的之外不逐个导出——没有包外消费方时提前铺开会把内部结构固化成公共

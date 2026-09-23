@@ -11,7 +11,6 @@
 
 import type { AnyElysia } from "elysia";
 import type { UserAgentPreferencesPort } from "../ports/user-agent-preferences";
-import type { RotateCallerApiKey } from "../services/meta-agent";
 
 /** `/web/*` 控制台路由的宿主注入依赖。 */
 export interface WebAgentConfigRouteDependencies {
@@ -25,17 +24,6 @@ export type ApiAgentConfigRouteDependencies = WebAgentConfigRouteDependencies;
 /** `/web/config/agents` 的附加依赖：默认 Agent 偏好落在身份族的 `user_config` 表，由宿主适配。 */
 export interface WebConfigAgentsRouteDependencies extends WebAgentConfigRouteDependencies {
   readonly userAgentPreferences: UserAgentPreferencesPort;
-}
-
-/**
- * `/web/meta-agent/ensure` 的附加依赖。
- *
- * `rotateCallerApiKey` 必填而不是沿用 `MetaAgentDependencies` 的可选：宿主是唯一的装配方且一直提供它，
- * 声明为必填能让缺注入在装配期暴露，而不是等到 meta environment 拉起时以 500 的形式暴露。
- */
-export interface WebMetaAgentRouteDependencies extends WebAgentConfigRouteDependencies {
-  /** 轮换调用方名下 API Key；实现由身份侧提供，宿主注入。 */
-  readonly rotateCallerApiKey: RotateCallerApiKey;
 }
 
 /**

@@ -266,7 +266,7 @@ stateDiagram-v2
 | A. HTTP 程序化单轮 | `routes/api/openai-chat.ts` → `openAgentSession` → `spawnInstanceViaController` | 每次独立实例，dispose 销毁 |
 | B. 前端交互式 Chat | `/acp/yjs/:agentId`（`packages/agent-runtime/src/routes/acp/index.ts`）→ `gateway.handleOpen` → `ensureRunning` | 复用语义，**可创建**实例 |
 | C. Workflow | `workflow/agent-chat-transport.ts` → `ensureRunning(userId, ...)` → `connectAgentRelay` | 复用，不随单次执行销毁，租约保护 |
-| D. 外部 API + meta-agent | `api-instance.ts` / `meta-agent.ts` → `spawnInstanceViaController` | 每次独立实例 |
+| D. 外部 API | `api-instance.ts` → `spawnInstanceViaController` | 每次独立实例 |
 | E. 停止 / 回收 / 断连 | `instance.ts` stopInstance / `acp-idle-monitor.ts` / `acp-ws-handler.ts` 机器清理 | AgentNode FSM + 断连对账 |
 
 - **Chat 路径的 ensureRunning 可创建实例**（D6 修订）：文档旧版假设的"ChatChannelController 只查询不创建"未落地；YJS 前端 open 时若实例不存在会 spawn 新实例（复用语义要求）。边界实际是：Chat / Workflow 路径经 `ensureRunning` 获取或创建实例，再经 relay 取得信道；编排域本体仍是唯一创建者。
@@ -406,8 +406,7 @@ workflow run 经 `ensureRunning` 复用实例并 acquire 租约；run 结束 cle
 | T3 | workflow 超时后事件流继续 touchActivity | P1 | `agent-chat-transport.ts` 超时 reject 后 `iterateEvents` 未终止，agent 持续推消息会刷新 `lastActivityAt`，实例滞留时间不可控（窗口 = agent 持续输出时长）。修复：超时/abort 分支先 `turn.release()` 再 reject |
 | T4 | sweep 路径缺 supplement reconcile | P2 | `triggerMachineCleanupByMachineId` 无 `globalInstanceRegistry.reconcile`（与 performMachineCleanup 不一致），孤儿 supplement 残留（量级小）。修复：收敛两路径 |
 | T5 | `WsAgentNodeSocket.send` 的 ws.send 异常被吞 | P2 | `agent-node-bridge.ts` catch 只记日志不 rethrow，停止帧可能静默丢失。修复：rethrow 或与 readyState 门禁同语义 |
-| T6 | meta-agent 吞错 | P2 | `meta-agent.ts` ensure 路径 `catch { return { environmentId, status } }` 吞掉 spawn 错误，success:true 无 instanceId（D-P2.1，审计后未修复）。修复：错误上抛或响应携带错误码 |
 | T8 | local stub 恒 connected | 已知限制 | `local-node-service.ts` 占位节点不触发节点级断连（N:1 共享节点语义）；无 relay 消费者且进程死亡的本地实例靠 idle 300s 兜底。移除条件：core 暴露进程退出事件 |
-| T9 | 测试缺口 | P2 | 以下修复无测试保护：D-P2.1（meta 堆积）、C-P2.1/C-P2.2（审批/子流程泄漏）、机器重连对账（重连分支"先清理再接受新连接"仅有单侧测试）、C-P2.5（配额桶归属） |
+| T9 | 测试缺口 | P2 | 以下修复无测试保护：C-P2.1/C-P2.2（审批/子流程泄漏）、机器重连对账（重连分支"先清理再接受新连接"仅有单侧测试）、C-P2.5（配额桶归属） |
 
 > 验证记录：2026-08-04 校验，215 个相关测试全绿，server / orchestration / web 三侧 tsc 通过；本表 T1-T5 为校验中新发现（已交叉验证），T6/T7 为审计已知未修复项。

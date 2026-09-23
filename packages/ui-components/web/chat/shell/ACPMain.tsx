@@ -390,7 +390,7 @@ export function ACPMain({
     <SessionSelectFallbackProvider fallback={sessionSelectFallback}>
       {/* root 加 p-3 gap-3：让顶部 ChatHeader 浮动卡片与下方内容统一外边距，
           形成上下两个玻璃磨砂卡片悬浮在子页面背景上的视觉效果。
-          acp-main-root：作为窄屏容器（如 MetaAgentPanel）收紧 padding 的 CSS 作用域钩子 */}
+          acp-main-root：共享高度链与 ChatHeader 样式的作用域钩子 */}
       <div className="acp-main-root flex h-full w-full flex-col bg-white text-gray-800">
         {/* 顶部 ChatHeader — 仅展示当前会话标题；会话列表统一从侧边栏进入 */}
         {/* readonly 时整体隐藏 */}
