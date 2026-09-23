@@ -1,8 +1,9 @@
 # 前端开发规范
 
-> **版本**：v3.0.10 | **最后更新**：2026-09-23 | **维护者**：前端团队
+> **版本**：v3.0.11 | **最后更新**：2026-09-23 | **维护者**：前端团队
 >
 > **最近变更**：
+> - v3.0.11 (2026-09-23)：§6.5 安全偏离收口批次，该节登记的四条**全部落地**（第 5 条错误文案回显属 §5.9，未动）。① **最大 XSS 面**：`ui-components/web/chat/primitives/iframe-preview.tsx` 两处 iframe 去掉 `allow-same-origin`（与 `allow-scripts` 同时开启时，同源相对地址——正是这条链路的一等来源——可在帧内摘掉自己的 sandbox、读写父页面 DOM 与 sessionStorage），新增模块内 `isSafeIframeSrc` 协议白名单（放行 `http:` / `https:` / 无协议相对地址 / `data:`，拒绝 `javascript:` / `vbscript:` / `file:` / `blob:` / 未知 scheme；匹配前先剥 ASCII 控制符与空格以堵 `java\nscript:` 这类绕过，与 `micromark-util-sanitize-uri` 同口径判定「首个 `:` 在 `/`、`?`、`#` 之后不算协议」），并把 `sandbox` 从透传属性里剔除——此前模型自带的 `sandbox` 会覆盖组件固定值、等于白改；协议不合规的 `src` 整块不渲染。同批发现并修掉**未登记**的同类命中：`knowledge/.../ResourcePreviewContent.tsx` 的 HTML 预览用 `srcDoc` + `allow-scripts` + `allow-same-origin`，而 `srcdoc` 文档继承父页面源（§6.1 已规定 UGC 与 Agent 输出同等不可信），已去掉 `allow-same-origin`。② **第二条 Markdown 渲染链**：`memory/web/pages/hindsight/components/CompactMarkdown.tsx` 复核实测零消费者（全仓除自身与其守卫用例无任何引用），按「删除优于兼容」连同同名 `CompactMarkdown.css` 删除，`react-markdown` / `remark-gfm` 一并从该包 `dependencies` 移除（包内已无其它消费者），原「无消费者的 CompactMarkdown 未进入浏览器图」用例随文件失去对象而删除，包 README 已知项第 2 条改写为处置记录。③ **knowledge 预览 Markdown**：`ResourcePreviewContent.tsx` 的 `react-markdown` 补 `rehype-sanitize`（GitHub 默认 schema，新增依赖 `rehype-sanitize@^6.0.0`；react-markdown 本身不渲染原始 HTML，这层补的是白名单外的标签、危险协议与事件属性），`knowledge-browser-surface.test.ts` 白名单与「遍历有效性自检」计数（21 → **22**，新增 `lib/sanitize-html.ts`）同批更新。④ **3 处 `dangerouslySetInnerHTML` 的 DOMPurify 默认配置**：抽成 `knowledge/web/lib/sanitize-html.ts` 的两份显式白名单——`sanitizeHighlightHtml` 取最小集（`em` / `span` / `br` + `class`，对齐后端 schema 里「含 `<em>` 标签的 HTML」的契约），`sanitizeRichHtml` 覆盖结构富文本（段落 / 标题 / 列表 / 表格 / 内联图 / 链接，去掉表单、内联 SVG 与 MathML、iframe、媒体与样式表；保留 `data:` 内联图与 `class`，后者不承担阻断 Tailwind 类名注入的职责），三处调用点全部改走 helper、不再直连 `DOMPurify`。**测试侧**：新增 `iframe-preview-sandbox.test.tsx`（6 例：SSR 断言合法来源的 sandbox 取值、相对地址仍可用、危险协议整块不渲染、模型传入的 `sandbox` 不生效，末例用源码断言覆盖弹窗内取不到的第二处 iframe）与 `sanitize-html.test.ts`（6 例：两份白名单的内容与接线）；后者的**运行时行为断言在本环境做不了**——DOMPurify 3.4.11 与 happy-dom 20 实测两处不兼容（`lookupGetter(Node.prototype,'nodeName')` 在 happy-dom 下取到空串使所有节点被当成白名单外、且其 NodeIterator 在首次节点移除后中止），真实浏览器走规范实现不受影响，结论写在测试文件头并登记到 §11.2。§10.1 的非页面级计数因删掉 `CompactMarkdown.css`（27 行、配 `.tsx` 兄弟）就地重跑该节命令：伴随表 68 → **67 份** / 3857 → **3830 行**（配 `.tsx` 兄弟 64 → **63** 份、配 `.ts` 4 份不变），其余三类与 §10 单列项无变化。
 > - v3.0.10 (2026-09-23)：§9.4 硬编码用户可见文案的收口批次——该节登记的**五处现存命中全部改走各包字典**：`agent-config/AgentSitesCard.tsx`（6 处中文，另含兜底英文 `Unknown Site`；失败态同时由「比对中文前缀」改为 `missing-attribute` / `load-failed` 枚举，否则文案本地化后判定失效）、`knowledge/ChunkDetailSheet.tsx`（复用既有 `preview.loadError`，不新增同义键）、`task/TasksPanel.tsx`、`task/TaskForm.tsx`（3 处）、`ui-components/FileViewerPreview.tsx`（内置 `zhCNMessages` 与错误边界提示改由包内字典按当前语言取值，`locale` 不再固定 `zh-CN`；`messages` / `locale` 保留为覆盖端口）。`ui-components` 的 `html-plugin.ts`（插件直接操作 DOM、不在 React 树内）与 `preview-source.ts`（纯逻辑模块不得 import UI i18n，见 §9.3）两处**有意保留**的硬编码随之登记到该包 README「已知限制」第 12 / 13 条，`html-plugin.ts` 文件头原先「见 README」的悬空引用改为指向该条；同表三处「第 N 条」交叉引用（`message.tsx`、`FileViewerPreview.tsx` 两处）原本整体 +1 错位，一并订正。§9.4 与 §11.3 的包内 i18n 测试计数 13 → **14** 就地重测（`plugin-market-i18n.test.ts` 随插件市场模块入库；`ui-components` 的字典守卫名为 `i18n-barrel.test.ts`，不在该 glob 内，§11.3 一并写明）。
 > - v3.0.9 (2026-09-23)：目录索引统一批次（`f73f9265` 把 `components/agent-catalog-index` 的视觉默认值全部下沉到组件 CSS，五页目录改成同一套）后的文档对账。§4.1 该原语的一条按用户裁定重写并**作废**旧口径「共享结构、字号 / 内边距 / 行高 / 圆角 / 选中配色留各页刻度」——现在默认值全在共享组件、五页渲染同一组计算值、页面覆盖归零（各页 30 余条目录规则随之下沉删除），页面只保留独有语义（知识库行尾删除按钮的外壳与不可用态、组织页角色三态图标着色，以及知识库 ≤760px 隐藏与组织页 ≤900px 横置两处布局行为），并写明不再留各页刻度的原因。§10.1 的两行计数就地重测并把测量点从 `5626bb1a` 推到 **`f73f9265`**：资源侧页面级 2636 → **2416** 行（12 份不变；`agent-knowledge.css` 331→268、`agent-models.css` 330→278、`agent-mcp.css` 132→34、`agent-skills.css` 83→76），宿主页面级 5 份 / 1811 行不变，类别 ③ 伴随表 3792 → **3857** 行（68 份不变，64 份配 `.tsx` + 4 份配 `.ts`；两处变化是 `agent-catalog-index.css` 199→299 与 `agent-organizations-workspace.css` 92→57），token 入口 781 + 272 行、第三方覆盖表 43 行、chat 模块表 3 份 / 148 行均按同一命令复核无变化。
 > - v3.0.8 (2026-09-23)：目录栏收敛批次（「左侧目录 + 右侧内容」面板的目录栏收成一套共享构件集，并删掉 `components/WorkbenchPanel`）后的文档对账。§4.1 补登本批下沉的 `components/agent-catalog-index`（技能库 / MCP / 模型库 / 知识库 / 组织管理五页改用），并记 `components/agent-master-detail-workspace` **不在**该小节的「去重批次」口径内——它早于该批次（2026-09-20 的 `e8c73280` 前置落地），本批只是把记忆页从已删除的 `components/WorkbenchPanel` 切到它。子路径数与 barrel 行数改为实测值（156→**158** 条 `exports` 子路径、160→**161** 行 barrel；本批删 `./components/WorkbenchPanel`、增 `./components/agent-catalog-index`，条数净 0）。§10.1 的两行计数就地写明口径并重测（宿主页面级 5 份 / 1811 行、资源侧 12 份 / 2636 行；类别 ③ 伴随表 68 份 / 3792 行；token 入口 781 + 272 行），该节附带可原样复跑的统计命令——v3.0.5 / v3.0.7 变更行里的「页面级 9 → 8 个 / 2496 → 1983 行」与「伴随表 66 → 67 份 / 3348 → 3391 行」都是在前一次记下的数字上做加减得来的（起点 66 是提交信息里的新增文件数，行数没有实测支撑），与实测不符，已随之作废。
@@ -844,7 +845,7 @@ import DOMPurify from "dompurify";
 <div dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(html) }} />
 ```
 
-**Markdown 渲染**：以 `streamdown` 为唯一渲染器（`MessageResponse`，懒加载，经 `allowedTags` 白名单 + `urlTransform` 收口）。新增 Markdown 渲染场景时复用这条链路，不要另起一条。当前唯一例外是 `memory/web/pages/hindsight/components/CompactMarkdown.tsx`（`react-markdown` + `remark-gfm`，且是零消费者的死文件），已在 §6.5 登记。
+**Markdown 渲染**：以 `streamdown` 为唯一渲染器（`MessageResponse`，懒加载，经 `allowedTags` 白名单 + `urlTransform` 收口）。新增 Markdown 渲染场景时复用这条链路，不要另起一条。`streamdown` 之外的直接 `react-markdown` 用法当前只剩 `knowledge` 预览一处（`ResourcePreviewContent.tsx`，已接 `rehype-sanitize` 的 GitHub 默认 schema）——它的输入是用户上传的文件正文，且 `react-markdown` 不渲染原始 HTML，属可接受的最小偏离；`memory` 原先那条无人消费的 `CompactMarkdown.tsx` 已于 2026-09-23 删除（见 §6.5）。
 
 ### 6.2 iframe 沙箱
 
@@ -852,9 +853,9 @@ import DOMPurify from "dompurify";
 
 | 来源 | 要求 | 当前实现 |
 |------|------|----------|
-| Markdown / Agent 输出里的 `<iframe>` | **必须**去掉 `allow-same-origin`，且对 `src` 做协议与域名校验 | 偏离（见 §6.5） |
-| 用户自己的站点（`siteUrl`、`SiteFrame`） | 可保留 `allow-same-origin`，但必须带 `referrerPolicy` | 已带 `referrerPolicy="no-referrer"` |
-| 同源文件预览（pdf / office 转 pdf） | 可用 `srcDoc` 或同源 URL，`sandbox` 可选 | 部分 iframe 无 `sandbox` 属性（同源，风险低） |
+| Markdown / Agent 输出里的 `<iframe>` | **必须**去掉 `allow-same-origin`，且对 `src` 做协议与域名校验 | 已收口（2026-09-23）：`ui-components` 的 `IframePreview` 两处 iframe 均为 `sandbox="allow-scripts allow-popups"`，`src` 过协议白名单（`http:` / `https:` / 相对地址 / `data:`），模型自带的 `sandbox` 被剔除 |
+| 用户自己的站点（`siteUrl`、`SiteFrame`） | 可保留 `allow-same-origin`，但必须带 `referrerPolicy` | 已带 `referrerPolicy="no-referrer"`（`SiteFrame.tsx`、`AgentSitesCard.tsx`） |
+| 同源文件预览（pdf / office 转 pdf） | 可用 `srcDoc` 或同源 URL，`sandbox` 可选 | 部分 iframe 无 `sandbox` 属性（同源，风险低）。**但知识库的 HTML 预览不算这一类**——它是用户上传的 UGC，`srcDoc` 且 `sandbox="allow-scripts"`（2026-09-23 去掉 `allow-same-origin`：`srcdoc` 继承父页面源，与 `allow-scripts` 组合即可自行摘掉 sandbox） |
 
 新增 iframe 时必须显式写出 `sandbox` 属性并说明取值理由。
 
@@ -892,11 +893,14 @@ import DOMPurify from "dompurify";
 
 ### 6.5 现状偏离
 
-- **3 处 `dangerouslySetInnerHTML` 全部经 DOMPurify，但都用默认配置**（无 `ALLOWED_TAGS` 白名单）：`knowledge/web/components/knowledge/ResourcePreviewContent.tsx`、`knowledge/web/src/pages/agent-panel/components/ChunkDetailSheet.tsx`、`.../RetrievalTestPanel.tsx`。三处都写了内容来源注释，合规但清洗强度值得收紧。
-- **存在 `streamdown` 之外的第二条 Markdown 渲染链**：`memory/web/pages/hindsight/components/CompactMarkdown.tsx` 用 `react-markdown` + `remark-gfm`（无 sanitize），且在包 README 里自述为零消费者的死文件。要么删除，要么接入 `MessageResponse`。
-- **最大 XSS 面未收口**：`ui-components/web/chat/primitives/iframe-preview.tsx` 对 Markdown 里的 `<iframe>` 同时给 `allow-scripts` 与 `allow-same-origin`，且**前端不对 `src` 做任何校验**；来源是 Agent / LLM 输出。同上文件放大弹窗的 Dialog 内还有一份同样配置。
-- **knowledge 预览的 Markdown 走 `react-markdown` 且未接 `rehype-sanitize`**（`ResourcePreviewContent.tsx`），输入是用户上传的知识库文件正文。属待收口项。
+2026-09-23 的收口批次已消掉前四条（`dangerouslySetInnerHTML` 的默认配置、第二条 Markdown 渲染链、Markdown iframe 的沙箱组合、knowledge 预览未接 sanitize），保留下面的已处置记录与仍未修的条目。
+
+- ~~**3 处 `dangerouslySetInnerHTML` 全部经 DOMPurify，但都用默认配置**~~ **已收紧**：抽出 `knowledge/web/lib/sanitize-html.ts` 的两份显式白名单（`sanitizeHighlightHtml` / `sanitizeRichHtml`），三处调用点（`components/knowledge/ResourcePreviewContent.tsx` 的 docx 分支、`src/pages/agent-panel/components/{ChunkDetailSheet,RetrievalTestPanel}.tsx`）改走 helper，`knowledge/web/__tests__/sanitize-html.test.ts` 钉住白名单内容与接线。**保留的取舍**：`class` 仍在两份白名单里（RAGFlow / mammoth 用它表达表格与段落样式），因此不阻断 Tailwind 类名注入造成的 UI 伪装；要挡需另行裁定。
+- ~~**存在 `streamdown` 之外的第二条 Markdown 渲染链**~~ **已删除**：`memory/web/pages/hindsight/components/CompactMarkdown.tsx` 零消费者坐实，连同同名 CSS 与 `react-markdown` / `remark-gfm` 依赖一并移除（2026-09-23）。
+- ~~**最大 XSS 面未收口**~~ **已收口**：`ui-components/web/chat/primitives/iframe-preview.tsx` 的两处 iframe 去掉 `allow-same-origin`，并补 `src` 协议白名单与 `sandbox` 覆盖防护，测试见 `ui-components/web/__tests__/iframe-preview-sandbox.test.tsx`。`data:` 有意留在白名单里（其文档永远是 opaque origin，不与父页面同源），移除条件写在组件内 `ALLOWED_IFRAME_PROTOCOLS` 的注释里。
+- ~~**knowledge 预览的 Markdown 走 `react-markdown` 且未接 `rehype-sanitize`**~~ **已补**：`ResourcePreviewContent.tsx` 的 `rehypePlugins` 接上 `rehype-sanitize`（GitHub 默认 schema）。**注意白名单外的差异**：schema 只放行 `http:` / `https:` 的 `src`，所以正文里 `data:` 内联图会被剥掉（与同级 docx 预览的 `data:` 内联图行为不同，后者走 `sanitizeRichHtml` 保留）。
 - **错误文案回显**：Chat 域已按稳定 `error.type` 映射字典（`public-error-text.ts` + 协议侧明确"不得使用原始异常文本"，并有 `public-error-i18n.test.ts` 守护）；但域模块与页面的 `onError` 仍普遍直接显示 `err.message`（见 §5.9）。
+- **DOMPurify 的运行时行为在本仓测试环境里测不出来**（2026-09-23 实测）：DOMPurify 3.4.11 用 `lookupGetter(Node.prototype, 'nodeName' / 'nodeType')` 缓存跨 realm 取值器，而 happy-dom 20 把这两者的可访问实现放在子类原型上，直接调基类取值器得到空串；把这一点绕开之后，happy-dom 的 NodeIterator 又会在**首次节点移除后中止**遍历。两条都不影响真实浏览器，但意味着「渲染后的 HTML」类断言在 happy-dom 下测到的是桩行为——清洗相关用例只断言白名单与接线（见 §11.2）。
 
 ## 7. 错误边界
 
@@ -1120,7 +1124,7 @@ i18n.use(initReactI18next).init({
   **计数口径**（就是 §10 四类里**剩下的那一类**，排除项逐条对齐类别 ①②③）：
 
   - **计入**：`apps/web/src/**/*.css` 与 `packages/**/web/**/*.css` 中**没有同目录同名 `.tsx` / `.ts` 兄弟**的 `.css`；
-  - **排除**：① token 入口 `apps/web/src/index.css`（781 行）与 `ui-components/web/styles/theme.css`（272 行）；② 第三方覆盖表 `ui-components/web/components/preview/overrides.css`（43 行）；③ 类别 ③ 伴随表 **68 份 / 3857 行**（64 份配 `.tsx` 兄弟、4 份配 `.ts` 兄弟）；④ `ui-components/web/chat/css/*.css`（3 份 / 148 行，模块级表，§10 单列）；
+  - **排除**：① token 入口 `apps/web/src/index.css`（781 行）与 `ui-components/web/styles/theme.css`（272 行）；② 第三方覆盖表 `ui-components/web/components/preview/overrides.css`（43 行）；③ 类别 ③ 伴随表 **67 份 / 3830 行**（63 份配 `.tsx` 兄弟、4 份配 `.ts` 兄弟；2026-09-23 删除 `memory/web/pages/hindsight/components/CompactMarkdown.css`（27 行、配 `.tsx` 兄弟）后就地重跑本节命令所得，此前为 68 份 / 3857 行）；④ `ui-components/web/chat/css/*.css`（3 份 / 148 行，模块级表，§10 单列）；
   - **口径外**：`ui-sandbox/`（独立演示应用）、`docs/**`（VitePress 主题）、`e2e/playwright-report/**` 与 `tmp/**`（产物与临时目录）、`.worktrees/**`、`node_modules`/`dist`，以及 `packages/ui-components/demo/demo.css`（包内 demo，不在 `@source` 扫描范围内）；
   - **边界一例**：`ui-components/web/chat/primitives/conversation-scroll.css` 的源文件叫 `conversation.tsx`（不同名），按上面的机械规则落进本类——它是模块级表而非页面表，这是机械规则的已知代价。
 
@@ -1202,6 +1206,7 @@ i18n.use(initReactI18next).init({
 - 框架是 **`bun test`**（无 vitest / jest）；`bunfig.toml` 只 preload 服务端侧垫片，**没有全局 DOM**。
 - 需要 DOM 的用例自建 happy-dom Window，唯一入口是 `@fenix/ui-components/testing` 的 `initializeHappyDomWindow`（`HTMLElement` 与 `customElements` 必须**成对**注入，否则 streamdown 链路在用例之间崩）。
 - 只测关键交互、状态与数据流，不写纯 UI 结构断言或仅重复类型检查的测试。
+- **DOMPurify 在 happy-dom 下清洗不动，别写「渲染后的 HTML」类断言**（2026-09-23 实测，原因见 §6.5 末条）：`DOMPurify.sanitize()` 在本环境要么把节点当成白名单外、要么只处理到第一次节点移除为止，断言会测到桩行为（既可能假绿也可能假红）。清洗相关用例只断言**白名单内容与接线**，参考 `knowledge/web/__tests__/sanitize-html.test.ts`。
 - **`react-i18next` 替身必须返回稳定的 `t`**：真身的 `t` 只在切语言时换身份，替身不能在 `useTranslation()` 里每次渲染新建对象或函数。"把 `t` 写进 `useCallback` 依赖、再用该回调喂 `useEffect`"的组件一旦碰上不稳定替身就会陷入反复拉取，**生产不复现**——纯属替身造成的假阳性（2026-09-22 在 `workflow/web/__tests__/workflow-versions-a11y.test.tsx` 上踩到，表现是 3 个用例 5s 超时，曾被误判成并发改动）。当前仍有 10 份 mock 用 `useTranslation: () => ({ ... })` 的写法，改到相关组件时顺手收口。
 
 ### 11.3 尚未自动化的规则
@@ -1213,11 +1218,11 @@ i18n.use(initReactI18next).init({
 | 组件中裸调 `fetch()` / `XMLHttpRequest` | 未自动化；现有例外点是登记制（§5.3） |
 | 直接 `await` 域模块不解包 | 未自动化，签名层面无法区分 |
 | `window.location` 写操作 | 无**全仓**门禁（当前生产代码零命中；`workflow/web/__tests__/workflow-page-route.test.ts` 只守 workflow 页面，`ui-components/web/testing.ts` 里的一处属测试工具） |
-| `dangerouslySetInnerHTML` 不经清洗 | 未自动化（当前 3 处均已清洗） |
+| `dangerouslySetInnerHTML` 不经清洗 | 未自动化。2026-09-23 复核：**3 处**（knowledge 的 docx / 切片 / 检索高亮）全部经 `web/lib/sanitize-html.ts` 的显式白名单，无一处用 DOMPurify 默认配置；白名单内容与三处接线由 `knowledge/web/__tests__/sanitize-html.test.ts` 钉住 |
 | `localStorage` 读写组织身份 | 未自动化（当前 2 处违规，见 §3.6） |
 | 原生 `confirm()` / `alert()` / `prompt()` | 未自动化。2026-09-22 已全量复核：全仓零命中（4 处已迁 `ConfirmDialog`）；新增只能靠 review |
 | `console.error` 缺配对用户可见反馈 | 未自动化，判据见 §5.8；2026-09-22 全量复核后仍有已知残留（见 §5.9） |
-| iframe 的 `sandbox` 取值 | 未自动化 |
+| iframe 的 `sandbox` 取值 | 未自动化。2026-09-23 复核现状：`IframePreview`（Markdown / Agent 输出）为 `allow-scripts allow-popups` 且 `src` 过协议白名单、`sandbox` 不可被 props 覆盖，有包内用例；`SiteFrame` / `AgentSitesCard`（用户自己的站点）保留 `allow-same-origin` 但带 `referrerPolicy`；knowledge 的 HTML 预览（UGC）为 `allow-scripts`；office 转 PDF 的同源预览无 `sandbox`（风险低） |
 | 单文件 500 行上限 | 未自动化（当前 16 处超限，见 §4.8） |
 | 组件重复开发检测 | 未自动化（当前 2 处本地重复实现，见 §4.8） |
 | i18n 全仓 key 对称、`[object Object]` | 包级与宿主各有测试（14 份 `packages/**/web/__tests__/*-i18n.test.ts` + `ui-components` 的 `i18n-barrel.test.ts` + 宿主 `host-i18n.test.ts`），**跨包漏注册**无门禁（见 §9.4） |

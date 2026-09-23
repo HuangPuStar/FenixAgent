@@ -10,12 +10,12 @@ import { Spinner } from "@fenix/ui-components/ui/spinner";
 import { Switch } from "@fenix/ui-components/ui/switch";
 import { Textarea } from "@fenix/ui-components/ui/textarea";
 import { NS } from "@fenix/web-runtime/i18n/namespace";
-import DOMPurify from "dompurify";
 import { Loader2, Search } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
 import { kbApi } from "../../../../api/knowledge-bases";
+import { sanitizeHighlightHtml } from "../../../../lib/sanitize-html";
 import { KnowledgeLoadFailure } from "../../../../pages/agent-panel/pages/agent-knowledge-load-failure";
 import { FIELD_LABEL_CLASS } from "../../../../pages/agent-panel/pages/knowledge-typography";
 import type {
@@ -454,13 +454,15 @@ function fmtScore(s: number | null | undefined): string {
 /**
  * RAGFlow 高亮内容渲染组件。
  *
- * 后端返回的是带 `<em>` / `<span class>` 高亮标记的 HTML，必须经 DOMPurify 清洗后再注入：
- * 检索结果包含知识库原文，不能视为受控内容（清洗保留高亮标签与 class，见 dompurify 默认白名单）。
- * `<em>` 的高亮样式按调用方传入的类名（`.retrieval-test-highlight`，见同目录 RetrievalTestPanel.css）落在 CSS 里。
+ * 后端返回的是带 `<em>` 高亮标记的 HTML（契约见 `src/server/schemas/knowledge.schema.ts` 的
+ * `highlight` 字段），必须清洗后再注入：检索结果包含知识库原文，不能视为受控内容。
+ * 清洗用 `sanitizeHighlightHtml` 的**最小白名单**（只留 `<em>` / `<span>` / `<br>` 与 class），
+ * 见 `web/lib/sanitize-html.ts`；`<em>` 的高亮样式按调用方传入的类名
+ * （`.retrieval-test-highlight`，见同目录 RetrievalTestPanel.css）落在 CSS 里。
  */
 function HighlightSpan({ html, className }: { html: string; className: string }) {
-  // biome-ignore lint/security/noDangerouslySetInnerHtml: 同一行的 DOMPurify.sanitize 已清洗（保留 <em>/class 高亮标签）
-  return <span className={className} dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(html) }} />;
+  // biome-ignore lint/security/noDangerouslySetInnerHtml: 同一行的 sanitizeHighlightHtml 已清洗（只留 <em>/<span> 高亮标签）
+  return <span className={className} dangerouslySetInnerHTML={{ __html: sanitizeHighlightHtml(html) }} />;
 }
 
 // ============================================================

@@ -51,6 +51,7 @@ const BROWSER_SAFE_EXTERNAL: ReadonlyMap<string, string> = new Map([
   ["lucide-react", "SVG 图标库（本包 dependencies）"],
   ["mammoth", "docx 文本提取（本包 dependencies），纯 JS"],
   ["react-markdown", "Markdown 渲染（本包 dependencies）"],
+  ["rehype-sanitize", "Markdown 渲染前的 hast 清洗（本包 dependencies），纯函数"],
   ["remark-gfm", "GFM 插件（本包 dependencies），纯函数"],
   ["sonner", "Toast 渲染（本包 dependencies）"],
   ["xlsx", "表格解析（本包 dependencies），纯 JS"],
@@ -126,15 +127,17 @@ describe("knowledge web 入口浏览器可达面", () => {
       "components/knowledge/ResourcePreviewContent.tsx",
       "components/knowledge/ResourcePreviewDialog.tsx",
       "lib/poll-resources.ts",
+      "lib/sanitize-html.ts",
       "src/pages/agent-panel/components/ChunkDetailSheet.tsx",
       "src/pages/agent-panel/components/EmbeddingModelManager.tsx",
       "src/pages/agent-panel/components/RetrievalTestPanel.tsx",
     ]) {
       expect(reachedWebFiles).toContain(expected);
     }
-    // 21 = 原有 19 个模块 + 2026-09-22 前端去重抽出的两个模块（`knowledge-typography.ts` 的字段名
-    // 排版常量、`lib/poll-resources.ts` 的资源轮询）：两者都被页面/检索面板以值导入引用，必须在图内。
-    expect(reachedWebFiles.size).toBe(21);
+    // 22 = 原有 19 个模块 + 2026-09-22 前端去重抽出的两个模块（`knowledge-typography.ts` 的字段名
+    // 排版常量、`lib/poll-resources.ts` 的资源轮询）+ 2026-09-23 §6.5 收口抽出的
+    // `lib/sanitize-html.ts`（三处 `dangerouslySetInnerHTML` 的显式白名单，被三个宿主文件值导入）。
+    expect(reachedWebFiles.size).toBe(22);
 
     // 跨包递归的有效性：只钉稳定路径——本包实际消费的四个跨包入口。
     // 少了这一段，「@fenix/* 被当成外部依赖放过」会以「包内断言全绿」的形式漏网。

@@ -11,12 +11,12 @@ import { Skeleton } from "@fenix/ui-components/ui/skeleton";
 import { Switch } from "@fenix/ui-components/ui/switch";
 import { unwrap } from "@fenix/web-runtime/api/request";
 import { NS } from "@fenix/web-runtime/i18n/namespace";
-import DOMPurify from "dompurify";
 import { ChevronLeft, ChevronRight, Search, X } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
 import { kbApi } from "../../../../api/knowledge-bases";
+import { sanitizeRichHtml } from "../../../../lib/sanitize-html";
 import { KnowledgeLoadFailure } from "../../../../pages/agent-panel/pages/agent-knowledge-load-failure";
 import type { KnowledgeChunkListResponse, KnowledgeResourceInfo } from "../../../../types/knowledge";
 
@@ -258,14 +258,15 @@ export function ChunkDetailSheet({ open, onClose, kbId, resource }: ChunkDetailS
 
                     {/* 内容预览（全文 / 省略模式）。
                         RAGFlow 切片内容可能包含 HTML（表格、视频标签、富文本），
-                        用 DOMPurify 清洗后渲染，与 RAGFlow chunk-card 行为一致。
+                        来源是知识库原文（不可信），按 `sanitizeRichHtml` 的显式白名单清洗后渲染，
+                        与 RAGFlow chunk-card 行为一致（白名单见 `web/lib/sanitize-html.ts`）。
                         内层 media / 表格 / 链接样式见同目录 ChunkDetailSheet.css 的 `.chunk-detail-content`。 */}
                     <div
                       className={`chunk-detail-content text-xs text-slate-600 leading-relaxed break-words ${
                         textMode === "ellipse" ? "line-clamp-3" : ""
                       }`}
-                      // biome-ignore lint/security/noDangerouslySetInnerHtml: 同一行的 DOMPurify.sanitize 已清洗（RAGFlow 切片内容含后端 HTML，不可直接注入）
-                      dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(chunk.content) }}
+                      // biome-ignore lint/security/noDangerouslySetInnerHtml: 同一行的 sanitizeRichHtml 已清洗（RAGFlow 切片内容含后端 HTML，不可直接注入）
+                      dangerouslySetInnerHTML={{ __html: sanitizeRichHtml(chunk.content) }}
                     />
 
                     {/* 关键词标签 */}

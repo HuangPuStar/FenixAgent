@@ -19,7 +19,7 @@
 // 不该影响断言。
 
 import { describe, expect, test } from "bun:test";
-import { existsSync, readFileSync } from "node:fs";
+import { readFileSync } from "node:fs";
 import { join, relative, resolve, sep } from "node:path";
 
 import { loadWorkspacePackages, repoPath, stripComments, WEB_ROOT, walkValueGraph } from "./value-import-graph";
@@ -220,13 +220,5 @@ describe("memory web 入口浏览器可达面", () => {
     const source = stripComments(readFileSync(WEB_ENTRY, "utf8"));
     expect(source).toContain("HINDSIGHT_NS");
     expect(source).toContain("hindsightResources");
-  });
-
-  // CompactMarkdown 未被入口引用（当前无消费者），因此不得被浏览器面误引；
-  // 一旦它被入口拉进图，react-markdown / remark-gfm 会立刻以「未白名单外部依赖」失败——这条
-  // 把「新增消费者时必须先评审 markdown 渲染链的浏览器安全性」写进断言。
-  test("无消费者的 CompactMarkdown 未进入浏览器图", () => {
-    expect(reachedWebFiles.has(`pages/hindsight/components/CompactMarkdown.tsx`)).toBe(false);
-    expect(existsSync(join(WEB_ROOT, "pages/hindsight/components/CompactMarkdown.tsx"))).toBe(true);
   });
 });

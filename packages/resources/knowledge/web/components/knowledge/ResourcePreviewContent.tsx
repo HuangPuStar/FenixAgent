@@ -7,11 +7,11 @@ import { Skeleton } from "@fenix/ui-components/ui/skeleton";
 import { Spinner } from "@fenix/ui-components/ui/spinner";
 import { NS } from "@fenix/web-runtime/i18n/namespace";
 import { useRequest } from "ahooks";
-import DOMPurify from "dompurify";
 import mammoth from "mammoth";
 import { useCallback, useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import ReactMarkdown from "react-markdown";
+import rehypeSanitize from "rehype-sanitize";
 import remarkGfm from "remark-gfm";
 import { toast } from "sonner";
 import * as XLSX from "xlsx";
@@ -21,6 +21,7 @@ import {
   isResourcePdfPreviewAvailable,
   kbApi,
 } from "../../api/knowledge-bases";
+import { sanitizeRichHtml } from "../../lib/sanitize-html";
 import type { KnowledgeResourceInfo } from "../../types/knowledge";
 
 /** 视频扩展名 → MIME 类型映射 */
@@ -293,7 +294,12 @@ export function ResourcePreviewContent({ resource, kbId }: ResourcePreviewConten
         return (
           <div className="flex-1 overflow-auto p-6">
             <div className="resource-preview-content-markdown prose prose-sm max-w-none dark:prose-invert prose-headings:text-text-primary prose-p:text-text-primary prose-strong:text-text-primary prose-li:text-text-primary">
-              <ReactMarkdown remarkPlugins={[remarkGfm]}>{fetchedContent}</ReactMarkdown>
+              {/* 输入是用户上传的知识库文件正文：走 rehype-sanitize 的 GitHub 默认 schema。
+                  react-markdown 本身不渲染原始 HTML（未挂 rehype-raw），这里补的是第二道——
+                  白名单外的标签（script / iframe / form / svg…）、危险协议与事件属性全部剥掉。 */}
+              <ReactMarkdown remarkPlugins={[remarkGfm]} rehypePlugins={[rehypeSanitize]}>
+                {fetchedContent}
+              </ReactMarkdown>
             </div>
           </div>
         );
@@ -314,7 +320,10 @@ export function ResourcePreviewContent({ resource, kbId }: ResourcePreviewConten
           <iframe
             srcDoc={fetchedContent}
             title={resource.sourceName}
-            sandbox="allow-scripts allow-same-origin"
+            // 文件正文是用户上传的 UGC（§6.1：与 Agent / LLM 输出同等不可信），且 `srcdoc` 文档继承
+            // 父页面源：再给 allow-same-origin 就等于把沙箱交给里面的脚本（可自行摘掉 sandbox 读宿主
+            // DOM 与 sessionStorage）。保留 allow-scripts 让预览页自己的脚本仍能跑，但跑在 opaque origin。
+            sandbox="allow-scripts"
             className="w-full h-full min-h-0 rounded-md border border-border bg-white"
           />
         );
@@ -340,9 +349,10 @@ export function ResourcePreviewContent({ resource, kbId }: ResourcePreviewConten
             <div className="flex-1 overflow-auto p-6">
               <div
                 className="resource-preview-content-docx prose prose-sm max-w-none dark:prose-invert"
-                // Mammoth 的输出不是可信 HTML（docx 可携带任意标签与属性），与切片预览一致先经 DOMPurify 再注入。
-                // biome-ignore lint/security/noDangerouslySetInnerHtml: 同一行的 DOMPurify.sanitize 已清洗（mammoth 输出不可直接注入）
-                dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(docxHtml) }}
+                // Mammoth 的输出不是可信 HTML（docx 可携带任意标签与属性）：按来源取
+                // `sanitizeRichHtml` 的显式白名单清洗后再注入（§6.1，白名单见 `../../lib/sanitize-html`）。
+                // biome-ignore lint/security/noDangerouslySetInnerHtml: 同一行的 sanitizeRichHtml 已清洗（mammoth 输出不可直接注入）
+                dangerouslySetInnerHTML={{ __html: sanitizeRichHtml(docxHtml) }}
               />
             </div>
           );

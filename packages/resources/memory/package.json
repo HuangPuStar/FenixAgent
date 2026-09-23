@@ -23,8 +23,6 @@
     "drizzle-orm": "^0.45.2",
     "elysia": "^1.4.28",
     "lucide-react": "^1.16.0",
-    "react-markdown": "^10.1.0",
-    "remark-gfm": "^4.0.1",
     "sonner": "^2.0.7",
     "zod": "^4.4.3"
   },

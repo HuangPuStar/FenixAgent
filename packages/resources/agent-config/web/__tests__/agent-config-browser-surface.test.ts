@@ -76,6 +76,7 @@ const BROWSER_SAFE_EXTERNAL: ReadonlyMap<string, string> = new Map([
   ["cmdk", "命令面板（ui/command 传递依赖），浏览器安全"],
   ["dompurify", "HTML 消毒（ui-components 渲染层传递依赖），纯浏览器实现"],
   ["react-markdown", "Markdown 渲染（ui-components 渲染层传递依赖）"],
+  ["rehype-sanitize", "Markdown 渲染前的 hast 清洗（knowledge 资源预览传递依赖），纯函数"],
   ["remark-gfm", "GitHub 风格 Markdown 插件（同上）"],
   ["streamdown", "流式 Markdown 渲染（ui-components chat 层传递依赖）"],
   ["mammoth", "docx 转 HTML（ui-components 文件预览传递依赖），纯浏览器实现"],
