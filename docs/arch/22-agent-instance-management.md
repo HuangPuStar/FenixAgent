@@ -235,6 +235,17 @@ restart 对相同 uid singleflight，先 strict stop，再以同一 uid 和新 g
 
 服务重启不扫描 DB 自动启动 Instance。clean-slate 完成后，后续 enter/ensure 才能以原 `instanceUid` 创建新的 Runtime Incarnation。
 
+### 实现现状（2026-09-23，clean-slate 复位边）
+
+> 以下记录当前实现对本节 clean-slate 规则的落地情况，仅为实现落点说明，不修改本节第 1-7 条与上一段规范条文。
+
+- 第 6 节定义的状态集合在实现中只有五值 `stopped | starting | running | stopping | unknown`（`packages/agent-runtime/src/server/services/agent-instance-runtime-coordinator.ts:5`）；`reconciling` 与 `failed` 尚未实现，因此 `unknown → reconciling → stopped` 在实现里收敛为 `unknown → stopped`。
+- 机器断连把实例标记为 `unknown` 时（`packages/agent-runtime/src/server/transport/acp-ws-handler.ts` 的 `performMachineCleanup`（:522 起，置态调用在 :549）与 `triggerMachineCleanupByMachineId`（:593 起，置态调用在 :617）），协调器在内存中记录该条目归属的 `machineId`（`agent-instance-runtime-coordinator.ts:34` 的 entry 字段，由 `handleRuntimeDisconnect` 的 `machineId` 入参写入，见 :107、:201）；该归属不进 `RuntimeSnapshot`（对外快照字段见 :63-73），也不进任何对外响应。
+- 本次修复新增 `AgentInstanceRuntimeCoordinator.handleMachineCleanSlate(machineId): string[]`（`agent-instance-runtime-coordinator.ts:122`，服务层转发见 `agent-instance-service.ts:165-167`）：只复位「归属该 `machineId` + 状态为 `unknown` + 无在飞 operation」的条目（判定见 :126-131），复位动作为私有 `#resolveUnknown`（:206），置为 `stopped` 并推进 generation；条目若有在飞 operation，则先置延后标记（:127-130），待 operation 释放槽位后再复位（守卫与补做见 :264-265）。
+- 调用点位于 `acp-ws-handler.ts` 的 `clean_slate_confirmed` 分支（:372-404，复位调用在 :396），且放在 `activateRemoteMachine` 的 try/catch 之外，宿主激活失败不影响复位。
+- 该复位不覆盖：`stop`/`delete` 操作失败产生的 `unknown`、shutdown 排空产生的 `unknown`（二者不带机器归属，不参与复位、保持 `unknown`，仍须先完成 clean-slate/reconcile；`unknown` gate 仍只放行 `stop`，见 :227-228）；机器不重连时按上文第 7 条保持 `unknown`。
+- shutdown 中同样不参与复位：`handleMachineCleanSlate` 与延后补做都带 `!this.#shuttingDown` 守卫（:123、:264），原因见 :262-263 注释——进程退出中不得把 shutdown drain 留下的未确认 runtime 伪装成 `stopped`。delete 被断连 fence 后 `deleting` 残留属相邻缺口，本次不修。
+
 ## 10. 安全、故障与观测
 
 - `instanceUid` 只是资源定位符，不是授权凭据；每次操作必须从 DB 恢复 owner、Environment 和组织上下文后重新授权。
