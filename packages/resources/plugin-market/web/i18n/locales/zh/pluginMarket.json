@@ -1,0 +1,115 @@
+{
+  "nav": {
+    "pluginMarket": "插件市场"
+  },
+  "title": "插件市场",
+  "subtitle": "浏览从 npm 私有源发布到市场的插件版本，并按需发布、下架或恢复某个版本。",
+  "search": "搜索插件、包名或版本",
+  "toolbar": {
+    "label": "插件搜索与范围筛选"
+  },
+  "scope": {
+    "label": "插件范围",
+    "all": "全部",
+    "teams": "专家团队",
+    "connectors": "连接器",
+    "withdrawn": "已下架"
+  },
+  "directory": {
+    "title": "插件目录",
+    "summary": "显示 {{visible}} 个，共 {{total}} 个",
+    "noDescription": "暂无说明",
+    "noVersion": "暂无已发布版本",
+    "versionCount": "{{count}} 个版本"
+  },
+  "status": {
+    "withdrawn": "已下架",
+    "latest": "最新"
+  },
+  "empty": "市场里还没有插件",
+  "emptyHint": "从 npm 私有源发布第一个版本后，插件会出现在这里。",
+  "emptySearch": "没有匹配的插件",
+  "emptySearchHint": "换一个关键词或切换范围试试。",
+  "loadState": {
+    "title": "插件市场加载失败",
+    "retry": "重试",
+    "loading": "正在加载插件市场",
+    "detailTitle": "条目详情加载失败",
+    "detailRetry": "重新加载详情",
+    "unauthorizedTitle": "无权查看插件市场",
+    "unauthorizedHint": "当前账号或所在组织已没有插件市场的访问权限。请切换组织，或联系管理员开通权限——重试不会改变授权结果。"
+  },
+  "detail": {
+    "overview": "概要",
+    "provenance": "溯源信息",
+    "version": "版本",
+    "packageName": "包名",
+    "latestVersion": "最新版本",
+    "publishedAt": "发布时间",
+    "digest": "内容摘要",
+    "description": "说明",
+    "keywords": "关键词",
+    "agents": "Agent 成员",
+    "skills": "技能",
+    "servers": "MCP 连接",
+    "noAgents": "该版本未声明 Agent 成员",
+    "noSkills": "该版本未声明技能",
+    "noServers": "该版本未声明 MCP 连接",
+    "integrity": "制品摘要",
+    "tarballUrl": "制品地址（仅溯源）",
+    "unpackedSize": "解包体积",
+    "fileCount": "文件数",
+    "deprecated": "该版本已被标记为弃用",
+    "versions": "版本历史",
+    "versionCount": "共 {{count}} 个版本",
+    "noVersions": "该条目还没有版本",
+    "firstPublishedAt": "首次发布",
+    "withdrawnAt": "下架时间"
+  },
+  "btn": {
+    "publish": "发布版本",
+    "unpublish": "下架",
+    "restore": "恢复",
+    "preview": "读取并预览",
+    "previewing": "正在读取…",
+    "confirmPublish": "确认发布",
+    "publishing": "正在发布…",
+    "cancel": "取消",
+    "back": "返回修改"
+  },
+  "dialog": {
+    "publishTitle": "发布插件版本",
+    "publishDescription": "输入私有源上的包名与精确版本，先读取并规范化元数据；确认后这份快照进入市场，此后不再随私有源变化。",
+    "packageName": "包名",
+    "packageNamePlaceholder": "@scope/name",
+    "exactVersion": "精确版本",
+    "exactVersionPlaceholder": "1.0.0",
+    "previewHeading": "预览：即将公开的内容",
+    "previewHint": "市场只保存下列字段。制品地址仅作溯源展示，市场不会请求它。",
+    "previewDigest": "内容摘要",
+    "previewChanged": "该版本的内容在预览之后已变化，下面是刚读到的快照，请重新确认。",
+    "previewUnavailable": "请重新读取预览后继续。",
+    "unpublishTitle": "下架该版本？",
+    "unpublishDescription": "下架后 {{version}} 不再对公众可见，但快照仍留在市场里，可以随时恢复。",
+    "restoreTitle": "恢复该版本？",
+    "restoreDescription": "恢复后 {{version}} 重新对公众可见，复用市场里那份冻结快照，不会重新读取私有源。",
+    "previewMembers": "成员数（Agent / 技能 / MCP）"
+  },
+  "toast": {
+    "published": "已发布 {{version}}",
+    "noop": "{{version}} 已在市场中，无需重复发布",
+    "unpublished": "已下架 {{version}}",
+    "restored": "已恢复 {{version}}",
+    "loadListFailed": "加载插件市场失败",
+    "loadListFailedWith": "加载插件市场失败：{{message}}",
+    "loadDetailFailed": "加载条目详情失败",
+    "publishFailed": "发布失败",
+    "unpublishFailed": "下架失败",
+    "restoreFailed": "恢复失败",
+    "actionFailedWith": "{{message}}"
+  },
+  "validation": {
+    "packageNameRequired": "请填写包名",
+    "exactVersionRequired": "请填写精确版本"
+  }
+}

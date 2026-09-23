@@ -188,7 +188,7 @@ Agent 通信分为三种明确场景，底层 relay 与 ACP 消息规则必须�
 - 表定义换手不得改变 DDL：`bun run check:schema-ddl-drift` 比对「`drizzle.config.ts` 声明的 schema 集合 → 最新 snapshot」的差异，必须为零。
 - 跨包外键（表 A 的列引用别包表 B 的主键）只允许在 `db/**` 的**组装期**导入 B 的表对象（Drizzle `.references()` 只接受列对象），例外口径见 `docs/design/ce-ee-refactoring/ce-ee-engineering-standards.md` §6.1；`src/**`、`web/**` 的调用期跨包读表一律违规，必须改经该 owner 的公开服务端入口或宿主注入端口。
 - 标准流程：修改 schema → `bun run db:generate --name <module>-<change>` → 审查 `drizzle/*.sql` 与 `drizzle/meta/*` → `bun run db:migrate` → 存量数据变更时执行 `bun run run-data-migrations` → 运行相关测试和 `bun run precheck`。
-- 跨组织可见性由四张受控资源主表（`agent_config` / `skill` / `mcp_server` / `provider`）的 `visibility varchar(20) NOT NULL DEFAULT 'private'` 表达；授权判断与查询谓词一律由 `@fenix/access-control` 产出，资源包只声明「资源类型 + 表 + 归属列 + 业务条件」。
+- 跨组织可见性由五张受控资源主表（`agent_config` / `skill` / `mcp_server` / `provider` / `plugin_market_package`）的 `visibility varchar(20) NOT NULL` 表达（前四张默认 `'private'`；`plugin_market_package` 默认 `'public'`，因为市场条目存在的意义就是被所有已认证用户看到，照抄 `private` 会让整个目录静默消失）；授权判断与查询谓词一律由 `@fenix/access-control` 产出，资源包只声明「资源类型 + 表 + 归属列 + 业务条件」。
 - 提交迁移时必须提交完整 `drizzle/` 迁移链，不能遗漏 `drizzle/meta/*`。
 - 禁止手写 SQL 迁移绕过 Drizzle，禁止在生产环境使用 `db:push`。
 - 迁移设计必须考虑已有数据、锁范围、回滚或补偿策略，以及多实例并发启动时的幂等性。
