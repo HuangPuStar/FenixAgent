@@ -10,7 +10,7 @@
 // T9c 收敛：`TASKS` / `SESSIONS` / `ENVIRONMENTS` / `TOOL_NARRATOR` 四个宿主命名空间在全仓没有任何
 // `useTranslation` 绑定（历史迁出后留下的空壳字典），连同其 JSON 一并删除，此处不再登记。中心表
 // `@fenix/web-runtime/i18n/namespace` 仍保留这四个名称常量——它是跨包共享的**名称注册表**，删常量
-// 无功能收益却要改跨包契约，取舍理由见 `review/task-1.6-web-shell.md` §7.17。
+// 无功能收益却要改跨包契约。
 // T11e 起 `dashboard` 与 `agentHome` 也从宿主自有转出：两者的消费方（概览页、「创建智能体」首页与它的
 // 生成表单）随「宿主剩余页面归位」迁入 `@fenix/agent-config`，字典按「键的最终所在地 = 包的 owner」
 // 改由该包的 `./web/i18n` 登记。宿主仍保留 `agentPanel` / `components`——它们被多个包共用，

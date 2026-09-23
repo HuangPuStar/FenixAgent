@@ -64,7 +64,7 @@ export interface SubjectVerificationPort {
  *
  * `MEMBERSHIP_NOT_FOUND` 与 `AGENT_ACCESS_REVOKED` 两句沿用迁移前的原文（`runtime.ts` 的 `ensureSubject`），
  * 其余三种原先没有对应文案——迁移前那两处判定只检查成员关系与恒真的读权限，用户 / 组织 / Agent
- * 的存在性从未被真正验证过（见 review 文档的缺陷记录）。
+ * 的存在性从未被真正验证过。
  */
 export const SUBJECT_REJECTION_MESSAGES: Readonly<Record<SubjectRejectionReason, string>> = {
   USER_NOT_FOUND: "user not found",

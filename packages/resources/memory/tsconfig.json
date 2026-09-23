@@ -25,5 +25,18 @@
     "noEmit": true,
     "rootDir": "../../.."
   },
-  "include": ["fenix.module.ts", "src/**/*.ts", "src/**/*.tsx", "web/**/*.ts", "web/**/*.tsx"]
+  // 覆盖本包全部非测试面：模块描述符 `fenix.module.ts`、服务端 `src/**`、浏览器面 `web/**`、
+  // owner 表定义 `db/**`。末两条是各包自带的类型垫片（第三方声明与 `*.css` 环境声明）：本包经
+  // `exports` 引到的对端文件在本程序内解析自己的 import，垫片不可见就会报 TS7016 / TS2882；
+  // 垫片归属仍是各包，本包不保留副本（宿主 `apps/web/tsconfig.json` 有同款两条 include）。
+  "include": [
+    "fenix.module.ts",
+    "src/**/*.ts",
+    "src/**/*.tsx",
+    "web/**/*.ts",
+    "web/**/*.tsx",
+    "db/**/*.ts",
+    "../../*/web/**/*.d.ts",
+    "../../*/*/web/**/*.d.ts"
+  ]
 }

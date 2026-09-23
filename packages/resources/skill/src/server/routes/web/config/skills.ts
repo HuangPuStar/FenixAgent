@@ -280,7 +280,12 @@ export function createWebSkillsConfigRoutes(deps: SkillRouteDependencies) {
       const data = result.data as { archiveBuffer: Buffer; fileName: string };
       set.headers["Content-Type"] = "application/zip";
       set.headers["Content-Disposition"] = `attachment; filename="${data.fileName}"`;
-      return new Response(data.archiveBuffer);
+      // 同一份服务端源码会被两套 lib 编译：包级 tsconfig 为 web 面开出 `lib: DOM`，其 `BufferSource`
+      // 不接受 `Buffer<ArrayBufferLike>`（@types/node 的泛型差异）；宿主的 `tsc --noEmit` 没有 DOM，
+      // 连 `BodyInit` 这个名字都不存在。运行时是 Bun，`new Response(Buffer)` 是受支持用法，
+      // 故按本包既有做法（`src/server/routes/skills.ts` 对 `ReadableStream` 同样处理）收窄到
+      // **两套 lib 都存在且都在 DOM `BodyInit` 之内**的 `ReadableStream`，行为不变。
+      return new Response(data.archiveBuffer as unknown as ReadableStream);
     },
     {
       sessionAuth: true,

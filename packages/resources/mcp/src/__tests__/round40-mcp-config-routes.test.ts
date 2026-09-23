@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import type { ActorContext } from "@fenix/platform-sdk";
-import { ConflictError, ForbiddenError, NotFoundError } from "@fenix/platform-sdk";
+import { ConflictError, ForbiddenError, NotFoundError, ValidationError } from "@fenix/platform-sdk";
 import { readJson, resetAllStubs } from "@fenix/platform-sdk/testing";
 import { createWebMcpConfigRoutes } from "../server/routes/web/config/mcp";
 import { authorizedServer, installMcpModuleStub, resetMcpModuleStub, testActor } from "./fixtures";
@@ -206,14 +206,15 @@ describe("round40 MCP 配置路由", () => {
     });
   });
 
-  // 名称非法必须在调用 Facade 之前被协议层拒绝。
-  test("创建非法名称返回 400 且不调用 Facade", async () => {
-    let called = false;
+  // 名称与配置结构的领域校验归 Facade：它抛出的 ValidationError 在本层映射为 400 校验错误体。
+  // 校验规则本身（名称格式、INVALID_URL 等）由 mcp-server-facade 用例覆盖，本层只管映射。
+  test("Facade 的领域校验拒绝映射为 400", async () => {
     installMcpModuleStub({
       facade: {
         create: async () => {
-          called = true;
-          return "mcp-1";
+          throw new ValidationError(
+            "Invalid server name: must be 1-64 lowercase alphanumeric chars with single hyphens",
+          );
         },
       },
     });
@@ -221,20 +222,12 @@ describe("round40 MCP 配置路由", () => {
     const response = await jsonRequest("/config/mcp", "POST", { name: "Bad_Name", config: { type: "local" } });
 
     expect(response.status).toBe(400);
-    expect(await readJson(response)).toMatchObject({ success: false, error: { code: "VALIDATION_ERROR" } });
-    expect(called).toBeFalse();
-  });
-
-  // 配置结构非法时返回校验错误码原文，便于前端定位是 URL 还是命令的问题。
-  test("创建非法配置返回校验错误码", async () => {
-    installMcpModuleStub({ facade: { create: async () => "mcp-1" } });
-
-    const response = await jsonRequest("/config/mcp", "POST", { name: "demo", config: { type: "remote" } });
-
-    expect(response.status).toBe(400);
     expect(await readJson(response)).toEqual({
       success: false,
-      error: { code: "VALIDATION_ERROR", message: "INVALID_URL" },
+      error: {
+        code: "VALIDATION_ERROR",
+        message: "Invalid server name: must be 1-64 lowercase alphanumeric chars with single hyphens",
+      },
     });
   });
 

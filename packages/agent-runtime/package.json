@@ -56,12 +56,19 @@
     "@fenix/plugin-sdk": "workspace:*",
     "@fenix/remote-runtime": "workspace:*",
     "@fenix/resource-sandbox": "workspace:*",
-    "@fenix/ui-components": "workspace:*",
     "@fenix/web-runtime": "workspace:*",
     "acp-link": "workspace:*",
     "drizzle-orm": "^0.45.2",
     "ioredis": "^5.10.1",
     "uuid": "^14.0.0",
     "yjs": "^13.6.31"
+  },
+  "peerDependencies": {
+    "react": "^19.2.6",
+    "react-dom": "^19.2.6"
+  },
+  "devDependencies": {
+    "@fenix/ui-components": "workspace:*",
+    "happy-dom": "^20.9.0"
   }
 }

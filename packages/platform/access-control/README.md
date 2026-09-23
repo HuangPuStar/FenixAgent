@@ -32,8 +32,7 @@ CE 默认的资源范围与动作授权实现，以及把授权条件下推到 S
 
 **组织口径是当前 active organization**：组织资源的可见范围只有 `ActorContext.activeOrganizationId` 一个
 组织，`memberships`（全量）只用于回答「actor 在当前组织里是什么角色」。跨组织共享只由
-`visibility = 'public'` 表达；把成员关系展开成组织 ID 的并集会让其他组织的私有资源混进当前组织的列表
-（见 `docs/design/ce-ee-refactoring/review/task-1.2-platform-identity-authorization.md` §1.67）。
+`visibility = 'public'` 表达；把成员关系展开成组织 ID 的并集会让其他组织的私有资源混进当前组织的列表。
 
 ## 依赖边界
 
@@ -52,5 +51,4 @@ CE 默认的资源范围与动作授权实现，以及把授权条件下推到 S
 升级库静默丢失公开共享语义，因此 DROP 推迟到下一个发布
 （回填记入 `data_migrate_record` 之后）。
 
-理由与执行条件见 `docs/design/ce-ee-refactoring/ce-access-control-design.md` §6.2 与
-`docs/design/ce-ee-refactoring/review/task-1.2-platform-identity-authorization.md` 第九节。
+理由与执行条件见 `docs/design/ce-ee-refactoring/ce-access-control-design.md` §6.2。

@@ -1,0 +1,29 @@
+{
+  // 包内类型检查入口：**自包含**，不 extends 任何包外 tsconfig —— 包的编译设置不得由宿主应用决定
+  // （理由与取舍见 `packages/resources/memory/tsconfig.json` 文件头）。本包 `exports` 指向 `src/*.ts`，
+  // 消费方直接编译本包源码，因此每个包都必须能独立通过类型检查；此前本包无 tsconfig，只能靠宿主
+  // 应用的编译程序间接覆盖到被 import 到的文件，未被引用到的文件、`db/`、`fenix.module.ts` 全无检查。
+  // 门禁：`scripts/typecheck-packages.ts`（`bun run typecheck:packages`，已接入 precheck 与 CI）。
+  // - `web/**` 是浏览器面：需要 JSX 与 DOM 类型；`types: ["bun"]` 供服务端代码与包内测试使用 Bun 全局；
+  // - `db/**` 是本包 owner 的表定义，纳入检查（跨包外键的组装期导入见 §6.1）；
+  // - 无 `paths`：跨包一律走各包 `exports`，别名表留着反而会掩盖宿主导入回潮；
+  // - 不写 `baseUrl`：paths 在无 baseUrl 时相对本文件解析，且 TS 6.0 起 `baseUrl` 已弃用。
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "lib": ["ES2022"],
+    "types": ["bun"],
+    "strict": true,
+    "esModuleInterop": true,
+    "skipLibCheck": true,
+    "forceConsistentCasingInFileNames": true,
+    "resolveJsonModule": true,
+    "isolatedModules": true,
+    "verbatimModuleSyntax": true,
+    "allowImportingTsExtensions": true,
+    "noEmit": true,
+    "rootDir": "../../.."
+  },
+  "include": ["fenix.module.ts", "src/**/*.ts"]
+}

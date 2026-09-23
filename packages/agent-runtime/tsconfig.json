@@ -1,15 +1,45 @@
 {
-  // 本包只声明 `@server/*`：§1.6 T6e 后包内 `src/**` 与 `web/**` 对宿主的能力全部经
-  // `@fenix/*` 公开出口或端口注入取得，`@/src/*`、`@/components/*` 的宿主别名已归零
-  // （此前那些条目让宿主式说明符在本包内静默解析到 apps/web，属 `web-package-not-to-app`
-  // 台账里的存量债务）。刻意不再补回：别名一旦存在，包内多写一行 `@/` 也不会报错。
-  "extends": "../../tsconfig.json",
+  // 包内类型检查入口：**自包含**，不 extends 任何包外 tsconfig（理由与取舍见
+  // `packages/resources/memory/tsconfig.json` 文件头：包的编译设置不得由宿主应用决定）。
+  // 原先 extends 根 `tsconfig.json`，后果是 `web/**` 浏览器面在「无 DOM lib」的配置下编译：
+  // `window` / `BodyInit` / `HeadersInit` 报 TS2304，`Response.json()` 退化成 `unknown`（TS2322）
+  // ——这些不是本包代码的缺陷，而是浏览器面没有浏览器类型（同批 `web-runtime` / `ui-components`
+  // 的既有形态，两者的 `web/**` 都在带 DOM 的自包含配置下检查）。
+  // 注意：修好之前该程序只剩 1 条 TS5101 配置级错误，而配置级错误会让 tsc 跳过整个程序的语义检查，
+  // 上述类型问题因此长期不可见——这也是「包级 tsconfig 必须进预检」的直接证据。
+  // - `web/` 是浏览器面，需要 JSX 与 DOM 类型；`types: ["bun"]` 供服务端代码与包内测试使用 Bun 全局；
+  // - `db/**` 是本包 owner 的表定义、`fenix.module.ts` 是模块描述符，一并纳入检查；
+  // - 无 `paths`：包内 `src/**` 与 `web/**` 对宿主的能力全部经 `@fenix/*` 公开出口或端口注入取得。
+  //   此前那条 `@server/*` 映射在包内零真实导入（9 处命中全在注释里），按 memory 先例删掉失效映射，
+  //   以免掩盖新的宿主导入回潮；
+  // - 不写 `baseUrl`：paths 在无 baseUrl 时相对本文件解析，且 TS 6.0 起 `baseUrl` 已弃用。
+  // 末两条 include 是各包自带的类型垫片（第三方声明与 `*.css` 环境声明）：本包经 `exports` 引到的
+  // 对端文件在本程序内解析自己的 import，垫片不可见就会报 TS7016 / TS2882；垫片归属仍是各包。
   "compilerOptions": {
+    "target": "ES2022",
+    "module": "ES2022",
+    "moduleResolution": "bundler",
+    "lib": ["ES2022", "DOM", "DOM.Iterable"],
+    "jsx": "react-jsx",
+    "types": ["bun"],
+    "strict": true,
+    "esModuleInterop": true,
+    "skipLibCheck": true,
+    "forceConsistentCasingInFileNames": true,
+    "resolveJsonModule": true,
+    "isolatedModules": true,
+    "verbatimModuleSyntax": true,
+    "allowImportingTsExtensions": true,
     "noEmit": true,
-    "baseUrl": "../..",
-    "paths": {
-      "@server/*": ["apps/server/src/*"]
-    }
+    "rootDir": "../.."
   },
-  "include": ["src/**/*.ts", "web/**/*.ts", "web/**/*.tsx"]
+  "include": [
+    "fenix.module.ts",
+    "src/**/*.ts",
+    "web/**/*.ts",
+    "web/**/*.tsx",
+    "db/**/*.ts",
+    "../../*/web/**/*.d.ts",
+    "../../*/*/web/**/*.d.ts"
+  ]
 }

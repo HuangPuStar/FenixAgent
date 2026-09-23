@@ -24,8 +24,8 @@ fenix/ 或 fenix-ee/
 │   │   ├── agent-config/               # 默认实现；EE 仓库以同路径扩展发布/审批
 │   │   └── <resource>/
 ├── db/
-│   ├── migrations/                      # 当前仓库拥有的 Drizzle 生成物及 meta
 │   └── data-migration-runner.ts         # 仅负责汇总、排序、记录和执行模块迁移
+├── drizzle/                             # 本仓库生成的不可变 DDL 链与 meta（Drizzle Kit 默认输出目录）
 ├── deploy/
 │   ├── assembly/                        # 选择已构建模块组合的 JSON/YAML profile
 │   ├── compose/                         # Compose 基础编排与 profile/overlay

@@ -11,7 +11,7 @@
  * - 迁移业务逻辑留在 `apps/server/src/services/data-migrates/*` 与各资源包内；
  * - 幂等跳过与 `data_migrate_record` 完成记录由 `runDataMigrations()` 负责，本文件不复制判定；
  * - `verify` / `compensation` / 迁移指标 / running-failed claim 状态机属 §6.3、§10.6.2 的完成态，
- *   尚未实现（未完成任务，见 review 文档登记），不在本文件先搭框架。
+ *   尚未实现（未完成任务），不在本文件先搭框架。
  *
  * 执行顺序与位置约束：
  * - 必须在 DDL 迁移（`migrate.js`）**之后**执行：数据迁移读写新结构，顺序颠倒时会因缺列/缺表失败

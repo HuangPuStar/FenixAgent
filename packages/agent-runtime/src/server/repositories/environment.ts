@@ -282,7 +282,7 @@ const environmentRepoImpl: IEnvironmentRepo = new PgEnvironmentRepo();
  * `stubEnvironmentRepo`，语义与替换点都在本包手里。
  *
  * 为什么**必须**同时删掉宿主 preload 的同路径 `mock.module`：preload 注册的 mock 优先级高于包内后注册的
- * mock（Bun 1.3.13 实测，见 review/task-1.7 收尾记录），留着会让包内登记的替身永不生效 —— workflow 的
+ * mock（Bun 1.3.13 实测），留着会让包内登记的替身永不生效 —— workflow 的
  * `pg-storage-adapter` 曾在同一形态上踩过（包内断言全部落空）。
  *
  * 为什么未登记时回退真实实现而不是旧的 `{ getById: async () => null }`：那条兜底是「preload 按模块路径

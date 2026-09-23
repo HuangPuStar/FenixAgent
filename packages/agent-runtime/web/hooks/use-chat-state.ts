@@ -480,8 +480,10 @@ export function useChatState(rcsSessionId: string) {
   const getReplacementVersion = useCallback(() => getDocHubReplacementVersion(rcsSessionId), [rcsSessionId]);
   const replacementVersion = useSyncExternalStore(subscribeReplacement, getReplacementVersion, getReplacementVersion);
   // bindEpoch 不在回调体内使用，作为 subscribe 引用变化的驱动依赖（见上注释）。
+  // biome-ignore lint/correctness/useExhaustiveDependencies: bindEpoch 是刻意的引用驱动依赖，不是遗漏——见上「重订阅驱动」注释与 SP-B1 回归用例；按建议改列 stores.chat.subscribe 会让每次渲染都重订阅。
   const subscribeChat = useCallback((cb: () => void) => stores.chat.subscribe(cb), [bindEpoch]);
   // 同上，bindEpoch 仅驱动引用变化。
+  // biome-ignore lint/correctness/useExhaustiveDependencies: 同 subscribeChat，两行同一模式。
   const subscribeMeta = useCallback((cb: () => void) => stores.meta.subscribe(cb), [bindEpoch]);
 
   const token = useSyncExternalStore(subscribeChat, stores.chat.getSnapshot);

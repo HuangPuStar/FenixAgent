@@ -1,9 +1,6 @@
-import { agentConfigSiteApp } from "@fenix/agent-config/db";
 import type { ActorContext } from "@fenix/platform-sdk";
 import { WebErrSchema } from "@fenix/platform-sdk";
-import { eq } from "drizzle-orm";
 import Elysia from "elysia";
-import { getAgentConfigDatabase } from "../../db";
 import type { AgentSiteAppRow } from "../../repositories/agent-site-app";
 import { agentSiteAppRepo } from "../../repositories/agent-site-app";
 import {
@@ -14,7 +11,7 @@ import {
   AgentSiteBindingParamsSchema,
 } from "../../schemas/agent-site.schema";
 import { proxyToAgentSites } from "../../services/agent-sites";
-import { addAgentSiteApp, removeAgentSiteApp } from "../../services/config/agent-config-site-app";
+import { addAgentSiteApp, listAgentSiteAppIds, removeAgentSiteApp } from "../../services/config/agent-config-site-app";
 import { getAgentConfigById } from "../../system-entries";
 import type { WebAgentConfigRouteDependencies } from "../dependencies";
 import {
@@ -46,11 +43,7 @@ export function createAgentSiteAssociationRoutes(deps: WebAgentConfigRouteDepend
         async ({ params, store, status }) => {
           const actor = resolveSiteActor(store.actor as ActorContext | null);
           if (!actor) return status(401, buildError("unauthorized", "请求缺少组织上下文"));
-          const siteAppIdsRows = await getAgentConfigDatabase()
-            .select({ siteAppId: agentConfigSiteApp.siteAppId })
-            .from(agentConfigSiteApp)
-            .where(eq(agentConfigSiteApp.agentConfigId, params.agentConfigId));
-          const siteAppIds = siteAppIdsRows.map((r) => r.siteAppId);
+          const siteAppIds = await listAgentSiteAppIds(params.agentConfigId);
           if (siteAppIds.length === 0) {
             return { success: true as const, data: [] };
           }

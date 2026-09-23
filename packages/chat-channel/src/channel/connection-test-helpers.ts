@@ -96,7 +96,6 @@ export function createClient(overrides: Partial<ClientConnection> = {}): ClientC
     pendingMessages: [],
     relayReady: true,
     agentStatusReceived: false,
-    lastClientKeepalive: 0,
     sessionLoaded: false,
     ...overrides,
   };

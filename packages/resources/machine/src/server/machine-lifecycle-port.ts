@@ -4,7 +4,7 @@
 // starting / recovering，收到心跳说明实例所在机器活着）。此前本包直接 UPDATE `sandbox_instance`
 // 表达这两次投影，`sandbox_instance` 归 `@fenix/resource-sandbox` 后，这条 `machine → sandbox` 的写
 // 路径同时命中 §2.3 的类别禁则（组装期例外只覆盖 `packages/**/db/**`，本包写在 `src/server/` 下不适用）
-// ——迁表批次无法靠改 import 解决（详见 review 文档 §4.8 第 3 条与 §1.7 B4 前置的裁定）。
+// ——迁表批次无法靠改 import 解决（§1.7 B4 前置的裁定）。
 //
 // 现在的分工：本包只**通报事件**（「机器 X 在 T 注册 / 心跳」），沙盒在自己的表上完成投影（哪些状态算
 // 中间态、心跳写哪一列，都是沙盒的领域知识）。绑定方是消费方向的上游：`sandbox` 依赖 `machine`

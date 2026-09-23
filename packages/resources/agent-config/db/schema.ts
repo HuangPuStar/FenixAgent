@@ -13,7 +13,7 @@ import { index, jsonb, pgTable, text, timestamp, uniqueIndex, uuid, varchar } fr
  * 只搬定义位置：表名、列名、默认值、索引名都不得顺手改动，否则 `bun run db:generate` 会产出非空迁移
  * （由 `bun run check:schema-ddl-drift` 门禁强制）。
  *
- * **三张关联表为什么在这里而不是在 `mcp` / `skill` 包**（裁定见评审文档 §8.4 第 8 条）：关联表的
+ * **三张关联表为什么在这里而不是在 `mcp` / `skill` 包**：关联表的
  * `agent_config_id` 是指向 `agent_config` 的外键，而 Drizzle 的 `.references()` 只接受列对象、没有字符串
  * 形式，任何非本包持有的关联表都必须组装期导入 `@fenix/agent-config/db`。本包对 `mcp`（7 处）与
  * `skill`（9 处）的依赖已存在，反向的 `mcp → agent-config` / `skill → agent-config` 会各自闭合一条新环

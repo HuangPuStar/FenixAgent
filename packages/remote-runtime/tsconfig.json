@@ -1,10 +1,11 @@
 {
   "extends": "../../tsconfig.base.json",
+  // 不写 `outDir` / `rootDir`：本包 `src/**` 会经包 `exports` 把对端包源码（`@fenix/plugin-sdk`、
+  // `@fenix/logger`）拉进同一个程序，只要 `outDir` 在场，TS 就按 include 推断 `rootDir`，进而把这些
+  // 包外源文件判成「TS6059 不在 rootDir 下」。本包 `noEmit: true`，输出目录本就不生效。
   "compilerOptions": {
     "lib": ["ES2022"],
     "types": ["bun"],
-    "outDir": "dist",
-    "rootDir": "src",
     "noEmit": true
   },
   "include": ["src/**/*.ts"]

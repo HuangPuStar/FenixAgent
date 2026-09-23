@@ -1,7 +1,7 @@
 /**
  * Peri 任务详情的协议契约（`/web/peri-task-details` 与 `getPeriTaskDetail` 共用）。
  *
- * 从宿主 `apps/server/src/schemas/peri-task-details.ts` 迁入。**归属偏差已记录**：任务 1.3 review 的
+ * 从宿主 `apps/server/src/schemas/peri-task-details.ts` 迁入。**归属偏差已记录**：任务 1.3 的
  * 归属裁定把 peri-task 一族划给 `task` 包，但本包 manifest 的 `dependsOn` 已冻结为 `["agent-config"]`
  * （W1 裁定值，本波次不得改动），改引 `@fenix/resource-task/server` 会让 T2a 的 `assertDependsOnComplete`
  * 判定依赖声明不完整。因此本波次维持在**本包**（与 `src/services/peri-task-detail-store.ts` 同址），

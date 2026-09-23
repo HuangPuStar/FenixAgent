@@ -24,8 +24,7 @@ const RMD_05_MOVES = [
  * RMD-05 迁入后经后续任务裁定删除的目标（迁移记录保留在此，只豁免「目标必须存在」断言）。
  * - `packages/resources/knowledge/web/src/__tests__/context-panel-ssr.test.tsx`：CE 阶段 2 §1.6 T5d 删除。
  *   它断言的 `ContextPanel` 宿主从不渲染（`ACPMain` 恒传 `hideContextPanel={true}`，渲染分支恒假），
- *   属生产不可达的死代码；裁定与证据见
- *   `docs/design/ce-ee-refactoring/review/task-1.6-web-shell.md` §四.9。同批从 knowledge 的
+ *   属生产不可达的死代码。同批从 knowledge 的
  *   `package.json` 移除仅它使用的 `@fenix/chat-channel` 依赖。
  */
 const RMD_05_TARGETS_LATER_DELETED = [

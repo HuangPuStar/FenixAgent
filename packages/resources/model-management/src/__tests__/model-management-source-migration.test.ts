@@ -1,7 +1,7 @@
 // packages/resources/model-management/src/__tests__/model-management-source-migration.test.ts
 // Model Management 的**宿主边界契约测试**（任务 1.3 §1 静态条件 1 / 3 / 4）。
 //
-// 为什么补这一份（§1.7 收尾，review/task-1.7-db-config-migration.md §8.1 第 11 条）：machine / mcp /
+// 为什么补这一份（§1.7 收尾）：machine / mcp /
 // sandbox / agent-config / workflow / task 六个包各有同形的「source-migration」契约测试，本包没有——
 // 于是「本包与宿主的边界」在测试层无人守护，只靠架构台账与 `check:dependencies`（两者都是编排者侧的
 // 门禁，改包的人跑 `bun test` 时看不到）。本包 `src/**` 的最后一个 `@server/**` 引用已随 §1.7 B7

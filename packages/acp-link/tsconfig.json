@@ -15,11 +15,11 @@
     "verbatimModuleSyntax": true,
 
     // Output
-    "outDir": "./dist",
-    "rootDir": "./src",
-    "declaration": true,
-    "declarationMap": true,
-    "sourceMap": true,
+    // 本包没有构建脚本（`exports` 直接指向 `src/*.ts`，无 `bin`），`noEmit` 下这些输出项全部失效，
+    // 故整体删除。删掉的直接原因：只要 `outDir` 在场，TS 就会按 include 推断 `rootDir`，而本包会把
+    // `@fenix/plugin-*` / `@fenix/plugin-sdk` 的源码经包 `exports` 拉进同一程序，于是这些包外源文件
+    // 全被判成「TS6059 不在 rootDir 下」。本包若要真做 emit，应连同 `files[].!src/adapter-*.ts` 与
+    // 发布方式一并重新设计，而不是留着这套失效配置。
 
     // Best practices
     "strict": true,

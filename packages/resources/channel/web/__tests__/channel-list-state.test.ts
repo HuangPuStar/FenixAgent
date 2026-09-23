@@ -1,8 +1,7 @@
 // web/__tests__/channel-list-state.test.ts
 // 守护通道绑定列表的分支判定规则（任务 1.3 §1.3(6)：失败必须有持久错误分支、不得退化成空态）。
 //
-// 为什么测纯函数而不是渲染页面：本包 web 侧没有 DOM 测试设施（package.json 不含 happy-dom /
-// testing-library，且该任务约束禁止改 package.json），而这三条规则正是「状态 + 数据流」而不是 UI 结构——
+// 为什么测纯函数而不是渲染页面：这三条规则正是「状态 + 数据流」而不是 UI 结构——
 // 用渲染断言反而会把测试钉在 JSX 形状上。渲染分支与这里的判定一一对应（AgentChannelsPage 按同一个
 // `resolveChannelListState` 的返回值分流），规则回归会同时被本文件与页面的分支入口暴露。
 

@@ -4,7 +4,7 @@
  * 本函数是任务 1.7 B5 之后 agent-config 侧「技能怎么显示」的唯一数据来源：宿主在装配期把它经
  * `@fenix/resource-skill/server/config` 交给关联资源视图。用例关注**取数形状**而非拼接格式——
  * 取的是 `name` 列、空入参不查库、缺失的 id 不造值。B3 的同类投影（`findModelLabelsByIds`）曾出现
- * 「判据无覆盖、删掉不报错」的情况（见评审文档 §7.12 的补测段），这条投影按同一标准钉住。
+ * 「判据无覆盖、删掉不报错」的情况，这条投影按同一标准钉住。
  */
 
 import { afterEach, describe, expect, test } from "bun:test";

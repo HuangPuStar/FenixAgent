@@ -40,5 +40,7 @@
     "react-dom": "^19.2.6",
     "react-i18next": "^17.0.8"
   },
-  "devDependencies": {}
+  "devDependencies": {
+    "happy-dom": "^20.9.0"
+  }
 }

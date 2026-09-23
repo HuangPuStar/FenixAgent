@@ -352,7 +352,8 @@ export function createApiMcpRoutes(deps: McpRouteDependencies) {
       detail: {
         tags: ["External MCP"],
         summary: "更新 MCP Server",
-        description: "按 MCP Server 唯一 ID 更新连接配置与共享访问设置。",
+        description:
+          "按 MCP Server 唯一 ID 更新连接配置与共享访问设置。请求体是整份连接配置（替换语义，不做字段合并）：`type` 为 `remote` / `streamable-http` 时必须带 `url`，为 `local` 时必须带非空 `command`，否则返回 400 校验错误。只传增量字段会用不完整的配置覆盖已存的连接信息，因此不被接受。",
       },
     },
   );

@@ -121,7 +121,8 @@ await startServer({
   cwd: process.cwd(),
   rcsUrl: wsUrl,
   rcsSecret: RCS_SECRET!,
-  tenantId: TENANT_ID ?? null,
+  // `startServer` 的 `tenantId?: string` 只接受 undefined，缺省语义由 server.ts 的 `config.tenantId ?? null` 补齐。
+  tenantId: TENANT_ID,
   userId: USER_ID,
   labels: LABELS.split(",")
     .map((s) => s.trim())

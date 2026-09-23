@@ -56,7 +56,7 @@ import { FilePickerDialog } from "@/src/components/FilePickerDialog";
  * **不带 envId**；消费方 `getArtifactsPreviewFileDetail` 要求 `detail.envId === envId`，于是事件恒被
  * 判为「其他 environment」并忽略——线上点击状态面板里的变更文件条目从来没有打开过预览（工具卡片、
  * 用户消息里的 `@./path` 点击是正常的）。本端口让两处共用同一个派发器，该点击自此真的打开预览；
- * 这是用户可见行为变更，已登记在 review 文档 §八。
+ * 这是用户可见行为变更。
  *
  * 依赖方向：本文件是宿主模块——对包只依赖包出口（`@fenix/ui-components/*`、`@fenix/web-runtime/*`），
  * 宿主的 `@/src/api/*` / `@/src/components/*` 属同层调用；未走 `@/components/chat` 这类指向已删实现的
@@ -71,7 +71,6 @@ import { FilePickerDialog } from "@/src/components/FilePickerDialog";
  *   恒返回 `null`，workflow 注入的上下文在 1.3 之后被静默丢弃。
  * 本端口改读包副本（与写入方同实例），因此**修复**了该分裂；宿主两份副本
  * （`apps/web/src/lib/{context-queue,structured-to-thread}.ts`）已随 §1.6 T8d 删除（`6679b4648`），包副本是唯一实现。
- * 该行为变更记录在 review 文档 §7.8、用户可见面见 §八。
  */
 
 /** `acp-sidebar-open`：源实现在 `ACPMain`；首次访问无记录时展开。 */

@@ -142,7 +142,7 @@ export async function handleProviderDelete(actor: ActorContext, name: string) {
  *
  * **已知缺陷（迁移前既有，本切片保持行为并记录）**：内联分支允许任一已认证用户让服务器带任意
  * apiKey 请求任意 URL，非 2xx 时响应体会被截取 200 字符回显——这是一个 SSRF 读取原语。修复需要
- * 出站 URL 策略（内网地址黑名单 / 允许列表），超出任务 1.2 范围，记入 review 文档待单独处置。
+ * 出站 URL 策略（内网地址黑名单 / 允许列表），超出任务 1.2 范围，待单独处置。
  */
 export async function handleFetchModels(
   actor: ActorContext,

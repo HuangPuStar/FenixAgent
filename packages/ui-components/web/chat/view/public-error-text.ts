@@ -4,7 +4,6 @@
 // `isPublicError` 用 `message === PUBLIC_ERROR_MESSAGES[type].en` 校验不可信帧的完整性，服务端
 // `createPublicError` 恒取 `.en`。因此界面**不能**读它来显示正文，否则中文界面永远是英文。稳定且
 // 有限的是 `type`，本地化文案按 `type` 从本包字典取；`message` 退化为「未登记 type 的兜底 + 日志字段」。
-// 取舍与验证见 `docs/design/ce-ee-refactoring/review/task-1.6-web-shell.md` §7.18。
 //
 // 键不做「type → 键名」映射表：协议 type 自带 `<域>.<原因>` 两段结构，字典按同样两级嵌套组织
 // （`chat.components.publicError.AGENT_RUNTIME.REQUEST_FAILED`），键 = 前缀 + type。少一张映射表就少
