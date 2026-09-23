@@ -16,10 +16,11 @@
  *
  * 宽度（2026-09-23 修）：本文件曾自带一条与 `.chat-interaction-cards` 同步的 px 台阶
  * （`min(756px, calc(100% - 64px))`、窄屏 `calc(100% - 52px)`），已**删除**。该台阶与输入岛不同源：
- * 输入岛宽度是 rem 刻度（`max-w-205` / `px-4`，本应用根字号 13px → 宽列 640.25px），而台阶是绝对 px，
- * 于是面板比输入岛每侧宽 58px，不再是「贴在输入岛顶部」的半圆卡。现在面板自身不声明 `width`，
- * 由渲染处（`../shell/ChatInterface`）套上与输入岛同一个宽度容器
- * （`CHAT_COMPOSER_WIDTH_CLASS`，定义见 `../composer/ChatComposer`）——复用它即逐像素等宽同轴。
+ * 输入岛宽度是 rem 刻度（`max-w-200` / `px-4`，本应用根字号 13px → 宽列 624px），而台阶是绝对 px，
+ * 于是面板与输入岛脱钩，不再是「贴在输入岛顶部」的半圆卡。现在面板自身不声明 `width`，由渲染处
+ * （`../shell/ChatInterface`）从输入岛的宽度容器派生：先套 `CHAT_COMPOSER_WIDTH_CLASS`，再按
+ * `CHAT_COMPOSER_TOP_CARD_INSET_CLASS`（两个常量都定义在 `../composer/ChatComposer`）**每侧**收进
+ * 1.25rem（5 刻度；13px 根字号 → 每侧 16.25px、两侧合计 32.5px）。
  * 失效条件：若把面板挪回「自带宽度」的用法（含 `demo/sections` 里的裸渲染），它会撑满所在容器，
  * 需要那个位置自己给容器，不要再在这里写死数值。
  *

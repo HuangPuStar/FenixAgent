@@ -12,9 +12,10 @@
 // `.chat-status-rows` / `.chat-status-row`（源 `.chat-status-list` 及其 `> div, > button`）与
 // `.chat-status-collapse-toggle`（源 `.chat-status-collapse`）。
 //
-// 宽度不属于本组件的深层样式（2026-09-23 修）：面板与输入岛必须逐像素等宽同轴，故宽度由渲染处
-// 套上与输入岛同一个容器（`../composer/ChatComposer` 的 `CHAT_COMPOSER_WIDTH_CLASS`，渲染见
-// `../shell/ChatInterface`）。本组件因此不声明 `width`，也不再用 `mx-auto`（`width: auto` 下它是空转）。
+// 宽度不属于本组件的深层样式（2026-09-23 修）：面板贴在输入岛顶部，宽度由渲染处从输入岛的宽度
+// 容器派生——先套 `../composer/ChatComposer` 的 `CHAT_COMPOSER_WIDTH_CLASS`，再按每侧一条台阶
+// `CHAT_COMPOSER_TOP_CARD_INSET_CLASS` 收进（默认每侧 5 刻度 = 1.25rem；渲染见 `../shell/ChatInterface`）。
+// 本组件因此不声明 `width`，也不再用 `mx-auto`（`width: auto` 下它是空转）——台阶只有渲染处那一个来源。
 
 import "./chat-status-panel.css";
 

@@ -43,23 +43,40 @@ export interface ComposerFilePickerRenderProps {
 }
 
 /**
- * 输入岛卡片的宽度容器 —— **输入岛宽度的唯一来源**，贴在输入岛顶部的卡片必须复用它。
+ * 输入岛卡片的宽度容器 —— **输入岛宽度的唯一来源**，贴在输入岛顶部的卡片由它派生。
  *
- * 输入岛的实际宽度由这三个类共同决定，且三者都随根字号走：`max-w-205` = 205 × 0.25rem、
+ * 输入岛的实际宽度由这三个类共同决定，且三者都随根字号走：`max-w-200` = 200 × 0.25rem = 50rem、
  * `px-4` / `max-md:px-2.5` = 4 / 2.5 × 0.25rem。本应用根字号是 13px（`apps/web/src/index.css`
- * 的 base 层），`rem` 刻度整体是 0.8125 倍，所以输入岛宽列下是 `666.25px - 2 × 13px = 640.25px`，
- * 而不是按 16px 根字号算出来的 788px。
+ * 的 base 层），`rem` 刻度整体是 0.8125 倍，所以输入岛宽列下是 `650px - 2 × 13px = 624px`，
+ * 而不是按 16px 根字号算出来的 768px。
  *
  * 为什么导出（2026-09-23）：状态面板（`ChatStatusPanel`）此前在 `panels/chat-status-panel.css`
  * 里自带一条 **px 台阶** `min(756px, calc(100% - 64px))`，与输入岛的 rem 刻度不同源——根字号一变，
- * 两者立刻脱钩：756px 比输入岛的 640.25px 每侧宽 58px，面板不再是「贴在输入岛顶部」的半圆卡。
- * 修法不是把 756 改成另一个数，而是让两者共用一个容器（见 `../shell/ChatInterface` 的渲染处）：
- * 复用它即逐像素等宽同轴，根字号、上限或内边距怎么变都不会再分叉。
+ * 两者立刻脱钩（当时 756px 比输入岛每侧宽 58px），面板不再是「贴在输入岛顶部」的半圆卡。
+ * 修法不是把 756 换成另一个数，而是让顶部卡片的宽度从**这一个**容器派生：先套本类，再按
+ * `CHAT_COMPOSER_TOP_CARD_INSET_CLASS` 每侧收进一条台阶（见 `../shell/ChatInterface` 的渲染处）。
+ * 于是根字号、宽度上限或内边距怎么变，输入岛与顶部卡片的差都仍是那一条台阶。
  *
- * 契约：只取它的**水平**几何（宽度上限 + 左右内边距 + 居中）；垂直节奏（`pt` / `pb`）由调用处各自给。
- * 改这里等于同时改输入岛与顶部所有卡片的宽度 —— 顶部卡片因此不允许再各自声明 `width`。
+ * 契约：只取它的**水平**几何（宽度上限 + 左右内边距 + 居中）；垂直节奏（`pt` / `pb`）由调用处各自给；
+ * 顶部卡片与输入岛的差由 `CHAT_COMPOSER_TOP_CARD_INSET_CLASS` 单独表达，不要在本类里加减数字。
  */
-export const CHAT_COMPOSER_WIDTH_CLASS = "mx-auto w-full max-w-205 px-4 max-md:px-2.5";
+export const CHAT_COMPOSER_WIDTH_CLASS = "mx-auto w-full max-w-200 px-4 max-md:px-2.5";
+
+/**
+ * 贴在输入岛顶部的卡片（状态面板）相对输入岛的**每侧**内缩台阶：Tailwind spacing 刻度 5
+ * = 1.25rem。宿主根字号 13px → 每侧 16.25px，卡片总宽比输入岛窄 32.5px（两侧合计 2.5rem）。
+ *
+ * 为什么是 padding 而不是「再写一条宽度」：它**叠加**在 `CHAT_COMPOSER_WIDTH_CLASS` 之上，所以
+ * 输入岛的 `px-4` / 窄屏 `px-2.5` 怎么变，差都仍是一条台阶——不会像 2026-09-23 修掉的旧实现那样
+ * 出现两套口径（面板侧 px 台阶 vs 输入岛侧 rem 刻度）而分叉。
+ * 用法：`<div className={CHAT_COMPOSER_WIDTH_CLASS}><div className={CHAT_COMPOSER_TOP_CARD_INSET_CLASS}>卡片</div></div>`
+ * （见 `../shell/ChatInterface`）；卡片自身不声明宽度。
+ *
+ * 改口径只改这一处：当前是「每侧 5」（`px-5`）；若要改成「两侧合计 5」（即每侧 2.5）写 `px-2.5`。
+ * 值必须落在 Tailwind 刻度上（0.25 的整数倍），不要用 `[16.25px]` 这类任意值——任意值正是本文件
+ * 上一版被根字号甩开的写法。
+ */
+export const CHAT_COMPOSER_TOP_CARD_INSET_CLASS = "px-5";
 
 /** ChatComposer 属性 — 新玻璃磨砂命令岛输入组件 */
 export interface ChatComposerProps extends ComposerStateOptions {
