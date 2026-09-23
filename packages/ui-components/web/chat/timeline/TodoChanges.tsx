@@ -55,7 +55,13 @@ export function TodoChanges({ changes }: TodoChangesProps) {
   if (changes.length === 0) return null;
 
   return (
-    <div className="mx-3 mb-2.5 mt-1 max-h-64 overflow-y-auto overscroll-contain pt-1.5">
+    // `overscroll-contain` 已移除（2026-09-23）：本块是**消息流内**的滚动容器，而列表通常只有几条、
+    // 根本没有可滚动溢出；带 contain 时浏览器会把指针落在它上面的滚轮判定为「本容器消费」，既不滚动
+    // 本块、也不再链式传给消息时间线 —— 形成一块随卡片位置移动的滚轮死区（实测：消息区
+    // clientHeight 545 / scrollHeight 1272 / scrollTop 364 时，指针在本块上滚轮 ±400 均零位移；
+    // 同为 364 的指针只要移到块外正文上即可滚到 0；仅摘掉本类后同一落点也恢复可滚）。
+    // 限高与内部滚动（`max-h-64 overflow-y-auto`）不受影响：块内滚到底后由浏览器按默认行为续滚会话区。
+    <div className="mx-3 mb-2.5 mt-1 max-h-64 overflow-y-auto pt-1.5">
       {changes.map((change) => {
         const { Icon, iconClassName, itemClassName } = CHANGE_STYLES[change.kind];
         const text =

@@ -125,7 +125,10 @@ export const SubAgentPanel = memo(function SubAgentPanel({ entries }: SubAgentPa
         </button>
       </CollapsibleTrigger>
       <CollapsibleContent>
-        <div className="max-h-64 overflow-y-auto overscroll-contain border-t border-border/70 bg-surface-1/30 px-3 py-3">
+        {/* 同 `TodoChanges`：这是**消息流内**的滚动容器，`overscroll-contain` 会让指针落在它上面的滚轮
+            既不滚本块、也不链式传给消息时间线（展开但内容未超出 `max-h-64` 时是纯死区）。限高与内部
+            滚动保留，块内滚到底后按默认行为续滚会话区。 */}
+        <div className="max-h-64 overflow-y-auto border-t border-border/70 bg-surface-1/30 px-3 py-3">
           <SubAgentTimeline entries={entries} />
         </div>
       </CollapsibleContent>
