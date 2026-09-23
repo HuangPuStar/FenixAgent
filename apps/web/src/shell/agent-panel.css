@@ -349,8 +349,9 @@
   color: rgba(255, 255, 255, 0.94);
 }
 
+/* 高度（一行高度 `min-h-10` = 40px）已移到渲染点的工具类：本表未分层、优先级高于 `@layer utilities`，
+   此处再写 min-height 会静默压过工具类。*/
 .agent-sidebar-agent-card {
-  min-height: 54px;
   padding: 9px 12px;
   border: 1px solid rgba(255, 255, 255, 0.1);
   border-radius: 6px;

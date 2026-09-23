@@ -3,7 +3,6 @@ import {
   createWebAgentGenerationRoutes,
   createWebAgentSitesRoutes,
   createWebConfigAgentsRoutes,
-  createWebMetaAgentRoutes,
   createWebSidebarConfigRoutes,
 } from "@fenix/agent-config/server";
 import {
@@ -13,12 +12,7 @@ import {
   createWebEnvironmentsRoutes,
   createWebInstancesRoutes,
 } from "@fenix/agent-runtime/server";
-import {
-  createApiSystemRoutes,
-  createWebApiKeysRoutes,
-  createWebOrganizationsRoutes,
-  rotateCallerApiKey,
-} from "@fenix/identity/server";
+import { createApiSystemRoutes, createWebApiKeysRoutes, createWebOrganizationsRoutes } from "@fenix/identity/server";
 import {
   createApiModelsRoutes,
   createApiSystemModelGatewayRoutes,
@@ -113,7 +107,6 @@ export function createTestWebRoutes(): readonly AnyElysia[] {
     createWebSidebarConfigRoutes(),
     createWebAgentSitesRoutes({ authGuardPlugin }),
     createWebAgentGenerationRoutes({ authGuardPlugin }),
-    createWebMetaAgentRoutes({ authGuardPlugin, rotateCallerApiKey }),
     createWebChannelsRoutes({ authGuardPlugin, environmentLookup }),
     createWebFsRoutes({ authGuardPlugin }),
     createWebFileEventsRoutes({ authenticateRequest }),

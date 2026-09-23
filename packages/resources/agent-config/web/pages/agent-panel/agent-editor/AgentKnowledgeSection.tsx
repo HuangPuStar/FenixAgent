@@ -1,4 +1,7 @@
+import { LabeledField } from "@fenix/ui-components/config/LabeledField";
 import { cn } from "@fenix/ui-components/lib/cn";
+import { Badge } from "@fenix/ui-components/ui/badge";
+import { Switch } from "@fenix/ui-components/ui/switch";
 import { NS } from "@fenix/web-runtime/i18n/namespace";
 import { Brain, Database, Search } from "lucide-react";
 import type { ReactNode } from "react";
@@ -6,7 +9,7 @@ import { Controller, type UseFormReturn } from "react-hook-form";
 import { useTranslation } from "react-i18next";
 import { AgentResourcePicker } from "./AgentResourcePicker";
 import { SECTION } from "./agent-editor-classes";
-import { EditorStepperField, EditorTextarea, Field, Intro } from "./agent-editor-controls";
+import { EditorStepperField, EditorTextarea, Intro } from "./agent-editor-controls";
 import { DEFAULT_NAMESPACES_TEXTAREA, RETRIEVAL_OPTIONS_FIELDS } from "./agent-editor-form-classes";
 import {
   DEFAULT_NAMESPACES,
@@ -17,11 +20,6 @@ import {
   KNOWLEDGE_HEADING,
   KNOWLEDGE_LAYOUT,
   KNOWLEDGE_SWITCH,
-  KNOWLEDGE_SWITCH_KNOB,
-  KNOWLEDGE_SWITCH_KNOB_ON,
-  KNOWLEDGE_SWITCH_ON,
-  KNOWLEDGE_SWITCH_TRACK,
-  KNOWLEDGE_SWITCH_TRACK_ON,
   RETRIEVAL_FIELDS,
   RETRIEVAL_OPTIONS,
 } from "./agent-editor-library-classes";
@@ -78,27 +76,20 @@ function CompactSwitch({
   badge?: string;
   disabled: boolean;
 }) {
+  // 与 `Toggle` 同法：开关本体走 `ui/switch`，整行可点由 `<label>` 隐式关联承接（点行任意位置转发给
+  // 控件，读屏按「标题 + 说明」命名该开关）。行级 `data-on` 与手写轨道/圆钮随之删除，选中底色改由
+  // 伴随 CSS 的 `:has([data-state="checked"])` 表达。
   return (
-    <button
-      type="button"
-      role="switch"
-      aria-checked={checked}
-      disabled={disabled}
-      className={cn(KNOWLEDGE_SWITCH, checked && KNOWLEDGE_SWITCH_ON)}
-      data-on={checked ? "true" : undefined}
-      onClick={() => onChange(!checked)}
-    >
+    <label className={KNOWLEDGE_SWITCH}>
       <span>
         <strong>
           {title}
-          {badge && <em>{badge}</em>}
+          {badge && <Badge variant="secondary">{badge}</Badge>}
         </strong>
         <small>{description}</small>
       </span>
-      <i className={cn(KNOWLEDGE_SWITCH_TRACK, checked && KNOWLEDGE_SWITCH_TRACK_ON)} aria-hidden="true">
-        <b className={cn(KNOWLEDGE_SWITCH_KNOB, checked && KNOWLEDGE_SWITCH_KNOB_ON)} />
-      </i>
-    </button>
+      <Switch checked={checked} onCheckedChange={onChange} disabled={disabled} />
+    </label>
   );
 }
 
@@ -159,7 +150,11 @@ export function AgentKnowledgeSection({ form, data, disabled }: AgentKnowledgeSe
           description={t("editor.retrievalPolicyDescription")}
         >
           <div className={RETRIEVAL_FIELDS}>
-            <Field label={t("knowledge.defaultNamespaces")} hint={t("knowledge.defaultNamespacesDescription")}>
+            <LabeledField
+              className="min-w-0"
+              label={t("knowledge.defaultNamespaces")}
+              hint={t("knowledge.defaultNamespacesDescription")}
+            >
               <EditorTextarea
                 className={cn(DEFAULT_NAMESPACES_TEXTAREA, DEFAULT_NAMESPACES)}
                 id="agent-editor-default-namespaces"
@@ -167,7 +162,7 @@ export function AgentKnowledgeSection({ form, data, disabled }: AgentKnowledgeSe
                 placeholder={t("knowledge.defaultNamespacesPlaceholder")}
                 {...form.register("defaultNamespaces")}
               />
-            </Field>
+            </LabeledField>
             <div className={cn(RETRIEVAL_OPTIONS, RETRIEVAL_OPTIONS_FIELDS)}>
               <Controller
                 name="searchFirst"
@@ -183,7 +178,7 @@ export function AgentKnowledgeSection({ form, data, disabled }: AgentKnowledgeSe
                   />
                 )}
               />
-              <Field label={t("knowledge.maxResults")}>
+              <LabeledField className="min-w-0" label={t("knowledge.maxResults")}>
                 <EditorStepperField
                   value={Number(form.watch("maxResults"))}
                   min={1}
@@ -195,7 +190,7 @@ export function AgentKnowledgeSection({ form, data, disabled }: AgentKnowledgeSe
                     form.setValue("maxResults", String(value), { shouldDirty: true, shouldValidate: true })
                   }
                 />
-              </Field>
+              </LabeledField>
             </div>
           </div>
         </KnowledgeBlock>

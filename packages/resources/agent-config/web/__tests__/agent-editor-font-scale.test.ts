@@ -412,7 +412,10 @@ const ROLE_ANCHORS: Array<{
   inherits?: true;
 }> = [
   { slice: "A2", slot: "editor-title", note: "面板标题", classNameTiers: ["text-sm"] },
-  { slice: "A2", slot: "editor-status-pill", note: "运行状态 pill", classNameTiers: ["text-3xs"] },
+  // 运行状态 pill（原 slot `editor-status-pill`，`text-3xs`）已改用 `config/StatusBadge`：字号来自
+  // 库内 `ui/badge` 的 `text-xs`，本仓不再声明刻度类，`StatusBadge` 也不透传 `data-slot`，原锚点
+  // 无法再按 slot 定位，故移除。要重新锁定该角色应对 `StatusBadge` 的消费点断言语义
+  // （`tone` / `label` 经 props 注入），而不是回到 class 文本——本文件锁的是「本仓声明的字号」。
   { slice: "A2", slot: "editor-subtitle", note: "面板副标题", classNameTiers: ["text-3xs"] },
   { slice: "A2", slot: "editor-map-label", note: "左栏分组标签", classNameTiers: ["text-3xs"] },
   {
@@ -480,7 +483,9 @@ const ROLE_ANCHORS: Array<{
       { selector: ".agent-editor-section__intro > h3", px: 16, media: "(width >= 48rem) and (width < 96rem)" },
     ],
   },
-  { slice: "B", slot: "editor-field-label", note: "字段标签", classNameTiers: ["text-xs"] },
+  // 字段标签（原 slot `editor-field-label`，`text-xs`）已随字段包装改走 `config/LabeledField` 移除：
+  // 字段名刻度由库内给定（`text-sm font-medium text-text-primary`），本仓不再声明刻度类，
+  // `LabeledField` 把 `className` 透传到根 `<div>`、字号挂在内部 `<span>` 上，锚点无法按 slot + class 文本锁定。
   {
     slice: "C",
     slot: "editor-knowledge-heading",

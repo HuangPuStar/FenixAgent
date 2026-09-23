@@ -96,6 +96,7 @@ export * from "./components/preview/FileViewerPreview";
 export * from "./components/preview/html-plugin";
 export * from "./components/preview/native-pdf-plugin";
 export * from "./components/preview/preview-source";
+export * from "./components/preview-rail";
 export * from "./components/WorkbenchPanel";
 // config —— 配置型业务无关容器
 export * from "./config/AdminKeyGate";
@@ -155,7 +156,6 @@ export * from "./ui/switch";
 export * from "./ui/table";
 export * from "./ui/tabs";
 export * from "./ui/textarea";
-export * from "./ui/theme-toggle";
 export * from "./ui/tooltip";
 export * from "./ui/tree";
 export * from "./ui/use-roving-list-navigation";

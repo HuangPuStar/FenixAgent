@@ -5,12 +5,12 @@
  * 只向视图暴露数据与操作句柄，不含任何 JSX。内容与拆分前逐字一致：
  *
  * - 15s 轮询加载 agent 树并维护 `environmentId → agentConfigId` 映射（删除智能体时用它清理环境）；
- * - 五组 mutation（进入 / 重启 / 停止 / 删除智能体 / Meta Agent），失败语义与 toast 文案不变；
+ * - 四组 mutation（进入 / 重启 / 停止 / 删除智能体），失败语义与 toast 文案不变；
  * - 多实例重启所需的会话状态与编排（是否弹窗、选中集合、逐个重启）。
  *
- * 视图侧 UI 状态（树展开、Meta Agent 开关）刻意留在组件内：它们只影响渲染，与数据来源无关。
+ * 视图侧 UI 状态（树展开）刻意留在组件内：它们只影响渲染，与数据来源无关。
  */
-import { agentApi, ensureMetaAgent } from "@fenix/agent-config/web";
+import { agentApi } from "@fenix/agent-config/web";
 import { envApi } from "@fenix/agent-runtime/web/api/environments";
 import { unwrap } from "@fenix/web-runtime/api/request";
 import { dispatchConfigChange, useConfigChangeListener } from "@fenix/web-runtime/lib/config-events";
@@ -26,6 +26,10 @@ import { type AgentConfigItem, type AgentTreeNode, getRunningInstances } from ".
 interface UseAgentSidebarTreeOptions {
   /** 当前组织 id；未就绪时保持 `ready: false`，不发起请求。 */
   orgId: string | undefined;
+  /**
+   * 选中实例的回调。第三个形参虽然叫 `sessionId`（沿用 `DefaultAppShell` 与路由段 `$sessionId` 的
+   * 既有叫法），实际传的是 **instanceUid**；`null` 表示只到 agent 级路由。理由见 `runEnter` 调用点。
+   */
   onSelectInstance: (instanceId: string, envId: string, sessionId: string | null) => void;
   onDeleteAgentEnvironments?: (environmentIds: string[]) => void;
 }
@@ -166,6 +170,14 @@ export function useAgentSidebarTree({
         enterResult = await unwrap(envApi.enter({ id: envId }, instanceUid ? { instanceUid } : undefined));
       }
 
+      // 第三个实参是 **instanceUid**，不是 DB/ACP 会话 id（形参名 `sessionId` 是历史遗留叫法）。
+      // 该值落到 URL 段 `/agent/chat/{environmentId}/{instanceUid}`，下游有两处硬约束：
+      //   ① `use-chat-panel-runtime` 把它当 WS query 的 `instanceUid`，服务端 `routes/acp/index.ts`
+      //      用 `createDeterministicRcsSessionId(agentId, userId, instanceUid)` 反推期望的 rcsSessionId，
+      //      不一致直接以 4003 关闭——所以派生前缀只能是 instanceUid，客户端与它同源才连得上；
+      //   ② 侧边栏以 `inst.instanceUid === selectedInstanceId` 判定高亮。
+      // YJS doc 隔离与刷新可达性因此都由 instanceUid 承担：不同实例 = 不同 rcsSessionId = 不同 Doc；
+      // 刷新带回同一 instanceUid 即回到同一份 Doc。改传 DB 会话 id 会让 ① 的实例定位失效、② 全部失配。
       onSelectInstance(enterResult.instanceUid, enterResult.environmentId ?? envId, enterResult.instanceUid);
 
       // 刷新列表以展示新实例
@@ -255,21 +267,6 @@ export function useAgentSidebarTree({
     },
   );
 
-  // ---- Meta Agent（manual useRequest）----
-  const { run: runMetaAgent, loading: metaAgentLoading } = useRequest(
-    async () => {
-      const result = await ensureMetaAgent();
-      onSelectInstance(result.instanceId ?? "", result.environmentId, null);
-    },
-    {
-      manual: true,
-      onError: (err) => {
-        console.error("Failed to start Meta Agent:", err);
-        toast.error(t("metaAgentFailed"));
-      },
-    },
-  );
-
   // ---- 批量重启辅助函数 ----
   const handleRestartAgent = (node: AgentTreeNode) => {
     const running = getRunningInstances(node);
@@ -315,8 +312,6 @@ export function useAgentSidebarTree({
     runStop,
     runDeleteAgent,
     deleting,
-    runMetaAgent,
-    metaAgentLoading,
     handleRestartAgent,
     handleRestartConfirm,
     restartDialogOpen,

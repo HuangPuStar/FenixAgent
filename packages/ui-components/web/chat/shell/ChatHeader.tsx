@@ -287,7 +287,7 @@ export function ChatHeader({
               title={activeTitle}
             >
               <MessageSquare className="h-3.5 w-3.5 text-text-muted flex-shrink-0" />
-              <span className="text-xs font-display truncate min-w-0">{activeTitle}</span>
+              <span className="font-display truncate min-w-0">{activeTitle}</span>
               <ChevronDown
                 className={cn(
                   "h-3.5 w-3.5 text-text-muted flex-shrink-0 transition-transform duration-150",
@@ -380,7 +380,7 @@ export function ChatHeader({
           {sidebarToggleButton}
           <div className="flex items-center gap-1.5 min-w-0" title={activeTitle}>
             <MessageSquare className="h-3.5 w-3.5 text-text-muted flex-shrink-0" />
-            <span className="text-xs font-display truncate min-w-0">{activeTitle}</span>
+            <span className="font-display truncate min-w-0">{activeTitle}</span>
           </div>
         </div>
       )}

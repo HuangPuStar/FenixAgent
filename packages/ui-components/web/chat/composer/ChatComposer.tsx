@@ -1,8 +1,8 @@
 import "./ChatComposer.css";
 
-import { X } from "lucide-react";
 import { type ReactNode, useRef } from "react";
 import { useTranslation } from "react-i18next";
+import { RemovableChip } from "../../components/RemovableChip";
 import { UI_COMPONENTS_NS } from "../../i18n/namespace";
 import type { AvailableCommand, ChatInputMessage, SessionMode } from "../types";
 import { CommandMenu, type McpOption } from "./CommandMenu";
@@ -284,28 +284,24 @@ export function ChatComposer({
               aria-label={t("chat.components.commandMenu.selectedCapabilities")}
             >
               {Array.from(selectedCommandNames).map((name) => (
-                <button
+                <RemovableChip
                   key={`skill:${name}`}
-                  type="button"
                   className="chat-composer-capability-chip inline-flex min-h-5.75 cursor-pointer items-center gap-1.25 rounded-md border border-slate-300 bg-slate-100 px-1.75 text-3xs text-blue-900"
-                  onClick={() => setText((current) => removeSlashCommand(current, name))}
+                  onRemove={() => setText((current) => removeSlashCommand(current, name))}
                 >
                   /{name}
-                  <X />
-                </button>
+                </RemovableChip>
               ))}
               {mcps
                 .filter((mcp) => selectedMcpIds.has(mcp.id))
                 .map((mcp) => (
-                  <button
+                  <RemovableChip
                     key={`mcp:${mcp.id}`}
-                    type="button"
                     className="chat-composer-capability-chip inline-flex min-h-5.75 cursor-pointer items-center gap-1.25 rounded-md border border-gray-300 bg-green-50 px-1.75 text-3xs text-emerald-700"
-                    onClick={() => toggleMcp(mcp)}
+                    onRemove={() => toggleMcp(mcp)}
                   >
                     MCP: {mcp.name}
-                    <X />
-                  </button>
+                  </RemovableChip>
                 ))}
             </div>
           )}

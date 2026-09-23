@@ -5,9 +5,6 @@
  * 名下的 key，身份侧不额外推断归属。这里的价值是把 better-auth 未类型化的返回形状收敛成稳定
  * 契约，并集中"页面创建的 key 必须继承当前组织与角色"这条不变量——后续纯 API Key 调用要靠它
  * 从 apikey 记录恢复组织上下文（CLAUDE.md「认证、组织与密钥」）。
- *
- * agent-config 的 meta agent 需要轮换自己名下的一把 key，但资源包不得导入本包：它经宿主注入
- * {@link rotateCallerApiKey}，因此该函数是本模块的对外形状，不是内部细节。
  */
 
 import { getAuth } from "../auth/better-auth";
@@ -105,7 +102,7 @@ export async function listCallerApiKeys(headers: Headers): Promise<CallerApiKeyS
 export interface CreateCallerApiKeyInput {
   readonly headers: Headers;
   readonly name: string;
-  /** key 前缀；页面与 meta agent 都固定为 `rcs_`。 */
+  /** key 前缀；页面固定为 `rcs_`。 */
   readonly prefix: string;
   /** 过期秒数；`null` 表示不过期。 */
   readonly expiresIn: number | null;
@@ -133,41 +130,4 @@ export async function deleteCallerApiKey(input: { headers: Headers; keyId: strin
 /** 更新调用方名下的 API Key 名称。 */
 export async function updateCallerApiKey(input: { headers: Headers; id: string; name?: string }): Promise<void> {
   await callerApiKeyApi().updateApiKey({ body: { id: input.id, name: input.name }, headers: input.headers });
-}
-
-/** 轮换入参：同一名称下只保留一把 key。 */
-export interface RotateCallerApiKeyInput {
-  readonly headers: Headers;
-  readonly name: string;
-  /** 过期秒数；`null` 表示不过期。 */
-  readonly expiresIn: number | null;
-  readonly metadata: unknown;
-}
-
-/**
- * 轮换调用方名下名为 `name` 的 API Key，返回明文 key。
- *
- * 先删除全部同名旧 key 再创建新的：同名 key 累积会让调用方拿到不确定的一把，而 better-auth
- * 不对名称做唯一约束。旧 key 删除失败不阻断轮换，但会记录原因——保留一把旧 key 只影响收敛，
- * 让轮换整体失败反而会切断调用方的凭据。
- */
-export async function rotateCallerApiKey(input: RotateCallerApiKeyInput): Promise<string> {
-  const existing = await listCallerApiKeys(input.headers);
-  for (const key of existing.filter((item) => item.name === input.name)) {
-    try {
-      await deleteCallerApiKey({ headers: input.headers, keyId: key.id });
-    } catch (error: unknown) {
-      console.error(
-        `[identity] 轮换 API Key 时删除旧 key 失败 keyId=${key.id}:`,
-        error instanceof Error ? error.message : String(error),
-      );
-    }
-  }
-
-  const result = asRecord(await createCallerApiKey({ ...input, prefix: "rcs_" }));
-  const key = typeof result?.key === "string" ? result.key : undefined;
-  const fullKey = typeof result?.fullKey === "string" ? result.fullKey : undefined;
-  const plaintext = key ?? fullKey;
-  if (!plaintext) throw new Error("API Key 创建成功但未返回明文 key");
-  return plaintext;
 }

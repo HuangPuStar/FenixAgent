@@ -1,49 +1,60 @@
-import React, { createContext, useCallback, useContext, useEffect, useState } from "react";
+import React, { createContext, useContext, useEffect } from "react";
 
 /**
- * 与源实现（apps/web/src/lib/theme.ts）的差异：
- * - 源实现曾以「暂时强制浅色模式」临时忽略持久化与系统偏好，本包已移除该 hack，
- *   初始主题恢复为「localStorage 中的用户选择，否则 defaultTheme」，系统偏好继续
- *   通过 matchMedia 实时跟随（theme === "system" 时监听变化）。
- * - defaultTheme 因此从「声明但未使用」变为无持久化记录时的回退值，默认仍为 "system"。
- * 其余行为（DOM 类名切换、storage key、context 结构）与源实现一致。
+ * 主题上下文 —— 全局强制亮色。
+ *
+ * 本包不再提供任何把界面切回深色的能力：
+ * - 不读也不写 localStorage（旧实现在 `theme` 键上持久化用户选择）；
+ * - 不监听 `matchMedia("(prefers-color-scheme: dark)")`（旧实现在 theme === "system"
+ *   时跟随系统偏好并实时切换）；
+ * - 不向 `document.documentElement` 写 `dark` 类。
+ *
+ * 三处一起拿掉之后，「系统深色偏好」与「残留的持久化选择」都不再能影响渲染，
+ * 亮色是常量而非默认值。
  */
 
 export type Theme = "light" | "dark" | "system";
 
+/** 已解析生效的外观。当前恒为 `"light"`，但类型保留 `"dark"`，理由见下方 `ThemeContextValue`。 */
+export type ResolvedTheme = "light" | "dark";
+
 interface ThemeContextValue {
-  theme: Theme;
-  resolvedTheme: "light" | "dark";
-  setTheme: (theme: Theme) => void;
+  /**
+   * 唯一存在的外观。原先表示「用户的选择」，切换能力移除后不再有取值空间，
+   * 因此收窄为字面量 —— 消费方没有拿它做 `=== "dark"` 之类的比较。
+   */
+  theme: "light";
+  /**
+   * 当前生效的外观：**运行时恒为 `"light"`**。
+   *
+   * 类型上刻意保留 `"light" | "dark"` 的联合：这是本包对外的既有契约，消费方
+   * （`memory/hindsight/components/Graph2d.tsx`、`Constellation.tsx`）用它选画布配色，
+   * 形如 `resolvedTheme === "dark"`。把这里收窄成 `"light"` 会让那些比较变成
+   * 「无重叠比较」并直接编译失败（TS2367）——用类型改动去逼消费方删分支，等于把
+   * 「强制亮色」实现成一次跨包的破坏性 API 变更，而它们的分支只是不再命中。
+   *
+   * 因此「不可能是 dark」由实现保证（唯一的上下文值 `FORCED_THEME` 是常量），
+   * 而不是由类型保证。**不要把这个联合收窄。**
+   */
+  resolvedTheme: ResolvedTheme;
 }
 
 const ThemeContext = createContext<ThemeContextValue | undefined>(undefined);
 
-const STORAGE_KEY = "theme";
+/** 上下文值：两个字面量都是常量，无需 state，也就没有触发重渲染的路径。 */
+const FORCED_THEME: ThemeContextValue = { theme: "light", resolvedTheme: "light" };
 
-function getSystemTheme(): "light" | "dark" {
-  if (typeof window === "undefined") return "light";
-  return window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
-}
-
-/** 读取持久化主题；SSR 或存储不可用时返回 null，由调用方回退到 defaultTheme。 */
-function getStoredTheme(): Theme | null {
-  if (typeof window === "undefined") return null;
-  try {
-    const stored = localStorage.getItem(STORAGE_KEY);
-    if (stored === "light" || stored === "dark" || stored === "system") {
-      return stored;
-    }
-  } catch {
-    // localStorage not available
-  }
-  return null;
-}
-
-function applyTheme(theme: "light" | "dark") {
-  const root = document.documentElement;
-  root.classList.remove("light", "dark");
-  root.classList.add(theme);
+/**
+ * 收掉 `documentElement` 上可能残留的 `dark` 类。
+ *
+ * 本仓库已无任何写入 `.dark` 的代码，这里兜的是两类**外部**来源：上一版本写过之后
+ * 留在 DOM 上的残留，以及浏览器扩展 / 第三方脚本直接往 `<html>` 上塞类。`.dark`
+ * 一旦存在，token 变量与 `dark:` 变体都会随之生效，故挂载时必须清掉。
+ *
+ * 只移除、不添加：`.light` 在本仓库没有任何选择器依赖（旧实现会写它，属噪声）。
+ */
+function enforceLight() {
+  document.documentElement.classList.remove("dark");
 }
 
 export function useTheme() {
@@ -56,49 +67,17 @@ export function useTheme() {
 
 interface ThemeProviderProps {
   children: React.ReactNode;
-  defaultTheme?: Theme;
 }
 
-export function ThemeProvider({ children, defaultTheme = "system" }: ThemeProviderProps) {
-  const [theme, setThemeState] = useState<Theme>(() => getStoredTheme() ?? defaultTheme);
-  const [resolvedTheme, setResolvedTheme] = useState<"light" | "dark">("light");
-
-  const setTheme = useCallback((newTheme: Theme) => {
-    setThemeState(newTheme);
-    try {
-      localStorage.setItem(STORAGE_KEY, newTheme);
-    } catch {
-      // localStorage not available
-    }
+/**
+ * 保留 Provider 与 `useTheme` 是刻意的：宿主与 demo 的组件树依赖这层上下文，
+ * 而 `resolvedTheme` 仍被需要布尔判定的消费方（如 canvas / SVG 渲染器，
+ * `packages/resources/memory/web/pages/hindsight`）用来选择自身配色分支。
+ */
+export function ThemeProvider({ children }: ThemeProviderProps) {
+  useEffect(() => {
+    enforceLight();
   }, []);
 
-  // Apply theme on mount and when theme changes
-  useEffect(() => {
-    const resolved = theme === "system" ? getSystemTheme() : theme;
-    setResolvedTheme(resolved);
-    applyTheme(resolved);
-  }, [theme]);
-
-  // Listen for system theme changes
-  useEffect(() => {
-    if (theme !== "system") return;
-
-    const mediaQuery = window.matchMedia("(prefers-color-scheme: dark)");
-    const handleChange = (e: MediaQueryListEvent) => {
-      const newTheme = e.matches ? "dark" : "light";
-      setResolvedTheme(newTheme);
-      applyTheme(newTheme);
-    };
-
-    mediaQuery.addEventListener("change", handleChange);
-    return () => mediaQuery.removeEventListener("change", handleChange);
-  }, [theme]);
-
-  const value: ThemeContextValue = {
-    theme,
-    resolvedTheme,
-    setTheme,
-  };
-
-  return React.createElement(ThemeContext.Provider, { value }, children);
+  return React.createElement(ThemeContext.Provider, { value: FORCED_THEME }, children);
 }

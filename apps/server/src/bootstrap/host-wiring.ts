@@ -42,16 +42,14 @@ import { db } from "../db";
 import type { ServerEnv } from "../env-loader";
 import { getRedisConnection } from "../services/cache";
 import { getCoreRuntime, registerRemoteNode, unregisterRemoteNode } from "../services/core-bootstrap";
-import { registerMetaAgentModelResolver } from "./meta-agent-model-resolver";
 import { buildModuleConfigs } from "./module-configs";
 import { resolveWorkspacePathFromEnv } from "./workspace-path";
 
 /**
  * 宿主运行态接线（启动序列的「装配期一次性接线」段）。
  *
- * 这一段没有异步步骤，也不碰 DB：它只做四件只有宿主进程能做、且必须早于任何模块工作的事——初始化平台
- * 基础设施、注册身份目录、注入资源可见性策略（见 `meta-agent-model-resolver.ts`）、把进程级运行态绑定到
- * 各包的端口。
+ * 这一段没有异步步骤，也不碰 DB：它只做三件只有宿主进程能做、且必须早于任何模块工作的事——初始化平台
+ * 基础设施、注册身份目录、把进程级运行态绑定到各包的端口。
  *
  * **时序不可调整**（理由随原注释保留）：
  * 1. 平台模块只能经 `@fenix/platform-sdk/server` 读基础设施，因此宿主必须在任何模块开始工作前完成唯一
@@ -86,7 +84,6 @@ export function wireHostRuntime(env: ServerEnv, appConfig: AppConfig): HostWirin
     moduleConfigs: buildModuleConfigs(env, appConfig),
   });
   registerIdentityDirectory(createIdentityDirectory());
-  registerMetaAgentModelResolver();
 
   const agentRuntime = createAgentRuntimeModule().runtime;
   bindCoreRuntimePort({ getCoreRuntime, registerRemoteNode, unregisterRemoteNode });

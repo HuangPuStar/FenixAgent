@@ -54,7 +54,7 @@ const STEPS = [
     filter: (out: string) => (out.includes("✓ architecture-check") ? null : out),
   },
   {
-    // Web 样式禁止行为（FCP-WEB-01/02/03）：台账登记存量，只阻断新增；规则与反例见
+    // Web 样式禁止行为（FCP-WEB-01..06）：台账登记存量，只阻断新增；规则与反例见
     // docs/developer/guide/forbidden-code-patterns.md。
     name: "web-style",
     cmd: "bun run check:web-style",

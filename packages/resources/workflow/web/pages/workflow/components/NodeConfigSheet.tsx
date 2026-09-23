@@ -3,7 +3,7 @@ import type { Node } from "@xyflow/react";
 import { Trash2 } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import type { CustomToolItem } from "../../../api/workflow-defs";
-import type { AgentNodeOption } from "../hooks/useWorkflowMetaAgent";
+import type { AgentNodeOption } from "../hooks/useWorkflowAgentOptions";
 import type { WfMeta } from "../yaml-utils";
 import { START_NODE_ID } from "../yaml-utils";
 import { NodeConfigCard } from "./NodeConfigCard";

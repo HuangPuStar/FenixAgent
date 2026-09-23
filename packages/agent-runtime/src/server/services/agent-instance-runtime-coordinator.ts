@@ -30,6 +30,10 @@ interface RuntimeEntry {
   deleting: boolean;
   lastFailure: string | null;
   abortController: AbortController | null;
+  /** 该条目当前 unknown 的归属机器;仅由断连事件写入,新 lifecycle intent 接管或复位后清空。 */
+  machineId: string | null;
+  /** 该机器的 clean-slate 已确认,但条目仍有在飞操作,复位需延后到操作释放槽位之后。 */
+  pendingCleanSlate: boolean;
 }
 
 export interface RuntimeCoordinatorOptions {
@@ -91,16 +95,43 @@ export class AgentInstanceRuntimeCoordinator {
   }
 
   handleRuntimeDeath(instanceUid: string, generation: number): void {
-    this.#handleRuntimeUnavailable(instanceUid, generation, "stopped", "Runtime terminated during lifecycle operation");
-  }
-
-  handleRuntimeDisconnect(instanceUid: string, generation: number): void {
     this.#handleRuntimeUnavailable(
       instanceUid,
       generation,
+      null,
+      "stopped",
+      "Runtime terminated during lifecycle operation",
+    );
+  }
+
+  handleRuntimeDisconnect(instanceUid: string, generation: number, machineId: string): void {
+    this.#handleRuntimeUnavailable(
+      instanceUid,
+      generation,
+      machineId,
       "unknown",
       "Runtime disconnected during lifecycle operation",
     );
+  }
+
+  /**
+   * 机器确认 clean slate(其旧 runtime 已全部终止)后,解除该机器断连造成的 unknown。
+   * 只复位「归属该机器 + unknown + 无在飞操作」的条目;条目仍被操作独占时置延后标记,
+   * 待操作释放槽位后再复位。其他来源的 unknown(操作失败、shutdown 排空)不参与。
+   */
+  handleMachineCleanSlate(machineId: string): string[] {
+    if (this.#shuttingDown) return [];
+    const resolved: string[] = [];
+    for (const [instanceUid, entry] of this.#entries) {
+      if (entry.machineId !== machineId || entry.state !== "unknown") continue;
+      if (entry.operation !== null) {
+        entry.pendingCleanSlate = true;
+        continue;
+      }
+      this.#resolveUnknown(entry);
+      resolved.push(instanceUid);
+    }
+    return resolved;
   }
 
   shutdown(): Promise<void> {
@@ -156,6 +187,7 @@ export class AgentInstanceRuntimeCoordinator {
   #handleRuntimeUnavailable(
     instanceUid: string,
     generation: number,
+    machineId: string | null,
     state: Extract<RuntimeState, "stopped" | "unknown">,
     reason: string,
   ): void {
@@ -164,6 +196,19 @@ export class AgentInstanceRuntimeCoordinator {
     entry.generation += 1;
     entry.abortController?.abort(new Error(reason));
     entry.state = state;
+    // 归属只由不可用事件写入:death 传 null 即清空归属;新的不可用事件必须作废任何延后的
+    // clean-slate 确认,否则旧确认会在条目之后再次进入 unknown 时被误用为"已确认无残留"。
+    entry.machineId = machineId;
+    entry.pendingCleanSlate = false;
+  }
+
+  /** 把已确认无残留 runtime 的 unknown 复位为 stopped,并推进世代以 fence 掉迟到通知。 */
+  #resolveUnknown(entry: RuntimeEntry): void {
+    entry.generation += 1;
+    entry.state = "stopped";
+    entry.machineId = null;
+    entry.pendingCleanSlate = false;
+    entry.lastFailure = null;
   }
 
   #run(
@@ -198,15 +243,27 @@ export class AgentInstanceRuntimeCoordinator {
     entry.generation = generation;
     entry.operation = operation;
     entry.deleting = operation === "delete";
+    // 任何新 lifecycle intent 接管后,旧断连归属立即失效:否则后续在别的机器上产生的 unknown
+    // 会被误判为"本机 clean-slate 已覆盖",放行一次可能与旧进程并存的重启。
+    entry.machineId = null;
+    entry.pendingCleanSlate = false;
     const controller = new AbortController();
     entry.abortController = controller;
 
     const promise = this.#execute(instance, operation, mode, generation, controller.signal).finally(() => {
-      if (entry.generation !== generation) return;
+      // 按操作所有权判定:被断连/unavailable 事件 fence 的操作不会更新世代,若沿用世代比对会
+      // 永久残留 operation,导致同操作此后只会 #wait 一个已 settle 的 promise(假成功),并使
+      // clean-slate 复位条件(operation === null)永不成立。
+      if (entry.operationPromise !== promise) return;
       entry.operation = null;
       entry.operationPromise = null;
       entry.abortController = null;
       if (operation !== "delete") entry.deleting = false;
+      // 断连导致的 unknown 若已被该机器 clean-slate 确认覆盖,在操作真正释放槽位后补做复位。
+      // 进程退出中不参与:那会把 shutdown drain 留下的未确认 runtime 伪装成 stopped。
+      if (entry.pendingCleanSlate && entry.state === "unknown" && entry.machineId !== null && !this.#shuttingDown) {
+        this.#resolveUnknown(entry);
+      }
     });
     entry.operationPromise = promise;
     return this.#wait(promise, waiterSignal);
@@ -285,6 +342,8 @@ export class AgentInstanceRuntimeCoordinator {
         deleting: false,
         lastFailure: null,
         abortController: null,
+        machineId: null,
+        pendingCleanSlate: false,
       };
       this.#entries.set(instanceUid, entry);
     }

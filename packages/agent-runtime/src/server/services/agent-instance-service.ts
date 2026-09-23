@@ -157,8 +157,13 @@ export class AgentInstanceService {
     this.coordinator.handleRuntimeDeath(instanceUid, generation);
   }
 
-  handleRuntimeDisconnect(instanceUid: string, generation: number): void {
-    this.coordinator.handleRuntimeDisconnect(instanceUid, generation);
+  handleRuntimeDisconnect(instanceUid: string, generation: number, machineId: string): void {
+    this.coordinator.handleRuntimeDisconnect(instanceUid, generation, machineId);
+  }
+
+  /** 机器确认 clean slate 后解除该机器断连造成的 unknown;返回被复位的实例 uid。 */
+  handleMachineCleanSlate(machineId: string): string[] {
+    return this.coordinator.handleMachineCleanSlate(machineId);
   }
 
   shutdownRuntimes(): Promise<void> {

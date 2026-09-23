@@ -27,7 +27,7 @@ import { agentConfigResource } from "./src/server/access/agent-config-resource";
  * - memory：`src/server/services/agent-associations.ts` 的 `isMemoryEnabled` / `setMemoryEnabled` 转发
  *   memory 的 `isAgentMemoryEnabled` / `setEnabled`（记忆开关归 memory）；
  * - skill：`src/server/services/skill-directory.ts` 经 `@fenix/resource-skill/server/runtime` 的
- *   `getSkillServerModule` 取可见 Skill 投影，`src/server/services/meta-agent.ts` 与
+ *   `getSkillServerModule` 取可见 Skill 投影，`src/server/services/builtin-skills.ts` 与
  *   `src/server/services/agent-launch-spec/skill-resolution.ts` 用 `@fenix/resource-skill/server/content`
  *   的归档与 frontmatter 解析装载内置 Skill，`src/server/services/agent-related-resources.ts` 另经
  *   `@fenix/resource-skill/server/config` 取 `findSkillLabelsByIds`（关联边自身由本包
@@ -244,13 +244,6 @@ export const moduleManifest = {
       slot: "web",
       value: (host: ServerRouteHost) =>
         import("./src/server/assembly").then((assembly) => assembly.createAgentConfigWebAgentGenerationRoutes(host)),
-    },
-    {
-      id: "agent-config.web-meta-agent",
-      kind: "app-route",
-      slot: "web",
-      value: (host: ServerRouteHost) =>
-        import("./src/server/assembly").then((assembly) => assembly.createAgentConfigWebMetaAgentRoutes(host)),
     },
     {
       id: "agent-config.api-agents",

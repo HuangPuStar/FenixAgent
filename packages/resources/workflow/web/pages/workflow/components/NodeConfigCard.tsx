@@ -6,7 +6,7 @@ import { Maximize2 } from "lucide-react";
 import { useCallback, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import type { CustomToolInputDef, CustomToolItem } from "../../../api/workflow-defs";
-import type { AgentNodeOption } from "../hooks/useWorkflowMetaAgent";
+import type { AgentNodeOption } from "../hooks/useWorkflowAgentOptions";
 import { syncOutputOnRename } from "../preset-utils";
 import type { WfMeta } from "../yaml-utils";
 import { START_NODE_ID } from "../yaml-utils";

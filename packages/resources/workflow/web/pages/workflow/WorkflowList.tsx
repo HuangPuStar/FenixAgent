@@ -43,7 +43,7 @@ export function WorkflowList({ onEditWorkflow, onViewVersions, createRequested }
   const errorMsg = error ? (error instanceof Error ? error.message : String(error)) : null;
   const unauthorized = isUnauthorizedError(error);
 
-  // 静默轮询：meta agent 等外部修改后自动刷新列表，不触发 loading 骨架屏
+  // 静默轮询：外部 API 修改后自动刷新列表，不触发 loading 骨架屏
   const pollList = useCallback(async () => {
     try {
       const _data = await unwrap(workflowDefApi.list());

@@ -126,7 +126,9 @@ export type ReasoningTriggerProps = ComponentProps<typeof CollapsibleTrigger> & 
 const DefaultThinkingMessage = ({ isStreaming, duration }: { isStreaming: boolean; duration?: number }) => {
   const { t } = useTranslation(UI_COMPONENTS_NS);
   if (isStreaming || duration === 0) {
-    return <Shimmer duration={1}>{t("reasoning.thinking")}</Shimmer>;
+    // 扫光节奏由 `primitives/shimmer.css` 的 `.shimmer-cascade` 固定（2s，与全局加载微光一致），
+    // 故不传 `duration`——它只驱动非级联形态的整体呼吸。
+    return <Shimmer cascade>{t("reasoning.thinking")}</Shimmer>;
   }
   if (duration === undefined) {
     return <p>{t("reasoning.thought")}</p>;

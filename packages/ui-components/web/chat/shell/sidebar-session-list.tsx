@@ -281,7 +281,7 @@ function SessionTitleButton({
               : "text-text-secondary hover:bg-transparent hover:text-text-primary",
           )}
         >
-          <span className="min-w-0 truncate text-xs leading-snug">{displayTitle}</span>
+          <span className="min-w-0 truncate leading-snug">{displayTitle}</span>
         </Button>
       </TooltipTrigger>
       <TooltipContent side="right" className="max-w-70 break-words">

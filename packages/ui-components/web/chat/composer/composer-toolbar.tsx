@@ -75,7 +75,7 @@ export function ComposerToolbar({
         {(commands?.length ?? 0) + mcpCount > 0 ? (
           <button
             type="button"
-            className="inline-flex h-7 shrink-0 items-center gap-1.25 rounded-md px-1.5 text-slate-500 hover:bg-slate-100 hover:text-sky-700 data-[open]:text-blue-900"
+            className="inline-flex h-7 text-xs shrink-0 items-center gap-1.25 rounded-md px-1.5 text-slate-500 hover:bg-slate-100 hover:text-sky-700 data-[open]:text-blue-900"
             data-open={commandPanelOpen || undefined}
             data-slot="chat-composer-plugin"
             aria-expanded={commandPanelOpen}
@@ -90,7 +90,7 @@ export function ComposerToolbar({
         <input ref={fileInputRef} type="file" multiple className="sr-only" onChange={onFileSelect} />
         <button
           type="button"
-          className="inline-flex h-7 shrink-0 items-center gap-1.25 rounded-md px-1.5 text-slate-500 hover:bg-slate-100 hover:text-sky-700"
+          className="inline-flex h-7 text-xs shrink-0 items-center gap-1.25 rounded-md px-1.5 text-slate-500 hover:bg-slate-100 hover:text-sky-700"
           data-slot="chat-composer-file"
           disabled={disabled || !supportsAttachments}
           aria-label={t("chat.components.chatComposer.attach")}
@@ -103,7 +103,7 @@ export function ComposerToolbar({
 
         {modelName ? (
           <span
-            className="inline-flex h-7 max-w-31 min-w-0 items-center gap-1.25 overflow-hidden px-1.75 text-3xs leading-none text-ellipsis whitespace-nowrap text-slate-500 max-md:max-w-23"
+            className="inline-flex h-7 min-w-0 items-center gap-1.25 overflow-hidden px-1.75 text-3xs leading-none text-ellipsis whitespace-nowrap text-slate-500 max-md:max-w-23"
             data-slot="chat-composer-model"
             title={modelName}
           >

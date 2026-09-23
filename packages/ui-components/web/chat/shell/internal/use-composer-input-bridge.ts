@@ -14,7 +14,7 @@ import type { ComposerExternalEvent, ComposerExternalSubscribe } from "../../com
  *   通道：生产方与消费方仍以「事件」解耦，宿主注入的外部来源（如文件树引用）照旧生效，
  *   `ChatComposer` 只需一条订阅入口。
  * - 源实现用 `contextScope` 过滤 window 事件，因为 window 事件会在同一页面的多个会话实例间
- *   串扰（主面板与 MetaAgentPanel 同时挂载时）。本通道按 `ChatInterface` 实例作用域分发，
+ *   串扰（多个聊天面板同时挂载时）。本通道按 `ChatInterface` 实例作用域分发，
  *   跨实例串扰在结构上不可能，故包内事件不再做作用域过滤；宿主注入外部来源时仍自行保证
  *   事件归属的会话/环境正确（见 `chat/composer/composer-effects.ts` 的纯化说明）。
  */

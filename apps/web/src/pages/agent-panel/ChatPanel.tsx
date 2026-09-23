@@ -7,9 +7,8 @@
 // 拆分：本文件只做分支渲染与错误卡片；连接状态机在 `use-chat-panel-runtime.ts`，
 // ui-components 面板的宿主端口在 `chat-panel-ports.tsx`。
 //
-// workflow 包的 `MetaAgentPanel` 曾从 `@fenix/agent-runtime` 根出口取 `ChatPanel`；包不得依赖 apps
-// （`web-package-not-to-app`），故改为宿主经 `WorkflowEditor` 的 `chatPanel` 端口注入——与
-// `ProdViewPage` 的 `chatArea` 端口同型（用户 2026-09-21 裁定）。
+// 包不得依赖 apps（`web-package-not-to-app`）；需要宿主聊天能力时应由宿主注入，
+// 例如 `ProdViewPage` 的 `chatArea` 端口。
 
 import { ACPMain } from "@fenix/ui-components/chat/shell/ACPMain";
 import type { BoundMcpOption } from "@fenix/ui-components/chat/shell/chat-interface-types";

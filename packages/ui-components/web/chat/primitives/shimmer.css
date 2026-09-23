@@ -1,0 +1,55 @@
+/*
+ * `shimmer.tsx` 的深层样式（同目录同名伴随表，由该文件顶部 import）。
+ *
+ * 承载对象是**每个字符自己**（`.shimmer-cascade-char`），不是级联文本的容器。为什么不能放在容器上：
+ * 容器做渐变 + `background-clip: text` 时，Chrome 的裁切蒙版不包含「身上带动画的子孙字形」，
+ * 于是叠加 `-webkit-text-fill-color: transparent` 后，入场那 0.5s 整句都不落栅格、动画结束后才
+ * 跳出来（工装实测：动画在子孙上时渐变字形像素 0；裁切与动画同处一个元素时逐帧正常着色）。
+ * 代价是扫光按字符推进（相位差由 `--shimmer-sweep-delay` 逐字给），不是一条贯穿全句的亮带。
+ *
+ * 为什么整组留在这里而不是 `className`：
+ *   - `animation: shimmerSlide 2s ease-in-out infinite` 是「动画名 + 时长 + 缓动 + 次数」的复合值，
+ *     写成任意值工具类（`animate-[shimmerSlide_2s_ease-in-out_infinite]`）会命中 FCP-WEB-02——
+ *     下划线属复合表达式（`docs/developer/guide/forbidden-code-patterns.md`）。同批的
+ *     `.chat-loading-shimmer`（`chat/view/ChatView.css`）出于同一原因下沉。
+ *   - 渐变 + 裁切 + `-webkit-text-fill-color` 必须同源生效：本文件未分层，会压过 `@layer utilities`，
+ *     把其中任一条留在工具类都会产生「同一属性两个来源、胜负靠层叠猜」的状态。故整组一起放这里，
+ *     `className` 只留 `shimmer-cascade-char` 这个语义类名。
+ *
+ * 取值来源：渐变与节奏照搬宿主「思考中」微光（`apps/web/src/index.css` 的 `.loading-text-shimmer`：
+ * 同色 stops、`background-size: 200% 100%`、2s / `ease-in-out` / 无限循环），保证与既有加载微光同一观感。
+ * 关键帧 `shimmerSlide` 定义在 `../css/chat-animations.css`（按名引用，改名必须同步该文件的消费方清单）。
+ *
+ * 胜负关系：本文件未分层，`.shimmer-cascade-char` 上的扫光声明不会被消费方 `className` 里的工具类覆盖；
+ * 需要别的扫光时改这里，不要在调用点叠工具类（否则会得到一个静默失效的工具类）。
+ */
+.shimmer-cascade-char {
+  background-image: linear-gradient(
+    90deg,
+    var(--color-text-muted) 0%,
+    var(--color-brand-light) 50%,
+    var(--color-text-muted) 100%
+  );
+  background-size: 200% 100%;
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+  animation: shimmerSlide 2s ease-in-out infinite;
+  /* 逐字相位差由组件按字符下标写入（`--shimmer-sweep-delay`），缺省即无相位差。 */
+  animation-delay: var(--shimmer-sweep-delay, 0s);
+}
+
+/* 减弱动效降级必须与上面的 `animation` 同址：本文件未分层，`animation` 写在这里就稳赢
+   `@layer utilities`，`motion-reduce:animate-none` 那类工具类会被压掉。
+   关掉动画后渐变回到静止态（`background-position` 初始值 `0% 0`，是一段半幅高亮），
+   与「文字变半亮」的观感不符，故连同渐变一并撤掉，退回普通的 `text-muted-foreground`
+   （`-webkit-text-fill-color` 必须一起复位，否则文字会因透明填充而消失）。
+   这条覆盖的是「挂载后系统偏好才切成减少动效」——挂载时已开启的情况由 `shimmer.tsx` 里的
+   `useReducedMotion()` 直接不渲染本类与级联。 */
+@media (prefers-reduced-motion: reduce) {
+  .shimmer-cascade-char {
+    animation: none;
+    background-image: none;
+    -webkit-text-fill-color: currentcolor;
+  }
+}

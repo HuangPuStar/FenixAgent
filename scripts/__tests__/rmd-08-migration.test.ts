@@ -204,8 +204,7 @@ const RMD_08_TARGETS_LATER_DELETED = [
  *
  * 这些文件在 RMD-08 时是「apps/web 的壳」，但键的 owner 与实现的 owner 都属于资源包 / web-runtime：
  * 宿主再留一份就是两份实现并存（i18n 字典尤其危险——命名空间同名时构建期不报错，运行期整片文案回退）。
- * `MetaAgentPanel.tsx` 的宿主副本在被删除前已经零引用（面板实现在 workflow 包内），仍按「宿主不得复活」
- * 断言，避免把一份 workflow 实现重新接回应用壳；`api/registry.ts` 同理由 T4 移出（见文件头第 6 条）。
+ * 已退役的面板与 hook 改由下方删除清单断言所有落点不存在；`api/registry.ts` 由 T4 移出（见文件头第 6 条）。
  * 任务 1.6 T8b 再移出 11 项：`components/ai-elements/**`（7，owner 为 `chat/primitives/**`）与
  * `components/config/**`（4）——这 11 个宿主副本的消费方已全部改指 `@fenix/ui-components` 的对应出口，
  * 副本本身零引用。
@@ -232,16 +231,6 @@ const RMD_08_RELOCATED = [
     "web/src/pages/agent-panel/shared/agent-master-detail-workspace.tsx",
     "apps/web/src/pages/agent-panel/shared/agent-master-detail-workspace.tsx",
     "packages/ui-components/web/components/agent-master-detail-workspace.tsx",
-  ],
-  [
-    "web/components/MetaAgentPanel.tsx",
-    "apps/web/components/MetaAgentPanel.tsx",
-    "packages/resources/workflow/web/pages/workflow/components/MetaAgentPanel.tsx",
-  ],
-  [
-    "web/src/hooks/useMetaAgent.ts",
-    "apps/web/src/hooks/useMetaAgent.ts",
-    "packages/resources/agent-config/web/hooks/use-meta-agent.ts",
   ],
   [
     "web/src/lib/use-workflow-events.ts",
@@ -665,6 +654,16 @@ const RMD_08_RELOCATED = [
  * 与容器工具类形成两份真相，因此本表的断言方向是三条路径全为 absent。
  */
 const RMD_08_RELOCATED_TARGETS_LATER_DELETED = [
+  [
+    "web/components/MetaAgentPanel.tsx",
+    "apps/web/components/MetaAgentPanel.tsx",
+    "packages/resources/workflow/web/pages/workflow/components/MetaAgentPanel.tsx",
+  ],
+  [
+    "web/src/hooks/useMetaAgent.ts",
+    "apps/web/src/hooks/useMetaAgent.ts",
+    "packages/resources/agent-config/web/hooks/use-meta-agent.ts",
+  ],
   [
     "web/components/ai-elements/chat-message-content.css",
     "apps/web/components/ai-elements/chat-message-content.css",

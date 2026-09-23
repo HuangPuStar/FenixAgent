@@ -65,8 +65,7 @@ import { FilePickerDialog } from "@/src/components/FilePickerDialog";
  * 上下文队列双副本：`context-queue` 是**有状态**模块（模块级 `Map` 保存待注入的 system-reminder）。
  * 迁移中途 `apps/web/src/lib/context-queue.ts` 与 `@fenix/web-runtime/chat/context-queue` 同时存在
  * 且不是同一模块实例，于是：
- * - 写入方 `workflow/web/lib/use-workflow-events.ts`、`workflow/web/pages/workflow/WorkflowEditor.tsx`
- *   在任务 1.3 已改指包副本；
+ * - 写入方 `workflow/web/lib/use-workflow-events.ts` 在任务 1.3 已改指包副本；
  * - 取出方（chat-channel `ChatInterface.flushContext`）此时仍读宿主副本——宿主副本无人写入，
  *   恒返回 `null`，workflow 注入的上下文在 1.3 之后被静默丢弃。
  * 本端口改读包副本（与写入方同实例），因此**修复**了该分裂；宿主两份副本

@@ -3,6 +3,13 @@
     <head>
         <meta charset="UTF-8" />
         <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+        <!--
+          全局强制亮色：声明在 head 最前，浏览器解析到它即把文档的 used color-scheme 固定为 light。
+          这一步覆盖的是「样式表生效之前」的窗口——没有它时根元素背景透明、color-scheme 为初值 normal，
+          系统深色偏好下首帧会按深色画布（canvas）绘制底色，也就是典型的首屏闪深色。
+          `:root { color-scheme: light }`（apps/web/src/index.css）负责其后的常规取值。
+        -->
+        <meta name="color-scheme" content="light" />
         <title>Fenix AOS——凤凰Agent操作系统</title>
         <link rel="icon" href="/ctrl/brand/fenix-agent-logo-mark.png" />
         <link

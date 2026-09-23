@@ -29,12 +29,6 @@ export { createApiSystemRoutes } from "./routes/api/system";
 export type { SystemApiRouteDependencies, WebIdentityRouteDependencies } from "./routes/dependencies";
 export { createWebApiKeysRoutes } from "./routes/web/api-keys";
 export { createWebOrganizationsRoutes } from "./routes/web/organizations";
-/**
- * 轮换调用方名下指定名称的 API Key，返回明文 key。
- *
- * agent-config 的 meta agent 需要轮换自己的 key，但资源包不得导入本包，因此由宿主注入该函数。
- */
-export { rotateCallerApiKey } from "./services/caller-api-keys";
 export { ensureSystemAdmin } from "./services/ensure-system-admin";
 export { createIdentityDirectory } from "./services/identity-directory";
 export { buildPhoneTempEmail, isEmailIdentifier, normalizeChineseMainlandPhoneNumber } from "./services/phone-number";

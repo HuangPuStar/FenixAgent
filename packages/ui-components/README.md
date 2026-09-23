@@ -45,7 +45,7 @@ demo/                     Vite 展示页（非库产物）
 | `web/chat/timeline/ToolCallRow.tsx` | 完成态右侧显示状态词（`Done` / `已完成`）；运行中只有 `Loader2` 转圈 + 静态标题；错误信息内联在标题行内，长错误会把标题挤到看不见；另有 `publicError` 块（message + Type + ID）落在卡片右侧 | 完成态不渲染状态词（默认结果的噪音，其余状态词保留）；运行中标题文字套包内 `Shimmer` 基元做载入微光（图标位仍转圈）；错误信息独占第二行，随之为 `.tool-call-row-error` 补 `display: block`（否则该选择器的 `text-overflow: ellipsis` 对行内盒子失效）；移除右侧 `publicError` 块——其 message 与第二行同源（`narrate` 的 `errorDetail` 优先取 `publicError.message`），脱敏错误的 Type / ID 因此不再出现在卡片上 |
 | `web/chat/timeline/TodoChanges.tsx` | 每条待办右侧带变更标签（`新增` / `已完成` / `进行中` 等底色 badge） | 去掉该标签：变更语义由左侧图标与文案样式表达，右侧标签是重复信息；随之删除 `CHANGE_STYLES.labelClassName` 与两个语言包里仅此处使用的 `chat.components.todoChanges.*` 文案 |
 | `web/chat/primitives/message-attachments.tsx` | 图片 `alt` 固定取文件名，缺文件名时回落通用文案「Attachment」 | 新增可选 `alt` prop（优先于文件名），图片附件可传更准确的替代文本；缺省行为与源实现一致 |
-| `web/chat/shell/internal/use-composer-input-bridge.ts` | 空状态建议提示词与消息「引用」经 window 自定义事件（`chat:apply-suggested-prompt` / `chat:quote`）从 `ChatView` 回环到 `ChatComposer`，生产与消费都在 chat 包内部 | 包内事件汇入宿主注入的 `subscribeExternal` 同一条通道（不新增注入端口）：宿主不注入任何订阅时这两个动作也必须生效。副产物是源实现按 `contextScope` 过滤 window 事件不再需要——本通道按 `ChatInterface` 实例分发，跨实例（主面板与 MetaAgentPanel）串扰在结构上不可能（2026-09-21） |
+| `web/chat/shell/internal/use-composer-input-bridge.ts` | 空状态建议提示词与消息「引用」经 window 自定义事件（`chat:apply-suggested-prompt` / `chat:quote`）从 `ChatView` 回环到 `ChatComposer`，生产与消费都在 chat 包内部 | 包内事件汇入宿主注入的 `subscribeExternal` 同一条通道（不新增注入端口）：宿主不注入任何订阅时这两个动作也必须生效。副产物是源实现按 `contextScope` 过滤 window 事件不再需要——本通道按 `ChatInterface` 实例分发，跨实例（多个聊天面板）串扰在结构上不可能（2026-09-21） |
 | `web/chat/css/chat-design-composer.css`（**阶段二已迁并删除**，现行实现见 `composer/ChatComposer.tsx` 的卡片工具类） | 卡片与元信息条的三条设计规则挂在宿主壳类 `.acp-main-root` 下（`.acp-main-root .chat-composer-card`、`:focus-within`、`.chat-composer-meta`） | 改用组件自身的 `.chat-composer-wrapper` 作前缀：特指度同为 (0,2,0)，与宿主补充段的级联关系逐条不变，但 `ChatComposer` 独立渲染时不再依赖宿主壳类 —— 否则元信息条失去 `display:flex`，本应同行的 `meta-main` / `meta-actions` 竖排成两行（demo 输入岛示例即此形态，2026-09-18 修正） |
 | `web/chat/css/chat-design-status.css`、`chat-design-responsive.css`（**阶段四已迁并删除**，现行实现见 `panels/**` 的宽度/台阶工具类） | 交互区 / 状态面板宽度 `min(760px, calc(100% - 32px))`（窄屏 `calc(100% - 20px)`），与输入岛卡片等宽甚至更宽 | 改为比输入岛卡片每侧窄 16px（共 32px），形成台阶：`min(756px, calc(100% - 64px))`、窄屏 `calc(100% - 52px)`。源值只在宽列下比卡片窄 28px，列宽不足 792px 时与卡片完全齐平（2026-09-18） |
 | `web/chat/css/chat-design-composer.css`（**阶段二已迁并删除**，现行实现见 `composer/composer-toolbar.tsx` 的 `bg-brand`） | `.chat-composer-send.is-stop`（turn 运行中，图标切成停止方块）底色为深墨蓝 `#25344a` | 改用包内 token `var(--color-brand)`：源色在浅色下近乎黑色、暗色下几乎融进背景，且与本包其余「主题色」入口不一致（`.is-ready` 的蓝、`PromptInputSubmit` 的 `bg-primary`）；尺寸、圆角与 `color: #fff` 保持不变（2026-09-18） |
@@ -189,11 +189,10 @@ i18n.addResourceBundle("zh", UI_COMPONENTS_NS, zh, true, true);
 11. **`ChatHeader` 的外壳形态依赖祖先类名 `.acp-main-root`**：阶段五后该页的样式已全部落在
     `ChatHeader.tsx` 的 `HEADER_CARD_CLASS` 里，其中「外壳内形态」（`height: 45px`、仅底边分隔线、圆角置零、
     去除玻璃底与 `backdrop-filter`）用祖先变体 `[.acp-main-root_&…]` 表达——`acp-main-root` 是 `ACPMain`
-    根节点的类名，同时是宿主 `apps/web/src/index.css`（`.meta-agent-panel .acp-main-root`）的作用域钩子，
-    因此现阶段保留；独立渲染（demo / 单测）时只拿到玻璃形态（圆角 16px + `backdrop-filter`）。
+    根节点的类名，也是包内 `chat-layout.css` 高度链与 `ChatHeader.css` 的作用域钩子，
+    因此保留；独立渲染（demo / 单测）时只拿到玻璃形态（圆角 16px + `backdrop-filter`）。
     - 影响范围：仅外观（扁平 vs 玻璃），不破坏布局；包内 `ChatHeader` 目前只由 `ACPMain` 渲染，自带该类名。
-    - 移除条件：宿主不再以 `.acp-main-root` 作选择器后，`ACPMain` 删类名并把这些变体改为直接工具类
-      （同 `chat-layout.css` 的阻塞项，见下节的移除条件）。
+    - 移除条件：共享高度链与标题栏均不再依赖 `.acp-main-root` 时，才可删除该类名。
 
 ## chat 样式现状（阶段一至五迁移台账）
 

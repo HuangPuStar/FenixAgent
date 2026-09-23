@@ -1,9 +1,9 @@
 import { describe, expect, mock, test } from "bun:test";
 import {
-  type MetaAgentContext,
+  type BuiltinSkillContext,
   selectSystemBuiltinSkillId,
   syncBuiltinSkillsToSystemAdmin,
-} from "../server/services/meta-agent";
+} from "../server/services/builtin-skills";
 
 /**
  * builtin skill 在系统托管组织内的挑选与公开化。
@@ -44,12 +44,12 @@ describe("selectSystemBuiltinSkillId", () => {
 describe("syncBuiltinSkillsToSystemAdmin", () => {
   // 内置 skill 托管到 admin 组织后，必须统一设置为公开可读。
   test("marks synced builtin skills as public readable", async () => {
-    const syncBuiltinSkillsSpy = mock(async (_ctx: MetaAgentContext) => {});
+    const syncBuiltinSkillsSpy = mock(async (_ctx: BuiltinSkillContext) => {});
     // 返回 true 表示公开化已落库；false 会走「设置失败」日志分支，那条分支不属本用例语义。
     const setSkillPublicReadableSpy = mock(async (_skillId: string) => true);
 
     await syncBuiltinSkillsToSystemAdmin(
-      { organizationId: "org_admin", userId: "user_admin", role: "owner" },
+      { organizationId: "org_admin", userId: "user_admin" },
       {
         syncBuiltinSkills: syncBuiltinSkillsSpy,
         listBuiltinSkillIds: async () => ["skill_a", "skill_b"],

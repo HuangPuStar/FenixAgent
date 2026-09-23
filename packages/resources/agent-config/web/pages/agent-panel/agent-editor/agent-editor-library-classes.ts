@@ -25,9 +25,8 @@ export const GROUP_FILTER_BUTTON =
 export const GROUP_FILTER_BUTTON_ACTIVE = "bg-indigo-50 text-blue-900";
 /** 来源名：单行省略 13px/650。 */
 export const GROUP_FILTER_LABEL = "overflow-hidden text-ellipsis whitespace-nowrap text-xs [font-weight:650]";
-/** 来源计数徽标：24px 最小宽的药丸。 */
-export const GROUP_FILTER_COUNT =
-  "min-w-6 rounded-full bg-white px-1.5 py-0.5 text-center text-3xs not-italic text-slate-500";
+/* 来源计数徽标原是一条「24px 最小宽药丸」类串，已改用 `ui/badge`（`variant="secondary"`）：
+ * 药丸几何、刻度与配色归库内，本处不再维护第三份定义。 */
 
 /* ── 两层资源库（library） ─────────────────────────────────────────────── */
 
@@ -68,20 +67,13 @@ export const KNOWLEDGE_BODY_BASES = "p-0";
 /** `--bases` 形态：内嵌的资源选择器去描边去圆角（原 `.agent-knowledge-block--bases .agent-resource-picker`）。 */
 export const KNOWLEDGE_BASES_PICKER = "border-0 rounded-none";
 
-/** `.agent-knowledge-switch`：记忆开关行（64px 高、两列；hover 与文案/徽标样式见同名 CSS）。 */
+/** `.agent-knowledge-switch`：记忆开关行（64px 高、两列；hover 与文案/徽标样式见同名 CSS）。
+ * 行内开关本体是 `ui/switch`：`KNOWLEDGE_SWITCH_ON` 的选中底色改由 CSS 的
+ * `:has([data-state="checked"])` 表达，自绘的轨道（`..._TRACK`）与圆钮（`..._KNOB`）四条类串删除。
+ */
 export const KNOWLEDGE_SWITCH =
   "agent-knowledge-switch grid min-h-16 w-full items-center gap-3.5 border-0 rounded-md bg-slate-50 " +
   "px-3 py-2.75 text-left text-slate-600";
-/** 开关行选中态（原 `button.is-on`）。 */
-export const KNOWLEDGE_SWITCH_ON = "bg-blue-50";
-/** 开关轨道（32×18）。 */
-export const KNOWLEDGE_SWITCH_TRACK = "block h-4.5 w-8 rounded-full bg-slate-300 p-0.5";
-/** 开关轨道选中态（原 `.is-on > i`）。 */
-export const KNOWLEDGE_SWITCH_TRACK_ON = "bg-blue-600";
-/** 开关圆钮（14px；阴影属深层值，见同名 CSS）。 */
-export const KNOWLEDGE_SWITCH_KNOB = "agent-knowledge-switch__knob block size-3.5 rounded-full bg-white";
-/** 开关圆钮选中态（原 `.is-on > i b`）。 */
-export const KNOWLEDGE_SWITCH_KNOB_ON = "translate-x-3.5";
 
 /** `.agent-retrieval-fields`：两列（说明字段 + 选项列，列宽模板见同名 CSS），≤1024px 单列。 */
 export const RETRIEVAL_FIELDS = "agent-retrieval-fields grid items-start gap-3 max-lg:grid-cols-1";

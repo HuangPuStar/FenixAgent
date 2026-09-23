@@ -63,7 +63,7 @@ const RMD_04_MOVES = [
   [
     "src/services/meta-agent.ts",
     "packages/resources/agent-config/src/services/meta-agent.ts",
-    "packages/resources/agent-config/src/server/services/meta-agent.ts",
+    "packages/resources/agent-config/src/server/services/builtin-skills.ts",
   ],
   [
     "src/services/sidebar-config.ts",
@@ -71,26 +71,15 @@ const RMD_04_MOVES = [
     "packages/resources/agent-config/src/server/services/sidebar-config.ts",
   ],
   [
-    "src/schemas/meta-agent.schema.ts",
-    "packages/resources/agent-config/src/schemas/meta-agent.schema.ts",
-    "packages/resources/agent-config/src/server/schemas/meta-agent.schema.ts",
-  ],
-  [
     "src/routes/web/sidebar-config.ts",
     "packages/resources/agent-config/src/routes/web/sidebar-config.ts",
     "packages/resources/agent-config/src/server/routes/web/sidebar-config.ts",
   ],
-  ...["api-agent-schema", "meta-agent", "sidebar-config-service", "web-sidebar-config-routes"].map((name) => [
+  ["src/__tests__/meta-agent.test.ts", "packages/resources/agent-config/src/__tests__/builtin-skills.test.ts"],
+  ...["api-agent-schema", "sidebar-config-service", "web-sidebar-config-routes"].map((name) => [
     `src/__tests__/${name}.test.ts`,
     `packages/resources/agent-config/src/__tests__/${name}.test.ts`,
   ]),
-  // §1.6 T12 第三次搬迁：该客户端从 `web/src/api/` 提到 `web/lib/`，以窄子路径出口
-  // `./web/lib/meta-agent` 发布（同 `web/lib/agent-create-navigation` 的先例）。
-  [
-    "web/src/api/meta-agent.ts",
-    "packages/resources/agent-config/web/src/api/meta-agent.ts",
-    "packages/resources/agent-config/web/lib/meta-agent.ts",
-  ],
   ["web/src/api/sidebar-config.ts", "packages/resources/agent-config/web/src/api/sidebar-config.ts"],
   // 这两条随 §1.6 T11d 再次搬迁：包内 `AgentSidebarConfig` 与宿主同源副本同批退场，侧栏装配与裁剪
   // 的 owner 归宿主 WebShell。`-filter-pure` 是逐字 port（50 条边界断言）；`agent-sidebar-config`
@@ -108,9 +97,21 @@ const RMD_04_MOVES = [
 ] as const;
 
 describe("RMD-04 ownership migration", () => {
-  // 31 个保留的源文件必须只存在于其指定资源包中，防止旧根路径悄然复活。
+  // 功能退役后，旧根路径、中间迁移落点与最终实现均不得复活。
+  test("keeps retired assistant schema and client deleted", () => {
+    for (const path of [
+      "src/schemas/meta-agent.schema.ts",
+      "packages/resources/agent-config/src/schemas/meta-agent.schema.ts",
+      "packages/resources/agent-config/src/server/schemas/meta-agent.schema.ts",
+      "web/src/api/meta-agent.ts",
+      "packages/resources/agent-config/web/src/api/meta-agent.ts",
+      "packages/resources/agent-config/web/lib/meta-agent.ts",
+    ])
+      expect(existsSync(path), path).toBe(false);
+  });
+  // 29 个保留的源文件必须只存在于其指定资源包中，防止旧根路径悄然复活。
   test("removes every legacy source and retains its exact owner target", () => {
-    expect(RMD_04_MOVES).toHaveLength(31);
+    expect(RMD_04_MOVES).toHaveLength(29);
     for (const [source, rmd04Target, currentTarget] of RMD_04_MOVES) {
       expect(existsSync(source), `legacy source still exists: ${source}`).toBe(false);
       expect(existsSync(currentTarget ?? rmd04Target), `owner target is missing: ${currentTarget ?? rmd04Target}`).toBe(

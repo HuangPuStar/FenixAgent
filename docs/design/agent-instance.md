@@ -370,6 +370,13 @@ stateDiagram-v2
     reconciling --> unknown: timeout / disconnect
 ```
 
+> **实现现状（2026-09-23，非规范变更）**：以下只记录上述转移边的实现落点，本节状态枚举与转移表本身保持原样。
+>
+> - 实现只有五值状态 `stopped | starting | running | stopping | unknown`（`packages/agent-runtime/src/server/services/agent-instance-runtime-coordinator.ts:5`）；上图中 `unknown --> reconciling`、`reconciling --> stopped`、`reconciling --> unknown` 涉及的 `reconciling`，以及状态集合中的 `failed`，均未实现，`unknown → reconciling → stopped` 在实现里收敛为 `unknown → stopped`。
+> - 机器断连把实例置为 `unknown` 时（`packages/agent-runtime/src/server/transport/acp-ws-handler.ts` 的 `performMachineCleanup`（:522 起，置态调用在 :549）；`triggerMachineCleanupByMachineId`（:593 起，置态调用在 :617）），协调器在内存中记录该条目归属的 `machineId`（`agent-instance-runtime-coordinator.ts:34` 的 entry 字段，由 `handleRuntimeDisconnect` 的 `machineId` 入参写入，见 :107、:201），不进 `RuntimeSnapshot`（对外快照字段见 :63-73），也不进任何对外响应。
+> - 规范要求的 `cleanup_complete → stopped` 在实现中对应 `clean_slate_confirmed`：本次修复新增 `AgentInstanceRuntimeCoordinator.handleMachineCleanSlate(machineId): string[]`（`agent-instance-runtime-coordinator.ts:122`，服务层转发见 `agent-instance-service.ts:165-167`），只复位「归属该 `machineId` + 状态为 `unknown` + 无在飞 operation」的条目（判定见 :126-131），置为 `stopped` 并推进 generation（复位动作为私有 `#resolveUnknown`，:206）；条目若有在飞 operation，则先置延后标记（:127-130），待 operation 释放槽位后再复位（守卫与补做见 :264-265）。调用点位于 `acp-ws-handler.ts` 的 `clean_slate_confirmed` 分支（:372-404，复位调用在 :396），放在 `activateRemoteMachine` 的 try/catch 之外。
+> - 不覆盖范围：`stop`/`delete` 操作失败产生的 `unknown` 与 shutdown 排空产生的 `unknown` 不带机器归属，不参与该复位、保持 `unknown`；机器不重连时按设计保持 `unknown`。`unknown` 仍只放行 `stop`（gate 见 `agent-instance-runtime-coordinator.ts:227-228`）；shutdown 中也不参与复位（`:123`、`:264` 的 `!this.#shuttingDown` 守卫，原因见 :262-263：进程退出中不得把 drain 留下的未确认 runtime 伪装成 `stopped`）；delete 被断连 fence 后 `deleting` 残留属相邻缺口，本次不修。
+
 ## 7. 生命周期优先级与并发
 
 ### 7.1 固定优先级
@@ -777,6 +784,8 @@ staleCompletion
 - Machine 绑定连接世代并在断连后 bounded terminate-all；
 - 重连增加 `cleanup_complete`；
 - 主服务增加 unknown/reconciling gate。
+
+> 实现现状（2026-09-23）：此处的 gate 只放行 `stop`（实现见 `packages/agent-runtime/src/server/services/agent-instance-runtime-coordinator.ts:227-228`）；clean-slate 完成后的复位边按上文 6.3 状态转移的「实现现状」注记落地为 `unknown → stopped`，实现中没有 `reconciling`。本切片验收条文不变。
 
 验证：服务重启、Machine 离线、旧 epoch 和重复启动集成测试通过。
 

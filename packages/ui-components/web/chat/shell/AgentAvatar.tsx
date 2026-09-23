@@ -21,10 +21,7 @@ interface AgentAvatarProps {
  */
 export function AgentAvatar({ className }: AgentAvatarProps) {
   return (
-    <div
-      // agent-avatar：作为窄屏容器（如 MetaAgentPanel）隐藏头像的 CSS 作用域钩子
-      className={cn("agent-avatar w-8 h-8 rounded-lg bg-brand/8 items-center justify-center flex-shrink-0", className)}
-    >
+    <div className={cn("w-8 h-8 rounded-lg bg-brand/8 items-center justify-center flex-shrink-0", className)}>
       <AgentLogo size={20} />
     </div>
   );

@@ -260,19 +260,9 @@
   color: oklch(70.7% 0.022 261.325); /* text-gray-400 */
 }
 
-/* ── 加载失败态（`ERROR_STATE`） ────────────────────────────────────────
- *
- * 源 `.agent-editor-state p / strong`：说明 480px 上限，标题 14px。
- */
-.agent-editor-state > p {
-  max-width: 480px; /* max-w-120 */
-  font-size: 10px; /* text-3xs */
-}
-
-.agent-editor-state > strong {
-  font-size: 0.875rem; /* text-sm */
-  line-height: calc(1.25 / 0.875); /* text-sm 自带的行高 */
-}
+/* 加载失败态原在此给标题 / 说明补字号与宽度上限（源 `.agent-editor-state p / strong`）。
+ * 该角色已改用 `@fenix/ui-components/config/EmptyState`，标题、说明、重试按钮的排版与配色由库组件
+ * 决定，这里的 `> p` / `> strong` 两条子代规则随之删除——继续留着只会压住库组件自己的 `text-*`。 */
 
 /* ── 分区容器与说明块（`SECTION` / `SECTION_INTRO`） ─────────────────────
  *

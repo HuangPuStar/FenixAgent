@@ -1,15 +1,21 @@
 import "./chat-navigation-aids.css";
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import { createPortal } from "react-dom";
 import { useTranslation } from "react-i18next";
+import { PreviewRail, type PreviewRailItem } from "../../components/preview-rail";
 import { UI_COMPONENTS_NS } from "../../i18n/namespace";
-import { cn } from "../../lib/cn";
 import type { UserMessageEntry } from "../types";
 
 // 过多刻度会把导航误读成贯穿整屏的时间轴；保留首尾的均匀采样即可支持长会话定位。
 const MAX_VISIBLE_PROMPT_JUMPS = 14;
 const SYSTEM_REMINDER_PREFIX = "<system-reminder>";
+/**
+ * 预览卡正文的截断上限。
+ *
+ * beui 的 `DefaultPreview` 对 `description` 不做 `line-clamp`，几千字的提示词会撑出一张巨卡；
+ * 截断是「造 items 数据」的责任，不改组件本体（`components/preview-rail.tsx` 原样载入）。
+ */
+const PREVIEW_DESCRIPTION_MAX_LENGTH = 160;
 
 /** 判断用户条目是否为注入的 system-reminder 提示（不作为导航锚点）。 */
 function isSystemReminderPrompt(entry: UserMessageEntry): boolean {
@@ -34,31 +40,52 @@ function samplePromptJumps(entries: readonly UserMessageEntry[]): VisiblePromptJ
   });
 }
 
+/** 把提示词正文压成单行摘要，并按预览卡上限截断（超长时补省略号）。 */
+function summarizePrompt(content: string, untitled: string): string {
+  const summary = content.replace(/\s+/g, " ").trim() || untitled;
+  // 按码位而非 UTF-16 下标截断：中文与 emoji 混排时不会切出半个代理对。
+  const characters = [...summary];
+  return characters.length > PREVIEW_DESCRIPTION_MAX_LENGTH
+    ? `${characters.slice(0, PREVIEW_DESCRIPTION_MAX_LENGTH).join("")}…`
+    : summary;
+}
+
 interface PromptJumpRailProps {
   entries: UserMessageEntry[];
 }
 
-interface PromptPreview {
-  entry: UserMessageEntry;
-  sourceIndex: number;
-  left: number;
-  top: number;
-}
-
 /**
- * 宽屏会话提示词导航，不参与消息数据写入。
+ * 会话提示词导航轨，不参与消息数据写入。
  *
- * 复制自 `packages/agent-runtime/web/components/chat/chat-navigation-aids.tsx`（旧路径，已于 2026-09-21 由 f2741a82d 删除）。
- * 纯化改动点：`@/src/lib/types` → 包内 `../types`；命名空间常量与样式表路径收敛到包内
- * （`../../i18n/namespace`、`../css/chat-navigation-aids.css`）；键加 `chat.components.` 前缀。
+ * 刻度轨本体是 beui 的 `PreviewRail`（`components/preview-rail.tsx`，原样载入、未改动逻辑与类名）：
+ * `w-12` 轨道、`h-0.5 w-12` 刻度、hover 时的金字塔缩放与浮出的预览卡都由它提供。
+ * 本组件只做「造 items + 接回会话」：过滤 system-reminder、等距采样上限、滚动跟随（scroll-spy）、
+ * 点击定位、`data-active-prompt` 跨组件契约，以及用自己的外层元素承载浮层定位
+ * （beui 的根是「轨道 + 内容」并排的容器，这里是浮在会话之上的轨道，故不把 ConversationContent 塞成它的 children）。
  */
 export function PromptJumpRail({ entries }: PromptJumpRailProps) {
   const { t } = useTranslation(UI_COMPONENTS_NS);
-  const railRef = useRef<HTMLElement>(null);
+  const anchorRef = useRef<HTMLDivElement>(null);
   const promptEntries = useMemo(() => entries.filter((entry) => !isSystemReminderPrompt(entry)), [entries]);
   const visiblePrompts = useMemo(() => samplePromptJumps(promptEntries), [promptEntries]);
   const [activeId, setActiveId] = useState(promptEntries[0]?.id ?? "");
-  const [preview, setPreview] = useState<PromptPreview | null>(null);
+  const railLabel = t("chat.components.promptJump.title");
+  const untitledPrompt = t("chat.components.promptJump.untitled");
+  const items = useMemo<PreviewRailItem[]>(
+    () =>
+      visiblePrompts.map(({ entry, sourceIndex }) => {
+        // 正文摘要不做 line-clamp 兜底，超长时在数据侧截断；无障碍名沿用替换前的完整摘要。
+        const summary = entry.content.replace(/\s+/g, " ").trim();
+        const displaySummary = summary || untitledPrompt;
+        return {
+          id: entry.id,
+          label: `#${sourceIndex + 1}`,
+          description: summarizePrompt(entry.content, untitledPrompt),
+          ariaLabel: `${railLabel} ${sourceIndex + 1}/${promptEntries.length}: ${displaySummary}`,
+        };
+      }),
+    [promptEntries.length, railLabel, untitledPrompt, visiblePrompts],
+  );
 
   useEffect(() => {
     if (!visiblePrompts.some(({ entry }) => entry.id === activeId)) {
@@ -77,12 +104,12 @@ export function PromptJumpRail({ entries }: PromptJumpRailProps) {
   }, [activeId]);
 
   useEffect(() => {
-    const rail = railRef.current;
-    const conversation = rail?.parentElement;
-    if (!rail || !conversation || visiblePrompts.length === 0) return;
+    const anchor = anchorRef.current;
+    const conversation = anchor?.parentElement;
+    if (!anchor || !conversation || visiblePrompts.length === 0) return;
 
     const scrollRoot = [...conversation.children].find((element): element is HTMLElement => {
-      if (!(element instanceof HTMLElement) || element === rail) return false;
+      if (!(element instanceof HTMLElement) || element === anchor) return false;
       const style = window.getComputedStyle(element);
       return /(auto|scroll)/.test(`${style.overflow} ${style.overflowY}`);
     });
@@ -129,87 +156,23 @@ export function PromptJumpRail({ entries }: PromptJumpRailProps) {
 
   if (promptEntries.length <= 1) return null;
   return (
-    <>
-      <nav
-        ref={railRef}
-        // 源 `chat-navigation-aids.css` 的 `.chat-prompt-jump-index`：贴会话左缘的刻度轨（宽屏才显示）。
-        // 定位偏移、高度上限与宽屏媒体查询在 `./chat-navigation-aids.css` 的 `.chat-prompt-rail`。
-        className="chat-prompt-rail absolute top-1/2 z-[8] hidden h-max w-7 -translate-y-1/2"
-        data-slot="chat-prompt-jump-rail"
-        aria-label={t("chat.components.promptJump.title")}
-      >
-        <ol
-          className="m-0 grid list-none grid-flow-row auto-rows-2.5 content-start gap-y-1.5 py-0.75"
-          data-slot="chat-prompt-jump-list"
-        >
-          {visiblePrompts.map(({ entry, sourceIndex }) => {
-            const summary = entry.content.replace(/\s+/g, " ").trim();
-            const displaySummary = summary || t("chat.components.promptJump.untitled");
-            const isActive = entry.id === activeId;
-            return (
-              <li key={entry.id} className="h-2.5 w-6.5">
-                <button
-                  type="button"
-                  // 源 `__item`：整条刻度是按钮，父选子（hover / focus-visible）由 `group` 承担。
-                  className="group relative inline-flex h-2.5 w-6.5 min-w-0 min-h-0 cursor-pointer items-center self-start border-0 bg-transparent p-0 focus-visible:outline-none"
-                  data-slot="chat-prompt-jump-item"
-                  aria-controls={`chat-entry-${entry.id}`}
-                  aria-current={isActive ? "location" : undefined}
-                  aria-label={`${t("chat.components.promptJump.title")} ${sourceIndex + 1}/${promptEntries.length}: ${displaySummary}`}
-                  onClick={() => {
-                    document
-                      .getElementById(`chat-entry-${entry.id}`)
-                      ?.scrollIntoView({ behavior: "smooth", block: "center" });
-                    setActiveId(entry.id);
-                  }}
-                  onFocus={(event) => {
-                    const bounds = event.currentTarget.getBoundingClientRect();
-                    setPreview({ entry, sourceIndex, left: bounds.right + 1, top: bounds.top + bounds.height / 2 });
-                  }}
-                  onBlur={() => setPreview(null)}
-                  onMouseEnter={(event) => {
-                    const bounds = event.currentTarget.getBoundingClientRect();
-                    setPreview({ entry, sourceIndex, left: bounds.right + 1, top: bounds.top + bounds.height / 2 });
-                  }}
-                  onMouseLeave={() => setPreview(null)}
-                >
-                  {/* 源 `__tick` 与 `:hover/:focus-visible`、`.is-active` 三态：选中态与其余态**互斥**列出，
-                      不依赖两条工具类的生成顺序（选中项悬停时仍是选中态的宽度/颜色，与源一致）。 */}
-                  <span
-                    className={cn(
-                      "h-0.5 shrink-0 rounded-full [transition:width_150ms_ease,background-color_150ms_ease] motion-reduce:[transition:none]",
-                      isActive
-                        ? "w-4.75 bg-gray-800"
-                        : "w-2 max-w-4.75 bg-gray-300 group-hover:w-3.25 group-hover:bg-gray-500 group-focus-visible:w-3.25 group-focus-visible:bg-gray-500",
-                    )}
-                    data-slot="chat-prompt-jump-tick"
-                    aria-hidden="true"
-                  />
-                </button>
-              </li>
-            );
-          })}
-        </ol>
-      </nav>
-      {preview &&
-        createPortal(
-          <span
-            // 源 `__preview`（含 `> small` 与 `> span` 的三行截断）；阴影在 `./chat-navigation-aids.css`。
-            className="chat-prompt-preview pointer-events-none fixed z-30 grid w-56.5 -translate-y-1/2 gap-1 rounded-lg border border-slate-200 bg-white/97 px-2.75 py-2.25 text-left text-slate-600 backdrop-blur-sm motion-reduce:[transition:none]"
-            style={{ left: preview.left, top: preview.top }}
-            data-slot="chat-prompt-jump-preview"
-            aria-hidden="true"
-          >
-            <small className="text-3xs leading-tight text-gray-400">
-              {preview.sourceIndex + 1}/{promptEntries.length}
-            </small>
-            <span className="line-clamp-3 overflow-hidden text-3xs leading-normal text-gray-500">
-              {preview.entry.content.replace(/\s+/g, " ").trim() || t("chat.components.promptJump.untitled")}
-            </span>
-          </span>,
-          document.body,
-        )}
-    </>
+    // 浮层锚点：轨道贴会话列左缘的留白（`left` 见 `./chat-navigation-aids.css`）。
+    // beui 的根是「轨道 + 内容」并排的容器，这里只需要轨道浮在会话之上，故由本元素承载定位；
+    // `right-4` 给根一个确定宽度 —— 预览卡容器是根的 `absolute right-4 left-16`，
+    // 宽度塌成轨道宽（48px）会让左 64px 的预览卡变成零宽。
+    <div ref={anchorRef} className="chat-prompt-rail-anchor absolute top-1/2 right-4 z-[8] -translate-y-1/2">
+      <PreviewRail
+        items={items}
+        label={railLabel}
+        activeId={activeId}
+        onActiveChange={setActiveId}
+        // 点击刻度沿用浏览器平滑定位，不修改会话消息或 Conversation 的滚动实现。
+        onItemSelect={(item) => {
+          document.getElementById(`chat-entry-${item.id}`)?.scrollIntoView({ behavior: "smooth", block: "center" });
+        }}
+        highlightActive
+      />
+    </div>
   );
 }
 

@@ -9,23 +9,15 @@
  * 导出面覆盖当前跨包消费方（2026-09-21 实测）：
  *   - `task` / `prod-view` 取 `agentApi`；
  *   - `model-management` 的编辑器纯逻辑用例取 `agent-editor-model` 的转换函数与校验 schema；
- *   - `workflow` 不再从包根取任何符号：它的 `useWorkflowMetaAgent` 经窄子路径
- *     `@fenix/agent-config/web/lib/meta-agent` 取 `ensureMetaAgent`（原先走包根 barrel，会把本包整棵
- *     页面图连带 mcp / knowledge / memory / model-management 的 web 面拖进 workflow 的浏览器可达面，
- *     见 `packages/resources/workflow/web/index.ts` 的头部说明）；该包仍自持环境就绪逻辑，`useMetaAgent`
- *     没有跨包消费方；
  *   - 宿主 WebShell 的 `shell/use-shell-navigation.ts` 取 `sidebarConfigApi`（导航裁剪的隐藏列表），
- *     宿主 `shell/AgentSidebarTree.tsx` 取 `agentApi` 与 `ensureMetaAgent`（该文件同时用 `agentApi`，
- *     包根依赖照旧，故 `ensureMetaAgent` 仍在本入口的导出面内）；
+ *     宿主 `shell/use-agent-sidebar-tree.ts` 取 `agentApi`；
  *   - 宿主聊天容器（`apps/web` 的 ChatArea）取 `loadBoundMcps`，把「Agent 已绑定的 MCP 选项」注入
  *     `@fenix/ui-components` 聊天面板的 `boundMcps` 端口（查询为何落在这里见 `./lib/bound-mcps.ts`）。
  *   - agent-panel 的三个页面原本寄居宿主 `apps/web/src/pages/agent-panel/pages/`，§1.6 T11e 随
  *     「宿主剩余页面归位」迁入本包，route adapter 改直连本入口（原先经 vite / tsconfig 的
  *     `@/src/pages/...` 桥接别名）。它们的自有字典同批归位，由本包 `./web/i18n` 注册。
- * 这些符号都在本文件的导出面内，消费方不得深入 `web/pages/**` 这类实现路径。收窄浏览器可达面另有两条
- * 已落地的子路径出口（`exports` 里显式声明，非深层路径）：`./web/i18n`（只带字典，见 `./i18n/index.ts`）
- * 与 `./web/lib/meta-agent`（只带 Meta Agent 的 ensure 客户端）。子路径不等于「随便深链」——新增一条
- * 必须是因为包根 barrel 会把无关的页面图带进对方的浏览器 bundle，且出口文件自身小巧、无页面依赖。
+ * 这些符号都在本文件的导出面内，消费方不得深入 `web/pages/**` 这类实现路径。
+ * 窄子路径须在 `exports` 显式声明，只供消费方避开无关页面图，不允许随意深链。
  *
  * 宿主注册 i18n 走子路径 `@fenix/agent-config/web/i18n`（见 `./i18n/index.ts` 的说明）：
  * 从根入口取会把整棵编辑器页面图拉进首屏 bundle。
@@ -37,7 +29,6 @@ export { AgentSitesCard } from "./components/agent-panel/AgentSitesCard";
 export { MountSiteDialog } from "./components/agent-panel/MountSiteDialog";
 export { SiteFrame } from "./components/agent-panel/SiteFrame";
 export { type SiteEntry, SiteTabsBar } from "./components/agent-panel/SiteTabsBar";
-export { useMetaAgent } from "./hooks/use-meta-agent";
 export {
   AGENT_HOME_NS,
   AGENTS_NS,
@@ -50,7 +41,6 @@ export {
   dashboardResources,
 } from "./i18n";
 export { loadBoundMcps } from "./lib/bound-mcps";
-export * from "./lib/meta-agent";
 export { AgentFormDialog, type AgentFormDialogProps } from "./pages/agent-panel/agent-editor/AgentFormDialog";
 export * from "./pages/agent-panel/agent-editor/agent-editor-model";
 export {

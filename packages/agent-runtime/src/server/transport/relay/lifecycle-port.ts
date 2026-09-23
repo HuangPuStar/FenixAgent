@@ -17,6 +17,19 @@ export function resetRelayLifecyclePort(): void {
   relayLifecyclePort = null;
 }
 
+/**
+ * 读取当前绑定，未绑定时返回 `null`（与 `getRelayLifecyclePort` 不同，不做 fail-fast）。
+ *
+ * 供测试替身「保存—还原」使用：默认绑定是 `chat-channel-bootstrap` 的**模块级副作用**，测试里一次
+ * `resetRelayLifecyclePort()` 会把绑定置空，而同进程后续测试文件再 import 该装配模块只会命中模块缓存、
+ * 不会重新绑定（实测：`acp-idle-monitor` 的回收用例会因 `closeRelayConnectionsForIdleReclaim` 抛
+ * 「port is not bound」被 sweep 吞掉，表现为实例静默不回收）。因此替换绑定的用例必须还原前一次绑定，
+ * 不能留下 `null`。
+ */
+export function tryGetRelayLifecyclePort(): RelayLifecyclePort | null {
+  return relayLifecyclePort;
+}
+
 function getRelayLifecyclePort(): RelayLifecyclePort {
   if (!relayLifecyclePort) throw new Error("Relay lifecycle port is not bound");
   return relayLifecyclePort;

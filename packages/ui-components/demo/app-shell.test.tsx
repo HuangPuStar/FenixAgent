@@ -42,7 +42,7 @@ const window = initializeHappyDomWindow(new Window());
 (globalThis as any).DOMRect = window.DOMRect;
 // biome-ignore lint/suspicious/noExplicitAny: 同上
 (globalThis as any).Element = window.Element;
-// biome-ignore lint/suspicious/noExplicitAny: 同上（主题切换按钮依赖 matchMedia 与事件）
+// biome-ignore lint/suspicious/noExplicitAny: 同上（组件的事件路径需要事件构造器）
 (globalThis as any).Event = window.Event;
 // biome-ignore lint/suspicious/noExplicitAny: 同上
 (globalThis as any).MouseEvent = window.MouseEvent;
@@ -100,7 +100,7 @@ function readNavButtons(): HTMLButtonElement[] {
 }
 
 function renderApp() {
-  // App 依赖 ThemeProvider（ThemeToggle）与 i18n 实例，因此与 main.tsx 一样用 Providers 包裹。
+  // App 依赖 ThemeProvider（useTheme 上下文）与 i18n 实例，因此与 main.tsx 一样用 Providers 包裹。
   act(() =>
     root.render(
       <Providers>

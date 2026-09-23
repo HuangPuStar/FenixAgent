@@ -158,7 +158,14 @@ test("真实 profile 装配后各包的路由进入对应槽", async () => {
 
   await bootstrapServerAssembly({ mountContribution: mountServerRouteContribution });
 
-  expect(slottedRoutes(WEB_SLOT)).toEqual([
+  // 直接检查真实装配后的路由表，防止已退役端点从其它贡献重新挂入。
+  const webRoutes = slottedRoutes(WEB_SLOT);
+  expect(webRoutes).not.toContain("POST /meta-agent/ensure");
+  const webApp = new Elysia({ prefix: "/web" });
+  for (const routes of takeRouteContributions(WEB_SLOT)) webApp.use(routes);
+  expect(webApp.routes.some((route) => route.path === "/web/meta-agent/ensure")).toBe(false);
+
+  expect(webRoutes).toEqual([
     // identity
     "GET /api-keys",
     "POST /api-keys",
@@ -252,7 +259,6 @@ test("真实 profile 装配后各包的路由进入对应槽", async () => {
     "DELETE /agent-sites/agent-configs/:agentConfigId/sites/:siteAppId",
     "ALL /agent-sites/apps/:id/api/*",
     "POST /agent-generation",
-    "POST /meta-agent/ensure",
     // channel
     "GET /channels/providers",
     "GET /channels/hermes/status",

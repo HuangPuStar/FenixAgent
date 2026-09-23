@@ -46,6 +46,10 @@ void i18n.use(initReactI18next).init({
  *
  * 阶段四已解除的两条跨边界合约不再列入例外：`chat-activity-chain`（唯一外部引用方是工具片）、
  * `chat-conversation`（唯一外部引用方是加载片）都随本阶段迁移一并删除。
+ *
+ * 提示词刻度轨的替换（`PromptJumpRail` 改为消费 beui 的 `PreviewRail`）不新增例外：旧的两条样式钩子
+ * `chat-prompt-rail` / `chat-prompt-preview` 随自定义刻度与预览卡一并退役，进入下面的「不得回流」清单；
+ * 刻度轨内部类名全部来自 beui（`w-12` / `h-0.5` / `min-h-80` 一类工具类），本清单不登记工具类。
  */
 export const MIGRATED_CLASS_NAMES = [
   "agent-badge",
@@ -124,6 +128,10 @@ export const MIGRATED_CLASS_NAMES = [
   "chat-prompt-jump-index__list",
   "chat-prompt-jump-index__preview",
   "chat-prompt-jump-index__tick",
+  // 提示词刻度轨改由 beui 的 `PreviewRail` 渲染（`web/components/preview-rail.tsx`）后退役的两条：
+  // 浮层锚点与自定义预览卡的样式钩子，不得随替换回流（新锚点类名是 `chat-prompt-rail-anchor`）。
+  "chat-prompt-preview",
+  "chat-prompt-rail",
   "chat-question-body",
   "chat-question-copy",
   "chat-question-options",

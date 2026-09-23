@@ -1,3 +1,4 @@
+import { EmptyState } from "@fenix/ui-components/config/EmptyState";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -8,6 +9,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@fenix/ui-components/ui/alert-dialog";
+import { Badge } from "@fenix/ui-components/ui/badge";
 import { Button } from "@fenix/ui-components/ui/button";
 import { Sheet, SheetContent, SheetDescription, SheetTitle } from "@fenix/ui-components/ui/sheet";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@fenix/ui-components/ui/tabs";
@@ -230,15 +232,19 @@ function AgentEditorBody(
       />
     );
   if (editor.loadError)
+    // 读取失败态走库内统一状态块（§4.1「空态 / 失败 / 无权限刻意共用一个骨架」）：图标、标题、
+    // 说明、重试按钮的排版与配色都由 `EmptyState` 决定，本处只传文案与 `role="alert"`。
+    // `ERROR_STATE` 保留为容器定位类（撑满 + 居中）；原来给标题/说明补字号的伴随 CSS 规则随之下沉删除。
     return (
-      <div className={ERROR_STATE} role="alert">
-        <AlertTriangle className="size-6 text-destructive" />
-        <strong>{t("editor.loadFailed")}</strong>
-        <p>{editor.loadError.message}</p>
-        <Button type="button" onClick={editor.retry}>
-          {t("editor.retry")}
-        </Button>
-      </div>
+      <EmptyState
+        role="alert"
+        className={ERROR_STATE}
+        tone="danger"
+        icon={<AlertTriangle />}
+        title={t("editor.loadFailed")}
+        description={editor.loadError.message}
+        action={{ label: t("editor.retry"), onClick: editor.retry }}
+      />
     );
   if (!editor.data) return null;
   const data = editor.data;
@@ -298,7 +304,9 @@ function AgentEditorBody(
                       <strong>{t(`editor.sections.${id}`)}</strong>
                       <small>{t(`editor.sectionCaptions.${id}`)}</small>
                     </span>
-                    <em className={MAP_BADGE}>{getSectionStatus(id)}</em>
+                    <Badge variant="secondary" className={MAP_BADGE}>
+                      {getSectionStatus(id)}
+                    </Badge>
                   </TabsTrigger>
                 ))}
               </TabsList>

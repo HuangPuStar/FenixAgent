@@ -45,7 +45,7 @@ setupDemoI18n();
 export function Providers({ children }: { children: ReactNode }) {
   return (
     <I18nextProvider i18n={demoI18n}>
-      <ThemeProvider defaultTheme="system">{children}</ThemeProvider>
+      <ThemeProvider>{children}</ThemeProvider>
     </I18nextProvider>
   );
 }

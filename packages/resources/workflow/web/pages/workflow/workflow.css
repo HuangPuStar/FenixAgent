@@ -495,8 +495,6 @@
   overflow: hidden;
 }
 
-/* ── Meta Agent Chat 侧边栏（白色简洁面板，复用 ChatPanel 原生样式） ── */
-
 /* ── Node Config Popover ── */
 .wf-node-popover {
   width: 320px;

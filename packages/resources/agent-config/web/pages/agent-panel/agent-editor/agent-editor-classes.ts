@@ -67,8 +67,8 @@ export const MAP_ICON =
   "agent-editor-map-icon grid size-8 place-items-center rounded-md bg-slate-100 text-slate-500 " +
   "md:max-2xl:size-6.5 " +
   "group-data-[state=active]/maprow:bg-white group-data-[state=active]/maprow:text-blue-600";
-/** 导航条目状态徽标：10px；760–1119 与 ≤759 隐藏。 */
-export const MAP_BADGE = "text-3xs [font-weight:400] not-italic text-gray-400 " + "md:max-lg:hidden max-md:hidden";
+/** 导航条目状态徽标：刻度与配色归 `ui/badge`（`variant="secondary"`），此处只保留两档窄桌面的隐藏。 */
+export const MAP_BADGE = "md:max-lg:hidden max-md:hidden";
 /**
  * 导航条目文案：标题继承行色（design 层 `color: inherit`），说明固定灰。
  * 标题/说明的字号、行高、字重与单行省略，以及 760–1119 隐藏说明，见同名 CSS 的
@@ -104,9 +104,10 @@ export const FOOTER_ACTIONS =
   "md:max-2xl:[&>[data-slot=button]]:!h-7.5";
 /** 只读 / 资源失败提示条：共用 1px 下分隔线 + 8px×18px 内边距 + 11px 字号。 */
 export const NOTICE_BAR = "border-b border-border-subtle px-4.5 py-2 text-3xs";
-/** 加载失败态：居中列 + 300px 最小高度；说明与标题的宽度/字号见同名 CSS 的 `.agent-editor-state`。 */
+/** 加载失败态容器定位：居中列 + 300px 最小高度。内容排版（图标 / 标题 / 说明 / 重试）归 `config/EmptyState`，
+ * 原 `agent-editor-state` 语义类随其两条子代规则一起删除——已没有样式表定义它，留着只是空钩子。 */
 export const ERROR_STATE =
-  "agent-editor-state flex h-full min-h-75 flex-col items-center justify-center gap-2.5 p-6 text-center text-text-muted";
+  "flex h-full min-h-75 flex-col items-center justify-center gap-2.5 p-6 text-center text-text-muted";
 /** 分区说明块：底部间距在 760–1399 收到 20px、短视口（≤700h）收到 12px（互斥条件组合，三段覆盖见同名 CSS）。 */
 export const SECTION_INTRO = "agent-editor-section__intro mb-6.5";
 /** 分区容器：720px 居中 + 入场动画（宽度与动画在同名 CSS；关键帧留在 `agent-editor-retained.css`）。 */

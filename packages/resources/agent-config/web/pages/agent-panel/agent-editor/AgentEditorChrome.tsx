@@ -1,4 +1,5 @@
 import "./AgentEditorChrome.css";
+import { StatusBadge } from "@fenix/ui-components/config/StatusBadge";
 import { cn } from "@fenix/ui-components/lib/cn";
 import { Button } from "@fenix/ui-components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@fenix/ui-components/ui/dialog";
@@ -90,13 +91,16 @@ export function AgentEditorHeader({
             <h2 className="agent-editor-chrome-title text-sm text-slate-800" data-slot="editor-title">
               {title}
             </h2>
-            {/* 状态 pill 的 color/background 源里引用未定义 token（--color-success），实际不生效，故只迁有效声明。 */}
-            <em
-              className={cn("rounded-full px-1.5 py-0.5 text-3xs not-italic", loading && "invisible")}
-              data-slot="editor-status-pill"
-            >
-              {readOnly ? t("editor.readOnlyStatus") : t("editor.runningStatus")}
-            </em>
+            {/* 运行状态 pill 改用库内状态徽标：配色（含 dark 变体）与刻度归 `config/StatusBadge`，
+                文案仍由本处经 `label` 注入 —— 库组件只收语义（色调），不绑定业务词表。
+                原实现是 `<em>` + 手写药丸类，其 color/background 引用了未定义 token（--color-success）而
+                实际无配色，一并被这次替换修掉（状态色从此只由 `tone` 决定）。 */}
+            <StatusBadge
+              status={readOnly ? "readOnly" : "running"}
+              label={readOnly ? t("editor.readOnlyStatus") : t("editor.runningStatus")}
+              tone={readOnly ? "neutral" : "success"}
+              className={cn(loading && "invisible")}
+            />
           </div>
           <p
             className="mt-0.5 flex items-center gap-1.75 overflow-hidden text-3xs whitespace-nowrap text-slate-500"

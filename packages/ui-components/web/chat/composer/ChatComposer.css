@@ -9,9 +9,8 @@
  * 值取类串的**生效值**，逐字等价换算，未调整任何数值；扁平工具类（`rounded-2xl`、`border-slate-200`、
  * `backdrop-blur-md`、`focus-within:outline-0` 与任意属性的 `[transition:…]`）仍留在 `className`。
  *
- * 为什么类名不复用源 `.chat-composer-card`：宿主 `apps/web/src/index.css` 至今保留
- * `.meta-agent-panel .chat-composer-wrapper` 一族的旧规则，复用会让那批已下线声明重新生效；
- * `web/__tests__/chat-style-migration-helpers.ts` 也把源类名列入「不得回流」清单。故用新语义名。
+ * 类名不复用源 `.chat-composer-card`：`web/__tests__/chat-style-migration-helpers.ts`
+ * 把源类名列入「不得回流」清单，避免旧样式复活。故用新语义名。
  *
  * 层叠（与迁移前逐条一致）：
  * - 本文件不包 `@layer`：源样式表本就未分层，未分层声明在层叠中压过 `@layer utilities` 的工具类。

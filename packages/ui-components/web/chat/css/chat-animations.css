@@ -13,6 +13,7 @@
  * 消费方（按名引用，改名必须同步这几处）：
  *   - `view/ChatView.tsx`：三点脉冲 `animate-[loadingDotBounce_…]`（暗色换 `loadingDotBounceDark`）、
  *     思考中微光 `animate-[shimmerSlide_2s_ease-in-out_infinite]`；
+ *   - `primitives/shimmer.css`：级联微光 `.shimmer-cascade-char` 的 `animation: shimmerSlide 2s ease-in-out infinite`；
  *   - `view/ChatView.tsx` + `view/chat-navigation-aids.tsx`：提示词导航高亮
  *     `data-[active-prompt]:animate-[chat-active-prompt-flash_900ms_ease-out]`；
  *   - `shell/AgentBadge.tsx`：骨架屏 `animate-[agent-badge-pulse_2s_cubic-bezier(0.4,0,0.6,1)_infinite]`。

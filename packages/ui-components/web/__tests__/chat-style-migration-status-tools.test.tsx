@@ -211,7 +211,7 @@ describe("chat 样式迁移：工具时间线", () => {
     expect(toolRow(false)).not.toContain("-ml-8");
   });
 
-  // 提示词导航轨：轨道/列表/刻度/预览都改成锚点 + 工具类（含选中态与悬停态互斥）。
+  // 提示词导航轨：刻度与预览卡改为 beui 的 `PreviewRail` 原样渲染，本组件只剩浮层锚点与工具类。
   test("提示词导航渲染结果不含已迁移的语义类名", () => {
     const entries: UserMessageEntry[] = [
       { type: "user_message", id: "prompt-0", content: "第一条" },
@@ -220,19 +220,19 @@ describe("chat 样式迁移：工具时间线", () => {
     const html = renderToStaticMarkup(createElement(PromptJumpRail, { entries }));
 
     expectNoLegacyClasses(html);
-    expect(html).toContain('data-slot="chat-prompt-jump-rail"');
-    expect(html).toContain('data-slot="chat-prompt-jump-list"');
-    expect(html).toContain('data-slot="chat-prompt-jump-item"');
-    expect(html).toContain('data-slot="chat-prompt-jump-tick"');
-    // 宽屏才显示：源 `@media (min-width: 1180px) and (min-height: 620px)` 已下沉到组件同目录的
-    // `chat-navigation-aids.css`（`.chat-prompt-rail`），`className` 里只留 `hidden` 兜底。
-    expect(classTokens(html)).toContain("chat-prompt-rail");
-    expect(readChatSource("view/chat-navigation-aids.css")).toContain(
-      "@media (min-width: 1180px) and (min-height: 620px)",
-    );
-    // 选中刻度与其余刻度互斥（选中态不带 hover 变宽类）。
-    expect(html).toContain("w-4.75 bg-gray-800");
-    expect(html).toContain("group-hover:w-3.25");
+    // beui 的锚点（`data-slot` 与轨道/刻度类名都是它自带的，未改动）。
+    expect(html).toContain('data-slot="preview-rail-item"');
+    expect(html).toContain('data-slot="preview-rail-tick"');
+    expect(html).toContain("w-12");
+    expect(html).toContain("h-0.5");
+    expect(html).toContain("origin-left");
+    // 浮层定位只剩锚点这一条自定义类名（贴会话列左缘）。
+    expect(classTokens(html)).toContain("chat-prompt-rail-anchor");
+    // 宽屏媒体查询随替换作废：整轨窄屏也显示（注释里对旧查询的引用不算，先剥掉注释再断言）。
+    const railCss = readChatSource("view/chat-navigation-aids.css").replace(/\/\*[\s\S]*?\*\//g, "");
+    expect(railCss).not.toContain("@media");
+    expect(railCss).not.toContain(".chat-prompt-rail {");
+    expect(railCss).not.toContain(".chat-prompt-preview");
   });
 });
 
