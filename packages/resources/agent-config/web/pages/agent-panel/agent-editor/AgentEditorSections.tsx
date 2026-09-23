@@ -187,7 +187,12 @@ function Capabilities({ form, data, disabled }: { form: Props["form"]; data: Pro
       />
       {/* 三个能力页签改走 `ui/tabs`：`id` / `aria-controls` / `aria-labelledby` / `aria-selected`、
           左右方向键与 roving tabindex 原来都由本处手写维护，现在全部由 Radix 生成——语义与键盘行为
-          逐条等价（原实现就是照这套契约手写的），少掉的只是自绘的 `data-active` 与下划线伪元素。 */}
+          逐条等价（原实现就是照这套契约手写的），少掉的只是自绘的 `data-active` 与下划线伪元素。
+
+          注意本组件是**嵌套**在 `AgentFormDialog` 的 workspace `Tabs`（桌面为 `vertical`）里的：
+          朝向相关的尺寸由库内 `TabsList` / `TabsTrigger` 自己的 `data-orientation` 锚定（见
+          `ui/tabs.tsx` 的 `TabsOrientationContext`），否则外层的 vertical 变体会被 group 选择器
+          穿透进来、把这里撑成竖排（实测高度 32.7px → 94.3px，下划线变成左侧竖条）。 */}
       <Tabs value={kind} onValueChange={(value) => setKind(value as keyof typeof capabilityIcons)}>
         <TabsList variant="line" className={CAPABILITY_TABS}>
           {tabs.map((item) => {
