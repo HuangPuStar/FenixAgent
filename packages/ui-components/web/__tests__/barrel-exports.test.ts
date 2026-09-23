@@ -30,6 +30,7 @@ const EXPECTED_EXPORTS: Record<string, readonly string[]> = {
     "AgentBadgeSkeleton",
     "AssistantBubble",
     "CARD_STYLES",
+    "CHAT_COMPOSER_WIDTH_CLASS",
     "ChatComposer",
     "ChatHeader",
     "ChatInteractionRegion",

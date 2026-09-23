@@ -28,7 +28,7 @@ import { forwardRef, useCallback, useEffect, useImperativeHandle, useMemo, useRe
 import { useTranslation } from "react-i18next";
 import { UI_COMPONENTS_NS } from "../../i18n/namespace";
 import { Button } from "../../ui/button";
-import { ChatComposer } from "../composer/ChatComposer";
+import { CHAT_COMPOSER_WIDTH_CLASS, ChatComposer } from "../composer/ChatComposer";
 import { derivePendingPermissions, deriveTodoItems } from "../lib/chat-derived-state";
 import { extractChangedFiles } from "../lib/extract-changed-files";
 import { classifyToolSemantic } from "../lib/tool-semantic";
@@ -345,15 +345,22 @@ export const ChatInterface = forwardRef<ChatInterfaceHandle, ChatInterfaceProps>
           ) : pendingQuestions.length > 0 ? (
             <QuestionPanel questions={pendingQuestions} onRespond={onRespondQuestion} />
           ) : (
-            <ChatStatusPanel
-              todos={todoItems}
-              tasks={periTasks}
-              tasksLoaded={periTasksLoaded}
-              reconnecting={Boolean(connectionState && connectionState !== "connected")}
-              changedFiles={changedFiles}
-              onOpenTask={renderPeriTaskDetail ? setSelectedPeriTask : undefined}
-              onPreviewFile={agentId && onOpenWorkspaceFile ? (path) => onOpenWorkspaceFile(agentId, path) : undefined}
-            />
+            // 状态面板与下方的输入岛共用同一个宽度容器（`CHAT_COMPOSER_WIDTH_CLASS`，定义见
+            // `../composer/ChatComposer`）：面板自身不再声明宽度，宽度由这个容器给，二者逐像素
+            // 等宽同轴。改回「面板自带 px 台阶」会让它在根字号不是 16px 时与输入岛脱钩（2026-09-23）。
+            <div className={CHAT_COMPOSER_WIDTH_CLASS}>
+              <ChatStatusPanel
+                todos={todoItems}
+                tasks={periTasks}
+                tasksLoaded={periTasksLoaded}
+                reconnecting={Boolean(connectionState && connectionState !== "connected")}
+                changedFiles={changedFiles}
+                onOpenTask={renderPeriTaskDetail ? setSelectedPeriTask : undefined}
+                onPreviewFile={
+                  agentId && onOpenWorkspaceFile ? (path) => onOpenWorkspaceFile(agentId, path) : undefined
+                }
+              />
+            </div>
           )}
 
           {/* Error banner */}

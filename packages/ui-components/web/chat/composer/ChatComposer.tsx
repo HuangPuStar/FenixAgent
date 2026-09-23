@@ -42,6 +42,25 @@ export interface ComposerFilePickerRenderProps {
   onSelect: (file: ComposerFileInfo) => void;
 }
 
+/**
+ * 输入岛卡片的宽度容器 —— **输入岛宽度的唯一来源**，贴在输入岛顶部的卡片必须复用它。
+ *
+ * 输入岛的实际宽度由这三个类共同决定，且三者都随根字号走：`max-w-205` = 205 × 0.25rem、
+ * `px-4` / `max-md:px-2.5` = 4 / 2.5 × 0.25rem。本应用根字号是 13px（`apps/web/src/index.css`
+ * 的 base 层），`rem` 刻度整体是 0.8125 倍，所以输入岛宽列下是 `666.25px - 2 × 13px = 640.25px`，
+ * 而不是按 16px 根字号算出来的 788px。
+ *
+ * 为什么导出（2026-09-23）：状态面板（`ChatStatusPanel`）此前在 `panels/chat-status-panel.css`
+ * 里自带一条 **px 台阶** `min(756px, calc(100% - 64px))`，与输入岛的 rem 刻度不同源——根字号一变，
+ * 两者立刻脱钩：756px 比输入岛的 640.25px 每侧宽 58px，面板不再是「贴在输入岛顶部」的半圆卡。
+ * 修法不是把 756 改成另一个数，而是让两者共用一个容器（见 `../shell/ChatInterface` 的渲染处）：
+ * 复用它即逐像素等宽同轴，根字号、上限或内边距怎么变都不会再分叉。
+ *
+ * 契约：只取它的**水平**几何（宽度上限 + 左右内边距 + 居中）；垂直节奏（`pt` / `pb`）由调用处各自给。
+ * 改这里等于同时改输入岛与顶部所有卡片的宽度 —— 顶部卡片因此不允许再各自声明 `width`。
+ */
+export const CHAT_COMPOSER_WIDTH_CLASS = "mx-auto w-full max-w-205 px-4 max-md:px-2.5";
+
 /** ChatComposer 属性 — 新玻璃磨砂命令岛输入组件 */
 export interface ChatComposerProps extends ComposerStateOptions {
   onSubmit: (message: ChatInputMessage) => void;
@@ -220,7 +239,7 @@ export function ChatComposer({
   // Render — 玻璃磨砂容器 + 大 textarea + 底部脚标行
   // ---------------------------------------------------------------------------
   return (
-    <div className={`mx-auto w-full max-w-205 px-4 pt-0 pb-3 max-md:px-2.5${className ? ` ${className}` : ""}`}>
+    <div className={`${CHAT_COMPOSER_WIDTH_CLASS} pt-0 pb-3${className ? ` ${className}` : ""}`}>
       <div className="relative">
         {commandPanelOpen && ((commands?.length ?? 0) > 0 || mcps.length > 0) && (
           <CommandMenu

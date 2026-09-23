@@ -7,10 +7,14 @@
 //     改为 `onPreviewFile` 回调注入（包内不得触碰宿主事件总线与路由）；
 //   - 保留 `.chat-status-list [data-status="..."]` 的 data-* 契约，CSS 消费方无需改动。
 //
-// 深层样式（宽度台阶、投影、列表限高、行内网格列与折叠图标宽度）下沉到同目录
+// 深层样式（投影、列表限高、行内网格列与折叠图标宽度）下沉到同目录
 // `./chat-status-panel.css`，语义类名为 `.chat-status-panel-card`（源 `.chat-status-panel`）、
 // `.chat-status-rows` / `.chat-status-row`（源 `.chat-status-list` 及其 `> div, > button`）与
 // `.chat-status-collapse-toggle`（源 `.chat-status-collapse`）。
+//
+// 宽度不属于本组件的深层样式（2026-09-23 修）：面板与输入岛必须逐像素等宽同轴，故宽度由渲染处
+// 套上与输入岛同一个容器（`../composer/ChatComposer` 的 `CHAT_COMPOSER_WIDTH_CLASS`，渲染见
+// `../shell/ChatInterface`）。本组件因此不声明 `width`，也不再用 `mx-auto`（`width: auto` 下它是空转）。
 
 import "./chat-status-panel.css";
 
@@ -153,9 +157,9 @@ export function ChatStatusPanel({
 
   return (
     <section
-      // 源 `.chat-interaction-stack/.chat-status-panel`（宽度台阶）与 `.chat-status-panel`（半圆卡）两段；
-      // 宽度与投影在 ./chat-status-panel.css 的 `.chat-status-panel-card`。
-      className="chat-status-panel-card mx-auto overflow-hidden rounded-t-lg border-x border-t border-b-0 border-slate-200 bg-white"
+      // 源 `.chat-status-panel`（半圆卡）；投影在 ./chat-status-panel.css。
+      // 宽度由渲染处的共用容器给（见文件头），故本行没有宽度类。
+      className="chat-status-panel-card overflow-hidden rounded-t-lg border-x border-t border-b-0 border-slate-200 bg-white"
       data-slot="chat-status-panel"
       aria-label={t("chat.components.chatStatus.title")}
     >
