@@ -38,8 +38,14 @@ const HEADER =
 /** 头部「从模板创建」按钮：design 生效值（32px / 6px gap / 8px 圆角 / 13px / #3264bf on #f5f8ff），
  * ≤759px 图标化（32px 宽、无内边距、字号归零）。深层按钮规则在同名 CSS 类中。 */
 const TEMPLATE_TRIGGER = "agent-editor-chrome-template-trigger";
-/** 面板头部关闭按钮：34px / 10px 圆角 / #7b899f on 透明，hover 变 #234b97 on #f0f4fa。 */
-const CLOSE_BUTTON = "agent-editor-chrome-close-button !size-8.5 !rounded-lg !bg-transparent !text-slate-500";
+/** 面板头部关闭按钮：34px / 10px 圆角 / #7b899f on 透明，hover 变 #234b97 on #f0f4fa。
+ *
+ * 底色与文字色**刻意不带 `!`**：这两条的 hover 覆盖在伴随表的 `:hover` 规则里，而 important 声明的
+ * 层序是反转的——未分层 important 优先级最低，恒输 `@layer utilities` 里的 ``!`` 工具类。基础若带 `!`
+ * （源类串里 `!bg-transparent` / `!text-[#7b899f]` 是带的），hover 就永远不生效。
+ * `variant="ghost"` 的基础串没有底色/文字色（只有 `hover:bg-accent`），去掉 `!` 在未 hover 态等价。
+ * 该约束由 `agent-editor-font-scale.test.ts` 的「关闭按钮的基础底色/文字色不带 `!`」一条钉住。 */
+const CLOSE_BUTTON = "agent-editor-chrome-close-button !size-8.5 !rounded-lg bg-transparent text-slate-500";
 /** 模板对话框：单个模板卡（design 层：白底 / 10px 圆角 / 11px×12px 内边距 / hover 变蓝）。 */
 const TEMPLATE_CARD =
   "agent-editor-template-card block w-full rounded-lg border border-slate-200 bg-white px-3 py-2.75 text-left text-gray-500 " +

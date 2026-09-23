@@ -184,6 +184,15 @@ bun run check:web-style --write-baseline --force   # 首次建基线；抬高基
 - **不包 `@layer`**：源样式表本就没有分层，未分层才能在层叠中压过 `@layer utilities`。**但下沉时必须逐处确认胜负关系没变** —— 未分层声明一定压过工具类，若原写法是被消费方 `className` 覆盖的，就不能直接下沉（已有实例改为只下沉「值」并由工具类引用 CSS 变量，见 `packages/ui-components/web/ui/alert-dialog.css` 的文件头）。
 - **留在 className 的**：扁平、语义清晰的工具类（`flex items-center gap-2 rounded-lg`）。
 
+#### 两个层叠陷阱（下沉时真实踩到过）
+
+「未分层压过 `@layer utilities`」只在**两边同为普通声明**时成立。`!important` 一介入，两条规则会同时反转，所以下沉前必须先看源类串里有没有 `!`：
+
+1. **`!` 前缀工具类改写成 CSS 普通声明会死**。`!p-0` 生成的是 `padding: 0 !important`；照字面写成 CSS 里的 `padding: 0` 看起来等价，实际被基础规则的 `!important` 压死。**源类串里的 `!` 是语义的一部分，必须逐条复刻成 CSS 的 `!important`**。实例：`AgentEditorChrome.css` 窄屏模板按钮的 `padding` / `font-size` 漏掉 `!`，宽度已经缩到 32px 却仍留着 10px 横内边距与 12px 字号——图标化整条失效。
+2. **未分层 `!important` 恒输 `@layer utilities` 的 `!important`**。important 声明的层序是**反转的**：未分层 important 优先级最低（CSS Cascade 5）。于是伴随表里的 `:hover { … !important }` 压不过同一元素上的 `!bg-transparent` / `!text-slate-500`，hover 态永远不出现。**「`!` 工具类基线 + 伴随表 `:hover` 覆盖」的组合不能共存**：要么去掉基线的 `!`（本例可行——ghost 变体的基础串本就没有底色/文字色），要么把覆盖也写回工具类并靠特指度取胜。实例：`AgentEditorChrome.tsx` 的关闭按钮。
+
+判别这两类问题不能靠肉眼扫类串：`text-slate-500` 与 `text-xs` 同前缀却不同属性，把 Tailwind 类名机械反解成 CSS 属性的误报率很高。当前做法是**定点冻结**已踩雷的位置（`agent-editor-font-scale.test.ts` 的 ⑧「同选择器一端 `!important` 一端不带」与「关闭按钮基础色不带 `!`」两条），改到命中过的样式时按本节自查。
+
 ### 连带影响
 
 整改顺带推翻了上一轮迁移留下的两条口径，相关守卫测试已同批改写（改的是**期望值**，不是守卫意图）：

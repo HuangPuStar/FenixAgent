@@ -1,3 +1,6 @@
+/* biome-ignore-all lint/complexity/noImportantStyles: 勾选框描边与聚焦环需压过同元素上的 `!border-*`、
+ * `!shadow-none` 工具类；未分层与 utilities 两侧 importance 同级才可预测（见本文件 400 行）。
+ * 口径见 docs/developer/guide/forbidden-code-patterns.md「两个层叠陷阱」。 */
 /*
  * 表单字段、卡片表面与短视口覆盖；来源及生效值基准见同名 TS。
  * 原约束：base 与媒体覆盖分离，同属性媒体条件互斥；ui-components 的覆盖保留 !important。

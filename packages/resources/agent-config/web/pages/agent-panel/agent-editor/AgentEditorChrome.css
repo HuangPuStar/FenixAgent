@@ -1,3 +1,6 @@
+/* biome-ignore-all lint/complexity/noImportantStyles: 本表未分层，靠 `!important` 复刻源类串里 `!` 前缀
+ * 工具类的胜负语义；尤其窄屏块与基础块必须同级 importance，少一个 `!` 整块失效（2026-09 实测踩坑）。
+ * 口径见 docs/developer/guide/forbidden-code-patterns.md「两个层叠陷阱」。 */
 /*
  * Agent editor chrome 的深层样式。
  *
@@ -170,8 +173,12 @@
 
   .agent-editor-chrome-template-trigger > button {
     width: 2rem;
-    padding: 0;
-    font-size: 10px;
+    /* 必须与基础规则同为 `!important`：同一选择器下 important 恒胜非 important，少写一个 `!`
+       本块这两条就是死声明（宽 32px 却留着 10px 横内边距与 12px 字号，图标化失效）。
+       源类串里窄屏覆盖本就带 `!`（`!p-0`），字号那条写作 `text-[0px]`——0 不是刻度、
+       不能被「就近取标准档」消化（就近档是 10px，偏差 10px 而非约 1px），故在此保留 0。 */
+    padding: 0 !important;
+    font-size: 0 !important;
   }
 
   .agent-editor-summary-card {
