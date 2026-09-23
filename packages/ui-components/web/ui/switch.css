@@ -1,0 +1,20 @@
+/*
+ * Switch 深层样式（原写在 `SwitchPrimitive.Thumb` 的 className 字符串里）。
+ *
+ * 为什么下沉：`data-[state=checked]:translate-x-[calc(100%-2px)]` 是复合表达式值（函数调用），
+ * 属仓库禁令 FCP-WEB-02。其余扁平工具类（`block rounded-full bg-background`、
+ * `group-data-[size=…]/switch:size-*` 等）仍留在 `switch.tsx` 的 `className`。
+ *
+ * 位移按 Tailwind `translate-x-*` 的等价声明书写（`--tw-translate-x` + `translate` 复合属性），
+ * 与未勾选态的 `data-[state=unchecked]:translate-x-0` 保持同一套变量约定：两个状态互斥，
+ * 谁生效谁的变量值算数。
+ *
+ * 层叠：本文件未分层（不包 `@layer`），未分层声明压过 `@layer utilities`。开关滑块不接受外部 className
+ * （Thumb 的类名在组件内写死），故这里不存在「压掉调用方工具类」的问题。
+ */
+
+/* 勾选态滑块滑到轨道右侧，留 1px 边距（原 `data-[state=checked]:translate-x-[calc(100%-2px)]`）。 */
+.switch-thumb[data-state="checked"] {
+  --tw-translate-x: calc(100% - 2px);
+  translate: var(--tw-translate-x) var(--tw-translate-y);
+}

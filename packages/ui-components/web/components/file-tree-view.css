@@ -1,0 +1,65 @@
+/*
+ * 文件树视图（`file-tree-view.tsx`）的深层样式。
+ *
+ * 为什么下沉：`grid-rows-[minmax(112px,3fr)_minmax(68px,2fr)]` 是复合表达式值，
+ * `[&_svg]:size-4` / `[&>svg]:hidden` / `[&_p+p]:hidden` 是子选择器变体，都属仓库禁令 FCP-WEB-02。
+ * 扁平工具类（`grid min-h-0 flex-1 overflow-hidden`、`p-2` 等）仍留在 `file-tree-view.tsx` 的 className。
+ *
+ * 类名：优先沿用迁移前 `web/components/file-tree.css`（已随 `refactor(ui)!: 文件树视图样式迁移到 Tailwind
+ * 工具类` 删除）的选择器 —— `.file-tree-panel__actions`、`.file-tree-search` 原样保留。
+ * 另三个名字**没有**沿用，原因是宿主 `apps/web/src/shell/artifacts-workspace.css`（仍被
+ * `pages/agent-panel/ChatArea.tsx` 静态导入）里还留着同名死规则，复用会让那些未分层声明重新生效：
+ *   - `.file-tree-feedback { padding: 20px }` 会压掉「我的文件」空态的 `p-2`；
+ *   - `.file-tree-section-upload:focus-visible { outline: 2px solid #cbd5e1 }` 会换掉焦点框的
+ *     `var(--color-surface-3)`（当前为 #e2e8f0）；
+ *   - `.file-tree-sections-layout` 的值虽与本文一致，但复用等于把包内样式重新挂到宿主文件上。
+ * 三个依次改用 `.file-tree-sections-grid` / `.file-tree-section-upload-button` / `.file-tree-view-feedback`
+ * （后者带 `--compact` 修饰符承载「我的文件」分区的压缩态）。
+ *
+ * 层叠：本文件不包 `@layer`，未分层声明压过 `@layer utilities`；
+ * `.file-tree-view-feedback--compact` 的规则写在基础规则之后，保持源样式表里「分区压缩覆盖空态」的先后关系。
+ */
+
+/* 面板标题栏动作区图标 14px（源 `.file-tree-panel__actions svg`，与行内操作按钮同尺寸）。 */
+.file-tree-panel__actions svg {
+  width: 14px;
+  height: 14px;
+}
+
+/*
+ * 搜索框内图标 13px（源 `.file-tree-search > svg, .file-tree-search button svg`）。
+ * 两条源规则合并：直接子级的放大镜与「清空」按钮里的 X，尺寸一致。
+ */
+.file-tree-search > svg,
+.file-tree-search button svg {
+  width: 13px;
+  height: 13px;
+}
+
+/* 双分区高度比 3:2，工作区最少 112px、「我的文件」最少 68px（源 `.file-tree-sections-layout`）。 */
+.file-tree-sections-grid {
+  grid-template-rows: minmax(112px, 3fr) minmax(68px, 2fr);
+}
+
+/* 「我的文件」标题右侧上传入口的图标 16px（源 `.file-tree-section-upload svg`）。 */
+.file-tree-section-upload-button svg {
+  width: 16px;
+  height: 16px;
+}
+
+/* 空态 / 加载反馈的主图标 24px 并降透明度（源 `.file-tree-feedback > svg`）。 */
+.file-tree-view-feedback > svg {
+  width: 24px;
+  height: 24px;
+  opacity: 0.65;
+}
+
+/*
+ * 「我的文件」分区高度只有工作区一半，该分区的空态复用同一反馈组件并压缩间距、隐去图标与第二行说明
+ * （源 `.file-tree-section--user .file-tree-feedback` 的父级选择器；本包改由调用方传 className 命中，
+ * 故用 `--compact` 修饰符把压缩态写在类名上）。间距本身留在 JSX 的 `min-h-11 p-2` 里。
+ */
+.file-tree-view-feedback--compact > svg,
+.file-tree-view-feedback--compact p + p {
+  display: none;
+}

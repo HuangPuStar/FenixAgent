@@ -6,3 +6,8 @@ export {
   type YjsWsOptions,
   type YjsWsState,
 } from "./ws";
+export {
+  type TerminalWsUiCode,
+  WS_CLOSE_CODE_POLICY,
+  type WsCloseCodePolicyEntry,
+} from "./ws-close-codes";

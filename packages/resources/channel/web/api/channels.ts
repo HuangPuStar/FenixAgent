@@ -8,7 +8,7 @@
 import { request } from "@fenix/web-runtime/api/request";
 
 /** 通道绑定记录 */
-interface ChannelBinding {
+export interface ChannelBinding {
   id: string;
   platform: string;
   chatId: string | null;

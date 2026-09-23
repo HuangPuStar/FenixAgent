@@ -1,0 +1,50 @@
+/*
+ * Badge 深层样式（原写在 `badgeVariants` 的 className 字符串里）。
+ *
+ * 为什么下沉：这两组写法无法用扁平工具类表达，属仓库禁令 FCP-WEB-02 ——
+ * ① 子代选择器 `[&>svg]:` 需要选择器层级；
+ * ② `[a&]:hover:` 需要把「自身是 `<a>`」与伪态组合起来（`asChild` 渲染链接时才有悬停加深）。
+ * 其余扁平工具类（圆角、内边距、字号、focus/aria 变体）仍留在 `badge.tsx` 的 `className`。
+ *
+ * 悬停色靠 `data-variant` 区分：`Badge` 已按 cva 变体稳定输出该属性（取值与变体一一对应），
+ * 故不必为「哪套悬停色」再补一套变体类名。包内只有 `Badge` 一条渲染路径，直接取该属性即可；
+ * 若某处单独 import `badgeVariants()` 只用字符串（不经组件），这些悬停色不会随之生效。
+ *
+ * 层叠：本文件未分层（不包 `@layer`），未分层声明压过 `@layer utilities` 的工具类。
+ * 迁移前这些悬停色由 `[a&]:hover:` 变体生成，特指度本就高于变体自身的 `bg-*` 工具类（`:hover` + `a` 前缀），
+ * 胜负关系不变；`@media (hover: hover)` 与 Tailwind `hover:` 变体的输出一致（触屏不触发悬停态）。
+ */
+
+/* 图标固定 12px 且不吃指针事件（原 `[&>svg]:pointer-events-none [&>svg]:size-3`）。 */
+.badge > svg {
+  pointer-events: none;
+  width: calc(var(--spacing) * 3);
+  height: calc(var(--spacing) * 3);
+}
+
+/* 链接形态（`asChild` + `<a>`）的悬停加深，逐变体对应原 `[a&]:hover:bg-<色>/90`。
+   色值写成 `color-mix(in oklab, var(--color-<色>) 90%, transparent)`：与 Tailwind 生成物里
+   `@supports (color: color-mix(…))` 那一支逐字一致，且随主题变量走（不写死浅色 hex）。 */
+@media (hover: hover) {
+  a.badge[data-variant="default"]:hover {
+    background-color: color-mix(in oklab, var(--color-primary) 90%, transparent);
+  }
+
+  a.badge[data-variant="secondary"]:hover {
+    background-color: color-mix(in oklab, var(--color-secondary) 90%, transparent);
+  }
+
+  a.badge[data-variant="destructive"]:hover {
+    background-color: color-mix(in oklab, var(--color-destructive) 90%, transparent);
+  }
+
+  a.badge[data-variant="outline"]:hover,
+  a.badge[data-variant="ghost"]:hover {
+    background-color: var(--color-accent);
+    color: var(--color-accent-foreground);
+  }
+
+  a.badge[data-variant="link"]:hover {
+    text-decoration-line: underline;
+  }
+}

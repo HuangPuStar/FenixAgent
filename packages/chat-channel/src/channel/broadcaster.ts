@@ -14,6 +14,7 @@
 
 import * as Y from "yjs";
 import { encodeYjsReplaceFrame, encodeYjsUpdateFrame } from "../protocol/update-frame";
+import { SLOW_CONSUMER_RESYNC_TIMEOUT_REASON } from "../transport/ws-close-codes";
 import type { ConnectionRegistry } from "./connection-registry";
 import type { WsConnection } from "./connection-types";
 
@@ -246,7 +247,7 @@ export class YjsBroadcaster {
             `laggedMs=${now - state.since}`,
         );
         try {
-          ws.close(1013, "slow consumer resync timeout");
+          ws.close(1013, SLOW_CONSUMER_RESYNC_TIMEOUT_REASON);
         } catch {
           // 连接关闭失败不阻塞其他连接的追赶
         }

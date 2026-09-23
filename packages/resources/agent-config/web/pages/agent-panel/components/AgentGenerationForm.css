@@ -1,0 +1,19 @@
+/*
+ * AgentGenerationForm 的深层样式（与同目录 `AgentGenerationForm.tsx` 同名，由该文件 import）。
+ *
+ * 只搬「工具类无法表达」的部分，其余仍留在 `className`：
+ *   - `.agent-generation-form-submit` ← `shadow-[0_4px_14px_rgba(15,107,255,0.3)]`（复合任意值）。
+ * 值逐字等价换算，未调整任何数值。
+ *
+ * 层叠：本文件不包 `@layer`（源样式表也未分层），因此这条声明稳定压过 `@layer utilities` 里的工具类。
+ * 投影必须写成 Tailwind 的 `box-shadow` 合成链：按钮是 `@fenix/ui-components` 的 `Button`，基类带
+ * `focus-visible:ring-3`，环与投影共用同一条链；只写裸 `box-shadow` 会把聚焦环一起抹掉。
+ */
+.agent-generation-form-submit {
+  box-shadow:
+    var(--tw-inset-shadow, 0 0 #0000),
+    var(--tw-inset-ring-shadow, 0 0 #0000),
+    var(--tw-ring-offset-shadow, 0 0 #0000),
+    var(--tw-ring-shadow, 0 0 #0000),
+    0 4px 14px rgba(15, 107, 255, 0.3);
+}

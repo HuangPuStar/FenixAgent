@@ -4,7 +4,14 @@
  * WS 连接/重连/消息解析委托给 @fenix/chat-channel 的同构实现。
  */
 
-import { createYjsWsClient, type YjsWsClient, type YjsWsOptions, type YjsWsState } from "@fenix/chat-channel";
+import {
+  createYjsWsClient,
+  type TerminalWsUiCode,
+  WS_CLOSE_CODE_POLICY,
+  type YjsWsClient,
+  type YjsWsOptions,
+  type YjsWsState,
+} from "@fenix/chat-channel";
 
 /** Re-export 类型，保持上游调用方无需改动 */
 export type { YjsWsState };
@@ -12,28 +19,19 @@ export type { YjsWsState };
 /**
  * 终端关闭码对应的用户可读语义。
  * 服务端以这些码关闭时，YJS 客户端停止自动重连，由 UI 提供手动恢复入口。
+ * 词表本体在 `@fenix/chat-channel` 的关闭码策略表（`transport/ws-close-codes.ts`），
+ * 与传输层的「停不停重连」判定同源，此处只做转导，不再另立字面量。
  */
-export type YjsTerminalErrorCode =
-  | "instance_idle_reclaimed"
-  | "machine_unavailable"
-  | "client_keepalive_timeout"
-  | "environment_unavailable"
-  | "spawn_rejected"
-  | "too_many_connections";
+export type YjsTerminalErrorCode = TerminalWsUiCode;
 
 export function getTerminalYjsWsErrorCode(code: number, reason?: string): YjsTerminalErrorCode | null {
-  if (code === 4001) return "instance_idle_reclaimed";
-  if (code === 4004) return "environment_unavailable";
-  if (code === 4500) return "machine_unavailable";
-  if (code === 4501) return "client_keepalive_timeout";
-  if (code === 4502) return "spawn_rejected";
-  // 1013 有两个语义来源，按 close reason 区分：
-  // - 连接数超限（gateway 容量拒绝）：重试相同 URL 在配额释放前无意义 → 终态；
-  // - 慢消费者追赶超时（broadcaster SP-A7）：非终态——客户端自动重连后走全量
-  //   快照同步恢复，不得展示"须手动恢复"的终态错误。
-  // 未知 reason 的 1013 保持终态（与既有容量语义一致）。
-  if (code === 1013) return reason === "slow consumer resync timeout" ? null : "too_many_connections";
-  return null;
+  const entry = WS_CLOSE_CODE_POLICY.find((policy) => policy.code === code);
+  if (!entry) return null;
+  // 同一关闭码可能有多个语义来源，由策略表的 nonTerminalReason 标注非终态的那一个：
+  // 1013 的慢消费者追赶超时（broadcaster SP-A7）自动重连后走全量快照同步恢复，
+  // 不得展示"须手动恢复"的终态错误；其余原因（含容量拒绝）按 uiCode 展示。
+  if (entry.nonTerminalReason !== undefined && entry.nonTerminalReason === reason) return null;
+  return entry.uiCode;
 }
 
 export interface YjsChatLocator {

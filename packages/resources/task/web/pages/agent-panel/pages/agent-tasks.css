@@ -398,6 +398,17 @@
   color: #d39a36;
 }
 
+/* 行内纯图标动作按钮（执行 / 更多）里的图标，源 `[&_svg]:w-3.5`；
+   按钮自身的尺寸与留白仍由 `className` 的 `h-7 w-7 p-0` 提供。
+
+   注意这条声明迁移前后的胜负关系变了，且**是下沉本身带来的**：`ui-components` 的 `Button` 基类带
+   `[&_svg:not([class*='size-'])]:size-4`，与被替换的 `[&_svg]:w-3.5` 同处 `@layer utilities`，
+   但特异性更高（0,2,1 对 0,1,1），所以迁移前图标实际是 16px、这个 `w-3.5` 从未生效。下沉后本规则
+   未分层，按声明值生效为 14px（与同文件 `.task-last-run > svg` 的 14px 一致）。 */
+.task-icon-button svg {
+  width: calc(var(--spacing) * 3.5);
+}
+
 .task-pagination {
   display: flex;
   align-items: center;

@@ -6,6 +6,7 @@
  */
 
 import { ImageIcon, PaperclipIcon, XIcon } from "lucide-react";
+import "./prompt-input-attachments.css";
 import { type ComponentProps, Fragment, type HTMLAttributes, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import { UI_COMPONENTS_NS } from "../../../i18n/namespace";
@@ -62,7 +63,7 @@ export function PromptInputAttachment({ data, className, ...props }: PromptInput
             </div>
             <Button
               aria-label={t("promptInput.removeAttachment")}
-              className="absolute inset-0 size-5 cursor-pointer rounded p-0 opacity-0 transition-opacity group-hover:pointer-events-auto group-hover:opacity-100 [&>svg]:size-2.5"
+              className="prompt-input-attachment-remove-button absolute inset-0 size-5 cursor-pointer rounded p-0 opacity-0 transition-opacity group-hover:pointer-events-auto group-hover:opacity-100"
               onClick={(e) => {
                 e.stopPropagation();
                 attachments.remove(data.id);

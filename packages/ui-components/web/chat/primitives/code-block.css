@@ -1,0 +1,13 @@
+/* Code block typography migrated from arbitrary Tailwind values. */
+.code-block-pre {
+  font-size: 12px;
+  line-height: 1.6;
+}
+
+.code-block-code {
+  font-size: 12px;
+}
+
+.code-block-copy-btn {
+  font-size: 11px;
+}

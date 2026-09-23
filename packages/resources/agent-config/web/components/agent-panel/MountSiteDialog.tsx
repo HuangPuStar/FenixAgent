@@ -124,7 +124,7 @@ export function MountSiteDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-[480px]">
+      <DialogContent className="sm:max-w-120">
         <DialogHeader>
           <DialogTitle>{t("panelMode.mountDialogTitle")}</DialogTitle>
           <DialogDescription>{t("panelMode.mountDialogHint")}</DialogDescription>

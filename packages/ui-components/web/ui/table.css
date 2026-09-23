@@ -1,0 +1,32 @@
+/*
+ * Table 深层样式（原写在 `TableHeader` / `TableBody` / `TableFooter` 的 className 字符串里）。
+ *
+ * 为什么下沉：三处都是选择器层级 —— `[&_tr]:`（后代）、`[&_tr:last-child]:` / `[&>tr]:last:`
+ * （结构伪类），属仓库禁令 FCP-WEB-02。其余扁平工具类（`w-full caption-bottom text-sm`、
+ * `h-10 px-2`、`[&:has([role=checkbox])]:pr-0` 等）仍留在 `table.tsx` 的 `className`。
+ *
+ * 边框声明按 Tailwind `border-b` / `border-0` / `border-b-0` 的等价写法拆开：宽度与样式分开声明，
+ * 颜色继续由包内 base 层的 `border-color: var(--color-border)` 提供（写成 `border-bottom: 1px solid`
+ * 会把颜色重置成 currentColor，与迁移前不等价）。
+ *
+ * 层叠：本文件未分层（不包 `@layer`），未分层声明压过 `@layer utilities`。表头/表体的规则目标是行元素，
+ * 行自身还带 `border-b` 工具类；迁移前后都是「祖先规则的特指度更高」胜出（选择器带子代/伪类），关系不变。
+ */
+
+/* 表头行统一画底部分隔线（原 `[&_tr]:border-b`）。 */
+.table-header tr {
+  border-bottom-style: var(--tw-border-style, solid);
+  border-bottom-width: 1px;
+}
+
+/* 表体最后一行不画分隔线，避免与表格底边重复（原 `[&_tr:last-child]:border-0`）。 */
+.table-body tr:last-child {
+  border-style: var(--tw-border-style, solid);
+  border-width: 0;
+}
+
+/* 表脚已有上边框，最后一行不再画下边框（原 `[&>tr]:last:border-b-0`）。 */
+.table-footer > tr:last-child {
+  border-bottom-style: var(--tw-border-style, solid);
+  border-bottom-width: 0;
+}

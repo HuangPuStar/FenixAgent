@@ -2,6 +2,7 @@ import type { GlyphType } from "react-file-icon";
 import { FileIcon } from "react-file-icon";
 
 import { cn } from "../lib/cn";
+import "./file-icon-helper.css";
 
 /**
  * 从文件名中提取扩展名（不含点号前缀），无扩展名返回空字符串。
@@ -286,6 +287,7 @@ export interface FileTypeIconProps {
  * 外框同时带 `max-h-full max-w-full`，让**更小**的外部尺寸容器仍然说话算数
  * （如源文件树的 12px 图标位）：父元素尺寸确定时 100% 生效并收窄本组件；
  * 父元素尺寸为 auto 时按 CSS 规则百分比最大值视为 none，回落到默认尺寸。
+ * 外框内 `> svg` 撑满这一条（原 `[&>svg]:size-full`）下沉到 `file-icon-helper.css` 的 `.file-type-icon`。
  */
 export function FileTypeIcon({ filename, className }: FileTypeIconProps) {
   const ext = getFileExtension(filename);
@@ -303,7 +305,7 @@ export function FileTypeIcon({ filename, className }: FileTypeIconProps) {
     <span
       className={cn(
         DEFAULT_SIZE_CLASS,
-        "inline-flex max-h-full max-w-full shrink-0 items-center justify-center [&>svg]:size-full",
+        "file-type-icon inline-flex max-h-full max-w-full shrink-0 items-center justify-center",
         className,
       )}
     >

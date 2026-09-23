@@ -8,6 +8,7 @@ import { useTranslation } from "react-i18next";
 import { queryMyModelGatewayUsage } from "../../../api/model-gateway";
 import { MODELS_NS } from "../../../i18n/namespace";
 import { buildRecentUsageDateRange, classifyUsageFailure } from "../../../lib/model-gateway-usage";
+import "./ModelGatewayUsagePage.css";
 
 function formatTokens(value: number): string {
   if (value >= 1_000_000) return `${(value / 1_000_000).toFixed(1)}M`;
@@ -51,22 +52,22 @@ export function ModelGatewayUsagePage({ providerId }: { providerId: string }) {
   const models = [...(data?.byModel ?? [])].sort((left, right) => right.spendUsd - left.spendUsd);
 
   return (
-    <div className="min-h-full overflow-auto bg-[#f4f7fb] px-8 py-7 text-[#14213d]">
+    <div className="min-h-full overflow-auto bg-slate-100 px-8 py-7 text-slate-800">
       <button
         type="button"
         onClick={() => void navigate({ to: "/agent/models" })}
-        className="mb-5 inline-flex h-10 items-center gap-1.5 rounded-lg border border-[#dce5ef] bg-white px-4 text-sm font-semibold text-[#24344d] shadow-sm hover:bg-[#f8fafc]"
+        className="mb-5 inline-flex h-10 items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-4 text-sm font-semibold text-slate-800 shadow-sm hover:bg-slate-50"
       >
         <ArrowLeft className="size-4" />
         {t("gateway.backToModels")}
       </button>
-      <h1 className="text-[30px] font-bold tracking-tight">
+      <h1 className="text-3xl font-bold tracking-tight">
         {data?.gatewayProvider
           ? t("gateway.usageTitle", { providerName: data.gatewayProvider.displayName })
           : t("gateway.usageTitleLoading")}
       </h1>
-      <p className="mt-2 text-lg text-[#71839d]">{t("gateway.usageSubtitle")}</p>
-      <div className="mt-8 rounded-2xl border border-[#cbdcff] bg-[#f4f7ff] px-6 py-5 text-[#426193]">
+      <p className="mt-2 text-lg text-slate-500">{t("gateway.usageSubtitle")}</p>
+      <div className="mt-8 rounded-2xl border border-indigo-200 bg-sky-50 px-6 py-5 text-slate-500">
         <div className="flex gap-3">
           <Gauge className="mt-0.5 size-5 shrink-0" />
           <div>
@@ -99,21 +100,21 @@ export function ModelGatewayUsagePage({ providerId }: { providerId: string }) {
           </Button>
         </div>
       ) : (
-        <div className="mt-6 grid gap-6 xl:grid-cols-[2fr_0.92fr]">
-          <Card className="border-[#e1e7f0] shadow-sm">
+        <div className="model-gateway-usage-panels mt-6 grid gap-6">
+          <Card className="border-slate-200 shadow-sm">
             <CardContent className="p-7">
               <div className="flex items-start justify-between gap-4">
                 <div>
-                  <p className="text-sm font-medium text-[#71839d]">{t("gateway.budgetUsage")}</p>
+                  <p className="text-sm font-medium text-slate-500">{t("gateway.budgetUsage")}</p>
                   {budget ? (
                     <p className="mt-7 text-4xl font-bold tracking-tight">
                       ${budget.spendUsd.toFixed(2)}
-                      <span className="ml-2 text-xl font-semibold text-[#71839d]">
+                      <span className="ml-2 text-xl font-semibold text-slate-500">
                         /{budget.maxBudgetUsd === null ? t("gateway.unlimited") : `$${budget.maxBudgetUsd.toFixed(2)}`}
                       </span>
                     </p>
                   ) : (
-                    <p className="mt-7 text-2xl font-semibold text-[#71839d]">{t("gateway.budgetNotSet")}</p>
+                    <p className="mt-7 text-2xl font-semibold text-slate-500">{t("gateway.budgetNotSet")}</p>
                   )}
                 </div>
                 {budget && (
@@ -129,12 +130,12 @@ export function ModelGatewayUsagePage({ providerId }: { providerId: string }) {
                 )}
               </div>
               {budget?.maxBudgetUsd !== null && budget && (
-                <div className="mt-7 h-3 overflow-hidden rounded-full bg-[#edf1f7]">
+                <div className="mt-7 h-3 overflow-hidden rounded-full bg-slate-100">
                   <div
                     className={
                       exhausted
-                        ? "h-full rounded-full bg-gradient-to-r from-[#ef4444] to-[#dc2626]"
-                        : "h-full rounded-full bg-gradient-to-r from-[#4b7df3] to-[#7565e8]"
+                        ? "h-full rounded-full bg-gradient-to-r from-red-500 to-red-500"
+                        : "h-full rounded-full bg-gradient-to-r from-blue-500 to-indigo-500"
                     }
                     style={{ width: `${progress}%` }}
                   />
@@ -153,12 +154,12 @@ export function ModelGatewayUsagePage({ providerId }: { providerId: string }) {
               </div>
             </CardContent>
           </Card>
-          <div className="rounded-xl border border-[#cbdcff] bg-[#f4f7ff] px-5 py-4 text-sm text-[#426193] xl:col-span-2">
+          <div className="rounded-xl border border-indigo-200 bg-sky-50 px-5 py-4 text-sm text-slate-500 xl:col-span-2">
             {t("gateway.last30DaysNotice")}
           </div>
-          <Card className="border-[#e1e7f0] shadow-sm">
+          <Card className="border-slate-200 shadow-sm">
             <CardContent className="p-7">
-              <p className="text-sm font-medium text-[#71839d]">{t("gateway.tokensAndRequests")}</p>
+              <p className="text-sm font-medium text-slate-500">{t("gateway.tokensAndRequests")}</p>
               <div className="mt-8 grid grid-cols-2 gap-x-6 gap-y-7">
                 <Info
                   label={t("gateway.totalTokens")}
@@ -181,8 +182,8 @@ export function ModelGatewayUsagePage({ providerId }: { providerId: string }) {
 function Info({ label, value }: { label: string; value: string }) {
   return (
     <div>
-      <p className="text-xl font-bold text-[#14213d]">{value}</p>
-      <p className="mt-1 text-sm text-[#71839d]">{label}</p>
+      <p className="text-xl font-bold text-slate-800">{value}</p>
+      <p className="mt-1 text-sm text-slate-500">{label}</p>
     </div>
   );
 }
@@ -199,26 +200,26 @@ function SpendBreakdown({
   const { t } = useTranslation(MODELS_NS);
   const maxSpend = Math.max(...items.map((item) => item.spendUsd), 0);
   return (
-    <Card className="border-[#e1e7f0] shadow-sm">
-      <CardHeader className="border-b border-[#e8edf4] px-7 py-5">
+    <Card className="border-slate-200 shadow-sm">
+      <CardHeader className="border-b border-slate-200 px-7 py-5">
         <CardTitle className="text-xl">{title}</CardTitle>
       </CardHeader>
       <CardContent className="space-y-5 p-7">
         {items.length === 0 ? (
-          <p className="text-sm text-[#71839d]">{t("gateway.noData")}</p>
+          <p className="text-sm text-slate-500">{t("gateway.noData")}</p>
         ) : (
           items.map((item) => (
             <div className="flex items-center gap-4" key={item.name ?? item.modelId}>
               <div className="w-96 truncate font-medium">{item.name ?? item.modelId}</div>
-              <div className="h-3 flex-1 overflow-hidden rounded-full bg-[#edf1f7]">
+              <div className="h-3 flex-1 overflow-hidden rounded-full bg-slate-100">
                 <div
-                  className="h-full rounded-full bg-[#5c7ff0]"
+                  className="h-full rounded-full bg-indigo-400"
                   style={{ width: `${maxSpend ? (item.spendUsd / maxSpend) * 100 : 0}%` }}
                 />
               </div>
               <div className="w-24 text-right">
                 <p className="font-semibold">${item.spendUsd.toFixed(2)}</p>
-                <p className="text-xs text-[#71839d]">
+                <p className="text-xs text-slate-500">
                   {item.requests.toLocaleString()} {requestSuffix}
                 </p>
               </div>

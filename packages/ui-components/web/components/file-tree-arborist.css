@@ -1,0 +1,35 @@
+/*
+ * react-arborist 文件树（`file-tree-arborist.tsx`）的深层样式。
+ *
+ * 为什么下沉：`[&_svg]:size-3.5` / `[&>svg]:size-4` 这类子选择器变体属仓库禁令 FCP-WEB-02，
+ * 图标尺寸由父容器统一决定，写在工具类里只能重复父选择器。
+ *
+ * 类名沿用迁移前 `web/components/file-tree.css`（已随 `refactor(ui)!: 文件树视图样式迁移到 Tailwind
+ * 工具类` 删除）的源选择器：`.file-tree-row-action` / `.file-tree-row-action--delete` /
+ * `.file-tree-arborist-sticky-folder` / `.file-tree-arborist-toggle`。宿主
+ * `apps/web/src/shell/artifacts-workspace.css` 里没有这几个名字，不会与它的残留死规则相互复活。
+ * 悬停 / 选中配色仍留在 JSX 的工具类里（源 `.file-tree-arborist-row:hover` / `.is-selected` 的等价物）。
+ *
+ * 层叠：本文件不包 `@layer`，未分层声明压过 `@layer utilities`。
+ * 通用态与危险态的行内动作按钮合并成一条图标尺寸规则：两者尺寸一致，原先分写两份常量只为避开悬停配色
+ * 的同属性争夺（那份争夺仍由 JSX 里两份独立类串承担，不在此文件）。
+ */
+
+.file-tree-row-action svg,
+.file-tree-row-action--delete svg {
+  width: 14px;
+  height: 14px;
+}
+
+/* sticky 目录条（覆盖层）的目录图标：16px，并显式继承所在条目的文字色。 */
+.file-tree-arborist-sticky-folder svg {
+  width: 16px;
+  height: 16px;
+  color: inherit;
+}
+
+/* 行首折叠 / 图标位按钮：图标 16px；文件类型图标不在本规则范围内（它由 12px 的 `size-3` 内层容器决定）。 */
+.file-tree-arborist-toggle > svg {
+  width: 16px;
+  height: 16px;
+}

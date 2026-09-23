@@ -1,5 +1,6 @@
 import type { ReactNode } from "react";
 import { ScrollArea } from "../ui/scroll-area";
+import "./agent-master-detail-workspace.css";
 
 type AgentMasterDetailWorkspaceProps = {
   index: ReactNode;
@@ -12,10 +13,10 @@ type AgentMasterDetailWorkspaceProps = {
 /**
  * Shared scrolling boundary for catalog and administration master-detail pages.
  *
- * 已知限制：外层投影 `shadow-[0_12px_38px_rgb(36_57_92_/_8%)]` 在包内没有等价阴影 token
- * （shadow-elevated 的扩散与颜色不同），为不改动视觉而逐字保留。
- * 影响范围：仅本节点的外层投影；索引栏内嵌分隔线已改为 `var(--color-border)`，深色主题下自动跟随。
- * 移除条件：当主题 token 中补充了与源视觉等价的阴影变量后，改为引用该变量。
+ * 高度（`calc(100dvh - 210px)`）、两列定义（`238px minmax(0, 1fr)`）与外层投影都下沉到
+ * `agent-master-detail-workspace.css` 的 `.agent-master-detail-workspace`；
+ * 其中投影的已知限制、影响范围与移除条件记在该 CSS 文件里。
+ * 窄屏单列仍由下面 className 里的 `max-md:grid-cols-1` 表达，与之互补的媒体查询在 CSS 侧。
  */
 export function AgentMasterDetailWorkspace({
   index,
@@ -26,7 +27,7 @@ export function AgentMasterDetailWorkspace({
 }: AgentMasterDetailWorkspaceProps) {
   return (
     <section
-      className={`grid h-[calc(100dvh-210px)] min-h-[480px] min-w-0 grid-cols-[238px_minmax(0,1fr)] overflow-hidden rounded-[10px] bg-surface-1 shadow-[0_12px_38px_rgb(36_57_92_/_8%)] max-[760px]:grid-cols-1 ${className ?? ""}`}
+      className={`agent-master-detail-workspace grid min-h-120 min-w-0 overflow-hidden rounded-lg bg-surface-1 max-md:grid-cols-1 ${className ?? ""}`}
     >
       <ScrollArea className="min-h-0 bg-surface-0 shadow-[inset_-1px_0_var(--color-border)]">{index}</ScrollArea>
       <div className="flex min-h-0 min-w-0 flex-col">

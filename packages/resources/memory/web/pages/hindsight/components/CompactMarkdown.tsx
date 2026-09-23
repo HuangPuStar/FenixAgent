@@ -1,3 +1,5 @@
+import "./CompactMarkdown.css";
+
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 
@@ -30,7 +32,7 @@ function normalizeMarkdown(input: string): string {
 export function CompactMarkdown({ children, className }: { children: string; className?: string }) {
   return (
     <div
-      className={["text-[13px] leading-6 text-foreground/90 space-y-2 [&>:first-child]:mt-0", className]
+      className={["compact-markdown text-xs leading-6 text-foreground/90 space-y-2", className]
         .filter(Boolean)
         .join(" ")}
     >
@@ -39,19 +41,19 @@ export function CompactMarkdown({ children, className }: { children: string; cla
         components={{
           h1: (props) => (
             <div
-              className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground mt-4 mb-1"
+              className="text-3xs font-semibold uppercase tracking-wide text-muted-foreground mt-4 mb-1"
               {...props}
             />
           ),
           h2: (props) => (
             <div
-              className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground mt-4 mb-1"
+              className="text-3xs font-semibold uppercase tracking-wide text-muted-foreground mt-4 mb-1"
               {...props}
             />
           ),
           h3: (props) => (
             <div
-              className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground mt-3 mb-1"
+              className="text-3xs font-semibold uppercase tracking-wide text-muted-foreground mt-3 mb-1"
               {...props}
             />
           ),
@@ -60,20 +62,18 @@ export function CompactMarkdown({ children, className }: { children: string; cla
           ol: (props) => <ol className="list-decimal pl-5 my-1.5 space-y-0.5" {...props} />,
           li: (props) => <li className="leading-6" {...props} />,
           strong: (props) => <strong className="font-semibold text-foreground" {...props} />,
-          code: (props) => <code className="text-[12px] font-mono bg-muted/70 px-1 py-0.5 rounded" {...props} />,
+          code: (props) => <code className="text-xs font-mono bg-muted/70 px-1 py-0.5 rounded" {...props} />,
           a: (props) => <a className="text-primary underline" {...props} />,
           table: (props) => (
             <div className="overflow-x-auto my-3 rounded-md border border-border">
-              <table className="text-[12px] w-full border-collapse" {...props} />
+              <table className="compact-markdown-table text-xs w-full border-collapse" {...props} />
             </div>
           ),
           thead: (props) => <thead className="bg-muted/60" {...props} />,
           th: (props) => (
             <th className="text-left font-semibold px-3 py-1.5 border-b border-border whitespace-nowrap" {...props} />
           ),
-          td: (props) => (
-            <td className="px-3 py-1.5 border-b border-border/40 align-top [tr:last-child_&]:border-b-0" {...props} />
-          ),
+          td: (props) => <td className="px-3 py-1.5 border-b border-border/40 align-top" {...props} />,
           hr: (props) => <hr className="my-3 border-border/60" {...props} />,
           blockquote: (props) => (
             <blockquote className="border-l-2 border-border/60 pl-3 my-2 text-muted-foreground italic" {...props} />

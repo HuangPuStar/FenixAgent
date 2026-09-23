@@ -1,0 +1,13 @@
+/*
+ * InstanceRow 的深层样式（与同目录 `InstanceRow.tsx` 同名，由该文件 import）。
+ *
+ * 只搬「工具类无法表达」的部分，其余仍留在 `className`：
+ *   - `.sandbox-instance-row` ← `grid-cols-[minmax(220px,1fr)_minmax(260px,1.2fr)_24px_auto]`
+ *     （`minmax()` 复合表达式），四列依次对应实例/用户、Machine 与心跳、状态点、动作区。
+ * 值逐字等价换算，未调整任何数值；`grid` / `items-start` / `gap-4` / `border-b` 等保持原样。
+ *
+ * 本文件不包 `@layer`：未分层才能在层叠中压过 `@layer utilities`。
+ */
+.sandbox-instance-row {
+  grid-template-columns: minmax(220px, 1fr) minmax(260px, 1.2fr) 24px auto;
+}

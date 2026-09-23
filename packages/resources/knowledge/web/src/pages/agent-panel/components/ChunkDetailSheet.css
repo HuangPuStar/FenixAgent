@@ -1,0 +1,25 @@
+/*
+ * ChunkDetailSheet 的深层样式。
+ *
+ * RAGFlow 切片内容是后端返回的 HTML（表格、视频标签、富文本），其中 media / 表格 / 链接的样式原先
+ * 写成 Tailwind 选择器变体（`[&_video]:…`、`[&_a]:…`）。这里下沉为普通选择器，并**保持未分层**：
+ * 源样式表本就没有分层，未分层才能在层叠中压过 @layer utilities。
+ * 扁平工具类（text-xs / break-words / line-clamp-3 等）仍留在 TSX 的 className 里。
+ *
+ * 数值逐字取自被替换的 token，未做调整。
+ */
+
+.chunk-detail-content video,
+.chunk-detail-content img {
+  max-width: 100%; /* max-w-full */
+  border-radius: 0.5rem; /* rounded-lg */
+}
+
+.chunk-detail-content table {
+  width: 100%; /* w-full */
+}
+
+.chunk-detail-content a {
+  color: oklch(58.5% 0.233 277.117); /* text-indigo-500 */
+  text-decoration-line: underline; /* underline */
+}

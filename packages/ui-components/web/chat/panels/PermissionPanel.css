@@ -1,0 +1,25 @@
+/*
+ * PermissionPanel 的深层样式（与同目录 `PermissionPanel.tsx` 同名，由该文件 import）。
+ *
+ * 来源：源 `chat-design-status.css`（阶段四随迁移删除）的 `.chat-interaction-icon` 与
+ * `.chat-permission-audit` 两段里「工具类无法表达」的部分（子代图标尺寸）。卡片自身的扁平工具类
+ * （尺寸刻度、圆角、底色、间距）仍留在 `PermissionPanel.tsx` 的 `className` 里：
+ *   - `.chat-permission-badge`      ← `[&>svg]:h-3.5 [&>svg]:w-3.5`（源 `.chat-interaction-icon svg` 的
+ *     `width/height: 14px`，即 `3.5 × --spacing`）；
+ *   - `.chat-permission-audit-note` ← `[&>svg]:h-3.25 [&>svg]:w-3.25`（源 `.chat-permission-audit svg`
+ *     的 `width/height: 13px`，即 `3.25 × --spacing`）。
+ * 值逐字等价换算（刻度保留 `calc(var(--spacing) * n)`），未调整任何数值；选择器保留迁移前
+ * `[&>svg]` 的**直接子代**关系（源规则是后代选择器，两者在本组件结构下命中同一元素）。
+ *
+ * 层叠：本文件不包 `@layer`（源样式表也未分层），未分层声明压过 `@layer utilities`；图标上同时生效的
+ * 颜色工具类（`text-blue-600` 等）与本文件只声明尺寸，属性不重叠，胜负关系与迁移前一致。
+ */
+.chat-permission-badge > svg {
+  width: calc(var(--spacing) * 3.5);
+  height: calc(var(--spacing) * 3.5);
+}
+
+.chat-permission-audit-note > svg {
+  width: calc(var(--spacing) * 3.25);
+  height: calc(var(--spacing) * 3.25);
+}

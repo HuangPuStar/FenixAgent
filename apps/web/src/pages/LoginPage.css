@@ -1,0 +1,18 @@
+/*
+ * LoginPage 的深层样式（与同目录 `LoginPage.tsx` 同名，由该文件 import）。
+ *
+ * 与本页另两层样式表的分工：`auth-light-brand.css`（页面外壳 + 品牌列）、`auth-light-form.css`
+ * （表单列，从 LoginPage.tsx 的内联 <style> 拆出）承载的是设计稿类名（`.auth-light-*`）所标记的
+ * 那部分标记；本文件承载 LoginPage.tsx 里以**工具类**写成的那部分中无法用扁平工具类表达的
+ * 声明——即登录方式切换 tab 的 `shadow-[0_8px_20px_rgba(30,108,255,0.12)]`。三层选择器互不重叠，
+ * 加载顺序不影响结果。
+ *
+ * 类名刻意不带 `auth-light-` 前缀：那是另两层的类名空间，本层的归属由文件名表达。
+ *
+ * 层叠：本文件不包 `@layer`，未分层声明压过 `@layer utilities`；`.login-method-tab.is-active`
+ * 是 2 个类的特指度，且该元素的基础类串里没有 shadow-* 工具类，不存在同属性竞争。
+ * 值 `0 8px 20px rgb(30 108 255 / 12%)` 与原任意值逐字等价（`rgba(30,108,255,0.12)`）。
+ */
+.login-method-tab.is-active {
+  box-shadow: 0 8px 20px rgb(30 108 255 / 12%);
+}

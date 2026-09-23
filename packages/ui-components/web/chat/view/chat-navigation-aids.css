@@ -1,0 +1,37 @@
+/*
+ * chat-navigation-aids 的深层样式（与同目录 `chat-navigation-aids.tsx` 同名，由该文件 import）。
+ *
+ * 来源：源 `chat-navigation-aids.css`（阶段四随迁移删除）的 `.chat-prompt-jump-index` 段与选区浮层段
+ * （`.chat-selection-action`）。值逐字等价换算，未调整任何数值：
+ *   - `.chat-prompt-rail` ← `left-[max(8px,calc(50%-446px))]`、`max-h-[min(232px,44vh)]`
+ *     与宽屏媒体查询 `[@media(min-width:1180px)_and_(min-height:620px)]:block`；
+ *   - `.chat-prompt-preview` ← `shadow-[0_10px_28px_rgb(30_50_80_/_12%)]`（源 `__preview`）；
+ *   - `.chat-selection-quote-popover` ← `shadow-[0_9px_26px_rgb(30_50_80_/_14%)]`。
+ *
+ * 层叠：本文件不包 `@layer`，故媒体查询里的 `display: block` 稳定压过 `className` 里的 `hidden`
+ * （迁移前靠 `[@media…]:` 变体在工具类层内晚于基础工具类出现，取得同一结果）。
+ *
+ * 未下沉：刻度轨过渡 `[transition:width_150ms_ease,background-color_150ms_ease]` 与两条
+ * `motion-reduce:[transition:none]` 属「任意属性」（`[prop:value]` 形式），不是 FCP-WEB-02
+ * 打击的任意值，保持原样。刻度列表的 `auto-rows-[10px]` 按刻度改写成 `auto-rows-2.5`
+ * （Tailwind 生成为 `calc(var(--spacing) * 2.5)`，在 `--spacing: 0.25rem` 下同为 10px），未落到本文件。
+ */
+.chat-prompt-rail {
+  left: max(8px, calc(50% - 446px));
+  max-height: min(232px, 44vh);
+}
+
+/* 源 `@media (min-width: 1180px) and (min-height: 620px)`：窄屏或矮屏整轨不显示（`className` 里的 `hidden` 兜底）。 */
+@media (min-width: 1180px) and (min-height: 620px) {
+  .chat-prompt-rail {
+    display: block;
+  }
+}
+
+.chat-prompt-preview {
+  box-shadow: 0 10px 28px rgb(30 50 80 / 12%);
+}
+
+.chat-selection-quote-popover {
+  box-shadow: 0 9px 26px rgb(30 50 80 / 14%);
+}

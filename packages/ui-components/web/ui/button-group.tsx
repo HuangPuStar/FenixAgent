@@ -4,16 +4,16 @@ import type * as React from "react";
 
 import { cn } from "../lib/cn";
 import { Separator } from "./separator";
+import "./button-group.css";
 
+// 深层样式（子代伪态、结构伪类、方向拼接）在 `button-group.css`。
 const buttonGroupVariants = cva(
-  "flex w-fit items-stretch [&>*]:focus-visible:z-10 [&>*]:focus-visible:relative [&>[data-slot=select-trigger]:not([class*='w-'])]:w-fit [&>input]:flex-1 has-[select[aria-hidden=true]:last-child]:[&>[data-slot=select-trigger]:last-of-type]:rounded-r-md has-[>[data-slot=button-group]]:gap-2",
+  "button-group flex w-fit items-stretch [&>[data-slot=select-trigger]:not([class*='w-'])]:w-fit has-[select[aria-hidden=true]:last-child]:[&>[data-slot=select-trigger]:last-of-type]:rounded-r-md has-[>[data-slot=button-group]]:gap-2",
   {
     variants: {
       orientation: {
-        horizontal:
-          "[&>*:not(:first-child)]:rounded-l-none [&>*:not(:first-child)]:border-l-0 [&>*:not(:last-child)]:rounded-r-none",
-        vertical:
-          "flex-col [&>*:not(:first-child)]:rounded-t-none [&>*:not(:first-child)]:border-t-0 [&>*:not(:last-child)]:rounded-b-none",
+        horizontal: "button-group-horizontal",
+        vertical: "button-group-vertical flex-col",
       },
     },
     defaultVariants: {
@@ -50,7 +50,7 @@ function ButtonGroupText({
   return (
     <Comp
       className={cn(
-        "bg-muted flex items-center gap-2 rounded-md border px-4 text-sm font-medium shadow-xs [&_svg]:pointer-events-none [&_svg:not([class*='size-'])]:size-4",
+        "button-group-text bg-muted flex items-center gap-2 rounded-md border px-4 text-sm font-medium shadow-xs [&_svg:not([class*='size-'])]:size-4",
         className,
       )}
       {...props}

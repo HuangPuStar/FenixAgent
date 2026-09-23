@@ -1,0 +1,88 @@
+/*
+ * 「新建 Agent」面板控件（`agent-editor-controls.tsx`）的深层样式。
+ *
+ * 源：分区说明块与选项行的深层声明，迁移前由 `agent-editor.css` 的 `.agent-editor-section__intro > span/h3/p`
+ * 与 `agent-editor-form-surfaces.css` 的 `.agent-model-options > button` / `.agent-node-list > button` 承载；
+ * 值取本目录类串常量里那批 Tailwind 表达式的生效值。扁平工具类仍留在 `className`。
+ *
+ * 两条约定（与 `agent-editor-library-classes.css` 同口径）：
+ *
+ * ① 不包 `@layer`：未分层才能在层叠中压过 `@layer utilities`，保持迁移前的胜负关系。
+ * ② 颜色写字面量而不写 `var(--color-*)`：Tailwind v4 只输出被工具类用到的主题变量
+ *    （`--color-blue-500`、`--color-slate-800` 这类在本仓库当前构建里不存在），引用被裁掉的变量会静默失效。
+ */
+
+/* ── 分区说明块（`Intro`） ───────────────────────────────────────────────
+ *
+ * 与 `SECTION_INTRO`（A2 片的 `agent-editor-classes.ts`，同源 `.agent-editor-section__intro` 的
+ * margin-bottom 与短视口覆盖）共用一个类名：两条规则来自同一份源样式表同一段声明，合并后与源一致；
+ * 这里只负责 `> span / > h3 / > p` 三条子规则与两段窄屏覆盖。
+ * 眉标 10px/750/等宽 → 标题 18px（`md`–`2xl` 压 16px）→ 说明 12px（`md`–`lg` 收窄到 52ch）。
+ * 源设计稿的区间是 760–1399px / 760–1119px，上一轮工具类迁移已改写成标准断点 `md:max-2xl` / `md:max-lg`，
+ * 本文件按 `md`=768 / `lg`=1024 / `2xl`=1536 的当前生效区间落地（不借下沉之机改回设计稿区间）。
+ * 行高都用 `leading-*` 的绝对比值为准：`leading-tight` / `leading-relaxed` 会经 `--tw-leading`
+ * 接管同一个 `text-*` 自带的行高，所以 `text-lg` / `text-xs` 的刻度行高在此不生效（与迁移前一致）。
+ *
+ * 与设计值已经不一致的几处（上一轮「值刻度归一化」造成，不是本次下沉）：眉标 8px→10px（`text-3xs`）、
+ * 眉标字距 0.16em→0.1em（`tracking-widest`）、标题行高 1.2→1.25 与字距 −0.035em→−0.025em、
+ * 说明行高 1.65→1.625。本文件按**当前生效值**落地，不借下沉之机回改；要回到设计值需连同
+ * `agent-editor-font-scale.test.ts` 的 `editor-section-intro` 锚点一起改。
+ */
+
+.agent-editor-section__intro > span {
+  font-size: 10px; /* text-3xs */
+  font-weight: 750;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  letter-spacing: 0.1em; /* tracking-widest */
+  color: oklch(62.3% 0.214 259.815); /* text-blue-500 */
+}
+
+.agent-editor-section__intro > h3 {
+  margin-top: 6px; /* mt-1.5 */
+  font-size: 1.125rem; /* text-lg */
+  font-weight: 730;
+  line-height: 1.25; /* leading-tight */
+  letter-spacing: -0.025em; /* tracking-tight */
+  color: oklch(27.9% 0.041 260.031); /* text-slate-800 */
+}
+
+.agent-editor-section__intro > p {
+  margin-top: 8px; /* mt-2 */
+  max-width: 590px; /* max-w-147.5 */
+  font-size: 0.75rem; /* text-xs */
+  line-height: 1.625; /* leading-relaxed */
+  color: oklch(55.4% 0.046 257.417); /* text-slate-500 */
+}
+
+/* `md:max-2xl`（768–1535.98px）：标题压到 16px、说明上边距收到 6px。 */
+@media (width >= 48rem) and (width < 96rem) {
+  .agent-editor-section__intro > h3 {
+    font-size: 1rem; /* text-base */
+  }
+
+  .agent-editor-section__intro > p {
+    margin-top: 6px; /* mt-1.5 */
+  }
+}
+
+/* `md:max-lg`（768–1023.98px）：说明收窄到 52ch。 */
+@media (width >= 48rem) and (width < 64rem) {
+  .agent-editor-section__intro > p {
+    max-width: 52ch;
+  }
+}
+
+/* ── 选项行（`SinglePicker`） ───────────────────────────────────────────
+ *
+ * 源 `.agent-editor-root .agent-model-options > button` / `.agent-node-list > button`：同一个按钮在两份
+ * 列表里的图标列宽不同（模型 32/16，节点 34/18）。行外观由 B 片的 `OPTION_ROW`（`agent-editor-option-row`）
+ * 提供，列定义按 B 的注释「由调用点补列定义」落在这里。
+ */
+
+.agent-editor-option-row--model {
+  grid-template-columns: 32px minmax(0, 1fr) 16px;
+}
+
+.agent-editor-option-row--node {
+  grid-template-columns: 34px minmax(0, 1fr) 18px;
+}

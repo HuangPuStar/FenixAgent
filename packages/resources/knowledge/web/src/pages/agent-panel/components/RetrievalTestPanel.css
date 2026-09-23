@@ -1,0 +1,46 @@
+/*
+ * RetrievalTestPanel 的深层样式。
+ *
+ * 原先以 Tailwind 任意值 / 选择器变体表达的规则下沉到这里：两栏栅格断点、面板卡片投影、
+ * 结果区限高、RAGFlow 高亮片段里的 <em>。全部**保持未分层**——源样式表本就没有分层，
+ * 未分层才能在层叠中压过 @layer utilities。
+ * 扁平工具类（rounded-2xl / p-5 / space-y-3 等）仍留在 TSX 的 className 里。
+ *
+ * 数值逐字取自被替换的 token，未做调整。
+ */
+
+/* `lg:grid-cols-[340px_1fr]`：左参数栏定宽 340px、右结果栏自适应。
+   断点与 Tailwind `lg` 一致（64rem），写法也与 Tailwind 生成的 `@media (width >= 64rem)` 对齐。 */
+@media (width >= 64rem) {
+  .retrieval-test-layout {
+    grid-template-columns: 340px 1fr;
+  }
+}
+
+/* 面板卡片投影，原写法 `shadow-[0_1px_3px_rgba(0,0,0,0.04),0_4px_12px_rgba(0,0,0,0.03)]`。
+   元素同时带 `ring-1 ring-inset ring-slate-200/80` 工具类，而工具类的 box-shadow 与自定义投影共用
+   同一条合成链：本规则未分层、会压过 @layer utilities 产出的 box-shadow，所以必须把 ring 的合成链
+   原样写出（变量缺失时退化为无 ring），否则 inset ring 会随自定义投影一起消失。 */
+.retrieval-test-card {
+  box-shadow:
+    var(--tw-inset-shadow, 0 0 #0000),
+    var(--tw-inset-ring-shadow, 0 0 #0000),
+    var(--tw-ring-offset-shadow, 0 0 #0000),
+    var(--tw-ring-shadow, 0 0 #0000),
+    0 1px 3px rgba(0, 0, 0, 0.04),
+    0 4px 12px rgba(0, 0, 0, 0.03);
+}
+
+/* 结果列表限高，原写法 `max-h-[calc(100vh-340px)]`（Tailwind 会把减号两侧补成合法 calc）。 */
+.retrieval-test-results {
+  max-height: calc(100vh - 340px);
+}
+
+/* RAGFlow 高亮片段里的 <em>，原写法是一组 `[&_em]:` 变体。 */
+.retrieval-test-highlight em {
+  font-style: normal; /* not-italic */
+  background-color: oklch(94.5% 0.129 101.54); /* bg-yellow-200 */
+  color: oklch(20.8% 0.042 265.755); /* text-slate-900 */
+  border-radius: 0.25rem; /* rounded */
+  padding-inline: 0.125rem; /* px-0.5 */
+}

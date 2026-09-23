@@ -1,5 +1,6 @@
 import type { FileUIPart } from "ai";
 import { PaperclipIcon, XIcon } from "lucide-react";
+import "./message-attachments.css";
 import type { ComponentProps, HTMLAttributes } from "react";
 import { useTranslation } from "react-i18next";
 
@@ -46,7 +47,7 @@ export function MessageAttachment({ data, className, alt, onRemove, ...props }: 
       {onRemove && (
         <Button
           aria-label={t("message.removeAttachment")}
-          className="absolute top-2 right-2 size-6 rounded-full bg-background/80 p-0 opacity-0 backdrop-blur-sm transition-opacity hover:bg-background group-hover:opacity-100 [&>svg]:size-3"
+          className="message-attachment-remove-button absolute top-2 right-2 size-6 rounded-full bg-background/80 p-0 opacity-0 backdrop-blur-sm transition-opacity hover:bg-background group-hover:opacity-100"
           onClick={(event) => {
             event.stopPropagation();
             onRemove();

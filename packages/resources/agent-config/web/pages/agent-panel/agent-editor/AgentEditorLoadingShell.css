@@ -1,0 +1,23 @@
+/*
+ * 加载壳字段骨架的深层布局。
+ * 基础 grid 与响应式列数仍由 TSX 中的扁平工具类表达；这里承载子代尺寸和末项跨列。
+ */
+
+.agent-editor-loading-fields {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.agent-editor-loading-fields > div {
+  height: 3.875rem;
+}
+
+.agent-editor-loading-fields > div:last-child {
+  grid-column: 1 / -1;
+  height: 10.625rem;
+}
+
+@media (width < 48rem) {
+  .agent-editor-loading-fields {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}

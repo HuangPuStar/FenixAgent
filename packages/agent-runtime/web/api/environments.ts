@@ -5,8 +5,7 @@
  * 后端路由前缀为 /web/environments，返回 snake_case 字段，本模块负责键名转换。
  */
 
-import type { ApiResponse } from "@fenix/web-runtime/api/request";
-import { request } from "@fenix/web-runtime/api/request";
+import { camelResponse, request } from "@fenix/web-runtime/api/request";
 
 /** 环境详情 */
 export interface EnvironmentDetail {
@@ -71,40 +70,6 @@ export interface EnvironmentInstanceInfo {
 export interface EnvironmentInstanceListResult {
   environmentId: string;
   instances: EnvironmentInstanceInfo[];
-}
-
-// ── snake_case → camelCase 键名映射 ──
-
-/** 将后端返回的 snake_case 键名转换为 camelCase */
-function toCamelKeys(obj: Record<string, unknown>): Record<string, unknown> {
-  const result: Record<string, unknown> = {};
-  for (const [key, value] of Object.entries(obj)) {
-    const camelKey = key.replace(/_([a-z])/g, (_, c: string) => c.toUpperCase());
-    // 递归转换嵌套对象（如 instances 数组中的对象）
-    if (Array.isArray(value)) {
-      result[camelKey] = value.map((item) =>
-        item && typeof item === "object" ? toCamelKeys(item as Record<string, unknown>) : item,
-      );
-    } else {
-      result[camelKey] = value;
-    }
-  }
-  return result;
-}
-
-/** 将完整响应中的 data 字段进行键名转换 */
-async function camelResponse<T>(resp: Promise<ApiResponse<T>>): Promise<ApiResponse<T>> {
-  const r = await resp;
-  if (r.success && r.data) {
-    if (Array.isArray(r.data)) {
-      r.data = r.data.map((item) =>
-        item && typeof item === "object" ? toCamelKeys(item as Record<string, unknown>) : item,
-      ) as unknown as T;
-    } else if (typeof r.data === "object") {
-      r.data = toCamelKeys(r.data as Record<string, unknown>) as unknown as T;
-    }
-  }
-  return r;
 }
 
 export const envApi = {

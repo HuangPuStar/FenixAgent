@@ -1,0 +1,91 @@
+/*
+ * ChatHeader 顶部卡片（源 `.chat-header-card`）深层样式。
+ *
+ * 来源与口径：两段源规则按级联的**生效值**落地 ——
+ * - `chat-design-composer.css` 的 `.chat-header-card` 段：独立渲染时是玻璃磨砂卡片（半透明底 +
+ *   `blur(16px) saturate(180%)` + 16px 圆角），高度沿用组件原有的 `h-11`（44px）；
+ * - `chat-design-shell.css` 的 `.acp-main-root .chat-header-card` 段：在外壳内（宿主真实用法）
+ *   特指度更高、压过玻璃样式 —— 45px 高、直角、白底、无 `backdrop-filter`、只留底边分隔线，
+ *   `:hover` 阴影归零。
+ *
+ * 阶段一曾把这两段改写成 `[.acp-main-root_&]:` / `[.dark_&]:` 之类的 Tailwind 任意变体；祖先选择器、
+ * `:not()` 互斥与 `@supports` 条件无法用扁平工具类表达（仓库禁令 FCP-WEB-02/03），故落回本文件。
+ * 玻璃形态的扁平工具类（`bg-white/72` / `backdrop-blur-lg` / `rounded-2xl` 等）仍留在 `className`。
+ *
+ * 类名不复用源 `.chat-header-card`：该名字已被迁移守卫列入「不得回流」清单
+ * （`web/__tests__/chat-style-migration-helpers.ts` 的 `MIGRATED_CLASS_NAMES`）。
+ *
+ * 层叠要点：本文件未分层（不包 `@layer`），未分层声明在层叠中压过 `@layer utilities` 的工具类，
+ * 因此下面的外壳/暗色规则能覆盖 JSX 上保留的 `h-11` / `rounded-2xl` / `bg-white/72` / `shadow-none`；
+ * 规则之间的胜负由特指度决定（`.acp-main-root .chat-header-panel` 与 `.dark .chat-header-panel`
+ * 都是 2 个类，压过 `.chat-header-panel` 的 1 个类），文件顺序只影响同特指度的 `@supports` 回退。
+ */
+
+/* 源 `.chat-header-card` 的过渡：边框色与阴影各 0.2s。 */
+.chat-header-panel {
+  transition:
+    border-color 0.2s ease,
+    box-shadow 0.2s ease;
+}
+
+/*
+ * 源文件里 `.chat-header-card:hover` 有两支（`rgba(0,0,0,0.06)` 在前、`rgba(0,0,0,0.3)` 在后且不带
+ * `.dark` 前缀），后者靠文件顺序对所有模式生效，故取 `rgba(0,0,0,0.3)`。外壳内的 `:hover { box-shadow: none }`
+ * 特指度更高，由下面的外壳规则覆盖。
+ */
+.chat-header-panel:hover {
+  box-shadow: 0 4px 20px rgb(0 0 0 / 30%);
+}
+
+/*
+ * 外壳内（宿主 ACPMain 的 `.acp-main-root` 子树）：几何与 `:hover` 阴影对明暗两态一致。
+ * 这里只重置未加前缀的 `backdrop-filter`（与原任意属性工具类一致）——`-webkit-backdrop-filter` 仍由
+ * `className` 的 `backdrop-blur-lg` 提供，本轮不改变该既有行为。
+ */
+.acp-main-root .chat-header-panel {
+  height: calc(var(--spacing) * 11.25);
+  border-radius: 0;
+  backdrop-filter: none;
+}
+
+.acp-main-root .chat-header-panel:hover {
+  box-shadow: none;
+}
+
+/*
+ * 外壳内浅色（`:not(.dark *)` 与暗色互斥，避免依赖两条同级规则的生成顺序）：白底 + 仅底边分隔线
+ * （源 `border: 0; border-bottom: 1px solid #eef1f5`；阶段一改写时底边色取的是 `border-b-gray-100`，
+ * 本期保持该生效值，未回改源色）。
+ */
+.acp-main-root .chat-header-panel:not(.dark *) {
+  background-color: var(--color-white);
+  border-inline-width: 0;
+  border-inline-style: var(--tw-border-style, solid);
+  border-top-width: 0;
+  border-top-style: var(--tw-border-style, solid);
+  border-bottom-width: 1px;
+  border-bottom-style: var(--tw-border-style, solid);
+  border-bottom-color: var(--color-gray-100);
+}
+
+/*
+ * 暗色（源 `:root.dark .chat-header-card, .dark .chat-header-card`）：半透明白描边 + 深色半透明底。
+ * 透明度过 `color-mix` 保持对主题 token 的引用：`oklch` 的调色板色无法直接加 `/8`、`/72` 后缀
+ * （Tailwind 对 `bg-zinc-800/72` 同样生成 `color-mix`，并额外输出 8 位十六进制回退；宿主 shell 样式表
+ * 已在用 `color-mix`，故不再重复那份回退）。底色取 `--color-zinc-800` 是阶段一改写的结果
+ * （源为手写的 `rgba(45,45,47,0.72)`），本期保持该生效值，未回改源色。
+ */
+.dark .chat-header-panel {
+  border-color: color-mix(in oklab, var(--color-white) 8%, transparent);
+  background-color: color-mix(in oklab, var(--color-zinc-800) 72%, transparent);
+}
+
+/*
+ * `backdrop-filter` 不支持时的回退（源条件逐字表达）：改用 `--color-surface-1`。放在文件末尾是因为
+ * 它与玻璃形态同特指度、靠后生效；外壳内该值与外壳白底一致，或让位于暗色规则（特指度更高）。
+ */
+@supports not ((backdrop-filter: blur(16px)) or (-webkit-backdrop-filter: blur(16px))) {
+  .chat-header-panel {
+    background-color: var(--color-surface-1);
+  }
+}

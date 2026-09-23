@@ -16,7 +16,7 @@ export function AppPage({ children, className, busy }: AppPageProps) {
   return (
     <main
       aria-busy={busy || undefined}
-      className={`flex min-h-0 min-w-0 flex-1 flex-col overflow-auto bg-surface-0 px-8 pt-7 pb-10 text-text-bright max-[720px]:px-4 max-[720px]:pt-5 max-[720px]:pb-8 ${className ?? ""}`}
+      className={`flex min-h-0 min-w-0 flex-1 flex-col overflow-auto bg-surface-0 px-8 pt-7 pb-10 text-text-bright max-md:px-4 max-md:pt-5 max-md:pb-8 ${className ?? ""}`}
     >
       {children}
     </main>

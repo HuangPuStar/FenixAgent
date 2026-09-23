@@ -1,0 +1,56 @@
+/*
+ * ButtonGroup 深层样式（原写在 `buttonGroupVariants` / `ButtonGroupText` 的 className 字符串里）。
+ *
+ * 为什么下沉：本组样式全是选择器层级 —— `[&>*]:focus-visible:`（子代的伪态）、`[&>input]:`、
+ * `[&>*:not(:first-child)]:`（结构伪类）与 `[&_svg]:`，属仓库禁令 FCP-WEB-02。
+ * 其余扁平工具类（`flex w-fit items-stretch`、`flex-col` 等）仍留在 `button-group.tsx` 的 `className`。
+ *
+ * 方向变体用 `button-group-horizontal` / `button-group-vertical` 挂载：原方向差异只体现在
+ * 「哪两侧圆角归零、哪一侧边框归零」，无法用公共类名表达，故由 cva 的方向变体各自带一个类名
+ * （`data-orientation` 不作为选择器来源：未显式传 `orientation` 时该属性是 undefined，而 cva 有默认值）。
+ *
+ * 层叠：本文件未分层（不包 `@layer`），未分层声明压过 `@layer utilities`。子代按钮自带的圆角/边框工具类
+ * 与这些结构规则之间的关系不变（原选择器带 `:not(:first-child)`，特指度高于子代自身的单个类）。
+ */
+
+/* 焦点态子项抬到兄弟之上，避免描边被相邻项盖住（原 `[&>*]:focus-visible:z-10` / `:relative`）。 */
+.button-group > *:focus-visible {
+  position: relative;
+  z-index: 10;
+}
+
+/* 组内输入框填满剩余宽度（原 `[&>input]:flex-1`）。 */
+.button-group > input {
+  flex: 1;
+}
+
+/* 横向：拼接处去掉左侧圆角与左边框，只留相邻项之间的分隔。 */
+.button-group-horizontal > *:not(:first-child) {
+  border-top-left-radius: 0;
+  border-bottom-left-radius: 0;
+  border-left-style: var(--tw-border-style, solid);
+  border-left-width: 0;
+}
+
+.button-group-horizontal > *:not(:last-child) {
+  border-top-right-radius: 0;
+  border-bottom-right-radius: 0;
+}
+
+/* 纵向：拼接处去掉顶部圆角与上边框。 */
+.button-group-vertical > *:not(:first-child) {
+  border-top-left-radius: 0;
+  border-top-right-radius: 0;
+  border-top-style: var(--tw-border-style, solid);
+  border-top-width: 0;
+}
+
+.button-group-vertical > *:not(:last-child) {
+  border-bottom-left-radius: 0;
+  border-bottom-right-radius: 0;
+}
+
+/* 文本块里的图标不吃指针事件（原 `[&_svg]:pointer-events-none`）。 */
+.button-group-text svg {
+  pointer-events: none;
+}

@@ -1,0 +1,16 @@
+/*
+ * ModelGatewayUsagePage 的深层样式（与同目录 `ModelGatewayUsagePage.tsx` 同名，由该文件 import）。
+ *
+ * 只搬「工具类无法表达」的部分，其余仍留在 `className`：
+ *   - `.model-gateway-usage-panels` ← `xl:grid-cols-[2fr_0.92fr]`（复合任意值）。
+ * 带断点的任意值无法把断点留在 `className` 里（变体不作用于自定义类），故断点一并下沉：与 Tailwind
+ * `xl` 一致（默认 `--breakpoint-xl: 80rem`），写法对齐 Tailwind 生成的 `@media (width >= 80rem)`。
+ * 值逐字等价换算，未调整任何数值；`mt-6` / `grid` / `gap-6` 等扁平工具类保持原样。
+ *
+ * 本文件不包 `@layer`：未分层才能在层叠中压过 `@layer utilities`。
+ */
+@media (width >= 80rem) {
+  .model-gateway-usage-panels {
+    grid-template-columns: 2fr 0.92fr;
+  }
+}

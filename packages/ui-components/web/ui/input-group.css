@@ -1,0 +1,40 @@
+/*
+ * InputGroup 深层样式（原写在 `InputGroup` / `inputGroupAddonVariants` / `InputGroupText` 的 className 里）。
+ *
+ * 为什么下沉：三处都是选择器层级 —— `has-[…]:[&>input]:`（父级状态 + 子代）、`[&>kbd]:`
+ * 与 `[&_svg]:`，属仓库禁令 FCP-WEB-02。其余扁平工具类（布局、间距、`has-[…]:h-auto` 等）仍留在
+ * `input-group.tsx` 的 `className`。
+ *
+ * 层叠：本文件未分层（不包 `@layer`），未分层声明压过 `@layer utilities`。带 `:has()` 的规则特指度
+ * 高于输入框自带的 `px-*` / `py-*` 工具类，与迁移前 `has-[…]:[&>input]:` 变体的胜负关系一致。
+ */
+
+/*
+ * 按附加块的位置给输入框补内侧间距（原 `has-[>[data-align=inline-start]]:[&>input]:pl-2` 等四条）：
+ * 附加块本身是组内兄弟（`data-align` 落在它身上），故条件写在 `.input-group` 的 `:has()` 上。
+ */
+.input-group:has(> [data-align="inline-start"]) > input {
+  padding-left: calc(var(--spacing) * 2);
+}
+
+.input-group:has(> [data-align="inline-end"]) > input {
+  padding-right: calc(var(--spacing) * 2);
+}
+
+.input-group:has(> [data-align="block-start"]) > input {
+  padding-bottom: calc(var(--spacing) * 3);
+}
+
+.input-group:has(> [data-align="block-end"]) > input {
+  padding-top: calc(var(--spacing) * 3);
+}
+
+/* 附加块内快捷键标签的圆角比控件小一档（原 `[&>kbd]:rounded-[calc(var(--radius)-5px)]`）。 */
+.input-group-addon > kbd {
+  border-radius: calc(var(--radius) - 5px);
+}
+
+/* 文本块里的图标不吃指针事件（原 `[&_svg]:pointer-events-none`）。 */
+.input-group-text svg {
+  pointer-events: none;
+}

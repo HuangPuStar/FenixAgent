@@ -1,0 +1,103 @@
+/*
+ * AgentBadge（工牌卡）深层样式。
+ *
+ * 来源：`web/css/chat-agent-badge.css` 的 `.agent-badge` 段（该文件已在阶段五删除，`@keyframes` 并入
+ * `web/css/chat-animations.css`）。阶段一曾把这些声明逐条改写成 Tailwind 表达式；其中需要伪元素选择器、
+ * 复合值或动画名引用的那部分无法用扁平工具类表达（`[&::before,&::after]:` / `shadow-[…]` /
+ * `animate-[…]`），按仓库禁令 FCP-WEB-02 落回本文件，其余扁平工具类仍留在 `AgentBadge.tsx` 的 `className`。
+ *
+ * 为什么类名不复用源 `.agent-badge*`：宿主 `apps/web/src/index.css` 至今保留同名旧规则（当前无元素命中），
+ * 复用会让那批已下线声明重新生效；`web/__tests__/chat-style-migration-helpers.ts` 也把源类名列入
+ * 「不得回流」清单。故本文件用组件前缀的新语义名。
+ *
+ * 层叠：本文件未分层（不包 `@layer`），未分层声明在层叠中压过 `@layer utilities` 的工具类，因此这里
+ * 能覆盖元素上保留的 `border-border` 等工具类；反过来，本文件里能表达的深层声明也不再依赖 JSX 侧。
+ * 伪元素的定位/尺寸工具类（`after:absolute` 等）仍由 `className` 提供，这里只补工具类表达不了的部分。
+ */
+
+/* 工牌容器（源 `.agent-badge`）：点阵底 + 卡片阴影。 */
+.agent-badge-card {
+  background:
+    radial-gradient(circle, var(--color-border, #e2e8f0) 0.8px, transparent 0.8px) 0 0 / 60px 60px,
+    var(--color-surface-1, #fff);
+  box-shadow:
+    0 1px 3px rgb(0 0 0 / 4%),
+    0 4px 16px rgb(0 0 0 / 3%);
+}
+
+/*
+ * 直接子元素统一抬到水印之上（源 `.agent-badge > *`）。头像的 `z-[2]` 是孙元素、不受本条约束，
+ * 仍由 `className` 的 `z-[2]` 提供（与原样式表里 `.agent-badge-avatar` 排在 `.agent-badge > *` 之后同效）。
+ */
+.agent-badge-card > * {
+  position: relative;
+  z-index: 1;
+}
+
+/*
+ * 水印（源 `.agent-badge::before, .agent-badge::after`）：两条伪元素共用一组声明，只有 `top` 不同。
+ * `content` 是四段 `data-badge-name`，间隔为两个空格（引号内是字面空格，与原样式表一致）。
+ */
+.agent-badge-card::before,
+.agent-badge-card::after {
+  content: attr(data-badge-name) "  " attr(data-badge-name) "  " attr(data-badge-name) "  " attr(data-badge-name);
+  position: absolute;
+  inset-inline: 0;
+  z-index: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  white-space: nowrap;
+  pointer-events: none;
+  rotate: -10deg;
+  font-size: var(--text-3xl);
+  line-height: var(--tw-leading, var(--text-3xl--line-height));
+  font-weight: var(--font-weight-black);
+  letter-spacing: var(--tracking-tight);
+  color: var(--color-border, #e2e8f0);
+  opacity: 0.16;
+}
+
+.agent-badge-card::before {
+  top: 41%;
+}
+
+.agent-badge-card::after {
+  top: 80%;
+}
+
+/* 渐变头部（源 `.agent-badge-header`）：顶部青色光晕 + 品牌蓝纵向渐变。 */
+.agent-badge-banner {
+  background:
+    radial-gradient(220px circle at 50% 0%, rgb(107 230 255 / 22%), transparent 68%),
+    linear-gradient(180deg, #1759dc, #0d2a6e);
+}
+
+/* 挂绳孔（源 `.agent-badge-header::after`）：内阴影做凹陷感。 */
+.agent-badge-banner::after {
+  box-shadow: inset 0 1px 2px rgb(0 0 0 / 10%);
+}
+
+/* 虚线分隔线（源 `.agent-badge-divider::before, .agent-badge-divider::after`）。 */
+.agent-badge-rule::before,
+.agent-badge-rule::after {
+  content: "";
+  flex: 1;
+  border-top-width: 1px;
+  border-style: dashed;
+  border-color: var(--color-border);
+}
+
+/*
+ * 骨架屏脉冲：`@keyframes agent-badge-pulse` 定义在 `web/css/chat-animations.css`（改名必须同步两侧）。
+ * 引用按名字面写：工具类只能写 `animate-[agent-badge-pulse_…]` 任意值，被 FCP-WEB-02 禁止。
+ */
+.agent-badge-skeleton-pulse {
+  animation: agent-badge-pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+}
+
+/* 骨架屏头像占位（源 `.agent-badge-skeleton-circle` 的投影）。 */
+.agent-badge-skeleton-avatar {
+  box-shadow: 0 2px 12px rgb(0 0 0 / 4%);
+}

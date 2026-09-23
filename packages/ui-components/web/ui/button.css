@@ -1,0 +1,15 @@
+/*
+ * Button 深层样式（原写在 `buttonVariants` 的 className 字符串里）。
+ *
+ * 为什么下沉：`[&_svg]:pointer-events-none [&_svg]:shrink-0` 是子代选择器（工具类表达不了层级），
+ * 属仓库禁令 FCP-WEB-02。其余扁平工具类（尺寸、变体色、focus/disabled/aria 变体）仍留在 `button.tsx`。
+ *
+ * 层叠：本文件未分层（不包 `@layer`），未分层声明压过 `@layer utilities`。规则目标仍是后代 `svg`，
+ * 与 svg 自身可能携带的尺寸工具类（如 `size-5`）之间的胜负关系与迁移前一致。
+ */
+
+/* 图标不吃指针事件、不参与收缩（原 `[&_svg]:pointer-events-none [&_svg]:shrink-0`）。 */
+.button svg {
+  pointer-events: none;
+  flex-shrink: 0;
+}

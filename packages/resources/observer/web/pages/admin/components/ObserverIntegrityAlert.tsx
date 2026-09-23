@@ -49,7 +49,7 @@ export function ObserverIntegrityAlert({ rows, checked }: ObserverIntegrityAlert
               key={`${row.kind}:${row.id}`}
               className="flex items-center gap-2 rounded bg-background px-2 py-1 text-xs"
             >
-              <Badge variant="secondary" className="text-[10px]">
+              <Badge variant="secondary" className="text-3xs">
                 {row.kind}
               </Badge>
               <span className="font-mono text-text-primary">{row.id}</span>

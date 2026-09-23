@@ -1,0 +1,34 @@
+/*
+ * chat-interaction-region 的深层样式（与同目录 `chat-interaction-region.tsx` 同名，由该文件 import）。
+ *
+ * 来源：源 `chat-design-status.css`（阶段四随迁移删除）与同批删除的 `chat-design-responsive.css`
+ * 的 `.chat-interaction-stack` / `.chat-interaction-region` 两段。只搬「工具类无法表达」的复合值，
+ * 扁平工具类（圆角、边框、底色、`mx-auto`）仍留在 `chat-interaction-region.tsx` 的 `className` 里：
+ *   - `.chat-interaction-cards` ← `w-[min(756px,calc(100%-64px))]` 与 `max-md:w-[calc(100%-52px)]`
+ *     （源 `.chat-interaction-stack, .chat-status-panel` 的宽度台阶 + `chat-design-responsive.css`
+ *     的窄屏收窄）；源类名 `.chat-interaction-stack` 已作废，故取新名；
+ *   - `.chat-interaction-card`  ← `shadow-[0_12px_34px_rgb(30_64_120_/_8%)]`（源 `.chat-interaction-region`
+ *     的投影；包内无等价阴影 token，逐字保留不改视觉）。源类名 `.chat-interaction-region` 已作废，故取新名。
+ * 值逐字等价换算，未调整任何数值。
+ *
+ * 窄屏断点：源规则写作 `@media (max-width: 720px)`，迁移到工具类后一直是 Tailwind 的 `max-md`
+ * （`width < 48rem`，即 768px）——两条并非同一断点，此处按**迁移后的现状**逐字保留 `max-md` 语义，
+ * 不顺手改回 720px（那会改变 720–767px 区间的宽度，属视觉变更）。若要统一断点，需单独决策。
+ *
+ * 层叠：本文件不包 `@layer`（源样式表也未分层），未分层声明压过 `@layer utilities`；容器与卡片上
+ * 没有其它声明 `width` / `box-shadow` 的工具类（调用方也不传这两个属性），胜负关系与迁移前一致。
+ */
+.chat-interaction-cards {
+  width: min(756px, calc(100% - 64px));
+}
+
+/* `max-md` 展开：窄屏下比输入岛卡片每侧再窄 16px（卡片 padding 收成 10px）。 */
+@media (width < 48rem) {
+  .chat-interaction-cards {
+    width: calc(100% - 52px);
+  }
+}
+
+.chat-interaction-card {
+  box-shadow: 0 12px 34px rgb(30 64 120 / 8%);
+}

@@ -1,0 +1,67 @@
+.resource-preview-content-markdown pre {
+  background-color: var(--color-surface-2);
+  border-radius: var(--radius-lg);
+  padding: calc(var(--spacing) * 4);
+  color: var(--color-text-primary);
+}
+
+.resource-preview-content-markdown code {
+  background-color: var(--color-surface-2);
+  border-radius: 0.25rem;
+  padding-inline: calc(var(--spacing) * 1.5);
+  padding-block: calc(var(--spacing) * 0.5);
+  color: var(--color-text-primary);
+  font-size: var(--text-xs);
+  line-height: var(--tw-leading, var(--text-xs--line-height));
+}
+
+.resource-preview-content-markdown pre code {
+  background-color: transparent;
+  padding: 0;
+  color: var(--color-text-primary);
+}
+
+.resource-preview-content-markdown table,
+.resource-preview-content-docx table {
+  width: 100%;
+}
+
+.resource-preview-content-markdown th,
+.resource-preview-content-docx th,
+.resource-preview-content-markdown td,
+.resource-preview-content-docx td {
+  border-style: var(--tw-border-style, solid);
+  border-width: 1px;
+  border-color: var(--color-border);
+  padding-inline: calc(var(--spacing) * 3);
+  padding-block: calc(var(--spacing) * 2);
+}
+
+.resource-preview-content-markdown th,
+.resource-preview-content-docx th {
+  text-align: left;
+  background-color: var(--color-surface-2);
+}
+
+.resource-preview-content-markdown img,
+.resource-preview-content-docx img {
+  max-width: 100%;
+  border-radius: var(--radius-lg);
+}
+
+.resource-preview-content-markdown blockquote {
+  border-left-style: var(--tw-border-style, solid);
+  border-left-width: 4px;
+  border-color: color-mix(in oklab, var(--color-primary) 30%, transparent);
+  padding-left: calc(var(--spacing) * 4);
+  color: var(--color-text-muted);
+}
+
+.resource-preview-content-markdown hr {
+  border-color: var(--color-border);
+}
+
+.resource-preview-content-markdown a {
+  color: var(--color-primary);
+  text-decoration-line: underline;
+}

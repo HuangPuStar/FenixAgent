@@ -1,0 +1,18 @@
+/*
+ * DropdownMenu 深层样式（原写在各 Item 的 className 字符串里）。
+ *
+ * 为什么下沉：四处都是同一条子代选择器 `[&_svg]:pointer-events-none [&_svg]:shrink-0`（FCP-WEB-02），
+ * 文案只有一处语义（「菜单项图标不吃指针事件、不收缩」），故四个宿主类名共用一条规则。
+ * 其余扁平工具类（布局、间距、focus/data-* 变体）仍留在 `dropdown-menu.tsx` 的 `className`。
+ *
+ * 层叠：本文件未分层（不包 `@layer`），未分层声明压过 `@layer utilities`；规则只声明指针事件与收缩，
+ * 与 `className` 里保留的 `[&_svg:not([class*='size-'])]:size-4`（宽高）互不干涉。
+ */
+
+.dropdown-menu-item svg,
+.dropdown-menu-checkbox-item svg,
+.dropdown-menu-radio-item svg,
+.dropdown-menu-sub-trigger svg {
+  pointer-events: none;
+  flex-shrink: 0;
+}
