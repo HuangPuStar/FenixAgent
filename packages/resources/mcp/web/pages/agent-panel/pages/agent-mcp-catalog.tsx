@@ -1,4 +1,13 @@
 import {
+  AgentCatalogIndex,
+  AgentCatalogIndexArrow,
+  AgentCatalogIndexCopy,
+  AgentCatalogIndexIcon,
+  AgentCatalogIndexItem,
+  AgentCatalogIndexMeta,
+  AgentCatalogIndexNav,
+} from "@fenix/ui-components/components/agent-catalog-index";
+import {
   AgentMasterDetailHeader,
   AgentMasterDetailWorkspace,
 } from "@fenix/ui-components/components/agent-master-detail-workspace";
@@ -13,7 +22,6 @@ import type { McpServerInfo, McpToolInfo } from "@fenix/web-runtime/types/config
 import {
   AlertTriangle,
   CheckCircle2,
-  ChevronRight,
   Cloud,
   Eye,
   Pencil,
@@ -160,20 +168,17 @@ export function AgentMcpCatalog(props: Props) {
           detailHeader={selectedServer ? <McpDetailHeader server={selectedServer} props={props} /> : null}
           detailFooter={selectedServer ? <McpDetailActions server={selectedServer} props={props} /> : null}
           index={
-            <aside className="mcp-directory">
-              <header>
-                <div>
-                  <strong>{t("directory.title")}</strong>
-                  <span>{filtered.length}</span>
-                </div>
-                <small>
-                  {t("directory.summary", {
-                    visible: filtered.length,
-                    total: props.servers.length,
-                  })}
-                </small>
-              </header>
-              <nav aria-label={t("directory.title")}>
+            // 目录头部（标题 + 计数徽标 + 说明行）、条目四列网格与截断/箭头显隐已收敛到
+            // `AgentCatalogIndex` 一族：本页头部原与模型库那份逐字相同，四列模板与技能库、
+            // 模型库逐字相同。`mcp-directory` 类名保留，`agent-mcp.css` 里只剩本页刻度：
+            // 19/10 内边距、57px 行高、3px 行间距、px 字号与选中配色。
+            <AgentCatalogIndex
+              className="mcp-directory"
+              title={t("directory.title")}
+              count={filtered.length}
+              description={t("directory.summary", { visible: filtered.length, total: props.servers.length })}
+            >
+              <AgentCatalogIndexNav label={t("directory.title")}>
                 {filtered.map((server) => {
                   const key = getMcpKey(server);
                   const active = key === getMcpKey(selectedServer);
@@ -181,31 +186,40 @@ export function AgentMcpCatalog(props: Props) {
                   const publiclyReadable = server.scope?.visibility === "public";
                   const Icon = getMcpIcon(server);
                   return (
-                    <button
-                      type="button"
+                    <AgentCatalogIndexItem
                       key={key}
-                      aria-current={active ? "page" : undefined}
+                      // `selected` 产出 `aria-current="page"`（读屏的「当前页」契约，也是箭头显隐的依据）；
+                      // `is-selected` 只是本页选中配色的钩子，规则留在 `agent-mcp.css` 的类选择器里。
+                      selected={active}
                       className={active ? "is-selected" : ""}
                       onClick={() => setSelectedKey(key)}
                     >
-                      <span className="mcp-directory-icon">{external ? <Share2 /> : <Icon />}</span>
-                      <span className="mcp-directory-copy">
-                        <strong>{getMcpDisplayName(server)}</strong>
-                        <small>{server.summary || t("directory.noDescription")}</small>
-                      </span>
-                      <span className="mcp-directory-meta">
+                      <AgentCatalogIndexIcon className="mcp-directory-icon">
+                        {external ? <Share2 /> : <Icon />}
+                      </AgentCatalogIndexIcon>
+                      {/* 保留本页类名：`.mcp-directory-copy strong/small` 是本页 px 刻度字号（12px / 9px）
+                          的落点；纵向排布与两行截断已由共享组件承担。 */}
+                      <AgentCatalogIndexCopy
+                        className="mcp-directory-copy"
+                        title={getMcpDisplayName(server)}
+                        subtitle={server.summary || t("directory.noDescription")}
+                      />
+                      {/* 同理，本页只留 meta 列的宽度（110px）、行距与字号；右对齐由共享组件给。 */}
+                      <AgentCatalogIndexMeta className="mcp-directory-meta">
                         <span className="mcp-directory-organization" title={server.organizationName}>
                           {server.organizationName ?? t(`type.${server.type === "local" ? "local" : "remote"}`)}
                         </span>
                         {publiclyReadable ? <b>{t("scope.public")}</b> : null}
                         {external && !publiclyReadable ? <b>{t("scope.shared")}</b> : null}
-                      </span>
-                      <ChevronRight />
-                    </button>
+                      </AgentCatalogIndexMeta>
+                      {/* 宽度是本页 px 刻度（12px）；共享组件默认 `w-3` 在 13px 根字号下只有 9.75px，
+                          故用本页类名覆盖，而不是依赖「箭头是按钮的直接子元素」这种 DOM 形状。 */}
+                      <AgentCatalogIndexArrow className="mcp-directory-arrow" />
+                    </AgentCatalogIndexItem>
                   );
                 })}
-              </nav>
-            </aside>
+              </AgentCatalogIndexNav>
+            </AgentCatalogIndex>
           }
         >
           {selectedServer ? <McpDetailBody server={selectedServer} props={props} /> : null}
