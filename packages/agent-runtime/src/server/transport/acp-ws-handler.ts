@@ -391,6 +391,15 @@ export async function handleAcpWsMessage(
         // 协议确认与宿主激活是两个阶段；保留确认状态，让后续 heartbeat 幂等补齐半完成装配。
         logError("Remote machine activation error:", err);
       }
+      // 机器已确认 clean slate(旧 runtime 全部终止),该事实与本地装配是否成功无关:
+      // 必须在此复位该机器断连造成的 unknown,否则进入实例会一直被 runtime gate 拒绝。
+      const resolvedInstanceIds = agentInstanceService.handleMachineCleanSlate(entry.machineId);
+      if (resolvedInstanceIds.length > 0) {
+        logger.info("[MACHINE-CLEAN-SLATE] Resolved unknown agent runtimes", {
+          machineId: entry.machineId,
+          instanceUids: resolvedInstanceIds,
+        });
+      }
       continue;
     }
 
@@ -537,7 +546,7 @@ function performMachineCleanup(entry: AcpConnectionEntry, reason?: string): void
   const instanceIds = disconnectedInstances.map((instance) => instance.instanceId);
   for (const instance of disconnectedInstances) {
     if (instance.runtimeGeneration !== undefined && instance.serverEpoch === SERVER_EPOCH) {
-      agentInstanceService.handleRuntimeDisconnect(instance.instanceId, instance.runtimeGeneration);
+      agentInstanceService.handleRuntimeDisconnect(instance.instanceId, instance.runtimeGeneration, machineId);
     }
   }
   handleMachineDisconnect(entry, reason).catch(() => {});
@@ -605,7 +614,7 @@ export function triggerMachineCleanupByMachineId(machineId: string, reason: stri
   const instanceIds = disconnectedInstances.map((instance) => instance.instanceId);
   for (const instance of disconnectedInstances) {
     if (instance.runtimeGeneration !== undefined && instance.serverEpoch === SERVER_EPOCH) {
-      agentInstanceService.handleRuntimeDisconnect(instance.instanceId, instance.runtimeGeneration);
+      agentInstanceService.handleRuntimeDisconnect(instance.instanceId, instance.runtimeGeneration, machineId);
     }
   }
 

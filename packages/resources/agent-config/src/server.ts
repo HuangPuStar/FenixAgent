@@ -45,12 +45,10 @@ export type {
   SiteRequestIdentity,
   WebAgentConfigRouteDependencies,
   WebConfigAgentsRouteDependencies,
-  WebMetaAgentRouteDependencies,
 } from "./server/routes/dependencies";
 export { createWebAgentGenerationRoutes } from "./server/routes/web/agent-generation";
 export { createWebAgentSitesRoutes } from "./server/routes/web/agent-sites";
 export { createWebConfigAgentsRoutes } from "./server/routes/web/config/agents";
-export { createWebMetaAgentRoutes } from "./server/routes/web/meta-agent";
 export { createWebSidebarConfigRoutes } from "./server/routes/web/sidebar-config";
 export { getAgentConfigModule, installAgentConfigModule, resetAgentConfigModule } from "./server/runtime";
 export type {
@@ -64,12 +62,12 @@ export {
 } from "./server/schemas/agent-generation.schema";
 export * from "./server/schemas/agent-site.schema";
 export * from "./server/schemas/api-agent.schema";
-export * from "./server/schemas/meta-agent.schema";
 export * from "./server/schemas/sidebar-config.schema";
 export * from "./server/services/agent-generation";
 export * from "./server/services/agent-sites";
 export * from "./server/services/agent-system-prompt";
 export * from "./server/services/agent-templates";
+export { syncBuiltinSkillsToSystemAdmin } from "./server/services/builtin-skills";
 export * from "./server/services/config";
 export * from "./server/services/config/agent-config";
 export * from "./server/services/config/agent-config-site-app";
@@ -82,5 +80,4 @@ export type {
   AgentKnowledgePolicy,
   AgentNode,
 } from "./server/services/config/types";
-export * from "./server/services/meta-agent";
 export { getSidebarConfig, parseHiddenSidebarTabs } from "./server/services/sidebar-config";

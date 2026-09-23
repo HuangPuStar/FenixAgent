@@ -1,16 +1,11 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { AgentNodeUnavailableError } from "@fenix/orchestration";
-import { NotFoundError, ValidationError } from "@fenix/platform-sdk";
+import { AppError, NotFoundError, ValidationError } from "@fenix/platform-sdk";
 import { resetAllStubs } from "@fenix/platform-sdk/testing";
 import { SandboxProviderNotConfiguredError, SandboxRuntimeNotReadyError } from "@fenix/resource-sandbox/server";
 import { createWebEnvironmentsRoutes } from "../routes/web/environments";
 import type { AgentRuntime } from "../runtime";
-import {
-  resetAgentRuntimePort,
-  setOrchestrationInstanceDeps,
-  stubAgentRuntimePort,
-  stubCoreRuntimeFacade,
-} from "../server/testing";
+import { resetAgentRuntimePort, stubAgentRuntimePort, stubCoreRuntimeFacade } from "../server/testing";
 import { createStubAgentRuntimeAuthGuardPlugin, resetTestAuth, setTestAuth } from "./guard-stubs";
 
 // 路由不再自持 deps 袋子（1.4 W3b）：环境能力经运行 port 取，替换点就是 port 绑定本身
@@ -452,36 +447,96 @@ describe("round44 Web 环境路由", () => {
     expect(body.error).toEqual({ code: "AGENT_NODE_UNAVAILABLE", message: "Agent node is unavailable" });
   });
 
-  // provider 未配置时，进入环境必须脱敏映射为 503。
+  // provider 未配置时进入环境必须映射为 503 + SERVICE_UNAVAILABLE（可重试语义），并按固定文案脱敏：
+  // providerKey 只进服务端日志，不得回传前端。
   test("进入环境映射 provider 未配置错误", async () => {
-    stubCoreRuntimeFacade({ listInstances: () => [] });
-    setOrchestrationInstanceDeps({
-      getOrchestrationController: () =>
-        ({
-          spawnInstance: async () => Promise.reject(new SandboxProviderNotConfiguredError("internal-provider")),
-        }) as unknown as import("@fenix/orchestration").AgentController,
+    // 沙箱错误是从 port 的 `ensureInstance` 冒到路由 catch 的（本路由面向替换点就是 port，见文件头）。
+    // 真实链路：`ensureInstance` → 协调器 strict `ensureRuntime` → adapter.start → `spawnInstance`
+    // → `AgentController.spawnInstance` → 执行节点解析 → `sandboxExecutionHandler.prepare`，沿途无一层把
+    // 它换成别的类型（协调器只在 strict 下原样上抛）。
+    // 此前这两个用例只桩到 `spawnInstance` 一层、`ensureInstance` 留真实实现，而真实实现的第一步
+    // （实例仓储取 DB）在测试进程里就先失败了：请求根本没走到沙箱，断言到的 500 是路由兜底分支、
+    // 且 `spawnInstance` 从未被调用——「不泄漏」断言因此是空转，503 分支始终无人覆盖。
+    stubRuntime({
+      ensureInstance: async () => {
+        throw new SandboxProviderNotConfiguredError("internal-provider");
+      },
     });
 
     const response = await json(`/environments/${environmentId}/enter`, "POST");
+    const text = await response.text();
 
-    expect(response.status).toBe(500);
-    expect(await response.text()).not.toContain("internal-provider");
+    expect(response.status).toBe(503);
+    expect(JSON.parse(text)).toEqual({
+      success: false,
+      error: { code: "SERVICE_UNAVAILABLE", message: "Sandbox service is unavailable" },
+    });
+    // 脱敏：providerKey 不得出现在响应体任何位置。
+    expect(text).not.toContain("internal-provider");
   });
 
-  // runtime 未就绪时，同样不得泄漏 sandbox 内部标识。
+  // runtime 未就绪时同样映射为 503 + SERVICE_UNAVAILABLE，且 sandboxId 不得泄漏（错误对象携带 sbi_*）。
   test("进入环境映射 runtime 未就绪错误", async () => {
-    stubCoreRuntimeFacade({ listInstances: () => [] });
-    setOrchestrationInstanceDeps({
-      getOrchestrationController: () =>
-        ({
-          spawnInstance: async () => Promise.reject(new SandboxRuntimeNotReadyError("sbi_private")),
-        }) as unknown as import("@fenix/orchestration").AgentController,
+    stubRuntime({
+      ensureInstance: async () => {
+        throw new SandboxRuntimeNotReadyError("sbi_private");
+      },
     });
 
     const response = await json(`/environments/${environmentId}/enter`, "POST");
+    const text = await response.text();
+
+    expect(response.status).toBe(503);
+    expect(JSON.parse(text)).toEqual({
+      success: false,
+      error: { code: "SERVICE_UNAVAILABLE", message: "Sandbox service is unavailable" },
+    });
+    // 脱敏：sandboxId 不得出现在响应体任何位置。
+    expect(text).not.toContain("sbi_private");
+  });
+
+  // 未配模型的 agent 走 enter 时，agent-config 抛的是 AppError(INVALID_CONFIG, 400)：路由必须按
+  // 错误本意返回 4xx + 稳定错误码（前端据此引导「先去配模型」），不得被兜底吞成 500 + CONFIG_WRITE_ERROR。
+  test("进入环境时未配模型返回 400 而非 500", async () => {
+    stubRuntime({
+      ensureInstance: async () => {
+        throw new AppError(
+          "Default agent requires at least one configured model. Please configure a model first, then retry.",
+          "INVALID_CONFIG",
+          400,
+        );
+      },
+    });
+
+    const response = await json(`/environments/${environmentId}/enter`, "POST");
+    const body = await response.json();
+
+    expect(response.status).toBe(400);
+    expect(body.success).toBe(false);
+    expect(body.error.code).toBe("INVALID_CONFIG");
+    // 对外只给安全文案：原始 message 由资源包拼接（可能携带 agentConfigId / Skill 名等内部标识），
+    // 不得回传给前端，诊断细节留在服务端日志。
+    expect(body.error.message).not.toContain("requires at least one configured model");
+    expect(typeof body.error.message).toBe("string");
+    expect(body.error.message.length).toBeGreaterThan(0);
+  });
+
+  // 无法识别的内部异常仍落 500 + CONFIG_WRITE_ERROR，但对外必须是通用文案：原始 message 可能携带
+  // 内部路径 / 标识，只能在服务端日志里保留。
+  test("进入环境时未知内部错误不外泄原始 message", async () => {
+    stubRuntime({
+      ensureInstance: async () => {
+        throw new Error("ECONNREFUSED /var/lib/fenix/internal/agent-config.sock");
+      },
+    });
+
+    const response = await json(`/environments/${environmentId}/enter`, "POST");
+    const text = await response.text();
 
     expect(response.status).toBe(500);
-    expect(await response.text()).not.toContain("sbi_private");
+    expect(JSON.parse(text).error.code).toBe("CONFIG_WRITE_ERROR");
+    expect(text).not.toContain("ECONNREFUSED");
+    expect(text).not.toContain("/var/lib/fenix");
   });
 
   // 删除前必须按当前用户范围验证归属，随后才调用删除服务。

@@ -129,7 +129,7 @@ export function FileTreeArborist({
     >
       {stickyFolder && (
         <div
-          className="file-tree-arborist-sticky-folder pointer-events-none absolute inset-x-0 top-0 z-[2] flex h-8 items-center gap-0.5 border-b border-border-subtle bg-surface-2 px-2.5 text-xs font-normal text-text-secondary"
+          className="file-tree-arborist-sticky-folder pointer-events-none absolute inset-x-0 top-0 z-[2] flex h-8 items-center gap-0.5 border-b border-border-subtle bg-surface-2 px-2.5 text-sm font-normal text-text-secondary"
           aria-hidden
         >
           <FolderOpen />
@@ -216,13 +216,15 @@ function FileTreeNode({
             <Folder aria-hidden />
           )
         ) : (
-          <span className="size-3">
-            <FileTypeIcon filename={data.name} />
-          </span>
+          // 文件图标与目录图标共用同一个 16px 图标位：不再套 12px 的 `size-3` 内层容器
+          // （那层容器让图标走行盒基线定位 —— 实测比行中心低 4.75px、比目录图标小 6.25px 且右移 3.13px）。
+          // 图标位尺寸由 `file-tree-arborist.css` 的 `.file-tree-arborist-toggle > .file-type-icon` 决定，
+          // 与目录图标同一条规则；这里不再写尺寸，避免被那条未分层规则静默压过。
+          <FileTypeIcon filename={data.name} />
         )}
       </button>
       <span
-        className="block w-0 min-w-0 flex-auto overflow-hidden text-ellipsis whitespace-nowrap text-xs"
+        className="block w-0 min-w-0 flex-auto overflow-hidden text-ellipsis whitespace-nowrap text-sm"
         title={data.name}
       >
         {data.name}

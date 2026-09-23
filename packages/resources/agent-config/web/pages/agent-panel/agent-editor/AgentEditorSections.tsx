@@ -1,6 +1,9 @@
+import { LabeledField } from "@fenix/ui-components/config/LabeledField";
+import { Badge } from "@fenix/ui-components/ui/badge";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@fenix/ui-components/ui/tabs";
 import { NS } from "@fenix/web-runtime/i18n/namespace";
 import { Cpu, Globe2, Info, Plug, Server, Sparkles } from "lucide-react";
-import { lazy, Suspense, useId, useState } from "react";
+import { lazy, Suspense, useState } from "react";
 import { Controller, type UseFormReturn } from "react-hook-form";
 import { useTranslation } from "react-i18next";
 import { selectionToValue, valueToSelection } from "../../../lib/agent-node";
@@ -8,7 +11,7 @@ import { canManageAgentSharing } from "../../../lib/agent-resource-access";
 import { AgentKnowledgeSection } from "./AgentKnowledgeSection";
 import { AgentResourcePicker } from "./AgentResourcePicker";
 import { SECTION } from "./agent-editor-classes";
-import { EditorButton, EditorInput, EditorTextarea, Field, Intro, SinglePicker, Toggle } from "./agent-editor-controls";
+import { EditorButton, EditorInput, EditorTextarea, Intro, SinglePicker, Toggle } from "./agent-editor-controls";
 import {
   ACCESS_PREVIEW,
   AGENT_ID_BUTTON,
@@ -65,34 +68,47 @@ function Identity({
         description={t("editor.sectionDescriptions.identity")}
       />
       <div className={FORM_GRID}>
-        <Field label={t("form.name")} hint={mode === "edit" ? t("editor.nameImmutable") : undefined}>
+        {/* 字段包装统一走 `config/LabeledField`：字段名刻度、6px 字段名/控件间距、提示的位置与配色
+            都归库内，本处只留给 grid 定位用的 `min-w-0` + 列位类。 */}
+        <LabeledField
+          className="min-w-0"
+          label={t("form.name")}
+          hint={mode === "edit" ? t("editor.nameImmutable") : undefined}
+        >
           <EditorInput
             id="agent-editor-name"
             disabled={mode === "edit" || disabled}
             placeholder={t("form.namePlaceholder")}
             {...form.register("name")}
           />
-        </Field>
+        </LabeledField>
         {mode === "edit" && data.agentId && (
-          <Field className="max-md:col-start-1" label={t("editor.agentId")} hint={t("editor.agentIdHint")}>
+          // 这一行是复合控件（只读输入框 + 复制按钮）：`<label>` 里出现第二个可聚焦元素会污染控件的
+          // 可访问名且是非法标记，故改走 `LabeledField` 的显式关联模式，由 `htmlFor` 指向主控件。
+          <LabeledField
+            className="min-w-0 max-md:col-start-1"
+            label={t("editor.agentId")}
+            hint={t("editor.agentIdHint")}
+            htmlFor="agent-editor-agent-id"
+          >
             <div className={AGENT_ID_ROW}>
-              <EditorInput value={data.agentId} className={AGENT_ID_INPUT} disabled />
+              <EditorInput id="agent-editor-agent-id" value={data.agentId} className={AGENT_ID_INPUT} disabled />
               <EditorButton type="button" className={AGENT_ID_BUTTON} onClick={onCopy}>
                 {t("editor.copy")}
               </EditorButton>
             </div>
-          </Field>
+          </LabeledField>
         )}
-        <Field className="col-span-full" label={t("form.description")}>
+        <LabeledField className="min-w-0 col-span-full" label={t("form.description")}>
           <EditorInput
             id="agent-editor-description"
             disabled={disabled}
             placeholder={t("form.descriptionPlaceholder")}
             {...form.register("description")}
           />
-        </Field>
-        <Field
-          className="col-span-full"
+        </LabeledField>
+        <LabeledField
+          className="min-w-0 col-span-full"
           label={t("form.prompt")}
           hint={t("editor.characterCount", { count: form.watch("prompt").length })}
         >
@@ -103,7 +119,7 @@ function Identity({
             placeholder={t("form.promptPlaceholder")}
             {...form.register("prompt")}
           />
-        </Field>
+        </LabeledField>
       </div>
       <p className={GUIDANCE}>
         <Info />
@@ -155,7 +171,6 @@ function Model({ form, data, disabled }: { form: Props["form"]; data: Props["dat
 function Capabilities({ form, data, disabled }: { form: Props["form"]; data: Props["data"]; disabled: boolean }) {
   const { t } = useTranslation(NS.AGENTS);
   const [kind, setKind] = useState<keyof typeof capabilityIcons>("skills");
-  const tabsId = useId();
   const config = {
     skills: ["skillIds", data.skills, t("skills.tabTitle"), "auto", Sparkles],
     mcp: ["mcpIds", data.mcps, t("mcps.tabTitle"), "auto", Plug],
@@ -163,8 +178,6 @@ function Capabilities({ form, data, disabled }: { form: Props["form"]; data: Pro
   } as const;
   const tabs = Object.keys(config) as Array<keyof typeof config>;
   const [name, options, label, groupMode, ItemIcon] = config[kind];
-  const tabId = (item: keyof typeof config) => `${tabsId}-tab-${item}`;
-  const panelId = (item: keyof typeof config) => `${tabsId}-panel-${item}`;
   return (
     <section className={SECTION}>
       <Intro
@@ -172,53 +185,45 @@ function Capabilities({ form, data, disabled }: { form: Props["form"]; data: Pro
         title={t("editor.sections.capabilities")}
         description={t("editor.sectionDescriptions.capabilities")}
       />
-      <div className={CAPABILITY_TABS} role="tablist">
-        {tabs.map((item) => {
-          const Icon = capabilityIcons[item];
-          return (
-            <button
-              type="button"
-              id={tabId(item)}
-              role="tab"
-              aria-selected={kind === item}
-              aria-controls={panelId(item)}
-              tabIndex={kind === item ? 0 : -1}
-              data-active={kind === item ? "true" : undefined}
-              key={item}
-              onClick={() => setKind(item)}
-              onKeyDown={(event) => {
-                if (event.key !== "ArrowLeft" && event.key !== "ArrowRight") return;
-                event.preventDefault();
-                const offset = event.key === "ArrowRight" ? 1 : -1;
-                const next = tabs[(tabs.indexOf(item) + offset + tabs.length) % tabs.length];
-                setKind(next);
-                document.getElementById(tabId(next))?.focus();
-              }}
-            >
-              <Icon />
-              {config[item][2]}
-              <span>{form.watch(config[item][0]).length}</span>
-            </button>
-          );
-        })}
-      </div>
-      <div id={panelId(kind)} role="tabpanel" aria-labelledby={tabId(kind)}>
-        <Controller
-          name={name}
-          control={form.control}
-          render={({ field }) => (
-            <AgentResourcePicker
-              label={label}
-              options={options}
-              value={field.value}
-              onChange={field.onChange}
-              readOnly={disabled}
-              groupMode={groupMode}
-              renderIcon={() => <ItemIcon />}
-            />
-          )}
-        />
-      </div>
+      {/* 三个能力页签改走 `ui/tabs`：`id` / `aria-controls` / `aria-labelledby` / `aria-selected`、
+          左右方向键与 roving tabindex 原来都由本处手写维护，现在全部由 Radix 生成——语义与键盘行为
+          逐条等价（原实现就是照这套契约手写的），少掉的只是自绘的 `data-active` 与下划线伪元素。
+
+          注意本组件是**嵌套**在 `AgentFormDialog` 的 workspace `Tabs`（桌面为 `vertical`）里的：
+          朝向相关的尺寸由库内 `TabsList` / `TabsTrigger` 自己的 `data-orientation` 锚定（见
+          `ui/tabs.tsx` 的 `TabsOrientationContext`），否则外层的 vertical 变体会被 group 选择器
+          穿透进来、把这里撑成竖排（实测高度 32.7px → 94.3px，下划线变成左侧竖条）。 */}
+      <Tabs value={kind} onValueChange={(value) => setKind(value as keyof typeof capabilityIcons)}>
+        <TabsList variant="line" className={CAPABILITY_TABS}>
+          {tabs.map((item) => {
+            const Icon = capabilityIcons[item];
+            return (
+              <TabsTrigger key={item} value={item}>
+                <Icon />
+                {config[item][2]}
+                <Badge variant="secondary">{form.watch(config[item][0]).length}</Badge>
+              </TabsTrigger>
+            );
+          })}
+        </TabsList>
+        <TabsContent value={kind}>
+          <Controller
+            name={name}
+            control={form.control}
+            render={({ field }) => (
+              <AgentResourcePicker
+                label={label}
+                options={options}
+                value={field.value}
+                onChange={field.onChange}
+                readOnly={disabled}
+                groupMode={groupMode}
+                renderIcon={() => <ItemIcon />}
+              />
+            )}
+          />
+        </TabsContent>
+      </Tabs>
     </section>
   );
 }
@@ -283,7 +288,7 @@ function Sharing({
           <strong>{data.organizationName ?? t("editor.currentOrganization")}</strong>
           <p>{manageable ? t("editor.sharingManageable") : t("editor.sharingNotManageable")}</p>
         </div>
-        <em>{t("editor.owner")}</em>
+        <Badge variant="secondary">{t("editor.owner")}</Badge>
       </div>
       <Controller
         name="publicReadable"

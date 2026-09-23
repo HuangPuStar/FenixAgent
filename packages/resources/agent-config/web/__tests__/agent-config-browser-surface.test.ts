@@ -158,12 +158,9 @@ const CONSUMER_SYMBOLS: ReadonlyArray<{ symbol: string; owner: string }> = [
     "mapModelOptions",
     "mergeSelectedOptions",
   ].map((symbol) => ({ symbol, owner: "pages/agent-panel/agent-editor/agent-editor-model.ts" })),
-  // task / prod-view 取 agentApi；宿主控制台与 workflow 取 sidebarConfigApi / ensureMetaAgent
+  // task / prod-view 与宿主侧栏取 agentApi；宿主导航取 sidebarConfigApi
   { symbol: "agentApi", owner: "api/agents.ts" },
   { symbol: "sidebarConfigApi", owner: "src/api/sidebar-config.ts" },
-  // `ensureMetaAgent` 仍从包根可达（宿主 `shell/AgentSidebarTree.tsx` 与 `agentApi` 同批取），
-  // 同时是 `./web/lib/meta-agent` 这条窄子路径出口的内容（§1.6 T12 起 owner 在 `web/lib/`）。
-  { symbol: "ensureMetaAgent", owner: "lib/meta-agent.ts" },
   // 宿主 route adapter 取三个 agent-panel 页面（§1.6 T11e 归位，原先经 vite / tsconfig 桥接别名）；
   // 首页与创建流程共用的 `resolveCreatedAgentChatTarget` 不在本表——宿主壳经窄子路径
   // `@fenix/agent-config/web/lib/agent-create-navigation` 消费它（同 `web/lib/agent-node` 的先例），
@@ -182,9 +179,7 @@ describe("agent-config web 入口浏览器可达面", () => {
       "i18n/namespace.ts",
       "api/agents.ts",
       "api/sites.ts",
-      "hooks/use-meta-agent.ts",
       "lib/agent-site-url.ts",
-      "lib/meta-agent.ts",
       "src/api/sidebar-config.ts",
       "components/agent-panel/SiteFrame.tsx",
       "pages/agent-panel/agent-editor/AgentFormDialog.tsx",

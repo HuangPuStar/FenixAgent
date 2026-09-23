@@ -33,9 +33,13 @@ export interface FileTreeDownloadState {
 /**
  * 菜单项公共样式（原 `.file-tree-context-menu button` 及其 `:hover` / `:focus-visible` 规则）。
  * 文字色单独留给调用方：危险项需要整项保持危险色（原 `.is-danger` 规则在悬停规则之后，覆盖了悬停文字色）。
+ *
+ * 字号与树本体同步取 `text-sm`(14px)：菜单是同一组件的组成部分，留在 `text-xs` 会与树里同名的动作项错档。
+ * 宿主 `apps/web/src/shell/artifacts-workspace.css` 的 `.file-tree-context-menu button { font-size: 12px }`
+ * 未分层、会压过工具类，但它匹配的类名已在迁移中从节点上摘掉（现为 `.file-tree-context-menu-panel`），不会复活。
  */
 const MENU_ITEM_CLASS =
-  "flex min-h-8 w-full items-center gap-2 rounded-sm px-2.25 py-1.5 text-left text-xs whitespace-nowrap hover:bg-surface-2 focus-visible:bg-surface-2 focus-visible:[outline:2px_solid_color-mix(in_srgb,var(--color-brand)_45%,transparent)] focus-visible:outline-offset--2 disabled:opacity-[0.55]";
+  "flex min-h-8 w-full items-center gap-2 rounded-sm px-2.25 py-1.5 text-left text-sm whitespace-nowrap hover:bg-surface-2 focus-visible:bg-surface-2 focus-visible:[outline:2px_solid_color-mix(in_srgb,var(--color-brand)_45%,transparent)] focus-visible:-outline-offset-2 disabled:opacity-[0.55]";
 
 export interface FileTreeContextMenuProps {
   state: FileTreeContextMenuState;

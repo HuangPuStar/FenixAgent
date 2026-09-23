@@ -24,6 +24,23 @@
 @source "../**/*.{ts,tsx}";
 
 /* ============================================================
+   Forced light — 强制亮色
+   ------------------------------------------------------------
+   与宿主 `apps/web/src/index.css` 同批声明（本仓库的约定是两个主题入口
+   逐字同步，见 docs/developer/guide/frontend-development.md §3.2）。
+
+   Tailwind v4 的 `dark:` 变体默认绑定 `@media (prefers-color-scheme: dark)`，
+   与本文件的 `.dark` token 块（类切换）不同源：前者在系统深色偏好下自动生效，
+   后者要有人写 `.dark` 类。这里把 `dark:` 重写为「类作用域」，使本包在
+   系统深色偏好下不再自发变深，同时**不删除任何 `dark:*` 变体**——
+   它们只在显式给出 `.dark` 祖先时生效，供 demo 的强制作用域预览使用。
+
+   注意这是**共享包的公开主题入口**（`@fenix/ui-components/styles.css`）：
+   任何消费方的 `dark:` 工具类都会一并从「跟随系统」改为「跟随 `.dark` 类」。
+   ============================================================ */
+@custom-variant dark (&:where(.dark, .dark *));
+
+/* ============================================================
    Theme — Nexus Indigo Palette
    ============================================================ */
 @theme {
@@ -89,6 +106,8 @@
   --color-status-idle: #1677ff;
   --color-status-error: #ef4444;
   --color-status-warning: #f59e0b;
+  /* 成功态与 active / running 同色：三者都是「正向完成」语义，族内保持一致。 */
+  --color-status-success: #10b981;
 
   /* Accent colors */
   --color-accent-tiffany: #22d3ee;
@@ -192,6 +211,7 @@
   --color-status-idle: #4096ff;
   --color-status-error: #ef4444;
   --color-status-warning: #f59e0b;
+  --color-status-success: #10b981;
 
   --color-background: #0f172a;
   --color-foreground: #f1f5f9;

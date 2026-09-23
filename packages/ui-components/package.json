@@ -340,6 +340,10 @@
       "types": "./web/components/ClosableTabPill.tsx",
       "default": "./web/components/ClosableTabPill.tsx"
     },
+    "./components/RemovableChip": {
+      "types": "./web/components/RemovableChip.tsx",
+      "default": "./web/components/RemovableChip.tsx"
+    },
     "./components/PreviewTab": {
       "types": "./web/components/PreviewTab.tsx",
       "default": "./web/components/PreviewTab.tsx"
@@ -375,6 +379,10 @@
     "./components/file-tree-view": {
       "types": "./web/components/file-tree-view.tsx",
       "default": "./web/components/file-tree-view.tsx"
+    },
+    "./components/preview-rail": {
+      "types": "./web/components/preview-rail.tsx",
+      "default": "./web/components/preview-rail.tsx"
     },
     "./components/preview/FileViewerPreview": {
       "types": "./web/components/preview/FileViewerPreview.tsx",
@@ -615,10 +623,6 @@
     "./ui/textarea": {
       "types": "./web/ui/textarea.tsx",
       "default": "./web/ui/textarea.tsx"
-    },
-    "./ui/theme-toggle": {
-      "types": "./web/ui/theme-toggle.tsx",
-      "default": "./web/ui/theme-toggle.tsx"
     },
     "./ui/tooltip": {
       "types": "./web/ui/tooltip.tsx",

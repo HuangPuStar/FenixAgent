@@ -12,7 +12,7 @@ import {
   useNodesState,
   useReactFlow,
 } from "@xyflow/react";
-import { type ComponentType, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
 import "@xyflow/react/dist/style.css";
@@ -20,7 +20,6 @@ import { ConfirmDialog } from "@fenix/ui-components/config/ConfirmDialog";
 import { Popover, PopoverContent, PopoverTrigger } from "@fenix/ui-components/ui/popover";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@fenix/ui-components/ui/sheet";
 import { unwrap } from "@fenix/web-runtime/api/request";
-import { useContextQueue } from "@fenix/web-runtime/chat/use-context-queue";
 import {
   Bot,
   Boxes,
@@ -50,7 +49,6 @@ import {
   workflowEngineApi,
 } from "../../api/workflow-engine";
 import { connectWorkflowSSE, disconnectWorkflowSSE } from "../../api/workflow-sse";
-import { type MetaAgentChatPanelProps, MetaAgentPanel } from "./components/MetaAgentPanel";
 import { NodeConfigSheet } from "./components/NodeConfigSheet";
 import { PopoverHeader } from "./components/PopoverHeader";
 import { RunParamsDialog } from "./components/RunParamsDialog";
@@ -61,8 +59,8 @@ import { VersionPanel } from "./components/VersionPanel";
 import { WorkflowMetaPopover } from "./components/WorkflowMetaPopover";
 import { YamlSlidePanel } from "./components/YamlSlidePanel";
 import { edgeTypes } from "./edges";
+import { useWorkflowAgentOptions } from "./hooks/useWorkflowAgentOptions";
 import { useWorkflowCanvas } from "./hooks/useWorkflowCanvas";
-import { useWorkflowMetaAgent } from "./hooks/useWorkflowMetaAgent";
 import { useWorkflowPersistence } from "./hooks/useWorkflowPersistence";
 import { useWorkflowRun } from "./hooks/useWorkflowRun";
 import { autoLayout } from "./layout";
@@ -93,14 +91,9 @@ const BASIC_PALETTE_ITEMS = [
 interface WorkflowEditorProps {
   workflowId?: string;
   runId?: string;
-  /**
-   * 宿主注入的 Meta Agent 聊天面板组件（本包不得依赖 apps，见 `MetaAgentChatPanelProps`）。
-   * 由 `apps/web/src/routes/agent/_panel/workflow_.$id.edit.tsx` 传入宿主 `ChatPanel`。
-   */
-  chatPanel: ComponentType<MetaAgentChatPanelProps>;
 }
 
-function WorkflowEditorInner({ workflowId, runId, chatPanel }: WorkflowEditorProps) {
+function WorkflowEditorInner({ workflowId, runId }: WorkflowEditorProps) {
   const { t } = useTranslation("workflows");
   const [nodes, setNodes, onNodesChange] = useNodesState<Node>([createStartNode()]);
   const [edges, setEdges, onEdgesChange] = useEdgesState<Edge>([]);
@@ -155,29 +148,7 @@ function WorkflowEditorInner({ workflowId, runId, chatPanel }: WorkflowEditorPro
     (result: { valid: boolean; issues: Array<{ type: string; message: string; field?: string }> } | null) => void
   >(() => {});
 
-  // ── Meta Agent Chat ──
-  const selectedNodeInfo = useMemo(() => {
-    if (!selectedNode) return null;
-    return { id: selectedNode.id, type: selectedNode.type ?? "unknown" };
-  }, [selectedNode?.id, selectedNode?.type, selectedNode]);
-
-  const { scenePrompt, contextKey, chatOpen, setChatOpen, metaAgentId, agentList } = useWorkflowMetaAgent({
-    workflowId,
-    meta,
-    selectedNodeInfo,
-  });
-
-  // 将当前编辑器上下文推入 Context Queue，每次消息发送时 agent 可感知
-  const editorContextText = useMemo(() => {
-    const lines = ["[Workflow Editor Context]"];
-    lines.push(`- ${t("editor.workflow_name")}: ${meta.name || t("editor.workflow_unnamed")}`);
-    if (selectedNodeInfo) {
-      lines.push(`- ${t("editor.selected_node")}: ${selectedNodeInfo.id} (type: ${selectedNodeInfo.type})`);
-    }
-    return lines.join("\n");
-  }, [meta.name, selectedNodeInfo, t]);
-
-  useContextQueue("workflow-editor-context", editorContextText);
+  const agentList = useWorkflowAgentOptions();
 
   // 运行完成后画布自动退出只读模式（runSnapshot 顶层已有，无需等 useWorkflowRun）
   const isRunDone = runSnapshot?.dag_status
@@ -980,18 +951,6 @@ function WorkflowEditorInner({ workflowId, runId, chatPanel }: WorkflowEditorPro
           )}
         </div>
       </div>
-
-      {/* Meta Agent Chat 右侧面板 */}
-      <MetaAgentPanel
-        chatPanel={chatPanel}
-        chatOpen={chatOpen}
-        setChatOpen={setChatOpen}
-        metaAgentId={metaAgentId}
-        scenePrompt={scenePrompt}
-        contextKey={contextKey}
-        onPromptComplete={handleRefreshDraft}
-        togglePosition="left"
-      />
 
       {/* 版本管理 Sheet */}
       <Sheet open={versionsSheetOpen} onOpenChange={setVersionsSheetOpen}>

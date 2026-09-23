@@ -20,8 +20,10 @@ import { AgentLogo } from "./internal/agent-logo";
 // `AgentBadge.css`（点阵底与卡片阴影、水印、渐变头部、虚线分隔线、骨架屏脉冲），扁平工具类仍在下方 `className`。
 // - `.agent-badge::before/::after` 水印：两条伪元素共用一组声明（仅 `top` 不同），现写在 `AgentBadge.css`；
 //   `content` 的四段 `attr(data-badge-name)` 之间是两个空格。
-// - `.skill-tag` 的暗色规则源文件用 `@media (prefers-color-scheme: dark)`，包内主题是 `.dark` 类切换，
-//   两者语义不同，故保留媒体查询写法（`[@media(prefers-color-scheme:dark)]:`）而非 `dark:`。
+// - `.skill-tag` 的暗色规则源文件用 `@media (prefers-color-scheme: dark)`，迁移时记的是「跟随系统偏好」。
+//   2026-09-23 全站强制亮色后，两个主题入口都声明了 `@custom-variant dark (&:where(.dark, .dark *))`：
+//   `dark:` 变体（含下方 `SKILL_TAG_CLASS` 的 `dark:border-white/8` 等）改为与 `.dark` token 块同源的
+//   类作用域，再没有任何代码会自动加上该类，故这些变体在应用内不会命中——保留而不删除。
 // - 骨架屏的 `agent-badge-pulse` 动画定义仍在 `web/css/chat-animations.css`
 //   （`@keyframes` 属 CSS，本仓库动画定义统一留在样式表内），按名引用它的 `animation` 写在 `AgentBadge.css`。
 // - 类名不复用源 `.agent-badge*` / `.skill-tag`：宿主 `apps/web/src/index.css` 仍有同名的旧规则，

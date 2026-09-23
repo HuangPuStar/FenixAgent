@@ -47,10 +47,6 @@
   "deleteFailed": "Failed to delete agent: {{message}}",
   "expandInstances": "Expand instances",
   "collapseInstances": "Collapse instances",
-  "metaAgent": "Meta Agent",
-  "metaAgentDesc": "Platform assistant with API access",
-  "metaAgentToggle": "Show Meta Agent",
-  "metaAgentFailed": "Failed to start Meta Agent",
   "cancel": "Cancel",
   "remoteNode": "Remote",
   "siteDeployment": {

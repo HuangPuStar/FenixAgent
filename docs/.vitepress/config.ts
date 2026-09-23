@@ -5,6 +5,10 @@ export default defineConfig({
   title: "FenixAgent",
   description: "Fenix Agent — AI Agent 智能控制平台",
   lang: "zh-CN",
+  // 全局强制亮色：`appearance: false` 让 VitePress 既不渲染导航栏的外观开关，
+  // 也不注入 useDark（它读 localStorage + matchMedia 决定是否挂 .dark 类），
+  // useData().isDark 因此恒为 false —— Mermaid 等下游主题分支随之固定走亮色。
+  appearance: false,
   markdown: {
     theme: {
       light: "github-light",
@@ -178,8 +182,5 @@ export default defineConfig({
     },
     returnToTopLabel: "回到顶部",
     sidebarMenuLabel: "菜单",
-    darkModeSwitchLabel: "主题",
-    lightModeSwitchTitle: "切换到亮色主题",
-    darkModeSwitchTitle: "切换到暗色主题",
   },
 });

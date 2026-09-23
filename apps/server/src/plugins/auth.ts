@@ -99,9 +99,7 @@ export interface AuthContext {
 /**
  * {@link toActorContext} 的输入：与 {@link AuthContext} 同形，但 `role` 放宽为字符串。
  *
- * 系统路径（启动期 builtin 同步、`/web/meta-agent/ensure`）的主体由资源包的 `MetaAgentContext`
- * 给出，它的 `role` 是自由字符串——只写进 API Key 的 metadata，不参与任何授权判断
- * （见 `@fenix/agent-config/server` 的 `services/meta-agent.ts`）。请求路径仍传 `AuthContext`，
+ * 身份投影在转换边界统一规范化角色，未知值按最小权限收敛；请求路径仍传 `AuthContext`，
  * 其角色已是三值联合，这里放宽不会让请求路径失去校验。
  */
 export interface ActorSubject {

@@ -92,15 +92,11 @@ agent 编辑器 / 站点页面的浏览器实现方。
 
 - **跨包 web 入口**：包根 `web/index.ts` 是聚合 barrel，从它出发的值导入图不含 `node:` 内建、`@server/*`
   与宿主别名 `@/`，由 `web/__tests__/agent-config-browser-surface.test.ts` 递归守护（含跨包递归与白名单
-  说明）。另有两条**窄子路径出口**供只取单一能力的消费方避开整棵页面图：`./web/i18n`（字典，宿主导入
-  注册）与 `./web/lib/meta-agent`（Meta Agent 的 ensure 客户端）。二者在 `exports` 里显式声明；`web/src/**`
+  说明）。`./web/i18n` 等窄子路径在 `exports` 显式声明，供消费方避开整棵页面图；`web/src/**`
   不是出口，也不应成为出口。
 - 导出面覆盖实测消费方（2026-09-21）：task / prod-view 取 `agentApi`；model-management 的编辑器纯逻辑
   用例取 `agent-editor-model` 的转换与校验 schema；宿主 WebShell 的 `shell/use-shell-navigation.ts` 取
-  `sidebarConfigApi`、`shell/AgentSidebarTree.tsx` 取 `agentApi` 与 `ensureMetaAgent`（同一文件同时用
-  `agentApi`，故仍走包根）；workflow 的 `useWorkflowMetaAgent` 只取 `ensureMetaAgent`，改走窄子路径
-  `@fenix/agent-config/web/lib/meta-agent`（§1.6 T12）——走包根会把本包整棵页面图连带 mcp / knowledge /
-  memory / model-management 的 web 面拖进对方的浏览器可达面。包内的 `useMetaAgent` 已导出，暂无跨包消费方。
+  `sidebarConfigApi`、`shell/use-agent-sidebar-tree.ts` 取 `agentApi`。
 - **`AgentSidebarConfig` 已退场**（§1.6 T11d）：包根曾导出一个零消费方的 `AgentSidebarConfig`，与宿主
   `apps/web/src/pages/agent-panel/AgentSidebarConfig.tsx` 同源（均为 151 行，仅两处 import 不同）。
   侧栏导航的真相源现为各包 `web/contribution.ts` 的项声明 + WebShell 的分组表（`SHELL_NAV_GROUPS`），
@@ -176,8 +172,8 @@ agent 编辑器 / 站点页面的浏览器实现方。
   包内因此只能覆盖「无绑定 Environment」的分支，见 `src/__tests__/agent-config-delete-stops-instances.test.ts`
   的接缝说明。清理链路本体已由 `packages/agent-runtime/src/__tests__/orchestration-instance-cleanup-isolation.test.ts`
   覆盖；Facade 接线的用例随 agent-runtime `/server/testing` 就绪后恢复（登记在共享补丁与待办清单）。
-- **宿主侧启动同步的覆盖缺口**：`meta-agent` 的内置 Skill 启动编排（宿主 `apps/server/src/services/sync-builtin.ts`）
-  原由本包的 `meta-agent` 用例覆盖，因宿主依赖被切出包内，其等价覆盖需在宿主侧补齐（随 W3）。
+- **宿主侧启动同步的覆盖缺口**：内置 Skill 启动编排由宿主 `apps/server/src/services/sync-builtin.ts` 负责。
+  本包 `builtin-skills` 用例只覆盖系统托管 Skill 的挑选与公开化，宿主编排的等价覆盖仍需补齐。
 - **模块配置字段暂由宿主直接提供**（`moduleConfigs["agent-config"]`），未走模块 `envDefinitions`；
   声明、校验与 preflight 收敛归任务 1.7。
 - **§1.3(3) 的后半段「生成已授权 LaunchSpec 再调 Runtime port」仍未实现（B7 已缩小差距）**：Facade 只覆盖

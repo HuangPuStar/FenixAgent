@@ -39,11 +39,6 @@ const PKG_NAME = (JSON.parse(readFileSync(join(PKG_ROOT, "package.json"), "utf8"
  * 这份清单与入口的实际可达面**逐项对应**（不多列）：新增一项必然意味着入口新引了一个库，多列一项则由
  * 「白名单不超列实际可达面」那条断言打回。
  *
- * 2026-09-21（§1.6 T11e/T12）：编辑器 `WorkflowEditor` 加回入口时，`hooks/useWorkflowMetaAgent.ts` 是
- * 经 `@fenix/agent-config/web` 的**包根 barrel** 取 `ensureMetaAgent` 的，一次带进 agent-config / mcp /
- * knowledge / memory / model-management 的整片 web 图与其浏览器库，白名单因此一度膨胀到 46 条。T12 为该
- * 函数加了窄子路径出口 `@fenix/agent-config/web/lib/meta-agent`，agent-config 侧现在只到达
- * `web/lib/meta-agent.ts` 一个文件，26 条「可达面传递进来的库」随之退场（46 → 20）。
  * 2026-09-22：运行面板的事件/输出页签由手写 button 改为 `ui/tabs`，带入 `@radix-ui/react-tabs`（+1）。
  * 现在的 21 条重新回到两类来源：本包/宿主自己的依赖，以及本包编辑器经 `@fenix/ui-components` 共享原语
  * 传递进入的库——即下面各组注释所示。
@@ -257,13 +252,7 @@ describe("workflow web 入口浏览器可达面", () => {
     const source = stripComments(readFileSync(WEB_ENTRY, "utf8"));
     expect(source).toContain("WorkflowEditor");
     expect(reachedWebFiles).toContain("pages/workflow/WorkflowEditor.tsx");
-    // 编辑器链条上的跨包腿：agent-config 的 Meta Agent 就绪入口（窄子路径，T12 起不再走对方包根
-    // barrel——包根会把该包整棵页面图带进本包可达面）+ agent-runtime 的环境列表 API。
-    for (const expected of [
-      "packages/resources/agent-config/web/lib/meta-agent.ts",
-      "packages/agent-runtime/web/api/environments.ts",
-    ]) {
-      expect(reachedPackageFiles).toContain(expected);
-    }
+    // 编辑器经环境列表 API 构建普通 Agent 节点选项。
+    expect(reachedPackageFiles).toContain("packages/agent-runtime/web/api/environments.ts");
   });
 });

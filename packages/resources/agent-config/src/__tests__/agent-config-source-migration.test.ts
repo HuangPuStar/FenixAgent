@@ -71,7 +71,7 @@ const MIGRATION_PAIRS: ReadonlyArray<readonly [hostPath: string, packagePath: st
   ["apps/server/src/routes/api/agents.ts", "src/server/routes/api/agents.ts"],
   ["apps/server/src/routes/agent-sites-proxy.ts", "src/server/routes/agent-sites-proxy.ts"],
   ["apps/server/src/routes/dependencies.ts", "src/server/routes/dependencies.ts"],
-  ["apps/server/src/services/meta-agent.ts", "src/server/services/meta-agent.ts"],
+  ["apps/server/src/services/meta-agent.ts", "src/server/services/builtin-skills.ts"],
   ["apps/server/src/services/sidebar-config.ts", "src/server/services/sidebar-config.ts"],
   ["apps/server/src/services/agent-sites.ts", "src/server/services/agent-sites.ts"],
   ["apps/server/src/services/agent-generation.ts", "src/server/services/agent-generation.ts"],
@@ -83,16 +83,11 @@ const MIGRATION_PAIRS: ReadonlyArray<readonly [hostPath: string, packagePath: st
   ["apps/server/src/schemas/agent-site.schema.ts", "src/server/schemas/agent-site.schema.ts"],
   ["apps/server/src/schemas/agent-generation.schema.ts", "src/server/schemas/agent-generation.schema.ts"],
   ["apps/server/src/schemas/api-agent.schema.ts", "src/server/schemas/api-agent.schema.ts"],
-  ["apps/server/src/schemas/meta-agent.schema.ts", "src/server/schemas/meta-agent.schema.ts"],
   ["apps/server/src/repositories/agent-site-app.ts", "src/server/repositories/agent-site-app.ts"],
   ["apps/server/src/repositories/agent-config.ts", "src/server/repositories/agent-config.ts"],
   ["apps/web/src/api/agents.ts", "web/api/agents.ts"],
   ["apps/web/src/api/sites.ts", "web/api/sites.ts"],
-  // 目标路径与宿主旧路径不同级：§1.6 T12 把该客户端从 `web/src/api/` 提到 `web/lib/`，以窄子路径
-  // 出口 `./web/lib/meta-agent` 发布（`web/src/**` 不出现在 `exports` 里，见 web 入口头部说明）。
-  ["apps/web/src/api/meta-agent.ts", "web/lib/meta-agent.ts"],
   ["apps/web/src/api/sidebar-config.ts", "web/src/api/sidebar-config.ts"],
-  ["apps/web/src/hooks/use-meta-agent.ts", "web/hooks/use-meta-agent.ts"],
   ["apps/web/components/agent-panel/AgentSitesCard.tsx", "web/components/agent-panel/AgentSitesCard.tsx"],
   ["apps/web/src/pages/agent-panel/pages/AgentSitesPage.tsx", "web/pages/agent-panel/pages/AgentSitesPage.tsx"],
   ["apps/server/src/__tests__/round43-agent-sites-routes.test.ts", "src/__tests__/round43-agent-sites-routes.test.ts"],
@@ -119,7 +114,7 @@ const MIGRATION_PAIRS: ReadonlyArray<readonly [hostPath: string, packagePath: st
   ["apps/server/src/__tests__/api-agents-routes.test.ts", "src/__tests__/api-agents-routes.test.ts"],
   ["apps/server/src/__tests__/agent-sites-routes.test.ts", "src/__tests__/agent-sites-routes.test.ts"],
   ["apps/server/src/__tests__/agent-sites-repo.test.ts", "src/__tests__/agent-sites-repo.test.ts"],
-  ["apps/server/src/__tests__/meta-agent.test.ts", "src/__tests__/meta-agent.test.ts"],
+  ["apps/server/src/__tests__/meta-agent.test.ts", "src/__tests__/builtin-skills.test.ts"],
   ["apps/server/src/__tests__/sidebar-config-service.test.ts", "src/__tests__/sidebar-config-service.test.ts"],
   ["apps/server/src/__tests__/web-sidebar-config-routes.test.ts", "src/__tests__/web-sidebar-config-routes.test.ts"],
   ["apps/server/src/__tests__/agent-config-repository.test.ts", "src/__tests__/agent-config-repository.test.ts"],
@@ -279,6 +274,20 @@ describe("AgentConfig 包边界契约（任务 1.3 §1 静态条件）", () => {
     //   2) 剥掉注释后只剩真实导入——证明 `stripComments` 真的在起作用。
     expect(extractSpecifiers(SCANNER_FIXTURE)).toEqual(["@server/db/schema", SCANNER_FIXTURE_COMMENTED]);
     expect(extractSpecifiers(stripComments(SCANNER_FIXTURE))).toEqual(["@server/db/schema"]);
+  });
+
+  // 特性退役后，旧宿主路径与包内实现都不得复活。
+  test("退役的平台助手客户端与 schema 保持删除", () => {
+    for (const path of [
+      "apps/server/src/schemas/meta-agent.schema.ts",
+      "apps/web/src/api/meta-agent.ts",
+      "apps/web/src/hooks/use-meta-agent.ts",
+      "packages/resources/agent-config/src/server/services/meta-agent.ts",
+      "packages/resources/agent-config/src/server/schemas/meta-agent.schema.ts",
+      "packages/resources/agent-config/web/lib/meta-agent.ts",
+      "packages/resources/agent-config/web/hooks/use-meta-agent.ts",
+    ])
+      expect(existsSync(resolve(REPO_ROOT, path)), path).toBe(false);
   });
 
   // 宿主旧路径不得复活：新旧两套实现并存时，改一侧不会让另一侧失败，两边会各自漂移。

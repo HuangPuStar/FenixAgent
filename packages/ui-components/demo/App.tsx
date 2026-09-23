@@ -1,4 +1,4 @@
-import { Button, ThemeToggle } from "@fenix/ui-components";
+import { Button } from "@fenix/ui-components";
 import { type ComponentType, useState } from "react";
 import { useTranslation } from "react-i18next";
 
@@ -144,7 +144,6 @@ export function App() {
               {option.label}
             </Button>
           ))}
-          <ThemeToggle />
         </header>
 
         <div className="max-w-[960px] px-6 pt-8 pb-[72px]">

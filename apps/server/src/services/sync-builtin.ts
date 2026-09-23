@@ -29,7 +29,7 @@ async function syncBuiltinSkills(
 /**
  * 启动期统一 builtin 编排入口。
  *
- * 这个文件故意不放在 `meta-agent.ts` 中，因为后续 builtin 资源可能不止 skill。
+ * builtin 编排与 Agent 实例启动无关，后续 builtin 资源可能不止 skill。
  * 当前它只负责串起“系统 admin 就绪”与“builtin skill 托管到系统组织”两步，
  * 后续如果新增 builtin provider / template，也应该在这里继续扩展。
  */

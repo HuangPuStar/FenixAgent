@@ -108,3 +108,67 @@ test("顶层切分不切进任意值内部的冒号", () => {
     "size-6",
   ]);
 });
+
+// 04/05/06 三条死类规则的正反例。反例全部来自本仓库真实踩过的写法，正例是各自的最小修法。
+test("死类规则判定表：负号位置 / 刻度倍数 / 刻度族数值", () => {
+  const cases: [string, string | null][] = [
+    // 04：负号必须在工具名之前。双短横 + 数字是死类，构建期不产出任何声明。
+    ["ml--1.8", "FCP-WEB-04"],
+    ["outline-offset--2", "FCP-WEB-04"],
+    ["z--10", "FCP-WEB-04"],
+    ["-ml-1.75", null],
+    ["focus-visible:-outline-offset-2", null],
+    // 05：刻度裸值必须是 0.25 的整数倍（值 × 4 为整数）。
+    ["h-4.6", "FCP-WEB-05"],
+    ["ml-1.8", "FCP-WEB-05"],
+    ["-ml-1.4", "FCP-WEB-05"],
+    ["md:pt-1.1", "FCP-WEB-05"],
+    ["!gap-1.3", "FCP-WEB-05"],
+    // 05 的正例：整数、.25 / .5 / .75 档，以及不在间距刻度表里的族（不报）。
+    ["h-4.5", null],
+    ["mt-0.5", null],
+    ["px-2.25", null],
+    ["py-0.75", null],
+    ["py-1.5", null],
+    ["basis-15.5", null],
+    ["max-w-147.5", null],
+    // 06：刻度族不收数字，或只收非负整数。
+    ["auto-rows-2.5", "FCP-WEB-06"],
+    ["auto-rows-2", "FCP-WEB-06"],
+    ["auto-cols-3", "FCP-WEB-06"],
+    ["grid-cols-2.5", "FCP-WEB-06"],
+    ["grid-rows-1.5", "FCP-WEB-06"],
+    ["auto-rows-min", null],
+    ["auto-cols-fr", null],
+    ["grid-cols-2", null],
+    ["grid-cols-none", null],
+    // 合法双短横形态：CSS 变量引用（圆括号 / 方括号两种写法）与 BEM 修饰名都不是 04。
+    ["bg-(--brand)", null],
+    ["bg-[--brand]", null],
+    ["w-[calc(var(--rail)*2)]", null],
+    ["chat-entry--active-prompt", null],
+    ["tool-status-pill", null],
+    // 变体 + 裸值的组合：变体合法时仍要判到值侧（历史上真实修过的写法）。
+    ["has-[>button]:ml--1.75", "FCP-WEB-04"],
+    ["data-[size=default]:h-4.6", "FCP-WEB-05"],
+    ["group-data-[size=default]/switch:size-4", null],
+    // 变体优先于值：结构表达式仍报 02/03，不被值侧规则抢走。
+    ["[&>span]:ml-1.8", "FCP-WEB-02"],
+    ["[@media(min-width:760px)]:h-4.6", "FCP-WEB-03"],
+  ];
+
+  expect(cases.map(([token]) => [token, classifyClassToken(token)] as const)).toEqual(cases);
+});
+
+// 04/05/06 只看裸值；`-[...]` 任意值里的双短横、小数是另一套语义，不得串到死类规则上。
+test("死类规则不侵入任意值：-[...] 内的双短横与小数不报 04/05/06", () => {
+  const cases: [string, string | null][] = [
+    ["mt-[--x]", null],
+    // 值带前置负号时 01 的 `LENGTH_VALUE` 不认（既有的口径空缺，不在本次范围内），
+    // 这里锁的是「不落到 04」——任意值内部的短横属于值自身，不是工具名后的负号。
+    ["ml-[-0.45rem]", null],
+    ["w-[calc(100%-2px)]", "FCP-WEB-02"],
+  ];
+
+  expect(cases.map(([token]) => [token, classifyClassToken(token)] as const)).toEqual(cases);
+});

@@ -25,8 +25,8 @@ import { skillResource } from "./src/server/access/skill-resource";
  * 本包不 import 任何平台实现，也不 import 兄弟资源包，因此 skill 是叶子模块。
  *
  * 不声明别的反向边：`@fenix/resource-agent-config`（`src/server/services/skill-directory.ts` 与
- * `src/server/services/meta-agent.ts` 取 `./server/runtime` 的 `getSkillServerModule`，
- * `src/server/services/meta-agent.ts` 与 `src/server/services/agent-launch-spec/skill-resolution.ts`
+ * `src/server/services/builtin-skills.ts` 取 `./server/runtime` 的 `getSkillServerModule`，
+ * `src/server/services/builtin-skills.ts` 与 `src/server/services/agent-launch-spec/skill-resolution.ts`
  * 取 `./server/content` 的归档与 frontmatter 能力，`src/server/services/agent-related-resources.ts`
  * 取 `./server/config` 的 `findSkillLabelsByIds`；其 `src/server/repositories/agent-config-skill.ts`
  * 的 `listAgentSkillIds` / `syncAgentSkills` 自 B7 起只读写 agent-config 自己的 `agent_config_skill`

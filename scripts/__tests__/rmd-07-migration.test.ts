@@ -75,9 +75,6 @@ const RMD_07_MOVES = [
  * **字节相同**，属 §1.3(1) 明令禁止的 app↔package 重复实现），宿主侧那份只是协议接入壳。按「删除优于
  * 兼容」删除宿主两份副本、owner 落回包内；路由迁入后环境归属校验改由宿主的注入端口提供
  * （`Environment` 表的 owner 是 agent-runtime，依赖矩阵不允许资源包依赖它）。
- * 任务 1.5c 的第九项 owner 是 agent-config：`routes/web/meta-agent.ts`（`POST /web/meta-agent/ensure`）。
- * 查找或创建 meta environment + spawn 实例的编排（`ensureMetaEnvironment`）与响应 schema 本就在该包，
- * 宿主那份只是协议接入壳；迁入后 apiKey 轮换改由工厂依赖注入（资源包不得依赖 `@fenix/identity`）。
  * 任务 1.5c 的第十项 owner 是 identity：`services/config/user-config.ts`（`user_config` 表的读写）。
  * 该表的真相来源本就在 `packages/platform/identity/db/schema.ts`，读写却留在宿主，属「表与它的读写分处
  * 两层」；迁入 `repositories/user-config.ts` 后两者同址（DB 句柄改为 `getIdentityDatabase()`），宿主经
@@ -155,11 +152,6 @@ const RMD_07_RELOCATED = [
     "packages/resources/model-management/src/server/schemas/peri-task-details.ts",
   ],
   [
-    "src/routes/web/meta-agent.ts",
-    "apps/server/src/routes/web/meta-agent.ts",
-    "packages/resources/agent-config/src/server/routes/web/meta-agent.ts",
-  ],
-  [
     "src/services/config/user-config.ts",
     "apps/server/src/services/config/user-config.ts",
     "packages/platform/identity/src/repositories/user-config.ts",
@@ -167,6 +159,15 @@ const RMD_07_RELOCATED = [
 ] as const;
 
 describe("RMD-07 server-host migration", () => {
+  // 路由已退役，所有迁移落点都必须保持不存在。
+  test("keeps retired assistant route deleted", () => {
+    for (const path of [
+      "src/routes/web/meta-agent.ts",
+      "apps/server/src/routes/web/meta-agent.ts",
+      "packages/resources/agent-config/src/server/routes/web/meta-agent.ts",
+    ])
+      expect(existsSync(path), path).toBe(false);
+  });
   // 仅这 62 个获批源文件迁入 server host，避免旧根路径或额外迁移悄然出现。
   // 原 75 项中已有九项的目标不再由 server host 持有：
   // 任务 1.4 W4b 的一项：`repositories/agent-engine.ts` 的宿主副本随「两条 LaunchSpec 收敛为一条」删除
@@ -213,7 +214,7 @@ describe("RMD-07 server-host migration", () => {
   // 任务 1.5c 的十项：`src/routes/hooks.ts`、`src/schemas/session.schema.ts`、`src/services/transport.ts`、
   // `src/routes/web/{instances,environments}.ts` 与 instances 的宿主测试
   // `src/__tests__/web-instance-runtime-actions.test.ts`、`src/routes/web/peri-task-details.ts` 与其协议
-  // schema `src/schemas/peri-task-details.ts`、`src/routes/web/meta-agent.ts`、
+  // 路由退役项已改为所有落点不存在的断言；其余九项继续检查唯一 owner。
   // `src/services/config/user-config.ts`
   // 本轮从本表移入下方 relocated 断言（宿主副本删除、owner 落回 workflow / agent-runtime /
   // model-management / agent-config / identity 包），理由见 relocated 的文档注释。
@@ -236,7 +237,7 @@ describe("RMD-07 server-host migration", () => {
   // Provider / Model / Machine / AgentRuntime 契约、会话控制面与 Webhook 入口的 owner 已在包内：
   // 旧根路径与宿主路径都不得复活，包内必须有唯一落点。
   test("relocates the provider, model, agent runtime, session-control and webhook contracts", () => {
-    expect(RMD_07_RELOCATED).toHaveLength(16);
+    expect(RMD_07_RELOCATED).toHaveLength(15);
     for (const [legacy, shell, owner] of RMD_07_RELOCATED) {
       expect(existsSync(legacy), `legacy source still exists: ${legacy}`).toBe(false);
       expect(existsSync(shell), `host copy still exists: ${shell}`).toBe(false);

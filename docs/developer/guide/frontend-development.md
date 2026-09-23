@@ -1,8 +1,9 @@
 # 前端开发规范
 
-> **版本**：v3.0.5 | **最后更新**：2026-09-23 | **维护者**：前端团队
+> **版本**：v3.0.6 | **最后更新**：2026-09-23 | **维护者**：前端团队
 >
 > **最近变更**：
+> - v3.0.6 (2026-09-23)：§2.5 删去「极简（无 `Suspense`）」这一壳形态（原例 `_panel/agents.tsx`），改为「不许有无 `Suspense` 的极简壳」并说明原因：缺边界的懒加载会冒泡到 `_panel.tsx` 为壳自身备的整屏 `Spinner variant="screen"`，把整个 WebShell 卸载重建（用户视为「整页刷新」）。`_panel/agents.tsx` 同批补上 `Suspense` + `PanelRouteFallback`，接线形态回到「标准」。
 > - v3.0.5 (2026-09-23)：Web 样式禁止行为门禁（`bun run check:web-style`）接入后，§10 新增**类别 ③「深层样式伴随表」**——与源文件同目录同名的 `.css`，承载无法用扁平工具类表达的选择器嵌套／复合表达式值／无标准变体的媒体查询，并给出三条约束（严格同名同目录、优先沿用源选择器名、不包 `@layer` 且逐处确认胜负关系）；「新增 `.css` 的落位」由「只用前两种」放宽为「只用前三类」。§10.1 的页面级 `.css` 计数按实测口径重写（资源侧 14 → **9** 个 / 3370 → **2496** 行；token 入口与新增伴随表同步实测）。规则口径与存量清理过程见 `forbidden-code-patterns.md`。
 > - v3.0.4 (2026-09-22)：前端去重批次（约 65 个 commit）后的文档对账。§4.1 补登本轮新下沉的原语（`config/AdminKeyGate`、`config/LabeledField`、`ui/status-dot`、`components/ClosableTabPill`、`lib/clipboard`、`lib/format`、`chat/view/PublicErrorCard`、`chat/panels/chat-interaction-region`、`chat/timeline/tool-json-block`），并把「空态 / 失败 / 无权限刻意共用一个骨架」与「无权限不给重试、失败给重试」写进该节的口径——**不要新建第二个空态/失败组件**；子路径数与 barrel 行数改为实测值（145→**156** 条 `exports` 子路径、151→**160** 行 barrel）。§4.8 新增「刻意分叉 / 刻意不进库」四条冻结项（三种节点配置容器、cytoscape 与自绘 canvas 两套图谱、红描边危险按钮、形态未定型包内共享件）。`MasterKeyGate` 全量订正为 `@fenix/ui-components/config/AdminKeyGate` + `@fenix/web-runtime/hooks/use-admin-key-gate`（§2.3、§6.3 与 `docs/arch/21-observability-observer-service.md`）。§5.6 / §5.9 删去已随 `ac642962` 删除的 `workflow/web/api/workflows.ts`，§4.8 的文件规模快照（16→**17** 个超 500 行、400–499 区间 27→**25**）与 §10.1 的页面级 `.css` 计数按实测口径重写。
 > - v3.0.3 (2026-09-22)：§2.5 的加载壳口径改写——原「三种壳形态都合规」**作废**（它把逐字复制的圆环类名固化成规范），路由 `Suspense` fallback 与整块加载提示一律改用 `Spinner`（`@fenix/ui-components/ui/spinner`），并补 `variant` / `size` / `label` 的选择口径；§2.7 登记存量未迁移位置。
@@ -202,13 +203,14 @@ export const Route = createFileRoute("/agent/_panel/models")({
 <Spinner variant="panel" label={<span className="sr-only">{t("loading")}</span>} />
 ```
 
-> **原「三种壳形态都合规」的判断作废**。它把「加载提示长什么样」也划成自由项：三种写法并列合规、示例直接给出那串圆环类名，于是**复制粘贴被写成了规范**——同一段类名散到 21 个路由壳与多张业务页面，尺寸、容器、文案各写各的（`admin/{logs,people,sandbox}.tsx` 只剩一行文字、连指示器都没有；`workflow_.$id.edit.tsx` 把 lucide `Loader` 图标按圆环类名渲染，与环形边框叠成双圈）。加载提示不再有第二个写法。**壳的接线形态仍只有下面三种**——那是结构选择，与加载提示无关：
+> **原「三种壳形态都合规」的判断作废**。它把「加载提示长什么样」也划成自由项：三种写法并列合规、示例直接给出那串圆环类名，于是**复制粘贴被写成了规范**——同一段类名散到 21 个路由壳与多张业务页面，尺寸、容器、文案各写各的（`admin/{logs,people,sandbox}.tsx` 只剩一行文字、连指示器都没有；`workflow_.$id.edit.tsx` 把 lucide `Loader` 图标按圆环类名渲染，与环形边框叠成双圈）。加载提示不再有第二个写法。**壳的接线形态只有下面两种**——那是结构选择，与加载提示无关：
 
 | 形态 | 例子 | 说明 |
 |------|------|------|
 | 标准 | 多数 `_panel/*.tsx` | 单懒组件 + `Suspense` |
 | **组合根端口注入** | `_panel/organizations.tsx` | `Promise.all([import("@fenix/identity/web"), import("@fenix/resource-machine/web")])`，把 `machine.registryApi` 作为端口传给页面。跨包装配是壳的职责 |
-| 极简（无 `Suspense`） | `_panel/agents.tsx` | 直接 `component: XxxPage`；仅当页面自身已处理加载态时使用，此时页面内的加载提示同样按上面的口径用 `Spinner` |
+
+> **不许有「无 `Suspense` 的极简壳」**（v3.0.3 曾把 `_panel/agents.tsx` 列为合规的第三种形态，已作废）：懒加载挂起时若本壳没有边界，React 会一路冒泡到最近的上层边界——`_panel.tsx` 为壳自身代码块准备的**整屏** `Spinner variant="screen"`。后果是整个 WebShell（侧栏、聊天保活）被卸载重建，用户看到的是「切换进这个页面时整页刷新一次」。页面内的 `loading` 只覆盖**取数**，接不住**代码块加载**，因此「页面自身已处理加载态」不构成省掉边界的理由。边界与壳一一对应，每个 `lazy` 壳都必须自带。
 
 **壳里可以有接线，但不做取数**：tab 状态、创建回调、端口注入属壳；数据获取必须在页面或域模块内完成（`workflow.tsx`、`workflow_.$id.versions.tsx`、`view/$prodViewId.tsx` 是当前较重的壳，改动前先看它们的接线方式）。
 
@@ -297,11 +299,19 @@ deploy/assembly/ce.json 的 web 列表（9 个包）
 - i18n 走 `initReactI18next` 单例（`apps/web/src/i18n/index.ts`），无 `I18nextProvider`。
 - 主题走 `@fenix/ui-components/lib/theme` 的 `ThemeProvider`。
 
-### 3.2 主题
+### 3.2 主题（全局强制亮色）
 
-实现只有一份：`packages/ui-components/web/lib/theme.tsx`（读 `localStorage`、跟随 `matchMedia`），导出 `ThemeProvider` / `useTheme()`；`useTheme` 在 Provider 外抛错，不静默回落。宿主 `apps/web/src/routes/__root.tsx` 在三处挂载点上显式传 `defaultTheme="light"`。
+**本程序只有亮色一种外观**：不读 `localStorage`、不监听 `prefers-color-scheme`、也没有任何主题切换入口。系统/浏览器处于深色偏好时同样渲染亮色。
 
-**宿主当前仍是浅色外观**：`defaultTheme="light"` 只决定「无持久化记录时的初值」，一旦 `localStorage.theme` 里存在 `dark` 就会被读回（去重前的宿主副本曾硬编码 `"light"` 并让 `localStorage` 只写不读，该 hack 已随副本删除）。系统的 `prefers-color-scheme` 只在 `theme === "system"` 时跟随。开启/关闭深色前先确认这条差异是否可接受，不要再在调用点各补一份实现。
+实现只有一份：`packages/ui-components/web/lib/theme.tsx`，导出 `ThemeProvider` / `useTheme()`；`useTheme` 在 Provider 外抛错，不静默回落。Provider 现在的职责是给需要布尔判定的消费方（canvas / SVG 渲染器，如 `memory/hindsight/components/`）提供恒为 `"light"` 的 `resolvedTheme`，并在挂载时清掉 `documentElement` 上残留的 `dark` 类（兜「上一版本写过」与「扩展脚本塞类」两类外部来源）。它**不再有参数**，宿主 `apps/web/src/routes/__root.tsx` 的三处挂载点与 demo 都直接写 `<ThemeProvider>`。
+
+深色要能生效必须同时满足三件事，而第一件在当前没有任何生产者：
+
+1. 某段代码给 `<html>` 或某个祖先加上 `.dark` 类——当前仓库无任何此类代码；
+2. `apps/web/src/index.css` 的 `.dark` token 块随之生效（该块及其派生规则，如 `shell/agent-panel.css` 的 `:root.dark`，都保留着；在无法触发的前提下属死代码而非风险）；
+3. `color-scheme` 被固定为 `light`——由 `apps/web/index.html` 的 `<meta name="color-scheme" content="light">` 与 `index.css` 的 `:root { color-scheme: light }` 两处共同保证：后者覆盖样式表生效之后的常规取值，前者覆盖「样式表生效之前」的窗口（缺了它，系统深色偏好下首帧会按深色画布绘制，即首屏闪深色）。
+
+**不要在任何调用点补第二份主题实现。**
 
 ### 3.3 组织与会话上下文
 
@@ -415,7 +425,7 @@ if (!data?.length) return <EmptyState icon={<FolderOpen />} title={t("empty.titl
 ### 3.6 现状偏离
 
 - **组织身份被绕过读取的 2 处生产点**：`apps/web/src/components/agent-panel/use-file-tree-events.ts`（拼 `/web/file-events` 的 WS query）、`packages/agent-runtime/web/yjs/yjs-ws.ts`（拼 `/acp/yjs/*` 的 `active_org_id`）。两处都直接 `localStorage.getItem("active_org_id")`。WS 无法带自定义头，收口需要契约化的组织参数传递方式，属已知缺口。
-- **主题强制浅色 + 存在第二份主题实现**（见 §3.2）；两份口径还相反：宿主注释写"暂时强制浅色"，包内注释写"已移除强制浅色 hack"。修复方向未裁定。
+- ~~**主题强制浅色 + 存在第二份主题实现**~~ 已消解（2026-09-23）：全站改为全局强制亮色，宿主与包内两份实现合一，见 §3.2。
 - **手写取数（`useCallback` + `useEffect` + `useState`）的现行违规**，集中在三处：`packages/resources/memory/web/pages/hindsight/**`（8 处）、`packages/resources/workflow/web/pages/workflow/**`（`components/` 下 3 处 + 同目录 `WorkflowList.tsx` 手写 `setInterval(pollList, 15_000)`）、`packages/resources/knowledge/web/pages/agent-panel/KnowledgeGraphPanel.tsx`（手写 `requestId` 令牌而非 `AbortSignal`）。`WorkflowList.tsx` 的数据获取本身走 `useRequest`，只有轮询是手写的——属"一半在轨"的混合形态。同仓同类页面已用规范做法，无能力缺口理由。
 - **组织切换不是原子转换**：`localStorage` 先于服务端确认写入（见 §3.3）。失败回滚已实现，但切换瞬间存在"本地快照已变、服务端未确认"的窗口。
 - **`useRequest` 的多数配置项缺少范例**：`cacheKey` 全仓 1 处（`use-shell-navigation.ts` 的 `"sidebar-config"`）、`cancel()` 1 个文件（`AdminModelGatewayPage.tsx`，在组件卸载路径上取消在途请求）；`cache.mutate` / `debounceWait` / `retryCount` 零使用。需要时先确认 ahooks 语义并在 code review 中说明，不要凭文档想象。
@@ -861,7 +871,7 @@ import DOMPurify from "dompurify";
 | 面板开合状态 | `wf-editor:chat-open`（workflow 编辑器）、`acp-sidebar-open`（chat panel） |
 | 侧栏折叠状态 | `AgentSidebar`、`AgentSidebarTree` |
 | 语言 | `rcs-lang`（i18n 检测器托管） |
-| 主题 | `theme`（见 §3.2 的现状说明） |
+| 主题 | 无（全局强制亮色，见 §3.2；`theme` 键已不再被读写） |
 | 登录页偏好 | `apps/web/src/lib/auth-preference.ts` |
 | 匿名 UUID | `apps/web/src/api/helpers.ts`（当前零消费） |
 
@@ -1085,7 +1095,7 @@ i18n.use(initReactI18next).init({
 - **配置只在 CSS 里**：Tailwind v4 CSS-first，仓库没有 `tailwind.config.*`。token 写在 `@theme`，自定义工具类（`@utility`）**只在宿主** `apps/web/src/index.css`。
 - **两个入口，两份副本**：宿主 `apps/web/src/index.css` 与包入口 `packages/ui-components/web/styles/theme.css`（经 `@fenix/ui-components/styles.css` 暴露）持有**逐字重复**的 token——含品牌色、`surface-0..3`、`text-bright/primary/secondary/muted/dim`、`status-*`、shadcn 语义族、布局变量（`--navbar-height` 等）与字体变量。改 token 必须同批改两份，**没有任何一致性测试兜底**。
 - **`@source` 只扫 `packages/**/web/**`**：组件源码放错位置（如 `packages/<pkg>/components/`）其工具类**不会被生成**——症状是样式静默消失，不是报错。这条由 `scripts/__tests__/app-entry-paths.test.ts` 固化，也是 §1 那条硬规则的由来。
-- **优先 token 类而不是 `dark:` 变体**：`.dark` 类由 `ThemeProvider` 切换，但 `dark:` 变体没有 `@custom-variant dark` 声明、仍绑定 `prefers-color-scheme`，两者不同源。写 `bg-surface-1` / `text-muted`。
+- **优先 token 类而不是 `dark:` 变体**：`dark:` 变体确实与 `.dark` token 块同源了（两个主题入口都已声明 `@custom-variant dark (&:where(.dark, .dark *))`，见 §3.2），但 `.dark` 在应用内无法被触发，写 `dark:` 等于写死一段不会生效的样式；仍应写 `bg-surface-1` / `text-muted`。
 - **`cn()` 唯一来自 `@fenix/ui-components/lib/cn`**；宿主 `apps/web/src/lib/utils.ts` 的遗留副本与 `@/src/lib/utils` 别名已随 2026-09 去重删除，不要再建第二份。
 - **独立 `.css` 文件只许四类**：① token 入口（`index.css`、`theme.css`）；② **第三方渲染覆盖表**，判据是第三方 DOM **没有 className 挂载点**且第三方 CSS **未分层**（当前唯一实例：`ui-components/web/components/preview/overrides.css`，它也是 `web/components/` 下仅存的 `.css`）；③ **深层样式伴随表**——与源文件同目录、同名的 `.css`，承载**无法用扁平工具类表达**的选择器嵌套／复合表达式值／无标准变体的媒体查询（判据与口径见 `forbidden-code-patterns.md` §「存量清理结果」，门禁 `bun run check:web-style`）；④ 迁移未完成的历史页面级样式表——**不鼓励**，见下。
 - **类别 ② 的三条约束**（照 `overrides.css` 文件头执行）：保留未分层、靠导入顺序取胜，**不要改写成工具类**；**拒绝 `!important`**（全仓现有 6 处 `!` 修饰工具类都属待清理遗留，不要增加）；覆盖选择器必须带第三方类名前缀（如 `ofv-*`）。
@@ -1097,8 +1107,8 @@ i18n.use(initReactI18next).init({
 
 ### 10.1 现状偏离
 
-- **`dark:` 变体与 `.dark` 类不同源**：全仓无 `@custom-variant dark` 声明，30 个文件使用 `dark:`（含 `ui/button.tsx`、`ui/tabs.tsx`、`StatusBadge.tsx`、`HindsightToolCard.tsx`），用户在手动切浅色时仍可能按系统偏好渲染。另见 §3.2 的"宿主强制浅色"——当前深色路径整体不可用。
-- **页面级 `.css` 大量残留且无登记**：`apps/web` 5 个（合计 1810 行，含 `shell/agent-panel.css` 676 行、`shell/artifacts-workspace.css` 376 行）、资源侧 9 个（合计 2496 行，含 `workflow/workflow.css` 642 行、`platform/identity/.../agent-organizations.css` 513 行）。口径：`apps/web/src/**/*.css` 与 `packages/**/web/**/*.css`，排除 §10 允许的 token 入口（`index.css` 842 行、`styles/theme.css` 252 行）、`chat/css/*.css`（3 份）、`components/preview/overrides.css` 与类别 ③ 的伴随表（66 份，合计 3348 行）。它们与业务 tsx 里的自定义类名联动（如 `agent-tasks-page`），迁移时两者必须同批改。2026-09 的 Tailwind 迁移已把此前的基数压下来（`agent-editor.css` / `-design.css` / `-responsive.css` 三表随 `bfd63e52` 删除；`agent-panel.css` 由 919 行降到 676、`artifacts-workspace.css` 由 664 行降到 376），但**剩余部分仍未登记**。
+- ~~**`dark:` 变体与 `.dark` 类不同源**~~ 已消解（2026-09-23）：两个主题入口都声明了 `@custom-variant dark (&:where(.dark, .dark *))`，`dark:` 变体与 `.dark` token 块同源；30 个文件里的 `dark:` 一律保留但在应用内不会命中（系统深色偏好不再能让它们生效）。全站强制亮色见 §3.2。
+- **页面级 `.css` 大量残留且无登记**：`apps/web` 5 个（合计 1810 行，含 `shell/agent-panel.css` 676 行、`shell/artifacts-workspace.css` 376 行）、资源侧 9 个（合计 2496 行，含 `workflow/workflow.css` 642 行、`platform/identity/.../agent-organizations.css` 513 行）。口径：`apps/web/src/**/*.css` 与 `packages/**/web/**/*.css`，排除 §10 允许的 token 入口（`index.css` 851 行、`styles/theme.css` 269 行）、`chat/css/*.css`（3 份）、`components/preview/overrides.css` 与类别 ③ 的伴随表（66 份，合计 3348 行）。它们与业务 tsx 里的自定义类名联动（如 `agent-tasks-page`），迁移时两者必须同批改。2026-09 的 Tailwind 迁移已把此前的基数压下来（`agent-editor.css` / `-design.css` / `-responsive.css` 三表随 `bfd63e52` 删除；`agent-panel.css` 由 919 行降到 676、`artifacts-workspace.css` 由 664 行降到 376），但**剩余部分仍未登记**。
 - **`tw-animate-css` 声明了依赖但源仓库从未 `@import` 它**（只在包内 demo 的 CSS 里导入过），因此 shadcn 过渡动画工具类在应用中是空操作（已在 `ui-components` README 登记）。包内已知限制的完整清单见 `packages/ui-components/README.md`，以那里为准，不在此重复。
 
 ## 11. 开发落地清单

@@ -85,3 +85,4 @@ tmp
 .zcode/
 .peri/plans
 .obsidian
+superpowers/**/*

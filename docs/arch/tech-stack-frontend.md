@@ -118,7 +118,7 @@ apps/web/
   src/
     routes/          — TanStack Router 文件路由（`routeTree.gen.ts` 严禁手动编辑）
     pages/           — 页面组件（agent-panel / workflow / hindsight / login）
-    hooks/           — 自定义 hooks（use-chat-state、use-session-state、usePageVisible、useMetaAgent）
+    hooks/           — 自定义 hooks（use-chat-state、use-session-state、usePageVisible）
     lib/             — 工具函数（form-utils、retry、token-stats、app-brand、theme、password-crypto 等）
     api/             — API 客户端 + SDK 实例化（sdk.ts）
     i18n/            — i18n 配置 + locales/{en,zh}/ 翻译文件

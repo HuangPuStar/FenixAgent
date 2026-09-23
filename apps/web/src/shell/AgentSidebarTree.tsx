@@ -3,7 +3,7 @@
  *
  * 拆分后（§4.7 文件规模）本文件只做装配与渲染：数据与操作来自 `useAgentSidebarTree`，
  * 派生工具来自 `agent-sidebar-tree-model`，确认弹窗来自 `AgentSidebarTreeDialogs`。
- * 树展开状态与 Meta Agent 开关只影响渲染，仍由本组件持有。
+ * 树展开状态只影响渲染，仍由本组件持有。
  *
  * 导出面与拆分前一致：`AgentSidebarTree` 与 `orderInstancesByRunningStatus`（后者在此转发）。
  */
@@ -19,21 +19,8 @@ import type { StatusTone } from "@fenix/ui-components/config/StatusBadge";
 import { StatusBadge } from "@fenix/ui-components/config/StatusBadge";
 import { Spinner } from "@fenix/ui-components/ui/spinner";
 import { StatusDot } from "@fenix/ui-components/ui/status-dot";
-import { Switch } from "@fenix/ui-components/ui/switch";
-import {
-  Bot,
-  ChevronDown,
-  ChevronRight,
-  Eye,
-  Loader2,
-  Plus,
-  RotateCw,
-  Settings,
-  Sparkles,
-  Square,
-  Trash2,
-} from "lucide-react";
-import { memo, useEffect, useState } from "react";
+import { Bot, ChevronDown, ChevronRight, Eye, Plus, RotateCw, Settings, Square, Trash2 } from "lucide-react";
+import { memo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { NS } from "@/src/i18n";
 import { AgentSidebarDeleteDialog, AgentSidebarRestartDialog } from "./AgentSidebarTreeDialogs";
@@ -44,12 +31,12 @@ import { useAgentSidebarTree } from "./use-agent-sidebar-tree";
 export { orderInstancesByRunningStatus } from "./agent-sidebar-tree-model";
 
 /**
- * 卡片主标题刻度（元智能体卡片与 agent 卡片两处同名同级）。
+ * agent item 名称刻度（`text-sm`，14px）。
  *
- * 两行文字在两张卡片里逐字相同，抽成常量是为了让「13px 半粗」只有一处定义——否则调其中一张
- * 的标题层级时，另一张会静默地停在旧刻度上。
+ * 为什么带 `min-w-0`：名称是 flex 行内的项目，flex 项目的 `min-width: auto` 会把宽度撑回内容宽度，
+ * 缺了它同行的 `truncate` 压不下去；截断另有 `title` 兜底，见渲染点。
  */
-const CARD_TITLE_CLASS = "text-xs font-semibold text-text-primary truncate";
+const AGENT_ITEM_TITLE_CLASS = "text-sm font-semibold text-text-primary truncate min-w-0";
 
 /**
  * agent 卡片悬浮操作栏的图标按钮刻度（展开 / 重启 / 配置三个按钮同名同级）。
@@ -103,17 +90,7 @@ export const AgentSidebarTree = memo(function AgentSidebarTree({
   // 交互状态
   const [expandedAgents, setExpandedAgents] = useState<Record<string, boolean>>({});
 
-  // Meta Agent 显示控制
-  const [showMetaAgent, setShowMetaAgent] = useState(
-    () => localStorage.getItem("agent-panel:show-meta-agent") === "true",
-  );
-
-  // 持久化 Meta Agent 显示状态
-  useEffect(() => {
-    localStorage.setItem("agent-panel:show-meta-agent", String(showMetaAgent));
-  }, [showMetaAgent]);
-
-  // 树数据、五组 mutation 与重启/删除会话状态（实现见 use-agent-sidebar-tree.ts）
+  // 树数据、四组 mutation 与重启/删除会话状态（实现见 use-agent-sidebar-tree.ts）
   const {
     treeNodes,
     loading,
@@ -127,8 +104,6 @@ export const AgentSidebarTree = memo(function AgentSidebarTree({
     runStop,
     runDeleteAgent,
     deleting,
-    runMetaAgent,
-    metaAgentLoading,
     handleRestartAgent,
     handleRestartConfirm,
     restartDialogOpen,
@@ -173,13 +148,6 @@ export const AgentSidebarTree = memo(function AgentSidebarTree({
       <div className="sticky top-0 z-10 flex items-center justify-between pr-4 pb-4">
         <span className="agent-tree-section-title">{t("agents")}</span>
         <div className="flex items-center gap-1">
-          <label
-            className="flex items-center gap-1 cursor-pointer text-text-dim hover:text-text-secondary transition-colors"
-            title={t("metaAgentToggle")}
-          >
-            <Sparkles className="w-3.5 h-3.5" />
-            <Switch size="sm" checked={showMetaAgent} onCheckedChange={setShowMetaAgent} />
-          </label>
           {onCreateAgent && (
             <button
               type="button"
@@ -192,32 +160,6 @@ export const AgentSidebarTree = memo(function AgentSidebarTree({
           )}
         </div>
       </div>
-      {/* Meta Agent 卡片 */}
-      {showMetaAgent && (
-        <div className="mx-2 mb-2">
-          <button
-            type="button"
-            disabled={metaAgentLoading}
-            onClick={runMetaAgent}
-            className={[
-              "flex items-center gap-2.5 w-full p-2.5",
-              "border border-brand/30 rounded-lg bg-gradient-to-r from-brand/5 to-brand/10",
-              "cursor-pointer text-left font-[inherit]",
-              "transition-all duration-150",
-              "hover:border-brand/50 hover:shadow-sm",
-              "disabled:opacity-60 disabled:cursor-not-allowed",
-            ].join(" ")}
-          >
-            <div className="w-8 h-8 rounded-lg flex items-center justify-center shrink-0 bg-gradient-to-br from-brand to-brand-light text-white">
-              {metaAgentLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Sparkles className="w-4 h-4" />}
-            </div>
-            <div className="flex-1 min-w-0">
-              <div className={CARD_TITLE_CLASS}>{t("metaAgent")}</div>
-              <div className="text-3xs text-text-dim truncate mt-0.5">{t("metaAgentDesc")}</div>
-            </div>
-          </button>
-        </div>
-      )}
       {treeNodes.map((node) => {
         const { agent, instances } = node;
         const orderedInstances = orderInstancesByRunningStatus(instances);
@@ -250,7 +192,7 @@ export const AgentSidebarTree = memo(function AgentSidebarTree({
               disabled={isEntering}
               onClick={() => runEnter(node)}
               className={[
-                "agent-sidebar-agent-card flex items-center gap-2.5 w-full",
+                "agent-sidebar-agent-card flex items-center justify-between gap-2.5 w-full min-h-10",
                 "border border-border-subtle rounded-lg bg-surface-1",
                 "cursor-pointer text-left font-[inherit]",
                 "transition-all duration-150",
@@ -259,32 +201,43 @@ export const AgentSidebarTree = memo(function AgentSidebarTree({
                 isAgentSelected ? "active" : "",
               ].join(" ")}
             >
-              {/* 两行：显示名 + 标识键 */}
-              <div className="flex-1 min-w-0">
-                <div className="flex items-center gap-1.5">
-                  <div className={CARD_TITLE_CLASS}>{agentLabel}</div>
-                  {/* 仅公有/外部显示标签；色调语义见 `ACCESS_BADGE_TONES` */}
-                  {accessBadgeKey !== "resource.internal" && (
-                    <StatusBadge
-                      status={accessBadgeKey}
-                      label={tComponents(accessBadgeKey)}
-                      toneMap={ACCESS_BADGE_TONES}
-                    />
-                  )}
+              {/* 一行左右布局：左侧显示名（过长截断，title 兜底），右侧标识键 / 远程标记 */}
+              <div className="flex items-center gap-1.5 min-w-0">
+                <div className={AGENT_ITEM_TITLE_CLASS} title={agentLabel}>
+                  {agentLabel}
                 </div>
-                {/* 第二行：标识键 + 远程标记 */}
-                {(agentKey || shouldShowRemoteNode(agent.agentNode)) && (
-                  <div className="text-3xs text-text-muted truncate flex items-center gap-1.5">
-                    {agentKey && <span className="font-mono truncate">{agentKey}</span>}
-                    {shouldShowRemoteNode(agent.agentNode) && (
-                      <>
-                        <span className="w-1.5 h-1.5 rounded-full bg-blue-400 shrink-0" />
-                        <span className="shrink-0">{t("remoteNode")}</span>
-                      </>
-                    )}
-                  </div>
+                {/* 仅公有/外部显示标签；色调语义见 `ACCESS_BADGE_TONES` */}
+                {accessBadgeKey !== "resource.internal" && (
+                  <StatusBadge
+                    status={accessBadgeKey}
+                    label={tComponents(accessBadgeKey)}
+                    toneMap={ACCESS_BADGE_TONES}
+                  />
                 )}
               </div>
+              {/* 副信息：标识键 + 远程标记。`shrink-0` 让名称先让位；键自身再压一个上限，
+                  避免长组织名把同一行里的名称挤到只剩几个字。
+                  悬浮操作栏（`.agent-sidebar-actions`）是 `absolute right-1.5`，不预留空间——它出现就压在
+                  同一行右端，而副信息恒在右端（`justify-between`），因此两者必须互斥。用 `group-hover:invisible`
+                  让副信息在操作栏出现时让位：`visibility` 不参与布局计算（`display` 会让行内抖动），且它同时把
+                  内容移出无障碍树——`opacity-0` 会让读屏继续播报已经看不见的字。操作栏自身用 `opacity` 显示，
+                  `opacity` 不影响可聚焦性，键盘仍可 Tab 进四个按钮，故不给副信息加 `group-focus-within`：
+                  那会连「Tab 到卡片本身」也把副信息抹掉。 */}
+              {(agentKey || shouldShowRemoteNode(agent.agentNode)) && (
+                <div className="flex items-center gap-1.5 shrink-0 text-xs text-text-muted group-hover:invisible">
+                  {agentKey && (
+                    <span className="font-mono truncate max-w-20" title={agentKey}>
+                      {agentKey}
+                    </span>
+                  )}
+                  {shouldShowRemoteNode(agent.agentNode) && (
+                    <>
+                      <span className="w-1.5 h-1.5 rounded-full bg-blue-400 shrink-0" />
+                      <span className="shrink-0">{t("remoteNode")}</span>
+                    </>
+                  )}
+                </div>
+              )}
             </button>
 
             {/* 悬浮操作栏 */}
