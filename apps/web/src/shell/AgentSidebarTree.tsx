@@ -44,12 +44,21 @@ import { useAgentSidebarTree } from "./use-agent-sidebar-tree";
 export { orderInstancesByRunningStatus } from "./agent-sidebar-tree-model";
 
 /**
- * 卡片主标题刻度（元智能体卡片与 agent 卡片两处同名同级）。
+ * 元智能体卡片主标题刻度。
  *
- * 两行文字在两张卡片里逐字相同，抽成常量是为了让「13px 半粗」只有一处定义——否则调其中一张
- * 的标题层级时，另一张会静默地停在旧刻度上。
+ * 与 agent item 名称（`AGENT_ITEM_TITLE_CLASS`）**刻意不同档**，不是漏改：agent item 已压成一行，
+ * 名称要给同一行里的副信息让位才上调一档；元智能体卡片仍是「图标 + 标题 + 说明」两行结构，维持原刻度。
+ * 两处被后人「对齐」回去，列表的行内层级会一起变形。
  */
-const CARD_TITLE_CLASS = "text-xs font-semibold text-text-primary truncate";
+const META_CARD_TITLE_CLASS = "text-xs font-semibold text-text-primary truncate";
+
+/**
+ * agent item 名称刻度（比元智能体卡片标题大一档：`text-xs` → `text-sm`，12px → 14px）。
+ *
+ * 为什么带 `min-w-0`：名称是 flex 行内的项目，flex 项目的 `min-width: auto` 会把宽度撑回内容宽度，
+ * 缺了它同行的 `truncate` 压不下去；截断另有 `title` 兜底，见渲染点。
+ */
+const AGENT_ITEM_TITLE_CLASS = "text-sm font-semibold text-text-primary truncate min-w-0";
 
 /**
  * agent 卡片悬浮操作栏的图标按钮刻度（展开 / 重启 / 配置三个按钮同名同级）。
@@ -212,7 +221,7 @@ export const AgentSidebarTree = memo(function AgentSidebarTree({
               {metaAgentLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Sparkles className="w-4 h-4" />}
             </div>
             <div className="flex-1 min-w-0">
-              <div className={CARD_TITLE_CLASS}>{t("metaAgent")}</div>
+              <div className={META_CARD_TITLE_CLASS}>{t("metaAgent")}</div>
               <div className="text-3xs text-text-dim truncate mt-0.5">{t("metaAgentDesc")}</div>
             </div>
           </button>
@@ -250,7 +259,7 @@ export const AgentSidebarTree = memo(function AgentSidebarTree({
               disabled={isEntering}
               onClick={() => runEnter(node)}
               className={[
-                "agent-sidebar-agent-card flex items-center gap-2.5 w-full",
+                "agent-sidebar-agent-card flex items-center justify-between gap-2.5 w-full min-h-10",
                 "border border-border-subtle rounded-lg bg-surface-1",
                 "cursor-pointer text-left font-[inherit]",
                 "transition-all duration-150",
@@ -259,32 +268,37 @@ export const AgentSidebarTree = memo(function AgentSidebarTree({
                 isAgentSelected ? "active" : "",
               ].join(" ")}
             >
-              {/* 两行：显示名 + 标识键 */}
-              <div className="flex-1 min-w-0">
-                <div className="flex items-center gap-1.5">
-                  <div className={CARD_TITLE_CLASS}>{agentLabel}</div>
-                  {/* 仅公有/外部显示标签；色调语义见 `ACCESS_BADGE_TONES` */}
-                  {accessBadgeKey !== "resource.internal" && (
-                    <StatusBadge
-                      status={accessBadgeKey}
-                      label={tComponents(accessBadgeKey)}
-                      toneMap={ACCESS_BADGE_TONES}
-                    />
-                  )}
+              {/* 一行左右布局：左侧显示名（过长截断，title 兜底），右侧标识键 / 远程标记 */}
+              <div className="flex items-center gap-1.5 min-w-0">
+                <div className={AGENT_ITEM_TITLE_CLASS} title={agentLabel}>
+                  {agentLabel}
                 </div>
-                {/* 第二行：标识键 + 远程标记 */}
-                {(agentKey || shouldShowRemoteNode(agent.agentNode)) && (
-                  <div className="text-3xs text-text-muted truncate flex items-center gap-1.5">
-                    {agentKey && <span className="font-mono truncate">{agentKey}</span>}
-                    {shouldShowRemoteNode(agent.agentNode) && (
-                      <>
-                        <span className="w-1.5 h-1.5 rounded-full bg-blue-400 shrink-0" />
-                        <span className="shrink-0">{t("remoteNode")}</span>
-                      </>
-                    )}
-                  </div>
+                {/* 仅公有/外部显示标签；色调语义见 `ACCESS_BADGE_TONES` */}
+                {accessBadgeKey !== "resource.internal" && (
+                  <StatusBadge
+                    status={accessBadgeKey}
+                    label={tComponents(accessBadgeKey)}
+                    toneMap={ACCESS_BADGE_TONES}
+                  />
                 )}
               </div>
+              {/* 副信息：标识键 + 远程标记。`shrink-0` 让名称先让位；键自身再压一个上限，
+                  避免长组织名把同一行里的名称挤到只剩几个字 */}
+              {(agentKey || shouldShowRemoteNode(agent.agentNode)) && (
+                <div className="flex items-center gap-1.5 shrink-0 text-xs text-text-muted">
+                  {agentKey && (
+                    <span className="font-mono truncate max-w-20" title={agentKey}>
+                      {agentKey}
+                    </span>
+                  )}
+                  {shouldShowRemoteNode(agent.agentNode) && (
+                    <>
+                      <span className="w-1.5 h-1.5 rounded-full bg-blue-400 shrink-0" />
+                      <span className="shrink-0">{t("remoteNode")}</span>
+                    </>
+                  )}
+                </div>
+              )}
             </button>
 
             {/* 悬浮操作栏 */}
