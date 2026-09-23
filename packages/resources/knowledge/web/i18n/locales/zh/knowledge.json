@@ -42,6 +42,7 @@
   },
   "embeddingModel": {
     "listLoadFailed": "加载模型列表失败",
+    "retry": "重试",
     "deleteConfirm": "确认删除实例「{{instance}}」？\n将移除该实例（供应商 {{provider}} 下）及其所有模型配置（{{count}} 个）。正在使用这些模型的知识库检索将会失败，且不可恢复。",
     "instanceDeleted": "已删除实例",
     "deleteFailed": "删除失败",

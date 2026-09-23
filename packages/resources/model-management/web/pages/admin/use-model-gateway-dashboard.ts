@@ -47,6 +47,19 @@ export function useModelGatewayDashboard({ onAuthFailure }: { onAuthFailure: () 
     }
   };
 
+  /**
+   * 主体下拉（用户 / Agent）的失败处理。
+   *
+   * 这两路的失败此前完全静默：`data` 停在 `undefined`，下拉只剩「无匹配项」——与「关键词确实没匹配到」
+   * 无法区分（§3.4 的失败映射成 empty）。这里是用户输入触发的查询（3 秒静默后才发），因此按 §5.8
+   * 补上可见反馈；`console.error` 保留诊断上下文，鉴权失效仍走统一入口。
+   */
+  const handleSubjectSearchError = (error: Error) => {
+    console.error("[model-gateway] subject search failed", error);
+    toast.error(t("modelGateway.usagePage.subjectLoadFailed"));
+    handleGatewayRequestError(error);
+  };
+
   const checkRequest = useRequest(() => modelGatewayApi.check(), {
     manual: true,
     onSuccess: setStatus,
@@ -66,11 +79,13 @@ export function useModelGatewayDashboard({ onAuthFailure }: { onAuthFailure: () 
   });
   const usersRequest = useRequest((keyword?: string) => modelGatewayApi.listUsers(keyword?.trim() ? { keyword } : {}), {
     manual: true,
+    onError: handleSubjectSearchError,
   });
   const agentsRequest = useRequest(
     (keyword?: string) => modelGatewayApi.listAgents(keyword?.trim() ? { keyword } : {}),
     {
       manual: true,
+      onError: handleSubjectSearchError,
     },
   );
   const organizationsRequest = useRequest(() => systemPeopleTreeApi.fetchTree(), {

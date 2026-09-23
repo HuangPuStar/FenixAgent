@@ -67,7 +67,14 @@ export function useSandboxDashboard(onAuthFailure: () => void) {
     { manual: true, onError: handleAuthError },
   );
   // 组织目录是资源池表单的下拉候选，进页面即预取（失败只影响下拉，不阻塞池列表）。
-  const organizationsLoad = useRequest(() => systemOrganizationsApi.list());
+  // 失败至少要有诊断痕迹：此前这一路没有任何 `onError`，出问题只能看到下拉是空的。
+  // 下拉内的持久失败态需要把状态透进 `OrganizationSelect`，属 §3.6 登记的剩余项。
+  const organizationsLoad = useRequest(() => systemOrganizationsApi.list(), {
+    onError: (error: unknown) => {
+      console.error("[sandbox] 组织下拉候选加载失败", error);
+      handleAuthError(error);
+    },
+  });
   const action = useRequest(async (fn: () => Promise<unknown>) => fn(), { manual: true });
 
   const instancesByPool = useMemo(() => {

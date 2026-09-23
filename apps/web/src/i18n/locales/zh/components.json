@@ -26,6 +26,7 @@
     "mountFailed": "挂载失败",
     "unmountFailed": "卸载失败",
     "sitesLoadFailed": "加载站点列表失败",
+    "retry": "重试",
     "tasks": "定时任务",
     "tasksEmpty": "暂无绑定的定时任务",
     "tasksManage": "前往管理",

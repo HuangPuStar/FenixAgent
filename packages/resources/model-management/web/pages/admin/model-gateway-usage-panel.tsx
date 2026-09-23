@@ -10,14 +10,16 @@
  * `web/lib/model-gateway-format.ts`。
  */
 import { SearchableUsageFilter } from "@fenix/resource-sandbox/web";
+import { EmptyState } from "@fenix/ui-components/config/EmptyState";
 import { Button } from "@fenix/ui-components/ui/button";
 import { Card, CardContent } from "@fenix/ui-components/ui/card";
 import { Progress } from "@fenix/ui-components/ui/progress";
-import { Search } from "lucide-react";
+import { AlertTriangle, RefreshCw, Search } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import type { ModelSyncStatus } from "../../api/model-gateway";
 import { MODELS_NS } from "../../i18n/namespace";
 import { formatCompactNumber, formatUsd } from "../../lib/model-gateway-format";
+import { resolveModelGatewayQueryBranch } from "../../lib/model-gateway-query";
 import { FILTER_FIELD_CLASS, Metric } from "./model-gateway-shared";
 import type { ModelGatewayFilterOption } from "./use-model-gateway-dashboard";
 import type { ModelGatewayUsageController } from "./use-model-gateway-usage";
@@ -54,6 +56,14 @@ export function ModelGatewayUsagePanel({
     setUsageFilters,
     usageRequest,
   } = usage;
+
+  // 失败必须落成页面上的失败块：`data` 在失败时停在 `undefined`，照旧渲染就只剩「请先查询」这句
+  // 与「还没点过查询」同形的提示（§3.4）。
+  const queryBranch = resolveModelGatewayQueryBranch({
+    loading: usageRequest.loading,
+    error: usageRequest.error,
+    hasData: Boolean(usageRequest.data),
+  });
 
   return (
     <Card>
@@ -145,8 +155,26 @@ export function ModelGatewayUsagePanel({
         <p className="mb-4 rounded-md border bg-muted/20 px-3 py-2 text-sm text-text-muted">
           {t("modelGateway.usagePage.rangeHint")}
         </p>
-        {!usageRequest.data && <p className="text-sm text-text-muted">{t("modelGateway.queryHint")}</p>}
-        {usageRequest.data && (
+        {queryBranch === "failure" && usageRequest.error ? (
+          // 失败块顶掉下方结果区（含上一轮的旧指标），重试即「按当前范围与筛选重查一次」。
+          <EmptyState
+            icon={<AlertTriangle />}
+            title={t("modelGateway.usagePage.queryFailed")}
+            tone="danger"
+            role="alert"
+            className="py-12"
+            action={{
+              label: t("actions.retry"),
+              onClick: () => void usageRequest.run(),
+              icon: <RefreshCw />,
+              disabled: usageRequest.loading,
+            }}
+          />
+        ) : null}
+        {queryBranch !== "failure" && !usageRequest.data && (
+          <p className="text-sm text-text-muted">{t("modelGateway.queryHint")}</p>
+        )}
+        {queryBranch !== "failure" && usageRequest.data && (
           <>
             <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
               <Metric

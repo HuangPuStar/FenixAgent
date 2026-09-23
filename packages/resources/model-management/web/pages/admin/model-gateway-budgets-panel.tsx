@@ -6,15 +6,18 @@
  * 的说明）。用户 / 组织两路下拉的取数与标签在 `useModelGatewayDashboard` 侧统一拼装，这里只收成品选项。
  */
 import { SearchableUsageFilter } from "@fenix/resource-sandbox/web";
+import { EmptyState } from "@fenix/ui-components/config/EmptyState";
 import { Badge } from "@fenix/ui-components/ui/badge";
 import { Button } from "@fenix/ui-components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@fenix/ui-components/ui/card";
 import { Pagination } from "@fenix/ui-components/ui/pagination";
 import { Progress } from "@fenix/ui-components/ui/progress";
 import { Spinner } from "@fenix/ui-components/ui/spinner";
+import { AlertTriangle, RefreshCw } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import type { ModelGatewayConfiguration } from "../../api/model-gateway";
 import { MODELS_NS } from "../../i18n/namespace";
+import { resolveModelGatewayQueryBranch } from "../../lib/model-gateway-query";
 import { ModelGatewayBudgetDialog, ModelGatewayResetBudgetDialog } from "./model-gateway-budget-dialogs";
 import {
   FILTER_FIELD_CLASS,
@@ -71,6 +74,14 @@ export function ModelGatewayBudgetsPanel({
     visibleBudgetItems,
     budgetTotalPages,
   } = budgets;
+
+  // 失败必须落成失败块：`budgetsRequest.data` 在失败时停在 `undefined`，照旧渲染只会得到一张
+  // 空表 + 「暂无匹配用户」的行内文案，与「这组筛选确实没有预算」同形（§3.4）。
+  const queryBranch = resolveModelGatewayQueryBranch({
+    loading: budgetsRequest.loading,
+    error: budgetsRequest.error,
+    hasData: Boolean(budgetsRequest.data),
+  });
 
   return (
     <Card>
@@ -191,8 +202,23 @@ export function ModelGatewayBudgetsPanel({
             {t("modelGateway.applySelected")}
           </Button>
         </div>
-        {budgetsRequest.loading ? (
+        {queryBranch === "loading" ? (
           <Spinner label={t("admin.loading")} className={GATEWAY_LOADING_CLASS} />
+        ) : queryBranch === "failure" && budgetsRequest.error ? (
+          // 失败块顶掉表格（含上一轮的行），重试即「按当前筛选重查一次」。
+          <EmptyState
+            icon={<AlertTriangle />}
+            title={t("modelGateway.budgetsPage.queryFailed")}
+            tone="danger"
+            role="alert"
+            className="py-12"
+            action={{
+              label: t("actions.retry"),
+              onClick: () => void budgetsRequest.run(),
+              icon: <RefreshCw />,
+              disabled: budgetsRequest.loading,
+            }}
+          />
         ) : (
           <>
             {/* 预算表的 `table-fixed` / 带 `font-medium` 的表头与密钥表不同，只共用最外层容器类。 */}

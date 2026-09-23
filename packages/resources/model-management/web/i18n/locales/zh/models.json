@@ -359,6 +359,7 @@
       "resetNotScheduled": "等待重置时间",
       "exhausted": "已耗尽",
       "noMatches": "暂无匹配用户",
+      "queryFailed": "预算列表加载失败，请重试以按当前筛选重新查询。",
       "selectUser": "选择{{name}}",
       "pagination_total": "共 {{total}} 位用户",
       "pagination_page_size": "{{size}} 位/页"
@@ -419,6 +420,8 @@
       "userOption": "{{name}}（{{email}}）",
       "searchSubject": "搜索{{subject}}",
       "noMatches": "暂无匹配项",
+      "subjectLoadFailed": "主体列表加载失败，请重新搜索。",
+      "queryFailed": "用量数据加载失败，请重试以按当前范围重新查询。",
       "rangeHint": "支持任意起止日期，单次最长 90 天；更长周期建议后续使用离线报表。",
       "metrics": {
         "spend": "总消耗金额",

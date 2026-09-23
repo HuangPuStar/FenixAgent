@@ -1,3 +1,4 @@
+import { EMPTY_STATE_FILL_CLASS, EmptyState } from "@fenix/ui-components/config/EmptyState";
 import { AppHeader } from "@fenix/ui-components/layout/app-header";
 import { AppPage } from "@fenix/ui-components/layout/app-page";
 import { copyTextToClipboard } from "@fenix/ui-components/lib/clipboard";
@@ -5,7 +6,7 @@ import { Button } from "@fenix/ui-components/ui/button";
 import { unwrap } from "@fenix/web-runtime/api/request";
 import { NS } from "@fenix/web-runtime/i18n/namespace";
 import { useRequest } from "ahooks";
-import { Plus } from "lucide-react";
+import { AlertTriangle, Plus, RefreshCw } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
@@ -63,7 +64,11 @@ export function AgentOrganizationsPage({ machineRegistry }: AgentOrganizationsPa
   const [machineForm, setMachineForm] = useState<MachineFormState>(EMPTY_MACHINE_FORM);
   const [machineCreateResult, setMachineCreateResult] = useState<MachineCreateResult | null>(null);
 
-  const { data: organizationsRaw = [], refresh: reloadOrganizations } = useRequest(() => unwrap(orgApi.list()), {
+  const {
+    data: organizationsRaw = [],
+    error: organizationsError,
+    refresh: reloadOrganizations,
+  } = useRequest(() => unwrap(orgApi.list()), {
     onError: (error) => {
       console.error("Failed to load organizations", error);
       toast.error(t("toast.loadDetailFailed"));
@@ -89,6 +94,13 @@ export function AgentOrganizationsPage({ machineRegistry }: AgentOrganizationsPa
   } = useRequest(() => unwrap(machineRegistry.list({ limit: 50 })), {
     ready: !!selectedOrgId,
     refreshDeps: [selectedOrgId],
+    onError: (error) => {
+      // 机器列表此前完全静默：失败时 `machines` 停在空数组，与「这个组织还没绑定机器」同形。
+      // 机器区在组织页里是次要内容（与组织本身同页），本轮只补诊断日志与瞬时提示，
+      // 持久失败块需要把状态透进 `OrganizationsWorkspace`，见 §3.6 的现状偏离。
+      console.error("Failed to load machines", error);
+      toast.error(t("toast.machinesLoadFailed"));
+    },
   });
   const machines = machinesResponse?.items ?? [];
   const members = detail?.members ?? [];
@@ -165,6 +177,12 @@ export function AgentOrganizationsPage({ machineRegistry }: AgentOrganizationsPa
     {
       ready: inviteOpen && !!selectedOrgId && debouncedInviteKeyword.length >= 3,
       refreshDeps: [inviteOpen, selectedOrgId, debouncedInviteKeyword],
+      onError: (error) => {
+        // 候选查询此前完全静默：失败时候选停在空数组，弹窗会显示「没有匹配的成员」——与「关键词确实
+        // 没匹配到」同形（§3.4）。这是用户输入触发的查询，按 §5.8 补可见反馈与诊断日志。
+        console.error("Failed to load member candidates", error);
+        toast.error(t("toast.candidatesLoadFailed"));
+      },
     },
   );
   const { run: runAddMember, loading: inviteLoading } = useRequest(
@@ -314,6 +332,25 @@ export function AgentOrganizationsPage({ machineRegistry }: AgentOrganizationsPa
       ok ? toast.success(t("copied")) : toast.error(t("copyFailed")),
     );
   }, [selectedOrgId, t]);
+
+  // 组织列表是整页的**数据源**：取不到时列表与详情一起空掉。此前失败只弹一次 toast、页面照旧渲染
+  // 「暂无组织」空态（`noOrgs`），用户会把「请求挂了」读成「我确实没有组织」（§3.4）。
+  // 判据带 `organizations.length === 0`：已有列表时某次刷新失败保留旧内容，不让一次失败掀掉整页。
+  if (organizationsError && organizations.length === 0) {
+    return (
+      <AppPage>
+        <EmptyState
+          icon={<AlertTriangle />}
+          title={t("loadState.title")}
+          description={t("loadState.description")}
+          tone="danger"
+          role="alert"
+          className={EMPTY_STATE_FILL_CLASS}
+          action={{ label: t("loadState.retry"), onClick: reloadOrganizations, icon: <RefreshCw /> }}
+        />
+      </AppPage>
+    );
+  }
 
   return (
     <AppPage>

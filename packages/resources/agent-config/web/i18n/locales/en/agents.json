@@ -263,7 +263,10 @@
     "searchPlaceholder": "Search agent names...",
     "loading": "Loading agents...",
     "emptyTitle": "No agents",
-    "emptyDescription": "Create your first agent using the button above"
+    "emptyDescription": "Create your first agent using the button above",
+    "loadFailedTitle": "Could not load agents",
+    "loadFailedDescription": "The agent list is unavailable right now — this is not an empty account.",
+    "retry": "Retry"
   },
   "nav": {
     "home": "New Agent",

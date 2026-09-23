@@ -1,5 +1,6 @@
 import { type EnvironmentDetail, envApi } from "@fenix/agent-runtime/web/api/environments";
 import { AgentBadge } from "@fenix/ui-components/chat/shell/AgentBadge";
+import { EmptyState } from "@fenix/ui-components/config/EmptyState";
 import { AppHeader } from "@fenix/ui-components/layout/app-header";
 import { AppPage } from "@fenix/ui-components/layout/app-page";
 import { Spinner } from "@fenix/ui-components/ui/spinner";
@@ -10,7 +11,7 @@ import { useConfigChangeListener } from "@fenix/web-runtime/lib/config-events";
 import type { AgentInfo } from "@fenix/web-runtime/types/config";
 import { useNavigate } from "@tanstack/react-router";
 import { useRequest } from "ahooks";
-import { Bot, Plus, Search, Sparkles } from "lucide-react";
+import { AlertTriangle, Bot, Plus, RefreshCw, Search, Sparkles } from "lucide-react";
 import { useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
@@ -80,6 +81,7 @@ export function AgentManagementPage() {
   const {
     data: nodes,
     loading,
+    error: listError,
     refresh,
   } = useRequest(
     async (): Promise<AgentManageNode[]> => {
@@ -229,6 +231,19 @@ export function AgentManagementPage() {
 
         {loading ? (
           <Spinner size="sm" label={t("management.loading")} className="flex h-72" aria-busy="true" />
+        ) : listError && filteredNodes.length === 0 ? (
+          // 首次取数失败：`nodes` 停在 `undefined`，若照旧往下走只会渲染「暂无智能体」空态——
+          // 与「确实还没有智能体」同形（§3.4）。判据带 `filteredNodes.length === 0`：刷新失败时
+          // 保留已经渲染的列表，不让一次失败掀掉用户正在看的内容。文案走本包字典，原始错误只进日志。
+          <EmptyState
+            icon={<AlertTriangle />}
+            title={t("management.loadFailedTitle")}
+            description={t("management.loadFailedDescription")}
+            tone="danger"
+            role="alert"
+            className="flex h-72 flex-col items-center justify-center rounded-xl border border-dashed border-border bg-background/65"
+            action={{ label: t("management.retry"), onClick: refresh, icon: <RefreshCw />, disabled: loading }}
+          />
         ) : filteredNodes.length === 0 ? (
           <div className="flex h-72 flex-col items-center justify-center rounded-xl border border-dashed border-border bg-background/65 text-text-muted">
             <Bot className="mb-3 h-10 w-10 opacity-50" />

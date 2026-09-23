@@ -3,6 +3,11 @@
   "subtitle": "管理你的组织和团队成员",
   "myOrgs": "我的组织",
   "noOrgs": "暂无组织",
+  "loadState": {
+    "title": "组织列表加载失败",
+    "description": "当前无法读取组织列表，这不代表账号下没有组织。",
+    "retry": "重试"
+  },
   "selectOrg": "选择一个组织查看详情",
   "defaultEngine": "默认执行节点",
   "form": {
@@ -137,6 +142,8 @@
     "removeFailed": "移除成员失败",
     "roleUpdated": "角色已更新",
     "roleUpdateFailed": "更新角色失败",
+    "machinesLoadFailed": "机器列表加载失败，重新进入页面可重试。",
+    "candidatesLoadFailed": "成员候选加载失败，重新输入即可重试。",
     "deleteSuccess": "组织已删除",
     "deleteFailed": "删除组织失败",
     "machineCreateSuccess": "机器{{name}}已创建（ID: {{id}}）",

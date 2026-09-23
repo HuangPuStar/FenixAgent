@@ -29,7 +29,7 @@ import { Skeleton } from "@fenix/ui-components/ui/skeleton";
 import { unwrap } from "@fenix/web-runtime/api/request";
 import { NS } from "@fenix/web-runtime/i18n/namespace";
 import { useRequest } from "ahooks";
-import { Cpu, Plus } from "lucide-react";
+import { Cpu, Plus, RefreshCw, TriangleAlert } from "lucide-react";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
@@ -58,7 +58,12 @@ export function EmbeddingModelManager({ canManage, inDialog, onModelsChanged }: 
   // 待确认删除的实例：原生 confirm 的同步返回值无法保留，改为挂起目标实例 + 受控 ConfirmDialog。
   const [deleteTarget, setDeleteTarget] = useState<ConfiguredInstanceNode | null>(null);
 
-  const { data: tree, loading } = useRequest(() => unwrap(embeddingModelApi.list()), {
+  const {
+    data: tree,
+    loading,
+    error: listError,
+    refresh,
+  } = useRequest(() => unwrap(embeddingModelApi.list()), {
     refreshDeps: [refreshKey],
     onError: (err) => {
       // 此前只上屏、不落日志：原始对象先进诊断通道。文案只取字典（§9.3），
@@ -133,6 +138,17 @@ export function EmbeddingModelManager({ canManage, inDialog, onModelsChanged }: 
             <Skeleton key={i} className="h-14 w-full rounded-xl" />
           ))}
         </div>
+      ) : listError ? (
+        // 失败必须与「确实还没配置供应商」分开：`tree` 在失败时停在 `undefined`，`providerCount` 也是 0，
+        // 照旧渲染只会得到「暂无已配置的模型供应商」——与空态同形（§3.4）。重试走 `refresh`（重新拉取）。
+        <EmptyState
+          className="py-16"
+          icon={<TriangleAlert />}
+          title={t("embeddingModel.listLoadFailed")}
+          tone="danger"
+          role="alert"
+          action={{ label: t("embeddingModel.retry"), onClick: refresh, icon: <RefreshCw />, disabled: loading }}
+        />
       ) : providerCount === 0 ? (
         <EmptyState
           className="py-16"

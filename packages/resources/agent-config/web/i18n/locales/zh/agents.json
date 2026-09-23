@@ -263,7 +263,10 @@
     "searchPlaceholder": "搜索智能体名称...",
     "loading": "加载智能体...",
     "emptyTitle": "暂无智能体",
-    "emptyDescription": "点击右上角创建第一个智能体"
+    "emptyDescription": "点击右上角创建第一个智能体",
+    "loadFailedTitle": "智能体列表加载失败",
+    "loadFailedDescription": "当前无法读取智能体列表，这不代表账号下没有智能体。",
+    "retry": "重试"
   },
   "nav": {
     "home": "新建智能体",
