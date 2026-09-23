@@ -15,8 +15,8 @@
 // - 宿主桩改 prop 注入：本文件旧用例不含 `@/src/api/*`、`@/src/hooks/*` 一类宿主桩；`UserBubble` 的
 //   文件预览在上线态由 `onOpenWorkspaceFile` 回调门控（旧实现走宿主 window 事件），用例仍只断言
 //   附件 pill 的渲染契约，无需注入该回调。
-// - 已登记的有意取舍（`docs/design/ce-ee-refactoring/review/task-1.6-web-shell.md` §8.2 与
-//   `packages/ui-components/README.md`「已知取舍」表）覆盖 ToolCallRow 的 `publicError` 块 / 完成态
+// - 已登记的有意取舍（`packages/ui-components/README.md`「已知取舍」表）
+//   覆盖 ToolCallRow 的 `publicError` 块 / 完成态
 //   状态词与 TodoChanges 的变更标签，均不属于本文件用例，故本文件无删除项。
 
 import { describe, expect, test } from "bun:test";

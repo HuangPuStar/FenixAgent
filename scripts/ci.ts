@@ -85,6 +85,13 @@ const STEPS = [
     },
   },
   {
+    // 包级 tsconfig 逐个检查：根 `tsc` 与 web `tsc` 都**顺 import** 走，没有消费方的包/文件天然
+    // 落在检查之外。口径、并发与测试文件豁免的移除条件见 `scripts/typecheck-packages.ts` 头部。
+    name: "tsc (packages)",
+    cmd: "bun run typecheck:packages",
+    filter: (out: string) => (out.includes("✓ typecheck-packages") ? null : out),
+  },
+  {
     name: "dependency-boundaries",
     cmd: "bun run check:dependencies",
     filter: (out: string) => (out.includes("✓ dependency-boundaries") ? null : out),

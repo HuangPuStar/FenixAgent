@@ -2,7 +2,7 @@
 
 此文件由 `bun run scripts/check-root-source-owner-inventory.ts --markdown > docs/arch/root-source-owner-inventory.md` 生成。请修改规则后重新生成，不要手工编辑。
 
-> **历史快照**：「完整规则」表是 RMD-01 ~ RMD-09 的**声明式迁移规则**（`Prefix` → `Target prefix` / owner / 任务），记录各批次当时的判定与落点。根目录 `src/`、`web/` 迁移后已不存在（审计 `files=0`），且部分目标前缀在后续任务中被再次移动，故表中路径**不作为现状依据**；当前落位以各包内代码与 `docs/design/ce-ee-refactoring/review/task-1.6-web-shell.md` 为准。
+> **历史快照**：「完整规则」表是 RMD-01 ~ RMD-09 的**声明式迁移规则**（`Prefix` → `Target prefix` / owner / 任务），记录各批次当时的判定与落点。根目录 `src/`、`web/` 迁移后已不存在（审计 `files=0`），且部分目标前缀在后续任务中被再次移动，故表中路径**不作为现状依据**；当前落位以各包内代码与各包 `README.md` 为准。
 
 ## 审计结果
 

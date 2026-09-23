@@ -12,8 +12,7 @@
 //
 // 为什么要这一份：`PublicError.message` 是 wire 与日志字段且恒为英文（`isPublicError` 以它做帧
 // 完整性校验），界面改按 `type` 取字典后，「字典是否覆盖全部 type」就成了新的失败模式——漏一个
-// type 只会在那一种故障下退回英文，人工审计几乎不可能发现。见
-// `docs/design/ce-ee-refactoring/review/task-1.6-web-shell.md` §7.18。
+// type 只会在那一种故障下退回英文，人工审计几乎不可能发现。
 
 import { describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";

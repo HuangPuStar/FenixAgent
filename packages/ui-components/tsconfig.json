@@ -1,8 +1,8 @@
 {
   // 包内类型检查入口：**自包含**，不 extends 任何包外 tsconfig。
   // 为什么不能继承 `apps/web/tsconfig.json`：本包是 §1.6 的独立前端包，编译设置由宿主应用决定会让
-  // 宿主改一行就联动本包。两侧的 `extends` 链上的一份权威说明见 `packages/resources/memory/tsconfig.json`
-  // 与 `docs/design/ce-ee-refactoring/review/task-1.3-resource-packages.md` §1 静态条件 3。
+  // 宿主改一行就联动本包；`packages/**` 内也不得出现指向 `apps/web` 的相对路径。两侧的 `extends`
+  // 链上的一份权威说明见 `packages/resources/memory/tsconfig.json` 文件头。
   // - `web/` 与 `demo/` 都是浏览器面，需要 JSX 与 DOM 类型；`types: ["bun"]` 供包内测试使用 Bun 全局；
   // - `paths` 只映射自身的包入口（`@fenix/ui-components` → `web/`）；其余 `@fenix/*` 一律走包 exports，
   //   多一份别名只会掩盖 exports 缺口（同见 `tsconfig.json` 顶部注释）；

@@ -27,8 +27,8 @@ export function parseDatabaseConnectionPoolConfig(input: unknown = process.env):
 /**
  * 宿主进程自身运行参数的 env schema。
  *
- * **模块专属变量不在这里**：自 1.7 C 块（`docs/design/ce-ee-refactoring/review/task-1.7-db-config-migration.md`）
- * 起，有唯一模块 owner 的部署变量由该模块的 `fenix.module.ts` 经 `envDefinitions` 声明——agent-runtime 的
+ * **模块专属变量不在这里**：自 1.7 C 块起，有唯一模块 owner 的部署变量由该模块的 `fenix.module.ts` 经
+ * `envDefinitions` 声明——agent-runtime 的
  * 运行态旋钮与 workspace 根、knowledge 的 RAGFlow/Gotenberg、sandbox 与 model-management 的整族配置、
  * machine 的 file-ws 治理项、identity 的认证项、channel 的 Hermes 网关、workflow 的工具目录与签名密钥、
  * agent-config 的生成模型与观测透传等。声明与校验仍统一在启动期由 `loadServerEnv()` 汇总

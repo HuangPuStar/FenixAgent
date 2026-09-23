@@ -10,7 +10,7 @@
 // 被测模块，因此不会把被测代码的副作用（模块加载期取 DB 句柄等）带进来。
 //
 // 与黄金样本 `packages/resources/sandbox/src/__tests__/sandbox-source-migration.test.ts` 的差异及理由：
-// 样本版只覆盖 6/8 条静态条件（review 文档 §四 复盘的实测结论）——缺「exports 键存在性」与「README 非占位」
+// 样本版只覆盖 6/8 条静态条件（实测）——缺「exports 键存在性」与「README 非占位」
 // 两组断言，删掉 `exports["./server"]` 或把 README 换成单行占位都不会让它变红。这里补上两组，并把条件 7
 // 从「不深入 `@fenix/*/src`」加强为「每条 `@fenix/*` 都能解析到对方 `exports` 声明的公开键」。
 

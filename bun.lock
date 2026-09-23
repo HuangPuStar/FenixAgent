@@ -165,7 +165,6 @@
         "@fenix/agent-config": "workspace:*",
         "@fenix/agent-runtime": "workspace:*",
         "@fenix/ccb": "workspace:*",
-        "@fenix/chat-channel": "workspace:*",
         "@fenix/claude-code": "workspace:*",
         "@fenix/core": "workspace:*",
         "@fenix/identity": "workspace:*",
@@ -175,7 +174,6 @@
         "@fenix/orchestration": "workspace:*",
         "@fenix/peri": "workspace:*",
         "@fenix/platform-sdk": "workspace:*",
-        "@fenix/plugin-sdk": "workspace:*",
         "@fenix/remote-runtime": "workspace:*",
         "@fenix/resource-channel": "workspace:*",
         "@fenix/resource-knowledge": "workspace:*",
@@ -195,6 +193,9 @@
         "keyv": "^5.6.0",
         "pg": "^8.23.0",
         "zod": "^4.4.3",
+      },
+      "devDependencies": {
+        "@fenix/chat-channel": "workspace:*",
       },
     },
     "apps/web": {
@@ -270,13 +271,20 @@
         "@fenix/plugin-sdk": "workspace:*",
         "@fenix/remote-runtime": "workspace:*",
         "@fenix/resource-sandbox": "workspace:*",
-        "@fenix/ui-components": "workspace:*",
         "@fenix/web-runtime": "workspace:*",
         "acp-link": "workspace:*",
         "drizzle-orm": "^0.45.2",
         "ioredis": "^5.10.1",
         "uuid": "^14.0.0",
         "yjs": "^13.6.31",
+      },
+      "devDependencies": {
+        "@fenix/ui-components": "workspace:*",
+        "happy-dom": "^20.9.0",
+      },
+      "peerDependencies": {
+        "react": "^19.2.6",
+        "react-dom": "^19.2.6",
       },
     },
     "packages/chat-channel": {
@@ -371,8 +379,10 @@
         "happy-dom": "^20.9.0",
       },
       "peerDependencies": {
+        "@tanstack/react-router": "^1.170.7",
         "i18next": "^26.2.0",
         "react": "^19.2.6",
+        "react-dom": "^19.2.6",
         "react-i18next": "^17.0.8",
       },
     },
@@ -461,6 +471,7 @@
       },
       "devDependencies": {
         "@types/qrcode": "^1.5.6",
+        "happy-dom": "^20.9.0",
       },
       "peerDependencies": {
         "@tanstack/react-router": "^1.170.7",
@@ -486,11 +497,13 @@
         "zod": "^4.4.3",
       },
       "devDependencies": {
+        "happy-dom": "^20.9.0",
         "typescript": "^6.0.3",
       },
       "peerDependencies": {
         "i18next": "^26.2.0",
         "react": "^19.2.6",
+        "react-dom": "^19.2.6",
         "react-i18next": "^17.0.8",
       },
     },
@@ -515,6 +528,9 @@
         "xlsx": "^0.18.5",
         "zod": "^4.4.3",
       },
+      "devDependencies": {
+        "happy-dom": "^20.9.0",
+      },
       "peerDependencies": {
         "@tanstack/react-router": "^1.170.7",
         "i18next": "^26.2.0",
@@ -537,6 +553,10 @@
         "@fenix/resource-mcp": "workspace:*",
         "@fenix/ui-components": "workspace:*",
       },
+      "peerDependencies": {
+        "react": "^19.2.6",
+        "react-dom": "^19.2.6",
+      },
     },
     "packages/resources/mcp": {
       "name": "@fenix/resource-mcp",
@@ -556,9 +576,13 @@
         "sonner": "^2.0.7",
         "zod": "^4.4.3",
       },
+      "devDependencies": {
+        "happy-dom": "^20.9.0",
+      },
       "peerDependencies": {
         "i18next": "^26.2.0",
         "react": "^19.2.6",
+        "react-dom": "^19.2.6",
         "react-i18next": "^17.0.8",
       },
     },
@@ -614,10 +638,14 @@
         "sonner": "^2.0.7",
         "zod": "^4.4.3",
       },
+      "devDependencies": {
+        "happy-dom": "^20.9.0",
+      },
       "peerDependencies": {
         "@tanstack/react-router": "^1.170.7",
         "i18next": "^26.2.0",
         "react": "^19.2.6",
+        "react-dom": "^19.2.6",
         "react-i18next": "^17.0.8",
       },
     },
@@ -659,10 +687,14 @@
         "sonner": "^2.0.7",
         "zod": "^4.4.3",
       },
+      "devDependencies": {
+        "happy-dom": "^20.9.0",
+      },
       "peerDependencies": {
         "@tanstack/react-router": "^1.170.7",
         "i18next": "^26.2.0",
         "react": "^19.2.6",
+        "react-dom": "^19.2.6",
         "react-i18next": "^17.0.8",
       },
     },
@@ -706,9 +738,13 @@
         "sonner": "^2.0.7",
         "zod": "^4.4.3",
       },
+      "devDependencies": {
+        "happy-dom": "^20.9.0",
+      },
       "peerDependencies": {
         "i18next": "^26.2.0",
         "react": "^19.2.6",
+        "react-dom": "^19.2.6",
         "react-i18next": "^17.0.8",
       },
     },
@@ -732,10 +768,14 @@
         "sonner": "^2.0.7",
         "zod": "^4.4.3",
       },
+      "devDependencies": {
+        "happy-dom": "^20.9.0",
+      },
       "peerDependencies": {
         "@tanstack/react-router": "^1.170.7",
         "i18next": "^26.2.0",
         "react": "^19.2.6",
+        "react-dom": "^19.2.6",
         "react-i18next": "^17.0.8",
       },
     },

@@ -47,8 +47,7 @@ function assertNoHostKeyOverride(
  *
  * 路线 A 下 `envDefinitions` 只承担「启动期校验 + 汇总」，值仍由宿主经 `bootstrap/module-configs.ts`
  * 手工投影成模块配置；本函数是宿主侧消费点（例如 `bootstrap/host-startup.ts` 的 Hermes 网关地址）
- * 读取声明键的通道。背景与验收口径见
- * `docs/design/ce-ee-refactoring/review/task-1.7-db-config-migration.md`。
+ * 读取声明键的通道。
  */
 export function readDeclaredEnv<T>(env: ServerEnv, key: string): T {
   return env[key] as T;

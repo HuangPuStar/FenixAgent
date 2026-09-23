@@ -10,6 +10,10 @@
     "@fenix/web-runtime": "workspace:*",
     "drizzle-orm": "^0.45.2"
   },
+  "peerDependencies": {
+    "react": "^19.2.6",
+    "react-dom": "^19.2.6"
+  },
   "devDependencies": {
     "@fenix/resource-mcp": "workspace:*",
     "@fenix/ui-components": "workspace:*"

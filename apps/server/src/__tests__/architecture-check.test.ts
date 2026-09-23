@@ -560,6 +560,7 @@ describe("architecture check CLI", () => {
       "tsc (server)",
       "tsc (web)",
       "tsc (app skeletons)",
+      "tsc (packages)",
       "dependency-boundaries",
       "lint",
       "server-and-script-tests",

@@ -110,8 +110,10 @@ export function AgentKnowledgeBasesPage() {
     (id: string | null) => {
       void navigate({
         to: "/agent/knowledge-bases",
-        search: (previous) => {
-          const next = { ...previous } as Record<string, unknown>;
+        // 本页不拥有路由定义（`useSearch({ strict: false })`），search 按「不透明键值袋」处理：
+        // 显式标注参数类型，否则 TanStack 推断不出而落成隐式 any（TS7006）。
+        search: (previous: Record<string, unknown>) => {
+          const next = { ...previous };
           if (id) next.kbId = id;
           else delete next.kbId;
           return next;

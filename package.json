@@ -32,6 +32,7 @@
     "preview:web": "bunx vite preview --config apps/web/vite.config.ts",
     "typecheck": "tsc --noEmit",
     "typecheck:web": "tsc -p apps/web/tsconfig.json --noEmit",
+    "typecheck:packages": "bun run scripts/typecheck-packages.ts",
     "check:dependencies": "bun run scripts/check-dependency-boundaries.ts",
     "check:web-style": "bun run scripts/check-web-style.ts",
     "lint": "biome check apps/server/src/ apps/web/src/ apps/ packages/ scripts/ db/",

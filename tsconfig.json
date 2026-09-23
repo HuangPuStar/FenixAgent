@@ -36,7 +36,7 @@
   // `db/` 只放部署期数据迁移入口（release 步骤，不进应用启动序列），其类型正确性直接影响
   // 运维可执行性，故纳入检查；根 `scripts/` 同为运维可执行面（门禁脚本 + 生产迁移入口
   // `scripts/migrate.ts`），一并纳入 —— 此前它不在任何 tsconfig 的 include 内，`tsc --noEmit`
-  // 从不检查它们（登记为 task-1.7 review §8.1 第 2 条，本次闭环）。
+  // 从不检查它们。
   //
   // `scripts/__tests__/` 是本 include 的唯一例外：纳入前实测该目录有 4 条既有类型错误
   // （2 条 `root-source-owner-inventory.test.ts`、各 1 条 `module-registry-generator.test.ts` /

@@ -1,5 +1,5 @@
-// web/__tests__/workflow-page-route.test.ts
-// 守护工作流页面契约：整页实现的归属、视图解析正确，且包内 web 不再出现 location 写操作。
+// web/__tests__/web-location-write-guard.test.ts
+// 守护工作流页面的两条契约：整页实现的归属，以及包内 web 生产源码不出现 location 写操作。
 //
 // **整页实现归宿主（2026-09-22 用户裁定落地）**：控制台的三个视图由宿主三份 TanStack 路由壳注册
 // （`apps/web/src/routes/agent/_panel/workflow.tsx` 自持列表 / 运行记录 tab，`workflow_.$id.edit.tsx` 与
@@ -9,22 +9,22 @@
 // 归属钉住：宿主壳必须存在且注册着那张路由 ID 表（**页面实现消失**要报红），包内不得再长出整页副本
 // （**重复页面重现**也要报红——两份实现各自漂移、两边都「能跑」时最难发现）。
 //
-// 为什么视图解析单独一组用例：解析逻辑在 `pages/workflow/workflow-path.ts`（纯函数），从整页组件导入会
-// 连带加载 `WorkflowEditor` 及其整条跨包链（`web/index.ts` 的说明与 `workflow-browser-surface.test.ts`
-// 的守卫都记录了这件事；§1.6 T6d 后该链不再经 `ChatPanel` → `@fenix/chat-channel`，面板改由宿主经
-// `chatPanel` 端口注入）。用例只依赖那个纯函数文件。
+// 由来：本文件此前叫 `workflow-page-route.test.ts`，第三组断言曾是视图解析。解析逻辑在
+// `pages/workflow/workflow-path.ts`（纯函数，当时单独成文件是为了避开整页组件那条跨包值导入链：
+// `WorkflowEditor` → `@fenix/agent-runtime`，`web/index.ts` 的说明与 `workflow-browser-surface.test.ts`
+// 的守卫都记录了这件事）。该纯函数只被死页与那组断言引用，随死页一并退役，解析断言随之删除；
+// 归属与 location 两条守卫与死页无关，保留并把文件改名为本名——守卫覆盖整个 `web/**`，不是某一页。
 //
-// 第三条断言是 P0 规则的回归守卫：前端规范把 `window.location.href =` / `replace` / `reload` 与
+// location 断言是 P0 规则的回归守卫：前端规范把 `window.location.href =` / `replace` / `reload` 与
 // `history.pushState` / `replaceState` 列为 location 写操作禁令（`docs/developer/guide/frontend-development.md`
 // 的导航一节）。整页副本原先正是用 `pushState` 自持子路由（改回 Router 后由本断言防复活），包内任何页面
-// 再自己改地址栏也只会在人工 review 时被发现。扫描时先剥注释：注释里会举例写出这些字面量（本包
+// 再自己改地址栏也只会在人工 review 时被发现。扫描时先剥注释：注释里会举例写出这些字面量（已退役的
 // `pages/workflow/workflow-path.ts` 的说明就是这样），直接匹配会误报。
 
 import { describe, expect, test } from "bun:test";
 import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
 import { join, relative, resolve } from "node:path";
 
-import { parseWorkflowPath } from "../pages/workflow/workflow-path";
 import { PROJECT_ROOT, stripComments, WEB_ROOT } from "./value-import-graph";
 
 /** location 写操作形态；键是说明，值是该形态的正则。 */
@@ -100,41 +100,19 @@ describe("整页实现的归属（宿主壳持有 / 包内不得复活）", () =
   });
 });
 
-describe("工作流视图解析", () => {
-  // 列表页与运行记录 tab：`/agent/workflow` 上不带 section，`runs` 是其子段。
-  test("列表与运行记录视图", () => {
-    expect(parseWorkflowPath("/agent/workflow")).toEqual({ view: "list" });
-    expect(parseWorkflowPath("/agent/workflow/")).toEqual({ view: "list" });
-    expect(parseWorkflowPath("/agent/workflow/runs")).toEqual({ view: "runs" });
-  });
-
-  // 子视图必须解析出工作流 ID：拿不到 ID 时页面只能回落列表，用户点「版本历史」会莫名跳走。
-  test("编辑与版本历史子视图带出 workflowId", () => {
-    expect(parseWorkflowPath("/agent/workflow/wf_123/edit")).toEqual({ view: "edit", workflowId: "wf_123" });
-    expect(parseWorkflowPath("/agent/workflow/wf_123/versions")).toEqual({ view: "versions", workflowId: "wf_123" });
-  });
-
-  // 非工作流路径（页面可能被挂在 `/agent/*` 的任意一层）与残缺子视图都回落列表，不抛错、不渲染空白。
-  test("未命中工作流子路径时回落列表页", () => {
-    expect(parseWorkflowPath("/agent/home")).toEqual({ view: "list" });
-    expect(parseWorkflowPath("/")).toEqual({ view: "list" });
-    expect(parseWorkflowPath("/agent/workflow/wf_123")).toEqual({ view: "list" });
-    expect(parseWorkflowPath("/agent/workflow/wf_123/unknown")).toEqual({ view: "list" });
-  });
-});
-
 describe("包内 web 的 location 写操作禁令（P0 回归守卫）", () => {
   // 扫描有效性自检：源码集合为空或漏掉页面时，下面的「无违规」断言会退化为恒真。
   test("扫描有效性自检：页面与纯逻辑模块都在扫描集合内", () => {
     const relatives = webSources.map((file) => relative(WEB_ROOT, file));
     for (const expected of [
-      "pages/workflow/workflow-path.ts",
       "pages/workflow/WorkflowList.tsx",
       "pages/workflow/WorkflowRuns.tsx",
       "pages/workflow/WorkflowVersions.tsx",
+      "pages/workflow/WorkflowEditor.tsx",
     ]) {
       expect(relatives).toContain(expected);
     }
+    // 阈值低于实际文件数（44）：单目录整体掉出扫描集时才报警，不因增删几个文件而抖动。
     expect(webSources.length).toBeGreaterThanOrEqual(40);
   });
 

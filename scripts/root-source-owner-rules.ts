@@ -468,9 +468,9 @@ const ROOT_OWNER_RULES_BASE: readonly PendingRootOwnerRule[] = [
   // `control.ts` 两次改判的完整依据：RMD-06 原计划迁入身份包；1.2 实施时改判为宿主路由，理由是它
   // 同时依赖 Agent Runtime 的会话服务与 Machine 的事件服务，放进任一模块都会与既有的
   // `resource-machine → agent-runtime` 形成环，只有宿主能同时持有两侧；1.4 W6b 把 EventBus 与
-  // `environmentRepo` 收敛回 agent-runtime（Machine 的同名薄封装删除）后该前提消失，1.5c 按
-  // review/task-1.5-host-aggregation.md §四 分片表迁入 agent-runtime——会话事件与状态、实例归属、
-  // 环境组织归属三件事的 owner 本就在该包，路由自身没有跨领域依赖。
+  // `environmentRepo` 收敛回 agent-runtime（Machine 的同名薄封装删除）后该前提消失，1.5c 把该路由
+  // 迁入 agent-runtime——会话事件与状态、实例归属、环境组织归属三件事的 owner 本就在该包，
+  // 路由自身没有跨领域依赖。
   {
     prefix: "src/routes/web/control.ts",
     owner: "agent-runtime",

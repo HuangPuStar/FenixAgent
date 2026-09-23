@@ -16,7 +16,6 @@
       // moduleResolution 为 bundler，包内 `exports` 已声明 `.` / `./server` / `./web`，
       // 多一份别名只会让 dependency-cruiser 按别名把合法的公开入口导入判成 src 穿透
       // （`no-cross-package-src:packages/chat-channel` 的 21 处命中全部由此产生）。
-      // 详见 docs/design/ce-ee-refactoring/review/task-1.4-agent-runtime.md §18.3 裁定 4。
       "@fenix/model-management": ["./packages/resources/model-management/src/index.ts"],
       "@fenix/model-management/server": ["./packages/resources/model-management/src/server.ts"]
     },

@@ -130,7 +130,7 @@ export function normalizeMcpServerType(type: unknown): McpServerType {
  * 读取配置对象里的服务类型，用于写入 `mcp_server.type` 归属列。
  *
  * 与 `normalizeMcpServerType` 的分工：后者服务展示投影，把任何未知取值归一到三种已知类型；
- * 这里保留原样字符串，因为写入前调用方已用 `validateMcpConfig` 判定合法性，不应在此静默纠正。
+ * 这里保留原样字符串，因为写入前 `McpServerFacade` 已用 `validateMcpConfig` 判定合法性，不应在此静默纠正。
  */
 export function readMcpServerType(config: McpServerConfig): string {
   const type = (config as { type?: unknown }).type;

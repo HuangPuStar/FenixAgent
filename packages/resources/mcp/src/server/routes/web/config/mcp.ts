@@ -5,13 +5,11 @@ import * as z from "zod/v4";
 import type { AuthorizedMcpServer } from "../../../facades/mcp-server-facade";
 import { getMcpServerModule } from "../../../runtime";
 import {
-  isValidMcpName,
   type McpRemoteConfig,
   type McpServerConfig,
   parseMcpConfigValue,
   readMcpServerType,
   toServerInfo,
-  validateMcpConfig,
 } from "../../../services/config/mcp-config";
 import { inspectRemoteMcpServer } from "../../../services/mcp-inspector";
 import type { McpRouteDependencies } from "../../dependencies";
@@ -19,9 +17,10 @@ import type { McpRouteDependencies } from "../../dependencies";
 /**
  * `/web/config/mcp` 协议层。
  *
- * 只做协议接入：参数与配置结构校验、把请求映射为应用调用、把结果映射为 `/web` 视图、把宿主错误类
+ * 只做协议接入：定位符等协议参数校验、把请求映射为应用调用、把结果映射为 `/web` 视图、把宿主错误类
  * 映射为稳定错误体。授权、可见性与资源解析全部在应用 Facade 内完成，本文件不判断组织、角色或
- * `visibility`。
+ * `visibility`；MCP 名称格式与配置结构的领域校验同样归 Facade（`assertCreatable` / `assertValidConfig`），
+ * 本文件不重复，避免与 `/api/mcp` 这类并列入口再次分叉。
  *
  * 视图变化（决策 D2）：列表与详情不再返回旧栈的 `resourceAccess`，改为返回资源归属 `scope` 与
  * 当前主体有效动作 `access.actions`；`organizationName` 是展示字段，由身份目录批量解析。
@@ -120,12 +119,6 @@ async function handleCreate(
 ): Promise<WebHandlerResult> {
   const { config, publicReadable: configPublicReadable } = splitMcpConfigInput(configInput);
   const publicReadable = bodyPublicReadable ?? configPublicReadable;
-  if (!isValidMcpName(name)) {
-    throw new ValidationError("Invalid server name: must be 1-64 lowercase alphanumeric chars with single hyphens");
-  }
-  const validation = validateMcpConfig(config);
-  if (validation) throw new ValidationError(validation);
-
   await getMcpServerModule().facade.create(actor, {
     name,
     type: readMcpServerType(config),
@@ -143,9 +136,6 @@ async function handleUpdate(
 ): Promise<WebHandlerResult> {
   const { config, publicReadable: configPublicReadable } = splitMcpConfigInput(configInput);
   const publicReadable = bodyPublicReadable ?? configPublicReadable;
-  const validation = validateMcpConfig(config);
-  if (validation) throw new ValidationError(validation);
-
   await getMcpServerModule().facade.update(actor, nameOrKey, config, {
     ...(publicReadable === undefined ? {} : { publicReadable }),
   });

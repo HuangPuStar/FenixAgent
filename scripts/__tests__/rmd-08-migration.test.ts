@@ -14,8 +14,8 @@ import { existsSync } from "node:fs";
  * 4. 任务 1.3 收口的 9 份「宿主副本」不再由 apps/web 持有：字典、共享类型、hook、面板与一份表单校验测试的
  *    owner 落在资源包 / web-runtime，宿主副本删除（见 `RMD_08_RELOCATED` 与下方 relocated 断言）。
  * 5. 任务 1.6 T2 删掉 18 个零消费宿主文件（171 → 153）：它们的 owner 落点**从未**被任何代码引用，
- *    是 RMD-08 的搬运残留再加之后续拆分留下的孤儿。删除依据见任务 1.6 T2 的 review 文档：
- *    逐标识符全仓 grep + 传递可达性（测试算根与不算根两轮）+ 现有 dist sourcemap 实证三者一致。
+ *    是 RMD-08 的搬运残留再加之后续拆分留下的孤儿。删除依据是三重交叉验证：
+ *    逐标识符全仓 grep + 传递可达性（测试算根与不算根两轮）+ 现有 dist sourcemap，三者结论一致。
  * 6. 任务 1.6 T4 再移出一项：`web/src/api/registry.ts` 的壳副本在 T4 之前一直由 identity 的组织机器页
  *    经 `@/src/api/registry` 别名消费，T4 把该页的机器注册表能力改成宿主注入的 `MachineRegistryPort`
  *    后，壳副本零消费，且与 `packages/resources/machine/web/api/registry.ts` 除 import 说明符外逐字相同，
@@ -23,7 +23,7 @@ import { existsSync } from "node:fs";
  * 7. 任务 1.6 T9c 直删 9 项（109 → 100）：`TASKS` / `SESSIONS` / `ENVIRONMENTS` / `TOOL_NARRATOR` 四个
  *    宿主命名空间的 8 份字典在全仓没有任何 `useTranslation` 绑定（历史迁出后留下的空壳，真实消费方各在
  *    资源包内），连同守护 `toolNarrator` 字典的**自指测试** `narrators-i18n.test.ts`（它只读该字典并断言
- *    同一文件里的键）一并删除。删除口径与逐条证据见 `review/task-1.6-web-shell.md` §7.17。
+ *    同一文件里的键）一并删除。
  * 8. 任务 1.6 T10b1 把 12 个 ui-components 归属的宿主测试移入包内（100 → 88）：这些用例的被测实现
  *    在 T8b/T8c 已整体退场到 `@fenix/ui-components`，导入图里除标准库外只指向该包出口，留在宿主等于让
  *    「包内实现」被「应用壳测试」守护；搬运后宿主不再是它们的 owner（见下方 relocated 断言）。
@@ -72,7 +72,7 @@ import { existsSync } from "node:fs";
  *         等价（`fs-upload-url` / `form-utils` / `pure-logic-transform-boundaries` / `api-result-utils`）
  *         而随宿主文件一并删除——含原计划准备补进 `api-result-utils.test.ts` 的「空服务端消息兜底」：
  *         实测它已由 `pure-logic-transform-boundaries.test.ts` 的「空字符串错误消息回退通用错误」覆盖，
- *         补进去只会制造第二处重复守护（订正记于 review 文档 §7.31）。
+ *         补进去只会制造第二处重复守护。
  *     迁入后的新文件经包出口消费兄弟包（`@fenix/{model-management,resource-mcp,resource-skill}/web`），
  *     这四个 workspace 依赖本已声明在 `agent-config/package.json` 的 `dependencies`，未新增跨包依赖。
  * 17. 任务 1.6 收口后经用户裁定，宿主 `web/src/lib/api-result.ts`（`ApiResult` 联合 + `ok` / `err` /

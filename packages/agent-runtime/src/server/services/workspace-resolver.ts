@@ -7,7 +7,7 @@ import { getAgentRuntimeConfig } from "../config";
  * 路径公式: {workspaceRoot}/{organizationId}/{userId}/{environmentId}
  *
  * 根取**本模块配置的 `workspaceRoot`**（宿主启动期解析好的绝对路径），不再直读 `process.env.WORKSPACE_ROOT`
- * ——1.7 C 块收口的「server 装配面内唯一真违规」（review `task-1.7-db-config-migration.md` §8.1 第 9 条）。
+ * ——1.7 C 块收口的「server 装配面内唯一真违规」。
  * 配置由宿主在装配期注入，因此本函数只能在请求、任务或启动逻辑中调用（与 `getAgentRuntimeConfig` 同一条
  * 时序约束）。
  *

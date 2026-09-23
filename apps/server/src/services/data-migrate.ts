@@ -5,7 +5,12 @@ import { dataMigrateRecord } from "../db/schema";
 import { migrateBackfillResourceVisibility } from "./data-migrates/backfill-resource-visibility";
 import { migrateAgentConfigModelId } from "./data-migrates/migrate-agent-config-model-id";
 
-/** 一次性的业务数据迁移：`name` 是 `data_migrate_record` 里的全局唯一 ID，也是幂等跳过的判据。 */
+/**
+ * 一次性的业务数据迁移：`name` 是 `data_migrate_record` 里的全局唯一 ID，也是幂等跳过的判据。
+ *
+ * ID 采用 §6.3 的 `<模块>/<YYYYMMDD>-<名字>` 格式（日期取该迁移首次进入仓库的日期）。ID 一旦落库即为
+ * 发布契约：改名会被这里误判为未应用而重跑，因此**已应用的迁移不改名**，该格式只约束新增迁移。
+ */
 export interface DataMigrate {
   name: string;
   run: () => Promise<void>;

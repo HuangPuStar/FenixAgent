@@ -256,7 +256,7 @@ describe("prod-view web 入口浏览器可达面", () => {
   // 职责改由下面两条 `poisoned.files` 断言承担：`src/server/repositories/prod-view.ts` 是服务端子图里最深
   // 的一层，`db/schema.ts` 只能经它的 `@fenix/resource-prod-view/db` **自我引用**到达——两者都在，说明递归
   // 既进了实现、又跨出了包边界。至于原断言的**取样形态**（宿主路径必须出现），本批与其余八个包统一改写为
-  // 下面的零容忍形态（同形处置见 §1.7 B9 的 knowledge 与 B10 的 memory 负例、评审文档 §7.21 / §7.22）。
+  // 下面的零容忍形态（同形处置见 §1.7 B9 的 knowledge 与 B10 的 memory 负例）。
   test("负例：注入真实的 ./server 出口时递归进入服务端实现并触发拦截", () => {
     const poisoned = walkValueGraph(WEB_ENTRY, [`${PKG_NAME}/server`]);
     expect(poisoned.files).toContain(join(PKG_ROOT, "src", "server.ts"));
