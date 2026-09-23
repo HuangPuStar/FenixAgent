@@ -20,6 +20,9 @@
  *    它同样渲染给用户看，不再是「不随语言变化」的例外。
  * 6. `overrides.css` 与组件同目录并由本文件 import（工具栏置底等外观修正），
  *    缺失会导致预览工具栏回到顶部。
+ * 7. 取数函数 `fetchPreview` 为**必填 prop**（源实现在组件内直调全局 `fetch` 读宿主文件代理路由，
+ *    并用 `= fetch` 作 `preview-source` 的默认参数）：本包不得依赖 `@fenix/web-runtime`，因此取数只能
+ *    由宿主注入，且刻意不保留全局 `fetch` 兜底——兜底会让组件重新直连后端并自行拼 URL（§5.8）。
  */
 
 import type { PreviewLocale, PreviewMessages } from "@open-file-viewer/core";
@@ -33,7 +36,12 @@ import { UI_COMPONENTS_NS } from "../../i18n/namespace";
 import { ErrorFallback } from "../../ui/error-fallback";
 import { htmlPreviewPlugin } from "./html-plugin";
 import { nativePdfPlugin } from "./native-pdf-plugin";
-import { getPreviewMimeType, loadByteAccuratePreviewSource, shouldLoadPreviewAsBlob } from "./preview-source";
+import {
+  getPreviewMimeType,
+  loadByteAccuratePreviewSource,
+  type PreviewFetch,
+  shouldLoadPreviewAsBlob,
+} from "./preview-source";
 
 // 导入官方样式
 import "@open-file-viewer/core/style.css";
@@ -46,11 +54,21 @@ export interface FileViewerPreviewProps {
   /** workspace 相对路径（同时用于展示文件名与推断 MIME）。 */
   filePath: string;
   /**
-   * 预览 URL 构建器。默认实现沿用源宿主的文件代理路由约定
-   * （`/web/environments/<envId>/fs/<path>?preview=true`，见 README「已知限制」）；
-   * 宿主注入自己的实现即可解除该路由依赖。
+   * 预览 URL 构建器。缺省实现沿用源宿主的文件代理路由约定
+   * （`/web/environments/<envId>/fs/<path>?preview=true`，见 README「已知限制」）——它只是字符串约定、
+   * 不产生请求，**生产宿主仍必须注入自己的实现**（`apps/web/src/api/fs.ts` 的 `buildPreviewSourceUrl`），
+   * 否则后端 URL 的拼装就落在了组件包里（§5.8）。
    */
   buildPreviewUrl?: (envId: string, filePath: string) => string;
+  /**
+   * 预览源文件的取数函数，**必填、无全局 `fetch` 兜底**（见 `PreviewFetch`）：预览 URL 指向后端文件代理
+   * 路由，取数属后端调用，由宿主的域模块提供（`apps/web/src/api/fs.ts` 的 `readPreviewSource`）。
+   * 文本类预览取字节与 HTML 预览的「源码」页都走它。
+   *
+   * **必须传稳定引用**（模块级函数或 `useCallback`）：它进的是取数 effect 的依赖，每次渲染换身份会导致
+   * 文本类预览反复重取。域模块导出的函数天然满足；不要在 JSX 里写内联箭头函数。
+   */
+  fetchPreview: PreviewFetch;
   /** 预览器内置文案。缺省按当前语言取包内字典（`fileTree.preview.messages.*`）；传值时整块覆盖。 */
   messages?: Partial<PreviewMessages>;
   /** 预览器 locale（第三方格式化与内置词典都按它取）。缺省跟随当前语言：`zh*` → `zh-CN`，其余 → `en-US`。 */
@@ -138,6 +156,7 @@ export function FileViewerPreview({
   envId,
   filePath,
   buildPreviewUrl = defaultBuildPreviewUrl,
+  fetchPreview,
   messages,
   locale,
 }: FileViewerPreviewProps) {
@@ -167,13 +186,13 @@ export function FileViewerPreview({
     // 重试参数：URL 可能由自定义构建器提供、未必带 query，故按是否已含 `?` 选择分隔符
     const separator = previewUrl.includes("?") ? "&" : "?";
     const requestUrl = reloadKey === 0 ? previewUrl : `${previewUrl}${separator}retry=${reloadKey}`;
-    void loadByteAccuratePreviewSource(requestUrl, fetch, { signal: controller.signal })
+    void loadByteAccuratePreviewSource(requestUrl, fetchPreview, { signal: controller.signal })
       .then(setPreviewSource)
       .catch((error: unknown) => {
         if (!controller.signal.aborted) setLoadError(error instanceof Error ? error.message : String(error));
       });
     return () => controller.abort();
-  }, [loadAsBlob, previewUrl, reloadKey]);
+  }, [fetchPreview, loadAsBlob, previewUrl, reloadKey]);
 
   const toolbar = useMemo(
     () => ({
@@ -191,8 +210,8 @@ export function FileViewerPreview({
   );
 
   const plugins = useMemo(
-    () => [imagePlugin(), nativePdfPlugin(), officePlugin(), htmlPreviewPlugin(), textPlugin()],
-    [],
+    () => [imagePlugin(), nativePdfPlugin(), officePlugin(), htmlPreviewPlugin(fetchPreview), textPlugin()],
+    [fetchPreview],
   );
 
   if (loadError) {

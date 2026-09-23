@@ -189,6 +189,31 @@ describe("组织 id 读取契约（§3.3）", () => {
 
     expect(readers).toEqual(["packages/web-runtime/web/lib/active-org.ts"]);
   });
+
+  // 写入侧同样只允许一处：身份的乐观写与失败回滚都在 `switchOrg` / `refreshOrgs` 里成对出现，
+  // 别处再写一次就会出现「本地快照被第二个人改掉、服务端却没切」的另一种 split-brain（§3.6）。
+  // 键常量必须从契约模块取，不得在写入点重写字面量。
+  test("只有身份的 OrgContext 写 active_org_id", async () => {
+    const files = await collectFrontendSources([
+      { cwd: resolve(repoRoot, "apps/web/src"), pattern: "**/*.{ts,tsx}" },
+      { cwd: resolve(repoRoot, "packages"), pattern: "**/web/**/*.{ts,tsx}" },
+    ]);
+
+    const writers: string[] = [];
+    const literalWriters: string[] = [];
+    for (const file of files) {
+      const content = await Bun.file(file).text();
+      if (/localStorage\s*\.\s*(?:setItem|removeItem)\(\s*ACTIVE_ORG_STORAGE_KEY/.test(content)) {
+        writers.push(file.slice(repoRoot.length + 1));
+      }
+      if (/localStorage\s*\.\s*(?:setItem|removeItem)\(\s*"active_org_id"/.test(content)) {
+        literalWriters.push(file.slice(repoRoot.length + 1));
+      }
+    }
+
+    expect(writers).toEqual(["packages/platform/identity/web/contexts/OrgContext.tsx"]);
+    expect(literalWriters).toEqual([]);
+  });
 });
 
 describe("WS URL 拼装位置（§5.8）", () => {

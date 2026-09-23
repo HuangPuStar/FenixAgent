@@ -37,12 +37,12 @@ demo/                     Vite 展示页（非库产物）
 | `web/chat/primitives/conversation.css`（**阶段三已迁并删除**） | `.chat-scroll-navigation` / `.chat-scroll-to-latest` 定义在 `packages/chat-channel/.../chat-design-shell.css` | 组件用到的样式随组件收进包内（逐字迁移），去掉跨包样式表依赖；其后随 chat 样式迁移改成 `conversation.tsx` 里工具类，本文件删除 |
 | `web/chat/primitives/message.tsx` | `chat-markdown-content` 容器类由宿主 `MessageBubble` 注入，markdown 排版全挂在它上面 | 改由 `MessageResponse` 自身携带，独立使用时排版才生效（见「已知限制」第 7 条） |
 | `web/layout/`、`web/components/` 中的颜色字面量 | 源实现混用精确 hex（`#e4eaf2`、`#17233a`、`#1a2944`、`#f6f8fb`、`#e7ecf3`、`#99a8bc` 等） | 换成最近的语义 token（`border-border`、`text-text-bright`、`bg-surface-0`…）。**与宿主存在可见色差，属有意取舍**（2026-09-18 确认保持 token 化）：等值的（`#1677ff`→`brand`、`#94a3b8`→`text-muted`、`#ffffff`→`surface-1`）无差异，等值的以外的若要求与源逐像素一致，需改回 hex |
-| `web/components/preview/FileViewerPreview.tsx` | `buildPreviewUrl` 在组件内部硬编码宿主文件代理路由；重试参数固定用 `&` 拼接；`locale="zh-CN"` 与内置 `zhCNMessages` 中文写死 | `buildPreviewUrl` 提为可选 prop，默认值仍保留源实现（见「已知限制」第 8 条）；`&retry=` 改为按 URL 是否已含 `?` 选择分隔符（自定义构建器返回无 query 的 URL 时旧拼接会产出非法地址）；内置文案与 `locale` 的默认值改由包内字典与当前语言决定、`messages` / `locale` 保留为覆盖端口（见「已知限制」第 9 条） |
+| `web/components/preview/FileViewerPreview.tsx` | `buildPreviewUrl` 在组件内部硬编码宿主文件代理路由，且组件内直调全局 `fetch` 读该路由；重试参数固定用 `&` 拼接；`locale="zh-CN"` 与内置 `zhCNMessages` 中文写死 | `buildPreviewUrl` 提为可选 prop，默认值仍保留源实现（见「已知限制」第 8 条）；取数改由**必填** prop `fetchPreview` 注入，包内不留全局 `fetch` 兜底（见「已知限制」第 14 条）；`&retry=` 改为按 URL 是否已含 `?` 选择分隔符（自定义构建器返回无 query 的 URL 时旧拼接会产出非法地址）；内置文案与 `locale` 的默认值改由包内字典与当前语言决定、`messages` / `locale` 保留为覆盖端口（见「已知限制」第 9 条） |
 | `web/components/preview/FileViewerPreview.tsx` 错误边界内的提示 | 「预览组件加载失败」等提示硬编码中文 | 改由调用方按当前语言注入（`fallbackText`，键 `fileTree.preview.componentError`）：它是给用户看的提示，与工具栏文案同属 i18n 范围，不再随源实现固定中文（见「已知限制」第 9 条） |
 | `web/components/preview/html-plugin.ts`、`web/components/preview/preview-source.ts` | 标签「渲染预览」/「源码」、兜底串「源码加载失败」「无法获取 HTML 文件的预览地址」「HTML 预览加载失败」，以及 `loadByteAccuratePreviewSource` 抛出的「文件预览加载失败 (<status>)」 | 逐字保留硬编码中文：插件直接操作 DOM、不在 React 树内，`preview-source` 是纯逻辑模块（前端开发规范 §9.3 禁止它 import UI i18n），两者接文案都要在契约上新增参数；需要多语言的宿主应自行派生插件或按 error code 映射文案（见「已知限制」第 12、13 条） |
 | `web/components/preview/overrides.css` | 宿主页面样式表里的预览工具栏修正（工具栏置底等） | 随组件收进包内，且必须与 `FileViewerPreview` 同目录并被其 `import`；缺失会导致预览工具栏回到顶部 |
 | `web/components/preview/preview-source.ts` | `agent-panel/preview/utils.ts` 全量（含 `encodePathSegment`、`buildPreviewUrl`、`normalizeToUserPath`、`formatFileSize`） | 只取 L1–167 的分类表与源加载子集：URL 构建/路径规范化属宿主路由与展示约定。宿主 `ArtifactsPanel.tsx` 与 `preview-utils-normalize.test.ts` 仍引用原文件，故原文件保持不动 |
-| `web/components/PreviewTab.tsx` | 宿主 tab 的占位容器，仅换 i18n 命名空间 | 未透传 `buildPreviewUrl` / `messages` / `locale`：需要预览定制时直接使用 `FileViewerPreview`，本组件保持最小契约 |
+| `web/components/PreviewTab.tsx` | 宿主 tab 的占位容器，仅换 i18n 命名空间 | `messages` / `locale` 仍不透传（需要预览定制时直接使用 `FileViewerPreview`），但 `buildPreviewUrl` 与 `fetchPreview` 必须原样转交：本组件不取数、不拼后端 URL（前端开发规范 §5.8），只是宿主域模块实现到预览器之间的通道（见「已知限制」第 14 条） |
 | `web/chat/timeline/ToolCallRow.tsx` | 完成态右侧显示状态词（`Done` / `已完成`）；运行中只有 `Loader2` 转圈 + 静态标题；错误信息内联在标题行内，长错误会把标题挤到看不见；另有 `publicError` 块（message + Type + ID）落在卡片右侧 | 完成态不渲染状态词（默认结果的噪音，其余状态词保留）；运行中标题文字套包内 `Shimmer` 基元做载入微光（图标位仍转圈）；错误信息独占第二行，随之为 `.tool-call-row-error` 补 `display: block`（否则该选择器的 `text-overflow: ellipsis` 对行内盒子失效）；移除右侧 `publicError` 块——其 message 与第二行同源（`narrate` 的 `errorDetail` 优先取 `publicError.message`），脱敏错误的 Type / ID 因此不再出现在卡片上 |
 | `web/chat/timeline/TodoChanges.tsx` | 每条待办右侧带变更标签（`新增` / `已完成` / `进行中` 等底色 badge） | 去掉该标签：变更语义由左侧图标与文案样式表达，右侧标签是重复信息；随之删除 `CHANGE_STYLES.labelClassName` 与两个语言包里仅此处使用的 `chat.components.todoChanges.*` 文案 |
 | `web/chat/primitives/message-attachments.tsx` | 图片 `alt` 固定取文件名，缺文件名时回落通用文案「Attachment」 | 新增可选 `alt` prop（优先于文件名），图片附件可传更准确的替代文本；缺省行为与源实现一致 |
@@ -206,6 +206,17 @@ i18n.addResourceBundle("zh", UI_COMPONENTS_NS, zh, true, true);
     `文件预览加载失败 (<status>)`，`FileViewerPreview` 的失败态原样展示该消息（界面因此出现中文 + HTTP 状态码）。
     - 影响范围：非中文宿主的预览失败态；同第 12 条，纯逻辑模块不 import UI i18n（前端开发规范 §9.3），文案只能由调用方接。
     - 移除条件：该模块改为抛结构化错误（带 error code / status），由组件按 code 映射字典文案。
+14. **预览的取数与 URL 由宿主注入，包内不留全局 `fetch` 兜底**：预览 URL 指向后端的文件代理路由，
+    取数属后端调用。本包是纯展示包、依赖矩阵不允许依赖 `@fenix/web-runtime`，因此
+    `FileViewerPreview` 的 `fetchPreview`（`PreviewFetch`）是**必填** prop、`htmlPreviewPlugin(fetchPreview)`
+    同样是必填参数，`loadByteAccuratePreviewSource` 不再有 `= fetch` 默认值；`PreviewTab` 只做转交。
+    - 影响范围：调用方（宿主 `apps/web/src/components/agent-panel/artifacts-files-workspace.tsx` 注入
+      `api/fs.ts` 的 `buildPreviewSourceUrl` / `readPreviewSource`，demo 注入自己的 data: URL 取数函数）
+      必须显式给出该 prop，忘了会立刻编译不过——这正是取舍所在：旧形态下忘了注入会静默直连后端
+      并自行拼 URL（前端开发规范 §5.8 禁止在组件中裸调 `fetch` / 拼装后端 URL）。
+    - 包内用例：`web/__tests__/preview-fetch-injection.test.ts`（注入生效 + 源码里无兜底形态）。
+    - 移除条件：宿主能把文件代理路由提升为包可依赖的取数契约（或 `request()` 补上 blob 能力后由
+      注入方整体替换），届时可改回由包内直接取数；在那之前不得移除本契约。
 
 ## chat 样式现状（阶段一至五迁移台账）
 

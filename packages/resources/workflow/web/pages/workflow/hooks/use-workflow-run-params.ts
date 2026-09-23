@@ -28,14 +28,16 @@ export function useWorkflowRunParams({ meta, handleRun }: UseWorkflowRunParamsPa
   const hasParams = workflowParams && Object.keys(workflowParams).length > 0;
   const [paramsDialogOpen, setParamsDialogOpen] = useState(false);
 
+  // 曾经在这里 `console.log` 整份 `meta.params`（用户自定义的运行参数，可能含密钥类默认值）：
+  // 点击即触发、payload 无界，且与「有没有参数」这个判定无关——判定只需 `hasParams`。
+  // 需要排查参数时用运行域自己的诊断入口，不要把用户数据整份打进控制台（CLAUDE.md 原则 4）。
   const onRunClick = useCallback(() => {
-    console.log("[RunButton] meta.params:", JSON.stringify(meta.params), "hasParams:", hasParams);
     if (hasParams) {
       setParamsDialogOpen(true);
     } else {
       handleRun();
     }
-  }, [hasParams, handleRun, meta.params]);
+  }, [hasParams, handleRun]);
 
   const onParamsSubmit = useCallback(
     (values: Record<string, unknown>) => {
