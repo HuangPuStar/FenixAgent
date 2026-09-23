@@ -1,5 +1,5 @@
 /**
- * Web 样式禁止行为门禁（`FCP-WEB-01/02/03`）。
+ * Web 样式禁止行为门禁（`FCP-WEB-01..06`）。
  *
  * 规则与反例见 `docs/developer/guide/forbidden-code-patterns.md`，检测核心在
  * `scripts/lib/web-style-rules.ts`。本文件只负责：遍历扫描范围 → 加载存量台账 → 阻断新增 → 输出证据。
@@ -203,6 +203,8 @@ export async function checkWebStyle(options: WebStyleCheckOptions = {}): Promise
   if (comparison.increases.length > 0) reportIncreases(comparison.increases);
 
   console.error("修法：尺寸/颜色改用标准刻度或 token；深层样式下沉为 CSS 类；响应式改用规范断点。");
+  console.error("死类（04/05/06，写了但不会生成任何声明）：负号前置（-ml-1.75）、刻度取 0.25 的整数倍、");
+  console.error("auto-rows-*/auto-cols-* 只用关键字、grid-cols-*/grid-rows-* 只用非负整数。");
   console.error("台账只登记存量：确属待清理的历史写法才有条目，新增写法一律现场修掉。");
   return 1;
 }
