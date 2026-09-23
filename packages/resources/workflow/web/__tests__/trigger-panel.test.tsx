@@ -30,11 +30,19 @@ describe("TriggerPanel", () => {
 
   // 测试无硬编码中文/英文字符串
   test("no hardcoded user-visible strings", () => {
-    // 不应出现未包裹 t() 的中文
+    // 不应出现未包裹 t() 的中文。
+    // `/** … */` 块注释里的中文是给维护者看的（既有实现只用 `//` 行注释，本批起两种注释都会用），
+    // 逐行筛 '//' 会把块注释正文当成用户可见文案，故这里显式跟踪块注释区间——守卫的意图是
+    // 「界面上的文案必须走 t()」，注释不在此列。
     const chinesePattern = /[\u4e00-\u9fff]/;
     const lines = src.split("\n");
+    let inBlockComment = false;
     for (const line of lines) {
-      if (line.includes("//") || line.includes("console.")) continue;
+      const trimmed = line.trim();
+      const wasInBlockComment = inBlockComment;
+      if (inBlockComment && trimmed.includes("*/")) inBlockComment = false;
+      else if (!inBlockComment && trimmed.startsWith("/*")) inBlockComment = !trimmed.includes("*/");
+      if (wasInBlockComment || line.includes("//") || line.includes("console.")) continue;
       if (chinesePattern.test(line)) {
         expect(line).toContain("t(");
       }

@@ -17,12 +17,13 @@ import { Button } from "@fenix/ui-components/ui/button";
 import { Spinner } from "@fenix/ui-components/ui/spinner";
 import { unwrap } from "@fenix/web-runtime/api/request";
 import { NS } from "@fenix/web-runtime/i18n/namespace";
+import { useRequest } from "ahooks";
 import { Loader2, Network, Sparkles, Trash2 } from "lucide-react";
 import { useCallback, useEffect, useId, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
 import { kbApi } from "../../api/knowledge-bases";
-import type { KnowledgeGraphData, KnowledgeGraphProgress } from "../../types/knowledge";
+import type { KnowledgeGraphProgress } from "../../types/knowledge";
 import { isKnowledgeGraphNotFound } from "./knowledge-graph-state";
 import { KnowledgeLoadFailure } from "./pages/agent-knowledge-load-failure";
 
@@ -47,37 +48,62 @@ export function KnowledgeGraphPanel({ knowledgeBaseId, canManage = false }: Know
   /** 惰性加载 G6 期间的取消令牌：每次渲染递增，异步返回后发现令牌已变即丢弃本次结果。 */
   const renderTokenRef = useRef(0);
 
-  const [graphData, setGraphData] = useState<KnowledgeGraphData | null>(null);
-  const [graphLoading, setGraphLoading] = useState(false);
-  const [graphError, setGraphError] = useState<string | null>(null);
   const [generating, setGenerating] = useState(false);
   const [progress, setProgress] = useState<KnowledgeGraphProgress | null>(null);
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
 
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
-  const graphRequestRef = useRef(0);
 
-  const fetchGraph = useCallback(async () => {
-    const requestId = ++graphRequestRef.current;
-    setGraphLoading(true);
-    setGraphError(null);
-    setGraphData(null);
-    try {
-      const data = await unwrap(kbApi.getGraph({ id: knowledgeBaseId }));
-      if (requestId !== graphRequestRef.current) return;
-      setGraphData(data ?? null);
-    } catch (error) {
-      if (requestId !== graphRequestRef.current) return;
-      if (isKnowledgeGraphNotFound(error)) {
-        setGraphData(null);
-      } else {
-        console.error("[KnowledgeGraphPanel] load failed", error);
-        setGraphError(error instanceof Error ? error.message : t("graph.loadFailed"));
+  // 在途取数的取消句柄（§3.4）：换知识库 / 卸载时 abort。
+  // 这里取代了此前手写的 `requestId` 令牌——令牌只能**丢弃**迟到的结果，请求仍在服务端跑完并占着连接；
+  // `AbortSignal` 才是真的取消。`request()` 会把外部 abort 归一成 `{ success: false }` → `unwrap()` 抛
+  // `ApiError`，而 ahooks 对「被后发请求取代的那一笔」不会再落 state（`Fetch` 内部的 count 守卫），
+  // 所以主动取消不会点亮失败块。
+  const graphAbortRef = useRef<AbortController | null>(null);
+  useEffect(() => () => graphAbortRef.current?.abort(), []);
+
+  /**
+   * 图谱取数（§3.4）：三态由 `data` / `loading` / `error` 派生，不再手写
+   * `useCallback` + `useEffect` + `setState`；重试与生成完成后的重查复用 `refresh`。
+   *
+   * `refreshDeps: [knowledgeBaseId]` 承担「换知识库即重查」；404（尚未生成图谱）仍在服务内归一成
+   * `null` 落空态，与改造前 `setGraphData(null)` 同形——「没有图谱」不是失败。
+   *
+   * 语义差异已记账：改造前每次取数先清空 `graphData`（渲染副作用因此立刻销毁旧图实例），现在旧数据
+   * 保留到新响应到达。加载态本来就不渲染画布容器，视觉不变；旧图实例的销毁推迟到新数据落地或组件卸载
+   * （销毁逻辑仍在下面 `renderGraph` 的 effect cleanup 里，未改动）。
+   */
+  const {
+    data: graphData = null,
+    loading: graphLoading,
+    error: graphError,
+    refresh: refreshGraph,
+    mutate: mutateGraph,
+  } = useRequest(
+    async () => {
+      graphAbortRef.current?.abort();
+      const controller = new AbortController();
+      graphAbortRef.current = controller;
+      try {
+        const data = await unwrap(kbApi.getGraph({ id: knowledgeBaseId }, { signal: controller.signal }));
+        return data ?? null;
+      } catch (error) {
+        if (isKnowledgeGraphNotFound(error)) return null;
+        throw error;
       }
-    } finally {
-      if (requestId === graphRequestRef.current) setGraphLoading(false);
-    }
-  }, [knowledgeBaseId, t]);
+    },
+    {
+      refreshDeps: [knowledgeBaseId],
+      onError: (error) => console.error("[KnowledgeGraphPanel] load failed", error),
+    },
+  );
+  // 失败态是独立分支（下方 `KnowledgeLoadFailure`）：失败时 `graphData` 为 `null`，
+  // 不给分支就会渲染成「暂无图谱」——把取数失败伪装成「确实没有图谱」（§3.4 禁止）。
+  const graphErrorMessage = graphError
+    ? graphError instanceof Error
+      ? graphError.message
+      : t("graph.loadFailed")
+    : null;
 
   /**
    * 停止进度轮询并收起生成态。
@@ -93,10 +119,13 @@ export function KnowledgeGraphPanel({ knowledgeBaseId, canManage = false }: Know
     setProgress(null);
   }, []);
 
+  // 换知识库时复位生成态：进度轮询绑的是旧知识库的进度，继续跑会把旧库的进度画在新库的面板上
+  // （旧实现靠 `fetchGraph` 的引用变化顺带触发这段复位；改用 `useRequest` 后显式挂到 knowledgeBaseId 上，
+  // 重查本身由 `refreshDeps` 承担，本 effect 只管复位）。
+  // biome-ignore lint/correctness/useExhaustiveDependencies: knowledgeBaseId 是触发条件（换库即复位），effect 体只调 stopProgressPolling，按建议删掉会静默丢掉复位语义
   useEffect(() => {
     stopProgressPolling();
-    void fetchGraph();
-  }, [fetchGraph, stopProgressPolling]);
+  }, [knowledgeBaseId, stopProgressPolling]);
 
   useEffect(() => {
     return () => {
@@ -317,7 +346,9 @@ export function KnowledgeGraphPanel({ knowledgeBaseId, canManage = false }: Know
           setProgress(progressData);
           if (progressData.progress >= 1) {
             stopProgressPolling();
-            await fetchGraph();
+            // 这里用不抛错的 `refresh()` 而不是 `refreshAsync()`：重取失败由取数自身的 `onError` 记录、
+            // 由失败块呈现；让它抛进本 tick 的 catch 会被当成「进度轮询失败」——语义不对（生成已经完成）。
+            refreshGraph();
             toast.success(t("graph.generateSuccess"));
           }
         } catch (error) {
@@ -332,19 +363,21 @@ export function KnowledgeGraphPanel({ knowledgeBaseId, canManage = false }: Know
       setGenerating(false);
       setProgress(null);
     }
-  }, [knowledgeBaseId, fetchGraph, t, stopProgressPolling]);
+  }, [knowledgeBaseId, refreshGraph, t, stopProgressPolling]);
 
   const handleDelete = useCallback(async () => {
     try {
       await unwrap(kbApi.deleteGraph({ id: knowledgeBaseId }));
-      setGraphData(null);
+      // 本地清空（`mutate`）与改造前的 `setGraphData(null)` 同形：刚删掉的图谱没有重取的意义，
+      // 立即落空态即可；服务端若仍有残留，下一次 `refresh`（轮询 / 换库 / 重试）会重新对齐。
+      mutateGraph(null);
       setDeleteConfirmOpen(false);
       toast.success(t("graph.deleteSuccess"));
     } catch (err) {
       console.error("[KnowledgeGraphPanel] delete failed", err);
       toast.error(t("graph.deleteFailed"));
     }
-  }, [knowledgeBaseId, t]);
+  }, [knowledgeBaseId, mutateGraph, t]);
 
   const nodeCount = graphData?.graph.nodes?.length ?? 0;
   const edgeCount = graphData?.graph.edges?.length ?? 0;
@@ -404,14 +437,19 @@ export function KnowledgeGraphPanel({ knowledgeBaseId, canManage = false }: Know
         </div>
       )}
 
-      {graphError && !graphLoading && (
+      {graphErrorMessage && !graphLoading && (
         <div className="grid min-h-96 place-content-center rounded-xl border border-red-100 bg-red-50/50 p-6">
-          <KnowledgeLoadFailure error={graphError} title={t("graph.loadFailed")} onRetry={() => void fetchGraph()} />
+          {/* 重试复用 `useRequest` 的 `refresh`（与改造前重新调 `fetchGraph` 同义） */}
+          <KnowledgeLoadFailure
+            error={graphErrorMessage}
+            title={t("graph.loadFailed")}
+            onRetry={() => void refreshGraph()}
+          />
         </div>
       )}
 
       {/* 空态 */}
-      {!graphLoading && !graphError && !graphData && !generating && (
+      {!graphLoading && !graphErrorMessage && !graphData && !generating && (
         <div className="grid min-h-96 place-content-center rounded-xl bg-slate-50 border border-slate-100">
           <EmptyState icon={<Network />} title={t("graph.empty")} description={t("graph.emptyHint")} />
         </div>

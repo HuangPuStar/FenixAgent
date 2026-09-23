@@ -8,9 +8,10 @@ import { Input } from "@fenix/ui-components/ui/input";
 import { Label } from "@fenix/ui-components/ui/label";
 import { Textarea } from "@fenix/ui-components/ui/textarea";
 import { unwrap } from "@fenix/web-runtime/api/request";
+import { useOrgSession } from "@fenix/web-runtime/contexts/org-session";
 import { useRequest } from "ahooks";
 import { AlertTriangle, Inbox, RefreshCw, ShieldAlert, Trash2 } from "lucide-react";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
 import { type WorkflowDefItem, workflowDefApi } from "../../api/workflow-defs";
@@ -37,27 +38,53 @@ export function WorkflowList({ onEditWorkflow, onViewVersions, createRequested }
   const [showRecoverPanel, setShowRecoverPanel] = useState(false);
   const [searchQuery] = useState("");
 
-  // 加载 workflow 列表
-  const { data: workflows = [], loading, error, refresh } = useRequest(() => unwrap(workflowDefApi.list()));
+  // 当前组织 id：列表是**租户作用域**的（服务端按 X-Active-Org-Id 过滤），轮询必须绑定组织，
+  // 否则切组织后仍在轮询旧组织。取值经 `@fenix/web-runtime` 的 org/session 契约（§1.6 T7），
+  // 实现方是身份包的 `OrgProvider`。
+  const { organizationId, pending: orgPending } = useOrgSession();
+
+  // 在途请求的取消句柄（§3.4）：组织变化 / 卸载时 abort 连接，不靠 `useRequest` 的并发语义兜底。
+  const abortRef = useRef<AbortController | null>(null);
+  useEffect(() => () => abortRef.current?.abort(), []);
+
+  /**
+   * 工作流列表取数 + 15s 静默轮询（外部 API 改过之后列表会自动跟上）。
+   *
+   * 轮询改由 ahooks 的 `pollingInterval` 承担，替换掉此前手写的 `useCallback` + `setInterval`：
+   * - 旧实现每个 tick 发**两次**请求（`pollList` 自己取一次并丢弃结果，再 `refresh()` 重取一次），
+   *   且这两次都不带取消信号；现在每 tick 一次，且换组织时旧请求会被 abort。
+   * - **租户作用域轮询必须把组织 id 纳入 `refreshDeps` 并配 `ready`**（样板 `use-agent-sidebar-tree.ts`）：
+   *   `ready: !!organizationId` 保证组织未解析出来时不发请求也不起轮询；`refreshDeps` 让组织变化时
+   *   重查（`ready: false` 期间连 `refresh()` 也会被 ahooks 在 `onBefore` 拦下）。
+   * - ahooks 3.9.7 的 `usePollingPlugin` 语义已核对：`pollingWhenHidden` 默认 `true`（标签页隐藏时
+   *   轮询**继续**）、`pollingErrorRetryCount` 默认 `-1`（失败后**继续**轮询，不中断链）、每次轮询是
+   *   「上一笔结束再 `setTimeout` 排下一笔」（不会堆积请求），卸载时由 ahooks 的 `useUnmount` →
+   *   `cancel()` → `onCancel` 停止轮询。
+   */
+  const {
+    data: workflows = [],
+    loading,
+    error,
+    refresh,
+  } = useRequest(
+    async () => {
+      abortRef.current?.abort();
+      const controller = new AbortController();
+      abortRef.current = controller;
+      return unwrap(workflowDefApi.list({ signal: controller.signal }));
+    },
+    {
+      pollingInterval: 15_000,
+      refreshDeps: [organizationId],
+      ready: !!organizationId,
+    },
+  );
   const workflowsSafe = Array.isArray(workflows) ? workflows : [];
   const errorMsg = error ? (error instanceof Error ? error.message : String(error)) : null;
   const unauthorized = isUnauthorizedError(error);
-
-  // 静默轮询：外部 API 修改后自动刷新列表，不触发 loading 骨架屏
-  const pollList = useCallback(async () => {
-    try {
-      const _data = await unwrap(workflowDefApi.list());
-      // 通过 mutate 静默更新数据
-      refresh();
-    } catch {
-      // 轮询失败静默处理，保留上次数据
-    }
-  }, [refresh]);
-
-  useEffect(() => {
-    const timer = setInterval(pollList, 15_000);
-    return () => clearInterval(timer);
-  }, [pollList]);
+  // 组织还在解析时 `ready` 为 false、`loading` 也为 false，直接渲染会闪出「暂无工作流」空态
+  // （空态是断言「确实没有数据」，此刻还没问过服务端）；用 `pending` 把这段窗口留在骨架屏。
+  const listLoading = orgPending || loading;
 
   // 响应外部新建请求（createRequested 递增时触发）
   const prevCreateRequestedRef = useRef(createRequested);
@@ -245,7 +272,7 @@ export function WorkflowList({ onEditWorkflow, onViewVersions, createRequested }
       </Dialog>
 
       {/* 内容 */}
-      {loading ? (
+      {listLoading ? (
         // role="status" + aria-busy 让屏幕阅读器知道这里是「正在加载」而不是空列表；
         // aria-label 提供可见文本之外的语义（骨架屏本身没有可读文案）。
         <div role="status" aria-busy="true" aria-label={t("list.loading")}>

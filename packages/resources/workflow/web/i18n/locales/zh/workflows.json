@@ -353,6 +353,7 @@
     "trigger_toggle_failed": "启用/禁用触发器失败",
     "trigger_copy_failed": "复制 Webhook URL 失败",
     "trigger_load_failed": "加载触发器失败",
+    "trigger_retry": "重试",
     "trigger_create_failed": "创建触发器失败",
     "trigger_delete_failed": "删除触发器失败",
     "trigger_regenerate_failed": "重新生成触发器失败",

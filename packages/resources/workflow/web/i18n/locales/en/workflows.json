@@ -353,6 +353,7 @@
     "trigger_toggle_failed": "Failed to enable/disable trigger",
     "trigger_copy_failed": "Failed to copy the webhook URL",
     "trigger_load_failed": "Failed to load triggers",
+    "trigger_retry": "Retry",
     "trigger_create_failed": "Failed to create trigger",
     "trigger_delete_failed": "Failed to delete trigger",
     "trigger_regenerate_failed": "Failed to regenerate trigger",

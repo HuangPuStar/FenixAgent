@@ -10,6 +10,7 @@
 
 import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
 import { initializeHappyDomWindow } from "@fenix/ui-components/testing";
+import { OrgSessionProvider } from "@fenix/web-runtime/contexts/org-session";
 import { Window } from "happy-dom";
 import { act, createElement, type FC } from "react";
 import { createRoot, type Root } from "react-dom/client";
@@ -127,6 +128,19 @@ interface Rendered {
   root: Root;
 }
 
+/**
+ * 提供组织上下文：列表是租户作用域取数，`WorkflowList` 经 `useOrgSession()` 读组织 id，
+ * `ready: !!organizationId` 决定发不发请求（没有 Provider 会直接抛错）。
+ * 本文件只关心加载 / 失败 / 无权限三态，故固定给一个已解析好的组织。
+ */
+function withOrgSession(node: unknown): ReturnType<typeof createElement> {
+  return createElement(
+    OrgSessionProvider as FC<{ value: unknown; children?: unknown }>,
+    { value: { organizationId: "org1", userId: "u1", isOwner: true, pending: false } },
+    node as never,
+  );
+}
+
 /** 渲染 WorkflowList 并等待首轮请求落地（骨架屏 → 结果态）。 */
 async function renderList(settleMs = 50): Promise<Rendered> {
   const { WorkflowList } = await import("../pages/workflow/WorkflowList");
@@ -134,10 +148,12 @@ async function renderList(settleMs = 50): Promise<Rendered> {
   const root = createRoot(container);
   await act(async () => {
     root.render(
-      createElement(WorkflowList as FC<Record<string, unknown>>, {
-        onEditWorkflow: noop,
-        onViewVersions: noop,
-      }),
+      withOrgSession(
+        createElement(WorkflowList as FC<Record<string, unknown>>, {
+          onEditWorkflow: noop,
+          onViewVersions: noop,
+        }),
+      ),
     );
     await new Promise((r) => setTimeout(r, settleMs));
   });
@@ -163,10 +179,12 @@ describe("WorkflowList 加载状态", () => {
     const root = createRoot(container);
     act(() => {
       root.render(
-        createElement(WorkflowList as FC<Record<string, unknown>>, {
-          onEditWorkflow: noop,
-          onViewVersions: noop,
-        }),
+        withOrgSession(
+          createElement(WorkflowList as FC<Record<string, unknown>>, {
+            onEditWorkflow: noop,
+            onViewVersions: noop,
+          }),
+        ),
       );
     });
 
