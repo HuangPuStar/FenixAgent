@@ -1,8 +1,9 @@
 # 前端开发规范
 
-> **版本**：v3.0.8 | **最后更新**：2026-09-23 | **维护者**：前端团队
+> **版本**：v3.0.9 | **最后更新**：2026-09-23 | **维护者**：前端团队
 >
 > **最近变更**：
+> - v3.0.9 (2026-09-23)：目录索引统一批次（`f73f9265` 把 `components/agent-catalog-index` 的视觉默认值全部下沉到组件 CSS，五页目录改成同一套）后的文档对账。§4.1 该原语的一条按用户裁定重写并**作废**旧口径「共享结构、字号 / 内边距 / 行高 / 圆角 / 选中配色留各页刻度」——现在默认值全在共享组件、五页渲染同一组计算值、页面覆盖归零（各页 30 余条目录规则随之下沉删除），页面只保留独有语义（知识库行尾删除按钮的外壳与不可用态、组织页角色三态图标着色，以及知识库 ≤760px 隐藏与组织页 ≤900px 横置两处布局行为），并写明不再留各页刻度的原因。§10.1 的两行计数就地重测并把测量点从 `5626bb1a` 推到 **`f73f9265`**：资源侧页面级 2636 → **2416** 行（12 份不变；`agent-knowledge.css` 331→268、`agent-models.css` 330→278、`agent-mcp.css` 132→34、`agent-skills.css` 83→76），宿主页面级 5 份 / 1811 行不变，类别 ③ 伴随表 3792 → **3857** 行（68 份不变，64 份配 `.tsx` + 4 份配 `.ts`；两处变化是 `agent-catalog-index.css` 199→299 与 `agent-organizations-workspace.css` 92→57），token 入口 781 + 272 行、第三方覆盖表 43 行、chat 模块表 3 份 / 148 行均按同一命令复核无变化。
 > - v3.0.8 (2026-09-23)：目录栏收敛批次（「左侧目录 + 右侧内容」面板的目录栏收成一套共享构件集，并删掉 `components/WorkbenchPanel`）后的文档对账。§4.1 补登本批下沉的 `components/agent-catalog-index`（技能库 / MCP / 模型库 / 知识库 / 组织管理五页改用），并记 `components/agent-master-detail-workspace` **不在**该小节的「去重批次」口径内——它早于该批次（2026-09-20 的 `e8c73280` 前置落地），本批只是把记忆页从已删除的 `components/WorkbenchPanel` 切到它。子路径数与 barrel 行数改为实测值（156→**158** 条 `exports` 子路径、160→**161** 行 barrel；本批删 `./components/WorkbenchPanel`、增 `./components/agent-catalog-index`，条数净 0）。§10.1 的两行计数就地写明口径并重测（宿主页面级 5 份 / 1811 行、资源侧 12 份 / 2636 行；类别 ③ 伴随表 68 份 / 3792 行；token 入口 781 + 272 行），该节附带可原样复跑的统计命令——v3.0.5 / v3.0.7 变更行里的「页面级 9 → 8 个 / 2496 → 1983 行」与「伴随表 66 → 67 份 / 3348 → 3391 行」都是在前一次记下的数字上做加减得来的（起点 66 是提交信息里的新增文件数，行数没有实测支撑），与实测不符，已随之作废。
 > - v3.0.7 (2026-09-23)：组织管理页（`packages/platform/identity/.../agent-organizations.css`，513 行）整片转换为 Tailwind 工具类并删除该表——页面级样式表再少一张；唯一无法用工具类表达的部分（≤900px 断点组：非标准断点 + 必须压过库内未分层的列定义）下沉为同目录同名的伴随表 `agent-organizations-workspace.css`（43 行，类别 ③）。§10.1 计数按此同步：资源侧页面级 9 → **8** 个 / 2496 → **1983** 行，类别 ③ 伴随表 66 → **67** 份 / 3348 → **3391** 行。字号档位映射（含 13px 根字号下的实测偏差）见 `agent-organizations-workspace.tsx` 文件头注释。
 > - v3.0.6 (2026-09-23)：§2.5 删去「极简（无 `Suspense`）」这一壳形态（原例 `_panel/agents.tsx`），改为「不许有无 `Suspense` 的极简壳」并说明原因：缺边界的懒加载会冒泡到 `_panel.tsx` 为壳自身备的整屏 `Spinner variant="screen"`，把整个 WebShell 卸载重建（用户视为「整页刷新」）。`_panel/agents.tsx` 同批补上 `Suspense` + `PanelRouteFallback`，接线形态回到「标准」。
@@ -471,7 +472,7 @@ if (!data?.length) return <EmptyState icon={<FolderOpen />} title={t("empty.titl
 - `ui/status-dot`（`StatusDot` / `StatusDotTone`）：状态圆点收敛为唯一原语，页面级圆点 CSS 随之删除。
 - `ui/spinner`（`Spinner`）：独立成块的加载圆环（§2.5），不再手写圆环类名。
 - `components/ClosableTabPill`（`ClosableTabPill`）：可关闭的页签药丸。
-- `components/agent-catalog-index`（`AgentCatalogIndex` / `AgentCatalogIndexNav` / `AgentCatalogIndexItem` / `AgentCatalogIndexIcon` / `AgentCatalogIndexCopy` / `AgentCatalogIndexMeta` / `AgentCatalogIndexArrow`）：主从面板左侧目录栏的共享构件集——容器 + 目录 + 行 + 图标 / 文案 / 尾注 / 箭头四个槽位件；技能库 / MCP / 模型库 / 知识库 / 组织管理五页改用，字号 / 内边距 / 行高 / 圆角 / 选中配色仍留各页刻度。
+- `components/agent-catalog-index`（`AgentCatalogIndex` / `AgentCatalogIndexNav` / `AgentCatalogIndexItem` / `AgentCatalogIndexIcon` / `AgentCatalogIndexCopy` / `AgentCatalogIndexMeta` / `AgentCatalogIndexArrow`）：主从面板左侧目录栏的共享构件集——容器 + 目录 + 行 + 图标 / 文案 / 尾注 / 箭头四个槽位件；技能库 / MCP / 模型库 / 知识库 / 组织管理五页改用。**默认值全在这一份组件里**（`f73f9265` 起）：容器内边距与底色、头部几何、行距、行高、圆角、三态配色、图标盒、字号、尾注与箭头都由 `agent-catalog-index.css` 给，五页渲染出同一组计算值，**页面覆盖归零**——各页此前为目录写的 30 余条规则（MCP 12 条、模型库 10 条、技能库 1 条、知识库的目录骨架与两条头部覆盖、组织页 3 条）已同批删除。**页面仍可覆盖，但只保留页面独有的语义**：知识库行尾删除按钮的外壳与不可用态（`shell` + `trailing`）、组织页行首图标的角色三态色（落在工具类上——共享图标盒刻意不声明 `color`），以及两处布局行为——知识库 ≤760px 隐藏目录、组织页 ≤900px 目录横置（`stripOnNarrow`）。**为什么不再留各页刻度**：「共享结构、字号 / 内边距 / 行高 / 圆角 / 选中配色留各页刻度」只统一了结构，同一组件在两页之间观感不成一套（12px 与 9.75px 两套刻度并存）；而共享 CSS 未分层，页面想改就得靠更高特异性去抢（`data-slot` 钩子正是为此存在的），偏差只能靠逐页纠偏收拾——本批顺带修掉的条目标题字重、三态配色落点、三页目录 hover 不可见、模型库尾注列缺规则四处即属此类。目录现在只有一个该改的地方：**改共享 CSS，不要再在页面里长出一份**。
 - `lib/clipboard`（`copyTextToClipboard`）与 `lib/format`（`formatDate` / `formatDateTime` / `formatClockTime`）：无渲染的跨包工具，复制与时间展示口径不再各包一份。
 - `chat/view/PublicErrorCard`、`chat/panels/chat-interaction-region`（`ChatInteractionRegion` / `ChatInteractionStack`）、`chat/timeline/tool-json-block`（`ToolJsonBlock`）：聊天域的错误卡、交互区与工具 JSON 块骨架。
 
@@ -1113,12 +1114,12 @@ i18n.use(initReactI18next).init({
 ### 10.1 现状偏离
 
 - ~~**`dark:` 变体与 `.dark` 类不同源**~~ 已消解（2026-09-23）：两个主题入口都声明了 `@custom-variant dark (&:where(.dark, .dark *))`，`dark:` 变体与 `.dark` token 块同源；30 个文件里的 `dark:` 一律保留但在应用内不会命中（系统深色偏好不再能让它们生效）。全站强制亮色见 §3.2。
-- **页面级 `.css` 大量残留且无登记**（实测于 `5626bb1a`，2026-09-23；重跑下面那条命令即可复算）：宿主 `apps/web/src` **5 份 / 1811 行**（含 `shell/agent-panel.css` 677 行、`shell/artifacts-workspace.css` 376 行、`pages/auth-light-brand.css` 371 行）、资源侧 `packages/**/web` **12 份 / 2636 行**（含 `workflow/workflow.css` 640 行、`task/.../agent-tasks.css` 480 行、`knowledge/.../agent-knowledge.css` 331 行、`model-management/.../agent-models.css` 330 行、`platform/identity/.../agent-api-keys.css` 209 行）。它们与业务 tsx 里的自定义类名联动（如 `agent-tasks-page`），迁移时两者必须同批改。
+- **页面级 `.css` 大量残留且无登记**（实测于 `f73f9265`，2026-09-23；重跑下面那条命令即可复算）：宿主 `apps/web/src` **5 份 / 1811 行**（含 `shell/agent-panel.css` 677 行、`shell/artifacts-workspace.css` 376 行、`pages/auth-light-brand.css` 371 行）、资源侧 `packages/**/web` **12 份 / 2416 行**（含 `workflow/workflow.css` 640 行、`task/.../agent-tasks.css` 480 行、`model-management/.../agent-models.css` 278 行、`knowledge/.../agent-knowledge.css` 268 行、`platform/identity/.../agent-api-keys.css` 209 行）。它们与业务 tsx 里的自定义类名联动（如 `agent-tasks-page`），迁移时两者必须同批改。
 
   **计数口径**（就是 §10 四类里**剩下的那一类**，排除项逐条对齐类别 ①②③）：
 
   - **计入**：`apps/web/src/**/*.css` 与 `packages/**/web/**/*.css` 中**没有同目录同名 `.tsx` / `.ts` 兄弟**的 `.css`；
-  - **排除**：① token 入口 `apps/web/src/index.css`（781 行）与 `ui-components/web/styles/theme.css`（272 行）；② 第三方覆盖表 `ui-components/web/components/preview/overrides.css`（43 行）；③ 类别 ③ 伴随表 **68 份 / 3792 行**（64 份配 `.tsx` 兄弟、4 份配 `.ts` 兄弟）；④ `ui-components/web/chat/css/*.css`（3 份 / 148 行，模块级表，§10 单列）；
+  - **排除**：① token 入口 `apps/web/src/index.css`（781 行）与 `ui-components/web/styles/theme.css`（272 行）；② 第三方覆盖表 `ui-components/web/components/preview/overrides.css`（43 行）；③ 类别 ③ 伴随表 **68 份 / 3857 行**（64 份配 `.tsx` 兄弟、4 份配 `.ts` 兄弟）；④ `ui-components/web/chat/css/*.css`（3 份 / 148 行，模块级表，§10 单列）；
   - **口径外**：`ui-sandbox/`（独立演示应用）、`docs/**`（VitePress 主题）、`e2e/playwright-report/**` 与 `tmp/**`（产物与临时目录）、`.worktrees/**`、`node_modules`/`dist`，以及 `packages/ui-components/demo/demo.css`（包内 demo，不在 `@source` 扫描范围内）；
   - **边界一例**：`ui-components/web/chat/primitives/conversation-scroll.css` 的源文件叫 `conversation.tsx`（不同名），按上面的机械规则落进本类——它是模块级表而非页面表，这是机械规则的已知代价。
 
@@ -1136,9 +1137,9 @@ i18n.use(initReactI18next).init({
   done | awk -F'\t' '{n[$1]++; l[$1]+=$2} END {for (k in n) printf "%-12s %2d 份 %5d 行\n", k, n[k], l[k]}'
   ```
 
-  **别用「上次的数字 ± 本批增删」维护这两行**：v3.0.5 记下的「伴随表 66 份 / 3348 行」，66 取自 `21a8bffa` 提交信息「新增伴随表 66 份」那句——那是**该次下沉新增的文件数**（该提交前全仓只有 1 份伴随表，提交后全仓实测 66 份 / 3499 行，3348 行对不上），v3.0.7 再按「删掉一张 513 行的表」做加减得 67 份 / 3391 行，于是与实测一路偏离到今天的 68 份 / 3792 行。**改这一节就重跑上面的命令**，不要接着算。
+  **别用「上次的数字 ± 本批增删」维护这两行**：v3.0.5 记下的「伴随表 66 份 / 3348 行」，66 取自 `21a8bffa` 提交信息「新增伴随表 66 份」那句——那是**该次下沉新增的文件数**（该提交前全仓只有 1 份伴随表，提交后全仓实测 66 份 / 3499 行，3348 行对不上），v3.0.7 再按「删掉一张 513 行的表」做加减得 67 份 / 3391 行，于是与实测一路偏离（v3.0.8 重测为 68 份 / 3792 行、`f73f9265` 重测为 68 份 / 3857 行）。**改这一节就重跑上面的命令**，不要接着算。
 
-  2026-09 的 Tailwind 迁移已把此前的基数压下来（`agent-editor.css` / `-design.css` / `-responsive.css` 三表随 `bfd63e52` 删除；`agent-panel.css` 由 919 行降到 677、`artifacts-workspace.css` 由 664 行降到 376；`agent-organizations.css` 513 行随 2026-09-23 的组织页工具类转换整片删除，只留同目录同名的伴随表 `agent-organizations-workspace.css`——本批由 43 行扩到 92 行），但**剩余部分仍未登记**。
+  2026-09 的 Tailwind 迁移已把此前的基数压下来（`agent-editor.css` / `-design.css` / `-responsive.css` 三表随 `bfd63e52` 删除；`agent-panel.css` 由 919 行降到 677、`artifacts-workspace.css` 由 664 行降到 376；`agent-organizations.css` 513 行随 2026-09-23 的组织页工具类转换整片删除，只留同目录同名的伴随表 `agent-organizations-workspace.css`——本批由 43 行扩到 92 行，随后 `f73f9265` 删去其中为目录写的三条覆盖后为 **57 行**），但**剩余部分仍未登记**。
 - **`tw-animate-css` 声明了依赖但源仓库从未 `@import` 它**（只在包内 demo 的 CSS 里导入过），因此 shadcn 过渡动画工具类在应用中是空操作（已在 `ui-components` README 登记）。包内已知限制的完整清单见 `packages/ui-components/README.md`，以那里为准，不在此重复。
 
 ## 11. 开发落地清单
