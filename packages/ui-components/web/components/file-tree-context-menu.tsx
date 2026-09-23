@@ -39,7 +39,7 @@ export interface FileTreeDownloadState {
  * 未分层、会压过工具类，但它匹配的类名已在迁移中从节点上摘掉（现为 `.file-tree-context-menu-panel`），不会复活。
  */
 const MENU_ITEM_CLASS =
-  "flex min-h-8 w-full items-center gap-2 rounded-sm px-2.25 py-1.5 text-left text-sm whitespace-nowrap hover:bg-surface-2 focus-visible:bg-surface-2 focus-visible:[outline:2px_solid_color-mix(in_srgb,var(--color-brand)_45%,transparent)] focus-visible:outline-offset--2 disabled:opacity-[0.55]";
+  "flex min-h-8 w-full items-center gap-2 rounded-sm px-2.25 py-1.5 text-left text-sm whitespace-nowrap hover:bg-surface-2 focus-visible:bg-surface-2 focus-visible:[outline:2px_solid_color-mix(in_srgb,var(--color-brand)_45%,transparent)] focus-visible:-outline-offset-2 disabled:opacity-[0.55]";
 
 export interface FileTreeContextMenuProps {
   state: FileTreeContextMenuState;

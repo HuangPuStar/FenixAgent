@@ -287,7 +287,7 @@ function FileTreeSections(props: FileTreeViewProps) {
           <button
             type="button"
             data-slot="file-tree-section-upload"
-            className="file-tree-section-upload-button ml-auto inline-grid size-6.5 shrink-0 place-items-center rounded-sm text-brand hover:bg-transparent focus-visible:bg-transparent focus-visible:[outline:2px_solid_var(--color-surface-3)] focus-visible:outline-offset--2 disabled:opacity-[0.45]"
+            className="file-tree-section-upload-button ml-auto inline-grid size-6.5 shrink-0 place-items-center rounded-sm text-brand hover:bg-transparent focus-visible:bg-transparent focus-visible:[outline:2px_solid_var(--color-surface-3)] focus-visible:-outline-offset-2 disabled:opacity-[0.45]"
             title={t("fileTree.upload")}
             aria-label={t("fileTree.upload")}
             onClick={() => props.onUploadClick("user")}
