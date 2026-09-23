@@ -106,6 +106,8 @@
   --color-status-idle: #1677ff;
   --color-status-error: #ef4444;
   --color-status-warning: #f59e0b;
+  /* 成功态与 active / running 同色：三者都是「正向完成」语义，族内保持一致。 */
+  --color-status-success: #10b981;
 
   /* Accent colors */
   --color-accent-tiffany: #22d3ee;
@@ -209,6 +211,7 @@
   --color-status-idle: #4096ff;
   --color-status-error: #ef4444;
   --color-status-warning: #f59e0b;
+  --color-status-success: #10b981;
 
   --color-background: #0f172a;
   --color-foreground: #f1f5f9;
