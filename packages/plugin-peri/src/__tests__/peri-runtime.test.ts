@@ -150,23 +150,14 @@ describe("peri-runtime 注入式生命周期", () => {
     expect(fakes.prepared).toHaveLength(1);
   });
 
-  // peri 是独立引擎：prepare 必须在 workspace 物化后补写 .peri/settings.json，
-  // 不依赖 IS_PERI 之类的环境门控（那是 ccb 槽位伪装 peri 的沙箱才有的开关）。
+  // peri 引擎无条件补写 .peri/settings.json：prepare 在 workspace 物化后必须落盘，
+  // 不存在任何环境门控。
   test("prepare 无条件写入 peri settings", async () => {
     const fakes = createFakes();
-    const previousIsPeri = process.env.IS_PERI;
-    delete process.env.IS_PERI;
-
-    try {
-      const runtime = createPeriRuntime(fakes.dependencies);
-      await prepare(runtime);
-      expect(fakes.prepared).toEqual(fakes.settings);
-      expect(fakes.settings).toEqual([join(workspaceRoot, "test-org", "test-user", "env-instance")]);
-    } finally {
-      if (previousIsPeri !== undefined) {
-        process.env.IS_PERI = previousIsPeri;
-      }
-    }
+    const runtime = createPeriRuntime(fakes.dependencies);
+    await prepare(runtime);
+    expect(fakes.prepared).toEqual(fakes.settings);
+    expect(fakes.settings).toEqual([join(workspaceRoot, "test-org", "test-user", "env-instance")]);
   });
 
   // prepare 复制 env，调用方后续修改不污染已保存的实例状态。

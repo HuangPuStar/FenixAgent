@@ -13,7 +13,7 @@ import type {
 import { AcpLinkProcessManager, type ManagedAcpLinkProcess } from "../process/acp-link-process-manager";
 import { createPortAllocator, type PortAllocator } from "../process/port-allocator";
 import { type CcbRelayHandle, createRelayHandle, type RelayHandleDependencies } from "../relay/relay-handle";
-import { prepareWorkspaceEnvironment, writePeriSettings } from "./environment-preparer";
+import { prepareWorkspaceEnvironment } from "./environment-preparer";
 import {
   buildCcbMcpConfig,
   buildCcbRuntimeConfig,
@@ -128,7 +128,6 @@ export function createCcbRuntime(dependencies: CcbRuntimeDependencies = {}): Ccb
       const runtimeConfig = buildRuntimeConfig(input.launchSpec, installedSkills);
       const mcpConfig = buildCcbMcpConfig(input.launchSpec);
       await prepareWorkspace(workspacePath, runtimeConfig, mcpConfig, input.launchSpec.agent.prompt, installedSkills);
-      await writePeriSettings(workspacePath, input.launchSpec);
 
       state.launchSpec = input.launchSpec;
       state.workspace = workspacePath;

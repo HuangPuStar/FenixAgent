@@ -3,7 +3,6 @@ import {
   buildCcbRuntimeConfig,
   installSkills as installCcbSkills,
   writeCcbConfig,
-  writePeriSettings,
 } from "@fenix/ccb";
 import type { AgentLaunchSpec } from "@fenix/plugin-sdk";
 import { AcpDispatcher } from "acp-link/acp-dispatcher";
@@ -37,8 +36,6 @@ export function createCcbHandler(): EngineHandler {
         await writeClaudeMd(workspace, launchSpec.agent.prompt);
         console.log("[ccb-handler] wrote CLAUDE.md");
       }
-
-      await writePeriSettings(workspace, launchSpec);
     },
 
     async startInstance(ctx: EngineStartContext) {

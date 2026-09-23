@@ -25,10 +25,10 @@ import { installSkills } from "./skill-installer";
 /**
  * 本文件与 `@fenix/ccb` 的 `runtime/ccb-runtime.ts` 是两份实现（生命周期骨架基本相同）。
  *
- * 拆成独立包而非复用 ccb runtime 的原因：引擎生命周期会各自演进——peri 的 workspace 物化必须
- * **无条件**写 `.peri/settings.json`（而 ccb 侧受 `IS_PERI` 门控，只服务沙箱伪装路径），
- * 启动命令、参数与后续的 provider/profile 选型也各自独立。若让 peri 复用 ccb 的 runtime，
- * ccb 包会变成事实上的共享运行时内核，任何一侧的调整都会波及另一侧。
+ * 拆成独立包而非复用 ccb runtime 的原因：引擎生命周期会各自演进——peri 的 workspace 物化必须写
+ * `.peri/settings.json`（peri 独有配置面，ccb 不写），启动命令、参数与后续的 provider/profile
+ * 选型也各自独立。若让 peri 复用 ccb 的 runtime，ccb 包会变成事实上的共享运行时内核，
+ * 任何一侧的调整都会波及另一侧。
  * 代价是三处近似代码；改动其中之一时请同步检查 `packages/plugin-ccb` 与 `packages/plugin-opencode`。
  */
 
@@ -137,7 +137,7 @@ export function createPeriRuntime(dependencies: PeriRuntimeDependencies = {}): P
       const runtimeConfig = buildRuntimeConfig(input.launchSpec, installedSkills);
       const mcpConfig = buildPeriMcpConfig(input.launchSpec);
       await prepareWorkspace(workspacePath, runtimeConfig, mcpConfig, input.launchSpec.agent.prompt, installedSkills);
-      // peri 引擎不需要 IS_PERI 之类的门控：引擎就是 peri，provider/profile 永远写。
+      // provider/profile 配置是 peri 的运行前提：每次物化都写，不做条件跳过。
       await writeSettings(workspacePath, input.launchSpec);
 
       state.launchSpec = input.launchSpec;
