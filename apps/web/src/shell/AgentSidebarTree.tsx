@@ -283,9 +283,15 @@ export const AgentSidebarTree = memo(function AgentSidebarTree({
                 )}
               </div>
               {/* 副信息：标识键 + 远程标记。`shrink-0` 让名称先让位；键自身再压一个上限，
-                  避免长组织名把同一行里的名称挤到只剩几个字 */}
+                  避免长组织名把同一行里的名称挤到只剩几个字。
+                  悬浮操作栏（`.agent-sidebar-actions`）是 `absolute right-1.5`，不预留空间——它出现就压在
+                  同一行右端，而副信息恒在右端（`justify-between`），因此两者必须互斥。用 `group-hover:invisible`
+                  让副信息在操作栏出现时让位：`visibility` 不参与布局计算（`display` 会让行内抖动），且它同时把
+                  内容移出无障碍树——`opacity-0` 会让读屏继续播报已经看不见的字。操作栏自身用 `opacity` 显示，
+                  `opacity` 不影响可聚焦性，键盘仍可 Tab 进四个按钮，故不给副信息加 `group-focus-within`：
+                  那会连「Tab 到卡片本身」也把副信息抹掉。 */}
               {(agentKey || shouldShowRemoteNode(agent.agentNode)) && (
-                <div className="flex items-center gap-1.5 shrink-0 text-xs text-text-muted">
+                <div className="flex items-center gap-1.5 shrink-0 text-xs text-text-muted group-hover:invisible">
                   {agentKey && (
                     <span className="font-mono truncate max-w-20" title={agentKey}>
                       {agentKey}
