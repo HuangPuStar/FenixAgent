@@ -99,10 +99,19 @@ describe("memory web 入口浏览器可达面", () => {
       "pages/hindsight/components/MemoryPagination.tsx",
       "pages/hindsight/components/MemoryViewSwitcher.tsx",
       "pages/hindsight/components/MemoryVisualizationShell.tsx",
+      // 2026-09-23：三个超限文件按职责拆开后新增的包内共享件——两套图谱共用的数据形状与 API 转换
+      // （`Constellation` / `Graph2d` / `DataView` / `EntitiesView` 都从它取类型）、cytoscape 路的编排层、
+      // 自绘路的逐帧绘制主体、`DataView` 的纯模型与编排层。都是包内相对导入，不在入口导出面里。
+      "pages/hindsight/components/graph-model.ts",
+      "pages/hindsight/components/use-cytoscape-graph.ts",
+      "pages/hindsight/components/constellation-paint.ts",
+      "pages/hindsight/components/data-view-model.ts",
+      "pages/hindsight/components/use-data-view-data.ts",
     ]) {
       expect(reachedWebFiles).toContain(expected);
     }
-    expect(reachedWebFiles.size).toBeGreaterThanOrEqual(19);
+    // 拆分后包内可达文件变多，下界随实际值上调：图退化（解析失败只剩入口文件）时这里必须失败。
+    expect(reachedWebFiles.size).toBeGreaterThanOrEqual(33);
 
     // 跨包递归的有效性：只钉两条稳定路径——ui-components 的按钮与 web-runtime 的 request 边界。
     // 少了这一段，「@fenix/* 被当成外部依赖放过」会以「包内断言全绿」的形式漏网。

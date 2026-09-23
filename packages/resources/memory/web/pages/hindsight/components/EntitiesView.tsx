@@ -12,7 +12,7 @@ import { useElementHeight } from "../element-height";
 import { toHindsightFailure } from "../failure";
 import { recencyEndpoints, recencyHeat, toRecencyLookup } from "../recency";
 import { Constellation } from "./Constellation";
-import { convertHindsightGraphData, type GraphNode } from "./Graph2d";
+import { convertHindsightGraphData, type GraphNode } from "./graph-model";
 import { HindsightFailureNotice } from "./HindsightFailureNotice";
 import { MemoryPagination } from "./MemoryPagination";
 import { MemoryViewSwitcher } from "./MemoryViewSwitcher";
