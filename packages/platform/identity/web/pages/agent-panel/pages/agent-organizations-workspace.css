@@ -1,0 +1,43 @@
+/*
+ * 组织页 ≤900px 的响应式改造——本页**唯一**无法用工具类表达的部分。
+ *
+ * 为什么留在这里（而不是写 `max-lg:` / `max-md:` 之类的工具类）：
+ * 1. 断点 900px 不在 Tailwind 标准档（sm 640 / md 768 / lg 1024）上，而 FCP-WEB-03 禁止任意断点变体；
+ *    按仓库口径应「先在 @theme 声明命名断点」——那要改两个全局 token 入口
+ *    （`apps/web/src/index.css` 与 `packages/ui-components/web/styles/theme.css`，两条必须同批改且无一致性
+ *    测试兜底），超出本次「组织页样式换工具类」的范围。
+ * 2. 即便换成标准档，第一条 `grid-template-columns` 也压不过库内 `.agent-master-detail-workspace` 的列定义：
+ *    那条规则在 `@media (width >= 48rem)` 里且**未分层**，而工具类位于 `@layer utilities`，未分层声明恒胜。
+ *    只有同等「未分层 + 900px」的写法才能维持迁移前的胜负关系与断点。
+ *
+ * 层叠：本文件不包 `@layer`（同 `agent-master-detail-workspace.css`），逐条与迁移前的 `.org-*` 规则等价。
+ * 类名沿用原选择器名，仅作这组媒体查询的挂载点，元素上的基础外观全部在 TSX 的工具类里。
+ * 长度值一律写 rem 而不是 px：与工具类的刻度同源（`1.5rem` ≡ 迁移前的 24px 名义值），
+ * 避免同一元素在断点两侧落在两套刻度上。
+ *
+ * 移除条件：① 两个 token 入口同批补上命名断点（`--breakpoint-*`），或 ② 库内主从工作区改为按容器查询
+ * 决定列数——任一落地后本文件即可删除，六条规则改写成命名断点变体。
+ */
+@media (max-width: 900px) {
+  .org-workspace {
+    grid-template-columns: 1fr;
+  }
+  .org-directory {
+    border-right: 0;
+    border-bottom: 1px solid var(--color-slate-100);
+  }
+  .org-directory-list {
+    display: flex;
+    overflow-x: auto;
+  }
+  .org-directory-row {
+    min-width: 11.875rem;
+  }
+  .org-detail {
+    padding: 1.5rem 1.25rem;
+  }
+  .org-engine-strip {
+    align-items: stretch;
+    flex-direction: column;
+  }
+}

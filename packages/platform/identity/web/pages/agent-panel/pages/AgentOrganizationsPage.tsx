@@ -13,7 +13,6 @@ import { type OrgMember, type OrgMemberCandidate, orgApi } from "../../../api/or
 import { useOrg } from "../../../contexts/OrgContext";
 import { useSession } from "../../../lib/auth-client";
 import { OrganizationsDialogs } from "./agent-organizations-dialogs";
-import "./agent-organizations.css";
 import type {
   MachineCreateResult,
   MachineFormState,
@@ -315,7 +314,7 @@ export function AgentOrganizationsPage({ machineRegistry }: AgentOrganizationsPa
   }, [selectedOrgId, t]);
 
   return (
-    <AppPage className="agent-organizations-page">
+    <AppPage>
       <AppHeader
         title={t("title")}
         subtitle={t("subtitle")}

@@ -1,8 +1,9 @@
 # 前端开发规范
 
-> **版本**：v3.0.6 | **最后更新**：2026-09-23 | **维护者**：前端团队
+> **版本**：v3.0.7 | **最后更新**：2026-09-23 | **维护者**：前端团队
 >
 > **最近变更**：
+> - v3.0.7 (2026-09-23)：组织管理页（`packages/platform/identity/.../agent-organizations.css`，513 行）整片转换为 Tailwind 工具类并删除该表——页面级样式表再少一张；唯一无法用工具类表达的部分（≤900px 断点组：非标准断点 + 必须压过库内未分层的列定义）下沉为同目录同名的伴随表 `agent-organizations-workspace.css`（43 行，类别 ③）。§10.1 计数按此同步：资源侧页面级 9 → **8** 个 / 2496 → **1983** 行，类别 ③ 伴随表 66 → **67** 份 / 3348 → **3391** 行。字号档位映射（含 13px 根字号下的实测偏差）见 `agent-organizations-workspace.tsx` 文件头注释。
 > - v3.0.6 (2026-09-23)：§2.5 删去「极简（无 `Suspense`）」这一壳形态（原例 `_panel/agents.tsx`），改为「不许有无 `Suspense` 的极简壳」并说明原因：缺边界的懒加载会冒泡到 `_panel.tsx` 为壳自身备的整屏 `Spinner variant="screen"`，把整个 WebShell 卸载重建（用户视为「整页刷新」）。`_panel/agents.tsx` 同批补上 `Suspense` + `PanelRouteFallback`，接线形态回到「标准」。
 > - v3.0.5 (2026-09-23)：Web 样式禁止行为门禁（`bun run check:web-style`）接入后，§10 新增**类别 ③「深层样式伴随表」**——与源文件同目录同名的 `.css`，承载无法用扁平工具类表达的选择器嵌套／复合表达式值／无标准变体的媒体查询，并给出三条约束（严格同名同目录、优先沿用源选择器名、不包 `@layer` 且逐处确认胜负关系）；「新增 `.css` 的落位」由「只用前两种」放宽为「只用前三类」。§10.1 的页面级 `.css` 计数按实测口径重写（资源侧 14 → **9** 个 / 3370 → **2496** 行；token 入口与新增伴随表同步实测）。规则口径与存量清理过程见 `forbidden-code-patterns.md`。
 > - v3.0.4 (2026-09-22)：前端去重批次（约 65 个 commit）后的文档对账。§4.1 补登本轮新下沉的原语（`config/AdminKeyGate`、`config/LabeledField`、`ui/status-dot`、`components/ClosableTabPill`、`lib/clipboard`、`lib/format`、`chat/view/PublicErrorCard`、`chat/panels/chat-interaction-region`、`chat/timeline/tool-json-block`），并把「空态 / 失败 / 无权限刻意共用一个骨架」与「无权限不给重试、失败给重试」写进该节的口径——**不要新建第二个空态/失败组件**；子路径数与 barrel 行数改为实测值（145→**156** 条 `exports` 子路径、151→**160** 行 barrel）。§4.8 新增「刻意分叉 / 刻意不进库」四条冻结项（三种节点配置容器、cytoscape 与自绘 canvas 两套图谱、红描边危险按钮、形态未定型包内共享件）。`MasterKeyGate` 全量订正为 `@fenix/ui-components/config/AdminKeyGate` + `@fenix/web-runtime/hooks/use-admin-key-gate`（§2.3、§6.3 与 `docs/arch/21-observability-observer-service.md`）。§5.6 / §5.9 删去已随 `ac642962` 删除的 `workflow/web/api/workflows.ts`，§4.8 的文件规模快照（16→**17** 个超 500 行、400–499 区间 27→**25**）与 §10.1 的页面级 `.css` 计数按实测口径重写。
@@ -1108,7 +1109,7 @@ i18n.use(initReactI18next).init({
 ### 10.1 现状偏离
 
 - ~~**`dark:` 变体与 `.dark` 类不同源**~~ 已消解（2026-09-23）：两个主题入口都声明了 `@custom-variant dark (&:where(.dark, .dark *))`，`dark:` 变体与 `.dark` token 块同源；30 个文件里的 `dark:` 一律保留但在应用内不会命中（系统深色偏好不再能让它们生效）。全站强制亮色见 §3.2。
-- **页面级 `.css` 大量残留且无登记**：`apps/web` 5 个（合计 1810 行，含 `shell/agent-panel.css` 676 行、`shell/artifacts-workspace.css` 376 行）、资源侧 9 个（合计 2496 行，含 `workflow/workflow.css` 642 行、`platform/identity/.../agent-organizations.css` 513 行）。口径：`apps/web/src/**/*.css` 与 `packages/**/web/**/*.css`，排除 §10 允许的 token 入口（`index.css` 851 行、`styles/theme.css` 269 行）、`chat/css/*.css`（3 份）、`components/preview/overrides.css` 与类别 ③ 的伴随表（66 份，合计 3348 行）。它们与业务 tsx 里的自定义类名联动（如 `agent-tasks-page`），迁移时两者必须同批改。2026-09 的 Tailwind 迁移已把此前的基数压下来（`agent-editor.css` / `-design.css` / `-responsive.css` 三表随 `bfd63e52` 删除；`agent-panel.css` 由 919 行降到 676、`artifacts-workspace.css` 由 664 行降到 376），但**剩余部分仍未登记**。
+- **页面级 `.css` 大量残留且无登记**：`apps/web` 5 个（合计 1810 行，含 `shell/agent-panel.css` 676 行、`shell/artifacts-workspace.css` 376 行）、资源侧 8 个（合计 1983 行，含 `workflow/workflow.css` 642 行、`platform/identity/.../agent-api-keys.css` 210 行）。口径：`apps/web/src/**/*.css` 与 `packages/**/web/**/*.css`，排除 §10 允许的 token 入口（`index.css` 851 行、`styles/theme.css` 269 行）、`chat/css/*.css`（3 份）、`components/preview/overrides.css` 与类别 ③ 的伴随表（67 份，合计 3391 行）。它们与业务 tsx 里的自定义类名联动（如 `agent-tasks-page`），迁移时两者必须同批改。2026-09 的 Tailwind 迁移已把此前的基数压下来（`agent-editor.css` / `-design.css` / `-responsive.css` 三表随 `bfd63e52` 删除；`agent-panel.css` 由 919 行降到 676、`artifacts-workspace.css` 由 664 行降到 376；`agent-organizations.css` 513 行随 2026-09-23 的组织页工具类转换整片删除，只留同目录同名的伴随表 `agent-organizations-workspace.css` 43 行），但**剩余部分仍未登记**。
 - **`tw-animate-css` 声明了依赖但源仓库从未 `@import` 它**（只在包内 demo 的 CSS 里导入过），因此 shadcn 过渡动画工具类在应用中是空操作（已在 `ui-components` README 登记）。包内已知限制的完整清单见 `packages/ui-components/README.md`，以那里为准，不在此重复。
 
 ## 11. 开发落地清单
