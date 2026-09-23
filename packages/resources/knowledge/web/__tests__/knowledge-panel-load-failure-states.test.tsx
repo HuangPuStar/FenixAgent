@@ -188,11 +188,14 @@ type StubResponse = { status: number; body: unknown };
 
 const CHUNKS_URL = "/web/knowledgeBases/kb-1/resources/res-1/chunks";
 const SEARCH_URL = "/web/knowledgeBases/kb-1/search";
+const RERANK_URL = "/web/knowledgeBases/rerank-models";
 
 let chunkResponses: StubResponse[] = [];
 let chunkCalls = 0;
 let searchResponses: StubResponse[] = [];
 let searchCalls = 0;
+let rerankResponses: StubResponse[] = [];
+let rerankCalls = 0;
 /** 每次检索请求的 body：重试必须复用同一份参数，断言据此而不是只看调用次数。 */
 const searchBodies: Record<string, unknown>[] = [];
 
@@ -212,9 +215,15 @@ function stubFetch(): () => void {
   globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
     const url = typeof input === "string" ? input : input.toString();
     const method = init?.method ?? "GET";
-    // rerank 模型下拉是与面板并行的次要请求，用例不关心其失败路径，恒返回空列表
-    if (method === "GET" && url.startsWith("/web/knowledgeBases/rerank-models")) {
-      return jsonResponse({ status: 200, body: { success: true, data: [] } });
+    // rerank 模型下拉是与面板并行的次要请求：默认恒返回空列表（多数用例不关心它），
+    // 要断言它的失败路径就把响应塞进 `rerankResponses`。
+    if (method === "GET" && url.startsWith(RERANK_URL)) {
+      const next = rerankResponses[Math.min(rerankCalls, rerankResponses.length - 1)] ?? {
+        status: 200,
+        body: { success: true, data: [] },
+      };
+      rerankCalls += 1;
+      return jsonResponse(next);
     }
     if (method === "GET" && url.startsWith(CHUNKS_URL)) {
       const next = chunkResponses[Math.min(chunkCalls, chunkResponses.length - 1)];
@@ -305,6 +314,8 @@ beforeEach(() => {
   chunkCalls = 0;
   searchResponses = [];
   searchCalls = 0;
+  rerankResponses = [];
+  rerankCalls = 0;
   searchBodies.length = 0;
   toastErrors.length = 0;
   consoleErrorCalls.length = 0;
@@ -482,5 +493,30 @@ describe("RetrievalTestPanel 检索结果的失败态", () => {
 
     expect(alertRegions().length).toBe(0);
     expect(text()).toContain(TEXT.retrieval.noResults);
+  });
+});
+
+describe("RetrievalTestPanel 的 rerank 候选取数", () => {
+  // 业务意图：rerank 模型是**可选参数**，取数失败不该让整块面板失效；但它也不能静默——旧实现
+  // `.catch(() => setRerankModels([]))` 让失败与「确实没有可选模型」同形，且 `resp.data ?? []` 是
+  // 未 `unwrap` 的直取，4xx/5xx 会被读成成功空列表（§5.2 / §3.4 末条）。现在失败经 `unwrap()` 抛给
+  // `useRequest`：下拉仍为空（与 §3.6 登记的「候选失败 = 空下拉」同一口径），诊断留在 `console.error`，
+  // 检索入口照常可用——这条用例同时钉住「不阻断」与「不静默」两侧。
+  test("rerank 候选取数失败：检索入口照常可用，失败只进诊断日志", async () => {
+    rerankResponses = [failure("SERVER_ERROR", "模型列表不可用", 500)];
+    await render(createElement(RetrievalTestPanel, { knowledgeBaseId: "kb-1" }));
+
+    // 不阻断：面板没有整块失败，检索按钮仍在，也不出现持久错误区
+    expect(buttonByText(TEXT.retrieval.runTest)).toBeDefined();
+    expect(alertRegions().length).toBe(0);
+    expect(text()).not.toContain("模型列表不可用");
+    // 不静默：诊断日志带上了 rerank 的上下文（而不是被空 `catch` 吞掉）
+    expect(consoleErrorCalls.some((args) => String(args[0]).includes("rerank"))).toBe(true);
+
+    // 下拉为空不影响检索本身：照常跑通一次检索
+    searchResponses = [searchSuccess()];
+    await click(buttonByText(TEXT.retrieval.runTest) as HTMLButtonElement);
+
+    expect(text()).toContain(withCount(TEXT.retrieval.resultCount, 1));
   });
 });

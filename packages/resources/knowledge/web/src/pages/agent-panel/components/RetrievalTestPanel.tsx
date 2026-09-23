@@ -9,15 +9,17 @@ import { Slider } from "@fenix/ui-components/ui/slider";
 import { Spinner } from "@fenix/ui-components/ui/spinner";
 import { Switch } from "@fenix/ui-components/ui/switch";
 import { Textarea } from "@fenix/ui-components/ui/textarea";
+import { unwrap } from "@fenix/web-runtime/api/request";
 import { NS } from "@fenix/web-runtime/i18n/namespace";
+import { useRequest } from "ahooks";
 import { Loader2, Search } from "lucide-react";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
 import { kbApi } from "../../../../api/knowledge-bases";
 import { KnowledgeLoadFailure } from "../../../../pages/agent-panel/pages/agent-knowledge-load-failure";
 import { FIELD_LABEL_CLASS } from "../../../../pages/agent-panel/pages/knowledge-typography";
-import type { KnowledgeSearchResultData, MetaDataFilterMethod, RerankModelOption } from "../../../../types/knowledge";
+import type { KnowledgeSearchResultData, MetaDataFilterMethod } from "../../../../types/knowledge";
 import { RetrievalChunkCard } from "./retrieval-chunk-card";
 import { buildRetrievalSearchPayload } from "./retrieval-search-payload";
 
@@ -96,25 +98,16 @@ export function RetrievalTestPanel({ knowledgeBaseId }: RetrievalTestPanelProps)
   // 「确实没有命中」，不得在失败时渲染（见下方结果区分支）。
   const [error, setError] = useState<unknown>(null);
 
-  // rerank 模型列表（组件内拉取）
-  const [rerankModels, setRerankModels] = useState<RerankModelOption[]>([]);
-
-  // 组件挂载时拉取 rerank 模型列表（仅一次）
-  useEffect(() => {
-    let cancelled = false;
-    kbApi
-      .listRerankModels()
-      .then((resp) => {
-        if (!cancelled) setRerankModels(resp.data ?? []);
-      })
-      .catch(() => {
-        // 模型列表拉取失败不阻断检索测试，下拉为空
-        if (!cancelled) setRerankModels([]);
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, []);
+  // rerank 模型列表（组件挂载时拉取一次）。旧实现是手写的 `useState` + `useEffect` + 直取 `.data`：
+  // 既违反 §3.4 的取数口径，也把失败静默成空下拉——`request()` 对 4xx/5xx 返回 `success:false` 而不抛，
+  // `resp.data ?? []` 于是把「拉取失败」读成「确实没有 rerank 模型」（§5.2 / §3.4 末条）。
+  // 现在失败经 `unwrap()` 抛给 `useRequest`，只进诊断日志；下拉仍为空（与 §3.6 登记的「候选失败 = 空下拉」
+  // 同一口径），但面板其余部分不受影响——rerank 只是可选参数，不该阻断检索测试。
+  const { data: rerankModels = [] } = useRequest(() => unwrap(kbApi.listRerankModels()), {
+    onError: (error) => {
+      console.error("[RetrievalTestPanel] rerank 模型列表拉取失败（下拉为空）", error);
+    },
+  });
 
   // 执行检索测试
   const runSearch = useCallback(async () => {
