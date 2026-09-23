@@ -33,7 +33,7 @@ function RootComponent() {
 
   if (isPending) {
     return (
-      <ThemeProvider defaultTheme="light">
+      <ThemeProvider>
         <Spinner variant="screen" size="lg" label={t("connecting")} className="gap-4" />
       </ThemeProvider>
     );
@@ -45,14 +45,14 @@ function RootComponent() {
 
   if (!session) {
     return (
-      <ThemeProvider defaultTheme="light">
+      <ThemeProvider>
         <Outlet />
       </ThemeProvider>
     );
   }
 
   return (
-    <ThemeProvider defaultTheme="light">
+    <ThemeProvider>
       <OrgProvider>
         <Outlet />
         <Toaster richColors closeButton position="top-right" />

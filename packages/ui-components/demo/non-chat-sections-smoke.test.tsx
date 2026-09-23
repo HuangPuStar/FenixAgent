@@ -102,7 +102,7 @@ describe("demo non-chat sections", () => {
     const text = container.textContent ?? "";
     expect(text).toContain("Design Tokens");
     expect(text).toContain("--color-brand");
-    expect(text).toContain("ThemeToggle / useTheme");
+    expect(text).toContain("强制亮色 / useTheme");
   });
 
   // Base UI P1 收窄为页面骨架后只应保留 AppPage / AppHeader；工作台相关的示例属于 Workbench L 系列。

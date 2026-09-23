@@ -380,7 +380,6 @@ const EXPECTED_EXPORTS: Record<string, readonly string[]> = {
     "TabsList",
     "TabsTrigger",
     "Textarea",
-    "ThemeToggle",
     "Tooltip",
     "TooltipContent",
     "TooltipProvider",

@@ -5,6 +5,20 @@
 @source "../../../packages/**/web/**/*.{ts,tsx}";
 
 /* ============================================================
+   Forced light — 全局强制亮色
+   ------------------------------------------------------------
+   Tailwind v4 的 `dark:` 变体默认绑定 `@media (prefers-color-scheme: dark)`，
+   系统深色偏好下这些工具类会直接生效，且与本文件的 `.dark` token 块（类切换）
+   不同源——同一应用里存在两条互不相关的深色开关。这里把它重写为「类作用域」，
+   使全仓只剩一条深色开关：`<html>` 或某个祖先上的 `.dark`。
+
+   该开关当前没有生产者：原先唯一的写入点是 `@fenix/ui-components/lib/theme` 的
+   `applyTheme`（已随之删除），该模块现在只会在挂载时**移除**残留的 `dark` 类。
+   `.dark` 的 token 块与其派生规则全部保留，在无法被触发的前提下是死代码而非风险。
+   ============================================================ */
+@custom-variant dark (&:where(.dark, .dark *));
+
+/* ============================================================
    Theme — Nexus Indigo Palette
    ============================================================ */
 @theme {
@@ -201,6 +215,11 @@
    Base styles
    ============================================================ */
 @layer base {
+  /* 浏览器原生控件（输入框、下拉、滚动条、表单控件内部）按本声明取色，
+     不跟随系统深色偏好；落在最外层 `html` 上，全树继承。 */
+  :root {
+    color-scheme: light;
+  }
   html,
   body {
     background-color: var(--color-surface-0);
@@ -671,16 +690,6 @@ html [data-sonner-toaster] [data-sonner-toast][data-styled="true"] [data-close-b
   background: var(--color-surface-3, #e5e7eb);
   border-color: var(--color-border-hover, #d1d5db);
   color: var(--color-text-primary, #374151);
-}
-@media (prefers-color-scheme: dark) {
-  .skill-tag {
-    background: rgba(255, 255, 255, 0.06);
-    border-color: rgba(255, 255, 255, 0.08);
-  }
-  .skill-tag:hover {
-    background: rgba(255, 255, 255, 0.12);
-    border-color: rgba(255, 255, 255, 0.16);
-  }
 }
 
 /* ── 管理模式下静态 skill tag（不可点击） ── */

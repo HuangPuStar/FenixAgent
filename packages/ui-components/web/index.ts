@@ -155,7 +155,6 @@ export * from "./ui/switch";
 export * from "./ui/table";
 export * from "./ui/tabs";
 export * from "./ui/textarea";
-export * from "./ui/theme-toggle";
 export * from "./ui/tooltip";
 export * from "./ui/tree";
 export * from "./ui/use-roving-list-navigation";

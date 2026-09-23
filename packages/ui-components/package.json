@@ -616,10 +616,6 @@
       "types": "./web/ui/textarea.tsx",
       "default": "./web/ui/textarea.tsx"
     },
-    "./ui/theme-toggle": {
-      "types": "./web/ui/theme-toggle.tsx",
-      "default": "./web/ui/theme-toggle.tsx"
-    },
     "./ui/tooltip": {
       "types": "./web/ui/tooltip.tsx",
       "default": "./web/ui/tooltip.tsx"
