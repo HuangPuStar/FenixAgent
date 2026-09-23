@@ -1,8 +1,9 @@
 # 前端开发规范
 
-> **版本**：v3.0.7 | **最后更新**：2026-09-23 | **维护者**：前端团队
+> **版本**：v3.0.8 | **最后更新**：2026-09-23 | **维护者**：前端团队
 >
 > **最近变更**：
+> - v3.0.8 (2026-09-23)：目录栏收敛批次（「左侧目录 + 右侧内容」面板的目录栏收成一套共享构件集，并删掉 `components/WorkbenchPanel`）后的文档对账。§4.1 补登本批下沉的 `components/agent-catalog-index`（技能库 / MCP / 模型库 / 知识库 / 组织管理五页改用），并记 `components/agent-master-detail-workspace` **不在**该小节的「去重批次」口径内——它早于该批次（2026-09-20 的 `e8c73280` 前置落地），本批只是把记忆页从已删除的 `components/WorkbenchPanel` 切到它。子路径数与 barrel 行数改为实测值（156→**158** 条 `exports` 子路径、160→**161** 行 barrel；本批删 `./components/WorkbenchPanel`、增 `./components/agent-catalog-index`，条数净 0）。§10.1 的两行计数就地写明口径并重测（宿主页面级 5 份 / 1811 行、资源侧 12 份 / 2636 行；类别 ③ 伴随表 68 份 / 3792 行；token 入口 781 + 272 行），该节附带可原样复跑的统计命令——v3.0.5 / v3.0.7 变更行里的「页面级 9 → 8 个 / 2496 → 1983 行」与「伴随表 66 → 67 份 / 3348 → 3391 行」都是在前一次记下的数字上做加减得来的（起点 66 是提交信息里的新增文件数，行数没有实测支撑），与实测不符，已随之作废。
 > - v3.0.7 (2026-09-23)：组织管理页（`packages/platform/identity/.../agent-organizations.css`，513 行）整片转换为 Tailwind 工具类并删除该表——页面级样式表再少一张；唯一无法用工具类表达的部分（≤900px 断点组：非标准断点 + 必须压过库内未分层的列定义）下沉为同目录同名的伴随表 `agent-organizations-workspace.css`（43 行，类别 ③）。§10.1 计数按此同步：资源侧页面级 9 → **8** 个 / 2496 → **1983** 行，类别 ③ 伴随表 66 → **67** 份 / 3348 → **3391** 行。字号档位映射（含 13px 根字号下的实测偏差）见 `agent-organizations-workspace.tsx` 文件头注释。
 > - v3.0.6 (2026-09-23)：§2.5 删去「极简（无 `Suspense`）」这一壳形态（原例 `_panel/agents.tsx`），改为「不许有无 `Suspense` 的极简壳」并说明原因：缺边界的懒加载会冒泡到 `_panel.tsx` 为壳自身备的整屏 `Spinner variant="screen"`，把整个 WebShell 卸载重建（用户视为「整页刷新」）。`_panel/agents.tsx` 同批补上 `Suspense` + `PanelRouteFallback`，接线形态回到「标准」。
 > - v3.0.5 (2026-09-23)：Web 样式禁止行为门禁（`bun run check:web-style`）接入后，§10 新增**类别 ③「深层样式伴随表」**——与源文件同目录同名的 `.css`，承载无法用扁平工具类表达的选择器嵌套／复合表达式值／无标准变体的媒体查询，并给出三条约束（严格同名同目录、优先沿用源选择器名、不包 `@layer` 且逐处确认胜负关系）；「新增 `.css` 的落位」由「只用前两种」放宽为「只用前三类」。§10.1 的页面级 `.css` 计数按实测口径重写（资源侧 14 → **9** 个 / 3370 → **2496** 行；token 入口与新增伴随表同步实测）。规则口径与存量清理过程见 `forbidden-code-patterns.md`。
@@ -59,7 +60,7 @@
 
 - 标准三件套 `./web` + `./web/contribution` + `./web/i18n`：`resources/*` 的 8 个包（agent-config / knowledge / mcp / memory / model-management / skill / task / workflow）与 `platform/identity`，合计 9 个，与 `ce.json` 的 `web` 列表等长。
 - 只有 `./web`、无 contribution：`machine` / `observer` / `prod-view` / `sandbox` / `channel`——有 web 面但不在 CE 的 web profile 里。
-- 不走 `web` 前缀：`ui-components`（根 barrel + 156 条 `exports` 子路径，按需深链优先）、`web-runtime`（`./api/request`、`./contexts/org-session`、`./types/config`…）、`agent-runtime`（web 面仅 `./web/api/environments` 一条窄口，浏览器不得依赖其反向 `export *` 的服务端根入口）、`chat-channel`（无 web 面，根入口必须浏览器安全，见 §8.6）。
+- 不走 `web` 前缀：`ui-components`（根 barrel + 158 条 `exports` 子路径，按需深链优先）、`web-runtime`（`./api/request`、`./contexts/org-session`、`./types/config`…）、`agent-runtime`（web 面仅 `./web/api/environments` 一条窄口，浏览器不得依赖其反向 `export *` 的服务端根入口）、`chat-channel`（无 web 面，根入口必须浏览器安全，见 §8.6）。
 
 ### 1.1 装配产物与构建
 
@@ -440,7 +441,7 @@ if (!data?.length) return <EmptyState icon={<FolderOpen />} title={t("empty.titl
 - 基础 UI 原语：`@fenix/ui-components/ui/<name>`（含 `chat/**` 下的聊天基元，均逐文件子路径）。
 - 通用业务组件：`@fenix/ui-components/config/<name>`。
 - 无渲染工具：`@fenix/ui-components/lib/<name>`；不可归入 `ui/` 或 `config/` 的共享件：`components/<name>`。
-- 该包**有根出口**（`@fenix/ui-components`，160 行 barrel），也存在 156 条 `exports` 子路径（口径：`package.json` 的 `exports` 键数，含根出口 `.` 与样式表 `./styles.css` 两条非组件条目）。**按需深链优先**；根出口适合一次取多个组件的场景。新增/删除组件时必须同批改 `web/index.ts` 与 `package.json` 的 `exports`——两者的不一致会让"深链可用、整包导入不可用"，由 `web/__tests__/barrel-exports.test.ts` 的显式名单守护。
+- 该包**有根出口**（`@fenix/ui-components`，161 行 barrel），也存在 158 条 `exports` 子路径（口径：`package.json` 的 `exports` 键数，含根出口 `.` 与样式表 `./styles.css` 两条非组件条目）。**按需深链优先**；根出口适合一次取多个组件的场景。新增/删除组件时必须同批改 `web/index.ts` 与 `package.json` 的 `exports`——两者的不一致会让"深链可用、整包导入不可用"，由 `web/__tests__/barrel-exports.test.ts` 的显式名单守护。
 
 **归属由消费者集合决定**：出现第二个包消费时就下沉到 `ui-components`，而不是在消费方各留一份；只有一个消费者时留在原处，不做推测性抽象。
 
@@ -465,13 +466,16 @@ if (!data?.length) return <EmptyState icon={<FolderOpen />} title={t("empty.titl
 > `ScopeFilterBar` **不接 i18n**：文案（`placeholder` / `searchLabel` / `scopeGroupLabel` 与每个 `label`）全由 props 传入，key 与语言资源只留在调用方——库内组件自带命名空间会把两边的 key 绑死，同一处文案在两侧各留一份。它也不认识业务作用域（不知道「组织 / 公开」是什么），只把受控的 `query` / `scope` 渲染成统一形态。
 > **空态 / 失败 / 无权限刻意共用一个骨架**（2026-09-22 冻结）：不要新建第二个「空态组件」或「加载失败组件」——三套语义的结构相同，差别只在措辞与「要不要给重试」。判据：**无权限不给重试**（401/403 重试只会重复被拒，该做的是重新登录或找管理员），**失败给重试**。
 
-**2026-09-22 去重批次新下沉共享库的原语**（逐个实测存在，下列名字即 `exports` 子路径或具名导出）：
+**2026-09-22 起去重批次新下沉共享库的原语**（逐个实测存在，下列名字即 `exports` 子路径或具名导出）：
 
 - `ui/status-dot`（`StatusDot` / `StatusDotTone`）：状态圆点收敛为唯一原语，页面级圆点 CSS 随之删除。
 - `ui/spinner`（`Spinner`）：独立成块的加载圆环（§2.5），不再手写圆环类名。
 - `components/ClosableTabPill`（`ClosableTabPill`）：可关闭的页签药丸。
+- `components/agent-catalog-index`（`AgentCatalogIndex` / `AgentCatalogIndexNav` / `AgentCatalogIndexItem` / `AgentCatalogIndexIcon` / `AgentCatalogIndexCopy` / `AgentCatalogIndexMeta` / `AgentCatalogIndexArrow`）：主从面板左侧目录栏的共享构件集——容器 + 目录 + 行 + 图标 / 文案 / 尾注 / 箭头四个槽位件；技能库 / MCP / 模型库 / 知识库 / 组织管理五页改用，字号 / 内边距 / 行高 / 圆角 / 选中配色仍留各页刻度。
 - `lib/clipboard`（`copyTextToClipboard`）与 `lib/format`（`formatDate` / `formatDateTime` / `formatClockTime`）：无渲染的跨包工具，复制与时间展示口径不再各包一份。
 - `chat/view/PublicErrorCard`、`chat/panels/chat-interaction-region`（`ChatInteractionRegion` / `ChatInteractionStack`）、`chat/timeline/tool-json-block`（`ToolJsonBlock`）：聊天域的错误卡、交互区与工具 JSON 块骨架。
+
+> `components/agent-master-detail-workspace`（主从壳）**不在上列**：它早于去重批次（2026-09-20 的 `e8c73280` 前置落地）即已入库，不是该批次新下沉的原语。本批动的是它的消费者——记忆页从已删除的 `components/WorkbenchPanel` 切到它；主从壳现有六个消费者（技能库 / MCP / 模型库 / 知识库 / 组织管理 + 记忆页），前五个的目录栏由上面的 `agent-catalog-index` 供给。
 
 ### 4.2 Dialog 状态管理
 
@@ -1098,7 +1102,7 @@ i18n.use(initReactI18next).init({
 - **`@source` 只扫 `packages/**/web/**`**：组件源码放错位置（如 `packages/<pkg>/components/`）其工具类**不会被生成**——症状是样式静默消失，不是报错。这条由 `scripts/__tests__/app-entry-paths.test.ts` 固化，也是 §1 那条硬规则的由来。
 - **优先 token 类而不是 `dark:` 变体**：`dark:` 变体确实与 `.dark` token 块同源了（两个主题入口都已声明 `@custom-variant dark (&:where(.dark, .dark *))`，见 §3.2），但 `.dark` 在应用内无法被触发，写 `dark:` 等于写死一段不会生效的样式；仍应写 `bg-surface-1` / `text-muted`。
 - **`cn()` 唯一来自 `@fenix/ui-components/lib/cn`**；宿主 `apps/web/src/lib/utils.ts` 的遗留副本与 `@/src/lib/utils` 别名已随 2026-09 去重删除，不要再建第二份。
-- **独立 `.css` 文件只许四类**：① token 入口（`index.css`、`theme.css`）；② **第三方渲染覆盖表**，判据是第三方 DOM **没有 className 挂载点**且第三方 CSS **未分层**（当前唯一实例：`ui-components/web/components/preview/overrides.css`，它也是 `web/components/` 下仅存的 `.css`）；③ **深层样式伴随表**——与源文件同目录、同名的 `.css`，承载**无法用扁平工具类表达**的选择器嵌套／复合表达式值／无标准变体的媒体查询（判据与口径见 `forbidden-code-patterns.md` §「存量清理结果」，门禁 `bun run check:web-style`）；④ 迁移未完成的历史页面级样式表——**不鼓励**，见下。
+- **独立 `.css` 文件只许四类**：① token 入口（`index.css`、`theme.css`）；② **第三方渲染覆盖表**，判据是第三方 DOM **没有 className 挂载点**且第三方 CSS **未分层**（当前唯一实例：`ui-components/web/components/preview/overrides.css`，它也是 `web/components/` 下**除类别 ③ 伴随表外**仅存的 `.css`）；③ **深层样式伴随表**——与源文件同目录、同名的 `.css`，承载**无法用扁平工具类表达**的选择器嵌套／复合表达式值／无标准变体的媒体查询（判据与口径见 `forbidden-code-patterns.md` §「存量清理结果」，门禁 `bun run check:web-style`）；④ 迁移未完成的历史页面级样式表——**不鼓励**，见下。
 - **类别 ② 的三条约束**（照 `overrides.css` 文件头执行）：保留未分层、靠导入顺序取胜，**不要改写成工具类**；**拒绝 `!important`**（全仓现有 6 处 `!` 修饰工具类都属待清理遗留，不要增加）；覆盖选择器必须带第三方类名前缀（如 `ofv-*`）。
 - **类别 ③ 的三条约束**：文件名与源文件严格同名同目录（`AgentEditorChrome.tsx` ↔ `AgentEditorChrome.css`），由持有该样式的模块顶部 `import` 引入；类名优先沿用源码注释里记录的**源选择器名**，否则用 `kebab-case` 语义名；**不包 `@layer`**（未分层才能压过 `@layer utilities`），但每处下沉都要逐条确认胜负关系没变——原写法若会被消费方 `className` 覆盖，就不能整条下沉。
 - **新增 `.css` 的落位**：现有形态——`ui-components/web/chat/css/*.css`（3 份，模块级）、`web/styles/theme.css`（token）、**与源文件同目录同名的伴随表**（类别 ③）、以及与页面同目录的 `xxx.css`（历史遗留，类别 ④）。**新代码只用前三类**；确实必须写 CSS 时优先放组件同目录、命名与组件同名，不要新增页面级样式表。
@@ -1109,7 +1113,32 @@ i18n.use(initReactI18next).init({
 ### 10.1 现状偏离
 
 - ~~**`dark:` 变体与 `.dark` 类不同源**~~ 已消解（2026-09-23）：两个主题入口都声明了 `@custom-variant dark (&:where(.dark, .dark *))`，`dark:` 变体与 `.dark` token 块同源；30 个文件里的 `dark:` 一律保留但在应用内不会命中（系统深色偏好不再能让它们生效）。全站强制亮色见 §3.2。
-- **页面级 `.css` 大量残留且无登记**：`apps/web` 5 个（合计 1810 行，含 `shell/agent-panel.css` 676 行、`shell/artifacts-workspace.css` 376 行）、资源侧 8 个（合计 1983 行，含 `workflow/workflow.css` 642 行、`platform/identity/.../agent-api-keys.css` 210 行）。口径：`apps/web/src/**/*.css` 与 `packages/**/web/**/*.css`，排除 §10 允许的 token 入口（`index.css` 851 行、`styles/theme.css` 269 行）、`chat/css/*.css`（3 份）、`components/preview/overrides.css` 与类别 ③ 的伴随表（67 份，合计 3391 行）。它们与业务 tsx 里的自定义类名联动（如 `agent-tasks-page`），迁移时两者必须同批改。2026-09 的 Tailwind 迁移已把此前的基数压下来（`agent-editor.css` / `-design.css` / `-responsive.css` 三表随 `bfd63e52` 删除；`agent-panel.css` 由 919 行降到 676、`artifacts-workspace.css` 由 664 行降到 376；`agent-organizations.css` 513 行随 2026-09-23 的组织页工具类转换整片删除，只留同目录同名的伴随表 `agent-organizations-workspace.css` 43 行），但**剩余部分仍未登记**。
+- **页面级 `.css` 大量残留且无登记**（实测于 `5626bb1a`，2026-09-23；重跑下面那条命令即可复算）：宿主 `apps/web/src` **5 份 / 1811 行**（含 `shell/agent-panel.css` 677 行、`shell/artifacts-workspace.css` 376 行、`pages/auth-light-brand.css` 371 行）、资源侧 `packages/**/web` **12 份 / 2636 行**（含 `workflow/workflow.css` 640 行、`task/.../agent-tasks.css` 480 行、`knowledge/.../agent-knowledge.css` 331 行、`model-management/.../agent-models.css` 330 行、`platform/identity/.../agent-api-keys.css` 209 行）。它们与业务 tsx 里的自定义类名联动（如 `agent-tasks-page`），迁移时两者必须同批改。
+
+  **计数口径**（就是 §10 四类里**剩下的那一类**，排除项逐条对齐类别 ①②③）：
+
+  - **计入**：`apps/web/src/**/*.css` 与 `packages/**/web/**/*.css` 中**没有同目录同名 `.tsx` / `.ts` 兄弟**的 `.css`；
+  - **排除**：① token 入口 `apps/web/src/index.css`（781 行）与 `ui-components/web/styles/theme.css`（272 行）；② 第三方覆盖表 `ui-components/web/components/preview/overrides.css`（43 行）；③ 类别 ③ 伴随表 **68 份 / 3792 行**（64 份配 `.tsx` 兄弟、4 份配 `.ts` 兄弟）；④ `ui-components/web/chat/css/*.css`（3 份 / 148 行，模块级表，§10 单列）；
+  - **口径外**：`ui-sandbox/`（独立演示应用）、`docs/**`（VitePress 主题）、`e2e/playwright-report/**` 与 `tmp/**`（产物与临时目录）、`.worktrees/**`、`node_modules`/`dist`，以及 `packages/ui-components/demo/demo.css`（包内 demo，不在 `@source` 扫描范围内）；
+  - **边界一例**：`ui-components/web/chat/primitives/conversation-scroll.css` 的源文件叫 `conversation.tsx`（不同名），按上面的机械规则落进本类——它是模块级表而非页面表，这是机械规则的已知代价。
+
+  ```bash
+  # 逐文件分类 + 汇总（仓库根目录执行；输出即上面四类的份数与行数）
+  { find apps/web/src -name '*.css' -not -path '*/node_modules/*' -not -path '*/dist/*'
+    find packages -path '*/web/*' -name '*.css' -not -path '*/node_modules/*' -not -path '*/dist/*'; } | sort | while read -r f; do
+    base=${f%.css}
+    if [ "$f" = apps/web/src/index.css ] || [ "$f" = packages/ui-components/web/styles/theme.css ]; then kind=token
+    elif [ "$f" = packages/ui-components/web/components/preview/overrides.css ]; then kind=override
+    elif [[ "$f" == packages/ui-components/web/chat/css/* ]]; then kind=chat-module
+    elif [ -f "$base.tsx" ] || [ -f "$base.ts" ]; then kind=companion
+    else kind=page; fi
+    printf '%s\t%s\n' "$kind" "$(wc -l < "$f" | tr -d ' ')"
+  done | awk -F'\t' '{n[$1]++; l[$1]+=$2} END {for (k in n) printf "%-12s %2d 份 %5d 行\n", k, n[k], l[k]}'
+  ```
+
+  **别用「上次的数字 ± 本批增删」维护这两行**：v3.0.5 记下的「伴随表 66 份 / 3348 行」，66 取自 `21a8bffa` 提交信息「新增伴随表 66 份」那句——那是**该次下沉新增的文件数**（该提交前全仓只有 1 份伴随表，提交后全仓实测 66 份 / 3499 行，3348 行对不上），v3.0.7 再按「删掉一张 513 行的表」做加减得 67 份 / 3391 行，于是与实测一路偏离到今天的 68 份 / 3792 行。**改这一节就重跑上面的命令**，不要接着算。
+
+  2026-09 的 Tailwind 迁移已把此前的基数压下来（`agent-editor.css` / `-design.css` / `-responsive.css` 三表随 `bfd63e52` 删除；`agent-panel.css` 由 919 行降到 677、`artifacts-workspace.css` 由 664 行降到 376；`agent-organizations.css` 513 行随 2026-09-23 的组织页工具类转换整片删除，只留同目录同名的伴随表 `agent-organizations-workspace.css`——本批由 43 行扩到 92 行），但**剩余部分仍未登记**。
 - **`tw-animate-css` 声明了依赖但源仓库从未 `@import` 它**（只在包内 demo 的 CSS 里导入过），因此 shadcn 过渡动画工具类在应用中是空操作（已在 `ui-components` README 登记）。包内已知限制的完整清单见 `packages/ui-components/README.md`，以那里为准，不在此重复。
 
 ## 11. 开发落地清单
