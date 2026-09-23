@@ -26,6 +26,10 @@ import { type AgentConfigItem, type AgentTreeNode, getRunningInstances } from ".
 interface UseAgentSidebarTreeOptions {
   /** 当前组织 id；未就绪时保持 `ready: false`，不发起请求。 */
   orgId: string | undefined;
+  /**
+   * 选中实例的回调。第三个形参虽然叫 `sessionId`（沿用 `DefaultAppShell` 与路由段 `$sessionId` 的
+   * 既有叫法），实际传的是 **instanceUid**；`null` 表示只到 agent 级路由。理由见 `runEnter` 调用点。
+   */
   onSelectInstance: (instanceId: string, envId: string, sessionId: string | null) => void;
   onDeleteAgentEnvironments?: (environmentIds: string[]) => void;
 }
@@ -166,6 +170,14 @@ export function useAgentSidebarTree({
         enterResult = await unwrap(envApi.enter({ id: envId }, instanceUid ? { instanceUid } : undefined));
       }
 
+      // 第三个实参是 **instanceUid**，不是 DB/ACP 会话 id（形参名 `sessionId` 是历史遗留叫法）。
+      // 该值落到 URL 段 `/agent/chat/{environmentId}/{instanceUid}`，下游有两处硬约束：
+      //   ① `use-chat-panel-runtime` 把它当 WS query 的 `instanceUid`，服务端 `routes/acp/index.ts`
+      //      用 `createDeterministicRcsSessionId(agentId, userId, instanceUid)` 反推期望的 rcsSessionId，
+      //      不一致直接以 4003 关闭——所以派生前缀只能是 instanceUid，客户端与它同源才连得上；
+      //   ② 侧边栏以 `inst.instanceUid === selectedInstanceId` 判定高亮。
+      // YJS doc 隔离与刷新可达性因此都由 instanceUid 承担：不同实例 = 不同 rcsSessionId = 不同 Doc；
+      // 刷新带回同一 instanceUid 即回到同一份 Doc。改传 DB 会话 id 会让 ① 的实例定位失效、② 全部失配。
       onSelectInstance(enterResult.instanceUid, enterResult.environmentId ?? envId, enterResult.instanceUid);
 
       // 刷新列表以展示新实例
