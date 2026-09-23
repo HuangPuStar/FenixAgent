@@ -17,7 +17,6 @@ import { FileL2Section } from "./sections/file-l2";
 import { PreviewL1Section } from "./sections/preview-l1";
 import { PreviewL2Section } from "./sections/preview-l2";
 import { WorkbenchL1Section } from "./sections/workbench-l1";
-import { WorkbenchL2Section } from "./sections/workbench-l2";
 
 /**
  * demo 非 chat 分区的冒烟测试：Design Tokens、Base UI P1/P2/P3 与各业务域 L 系列（File / Preview /
@@ -181,14 +180,6 @@ describe("demo non-chat sections", () => {
     const text = container.textContent ?? "";
     expect(text).toContain("Workbench L1");
     expect(text).toContain("MasterDetailWorkspace");
-  });
-
-  // Workbench L2：工作台面板表面。
-  test("renders Workbench L2 panel surface", () => {
-    act(() => root.render(<WorkbenchL2Section />));
-    const text = container.textContent ?? "";
-    expect(text).toContain("Workbench L2");
-    expect(text).toContain("WorkbenchPanel");
   });
 
   // Data L1：数据表格的排序、过滤、展开与分页。

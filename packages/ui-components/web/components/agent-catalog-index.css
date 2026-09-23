@@ -1,0 +1,199 @@
+/*
+ * 目录索引构件集的深层样式（对应 `agent-catalog-index.tsx`）。
+ *
+ * 为什么下沉：四列模板 `28px minmax(0, 1fr) auto 12px` 含 `minmax()`（复合值，仓库禁令
+ * FCP-WEB-02 无扁平等价物），此前在 `agent-mcp.css` / `agent-models.css` / `agent-skills.css`
+ * 三处逐字重复；同一原因，各页的两列/三列变体（知识库、组织页）此前也各写一份。
+ * 子代选择器（`> div > span`、`> small`、`> strong`）与手写媒体查询同样没有工具类等价物。
+ *
+ * 分工（决定了哪些值写在这里、哪些留给调用方）：
+ * - 这里只写**跨页一致**的骨架：列模板、行与槽盒的排布、文案截断、箭头显隐、头部几何与配色。
+ * - 字号 / 内边距 / 行高 / 圆角 / 选中配色 / 行间距是各页自己的刻度（px 字面量与 13/16 rem
+ *   刻度长期并存，同一角色在两套刻度下取值本来就不同），仍由调用方的工具类或页面 CSS 提供。
+ *   本文件不写它们，就顺带避免了下面「未分层」带来的覆盖难题。
+ *
+ * 层叠：本文件不包 `@layer`（同 `agent-master-detail-workspace.css` 与
+ * `agent-organizations-workspace.css`），未分层声明压过 `@layer utilities`。三个后果：
+ * 1. 调用方**不能**用工具类覆盖本文件写过的属性（同属性工具类会被整条压过，与类名在 className 里
+ *    的先后无关）。需要改这些属性时，用「页面 CSS + 更高特异性选择器」，例如
+ *    `.mcp-directory .agent-catalog-index-header [data-slot="catalog-index-count"] { ... }`。
+ *    **最容易撞上的一条是 `min-width`**：`.agent-catalog-index` 与 `.agent-catalog-index-item` 都写了
+ *    `min-width: 0`（防止一处长不可断文本把 238px 的目录列撑开），于是「给窄屏横置的行一个固定宽度」
+ *    写工具类 `min-w-47.5` 完全无效——它落在 `@layer utilities`，被那条未分层声明整条压过。只能在页面
+ *    CSS 里带上下文提特异性，例如组织页的 `.org-directory-list > .org-directory-row { min-width: … }`。
+ * 2. 本文件没写过的属性（字号、内边距、圆角、背景色……）调用方照常用工具类，互不干扰。
+ * 3. 唯一**不需要抢特异性**的旋钮是图标列宽 `--agent-catalog-index-icon-column`：默认值写在 `var()`
+ *    的**回退位**上（见下方列模板）。页面因此在任意祖先上设一次即可生效——自定义属性在元素自身上的
+ *    声明会压过继承值，若把默认值写成 `.agent-catalog-index-item { --…: 28px }` 这样一条真实声明，
+ *    页面就必须靠更高特异性去抢、还得恰好命中条目元素本身。
+ *
+ * 可覆盖的内部结构（`data-slot`）：头部是页面唯一需要改内部取值的地方，故给稳定钩子，而不是让页面
+ * 依赖 `header > div > strong/span` 那层标签结构——那种选择器会随组件重构静默失配、且不报错。
+ * 钩子取值：`catalog-index-header` / `catalog-index-title-row` / `catalog-index-title` /
+ * `catalog-index-count` / `catalog-index-description`，各自对应下方一条规则。
+ *
+ * 已知偏差：头部的 13px 标题 / 22×20 徽标 / 11px 说明行取自 MCP 与模型库那份逐字相同的取值；
+ * 技能库收编前是 13/16 rem 刻度下的更小取值（9.75px 标题、17.875×16.25 徽标），收编后按本规范
+ * 统一——这是「消掉四处同构」的直接结果，逐条前后对照见交付说明。
+ * 标题字重显式钉 600（见 `[data-slot="catalog-index-title"]`）：`<strong>` 的 UA 字重是 `bolder`，
+ * 在 600 的父级上按 CSS Fonts 的映射表会解析成 900——那是继承来的偶然值而不是设计值。钉死之后
+ * 本组件的取值与注释一致，页面不必再各自纠偏；代价是原先落在 900 的页面计算字重变为 600。
+ * 移除条件：无。承载的是仓库禁令下的必要下沉；若将来 `grid-template-columns` 有了扁平等价物，
+ * 可把列模板改回工具类，其余选择器（槽位、媒体查询）仍需留在本文件。
+ */
+
+/* 目录栏：作为壳左列的网格项，必须允许收缩到 min-content 以下，否则一处长不可断文本
+   （组织 slug、外部技能名）就会把右列挤变形。其余外观（内边距/背景/边框）归页面。 */
+.agent-catalog-index {
+  min-width: 0;
+}
+
+/* 头部：标题行左右两端对齐（标题 ↔ 计数徽标），说明行另起一行。
+   选择器一律走 `data-slot` 钩子而不是 `> div > span` 这层标签结构：钩子是页面写覆盖时的落点，
+   结构选择器会在组件重构时静默失配（详见文件头「可覆盖的内部结构」）。 */
+.agent-catalog-index-header {
+  padding: 0 8px 14px;
+}
+
+.agent-catalog-index-header [data-slot="catalog-index-title-row"] {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+/* 标题字重钉死在 600：`<strong>` 在 600 的父级上按 `bolder` 映射表会变成 900，那是偶然值。
+   本规则同时也把「某页想要别的字重」变成一次普通的带上下文覆盖（见组织页的 CSS）。 */
+.agent-catalog-index-header [data-slot="catalog-index-title"] {
+  font-weight: 600;
+}
+
+.agent-catalog-index-header [data-slot="catalog-index-count"] {
+  display: grid;
+  min-width: 22px;
+  height: 20px;
+  place-items: center;
+  border-radius: 5px;
+  color: #65728a;
+  background: #e9edf4;
+  font-size: 11px;
+}
+
+.agent-catalog-index-header [data-slot="catalog-index-description"] {
+  display: block;
+  margin-top: 4px;
+  color: #96a2b5;
+  font-size: 11px;
+}
+
+/* 列表：行间距归页面（各页 3px / 2.4375px / 4px），这里只固定纵向流。 */
+.agent-catalog-index-nav {
+  display: grid;
+}
+
+/* 条目：列模板是本组件要消掉的那处逐字重复。
+   图标列宽走自定义属性 `--agent-catalog-index-icon-column`，三个预设的缺省值与迁移前逐字相同
+   （前两档 28px、`icon-copy` 34px）——所以「不设该变量」就等于今天的观感。
+   组织页是反例：它的行首是一枚**裸的 13px 图标**（`size-4`，没有图标盒），写死 28px 会把文案
+   整体右推 15px，故它把该变量设成 `1rem`（见 `agent-organizations-workspace.css`）。 */
+.agent-catalog-index-item {
+  display: grid;
+  min-width: 0;
+  align-items: center;
+  grid-template-columns: var(--agent-catalog-index-icon-column, 28px) minmax(0, 1fr) auto 12px;
+  border: 0;
+  text-align: left;
+}
+
+/* 无箭头档（组织页）：尾列是纯文本角色标签。 */
+.agent-catalog-index-item[data-columns="icon-copy-meta"] {
+  grid-template-columns: var(--agent-catalog-index-icon-column, 28px) minmax(0, 1fr) auto;
+}
+
+/* 图标+文案档（知识库）：图标更大，没有独立的尾注列，动作在按钮之外。 */
+.agent-catalog-index-item[data-columns="icon-copy"] {
+  grid-template-columns: var(--agent-catalog-index-icon-column, 34px) minmax(0, 1fr);
+}
+
+/* 带行尾动作的条目的外壳：按钮占满第一列，动作贴右。底色/悬停由页面画在外壳上。
+   何时渲染它由 TSX 的 `shell` 开关决定，与「有没有行尾动作」解耦——知识库每一行都要这层壳
+   （悬停/选中底色画在壳上），哪怕那一行没有删除按钮。 */
+.agent-catalog-index-item-shell {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+}
+
+.agent-catalog-index-icon {
+  display: grid;
+  place-items: center;
+}
+
+.agent-catalog-index-copy {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+}
+
+/* 两行都单行截断：长名字/长描述不许把 238px 的目录列撑开。 */
+.agent-catalog-index-copy > strong,
+.agent-catalog-index-copy > small {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.agent-catalog-index-meta {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  align-items: flex-end;
+}
+
+/* 箭头只在选中行出现：唯一与选中态耦合的样式，靠 `aria-current` 命中，
+   调用方因此不必把 `selected` 再喂给箭头组件。 */
+.agent-catalog-index-arrow {
+  opacity: 0;
+}
+
+.agent-catalog-index-item[aria-current="page"] .agent-catalog-index-arrow {
+  opacity: 1;
+}
+
+/*
+ * 窄屏「左栏横置」：主从壳在 <48rem 只把两列改成上下堆叠，左栏仍是纵向列表——对「左栏本身
+ * 就是导航」的页面（组织、记忆）会把整屏高度吃光。这里给出横置表达：列表变成横向滚动条，
+ * 行退出收缩（否则 flex 会把每行压成等分，长名字全部截断到看不出差别）。
+ *
+ * 行宽不在这里定：窄屏一行放多宽取决于页面（组织页 `min-w-47.5`，记忆页的视角 tab 按内容），
+ * 所以只保证「不收缩」，宽度留给调用方。
+ *
+ * 为什么是两个断点而不是一个：`md` 与主从壳的单列断点严格对齐；`900px` 给「左栏自身在 900px
+ * 才收起」的页面（组织页的列定义在 `agent-organizations-workspace.css` 里是未分层 + 900px）。
+ * 900px 不在 Tailwind 标准档（sm 640 / md 768 / lg 1024），FCP-WEB-03 禁止任意断点变体，
+ * 所以只能在伴生 CSS 里手写这条媒体查询——与组织页把 900px 留在 CSS 里是同一个原因：
+ * 换成 1024px 会让 901~1024px 出现「两列还在、左栏 238px 里塞一条横向滚动条」，
+ * 换成 768px 则 769~900px 反过来（两列已该收成一行，左栏却还是纵向长列表）。
+ */
+@media (width < 48rem) {
+  .agent-catalog-index-nav[data-strip="md"] {
+    display: flex;
+    overflow-x: auto;
+  }
+
+  .agent-catalog-index-nav[data-strip="md"] > * {
+    flex: 0 0 auto;
+  }
+}
+
+@media (width <= 900px) {
+  .agent-catalog-index-nav[data-strip="900px"] {
+    display: flex;
+    overflow-x: auto;
+  }
+
+  .agent-catalog-index-nav[data-strip="900px"] > * {
+    flex: 0 0 auto;
+  }
+}

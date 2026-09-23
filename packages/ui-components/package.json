@@ -348,9 +348,9 @@
       "types": "./web/components/PreviewTab.tsx",
       "default": "./web/components/PreviewTab.tsx"
     },
-    "./components/WorkbenchPanel": {
-      "types": "./web/components/WorkbenchPanel.tsx",
-      "default": "./web/components/WorkbenchPanel.tsx"
+    "./components/agent-catalog-index": {
+      "types": "./web/components/agent-catalog-index.tsx",
+      "default": "./web/components/agent-catalog-index.tsx"
     },
     "./components/agent-master-detail-workspace": {
       "types": "./web/components/agent-master-detail-workspace.tsx",
