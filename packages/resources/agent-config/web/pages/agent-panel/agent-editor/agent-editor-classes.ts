@@ -40,9 +40,35 @@ export const WORKSPACE = "agent-editor-workspace grid min-h-0 flex-1 overflow-hi
 /** 三栏工作区（Tabs 根节点）：同上，但需 `!` 压过组件的 `display:flex`。 */
 export const WORKSPACE_TABS =
   "agent-editor-workspace !grid min-h-0 flex-1 overflow-hidden max-md:!flex max-md:!flex-col";
-/** 左栏导航：列布局 + 右分隔线；≤759 变成横向滚动条带。 */
+/**
+ * 左栏导航：列布局 + 右分隔线；≤759 变成横向滚动条带。
+ *
+ * **本栏与右栏（下方 `SUMMARY_ASIDE`、`AgentEditorChrome.tsx` 里右栏的内联同类串）一律不带
+ * `overscroll-contain`**（2026-09-23 裁定；结构守卫见 `__tests__/agent-editor-overscroll-chain.test.ts`）：
+ *
+ * - 机制：三栏都是工作区里的常规流列，且位于**更长可滚祖先**之内——宿主是智能体管理页时，祖先链上
+ *   唯一可被用户滚动的容器是 `AppPage` 的 `main`（headless Chrome 复刻实测 1440×900：clientH 900 /
+ *   scrollH 1955）；列自身 `overflow-y-auto` 但内容通常不溢出（实测列高 787px，左栏内容 ≈254px、
+ *   右栏 ≈481px）。指针停在列上时浏览器判定滚轮由本列消费 → 本列没得滚、也不链式上溯，形成
+ *   **随指针位置移动的滚轮死区**：实测含类时向下 3×120 自身 0→0 且 `main` 0→0，向上（`main` 已滚
+ *   300）同为 300→300（双向都死）。
+ * - 为什么选「都不带」：同一面板的头部、页脚、中栏 `CONTENT` 都会链式上溯滚 `main`（实测 0→120 /
+ *   0→360 / 中栏贴底后 0→240），只有左右两列例外——去掉是**与已成立的行为对齐**，不是引入新行为。
+ * - 迁移遗留：旧 `agent-editor.css` 的组选择器
+ *   `.agent-editor-map, .agent-editor-content, .agent-editor-summary { … overscroll-behavior: contain }`
+ *   三栏都有，迁移时只有中栏丢了这一行，三栏本就不一致；这次把左右两栏也去掉。
+ * - 收益：面板是 `top-3 bottom-3` **锚在宿主盒子上**（高度由宿主决定、可高过视口，见
+ *   `agent-editor-classes.css` 里 `.agent-editor-panel` 的 `max-height` 注记与 `AgentManagementPage.tsx`
+ *   的宿主注释）。管理页可滚时点「编辑」会把面板顶部留在视口外，含类时指针若落在左右两列上，
+ *   一个滚轮都动不了、没法把面板滚回来。
+ * - 代价（有意取舍）：去掉后指针在左右列上滚轮会链式上溯，**被非模态浮层遮住的管理页会跟着动**
+ *   （面板随页面移动）。要改回 `overscroll-contain`，先读这条与守卫用例。
+ *
+ * 例外：`≤759px` 的 `max-md:` 变体把本栏改成横向条带（`overflow-y-hidden`），此时面板是 Radix Sheet
+ * （modal、无祖先可滚），含类与去掉的实测读数一致，故该变体保持原样。
+ */
 export const CONFIG_MAP =
-  "flex min-h-0 flex-col overflow-y-auto overscroll-contain border-r border-slate-200 bg-gray-50 px-2 pt-2.5 pb-2 " +
+  "flex min-h-0 flex-col overflow-y-auto border-r border-slate-200 bg-gray-50 px-2 pt-2.5 pb-2 " +
   "lg:max-2xl:px-1.75 lg:max-2xl:pt-2 lg:max-2xl:pb-1.75 " +
   "md:max-lg:px-1.5 md:max-lg:pt-2 md:max-lg:pb-1.75 " +
   "max-md:flex-none max-md:overflow-x-auto max-md:overflow-y-hidden " +
@@ -81,11 +107,20 @@ export const MAP_COPY = "agent-editor-map-copy flex min-w-0 flex-col";
  * 中栏内容区：白底。
  * 内边距按「宽度档 × 高度档」写成互斥条件（避免同属性多值看生成顺序），整族已下沉到同名 CSS 的
  * `.agent-editor-content`，`≤759px` 的纵向伸缩仍由这里的 `max-md:flex-1` 表达。
+ *
+ * 本栏是上方 `CONFIG_MAP` 注记里那条「三栏滚动链」的**基准**：迁移后本栏就不带 `overscroll-contain`，
+ * 左右两栏已于 2026-09-23 对齐到本栏（实测本栏贴底后滚轮会继续滚 `main`）。
  */
 export const CONTENT = "agent-editor-content overflow-x-hidden bg-white max-md:flex-1";
-/** 右栏汇总：左分隔线 + 淡径向渐变底（渐变见同名 CSS 的 `.agent-editor-summary`，底色由 `bg-slate-50` 提供）。 */
+/**
+ * 右栏汇总：左分隔线 + 淡径向渐变底（渐变见同名 CSS 的 `.agent-editor-summary`，底色由 `bg-slate-50` 提供）。
+ *
+ * 本常量供**加载壳**（`AgentEditorLoadingShell`）使用；完成态是 `AgentEditorChrome.tsx` 里的内联同类串
+ * （`.agent-editor-summary-aside`）。两者同理**不带 `overscroll-contain`**——机制、实测读数与代价见上方
+ * `CONFIG_MAP` 注记，改回前先读那条。
+ */
 export const SUMMARY_ASIDE =
-  "agent-editor-summary min-h-0 overflow-y-auto overscroll-contain border-l border-slate-200 bg-slate-50 " +
+  "agent-editor-summary min-h-0 overflow-y-auto border-l border-slate-200 bg-slate-50 " +
   "px-3 pt-4 pb-3.5 " +
   "lg:max-2xl:[padding:12px_10px_10px] " +
   "md:max-lg:[padding:10px_8px_8px] " +

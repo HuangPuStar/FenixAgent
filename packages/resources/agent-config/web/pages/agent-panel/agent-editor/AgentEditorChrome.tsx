@@ -258,8 +258,13 @@ export function AgentEditorSummary({
       meta: t("editor.summaryRuntimeMeta"),
     },
   ];
+  // 右栏汇总**不带 `overscroll-contain`**：本栏在更长可滚祖先（管理页 `AppPage` 的 `main`）之内的常规流列，
+  // 自身内容通常不溢出，带该类时滚轮被本列吃掉且不链式上溯（实测双向 0→0），面板顶部留在视口外时没法用
+  // 滚轮把它滚回来。去掉后与同面板中栏 `CONTENT`、头部、页脚的既有实测行为一致；代价是被浮层遮住的管理页
+  // 会随滚轮移动。机制、实测读数与取舍见 `agent-editor-classes.ts` 的 `CONFIG_MAP` 注记，
+  // 结构守卫见 `__tests__/agent-editor-overscroll-chain.test.ts`。
   return (
-    <aside className="agent-editor-summary-aside min-h-0 overflow-y-auto overscroll-contain border-l border-slate-200 bg-slate-50 px-3 pb-3.5 pt-4 md:max-lg:block">
+    <aside className="agent-editor-summary-aside min-h-0 overflow-y-auto border-l border-slate-200 bg-slate-50 px-3 pb-3.5 pt-4 md:max-lg:block">
       <span className={EYEBROW} data-slot="editor-summary-eyebrow">
         {t("editor.configurationOverview")}
       </span>
