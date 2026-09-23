@@ -176,7 +176,7 @@ Agent 通信分为三种明确场景，底层 relay 与 ACP 消息规则必须�
 4. `session/list`、`session/new`、`session/load` 和 `session/resume` 的 `cwd` 必须由服务端 translator 注入；Agent status 到达前不得发送 `list_sessions`。
 5. Y.Doc 名称使用 `chat:{rcsSessionId}` / `session:{rcsSessionId}`，广播必须按 `rcsSessionId` 隔离，禁止全局广播会话数据。
 6. 用户消息只由后端写入 Y.Doc；前端不得维护第二份 `localUserEntries`，否则 Agent 回显会造成双写。
-7. 清理会话内容使用 `clearSessionDocContent` 在原 Y.Doc 事务中完成；禁止通过 destroy + recreate 制造异步竞态。`create_session` 同样必须先清空旧 Session Doc。
+7. 会话切换与内容清理走"换代"：由 `DocManager.replaceProjection` 完成；不得通过 destroy + recreate 制造异步竞态。`chat-writer.ts` 的 `clearSessionDocContent`（及专用的 `clearPeriTaskViews`）已删除，不要恢复旧的清空流程（`docs/arch/19-yjs-chat-streaming.md` §4.2 / 前端规范 §8.5 第 7 条）；`create_session` 同样走换代。
 8. 同一 `instanceId + userId` 的多标签页共享一个 relay handle；引用计数归零后才释放，切换 session 时同步同组客户端的 `acpSessionId`。
 9. WebSocket 发送背压阈值为 64 KB，默认连接上限为 200（`YJS_MAX_CLIENTS`）；修改时必须保留限流、资源释放和单连接故障隔离。
 10. `ChatView` 与 `EntryRenderer` 使用 `React.memo`；comparator 必须与调用方 prop 稳定性保持一致，修改 props 时同步更新 comparator 和相关渲染测试。

@@ -27,7 +27,6 @@ function createRealStack(options: { ensureRunning?: GatewayDependencies["ensureR
   const docManager = new DocManager();
   const sessionChannel = new SessionChannel({
     docManager,
-    prepareClearSessionSnapshot: async () => {},
     syncSessionId: () => {},
     reportError: () => {},
   });

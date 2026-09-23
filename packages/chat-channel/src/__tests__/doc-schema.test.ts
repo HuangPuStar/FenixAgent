@@ -13,7 +13,6 @@ import {
 import { applyNormalizedEvent, type DocPair } from "../state/aggregator";
 import {
   clearChatDocContent,
-  clearSessionDocContent,
   getChatRoot,
   getEntryOrder,
   getPeriTaskOrder,
@@ -156,15 +155,12 @@ test("session_updated with models/modes projects model and mode state", () => {
   const modes = modeState.get("availableModes") as Y.Array<Y.Map<unknown>>;
   expect(modes.length).toBe(1);
   expect(modes.get(0)?.get("id")).toBe("code");
-
-  // 切换会话（clearSessionDocContent）清空 session map：model/mode 随会话重建，不留旧值
-  clearSessionDocContent(pair.session);
-  expect((getSessionRoot(pair.session).get("session") as Y.Map<unknown>).get("modelState")).toBeUndefined();
+  // 会话切换不再经 clearSessionDocContent 清理（该函数已随换代口径删除，见前端规范 §8.5 第 7 条）：
+  // 切换走 DocManager.replaceProjection 换出一份 factory 初始化好的空 Doc，覆盖见 doc-manager.test.ts。
 });
 
-// available_commands_update（agent 启动后下发）→ Session Doc session map 投影，
-// 切换会话时随 session map 清空，不留旧会话的命令
-test("session_updated with availableCommands projects commands and clears on session switch", () => {
+// available_commands_update（agent 启动后下发）→ Session Doc session map 投影（命令面板的数据源）
+test("session_updated with availableCommands projects commands", () => {
   applyNormalizedEvent(pair, {
     type: "session_updated",
     update: {
@@ -184,10 +180,8 @@ test("session_updated with availableCommands projects commands and clears on ses
   expect(availableCommands.get(0)?.get("name")).toBe("help");
   expect(availableCommands.get(0)?.get("input")).toEqual({ hint: "command name" });
   expect(availableCommands.get(1)?.get("description")).toBe("Clear chat");
-
-  // 切换会话（clearSessionDocContent）清空 session map：命令随会话重建，不留旧值
-  clearSessionDocContent(pair.session);
-  expect((getSessionRoot(pair.session).get("session") as Y.Map<unknown>).get("availableCommands")).toBeUndefined();
+  // 会话切换后的命令来源是换代后的新 Doc（replaceProjection → factory 初始化），
+  // 不再由 clearSessionDocContent 清空旧 session map（该函数已删除，见 §8.5 第 7 条）。
 });
 
 // 每次成功投影后按「实际触碰的 Doc」递增 projectionVersion（SP-A2）：事件只
@@ -381,8 +375,8 @@ test("agent status projects to session doc agent", () => {
   expect(caps.get("loadSession")).toBe(true);
 });
 
-// tombstone 清理：切换会话时清空两份 Doc 但保留 schema 骨架，projectionVersion 提升
-test("clear resets docs keeping schema skeleton and bumping projectionVersion", () => {
+// tombstone 清理：Chat Doc 清空后保留 schema 骨架，projectionVersion 提升
+test("clearChatDocContent resets the chat doc keeping schema skeleton and bumping projectionVersion", () => {
   applyNormalizedEvent(pair, event("user_message", { content: { type: "text", text: "hi" } }, "turn_1"));
   applyNormalizedEvent(pair, event("message_delta", { content: { type: "text", text: "hello" } }));
 
@@ -391,9 +385,9 @@ test("clear resets docs keeping schema skeleton and bumping projectionVersion", 
   });
 
   const chatVersionBefore = getChatRoot(pair.chat).get("projectionVersion") as number;
-  // 使用与 doc-manager 相同的清理原语（领域 tombstone：清内容、留骨架、升版本）
+  // 使用与 doc-manager 相同的清理原语（领域 tombstone：清内容、留骨架、升版本）；
+  // Session Doc 的切换清理改走换代（replaceProjection），不再有对应的清空原语。
   clearChatDocContent(pair.chat);
-  clearSessionDocContent(pair.session);
 
   // 骨架保留
   expect(getChatRoot(pair.chat).get("schemaVersion")).toBe(CHAT_DOC_SCHEMA_VERSION);
@@ -412,7 +406,7 @@ test("clear resets docs keeping schema skeleton and bumping projectionVersion", 
   expect(getChatRoot(pair.chat).get("planSeq")).toBeUndefined();
   // projectionVersion 演进
   expect(getChatRoot(pair.chat).get("projectionVersion")).toBeGreaterThan(chatVersionBefore);
-  // sessions 是 agent 级投影，清理后保留（键集不变）；内容断言见 session_list 用例
+  // Session Doc 骨架：键集在整份 Doc 生命周期内稳定（换代由 factory 按同一结构初始化）
   expect(sessionRootKeys()).toEqual([
     "agent",
     "pendingPermissions",
@@ -427,7 +421,7 @@ test("clear resets docs keeping schema skeleton and bumping projectionVersion", 
   ]);
 });
 
-// session_list 事件：全量同步到 Session Doc sessions 投影（字段、幂等、删除自愈、clear 保留）
+// session_list 事件：全量同步到 Session Doc sessions 投影（字段、幂等、删除自愈、骨架稳定）
 test("session_list syncs sessions map with idempotent full sync", () => {
   const listResponse = (sessions: Array<Record<string, unknown>>) => event("session_list", { sessions });
 
@@ -467,8 +461,7 @@ test("session_list syncs sessions map with idempotent full sync", () => {
   applyNormalizedEvent(pair, listResponse([{ sessionId: "ses_1", title: "A" }, { title: "no-id" }]));
   expect(sessions.size).toBe(1);
 
-  // clearSessionDocContent 保留 sessions（agent 级数据，跨会话切换不闪空）
-  clearSessionDocContent(pair.session);
+  // 删除自愈后 sessions 数量回到 1，且根键集保持 schema 骨架不变
   expect(sessions.size).toBe(1);
   expect(sessionRootKeys()).toEqual([
     "agent",
@@ -611,33 +604,6 @@ test("repeated initSessionDocStructure is idempotent for tasks subtree", () => {
   expect(getPeriTasksMap(ydoc).get("task_1")?.get("title")).toBe("run tests");
 });
 
-// clear 语义：Peri Task 是会话级瞬时投影，切换会话（clearSessionDocContent）时
-// tasks/taskOrder 随 Doc 清空，agent 状态与 sessions（agent 级数据）保留
-test("clearSessionDocContent clears peri task subtree but keeps agent and sessions", () => {
-  const view: PeriTaskViewProjection = {
-    taskId: "task_1",
-    kind: "subagent",
-    taskSubtype: null,
-    title: "researcher",
-    summary: "done",
-    status: "completed",
-    turnId: "turn_1",
-    isBackground: false,
-    startedAt: "2026-08-18T00:00:00.000Z",
-    completedAt: "2026-08-18T00:01:00.000Z",
-    updatedAt: "2026-08-18T00:01:00.000Z",
-    detailAvailability: "preview",
-  };
-  upsertPeriTaskView(pair.session, view);
-  // agent 状态与 sessions 为 agent 级数据（跨会话保留）
-  applyNormalizedEvent(pair, event("agent_status", { instanceId: "inst_1", status: "ready", capabilities: {} }));
-  applyNormalizedEvent(pair, event("session_list", { sessions: [{ sessionId: "ses_1", title: "A" }] }));
-
-  clearSessionDocContent(pair.session);
-
-  expect(getPeriTasksMap(pair.session).size).toBe(0);
-  expect(getPeriTaskOrder(pair.session).length).toBe(0);
-  const agent = getSessionRoot(pair.session).get("agent") as Y.Map<unknown>;
-  expect(agent.get("instanceId")).toBe("inst_1");
-  expect((getSessionRoot(pair.session).get("sessions") as Y.Map<unknown>).size).toBe(1);
-});
+// clear 语义：Peri Task 是会话级瞬时投影（同 pendingPermissions 语义），
+// 会话切换由换代（DocManager.replaceProjection）换出空 Doc 实现——原 clearSessionDocContent
+// 专用的清空用例已随该函数一并删除（前端规范 §8.5 第 7 条 / docs/arch/19 §4.2）。

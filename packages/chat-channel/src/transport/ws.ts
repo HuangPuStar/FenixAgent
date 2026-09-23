@@ -22,6 +22,17 @@ const MAX_CONSECUTIVE_UNSTABLE_DISCONNECTS = 6;
 /** 连接持续达到此时间才视为稳定恢复，并清零短连接失败计数。 */
 const STABLE_CONNECTION_MS = 30_000;
 
+/**
+ * 发送背压软阈值（**字节**）。与 broadcaster 的服务端发送口径同值（64 KB，
+ * `CLAUDE.md` YJS/Chat 第 9 条），单位即 `WebSocket.bufferedAmount` 的单位。
+ *
+ * 判定口径：只拦「继续排队」，不改变重连与终态码策略（前端规范 §8.3）——不 close、不切连接状态、
+ * 不碰 `WS_CLOSE_CODE_POLICY`；超阈值时本次发送判为失败（返回 false，且不留静默丢弃），
+ * 由调用方决定重试或给出用户可见反馈。适配器不提供 `bufferedAmount` 时视为 0（未拥塞），
+ * 与 `agent-runtime/src/types/ws-types.ts` 的既有判定同口径。
+ */
+export const SEND_BACKPRESSURE_THRESHOLD_BYTES = 64 * 1024;
+
 export type YjsWsState = "connecting" | "connected" | "disconnected" | "error";
 
 export type YjsWsError = PublicError;
@@ -55,7 +66,12 @@ export interface YjsWsOptions {
 export interface YjsWsClient {
   connect(): void;
   disconnect(): void;
-  send(data: unknown): void;
+  /**
+   * 发送一帧。返回**是否真正写入 socket**：未连接或触发发送背压（见
+   * `SEND_BACKPRESSURE_THRESHOLD_BYTES`）时为 `false`——调用方据此重试或给出反馈，
+   * 不得把 `false` 当成已送达（静默丢弃是「消息无声消失」的根因）。
+   */
+  send(data: unknown): boolean;
   isConnected(): boolean;
 }
 
@@ -280,12 +296,21 @@ export function createYjsWsClient(options: YjsWsOptions): YjsWsClient {
     setState("disconnected");
   }
 
-  function send(data: unknown) {
-    if (ws?.readyState === WebSocket.OPEN) {
-      ws.send(JSON.stringify(data));
-    } else {
+  function send(data: unknown): boolean {
+    if (ws?.readyState !== WebSocket.OPEN) {
       console.warn("[yjs-ws] send FAILED: readyState=", ws?.readyState);
+      return false;
     }
+    // 前端发送背压（前端规范 §8.6）：原先只判 readyState，排队的帧在连接死掉后不会重放，
+    // 只会带来无界 bufferedAmount。超过软阈值即拒绝本次发送并返回 false，
+    // 让调用方（如 use-chat-panel-runtime 的 sendViaWs）走既有的失败反馈路径。
+    const bufferedAmount = ws.bufferedAmount ?? 0;
+    if (bufferedAmount > SEND_BACKPRESSURE_THRESHOLD_BYTES) {
+      console.warn("[yjs-ws] send dropped by backpressure: bufferedAmount=", bufferedAmount);
+      return false;
+    }
+    ws.send(JSON.stringify(data));
+    return true;
   }
 
   function isConnected() {

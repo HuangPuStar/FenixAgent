@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef } from "react";
+import { type FileEventsConnection, openFileEventsConnection } from "@/src/api/file-events";
 import { revalidateWorkspaceTree } from "@/src/api/fs";
 
 interface UseFileTreeEventsOptions {
@@ -7,12 +8,15 @@ interface UseFileTreeEventsOptions {
   onUnavailable: (error: unknown) => void;
 }
 
+/** 连接存活时收到变更事件后的去抖窗口（毫秒）：批量变更合并成一次条件请求。 */
+const REVALIDATE_DEBOUNCE_MS = 500;
+
 /** Subscribe to remote workspace invalidations while preserving the last good tree during outages. */
 export function useFileTreeEvents({ envId, applyTree, onUnavailable }: UseFileTreeEventsOptions) {
   const etagRef = useRef<string | null>(null);
   const revalidateTimerRef = useRef<number | null>(null);
   const lastRevalidateAtRef = useRef(0);
-  const wsRef = useRef<WebSocket | null>(null);
+  const connectionRef = useRef<FileEventsConnection | null>(null);
   const reconnectTimerRef = useRef<number | null>(null);
   const reconnectAttemptRef = useRef(0);
   const shouldReconnectRef = useRef(false);
@@ -48,52 +52,37 @@ export function useFileTreeEvents({ envId, applyTree, onUnavailable }: UseFileTr
   const connect = useCallback(() => {
     if (!envId) return;
     shouldReconnectRef.current = true;
-    if (wsRef.current?.readyState === WebSocket.OPEN) return;
-    wsRef.current?.close();
-    const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
-    const organizationId = localStorage.getItem("active_org_id");
-    const query = organizationId ? `?active_org_id=${encodeURIComponent(organizationId)}` : "";
-    const socket = new WebSocket(`${protocol}//${window.location.host}/web/file-events${query}`);
-    wsRef.current = socket;
-    socket.onopen = () => {
-      reconnectAttemptRef.current = 0;
-      socket.send(JSON.stringify({ type: "subscribe", environments: [envId] }));
-      void revalidateTree();
-    };
-    socket.onmessage = (event) => {
-      try {
-        const frame = JSON.parse(String(event.data)) as { type?: string; environment_id?: string };
-        if (frame.environment_id !== envId) return;
-        if (frame.type === "invalidate_all") {
-          scheduleRevalidate(0);
-        } else if (frame.type === "file_changed" || frame.type === "file_changed_batch") {
-          scheduleRevalidate(500);
-        }
-      } catch (error) {
-        console.error("Invalid file-events frame:", error);
-      }
-    };
-    socket.onclose = () => {
-      if (wsRef.current !== socket) return;
-      wsRef.current = null;
-      if (!shouldReconnectRef.current) return;
-      const delay = Math.min(3_000 * 2 ** reconnectAttemptRef.current, 30_000);
-      reconnectAttemptRef.current += 1;
-      reconnectTimerRef.current = window.setTimeout(connect, delay);
-    };
+    if (connectionRef.current?.isOpen()) return;
+    connectionRef.current?.close();
+    const connection = openFileEventsConnection(envId, {
+      onOpen: () => {
+        reconnectAttemptRef.current = 0;
+        void revalidateTree();
+      },
+      onFrame: (frame) => scheduleRevalidate(frame.kind === "invalidate_all" ? 0 : REVALIDATE_DEBOUNCE_MS),
+      onClose: () => {
+        if (connectionRef.current !== connection) return;
+        connectionRef.current = null;
+        if (!shouldReconnectRef.current) return;
+        const delay = Math.min(3_000 * 2 ** reconnectAttemptRef.current, 30_000);
+        reconnectAttemptRef.current += 1;
+        reconnectTimerRef.current = window.setTimeout(connect, delay);
+      },
+    });
+    connectionRef.current = connection;
   }, [envId, revalidateTree, scheduleRevalidate]);
 
   useEffect(() => {
     if (!envId) return;
     connect();
     const onVisible = () =>
-      document.visibilityState === "visible" && (wsRef.current ? scheduleRevalidate(0) : connect());
+      document.visibilityState === "visible" && (connectionRef.current ? scheduleRevalidate(0) : connect());
     document.addEventListener("visibilitychange", onVisible);
     return () => {
       shouldReconnectRef.current = false;
       document.removeEventListener("visibilitychange", onVisible);
-      wsRef.current?.close();
-      wsRef.current = null;
+      connectionRef.current?.close();
+      connectionRef.current = null;
       if (reconnectTimerRef.current !== null) window.clearTimeout(reconnectTimerRef.current);
       if (revalidateTimerRef.current !== null) window.clearTimeout(revalidateTimerRef.current);
     };

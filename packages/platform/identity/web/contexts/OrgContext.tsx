@@ -1,6 +1,7 @@
 import { unwrap } from "@fenix/web-runtime/api/request";
 import { OrgSessionProvider } from "@fenix/web-runtime/contexts/org-session";
 import { NS } from "@fenix/web-runtime/i18n/namespace";
+import { ACTIVE_ORG_STORAGE_KEY, readActiveOrgId } from "@fenix/web-runtime/lib/active-org";
 import { useNavigate } from "@tanstack/react-router";
 import { createContext, type ReactNode, useCallback, useContext, useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
@@ -28,18 +29,20 @@ interface OrgContextValue {
   refreshOrgs: () => Promise<void>;
 }
 
-const STORAGE_KEY = "active_org_id";
-
 const OrgContext = createContext<OrgContextValue | null>(null);
 
-/** 给全局 fetch 注入 X-Active-Org-Id header */
+/**
+ * 给全局 fetch 注入 X-Active-Org-Id header。
+ * 键与读取动作都经 `@fenix/web-runtime/lib/active-org` 的契约（前端规范 §3.3）：拦截器在 React
+ * 之外运行，拿不到 `OrgSession` context，因此它与两条实时通道共用同一份持久化读取，而不是各写一份直读。
+ */
 let fetchInterceptorInstalled = false;
 function installFetchInterceptor() {
   if (fetchInterceptorInstalled) return;
   fetchInterceptorInstalled = true;
   const origFetch = window.fetch;
   window.fetch = ((input: RequestInfo | URL, init?: RequestInit) => {
-    const activeOrgId = localStorage.getItem(STORAGE_KEY);
+    const activeOrgId = readActiveOrgId();
     if (activeOrgId) {
       const headers = new Headers(init?.headers);
       if (!headers.has("X-Active-Org-Id")) headers.set("X-Active-Org-Id", activeOrgId);
@@ -68,12 +71,12 @@ export function OrgProvider({ children }: { children: ReactNode }) {
       // 运行时数据包含 role 字段，但 OrgInfo 类型未声明，透传转型
       const list = raw as unknown as OrgWithRole[];
       setOrgs(list);
-      const activeOrgId = localStorage.getItem(STORAGE_KEY);
+      const activeOrgId = readActiveOrgId();
       const current = list.find((o) => o.id === activeOrgId) || list[0];
       if (current) {
         setOrg(current);
         setRole(current.role ?? "");
-        localStorage.setItem(STORAGE_KEY, current.id);
+        localStorage.setItem(ACTIVE_ORG_STORAGE_KEY, current.id);
       }
     } catch (err) {
       console.error("Failed to load org context:", err);
@@ -92,7 +95,7 @@ export function OrgProvider({ children }: { children: ReactNode }) {
       // 快照当前值，用于失败时回滚
       const oldOrgId = org?.id;
       const _oldRole = role;
-      const storedOrgId = localStorage.getItem(STORAGE_KEY);
+      const storedOrgId = readActiveOrgId();
 
       // 乐观更新 UI 和 localStorage（即时反馈）
       const target = orgs.find((o) => o.id === orgId);
@@ -100,7 +103,7 @@ export function OrgProvider({ children }: { children: ReactNode }) {
         setOrg(target);
         setRole(target.role ?? "");
       }
-      localStorage.setItem(STORAGE_KEY, orgId);
+      localStorage.setItem(ACTIVE_ORG_STORAGE_KEY, orgId);
 
       try {
         await unwrap(orgApi.setActive(orgId));
@@ -110,9 +113,9 @@ export function OrgProvider({ children }: { children: ReactNode }) {
         console.error("Failed to switch org:", err);
         // 回滚 localStorage
         if (storedOrgId) {
-          localStorage.setItem(STORAGE_KEY, storedOrgId);
+          localStorage.setItem(ACTIVE_ORG_STORAGE_KEY, storedOrgId);
         } else {
-          localStorage.removeItem(STORAGE_KEY);
+          localStorage.removeItem(ACTIVE_ORG_STORAGE_KEY);
         }
         // 回滚 React state
         if (oldOrgId) {

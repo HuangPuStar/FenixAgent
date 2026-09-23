@@ -194,7 +194,7 @@ export function useChatPanelRuntime({
   );
 
   // 发送简单 JSON 命令（替代 client 方法调用）：自动携带 commandId。
-  // 返回是否真正发出：WS 未就绪/已断开时返回 false（不静默丢弃——静默失败是
+  // 返回是否真正发出：WS 未就绪/已断开、或发送被背压拒绝时返回 false（不静默丢弃——静默失败是
   // "消息无声消失"的根因），由调用方给出 UI 反馈。
   const sendViaWs = useCallback(
     (data: Record<string, unknown>): boolean => {
@@ -206,13 +206,15 @@ export function useChatPanelRuntime({
       const explicitCommandId = typeof data.commandId === "string" ? data.commandId : null;
       const commandId = explicitCommandId ?? commandIdCacheRef.current.get(key) ?? randomUUID();
       if (!explicitCommandId) commandIdCacheRef.current.set(key, commandId);
-      ws.send({ ...data, commandId });
-      return true;
+      // transport 的 send 返回是否真正写入 socket（含 64 KB 发送背压判定，见
+      // packages/chat-channel/src/transport/ws.ts）；未写成功时缓存里的 commandId 保留，
+      // 同一动作重试会复用同一幂等键——与 request() 的 opId 重试口径一致（§5.2）。
+      return ws.send({ ...data, commandId });
     },
     [commandKey],
   );
 
-  // 发送动作统一入口：失败（WS 未就绪）时 toast 反馈，避免用户输入无声丢失
+  // 发送动作统一入口：失败（WS 未就绪 / 发送被背压拒绝）时 toast 反馈，避免用户输入无声丢失
   const sendAction = useCallback(
     (data: Record<string, unknown>): boolean => {
       const ok = sendViaWs(data);

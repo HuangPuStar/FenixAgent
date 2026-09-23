@@ -3,8 +3,6 @@ export {
   appendEntryText,
   bumpProjectionVersion,
   clearChatDocContent,
-  clearPeriTaskViews,
-  clearSessionDocContent,
   type EntryInit,
   ensureEntry,
   getAgentStatus,

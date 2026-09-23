@@ -21,7 +21,6 @@ import type { ActionAck, ActionError } from "./types";
 interface TestHarness {
   channel: SessionChannel;
   docManager: DocManager;
-  prepareCalls: number;
   refreshCalls: string[];
   syncCalls: string[];
   errors: Array<{ message: string; error: unknown }>;
@@ -31,7 +30,6 @@ interface TestHarness {
 
 function createHarness(overrides: Partial<SessionChannelDependencies> = {}): TestHarness {
   const state = {
-    prepareCalls: 0,
     refreshCalls: [] as string[],
     syncCalls: [] as string[],
     errors: [] as Array<{ message: string; error: unknown }>,
@@ -44,9 +42,6 @@ function createHarness(overrides: Partial<SessionChannelDependencies> = {}): Tes
     refreshInstanceEnvironment: async (connection) => {
       state.refreshCalls.push(connection.instanceId);
     },
-    prepareClearSessionSnapshot: async () => {
-      state.prepareCalls += 1;
-    },
     replaceProjection: () => {},
     syncSessionId: (_connection, newSessionId) => {
       state.syncCalls.push(newSessionId);
@@ -56,13 +51,9 @@ function createHarness(overrides: Partial<SessionChannelDependencies> = {}): Tes
     },
     ...overrides,
   });
-  // prepareCalls 用 getter 返回实时值：spread 会拷贝原始值导致断言读到 0
   return {
     channel,
     docManager,
-    get prepareCalls() {
-      return state.prepareCalls;
-    },
     refreshCalls: state.refreshCalls,
     syncCalls: state.syncCalls,
     errors: state.errors,
@@ -376,7 +367,8 @@ describe("SessionChannel action flow", () => {
     );
 
     expect(harness.acks.map((a) => a.status)).toEqual(["accepted", "committed"]);
-    expect(harness.prepareCalls).toBe(0);
+    // 旧「清空快照持久化」端口（prepareClearSessionSnapshot）已随换代口径删除，此处只保留
+    // 可观察的外部行为：既有的 acpSessionId 一致时既不转发 relay 也不重放清理。
     expect(relayMessages).toHaveLength(0);
   });
 
