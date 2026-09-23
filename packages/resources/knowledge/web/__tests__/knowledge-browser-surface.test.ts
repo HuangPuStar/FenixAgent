@@ -117,6 +117,9 @@ describe("knowledge web 入口浏览器可达面", () => {
       "types/knowledge.ts",
       "pages/agent-panel/KnowledgeGraphPanel.tsx",
       "pages/agent-panel/knowledge-graph-state.ts",
+      // §4.7 拆分：G6 配置构建（纯）与画布生命周期 hook
+      "pages/agent-panel/knowledge-graph-spec.ts",
+      "pages/agent-panel/use-knowledge-graph-canvas.ts",
       "pages/agent-panel/pages/AgentKnowledgeBasesPage.tsx",
       "pages/agent-panel/pages/agent-knowledge-access-denied.tsx",
       "pages/agent-panel/pages/agent-knowledge-directory.tsx",
@@ -131,13 +134,20 @@ describe("knowledge web 入口浏览器可达面", () => {
       "src/pages/agent-panel/components/ChunkDetailSheet.tsx",
       "src/pages/agent-panel/components/EmbeddingModelManager.tsx",
       "src/pages/agent-panel/components/RetrievalTestPanel.tsx",
+      // §4.7 拆分的四个叶子/纯函数模块（值导入可达）
+      "src/pages/agent-panel/components/add-embedding-provider-dialog.tsx",
+      "src/pages/agent-panel/components/embedding-model-rows.tsx",
+      "src/pages/agent-panel/components/retrieval-chunk-card.tsx",
+      "src/pages/agent-panel/components/retrieval-search-payload.ts",
     ]) {
       expect(reachedWebFiles).toContain(expected);
     }
-    // 22 = 原有 19 个模块 + 2026-09-22 前端去重抽出的两个模块（`knowledge-typography.ts` 的字段名
+    // 28 = 原有 19 个模块 + 2026-09-22 前端去重抽出的两个模块（`knowledge-typography.ts` 的字段名
     // 排版常量、`lib/poll-resources.ts` 的资源轮询）+ 2026-09-23 §6.5 收口抽出的
-    // `lib/sanitize-html.ts`（三处 `dangerouslySetInnerHTML` 的显式白名单，被三个宿主文件值导入）。
-    expect(reachedWebFiles.size).toBe(22);
+    // `lib/sanitize-html.ts`（三处 `dangerouslySetInnerHTML` 的显式白名单，被三个宿主文件值导入）
+    // + 2026-09-23 §4.8 超限文件拆分抽出的六个模块（图谱的 spec / canvas hook，检索的请求体
+    // 组装 / 结果卡片，embedding 的列表行 / 添加弹窗）。
+    expect(reachedWebFiles.size).toBe(28);
 
     // 跨包递归的有效性：只钉稳定路径——本包实际消费的四个跨包入口。
     // 少了这一段，「@fenix/* 被当成外部依赖放过」会以「包内断言全绿」的形式漏网。

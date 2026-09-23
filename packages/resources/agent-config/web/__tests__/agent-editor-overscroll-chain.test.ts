@@ -32,6 +32,7 @@ const EDITOR_DIR = resolve(import.meta.dir, "../pages/agent-panel/agent-editor")
 const CLASSES_FILE = "agent-editor-classes.ts";
 const CHROME_FILE = "AgentEditorChrome.tsx";
 const DIALOG_FILE = "AgentFormDialog.tsx";
+const BODY_FILE = "agent-editor-body.tsx";
 const LOADING_SHELL_FILE = "AgentEditorLoadingShell.tsx";
 
 /** 本次裁定的属性：三栏要么都带、要么都不带；当前期望「都不带」。 */
@@ -91,11 +92,13 @@ describe("智能体编辑面板三栏的滚动链", () => {
     expect(hasToken(classConstant(CLASSES_FILE, "SUMMARY_ASIDE"), "overflow-y-auto")).toBe(true);
     expect(hasToken(classConstant(CLASSES_FILE, "CONTENT"), "overflow-x-hidden")).toBe(true);
 
-    // 常量只有挂在真实渲染点上才受本守卫覆盖：面板（桌面 + 移动 Sheet）走 AgentFormDialog，
+    // 常量只有挂在真实渲染点上才受本守卫覆盖：面板（桌面 + 移动 Sheet）的标记在
+    // `agent-editor-body.tsx`（§4.7 拆分后 `AgentFormDialog.tsx` 只剩容器与 portal），
     // 加载壳走 AgentEditorLoadingShell；右栏完成态由 AgentEditorSummary 的内联类串承担。
-    expect(readEditorFile(DIALOG_FILE)).toContain("className={CONFIG_MAP}");
-    expect(readEditorFile(DIALOG_FILE)).toContain("className={CONTENT}");
-    expect(readEditorFile(DIALOG_FILE)).toContain("<AgentEditorSummary");
+    expect(readEditorFile(DIALOG_FILE)).toContain("<AgentEditorBody");
+    expect(readEditorFile(BODY_FILE)).toContain("className={CONFIG_MAP}");
+    expect(readEditorFile(BODY_FILE)).toContain("className={CONTENT}");
+    expect(readEditorFile(BODY_FILE)).toContain("<AgentEditorSummary");
     expect(readEditorFile(LOADING_SHELL_FILE)).toContain("className={CONFIG_MAP}");
     expect(readEditorFile(LOADING_SHELL_FILE)).toContain("className={SUMMARY_ASIDE}");
   });

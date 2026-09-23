@@ -25,7 +25,7 @@ const REPO_ROOT = resolve(import.meta.dir, "../../../..");
 
 /** 豁免清单：相对路径 → { 处数, 理由 }。处数变了就说明有调用点被新增或改写，必须回到这里说明。 */
 const ALLOWED_RAW_MESSAGE_CALLS: Record<string, { count: number; reason: string }> = {
-  "packages/resources/knowledge/web/src/pages/agent-panel/components/EmbeddingModelManager.tsx": {
+  "packages/resources/knowledge/web/src/pages/agent-panel/components/add-embedding-provider-dialog.tsx": {
     count: 1,
     reason: "厂商 Key 校验结果 `{ success, message }` 是服务端为展示设计的字段（连接诊断），不是错误信封",
   },

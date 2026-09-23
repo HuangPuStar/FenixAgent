@@ -33,7 +33,8 @@ const WEB_ROOT = join(import.meta.dirname, "..");
 const CALL_SITES = [
   "components/knowledge/ResourcePreviewContent.tsx",
   "src/pages/agent-panel/components/ChunkDetailSheet.tsx",
-  "src/pages/agent-panel/components/RetrievalTestPanel.tsx",
+  // 检索结果卡片：§4.7 拆分后 `HighlightSpan` 随单条结果卡片移到本文件（原为 RetrievalTestPanel.tsx）
+  "src/pages/agent-panel/components/retrieval-chunk-card.tsx",
 ];
 /** 默认配置会放行、这三条链路的正文里绝不该出现的标签。 */
 const DANGEROUS_TAGS = ["script", "style", "iframe", "form", "input", "button", "svg", "video", "object", "embed"];

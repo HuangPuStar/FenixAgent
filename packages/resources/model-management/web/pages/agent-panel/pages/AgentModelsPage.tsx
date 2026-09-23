@@ -9,13 +9,14 @@ import { useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { AgentModelsCatalog } from "./agent-models-catalog";
 import { useAgentModelsData } from "./agent-models-data";
-import { DiscoveryDialog, ModelDeleteDialogs, ModelEditorDialog, ProviderEditorDialog } from "./agent-models-dialogs";
+import { DiscoveryDialog, ModelDeleteDialogs, ModelEditorDialog } from "./agent-models-dialogs";
 import type { ModelDialogTarget, ProviderDialogTarget } from "./agent-models-types";
 import { getProviderKey, type ProviderScope, providerMatchesScope } from "./agent-models-utils";
 import "./agent-models.css";
 import "./agent-models-dialogs.css";
 import "./agent-models-states.css";
 import { MODELS_NS } from "../../../i18n/namespace";
+import { ProviderEditorDialog } from "./provider-editor-dialog";
 
 export function AgentModelsPage() {
   const { t } = useTranslation(MODELS_NS);

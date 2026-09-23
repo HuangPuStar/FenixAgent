@@ -15,16 +15,11 @@ import { useCallback, useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
 import { kbApi } from "../../../../api/knowledge-bases";
-import { sanitizeHighlightHtml } from "../../../../lib/sanitize-html";
 import { KnowledgeLoadFailure } from "../../../../pages/agent-panel/pages/agent-knowledge-load-failure";
 import { FIELD_LABEL_CLASS } from "../../../../pages/agent-panel/pages/knowledge-typography";
-import type {
-  KnowledgeRetrievalChunk,
-  KnowledgeSearchResultData,
-  MetaDataFilter,
-  MetaDataFilterMethod,
-  RerankModelOption,
-} from "../../../../types/knowledge";
+import type { KnowledgeSearchResultData, MetaDataFilterMethod, RerankModelOption } from "../../../../types/knowledge";
+import { RetrievalChunkCard } from "./retrieval-chunk-card";
+import { buildRetrievalSearchPayload } from "./retrieval-search-payload";
 
 /** 检索测试默认参数常量 */
 const DEFAULTS = {
@@ -69,6 +64,9 @@ interface RetrievalTestPanelProps {
 /**
  * 知识库检索测试面板：左右两栏布局，左侧参数配置 + 右侧结果列表。
  * 支持相似度阈值、向量/全文权重、Rerank 模型、每页数、关键词匹配等核心参数。
+ *
+ * 本文件持有参数 state 与执行流程；请求体组装在 `retrieval-search-payload.ts`（纯函数），
+ * 单条结果卡片在 `retrieval-chunk-card.tsx`（§4.7）。
  */
 export function RetrievalTestPanel({ knowledgeBaseId }: RetrievalTestPanelProps) {
   const { t } = useTranslation(NS.KNOWLEDGE);
@@ -125,42 +123,28 @@ export function RetrievalTestPanel({ knowledgeBaseId }: RetrievalTestPanelProps)
     setError(null);
 
     try {
-      // disabled 时不发送 meta_data_filter，避免 RAGFlow 端行为差异
-      let metaDataFilter: MetaDataFilter | undefined;
-      if (metaFilterMethod !== "disabled") {
-        metaDataFilter = { method: metaFilterMethod };
-        if (metaFilterMethod === "manual" && metaFilterManualJson.trim()) {
-          try {
-            const parsed = JSON.parse(metaFilterManualJson);
-            if (Array.isArray(parsed)) {
-              metaDataFilter.manual = parsed;
-            } else if (parsed && typeof parsed === "object") {
-              Object.assign(metaDataFilter, parsed);
-            }
-          } catch {
-            toast.error(t("retrieval.metaFilterJsonError"));
-            setLoading(false);
-            return;
-          }
-        }
+      // 请求体（含 meta_data_filter 的 disabled / 手动 JSON 语义）由纯函数组装，
+      // 手动 JSON 非法时由它给出 `ok: false`，这里只负责提示与早退。
+      const built = buildRetrievalSearchPayload({
+        query: trimmedQuery,
+        similarityThreshold,
+        vectorSimilarityWeight,
+        rerankId,
+        keyword,
+        pageSize,
+        topK,
+        useKg,
+        crossLanguages,
+        metaFilterMethod,
+        metaFilterManualJson,
+      });
+      if (!built.ok) {
+        toast.error(t("retrieval.metaFilterJsonError"));
+        setLoading(false);
+        return;
       }
 
-      const resp = await kbApi.search(
-        { id: knowledgeBaseId },
-        {
-          query: trimmedQuery,
-          similarityThreshold,
-          vectorSimilarityWeight,
-          rerankId: rerankId === "__none__" ? null : rerankId,
-          keyword,
-          highlight: true, // 检索测试默认开启高亮
-          pageSize,
-          topK: rerankId !== "__none__" ? topK : undefined,
-          useKg,
-          crossLanguages: crossLanguages.length > 0 ? crossLanguages : undefined,
-          metaDataFilter,
-        },
-      );
+      const resp = await kbApi.search({ id: knowledgeBaseId }, built.payload);
       // request() 不抛异常，需手动检查 success
       if (!resp.success || resp.data == null) {
         console.error("[RetrievalTestPanel] API returned error", resp.error);
@@ -440,88 +424,6 @@ export function RetrievalTestPanel({ knowledgeBaseId }: RetrievalTestPanelProps)
           <EmptyState className="grid min-h-36 place-content-center" title={t("retrieval.noResults")} />
         )}
       </div>
-    </div>
-  );
-}
-
-// ============================================================
-// 辅助组件 & 函数
-// ============================================================
-
-/** 格式化相似度为百分比字符串（保留 2 位小数） */
-function fmtScore(s: number | null | undefined): string {
-  if (s == null) return "—";
-  return `${(s * 100).toFixed(2)}%`;
-}
-
-/**
- * RAGFlow 高亮内容渲染组件。
- *
- * 后端返回的是带 `<em>` 高亮标记的 HTML（契约见 `src/server/schemas/knowledge.schema.ts` 的
- * `highlight` 字段），必须清洗后再注入：检索结果包含知识库原文，不能视为受控内容。
- * 清洗用 `sanitizeHighlightHtml` 的**最小白名单**（只留 `<em>` / `<span>` / `<br>` 与 class），
- * 见 `web/lib/sanitize-html.ts`；`<em>` 的高亮样式按调用方传入的类名
- * （`.retrieval-test-highlight`，见同目录 RetrievalTestPanel.css）落在 CSS 里。
- */
-function HighlightSpan({ html, className }: { html: string; className: string }) {
-  // biome-ignore lint/security/noDangerouslySetInnerHtml: 同一行的 sanitizeHighlightHtml 已清洗（只留 <em>/<span> 高亮标签）
-  return <span className={className} dangerouslySetInnerHTML={{ __html: sanitizeHighlightHtml(html) }} />;
-}
-
-// ============================================================
-// 子组件：检索结果单条卡片
-// ============================================================
-
-interface ChunkCardProps {
-  chunk: KnowledgeRetrievalChunk;
-  t: ReturnType<typeof useTranslation<"knowledge">>["t"];
-}
-
-function RetrievalChunkCard({ chunk, t }: ChunkCardProps) {
-  return (
-    <div className="rounded-xl border border-slate-200 bg-white p-4 space-y-3 shadow-sm hover:shadow-md transition-shadow">
-      {/* 文档名 + 三种相似度 */}
-      <div className="flex items-center justify-between gap-2 flex-wrap">
-        <span className="text-xs font-semibold text-slate-900 truncate max-w-[55%]">{chunk.documentName}</span>
-        <div className="flex items-center gap-1.5 flex-shrink-0">
-          <span className="inline-flex items-center gap-1 rounded-md bg-gradient-to-r from-indigo-500/10 to-violet-500/10 px-2 py-0.5 text-3xs font-semibold text-indigo-500 border border-indigo-500/15">
-            {t("retrieval.hybridSimilarity")}: {fmtScore(chunk.similarity)}
-          </span>
-          {chunk.vectorSimilarity != null && (
-            <span className="inline-flex items-center gap-1 rounded-md bg-emerald-500/10 px-2 py-0.5 text-3xs font-semibold text-emerald-500 border border-emerald-500/15">
-              {t("retrieval.vectorSimilarity")}: {fmtScore(chunk.vectorSimilarity)}
-            </span>
-          )}
-          {chunk.termSimilarity != null && (
-            <span className="inline-flex items-center gap-1 rounded-md bg-amber-500/10 px-2 py-0.5 text-3xs font-semibold text-amber-500 border border-amber-500/15">
-              {t("retrieval.termSimilarity")}: {fmtScore(chunk.termSimilarity)}
-            </span>
-          )}
-        </div>
-      </div>
-
-      {/* chunk 内容（有高亮则渲染 HTML，无则纯文本） */}
-      <div className="text-xs text-gray-700 leading-relaxed whitespace-pre-wrap break-words">
-        {chunk.highlight ? (
-          <HighlightSpan html={chunk.highlight} className="retrieval-test-highlight" />
-        ) : (
-          chunk.content
-        )}
-      </div>
-
-      {/* 关键词标签 */}
-      {chunk.importantKeywords && chunk.importantKeywords.length > 0 && (
-        <div className="flex items-center gap-1.5 flex-wrap">
-          {chunk.importantKeywords.map((kw) => (
-            <span
-              key={kw}
-              className="inline-block rounded-md bg-slate-100 border border-slate-200 px-2 py-0.5 text-3xs font-medium text-slate-500"
-            >
-              {kw}
-            </span>
-          ))}
-        </div>
-      )}
     </div>
   );
 }
