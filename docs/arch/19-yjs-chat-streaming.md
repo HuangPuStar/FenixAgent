@@ -1,7 +1,7 @@
 # Chat 流式对话全链路架构
 # YJS Chat Streaming 实现基线
 
-> 状态：实现基线（2026-08-18 修订，对齐 `feature/chat-task` 当前实现；`bun run precheck` 与前端生产构建全绿）
+> 状态：实现基线（2026-08-18 修订，对齐 `feature/chat-task` 当前实现；`bun run precheck` 与前端生产构建全绿；2026-09-23 按实现核对会话标识链路——rcs key 第三段为 `instanceUid`，订正 §3.2 标识规则与 §4.1 多实例隔离/locator 校验，未重跑 precheck 与前端构建）
 > 范围：浏览器 → 主服务 → Machine 的流式对话链路、关键实体生命周期、数据归属与隔离、典型用户场景。
 > 定位：本文档描述**已验证实现**，是前端交互式 Chat（YJS 路径）的权威架构契约。代码演进偏离时，先更新本文档再改代码；关键实现文件以相对路径引用（行号不维护，以语义为准）。
 > 约定：Chat 域实现集中在 `packages/chat-channel`（协议基础 + 聚合层 + 控制面），宿主仅保留桥接（`packages/agent-runtime/src/server/services/chat-channel-bootstrap.ts` 装配单例 + `packages/agent-runtime/src/routes/acp/index.ts` WS 端点）；模块归属见 §2.3 实现位置列。
@@ -198,9 +198,9 @@ classDiagram
 
 ### 3.2 标识规则
 
-- `sessionId`：平台持久化的业务会话标识，用于保存会话记录及建立前端 Agent 实例状态的确定性输入；本身不作为 YJS 或 relay 的隔离命名空间。
-- `rcsSessionId`：由服务端基于 `agentId`、`userId` 及必要时的 `sessionId` 确定性生成的前端 Agent 实例标识；它是 YJS Doc、relay handle、广播频道、缓存及会话级资源隔离的唯一命名空间。
-- `instanceId`：编排域（AgentController，见 20 号文档）记账的运行实例标识；宿主 `ensureRunning` 返回，gateway 以 `instanceId + userId + rcsSessionId` 建立共享 relay，仅用于命令投递和实例生命周期；不是前端 Agent 实例或 YJS 隔离键。
+- `sessionId`：**同名两义，必须按语境读**。Chat 域（`SessionChannel` / ACP 链路）里它是 ACP 会话标识（`ses_*`），即 `load_session` / `create_session` / `cancel` 的作用目标；RCS 侧不再有独立会话记录表（`packages/agent-runtime/src/services/session.ts`：`agent_session` 表已废弃，会话由 Agent 进程管理、经 relay 透传）。前端路由段 `/agent/chat/{agentId}/{sessionId}` 中的 `sessionId` 只是历史命名，实际承载的是 `instanceUid`（见 §4.1 多实例隔离）。两种语境下它都不作为 YJS 或 relay 的隔离命名空间。
+- `rcsSessionId`：由 `createDeterministicRcsSessionId(agentId, userId, instanceUid?)` 确定性生成的前端 Agent 实例标识，前后端共用同一实现（`packages/chat-channel/src/util/id.ts`），格式 `rcs_<base64url(agentId)>.<base64url(userId)>[.<base64url(instanceUid)>]`——第三段的形参名 `sessionId` 是历史遗留叫法，实际传入 `instanceUid`。服务端在建连时用同一函数反推校验（不一致即 `close(4003)`）。它是 YJS Doc、relay handle、广播频道、缓存及会话级资源隔离的唯一命名空间。
+- `instanceId`：编排域（AgentController，见 20 号文档）记账的运行实例标识；对外字段名是 `instanceUid`（WS query、`/web/environments/:id/enter` 响应、控制台 API），chat-channel 内部同值字段名为 `instanceId`——两者是同一个值，不得当作两个标识。宿主 `ensureRunning(ownerUserId, agentId, requestedInstanceUid?)` 返回它，gateway 以 `instanceId + userId + rcsSessionId` 建立共享 relay，仅用于命令投递和实例生命周期；不是前端 Agent 实例或 YJS 隔离键。
 - `acpSessionId`：Agent Engine 的 ACP 协议会话标识，仅用于 ACPChannel/relay 链接中的会话定位与消息投递；不可充当平台或 YJS 隔离标识。
 - `connectionId`：单个 WebSocket 连接标识；仅用于诊断和连接级限流。
 - `clientId`：浏览器安装或标签页实例标识；不具备授权能力。
@@ -214,7 +214,7 @@ classDiagram
 
 ### 4.1 建立连接与初始同步
 
-连接建立采用 generation-aware state-vector 握手（`channel/gateway.ts` + `channel/gateway-sync.ts`）：连接配额检查（`YJS_MAX_CLIENTS`）→ 环境解析与授权 → `ensureRunning(userId, agentId, "interactive", instanceNumber?)` → `acquireRelay`（共享 relay）→ 打开同一 active generation 的 Chat/Session Doc 并注册广播监听 → 登记客户端（`relayReady = false`）→ 服务端发送 `yjs:sync-request` → 客户端分别返回 generation + state vector → 服务端定向发送缺失 update；客户端 generation 不一致时以空 payload 声明“无当前世代状态”，服务端返回完整当前 projection，客户端按 replacement 处理。握手超时后才兼容性发送当前快照。随后服务端完成 relay `connect` 握手，成功后置 `relayReady = true` 并 flush 有界缓冲中的 Action。
+连接建立采用 generation-aware state-vector 握手（`channel/gateway.ts` + `channel/gateway-sync.ts`）：连接配额检查（`YJS_MAX_CLIENTS`）→ 环境解析与授权 → `ensureRunning(ownerUserId, agentId, requestedInstanceUid?)` → `acquireRelay`（共享 relay）→ 打开同一 active generation 的 Chat/Session Doc 并注册广播监听 → 登记客户端（`relayReady = false`）→ 服务端发送 `yjs:sync-request` → 客户端分别返回 generation + state vector → 服务端定向发送缺失 update；客户端 generation 不一致时以空 payload 声明“无当前世代状态”，服务端返回完整当前 projection，客户端按 replacement 处理。握手超时后才兼容性发送当前快照。随后服务端完成 relay `connect` 握手，成功后置 `relayReady = true` 并 flush 有界缓冲中的 Action。（`ensureRunning` 的装配在宿主桥接 `packages/agent-runtime/src/server/services/chat-channel-bootstrap.ts`：`resolveInstanceForOperation` + `ensureInstanceRuntime` 后返回 `instance.id`。）
 
 Chat Doc 与 Session Doc 必须属于同一个 projection generation；打开时发现不一致即安全失败，不能组合两个世代继续服务。二进制同步帧由 `protocol/update-frame.ts` 定义，包含 type、magic、version、docName、generation 和 payload，并限制单 payload 为 8 MiB、单 frame 为 9 MiB。
 
@@ -228,11 +228,18 @@ Chat Doc 与 Session Doc 必须属于同一个 projection generation；打开时
 | 1011 / 1013 | 通用失败 / 连接配额超限 | 可按退避策略重连 |
 | 4004 | 环境不存在（env not found，重试相同 URL 永远失败） | 终态，不重试 |
 
-**4004 只留给不可恢复场景（防无限重连）**：`resolveInstanceNumberFromSession` 解析失败（历史 `session_*` 书签、ACP `ses_*` 混入、实例回收后编号失效）视为**可恢复**——忽略该参数按默认路径继续连接，连接建立后由 ACP 层 `list_sessions` / `create_session` 重建会话；不得以 4004 拒绝。4004 不在客户端终态码集合，若用于可恢复场景会触发相同 URL 的无限重连；错误详情脱敏，只进服务端日志。
+**locator 校验在建连前完成，4004 只留给不可恢复场景（防无限重连）**：`/acp/yjs/:agentId` 打开时先要求 `instanceUid` 与 `rcsSessionId` 同时存在（任一缺失 → `close(4000, "invalid chat locator")`），再用 `createDeterministicRcsSessionId(agentId, userId, instanceUid)` 反推比对（不一致），并校验环境归属（不属于当前用户/组织）——两者都 `close(4003, "unauthorized")`。4000 与 4003 都不在客户端终态码策略表（`packages/chat-channel/src/transport/ws-close-codes.ts`）里，客户端按非终态自动重连；4004（`INVALID_REFERENCE`）在策略表内（停自动重连），因此只能用于确定性不可恢复的场景（环境不存在）。历史书签或已回收实例的 `instanceUid` **不会**被忽略后按默认路径继续连接：它原样进入 `resolveInstanceForOperation`，以 `NOT_FOUND` 结束，经机器离线（`isMachineOfflineError`）与永久失败（`classifyPermanentSpawnFailure`）判定均不命中，最终 `close(1011, "spawn failed")`（可重连）。
 
 **共享 relay 语义**：`ConnectionRegistry` 按 `instanceId + userId + rcsSessionId` 管理 `SharedRelay` 引用计数——同组多标签页共享同一 relay handle 与入站监听，引用计数归零才释放（YJS 不变量 8）。首个客户端建立时 `markRelayAttached`（idle 监控附着），并启动 `session/list` 定时轮询（Agent status 到达前不发送，`translateSimpleAction` 注入 cwd 与 rpcId）。
 
-**多实例隔离**：URL query 携带 DB `sessionId` 时，宿主 `resolveInstanceNumberFromSession` 解析出 instance 编号（`rcsSessionId = createDeterministicRcsSessionId(agentId, userId, sessionId)` 已按 sessionId 区分），`ensureRunning` 据此连接到正确的实例，保证不同实例的 YJS doc 不混写。
+**多实例隔离（实例定位 + Doc 归属，2026-09-23 按实现核对）**：前端 URL `/agent/chat/{agentId}/{instanceUid}` 的第三段是 **`instanceUid`**——控制台经 `/web/environments/:id/enter` 取得，该响应只有 `instanceUid` / `environmentId` / `name` / `status` / `createdAt`，**没有** DB 会话 id 可用。建连时客户端用这同一个值派生 `rcsSessionId`，以 `/acp/yjs/{agentId}?instanceUid=…&rcsSessionId=…` 发起连接；服务端用 `createDeterministicRcsSessionId(agentId, userId, instanceUid)` 反推校验（不一致即 `close(4003)`），再由 `ensureRunning(ownerUserId, agentId, instanceUid)` 定位该实例。
+
+这个确定性 key 同时承担两条性质：
+
+- **多实例隔离**：不同实例 → 不同 `rcsSessionId` → 不同 `chat:{rcsSessionId}` / `session:{rcsSessionId}` Y.Doc，同一 agent 的多个实例不混写。
+- **刷新可达**：刷新或新标签页带回同一 `instanceUid` → 同一 `rcsSessionId` → 回到同一份 Y.Doc，而不是重建一份空投影。
+
+`instanceUid` 只决定 Doc 归属，不决定 ACP 会话：**同一实例内切换 ACP 会话不改 URL、也不改 `rcsSessionId`**，由 `SessionChannel` 调 `docManager.replaceProjection(rcsSessionId, sessionId)` 在同一个 `rcsSessionId` 下整份替换投影（新 generation，见 §4.2）。因此「换实例」与「同实例换会话」是两条不同的路径，前者换命名空间，后者只有投影换代。
 
 ```mermaid
 sequenceDiagram
@@ -243,10 +250,10 @@ sequenceDiagram
     participant DM as DocManager
     participant IB as 宿主桥接（ensureRunning / connectAgentRelay）
 
-    UI->>YC: connect(rcsSessionId, auth context)
-    YC->>GW: WebSocket upgrade + protocol version
-    GW->>GW: 连接配额检查 + authenticate + authorize
-    GW->>IB: ensureRunning(userId, agentId, "interactive", instanceNumber?)
+    UI->>YC: connect(instanceUid, rcsSessionId, auth context)
+    YC->>GW: WebSocket upgrade + protocol version（/acp/yjs/{agentId}?instanceUid&rcsSessionId）
+    GW->>GW: 连接配额检查 + authenticate + authorize + locator 反推校验
+    GW->>IB: ensureRunning(ownerUserId, agentId, instanceUid)
     IB-->>GW: instanceId（复用或新建）
     GW->>IB: connectAgentRelay(instanceId, rcsSessionId)
     IB-->>GW: relay handle（共享，引用计数 +1）
@@ -305,7 +312,7 @@ sequenceDiagram
     CC-->>B: action_ack(commandId, committedVersion)
 ```
 
-- 实例生命周期在连接建立时完成：`ensureRunning(userId, agentId, "interactive", instanceNumber?)`（`packages/agent-runtime/src/server/services/agent-instance-service.ts`，经桥接注入）先复用运行实例、仅新建时检查并发配额；relay 经 `connectAgentRelay(instanceId, rcsSessionId)` 共享。**load_session 不重复创建实例**。
+- 实例生命周期在连接建立时完成：`ensureRunning(ownerUserId, agentId, requestedInstanceUid?)`（宿主桥接 `packages/agent-runtime/src/server/services/chat-channel-bootstrap.ts` 装配，内部走 `agentInstanceService.resolveInstanceForOperation` + `ensureInstanceRuntime`）先复用运行实例、仅新建时检查并发配额；relay 经 `connectAgentRelay(instanceId, rcsSessionId)` 共享。**load_session 不重复创建实例**。
 - `cwd`、environment 与 Agent config 必须由服务端可信数据解析，浏览器不能覆盖（`translateSimpleAction` 注入 `workspacePath`）。
 - **会话切换（switch session）**：`SessionChannel` 在转发 `session/load` / `session/new` 前调用 `DocManager.replaceProjection`。它创建共享同一新 generation 的 Chat/Session Y.Doc，只复制跨会话仍有效的 Agent status/capabilities、`sessions` 与 `sessionListLoaded`，不复制旧时间线、活动 turn、权限或问题投影；随后预编码两份 replacement frame，并通过 Redis compare-and-set 发布 active generation。任何构造、编码或 CAS 失败都会销毁候选 Doc，旧 projection 和会话 binding 保持不变。
 - **禁止 clear + replay 复用**：YJS 是基于 struct store 的 CRDT；在旧 Doc 上删除内容再回放并不会得到物理上的干净文档，反复切换会让 `encodeStateAsUpdate` 随历史 tombstone/struct 单调膨胀。会话切换必须换代，不得恢复旧的 `clearChatDocContent` / `clearSessionDocContent` 流程。
@@ -426,7 +433,7 @@ sequenceDiagram
 
 ### 5.1 文档拆分
 
-每份业务会话记录保存其 `rcsSessionId`；实时层按该值命名两份独立 Y.Doc：
+实时层按 `rcsSessionId`（由 `instanceUid` 确定性派生，见 §3.2 / §4.1）命名两份独立 Y.Doc；RCS 侧没有会话记录表（会话真相在 Agent 进程，经 relay 透传后投影进 Session Doc），因此 `rcsSessionId` 是重连、刷新与隔离期内的唯一寻址键：
 
 | Doc | 名称 | 内容 | 生命周期 |
 |---|---|---|---|
@@ -914,7 +921,7 @@ Agent 产生结构化 `PermissionRequested`；有权限的用户只能解决一�
 
 ### 场景 K：并发受限时建立 YJS 链接
 
-用户进入 ChatPanel 时，服务端在 WS 建立流程中按可信的 `userId + agentId` 执行 `ensureRunning(userId, agentId, "interactive", instanceNumber?)`（`packages/agent-runtime/src/server/services/agent-instance-service.ts`，经桥接注入）：已有可复用的运行实例则复用；只有需要创建新实例时才检查 Environment `maxSessions`、平台与用户实例并发上限（编排域配额，见 20 号文档 §8.2）。**并发配额约束的是 Agent 运行实例，不是 `rcsSessionId` 或既有 YJS 链接。**
+用户进入 ChatPanel 时，服务端在 WS 建立流程中按可信的 `userId + agentId` 执行 `ensureRunning(ownerUserId, agentId, requestedInstanceUid?)`（宿主桥接 `packages/agent-runtime/src/server/services/chat-channel-bootstrap.ts` 装配）：已有可复用的运行实例则复用；只有需要创建新实例时才检查 Environment `maxSessions`、平台与用户实例并发上限（编排域配额，见 20 号文档 §8.2）。**并发配额约束的是 Agent 运行实例，不是 `rcsSessionId` 或既有 YJS 链接。**
 
 实例可用后，前端再以 `rcsSessionId` 建立 YJS 链接；YJS 连接数另受 `YJS_MAX_CLIENTS` 限制。任一限制拒绝时，服务端返回明确错误并关闭或拒绝本次链接（终态关闭码见 §4.1）；前端显示失败状态，不自动排队、轮询或无限重试，也不得影响已有 `rcsSessionId` 的连接和投影。
 
