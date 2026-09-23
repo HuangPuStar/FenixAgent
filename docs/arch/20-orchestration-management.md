@@ -1,6 +1,6 @@
 # AgentController 编排域架构（实现基线）
 
-> 状态：实现基线（2026-08-05 修订，对齐 `refactor/agent-controller` 分支，验证测试 215 个全绿）
+> 状态：实现基线（2026-08-05 修订，对齐 `refactor/agent-controller` 分支，验证测试 215 个全绿；2026-09-23 按现网实现核对 §8.4，登记 `/web/environments/:id/enter` 的终结式本地 catch 为例外（§8.5），测试基线沿用 2026-08-05 记录、未重跑）
 > 范围：编排域独立包 `packages/orchestration`（AgentController、AgentNodeService、AgentNode、Instance、LaunchSpecBuilder）与宿主桥接（`packages/agent-runtime/src/services/orchestration-instance.ts`、`orchestration-bootstrap.ts`、`orchestration-machine-cleanup.ts`、`packages/agent-runtime/src/transport/agent-node-bridge.ts`、`local-node-service.ts`、`packages/agent-runtime/src/server/transport/relay/external-relay.ts`）的创建、连接和生命周期。
 > 定位：本文档只定义 Agent 实例的控制与运行边界。YJS / ACP 到 YJS 的状态聚合与 Chat 域见 `docs/arch/19-yjs-chat-streaming.md`；文件操作信道（file-ws，与 acp-ws 平行的机器级信道）见 `docs/arch/12-files.md`。
 > 配套文档：`docs/design/2026-08-03-orchestration-package-prd.md` 与 `spec/global/adr/2026-08-03-orchestration-package-design.md`（重构立项与 ADR）。消费者审计报告与待决设计决策（E-P2.2 断连终态、C-P2.5 用户配额决策）的内容已并入本文档正文（§5、§2.2），不再单独成文。
@@ -308,9 +308,43 @@ Environment 不再持有 `maxSessions` / `maxConcurrency` 配额。`AgentControl
 
 ### 8.4 错误映射与脱敏（A-P1.1 / D-P2.2 教训）
 
-- 路由本地 catch 一律移除，统一走全局 errorPlugin（`src/plugins/error-handler.ts`）按稳定错误码映射：`ORCHESTRATION_STATUS_MAP`（404 / 409 / 422 / 503）+ `ORCHESTRATION_MESSAGE_MAP` 通用模板。
+- 路由本地 catch 默认移除：需要本地映射时只做「重映射后 rethrow」，未识别的异常仍冒泡给全局 errorPlugin（`apps/server/src/plugins/error-handler.ts`）按稳定错误码映射，规则来源 `ORCHESTRATION_STATUS_MAP`（404 / 422 / 503）+ `ORCHESTRATION_MESSAGE_MAP` 通用模板（单一真相 `packages/agent-runtime/src/errors/orchestration-http.ts`，与 `/api/instances` 共用）。终结式本地 catch 是默认规则之外的偏离，必须登记且写清边界与移除条件（当前唯一一处见 §8.5）。
 - 编排域错误 message 可能携带 envId / machineId，对外必须脱敏，完整诊断留服务端日志；SSE 流中途错误的 chunk 只输出固定通用文案。
 - 新错误码漏登记时保守落 500 也不得泄漏内部标识。
+
+### 8.5 错误映射例外：`POST /web/environments/:id/enter` 的终结式本地 catch
+
+`packages/agent-runtime/src/routes/web/environments.ts` 的 enter 处理器在 `ensureInstance` 一段保留了**终结式**（穷举错误空间、不 rethrow）本地 catch。它不是漏改，而是本文档记录在案的唯一偏离：进程里确实存在一条错误路径，全局插件在结构上够不着。
+
+**为什么全局插件接不住**
+
+- 终结式 catch 不 rethrow，异常到不了 `onError`——errorPlugin 的 AppError / OrchestrationError / Sandbox 分支对本路由形同不存在。宿主 `error-handler.ts` 虽已覆盖同类领域错误，但它们只在异常冒泡时生效。
+- 即便改为 rethrow，两条契约也不等价，不能直接收敛：
+  - **信封不同**：本路由 `response` 用 `WebErrSchema`（`{success:false, error:{code,message}}`，`/web/*` 的共享信封，定义在 `packages/platform/platform-sdk/src/protocol/web-envelope.ts`），errorPlugin 兜底返回 `{error:{type,message}}`；同一路由不能混用两种信封，本路由已声明的 400 / 404 / 500 / 503 都属前者，换信封是破坏性契约变更。
+  - **脱敏口径不同**：errorPlugin 的 `AppError` 分支直出 `error.message`，而资源包（`agent-config` 的 `throwInvalidConfig`）系统性把 `agentConfigId`、Skill / MCP 名拼进 message；本路由只输出安全模板文案，原始 message 与堆栈进服务端日志。
+
+**这条 catch 的边界**
+
+处理器前半段（归属校验 `getOwnedEnvironment`）的 catch 是**非终结式**的：只把 `NOT_FOUND` 重映射为 404，其余 rethrow 给 errorPlugin——同文件其它路由（GET / PUT / DELETE）与它是同一形态。终结式映射只覆盖后半段（`ensureInstance` 及运行快照），穷举结果如下（2026-09-23 核对）：
+
+| 错误 | 对外结果 | 边界说明 |
+|---|---|---|
+| `code === "NOT_FOUND"` | 404 + `NOT_FOUND` | 实例/环境解析失败；在内层 catch 即返回 |
+| `SandboxProviderNotConfiguredError` / `SandboxRuntimeNotReadyError` | 503 + `SERVICE_UNAVAILABLE` + 固定文案 | 错误对象携带 `providerKey` / `sbi_*` sandboxId，不得直出 |
+| `OrchestrationError` | 按 `mapOrchestrationErrorToHttp`：`AGENT_NODE_UNAVAILABLE` / `MACHINE_OFFLINE` → 503，`LAUNCH_SPEC_BUILD_FAILED` → 422，未登记 code → 500 | 与 errorPlugin 共用同一映射函数，两处口径不得各自维护 |
+| `AppError` | 错误自带的 `statusCode` / `code` | 文案只取 `APP_ERROR_MESSAGE` 模板（未登记 code 时：4xx 通用可读文案、5xx 内部故障文案），不直出 `error.message` |
+| 其余未知异常 | 500 + `CONFIG_WRITE_ERROR` + 通用文案 | 既有对外契约，保持不动；原始 message 与堆栈进服务端日志（此前该路径静默吞错、连日志都没有） |
+
+**新增同类分支时的约束**
+
+1. 只允许对**已知错误类型**做更精确的提升（4xx / 503）；兜底恒为 500，不得把未知异常映射成 2xx 或任何「伪成功」——静默降级正是 §11 第 2 条记录的那类故障。
+2. 新分支必须先写服务端日志再返回，对外 message 只能取安全模板，不得透传 `error.message`。
+3. 分支按「具体在前、兜底最后」排列：`OrchestrationError` / `AppError` 这类基类判断一旦排到兜底之后即静默失效，错误被吞成 500。
+4. 状态码集合变化必须同步 `response` 声明（如 AppError 分支引入的 400 已补入），保持 OpenAPI 契约与实现一致。
+
+**移除条件**
+
+errorPlugin 成为该路由错误出口的单一入口，且同时满足三条：①兜底能返回本路由的 `{success:false, error:{code,message}}` 信封（或前端消费方确认接受换信封）；②`AppError` 分支不再回传原始 `message`；③未知异常仍落既有的 500 + `CONFIG_WRITE_ERROR` 契约（或该契约经消费方确认废弃）。三条缺一不得删除本 catch。
 
 ## 9. 典型用户场景
 
@@ -344,7 +378,7 @@ workflow run 经 `ensureRunning` 复用实例并 acquire 租约；run 结束 cle
 6. **复用显式租约**：workflow 共享实例必须 acquire lease，cleanup 按 instanceId + 租约守卫（C-P1.1）。
 7. **cwd 主服务派生**：cwd = `{workspaceRoot}/{organizationId}/{userId}/{environmentId}`，机器端解析落地。
 8. **真实 userId 配额桶**：workflow 实例按触发用户计用户级配额，禁止字面 "system" 聚合（C-P2.5）。
-9. **错误边界统一收敛 + 脱敏模板**：路由本地 catch 移除，全局 errorPlugin 按稳定 code 映射。
+9. **错误边界统一收敛 + 脱敏模板**：路由本地 catch 默认移除（仅重映射后 rethrow），全局 errorPlugin 按稳定 code 映射；唯一终结式例外见 §8.5。
 10. **断连对账可绕过正常停止链**：机器不可达时直接删 core 快照 + 活跃表（唯一例外）。
 11. **本地执行回退保留**：machineId 回退链 `config → RCS_DEFAULT_MACHINE_ID → local-default`。
 12. **聊天链路独立**：YJS / Chat 域只经 `ensureRunning` 与 relay 消费实例，编排域本体不维护聊天状态。
