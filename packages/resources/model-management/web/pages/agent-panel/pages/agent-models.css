@@ -21,69 +21,30 @@
   font-size: 12px;
 }
 
-.models-workspace {
-  display: grid;
-  min-height: 620px;
-  grid-template-columns: 238px minmax(0, 1fr);
-  overflow: hidden;
-  border-radius: 10px;
-  background: #fff;
-  box-shadow: 0 12px 38px rgb(36 57 92 / 8%);
-}
-
+/* 目录栏只留本页刻度（内边距 / 底色 / 右侧分隔线）。头部几何、条目列模板、两行截断与箭头显隐都在
+   共享构件集（`agent-catalog-index.css`，未分层，压过 `@layer utilities`）：这里不再重复声明，
+   也不能用工具类去覆盖它写过的属性——要改那些属性得换成更高特异性的页面选择器。 */
 .models-provider-index {
   padding: 19px 10px 13px;
   background: #f6f8fb;
   box-shadow: inset -1px 0 var(--model-line);
 }
 
-.models-provider-index > header {
-  padding: 0 8px 14px;
-}
-
-.models-provider-index > header > div {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-}
-
-.models-provider-index > header strong {
-  font-size: 13px;
-}
-.models-provider-index > header span {
-  display: grid;
-  min-width: 22px;
-  height: 20px;
-  place-items: center;
-  border-radius: 5px;
-  color: var(--model-muted);
-  background: #e9edf4;
-  font-size: 11px;
-}
-.models-provider-index > header small {
-  display: block;
-  margin-top: 4px;
-  color: var(--model-faint);
-  font-size: 11px;
-}
+/* 列表只补行间距（3px 是本页刻度）；`display: grid` 由共享构件集给。 */
 .models-provider-index nav {
-  display: grid;
   gap: 3px;
 }
 
+/* 条目只留本页刻度：行高 57px、内边距、圆角、配色。四列模板 `28px minmax(0, 1fr) auto 12px`、
+   `display: grid`、`min-width: 0`、`align-items: center`、`border: 0`、`text-align: left`
+   由共享构件集提供。 */
 .models-provider-index nav > button {
-  display: grid;
-  min-width: 0;
   min-height: 57px;
-  grid-template-columns: 28px minmax(0, 1fr) auto 12px;
-  align-items: center;
   gap: 8px;
-  border: 0;
   border-radius: 7px;
   padding: 8px;
   color: var(--model-muted);
   background: transparent;
-  text-align: left;
 }
 
 .models-provider-index nav > button:hover {
@@ -94,33 +55,21 @@
   background: #e8f0ff;
 }
 .models-provider-brand {
-  display: grid;
   width: 28px;
   height: 28px;
-  place-items: center;
   border-radius: 6px;
   background: white;
   color: #747474;
 }
-.models-provider-copy {
-  display: flex;
-  min-width: 0;
-  flex-direction: column;
-}
+/* 文案槽的纵向排布与两行截断已下沉，这里只留字号/颜色与行距。 */
 .models-provider-copy strong {
-  overflow: hidden;
   color: var(--model-ink);
   font-size: 12px;
-  text-overflow: ellipsis;
-  white-space: nowrap;
 }
 .models-provider-copy small {
-  overflow: hidden;
   margin-top: 3px;
   color: var(--model-faint);
   font-size: 9px;
-  text-overflow: ellipsis;
-  white-space: nowrap;
 }
 .models-provider-scope,
 .models-provider-public-badge {
@@ -141,12 +90,10 @@
   align-items: center;
   gap: 6px;
 }
+/* 箭头宽度是本页刻度：共享组件的默认 `w-3` 按 13/16 根字号刻度算是 9.75px，且写在
+   `@layer utilities` 里，会被这条未分层规则压过。显隐跟着选中态，由共享构件集处理。 */
 .models-provider-arrow {
   width: 12px;
-  opacity: 0;
-}
-.is-selected .models-provider-arrow {
-  opacity: 1;
 }
 .models-provider-detail {
   min-width: 0;
