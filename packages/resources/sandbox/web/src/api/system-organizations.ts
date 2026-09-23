@@ -30,18 +30,20 @@ interface PeopleTreeOrganization {
   slug?: string | null;
 }
 
-/** 拉取全部组织（Bearer 系统 master key）；只返回下拉需要的字段。 */
-export function fetchSystemOrganizations(): Promise<SystemOrganizationOption[]> {
-  return unwrap(
-    request<{ organizations: PeopleTreeOrganization[] }>("/api/system/people-tree/", {
-      bearerToken: getAdminKey() ?? undefined,
-    }),
-  ).then((data) =>
-    (data.organizations ?? []).map((organization) => ({
-      id: organization.id,
-      name: organization.name,
-      // slug 参与搜索匹配，缺失时用空串（`??` 而非 `||`：空串是有意义的缺省值）。
-      slug: organization.slug ?? "",
-    })),
-  );
-}
+/** 系统组织目录的窄端口（§5.5：单一 `*Api` 对象）。 */
+export const systemOrganizationsApi = {
+  /** 拉取全部组织（Bearer 系统 master key）；只返回下拉需要的字段。 */
+  list: (): Promise<SystemOrganizationOption[]> =>
+    unwrap(
+      request<{ organizations: PeopleTreeOrganization[] }>("/api/system/people-tree/", {
+        bearerToken: getAdminKey() ?? undefined,
+      }),
+    ).then((data) =>
+      (data.organizations ?? []).map((organization) => ({
+        id: organization.id,
+        name: organization.name,
+        // slug 参与搜索匹配，缺失时用空串（`??` 而非 `||`：空串是有意义的缺省值）。
+        slug: organization.slug ?? "",
+      })),
+    ),
+};

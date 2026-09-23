@@ -43,30 +43,33 @@ export type ResetSystemUserPasswordInput = {
   password: string;
 } & SystemUserIdentifier;
 
-export function createSystemUser(input: CreateSystemUserInput): Promise<void> {
-  return unwrap(
-    request<void>("/api/system/users", {
-      method: "POST",
-      body: input,
-      bearerToken: getAdminKey() ?? undefined,
-    }),
-  );
-}
+/** 系统人员目录的域模块出口（§5.5：单一 `*Api` 对象；`buildSystemUserIdentifier` 是纯值装配，留在对象外）。 */
+export const systemPeopleTreeApi = {
+  /** 拉取组织 / 用户 / 智能体三层人员树（Bearer master key）。 */
+  fetchTree: (): Promise<{ organizations: SystemPeopleOrganization[] }> =>
+    unwrap(
+      request<{ organizations: SystemPeopleOrganization[] }>("/api/system/people-tree/", {
+        bearerToken: getAdminKey() ?? undefined,
+      }),
+    ),
 
-export function resetSystemUserPassword(input: ResetSystemUserPasswordInput): Promise<void> {
-  return unwrap(
-    request<void>("/api/system/users/reset-password", {
-      method: "POST",
-      body: input,
-      bearerToken: getAdminKey() ?? undefined,
-    }),
-  );
-}
+  /** 创建系统用户（账号标识为邮箱或手机号二选一）。 */
+  createUser: (input: CreateSystemUserInput): Promise<void> =>
+    unwrap(
+      request<void>("/api/system/users", {
+        method: "POST",
+        body: input,
+        bearerToken: getAdminKey() ?? undefined,
+      }),
+    ),
 
-export function fetchSystemPeopleTree(): Promise<{ organizations: SystemPeopleOrganization[] }> {
-  return unwrap(
-    request<{ organizations: SystemPeopleOrganization[] }>("/api/system/people-tree/", {
-      bearerToken: getAdminKey() ?? undefined,
-    }),
-  );
-}
+  /** 重置系统用户密码。 */
+  resetUserPassword: (input: ResetSystemUserPasswordInput): Promise<void> =>
+    unwrap(
+      request<void>("/api/system/users/reset-password", {
+        method: "POST",
+        body: input,
+        bearerToken: getAdminKey() ?? undefined,
+      }),
+    ),
+};

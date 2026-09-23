@@ -15,7 +15,7 @@ import { useRequest } from "ahooks";
 import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
-import { listModelGatewayBudgets, resetModelGatewayBudgets, updateModelGatewayBudgets } from "../../api/model-gateway";
+import { modelGatewayApi } from "../../api/model-gateway";
 import { MODELS_NS } from "../../i18n/namespace";
 
 export function useModelGatewayBudgets({ active, onAuthFailure }: { active: boolean; onAuthFailure: () => void }) {
@@ -39,7 +39,7 @@ export function useModelGatewayBudgets({ active, onAuthFailure }: { active: bool
 
   const budgetsRequest = useRequest(
     () =>
-      listModelGatewayBudgets(budgetPage, budgetPageSize, {
+      modelGatewayApi.listBudgets(budgetPage, budgetPageSize, {
         organizationId: appliedBudgetFilters.organizationId,
         userId: appliedBudgetFilters.userId,
         budgetStatus: appliedBudgetFilters.budgetStatus === "all" ? undefined : appliedBudgetFilters.budgetStatus,
@@ -50,7 +50,7 @@ export function useModelGatewayBudgets({ active, onAuthFailure }: { active: bool
   );
   const budgetUpdateRequest = useRequest(
     () =>
-      updateModelGatewayBudgets(
+      modelGatewayApi.updateBudgets(
         selectedUsers,
         budgetAmount === "" ? null : Number(budgetAmount),
         budgetDuration === "once" ? null : budgetDuration,
@@ -64,7 +64,7 @@ export function useModelGatewayBudgets({ active, onAuthFailure }: { active: bool
       },
     },
   );
-  const budgetResetRequest = useRequest(() => resetModelGatewayBudgets(selectedUsers), {
+  const budgetResetRequest = useRequest(() => modelGatewayApi.resetBudgets(selectedUsers), {
     manual: true,
     onSuccess: () => {
       setSelectedUsers([]);

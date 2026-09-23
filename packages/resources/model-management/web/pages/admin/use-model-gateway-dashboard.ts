@@ -13,21 +13,13 @@
  *
  * 选择器选项在这里拼装（预算与用量此前各拼一份同款标签），两个面板因此只收 `{ value, label }[]`。
  */
-import { fetchSystemPeopleTree } from "@fenix/resource-observer/web";
+import { systemPeopleTreeApi } from "@fenix/resource-observer/web";
 import { ApiError } from "@fenix/web-runtime/api/request";
 import { useDebounce, useRequest } from "ahooks";
 import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
-import {
-  checkModelGateway,
-  getModelGatewayConfiguration,
-  listModelGatewayAgents,
-  listModelGatewayUsers,
-  type ModelSyncStatus,
-  queryModelGatewayUsage,
-  syncModelGateway,
-} from "../../api/model-gateway";
+import { type ModelSyncStatus, modelGatewayApi } from "../../api/model-gateway";
 import { MODELS_NS } from "../../i18n/namespace";
 import { getModelGatewayConnectionFeedback } from "./model-gateway-feedback";
 import { buildModelGatewayOverviewUsageQuery } from "./model-gateway-overview";
@@ -55,16 +47,16 @@ export function useModelGatewayDashboard({ onAuthFailure }: { onAuthFailure: () 
     }
   };
 
-  const checkRequest = useRequest(() => checkModelGateway(), {
+  const checkRequest = useRequest(() => modelGatewayApi.check(), {
     manual: true,
     onSuccess: setStatus,
     onError: handleGatewayRequestError,
   });
-  const configRequest = useRequest(() => getModelGatewayConfiguration(), {
+  const configRequest = useRequest(() => modelGatewayApi.getConfiguration(), {
     manual: true,
     onError: handleGatewayRequestError,
   });
-  const syncRequest = useRequest(() => syncModelGateway(), {
+  const syncRequest = useRequest(() => modelGatewayApi.sync(), {
     manual: true,
     onSuccess: () => {
       setStatus((current) => (current ? { ...current, status: "synced", changes: [] } : current));
@@ -72,17 +64,20 @@ export function useModelGatewayDashboard({ onAuthFailure }: { onAuthFailure: () 
     },
     onError: handleGatewayRequestError,
   });
-  const usersRequest = useRequest((keyword?: string) => listModelGatewayUsers(keyword?.trim() ? { keyword } : {}), {
+  const usersRequest = useRequest((keyword?: string) => modelGatewayApi.listUsers(keyword?.trim() ? { keyword } : {}), {
     manual: true,
   });
-  const agentsRequest = useRequest((keyword?: string) => listModelGatewayAgents(keyword?.trim() ? { keyword } : {}), {
-    manual: true,
-  });
-  const organizationsRequest = useRequest(() => fetchSystemPeopleTree(), {
+  const agentsRequest = useRequest(
+    (keyword?: string) => modelGatewayApi.listAgents(keyword?.trim() ? { keyword } : {}),
+    {
+      manual: true,
+    },
+  );
+  const organizationsRequest = useRequest(() => systemPeopleTreeApi.fetchTree(), {
     manual: true,
     onError: handleGatewayRequestError,
   });
-  const overviewUsageRequest = useRequest(() => queryModelGatewayUsage(buildModelGatewayOverviewUsageQuery()), {
+  const overviewUsageRequest = useRequest(() => modelGatewayApi.queryUsage(buildModelGatewayOverviewUsageQuery()), {
     manual: true,
     onError: handleGatewayRequestError,
   });

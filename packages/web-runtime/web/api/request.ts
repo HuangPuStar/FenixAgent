@@ -103,16 +103,20 @@ interface RequestOptions extends Omit<RequestInit, "body" | "headers"> {
   signal?: AbortSignal;
   /**
    * 文件写操作幂等 ID，透传 X-File-Op-Id 头（docs/arch/12-files.md §7.2）。
-   * 网络错误/超时自动重试会复用同一 opId，服务端据此幂等去重；busy/4xx/5xx 不重试。
+   * 本层**不自动重试**（重试是调用方策略）：调用方自行重试时须复用同一 opId，服务端据此去重；
+   * 这里只把调用方给的值原样透传，不改写、不重新生成。
    */
   opId?: string;
   /**
    * Bearer token 注入（如系统 Master Key，docs/arch/21 §5）。置入时自动加
-   * `Authorization: Bearer <token>`；调用方显式传入的 headers 合并时靠后，冲突以显式为准。
+   * `Authorization: Bearer <token>`；它属内部头，调用方 `headers` 覆盖不了（要换 token 就换本字段）。
    * 不设置时行为完全不变。
    */
   bearerToken?: string;
-  /** 请求头透传（如 If-None-Match 条件请求）；与内部注入头合并，冲突时以本字段为准 */
+  /**
+   * 请求头透传（如 If-None-Match 条件请求）。与内部注入头合并，**内部头优先**：
+   * `content-type` / `x-file-op-id` / `authorization` 由基建决定，调用方只能补内部未设置的头。
+   */
   headers?: HeadersInit;
 }
 
@@ -137,6 +141,8 @@ export async function request<T>(url: string, options: RequestOptions = {}): Pro
     signal: externalSignal,
     opId,
     bearerToken,
+    // headers 必须从 init 里解构排除：留在 init 里会被 `...init` 展开覆盖内部头（§5.2）
+    headers: callerHeaders,
     ...init
   } = options;
 
@@ -160,22 +166,27 @@ export async function request<T>(url: string, options: RequestOptions = {}): Pro
 
   // 请求体序列化：普通对象 → JSON，FormData/Blob 直传
   let resolvedBody: BodyInit | undefined;
-  const headers: Record<string, string> = {};
+  // 内部头由基建决定（幂等键 / 鉴权 / JSON 内容类型），调用方的 headers 只能补空缺，不能覆盖
+  const headers = new Headers();
   // opId 透传 X-File-Op-Id：写操作幂等契约的 HTTP 载体（docs/arch/12-files.md §7.2）
-  if (opId) headers["x-file-op-id"] = opId;
-  if (bearerToken) headers.authorization = `Bearer ${bearerToken}`;
+  if (opId) headers.set("x-file-op-id", opId);
+  if (bearerToken) headers.set("authorization", `Bearer ${bearerToken}`);
   if (body !== undefined) {
     if (body instanceof FormData || body instanceof Blob) {
       resolvedBody = body;
     } else {
-      headers["content-type"] = "application/json";
+      headers.set("content-type", "application/json");
       resolvedBody = JSON.stringify(body);
     }
   }
+  // 调用方透传头合并：Headers.has 大小写不敏感，内部已设置的头一律不被覆盖
+  for (const [key, value] of new Headers(callerHeaders).entries()) {
+    if (!headers.has(key)) headers.set(key, value);
+  }
 
   /**
-   * 单次请求执行。网络错误/超时抛 NetworkError（上层可自动重试）；
-   * HTTP 错误状态码与业务错误走正常返回路径（busy/4xx/5xx 不重试）。
+   * 单次请求执行。网络错误/超时抛 NetworkError，由外层归一为失败结果（本层不重试）；
+   * HTTP 错误状态码与业务错误走正常返回路径。
    */
   const execute = async (): Promise<ApiResponse<T>> => {
     // 超时控制 + 外部 AbortSignal 合并
@@ -185,20 +196,16 @@ export async function request<T>(url: string, options: RequestOptions = {}): Pro
       timedOut = true;
       controller.abort();
     }, timeout);
-    const combinedSignal = externalSignal ? anySignal(controller.signal, externalSignal) : controller.signal;
+    const combined = externalSignal ? anySignal(controller.signal, externalSignal) : undefined;
 
     try {
       const r = await fetch(resolvedUrl, {
         credentials: "include",
-        signal: combinedSignal,
-        headers: {
-          ...headers,
-          ...Object.fromEntries(new Headers(init.headers).entries()),
-        },
+        signal: combined ? combined.signal : controller.signal,
+        headers,
         ...init,
         body: resolvedBody,
       });
-      clearTimeout(timeoutId);
 
       // 非 JSON Content-Type（如文件下载）通常不解析 body，但部分接口（如 FormData 上传）
       // 后端可能遗漏 Content-Type，此时仍尝试按 JSON 解析。
@@ -231,8 +238,10 @@ export async function request<T>(url: string, options: RequestOptions = {}): Pro
               data: ("data" in json ? json.data : json) as unknown as T,
             };
           }
-        } catch {
-          // 不是 JSON，继续后续错误处理
+        } catch (err) {
+          // 不是 JSON（JSON.parse 的 SyntaxError）才继续后续错误处理；
+          // 读响应体时的 abort/网络异常要交给外层按 transport 错误归一，不能被当成「格式异常」
+          if (!(err instanceof SyntaxError)) throw err;
         }
         // 响应虽然是 200 但既不是 JSON 也没带 success 字段，视为服务端异常
         console.error(
@@ -282,9 +291,8 @@ export async function request<T>(url: string, options: RequestOptions = {}): Pro
       // ?? 会错误地回退到整个响应对象，导致调用方收到非 null 值而产生逻辑错误。
       return { success: true, data: ("data" in json ? json.data : json) as T };
     } catch (err) {
-      clearTimeout(timeoutId);
       if ((err as Error).name === "AbortError") {
-        // 外部主动取消不重试；仅超时属于可重试的网络类错误
+        // 外部主动取消与超时都表现为 AbortError，靠 timedOut 区分：外部取消不是网络类错误
         if (!timedOut) {
           return {
             success: false,
@@ -294,14 +302,20 @@ export async function request<T>(url: string, options: RequestOptions = {}): Pro
         throw new NetworkError("请求超时");
       }
       throw new NetworkError("网络异常，请检查连接");
+    } finally {
+      // 定时器与合并监听器在请求**完整结束**（含 body 消费）后才释放：
+      // 收到响应头就清定时器会让慢 json()/text() 逃出超时约束（§5.2）；
+      // 监听器挂在调用方的 signal 上，不摘除会累积到该 signal 被 abort（长生命周期 signal 泄漏）。
+      clearTimeout(timeoutId);
+      combined?.dispose();
     }
   };
 
   try {
     return await execute();
   } catch (err) {
-    // 写操作（带 opId）在网络错误/超时时自动重试 1 次并复用同一 opId，服务端据此幂等去重；
-    // busy/4xx/5xx 等 HTTP 错误已走正常返回路径，不会进入此处
+    // 到这里只剩传输类失败（网络不通 / 超时）；busy/4xx/5xx 等 HTTP 错误与业务失败走正常返回路径。
+    // 本层**不自动重试**：重试是调用方策略——带 opId 的写操作若由调用方重试，须复用同一 opId 才能幂等去重
     const message = err instanceof NetworkError ? err.message : "网络异常，请检查连接";
     console.error(`[request] ${init.method ?? "GET"} ${resolvedUrl}`, err);
     return { success: false, error: { code: "NETWORK_ERROR", message } };
@@ -366,19 +380,31 @@ function statusToCode(status: number): ErrorCode {
   return "UNKNOWN";
 }
 
-/** 合并两个 AbortSignal，任一 abort 都会触发合并后的 signal */
-function anySignal(a: AbortSignal, b: AbortSignal): AbortSignal {
+/**
+ * 合并两个 AbortSignal，任一 abort 都会触发合并后的 signal。
+ *
+ * 返回的 `dispose()` 必须由调用方在请求结束后执行：监听器挂在**入参**信号上（外部 signal 由调用方
+ * 持有、生命周期可能远长于本次请求），不摘除就会随每次请求累积到该 signal 被 abort。
+ */
+function anySignal(a: AbortSignal, b: AbortSignal): { signal: AbortSignal; dispose: () => void } {
   const c = new AbortController();
-  const onAbort = (reason: unknown) => c.abort(reason);
+  const onAbortA = () => c.abort(a.reason);
+  const onAbortB = () => c.abort(b.reason);
   if (a.aborted) {
     c.abort(a.reason);
-    return c.signal;
+    return { signal: c.signal, dispose: () => {} };
   }
   if (b.aborted) {
     c.abort(b.reason);
-    return c.signal;
+    return { signal: c.signal, dispose: () => {} };
   }
-  a.addEventListener("abort", () => onAbort(a.reason), { once: true });
-  b.addEventListener("abort", () => onAbort(b.reason), { once: true });
-  return c.signal;
+  a.addEventListener("abort", onAbortA, { once: true });
+  b.addEventListener("abort", onAbortB, { once: true });
+  return {
+    signal: c.signal,
+    dispose: () => {
+      a.removeEventListener("abort", onAbortA);
+      b.removeEventListener("abort", onAbortB);
+    },
+  };
 }

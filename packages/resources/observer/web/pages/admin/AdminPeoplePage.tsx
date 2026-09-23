@@ -15,11 +15,11 @@ import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
 import {
   buildSystemUserIdentifier,
-  createSystemUser,
-  fetchSystemPeopleTree,
-  resetSystemUserPassword,
+  type CreateSystemUserInput,
+  type ResetSystemUserPasswordInput,
   type SystemPeopleOrganization,
   type SystemUserIdentifierType,
+  systemPeopleTreeApi,
 } from "../../api/system-people-tree";
 import { OBSERVER_META_CLASS } from "./observer-meta-classes";
 
@@ -45,12 +45,12 @@ export function AdminPeoplePage() {
 function PeopleDashboard({ onAuthFailure }: { onAuthFailure: () => void }) {
   const { t } = useTranslation("observer");
   const [dialog, setDialog] = useState<"create" | "reset" | null>(null);
-  const { data, loading, error, refresh } = useRequest(fetchSystemPeopleTree, {
+  const { data, loading, error, refresh } = useRequest(() => systemPeopleTreeApi.fetchTree(), {
     onError: (err) => {
       if (err instanceof ApiError && err.code === "UNAUTHORIZED") onAuthFailure();
     },
   });
-  const createRequest = useRequest(createSystemUser, {
+  const createRequest = useRequest((input: CreateSystemUserInput) => systemPeopleTreeApi.createUser(input), {
     manual: true,
     onSuccess: () => {
       toast.success(t("people.createSuccess"));
@@ -66,21 +66,24 @@ function PeopleDashboard({ onAuthFailure }: { onAuthFailure: () => void }) {
       }
     },
   });
-  const resetRequest = useRequest(resetSystemUserPassword, {
-    manual: true,
-    onSuccess: () => {
-      toast.success(t("people.resetSuccess"));
-      setDialog(null);
+  const resetRequest = useRequest(
+    (input: ResetSystemUserPasswordInput) => systemPeopleTreeApi.resetUserPassword(input),
+    {
+      manual: true,
+      onSuccess: () => {
+        toast.success(t("people.resetSuccess"));
+        setDialog(null);
+      },
+      onError: (err) => {
+        if (err instanceof ApiError && err.code === "UNAUTHORIZED") onAuthFailure();
+        else {
+          // 原始 error 进日志；原先把它塞进 toast 的 description（§9.3 禁止回显信封原文）
+          console.error(t("people.actionError"), err);
+          toast.error(t("people.actionError"));
+        }
+      },
     },
-    onError: (err) => {
-      if (err instanceof ApiError && err.code === "UNAUTHORIZED") onAuthFailure();
-      else {
-        // 原始 error 进日志；原先把它塞进 toast 的 description（§9.3 禁止回显信封原文）
-        console.error(t("people.actionError"), err);
-        toast.error(t("people.actionError"));
-      }
-    },
-  });
+  );
   const organizations = data?.organizations ?? [];
 
   return (

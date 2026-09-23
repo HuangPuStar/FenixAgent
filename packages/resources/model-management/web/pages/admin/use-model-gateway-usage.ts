@@ -13,7 +13,7 @@
  */
 import { useRequest } from "ahooks";
 import { useState } from "react";
-import { queryModelGatewayUsage } from "../../api/model-gateway";
+import { modelGatewayApi } from "../../api/model-gateway";
 import { buildRecentUsageDateRange } from "../../lib/model-gateway-usage";
 
 export function useModelGatewayUsage() {
@@ -33,7 +33,7 @@ export function useModelGatewayUsage() {
         usageRange === "custom"
           ? { startAt: customStart, endAt: customEnd }
           : buildRecentUsageDateRange(Number(usageRange.replace("d", "")));
-      return queryModelGatewayUsage({
+      return modelGatewayApi.queryUsage({
         ...range,
         includeBreakdowns: true,
         ...Object.fromEntries(Object.entries(usageFilters).filter(([, value]) => value.trim())),

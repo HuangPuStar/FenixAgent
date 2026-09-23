@@ -13,7 +13,7 @@ import { useCallback, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
 import { SANDBOX_NS } from "../../../i18n/namespace";
-import { fetchSystemOrganizations } from "../../api/system-organizations";
+import { systemOrganizationsApi } from "../../api/system-organizations";
 import {
   buildSandboxRebuildRequest,
   type SandboxInstance,
@@ -67,7 +67,7 @@ export function useSandboxDashboard(onAuthFailure: () => void) {
     { manual: true, onError: handleAuthError },
   );
   // 组织目录是资源池表单的下拉候选，进页面即预取（失败只影响下拉，不阻塞池列表）。
-  const organizationsLoad = useRequest(fetchSystemOrganizations);
+  const organizationsLoad = useRequest(() => systemOrganizationsApi.list());
   const action = useRequest(async (fn: () => Promise<unknown>) => fn(), { manual: true });
 
   const instancesByPool = useMemo(() => {

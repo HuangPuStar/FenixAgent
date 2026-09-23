@@ -12,12 +12,7 @@ import { AlertCircle, Download, FileText, RefreshCw, Search } from "lucide-react
 import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
-import {
-  downloadSystemLog,
-  fetchSystemLogFiles,
-  type SystemLogSearchResult,
-  searchSystemLog,
-} from "../../api/system-logs";
+import { type SystemLogSearchInput, type SystemLogSearchResult, systemLogsApi } from "../../api/system-logs";
 
 export function AdminLogsPage() {
   const { t } = useTranslation("observer");
@@ -44,13 +39,13 @@ function LogsDashboard({ onAuthFailure }: { onAuthFailure: () => void }) {
   const [query, setQuery] = useState("");
   const [errorOnly, setErrorOnly] = useState(false);
   const [result, setResult] = useState<SystemLogSearchResult>();
-  const filesRequest = useRequest(fetchSystemLogFiles, {
+  const filesRequest = useRequest(() => systemLogsApi.fetchFiles(), {
     onSuccess: (data) => setSelectedFile((current) => current ?? data.files[0]?.name),
     onError: (error) => {
       if (error instanceof ApiError && error.code === "UNAUTHORIZED") onAuthFailure();
     },
   });
-  const searchRequest = useRequest(searchSystemLog, {
+  const searchRequest = useRequest((input: SystemLogSearchInput) => systemLogsApi.search(input), {
     manual: true,
     onSuccess: setResult,
     onError: (error) => {
@@ -62,7 +57,7 @@ function LogsDashboard({ onAuthFailure }: { onAuthFailure: () => void }) {
   // 401 与其它调用同样回门，其余失败给一次可见提示（否则点击后界面毫无反应）。
   // 落盘归本层（§5.1：域模块只回 Blob）；`params[0]` 是本次 `run()` 传入的文件名，与请求参数同源，
   // 不读 `selectedFile` state，避免请求进行中用户切换文件时下载出名字与内容不符。
-  const downloadRequest = useRequest(downloadSystemLog, {
+  const downloadRequest = useRequest((fileName: string) => systemLogsApi.download(fileName), {
     manual: true,
     onSuccess: (blob, params) => saveBlobAsFile(blob, params[0]),
     onError: (error) => {
@@ -243,7 +238,7 @@ function LogResults({ result }: { result: SystemLogSearchResult }) {
  * 触发浏览器落盘（本文件唯一的 DOM 操作）。
  *
  * 归口在页面而不是域模块：按前端规范 5.1「组件负责：调用域模块 → 处理结果 → 更新 UI」，
- * 锚点与 object URL 的生命周期是 UI 细节，域模块的 `downloadSystemLog` 只回 `Blob`（见其注释）。
+ * 锚点与 object URL 的生命周期是 UI 细节，域模块的 `systemLogsApi.download` 只回 `Blob`（见其注释）。
  *
  * `click()` 与 `revokeObjectURL` 同步完成：锚点不插入文档，浏览器在 `click()` 时同步取走 URL 对应的
  * blob，随即释放即可，无需等待下载完成（与 sandbox 的 `ClusterPanel.downloadTunnelConfig` 同形）。
