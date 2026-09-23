@@ -161,7 +161,19 @@ export function PromptJumpRail({ entries }: PromptJumpRailProps) {
     // beui 的根是「轨道 + 内容」并排的容器，这里只需要轨道浮在会话之上，故由本元素承载定位；
     // `right-4` 给根一个确定宽度 —— 预览卡容器是根的 `absolute right-4 left-16`，
     // 宽度塌成轨道宽（48px）会让左 64px 的预览卡变成零宽。
-    <div ref={anchorRef} className="chat-prompt-rail-anchor absolute top-1/2 right-4 z-[8] -translate-y-1/2">
+    //
+    // `pointer-events-none` 是**必要**的（2026-09-23 修）：本元素同时设了 CSS `left` 与 `right-4`，
+    // 绝对定位下宽度被拉满成一条横向宽带（1440×900 实测 1064×260px、垂直居中、`z-[8]`），而它是消息
+    // 滚动层的**兄弟**而非后代（`Conversation` 的两个子元素依次是它和滚动层）——落在这条带里的滚轮
+    // 命中它之后，浏览器沿其祖先上溯找不到任何可滚动容器（`overflow-y-hidden` / `overflow: hidden`），
+    // 于是整条带变成滚轮死区：实测消息区 scrollTop 420，带内 5 个落点 × 上下两向全部零位移，而带外
+    // 左侧 40px 处（命中消息正文）立刻 ±400；把本元素临时设为 `pointer-events: none` 后同一批落点
+    // 全部恢复 ±400。真正可交互的只有刻度轨（39px 宽），故由 `railClassName` 把它单独放行；
+    // beui 的预览卡容器自带 `pointer-events-none` + `aria-hidden`，本就不可交互，无需处理。
+    <div
+      ref={anchorRef}
+      className="chat-prompt-rail-anchor pointer-events-none absolute top-1/2 right-4 z-[8] -translate-y-1/2"
+    >
       <PreviewRail
         items={items}
         label={railLabel}
@@ -172,6 +184,9 @@ export function PromptJumpRail({ entries }: PromptJumpRailProps) {
           document.getElementById(`chat-entry-${item.id}`)?.scrollIntoView({ behavior: "smooth", block: "center" });
         }}
         highlightActive
+        // `pointer-events-auto` 只放行刻度轨本体；`self-center` 让它按刻度栈自身高度收口
+        // （否则它会沿根节点的 `min-h-80` 被纵向拉满，多出约 200px 高的空白命中区）。
+        railClassName="pointer-events-auto self-center"
       />
     </div>
   );
