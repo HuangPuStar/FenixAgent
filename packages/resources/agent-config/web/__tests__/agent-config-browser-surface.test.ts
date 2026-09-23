@@ -186,6 +186,10 @@ describe("agent-config web 入口浏览器可达面", () => {
       "pages/agent-panel/agent-editor/AgentFormDialog.tsx",
       "pages/agent-panel/pages/agent-sites-catalog.tsx",
       "pages/agent-panel/pages/AgentHomePage.tsx",
+      // §4.8 拆分（2026-09-23）：首页拆出的三件随页面同一条导入链进入可达到面。
+      "pages/agent-panel/pages/agent-home-creation.ts",
+      "pages/agent-panel/pages/agent-home-styles.ts",
+      "pages/agent-panel/pages/agent-home-template-pills.tsx",
       "lib/agent-create-navigation.ts",
     ]) {
       expect(reachedWebFiles).toContain(expected);
@@ -193,7 +197,8 @@ describe("agent-config web 入口浏览器可达面", () => {
     // §1.6 T11d 起 `pages/agent-panel/AgentSidebarConfig.tsx` 退场（宿主同源副本与包内死副本同时删除，
     // 侧栏导航改由 WebShell 消费各包的 `web/contribution.ts`），基线随之 24 → 23；T11e 又把三个
     // agent-panel 页面与创建导航助手归位进来（字典是 JSON，不在遍历面内；三个页面 + 助手 = +4）。
-    expect(reachedWebFiles.size).toBeGreaterThanOrEqual(27);
+    // §4.8 首页拆分再 +3（样式表 / 模板卡片 / 创建编排），基线 27 → 30。
+    expect(reachedWebFiles.size).toBeGreaterThanOrEqual(30);
 
     // 跨包递归的有效性：钉住每条上游一条稳定路径（ui-components 的按钮/弹窗、web-runtime 的
     // request / namespace / org-session 契约、model-management 的编辑器依赖、兄弟资源包的

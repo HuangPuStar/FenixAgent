@@ -93,10 +93,20 @@ describe("model-management web 入口浏览器可达面", () => {
       "components/model-icon/ModelIcon.tsx",
       "components/model-icon/model-icon-map.ts",
       "lib/model-config-utils.ts",
+      "lib/model-gateway-format.ts",
       "lib/model-gateway-usage.ts",
       "lib/provider-resource-access.ts",
       "pages/admin/AdminModelGatewayPage.tsx",
       "pages/admin/ModelGatewayKeyManagementPanel.tsx",
+      // §4.8 拆分（2026-09-23）：管理页拆出的四个面板、两个 Tab 控制器与共享件随页面同一条导入链进入：
+      "pages/admin/model-gateway-overview-panel.tsx",
+      "pages/admin/model-gateway-models-panel.tsx",
+      "pages/admin/model-gateway-budgets-panel.tsx",
+      "pages/admin/model-gateway-budget-dialogs.tsx",
+      "pages/admin/model-gateway-usage-panel.tsx",
+      "pages/admin/use-model-gateway-dashboard.ts",
+      "pages/admin/use-model-gateway-budgets.ts",
+      "pages/admin/use-model-gateway-usage.ts",
       "pages/agent-panel/pages/AgentModelsPage.tsx",
       "pages/agent-panel/pages/ModelGatewayUsagePage.tsx",
       "pages/agent-panel/pages/VerticalModelsPage.tsx",
@@ -104,7 +114,9 @@ describe("model-management web 入口浏览器可达面", () => {
     ]) {
       expect(reachedWebFiles).toContain(expected);
     }
-    expect(reachedWebFiles.size).toBeGreaterThanOrEqual(25);
+    // §4.8 拆分后实测 41：新增 9 条本包文件（四个面板 + 两个 Tab 控制器 + 跨 Tab 编排 hook + 弹窗族 +
+    // 金额/计数纯函数），它们都随页面同一条导入链进入。
+    expect(reachedWebFiles.size).toBeGreaterThanOrEqual(41);
 
     // 跨包递归的有效性：只钉稳定路径——ui-components 的按钮、web-runtime 的 request 与 org/session
     // 契约、兄弟资源包（observer / sandbox）的包根入口。少了这一段，「@fenix/* 被当成
