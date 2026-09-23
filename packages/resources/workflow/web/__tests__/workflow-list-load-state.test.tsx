@@ -26,7 +26,8 @@ g.navigator = win.navigator;
 // ── 本地翻译表（只列断言用到的键；其余回显 key 便于定位漏翻） ──
 const MOCK_TRANSLATIONS: Record<string, string> = {
   "list.loading": "加载中...",
-  "list.load_failed": "加载失败: {{error}}",
+  "list.load_failed": "加载失败",
+  "list.load_failed_hint": "请重试；若持续失败，请联系组织管理员。",
   "list.retry": "重试",
   "list.unauthorized_title": "无权限查看工作流",
   "list.unauthorized_hint": "当前账号或所属组织已无权访问工作流，重试不会改变结果。",
@@ -210,7 +211,9 @@ describe("WorkflowList 失败与无权限", () => {
 
     const alert = container.querySelector('[role="alert"]');
     expect(alert).not.toBeNull();
-    expect(alert?.textContent).toContain("加载失败: 服务器内部错误");
+    // 失败块只上屏字典文案：后端信封原文（"服务器内部错误"）是服务端措辞，不该出现在界面上（§9.3）
+    expect(alert?.textContent).toContain("加载失败");
+    expect(alert?.textContent).not.toContain("服务器内部错误");
     // 关键区分：不是空态
     expect(container.textContent).not.toContain("暂无工作流");
     expect(findButtonByText(container, "重试")).not.toBeNull();

@@ -84,7 +84,9 @@ export function AgentSkillsPage() {
   const catalog = useRequest(() => unwrap(skillConfigApi.list()), {
     onError: (error) => {
       console.error(t("toast.loadListFailed"), error);
-      toast.error(t("toast.loadListFailedWith", { message: error.message }));
+      // 上屏的只有字典文案（§9.3）：`error.message` 是 `unwrap` 抛出的 `ApiError.message`，即后端
+      // 错误信封原文，只进上面的日志；`*With` 变体把原文插进 `{{message}}` 槽位，与直接回显等价。
+      toast.error(t("toast.loadListFailed"));
     },
   });
   const skills = catalog.data?.skills ?? [];
@@ -101,7 +103,11 @@ export function AgentSkillsPage() {
         catalog.refresh();
         dispatchConfigChange("skills");
       },
-      onError: (error) => toast.error(t("toast.saveFailedWith", { message: error.message })),
+      onError: (error) => {
+        // 此前只上屏不落日志：原始对象先进诊断通道（§9.3 只约束用户可见文案，不豁免日志）。
+        console.error(t("toast.saveFailed"), error);
+        toast.error(t("toast.saveFailed"));
+      },
     },
   );
 
@@ -118,7 +124,10 @@ export function AgentSkillsPage() {
         catalog.refresh();
         dispatchConfigChange("skills");
       },
-      onError: (error) => toast.error(t("toast.saveFailedWith", { message: error.message })),
+      onError: (error) => {
+        console.error(t("toast.saveFailed"), error);
+        toast.error(t("toast.saveFailed"));
+      },
     },
   );
 
@@ -143,7 +152,9 @@ export function AgentSkillsPage() {
         setConflicts(conflictData.conflicts);
         toast.error(t("conflict.detected"));
       } else {
-        toast.error(t("toast.importFailedWith", { message: response.error?.message ?? "" }));
+        // 上传接口不 throw，失败走 `response.error`：信封原文只进日志，上屏只给字典文案（§9.3）。
+        console.error(t("toast.importFailed"), response.error);
+        toast.error(t("toast.importFailed"));
       }
     },
   });
@@ -159,7 +170,7 @@ export function AgentSkillsPage() {
     },
     onError: (error) => {
       console.error(t("toast.deleteFailed"), error);
-      toast.error(t("toast.deleteFailedWith", { message: error.message }));
+      toast.error(t("toast.deleteFailed"));
     },
   });
 
@@ -199,7 +210,7 @@ export function AgentSkillsPage() {
       dispatchConfigChange("skills");
     } catch (error) {
       console.error(t("toast.saveFailed"), error);
-      toast.error(t("toast.saveFailedWith", { message: (error as Error).message }));
+      toast.error(t("toast.saveFailed"));
     }
   };
 

@@ -106,7 +106,10 @@
     "uploaded": "资源已上传",
     "uploadFailed": "上传失败",
     "resourceDeleted": "资源已删除",
-    "deleteResourceFailed": "删除资源失败"
+    "deleteResourceFailed": "删除资源失败",
+    "listUnassociatedFailed": "获取可导入知识库失败",
+    "importFailed": "导入失败",
+    "toggleResourceFailed": "更新资源状态失败"
   },
   "reparse": {
     "btn": "重新解析",

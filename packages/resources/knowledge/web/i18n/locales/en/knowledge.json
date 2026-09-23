@@ -106,7 +106,10 @@
     "uploaded": "Resources uploaded",
     "uploadFailed": "Upload failed",
     "resourceDeleted": "Resource deleted",
-    "deleteResourceFailed": "Failed to delete resource"
+    "deleteResourceFailed": "Failed to delete resource",
+    "listUnassociatedFailed": "Failed to load importable knowledge bases",
+    "importFailed": "Import failed",
+    "toggleResourceFailed": "Failed to update resource status"
   },
   "reparse": {
     "btn": "Re-parse",

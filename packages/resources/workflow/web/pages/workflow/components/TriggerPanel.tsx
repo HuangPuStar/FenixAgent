@@ -70,7 +70,8 @@ export function TriggerPanel({ workflowId, onClose }: { workflowId?: string; onC
       reloadTriggers();
     } catch (err) {
       console.error(err);
-      toast.error(`${t("editor.trigger_create_failed")}: ${(err as Error).message}`);
+      // 模板字符串把后端信封原文拼进了 toast（§9.3）：`err.message` 只进日志，用户侧只留稳定文案。
+      toast.error(t("editor.trigger_create_failed"));
     } finally {
       setCreating(false);
     }
@@ -85,7 +86,7 @@ export function TriggerPanel({ workflowId, onClose }: { workflowId?: string; onC
         reloadTriggers();
       } catch (err) {
         console.error(err);
-        toast.error(`${t("editor.trigger_delete_failed")}: ${(err as Error).message}`);
+        toast.error(t("editor.trigger_delete_failed"));
       }
     },
     [workflowId, reloadTriggers, t],
@@ -102,7 +103,7 @@ export function TriggerPanel({ workflowId, onClose }: { workflowId?: string; onC
         mutateTriggers((prev) => (prev ?? []).map((tr) => (tr.id === triggerId ? updated : tr)));
       } catch (err) {
         console.error(err);
-        toast.error(`${t("editor.trigger_regenerate_failed")}: ${(err as Error).message}`);
+        toast.error(t("editor.trigger_regenerate_failed"));
       }
     },
     [workflowId, mutateTriggers, t],
@@ -222,7 +223,8 @@ export function TriggerPanel({ workflowId, onClose }: { workflowId?: string; onC
             className="px-3 py-6"
             icon={<AlertTriangle />}
             title={t("editor.trigger_load_failed")}
-            description={triggerError}
+            // 说明取字典（§9.3）：这里原先是 `error.message`（后端信封原文直出）
+            description={t("editor.trigger_load_failed_hint")}
             action={{ label: t("editor.trigger_retry"), onClick: reloadTriggers, icon: <RefreshCw /> }}
           />
         ) : triggers.length === 0 ? (

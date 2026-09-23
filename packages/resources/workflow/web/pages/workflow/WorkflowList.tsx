@@ -80,7 +80,6 @@ export function WorkflowList({ onEditWorkflow, onViewVersions, createRequested }
     },
   );
   const workflowsSafe = Array.isArray(workflows) ? workflows : [];
-  const errorMsg = error ? (error instanceof Error ? error.message : String(error)) : null;
   const unauthorized = isUnauthorizedError(error);
   // 组织还在解析时 `ready` 为 false、`loading` 也为 false，直接渲染会闪出「暂无工作流」空态
   // （空态是断言「确实没有数据」，此刻还没问过服务端）；用 `pending` 把这段窗口留在骨架屏。
@@ -112,7 +111,9 @@ export function WorkflowList({ onEditWorkflow, onViewVersions, createRequested }
       },
       onError: (err) => {
         console.error(err);
-        toast.error(t("list.create_error"), { description: (err as Error).message });
+        // 失败只上屏字典文案（§9.3）：`err` 是 `unwrap` 抛出的 `ApiError`，其 `message` 是后端错误
+        // 信封原文，只进日志；原来塞进 toast 的 description 等于把它显示给用户。
+        toast.error(t("list.create_error"));
       },
     },
   );
@@ -127,7 +128,7 @@ export function WorkflowList({ onEditWorkflow, onViewVersions, createRequested }
     },
     onError: (err) => {
       console.error(err);
-      toast.error(t("list.delete_failed"), { description: (err as Error).message });
+      toast.error(t("list.delete_failed"));
       setDeleteTarget(null);
     },
   });
@@ -141,7 +142,7 @@ export function WorkflowList({ onEditWorkflow, onViewVersions, createRequested }
       setShowRecoverPanel(true);
     } catch (err) {
       console.error(err);
-      toast.error(t("list.scan_failed"), { description: (err as Error).message });
+      toast.error(t("list.scan_failed"));
     }
   };
 
@@ -157,7 +158,7 @@ export function WorkflowList({ onEditWorkflow, onViewVersions, createRequested }
       },
       onError: (err) => {
         console.error(err);
-        toast.error(t("list.recover_failed"), { description: (err as Error).message });
+        toast.error(t("list.recover_failed"));
       },
     },
   );
@@ -292,7 +293,8 @@ export function WorkflowList({ onEditWorkflow, onViewVersions, createRequested }
         ) : (
           <EmptyState
             icon={<AlertTriangle />}
-            title={t("list.load_failed", { error: errorMsg })}
+            title={t("list.load_failed")}
+            description={t("list.load_failed_hint")}
             tone="danger"
             role="alert"
             // 重试入口：轮询是静默的，用户手里必须有一个能主动重发的按钮，否则只能刷新整页

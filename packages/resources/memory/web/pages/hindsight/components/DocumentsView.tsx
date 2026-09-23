@@ -44,7 +44,9 @@ export function DocumentsView() {
       refreshDeps: [search, page],
       onError: (err) => {
         console.error("Failed to load documents:", err);
-        toast.error(err instanceof Error ? err.message : t("documents.loadFailed"));
+        // 上屏只取字典（§9.3）：`err.message` 是 `unwrap` 抛出的 `ApiError.message`，即后端错误
+        // 信封原文，只进上面的日志。
+        toast.error(t("documents.loadFailed"));
       },
     },
   );
@@ -80,7 +82,7 @@ export function DocumentsView() {
       refreshDocuments();
     } catch (err) {
       console.error("Failed to upload document:", err);
-      toast.error(err instanceof Error ? err.message : t("documents.uploadFailed"));
+      toast.error(t("documents.uploadFailed"));
     } finally {
       setUploading(false);
       // 重置 file input，允许重复选择同一文件
@@ -98,7 +100,7 @@ export function DocumentsView() {
       refreshDocuments();
     } catch (err) {
       console.error("Failed to delete document:", err);
-      toast.error(err instanceof Error ? err.message : t("documents.deleteFailed"));
+      toast.error(t("documents.deleteFailed"));
     }
   };
 

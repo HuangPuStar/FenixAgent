@@ -101,12 +101,10 @@
     "unpublished": "已下架 {{version}}",
     "restored": "已恢复 {{version}}",
     "loadListFailed": "加载插件市场失败",
-    "loadListFailedWith": "加载插件市场失败：{{message}}",
     "loadDetailFailed": "加载条目详情失败",
     "publishFailed": "发布失败",
     "unpublishFailed": "下架失败",
-    "restoreFailed": "恢复失败",
-    "actionFailedWith": "{{message}}"
+    "restoreFailed": "恢复失败"
   },
   "validation": {
     "packageNameRequired": "请填写包名",

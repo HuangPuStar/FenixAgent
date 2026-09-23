@@ -288,7 +288,8 @@ export function useWorkflowRun(params: UseWorkflowRunParams): UseWorkflowRunRetu
           await unwrap(workflowDefApi.save(workflowId, y));
         } catch (err) {
           console.error(`${t("editor.auto_save_failed")}:`, err);
-          toast.error(`${t("editor.auto_save_failed")}: ${(err as Error).message}`);
+          // 运行前自动保存失败：只上屏字典文案（§9.3），后端信封原文留在上面的日志里。
+          toast.error(t("editor.auto_save_failed"));
           setRunning(false);
           isSubmittingRef.current = false;
           return;
@@ -312,7 +313,7 @@ export function useWorkflowRun(params: UseWorkflowRunParams): UseWorkflowRunRetu
       } catch (err) {
         console.error(err);
         pushWorkflowError(workflowId, "run", (err as Error).message);
-        toast.error(`${t("editor.run_failed")}: ${(err as Error).message}`);
+        toast.error(t("editor.run_failed"));
         setRunning(false);
       } finally {
         isSubmittingRef.current = false;
@@ -338,9 +339,10 @@ export function useWorkflowRun(params: UseWorkflowRunParams): UseWorkflowRunRetu
       await loadRunData(activeRunId);
     } catch (err) {
       console.error(err);
-      toast.error((err as Error).message);
+      // 原来是裸回显 `(err as Error).message`（连标题都没有）；§9.3 要求按稳定文案上屏。
+      toast.error(t("editor.cancel_run_failed"));
     }
-  }, [activeRunId, loadRunData]);
+  }, [activeRunId, loadRunData, t]);
 
   const handleApprove = useCallback(
     async (approval: PendingApproval) => {
@@ -352,10 +354,10 @@ export function useWorkflowRun(params: UseWorkflowRunParams): UseWorkflowRunRetu
         setRunApprovals(Array.isArray(list) ? list : []);
       } catch (err) {
         console.error(err);
-        toast.error((err as Error).message);
+        toast.error(t("editor.approve_failed"));
       }
     },
-    [activeRunId, loadRunData, setRunApprovals],
+    [activeRunId, loadRunData, setRunApprovals, t],
   );
 
   /**
@@ -403,7 +405,7 @@ export function useWorkflowRun(params: UseWorkflowRunParams): UseWorkflowRunRetu
           await unwrap(workflowDefApi.save(workflowId, y));
         } catch (err) {
           console.error(`${t("editor.auto_save_failed")}:`, err);
-          toast.error(`${t("editor.auto_save_failed")}: ${(err as Error).message}`);
+          toast.error(t("editor.auto_save_failed"));
           isSubmittingRef.current = false;
           return;
         }
@@ -444,7 +446,7 @@ export function useWorkflowRun(params: UseWorkflowRunParams): UseWorkflowRunRetu
         await loadRunData(result.runId);
       } catch (err) {
         console.error(err);
-        toast.error(`${t("editor.rerun_failed")}: ${(err as Error).message}`);
+        toast.error(t("editor.rerun_failed"));
       } finally {
         setRunning(false);
         isSubmittingRef.current = false;

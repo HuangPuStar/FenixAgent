@@ -173,7 +173,9 @@ export function AgentKnowledgeBasesPage() {
   } = useRequest(() => unwrap(kbApi.list()), {
     onError: (err) => {
       console.error("Failed to load knowledge bases", err);
-      toast.error(err instanceof Error ? err.message : t("loadError"));
+      // 列表失败只上屏字典文案（§9.3）：`err.message` 是 `unwrap` 抛出的 `ApiError.message`，即后端
+      // 错误信封原文（服务端措辞、表名、路径都可能出现），只进上面的日志。
+      toast.error(t("loadError"));
     },
   });
 
@@ -218,8 +220,10 @@ export function AgentKnowledgeBasesPage() {
         console.error("Failed to load detail", err);
         setSelectedDetail(null);
         setResources([]);
-        setDetailError(err instanceof Error ? err.message : t("loadDetailError"));
-        toast.error(err instanceof Error ? err.message : t("loadDetailError"));
+        // 详情失败块的说明同样只取字典（§9.3）：这个状态会渲染进 `KnowledgeLoadFailure` 的失败区，
+        // 塞服务端原文等于换了个位置铺内部措辞。
+        setDetailError(t("loadDetailError"));
+        toast.error(t("loadDetailError"));
       },
     },
   );
@@ -247,7 +251,7 @@ export function AgentKnowledgeBasesPage() {
       },
       onError: (err) => {
         console.error("Create failed", err);
-        toast.error(err instanceof Error ? err.message : t("toast.saveFailed"));
+        toast.error(t("toast.saveFailed"));
       },
     },
   );
@@ -266,7 +270,7 @@ export function AgentKnowledgeBasesPage() {
       },
       onError: (err) => {
         console.error("Update failed", err);
-        toast.error(err instanceof Error ? err.message : t("toast.saveFailed"));
+        toast.error(t("toast.saveFailed"));
       },
     },
   );
@@ -289,7 +293,7 @@ export function AgentKnowledgeBasesPage() {
     },
     onError: (err) => {
       console.error("Delete failed", err);
-      toast.error(err instanceof Error ? err.message : t("toast.deleteFailed"));
+      toast.error(t("toast.deleteFailed"));
     },
   });
 
@@ -306,7 +310,7 @@ export function AgentKnowledgeBasesPage() {
       },
       onError: (err) => {
         console.error("Upload failed", err);
-        toast.error(err instanceof Error ? err.message : t("toast.uploadFailed"));
+        toast.error(t("toast.uploadFailed"));
       },
     },
   );
@@ -344,7 +348,7 @@ export function AgentKnowledgeBasesPage() {
       onError: (err) => {
         console.error("Delete resource failed", err);
         setDeletingResourceId(null);
-        toast.error(err instanceof Error ? err.message : t("toast.deleteResourceFailed"));
+        toast.error(t("toast.deleteResourceFailed"));
       },
     },
   );
@@ -407,7 +411,10 @@ export function AgentKnowledgeBasesPage() {
       const list = await unwrap(kbApi.listUnassociated());
       setUnassociatedList(list);
     } catch (err) {
-      toast.error(`获取未关联知识库失败: ${(err as Error).message}`);
+      // 此前只上屏、不落日志：原始 error 对象必须先留在诊断通道里（§5.8 的判据只约束「必须有用户
+      // 可见反馈」，不豁免日志）。文案同样只取字典（§9.3）。
+      console.error("Failed to list unassociated knowledge bases", err);
+      toast.error(t("toast.listUnassociatedFailed"));
     } finally {
       setImportLoading(false);
     }
@@ -424,7 +431,8 @@ export function AgentKnowledgeBasesPage() {
       setRenameTarget(null);
       refresh();
     } catch (err) {
-      toast.error(`导入失败: ${(err as Error).message}`);
+      console.error("Failed to import knowledge base", err);
+      toast.error(t("toast.importFailed"));
     } finally {
       setImportingRemoteId(null);
     }
@@ -691,7 +699,8 @@ export function AgentKnowledgeBasesPage() {
                             .toggleResourceEnabled({ kbId, resourceId: resource.id }, { enabled })
                             .then(() => runLoadDetail(kbId))
                             .catch((error) => {
-                              toast.error(`操作失败: ${error instanceof Error ? error.message : "未知错误"}`);
+                              console.error("Failed to toggle resource enabled", error);
+                              toast.error(t("toast.toggleResourceFailed"));
                               runLoadDetail(kbId);
                             });
                         }}

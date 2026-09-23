@@ -164,11 +164,12 @@ export function RetrievalTestPanel({ knowledgeBaseId }: RetrievalTestPanelProps)
       // request() 不抛异常，需手动检查 success
       if (!resp.success || resp.data == null) {
         console.error("[RetrievalTestPanel] API returned error", resp.error);
-        const message = resp.error?.message ?? t("retrieval.error");
         // 错误信封（普通对象，含 code）原样交给失败区：`isKnowledgeAccessDenied` 据此决定
-        // 是否走无权限态（不给重试）。缺信封时构造同形的 `{ code, message }` 兜底。
-        setError(resp.error ?? { code: "UNKNOWN", message });
-        toast.error(message);
+        // 是否走无权限态（不给重试）。缺信封时构造同形的 `{ code, message }` 兜底（`message` 取字典
+        // 文案而不是服务端原文）。
+        setError(resp.error ?? { code: "UNKNOWN", message: t("retrieval.error") });
+        // toast 只上屏稳定文案（§9.3）：信封里的 `message` 是服务端措辞，交给失败区与日志即可。
+        toast.error(t("retrieval.error"));
         setHasRun(true);
         return;
       }
@@ -177,7 +178,9 @@ export function RetrievalTestPanel({ knowledgeBaseId }: RetrievalTestPanelProps)
     } catch (err) {
       console.error("[RetrievalTestPanel] search failed", err);
       setError(err);
-      toast.error(err instanceof Error ? err.message : t("retrieval.error"));
+      // 失败原因由下面的 `KnowledgeLoadFailure` 承担（该组件展示诊断说明），toast 只上屏稳定文案，
+      // 不把 `err.message`（后端信封原文）重复铺一层（§9.3）。
+      toast.error(t("retrieval.error"));
     } finally {
       setLoading(false);
     }

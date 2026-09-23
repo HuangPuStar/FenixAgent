@@ -444,8 +444,9 @@ function WorkflowEditorInner({ workflowId, runId }: WorkflowEditorProps) {
         if (wf.description) setMeta((m) => ({ ...m, description: String(wf.description ?? "") }));
       } catch (err) {
         console.error("Failed to load workflow:", err);
-        // 加载失败给用户明确反馈：否则用户面对空白画布会以为是新建状态
-        toast.error(t("editor.load_failed", { error: (err as Error).message }));
+        // 加载失败给用户明确反馈：否则用户面对空白画布会以为是新建状态。
+        // 文案只取字典（§9.3）：`err.message` 是后端错误信封原文，只进上面的日志。
+        toast.error(t("editor.load_failed"));
       }
     })();
   }, [workflowId, fitView, setEdges, setNodes, setLastSavedYaml, t, runViewSetters]);

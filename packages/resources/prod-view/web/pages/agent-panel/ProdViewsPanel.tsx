@@ -72,10 +72,18 @@ export function ProdViewsPanel({ agentId }: ProdViewsPanelProps) {
   // 因此打开创建弹窗时把当前 agent 名预填进名称，弹窗里不再有 agent 选择器。
   const editor = useProdViewEditor({
     boundAgentId: agentId,
-    messages: { createSuccess: t("panel.createSuccess"), updateSuccess: t("panel.updateSuccess") },
+    messages: {
+      createSuccess: t("panel.createSuccess"),
+      updateSuccess: t("panel.updateSuccess"),
+      saveFailed: t("panel.saveFailed"),
+    },
     onSaved: refresh,
   });
-  const deletion = useProdViewDelete({ successMessage: t("panel.deleteSuccess"), onDeleted: refresh });
+  const deletion = useProdViewDelete({
+    successMessage: t("panel.deleteSuccess"),
+    failureMessage: t("panel.deleteFailed"),
+    onDeleted: refresh,
+  });
 
   const copyLink = (id: string) =>
     copyProdViewLink(id, { copied: t("panel.linkCopied"), failed: t("panel.copyFailed") });

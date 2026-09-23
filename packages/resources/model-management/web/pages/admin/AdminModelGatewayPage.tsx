@@ -233,7 +233,9 @@ function ModelGatewayDashboard({ onAuthFailure }: { onAuthFailure: () => void })
       if (feedback.level === "success") toast.success(t(feedback.translationKey, feedback.values));
       else toast.error(t(feedback.translationKey, feedback.values));
     } catch (error) {
-      toast.error(error instanceof ApiError ? error.message : t("modelGateway.connectionCheck.requestFailed"));
+      // 上屏只给字典文案（§9.3）：`ApiError.message` 是后端错误信封原文，只进这里。
+      console.error("[model-gateway] connection check failed", error);
+      toast.error(t("modelGateway.connectionCheck.requestFailed"));
     }
   }
 
@@ -1115,7 +1117,8 @@ function OverviewPanel({
           tone="danger"
           role="alert"
           icon={<TriangleAlert />}
-          title={error instanceof ApiError ? error.message : t("modelGateway.overview.loadFailed")}
+          // 标题只取字典（§9.3）：原先直接把 `ApiError.message`（后端错误信封原文）当标题
+          title={t("modelGateway.overview.loadFailed")}
           className="py-8"
         />
       )}

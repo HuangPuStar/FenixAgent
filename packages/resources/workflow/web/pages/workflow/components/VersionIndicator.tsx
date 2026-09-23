@@ -86,7 +86,9 @@ export function VersionIndicator({
         reloadVersions();
       } catch (err) {
         console.error(err);
-        toast.error(t("versions.operation_failed"), { description: (err as Error).message });
+        // 标题已是「操作失败」，再补 `err.message` 只是把后端信封原文（内部措辞、表名、路径）
+        // 铺到用户面前（§9.3）；原始对象留在上面的 console.error 里。
+        toast.error(t("versions.operation_failed"));
       }
     },
     [workflowId, reloadVersions, t],
@@ -102,7 +104,7 @@ export function VersionIndicator({
         setOpen(false);
       } catch (err) {
         console.error(err);
-        toast.error(t("versions.restore_failed"), { description: (err as Error).message });
+        toast.error(t("versions.restore_failed"));
       }
     },
     [workflowId, onBackToDraft, t],
@@ -182,7 +184,8 @@ export function VersionIndicator({
                 className="px-3 py-4"
                 icon={<AlertTriangle />}
                 title={t("versions.load_data_failed")}
-                description={versionsError}
+                // 说明取字典（§9.3）：这里原先是 `error.message`（后端信封原文直出）
+                description={t("versions.load_data_failed_hint")}
                 action={{ label: t("versions.retry"), onClick: reloadVersions }}
               />
             ) : visibleVersions.length === 0 ? (

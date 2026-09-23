@@ -46,7 +46,8 @@ export function PluginMarketPage() {
   const catalog = useRequest(() => unwrap(pluginMarketApi.list()), {
     onError: (error) => {
       console.error(t("toast.loadListFailed"), error);
-      toast.error(t("toast.loadListFailedWith", { message: error.message }));
+      // 上屏只给字典文案（§9.3）：`error.message` 是 `unwrap` 抛出的 `ApiError.message`（后端信封原文）
+      toast.error(t("toast.loadListFailed"));
     },
   });
   const packages = catalog.data?.packages ?? [];
@@ -91,7 +92,8 @@ export function PluginMarketPage() {
       }
       const fallback = pending.kind === "unpublish" ? t("toast.unpublishFailed") : t("toast.restoreFailed");
       console.error(fallback, response.error);
-      toast.error(t("toast.actionFailedWith", { message: response.error?.message ?? fallback }));
+      // 同上：信封原文已进日志，用户侧只留与操作对应的稳定文案
+      toast.error(fallback);
     } finally {
       setWriting(false);
     }

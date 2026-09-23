@@ -101,12 +101,10 @@
     "unpublished": "Withdrew {{version}}",
     "restored": "Restored {{version}}",
     "loadListFailed": "Failed to load the plugin market",
-    "loadListFailedWith": "Failed to load the plugin market: {{message}}",
     "loadDetailFailed": "Failed to load the entry",
     "publishFailed": "Failed to publish",
     "unpublishFailed": "Failed to withdraw",
-    "restoreFailed": "Failed to restore",
-    "actionFailedWith": "{{message}}"
+    "restoreFailed": "Failed to restore"
   },
   "validation": {
     "packageNameRequired": "Enter the package name",

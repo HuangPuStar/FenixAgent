@@ -124,7 +124,8 @@ export function VersionPanel({
         reloadAll();
       } catch (err) {
         console.error(err);
-        toast.error(`${t("versions.operation_failed")}: ${(err as Error).message}`);
+        // 模板字符串把后端信封原文拼进了 toast（§9.3）：失败原因只进日志，用户侧只留稳定文案。
+        toast.error(t("versions.operation_failed"));
       }
     },
     [workflowId, reloadAll, t],
@@ -138,7 +139,7 @@ export function VersionPanel({
         toast.success(t("versions.restore_success"));
       } catch (err) {
         console.error(err);
-        toast.error(`${t("versions.restore_failed")}: ${(err as Error).message}`);
+        toast.error(t("versions.restore_failed"));
       }
     },
     [workflowId, t],
@@ -242,7 +243,8 @@ export function VersionPanel({
             className="px-3 py-6"
             icon={<AlertTriangle />}
             title={t("versions.load_data_failed")}
-            description={versionsError}
+            // 说明取字典（§9.3）：这里原先是 `error.message`（后端信封原文直出）
+            description={t("versions.load_data_failed_hint")}
             action={{ label: t("versions.retry"), onClick: reloadVersions }}
           />
         ) : versions.length === 0 ? (

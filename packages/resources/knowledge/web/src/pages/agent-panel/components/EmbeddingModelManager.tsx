@@ -72,7 +72,10 @@ export function EmbeddingModelManager({ canManage, inDialog, onModelsChanged }: 
   const { data: tree, loading } = useRequest(() => unwrap(embeddingModelApi.list()), {
     refreshDeps: [refreshKey],
     onError: (err) => {
-      toast.error(err instanceof Error ? err.message : t("embeddingModel.listLoadFailed"));
+      // 此前只上屏、不落日志：原始对象先进诊断通道。文案只取字典（§9.3），
+      // `err.message` 是 `unwrap` 抛出的 `ApiError.message`（后端信封原文）。
+      console.error("Failed to load embedding model tree", err);
+      toast.error(t("embeddingModel.listLoadFailed"));
     },
   });
 
@@ -88,7 +91,8 @@ export function EmbeddingModelManager({ canManage, inDialog, onModelsChanged }: 
       setRefreshKey((k) => k + 1);
       onModelsChanged?.();
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : t("embeddingModel.deleteFailed"));
+      console.error("Failed to delete embedding instance", err);
+      toast.error(t("embeddingModel.deleteFailed"));
     }
   };
 
@@ -286,7 +290,8 @@ function InstanceRow({ instance, canManage, onDelete, onModelsChanged }: Instanc
       // 通知父层刷新「创建知识库」表单选项，使屏蔽/启用立即反映到嵌入模型下拉
       onModelsChanged?.();
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : t("embeddingModel.actionFailed"));
+      console.error("Failed to toggle embedding model status", err);
+      toast.error(t("embeddingModel.actionFailed"));
     } finally {
       setTogglingModel(null);
     }
@@ -382,7 +387,10 @@ function AddProviderDialog({ open, onOpenChange, onAdded }: AddProviderDialogPro
   const { loading: factoriesLoading } = useRequest(() => unwrap(embeddingModelApi.listFactories()), {
     ready: open,
     onSuccess: (data) => setFactories((data ?? []).sort((a, b) => a.name.localeCompare(b.name))),
-    onError: (err) => toast.error(err instanceof Error ? err.message : t("embeddingModel.factoriesLoadFailed")),
+    onError: (err) => {
+      console.error("Failed to load embedding factories", err);
+      toast.error(t("embeddingModel.factoriesLoadFailed"));
+    },
   });
 
   const reset = () => {
@@ -439,7 +447,8 @@ function AddProviderDialog({ open, onOpenChange, onAdded }: AddProviderDialogPro
       handleClose(false);
       onAdded();
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : t("embeddingModel.addFailed"));
+      console.error("Failed to add embedding instance", err);
+      toast.error(t("embeddingModel.addFailed"));
     } finally {
       setSubmitting(false);
     }

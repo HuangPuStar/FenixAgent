@@ -189,7 +189,8 @@ export function AgentMcpDialog({ target, onClose, onSaved }: Props) {
       },
       onError: (error) => {
         console.error(t("toast.saveFailed"), error);
-        toast.error(error.message || t("toast.saveFailed"));
+        // 上屏只给字典文案（§9.3）：`error.message` 是 `unwrap` 抛出的 `ApiError.message`（后端信封原文）
+        toast.error(t("toast.saveFailed"));
       },
     },
   );
@@ -203,7 +204,11 @@ export function AgentMcpDialog({ target, onClose, onSaved }: Props) {
         else if (result.reachable) toast.warning(t("toast.testReachable", { message: result.message ?? "" }));
         else toast.error(t("toast.testFailed", { message: result.message ?? t("toast.saveFailed") }));
       },
-      onError: (error) => toast.error(t("toast.testFailedWith", { message: error.message })),
+      onError: (error) => {
+        // 请求本身失败（探测没跑起来）：上屏只给字典文案，信封原文进这里（§9.3）。
+        console.error(t("toast.testFailedRequest"), error);
+        toast.error(t("toast.testFailedRequest"));
+      },
     },
   );
 
