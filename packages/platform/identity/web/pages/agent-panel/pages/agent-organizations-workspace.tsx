@@ -18,6 +18,14 @@
 // 已知偏差：同角色比原 px 小 0~3.75px（逐条差异见转换报告）；与仍走名义 px 的 `agent-api-keys.css` /
 // `agent-sites.css` 等页面存在 13/16 的口径差，那批属另一批存量，本批未动。
 import {
+  AgentCatalogIndex,
+  AgentCatalogIndexCopy,
+  AgentCatalogIndexIcon,
+  AgentCatalogIndexItem,
+  AgentCatalogIndexMeta,
+  AgentCatalogIndexNav,
+} from "@fenix/ui-components/components/agent-catalog-index";
+import {
   AgentMasterDetailHeader,
   AgentMasterDetailWorkspace,
 } from "@fenix/ui-components/components/agent-master-detail-workspace";
@@ -78,42 +86,64 @@ export function OrganizationIdCopy({ id, onCopy }: { id: string; onCopy: () => v
 
 function OrganizationDirectory({ props }: { props: OrganizationsWorkspaceProps }) {
   const { t } = useTranslation(NS.ORGS);
+  // 目录栏骨架（头部几何、条目列模板、两行截断、窄屏横置）已下沉共享构件集 `agent-catalog-index`，本页只给
+  // 取值与配色。形态差异各有去处：没有箭头 → `columns="icon-copy-meta"`；行尾角色文字 → `Meta`；
+  // `font-mono` 的 slug 副标题 → `subtitleClassName`；行首是**裸图标**（`size-4`，没有图标盒，宽度不等于
+  // 共享默认的 28px 图标列）→ 由页面 CSS 把 `--agent-catalog-index-icon-column` 设成 `1rem`；
+  // 大写小标题的字号与「计数不是徽标」→ 同目录伴生 CSS 的两条覆盖（共享 CSS 未分层，工具类压不过它）。
+  // 随骨架而来、**不是**「原样」的两处语义变化：目录列表由 `<div>` 变成 `<nav aria-label>`（多一个地标，
+  // 名字复用 `t("myOrgs")`），选中行多出 `aria-current="page"`（此前选中只体现在配色上）。
   return (
-    <aside
+    <AgentCatalogIndex
       className="org-directory flex min-h-0 flex-col border-r border-slate-100 bg-surface-0 px-3 py-5"
-      aria-label={t("myOrgs")}
+      // 大写字距与颜色是继承属性，共享头部没写过，工具类照常生效；被共享头部写死的字号
+      // （13px）只能由页面 CSS 覆盖，见 `agent-organizations-workspace.css`。
+      headerClassName="uppercase tracking-wider text-text-muted"
+      label={t("myOrgs")}
+      title={t("myOrgs")}
+      count={props.organizations.length}
     >
-      <div className="flex items-center justify-between px-2.5 pb-3 text-xs font-semibold tracking-wider text-text-muted uppercase">
-        <span>{t("myOrgs")}</span>
-        <span>{props.organizations.length}</span>
-      </div>
-      <div className="org-directory-list grid gap-1">
-        {props.organizations.map((organization) => (
-          <button
-            key={organization.id}
-            type="button"
-            className={`org-directory-row flex min-h-13 w-full items-center gap-2.5 rounded-md border-0 px-2.5 py-2 text-left transition-colors ${
-              organization.id === props.selectedOrgId
-                ? "bg-surface-hover text-blue-800"
-                : "bg-transparent text-slate-600 hover:bg-surface-2 hover:text-text-primary"
-            }`}
-            onClick={() => props.onSelectOrg(organization.id)}
-          >
-            <RoleIcon role={organization.role} />
-            <span className="min-w-0 flex-1">
-              <strong className="block truncate text-base font-semibold">{organization.name}</strong>
-              <small className="mt-0.5 block truncate font-mono text-sm text-text-muted">{organization.slug}</small>
-            </span>
-            <span className="shrink-0 text-xs text-text-muted">
-              {t(`roles.${organization.role}`, organization.role)}
-            </span>
-          </button>
-        ))}
+      <AgentCatalogIndexNav className="org-directory-list gap-1" label={t("myOrgs")} stripOnNarrow="900px">
+        {props.organizations.map((organization) => {
+          const selected = organization.id === props.selectedOrgId;
+          return (
+            <AgentCatalogIndexItem
+              key={organization.id}
+              columns="icon-copy-meta"
+              selected={selected}
+              // 行高、内边距、圆角、列间距、配色是本页刻度；`display: grid`、三列模板、`min-width: 0`、
+              // `align-items: center`、`border: 0`、`text-align: left` 已由共享组件声明，故不再重复。
+              // 首列宽度由页面 CSS 的 `--agent-catalog-index-icon-column: 1rem` 压回裸图标宽度（见 CSS）。
+              // 行宽（窄屏 `min-width: 11.875rem`）不走工具类：共享 `.agent-catalog-index-item { min-width: 0 }`
+              // 未分层，会压过 `@layer utilities` 的 `min-w-47.5`，那份声明因此留在页面 CSS 的 900px 段里。
+              // 行上的 `w-full` 一并移除以配合 `flex: 0 0 auto`：否则窄屏横置时每行都会顶满一屏。
+              className={`org-directory-row min-h-13 gap-2.5 rounded-md px-2.5 py-2 transition-colors ${
+                selected
+                  ? "bg-surface-hover text-blue-800"
+                  : "bg-transparent text-slate-600 hover:bg-surface-2 hover:text-text-primary"
+              }`}
+              onClick={() => props.onSelectOrg(organization.id)}
+            >
+              <AgentCatalogIndexIcon>
+                <RoleIcon role={organization.role} />
+              </AgentCatalogIndexIcon>
+              <AgentCatalogIndexCopy
+                title={organization.name}
+                subtitle={organization.slug}
+                titleClassName="text-base font-semibold"
+                subtitleClassName="mt-0.5 font-mono text-sm text-text-muted"
+              />
+              <AgentCatalogIndexMeta className="text-xs text-text-muted">
+                {t(`roles.${organization.role}`, organization.role)}
+              </AgentCatalogIndexMeta>
+            </AgentCatalogIndexItem>
+          );
+        })}
         {props.organizations.length === 0 ? (
           <p className="px-2.5 py-7.5 text-center text-sm text-text-muted">{t("noOrgs")}</p>
         ) : null}
-      </div>
-    </aside>
+      </AgentCatalogIndexNav>
+    </AgentCatalogIndex>
   );
 }
 
