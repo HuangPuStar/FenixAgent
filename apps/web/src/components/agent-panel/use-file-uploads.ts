@@ -113,8 +113,11 @@ export function useFileUploads({ envId, targetDir, getTargetDir, t, onUploaded, 
         if (envIdRef.current === envId) onUploaded();
       } catch (error) {
         if (controller.signal.aborted || isAbortError(error)) return;
-        const message = error instanceof Error ? error.message : t("fileTree.uploadFailed");
-        onError(t("fileTree.uploadPartialIndeterminate", { message }));
+        // 诊断上下文进控制台，上屏的只有字典文案：`{{message}}` 槽位收的是**稳定文案**而不是
+        // `error.message`——上传失败抛的是 `uploadWorkspaceFiles` 的 `ApiError`，其 message 就是后端
+        // 错误信封原文（含路径、syscall 等内部措辞），只适合进日志（§9.3）。
+        console.error("Workspace upload failed:", error);
+        onError(t("fileTree.uploadPartialIndeterminate", { message: t("fileTree.uploadFailed") }));
         if (envIdRef.current === envId) onUploaded();
       } finally {
         if (uploadControllerRef.current === controller) {

@@ -54,7 +54,7 @@
     "disabled": "停用"
   },
   "loadState": {
-    "failed": "任务加载失败：{{message}}",
+    "failed": "任务加载失败",
     "unauthorizedTitle": "无权访问定时任务",
     "unauthorizedHint": "当前账号未被授权查看该组织的定时任务，请联系组织管理员开通权限。",
     "retry": "重试"
@@ -139,6 +139,11 @@
     "triggered": "任务已手动触发",
     "logsCleared": "日志已清空",
     "saveFailed": "保存失败",
+    "loadFailed": "任务加载失败",
+    "toggleFailed": "任务状态切换失败",
+    "triggerFailed": "触发任务失败",
+    "deleteFailed": "删除任务失败",
+    "clearLogsFailed": "清空日志失败",
     "agentListLoadFailed": "加载 Agent 列表失败",
     "triggerResult": "执行{{status}}，耗时 {{duration}}ms"
   },

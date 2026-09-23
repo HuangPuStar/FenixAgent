@@ -32,7 +32,9 @@ export function AgentSitesPage() {
   const catalog = useRequest(async () => unwrap(agentSitesApi.list()), {
     onError: (error) => {
       console.error(t("siteDeployment.errors.load"), error);
-      toast.error(t("siteDeployment.errors.loadWith", { message: error.message }));
+      // 目录的持久失败块只在 `apps.length === 0` 时渲染（见 agent-sites-catalog），已有数据时刷新
+      // 失败就只有这条 toast；两者都走字典文案，原始 `ApiError.message` 只在上一行进日志（§9.3）。
+      toast.error(t("siteDeployment.errors.load"));
     },
   });
   const apps = catalog.data ?? [];
@@ -70,7 +72,7 @@ export function AgentSitesPage() {
       },
       onError: (error) => {
         console.error(t("siteDeployment.errors.save"), error);
-        toast.error(error.message);
+        toast.error(t("siteDeployment.errors.save"));
       },
     },
   );
@@ -82,13 +84,19 @@ export function AgentSitesPage() {
       setDeleteTarget(null);
       catalog.refresh();
     },
-    onError: (error) => toast.error(t("siteDeployment.errors.deleteWith", { message: error.message })),
+    onError: (error) => {
+      console.error(t("siteDeployment.errors.delete"), error);
+      toast.error(t("siteDeployment.errors.delete"));
+    },
   });
 
   const rotateToken = useRequest((app: SiteApp) => unwrap(agentSitesApi.rotateToken(app.id)), {
     manual: true,
     onSuccess: () => toast.success(t("siteDeployment.toast.tokenRotated")),
-    onError: (error) => toast.error(t("siteDeployment.errors.rotateWith", { message: error.message })),
+    onError: (error) => {
+      console.error(t("siteDeployment.errors.rotate"), error);
+      toast.error(t("siteDeployment.errors.rotate"));
+    },
   });
 
   const openCreate = () => {
@@ -108,10 +116,18 @@ export function AgentSitesPage() {
     try {
       const environments = await unwrap(envApi.list());
       const environment = environments.find((item) => item.agentConfigId === app.createdByAgentConfigId);
-      if (!environment) throw new Error(t("siteDeployment.errors.creatorInactive"));
+      if (!environment) {
+        // 「创建者智能体未激活」是查得到的业务结论，不是接口失败：它有自己的字典文案，直接上屏。
+        // 此前它与 `envApi.list()` 的异常共用一条 catch，于是把「未激活」和「后端报错」混成一句
+        // `err.message` 回显（§9.3）。
+        toast.error(t("siteDeployment.errors.creatorInactive"));
+        return;
+      }
       void navigate({ to: "/agent/$agentId", params: { agentId: environment.id } });
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : t("siteDeployment.errors.creatorNavigation"));
+      // 只剩取环境列表的失败：`ApiError.message` 是后端信封原文，只进日志，上屏用本页通用文案。
+      console.error(t("siteDeployment.errors.creatorNavigation"), error);
+      toast.error(t("siteDeployment.errors.creatorNavigation"));
     }
   };
 

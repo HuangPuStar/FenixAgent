@@ -46,7 +46,7 @@
     "openInNewTab": "Open in new tab",
     "loading": "Loading site...",
     "loadingSites": "Loading agent sites...",
-    "loadFailed": "Failed to load sites: {{message}}",
+    "loadFailed": "Failed to load sites",
     "loadTimeout": "Site load timed out",
     "loadTimeoutHint": "The site may still be loading in the background. Try reloading or open it in a new tab.",
     "traceToCreatorTooltip": "Switch to the agent that created this site",

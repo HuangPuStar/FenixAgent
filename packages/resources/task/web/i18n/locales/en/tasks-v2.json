@@ -54,7 +54,7 @@
     "disabled": "Disabled"
   },
   "loadState": {
-    "failed": "Failed to load tasks: {{message}}",
+    "failed": "Failed to load tasks",
     "unauthorizedTitle": "No permission to view scheduled tasks",
     "unauthorizedHint": "Your account is not authorized to view this organization's scheduled tasks. Ask an organization administrator for access.",
     "retry": "Retry"
@@ -139,6 +139,11 @@
     "triggered": "Task triggered",
     "logsCleared": "Logs cleared",
     "saveFailed": "Save failed",
+    "loadFailed": "Failed to load tasks",
+    "toggleFailed": "Failed to update task status",
+    "triggerFailed": "Failed to trigger task",
+    "deleteFailed": "Failed to delete task",
+    "clearLogsFailed": "Failed to clear logs",
     "agentListLoadFailed": "Failed to load agent list",
     "triggerResult": "Execution {{status}}, took {{duration}}ms"
   },

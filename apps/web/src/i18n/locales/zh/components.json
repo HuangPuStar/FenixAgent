@@ -46,7 +46,7 @@
     "openInNewTab": "在新标签页打开",
     "loading": "加载站点中...",
     "loadingSites": "加载 Agent 绑定的站点...",
-    "loadFailed": "加载站点失败：{{message}}",
+    "loadFailed": "加载站点失败",
     "loadTimeout": "站点加载超时",
     "loadTimeoutHint": "站点可能在后台继续加载，可刷新重试或在新标签页打开",
     "traceToCreatorTooltip": "切换到创建此站点的智能体",
