@@ -189,6 +189,21 @@ export function Toggle({
   );
 }
 
+/**
+ * 资源列表分页条 —— **刻意不进库**（不进 `packages/ui-components`）。
+ *
+ * 库内 `ui/pagination` 的契约与本处不等价，四项都是硬差异（逐条核对过该组件的实现）：
+ *   - 页码语义：库内是 1-based（`getPageNumbers()` 返回 1 … totalPages，改 pageSize 时 `onPageChange(1)`），
+ *     本处是 0-based（`page` / `onPageChange(safePage ± 1)`）；
+ *   - 形态：库内恒渲染「总数 + pageSize 下拉 + 页码按钮组（含省略号分页）」，本处是「区间计数 + 上一页 /
+ *     页码 / 下一页」——页码组与 pageSize 选择器在这里都不是想要的交互；
+ *   - 文案：库内要求调用方传 `t`，默认命名空间前缀是 `runs`（`runs.pagination_total` 等），而本包是
+ *     `AGENTS` 命名空间，借 `runs.*` 的键只会退化成裸 key；
+ *   - 定位：库内根节点的样式（`flex items-center justify-between gap-4 py-3`）写死且**不接受 `className`**，
+ *     而本处正是靠调用方 `className`（`PAGINATION_IN_RESULTS` / `PAGINATION_EMBEDDED`）把分页条顶到结果区底部。
+ * 结论：替换等于换一套分页交互 + 文案契约，不是组件替换。将来若要收敛，先给 `ui/pagination` 补 0-based
+ * 模式与 `className` 入参，再回来迁。
+ */
 export function EditorPagination({
   page,
   pageSize,
@@ -239,6 +254,15 @@ export function EditorPagination({
   );
 }
 
+/**
+ * 资源库左栏的**纵向来源列** —— **刻意不进库**（不进 `packages/ui-components`）。
+ *
+ * 库内最接近的是 `config/ScopeFilterBar`，但它是配置型目录页的「一行内：搜索框 + 横向作用域药丸」骨架，
+ * 与本处形态不同：本处是资源选择器左栏里的纵向来源列（等宽列、`border-r` 右分隔线、`bg-slate-50` 灰底，
+ * 每行「来源名 + 计数徽标」，选中态整行换底），左侧没有搜索框、选项也不横排。两者只共享「一组互斥选项 +
+ * 计数」这一个抽象，把本处换成它等于把左栏重做成横向条带——是布局重设计，不是组件替换。
+ * （本组件在本包内被 `AgentResourcePicker` 与 `SinglePicker` 两处以同一形态复用，暂不需要再抽象。）
+ */
 export function EditorGroupFilter({
   options,
   value,
