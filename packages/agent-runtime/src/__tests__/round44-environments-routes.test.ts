@@ -5,12 +5,7 @@ import { resetAllStubs } from "@fenix/platform-sdk/testing";
 import { SandboxProviderNotConfiguredError, SandboxRuntimeNotReadyError } from "@fenix/resource-sandbox/server";
 import { createWebEnvironmentsRoutes } from "../routes/web/environments";
 import type { AgentRuntime } from "../runtime";
-import {
-  resetAgentRuntimePort,
-  setOrchestrationInstanceDeps,
-  stubAgentRuntimePort,
-  stubCoreRuntimeFacade,
-} from "../server/testing";
+import { resetAgentRuntimePort, stubAgentRuntimePort, stubCoreRuntimeFacade } from "../server/testing";
 import { createStubAgentRuntimeAuthGuardPlugin, resetTestAuth, setTestAuth } from "./guard-stubs";
 
 // 路由不再自持 deps 袋子（1.4 W3b）：环境能力经运行 port 取，替换点就是 port 绑定本身
@@ -452,36 +447,52 @@ describe("round44 Web 环境路由", () => {
     expect(body.error).toEqual({ code: "AGENT_NODE_UNAVAILABLE", message: "Agent node is unavailable" });
   });
 
-  // provider 未配置时，进入环境必须脱敏映射为 503。
+  // provider 未配置时进入环境必须映射为 503 + SERVICE_UNAVAILABLE（可重试语义），并按固定文案脱敏：
+  // providerKey 只进服务端日志，不得回传前端。
   test("进入环境映射 provider 未配置错误", async () => {
-    stubCoreRuntimeFacade({ listInstances: () => [] });
-    setOrchestrationInstanceDeps({
-      getOrchestrationController: () =>
-        ({
-          spawnInstance: async () => Promise.reject(new SandboxProviderNotConfiguredError("internal-provider")),
-        }) as unknown as import("@fenix/orchestration").AgentController,
+    // 沙箱错误是从 port 的 `ensureInstance` 冒到路由 catch 的（本路由面向替换点就是 port，见文件头）。
+    // 真实链路：`ensureInstance` → 协调器 strict `ensureRuntime` → adapter.start → `spawnInstance`
+    // → `AgentController.spawnInstance` → 执行节点解析 → `sandboxExecutionHandler.prepare`，沿途无一层把
+    // 它换成别的类型（协调器只在 strict 下原样上抛）。
+    // 此前这两个用例只桩到 `spawnInstance` 一层、`ensureInstance` 留真实实现，而真实实现的第一步
+    // （实例仓储取 DB）在测试进程里就先失败了：请求根本没走到沙箱，断言到的 500 是路由兜底分支、
+    // 且 `spawnInstance` 从未被调用——「不泄漏」断言因此是空转，503 分支始终无人覆盖。
+    stubRuntime({
+      ensureInstance: async () => {
+        throw new SandboxProviderNotConfiguredError("internal-provider");
+      },
     });
 
     const response = await json(`/environments/${environmentId}/enter`, "POST");
+    const text = await response.text();
 
-    expect(response.status).toBe(500);
-    expect(await response.text()).not.toContain("internal-provider");
+    expect(response.status).toBe(503);
+    expect(JSON.parse(text)).toEqual({
+      success: false,
+      error: { code: "SERVICE_UNAVAILABLE", message: "Sandbox service is unavailable" },
+    });
+    // 脱敏：providerKey 不得出现在响应体任何位置。
+    expect(text).not.toContain("internal-provider");
   });
 
-  // runtime 未就绪时，同样不得泄漏 sandbox 内部标识。
+  // runtime 未就绪时同样映射为 503 + SERVICE_UNAVAILABLE，且 sandboxId 不得泄漏（错误对象携带 sbi_*）。
   test("进入环境映射 runtime 未就绪错误", async () => {
-    stubCoreRuntimeFacade({ listInstances: () => [] });
-    setOrchestrationInstanceDeps({
-      getOrchestrationController: () =>
-        ({
-          spawnInstance: async () => Promise.reject(new SandboxRuntimeNotReadyError("sbi_private")),
-        }) as unknown as import("@fenix/orchestration").AgentController,
+    stubRuntime({
+      ensureInstance: async () => {
+        throw new SandboxRuntimeNotReadyError("sbi_private");
+      },
     });
 
     const response = await json(`/environments/${environmentId}/enter`, "POST");
+    const text = await response.text();
 
-    expect(response.status).toBe(500);
-    expect(await response.text()).not.toContain("sbi_private");
+    expect(response.status).toBe(503);
+    expect(JSON.parse(text)).toEqual({
+      success: false,
+      error: { code: "SERVICE_UNAVAILABLE", message: "Sandbox service is unavailable" },
+    });
+    // 脱敏：sandboxId 不得出现在响应体任何位置。
+    expect(text).not.toContain("sbi_private");
   });
 
   // 未配模型的 agent 走 enter 时，agent-config 抛的是 AppError(INVALID_CONFIG, 400)：路由必须按
