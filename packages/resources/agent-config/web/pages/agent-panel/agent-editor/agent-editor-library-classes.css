@@ -99,6 +99,12 @@
   background-color: oklch(97% 0.014 254.604); /* bg-blue-50 */
 }
 
+/* 行级选中态（源 `KNOWLEDGE_SWITCH_ON` 的 `bg-blue-50`）：开关本体改走 `ui/switch` 后，Radix 把状态
+   挂在 Switch 上而不是整行上，故用 `:has()` 从子元素反查。写进 CSS 是因为调用点写不出这层选择器。 */
+.agent-knowledge-switch:has([data-state="checked"]) {
+  background-color: oklch(97% 0.014 254.604); /* bg-blue-50 */
+}
+
 /* 源 `.agent-knowledge-switch > span`：文案列。 */
 .agent-knowledge-switch > span {
   display: flex;
@@ -118,29 +124,16 @@
   color: oklch(37.2% 0.044 257.287); /* text-slate-700 */
 }
 
-/* 源 `.agent-knowledge-switch strong em`：徽标药丸。
-   `rounded-full` 编译成 `calc(infinity * 1px)`；这里沿用源文件的 `999px` —— 同为「胶囊」几何，且不依赖
-   `infinity` 这个较新的 calc 常量支持度。 */
-.agent-knowledge-switch > span > strong > em {
-  border-radius: 999px;
-  padding: 2px 7px; /* py-0.5 px-1.75 */
-  font-size: 10px; /* text-3xs */
-  font-weight: 500;
-  font-style: normal; /* not-italic */
-  color: oklch(50% 0.134 242.749); /* text-sky-700 */
-  background-color: oklch(95.1% 0.026 236.824); /* bg-sky-100 */
-}
+/* 徽标（源 `.agent-knowledge-switch > span > strong > em`）与圆钮阴影
+   （源 `.agent-knowledge-switch__knob`）两条规则随开关改走 `ui/switch` + `ui/badge` 一并删除：
+   药丸几何、配色与阴影分别由 `Badge` 的 `variant="secondary"` 与 Switch 的 Thumb 承担，
+   留在原处只会压住库组件的声明。 */
 
 /* 源 `.agent-knowledge-switch small`。 */
 .agent-knowledge-switch > span > small {
   font-size: 10px; /* text-3xs */
   line-height: 1.5; /* leading-normal */
   color: oklch(70.7% 0.022 261.325); /* text-gray-400 */
-}
-
-/* 源 `.agent-knowledge-switch > i b`：圆钮（尺寸/底色留 `KNOWLEDGE_SWITCH_KNOB`，只有阴影属深层值）。 */
-.agent-knowledge-switch__knob {
-  box-shadow: 0 1px 4px rgb(25 43 75 / 20%);
 }
 
 /* 源 `.agent-retrieval-fields`：说明字段列 + 选项列。≤1024px 单列（`max-lg:grid-cols-1`）见文件头约定 ③。 */

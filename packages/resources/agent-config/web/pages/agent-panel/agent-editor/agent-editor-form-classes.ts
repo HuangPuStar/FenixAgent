@@ -9,11 +9,9 @@ import "./agent-editor-form-classes.css";
 
 /* ── 表单字段（form-fields） ───────────────────────────────────────────── */
 
-/** `.agent-editor-field`：字段外壳（列布局）。 */
-export const FIELD = "flex min-w-0 flex-col gap-2.25";
-/** `.agent-editor-field__label`：标签行（左标签 + 右小注）。 */
-export const FIELD_LABEL =
-  "agent-editor-field__label flex items-center justify-between gap-3 text-xs [font-weight:680] leading-snug text-slate-700";
+/** `.agent-editor-field__label` 与 `.agent-editor-field` 两条类串已删除：字段包装改走
+ * `@fenix/ui-components/config/LabeledField`，字段名刻度（`text-sm font-medium`）、提示位置与
+ * 字段名/控件间距（6px）都归库内，配套的 `> small` 子代规则同步删除。 */
 /** 输入/文本域的公共外观：`box-sizing` 由 preflight 提供，`outline:0` 等价 `outline-0`。 */
 const FOCUS_RING = "agent-editor-field-focus";
 const DISABLED = "agent-editor-field-disabled";
@@ -28,13 +26,9 @@ export const PICKER_INPUT = `w-full appearance-none h-7.5 border-0 rounded-none 
 export const BUTTON =
   "agent-editor-button inline-flex h-8.5 flex-none items-center justify-center border border-slate-200 rounded-md bg-white " +
   "px-2.5 outline-0 [font:inherit] text-xs text-slate-600 cursor-pointer";
-/** `.agent-editor-stepper`：34/58/34 三列步进器。 */
-export const STEPPER = "agent-editor-stepper grid w-31.5 overflow-hidden border border-slate-200 rounded-md bg-white";
-/** `.agent-editor-stepper button/input`：无框透明 32px 高，按钮再补居中与指针。 */
-export const STEPPER_CONTROL =
-  "h-8 border-0 rounded-none bg-transparent p-0 text-center outline-0 [font:inherit] text-slate-600";
-/** `.agent-editor-stepper button` 追加。 */
-export const STEPPER_BUTTON = "grid place-items-center cursor-pointer";
+/** 步进器宽度：原三列 34 / 58 / 34 的合计。列定义、按钮形态与数值框外观归 `ui/input-group`，
+ * 原 `agent-editor-stepper` 的 grid 模板与 `STEPPER_CONTROL` / `STEPPER_BUTTON` 两条类串随之删除。 */
+export const STEPPER = "w-31.5";
 /** `.agent-editor-prompt-editor`：提示词文本域更高（180px，短视口 112px）。 */
 export const PROMPT_EDITOR = "agent-editor-prompt-editor min-h-45 [font-family:inherit]";
 /** `.agent-editor-guidance`：提示行（图标 + 文案，短视口收紧）。 */
@@ -51,21 +45,18 @@ export const AGENT_ID_BUTTON =
 
 /* ── 卡片表面（form-surfaces） ─────────────────────────────────────────── */
 
-/** 开关行（`.agent-editor-toggle-row`，含 `.is-on` 与 hover）——选中态用 `data-state` 标记，子元素靠 `group` 变体取值。 */
+/** 开关行（`.agent-editor-toggle-row`，含 hover）——行内的开关本体是 `ui/switch`，选中态由库组件自己的
+ * `data-state` 表达；行级的选中底色/描边改用 `:has([data-state="checked"])` 写在同名 CSS 里，
+ * 因为 Radix 的状态挂在 Switch 上而不是这一行上。原 `TOGGLE_SWITCH` / `TOGGLE_KNOB` 两条自绘
+ * 轨道与圆钮类串随之删除。 */
 export const TOGGLE_ROW =
-  "agent-editor-toggle-row group/toggle grid w-full min-h-16.25 items-center gap-2.5 mt-3.5 " +
-  "border border-slate-200 rounded-lg bg-white px-2.75 py-2.25 text-left text-slate-600 " +
-  "data-[state=on]:border-indigo-200 data-[state=on]:bg-slate-50";
+  "agent-editor-toggle-row grid w-full min-h-16.25 items-center gap-2.5 mt-3.5 " +
+  "border border-slate-200 rounded-lg bg-white px-2.75 py-2.25 text-left text-slate-600";
 /** 开关行图标底。 */
 export const TOGGLE_ICON =
   "agent-editor-toggle-icon grid size-8 place-items-center rounded-md bg-slate-100 text-slate-500";
 /** 开关行文案：标题 13px/加粗 680，说明 11px/1.45。 */
 export const TOGGLE_COPY = "agent-editor-toggle-copy flex min-w-0 flex-col gap-0.75";
-/** `.agent-editor-switch`：32×18 轨道（选中变蓝）。 */
-export const TOGGLE_SWITCH = "block h-4.5 w-8 rounded-full bg-slate-300 p-0.5 group-data-[state=on]/toggle:bg-blue-600";
-/** `.agent-editor-switch i`：14px 圆钮（选中右移 14px）。 */
-export const TOGGLE_KNOB =
-  "agent-editor-toggle-knob block size-3.5 rounded-full bg-white group-data-[state=on]/toggle:translate-x-3.5";
 /** `.agent-model-summary`：当前模型卡片（40px 图标列）。 */
 export const MODEL_SUMMARY = "agent-model-summary grid items-center gap-3 mt-4.5 rounded-lg bg-slate-50 p-3.5";
 /** `.agent-runtime-note`：运行便签。 */
@@ -76,8 +67,9 @@ export const OWNER_CARD =
   "agent-owner-card grid min-h-19 items-center gap-3 border border-slate-200 rounded-xl bg-white p-3";
 /** `.agent-access-preview`：可见性预览。 */
 export const ACCESS_PREVIEW = "agent-access-preview mt-3.5 rounded-lg bg-slate-50 p-3.25";
-/** `.agent-capability-tabs`：能力分区页签（选中态用 `data-active`，下划线用 `::after`）。 */
-export const CAPABILITY_TABS = "agent-capability-tabs flex gap-1.25 mb-3.5 border-b border-slate-200";
+/** 能力分区页签条：只承载排布（等分三列 + 底部基线）。页签本体是 `ui/tabs` 的 `TabsList`（`variant="line"`）
+ * 与 `TabsTrigger`，选中态下划线、刻度与配色归库内，故 `agent-capability-tabs` 语义类随之删除。 */
+export const CAPABILITY_TABS = "flex w-full gap-1.25 mb-3.5 border-b border-slate-200";
 
 /* ── 选项列表（模型 / 节点） ──────────────────────────────────────────── */
 
@@ -160,8 +152,6 @@ export const PICKER_ROW_HINT = "overflow-hidden text-ellipsis whitespace-nowrap 
 /** 列表行范围徽标。 */
 export const PICKER_ROW_BADGE =
   "rounded-full bg-slate-100 px-1.5 py-0.75 text-3xs not-italic whitespace-nowrap text-slate-500";
-/** 列表空态段落。 */
-export const PICKER_LIST_EMPTY = "m-0 px-2.5 py-8 text-center text-3xs text-gray-400";
 /** 列表内 Checkbox（ui-components 组件，需 `!`；边框与阴影的层叠约束见 CSS）。 */
 export const PICKER_CHECKBOX = "agent-resource-picker-checkbox !size-4.5 !rounded-sm";
 /** 列表内 Checkbox 选中态。 */

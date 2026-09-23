@@ -1,4 +1,10 @@
 import { cn } from "@fenix/ui-components/lib/cn";
+import { Badge } from "@fenix/ui-components/ui/badge";
+import { Button } from "@fenix/ui-components/ui/button";
+import { Input } from "@fenix/ui-components/ui/input";
+import { InputGroup, InputGroupButton, InputGroupInput } from "@fenix/ui-components/ui/input-group";
+import { Switch } from "@fenix/ui-components/ui/switch";
+import { Textarea } from "@fenix/ui-components/ui/textarea";
 import { NS } from "@fenix/web-runtime/i18n/namespace";
 import { Check, ChevronLeft, ChevronRight, Cpu, Minus, Plus, Search } from "lucide-react";
 import {
@@ -13,8 +19,6 @@ import { SECTION_INTRO } from "./agent-editor-classes";
 import "./agent-editor-controls.css";
 import {
   BUTTON,
-  FIELD,
-  FIELD_LABEL,
   GROUP_FILTER_NARROW,
   INPUT,
   LIBRARY_PICKER_NARROW,
@@ -38,20 +42,15 @@ import {
   SINGLE_PICKER_CURRENT_UNAVAILABLE,
   SINGLE_PICKER_TOOLBAR,
   STEPPER,
-  STEPPER_BUTTON,
-  STEPPER_CONTROL,
   TEXTAREA,
   TOGGLE_COPY,
   TOGGLE_ICON,
-  TOGGLE_KNOB,
   TOGGLE_ROW,
-  TOGGLE_SWITCH,
 } from "./agent-editor-form-classes";
 import {
   GROUP_FILTER,
   GROUP_FILTER_BUTTON,
   GROUP_FILTER_BUTTON_ACTIVE,
-  GROUP_FILTER_COUNT,
   GROUP_FILTER_LABEL,
   LIBRARY_PICKER,
   LIBRARY_PICKER_FLAT,
@@ -80,38 +79,27 @@ export function Intro({ eyebrow, title, description }: { eyebrow: string; title:
   );
 }
 
-export function EditorField({
-  label,
-  hint,
-  className,
-  children,
-}: {
-  label: string;
-  hint?: string;
-  className?: string;
-  children: ReactNode;
-}) {
-  return (
-    <label className={cn(FIELD, className)}>
-      <span className={FIELD_LABEL} data-slot="editor-field-label">
-        {label}
-        {hint && <small>{hint}</small>}
-      </span>
-      {children}
-    </label>
-  );
-}
+/* `EditorField` / `Field` 别名已删除：字段包装统一由 `@fenix/ui-components/config/LabeledField` 承担
+ * （identity / mcp / model-management 三个包早已迁移到它）。原实现的字段名刻度、hint 位置与
+ * 「`<label>` 包裹复合控件」三点都与库内不同：迁移同时把提示移出可访问名，并让含按钮的行走显式关联。 */
 
+/**
+ * 输入 / 文本域 / 按钮三个封装只承担「把本面板的类串常量交给基础组件」这一件事：
+ * 元素本体是 `@fenix/ui-components/ui/*` 的原语，`INPUT` / `TEXTAREA` / `BUTTON` 经 `className`
+ * 透传（`cn` 里 tailwind-merge 消解同族冲突，后传者胜），伴随 CSS 的钩子类（`agent-editor-field-*`、
+ * `agent-editor-button`）因此仍在元素上，面板原有外观与层叠关系不变。
+ */
 export function EditorInput(props: InputHTMLAttributes<HTMLInputElement>) {
-  return <input {...props} className={cn(INPUT, props.className)} />;
+  return <Input {...props} className={cn(INPUT, props.className)} />;
 }
 
 export function EditorTextarea(props: TextareaHTMLAttributes<HTMLTextAreaElement>) {
-  return <textarea {...props} className={cn(TEXTAREA, props.className)} />;
+  return <Textarea {...props} className={cn(TEXTAREA, props.className)} />;
 }
 
 export function EditorButton(props: ButtonHTMLAttributes<HTMLButtonElement>) {
-  return <button {...props} className={cn(BUTTON, props.className)} />;
+  // `variant="outline"` 是本面板描边按钮的语义锚点；底色/描边/尺寸仍由 `BUTTON` 类串决定。
+  return <Button {...props} variant="outline" className={cn(BUTTON, props.className)} />;
 }
 
 export function EditorStepperField({
@@ -132,19 +120,20 @@ export function EditorStepperField({
   increaseLabel: string;
 }) {
   const update = (next: number) => onChange(Math.min(max, Math.max(min, next)));
+  // 外壳、两侧按钮与中间数值框都由 `ui/input-group` 提供：加减按钮的 `disabled` 边界、`aria-label`、
+  // 数字框的 `min/max/value/onChange` 语义与原来逐条一致，只有外观改由库内决定。
   return (
-    <div className={STEPPER}>
-      <button
-        type="button"
-        className={cn(STEPPER_CONTROL, STEPPER_BUTTON)}
+    <InputGroup className={STEPPER}>
+      <InputGroupButton
+        size="icon-sm"
         onClick={() => update(value - 1)}
         disabled={disabled || value <= min}
         aria-label={decreaseLabel}
       >
         <Minus />
-      </button>
-      <input
-        className={STEPPER_CONTROL}
+      </InputGroupButton>
+      <InputGroupInput
+        className="text-center"
         type="number"
         min={min}
         max={max}
@@ -152,20 +141,17 @@ export function EditorStepperField({
         disabled={disabled}
         onChange={(event) => update(event.currentTarget.valueAsNumber || min)}
       />
-      <button
-        type="button"
-        className={cn(STEPPER_CONTROL, STEPPER_BUTTON)}
+      <InputGroupButton
+        size="icon-sm"
         onClick={() => update(value + 1)}
         disabled={disabled || value >= max}
         aria-label={increaseLabel}
       >
         <Plus />
-      </button>
-    </div>
+      </InputGroupButton>
+    </InputGroup>
   );
 }
-
-export const Field = EditorField;
 
 export function Toggle({
   checked,
@@ -184,28 +170,22 @@ export function Toggle({
   badge?: string;
   disabled: boolean;
 }) {
+  // 开关本体换成 `ui/switch`（Radix），整行可点的语义改由 `<label>` 承接：
+  // label 隐式关联它唯一的可标记后代（Switch 渲染为 `button[role=switch][aria-checked]`），
+  // 点行任意位置由浏览器转发给控件，读屏也仍能念出「标题 + 说明」这一整行的名字。
+  // 原来的行级 `data-state="on"` 因此不复存在，选中态的行底色/描边改由伴随 CSS 用 `:has()` 表达。
   return (
-    <button
-      className={TOGGLE_ROW}
-      data-state={checked ? "on" : "off"}
-      type="button"
-      role="switch"
-      aria-checked={checked}
-      disabled={disabled}
-      onClick={() => onChange(!checked)}
-    >
+    <label className={TOGGLE_ROW}>
       <span className={TOGGLE_ICON}>{icon}</span>
       <span className={TOGGLE_COPY}>
         <strong>
           {title}
-          {badge && <em>{badge}</em>}
+          {badge && <Badge variant="secondary">{badge}</Badge>}
         </strong>
         <small>{description}</small>
       </span>
-      <span className={TOGGLE_SWITCH} aria-hidden="true">
-        <i className={TOGGLE_KNOB} />
-      </span>
-    </button>
+      <Switch checked={checked} onCheckedChange={onChange} disabled={disabled} />
+    </label>
   );
 }
 
@@ -296,7 +276,7 @@ export function EditorGroupFilter({
           onClick={() => onChange("all")}
         >
           <span className={GROUP_FILTER_LABEL}>{t("editor.allSources")}</span>
-          <em className={GROUP_FILTER_COUNT}>{options.length}</em>
+          <Badge variant="secondary">{options.length}</Badge>
         </button>
       )}
       {groups.map((group) => (
@@ -308,7 +288,7 @@ export function EditorGroupFilter({
           onClick={() => onChange(group.id)}
         >
           <span className={GROUP_FILTER_LABEL}>{group.label}</span>
-          <em className={GROUP_FILTER_COUNT}>{group.count}</em>
+          <Badge variant="secondary">{group.count}</Badge>
         </button>
       ))}
     </nav>
@@ -361,7 +341,7 @@ export function SinglePicker({
       <div className={SINGLE_PICKER_TOOLBAR}>
         <label>
           <Search />
-          <input
+          <Input
             className={PICKER_INPUT}
             value={query}
             onChange={(event) => {

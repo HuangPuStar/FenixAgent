@@ -1,5 +1,7 @@
+import { EmptyState } from "@fenix/ui-components/config/EmptyState";
 import { cn } from "@fenix/ui-components/lib/cn";
 import { Checkbox } from "@fenix/ui-components/ui/checkbox";
+import { Input } from "@fenix/ui-components/ui/input";
 import { NS } from "@fenix/web-runtime/i18n/namespace";
 import { Search, X } from "lucide-react";
 import { type ReactNode, useMemo, useState } from "react";
@@ -16,7 +18,6 @@ import {
   PICKER_ICON,
   PICKER_INPUT,
   PICKER_LIST,
-  PICKER_LIST_EMPTY,
   PICKER_ROW,
   PICKER_ROW_HINT,
   PICKER_ROW_SELECTED,
@@ -152,7 +153,7 @@ export function AgentResourcePicker({
       </div>
       <label className={PICKER_SEARCH}>
         <Search />
-        <input
+        <Input
           className={PICKER_INPUT}
           value={query}
           onChange={(event) => {
@@ -221,7 +222,11 @@ export function AgentResourcePicker({
                 </label>
               );
             })}
-            {!filtered.length && <p className={PICKER_LIST_EMPTY}>{emptyText ?? t("editor.noMatchingResources")}</p>}
+            {!filtered.length && (
+              // 「筛选后没有匹配」是库内统一状态块的登记场景（§4.1）：默认内边距对 282px 高的结果区偏大，
+              // 按该节给的口径用 `className` 收到 `py-8`，不再就地手写一行灰字。
+              <EmptyState className="py-8" title={emptyText ?? t("editor.noMatchingResources")} />
+            )}
           </div>
           <EditorPagination
             page={paged.page}

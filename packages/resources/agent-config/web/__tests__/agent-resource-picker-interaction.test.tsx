@@ -26,6 +26,10 @@ const originalGlobals = new Map(
     "getComputedStyle",
     "MutationObserver",
     "ResizeObserver",
+    // Radix 的 Tabs 在挂载后用 `requestAnimationFrame` 解除「首帧不做动画」的抑制，
+    // 该函数只存在于 happy-dom 的 Window 上，不显式绑定会让能力分区页签的挂载抛 ReferenceError。
+    "requestAnimationFrame",
+    "cancelAnimationFrame",
   ].map((key) => [key, globals[key]]),
 );
 globals.window = win;
@@ -42,6 +46,8 @@ globals.ResizeObserver = class {
   unobserve() {}
   disconnect() {}
 };
+globals.requestAnimationFrame = win.requestAnimationFrame.bind(win);
+globals.cancelAnimationFrame = win.cancelAnimationFrame.bind(win);
 Object.defineProperty(win, "matchMedia", {
   value: () => ({ matches: false, addEventListener() {}, removeEventListener() {} }),
 });
@@ -313,9 +319,13 @@ describe("AgentResourcePicker 组件交互", () => {
     expect(tabs[0].getAttribute("aria-controls")).toBeTruthy();
     expect(container.querySelector("[role='tabpanel']")?.getAttribute("aria-labelledby")).toBe(tabs[0].id);
     tabs[0].focus();
-    await act(async () =>
-      tabs[0].dispatchEvent(new win.KeyboardEvent("keydown", { key: "ArrowRight", bubbles: true })),
-    );
+    // 页签条改走 `ui/tabs`（Radix）后，方向键的聚焦由 RovingFocusGroup 在 `setTimeout` 里落地
+    // （`@radix-ui/react-roving-focus` 的 `setTimeout(() => focusFirst(...))`），而 `act` 只 flush
+    // microtask；这里补一个宏任务轮次还原真实时序，聚焦触发的 `onFocus → onValueChange` 才会落到渲染上。
+    await act(async () => {
+      tabs[0].dispatchEvent(new win.KeyboardEvent("keydown", { key: "ArrowRight", bubbles: true }));
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    });
     expect(tabs[1].getAttribute("aria-selected")).toBe("true");
     expect(win.document.activeElement?.id).toBe(tabs[1].id);
   });
