@@ -106,7 +106,7 @@ bun run run-data-migrations         # 执行已登记的存量数据迁移
 
 ### 前端边界与体验
 
-- 导航只使用 `<Link to>`、`useNavigate()` 和 `router.invalidate()`；禁止 `window.location.href`、`window.location.replace`、`window.location.reload` 和 `window.history.pushState`。Sidebar 导航项必须提供 `to`。
+- 导航只使用 `<Link to>` 和 `useNavigate()`；禁止 `window.location.href`、`window.location.replace`、`window.location.reload` 和 `window.history.pushState`。Sidebar 导航项由各包 contribution 声明 `id`（`id` 即路由目标，Shell 拼成 `/agent/<id>`），没有 `to` 字段（见前端规范 §2.6）。
 - 请求统一通过 `@fenix/web-runtime/api/request`（真身 `packages/web-runtime/web/api/request.ts`）；`request<T>()` 处理路径参数、query、JSON、超时与错误标准化，但**返回 `ApiResponse` 而非已解包数据**——失败时返回 `{ success: false }` 而不 throw，调用方必须 `unwrap()` 或显式判断 `success`；直接 `await` 并依赖 `catch`/`onError` 会把 4xx/5xx 当成成功（在途项 `docs/need-to-change/25`，目标为单一异常语义）。
 - 数据获取优先遵循前端规范和现有 `ahooks` / `useRequest` 模式，避免重复请求与竞态覆盖。
 - 用户可见字符串必须通过 `t()`；i18n 插值使用 `{{var}}`，单花括号 `{var}` 会被当作字面文本。
