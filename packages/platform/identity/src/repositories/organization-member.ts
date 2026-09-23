@@ -52,6 +52,24 @@ export async function findMembershipRolesByUserId(userId: string): Promise<Membe
 }
 
 /**
+ * 读取用户在指定组织中的成员角色；不存在成员关系时返回 undefined。
+ *
+ * 组织管理授权必须从 identity 自己拥有的成员表实时读取，不能依赖 actor 中可能过期的成员关系快照。
+ */
+export async function findOrganizationMembershipRole(
+  organizationId: string,
+  userId: string,
+): Promise<string | undefined> {
+  const db = getIdentityDatabase();
+  const rows: { role: string }[] = await db
+    .select({ role: member.role })
+    .from(member)
+    .where(and(eq(member.organizationId, organizationId), eq(member.userId, userId)))
+    .limit(1);
+  return rows[0]?.role;
+}
+
+/**
  * 批量查询用户手机号，用于补全 better-auth 返回的成员信息。
  */
 export async function findUsersPhoneNumbersByIds(userIds: string[]): Promise<UserPhoneNumber[]> {

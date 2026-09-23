@@ -22,6 +22,10 @@ interface OrgApi {
     body: { userId: string; role: string; organizationId: string };
     headers: Headers;
   }) => Promise<MemberLike>;
+  updateMemberRole: (opts: {
+    body: { memberId: string; organizationId: string; role: string };
+    headers: Headers;
+  }) => Promise<void>;
 }
 
 type MemberLike = {
@@ -120,4 +124,17 @@ export async function addOrganizationMembers(
       }),
     ),
   );
+}
+
+/** 更新目标组织中指定成员的角色。授权由调用此服务的 Facade 负责。 */
+export async function updateOrganizationMemberRole(
+  organizationId: string,
+  memberId: string,
+  role: string,
+  headers: Headers,
+): Promise<void> {
+  await getOrgApi().updateMemberRole({
+    body: { memberId, organizationId, role },
+    headers,
+  });
 }
