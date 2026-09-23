@@ -1,156 +1,24 @@
 import "./ResourcePreviewContent.css";
 
 import { getFileExtension } from "@fenix/ui-components/components/file-icon-helper";
-import { EmptyState } from "@fenix/ui-components/config/EmptyState";
-import { Button } from "@fenix/ui-components/ui/button";
-import { Skeleton } from "@fenix/ui-components/ui/skeleton";
 import { Spinner } from "@fenix/ui-components/ui/spinner";
 import { NS } from "@fenix/web-runtime/i18n/namespace";
-import { useRequest } from "ahooks";
-import mammoth from "mammoth";
-import { useCallback, useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import ReactMarkdown from "react-markdown";
 import rehypeSanitize from "rehype-sanitize";
 import remarkGfm from "remark-gfm";
-import { toast } from "sonner";
-import * as XLSX from "xlsx";
-import {
-  fetchResourceFileBinary,
-  fetchResourceFileText,
-  isResourcePdfPreviewAvailable,
-  kbApi,
-} from "../../api/knowledge-bases";
+import { kbApi } from "../../api/knowledge-bases";
 import { sanitizeRichHtml } from "../../lib/sanitize-html";
 import type { KnowledgeResourceInfo } from "../../types/knowledge";
-
-/** 视频扩展名 → MIME 类型映射 */
-function getVideoMimeType(ext: string): string {
-  const map: Record<string, string> = {
-    mp4: "video/mp4",
-    webm: "video/webm",
-    ogg: "video/ogg",
-    mov: "video/quicktime",
-    mkv: "video/x-matroska",
-    avi: "video/x-msvideo",
-    flv: "video/x-flv",
-    wmv: "video/x-ms-wmv",
-    m4v: "video/x-m4v",
-  };
-  return map[ext] ?? "video/mp4";
-}
-
-/** 简单 CSV 解析，支持引号包裹字段（与文件树 TablePreview 逻辑一致） */
-function parseCSV(text: string): string[][] {
-  const rows: string[][] = [];
-  const lines = text.split(/\r?\n/);
-  for (const line of lines) {
-    if (!line.trim()) continue;
-    const fields: string[] = [];
-    let current = "";
-    let inQuotes = false;
-    for (let i = 0; i < line.length; i++) {
-      const ch = line[i];
-      if (inQuotes) {
-        if (ch === '"') {
-          if (i + 1 < line.length && line[i + 1] === '"') {
-            current += '"';
-            i++;
-          } else {
-            inQuotes = false;
-          }
-        } else {
-          current += ch;
-        }
-      } else if (ch === '"') {
-        inQuotes = true;
-      } else if (ch === ",") {
-        fields.push(current.trim());
-        current = "";
-      } else {
-        current += ch;
-      }
-    }
-    fields.push(current.trim());
-    rows.push(fields);
-  }
-  return rows;
-}
-
-/** 多维数组转单行数组，用于列数统一的表格 */
-function normalizeRows(rows: string[][], maxCols: number): string[][] {
-  return rows.map((row) => {
-    const filled = [...row];
-    while (filled.length < maxCols) filled.push("");
-    return filled.slice(0, maxCols);
-  });
-}
-
-/**
- * 根据扩展名将文件归类为可预览的类别。
- * Excel/CSV 单独归类，在前端用 xlsx 库直接渲染表格（不走 PDF 转换，效果更佳）。
- */
-type FileCategory = "pdf" | "image" | "markdown" | "text" | "html" | "office" | "spreadsheet" | "video" | "other";
-
-/** Office 文档子类型，用于 PDF 转换不可用时的降级预览（仅 Word/PPT 走 office 流程） */
-type OfficeKind = "word" | "powerpoint";
-
-export function getFileCategory(filename: string): FileCategory {
-  const ext = getFileExtension(filename);
-
-  if (ext === "pdf") return "pdf";
-
-  if (["png", "jpg", "jpeg", "gif", "webp", "svg", "bmp", "ico"].includes(ext)) return "image";
-
-  if (["md", "markdown"].includes(ext)) return "markdown";
-
-  if (["html", "htm"].includes(ext)) return "html";
-
-  // 视频格式
-  if (["mp4", "webm", "ogg", "mov", "mkv", "avi", "flv", "wmv", "m4v"].includes(ext)) return "video";
-
-  // 表格格式：xlsx/xls/csv 单独处理，前端直接渲染
-  if (["xlsx", "xls", "xlsm", "csv"].includes(ext)) return "spreadsheet";
-
-  if (
-    [
-      "txt",
-      "json",
-      "xml",
-      "yaml",
-      "yml",
-      "js",
-      "ts",
-      "tsx",
-      "jsx",
-      "py",
-      "go",
-      "rs",
-      "sh",
-      "bash",
-      "sql",
-      "css",
-      "log",
-      "env",
-    ].includes(ext)
-  )
-    return "text";
-
-  // Office：仅 Word/PPT 走 PDF 转换流程
-  if (["docx", "pptx", "doc", "ppt"].includes(ext)) return "office";
-
-  return "other";
-}
-
-/** 确定 Office 文档子类型（仅 Word/PPT） */
-function getOfficeKind(filename: string): OfficeKind {
-  const ext = getFileExtension(filename);
-  if (ext === "docx" || ext === "doc") return "word";
-  return "powerpoint";
-}
-
-/** Office 预览模式：checking → loading → pdf 可用 → mammoth(仅 docx) → download 降级 */
-type OfficeMode = "checking" | "pdf" | "docxHtml" | "fallback";
+import { getFileCategory, getVideoMimeType } from "./resource-preview-model";
+import {
+  MarkdownSkeleton,
+  PreviewPlaceholder,
+  TextSkeleton,
+  UnsupportedPreview,
+} from "./resource-preview-placeholders";
+import { SpreadsheetPreview } from "./spreadsheet-preview";
+import { useResourcePreview } from "./use-resource-preview";
 
 interface ResourcePreviewContentProps {
   /** 要预览的知识库资源 */
@@ -160,7 +28,7 @@ interface ResourcePreviewContentProps {
 }
 
 /**
- * 可复用的文档预览内容组件。
+ * 可复用的文档预览内容组件（§3.5 三层拆分里的第三层：渲染）。
  *
  * 从 ResourcePreviewDialog 中提取，支持 PDF/图片/视频/Markdown/文本/HTML/Excel(表格)/Office 预览。
  * 不包含外层 Dialog/Sheet 容器，仅渲染预览区域，可在 Dialog、Sheet 或全屏布局中复用。
@@ -170,85 +38,23 @@ interface ResourcePreviewContentProps {
  * - Markdown/文本/HTML：经域模块读取内容后渲染
  * - 表格(xlsx/xls/csv)：用 xlsx 库前端解析为 HTML 表格
  * - Office(Word/PPT)：优先服务端 PDF 转换，不可用时 docx 用 mammoth，其余降级为下载
+ *
+ * 2026-09-23 §4.8 拆分后的分工：类别判据在 `resource-preview-model.ts`，正文取数与 Office 探测在
+ * `use-resource-preview.ts`，骨架 / 失败占位 / 下载兜底在 `resource-preview-placeholders.tsx`，
+ * 表格预览在 `spreadsheet-preview.tsx`；本文件只按 `category` 分发。
  */
 export function ResourcePreviewContent({ resource, kbId }: ResourcePreviewContentProps) {
   const { t } = useTranslation(NS.KNOWLEDGE);
   const category = getFileCategory(resource.sourceName);
   const fileUrl = kbApi.getFileUrl({ kbId, resourceId: resource.id });
+  const pdfUrl = category === "office" ? kbApi.getPdfUrl({ kbId, resourceId: resource.id }) : "";
 
-  // —— 文本 / Markdown 内容加载 ——
-  const needsFetch = category === "markdown" || category === "text" || category === "html";
-  const [fetchedContent, setFetchedContent] = useState<string | null>(null);
-
-  const {
-    loading: fetchLoading,
-    error: fetchError,
-    run: runFetch,
-  } = useRequest(() => fetchResourceFileText({ kbId, resourceId: resource.id }), {
-    manual: true,
-    onSuccess: setFetchedContent,
-    onError: (err) => {
-      console.error("Failed to fetch preview content", err);
-      toast.error(t("preview.loadError"));
-    },
+  const { fetchedContent, fetchLoading, fetchError, officeMode, officeLoading, docxHtml } = useResourcePreview({
+    kbId,
+    resourceId: resource.id,
+    sourceName: resource.sourceName,
+    category,
   });
-
-  // —— Office 文档预览：先尝试 PDF 转换，不可用时用 mammoth(docx) 或降级 ——
-  const isOffice = category === "office";
-  const officeKind = isOffice ? getOfficeKind(resource.sourceName) : "word";
-  const pdfUrl = isOffice ? kbApi.getPdfUrl({ kbId, resourceId: resource.id }) : "";
-  const [officeMode, setOfficeMode] = useState<OfficeMode>("checking");
-  const [docxHtml, setDocxHtml] = useState<string | null>(null);
-
-  // 检查 PDF 转换端点是否可用
-  const { loading: officeLoading, run: runOfficeCheck } = useRequest(
-    async (): Promise<OfficeMode> => {
-      if (await isResourcePdfPreviewAvailable({ kbId, resourceId: resource.id })) {
-        return "pdf";
-      }
-      // PDF 不可用，对 Word 文档尝试 mammoth 客户端转换
-      if (officeKind === "word") {
-        try {
-          const arrayBuffer = await fetchResourceFileBinary({ kbId, resourceId: resource.id });
-          const result = await mammoth.convertToHtml({ arrayBuffer });
-          setDocxHtml(result.value);
-          return "docxHtml";
-        } catch (mammothErr) {
-          console.error("mammoth conversion failed", mammothErr);
-        }
-      }
-      return "fallback";
-    },
-    {
-      manual: true,
-      onSuccess: (mode) => setOfficeMode(mode),
-      onError: () => setOfficeMode("fallback"),
-    },
-  );
-
-  const needsOfficeCheck = isOffice;
-
-  const startOfficeCheck = useCallback(() => {
-    setOfficeMode("checking");
-    setDocxHtml(null);
-    runOfficeCheck();
-  }, [runOfficeCheck]);
-
-  // 资源变化时触发加载。
-  // `resource.id` 是刻意的重触发信号，而不是被 effect body 读取的值：同类型的两个资源互换时
-  // `needsFetch` / `needsOfficeCheck` 都不变，只有资源身份能表达「换了资源」，删掉它预览会停在上一个资源。
-  // biome-ignore lint/correctness/useExhaustiveDependencies: 规则是语法分析，看不到「依赖变化即重新拉取」的意图（同批 agent-config 的 SiteFrame reloadKey 同款）
-  useEffect(() => {
-    setFetchedContent(null);
-    setOfficeMode("checking");
-    setDocxHtml(null);
-    if (needsFetch) {
-      runFetch();
-    }
-    if (needsOfficeCheck) {
-      startOfficeCheck();
-    }
-  }, [needsFetch, needsOfficeCheck, resource.id, runFetch, startOfficeCheck]);
 
   // ── 渲染各类型预览内容 ──
   const renderContent = () => {
@@ -368,203 +174,4 @@ export function ResourcePreviewContent({ resource, kbId }: ResourcePreviewConten
   };
 
   return <div className="flex flex-col h-full min-h-0">{renderContent()}</div>;
-}
-
-// ── 骨架屏 / 错误占位组件 ──
-
-function MarkdownSkeleton() {
-  return (
-    <div className="flex-1 p-6 space-y-4">
-      <Skeleton className="h-5 w-2/3 rounded-lg" />
-      <Skeleton className="h-4 w-full rounded-lg" />
-      <Skeleton className="h-4 w-[90%] rounded-lg" />
-      <Skeleton className="h-4 w-[85%] rounded-lg" />
-      <Skeleton className="h-4 w-3/4 rounded-lg" />
-      <div className="pt-2 space-y-3">
-        <Skeleton className="h-4 w-[70%] rounded-lg" />
-        <Skeleton className="h-4 w-full rounded-lg" />
-        <Skeleton className="h-4 w-[80%] rounded-lg" />
-      </div>
-    </div>
-  );
-}
-
-function TextSkeleton() {
-  return (
-    <div className="flex-1 p-6 space-y-3">
-      <Skeleton className="h-3 w-full rounded-md" />
-      <Skeleton className="h-3 w-[85%] rounded-md" />
-      <Skeleton className="h-3 w-[92%] rounded-md" />
-      <Skeleton className="h-3 w-[70%] rounded-md" />
-      <Skeleton className="h-3 w-[78%] rounded-md" />
-      <div className="pt-2 space-y-3">
-        <Skeleton className="h-3 w-full rounded-md" />
-        <Skeleton className="h-3 w-[88%] rounded-md" />
-        <Skeleton className="h-3 w-[65%] rounded-md" />
-        <Skeleton className="h-3 w-[75%] rounded-md" />
-      </div>
-    </div>
-  );
-}
-
-function PreviewPlaceholder({ message, tone = "danger" }: { message: string; tone?: "danger" | "neutral" }) {
-  return (
-    <EmptyState
-      tone={tone}
-      role={tone === "danger" ? "alert" : undefined}
-      className="flex flex-1 flex-col items-center justify-center"
-      title={message}
-    />
-  );
-}
-
-/**
- * 「该类型暂不支持预览」+ 下载兜底：office 降级与其余未知类型两处逐字相同，收成一份。
- *
- * 为什么不并进 `EmptyState` 的 `action`：`action` 只收 `Button` + `onClick`，而这里的下载语义是
- * `<a download>`（浏览器直接落盘、不发 XHR），用按钮包一个 `window.open` 会换掉浏览器行为。
- */
-function UnsupportedPreview({ fileUrl, filename }: { fileUrl: string; filename: string }) {
-  const { t } = useTranslation(NS.KNOWLEDGE);
-  return (
-    <div className="flex-1 flex flex-col items-center justify-center gap-3 text-text-muted">
-      <p className="text-sm">{t("preview.unsupported")}</p>
-      <Button variant="outline" size="sm" asChild>
-        <a href={fileUrl} download={filename} target="_blank" rel="noreferrer">
-          {t("preview.download")}
-        </a>
-      </Button>
-    </div>
-  );
-}
-
-// ── 表格预览组件：支持 xlsx/xls/csv，用 xlsx 库前端解析 ──
-
-interface SpreadsheetPreviewProps {
-  kbId: string;
-  resourceId: string;
-  filename: string;
-}
-
-/**
- * 表格文件预览组件。
- *
- * xlsx/xls：读取二进制 → xlsx 库解析第一个 sheet → HTML 表格
- * csv：读取文本 → CSV 解析 → HTML 表格
- * 最多渲染 500 行，超出部分显示截断提示。
- */
-function SpreadsheetPreview({ kbId, resourceId, filename }: SpreadsheetPreviewProps) {
-  const { t } = useTranslation(NS.KNOWLEDGE);
-  const [rows, setRows] = useState<string[][] | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-  const ext = getFileExtension(filename);
-
-  useEffect(() => {
-    let cancelled = false;
-    setLoading(true);
-    setError(null);
-    setRows(null);
-
-    (async () => {
-      try {
-        if (ext === "csv") {
-          // CSV：读取文本内容后解析
-          const text = await fetchResourceFileText({ kbId, resourceId });
-          const parsed = parseCSV(text);
-          const maxCols = Math.max(...parsed.map((r) => r.length), 0);
-          if (!cancelled) setRows(normalizeRows(parsed, maxCols));
-        } else {
-          // xlsx / xls / xlsm：读取二进制后用 xlsx 库解析
-          const buf = await fetchResourceFileBinary({ kbId, resourceId });
-          const wb = XLSX.read(new Uint8Array(buf), { type: "array" });
-          const firstSheet = wb.SheetNames[0];
-          if (!firstSheet) {
-            if (!cancelled) setError(t("preview.emptyTable"));
-            return;
-          }
-          const sheet = wb.Sheets[firstSheet];
-          const data = XLSX.utils.sheet_to_json<string[]>(sheet, { header: 1 }) as string[][];
-          const stringRows = data.map((row) => row.map((cell) => (cell == null ? "" : String(cell))));
-          const maxCols = Math.max(...stringRows.map((r) => r.length), 0);
-          if (!cancelled) setRows(normalizeRows(stringRows, maxCols));
-        }
-      } catch (err) {
-        console.error("Failed to load spreadsheet:", err);
-        if (!cancelled) setError(t("preview.loadError"));
-      } finally {
-        if (!cancelled) setLoading(false);
-      }
-    })();
-
-    return () => {
-      cancelled = true;
-    };
-  }, [kbId, resourceId, ext, t]);
-
-  if (loading) {
-    return <Spinner variant="panel" size="sm" />;
-  }
-
-  if (error) {
-    return <PreviewPlaceholder message={error} />;
-  }
-
-  if (!rows || rows.length === 0) {
-    return <PreviewPlaceholder message={t("preview.emptyTable")} tone="neutral" />;
-  }
-
-  const maxRows = Math.min(rows.length, 500);
-
-  return (
-    <div className="flex-1 overflow-auto">
-      <div className="inline-block min-w-full align-middle">
-        <table className="w-full border-collapse text-xs font-mono">
-          <thead>
-            <tr className="bg-surface-2 sticky top-0 z-10">
-              <th className="border border-border px-2 py-1 text-text-muted w-10 text-right select-none">#</th>
-              {renderHeaderCells(rows[0])}
-            </tr>
-          </thead>
-          <tbody>{renderBodyRows(rows, maxRows)}</tbody>
-        </table>
-      </div>
-      {rows.length > maxRows && (
-        <div className="p-2 text-center text-xs text-text-muted">
-          {t("preview.tableTruncated", { shown: maxRows, total: rows.length })}
-        </div>
-      )}
-    </div>
-  );
-}
-
-/** 渲染表头单元格：列位置即语义（第 N 列），用列索引作 key */
-function renderHeaderCells(headerRow: string[]) {
-  return headerRow.map((cell, colIdx) => (
-    // biome-ignore lint/suspicious/noArrayIndexKey: 表格是内容快照的整表重绘（不重排、不增量插入），列位置即语义；表头文本可重复，内容派生键会撞键
-    <th key={`h-${colIdx}`} className="border border-border px-3 py-1 text-text-primary text-left whitespace-nowrap">
-      {cell}
-    </th>
-  ));
-}
-
-/** 渲染单个数据行的所有单元格：单元格位置由「行号 + 列号」确定 */
-function renderRowCells(row: string[], rowIdx: number) {
-  return row.map((cell, colIdx) => (
-    // biome-ignore lint/suspicious/noArrayIndexKey: 同上——单元格无领域标识且内容可重复（空单元格成片出现），位置键是唯一稳定键
-    <td key={`c-${rowIdx}-${colIdx}`} className="border border-border px-3 py-0.5 text-text-primary whitespace-nowrap">
-      {cell}
-    </td>
-  ));
-}
-
-/** 渲染表格数据行：行位置即语义（第 N 行），用行索引作 key */
-function renderBodyRows(rows: string[][], maxRows: number) {
-  return rows.slice(1, maxRows).map((row, rowIdx) => (
-    // biome-ignore lint/suspicious/noArrayIndexKey: 同上——表格整表重绘且行内容可完全重复（空白行），位置键不会引起元素错位
-    <tr key={`r-${rowIdx}`} className="hover:bg-surface-2/50">
-      <td className="border border-border px-2 py-0.5 text-text-muted text-right select-none">{rowIdx + 2}</td>
-      {renderRowCells(row, rowIdx)}
-    </tr>
-  ));
 }

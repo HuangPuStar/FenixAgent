@@ -18,8 +18,10 @@ export { kbApi } from "./api/knowledge-bases";
 // embedding 模型管理面（`EmbeddingModelManager` 消费其 `embeddingModelApi`）随组件自
 // `@fenix/model-management/web` 收归本包，跨包转出的理由已消失。
 export { embeddingModelApi } from "./api/knowledge-models";
-export { getFileCategory, ResourcePreviewContent } from "./components/knowledge/ResourcePreviewContent";
+export { ResourcePreviewContent } from "./components/knowledge/ResourcePreviewContent";
 export { ResourcePreviewDialog } from "./components/knowledge/ResourcePreviewDialog";
+// §4.8 拆分：类别判据随 `resource-preview-model.ts` 落位，出口与形状不变（仍是 `getFileCategory`）。
+export { getFileCategory } from "./components/knowledge/resource-preview-model";
 export { KNOWLEDGE_NS, type KnowledgeResources, knowledgeResources } from "./i18n";
 export { KnowledgeGraphPanel } from "./pages/agent-panel/KnowledgeGraphPanel";
 export { isKnowledgeGraphNotFound } from "./pages/agent-panel/knowledge-graph-state";
