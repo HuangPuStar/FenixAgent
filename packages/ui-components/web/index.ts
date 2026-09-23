@@ -96,6 +96,7 @@ export * from "./components/preview/FileViewerPreview";
 export * from "./components/preview/html-plugin";
 export * from "./components/preview/native-pdf-plugin";
 export * from "./components/preview/preview-source";
+export * from "./components/preview-rail";
 export * from "./components/WorkbenchPanel";
 // config —— 配置型业务无关容器
 export * from "./config/AdminKeyGate";

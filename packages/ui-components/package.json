@@ -380,6 +380,10 @@
       "types": "./web/components/file-tree-view.tsx",
       "default": "./web/components/file-tree-view.tsx"
     },
+    "./components/preview-rail": {
+      "types": "./web/components/preview-rail.tsx",
+      "default": "./web/components/preview-rail.tsx"
+    },
     "./components/preview/FileViewerPreview": {
       "types": "./web/components/preview/FileViewerPreview.tsx",
       "default": "./web/components/preview/FileViewerPreview.tsx"

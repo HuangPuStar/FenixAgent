@@ -195,6 +195,7 @@ const EXPECTED_EXPORTS: Record<string, readonly string[]> = {
     "FileTreeInputDialog",
     "FileTypeIcon",
     "FileViewerPreview",
+    "PreviewRail",
     "PreviewTab",
     "WorkbenchPanel",
     "classifyFile",

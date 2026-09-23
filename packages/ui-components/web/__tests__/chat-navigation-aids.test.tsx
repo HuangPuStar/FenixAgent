@@ -13,11 +13,13 @@ import { UI_COMPONENTS_NS } from "../i18n/namespace";
 /**
  * 会话导航辅助组件（`web/chat/view/chat-navigation-aids.tsx`，`PromptJumpRail`）的行为测试。
  *
- * 覆盖范围是纯化后的导航契约：长会话刻度采样上限、system-reminder 的过滤、单条真实输入的隐藏，
- * 以及与 `ChatView` 消息节点（`chat-entry-<entryId>`）的点击定位/高亮联动。
+ * 刻度轨本体已是 beui 的 `PreviewRail`（`web/components/preview-rail.tsx`），本文件覆盖的是**适配器**契约：
+ * 长会话刻度采样上限、system-reminder 的过滤、单条真实输入的隐藏，以及与 `ChatView` 消息节点
+ * （`chat-entry-<entryId>`）的点击定位/高亮联动。
+ * 依赖悬停的刻度缩放与预览卡形变由运行时几何工装覆盖（happy-dom 不派发 pointerover 的 enter/leave 推导），
+ * 本文件不做断言。
  * 文案断言取「包内字典里的译文，字典尚未搬运时回落 key」，避免集成阶段补 i18n 后测试失真。
  */
-
 const window = initializeHappyDomWindow(new Window());
 /* biome-ignore lint/suspicious/noExplicitAny: 测试环境需要把 happy-dom 的 DOM 注入全局 */
 (globalThis as any).window = window;
@@ -73,11 +75,11 @@ describe("PromptJumpRail", () => {
   test("samples long conversations into a bounded prompt index", async () => {
     await act(async () => root.render(<PromptJumpRail entries={entries(80)} />));
 
-    const buttons = [...host.querySelectorAll<HTMLButtonElement>('[data-slot="chat-prompt-jump-item"]')];
-    expect(buttons).toHaveLength(14);
-    expect(buttons[0]?.getAttribute("aria-label")).toContain("1/80");
-    expect(buttons.at(-1)?.getAttribute("aria-label")).toContain("80/80");
-    expect(host.querySelectorAll('[data-slot="chat-prompt-jump-list"] > li')).toHaveLength(14);
+    const ticks = [...host.querySelectorAll<HTMLButtonElement>('[data-slot="preview-rail-item"]')];
+    expect(ticks).toHaveLength(14);
+    expect(ticks[0]?.getAttribute("aria-label")).toContain("1/80");
+    expect(ticks.at(-1)?.getAttribute("aria-label")).toContain("80/80");
+    expect(host.querySelectorAll('[data-slot="preview-rail-tick"]')).toHaveLength(14);
   });
 
   // system-reminder 是系统注入消息，不应占用左侧用户提示词导航的序号和刻度。
@@ -94,10 +96,10 @@ describe("PromptJumpRail", () => {
 
     await act(async () => root.render(<PromptJumpRail entries={promptEntries} />));
 
-    const buttons = [...host.querySelectorAll<HTMLButtonElement>('[data-slot="chat-prompt-jump-item"]')];
-    expect(buttons).toHaveLength(2);
-    expect(buttons[0]?.getAttribute("aria-label")).toContain("1/2");
-    expect(buttons[1]?.getAttribute("aria-label")).toContain("2/2");
+    const ticks = [...host.querySelectorAll<HTMLButtonElement>('[data-slot="preview-rail-item"]')];
+    expect(ticks).toHaveLength(2);
+    expect(ticks[0]?.getAttribute("aria-label")).toContain("1/2");
+    expect(ticks[1]?.getAttribute("aria-label")).toContain("2/2");
     expect(host.textContent).not.toContain("system-reminder");
   });
 
@@ -114,7 +116,8 @@ describe("PromptJumpRail", () => {
 
     await act(async () => root.render(<PromptJumpRail entries={promptEntries} />));
 
-    expect(host.querySelector('[data-slot="chat-prompt-jump-rail"]')).toBeNull();
+    expect(host.querySelector('[data-slot="preview-rail-item"]')).toBeNull();
+    expect(host.querySelector('[data-slot="preview-rail-tick"]')).toBeNull();
   });
 
   // 点击刻度沿用浏览器平滑定位，不修改会话消息或 Conversation 的滚动实现。
@@ -134,13 +137,13 @@ describe("PromptJumpRail", () => {
     const target = window.document.getElementById("chat-entry-prompt-1") as unknown as HTMLElement;
     const scrollIntoView = mock(() => {});
     target.scrollIntoView = scrollIntoView as unknown as typeof target.scrollIntoView;
-    const button = host.querySelectorAll<HTMLButtonElement>('[data-slot="chat-prompt-jump-item"]')[1]!;
+    const tick = host.querySelectorAll<HTMLButtonElement>('[data-slot="preview-rail-item"]')[1]!;
 
-    await act(async () => button.click());
+    await act(async () => tick.click());
 
     expect(scrollIntoView).toHaveBeenCalledWith({ behavior: "smooth", block: "center" });
-    expect(button.getAttribute("aria-current")).toBe("location");
-    expect(button.getAttribute("aria-controls")).toBe("chat-entry-prompt-1");
+    // 无 href 的刻度渲染为 `<button>`，选中态是 `aria-current="location"`（beui 自带语义）。
+    expect(tick.getAttribute("aria-current")).toBe("location");
     // 高亮由 `data-active-prompt` 属性承担（原 `chat-entry--active-prompt` 类名已随样式迁移删除）。
     expect(target.hasAttribute("data-active-prompt")).toBe(true);
     expect(window.document.getElementById("chat-entry-prompt-0")?.hasAttribute("data-active-prompt")).toBe(false);
