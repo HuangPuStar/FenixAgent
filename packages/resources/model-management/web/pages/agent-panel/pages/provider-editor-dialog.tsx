@@ -6,7 +6,7 @@ import { unwrap } from "@fenix/web-runtime/api/request";
 import type { ProviderInfo } from "@fenix/web-runtime/types/config";
 import { useRequest } from "ahooks";
 import { Check, LoaderCircle, Search } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
 import { providerApi } from "../../../api/providers.ts";
@@ -35,30 +35,30 @@ export function ProviderEditorDialog({ target, providers, saving, onClose, onSav
   const probeErrorText = useProviderTestErrorText();
   const editing = target && target.mode !== "create" ? target.provider : null;
   const readOnly = target?.mode === "view";
-  const [draft, setDraft] = useState<ProviderDraft>({
-    id: "",
-    displayName: { edited: false, value: "" },
-    protocol: "openai",
-    apiKey: "",
-    baseURL: { edited: false, value: "" },
-    selectedModels: [],
-  });
+  // 草稿取自装配点传入的 `target`，**没有回填 effect**（§4.2 / §4.3）：调用方按「每次打开换一个 `key`」
+  // 渲染本组件，mount 时的初始化器就是那一份新草稿。此前靠 `useEffect([target, editing])` 回填，
+  // 关掉再打开同一个 Provider 时依赖不变、effect 不跑，上一次的输入（含探测出的模型列表）会留在原位。
+  const [draft, setDraft] = useState<ProviderDraft>(() =>
+    editing
+      ? {
+          id: editing.id,
+          displayName: { edited: false, value: editing.name !== editing.id ? editing.name : "" },
+          protocol: editing.protocol,
+          apiKey: "",
+          baseURL: { edited: false, value: editing.baseURL ?? "" },
+          selectedModels: [],
+        }
+      : {
+          id: "",
+          displayName: { edited: false, value: "" },
+          protocol: "openai",
+          apiKey: "",
+          baseURL: { edited: false, value: "" },
+          selectedModels: [],
+        },
+  );
   const [availableModels, setAvailableModels] = useState<string[]>([]);
   const [fetchError, setFetchError] = useState("");
-
-  useEffect(() => {
-    if (!target) return;
-    setDraft({
-      id: editing?.id ?? "",
-      displayName: { edited: false, value: editing && editing.name !== editing.id ? editing.name : "" },
-      protocol: editing?.protocol ?? "openai",
-      apiKey: "",
-      baseURL: { edited: false, value: editing?.baseURL ?? "" },
-      selectedModels: [],
-    });
-    setAvailableModels([]);
-    setFetchError("");
-  }, [target, editing]);
 
   const fetchModels = useRequest(
     async () => {

@@ -55,6 +55,13 @@ export function EmbeddingModelManager({ canManage, inDialog, onModelsChanged }: 
   const { t } = useTranslation(NS.KNOWLEDGE);
   const [refreshKey, setRefreshKey] = useState(0);
   const [addOpen, setAddOpen] = useState(false);
+  // 「添加供应商」弹窗的表单重置靠 `key`（§4.2 / §4.3）：计数只在**打开**时自增，弹窗整体重挂载、
+  // 字段从默认值起算。原先弹窗自己在关闭时 `setTimeout(reset, 200)` 绕开退出动画，那条计时器已删除。
+  const [addDialogKey, setAddDialogKey] = useState(0);
+  const openAddDialog = () => {
+    setAddDialogKey((key) => key + 1);
+    setAddOpen(true);
+  };
   // 待确认删除的实例：原生 confirm 的同步返回值无法保留，改为挂起目标实例 + 受控 ConfirmDialog。
   const [deleteTarget, setDeleteTarget] = useState<ConfiguredInstanceNode | null>(null);
 
@@ -106,7 +113,7 @@ export function EmbeddingModelManager({ canManage, inDialog, onModelsChanged }: 
           {canManage && (
             <Button
               size="sm"
-              onClick={() => setAddOpen(true)}
+              onClick={openAddDialog}
               className="h-8 gap-1.5 text-xs rounded-lg bg-indigo-500 hover:bg-indigo-500"
             >
               <Plus className="h-3.5 w-3.5" />
@@ -123,7 +130,7 @@ export function EmbeddingModelManager({ canManage, inDialog, onModelsChanged }: 
               : t("embeddingModel.noProviderConfigured")}
           </p>
           {canManage ? (
-            <Button size="sm" onClick={() => setAddOpen(true)}>
+            <Button size="sm" onClick={openAddDialog}>
               <Plus />
               {t("embeddingModel.addProvider")}
             </Button>
@@ -173,6 +180,7 @@ export function EmbeddingModelManager({ canManage, inDialog, onModelsChanged }: 
       )}
 
       <AddProviderDialog
+        key={addDialogKey}
         open={addOpen}
         onOpenChange={setAddOpen}
         onAdded={() => {

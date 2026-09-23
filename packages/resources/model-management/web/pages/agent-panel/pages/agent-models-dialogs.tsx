@@ -6,7 +6,7 @@ import { Input } from "@fenix/ui-components/ui/input";
 import { Switch } from "@fenix/ui-components/ui/switch";
 import type { ProviderInfo, ProviderModel } from "@fenix/web-runtime/types/config";
 import { Check } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import { MODELS_NS } from "../../../i18n/namespace";
 import { ModelModalityField as ModalityField, ModelNumberField as NumberField } from "./agent-model-fields";
@@ -47,10 +47,10 @@ export function ModelEditorDialog({ target, saving, onClose, onSave }: ModelEdit
   const { t } = useTranslation(MODELS_NS);
   const original = target && "model" in target ? target.model : null;
   const readOnly = target?.mode === "view";
-  const [draft, setDraft] = useState<ModelDraft>(() => modelDraft());
-  useEffect(() => {
-    setDraft(modelDraft(original ?? undefined));
-  }, [original]);
+  // 草稿在 mount 时由 `target` 算一次，**没有回填 effect**（§4.2 / §4.3）：调用方按「每次打开换一个 `key`」
+  // 渲染本组件。此前靠 `useEffect([original])` 回填，关掉再打开同一个模型时依赖不变、effect 不跑，
+  // 上一次改到一半的草稿会留在原位。
+  const [draft, setDraft] = useState<ModelDraft>(() => modelDraft(original ?? undefined));
   const update = <K extends keyof ModelDraft>(key: K, value: ModelDraft[K]) =>
     setDraft((current) => ({ ...current, [key]: value }));
   const toggle = (key: "inputModalities" | "outputModalities", value: string) =>

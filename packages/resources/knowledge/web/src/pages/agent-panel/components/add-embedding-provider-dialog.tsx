@@ -52,19 +52,6 @@ export function AddProviderDialog({ open, onOpenChange, onAdded }: AddProviderDi
     },
   });
 
-  const reset = () => {
-    setSelectedFactory("");
-    setApiKey("");
-    setBaseUrl("");
-    setInstanceName("");
-    setTouched(false);
-  };
-
-  const handleClose = (v: boolean) => {
-    onOpenChange(v);
-    if (!v) setTimeout(reset, 200);
-  };
-
   const handleSubmit = async () => {
     setTouched(true);
     if (!selectedFactory) {
@@ -103,7 +90,7 @@ export function AddProviderDialog({ open, onOpenChange, onAdded }: AddProviderDi
         }),
       );
       toast.success(t("embeddingModel.instanceAdded", { name: instanceName.trim() }));
-      handleClose(false);
+      onOpenChange(false);
       onAdded();
     } catch (err) {
       console.error("Failed to add embedding instance", err);
@@ -114,7 +101,10 @@ export function AddProviderDialog({ open, onOpenChange, onAdded }: AddProviderDi
   };
 
   return (
-    <Dialog open={open} onOpenChange={handleClose}>
+    /** 关闭清理**不做在这里：调用方按「每次打开换一个 `key`」重挂载本弹窗（§4.2 / §4.3），字段从默认值
+     * 起算。此前这里挂着 `setTimeout(reset, 200)`——200ms 对应 Radix 的退出动画时长，是在「动画期间
+     * 不能改状态，否则关闭过程会闪一次空表单」与「不重置就会残留」之间取的折中，现在这条计时器已去掉。 */
+    <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-130">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
@@ -192,7 +182,7 @@ export function AddProviderDialog({ open, onOpenChange, onAdded }: AddProviderDi
         </div>
 
         <DialogFooter className="gap-2">
-          <Button variant="ghost" onClick={() => handleClose(false)} disabled={submitting} className="h-9">
+          <Button variant="ghost" onClick={() => onOpenChange(false)} disabled={submitting} className="h-9">
             {t("embeddingModel.cancel")}
           </Button>
           <Button
