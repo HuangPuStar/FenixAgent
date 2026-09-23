@@ -328,6 +328,8 @@ export function ChunkDetailSheet({ open, onClose, kbId, resource }: ChunkDetailS
  * 用 React.lazy 避免首屏加载 mammoth 等重依赖。
  */
 function SuspensePreviewContent({ resource, kbId }: { resource: KnowledgeResourceInfo; kbId: string }) {
+  // 预览内容自身的文案（失败提示）与切片列表同属本包 `knowledge` 命名空间，绑定同一个已注册的命名空间常量。
+  const { t } = useTranslation(NS.KNOWLEDGE);
   // 使用动态 import 延迟加载预览组件，减少首屏 bundle
   const [PreviewContent, setPreviewContent] = useState<React.ComponentType<{
     resource: KnowledgeResourceInfo;
@@ -352,7 +354,12 @@ function SuspensePreviewContent({ resource, kbId }: { resource: KnowledgeResourc
   }, []);
 
   if (loadError) {
-    return <div className="flex-1 flex items-center justify-center text-text-muted text-sm p-4">预览加载失败</div>;
+    // 复用 `preview.loadError`（预览内容加载失败的通用文案）：不新增同义 key，与 ResourcePreviewContent 的失败提示一致
+    return (
+      <div className="flex-1 flex items-center justify-center text-text-muted text-sm p-4">
+        {t("preview.loadError")}
+      </div>
+    );
   }
 
   if (!PreviewContent) {

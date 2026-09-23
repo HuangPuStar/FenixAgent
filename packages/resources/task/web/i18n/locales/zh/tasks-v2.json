@@ -79,6 +79,8 @@
     "namePlaceholder": "输入任务名称",
     "timeLabel": "执行时间",
     "timezoneLabel": "时区",
+    "timezoneHint": "可搜索 IANA 时区，留空使用默认时区",
+    "defaultTimezone": "使用默认时区",
     "timeoutLabel": "超时 (秒)",
     "descLabel": "描述",
     "descPlaceholder": "可选",
@@ -126,7 +128,8 @@
     "noResult": "-",
     "errorLabel": "错误",
     "resultLabel": "结果",
-    "skipLabel": "跳过原因"
+    "skipLabel": "跳过原因",
+    "selectHint": "选择上方任务查看日志"
   },
   "toast": {
     "created": "任务创建成功",

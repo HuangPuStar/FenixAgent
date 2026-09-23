@@ -159,11 +159,7 @@ export function TaskForm({ agents, isEditing, initialType = "http" }: TaskFormPr
           {/* 字段名走**显式关联**：字段名标注的是下方那个输入框（`htmlFor` + 控件 `id`），children 里的
               选项面板是绝对定位的、内含可标记的 `<button>`，包进 `<label>` 会把选项文案并进输入框的
               可访问名。提示走 `hint`，仍渲染在 `</label>` 之外。 */}
-          <LabeledField
-            label={t("form.timezoneLabel")}
-            htmlFor="task-timezone"
-            hint="可搜索 IANA 时区，留空使用默认时区"
-          >
+          <LabeledField label={t("form.timezoneLabel")} htmlFor="task-timezone" hint={t("form.timezoneHint")}>
             <div className="relative">
               <Input
                 id="task-timezone"
@@ -175,7 +171,7 @@ export function TaskForm({ agents, isEditing, initialType = "http" }: TaskFormPr
                   setTimezonePickerOpen(true);
                 }}
                 onBlur={() => window.setTimeout(() => setTimezonePickerOpen(false), 150)}
-                placeholder="使用默认时区"
+                placeholder={t("form.defaultTimezone")}
                 className={`w-full ${errors.timezone ? "border-destructive" : ""}`}
               />
               {timezonePickerOpen && (
@@ -189,7 +185,7 @@ export function TaskForm({ agents, isEditing, initialType = "http" }: TaskFormPr
                       setTimezonePickerOpen(false);
                     }}
                   >
-                    使用默认时区
+                    {t("form.defaultTimezone")}
                   </button>
                   {timezoneOptions
                     .filter(({ timezone }) => timezone.toLowerCase().includes((timezoneValue || "").toLowerCase()))

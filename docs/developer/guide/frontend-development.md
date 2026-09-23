@@ -1,8 +1,9 @@
 # 前端开发规范
 
-> **版本**：v3.0.9 | **最后更新**：2026-09-23 | **维护者**：前端团队
+> **版本**：v3.0.10 | **最后更新**：2026-09-23 | **维护者**：前端团队
 >
 > **最近变更**：
+> - v3.0.10 (2026-09-23)：§9.4 硬编码用户可见文案的收口批次——该节登记的**五处现存命中全部改走各包字典**：`agent-config/AgentSitesCard.tsx`（6 处中文，另含兜底英文 `Unknown Site`；失败态同时由「比对中文前缀」改为 `missing-attribute` / `load-failed` 枚举，否则文案本地化后判定失效）、`knowledge/ChunkDetailSheet.tsx`（复用既有 `preview.loadError`，不新增同义键）、`task/TasksPanel.tsx`、`task/TaskForm.tsx`（3 处）、`ui-components/FileViewerPreview.tsx`（内置 `zhCNMessages` 与错误边界提示改由包内字典按当前语言取值，`locale` 不再固定 `zh-CN`；`messages` / `locale` 保留为覆盖端口）。`ui-components` 的 `html-plugin.ts`（插件直接操作 DOM、不在 React 树内）与 `preview-source.ts`（纯逻辑模块不得 import UI i18n，见 §9.3）两处**有意保留**的硬编码随之登记到该包 README「已知限制」第 12 / 13 条，`html-plugin.ts` 文件头原先「见 README」的悬空引用改为指向该条；同表三处「第 N 条」交叉引用（`message.tsx`、`FileViewerPreview.tsx` 两处）原本整体 +1 错位，一并订正。§9.4 与 §11.3 的包内 i18n 测试计数 13 → **14** 就地重测（`plugin-market-i18n.test.ts` 随插件市场模块入库；`ui-components` 的字典守卫名为 `i18n-barrel.test.ts`，不在该 glob 内，§11.3 一并写明）。
 > - v3.0.9 (2026-09-23)：目录索引统一批次（`f73f9265` 把 `components/agent-catalog-index` 的视觉默认值全部下沉到组件 CSS，五页目录改成同一套）后的文档对账。§4.1 该原语的一条按用户裁定重写并**作废**旧口径「共享结构、字号 / 内边距 / 行高 / 圆角 / 选中配色留各页刻度」——现在默认值全在共享组件、五页渲染同一组计算值、页面覆盖归零（各页 30 余条目录规则随之下沉删除），页面只保留独有语义（知识库行尾删除按钮的外壳与不可用态、组织页角色三态图标着色，以及知识库 ≤760px 隐藏与组织页 ≤900px 横置两处布局行为），并写明不再留各页刻度的原因。§10.1 的两行计数就地重测并把测量点从 `5626bb1a` 推到 **`f73f9265`**：资源侧页面级 2636 → **2416** 行（12 份不变；`agent-knowledge.css` 331→268、`agent-models.css` 330→278、`agent-mcp.css` 132→34、`agent-skills.css` 83→76），宿主页面级 5 份 / 1811 行不变，类别 ③ 伴随表 3792 → **3857** 行（68 份不变，64 份配 `.tsx` + 4 份配 `.ts`；两处变化是 `agent-catalog-index.css` 199→299 与 `agent-organizations-workspace.css` 92→57），token 入口 781 + 272 行、第三方覆盖表 43 行、chat 模块表 3 份 / 148 行均按同一命令复核无变化。
 > - v3.0.8 (2026-09-23)：目录栏收敛批次（「左侧目录 + 右侧内容」面板的目录栏收成一套共享构件集，并删掉 `components/WorkbenchPanel`）后的文档对账。§4.1 补登本批下沉的 `components/agent-catalog-index`（技能库 / MCP / 模型库 / 知识库 / 组织管理五页改用），并记 `components/agent-master-detail-workspace` **不在**该小节的「去重批次」口径内——它早于该批次（2026-09-20 的 `e8c73280` 前置落地），本批只是把记忆页从已删除的 `components/WorkbenchPanel` 切到它。子路径数与 barrel 行数改为实测值（156→**158** 条 `exports` 子路径、160→**161** 行 barrel；本批删 `./components/WorkbenchPanel`、增 `./components/agent-catalog-index`，条数净 0）。§10.1 的两行计数就地写明口径并重测（宿主页面级 5 份 / 1811 行、资源侧 12 份 / 2636 行；类别 ③ 伴随表 68 份 / 3792 行；token 入口 781 + 272 行），该节附带可原样复跑的统计命令——v3.0.5 / v3.0.7 变更行里的「页面级 9 → 8 个 / 2496 → 1983 行」与「伴随表 66 → 67 份 / 3348 → 3391 行」都是在前一次记下的数字上做加减得来的（起点 66 是提交信息里的新增文件数，行数没有实测支撑），与实测不符，已随之作废。
 > - v3.0.7 (2026-09-23)：组织管理页（`packages/platform/identity/.../agent-organizations.css`，513 行）整片转换为 Tailwind 工具类并删除该表——页面级样式表再少一张；唯一无法用工具类表达的部分（≤900px 断点组：非标准断点 + 必须压过库内未分层的列定义）下沉为同目录同名的伴随表 `agent-organizations-workspace.css`（43 行，类别 ③）。§10.1 计数按此同步：资源侧页面级 9 → **8** 个 / 2496 → **1983** 行，类别 ③ 伴随表 66 → **67** 份 / 3348 → **3391** 行。字号档位映射（含 13px 根字号下的实测偏差）见 `agent-organizations-workspace.tsx` 文件头注释。
@@ -1088,9 +1089,9 @@ i18n.use(initReactI18next).init({
 
 ### 9.4 现状偏离
 
-- **全仓级 key 对称没有门禁**：资源包侧有 13 份 `packages/**/web/__tests__/*-i18n.test.ts`（覆盖"键集一致、占位符一致、`t()` 字面量键齐备、无越域泄漏"），宿主侧另有 `apps/web/src/__tests__/host-i18n.test.ts` 与 `public-error-i18n.test.ts`。覆盖面已不窄，但**跨包漏注册**仍无专门检查；`precheck` 也没有 i18n 步骤。
+- **全仓级 key 对称没有门禁**：资源包侧有 14 份 `packages/**/web/__tests__/*-i18n.test.ts`（覆盖"键集一致、占位符一致、`t()` 字面量键齐备、无越域泄漏"），宿主侧另有 `apps/web/src/__tests__/host-i18n.test.ts` 与 `public-error-i18n.test.ts`。覆盖面已不窄，但**跨包漏注册**仍无专门检查；`precheck` 也没有 i18n 步骤。
 - **无 `i18nKey` 编译期类型**：没有 `CustomTypeOptions` 或键生成脚本，写错的 key 只有在运行时回退成字面量才被发现。
-- **硬编码用户可见文案的现行命中**（快照）：`agent-config/AgentSitesCard.tsx`（6 处中文：缺少 agent-site-id 属性、正在获取站点信息…、缺少站点 ID、站点信息加载失败、您的站点已生成、查看站点）、`knowledge/ChunkDetailSheet.tsx`、`task/TasksPanel.tsx`、`task/TaskForm.tsx`。`ui-components` 的 `FileViewerPreview.tsx`（2 处：内置 `zhCNMessages` 与错误边界中文串）已在该包 README 的"已知限制"登记；`html-plugin.ts` **未登记**（其文件头注释自称"见 README"，实为悬空引用）。
+- **硬编码用户可见文案**：2026-09-23 的收口批次把 `agent-config/AgentSitesCard.tsx`（6 处）、`knowledge/ChunkDetailSheet.tsx`、`task/TasksPanel.tsx`、`task/TaskForm.tsx`（3 处）与 `ui-components/FileViewerPreview.tsx`（内置预览文案 + 错误边界提示）的文案全部改走各包字典（键分别落在 `agents` / `knowledge` / `tasksV2` / `uiComponents`）。剩下的两处是**有意保留**、且已登记的：`ui-components` 的 `html-plugin.ts`（标签「渲染预览」/「源码」与三条提示——插件直接操作 DOM、不在 React 树内）与 `preview-source.ts`（`文件预览加载失败 (<status>)`——纯逻辑模块不得 import UI i18n，见 §9.3）；两处接文案都要在契约上新增参数，影响范围与移除条件见该包 README「已知限制」第 12 / 13 条。
 - **首屏静态加载全部语言与全部 namespace**，未按 route / feature 拆分懒加载。
 - **语言切换没有 UI 组件**：检测、`rcs-lang` 持久化与 `fallbackLng` 都是宿主启动决策。
 
@@ -1219,5 +1220,5 @@ i18n.use(initReactI18next).init({
 | iframe 的 `sandbox` 取值 | 未自动化 |
 | 单文件 500 行上限 | 未自动化（当前 16 处超限，见 §4.8） |
 | 组件重复开发检测 | 未自动化（当前 2 处本地重复实现，见 §4.8） |
-| i18n 全仓 key 对称、`[object Object]` | 包级与宿主各有测试（13 份包内 + `host-i18n.test.ts`），**跨包漏注册**无门禁（见 §9.4） |
+| i18n 全仓 key 对称、`[object Object]` | 包级与宿主各有测试（14 份 `packages/**/web/__tests__/*-i18n.test.ts` + `ui-components` 的 `i18n-barrel.test.ts` + 宿主 `host-i18n.test.ts`），**跨包漏注册**无门禁（见 §9.4） |
 | import 分组顺序、格式化 | 已由 Biome 覆盖（`import-sort` + `format`） |

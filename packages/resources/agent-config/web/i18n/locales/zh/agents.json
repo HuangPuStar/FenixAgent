@@ -221,7 +221,15 @@
     "tabTitle": "绑定 MCP"
   },
   "sites": {
-    "tabTitle": "绑定 Sites"
+    "tabTitle": "绑定 Sites",
+    "card": {
+      "loading": "正在获取站点信息…",
+      "missingId": "缺少站点 ID",
+      "loadFailed": "站点信息加载失败",
+      "generated": "您的站点已生成",
+      "view": "查看站点",
+      "unknownName": "未知站点"
+    }
   },
   "memory": {
     "enableTitle": "智能体记忆",

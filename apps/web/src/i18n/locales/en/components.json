@@ -50,6 +50,8 @@
     "loadTimeout": "Site load timed out",
     "loadTimeoutHint": "The site may still be loading in the background. Try reloading or open it in a new tab.",
     "traceToCreatorTooltip": "Switch to the agent that created this site",
+    "traceToCreatorNotFound": "This agent is not running yet, cannot open its chat",
+    "navigateFailed": "Navigation failed",
     "notCreatorTooltip": "This site was created by another agent. You can operate data but cannot modify site files. Click Trace to switch to the creator agent."
   },
   "fileTree": {

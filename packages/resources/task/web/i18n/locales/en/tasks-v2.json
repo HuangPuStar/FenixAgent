@@ -79,6 +79,8 @@
     "namePlaceholder": "Enter task name",
     "timeLabel": "Schedule",
     "timezoneLabel": "Timezone",
+    "timezoneHint": "Searchable IANA timezones; leave empty to use the default timezone",
+    "defaultTimezone": "Use default timezone",
     "timeoutLabel": "Timeout (s)",
     "descLabel": "Description",
     "descPlaceholder": "Optional",
@@ -126,7 +128,8 @@
     "noResult": "-",
     "errorLabel": "Error",
     "resultLabel": "Result",
-    "skipLabel": "Skip Reason"
+    "skipLabel": "Skip Reason",
+    "selectHint": "Select a task above to view its logs"
   },
   "toast": {
     "created": "Task created",

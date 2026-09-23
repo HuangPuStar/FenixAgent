@@ -13,10 +13,11 @@
  *    宿主注入自己的实现即可完全解除路由耦合。
  * 3. 重试参数按 URL 是否已含 `?` 选择分隔符 —— 源实现硬编码 `&`，仅在默认构建器下成立，
  *    自定义构建器返回无 query 的 URL 时会拼出非法地址。
- * 4. `locale="zh-CN"` 与内置中文文案 `zhCNMessages` 改为 `locale` / `messages` props，
- *    默认值与源实现一致（zh-CN + 内置中文），宿主可传 `en-US` 或覆盖部分键。
- * 5. 错误边界内的中文串（「预览组件加载失败」）与源实现保持一致：它是 React 边界内的兜底提示，
- *    不是预览器文案，未纳入 props；需要多语言的宿主应在外层包一层本地化边界。
+ * 4. `locale="zh-CN"` 与内置中文文案 `zhCNMessages` 改为「包内字典缺省 + props 覆盖」：缺省值随当前
+ *    语言变化，`locale` / `messages` 仍是覆盖端口，宿主需要固定语言或注入自己的词表时照旧可用
+ *    （见「已知限制」第 9 条）。
+ * 5. 错误边界的兜底提示（源实现写死中文「预览组件加载失败」）纳入包内字典、由调用方按当前语言传入：
+ *    它同样渲染给用户看，不再是「不随语言变化」的例外。
  * 6. `overrides.css` 与组件同目录并由本文件 import（工具栏置底等外观修正），
  *    缺失会导致预览工具栏回到顶部。
  */
@@ -24,6 +25,7 @@
 import type { PreviewLocale, PreviewMessages } from "@open-file-viewer/core";
 import { imagePlugin, officePlugin, textPlugin } from "@open-file-viewer/core";
 import { FileViewer } from "@open-file-viewer/react";
+import type { TFunction } from "i18next";
 import type { ErrorInfo, ReactNode } from "react";
 import { Component, useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
@@ -48,9 +50,9 @@ export interface FileViewerPreviewProps {
    * 宿主注入自己的实现即可解除该路由依赖。
    */
   buildPreviewUrl?: (envId: string, filePath: string) => string;
-  /** 预览器内置文案，默认简体中文；宿主可按语言整体注入或只覆盖部分键。 */
+  /** 预览器内置文案。缺省按当前语言取包内字典（`fileTree.preview.messages.*`）；传值时整块覆盖。 */
   messages?: Partial<PreviewMessages>;
-  /** 预览器 locale，默认 `"zh-CN"`。 */
+  /** 预览器 locale（第三方格式化与内置词典都按它取）。缺省跟随当前语言：`zh*` → `zh-CN`，其余 → `en-US`。 */
   locale?: PreviewLocale;
 }
 
@@ -68,30 +70,43 @@ function defaultBuildPreviewUrl(envId: string, filePath: string): string {
   return `/web/environments/${envId}/fs/${encodedPath}?preview=true`;
 }
 
-/** 中文内置文案，覆盖 @open-file-viewer 默认英文（源实现保留；作为 `messages` prop 的默认值） */
-const zhCNMessages: Partial<PreviewMessages> = {
-  loading: "加载中...",
-  unsupportedTitle: "暂不支持此格式",
-  downloadTitle: "下载文件",
-  downloadFile: "下载",
-  file: "文件",
-  unnamedFile: "未命名文件",
-  format: "格式",
-  unknown: "未知",
-  mime: "MIME 类型",
-  undeclared: "未声明",
-  size: "大小",
-  source: "来源",
-  remoteUrl: "远程 URL",
-  localFile: "本地文件",
-};
+/**
+ * 预览器内置文案的缺省取值。
+ *
+ * 键与包内其余文案同在 `fileTree.preview.*` 组下，真相来源只有一份（`uiComponents` 字典）；
+ * 源实现把这份中文写死在组件里，于是宿主切成英文后预览器信息栏仍是中文。
+ * 逐键取值而不是拼 key 前缀：字典是打平的 JSON，显式列出才能在缺键时被字面量扫描抓到。
+ */
+function buildDefaultPreviewMessages(t: TFunction): Partial<PreviewMessages> {
+  return {
+    loading: t("fileTree.preview.messages.loading"),
+    unsupportedTitle: t("fileTree.preview.messages.unsupportedTitle"),
+    downloadTitle: t("fileTree.preview.messages.downloadTitle"),
+    downloadFile: t("fileTree.preview.messages.downloadFile"),
+    file: t("fileTree.preview.messages.file"),
+    unnamedFile: t("fileTree.preview.messages.unnamedFile"),
+    format: t("fileTree.preview.messages.format"),
+    unknown: t("fileTree.preview.messages.unknown"),
+    mime: t("fileTree.preview.messages.mime"),
+    undeclared: t("fileTree.preview.messages.undeclared"),
+    size: t("fileTree.preview.messages.size"),
+    source: t("fileTree.preview.messages.source"),
+    remoteUrl: t("fileTree.preview.messages.remoteUrl"),
+    localFile: t("fileTree.preview.messages.localFile"),
+  };
+}
 
-/** 错误边界：防止 FileViewer 内部异常导致父组件状态异常 */
+/**
+ * 错误边界：防止 FileViewer 内部异常导致父组件状态异常。
+ *
+ * 兜底提示经 `fallbackText` 由调用方注入（类组件用不了 `useTranslation`，语言只在外面拿得到）：
+ * 提示是渲染给用户看的，必须跟随当前语言，不能像源实现那样在边界内写死中文。
+ */
 class FileViewerErrorBoundary extends Component<
-  { children: ReactNode; filePath: string },
+  { children: ReactNode; filePath: string; fallbackText: string },
   { hasError: boolean; errorMessage: string }
 > {
-  constructor(props: { children: ReactNode; filePath: string }) {
+  constructor(props: { children: ReactNode; filePath: string; fallbackText: string }) {
     super(props);
     this.state = { hasError: false, errorMessage: "" };
   }
@@ -108,8 +123,7 @@ class FileViewerErrorBoundary extends Component<
     if (this.state.hasError) {
       return (
         <div className="flex-1 flex flex-col items-center justify-center p-4 gap-2">
-          {/* 兜底提示硬编码中文，与源实现一致（见文件头注释第 5 条） */}
-          <span className="text-xs font-medium text-red-500">预览组件加载失败</span>
+          <span className="text-xs font-medium text-red-500">{this.props.fallbackText}</span>
           <span className="text-3xs text-text-muted break-all">{this.state.errorMessage}</span>
         </div>
       );
@@ -122,10 +136,14 @@ export function FileViewerPreview({
   envId,
   filePath,
   buildPreviewUrl = defaultBuildPreviewUrl,
-  messages = zhCNMessages,
-  locale = "zh-CN",
+  messages,
+  locale,
 }: FileViewerPreviewProps) {
-  const { t } = useTranslation(UI_COMPONENTS_NS);
+  const { t, i18n } = useTranslation(UI_COMPONENTS_NS);
+  // 缺省文案随语言重建（`t` 只在切语言时换身份），传入 `messages` 的宿主不受影响
+  const previewMessages = useMemo(() => messages ?? buildDefaultPreviewMessages(t), [messages, t]);
+  // locale 缺省跟随当前语言：第三方的日期/数字格式与内置词典都按它取，固定 zh-CN 会让英文界面出现中文格式
+  const previewLocale: PreviewLocale = locale ?? (i18n.language?.startsWith("zh") ? "zh-CN" : "en-US");
   const previewUrl = useMemo(() => buildPreviewUrl(envId, filePath), [buildPreviewUrl, envId, filePath]);
   const fileName = useMemo(() => filePath.split("/").pop() ?? filePath, [filePath]);
   const mimeType = useMemo(() => getPreviewMimeType(filePath), [filePath]);
@@ -163,8 +181,8 @@ export function FileViewerPreview({
       fullscreen: true,
       search: false,
       labels: {
-        download: t("fileTree.preview.download", "下载"),
-        fullscreen: t("fileTree.preview.fullscreen", "全屏"),
+        download: t("fileTree.preview.download"),
+        fullscreen: t("fileTree.preview.fullscreen"),
       },
     }),
     [t],
@@ -185,7 +203,7 @@ export function FileViewerPreview({
           className="text-xs text-primary hover:underline"
           onClick={() => setReloadKey((key) => key + 1)}
         >
-          {t("fileTree.preview.retry", "重试")}
+          {t("fileTree.preview.retry")}
         </button>
       </div>
     );
@@ -194,13 +212,13 @@ export function FileViewerPreview({
   if (previewSource === null) {
     return (
       <div className="flex-1 flex items-center justify-center p-4" role="status">
-        <span className="text-xs text-text-muted">{t("fileTree.preview.loading", "加载中...")}</span>
+        <span className="text-xs text-text-muted">{t("fileTree.preview.loading")}</span>
       </div>
     );
   }
 
   return (
-    <FileViewerErrorBoundary filePath={filePath}>
+    <FileViewerErrorBoundary filePath={filePath} fallbackText={t("fileTree.preview.componentError")}>
       <FileViewer
         file={previewSource}
         fileName={fileName}
@@ -210,8 +228,8 @@ export function FileViewerPreview({
         fit="width"
         toolbar={toolbar}
         theme="auto"
-        locale={locale}
-        messages={messages}
+        locale={previewLocale}
+        messages={previewMessages}
       />
     </FileViewerErrorBoundary>
   );

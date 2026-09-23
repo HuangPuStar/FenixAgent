@@ -221,7 +221,15 @@
     "tabTitle": "Bind MCP Servers"
   },
   "sites": {
-    "tabTitle": "Bind Sites"
+    "tabTitle": "Bind Sites",
+    "card": {
+      "loading": "Loading site information…",
+      "missingId": "Missing site ID",
+      "loadFailed": "Failed to load site information",
+      "generated": "Your site is ready",
+      "view": "View site",
+      "unknownName": "Unknown Site"
+    }
   },
   "memory": {
     "enableTitle": "Agent Memory",

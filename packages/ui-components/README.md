@@ -35,10 +35,11 @@ demo/                     Vite 展示页（非库产物）
 | `web/lib/theme.tsx` | 源实现临时强制浅色，忽略 localStorage 与系统偏好 | 移除该 hack：初始主题取 localStorage，缺省回退 `defaultTheme`，`system` 跟随系统 |
 | `web/lib/card-renderer.tsx` | `@/src/lib/card-renderer/registry` + context/emitter | 只保留注册表，去掉会话事件通道；初始注册表为空 |
 | `web/chat/primitives/conversation.css`（**阶段三已迁并删除**） | `.chat-scroll-navigation` / `.chat-scroll-to-latest` 定义在 `packages/chat-channel/.../chat-design-shell.css` | 组件用到的样式随组件收进包内（逐字迁移），去掉跨包样式表依赖；其后随 chat 样式迁移改成 `conversation.tsx` 里工具类，本文件删除 |
-| `web/chat/primitives/message.tsx` | `chat-markdown-content` 容器类由宿主 `MessageBubble` 注入，markdown 排版全挂在它上面 | 改由 `MessageResponse` 自身携带，独立使用时排版才生效（见「已知限制」第 8 条） |
+| `web/chat/primitives/message.tsx` | `chat-markdown-content` 容器类由宿主 `MessageBubble` 注入，markdown 排版全挂在它上面 | 改由 `MessageResponse` 自身携带，独立使用时排版才生效（见「已知限制」第 7 条） |
 | `web/layout/`、`web/components/` 中的颜色字面量 | 源实现混用精确 hex（`#e4eaf2`、`#17233a`、`#1a2944`、`#f6f8fb`、`#e7ecf3`、`#99a8bc` 等） | 换成最近的语义 token（`border-border`、`text-text-bright`、`bg-surface-0`…）。**与宿主存在可见色差，属有意取舍**（2026-09-18 确认保持 token 化）：等值的（`#1677ff`→`brand`、`#94a3b8`→`text-muted`、`#ffffff`→`surface-1`）无差异，等值的以外的若要求与源逐像素一致，需改回 hex |
-| `web/components/preview/FileViewerPreview.tsx` | `buildPreviewUrl` 在组件内部硬编码宿主文件代理路由；重试参数固定用 `&` 拼接；`locale="zh-CN"` 与内置 `zhCNMessages` 中文写死 | `buildPreviewUrl` 提为可选 prop，默认值仍保留源实现（见「已知限制」第 9 条）；`&retry=` 改为按 URL 是否已含 `?` 选择分隔符（自定义构建器返回无 query 的 URL 时旧拼接会产出非法地址）；`locale` / `messages` 提为 props，默认值与源一致 |
-| `web/components/preview/FileViewerPreview.tsx` 错误边界内的中文串 | 「预览组件加载失败」等提示硬编码中文 | 逐字保留：它是 React 边界内的兜底提示，不属于预览器文案，未纳入 props；需要多语言的宿主应在外层包一层本地化边界（见「已知限制」第 10 条） |
+| `web/components/preview/FileViewerPreview.tsx` | `buildPreviewUrl` 在组件内部硬编码宿主文件代理路由；重试参数固定用 `&` 拼接；`locale="zh-CN"` 与内置 `zhCNMessages` 中文写死 | `buildPreviewUrl` 提为可选 prop，默认值仍保留源实现（见「已知限制」第 8 条）；`&retry=` 改为按 URL 是否已含 `?` 选择分隔符（自定义构建器返回无 query 的 URL 时旧拼接会产出非法地址）；内置文案与 `locale` 的默认值改由包内字典与当前语言决定、`messages` / `locale` 保留为覆盖端口（见「已知限制」第 9 条） |
+| `web/components/preview/FileViewerPreview.tsx` 错误边界内的提示 | 「预览组件加载失败」等提示硬编码中文 | 改由调用方按当前语言注入（`fallbackText`，键 `fileTree.preview.componentError`）：它是给用户看的提示，与工具栏文案同属 i18n 范围，不再随源实现固定中文（见「已知限制」第 9 条） |
+| `web/components/preview/html-plugin.ts`、`web/components/preview/preview-source.ts` | 标签「渲染预览」/「源码」、兜底串「源码加载失败」「无法获取 HTML 文件的预览地址」「HTML 预览加载失败」，以及 `loadByteAccuratePreviewSource` 抛出的「文件预览加载失败 (<status>)」 | 逐字保留硬编码中文：插件直接操作 DOM、不在 React 树内，`preview-source` 是纯逻辑模块（前端开发规范 §9.3 禁止它 import UI i18n），两者接文案都要在契约上新增参数；需要多语言的宿主应自行派生插件或按 error code 映射文案（见「已知限制」第 12、13 条） |
 | `web/components/preview/overrides.css` | 宿主页面样式表里的预览工具栏修正（工具栏置底等） | 随组件收进包内，且必须与 `FileViewerPreview` 同目录并被其 `import`；缺失会导致预览工具栏回到顶部 |
 | `web/components/preview/preview-source.ts` | `agent-panel/preview/utils.ts` 全量（含 `encodePathSegment`、`buildPreviewUrl`、`normalizeToUserPath`、`formatFileSize`） | 只取 L1–167 的分类表与源加载子集：URL 构建/路径规范化属宿主路由与展示约定。宿主 `ArtifactsPanel.tsx` 与 `preview-utils-normalize.test.ts` 仍引用原文件，故原文件保持不动 |
 | `web/components/PreviewTab.tsx` | 宿主 tab 的占位容器，仅换 i18n 命名空间 | 未透传 `buildPreviewUrl` / `messages` / `locale`：需要预览定制时直接使用 `FileViewerPreview`，本组件保持最小契约 |
@@ -176,10 +177,12 @@ i18n.addResourceBundle("zh", UI_COMPONENTS_NS, zh, true, true);
      即完全解除该路由依赖。组件同时带 `import "@open-file-viewer/core/style.css"` 副作用导入，
      消费方（含 demo）编译时需能解析该 CSS —— 依赖已列入 dependencies。
    - 移除条件：宿主统一注入自定义构建器，或把代理前缀提升为必填 prop。
-9. **`FileViewerPreview` 的内置预览文案默认简体中文**：`locale` 默认 `"zh-CN"`、`messages` 默认值为内置中文；
-    React 错误边界内的提示（「预览组件加载失败」等）是硬编码中文，不随 `locale` / `messages` 变化。
-    - 影响范围：非中文宿主需显式传 `locale` / `messages`；边界提示需要多语言时由宿主在外层再包一层本地化边界。
-    - 移除条件：错误边界提示纳入 `messages` props（需要先定义边界提示的键位契约）。
+9. **`FileViewerPreview` 的预览器文案跟随当前语言，不再固定中文**：`messages` 缺省取包内字典
+   `fileTree.preview.messages.*`（en / zh 两套，与工具栏文案同源），`locale` 缺省按 `i18n.language` 判定
+   （`zh*` → `zh-CN`，其余 → `en-US`）；错误边界的兜底提示也取自字典（`fileTree.preview.componentError`）。
+   - 影响范围：源实现把中文写死在组件里（`zhCNMessages` + 边界串），宿主不传 props 时英文界面会看到中文。
+     现在不传即是当前语言；需要固定某一门语言或注入自有词表的宿主，照旧显式传 `locale` / `messages`。
+   - 移除条件：无（这是终态）。
 10. **`UserMessageImage.url` 是包内新增的展示用字段**：源类型只有 `mimeType` + `data`（base64），
     想展示一张真实网络图片就必须把二进制内联进源码。包内加可选 `url`，渲染方统一按「`url` 优先、
     缺省回退到 `data` 拼出的 data URL」取地址（消息气泡与输入岛附件行同规则），发送路径仍只读 `data`。
@@ -194,6 +197,15 @@ i18n.addResourceBundle("zh", UI_COMPONENTS_NS, zh, true, true);
     因此保留；独立渲染（demo / 单测）时只拿到玻璃形态（圆角 16px + `backdrop-filter`）。
     - 影响范围：仅外观（扁平 vs 玻璃），不破坏布局；包内 `ChatHeader` 目前只由 `ACPMain` 渲染，自带该类名。
     - 移除条件：共享高度链与标题栏均不再依赖 `.acp-main-root` 时，才可删除该类名。
+12. **`html-plugin` 的标签与提示硬编码中文**：标签页「渲染预览」/「源码」、源码加载失败的兜底串「源码加载失败」，
+    以及 `setError` 的两条提示（「无法获取 HTML 文件的预览地址」「HTML 预览加载失败」）都写死在源码里。
+    - 影响范围：HTML 预览在非中文界面仍显示中文标签与提示；本包 demo 与宿主都用默认插件参数，切换语言看不到变化。
+    - 移除条件：插件工厂接受文案参数（`htmlPreviewPlugin(labels)`）并在 `FileViewerPreview` 里由 `t()` 注入——
+      需要先定义这组标签的键位契约，属契约扩张，本轮不做。
+13. **`preview-source.ts` 的加载失败文案硬编码中文**：`loadByteAccuratePreviewSource` 在非成功响应时抛
+    `文件预览加载失败 (<status>)`，`FileViewerPreview` 的失败态原样展示该消息（界面因此出现中文 + HTTP 状态码）。
+    - 影响范围：非中文宿主的预览失败态；同第 12 条，纯逻辑模块不 import UI i18n（前端开发规范 §9.3），文案只能由调用方接。
+    - 移除条件：该模块改为抛结构化错误（带 error code / status），由组件按 code 映射字典文案。
 
 ## chat 样式现状（阶段一至五迁移台账）
 

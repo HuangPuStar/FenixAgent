@@ -73,7 +73,8 @@ export function TasksPanel({ agentId }: TasksPanelProps) {
       await unwrap(taskV2Api.trigger(taskId));
       refresh();
     } catch {
-      toast.error(taskT("panelMode.tasksTriggerFailed") ?? "Trigger failed");
+      // 失败提示同样只走本包字典：`t()` 不会返回空值，原先的英文兜底串是永远走不到的死代码
+      toast.error(taskT("panelMode.tasksTriggerFailed"));
     } finally {
       setTriggeringIds((prev) => removeIdFromSet(prev, taskId));
     }
@@ -261,7 +262,7 @@ export function TasksPanel({ agentId }: TasksPanelProps) {
           </>
         ) : (
           <div className="flex-1 flex items-center justify-center">
-            <p className="text-xs text-text-muted">选择上方任务查看日志</p>
+            <p className="text-xs text-text-muted">{taskT("log.selectHint")}</p>
           </div>
         )}
       </div>
