@@ -178,6 +178,8 @@ export function createRelayEvents(
     getSessionYdoc: () => undefined,
     // 回放窗口开启时判定 Chat Doc 是否有内容；默认 mock 无 doc → 视为空（允许合成）
     hasTimelineContent: () => false,
+    // 窗口外无 turnId user_message 的回显去重判定；默认 mock 无 doc → 视为无同文本条目
+    hasUserMessageText: () => false,
   } as unknown as DocManager;
   return new RelayEventHandler({
     docManager,

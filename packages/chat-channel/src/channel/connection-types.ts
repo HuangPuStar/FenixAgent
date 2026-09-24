@@ -114,7 +114,9 @@ export interface SharedRelay {
    * load_session 回放窗口截止时间戳（ms）。load_session 成功后短暂开启，
    * 期间到达的无 turnId user_message 由 relay-event-handler 分配回放 turnId，
    * 使 Agent 全量回放的历史增量能够投影为时间线（无持久化快照时的历史恢复来源）；
-   * 窗口外到达的无 turnId user_message（实时回显）保持原语义丢弃。
+   * 窗口外到达的无 turnId user_message 由 relay-event-handler 分类：文档已有同文本
+   * user entry（实时回显 / 迟到回放）丢弃，否则按真异步回调建立独立条目
+   * （见 callbackAssistantEntryId / callbackBindingTurnId）。
    */
   replayWindowUntil: number | null;
   /**
@@ -136,4 +138,11 @@ export interface SharedRelay {
   replaySkipSynthesis?: boolean;
   /** 未结束 callback 的独立 assistant 历史 entry，禁止无头 chunk 回退到主 active turn。 */
   callbackAssistantEntryId?: string | null;
+  /**
+   * callback 绑定的代际：建立 `callbackAssistantEntryId` 时的 activeTurnId
+   * （无活动 turn 时为 null）。无 turnId 增量到达时若当前 activeTurnId 已变，
+   * 说明绑定属于上一轮/更早的回调流，必须失效——否则新 turn 的回答会被追加进
+   * 遥远的旧 callback assistant entry（2026-09-24 聚合错位根因）。
+   */
+  callbackBindingTurnId?: string | null;
 }

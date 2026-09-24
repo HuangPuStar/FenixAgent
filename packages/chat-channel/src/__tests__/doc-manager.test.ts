@@ -304,3 +304,27 @@ test("broadcasts updates with RCS-scoped document names", async () => {
   expect(broadcasts).not.toContain("session:rcs_broadcast_b");
   await manager.closeAll();
 });
+
+// 回显去重判定（relay 窗口外无 turnId user_message 的分类依据）：同文本 user entry
+// 命中即回显/重复回放，未命中按真异步回调处理。判定错误会直接导致用户消息复制
+// （漏判）或真回调内容丢失（误判），故正反例都必须锁定。
+test("detects duplicate user text and ignores non-user or empty text", async () => {
+  manager = new DocManager({ acpBatchWindowMs: 1_000 });
+  await manager.openChat("rcs_echo");
+  await manager.openSession("user-1", "agent-1", "rcs_echo");
+  manager.registerUserMessage("rcs_echo", "第一条 消息");
+  manager.processNormalizedEvent(
+    "rcs_echo",
+    event("message_delta", { content: { type: "text", text: "只有助手有这段文本" } }, "turn-1"),
+  );
+
+  // 精确命中与空白改写命中（引擎回显可能改写换行/多余空格）
+  expect(manager.hasUserMessageText("rcs_echo", "第一条 消息")).toBe(true);
+  expect(manager.hasUserMessageText("rcs_echo", "\n第一条   消息  \n")).toBe(true);
+  // 仅 assistant entry 有同文本、空文本、未打开会话、文本不同 → 均不得命中
+  expect(manager.hasUserMessageText("rcs_echo", "只有助手有这段文本")).toBe(false);
+  expect(manager.hasUserMessageText("rcs_echo", "   ")).toBe(false);
+  expect(manager.hasUserMessageText("rcs_unopened", "第一条 消息")).toBe(false);
+  expect(manager.hasUserMessageText("rcs_echo", "第二条消息")).toBe(false);
+  await manager.closeAll();
+});

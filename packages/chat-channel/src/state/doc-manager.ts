@@ -17,7 +17,7 @@ import { encodeYjsReplaceFrame } from "../protocol/update-frame";
 import { DEFAULT_PERMISSION_TIMEOUT_MS, DEFAULT_QUESTION_TIMEOUT_MS, type NormalizedEvent } from "../schema";
 import type { ChatDoc, ProjectionDocs, SessionDoc } from "../types";
 import { applyNormalizedEvent } from "./aggregator";
-import { hasChatDocContent } from "./chat-writer";
+import { getEntriesMap, getEntryOrder, hasChatDocContent } from "./chat-writer";
 import { createChatDoc, createSessionDoc, loadChatDoc, loadSessionDoc } from "./factory";
 
 /** 合并窗口（毫秒）：文本/思考增量可落入同一窗口合并为一个 yjs:update */
@@ -50,6 +50,28 @@ function preserveAgentProjection(source: Y.Doc | undefined, target: Y.Doc): void
       if (value !== undefined) targetRoot.set(key, cloneYValue(value));
     }
   });
+}
+
+/** 归一化用户可见文本（回显去重比较）：折叠空白后 trim，空文本归一为空串 */
+function normalizeUserText(text: string): string {
+  return text.replace(/\s+/gu, " ").trim();
+}
+
+/**
+ * 按 blockOrder 拼接 entry 的文本块（与前端 chat-doc-to-structured 的 blockText 同口径）。
+ * 块间用换行分隔，避免相邻块边界拼接出本不存在的连续文本（误命中回显去重）。
+ */
+function readEntryText(entry: Y.Map<unknown>): string {
+  const blocks = entry.get("blocks") as Y.Map<Y.Map<unknown>> | undefined;
+  const order = entry.get("blockOrder") as Y.Array<string> | undefined;
+  if (!blocks || !order) return "";
+  return order
+    .toArray()
+    .map((blockId) => {
+      const text = blocks.get(blockId)?.get("text");
+      return text instanceof Y.Text ? text.toString() : "";
+    })
+    .join("\n");
 }
 
 export interface DocManagerOptions {
@@ -265,6 +287,31 @@ export class DocManager {
     const doc = this.chatDocs.get(rcsSessionId);
     if (!doc) return false;
     return hasChatDocContent(doc.ydoc);
+  }
+
+  /**
+   * 文档中是否已存在同文本的 user entry（实时回显 / 重复回放的去重判定）。
+   *
+   * 用途：窗口外无 turnId 的 user_message（relay 的 callback 分类）需要区分
+   * 「实时 prompt 回显」与「真异步回调」。回显的文本必然已由
+   * `registerUserMessage` 写入 Chat Doc，命中即回显/重复回放；未命中视为回调。
+   *
+   * 归一化口径：trim + 折叠空白——引擎回显可能改写空白，逐字比较会漏判；
+   * 空文本一律返回 false（不得把空回显当"已有内容"，否则真回调会被吞）。
+   * 复杂度 O(entry 数)，每条回显帧一次调用，无需缓存（条目量级放大时再加窗口）。
+   */
+  hasUserMessageText(rcsSessionId: string, text: string): boolean {
+    const doc = this.chatDocs.get(rcsSessionId);
+    if (!doc) return false;
+    const target = normalizeUserText(text);
+    if (!target) return false;
+    const entries = getEntriesMap(doc.ydoc);
+    for (const entryId of getEntryOrder(doc.ydoc).toArray()) {
+      const entry = entries.get(entryId);
+      if (entry?.get("role") !== "user") continue;
+      if (normalizeUserText(readEntryText(entry)) === target) return true;
+    }
+    return false;
   }
 
   // ── 用户消息注册 ──
