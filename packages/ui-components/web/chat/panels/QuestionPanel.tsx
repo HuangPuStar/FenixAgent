@@ -251,7 +251,6 @@ function QuestionCard({ question, onRespond }: QuestionCardProps) {
       </div>
       {/* 自定义回答：输入即成为该题答案（提交载荷与选项答案同形），Enter 提交；空文本不算作答。 */}
       <label className="mt-2.25 grid gap-1.25">
-        <span className="text-3xs text-gray-400">{t("chat.components.askUser.customLabel")}</span>
         <Input
           className="h-8 text-xs"
           value={customValue}
