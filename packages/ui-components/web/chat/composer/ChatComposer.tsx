@@ -284,6 +284,13 @@ export function ChatComposer({
           onDragLeave={hookDragLeave}
           onDrop={(e) => {
             hookDrop(e);
+            // 带 OS 文件载荷的拖拽由上传路径独占：`hookDrop` → `uploadFiles` → `handleFilePickerSelect`
+            // 已经把文件落成 `user/<name>` 附件，这里的文本引用分支必须让位，否则同一次 drop 登记两条。
+            // 为什么让位的是这条分支：外部来源常把**本地绝对路径**写进 `text/plain` 槽（macOS 微信客户端
+            // 拖出的文件就是这样，而不是 `file://` URL），下面的 workspace 相对路径守卫拦不住它，于是同一个
+            // 文件又被登记一条指向本地路径的附件——界面上出现两条同名记录。
+            // 文件树拖拽不携带 `files`（其数据走 `application/json`），仍落到下面的路径引用分支。
+            if (e.dataTransfer.files.length > 0) return;
             // 保留文件树拖拽路径引用逻辑
             const treePath = e.dataTransfer.getData("text/plain");
             if (!treePath || treePath.startsWith("file://") || treePath.startsWith("blob:")) return;
