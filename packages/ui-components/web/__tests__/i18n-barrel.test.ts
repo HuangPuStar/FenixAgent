@@ -24,8 +24,17 @@ const PKG_ROOT = resolve(WEB_ROOT, "..");
  * 按增量维护：T9d 加 28 条 `chat.components.publicError.*`（公开错误正文的本地化文案），243 → 271。
  * 2026-09-22 前端去重（消息复制补失败反馈）加 `chat.components.messageBubble.copyFailed` 1 键，271 → 272。
  * 2026-09-23 错误边界批次加 `errors.renderFailed` / `errors.retry` 2 键（统一降级 UI 的文案），272 → 274。
+ * 2026-09-24 AskUserQuestion 自定义回答批次加 `chat.components.askUser.customLabel` /
+ *   `customPlaceholder` / `submitting` / `submitUnconfirmed` 4 键（输入框标签与占位、提交中与
+ *   超时未确认反馈），274 → 278。
+ * 2026-09-24 输入岛粘贴图片批次加 `chat.components.chatComposer.pastingImages`（粘贴资产的进行中
+ *   状态）与 `chat.components.composerAssets.pasteImageUnsupported`（两条通路都不可用时的回执）2 键，
+ *   278 → 280。
+ * 2026-09-24 加载指示器改版（阶段文字 + 流光条）：删掉不再使用的 `chat.components.chatView.thinking`
+ *   （唯一消费方是旧指示器），换成 `chat.components.chatView.stage.{thinking,generating,callingTool,working}`
+ *   4 键（阶段文案，键名与 `LoadingStage` 一一对应），280 → 283。
  */
-const KEY_BASELINE = 274;
+const KEY_BASELINE = 283;
 
 const EN = JSON.parse(readFileSync(join(WEB_ROOT, "i18n/locales/en/uiComponents.json"), "utf8")) as Record<
   string,

@@ -4,6 +4,8 @@
 // - 多问题/多选项渲染：header + question + 选项按钮
 // - 交互：单选题只保留一个选项，多选题可切换多个选项；点击"提交"后按
 //   问题顺序回传答案（单选 string，多选 string[]）
+// - 宽度契约（2026-09-24 补）：卡片的宽度不来自旧 px 台阶，而由渲染处从输入岛派生
+//   （`chat-question-cards` 覆盖 + `ChatInterface` 的两个宽度常量 + `QuestionPanel.css` 的规则）
 //
 // 迁移改动：
 // - 组件改从包内 `../chat/panels/QuestionPanel` 导入，问题投影类型改从 `../chat/types` 导入
@@ -18,6 +20,8 @@
 //   无需宿主侧桩改写。
 
 import { describe, expect, test } from "bun:test";
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import { initializeHappyDomWindow } from "@fenix/ui-components/testing";
 import { Window } from "happy-dom";
 import { createInstance } from "i18next";
@@ -336,5 +340,68 @@ describe("QuestionPanel", () => {
     // happy-dom 按钮元素类型与 lib.dom 不重叠，经 unknown 收窄后读取 disabled
     expect((submitButton as unknown as HTMLButtonElement).disabled).toBe(true);
     act(() => root.unmount());
+  });
+});
+
+// 宽度契约（2026-09-24）：卡片不得自带宽度，也不得继承共享栈类的 px 台阶；宽度由渲染处从输入岛
+// 派生——先套 `CHAT_COMPOSER_WIDTH_CLASS`（输入岛宽列 + 内边距 + 居中），再按
+// `CHAT_COMPOSER_TOP_CARD_INSET_CLASS` 每侧收进一条台阶（与同 slot 的状态面板同口径）。
+// 断言分两层：渲染出的类名（提权覆盖的入口）+ 样式表/渲染处原文（width: auto 与包装接线）。
+describe("QuestionPanel 宽度契约", () => {
+  const CHAT_DIR = join(import.meta.dir, "..", "chat");
+
+  /** 读取 chat 组件源码/样式表原文：宽度这类深层声明与渲染处接线不在 className 上，只能静态断言。 */
+  function readChatFile(relPath: string): string {
+    return readFileSync(join(CHAT_DIR, relPath), "utf8");
+  }
+
+  // 业务意图：提问卡片此前沿用共享栈类的 px 台阶 `min(756px, calc(100% - 64px))`，与输入岛的 rem
+  // 刻度不同源——宽屏下比输入岛宽、中宽屏下近似拉满（用户反馈「卡片横跨整个聊天区」）。卡片必须
+  // 带上提权覆盖类才不继承那条台阶，且自身不得声明宽度（否则又出现第二套口径）。
+  test("卡片栈带上宽度覆盖类，且自身不声明宽度", () => {
+    const { container, root } = mountRoot();
+    const question = pendingQuestion("iqa_1", [{ question: "Deploy to prod?", options: ["production"] }]);
+    act(() => {
+      root.render(createElement(QuestionPanel, { questions: [question], onRespond: () => {} }));
+    });
+
+    const stack = container.querySelector('[data-slot="chat-interaction-stack"]');
+    expect(stack).not.toBeNull();
+    const tokens = (stack?.getAttribute("class") ?? "").split(/\s+/);
+    expect(tokens).toContain("chat-interaction-cards");
+    expect(tokens).toContain("chat-question-cards");
+    expect(tokens.some((token) => token.startsWith("w-") || token.startsWith("max-w-"))).toBe(false);
+    act(() => root.unmount());
+  });
+
+  // 业务意图：覆盖规则必须提权（双类）且为 `width: auto`。单类规则与共享样式表同层，胜负取决于
+  // 样式表生成顺序——那样卡片宽度会随打包顺序漂移（可见与不可见两种后果都不可接受）。
+  test("覆盖规则用双类提权并置为 width: auto", () => {
+    const css = readChatFile("panels/QuestionPanel.css");
+    expect(css).toContain(".chat-interaction-cards.chat-question-cards {");
+    expect(css).toContain("width: auto;");
+  });
+
+  // 业务意图：本次范围只含提问卡片。权限卡片仍走旧 px 台阶（未一并迁移），故共享规则必须原样保留，
+  // 不能顺手删除或改小——否则权限卡片宽度会在无人确认的情况下被一起改掉。
+  test("共享栈类的旧 px 台阶原样保留给权限卡片", () => {
+    const css = readChatFile("panels/chat-interaction-region.css");
+    expect(css).toContain("width: min(756px, calc(100% - 64px))");
+    expect(css).toContain("width: calc(100% - 52px)");
+  });
+
+  // 业务意图：宽度的唯一来源是渲染处那两层包装（输入岛宽度容器 + 每侧一条台阶）。静态断言的理由：
+  // 渲染整个 `ChatInterface` 需要全套会话/传输状态，属超范围；这条接线只是 JSX 结构，错一眼就能看出。
+  test("渲染处用输入岛宽度容器 + 每侧一条台阶包住提问卡片", () => {
+    const shell = readChatFile("shell/ChatInterface.tsx");
+    const questionStart = shell.indexOf("<QuestionPanel");
+    expect(questionStart).toBeGreaterThan(-1);
+
+    const wrapperStart = shell.lastIndexOf("CHAT_COMPOSER_WIDTH_CLASS}>", questionStart);
+    expect(wrapperStart).toBeGreaterThan(-1);
+    const wrapperRegion = shell.slice(wrapperStart, questionStart);
+    expect(wrapperRegion).toContain("CHAT_COMPOSER_TOP_CARD_INSET_CLASS");
+    // 包装范围只含提问卡片：不得把权限卡片一起包进来（本次不改它的宽度）
+    expect(wrapperRegion).not.toContain("<PermissionPanel");
   });
 });

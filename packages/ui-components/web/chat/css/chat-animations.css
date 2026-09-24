@@ -11,8 +11,8 @@
  *   - 阶段五并入的 `chat-agent-badge.css`：`agent-badge-pulse`。
  *
  * 消费方（按名引用，改名必须同步这几处）：
- *   - `view/ChatView.tsx`：三点脉冲 `animate-[loadingDotBounce_…]`（暗色换 `loadingDotBounceDark`）、
- *     思考中微光 `animate-[shimmerSlide_2s_ease-in-out_infinite]`；
+ *   - `view/ChatView.tsx` + `view/ChatView.css`：加载指示器的流光条
+ *     `animation: chat-loading-sweep …`；
  *   - `primitives/shimmer.css`：级联微光 `.shimmer-cascade-char` 的 `animation: shimmerSlide 2s ease-in-out infinite`；
  *   - `view/ChatView.tsx` + `view/chat-navigation-aids.tsx`：提示词导航高亮
  *     `data-[active-prompt]:animate-[chat-active-prompt-flash_900ms_ease-out]`；
@@ -83,5 +83,24 @@
   }
   50% {
     opacity: 1;
+  }
+}
+
+/* 加载指示器的流光条：光带自身占轨道 1/3 宽，从轨道左侧（`-100%` 自身宽）扫到完全出右侧
+   （`300%`）；两端各设一次透明度归零，让循环接缝落在光带不可见时，看不出跳变。 */
+@keyframes chat-loading-sweep {
+  0% {
+    opacity: 0;
+    transform: translateX(-100%);
+  }
+  15% {
+    opacity: 1;
+  }
+  85% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0;
+    transform: translateX(300%);
   }
 }

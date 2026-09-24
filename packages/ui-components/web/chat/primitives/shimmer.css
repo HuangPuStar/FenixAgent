@@ -10,8 +10,9 @@
  * 为什么整组留在这里而不是 `className`：
  *   - `animation: shimmerSlide 2s ease-in-out infinite` 是「动画名 + 时长 + 缓动 + 次数」的复合值，
  *     写成任意值工具类（`animate-[shimmerSlide_2s_ease-in-out_infinite]`）会命中 FCP-WEB-02——
- *     下划线属复合表达式（`docs/developer/guide/forbidden-code-patterns.md`）。同批的
- *     `.chat-loading-shimmer`（`chat/view/ChatView.css`）出于同一原因下沉。
+ *     下划线属复合表达式（`docs/developer/guide/forbidden-code-patterns.md`）。加载指示器原先的
+ *     `.chat-loading-shimmer` 出于同一原因下沉在 `chat/view/ChatView.css`，2026-09-24 改版为
+ *     「阶段文字 + 流光条」后已随文字微光一并删除（该实现的任意属性简写会顶掉 `background-clip`）。
  *   - 渐变 + 裁切 + `-webkit-text-fill-color` 必须同源生效：本文件未分层，会压过 `@layer utilities`，
  *     把其中任一条留在工具类都会产生「同一属性两个来源、胜负靠层叠猜」的状态。故整组一起放这里，
  *     `className` 只留 `shimmer-cascade-char` 这个语义类名。

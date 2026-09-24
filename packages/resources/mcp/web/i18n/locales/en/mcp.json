@@ -1,6 +1,9 @@
 {
   "title": "MCP Plugin Marketplace",
   "subtitle": "Browse curated MCP servers and connect files, browsers, repositories, and business systems through standard configuration.",
+  "tabs": {
+    "mcp": "MCP Plugins"
+  },
   "search": "Search plugins, transports, or use cases",
   "empty": "No plugins are available yet",
   "emptyHint": "Add an MCP JSON configuration to connect real tools for agents.",

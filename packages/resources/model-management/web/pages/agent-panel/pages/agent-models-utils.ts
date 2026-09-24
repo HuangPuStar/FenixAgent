@@ -85,6 +85,17 @@ export function buildProviderPublicReadablePayload(publicReadable: boolean): Rec
 }
 
 /**
+ * 模型选择列表的候选集：探测结果在前，其次是尚未出现在探测结果里的已选条目。
+ *
+ * 手动输入的模型 ID 不在服务商的列表接口里（部分服务商的列表接口与消息接口不在同一个地址上），但它
+ * 既然处于"已选"状态就必须在列表里可见、可取消。只渲染探测结果会制造一种幽灵选择：探测失败清空列表
+ * 后，手动条目在界面上消失、却仍会被保存提交。
+ */
+export function mergeModelCandidates(discovered: string[], selected: string[]): string[] {
+  return [...discovered, ...selected.filter((id) => !discovered.includes(id))];
+}
+
+/**
  * 为 provider 连通性/模型列表测试构造 inline 参数。
  *
  * 前端测试最新表单值时必须只使用当前表单输入，避免在用户未保存前提前落库。

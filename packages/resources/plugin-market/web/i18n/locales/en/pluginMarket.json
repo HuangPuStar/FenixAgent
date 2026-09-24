@@ -1,9 +1,9 @@
 {
-  "nav": {
-    "pluginMarket": "Plugin Market"
+  "title": "npm Plugin Market",
+  "subtitle": "Browse the plugin versions published from the private npm registry. Publishing, withdrawing and restoring a version are platform admin actions, available in the admin console.",
+  "tabs": {
+    "npm": "npm Plugins"
   },
-  "title": "Plugin Market",
-  "subtitle": "Browse plugin versions published from the private npm registry, and publish, withdraw or restore a version.",
   "search": "Search by plugin, package name or version",
   "toolbar": {
     "label": "Plugin search and scope filter"
@@ -32,9 +32,11 @@
   "emptySearchHint": "Try another keyword or switch the scope.",
   "loadState": {
     "title": "Failed to load the plugin market",
+    "hint": "The list could not be fetched — the network may be down or the service temporarily unavailable. Retrying usually helps; contact an administrator if it keeps failing.",
     "retry": "Retry",
     "loading": "Loading the plugin market",
     "detailTitle": "Failed to load the entry",
+    "detailHint": "This entry's version history could not be fetched. Retrying usually helps; pick another entry or try again later if it keeps failing.",
     "detailRetry": "Reload entry",
     "unauthorizedTitle": "No access to the plugin market",
     "unauthorizedHint": "This account or organization no longer has access to the plugin market. Switch organization or ask an administrator for access — retrying will not change the authorization result."
@@ -60,6 +62,7 @@
     "unpackedSize": "Unpacked size",
     "fileCount": "Files",
     "deprecated": "This version is marked as deprecated",
+    "hiddenPackage": "This plugin is fully withdrawn: it is invisible on the public face and reappears once any version is restored.",
     "versions": "Version history",
     "versionCount": "{{count}} versions",
     "noVersions": "This entry has no version yet",
@@ -88,7 +91,8 @@
     "previewHint": "Only the fields below are stored. The artifact URL is kept for provenance and is never requested by the market.",
     "previewDigest": "Content digest",
     "previewChanged": "The version changed after the preview. Below is the snapshot just read; please confirm again.",
-    "previewUnavailable": "Retry the preview to continue.",
+    "previewFailed": "Failed to read the preview. Check the package name and exact version, then retry.",
+    "publishFailed": "Publishing failed. Please retry.",
     "unpublishTitle": "Withdraw this version?",
     "unpublishDescription": "{{version}} stops being public, but its snapshot stays in the market and can be restored at any time.",
     "restoreTitle": "Restore this version?",
@@ -102,12 +106,21 @@
     "restored": "Restored {{version}}",
     "loadListFailed": "Failed to load the plugin market",
     "loadDetailFailed": "Failed to load the entry",
-    "publishFailed": "Failed to publish",
     "unpublishFailed": "Failed to withdraw",
     "restoreFailed": "Failed to restore"
   },
   "validation": {
     "packageNameRequired": "Enter the package name",
     "exactVersionRequired": "Enter the exact version"
+  },
+  "admin": {
+    "nav": "Plugin Market",
+    "title": "Plugin market admin",
+    "subtitle": "Publish, withdraw or restore the plugin versions of the private npm registry (master key protected).",
+    "gateTitle": "Master Key Required",
+    "gateDescription": "Enter the system master key (RCS_SYSTEM_API_KEYS) to open the admin panel. The key is kept only in sessionStorage and is never logged.",
+    "gateInputPlaceholder": "System master key",
+    "gateSubmit": "Enter panel",
+    "gateAuthFailed": "Invalid or expired master key"
   }
 }

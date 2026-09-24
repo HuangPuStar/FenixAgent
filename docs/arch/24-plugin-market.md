@@ -1,7 +1,7 @@
 # 插件市场模块架构（plugin-market）
 
-> 状态：实现基线（2026-09-23）
-> 范围：受控资源「市场条目」的领域模型、数据模型、写路径状态分派、并发与事务、授权模型、外部 npm 私有源的读取边界、`/web/config/plugin-market/*` 契约、前端页面契约，以及模块在主服务里的装配与登记。
+> 状态：实现基线（2026-09-23；2026-09-24 管理动作迁入管理台，见 §7 / §8）
+> 范围：受控资源「市场条目」的领域模型、数据模型、写路径状态分派、并发与事务、授权模型、外部 npm 私有源的读取边界、`/web/config/plugin-market/*` 与 `/api/system/plugin-market/*` 两条面的契约、前端页面契约，以及模块在主服务里的装配与登记。
 > 定位：本文档是插件市场模块的**实现基线**。模块由 `/Users/konghayao/code/ai/open-mcp-market` 的 `packages/mcp-market` 移植而来，领域规则与安全边界以源项目为权威来源，差异逐条登记在 §10 与本包 `README.md`。授权机制的通用语义见 `docs/design/ce-ee-refactoring/ce-access-control-design.md`，目录页共享构件集见 `docs/developer/guide/frontend-development.md`。
 > 约定：代码演进偏离本文档时，先更新文档再改代码。本文不定义插件安装、绑定到 Agent 配置或对外 `/api` 契约——那三项明确不在本期范围。
 
@@ -11,8 +11,8 @@
 2. **快照契约是安全边界，不是数据形状**。`src/server/npm-registry/types.ts` 是「registry 的不可信 JSON」与「市场可信存储」之间唯一的过桥形式；原始 packument 与任何未列入该文件的字段**永远不进市场存储**。新增字段必须先回答：它是否会被外部源控制，是否可能成为任意文本的载体。
 3. **发布即冻结**。发布写入的快照在版本行上不可变：`restore` 只改 `published_at` / `unpublished_at`，`first_published_at` 永久不变；恢复复用市场内的快照，**不访问私有源**。
 4. **读路径永不访问私有源**。列表与详情只读本地快照；只有 `publish/preview` 与「确认发布但库内没有该版本」两条写路径出网。
-5. **市场是平台全局目录**：任意已认证主体可读，只有平台系统管理员可写。写权 = 系统托管租户（身份表 `slug = 'admin'`）的 owner / admin；归属组织由服务端解析注入，**绝不接受浏览器传入**。
-6. **读口径由写权推出**（`resolveReadScope`）：写权主体可见整包下架的条目（带 `hidden: true` 与下架水印），其余主体看到的是「不存在」——详情返回与服务端一致的 404，列表则不返回该包。
+5. **市场是平台全局目录**：任意已认证主体可读，只有平台运维者（系统 API Key）可写。写路径的唯一入口是管理面（`/api/system/plugin-market/*`），判据在路由守卫；归属组织由服务端解析注入，**绝不接受浏览器传入**。
+6. **读口径恒为公开面**（`scope = "public"`）：整包下架的条目在浏览面上不存在——详情返回与服务端一致的 404，列表则不返回该包。全量口径（含下架条目与下架水印）只出现在管理面。
 7. **私有源 token 不进日志、不进响应、不进错误消息**。快照校验失败时只报字段路径（`metadata.<path>`），不回显取值。
 8. **`noop` 严格无副作用**：已可见版本重复发布，写清单为空、逻辑时钟不动、`published_at` 不变。
 9. **`published_at` 是逻辑时钟**（`nextMonotonicInstant`）：候选时刻不严格大于该包已记录的最大时刻就推进到 `max + 1ms`。恢复同样算一次新发布，因此恢复后的版本能重新成为 latest。
@@ -83,13 +83,13 @@
 - 全部条目的 `organization_id` 固定为**系统托管租户**（身份表 `slug = 'admin'`），由 Facade 在创建期经 `IdentityDirectory.resolveSystemTenant()` 解析后随 INSERT 写入。**不接受浏览器传入**——否则实际平台管理员的 active organization 会泄漏成归属组织，同一份全局目录会被切散到多个组织下。
 - `visibility = 'public'`（本表默认即 public，见下）+ `publicDefaultActions: ["read"]` 打开**任意已认证主体**的读权限，这条分支不依赖任何 actor 条件。
 - `memberDefaultActions: ["read"]`：普通成员只读，不因「同组织」而获得写权。
-- 写权（create / update / delete）落在归属组织的 owner / admin。归属组织是系统租户，**因此写权等价于平台系统管理员**，这就是「只有管理员能发布」。
+- 写路径**不接受 actor**：它只从管理面进入，而管理面的调用方不是某个用户，是平台运维者——判据是路由守卫上的系统 API Key（`systemApiKeyAuth`），与 observer 的 `/api/system/logs`、sandbox 的 `/api/system/sandbox-pools` 同一类（「凭据本身就是判据」，见 `src/server/routes/api/system-plugin-market.ts` 的文件头）。归属组织与审计主体仍由 Facade 解析（`resolveWriterScope`）：归属是部署期事实，operator 取系统托管租户的 `userId`，因此写路径不产生「匿名写入」。**不在 Facade 里做第二遍角色判定**——两处各判一次正是「按钮按旧规则显示、写入按新规则拒绝」这类漂移的来源。
 
 `visibility` 默认 `'public'` 是**本表的语义要求而不是宽松默认**：授权模块对组织资源的默认值是 `private`，照抄会让整个目录静默消失。写入 `visibility` 的位置在 `repositories/plugin-package.ts` 的 create-package 分支，那里有同款注释。
 
-写权探针（`canPublish`）由服务端在**同一写权探针**上给出，不按列表条目推导：空市场时按条目推导会把管理员判成只读，发布按钮永远不出现。
+浏览面的读口径恒为公开面（`scope = "public"`），授权谓词由 `AccessControlModule` 产出后经 `listConstraint` 原样下推；管理面的列表与详情走 `scope = "all"`（含整包下架的条目）。**逐行 `access` 与页面级能力位（旧版 `canPublish`）都已撤除**：浏览面没有任何写入口，附上动作集合只会让前端渲染一个与真实判据无关的按钮；管理面能进来就能写，同样不需要逐行能力位。授权本身不受影响：`listConstraint` 已经把谓词编译进 SQL。
 
-**读口径与可见性谓词**：`resolveReadScope` 由写权推出——写权主体拿到全部条目，其余主体只拿包级可见（`latest_publication_id IS NOT NULL`）的条目，且版本级**双重可见性**叠加（包级指针 + 版本级 `unpublished_at IS NOT NULL`）。包级条件作为 `businessWhere` 下推给 `AuthorizedResourceQuery`，**不在应用层过滤**：应用层过滤会让 `total` 与 `items` 不一致。
+**读口径与可见性谓词**：包级条件（`latest_publication_id IS NOT NULL`）作为 `businessWhere` 下推给 `AuthorizedResourceQuery`，**不在应用层过滤**：应用层过滤会让 `total` 与 `items` 不一致。版本级**双重可见性**叠加（包级指针 + 版本级 `unpublished_at IS NOT NULL`）只作用于公开面。
 
 ## 6. 私有源读取边界
 
@@ -103,42 +103,63 @@
 
 ## 7. HTTP 契约
 
-六条路由挂在宿主 `web-config` 槽（包内相对路径 `/config/plugin-market/*`），响应统一 `{ success, data }` / `{ success: false, error: { code, message } }`：
+两条面、两条凭据族。**浏览面**两条读路由挂在宿主 `web-config` 槽（包内相对路径 `/config/plugin-market/*`），响应统一 `{ success, data }` / `{ success: false, error: { code, message } }`：
 
-| 方法 | 路径 | 授权 | 说明 |
-|---|---|---|---|
-| GET | `/config/plugin-market/packages` | 读 | 全量列表（前端过滤），带页面级能力位 `canPublish` |
-| GET | `/config/plugin-market/packages/:slug` | 读 | 详情：展示快照 + 版本历史；整包下架时非写权主体 404 |
-| POST | `/config/plugin-market/publish/preview` | 写 | 读私有源并规范化，**不写库**，返回快照与 `metadataDigest` |
-| POST | `/config/plugin-market/publish` | 写 | 按 §3 分派；`previewDigest` 缺失即拒绝 |
-| POST | `/config/plugin-market/unpublish` | 写 | 下架精确版本 |
-| POST | `/config/plugin-market/restore` | 写 | 恢复已下架版本（不出网） |
+| 方法 | 路径 | 说明 |
+|---|---|---|
+| GET | `/config/plugin-market/packages` | 公开口径全量列表（前端过滤），无逐行能力位 |
+| GET | `/config/plugin-market/packages/:slug` | 详情：展示快照 + 版本历史（只含可见版本）；整包下架与不存在同响应 404 |
+
+**管理面**六条挂在宿主 `api` 槽（`/api/system/plugin-market/*`，前缀是对外合同的一部分），受宿主系统 API Key 保护（`systemApiKeyAuth`，守卫由宿主注入），信封随平台口径：成功 `{ success: true, data }`、失败 `{ error }`（`ApiSystemErrorResponseSchema`）：
+
+| 方法 | 路径 | 说明 |
+|---|---|---|
+| GET | `/api/system/plugin-market/packages` | 全量列表（含整包下架的条目，带 `hidden`） |
+| GET | `/api/system/plugin-market/packages/:slug` | 详情：含已下架版本与 `unpublishedAt` 水印 |
+| POST | `/api/system/plugin-market/publish/preview` | 读私有源并规范化，**不写库**，返回快照与 `metadataDigest` |
+| POST | `/api/system/plugin-market/publish` | 按 §3 分派；`previewDigest` 缺失即拒绝 |
+| POST | `/api/system/plugin-market/unpublish` | 下架精确版本 |
+| POST | `/api/system/plugin-market/restore` | 恢复已下架版本（不出网） |
+
+两条面的读路由都**永不访问私有源**：只有 `preview` 与「确认发布但库内没有该版本」会出网。两条面进**同一个 Facade**，不存在第二套业务实现；Facade 的方法按凭据族分组（浏览器收 `ActorContext`，管理面不收），混用是编译期错误而不是运行期约定。
 
 错误码是**封闭清单**（`src/server/errors.ts`，11 个），只收本模块真的会抛的码：新增码必须同时有产出点与消费点，否则它就是死枚举。码 → 状态的映射用 `Record<PluginMarketErrorCode, number>`，新增码忘给状态会在 typecheck 期失败。
 
-`PREVIEW_CHANGED` 是唯一一条 409，且响应体携带 `data.preview`（新快照 + 新摘要）——这不是「请求非法」而是「需要用户在新快照上重新确认」，因此路由的 `response` 声明里 409 用独立 schema 而不是通用错误 schema。
+`PREVIEW_CHANGED` 是唯一一条 409，且响应体携带 `data.preview`（新快照 + 新摘要）——这不是「请求非法」而是「需要用户在新快照上重新确认」。平台信封里没有这个字段，因此管理面在 409 的 `response` 声明里单独给 schema（`systemPreviewChangedSchema`），否则 Elysia 会按 schema 把新快照清掉，前端拿到的冲突提示永远是空的。
 
-路由导出的是**工厂而非实例**：`sessionAuth` 宏与 `store.actor` 由宿主守卫写入，Elysia 的 `macro` / `state` 是实例作用域的，父实例无法向已构造的子实例回填，因此认证守卫必须由宿主注入（`PluginMarketRouteDependencies`）。包内不复制认证策略，用例注入替身。`requestId` 来自宿主 `derive`（`deriveRequestId`），随命令进审计流水；非宿主挂载取不到时为 `null`，不臆造标识。
+路由导出的是**工厂而非实例**：`sessionAuth` / `systemApiKeyAuth` 宏与 `store.actor` 由宿主守卫写入，Elysia 的 `macro` / `state` 是实例作用域的，父实例无法向已构造的子实例回填，因此两道守卫都必须由宿主注入（`PluginMarketRouteDependencies`）。包内不复制认证策略，用例注入替身。`requestId` 来自宿主 `derive`（`deriveRequestId`），随命令进审计流水；非宿主挂载取不到时为 `null`，不臆造标识。
 
 ## 8. 前端契约
 
-单页 master-detail（与 mcp / skill / 知识库同形），**不新增详情路由**：市场是单页目录，页内切换选中项，刷新与浏览器历史都不需要第二层路由参与。
+**两条面，两个宿主路由**：控制台是**只读浏览**（`/agent/mcp?tab=npm`，会话凭据），管理台是**管理面板**（`/admin/plugin-market`，系统 master key）。用户看得到市场，管理在管理台——这条分界让浏览面不必知道「当前主体能不能写」，也就不需要写权探测、冲突处理与写后双刷新。
 
-- 结构：`AppPage` → `AppHeader`（标题 + 发布按钮，仅 `canPublish` 可见）→ `ScopeFilterBar`（关键词 + 全部/专家团队/连接器/已下架）→ `AgentMasterDetailWorkspace`（左目录 / 右详情）。
+### 8.1 浏览面（控制台 tab）
+
+- 单页 master-detail（与 mcp / skill / 知识库同形），**不新增详情路由**：市场是单页目录，页内切换选中项，刷新与浏览器历史都不需要第二层路由参与。
+- **挂载点是「插件市场」页的第二个 tab，不是独立导航项**。npm 市场与 MCP 市场同处宿主路由 `/agent/mcp`，tab 状态放 URL（`?tab=npm`；缺省即 MCP），侧栏因此只有一项「插件市场」。tab 状态与 tab 栏归宿主路由壳，壳只做 `lazy()` 装配、**不取数**；两个市场各自保留完整的 `AppPage` + `AppHeader`（内容区是 flex 容器，不构成嵌套滚动）。
+- 结构：`AppPage` → `AppHeader`（标题）→ `ScopeFilterBar`（关键词 + 全部/专家团队/连接器）→ `AgentMasterDetailWorkspace`（左目录 / 右详情）。范围没有「已下架」这一档：公开口径里不存在这类条目（那一档只在管理面）。
 - **列表与详情分两次请求**，详情的定位符取自 `resolveSelectedPackage` 的解析结果——与左侧高亮用同一个纯函数，避免「高亮 A、右侧是 B」。
 - 六态：loading / empty / empty-search / error / retry / 无权限（**不给重试**，403 是永久拒绝、401 需重新登录，重试不会改变授权结果）。
-- **写动作不做 `unwrap`**：`preview` / `publish` 显式判断 `success`，因为 409 `PREVIEW_CHANGED` 必须把新快照交回弹窗；`readPreviewChangedPayload` 逐字段校验后再渲染，畸形响应不会被画到界面上。
-- 发布弹窗是两步：填包名与精确版本 → 预览（展示即将公开的字段与成员数）→ 确认。冲突时原地换成新快照并提示重新确认，不关闭弹窗、不清空输入。
+- **没有任何写入口**：`web/pages/agent-panel/**` 的值导入图不可达管理面的 API、写逻辑与管理页，由 `plugin-market-browser-surface.test.ts` 走一遍浏览面子图来钉。
+
+### 8.2 管理面（管理台页）
+
+- 宿主路由 `/admin/plugin-market`（懒加载 `AdminPluginMarketPage`），侧栏项取包字典的 `admin.nav`。页面外壳沿管理台的既有形态：`AdminKeyGate` 门（master key 存 sessionStorage、不落日志），面板内任意请求返回 401 / 403（`request()` 归一为 `UNAUTHORIZED`）即清 key 并带提示回门。
+- **口径是全量的**（含整包下架的条目），筛选比浏览面多一档「已下架」（`filterAdminPackages` 在浏览面口径上做加法，判据只有一处定义）。
+- 展示件与浏览面共用（`web/components/plugin-market-detail`）：同一个条目对谁都是市场里冻结的同一份快照。版本历史在此**注入写动作列**（下架 / 恢复），浏览面不传这个槽。
+- 写动作**不做 `unwrap`**：`preview` / `publish` / `unpublish` / `restore` 显式判断 `success`，因为 409 `PREVIEW_CHANGED` 必须把新快照交回弹窗；`readPreviewChangedPayload` 逐字段校验后再渲染，畸形响应不会被画到界面上。凭据失效在写路径上表现为**信封里的码**（`isAccessDeniedCode`），`instanceof ApiError` 那一层对信封恒为 false。
+- 发布弹窗是两步：填包名与精确版本 → 预览（展示即将公开的字段与成员数）→ 确认。冲突时原地换成新快照并提示重新确认，不关闭弹窗、不清空输入。表单与流程态靠容器每次打开自增的 `key` 重置（不写 `reset()`）。
+- 下架与恢复走二次确认（`ConfirmDialog`），定位符在**点击那一刻**捕获，与用户点的那一行严格一致。
 - 写成功后**列表与详情一起刷新**（写入会改变顺序与展示快照），并把选中项切到刚写入的条目。`noop` 的文案与 `publish` 不同——否则用户会以为私有源上的新内容已经进了市场。
 - **不广播 `dispatchConfigChange`**：市场条目不是 Agent 的运行时配置，改它不影响任何 agent 进程的启动参数（对比 skill / mcp 的写入会改变 agent 可用能力清单）。
 - 所有渲染字段都来自市场内冻结的快照，页面不读私有源；`tarballUrl` 只作溯源文本渲染。
 
 ## 9. 装配与登记
 
-- `fenix.module.ts`：`dependsOn: []`（`src/**` 只值导入 `@fenix/platform-sdk` 与包内自引用）、`accessControlBindings`（`plugin_package_resource.ts` 的 storage 绑定）、`envDefinitions` 五键、`contributions` 一条 `web-config` 路由、`web.contribution` 一条浏览器载荷。
+- `fenix.module.ts`：`dependsOn: []`（`src/**` 只值导入 `@fenix/platform-sdk` 与包内自引用）、`accessControlBindings`（`plugin_package_resource.ts` 的 storage 绑定）、`envDefinitions` 五键、`contributions` 两条路由（浏览面挂 `web-config` 槽、管理面挂 `api` 槽）；**不声明 `web`**——该字段要求 `web.id` 与一个导航项 id 同名，而本市场不是侧栏项，两条页面（控制台 tab 与管理台页）都由宿主路由壳直接 import 本包 `./web` 出口（与 `channel` / `prod-view` 同形：有宿主路由、无导航项）。管理台那条路由自带宿主侧栏项，但导航项归宿主布局声明（`apps/web/src/routes/admin.tsx`），不走模块 `web` 贡献。
 - `src/module.ts` 的 `createPluginMarketModule(context)` 是 registry 的 `create` 目标：从 `context.modules` 取 access-control 端口、从 `@fenix/platform-sdk/server` 取身份目录，转交 `src/server/module.ts` 的真实构造，并 `install` 进进程级槽位（路由与测试都经 `getPluginMarketModule()` 读同一份结果）。
 - 装配结果**只暴露 Facade**，不暴露 Domain Service：市场没有系统初始化写入路径，任何写入口都必须经过授权编排。
-- 宿主登记：根 `package.json` 与 `apps/web/package.json` 各一条 workspace 依赖、`drizzle.config.ts` 的 schema 数组、`deploy/assembly/ce.json` 的 `resources` 与 `web` 两个数组、`apps/web/src/i18n/index.ts` 的 NS 与语言资源、`apps/web/src/routes/agent/_panel/plugin-market.tsx` 路由文件（导航 `id` 必须与路由段同名）。
+- 宿主登记：根 `package.json` 与 `apps/web/package.json` 各一条 workspace 依赖、`drizzle.config.ts` 的 schema 数组、`deploy/assembly/ce.json` 的 `resources` 数组（**`web` 数组里没有本包**——见上一段）、`apps/web/src/i18n/index.ts` 的 NS 与语言资源、`apps/web/src/routes/agent/_panel/mcp.tsx` 里 npm tab 的 `lazy()` 取页（控制台）、`apps/web/src/routes/admin/plugin-market.tsx` 与 `apps/web/src/routes/admin.tsx` 的导航项（管理台，见 §8.2）。
 - 生成物（跑脚本，不手改）：`apps/generated/module-registry.ts`、`apps/generated/web-contributions.ts`。
 
 ## 10. 已知取舍与升级条件
@@ -150,4 +171,4 @@
 | 列表全量返回 + 前端过滤 | 与仓内其它五个目录页一致；源项目的 `clampLimit` / `clampOffset` 未移植 | 市场规模增长到前端过滤不可用时，先评估 `pg_trgm` 扩展是否值得 |
 | 不搬 `http-source` 第二来源 | `source_id` 已为此保留身份维度，新增来源不需要改聚合根 | 需要 MCP over HTTP 发现时，作为独立切片追加（快照契约需同步扩字段） |
 | 不搬静态页生成 | SPA 架构下「下架版本绝不被读路径返回」由可见性谓词保证 | 需要匿名公网只读站时，属独立部署议题（渲染面、限流、CSP） |
-| 市场没有对外 `/api` 面 | 发布与下架是平台管理动作，只经控制台会话发生 | 需要程序化发布时，先定义对外契约与鉴权口径 |
+| 市场没有对外 `/api` 面 | 发布与下架是平台管理动作，只经管理台（`/api/system/plugin-market/*`，系统 API Key）发生 | 需要程序化发布时，先定义对外契约与鉴权口径（管理面是**平台内**面孔，不能直接当对外契约） |

@@ -376,13 +376,9 @@ test("真实 profile 装配后各包的路由进入对应槽", async () => {
     "POST /config/providers/actions/models",
     "PUT /config/providers/actions/models/:modelId",
     "DELETE /config/providers/actions/models/:modelId",
-    // plugin-market
+    // plugin-market（浏览面：只有两条读路由；发布 / 下架 / 恢复是平台管理动作，挂在 `api` 槽）
     "GET /config/plugin-market/packages",
     "GET /config/plugin-market/packages/:slug",
-    "POST /config/plugin-market/publish/preview",
-    "POST /config/plugin-market/publish",
-    "POST /config/plugin-market/unpublish",
-    "POST /config/plugin-market/restore",
     // prod-view
     "GET /config/prod-views",
     "GET /config/prod-views/:id",
@@ -461,6 +457,13 @@ test("真实 profile 装配后各包的路由进入对应槽", async () => {
     "GET /api/system/logs/search",
     "GET /api/system/logs/download",
     "GET /api/system/people-tree/",
+    // plugin-market（管理面；浏览面是 web-config 槽的两条读路由）
+    "GET /api/system/plugin-market/packages",
+    "GET /api/system/plugin-market/packages/:slug",
+    "POST /api/system/plugin-market/publish/preview",
+    "POST /api/system/plugin-market/publish",
+    "POST /api/system/plugin-market/unpublish",
+    "POST /api/system/plugin-market/restore",
     // sandbox
     "GET /api/system/sandbox-pools",
     "POST /api/system/sandbox-pools",

@@ -396,7 +396,7 @@ function extractQuestionItems(raw: unknown): QuestionItemProjection[] {
 }
 
 /**
- * 处理 AskUserQuestion 交互问题请求：questionId upsert 幂等；60s expiresAt 投影
+ * 处理 AskUserQuestion 交互问题请求：questionId upsert 幂等；120s expiresAt 投影
  * （与 acp-link 侧自动空答案对齐）。问题是独立 control_response 等待态，不驱动
  * turn 状态机；正常完成帧与问题帧乱序时仍须投影，避免工具卡片已展示但面板丢失。
  * cancelled / interrupted / failed 或无活动 turn 时则拒绝，避免旧会话帧创建孤立问题。

@@ -18,7 +18,6 @@ import { MODELS_NS, modelManagementResources } from "@fenix/model-management/web
 import { KNOWLEDGE_NS, knowledgeResources } from "@fenix/resource-knowledge/web/i18n";
 import { MCP_NS, mcpResources } from "@fenix/resource-mcp/web/i18n";
 import { HINDSIGHT_NS, hindsightResources } from "@fenix/resource-memory/web/i18n";
-import { PLUGIN_MARKET_NS, pluginMarketResources } from "@fenix/resource-plugin-market/web/i18n";
 import { SKILL_NS, skillResources } from "@fenix/resource-skill/web/i18n";
 import { TASKS_V2_NS, tasksV2Resources } from "@fenix/resource-task/web/i18n";
 import { WORKFLOW_NS, workflowResources } from "@fenix/resource-workflow/web/i18n";
@@ -36,7 +35,6 @@ const DICTIONARIES = new Map<string, { readonly en: unknown; readonly zh: unknow
   [MCP_NS, mcpResources],
   [TASKS_V2_NS, tasksV2Resources],
   [HINDSIGHT_NS, hindsightResources],
-  [PLUGIN_MARKET_NS, pluginMarketResources],
 ]);
 
 /** 把嵌套字典摊平成点号路径，与各包 `*-i18n.test.ts` 的口径一致。 */

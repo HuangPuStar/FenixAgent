@@ -1,0 +1,56 @@
+# npm 私有源（Verdaccio）—— 插件市场（packages/resources/plugin-market）的元数据来源。
+#
+# 为什么单独一份：市场的元数据来自**外部 npm 私有源**，本仓只读不写（不下载、不解压 tarball）。
+# 本地开发要真跑通「预览 / 发布」就需要一个可写的源，本文件只负责这一个依赖；主服务仍按
+# README 的流程在宿主机跑（`bun run dev` / `restart-server.sh`）。
+#
+# Usage:
+#   docker compose -f docker/npm-registry/docker-compose.yml up -d
+#   docker compose -f docker/npm-registry/docker-compose.yml logs -f
+#   docker compose -f docker/npm-registry/docker-compose.yml down     # 卷保留已发布的包
+#
+# 接到主服务：根 `.env` 里设 `PLUGIN_MARKET_REGISTRY_URL=http://127.0.0.1:4873`。
+# 未配置时只有发布与预览路径失败（REGISTRY_NOT_CONFIGURED），浏览既有快照不受影响。
+#
+# 试发布一个带 `mcpp` 字段的测试包（Verdaccio 默认配置：读取匿名开放，发布需要认证）：
+#   npm adduser --registry http://127.0.0.1:4873    # 首次，凭据落在卷内的 htpasswd
+#   npm publish  --registry http://127.0.0.1:4873   # 包的 package.json 需带 mcpp 字段
+#
+# 认证（可选）：默认配置下读取是 `access: $all`，市场不配 token 也能读；token 只在把读取收紧到
+# `$authenticated` 时才必需。本地开发账号是 `fenix-dev` / `fenix-dev`——它只服务这个回环绑定的
+# dev 源，**不要把端口开到公网**。token 用下面这条取得（首次调用即创建用户并返回 token）：
+#   curl -X PUT http://127.0.0.1:4873/-/user/org.couchdb.user:fenix-dev \
+#     -H 'content-type: application/json' -d '{"name":"fenix-dev","password":"fenix-dev"}'
+# 该 token 不是 JWT、不带过期时间：它是 `base64(签名密钥对)`，与用户一起存在卷里，删用户或
+# `down -v` 才会失效。凭 `~/.npmrc` 找到它（`//127.0.0.1:4873/:_authToken=…`）后写进根 `.env` 的
+# `PLUGIN_MARKET_REGISTRY_TOKEN`，市场即以 `authorization: Bearer …` 读取。
+
+services:
+
+    npm-registry:
+        image: verdaccio/verdaccio:6
+        container_name: fenix-npm-registry
+        restart: unless-stopped
+        ports:
+            # 只绑回环：这是本地开发用的源，不对外暴露。要让同网段其他机器访问时改成 "4873:4873"。
+            - "127.0.0.1:4873:4873"
+        volumes:
+            # 已发布的包、上游缓存与用户库（htpasswd）都在这里；不命名会在重建容器时换一个
+            # 匿名卷，已发布的测试包随之丢失。
+            - npm-registry-storage:/verdaccio/storage
+        healthcheck:
+            # 镜像里没有 curl / wget，用镜像自带的 node 直接探活。
+            test:
+                [
+                    "CMD",
+                    "node",
+                    "-e",
+                    "fetch('http://127.0.0.1:4873/-/ping').then((r) => process.exit(r.ok ? 0 : 1)).catch(() => process.exit(1))",
+                ]
+            interval: 30s
+            timeout: 5s
+            retries: 3
+            start_period: 10s
+
+volumes:
+    npm-registry-storage:

@@ -32,10 +32,14 @@
         "enterChat": "进入对话"
       },
       "askUser": {
+        "customLabel": "或输入自定义回答",
+        "customPlaceholder": "输入任意内容，按 Enter 提交",
         "next": "下一个",
         "nextQuestion": "下一个问题",
         "previous": "上一个问题",
         "submit": "提交",
+        "submitUnconfirmed": "未收到确认，请重试",
+        "submitting": "提交中…",
         "title": "需要你回答"
       },
       "chatComposer": {
@@ -48,6 +52,7 @@
         "filesTooLarge": "一次上传的文件总量不能超过 100 MB",
         "hint": "Enter 发送，Shift+Enter 换行 · 粘贴图片或输入 @ 引用文件",
         "newSession": "新会话",
+        "pastingImages": "正在处理 {{count}} 张粘贴的图片…",
         "send": "发送",
         "skillButton": "技能",
         "stop": "停止",
@@ -98,9 +103,14 @@
         "toggle": "展开或收起状态"
       },
       "chatView": {
+        "stage": {
+          "callingTool": "正在调用工具",
+          "generating": "正在生成",
+          "thinking": "正在思考",
+          "working": "正在处理"
+        },
         "startConversation": "开始对话",
-        "startConversationDesc": "输入消息开始聊天",
-        "thinking": "思考中"
+        "startConversationDesc": "输入消息开始聊天"
       },
       "commandMenu": {
         "connected": "已连接",
@@ -115,6 +125,7 @@
       "composerAssets": {
         "image": "待发送图片",
         "imageNumber": "图片 {{count}}",
+        "pasteImageUnsupported": "当前 Agent 不支持粘贴图片，请改用附件方式添加。",
         "prepareImageFailed": "图片处理失败，请移除后重试",
         "processImagePartialFailed": "部分图片处理失败，已跳过",
         "quoteLimitReached": "本轮引用内容已达上限，请先发送或移除部分引用",

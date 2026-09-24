@@ -26,6 +26,17 @@
   color: #c44747;
   font-size: 11px;
 }
+/* 手动模型 ID 输入行：与探测结果列表同属模型区块，输入框占满按钮之外的宽度。 */
+.model-dialog-section__manual {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 10px;
+}
+.model-dialog-section__manual input {
+  flex: 1;
+  min-width: 0;
+}
 .model-discovery-list {
   display: grid;
   max-height: 210px;

@@ -63,7 +63,8 @@ export function useProviderTestErrorText() {
         return joinParts([
           t("testDialog.errors.providerListHttp", { protocol, status: data.status ?? "?" }),
           detail,
-          // Anthropic 的 /models 在部分部署上不可用，但 /messages 可用：提示改用"测试模型"。
+          // 上游明确回"列表接口不存在"（Anthropic 兼容端点常只实现 `/v1/messages`）：给出可执行的两条
+          // 处置方式（手动输入模型 ID / 改用 OpenAI 兼容地址），并说明这不影响消息调用。
           data.hint === "configure_model_then_test_model" ? t("testDialog.errors.configureModelThenTest") : undefined,
         ]);
       case "PROVIDER_TEST_LIST_RESPONSE_INVALID":

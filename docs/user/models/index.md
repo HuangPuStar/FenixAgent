@@ -14,7 +14,7 @@
 |------|------|------|
 | ID | 唯一标识符，创建后不可改 | `openai` |
 | 显示名称 | 界面显示的名称 | `OpenAI` |
-| 协议 | SDK 协议类型 | OpenAI 兼容 / Anthropic / DeepSeek |
+| 协议 | 消息调用的接口方言 | OpenAI 兼容 / Anthropic |
 | API Key | 服务商密钥 | `sk-xxxx...` |
 | Base URL | API 地址（可选） | `https://api.openai.com/v1` |
 
@@ -25,13 +25,31 @@
 | OpenAI | OpenAI 兼容 | `https://api.openai.com/v1` |
 | Anthropic (Claude) | Anthropic | `https://api.anthropic.com/v1` |
 | 阿里云百炼 | OpenAI 兼容 | `https://dashscope.aliyuncs.com/compatible-mode/v1` |
-| DeepSeek | DeepSeek | — |
+| DeepSeek（OpenAI 兼容） | OpenAI 兼容 | `https://api.deepseek.com` |
+| DeepSeek（Anthropic 兼容） | Anthropic | `https://api.deepseek.com/anthropic` |
+
+Base URL 只决定**消息调用**打到哪里，模型列表不一定在同一个地址上，见下文「获取不到模型列表」。
 
 ## 测试连接
 
 在服务商列表中，点击 **测试** 按钮可以检测 API Key 是否有效。
 
 测试成功后会显示该服务商下可用的模型列表，可以直接点击 **添加** 按钮批量导入模型。
+
+## 获取不到模型列表
+
+「获取模型列表」失败不一定代表配置有错：**消息接口与列表接口不总在同一个地址上**。典型的 Anthropic
+兼容端点（如 DeepSeek 的 `https://api.deepseek.com/anthropic`）只实现消息接口 `/v1/messages`，没有
+`/v1/models`，服务端会返回 404，而模型本身完全可用。
+
+这类服务商有两种配置方式，任选其一：
+
+- **手动输入模型 ID**：在服务商编辑器（新建或编辑）的「可用模型列表」区域，直接在输入框填写模型 ID
+  （如 `deepseek-v4-pro`）并回车或点 **添加**，再保存；服务商列表页的模型行里也能补录模型。
+- **改用 OpenAI 兼容地址获取列表**：把 Base URL 换成本服务商的 OpenAI 兼容根（DeepSeek 为
+  `https://api.deepseek.com`），先取回列表并记下模型 ID，再按实际要用的协议改回对应地址。
+
+列表接口取不到只影响"发现模型"这一步，模型保存后消息调用照常。
 
 ## 添加模型
 

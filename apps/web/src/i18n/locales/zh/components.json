@@ -1,4 +1,7 @@
 {
+  "marketTabs": {
+    "label": "插件市场分类"
+  },
   "filePicker": {
     "title": "选择文件",
     "fileTooLarge": "{{name}} 太大了（上限 {{max}}）"

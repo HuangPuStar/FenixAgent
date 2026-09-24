@@ -24,9 +24,9 @@ import { TEST_OPERATOR_USER_ID, TEST_ORGANIZATION_ID, TEST_PACKAGE_NAME, TEST_SO
  * 外部世界（身份目录与授权模块），第三者让读路径不必连库。
  *
  * 授权替身**复刻了真实策略里与本模块有关的那一条**（组织分支要求「归属组织 = 主体 active organization」且角色
- * 属于 owner/admin），而不是「一律放行」：Facade 的写权探测正是靠这条规则区分系统管理员与普通成员，替身若一律
- * 放行，用例会把「所有人都能发布」判成通过。规则本身仍由 `@fenix/access-control` 的用例覆盖，这里不重新推导
- * 它的其它分支（`visibility`、公开受众、个人归属）。
+ * 属于 owner/admin），而不是「一律放行」：浏览面的读谓词由它产出，替身若一律放行，用例会把「越权主体也看得见」
+ * 判成通过。规则本身仍由 `@fenix/access-control` 的用例覆盖，这里不重新推导它的其它分支（`visibility`、公开
+ * 受众、个人归属）。
  */
 
 /** 系统托管租户；市场条目的归属组织固定为它（`access/plugin-package-resource.ts` 的文件头解释了这条）。 */
@@ -37,7 +37,7 @@ export const SYSTEM_TENANT: SystemTenant = {
   email: "system@example.test",
 };
 
-/** 平台系统管理员：active organization 就是系统租户，且在该组织里是 owner——写权探测因此通过。 */
+/** 平台系统管理员：active organization 就是系统租户，且在该组织里是 owner——管理面写入的归属与审计主体取自它。 */
 export function systemAdminActor(overrides: Partial<ActorContext> = {}): ActorContext {
   return {
     kind: "user",
@@ -48,7 +48,12 @@ export function systemAdminActor(overrides: Partial<ActorContext> = {}): ActorCo
   };
 }
 
-/** 普通成员：在系统租户里只是 member，写权探测必须拒绝。 */
+/**
+ * 普通成员：在系统租户里只是 member。
+ *
+ * 浏览面（`/web/config/plugin-market/*`）对任意已认证主体开放，因此这个主体也能读——它不再有任何写路径
+ * （管理面收系统 API Key，`facades/plugin-package-facade.ts` 的文件头）。
+ */
 export function memberActor(overrides: Partial<ActorContext> = {}): ActorContext {
   return systemAdminActor({
     userId: "user-member",
@@ -168,8 +173,14 @@ export function createRecordingPackageService(
   };
 }
 
+/**
+ * 一次读调用的记录。
+ *
+ * `access` 可选：管理面（系统凭据）的读**不带**授权条件，那是平台端口记录在案的例外形状；用例据此断言
+ * 「哪一面走了哪条路径」，而不是只看结果。
+ */
 export interface ListCall {
-  readonly access: ResourceQueryConstraint;
+  readonly access?: ResourceQueryConstraint;
   readonly sourceId: string;
   readonly scope: CatalogReadScope;
 }
@@ -208,6 +219,8 @@ export function createStubFacade(overrides: Partial<PluginPackageFacadeApi> = {}
   return {
     list: unstubbed("facade.list"),
     getDetail: unstubbed("facade.getDetail"),
+    listAll: unstubbed("facade.listAll"),
+    getDetailAll: unstubbed("facade.getDetailAll"),
     preview: unstubbed("facade.preview"),
     publish: unstubbed("facade.publish"),
     unpublish: unstubbed("facade.unpublish"),

@@ -158,7 +158,7 @@ export interface SessionStateSnapshot {
   structuredMessages: StructuredMessage[];
   /**
    * AskUserQuestion 待应答问题投影（questionId → 投影）。
-   * 后端聚合层写入 Session Doc root.pendingQuestions（60s expiresAt），
+   * 后端聚合层写入 Session Doc root.pendingQuestions（120s expiresAt），
    * 前端只读：pending 过滤 + expiresAt 未过（双保险：后端超时定时器 CAS 迁移
    * 与前端本地剔除都按同一 expiresAt，任何一侧失效面板都不会悬挂）。
    */

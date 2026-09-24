@@ -1,4 +1,7 @@
 {
+  "marketTabs": {
+    "label": "Marketplace categories"
+  },
   "filePicker": {
     "title": "Select File",
     "fileTooLarge": "{{name}} is too large (max {{max}})"
