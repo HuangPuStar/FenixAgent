@@ -343,7 +343,17 @@ export const ChatInterface = forwardRef<ChatInterfaceHandle, ChatInterfaceProps>
           {pendingPermissions.length > 0 ? (
             <PermissionPanel requests={pendingPermissions} onRespond={onRespondPermission} />
           ) : pendingQuestions.length > 0 ? (
-            <QuestionPanel questions={pendingQuestions} onRespond={onRespondQuestion} />
+            // 提问卡片与输入岛同源、但不相等：先套输入岛的宽度容器，再按每侧一条台阶收进
+            // （两个常量都定义在 `../composer/ChatComposer`）；卡片自身不声明宽度。
+            // 2026-09-24：此前它沿用 `panels/chat-interaction-region.css` 的 px 台阶
+            // `min(756px, calc(100% - 64px))`——与输入岛的 rem 刻度不同源，宽屏下比输入岛宽、
+            // 中宽屏下 `calc(100% - 64px)` 近似拉满（用户反馈「卡片横跨整个聊天区」）。
+            // 权限卡片仍走那条旧台阶：本次范围只含提问卡片（同样是一层包装即可切换，未顺手改）。
+            <div className={CHAT_COMPOSER_WIDTH_CLASS}>
+              <div className={CHAT_COMPOSER_TOP_CARD_INSET_CLASS}>
+                <QuestionPanel questions={pendingQuestions} onRespond={onRespondQuestion} />
+              </div>
+            </div>
           ) : (
             // 状态面板与下方的输入岛同源、但不相等：先套输入岛的宽度容器，再按每侧一条台阶收进
             // （`CHAT_COMPOSER_WIDTH_CLASS` + `CHAT_COMPOSER_TOP_CARD_INSET_CLASS`，两个常量都定义在

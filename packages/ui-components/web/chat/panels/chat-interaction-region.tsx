@@ -25,9 +25,19 @@ import { cn } from "../../lib/cn";
  * 深层样式（宽度台阶与投影两条复合值）下沉到同目录 `./chat-interaction-region.css`，语义类名为
  * `.chat-interaction-cards`（栈容器，源 `.chat-interaction-stack`）与 `.chat-interaction-card`
  * （半圆卡，源 `.chat-interaction-region`）；两个源类名已在阶段四的迁移中作废，不得回流。
+ *
+ * 宽度台阶的适用范围（2026-09-24 起）：`.chat-interaction-cards` 的 `width` 只剩权限卡片在用；
+ * 提问卡片改由渲染处从输入岛派生宽度，并传 `chat-question-cards` 在 `./QuestionPanel.css` 里提权
+ * 覆盖为 `width: auto`（原因与口径见那两个文件）。
  */
 
-/** 卡片栈容器：比输入岛卡片每侧窄 16px 的台阶（源 `chat-design-status.css` 的 `.chat-interaction-stack`，宽度在 `./chat-interaction-region.css`）。 */
+/**
+ * 卡片栈容器：比输入岛卡片每侧窄 16px 的台阶（源 `chat-design-status.css` 的 `.chat-interaction-stack`，
+ * 宽度在 `./chat-interaction-region.css`）。
+ *
+ * 该宽度台阶自 2026-09-24 起只作用于权限卡片：提问卡片传 `chat-question-cards` 覆盖为
+ * `width: auto`（`./QuestionPanel.css`），宽度由渲染处从输入岛派生（见上方文件头）。
+ */
 export function ChatInteractionStack({ className, children }: { className?: string; children: React.ReactNode }) {
   return (
     <div className={cn("chat-interaction-cards mx-auto", className)} data-slot="chat-interaction-stack">

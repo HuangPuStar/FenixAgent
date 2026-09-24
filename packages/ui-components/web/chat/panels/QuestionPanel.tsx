@@ -63,7 +63,9 @@ export function QuestionPanel({ questions, onRespond, className }: QuestionPanel
   if (questions.length === 0) return null;
 
   return (
-    <ChatInteractionStack className={className}>
+    // `chat-question-cards` 是宽度契约的一部分：它让提问卡片不再继承共享栈类
+    // `.chat-interaction-cards` 的旧 px 台阶，宽度改由渲染处从输入岛派生（见 ./QuestionPanel.css）。
+    <ChatInteractionStack className={cn("chat-question-cards", className)}>
       {questions.map((question) => (
         <QuestionCard key={question.questionId} question={question} onRespond={onRespond} />
       ))}
