@@ -1,8 +1,9 @@
 import { MODELS_NS } from "@fenix/model-management/web/i18n";
+import { PLUGIN_MARKET_NS } from "@fenix/resource-plugin-market/web/i18n";
 import { SANDBOX_NS } from "@fenix/resource-sandbox/web/i18n";
 import { cn } from "@fenix/ui-components/lib/cn";
 import { createFileRoute, Link, Outlet } from "@tanstack/react-router";
-import { Activity, ArrowLeft, Box, FileText, Gauge, type LucideIcon, Network } from "lucide-react";
+import { Activity, ArrowLeft, Box, FileText, Gauge, type LucideIcon, Network, Package } from "lucide-react";
 import { useTranslation } from "react-i18next";
 
 // Admin 布局（docs/arch/21 §5）：左侧边栏导航 + 内容区 Outlet。
@@ -13,7 +14,7 @@ import { useTranslation } from "react-i18next";
 // `ns` 取值一律来自 owner 包导出的常量；此处只用 `string` 而不是中心表的 `Namespace` 联合类型，因为
 // `SANDBOX` 尚未登记进 `@fenix/web-runtime/i18n/namespace`。
 const NAV_ITEMS: {
-  to: "/admin" | "/admin/logs" | "/admin/people" | "/admin/sandbox" | "/admin/model-gateway";
+  to: "/admin" | "/admin/logs" | "/admin/people" | "/admin/sandbox" | "/admin/model-gateway" | "/admin/plugin-market";
   labelKey: string;
   ns?: string;
   icon: LucideIcon;
@@ -22,6 +23,9 @@ const NAV_ITEMS: {
   { to: "/admin/sandbox", labelKey: "nav", ns: SANDBOX_NS, icon: Box },
   { to: "/admin/people", labelKey: "people.nav", icon: Network },
   { to: "/admin/model-gateway", labelKey: "modelGateway.nav", ns: MODELS_NS, icon: Gauge },
+  // 插件市场的管理面（发布 / 下架 / 恢复）：控制台那一份是只读浏览（`/agent/mcp?tab=npm`），
+  // 写入口只在这里——两处不是同一个页面的两个入口，而是两种凭据下的两种能力。
+  { to: "/admin/plugin-market", labelKey: "admin.nav", ns: PLUGIN_MARKET_NS, icon: Package },
   { to: "/admin/logs", labelKey: "logs.nav", icon: FileText },
 ];
 

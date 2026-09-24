@@ -1,6 +1,6 @@
 {
   "title": "npm 插件市场",
-  "subtitle": "浏览从 npm 私有源发布到市场的插件版本，并按需发布、下架或恢复某个版本。",
+  "subtitle": "浏览从 npm 私有源发布到市场的插件版本；发布、下架与恢复是平台管理动作，请在管理台完成。",
   "tabs": {
     "npm": "npm 插件"
   },
@@ -62,6 +62,7 @@
     "unpackedSize": "解包体积",
     "fileCount": "文件数",
     "deprecated": "该版本已被标记为弃用",
+    "hiddenPackage": "该插件已整包下架：公开目录里看不到它，恢复任一版本后重新可见。",
     "versions": "版本历史",
     "versionCount": "共 {{count}} 个版本",
     "noVersions": "该条目还没有版本",
@@ -111,5 +112,15 @@
   "validation": {
     "packageNameRequired": "请填写包名",
     "exactVersionRequired": "请填写精确版本"
+  },
+  "admin": {
+    "nav": "插件市场",
+    "title": "插件市场管理",
+    "subtitle": "发布、下架与恢复 npm 私有源上的插件版本（受 master key 保护）。",
+    "gateTitle": "需要 Master Key",
+    "gateDescription": "输入系统 master key（RCS_SYSTEM_API_KEYS）后进入管理面板。key 仅存于 sessionStorage，不落日志。",
+    "gateInputPlaceholder": "系统 master key",
+    "gateSubmit": "进入面板",
+    "gateAuthFailed": "master key 无效或已失效"
   }
 }

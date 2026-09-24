@@ -1,6 +1,6 @@
 {
   "title": "npm Plugin Market",
-  "subtitle": "Browse plugin versions published from the private npm registry, and publish, withdraw or restore a version.",
+  "subtitle": "Browse the plugin versions published from the private npm registry. Publishing, withdrawing and restoring a version are platform admin actions, available in the admin console.",
   "tabs": {
     "npm": "npm Plugins"
   },
@@ -62,6 +62,7 @@
     "unpackedSize": "Unpacked size",
     "fileCount": "Files",
     "deprecated": "This version is marked as deprecated",
+    "hiddenPackage": "This plugin is fully withdrawn: it is invisible on the public face and reappears once any version is restored.",
     "versions": "Version history",
     "versionCount": "{{count}} versions",
     "noVersions": "This entry has no version yet",
@@ -111,5 +112,15 @@
   "validation": {
     "packageNameRequired": "Enter the package name",
     "exactVersionRequired": "Enter the exact version"
+  },
+  "admin": {
+    "nav": "Plugin Market",
+    "title": "Plugin market admin",
+    "subtitle": "Publish, withdraw or restore the plugin versions of the private npm registry (master key protected).",
+    "gateTitle": "Master Key Required",
+    "gateDescription": "Enter the system master key (RCS_SYSTEM_API_KEYS) to open the admin panel. The key is kept only in sessionStorage and is never logged.",
+    "gateInputPlaceholder": "System master key",
+    "gateSubmit": "Enter panel",
+    "gateAuthFailed": "Invalid or expired master key"
   }
 }

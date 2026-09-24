@@ -18,6 +18,7 @@ import { Route as ViewProdViewIdRouteImport } from "./routes/view/$prodViewId"
 import { Route as AgentPanelRouteImport } from "./routes/agent/_panel"
 import { Route as AgentAgentIdRouteImport } from "./routes/agent/$agentId"
 import { Route as AdminSandboxRouteImport } from "./routes/admin/sandbox"
+import { Route as AdminPluginMarketRouteImport } from "./routes/admin/plugin-market"
 import { Route as AdminPeopleRouteImport } from "./routes/admin/people"
 import { Route as AdminModelGatewayRouteImport } from "./routes/admin/model-gateway"
 import { Route as AdminLogsRouteImport } from "./routes/admin/logs"
@@ -89,6 +90,11 @@ const AgentAgentIdRoute = AgentAgentIdRouteImport.update({
 const AdminSandboxRoute = AdminSandboxRouteImport.update({
   id: "/sandbox",
   path: "/sandbox",
+  getParentRoute: () => AdminRoute,
+} as any)
+const AdminPluginMarketRoute = AdminPluginMarketRouteImport.update({
+  id: "/plugin-market",
+  path: "/plugin-market",
   getParentRoute: () => AdminRoute,
 } as any)
 const AdminPeopleRoute = AdminPeopleRouteImport.update({
@@ -241,6 +247,7 @@ export interface FileRoutesByFullPath {
   "/admin/logs": typeof AdminLogsRoute
   "/admin/model-gateway": typeof AdminModelGatewayRoute
   "/admin/people": typeof AdminPeopleRoute
+  "/admin/plugin-market": typeof AdminPluginMarketRoute
   "/admin/sandbox": typeof AdminSandboxRoute
   "/agent/$agentId": typeof AgentAgentIdRoute
   "/agent": typeof AgentPanelRouteWithChildren
@@ -278,6 +285,7 @@ export interface FileRoutesByTo {
   "/admin/logs": typeof AdminLogsRoute
   "/admin/model-gateway": typeof AdminModelGatewayRoute
   "/admin/people": typeof AdminPeopleRoute
+  "/admin/plugin-market": typeof AdminPluginMarketRoute
   "/admin/sandbox": typeof AdminSandboxRoute
   "/agent/$agentId": typeof AgentAgentIdRoute
   "/view/$prodViewId": typeof ViewProdViewIdRoute
@@ -316,6 +324,7 @@ export interface FileRoutesById {
   "/admin/logs": typeof AdminLogsRoute
   "/admin/model-gateway": typeof AdminModelGatewayRoute
   "/admin/people": typeof AdminPeopleRoute
+  "/admin/plugin-market": typeof AdminPluginMarketRoute
   "/admin/sandbox": typeof AdminSandboxRoute
   "/agent/$agentId": typeof AgentAgentIdRoute
   "/agent/_panel": typeof AgentPanelRouteWithChildren
@@ -356,6 +365,7 @@ export interface FileRouteTypes {
     | "/admin/logs"
     | "/admin/model-gateway"
     | "/admin/people"
+    | "/admin/plugin-market"
     | "/admin/sandbox"
     | "/agent/$agentId"
     | "/agent"
@@ -393,6 +403,7 @@ export interface FileRouteTypes {
     | "/admin/logs"
     | "/admin/model-gateway"
     | "/admin/people"
+    | "/admin/plugin-market"
     | "/admin/sandbox"
     | "/agent/$agentId"
     | "/view/$prodViewId"
@@ -430,6 +441,7 @@ export interface FileRouteTypes {
     | "/admin/logs"
     | "/admin/model-gateway"
     | "/admin/people"
+    | "/admin/plugin-market"
     | "/admin/sandbox"
     | "/agent/$agentId"
     | "/agent/_panel"
@@ -535,6 +547,13 @@ declare module "@tanstack/react-router" {
       path: "/sandbox"
       fullPath: "/admin/sandbox"
       preLoaderRoute: typeof AdminSandboxRouteImport
+      parentRoute: typeof AdminRoute
+    }
+    "/admin/plugin-market": {
+      id: "/admin/plugin-market"
+      path: "/plugin-market"
+      fullPath: "/admin/plugin-market"
+      preLoaderRoute: typeof AdminPluginMarketRouteImport
       parentRoute: typeof AdminRoute
     }
     "/admin/people": {
@@ -733,6 +752,7 @@ interface AdminRouteChildren {
   AdminLogsRoute: typeof AdminLogsRoute
   AdminModelGatewayRoute: typeof AdminModelGatewayRoute
   AdminPeopleRoute: typeof AdminPeopleRoute
+  AdminPluginMarketRoute: typeof AdminPluginMarketRoute
   AdminSandboxRoute: typeof AdminSandboxRoute
   AdminIndexRoute: typeof AdminIndexRoute
 }
@@ -741,6 +761,7 @@ const AdminRouteChildren: AdminRouteChildren = {
   AdminLogsRoute: AdminLogsRoute,
   AdminModelGatewayRoute: AdminModelGatewayRoute,
   AdminPeopleRoute: AdminPeopleRoute,
+  AdminPluginMarketRoute: AdminPluginMarketRoute,
   AdminSandboxRoute: AdminSandboxRoute,
   AdminIndexRoute: AdminIndexRoute,
 }

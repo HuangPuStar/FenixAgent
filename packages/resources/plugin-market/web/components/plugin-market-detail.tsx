@@ -3,39 +3,72 @@
 // 与列表同页（master-detail），不新增详情路由：市场是单页目录，页内切换选中项，刷新与浏览器历史都不需要
 // 第二层路由参与（先例：mcp / skill / 知识库三个目录页）。
 //
+// **两条面共用这一个渲染件**：同一个条目对谁都是市场里冻结的同一份快照，展示口径不该有两份实现——两份必然
+// 漂移成「控制台看得到某一栏、管理台看不到」。差异只有两处，都按**数据是否在手**决定，不靠调用方传开关：
+//   1. 行内写动作：管理面经 `versionActions` 注入（下架 / 恢复）；浏览面不传，于是连那一列都不渲染。
+//   2. 整包下架水印：只有管理面的投影带 `hidden`（公开面对这类条目返回 404）；浏览面拿到的是 `undefined`。
+// 版本历史的「下架时间 + 动作」列与动作槽同进同出：能看到下架水印的那一面，正是能下架的那一面。
+//
 // 所有渲染字段都来自**市场内冻结的快照**（`metadata`）：页面不读私有源，也没有任何一条路径会把
 // `tarballUrl` 变成请求——它只作为溯源文本渲染（`npm-registry/types.ts` 的「永不请求 tarball」）。
 
+import { AgentMasterDetailHeader } from "@fenix/ui-components/components/agent-master-detail-workspace";
 import { EmptyState } from "@fenix/ui-components/config/EmptyState";
 import { StatusBadge } from "@fenix/ui-components/config/StatusBadge";
-import { Button } from "@fenix/ui-components/ui/button";
 import { Skeleton } from "@fenix/ui-components/ui/skeleton";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@fenix/ui-components/ui/table";
-import { AlertTriangle, RefreshCw, RotateCcw, Undo2 } from "lucide-react";
+import { AlertTriangle, RefreshCw } from "lucide-react";
 import type { ReactNode } from "react";
 import { useTranslation } from "react-i18next";
-import type { PluginPackageDetailView, PluginPackageVersion } from "../../../api/plugin-market-types";
-import { PLUGIN_MARKET_NS } from "../../../i18n/namespace";
-import { canWritePackage, formatBytes, formatEpochSeconds, getPackageSummary } from "./plugin-market-utils";
+import type { PluginPackageMetadata } from "../api/plugin-market-types";
+import { PLUGIN_MARKET_NS } from "../i18n/namespace";
+import { formatBytes, formatEpochSeconds, getPackageDisplayName, getPackageSummary } from "../lib/plugin-market-utils";
 
 /** 条目成员的三副面孔（agent / skill / server）在展示上是同一个形状，只在取值处映射一次。 */
 type MemberItem = { id: string; name: string; hint: string | null };
 
+/**
+ * 详情面渲染所需的最小形状。
+ *
+ * 两条面的详情视图（`PluginPackageDetailView` / `PluginAdminPackageDetailView`）在结构上都满足它，因此这里
+ * 不写成两者的联合类型、也不让管理面去 extends 浏览面：两份投影是各自的协议投影，多一个字段（如管理面的
+ * `hidden`）不该牵动另一面。
+ */
+type DetailPackage = {
+  packageName: string;
+  /** 最新可见版本；整包下架时为 null。 */
+  latestVersion: string | null;
+  metadata: PluginPackageMetadata | null;
+  publishedAt: number | null;
+  versions: readonly DetailVersion[];
+  /** 整包下架（公开面对该条目返回 404）；只有管理面的投影带这个字段。 */
+  hidden?: boolean | undefined;
+};
+
+/** 版本行渲染所需的最小形状；下架水印同样只有管理面的投影带。 */
+type DetailVersion = {
+  exactVersion: string;
+  metadataDigest: string;
+  firstPublishedAt: number | null;
+  publishedAt: number | null;
+  isLatest: boolean;
+  unpublishedAt?: number | null | undefined;
+};
+
 type DetailProps = {
   /** 选中条目的详情；未选中或首帧未返回时为 null。 */
-  detail: PluginPackageDetailView | null;
+  detail: DetailPackage | null;
   loading: boolean;
   error?: Error | undefined;
-  /** 页面级能力位（主体能否发布/下架/恢复），与条目自身的 `access` 一起决定写入口是否出现。 */
-  canPublish: boolean;
-  /** 有写操作在飞行中：所有写按钮一起禁用，避免用户在同一个条目上连点出两条命令。 */
-  writing: boolean;
   /** 当前界面语言，用于本地化时刻与体积；库内格式化原语不读 i18n。 */
   locale?: string | undefined;
-  /** 下架 / 恢复某个精确版本。定位符由详情自己给出（它才是知道自己属于哪个包的那一层）。 */
-  onUnpublish: (packageName: string, exactVersion: string) => void;
-  onRestore: (packageName: string, exactVersion: string) => void;
   onRetry: () => void;
+  /**
+   * 行内写动作槽（管理面注入）：给了它就多出右侧那一列（下架时间 + 下架 / 恢复按钮）。
+   *
+   * 浏览面没有任何写入口，因此不传——那一列连同表头一起消失，而不是渲染一批永远点不动的按钮。
+   */
+  versionActions?: ((version: DetailVersion) => ReactNode) | undefined;
 };
 
 /** 详情面：加载态 → 故障态（可重试）→ 正文。 */
@@ -64,26 +97,56 @@ export function PluginMarketDetail(props: DetailProps) {
   return <DetailBody {...props} detail={props.detail} />;
 }
 
-function DetailBody({
-  detail,
-  canPublish,
-  writing,
-  locale,
-  onUnpublish,
-  onRestore,
-}: DetailProps & { detail: PluginPackageDetailView }) {
+/** 详情头渲染所需的最小形状（身份 + 展示版本；版本历史与发布时间不在其中）。 */
+type DetailHeaderView = {
+  packageName: string;
+  latestVersion: string | null;
+  metadata: PluginPackageMetadata | null;
+  /** 整包下架；只有管理面的投影带这个字段。 */
+  hidden?: boolean | undefined;
+};
+
+/**
+ * 详情头：身份（展示名 + 包名）与展示版本。
+ *
+ * 由两条面的目录骨架共用：详情头在两个位置回答同一件事，各写一份的后果是「管理台的头少一行包名」这类
+ * 只靠肉眼能发现的漂移。整包下架徽标同样按数据是否在手决定（浏览面拿不到这类条目）。
+ */
+export function PluginMarketDetailHeader({ view }: { view: DetailHeaderView }) {
+  const { t } = useTranslation(PLUGIN_MARKET_NS);
+  return (
+    <AgentMasterDetailHeader className="flex items-start justify-between gap-4 border-b border-border px-5 py-4">
+      <div className="min-w-0">
+        <h2 className="truncate text-base font-medium">{getPackageDisplayName(view)}</h2>
+        <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-text-muted">
+          <span className="font-mono break-all">{view.packageName}</span>
+          <span>
+            {t("detail.latestVersion")}：{view.latestVersion ?? t("directory.noVersion")}
+          </span>
+          {view.hidden ? <StatusBadge status="withdrawn" tone="neutral" label={t("status.withdrawn")} /> : null}
+        </div>
+      </div>
+    </AgentMasterDetailHeader>
+  );
+}
+
+function DetailBody({ detail, locale, versionActions }: DetailProps & { detail: DetailPackage }) {
   const { t } = useTranslation(PLUGIN_MARKET_NS);
   const metadata = detail.metadata;
   const summary = getPackageSummary(detail);
-  // 展示版本的摘要：整包下架时 `latestVersion` 为 null，此时版本历史的第一条就是展示用的那一份
-  // （`pickDisplayPublication` 的回退口径）。
+  // 展示版本的摘要：版本历史的第一条就是展示用的那一份（后端 `pickDisplayPublication` 的回退口径）。
   const displayVersion =
     detail.versions.find((version) => version.exactVersion === detail.latestVersion) ?? detail.versions[0] ?? null;
-  const writeAllowed = canPublish && canWritePackage(detail);
 
   return (
     <div className="flex flex-col gap-4 p-5">
       {summary ? <p className="text-sm text-text-muted">{summary}</p> : null}
+
+      {detail.hidden ? (
+        <p className="rounded-md bg-surface-2 px-3 py-2 text-sm" role="status">
+          {t("detail.hiddenPackage")}
+        </p>
+      ) : null}
 
       {metadata?.deprecated ? (
         <p className="rounded-md bg-surface-2 px-3 py-2 text-sm text-destructive" role="status">
@@ -166,7 +229,7 @@ function DetailBody({
                 <TableHead>{t("detail.publishedAt")}</TableHead>
                 <TableHead>{t("detail.firstPublishedAt")}</TableHead>
                 <TableHead>{t("detail.digest")}</TableHead>
-                <TableHead className="text-right">{t("detail.withdrawnAt")}</TableHead>
+                {versionActions ? <TableHead className="text-right">{t("detail.withdrawnAt")}</TableHead> : null}
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -181,16 +244,7 @@ function DetailBody({
                   <TableCell>{formatEpochSeconds(version.publishedAt, locale)}</TableCell>
                   <TableCell>{formatEpochSeconds(version.firstPublishedAt, locale)}</TableCell>
                   <TableCell className="font-mono text-xs">{version.metadataDigest}</TableCell>
-                  <TableCell className="text-right">
-                    <VersionActions
-                      packageName={detail.packageName}
-                      version={version}
-                      writeAllowed={writeAllowed}
-                      writing={writing}
-                      onUnpublish={onUnpublish}
-                      onRestore={onRestore}
-                    />
-                  </TableCell>
+                  {versionActions ? <TableCell className="text-right">{versionActions(version)}</TableCell> : null}
                 </TableRow>
               ))}
             </TableBody>
@@ -198,55 +252,6 @@ function DetailBody({
         )}
       </Section>
     </div>
-  );
-}
-
-/** 行内写动作：可见版本给「下架」，已下架版本带下架时间水印并给「恢复」。 */
-function VersionActions(props: {
-  packageName: string;
-  version: PluginPackageVersion;
-  writeAllowed: boolean;
-  writing: boolean;
-  onUnpublish: (packageName: string, exactVersion: string) => void;
-  onRestore: (packageName: string, exactVersion: string) => void;
-}) {
-  const { t } = useTranslation(PLUGIN_MARKET_NS);
-  const { version } = props;
-
-  if (version.unpublishedAt !== null) {
-    return (
-      <div className="flex items-center justify-end gap-2">
-        <span className="text-xs text-text-muted">{formatEpochSeconds(version.unpublishedAt)}</span>
-        {props.writeAllowed ? (
-          <Button
-            variant="outline"
-            size="sm"
-            disabled={props.writing}
-            onClick={() => props.onRestore(props.packageName, version.exactVersion)}
-          >
-            <RotateCcw />
-            {t("btn.restore")}
-          </Button>
-        ) : null}
-      </div>
-    );
-  }
-
-  if (!props.writeAllowed) {
-    // 无写权时留白：空单元比「无权限」四个字更清楚，也不给任何可点的入口。
-    return <span className="text-xs text-text-muted">—</span>;
-  }
-
-  return (
-    <Button
-      variant="outline"
-      size="sm"
-      disabled={props.writing}
-      onClick={() => props.onUnpublish(props.packageName, version.exactVersion)}
-    >
-      <Undo2 />
-      {t("btn.unpublish")}
-    </Button>
   );
 }
 

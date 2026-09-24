@@ -90,19 +90,26 @@ describe("插件市场 web 入口浏览器可达面", () => {
     for (const expected of [
       "index.ts",
       "api/plugin-market.ts",
+      "api/system-plugin-market.ts",
       "i18n/index.ts",
       "i18n/namespace.ts",
+      "lib/plugin-market-utils.ts",
+      "lib/plugin-market-admin-utils.ts",
+      "components/plugin-market-detail.tsx",
       "pages/agent-panel/pages/plugin-market-page.tsx",
       "pages/agent-panel/pages/plugin-market-catalog.tsx",
-      "pages/agent-panel/pages/plugin-market-detail.tsx",
-      "pages/agent-panel/pages/plugin-market-publish-dialog.tsx",
-      "pages/agent-panel/pages/plugin-market-utils.ts",
+      "pages/admin/AdminPluginMarketPage.tsx",
+      "pages/admin/components/plugin-market-admin-dashboard.tsx",
+      "pages/admin/components/plugin-market-admin-catalog.tsx",
+      "pages/admin/components/plugin-market-publish-dialog.tsx",
+      "pages/admin/components/plugin-market-publish-form.tsx",
     ]) {
       expect(reachedWebFiles).toContain(expected);
     }
-    // `api/plugin-market-types.ts` 刻意**不在**上面这份清单里：它只被 `import type` 引用，编译期即擦除，
+    // 两份**纯类型**模块刻意**不在**上面这份清单里：它们只被 `import type` 引用，编译期即擦除，
     // 出现在值导入图里反而说明有人在运行时 import 了一份纯类型模块。
     expect(reachedWebFiles.has("api/plugin-market-types.ts")).toBe(false);
+    expect(reachedWebFiles.has("api/system-plugin-market-types.ts")).toBe(false);
 
     // 跨包递归的有效性：钉住每个上游包一条稳定路径。少了这一段，「@fenix/* 被当成外部依赖放过」
     // 会以「包内断言全绿」的形式漏网。
@@ -111,10 +118,13 @@ describe("插件市场 web 入口浏览器可达面", () => {
     // （`web/i18n/namespace.ts`），中心表当前没有 `pluginMarket` 条目，页面不 import 它；列上去只会
     // 变成一条描述期望而非事实的断言。
     for (const expected of [
-      "packages/ui-components/web/ui/button.tsx",
+      "packages/ui-components/web/config/AdminKeyGate.tsx",
       "packages/ui-components/web/config/FormDialog.tsx",
       "packages/ui-components/web/config/ScopeFilterBar.tsx",
+      "packages/ui-components/web/ui/button.tsx",
       "packages/web-runtime/web/api/request.ts",
+      "packages/web-runtime/web/hooks/use-admin-key-gate.ts",
+      "packages/web-runtime/web/lib/admin-key.ts",
     ]) {
       expect(reachedPackageFiles).toContain(expected);
     }
@@ -217,18 +227,53 @@ describe("插件市场 web 入口浏览器可达面", () => {
     expect(existsSync(join(PKG_ROOT, "web", "i18n", "index.ts"))).toBe(true);
   });
 
-  // 跨包消费面（宿主路由懒加载页面、宿主 i18n 登记）必须由入口转出，消费方不得进入实现路径。
-  test("入口导出跨包消费面：页面、API client、纯逻辑助手、i18n 资源", () => {
+  // 跨包消费面（宿主两条路由懒加载两个页面、宿主 i18n 登记）必须由入口转出，消费方不得进入实现路径。
+  //
+  // 两条页面各对应一个宿主路由：控制台 `/agent/mcp?tab=npm` 的只读浏览面，与管理台 `/admin/plugin-market`
+  // 的管理面（凭据是系统 master key）。
+  test("入口导出跨包消费面：两条页面、i18n 资源", () => {
     const source = stripComments(readFileSync(WEB_ENTRY, "utf8"));
     for (const name of [
       "PluginMarketPage",
+      "AdminPluginMarketPage",
       "PLUGIN_MARKET_NS",
       "pluginMarketResources",
-      "./api/plugin-market",
-      "./pages/agent-panel/pages/plugin-market-utils",
+      "./i18n",
     ]) {
       expect(source).toContain(name);
     }
+  });
+
+  // 反向：入口**不**转出内部件。页面之外的 API 模块与纯逻辑助手今天只有这两个页面消费，一旦从入口转出，
+  // 它们的形状就成了对外契约（改名要跨包搜、删字段要先降级），而受益者并不存在。
+  test("入口不转出内部件（api/ 与 lib/ 只被页面按相对路径消费）", () => {
+    const source = stripComments(readFileSync(WEB_ENTRY, "utf8"));
+
+    expect(source).not.toContain('from "./api/');
+    expect(source).not.toContain('from "./lib/');
+  });
+
+  // 控制台那一面**没有写入口**：发布、下架与恢复只在管理台（宿主 `/admin/plugin-market`），判据是系统
+  // master key。这条从浏览面页面自身走一遍值导入图来钉——只看「源码里没有写按钮」挡不住有人把管理面的
+  // API 模块 import 进来（那不会报错，只会让控制台悄悄多出一条凭据不同的写路径）。
+  test("浏览面子图不可达管理面（API、写逻辑与管理页）", () => {
+    const browse = walkValueGraph(join(WEB_ROOT, "pages", "agent-panel", "pages", "plugin-market-page.tsx"));
+    const reached = new Set(
+      browse.files.filter((file) => file.startsWith(`${WEB_ROOT}${sep}`)).map((file) => relative(WEB_ROOT, file)),
+    );
+
+    for (const forbidden of [
+      "api/system-plugin-market.ts",
+      "lib/plugin-market-admin-utils.ts",
+      "pages/admin/AdminPluginMarketPage.tsx",
+      "pages/admin/components/plugin-market-admin-dashboard.tsx",
+      "pages/admin/components/plugin-market-publish-dialog.tsx",
+    ]) {
+      expect(reached.has(forbidden), `浏览面可达管理面文件：${forbidden}`).toBe(false);
+    }
+    // 自检：这份子图不是空的（空的图会让上面五条恒真）。
+    expect(reached.has("api/plugin-market.ts")).toBe(true);
+    expect(reached.has("lib/plugin-market-utils.ts")).toBe(true);
   });
 
   // 页面不得直接 import 宿主的实现路径或平台实现：包一旦依赖宿主别名就无法独立构建。

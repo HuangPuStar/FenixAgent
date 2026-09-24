@@ -12,7 +12,16 @@ import type { AnyElysia } from "elysia";
  * `name` 去重让先构造的一方静默生效。包内用例注入替身（`src/__tests__/guard-stubs.ts`）。
  */
 
-/** 会话认证守卫；`/web/config/plugin-market/*` 靠它取得 `store.actor`。 */
+/** 插件市场两条面的宿主登录守卫；两个不同的凭据族，见下方字段说明。 */
 export interface PluginMarketRouteDependencies {
+  /** 会话认证守卫；`/web/config/plugin-market/*`（浏览面）靠它取得 `store.actor`。 */
   readonly authGuardPlugin: AnyElysia;
+  /**
+   * 系统 API Key 守卫；`/api/system/plugin-market/*`（管理面）靠它的 `systemApiKeyAuth` 宏放行。
+   *
+   * 与上面那道门是**两个互不相关的凭据族**：系统 key 落在 `RCS_SYSTEM_API_KEYS`，宿主刻意不为它恢复用户 /
+   * 组织上下文（因此管理面的 handler 没有 actor 可传）。把两道门合成一道会让「谁可以管理市场」这件事
+   * 悄悄漂回会话角色判定，而管理面的判据是凭据本身。
+   */
+  readonly systemApiGuardPlugin: AnyElysia;
 }

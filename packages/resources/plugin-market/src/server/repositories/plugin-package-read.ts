@@ -15,8 +15,9 @@ import type { PluginPackageRow, PublicationRow } from "./plugin-package";
  * 市场目录的受控读取。
  *
  * 与 `./plugin-package.ts`（写侧）分开成两个文件不是为了对称，而是因为两侧的**授权前提相反**：写侧由
- * `withPackageLock` 串行化并假定调用方已授权，读侧每一条查询都必须把授权谓词交给平台编译进同一条 SQL。
- * 混在一个文件里，读者无法一眼看出哪些函数带 `access`、哪些不带。
+ * `withPackageLock` 串行化并假定调用方已授权，读侧每次查询都要自己回答「这次读的是谁的可见集合」——带主体
+ * 时把授权谓词交给平台编译进同一条 SQL，管理面（系统凭据、无主体）则不带 `access`，见
+ * `PluginPackageReadInput`。混在一个文件里，读者无法一眼看出哪些函数带 `access`、哪些不带。
  *
  * 聚合根（`plugin_market_package`）一律经 {@link AuthorizedResourceQuery} 端口读取：本包只交出表、归属列
  * 与业务条件，谓词、排序与分页由平台实现产出，仓储因此**不持有任何组织、角色或 `visibility` 判断**。
@@ -44,7 +45,14 @@ export type ScopedPluginPackageRow = ScopedRow<PluginPackageRow>;
 
 /** 受控读取的公共入参；`businessWhere` 由调用方（读侧服务）按业务口径拼装。 */
 export interface PluginPackageReadInput {
-  readonly access: ResourceQueryConstraint;
+  /**
+   * 列表授权条件；**管理面不传**，此时本仓储退化为「按业务条件读取」。
+   *
+   * 这个可选性是平台端口的既定形状（`AuthorizedResourceQuery` 的说明），不是本包的宽松默认：省略它意味着
+   * 「这次读取不属于任何主体」，只允许系统管理 Facade 走。因此**没有任何 route 可以到达这里**——它们只能
+   * 经 Facade 的具名方法，而那几个方法各自固定了自己要不要传 `access`。
+   */
+  readonly access?: ResourceQueryConstraint;
   readonly businessWhere?: readonly SQL[];
   readonly limit?: number;
   readonly offset?: number;
@@ -71,7 +79,7 @@ export function createPluginPackageReadRepository(
       resourceType: storage.resourceType,
       table: storage.table,
       columns: storage.columns,
-      access: input.access,
+      ...(input.access === undefined ? {} : { access: input.access }),
       ...(input.businessWhere === undefined ? {} : { businessWhere: input.businessWhere }),
     };
   }

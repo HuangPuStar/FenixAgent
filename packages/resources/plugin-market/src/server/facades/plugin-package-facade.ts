@@ -1,11 +1,5 @@
-import type { ActorContext, AuthorizedResource, IdentityDirectory, SystemTenant } from "@fenix/platform-sdk";
-import {
-  AuthorizedResourceFacade,
-  type AuthorizedResourceFacadeOptions,
-  ForbiddenError,
-  NotFoundError,
-  ResourceAccessDeniedError,
-} from "@fenix/platform-sdk";
+import type { ActorContext, IdentityDirectory, SystemTenant } from "@fenix/platform-sdk";
+import { AuthorizedResourceFacade, type AuthorizedResourceFacadeOptions, NotFoundError } from "@fenix/platform-sdk";
 import { getPluginMarketConfig } from "../config";
 import type { PackageDetailView, PackageView } from "../domain/package-view";
 import type {
@@ -21,22 +15,35 @@ import { getPluginRegistryClient } from "../npm-registry/service";
 import type { PackageVersionRef, PublicationPreview } from "../npm-registry/types";
 import type { PackageIdentity } from "../repositories/plugin-package";
 import { getPublicationState, publishVersion, unpublishVersion } from "../services/plugin-catalog-service";
-import type { CatalogReadScope, PluginPackageService } from "../services/plugin-package-service";
+import type { PluginPackageService } from "../services/plugin-package-service";
 
 /**
  * 市场目录的资源应用 Facade：授权编排 + 发布状态分派 + registry 读取编排。
  *
- * 它是 `/web/config/plugin-market/*` 的唯一应用入口（`route → Facade → Domain Service → Repository`）：
- * route 只做协议接入与响应映射，领域服务不认识 actor。所有授权判断都经 `AccessControlModule`（继承基类的
- * `resolveInitialScope` / `listConstraint` / `withAccessMany`），本文件**不复制**任何组织、角色或
- * `visibility` 规则。
+ * 它是 `/web/config/plugin-market/*` 与 `/api/system/plugin-market/*` 的**唯一**应用入口
+ * （`route → Facade → Domain Service → Repository`）：route 只做协议接入与响应映射，领域服务不认识 actor。
  *
- * 两条与权限有关的领域事实落在这里，而不是路由或服务里：
+ * 两条面对应**两类凭据**，各有自己的入口方法，共用同一份领域编排：
  *
- * 1. **写权 = 系统托管租户的 owner / admin**。市场条目的归属组织固定为系统托管租户
- *    （`access/plugin-package-resource.ts` 的文件头解释了这条），因此「能否发布」等价于「能否在系统租户下
- *    创建这个资源」。探测走 `resolveInitialScope`（与真正的写入路径同源），不自己读角色。
- * 2. **读口径由写权推出**（见 {@link resolveReadScope}）：写权主体看得到整包下架的条目，其余人只看公开面。
+ * 1. **浏览面**（`/web/config/plugin-market/*`，会话 / API Key 认证）：任意已认证主体。读口径恒为公开面
+ *    （`scope = "public"`），授权谓词由 `AccessControlModule` 产出后原样下推（`listConstraint`）。浏览面没有
+ *    任何写入口：发布、下架与恢复是平台管理动作（`/admin` 的插件市场页）。
+ * 2. **管理面**（`/api/system/plugin-market/*`，宿主系统 API Key）：平台运维者。宿主 `systemApiAuthPlugin`
+ *    在进路由前完成校验，并**刻意不恢复用户 / 组织上下文**（`apps/server/src/plugins/system-api-auth.ts`：
+ *    「避免与现有多租户 API 身份模型混淆」），因此管理面方法**不接收 actor**——没有可信主体可用。
+ *
+ * 管理面为什么不是「授权旁路」，而是同一份授权语义的另一半：市场条目的归属组织是**部署期事实**（身份表里
+ * `slug = 'admin'` 的系统托管租户，`access/plugin-package-resource.ts` 的文件头解释了这条），不是任何请求
+ * 主体解出来的。基于 actor 的写权探测（`resolveInitialScope`）回答的问题是「**这个用户**能否在系统租户下
+ * 写」，而管理面的调用方不是用户——它拿的是平台根凭据，与 observer 的 `/api/system/logs`、sandbox 的
+ * `/api/system/sandbox-pools` 同一类：**凭据本身就是判据**，判据在路由守卫（`systemApiKeyAuth: true`）。
+ * Facade 因此在管理面上只解析归属与审计主体，不做第二遍角色判定——两处各判一次正是「按钮按旧规则显示、
+ * 写入按新规则拒绝」这类漂移的来源。
+ *
+ * 管理面的审计主体取系统托管租户的 `userId`（`SystemTenant` 的说明：系统托管资源的 `user_id` 必须写真实
+ * 用户 ID，不得伪造 actor），因此管理面不产生「匿名写入」；`requestId` 仍由宿主 `derive` 透传进审计流水。
+ *
+ * 浏览面的 `visibility` 恒为 `public`（主表默认值即市场语义），读口径因此只剩「是否含整包下架的条目」这一维。
  *
  * 网络读取（npm 私有源）只发生在两条路径上：`preview` 与「确认发布但库内没有该版本」。恢复与幂等分支
  * **永不出网**——它们复用市场内的冻结快照，这也正是「快照发布后不可变」在读取侧的体现。
@@ -120,27 +127,52 @@ export interface PublishRequest extends CatalogWriteRequest {
 }
 
 /**
+ * 管理面写入的归属与审计主体。
+ *
+ * 两者都来自系统托管租户（{@link PluginPackageFacade.resolveWriterScope}）：`scope` 是创建期归属列，
+ * `operatorUserId` 是审计流水与 `owner_user_id` 的取值。分开两个字段而不是合成一个，是因为它们的消费方
+ * 不同——归属只进创建命令，审计主体在幂等与恢复分支上也要写。
+ */
+interface CatalogWriter {
+  readonly scope: CatalogCreationScope;
+  readonly operatorUserId: string;
+}
+
+/**
  * 市场的应用接口（Facade 的契约面）。
  *
  * 路由与测试只依赖本接口：测试因此可以提供实现而不构造真类（见 `../__tests__/market-fixtures.ts`），
  * 这也是路由用例能覆盖协议映射而完全不碰数据库的原因。
+ *
+ * 方法按**凭据族**分组（文件头的两类面）：`list` / `getDetail` 收 `ActorContext`，`listAll` / `getDetailAll`
+ * 与四个写方法不收。混用是编译期错误，而不是运行期靠约定——浏览面拿不到管理面的读口径，管理面也拿不到
+ * 浏览面的授权谓词。
  */
 export interface PluginPackageFacadeApi {
   /**
-   * 列表。`canPublish` 是**页面级能力位**（不是逐条资源的动作）：市场是全局目录，写权只取决于主体是不是
-   * 平台系统管理员，因此它由服务端在同一个写权探针上顺带给出。前端不给第二个判据——按列表条目推导在
-   * 「市场还是空的」时会把管理员也判成只读，第一次发布就没有入口。
+   * 浏览面列表：公开口径 + 授权谓词下推。
+   *
+   * 不做服务端分页与检索（决策 D7）：市场规模由私有源决定且远小于其它目录页，前端过滤已经够用。
    */
-  list(actor: ActorContext): Promise<{ items: AuthorizedResource<PackageView>[]; total: number; canPublish: boolean }>;
-  /** 详情；不存在、slug 非法或按当前读口径不可见时抛 404。 */
-  getDetail(actor: ActorContext, slug: string): Promise<AuthorizedResource<PackageDetailView>>;
+  list(actor: ActorContext): Promise<{ items: PackageView[]; total: number }>;
+  /** 浏览面详情；不存在、slug 非法或整包下架时抛 404（与「不存在」同响应）。 */
+  getDetail(actor: ActorContext, slug: string): Promise<PackageDetailView>;
+  /**
+   * 管理面列表：**全量口径**（含整包下架的条目），不带逐行动作。
+   *
+   * 为什么不带 `access`：那是「当前主体对这个资源的有效动作」，而管理面的请求里没有主体（文件头）。管理页
+   * 因此不按条目判断能力——它整个页面就是管理面，能进来就能写。
+   */
+  listAll(): Promise<{ items: PackageView[]; total: number }>;
+  /** 管理面详情：含已下架版本并带 `unpublishedAt` 水印。 */
+  getDetailAll(slug: string): Promise<PackageDetailView>;
   /** 读取私有源并产出规范化快照；**不写库**。 */
-  preview(actor: ActorContext, input: { packageName: string; exactVersion: string }): Promise<PublicationPreview>;
+  preview(input: { packageName: string; exactVersion: string }): Promise<PublicationPreview>;
   /** 按库内状态分派：可见 → 幂等、已下架 → 恢复、不存在 → 回源读取并比对摘要。 */
-  publish(actor: ActorContext, input: PublishRequest): Promise<PublicationChange>;
-  unpublish(actor: ActorContext, input: CatalogWriteRequest): Promise<PublicationChange>;
+  publish(input: PublishRequest): Promise<PublicationChange>;
+  unpublish(input: CatalogWriteRequest): Promise<PublicationChange>;
   /** 恢复一个已下架的版本；版本不在市场里时报 404，且**不访问私有源**。 */
-  restore(actor: ActorContext, input: CatalogWriteRequest): Promise<PublicationChange>;
+  restore(input: CatalogWriteRequest): Promise<PublicationChange>;
 }
 
 export class PluginPackageFacade extends AuthorizedResourceFacade implements PluginPackageFacadeApi {
@@ -160,34 +192,48 @@ export class PluginPackageFacade extends AuthorizedResourceFacade implements Plu
     this.#registry = options.registry ?? defaultRegistryPort;
   }
 
-  /** 列表：授权谓词与业务条件都下推到 SQL，列表与计数共用同一可见集合。 */
-  async list(
-    actor: ActorContext,
-  ): Promise<{ items: AuthorizedResource<PackageView>[]; total: number; canPublish: boolean }> {
-    const [access, scope] = await Promise.all([this.listConstraint(actor, "read"), this.resolveReadScope(actor)]);
-    const { items, total } = await this.service.list({ access, sourceId: this.sourceId(), scope });
-    const authorized = await this.withAccessMany(actor, items);
-    // 读口径由写权推出（见 `resolveReadScope`），反向取用即得页面级能力位：不需要第二次授权判定，
-    // 也不会出现「按钮按十年前的规则显示、写入按现行规则拒绝」这类两处判定漂移。
-    return { items: authorized, total, canPublish: scope === "all" };
+  /**
+   * 浏览面列表：授权谓词与业务条件都下推到 SQL，列表与计数共用同一可见集合。
+   *
+   * 逐行**不附**有效动作（`withAccessMany` 的产物）：浏览面没有任何写入口（用户看得到市场，管理在 `/admin`），
+   * 附上动作集合等于给前端一个没有消费方的能力位——它只会被用来渲染与真实判据无关的按钮。授权本身不受影响：
+   * `listConstraint` 已经把谓词编译进这条 SQL，越权可见性在数据库层面就被排除。
+   */
+  async list(actor: ActorContext): Promise<{ items: PackageView[]; total: number }> {
+    const access = await this.listConstraint(actor, "read");
+    return this.service.list({ access, sourceId: this.sourceId(), scope: "public" });
   }
 
-  /** 详情：定位符是 slug（包名的 base64url 编码），解析失败与不可见同响应 404。 */
-  async getDetail(actor: ActorContext, slug: string): Promise<AuthorizedResource<PackageDetailView>> {
-    const [access, scope] = await Promise.all([this.listConstraint(actor, "read"), this.resolveReadScope(actor)]);
-    const detail = await this.service.findDetailBySlug({ access, sourceId: this.sourceId(), scope, slug });
-    // 不存在、slug 非法与「整包下架且主体无写权」在这里合流成同一个 404：区分它们会把市场变成一个
-    // 探针（「这个包存在但被下架了」是可被外部推知的内部状态）。
+  /** 浏览面详情：定位符是 slug（包名的 base64url 编码），解析失败与不可见同响应 404。 */
+  async getDetail(actor: ActorContext, slug: string): Promise<PackageDetailView> {
+    const access = await this.listConstraint(actor, "read");
+    const detail = await this.service.findDetailBySlug({ access, sourceId: this.sourceId(), scope: "public", slug });
+    // 不存在、slug 非法与「整包下架」在这里合流成同一个 404：区分它们会把市场变成一个探针
+    // （「这个包存在但被下架了」是可被外部推知的内部状态）。
     if (!detail) throw new NotFoundError(`插件包 '${slug}' 不存在`);
-    return this.withAccess(actor, detail);
+    return detail;
   }
 
-  /** 预览：读私有源、规范化、算摘要；不写库。写权校验在最前，未授权的主体连私有源都不该被代为读取。 */
-  async preview(
-    actor: ActorContext,
-    input: { packageName: string; exactVersion: string },
-  ): Promise<PublicationPreview> {
-    await this.requirePublishScope(actor);
+  /**
+   * 管理面列表：全量口径、不带授权谓词。
+   *
+   * 无 `access` 是平台端口记录在案的例外形状（`AuthorizedResourceQuery` 的说明：「不传表示无权限的 Domain
+   * Service 内部调用路径，例如系统管理 Facade 已完成超级管理员校验」）。这条例外**只能**由本方法使用：
+   * route 不得直接调用无 `access` 的查询。
+   */
+  async listAll(): Promise<{ items: PackageView[]; total: number }> {
+    return this.service.list({ sourceId: this.sourceId(), scope: "all" });
+  }
+
+  /** 管理面详情：全量口径；不存在或 slug 非法时抛 404。 */
+  async getDetailAll(slug: string): Promise<PackageDetailView> {
+    const detail = await this.service.findDetailBySlug({ sourceId: this.sourceId(), scope: "all", slug });
+    if (!detail) throw new NotFoundError(`插件包 '${slug}' 不存在`);
+    return detail;
+  }
+
+  /** 预览：读私有源、规范化、算摘要；不写库。判据在路由守卫，见文件头。 */
+  async preview(input: { packageName: string; exactVersion: string }): Promise<PublicationPreview> {
     return this.#registry.preview(this.toRef(input));
   }
 
@@ -198,8 +244,8 @@ export class PluginPackageFacade extends AuthorizedResourceFacade implements Plu
    * 判定在 `publish` 内部锁保护下重新做一遍，因此并发的两次确认不会各自读到空状态各插一行——分派结果以
    * 锁内读到的状态为准，这里读到的状态只影响走哪条路径。
    */
-  async publish(actor: ActorContext, input: PublishRequest): Promise<PublicationChange> {
-    const scope = await this.requirePublishScope(actor);
+  async publish(input: PublishRequest): Promise<PublicationChange> {
+    const writer = await this.resolveWriterScope();
     const ref = this.toRef(input);
     const stored = (await this.#catalog.getPublicationState(ref, ref.exactVersion)).publication;
 
@@ -211,31 +257,31 @@ export class PluginPackageFacade extends AuthorizedResourceFacade implements Plu
         this.toPublishCommand({
           ref,
           requestId: input.requestId,
-          scope,
-          operatorUserId: actor.userId,
+          scope: writer.scope,
+          operatorUserId: writer.operatorUserId,
           snapshot: stored,
         }),
       );
     }
-    return this.#publishFromRegistry(actor, ref, input, scope);
+    return this.#publishFromRegistry(ref, input, writer);
   }
 
   /** 下架某个精确版本；版本不在市场里时由领域抛 404（本层不预检，预检会让两处判定漂移）。 */
-  async unpublish(actor: ActorContext, input: CatalogWriteRequest): Promise<PublicationChange> {
-    await this.requirePublishScope(actor);
+  async unpublish(input: CatalogWriteRequest): Promise<PublicationChange> {
+    const writer = await this.resolveWriterScope();
     const ref = this.toRef(input);
     return this.#catalog.unpublish({
       sourceId: ref.sourceId,
       packageName: ref.packageName,
       exactVersion: ref.exactVersion,
-      operatorUserId: actor.userId,
+      operatorUserId: writer.operatorUserId,
       requestId: input.requestId,
     });
   }
 
   /** 恢复；显式入口，与发布路径的区别只有「版本必须已在市场里」这一条。 */
-  async restore(actor: ActorContext, input: CatalogWriteRequest): Promise<PublicationChange> {
-    const scope = await this.requirePublishScope(actor);
+  async restore(input: CatalogWriteRequest): Promise<PublicationChange> {
+    const writer = await this.resolveWriterScope();
     const ref = this.toRef(input);
     const stored = (await this.#catalog.getPublicationState(ref, ref.exactVersion)).publication;
     if (stored === null) {
@@ -245,8 +291,8 @@ export class PluginPackageFacade extends AuthorizedResourceFacade implements Plu
       this.toPublishCommand({
         ref,
         requestId: input.requestId,
-        scope,
-        operatorUserId: actor.userId,
+        scope: writer.scope,
+        operatorUserId: writer.operatorUserId,
         snapshot: stored,
       }),
     );
@@ -260,10 +306,9 @@ export class PluginPackageFacade extends AuthorizedResourceFacade implements Plu
    * {@link PreviewChangedError}，把新读到的快照一并交回前端原地重新确认。
    */
   async #publishFromRegistry(
-    actor: ActorContext,
     ref: PackageVersionRef,
     input: PublishRequest,
-    scope: CatalogCreationScope,
+    writer: CatalogWriter,
   ): Promise<PublicationChange> {
     if (input.previewDigest === undefined || input.previewDigest.length === 0) {
       throw new PluginMarketError("INVALID_INPUT", "确认发布必须携带预览摘要（previewDigest）");
@@ -274,8 +319,8 @@ export class PluginPackageFacade extends AuthorizedResourceFacade implements Plu
       this.toPublishCommand({
         ref,
         requestId: input.requestId,
-        scope,
-        operatorUserId: actor.userId,
+        scope: writer.scope,
+        operatorUserId: writer.operatorUserId,
         snapshot: preview,
       }),
     );
@@ -318,9 +363,9 @@ export class PluginPackageFacade extends AuthorizedResourceFacade implements Plu
   /**
    * 系统托管租户，进程内缓存一次。
    *
-   * 读路径每次都要问「这个主体有写权吗」（读口径由它决定），而 `resolveSystemTenant()` 会查身份库、必要时
-   * 还会执行一次系统管理员引导，把它放在每个列表请求上是不必要的开销。租户是**部署期事实**：引导完成后
-   * admin 组织与系统用户的 ID 不再变化。
+   * 管理面的每次写入都要拿它解析归属组织与审计主体（见 {@link resolveWriterScope}），而
+   * `resolveSystemTenant()` 会查身份库、必要时还会执行一次系统管理员引导，把它放在每个发布请求上是不必要
+   * 的开销。租户是**部署期事实**：引导完成后 admin 组织与系统用户的 ID 不再变化。
    *
    * 移除条件：身份模块若将来支持在进程存活期间重建系统租户，这个缓存必须改成可失效的（否则发布了新条目
    * 会落在一个已不存在的组织 ID 上，条目只对公开受众可见、管理面看不见）。
@@ -331,41 +376,17 @@ export class PluginPackageFacade extends AuthorizedResourceFacade implements Plu
   }
 
   /**
-   * 写权探测：通过则返回发布归属，未通过返回 `null`。
+   * 管理面写入的归属与审计主体。
    *
-   * 用 `resolveInitialScope`（创建期归属解析）**探针**而不是逐行 `authorize`：读口径必须在拿到任何行
-   * **之前**确定，因为它要作为 SQL 条件下推（整包下架 = `latest_publication_id IS NULL`），而行级
-   * `authorize` 需要先有一个 resourceId。这个探针与真正的写入路径判定同源——两者都走同一份策略
-   * （`projectActions`），本资源的动作集又是全有或全无（owner/admin 拿全部动作，member 与公开受众只有
-   * `read`），因此「能否在系统租户下创建」与「能否发布 / 下架」永远是同一个结论。
-   *
-   * 归属组织必须显式传系统租户：策略的组织分支要求资源归属组织**就是** actor 的 active organization，
-   * 传别的组织会让所有人（包括真正的系统管理员）都被判为无写权。
+   * 归属组织**不从请求推导**：它就是市场条目的归属组织（系统托管租户，见文件头）。审计主体同样取租户的
+   * `userId`——主表的 `owner_user_id` 是 NOT NULL 且必须是真实用户 ID（`SystemTenant` 的说明），因此管理面
+   * 不会写出「匿名条目」。
    */
-  private async resolvePublishScope(actor: ActorContext): Promise<CatalogCreationScope | null> {
+  private async resolveWriterScope(): Promise<CatalogWriter> {
     const tenant = await this.systemTenant();
-    try {
-      const scope = await this.resolveInitialScope(actor, tenant.organizationId);
-      return {
-        organizationId: scope.organizationId ?? tenant.organizationId,
-        // 组织模式不记 owner（归属属于组织），但主表的 `owner_user_id` 是 NOT NULL：写操作人。
-        ownerUserId: scope.ownerUserId ?? actor.userId,
-      };
-    } catch (error) {
-      if (error instanceof ResourceAccessDeniedError) return null;
-      throw error;
-    }
-  }
-
-  /** 写路径的授权：探测未通过即 403；通过则返回发布归属（含写操作人，即本次请求的主体）。 */
-  private async requirePublishScope(actor: ActorContext): Promise<CatalogCreationScope> {
-    const scope = await this.resolvePublishScope(actor);
-    if (scope === null) throw new ForbiddenError("只有平台系统管理员可以发布或下架插件");
-    return scope;
-  }
-
-  /** 读口径：写权主体（平台系统管理员）看得到整包下架的条目，其余人只看公开面。 */
-  private async resolveReadScope(actor: ActorContext): Promise<CatalogReadScope> {
-    return (await this.resolvePublishScope(actor)) === null ? "public" : "all";
+    return {
+      scope: { organizationId: tenant.organizationId, ownerUserId: tenant.userId },
+      operatorUserId: tenant.userId,
+    };
   }
 }

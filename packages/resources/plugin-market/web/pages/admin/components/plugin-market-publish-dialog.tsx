@@ -1,4 +1,4 @@
-// plugin-market-publish-dialog.tsx — 发布插件版本的弹窗（预览 → 确认两步）
+// plugin-market-publish-dialog.tsx — 管理台发布插件版本的弹窗（预览 → 确认两步）
 //
 // 源项目的后台也是两步（`/admin/publish/preview` → `/admin/publish`），本弹窗把同一件事落在 React 上：
 // 用户先按包名 + 精确版本**读取并规范化**私有源上的元数据，看到「即将公开的内容」之后再确认落库。
@@ -15,6 +15,10 @@
 // 两步的按钮分工由此变得明确：**提交按钮只做第一步**（读取并预览，受 zod 必填校验保护），确认发布是预览
 // 面板里的独立动作——它在预览态按 `hideSubmit` 替掉提交按钮，因此不必给字段挂 `disabled` 后仍走表单提交。
 //
+// 凭据：两条写请求都走 `/api/system/*`（系统 master key，见 `../../../api/system-plugin-market`）。这两个
+// 请求刻意不做 `unwrap`——409 冲突体必须原样交到这里；代价是凭据失效只能按**信封里的码**识别（见两处
+// `onAuthFailure` 的调用点）。
+//
 // 上屏文案一律取本包字典（§9.3）：`ApiError.message` / 错误信封原文是后端文案，只进 `console.error`。
 
 import { FormDialog } from "@fenix/ui-components/config/FormDialog";
@@ -22,24 +26,23 @@ import { Button } from "@fenix/ui-components/ui/button";
 import { useCallback, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import type { z } from "zod/v4";
-import { pluginMarketApi } from "../../../api/plugin-market";
-import type { PluginPublicationChange } from "../../../api/plugin-market-types";
+import { systemPluginMarketApi } from "../../../api/system-plugin-market";
+import type { PluginPublicationChange } from "../../../api/system-plugin-market-types";
 import { PLUGIN_MARKET_NS } from "../../../i18n/namespace";
-import {
-  PluginPublishForm,
-  type PluginPublishFormValues,
-  pluginPublishFormSchema,
-} from "../components/plugin-market-publish-form";
-import { type PreviewSnapshot, readPreviewChangedPayload } from "./plugin-market-utils";
+import { type PreviewSnapshot, readPreviewChangedPayload } from "../../../lib/plugin-market-admin-utils";
+import { isAccessDeniedCode } from "../../../lib/plugin-market-utils";
+import { PluginPublishForm, type PluginPublishFormValues, pluginPublishFormSchema } from "./plugin-market-publish-form";
 
 type PublishDialogProps = {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   /** 发布完成（含幂等 noop）：提示、刷新列表与切换选中项由容器负责。 */
   onPublished: (change: PluginPublicationChange) => void;
+  /** 请求带回了授权失败（master key 失效）：容器清 key 并把用户送回门，弹窗不自行提示。 */
+  onAuthFailure: () => void;
 };
 
-export function PluginMarketPublishDialog({ open, onOpenChange, onPublished }: PublishDialogProps) {
+export function PluginMarketPublishDialog({ open, onOpenChange, onPublished, onAuthFailure }: PublishDialogProps) {
   const { t } = useTranslation(PLUGIN_MARKET_NS);
   // 流程态与表单态分开：字段值在 `FormDialog` 的 `useForm` 里，这里只留「请求进行到哪一步」。
   const [preview, setPreview] = useState<PreviewSnapshot | null>(null);
@@ -55,12 +58,18 @@ export function PluginMarketPublishDialog({ open, onOpenChange, onPublished }: P
       setConflict(false);
       setPreviewing(true);
       try {
-        const response = await pluginMarketApi.preview({
+        const response = await systemPluginMarketApi.preview({
           packageName: target.packageName,
           exactVersion: target.exactVersion,
         });
         if (!response.success) {
           console.error(t("dialog.previewFailed"), response.error);
+          // 凭据失效不是「读取失败」：回门重新输入 key 才有意义，在弹窗里提示只会让人反复重试同一个失败。
+          if (isAccessDeniedCode(response.error?.code)) {
+            onOpenChange(false);
+            onAuthFailure();
+            return;
+          }
           setActionError(t("dialog.previewFailed"));
           return;
         }
@@ -69,7 +78,7 @@ export function PluginMarketPublishDialog({ open, onOpenChange, onPublished }: P
         setPreviewing(false);
       }
     },
-    [t],
+    [onAuthFailure, onOpenChange, t],
   );
 
   /** 第二步：确认发布预览那一份。定位符取自 `preview` 而不是输入框（见文件头的两步说明）。 */
@@ -78,7 +87,7 @@ export function PluginMarketPublishDialog({ open, onOpenChange, onPublished }: P
     setActionError(null);
     setPublishing(true);
     try {
-      const response = await pluginMarketApi.publish({
+      const response = await systemPluginMarketApi.publish({
         packageName: preview.packageName,
         exactVersion: preview.exactVersion,
         previewDigest: preview.metadataDigest,
@@ -95,12 +104,17 @@ export function PluginMarketPublishDialog({ open, onOpenChange, onPublished }: P
         setConflict(true);
         return;
       }
+      if (isAccessDeniedCode(response.error?.code)) {
+        onOpenChange(false);
+        onAuthFailure();
+        return;
+      }
       console.error(t("dialog.publishFailed"), response.error);
       setActionError(t("dialog.publishFailed"));
     } finally {
       setPublishing(false);
     }
-  }, [onOpenChange, onPublished, preview, t]);
+  }, [onAuthFailure, onOpenChange, onPublished, preview, t]);
 
   // `onFormSubmit` 的入参是 `Record<string, unknown>`（`FormDialog` 的契约），按域类型收窄后再用。
   const formConfig = useMemo(

@@ -57,7 +57,7 @@ g.getComputedStyle = win.getComputedStyle.bind(win);
 const { FormProvider, useForm } = await import("react-hook-form");
 const { zodResolver } = await import("@hookform/resolvers/zod");
 const { PluginPublishForm, pluginPublishFormSchema } = await import(
-  "../pages/agent-panel/components/plugin-market-publish-form"
+  "../pages/admin/components/plugin-market-publish-form"
 );
 
 type FormValues = { packageName: string; exactVersion: string };

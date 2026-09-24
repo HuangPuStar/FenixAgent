@@ -44,18 +44,22 @@ import { pluginPackageResource } from "./src/server/access/plugin-package-resour
  * 具体到本模块：`PLUGIN_MARKET_REGISTRY_URL` 无默认值、未配置即 undefined，此时**只有发布与预览路径**
  * 以 `REGISTRY_NOT_CONFIGURED` 失败，浏览既有快照完全不读私有源，不受影响。
  *
- * 声明 `contributions`：`/web/config/plugin-market/*` 的路由实例由本模块以惰性构造函数
- * `(host) => import("./src/server/assembly").then(...)` 给出，`slot: "web-config"` 指明挂宿主哪一面——
- * 路由路径是相对形式，前缀由宿主的聚合实例决定，「挂哪一面」只能由声明说清。惰性 import 与 `create` 同因：
+ * 声明 `contributions`（两条，对应两条凭据族）：`/web/config/plugin-market/*`（浏览面，会话守卫）挂
+ * `slot: "web-config"`，`/api/system/plugin-market/*`（管理面：列表、详情、预览、发布、下架、恢复，系统 API Key
+ * 守卫）挂 `slot: "api"`。路由实例由本模块以惰性构造函数 `(host) => import("./src/server/assembly").then(...)`
+ * 给出——`slot` 指明挂宿主哪一面：路由路径是相对形式，前缀由宿主的聚合实例决定，「挂哪一面」只能由声明说清
+ * （系统面自带 `/api/system/*` 前缀，那是对外合同的一部分，不由宿主拼接）。惰性 import 与 `create` 同因：
  * registry 会被大量位置导入，不能在索引层就把 Elysia 拖进模块图。
  *
- * 只有这一条贡献：市场没有对外 `/api` 面，也没有自鉴权的内部协议入口（对比 mcp 的三条）。发布与下架是
- * 平台管理动作，只能经控制台会话发生，不能由持有 API Key 的外部系统发起。
+ * 为什么管理面挂在宿主 `api` 槽而不是再开一条 `web-config`：发布、下架与恢复是**平台管理动作**，判据是系统
+ * API Key（`RCS_SYSTEM_API_KEYS`，宿主 `systemApiAuthPlugin`），与 observer / sandbox 的 `/api/system/*`
+ * 同一条通道。用户看得到市场（浏览面），管理只在管理台（`/admin` 的插件市场页），控制台里没有任何写入口。
  *
  * **不声明 `web`**：该字段要求 `web.id` 与一个导航项 id 同名，而本市场不是侧栏项——它是「插件市场」页
  * （宿主路由 `/agent/mcp`）下的 `?tab=npm` 这一个 tab，页面由宿主路由壳直接 import 本包的 `./web`
  * 出口（与 `channel` / `prod-view` 同形：有宿主路由、无导航项）。因此 `package.json` 也不再声明
- * `./web/contribution`，`deploy/assembly/ce.json` 的 `web` 列表里没有本包。
+ * `./web/contribution`，`deploy/assembly/ce.json` 的 `web` 列表里没有本包。管理台页面的宿主路由
+ * （`/admin/plugin-market`）同样直接 import 本包的 `./web` 出口。
  */
 export const moduleManifest = {
   id: "plugin-market",
@@ -135,6 +139,13 @@ export const moduleManifest = {
       slot: "web-config",
       value: (host: ServerRouteHost) =>
         import("./src/server/assembly").then((assembly) => assembly.createPluginMarketWebConfigRoutes(host)),
+    },
+    {
+      id: "plugin-market.api-system",
+      kind: "app-route",
+      slot: "api",
+      value: (host: ServerRouteHost) =>
+        import("./src/server/assembly").then((assembly) => assembly.createPluginMarketApiSystemRoutes(host)),
     },
   ],
   // 工厂保持惰性：registry 会被大量位置导入，不能在索引层就把 Drizzle 与 Elysia 拖进模块图。
