@@ -52,6 +52,7 @@
         "filesTooLarge": "The total upload cannot exceed 100 MB",
         "hint": "Enter to send, Shift+Enter for newline · Paste image or type @ to reference file",
         "newSession": "New Thread",
+        "pastingImages": "Processing {{count}} pasted images…",
         "send": "Send",
         "skillButton": "Skill",
         "stop": "Stop",
@@ -119,6 +120,7 @@
       "composerAssets": {
         "image": "Image to send",
         "imageNumber": "Image {{count}}",
+        "pasteImageUnsupported": "This agent cannot receive pasted images. Attach the image as a file instead.",
         "prepareImageFailed": "The image could not be processed. Remove it and try again.",
         "processImagePartialFailed": "Some images could not be processed and were skipped.",
         "quoteLimitReached": "The quote limit for this turn has been reached. Send or remove a quote first.",

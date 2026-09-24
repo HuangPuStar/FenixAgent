@@ -27,8 +27,11 @@ const PKG_ROOT = resolve(WEB_ROOT, "..");
  * 2026-09-24 AskUserQuestion 自定义回答批次加 `chat.components.askUser.customLabel` /
  *   `customPlaceholder` / `submitting` / `submitUnconfirmed` 4 键（输入框标签与占位、提交中与
  *   超时未确认反馈），274 → 278。
+ * 2026-09-24 输入岛粘贴图片批次加 `chat.components.chatComposer.pastingImages`（粘贴资产的进行中
+ *   状态）与 `chat.components.composerAssets.pasteImageUnsupported`（两条通路都不可用时的回执）2 键，
+ *   278 → 280。
  */
-const KEY_BASELINE = 278;
+const KEY_BASELINE = 280;
 
 const EN = JSON.parse(readFileSync(join(WEB_ROOT, "i18n/locales/en/uiComponents.json"), "utf8")) as Record<
   string,
