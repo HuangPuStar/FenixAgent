@@ -147,8 +147,11 @@ describe("本包 i18n 字典（models 命名空间）", () => {
     // 文案由消费方传入，措辞逐字沿用 sandbox 包同名键（同一条门在 sandbox / observer 的既有措辞）。
     // 2026-09-23 失败态收口新增 `usagePage.queryFailed` / `budgetsPage.queryFailed` /
     // `usagePage.subjectLoadFailed` 3 键共 413。
-    expect(enKeys.size).toBe(413);
-    expect(zhKeys.size).toBe(413);
+    // 2026-09-24 列表接口缺失的处置入口：Provider 弹窗补手动输入模型 ID，新增 `form.{manualModelLabel,
+    // manualModelPlaceholder,manualModelDuplicate}` 3 键共 416；同组的 `testDialog.errors.configureModelThenTest`
+    // 只改措辞（改为指向手动入口 / OpenAI 兼容地址），不新增键。
+    expect(enKeys.size).toBe(416);
+    expect(zhKeys.size).toBe(416);
   });
 
   // 字典内不得再嵌一层命名空间前缀：宿主按 MODELS_NS 注册本文件，多一层前缀会让所有键变成 key 回显。
