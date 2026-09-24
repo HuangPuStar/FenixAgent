@@ -544,3 +544,78 @@ describe("ChatComposer interaction", () => {
     expect(submitCalls).toBe(0);
   });
 });
+
+/** 输入岛卡片 —— drop 监听挂在它身上（`chat-composer-island`）。 */
+function composerDropTarget(container: HTMLElement): HTMLElement {
+  const target = container.querySelector(".chat-composer-island");
+  if (!target) throw new Error("composer drop target not found");
+  return target as HTMLElement;
+}
+
+/** 构造拖拽载荷替身：happy-dom 无真实 DataTransfer，本 drop 路径只消费 `files` 与 `getData("text/plain")`。 */
+function dropDataTransfer(files: File[], plainText: string): DataTransfer {
+  return {
+    files,
+    getData: (type: string) => (type === "text/plain" ? plainText : ""),
+  } as unknown as DataTransfer;
+}
+
+/** 在输入岛上派发一次以外部来源形态构造的拖放，并冲掉上传链路的异步（与真实拖放同样冒泡给 React）。 */
+async function dropOnComposer(container: HTMLElement, dataTransfer: DataTransfer): Promise<void> {
+  const event = new window.Event("drop", { bubbles: true, cancelable: true });
+  // happy-dom 的 Event init 不接受 dataTransfer，直接挂属性：React 按 DragEventInterface 原样取用。
+  Object.defineProperty(event, "dataTransfer", { value: dataTransfer, configurable: true });
+  await act(async () => {
+    composerDropTarget(container).dispatchEvent(event as unknown as Event);
+  });
+}
+
+describe("ChatComposer 拖拽入队边界", () => {
+  // 同一次 drop 只能登记一条附件：外部来源（macOS 微信客户端拖出的文件）会在 text/plain 槽里放
+  // 本地绝对路径而不是 file:// URL，若文本引用分支也执行，同一个文件会被登记两条同名附件。
+  test("drop with os files registers exactly one attachment even when text/plain carries a local path", async () => {
+    const uploaded: File[][] = [];
+    mount({
+      onSubmit: () => {},
+      uploadFiles: async (files) => {
+        uploaded.push(files);
+        return files.map((file) => ({ name: file.name, path: `user/${file.name}` }));
+      },
+    });
+
+    const file = new window.File(["content"], "report.txt") as unknown as File;
+    await dropOnComposer(
+      container,
+      dropDataTransfer([file], "/Users/me/Library/Containers/com.tencent.xinWeChat/report.txt"),
+    );
+
+    // 上传路径独占这次 drop：文件原样交给上传端口一次
+    expect(uploaded.length).toBe(1);
+    expect(uploaded[0]?.[0]).toBe(file);
+    // 只登记一条附件，引用的是上传后的 workspace 相对路径
+    const assets = container.querySelectorAll('[data-slot="chat-composer-asset"]');
+    expect(assets.length).toBe(1);
+    expect(assets[0]?.textContent).toContain("report.txt");
+    expect(container.querySelector("textarea")?.value).toBe("@./user/report.txt ");
+  });
+
+  // 不带 files 的纯文本拖拽仍按工作区相对路径登记引用（文件树拖拽形态），修复只让位给带上传载荷的拖拽。
+  test("plain-text drop without files still registers a workspace path reference", async () => {
+    let uploadCalls = 0;
+    mount({
+      onSubmit: () => {},
+      uploadFiles: async () => {
+        uploadCalls += 1;
+        return [];
+      },
+    });
+
+    await dropOnComposer(container, dropDataTransfer([], "src/index.ts"));
+
+    expect(uploadCalls).toBe(0);
+    const assets = container.querySelectorAll('[data-slot="chat-composer-asset"]');
+    expect(assets.length).toBe(1);
+    expect(assets[0]?.textContent).toContain("index.ts");
+    expect(container.querySelector("textarea")?.value).toBe("@./src/index.ts ");
+  });
+});
