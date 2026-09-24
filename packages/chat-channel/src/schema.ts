@@ -87,7 +87,7 @@ export type SessionDocStatus = "initializing" | "ready" | "running" | "degraded"
 export type AgentRuntimeStatus = "offline" | "starting" | "initializing" | "ready" | "busy" | "error";
 export type PermissionStatus = "pending" | "resolved" | "expired";
 export type PermissionOptionKind = "allow_once" | "allow_session" | "deny";
-/** AskUserQuestion 交互问题的生命周期状态（与 PermissionStatus 平行：expired 由 60s 超时 CAS 迁移） */
+/** AskUserQuestion 交互问题的生命周期状态（与 PermissionStatus 平行：expired 由 120s 超时 CAS 迁移） */
 export type QuestionStatus = "pending" | "resolved" | "expired";
 
 /** Turn 状态机（8.1）：终态不可逆；恢复执行必须创建新 turn */
@@ -186,8 +186,8 @@ export interface QuestionItemProjection {
 
 /**
  * AskUserQuestion 交互问题投影（Session Doc 根 map pendingQuestions，按 questionId 键控）。
- * 生命周期：question_requested → pending（60s expiresAt）→ 用户回传 respondQuestion CAS
- * → resolved；超时定时器（控制面持有）→ expired。与 acp-link 侧 60s 自动空答案对齐。
+ * 生命周期：question_requested → pending（120s expiresAt）→ 用户回传 respondQuestion CAS
+ * → resolved；超时定时器（控制面持有）→ expired。与 acp-link 侧 120s 自动空答案对齐。
  */
 export interface QuestionProjection {
   questionId: string;
@@ -286,11 +286,13 @@ export const DEFAULT_PERMISSION_TIMEOUT_MS = 5 * 60_000;
 
 /**
  * AskUserQuestion 默认超时：pending 超时后迁移 expired（CAS）。
- * 与 acp-link 侧 60s 自动 resolve 空答案对齐（claude-acp-adapter.ts:469）：
- * 投影的 expiresAt 必须 ≤ 60s 且控制面定时器按同一值失效，否则 acp-link 已
- * 回空答案、agent 继续执行，前端弹窗仍悬挂 60s 以上。
+ * 与 acp-link 侧 120s 自动 resolve 空答案对齐（elicitation.ts 的 ELICITATION_TIMEOUT_MS /
+ * claude-acp-adapter.ts 的 AskUserQuestion 等待定时器）：投影的 expiresAt 必须 ≤ 120s 且
+ * 控制面定时器按同一值失效，否则 acp-link 已回空答案、agent 继续执行，前端弹窗仍悬挂 120s
+ * 以上；反向（投影先过期）则用户还在看弹窗、问题已被判过期无法作答。
+ * 2026-09-24 用户侧反馈弹窗等待时间过短（约 1 分多钟），三处同值由 60s 上调到 120s。
  */
-export const DEFAULT_QUESTION_TIMEOUT_MS = 60_000;
+export const DEFAULT_QUESTION_TIMEOUT_MS = 120_000;
 
 // ── Peri Task View schema（Session Doc root.tasks / root.taskOrder，切片 1）──
 // Peri Subagent / Background Task 的轻量会话级投影。代码命名使用「Peri task」

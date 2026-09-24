@@ -243,7 +243,7 @@ describe("useSessionState hook 生命周期", () => {
           },
         ],
         description: "Please answer",
-        expiresAt: new Date(now + 60_000).toISOString(),
+        expiresAt: new Date(now + 120_000).toISOString(),
         answer: null,
       });
       // 已应答（剔除）：resolved
@@ -252,7 +252,7 @@ describe("useSessionState hook 生命周期", () => {
         status: "resolved",
         questions: [],
         description: null,
-        expiresAt: new Date(now + 60_000).toISOString(),
+        expiresAt: new Date(now + 120_000).toISOString(),
         answer: "production",
       });
       // 过期（剔除）：pending 但 expiresAt 已过（前端本地剔除兜底，与后端定时器同刻失效）
@@ -278,6 +278,39 @@ describe("useSessionState hook 生命周期", () => {
     ]);
     expect(pending?.has("iqa_resolved")).toBe(false);
     expect(pending?.has("iqa_stale")).toBe(false);
+
+    harness.unmount();
+    spectator.cleanup();
+  });
+
+  // 投影缺 expiresAt 时前端按 120s 兜底保留问题：兜底值必须跟随后端策略
+  // （chat-channel 的 DEFAULT_QUESTION_TIMEOUT_MS = 120s，与 acp-link 的应答等待上限同值）。
+  // 按更短的值兜底会让弹窗在 agent 仍在等待用户作答时就被前端过滤掉。
+  test("投影缺 expiresAt 时按 120s 兜底保留弹窗", async () => {
+    const spectator = createSessionDocBinding("rcs-sess-q-fallback");
+    const doc = spectator.ydoc;
+    act(() => {
+      seedSessionSkeleton(doc);
+      // 绕过 writer 原语直接写裸投影：模拟 expiresAt 缺失的脏数据 / 历史快照
+      const pending = doc.getMap("root").get("pendingQuestions") as Y.Map<Y.Map<unknown>>;
+      const raw = new Y.Map<unknown>();
+      raw.set("questionId", "iqa_no_expiry");
+      raw.set("status", "pending");
+      raw.set("questions", []);
+      raw.set("description", null);
+      raw.set("answer", null);
+      pending.set("iqa_no_expiry", raw);
+    });
+
+    const harness = createHarness<SessionStateSnapshot>(useSessionState);
+    harness.render("rcs-sess-q-fallback");
+    await flush();
+
+    const projected = harness.latest.value?.pendingQuestions.get("iqa_no_expiry");
+    expect(projected).toBeDefined();
+    const remainingMs = new Date(projected?.expiresAt ?? 0).getTime() - Date.now();
+    expect(remainingMs).toBeGreaterThan(60_000);
+    expect(remainingMs).toBeLessThanOrEqual(120_000);
 
     harness.unmount();
     spectator.cleanup();

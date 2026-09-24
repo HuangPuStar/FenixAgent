@@ -183,7 +183,10 @@
     "fetching": "Fetching...",
     "selectAll": "Select / Deselect All",
     "noModelsFound": "No models found or unable to connect to provider",
-    "noModelsHint": "This may not be a configuration error — some providers do not expose a model listing API"
+    "noModelsHint": "This may not be a configuration error — some providers do not expose a model listing API",
+    "manualModelLabel": "Add a model ID manually",
+    "manualModelPlaceholder": "e.g. deepseek-v4-pro",
+    "manualModelDuplicate": "Model {{modelId}} is already in the list"
   },
   "testDialog": {
     "failTitle": "Connection Test Failed — {{name}}",
@@ -209,7 +212,7 @@
       "detailPrefix": "Error: ",
       "requestTimeout": "Test request timed out",
       "requestFailed": "Test request failed",
-      "configureModelThenTest": "This provider may not expose a model listing API. Please configure a model manually, then validate it with model testing.",
+      "configureModelThenTest": "This endpoint may only expose the message API, without a model listing API. Add the model IDs manually, or retry with the provider's OpenAI-compatible base URL. A missing listing endpoint does not affect message calls.",
       "credentialUnresolved": "The credential reference could not be resolved. Check that the environment variable referenced by {env:NAME} is configured on the server."
     }
   },

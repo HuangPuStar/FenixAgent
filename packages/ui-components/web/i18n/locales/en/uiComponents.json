@@ -32,10 +32,14 @@
         "enterChat": "Enter Chat"
       },
       "askUser": {
+        "customLabel": "Or type your own answer",
+        "customPlaceholder": "Type any answer, press Enter to submit",
         "next": "Next",
         "nextQuestion": "Next question",
         "previous": "Previous question",
         "submit": "Submit",
+        "submitUnconfirmed": "Not confirmed yet, please retry",
+        "submitting": "Submitting…",
         "title": "Question from Agent"
       },
       "chatComposer": {
@@ -48,6 +52,7 @@
         "filesTooLarge": "The total upload cannot exceed 100 MB",
         "hint": "Enter to send, Shift+Enter for newline · Paste image or type @ to reference file",
         "newSession": "New Thread",
+        "pastingImages": "Processing {{count}} pasted images…",
         "send": "Send",
         "skillButton": "Skill",
         "stop": "Stop",
@@ -98,9 +103,14 @@
         "toggle": "Expand or collapse status"
       },
       "chatView": {
+        "stage": {
+          "callingTool": "Calling tool",
+          "generating": "Generating",
+          "thinking": "Thinking",
+          "working": "Working"
+        },
         "startConversation": "Start Conversation",
-        "startConversationDesc": "Send a message to start chatting",
-        "thinking": "Thinking..."
+        "startConversationDesc": "Send a message to start chatting"
       },
       "commandMenu": {
         "connected": "Connected",
@@ -115,6 +125,7 @@
       "composerAssets": {
         "image": "Image to send",
         "imageNumber": "Image {{count}}",
+        "pasteImageUnsupported": "This agent cannot receive pasted images. Attach the image as a file instead.",
         "prepareImageFailed": "The image could not be processed. Remove it and try again.",
         "processImagePartialFailed": "Some images could not be processed and were skipped.",
         "quoteLimitReached": "The quote limit for this turn has been reached. Send or remove a quote first.",

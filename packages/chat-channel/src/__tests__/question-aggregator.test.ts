@@ -1,9 +1,9 @@
 // packages/chat-channel/src/__tests__/question-aggregator.test.ts
 // AskUserQuestion 交互问题链路测试（切片 1：relay 入站映射 + 聚合层投影）：
 // - acp-channel 把 interactive_question 私有帧翻译为 question_requested 规范化事件
-// - 聚合层投影 Session Doc root.pendingQuestions（幂等 upsert、60s expiresAt）
+// - 聚合层投影 Session Doc root.pendingQuestions（幂等 upsert、120s expiresAt）
 // - question_resolved CAS：重复 resolve 只生效一次
-// - 60s 超时 CAS（expireQuestion）：pending → expired 一次
+// - 120s 超时 CAS（expireQuestion）：pending → expired 一次
 
 import { beforeEach, expect, test } from "bun:test";
 import { normalizeAcpMessage } from "../protocol/acp-channel";
@@ -50,6 +50,14 @@ function interactiveQuestionFrame(questionId = "iqa_1") {
   };
 }
 
+// 弹窗等待上限（阈值本身）：120s。三处同值缺一不可——acp-link 的 ELICITATION_TIMEOUT_MS
+// 与 claude-adapter 的 AskUserQuestion 等待定时器（agent 侧的应答等待）必须 ≥ 本投影过期时间，
+// 否则 agent 已按空答案继续、前端弹窗还在；反过来（投影先过期）用户还在作答就已判过期。
+// 本用例把本包的这一端钉死在 120s：单独回退这一处（或漏改另一处）都会在这里露出来。
+test("question timeout threshold stays at 120s (aligned with acp-link wait)", () => {
+  expect(DEFAULT_QUESTION_TIMEOUT_MS).toBe(120_000);
+});
+
 // relay 入站映射：interactive_question 私有帧 → question_requested 规范化事件
 test("interactive_question frame normalizes to question_requested", () => {
   const normalized = normalizeAcpMessage(interactiveQuestionFrame(), "interactive_question");
@@ -61,8 +69,8 @@ test("interactive_question frame normalizes to question_requested", () => {
   expect(normalized?.content).toBeNull();
 });
 
-// 聚合投影：question_requested 写入 Session Doc root.pendingQuestions（含 60s expiresAt）
-test("question_requested projects pendingQuestions with 60s expiresAt", () => {
+// 聚合投影：question_requested 写入 Session Doc root.pendingQuestions（含 120s expiresAt）
+test("question_requested projects pendingQuestions with 120s expiresAt", () => {
   applyNormalizedEvent(pair, event("user_message", { content: { type: "text", text: "hi" } }, "turn_1"));
   applyNormalizedEvent(
     pair,
@@ -89,7 +97,9 @@ test("question_requested projects pendingQuestions with 60s expiresAt", () => {
   expect(question.get("status")).toBe("pending");
   expect(question.get("answer")).toBeNull();
   const expiresAt = new Date(question.get("expiresAt") as string).getTime();
-  // 超时对齐 acp-link 60s：expiresAt 落在 (now, now + DEFAULT_QUESTION_TIMEOUT_MS] 区间
+  // 超时对齐 acp-link 的应答等待上限：expiresAt 落在 (now, now + DEFAULT_QUESTION_TIMEOUT_MS] 区间
+  // 阈值本身在下方单独钉住（120s）——它必须与 acp-link 的 ELICITATION_TIMEOUT_MS 同值，
+  // 任一处单独回退都会让「弹窗可见期」与「agent 等待期」错位
   expect(expiresAt).toBeGreaterThan(Date.now());
   expect(expiresAt).toBeLessThanOrEqual(Date.now() + DEFAULT_QUESTION_TIMEOUT_MS);
   // questions[] 结构校验后投影（header 非字符串 → null 的边界由聚合层提取函数处理）
@@ -179,7 +189,7 @@ test("question resolve falls back to legacy single optionId", () => {
   expect(question.get("answer")).toBe('["production"]');
 });
 
-// 60s 超时 CAS：expireQuestion 仅 pending → expired 一次，重复过期无副作用
+// 120s 超时 CAS：expireQuestion 仅 pending → expired 一次，重复过期无副作用
 test("expired question migrates to expired once and cannot be responded afterwards", () => {
   applyNormalizedEvent(pair, event("user_message", { content: { type: "text", text: "hi" } }, "turn_1"));
   applyNormalizedEvent(pair, event("question_requested", { questionId: "iqa_1", questions: [] }));

@@ -198,6 +198,24 @@ export function getEntry(ydoc: Y.Doc, entryId: string): Y.Map<unknown> | null {
 }
 
 /**
+ * callback（异步回调）独立条目的 id 前缀：user 条目为 `callback_<uuid>`，
+ * 其 assistant 条目为 `callback_<uuid>:assistant`（见 aggregator 的 callback 分支）。
+ * 这类条目不属于任何 turn（turnId=null），id 由 relay 边界铸造并随事件携带
+ * callbackEntryId 下发，聚合层按该 id 写入——与 `${turnId}:user` / `${turnId}:assistant`
+ * 两套 turn 归属 id 并列存在。铸造点与查询点必须共用本常量，否则会漂移。
+ */
+export const CALLBACK_ENTRY_PREFIX = "callback_";
+
+/**
+ * 判定条目 id 是否属于 callback 独立条目。
+ * 用途：区分「本轮回显写入的 turn 归属条目」与「回调自己写下的历史条目」——
+ * 前者可作为回显去重依据，后者不能（否则周期性重复同一提示词的真回调会被吞）。
+ */
+export function isCallbackEntryId(entryId: string): boolean {
+  return entryId.startsWith(CALLBACK_ENTRY_PREFIX);
+}
+
+/**
  * 设置 Entry 状态（终态由调用方状态机保证不可逆）。
  * 同值短路（SP-A3）：流式期间聚合层对每帧 message_delta/reasoning_delta 重复
  * 设置 "streaming"，yjs 同值 set 无相等性检查、仍产生新 op（Item + tombstone），

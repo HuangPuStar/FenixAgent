@@ -15,3 +15,23 @@
 .chat-question-option-index {
   flex: 0 0 21px;
 }
+
+/*
+ * 提问卡片的宽度（2026-09-24 修）：**不再**沿用共享栈类 `.chat-interaction-cards` 的 px 台阶
+ * `min(756px, calc(100% - 64px))`——那条与输入岛的 rem 刻度（`CHAT_COMPOSER_WIDTH_CLASS` 的
+ * `max-w-200` + `px-4`，宿主 13px 根字号下宽列 650px）不同源：宽屏下比输入岛宽，中宽屏下
+ * `calc(100% - 64px)` 近似拉满，用户反馈「卡片横跨整个聊天区」。
+ *
+ * 宽度改由渲染处从输入岛派生（`../shell/ChatInterface` 先套 `CHAT_COMPOSER_WIDTH_CLASS`，再按
+ * `CHAT_COMPOSER_TOP_CARD_INSET_CLASS` 每侧收进一条台阶），与此前已按同一口径修过的状态面板
+ * （`./chat-status-panel`）一致；本组件与共享栈类都不再给宽度，`width: auto` 让栈容器铺满渲染处
+ * 给的宽度容器（此时栈容器上的 `mx-auto` 是空转）。
+ *
+ * 为什么用双类选择器：共享样式表（`./chat-interaction-region.css`）里的单类规则与本规则同层，
+ * 谁生效取决于样式表生成顺序——双类把特指度抬到 (0,2,0)，与生成顺序无关（同
+ * `ChatHeader.css` 用 `.acp-main-root .chat-header-panel` 提权的做法）。
+ * 权限卡片仍走那条旧 px 台阶：本次范围只含提问卡片，未一并迁移。
+ */
+.chat-interaction-cards.chat-question-cards {
+  width: auto;
+}

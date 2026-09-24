@@ -1,15 +1,19 @@
-// plugin-market-catalog.tsx — 插件市场目录页的展示骨架（左目录 + 右详情）
+// plugin-market-catalog.tsx — 插件市场目录页的展示骨架（左目录 + 右详情），**只读**
 //
 // 页面形状与 mcp / skill / 知识库三个目录页一致：`AppPage` → `AppHeader` + `ScopeFilterBar` →
 // `AgentMasterDetailWorkspace`。**不新增详情路由**：市场是单页目录，选中项是页内状态，刷新与浏览器历史都
 // 不需要第二层路由参与（与三个先例同裁定）。
 //
-// 选中项的**有效值**由调用方解析（`resolveSelectedPackage`）：`selectedSlug` 为 null 或已不在过滤结果里时，
-// 回退到第一条。放在调用方而不是本文件，是因为详情要按选中的 slug 发请求——选中态与请求必须取自同一份
-// 解析结果，两处各推一次就会漂移（选中了 A、请求的却是 B）。
+// 两份清单都从调用方传入而不是在这里过滤：`packages` 是后端给的**全量**（范围计数要用全量，否则数字会随
+// 关键词跳动），`filtered` 是当前生效的可见集合。目录渲染与选中项解析因此用的是同一份过滤结果——在这里再算
+// 一次就多一个「谁说了算」的分歧点（先例：选中了 A、请求的却是 B 的详情）。
 //
-// 目录过滤与计数是纯函数（`plugin-market-utils`），本文件只负责渲染；加载 / 故障 / 无权限三个整页状态也
-// 在这里，因为它们互斥且会替换掉整块内容，散在调用方会让调用方同时持有布局与数据两类关注点。
+// 目录过滤与展示取值是纯函数（`web/lib/plugin-market-utils.ts`），本文件只负责渲染；加载与故障两个整页状态
+// 也在这里，因为它们互斥且会替换掉整块内容，散在调用方会让调用方同时持有布局与数据两类关注点。
+//
+// **没有任何写入口**：发布、下架与恢复只在管理台（宿主路由 `/admin/plugin-market`）。因此这里也没有页面级
+// 能力位、没有逐行动作、没有已下架范围与下架水印——公开口径的条目与版本历史里根本不含它们（后端
+// `toWebPackageView` 只投浏览字段）。
 
 import {
   AgentCatalogIndex,
@@ -20,52 +24,42 @@ import {
   AgentCatalogIndexMeta,
   AgentCatalogIndexNav,
 } from "@fenix/ui-components/components/agent-catalog-index";
-import {
-  AgentMasterDetailHeader,
-  AgentMasterDetailWorkspace,
-} from "@fenix/ui-components/components/agent-master-detail-workspace";
+import { AgentMasterDetailWorkspace } from "@fenix/ui-components/components/agent-master-detail-workspace";
 import { EmptyState } from "@fenix/ui-components/config/EmptyState";
 import { ScopeFilterBar, type ScopeFilterOption } from "@fenix/ui-components/config/ScopeFilterBar";
 import { AppHeader } from "@fenix/ui-components/layout/app-header";
 import { AppPage } from "@fenix/ui-components/layout/app-page";
-import { Button } from "@fenix/ui-components/ui/button";
 import { Skeleton } from "@fenix/ui-components/ui/skeleton";
-import { AlertTriangle, Package, Plus, RefreshCw, ShieldAlert } from "lucide-react";
+import { AlertTriangle, Package, RefreshCw, ShieldAlert } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import type { PluginCatalogScope, PluginPackageDetailView, PluginPackageView } from "../../../api/plugin-market-types";
+import { PluginMarketDetail, PluginMarketDetailHeader } from "../../../components/plugin-market-detail";
 import { PLUGIN_MARKET_NS } from "../../../i18n/namespace";
-import { PluginMarketDetail } from "./plugin-market-detail";
 import {
   countScopes,
-  filterPackages,
   getPackageDisplayName,
   getPackageSummary,
   isUnauthorizedError,
   resolveSelectedPackage,
-} from "./plugin-market-utils";
+} from "../../../lib/plugin-market-utils";
 
 type Props = {
-  /** 全量条目（后端不做服务端分页与检索，过滤在本页完成）。 */
+  /** 后端返回的**全量**条目（不做服务端分页与检索，过滤在前端完成）；范围计数用它，避免数字随关键词跳动。 */
   packages: PluginPackageView[];
+  /** 当前生效的可见集合；目录渲染与选中项解析都用它。 */
+  filtered: PluginPackageView[];
   loading: boolean;
   error?: Error | undefined;
   query: string;
   scope: PluginCatalogScope;
-  /** 页面级能力位：主体是不是平台系统管理员。不按条目推导（空市场时管理员也要有发布入口）。 */
-  canPublish: boolean;
   selectedSlug: string | null;
   /** 选中条目的详情；未选中或首帧未返回时为 null。 */
   detail: PluginPackageDetailView | null;
   detailLoading: boolean;
   detailError?: Error | undefined;
-  /** 有写操作在飞行中：行内写按钮一起禁用，避免连点出两条命令。 */
-  writing: boolean;
   onQueryChange: (value: string) => void;
   onScopeChange: (value: PluginCatalogScope) => void;
   onSelect: (slug: string) => void;
-  onPublish: () => void;
-  onUnpublish: (packageName: string, exactVersion: string) => void;
-  onRestore: (packageName: string, exactVersion: string) => void;
   onRetry: () => void;
   onDetailRetry: () => void;
 };
@@ -95,7 +89,9 @@ export function PluginMarketCatalog(props: Props) {
         <EmptyState
           icon={<AlertTriangle />}
           title={t("loadState.title")}
-          description={props.error.message}
+          // 说明取本包字典，不回显服务端 `error.message`（§9.3）：信封原文是后端文案、可能带内部实现细节，
+          // 且不随界面语言变化。原始对象由容器在 `useRequest` 的 `onError` 里落日志，排障上下文没丢。
+          description={t("loadState.hint")}
           tone="danger"
           role="alert"
           className="flex min-h-96 flex-col items-center justify-center"
@@ -105,10 +101,9 @@ export function PluginMarketCatalog(props: Props) {
     );
   }
 
-  const filtered = filterPackages(props.packages, props.query, props.scope);
   const counts = countScopes(props.packages);
-  // 有效选中项与调用方用于发详情请求的那次解析是同一个函数（见 `resolveSelectedPackage` 的说明）。
-  const selected = resolveSelectedPackage(props.packages, props.query, props.scope, props.selectedSlug);
+  // 有效选中项与调用方用于发详情请求的那次解析是同一个函数、同一份输入（见 `resolveSelectedPackage`）。
+  const selected = resolveSelectedPackage(props.filtered, props.selectedSlug);
 
   // 作用域清单与展示文案归本页所有（组件只负责渲染）：`satisfies` 保留字面量类型，
   // 让下面的回调可以按本页的联合类型收窄，而不是把 `string` 漏进业务状态。
@@ -116,24 +111,11 @@ export function PluginMarketCatalog(props: Props) {
     { value: "all", label: t("scope.all"), count: counts.all },
     { value: "teams", label: t("scope.teams"), count: counts.teams },
     { value: "connectors", label: t("scope.connectors"), count: counts.connectors },
-    { value: "withdrawn", label: t("scope.withdrawn"), count: counts.withdrawn },
   ] satisfies readonly ScopeFilterOption[];
 
   return (
     <AppPage>
-      <AppHeader
-        title={t("title")}
-        subtitle={t("subtitle")}
-        actions={
-          // 发布入口按页面级能力位渲染，而不是按条目：市场为空时没有任何条目可推，管理员仍需入口。
-          props.canPublish ? (
-            <Button onClick={props.onPublish}>
-              <Plus />
-              {t("btn.publish")}
-            </Button>
-          ) : null
-        }
-      />
+      <AppHeader title={t("title")} subtitle={t("subtitle")} />
 
       {/* 工具栏的地标名由调用方给出：`role="search"` 与 `aria-label` 都是根节点透传属性。 */}
       <ScopeFilterBar
@@ -150,7 +132,7 @@ export function PluginMarketCatalog(props: Props) {
         scopeGroupLabel={t("scope.label")}
       />
 
-      {filtered.length === 0 ? (
+      {props.filtered.length === 0 ? (
         <EmptyState
           icon={<Package />}
           title={props.packages.length === 0 ? t("empty") : t("emptySearch")}
@@ -159,15 +141,15 @@ export function PluginMarketCatalog(props: Props) {
         />
       ) : (
         <AgentMasterDetailWorkspace
-          detailHeader={selected ? <MarketDetailHeader view={selected} /> : null}
+          detailHeader={selected ? <PluginMarketDetailHeader view={selected} /> : null}
           index={
             <AgentCatalogIndex
               title={t("directory.title")}
-              count={filtered.length}
-              description={t("directory.summary", { visible: filtered.length, total: props.packages.length })}
+              count={props.filtered.length}
+              description={t("directory.summary", { visible: props.filtered.length, total: props.packages.length })}
             >
               <AgentCatalogIndexNav label={t("directory.title")}>
-                {filtered.map((view) => {
+                {props.filtered.map((view) => {
                   const active = view.slug === selected?.slug;
                   return (
                     <AgentCatalogIndexItem
@@ -187,7 +169,6 @@ export function PluginMarketCatalog(props: Props) {
                       {/* 尾注里的每个标签都是一个 `<span>`（共享 CSS 按这个约定给形态）。 */}
                       <AgentCatalogIndexMeta>
                         <span>{view.latestVersion ?? t("directory.noVersion")}</span>
-                        {view.hidden ? <span>{t("status.withdrawn")}</span> : null}
                       </AgentCatalogIndexMeta>
                       <AgentCatalogIndexArrow />
                     </AgentCatalogIndexItem>
@@ -201,36 +182,13 @@ export function PluginMarketCatalog(props: Props) {
             detail={props.detail}
             loading={props.detailLoading}
             error={props.detailError}
-            canPublish={props.canPublish}
-            writing={props.writing}
             // 时刻与体积按当前界面语言本地化：库内格式化原语不读 i18n，语言只在这一处传入。
             locale={i18n.language}
-            onUnpublish={props.onUnpublish}
-            onRestore={props.onRestore}
             onRetry={props.onDetailRetry}
           />
         </AgentMasterDetailWorkspace>
       )}
     </AppPage>
-  );
-}
-
-/** 详情头：身份 + 展示版本 + 下架水印。 */
-function MarketDetailHeader({ view }: { view: PluginPackageView }) {
-  const { t } = useTranslation(PLUGIN_MARKET_NS);
-  return (
-    <AgentMasterDetailHeader className="flex items-start justify-between gap-4 border-b border-border px-5 py-4">
-      <div className="min-w-0">
-        <h2 className="truncate text-base font-medium">{getPackageDisplayName(view)}</h2>
-        <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-text-muted">
-          <span className="font-mono break-all">{view.packageName}</span>
-          <span>
-            {t("detail.latestVersion")}：{view.latestVersion ?? t("directory.noVersion")}
-          </span>
-          {view.hidden ? <span className="rounded-sm bg-surface-2 px-1.5 py-0.5">{t("status.withdrawn")}</span> : null}
-        </div>
-      </div>
-    </AgentMasterDetailHeader>
   );
 }
 

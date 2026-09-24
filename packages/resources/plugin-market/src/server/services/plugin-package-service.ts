@@ -16,8 +16,9 @@ import type { PluginPackageReadRepository } from "../repositories/plugin-package
 /**
  * 市场目录的读侧领域服务。
  *
- * 只做两件事：把「读口径」翻译成业务条件交给仓储下推，把行投影成视图（`domain/package-view.ts`）。不接收
- * actor、不做任何权限判断——授权条件是不透明的 `access` 句柄，由 Facade 产出后原样下推。
+ * 只做三件事：把「读口径」翻译成业务条件交给仓储下推，把授权条件原样透传，把行投影成视图
+ * （`domain/package-view.ts`）。不接收 actor、不做任何权限判断——授权条件是不透明的 `access` 句柄，由
+ * Facade 产出后原样下推；管理面根本没有这个句柄（那正是「不属于任何主体」的表达）。
  *
  * 它是 `route → Facade → Domain Service → Repository` 里唯一允许拼业务条件的一层：条件里出现的是包名、
  * 来源与可见性口径这些**业务列**，不出现组织、角色或 `visibility`（后者属于资源主表的授权列，只由平台
@@ -27,24 +28,32 @@ import type { PluginPackageReadRepository } from "../repositories/plugin-package
 /**
  * 读口径：这是个**授权结论的输入**，不是查询参数。
  *
- * `public` = 公开面（非写权主体）：整包下架的条目与「不存在」同响应——列表里根本没有它、详情里查不到它。
- * `all` = 管理面（写权主体）：含整包下架的条目，版本历史带下架水印。两者共用同一条 `latest_publication_id
- * IS NOT NULL` 谓词，因此「列表里有、详情却 404」这类不一致不可能出现。
+ * `public` = 浏览面（`/web/config/plugin-market/*`，任意已认证主体）：整包下架的条目与「不存在」同响应——
+ * 列表里根本没有它、详情里查不到它。`all` = 管理面（`/api/system/plugin-market/*`，系统凭据）：含整包下架
+ * 的条目，版本历史带下架水印。两者共用同一条 `latest_publication_id IS NOT NULL` 谓词，因此「列表里有、
+ * 详情却 404」这类不一致不可能出现。
  *
- * 口径由 Facade 按授权结果给出（见 `facades/plugin-package-facade.ts` 的 `resolveReadScope`），服务不做
- * 任何再判断：在这里重算一次权限，就等于有了第二处授权实现。
+ * 口径由 Facade 按调用方所属的凭据族给出（见 `facades/plugin-package-facade.ts` 的文件头），服务不做任何
+ * 再判断：在这里重算一次权限，就等于有了第二处授权实现。
  */
 export type CatalogReadScope = "public" | "all";
 
 export interface PluginPackageService {
   list(input: {
-    readonly access: ResourceQueryConstraint;
+    /**
+     * 列表授权条件；**管理面不传**（Facade 已由系统凭据判据放行，见 `PluginPackageFacade` 的文件头）。
+     *
+     * 不传与「传一个恒真条件」在语义上不同：前者表示这次查询不属于任何主体，后者是伪造了一份授权结论。
+     * 平台端口据此把两条路径分开记录（`AuthorizedResourceQuery` 的说明）。
+     */
+    readonly access?: ResourceQueryConstraint;
     readonly sourceId: string;
     readonly scope: CatalogReadScope;
   }): Promise<{ items: PackageView[]; total: number }>;
   /** 按 slug 定位详情；不存在、slug 非法或按当前口径不可见时都返回 `undefined`（由 Facade 统一映射为 404）。 */
   findDetailBySlug(input: {
-    readonly access: ResourceQueryConstraint;
+    /** 同 {@link PluginPackageService.list}：管理面不传。 */
+    readonly access?: ResourceQueryConstraint;
     readonly sourceId: string;
     readonly scope: CatalogReadScope;
     readonly slug: string;
@@ -92,7 +101,7 @@ export function createPluginPackageService(repository: PluginPackageReadReposito
   return {
     async list(input) {
       const page = await repository.listReadable({
-        access: input.access,
+        ...(input.access === undefined ? {} : { access: input.access }),
         businessWhere: catalogConditions(input),
       });
 
@@ -122,7 +131,7 @@ export function createPluginPackageService(repository: PluginPackageReadReposito
       if (packageName === null) return;
 
       const row = await repository.findReadable({
-        access: input.access,
+        ...(input.access === undefined ? {} : { access: input.access }),
         businessWhere: catalogConditions({ ...input, packageName }),
       });
       if (!row) return;

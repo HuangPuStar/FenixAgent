@@ -13,7 +13,7 @@ import { providerApi } from "../../../api/providers.ts";
 import { MODELS_NS } from "../../../i18n/namespace";
 import { useProviderTestErrorText } from "./agent-models-errors";
 import type { ProviderDialogTarget, ProviderDraft } from "./agent-models-types";
-import { buildProviderInlineTestPayload, getProviderKey } from "./agent-models-utils";
+import { buildProviderInlineTestPayload, getProviderKey, mergeModelCandidates } from "./agent-models-utils";
 import { EditorFormDialog } from "./editor-form-dialog";
 
 interface ProviderEditorDialogProps {
@@ -59,6 +59,7 @@ export function ProviderEditorDialog({ target, providers, saving, onClose, onSav
   );
   const [availableModels, setAvailableModels] = useState<string[]>([]);
   const [fetchError, setFetchError] = useState("");
+  const [manualModelId, setManualModelId] = useState("");
 
   const fetchModels = useRequest(
     async () => {
@@ -93,6 +94,27 @@ export function ProviderEditorDialog({ target, providers, saving, onClose, onSav
 
   const update = <K extends keyof ProviderDraft>(key: K, value: ProviderDraft[K]) =>
     setDraft((current) => ({ ...current, [key]: value }));
+
+  const manualId = manualModelId.trim();
+
+  /**
+   * 手动登记一个模型 ID。
+   *
+   * 这不是探测失败的降级路径，而是部分服务商的**唯一**配置路径：列表接口与消息接口不总在同一地址上
+   * （Anthropic 兼容端点常只实现 `/v1/messages`），探测必然 404，而模型本身是可用的。
+   */
+  const addManualModel = () => {
+    if (manualId === "") return;
+    if (draft.selectedModels.includes(manualId)) {
+      toast.error(t("form.manualModelDuplicate", { modelId: manualId }));
+      return;
+    }
+    update("selectedModels", [...draft.selectedModels, manualId]);
+    setManualModelId("");
+  };
+
+  // 候选集是"探测结果 + 已选手动条目"：手动条目不在探测结果里，但也必须可见、可取消。
+  const modelCandidates = mergeModelCandidates(availableModels, draft.selectedModels);
 
   const handleSubmit = async (event: React.FormEvent) => {
     event.preventDefault();
@@ -191,14 +213,32 @@ export function ProviderEditorDialog({ target, providers, saving, onClose, onSav
               {fetchModels.loading ? t("form.fetching") : t("form.fetchModels")}
             </Button>
           </div>
+          {/* 手动入口与「获取模型列表」并列，不藏在探测成功之后：这正是列表接口拿不到时唯一能走的路。 */}
+          <div className="model-dialog-section__manual">
+            <Input
+              value={manualModelId}
+              onChange={(event) => setManualModelId(event.target.value)}
+              // 外壳是 <form>，回车默认提交整份服务商表单；这一行把回车收成"添加"。
+              onKeyDown={(event) => {
+                if (event.key !== "Enter") return;
+                event.preventDefault();
+                addManualModel();
+              }}
+              aria-label={t("form.manualModelLabel")}
+              placeholder={t("form.manualModelPlaceholder")}
+            />
+            <Button type="button" variant="outline" size="sm" onClick={addManualModel} disabled={manualId === ""}>
+              {t("actions.add")}
+            </Button>
+          </div>
           {fetchError && (
             <p className="model-dialog-error" role="alert">
               {fetchError}
             </p>
           )}
-          {availableModels.length > 0 && (
+          {modelCandidates.length > 0 && (
             <div className="model-discovery-list">
-              {availableModels.map((modelId) => {
+              {modelCandidates.map((modelId) => {
                 const selected = draft.selectedModels.includes(modelId);
                 return (
                   <button

@@ -108,6 +108,10 @@ function hasLeafPath(baseUrl: string, path: ProbeLeafPath): boolean {
  * 已知盲区（改动前后同样覆盖不到，只能靠用户把 baseUrl 填成带版本段的形态）：
  *
  * - 指向**不带版本段**的自定义根：`https://gw.example.com/anthropic` → `.../anthropic/v1/messages`；
+ *   这一形态还有一层协议事实：Anthropic 兼容面（DeepSeek `https://api.deepseek.com/anthropic` 等）
+ *   常只实现 `/v1/messages`，没有 `/v1/models`，因此本函数在该形态下拼出的列表请求必然 404。列表接口
+ *   属 OpenAI 兼容面（DeepSeek 为 `https://api.deepseek.com/models`），与消息端点不在同一地址上——
+ *   探测不做跨地址回落（会变成猜），改由 {@link fetchProviderModels} 的提示与配置面板的手动输入承接。
  * - 版本段不是整段：`.../api/v2.1`、`.../api/2024-10-01`（日期版本）认不出来，仍会补 `/v1`；
  * - 带 query 的 baseUrl（Azure 的 `?api-version=`）：拼出来的 query 位置不对，本就不受支持。
  */
@@ -229,7 +233,9 @@ export async function fetchProviderModels(target: ProviderProbeTarget, signal: A
         protocol: "anthropic",
         status: res.status,
         detail: await readErrorDetail(res),
-        // Anthropic 的 /models 在部分部署上不可用，但 /messages 可用：提示用户改用"测试模型"。
+        // Anthropic 兼容端点常常只实现 `/v1/messages`（DeepSeek 的 `/anthropic` 前缀即如此），列表接口
+        // 因此必然 404/405，而消息调用完全正常：hint 让前端把处置方式说清（手动输入模型 ID，或改用该
+        // 服务商的 OpenAI 兼容地址重新获取），而不是让用户以为密钥或地址填错了。
         hint: res.status === 404 || res.status === 405 ? "configure_model_then_test_model" : undefined,
       });
     }

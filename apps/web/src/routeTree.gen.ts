@@ -18,6 +18,7 @@ import { Route as ViewProdViewIdRouteImport } from "./routes/view/$prodViewId"
 import { Route as AgentPanelRouteImport } from "./routes/agent/_panel"
 import { Route as AgentAgentIdRouteImport } from "./routes/agent/$agentId"
 import { Route as AdminSandboxRouteImport } from "./routes/admin/sandbox"
+import { Route as AdminPluginMarketRouteImport } from "./routes/admin/plugin-market"
 import { Route as AdminPeopleRouteImport } from "./routes/admin/people"
 import { Route as AdminModelGatewayRouteImport } from "./routes/admin/model-gateway"
 import { Route as AdminLogsRouteImport } from "./routes/admin/logs"
@@ -28,7 +29,6 @@ import { Route as AgentPanelVerticalModelsRouteImport } from "./routes/agent/_pa
 import { Route as AgentPanelTasksRouteImport } from "./routes/agent/_panel/tasks"
 import { Route as AgentPanelSkillsRouteImport } from "./routes/agent/_panel/skills"
 import { Route as AgentPanelSitesRouteImport } from "./routes/agent/_panel/sites"
-import { Route as AgentPanelPluginMarketRouteImport } from "./routes/agent/_panel/plugin-market"
 import { Route as AgentPanelOrganizationsRouteImport } from "./routes/agent/_panel/organizations"
 import { Route as AgentPanelModelsRouteImport } from "./routes/agent/_panel/models"
 import { Route as AgentPanelMemoriesRouteImport } from "./routes/agent/_panel/memories"
@@ -92,6 +92,11 @@ const AdminSandboxRoute = AdminSandboxRouteImport.update({
   path: "/sandbox",
   getParentRoute: () => AdminRoute,
 } as any)
+const AdminPluginMarketRoute = AdminPluginMarketRouteImport.update({
+  id: "/plugin-market",
+  path: "/plugin-market",
+  getParentRoute: () => AdminRoute,
+} as any)
 const AdminPeopleRoute = AdminPeopleRouteImport.update({
   id: "/people",
   path: "/people",
@@ -141,11 +146,6 @@ const AgentPanelSkillsRoute = AgentPanelSkillsRouteImport.update({
 const AgentPanelSitesRoute = AgentPanelSitesRouteImport.update({
   id: "/sites",
   path: "/sites",
-  getParentRoute: () => AgentPanelRoute,
-} as any)
-const AgentPanelPluginMarketRoute = AgentPanelPluginMarketRouteImport.update({
-  id: "/plugin-market",
-  path: "/plugin-market",
   getParentRoute: () => AgentPanelRoute,
 } as any)
 const AgentPanelOrganizationsRoute = AgentPanelOrganizationsRouteImport.update({
@@ -247,6 +247,7 @@ export interface FileRoutesByFullPath {
   "/admin/logs": typeof AdminLogsRoute
   "/admin/model-gateway": typeof AdminModelGatewayRoute
   "/admin/people": typeof AdminPeopleRoute
+  "/admin/plugin-market": typeof AdminPluginMarketRoute
   "/admin/sandbox": typeof AdminSandboxRoute
   "/agent/$agentId": typeof AgentAgentIdRoute
   "/agent": typeof AgentPanelRouteWithChildren
@@ -264,7 +265,6 @@ export interface FileRoutesByFullPath {
   "/agent/memories": typeof AgentPanelMemoriesRoute
   "/agent/models": typeof AgentPanelModelsRoute
   "/agent/organizations": typeof AgentPanelOrganizationsRoute
-  "/agent/plugin-market": typeof AgentPanelPluginMarketRoute
   "/agent/sites": typeof AgentPanelSitesRoute
   "/agent/skills": typeof AgentPanelSkillsRoute
   "/agent/tasks": typeof AgentPanelTasksRoute
@@ -285,6 +285,7 @@ export interface FileRoutesByTo {
   "/admin/logs": typeof AdminLogsRoute
   "/admin/model-gateway": typeof AdminModelGatewayRoute
   "/admin/people": typeof AdminPeopleRoute
+  "/admin/plugin-market": typeof AdminPluginMarketRoute
   "/admin/sandbox": typeof AdminSandboxRoute
   "/agent/$agentId": typeof AgentAgentIdRoute
   "/view/$prodViewId": typeof ViewProdViewIdRoute
@@ -301,7 +302,6 @@ export interface FileRoutesByTo {
   "/agent/memories": typeof AgentPanelMemoriesRoute
   "/agent/models": typeof AgentPanelModelsRoute
   "/agent/organizations": typeof AgentPanelOrganizationsRoute
-  "/agent/plugin-market": typeof AgentPanelPluginMarketRoute
   "/agent/sites": typeof AgentPanelSitesRoute
   "/agent/skills": typeof AgentPanelSkillsRoute
   "/agent/tasks": typeof AgentPanelTasksRoute
@@ -324,6 +324,7 @@ export interface FileRoutesById {
   "/admin/logs": typeof AdminLogsRoute
   "/admin/model-gateway": typeof AdminModelGatewayRoute
   "/admin/people": typeof AdminPeopleRoute
+  "/admin/plugin-market": typeof AdminPluginMarketRoute
   "/admin/sandbox": typeof AdminSandboxRoute
   "/agent/$agentId": typeof AgentAgentIdRoute
   "/agent/_panel": typeof AgentPanelRouteWithChildren
@@ -341,7 +342,6 @@ export interface FileRoutesById {
   "/agent/_panel/memories": typeof AgentPanelMemoriesRoute
   "/agent/_panel/models": typeof AgentPanelModelsRoute
   "/agent/_panel/organizations": typeof AgentPanelOrganizationsRoute
-  "/agent/_panel/plugin-market": typeof AgentPanelPluginMarketRoute
   "/agent/_panel/sites": typeof AgentPanelSitesRoute
   "/agent/_panel/skills": typeof AgentPanelSkillsRoute
   "/agent/_panel/tasks": typeof AgentPanelTasksRoute
@@ -365,6 +365,7 @@ export interface FileRouteTypes {
     | "/admin/logs"
     | "/admin/model-gateway"
     | "/admin/people"
+    | "/admin/plugin-market"
     | "/admin/sandbox"
     | "/agent/$agentId"
     | "/agent"
@@ -382,7 +383,6 @@ export interface FileRouteTypes {
     | "/agent/memories"
     | "/agent/models"
     | "/agent/organizations"
-    | "/agent/plugin-market"
     | "/agent/sites"
     | "/agent/skills"
     | "/agent/tasks"
@@ -403,6 +403,7 @@ export interface FileRouteTypes {
     | "/admin/logs"
     | "/admin/model-gateway"
     | "/admin/people"
+    | "/admin/plugin-market"
     | "/admin/sandbox"
     | "/agent/$agentId"
     | "/view/$prodViewId"
@@ -419,7 +420,6 @@ export interface FileRouteTypes {
     | "/agent/memories"
     | "/agent/models"
     | "/agent/organizations"
-    | "/agent/plugin-market"
     | "/agent/sites"
     | "/agent/skills"
     | "/agent/tasks"
@@ -441,6 +441,7 @@ export interface FileRouteTypes {
     | "/admin/logs"
     | "/admin/model-gateway"
     | "/admin/people"
+    | "/admin/plugin-market"
     | "/admin/sandbox"
     | "/agent/$agentId"
     | "/agent/_panel"
@@ -458,7 +459,6 @@ export interface FileRouteTypes {
     | "/agent/_panel/memories"
     | "/agent/_panel/models"
     | "/agent/_panel/organizations"
-    | "/agent/_panel/plugin-market"
     | "/agent/_panel/sites"
     | "/agent/_panel/skills"
     | "/agent/_panel/tasks"
@@ -549,6 +549,13 @@ declare module "@tanstack/react-router" {
       preLoaderRoute: typeof AdminSandboxRouteImport
       parentRoute: typeof AdminRoute
     }
+    "/admin/plugin-market": {
+      id: "/admin/plugin-market"
+      path: "/plugin-market"
+      fullPath: "/admin/plugin-market"
+      preLoaderRoute: typeof AdminPluginMarketRouteImport
+      parentRoute: typeof AdminRoute
+    }
     "/admin/people": {
       id: "/admin/people"
       path: "/people"
@@ -617,13 +624,6 @@ declare module "@tanstack/react-router" {
       path: "/sites"
       fullPath: "/agent/sites"
       preLoaderRoute: typeof AgentPanelSitesRouteImport
-      parentRoute: typeof AgentPanelRoute
-    }
-    "/agent/_panel/plugin-market": {
-      id: "/agent/_panel/plugin-market"
-      path: "/plugin-market"
-      fullPath: "/agent/plugin-market"
-      preLoaderRoute: typeof AgentPanelPluginMarketRouteImport
       parentRoute: typeof AgentPanelRoute
     }
     "/agent/_panel/organizations": {
@@ -752,6 +752,7 @@ interface AdminRouteChildren {
   AdminLogsRoute: typeof AdminLogsRoute
   AdminModelGatewayRoute: typeof AdminModelGatewayRoute
   AdminPeopleRoute: typeof AdminPeopleRoute
+  AdminPluginMarketRoute: typeof AdminPluginMarketRoute
   AdminSandboxRoute: typeof AdminSandboxRoute
   AdminIndexRoute: typeof AdminIndexRoute
 }
@@ -760,6 +761,7 @@ const AdminRouteChildren: AdminRouteChildren = {
   AdminLogsRoute: AdminLogsRoute,
   AdminModelGatewayRoute: AdminModelGatewayRoute,
   AdminPeopleRoute: AdminPeopleRoute,
+  AdminPluginMarketRoute: AdminPluginMarketRoute,
   AdminSandboxRoute: AdminSandboxRoute,
   AdminIndexRoute: AdminIndexRoute,
 }
@@ -778,7 +780,6 @@ interface AgentPanelRouteChildren {
   AgentPanelMemoriesRoute: typeof AgentPanelMemoriesRoute
   AgentPanelModelsRoute: typeof AgentPanelModelsRoute
   AgentPanelOrganizationsRoute: typeof AgentPanelOrganizationsRoute
-  AgentPanelPluginMarketRoute: typeof AgentPanelPluginMarketRoute
   AgentPanelSitesRoute: typeof AgentPanelSitesRoute
   AgentPanelSkillsRoute: typeof AgentPanelSkillsRoute
   AgentPanelTasksRoute: typeof AgentPanelTasksRoute
@@ -805,7 +806,6 @@ const AgentPanelRouteChildren: AgentPanelRouteChildren = {
   AgentPanelMemoriesRoute: AgentPanelMemoriesRoute,
   AgentPanelModelsRoute: AgentPanelModelsRoute,
   AgentPanelOrganizationsRoute: AgentPanelOrganizationsRoute,
-  AgentPanelPluginMarketRoute: AgentPanelPluginMarketRoute,
   AgentPanelSitesRoute: AgentPanelSitesRoute,
   AgentPanelSkillsRoute: AgentPanelSkillsRoute,
   AgentPanelTasksRoute: AgentPanelTasksRoute,

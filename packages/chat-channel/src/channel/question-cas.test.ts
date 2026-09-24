@@ -2,7 +2,7 @@
 // AskUserQuestion（interactive_question）控制面集成测试：
 // - respond_question CAS：仅 pending → resolved 迁移一次，迁移成功才向 Agent
 //   发送 control_response 传输帧（非 JSON-RPC），重复响应不重发
-// - 60s 超时（expiresAt 到达）→ pending → expired，之后响应不发帧
+// - 120s 超时（expiresAt 到达）→ pending → expired，之后响应不发帧
 // - 会话切换 / 断链（dispose）时 question 定时器清理
 
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
@@ -145,7 +145,7 @@ describe("question CAS (AskUserQuestion)", () => {
   // Agent 只收到一次 control_response，第二次幂等返回 committed 且不重发
   test("duplicate respond_question resolves once and agent receives a single control_response", async () => {
     const { connection, relayMessages } = createConnection();
-    await setupTurnWithPendingQuestion(harness, "iqa_1", new Date(Date.now() + 60_000).toISOString());
+    await setupTurnWithPendingQuestion(harness, "iqa_1", new Date(Date.now() + 120_000).toISOString());
 
     const sinks = createSinks(harness);
     await harness.channel.handleAction(
@@ -180,7 +180,7 @@ describe("question CAS (AskUserQuestion)", () => {
   // 多选答案保持每题嵌套数组，经 SessionChannel 原样发送给 acp-link。
   test("respond_question preserves multi-select answer arrays", async () => {
     const { connection, relayMessages } = createConnection();
-    await setupTurnWithPendingQuestion(harness, "iqa_multi", new Date(Date.now() + 60_000).toISOString());
+    await setupTurnWithPendingQuestion(harness, "iqa_multi", new Date(Date.now() + 120_000).toISOString());
 
     await harness.channel.handleAction(
       connection,
@@ -202,7 +202,7 @@ describe("question CAS (AskUserQuestion)", () => {
   // 未知 questionId（不存在于 pendingQuestions）时 CAS 失败：不发帧、幂等成功
   test("unknown questionId does not send control_response", async () => {
     const { connection, relayMessages } = createConnection();
-    await setupTurnWithPendingQuestion(harness, "iqa_1", new Date(Date.now() + 60_000).toISOString());
+    await setupTurnWithPendingQuestion(harness, "iqa_1", new Date(Date.now() + 120_000).toISOString());
 
     await harness.channel.handleAction(
       connection,
@@ -239,7 +239,7 @@ describe("question CAS (AskUserQuestion)", () => {
   // 会话切换（load_session 到新会话）→ pendingQuestions 整体清空，不残留可应答项
   test("session switch clears pending questions", async () => {
     const { connection } = createConnection({ sessionLoaded: true });
-    await setupTurnWithPendingQuestion(harness, "iqa_1", new Date(Date.now() + 60_000).toISOString());
+    await setupTurnWithPendingQuestion(harness, "iqa_1", new Date(Date.now() + 120_000).toISOString());
 
     await harness.channel.handleAction(
       connection,

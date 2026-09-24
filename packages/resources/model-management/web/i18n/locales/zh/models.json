@@ -183,7 +183,10 @@
     "fetching": "获取中...",
     "selectAll": "全选 / 取消全选",
     "noModelsFound": "未获取到模型或无法连接到服务商",
-    "noModelsHint": "这不一定是配置错误 — 部分模型提供商不开放模型列表获取接口"
+    "noModelsHint": "这不一定是配置错误 — 部分模型提供商不开放模型列表获取接口",
+    "manualModelLabel": "手动添加模型 ID",
+    "manualModelPlaceholder": "输入模型 ID，如 deepseek-v4-pro",
+    "manualModelDuplicate": "模型 {{modelId}} 已在列表中"
   },
   "testDialog": {
     "failTitle": "连接测试失败 — {{name}}",
@@ -209,7 +212,7 @@
       "detailPrefix": "错误信息：",
       "requestTimeout": "测试请求超时",
       "requestFailed": "测试请求失败",
-      "configureModelThenTest": "该提供商可能没有提供模型查询接口，请先手动配置模型，再通过模型测试验证消息调用。",
+      "configureModelThenTest": "该地址可能只提供消息接口、没有模型列表查询接口：请手动输入模型 ID 添加，或改用该服务商的 OpenAI 兼容地址重新获取。列表接口缺失不影响消息调用。",
       "credentialUnresolved": "密钥引用无法解析：请确认该 {env:NAME} 引用的环境变量已在服务端配置"
     }
   },

@@ -106,8 +106,8 @@ export class SessionChannel {
     dependencies.docManager.setPermissionRequestedHandler((rcsSessionId, permission) => {
       this.armPermissionExpiry(rcsSessionId, permission.permissionId, permission.expiresAt);
     });
-    // AskUserQuestion 问题投影成功 → 安排 60s 超时迁移（与权限定时器同模式：
-    // acp-link 侧 60s 自动 resolve 空答案，投影必须同步失效否则前端弹窗悬挂）。
+    // AskUserQuestion 问题投影成功 → 安排 120s 超时迁移（与权限定时器同模式：
+    // acp-link 侧 120s 自动 resolve 空答案，投影必须同步失效否则前端弹窗悬挂）。
     dependencies.docManager.setQuestionRequestedHandler((rcsSessionId, question) => {
       this.armQuestionExpiry(rcsSessionId, question.questionId, question.expiresAt);
     });
@@ -468,7 +468,7 @@ export class SessionChannel {
     return migrated;
   }
 
-  // ── AskUserQuestion 超时（60s，与 acp-link 自动空答案对齐）──
+  // ── AskUserQuestion 超时（120s，与 acp-link 自动空答案对齐）──
 
   /**
    * 为问题请求安排过期定时器（幂等：同 questionId 已有定时器则跳过，
@@ -484,7 +484,7 @@ export class SessionChannel {
     if (timers.has(questionId)) return;
 
     const parsed = new Date(expiresAt).getTime();
-    // 超时固定与 acp-link 60s 自动空答案对齐（DEFAULT_QUESTION_TIMEOUT_MS），
+    // 超时固定与 acp-link 120s 自动空答案对齐（DEFAULT_QUESTION_TIMEOUT_MS），
     // 不提供配置覆盖：acp-link 侧无对应配置项，可配会破坏两侧失效时刻一致
     const timeoutMs = Number.isFinite(parsed) ? Math.max(0, parsed - Date.now()) : DEFAULT_QUESTION_TIMEOUT_MS;
     const timer = setTimeout(() => {

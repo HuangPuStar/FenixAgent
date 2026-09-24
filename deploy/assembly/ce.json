@@ -19,16 +19,5 @@
     "task",
     "workflow"
   ],
-  "web": [
-    "agent-config",
-    "identity",
-    "knowledge",
-    "mcp",
-    "memory",
-    "model-management",
-    "plugin-market",
-    "skill",
-    "task",
-    "workflow"
-  ]
+  "web": ["agent-config", "identity", "knowledge", "mcp", "memory", "model-management", "skill", "task", "workflow"]
 }

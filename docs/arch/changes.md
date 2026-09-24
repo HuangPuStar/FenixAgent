@@ -496,3 +496,46 @@ IMChannel 包含：
 
 **影响**：全部改动可加性——新包 + 三张新表 + 若干登记项与生成物，不触碰任何既有表、既有数据与既有接口。回滚 = 回退提交 + 删除三张表 + 重跑两个 generate 脚本，无存量数据迁移。
 
+
+---
+
+## 改动 20：npm 插件市场并入「插件市场」页，改为可切换 tab
+
+**状态**：✅ 已实施（2026-09-23）
+
+**现状（实施前）**：npm 插件市场（改动 19）作为独立资源模块接入时自带一条 `web` 导航贡献，侧栏于是出现两项语义相近的「插件市场」——`/agent/mcp` 的 MCP 市场与 `/agent/plugin-market` 的 npm 市场。用户必须先猜「我要的插件在哪个市场」，选错就要退回去换入口。
+
+**目标**：两个市场合并为同一页的两个 tab，侧栏只保留一项入口；tab 状态可分享、可后退；两个市场各保留自己的完整页面壳与动作。
+
+**实施内容**：
+
+1. **宿主路由改为 tab 壳**：`apps/web/src/routes/agent/_panel/mcp.tsx` 承载 tab 栏与两个市场的 `lazy()` 装配，`?tab=npm` 选中 npm 市场、缺省即 MCP 市场（tab 状态放 URL 而非组件 state，刷新与前进后退都保持一致）。壳**只装配不取数**（前端规范 §2.7）：发布按钮的可见性来自页面自己取到的 `canPublish`，因此标题区连同动作留在各包内，两个市场各自保留 `AppPage` + `AppHeader`。
+2. **独立入口撤除**：删除路由文件 `apps/web/src/routes/agent/_panel/plugin-market.tsx`；`fenix.module.ts` 移除 `web` 字段、`package.json` 移除 `./web/contribution` 出口、`deploy/assembly/ce.json` 的 `web` 列表移除本包，`apps/generated/web-contributions.ts` 与 `routeTree.gen.ts` 重生成（web 贡献包 10 → 9，导航项 15 → 14）。此后本包与 `channel` / `prod-view` 同形：有宿主路由、无导航项。
+3. **文案归属不变**（前端规范 §9，各包自有字典）：tab 名由各包出（`mcp:tabs.mcp` / `pluginMarket:tabs.npm`），tab 栏的 `aria-label` 属宿主 chrome，用宿主字典 `components:marketTabs.label`；三处 en / zh 同步。
+4. **守卫**：新增 `apps/web/src/__tests__/plugin-market-tab-merge.test.ts`——从真实路由表断言独立路径已不可达、导航 id 只剩 `mcp`，并从宿主路由壳源码断言两个市场都被装配，外加三处字典键的双语覆盖。包侧 `plugin-market-browser-surface.test.ts` 改为**反例断言**：`./web/contribution` 出口一旦重新声明即失败，防止第二项侧栏入口复活。`shell-navigation.test.ts` 的迁移前快照同步记明本次合并。
+
+**影响**：纯前端装配层改动加登记项调整，服务端契约、数据库与领域规则零变化。回滚 = 回退提交 + 重跑 `generate:web-contributions` 与 `build:web`。
+
+---
+
+## 改动 21：插件市场的管理动作迁入管理台，浏览面退化为只读
+
+**状态**：✅ 已实施（2026-09-24）
+
+**现状（实施前）**：npm 插件市场（改动 19）把两条读路由与四条写路由（preview / publish / unpublish / restore）一起挂在浏览面 `/web/config/plugin-market/*`，凭据是浏览器会话；控制台页面同时承担浏览与发布。代价有三条：写权是**平台级**动作（条目归属系统托管租户），浏览器会话里却要先经「当前主体能否在系统租户下写」这条绕路推导写权；页面因此必须做能力探测、逐行 `access` 与冲突重试，而它们只对极少数平台运维者有意义；「市场是什么」与「谁能改市场」两个问题被压在同一张凭据上，任何一次写权判定调整都会同时改变浏览体验。
+
+**目标**：把写路径切到平台既有的系统 API Key 面（与 observer 的 `/api/system/logs`、sandbox 的 `/api/system/sandbox-pools` 同一类：凭据本身就是判据），控制台那一面退化为纯只读浏览。两处不是同一页面的两个入口，而是**两种凭据下的两种能力**。
+
+**实施内容**：
+
+1. **服务端两条面分槽**：新增 `src/server/routes/api/system-plugin-market.ts`（六条 `/api/system/plugin-market/*` 路由，`systemApiKeyAuth` 守卫由宿主注入）；`plugin-market-support.ts` 从 `web/config/` 提到 `routes/` 根作为两面共用的协议映射助手；`web/config/plugin-market.ts` 只剩两条读路由。`fenix.module.ts` 的 `contributions` 因此从「web-config 一条」变成「web-config（浏览）+ api（管理）」两条。
+2. **Facade 方法按凭据族分组**：`list` / `getDetail` 收 `ActorContext`（浏览面授权谓词下推），`listAll` / `getDetailAll` 与四个写方法**不收**（管理面没有可信主体，`SystemTenant` 的 `userId` 是审计主体）。混用是编译期错误而非运行期约定。写路径**不在 Facade 做第二遍角色判定**——两处各判一次正是「按钮按旧规则显示、写入按新规则拒绝」这类漂移的来源。
+3. **能力位与逐行 `access` 撤除**：浏览面没有任何写入口，`canPublish` 只会让前端渲染一个与真实判据无关的按钮；管理面能进来就能写，逐行能力位同样无消费方。授权不受影响——`listConstraint` 早已把谓词编译进 SQL。
+4. **读口径分档**：浏览面恒为公开面（整包下架的条目不存在，详情与「不存在」同响应 404）；管理面走全量口径（含下架条目与 `unpublishedAt` 水印）。写路径的 409 `PREVIEW_CHANGED` 仍携带新快照——管理面的四个写方法**刻意不做 `unwrap`**，否则这条冲突信息会被信封丢掉。
+5. **前端拆成两条面**：新增 `web/pages/admin/AdminPluginMarketPage.tsx`（`AdminKeyGate` 门，master key 存 sessionStorage）与 `pages/admin/components/*`（dashboard / catalog / publish-dialog / publish-form）；展示件提到 `web/components/plugin-market-detail.tsx` 供两面共用，版本历史的**写动作列由管理面注入**。浏览面删除全部写入口。纯逻辑按消费方拆成 `web/lib/plugin-market-utils.ts`（两面共用）与 `web/lib/plugin-market-admin-utils.ts`（管理面专有：`countAdminScopes`、多一档「已下架」的 `filterAdminPackages`、`readPreviewChangedPayload`、`changeToastKey`）。
+6. **宿主登记**：新增 `apps/web/src/routes/admin/plugin-market.tsx`（懒加载管理页）与 `apps/web/src/routes/admin.tsx` 的侧栏项（字典 `admin.nav`）；包字典新增 `admin.*` 与 `detail.hiddenPackage`。
+7. **守卫随能力边界一起搬**：`plugin-market-browser-surface.test.ts` 新增「浏览面子图不可达管理面（API、写逻辑、管理页）」的值导入图断言与「入口不转出内部件」负例；新增宿主契约测试 `plugin-market-admin-route.test.ts`（路由表 / 导航项 / 双语字典三处）；`route-contributions.test.ts` 的期望从 `web-config` 四条写路由改为 `api` 槽六条。
+8. **文档**：`docs/arch/24-plugin-market.md` 的 §0 / §5 / §7 / §8 / §9 按两条面重写（§8 拆为 8.1 浏览面与 8.2 管理面）。
+
+**影响**：服务端为路由迁移 + 授权入口收敛，**领域规则、数据模型与数据库零变化**（无迁移、无存量数据动作）；前端为页面搬迁与能力面收窄，控制台用户可见的变化是「市场里不能再发布」——这是本次改动的意图而非回归。回滚 = 回退提交 + 重跑 `generate:module-registry`。
+

@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import type { ActorContext, ResourceScopeStore } from "@fenix/platform-sdk";
-import { AppError, ForbiddenError, NotFoundError } from "@fenix/platform-sdk";
+import type { ResourceScopeStore } from "@fenix/platform-sdk";
+import { AppError, NotFoundError } from "@fenix/platform-sdk";
 import { initializeTestApplicationInfrastructure, resetAllStubs } from "@fenix/platform-sdk/testing";
 import { pluginPackageResource } from "../server/access/plugin-package-resource";
 import type { PackageDetailView, PackageView } from "../server/domain/package-view";
@@ -23,12 +23,9 @@ import {
   createRecordingPackageService,
   createStubIdentity,
   memberActor,
-  outsiderActor,
   packageDetailViewOf,
-  packageViewOf,
   resetMarketModuleStub,
   SYSTEM_TENANT,
-  systemAdminActor,
 } from "./market-fixtures";
 
 /**
@@ -40,8 +37,9 @@ import {
  *    私有源上的内容可能已被替换，而恢复的语义是「把市场里那一份重新对公众可见」。私有源读取做成可计数的端口，
  *    于是「没出网」是一条断言而不是一句注释。
  * 2. **摘要比对是确认步骤的全部意义**。不一致时写入必须被拦下，并把新快照交回前端原地重新确认。
- * 3. **读口径由写权推出**。写权主体看得到整包下架的条目，其余人只看公开面；两类主体共用读侧的同一条可见性
- *    谓词，因此「列表里有、详情却 404」不可能出现。
+ * 3. **两条凭据族各自的口径**。浏览面（收 actor）恒走公开口径并下推授权谓词；管理面（不收 actor）走全量口径
+ *    且**不带**授权条件，归属组织与审计主体取自系统托管租户。两族混用是编译期错误，这里的断言锁的是运行期
+ *    另一半：哪一面把什么条件交给了读侧。
  *
  * 目录状态由 `./catalog-harness` 的内存底座驱动**生产**的规则函数（分派结果因此是在真实状态迁移上验证的），
  * 授权由 `./market-fixtures` 的策略同形替身给出。测试进程里没有 Postgres，也没有应该被访问的私有源。
@@ -143,96 +141,53 @@ afterEach(() => {
 });
 
 describe("读口径", () => {
-  // 写权主体看得到整包下架的条目，其余人只看公开面：口径由授权结果推出，读侧不做第二次判断。
-  test("写权主体走 all 口径，普通成员走 public 口径", async () => {
+  // 两条凭据族走两条口径：浏览面（收 actor）恒为公开面并把授权谓词交给读侧，管理面（不收 actor）走全量口径且
+  // 不带授权条件——「没有主体」这件事必须一路传到 SQL，而不是在某一层被一个恒真条件悄悄替代。
+  test("浏览面走 public 口径并带授权条件，管理面走 all 口径且不带", async () => {
     const world = setup();
 
-    await world.facade.list(systemAdminActor());
     await world.facade.list(memberActor());
+    await world.facade.listAll();
 
-    expect(world.listCalls.map((call) => call.scope)).toEqual(["all", "public"]);
+    expect(world.listCalls.map((call) => call.scope)).toEqual(["public", "all"]);
+    expect(world.listCalls[0]?.access).toBeDefined();
+    expect(world.listCalls[1]?.access).toBeUndefined();
     // 来源标识只由部署配置决定，绝不接受请求传入。
     expect(world.listCalls.map((call) => call.sourceId)).toEqual(["npm", "npm"]);
   });
 
-  // 页面级能力位与写权同源：管理员的空市场也要能拿到「可以发布」，否则第一次发布没有入口。
-  test("空市场的 canPublish 仍按写权给出", async () => {
-    const world = setup({ items: [] });
-
-    const adminList = await world.facade.list(systemAdminActor());
-    const outsiderList = await world.facade.list(outsiderActor());
-
-    expect(adminList.total).toBe(0);
-    expect(adminList.canPublish).toBe(true);
-    expect(outsiderList.canPublish).toBe(false);
-  });
-
-  // 列表项必须带当前主体自己的有效动作：前端按 `access.actions` 决定是否显示发布/下架入口。
-  test("列表项带主体自己的有效动作", async () => {
-    const world = setup({ items: [packageViewOf()] });
-
-    const adminList = await world.facade.list(systemAdminActor());
-    const memberList = await world.facade.list(memberActor());
-
-    expect(adminList.items[0]?.access.actions).toContain("create");
-    expect(memberList.items[0]?.access.actions).toEqual(["read"]);
-    expect(adminList.total).toBe(1);
-  });
-
-  // 详情按 slug 定位，并把主体的有效动作一并返回（与列表同形，前端两条路径共用一套判断）。
-  test("详情按 slug 定位并附带有效动作", async () => {
+  // 详情走与列表同一个口径：同一 slug 在两条路径上要么都可见、要么都 404，不存在「列表里有、详情查不到」。
+  test("详情按 slug 定位，两条面各自的口径与列表一致", async () => {
     const detail = packageDetailViewOf();
     const world = setup({ detail });
 
-    const view = await world.facade.getDetail(systemAdminActor(), detail.slug);
+    const view = await world.facade.getDetail(memberActor(), detail.slug);
+    const adminView = await world.facade.getDetailAll(detail.slug);
 
-    expect(world.detailCalls[0]?.slug).toBe(detail.slug);
-    expect(world.detailCalls[0]?.scope).toBe("all");
-    expect(view.access.actions).toContain("create");
+    expect(world.detailCalls.map((call) => call.slug)).toEqual([detail.slug, detail.slug]);
+    expect(world.detailCalls.map((call) => call.scope)).toEqual(["public", "all"]);
+    expect(world.detailCalls[0]?.access).toBeDefined();
+    expect(world.detailCalls[1]?.access).toBeUndefined();
+    expect(view.packageName).toBe(detail.packageName);
+    expect(adminView.packageName).toBe(detail.packageName);
   });
 
-  // 不存在、slug 非法与「整包下架且主体无写权」合流成同一个 404：区分它们会把市场变成内部状态探针。
+  // 不存在、slug 非法与「整包下架的条目」合流成同一个 404：区分它们会把市场变成内部状态探针。
   test("读侧返回空时统一映射为 404", async () => {
     const world = setup();
 
     expect(await errorOf(world.facade.getDetail(memberActor(), "absent"))).toBeInstanceOf(NotFoundError);
+    expect(await errorOf(world.facade.getDetailAll("absent"))).toBeInstanceOf(NotFoundError);
   });
 });
 
-describe("写权", () => {
-  // 普通成员与外部组织的 owner 都不是写权主体：发布、下架、恢复、预览四条写路径全部 403，且此时私有源与目录
-  // 一次都不该被触碰——未授权的主体连「代为读取私有源」都不应该发生。
-  test("非系统管理员的四条写路径全部 403 且不出网", async () => {
-    const write = { packageName: TEST_PACKAGE_NAME, exactVersion: VERSION, requestId: "req-1" };
-
-    for (const actor of [memberActor(), outsiderActor()] as ActorContext[]) {
-      const world = setup();
-
-      for (const work of [
-        world.facade.preview(actor, write),
-        world.facade.publish(actor, { ...write, previewDigest: "sha256:preview" }),
-        world.facade.unpublish(actor, write),
-        world.facade.restore(actor, write),
-      ]) {
-        const error = await errorOf(work);
-        expect(error).toBeInstanceOf(ForbiddenError);
-        expect(error.code).toBe("FORBIDDEN");
-        expect(error.statusCode).toBe(403);
-      }
-
-      expect(world.registryCalls).toEqual([]);
-      expect(world.catalogPort.publishes).toEqual([]);
-      expect(world.catalogPort.unpublishes).toEqual([]);
-      expect(world.catalogPort.stateReads).toEqual([]);
-    }
-  });
-
-  // 写权探测用的是「在系统租户下能否创建」这条与真实写入同源的判定；归属组织必须是系统托管租户，否则同一份
-  // 全局目录会被切散到各管理员自己的组织下。
-  test("系统管理员的发布归属固定为系统托管租户", async () => {
+describe("管理面写入", () => {
+  // 归属组织与审计主体都取自系统托管租户：条目落在系统租户下（否则同一份全局目录会被切散到各管理员自己的
+  // 组织下），而 `owner_user_id` 是 NOT NULL 的真实用户 ID——管理面不产生「匿名条目」。
+  test("发布归属与审计主体取自系统托管租户", async () => {
     const world = setup();
 
-    await world.facade.publish(systemAdminActor(), {
+    await world.facade.publish({
       packageName: TEST_PACKAGE_NAME,
       exactVersion: VERSION,
       previewDigest: "sha256:preview",
@@ -240,7 +195,20 @@ describe("写权", () => {
     });
 
     expect(world.catalogPort.publishes[0]?.creationScope.organizationId).toBe(SYSTEM_TENANT.organizationId);
-    expect(world.catalogPort.publishes[0]?.operatorUserId).toBe(systemAdminActor().userId);
+    expect(world.catalogPort.publishes[0]?.operatorUserId).toBe(SYSTEM_TENANT.userId);
+  });
+
+  // 下架与恢复同样要能解析出审计主体，否则审计流水里会出现空操作人（真实故障形态：写入成功、审计丢失）。
+  test("下架与恢复命令带系统租户的操作人", async () => {
+    const world = setup();
+    await world.catalog.publish(VERSION);
+
+    await world.facade.unpublish({ packageName: TEST_PACKAGE_NAME, exactVersion: VERSION, requestId: "req-11" });
+    await world.facade.restore({ packageName: TEST_PACKAGE_NAME, exactVersion: VERSION, requestId: "req-12" });
+
+    expect(world.catalogPort.unpublishes[0]?.operatorUserId).toBe(SYSTEM_TENANT.userId);
+    expect(world.catalogPort.publishes[0]?.operatorUserId).toBe(SYSTEM_TENANT.userId);
+    expect(world.catalogPort.publishes[0]?.requestId).toBe("req-12");
   });
 });
 
@@ -250,7 +218,7 @@ describe("发布分派", () => {
     const world = setup();
     await world.catalog.publish(VERSION);
 
-    const change = await world.facade.publish(systemAdminActor(), {
+    const change = await world.facade.publish({
       packageName: TEST_PACKAGE_NAME,
       exactVersion: VERSION,
       // 摘要与库内快照的不一致，但幂等分支根本不该看它。
@@ -273,7 +241,7 @@ describe("发布分派", () => {
     await world.catalog.unpublish(VERSION);
     const firstPublishedAt = world.catalog.publicationOf(VERSION)?.firstPublishedAt;
 
-    const change = await world.facade.publish(systemAdminActor(), {
+    const change = await world.facade.publish({
       packageName: TEST_PACKAGE_NAME,
       exactVersion: VERSION,
       requestId: "req-4",
@@ -293,7 +261,7 @@ describe("发布分派", () => {
 
     expect(
       await codeOf(
-        world.facade.publish(systemAdminActor(), {
+        world.facade.publish({
           packageName: TEST_PACKAGE_NAME,
           exactVersion: VERSION,
           requestId: "req-5",
@@ -310,7 +278,7 @@ describe("发布分派", () => {
     const world = setup({ preview: fresh });
 
     const error = await errorOf(
-      world.facade.publish(systemAdminActor(), {
+      world.facade.publish({
         packageName: TEST_PACKAGE_NAME,
         exactVersion: VERSION,
         previewDigest: "sha256:preview",
@@ -331,7 +299,7 @@ describe("发布分派", () => {
     const fresh = previewOf(VERSION, "sha256:fresh");
     const world = setup({ preview: fresh });
 
-    await world.facade.publish(systemAdminActor(), {
+    await world.facade.publish({
       packageName: TEST_PACKAGE_NAME,
       exactVersion: VERSION,
       previewDigest: "sha256:fresh",
@@ -351,7 +319,7 @@ describe("恢复入口", () => {
 
     expect(
       await codeOf(
-        world.facade.restore(systemAdminActor(), {
+        world.facade.restore({
           packageName: TEST_PACKAGE_NAME,
           exactVersion: VERSION,
           requestId: "req-8",
@@ -367,7 +335,7 @@ describe("恢复入口", () => {
     await world.catalog.publish(VERSION);
     await world.catalog.unpublish(VERSION);
 
-    const change = await world.facade.restore(systemAdminActor(), {
+    const change = await world.facade.restore({
       packageName: TEST_PACKAGE_NAME,
       exactVersion: VERSION,
       requestId: "req-9",
@@ -384,29 +352,48 @@ describe("下架", () => {
     const world = setup();
     await world.catalog.publish(VERSION);
 
-    const change = await world.facade.unpublish(systemAdminActor(), {
+    const change = await world.facade.unpublish({
       packageName: TEST_PACKAGE_NAME,
       exactVersion: VERSION,
       requestId: "req-10",
     });
 
     expect(change.action).toBe("unpublish");
-    expect(world.catalogPort.unpublishes[0]?.operatorUserId).toBe(systemAdminActor().userId);
+    expect(world.catalogPort.unpublishes[0]?.operatorUserId).toBe(SYSTEM_TENANT.userId);
     expect(world.catalogPort.unpublishes[0]?.requestId).toBe("req-10");
     expect(world.catalog.visibleVersions()).toEqual([]);
   });
 });
 
 describe("系统租户缓存", () => {
-  // `resolveSystemTenant()` 会查身份库、必要时执行一次系统管理员引导：读路径每次都要问写权，必须只解析一次。
-  test("系统租户只解析一次", async () => {
+  // 三条写路径都要解析系统租户（归属组织与审计主体都从它来），而 `resolveSystemTenant()` 会查身份库、必要时
+  // 还要执行一次系统管理员引导：同一个进程里必须只解析一次。
+  test("多条写路径只解析一次系统租户", async () => {
     const world = setup();
 
-    await world.facade.list(systemAdminActor());
-    await world.facade.list(memberActor());
-    await world.facade.list(outsiderActor());
+    await world.facade.publish({
+      packageName: TEST_PACKAGE_NAME,
+      exactVersion: VERSION,
+      previewDigest: "sha256:preview",
+      requestId: "req-20",
+    });
+    await world.facade.unpublish({ packageName: TEST_PACKAGE_NAME, exactVersion: VERSION, requestId: "req-21" });
+    await world.facade.publish({ packageName: TEST_PACKAGE_NAME, exactVersion: VERSION, requestId: "req-22" });
 
     expect(world.tenantReads()).toBe(1);
+  });
+
+  // 读路径不解析租户：两条面都不问「系统租户是谁」——浏览面按主体授权、管理面按系统凭据（文件头的两类面），
+  // 因此读一次列表不该连带查身份库、更不该触发系统管理员引导。
+  test("读路径不解析系统租户", async () => {
+    const world = setup({ detail: packageDetailViewOf() });
+
+    await world.facade.list(memberActor());
+    await world.facade.getDetail(memberActor(), "any-slug");
+    await world.facade.listAll();
+    await world.facade.getDetailAll("any-slug");
+
+    expect(world.tenantReads()).toBe(0);
   });
 });
 
@@ -415,14 +402,12 @@ describe("非法入参", () => {
   test("非法包名与版本在出网之前被拒绝", async () => {
     const world = setup();
 
-    expect(
-      await codeOf(world.facade.preview(systemAdminActor(), { packageName: "../../admin", exactVersion: VERSION })),
-    ).toBe("INVALID_INPUT");
-    expect(
-      await codeOf(
-        world.facade.preview(systemAdminActor(), { packageName: TEST_PACKAGE_NAME, exactVersion: "^1.0.0" }),
-      ),
-    ).toBe("INVALID_INPUT");
+    expect(await codeOf(world.facade.preview({ packageName: "../../admin", exactVersion: VERSION }))).toBe(
+      "INVALID_INPUT",
+    );
+    expect(await codeOf(world.facade.preview({ packageName: TEST_PACKAGE_NAME, exactVersion: "^1.0.0" }))).toBe(
+      "INVALID_INPUT",
+    );
     expect(world.registryCalls).toEqual([]);
   });
 });

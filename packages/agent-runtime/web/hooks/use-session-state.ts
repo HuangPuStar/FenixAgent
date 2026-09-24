@@ -70,7 +70,7 @@ interface SessionMetaSnapshot {
   canCancel: boolean;
   /** permissionId → 展示选项（Session Doc pendingPermissions 的 3 值 kind 翻译而来） */
   permissionOptions: Map<string, PermissionOption[]>;
-  /** questionId → AskUserQuestion 投影（Session Doc pendingQuestions，60s 过期自动剔除） */
+  /** questionId → AskUserQuestion 投影（Session Doc pendingQuestions，120s 过期自动剔除） */
   pendingQuestions: Map<string, QuestionProjection>;
   /** Agent 运行时错误（Session Doc agent.publicError 直接读取，未发生错误时为 null） */
   agentPublicError: PublicErrorInfo | null;
@@ -94,8 +94,8 @@ function computeMetaSnapshot(ydoc: Y.Doc): SessionMetaSnapshot {
   }
 
   // AskUserQuestion 弹窗数据源：只投影 status=pending 且未过期的问题（双保险：
-  // 后端 60s 超时定时器会 CAS 迁移 expired，前端按 expiresAt 本地剔除兜底，
-  // 与后端失效时刻一致——acp-link 侧 60s 自动 resolve 空答案，过期面板必须消失）
+  // 后端 120s 超时定时器会 CAS 迁移 expired，前端按 expiresAt 本地剔除兜底，
+  // 与后端失效时刻一致——acp-link 侧 120s 自动 resolve 空答案，过期面板必须消失）
   const pendingQuestions = new Map<string, QuestionProjection>();
   if (questions) {
     const now = Date.now();
@@ -108,7 +108,9 @@ function computeMetaSnapshot(ydoc: Y.Doc): SessionMetaSnapshot {
         status: "pending",
         questions: (question.get("questions") as QuestionProjection["questions"]) ?? [],
         description: (question.get("description") as string | null | undefined) ?? null,
-        expiresAt: expiresAt ?? new Date(now + 60_000).toISOString(),
+        // 兜底值必须跟随后端策略（chat-channel 的 DEFAULT_QUESTION_TIMEOUT_MS = 120s）：
+        // 投影缺 expiresAt 时若按更短的值兜底，面板会在 agent 仍在等待时提前消失。
+        expiresAt: expiresAt ?? new Date(now + 120_000).toISOString(),
         answer: null,
       });
     }

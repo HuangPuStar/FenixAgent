@@ -393,6 +393,17 @@ export function ChatComposer({
           </div>
         )}
 
+        {/* 粘贴资产进行中提示（压缩编码与上传两条通路共通）：粘贴到资产出现之间有压缩/上传窗口，
+            没有它用户看到的是「什么都没有」——本问题的原始症状，会以为没粘上而重复粘贴；
+            读屏软件经 role="status" 播报。 */}
+        {handlers.pastingImageCount > 0 && (
+          <div className="text-center" role="status" aria-live="polite">
+            <span className="text-3xs text-text-muted">
+              {t("chat.components.chatComposer.pastingImages", { count: handlers.pastingImageCount })}
+            </span>
+          </div>
+        )}
+
         {/* 提示文本 */}
         <div className="text-center mt-1.5">
           <span className="text-3xs text-text-muted">{t("chat.components.chatComposer.hint")}</span>

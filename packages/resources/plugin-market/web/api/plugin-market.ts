@@ -1,65 +1,28 @@
 /**
- * plugin-market.ts — 插件市场域 API 模块
+ * plugin-market.ts — 插件市场域 API 模块（**浏览面**）
  *
- * 封装市场条目的读取与三个平台管理动作（发布 / 下架 / 恢复）。
- * 后端是六条 `/web/config/plugin-market/*` 端点：读两条（列表、详情）走 GET，写四条（预览、发布、下架、
- * 恢复）走 POST——写动作是**平台管理动作**（只有系统管理员可用），没有 `/api` 面，也不由外部系统发起。
+ * 两条读端点：列表与详情。发布、下架与恢复是平台管理动作，走系统凭据的
+ * `./system-plugin-market.ts`（`/api/system/plugin-market/*`）——控制台里没有任何写入口，用户只是「看得到
+ * 市场」。
  *
- * 方法一律返回 `ApiResponse`（域模块不做 `unwrap`）：发布路径的 409 `PREVIEW_CHANGED` 必须把响应体里的
- * 新快照交给调用方，而 `unwrap` 会把响应压成一个异常对象，调用方只能靠断言把 `data` 取回来。页面侧因此
- * 显式判断 `success`——这不是「忘了 unwrap」，是这条路径的真实契约。
+ * 这两条路径**永不访问 npm 私有源**：它们只经服务端 Facade 的读方法，浏览既有快照与私有源此刻的内容无关。
+ *
+ * 读方法仍返回 `ApiResponse` 而不在模块内 `unwrap`（调用方用 `unwrap` 拿 `ApiError` 语义）：这是本域与
+ * `system-plugin-market.ts` 共守的一条口径——该模块的写路径必须把 409 响应体里的新快照交给调用方，
+ * 两个模块对同一件「响应怎么交给上层」的事给两种约定只会让人在错误的一侧写 `try/catch`。
  */
 
 import { request } from "@fenix/web-runtime/api/request";
-import type {
-  PluginPackageDetailView,
-  PluginPackageListResult,
-  PluginPublicationChange,
-  PluginPublicationPreview,
-} from "./plugin-market-types";
-
-/** 精确版本定位参数：包名 + 精确 SemVer（后端在拼 URL 之前做形状校验）。 */
-export interface VersionTarget {
-  packageName: string;
-  exactVersion: string;
-}
+import type { PluginPackageDetailView, PluginPackageListResult } from "./plugin-market-types";
 
 export const pluginMarketApi = {
-  /** 全量列表（前端过滤，后端不做服务端分页与检索）。 */
+  /** 市场列表（后端不做服务端分页与检索，过滤在前端完成——决策 D7）。 */
   list: () => request<PluginPackageListResult>("/web/config/plugin-market/packages", { method: "GET" }),
 
-  /** 条目详情：展示快照 + 版本历史（写权主体含已下架版本，带水印）。 */
+  /** 条目详情：展示快照 + 版本历史（公开口径，只含可见版本）。 */
   get: (slug: string) =>
     request<{ package: PluginPackageDetailView }>("/web/config/plugin-market/packages/:slug", {
       method: "GET",
       params: { slug },
-    }),
-
-  /** 读取私有源并规范化；不写库。私有源未配置时后端返回 503。 */
-  preview: (target: VersionTarget) =>
-    request<{ preview: PluginPublicationPreview }>("/web/config/plugin-market/publish/preview", {
-      method: "POST",
-      body: target,
-    }),
-
-  /** 确认发布；`previewDigest` 是预览返回的摘要，后端写入前重读私有源比对。 */
-  publish: (target: VersionTarget & { previewDigest: string }) =>
-    request<{ change: PluginPublicationChange }>("/web/config/plugin-market/publish", {
-      method: "POST",
-      body: target,
-    }),
-
-  /** 下架某个精确版本。 */
-  unpublish: (target: VersionTarget) =>
-    request<{ change: PluginPublicationChange }>("/web/config/plugin-market/unpublish", {
-      method: "POST",
-      body: target,
-    }),
-
-  /** 恢复已下架版本；版本从未进入市场时后端返回 404。 */
-  restore: (target: VersionTarget) =>
-    request<{ change: PluginPublicationChange }>("/web/config/plugin-market/restore", {
-      method: "POST",
-      body: target,
     }),
 };
