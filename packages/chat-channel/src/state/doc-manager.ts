@@ -17,7 +17,7 @@ import { encodeYjsReplaceFrame } from "../protocol/update-frame";
 import { DEFAULT_PERMISSION_TIMEOUT_MS, DEFAULT_QUESTION_TIMEOUT_MS, type NormalizedEvent } from "../schema";
 import type { ChatDoc, ProjectionDocs, SessionDoc } from "../types";
 import { applyNormalizedEvent } from "./aggregator";
-import { getEntriesMap, getEntryOrder, hasChatDocContent } from "./chat-writer";
+import { getEntriesMap, getEntryOrder, hasChatDocContent, isCallbackEntryId } from "./chat-writer";
 import { createChatDoc, createSessionDoc, loadChatDoc, loadSessionDoc } from "./factory";
 
 /** 合并窗口（毫秒）：文本/思考增量可落入同一窗口合并为一个 yjs:update */
@@ -293,8 +293,13 @@ export class DocManager {
    * 文档中是否已存在同文本的 user entry（实时回显 / 重复回放的去重判定）。
    *
    * 用途：窗口外无 turnId 的 user_message（relay 的 callback 分类）需要区分
-   * 「实时 prompt 回显」与「真异步回调」。回显的文本必然已由
+   * 「实时 prompt 回显 / 迟到历史回放」与「真异步回调」。回显的文本必然已由
    * `registerUserMessage` 写入 Chat Doc，命中即回显/重复回放；未命中视为回调。
+   *
+   * 匹配集合排除 callback_* 条目：它们同样是 role=user，但不是 `registerUserMessage`
+   * 写的（是回调自己的提问气泡）。纳入匹配会让周期性重复同一提示词的真回调命中上
+   * 一次回调的条目，提问与回答整条被静默丢弃——数据丢失比错位更糟，故回调条目
+   * 一律不参与回显去重。
    *
    * 归一化口径：trim + 折叠空白——引擎回显可能改写空白，逐字比较会漏判；
    * 空文本一律返回 false（不得把空回显当"已有内容"，否则真回调会被吞）。
@@ -307,6 +312,7 @@ export class DocManager {
     if (!target) return false;
     const entries = getEntriesMap(doc.ydoc);
     for (const entryId of getEntryOrder(doc.ydoc).toArray()) {
+      if (isCallbackEntryId(entryId)) continue;
       const entry = entries.get(entryId);
       if (entry?.get("role") !== "user") continue;
       if (normalizeUserText(readEntryText(entry)) === target) return true;

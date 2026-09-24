@@ -180,6 +180,8 @@ export function createRelayEvents(
     hasTimelineContent: () => false,
     // 窗口外无 turnId user_message 的回显去重判定；默认 mock 无 doc → 视为无同文本条目
     hasUserMessageText: () => false,
+    // callback 绑定的换代判定依据；默认 mock 无 doc → generation 视为 null（不参与判定）
+    getProjectionGeneration: () => null,
   } as unknown as DocManager;
   return new RelayEventHandler({
     docManager,

@@ -240,12 +240,14 @@ if (!inReplayWindow && event.type === "user_message" && !event.turnId) {
 | `packages/chat-channel/src/channel/relay-event-handler.test.ts` | 新增 `RelayEventHandler callback routing`（7 例） |
 | `packages/chat-channel/src/__tests__/doc-manager.test.ts` | 新增 `hasUserMessageText` 正反例 1 例（覆盖精确命中 / 空白改写 / 仅助手同文 / 空文本 / 未打开会话） |
 
+> 上表记录首个提交（`545fa2c5`）的形态；§14 的复核修复改动了其中三行的最终形态（`connection-types.ts` 增 `callbackBindingGeneration`、relay 移除 `openReplayWindow` 的清空绑定、doc-manager 跳过 callback 条目）。
+
 与方案的差异（实施中发现，需记录原因）：
 
 1. **代际不符的终态直接丢弃**（方案 §5.3 伪码未覆盖）：解绑后若把无 `callbackEntryId` 的终态交回聚合层，`aggregator.ts:494-503` 会按当前活动 turn 归位——**提前终结用户正在进行的回答**（新 turn 增量随后被 `canWriteToTurn` 全部丢弃、答案永不出现）。因此该分支只把「增量」交回聚合层，终态丢弃并记 `stale callback terminal dropped`。副作用：失去绑定的回调流最多保持非终态展示，不影响用户可见内容。
 2. **测试 3 的语义修正**：方案原写「回调增量继续落回调条目，实时 turn 的增量落 `turn_X:assistant`」，但无 turnId 增量在 relay 层无法区分来源（这正是缺陷 B 的成因）。代际变化后所有无 turnId 增量都归当前 turn，故该用例与用例 4 合并为：断言旧 callback assistant 的文本与状态不被追加（隔离留痕），同时新轮回答落 `turn_X:assistant`。
 3. **归一化口径为「trim + 折叠空白」**（保留空白的有无，不删除全部空白）：空白改写（换行/多空格/首尾空白）等价，`"第一条消息"` 与 `"第一条\n消息"` 不判为同文——后者是真实内容差异，判等会误吞回调。
-4. **R3 只挂在 `openReplayWindow`**：create/load/resume 三条换代路径都会经它（relay 的 sync-result 分支与 `gateway.ts:431` 的 action 后重开窗口），无需再挂 `replaceProjection`；两条路径都在换代之后调用。
+4. **R3 只挂在 `openReplayWindow`**：create/load/resume 三条换代路径都会经它（relay 的 sync-result 分支与 `gateway.ts:431` 的 action 后重开窗口），无需再挂 `replaceProjection`；两条路径都在换代之后调用。**此条已被复核推翻**：`openReplayWindow` 并不等价于换代（同会话 load 不替换投影），无条件清空会误伤仍然有效的绑定，见 §14。
 5. **未做**：方案 §5.4 的 P2 兜底（绑定目标 entry 缺失时回落正常增量）、存量 `streaming` 收敛、前端回调气泡区分。
 
 验证（逐项核对终态；对照证据见下）：
@@ -261,3 +263,18 @@ if (!inReplayWindow && event.type === "user_message" && !event.turnId) {
 | `bunx biome check …` / `bun run typecheck:packages` | 0 warning（首轮 1 条 `useOptionalChain` 已修）、0 error |
 
 未覆盖 / 未验证：真实链路抓帧（回显文本形态、终态是否总带 turnId）；真实 TUI 冷启动；生产存量 doc 的旧错位条目观感（按裁决不处理）。`scratch-yjs-repro.ts` 为临时脚本，四个场景已由正式用例覆盖，可删。
+
+## 14. 复核修复与已知边界（2026-09-24）
+
+独立复核（`review-2026-09-24-k7m2.md`）用真实 `DocManager` + 真实 `RelayEventHandler` 复现了 6 类边界，确认缺陷 A/B 已消除，同时指出本次改动引入的两处回归。两处已修：
+
+1. **绑定失效判定改为按事实（原 R3 无条件清空回退）**。`openReplayWindow` 的调用时机 ≠ 换代：`session-channel.prepareLoadSession` 在 `!connection.sessionLoaded` + 投影已属目标会话 + 时间线非空时早退且**不**调用 `replaceProjection`（刷新页面恢复路径），此时绑定指向的 `callback_*` entry 仍在当前 Chat Doc 中，清空会让在途回调的尾部增量全部失去归属、assistant 条目永久 `streaming`（复核证据 P11）。现改为在消费端判定：`SharedRelay.callbackBindingGeneration` 记录 mint 时的 `getProjectionGeneration`，无 turnId 增量到达时若当前 generation 已变（或 active turn 已变）才解绑；`openReplayWindow` 不再触碰绑定。generation 为 null（投影未打开）时不参与判定，只按 turn 代际。
+2. **回显去重集合排除 `callback_*` 条目**。`callback_*` 条目同样是 `role=user`，但不是 `registerUserMessage` 写的（是上一条回调自己的提问气泡）。纳入匹配会让周期性重复同一提示词的真回调命中上一次回调的条目，提问与回答整条被静默丢弃（复核证据 P6），与不变量 2 冲突。前缀常量与判定收敛到 `state/chat-writer.ts` 的 `CALLBACK_ENTRY_PREFIX` / `isCallbackEntryId`，铸造点（relay）与查询点（`DocManager.hasUserMessageText`）共用，避免漂移。
+
+已知边界（本轮不修，均为「回显/回调分类判定」的残余形态，最终由候选 4 的帧来源标注收口；在此登记以免后续误判为已修）：
+
+- **空 / 非文本回显帧**：`extractUserMessageText` 返回空串时 `text &&` 短路，不进去重判定而直接建 callback 对（仅图片回显可复现）→ 多一条空用户气泡，本轮回答被吸走。
+- **多文本块 prompt 逐块回显**：写入 Chat Doc 的文本是 `extractPromptText` 以 `\n` 拼接的整体，引擎回显逐 block → 整条等值判定永不命中，每个 block 各建一对。
+- **真回调在活动 turn 进行中到达**：单槽绑定无法区分同代际的两路无 turnId 流，本轮回答会被写进回调条目（缺陷 B 的反向形态）。
+- **解绑后回调条目无终态**：陈旧终态被丢弃（§13 差异 1 的必要取舍），失去绑定的 `callback_*:assistant` 永久 `streaming`；这是新产生的永久 streaming 来源（与未决 1 的存量条目不同），用户可见为一直转圈。
+- **文件规模**：`channel/relay-event-handler.ts` 845 行（本次 +82），超 `CLAUDE.md` 原则 2 的 500 行上限，属既有债务；后续按「回放窗口管理 / callback 归属分类 / 会话同步」拆分。

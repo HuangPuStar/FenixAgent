@@ -1496,19 +1496,39 @@ describe("RelayEventHandler callback routing", () => {
     expect(entryText(chatDoc, `${turnId}:assistant`)).toBe("回答二");
   });
 
+  // 同会话 load（刷新页面恢复路径）不换代，绑定仍然有效：openReplayWindow 只在
+  // 投影真被替换时才能解绑。修复前无条件清空绑定，回调尾部增量全部失去归属，
+  // assistant 条目永久停在 streaming（内容静默丢失）。
+  test("keeps the callback binding across a same-session replay window", async () => {
+    const { chatDoc, handler, shared, onMessage } = await setup();
+    await onMessage(userEchoFrame("后台回调消息"));
+    const callbackAssistantId = callbackEntryIds(chatDoc)[1]!;
+    await onMessage(agentChunkFrame("回调前半"));
+    await waitFlush();
+
+    // 刷新页面恢复：prepareLoadSession 早退（未 replaceProjection）后仍会开回放窗口
+    handler.openReplayWindow(shared, { resampleSkip: true });
+    expect(shared.callbackAssistantEntryId).toBeTruthy();
+
+    await onMessage(agentChunkFrame("回调后半"));
+    await waitFlush();
+
+    expect(entryText(chatDoc, callbackAssistantId)).toBe("回调前半回调后半");
+  });
+
   // 换代清理（R3）：load/resume 换代后旧绑定指向的 callback entry 已不在新投影中，
-  // 不清空会让后续无 turnId 增量全部被聚合层以 "callback assistant entry not found"
-  // 拒绝而静默丢失；清空后增量按当前活动 turn 归位。
-  test("clears the callback binding when a session switch opens the replay window", async () => {
+  // 解绑由消费端按 generation 事实完成（不在 openReplayWindow 里抢先清空）——
+  // 后续无 turnId 增量按当前活动 turn 归位，不再被聚合层以
+  // "callback assistant entry not found" 拒绝而静默丢失。
+  test("releases the stale callback binding once the projection generation changes", async () => {
     const { docManager, handler, shared, onMessage } = await setup();
     await onMessage(userEchoFrame("后台回调消息"));
     expect(shared.callbackAssistantEntryId).toBeTruthy();
 
     await docManager.replaceProjection("rcs-1", "ses-B");
     handler.openReplayWindow(shared, { resampleSkip: true });
-
-    expect(shared.callbackAssistantEntryId).toBeNull();
-    expect(shared.callbackBindingTurnId).toBeNull();
+    // 换代不清空绑定（同会话 load 场景绑定仍有效），由消费端按事实解绑
+    expect(shared.callbackAssistantEntryId).toBeTruthy();
 
     // 换代后新一轮：无 turnId 增量落新 turn 的 assistant entry（不被失效绑定吃掉）
     const turnId = docManager.registerUserMessage("rcs-1", "换代后新消息");
@@ -1516,5 +1536,26 @@ describe("RelayEventHandler callback routing", () => {
     await waitFlush();
     const replacedChatDoc = docManager.getChatYdoc("rcs-1")!;
     expect(entryText(replacedChatDoc, `${turnId}:assistant`)).toBe("换代后回答");
+    expect(shared.callbackAssistantEntryId).toBeNull();
+    expect(shared.callbackBindingGeneration).toBeNull();
+  });
+
+  // 真回调的提问文本可能与上一次回调完全相同（周期性重复触发的任务提示）。
+  // 回显去重集合排除 callback_* 条目后，第二次回调仍能建立自己的条目对；
+  // 修复前它命中上一次回调写下的条目、整条（提问 + 回答）被静默丢弃。
+  test("keeps a repeated callback whose text matches an earlier callback entry", async () => {
+    const { chatDoc, onMessage } = await setup();
+    await onMessage(userEchoFrame("后台回调消息"));
+    await onMessage(agentChunkFrame("第一次回答"));
+    await waitFlush();
+
+    await onMessage(userEchoFrame("后台回调消息"));
+    await onMessage(agentChunkFrame("第二次回答"));
+    await waitFlush();
+
+    const ids = callbackEntryIds(chatDoc);
+    expect(ids).toHaveLength(4);
+    expect(entryText(chatDoc, ids[1]!)).toBe("第一次回答");
+    expect(entryText(chatDoc, ids[3]!)).toBe("第二次回答");
   });
 });

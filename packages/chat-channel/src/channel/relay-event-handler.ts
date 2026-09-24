@@ -27,6 +27,7 @@ import {
   type TurnStatus,
 } from "../schema";
 import type { DocManager } from "../state";
+import { CALLBACK_ENTRY_PREFIX } from "../state/chat-writer";
 import type { YjsBroadcaster } from "./broadcaster";
 import type { ConnectionRegistry } from "./connection-registry";
 import { REPLAY_WINDOW_MS, type RelayMessage, type SharedRelay } from "./connection-types";
@@ -682,12 +683,11 @@ export class RelayEventHandler {
    */
   openReplayWindow(shared: SharedRelay, options: { resampleSkip?: boolean } = {}): void {
     shared.replayWindowUntil = Date.now() + REPLAY_WINDOW_MS;
-    // callback 绑定换代清理：create/load/resume 的代际切换会整体替换（或复用持久化）
-    // Chat Doc 投影，旧绑定指向的 callback_* entry 在新投影中不存在；不清空则后续
-    // 无 turnId 增量都会带上失效的 callbackEntryId，被聚合层以
-    // "callback assistant entry not found" 拒绝——前端静默丢内容（无错误帧）。
-    shared.callbackAssistantEntryId = null;
-    shared.callbackBindingTurnId = null;
+    // 不在此处清空 callback 绑定：调用本方法 ≠ 换代——同会话 load（刷新页面恢复，
+    // session-channel.prepareLoadSession 的早退路径）不替换投影，绑定指向的 entry
+    // 仍在当前 Chat Doc 中，清空会让在途回调的尾部增量全部失去归属（静默丢内容）。
+    // 投影真被替换时由消费端按 callbackBindingGeneration 与当前 generation 的事实
+    // 差异解绑（dispatchReplayAware）。
     // 窗口开启瞬间判定一次 Chat Doc 是否已有时间线内容（重连跳过回放语义）并缓存：
     // 合成投影本身会写 Chat Doc，若窗口内实时检查，回放自己写入的第一条会把后续
     // 回放帧全部误判为"已有内容"挡住——多轮历史回放只投影第一条（后续全丢）。
@@ -792,24 +792,34 @@ export class RelayEventHandler {
         this.dependencies.log?.("[YJS-FE] duplicate user echo dropped");
         return;
       }
-      const callbackEntryId = `callback_${crypto.randomUUID()}`;
+      const callbackEntryId = `${CALLBACK_ENTRY_PREFIX}${crypto.randomUUID()}`;
       shared.callbackAssistantEntryId = callbackEntryId;
-      // 绑定代际：记录建立时的 active turn。无 turnId 增量到达时若当前 active turn
-      // 已变，说明绑定属于上一轮/更早的回调流，必须失效（见下方分支）。
+      // 绑定代际：记录建立时的 active turn 与投影 generation。无 turnId 增量到达时
+      // 任一已变，说明绑定属于上一轮/更早（或被替换的投影）的回调流，必须失效
+      // （见下方分支）。
       shared.callbackBindingTurnId = readActiveTurn(this.dependencies.docManager, shared.rcsSessionId).turnId ?? null;
+      shared.callbackBindingGeneration = this.dependencies.docManager.getProjectionGeneration(shared.rcsSessionId);
       event = { ...event, callbackEntryId };
     } else if (shared.callbackAssistantEntryId && !event.turnId && CALLBACK_STREAM_EVENTS.has(event.type)) {
       const bindingTurnId = shared.callbackBindingTurnId ?? null;
       const currentTurnId = readActiveTurn(this.dependencies.docManager, shared.rcsSessionId).turnId ?? null;
-      if (bindingTurnId !== currentTurnId) {
-        // 代际已变（用户已开始新一轮 / 换代后活动 turn 清空）：绑定指向的回调流已被
-        // 新 turn 接管，继续按绑定归属会把新一轮的回答追加进遥远的旧 callback assistant
-        // entry（2026-09-24 用户报告的聚合错位根因）。解绑后：
+      const bindingGeneration = shared.callbackBindingGeneration ?? null;
+      const currentGeneration = this.dependencies.docManager.getProjectionGeneration(shared.rcsSessionId);
+      // 解绑条件：turn 代际变了（用户已开始新一轮 / 换代后活动 turn 清空），或投影
+      // generation 变了（load/resume 换代，绑定指向的 callback_* entry 在新投影中已
+      // 不存在）。后者按事实判定而非在 openReplayWindow 里清空——同会话 load 不换代，
+      // 绑定仍有效。绑定时投影未打开（generation 为 null）则不参与判定，只按 turn 代际。
+      const generationChanged = bindingGeneration !== null && bindingGeneration !== currentGeneration;
+      if (generationChanged || bindingTurnId !== currentTurnId) {
+        // 绑定已失效（用户已开始新一轮 / 投影被替换）：继续按绑定归属会把新一轮的回答
+        // 追加进遥远的旧 callback assistant entry（2026-09-24 用户报告的聚合错位根因），
+        // 或把内容投给新投影中不存在的 entry（静默丢内容）。解绑后：
         // - 增量交回聚合层按当前活动 turn 归位（本轮回答落 turn_X:assistant）；
         // - 终态直接丢弃——聚合层会把无 callbackEntryId 的终态归给当前活动 turn，
         //   提前终结用户正在进行的回答（新 turn 增量全被丢弃、答案永不出现）。
         shared.callbackAssistantEntryId = null;
         shared.callbackBindingTurnId = null;
+        shared.callbackBindingGeneration = null;
         if (CALLBACK_TERMINAL_EVENTS.has(event.type)) {
           this.dependencies.log?.("[YJS-FE] stale callback terminal dropped");
           return;
@@ -819,6 +829,7 @@ export class RelayEventHandler {
         if (CALLBACK_TERMINAL_EVENTS.has(event.type)) {
           shared.callbackAssistantEntryId = null;
           shared.callbackBindingTurnId = null;
+          shared.callbackBindingGeneration = null;
         }
       }
     }

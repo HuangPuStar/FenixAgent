@@ -328,3 +328,19 @@ test("detects duplicate user text and ignores non-user or empty text", async () 
   expect(manager.hasUserMessageText("rcs_echo", "第二条消息")).toBe(false);
   await manager.closeAll();
 });
+
+// callback_* 条目不得参与回显去重：它同样是 role=user，但不是 registerUserMessage 写的，
+// 是回调自己的提问气泡。命中它会让周期性重复同一提示词的真回调整条（提问 + 回答）
+// 被当作回显丢弃——数据丢失比错位更糟。
+test("ignores callback entries when detecting duplicate user text", async () => {
+  manager = new DocManager({ acpBatchWindowMs: 1_000 });
+  await manager.openChat("rcs_callback_echo");
+  await manager.openSession("user-1", "agent-1", "rcs_callback_echo");
+  manager.processNormalizedEvent("rcs_callback_echo", {
+    ...event("user_message", { content: { type: "text", text: "后台回调消息" } }),
+    callbackEntryId: "callback_11111111-1111-1111-1111-111111111111",
+  });
+
+  expect(manager.hasUserMessageText("rcs_callback_echo", "后台回调消息")).toBe(false);
+  await manager.closeAll();
+});

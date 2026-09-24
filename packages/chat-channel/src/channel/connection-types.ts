@@ -136,13 +136,28 @@ export interface SharedRelay {
    * 开启时判定一次：空 doc（冷启动/切换清空）→ 允许合成；有内容（重连）→ 跳过。
    */
   replaySkipSynthesis?: boolean;
-  /** 未结束 callback 的独立 assistant 历史 entry，禁止无头 chunk 回退到主 active turn。 */
+  /**
+   * 未结束 callback 的独立 assistant 历史 entry，禁止无头 chunk 回退到主 active turn。
+   * 绑定在消费端按事实校验（见下方两个代际字段），不在 openReplayWindow 里清空。
+   */
   callbackAssistantEntryId?: string | null;
   /**
-   * callback 绑定的代际：建立 `callbackAssistantEntryId` 时的 activeTurnId
+   * callback 绑定的代际之一：建立 `callbackAssistantEntryId` 时的 activeTurnId
    * （无活动 turn 时为 null）。无 turnId 增量到达时若当前 activeTurnId 已变，
    * 说明绑定属于上一轮/更早的回调流，必须失效——否则新 turn 的回答会被追加进
    * 遥远的旧 callback assistant entry（2026-09-24 聚合错位根因）。
+   * 依赖「turn 终态后 activeTurnId 不被清空」（收敛只改状态，全仓库无置 null 调用点）：
+   * 若将来引入活动 turn 清空，跨代判定会把回调流整体误判为跨代。
    */
   callbackBindingTurnId?: string | null;
+  /**
+   * callback 绑定的代际之二：建立 `callbackAssistantEntryId` 时的投影 generation
+   * （`DocManager.getProjectionGeneration`，投影尚未完整打开时为 null）。
+   * 无 turnId 增量到达时若当前 generation 与记录不一致，说明投影已被替换
+   * （load/resume 换代），绑定指向的 `callback_*` entry 在新投影中不存在，
+   * 继续按绑定归属会被聚合层以 "callback assistant entry not found" 拒绝（静默丢内容）。
+   * 按事实判定而非在 openReplayWindow 里清空：同会话 load（刷新页面恢复）不换代、
+   * 绑定仍有效，清空会让在途回调的尾部增量全部失去归属。
+   */
+  callbackBindingGeneration?: string | null;
 }
