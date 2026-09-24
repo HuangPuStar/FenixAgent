@@ -68,7 +68,9 @@ export function AgentSitesCatalog(props: Props) {
         <EmptyState
           icon={<AlertTriangle />}
           title={t("siteDeployment.errors.load")}
-          description={props.error.message}
+          // 不再回显 `error.message`：那是列表接口错误信封的原文（§9.3）。原始 error 在
+          // `AgentSitesPage` 的 `catalog.onError` 里进了 `console.error`，这里只补一句可执行的提示。
+          description={t("siteDeployment.errors.loadHint")}
           tone="danger"
           role="alert"
           action={{ label: t("siteDeployment.actions.retry"), onClick: props.onRetry, icon: <RefreshCw /> }}

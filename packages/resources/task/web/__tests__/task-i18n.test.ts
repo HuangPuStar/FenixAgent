@@ -114,8 +114,16 @@ describe("task 字典完整性与自持性", () => {
   });
 
   // 模板键（`status.${...}`）无法被字面量扫描覆盖：整组必须在字典里，否则页面会出现回显 key。
-  test("动态模板键的键组齐备（status / type / cron.presets）", () => {
-    for (const prefix of ["status.", "type.", "cron.presets."]) {
+  test("动态模板键的键组齐备（status / type / cron.presets / cron.describe）", () => {
+    for (const prefix of [
+      "status.",
+      "type.",
+      "cron.presets.",
+      // cron 描述模板的时段与星期字形按索引取（`cron.describe.weekday.sun`…）——2026-09-23 第 19 轮
+      // 从代码里的中文改成字典键之后，漏一个字形界面上就会露出键名。
+      "cron.describe.period.",
+      "cron.describe.weekday.",
+    ]) {
       const enKeys = [...enFlat.keys()].filter((key) => key.startsWith(prefix));
       const zhKeys = [...zhFlat.keys()].filter((key) => key.startsWith(prefix));
       expect(enKeys.length).toBeGreaterThan(0);
@@ -126,6 +134,18 @@ describe("task 字典完整性与自持性", () => {
       expect(enFlat.has(`status.${status}`)).toBe(true);
       expect(zhFlat.has(`status.${status}`)).toBe(true);
     }
+  });
+
+  // `taskFormSchema` 的 message 是「裸字符串」形态（zod 不认键类型），字面量 t() 扫描扫不到它：
+  // 这里单独把源码里的 `message("…")` 参数与 `validateCronExpression` 的返回值类型对齐到字典，
+  // 否则写错的键会原样显示在表单错误行上。
+  test("校验键（schema 的 message 与 cron 校验返回值）都在字典内", () => {
+    const source = readFileSync(join(WEB_ROOT, "pages/agent-panel/pages/agent-tasks-utils.ts"), "utf8");
+    const keys = [...source.matchAll(/(?:message\(|return )"(error\.[A-Za-z]+)"/g)].map((match) => match[1]);
+    // 扫描有效性自检：schema + cron 校验的键合起来不少于 18 个，正则失配时不能假绿。
+    expect(keys.length).toBeGreaterThanOrEqual(18);
+    const missing = keys.filter((key) => !enFlat.has(key) || !zhFlat.has(key));
+    expect(missing).toEqual([]);
   });
 
   // 面板文案曾借宿主 components 命名空间（同键在宿主字典里），迁入后必须两边都取到本包的键。

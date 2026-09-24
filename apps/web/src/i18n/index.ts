@@ -37,6 +37,7 @@ import { KNOWLEDGE_NS, knowledgeResources } from "@fenix/resource-knowledge/web/
 import { MCP_NS, mcpResources } from "@fenix/resource-mcp/web/i18n";
 import { HINDSIGHT_NS, hindsightResources } from "@fenix/resource-memory/web/i18n";
 import { OBSERVER_NS, observerResources } from "@fenix/resource-observer/web/i18n";
+import { PLUGIN_MARKET_NS, pluginMarketResources } from "@fenix/resource-plugin-market/web/i18n";
 import { PROD_VIEWS_NS, prodViewsResources } from "@fenix/resource-prod-view/web/i18n";
 import { SANDBOX_NS, sandboxResources } from "@fenix/resource-sandbox/web/i18n";
 import { SKILL_NS, skillResources } from "@fenix/resource-skill/web/i18n";
@@ -73,6 +74,7 @@ import sidebarZH from "./locales/zh/sidebar.json";
 export const NS = {
   ...SHARED_NS,
   SANDBOX: SANDBOX_NS,
+  PLUGIN_MARKET: PLUGIN_MARKET_NS,
 } as const;
 
 export type Namespace = (typeof NS)[keyof typeof NS];
@@ -116,6 +118,7 @@ const packageResources = {
     [KNOWLEDGE_NS]: knowledgeResources.en,
     [HINDSIGHT_NS]: hindsightResources.en,
     [PROD_VIEWS_NS]: prodViewsResources.en,
+    [PLUGIN_MARKET_NS]: pluginMarketResources.en,
     [SANDBOX_NS]: sandboxResources.en,
     [SETTINGS_NS]: settingsResources.en,
     [UI_COMPONENTS_NS]: uiComponentsResources.en,
@@ -136,6 +139,7 @@ const packageResources = {
     [KNOWLEDGE_NS]: knowledgeResources.zh,
     [HINDSIGHT_NS]: hindsightResources.zh,
     [PROD_VIEWS_NS]: prodViewsResources.zh,
+    [PLUGIN_MARKET_NS]: pluginMarketResources.zh,
     [SANDBOX_NS]: sandboxResources.zh,
     [SETTINGS_NS]: settingsResources.zh,
     [UI_COMPONENTS_NS]: uiComponentsResources.zh,

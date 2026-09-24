@@ -116,7 +116,7 @@ export const ChatView = React.memo(
           <ConversationContent
             // 源 `.chat-conversation-content` 的声明；`sm:` 级重复是为了压过 `ConversationContent`
             // 自带的 `sm:py-12`（变体工具类在样式表里晚于基础工具类，仅写基础 `pt/pb` 会被它顶掉）。
-            className="min-h-full max-w-205 gap-0 pt-7.5 pb-2 sm:pt-7.5 sm:pb-2"
+            className="min-h-full max-w-200 gap-0 pt-7.5 pb-2 sm:pt-7.5 sm:pb-2"
             data-slot="chat-conversation-content"
           >
             {!hasMessages ? (

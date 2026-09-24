@@ -2,12 +2,11 @@ import { EmptyState } from "@fenix/ui-components/config/EmptyState";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@fenix/ui-components/ui/dialog";
 import { Spinner } from "@fenix/ui-components/ui/spinner";
 import { NS } from "@fenix/web-runtime/i18n/namespace";
-import { useEffect, useState } from "react";
+import { useRequest } from "ahooks";
 import { useTranslation } from "react-i18next";
 import { hindsightApi } from "../../../api/hindsight";
-import { type HindsightFailure, toHindsightFailure } from "../failure";
+import { toHindsightFailure } from "../failure";
 import { memoryTypeTitle } from "../memory-type-title";
-import type { MemoryDetail } from "../types";
 import { HindsightFailureNotice } from "./HindsightFailureNotice";
 import { MemoryDetailBody } from "./MemoryDetailBody";
 
@@ -19,32 +18,20 @@ interface MemoryDetailModalProps {
 /** 内存详情弹窗 — 简化版，点击表格行/时间线条目时弹出 */
 export function MemoryDetailModal({ memoryId, onClose }: MemoryDetailModalProps) {
   const { t } = useTranslation(NS.HINDSIGHT);
-  const [memory, setMemory] = useState<MemoryDetail | null>(null);
-  const [loading, setLoading] = useState(false);
-  const [failure, setFailure] = useState<HindsightFailure | null>(null);
 
-  // 加载记忆详情
-  useEffect(() => {
-    if (!memoryId) return;
-
-    const loadMemory = async () => {
-      setLoading(true);
-      setFailure(null);
-      setMemory(null);
-
-      try {
-        const data = await hindsightApi.getMemory(memoryId);
-        setMemory(data);
-      } catch (err) {
-        console.error("Error loading memory:", err);
-        setFailure(toHindsightFailure(err));
-      } finally {
-        setLoading(false);
-      }
-    };
-
-    loadMemory();
-  }, [memoryId]);
+  // 加载记忆详情。`memoryId` 既是参数也是刷新依赖：换一条记忆即重取，弹窗关闭（null）时不发请求——
+  // `ready: false` 会让 ahooks 在 `onBefore` 直接拦下请求（含 `refresh()`），无需自己判空。
+  // 非空断言与 `AgentOrganizationsPage` 的 `ready` + `unwrap(api.get(id!))` 同形。
+  const {
+    data: memory = null,
+    loading,
+    error: loadError,
+  } = useRequest(() => hindsightApi.getMemory(memoryId!), {
+    ready: !!memoryId,
+    refreshDeps: [memoryId],
+    onError: (err) => console.error("Error loading memory:", err),
+  });
+  const failure = loadError ? toHindsightFailure(loadError) : null;
 
   const isOpen = memoryId !== null;
 

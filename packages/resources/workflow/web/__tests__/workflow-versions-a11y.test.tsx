@@ -24,7 +24,8 @@ g.navigator = win.navigator;
 
 const MOCK_TRANSLATIONS: Record<string, string> = {
   "versions.loading": "加载中...",
-  "versions.load_failed": "加载失败: {{error}}",
+  "versions.load_failed": "加载失败",
+  "versions.load_failed_hint": "请重试；若持续失败，请联系组织管理员。",
   "versions.retry": "重试",
   "versions.unauthorized_title": "无权限查看版本历史",
   "versions.unauthorized_hint": "当前账号或所属组织已无权访问该工作流，重试不会改变结果。",
@@ -400,7 +401,9 @@ describe("WorkflowVersions 失败与无权限", () => {
     const { container, root } = await renderVersions();
 
     const alert = container.querySelector('[role="alert"]');
-    expect(alert?.textContent).toContain("加载失败: 服务器内部错误");
+    // 失败块只上屏字典文案：后端信封原文（"服务器内部错误"）是服务端措辞，不该出现在界面上（§9.3）
+    expect(alert?.textContent).toContain("加载失败");
+    expect(alert?.textContent).not.toContain("服务器内部错误");
     expect(container.textContent).not.toContain("暂无发布版本");
 
     const retryButton = findButtonByText(container, "重试");

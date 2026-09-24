@@ -126,12 +126,16 @@ export function SiteFrame({ remoteAppId, name, createdByAgentConfigId, createdBy
       if (env) {
         void navigate({ to: "/agent/$agentId", params: { agentId: env.id } });
       } else {
-        toast.error("该智能体暂未激活，无法跳转");
+        // 文案随其余站点文案一起取自 `components` 命名空间（siteFrame.*）：同一组键由宿主与本包共用
+        toast.error(t("siteFrame.traceToCreatorNotFound"));
       }
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : "跳转失败");
+      // 只上屏字典文案：`err` 是环境列表接口的 `ApiError`，其 message 为后端信封原文（§9.3）。
+      console.error("Failed to resolve site creator environment", err);
+      toast.error(t("siteFrame.navigateFailed"));
     }
-  }, [createdByAgentConfigId, navigate]);
+    // `t` 必须在依赖里：它只在切语言时换身份，回调随之重建，失败提示才会用当前语言
+  }, [createdByAgentConfigId, navigate, t]);
 
   const handleReload = useCallback(() => {
     setReloadKey((k) => k + 1);

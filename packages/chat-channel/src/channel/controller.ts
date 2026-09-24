@@ -17,7 +17,7 @@ import { ConnectionRegistry } from "./connection-registry";
 import type { ClientConnection } from "./connection-types";
 import { Gateway, type GatewayEnvironment } from "./gateway";
 import { RelayEventHandler } from "./relay-event-handler";
-import { SessionChannel, type SessionConnection } from "./session-channel";
+import { SessionChannel } from "./session-channel";
 
 /** Chat 域宿主依赖（全部经构造器注入，包内禁止直接 import src/ 宿主模块） */
 export interface ChatChannelDependencies {
@@ -41,8 +41,6 @@ export interface ChatChannelDependencies {
   touchInstanceActivity: (instanceId: string, raw: Record<string, unknown>) => void;
   /** 本地死实例回收（宿主 orchestration-instance 语义，内部校验 nodeId） */
   terminateLocalDeadInstance: (instanceId: string) => void;
-  /** Redis 快照持久化（宿主 cache/yjs-store 语义）：会话切换前以 CAS 持久化 Session Doc */
-  prepareClearSessionSnapshot: (connection: SessionConnection) => Promise<void>;
   /** 机器离线判定（宿主注入）：true → close 4500 终态（客户端停止自动重连） */
   isMachineOffline: (err: unknown) => boolean;
   /** 确定性永久失败分类（宿主注入）：返回诊断码 → close 4502 终态；null → 1011 可重连 */
@@ -71,7 +69,6 @@ export class ChatChannelController {
       docManager: dependencies.docManager,
       refreshInstanceEnvironment: (connection) =>
         dependencies.refreshInstanceEnvironment(connection.instanceId, connection.agentId, connection.userId),
-      prepareClearSessionSnapshot: dependencies.prepareClearSessionSnapshot,
       replaceProjection: (projection) => {
         const chatName = `chat:${projection.rcsSessionId}`;
         const sessionName = `session:${projection.rcsSessionId}`;

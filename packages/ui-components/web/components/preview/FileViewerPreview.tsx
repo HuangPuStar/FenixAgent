@@ -13,24 +13,38 @@
  *    宿主注入自己的实现即可完全解除路由耦合。
  * 3. 重试参数按 URL 是否已含 `?` 选择分隔符 —— 源实现硬编码 `&`，仅在默认构建器下成立，
  *    自定义构建器返回无 query 的 URL 时会拼出非法地址。
- * 4. `locale="zh-CN"` 与内置中文文案 `zhCNMessages` 改为 `locale` / `messages` props，
- *    默认值与源实现一致（zh-CN + 内置中文），宿主可传 `en-US` 或覆盖部分键。
- * 5. 错误边界内的中文串（「预览组件加载失败」）与源实现保持一致：它是 React 边界内的兜底提示，
- *    不是预览器文案，未纳入 props；需要多语言的宿主应在外层包一层本地化边界。
+ * 4. `locale="zh-CN"` 与内置中文文案 `zhCNMessages` 改为「包内字典缺省 + props 覆盖」：缺省值随当前
+ *    语言变化，`locale` / `messages` 仍是覆盖端口，宿主需要固定语言或注入自己的词表时照旧可用
+ *    （见「已知限制」第 9 条）。
+ * 5. 错误边界的兜底提示（源实现写死中文「预览组件加载失败」）纳入包内字典、由调用方按当前语言传入：
+ *    它同样渲染给用户看，不再是「不随语言变化」的例外。
  * 6. `overrides.css` 与组件同目录并由本文件 import（工具栏置底等外观修正），
  *    缺失会导致预览工具栏回到顶部。
+ * 7. 取数函数 `fetchPreview` 为**必填 prop**（源实现在组件内直调全局 `fetch` 读宿主文件代理路由，
+ *    并用 `= fetch` 作 `preview-source` 的默认参数）：本包不得依赖 `@fenix/web-runtime`，因此取数只能
+ *    由宿主注入，且刻意不保留全局 `fetch` 兜底——兜底会让组件重新直连后端并自行拼 URL（§5.8）。
+ * 8. 失败态不再回显原始错误（§9.3）：`preview-source` 抛的是结构化的 `PreviewSourceError`（带 `status`），
+ *    文案按当前语言取 `fileTree.preview.loadFailed` / `loadFailedUnknown`，原始错误只进 `console.error`。
  */
 
 import type { PreviewLocale, PreviewMessages } from "@open-file-viewer/core";
 import { imagePlugin, officePlugin, textPlugin } from "@open-file-viewer/core";
 import { FileViewer } from "@open-file-viewer/react";
+import type { TFunction } from "i18next";
 import type { ErrorInfo, ReactNode } from "react";
 import { Component, useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { UI_COMPONENTS_NS } from "../../i18n/namespace";
+import { ErrorFallback } from "../../ui/error-fallback";
 import { htmlPreviewPlugin } from "./html-plugin";
 import { nativePdfPlugin } from "./native-pdf-plugin";
-import { getPreviewMimeType, loadByteAccuratePreviewSource, shouldLoadPreviewAsBlob } from "./preview-source";
+import {
+  getPreviewMimeType,
+  loadByteAccuratePreviewSource,
+  type PreviewFetch,
+  PreviewSourceError,
+  shouldLoadPreviewAsBlob,
+} from "./preview-source";
 
 // 导入官方样式
 import "@open-file-viewer/core/style.css";
@@ -43,14 +57,24 @@ export interface FileViewerPreviewProps {
   /** workspace 相对路径（同时用于展示文件名与推断 MIME）。 */
   filePath: string;
   /**
-   * 预览 URL 构建器。默认实现沿用源宿主的文件代理路由约定
-   * （`/web/environments/<envId>/fs/<path>?preview=true`，见 README「已知限制」）；
-   * 宿主注入自己的实现即可解除该路由依赖。
+   * 预览 URL 构建器。缺省实现沿用源宿主的文件代理路由约定
+   * （`/web/environments/<envId>/fs/<path>?preview=true`，见 README「已知限制」）——它只是字符串约定、
+   * 不产生请求，**生产宿主仍必须注入自己的实现**（`apps/web/src/api/fs.ts` 的 `buildPreviewSourceUrl`），
+   * 否则后端 URL 的拼装就落在了组件包里（§5.8）。
    */
   buildPreviewUrl?: (envId: string, filePath: string) => string;
-  /** 预览器内置文案，默认简体中文；宿主可按语言整体注入或只覆盖部分键。 */
+  /**
+   * 预览源文件的取数函数，**必填、无全局 `fetch` 兜底**（见 `PreviewFetch`）：预览 URL 指向后端文件代理
+   * 路由，取数属后端调用，由宿主的域模块提供（`apps/web/src/api/fs.ts` 的 `readPreviewSource`）。
+   * 文本类预览取字节与 HTML 预览的「源码」页都走它。
+   *
+   * **必须传稳定引用**（模块级函数或 `useCallback`）：它进的是取数 effect 的依赖，每次渲染换身份会导致
+   * 文本类预览反复重取。域模块导出的函数天然满足；不要在 JSX 里写内联箭头函数。
+   */
+  fetchPreview: PreviewFetch;
+  /** 预览器内置文案。缺省按当前语言取包内字典（`fileTree.preview.messages.*`）；传值时整块覆盖。 */
   messages?: Partial<PreviewMessages>;
-  /** 预览器 locale，默认 `"zh-CN"`。 */
+  /** 预览器 locale（第三方格式化与内置词典都按它取）。缺省跟随当前语言：`zh*` → `zh-CN`，其余 → `en-US`。 */
   locale?: PreviewLocale;
 }
 
@@ -68,36 +92,50 @@ function defaultBuildPreviewUrl(envId: string, filePath: string): string {
   return `/web/environments/${envId}/fs/${encodedPath}?preview=true`;
 }
 
-/** 中文内置文案，覆盖 @open-file-viewer 默认英文（源实现保留；作为 `messages` prop 的默认值） */
-const zhCNMessages: Partial<PreviewMessages> = {
-  loading: "加载中...",
-  unsupportedTitle: "暂不支持此格式",
-  downloadTitle: "下载文件",
-  downloadFile: "下载",
-  file: "文件",
-  unnamedFile: "未命名文件",
-  format: "格式",
-  unknown: "未知",
-  mime: "MIME 类型",
-  undeclared: "未声明",
-  size: "大小",
-  source: "来源",
-  remoteUrl: "远程 URL",
-  localFile: "本地文件",
-};
+/**
+ * 预览器内置文案的缺省取值。
+ *
+ * 键与包内其余文案同在 `fileTree.preview.*` 组下，真相来源只有一份（`uiComponents` 字典）；
+ * 源实现把这份中文写死在组件里，于是宿主切成英文后预览器信息栏仍是中文。
+ * 逐键取值而不是拼 key 前缀：字典是打平的 JSON，显式列出才能在缺键时被字面量扫描抓到。
+ */
+function buildDefaultPreviewMessages(t: TFunction): Partial<PreviewMessages> {
+  return {
+    loading: t("fileTree.preview.messages.loading"),
+    unsupportedTitle: t("fileTree.preview.messages.unsupportedTitle"),
+    downloadTitle: t("fileTree.preview.messages.downloadTitle"),
+    downloadFile: t("fileTree.preview.messages.downloadFile"),
+    file: t("fileTree.preview.messages.file"),
+    unnamedFile: t("fileTree.preview.messages.unnamedFile"),
+    format: t("fileTree.preview.messages.format"),
+    unknown: t("fileTree.preview.messages.unknown"),
+    mime: t("fileTree.preview.messages.mime"),
+    undeclared: t("fileTree.preview.messages.undeclared"),
+    size: t("fileTree.preview.messages.size"),
+    source: t("fileTree.preview.messages.source"),
+    remoteUrl: t("fileTree.preview.messages.remoteUrl"),
+    localFile: t("fileTree.preview.messages.localFile"),
+  };
+}
 
-/** 错误边界：防止 FileViewer 内部异常导致父组件状态异常 */
-class FileViewerErrorBoundary extends Component<
-  { children: ReactNode; filePath: string },
-  { hasError: boolean; errorMessage: string }
-> {
-  constructor(props: { children: ReactNode; filePath: string }) {
+/**
+ * 错误边界：防止 FileViewer 内部异常导致父组件状态异常。
+ *
+ * 降级 UI 用统一的 `ErrorFallback`（§7.1）：它自带重试按钮（§7.2），点重试即清掉 `hasError`、重新挂载
+ * `FileViewer`。主文案经 `fallbackText` 由调用方注入（类组件用不了 `useTranslation`，语言只在外面拿得到）：
+ * 提示是渲染给用户看的，必须跟随当前语言，不能像源实现那样在边界内写死中文。
+ *
+ * **不回显错误正文**（§7.2）：原始错误只进 `componentDidCatch` 的 `console.error`。此前降级 UI 会把
+ * `error.message` 渲染成第二行文本——它可能含第三方解析器的内部细节，且不随语言变化。
+ */
+class FileViewerErrorBoundary extends Component<{ children: ReactNode; fallbackText: string }, { hasError: boolean }> {
+  constructor(props: { children: ReactNode; fallbackText: string }) {
     super(props);
-    this.state = { hasError: false, errorMessage: "" };
+    this.state = { hasError: false };
   }
 
-  static getDerivedStateFromError(error: Error) {
-    return { hasError: true, errorMessage: error.message };
+  static getDerivedStateFromError() {
+    return { hasError: true };
   }
 
   componentDidCatch(error: Error, info: ErrorInfo) {
@@ -107,11 +145,10 @@ class FileViewerErrorBoundary extends Component<
   render() {
     if (this.state.hasError) {
       return (
-        <div className="flex-1 flex flex-col items-center justify-center p-4 gap-2">
-          {/* 兜底提示硬编码中文，与源实现一致（见文件头注释第 5 条） */}
-          <span className="text-xs font-medium text-red-500">预览组件加载失败</span>
-          <span className="text-3xs text-text-muted break-all">{this.state.errorMessage}</span>
-        </div>
+        <ErrorFallback
+          message={this.props.fallbackText}
+          resetErrorBoundary={() => this.setState({ hasError: false })}
+        />
       );
     }
     return this.props.children;
@@ -122,16 +159,24 @@ export function FileViewerPreview({
   envId,
   filePath,
   buildPreviewUrl = defaultBuildPreviewUrl,
-  messages = zhCNMessages,
-  locale = "zh-CN",
+  fetchPreview,
+  messages,
+  locale,
 }: FileViewerPreviewProps) {
-  const { t } = useTranslation(UI_COMPONENTS_NS);
+  const { t, i18n } = useTranslation(UI_COMPONENTS_NS);
+  // 缺省文案随语言重建（`t` 只在切语言时换身份），传入 `messages` 的宿主不受影响
+  const previewMessages = useMemo(() => messages ?? buildDefaultPreviewMessages(t), [messages, t]);
+  // locale 缺省跟随当前语言：第三方的日期/数字格式与内置词典都按它取，固定 zh-CN 会让英文界面出现中文格式
+  const previewLocale: PreviewLocale = locale ?? (i18n.language?.startsWith("zh") ? "zh-CN" : "en-US");
   const previewUrl = useMemo(() => buildPreviewUrl(envId, filePath), [buildPreviewUrl, envId, filePath]);
   const fileName = useMemo(() => filePath.split("/").pop() ?? filePath, [filePath]);
   const mimeType = useMemo(() => getPreviewMimeType(filePath), [filePath]);
   const loadAsBlob = useMemo(() => shouldLoadPreviewAsBlob(filePath), [filePath]);
   const [previewSource, setPreviewSource] = useState<string | Blob | null>(() => (loadAsBlob ? null : previewUrl));
-  const [loadError, setLoadError] = useState<string | null>(null);
+  // 失败态只留结构（有状态码 / 无状态码），文案在渲染时按当前语言取——原始错误只进 console（§9.3：
+  // 不展示 raw message）。此前这里存的是 `error.message` 并原样上屏，界面因此会出现
+  // 「文件预览加载失败 (500)」这类写死中文，或宿主域模块的内部错误串。
+  const [loadError, setLoadError] = useState<{ status?: number } | null>(null);
   const [reloadKey, setReloadKey] = useState(0);
 
   useEffect(() => {
@@ -147,13 +192,15 @@ export function FileViewerPreview({
     // 重试参数：URL 可能由自定义构建器提供、未必带 query，故按是否已含 `?` 选择分隔符
     const separator = previewUrl.includes("?") ? "&" : "?";
     const requestUrl = reloadKey === 0 ? previewUrl : `${previewUrl}${separator}retry=${reloadKey}`;
-    void loadByteAccuratePreviewSource(requestUrl, fetch, { signal: controller.signal })
+    void loadByteAccuratePreviewSource(requestUrl, fetchPreview, { signal: controller.signal })
       .then(setPreviewSource)
       .catch((error: unknown) => {
-        if (!controller.signal.aborted) setLoadError(error instanceof Error ? error.message : String(error));
+        if (controller.signal.aborted) return;
+        console.error("[FileViewerPreview] 预览源加载失败", error);
+        setLoadError({ status: error instanceof PreviewSourceError ? error.status : undefined });
       });
     return () => controller.abort();
-  }, [loadAsBlob, previewUrl, reloadKey]);
+  }, [fetchPreview, loadAsBlob, previewUrl, reloadKey]);
 
   const toolbar = useMemo(
     () => ({
@@ -163,29 +210,33 @@ export function FileViewerPreview({
       fullscreen: true,
       search: false,
       labels: {
-        download: t("fileTree.preview.download", "下载"),
-        fullscreen: t("fileTree.preview.fullscreen", "全屏"),
+        download: t("fileTree.preview.download"),
+        fullscreen: t("fileTree.preview.fullscreen"),
       },
     }),
     [t],
   );
 
   const plugins = useMemo(
-    () => [imagePlugin(), nativePdfPlugin(), officePlugin(), htmlPreviewPlugin(), textPlugin()],
-    [],
+    () => [imagePlugin(), nativePdfPlugin(), officePlugin(), htmlPreviewPlugin(fetchPreview), textPlugin()],
+    [fetchPreview],
   );
 
   if (loadError) {
     return (
       <div className="flex-1 flex flex-col items-center justify-center p-4 gap-3" role="alert">
-        {/* 错误消息来自 loadByteAccuratePreviewSource，为中文硬编码（与源实现一致） */}
-        <span className="text-xs font-medium text-red-500">{loadError}</span>
+        {/* 文案取包内字典：状态码来自 PreviewSourceError（宿主域模块抛的其它错误只有通用文案，原始错误进 console） */}
+        <span className="text-xs font-medium text-red-500">
+          {loadError.status === undefined
+            ? t("fileTree.preview.loadFailedUnknown")
+            : t("fileTree.preview.loadFailed", { status: loadError.status })}
+        </span>
         <button
           type="button"
           className="text-xs text-primary hover:underline"
           onClick={() => setReloadKey((key) => key + 1)}
         >
-          {t("fileTree.preview.retry", "重试")}
+          {t("fileTree.preview.retry")}
         </button>
       </div>
     );
@@ -194,13 +245,13 @@ export function FileViewerPreview({
   if (previewSource === null) {
     return (
       <div className="flex-1 flex items-center justify-center p-4" role="status">
-        <span className="text-xs text-text-muted">{t("fileTree.preview.loading", "加载中...")}</span>
+        <span className="text-xs text-text-muted">{t("fileTree.preview.loading")}</span>
       </div>
     );
   }
 
   return (
-    <FileViewerErrorBoundary filePath={filePath}>
+    <FileViewerErrorBoundary fallbackText={t("fileTree.preview.componentError")}>
       <FileViewer
         file={previewSource}
         fileName={fileName}
@@ -210,8 +261,8 @@ export function FileViewerPreview({
         fit="width"
         toolbar={toolbar}
         theme="auto"
-        locale={locale}
-        messages={messages}
+        locale={previewLocale}
+        messages={previewMessages}
       />
     </FileViewerErrorBoundary>
   );

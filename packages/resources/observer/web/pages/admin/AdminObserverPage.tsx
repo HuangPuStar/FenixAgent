@@ -20,7 +20,7 @@ import { useRequest } from "ahooks";
 import { LogOut, RefreshCw } from "lucide-react";
 import { useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { type AcpLinkSnapshot, fetchAcpLinkSnapshot } from "../../api/observer";
+import { type AcpLinkSnapshot, observerApi } from "../../api/observer";
 import { ObserverFlatTable } from "./components/ObserverFlatTable";
 import { ObserverIntegrityAlert } from "./components/ObserverIntegrityAlert";
 import { ObserverMachineTree } from "./components/ObserverMachineTree";
@@ -52,7 +52,7 @@ function ObserverDashboard({ onAuthFailure }: { onAuthFailure: () => void }) {
   const { t } = useTranslation("observer");
   const [selectedMachineId, setSelectedMachineId] = useState<string | null>(null);
 
-  const { data, loading, error, refresh } = useRequest(fetchAcpLinkSnapshot, {
+  const { data, loading, error, refresh } = useRequest(() => observerApi.fetchAcpLinkSnapshot(), {
     pollingInterval: POLLING_INTERVAL_MS,
     onError: (err) => {
       // 401 → master key 失效：清 key 回门；其余错误保留面板展示错误态

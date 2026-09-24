@@ -70,17 +70,6 @@
   background: transparent;
 }
 
-/* 目录项四列（图标 / 名称 / 归属 / 箭头）：源 `grid-cols-[28px_minmax(0,1fr)_auto_12px]`，
-   单列宽度逐字取自被替换的 token。 */
-.skills-directory-item {
-  grid-template-columns: 28px minmax(0, 1fr) auto 12px;
-}
-
-/* 目录项图标，源 `[&_svg]:w-4`。 */
-.skills-directory-item-icon svg {
-  width: calc(var(--spacing) * 4);
-}
-
 /* 详情头部图标，源 `[&_svg]:w-6`。 */
 .skills-detail-icon svg {
   width: calc(var(--spacing) * 6);

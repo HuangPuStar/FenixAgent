@@ -63,7 +63,9 @@ export function ModelConfigDialog({
         toast.success(t("modelConfig.updateSuccess"));
       },
       onError: (err) => {
-        toast.error(t("modelConfig.updateError", { message: (err as Error).message }));
+        // 原始 error 进日志，上屏只给字典文案（§9.3）：`err.message` 是后端信封原文。
+        console.error("[model-config] update failed", err);
+        toast.error(t("modelConfig.updateError"));
       },
     },
   );

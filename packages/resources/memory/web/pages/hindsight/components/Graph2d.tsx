@@ -1,43 +1,18 @@
-import { useTheme } from "@fenix/ui-components/lib/theme";
+/**
+ * `Graph2d` —— 关系图谱的 cytoscape 渲染壳（§4.8 中两套刻意分叉的图谱之一）。
+ *
+ * 本文件只负责渲染：样式化容器 + 加载态 / 空态 + 链接 tooltip + 操作提示。
+ * 数据整形在 `graph2d-model.ts`，共用数据形状与 API 转换在 `graph-model.ts`，
+ * 实例生命周期与交互在 `use-cytoscape-graph.ts`。图形逻辑不与 `Constellation`（自绘 canvas）
+ * 归一——两者的渲染模型不同，抽公共层只会得到一层薄转发（已裁定，见前端规范 §4.8）。
+ */
+
 import { Spinner } from "@fenix/ui-components/ui/spinner";
 import { NS } from "@fenix/web-runtime/i18n/namespace";
-import cytoscape from "cytoscape";
-import fcose from "cytoscape-fcose";
-import { useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
-import type { GraphApiData } from "../types";
-
-// Register the fcose extension
-cytoscape.use(fcose);
-
-// ============================================================================
-// Types & Interfaces
-// ============================================================================
-
-export interface GraphNode {
-  id: string;
-  label?: string;
-  color?: string;
-  size?: number;
-  group?: string;
-  metadata?: Record<string, unknown>;
-}
-
-export interface GraphLink {
-  source: string;
-  target: string;
-  color?: string;
-  width?: number;
-  type?: string;
-  entity?: string;
-  weight?: number;
-  metadata?: Record<string, unknown>;
-}
-
-export interface GraphData {
-  nodes: GraphNode[];
-  links: GraphLink[];
-}
+import type { GraphData, GraphLink, GraphNode } from "./graph-model";
+import { isCausalLinkType } from "./graph-model";
+import { useCytoscapeGraph } from "./use-cytoscape-graph";
 
 export interface Graph2DProps {
   data: GraphData;
@@ -52,22 +27,6 @@ export interface Graph2DProps {
   maxNodes?: number;
 }
 
-// ============================================================================
-// Default Values
-// ============================================================================
-
-// Brand colors
-const BRAND_PRIMARY = "#0074d9";
-const LINK_SEMANTIC = "#0074d9"; // Primary blue for semantic
-
-const DEFAULT_NODE_COLOR = BRAND_PRIMARY;
-const DEFAULT_LINK_COLOR = LINK_SEMANTIC;
-const DEFAULT_LINK_WIDTH = 1;
-
-// ============================================================================
-// Component
-// ============================================================================
-
 export function Graph2D({
   data,
   height = 600,
@@ -81,514 +40,17 @@ export function Graph2D({
   maxNodes,
 }: Graph2DProps) {
   const { t } = useTranslation(NS.HINDSIGHT);
-  const [containerDiv, setContainerDiv] = useState<HTMLDivElement | null>(null);
-  const cyRef = useRef<cytoscape.Core | null>(null);
-  const isInitializingRef = useRef(false);
-  const lastDataSignatureRef = useRef<string>("");
-  const [_hoveredNode, setHoveredNode] = useState<GraphNode | null>(null);
-  const [hoveredLink, setHoveredLink] = useState<GraphLink | null>(null);
-  const [linkTooltipPos, setLinkTooltipPos] = useState<{ x: number; y: number } | null>(null);
-  const [isLoading, setIsLoading] = useState(true);
-  const [isMounted, setIsMounted] = useState(false);
-  const [isFocusMode, setIsFocusMode] = useState(false);
-  // 暗色判定改读主题上下文（原为本地 MutationObserver 观察 `documentElement` 的 class——
-  // 那是主题实现的内部细节，且全仓另有一份逐字副本在 Constellation.tsx）。
-  const { resolvedTheme } = useTheme();
-  const isDarkMode = resolvedTheme === "dark";
-
-  // Use refs to store callbacks and data to prevent re-renders from resetting the graph
-  const onNodeClickRef = useRef(onNodeClick);
-  const onNodeHoverRef = useRef(onNodeHover);
-  const fullDataRef = useRef(data);
-  const nodeColorFnRef = useRef(nodeColorFn);
-  const linkColorFnRef = useRef(linkColorFn);
-  const isFocusModeRef = useRef(isFocusMode);
-  onNodeClickRef.current = onNodeClick;
-  onNodeHoverRef.current = onNodeHover;
-  fullDataRef.current = data;
-  nodeColorFnRef.current = nodeColorFn;
-  linkColorFnRef.current = linkColorFn;
-  isFocusModeRef.current = isFocusMode;
-
-  // Transform and limit data - only limit nodes, show ALL links between visible nodes
-  const graphData = useMemo(() => {
-    let nodes = [...data.nodes];
-
-    // Limit nodes if needed
-    if (maxNodes && nodes.length > maxNodes) {
-      nodes = nodes.slice(0, maxNodes);
-    }
-
-    // Show ALL links between visible nodes (no random link limiting)
-    const nodeIds = new Set(nodes.map((n) => n.id));
-    const links = data.links.filter((l) => nodeIds.has(l.source) && nodeIds.has(l.target));
-
-    return { nodes, links };
-  }, [data, maxNodes]);
-
-  // Track mounting state
-  useEffect(() => {
-    setIsMounted(true);
-    return () => setIsMounted(false);
-  }, []);
-
-  // Convert to Cytoscape format
-  const cyElements = useMemo(() => {
-    // Calculate node importance based on connections
-    const nodeConnections = new Map<string, number>();
-    graphData.links.forEach((link) => {
-      nodeConnections.set(link.source, (nodeConnections.get(link.source) || 0) + 1);
-      nodeConnections.set(link.target, (nodeConnections.get(link.target) || 0) + 1);
-    });
-
-    const nodes = graphData.nodes.map((node) => {
-      const connections = nodeConnections.get(node.id) || 0;
-      const dynamicSize = nodeSizeFn ? nodeSizeFn(node) : Math.max(16, Math.min(40, 16 + connections * 4)); // Smaller, more subtle sizing
-
-      return {
-        data: {
-          id: node.id,
-          label: node.label || node.id.substring(0, 8),
-          color: nodeColorFn ? nodeColorFn(node) : node.color || DEFAULT_NODE_COLOR,
-          size: node.size || dynamicSize,
-          originalNode: node,
-          connections: connections,
-        },
-      };
-    });
-
-    const edges = graphData.links.map((link, idx) => ({
-      data: {
-        id: `edge-${idx}`,
-        source: link.source,
-        target: link.target,
-        color: linkColorFn ? linkColorFn(link) : link.color || DEFAULT_LINK_COLOR,
-        width: linkWidthFn ? linkWidthFn(link) : link.width || DEFAULT_LINK_WIDTH,
-        type: link.type,
-        entity: link.entity,
-        weight: link.weight,
-        originalLink: link,
-      },
-    }));
-
-    return [...nodes, ...edges];
-  }, [graphData, nodeColorFn, nodeSizeFn, linkColorFn, linkWidthFn]);
-
-  // Create data signature to prevent double initialization
-  const dataSignature = useMemo(() => {
-    return JSON.stringify({
-      nodeCount: graphData.nodes.length,
-      linkCount: graphData.links.length,
-      nodeIds: graphData.nodes
-        .map((n) => n.id)
-        .sort()
-        .join(","),
-      showLabels,
-      isDarkMode,
-      maxNodes,
-    });
-  }, [graphData.nodes, graphData.links, showLabels, isDarkMode, maxNodes]);
-
-  // 容器尺寸变化时只通知 Cytoscape 重算 viewport，不重置用户缩放与平移。
-  useEffect(() => {
-    if (!containerDiv) return;
-    const observer = new ResizeObserver(() => {
-      const cy = cyRef.current;
-      if (cy && !cy.destroyed()) cy.resize();
-    });
-    observer.observe(containerDiv);
-    return () => observer.disconnect();
-  }, [containerDiv]);
-
-  // Initialize Cytoscape
-  useEffect(() => {
-    let isCancelled = false;
-
-    // Small delay to ensure container is mounted
-    const timeout = setTimeout(() => {
-      if (isCancelled || !isMounted || !containerDiv || isInitializingRef.current) return;
-
-      // Check if data has actually changed to prevent double initialization
-      if (lastDataSignatureRef.current === dataSignature) {
-        console.log("Data signature unchanged, skipping graph initialization");
-        return;
-      }
-
-      // Additional validation - check if element has dimensions
-      const rect = containerDiv.getBoundingClientRect();
-      if (rect.width === 0 || rect.height === 0) {
-        console.warn("Container has no dimensions, skipping cytoscape initialization");
-        setIsLoading(false);
-        return;
-      }
-
-      // Handle empty data case
-      if (cyElements.length === 0) {
-        setIsLoading(false);
-        return;
-      }
-
-      // Check if we already have a graph with the same data
-      if (cyRef.current && !cyRef.current.destroyed()) {
-        const currentNodes = cyRef.current.nodes().length;
-        const currentEdges = cyRef.current.edges().length;
-        const newNodes = cyElements.filter((el) => !("source" in (el.data as Record<string, unknown>))).length;
-        const newEdges = cyElements.filter((el) => "source" in (el.data as Record<string, unknown>)).length;
-
-        // If the element counts are the same, just update styles and skip reinitialization
-        if (currentNodes === newNodes && currentEdges === newEdges) {
-          console.log("Graph already initialized with same data, skipping reinitialization");
-          setIsLoading(false);
-          return;
-        }
-
-        // Clean up existing graph before creating new one
-        console.log("Data changed, destroying existing graph");
-        cyRef.current.destroy();
-        cyRef.current = null;
-      }
-
-      setIsLoading(true);
-      isInitializingRef.current = true;
-
-      // Theme-aware colors
-      const textColor = isDarkMode ? "#ffffff" : "#1f2937";
-      const textBgColor = isDarkMode ? "rgba(0,0,0,0.8)" : "rgba(255,255,255,0.9)";
-
-      try {
-        console.log("Initializing cytoscape with container:", containerDiv);
-        console.log("Elements count:", cyElements.length);
-        console.log("Sample elements:", cyElements.slice(0, 2));
-
-        // Try minimal initialization first
-        // cytoscape style 类型定义不完整，使用类型断言避免 TS2353
-        const cy = cytoscape({
-          container: containerDiv,
-          elements: [],
-          // Disable edge selection to prevent gray border on click
-          selectionType: "single",
-          userZoomingEnabled: true,
-          userPanningEnabled: true,
-          boxSelectionEnabled: false,
-          // Disable automatic layout on initialization
-          layout: { name: "preset" },
-          style: [
-            {
-              selector: "node",
-              style: {
-                "background-color": "data(color)",
-                width: "data(size)",
-                height: "data(size)",
-                label: showLabels ? "data(label)" : "",
-                color: textColor,
-                "text-valign": "bottom",
-                "text-halign": "center",
-                "font-size": "8px",
-                "font-weight": 500,
-                "text-margin-y": 3,
-                "text-wrap": "wrap",
-                "text-max-width": "80px",
-                "text-background-color": textBgColor,
-                "text-background-opacity": 0.9,
-                "text-background-padding": "2px",
-                "text-background-shape": "roundrectangle",
-                "border-width": 1,
-                "border-color": isDarkMode ? "#ffffff20" : "#00000020",
-                "border-opacity": 0.3,
-              },
-            },
-            {
-              selector: "node:selected",
-              style: {
-                "border-width": 3,
-                "border-color": "#0074d9",
-                "border-opacity": 1,
-              },
-            },
-            {
-              selector: "edge",
-              style: {
-                width: "data(width)",
-                "line-color": "data(color)",
-                "target-arrow-color": "data(color)",
-                "target-arrow-shape": "triangle",
-                "target-arrow-size": 6,
-                "curve-style": "bezier",
-                opacity: isDarkMode ? 0.6 : 0.7,
-              },
-            },
-            // Focus mode styles
-            {
-              selector: ".dimmed",
-              style: {
-                opacity: 0.2,
-              },
-            },
-            {
-              selector: ".focused",
-              style: {
-                "border-width": 4,
-                "border-color": "#ff6b35",
-                "border-opacity": 1,
-                "z-index": 999,
-              },
-            },
-            {
-              selector: ".connected",
-              style: {
-                "border-width": 2,
-                "border-color": "#0074d9",
-                "border-opacity": 0.8,
-                opacity: 1,
-              },
-            },
-            {
-              selector: "edge.connection",
-              style: {
-                width: 2,
-                opacity: 1,
-                "z-index": 100,
-              },
-            },
-            {
-              selector: "edge.connection:hover",
-              style: {
-                width: 3,
-                opacity: 1,
-                "z-index": 200,
-              },
-            },
-            // Disable edge selection styling
-            {
-              selector: "edge:selected",
-              style: {
-                "overlay-opacity": 0,
-                "overlay-color": "transparent",
-                "overlay-padding": 0,
-              },
-            },
-          ] as unknown as cytoscape.StylesheetJson,
-        });
-
-        cyRef.current = cy;
-
-        console.log("Cytoscape initialized successfully");
-
-        // Add elements after initialization
-        if (cyElements.length > 0) {
-          console.log("Adding elements to cytoscape");
-          cy.add(cyElements);
-          // fcose 布局参数超出 cytoscape BaseLayoutOptions 类型定义，使用类型断言
-          (cy.layout as unknown as (opts: Record<string, unknown>) => { run: () => void })({
-            name: "fcose",
-            quality: "default",
-            randomize: false,
-            animate: true,
-            animationDuration: 1500,
-            // Separation settings - increase to spread nodes more
-            nodeSeparation: 200,
-            idealEdgeLength: () => 250,
-            edgeElasticity: () => 0.05,
-            nestingFactor: 0.05,
-            gravity: 0.05, // Reduced gravity spreads nodes more
-            numIter: 2500,
-            // Overlap prevention
-            nodeOverlap: 30,
-            avoidOverlap: true,
-            nodeDimensionsIncludeLabels: true,
-            // Layout bounds - reduce padding to use more space
-            padding: 20,
-            boundingBox: undefined,
-            // Tiling - increase spacing between disconnected components
-            tile: true,
-            tilingPaddingVertical: 30,
-            tilingPaddingHorizontal: 30,
-            // Force more spread
-            uniformNodeDimensions: false,
-            packComponents: false, // Don't pack components tightly
-          }).run();
-
-          // Fit to viewport
-          cy.fit();
-        }
-
-        // Add basic interactions
-        cy.on("tap", "node", (evt: cytoscape.EventObject) => {
-          const node = evt.target as cytoscape.NodeSingular;
-          const originalNode = node.data("originalNode") as GraphNode;
-          if (onNodeClickRef.current && originalNode) {
-            onNodeClickRef.current(originalNode);
-          }
-        });
-
-        cy.on("mouseover", "node", (evt: cytoscape.EventObject) => {
-          const node = evt.target as cytoscape.NodeSingular;
-          const originalNode = node.data("originalNode") as GraphNode;
-          setHoveredNode(originalNode);
-          if (onNodeHoverRef.current && originalNode) {
-            onNodeHoverRef.current(originalNode);
-          }
-          if (containerDiv) containerDiv.style.cursor = "pointer";
-        });
-
-        cy.on("mouseout", "node", () => {
-          setHoveredNode(null);
-          if (onNodeHoverRef.current) {
-            onNodeHoverRef.current(null);
-          }
-          if (containerDiv) containerDiv.style.cursor = "default";
-        });
-
-        // Edge hover handlers - only work in focus mode and on highlighted edges
-        cy.on("mouseover", "edge", (evt: cytoscape.EventObject) => {
-          const edge = evt.target;
-
-          // Only allow interaction if we're in focus mode and edge is highlighted
-          if (!isFocusModeRef.current || !edge.hasClass("connection")) {
-            return;
-          }
-
-          const originalLink = edge.data("originalLink") as GraphLink;
-          if (originalLink) {
-            setHoveredLink(originalLink);
-            // Get position for tooltip
-            const renderedPos = edge.renderedMidpoint();
-            setLinkTooltipPos({ x: renderedPos.x, y: renderedPos.y });
-          }
-        });
-
-        cy.on("mouseout", "edge", (evt: cytoscape.EventObject) => {
-          const edge = evt.target;
-
-          // Only clear hover state if we were actually hovering a highlighted edge
-          if (!isFocusModeRef.current || !edge.hasClass("connection")) {
-            return;
-          }
-
-          setHoveredLink(null);
-          setLinkTooltipPos(null);
-        });
-
-        // Prevent edge selection to avoid gray border on click
-        cy.on("select", "edge", (evt: cytoscape.EventObject) => {
-          evt.target.unselect();
-        });
-
-        // Double-click to focus on node and its connections
-        cy.on("dblclick", "node", (evt: cytoscape.EventObject) => {
-          const focusedNode = evt.target as cytoscape.NodeSingular;
-          const focusedNodeId = focusedNode.id();
-
-          console.log("Double-clicked node:", focusedNodeId);
-
-          // Enter focus mode
-          setIsFocusMode(true);
-
-          // Clear any existing focus classes
-          cy.elements().removeClass("dimmed focused connected connection");
-
-          // Get all connected nodes and edges
-          const connectedElements = focusedNode.neighborhood();
-          const connectedNodes = connectedElements.nodes();
-          const connectedEdges = connectedElements.edges();
-
-          // Apply styling classes
-          cy.elements().addClass("dimmed"); // Dim everything first
-          focusedNode.removeClass("dimmed").addClass("focused"); // Highlight the focused node
-          connectedNodes.removeClass("dimmed").addClass("connected"); // Highlight connected nodes
-          connectedEdges.removeClass("dimmed").addClass("connection"); // Highlight connecting edges
-
-          // Create a collection of all relevant elements for positioning
-          const relevantElements = focusedNode.union(connectedElements);
-
-          // Reorient the graph to focus on this subgraph
-          cy.animate(
-            {
-              fit: {
-                eles: relevantElements,
-                padding: 100,
-              },
-              center: {
-                eles: focusedNode,
-              },
-            },
-            {
-              duration: 800,
-              easing: "ease-out-cubic",
-            },
-          );
-        });
-
-        // Click on background to reset focus
-        cy.on("tap", (evt: cytoscape.EventObject) => {
-          if (evt.target === cy) {
-            console.log("Clicked background - resetting focus");
-
-            // Exit focus mode
-            setIsFocusMode(false);
-
-            // Remove all focus classes
-            cy.elements().removeClass("dimmed focused connected connection");
-
-            // Zoom out to show all elements
-            cy.animate(
-              {
-                fit: {
-                  eles: cy.elements(),
-                  padding: 50,
-                },
-              },
-              {
-                duration: 600,
-                easing: "ease-out",
-              },
-            );
-          }
-        });
-
-        setIsLoading(false);
-        isInitializingRef.current = false;
-        lastDataSignatureRef.current = dataSignature;
-      } catch (error) {
-        console.error("Error initializing cytoscape:", error);
-        setIsLoading(false);
-        isInitializingRef.current = false;
-      }
-    }, 100); // 100ms delay
-
-    return () => {
-      isCancelled = true;
-      clearTimeout(timeout);
-      isInitializingRef.current = false;
-      if (cyRef.current) {
-        cyRef.current.destroy();
-        cyRef.current = null;
-      }
-    };
-  }, [
-    dataSignature,
-    isMounted,
-    containerDiv,
-    isDarkMode,
-    cyElements.filter,
-    cyElements.slice,
+  const { containerRef, isMounted, isLoading, isDarkMode, nodeCount, hoveredLink, linkTooltipPos } = useCytoscapeGraph({
+    data,
     showLabels,
-    cyElements.length,
-    cyElements,
-  ]);
-
-  // Handle resize
-  useEffect(() => {
-    const handleResize = () => {
-      if (cyRef.current) {
-        cyRef.current.resize();
-        cyRef.current.fit(undefined, 80);
-      }
-    };
-
-    window.addEventListener("resize", handleResize);
-    return () => window.removeEventListener("resize", handleResize);
-  }, []);
+    maxNodes,
+    onNodeClick,
+    onNodeHover,
+    nodeColorFn,
+    nodeSizeFn,
+    linkColorFn,
+    linkWidthFn,
+  });
 
   return (
     <div className="relative w-full rounded-lg overflow-hidden border border-border" style={{ height }}>
@@ -602,7 +64,7 @@ export function Graph2D({
       {/* Cytoscape container */}
       {isMounted && (
         <div
-          ref={setContainerDiv}
+          ref={containerRef}
           className="w-full h-full"
           style={{
             backgroundImage: isDarkMode
@@ -615,7 +77,7 @@ export function Graph2D({
       )}
 
       {/* Empty state */}
-      {!isLoading && graphData.nodes.length === 0 && (
+      {!isLoading && nodeCount === 0 && (
         <div className="absolute inset-0 flex items-center justify-center">
           <div className="text-center">
             <p className="text-muted-foreground">{t("graph2d.emptyState")}</p>
@@ -641,7 +103,7 @@ export function Graph2D({
             <div className="font-medium capitalize mb-1">
               {(() => {
                 const type = hoveredLink.type || "semantic";
-                if (["causes", "caused_by", "enables", "prevents"].includes(type)) {
+                if (isCausalLinkType(type)) {
                   return t("graph2d.linkTypeCausal", { type: type.replace("_", " ") });
                 }
                 return t("graph2d.linkTypeGeneric", { type });
@@ -665,49 +127,4 @@ export function Graph2D({
       <div className="absolute bottom-4 right-4 text-xs text-muted-foreground/60 z-20">{t("graph2d.controlsHint")}</div>
     </div>
   );
-}
-
-// ============================================================================
-// Utility Functions
-// ============================================================================
-
-/**
- * 转换入参：`nodes` / `edges` 直接取 `types.ts` 的 `GraphApiData`（此前在这里逐字重抄了 11 行同样的
- * 字段表，与共享类型各改各的），只把 `table_rows` 收窄成转换真正读到的字段——API 的
- * `entities` 是 `string | string[]` 而这里只当纯文本用，收窄后调用方仍需显式断言。
- */
-type HindsightGraphSource = Pick<GraphApiData, "nodes" | "edges"> & {
-  table_rows?: Array<{ id: string; text: string; entities?: string; context?: string }>;
-};
-
-export function convertHindsightGraphData(hindsightData: HindsightGraphSource): GraphData {
-  const nodes: GraphNode[] = (hindsightData.nodes || []).map((n) => {
-    const tableRow = hindsightData.table_rows?.find((r) => r.id === n.data.id);
-    // Use memory text as label, truncated to ~40 chars
-    let label = n.data.label;
-    if (!label && tableRow?.text) {
-      label = tableRow.text.length > 40 ? `${tableRow.text.substring(0, 40)}...` : tableRow.text;
-    }
-    if (!label) {
-      label = n.data.id.substring(0, 8);
-    }
-    return {
-      id: n.data.id,
-      label,
-      color: n.data.color,
-      metadata: tableRow,
-    };
-  });
-
-  const links: GraphLink[] = (hindsightData.edges || []).map((e) => ({
-    source: e.data.source,
-    target: e.data.target,
-    color: e.data.color,
-    // Use linkType directly from API, fallback to lineStyle check, default to semantic
-    type: e.data.linkType || (e.data.lineStyle === "dashed" ? "temporal" : "semantic"),
-    entity: e.data.entityName, // API returns entityName
-    weight: e.data.weight ?? e.data.similarity,
-  }));
-
-  return { nodes, links };
 }

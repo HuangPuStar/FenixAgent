@@ -41,7 +41,5 @@ VOLUME ["/app/workspaces"]
 RUN alias claude='ccb'
 
 ENV AGENT_TYPE=ccb
-# IS_PERI=1 时额外生成 .peri/settings.json（Peri 客户端模式），默认 0
-ENV IS_PERI=0
 # acp-runtime 启动 CCB agent 并注册到 RCS
 CMD ["bun", "/usr/local/bin/acp-runtime.js", "ccb", "--acp"]

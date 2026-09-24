@@ -9,13 +9,14 @@ import { useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { AgentModelsCatalog } from "./agent-models-catalog";
 import { useAgentModelsData } from "./agent-models-data";
-import { DiscoveryDialog, ModelDeleteDialogs, ModelEditorDialog, ProviderEditorDialog } from "./agent-models-dialogs";
+import { DiscoveryDialog, ModelDeleteDialogs, ModelEditorDialog } from "./agent-models-dialogs";
 import type { ModelDialogTarget, ProviderDialogTarget } from "./agent-models-types";
 import { getProviderKey, type ProviderScope, providerMatchesScope } from "./agent-models-utils";
 import "./agent-models.css";
 import "./agent-models-dialogs.css";
 import "./agent-models-states.css";
 import { MODELS_NS } from "../../../i18n/namespace";
+import { ProviderEditorDialog } from "./provider-editor-dialog";
 
 export function AgentModelsPage() {
   const { t } = useTranslation(MODELS_NS);
@@ -34,6 +35,19 @@ export function AgentModelsPage() {
   const [modelDialog, setModelDialog] = useState<ModelDialogTarget | null>(null);
   const [deleteProvider, setDeleteProvider] = useState<ProviderInfo | null>(null);
   const [deleteModel, setDeleteModel] = useState<{ providerKey: string; model: ProviderModel } | null>(null);
+  // 两个编辑弹窗的表单重置靠 `key`（§4.2 / §4.3）：计数只在**打开**时自增，关掉再打开同一个
+  // Provider / 模型也会换 key 重挂载，旧草稿（含上一次的探测结果）不会漏进下一次打开。
+  // 关闭时不动 key——弹窗内容要留在树上走完退出动画。
+  const [providerDialogKey, setProviderDialogKey] = useState(0);
+  const [modelDialogKey, setModelDialogKey] = useState(0);
+  const openProviderDialog = (target: ProviderDialogTarget) => {
+    setProviderDialogKey((key) => key + 1);
+    setProviderDialog(target);
+  };
+  const openModelDialog = (target: ModelDialogTarget) => {
+    setModelDialogKey((key) => key + 1);
+    setModelDialog(target);
+  };
 
   const providers = data.catalog.data?.providers ?? [];
   const modelsByProvider = data.catalog.data?.modelsByProvider ?? {};
@@ -96,20 +110,20 @@ export function AgentModelsPage() {
         onQueryChange={setQuery}
         onScopeChange={setScope}
         onSelectProvider={(provider) => setSelectedKey(getProviderKey(provider))}
-        onCreateProvider={() => setProviderDialog({ mode: "create" })}
-        onEditProvider={(provider) => setProviderDialog({ mode: "edit", provider })}
-        onViewProvider={(provider) => setProviderDialog({ mode: "view", provider })}
+        onCreateProvider={() => openProviderDialog({ mode: "create" })}
+        onEditProvider={(provider) => openProviderDialog({ mode: "edit", provider })}
+        onViewProvider={(provider) => openProviderDialog({ mode: "view", provider })}
         onDeleteProvider={setDeleteProvider}
         onTogglePublic={(provider, value) => data.togglePublic.run(provider, value)}
         onDiscoverModels={(provider) =>
           data.discoverModels.run(getProviderKey(provider), modelsByProvider[getProviderKey(provider)] ?? [])
         }
-        onCreateModel={(provider) => setModelDialog({ mode: "create", providerKey: getProviderKey(provider) })}
+        onCreateModel={(provider) => openModelDialog({ mode: "create", providerKey: getProviderKey(provider) })}
         onEditModel={(provider, model) =>
-          setModelDialog({ mode: "edit", providerKey: getProviderKey(provider), model })
+          openModelDialog({ mode: "edit", providerKey: getProviderKey(provider), model })
         }
         onViewModel={(provider, model) =>
-          setModelDialog({ mode: "view", providerKey: getProviderKey(provider), model })
+          openModelDialog({ mode: "view", providerKey: getProviderKey(provider), model })
         }
         onDeleteModel={(provider, model) => setDeleteModel({ providerKey: getProviderKey(provider), model })}
         onTestModel={(provider, model) => data.testModel.run(getProviderKey(provider), model.id)}
@@ -122,6 +136,7 @@ export function AgentModelsPage() {
         onRetry={data.catalog.refresh}
       />
       <ProviderEditorDialog
+        key={providerDialogKey}
         target={providerDialog}
         providers={providers}
         saving={data.saveProvider.loading}
@@ -129,6 +144,7 @@ export function AgentModelsPage() {
         onSave={data.saveProvider.runAsync}
       />
       <ModelEditorDialog
+        key={modelDialogKey}
         target={modelDialog}
         saving={data.saveModel.loading}
         onClose={() => setModelDialog(null)}

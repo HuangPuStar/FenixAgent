@@ -3,6 +3,7 @@ import { PreviewTab } from "@fenix/ui-components/components/PreviewTab";
 import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from "@fenix/ui-components/ui/resizable";
 import { type RefObject, useEffect, useRef } from "react";
 import type { PanelImperativeHandle } from "react-resizable-panels";
+import { buildPreviewSourceUrl, readPreviewSource } from "@/src/api/fs";
 import { FileTabsBar } from "./FileTabsBar";
 import { FileTreeTab, type FileTreeTabHandle } from "./FileTreeTab";
 
@@ -108,7 +109,14 @@ export function ArtifactsFilesWorkspace({
               onCloseFile={onCloseFile}
               onPreviewChangedFile={onOpenFile}
             />
-            <PreviewTab envId={envId} filePath={activeFile} />
+            {/* 预览源文件的 URL 与取数都注入自域模块（§5.8：组件不拼后端 URL、不裸调 fetch）；
+                包内不再有全局 fetch 兜底，两个 prop 必须一起给。 */}
+            <PreviewTab
+              envId={envId}
+              filePath={activeFile}
+              buildPreviewUrl={buildPreviewSourceUrl}
+              fetchPreview={readPreviewSource}
+            />
           </div>
         </ResizablePanel>
       </ResizablePanelGroup>

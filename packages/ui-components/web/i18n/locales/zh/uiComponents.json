@@ -303,6 +303,10 @@
   "datePicker": {
     "placeholder": "选择日期"
   },
+  "errors": {
+    "renderFailed": "内容渲染失败",
+    "retry": "重试"
+  },
   "fileTree": {
     "accessibleName": "文件树",
     "clearSearch": "清除文件搜索",
@@ -326,7 +330,26 @@
       "fullscreen": "全屏",
       "loading": "加载中...",
       "noFileSelected": "选择文件以预览",
-      "retry": "重试"
+      "retry": "重试",
+      "loadFailed": "文件预览加载失败（HTTP {{status}}）",
+      "loadFailedUnknown": "文件预览加载失败",
+      "componentError": "预览组件加载失败",
+      "messages": {
+        "loading": "加载中...",
+        "unsupportedTitle": "暂不支持此格式",
+        "downloadTitle": "下载文件",
+        "downloadFile": "下载",
+        "file": "文件",
+        "unnamedFile": "未命名文件",
+        "format": "格式",
+        "unknown": "未知",
+        "mime": "MIME 类型",
+        "undeclared": "未声明",
+        "size": "大小",
+        "source": "来源",
+        "remoteUrl": "远程 URL",
+        "localFile": "本地文件"
+      }
     },
     "refresh": "刷新",
     "retry": "重试",

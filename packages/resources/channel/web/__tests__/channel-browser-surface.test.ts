@@ -57,6 +57,7 @@ const BROWSER_SAFE_EXTERNAL: ReadonlyMap<string, string> = new Map([
   ["tailwind-merge", "Tailwind 类名去重（lib/cn 传递依赖），纯函数"],
   ["react-hook-form", "表单状态库（config/FormDialog 传递依赖），只依赖 react/DOM"],
   ["@hookform/resolvers", "react-hook-form 的 zod 解析器（config/FormDialog 传递依赖），纯函数"],
+  ["zod", "运行时校验（本包依赖 zod/v4，纯函数，无 node 依赖）"],
   ["lucide-react", "SVG 图标库（本包 dependencies 与 ui-components 均直接使用）"],
   ["sonner", "Toast 渲染（本包 dependencies 直接使用）"],
   ["ahooks", "React hooks 工具库（本包 dependencies 直接使用）"],

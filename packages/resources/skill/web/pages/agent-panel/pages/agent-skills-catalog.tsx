@@ -1,5 +1,14 @@
 import { MessageResponse } from "@fenix/ui-components/chat/primitives/message";
 import {
+  AgentCatalogIndex,
+  AgentCatalogIndexArrow,
+  AgentCatalogIndexCopy,
+  AgentCatalogIndexIcon,
+  AgentCatalogIndexItem,
+  AgentCatalogIndexMeta,
+  AgentCatalogIndexNav,
+} from "@fenix/ui-components/components/agent-catalog-index";
+import {
   AgentMasterDetailHeader,
   AgentMasterDetailWorkspace,
 } from "@fenix/ui-components/components/agent-master-detail-workspace";
@@ -13,7 +22,6 @@ import { NS } from "@fenix/web-runtime/i18n/namespace";
 import type { SkillDetail as SkillDetailData } from "@fenix/web-runtime/types/config";
 import {
   AlertTriangle,
-  ChevronRight,
   Code2,
   Download,
   Eye,
@@ -215,22 +223,14 @@ export function AgentSkillsCatalog(props: AgentSkillsCatalogProps) {
           detailHeader={selectedSkill ? <SkillDetailView skill={selectedSkill} props={props} headerOnly /> : null}
           detailFooter={selectedSkill ? <SkillDetailActions skill={selectedSkill} props={props} /> : null}
           index={
-            <aside className="px-2.5 py-4.75">
-              <header className="px-2 pb-3.5">
-                <div className="flex items-center justify-between text-xs font-semibold">
-                  <strong>{t("directory.title")}</strong>
-                  <span className="grid h-5 min-w-5.5 place-items-center rounded-sm bg-slate-200 text-3xs text-[var(--skills-muted)]">
-                    {filtered.length}
-                  </span>
-                </div>
-                <small className="mt-1 block text-3xs text-[var(--skills-faint)]">
-                  {t("directory.summary", {
-                    visible: filtered.length,
-                    total: props.skills.length,
-                  })}
-                </small>
-              </header>
-              <nav className="grid gap-0.75" aria-label={t("directory.title")}>
+            // 目录栏外观（内边距 / 底色 / 分隔线 / 行距 / 条目三态 / 字号）全在共享构件集的伴生 CSS，
+            // 页面不再给目录栏与条目任何取值——2026-09-23 的裁定是「全部样式统一」。
+            <AgentCatalogIndex
+              title={t("directory.title")}
+              count={filtered.length}
+              description={t("directory.summary", { visible: filtered.length, total: props.skills.length })}
+            >
+              <AgentCatalogIndexNav label={t("directory.title")}>
                 {filtered.map((skill) => {
                   const external = isExternalSkill(skill, props.activeOrganizationId);
                   const SkillIcon = getSkillIcon(skill);
@@ -239,50 +239,27 @@ export function AgentSkillsCatalog(props: AgentSkillsCatalogProps) {
                   const organizationName = skill.organizationName ?? t("scope.organization");
                   const publiclyReadable = isPublicSkill(skill);
                   return (
-                    <button
-                      type="button"
+                    <AgentCatalogIndexItem
                       key={getSkillKey(skill)}
-                      aria-current={active ? "page" : undefined}
-                      className={`skills-directory-item grid min-h-14.25 min-w-0 items-center gap-2 rounded-md border-0 p-2 text-left ${active ? "bg-indigo-50 text-[var(--skills-blue)]" : "text-[var(--skills-muted)] hover:bg-white"}`}
+                      selected={active}
                       onClick={() => setSelectedKey(getSkillKey(skill))}
                     >
-                      <span className="skills-directory-item-icon grid size-7 place-items-center rounded-md bg-white">
-                        {external ? <Share2 /> : <SkillIcon />}
-                      </span>
-                      <span className="flex min-w-0 flex-col">
-                        <strong className="overflow-hidden text-ellipsis whitespace-nowrap text-xs text-[var(--skills-ink)]">
-                          {display.name}
-                        </strong>
-                        <small className="mt-0.75 overflow-hidden text-ellipsis whitespace-nowrap text-3xs text-[var(--skills-faint)]">
-                          {skill.description || t("directory.noDescription")}
-                        </small>
-                      </span>
-                      <span className="flex min-w-0 flex-col items-end gap-1 text-3xs leading-none">
-                        {display.namespace ? (
-                          <span
-                            className="max-w-32 overflow-hidden text-ellipsis whitespace-nowrap text-[var(--skills-muted)]"
-                            title={organizationName}
-                          >
-                            {display.namespace}
-                          </span>
-                        ) : null}
-                        {external && !publiclyReadable ? (
-                          <span className="rounded border border-blue-200 bg-blue-50 px-1.5 py-1 text-blue-700">
-                            {t("scope.shared")}
-                          </span>
-                        ) : null}
-                        {publiclyReadable ? (
-                          <span className="rounded border border-blue-200 bg-blue-50 px-1.5 py-1 text-blue-700">
-                            {t("scope.public")}
-                          </span>
-                        ) : null}
-                      </span>
-                      <ChevronRight className={`w-3 ${active ? "opacity-100" : "opacity-0"}`} />
-                    </button>
+                      <AgentCatalogIndexIcon>{external ? <Share2 /> : <SkillIcon />}</AgentCatalogIndexIcon>
+                      <AgentCatalogIndexCopy
+                        title={display.name}
+                        subtitle={skill.description || t("directory.noDescription")}
+                      />
+                      <AgentCatalogIndexMeta>
+                        {display.namespace ? <span title={organizationName}>{display.namespace}</span> : null}
+                        {external && !publiclyReadable ? <span>{t("scope.shared")}</span> : null}
+                        {publiclyReadable ? <span>{t("scope.public")}</span> : null}
+                      </AgentCatalogIndexMeta>
+                      <AgentCatalogIndexArrow />
+                    </AgentCatalogIndexItem>
                   );
                 })}
-              </nav>
-            </aside>
+              </AgentCatalogIndexNav>
+            </AgentCatalogIndex>
           }
         >
           {selectedSkill ? (

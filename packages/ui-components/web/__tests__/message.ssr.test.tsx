@@ -18,10 +18,16 @@
 // - 已登记的有意取舍（`packages/ui-components/README.md`「已知取舍」表）
 //   覆盖 ToolCallRow 的 `publicError` 块 / 完成态
 //   状态词与 TodoChanges 的变更标签，均不属于本文件用例，故本文件无删除项。
+// - 例外一条：末条用例「子 Agent 限高详情块不使用 overscroll-contain」是 DOM 用例——限高块只在展开态
+//   挂载，SSR 标记里取不到。它按浏览器路径装配 happy-dom 并点开触发点，DOM 全局只在该用例内注入、
+//   用完还原（不留给同进程后续文件）；其余用例仍是纯 SSR。
 
 import { describe, expect, test } from "bun:test";
+import { initializeHappyDomWindow } from "@fenix/ui-components/testing";
+import { Window } from "happy-dom";
 import { createInstance, type i18n as I18nInstance } from "i18next";
-import { createElement, type ReactNode } from "react";
+import { act, createElement, type ReactNode } from "react";
+import { createRoot } from "react-dom/client";
 import { renderToReadableStream, renderToStaticMarkup } from "react-dom/server";
 import { I18nextProvider } from "react-i18next";
 import { initReactI18next } from "react-i18next/initReactI18next";
@@ -317,5 +323,85 @@ describe("消息组件的服务端渲染", () => {
 
     expect(markup).toContain('aria-expanded="false"');
     expect(markup).not.toContain("已完成调研");
+  });
+
+  // 子 Agent 详情展开后是**消息流内**的限高滚动容器，不得使用 overscroll-contain：该块在没有内部溢出时
+  // （常态）会把指针落在它上面的滚轮判定为「本容器消费」，既不滚本块、也不链式传给消息时间线，于是会话里
+  // 出现滚轮死区 —— 表现为「切换会话后有滚动条却滚不动」。真实 Chrome 工装实测（读数见交付报告）：
+  // 消息区 clientHeight 545 / scrollHeight 1272、滚轮 ±400 均零位移；仅摘掉本类后同一落点恢复可滚。
+  // 折叠态在 SSR 标记里不渲染内容（见上一条），故这里按浏览器路径装配 DOM 并点开触发点，才拿得到限高块。
+  test("子 Agent 限高详情块不使用 overscroll-contain（避免消息区滚轮死区）", async () => {
+    // 本文件其余用例是纯 SSR，不需要 DOM 引导；DOM 全局只在本用例内注入，用完还原，避免泄漏给
+    // 同进程里后续评测的其它测试文件（`web/testing.ts` 记录过这类跨文件泄漏的实测事故）。
+    const win = initializeHappyDomWindow(new Window());
+    const g = globalThis as Record<string, unknown>;
+    const saved = {
+      window: g.window,
+      document: g.document,
+      navigator: g.navigator,
+      ResizeObserver: g.ResizeObserver,
+      getComputedStyle: g.getComputedStyle,
+      HTMLElement: g.HTMLElement,
+      customElements: g.customElements,
+      requestAnimationFrame: g.requestAnimationFrame,
+      cancelAnimationFrame: g.cancelAnimationFrame,
+      IS_REACT_ACT_ENVIRONMENT: g.IS_REACT_ACT_ENVIRONMENT,
+    };
+    g.IS_REACT_ACT_ENVIRONMENT = true;
+    g.window = win;
+    g.document = win.document;
+    g.navigator = win.navigator;
+    g.ResizeObserver = win.ResizeObserver;
+    g.getComputedStyle = win.getComputedStyle.bind(win);
+    // Radix `CollapsibleContent` 在挂载副作用里调 `requestAnimationFrame`，happy-dom 只把它挂在 window 上
+    // （同 `chat-shell-wiring.test.tsx` 的注入方式）。
+    g.requestAnimationFrame = win.requestAnimationFrame.bind(win);
+    g.cancelAnimationFrame = win.cancelAnimationFrame.bind(win);
+    // `HTMLElement` 与 `customElements` 必须成对注入（单独注入会让 streamdown 的 web-components 判定
+    // 「有 DOM 但没有注册表」而崩后续文件），见 `web/testing.ts` 的说明。
+    g.HTMLElement = win.HTMLElement;
+    g.customElements = win.customElements;
+
+    try {
+      const container = win.document.createElement("div") as unknown as HTMLElement;
+      const root = createRoot(container);
+      await act(async () => {
+        // 不包 `I18nextProvider`：本文件已用 `initReactI18next` 把 `i18n` 登记为 react-i18next 的默认实例，
+        // 组件自己就能取到文案；而同一 provider 同时被本文件的 SSR 渲染器与本用例的 client 渲染器使用会触发
+        // React 的开发期告警（"multiple renderers concurrently rendering the same context provider"）。
+        root.render(
+          createElement(SubAgentPanel, {
+            entries: [
+              {
+                type: "assistant_message",
+                id: "sub-agent-limiter",
+                chunks: [{ type: "message", text: "已完成调研" }],
+              },
+            ],
+          }),
+        );
+      });
+
+      const trigger = container.querySelector("button");
+      expect(trigger).not.toBeNull();
+      await act(async () => {
+        trigger?.click();
+      });
+
+      const limiter = container.querySelector('[class*="max-h-64"]');
+      expect(limiter).not.toBeNull();
+      const className = limiter?.getAttribute("class") ?? "";
+      expect(className).toContain("max-h-64 overflow-y-auto");
+      expect(className).not.toContain("overscroll-contain");
+
+      await act(async () => {
+        root.unmount();
+      });
+    } finally {
+      for (const [key, value] of Object.entries(saved)) {
+        if (value === undefined) delete g[key];
+        else g[key] = value;
+      }
+    }
   });
 });

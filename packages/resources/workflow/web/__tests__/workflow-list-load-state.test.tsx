@@ -10,6 +10,7 @@
 
 import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
 import { initializeHappyDomWindow } from "@fenix/ui-components/testing";
+import { OrgSessionProvider } from "@fenix/web-runtime/contexts/org-session";
 import { Window } from "happy-dom";
 import { act, createElement, type FC } from "react";
 import { createRoot, type Root } from "react-dom/client";
@@ -25,7 +26,8 @@ g.navigator = win.navigator;
 // ── 本地翻译表（只列断言用到的键；其余回显 key 便于定位漏翻） ──
 const MOCK_TRANSLATIONS: Record<string, string> = {
   "list.loading": "加载中...",
-  "list.load_failed": "加载失败: {{error}}",
+  "list.load_failed": "加载失败",
+  "list.load_failed_hint": "请重试；若持续失败，请联系组织管理员。",
   "list.retry": "重试",
   "list.unauthorized_title": "无权限查看工作流",
   "list.unauthorized_hint": "当前账号或所属组织已无权访问工作流，重试不会改变结果。",
@@ -127,6 +129,19 @@ interface Rendered {
   root: Root;
 }
 
+/**
+ * 提供组织上下文：列表是租户作用域取数，`WorkflowList` 经 `useOrgSession()` 读组织 id，
+ * `ready: !!organizationId` 决定发不发请求（没有 Provider 会直接抛错）。
+ * 本文件只关心加载 / 失败 / 无权限三态，故固定给一个已解析好的组织。
+ */
+function withOrgSession(node: unknown): ReturnType<typeof createElement> {
+  return createElement(
+    OrgSessionProvider as FC<{ value: unknown; children?: unknown }>,
+    { value: { organizationId: "org1", userId: "u1", isOwner: true, pending: false } },
+    node as never,
+  );
+}
+
 /** 渲染 WorkflowList 并等待首轮请求落地（骨架屏 → 结果态）。 */
 async function renderList(settleMs = 50): Promise<Rendered> {
   const { WorkflowList } = await import("../pages/workflow/WorkflowList");
@@ -134,10 +149,12 @@ async function renderList(settleMs = 50): Promise<Rendered> {
   const root = createRoot(container);
   await act(async () => {
     root.render(
-      createElement(WorkflowList as FC<Record<string, unknown>>, {
-        onEditWorkflow: noop,
-        onViewVersions: noop,
-      }),
+      withOrgSession(
+        createElement(WorkflowList as FC<Record<string, unknown>>, {
+          onEditWorkflow: noop,
+          onViewVersions: noop,
+        }),
+      ),
     );
     await new Promise((r) => setTimeout(r, settleMs));
   });
@@ -163,10 +180,12 @@ describe("WorkflowList 加载状态", () => {
     const root = createRoot(container);
     act(() => {
       root.render(
-        createElement(WorkflowList as FC<Record<string, unknown>>, {
-          onEditWorkflow: noop,
-          onViewVersions: noop,
-        }),
+        withOrgSession(
+          createElement(WorkflowList as FC<Record<string, unknown>>, {
+            onEditWorkflow: noop,
+            onViewVersions: noop,
+          }),
+        ),
       );
     });
 
@@ -192,7 +211,9 @@ describe("WorkflowList 失败与无权限", () => {
 
     const alert = container.querySelector('[role="alert"]');
     expect(alert).not.toBeNull();
-    expect(alert?.textContent).toContain("加载失败: 服务器内部错误");
+    // 失败块只上屏字典文案：后端信封原文（"服务器内部错误"）是服务端措辞，不该出现在界面上（§9.3）
+    expect(alert?.textContent).toContain("加载失败");
+    expect(alert?.textContent).not.toContain("服务器内部错误");
     // 关键区分：不是空态
     expect(container.textContent).not.toContain("暂无工作流");
     expect(findButtonByText(container, "重试")).not.toBeNull();

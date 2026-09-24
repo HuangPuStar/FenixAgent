@@ -102,6 +102,8 @@ export interface UseProdViewEditorOptions {
   messages: {
     createSuccess: string;
     updateSuccess: string;
+    /** 保存失败：键随外壳不同，故传译文（§9.3——不把 `err.message` 这个后端信封原文铺给用户） */
+    saveFailed: string;
     /** 只有整页外壳需要：面板外壳的创建入口在 `!agentId` 时已禁用，走不到这里 */
     agentRequired?: string;
   };
@@ -182,7 +184,9 @@ export function useProdViewEditor({ boundAgentId, messages, onSaved }: UseProdVi
       closeDialog();
       onSaved();
     } catch (err) {
-      toast.error((err as Error).message);
+      // 原始 error 只进日志；上屏文案由外壳注入（§9.3）。
+      console.error("[prod-view] Failed to save production view", err);
+      toast.error(messages.saveFailed);
     } finally {
       setSubmitting(false);
     }
@@ -337,12 +341,18 @@ export interface ProdViewDeleteState {
 export interface UseProdViewDeleteOptions {
   /** 删除成功的提示：键随外壳不同，故传译文 */
   successMessage: string;
+  /** 删除失败的提示：同上，键随外壳不同（§9.3——不把 `err.message` 铺给用户） */
+  failureMessage: string;
   /** 删除成功后的列表刷新 */
   onDeleted: () => void;
 }
 
 /** 删除确认的状态与请求（弹窗本体见 `ProdViewDeleteDialog`）。 */
-export function useProdViewDelete({ successMessage, onDeleted }: UseProdViewDeleteOptions): ProdViewDeleteState {
+export function useProdViewDelete({
+  successMessage,
+  failureMessage,
+  onDeleted,
+}: UseProdViewDeleteOptions): ProdViewDeleteState {
   const [target, setTarget] = useState<ProdViewInfo | null>(null);
 
   const cancel = () => setTarget(null);
@@ -358,7 +368,8 @@ export function useProdViewDelete({ successMessage, onDeleted }: UseProdViewDele
       toast.success(successMessage);
       onDeleted();
     } catch (err) {
-      toast.error((err as Error).message);
+      console.error("[prod-view] Failed to delete production view", err);
+      toast.error(failureMessage);
     }
   };
 

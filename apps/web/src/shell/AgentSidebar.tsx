@@ -5,10 +5,12 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@fenix/ui-components/ui/dropdown-menu";
+import { ErrorFallback } from "@fenix/ui-components/ui/error-fallback";
 import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from "@fenix/ui-components/ui/resizable";
 import { Link } from "@tanstack/react-router";
 import { Building2, Check, ChevronLeft, ChevronRight, KeyRound, LogOut, UserRound } from "lucide-react";
 import { memo, useEffect, useState } from "react";
+import { ErrorBoundary } from "react-error-boundary";
 import { useTranslation } from "react-i18next";
 import { NS } from "@/src/i18n";
 import { AgentSidebarTree } from "./AgentSidebarTree";
@@ -25,7 +27,25 @@ interface AgentSidebarProps {
   onDeleteAgentEnvironments?: (environmentIds: string[]) => void;
 }
 
-export const AgentSidebar = memo(function AgentSidebar({
+/**
+ * 左侧导航（§7.1 放置矩阵第 5 行）：非关键面板，根组件裹一层错误边界——智能体树 / 快捷导航 / 账号菜单
+ * 任一崩溃时收缩成统一降级 UI（一次重试即可重新挂载侧栏），聊天区与输出面板不受影响。
+ *
+ * `memo` 留在导出这一层：它的职责是「props 未变就不重渲染」，与边界包在哪一层无关。
+ */
+export const AgentSidebar = memo(function AgentSidebar(props: AgentSidebarProps) {
+  return (
+    <ErrorBoundary
+      FallbackComponent={ErrorFallback}
+      onError={(error, info) => console.error("[AgentSidebar] 渲染失败", error, info)}
+    >
+      <AgentSidebarView {...props} />
+    </ErrorBoundary>
+  );
+});
+
+/** 侧栏本体：品牌区、快捷导航、智能体树与底部账号/组织菜单。 */
+function AgentSidebarView({
   activeNav,
   selectedInstanceId = null,
   selectedEnvironmentId = null,
@@ -181,7 +201,7 @@ export const AgentSidebar = memo(function AgentSidebar({
       <ChangePasswordDialog open={changePasswordOpen} onOpenChange={setChangePasswordOpen} />
     </aside>
   );
-});
+}
 
 function FenixSidebarLogo() {
   const { t: tSidebar } = useTranslation(NS.SIDEBAR);

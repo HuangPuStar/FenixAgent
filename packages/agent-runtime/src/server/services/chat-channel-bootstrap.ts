@@ -13,15 +13,10 @@ import type { ChatChannelDependencies } from "@fenix/chat-channel/server";
 import {
   ChatChannelController,
   classifyPermanentSpawnFailure,
-  clearSessionDocContent,
   docManager,
   isMachineOfflineError,
-  persistYjsClearedSnapshotWithCas,
 } from "@fenix/chat-channel/server";
 import { log, error as logError } from "@fenix/logger";
-import { getRedisConnection as getPlatformRedisConnection } from "@fenix/platform-sdk/server";
-import type { Cluster, Redis } from "ioredis";
-import * as Y from "yjs";
 import {
   markInstanceRelayAttached,
   markInstanceRelayDetached,
@@ -45,7 +40,6 @@ type ChatChannelBootstrapDeps = {
   markInstanceRelayDetached: typeof markInstanceRelayDetached;
   touchInstanceActivity: typeof touchInstanceActivity;
   terminateLocalDeadInstance: typeof terminateLocalDeadInstance;
-  getRedisConnection: () => Redis | Cluster | null;
   docManager: typeof docManager;
   isMachineOfflineError: typeof isMachineOfflineError;
   classifyPermanentSpawnFailure: typeof classifyPermanentSpawnFailure;
@@ -73,7 +67,6 @@ const defaultDeps: ChatChannelBootstrapDeps = {
   markInstanceRelayDetached,
   touchInstanceActivity,
   terminateLocalDeadInstance,
-  getRedisConnection: () => getPlatformRedisConnection<Redis | Cluster>(),
   docManager,
   isMachineOfflineError,
   classifyPermanentSpawnFailure,
@@ -90,24 +83,6 @@ let deps: ChatChannelBootstrapDeps = defaultDeps;
 /** 测试用：覆盖桥接层依赖（部分覆盖，未覆盖字段回落默认实现）；传 null 恢复默认。 */
 export function setChatChannelBootstrapDeps(overrides: Partial<ChatChannelBootstrapDeps> | null): void {
   deps = overrides ? { ...defaultDeps, ...overrides } : defaultDeps;
-}
-
-/**
- * 以 CAS 方式把清空后的 Session Doc 快照持久化到 Redis（会话切换前的并发安全清理）。
- * Redis 冲突重试耗尽时抛错，由调用方保留诊断上下文（错误消息不包含会话内容）。
- */
-export async function persistClearedSessionSnapshot(
-  redis: Redis | Cluster,
-  redisKey: string,
-  ydoc: Y.Doc,
-): Promise<void> {
-  const persisted = await persistYjsClearedSnapshotWithCas(
-    redis,
-    redisKey,
-    Y.encodeStateAsUpdate(ydoc),
-    clearSessionDocContent,
-  );
-  if (!persisted) throw new Error("Redis snapshot conflict retries exhausted");
 }
 
 function buildChatChannelDependencies(): ChatChannelDependencies {
@@ -127,16 +102,6 @@ function buildChatChannelDependencies(): ChatChannelDependencies {
       // orchestration-instance 的回收是异步的；relay 断链路径不等待回收完成，
       // 避免阻塞消息处理循环（回收失败由该函数内部日志保留诊断上下文）。
       void deps.terminateLocalDeadInstance(instanceId);
-    },
-    prepareClearSessionSnapshot: async (connection) => {
-      const redis = deps.getRedisConnection();
-      if (!redis) return;
-      const sessionDoc = await deps.docManager.openSession(
-        connection.userId,
-        connection.agentId,
-        connection.rcsSessionId,
-      );
-      await persistClearedSessionSnapshot(redis, `yjs:session:${connection.rcsSessionId}`, sessionDoc.ydoc);
     },
     isMachineOffline: deps.isMachineOfflineError,
     classifyPermanentSpawnFailure: deps.classifyPermanentSpawnFailure,

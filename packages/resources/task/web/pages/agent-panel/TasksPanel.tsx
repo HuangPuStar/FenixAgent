@@ -73,7 +73,8 @@ export function TasksPanel({ agentId }: TasksPanelProps) {
       await unwrap(taskV2Api.trigger(taskId));
       refresh();
     } catch {
-      toast.error(taskT("panelMode.tasksTriggerFailed") ?? "Trigger failed");
+      // 失败提示同样只走本包字典：`t()` 不会返回空值，原先的英文兜底串是永远走不到的死代码
+      toast.error(taskT("panelMode.tasksTriggerFailed"));
     } finally {
       setTriggeringIds((prev) => removeIdFromSet(prev, taskId));
     }
@@ -177,7 +178,12 @@ export function TasksPanel({ agentId }: TasksPanelProps) {
             </Link>
           </div>
         ) : (
-          <ScrollArea className="flex-1">
+          // `min-h-0` 不是修饰：本 ScrollArea 根是列向 flex 的子项（`flex-1`），不写它时 CSS 的自动最小尺寸
+          // （`min-height: auto`）会把它撑到**整个列表的内容高度**，视口于是与内容等高、永远没有可滚动溢出，
+          // 外层 `overflow-hidden` 只是把超出部分裁掉（表现为「任务一多就滚不动、也看不到滚动条」）。
+          // 实测：可用高 437.5px、40 条任务时根被撑到 2460px，视口 clientHeight == scrollHeight == 2460，
+          // 滚轮与 `scrollTop` 赋值均无效、Radix thumb 不挂载；补 `min-h-0` 后根 410.5px、视口 411:2460，可滚动。
+          <ScrollArea className="flex-1 min-h-0">
             {tasks.map((task) => {
               const cronDesc = describeCron(task.cron, taskT);
               return (
@@ -256,7 +262,7 @@ export function TasksPanel({ agentId }: TasksPanelProps) {
           </>
         ) : (
           <div className="flex-1 flex items-center justify-center">
-            <p className="text-xs text-text-muted">选择上方任务查看日志</p>
+            <p className="text-xs text-text-muted">{taskT("log.selectHint")}</p>
           </div>
         )}
       </div>

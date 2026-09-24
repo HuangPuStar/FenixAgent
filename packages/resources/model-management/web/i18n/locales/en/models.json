@@ -50,9 +50,9 @@
     "title": "Model library failed to load"
   },
   "emptyMessage": "No providers yet. Click \"New Provider\" to add one",
-  "loadError": "Failed to load data: {{message}}",
+  "loadError": "Failed to load data",
   "loadProvidersError": "Failed to load provider list: {{message}}",
-  "loadProviderDetailError": "Failed to load provider details: {{message}}",
+  "loadProviderDetailError": "Failed to load provider details",
   "loadModelConfigError": "Failed to load model config: {{message}}",
   "loadModelsError": "Failed to load model data",
   "unknownError": "Unknown error",
@@ -147,7 +147,7 @@
   "batchDeleteCount": "{{count}} providers deleted",
   "batchDeleteError": "Batch delete failed: {{message}}",
   "saveProvider": {
-    "errorGeneric": "Save failed: {{message}}",
+    "errorGeneric": "Save failed",
     "duplicateName": "Provider \"{{name}}\" already exists, please use a different name",
     "successCreate": "Provider created",
     "successUpdate": "Provider updated"
@@ -156,7 +156,7 @@
     "confirmTitle": "Confirm Delete",
     "confirmDesc": "This action is irreversible. Are you sure you want to delete provider \"{{name}}\"?",
     "success": "Provider deleted",
-    "error": "Delete failed: {{message}}"
+    "error": "Delete failed"
   },
   "form": {
     "editTitle": "Edit Provider",
@@ -193,7 +193,7 @@
     "modelsFound": "Found {{count}} available models",
     "added": "Added",
     "addModelSuccess": "Model {{modelId}} added",
-    "addModelError": "Add failed: {{message}}",
+    "addModelError": "Add failed",
     "testError": "Test failed: {{message}}",
     "modelTestPassed": "Test Passed",
     "modelTestFailed": "Test Failed",
@@ -243,13 +243,13 @@
     "saveModel": {
       "successCreate": "Model added",
       "successUpdate": "Model updated",
-      "errorGeneric": "Save failed: {{message}}"
+      "errorGeneric": "Save failed"
     },
     "deleteModel": {
       "confirmTitle": "Confirm Delete Model",
       "confirmDesc": "This action is irreversible. Are you sure you want to delete model \"{{id}}\"?",
       "success": "Model deleted",
-      "error": "Delete failed: {{message}}"
+      "error": "Delete failed"
     },
     "testModel": {
       "success": "Model {{id}} test succeeded: {{content}}",
@@ -359,6 +359,7 @@
       "resetNotScheduled": "Awaiting reset schedule",
       "exhausted": "Exhausted",
       "noMatches": "No matching users",
+      "queryFailed": "Could not load the budget list. Retry to query the current filters again.",
       "selectUser": "Select {{name}}",
       "pagination_total": "{{total}} users",
       "pagination_page_size": "{{size}} / page"
@@ -419,6 +420,8 @@
       "userOption": "{{name}} ({{email}})",
       "searchSubject": "Search {{subject}}",
       "noMatches": "No matching options",
+      "subjectLoadFailed": "Could not load the subject list. Retry the search.",
+      "queryFailed": "Could not load usage data. Retry to query the current range again.",
       "rangeHint": "Any date range is supported, up to 90 days per query. Use offline reports for longer periods.",
       "metrics": {
         "spend": "Total spend",
@@ -479,7 +482,7 @@
     "lightweightModel": "Lightweight Model",
     "lightweightModelPlaceholder": "Select lightweight model",
     "updateSuccess": "Model configuration updated",
-    "updateError": "Failed to update model configuration: {{message}}"
+    "updateError": "Failed to update model configuration"
   },
   "admin": {
     "gateAuthFailed": "Invalid or expired master key",

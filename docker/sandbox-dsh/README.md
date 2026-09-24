@@ -21,7 +21,7 @@ RCS 主服务器                    sandbox-dsh 容器
                              └──────────────────────────────────────┘
 ```
 
-伪装链路与 `docker/sandbox-peri` 完全一致：主服务器按 `AGENT_TYPE=ccb` 路由到
+伪装链路走「ccb 槽位」机制（`docker/sandbox-peri` 已切到 peri 原生节点，不再走该机制）：主服务器按 `AGENT_TYPE=ccb` 路由到
 `createCcbHandler()`，ccb handler 在 prepareWorkspace 阶段把 Agent 的模型配置
 （protocol / model / apiKey / baseUrl / prompt）写入
 `<workspace>/.claude/settings.local.json` 与 `CLAUDE.md`，然后以
@@ -75,13 +75,13 @@ docker compose -f docker/sandbox-dsh/docker-compose.yml up -d
   需改造 wrapper 生成的 composition 并验证 `session/request_permission` 转发。
 - **持久化压缩禁用**：容器内无 zstd 运行库，`persistenceCompression: none`。
 - **单容器单会话行为**：dsh 支持多会话，但 acp-runtime 的 ccb 槽位按单会话
-  模式工作（ccb handler 的新会话复用同一进程），与 peri 一致。
+  模式工作（ccb handler 的新会话复用同一进程）。
 
 ## 与 docker/sandbox-peri 的差异
 
 | | sandbox-peri | sandbox-dsh |
 |---|---|---|
-| 引擎 | Peri CLI（ccb 兼容桥） | DeepSeek Harness（官方 ACP server） |
-| 配置翻译 | ccb handler 直读 peri settings | wrapper 二次翻译为 cordis.yml |
+| 引擎 | Peri CLI（peri 原生节点，`AGENT_TYPE=peri`） | DeepSeek Harness（官方 ACP server） |
+| 配置翻译 | peri handler 直写 `.peri/settings.json` + `.claude/settings.local.json` | ccb handler 写 ccb settings，wrapper 二次翻译为 cordis.yml |
 | 输出粒度 | token 级流式 | 提交级整块文本 |
 | npm 包 | 无（脚本安装） | `@deepseek-ai/dsh-acp-demo@0.1.0-rc.6` |

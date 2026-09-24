@@ -647,24 +647,12 @@ export function upsertPeriTaskView(ydoc: Y.Doc, view: PeriTaskViewProjection): {
   return { created: true };
 }
 
-/** 清空 Peri Task 投影（tasks + taskOrder；随 clearSessionDocContent 一起调用） */
-export function clearPeriTaskViews(ydoc: Y.Doc): void {
-  const root = getSessionRoot(ydoc);
-  const tasks = root.get("tasks");
-  if (tasks instanceof Y.Map) {
-    tasks.clear();
-  } else {
-    root.set("tasks", new Y.Map<Y.Map<unknown>>());
-  }
-  const taskOrder = root.get("taskOrder");
-  if (taskOrder instanceof Y.Array) {
-    taskOrder.delete(0, taskOrder.length);
-  } else {
-    root.set("taskOrder", new Y.Array<string>());
-  }
-}
-
-// ── 清理（领域 tombstone：不物理删除权威记录，切换会话时整 Doc 清空）──
+// ── 清理（领域 tombstone：不物理删除权威记录）──
+//
+// 会话切换**不再**通过本文件的清空原语实现：切换走"换代"（`DocManager.replaceProjection`，
+// 见 docs/arch/19-yjs-chat-streaming.md §4.2 与前端规范 §8.5 第 7 条）。`clearSessionDocContent`
+// 与它专用的 `clearPeriTaskViews` 已随该口径删除；`clearChatDocContent` 保留为 Doc 级清空原语
+// （当前只有测试消费）。
 
 /** 清空 Chat Doc 时间线内容（entryOrder/entries/toolCalls），保留 schema 骨架并移除历史 planSeq。 */
 export function clearChatDocContent(ydoc: Y.Doc): void {
@@ -674,36 +662,6 @@ export function clearChatDocContent(ydoc: Y.Doc): void {
     getEntriesMap(ydoc).clear();
     getToolCallsMap(ydoc).clear();
     root.delete("planSeq");
-    bumpProjectionVersion(root);
-  });
-}
-
-/**
- * 清空 Session Doc 内容（session/pendingPermissions/pendingQuestions/tasks），保留 schema 骨架、sessions 投影与 agent 状态。
- * agent 是实例级状态（capabilities/instanceId/status），跨会话切换必须保留：agent 仅在连接/
- * initialize 时发送 status 帧，切换会话（load/create）后不会重新投影；清空会导致 capabilities
- * 永久丢失，前端 supportsLoadSession 变 false，切换会话报 "Loading or resuming sessions is
- * not supported"（会话切换回归）。仅清除会话绑定的 acpSessionId（切换后旧值失效；前端不消费，
- * 权威值在服务端 registry）。
- * Peri Task 是会话级瞬时投影（同 pendingPermissions 语义）：切换会话时随 Doc 清空，
- * 新会话的 Task 从零开始累积（Task 视图不跨会话保留）。
- */
-export function clearSessionDocContent(ydoc: Y.Doc): void {
-  ydoc.transact(() => {
-    const root = getSessionRoot(ydoc);
-    root.set("session", new Y.Map<unknown>());
-    const agent = root.get("agent");
-    if (agent instanceof Y.Map) {
-      agent.delete("acpSessionId");
-    }
-    root.set("pendingPermissions", new Y.Map<Y.Map<unknown>>());
-    // AskUserQuestion 交互问题是会话级瞬时状态：切换会话（load/create）时随 Doc 清空，
-    // 未回答的问题由 acp-link 侧 60s 超时自动 resolve 空答案兜底（无悬挂风险）
-    root.set("pendingQuestions", new Y.Map<Y.Map<unknown>>());
-    // Peri Task 视图是会话级瞬时状态（见函数注释），保持共享类型实例稳定，
-    // 避免持有 tasks/taskOrder 引用的订阅者在会话切换后与新投影脱钩。
-    clearPeriTaskViews(ydoc);
-    // sessions 是 agent 级数据（跨会话切换不清空，避免侧边栏闪空），随 list_sessions 轮询刷新
     bumpProjectionVersion(root);
   });
 }

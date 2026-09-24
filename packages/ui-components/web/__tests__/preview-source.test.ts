@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 
-const { getPreviewMimeType, loadByteAccuratePreviewSource, shouldLoadPreviewAsBlob } = await import(
+const { getPreviewMimeType, loadByteAccuratePreviewSource, PreviewSourceError, shouldLoadPreviewAsBlob } = await import(
   "../components/preview/preview-source"
 );
 
@@ -58,5 +58,17 @@ describe("文本预览源 — 保留响应的真实字节大小", () => {
     const fetchPreview = async () => new Response("nope", { status: 404 });
 
     await expect(loadByteAccuratePreviewSource("/preview/missing.txt", fetchPreview)).rejects.toThrow();
+  });
+
+  // 失败必须是**结构化**错误：调用方要按状态码取字典文案（界面文案归调用方，纯逻辑模块不 import i18n）
+  test("非成功响应抛带状态码的 PreviewSourceError", async () => {
+    const fetchPreview = async () => new Response("nope", { status: 500 });
+
+    const error = await loadByteAccuratePreviewSource("/preview/boom.txt", fetchPreview).catch((e: unknown) => e);
+
+    expect(error).toBeInstanceOf(PreviewSourceError);
+    expect((error as PreviewSourceError).status).toBe(500);
+    // 消息是英文技术串，只供日志；界面文案由调用方按 status 取（不得把这条 message 直接上屏）
+    expect((error as PreviewSourceError).message).not.toMatch(/[\u4e00-\u9fff]/);
   });
 });

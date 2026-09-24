@@ -19,6 +19,7 @@
     "@fenix/resource-mcp": "workspace:*",
     "@fenix/resource-memory": "workspace:*",
     "@fenix/resource-observer": "workspace:*",
+    "@fenix/resource-plugin-market": "workspace:*",
     "@fenix/resource-prod-view": "workspace:*",
     "@fenix/resource-sandbox": "workspace:*",
     "@fenix/resource-skill": "workspace:*",

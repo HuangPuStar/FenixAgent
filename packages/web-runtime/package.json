@@ -17,6 +17,10 @@
       "types": "./web/i18n/namespace.ts",
       "default": "./web/i18n/namespace.ts"
     },
+    "./lib/active-org": {
+      "types": "./web/lib/active-org.ts",
+      "default": "./web/lib/active-org.ts"
+    },
     "./lib/admin-key": {
       "types": "./web/lib/admin-key.ts",
       "default": "./web/lib/admin-key.ts"

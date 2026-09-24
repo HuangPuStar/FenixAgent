@@ -35,6 +35,7 @@
     "chunks": "Chunks",
     "delete": "Delete",
     "loadFailed": "Failed to load documents",
+    "retry": "Retry",
     "uploadFailed": "Upload failed",
     "deleteFailed": "Delete failed"
   },

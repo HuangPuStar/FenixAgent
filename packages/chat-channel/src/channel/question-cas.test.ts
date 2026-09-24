@@ -30,7 +30,6 @@ function createHarness(overrides: Partial<SessionChannelDependencies> = {}): Tes
   const docManager = new DocManager({ onError: () => {}, onLog: () => {} });
   const channel = new SessionChannel({
     docManager,
-    prepareClearSessionSnapshot: async () => {},
     syncSessionId: () => {},
     reportError: (message, error) => {
       state.errors.push({ message, error });

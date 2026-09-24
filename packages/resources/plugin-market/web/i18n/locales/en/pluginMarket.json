@@ -1,0 +1,113 @@
+{
+  "nav": {
+    "pluginMarket": "Plugin Market"
+  },
+  "title": "Plugin Market",
+  "subtitle": "Browse plugin versions published from the private npm registry, and publish, withdraw or restore a version.",
+  "search": "Search by plugin, package name or version",
+  "toolbar": {
+    "label": "Plugin search and scope filter"
+  },
+  "scope": {
+    "label": "Plugin scope",
+    "all": "All",
+    "teams": "Expert teams",
+    "connectors": "Connectors",
+    "withdrawn": "Withdrawn"
+  },
+  "directory": {
+    "title": "Plugin directory",
+    "summary": "Showing {{visible}} of {{total}}",
+    "noDescription": "No description",
+    "noVersion": "No published version yet",
+    "versionCount": "{{count}} versions"
+  },
+  "status": {
+    "withdrawn": "Withdrawn",
+    "latest": "Latest"
+  },
+  "empty": "No plugin in the market yet",
+  "emptyHint": "Publish a version from the private npm registry and it will show up here.",
+  "emptySearch": "No plugin matches",
+  "emptySearchHint": "Try another keyword or switch the scope.",
+  "loadState": {
+    "title": "Failed to load the plugin market",
+    "retry": "Retry",
+    "loading": "Loading the plugin market",
+    "detailTitle": "Failed to load the entry",
+    "detailRetry": "Reload entry",
+    "unauthorizedTitle": "No access to the plugin market",
+    "unauthorizedHint": "This account or organization no longer has access to the plugin market. Switch organization or ask an administrator for access — retrying will not change the authorization result."
+  },
+  "detail": {
+    "overview": "Overview",
+    "provenance": "Provenance",
+    "version": "Version",
+    "packageName": "Package",
+    "latestVersion": "Latest version",
+    "publishedAt": "Published at",
+    "digest": "Content digest",
+    "description": "Description",
+    "keywords": "Keywords",
+    "agents": "Agent members",
+    "skills": "Skills",
+    "servers": "MCP servers",
+    "noAgents": "This version declares no agent member",
+    "noSkills": "This version declares no skill",
+    "noServers": "This version declares no MCP server",
+    "integrity": "Artifact digest",
+    "tarballUrl": "Artifact URL (provenance only)",
+    "unpackedSize": "Unpacked size",
+    "fileCount": "Files",
+    "deprecated": "This version is marked as deprecated",
+    "versions": "Version history",
+    "versionCount": "{{count}} versions",
+    "noVersions": "This entry has no version yet",
+    "firstPublishedAt": "First published",
+    "withdrawnAt": "Withdrawn at"
+  },
+  "btn": {
+    "publish": "Publish version",
+    "unpublish": "Withdraw",
+    "restore": "Restore",
+    "preview": "Read and preview",
+    "previewing": "Reading…",
+    "confirmPublish": "Confirm publish",
+    "publishing": "Publishing…",
+    "cancel": "Cancel",
+    "back": "Back to edit"
+  },
+  "dialog": {
+    "publishTitle": "Publish a plugin version",
+    "publishDescription": "Enter the package name and exact version on the private registry. The metadata is read and normalized first; once confirmed the snapshot enters the market and no longer follows the registry.",
+    "packageName": "Package name",
+    "packageNamePlaceholder": "@scope/name",
+    "exactVersion": "Exact version",
+    "exactVersionPlaceholder": "1.0.0",
+    "previewHeading": "Preview: what will be public",
+    "previewHint": "Only the fields below are stored. The artifact URL is kept for provenance and is never requested by the market.",
+    "previewDigest": "Content digest",
+    "previewChanged": "The version changed after the preview. Below is the snapshot just read; please confirm again.",
+    "previewUnavailable": "Retry the preview to continue.",
+    "unpublishTitle": "Withdraw this version?",
+    "unpublishDescription": "{{version}} stops being public, but its snapshot stays in the market and can be restored at any time.",
+    "restoreTitle": "Restore this version?",
+    "restoreDescription": "{{version}} becomes public again from the frozen snapshot in the market; the registry is not read again.",
+    "previewMembers": "Members (agents / skills / MCP)"
+  },
+  "toast": {
+    "published": "Published {{version}}",
+    "noop": "{{version}} is already in the market",
+    "unpublished": "Withdrew {{version}}",
+    "restored": "Restored {{version}}",
+    "loadListFailed": "Failed to load the plugin market",
+    "loadDetailFailed": "Failed to load the entry",
+    "publishFailed": "Failed to publish",
+    "unpublishFailed": "Failed to withdraw",
+    "restoreFailed": "Failed to restore"
+  },
+  "validation": {
+    "packageNameRequired": "Enter the package name",
+    "exactVersionRequired": "Enter the exact version"
+  }
+}

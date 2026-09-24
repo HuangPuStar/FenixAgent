@@ -49,7 +49,8 @@ export function useProviderTestErrorText() {
   const { t } = useTranslation(MODELS_NS);
   return (error: unknown): string => {
     if (!(error instanceof ApiError)) {
-      return error instanceof Error && error.message ? error.message : t("unknownError");
+      // 非信封异常（本地抛错、网络层异常）没有可映射的稳定码，同样只给通用文案（§9.3）。
+      return t("unknownError");
     }
 
     const data = readErrorData(error.data);
@@ -84,8 +85,9 @@ export function useProviderTestErrorText() {
       case "CONFIG_TEST_CREDENTIAL_UNRESOLVED":
         return t("testDialog.errors.credentialUnresolved");
       default:
-        // 非探测类失败（NOT_FOUND / FORBIDDEN …）沿用后端文案，保持既有行为。
-        return error.message || t("unknownError");
+        // 非探测类失败（NOT_FOUND / FORBIDDEN …）：没有对应的稳定码文案，按 §9.3 用安全通用文案，
+        // 不显示 `ApiError.message`（那是后端错误信封原文）。诊断信息由调用方的 `console.error` 承载。
+        return t("unknownError");
     }
   };
 }

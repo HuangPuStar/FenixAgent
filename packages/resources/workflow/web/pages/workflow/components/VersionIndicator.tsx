@@ -1,11 +1,13 @@
+import { EmptyState } from "@fenix/ui-components/config/EmptyState";
 import { Button } from "@fenix/ui-components/ui/button";
 import { Popover, PopoverContent, PopoverTrigger } from "@fenix/ui-components/ui/popover";
 import { unwrap } from "@fenix/web-runtime/api/request";
-import { GitBranch } from "lucide-react";
-import { useCallback, useEffect, useState } from "react";
+import { useRequest } from "ahooks";
+import { AlertTriangle, GitBranch } from "lucide-react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
-import { type WorkflowVersionItem, workflowDefApi } from "../../../api/workflow-defs";
+import { workflowDefApi } from "../../../api/workflow-defs";
 import { InlineLoader } from "./InlineLoader";
 import { PopoverHeader } from "./PopoverHeader";
 import { VersionConfirmDialog } from "./VersionConfirmDialog";
@@ -32,31 +34,46 @@ export function VersionIndicator({
 }: VersionIndicatorProps) {
   const { t } = useTranslation("workflows");
   const [open, setOpen] = useState(false);
-  const [versions, setVersions] = useState<WorkflowVersionItem[]>([]);
-  const [loading, setLoading] = useState(false);
   const [confirmAction, setConfirmAction] = useState<{
     type: "setLatest" | "restore";
     version: number;
   } | null>(null);
 
-  const loadVersions = useCallback(async () => {
-    if (!workflowId) return;
-    setLoading(true);
-    try {
-      const list = await unwrap(workflowDefApi.getVersions(workflowId));
-      setVersions(Array.isArray(list) ? list : []);
-    } catch (err) {
-      console.error(err);
-      // popover 由用户点开，失败时列表会变成「暂无发布版本」，不给提示会被当成真的没有版本
-      toast.error(t("versions.load_data_failed"));
-    } finally {
-      setLoading(false);
-    }
-  }, [workflowId, t]);
+  // 在途请求的取消句柄（§3.4）：换工作流 / 卸载时 abort，不靠 `useRequest` 的并发语义兜底。
+  const abortRef = useRef<AbortController | null>(null);
+  useEffect(() => () => abortRef.current?.abort(), []);
 
-  useEffect(() => {
-    if (open) loadVersions();
-  }, [open, loadVersions]);
+  /**
+   * 版本列表取数（§3.4）：弹层打开才请求（`ready`），三态由 `data` / `loading` / `error` 派生，
+   * 不再手写 `useCallback` + `useEffect` + `setState`；重试与操作后的重查统一走 `refresh`。
+   */
+  const {
+    data: versions = [],
+    loading,
+    error,
+    refresh: reloadVersions,
+  } = useRequest(
+    async () => {
+      if (!workflowId) return [];
+      abortRef.current?.abort();
+      const controller = new AbortController();
+      abortRef.current = controller;
+      const list = await unwrap(workflowDefApi.getVersions(workflowId, { signal: controller.signal }));
+      return Array.isArray(list) ? list : [];
+    },
+    {
+      ready: !!workflowId && open,
+      refreshDeps: [workflowId],
+      onError: (err) => {
+        console.error(err);
+        // popover 由用户点开，失败时列表会变成「暂无发布版本」，不给提示会被当成真的没有版本
+        toast.error(t("versions.load_data_failed"));
+      },
+    },
+  );
+  // 失败态独立成支（见下方 `role="alert"` 块）：失败时 `versions` 为 `[]`，
+  // 不给分支就会渲染成「暂无发布版本」，把取数失败伪装成「确实没有版本」（§3.4 禁止）。
+  const versionsError = error ? (error instanceof Error ? error.message : String(error)) : null;
 
   const visibleVersions = versions.slice(0, MAX_VISIBLE_VERSIONS);
 
@@ -66,13 +83,15 @@ export function VersionIndicator({
       try {
         await unwrap(workflowDefApi.setLatest(workflowId, version));
         toast.success(t("versions.set_latest"));
-        loadVersions();
+        reloadVersions();
       } catch (err) {
         console.error(err);
-        toast.error(t("versions.operation_failed"), { description: (err as Error).message });
+        // 标题已是「操作失败」，再补 `err.message` 只是把后端信封原文（内部措辞、表名、路径）
+        // 铺到用户面前（§9.3）；原始对象留在上面的 console.error 里。
+        toast.error(t("versions.operation_failed"));
       }
     },
-    [workflowId, loadVersions, t],
+    [workflowId, reloadVersions, t],
   );
 
   const handleRestoreToDraft = useCallback(
@@ -85,7 +104,7 @@ export function VersionIndicator({
         setOpen(false);
       } catch (err) {
         console.error(err);
-        toast.error(t("versions.restore_failed"), { description: (err as Error).message });
+        toast.error(t("versions.restore_failed"));
       }
     },
     [workflowId, onBackToDraft, t],
@@ -158,6 +177,17 @@ export function VersionIndicator({
               <div style={{ textAlign: "center", padding: 16, color: "#9ca3af", fontSize: 11 }}>
                 <InlineLoader size={14} />
               </div>
+            ) : versionsError ? (
+              <EmptyState
+                tone="danger"
+                role="alert"
+                className="px-3 py-4"
+                icon={<AlertTriangle />}
+                title={t("versions.load_data_failed")}
+                // 说明取字典（§9.3）：这里原先是 `error.message`（后端信封原文直出）
+                description={t("versions.load_data_failed_hint")}
+                action={{ label: t("versions.retry"), onClick: reloadVersions }}
+              />
             ) : visibleVersions.length === 0 ? (
               <div style={{ textAlign: "center", padding: 16, color: "#d1d5db", fontSize: 11 }}>
                 <p>{t("editor.vi_no_versions")}</p>

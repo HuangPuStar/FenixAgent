@@ -5,25 +5,21 @@ import { Input } from "@fenix/ui-components/ui/input";
 import { Spinner } from "@fenix/ui-components/ui/spinner";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@fenix/ui-components/ui/table";
 import { NS } from "@fenix/web-runtime/i18n/namespace";
+import { useRequest } from "ahooks";
 import { Loader2, Search, Trash2, Upload, X } from "lucide-react";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
 import { hindsightApi } from "../../../api/hindsight";
-
-import type { DocumentItem } from "../types";
+import { toHindsightFailure } from "../failure";
+import { HindsightFailureNotice } from "./HindsightFailureNotice";
 
 const PAGE_SIZE = 20;
 
 export function DocumentsView() {
   const { t } = useTranslation(NS.HINDSIGHT);
 
-  // 列表状态
-  const [documents, setDocuments] = useState<DocumentItem[]>([]);
-  const [total, setTotal] = useState(0);
-  const [loading, setLoading] = useState(true);
-
-  // 筛选与分页
+  // 筛选与分页（列表数据本身由下面的 `useRequest` 持有，不再手写 `documents` / `total` / `loading`）
   const [search, setSearch] = useState("");
   const [page, setPage] = useState(0);
 
@@ -31,35 +27,42 @@ export function DocumentsView() {
   const [uploading, setUploading] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  const totalPages = Math.ceil(total / PAGE_SIZE);
-
-  /** 加载文档列表 */
-  const loadDocuments = useCallback(async () => {
-    setLoading(true);
-    try {
-      const res = await hindsightApi.listDocuments({
+  /** 文档列表取数：检索词 / 页码变化即重查（等价于改造前那个依赖 `[search, page]` 的 `useEffect`）。 */
+  const {
+    data: documentsPage,
+    loading,
+    error: documentsError,
+    refresh: refreshDocuments,
+  } = useRequest(
+    () =>
+      hindsightApi.listDocuments({
         q: search || undefined,
         limit: PAGE_SIZE,
         offset: page * PAGE_SIZE,
-      });
-      setDocuments(Array.isArray(res.items) ? res.items : []);
-      setTotal(typeof res.total === "number" ? res.total : 0);
-    } catch (err) {
-      console.error("Failed to load documents:", err);
-      toast.error(err instanceof Error ? err.message : t("documents.loadFailed"));
-    } finally {
-      setLoading(false);
-    }
-  }, [search, page, t]);
+      }),
+    {
+      refreshDeps: [search, page],
+      onError: (err) => {
+        console.error("Failed to load documents:", err);
+        // 上屏只取字典（§9.3）：`err.message` 是 `unwrap` 抛出的 `ApiError.message`，即后端错误
+        // 信封原文，只进上面的日志。
+        toast.error(t("documents.loadFailed"));
+      },
+    },
+  );
 
-  useEffect(() => {
-    loadDocuments();
-  }, [loadDocuments]);
+  const documents = documentsPage && Array.isArray(documentsPage.items) ? documentsPage.items : [];
+  const total = typeof documentsPage?.total === "number" ? documentsPage.total : 0;
+  // 失败态是独立分支（下面的 `[role="alert"]` 块）：`documents` 在失败时为 `[]`，
+  // 若不给它分支，界面会渲染成「暂无文档」——把取数失败伪装成空数据（§3.4 禁止）。
+  const documentsFailure = documentsError ? toHindsightFailure(documentsError, t("documents.loadFailed")) : null;
+
+  const totalPages = Math.ceil(total / PAGE_SIZE);
 
   /** 搜索时重置分页 */
   const handleSearch = () => {
     setPage(0);
-    // loadDocuments 会因 page 变化自动触发
+    // page 是列表请求的 refreshDeps，变更即触发重查
   };
 
   /** 清空搜索 */
@@ -76,10 +79,10 @@ export function DocumentsView() {
     try {
       await hindsightApi.uploadDocument(file);
       toast.success(t("documents.uploadSuccess"));
-      loadDocuments();
+      refreshDocuments();
     } catch (err) {
       console.error("Failed to upload document:", err);
-      toast.error(err instanceof Error ? err.message : t("documents.uploadFailed"));
+      toast.error(t("documents.uploadFailed"));
     } finally {
       setUploading(false);
       // 重置 file input，允许重复选择同一文件
@@ -94,10 +97,10 @@ export function DocumentsView() {
     try {
       await hindsightApi.deleteDocument(id);
       toast.success(t("documents.delete"));
-      loadDocuments();
+      refreshDocuments();
     } catch (err) {
       console.error("Failed to delete document:", err);
-      toast.error(err instanceof Error ? err.message : t("documents.deleteFailed"));
+      toast.error(t("documents.deleteFailed"));
     }
   };
 
@@ -141,6 +144,14 @@ export function DocumentsView() {
       <div className="flex-1 overflow-auto">
         {loading ? (
           <Spinner size="sm" className="flex py-12" />
+        ) : documentsFailure ? (
+          <HindsightFailureNotice
+            failure={documentsFailure}
+            titleKey="documents.loadFailed"
+            retryKey="documents.retry"
+            onRetry={refreshDocuments}
+            className="py-12"
+          />
         ) : documents.length === 0 ? (
           <EmptyState className="py-12" title={t("documents.noDocuments")} />
         ) : (

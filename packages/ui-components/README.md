@@ -35,19 +35,21 @@ demo/                     Vite 展示页（非库产物）
 | `web/lib/theme.tsx` | 源实现临时强制浅色，忽略 localStorage 与系统偏好 | 移除该 hack：初始主题取 localStorage，缺省回退 `defaultTheme`，`system` 跟随系统 |
 | `web/lib/card-renderer.tsx` | `@/src/lib/card-renderer/registry` + context/emitter | 只保留注册表，去掉会话事件通道；初始注册表为空 |
 | `web/chat/primitives/conversation.css`（**阶段三已迁并删除**） | `.chat-scroll-navigation` / `.chat-scroll-to-latest` 定义在 `packages/chat-channel/.../chat-design-shell.css` | 组件用到的样式随组件收进包内（逐字迁移），去掉跨包样式表依赖；其后随 chat 样式迁移改成 `conversation.tsx` 里工具类，本文件删除 |
-| `web/chat/primitives/message.tsx` | `chat-markdown-content` 容器类由宿主 `MessageBubble` 注入，markdown 排版全挂在它上面 | 改由 `MessageResponse` 自身携带，独立使用时排版才生效（见「已知限制」第 8 条） |
+| `web/chat/primitives/message.tsx` | `chat-markdown-content` 容器类由宿主 `MessageBubble` 注入，markdown 排版全挂在它上面 | 改由 `MessageResponse` 自身携带，独立使用时排版才生效（见「已知限制」第 7 条） |
 | `web/layout/`、`web/components/` 中的颜色字面量 | 源实现混用精确 hex（`#e4eaf2`、`#17233a`、`#1a2944`、`#f6f8fb`、`#e7ecf3`、`#99a8bc` 等） | 换成最近的语义 token（`border-border`、`text-text-bright`、`bg-surface-0`…）。**与宿主存在可见色差，属有意取舍**（2026-09-18 确认保持 token 化）：等值的（`#1677ff`→`brand`、`#94a3b8`→`text-muted`、`#ffffff`→`surface-1`）无差异，等值的以外的若要求与源逐像素一致，需改回 hex |
-| `web/components/preview/FileViewerPreview.tsx` | `buildPreviewUrl` 在组件内部硬编码宿主文件代理路由；重试参数固定用 `&` 拼接；`locale="zh-CN"` 与内置 `zhCNMessages` 中文写死 | `buildPreviewUrl` 提为可选 prop，默认值仍保留源实现（见「已知限制」第 9 条）；`&retry=` 改为按 URL 是否已含 `?` 选择分隔符（自定义构建器返回无 query 的 URL 时旧拼接会产出非法地址）；`locale` / `messages` 提为 props，默认值与源一致 |
-| `web/components/preview/FileViewerPreview.tsx` 错误边界内的中文串 | 「预览组件加载失败」等提示硬编码中文 | 逐字保留：它是 React 边界内的兜底提示，不属于预览器文案，未纳入 props；需要多语言的宿主应在外层包一层本地化边界（见「已知限制」第 10 条） |
+| `web/components/preview/FileViewerPreview.tsx` | `buildPreviewUrl` 在组件内部硬编码宿主文件代理路由，且组件内直调全局 `fetch` 读该路由；重试参数固定用 `&` 拼接；`locale="zh-CN"` 与内置 `zhCNMessages` 中文写死 | `buildPreviewUrl` 提为可选 prop，默认值仍保留源实现（见「已知限制」第 8 条）；取数改由**必填** prop `fetchPreview` 注入，包内不留全局 `fetch` 兜底（见「已知限制」第 14 条）；`&retry=` 改为按 URL 是否已含 `?` 选择分隔符（自定义构建器返回无 query 的 URL 时旧拼接会产出非法地址）；内置文案与 `locale` 的默认值改由包内字典与当前语言决定、`messages` / `locale` 保留为覆盖端口（见「已知限制」第 9 条） |
+| `web/components/preview/FileViewerPreview.tsx` 错误边界内的提示 | 「预览组件加载失败」等提示硬编码中文 | 改由调用方按当前语言注入（`fallbackText`，键 `fileTree.preview.componentError`）：它是给用户看的提示，与工具栏文案同属 i18n 范围，不再随源实现固定中文（见「已知限制」第 9 条） |
+| `web/components/preview/html-plugin.ts`、`web/components/preview/native-pdf-plugin.ts` | 标签「渲染预览」/「源码」、兜底串「源码加载失败」「无法获取 HTML / PDF 文件的预览地址」「HTML / PDF 预览加载失败」 | 逐字保留硬编码中文：插件直接操作 DOM、不在 React 树内，接文案要在契约上新增参数；需要多语言的宿主应自行派生插件。`preview-source.ts` 的「文件预览加载失败 (<status>)」**已不在本条**（2026-09-23 第 19 轮改为抛结构化的 `PreviewSourceError`，文案由 `FileViewerPreview` 按语言取——见「已知限制」第 13 条） |
 | `web/components/preview/overrides.css` | 宿主页面样式表里的预览工具栏修正（工具栏置底等） | 随组件收进包内，且必须与 `FileViewerPreview` 同目录并被其 `import`；缺失会导致预览工具栏回到顶部 |
 | `web/components/preview/preview-source.ts` | `agent-panel/preview/utils.ts` 全量（含 `encodePathSegment`、`buildPreviewUrl`、`normalizeToUserPath`、`formatFileSize`） | 只取 L1–167 的分类表与源加载子集：URL 构建/路径规范化属宿主路由与展示约定。宿主 `ArtifactsPanel.tsx` 与 `preview-utils-normalize.test.ts` 仍引用原文件，故原文件保持不动 |
-| `web/components/PreviewTab.tsx` | 宿主 tab 的占位容器，仅换 i18n 命名空间 | 未透传 `buildPreviewUrl` / `messages` / `locale`：需要预览定制时直接使用 `FileViewerPreview`，本组件保持最小契约 |
+| `web/components/PreviewTab.tsx` | 宿主 tab 的占位容器，仅换 i18n 命名空间 | `messages` / `locale` 仍不透传（需要预览定制时直接使用 `FileViewerPreview`），但 `buildPreviewUrl` 与 `fetchPreview` 必须原样转交：本组件不取数、不拼后端 URL（前端开发规范 §5.8），只是宿主域模块实现到预览器之间的通道（见「已知限制」第 14 条） |
 | `web/chat/timeline/ToolCallRow.tsx` | 完成态右侧显示状态词（`Done` / `已完成`）；运行中只有 `Loader2` 转圈 + 静态标题；错误信息内联在标题行内，长错误会把标题挤到看不见；另有 `publicError` 块（message + Type + ID）落在卡片右侧 | 完成态不渲染状态词（默认结果的噪音，其余状态词保留）；运行中标题文字套包内 `Shimmer` 基元做载入微光（图标位仍转圈）；错误信息独占第二行，随之为 `.tool-call-row-error` 补 `display: block`（否则该选择器的 `text-overflow: ellipsis` 对行内盒子失效）；移除右侧 `publicError` 块——其 message 与第二行同源（`narrate` 的 `errorDetail` 优先取 `publicError.message`），脱敏错误的 Type / ID 因此不再出现在卡片上 |
 | `web/chat/timeline/TodoChanges.tsx` | 每条待办右侧带变更标签（`新增` / `已完成` / `进行中` 等底色 badge） | 去掉该标签：变更语义由左侧图标与文案样式表达，右侧标签是重复信息；随之删除 `CHANGE_STYLES.labelClassName` 与两个语言包里仅此处使用的 `chat.components.todoChanges.*` 文案 |
 | `web/chat/primitives/message-attachments.tsx` | 图片 `alt` 固定取文件名，缺文件名时回落通用文案「Attachment」 | 新增可选 `alt` prop（优先于文件名），图片附件可传更准确的替代文本；缺省行为与源实现一致 |
 | `web/chat/shell/internal/use-composer-input-bridge.ts` | 空状态建议提示词与消息「引用」经 window 自定义事件（`chat:apply-suggested-prompt` / `chat:quote`）从 `ChatView` 回环到 `ChatComposer`，生产与消费都在 chat 包内部 | 包内事件汇入宿主注入的 `subscribeExternal` 同一条通道（不新增注入端口）：宿主不注入任何订阅时这两个动作也必须生效。副产物是源实现按 `contextScope` 过滤 window 事件不再需要——本通道按 `ChatInterface` 实例分发，跨实例（多个聊天面板）串扰在结构上不可能（2026-09-21） |
 | `web/chat/css/chat-design-composer.css`（**阶段二已迁并删除**，现行实现见 `composer/ChatComposer.tsx` 的卡片工具类） | 卡片与元信息条的三条设计规则挂在宿主壳类 `.acp-main-root` 下（`.acp-main-root .chat-composer-card`、`:focus-within`、`.chat-composer-meta`） | 改用组件自身的 `.chat-composer-wrapper` 作前缀：特指度同为 (0,2,0)，与宿主补充段的级联关系逐条不变，但 `ChatComposer` 独立渲染时不再依赖宿主壳类 —— 否则元信息条失去 `display:flex`，本应同行的 `meta-main` / `meta-actions` 竖排成两行（demo 输入岛示例即此形态，2026-09-18 修正） |
-| `web/chat/css/chat-design-status.css`、`chat-design-responsive.css`（**阶段四已迁并删除**，现行实现见 `panels/**` 的宽度/台阶工具类） | 交互区 / 状态面板宽度 `min(760px, calc(100% - 32px))`（窄屏 `calc(100% - 20px)`），与输入岛卡片等宽甚至更宽 | 改为比输入岛卡片每侧窄 16px（共 32px），形成台阶：`min(756px, calc(100% - 64px))`、窄屏 `calc(100% - 52px)`。源值只在宽列下比卡片窄 28px，列宽不足 792px 时与卡片完全齐平（2026-09-18） |
+| `web/chat/css/chat-design-status.css`、`chat-design-responsive.css`（**阶段四已迁并删除**，现行实现见 `panels/**` 的宽度/台阶工具类） | 交互区 / 状态面板宽度 `min(760px, calc(100% - 32px))`（窄屏 `calc(100% - 20px)`），与输入岛卡片等宽甚至更宽 | 改为比输入岛卡片每侧窄 16px（共 32px），形成台阶：`min(756px, calc(100% - 64px))`、窄屏 `calc(100% - 52px)`。源值只在宽列下比卡片窄 28px，列宽不足 792px 时与卡片完全齐平（2026-09-18）。**2026-09-23 修订（只动状态面板）**：这条台阶是绝对 px，而输入岛宽度走 rem 刻度（`max-w-200` / `px-4`，宿主根字号 13px → 容器 650px、输入岛 624px，而非 16px 根字号下的 768px），两者不同源，状态面板实际与输入岛脱钩（当时比输入岛每侧宽 58px），不再是「贴在输入岛顶部」的半圆卡。状态面板改为自身不声明 `width`，由 `ChatInterface` 从输入岛的宽度容器派生：`CHAT_COMPOSER_WIDTH_CLASS` + `CHAT_COMPOSER_TOP_CARD_INSET_CLASS`（均定义在 `composer/ChatComposer.tsx`），后者是**每侧** 5 个 Tailwind 刻度（1.25rem；13px 根字号 → 每侧 16.25px、两侧合计 32.5px，用户按实测观感把初版 10 刻度折半）——台阶与输入岛同源，改口径只改常量那一处；台阶仍适用于交互区（`.chat-interaction-cards` 未改） |
+| `web/components/agent-catalog-index.tsx` / `.css`（五页目录索引的共享构件集） | 各页原本各写一份目录索引骨架，且**字号 / 内边距 / 行高 / 圆角 / 配色 / 行间距归各页刻度**——同一组件在五页长出五套观感（实测条目标题 9.75 / 12 / 13px，图标盒 22.75 / 28 / 34px，组织页还是裸的 13px 图标） | 2026-09-23 按「全部样式统一，不要观感不统一」的裁定，**取值全部收进伴生 CSS 且不再留给页面**：容器（内边距 `1.4375rem 0.75rem`、底色 `#f6f8fb`、`inset -1px 0 #e7ecf3` 分隔线，单列态撤线）、头部（`1rem` 标题 + 600 字重、`1.6875rem×1.5625rem` 计数徽标、`0.875rem` 说明行）、行距 `0.25rem`、条目（`4.375rem` 行高、`0.625rem` 内边距与列距、`0.5rem` 圆角、默认/hover/选中三态）、图标盒（`2.125rem` 方、`0.5rem` 圆角、白底、内层 svg `1.25rem`）、文案（标题 `0.875rem`/600/`#17233a`/行高 `1.25rem`，副标题 `0.75rem`/`#96a2b5`/行高 `1rem`/上距 `0.25rem`）、尾注（`0.75rem`、`8.4375rem` 宽上限、标签统一为带底色 `<span>`）、箭头（`0.9375rem`）——全部 rem，13px 根字号下渲染值与迁移前的 px 差别都在 0.7px 以内。五个消费页的目录取值规则因此**整段删除**（技能库 `agent-skills.css`、MCP `agent-mcp.css`、模型库 `agent-models.css`、知识库 `agent-knowledge.css`、组织页 `agent-organizations-workspace.css`），页面只保留页面语义：组织页的角色三态图标色、知识库的不可用态与行尾删除按钮外壳、以及两页的窄屏布局（≤900px 横置 / ≤760px 隐藏）。**刻意保留的两处结构差异**：知识库没有尾注内容（列留空）、以及 `icon-copy-meta` / `icon-copy` 两个列模板预设目前无消费方（保留作为出口）。**未做**：目录栏的窄屏走向（横置 / 隐藏）仍是各页布局行为，不在本次统一范围内（2026-09-23） |
 | `web/chat/css/chat-design-composer.css`（**阶段二已迁并删除**，现行实现见 `composer/composer-toolbar.tsx` 的 `bg-brand`） | `.chat-composer-send.is-stop`（turn 运行中，图标切成停止方块）底色为深墨蓝 `#25344a` | 改用包内 token `var(--color-brand)`：源色在浅色下近乎黑色、暗色下几乎融进背景，且与本包其余「主题色」入口不一致（`.is-ready` 的蓝、`PromptInputSubmit` 的 `bg-primary`）；尺寸、圆角与 `color: #fff` 保持不变（2026-09-18） |
 | `web/chat/composer/CommandMenu.tsx`、`web/chat/css/chat-design-command-menu.css`（**阶段五整文件删除**：其中仅剩 popover/inline 外壳死代码，行内样式已全部迁入 `CommandMenu.tsx` 工具类） | 命令/技能行的名称是蓝色 `/{name}` 文本（`#3d5f95`，能力面板内 `#58739d`）且加粗（620 / 面板内 600），hover 与 `.is-active` 取 `#294d87` / `#f4f7fc`，选中勾选 `#5f83bd`；只有 MCP 行有 16px 图标列（技能行名称比 MCP 行名称左缩 22px）；行的提示与勾选是并列的网格子项 | 行首 `/` 改为 `Sparkles` 图标并独立成网格首列（技能行与 MCP 行的名称列因此对齐；图标取技能目录页 `getSkillIcon` 的兜底分支，见 `packages/resources/skill/.../agent-skills-catalog.tsx`）；名称改菜单正文色 `#263247` 且不再加粗（620 / 600 → 400），hover 底色改中性 `#f5f7fa`，勾选改与 MCP「已连接」同源的绿 `#25856e`，`.is-active` 左侧强调条改 `var(--color-brand)`；提示与勾选收进 `.chat-command-menu-tail`（源实现里两者同时出现的行会多出一个网格子项被挤到隐式第二行，34px → 47px）；插入草稿的文本仍是 `/${name} `，协议未变（2026-09-18） |
 
@@ -175,10 +177,12 @@ i18n.addResourceBundle("zh", UI_COMPONENTS_NS, zh, true, true);
      即完全解除该路由依赖。组件同时带 `import "@open-file-viewer/core/style.css"` 副作用导入，
      消费方（含 demo）编译时需能解析该 CSS —— 依赖已列入 dependencies。
    - 移除条件：宿主统一注入自定义构建器，或把代理前缀提升为必填 prop。
-9. **`FileViewerPreview` 的内置预览文案默认简体中文**：`locale` 默认 `"zh-CN"`、`messages` 默认值为内置中文；
-    React 错误边界内的提示（「预览组件加载失败」等）是硬编码中文，不随 `locale` / `messages` 变化。
-    - 影响范围：非中文宿主需显式传 `locale` / `messages`；边界提示需要多语言时由宿主在外层再包一层本地化边界。
-    - 移除条件：错误边界提示纳入 `messages` props（需要先定义边界提示的键位契约）。
+9. **`FileViewerPreview` 的预览器文案跟随当前语言，不再固定中文**：`messages` 缺省取包内字典
+   `fileTree.preview.messages.*`（en / zh 两套，与工具栏文案同源），`locale` 缺省按 `i18n.language` 判定
+   （`zh*` → `zh-CN`，其余 → `en-US`）；错误边界的兜底提示也取自字典（`fileTree.preview.componentError`）。
+   - 影响范围：源实现把中文写死在组件里（`zhCNMessages` + 边界串），宿主不传 props 时英文界面会看到中文。
+     现在不传即是当前语言；需要固定某一门语言或注入自有词表的宿主，照旧显式传 `locale` / `messages`。
+   - 移除条件：无（这是终态）。
 10. **`UserMessageImage.url` 是包内新增的展示用字段**：源类型只有 `mimeType` + `data`（base64），
     想展示一张真实网络图片就必须把二进制内联进源码。包内加可选 `url`，渲染方统一按「`url` 优先、
     缺省回退到 `data` 拼出的 data URL」取地址（消息气泡与输入岛附件行同规则），发送路径仍只读 `data`。
@@ -193,6 +197,30 @@ i18n.addResourceBundle("zh", UI_COMPONENTS_NS, zh, true, true);
     因此保留；独立渲染（demo / 单测）时只拿到玻璃形态（圆角 16px + `backdrop-filter`）。
     - 影响范围：仅外观（扁平 vs 玻璃），不破坏布局；包内 `ChatHeader` 目前只由 `ACPMain` 渲染，自带该类名。
     - 移除条件：共享高度链与标题栏均不再依赖 `.acp-main-root` 时，才可删除该类名。
+12. **`html-plugin` 的标签与提示硬编码中文**：标签页「渲染预览」/「源码」、源码加载失败的兜底串「源码加载失败」，
+    以及 `setError` 的两条提示（「无法获取 HTML 文件的预览地址」「HTML 预览加载失败」）都写死在源码里。
+    `native-pdf-plugin` 同性质的两条（「无法获取 PDF 文件的预览地址」「PDF 预览加载失败」）一并计入本条。
+    - 影响范围：HTML / PDF 预览在非中文界面仍显示中文标签与提示；本包 demo 与宿主都用默认插件参数，切换语言看不到变化。
+    - 移除条件：插件工厂接受文案参数（`htmlPreviewPlugin(labels)`）并在 `FileViewerPreview` 里由 `t()` 注入——
+      需要先定义这组标签的键位契约，属契约扩张，尚未做。
+13. **`preview-source.ts` 的错误是结构化的，文案归调用方**（2026-09-23 第 19 轮起；此前本条记的是「加载失败文案硬编码中文，
+    `FileViewerPreview` 原样上屏」）：`loadByteAccuratePreviewSource` 在非成功响应时抛 `PreviewSourceError`（带 `status`），
+    不再抛写死的中文文案；`FileViewerPreview` 的失败块按当前语言取 `fileTree.preview.loadFailed`（插 `{{status}}`）/
+    `loadFailedUnknown`，原始错误只进 `console.error`。
+    - 影响范围：直接调用该函数（不经 `FileViewerPreview`）的宿主必须自己把 `status` 映射成文案——这正是契约本身：
+      纯逻辑模块不 import UI i18n（前端开发规范 §9.3），文案只能由调用方接。
+    - 包内用例：`web/__tests__/preview-source.test.ts`（结构化错误 + `message` 不含中文）。
+14. **预览的取数与 URL 由宿主注入，包内不留全局 `fetch` 兜底**：预览 URL 指向后端的文件代理路由，
+    取数属后端调用。本包是纯展示包、依赖矩阵不允许依赖 `@fenix/web-runtime`，因此
+    `FileViewerPreview` 的 `fetchPreview`（`PreviewFetch`）是**必填** prop、`htmlPreviewPlugin(fetchPreview)`
+    同样是必填参数，`loadByteAccuratePreviewSource` 不再有 `= fetch` 默认值；`PreviewTab` 只做转交。
+    - 影响范围：调用方（宿主 `apps/web/src/components/agent-panel/artifacts-files-workspace.tsx` 注入
+      `api/fs.ts` 的 `buildPreviewSourceUrl` / `readPreviewSource`，demo 注入自己的 data: URL 取数函数）
+      必须显式给出该 prop，忘了会立刻编译不过——这正是取舍所在：旧形态下忘了注入会静默直连后端
+      并自行拼 URL（前端开发规范 §5.8 禁止在组件中裸调 `fetch` / 拼装后端 URL）。
+    - 包内用例：`web/__tests__/preview-fetch-injection.test.ts`（注入生效 + 源码里无兜底形态）。
+    - 移除条件：宿主能把文件代理路由提升为包可依赖的取数契约（或 `request()` 补上 blob 能力后由
+      注入方整体替换），届时可改回由包内直接取数；在那之前不得移除本契约。
 
 ## chat 样式现状（阶段一至五迁移台账）
 

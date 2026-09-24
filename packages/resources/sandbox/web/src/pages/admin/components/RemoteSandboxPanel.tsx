@@ -83,7 +83,9 @@ export function RemoteSandboxPanel({ server, onAuthFailure }: RemoteSandboxPanel
       setDetail(sandboxDetail);
       setDiagnostics(diagnosticText);
     } catch (cause) {
-      toast.error(t("remoteDetailError"), { description: cause instanceof Error ? cause.message : undefined });
+      // 详情失败只上屏字典文案（§9.3）：信封原文进日志
+      console.error(t("remoteDetailError"), cause);
+      toast.error(t("remoteDetailError"));
     }
   };
 
@@ -115,7 +117,9 @@ export function RemoteSandboxPanel({ server, onAuthFailure }: RemoteSandboxPanel
       }
     } catch (cause) {
       if (!controller.signal.aborted) {
-        toast.error(t("commandError"), { description: cause instanceof Error ? cause.message : undefined });
+        // 命令失败的原始文本进日志，上屏只给字典文案（§9.3）
+        console.error(t("commandError"), cause);
+        toast.error(t("commandError"));
       }
     } finally {
       setCommandRunning(false);

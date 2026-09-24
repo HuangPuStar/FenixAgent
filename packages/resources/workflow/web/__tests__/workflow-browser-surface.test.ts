@@ -123,6 +123,16 @@ describe("workflow web 入口浏览器可达面", () => {
       // 参数分组标题行（ParamsEditor 与 RunParamsDialog 消费）与三份编辑器的行内字段样式配方。
       "pages/workflow/components/ParamGroupHeader.tsx",
       "pages/workflow/components/entry-field-classes.ts",
+      // 2026-09-23：编辑器与运行域拆分出的包内共享件——画布上的运行标记纯模型（运行 hook 与编辑器共用）、
+      // 节点配置卡片的字段原语（五个按类型的分区共用）、运行数据的传输层与生命周期命令
+      // （`useWorkflowRun` 装配它们）。同样只走包内相对路径，不在入口导出面里。
+      "pages/workflow/run-canvas-model.ts",
+      "pages/workflow/components/node-config-fields.tsx",
+      // 2026-09-23（第 19 轮）：两处同名的折叠分组容器收敛为一份（节点配置卡的工具分组与运行参数
+      // 弹窗的分组共用），同样只走包内相对路径，不在入口导出面里。
+      "pages/workflow/components/CollapsibleGroup.tsx",
+      "pages/workflow/hooks/use-workflow-run-transport.ts",
+      "pages/workflow/hooks/use-workflow-run-lifecycle.ts",
     ]) {
       expect(reachedWebFiles).toContain(expected);
     }

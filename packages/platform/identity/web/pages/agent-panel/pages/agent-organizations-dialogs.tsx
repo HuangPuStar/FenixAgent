@@ -19,6 +19,7 @@ import { Check, Copy, Search, X } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
 import type { OrgMemberCandidate } from "../../../api/organizations";
+import { ORG_SELECT_CLASS } from "./agent-organizations-classes";
 import type { MachineFormState, OrganizationsDialogsProps } from "./agent-organizations-types";
 
 function CreateOrganizationDialog({ props }: { props: OrganizationsDialogsProps }) {
@@ -29,7 +30,7 @@ function CreateOrganizationDialog({ props }: { props: OrganizationsDialogsProps 
         <DialogHeader>
           <DialogTitle>{t("createDialog.title")}</DialogTitle>
         </DialogHeader>
-        <div className="org-dialog-fields">
+        <div className="grid gap-3.5 py-2">
           <LabeledField label={t("createDialog.name")}>
             <Input
               value={props.formName}
@@ -70,10 +71,15 @@ export function MemberCandidateButton({
   const { t } = useTranslation(NS.ORGS);
   const disabled = candidate.isMember || selected;
   return (
-    <button type="button" className="org-member-candidate" disabled={disabled} onClick={() => onAdd(candidate)}>
-      <div className="org-candidate-copy">
-        <strong>{candidate.name}</strong>
-        <span>{candidate.email}</span>
+    <button
+      type="button"
+      className="flex w-full items-center gap-2 rounded-none border-0 bg-transparent px-3 py-2 text-left enabled:hover:bg-surface-2 focus-visible:bg-surface-2 disabled:cursor-not-allowed disabled:opacity-50"
+      disabled={disabled}
+      onClick={() => onAdd(candidate)}
+    >
+      <div className="min-w-0 flex-1">
+        <strong className="block truncate">{candidate.name}</strong>
+        <span className="block truncate text-sm text-text-muted">{candidate.email}</span>
       </div>
       {candidate.isMember ? <Badge variant="outline">{t("inviteDialog.alreadyMember")}</Badge> : null}
       {selected ? <Check className="size-4 text-brand" /> : null}
@@ -90,19 +96,23 @@ function InviteMemberDialog({ props }: { props: OrganizationsDialogsProps }) {
         <DialogHeader>
           <DialogTitle>{t("inviteDialog.title")}</DialogTitle>
         </DialogHeader>
-        <div className="org-dialog-fields">
+        <div className="grid gap-3.5 py-2">
           {/* 字段名走**显式关联**：字段名标注的是搜索框，而接口区里还有已选成员的移除按钮与结果列表
               （都是可标记元素），包进 `<label>` 会把它们的文案并进搜索框的可访问名。
               字段名刻度随之与同文件其余字段统一（原 `.org-dialog-field > span` 的 12px/600/#516079）。 */}
           <LabeledField label={t("inviteDialog.searchLabel")} htmlFor="org-member-search">
-            <div className="org-member-command">
+            <div className="overflow-hidden rounded-md border border-slate-200">
               {props.selectedCandidates.length > 0 ? (
-                <div className="org-selected-members">
+                <div className="flex flex-wrap gap-1.5 border-b border-slate-100 p-2">
                   {props.selectedCandidates.map((candidate) => (
-                    <span key={candidate.id}>
+                    <span
+                      key={candidate.id}
+                      className="flex items-center gap-1.5 rounded-md bg-blue-50 px-1.75 py-1 text-sm text-blue-900"
+                    >
                       <strong>{candidate.name}</strong>
                       <button
                         type="button"
+                        className="border-0 bg-transparent p-0"
                         onClick={() => props.onCandidateRemove(candidate.id)}
                         aria-label={t("inviteDialog.removeSelected")}
                       >
@@ -112,7 +122,7 @@ function InviteMemberDialog({ props }: { props: OrganizationsDialogsProps }) {
                   ))}
                 </div>
               ) : null}
-              <div className="org-member-search">
+              <div className="flex items-center pl-3 text-text-muted">
                 <Search className="size-4" aria-hidden="true" />
                 <Input
                   id="org-member-search"
@@ -123,21 +133,21 @@ function InviteMemberDialog({ props }: { props: OrganizationsDialogsProps }) {
                       ? t("inviteDialog.searchMorePlaceholder")
                       : t("inviteDialog.searchPlaceholder")
                   }
-                  className="org-member-search-input"
+                  className="rounded-none border-0 shadow-none"
                 />
               </div>
-              <div className="org-member-results">
+              <div className="max-h-56 overflow-y-auto border-t border-slate-100">
                 {props.debouncedInviteKeyword.length === 0 ? (
-                  <div className="org-command-hint">{t("inviteDialog.searchHint")}</div>
+                  <div className="p-4 text-sm text-text-muted">{t("inviteDialog.searchHint")}</div>
                 ) : null}
                 {props.debouncedInviteKeyword.length > 0 && props.debouncedInviteKeyword.length < 3 ? (
-                  <div className="org-command-hint">{t("inviteDialog.searchMinChars")}</div>
+                  <div className="p-4 text-sm text-text-muted">{t("inviteDialog.searchMinChars")}</div>
                 ) : null}
                 {showResults && props.memberCandidatesLoading ? (
-                  <div className="org-command-hint">{t("inviteDialog.searching")}</div>
+                  <div className="p-4 text-sm text-text-muted">{t("inviteDialog.searching")}</div>
                 ) : null}
                 {showResults && !props.memberCandidatesLoading && props.memberCandidates.length === 0 ? (
-                  <div className="org-command-hint">{t("inviteDialog.empty")}</div>
+                  <div className="p-4 text-sm text-text-muted">{t("inviteDialog.empty")}</div>
                 ) : null}
                 {props.memberCandidates.map((candidate) => {
                   const selected = props.selectedCandidates.some((item) => item.id === candidate.id);
@@ -154,7 +164,11 @@ function InviteMemberDialog({ props }: { props: OrganizationsDialogsProps }) {
             </div>
           </LabeledField>
           <LabeledField label={t("inviteDialog.role")}>
-            <select value={props.inviteRole} onChange={(event) => props.onInviteRoleChange(event.target.value)}>
+            <select
+              className={ORG_SELECT_CLASS}
+              value={props.inviteRole}
+              onChange={(event) => props.onInviteRoleChange(event.target.value)}
+            >
               <option value="admin">{t("roles.admin")}</option>
               <option value="member">{t("roles.member")}</option>
             </select>
@@ -259,7 +273,7 @@ function MachineFields({
 }) {
   const { t } = useTranslation(NS.ORGS);
   return (
-    <div className="org-dialog-fields">
+    <div className="grid gap-3.5 py-2">
       <LabeledField label={t(`${prefix}.name`)}>
         <Input
           value={form.name}
@@ -276,7 +290,11 @@ function MachineFields({
         />
       </LabeledField>
       <LabeledField label={t(`${prefix}.agentName`)}>
-        <select value={form.agentName} onChange={(event) => onChange({ ...form, agentName: event.target.value })}>
+        <select
+          className={ORG_SELECT_CLASS}
+          value={form.agentName}
+          onChange={(event) => onChange({ ...form, agentName: event.target.value })}
+        >
           <option value="peri">Peri</option>
           <option value="opencode">OpenCode</option>
           <option value="ccb">CCB</option>
@@ -291,8 +309,8 @@ function CopyValue({ label, value }: { label: string; value: string }) {
   const { t } = useTranslation(NS.ORGS);
   return (
     <LabeledField label={label}>
-      <div className="org-copy-value">
-        <code>{value}</code>
+      <div className="flex min-w-0 items-center gap-1.5 bg-surface-2 px-2.5 py-2">
+        <code className="min-w-0 flex-1 truncate text-sm text-slate-600">{value}</code>
         <Button
           size="icon-sm"
           variant="ghost"
@@ -321,8 +339,8 @@ function MachineDialogs({ props }: { props: OrganizationsDialogsProps }) {
               <DialogHeader>
                 <DialogTitle>{t("createMachineDialog.resultTitle")}</DialogTitle>
               </DialogHeader>
-              <p className="org-dialog-description">{t("createMachineDialog.resultDesc")}</p>
-              <div className="org-dialog-fields">
+              <p className="text-sm text-text-secondary">{t("createMachineDialog.resultDesc")}</p>
+              <div className="grid gap-3.5 py-2">
                 <CopyValue label={t("machineId")} value={props.machineCreateResult.id} />
                 <CopyValue label={t("createMachineDialog.initCommand")} value={props.machineCreateResult.initCommand} />
               </div>

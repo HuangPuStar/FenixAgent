@@ -6,11 +6,10 @@
 // - 60s 超时 CAS（expireQuestion）：pending → expired 一次
 
 import { beforeEach, expect, test } from "bun:test";
-import * as Y from "yjs";
 import { normalizeAcpMessage } from "../protocol/acp-channel";
 import { DEFAULT_QUESTION_TIMEOUT_MS, type NormalizedEvent } from "../schema";
 import { applyNormalizedEvent, type DocPair } from "../state/aggregator";
-import { clearSessionDocContent, getPendingQuestions, getSessionRoot } from "../state/chat-writer";
+import { getPendingQuestions } from "../state/chat-writer";
 import { createChatDoc, createSessionDoc } from "../state/factory";
 import { expireQuestion, respondQuestion } from "../state/question";
 
@@ -224,16 +223,4 @@ test("question request without an answerable turn is rejected", () => {
     applyNormalizedEvent(pair, event("question_requested", { questionId: "cancelled", questions: [] })).applied,
   ).toBe(false);
   expect(getPendingQuestions(pair.session).size).toBe(0);
-});
-
-// 会话切换清理：clearSessionDocContent 清空 pendingQuestions（与 pendingPermissions 同批）
-test("clearSessionDocContent clears pendingQuestions", () => {
-  applyNormalizedEvent(pair, event("user_message", { content: { type: "text", text: "hi" } }, "turn_1"));
-  applyNormalizedEvent(pair, event("question_requested", { questionId: "iqa_1", questions: [] }));
-  expect(getPendingQuestions(pair.session).size).toBe(1);
-
-  clearSessionDocContent(pair.session);
-  expect(getPendingQuestions(pair.session).size).toBe(0);
-  // schema 骨架保留（下次投影可直接写入）
-  expect(getSessionRoot(pair.session).get("pendingQuestions") instanceof Y.Map).toBe(true);
 });

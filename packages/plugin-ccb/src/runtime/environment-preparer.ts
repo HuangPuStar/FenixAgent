@@ -1,6 +1,5 @@
 import { mkdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
-import type { AgentLaunchSpec } from "@fenix/plugin-sdk";
 import type { CcbMcpConfig, CcbRuntimeConfig, InstalledSkillReference } from "./runtime-config";
 
 export const CCB_DIR_NAME = ".claude";
@@ -54,62 +53,6 @@ export async function writeClaudeMd(workspace: string, content: string): Promise
   const claudeMdPath = join(workspace, CCB_CLAUDE_MD_FILENAME);
   await writeFile(claudeMdPath, content, "utf8");
   return claudeMdPath;
-}
-
-/**
- * IS_PERI 环境下，额外创建 .peri/settings.json 供 Peri 客户端使用。
- * 将 AgentLaunchSpec 的模型信息映射为 Peri 当前的 provider/profile 配置格式。
- */
-export async function writePeriSettings(workspace: string, launchSpec: AgentLaunchSpec): Promise<string | null> {
-  if (!process.env.IS_PERI) return null;
-
-  const { model } = launchSpec;
-  const periDir = join(workspace, ".peri");
-  await mkdir(periDir, { recursive: true });
-
-  const modelId = model.modelName ?? model.model;
-  const periEnv = launchSpec.env ? { ...launchSpec.env } : undefined;
-  const configPath = join(periDir, "settings.json");
-  const settings = {
-    config: {
-      active_alias: "opus",
-      providers: [
-        {
-          id: model.provider,
-          type: model.protocol,
-          apiKey: model.apiKey,
-          baseUrl: model.baseUrl,
-          name: model.provider,
-          models: {
-            opus: modelId,
-            sonnet: modelId,
-            haiku: modelId,
-            fable: modelId,
-          },
-        },
-      ],
-      profiles: {
-        opus: {
-          provider: model.provider,
-          model: modelId,
-          effort: "medium",
-        },
-        sonnet: {
-          provider: model.provider,
-          effort: "max",
-        },
-        haiku: {
-          provider: model.provider,
-          effort: "low",
-        },
-      },
-      skills_dir: null,
-      ...(periEnv && Object.keys(periEnv).length > 0 ? { env: periEnv } : {}),
-    },
-  };
-
-  await writeFile(configPath, `${JSON.stringify(settings, null, 2)}\n`, "utf8");
-  return configPath;
 }
 
 /**

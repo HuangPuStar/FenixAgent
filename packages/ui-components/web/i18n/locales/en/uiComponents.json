@@ -303,6 +303,10 @@
   "datePicker": {
     "placeholder": "Select date"
   },
+  "errors": {
+    "renderFailed": "Failed to render this content",
+    "retry": "Retry"
+  },
   "fileTree": {
     "accessibleName": "File tree",
     "clearSearch": "Clear file search",
@@ -326,7 +330,26 @@
       "fullscreen": "Fullscreen",
       "loading": "Loading...",
       "noFileSelected": "Select a file to preview",
-      "retry": "Retry"
+      "retry": "Retry",
+      "loadFailed": "Failed to load preview (HTTP {{status}})",
+      "loadFailedUnknown": "Failed to load preview",
+      "componentError": "Failed to load the preview component",
+      "messages": {
+        "loading": "Loading...",
+        "unsupportedTitle": "Preview not supported for this format",
+        "downloadTitle": "Download file",
+        "downloadFile": "Download",
+        "file": "File",
+        "unnamedFile": "Untitled file",
+        "format": "Format",
+        "unknown": "Unknown",
+        "mime": "MIME type",
+        "undeclared": "Not declared",
+        "size": "Size",
+        "source": "Source",
+        "remoteUrl": "Remote URL",
+        "localFile": "Local file"
+      }
     },
     "refresh": "Refresh",
     "retry": "Retry",

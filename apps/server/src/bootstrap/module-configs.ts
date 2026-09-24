@@ -72,6 +72,19 @@ export function buildModuleConfigs(env: ServerEnv, config: AppConfig): Readonly<
     },
     // 记忆模块配置：未配置（或缺省空串）时按「未启用」处理，包侧把空串归一为 undefined。
     memory: { hindsightMcpUrl: readDeclaredEnv<string | undefined>(env, "HINDSIGHT_MCP_URL") },
+    // 插件市场模块配置：npm 私有源五键全部**直接透传**模块声明值，不经宿主 config。
+    // 取舍依据见本文件头「取值有两个来源」：宿主侧对这五个值没有任何加工（不需 resolve、不需兜底），
+    // 声明侧已完成空串归一与默认值，再经 config 中转一次只是把同一个值抄到第二个地方。
+    // 先例是同一处理由下的 `agent-config` 的 AGENT_SITES_BASE_URL / APP_HIDDEN_SIDEBAR_TABS。
+    // 未配置源地址时 registryUrl 为 null（而非 undefined）：包内契约 `PluginMarketModuleConfig` 用
+    // `.nullable()` 表达「未配置」，使这个部署状态在类型上可见，不必让读的人区分 undefined 的两种含义。
+    "plugin-market": {
+      sourceId: readDeclaredEnv<string>(env, "PLUGIN_MARKET_SOURCE_ID"),
+      registryUrl: readDeclaredEnv<string | undefined>(env, "PLUGIN_MARKET_REGISTRY_URL") ?? null,
+      registryToken: readDeclaredEnv<string | undefined>(env, "PLUGIN_MARKET_REGISTRY_TOKEN") ?? null,
+      registryTimeoutMs: readDeclaredEnv<number>(env, "PLUGIN_MARKET_REGISTRY_TIMEOUT_MS"),
+      registryMaxBytes: readDeclaredEnv<number>(env, "PLUGIN_MARKET_REGISTRY_MAX_BYTES"),
+    },
     // Skill 模块配置：下载目录、对外 baseUrl 与下载 token 的 HMAC 签名密钥候选。
     skill: {
       skillDir: config.skillDir,
