@@ -24,7 +24,6 @@ import {
   isUnauthorizedError,
   readPreviewChangedPayload,
   resolveSelectedPackage,
-  validatePublishTarget,
 } from "../pages/agent-panel/pages/plugin-market-utils";
 
 /** 构造一个最小条目视图；只覆盖断言用到的字段，其余给中性默认值。 */
@@ -206,13 +205,6 @@ describe("插件市场纯逻辑：格式化与冲突解析", () => {
     expect(changeToastKey("restore")).toBe("toast.restored");
     // 服务端新增动作类型时不静默吞掉：落在中性口径上。
     expect(changeToastKey("unknown-action")).toBe("toast.published");
-  });
-
-  // 发布表单只做「是否填了」的形状校验，包名与版本的严格形状由服务端负责（拼 URL 之前那道校验）。
-  test("发布表单校验只拦空值", () => {
-    expect(validatePublishTarget("  ", "1.0.0")).toBe("validation.packageNameRequired");
-    expect(validatePublishTarget("@acme/toolkit", "")).toBe("validation.exactVersionRequired");
-    expect(validatePublishTarget("@acme/toolkit", "1.0.0")).toBeNull();
   });
 
   // 授权失败的两个码都要认：403（无权）与 401（缺组织上下文）对界面是同一个结论——不给重试。

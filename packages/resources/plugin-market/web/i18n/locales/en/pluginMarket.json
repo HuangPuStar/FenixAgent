@@ -32,9 +32,11 @@
   "emptySearchHint": "Try another keyword or switch the scope.",
   "loadState": {
     "title": "Failed to load the plugin market",
+    "hint": "The list could not be fetched — the network may be down or the service temporarily unavailable. Retrying usually helps; contact an administrator if it keeps failing.",
     "retry": "Retry",
     "loading": "Loading the plugin market",
     "detailTitle": "Failed to load the entry",
+    "detailHint": "This entry's version history could not be fetched. Retrying usually helps; pick another entry or try again later if it keeps failing.",
     "detailRetry": "Reload entry",
     "unauthorizedTitle": "No access to the plugin market",
     "unauthorizedHint": "This account or organization no longer has access to the plugin market. Switch organization or ask an administrator for access — retrying will not change the authorization result."
@@ -88,7 +90,8 @@
     "previewHint": "Only the fields below are stored. The artifact URL is kept for provenance and is never requested by the market.",
     "previewDigest": "Content digest",
     "previewChanged": "The version changed after the preview. Below is the snapshot just read; please confirm again.",
-    "previewUnavailable": "Retry the preview to continue.",
+    "previewFailed": "Failed to read the preview. Check the package name and exact version, then retry.",
+    "publishFailed": "Publishing failed. Please retry.",
     "unpublishTitle": "Withdraw this version?",
     "unpublishDescription": "{{version}} stops being public, but its snapshot stays in the market and can be restored at any time.",
     "restoreTitle": "Restore this version?",
@@ -102,7 +105,6 @@
     "restored": "Restored {{version}}",
     "loadListFailed": "Failed to load the plugin market",
     "loadDetailFailed": "Failed to load the entry",
-    "publishFailed": "Failed to publish",
     "unpublishFailed": "Failed to withdraw",
     "restoreFailed": "Failed to restore"
   },

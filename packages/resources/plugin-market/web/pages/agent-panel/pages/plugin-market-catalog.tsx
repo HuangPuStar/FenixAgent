@@ -26,6 +26,7 @@ import {
 } from "@fenix/ui-components/components/agent-master-detail-workspace";
 import { EmptyState } from "@fenix/ui-components/config/EmptyState";
 import { ScopeFilterBar, type ScopeFilterOption } from "@fenix/ui-components/config/ScopeFilterBar";
+import { StatusBadge } from "@fenix/ui-components/config/StatusBadge";
 import { AppHeader } from "@fenix/ui-components/layout/app-header";
 import { AppPage } from "@fenix/ui-components/layout/app-page";
 import { Button } from "@fenix/ui-components/ui/button";
@@ -95,7 +96,9 @@ export function PluginMarketCatalog(props: Props) {
         <EmptyState
           icon={<AlertTriangle />}
           title={t("loadState.title")}
-          description={props.error.message}
+          // 说明取本包字典，不回显服务端 `error.message`（§9.3）：信封原文是后端文案、可能带内部实现细节，
+          // 且不随界面语言变化。原始对象由容器在 `useRequest` 的 `onError` 里落日志，排障上下文没丢。
+          description={t("loadState.hint")}
           tone="danger"
           role="alert"
           className="flex min-h-96 flex-col items-center justify-center"
@@ -227,7 +230,7 @@ function MarketDetailHeader({ view }: { view: PluginPackageView }) {
           <span>
             {t("detail.latestVersion")}：{view.latestVersion ?? t("directory.noVersion")}
           </span>
-          {view.hidden ? <span className="rounded-sm bg-surface-2 px-1.5 py-0.5">{t("status.withdrawn")}</span> : null}
+          {view.hidden ? <StatusBadge status="withdrawn" tone="neutral" label={t("status.withdrawn")} /> : null}
         </div>
       </div>
     </AgentMasterDetailHeader>

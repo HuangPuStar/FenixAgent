@@ -32,9 +32,11 @@
   "emptySearchHint": "换一个关键词或切换范围试试。",
   "loadState": {
     "title": "插件市场加载失败",
+    "hint": "列表没能取回来，可能是网络中断或服务暂时不可用。可以先重试；若持续失败请联系管理员。",
     "retry": "重试",
     "loading": "正在加载插件市场",
     "detailTitle": "条目详情加载失败",
+    "detailHint": "该条目的版本历史没能取回来。可以先重试；若持续失败，换一个条目或稍后再试。",
     "detailRetry": "重新加载详情",
     "unauthorizedTitle": "无权查看插件市场",
     "unauthorizedHint": "当前账号或所在组织已没有插件市场的访问权限。请切换组织，或联系管理员开通权限——重试不会改变授权结果。"
@@ -88,7 +90,8 @@
     "previewHint": "市场只保存下列字段。制品地址仅作溯源展示，市场不会请求它。",
     "previewDigest": "内容摘要",
     "previewChanged": "该版本的内容在预览之后已变化，下面是刚读到的快照，请重新确认。",
-    "previewUnavailable": "请重新读取预览后继续。",
+    "previewFailed": "读取预览失败，请确认包名与精确版本后重试。",
+    "publishFailed": "发布失败，请重试。",
     "unpublishTitle": "下架该版本？",
     "unpublishDescription": "下架后 {{version}} 不再对公众可见，但快照仍留在市场里，可以随时恢复。",
     "restoreTitle": "恢复该版本？",
@@ -102,7 +105,6 @@
     "restored": "已恢复 {{version}}",
     "loadListFailed": "加载插件市场失败",
     "loadDetailFailed": "加载条目详情失败",
-    "publishFailed": "发布失败",
     "unpublishFailed": "下架失败",
     "restoreFailed": "恢复失败"
   },

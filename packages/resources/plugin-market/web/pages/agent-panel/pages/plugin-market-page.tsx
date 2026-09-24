@@ -40,6 +40,9 @@ export function PluginMarketPage() {
   const [scope, setScope] = useState<PluginCatalogScope>("all");
   const [selectedSlug, setSelectedSlug] = useState<string | null>(null);
   const [publishOpen, setPublishOpen] = useState(false);
+  // 发布弹窗的表单与流程态由 `key` 重置（§4.2 / §4.3）：每次**打开**换一个 `key` = 强制重挂载 = 全新表单
+  // 实例与全新预览态。关闭时不动 `key`，弹窗内容留在树上走完退出动画。
+  const [publishKey, setPublishKey] = useState(0);
   const [pending, setPending] = useState<PendingAction | null>(null);
   const [writing, setWriting] = useState(false);
 
@@ -116,14 +119,22 @@ export function PluginMarketPage() {
         onQueryChange={setQuery}
         onScopeChange={setScope}
         onSelect={setSelectedSlug}
-        onPublish={() => setPublishOpen(true)}
+        onPublish={() => {
+          setPublishKey((key) => key + 1);
+          setPublishOpen(true);
+        }}
         onUnpublish={(packageName, exactVersion) => setPending({ kind: "unpublish", packageName, exactVersion })}
         onRestore={(packageName, exactVersion) => setPending({ kind: "restore", packageName, exactVersion })}
         onRetry={catalog.refresh}
         onDetailRetry={detail.refresh}
       />
 
-      <PluginMarketPublishDialog open={publishOpen} onOpenChange={setPublishOpen} onPublished={settleWrite} />
+      <PluginMarketPublishDialog
+        key={publishKey}
+        open={publishOpen}
+        onOpenChange={setPublishOpen}
+        onPublished={settleWrite}
+      />
 
       <ConfirmDialog
         open={pending !== null}

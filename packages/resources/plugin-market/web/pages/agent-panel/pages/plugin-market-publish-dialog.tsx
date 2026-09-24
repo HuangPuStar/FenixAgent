@@ -9,17 +9,28 @@
 // 409 `PREVIEW_CHANGED` 的处理是这段流程的核心（见 `runPublish`）：预览与确认之间私有源上的内容可能已被
 // 替换，后端重新读取并比对摘要，不一致就以 409 把**新读到的快照**交回来。此时弹窗不重开、不丢上下文，
 // 只是把预览换成新快照并要求再确认一次——用户在旧快照上点的那次确认被明确作废，而不是被静默吞掉。
+//
+// 表单形态按 §4.3：字段体（`plugin-market-publish-form`）经 `useFormContext` 绑到 `FormDialog` 内部创建的
+// `useForm`，弹窗自己不持有字段值、不写校验；重置靠容器每次打开自增的 `key`（§4.2），不写 `reset()`。
+// 两步的按钮分工由此变得明确：**提交按钮只做第一步**（读取并预览，受 zod 必填校验保护），确认发布是预览
+// 面板里的独立动作——它在预览态按 `hideSubmit` 替掉提交按钮，因此不必给字段挂 `disabled` 后仍走表单提交。
+//
+// 上屏文案一律取本包字典（§9.3）：`ApiError.message` / 错误信封原文是后端文案，只进 `console.error`。
 
 import { FormDialog } from "@fenix/ui-components/config/FormDialog";
-import { LabeledField } from "@fenix/ui-components/config/LabeledField";
 import { Button } from "@fenix/ui-components/ui/button";
-import { Input } from "@fenix/ui-components/ui/input";
-import { useCallback, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
+import type { z } from "zod/v4";
 import { pluginMarketApi } from "../../../api/plugin-market";
 import type { PluginPublicationChange } from "../../../api/plugin-market-types";
 import { PLUGIN_MARKET_NS } from "../../../i18n/namespace";
-import { type PreviewSnapshot, readPreviewChangedPayload, validatePublishTarget } from "./plugin-market-utils";
+import {
+  PluginPublishForm,
+  type PluginPublishFormValues,
+  pluginPublishFormSchema,
+} from "../components/plugin-market-publish-form";
+import { type PreviewSnapshot, readPreviewChangedPayload } from "./plugin-market-utils";
 
 type PublishDialogProps = {
   open: boolean;
@@ -28,65 +39,52 @@ type PublishDialogProps = {
   onPublished: (change: PluginPublicationChange) => void;
 };
 
-const EMPTY_FORM = { packageName: "", exactVersion: "" };
-
 export function PluginMarketPublishDialog({ open, onOpenChange, onPublished }: PublishDialogProps) {
   const { t } = useTranslation(PLUGIN_MARKET_NS);
-  const [form, setForm] = useState(EMPTY_FORM);
+  // 流程态与表单态分开：字段值在 `FormDialog` 的 `useForm` 里，这里只留「请求进行到哪一步」。
   const [preview, setPreview] = useState<PreviewSnapshot | null>(null);
   const [previewing, setPreviewing] = useState(false);
   const [publishing, setPublishing] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [actionError, setActionError] = useState<string | null>(null);
   const [conflict, setConflict] = useState(false);
 
-  const reset = useCallback(() => {
-    setForm(EMPTY_FORM);
-    setPreview(null);
-    setPreviewing(false);
-    setPublishing(false);
-    setError(null);
-    setConflict(false);
-  }, []);
-
-  const runPreview = async () => {
-    const validationKey = validatePublishTarget(form.packageName, form.exactVersion);
-    if (validationKey) {
-      setError(t(validationKey));
-      return;
-    }
-    setError(null);
-    setConflict(false);
-    setPreviewing(true);
-    try {
-      const response = await pluginMarketApi.preview({
-        packageName: form.packageName.trim(),
-        exactVersion: form.exactVersion.trim(),
-      });
-      if (!response.success) {
-        setError(response.error?.message ?? t("dialog.previewUnavailable"));
-        return;
+  /** 第一步：读取并规范化私有源上的元数据。取值已由 schema `.trim()` 规整，这里不再二次修剪。 */
+  const runPreview = useCallback(
+    async (target: PluginPublishFormValues) => {
+      setActionError(null);
+      setConflict(false);
+      setPreviewing(true);
+      try {
+        const response = await pluginMarketApi.preview({
+          packageName: target.packageName,
+          exactVersion: target.exactVersion,
+        });
+        if (!response.success) {
+          console.error(t("dialog.previewFailed"), response.error);
+          setActionError(t("dialog.previewFailed"));
+          return;
+        }
+        setPreview(response.data?.preview ?? null);
+      } finally {
+        setPreviewing(false);
       }
-      setPreview(response.data?.preview ?? null);
-    } finally {
-      setPreviewing(false);
-    }
-  };
+    },
+    [t],
+  );
 
-  const runPublish = async () => {
+  /** 第二步：确认发布预览那一份。定位符取自 `preview` 而不是输入框（见文件头的两步说明）。 */
+  const runPublish = useCallback(async () => {
     if (!preview) return;
-    setError(null);
+    setActionError(null);
     setPublishing(true);
     try {
       const response = await pluginMarketApi.publish({
-        // 确认的是**预览那一份**的定位符，不是输入框当前内容：字段在预览态被禁用（下面 `disabled`），
-        // 这里再用预览自带的取值，两处一致，避免「摘要来自 A、定位符被改成 B」这种半改状态。
         packageName: preview.packageName,
         exactVersion: preview.exactVersion,
         previewDigest: preview.metadataDigest,
       });
       if (response.success && response.data) {
         onPublished(response.data.change);
-        reset();
         onOpenChange(false);
         return;
       }
@@ -97,54 +95,46 @@ export function PluginMarketPublishDialog({ open, onOpenChange, onPublished }: P
         setConflict(true);
         return;
       }
-      setError(response.error?.message ?? t("toast.publishFailed"));
+      console.error(t("dialog.publishFailed"), response.error);
+      setActionError(t("dialog.publishFailed"));
     } finally {
       setPublishing(false);
     }
-  };
+  }, [onOpenChange, onPublished, preview, t]);
+
+  // `onFormSubmit` 的入参是 `Record<string, unknown>`（`FormDialog` 的契约），按域类型收窄后再用。
+  const formConfig = useMemo(
+    () => ({
+      schema: pluginPublishFormSchema as z.ZodType<Record<string, unknown>>,
+      defaultValues: { packageName: "", exactVersion: "" } as unknown as Record<string, unknown>,
+      onFormSubmit: (values: Record<string, unknown>) => {
+        void runPreview(values as unknown as PluginPublishFormValues);
+      },
+    }),
+    [runPreview],
+  );
 
   return (
     <FormDialog
       open={open}
-      onOpenChange={(next) => {
-        if (!next) reset();
-        onOpenChange(next);
-      }}
+      onOpenChange={onOpenChange}
       title={t("dialog.publishTitle")}
-      // 一次提交按钮承担两个动作：还没有预览时是「读取并预览」，有预览时是「确认发布」。
-      onSubmit={preview ? runPublish : runPreview}
-      submitLabel={preview ? t("btn.confirmPublish") : t("btn.preview")}
-      loading={previewing || publishing}
+      formConfig={formConfig}
+      submitLabel={t("btn.preview")}
+      loading={previewing}
+      // 有预览时提交按钮让位给预览面板里的「确认发布」：确认动作的定位符不是输入框内容，
+      // 继续走表单提交会把它和字段校验绑在一起（字段此时被锁，提交只会失败得莫名其妙）。
+      hideSubmit={preview !== null}
       width="sm:max-w-2xl"
     >
       <div className="flex flex-col gap-4">
         <p className="text-xs leading-5 text-text-muted">{t("dialog.publishDescription")}</p>
 
-        <LabeledField label={t("dialog.packageName")}>
-          <Input
-            value={form.packageName}
-            onChange={(event) => setForm({ ...form, packageName: event.target.value })}
-            disabled={preview !== null}
-            placeholder={t("dialog.packageNamePlaceholder")}
-            className="font-mono text-sm"
-            autoComplete="off"
-          />
-        </LabeledField>
+        <PluginPublishForm locked={preview !== null} />
 
-        <LabeledField label={t("dialog.exactVersion")}>
-          <Input
-            value={form.exactVersion}
-            onChange={(event) => setForm({ ...form, exactVersion: event.target.value })}
-            disabled={preview !== null}
-            placeholder={t("dialog.exactVersionPlaceholder")}
-            className="font-mono text-sm"
-            autoComplete="off"
-          />
-        </LabeledField>
-
-        {error ? (
+        {actionError ? (
           <p className="text-sm text-destructive" role="alert">
-            {error}
+            {actionError}
           </p>
         ) : null}
 
@@ -155,7 +145,12 @@ export function PluginMarketPublishDialog({ open, onOpenChange, onPublished }: P
         ) : null}
 
         {preview ? (
-          <PreviewPanel preview={preview} onBack={() => setPreview(null)} />
+          <PreviewPanel
+            preview={preview}
+            publishing={publishing}
+            onBack={() => setPreview(null)}
+            onConfirm={() => void runPublish()}
+          />
         ) : (
           <p className="text-xs text-text-muted" role="status">
             {previewing ? t("btn.previewing") : t("dialog.previewHint")}
@@ -177,16 +172,32 @@ function PreviewRow({ label, value, mono }: { label: string; value: string; mono
 }
 
 /** 预览面板：只渲染后端规范化后真正会公开的字段，摘要原样展示（它就是用户确认的凭据）。 */
-function PreviewPanel({ preview, onBack }: { preview: PreviewSnapshot; onBack: () => void }) {
+function PreviewPanel({
+  preview,
+  publishing,
+  onBack,
+  onConfirm,
+}: {
+  preview: PreviewSnapshot;
+  publishing: boolean;
+  onBack: () => void;
+  onConfirm: () => void;
+}) {
   const { t } = useTranslation(PLUGIN_MARKET_NS);
   const metadata = preview.metadata;
   return (
     <section className="rounded-lg border border-border bg-surface-1 p-4">
       <div className="mb-3 flex items-center justify-between gap-3">
         <h3 className="text-sm font-medium">{t("dialog.previewHeading")}</h3>
-        <Button type="button" variant="outline" size="sm" onClick={onBack}>
-          {t("btn.back")}
-        </Button>
+        <div className="flex items-center gap-2">
+          {/* 两个按钮都在 `<form>` 内，必须显式 `type="button"`，否则会触发提交。 */}
+          <Button type="button" variant="outline" size="sm" onClick={onBack} disabled={publishing}>
+            {t("btn.back")}
+          </Button>
+          <Button type="button" size="sm" onClick={onConfirm} disabled={publishing}>
+            {publishing ? t("btn.publishing") : t("btn.confirmPublish")}
+          </Button>
+        </div>
       </div>
       <dl className="flex flex-col gap-2 text-sm">
         <PreviewRow label={t("dialog.packageName")} value={preview.packageName} mono />

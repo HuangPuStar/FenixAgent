@@ -111,16 +111,6 @@ export function resolveSelectedPackage(
   return filtered.find((view) => view.slug === slug) ?? filtered[0] ?? null;
 }
 
-/** 发布表单的形状校验；返回文案 key，由调用方 `t()` 解析。 */
-export function validatePublishTarget(
-  packageName: string,
-  exactVersion: string,
-): "validation.packageNameRequired" | "validation.exactVersionRequired" | null {
-  if (packageName.trim().length === 0) return "validation.packageNameRequired";
-  if (exactVersion.trim().length === 0) return "validation.exactVersionRequired";
-  return null;
-}
-
 /**
  * 秒级时间戳 → 本地化时刻串。
  *

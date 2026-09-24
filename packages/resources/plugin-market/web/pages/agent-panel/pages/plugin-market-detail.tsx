@@ -7,6 +7,7 @@
 // `tarballUrl` 变成请求——它只作为溯源文本渲染（`npm-registry/types.ts` 的「永不请求 tarball」）。
 
 import { EmptyState } from "@fenix/ui-components/config/EmptyState";
+import { StatusBadge } from "@fenix/ui-components/config/StatusBadge";
 import { Button } from "@fenix/ui-components/ui/button";
 import { Skeleton } from "@fenix/ui-components/ui/skeleton";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@fenix/ui-components/ui/table";
@@ -48,7 +49,9 @@ export function PluginMarketDetail(props: DetailProps) {
         <EmptyState
           icon={<AlertTriangle />}
           title={t("loadState.detailTitle")}
-          description={props.error.message}
+          // 说明取本包字典，不回显服务端 `error.message`（§9.3）：信封原文只由容器在 `useRequest` 的
+          // `onError` 里落日志，上屏文案必须随界面语言走。
+          description={t("loadState.detailHint")}
           tone="danger"
           role="alert"
           className="flex min-h-80 flex-col items-center justify-center"
@@ -172,9 +175,7 @@ function DetailBody({
                   <TableCell className="font-medium">
                     {version.exactVersion}
                     {version.isLatest ? (
-                      <span className="ml-2 rounded-sm bg-surface-2 px-1.5 py-0.5 text-xs text-text-muted">
-                        {t("status.latest")}
-                      </span>
+                      <StatusBadge className="ml-2" status="latest" tone="success" label={t("status.latest")} />
                     ) : null}
                   </TableCell>
                   <TableCell>{formatEpochSeconds(version.publishedAt, locale)}</TableCell>
