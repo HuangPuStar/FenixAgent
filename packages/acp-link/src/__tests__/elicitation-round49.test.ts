@@ -236,7 +236,9 @@ describe("elicitation 第四十九轮真实协议分支", () => {
     let delay: number | undefined;
     Object.defineProperty(globalThis, "setTimeout", {
       configurable: true,
-      value: (callback: () => void, ms?: number) => {
+      // 本用例只读定时器登记的延时、不触发它（「到点以空答案完成」由上一个用例用捕获回调覆盖），
+      // 故回调参数按仓库约定以 `_` 前缀显式标记为不使用。
+      value: (_callback: () => void, ms?: number) => {
         delay = ms;
         return 0;
       },
