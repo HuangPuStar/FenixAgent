@@ -18,6 +18,7 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { ChatComposer } from "@fenix/ui-components/chat/composer/ChatComposer";
 import type { ComposerNotice } from "@fenix/ui-components/chat/composer/composer-handlers";
+import { createPastedImageName, formatPastedImageStamp } from "@fenix/ui-components/chat/composer/composer-handlers";
 import type { FileAttachment } from "@fenix/ui-components/chat/types";
 import { uiComponentsResources } from "@fenix/ui-components/i18n";
 import { UI_COMPONENTS_NS } from "@fenix/ui-components/i18n/namespace";
@@ -54,6 +55,14 @@ void i18n.use(initReactI18next).init({
 
 const COMPOSER_COPY = uiComponentsResources.en.chat.components.chatComposer;
 const ASSET_COPY = uiComponentsResources.en.chat.components.composerAssets;
+
+/**
+ * 粘贴图片落盘名的形状：`pasted-image-<yyyyMMdd>-<HHmmss>-<页内序号>-<6 位 base36 随机>.<ext>`。
+ *
+ * 用正则而不是写死字符串：时间戳取真实本地时钟，写死会随运行时刻失败；但格式本身必须被钉住
+ * （可读日期时间戳 + 唯一性两段后缀 + 保留扩展名）。
+ */
+const PASTED_NAME_PATTERN = /^pasted-image-\d{8}-\d{6}-\d+-[a-z0-9]{6}\.png$/;
 
 /** 提交载荷（`onSubmit` 收到的 `ChatInputMessage`）。 */
 type Submitted = Parameters<Parameters<typeof ChatComposer>[0]["onSubmit"]>[0];
@@ -176,6 +185,7 @@ afterEach(() => {
 describe("ChatComposer 粘贴图片", () => {
   // 业务意图：agent 未声明图片能力（真实环境的常态）时，粘贴的图片必须仍然落成资产——走拖拽上传
   // 那条同一条 workspace 上传通路，而不是静默丢弃；资产随消息以 `@./user/<name>` 引用发出。
+  // 落盘名由客户端生成（服务端同名静默覆盖），故引用必须与实际上传名逐字一致。
   test("粘贴单张图片：走宿主上传端口落成文件资产，并随消息以 @./ 引用发出", async () => {
     const { calls, upload } = recordingUpload();
     mounted = mountComposer({ supportsImages: false, uploadFiles: upload });
@@ -185,21 +195,23 @@ describe("ChatComposer 粘贴图片", () => {
     await flush();
 
     expect(calls.length).toBe(1);
-    expect(calls[0]?.[0]?.name).toBe("shot.png");
+    const uploadedName = calls[0]?.[0]?.name ?? "";
+    expect(uploadedName).toMatch(PASTED_NAME_PATTERN);
     expect(assetTiles(container).length).toBe(1);
-    expect(container.textContent).toContain("shot.png");
+    expect(container.textContent).toContain(uploadedName);
     // 正文补上 workspace 引用：agent 据此读图，且与拖拽上传/文件选择的既有约定一致
-    expect(textareaOf(container).value).toBe("@./user/shot.png ");
+    expect(textareaOf(container).value).toBe(`@./user/${uploadedName} `);
 
     clickSend(container);
     expect(submitted.length).toBe(1);
-    expect(submitted[0]?.attachments).toEqual([{ name: "shot.png", path: "user/shot.png" }]);
+    expect(submitted[0]?.attachments).toEqual([{ name: uploadedName, path: `user/${uploadedName}` }]);
     expect(submitted[0]?.images).toBeUndefined();
   });
 
   // 业务意图：一次粘贴多张图要整批交给同一条上传通路（后端一次 multipart 携带全部文件），
   // 每张都落成资产；分批上传会产生多条请求且中途失败会留下半套资产。
-  test("粘贴多张图片：整批进入同一次上传，全部落成资产", async () => {
+  // 同一批内的名称必须互不相同——它们在同一毫秒生成，靠时间戳分辨不出来。
+  test("粘贴多张图片：整批进入同一次上传，全部落成资产且名称互不相同", async () => {
     const { calls, upload } = recordingUpload();
     mounted = mountComposer({ supportsImages: false, uploadFiles: upload });
     const { container } = mounted;
@@ -208,34 +220,61 @@ describe("ChatComposer 粘贴图片", () => {
     await flush();
 
     expect(calls.length).toBe(1);
-    expect(calls[0]?.map((file) => file.name)).toEqual(["a.png", "b.png"]);
+    const [first, second] = calls[0]?.map((file) => file.name) ?? [];
+    expect(first).toMatch(PASTED_NAME_PATTERN);
+    expect(second).toMatch(PASTED_NAME_PATTERN);
+    expect(first).not.toBe(second);
     expect(assetTiles(container).length).toBe(2);
-    expect(textareaOf(container).value).toBe("@./user/a.png @./user/b.png ");
+    expect(textareaOf(container).value).toBe(`@./user/${first} @./user/${second} `);
     // 焦点不被抢走：粘贴发生在输入框内，处理完仍应停在原处（用户要继续打字）；
     // happy-dom 的 Element 与 lib.dom 的 Element 不是同一份声明，故按 unknown 比对身份
     expect((window.document.activeElement as unknown) === (textareaOf(container) as unknown)).toBe(true);
   });
 
   // 业务意图：粘贴是「叠加」语义——已有附件时新增资产，不能覆盖用户已经选好的待发送内容。
+  // 顺带钉住「同一张图重复粘贴」：两次粘贴来源同名（都是 shot.png），落盘名必须不同，
+  // 否则服务端静默覆盖，第一份内容丢失且两个附件引用同一路径（被按 path 去重）。
   test("粘贴时已有其他附件：新增资产叠加，已有资产不丢失", async () => {
-    const { upload } = recordingUpload();
+    const { calls, upload } = recordingUpload();
     mounted = mountComposer({ supportsImages: false, uploadFiles: upload });
     const { container, submitted } = mounted;
 
-    paste(container, clipboardOf([imageFile("first.png")]));
+    paste(container, clipboardOf([imageFile("shot.png")]));
     await flush();
-    paste(container, clipboardOf([imageFile("second.png")]));
+    paste(container, clipboardOf([imageFile("shot.png")]));
     await flush();
 
+    const [first, second] = calls.flat().map((file) => file.name);
+    expect(first).toMatch(PASTED_NAME_PATTERN);
+    expect(first).not.toBe(second);
     expect(assetTiles(container).length).toBe(2);
-    expect(container.textContent).toContain("first.png");
-    expect(container.textContent).toContain("second.png");
+    expect(container.textContent).toContain(first ?? "");
+    expect(container.textContent).toContain(second ?? "");
 
     clickSend(container);
     expect(submitted[0]?.attachments).toEqual([
-      { name: "first.png", path: "user/first.png" },
-      { name: "second.png", path: "user/second.png" },
+      { name: first, path: `user/${first}` },
+      { name: second, path: `user/${second}` },
     ]);
+  });
+
+  // 业务意图：同一秒内连续粘贴两次，时间戳部分相同——名称仍必须不同，否则第二次上传会静默
+  // 覆盖第一次（服务端同名直接 writeFile），用户看到的是「粘第二张时第一张被换掉」。
+  test("同一秒内连续两次粘贴：名称互不相同", async () => {
+    const { calls, upload } = recordingUpload();
+    mounted = mountComposer({ supportsImages: false, uploadFiles: upload });
+    const { container } = mounted;
+
+    // 两次粘贴之间不等待秒级时钟推进：断言只比对两个名字，不依赖真实时间的边界
+    paste(container, clipboardOf([imageFile("shot.png")]));
+    await flush();
+    paste(container, clipboardOf([imageFile("shot.png")]));
+    await flush();
+
+    const names = calls.flat().map((file) => file.name);
+    expect(names.length).toBe(2);
+    expect(new Set(names).size).toBe(2);
+    expect(assetTiles(container).length).toBe(2);
   });
 
   // 业务意图：非图片粘贴（纯文本）必须保持浏览器默认行为——一旦被 preventDefault 吞掉，
@@ -348,13 +387,13 @@ describe("ChatComposer 粘贴图片", () => {
     paste(container, clipboardOf([imageFile("from-items.png")], { itemsOnly: true }));
     await flush();
 
-    expect(calls[0]?.map((file) => file.name)).toEqual(["from-items.png"]);
+    expect(calls[0]?.map((file) => file.name)[0]).toMatch(PASTED_NAME_PATTERN);
     expect(assetTiles(container).length).toBe(1);
   });
 
-  // 业务意图：应用内位图/file promise 类剪贴板不给文件名，而服务端上传门面按空文件名返回 400；
-  // 不补名的话这类粘贴只能看到「文件上传失败」，等于粘贴依旧不可用。
-  test("剪贴板图片没有文件名：补名后照常上传", async () => {
+  // 业务意图：应用内位图/file promise 类剪贴板不给文件名（服务端上传门面按空文件名返回 400），
+  // 这类粘贴必须走与命名图片同一条命名规则，否则用户的这些粘贴会直接失败。
+  test("剪贴板图片没有文件名：按同一规则补名后照常上传", async () => {
     const { calls, upload } = recordingUpload();
     mounted = mountComposer({ supportsImages: false, uploadFiles: upload });
     const { container } = mounted;
@@ -363,7 +402,8 @@ describe("ChatComposer 粘贴图片", () => {
     await flush();
 
     expect(calls.length).toBe(1);
-    expect(calls[0]?.[0]?.name).toMatch(/^pasted-image-\d+-1\.png$/);
+    // MIME 为 image/png 且无文件名 → 扩展名退回 png，时间戳/序号/随机三段齐全
+    expect(calls[0]?.[0]?.name).toMatch(PASTED_NAME_PATTERN);
     expect(assetTiles(container).length).toBe(1);
   });
 
@@ -401,6 +441,55 @@ describe("ChatComposer 粘贴图片", () => {
     expect(notices[0]?.level).toBe("error");
     expect(notices[0]?.message).toBe(ASSET_COPY.processImagePartialFailed);
     expect(assetTiles(container).length).toBe(0);
+  });
+});
+
+describe("粘贴图片命名", () => {
+  // 业务意图：用户要求文件名带**可读**日期时间戳（而不是裸露的 epoch 毫秒）——注入固定时间源断言
+  // 逐字格式（yyyyMMdd-HHmmss 本地时间），不依赖真实时钟。
+  test("时间戳为可读本地日期时间 yyyyMMdd-HHmmss", () => {
+    expect(formatPastedImageStamp(new Date(2026, 8, 24, 15, 30, 12))).toBe("20260924-153012");
+    // 各位补零：月/日/时/分/秒都要两位，否则同一秒的不同书写会撞名
+    expect(formatPastedImageStamp(new Date(2026, 0, 5, 9, 8, 7))).toBe("20260105-090807");
+  });
+
+  // 业务意图：注入固定时间后，名字必须是「可读时间戳 + 唯一性后缀 + 原扩展名」三段齐全，
+  // 且不得回退成旧的 `pasted-image-<13 位毫秒>-<序号>` 形态。
+  test("名称 = 可读时间戳 + 序号 + 随机后缀，并保留图片扩展名", () => {
+    const fixed = new Date(2026, 8, 24, 15, 30, 12);
+    const jpeg = new window.File([new Uint8Array([1])], "photo.jpeg", { type: "image/jpeg" }) as unknown as File;
+
+    const name = createPastedImageName(jpeg, fixed);
+    expect(name).toMatch(/^pasted-image-20260924-153012-\d+-[a-z0-9]{6}\.jpeg$/);
+    expect(name).not.toMatch(/^pasted-image-\d{13}-/);
+  });
+
+  // 业务意图：唯一性的硬保证不靠时钟——同一时间源（同一秒、甚至同一毫秒）连续生成也必须互不相同；
+  // 服务端对同名上传是静默覆盖（无存在性检查、无自动改名），客户端漏一个唯一名就丢一份内容。
+  test("同一时间源连续生成 50 个名称互不相同", () => {
+    const fixed = new Date(2026, 8, 24, 15, 30, 12);
+    const file = new window.File([new Uint8Array([1])], "image.png", { type: "image/png" }) as unknown as File;
+    const names = Array.from({ length: 50 }, () => createPastedImageName(file, fixed));
+
+    expect(new Set(names).size).toBe(names.length);
+    for (const name of names) expect(name).toMatch(PASTED_NAME_PATTERN);
+  });
+
+  // 业务意图：同一批多张图片在同一毫秒生成，名字必须互不相同——否则后一张会顶掉前一张，
+  // 且两个附件引用同一路径（附件按 path 去重），用户看到「少了一张」。
+  test("同一批多张：按调用顺序逐个生成不同名称", () => {
+    const fixed = new Date(2026, 8, 24, 15, 30, 12);
+    const batch = ["a.png", "b.png", "c.png"].map(
+      (name) => new window.File([new Uint8Array([1])], name, { type: "image/png" }) as unknown as File,
+    );
+    const names = batch.map((file) => createPastedImageName(file, fixed));
+
+    expect(new Set(names).size).toBe(3);
+    // 序号段在页内单调递增：即使随机后缀巧合相同，序号也把三个名字分开
+    // （按捕获组取序号——名字前缀 `pasted-image` 自带连字符，按下标切会切错段）
+    const sequences = names.map((name) => Number(/^pasted-image-\d{8}-\d{6}-(\d+)-/.exec(name)?.[1]));
+    expect(sequences[1]).toBeGreaterThan(sequences[0] ?? 0);
+    expect(sequences[2]).toBeGreaterThan(sequences[1] ?? 0);
   });
 });
 

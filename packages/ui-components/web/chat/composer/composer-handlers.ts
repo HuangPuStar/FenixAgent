@@ -79,17 +79,83 @@ function readPastedImageFiles(clipboard: DataTransfer): File[] {
   return fromItems;
 }
 
+// ---------------------------------------------------------------------------
+// 粘贴图片的文件命名：可读日期时间戳 + 页内递增序号 + 短随机后缀
+//
+// 为什么必须自带唯一性（2026-09-24 用户反馈「图片粘贴要有日期时间戳保证不覆盖」）：
+// 服务端上传对同名文件是**静默覆盖**——`LocalBackend.upload` 逐个 `fs.writeFile(destPath, content)`
+// （`packages/resources/machine/src/server/services/file-backends.ts:299`，`writeFile` 缺省 flag `w`），
+// 上传链路里没有存在性检查、也没有自动改名（实测同一目录同名上传两次：第二次不报错、返回同一个
+// `user/image.png`，磁盘内容被替换、目录里仍只有一个文件）。而粘贴来的截图默认都叫 `image.png`，
+// 于是「同一张图粘两次」「同一批粘两张截图」会互相顶掉；又因为附件按 `path` 去重
+// （`composer-state.ts` 的 `addAttachments`），用户看到的是「第二张没进来/第一张被换成第二张」。
+//
+// 命名三段各自解决什么：
+// - `yyyyMMdd-HHmmss`（本地时间，可读可排序）——用户要在 workspace、文件树与 `@./user/<name>` 里
+//   认出这是什么时候粘的；旧实现用裸 `Date.now()` 毫秒，既不可读也没有区分度（同一次 `map` 里
+//   所有图片拿到同一个毫秒值）。
+// - 页内递增序号——对「同一秒内连续粘贴 / 同一批多张 / 重复粘贴同一张图」给**确定性**保证：
+//   每次调用必自增，因此同一页面内生成的名字不可能重复（不依赖时钟分辨率）。
+// - 6 位 base36 随机后缀——序号只保证同一页内唯一，跨页面/跨标签页（序号从头开始）靠它避开
+//   与既有文件撞名；时间戳本身也已与历史粘贴拉开。
+//
+// 边界：客户端只能构造唯一名，无法探测 workspace 里是否已存在同名文件（composer 没有列目录端口，
+// 上传响应也不回传「是否覆盖」），因此「同秒 + 同序号 + 同随机」这一理论上仍可能的重合无法识别；
+// 该残差登记在报告里，需要强保证时应给上传加条件写（服务端 `ifMatch` 语义）。
+// ---------------------------------------------------------------------------
+
+/** 可读的本地时间戳 `yyyyMMdd-HHmmss`（粘贴图片名的时间部分）。 */
+export function formatPastedImageStamp(date: Date): string {
+  const pad = (value: number) => String(value).padStart(2, "0");
+  const datePart = `${date.getFullYear()}${pad(date.getMonth() + 1)}${pad(date.getDate())}`;
+  const timePart = `${pad(date.getHours())}${pad(date.getMinutes())}${pad(date.getSeconds())}`;
+  return `${datePart}-${timePart}`;
+}
+
+/** 页内递增序号（模块级，跨多次粘贴累加；重置时机 = 页面重新加载）。 */
+let pastedImageSequence = 0;
+
+/** 6 位 base36 随机后缀；`padEnd` 兜住 `Math.random()` 尾部 0 被裁短的情况。 */
+function createRandomSuffix(): string {
+  return Math.random().toString(36).slice(2, 8).padEnd(6, "0");
+}
+
+/** 保留图片扩展名：优先原文件名的扩展名（用户可辨识），否则按 MIME 子类型，取不到退回 `png`。 */
+function pastedImageExtension(file: File): string {
+  const dotIndex = file.name.lastIndexOf(".");
+  const fromName =
+    dotIndex > 0
+      ? file.name
+          .slice(dotIndex + 1)
+          .replace(/[^a-z0-9]/gi, "")
+          .toLowerCase()
+      : "";
+  if (fromName) return fromName;
+  const fromType = file.type
+    .slice(file.type.indexOf("/") + 1)
+    .replace(/[^a-z0-9]/gi, "")
+    .toLowerCase();
+  return fromType || "png";
+}
+
 /**
- * 给没有文件名的剪贴板图片补一个名字（上传通路专用）。
+ * 生成粘贴图片的落盘名：`pasted-image-<yyyyMMdd>-<HHmmss>-<序号>-<随机>.<ext>`。
  *
- * 部分来源（应用内复制的位图、file promise 类剪贴板）只给 MIME 类型不给文件名，而服务端上传门面
- * 按空文件名返回 400——补名之前这类粘贴只能看到「文件上传失败」。名字只影响 workspace 落盘与
- * `@./user/<name>` 引用，扩展名按 MIME 子类型推，取不到时退回 `png`。
+ * `now` 可注入：测试据此断言时间戳格式而不依赖真实时钟。
  */
-function withPastedImageName(file: File, index: number): File {
-  if (file.name.trim()) return file;
-  const extension = file.type.slice(file.type.indexOf("/") + 1).replace(/[^a-z0-9]/gi, "") || "png";
-  return new File([file], `pasted-image-${Date.now()}-${index + 1}.${extension}`, { type: file.type });
+export function createPastedImageName(file: File, now: Date = new Date()): string {
+  pastedImageSequence += 1;
+  return `pasted-image-${formatPastedImageStamp(now)}-${pastedImageSequence}-${createRandomSuffix()}.${pastedImageExtension(file)}`;
+}
+
+/**
+ * 把粘贴的图片换成带时间戳的唯一名（上传通路专用；内联 base64 通路不使用文件名）。
+ *
+ * 一律改名而不是「只在没有名字时补名」：有名字的剪贴板图片（`image.png`、从文件管理器复制的
+ * 同名截图）同样会互相覆盖，只补无名的那种挡不住最主要的覆盖场景。
+ */
+function withPastedImageName(file: File): File {
+  return new File([file], createPastedImageName(file), { type: file.type });
 }
 
 export interface UseComposerHandlersOptions {
@@ -421,8 +487,11 @@ export function useComposerHandlers({
         e.preventDefault();
         setPastingImageCount(files.length);
         try {
-          // 空文件名的剪贴板图片补名后再上传（服务端按空文件名 400，见 `withPastedImageName`）
-          const newAttachments = await uploadComposerFiles(files.map(withPastedImageName), uploadFiles);
+          // 体积校验跑在**原始**剪贴板文件上（改名只发生在这层适配器里，名字不该影响体积判定）；
+          // 上传端口拿到的是带时间戳的唯一名副本——服务端对同名静默覆盖，见 `withPastedImageName`。
+          const newAttachments = await uploadComposerFiles(files, (batch) =>
+            uploadFiles(batch.map((file) => withPastedImageName(file))),
+          );
           addAttachments(newAttachments);
           appendAttachmentMentions(newAttachments);
         } catch (error) {
