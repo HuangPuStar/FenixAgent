@@ -70,9 +70,8 @@ export async function writeClaudeMd(workspace: string, content: string): Promise
 /**
  * 写入 `.peri/settings.json`（Peri CLI 的 project 级配置：provider / profile / 运行时环境变量）。
  *
- * 与 `@fenix/ccb` 的同名写出函数（受 `IS_PERI` 门控、服务于「ccb 槽位伪装 peri」的沙箱）是两份实现：
- * 本函数属于一等 peri 引擎，**无条件写出**。两处格式必须保持一致——改动 provider/profile 结构时同步修改
- * `packages/plugin-ccb/src/runtime/environment-preparer.ts`，否则沙箱侧与本地侧会产生配置分叉。
+ * `.peri/settings.json` 是 peri 引擎独有的配置面，`@fenix/ccb` 不写该文件——两端配置分叉的
+ * 唯一来源是 peri，改 provider/profile 结构时不需要同步 ccb 侧。
  */
 export async function writePeriSettings(workspace: string, launchSpec: AgentLaunchSpec): Promise<string> {
   const periDir = join(workspace, PERI_DIR_NAME);

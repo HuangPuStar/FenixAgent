@@ -100,6 +100,11 @@ const OTHER_NAMESPACE_FILES: ReadonlyArray<{ file: string; namespace: string; re
     reason: "siteDeployment.* 键组由多个 agent-panel 页面共享，整体搬迁需跨包裁定",
   },
   {
+    file: "pages/agent-panel/components/AgentSiteForm.tsx",
+    namespace: "NS.AGENT_PANEL",
+    reason: "同上：站点表单字段体是 AgentSitesPage 弹窗的字段部分，与页面同取 siteDeployment.* 键组",
+  },
+  {
     file: "pages/agent-panel/pages/agent-sites-catalog.tsx",
     namespace: "NS.AGENT_PANEL",
     reason: "同上",

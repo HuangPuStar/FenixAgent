@@ -6,6 +6,31 @@ import type { AgentDefinition, HttpDefinition, TaskV2Info } from "../../../api/t
 import type { TaskFormValues } from "../components/TaskForm";
 
 /**
+ * 任务表单的校验文案键。**本模块只产出键、不产出文案**（§9.1：文案一律经 `t()` 取，译文才会随语言切换）：
+ * 三种消费者各自把键交给 `t`——`CronEditor` 的防抖错误行、`TaskForm` 的字段错误行（两者都在视图里）、
+ * 以及 zod schema 的 `message`。键集写成联合类型而不是 `string`，写错的键在 TS 阶段就能看出来。
+ */
+export type TaskValidationKey =
+  | "error.nameRequired"
+  | "error.nameTooLong"
+  | "error.cronRequired"
+  | "error.cronFieldCount"
+  | "error.cronInvalid"
+  | "error.timezoneInvalid"
+  | "error.timeoutNotNumber"
+  | "error.timeoutNotInteger"
+  | "error.timeoutMin"
+  | "error.timeoutMax"
+  | "error.descriptionTooLong"
+  | "error.urlInvalid"
+  | "error.headersNotObject"
+  | "error.headersTooLong"
+  | "error.bodyTooLong"
+  | "error.agentRequired"
+  | "error.promptRequired"
+  | "error.promptTooLong";
+
+/**
  * 授权类错误码：`forbidden` 是宿主 `/web/*` 守卫与组织归属校验（`requireTeamScope`）的后端值，
  * `UNAUTHORIZED` 是 request 层对**没有** code 的 401/403 归一后的值——`normalizeErrorCode` 只在响应
  * 未携带 code 时才按 HTTP 状态映射，带 code 的响应原样透传。两种都认，否则「无权限」会退化成通用失败。
@@ -25,22 +50,23 @@ export function isUnauthorizedError(error: unknown): boolean {
 /**
  * Cron 表达式校验的**唯一实现**：5 个字段 + `parseExpression`（时区非空时才带 `tz`）。
  *
- * 为什么返回文案而不是布尔：`CronEditor` 要把失败原因显示在输入框下方，三种失败（空 / 字段数不对 /
- * 解析不通过）措辞不同，只有它能给出「差在哪」。布尔形态由它派生（下面的 `isValidCronExpression`），
- * 供 zod `superRefine` 用——那条路径的文案由 schema 自己给，不消费这里的字符串。
+ * 为什么返回文案键而不是布尔：`CronEditor` 要把失败原因显示在输入框下方，三种失败（空 / 字段数不对 /
+ * 解析不通过）措辞不同，只有它能给出「差在哪」——键由视图层的 `t()` 译出，本模块不碰字典（§9.3）。
+ * 布尔形态由它派生（下面的 `isValidCronExpression`），供 zod `superRefine` 用——那条路径的文案由自己给。
  *
  * 2026-09-22 去重：此前 `CronEditor` 与模块内各写一份同样的「切 5 段 + parseExpression」，
  * cron-parser 的口径变更要改两处；文案与分支原样保留（空值优先判、字段数其次、解析最后）。
+ * 2026-09-23：返回值由中文文案改成字典键（第 19 轮），分支顺序与判定逐例不变。
  */
-export function validateCronExpression(cron: string, timezone: string): string | undefined {
+export function validateCronExpression(cron: string, timezone: string): TaskValidationKey | undefined {
   const parts = cron.trim().split(/\s+/);
-  if (!cron.trim()) return "Cron 不能为空";
-  if (parts.length !== 5) return "Cron 表达式必须为 5 个字段";
+  if (!cron.trim()) return "error.cronRequired";
+  if (parts.length !== 5) return "error.cronFieldCount";
   try {
     parseExpression(cron, timezone.trim() ? { tz: timezone.trim() } : undefined);
     return;
   } catch {
-    return "Cron 表达式无效，请检查字段取值范围";
+    return "error.cronInvalid";
   }
 }
 
@@ -65,29 +91,42 @@ function isValidTimezone(timezone: string): boolean {
   }
 }
 
+/**
+ * zod 的 `message` 是裸 `string`：包一层把键收进联合类型，写错的键在 `tsc` 阶段就报错
+ * （否则只有运行时把键名显示给用户才发现）。
+ */
+function message(key: TaskValidationKey): TaskValidationKey {
+  return key;
+}
+
+/**
+ * 任务表单校验。**schema 里放的是 i18n 键、不是文案**：`TaskForm` 的错误行经 `t(errors.x.message)` 取值
+ * （与 §4.3 的「错误文案在视图边界转换」同口径）。带中文 message 会让文案绕过 `t()`（§9.1），
+ * 译文也不再随语言切换——本文件 2026-09-23（第 19 轮）之前就是那种形态。
+ */
 export const taskFormSchema = z
   .object({
     type: z.enum(["http", "agent"]),
-    name: z.string().trim().min(1, "名称不能为空").max(128, "名称不能超过 128 个字符"),
-    cron: z.string().trim().min(1, "Cron 不能为空"),
-    timezone: z.string().trim().refine(isValidTimezone, "必须是有效的 IANA 时区").optional().default(""),
+    name: z.string().trim().min(1, message("error.nameRequired")).max(128, message("error.nameTooLong")),
+    cron: z.string().trim().min(1, message("error.cronRequired")),
+    timezone: z.string().trim().refine(isValidTimezone, message("error.timezoneInvalid")).optional().default(""),
     timeoutSeconds: z.coerce
       .number()
-      .finite("超时必须是有效数字")
-      .int("超时必须是整数")
-      .min(1, "超时至少为 1 秒")
-      .max(3600, "超时不能超过 3600 秒"),
-    description: z.string().max(2000, "描述不能超过 2000 个字符").optional().default(""),
+      .finite(message("error.timeoutNotNumber"))
+      .int(message("error.timeoutNotInteger"))
+      .min(1, message("error.timeoutMin"))
+      .max(3600, message("error.timeoutMax")),
+    description: z.string().max(2000, message("error.descriptionTooLong")).optional().default(""),
     url: z.string().trim().optional().default(""),
     method: z.enum(["GET", "POST", "PUT", "DELETE", "PATCH"]).optional().default("POST"),
-    headers: z.string().max(10000, "Headers 不能超过 10000 个字符").optional().default(""),
-    body: z.string().max(100000, "请求体不能超过 100000 个字符").optional().default(""),
+    headers: z.string().max(10000, message("error.headersTooLong")).optional().default(""),
+    body: z.string().max(100000, message("error.bodyTooLong")).optional().default(""),
     agentId: z.string().trim().optional().default(""),
-    prompt: z.string().max(100000, "Prompt 不能超过 100000 个字符").optional().default(""),
+    prompt: z.string().max(100000, message("error.promptTooLong")).optional().default(""),
   })
   .superRefine((data, context) => {
     if (!isValidCronExpression(data.cron, data.timezone)) {
-      context.addIssue({ code: "custom", path: ["cron"], message: "Cron 表达式无效，请检查字段取值范围" });
+      context.addIssue({ code: "custom", path: ["cron"], message: message("error.cronInvalid") });
     }
     if (data.type === "http") {
       try {
@@ -95,7 +134,7 @@ export const taskFormSchema = z
         if (parsedUrl.protocol !== "http:" && parsedUrl.protocol !== "https:") throw new Error();
         if (!parsedUrl.hostname) throw new Error();
       } catch {
-        context.addIssue({ code: "custom", path: ["url"], message: "请输入有效的 HTTP 或 HTTPS URL" });
+        context.addIssue({ code: "custom", path: ["url"], message: message("error.urlInvalid") });
       }
       if (data.headers.trim()) {
         try {
@@ -103,13 +142,15 @@ export const taskFormSchema = z
           if (parsed === null || typeof parsed !== "object" || Array.isArray(parsed)) throw new Error();
           if (Object.values(parsed).some((value) => typeof value !== "string")) throw new Error();
         } catch {
-          context.addIssue({ code: "custom", path: ["headers"], message: "Headers 必须是值为字符串的 JSON 对象" });
+          context.addIssue({ code: "custom", path: ["headers"], message: message("error.headersNotObject") });
         }
       }
     }
     if (data.type === "agent") {
-      if (!data.agentId.trim()) context.addIssue({ code: "custom", path: ["agentId"], message: "请选择 Agent" });
-      if (!data.prompt.trim()) context.addIssue({ code: "custom", path: ["prompt"], message: "Prompt 不能为空" });
+      if (!data.agentId.trim())
+        context.addIssue({ code: "custom", path: ["agentId"], message: message("error.agentRequired") });
+      if (!data.prompt.trim())
+        context.addIssue({ code: "custom", path: ["prompt"], message: message("error.promptRequired") });
     }
   });
 

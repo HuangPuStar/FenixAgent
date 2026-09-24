@@ -57,11 +57,6 @@ export function WorkflowVersions({ workflowId }: WorkflowVersionsProps) {
     refresh: versionsRefresh,
   } = useRequest(() => unwrap(workflowDefApi.getVersions(workflowId)), { refreshDeps: [workflowId] });
   const versions = Array.isArray(versionsResult) ? versionsResult : [];
-  const versionsErrorMsg = versionsError
-    ? versionsError instanceof Error
-      ? versionsError.message
-      : String(versionsError)
-    : null;
   const unauthorized = isUnauthorizedError(versionsError);
 
   // 设为最新版本
@@ -75,7 +70,9 @@ export function WorkflowVersions({ workflowId }: WorkflowVersionsProps) {
     },
     onError: (err) => {
       console.error(err);
-      toast.error(t("versions.operation_failed"), { description: (err as Error).message });
+      // 上屏的只有本包字典文案（§9.3）：`err` 是 `unwrap` 抛出的 `ApiError`，`message` 是后端错误
+      // 信封原文，只进上面的日志；标题加原始 message 的 description 等于把它铺给用户。
+      toast.error(t("versions.operation_failed"));
     },
   });
 
@@ -87,7 +84,7 @@ export function WorkflowVersions({ workflowId }: WorkflowVersionsProps) {
       onSuccess: () => toast.success(t("versions.restore_success")),
       onError: (err) => {
         console.error(err);
-        toast.error(t("versions.restore_failed"), { description: (err as Error).message });
+        toast.error(t("versions.restore_failed"));
       },
     },
   );
@@ -105,7 +102,7 @@ export function WorkflowVersions({ workflowId }: WorkflowVersionsProps) {
       setViewingYaml(result.yaml);
     } catch (err) {
       console.error(err);
-      toast.error(t("versions.yaml_load_failed"), { description: (err as Error).message });
+      toast.error(t("versions.yaml_load_failed"));
     }
   };
 
@@ -170,7 +167,8 @@ export function WorkflowVersions({ workflowId }: WorkflowVersionsProps) {
         ) : (
           <EmptyState
             icon={<AlertTriangle />}
-            title={t("versions.load_failed", { error: versionsErrorMsg })}
+            title={t("versions.load_failed")}
+            description={t("versions.load_failed_hint")}
             tone="danger"
             role="alert"
             action={{ label: t("versions.retry"), onClick: versionsRefresh, icon: <RefreshCw /> }}

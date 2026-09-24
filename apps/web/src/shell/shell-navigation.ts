@@ -26,6 +26,20 @@ export const SHELL_NAV_GROUPS = [
   { id: "config", labelKey: "navGroupConfig" },
 ] as const;
 
+/**
+ * 侧栏项 id 拼成路由目标的**唯一入口**（§2.6 契约：`id` 同时是路由目标，Shell 组装成 `/agent/<id>`）。
+ *
+ * 前缀与拼法在这里只写一份：`DefaultAppShell` 的导航与
+ * `apps/web/src/__tests__/shell-navigation-routes.test.ts` 的断言共用它，测试因此不会另写一遍
+ * `/agent/`，免得多出一处对不上的「第二份真相」。
+ */
+export const PANEL_ROUTE_PREFIX = "/agent/";
+
+/** 侧栏项 id → 路由目标路径（`/agent/<id>`）；该路径是否真有路由，由装配期测试按真实路由表断言。 */
+export function panelRoutePath(pageId: string): string {
+  return `${PANEL_ROUTE_PREFIX}${pageId}`;
+}
+
 /** 一个侧栏导航项（Shell 装配后的形状；`ns` 供渲染处 `t(labelKey, { ns })` 取值）。 */
 export interface ShellNavEntry {
   readonly id: string;

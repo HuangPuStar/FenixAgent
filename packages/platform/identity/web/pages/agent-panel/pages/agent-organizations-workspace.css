@@ -1,0 +1,57 @@
+/*
+ * 组织页里**无法用工具类表达**的深层样式，现在只剩一类：≤900px 的一组布局声明。
+ *
+ * 目录栏的取值（容器内边距 / 底色 / 内嵌分隔线、头部几何、行距、条目三态、图标盒、字号）**不在这里**：
+ * 2026-09-23 的裁定是「全部样式统一，不要观感不统一」，那批取值已全部成为共享构件集
+ * `agent-catalog-index.css` 的默认值，五页同一份。本文件此前为目录栏写的三条覆盖——首列宽 `1rem`
+ * （裸图标）、大写小标题字距、计数退回纯文字——随之删除：它们成立的前提是「共享是 px 刻度、本页是
+ * 13/16 rem 刻度，两套相差 18.75%」，而共享默认值现在本身就是 rem 刻度，档位单调（1rem > 0.875rem >
+ * 0.75rem）由共享那一套保证。本页剩下的页面语义只有行首图标的角色三态色，它落在 TSX 的工具类上
+ * （共享图标盒刻意不声明 `color`，所以工具类生效）。
+ *
+ * ≤900px 的一组声明为什么留在 CSS 而不是工具类：
+ * 1. 断点 900px 不在 Tailwind 标准档（sm 640 / md 768 / lg 1024）上，而 FCP-WEB-03 禁止任意断点变体；
+ *    按仓库口径应「先在 @theme 声明命名断点」——那要改两个全局 token 入口
+ *    （`apps/web/src/index.css` 与 `packages/ui-components/web/styles/theme.css`，两条必须同批改且无一致性
+ *    测试兜底），超出本次范围。
+ * 2. 即便换成标准档，第一条 `grid-template-columns` 也压不过库内 `.agent-master-detail-workspace` 的列定义：
+ *    那条规则在 `@media (width >= 48rem)` 里且**未分层**，未分层声明恒胜。只有同等「未分层 + 900px」的
+ *    写法才能维持迁移前的胜负关系与断点。目录横置同理，已由共享组件的 `stripOnNarrow="900px"`
+ *    （`@media (width <= 900px)`，与本文件同宽咬合）承担；留下的行宽 `min-width` 必须带列表上下文——
+ *    它要压过共享的 `.agent-catalog-index-item { min-width: 0 }`（同为未分层），而工具类 `min-w-47.5`
+ *    落在 `@layer utilities`、无论如何都压不过，所以那份值只存在于本文件。
+ * 3. 分隔线在单列态要撤掉：共享 CSS 只在 `<48rem` 撤它的内嵌分隔线，而本页的列定义到 900px 才收回，
+ *    768~900px 这一段落在共享断点之外，必须在这里补，并改回下边框（迁移前的形态）。
+ *
+ * 层叠：本文件不包 `@layer`（同 `agent-master-detail-workspace.css`）。长度值一律写 rem 而不是 px：
+ * 与工具类刻度同源，避免同一元素在断点两侧落在两套刻度上。
+ *
+ * 移除条件：① 两个 token 入口同批补上命名断点（`--breakpoint-*`），或 ② 库内主从工作区改为按容器查询
+ * 决定列数——任一落地后本文件即可删除（规则改写成命名断点变体，横置那两条随共享组件同步改写）。
+ */
+
+@media (max-width: 900px) {
+  .org-workspace {
+    grid-template-columns: 1fr;
+  }
+  /* 单列时目录栏占满整行：撤掉共享那条「贴右缘」的内嵌分隔线，改用下边框分栏。
+     （共享 CSS 只在 <48rem 撤它，而本页的列定义到 900px 才收回，768~900px 这段落在共享断点之外，
+     所以必须在这里补。） */
+  .org-directory {
+    box-shadow: none;
+    border-bottom: 1px solid var(--color-slate-100);
+  }
+  /* 列表横置（`display: flex` + `overflow-x: auto` + 行 `flex: 0 0 auto`）已由共享组件的
+     `data-strip="900px"` 提供，原 `.org-directory-list` 那条规则随之删除；留下的是行宽，取值与迁移前
+     逐字相同（`min-w-47.5` ≡ 11.875rem），多出的列表上下文只为把特异性提到共享条目规则之上。 */
+  .org-directory-list > .org-directory-row {
+    min-width: 11.875rem;
+  }
+  .org-detail {
+    padding: 1.5rem 1.25rem;
+  }
+  .org-engine-strip {
+    align-items: stretch;
+    flex-direction: column;
+  }
+}

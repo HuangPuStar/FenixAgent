@@ -13,29 +13,15 @@
   margin-bottom: 18px;
   border-bottom: 1px solid #e4eaf2;
 }
-.knowledge-directory {
-  padding: 18px 10px;
-}
-.knowledge-directory > header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 0 8px 12px;
-  font-size: 13px;
-}
-.knowledge-directory > header span {
-  display: grid;
-  min-width: 24px;
-  height: 22px;
-  place-items: center;
-  border-radius: 6px;
-  background: #e9edf4;
-  color: #64748b;
-  font-size: 11px;
-}
-.knowledge-directory nav {
-  display: grid;
-  gap: 4px;
+/* 目录栏（容器 / 头部 / 列表 / 条目 / 图标盒 / 文案 / 箭头）的取值全部由共享构件集
+   `agent-catalog-index.css` 提供，五页同一份——2026-09-23 的裁定是「全部样式统一，不要观感不统一」。
+   本页因此不再为目录头部、行距、行高、图标盒与文案写任何取值；此前的 `18px 10px` 内边距、`0 8px 12px`
+   头部内边距、24×22 徽标、4px 行距、64px 行高、9px 内边距、34×34 图标盒与 13px/11px 字号都已成为
+   共享默认值（换算表见该文件头）。目录换个样式请改共享 CSS，不要再在这里长出一份。
+
+   下面是本页**独有**的两条：不可用态，与副标题行里的状态圆点排布。 */
+.knowledge-directory-item.is-unavailable {
+  opacity: 0.58;
 }
 .knowledge-directory__loading {
   display: grid;
@@ -45,63 +31,14 @@
 .knowledge-directory__loading > * {
   height: 64px;
 }
-.knowledge-directory-item {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
-  align-items: center;
-  border-radius: 8px;
-  transition: background 120ms ease;
-}
-.knowledge-directory-item:hover {
-  background: #fff;
-}
-.knowledge-directory-item.is-active {
-  background: #e8f0ff;
-}
-.knowledge-directory-item.is-unavailable {
-  opacity: 0.58;
-}
-.knowledge-directory-item > button {
-  display: grid;
-  min-height: 64px;
-  min-width: 0;
-  grid-template-columns: 34px minmax(0, 1fr);
-  align-items: center;
-  gap: 9px;
-  padding: 9px;
-  text-align: left;
-}
-.knowledge-directory-item__icon {
-  display: grid;
-  width: 34px;
-  height: 34px;
-  place-items: center;
-  border: 1px solid #e4eaf2;
-  border-radius: 8px;
-  background: #fff;
-  color: #60728e;
-}
-.knowledge-directory-item__icon svg {
-  width: 16px;
-}
-.knowledge-directory-item__copy {
-  min-width: 0;
-}
-.knowledge-directory-item__copy strong {
-  display: block;
-  overflow: hidden;
-  color: #334155;
-  font-size: 13px;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
+/* 副标题行在本页是「状态圆点 + 资源数」两个元素并排，故只在这里补横向排布；
+   前面那条竖线的间距（`margin-top`）、字号与颜色由共享 CSS 的
+   `.agent-catalog-index-copy > small` 统一给。两行截断的三条声明同样来自共享组件——
+   本页此前这一行没有截断，超长文案会溢出按钮，收编后改为裁切（不影响 `StatusDot` 的装饰语义）。 */
 .knowledge-directory-item__copy small {
   display: flex;
   align-items: center;
   gap: 7px;
-  margin-top: 5px;
-  color: #8090a7;
-  font-size: 11px;
 }
 .knowledge-detail {
   display: flex;

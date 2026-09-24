@@ -71,7 +71,14 @@ export function ExecutionLogTable({
   // 会把授权失败与瞬时故障混成同一类，只能一律给重试。
   const { data, loading, error, run } = useRequest(
     async (p: number) => unwrap(taskV2Api.logs(taskId, { page: p, pageSize: PAGE_SIZE })),
-    { defaultParams: [1], refreshDeps: [taskId, ...(refreshDeps ?? [])], ready },
+    {
+      defaultParams: [1],
+      refreshDeps: [taskId, ...(refreshDeps ?? [])],
+      ready,
+      // 失败态的可见反馈是下面的 `EmptyState`（`role="alert"` + 重试，§5.8）；原始 `ApiError`
+      // 只在这一行留诊断上下文——失败块自本批起不再回显 `error.message`（§9.3）。
+      onError: (err: unknown) => console.error("task logs load failed", err),
+    },
   );
 
   const totalPages = data ? Math.max(1, Math.ceil(data.total / PAGE_SIZE)) : 1;
@@ -95,7 +102,7 @@ export function ExecutionLogTable({
           // `disabled: loading`：ahooks 在新请求期间**不清空** error（只在成功时置回 undefined），
           // 所以重试中错误块仍在渲染，不禁用就能连点重发同页请求。
           <EmptyState
-            title={unauthorized ? t("loadState.unauthorizedTitle") : t("loadState.failed", { message: error.message })}
+            title={unauthorized ? t("loadState.unauthorizedTitle") : t("loadState.failed")}
             description={unauthorized ? t("loadState.unauthorizedHint") : undefined}
             tone="danger"
             role="alert"

@@ -19,7 +19,6 @@ import { FileL2Section } from "./sections/file-l2";
 import { PreviewL1Section } from "./sections/preview-l1";
 import { PreviewL2Section } from "./sections/preview-l2";
 import { WorkbenchL1Section } from "./sections/workbench-l1";
-import { WorkbenchL2Section } from "./sections/workbench-l2";
 
 /**
  * demo 外壳：左侧分层导航 + 右侧分区内容，顶部提供语言与主题切换。
@@ -47,7 +46,6 @@ type SectionId =
   | "previewL1"
   | "previewL2"
   | "workbenchL1"
-  | "workbenchL2"
   | "dataL1"
   | "dataL2"
   | "agentL1";
@@ -66,7 +64,6 @@ const SECTION_IDS: SectionId[] = [
   "previewL1",
   "previewL2",
   "workbenchL1",
-  "workbenchL2",
   "dataL1",
   "dataL2",
   "agentL1",
@@ -86,7 +83,6 @@ const SECTION_COMPONENTS: Record<SectionId, ComponentType> = {
   previewL1: PreviewL1Section,
   previewL2: PreviewL2Section,
   workbenchL1: WorkbenchL1Section,
-  workbenchL2: WorkbenchL2Section,
   dataL1: DataL1Section,
   dataL2: DataL2Section,
   agentL1: AgentL1Section,

@@ -3,14 +3,19 @@
  *
  * 纯化取舍：
  * 1. 唯一依赖是 `@open-file-viewer/core` 的类型；不读取宿主 i18n、不引用宿主样式表。
- * 2. 标签「渲染预览」/「源码」与错误串「源码加载失败」为**硬编码中文**，刻意不消费宿主字典：
- *    该插件直接操作 DOM（非 React 树），接入宿主 i18n 需要在插件工厂上新增 t 参数，
- *    属契约扩张；需要多语言的宿主应自行派生插件或传入自定义文案（见 README 已知限制）。
+ * 2. 标签「渲染预览」/「源码」、兜底串「源码加载失败」与 `setError` 的两条中文提示为**硬编码中文**，
+ *    刻意不消费宿主字典：该插件直接操作 DOM（非 React 树），接入 i18n 需要在插件工厂上新增标签参数，
+ *    属契约扩张。这条偏离登记在包 README「已知限制」第 12 条（含影响范围与移除条件），
+ *    需要多语言的宿主可自行派生插件或传入自定义文案。
  * 3. 插件名 `fenix-html-preview` 与源实现保持一致，避免宿主按插件名做排序/去重时行为分叉。
+ * 4. 「源码」页的正文取数由调用方注入（`htmlPreviewPlugin(fetchPreview)`）：源实现直接调全局 `fetch`
+ *    读宿主文件代理路由，那是组件直连后端（§5.8）。本插件在 DOM 里跑、不在 React 树内，取数只能经
+ *    参数注入 —— 宿主实现是 `apps/web/src/api/fs.ts` 的 `readPreviewSource`。
  */
 
 import type { PreviewContext, PreviewInstance, PreviewPlugin } from "@open-file-viewer/core";
 import { PREVIEW_FRAME_CONTAINER_STYLE, PREVIEW_FRAME_IFRAME_STYLE } from "./internal/frame-styles";
+import type { PreviewFetch } from "./preview-source";
 
 /**
  * HTML 文件预览插件。
@@ -18,12 +23,17 @@ import { PREVIEW_FRAME_CONTAINER_STYLE, PREVIEW_FRAME_IFRAME_STYLE } from "./int
  * 与 textPlugin 不同：textPlugin 将 HTML 作为纯文本代码展示，
  * 本插件用 iframe 渲染 HTML 的实际页面效果。
  *
- * 安全策略：使用 sandbox 隔离 iframe，不赋予 allow-scripts / allow-same-origin，
- * 避免 Agent 生成的 HTML 中可能的恶意脚本影响宿主页面。
+ * 安全策略：iframe 固定 `sandbox="allow-scripts"`（§6.2 / §6.1）。文件正文是用户上传或 Agent 产出的
+ * UGC，与 `src` 同源，因此**必须去掉 `allow-same-origin`**——`allow-scripts` + `allow-same-origin`
+ * 的组合下，脚本能自行摘掉 sandbox、读写宿主页面的 DOM 与存储；去掉后脚本仍能跑，但工作在 opaque
+ * origin 里。allow-scripts 保留是刻意的：HTML 预览的意义就是看页面实际效果。同批加 `referrerpolicy`
+ * 为 `no-referrer`，避免预览内容向第三方泄露宿主地址。
  *
  * 插件位置应在 textPlugin 之前，避免被 textPlugin 优先匹配。
+ *
+ * @param fetchPreview - 注入的取数函数（「源码」页读正文用）；见 `PreviewFetch` 的说明。
  */
-export function htmlPreviewPlugin(): PreviewPlugin {
+export function htmlPreviewPlugin(fetchPreview: PreviewFetch): PreviewPlugin {
   /** iframe 加载超时（毫秒），超时后强制隐藏 loading */
   const LOAD_TIMEOUT_MS = 15000;
 
@@ -112,8 +122,8 @@ export function htmlPreviewPlugin(): PreviewPlugin {
       container.appendChild(iframe);
       container.appendChild(srcView);
 
-      // 异步加载 HTML 文本内容用于源码展示
-      void fetch(src)
+      // 异步加载 HTML 文本内容用于源码展示（取数函数由宿主注入，插件不自持 fetch）
+      void fetchPreview(src)
         .then((r) => {
           if (!r.ok) throw new Error(`HTTP ${r.status}`);
           return r.text();

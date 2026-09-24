@@ -106,6 +106,9 @@ const MIGRATED_PANEL_KEYS: ReadonlyMap<string, string> = new Map([
   ["viewsSave", "save"],
   ["viewsDeleteTitle", "deleteTitle"],
   ["viewsDeleteConfirm", "deleteConfirm"],
+  // 2026-09-23 错误文案收口新增：编辑器/删除流程的失败提示由外壳注入译文（此前是 `err.message` 直出）
+  ["viewsSaveFailed", "saveFailed"],
+  ["viewsDeleteFailed", "deleteFailed"],
 ]);
 
 describe("prod-view 字典完整性", () => {

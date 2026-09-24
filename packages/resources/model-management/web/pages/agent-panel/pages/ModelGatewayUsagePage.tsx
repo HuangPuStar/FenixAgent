@@ -5,7 +5,7 @@ import { useRequest } from "ahooks";
 import { ArrowLeft, Gauge, RefreshCw } from "lucide-react";
 import { useMemo } from "react";
 import { useTranslation } from "react-i18next";
-import { queryMyModelGatewayUsage } from "../../../api/model-gateway";
+import { modelGatewayApi } from "../../../api/model-gateway";
 import { MODELS_NS } from "../../../i18n/namespace";
 import { buildRecentUsageDateRange, classifyUsageFailure } from "../../../lib/model-gateway-usage";
 import "./ModelGatewayUsagePage.css";
@@ -21,7 +21,7 @@ export function ModelGatewayUsagePage({ providerId }: { providerId: string }) {
   const { t } = useTranslation(MODELS_NS);
   const navigate = useNavigate();
   const overviewRequest = useRequest(async () => {
-    return queryMyModelGatewayUsage(providerId, buildRecentUsageDateRange(30));
+    return modelGatewayApi.queryMyUsage(providerId, buildRecentUsageDateRange(30));
   });
   const data = overviewRequest.data;
   // 失败态是持久的页面状态（不是一次性 toast）：无权限与可重试失败分成两支，见 classifyUsageFailure。

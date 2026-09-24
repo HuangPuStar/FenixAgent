@@ -7,18 +7,21 @@ import { AppHeader } from "@fenix/ui-components/layout/app-header";
 import { AppPage } from "@fenix/ui-components/layout/app-page";
 import { Badge } from "@fenix/ui-components/ui/badge";
 import { Button } from "@fenix/ui-components/ui/button";
-import { Input } from "@fenix/ui-components/ui/input";
-import { Label } from "@fenix/ui-components/ui/label";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@fenix/ui-components/ui/select";
 import { Skeleton } from "@fenix/ui-components/ui/skeleton";
 import { unwrap } from "@fenix/web-runtime/api/request";
 import { useRequest } from "ahooks";
 import { AlertTriangle, RefreshCw } from "lucide-react";
-import { useRef, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
+import type { z } from "zod/v4";
 import { type ChannelBinding, channelApi } from "../../../api/channels";
 import { resolveChannelListState } from "../../../lib/channel-list-state";
+import {
+  ChannelBindingForm,
+  type ChannelBindingFormValues,
+  channelBindingFormSchema,
+} from "../components/ChannelBindingForm";
 
 type EnvironmentSummary = { id: string; name: string };
 
@@ -27,9 +30,10 @@ export function AgentChannelsPage() {
   const [dialogOpen, setDialogOpen] = useState(false);
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState<string | null>(null);
-  const [formPlatform, setFormPlatform] = useState("");
-  const [formChatId, setFormChatId] = useState("");
-  const [formAgentId, setFormAgentId] = useState("");
+  // 表单字段由 `FormDialog` 内部的 `useForm` 持有，页面只保留这个「每次打开换一个 `key`」的计数
+  // （§4.2 / §4.3）：`key` 变化 = 强制重挂载 = 全新表单实例，因此关闭后再打开必定是干净的表单，
+  // 不需要在 `onOpenChange` 里手工清三个字段。
+  const [formResetKey, setFormResetKey] = useState(0);
 
   // 当前已渲染的绑定条数镜像：`onError` 用它区分两种失败场景，见下方反馈口径。
   const bindingCountRef = useRef(0);
@@ -91,19 +95,29 @@ export function AgentChannelsPage() {
   });
 
   const handleCreate = () => {
-    setFormPlatform("");
-    setFormChatId("");
-    setFormAgentId(environments[0]?.id ?? "");
+    setFormResetKey((key) => key + 1);
     setDialogOpen(true);
   };
 
-  const handleSave = () => {
-    if (!formPlatform.trim() || !formAgentId) {
-      toast.error(t("selectPlatformAndAgent"));
-      return;
-    }
-    runCreate(formPlatform, formChatId, formAgentId);
-  };
+  // 表单配置：schema 只判合不合法、文案在字段体内按字段取 i18n 键；`onFormSubmit` 的入参是
+  // `Record<string, unknown>`（`FormDialog` 的契约），按本页的域类型收窄后再用。
+  const formConfig = useMemo(
+    () => ({
+      schema: channelBindingFormSchema as z.ZodType<Record<string, unknown>>,
+      defaultValues: {
+        platform: "",
+        chatId: "",
+        // 默认选中第一个环境：此前这段默认值写在 `handleCreate` 里，现在由「每次打开重挂载」的表单实例
+        // 在 mount 时读到，语义一致。
+        agentId: environments[0]?.id ?? "",
+      } as unknown as Record<string, unknown>,
+      onFormSubmit: (values: Record<string, unknown>) => {
+        const { platform, chatId, agentId } = values as unknown as ChannelBindingFormValues;
+        runCreate(platform, chatId, agentId);
+      },
+    }),
+    [environments, runCreate],
+  );
 
   if (listState === "loading") {
     return (
@@ -193,48 +207,14 @@ export function AgentChannelsPage() {
       />
 
       <FormDialog
+        key={formResetKey}
         open={dialogOpen}
         onOpenChange={setDialogOpen}
         title={t("dialog.title")}
-        onSubmit={handleSave}
+        formConfig={formConfig}
         loading={formSaving}
       >
-        <div className="space-y-4">
-          <div>
-            <Label htmlFor="channel-binding-platform">{t("dialog.platform")}</Label>
-            <Input
-              id="channel-binding-platform"
-              value={formPlatform}
-              onChange={(e) => setFormPlatform(e.target.value)}
-              className="mt-1"
-              placeholder={t("dialog.platformPlaceholder")}
-            />
-          </div>
-          <div>
-            <Label htmlFor="channel-binding-chat-id">{t("dialog.chatId")}</Label>
-            <Input
-              id="channel-binding-chat-id"
-              value={formChatId}
-              onChange={(e) => setFormChatId(e.target.value)}
-              className="mt-1"
-            />
-          </div>
-          <div>
-            <Label htmlFor="channel-binding-agent">{t("dialog.agent")}</Label>
-            <Select value={formAgentId} onValueChange={setFormAgentId}>
-              <SelectTrigger id="channel-binding-agent" className="mt-1">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                {environments.map((env) => (
-                  <SelectItem key={env.id} value={env.id}>
-                    {env.name}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-        </div>
+        <ChannelBindingForm environments={environments} />
       </FormDialog>
 
       <ConfirmDialog

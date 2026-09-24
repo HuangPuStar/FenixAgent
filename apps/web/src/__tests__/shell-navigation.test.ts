@@ -1,6 +1,6 @@
 // WebShell 导航装配的契约测试（§1.6 T11d）。
 //
-// 装配的输入是构建期产物 `apps/generated/web-contributions.ts`（9 个包、14 项导航）。本文件守三件事：
+// 装配的输入是构建期产物 `apps/generated/web-contributions.ts`（10 个包、15 项导航）。本文件守三件事：
 //
 // 1. **迁移前后逐项一致**：真实产物装配出的分组、组序、项序必须与迁移前的宿主
 //    `SIDEBAR_NAV_GROUPS` 完全相同。这是本次所有权搬迁唯一的用户可见契约，错了就是侧栏乱序或丢项。
@@ -14,7 +14,12 @@ import { FileText } from "lucide-react";
 
 import { ASSEMBLED_NAV_GROUPS, assembleNavGroups, filterNavGroups } from "../shell/shell-navigation";
 
-/** 迁移前宿主 `SIDEBAR_NAV_GROUPS` 的逐项快照（分组 id → 组内项 id，顺序即显示顺序）。 */
+/**
+ * 迁移前的宿主 `SIDEBAR_NAV_GROUPS` 逐项快照（分组 id → 组内项 id，顺序即显示顺序）。
+ *
+ * `plugin-market` 是迁移后新增的能力（从未出现在旧宿主的表里），放在 config 组末尾——它与其余项不构成
+ * 顺序约定，只声明「本组新增者排在既有项之后」，因此这里追加它**不是行为变更**，而是把新契约写进快照。
+ */
 const PRE_MIGRATION_NAV: readonly (readonly [string, readonly string[]])[] = [
   ["core", ["home", "agents", "workflow", "vertical-models"]],
   [
@@ -30,6 +35,7 @@ const PRE_MIGRATION_NAV: readonly (readonly [string, readonly string[]])[] = [
       "sites",
       "organizations",
       "apikeys",
+      "plugin-market",
     ],
   ],
 ];
@@ -129,6 +135,7 @@ describe("WebShell 导航的运行时裁剪", () => {
       "sites",
       "organizations",
       "apikeys",
+      "plugin-market",
     ]);
   });
 

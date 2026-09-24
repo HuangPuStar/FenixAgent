@@ -1,10 +1,70 @@
-import { describe, expect, test } from "bun:test";
+import { afterEach, describe, expect, test } from "bun:test";
+import { initializeHappyDomWindow } from "@fenix/ui-components/testing";
+import { ACTIVE_ORG_STORAGE_KEY } from "@fenix/web-runtime/lib/active-org";
+import { Window } from "happy-dom";
 import { buildYjsUrl, getTerminalYjsWsErrorCode } from "../yjs/yjs-ws";
 
+// buildYjsUrl 依赖 window.location，组织参数经持久层契约读取；两者都在这里补齐最小环境。
+const win = initializeHappyDomWindow(new Window());
+const globalScope = globalThis as Record<string, unknown>;
+globalScope.window = win;
+globalScope.document = win.document;
+globalScope.navigator = win.navigator;
+
+const originalLocalStorage = Object.getOwnPropertyDescriptor(globalThis, "localStorage");
+
+/** 最小 localStorage 替身：测试进程没有浏览器全局，用完在 afterEach 还原，避免跨文件泄漏。 */
+function stubLocalStorage(initial?: string): void {
+  const store = new Map<string, string>();
+  if (initial !== undefined) store.set(ACTIVE_ORG_STORAGE_KEY, initial);
+  globalScope.localStorage = {
+    getItem: (key: string) => store.get(key) ?? null,
+    setItem: (key: string, value: string) => {
+      store.set(key, value);
+    },
+    removeItem: (key: string) => {
+      store.delete(key);
+    },
+  };
+}
+
+const locator = { instanceUid: "inst-1", rcsSessionId: "rcs-1" };
+
 describe("yjs websocket adapter", () => {
+  afterEach(() => {
+    if (originalLocalStorage) {
+      Object.defineProperty(globalThis, "localStorage", originalLocalStorage);
+    } else {
+      Reflect.deleteProperty(globalThis, "localStorage");
+    }
+  });
+
   // 本文件只做项目侧包装：URL 构造依赖浏览器 API，连接/重连/消息解析委托 @fenix/chat-channel。
   test("仅保留 URL 与 transport 适配能力", () => {
     expect(typeof buildYjsUrl).toBe("function");
+  });
+
+  // 组织参数只经契约（@fenix/web-runtime/lib/active-org）读取：设置持久值后 URL 必须带上
+  // active_org_id——WS 握手无法带 X-Active-Org-Id 头，这是该值唯一的传递通道。
+  test("URL 的组织参数经契约读取", () => {
+    stubLocalStorage("org-1");
+    const url = new URL(buildYjsUrl("agent_1", locator));
+
+    expect(url.protocol).toBe("ws:");
+    expect(url.pathname).toBe("/acp/yjs/agent_1");
+    expect(url.searchParams.get("active_org_id")).toBe("org-1");
+    expect(url.searchParams.get("instanceUid")).toBe("inst-1");
+    expect(url.searchParams.get("rcsSessionId")).toBe("rcs-1");
+  });
+
+  // 契约未取到组织（未登录/未解析出组织）时不得拼出空参数：服务端按 header → query → cookie
+  // 的优先级提取组织，空串会被当成一个值参与判定。
+  test("无持久化组织时不拼 active_org_id 参数", () => {
+    stubLocalStorage();
+    const url = new URL(buildYjsUrl("agent_1", locator));
+
+    expect(url.searchParams.has("active_org_id")).toBe(false);
+    expect(url.searchParams.get("rcsSessionId")).toBe("rcs-1");
   });
 
   // 终态关闭码 → UI 语义。词表本体已收敛到 @fenix/chat-channel 的关闭码策略表

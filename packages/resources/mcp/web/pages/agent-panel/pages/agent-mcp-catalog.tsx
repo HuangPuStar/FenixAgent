@@ -1,4 +1,13 @@
 import {
+  AgentCatalogIndex,
+  AgentCatalogIndexArrow,
+  AgentCatalogIndexCopy,
+  AgentCatalogIndexIcon,
+  AgentCatalogIndexItem,
+  AgentCatalogIndexMeta,
+  AgentCatalogIndexNav,
+} from "@fenix/ui-components/components/agent-catalog-index";
+import {
   AgentMasterDetailHeader,
   AgentMasterDetailWorkspace,
 } from "@fenix/ui-components/components/agent-master-detail-workspace";
@@ -13,7 +22,6 @@ import type { McpServerInfo, McpToolInfo } from "@fenix/web-runtime/types/config
 import {
   AlertTriangle,
   CheckCircle2,
-  ChevronRight,
   Cloud,
   Eye,
   Pencil,
@@ -160,20 +168,14 @@ export function AgentMcpCatalog(props: Props) {
           detailHeader={selectedServer ? <McpDetailHeader server={selectedServer} props={props} /> : null}
           detailFooter={selectedServer ? <McpDetailActions server={selectedServer} props={props} /> : null}
           index={
-            <aside className="mcp-directory">
-              <header>
-                <div>
-                  <strong>{t("directory.title")}</strong>
-                  <span>{filtered.length}</span>
-                </div>
-                <small>
-                  {t("directory.summary", {
-                    visible: filtered.length,
-                    total: props.servers.length,
-                  })}
-                </small>
-              </header>
-              <nav aria-label={t("directory.title")}>
+            // 目录栏外观（内边距 / 底色 / 分隔线 / 行距 / 条目三态 / 图标盒 / 字号）全在共享构件集的伴生
+            // CSS，页面不再给目录栏与条目任何取值——2026-09-23 的裁定是「全部样式统一」。
+            <AgentCatalogIndex
+              title={t("directory.title")}
+              count={filtered.length}
+              description={t("directory.summary", { visible: filtered.length, total: props.servers.length })}
+            >
+              <AgentCatalogIndexNav label={t("directory.title")}>
                 {filtered.map((server) => {
                   const key = getMcpKey(server);
                   const active = key === getMcpKey(selectedServer);
@@ -181,31 +183,33 @@ export function AgentMcpCatalog(props: Props) {
                   const publiclyReadable = server.scope?.visibility === "public";
                   const Icon = getMcpIcon(server);
                   return (
-                    <button
-                      type="button"
+                    <AgentCatalogIndexItem
                       key={key}
-                      aria-current={active ? "page" : undefined}
-                      className={active ? "is-selected" : ""}
+                      // `selected` 产出 `aria-current="page"`：既是读屏的「当前页」契约，也是共享 CSS 里
+                      // 选中配色与箭头显隐的**唯一**依据（本页此前的 `is-selected` 类已删除）。
+                      selected={active}
                       onClick={() => setSelectedKey(key)}
                     >
-                      <span className="mcp-directory-icon">{external ? <Share2 /> : <Icon />}</span>
-                      <span className="mcp-directory-copy">
-                        <strong>{getMcpDisplayName(server)}</strong>
-                        <small>{server.summary || t("directory.noDescription")}</small>
-                      </span>
-                      <span className="mcp-directory-meta">
-                        <span className="mcp-directory-organization" title={server.organizationName}>
+                      <AgentCatalogIndexIcon>{external ? <Share2 /> : <Icon />}</AgentCatalogIndexIcon>
+                      <AgentCatalogIndexCopy
+                        title={getMcpDisplayName(server)}
+                        subtitle={server.summary || t("directory.noDescription")}
+                      />
+                      {/* 尾注里的每个标签都是一个 `<span>`（共享 CSS 按这个约定给形态）；`title` 保留
+                          全文，因为组织名会在 110px 的列宽上限处被截断。 */}
+                      <AgentCatalogIndexMeta>
+                        <span title={server.organizationName}>
                           {server.organizationName ?? t(`type.${server.type === "local" ? "local" : "remote"}`)}
                         </span>
-                        {publiclyReadable ? <b>{t("scope.public")}</b> : null}
-                        {external && !publiclyReadable ? <b>{t("scope.shared")}</b> : null}
-                      </span>
-                      <ChevronRight />
-                    </button>
+                        {publiclyReadable ? <span>{t("scope.public")}</span> : null}
+                        {external && !publiclyReadable ? <span>{t("scope.shared")}</span> : null}
+                      </AgentCatalogIndexMeta>
+                      <AgentCatalogIndexArrow />
+                    </AgentCatalogIndexItem>
                   );
                 })}
-              </nav>
-            </aside>
+              </AgentCatalogIndexNav>
+            </AgentCatalogIndex>
           }
         >
           {selectedServer ? <McpDetailBody server={selectedServer} props={props} /> : null}

@@ -13,7 +13,7 @@ import { useCallback, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
 import { SANDBOX_NS } from "../../../i18n/namespace";
-import { fetchSystemOrganizations } from "../../api/system-organizations";
+import { systemOrganizationsApi } from "../../api/system-organizations";
 import {
   buildSandboxRebuildRequest,
   type SandboxInstance,
@@ -67,7 +67,14 @@ export function useSandboxDashboard(onAuthFailure: () => void) {
     { manual: true, onError: handleAuthError },
   );
   // 组织目录是资源池表单的下拉候选，进页面即预取（失败只影响下拉，不阻塞池列表）。
-  const organizationsLoad = useRequest(fetchSystemOrganizations);
+  // 失败至少要有诊断痕迹：此前这一路没有任何 `onError`，出问题只能看到下拉是空的。
+  // 下拉内的持久失败态需要把状态透进 `OrganizationSelect`，属 §3.6 登记的剩余项。
+  const organizationsLoad = useRequest(() => systemOrganizationsApi.list(), {
+    onError: (error: unknown) => {
+      console.error("[sandbox] 组织下拉候选加载失败", error);
+      handleAuthError(error);
+    },
+  });
   const action = useRequest(async (fn: () => Promise<unknown>) => fn(), { manual: true });
 
   const instancesByPool = useMemo(() => {
@@ -85,7 +92,10 @@ export function useSandboxDashboard(onAuthFailure: () => void) {
       await load.refresh();
       return true;
     } catch (error) {
-      toast.error(t("actionError"), { description: error instanceof Error ? error.message : undefined });
+      // 上屏只给字典文案（§9.3）：`error.message` 是 `unwrap` 抛出的 `ApiError.message`（后端信封
+      // 原文），原先塞进 toast 的 description，与直接回显等价；原始对象只进这里。
+      console.error(t("actionError"), error);
+      toast.error(t("actionError"));
       return false;
     }
   };
@@ -104,7 +114,10 @@ export function useSandboxDashboard(onAuthFailure: () => void) {
       await clusterLoad.refresh();
       return true;
     } catch (error) {
-      toast.error(t("actionError"), { description: error instanceof Error ? error.message : undefined });
+      // 上屏只给字典文案（§9.3）：`error.message` 是 `unwrap` 抛出的 `ApiError.message`（后端信封
+      // 原文），原先塞进 toast 的 description，与直接回显等价；原始对象只进这里。
+      console.error(t("actionError"), error);
+      toast.error(t("actionError"));
       return false;
     }
   };
@@ -153,7 +166,10 @@ export function useSandboxDashboard(onAuthFailure: () => void) {
       );
       setPoolFormOpen(false);
     } catch (error) {
-      toast.error(t("invalidJson"), { description: error instanceof Error ? error.message : undefined });
+      // 这里的 `error` 是本地 JSON.parse 的异常，但同一条 toast 也接 `createPool/updatePool` 的信封
+      // 异常，无法逐条分流，故一律只上屏「配置 JSON 格式不正确」（§9.3）；原文进日志。
+      console.error(t("invalidJson"), error);
+      toast.error(t("invalidJson"));
     }
   };
 

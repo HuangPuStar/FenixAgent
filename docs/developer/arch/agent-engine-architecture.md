@@ -461,7 +461,7 @@ Environment (DB) →  organizationId / userId / secret
 
 `skills_dir: null` 是刻意的：skills 统一装到 `.claude/skills`，交给 peri 的 Claude 兼容布局发现，避免第二条发现路径。
 
-**与 `@fenix/ccb` 的同名逻辑的关系**：ccb 包里也有一份写 `.peri/settings.json` 的实现（`writePeriSettings`，受 `IS_PERI` 门控），服务的是沙箱里「用 ccb 槽位跑 peri」的历史路径；peri 引擎一侧无条件写出。两处格式必须保持一致，改动 provider/profile 结构时同步修改 `packages/plugin-ccb/src/runtime/environment-preparer.ts` 与 `packages/plugin-peri/src/runtime/environment-preparer.ts`。
+`.peri/settings.json` 是 peri 引擎独有的配置面：只有 `@fenix/peri` 写它，`@fenix/ccb` 不再写（历史上 ccb 包曾受 `IS_PERI` 门控代写该文件，服务「ccb 槽位跑 peri」的沙箱，该路径已随 sandbox-peri 切到 peri 原生节点而删除）。因此 provider/profile 结构只有一处定义：`packages/plugin-peri/src/runtime/environment-preparer.ts`。
 
 ---
 
@@ -620,7 +620,9 @@ sequenceDiagram
 
 `AGENT_TYPE` 已可选 `"peri"`，`SUPPORTED_ENGINE_TYPES` 默认值含 `{"type": "peri"}`，acp-link 的 handler 映射里已有 `peri: createPeriHandler(config.command, config.args)`（远程节点以 `acp-runtime peri acp` 启动即可注册为 peri 节点）。
 
-**尚未切换的一处**：`docker/sandbox-peri/` 仍走「ccb 槽位跑 peri」——容器里 `AGENT_TYPE=ccb`、由 `RCS_CCB_COMMAND=peri` / `RCS_CCB_ARGS=acp`（`docker-compose.yml`）让 ccb handler spawn peri，并靠 `IS_PERI=1` 让 ccb 侧补写 `.peri/settings.json`。改用 `AGENT_TYPE=peri` 后不再需要 `IS_PERI` 与 `RCS_CCB_*`，但节点会以 `agent_name=peri` 注册（machine 绑定按 agent 名匹配），会影响既有部署的机器绑定，故留作独立改动。
+**peri 沙箱已是 peri 原生节点**：`docker/sandbox-peri/` 用 `AGENT_TYPE=peri` 注册，`acp-runtime peri acp` 启动的节点直接走 peri handler（`peri: createPeriHandler(config.command, config.args)`），workspace 物化与 `.peri/settings.json` 都由 `@fenix/peri` 完成，不再需要 `IS_PERI` 与 `RCS_CCB_COMMAND` / `RCS_CCB_ARGS`。
+
+节点注册名 `agent_name` 取自 acp-runtime 启动命令（`buildRegisterMessage` 的 `agent_name: config.command`），与 `AGENT_TYPE` 无关：两种形态下 CMD 都是 `acp-runtime peri acp`，注册名同为 `peri`，machine → Agent 配置的绑定（`bindAgentConfigs`，按 `agent_config.name` 匹配）不受本次切换影响。切换改变的是**默认 handler** 与 workspace 物化实现：同样一个实例请求，旧形态由 ccb handler 转手 spawn peri，新形态由 peri handler 直接 spawn。
 
 **远程节点重连逻辑**：断连时标记 node 离线 + 清理本地实例记录，重连后自动重建。
 
@@ -734,16 +736,11 @@ Machine 启动时的典型配置：
 ENV AGENT_TYPE=opencode
 CMD ["bun", "/usr/local/bin/acp-runtime.js", "opencode", "acp"]
 
-# docker/sandbox-peri/Dockerfile — peri 专用沙箱（当前仍走 ccb 槽位，见下）
-ENV AGENT_TYPE=ccb
-ENV IS_PERI=1
-CMD ["bun", "/usr/local/bin/acp-runtime.js", "peri", "acp"]
-# docker-compose.yml 里另设 RCS_CCB_COMMAND=peri / RCS_CCB_ARGS=acp，
-# 让 ccb handler 实际 spawn 的是 peri
-
-# docker/sandbox-peri/ 改为 peri 原生节点后的形态（尚未切换）
+# docker/sandbox-peri/Dockerfile — peri 专用沙箱（peri 原生节点）
 ENV AGENT_TYPE=peri
 CMD ["bun", "/usr/local/bin/acp-runtime.js", "peri", "acp"]
+# 不再设 IS_PERI 与 RCS_CCB_COMMAND/RCS_CCB_ARGS：handler 就是 peri handler，
+# 直接 spawn CMD 传入的 `peri acp`
 ```
 
 ### 8.2 沙箱容器模式
@@ -752,7 +749,7 @@ CMD ["bun", "/usr/local/bin/acp-runtime.js", "peri", "acp"]
 - 预装 `peri` CLI（通过官方安装脚本）
 - 本地构建 `acp-runtime-cli`（multi-stage 用 `bun build packages/acp-runtime-cli/src/bin.ts` 产出 bundle，不依赖 npm 发布的 `@fenix-agent/acp-runtime-cli`）
 - `CMD ["bun", "/usr/local/bin/acp-runtime.js", "peri", "acp"]` — 实际 spawn 的是 peri CLI
-- 注册身份仍是 `AGENT_TYPE=ccb`（ccb 槽位），配 `IS_PERI=1` 让 ccb 侧额外生成 `.peri/settings.json`；改用 `ENV AGENT_TYPE=peri` 可去掉这两项，但节点会以 `agent_name=peri` 注册，影响既有 machine 绑定，属独立改动
+- 注册身份即 peri 原生节点：`AGENT_TYPE=peri`，由 peri handler 完成 workspace 物化与 spawn，不需要 `IS_PERI` 与 `RCS_CCB_*`
 
 其他沙箱变体：`docker/sandbox/`（opencode）、`docker/sandbox-ccb/`（CCB）结构一致，仅替换 CLI 和 `AGENT_TYPE`。
 

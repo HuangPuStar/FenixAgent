@@ -19,7 +19,7 @@
 // 不该影响断言。
 
 import { describe, expect, test } from "bun:test";
-import { existsSync, readFileSync } from "node:fs";
+import { readFileSync } from "node:fs";
 import { join, relative, resolve, sep } from "node:path";
 
 import { loadWorkspacePackages, repoPath, stripComments, WEB_ROOT, walkValueGraph } from "./value-import-graph";
@@ -46,11 +46,14 @@ const BROWSER_SAFE_EXTERNAL: ReadonlyMap<string, string> = new Map([
   ["cytoscape", "图布局/渲染库（Constellation 的知识图谱）"],
   ["cytoscape-fcose", "cytoscape 的 fcose 布局插件"],
   ["@chenglou/pretext", "文本测量与分行（Constellation 的连线标签）"],
+  // 本包取数：`useRequest` 统一管理 loading / error / data（§3.4），纯 React 依赖，无 node 内建
+  ["ahooks", "useRequest 数据获取（本包 dependencies）"],
   // 经 @fenix/ui-components 子路径传递进入：无 node 依赖的浏览器库
   ["@radix-ui/react-slot", "无样式原语（ui/button 传递依赖），只依赖 react/DOM"],
   ["@radix-ui/react-dialog", "无样式原语（ui/dialog 传递依赖）"],
   ["@radix-ui/react-label", "无样式原语（ui/label 传递依赖）"],
   ["@radix-ui/react-select", "无样式原语（ui/select 传递依赖）"],
+  ["@radix-ui/react-scroll-area", "无样式原语（ui/scroll-area 传递依赖，主从壳的索引栏与详情滚动区）"],
   ["class-variance-authority", "类名变体工具（ui/* 传递依赖），纯函数"],
   ["clsx", "类名拼接工具（lib/cn 传递依赖），纯函数"],
   ["tailwind-merge", "Tailwind 类名去重（lib/cn 传递依赖），纯函数"],
@@ -96,10 +99,19 @@ describe("memory web 入口浏览器可达面", () => {
       "pages/hindsight/components/MemoryPagination.tsx",
       "pages/hindsight/components/MemoryViewSwitcher.tsx",
       "pages/hindsight/components/MemoryVisualizationShell.tsx",
+      // 2026-09-23：三个超限文件按职责拆开后新增的包内共享件——两套图谱共用的数据形状与 API 转换
+      // （`Constellation` / `Graph2d` / `DataView` / `EntitiesView` 都从它取类型）、cytoscape 路的编排层、
+      // 自绘路的逐帧绘制主体、`DataView` 的纯模型与编排层。都是包内相对导入，不在入口导出面里。
+      "pages/hindsight/components/graph-model.ts",
+      "pages/hindsight/components/use-cytoscape-graph.ts",
+      "pages/hindsight/components/constellation-paint.ts",
+      "pages/hindsight/components/data-view-model.ts",
+      "pages/hindsight/components/use-data-view-data.ts",
     ]) {
       expect(reachedWebFiles).toContain(expected);
     }
-    expect(reachedWebFiles.size).toBeGreaterThanOrEqual(19);
+    // 拆分后包内可达文件变多，下界随实际值上调：图退化（解析失败只剩入口文件）时这里必须失败。
+    expect(reachedWebFiles.size).toBeGreaterThanOrEqual(33);
 
     // 跨包递归的有效性：只钉两条稳定路径——ui-components 的按钮与 web-runtime 的 request 边界。
     // 少了这一段，「@fenix/* 被当成外部依赖放过」会以「包内断言全绿」的形式漏网。
@@ -219,13 +231,5 @@ describe("memory web 入口浏览器可达面", () => {
     const source = stripComments(readFileSync(WEB_ENTRY, "utf8"));
     expect(source).toContain("HINDSIGHT_NS");
     expect(source).toContain("hindsightResources");
-  });
-
-  // CompactMarkdown 未被入口引用（当前无消费者），因此不得被浏览器面误引；
-  // 一旦它被入口拉进图，react-markdown / remark-gfm 会立刻以「未白名单外部依赖」失败——这条
-  // 把「新增消费者时必须先评审 markdown 渲染链的浏览器安全性」写进断言。
-  test("无消费者的 CompactMarkdown 未进入浏览器图", () => {
-    expect(reachedWebFiles.has(`pages/hindsight/components/CompactMarkdown.tsx`)).toBe(false);
-    expect(existsSync(join(WEB_ROOT, "pages/hindsight/components/CompactMarkdown.tsx"))).toBe(true);
   });
 });

@@ -1,3 +1,4 @@
+import type { PreviewFetch } from "@fenix/ui-components";
 import { PreviewTab } from "@fenix/ui-components";
 import { useTranslation } from "react-i18next";
 
@@ -7,13 +8,19 @@ import { DEMO_NS } from "../i18n";
  * Preview L1 分区：预览容器 —— 空态、加载态与内容切换。
  *
  * PreviewTab 是宿主 tab 的占位容器：没有选中文件时给空态文案，有文件但缺环境上下文（envId）时给加载态，
- * 两者齐备才挂载 FileViewerPreview。它刻意不透传 buildPreviewUrl / messages / locale ——
- * 需要这些定制时直接用预览器（那是 Preview L2 的主题）。
+ * 两者齐备才挂载 FileViewerPreview。`fetchPreview` 是必填契约（包内不留全局 `fetch` 兜底，见
+ * `PreviewFetch`），`buildPreviewUrl` / `messages` / `locale` 仍可自由注入——需要这些定制时直接用预览器
+ * （那是 Preview L2 的主题）。
  *
- * 因此本层只演示前两种分支：内容态会落到默认 URL 构建器，而默认构建器硬编码宿主的文件代理路由
- * `/web/environments/<envId>/fs/<path>?preview=true`，demo 里没有这条路由。组件自身不取数，
- * envId / filePath 全部由调用方（宿主 tab 的选中态）注入，示例里是写死的静态值。
+ * 因此本层只演示前两种分支：两个示例都不满足挂载条件（无 envId / 无 filePath），取数函数不会被调用；
+ * 内容态的源文件 URL 与取数见 Preview L2。组件自身不取数，envId / filePath 全部由调用方
+ * （宿主 tab 的选中态）注入，示例里是写死的静态值。
  */
+
+/** 本层的两个示例都不会挂到预览器上，因此这个取数函数不会被调用（真实取数见 Preview L2）。 */
+const neverCalledFetchPreview: PreviewFetch = () => {
+  throw new Error("PreviewTab 未挂载预览器时不应取数");
+};
 
 export function PreviewL1Section() {
   const { t } = useTranslation(DEMO_NS);
@@ -39,7 +46,7 @@ export function PreviewL1Section() {
               <code>envId=null</code> · <code>filePath=null</code> → 空态
             </p>
             <div className="h-[180px] overflow-hidden rounded-md border border-border">
-              <PreviewTab envId={null} filePath={null} />
+              <PreviewTab envId={null} filePath={null} fetchPreview={neverCalledFetchPreview} />
             </div>
           </div>
           <div className="flex flex-col gap-1.5 flex-1">
@@ -47,7 +54,7 @@ export function PreviewL1Section() {
               <code>envId=null</code> · <code>filePath="user/notes.md"</code> → 加载态
             </p>
             <div className="h-[180px] overflow-hidden rounded-md border border-border">
-              <PreviewTab envId={null} filePath="user/notes.md" />
+              <PreviewTab envId={null} filePath="user/notes.md" fetchPreview={neverCalledFetchPreview} />
             </div>
           </div>
         </div>

@@ -8,9 +8,19 @@
  * 2. **宿主副本已删除**（2026-09-22 前端去重）：`apps/web/src/components/agent-panel/preview/utils.ts`
  *    的对应段落原本逐字保留，但它当时已无生产消费方（`ArtifactsPanel` 走 `PreviewTab` → 本包），
  *    留下只会让扩展名分类表出现两份真相。该文件现在只剩宿主专有的 `normalizeToUserPath`。
- * 3. 本模块不依赖 React、路由和请求单例；`loadByteAccuratePreviewSource` 的 fetch 由调用方注入，
- *    因此可独立测试，也不会把宿主的鉴权/代理策略带进包内。
+ * 3. 本模块不依赖 React、路由和请求单例；`loadByteAccuratePreviewSource` 的取数函数由调用方注入
+ *    （**没有全局 `fetch` 兜底**，见 `PreviewFetch`），因此可独立测试，也不会把宿主的鉴权/代理策略带进包内。
  */
+
+/**
+ * 预览源文件的取数函数，由宿主注入（`FileViewerPreview` 的 `fetchPreview`）。
+ *
+ * **为什么必须注入、且不给全局 `fetch` 兜底**：预览 URL 指向后端的文件代理路由，取数属后端调用；
+ * 本包是纯展示包、依赖矩阵不允许它依赖 `@fenix/web-runtime`，兜底会让组件重新直连后端并自行拼 URL
+ * （§5.8：禁止在组件中裸调 `fetch` / 拼装后端 URL）。宿主的实现见 `apps/web/src/api/fs.ts` 的
+ * `readPreviewSource`（能力缺口登记在 §5.3）。
+ */
+export type PreviewFetch = (url: string, init?: RequestInit) => Promise<Response>;
 
 export type FileCategory = "code" | "image" | "pdf" | "binary" | "table" | "markdown" | "html" | "office";
 
@@ -162,18 +172,34 @@ export function shouldLoadPreviewAsBlob(filePath: string): boolean {
 }
 
 /**
+ * 预览源加载失败：**结构化错误，带 HTTP 状态码**。
+ *
+ * 为什么不是抛一条文案：本模块是纯逻辑模块，不 import UI i18n（§9.3），而错误是要给用户看的——
+ * 2026-09-23（第 19 轮）之前这里抛的是写死的中文 `文件预览加载失败 (500)`，调用方只能原样上屏
+ * （既固定中文、又把原始消息当界面文案）。现在文案由调用方按当前语言取字典
+ * （`FileViewerPreview` 用 `fileTree.preview.loadFailed` 插 `status`），`message` 只留给日志与调试。
+ */
+export class PreviewSourceError extends Error {
+  /** 触发失败的 HTTP 状态码（响应非 2xx 时的 `response.status`）。 */
+  readonly status: number;
+
+  constructor(status: number) {
+    super(`preview source request failed (HTTP ${status})`);
+    this.name = "PreviewSourceError";
+    this.status = status;
+  }
+}
+
+/**
  * 将文本预览响应保留为 Blob，使预览器使用原始响应字节数并自行按 BOM 解码。
  * 非成功响应必须在进入预览器前显式失败，避免把错误页当作文件内容展示。
- *
- * 注意：错误消息为中文硬编码（与源实现一致）。需要本地化的宿主要么接受该文案，
- * 要么在调用方先行探测并在失败时给出自己的错误界面 —— 本模块不引入 i18n，避免把宿主命名空间绑进工具层。
  */
 export async function loadByteAccuratePreviewSource(
   previewUrl: string,
-  fetchPreview: (url: string, init?: RequestInit) => Promise<Response> = fetch,
+  fetchPreview: PreviewFetch,
   init?: RequestInit,
 ): Promise<Blob> {
   const response = await fetchPreview(previewUrl, init);
-  if (!response.ok) throw new Error(`文件预览加载失败 (${response.status})`);
+  if (!response.ok) throw new PreviewSourceError(response.status);
   return response.blob();
 }

@@ -115,7 +115,8 @@ export function useWorkflowPersistence(params: UseWorkflowPersistenceParams): Us
       } catch (err) {
         console.error(err);
         pushWorkflowError(workflowId, "save", (err as Error).message);
-        toast.error(`${t("editor.save_failed")}: ${(err as Error).message}`);
+        // 保存失败：上屏只给字典文案（§9.3），后端信封原文留在上面的 console.error 里。
+        toast.error(t("editor.save_failed"));
         setSaveStatus("unsaved");
         return false;
       } finally {
@@ -165,6 +166,9 @@ export function useWorkflowPersistence(params: UseWorkflowPersistenceParams): Us
         setTimeout(() => fitView({ padding: 0.15, duration: 300 }), 50);
       } catch (err) {
         console.error(err);
+        // 这里**有意保留**原始 message：抛错的是本地 `yamlToFlow`（js-yaml 的 `YAMLException`），
+        // 它描述的是用户自己刚贴进来的那段文本（含行列号），不是服务端错误信封，收窄成「导入失败」
+        // 会让用户无从定位；§9.3 约束的是 API / domain 错误。
         toast.error(`${t("editor.import_yaml_failed")}: ${err instanceof Error ? err.message : String(err)}`);
       }
     } else {
@@ -216,6 +220,7 @@ export function useWorkflowPersistence(params: UseWorkflowPersistenceParams): Us
           setTimeout(() => fitView({ padding: 0.15, duration: 300 }), 50);
         } catch (err) {
           console.error(err);
+          // 同 `handleImportYaml`：本地 YAML 解析器对用户自己那份文件的诊断（含行列号），保留原样。
           toast.error(`${t("editor.import_file_failed")}: ${err instanceof Error ? err.message : String(err)}`);
         }
       };
@@ -235,7 +240,7 @@ export function useWorkflowPersistence(params: UseWorkflowPersistenceParams): Us
       setSaveStatus("idle");
     } catch (err) {
       console.error(err);
-      toast.error(`${t("editor.save_failed")}: ${(err as Error).message}`);
+      toast.error(t("editor.save_failed"));
       setSaveStatus("unsaved");
       return;
     }
@@ -247,7 +252,7 @@ export function useWorkflowPersistence(params: UseWorkflowPersistenceParams): Us
     } catch (err) {
       console.error(err);
       pushWorkflowError(workflowId, "publish", (err as Error).message);
-      toast.error(`${t("editor.publish_failed")}: ${(err as Error).message}`);
+      toast.error(t("editor.publish_failed"));
     } finally {
       setPublishing(false);
     }

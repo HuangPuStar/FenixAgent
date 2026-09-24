@@ -76,9 +76,13 @@ describe("skill 字典完整性", () => {
   // 基线 90 → 78（2026-09-22 孤儿键清理）：本次删掉 21 个全仓零引用的键
   // （`column.description` / `btn.*` / `dialog.*Tab` / `section.*` / `upload.*` /
   // `confirm.batchDelete*` / `toast.*`），基线随之下调到清理后的实际键数（78）。
+  //
+  // 基线 78 → 74（2026-09-23 错误文案收口）：`toast.*With` 五个把服务端原文插进 `{{message}}` 槽位的
+  // 变体被删除（消费点改上屏无槽位的基础键），另补一个 `toast.importFailed`；净减 4 个键，
+  // 基线再次下压到实际键数（74）。
   test("en / zh 键集完全一致", () => {
     expect([...zhFlat.keys()].sort()).toEqual([...enFlat.keys()].sort());
-    expect(enFlat.size).toBeGreaterThanOrEqual(78);
+    expect(enFlat.size).toBeGreaterThanOrEqual(74);
   });
 
   // 插值占位符必须成对出现，否则某一语言会显示 {{var}} 字面量。

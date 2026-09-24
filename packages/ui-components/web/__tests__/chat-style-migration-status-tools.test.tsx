@@ -234,6 +234,32 @@ describe("chat 样式迁移：工具时间线", () => {
     expect(railCss).not.toContain(".chat-prompt-rail {");
     expect(railCss).not.toContain(".chat-prompt-preview");
   });
+
+  // 导航轨浮层外壳不得吃指针事件，只有刻度轨可以。
+  //
+  // 为什么是硬约束：该浮层是消息滚动层的**兄弟**而非后代（`Conversation` 的两个子元素依次是它与滚动层），
+  // 而它的宽度被 CSS `left: max(8px, calc(50% - 446px))` 与工具类 `right-4` 一起拉满成一条横向宽带
+  // （1440×900 实测 1064×260px、垂直居中、`z-[8]`）。外壳一旦可命中，落在带内的滚轮就命中它，浏览器
+  // 沿其祖先上溯找不到任何可滚动容器（`overflow-y-hidden` / `overflow: hidden`），整条带变成滚轮死区：
+  // 实测消息区 `scrollTop 420` 时，带内 5 个落点 × 上下两向全部零位移，带外左侧 40px 处（命中消息正文）
+  // 立刻 ±400；把外壳临时设为 `pointer-events: none` 后同一批落点全部恢复 ±400。
+  // beui 的预览卡容器自带 `pointer-events-none` + `aria-hidden`（本就不可交互），无需在此放行。
+  test("导航轨浮层外壳不吃指针事件，且只放行刻度轨", () => {
+    const entries: UserMessageEntry[] = [
+      { type: "user_message", id: "prompt-0", content: "第一条" },
+      { type: "user_message", id: "prompt-1", content: "第二条" },
+    ];
+    const html = renderToStaticMarkup(createElement(PromptJumpRail, { entries }));
+
+    // 先做元素级定位：两个元素都得在，否则下面的类断言在「元素压根没渲染」时也会通过。
+    const anchorTag = html.match(/<div[^>]*chat-prompt-rail-anchor[^>]*>/)?.[0] ?? "";
+    const railTag = html.match(/<nav[^>]*>/)?.[0] ?? "";
+    expect(anchorTag).not.toBe("");
+    expect(railTag).not.toBe("");
+
+    expect(anchorTag).toContain("pointer-events-none");
+    expect(railTag).toContain("pointer-events-auto");
+  });
 });
 
 describe("chat 样式迁移：加载指示与窄屏适配", () => {

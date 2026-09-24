@@ -503,6 +503,8 @@ const SCAN_FILES = [
   "AgentEditorChrome.tsx",
   "AgentEditorLoadingShell.tsx",
   "AgentFormDialog.tsx",
+  // §4.7 拆分后标记的落点在主体文件（`data-slot` 锚点全部在这里）
+  "agent-editor-body.tsx",
   "AgentEditorSections.tsx",
   "AgentKnowledgeSection.tsx",
   "AgentResourcePicker.tsx",

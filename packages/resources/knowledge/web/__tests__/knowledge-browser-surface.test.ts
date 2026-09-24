@@ -51,6 +51,7 @@ const BROWSER_SAFE_EXTERNAL: ReadonlyMap<string, string> = new Map([
   ["lucide-react", "SVG 图标库（本包 dependencies）"],
   ["mammoth", "docx 文本提取（本包 dependencies），纯 JS"],
   ["react-markdown", "Markdown 渲染（本包 dependencies）"],
+  ["rehype-sanitize", "Markdown 渲染前的 hast 清洗（本包 dependencies），纯函数"],
   ["remark-gfm", "GFM 插件（本包 dependencies），纯函数"],
   ["sonner", "Toast 渲染（本包 dependencies）"],
   ["xlsx", "表格解析（本包 dependencies），纯 JS"],
@@ -116,6 +117,9 @@ describe("knowledge web 入口浏览器可达面", () => {
       "types/knowledge.ts",
       "pages/agent-panel/KnowledgeGraphPanel.tsx",
       "pages/agent-panel/knowledge-graph-state.ts",
+      // §4.7 拆分：G6 配置构建（纯）与画布生命周期 hook
+      "pages/agent-panel/knowledge-graph-spec.ts",
+      "pages/agent-panel/use-knowledge-graph-canvas.ts",
       "pages/agent-panel/pages/AgentKnowledgeBasesPage.tsx",
       "pages/agent-panel/pages/agent-knowledge-access-denied.tsx",
       "pages/agent-panel/pages/agent-knowledge-directory.tsx",
@@ -125,16 +129,39 @@ describe("knowledge web 入口浏览器可达面", () => {
       "pages/agent-panel/pages/knowledge-typography.ts",
       "components/knowledge/ResourcePreviewContent.tsx",
       "components/knowledge/ResourcePreviewDialog.tsx",
+      // §4.8 拆分：资源预览的纯模型（类别判据 / CSV 整形）、取数 hook、状态展示件与表格预览
+      "components/knowledge/resource-preview-model.ts",
+      "components/knowledge/resource-preview-placeholders.tsx",
+      "components/knowledge/spreadsheet-preview.tsx",
+      "components/knowledge/use-resource-preview.ts",
       "lib/poll-resources.ts",
+      "lib/sanitize-html.ts",
       "src/pages/agent-panel/components/ChunkDetailSheet.tsx",
       "src/pages/agent-panel/components/EmbeddingModelManager.tsx",
       "src/pages/agent-panel/components/RetrievalTestPanel.tsx",
+      // §4.7 拆分的四个叶子/纯函数模块（值导入可达）
+      "src/pages/agent-panel/components/add-embedding-provider-dialog.tsx",
+      "src/pages/agent-panel/components/embedding-model-rows.tsx",
+      "src/pages/agent-panel/components/retrieval-chunk-card.tsx",
+      "src/pages/agent-panel/components/retrieval-search-payload.ts",
+      // §4.8 拆分：知识库页的壳 + 两个域 hook + 详情视图 + 表单/确认/导入三个弹窗族 + 错误码映射
+      "pages/agent-panel/pages/knowledge-base-detail-view.tsx",
+      "pages/agent-panel/pages/knowledge-reparse-error.ts",
+      "pages/agent-panel/pages/use-knowledge-base-catalog.ts",
+      "pages/agent-panel/pages/use-knowledge-base-detail.ts",
+      "pages/agent-panel/components/knowledge-base-form-dialog.tsx",
+      "pages/agent-panel/components/knowledge-confirm-dialogs.tsx",
+      "pages/agent-panel/components/knowledge-import-dialog.tsx",
     ]) {
       expect(reachedWebFiles).toContain(expected);
     }
-    // 21 = 原有 19 个模块 + 2026-09-22 前端去重抽出的两个模块（`knowledge-typography.ts` 的字段名
-    // 排版常量、`lib/poll-resources.ts` 的资源轮询）：两者都被页面/检索面板以值导入引用，必须在图内。
-    expect(reachedWebFiles.size).toBe(21);
+    // 39 = 原有 19 个模块 + 2026-09-22 前端去重抽出的两个模块（`knowledge-typography.ts` 的字段名
+    // 排版常量、`lib/poll-resources.ts` 的资源轮询）+ 2026-09-23 §6.5 收口抽出的
+    // `lib/sanitize-html.ts`（三处 `dangerouslySetInnerHTML` 的显式白名单，被三个宿主文件值导入）
+    // + 2026-09-23 §4.8 超限文件拆分抽出的六个模块（图谱的 spec / canvas hook，检索的请求体
+    // 组装 / 结果卡片，embedding 的列表行 / 添加弹窗）
+    // + 同日第二轮 §4.8 拆分抽出的十一个模块（资源预览四个、知识库页七个）。
+    expect(reachedWebFiles.size).toBe(39);
 
     // 跨包递归的有效性：只钉稳定路径——本包实际消费的四个跨包入口。
     // 少了这一段，「@fenix/* 被当成外部依赖放过」会以「包内断言全绿」的形式漏网。

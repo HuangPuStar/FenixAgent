@@ -142,7 +142,7 @@ describe("ToolCallRow 服务端渲染", () => {
     expect(disabled).not.toContain('data-slot="chat-tool-call-details-button"');
   });
 
-  // TodoWrite 的变更记录必须在工具卡片内部限高滚动，避免长变更列表撑满会话。
+  // TodoWrite 的变更记录必须在工具卡片内部限高滚动，且**不得**带 overscroll-contain（见下条）。
   test("TodoWrite 变更列表限制高度并内部滚动", () => {
     const html = renderTool(
       tool({
@@ -158,8 +158,30 @@ describe("ToolCallRow 服务端渲染", () => {
       }),
     );
 
-    expect(html).toContain("max-h-64 overflow-y-auto overscroll-contain");
+    expect(html).toContain("max-h-64 overflow-y-auto");
     expect(html).toContain("检查长列表布局");
+  });
+
+  // 消息流内的限高滚动块（TodoChanges）不得使用 overscroll-contain：该块通常没有可滚动溢出，
+  // contain 会把指针落在其上方的滚轮判定为「本容器消费」，既不滚本块也不再链式传给消息时间线，
+  // 在会话里形成滚轮死区（真实 Chrome 实测：滚轮 ±400 零位移，摘掉该类后同一落点恢复可滚）。
+  test("TodoWrite 变更列表不使用 overscroll-contain（避免消息区滚轮死区）", () => {
+    const html = renderTool(
+      tool({
+        title: "TodoWrite",
+        kind: "unknown",
+        todoChanges: [
+          {
+            id: "todo-change-2",
+            kind: "added",
+            todo: { content: "检查滚轮死区", status: "pending" },
+          },
+        ],
+      }),
+    );
+
+    expect(html).toContain("max-h-64 overflow-y-auto pt-1.5");
+    expect(html).not.toContain("overscroll-contain");
   });
 
   // 等待确认工具只保留状态，权限选项统一由输入框上方交互区域承载。

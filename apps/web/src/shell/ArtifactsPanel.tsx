@@ -1,29 +1,19 @@
-import { agentSitesApi, type SiteApp, SiteFrame, SiteTabsBar } from "@fenix/agent-config/web";
-import { envApi } from "@fenix/agent-runtime/web/api/environments";
+import { SiteFrame, SiteTabsBar } from "@fenix/agent-config/web";
 import { type ProdViewModulesConfig, ProdViewsPanel } from "@fenix/resource-prod-view/web";
 import { TasksPanel } from "@fenix/resource-task/web";
 import type { ChangedFile } from "@fenix/ui-components/chat/lib/extract-changed-files";
 import { Button } from "@fenix/ui-components/ui/button";
-import { unwrap } from "@fenix/web-runtime/api/request";
-import {
-  ARTIFACTS_PREVIEW_FILE_EVENT,
-  getArtifactsPreviewFileDetail,
-} from "@fenix/web-runtime/lib/artifacts-preview-events";
-import { useRequest } from "ahooks";
+import { ErrorFallback } from "@fenix/ui-components/ui/error-fallback";
 import { Globe, Plus, Upload } from "lucide-react";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { ErrorBoundary } from "react-error-boundary";
 import { useTranslation } from "react-i18next";
-import { toast } from "sonner";
-import { useDragCounter } from "@/src/hooks/use-drag-counter";
 import { NS } from "@/src/i18n";
 import { ArtifactsDialogs } from "../components/agent-panel/artifacts-dialogs";
 import { ArtifactsFilesWorkspace } from "../components/agent-panel/artifacts-files-workspace";
-import type { FileTreeTabHandle } from "../components/agent-panel/FileTreeTab";
-import { normalizeToUserPath } from "../components/agent-panel/preview/utils";
 import { type TopMode, TopModeTabs } from "../components/agent-panel/TopModeTabs";
-
-/** 打开文件 tab 的 LRU 上限：超出时丢弃最旧（数组末尾）的，与 FileTabsBar 的 MAX_VISIBLE_TABS 解耦 */
-const MAX_OPEN_FILES = 8;
+import { useArtifactsFiles } from "./use-artifacts-files";
+import { useArtifactsSites } from "./use-artifacts-sites";
 
 /** Sites 模式下的状态条刻度（「加载中」与「加载失败」两条同名同级，改刻度时两处一起动） */
 const SITES_STATUS_STRIP_CLASS = "px-3 py-1 text-3xs text-text-dim border-b border-border/30";
@@ -42,8 +32,29 @@ interface ArtifactsPanelProps {
   onClose?: () => void;
 }
 
-/** Chat 右侧真实工作区；环境、Site 和文件状态均保持原有 API 数据流。 */
-export function ArtifactsPanel({
+/**
+ * 输出展示面板（§7.1 放置矩阵第 4 行）：非关键面板，根组件裹一层错误边界——文件树 / 预览 / 站点 iframe
+ * 任一崩溃时收缩成统一降级 UI（一次重试即可重新挂载整块面板），聊天区与侧栏不受影响。
+ *
+ * 边界裹在导出处而不是某个 `return` 上：本组件有多个输出出口，且取数发生在两个子 hook 体内，
+ * 逐出口加边界既不完整也要写多遍。
+ */
+export function ArtifactsPanel(props: ArtifactsPanelProps) {
+  return (
+    <ErrorBoundary
+      FallbackComponent={ErrorFallback}
+      onError={(error, info) => console.error("[ArtifactsPanel] 渲染失败", error, info)}
+    >
+      <ArtifactsPanelView {...props} />
+    </ErrorBoundary>
+  );
+}
+
+/**
+ * Chat 右侧真实工作区。本组件只剩两件事：**模式切换**（Files / Sites / Tasks / Views）与**渲染装配**；
+ * Sites 的数据流在 `use-artifacts-sites`，Files 的 tab / 角标 / 拖拽上传在 `use-artifacts-files`。
+ */
+function ArtifactsPanelView({
   envId,
   agentConfigId: agentConfigIdProp,
   changedFiles = [],
@@ -56,6 +67,7 @@ export function ArtifactsPanel({
   const { t } = useTranslation(NS.COMPONENTS);
 
   const [topMode, setTopMode] = useState<TopMode>("files");
+  const isFilesMode = topMode === "files";
 
   const availableModes = useMemo<TopMode[]>(() => {
     if (!modulesConfig) return ["files", "sites", "tasks", "views"];
@@ -67,306 +79,61 @@ export function ArtifactsPanel({
     return modes;
   }, [modulesConfig]);
 
-  const [activeSiteId, setActiveSiteId] = useState<string | null>(null);
-  // 用户主动离开 Files 后不因后续 diff 打断当前浏览；切回 Files 时清零。
-  const userPickedSiteRef = useRef(false);
-  // 待展示的 diff 文件数：用户在 Sites 模式时累计，切回 Files 时清零
-  const [pendingDiffCount, setPendingDiffCount] = useState(0);
-  const configIdRef = useRef(agentConfigIdProp);
-  configIdRef.current = agentConfigIdProp;
-
-  const [mountDialogOpen, setMountDialogOpen] = useState(false);
-  const [unmountConfirm, setUnmountConfirm] = useState<{ id: string; name: string } | null>(null);
-
-  const { data: envData } = useRequest(() => unwrap(envApi.get({ id: envId! })), {
-    ready: agentConfigIdProp == null && !!envId,
-    onError: (err: unknown) => {
-      console.warn("[ArtifactsPanel] 加载 environment 详情失败，Sites tab 不可用", err);
-    },
-  });
-  const resolvedAgentConfigId = envData?.agentConfigId ?? null;
-  const agentConfigId = agentConfigIdProp != null ? agentConfigIdProp : resolvedAgentConfigId;
-  configIdRef.current = agentConfigId ?? undefined;
+  const enterSitesMode = useCallback(() => setTopMode("sites"), []);
+  const enterFilesMode = useCallback(() => setTopMode("files"), []);
 
   const {
-    run: loadSites,
-    loading: sitesLoading,
-    data: sites = [],
-    error: sitesLoadError,
-    mutate: setSites,
-  } = useRequest(
-    async (cfgId: string) => {
-      const list = (await unwrap(agentSitesApi.listByAgentConfig(cfgId))) as SiteApp[];
-      return (Array.isArray(list) ? list : [])
-        .filter((item): item is SiteApp => !!item)
-        .map((item) => ({
-          id: item.id,
-          name: item.name,
-          remoteAppId: item.remoteAppId,
-          createdByAgentConfigId: item.createdByAgentConfigId ?? null,
-          createdByAgentConfigName: item.createdByAgentConfigName ?? null,
-        }))
-        .filter((item) => item.id && item.remoteAppId);
-    },
-    {
-      manual: true,
-      onError: (err: unknown) => {
-        console.error("[ArtifactsPanel] 加载 agent 绑定 sites 失败", err);
-        // 加载失败在 0 站点时不会命中下面的行内错误条（那条要求 sites.length > 0），
-        // 此时界面会落进「未绑定站点」空态，把失败伪装成空数据；toast 是这里唯一的失败信号。
-        toast.error(t("panelMode.sitesLoadFailed"));
-      },
-    },
-  );
+    agentConfigId,
+    sites,
+    sitesLoading,
+    sitesLoadError,
+    unmounting,
+    validActiveSiteId,
+    activeSite,
+    mountDialogOpen,
+    setMountDialogOpen,
+    unmountConfirm,
+    setUnmountConfirm,
+    setActiveSiteId,
+    handleSiteChange,
+    handleMount,
+    handleMounted,
+    handleUnmountClick,
+    runUnmount,
+  } = useArtifactsSites({ envId, agentConfigId: agentConfigIdProp, onEnterSitesMode: enterSitesMode });
 
-  const sitesRef = useRef(sites);
-  sitesRef.current = sites;
+  const {
+    openFiles,
+    activeFile,
+    setActiveFile,
+    openFile,
+    pendingDiffCount,
+    normalizedChangedFiles,
+    handleCloseFile,
+    handleReferenceFile,
+    isDragging,
+    handleDragEnter,
+    handleDragOver,
+    handleDragLeave,
+    handleDrop,
+    fileTreeRef,
+  } = useArtifactsFiles({ envId, changedFiles, isFilesMode, onEnterFilesMode: enterFilesMode });
 
-  // ── useRequest：卸载 site mutation（manual） ──────────
-  const { run: runUnmount, loading: unmounting } = useRequest(
-    async (cfgId: string, siteId: string) => {
-      await unwrap(agentSitesApi.unbindSite(cfgId, siteId));
-    },
-    {
-      manual: true,
-      onSuccess: (_data, params) => {
-        const [, siteId] = params as [string, string];
-        setUnmountConfirm(null);
-        // 乐观更新：立即剔除已解绑 site，避免 loadSites 异步延迟期间
-        // 旧 tab 残留（responsiveSiteId 派生自动回退到剩余 site 或 null）
-        setSites((prev) => (prev ?? []).filter((s) => s.id !== siteId));
-        // 后台确认：从 DB 拉最新列表，确保最终一致性
-        if (agentConfigId) loadSites(agentConfigId);
-      },
-      onError: () => {
-        toast.error(t("panelMode.unmountFailed"));
-      },
-    },
-  );
-
-  // ── useRequest：自动绑定的 mutation（manual） ─────────
-  const { run: runBind, loading: binding } = useRequest(
-    async (cfgId: string, siteId: string) => {
-      await unwrap(agentSitesApi.bindSite(cfgId, siteId));
-    },
-    {
-      manual: true,
-      onSuccess: (_data, params) => {
-        const [bindCfgId, bindSiteId] = params as [string, string];
-        loadSites(bindCfgId);
-        setTimeout(() => {
-          const fresh = sitesRef.current.find((s) => s.remoteAppId === bindSiteId);
-          setActiveSiteId(fresh?.id ?? null);
-        }, 100);
-      },
-      onError: (err: unknown) => {
-        console.error("[ArtifactsPanel] 自动挂载站点失败", err);
-        // 失败由用户点击 <agent-sites> 卡片触发，已切到 Sites 模式但选不中站点，
-        // 不提示会让用户以为点击没生效。
-        toast.error(t("panelMode.mountFailed"));
-      },
-    },
-  );
-  const bindingRef = useRef(binding);
-  bindingRef.current = binding;
-
-  // 监听 <agent-sites> 卡片点击事件：切到 Sites 模式并选中对应 site
-  // 卡片组件触发 artifacts:select-site 时：
-  // 1. 切到 Sites 模式
-  // 2. 在已绑定的 sites 中按 remoteAppId 查找并选中
-  // 3. 若未绑定：自动调用 bindSite 挂载（通过 runBind mutation hook），刷新列表后选中
-  // handler 不重新注册，靠 ref 获取最新值。
+  // agent 切换：回到 Files 模式（站点列表、选中态与角标各由对应 hook 复位）
   useEffect(() => {
-    const handler = (e: Event) => {
-      const detail = (e as CustomEvent).detail as { siteId: string };
-      if (!detail?.siteId) return;
-
-      const siteId = detail.siteId; // remoteAppId（如 "app-91a0621c"）
-      const currentSites = sitesRef.current;
-      const cfgId = configIdRef.current;
-
-      setTopMode("sites");
-      userPickedSiteRef.current = true;
-
-      // 在已绑定的 sites 中按 remoteAppId 查找
-      const matched = currentSites.find((s) => s.remoteAppId === siteId);
-      if (matched) {
-        setActiveSiteId(matched.id);
-        return;
-      }
-
-      // 未绑定 → 自动挂载（并发锁由 useRequest loading 状态提供）
-      if (!cfgId || bindingRef.current) return;
-      runBind(cfgId, siteId);
-    };
-    window.addEventListener("artifacts:select-site", handler);
-    return () => window.removeEventListener("artifacts:select-site", handler);
-  }, []);
-
-  useEffect(() => {
-    const handler = (event: Event) => {
-      const detail = getArtifactsPreviewFileDetail(event, envId);
-      if (!detail) return;
-      userPickedSiteRef.current = false;
-      setPendingDiffCount(0);
-      setTopMode("files");
-      openFileRef.current?.(normalizeToUserPath(detail.path));
-    };
-    window.addEventListener(ARTIFACTS_PREVIEW_FILE_EVENT, handler);
-    return () => window.removeEventListener(ARTIFACTS_PREVIEW_FILE_EVENT, handler);
-  }, [envId]);
+    setTopMode("files");
+  }, [agentConfigId]);
 
   const handleTopChange = useCallback(
     (next: TopMode) => {
       setTopMode(next);
-      if (next === "files") {
-        userPickedSiteRef.current = false;
-        setPendingDiffCount(0);
-      } else {
-        userPickedSiteRef.current = true;
+      if (next !== "files") {
         // 进入 Sites 时若没选过 site，自动选第一个；已选过则保留（agent 切换会被 effect 清空）
         setActiveSiteId((cur) => cur ?? sites[0]?.id ?? null);
       }
     },
-    [sites],
+    [sites, setActiveSiteId],
   );
-
-  const handleSiteChange = useCallback((siteId: string) => {
-    setActiveSiteId(siteId);
-  }, []);
-
-  const handleMount = useCallback(() => {
-    if (!agentConfigId) return;
-    setMountDialogOpen(true);
-  }, [agentConfigId]);
-  const handleMounted = useCallback(() => {
-    setMountDialogOpen(false);
-    if (agentConfigId) void loadSites(agentConfigId);
-  }, [agentConfigId, loadSites]);
-  const handleUnmountClick = useCallback(
-    (siteId: string) => {
-      const site = sites.find((s) => s.id === siteId);
-      if (site) setUnmountConfirm({ id: site.id, name: site.name });
-    },
-    [sites],
-  );
-
-  useEffect(() => {
-    setTopMode("files");
-    setActiveSiteId(null);
-    userPickedSiteRef.current = false;
-    setPendingDiffCount(0);
-
-    if (!agentConfigId) {
-      setSites([]);
-      return;
-    }
-    void loadSites(agentConfigId);
-  }, [agentConfigId, loadSites, setSites]);
-
-  const [openFiles, setOpenFiles] = useState<string[]>([]);
-  const [activeFile, setActiveFile] = useState<string | null>(null);
-
-  // 拖拽上传：进入/离开计数与遮罩态由 useDragCounter 统一维护（与文件树同一份实现）
-  const { isDragging, handleDragEnter, handleDragOver, handleDragLeave, resetDragCounter } = useDragCounter();
-  const fileTreeRef = useRef<FileTreeTabHandle>(null);
-  const pendingUploadRef = useRef<File[]>([]);
-
-  const openFile = useCallback((path: string) => {
-    setOpenFiles((prev) => {
-      const filtered = prev.filter((p) => p !== path);
-      return [path, ...filtered].slice(0, MAX_OPEN_FILES);
-    });
-    setActiveFile(path);
-  }, []);
-
-  const openFileRef = useRef(openFile);
-  openFileRef.current = openFile;
-
-  const normalizedChangedFiles = useMemo<ChangedFile[]>(
-    () => changedFiles.map((f) => ({ ...f, path: normalizeToUserPath(f.path) })),
-    [changedFiles],
-  );
-
-  // changedFiles 变化时：仅统计增量并更新 pendingDiffCount 角标，
-  // 不再自动打开文件 tab（文件预览改为用户手动点击工具卡片的预览按钮触发）
-  const prevChangedPathsRef = useRef<string[]>([]);
-  useEffect(() => {
-    const paths = normalizedChangedFiles.map((f) => f.path);
-    if (paths.length === 0) return;
-
-    // 计算增量：只统计本次新增的文件，避免总数被累加放大
-    const prevPaths = prevChangedPathsRef.current;
-    const newPaths = paths.filter((p) => !prevPaths.includes(p));
-    prevChangedPathsRef.current = paths;
-
-    if (userPickedSiteRef.current && newPaths.length > 0) {
-      setPendingDiffCount((n) => n + newPaths.length);
-    }
-  }, [normalizedChangedFiles]);
-
-  const handleCloseFile = useCallback((path: string) => {
-    setOpenFiles((prev) => {
-      const next = prev.filter((p) => p !== path);
-      setActiveFile((cur) => {
-        if (cur !== path) return cur;
-        const closedIdx = prev.indexOf(path);
-        const fallback = next[closedIdx] ?? next[closedIdx - 1] ?? null;
-        return fallback ?? null;
-      });
-      return next;
-    });
-  }, []);
-
-  const handleReferenceFile = useCallback(
-    (path: string, name: string) => {
-      window.dispatchEvent(
-        new window.CustomEvent("file-tree:reference", {
-          detail: { path, name, envId },
-        }),
-      );
-    },
-    [envId],
-  );
-
-  const handleDrop = useCallback(
-    (e: React.DragEvent) => {
-      e.preventDefault();
-      resetDragCounter();
-
-      const files = Array.from(e.dataTransfer?.files ?? []);
-      if (files.length === 0) return;
-
-      userPickedSiteRef.current = false;
-      setPendingDiffCount(0);
-
-      if (topMode === "files") {
-        // 已在 Files 模式：FileTreeTab 已挂载，直接上传
-        fileTreeRef.current?.uploadFiles(files);
-      } else {
-        // 非 Files 模式：暂存文件，切到 Files 后由 useEffect 触发上传
-        pendingUploadRef.current = files;
-        setTopMode("files");
-      }
-    },
-    [resetDragCounter, topMode],
-  );
-
-  useEffect(() => {
-    if (topMode === "files" && pendingUploadRef.current.length > 0) {
-      const files = pendingUploadRef.current;
-      pendingUploadRef.current = [];
-      fileTreeRef.current?.uploadFiles(files);
-    }
-  }, [topMode]);
-
-  const isFilesMode = topMode === "files";
-
-  // 渲染前派生：activeSiteId 可能因 agent 切换后 sites 重新加载而指向不存在的 id，
-  // 此时回退到 sites[0]。不在 effect 里 setActiveSiteId 修正，避免多一次渲染。
-  const validActiveSiteId =
-    activeSiteId && sites.some((s) => s.id === activeSiteId) ? activeSiteId : (sites[0]?.id ?? null);
-  const activeSite = sites.find((s) => s.id === validActiveSiteId) ?? null;
 
   return (
     <div
@@ -394,9 +161,9 @@ export function ArtifactsPanel({
         <div className={SITES_STATUS_STRIP_CLASS}>{t("siteFrame.loadingSites")}</div>
       )}
       {topMode === "sites" && sites.length > 0 && sitesLoadError && (
-        <div className={SITES_STATUS_STRIP_CLASS}>
-          {t("siteFrame.loadFailed", { message: sitesLoadError.message || String(sitesLoadError) })}
-        </div>
+        // 文案不带原始 `sitesLoadError.message`：那是站点接口错误信封的原文（§9.3）。这条属于
+        // 「列表已加载、重取失败」的降级提示，原始 error 仍在取数侧的 `onError` 里进了 `console.error`。
+        <div className={SITES_STATUS_STRIP_CLASS}>{t("siteFrame.loadFailed")}</div>
       )}
 
       {/* Files 模式：完整文件区；Tasks 模式：定时任务列表；Views 模式：发布视图列表；Sites 模式：二级 site tab + iframe */}

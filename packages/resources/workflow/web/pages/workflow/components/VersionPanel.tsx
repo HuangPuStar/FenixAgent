@@ -1,9 +1,11 @@
+import { EmptyState } from "@fenix/ui-components/config/EmptyState";
 import { unwrap } from "@fenix/web-runtime/api/request";
-import { Inbox, Rocket } from "lucide-react";
-import { useCallback, useEffect, useState } from "react";
+import { useRequest } from "ahooks";
+import { AlertTriangle, Inbox, Rocket } from "lucide-react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
-import { workflowDefApi } from "../../../api/workflow-defs";
+import { type WorkflowDefItem, type WorkflowVersionItem, workflowDefApi } from "../../../api/workflow-defs";
 import { InlineLoader } from "./InlineLoader";
 import { PanelHeader } from "./PanelHeader";
 import { VersionConfirmDialog } from "./VersionConfirmDialog";
@@ -20,9 +22,6 @@ export function VersionPanel({
   onPublish: () => Promise<void>;
   publishing: boolean;
 }) {
-  const [wf, setWf] = useState<import("../../../api/workflow-defs").WorkflowDefItem | null>(null);
-  const [versions, setVersions] = useState<import("../../../api/workflow-defs").WorkflowVersionItem[]>([]);
-  const [loading, setLoading] = useState(true);
   const [viewingVersion, setViewingVersion] = useState<number | null>(null);
   const [viewingYaml, setViewingYaml] = useState<string | null>(null);
   const [publishingLocal, setPublishingLocal] = useState(false);
@@ -33,59 +32,103 @@ export function VersionPanel({
   } | null>(null);
   const { t, i18n } = useTranslation("workflows");
 
-  const loadData = useCallback(async () => {
-    if (!workflowId) return;
-    setLoading(true);
-    // 独立加载 wf 和版本列表，某一项失败不影响另一项的展示
-    const [wfResult, versionsResult] = await Promise.allSettled([
-      unwrap(workflowDefApi.get(workflowId)),
-      unwrap(workflowDefApi.getVersions(workflowId)),
-    ]);
-    if (wfResult.status === "fulfilled") {
-      setWf(wfResult.value);
-    } else {
-      console.error("VersionPanel: 获取工作流详情失败", wfResult.reason);
-    }
-    if (versionsResult.status === "fulfilled") {
-      setVersions(Array.isArray(versionsResult.value) ? versionsResult.value : []);
-    } else {
-      console.error("VersionPanel: 获取版本列表失败", versionsResult.reason);
-    }
-    if (wfResult.status === "rejected" || versionsResult.status === "rejected") {
-      // 失败会让面板退化成「暂无发布版本」的空态，用户无从分辨；两项都失败也只报一条
-      toast.error(t("versions.load_data_failed"));
-    }
-    setLoading(false);
-  }, [workflowId, t]);
+  // 两份资源各自的取消句柄（§3.4）：并行加载时不能共用一个 controller，否则后发的会掐掉先发的。
+  const wfAbortRef = useRef<AbortController | null>(null);
+  const versionsAbortRef = useRef<AbortController | null>(null);
+  useEffect(
+    () => () => {
+      wfAbortRef.current?.abort();
+      versionsAbortRef.current?.abort();
+    },
+    [],
+  );
 
-  useEffect(() => {
-    loadData();
-  }, [loadData]);
+  /** 取本次请求的信号，同时取消同一资源上一笔在途请求（换工作流 / 重试时不留双份请求）。 */
+  const renewSignal = (ref: typeof wfAbortRef): AbortSignal => {
+    ref.current?.abort();
+    const controller = new AbortController();
+    ref.current = controller;
+    return controller.signal;
+  };
+
+  /**
+   * 详情与版本列表**各自一份 `useRequest`**（§3.4）。
+   *
+   * 为什么不是合并成一份：改造前的 `Promise.allSettled` 刻意让「某一项失败不影响另一项」，合并后
+   * 任一失败都会把两份数据一起丢、面板整体落失败态，反而比改造前更差。三态由各自的
+   * `data` / `loading` / `error` 派生，不再手写 `useCallback` + `useEffect` + `setState`。
+   */
+  const { data: wfData, refresh: reloadWf } = useRequest(
+    async () => {
+      if (!workflowId) return null;
+      const wf = await unwrap(workflowDefApi.get(workflowId, { signal: renewSignal(wfAbortRef) }));
+      return wf ?? null;
+    },
+    {
+      ready: !!workflowId,
+      refreshDeps: [workflowId],
+      onError: (err) => {
+        // 头部那一行只是补充信息，失败时整行不渲染；提示与版本列表共用一条（与改造前 allSettled 的口径一致）
+        console.error("VersionPanel: 获取工作流详情失败", err);
+        toast.error(t("versions.load_data_failed"));
+      },
+    },
+  );
+  const wf: WorkflowDefItem | null = wfData ?? null;
+
+  const {
+    data: versionsData,
+    loading,
+    error,
+    refresh: reloadVersions,
+  } = useRequest(
+    async () => {
+      if (!workflowId) return [];
+      const list = await unwrap(workflowDefApi.getVersions(workflowId, { signal: renewSignal(versionsAbortRef) }));
+      return Array.isArray(list) ? list : [];
+    },
+    {
+      ready: !!workflowId,
+      refreshDeps: [workflowId],
+      // 失败反馈由下方的持久失败块承担（`role="alert"` + 重试），不再叠 toast——
+      // 改造前「失败只剩 toast、列表回落成『暂无发布版本』」，用户无从分辨失败与「没有版本」（§3.4）
+      onError: (err) => console.error("VersionPanel: 获取版本列表失败", err),
+    },
+  );
+  const versions: WorkflowVersionItem[] = versionsData ?? [];
+  const versionsError = error ? (error instanceof Error ? error.message : String(error)) : null;
+
+  /** 两个资源一起重查（发布 / 改 latest 之后头部与列表都会变）。 */
+  const reloadAll = useCallback(() => {
+    reloadWf();
+    reloadVersions();
+  }, [reloadWf, reloadVersions]);
 
   const handlePublishClick = useCallback(async () => {
     setPublishingLocal(true);
     try {
       await onPublish();
-      loadData();
+      reloadAll();
     } catch (err) {
       console.error(err);
     } finally {
       setPublishingLocal(false);
     }
-  }, [onPublish, loadData]);
+  }, [onPublish, reloadAll]);
 
   const handleSetLatest = useCallback(
     async (version: number) => {
       if (!workflowId) return;
       try {
         await unwrap(workflowDefApi.setLatest(workflowId, version));
-        loadData();
+        reloadAll();
       } catch (err) {
         console.error(err);
-        toast.error(`${t("versions.operation_failed")}: ${(err as Error).message}`);
+        // 模板字符串把后端信封原文拼进了 toast（§9.3）：失败原因只进日志，用户侧只留稳定文案。
+        toast.error(t("versions.operation_failed"));
       }
     },
-    [workflowId, loadData, t],
+    [workflowId, reloadAll, t],
   );
 
   const handleRestoreToDraft = useCallback(
@@ -96,7 +139,7 @@ export function VersionPanel({
         toast.success(t("versions.restore_success"));
       } catch (err) {
         console.error(err);
-        toast.error(`${t("versions.restore_failed")}: ${(err as Error).message}`);
+        toast.error(t("versions.restore_failed"));
       }
     },
     [workflowId, t],
@@ -192,6 +235,18 @@ export function VersionPanel({
             <InlineLoader />
             <p style={{ marginTop: 4 }}>{t("editor.load_failed")}</p>
           </div>
+        ) : versionsError ? (
+          // 失败是持久分支：改造前只弹 toast，列表落回「暂无发布版本」——把故障伪装成「确实没有版本」
+          <EmptyState
+            tone="danger"
+            role="alert"
+            className="px-3 py-6"
+            icon={<AlertTriangle />}
+            title={t("versions.load_data_failed")}
+            // 说明取字典（§9.3）：这里原先是 `error.message`（后端信封原文直出）
+            description={t("versions.load_data_failed_hint")}
+            action={{ label: t("versions.retry"), onClick: reloadVersions }}
+          />
         ) : versions.length === 0 ? (
           <div style={{ textAlign: "center", padding: 24, color: "#d1d5db", fontSize: 11 }}>
             <Inbox size={24} style={{ margin: "0 auto 4px" }} />

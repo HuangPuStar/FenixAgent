@@ -28,7 +28,7 @@ import { forwardRef, useCallback, useEffect, useImperativeHandle, useMemo, useRe
 import { useTranslation } from "react-i18next";
 import { UI_COMPONENTS_NS } from "../../i18n/namespace";
 import { Button } from "../../ui/button";
-import { ChatComposer } from "../composer/ChatComposer";
+import { CHAT_COMPOSER_TOP_CARD_INSET_CLASS, CHAT_COMPOSER_WIDTH_CLASS, ChatComposer } from "../composer/ChatComposer";
 import { derivePendingPermissions, deriveTodoItems } from "../lib/chat-derived-state";
 import { extractChangedFiles } from "../lib/extract-changed-files";
 import { classifyToolSemantic } from "../lib/tool-semantic";
@@ -345,15 +345,25 @@ export const ChatInterface = forwardRef<ChatInterfaceHandle, ChatInterfaceProps>
           ) : pendingQuestions.length > 0 ? (
             <QuestionPanel questions={pendingQuestions} onRespond={onRespondQuestion} />
           ) : (
-            <ChatStatusPanel
-              todos={todoItems}
-              tasks={periTasks}
-              tasksLoaded={periTasksLoaded}
-              reconnecting={Boolean(connectionState && connectionState !== "connected")}
-              changedFiles={changedFiles}
-              onOpenTask={renderPeriTaskDetail ? setSelectedPeriTask : undefined}
-              onPreviewFile={agentId && onOpenWorkspaceFile ? (path) => onOpenWorkspaceFile(agentId, path) : undefined}
-            />
+            // 状态面板与下方的输入岛同源、但不相等：先套输入岛的宽度容器，再按每侧一条台阶收进
+            // （`CHAT_COMPOSER_WIDTH_CLASS` + `CHAT_COMPOSER_TOP_CARD_INSET_CLASS`，两个常量都定义在
+            // `../composer/ChatComposer`）。面板自身不声明宽度——差只来自这一条台阶，没有第二套口径
+            //（2026-09-23：此前面板自带一条与输入岛不同源的 px 台阶，先改成等宽，再改为每侧 5 刻度）。
+            <div className={CHAT_COMPOSER_WIDTH_CLASS}>
+              <div className={CHAT_COMPOSER_TOP_CARD_INSET_CLASS}>
+                <ChatStatusPanel
+                  todos={todoItems}
+                  tasks={periTasks}
+                  tasksLoaded={periTasksLoaded}
+                  reconnecting={Boolean(connectionState && connectionState !== "connected")}
+                  changedFiles={changedFiles}
+                  onOpenTask={renderPeriTaskDetail ? setSelectedPeriTask : undefined}
+                  onPreviewFile={
+                    agentId && onOpenWorkspaceFile ? (path) => onOpenWorkspaceFile(agentId, path) : undefined
+                  }
+                />
+              </div>
+            </div>
           )}
 
           {/* Error banner */}

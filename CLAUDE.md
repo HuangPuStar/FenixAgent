@@ -106,7 +106,7 @@ bun run run-data-migrations         # 执行已登记的存量数据迁移
 
 ### 前端边界与体验
 
-- 导航只使用 `<Link to>`、`useNavigate()` 和 `router.invalidate()`；禁止 `window.location.href`、`window.location.replace`、`window.location.reload` 和 `window.history.pushState`。Sidebar 导航项必须提供 `to`。
+- 导航只使用 `<Link to>` 和 `useNavigate()`；禁止 `window.location.href`、`window.location.replace`、`window.location.reload` 和 `window.history.pushState`。Sidebar 导航项由各包 contribution 声明 `id`（`id` 即路由目标，Shell 拼成 `/agent/<id>`），没有 `to` 字段（见前端规范 §2.6）。
 - 请求统一通过 `@fenix/web-runtime/api/request`（真身 `packages/web-runtime/web/api/request.ts`）；`request<T>()` 处理路径参数、query、JSON、超时与错误标准化，但**返回 `ApiResponse` 而非已解包数据**——失败时返回 `{ success: false }` 而不 throw，调用方必须 `unwrap()` 或显式判断 `success`；直接 `await` 并依赖 `catch`/`onError` 会把 4xx/5xx 当成成功（在途项 `docs/need-to-change/25`，目标为单一异常语义）。
 - 数据获取优先遵循前端规范和现有 `ahooks` / `useRequest` 模式，避免重复请求与竞态覆盖。
 - 用户可见字符串必须通过 `t()`；i18n 插值使用 `{{var}}`，单花括号 `{var}` 会被当作字面文本。
@@ -176,7 +176,7 @@ Agent 通信分为三种明确场景，底层 relay 与 ACP 消息规则必须�
 4. `session/list`、`session/new`、`session/load` 和 `session/resume` 的 `cwd` 必须由服务端 translator 注入；Agent status 到达前不得发送 `list_sessions`。
 5. Y.Doc 名称使用 `chat:{rcsSessionId}` / `session:{rcsSessionId}`，广播必须按 `rcsSessionId` 隔离，禁止全局广播会话数据。
 6. 用户消息只由后端写入 Y.Doc；前端不得维护第二份 `localUserEntries`，否则 Agent 回显会造成双写。
-7. 清理会话内容使用 `clearSessionDocContent` 在原 Y.Doc 事务中完成；禁止通过 destroy + recreate 制造异步竞态。`create_session` 同样必须先清空旧 Session Doc。
+7. 会话切换与内容清理走"换代"：由 `DocManager.replaceProjection` 完成；不得通过 destroy + recreate 制造异步竞态。`chat-writer.ts` 的 `clearSessionDocContent`（及专用的 `clearPeriTaskViews`）已删除，不要恢复旧的清空流程（`docs/arch/19-yjs-chat-streaming.md` §4.2 / 前端规范 §8.5 第 7 条）；`create_session` 同样走换代。
 8. 同一 `instanceId + userId` 的多标签页共享一个 relay handle；引用计数归零后才释放，切换 session 时同步同组客户端的 `acpSessionId`。
 9. WebSocket 发送背压阈值为 64 KB，默认连接上限为 200（`YJS_MAX_CLIENTS`）；修改时必须保留限流、资源释放和单连接故障隔离。
 10. `ChatView` 与 `EntryRenderer` 使用 `React.memo`；comparator 必须与调用方 prop 稳定性保持一致，修改 props 时同步更新 comparator 和相关渲染测试。
@@ -188,7 +188,7 @@ Agent 通信分为三种明确场景，底层 relay 与 ACP 消息规则必须�
 - 表定义换手不得改变 DDL：`bun run check:schema-ddl-drift` 比对「`drizzle.config.ts` 声明的 schema 集合 → 最新 snapshot」的差异，必须为零。
 - 跨包外键（表 A 的列引用别包表 B 的主键）只允许在 `db/**` 的**组装期**导入 B 的表对象（Drizzle `.references()` 只接受列对象），例外口径见 `docs/design/ce-ee-refactoring/ce-ee-engineering-standards.md` §6.1；`src/**`、`web/**` 的调用期跨包读表一律违规，必须改经该 owner 的公开服务端入口或宿主注入端口。
 - 标准流程：修改 schema → `bun run db:generate --name <module>-<change>` → 审查 `drizzle/*.sql` 与 `drizzle/meta/*` → `bun run db:migrate` → 存量数据变更时执行 `bun run run-data-migrations` → 运行相关测试和 `bun run precheck`。
-- 跨组织可见性由四张受控资源主表（`agent_config` / `skill` / `mcp_server` / `provider`）的 `visibility varchar(20) NOT NULL DEFAULT 'private'` 表达；授权判断与查询谓词一律由 `@fenix/access-control` 产出，资源包只声明「资源类型 + 表 + 归属列 + 业务条件」。
+- 跨组织可见性由五张受控资源主表（`agent_config` / `skill` / `mcp_server` / `provider` / `plugin_market_package`）的 `visibility varchar(20) NOT NULL` 表达（前四张默认 `'private'`；`plugin_market_package` 默认 `'public'`，因为市场条目存在的意义就是被所有已认证用户看到，照抄 `private` 会让整个目录静默消失）；授权判断与查询谓词一律由 `@fenix/access-control` 产出，资源包只声明「资源类型 + 表 + 归属列 + 业务条件」。
 - 提交迁移时必须提交完整 `drizzle/` 迁移链，不能遗漏 `drizzle/meta/*`。
 - 禁止手写 SQL 迁移绕过 Drizzle，禁止在生产环境使用 `db:push`。
 - 迁移设计必须考虑已有数据、锁范围、回滚或补偿策略，以及多实例并发启动时的幂等性。

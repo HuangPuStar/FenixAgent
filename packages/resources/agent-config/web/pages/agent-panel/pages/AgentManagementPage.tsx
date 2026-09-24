@@ -1,5 +1,6 @@
 import { type EnvironmentDetail, envApi } from "@fenix/agent-runtime/web/api/environments";
 import { AgentBadge } from "@fenix/ui-components/chat/shell/AgentBadge";
+import { EmptyState } from "@fenix/ui-components/config/EmptyState";
 import { AppHeader } from "@fenix/ui-components/layout/app-header";
 import { AppPage } from "@fenix/ui-components/layout/app-page";
 import { Spinner } from "@fenix/ui-components/ui/spinner";
@@ -10,7 +11,7 @@ import { useConfigChangeListener } from "@fenix/web-runtime/lib/config-events";
 import type { AgentInfo } from "@fenix/web-runtime/types/config";
 import { useNavigate } from "@tanstack/react-router";
 import { useRequest } from "ahooks";
-import { Bot, Plus, Search, Sparkles } from "lucide-react";
+import { AlertTriangle, Bot, Plus, RefreshCw, Search, Sparkles } from "lucide-react";
 import { useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
@@ -80,6 +81,7 @@ export function AgentManagementPage() {
   const {
     data: nodes,
     loading,
+    error: listError,
     refresh,
   } = useRequest(
     async (): Promise<AgentManageNode[]> => {
@@ -166,7 +168,12 @@ export function AgentManagementPage() {
 
   return (
     <AppPage>
-      <div ref={setEditorHost} className="relative">
+      {/* 这一层既是页面内容包裹层，也是「新建 / 编辑 Agent」面板的 portal 宿主（`portalContainer={editorHost}`）。
+          桌面面板是 `absolute top-3 bottom-3 left-3` 的 12px 内缩工作区，高度直接取自宿主盒子，所以宿主
+          必须**撑满页面**而不是只有内容高度：`flex-1`（`AppPage` 的 `main` 是 flex 列）让宿主在 Agent 少时
+          也占满可视区，否则面板只有内容那么高——实测 720px 视口下只有 333px，即「半屏」（2026-09-23 修）。
+          面板自身的「不得高过视口」上限在 `agent-editor-classes.css` 的 `.agent-editor-panel`。 */}
+      <div ref={setEditorHost} className="relative flex-1">
         <AppHeader
           title={t("management.title")}
           subtitle={t("management.subtitle")}
@@ -224,6 +231,19 @@ export function AgentManagementPage() {
 
         {loading ? (
           <Spinner size="sm" label={t("management.loading")} className="flex h-72" aria-busy="true" />
+        ) : listError && filteredNodes.length === 0 ? (
+          // 首次取数失败：`nodes` 停在 `undefined`，若照旧往下走只会渲染「暂无智能体」空态——
+          // 与「确实还没有智能体」同形（§3.4）。判据带 `filteredNodes.length === 0`：刷新失败时
+          // 保留已经渲染的列表，不让一次失败掀掉用户正在看的内容。文案走本包字典，原始错误只进日志。
+          <EmptyState
+            icon={<AlertTriangle />}
+            title={t("management.loadFailedTitle")}
+            description={t("management.loadFailedDescription")}
+            tone="danger"
+            role="alert"
+            className="flex h-72 flex-col items-center justify-center rounded-xl border border-dashed border-border bg-background/65"
+            action={{ label: t("management.retry"), onClick: refresh, icon: <RefreshCw />, disabled: loading }}
+          />
         ) : filteredNodes.length === 0 ? (
           <div className="flex h-72 flex-col items-center justify-center rounded-xl border border-dashed border-border bg-background/65 text-text-muted">
             <Bot className="mb-3 h-10 w-10 opacity-50" />

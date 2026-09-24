@@ -95,6 +95,7 @@ const BROWSER_SAFE_EXTERNAL: ReadonlyMap<string, string> = new Map([
   ["dompurify", "HTML 消毒（knowledge 资源预览与分块详情传递依赖），纯浏览器实现"],
   ["mammoth", "docx 转 HTML（knowledge 资源预览传递依赖），纯浏览器实现"],
   ["react-markdown", "Markdown 渲染（knowledge 资源预览传递依赖）"],
+  ["rehype-sanitize", "Markdown 渲染前的 hast 清洗（knowledge 资源预览传递依赖），纯函数"],
   ["remark-gfm", "GitHub 风格 Markdown 插件（同上）"],
   ["xlsx", "表格解析（同上），纯浏览器实现"],
   [

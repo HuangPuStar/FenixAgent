@@ -3,6 +3,11 @@
   "subtitle": "Manage your organizations and team members",
   "myOrgs": "My Organizations",
   "noOrgs": "No organizations yet",
+  "loadState": {
+    "title": "Could not load organizations",
+    "description": "The organization list is unavailable right now — this is not an empty account.",
+    "retry": "Retry"
+  },
   "selectOrg": "Select an organization to view details",
   "defaultEngine": "Default runtime",
   "form": {
@@ -137,6 +142,8 @@
     "removeFailed": "Failed to remove member",
     "roleUpdated": "Role updated",
     "roleUpdateFailed": "Failed to update role",
+    "machinesLoadFailed": "Could not load machines. Reopen the page to retry.",
+    "candidatesLoadFailed": "Could not load member candidates. Type again to retry.",
     "deleteSuccess": "Organization deleted",
     "deleteFailed": "Failed to delete organization",
     "machineCreateSuccess": "Machine {{name}} created (ID: {{id}})",

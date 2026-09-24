@@ -12,6 +12,7 @@ import {
   type YjsWsOptions,
   type YjsWsState,
 } from "@fenix/chat-channel";
+import { readActiveOrgId } from "@fenix/web-runtime/lib/active-org";
 
 /** Re-export 类型，保持上游调用方无需改动 */
 export type { YjsWsState };
@@ -45,7 +46,9 @@ export function buildYjsUrl(agentId: string, locator: YjsChatLocator): string {
   const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
   const base = `${protocol}//${window.location.host}/acp/yjs/${agentId}`;
   const params = new URLSearchParams();
-  const activeOrgId = localStorage.getItem("active_org_id");
+  // 组织参数只经契约读取（前端规范 §3.3）：WS 握手无法带 `X-Active-Org-Id` 头，服务端按
+  // header → query → cookie 的优先级提取组织，因此这里是唯一必须走 query 的通道。
+  const activeOrgId = readActiveOrgId();
   if (activeOrgId) {
     params.set("active_org_id", activeOrgId);
   }

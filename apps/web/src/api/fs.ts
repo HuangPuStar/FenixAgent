@@ -270,6 +270,35 @@ export function buildUploadUrl(id: string, targetDir?: string): string {
   return `/web/environments/${encodeURIComponent(id)}/fs/${dir}`;
 }
 
+/**
+ * 拼接预览器的源文件 URL（宿主文件代理路由 + `preview=true`）。
+ *
+ * 后端按 `preview=true` 走二进制流预览（`packages/resources/machine/src/server/routes/web/fs.ts`）。
+ * **拼装归域模块**（§5.8 禁止在组件中拼装后端 URL）：宿主把它经 `PreviewTab` / `FileViewerPreview`
+ * 的 `buildPreviewUrl` 注入 `@fenix/ui-components`，包内只消费结果、不再自带一份宿主路由字面量。
+ * 逐段编码，避免 `#` 等合法文件名字符被浏览器解释成 URL fragment。
+ */
+export function buildPreviewSourceUrl(environmentId: string, filePath: string): string {
+  return `/web/environments/${encodeURIComponent(environmentId)}/fs/${encodeWorkspaceUrlPath(filePath)}?preview=true`;
+}
+
+/**
+ * 读取预览源文件，作为取数原语注入给 `@fenix/ui-components` 的预览器（`fetchPreview`）。
+ *
+ * 两个消费点：文本类预览取字节（保留 UTF-8 / UTF-16 真实字节数）、HTML 预览的「源码」页取正文。
+ *
+ * 为什么是裸 `fetch`（§5.3 能力缺口，非本模块取巧）：该路由回的是**文件字节 / HTML 正文**，
+ * `request()` 只解 `{ success, data }` JSON 信封，非 JSON 分支会先把 body 消费掉并归一为
+ * SERVER_ERROR。**为什么注入而不是让组件自己取数**：`@fenix/ui-components` 是纯展示包，
+ * 依赖矩阵不允许它依赖 `@fenix/web-runtime`，若包内保留全局 `fetch` 兜底，组件就会直连后端
+ * （§5.8）。返回原始 `Response` 由调用方按 `ok` 判定后消费（与 sandbox `executeCommand` 同类，
+ * 同样登记在 §5.3）；成功与失败都不弹提示——用户可见文案归调用方的失败态。
+ * 补 `request()` 的 blob 能力后，本函数整体退回 `request()`。
+ */
+export function readPreviewSource(url: string, init?: RequestInit): Promise<Response> {
+  return fetch(url, { credentials: "include", ...init });
+}
+
 export const fsApi = {
   /**
    * 递归获取 workspace 完整文件树（黑名单过滤）。

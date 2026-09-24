@@ -66,8 +66,6 @@ export interface SessionChannelDependencies {
   docManager: DocManager;
   /** 新 ACP session 创建前刷新当前实例的 workspace 配置与 Skills。 */
   refreshInstanceEnvironment?: (connection: SessionConnection) => Promise<void>;
-  /** 仅供滚动升级期间兼容旧装配；projection replacement 不再调用。 */
-  prepareClearSessionSnapshot?: (connection: SessionConnection) => Promise<void>;
   /** 新投影交换后重绑 broadcaster 并向同 RCS 会话全部客户端发送 replace frame。 */
   replaceProjection: (projection: ProjectionDocs) => void;
   /** 会话切换后同步 acpSessionId 到同一 instance+user 的所有客户端 */

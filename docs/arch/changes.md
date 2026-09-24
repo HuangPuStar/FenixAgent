@@ -470,3 +470,29 @@ IMChannel 包含：
 5. **交叉引用修正**：`tech-stack-overview.md`、`tech-stack-backend.md` 的实时通信引用从 05 改为 19 号文档；`.vitepress/config.ts` 导航移除 08、05 改名为 "Chat 前端界面"。
 
 **影响**：纯文档修订，无代码/行为变化；docs 站点构建通过（`bun run docs:build`）。
+
+---
+
+## 改动 19：新增插件市场模块（plugin-market）
+
+**状态**：✅ 已实施（2026-09-23）
+
+**现状（实施前）**：主服务没有插件市场能力。外部独立项目 `open-mcp-market` 里有一份约 7000 行的 MCP 插件市场服务（`packages/mcp-market`），其领域模型与安全边界已经过完整设计，但宿主是自建 HTTP 框架 + SQLite + 单账户 admin-auth，与本仓库的 Elysia + Postgres/Drizzle + better-auth 多租户栈不兼容。
+
+**目标**：把市场本体移植为主服务的一个资源模块 `packages/resources/plugin-market`，npm 私有源作为**外部只读依赖**（部署级配置注入 base URL 与 token），领域规则与不可信数据的安全边界逐条保留，认证与授权整体换成仓库既有机制。
+
+**实施内容**：
+
+1. **领域模型原样沿用**：一个插件 = 一个 NPM package（身份 `(source_id, package_name)`），一个插件版本 = 一个 exact version，`package.json#mcpp` 携带分发元数据（0..n 个 agent / skill / MCP server 成员），发布后在市场内冻结为不可变快照。
+2. **三张新表**（`drizzle/0029_plugin-market-init.sql`）：`plugin_market_package`（聚合根 + latest 指针 + 授权归属列）、`plugin_market_publication`（不可变快照 + 可见性水印）、`plugin_market_admin_operation`（审计流水）。复合外键、唯一索引与 `CHECK` 由 DDL 强保证；源项目的两条 latest 规则因迁移链禁止手写 PL/pgSQL 触发器而降为「应用层顺序保证 + 只读审计」（`domain/invariants.ts`）。
+3. **规则层是纯函数**：`domain/catalog.ts` 产出写清单（`CatalogWrite[]`），仓储在同一事务里按序执行，写路径全程持事务级咨询锁。这样「`noop` 零副作用」「latest 回退」「逻辑时钟前移」都成为可执行断言，而不是只写在 SQL 里的口头约定。
+4. **授权用既有语义表达全局目录**：条目归属固定为系统托管租户（`slug = 'admin'`，由服务端解析注入），`visibility = 'public'` + `publicDefaultActions: ["read"]` 让任意已认证主体可读，写权落在归属组织 owner/admin。读口径由写权推出：写权主体可见整包下架的条目，其余人只看到公开面。
+5. **私有源只读边界**：快照契约（`npm-registry/types.ts`）是安全边界而非数据形状，原始 packument 与未列字段永不进市场存储；22 项限额、secret 正则、迭代深度探测、SRI 形状校验逐条保留；**市场永不请求 tarball**。只有预览与「确认发布但库内无此版本」两条路径出网，恢复与幂等分支不出网。
+6. **六条 `/web/config/plugin-market/*` 路由** + 封闭错误码清单（11 个，每个都有产出点与消费点）；`PREVIEW_CHANGED` 409 携带重新读到的快照供前端原地重新确认。
+7. **前端目录页**（master-detail，不新增详情路由）覆盖六态，发布弹窗两步（预览 → 确认），写动作不做 `unwrap` 以保住冲突信息；市场条目不是 Agent 运行时配置，写入后不广播配置变更。
+8. **文档**：新建 `docs/arch/24-plugin-market.md` 作为实现基线，`CLAUDE.md` 的受控资源主表口径从「四张」更新为「五张」（`plugin_market_package` 的 `visibility` 默认 `public` 是该表的语义要求）。
+
+**明确不在本期范围**：`http-source` 第二来源（MCP over HTTP 发现客户端）、静态页生成与失效、admin-auth（由 better-auth 替换）、服务端分页与检索、插件安装 / 绑定到 Agent 配置、对外 `/api` 面。偏离逐条登记在模块 `README.md`。
+
+**影响**：全部改动可加性——新包 + 三张新表 + 若干登记项与生成物，不触碰任何既有表、既有数据与既有接口。回滚 = 回退提交 + 删除三张表 + 重跑两个 generate 脚本，无存量数据迁移。
+

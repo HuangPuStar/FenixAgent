@@ -1,31 +1,47 @@
 /*
  * MemoriesPage 的深层样式（与同目录 `MemoriesPage.tsx` 同名，由该文件 import）。
  *
- * 来源：三处含 `minmax()` 的多轨道网格模板——复合值无法用扁平工具类表达（仓库禁令 FCP-WEB-02）：
- *   - `.memories-page-skeleton-grid` ← 加载骨架的 `md:grid-cols-[15rem_minmax(0,1fr)]`；
- *   - `.memories-page-workspace` ← `WorkbenchPanel` 上的 `grid-rows-[auto_minmax(0,1fr)]` 与
- *     `md:grid-cols-[15rem_minmax(0,1fr)]`；
- *   - `.memories-page-perspective-tab` ← 左侧视角按钮的 `grid-cols-[2.25rem_auto]` 与
- *     `md:grid-cols-[2.25rem_minmax(0,1fr)]`。
+ * 记忆页已切到共享主从壳（`AgentMasterDetailWorkspace`）：两列 / 单列、左列宽度、索引栏分隔线、
+ * 两侧滚动边界与表面色都归壳。本文件只剩三类壳不表达、且工具类写不出来的取值：
+ *   1. `.memories-page-skeleton-grid` ← 加载骨架的 `md:grid-cols-[15rem_minmax(0,1fr)]`（含 `minmax()`）；
+ *   2. `.memories-page-workspace` ← 本页的行模板、高度下限与详情高度链（逐条理由见下）；
+ *   3. `.memories-page-perspective-tab` ← 视角按钮的 `grid-cols-[2.25rem_auto]` 与 md 变体。
  * `md:` 展开为 `@media (width >= 48rem)`（Tailwind v4 默认断点，本仓库未覆盖 `--breakpoint-md`）。
  *
- * 层叠要点（决定了下面为什么要把 `md:grid-rows-1` 一并折进来）：本文件不包 `@layer`，未分层声明
- * 压过 `@layer utilities`——这与工具类之间「同属性后来者胜、跨媒体查询也照赢」的旧语义不同，
- * 凡是被本文件写入了某个属性的工具类都会失效，必须把它的取值折进同一条规则：
- *   - 工作区面板的 `md:grid-rows-1` 折进 `@media` 块，取值即 Tailwind 对 `grid-rows-1` 的生成结果
- *     `repeat(1, minmax(0, 1fr))`（不是简写的 `1fr`，保持逐字等价）；
- *   - 视角按钮的 `md:grid-cols-*` 同理折进 `@media` 块。其余 `md:min-h-14` / `md:w-auto` /
- *     `md:px-2.5` / `md:py-2` 是别的属性，不受影响，仍留在 `className`。
+ * 为什么这三件事必须落在 CSS（都是实测过的违约，不是「顺手保留旧样式」）：
  *
- * 值逐字等价换算：`15rem` / `2.25rem` / `auto` 原样保留，任意值里的 `minmax(0,1fr)` 展开为
- * `minmax(0, 1fr)`，未调整任何数值。
+ * - `grid-template-rows`：壳只声明列，行是隐式的 `auto`。行宽确定时 `align-content` 会把富余高度
+ *   均摊给两条 auto 行——900px 高、600px 宽的实测：索引行被撑到 344.06px（其内容只有 92px），
+ *   右栏只剩 473.06px。本页要的是「索引按内容高、右栏吃剩余」，`auto minmax(0, 1fr)` 即旧面板上的
+ *   同一意图；`md` 及以上只剩一列对，必须换成单条 `minmax(0, 1fr)`——显式轨道即使没有子项也占位，
+ *   留着两条会把唯一那行压成内容高。
+ * - `min-height: 0`：壳自带的 `min-h-120`（390px）是给「上方 210px 宿主」的默认下限，而本页头部加留白
+ *   只有约 73px，面板跟头部以下的剩余高度走；短视口下旧面板可以一直缩（`min-h-0`），这条保住同一行为。
+ *   写成工具类 `min-h-0` 不行：它与壳的 `min-h-120` 同在 `@layer utilities`，实测后者胜出（计算值 390px），
+ *   而未分层的本文件压过工具层。
+ * - 详情高度链（最后一节）：壳把 `children` 包进 `ScrollArea`，Radix 的滚动内容盒是 `display: block` +
+ *   `height: auto`（`ScrollArea` 里 `[&>div[style]]:!block` 那个补丁的产物），于是本页 `main` 上的
+ *   `h-full` 因「父高不确定」退化成 `auto`——1440px 实测：`main` 由旧面板的 804.13px 塌成 234px，
+ *   右栏内部靠 `h-full` / `flex-1` 撑开的可视化容器会跟着塌。把该内容盒钉成视口高度即可恢复旧面板里
+ *   那条确定的高度链，右栏内部的相对尺寸写法一行都不用改。
+ *
+ * 层叠要点：本文件不包 `@layer`，未分层声明压过 `@layer utilities`，与迁移前的胜负关系一致；因此凡是被
+ * 本文件写过的属性，工具类都失效（同属性工具类会被整条压过，与类名顺序无关），要改就得改这里。与壳自身的
+ * 未分层声明（`agent-master-detail-workspace.css`）之间用「页面类名 + 结构选择器」拉开特异性，不依赖文件顺序。
  */
 .memories-page-workspace {
   grid-template-rows: auto minmax(0, 1fr);
+  min-height: 0;
 }
 
 .memories-page-perspective-tab {
   grid-template-columns: 2.25rem auto;
+}
+
+/* 详情滚动内容盒：壳的左列（`section > [data-slot="scroll-area"]`）不在 `div` 里，故 `> div` 只命中详情列。
+   移除条件：当 `ScrollArea` 的内容盒自身带上确定高度（或壳为 children 另给一层定高容器）后，删掉本规则。 */
+.memories-page-workspace > div [data-slot="scroll-area-viewport"] > div {
+  height: 100%;
 }
 
 @media (width >= 48rem) {
@@ -34,7 +50,6 @@
   }
 
   .memories-page-workspace {
-    grid-template-columns: 15rem minmax(0, 1fr);
     grid-template-rows: repeat(1, minmax(0, 1fr));
   }
 

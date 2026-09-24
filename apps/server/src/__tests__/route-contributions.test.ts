@@ -376,6 +376,13 @@ test("真实 profile 装配后各包的路由进入对应槽", async () => {
     "POST /config/providers/actions/models",
     "PUT /config/providers/actions/models/:modelId",
     "DELETE /config/providers/actions/models/:modelId",
+    // plugin-market
+    "GET /config/plugin-market/packages",
+    "GET /config/plugin-market/packages/:slug",
+    "POST /config/plugin-market/publish/preview",
+    "POST /config/plugin-market/publish",
+    "POST /config/plugin-market/unpublish",
+    "POST /config/plugin-market/restore",
     // prod-view
     "GET /config/prod-views",
     "GET /config/prod-views/:id",

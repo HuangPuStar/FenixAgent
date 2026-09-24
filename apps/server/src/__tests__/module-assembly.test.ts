@@ -16,9 +16,10 @@ import { bootstrapServerAssembly } from "../bootstrap";
  * server 侧实例化顺序：三个基础模块按 profile 声明顺序展开，资源模块按 `dependsOn` 拓扑序跟进
  * （1.5e 起 `resources` 由真实 ce.json 驱动），Web Shell 不参与。
  *
- * 资源模块是全量发布组合的 13 个（不是「谁被迁移谁才启用」）：宿主手写挂载逐包迁入贡献面后，未启用的
+ * 资源模块是全量发布组合的 14 个（不是「谁被迁移谁才启用」）：宿主手写挂载逐包迁入贡献面后，未启用的
  * 模块其路由会随手写挂载一起消失，因此启用范围必须先于迁移到位。跨类别顺序（machine 早于 sandbox，
- * agent-config 早于 model-management）由各自 `dependsOn` 决定，不按字母序。
+ * agent-config 早于 model-management）由各自 `dependsOn` 决定，不按字母序；同为 `dependsOn: []` 的
+ * 叶子模块（knowledge…workflow、plugin-market）保持 ce.json 的声明序。
  */
 const EXPECTED_SERVER_MODULES = [
   ["identity", "identity"],
@@ -33,6 +34,7 @@ const EXPECTED_SERVER_MODULES = [
   ["machine", "resource"],
   ["model-management", "resource"],
   ["observer", "resource"],
+  ["plugin-market", "resource"],
   ["prod-view", "resource"],
   ["sandbox", "resource"],
   ["task", "resource"],
@@ -141,7 +143,7 @@ test("bootstrapServerAssembly 按依赖序装配并逆序幂等释放", async ()
   expect(events.slice(-3)).toEqual(["dispose:agent-runtime", "dispose:access-control", "dispose:identity"]);
 });
 
-// 授权绑定只从声明面收集（§1.5f 起宿主不再手写 `bindings` 列表）：四个受控资源主表必须各自声明
+// 授权绑定只从声明面收集（§1.5f 起宿主不再手写 `bindings` 列表）：五个受控资源主表必须各自声明
 // 自己的 `storage`，漏声明的那一个会在运行期以「未注册存储绑定」报错，而不是静默放宽授权范围。
 test("受控资源 manifest 各自声明存储绑定", async () => {
   const declaredTypes = contractManifests
@@ -149,7 +151,7 @@ test("受控资源 manifest 各自声明存储绑定", async () => {
     .map((binding) => binding.resourceType)
     .sort();
 
-  expect(declaredTypes).toEqual(["agent_config", "mcp_server", "provider", "skill"]);
+  expect(declaredTypes).toEqual(["agent_config", "mcp_server", "plugin_market_package", "provider", "skill"]);
 });
 
 // profile 引用了未编译进 registry 的 Shell 时，必须在执行任何工厂前失败。

@@ -73,8 +73,11 @@ export function AgentTasksPage() {
     {
       refreshDeps: [page, debouncedKeyword, typeFilter],
       onError: (err: Error) => {
+        // 列表失败的主反馈是下面那个持久 `role="alert"` 分支（带重试）；这条 toast 只补一个即时信号。
+        // 两者都只上屏字典文案：`err.message` 是 `unwrap` 抛出的 `ApiError.message`（后端信封原文，
+        // 含 SQL/服务端措辞），只进 `console.error`（§9.3）。
         console.error("task list load failed", err);
-        toast.error(err.message);
+        toast.error(t("toast.loadFailed"));
       },
     },
   );
@@ -157,8 +160,11 @@ export function AgentTasksPage() {
         setTimeout(() => refresh(), 100);
       },
       onError: (err: Error) => {
+        // 五个 mutation 一律只上屏本包字典文案，原始 `ApiError.message` 留在 `console.error`（§9.3）：
+        // 保存失败的具体原因（cron 非法 / 名称冲突 / 无权限）是服务端措辞，翻译成前端文案反而会
+        // 说成一句不精确的承诺；用户能做的都是「改完再存一次」。
         console.error("save task failed", err);
-        toast.error(err.message);
+        toast.error(t("toast.saveFailed"));
       },
     },
   );
@@ -188,7 +194,7 @@ export function AgentTasksPage() {
     },
     onError: (err: Error) => {
       console.error("toggle task failed", err);
-      toast.error(err.message);
+      toast.error(t("toast.toggleFailed"));
     },
   });
 
@@ -215,7 +221,7 @@ export function AgentTasksPage() {
       },
       onError: (err: Error) => {
         console.error("trigger task failed", err);
-        toast.error(err.message);
+        toast.error(t("toast.triggerFailed"));
       },
       // ahooks v3 onFinally 签名: (params, data, error)，第一个参数是输入参数
       onFinally: (params) => {
@@ -236,7 +242,7 @@ export function AgentTasksPage() {
     },
     onError: (err: Error) => {
       console.error("delete task failed", err);
-      toast.error(err.message);
+      toast.error(t("toast.deleteFailed"));
     },
   });
 
@@ -250,7 +256,7 @@ export function AgentTasksPage() {
     },
     onError: (err: Error) => {
       console.error("clear logs failed", err);
-      toast.error(err.message);
+      toast.error(t("toast.clearLogsFailed"));
     },
   });
 
@@ -312,9 +318,7 @@ export function AgentTasksPage() {
         <AppHeader title={t("title")} subtitle={t("subtitle")} />
         <div className="task-load-error" role="alert">
           <AlertTriangle className="size-8" />
-          <strong>
-            {unauthorized ? t("loadState.unauthorizedTitle") : t("loadState.failed", { message: listError.message })}
-          </strong>
+          <strong>{unauthorized ? t("loadState.unauthorizedTitle") : t("loadState.failed")}</strong>
           {unauthorized ? (
             <p>{t("loadState.unauthorizedHint")}</p>
           ) : (

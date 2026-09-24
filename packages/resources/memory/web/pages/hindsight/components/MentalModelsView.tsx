@@ -13,12 +13,13 @@ import {
 import { Input } from "@fenix/ui-components/ui/input";
 import { Spinner } from "@fenix/ui-components/ui/spinner";
 import { NS } from "@fenix/web-runtime/i18n/namespace";
+import { useRequest } from "ahooks";
 import { Brain, Loader2, Search, Trash2, X } from "lucide-react";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
 import { hindsightApi } from "../../../api/hindsight";
-import { type HindsightFailure, toHindsightFailure } from "../failure";
+import { toHindsightFailure } from "../failure";
 import type { MentalModel } from "../types";
 import { HindsightFailureNotice } from "./HindsightFailureNotice";
 
@@ -150,12 +151,18 @@ function ModelDetailDialog({
 export function MentalModelsView() {
   const { t } = useTranslation(NS.HINDSIGHT);
 
-  // 数据状态
-  const [models, setModels] = useState<MentalModel[]>([]);
-  const [loading, setLoading] = useState(true);
-  // 列表加载失败：必须落成持久分支而不是只弹 toast——toast 消失后界面只剩「暂无心理模型」，
-  // 会把授权失败（403）伪装成空数据（§1.3 前端状态口径）。
-  const [failure, setFailure] = useState<HindsightFailure | null>(null);
+  // 列表数据由 `useRequest` 持有；列表加载失败必须落成持久分支而不是只弹 toast——toast 消失后界面
+  // 只剩「暂无心理模型」，会把授权失败（403）伪装成空数据（§3.4 禁止失败映射成 empty）。
+  const {
+    data: modelsPage,
+    loading,
+    error: modelsError,
+    refresh: refreshModels,
+  } = useRequest(() => hindsightApi.listMentalModels(), {
+    onError: (err) => console.error("Failed to load mental models:", err),
+  });
+  const models = modelsPage && Array.isArray(modelsPage.items) ? modelsPage.items : [];
+  const failure = modelsError ? toHindsightFailure(modelsError, t("mentalModels.loadFailed")) : null;
 
   // 搜索状态
   const [search, setSearch] = useState("");
@@ -165,25 +172,6 @@ export function MentalModelsView() {
 
   // 删除确认弹窗
   const [deleteTarget, setDeleteTarget] = useState<MentalModel | null>(null);
-
-  /** 加载心理模型列表 */
-  const loadModels = useCallback(async () => {
-    setLoading(true);
-    setFailure(null);
-    try {
-      const res = await hindsightApi.listMentalModels();
-      setModels(Array.isArray(res.items) ? res.items : []);
-    } catch (err) {
-      console.error("Failed to load mental models:", err);
-      setFailure(toHindsightFailure(err, t("mentalModels.loadFailed")));
-    } finally {
-      setLoading(false);
-    }
-  }, [t]);
-
-  useEffect(() => {
-    loadModels();
-  }, [loadModels]);
 
   /** 按搜索关键词过滤 */
   const filteredModels = useMemo(() => {
@@ -207,10 +195,10 @@ export function MentalModelsView() {
         setDetailModel(null);
       }
       setDeleteTarget(null);
-      loadModels();
+      refreshModels();
     } catch (err) {
       console.error("Failed to delete mental model:", err);
-      toast.error(err instanceof Error ? err.message : t("mentalModels.deleteFailed"));
+      toast.error(t("mentalModels.deleteFailed"));
     }
   };
 
@@ -261,7 +249,7 @@ export function MentalModelsView() {
             failure={failure}
             titleKey="mentalModels.loadFailed"
             retryKey="mentalModels.retry"
-            onRetry={() => void loadModels()}
+            onRetry={refreshModels}
             className="py-16"
           />
         ) : filteredModels.length === 0 ? (

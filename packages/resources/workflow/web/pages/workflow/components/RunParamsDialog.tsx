@@ -8,7 +8,7 @@ import {
 } from "@fenix/ui-components/ui/dialog";
 import { useCallback, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { ParamGroupHeader } from "./ParamGroupHeader";
+import { CollapsibleGroup } from "./CollapsibleGroup";
 
 export interface ParamDef {
   type?: "string" | "number" | "boolean" | "object";
@@ -23,25 +23,6 @@ interface RunParamsDialogProps {
   onOpenChange: (open: boolean) => void;
   params: Record<string, ParamDef>;
   onSubmit: (values: Record<string, unknown>) => void;
-}
-
-/** 可折叠分组容器 — toggle 展开/收起 */
-function CollapsibleGroup({
-  label,
-  defaultOpen,
-  children,
-}: {
-  label: string;
-  defaultOpen: boolean;
-  children: React.ReactNode;
-}) {
-  const [open, setOpen] = useState(defaultOpen);
-  return (
-    <div style={{ marginBottom: 8 }}>
-      <ParamGroupHeader label={label} open={open} onToggle={() => setOpen((v) => !v)} />
-      {open && <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>{children}</div>}
-    </div>
-  );
 }
 
 export function RunParamsDialog({ open, onOpenChange, params, onSubmit }: RunParamsDialogProps) {

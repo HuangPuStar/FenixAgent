@@ -1,7 +1,8 @@
 import { afterEach, describe, expect, mock, test } from "bun:test";
+import { cronText } from "./cron-text-stub";
 
 // Mock react-i18next before any component import
-const t = (key: string) => key;
+const t = cronText;
 
 mock.module("react-i18next", () => ({
   useTranslation: () => ({
@@ -19,34 +20,34 @@ afterEach(() => {
   mock.restore();
 });
 
-// 预设匹配 —— describeCron 现在通过 t() 返回 i18n key
+// 预设匹配 —— describeCron 经 t() 取字典里的预设文案
 describe("describeCron presets", () => {
   test("每 5 分钟", () => {
-    expect(describeCron("*/5 * * * *", t)).toBe("cron.presets.every5min");
+    expect(describeCron("*/5 * * * *", t)).toBe("每 5 分钟");
   });
 
   test("每小时", () => {
-    expect(describeCron("0 * * * *", t)).toBe("cron.presets.everyHour");
+    expect(describeCron("0 * * * *", t)).toBe("每小时");
   });
 
   test("每天上午 9:00", () => {
-    expect(describeCron("0 9 * * *", t)).toBe("cron.presets.daily9am");
+    expect(describeCron("0 9 * * *", t)).toBe("每天上午 9:00");
   });
 
   test("工作日上午 9:00", () => {
-    expect(describeCron("0 9 * * 1-5", t)).toBe("cron.presets.weekday9am");
+    expect(describeCron("0 9 * * 1-5", t)).toBe("工作日上午 9:00");
   });
 
   test("每月 1 号", () => {
-    expect(describeCron("0 0 1 * *", t)).toBe("cron.presets.monthly1st");
+    expect(describeCron("0 0 1 * *", t)).toBe("每月 1 号");
   });
 
   test("带空格 trim 后匹配", () => {
-    expect(describeCron("  0 * * * *  ", t)).toBe("cron.presets.everyHour");
+    expect(describeCron("  0 * * * *  ", t)).toBe("每小时");
   });
 });
 
-// 动态描述 —— 非预设的 cron 仍返回中文描述
+// 动态描述 —— 非预设的 cron 由四套字典模板 + 时段 / 星期字形拼出中文描述
 describe("describeCron dynamic descriptions", () => {
   test("每 N 分钟", () => {
     expect(describeCron("*/10 * * * *", t)).toBe("每 10 分钟");

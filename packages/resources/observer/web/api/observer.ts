@@ -85,7 +85,9 @@ export interface AcpLinkSnapshot {
   names: ObserverNames;
 }
 
-/** 拉取 acp-link 观察视图（GET /api/system/observer/acp-link，Bearer master key）。 */
-export function fetchAcpLinkSnapshot(): Promise<AcpLinkSnapshot> {
-  return unwrap(request<AcpLinkSnapshot>("/api/system/observer/acp-link", { bearerToken: getAdminKey() ?? undefined }));
-}
+/** acp-link 观察视图的域模块出口（§5.5：单一 `*Api` 对象，不再逐个具名导出函数）。 */
+export const observerApi = {
+  /** 拉取 acp-link 观察视图（GET /api/system/observer/acp-link，Bearer master key）。 */
+  fetchAcpLinkSnapshot: (): Promise<AcpLinkSnapshot> =>
+    unwrap(request<AcpLinkSnapshot>("/api/system/observer/acp-link", { bearerToken: getAdminKey() ?? undefined })),
+};

@@ -8,7 +8,6 @@
   "updateBindingFailed": "更新绑定状态失败",
   "deleteBindingFailed": "删除绑定失败",
   "bindingDeleted": "绑定已删除",
-  "selectPlatformAndAgent": "请选择平台和 Agent",
   "createBindingFailed": "创建绑定失败",
   "unknownError": "未知错误",
   "bindingCreated": "绑定创建成功",
@@ -49,6 +48,8 @@
     "agentPlaceholder": "选择 Agent",
     "cancel": "取消",
     "create": "创建",
-    "creating": "创建中..."
+    "creating": "创建中...",
+    "platformRequired": "请输入平台标识",
+    "agentRequired": "请选择 Agent"
   }
 }

@@ -33,7 +33,9 @@ export function AgentMcpPage() {
   const catalog = useRequest(() => unwrap(mcpApi.list()), {
     onError: (error) => {
       console.error(t("toast.loadListFailed"), error);
-      toast.error(t("toast.loadListFailedWith", { message: error.message }));
+      // 上屏的只有字典文案（§9.3）：`error.message` 是 `unwrap` 抛出的 `ApiError.message`，即后端
+      // 错误信封原文，只进上面的日志。`*With` 变体（把原文插进 `{{message}}` 槽位）与直接回显等价。
+      toast.error(t("toast.loadListFailed"));
     },
   });
   const servers = catalog.data?.servers ?? [];
@@ -52,7 +54,7 @@ export function AgentMcpPage() {
       },
       onError: (error) => {
         console.error(t("toast.operationFailed"), error);
-        toast.error(t("toast.operationFailedWith", { message: error.message }));
+        toast.error(t("toast.operationFailed"));
       },
     },
   );
@@ -66,7 +68,7 @@ export function AgentMcpPage() {
     },
     onError: (error) => {
       console.error(t("toast.deleteFailed"), error);
-      toast.error(t("toast.deleteFailedWith", { message: error.message }));
+      toast.error(t("toast.deleteFailed"));
     },
   });
 
@@ -91,7 +93,7 @@ export function AgentMcpPage() {
       },
       onError: (error) => {
         console.error(t("toast.saveFailed"), error);
-        toast.error(t("toast.saveFailedWith", { message: error.message }));
+        toast.error(t("toast.saveFailed"));
       },
     },
   );
@@ -113,9 +115,9 @@ export function AgentMcpPage() {
       toast.success(t("toast.inspectSuccessSimple", { count: tools.length }));
       if (canWriteMcp(server)) catalog.refresh();
     } catch (error) {
-      const message = error instanceof Error ? error.message : t("toast.inspectFailed");
       console.error(t("toast.inspectFailed"), error);
-      toast.error(t("toast.inspectFailedWith", { message }));
+      // 检测失败的原始文本（信封原文）只进日志，上屏只给字典文案（§9.3）。
+      toast.error(t("toast.inspectFailed"));
     } finally {
       setInspectingKey(null);
     }

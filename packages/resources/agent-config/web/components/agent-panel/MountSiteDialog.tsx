@@ -1,3 +1,4 @@
+import { EmptyState } from "@fenix/ui-components/config/EmptyState";
 import { cn } from "@fenix/ui-components/lib/cn";
 import { Button } from "@fenix/ui-components/ui/button";
 import {
@@ -11,7 +12,7 @@ import {
 import { unwrap } from "@fenix/web-runtime/api/request";
 import { NS } from "@fenix/web-runtime/i18n/namespace";
 import { useRequest } from "ahooks";
-import { Globe, Loader2 } from "lucide-react";
+import { Globe, Loader2, RefreshCw, TriangleAlert } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
@@ -56,7 +57,18 @@ export function MountSiteDialog({
   const [selected, setSelected] = useState<Set<string>>(new Set());
 
   // 每次 open 都重拉以保证最新（关闭期间可能新建过 site）
-  const { data: rawData = [], loading } = useRequest(() => unwrap(agentSitesApi.list()), { ready: open });
+  const {
+    data: rawData = [],
+    loading,
+    error: listError,
+    refresh: refreshSites,
+  } = useRequest(() => unwrap(agentSitesApi.list()), {
+    ready: open,
+    onError: (err) => {
+      // 原始错误只进日志（§9.3：错误信封原文不上屏），界面上的失败块取字典文案。
+      console.error("[MountSiteDialog] 加载 site 列表失败", err);
+    },
+  });
 
   // 打开时重置选中状态
   useEffect(() => {
@@ -136,6 +148,16 @@ export function MountSiteDialog({
               <Loader2 className="h-4 w-4 animate-spin mr-2" />
               <span className="text-sm">...</span>
             </div>
+          ) : listError ? (
+            // 取数失败必须与「没有可挂载的站点」分开：失败时 `candidates` 同样是空的，
+            // 照旧渲染会让用户以为自己组织里没有站点（§3.4），重试按 `ready: open` 重新拉取。
+            <EmptyState
+              icon={<TriangleAlert />}
+              title={t("panelMode.sitesLoadFailed")}
+              tone="danger"
+              role="alert"
+              action={{ label: t("panelMode.retry"), onClick: refreshSites, icon: <RefreshCw />, disabled: loading }}
+            />
           ) : candidates.length === 0 ? (
             <p className="py-8 text-center text-sm text-text-muted">{t("panelMode.noAvailableSites")}</p>
           ) : (

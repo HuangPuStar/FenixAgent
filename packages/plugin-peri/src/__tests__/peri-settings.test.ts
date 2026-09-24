@@ -32,12 +32,10 @@ async function createWorkspace(): Promise<string> {
 }
 
 describe("writePeriSettings", () => {
-  // peri 引擎无 IS_PERI 之类门控：任何一次 workspace 物化都必须写出 provider/profile 配置，
-  // 否则 peri 进程拿不到模型鉴权参数（这是与 @fenix/ccb 的同名函数的关键差异）。
+  // peri 引擎无条件写出 provider/profile 配置：任何一次 workspace 物化都必须落盘，
+  // 否则 peri 进程拿不到模型鉴权参数。
   test("无条件写出 .peri/settings.json 的 provider/profile 结构", async () => {
     const workspace = await createWorkspace();
-    const previousIsPeri = process.env.IS_PERI;
-    delete process.env.IS_PERI;
 
     try {
       const configPath = await writePeriSettings(workspace, makeLaunchSpec());
@@ -85,9 +83,6 @@ describe("writePeriSettings", () => {
         },
       });
     } finally {
-      if (previousIsPeri !== undefined) {
-        process.env.IS_PERI = previousIsPeri;
-      }
       await rm(workspace, { recursive: true, force: true });
     }
   });

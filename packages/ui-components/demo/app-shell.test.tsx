@@ -8,7 +8,7 @@ import { setupDemoI18n } from "./i18n";
 import { Providers } from "./providers";
 
 /**
- * demo 侧栏装配的冒烟测试：导航必须按组件层级列全 17 个分区，且每一项都能切出对应的分区内容。
+ * demo 侧栏装配的冒烟测试：导航必须按组件层级列全 16 个分区，且每一项都能切出对应的分区内容。
  *
  * 这条断言针对的是「左侧边栏展示错了」这类回归：分区 id 与 i18n 文案键、App.tsx 的分区表、
  * 各分区文件的导出名三者必须一一对应。缺文案会在侧栏渲染出 `sections.<id>` 原始 key，
@@ -74,7 +74,6 @@ const EXPECTED_NAV_LABELS = [
   "Preview L1",
   "Preview L2",
   "Workbench L1",
-  "Workbench L2",
   "Data L1",
   "Data L2",
   "Agent L1",
@@ -111,7 +110,7 @@ function renderApp() {
 }
 
 describe("demo shell navigation", () => {
-  // 侧栏按层级列出全部 17 个分区，文案全部来自字典（出现 sections.* 原始 key 即说明键缺失）。
+  // 侧栏按层级列出全部 16 个分区，文案全部来自字典（出现 sections.* 原始 key 即说明键缺失）。
   test("lists every section in layer order", () => {
     renderApp();
     expect(readNavButtons().map((button) => button.textContent)).toEqual(EXPECTED_NAV_LABELS);

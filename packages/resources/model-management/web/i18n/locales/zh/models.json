@@ -50,9 +50,9 @@
     "title": "模型库加载失败"
   },
   "emptyMessage": "暂无服务商，点击「新建服务商」添加",
-  "loadError": "加载数据失败: {{message}}",
+  "loadError": "加载数据失败",
   "loadProvidersError": "加载服务商列表失败: {{message}}",
-  "loadProviderDetailError": "加载服务商详情失败: {{message}}",
+  "loadProviderDetailError": "加载服务商详情失败",
   "loadModelConfigError": "加载模型配置失败: {{message}}",
   "loadModelsError": "加载模型数据失败",
   "unknownError": "未知错误",
@@ -147,7 +147,7 @@
   "batchDeleteCount": "已删除 {{count}} 个服务商",
   "batchDeleteError": "批量删除失败: {{message}}",
   "saveProvider": {
-    "errorGeneric": "保存失败: {{message}}",
+    "errorGeneric": "保存失败",
     "duplicateName": "服务商 \"{{name}}\" 已存在，请更换名称",
     "successCreate": "服务商已创建",
     "successUpdate": "服务商已更新"
@@ -156,7 +156,7 @@
     "confirmTitle": "确认删除",
     "confirmDesc": "此操作不可逆。确定要删除服务商 \"{{name}}\" 吗？",
     "success": "服务商已删除",
-    "error": "删除失败: {{message}}"
+    "error": "删除失败"
   },
   "form": {
     "editTitle": "编辑服务商",
@@ -193,7 +193,7 @@
     "modelsFound": "发现 {{count}} 个可用模型",
     "added": "已添加",
     "addModelSuccess": "模型 {{modelId}} 已添加",
-    "addModelError": "添加失败: {{message}}",
+    "addModelError": "添加失败",
     "testError": "测试失败: {{message}}",
     "modelTestPassed": "测试通过",
     "modelTestFailed": "测试失败",
@@ -243,13 +243,13 @@
     "saveModel": {
       "successCreate": "模型已添加",
       "successUpdate": "模型已更新",
-      "errorGeneric": "保存失败: {{message}}"
+      "errorGeneric": "保存失败"
     },
     "deleteModel": {
       "confirmTitle": "确认删除模型",
       "confirmDesc": "此操作不可逆。确定要删除模型 \"{{id}}\" 吗？",
       "success": "模型已删除",
-      "error": "删除失败: {{message}}"
+      "error": "删除失败"
     },
     "testModel": {
       "success": "模型 {{id}} 测试成功：{{content}}",
@@ -359,6 +359,7 @@
       "resetNotScheduled": "等待重置时间",
       "exhausted": "已耗尽",
       "noMatches": "暂无匹配用户",
+      "queryFailed": "预算列表加载失败，请重试以按当前筛选重新查询。",
       "selectUser": "选择{{name}}",
       "pagination_total": "共 {{total}} 位用户",
       "pagination_page_size": "{{size}} 位/页"
@@ -419,6 +420,8 @@
       "userOption": "{{name}}（{{email}}）",
       "searchSubject": "搜索{{subject}}",
       "noMatches": "暂无匹配项",
+      "subjectLoadFailed": "主体列表加载失败，请重新搜索。",
+      "queryFailed": "用量数据加载失败，请重试以按当前范围重新查询。",
       "rangeHint": "支持任意起止日期，单次最长 90 天；更长周期建议后续使用离线报表。",
       "metrics": {
         "spend": "总消耗金额",
@@ -479,7 +482,7 @@
     "lightweightModel": "轻量模型",
     "lightweightModelPlaceholder": "选择轻量模型",
     "updateSuccess": "模型配置已更新",
-    "updateError": "更新模型配置失败：{{message}}"
+    "updateError": "更新模型配置失败"
   },
   "admin": {
     "gateAuthFailed": "master key 无效或已失效",

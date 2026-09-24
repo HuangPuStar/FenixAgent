@@ -15,17 +15,38 @@ import { resolveCreatedAgentChatTarget } from "@fenix/agent-config/web/lib/agent
 import { envApi } from "@fenix/agent-runtime/web/api/environments";
 import { unwrap } from "@fenix/web-runtime/api/request";
 import { dispatchConfigChange } from "@fenix/web-runtime/lib/config-events";
-import { Outlet, useNavigate, useRouterState } from "@tanstack/react-router";
+import type { AbsoluteToPath, RegisteredRouter } from "@tanstack/react-router";
+import { Outlet, useNavigate, useRouter, useRouterState } from "@tanstack/react-router";
 import { useCallback, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
 import { NS } from "@/src/i18n";
 import { ChatArea } from "@/src/pages/agent-panel/ChatArea";
 import { AgentSidebar } from "./AgentSidebar";
+import { PANEL_ROUTE_PREFIX, panelRoutePath } from "./shell-navigation";
 import "./agent-panel.css";
+
+/**
+ * 侧栏能落到的路由目标类型：`/agent/<id>` 形态的面板页路径。
+ *
+ * 联合来自**注册的 router**（`main.tsx` 的 `Register` 声明，即 `routeTree.gen`）而不是手写清单：
+ * 路由壳改名或删除时类型跟着变，指向不存在页面的目标就通不过类型检查。
+ */
+type PanelRoutePath = Extract<AbsoluteToPath<RegisteredRouter, "/">, `${typeof PANEL_ROUTE_PREFIX}${string}`>;
+
+/**
+ * `path` 是否真是当前路由表里的面板页路径。
+ *
+ * 判据取自 `router.routesByPath`（router 的公开字段）——与 `PanelRoutePath` 出自同一份路由产物，
+ * 因此这里不会出现「类型断言说合法、路由表里其实没有」的漂移。
+ */
+function isPanelRoutePath(router: RegisteredRouter, path: string): path is PanelRoutePath {
+  return path.startsWith(PANEL_ROUTE_PREFIX) && path in router.routesByPath;
+}
 
 export function DefaultAppShell() {
   const navigate = useNavigate();
+  const router = useRouter();
   const { t } = useTranslation(NS.AGENT_PANEL);
   // 仅订阅 pathname：避免 useRouterState() 无选择器订阅全部路由状态
   // 导致每次 search/hash/loader 变动都触发级联重渲染
@@ -51,11 +72,25 @@ export function DefaultAppShell() {
   })();
   const selectedEnvironmentId = pathParts[0] === "chat" ? (pathParts[1] ?? null) : null;
 
+  /**
+   * 侧栏导航：`id` 即路由目标（§2.6），目标路径为 `/agent/<id>`。
+   *
+   * 旧写法 `navigate({ to: `/agent/${pageId}` as never })` 用 `as never` 把路径直接塞给 TanStack，
+   * 既不进类型检查，也没有任何地方保证这个 id 有对应路由。现在先让路径过一遍**当前路由表**
+   * （`router.routesByPath`，与 `PanelRoutePath` 同源）再导航，类型与运行时用的是同一份路由产物。
+   *
+   * 命不中的分支在正确构建下不可达——`apps/web/src/__tests__/shell-navigation-routes.test.ts` 用的是**同一
+   * 字段与同一拼法**（`router.routesByPath` + `panelRoutePath()`），每个导航 id 都有路由、字段与键也没变
+   * 形，它都断言过；真走到这里只可能是「包声明了导航却没建路由壳」的装配漂移，此时不导航，把问题留在
+   * 装配期而不是把用户丢进空白页。
+   */
   const handleNavigate = useCallback(
     (pageId: string) => {
-      void navigate({ to: `/agent/${pageId}` as never });
+      const to = panelRoutePath(pageId);
+      if (!isPanelRoutePath(router, to)) return;
+      void navigate({ to });
     },
-    [navigate],
+    [navigate, router],
   );
 
   const handleSelectInstance = useCallback(

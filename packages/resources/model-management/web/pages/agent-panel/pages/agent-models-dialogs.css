@@ -124,23 +124,14 @@
   background: #f5f7fb;
 }
 
-/* 骨架屏的两栏占位：源 `grid-cols-[238px_1fr]`，与被它模拟的 `.models-workspace` 同排布
-   （左栏定宽 238px、右栏自适应）。规则与 `.agent-models-loading` 同处一文件，
-   便于改动骨架屏时一处看全。 */
+/* 骨架屏的两栏占位：源 `grid-cols-[238px_1fr]`，与被它模拟的主从壳同排布
+   （`agent-master-detail-workspace.css` 里的左栏定宽 238px、右栏自适应）。规则与
+   `.agent-models-loading` 同处一文件，便于改动骨架屏时一处看全。 */
 .models-loading-grid {
   grid-template-columns: 238px 1fr;
 }
 
 @media (max-width: 980px) {
-  .models-workspace {
-    grid-template-columns: 1fr;
-  }
-  .models-provider-index {
-    box-shadow: inset 0 -1px var(--model-line);
-  }
-  .models-provider-index > header {
-    display: none;
-  }
   .models-provider-connection {
     grid-template-columns: 1fr 1fr;
   }

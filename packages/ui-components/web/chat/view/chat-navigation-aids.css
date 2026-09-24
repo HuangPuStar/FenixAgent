@@ -6,11 +6,11 @@
  *   - `.chat-prompt-rail-anchor` ← 旧 `.chat-prompt-rail` 的 `left-[max(8px,calc(50%-446px))]`；
  *   - `.chat-selection-quote-popover` ← `shadow-[0_9px_26px_rgb(30_50_80_/_14%)]`。
  *
- * 提示词导航轨已改为消费 beui 的 `PreviewRail`（`../components/preview-rail.tsx`，原样载入）：
- * 轨道宽度 `w-12`、刻度 `h-0.5 w-12 origin-left`、每格 24px、hover 的金字塔缩放与浮出的预览卡
+ * 提示词导航轨已改为消费 beui 的 `PreviewRail`（`../components/preview-rail.tsx`，改了「静止态统一为短横线」与「每格 20px」两处）：
+ * 轨道宽度 `w-12`、刻度 `h-0.5 w-12 origin-left`、每格 20px、指向刻度时的金字塔缩放与浮出的预览卡
  * 全部由组件自带的工具类承担，本文件不再为刻度/预览写任何声明。随之作废的两条：
- *   - 旧 `.chat-prompt-rail` 的高度上限 `max-h-[min(232px,44vh)]` —— 采样上限（14）乘每格 24px
- *     已是 336px，落在 beui 演示信封内，不需要再收口；
+ *   - 旧 `.chat-prompt-rail` 的高度上限 `max-h-[min(232px,44vh)]` —— 采样上限（14）乘每格 20px
+ *     已是 280px，落在 beui 演示信封内，不需要再收口；
  *   - 宽屏媒体查询 `@media (min-width: 1180px) and (min-height: 620px)`（配 `hidden` 兜底）——
  *     整轨改为窄屏也显示，故本文件不再有媒体查询，层级也不再需要「媒体查询压过工具类」的说明。
  * 旧 `.chat-prompt-preview`（`shadow-[0_10px_28px_rgb(30_50_80_/_12%)]`）随自定义预览卡作废：

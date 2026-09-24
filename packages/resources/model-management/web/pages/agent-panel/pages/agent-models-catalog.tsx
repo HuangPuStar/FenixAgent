@@ -1,4 +1,13 @@
 import {
+  AgentCatalogIndex,
+  AgentCatalogIndexArrow,
+  AgentCatalogIndexCopy,
+  AgentCatalogIndexIcon,
+  AgentCatalogIndexItem,
+  AgentCatalogIndexMeta,
+  AgentCatalogIndexNav,
+} from "@fenix/ui-components/components/agent-catalog-index";
+import {
   AgentMasterDetailHeader,
   AgentMasterDetailWorkspace,
 } from "@fenix/ui-components/components/agent-master-detail-workspace";
@@ -11,7 +20,6 @@ import { Switch } from "@fenix/ui-components/ui/switch";
 import type { ProviderInfo, ProviderModel } from "@fenix/web-runtime/types/config";
 import {
   CheckCircle2,
-  ChevronRight,
   CircleOff,
   Eye,
   FileSearch,
@@ -169,17 +177,16 @@ function ProviderIndex({
   onSelect: (provider: ProviderInfo) => void;
 }) {
   const { t } = useTranslation(MODELS_NS);
+  // 目录栏外观（内边距 / 底色 / 分隔线 / 行距 / 条目三态 / 图标盒 / 字号）全在共享构件集的伴生 CSS，
+  // 本页不再给任何取值——2026-09-23 的裁定是「全部样式统一，不要观感不统一」。
   return (
-    <aside className="models-provider-index">
-      <header>
-        <div>
-          <strong>{t("providerIndex.title")}</strong>
-          <span>{providers.length}</span>
-        </div>
-        <small>{t("providerIndex.description")}</small>
-      </header>
+    <AgentCatalogIndex
+      title={t("providerIndex.title")}
+      count={providers.length}
+      description={t("providerIndex.description")}
+    >
       {providers.length ? (
-        <nav aria-label={t("providerIndex.title")}>
+        <AgentCatalogIndexNav label={t("providerIndex.title")}>
           {providers.map((provider) => {
             const key = getProviderKey(provider);
             const iconModelId = getProviderIconModelId(provider, modelsByProvider[key] ?? []);
@@ -189,35 +196,41 @@ function ProviderIndex({
             // `/web` Provider 视图只返回 `scope.organizationId`，跨组织来源因此标注为「组织共享」。
             const organizationName = external ? t("scope.shared") : t("scope.organization");
             return (
-              <button
-                type="button"
+              <AgentCatalogIndexItem
                 key={key}
-                className={active ? "is-selected" : ""}
-                aria-current={active ? "page" : undefined}
+                // 选中配色与箭头显隐由共享 CSS 按 `aria-current="page"` 驱动（本页此前的 `is-selected` 已删）。
+                selected={active}
                 onClick={() => onSelect(provider)}
               >
-                <span className="models-provider-brand [--ant-color-text-description:currentColor] text-secondary">
-                  <ModelIcon modelId={iconModelId} size={18} />
-                </span>
-                <span className="models-provider-copy">
-                  <strong>{provider.name || provider.id}</strong>
-                  <small title={organizationName}>
-                    {organizationName} · {t("providerIndex.models", { count: provider.modelCount })}
-                  </small>
-                </span>
-                {external && !publiclyReadable ? (
-                  <span className="models-provider-scope">{t("scope.shared")}</span>
-                ) : null}
-                {publiclyReadable ? <span className="models-provider-scope">{t("scope.public")}</span> : null}
-                <ChevronRight className="models-provider-arrow" />
-              </button>
+                {/* 品牌图标是彩色 svg，`--ant-color-text-description` 只影响它的
+                    单色兜底分支；图标盒的尺寸 / 圆角 / 白底由共享 CSS 给。`size` 与图标盒内层 svg
+                    同尺（共享 CSS 也会把 svg 统一到该尺寸，这里显式传入是为了让彩色图标按同一视框渲染）。 */}
+                <AgentCatalogIndexIcon className="[--ant-color-text-description:currentColor]">
+                  <ModelIcon modelId={iconModelId} size={16} />
+                </AgentCatalogIndexIcon>
+                <AgentCatalogIndexCopy
+                  title={provider.name || provider.id}
+                  // 副标题在 238px 列里会被截断，全文仍由 `title` 提供；共享组件的 `<small>` 没有属性插槽，
+                  // 所以把它落在内层的 span 上（对外行为与迁移前的 `<small title>` 一致）。
+                  subtitle={
+                    <span title={organizationName}>
+                      {organizationName} · {t("providerIndex.models", { count: provider.modelCount })}
+                    </span>
+                  }
+                />
+                <AgentCatalogIndexMeta>
+                  {external && !publiclyReadable ? <span>{t("scope.shared")}</span> : null}
+                  {publiclyReadable ? <span>{t("scope.public")}</span> : null}
+                </AgentCatalogIndexMeta>
+                <AgentCatalogIndexArrow />
+              </AgentCatalogIndexItem>
             );
           })}
-        </nav>
+        </AgentCatalogIndexNav>
       ) : (
         <EmptyState icon={<FileSearch />} title={t("providerIndex.empty")} className={EMPTY_STATE_FILL_CLASS} />
       )}
-    </aside>
+    </AgentCatalogIndex>
   );
 }
 

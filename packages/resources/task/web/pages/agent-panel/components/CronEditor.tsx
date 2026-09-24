@@ -15,21 +15,48 @@ export const PRESETS: Record<string, string> = {
   monthly1st: "0 0 1 * *",
 };
 
+/** 文案取值口径：`t(key)` / `t(key, { var })`；与 `agent-tasks-utils` 的 `formatTaskRelativeTime` 同形。 */
+type CronText = (key: string, options?: Record<string, unknown>) => string;
+
+/** 星期字段索引（0 = 周日）→ 字形键；越界索引没有键，`join` 时按空串处理（既有行为）。 */
+const WEEKDAY_KEYS = [
+  "cron.describe.weekday.sun",
+  "cron.describe.weekday.mon",
+  "cron.describe.weekday.tue",
+  "cron.describe.weekday.wed",
+  "cron.describe.weekday.thu",
+  "cron.describe.weekday.fri",
+  "cron.describe.weekday.sat",
+];
+
 /**
  * 12 小时制展示三元组。`describeCron` 的四个分支（每天 / 每周 / 每月 / 指定月）此前各抄一份同样的 3 行换算
- * （2026-09-22 去重）；`minStr` 只在分钟是具体值时出现。各分支的模板本身保持原样——它们之间已有既存差异
- * （指定月分支的时段与时刻之间没有空格），归一那处会改用户可见文案，不在本批范围内。
+ * （2026-09-22 去重）。时段词经 `t` 取（2026-09-23 第 19 轮）：此前中文写死在这里，
+ * 非中文界面会读成「每天下午 3:30」。
  */
-function twelveHourParts(h: number, min: string): { period: string; h12: number; minStr: string } {
+function twelveHourParts(h: number, min: string, t: CronText): { period: string; h12: number; minStr: string } {
   return {
-    period: h < 12 ? "上午" : h === 12 ? "中午" : "下午",
+    period:
+      h < 12 ? t("cron.describe.period.am") : h === 12 ? t("cron.describe.period.noon") : t("cron.describe.period.pm"),
     h12: h === 0 ? 12 : h > 12 ? h - 12 : h,
     minStr: min === "*" ? "" : `:${min.padStart(2, "0")}`,
   };
 }
 
-/** 根据 cron 表达式返回人类可读的描述，需要 t 函数做国际化 */
-export function describeCron(cron: string, t: (key: string) => string): string | null {
+/** 星期索引 → 字形；越界索引返回 `undefined`（`Array.prototype.join` 会把它渲染成空串）。 */
+function weekdayName(index: number, t: CronText): string | undefined {
+  const key = WEEKDAY_KEYS[index];
+  return key ? t(key) : undefined;
+}
+
+/**
+ * 根据 cron 表达式返回人类可读的描述，需要 t 函数做国际化。
+ *
+ * 四条动态模板与时段 / 星期字形都来自 `cron.describe.*` 字典（2026-09-23 第 19 轮收口，此前是
+ * 拼在代码里的中文字符串）。各分支的既有差异原样保留——**指定月分支的时段与时刻之间没有空格**，
+ * 归一那处会改用户可见文案；该差异现在由 `monthlyOnDate` 这一条模板自己承担。
+ */
+export function describeCron(cron: string, t: CronText): string | null {
   const match = Object.entries(PRESETS).find(([, v]) => v === cron.trim());
   if (match) return t(`cron.presets.${match[0]}`);
 
@@ -39,31 +66,34 @@ export function describeCron(cron: string, t: (key: string) => string): string |
   const [min, hour, day, month, weekday] = parts;
 
   if (min.startsWith("*/")) {
-    return `每 ${min.slice(2)} 分钟`;
+    return t("cron.describe.everyMinutes", { minutes: min.slice(2) });
   }
 
   if (hour !== "*" && day === "*" && month === "*" && weekday === "*") {
     const h = Number.parseInt(hour, 10);
     if (!Number.isNaN(h)) {
-      const { period, h12, minStr } = twelveHourParts(h, min);
-      return `每天${period} ${h12}${minStr}`;
+      const { period, h12, minStr } = twelveHourParts(h, min, t);
+      return t("cron.describe.daily", { period, time: `${h12}${minStr}` });
     }
   }
 
   if (hour !== "*" && day === "*" && month === "*" && weekday !== "*") {
     const h = Number.parseInt(hour, 10);
-    const days = ["日", "一", "二", "三", "四", "五", "六"];
     if (!Number.isNaN(h) && /^[\d,-]+$/.test(weekday)) {
       const dayNums = weekday.includes("-") ? [weekday] : weekday.split(",");
       const dayNames = dayNums.flatMap((d) => {
         if (d.includes("-")) {
           const [s, e] = d.split("-").map(Number);
-          return Array.from({ length: e - s + 1 }, (_, i) => days[s + i]);
+          return Array.from({ length: e - s + 1 }, (_, i) => weekdayName(s + i, t));
         }
-        return [days[Number(d)]];
+        return [weekdayName(Number(d), t)];
       });
-      const { period, h12, minStr } = twelveHourParts(h, min);
-      return `每周${dayNames.join("、")}${period} ${h12}${minStr}`;
+      const { period, h12, minStr } = twelveHourParts(h, min, t);
+      return t("cron.describe.weekly", {
+        days: dayNames.join(t("cron.describe.daySeparator")),
+        period,
+        time: `${h12}${minStr}`,
+      });
     }
   }
 
@@ -71,8 +101,8 @@ export function describeCron(cron: string, t: (key: string) => string): string |
     const h = Number.parseInt(hour, 10);
     const d = Number.parseInt(day, 10);
     if (!Number.isNaN(h) && !Number.isNaN(d)) {
-      const { period, h12, minStr } = twelveHourParts(h, min);
-      return `每月 ${d} 号${period} ${h12}${minStr}`;
+      const { period, h12, minStr } = twelveHourParts(h, min, t);
+      return t("cron.describe.monthly", { day: d, period, time: `${h12}${minStr}` });
     }
   }
 
@@ -81,8 +111,8 @@ export function describeCron(cron: string, t: (key: string) => string): string |
     const d = Number.parseInt(day, 10);
     const m = Number.parseInt(month, 10);
     if (!Number.isNaN(h) && !Number.isNaN(d) && !Number.isNaN(m)) {
-      const { period, h12, minStr } = twelveHourParts(h, min);
-      return `${m}月${d}号${period}${h12}${minStr}`;
+      const { period, h12, minStr } = twelveHourParts(h, min, t);
+      return t("cron.describe.monthlyOnDate", { month: m, day: d, period, time: `${h12}${minStr}` });
     }
   }
 
@@ -95,16 +125,19 @@ export interface CronEditorProps {
   /** 手动输入框的 `id`：供调用方用 `LabeledField htmlFor` 把字段名显式关联到这个输入框；不给则不渲染 `id`。 */
   inputId?: string;
   onChange: (cron: string) => void;
+  /** 外部错误（来自表单校验的 `errors.cron.message`）：**同样是 i18n 键**，渲染时才译。 */
   error?: string;
 }
 
 export function CronEditor({ value, timezone = "", inputId, onChange, error }: CronEditorProps) {
   const { t } = useTranslation(NS.TASKS_V2);
   const [editingCustom, setEditingCustom] = useState(false);
-  const [debouncedError, setDebouncedError] = useState<string>();
+  // 防抖后的错误**键**：`validateCronExpression` 只产出键（§9.3 的纯模块不碰字典），
+  // 译文在渲染时取——因此下面的 effect 依赖里不需要 `t`，语言切换不会重跑校验。
+  const [debouncedErrorKey, setDebouncedErrorKey] = useState<string>();
 
   useEffect(() => {
-    const timer = setTimeout(() => setDebouncedError(validateCronExpression(value, timezone)), 400);
+    const timer = setTimeout(() => setDebouncedErrorKey(validateCronExpression(value, timezone)), 400);
     return () => clearTimeout(timer);
   }, [value, timezone]);
 
@@ -131,7 +164,7 @@ export function CronEditor({ value, timezone = "", inputId, onChange, error }: C
     }
   };
 
-  const displayError = error ?? debouncedError;
+  const displayErrorKey = error ?? debouncedErrorKey;
 
   return (
     <div className="space-y-3">
@@ -206,11 +239,11 @@ export function CronEditor({ value, timezone = "", inputId, onChange, error }: C
                 }
               }}
               placeholder="0 * * * *"
-              className={`h-7 flex-1 font-mono text-xs ${displayError ? "border-destructive" : ""}`}
+              className={`h-7 flex-1 font-mono text-xs ${displayErrorKey ? "border-destructive" : ""}`}
             />
           </div>
         </div>
-        {displayError && <p className="text-xs text-destructive">{displayError}</p>}
+        {displayErrorKey && <p className="text-xs text-destructive">{t(displayErrorKey)}</p>}
       </div>
     </div>
   );

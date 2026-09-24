@@ -137,6 +137,7 @@ export default defineConfig({
             { text: "工作流引擎", link: "/arch/17-workflow" },
             { text: "知识库", link: "/arch/11-knowledge" },
             { text: "Agent Sites", link: "/arch/18-agent-sites" },
+            { text: "插件市场", link: "/arch/24-plugin-market" },
           ],
         },
         {

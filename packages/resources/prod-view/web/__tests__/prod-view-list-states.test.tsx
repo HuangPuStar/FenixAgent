@@ -33,7 +33,7 @@ const MOCK_TRANSLATIONS: Record<string, string> = {
   create: "创建 ProdView",
   noViews: "暂无 ProdView",
   namePlaceholder: "输入视图名称",
-  loadError: "加载失败：{{message}}",
+  loadError: "加载失败",
   noPermission: "无权访问发布视图",
   noPermissionHint: "当前账号未被授权管理该组织的发布视图，请联系组织管理员开通权限。",
   retry: "重试",
@@ -256,9 +256,11 @@ describe("AgentProdViewsPage 列表加载状态", () => {
     viewResponses = [failure("SERVER_ERROR", "boom", 500), successViews()];
     await render(createElement(AgentProdViewsPage));
 
-    // 失败后：错误分支可见（含失败原因），并且不能退化成「暂无 ProdView」空态
+    // 失败后：错误分支可见，并且不能退化成「暂无 ProdView」空态。
+    // 文案只来自字典：后端信封原文（"boom"）是服务端措辞，不该出现在界面上（§9.3）
     expect(alertRegion()).not.toBeNull();
-    expect(text()).toContain("加载失败：boom");
+    expect(text()).toContain("加载失败");
+    expect(text()).not.toContain("boom");
     expect(text()).not.toContain("暂无 ProdView");
 
     const retry = buttonByText("重试");

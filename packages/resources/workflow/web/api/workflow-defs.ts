@@ -78,18 +78,32 @@ import { request } from "@fenix/web-runtime/api/request";
 
 const ENDPOINT = "/web/workflow-defs";
 
+/**
+ * 可取消调用的选项。
+ *
+ * §3.4 规定主动取消走 `request()` 的 `signal`，而不是靠 `useRequest` 的并发语义兜底：组件持有
+ * `AbortController`，换工作流 / 换组织 / 卸载时 abort。省略时与不传完全一致（`request()` 内部
+ * 仍按自己的超时信号工作），故既有调用点不受影响。
+ */
+export interface WorkflowRequestOptions {
+  /** 外部取消信号：与 `request()` 内部的超时信号合并，任一 abort 都会终止在途请求。 */
+  signal?: AbortSignal;
+}
+
 // ── API Methods ──
 
 export const workflowDefApi = {
   /** 列出工作流 */
-  list: () => request<WorkflowDefItem[]>(ENDPOINT, { method: "GET" }),
+  list: (options?: WorkflowRequestOptions) =>
+    request<WorkflowDefItem[]>(ENDPOINT, { method: "GET", signal: options?.signal }),
 
   /** 创建工作流 */
   create: (name: string, description?: string) =>
     request<WorkflowDefItem>(ENDPOINT, { method: "POST", body: { name, description } }),
 
   /** 获取单个工作流（含草稿内容） */
-  get: (workflowId: string) => request<WorkflowDefItem>(`${ENDPOINT}/${workflowId}`, { method: "GET" }),
+  get: (workflowId: string, options?: WorkflowRequestOptions) =>
+    request<WorkflowDefItem>(`${ENDPOINT}/${workflowId}`, { method: "GET", signal: options?.signal }),
 
   /** 保存草稿 */
   save: (workflowId: string, yaml: string) =>
@@ -107,8 +121,11 @@ export const workflowDefApi = {
     request<WorkflowDefItem>(`${ENDPOINT}/${workflowId}`, { method: "PATCH", body: data }),
 
   /** 获取版本历史 */
-  getVersions: (workflowId: string) =>
-    request<WorkflowVersionItem[]>(`${ENDPOINT}/${workflowId}/versions`, { method: "GET" }),
+  getVersions: (workflowId: string, options?: WorkflowRequestOptions) =>
+    request<WorkflowVersionItem[]>(`${ENDPOINT}/${workflowId}/versions`, {
+      method: "GET",
+      signal: options?.signal,
+    }),
 
   /** 获取特定版本 YAML */
   getVersion: (workflowId: string, version: number) =>
@@ -146,7 +163,8 @@ export const workflowDefApi = {
     }),
 
   /** 列出 workflow 的所有 trigger */
-  listTriggers: (workflowId: string) => request<TriggerItem[]>(`${ENDPOINT}/${workflowId}/triggers`, { method: "GET" }),
+  listTriggers: (workflowId: string, options?: WorkflowRequestOptions) =>
+    request<TriggerItem[]>(`${ENDPOINT}/${workflowId}/triggers`, { method: "GET", signal: options?.signal }),
 
   /** 删除 trigger */
   deleteTrigger: (workflowId: string, triggerId: string) =>

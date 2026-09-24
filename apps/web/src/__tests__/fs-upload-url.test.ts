@@ -1,6 +1,13 @@
 import { beforeEach, describe, expect, mock, test } from "bun:test";
 
-import { buildUploadUrl, downloadWorkspacePath, encodeWorkspaceUrlPath, fsApi } from "../api/fs";
+import {
+  buildPreviewSourceUrl,
+  buildUploadUrl,
+  downloadWorkspacePath,
+  encodeWorkspaceUrlPath,
+  fsApi,
+  readPreviewSource,
+} from "../api/fs";
 
 const fetchMock = {
   lastUrl: "",
@@ -62,6 +69,38 @@ describe("workspace path URL encoding", () => {
     await fsApi.writeFile("env_1", "user/abcd#1234.txt", "content");
     expect(fetchMock.lastUrl).toBe("/web/environments/env_1/fs/user/abcd%231234.txt");
     expect(fetchMock.method).toBe("PUT");
+  });
+});
+
+describe("preview source read", () => {
+  // 预览 URL 是域模块的产物（§5.8：组件不拼后端 URL）：包内的预览器只接收这里拼好的字符串。
+  test("builds the host file-proxy preview URL with encoded segments", () => {
+    expect(buildPreviewSourceUrl("env_1", "user/abcd#1234.txt")).toBe(
+      "/web/environments/env_1/fs/user/abcd%231234.txt?preview=true",
+    );
+    expect(buildPreviewSourceUrl("env 1", "user/a b.md")).toBe(
+      "/web/environments/env%201/fs/user/a%20b.md?preview=true",
+    );
+  });
+
+  // 取数原语注入给包内预览器：同源请求必须带 cookie（预览路由受会话鉴权），并透传调用方的 signal。
+  test("reads the preview bytes with credentials and the caller signal", async () => {
+    const controller = new AbortController();
+    let seenInit: RequestInit | undefined;
+    globalThis.fetch = mock(async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
+      fetchMock.lastUrl = String(input);
+      seenInit = init;
+      return new Response("hello", { status: 200, headers: { "Content-Type": "text/plain" } });
+    }) as unknown as typeof fetch;
+
+    const response = await readPreviewSource("/web/environments/env_1/fs/user/a.md?preview=true", {
+      signal: controller.signal,
+    });
+
+    expect(fetchMock.lastUrl).toBe("/web/environments/env_1/fs/user/a.md?preview=true");
+    expect(seenInit?.credentials).toBe("include");
+    expect(seenInit?.signal).toBe(controller.signal);
+    expect(await response.text()).toBe("hello");
   });
 });
 

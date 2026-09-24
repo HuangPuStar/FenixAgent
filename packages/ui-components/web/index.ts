@@ -83,6 +83,7 @@ import "./chat/css/chat.css";
 
 // components —— 复合组件
 export * from "./components/AgentCardList";
+export * from "./components/agent-catalog-index";
 export * from "./components/agent-master-detail-workspace";
 export * from "./components/ClosableTabPill";
 export * from "./components/file-icon-helper";
@@ -97,7 +98,6 @@ export * from "./components/preview/html-plugin";
 export * from "./components/preview/native-pdf-plugin";
 export * from "./components/preview/preview-source";
 export * from "./components/preview-rail";
-export * from "./components/WorkbenchPanel";
 // config —— 配置型业务无关容器
 export * from "./config/AdminKeyGate";
 export * from "./config/BatchActionBar";
@@ -135,6 +135,7 @@ export * from "./ui/connection-status";
 export * from "./ui/date-picker";
 export * from "./ui/dialog";
 export * from "./ui/dropdown-menu";
+export * from "./ui/error-fallback";
 export * from "./ui/form";
 export * from "./ui/hover-card";
 export * from "./ui/input";

@@ -139,8 +139,12 @@ export const FileTreeTab = forwardRef<FileTreeTabHandle, FileTreeTabProps>(funct
       manual: true,
       onSuccess: closeInputDialogAndRefresh,
       onError: (err) => {
+        // 上屏的是本包字典文案，不是 `err.message`：`unwrap` 抛出的 `ApiError.message` 就是后端错误信封
+        // 的原文（文件服务会把路径、syscall 之类内部措辞透传进来），只适合进上面的 `console.error`
+        // （§9.3「错误按稳定 code 映射文案」）。重命名/移动失败时用户能做的都是「改个名字再试」，
+        // 稳定码在这里不改变下一步动作，故直接落该操作的通用文案。
         console.error("Rename failed:", err);
-        toast.error(err.message || t("fileTree.renameFailed"));
+        toast.error(t("fileTree.renameFailed"));
       },
     },
   );
@@ -153,7 +157,7 @@ export const FileTreeTab = forwardRef<FileTreeTabHandle, FileTreeTabProps>(funct
       onSuccess: closeInputDialogAndRefresh,
       onError: (err) => {
         console.error("Move failed:", err);
-        toast.error(err.message || t("fileTree.moveFailed"));
+        toast.error(t("fileTree.moveFailed"));
       },
     },
   );
@@ -185,7 +189,7 @@ export const FileTreeTab = forwardRef<FileTreeTabHandle, FileTreeTabProps>(funct
     onSuccess: closeInputDialogAndRefresh,
     onError: (err) => {
       console.error("Mkdir failed:", err);
-      toast.error(err.message || t("fileTree.mkdirFailed"));
+      toast.error(t("fileTree.mkdirFailed"));
     },
   });
 
@@ -197,7 +201,7 @@ export const FileTreeTab = forwardRef<FileTreeTabHandle, FileTreeTabProps>(funct
       onSuccess: closeInputDialogAndRefresh,
       onError: (err) => {
         console.error("New file failed:", err);
-        toast.error(err.message || t("fileTree.newFileFailed"));
+        toast.error(t("fileTree.newFileFailed"));
       },
     },
   );
@@ -333,7 +337,11 @@ export const FileTreeTab = forwardRef<FileTreeTabHandle, FileTreeTabProps>(funct
       } catch (error) {
         if (controller.signal.aborted) return;
         setDownload({ path: nodePath, isDir, error: true });
-        toast.error(error instanceof Error && error.message ? error.message : t("fileTree.downloadFailed"));
+        // 下载失败同样只上屏字典文案（§9.3）：`downloadWorkspacePath` 抛出的是带后端信封原文的
+        // `ApiError`，其中的路径与 syscall 措辞属内部实现，只进日志。可见的失败态由
+        // `download.error` 承担，这条 toast 只补一句「为什么没下来」。
+        console.error("Download failed:", error);
+        toast.error(t("fileTree.downloadFailed"));
       } finally {
         if (downloadControllerRef.current === controller) downloadControllerRef.current = null;
       }

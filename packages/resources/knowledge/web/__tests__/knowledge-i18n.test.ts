@@ -111,4 +111,24 @@ describe("knowledge 字典完整性", () => {
       expect(zhFlat.has(key)).toBe(true);
     }
   });
+
+  // 检索测试的跨语言选项按后端语言名拼键（`retrieval.languages.${value}`，值来自
+  // CROSS_LANGUAGE_VALUES 的 10 个英文名）：漏一个界面上就会露出键名，且字面量扫描同样覆盖不到。
+  test("检索面板的 10 个语言名键齐备", () => {
+    for (const language of [
+      "English",
+      "Chinese",
+      "Spanish",
+      "French",
+      "German",
+      "Japanese",
+      "Korean",
+      "Vietnamese",
+      "Arabic",
+      "Turkish",
+    ]) {
+      expect(enFlat.has(`retrieval.languages.${language}`), `en 缺 retrieval.languages.${language}`).toBe(true);
+      expect(zhFlat.has(`retrieval.languages.${language}`), `zh 缺 retrieval.languages.${language}`).toBe(true);
+    }
+  });
 });

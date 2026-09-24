@@ -115,12 +115,15 @@ describe("本包 i18n 字典（models 命名空间）", () => {
   });
 
   // 迁移体量钉死：这三组是本次从别处收回的键，数量即「迁出方删除后迁入方不丢键」的证据。
-  test("迁入键组数量与迁移来源一致（modelGateway 171 / modelConfig 8 / admin 6）", () => {
+  // 2026-09-23 失败态收口：用量 / 预算两个 Tab 的查询失败块与主体下拉的失败提示补 3 键
+  // （`usagePage.queryFailed` / `budgetsPage.queryFailed` / `usagePage.subjectLoadFailed`），
+  // 因此 `modelGateway` 组由 171 变 174，总数由 410 变 413。
+  test("迁入键组数量与迁移来源一致（modelGateway 174 / modelConfig 8 / admin 6）", () => {
     const count = (set: Set<string>, prefix: string) => [...set].filter((key) => key.startsWith(`${prefix}.`)).length;
-    expect(count(enKeys, "modelGateway")).toBe(171);
+    expect(count(enKeys, "modelGateway")).toBe(174);
     expect(count(enKeys, "modelConfig")).toBe(8);
     expect(count(enKeys, "admin")).toBe(6);
-    expect(count(zhKeys, "modelGateway")).toBe(171);
+    expect(count(zhKeys, "modelGateway")).toBe(174);
     expect(count(zhKeys, "modelConfig")).toBe(8);
     expect(count(zhKeys, "admin")).toBe(6);
     // 宿主 `models` 命名空间的 41 组 200 键原样迁入；加上三组迁入键共 381 个叶子；
@@ -142,8 +145,10 @@ describe("本包 i18n 字典（models 命名空间）", () => {
     // 2026-09-22 前端去重（Master Key 门下沉共享组件库）把门的四段文案收进本包：`admin.{gateTitle,
     // gateDescription,gateInputPlaceholder,gateSubmit}` 4 键共 410——库内组件不绑定 i18n 命名空间，
     // 文案由消费方传入，措辞逐字沿用 sandbox 包同名键（同一条门在 sandbox / observer 的既有措辞）。
-    expect(enKeys.size).toBe(410);
-    expect(zhKeys.size).toBe(410);
+    // 2026-09-23 失败态收口新增 `usagePage.queryFailed` / `budgetsPage.queryFailed` /
+    // `usagePage.subjectLoadFailed` 3 键共 413。
+    expect(enKeys.size).toBe(413);
+    expect(zhKeys.size).toBe(413);
   });
 
   // 字典内不得再嵌一层命名空间前缀：宿主按 MODELS_NS 注册本文件，多一层前缀会让所有键变成 key 回显。

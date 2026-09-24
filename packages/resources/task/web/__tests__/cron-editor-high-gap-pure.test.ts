@@ -1,8 +1,7 @@
 import { describe, expect, test } from "bun:test";
 
 import { describeCron, PRESETS } from "../pages/agent-panel/components/CronEditor";
-
-const translatePreset = (key: string) => `翻译:${key}`;
+import { cronText } from "./cron-text-stub";
 
 describe("CronEditor describeCron 高覆盖纯逻辑", () => {
   // 分钟步长分支仅读取 cron 的第一个字段，覆盖常用边界和不同剩余字段组合。
@@ -23,7 +22,7 @@ describe("CronEditor describeCron 高覆盖纯逻辑", () => {
     ["指定月份", "*/9 10 3 4 *", "每 9 分钟"],
     ["指定星期", "*/11 11 * * 1", "每 11 分钟"],
   ])("格式化分钟步长：%s", (_name, cron, expected) => {
-    expect(describeCron(cron, translatePreset)).toBe(expected);
+    expect(describeCron(cron, cronText)).toBe(expected);
   });
 
   // 每日分支转换为中文十二小时制，并保留分钟补零与通配符语义。
@@ -49,7 +48,7 @@ describe("CronEditor describeCron 高覆盖纯逻辑", () => {
     ["下午十点", "19 22 * * *", "每天下午 10:19"],
     ["下午十一点", "20 23 * * *", "每天下午 11:20"],
   ])("格式化每日计划：%s", (_name, cron, expected) => {
-    expect(describeCron(cron, translatePreset)).toBe(expected);
+    expect(describeCron(cron, cronText)).toBe(expected);
   });
 
   // 每周分支需要将单日、离散日和连续范围稳定转换为星期名称。
@@ -80,7 +79,7 @@ describe("CronEditor describeCron 高覆盖纯逻辑", () => {
     ["范围通配分钟", "* 12 * * 2-3", "每周二、三中午 12"],
     ["前后空白", "  1 6 * * 4  ", "每周四上午 6:01"],
   ])("格式化每周计划：%s", (_name, cron, expected) => {
-    expect(describeCron(cron, translatePreset)).toBe(expected);
+    expect(describeCron(cron, cronText)).toBe(expected);
   });
 
   // 每月分支优先于年度分支，月份通配符时只显示日期和时刻。
@@ -96,7 +95,7 @@ describe("CronEditor describeCron 高覆盖纯逻辑", () => {
     ["三十一号通配分钟", "* 8 31 * *", "每月 31 号上午 8"],
     ["前后空白", "  5 9 9 * * ", "每月 9 号上午 9:05"],
   ])("格式化每月计划：%s", (_name, cron, expected) => {
-    expect(describeCron(cron, translatePreset)).toBe(expected);
+    expect(describeCron(cron, cronText)).toBe(expected);
   });
 
   // 指定月份时应输出紧凑的年周期描述，并继续使用十二小时制。
@@ -112,7 +111,7 @@ describe("CronEditor describeCron 高覆盖纯逻辑", () => {
     ["九月深夜", "9 23 9 9 *", "9月9号下午11:09"],
     ["十二月通配分钟", "* 0 31 12 *", "12月31号上午12"],
   ])("格式化年度计划：%s", (_name, cron, expected) => {
-    expect(describeCron(cron, translatePreset)).toBe(expected);
+    expect(describeCron(cron, cronText)).toBe(expected);
   });
 
   // 不满足五字段或不属于已支持模式的表达式必须安全返回 null，不得抛出异常。
@@ -128,14 +127,14 @@ describe("CronEditor describeCron 高覆盖纯逻辑", () => {
     ["通配月份", "0 1 * 1 1"],
     ["非数字小时", "0 abc * * *"],
   ])("拒绝无法描述的 cron：%s", (_name, cron) => {
-    expect(() => describeCron(cron, translatePreset)).not.toThrow();
-    expect(describeCron(cron, translatePreset)).toBeNull();
+    expect(() => describeCron(cron, cronText)).not.toThrow();
+    expect(describeCron(cron, cronText)).toBeNull();
   });
 
   // 纯格式化不得修改预设表或调用方提供的翻译函数以外的任何输入状态。
   test("格式化不会改写预设表", () => {
     const before = { ...PRESETS };
-    for (const cron of Object.values(PRESETS)) describeCron(cron, translatePreset);
+    for (const cron of Object.values(PRESETS)) describeCron(cron, cronText);
     expect(PRESETS).toEqual(before);
   });
 

@@ -4,12 +4,13 @@ import { copyTextToClipboard } from "@fenix/ui-components/lib/clipboard";
 import { Button } from "@fenix/ui-components/ui/button";
 import { Spinner } from "@fenix/ui-components/ui/spinner";
 import { NS } from "@fenix/web-runtime/i18n/namespace";
+import { useRequest } from "ahooks";
 import { Check, Copy, X } from "lucide-react";
-import { useCallback, useEffect, useState } from "react";
+import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
 import { hindsightApi } from "../../../api/hindsight";
-import { type HindsightFailure, toHindsightFailure } from "../failure";
+import { toHindsightFailure } from "../failure";
 import { memoryTypeTitle } from "../memory-type-title";
 import type { MemoryDetail, MemoryTableRow } from "../types";
 import { HindsightFailureNotice } from "./HindsightFailureNotice";
@@ -26,36 +27,27 @@ interface MemoryDetailPanelProps {
 export function MemoryDetailPanel({ memory, onClose, compact = false, inPanel = false }: MemoryDetailPanelProps) {
   const { t } = useTranslation(NS.HINDSIGHT);
   const [copiedId, setCopiedId] = useState<string | null>(null);
-  const [fullMemory, setFullMemory] = useState<(MemoryDetail & MemoryTableRow) | null>(null);
-  const [loading, setLoading] = useState(false);
-  const [failure, setFailure] = useState<HindsightFailure | null>(null);
 
   // 取数：失败不再只写 `console.error` 后静默回落到行摘要（用户看不出「详情没取到」与「详情就是这样」），
-  // 而是置失败态由下方分支渲染可见的失败块，重试入口重新发起同一次请求。
-  const loadMemory = useCallback(async (memoryId: string) => {
-    setLoading(true);
-    setFailure(null);
-    try {
-      setFullMemory(await hindsightApi.getMemory(memoryId));
-    } catch (err) {
-      console.error("Failed to fetch memory details:", err);
-      setFullMemory(null);
-      setFailure(toHindsightFailure(err));
-    } finally {
-      setLoading(false);
-    }
-  }, []);
+  // 而是由下面的 `failure` 分支渲染可见的失败块，重试入口重新发起同一次请求。
+  // `memory?.id` 既是请求参数也是刷新依赖：换一条记忆即重取，没有 id 时不发请求。
+  const {
+    data: loadedMemory,
+    loading,
+    error: loadError,
+    refresh: refreshMemory,
+  } = useRequest(() => hindsightApi.getMemory(memory.id), {
+    ready: !!memory?.id,
+    refreshDeps: [memory?.id],
+    onError: (err) => console.error("Failed to fetch memory details:", err),
+  });
 
-  // 获取完整记忆数据
-  useEffect(() => {
-    const memoryId = memory?.id;
-    if (!memoryId) {
-      setFullMemory(null);
-      setFailure(null);
-      return;
-    }
-    void loadMemory(memoryId);
-  }, [memory?.id, loadMemory]);
+  // 失败一律不展示详情：`useRequest` 失败时保留上一次成功的数据，而这里的数据可能属于**另一条记忆**
+  // （标题取自新选中项、正文是旧的那条）。故失败时与改造前的 `setFullMemory(null)` 同形，回落到行摘要；
+  // 没有 id（不取数）时同样如此——与改造前 `!memoryId` 分支里的清空一致。
+  // 类型沿用改造前那份 state 的写法：详情与表格行字段合并后供视图消费（`fact_type` 只在前者上）。
+  const fullMemory: (MemoryDetail & MemoryTableRow) | null = loadError || !memory?.id ? null : (loadedMemory ?? null);
+  const failure = loadError ? toHindsightFailure(loadError) : null;
 
   const displayMemory = fullMemory || ({ ...memory, type: memory.fact_type } as MemoryDetail & MemoryTableRow);
 
@@ -96,7 +88,7 @@ export function MemoryDetailPanel({ memory, onClose, compact = false, inPanel = 
             failure={failure}
             titleKey="memoryDetailPanel.loadFailed"
             retryKey="memoryDetailPanel.retry"
-            onRetry={() => void loadMemory(memory.id)}
+            onRetry={refreshMemory}
             className="py-12"
           />
         ) : (

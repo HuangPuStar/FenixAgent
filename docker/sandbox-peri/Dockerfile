@@ -40,14 +40,16 @@ ENV PATH="/opt/.peri-binary:$PATH"
 RUN mkdir -p /app/workspaces
 VOLUME ["/app/workspaces"]
 
+# peri 的插件存储复用 Claude Code 布局（`~/.claude/plugins`），插件随镜像固化在 /root/.claude。
 RUN peri plugin marketplace add vectorize-io/hindsight
 RUN peri plugin install hindsight-memory
 
 # peri ultracode 依赖 workflow 库
 RUN npm i -g @peri-code/workflow
 
-ENV AGENT_TYPE=ccb
-# Peri 客户端模式，额外生成 .peri/settings.json
-ENV IS_PERI=1
-# acp-runtime 启动 CCB agent 并注册到 RCS
+# peri 是独立引擎插件（@fenix/peri）：节点直接以 peri handler 启动 peri CLI。
+# 不再走「ccb 槽位跑 peri」，因此也不需要 IS_PERI 与 RCS_CCB_COMMAND/RCS_CCB_ARGS——
+# workspace 物化由 peri handler 完成，`.peri/settings.json` 无条件写出。
+ENV AGENT_TYPE=peri
+# acp-runtime 启动 peri agent 并注册到 RCS
 CMD ["bun", "/usr/local/bin/acp-runtime.js", "peri", "acp"]

@@ -26,6 +26,7 @@
     "mountFailed": "挂载失败",
     "unmountFailed": "卸载失败",
     "sitesLoadFailed": "加载站点列表失败",
+    "retry": "重试",
     "tasks": "定时任务",
     "tasksEmpty": "暂无绑定的定时任务",
     "tasksManage": "前往管理",
@@ -46,10 +47,12 @@
     "openInNewTab": "在新标签页打开",
     "loading": "加载站点中...",
     "loadingSites": "加载 Agent 绑定的站点...",
-    "loadFailed": "加载站点失败：{{message}}",
+    "loadFailed": "加载站点失败",
     "loadTimeout": "站点加载超时",
     "loadTimeoutHint": "站点可能在后台继续加载，可刷新重试或在新标签页打开",
     "traceToCreatorTooltip": "切换到创建此站点的智能体",
+    "traceToCreatorNotFound": "该智能体暂未激活，无法跳转",
+    "navigateFailed": "跳转失败",
     "notCreatorTooltip": "此站点由其他智能体创建，你只能操作数据，无法修改站点文件。点击溯源切换到创建者智能体。"
   },
   "fileTree": {

@@ -193,7 +193,7 @@ function FileTreeNode({
       ref={dragHandle}
       style={{ ...style, paddingLeft: node.level * INDENT + 8 }}
       className={cn(
-        "group/row relative box-border flex max-w-full min-w-0 cursor-pointer items-center gap-0.5 overflow-hidden rounded-xs pe-1.5",
+        "group/row relative box-border flex max-w-full min-w-0 cursor-pointer items-center gap-0.5 overflow-hidden rounded-xs pe-1.5 h-full",
         // 原 `.is-selected` 与 `:hover` 两条规则里，选中态在靠后位置整体覆盖悬停底色与文字色，
         // 这里按互斥两态写出，避免两条同属性工具类靠生成顺序决定胜负。
         node.isSelected ? "bg-brand/10 text-brand" : "text-text-secondary hover:bg-surface-2/70",

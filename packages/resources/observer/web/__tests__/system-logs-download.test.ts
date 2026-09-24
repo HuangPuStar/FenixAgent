@@ -1,4 +1,4 @@
-// 日志下载的数据流用例（AdminLogsPage → api/system-logs.downloadSystemLog）。
+// 日志下载的数据流用例（AdminLogsPage → api/system-logs 的 systemLogsApi.download）。
 //
 // 覆盖的是「失败如何分类、错误往哪走」这条关键数据流：下载端点的失败必须归一为统一的 ApiError，
 // 401/403 归 UNAUTHORIZED（页面据此清 master key 回门），其余归非鉴权错误（页面给可见提示）。
@@ -15,7 +15,7 @@
 
 import { afterEach, describe, expect, test } from "bun:test";
 import { ApiError } from "@fenix/web-runtime/api/request";
-import { downloadSystemLog } from "../api/system-logs";
+import { systemLogsApi } from "../api/system-logs";
 
 interface FetchCall {
   url: string;
@@ -56,12 +56,12 @@ afterEach(() => {
   else Reflect.deleteProperty(globalThis, "sessionStorage");
 });
 
-describe("downloadSystemLog", () => {
+describe("systemLogsApi.download", () => {
   // 401 必须归一为 UNAUTHORIZED：页面靠这个码清 admin key 并退回 AdminKeyGate。
   test("401 归一为 UNAUTHORIZED", async () => {
     const fetcher = stubFetch(() => errorEnvelope(401, "UNAUTHORIZED", "Invalid system API key"));
 
-    const error = await downloadSystemLog("app.log").catch((err: unknown) => err);
+    const error = await systemLogsApi.download("app.log").catch((err: unknown) => err);
 
     expect(error).toBeInstanceOf(ApiError);
     expect((error as ApiError).code).toBe("UNAUTHORIZED");
@@ -75,7 +75,7 @@ describe("downloadSystemLog", () => {
   test("错误体不是错误信封时按状态码兜底分类", async () => {
     const fetcher = stubFetch(() => new Response("<html>bad gateway</html>", { status: 502 }));
 
-    const error = await downloadSystemLog("app.log").catch((err: unknown) => err);
+    const error = await systemLogsApi.download("app.log").catch((err: unknown) => err);
 
     expect(error).toBeInstanceOf(ApiError);
     expect((error as ApiError).code).toBe("SERVER_ERROR");
@@ -86,7 +86,7 @@ describe("downloadSystemLog", () => {
   test("业务错误保留服务端错误码", async () => {
     const fetcher = stubFetch(() => errorEnvelope(404, "NOT_FOUND", "Log file not found"));
 
-    const error = await downloadSystemLog("rotated.log").catch((err: unknown) => err);
+    const error = await systemLogsApi.download("rotated.log").catch((err: unknown) => err);
 
     expect(error).toBeInstanceOf(ApiError);
     expect((error as ApiError).code).toBe("NOT_FOUND");
@@ -105,7 +105,7 @@ describe("downloadSystemLog", () => {
       () => new Response(new Blob(["2026-09-20 booted\n"]), { status: 200, headers: { "content-type": "text/plain" } }),
     );
 
-    const blob = await downloadSystemLog("app.log");
+    const blob = await systemLogsApi.download("app.log");
 
     expect(new Headers(fetcher.calls[0].init?.headers).get("authorization")).toBe("Bearer master-key");
     expect(fetcher.calls[0].init?.credentials).toBe("include");

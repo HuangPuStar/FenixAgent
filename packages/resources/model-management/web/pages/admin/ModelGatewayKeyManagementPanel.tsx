@@ -12,7 +12,7 @@ import { Trash2 } from "lucide-react";
 import { useCallback, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
-import { listModelGatewayKeys, type ModelGatewayManagedKey, removeModelGatewayKeys } from "../../api/model-gateway.ts";
+import { type ModelGatewayManagedKey, modelGatewayApi } from "../../api/model-gateway.ts";
 import { MODELS_NS } from "../../i18n/namespace";
 import { GATEWAY_LOADING_CLASS, GatewayRefreshButton, ModelGatewayTable } from "./model-gateway-shared";
 
@@ -33,11 +33,11 @@ export function ModelGatewayKeyManagementPanel({ onAuthFailure }: { onAuthFailur
     },
     [onAuthFailure, t],
   );
-  const keysRequest = useRequest(() => listModelGatewayKeys(page), {
+  const keysRequest = useRequest(() => modelGatewayApi.listKeys(page), {
     refreshDeps: [page],
     onError: reportError,
   });
-  const removeRequest = useRequest(() => removeModelGatewayKeys(selectedIds), {
+  const removeRequest = useRequest(() => modelGatewayApi.removeKeys(selectedIds), {
     manual: true,
     onSuccess: (result) => {
       setConfirmOpen(false);

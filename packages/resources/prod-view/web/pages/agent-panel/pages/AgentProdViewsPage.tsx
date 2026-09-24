@@ -41,7 +41,9 @@ export function AgentProdViewsPage() {
     },
     {
       onError: (err) => {
-        toast.error(t("loadError", { message: (err as Error).message }));
+        // 原始 error 进日志，上屏只给字典文案（§9.3）：`err.message` 是 `ApiError.message`（后端信封原文）。
+        console.error("[prod-view] Failed to load production views", err);
+        toast.error(t("loadError"));
       },
     },
   );
@@ -59,11 +61,16 @@ export function AgentProdViewsPage() {
     messages: {
       createSuccess: t("createSuccess"),
       updateSuccess: t("updateSuccess"),
+      saveFailed: t("saveFailed"),
       agentRequired: t("agentRequired"),
     },
     onSaved: refresh,
   });
-  const deletion = useProdViewDelete({ successMessage: t("deleteSuccess"), onDeleted: refresh });
+  const deletion = useProdViewDelete({
+    successMessage: t("deleteSuccess"),
+    failureMessage: t("deleteFailed"),
+    onDeleted: refresh,
+  });
 
   /** 401/403（request 层把两者统一归一为 UNAUTHORIZED）不重试：重试不会改变授权结果，给按钮是无意义的入口。 */
   const unauthorized = loadError instanceof ApiError && loadError.code === "UNAUTHORIZED";
@@ -93,7 +100,8 @@ export function AgentProdViewsPage() {
           tone="danger"
           role="alert"
           icon={<AlertTriangle />}
-          title={unauthorized ? t("noPermission") : t("loadError", { message: loadError.message })}
+          // 标题只取字典（§9.3）：原先把 `loadError.message` 插进 `{{message}}` 槽位，等于回显后端原文
+          title={unauthorized ? t("noPermission") : t("loadError")}
           description={unauthorized ? t("noPermissionHint") : undefined}
           action={
             unauthorized ? undefined : { label: t("retry"), icon: <RefreshCw />, onClick: refresh, disabled: loading }

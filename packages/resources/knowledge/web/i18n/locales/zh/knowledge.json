@@ -38,10 +38,15 @@
     "renameTitle": "导入知识库",
     "renameDescription": "为知识库设置一个名称，方便在平台中识别",
     "nameLabel": "知识库名称",
-    "namePlaceholder": "输入知识库名称"
+    "namePlaceholder": "输入知识库名称",
+    "importBtn": "导入",
+    "importing": "导入中",
+    "confirmImport": "确认导入",
+    "cancel": "取消"
   },
   "embeddingModel": {
     "listLoadFailed": "加载模型列表失败",
+    "retry": "重试",
     "deleteConfirm": "确认删除实例「{{instance}}」？\n将移除该实例（供应商 {{provider}} 下）及其所有模型配置（{{count}} 个）。正在使用这些模型的知识库检索将会失败，且不可恢复。",
     "instanceDeleted": "已删除实例",
     "deleteFailed": "删除失败",
@@ -106,7 +111,12 @@
     "uploaded": "资源已上传",
     "uploadFailed": "上传失败",
     "resourceDeleted": "资源已删除",
-    "deleteResourceFailed": "删除资源失败"
+    "deleteResourceFailed": "删除资源失败",
+    "listUnassociatedFailed": "获取可导入知识库失败",
+    "importFailed": "导入失败",
+    "imported": "「{{name}}」导入成功",
+    "remoteDeleted": "该知识库已在 RAGFlow 中被删除，无法查看详情",
+    "toggleResourceFailed": "更新资源状态失败"
   },
   "reparse": {
     "btn": "重新解析",
@@ -202,7 +212,10 @@
     "deleteTitle": "确认删除知识库",
     "deleteDescription": "确定删除知识库 \"{{name}}\" 吗？",
     "deleteResourceTitle": "确认删除文档",
-    "deleteResourceDescription": "确定删除文档 \"{{name}}\" 吗？此操作不可撤销。"
+    "deleteResourceDescription": "确定删除文档 \"{{name}}\" 吗？此操作不可撤销。",
+    "overwriteTitle": "覆盖同名文件",
+    "overwriteDescription": "以下文件已存在，上传将覆盖原有文件：\n{{names}}",
+    "overwriteNameSeparator": "、"
   },
   "preview": {
     "title": "预览：{{name}}",
@@ -233,6 +246,18 @@
     "useKg": "知识图谱检索",
     "crossLanguages": "跨语言搜索",
     "selectAll": "全部",
+    "languages": {
+      "English": "英语",
+      "Chinese": "中文",
+      "Spanish": "西班牙语",
+      "French": "法语",
+      "German": "德语",
+      "Japanese": "日语",
+      "Korean": "韩语",
+      "Vietnamese": "越南语",
+      "Arabic": "阿拉伯语",
+      "Turkish": "土耳其语"
+    },
     "metaDataFilter": "元数据过滤",
     "metaFilterDisabled": "禁用",
     "metaFilterAuto": "自动",

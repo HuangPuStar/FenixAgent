@@ -8,7 +8,6 @@
   "updateBindingFailed": "Failed to update binding status",
   "deleteBindingFailed": "Failed to delete binding",
   "bindingDeleted": "Binding deleted",
-  "selectPlatformAndAgent": "Please select a platform and Agent",
   "createBindingFailed": "Failed to create binding",
   "unknownError": "Unknown error",
   "bindingCreated": "Binding created",
@@ -49,6 +48,8 @@
     "agentPlaceholder": "Select Agent",
     "cancel": "Cancel",
     "create": "Create",
-    "creating": "Creating..."
+    "creating": "Creating...",
+    "platformRequired": "Platform is required",
+    "agentRequired": "Select an Agent"
   }
 }

@@ -181,9 +181,15 @@ README 与守卫注释里「identity 是上游迁移中间态」的说明文字�
   0 命中。删除属共享文件波次，本包只记录清单。
   `panelMode.tasks`（单数）不在此列：宿主 `apps/web/src/components/agent-panel/TopModeTabs.tsx:23`
   仍用它渲染面板标签，属宿主面板外壳的文案。
-- **6 个 `error.*` 键无读取方**（`invalidHeaders` / `nameRequired` / `cronRequired` / `urlRequired` /
-  `agentRequired` / `promptRequired`）：迁移前的宿主 `TaskForm` 也只渲染 zod message，属既有死键；保留是为了
-  不与 EE 侧可能的使用方冲突，删除需一次全仓核对（W5 收口或 EE 复盘）。
+- **`error.*` 键的读取方已到位（2026-09-23 第 19 轮更新）**：本条原记「6 个 `error.*` 键无读取方」（`invalidHeaders` /
+  `nameRequired` / `cronRequired` / `urlRequired` / `agentRequired` / `promptRequired`）。前 5 个现已由
+  `agent-tasks-utils.ts` 消费——`taskFormSchema` 的 `message` 与 `validateCronExpression` 的返回值都改成这些键
+  （译发生在 `TaskForm` 的字段错误行与 `CronEditor` 的防抖错误行），同批新增 `cronFieldCount` / `cronInvalid` /
+  `nameTooLong` / `timezoneInvalid` / `timeout*` / `*TooLong` / `urlInvalid` / `headersNotObject` 共 14 个键；
+  键与字典的同步由 `web/__tests__/task-i18n.test.ts` 的「校验键都在字典内」一例钉住（zod 的 `message` 是裸字符串，
+  字面量 `t()` 扫描扫不到它）。**`invalidHeaders` 仍是唯一无读取方**：Headers 的校验走的是
+  `headersNotObject`（口径是「值为字符串的 JSON 对象」，比「不是有效的 JSON」更准确），保留该键同样是为了
+  不与 EE 侧可能的使用方冲突，删除需一次全仓核对。
 - **表定义已迁入本包（§1.7 B12），台账条目随之删除**：`apps-boundary @fenix/resource-task` 的条目
   （owner 1.7、rationale「实测 6 处导入 / 6 个文件，全部为 `@server/db/schema` 表定义导入」）已失效并删除，
   台账至此 17 条。`package.json` 因此新增 `@fenix/identity`（`workspace:*`）——`scheduled_task_v2.user_id`

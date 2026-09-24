@@ -1,4 +1,4 @@
-# Sandbox Peri 镜像 — CCB + Peri 客户端模式，连接远程 RCS 主服务器
+# Sandbox Peri 镜像 — peri 原生引擎（AGENT_TYPE=peri），连接远程 RCS 主服务器
 # Usage:
 #   docker compose -f docker/sandbox-peri/docker-compose.yml build
 #   docker compose -f docker/sandbox-peri/docker-compose.yml up -d
@@ -15,9 +15,6 @@ services:
             RCS_URL: ${RCS_URL:?RCS_URL is required}
             RCS_SECRET: ${RCS_SECRET:?RCS_SECRET is required}
             RCS_MACHINE_ID: ${RCS_MACHINE_ID:?RCS_MACHINE_ID is required}
-            # 下面的 command 要进行替换
-            RCS_CCB_COMMAND: peri
-            RCS_CCB_ARGS: acp
         volumes:
             # 本地开发：直接挂载宿主机 workspaces 目录，保证 file API / 前端文件面板
             # 与容器内 agent 看到的是同一份文件（避免 named volume 造成的文件分裂）。

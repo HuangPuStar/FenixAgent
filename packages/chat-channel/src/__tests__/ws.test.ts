@@ -7,7 +7,7 @@ import {
   MAX_YJS_SYNC_PAYLOAD_BYTES,
   YJS_UPDATE_FRAME_TYPE,
 } from "../protocol/update-frame";
-import { createYjsWsClient } from "../transport/ws";
+import { createYjsWsClient, SEND_BACKPRESSURE_THRESHOLD_BYTES } from "../transport/ws";
 
 type ScheduledTimer = {
   callback: () => void;
@@ -22,7 +22,10 @@ class FakeWebSocket {
   static instances: FakeWebSocket[] = [];
 
   readyState = FakeWebSocket.CONNECTING;
+  /** 未写入内核缓冲的排队字节数；真实浏览器始终提供，测试按需赋值以触发发送背压。 */
+  bufferedAmount = 0;
   closeCalls = 0;
+  sent: string[] = [];
   onclose: ((event: CloseEvent) => void) | null = null;
   onerror: (() => void) | null = null;
   onmessage: ((event: MessageEvent) => void) | null = null;
@@ -57,7 +60,9 @@ class FakeWebSocket {
     this.onmessage?.({ data } as MessageEvent);
   }
 
-  send(_data: string): void {}
+  send(data: string): void {
+    this.sent.push(data);
+  }
 }
 
 const originalWebSocket = Object.getOwnPropertyDescriptor(globalThis, "WebSocket");
@@ -408,6 +413,42 @@ describe("createYjsWsClient", () => {
 
     expect(states).toEqual(["connecting", "error"]);
     expect(timers).toHaveLength(0);
+  });
+
+  // 发送背压在阈值内不得干预：正常帧照常写入 socket 且返回 true，调用方据此判定"已发出"。
+  test("阈值内的发送正常写入 socket 并返回 true", () => {
+    const client = createClient();
+    client.connect();
+    const socket = FakeWebSocket.instances[0];
+    socket?.open();
+    if (socket) socket.bufferedAmount = SEND_BACKPRESSURE_THRESHOLD_BYTES;
+
+    expect(client.send({ type: "keep_alive" })).toBe(true);
+    expect(socket?.sent).toEqual([JSON.stringify({ type: "keep_alive" })]);
+  });
+
+  // 发送背压（§8.6）：排队字节超过 64 KB 软阈值时必须拒绝本次发送——既不写入 socket，
+  // 也不静默丢弃（返回 false 交调用方反馈），且不得借机 close 或改连接状态（§8.3 的重连
+  // 与终态码策略只能由关闭码策略表决定）。
+  test("超过 64 KB 软阈值时拒绝发送且不触碰连接状态", () => {
+    const states: string[] = [];
+    const client = createClient((state) => states.push(state));
+    client.connect();
+    const socket = FakeWebSocket.instances[0];
+    socket?.open();
+    if (socket) socket.bufferedAmount = SEND_BACKPRESSURE_THRESHOLD_BYTES + 1;
+
+    expect(client.send({ type: "keep_alive" })).toBe(false);
+    expect(socket?.sent).toHaveLength(0);
+    expect(socket?.closeCalls).toBe(0);
+    expect(timers).toHaveLength(0);
+    expect(states).toEqual(["connecting", "connected"]);
+  });
+
+  // 未连接时发送同样以 false 表达失败（保持既有语义，与背压拒绝同一条返回通道）。
+  test("未连接时发送返回 false", () => {
+    const client = createClient();
+    expect(client.send({ type: "keep_alive" })).toBe(false);
   });
 });
 

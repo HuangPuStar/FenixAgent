@@ -23,10 +23,6 @@ import {
   parseOptionalNonNegativeNumber,
 } from "./agent-models-utils";
 
-function errorMessage(error: unknown, fallback: string): string {
-  return error instanceof Error && error.message ? error.message : fallback;
-}
-
 /**
  * `limit_config` 列的 jsonb 读取：返回可安全改写的一层浅拷贝。
  *
@@ -118,10 +114,7 @@ export function useAgentModelsData() {
         else {
           modelsByProvider[key] = [];
           detailFailures.push(provider.name || provider.id);
-          console.error(
-            t("loadProviderDetailError", { message: errorMessage(result.reason, t("unknownError")) }),
-            result.reason,
-          );
+          console.error(t("loadProviderDetailError"), result.reason);
         }
       });
       return { providers, modelsByProvider, detailFailures };
@@ -129,7 +122,8 @@ export function useAgentModelsData() {
     {
       onError: (error) => {
         console.error(t("loadModelsError"), error);
-        toast.error(t("loadError", { message: errorMessage(error, t("unknownError")) }));
+        // 上屏只给字典文案（§9.3）：信封原文留在上面的日志里
+        toast.error(t("loadError"));
       },
     },
   );
@@ -172,11 +166,12 @@ export function useAgentModelsData() {
         // Provider 与模型由现有 API 分步写入；失败后立即重读服务端真相，避免 UI 假装整批回滚。
         refreshDomain("providers");
         dispatchConfigChange("models");
-        const message = errorMessage(error, t("unknownError"));
+        console.error(t("saveProvider.errorGeneric"), error);
+        // 按稳定 error code 分流（§9.3）：重名给可执行的改名提示，其余一律通用文案
         toast.error(
           error instanceof ApiError && error.code === "ALREADY_EXISTS"
             ? t("saveProvider.duplicateName", { name: "" })
-            : t("saveProvider.errorGeneric", { message }),
+            : t("saveProvider.errorGeneric"),
         );
       },
     },
@@ -188,7 +183,10 @@ export function useAgentModelsData() {
       toast.success(t("deleteProvider.success"));
       refreshDomain("providers");
     },
-    onError: (error) => toast.error(t("deleteProvider.error", { message: errorMessage(error, t("unknownError")) })),
+    onError: (error) => {
+      console.error(t("deleteProvider.error"), error);
+      toast.error(t("deleteProvider.error"));
+    },
   });
 
   const togglePublic = useRequest(
@@ -200,8 +198,10 @@ export function useAgentModelsData() {
     {
       manual: true,
       onSuccess: () => refreshDomain("providers"),
-      onError: (error) =>
-        toast.error(t("saveProvider.errorGeneric", { message: errorMessage(error, t("unknownError")) })),
+      onError: (error) => {
+        console.error(t("saveProvider.errorGeneric"), error);
+        toast.error(t("saveProvider.errorGeneric"));
+      },
     },
   );
 
@@ -218,8 +218,10 @@ export function useAgentModelsData() {
         toast.success(created ? t("modelSubrow.saveModel.successCreate") : t("modelSubrow.saveModel.successUpdate"));
         refreshDomain("models");
       },
-      onError: (error) =>
-        toast.error(t("modelSubrow.saveModel.errorGeneric", { message: errorMessage(error, t("unknownError")) })),
+      onError: (error) => {
+        console.error(t("modelSubrow.saveModel.errorGeneric"), error);
+        toast.error(t("modelSubrow.saveModel.errorGeneric"));
+      },
     },
   );
 
@@ -231,8 +233,10 @@ export function useAgentModelsData() {
         toast.success(t("modelSubrow.deleteModel.success"));
         refreshDomain("models");
       },
-      onError: (error) =>
-        toast.error(t("modelSubrow.deleteModel.error", { message: errorMessage(error, t("unknownError")) })),
+      onError: (error) => {
+        console.error(t("modelSubrow.deleteModel.error"), error);
+        toast.error(t("modelSubrow.deleteModel.error"));
+      },
     },
   );
 
@@ -286,8 +290,10 @@ export function useAgentModelsData() {
         toast.success(t("testDialog.addModelSuccess", { modelId }));
         refreshDomain("models");
       },
-      onError: (error) =>
-        toast.error(t("testDialog.addModelError", { message: errorMessage(error, t("unknownError")) })),
+      onError: (error) => {
+        console.error(t("testDialog.addModelError"), error);
+        toast.error(t("testDialog.addModelError"));
+      },
     },
   );
 

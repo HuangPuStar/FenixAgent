@@ -13,10 +13,12 @@
 import { ACPMain } from "@fenix/ui-components/chat/shell/ACPMain";
 import type { BoundMcpOption } from "@fenix/ui-components/chat/shell/chat-interface-types";
 import { PublicErrorCard } from "@fenix/ui-components/chat/view/PublicErrorCard";
+import { ErrorFallback } from "@fenix/ui-components/ui/error-fallback";
 import { Spinner } from "@fenix/ui-components/ui/spinner";
 import { TooltipProvider } from "@fenix/ui-components/ui/tooltip";
 import { Bot } from "lucide-react";
 import type { ReactNode } from "react";
+import { ErrorBoundary } from "react-error-boundary";
 import { useTranslation } from "react-i18next";
 import { NS } from "@/src/i18n";
 import { useChatPanelPorts } from "./chat-panel-ports";
@@ -73,7 +75,25 @@ interface ChatPanelProps {
   boundMcps?: readonly BoundMcpOption[];
 }
 
-export function ChatPanel({
+export function ChatPanel(props: ChatPanelProps) {
+  return (
+    <ErrorBoundary
+      FallbackComponent={ErrorFallback}
+      onError={(error, info) => console.error("[ChatPanel] 渲染失败", error, info)}
+    >
+      <ChatPanelView {...props} />
+    </ErrorBoundary>
+  );
+}
+
+/**
+ * 聊天交互面板（§7.1 放置矩阵第 3 行）：根组件裹一层错误边界，聊天区崩溃不牵连同屏的侧栏与输出面板。
+ *
+ * 边界裹在**导出**处而不是某个 `return` 上：本组件有欢迎态 / 错误卡 / 登录中 / 连接中 / 已连接五个出口，
+ * 逐出口加边界既写五遍也漏掉 `useChatPanelRuntime` 这类运行时 hook 的抛错。降级 UI 取统一 `ErrorFallback`
+ * （`panel` 形态，撑满原面板位置），重试即重新挂载整块面板。
+ */
+function ChatPanelView({
   agentId,
   sessionId,
   hideSidebar,

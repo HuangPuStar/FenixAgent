@@ -1,7 +1,9 @@
 import { ConfirmDialog } from "@fenix/ui-components/config/ConfirmDialog";
+import { EmptyState } from "@fenix/ui-components/config/EmptyState";
 import { unwrap } from "@fenix/web-runtime/api/request";
-import { Copy, Globe, Inbox, Power, RefreshCw, Trash2 } from "lucide-react";
-import { useCallback, useEffect, useState } from "react";
+import { useRequest } from "ahooks";
+import { AlertTriangle, Copy, Globe, Inbox, Power, RefreshCw, Trash2 } from "lucide-react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
 import { type TriggerItem, workflowDefApi } from "../../../api/workflow-defs";
@@ -9,8 +11,6 @@ import { InlineLoader } from "./InlineLoader";
 import { PanelHeader } from "./PanelHeader";
 
 export function TriggerPanel({ workflowId, onClose }: { workflowId?: string; onClose: () => void }) {
-  const [triggers, setTriggers] = useState<TriggerItem[]>([]);
-  const [loading, setLoading] = useState(true);
   const [creating, setCreating] = useState(false);
   const [copiedId, setCopiedId] = useState<string | null>(null);
   // 待确认的目标触发器 id：原生 confirm 的同步返回值无法保留，改成「先挂起目标、由 ConfirmDialog 回调再执行」。
@@ -19,23 +19,47 @@ export function TriggerPanel({ workflowId, onClose }: { workflowId?: string; onC
   const [regenerateTargetId, setRegenerateTargetId] = useState<string | null>(null);
   const { t } = useTranslation("workflows");
 
-  const loadData = useCallback(async () => {
-    if (!workflowId) return;
-    setLoading(true);
-    try {
-      const list = await unwrap(workflowDefApi.listTriggers(workflowId));
-      setTriggers(Array.isArray(list) ? list : []);
-    } catch (err) {
-      console.error(err);
-      toast.error(t("editor.trigger_load_failed"));
-    } finally {
-      setLoading(false);
-    }
-  }, [workflowId, t]);
+  // 在途请求的取消句柄（§3.4）：后发请求取消先发，卸载时释放连接。
+  // 取消用 `signal` 而不是「请求序号令牌」——令牌只能丢弃结果，连接仍在服务端跑完。
+  const abortRef = useRef<AbortController | null>(null);
+  useEffect(() => () => abortRef.current?.abort(), []);
 
-  useEffect(() => {
-    loadData();
-  }, [loadData]);
+  /**
+   * 触发器列表取数（§3.4）：三态由 `data` / `loading` / `error` 派生，不再手写
+   * `useCallback` + `useEffect` + `setState`；重试与增删改后的重查统一走 `refresh`。
+   *
+   * `ready: !!workflowId` 表达条件请求；`refreshDeps: [workflowId]` 让换工作流时重查。
+   * 语义差异已记账：旧实现在 `!workflowId` 时提前 return，`loading` 初始化成 `true` 后无人复位，
+   * 面板会永久停在 spinner；新实现不发请求、落空态。
+   */
+  const {
+    data: triggers = [],
+    loading,
+    error,
+    refresh: reloadTriggers,
+    mutate: mutateTriggers,
+  } = useRequest(
+    async () => {
+      if (!workflowId) return [];
+      abortRef.current?.abort();
+      const controller = new AbortController();
+      abortRef.current = controller;
+      const list = await unwrap(workflowDefApi.listTriggers(workflowId, { signal: controller.signal }));
+      return Array.isArray(list) ? list : [];
+    },
+    {
+      ready: !!workflowId,
+      refreshDeps: [workflowId],
+      onError: (err) => {
+        console.error(err);
+        // 失败同时给持久失败块（下方 `role="alert"`）与 toast：前者可重试，后者在面板滚出视口时仍可见
+        toast.error(t("editor.trigger_load_failed"));
+      },
+    },
+  );
+  // 失败态独立成支：列表在失败时为 `[]`，不给分支就会渲染成「暂无 Webhook 触发器」——
+  // 把取数失败伪装成空数据（§3.4 禁止）。
+  const triggerError = error ? (error instanceof Error ? error.message : String(error)) : null;
 
   const handleCreate = useCallback(async () => {
     if (!workflowId) return;
@@ -43,14 +67,15 @@ export function TriggerPanel({ workflowId, onClose }: { workflowId?: string; onC
     try {
       await unwrap(workflowDefApi.createTrigger(workflowId));
       toast.success(t("editor.trigger_created"));
-      loadData();
+      reloadTriggers();
     } catch (err) {
       console.error(err);
-      toast.error(`${t("editor.trigger_create_failed")}: ${(err as Error).message}`);
+      // 模板字符串把后端信封原文拼进了 toast（§9.3）：`err.message` 只进日志，用户侧只留稳定文案。
+      toast.error(t("editor.trigger_create_failed"));
     } finally {
       setCreating(false);
     }
-  }, [workflowId, loadData, t]);
+  }, [workflowId, reloadTriggers, t]);
 
   const runDelete = useCallback(
     async (triggerId: string) => {
@@ -58,13 +83,13 @@ export function TriggerPanel({ workflowId, onClose }: { workflowId?: string; onC
       try {
         await unwrap(workflowDefApi.deleteTrigger(workflowId, triggerId));
         toast.success(t("editor.trigger_deleted"));
-        loadData();
+        reloadTriggers();
       } catch (err) {
         console.error(err);
-        toast.error(`${t("editor.trigger_delete_failed")}: ${(err as Error).message}`);
+        toast.error(t("editor.trigger_delete_failed"));
       }
     },
-    [workflowId, loadData, t],
+    [workflowId, reloadTriggers, t],
   );
 
   const runRegenerate = useCallback(
@@ -73,13 +98,15 @@ export function TriggerPanel({ workflowId, onClose }: { workflowId?: string; onC
       try {
         const updated = await unwrap(workflowDefApi.regenerateTriggerHash(workflowId, triggerId));
         toast.success(t("editor.trigger_hash_regenerated"));
-        setTriggers((prev) => prev.map((tr) => (tr.id === triggerId ? updated : tr)));
+        // 就地替换该项（改造前是 `setTriggers(prev => prev.map(...))`）：只有一行的 URL 变了，
+        // 没必要为它重取整张表；`mutate` 是 `useRequest` 提供的本地数据写入口。
+        mutateTriggers((prev) => (prev ?? []).map((tr) => (tr.id === triggerId ? updated : tr)));
       } catch (err) {
         console.error(err);
-        toast.error(`${t("editor.trigger_regenerate_failed")}: ${(err as Error).message}`);
+        toast.error(t("editor.trigger_regenerate_failed"));
       }
     },
-    [workflowId, t],
+    [workflowId, mutateTriggers, t],
   );
 
   // 点击只挂起目标，由 ConfirmDialog 确认后才调用上面的执行函数。
@@ -111,13 +138,13 @@ export function TriggerPanel({ workflowId, onClose }: { workflowId?: string; onC
           await unwrap(workflowDefApi.enableTrigger(workflowId, trigger.id));
           toast.success(t("editor.trigger_enabled_ok"));
         }
-        loadData();
+        reloadTriggers();
       } catch (err) {
         console.error(err);
         toast.error(t("editor.trigger_toggle_failed"));
       }
     },
-    [workflowId, loadData, t],
+    [workflowId, reloadTriggers, t],
   );
 
   const handleCopy = useCallback(
@@ -187,6 +214,19 @@ export function TriggerPanel({ workflowId, onClose }: { workflowId?: string; onC
           <div style={{ textAlign: "center", padding: 24, color: "#9ca3af", fontSize: 11 }}>
             <InlineLoader />
           </div>
+        ) : triggerError ? (
+          // 失败是持久分支（`role="alert"` + 重试）：只弹 toast 会落回下面的「暂无触发器」空态，
+          // 用户看到的是「没有触发器」而不是「没取到触发器」。
+          <EmptyState
+            tone="danger"
+            role="alert"
+            className="px-3 py-6"
+            icon={<AlertTriangle />}
+            title={t("editor.trigger_load_failed")}
+            // 说明取字典（§9.3）：这里原先是 `error.message`（后端信封原文直出）
+            description={t("editor.trigger_load_failed_hint")}
+            action={{ label: t("editor.trigger_retry"), onClick: reloadTriggers, icon: <RefreshCw /> }}
+          />
         ) : triggers.length === 0 ? (
           <div style={{ textAlign: "center", padding: 24, color: "#d1d5db", fontSize: 11 }}>
             <Inbox size={24} style={{ margin: "0 auto 4px" }} />

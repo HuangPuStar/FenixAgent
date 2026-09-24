@@ -112,7 +112,9 @@ const SAMPLE_ATTACHMENTS: FileUIPart[] = [
 
 /**
  * 内联 HTML 的 data URL：demo 不依赖任何外部站点，离线也能渲染出内容。
- * 该 iframe 由组件固定为 sandbox="allow-scripts allow-same-origin allow-popups"。
+ * 该 iframe 由组件固定为 sandbox="allow-scripts allow-popups"——不带 allow-same-origin
+ * （它与 allow-scripts 的组合等于没有沙箱，见前端规范 §6.2）；data: 是组件 src 协议白名单里
+ * 明确保留的一项（data: 文档永远是 opaque origin，不与父页面同源）。
  */
 const SAMPLE_IFRAME_SRC = `data:text/html;charset=utf-8,${encodeURIComponent(
   '<!doctype html><body style="margin:0;display:grid;place-items:center;height:100vh;font-family:system-ui,sans-serif">' +

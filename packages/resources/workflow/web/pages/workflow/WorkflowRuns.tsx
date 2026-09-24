@@ -79,7 +79,6 @@ export function WorkflowRuns({ onSelectRun }: WorkflowRunsProps) {
   );
   const runs = Array.isArray(runData?.items) ? runData.items : [];
   const total = runData?.total ?? 0;
-  const errorMsg = error ? (error instanceof Error ? error.message : String(error)) : null;
 
   // 取消运行
   const { run: runCancel } = useRequest((runId: string) => unwrap(workflowEngineApi.cancel(runId)), {
@@ -87,7 +86,9 @@ export function WorkflowRuns({ onSelectRun }: WorkflowRunsProps) {
     onSuccess: () => refresh(),
     onError: (err) => {
       console.error(err);
-      toast.error(t("runs.cancel"), { description: (err as Error).message });
+      // 取消失败只上屏字典文案（§9.3）：`err` 是 `unwrap` 抛出的 `ApiError`，`message` 是后端错误
+      // 信封原文，只进上面的日志。
+      toast.error(t("runs.cancel"));
     },
   });
 
@@ -140,7 +141,8 @@ export function WorkflowRuns({ onSelectRun }: WorkflowRunsProps) {
         // 本页不额外给重试按钮——工具栏上的刷新是同一入口，再放一个只会让错误态里出现两个「重试」。
         <EmptyState
           icon={<AlertTriangle />}
-          title={t("runs.load_failed", { error: errorMsg })}
+          // 标题只取字典（§9.3）：`err.message` 是后端错误信封原文，原先经 `{{error}}` 槽位铺到用户面前
+          title={t("runs.load_failed")}
           tone="danger"
           role="alert"
         />

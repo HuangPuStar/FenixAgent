@@ -13,8 +13,8 @@ import { installSkills } from "./runtime/skill-installer";
  * 用于远程 machine 侧（acp-link client 模式）：机器上已装好 peri，
  * 由 `acp-runtime peri acp` 传入命令与参数。
  *
- * 与 `@fenix/ccb` 的 handler 的差异：peri 是独立引擎，workspace 物化时**无条件**写
- * `.peri/settings.json`；ccb 侧只在 `IS_PERI=1` 时写（沙箱用 ccb 槽位伪装 peri 的历史路径）。
+ * 与 `@fenix/ccb` 的 handler 的差异：peri 是独立引擎，workspace 物化时写
+ * `.peri/settings.json`（peri 自己的 provider/profile 配置），ccb 侧不写该文件。
  */
 export function createPeriHandler(binary?: string, extraArgs?: string[]): EngineHandler {
   // 延迟到 startInstance 才 resolve executable，避免机器上没有 peri 时启动失败

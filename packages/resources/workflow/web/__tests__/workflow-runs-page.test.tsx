@@ -26,7 +26,7 @@ const MOCK_TRANSLATIONS: Record<string, string> = {
   "runs.status_cancelled": "已取消",
   "runs.status_error": "错误",
   "runs.refresh": "刷新",
-  "runs.load_failed": "加载失败: {{error}}",
+  "runs.load_failed": "加载失败",
   "runs.no_match": "没有匹配的记录",
   "runs.no_runs": "暂无运行记录",
   "runs.no_runs_filter_hint": "尝试调整筛选条件",

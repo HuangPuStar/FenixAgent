@@ -161,11 +161,17 @@ export const kbApi = {
   generateGraph: (params: { id: string }) =>
     request<null>("/web/knowledgeBases/:id/graph/generate", { method: "POST", params }),
 
-  /** 获取知识图谱数据 */
-  getGraph: (params: { id: string }) =>
+  /**
+   * 获取知识图谱数据。
+   *
+   * `options.signal` 透传 `request()` 的外部取消信号（§5.2）：图谱面板在换知识库 / 卸载时 abort
+   * 在途请求——这是 §3.4 要求的取消方式，取代此前组件里手写的 `requestId` 令牌。
+   */
+  getGraph: (params: { id: string }, options?: { signal?: AbortSignal }) =>
     request<import("../types/knowledge").KnowledgeGraphData | null>("/web/knowledgeBases/:id/graph", {
       method: "GET",
       params,
+      signal: options?.signal,
     }),
 
   /** 删除知识图谱 */

@@ -42,12 +42,20 @@ afterEach(() => {
 
 describe("peri task details API client", () => {
   // 读取任务详情必须编码三个路径标识、固定请求最小预览范围，并透传调用方的取消信号。
+  // 取消的观测点是「请求进行中」：合并信号在请求结束后即摘掉监听（避免残留在长生命周期的调用方 signal 上），
+  // 因此这里让 fetch 挂起、在挂起期间 abort，断言交给 fetch 的 signal 确实被置为 aborted。
   test("uses encoded detail endpoint, preview limits, and caller signal", async () => {
     const controller = new AbortController();
+    let resolveFetch: ((response: Response) => void) | undefined;
+    globalThis.fetch = mock((url: string, init: RequestInit) => {
+      fetchCalls.push([url, init]);
+      return new Promise<Response>((resolve) => {
+        resolveFetch = resolve;
+      });
+    }) as unknown as typeof fetch;
 
-    const result = await getPeriTaskDetail("env/a", "session b", "task/1", controller.signal);
+    const pending = getPeriTaskDetail("env/a", "session b", "task/1", controller.signal);
 
-    expect(result).toEqual(expectedDetail);
     expect(fetchCalls).toHaveLength(1);
     const [url, init] = fetchCalls[0] ?? [];
     expect(url).toBe("/web/agents/env%2Fa/sessions/session%20b/peri-tasks/task%2F1/detail?limit=1&byteLimit=2000");
@@ -55,6 +63,14 @@ describe("peri task details API client", () => {
     expect(init?.signal).not.toBe(controller.signal);
     controller.abort();
     expect(init?.signal?.aborted).toBe(true);
+
+    resolveFetch?.(
+      new Response(JSON.stringify(responseBody), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      }),
+    );
+    expect(await pending).toEqual(expectedDetail);
   });
 
   // 后端不可用响应必须由统一 unwrap 转为保留错误码的 ApiError，供界面展示明确失败状态。

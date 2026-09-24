@@ -25,6 +25,7 @@ export default defineConfig({
     "./packages/resources/mcp/db/schema.ts",
     "./packages/resources/memory/db/schema.ts",
     "./packages/resources/model-management/db/schema.ts",
+    "./packages/resources/plugin-market/db/schema.ts",
     "./packages/resources/prod-view/db/schema.ts",
     "./packages/resources/skill/db/schema.ts",
     "./packages/resources/sandbox/db/schema.ts",
