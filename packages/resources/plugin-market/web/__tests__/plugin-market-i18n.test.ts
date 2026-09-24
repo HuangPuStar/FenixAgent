@@ -97,8 +97,9 @@ describe("插件市场字典完整性", () => {
   // 只要求两份里至少一份命中，字段错误行的两键就在这个差集里）：
   // - 发布表单的两个字段级校验 key（§4.3 起由字段体按字段取用，不再经 `validatePublishTarget` 返回）；
   // - `changeToastKey` 返回的四条写入结果提示（noop 必须与 publish 分开，它不能说「已发布」）；
-  // - 四个目录筛选口径（`ScopeFilterBar` 的选项由页面拼装，键本身是字面量，这里再钉一次顺序无关的完整性）。
-  test("动态键族齐备（发布校验、写入结果提示、筛选口径）", () => {
+  // - 四个目录筛选口径（`ScopeFilterBar` 的选项由页面拼装，键本身是字面量，这里再钉一次顺序无关的完整性）；
+  // - 市场 tab 文案（由宿主路由壳 `_panel/mcp.tsx` 取值，包内没有字面量 t() 调用）。
+  test("动态键族齐备（发布校验、写入结果提示、筛选口径、市场 tab）", () => {
     for (const key of [
       "validation.packageNameRequired",
       "validation.exactVersionRequired",
@@ -110,8 +111,7 @@ describe("插件市场字典完整性", () => {
       "scope.teams",
       "scope.connectors",
       "scope.withdrawn",
-      // 侧栏项文案：由 `web/contribution.ts` 声明 labelKey，缺键会让侧栏显示 `nav.pluginMarket`。
-      "nav.pluginMarket",
+      "tabs.npm",
     ]) {
       expect(enFlat.has(key), `en 缺 ${key}`).toBe(true);
       expect(zhFlat.has(key), `zh 缺 ${key}`).toBe(true);

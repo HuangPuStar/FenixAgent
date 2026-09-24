@@ -1,6 +1,9 @@
 {
   "title": "MCP 插件市场",
   "subtitle": "查找经过整理的 MCP Server，通过标准配置连接文件、浏览器、代码仓库与业务系统能力。",
+  "tabs": {
+    "mcp": "MCP 插件"
+  },
   "search": "搜索插件、连接方式或用途",
   "empty": "还没有可用插件",
   "emptyHint": "添加一个 MCP JSON 配置，连接 Agent 所需的真实工具。",

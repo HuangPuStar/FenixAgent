@@ -9,7 +9,6 @@
     "./server": "./src/server.ts",
     "./server/runtime": "./src/server/runtime.ts",
     "./web": "./web/index.ts",
-    "./web/contribution": "./web/contribution.ts",
     "./web/i18n": "./web/i18n/index.ts"
   },
   "dependencies": {

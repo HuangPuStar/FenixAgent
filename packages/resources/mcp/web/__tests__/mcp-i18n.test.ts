@@ -119,6 +119,9 @@ describe("mcp 字典完整性", () => {
       "form.clientSecret",
       "form.scope",
       "form.redirectUri",
+      // 市场 tab 文案：由宿主路由壳 `_panel/mcp.tsx` 取值（本包与 plugin-market 各自贡献一个 tab），
+      // 包内没有字面量 t() 调用。
+      "tabs.mcp",
     ]) {
       expect(enFlat.has(key)).toBe(true);
       expect(zhFlat.has(key)).toBe(true);

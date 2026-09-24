@@ -1,9 +1,9 @@
 {
-  "nav": {
-    "pluginMarket": "插件市场"
-  },
-  "title": "插件市场",
+  "title": "npm 插件市场",
   "subtitle": "浏览从 npm 私有源发布到市场的插件版本，并按需发布、下架或恢复某个版本。",
+  "tabs": {
+    "npm": "npm 插件"
+  },
   "search": "搜索插件、包名或版本",
   "toolbar": {
     "label": "插件搜索与范围筛选"

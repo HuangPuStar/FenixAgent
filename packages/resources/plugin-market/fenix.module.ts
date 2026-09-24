@@ -52,10 +52,10 @@ import { pluginPackageResource } from "./src/server/access/plugin-package-resour
  * 只有这一条贡献：市场没有对外 `/api` 面，也没有自鉴权的内部协议入口（对比 mcp 的三条）。发布与下架是
  * 平台管理动作，只能经控制台会话发生，不能由持有 API Key 的外部系统发起。
  *
- * 声明 `web`：浏览器载荷的入口说明符字符串。`web.id` 是全局唯一键（生成器据此把 profile 的 `web` 列表
- * 映射回包），必须等于导航项 id；`contribution` 指向本包 `web/contribution.ts` 的导出，且
- * `package.json` 的 `exports` 必须同时声明 `./web/contribution`——生成器逐项校验说明符与出口的对应关系，
- * 只声明不导出会在构建期失败（`scripts/generate-web-contributions.ts`）。
+ * **不声明 `web`**：该字段要求 `web.id` 与一个导航项 id 同名，而本市场不是侧栏项——它是「插件市场」页
+ * （宿主路由 `/agent/mcp`）下的 `?tab=npm` 这一个 tab，页面由宿主路由壳直接 import 本包的 `./web`
+ * 出口（与 `channel` / `prod-view` 同形：有宿主路由、无导航项）。因此 `package.json` 也不再声明
+ * `./web/contribution`，`deploy/assembly/ce.json` 的 `web` 列表里没有本包。
  */
 export const moduleManifest = {
   id: "plugin-market",
@@ -127,10 +127,6 @@ export const moduleManifest = {
         "来源不需要改聚合根主键。",
     },
   ],
-  web: {
-    id: "plugin-market",
-    contribution: "@fenix/resource-plugin-market/web/contribution",
-  },
   accessControlBindings: [pluginPackageResource.storage],
   contributions: [
     {

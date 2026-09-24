@@ -124,6 +124,7 @@
 
 单页 master-detail（与 mcp / skill / 知识库同形），**不新增详情路由**：市场是单页目录，页内切换选中项，刷新与浏览器历史都不需要第二层路由参与。
 
+- **挂载点是「插件市场」页的第二个 tab，不是独立导航项**。npm 市场与 MCP 市场同处宿主路由 `/agent/mcp`，tab 状态放 URL（`?tab=npm`；缺省即 MCP），侧栏因此只有一项「插件市场」。tab 状态与 tab 栏归宿主路由壳，壳只做 `lazy()` 装配、**不取数**：发布按钮的可见性依赖页面自己取到的 `canPublish`，标题区连同动作必须留在包内，两个市场各自保留完整的 `AppPage` + `AppHeader`（内容区是 flex 容器，不构成嵌套滚动）。
 - 结构：`AppPage` → `AppHeader`（标题 + 发布按钮，仅 `canPublish` 可见）→ `ScopeFilterBar`（关键词 + 全部/专家团队/连接器/已下架）→ `AgentMasterDetailWorkspace`（左目录 / 右详情）。
 - **列表与详情分两次请求**，详情的定位符取自 `resolveSelectedPackage` 的解析结果——与左侧高亮用同一个纯函数，避免「高亮 A、右侧是 B」。
 - 六态：loading / empty / empty-search / error / retry / 无权限（**不给重试**，403 是永久拒绝、401 需重新登录，重试不会改变授权结果）。
@@ -135,10 +136,10 @@
 
 ## 9. 装配与登记
 
-- `fenix.module.ts`：`dependsOn: []`（`src/**` 只值导入 `@fenix/platform-sdk` 与包内自引用）、`accessControlBindings`（`plugin_package_resource.ts` 的 storage 绑定）、`envDefinitions` 五键、`contributions` 一条 `web-config` 路由、`web.contribution` 一条浏览器载荷。
+- `fenix.module.ts`：`dependsOn: []`（`src/**` 只值导入 `@fenix/platform-sdk` 与包内自引用）、`accessControlBindings`（`plugin_package_resource.ts` 的 storage 绑定）、`envDefinitions` 五键、`contributions` 一条 `web-config` 路由；**不声明 `web`**——该字段要求 `web.id` 与一个导航项 id 同名，而本市场不是侧栏项，页面由宿主路由壳直接 import 本包 `./web` 出口（与 `channel` / `prod-view` 同形：有宿主路由、无导航项）。
 - `src/module.ts` 的 `createPluginMarketModule(context)` 是 registry 的 `create` 目标：从 `context.modules` 取 access-control 端口、从 `@fenix/platform-sdk/server` 取身份目录，转交 `src/server/module.ts` 的真实构造，并 `install` 进进程级槽位（路由与测试都经 `getPluginMarketModule()` 读同一份结果）。
 - 装配结果**只暴露 Facade**，不暴露 Domain Service：市场没有系统初始化写入路径，任何写入口都必须经过授权编排。
-- 宿主登记：根 `package.json` 与 `apps/web/package.json` 各一条 workspace 依赖、`drizzle.config.ts` 的 schema 数组、`deploy/assembly/ce.json` 的 `resources` 与 `web` 两个数组、`apps/web/src/i18n/index.ts` 的 NS 与语言资源、`apps/web/src/routes/agent/_panel/plugin-market.tsx` 路由文件（导航 `id` 必须与路由段同名）。
+- 宿主登记：根 `package.json` 与 `apps/web/package.json` 各一条 workspace 依赖、`drizzle.config.ts` 的 schema 数组、`deploy/assembly/ce.json` 的 `resources` 数组（**`web` 数组里没有本包**——见上一段）、`apps/web/src/i18n/index.ts` 的 NS 与语言资源、`apps/web/src/routes/agent/_panel/mcp.tsx` 里 npm tab 的 `lazy()` 取页（宿主路由壳与两个市场的 tab 装配，见 §8）。
 - 生成物（跑脚本，不手改）：`apps/generated/module-registry.ts`、`apps/generated/web-contributions.ts`。
 
 ## 10. 已知取舍与升级条件

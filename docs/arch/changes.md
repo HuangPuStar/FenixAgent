@@ -496,3 +496,22 @@ IMChannel 包含：
 
 **影响**：全部改动可加性——新包 + 三张新表 + 若干登记项与生成物，不触碰任何既有表、既有数据与既有接口。回滚 = 回退提交 + 删除三张表 + 重跑两个 generate 脚本，无存量数据迁移。
 
+
+---
+
+## 改动 20：npm 插件市场并入「插件市场」页，改为可切换 tab
+
+**状态**：✅ 已实施（2026-09-23）
+
+**现状（实施前）**：npm 插件市场（改动 19）作为独立资源模块接入时自带一条 `web` 导航贡献，侧栏于是出现两项语义相近的「插件市场」——`/agent/mcp` 的 MCP 市场与 `/agent/plugin-market` 的 npm 市场。用户必须先猜「我要的插件在哪个市场」，选错就要退回去换入口。
+
+**目标**：两个市场合并为同一页的两个 tab，侧栏只保留一项入口；tab 状态可分享、可后退；两个市场各保留自己的完整页面壳与动作。
+
+**实施内容**：
+
+1. **宿主路由改为 tab 壳**：`apps/web/src/routes/agent/_panel/mcp.tsx` 承载 tab 栏与两个市场的 `lazy()` 装配，`?tab=npm` 选中 npm 市场、缺省即 MCP 市场（tab 状态放 URL 而非组件 state，刷新与前进后退都保持一致）。壳**只装配不取数**（前端规范 §2.7）：发布按钮的可见性来自页面自己取到的 `canPublish`，因此标题区连同动作留在各包内，两个市场各自保留 `AppPage` + `AppHeader`。
+2. **独立入口撤除**：删除路由文件 `apps/web/src/routes/agent/_panel/plugin-market.tsx`；`fenix.module.ts` 移除 `web` 字段、`package.json` 移除 `./web/contribution` 出口、`deploy/assembly/ce.json` 的 `web` 列表移除本包，`apps/generated/web-contributions.ts` 与 `routeTree.gen.ts` 重生成（web 贡献包 10 → 9，导航项 15 → 14）。此后本包与 `channel` / `prod-view` 同形：有宿主路由、无导航项。
+3. **文案归属不变**（前端规范 §9，各包自有字典）：tab 名由各包出（`mcp:tabs.mcp` / `pluginMarket:tabs.npm`），tab 栏的 `aria-label` 属宿主 chrome，用宿主字典 `components:marketTabs.label`；三处 en / zh 同步。
+4. **守卫**：新增 `apps/web/src/__tests__/plugin-market-tab-merge.test.ts`——从真实路由表断言独立路径已不可达、导航 id 只剩 `mcp`，并从宿主路由壳源码断言两个市场都被装配，外加三处字典键的双语覆盖。包侧 `plugin-market-browser-surface.test.ts` 改为**反例断言**：`./web/contribution` 出口一旦重新声明即失败，防止第二项侧栏入口复活。`shell-navigation.test.ts` 的迁移前快照同步记明本次合并。
+
+**影响**：纯前端装配层改动加登记项调整，服务端契约、数据库与领域规则零变化。回滚 = 回退提交 + 重跑 `generate:web-contributions` 与 `build:web`。

@@ -202,13 +202,17 @@ describe("插件市场 web 入口浏览器可达面", () => {
   });
 
   // ./web 出口的契约：package.json 必须指向 web/index.ts，否则宿主解析到别的文件时守卫失去意义。
-  test("package.json 的 ./web 与 ./web/i18n 出口指向真实文件", () => {
+  //
+  // `./web/contribution` 是**反向**契约：本市场不是侧栏项（它是 `/agent/mcp?tab=npm` 这一个 tab），
+  // 一旦重新声明该出口，就等于给侧栏塞进第二个「插件市场」入口——manifest 的 `web.id` 与导航项 id
+  // 必须同名，两边会同时复活。
+  test("package.json 的 ./web 与 ./web/i18n 出口指向真实文件，且不声明导航载荷出口", () => {
     const pkg = JSON.parse(readFileSync(join(PKG_ROOT, "package.json"), "utf8")) as {
       exports?: Record<string, string>;
     };
     expect(pkg.exports?.["./web"]).toBe("./web/index.ts");
     expect(pkg.exports?.["./web/i18n"]).toBe("./web/i18n/index.ts");
-    expect(pkg.exports?.["./web/contribution"]).toBe("./web/contribution.ts");
+    expect(pkg.exports?.["./web/contribution"]).toBeUndefined();
     expect(existsSync(join(PKG_ROOT, "web", "index.ts"))).toBe(true);
     expect(existsSync(join(PKG_ROOT, "web", "i18n", "index.ts"))).toBe(true);
   });

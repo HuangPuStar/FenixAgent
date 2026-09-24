@@ -1,9 +1,9 @@
 {
-  "nav": {
-    "pluginMarket": "Plugin Market"
-  },
-  "title": "Plugin Market",
+  "title": "npm Plugin Market",
   "subtitle": "Browse plugin versions published from the private npm registry, and publish, withdraw or restore a version.",
+  "tabs": {
+    "npm": "npm Plugins"
+  },
   "search": "Search by plugin, package name or version",
   "toolbar": {
     "label": "Plugin search and scope filter"
