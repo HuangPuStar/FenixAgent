@@ -144,7 +144,7 @@ describe("computeSessionSnapshot", () => {
             },
           ],
           description: "Please answer",
-          expiresAt: new Date(Date.now() + 60_000).toISOString(),
+          expiresAt: new Date(Date.now() + 120_000).toISOString(),
           answer: null,
         },
       ],

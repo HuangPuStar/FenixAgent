@@ -20,7 +20,8 @@
 //   因此斜杠命令等文本无需任何额外处理。自定义文本与选项**互斥**：输入文本即清空
 //   该题的选项选中，反之亦然（一个 q_id 只该有一个答案来源）
 // - 空列表返回 null；pendingQuestions 投影过滤后自动隐藏（用户应答 resolved
-//   或 60s 过期 expired）
+//   或 120s 过期 expired——面板本身不显示倒计时，过期阈值由后端
+//   `DEFAULT_QUESTION_TIMEOUT_MS` 决定，与 acp-link 的应答等待上限同值）
 //
 // 复制自 packages/agent-runtime/web/components/chat/QuestionPanel.tsx（旧路径，已于 2026-09-21 由 f2741a82d 删除）。
 // 纯化改动：QuestionProjection 改从包内 ../types 导入（不再 import @fenix/chat-channel）；

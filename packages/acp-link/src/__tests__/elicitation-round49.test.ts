@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test";
 import {
   buildElicitationContent,
   createElicitationHandler,
+  ELICITATION_TIMEOUT_MS,
   extractPropertyKeys,
   parseElicitationSchema,
 } from "../elicitation.js";
@@ -220,6 +221,36 @@ describe("elicitation 第四十九轮真实协议分支", () => {
       onTimeout?.();
       await expect(result).resolves.toEqual({ action: "accept", content: {} });
       expect(handler.resolve(memory.payloads[0]?.questionId ?? "", { answers: ["甲"] })).toBe(false);
+    } finally {
+      Object.defineProperty(globalThis, "setTimeout", { configurable: true, value: originalSetTimeout });
+    }
+  });
+
+  // 用户侧要求弹窗可停留 2 分钟：这一处超时同时决定「agent 何时按空答案继续」与
+  // 「前端弹窗可见期」（chat-channel 的 DEFAULT_QUESTION_TIMEOUT_MS 按同值安排投影过期）。
+  // 定时器登记的延时必须是 120s——真值 60s（旧值）或任何单侧回退都会让弹窗提前结束。
+  test("应答等待上限为 120s，且定时器按该值登记", async () => {
+    expect(ELICITATION_TIMEOUT_MS).toBe(120_000);
+
+    const originalSetTimeout = globalThis.setTimeout;
+    let delay: number | undefined;
+    Object.defineProperty(globalThis, "setTimeout", {
+      configurable: true,
+      value: (callback: () => void, ms?: number) => {
+        delay = ms;
+        return 0;
+      },
+    });
+    try {
+      const memory = createMemorySender();
+      const handler = createElicitationHandler(memory.send);
+      const result = handler.handle({ requestedSchema: twoQuestionSchema });
+      expect(delay).toBe(ELICITATION_TIMEOUT_MS);
+      // 计时未到：不得提前以空答案结束（用户仍在作答窗口内）
+      const settled = await Promise.race([result.then(() => "settled"), Promise.resolve("pending")]);
+      expect(settled).toBe("pending");
+      handler.cancelAll();
+      await expect(result).resolves.toEqual({ action: "accept", content: {} });
     } finally {
       Object.defineProperty(globalThis, "setTimeout", { configurable: true, value: originalSetTimeout });
     }

@@ -71,7 +71,7 @@ export type PermissionRequestedHandler = (
   permission: { permissionId: string; expiresAt: string },
 ) => void;
 
-/** AskUserQuestion 问题投影成功的通知（控制面据此安排 60s 超时迁移定时器） */
+/** AskUserQuestion 问题投影成功的通知（控制面据此安排 120s 超时迁移定时器） */
 export type QuestionRequestedHandler = (
   rcsSessionId: string,
   question: { questionId: string; expiresAt: string },
@@ -116,7 +116,7 @@ export class DocManager {
 
   /**
    * 设置或清除 AskUserQuestion 问题请求回调（控制面 SessionChannel 注入：
-   * 安排 60s 超时迁移定时器，与权限回调同模式）。
+   * 安排 120s 超时迁移定时器，与权限回调同模式）。
    */
   setQuestionRequestedHandler(handler: QuestionRequestedHandler | null): void {
     this.onQuestionRequested = handler;

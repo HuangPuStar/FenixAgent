@@ -3,7 +3,7 @@
 // pending → resolved/expired 的原子迁移。
 //
 // 为什么独立成文件：CAS 迁移同时被聚合层（question_resolved 事件）与控制面
-// （respond_question Action、60s 超时定时器）调用，迁移语义必须单一来源，
+// （respond_question Action、120s 超时定时器）调用，迁移语义必须单一来源，
 // 否则两处实现漂移会破坏"迁移成功后才发 control_response"的原子语义。
 //
 // 迁移失败（已 resolved/expired/不存在）返回 false，调用方必须视为
@@ -43,7 +43,7 @@ export function respondQuestion(pair: DocPair, questionId: string, answers: Ques
 
 /**
  * 过期问题（CAS）：仅 pending → expired 迁移一次，成功返回 true。
- * 60s 超时定时器与 question_expired 语义共用此入口；expired 不写 answer
+ * 120s 超时定时器与 question_expired 语义共用此入口；expired 不写 answer
  * （保持 null）。重复过期（已 resolved/expired/不存在）返回 false。
  */
 export function expireQuestion(pair: DocPair, questionId: string): boolean {

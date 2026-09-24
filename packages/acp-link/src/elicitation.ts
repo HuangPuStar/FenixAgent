@@ -15,8 +15,15 @@
 
 import type { InteractiveQuestionPayload } from "./types.js";
 
-/** 等待前端应答的超时（与 claude-adapter 的 interactive_question 60s 对齐） */
-export const ELICITATION_TIMEOUT_MS = 60_000;
+/**
+ * 等待前端应答的超时（与 claude-adapter 的 interactive_question 超时对齐，两处必须同值）：
+ * 超时后以空答案完成 elicitation/create，**agent 随即按空答案继续执行**——这是「弹窗等待
+ * 上限」的唯一来源，也是用户看到的「到点自动结束并继续」的那一下。
+ * 用户侧要求弹窗可停留 2 分钟（原值 60s），故与 chat-channel 的
+ * `DEFAULT_QUESTION_TIMEOUT_MS`（问题投影 expiresAt / 控制面过期定时器）一并调到 120s，
+ * 保持「投影过期 ≤ 本超时」的对齐不变量：否则 agent 已继续执行、前端弹窗仍悬挂。
+ */
+export const ELICITATION_TIMEOUT_MS = 120_000;
 
 /** 解析 form 模式 requestedSchema → interactive_question 帧的 questions 数组 */
 export function parseElicitationSchema(schema: unknown): InteractiveQuestionPayload["questions"] {
@@ -92,7 +99,7 @@ export function createElicitationHandler(send: (payload: InteractiveQuestionPayl
       const answer = await new Promise<Record<string, unknown>>((resolve) => {
         const timeout = setTimeout(() => {
           pending.delete(questionId);
-          // 前端未应答：空答案（与 claude-adapter 60s 行为一致，agent 按空答案继续）
+          // 前端未应答：空答案（与 claude-adapter 的超时行为一致，agent 按空答案继续）
           resolve({});
         }, ELICITATION_TIMEOUT_MS);
         pending.set(questionId, { resolve, timeout, propertyKeys });

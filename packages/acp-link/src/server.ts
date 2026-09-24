@@ -941,7 +941,7 @@ export function createAcpServer(config: ServerConfig): AcpServerHandle {
       },
 
       // AskUserQuestion：委托公共 elicitation handler（解析 schema、发帧、
-      // 60s 超时空答案、control_response 回传均在其中，见 elicitation.ts）
+      // 120s 超时空答案、control_response 回传均在其中，见 elicitation.ts）
       unstable_createElicitation: (params) => clientState.elicitation.handle(params),
 
       async sessionUpdate(params) {
