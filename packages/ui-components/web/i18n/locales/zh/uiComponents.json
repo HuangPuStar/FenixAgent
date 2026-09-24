@@ -103,9 +103,14 @@
         "toggle": "展开或收起状态"
       },
       "chatView": {
+        "stage": {
+          "callingTool": "正在调用工具",
+          "generating": "正在生成",
+          "thinking": "正在思考",
+          "working": "正在处理"
+        },
         "startConversation": "开始对话",
-        "startConversationDesc": "输入消息开始聊天",
-        "thinking": "思考中"
+        "startConversationDesc": "输入消息开始聊天"
       },
       "commandMenu": {
         "connected": "已连接",

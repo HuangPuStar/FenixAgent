@@ -30,8 +30,11 @@ const PKG_ROOT = resolve(WEB_ROOT, "..");
  * 2026-09-24 输入岛粘贴图片批次加 `chat.components.chatComposer.pastingImages`（粘贴资产的进行中
  *   状态）与 `chat.components.composerAssets.pasteImageUnsupported`（两条通路都不可用时的回执）2 键，
  *   278 → 280。
+ * 2026-09-24 加载指示器改版（阶段文字 + 流光条）：删掉不再使用的 `chat.components.chatView.thinking`
+ *   （唯一消费方是旧指示器），换成 `chat.components.chatView.stage.{thinking,generating,callingTool,working}`
+ *   4 键（阶段文案，键名与 `LoadingStage` 一一对应），280 → 283。
  */
-const KEY_BASELINE = 280;
+const KEY_BASELINE = 283;
 
 const EN = JSON.parse(readFileSync(join(WEB_ROOT, "i18n/locales/en/uiComponents.json"), "utf8")) as Record<
   string,

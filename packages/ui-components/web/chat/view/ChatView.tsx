@@ -187,8 +187,8 @@ export const ChatView = React.memo(
                   );
                 })}
 
-                {/* 加载指示器 — loading 期间一直显示 */}
-                {isLoading && <LoadingIndicator />}
+                {/* 加载指示器 — loading 期间一直显示，阶段文字由末条条目类型派生 */}
+                {isLoading && <LoadingIndicator stage={deriveLoadingStage(entries)} />}
               </>
             )}
             <ConversationScrollButtons hasUserMessages={hasUserMessages} />
@@ -460,27 +460,69 @@ const EntryRenderer = React.memo(
 );
 
 // =============================================================================
-// 加载指示器 — 品牌色渐变脉冲
+// 加载指示器 — 阶段文字 + 流光条
 // =============================================================================
 
-/** 流式等待指示器：三点脉冲 + 文案 shimer。 */
-function LoadingIndicator() {
+/**
+ * 加载阶段。只有这三步 + 兜底：能区分的阶段必须各有真实信号（见 `deriveLoadingStage`），
+ * 拿不到信号的阶段不单独显示，一律并入 `working` 的通用文案。
+ */
+type LoadingStage = "thinking" | "generating" | "callingTool" | "working";
+
+/**
+ * 从条目派生加载阶段。信号只有两处，都是真实状态：
+ * - `isLoading`：宿主 `ChatInterface` 由 `sessionState.loading != null`（Y.Doc 投影）算出。
+ *   更细的 `loading.kind`（`session/bootstrap`／`session/respond`／`tool/executing`／
+ *   `permission/pending`）与 `loading.label` 都停在宿主侧，没有透传进本组件，因此用不到；
+ * - `entries` 末条条目的类型，即当前投影出来的最后一步。
+ *
+ * 据此能可靠区分三步：末条 `tool_call` → 工具刚发起或仍在跑；末条 `assistant_message` →
+ * 助手正在产出（判据与 `ChatRenderItemView` 的 `isStreaming` 同源：末条 + loading）；
+ * 末条 `user_message` → 本轮尚无任何产出。末条是 `plan` 或空列表时拿不到可靠信号，退回 `working`。
+ */
+function deriveLoadingStage(entries: ThreadEntry[]): LoadingStage {
+  const last = entries.at(-1);
+  if (last?.type === "tool_call") return "callingTool";
+  if (last?.type === "assistant_message") return "generating";
+  if (last?.type === "user_message") return "thinking";
+  return "working";
+}
+
+/**
+ * 流式等待指示器：当前阶段文字 + 一条扫光的细条。
+ *
+ * 阶段切换才改文案，不随流式 token 变化——每秒多次的 state 更新在这里没有立足点，扫光也是纯 CSS 动画
+ * （`./ChatView.css` 的 `.chat-loading-beam`），不进 React 渲染循环。
+ */
+function LoadingIndicator({ stage }: { stage: LoadingStage }) {
   const { t } = useTranslation(UI_COMPONENTS_NS);
+  let label: string;
+  switch (stage) {
+    case "callingTool":
+      label = t("chat.components.chatView.stage.callingTool");
+      break;
+    case "generating":
+      label = t("chat.components.chatView.stage.generating");
+      break;
+    case "thinking":
+      label = t("chat.components.chatView.stage.thinking");
+      break;
+    default:
+      label = t("chat.components.chatView.stage.working");
+  }
+
   return (
-    <div className="flex items-center gap-3 pt-3">
-      {/* 源 `chat-loading.css` 的 `.chat-loading-dots`：三点品牌色脉冲（暗色换 loadingDotBounceDark）。
-          动画（含每点延迟与暗色关键帧）在同目录 `./ChatView.css` 的 `.chat-loading-indicator > span` 上，
-          这里只留扁平工具类。 */}
-      <div className="chat-loading-indicator inline-flex h-5 items-center gap-1.5" aria-hidden="true">
-        <span className="h-2 w-2 rounded-full bg-brand" />
-        <span className="h-2 w-2 rounded-full bg-brand" />
-        <span className="h-2 w-2 rounded-full bg-brand" />
+    /* `role="status"` + `aria-live="polite"`：与输入岛的上传／粘贴进行中提示同一口径，让读屏播报
+       阶段变化；文案只在阶段切换时变，不会对每条流式 token 反复播报。 */
+    <div className="pt-3" role="status" aria-live="polite">
+      {/* 宽度由文案撑开（`w-fit` 收窄后，轨道的 `w-full` 即等于文字宽度），轨道高度 2px。颜色全部走 token：
+          轨道 `surface-3`（中性灰）、光带 `brand-light`；裁切（`overflow-hidden`）让光带只在轨道内可见。 */}
+      <div className="w-fit">
+        <span className="text-xs text-text-muted">{label}</span>
+        <div aria-hidden="true" className="mt-1.5 h-0.5 w-full overflow-hidden rounded-full bg-surface-3">
+          <div className="chat-loading-beam h-full w-1/3 rounded-full bg-gradient-to-r from-transparent via-brand-light to-transparent" />
+        </div>
       </div>
-      {/* 源 `:where(.chat-conversation) .loading-text-shimmer`：文字微光扫过（类名已随之删除）；
-          扫过动画在 `./ChatView.css` 的 `.chat-loading-shimmer`，渐变与裁切仍是任意属性工具类。 */}
-      <span className="chat-loading-shimmer text-xs text-text-muted [background:linear-gradient(90deg,var(--color-text-muted)_0%,var(--color-brand-light)_50%,var(--color-text-muted)_100%)] [background-size:200%_100%] bg-clip-text text-transparent [-webkit-background-clip:text] [-webkit-text-fill-color:transparent]">
-        {t("chat.components.chatView.thinking")}
-      </span>
     </div>
   );
 }

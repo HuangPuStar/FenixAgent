@@ -263,7 +263,9 @@ describe("chat 样式迁移：工具时间线", () => {
 });
 
 describe("chat 样式迁移：加载指示与窄屏适配", () => {
-  // 三点脉冲与文字微光不再依赖 `chat-conversation` 作用域，`chat-conversation` 类名随之删除。
+  // 加载指示不再依赖 `chat-conversation` 作用域，`chat-conversation` 类名随之删除。
+  // 2026-09-24 改版：三点脉冲 + 文字微光换成「阶段文字 + 流光条」，动画只剩 `.chat-loading-beam`
+  // 一条（扫光细节与阶段文案断言见 `chat-loading-indicator.test.tsx`）。
   test("加载指示改用工具类且会话容器不再带语义类名", () => {
     const html = renderToStaticMarkup(
       createElement(ChatView, {
@@ -273,16 +275,16 @@ describe("chat 样式迁移：加载指示与窄屏适配", () => {
     );
 
     expectNoLegacyClasses(html);
-    // 动画（含每点延迟与暗色关键帧）已下沉到 `ChatView.css` 的 `.chat-loading-indicator > span`
-    // 与 `.chat-loading-shimmer`；`className` 里只剩尺寸/颜色类，故这里改断言语义类与样式表契约。
+    // 动画已下沉到 `ChatView.css` 的 `.chat-loading-beam`；`className` 里只剩扁平工具类，
+    // 故这里断言样式表契约与「不再出现已退役的旧类名」。
     const tokens = classTokens(html);
-    expect(tokens).toContain("chat-loading-indicator");
-    expect(tokens).toContain("chat-loading-shimmer");
+    expect(tokens).toContain("chat-loading-beam");
+    expect(tokens).not.toContain("chat-loading-indicator");
+    expect(tokens).not.toContain("chat-loading-shimmer");
     const chatViewCss = readChatSource("view/ChatView.css");
-    expect(chatViewCss).toContain("animation: loadingDotBounce 1.4s ease-in-out infinite both");
-    expect(chatViewCss).toContain("animation-delay: -0.32s");
-    expect(chatViewCss).toContain("animation-name: loadingDotBounceDark");
-    expect(chatViewCss).toContain("animation: shimmerSlide 2s ease-in-out infinite");
+    expect(chatViewCss).toContain("animation: chat-loading-sweep 1.8s ease-in-out infinite");
+    expect(chatViewCss).not.toContain("loadingDotBounce");
+    expect(chatViewCss).not.toContain("chat-loading-shimmer");
   });
 
   // 两条旧跨边界合约已解除：类名不再出现在任何消费方的 `className` 里（源码级检查）。

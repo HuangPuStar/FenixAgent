@@ -103,9 +103,14 @@
         "toggle": "Expand or collapse status"
       },
       "chatView": {
+        "stage": {
+          "callingTool": "Calling tool",
+          "generating": "Generating",
+          "thinking": "Thinking",
+          "working": "Working"
+        },
         "startConversation": "Start Conversation",
-        "startConversationDesc": "Send a message to start chatting",
-        "thinking": "Thinking..."
+        "startConversationDesc": "Send a message to start chatting"
       },
       "commandMenu": {
         "connected": "Connected",
