@@ -32,10 +32,14 @@
         "enterChat": "进入对话"
       },
       "askUser": {
+        "customLabel": "或输入自定义回答",
+        "customPlaceholder": "输入任意内容，按 Enter 提交",
         "next": "下一个",
         "nextQuestion": "下一个问题",
         "previous": "上一个问题",
         "submit": "提交",
+        "submitUnconfirmed": "未收到确认，请重试",
+        "submitting": "提交中…",
         "title": "需要你回答"
       },
       "chatComposer": {

@@ -32,10 +32,14 @@
         "enterChat": "Enter Chat"
       },
       "askUser": {
+        "customLabel": "Or type your own answer",
+        "customPlaceholder": "Type any answer, press Enter to submit",
         "next": "Next",
         "nextQuestion": "Next question",
         "previous": "Previous question",
         "submit": "Submit",
+        "submitUnconfirmed": "Not confirmed yet, please retry",
+        "submitting": "Submitting…",
         "title": "Question from Agent"
       },
       "chatComposer": {
