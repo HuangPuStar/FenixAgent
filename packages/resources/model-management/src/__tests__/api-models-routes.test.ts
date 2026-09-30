@@ -5,6 +5,7 @@ import { readJson, resetAllStubs } from "@fenix/platform-sdk/testing";
 import type {
   AuthorizedProviderDetail,
   AuthorizedProviderListItem,
+  AuthorizedProviderModelsPage,
   ProviderWriteData,
 } from "../server/facades/provider-facade";
 import { createApiModelsRoutes } from "../server/routes/api/models";
@@ -27,8 +28,9 @@ import { createStubSessionAuthGuardPlugin } from "./guard-stubs";
  * 2. **不可见即不存在**：Facade 对跨组织资源返回 `undefined` / 抛 `NotFoundError` 时，本层必须给出
  *    404 而不是 403——403 会确认「这个资源存在」，等于泄露资源清单。
  * 3. **凭据不外泄**：Provider 详情/列表的响应投影与错误体都不得出现 `apiKey` 明文。
- * 4. **分页与定位在协议层的边界**：Provider 列表与子 Model 列表都在内存里切片（`total` 是全集条数），
- *    子 Model 详情按行 ID 定位，越界页与缺失子行都必须给出确定结果。
+ * 4. **分页与定位在协议层的边界**：Provider 列表与子 Model 列表都把 `page` / `pageSize` 换算成
+ *    `limit` / `offset` 交给 Facade（分页在 SQL 完成，见决策 D3），协议层只回显页码并把 Facade 给出的
+ *    `total`（全集条数）原样带出；子 Model 详情按行 ID 定位，越界页与缺失子行都必须给出确定结果。
  *
  * 关于「全部端点 401」这条循环的区分力：每个 handler 自己也有 `if (!actor) return error(401)`，而守卫
  * 替身在未解析出主体时只是把 `null` 写进 `store.actor`（不拒绝请求），所以**守卫根本没挂上**时循环
@@ -108,6 +110,12 @@ function providerDetail(overrides: Partial<AuthorizedProviderDetail> = {}): Auth
 function providerListItem(overrides: Partial<AuthorizedProviderListItem> = {}): AuthorizedProviderListItem {
   const { models: _models, ...rest } = providerDetail();
   return { ...rest, modelCount: 1, ...overrides };
+}
+
+/** 子行分页列表夹具；`items` / `total` 由用例给出（替身代表仓储侧已经分好页）。 */
+function providerModelsPage(overrides: Partial<AuthorizedProviderModelsPage> = {}): AuthorizedProviderModelsPage {
+  const { models: _models, ...rest } = providerDetail();
+  return { ...rest, items: [], total: 0, ...overrides };
 }
 
 /** 子表行夹具；`options` 是自由形状 jsonb 列，只在详情投影里出现。 */
@@ -281,31 +289,63 @@ describe("/api/models 路由", () => {
     expect(JSON.parse(listText).items[0]).not.toHaveProperty("apiKey");
   });
 
-  // 列表分页在内存里切片（Facade 返回当前主体可见的全集），`total` 必须是全集条数而不是当前页条数。
-  test("列表按 page/pageSize 切片且 total 为全集条数", async () => {
-    const items = ["a", "b", "c"].map((name) =>
-      providerListItem({ id: `provider-${name}`, name, displayName: name.toUpperCase() }),
-    );
-    installFacade({ list: async () => ({ items, total: items.length }) });
+  // 分页下推到 Facade（SQL 侧 LIMIT/OFFSET）：协议层只做 page/pageSize → limit/offset 的换算，
+  // 不再取回全集再切片，因此 Facade 必须收到边界而不是裸调用。
+  test("列表把 page/pageSize 换算为 limit/offset 下推，total 取 Facade 的全集计数", async () => {
+    const seen: Array<{ limit?: number; offset?: number } | undefined> = [];
+    installFacade({
+      list: async (_actor, options) => {
+        seen.push(options);
+        return { items: [providerListItem({ id: "provider-b", name: "b" })], total: 3 };
+      },
+    });
 
     const body = await readJson(await request("/api/models/providers?page=2&pageSize=1"));
 
+    expect(seen).toEqual([{ limit: 1, offset: 1 }]);
+    // `total` 是全集条数而不是本页条数：调用方据此翻页，Facade 给什么就回什么。
     expect(body.total).toBe(3);
     expect(body.page).toBe(2);
     expect(body.pageSize).toBe(1);
     expect(body.items.map((item: { name: string }) => item.name)).toEqual(["b"]);
   });
 
-  // 子 Model 列表在内存里切片：`total` 是子行全集条数而不是当前页条数，调用方据此翻页。
-  test("子 Model 列表按 page/pageSize 切片且 total 为子行全集条数", async () => {
-    const models = [
-      modelRow({ id: "model-row-1", modelId: "gpt-4o" }),
-      modelRow({ id: "model-row-2", modelId: "gpt-4o-mini" }),
-    ];
-    installFacade({ getById: async () => providerDetail({ models }) });
+  // 分页口径的默认值与越界边界：不带查询参数时回到 page=1/pageSize=20（同时换算成 limit/offset），
+  // 越界页不是错误——空 items 且 total 保持不变，调用方据此判断已经翻到底。
+  test("列表默认分页口径与越界页都不改变 total 语义", async () => {
+    const seen: Array<{ limit?: number; offset?: number } | undefined> = [];
+    installFacade({
+      list: async (_actor, options) => {
+        seen.push(options);
+        return { items: [], total: 3 };
+      },
+    });
+
+    const first = await readJson(await request("/api/models/providers"));
+    const beyond = await readJson(await request("/api/models/providers?page=99&pageSize=20"));
+
+    expect(seen).toEqual([
+      { limit: 20, offset: 0 },
+      { limit: 20, offset: 1960 },
+    ]);
+    expect(first).toMatchObject({ items: [], total: 3, page: 1, pageSize: 20 });
+    expect(beyond).toMatchObject({ items: [], total: 3, page: 99, pageSize: 20 });
+  });
+
+  // 子 Model 列表同样下推：Facade 拿到 Provider 定位（资源 ID 入口）与 limit/offset，
+  // `total` 是子行全集条数而不是当前页条数，列表项仍带父级名称。
+  test("子 Model 列表把定位与分页下推给 Facade，total 为子行全集条数", async () => {
+    const seen: Array<{ ref: unknown; options: unknown }> = [];
+    installFacade({
+      listModels: async (_actor, ref, options) => {
+        seen.push({ ref, options });
+        return providerModelsPage({ items: [modelRow({ id: "model-row-2", modelId: "gpt-4o-mini" })], total: 2 });
+      },
+    });
 
     const body = await readJson(await request("/api/models/providers/provider-1/models?page=2&pageSize=1"));
 
+    expect(seen).toEqual([{ ref: { by: "resourceId", value: "provider-1" }, options: { limit: 1, offset: 1 } }]);
     expect(body.total).toBe(2);
     expect(body.page).toBe(2);
     expect(body.pageSize).toBe(1);
@@ -314,12 +354,19 @@ describe("/api/models 路由", () => {
     expect(body.items[0].providerName).toBe("demo");
   });
 
-  // 越界页不是错误：返回空 items 且 total 仍是全集条数，调用方据此判断已经翻到底。
+  // 子 Model 列表的越界页：偏移量照常下推（不因越界改成全量读），空 items 与 total 一起回给调用方。
   test("子 Model 列表越界页码返回空 items 且保留 total", async () => {
-    installFacade({ getById: async () => providerDetail() });
+    const seen: Array<{ limit?: number; offset?: number } | undefined> = [];
+    installFacade({
+      listModels: async (_actor, _ref, options) => {
+        seen.push(options);
+        return providerModelsPage({ items: [], total: 1 });
+      },
+    });
 
     const body = await readJson(await request("/api/models/providers/provider-1/models?page=99&pageSize=20"));
 
+    expect(seen).toEqual([{ limit: 20, offset: 1960 }]);
     expect(body.items).toEqual([]);
     expect(body.total).toBe(1);
   });
@@ -357,7 +404,7 @@ describe("/api/models 路由", () => {
 
   // 不可见 Provider 的子行一律表现为「不存在」：列表与详情都 404，不确认 Provider 存在。
   test("不可见 Provider 的子 Model 列表与详情返回 404", async () => {
-    installFacade({ getById: async () => undefined });
+    installFacade({ getById: async () => undefined, listModels: async () => undefined });
 
     const list = await request("/api/models/providers/shared/models");
     const detail = await request("/api/models/providers/shared/models/model-row-1");

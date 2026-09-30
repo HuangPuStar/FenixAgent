@@ -2,41 +2,17 @@
   "marketTabs": {
     "label": "插件市场分类"
   },
-  "filePicker": {
-    "title": "选择文件",
-    "fileTooLarge": "{{name}} 太大了（上限 {{max}}）"
-  },
   "panelMode": {
     "panelTabs": "右侧工作区",
     "files": "文件",
     "sites": "站点",
-    "sitesTabAriaLabel": "站点选择栏",
     "sitesEmptyTitle": "未绑定站点",
     "sitesEmptyHint": "请在 Agent 配置中绑定 Site 后在此预览",
     "pendingDiff": "文件区有 {{count}} 个新文件改动",
-    "mountSite": "挂载站点",
-    "mountSiteAriaLabel": "挂载站点",
-    "unmountSite": "卸载",
-    "unmountSiteAriaLabel": "卸载站点",
-    "mountDialogTitle": "挂载站点",
-    "mountDialogHint": "选择要挂载到此 Agent 的站点",
-    "mountDialogConfirm": "挂载 {{count}}",
-    "mountDialogConfirmNone": "挂载",
-    "noAvailableSites": "没有可挂载的站点",
+    "pendingDiffOverflow": "99+",
     "unmountConfirmTitle": "卸载站点？",
     "unmountConfirm": "确定卸载此 Agent 的 \"{{name}}\" 站点？",
-    "mountSuccess": "已挂载 {{count}} 个站点",
-    "mountFailed": "挂载失败",
-    "unmountFailed": "卸载失败",
-    "sitesLoadFailed": "加载站点列表失败",
-    "retry": "重试",
     "tasks": "定时任务",
-    "tasksEmpty": "暂无绑定的定时任务",
-    "tasksManage": "前往管理",
-    "tasksLoadFailed": "加载任务列表失败",
-    "tasksToggleFailed": "切换任务状态失败",
-    "tasksTriggerFailed": "触发任务失败",
-    "tasksListTitle": "任务列表",
     "views": "发布视图",
     "floating": "浮动",
     "docked": "固定",
@@ -45,53 +21,17 @@
     "close": "关闭右侧工作区"
   },
   "siteFrame": {
-    "share": "分享",
-    "reload": "刷新站点",
-    "openInNewTab": "在新标签页打开",
-    "loading": "加载站点中...",
     "loadingSites": "加载 Agent 绑定的站点...",
-    "loadFailed": "加载站点失败",
-    "loadTimeout": "站点加载超时",
-    "loadTimeoutHint": "站点可能在后台继续加载，可刷新重试或在新标签页打开",
-    "traceToCreatorTooltip": "切换到创建此站点的智能体",
-    "traceToCreatorNotFound": "该智能体暂未激活，无法跳转",
-    "navigateFailed": "跳转失败",
-    "notCreatorTooltip": "此站点由其他智能体创建，你只能操作数据，无法修改站点文件。点击溯源切换到创建者智能体。"
+    "loadFailed": "加载站点失败"
   },
   "fileTree": {
     "emptyState": "工作区暂无文件",
     "emptyHint": "通过上方按钮或拖拽文件到此处上传",
     "userEmptyState": "暂无文件",
     "retry": "重试",
-    "uploadFailed": "上传失败",
-    "uploadPartialIndeterminate": "{{message}} 部分文件可能已经上传，确切数量未知；文件列表已刷新。",
     "staleBanner": "文件服务暂时不可用，正在自动重连",
-    "renameFailed": "重命名失败",
-    "moveFailed": "移动失败",
-    "mkdirFailed": "创建文件夹失败",
-    "newFileFailed": "创建文件失败",
     "dropToUpload": "释放文件以上传",
-    "uploadTo": "上传到: {{path}}",
-    "downloadFailed": "下载失败",
-    "closeTab": "关闭标签",
-    "moreTabs": "还有 {{count}} 个标签",
-    "dialog": {
-      "renameTitle": "重命名",
-      "renameDescription": "输入新的文件或文件夹名称",
-      "moveTitle": "移动",
-      "moveDescription": "输入目标完整路径",
-      "newFileTitle": "新建文件",
-      "newFileDescription": "输入新文件名称",
-      "newFolderTitle": "新建文件夹",
-      "newFolderDescription": "输入新文件夹名称",
-      "invalidName": "名称不能为空，且不能包含 /、NUL，也不能是 . 或 ..",
-      "nameTooLong": "名称过长（最多 255 字节）",
-      "invalidPath": "目标路径不能为空且不能包含 NUL",
-      "confirm": "确认"
-    },
-    "contextMenu": {
-      "delete": "删除"
-    }
+    "uploadTo": "上传到: {{path}}"
   },
   "tree": {
     "showMore": "+{{count}} 更多",
@@ -100,24 +40,12 @@
     "retry": "重试",
     "empty": "暂无内容"
   },
-  "resource": {
-    "internal": "私有",
-    "external": "共享",
-    "public": "公开",
-    "makePublic": "设为公开",
-    "makePrivate": "设为私有",
-    "readOnly": "只读"
-  },
   "chatComposer": {
     "fileTooLarge": "单个文件不能超过 100 MB",
     "filesTooLarge": "一次上传的文件总量不能超过 100 MB"
   },
-  "statusBadge": {
-    "all": "全部"
-  },
   "confirmDialog": {
-    "confirm": "确认",
-    "cancel": "取消"
+    "confirm": "确认"
   },
   "formDialog": {
     "save": "保存",
@@ -126,11 +54,6 @@
   },
   "toolCallRow": {
     "openFile": "打开文件"
-  },
-  "permissionPanel": {
-    "allow": "允许",
-    "allowSession": "允许本次会话",
-    "deny": "拒绝"
   },
   "askUser": {
     "submit": "提交",

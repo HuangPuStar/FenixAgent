@@ -1,11 +1,6 @@
-/*
- * Markdown descendant styles formerly expressed as arbitrary Tailwind variants.
- * The class is intentionally unlayered so these declarations retain the source
- * stylesheet's precedence over streamdown utility classes.
- */
 .chat-markdown-content-styles {
-  color: #27364f;
-  font-size: 14px;
+  color: var(--color-slate-700);
+  font-size: var(--text-sm);
   overflow-wrap: anywhere;
   white-space: normal;
   word-break: normal;
@@ -18,27 +13,27 @@
   margin-top: 1.35em;
   margin-bottom: 0.55em;
   font-weight: 700;
-  letter-spacing: -0.015em;
-  color: #1f2d45;
+  letter-spacing: var(--tracking-neg2);
+  color: var(--color-slate-800);
 }
 
 .chat-markdown-content-styles h1 {
-  font-size: 22px;
+  font-size: var(--text-22);
   line-height: 1.35;
 }
 
 .chat-markdown-content-styles h2 {
-  font-size: 18px;
+  font-size: var(--text-lg);
   line-height: 1.45;
 }
 
 .chat-markdown-content-styles h3 {
-  font-size: 15px;
+  font-size: var(--text-15);
   line-height: 1.5;
 }
 
 .chat-markdown-content-styles h4 {
-  font-size: 14px;
+  font-size: var(--text-sm);
   line-height: 1.55;
 }
 
@@ -62,7 +57,7 @@
   margin-bottom: 0.95em;
   list-style-position: outside;
   list-style-type: disc;
-  padding-left: 1.35rem;
+  padding-left: calc(var(--spacing) * 5.4);
 }
 
 .chat-markdown-content-styles ol {
@@ -70,7 +65,7 @@
   margin-bottom: 0.95em;
   list-style-position: outside;
   list-style-type: decimal;
-  padding-left: 1.35rem;
+  padding-left: calc(var(--spacing) * 5.4);
 }
 
 .chat-markdown-content-styles ul ul {
@@ -85,12 +80,12 @@
   display: list-item;
   margin-top: 0.3em;
   margin-bottom: 0.3em;
-  padding-left: 0.1rem;
+  padding-left: calc(var(--spacing) * 0.4);
 }
 
 .chat-markdown-content-styles li::marker {
   font-weight: 600;
-  color: #65758d;
+  color: var(--color-slate-500);
 }
 
 .chat-markdown-content-styles li > ul,
@@ -104,25 +99,25 @@
   margin-bottom: 1em;
   margin-left: 0;
   padding-left: 0;
-  padding-right: 0.8rem;
+  padding-right: calc(var(--spacing) * 3.2);
   border: 0;
   background-color: transparent;
-  color: #5f6e84;
+  color: var(--color-slate-500);
   font-style: italic;
 }
 
 .chat-markdown-content-styles :not(pre) > code {
-  border-radius: 0.25rem;
+  border-radius: var(--radius-sm);
   border-width: 1px;
   border-style: solid;
-  border-color: #e3e8ef;
-  background-color: #f7f7f7;
+  border-color: var(--color-slate-200);
+  background-color: var(--color-slate-100);
   padding-left: 0.34em;
   padding-right: 0.34em;
   padding-top: 0.12em;
   padding-bottom: 0.12em;
   font-size: 0.9em;
-  color: #4d5d75;
+  color: var(--color-slate-600);
   overflow-wrap: anywhere;
 }
 
@@ -141,10 +136,10 @@
   min-width: max-content;
   border: 0;
   background-color: transparent;
-  padding-left: 1rem;
-  padding-right: 1rem;
-  padding-top: 0.9rem;
-  padding-bottom: 0.9rem;
+  padding-left: calc(var(--spacing) * 4);
+  padding-right: calc(var(--spacing) * 4);
+  padding-top: calc(var(--spacing) * 3.6);
+  padding-bottom: calc(var(--spacing) * 3.6);
   white-space: pre;
   overflow-wrap: normal;
   word-break: normal;
@@ -155,28 +150,28 @@
   margin-bottom: 1em;
   gap: 0;
   overflow: hidden;
-  border-radius: 0.5rem;
+  border-radius: var(--radius);
   border-width: 1px;
   border-style: solid;
-  border-color: #e1e6ed;
-  background-color: #ffffff;
+  border-color: var(--color-slate-200);
+  background-color: var(--color-white);
   padding: 0;
 }
 
 .chat-markdown-content-styles [data-streamdown="code-block-header"] {
   display: none;
-  height: 30px;
+  height: calc(var(--spacing) * 7.5);
   border-bottom-width: 1px;
   border-bottom-style: solid;
-  border-bottom-color: #edf0f4;
-  padding-left: 0.5rem;
-  padding-right: 0.5rem;
+  border-bottom-color: var(--color-slate-100);
+  padding-left: calc(var(--spacing) * 2);
+  padding-right: calc(var(--spacing) * 2);
 }
 
 .chat-markdown-content-styles [data-streamdown="code-block-actions"] {
-  gap: 2px;
+  gap: calc(var(--spacing) * 0.5);
   border: 0;
-  background-color: rgb(255 255 255 / 88%);
+  background-color: color-mix(in srgb, var(--color-white) 88%, transparent);
   box-shadow: none;
   pointer-events: auto;
 }
@@ -200,26 +195,26 @@
   width: max-content;
   min-width: 100%;
   border-collapse: collapse;
-  background-color: #ffffff;
-  font-size: 13px;
+  background-color: var(--color-white);
+  font-size: var(--text-13);
 }
 
 .chat-markdown-content-styles th,
 .chat-markdown-content-styles td {
   border-bottom-width: 1px;
   border-bottom-style: solid;
-  border-bottom-color: #e5eaf1;
-  padding-left: 0.7rem;
-  padding-right: 0.7rem;
-  padding-top: 0.55rem;
-  padding-bottom: 0.55rem;
+  border-bottom-color: var(--color-slate-200);
+  padding-left: calc(var(--spacing) * 2.8);
+  padding-right: calc(var(--spacing) * 2.8);
+  padding-top: calc(var(--spacing) * 2.2);
+  padding-bottom: calc(var(--spacing) * 2.2);
   text-align: left;
   vertical-align: top;
 }
 
 .chat-markdown-content-styles th {
   font-weight: 650;
-  color: #52627a;
+  color: var(--color-slate-500);
 }
 
 .chat-markdown-content-styles table,
@@ -227,6 +222,19 @@
 .chat-markdown-content-styles video,
 .chat-markdown-content-styles iframe {
   max-width: 100%;
+}
+
+.chat-markdown-content-styles [data-streamdown="table-wrapper"] table {
+  max-width: none;
+}
+
+.chat-markdown-content-styles [data-streamdown="table-wrapper"] > div:first-child > div > div {
+  min-width: calc(var(--spacing) * 30);
+}
+
+.chat-markdown-content-styles [data-streamdown="table-wrapper"] > div:first-child > div > div > button {
+  white-space: nowrap;
+  overflow-wrap: normal;
 }
 
 .chat-markdown-content-styles img {
@@ -237,9 +245,9 @@
 }
 
 .chat-markdown-content-styles hr {
-  margin-top: 1.4rem;
-  margin-bottom: 1.4rem;
-  height: 1px;
+  margin-top: calc(var(--spacing) * 5.6);
+  margin-bottom: calc(var(--spacing) * 5.6);
+  height: calc(var(--spacing) * 0.25);
   border: 0;
-  background-color: #e5eaf1;
+  background-color: var(--color-slate-200);
 }

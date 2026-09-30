@@ -10,6 +10,7 @@ import {
   McpImportError,
   parseMcpCommand,
   parseMcpJson,
+  validateMcpEditor,
 } from "../pages/agent-panel/pages/agent-mcp-utils";
 
 const ACTIVE_ORG_ID = "org-current";
@@ -37,6 +38,21 @@ const servers: McpServerInfo[] = [
 ];
 
 describe("MCP editor conversion", () => {
+  // 空 remote 表单须同时报告名称与 URL，供字段级提示使用，并在请求前拦截创建。
+  test("reports both required remote fields", () => {
+    expect(validateMcpEditor({ name: "", type: "remote", command: "", url: "" })).toEqual({
+      name: "validation.nameRequired",
+      url: "validation.urlRequired",
+    });
+  });
+
+  // 非空但非法的 URL 仍给 URL 字段提示，不误报名称必填。
+  test("reports invalid remote URL on its field", () => {
+    expect(validateMcpEditor({ name: "server", type: "remote", command: "", url: "invalid" })).toEqual({
+      url: "validation.urlInvalid",
+    });
+  });
+
   // 带引号的命令参数必须保持为单个 argv，避免配置保存后语义改变。
   test("parses quoted command arguments", () => {
     expect(parseMcpCommand('npx package "folder with spaces"')).toEqual(["npx", "package", "folder with spaces"]);

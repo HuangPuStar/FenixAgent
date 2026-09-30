@@ -50,10 +50,12 @@ function isStreamableHttp(server: McpServerConfig): server is Extract<McpServerC
 
 /**
  * 把 AgentLaunchSpec.mcpServers 转为 .mcp.json 格式。
+ *
+ * 空绑定返回空 `mcpServers` 而不是 null：`.mcp.json` 必须始终是当前启用集合的**投影**。workspace 按
+ * (org, user, environment) 复用，上一轮物化留下的文件不会自己消失，空集合用 null 表示会让调用方跳过
+ * 写入（见 `environment-preparer.ts` 的写入点），表现为「取消全部 MCP 后 agent 仍按旧清单加载工具」。
  */
-export function buildCcbMcpConfig(launchSpec: AgentLaunchSpec): CcbMcpConfig | null {
-  if (launchSpec.mcpServers.length === 0) return null;
-
+export function buildCcbMcpConfig(launchSpec: AgentLaunchSpec): CcbMcpConfig {
   const mcpServers: Record<string, CcbMcpServerConfig> = {};
   for (const server of launchSpec.mcpServers) {
     if (isStreamableHttp(server)) {
@@ -128,11 +130,9 @@ export function buildCcbRuntimeConfig(
   // 开启轻量模式，减少 token 消耗
   config.poorMode = true;
 
-  // Hindsight 插件：检测 launchSpec.env 中的 HINDSIGHT_* 变量
-  // 这些变量由启动参数组装器在检测到"记忆开启"时注入
-  // （`@fenix/agent-config` 的 `server/services/agent-launch-spec/memory-env.ts`）
-  if (launchSpec.env?.HINDSIGHT_API_URL) {
-    config.enabledPlugins = { "hindsight-memory@hindsight": true };
+  // 显式插件能力映射；市场别名必须与 docker/sandbox-ccb、sandbox-peri 的预装注册一致。
+  if (launchSpec.plugins?.includes("hindsight")) {
+    config.enabledPlugins = { "hindsight-memory@hindsight-plugin": true };
   }
 
   return config;

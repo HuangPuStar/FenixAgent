@@ -1,5 +1,29 @@
 import { describe, expect, test } from "bun:test";
+import { access, mkdtemp, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import type { AgentLaunchSpec } from "@fenix/plugin-sdk";
 import { createClaudeCodeRuntime } from "../runtime/claude-code-runtime";
+
+/** 用例的最小 LaunchSpec：skills 为空，物化过程不发起下载。 */
+function createLaunchSpec(overrides: Partial<AgentLaunchSpec> = {}): AgentLaunchSpec {
+  return {
+    organizationId: "org-test",
+    userId: "user-test",
+    environmentId: "env-test",
+    agent: { name: "writer", prompt: "请保持准确" },
+    model: {
+      provider: "provider-test",
+      protocol: "anthropic",
+      baseUrl: "https://models.example.test",
+      apiKey: "test-key",
+      model: "test-model",
+    },
+    skills: [],
+    mcpServers: [],
+    ...overrides,
+  };
+}
 
 describe("Claude Code runtime relay", () => {
   // relay 应按注册顺序将消息广播给所有监听器，并在取消订阅后停止向该监听器推送。
@@ -31,5 +55,32 @@ describe("Claude Code runtime relay", () => {
     firstRelay.send({ type: "own-instance" });
 
     expect(received).toEqual(["own-instance"]);
+  });
+});
+
+describe("Claude Code runtime workspace", () => {
+  // 物化必须落在注入根的 {root}/{org}/{user}/{env} 下：旧实现拼相对路径，落点是宿主进程 cwd。
+  test("workspace 落在注入的根目录下", async () => {
+    const root = await mkdtemp(join(tmpdir(), "claude-code-workspace-"));
+    try {
+      const runtime = createClaudeCodeRuntime({ workspaceRoot: root });
+
+      await runtime.prepareEnvironment({ instanceId: "inst-workspace", launchSpec: createLaunchSpec() });
+
+      const workspace = join(root, "org-test", "user-test", "env-test");
+      await expect(access(join(workspace, ".claude"))).resolves.toBeNull();
+      await expect(access(join(workspace, "CLAUDE.md"))).resolves.toBeNull();
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
+  // 未注入 workspaceRoot 时必须报错：包内没有 cwd 兜底，静默回落会把实例写进宿主进程 cwd。
+  test("未注入 workspaceRoot 时拒绝 prepare", async () => {
+    const runtime = createClaudeCodeRuntime();
+
+    await expect(
+      runtime.prepareEnvironment({ instanceId: "inst-no-root", launchSpec: createLaunchSpec() }),
+    ).rejects.toThrow("workspaceRoot");
   });
 });

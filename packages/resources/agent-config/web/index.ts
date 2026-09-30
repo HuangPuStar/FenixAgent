@@ -16,6 +16,11 @@
  *   - agent-panel 的三个页面原本寄居宿主 `apps/web/src/pages/agent-panel/pages/`，§1.6 T11e 随
  *     「宿主剩余页面归位」迁入本包，route adapter 改直连本入口（原先经 vite / tsconfig 的
  *     `@/src/pages/...` 桥接别名）。它们的自有字典同批归位，由本包 `./web/i18n` 注册。
+ *   - 宿主 `apps/web/src/pages/agent-panel/artifacts/ArtifactsPanel.tsx` 取 `useArtifactsSites`（站点域取数，2026-09-25 随
+ *     台账 D2 的同类缺口迁入本包：前端规范 §2.5 禁止壳取数，§10.5.2 要求 hook 归所属模块）。
+ *   - 宿主 `shell/AgentSidebar.tsx` 取 `AgentSidebarTree`（左侧栏智能体树，2026-09-28 按同一条
+ *     §2.5 从宿主壳迁入：取数、四种领域操作与两个确认弹窗都归本包，纯渲染部分下沉到
+ *     `@fenix/ui-components` 的 `AgentTree`，宿主只留选中实例与删除环境后的接线）。
  * 这些符号都在本文件的导出面内，消费方不得深入 `web/pages/**` 这类实现路径。
  * 窄子路径须在 `exports` 显式声明，只供消费方避开无关页面图，不允许随意深链。
  *
@@ -26,9 +31,11 @@
 export * from "./api/agents";
 export * from "./api/sites";
 export { AgentSitesCard } from "./components/agent-panel/AgentSitesCard";
+export { AgentSidebarTree } from "./components/agent-panel/agent-sidebar-tree";
 export { MountSiteDialog } from "./components/agent-panel/MountSiteDialog";
 export { SiteFrame } from "./components/agent-panel/SiteFrame";
 export { type SiteEntry, SiteTabsBar } from "./components/agent-panel/SiteTabsBar";
+export { useArtifactsSites } from "./hooks/use-artifacts-sites";
 export {
   AGENT_HOME_NS,
   AGENTS_NS,

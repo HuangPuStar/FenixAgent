@@ -5,7 +5,6 @@ import { createPortal } from "react-dom";
 import { useTranslation } from "react-i18next";
 import { AgentEditorBody } from "./agent-editor-body";
 import { PANEL_DESKTOP, PANEL_SHEET, PANEL_SHELL } from "./agent-editor-classes";
-import "./agent-editor-retained.css";
 import "./AgentFormDialog.css";
 
 /**

@@ -25,7 +25,8 @@ import type { ServerRouteHost } from "@fenix/platform-sdk/server";
  *
  * 另一个方向的残留已随 §1.7 B12 归零：`scheduled_task_v2` / `task_execution_log` 两张表的定义迁入本包
  * `db/schema.ts`（出口 `./db`），原先 6 处 `@server/db/schema` 导入（2 个生产仓储 + 3 个包内用例 +
- * 宿主测试 `task-schema.test.ts`）同批改指本包出口，台账 `apps-boundary @fenix/resource-task` 条目随之删除。
+ * 宿主测试 `task-schema.test.ts`）同批改指本包出口，台账 `apps-boundary @fenix/resource-task` 条目随之删除；
+ * 该宿主用例随后在 §2.2 调用期禁则补齐时随表落回本包 `src/__tests__/`，宿主已无本包表的消费者。
  * 两张表的跨包外键列对象来自 `@fenix/identity/db`（`user.id`）与 `@fenix/agent-config/db`（`agentConfig.id`），
  * 属迁移链层面的列对象来源、不是运行期耦合（装配校验只扫 `src/**`），故**不进** `dependsOn`；
  * `package.json` 的 `dependencies` 则必须声明 `@fenix/identity`（`@fenix/agent-config` 原本已声明）。

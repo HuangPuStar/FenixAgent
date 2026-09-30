@@ -54,13 +54,6 @@ export function translateSimpleAction(
       };
     case "list_sessions":
       return { jsonrpc: "2.0", id, method: "session/list", params: { cwd: workspacePath } };
-    case "rename_session":
-      return {
-        jsonrpc: "2.0",
-        id,
-        method: "session/rename",
-        params: { sessionId: parsed.sessionId, title: parsed.title },
-      };
     case "delete_session":
       return { jsonrpc: "2.0", id, method: "session/delete", params: { sessionId: parsed.sessionId } };
     case "respond_permission":

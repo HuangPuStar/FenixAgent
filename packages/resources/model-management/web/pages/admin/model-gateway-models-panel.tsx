@@ -17,6 +17,7 @@ import { useMemo } from "react";
 import { useTranslation } from "react-i18next";
 import type { ModelGatewayConfiguration, ModelSyncStatus } from "../../api/model-gateway";
 import { MODELS_NS } from "../../i18n/namespace";
+import { browserAdminUiUrl } from "../../lib/model-gateway-admin-url";
 import { MODEL_GATEWAY_SYNC_TONES } from "../../lib/model-gateway-status-tones";
 import {
   FILTER_FIELD_CLASS,
@@ -28,6 +29,9 @@ import {
 export function ModelGatewayModelsPanel({
   status,
   config,
+  configError,
+  configLoading,
+  onRetryConfig,
   checking,
   syncing,
   busy,
@@ -40,6 +44,9 @@ export function ModelGatewayModelsPanel({
 }: {
   status: ModelSyncStatus | null;
   config: ModelGatewayConfiguration | undefined;
+  configError: Error | undefined;
+  configLoading: boolean;
+  onRetryConfig: () => void;
   checking: boolean;
   syncing: boolean;
   busy: boolean;
@@ -51,6 +58,7 @@ export function ModelGatewayModelsPanel({
   onSync: () => void;
 }) {
   const { t } = useTranslation(MODELS_NS);
+  const adminUiUrl = browserAdminUiUrl(config?.adminUiUrl, globalThis.location?.hostname ?? "");
 
   const displayedModels = useMemo(() => {
     const models = status?.models ?? [];
@@ -70,19 +78,35 @@ export function ModelGatewayModelsPanel({
           <div className="min-w-0 flex-1">
             <p className="text-sm font-medium text-text-primary">{t("modelGateway.modelsPage.litellmConfig.title")}</p>
             <p className="mt-1 text-sm text-text-muted">{t("modelGateway.modelsPage.litellmConfig.description")}</p>
+            {!configLoading && !adminUiUrl && (
+              <p role="alert" className="mt-2 text-sm text-destructive">
+                {t(
+                  configError
+                    ? "modelGateway.modelsPage.litellmConfig.loadFailed"
+                    : "modelGateway.modelsPage.litellmConfig.unavailable",
+                )}
+              </p>
+            )}
           </div>
-          {config?.adminUiUrl ? (
+          {adminUiUrl ? (
             <Button asChild size="sm">
-              <a href={config.adminUiUrl} target="_blank" rel="noreferrer">
+              <a href={adminUiUrl} target="_blank" rel="noopener noreferrer">
                 {t("modelGateway.modelsPage.litellmConfig.action")}
                 <ExternalLink className="size-3.5" />
               </a>
             </Button>
           ) : (
-            <Button size="sm" disabled>
-              {t("modelGateway.modelsPage.litellmConfig.action")}
-              <ExternalLink className="size-3.5" />
-            </Button>
+            <div className="flex gap-2">
+              <Button size="sm" disabled>
+                {t("modelGateway.modelsPage.litellmConfig.action")}
+                <ExternalLink className="size-3.5" />
+              </Button>
+              {configError && (
+                <Button size="sm" variant="outline" onClick={onRetryConfig}>
+                  {t("modelGateway.modelsPage.litellmConfig.retry")}
+                </Button>
+              )}
+            </div>
           )}
         </CardContent>
       </Card>

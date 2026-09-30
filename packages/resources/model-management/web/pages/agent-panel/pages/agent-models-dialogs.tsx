@@ -117,10 +117,10 @@ export function ModelEditorDialog({ target, saving, onClose, onSave }: ModelEdit
         disabled={readOnly}
         onToggle={(value) => toggle("outputModalities", value)}
       />
-      <div className="model-thinking-field sm:col-span-2">
-        <div>
-          <strong>{t("modelSubrow.thinkingEnabled")}</strong>
-          <small>{t("modelSubrow.thinkingDescription")}</small>
+      <div className="model-thinking-field flex items-center justify-between bg-slate-50 px-3 py-2.5 sm:col-span-2">
+        <div className="flex flex-col">
+          <strong className="text-xs">{t("modelSubrow.thinkingEnabled")}</strong>
+          <small className="mt-0.5 text-3xs text-slate-400">{t("modelSubrow.thinkingDescription")}</small>
         </div>
         <Switch
           checked={draft.thinking.enabled}
@@ -153,19 +153,28 @@ export function DiscoveryDialog({
             {state ? t("testDialog.modelsFound", { count: state.models.length }) : ""}
           </DialogDescription>
         </DialogHeader>
-        <div className="model-discovery-list is-dialog">
+        <div className="model-discovery-list is-dialog grid max-h-87.5 gap-0.75 overflow-auto mt-2.5">
           {state?.models.map((modelId) => {
             const added = state.addedIds.has(modelId);
             return (
-              <div key={modelId}>
+              <div
+                key={modelId}
+                className="flex min-h-8.5 items-center justify-between rounded-5 border-0 bg-white py-0 px-2.25 text-left text-3xs text-slate-500"
+              >
                 <span>{modelId}</span>
                 {added ? (
-                  <small>
-                    <Check />
+                  <small className="flex items-center gap-1 text-emerald-600">
+                    <Check className="w-3.25" />
                     {t("testDialog.added")}
                   </small>
                 ) : (
-                  <Button size="xs" variant="ghost" disabled={adding} onClick={() => onAdd(state.providerKey, modelId)}>
+                  <Button
+                    size="xs"
+                    variant="ghost"
+                    className="flex min-h-8.5 items-center justify-between rounded-5 border-0 bg-white py-0 px-2.25 text-left text-3xs text-slate-500 hover:bg-white hover:text-slate-500 dark:hover:bg-white"
+                    disabled={adding}
+                    onClick={() => onAdd(state.providerKey, modelId)}
+                  >
                     {t("actions.add")}
                   </Button>
                 )}

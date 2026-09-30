@@ -29,11 +29,6 @@ describe("translateSimpleAction", () => {
       },
       { action: { action: "list_sessions" }, method: "session/list", params: { cwd: workspacePath } },
       {
-        action: { action: "rename_session", sessionId: "session-rename", title: "Renamed" },
-        method: "session/rename",
-        params: { sessionId: "session-rename", title: "Renamed" },
-      },
-      {
         action: { action: "delete_session", sessionId: "session-delete" },
         method: "session/delete",
         params: { sessionId: "session-delete" },

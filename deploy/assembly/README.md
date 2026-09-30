@@ -23,4 +23,7 @@
 
 profile 是「目标组合」，registry 是「已编译进镜像的模块清单」。二者必须同时满足：profile 选择了未注册的 ID 会在启动时抛错，而不是静默降级到某个默认实现。新增模块的流程是提供 package + manifest，再运行 `bun run generate:module-registry`（声明了 `web` 的模块还需 `bun run generate:web-contributions`），不需要改 app 的注册逻辑。
 
-profile 可随镜像交付，也可作为受部署平台保护的只读挂载文件在启动时读取；其位置由发布脚本固定，不能由 profile 自己指定。
+profile 可随镜像交付，也可作为受部署平台保护的只读挂载文件在启动时读取；**位置由部署面给出**：不带
+`RCS_ASSEMBLY_PROFILE_PATH` 时是应用根下的 `deploy/assembly/ce.json`（CE 入口的固定 profile），换文件用该键
+传绝对路径（相对路径会随启动 cwd 漂移，启动期即被拒绝）。无论 profile 从哪里来，它自己都不能指定路径，
+也不能声明模块路径、URL、包名或代码入口。

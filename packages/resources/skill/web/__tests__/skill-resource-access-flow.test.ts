@@ -1,8 +1,13 @@
-import { beforeEach, describe, expect, mock, test } from "bun:test";
+import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
 import { skillConfigApi } from "../api/skills";
 import { getSkillKey, getSkillLookupKey, normalizeSkillOptionsPayload } from "../lib/skill-resource-access";
 
+// `globalThis.fetch` 是进程级全局且 Bun 的测试文件共享同一进程：装桩后必须还原，否则其后运行的服务端
+// 用例（如 workflow-v2 对假上游发真实请求）会收到这里的桩响应，表现为「单跑通过、全量失败」。
+let originalFetch: typeof globalThis.fetch;
+
 beforeEach(() => {
+  originalFetch = globalThis.fetch;
   globalThis.fetch = mock(() =>
     Promise.resolve(
       new Response(JSON.stringify({ success: true, data: { name: "deploy-skill" } }), {
@@ -11,6 +16,10 @@ beforeEach(() => {
       }),
     ),
   ) as unknown as typeof fetch;
+});
+
+afterEach(() => {
+  globalThis.fetch = originalFetch;
 });
 
 describe("skill resource access flow", () => {

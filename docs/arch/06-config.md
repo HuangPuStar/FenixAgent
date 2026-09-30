@@ -26,7 +26,7 @@ UserConfig（用户偏好）               默认 Agent / 模型偏好
 | Provider & Model | [→ 模型配置](./06-config-provider.md) | AI 服务商 + 模型，apiKey 掩码，跨组织共享 |
 | Skills | [→ Skills 配置](./06-config-skills.md) | DB + 文件系统双存储，spawn 时打包注入 |
 | MCP Server | [→ MCP 配置](./06-config-mcp.md) | 外部工具服务，4 种类型，严格校验 |
-| Hindsight | [→ 记忆配置](./06-config-hindsight.md) | AI 长期记忆，MCP 集成，bank 隔离 |
+| Hindsight | [→ 记忆配置](./06-config-hindsight.md) | AI 长期记忆，启动参数注入插件，bank 隔离 |
 | UserConfig | — | 用户偏好（默认 Agent、默认模型） |
 
 ## 跨组织共享

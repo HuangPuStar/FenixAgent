@@ -133,22 +133,6 @@ export async function findOrganizationMemberUserIds(
 }
 
 /**
- * 判断用户是否为组织成员。
- *
- * 归属判定只关心"是否存在"，因此只取一行（`limit 1`），不复用批量版
- * {@link findOrganizationMemberUserIds} 把该用户在组织内的全部成员行读回来。
- */
-export async function isOrganizationMember(organizationId: string, userId: string): Promise<boolean> {
-  const db = getIdentityDatabase();
-  const rows: { userId: string }[] = await db
-    .select({ userId: member.userId })
-    .from(member)
-    .where(and(eq(member.organizationId, organizationId), eq(member.userId, userId)))
-    .limit(1);
-  return rows.length > 0;
-}
-
-/**
  * 解析成员关系行 ID；不存在时返回 undefined。
  *
  * 该 ID 是既有外部约定的稳定标识（例如 Hindsight bank ID 由成员行 ID 派生），调用方不得据此

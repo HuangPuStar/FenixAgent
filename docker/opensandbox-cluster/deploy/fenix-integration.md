@@ -271,7 +271,7 @@ RCS_DEFAULT_SANDBOX_EXTRA_JSON='{
 }'
 ```
 
-Peri 沙盒镜像已注册为 peri 原生节点（`AGENT_TYPE=peri`），无需 `IS_PERI` 或 `RCS_CCB_COMMAND` / `RCS_CCB_ARGS`：沙盒由 peri handler 完成 workspace 物化并启动 peri。这里的 `entrypoint` 使用镜像中的 Bun 直接启动 `/usr/local/bin/acp-runtime.js peri acp`；`workspace` 保存工作区，`peri-global` 保存 Peri 的全局目录。
+Peri 沙盒镜像已注册为 peri 原生节点（`AGENT_TYPE=peri`），无需 `IS_PERI` 或 `RCS_CCB_COMMAND` / `RCS_CCB_ARGS`（后两者是 daemon / 容器侧部署键，仅 ccb 槽位使用，宿主 env schema 不声明）：沙盒由 peri handler 完成 workspace 物化并启动 peri。这里的 `entrypoint` 使用镜像中的 Bun 直接启动 `/usr/local/bin/acp-runtime.js peri acp`；`workspace` 保存工作区，`peri-global` 保存 Peri 的全局目录。
 
 ### 5.2 OpenCode
 

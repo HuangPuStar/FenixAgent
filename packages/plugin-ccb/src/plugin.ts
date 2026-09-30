@@ -7,6 +7,8 @@ import { createCcbRuntime } from "./runtime/ccb-runtime";
 export interface CcbPluginOptions {
   command?: string;
   args?: string[];
+  /** workspace 根目录，宿主本地执行装配点注入（`getAgentRuntimeConfig().workspaceRoot`）。 */
+  workspaceRoot?: string;
 }
 
 /**
@@ -24,6 +26,7 @@ export function createEnginePlugin(options: CcbPluginOptions = {}): EnginePlugin
     },
     createRuntime() {
       return createCcbRuntime({
+        workspaceRoot: options.workspaceRoot,
         portAllocator: createPortAllocator(),
         processManager: new AcpLinkProcessManager({ command, args }),
         createRelayHandle,

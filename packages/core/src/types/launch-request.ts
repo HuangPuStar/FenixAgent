@@ -26,6 +26,13 @@ export interface ConnectInstanceRelayRequest {
   instanceId: string;
   /** 可选的会话 ID，用于 relay 恢复或路由。 */
   sessionId?: string;
+  /**
+   * 触发本次 relay 连接的关联 ID（§7）：HTTP 触发取自请求上下文，独立入口（WS / 定时 / 队列）自建。
+   *
+   * 由调用方（`@fenix/agent-runtime` 的 relay 链路）解析后写入，使 core 之外的日志能与同一次触发对齐。
+   * core 实现当前不消费该字段——移除条件：core 侧的 relay 诊断日志开始记录它，或确认长期无需在 core 内关联。
+   */
+  requestId?: string;
 }
 
 /**

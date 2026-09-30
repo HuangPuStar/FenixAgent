@@ -9,6 +9,7 @@ import type { AgentLaunchSpec } from "@fenix/plugin-sdk";
 import { AcpDispatcher } from "acp-link/acp-dispatcher";
 import { createClaudeAcpConnection } from "acp-link/client/claude-acp-adapter";
 import type { EngineHandler, EngineStartContext } from "acp-link/client/instance-manager";
+import { prepareLaunchWorkspace } from "./runtime/environment";
 
 /**
  * Claude Code 引擎 handler：SDK query() 方式，不 spawn 子进程。
@@ -16,16 +17,17 @@ import type { EngineHandler, EngineStartContext } from "acp-link/client/instance
 export function createClaudeCodeHandler(): EngineHandler {
   return {
     async prepareWorkspace(workspace: string, launchSpec: AgentLaunchSpec): Promise<void> {
+      launchSpec = await prepareLaunchWorkspace(workspace, launchSpec);
       const installedSkills = await installClaudeCodeSkills(workspace, launchSpec.skills);
       const runtimeConfig = buildClaudeCodeSettings(launchSpec, installedSkills);
       await writeClaudeCodeSettings(workspace, runtimeConfig);
 
       const mcpConfig = buildMcpConfig(launchSpec);
-      if (mcpConfig) {
-        const { writeMcpConfig } = await import("@fenix/claude-code");
-        await writeMcpConfig(workspace, mcpConfig);
-        console.log(`[claude-code-handler] wrote .mcp.json with ${Object.keys(mcpConfig.mcpServers).length} servers`);
-      }
+      // .mcp.json 每次 prepare 全量重写：空集合必须落盘成 `{"mcpServers":{}}`，
+      // 否则取消全部 MCP 后旧文件残留，agent 继续加载已取消的 server。
+      const { writeMcpConfig } = await import("@fenix/claude-code");
+      await writeMcpConfig(workspace, mcpConfig);
+      console.log(`[claude-code-handler] wrote .mcp.json with ${Object.keys(mcpConfig.mcpServers).length} servers`);
 
       if (launchSpec.agent.prompt) {
         const { writeClaudeMd } = await import("@fenix/claude-code");

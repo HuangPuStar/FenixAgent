@@ -17,7 +17,7 @@ import {
   type ApiAgentUpsertBody,
   ApiAgentUpsertBodySchema,
 } from "../../schemas/api-agent.schema";
-import { applyAgentBindings, readAgentBindingRequest } from "../../services/agent-bindings";
+import { hasAgentBindings, readAgentBindingRequest } from "../../services/agent-bindings";
 import {
   isBuiltInAgent,
   resolveAgentNode,
@@ -264,7 +264,7 @@ export function createApiAgentsRoutes(deps: ApiAgentConfigRouteDependencies) {
       }
 
       try {
-        const { facade, identity } = getAgentConfigModule();
+        const { facade, identity, authoring } = getAgentConfigModule();
         // 同名判定按归属组织：唯一性是 `(organization_id, name)` 约束，其他组织公开的同名 Agent 不构成
         // 本组织的创建冲突（用可见性判定会让这类合法创建返回 409）。
         if (await facade.existsInOrganization(actor, payload.name)) {
@@ -276,11 +276,10 @@ export function createApiAgentsRoutes(deps: ApiAgentConfigRouteDependencies) {
           data: toAgentConfigWriteData(payload as unknown as Record<string, unknown>),
           ...(payload.publicReadable === undefined ? {} : { publicReadable: payload.publicReadable }),
         });
-        await applyAgentBindings({
-          agentConfigId: agent.id,
-          request: readAgentBindingRequest(payload as unknown as Record<string, unknown>),
-          actor,
-        });
+        const bindingRequest = readAgentBindingRequest(payload as unknown as Record<string, unknown>);
+        if (hasAgentBindings(bindingRequest)) {
+          await authoring.applyBindings(actor, agent.id, bindingRequest);
+        }
 
         const organizationNames = await resolveOrganizationNames(identity, [agent.scope.organizationId]);
         return await buildAgentDetail(actor, agent, organizationNames.get(agent.scope.organizationId ?? ""));
@@ -328,7 +327,7 @@ export function createApiAgentsRoutes(deps: ApiAgentConfigRouteDependencies) {
       }
 
       try {
-        const { facade, identity } = getAgentConfigModule();
+        const { facade, identity, authoring } = getAgentConfigModule();
         // 资源键限定"归属当前组织"：跨组织可读资源的写请求在这里变成 404，与迁移前一致。
         const agent = await facade.update(
           actor,
@@ -338,11 +337,10 @@ export function createApiAgentsRoutes(deps: ApiAgentConfigRouteDependencies) {
             ...(payload.publicReadable === undefined ? {} : { publicReadable: payload.publicReadable }),
           },
         );
-        await applyAgentBindings({
-          agentConfigId: agent.id,
-          request: readAgentBindingRequest(payload as unknown as Record<string, unknown>),
-          actor,
-        });
+        const bindingRequest = readAgentBindingRequest(payload as unknown as Record<string, unknown>);
+        if (hasAgentBindings(bindingRequest)) {
+          await authoring.applyBindings(actor, agent.id, bindingRequest);
+        }
 
         const organizationNames = await resolveOrganizationNames(identity, [agent.scope.organizationId]);
         return await buildAgentDetail(actor, agent, organizationNames.get(agent.scope.organizationId ?? ""));

@@ -2,11 +2,10 @@ import { afterAll, afterEach, beforeEach, describe, expect, mock, test } from "b
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { gate } from "../services/agent-file-service";
+import { type MachineFileActor, machineFileFacade } from "../facades/machine-file-facade";
 import { flushPendingBatches } from "../services/file-event-limiter";
 import { destroyEnvironmentQueue, type FileEventFrame, subscribe } from "../services/file-event-queue";
 import { resetFileMachineEventDeps, setFileMachineEventDeps } from "../services/file-machine-events";
-import type { FileAuthContext } from "../services/file-types";
 import {
   initializeMachineModuleConfig,
   lockMachineWorkspaceRoot,
@@ -27,12 +26,11 @@ const fileOpRequests = await import("../transport/file-ws-requests");
 const ORG_ID = "org-1";
 const USER_ID = "user-1";
 
-const authCtx: FileAuthContext = {
+/** 调用方 actor：组织 + 属主 + 角色（角色参与环境归属检查，member 一律 403 fail-closed）。 */
+const ACTOR: MachineFileActor = {
   organizationId: ORG_ID,
   userId: USER_ID,
   role: "owner",
-  actorId: USER_ID,
-  source: "user",
 };
 
 function createMockWs(readyState = 1): WsConnection & { _messages: string[] } {
@@ -415,7 +413,7 @@ describe("本地写路径事件发布（W7，§4.3）", () => {
 
     const frames: FileEventFrame[] = [];
     const unsub = subscribe(envId, (f) => frames.push(f));
-    const fs = gate(envId, authCtx);
+    const fs = await machineFileFacade.open(ACTOR, envId);
 
     await fs.write("user/x.txt", "hi");
     await flushEvents();
@@ -443,7 +441,7 @@ describe("本地写路径事件发布（W7，§4.3）", () => {
 
     const frames: FileEventFrame[] = [];
     const unsub = subscribe(envId, (f) => frames.push(f));
-    const fs = gate(envId, authCtx);
+    const fs = await machineFileFacade.open(ACTOR, envId);
 
     await fs.write("user/old.txt", "x");
     await fs.rename("user/old.txt", "user/new.txt");

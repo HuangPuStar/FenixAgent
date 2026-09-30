@@ -1,35 +1,23 @@
-import type { ActorContext, WebErr } from "@fenix/platform-sdk";
-import { findAgentConfigNamesByIds } from "../../repositories/agent-config";
-import type { AgentSiteAppRow } from "../../repositories/agent-site-app";
-import { agentSiteAppRepo } from "../../repositories/agent-site-app";
+import type { WebErr } from "@fenix/platform-sdk";
+import {
+  type AgentSiteAppView,
+  SiteAppActionError,
+  type SiteAppFailureReason,
+} from "../../facades/agent-site-app-facade";
 import type { AgentSiteApp } from "../../schemas/agent-site.schema";
 
 /**
- * 站点路由使用的组织维度身份：组织、用户与**当前组织的成员角色**。
+ * `/web/agent-sites` 的协议层公共设施：DTO 映射与错误映射。
  *
- * 从可信主体 `ActorContext` 解析角色，而不是读宿主的 `AuthContext.role`（1.2 决策：「资源包与平台实现
- * 都只消费 `ActorContext`，不得自行解释 `AuthContext.role`」）：角色在本包只有一处用途——判断能否
- * 写站点（owner / admin），因此取 active organization 对应的成员关系即可。
+ * 这里**不做任何授权判断**：可见性、写权限与创建规则都由 `getAgentConfigModule().siteFacade` 产出，
+ * 本文件只把 Facade 的结果映射成 `/web` 契约的形状（响应对象、状态码、错误码与文案）。
  *
- * 无法解析（无 active organization，或该组织不在 `memberships` 中）时返回 null：这种主体无法定位组织
- * 资源，调用方按 401 短路，而不是让后续的比较把 `undefined` 当成一个组织去匹配。
+ * 入参类型只取自 Facade 的视图契约（`AgentSiteAppView`），不向上游要持久化模型：协议层与仓储层之间
+ * 隔着 Facade 与 Domain Service（§3.2），引用仓储行类型会让"改列名就编译失败"扩散到协议层。
  */
-export interface SiteActor {
-  readonly organizationId: string;
-  readonly userId: string;
-  readonly role: string;
-}
 
-export function resolveSiteActor(actor: ActorContext | null | undefined): SiteActor | null {
-  const organizationId = actor?.activeOrganizationId;
-  if (actor == null || organizationId === undefined) return null;
-  const membership = actor.memberships.find((item) => item.organizationId === organizationId);
-  if (!membership) return null;
-  return { organizationId, userId: actor.userId, role: membership.role };
-}
-
-/** 将 DB row 转为 API 响应（秒级时间戳，不包含 platformToken） */
-function toResponse(row: AgentSiteAppRow): AgentSiteApp {
+/** 将 Facade 视图转为 API 响应（秒级时间戳，不包含 platformToken）。 */
+export function toResponse(row: AgentSiteAppView): AgentSiteApp {
   return {
     id: row.id,
     organizationId: row.organizationId,
@@ -48,37 +36,13 @@ function toResponse(row: AgentSiteAppRow): AgentSiteApp {
   };
 }
 
-/** 判断当前用户是否对 app 有写权限（owner 或 org admin） */
-function canWrite(row: { userId: string }, userId: string, role: string): boolean {
-  return row.userId === userId || role === "owner" || role === "admin";
-}
-
-/**
- * 判断当前用户是否可以在管理界面看到该 app。
- * 管理 API 已是 org 隔离，只需对 private 可见性的 app 做 userId 过滤。
- */
-function canRead(row: AgentSiteAppRow, userId: string): boolean {
-  if (row.visibility !== "private") return true;
-  return row.userId === userId;
-}
-
-/** 识别 siteAppId 格式并查找：UUID 格式走 getById，否则走 getByRemoteAppId。
- *  必须区分格式再查，因为 getById 对非 UUID 参数会直接抛 PG 类型异常，不会返回 undefined。 */
-async function resolveSiteApp(siteAppId: string) {
-  const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(siteAppId);
-  return isUuid ? agentSiteAppRepo.getById(siteAppId) : agentSiteAppRepo.getByRemoteAppId(siteAppId);
-}
-
-/** 批量解析 createdByAgentConfigId → agent config name，附加到每个 site app 响应对象上。 */
-async function attachCreatorNames(items: AgentSiteApp[]): Promise<void> {
-  const ids = [...new Set(items.map((i) => i.createdByAgentConfigId).filter((id): id is string => !!id))];
-  if (ids.length === 0) return;
-  const nameMap = await findAgentConfigNamesByIds(ids);
-  for (const item of items) {
-    if (item.createdByAgentConfigId) {
-      item.createdByAgentConfigName = nameMap.get(item.createdByAgentConfigId) ?? null;
-    }
+/** 带创建者展示名的视图响应：只有存在创建者配置的行才带该字段（创建者已删除时为 null）。 */
+export function toViewResponse(view: AgentSiteAppView): AgentSiteApp {
+  const response = toResponse(view);
+  if (view.createdByAgentConfigId) {
+    response.createdByAgentConfigName = view.createdByAgentConfigName;
   }
+  return response;
 }
 
 /**
@@ -94,4 +58,109 @@ function buildError(code: string, message: string): WebErr {
   };
 }
 
-export { attachCreatorNames, buildError, canRead, canWrite, resolveSiteApp, toResponse };
+/** 端点各自的 403 文案；写权限判定只有一份，文案按动作区分（既有 `/web` 契约）。 */
+export const FORBIDDEN_MESSAGE = {
+  update: "无权限修改此 app",
+  delete: "无权限删除此 app",
+  rotateToken: "无权限操作此 app",
+  uploadFile: "无权限上传文件",
+  deploy: "无权限部署此 app",
+} as const;
+
+/** 失败语义 → `/web` 状态码；与既有响应 schema 声明的状态码一一对应。 */
+function statusOfSiteFailure(reason: SiteAppFailureReason): number {
+  switch (reason) {
+    case "no_organization":
+      return 401;
+    case "site_not_found":
+    case "agent_not_found":
+      return 404;
+    case "forbidden":
+      return 403;
+    case "not_custom":
+    case "pocketbase_unsupported":
+      return 400;
+  }
+}
+
+/** 失败语义 → `/web` 错误码；沿用站点路由既有的小写错误码。 */
+function codeOfSiteFailure(reason: SiteAppFailureReason): string {
+  switch (reason) {
+    case "no_organization":
+      return "unauthorized";
+    case "site_not_found":
+      return "not_found";
+    case "agent_not_found":
+      return "not_found";
+    case "forbidden":
+      return "forbidden";
+    case "not_custom":
+    case "pocketbase_unsupported":
+      return "bad_request";
+  }
+}
+
+/** 失败语义 → 对用户可见文案。
+ *
+ * 与状态码分开的理由：同一条语义在不同端点上说法不同（`forbidden` 是"无权限修改此 app"还是"无权限
+ * 部署此 app"），由调用方经 `overrides` 传入本端点的说法。
+ */
+function messageOfSiteFailure(
+  error: SiteAppActionError,
+  overrides: Partial<Record<SiteAppFailureReason, string>> = {},
+): string {
+  const override = overrides[error.reason];
+  if (override !== undefined) return override;
+  switch (error.reason) {
+    case "no_organization":
+      return "请求缺少组织上下文";
+    case "site_not_found":
+      return "App 不存在";
+    case "agent_not_found":
+      return "Agent 配置不存在";
+    case "forbidden":
+      return "无权限操作此 app";
+    case "not_custom":
+      return `App ${error.context.remoteAppId} 不是 custom 类型，无法部署（当前: ${error.context.appType}）`;
+    case "pocketbase_unsupported":
+      return `Custom 类型 app ${error.context.remoteAppId} 不支持 PocketBase API，请走业务前端 /web/site/deploy/${error.context.remoteAppId}/* 或 L1 deploy 接口`;
+  }
+}
+
+/** Elysia `status` 在本包用到的形状：写入状态码并返回同一个错误体。 */
+type StatusWriter = (code: number, body: WebErr) => WebErr;
+
+/**
+ * 失败语义 → 状态码与错误体。
+ *
+ * 未识别的错误原样上抛（500）：存储故障、上游故障与装配错误不得被伪装成协议错误。
+ */
+export function toSiteFailure(
+  error: unknown,
+  messages: Partial<Record<SiteAppFailureReason, string>> = {},
+): { readonly status: number; readonly body: WebErr } {
+  if (!(error instanceof SiteAppActionError)) throw error;
+  const reason = error.reason;
+  return {
+    status: statusOfSiteFailure(reason),
+    body: buildError(codeOfSiteFailure(reason), messageOfSiteFailure(error, messages)),
+  };
+}
+
+/**
+ * 执行站点动作并把 {@link SiteAppActionError} 映射为 `/web` 错误响应。
+ *
+ * 成功值是 `T`（Elysia 按状态码 200 与声明的响应 schema 写出），失败值是 `status()` 标记的响应。
+ */
+export async function runSiteAction<T>(
+  status: StatusWriter,
+  run: () => Promise<T>,
+  messages: Partial<Record<SiteAppFailureReason, string>> = {},
+): Promise<T | WebErr> {
+  try {
+    return await run();
+  } catch (error) {
+    const failure = toSiteFailure(error, messages);
+    return status(failure.status, failure.body);
+  }
+}

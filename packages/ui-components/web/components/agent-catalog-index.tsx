@@ -1,4 +1,3 @@
-import { ChevronRight } from "lucide-react";
 import type { ComponentPropsWithoutRef, ReactNode } from "react";
 import { cn } from "../lib/cn";
 import "./agent-catalog-index.css";
@@ -11,9 +10,18 @@ import "./agent-catalog-index.css";
  * HTML，所以那条按钮只能当兄弟节点），组织页的头部没有说明行。如果按「icon/title/subtitle/meta」传 props，
  * 就要为每一种差异再加一个 prop；因此这里只把**跨页一致的骨架**做成组件，差异靠槽位与 props 表达。
  *
- * **取值全部在伴生 CSS 里，且五页渲染结果必须一样**（2026-09-23 裁定：全部样式统一，不要观感不统一）。
- * 此前「字号/内边距/行高/圆角/配色归各页刻度」的分工已作废——那种分工的代价是同一个组件在五页长出五套
- * 观感，实测差值最大的字段（条目标题 9.75 vs 13px、图标盒 22.75 vs 34px）肉眼即可分辨。现在页面只表达
+ * **取值全部由本构件集提供，且五页渲染结果必须一样**（2026-09-23 裁定：全部样式统一，不要观感不统一）。
+ * 取值一律落在各元素自己的 `className` 上（工具类优先，含 `var()` 引用形态的任意值）；伴生
+ * `agent-catalog-index.css` 只留工具类表达不了的三类：挂不上类名的 DOM（图标盒内层 svg、尾注标签
+ * `<span>`——两处都由消费页面渲染）、外壳的列模板（`minmax()` 复合值）与窄屏横置的媒体块——逐条
+ * 清单见该文件头「已退出本文件」各批。
+ * 第四波（2026-09-28）把该表最后 37 处字面量按「名义值 ×16 对齐设计值」收口：能搬的搬进本文件的
+ * `className`（字号 / 字重 / 行高 / 内边距 / 圆角 / 尺寸 / 三态配色），挂不上类名的改成
+ * `var()` / `calc(var(--spacing) * N)` 引用。此前「字号/内边距/行高/圆角/配色归各页刻度」的分工已作废
+ * ——那种分工的代价是同一个组件在五页长出五套观感，实测差值最大的字段（条目标题 9.75 vs 13px、
+ * 图标盒 22.75 vs 34px）肉眼即可
+ * 分辨——这批读数取自旧的 13/16 刻度，令牌层改造后不再代表现行值（见 `agent-catalog-index.css`
+ * 文件头「刻度」段）。现在页面只表达
  * **页面语义**：图标着色（组织页角色三态色）、行尾动作与不可用态（知识库）、窄屏布局（组织页 ≤900px、
  * 知识库 ≤760px）。判据与取值表见 `agent-catalog-index.css` 文件头。
  *
@@ -52,7 +60,10 @@ type AgentCatalogIndexProps = {
 /**
  * 目录栏外层。
  *
- * `min-w-0`、内边距、底色、内嵌分隔线、单列态撤掉分隔线——都在伴生 CSS 里，五页同一份。
+ * `min-w-0`、内边距（`px-3 py-5.75`）、底色（`bg-surface-0`，原 `#f6f8fb`，ΔE00 0.65）与内嵌分隔线
+ * 都是这里的工具类：分隔线用 `inset` 的单段阴影表达（不占布局宽度，238px 的列定义是固定的，
+ * `border-right` 不可替代）；单列态（`<48rem`，与主从壳断点对齐）撤掉它由 `max-md:shadow-none` 表达
+ * ——窄屏时那条贴右缘的竖线会变成贴着页面右缘（768~900px 仍单列的组织页由它自己的页面 CSS 撤）。
  * `className` 仍保留给页面的**独有语义**（当前五个消费方都不再需要它给目录栏加外观）。
  */
 export function AgentCatalogIndex({
@@ -65,14 +76,37 @@ export function AgentCatalogIndex({
   className,
 }: AgentCatalogIndexProps) {
   return (
-    <aside className={cn("agent-catalog-index min-w-0", className)} aria-label={label}>
+    <aside
+      className={cn(
+        "agent-catalog-index min-w-0 bg-surface-0 px-3 py-5.75",
+        "shadow-[inset_-1px_0_var(--color-slate-200)] max-md:shadow-none",
+        className,
+      )}
+      aria-label={label}
+    >
       {title === undefined ? null : (
-        <header className={cn("agent-catalog-index-header", headerClassName)} data-slot="catalog-index-header">
-          <div data-slot="catalog-index-title-row">
-            <strong data-slot="catalog-index-title">{title}</strong>
-            {count === undefined ? null : <span data-slot="catalog-index-count">{count}</span>}
+        <header
+          className={cn("agent-catalog-index-header px-2.5 pb-4.25", headerClassName)}
+          data-slot="catalog-index-header"
+        >
+          <div className="flex items-center justify-between text-16 font-semibold" data-slot="catalog-index-title-row">
+            <strong className="font-semibold text-slate-800" data-slot="catalog-index-title">
+              {title}
+            </strong>
+            {count === undefined ? null : (
+              <span
+                className="grid h-6.25 min-w-6.75 place-items-center rounded-md bg-surface-3 text-sm text-slate-500"
+                data-slot="catalog-index-count"
+              >
+                {count}
+              </span>
+            )}
           </div>
-          {description === undefined ? null : <small data-slot="catalog-index-description">{description}</small>}
+          {description === undefined ? null : (
+            <small className="mt-1.25 block text-sm text-slate-400" data-slot="catalog-index-description">
+              {description}
+            </small>
+          )}
         </header>
       )}
       {children}
@@ -103,31 +137,49 @@ type AgentCatalogIndexNavProps = {
 /**
  * 目录列表。
  *
- * `display: grid` 与行距都在伴生 CSS 里（五页同一份）。
+ * `display: grid` 与行距（`gap-y-1`，本波从伴生表的 `row-gap: 0.25rem` 收上来）是这里的工具类——
+ * 行距仍由共享组件统一给，只是落点从 CSS 移到了 `className`（组织页注释里那句「行距由共享 CSS 的
+ * `.agent-catalog-index-nav` 统一给」待同批改写，见 CSS 文件头「第四波」段的连带影响）。
  * `stripOnNarrow` 给出的横置表达见 `agent-catalog-index.css`：列表变横向滚动条、行不再收缩；
  * 单行多宽由页面决定（组织页给 `min-width`，记忆页按内容宽）。
  */
 export function AgentCatalogIndexNav({ label, stripOnNarrow, children, className }: AgentCatalogIndexNavProps) {
   return (
-    <nav className={cn("agent-catalog-index-nav", className)} aria-label={label} data-strip={stripOnNarrow}>
+    <nav
+      className={cn("agent-catalog-index-nav grid gap-y-1", className)}
+      aria-label={label}
+      data-strip={stripOnNarrow}
+    >
       {children}
     </nav>
   );
 }
 
 /**
- * 条目列模板预设，取值与伴生 CSS 里的 `data-columns` 一一对应。
+ * 条目列模板预设：图标 / 文案 / 尾注 / 箭头四列里后两列的有无。
  *
  * - `icon-copy-meta-arrow`（**默认**）：图标 / 文案 / 尾注 / 箭头。技能库、MCP、模型库、
  *   组织页、知识库都用它——组织页的尾注是角色标签，知识库的尾注为空。
  * - `icon-copy-meta`：没有箭头列（尾注是最后一个可见列）。
  * - `icon-copy`：只有图标与文案（没有尾注与箭头列）。
  *
- * 三档共用同一个图标列默认宽度（`2.125rem`，与图标盒同尺），差别只剩尾列数量；列宽仍可用
- * CSS 自定义属性 `--agent-catalog-index-icon-column` 覆盖，设置办法与「为什么默认值写在 var()
- * 回退位」见 CSS 文件头。后两档目前**无消费方**，保留是为了给「确实不需要尾注/箭头」的目录留出口。
+ * 后两档目前**无消费方**，保留是为了给「确实不需要尾注/箭头」的目录留出口。
  */
 type AgentCatalogIndexItemColumns = "icon-copy-meta-arrow" | "icon-copy-meta" | "icon-copy";
+
+/**
+ * 三档预设的 `grid-template-columns` 取值，由条目按钮按 `columns` 取一条挂上。
+ *
+ * 为什么是列模板而不是 flex：第三列是 `auto`（与 flex 项的收缩行为不逐项等价），第四列是固定档、
+ * 只在四列档成立。首列宽走 `var()` 回退位——页面可在任意祖先设 `--agent-catalog-index-icon-column`
+ * 改图标列宽（组件契约）；默认值 `calc(var(--spacing) * 8.5)` = 34px 与图标盒同尺，第四列 15px 同。
+ */
+const ITEM_COLUMN_TEMPLATES: Record<AgentCatalogIndexItemColumns, string> = {
+  "icon-copy-meta-arrow":
+    "grid-cols-[var(--agent-catalog-index-icon-column,calc(var(--spacing)*8.5))_minmax(0,1fr)_auto_calc(var(--spacing)*3.75)]",
+  "icon-copy-meta": "grid-cols-[var(--agent-catalog-index-icon-column,calc(var(--spacing)*8.5))_minmax(0,1fr)_auto]",
+  "icon-copy": "grid-cols-[var(--agent-catalog-index-icon-column,calc(var(--spacing)*8.5))_minmax(0,1fr)]",
+};
 
 /**
  * 「行外壳」的取用契约。
@@ -158,7 +210,7 @@ type AgentCatalogIndexItemProps = Omit<ComponentPropsWithoutRef<"button">, "type
   selected?: boolean;
   /** 列模板预设，默认四列。 */
   columns?: AgentCatalogIndexItemColumns;
-  /** 按钮本体的附加类名——只用于**页面独有语义**（如知识库的不可用态），外观取值一律在伴生 CSS。 */
+  /** 按钮本体的附加类名——只用于**页面独有语义**（如知识库的不可用态），共享取值一律在本文件内。 */
   className?: string;
   /** 外壳的类名——同上，只用于页面独有语义（如知识库的 `is-unavailable`）。 */
   shellClassName?: string;
@@ -168,15 +220,29 @@ type AgentCatalogIndexItemProps = Omit<ComponentPropsWithoutRef<"button">, "type
 /**
  * 目录条目。
  *
- * 骨架与外观（`display: grid` / 列模板 / `min-width: 0` / `min-height` / `padding` / `gap` /
- * `border-radius` / 三态配色 / 过渡 / `text-align: left`）全在伴生 CSS 里，五页同一份。
+ * 骨架与外观全在 `className`，合起来是五页同一份：`display` / `align-items` / `gap` / `border` /
+ * `border-radius` / `min-height` / `min-width` / `padding` / `background` / `text-align` 是扁平工具类，
+ * 列模板取 `ITEM_COLUMN_TEMPLATES`，过渡是 `transition-[background-color,color] duration-150
+ * ease-[ease]`（等价于原伴生表那条两项属性列表）。**三态配色**（基色 `text-slate-500`、悬停
+ * `hover:bg-surface-1`、选中 `aria-[current=page]:…`）第四波搬进来——`aria-*` 变体的产出顺序在
+ * `hover` 之后（实机构建核对过），选中行被悬停时仍保持选中配色。
+ *
+ * 按钮带 `group`：选中态的箭头显隐（箭头上的 `group-aria-[current=page]:opacity-100`）靠它命中。
+ *
+ * `min-w-0` 让网格项能收缩到 `min-content` 以下；组织页 ≤900px 的行宽规则（未分层）仍压过它——
+ * 未分层恒胜 `@layer utilities`。
+ *
+ * 条目密度（2026-09-29）：行高下限取 `min-h-15`（60px）——两行文案（20 + 4 + 16 = 40px）与图标盒（34px）
+ * 决定的自然高度是 40px 内容 + 两侧内边距，旧下限 70px 比内容多出 10px 纯留白，是目录「松散」的来源；
+ * 收到 60px 后行高由内容决定，内边距仍取 `p-2.5`（不单独压缩：全局标尺收紧 `--spacing` 时随档位一起收敛，
+ * 此处再压会双重压缩）。旧值 70px 来自 2026-09-28 归一波（×1.2308，该波无浏览器视觉回归）。
  *
  * 需要「行尾动作渲染在按钮之外」的页面（知识库）用 `shell` + `trailing`：嵌套 `<button>` 是非法
  * HTML，浏览器会把内层按钮甩到外层之外，点击区域与焦点顺序都会错乱。
  */
 export function AgentCatalogIndexItem({
   selected,
-  columns = "icon-copy-meta-arrow",
+  columns = "icon-copy-meta",
   shell,
   trailing,
   className,
@@ -187,8 +253,13 @@ export function AgentCatalogIndexItem({
   const button = (
     <button
       type="button"
-      className={cn("agent-catalog-index-item", className)}
-      data-columns={columns}
+      className={cn(
+        "agent-catalog-index-item group grid min-h-15 min-w-0 items-center gap-2.5 rounded border-0 bg-transparent px-2.5 text-left text-slate-500",
+        "transition-[background-color,color] duration-150 ease-[ease]",
+        ITEM_COLUMN_TEMPLATES[columns],
+        "hover:bg-surface-1 aria-[current=page]:bg-surface-hover aria-[current=page]:text-blue-600",
+        className,
+      )}
       aria-current={selected ? "page" : undefined}
       {...buttonProps}
     >
@@ -199,7 +270,7 @@ export function AgentCatalogIndexItem({
   if (shell !== true) return button;
 
   return (
-    <div className={cn("agent-catalog-index-item-shell", shellClassName)}>
+    <div className={cn("agent-catalog-index-item-shell grid items-center", shellClassName)}>
       {button}
       {trailing}
     </div>
@@ -207,12 +278,25 @@ export function AgentCatalogIndexItem({
 }
 
 /**
- * 条目图标槽：28px 档的图标盒（尺寸 / 圆角 / 白底 / 内层 svg 尺寸都在伴生 CSS，五页同一份）。
- * `className` 只用于页面独有的着色（组织页的角色三态色）；共享 CSS 刻意不声明 `color`，
- * 否则未分层的它会把页面的着色类整条压过。
+ * 条目图标槽：34px 档的图标盒（`grid` / `h-8.5` / `place-items-center` / `rounded` / `bg-white` 与列宽
+ * `w-[var(--agent-catalog-index-icon-column,calc(var(--spacing)*8.5))]` 都在 `className`；列宽走
+ * `var()` 回退位是为了给「页面在任意祖先覆盖图标列宽」留出口，默认 34px 与 `h-8.5` 同尺）。
+ * 内层 svg 尺寸仍在伴生 CSS——svg 由页面传入（`children`），本组件没有挂载点。
+ * `className` 只用于页面独有的着色（组织页的角色三态色）；共享侧刻意不声明 `color`，
+ * 否则未分层的 CSS 会把页面的着色类整条压过。
  */
 export function AgentCatalogIndexIcon({ children, className }: { children: ReactNode; className?: string }) {
-  return <span className={cn("agent-catalog-index-icon", className)}>{children}</span>;
+  return (
+    <span
+      className={cn(
+        "agent-catalog-index-icon grid h-8.5 place-items-center rounded bg-white",
+        "w-[var(--agent-catalog-index-icon-column,calc(var(--spacing)*8.5))]",
+        className,
+      )}
+    >
+      {children}
+    </span>
+  );
 }
 
 /** 条目文案槽：标题 + 副标题两行，两行都在槽内单行截断。 */
@@ -221,9 +305,9 @@ type AgentCatalogIndexCopyProps = {
   title: ReactNode;
   /** 副标题（`<small>`）：技能库放描述、MCP 放摘要、知识库放资源数、组织页放 slug。 */
   subtitle: ReactNode;
-  /** 标题行的附加类名——只用于页面独有语义；字号/字重/颜色/行高都在伴生 CSS。 */
+  /** 标题行的附加类名——只用于页面独有语义；基类（`text-sm leading-5 text-slate-800`）在本组件内。 */
   titleClassName?: string;
-  /** 副标题行的附加类名——同上。 */
+  /** 副标题行的附加类名——同上（基类 `mt-1 text-xs leading-4 text-slate-400`）。 */
   subtitleClassName?: string;
   className?: string;
 };
@@ -231,9 +315,12 @@ type AgentCatalogIndexCopyProps = {
 /**
  * 条目文案槽。
  *
- * 截断（`overflow: hidden` + `text-overflow: ellipsis` + `white-space: nowrap`）与两行的字号 /
- * 字重 / 颜色 / 行高 / 间距都在伴生 CSS：截断是「238px 列里塞长名字」不撑破布局的前提，
- * 字号与间距则是五页必须一致的那批取值。
+ * 截断（`truncate` = `overflow: hidden` + `text-overflow: ellipsis` + `white-space: nowrap`）是
+ * 「238px 列里塞长名字」不撑破布局的前提，落在两个元素各自的 `className` 上——它与字号 / 字重 / 颜色 /
+ * 行高 / 间距（`text-sm leading-5 text-slate-800` / `mt-1 text-xs leading-4 text-slate-400`）同批从
+ * 伴生表收上来：`<strong>` 与 `<small>` 都是本组件直接渲染的，元素上就有槽位，不需要子选择器。
+ * 页面仍可用 `titleClassName` / `subtitleClassName` 表达页面语义。
+ * 槽本身的两行竖排是 `className` 里的 `flex min-w-0 flex-col`。
  */
 export function AgentCatalogIndexCopy({
   title,
@@ -243,9 +330,9 @@ export function AgentCatalogIndexCopy({
   className,
 }: AgentCatalogIndexCopyProps) {
   return (
-    <span className={cn("agent-catalog-index-copy", className)}>
-      <strong className={titleClassName}>{title}</strong>
-      <small className={subtitleClassName}>{subtitle}</small>
+    <span className={cn("agent-catalog-index-copy flex min-w-0 flex-col", className)}>
+      <strong className={cn("truncate text-sm leading-5 text-slate-800", titleClassName)}>{title}</strong>
+      <small className={cn("mt-1 truncate text-xs leading-4 text-slate-400", subtitleClassName)}>{subtitle}</small>
     </span>
   );
 }
@@ -253,21 +340,23 @@ export function AgentCatalogIndexCopy({
 /**
  * 条目尾注槽：右对齐的窄列，每行一条元信息（归属、公开/共享标签、角色）。
  *
- * 列宽上限、字号、行距与**标签形态**都在伴生 CSS——标签必须是一个 `<span>`（裸文本要自己包一层），
- * 这条约定是「五页尾注长得一样」的落点，见 CSS 里 `.agent-catalog-index-meta > span` 的说明。
+ * 列宽上限（`max-w-25`）、字号 / 行高（`text-xs leading-none`）、墨色（`text-slate-500`，
+ * 第四波从伴生表搬来）与横向排布是 `className` 里的扁平工具类；上限从 135px 收到 100px 是为了
+ * 让左列优先拿到行宽——本槽是网格里的 `auto` 列，按内容宽度索取，标签胶囊一宽就把文案列挤到
+ * 只剩几十像素（见 `agent-catalog-index.css` 里标签形态那条的尺寸说明）。
+ * **标签形态**（底色、描边、胶囊圆角、内边距、颜色、截断）在伴生 CSS——它挂在 `> span` 上，
+ * 靠子选择器统一，这条约定是「五页尾注长得一样」的落点（那些 `<span>` 由消费页面渲染，
+ * 本组件没有挂载点）。
  */
 export function AgentCatalogIndexMeta({ children, className }: { children: ReactNode; className?: string }) {
-  return <span className={cn("agent-catalog-index-meta", className)}>{children}</span>;
-}
-
-/**
- * 条目的行尾箭头。
- *
- * 只拥有「未选中时不可见」这一条行为（它是唯一与选中态耦合的部分，靠
- * `[aria-current="page"]` 命中，不再需要调用方把 `selected` 再传一遍）；宽度取自伴生 CSS，
- * 与列模板的第四列同值。
- * 箭头本身对读屏无信息量，故标记 `aria-hidden`。
- */
-export function AgentCatalogIndexArrow({ className }: { className?: string }) {
-  return <ChevronRight aria-hidden className={cn("agent-catalog-index-arrow", className)} />;
+  return (
+    <span
+      className={cn(
+        "agent-catalog-index-meta flex min-w-0 max-w-25 flex-col items-end gap-1 text-xs leading-none text-slate-500",
+        className,
+      )}
+    >
+      {children}
+    </span>
+  );
 }

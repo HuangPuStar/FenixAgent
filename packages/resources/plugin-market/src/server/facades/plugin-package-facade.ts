@@ -364,8 +364,9 @@ export class PluginPackageFacade extends AuthorizedResourceFacade implements Plu
    * 系统托管租户，进程内缓存一次。
    *
    * 管理面的每次写入都要拿它解析归属组织与审计主体（见 {@link resolveWriterScope}），而
-   * `resolveSystemTenant()` 会查身份库、必要时还会执行一次系统管理员引导，把它放在每个发布请求上是不必要
-   * 的开销。租户是**部署期事实**：引导完成后 admin 组织与系统用户的 ID 不再变化。
+   * `resolveSystemTenant()` 会查身份库（只读解析，未引导时抛错；引导由宿主启动期的 `ensureSystemAdmin()`
+   * 显式完成），把它放在每个发布请求上是不必要的开销。租户是**部署期事实**：引导完成后 admin 组织与系统
+   * 用户的 ID 不再变化。
    *
    * 移除条件：身份模块若将来支持在进程存活期间重建系统租户，这个缓存必须改成可失效的（否则发布了新条目
    * 会落在一个已不存在的组织 ID 上，条目只对公开受众可见、管理面看不见）。

@@ -8,22 +8,25 @@
 // 唯一保留的目录侧页面语义是行首图标的角色三态色（落在 TSX 的工具类上）。
 //
 // **字号档位是怎么定的**（这条结论没有随那份 CSS 消失，改字号前先读）：
-// 宿主 `apps/web/src/index.css` 的 `html, body { font-size: 13px }` 让全部 rem 刻度按 13/16 渲染——
-// 2026-09-23 用 dist 产物在 Chromium 读 `getComputedStyle` 实测：`text-xs` 9.75px、`text-3xs` 10px
-// （px token，不随根字号缩放）、`text-sm` 11.375px、`text-base` 13px、`text-lg` 14.625px、`text-xl` 16.25px。
-// 于是原 px 档落到：详情标题 20px → `text-xl`（16.25px，与 skills / knowledge 的详情标题同尺）、
-// 徽标 18px 与分区标题 15px → `text-lg`、条目标题 13px → `text-base`（不变）、元信息 12px 与次要说明
-// 11px → `text-sm`、微标签 10px 与机器标签 9px → `text-xs`；运行期顺序单调（16.25 > 14.625 > 13 >
-// 11.375 > 9.75）。
+// 原 px 档 → 刻度类：详情标题 20px → `text-xl`（与 skills / knowledge 的详情标题同尺）、徽标 18px 与
+// 分区标题 15px → `text-lg`、条目标题 13px → `text-base`、元信息 12px 与次要说明 11px → `text-sm`、
+// 微标签 10px 与机器标签 9px → `text-xs`。
+// 档位是按**旧的 13/16 读数**定的（2026-09-23 以 dist 产物在 Chromium 读 `getComputedStyle`：`text-xs`
+// 9.75px、`text-3xs` 10px、`text-sm` 11.375px、`text-base` 13px、`text-lg` 14.625px、`text-xl` 16.25px，
+// 运行期顺序单调）。2026-09-28 令牌层把刻度按 px 落地后，工具类渲染的就是设计值（12 / 14 / 16 / 18 /
+// 20px），那批读数整体作废：两档较大的（`text-xl` 20px、`text-lg` 18px）现在与设计值相等，其余档则比
+// 原 px 档**大** 2~3px（13px 档 → `text-base` 16px、12 / 11px 档 → `text-sm` 14px、10 / 9px 档 →
+// `text-xs` 12px）——是否重新分档属另一批裁定，本批不动值。
 //
-// 为什么整页不用 `text-3xs`：它固定 10px，在 13px 根下反而比 `text-xs`(9.75px) 大，而本页层级依赖
-// 「微标签 < 次要说明」这类相邻档，混用两者会让运行期层级反序——10px 与 9px 两档因此一并落到 `text-xs`。
+// 为什么整页不用 `text-3xs`：原理由是「它固定 10px，在 13px 根下反而比 `text-xs`(9.75px) 大」——令牌层
+// 下 `text-3xs` = 10px < `text-xs` = 12px，反序不再成立；10px 与 9px 两档仍一并落在 `text-xs`（把 9px 那档
+// 换成 `text-3xs` 是改值）。
 //
-// 已知偏差：同角色比原 px 小 0~3.75px（逐条差异见转换报告）；与仍走名义 px 的 `agent-api-keys.css` /
-// `agent-sites.css` 等页面存在 13/16 的口径差，那批属另一批存量，本批未动。
+// 已知偏差：旧读数下同角色比原 px 档小 0~3.75px，令牌层改造后方向反过来了——多数档比原值大 2~3px
+// （逐条差异见转换报告）；与仍用 CSS 字面量写原始 px 档的 `AgentApiKeysPage.css` / `agent-sites-catalog.css`
+// 等页面存在口径差（那边是硬编码 px、本页是刻度类），那批属另一批存量，本批未动。
 import {
   AgentCatalogIndex,
-  AgentCatalogIndexArrow,
   AgentCatalogIndexCopy,
   AgentCatalogIndexIcon,
   AgentCatalogIndexItem,
@@ -63,9 +66,11 @@ import "./agent-organizations-workspace.css";
 /**
  * 目录行首的角色图标。
  *
- * 只负责**着色**——三态色是本页独有的语义，共享图标盒刻意不声明 `color`，因此这里的工具类不会被
- * 未分层的共享 CSS 压过。尺寸不在这里给：图标盒把内层 svg 统一到 16.25px（`size-4` 那类工具类
- * 写在 `@layer utilities`，即便留着也不生效，故一并移除以免误导）。
+ * 只负责**着色**——三态色是本页独有的语义，落在图标本体（svg）上；共享图标盒刻意不声明 `color`（着色归页面），
+ * 页面的着色类因此不必和共享默认值打层叠战。
+ * 尺寸不在这里给：内层 svg 由 `agent-catalog-index.css` 的 `.agent-catalog-index-icon svg` 统一到 20px
+ * （`calc(var(--spacing) * 5)`，1 档 = 4px）——那条结构选择器是唯一能命中它的写法（svg 由页面传入，
+ * 挂不上类名）；页面也不要改传 `size-*` 类：那类工具类写在 `@layer utilities`，压不过这条未分层规则。
  */
 function RoleIcon({ role }: { role: string }) {
   if (role === "owner") return <Shield className="text-yellow-600" />;
@@ -98,12 +103,14 @@ export function OrganizationIdCopy({ id, onCopy }: { id: string; onCopy: () => v
 
 function OrganizationDirectory({ props }: { props: OrganizationsWorkspaceProps }) {
   const { t } = useTranslation(NS.ORGS);
-  // 目录栏外观（内边距 / 底色 / 分隔线 / 头部 / 行距 / 条目三态 / 图标盒 / 字号）全在共享构件集的伴生 CSS。
-  // 本页此前那三处高特异性覆盖（首列宽 `1rem`、大写字距、计数退回纯文字）已随本版删除：它们存在的
-  // 理由是「本页转入了 13/16 rem 刻度，与共享的 px 刻度不同」，而共享默认值现在本身就是 rem 刻度
-  // （见 `agent-catalog-index.css` 文件头），层级单调由共享那一套档位保证，不再需要页面纠偏。
+  // 目录栏外观（内边距 / 底色 / 分隔线 / 头部 / 行距 / 条目三态 / 图标盒 / 字号）全在共享组件
+  // `agent-catalog-index.tsx` 的 `className`；伴生 `agent-catalog-index.css` 只剩工具类表达不了的三类：
+  // 挂不上类名的内层 svg 与尾注 `<span>`、外壳的列模板、窄屏横置的媒体块。
+  // 本页不给目录栏写任何取值，也不要再用高特异性覆盖去纠偏——首列宽 / 大写字距 / 计数退回纯文字那三处
+  // 旧纠偏成立的前提是「共享 px 刻度 vs 本页 13/16 rem 刻度」，该前提已不存在；共享档位就是设计值刻度类
+  // （`text-16` > `text-sm` > `text-xs` = 16 > 14 > 12），层级单调由它保证。
   // 本页保留的只有：行首图标的**角色三态色**（着色语义，图标盒刻意不声明 `color`），以及 ≤900px 的
-  // 单列 + 目录横置那一组声明（非标准断点 + 必须压过库内未分层的列定义，见伴生 CSS）。
+  // 单列 + 目录横置那一组声明（非标准断点 + 必须压过库内未分层的列定义，见 `agent-organizations-workspace.css`）。
   // 随骨架而来、**不是**「原样」的两处语义变化：目录列表由 `<div>` 变成 `<nav aria-label>`（多一个地标，
   // 名字复用 `t("myOrgs")`），选中行多出 `aria-current="page"`（此前选中只体现在配色上）。
   return (
@@ -114,8 +121,10 @@ function OrganizationDirectory({ props }: { props: OrganizationsWorkspaceProps }
       title={t("myOrgs")}
       count={props.organizations.length}
     >
-      {/* `gap-1` 那类工具类在这里不再需要：行距由共享 CSS 的 `.agent-catalog-index-nav` 统一给，
-          工具类位于 `@layer utilities`、会被未分层声明整条压过。`org-directory-list` 只作窄屏那条
+      {/* `gap-1` 那类工具类在这里仍然不需要：行距由共享组件 `agent-catalog-index.tsx` 的 `className`
+          统一给（`gap-y-1`，2026-09-28 第四波从共享表的 `row-gap` 收上去），本页因此不必再写一遍，
+          也不再有「未分层声明压过工具类」那一层——共享侧与页面侧同为 `@layer utilities`，真要改行距
+          传 `className` 即可（`tailwind-merge` 按末位参数决胜）。`org-directory-list` 只作窄屏那条
           `min-width` 规则的挂载点。 */}
       <AgentCatalogIndexNav className="org-directory-list" label={t("myOrgs")} stripOnNarrow="900px">
         {props.organizations.map((organization) => {
@@ -135,7 +144,6 @@ function OrganizationDirectory({ props }: { props: OrganizationsWorkspaceProps }
               <AgentCatalogIndexMeta>
                 <span>{t(`roles.${organization.role}`, organization.role)}</span>
               </AgentCatalogIndexMeta>
-              <AgentCatalogIndexArrow />
             </AgentCatalogIndexItem>
           );
         })}

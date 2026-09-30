@@ -42,10 +42,10 @@ import { z } from "zod/v4";
  * `/hooks/:publicHash` Webhook 接收（无认证——`publicHash` 即凭据）。三条 `app` 槽路由各自带独立前缀与
  * 认证口径，因此单列一槽而不是塞进 `/web` 或 `/api`（两条都在本模块声明序末尾）。
  *
- * 声明 `web`（§1.6 已定型）：`contribution` 是该包浏览器载荷的惰性**入口说明符字符串**——WebShell 生成器
- * 只对 manifest 做 AST 静态读取、不执行它，所以入口只能是「声明」而不是「推断」，取值必须是字符串字面量。
- * 它**不是**浏览器依赖：`lucide-react` / React 载荷只存在于 `@fenix/resource-workflow/web/contribution`
- * 导出的值里，不会沿 registry 进入服务端装配图（server 侧拿到的只有这一条字符串）。
+ * 原先声明的 `web` 块（§1.6）已于 2026-09-29 移除：控制台的工作流界面整体换成 `workflow-v2` 的工作流画布
+ * 接入（见 `docs/arch/25-workflow-v2.md`），本包不再向 WebShell 贡献浏览器载荷，`web.id: "workflow"` 的
+ * 唯一性也随之让给新包（两个包同时声明会在 registry 生成期被「Web 模块 ID 重复」拒绝）。服务端交付物
+ * 不受影响：下面八条 `contributions` 与三枚 `envDefinitions` 全部保留，自研引擎继续以既有路径对外服务。
  *
  * `envDefinitions` 与 preflight 的收敛归任务 1.7，本文件只落 `envDefinitions` 这一半（路线 A，窄口径）。本模块只认领**有唯一 owner 的部署键**
  * 三枚——`WORKFLOW_TOOLS_DIR`（自定义节点工具目录，装配期经宿主投影为 `toolsDir`，启动时
@@ -120,10 +120,6 @@ export const moduleManifest = {
         "同一密钥，否则跨实例恢复的 run 会签名校验失败。密钥材料，禁止进日志、响应与错误文案。",
     },
   ],
-  web: {
-    id: "workflow",
-    contribution: "@fenix/resource-workflow/web/contribution",
-  },
   contributions: [
     {
       id: "workflow.web-defs",

@@ -29,7 +29,8 @@ const SOURCE_ENTRIES = ["src", "web", "db", "fenix.module.ts"];
  * 本包 `./db` 出口（§1.7 B12 起表定义归本包）。
  *
  * 包内仓储经该出口**自我引用**取表对象与行类型（`db/` 不在本包 `tsconfig.json` 的 `include` 里，走出口
- * 与外部消费方同一条解析路径）；宿主的 `task-schema.test.ts` 也引用它。
+ * 与外部消费方同一条解析路径）；同目录的 `task-schema.test.ts` 也引用它（宿主那份已随 §2.2 调用期禁则
+ * 补齐迁回本包）。
  *
  * 它同时充当条件 1 的**正向控制**：B12 之前这里放的是「唯一允许的宿主残留」`@server/db/schema`（迁出前
  * 6 处导入，见任务 1.3 实施记录 §四），残留归零后若继续沿用它，正向控制会恒为 0——说明符提取一旦失效
@@ -171,10 +172,24 @@ const MIGRATION_PAIRS: readonly MigrationPair[] = [
     innerPath: "pages/agent-panel/pages/agent-tasks-utils.ts",
     packagePath: "web/pages/agent-panel/pages/agent-tasks-utils.ts",
   },
+  // 2026-09-28「前端规范 §10 类别④ → ③」收口：`agent-tasks.css` 这张页面级样式表按 DOM 归属拆成三份**同目录
+  // 同名伴随表**（各自由持有样式的模块顶部 import），包内不再有「无同目录同名兄弟」的页面级表。innerPath 仍是
+  // 该样式表自己——它依旧是「宿主侧旧路径不得复活」的锚点（拆出后旧名在包与宿主两侧都不该存在）；packagePath
+  // 记三条：三份都必须落地，只留一条会让另外两条的缺失静默通过。
   {
     side: "web",
     innerPath: "pages/agent-panel/pages/agent-tasks.css",
-    packagePath: "web/pages/agent-panel/pages/agent-tasks.css",
+    packagePath: "web/pages/agent-panel/pages/AgentTasksPage.css",
+  },
+  {
+    side: "web",
+    innerPath: "pages/agent-panel/pages/agent-tasks.css",
+    packagePath: "web/pages/agent-panel/pages/agent-tasks-registry.css",
+  },
+  {
+    side: "web",
+    innerPath: "pages/agent-panel/pages/agent-tasks.css",
+    packagePath: "web/pages/agent-panel/pages/agent-task-runtime-board.css",
   },
   {
     side: "web",

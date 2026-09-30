@@ -11,7 +11,7 @@ RCS 主服务器                    sandbox-dsh 容器
 ┌──────────────────┐   ACP   ┌──────────────────────────────────────┐
 │                  │  WS/API │ bun acp-runtime.js (acp-link client) │
 │ 按 ccb 槽位管理    │◄────────│  AGENT_TYPE=ccb                       │
-│  生命周期/权限/会话 │         │      │ ccb handler (RCS_CCB_COMMAND)   │
+│  生命周期/权限/会话 │         │      │ ccb handler (引擎命令经 env 注入)  │
 └──────────────────┘         │      ▼                                │
                              │ node dsh-acp-wrapper.js               │
                              │  ① 读 .claude/settings.local.json     │
@@ -25,7 +25,9 @@ RCS 主服务器                    sandbox-dsh 容器
 `createCcbHandler()`，ccb handler 在 prepareWorkspace 阶段把 Agent 的模型配置
 （protocol / model / apiKey / baseUrl / prompt）写入
 `<workspace>/.claude/settings.local.json` 与 `CLAUDE.md`，然后以
-`RCS_CCB_COMMAND` / `RCS_CCB_ARGS` 指定的命令启动引擎。
+`RCS_CCB_COMMAND` / `RCS_CCB_ARGS` 指定的命令启动引擎——这两个键由容器内的 `acp-runtime`
+（acp-runtime-cli）读取后注入 ccb handler（覆盖镜像 CMD 的 argv），属 daemon / 容器侧部署配置，
+写在宿主 `.env` 里不起作用。
 
 `dsh-acp-wrapper.js` 作为该命令的执行体，把 ccb 配置翻译成 dsh 的
 `cordis.yml`（`llm-pi-ai` 自定义 provider route + `acp-agent`），再以

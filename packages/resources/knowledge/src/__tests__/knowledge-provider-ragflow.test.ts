@@ -60,6 +60,29 @@ describe("RagFlowKnowledgeProvider", () => {
     expect(result.status).toBe("empty");
   });
 
+  // 显式选择的向量模型必须进入上游请求，不能退回上游默认模型。
+  test("createKnowledgeBase 透传所选 embedding_model", async () => {
+    const fetchSpy = mock(async () => Response.json({ code: 0, data: { id: "dataset-selected-model" } }));
+    globalThis.fetch = fetchSpy as unknown as typeof fetch;
+
+    await new RagFlowKnowledgeProvider().createKnowledgeBase({
+      organizationId: "org-1",
+      userId: "user-1",
+      slug: "pipeline-model",
+      name: "Pipeline model",
+      embeddingModel: "text-embedding-v2@provider",
+      parseType: 2,
+      pipelineId: "pipeline-1",
+    });
+
+    const request = (fetchSpy as ReturnType<typeof mock>).mock.calls[0]?.[1] as RequestInit;
+    expect(JSON.parse(String(request.body))).toMatchObject({
+      embedding_model: "text-embedding-v2@provider",
+      parse_type: 2,
+      pipeline_id: "pipeline-1",
+    });
+  });
+
   test("deleteKnowledgeBase 调用 DELETE /api/v1/datasets/{id} 删除整个 dataset", async () => {
     const fetchSpy = mock(async () => ({
       ok: true,
@@ -709,8 +732,8 @@ describe("RagFlowKnowledgeProvider", () => {
           data: {
             total: 5,
             chunks: [
-              { id: "chunk-1", content: "first", important_keywords: ["one"], available_int: 0 },
-              { id: "chunk-2", content: "second", available_int: 1 },
+              { id: "chunk-1", content: "first", important_keywords: ["one"], available: false },
+              { id: "chunk-2", content: "second", available: true },
             ],
           },
         }),
@@ -738,8 +761,8 @@ describe("RagFlowKnowledgeProvider", () => {
     });
   });
 
-  // 验证知识图谱删除将“图不存在”作为幂等成功，其余上游错误仍会传播。
-  test("deleteKnowledgeGraph 仅忽略图不存在错误", async () => {
+  // 上游业务错误必须传播，避免删除失败时前端报告成功。
+  test("deleteKnowledgeGraph 传播上游业务错误", async () => {
     const fetchSpy = mock()
       .mockImplementationOnce(async () => ({
         ok: true,
@@ -760,7 +783,7 @@ describe("RagFlowKnowledgeProvider", () => {
         remoteAccountId: "account",
         remoteUserId: "user",
       }),
-    ).resolves.toBeUndefined();
+    ).rejects.toThrow("code=102: graph not found");
     await expect(
       provider.deleteKnowledgeGraph({
         knowledgeBaseRemoteId: "dataset",

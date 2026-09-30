@@ -1,116 +1,39 @@
+import { WORKFLOW_NS } from "@fenix/resource-workflow-v2/web/i18n";
 import { AppHeader } from "@fenix/ui-components/layout/app-header";
 import { AppPage } from "@fenix/ui-components/layout/app-page";
-import { Button } from "@fenix/ui-components/ui/button";
-import { createFileRoute, Link, useNavigate, useSearch } from "@tanstack/react-router";
-import { History, Pencil, Plus } from "lucide-react";
-import { lazy, Suspense, useCallback, useState } from "react";
+import { createFileRoute } from "@tanstack/react-router";
+import { lazy, Suspense } from "react";
 import { useTranslation } from "react-i18next";
 import { PanelRouteFallback } from "@/src/components/panel-route-fallback";
-import { useOpenWorkflowEditor } from "@/src/hooks/use-open-workflow-editor";
 
-const WorkflowList = lazy(() => import("@fenix/resource-workflow/web").then((m) => ({ default: m.WorkflowList })));
-const WorkflowRuns = lazy(() => import("@fenix/resource-workflow/web").then((m) => ({ default: m.WorkflowRuns })));
+// 只经 lazy 进入：静态导入包入口会在路由壳上留下一条无法代码分割的静态边，整个包入口会被打进首屏 chunk
+// （见前端规范 §2.4）。
+const WorkflowListPage = lazy(() =>
+  import("@fenix/resource-workflow-v2/web").then((m) => ({ default: m.WorkflowListPage })),
+);
 
-// tab 内容区的等待态：环径取 `sm`（标签页内容区档）、`py-20` 保留原顶部留白，其余按 §2.5 的 panel 口径。
-function TabContentFallback() {
-  return <PanelRouteFallback size="sm" className="py-20" />;
-}
-
-function WorkflowTabPage() {
-  const { t } = useTranslation("workflows");
-  const navigate = useNavigate();
-  const search = useSearch({ strict: false }) as { tab?: string };
-  const activeTab = search.tab === "runs" ? "runs" : "list";
-
-  const [createTrigger, setCreateTrigger] = useState(0);
-
-  // 与版本页同一份落点（实现见 `@/src/hooks/use-open-workflow-editor`）
-  const onEditWorkflow = useOpenWorkflowEditor();
-
-  const onViewVersions = useCallback(
-    (workflowId: string) => {
-      void navigate({
-        to: "/agent/workflow/$id/versions",
-        params: { id: workflowId },
-      });
-    },
-    [navigate],
-  );
-
-  const onSelectRun = useCallback(
-    (runId: string, workflowId?: string) => {
-      if (workflowId) {
-        void navigate({
-          to: "/agent/workflow/$id/edit",
-          params: { id: workflowId },
-          search: { runId },
-        });
-      }
-    },
-    [navigate],
-  );
-
-  const handleCreateClick = useCallback(() => {
-    setCreateTrigger((n) => n + 1);
-  }, []);
-
-  const tabs = [
-    { id: "list" as const, label: t("page.tab_workflows"), icon: Pencil, search: {} },
-    { id: "runs" as const, label: t("page.tab_runs"), icon: History, search: { tab: "runs" } },
-  ];
+/**
+ * `/agent/workflow`：工作流列表。
+ *
+ * 宿主侧只剩「页头 + 内容区」两层：列表、创建、重命名、删除与上游未就绪的引导全部在包内实现
+ * （`@fenix/resource-workflow-v2/web`），宿主不再自己渲染「新建」按钮——包内列表页自带该动作，
+ * 两处各放一个会让同一次新建出现两个入口。
+ *
+ * 运行记录 tab 已随自研引擎前端下线：运行与 trace 由上游画布承载，不再有独立的宿主路由与 tab 栏。
+ */
+function WorkflowListRoutePage() {
+  const { t } = useTranslation(WORKFLOW_NS);
 
   return (
     <AppPage>
-      <AppHeader
-        title={t("page.workflow_title")}
-        subtitle={t("page.workflow_subtitle")}
-        actions={
-          <Button size="sm" onClick={handleCreateClick}>
-            <Plus size={14} className="mr-1" />
-            {t("list.create")}
-          </Button>
-        }
-      />
-
-      {/* 子 tab 栏：下划线式，嵌入页面内部 */}
-      <div className="mb-4 flex items-center gap-1 border-b border-border-subtle">
-        {tabs.map((tab) => {
-          const Icon = tab.icon;
-          const isActive = activeTab === tab.id;
-          return (
-            <Link
-              key={tab.id}
-              to="/agent/workflow"
-              search={tab.search}
-              className={`flex items-center gap-1.5 px-3.5 py-2 text-xs font-medium border-b-2 transition-colors ${
-                isActive ? "text-brand border-brand" : "text-text-secondary border-transparent hover:text-text-primary"
-              }`}
-            >
-              <Icon size={13} />
-              {tab.label}
-            </Link>
-          );
-        })}
-      </div>
-
-      {/* tab 内容区 — Suspense 在内容区内部，避免切换 tab 时顶栏闪烁 */}
-      <Suspense fallback={<TabContentFallback />}>
-        <div className="flex flex-1 flex-col min-h-0">
-          {activeTab === "list" ? (
-            <WorkflowList
-              onEditWorkflow={onEditWorkflow}
-              onViewVersions={onViewVersions}
-              createRequested={createTrigger}
-            />
-          ) : (
-            <WorkflowRuns onSelectRun={onSelectRun} />
-          )}
-        </div>
+      <AppHeader title={t("page.workflow_title")} subtitle={t("page.workflow_subtitle")} />
+      <Suspense fallback={<PanelRouteFallback size="sm" className="py-20" />}>
+        <WorkflowListPage />
       </Suspense>
     </AppPage>
   );
 }
 
 export const Route = createFileRoute("/agent/_panel/workflow")({
-  component: WorkflowTabPage,
+  component: WorkflowListRoutePage,
 });

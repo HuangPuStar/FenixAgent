@@ -42,7 +42,7 @@
 不变量分两层承载，分界线是「Drizzle 能不能表达」：
 
 - **存储层强保证**：复合外键（`(latest_publication_id, id)` → 版本表，保证 latest 只能指向**本包**版本）、唯一索引（同包同版本只能发布一次，也是 publish 幂等的兜底）、`CHECK (published_at >= first_published_at)`。
-- **应用层 + 只读审计**：「latest 必须指向可见版本」「被 latest 指向的版本不得隐藏」由写入路径的顺序保证（**先移指针再置水印**），并由 `domain/invariants.ts` 的 `findInvariantViolations(state)` 独立检查。源项目用 PL/pgSQL 触发器表达这两条；本仓库迁移链全部由 Drizzle 生成、禁止手写 SQL 绕过，因此降为「应用层 + 可测断言」——**这是本模块唯一一处不变量从存储层降到应用层**，代价是绕过仓储直接改库不会被数据库拦住。
+- **应用层 + 只读审计**：「latest 必须指向可见版本」「被 latest 指向的版本不得隐藏」由写入路径的顺序保证（**先移指针再置水印**），并由 `src/server/domain/invariants.ts` 的 `findInvariantViolations(state)` 独立检查。源项目用 PL/pgSQL 触发器表达这两条；本仓库迁移链全部由 Drizzle 生成、禁止手写 SQL 绕过，因此降为「应用层 + 可测断言」——**这是本模块唯一一处不变量从存储层降到应用层**，代价是绕过仓储直接改库不会被数据库拦住。
 
 审计检查刻意只报违规、不改数据，且**一条缺陷只报一条消息**（规则 3 只在规则 1、2 通过后运行）：这三条被破坏时不会报任何错，只表现为「首页显示的版本不是最新版」「下架后包还在列表里」这类温和症状，没人会把它和一次发布操作联系起来。
 
@@ -66,7 +66,7 @@
 
 ## 4. 并发与事务
 
-写路径的事务时序固定为三步，由 `services/plugin-catalog-service.ts` 与仓储共同保证：
+写路径的事务时序固定为三步，由 `src/server/services/plugin-catalog-service.ts` 与仓储共同保证：
 
 1. **取事务级咨询锁**：`SELECT pg_advisory_xact_lock(hashtextextended('fenix:plugin-market:<sourceId>:<packageName>', 0))`。锁键带模块前缀限定命名空间，避免与其它模块的锁键碰撞（碰撞只会让互不相干的写互相等待，不影响正确性）；64 位哈希的碰撞概率可忽略。
 2. **在锁内读聚合**：一次读完聚合根 + 它的全部版本行。规则只需要包内数据，分批查询只会把「读两次之间状态变了」的风险引入决策。
@@ -74,7 +74,7 @@
 
 `pg_advisory_xact_lock` 而不是会话级锁：事务结束即释放，连接归还池时不会留下未释放的锁。事务边界在 service、语句在 repository，因此仓储经 `src/server/db.ts` 的 `getPluginMarketDatabase()` 在**每个方法内**取句柄（模块加载早于宿主基础设施初始化），并能声明它需要的事务句柄类型。
 
-**领域规则是纯函数**（`domain/catalog.ts` 的 `CatalogDecision` + `CatalogWrite[]`），这是移植期最重要的结构决定：测试进程不连 Postgres，把规则写进 SQL 等于让幂等、latest 回退、逻辑时钟、三条不变量失去可执行断言。写成纯函数后，「`noop` 零副作用」是一条可断言的性质（清单为空）。生产侧的事务时序由 `plugin-catalog-store.test.ts` 用「记录调用序 + 预制行」的替身 DB 单独钉住（含**锁必须早于任何读**）。
+**领域规则是纯函数**（`src/server/domain/catalog.ts` 的 `CatalogDecision` + `CatalogWrite[]`），这是移植期最重要的结构决定：测试进程不连 Postgres，把规则写进 SQL 等于让幂等、latest 回退、逻辑时钟、三条不变量失去可执行断言。写成纯函数后，「`noop` 零副作用」是一条可断言的性质（清单为空）。生产侧的事务时序由 `plugin-catalog-store.test.ts` 用「记录调用序 + 预制行」的替身 DB 单独钉住（含**锁必须早于任何读**）。
 
 ## 5. 授权模型：平台全局目录
 
@@ -85,7 +85,7 @@
 - `memberDefaultActions: ["read"]`：普通成员只读，不因「同组织」而获得写权。
 - 写路径**不接受 actor**：它只从管理面进入，而管理面的调用方不是某个用户，是平台运维者——判据是路由守卫上的系统 API Key（`systemApiKeyAuth`），与 observer 的 `/api/system/logs`、sandbox 的 `/api/system/sandbox-pools` 同一类（「凭据本身就是判据」，见 `src/server/routes/api/system-plugin-market.ts` 的文件头）。归属组织与审计主体仍由 Facade 解析（`resolveWriterScope`）：归属是部署期事实，operator 取系统托管租户的 `userId`，因此写路径不产生「匿名写入」。**不在 Facade 里做第二遍角色判定**——两处各判一次正是「按钮按旧规则显示、写入按新规则拒绝」这类漂移的来源。
 
-`visibility` 默认 `'public'` 是**本表的语义要求而不是宽松默认**：授权模块对组织资源的默认值是 `private`，照抄会让整个目录静默消失。写入 `visibility` 的位置在 `repositories/plugin-package.ts` 的 create-package 分支，那里有同款注释。
+`visibility` 默认 `'public'` 是**本表的语义要求而不是宽松默认**：授权模块对组织资源的默认值是 `private`，照抄会让整个目录静默消失。写入 `visibility` 的位置在 `src/server/repositories/plugin-package.ts` 的 create-package 分支，那里有同款注释。
 
 浏览面的读口径恒为公开面（`scope = "public"`），授权谓词由 `AccessControlModule` 产出后经 `listConstraint` 原样下推；管理面的列表与详情走 `scope = "all"`（含整包下架的条目）。**逐行 `access` 与页面级能力位（旧版 `canPublish`）都已撤除**：浏览面没有任何写入口，附上动作集合只会让前端渲染一个与真实判据无关的按钮；管理面能进来就能写，同样不需要逐行能力位。授权本身不受影响：`listConstraint` 已经把谓词编译进 SQL。
 

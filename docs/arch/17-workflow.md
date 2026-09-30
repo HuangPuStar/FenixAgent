@@ -62,3 +62,9 @@ graph TD
 | Workflow Trigger | Webhook 外部触发，每个 trigger 生成唯一的公开哈希 URL |
 | 可视化编辑器 | 画布式编辑 YAML，文件 → 画布双向同步，支持 git 版本控制 |
 | SSE 实时事件 | 按 workflow 推送运行状态变更，前端实时展示 |
+
+## 控制台界面已由 Workflow V2 接管（2026-09-29）
+
+本引擎与它交付的服务端能力（`/web/workflow-defs`、`/web/workflow-runs`、`/web/workflow-engine`、SSE、`/api/workflows/:workflowId/execute`、`/hooks/:publicHash`、`/workflow-ui` 静态代理、九张表与 `pg-storage-adapter`）全部保留，**只有控制台前端被移除**：`packages/resources/workflow/web/**`、宿主路由 `/agent/workflow/$id/versions` 与 `use-open-workflow-editor` 已删除，本包不再有 `exports["./web"]`。
+
+控制台的工作流入口改由 [workflow-v2](./25-workflow-v2.md)（上游工作流引擎画布 iframe）承载，与引擎并行存在、互不调用：上游画布不读写本引擎的表，本引擎也不感知上游。上表「可视化编辑器」的**运行时语义**（DAG 执行、审批、快照恢复）仍适用，「画布式编辑」这一 UI 形态由 workflow-v2 提供。引擎自身的最终去留见 workflow-v2 设计 §12 的开放问题。

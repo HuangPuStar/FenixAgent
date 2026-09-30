@@ -13,22 +13,13 @@
  * 因此按**用到的形状**声明，而不是把 agent-runtime 的完整仓储记录类型引入协议边界——记录字段改名
  * 不会波及这里。注入还让包内用例不必依赖宿主 preload 的模块替身（`@server/test-utils/stubs/*`），
  * 这正是本任务要切断的耦合。
+ *
+ * 端口类型 `ChannelEnvironmentLookup` 声明在本包 Facade 里（那里是它的消费者：授权判断的输入），
+ * 本文件只把它作为路由工厂的显式依赖转述出去；方向是「协议层依赖应用层」，不是反向。
  */
 
 import type { AnyElysia } from "elysia";
-
-/**
- * 通道路由需要的 Environment 归属查询子集。
- *
- * `getById` 允许返回 `null`/`undefined`：绑定可能指向已被删除的 Environment，此时路由按「环境
- * 不可读」处理（列表补空名称、写操作拒绝），而不是把它当成查询失败。
- */
-export interface ChannelEnvironmentLookup {
-  /** 按 Environment ID 查其所属组织与展示名。 */
-  getById(id: string): Promise<{ id: string; name: string; organizationId: string | null } | null | undefined>;
-  /** 列出某组织下的 Environment（用于把绑定过滤到当前组织）。 */
-  listByOrganizationId(organizationId: string): Promise<ReadonlyArray<{ id: string; name: string }>>;
-}
+import type { ChannelEnvironmentLookup } from "../facades/channel-binding-facade";
 
 /** `/web/channels/*` 控制台路由的宿主注入依赖。 */
 export interface WebChannelRouteDependencies {

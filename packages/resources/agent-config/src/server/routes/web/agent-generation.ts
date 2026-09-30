@@ -1,8 +1,9 @@
 import { type ActorContext, WebErrSchema } from "@fenix/platform-sdk";
 import Elysia from "elysia";
 import { z } from "zod/v4";
+import { getAgentConfigModule } from "../../runtime";
 import { AgentGenerationResponseSchema } from "../../schemas/agent-generation.schema";
-import { generateAgentConfig, isGenerationConfigured } from "../../services/agent-generation";
+import { isGenerationConfigured } from "../../services/agent-generation";
 import type { WebAgentConfigRouteDependencies } from "../dependencies";
 import { buildWebErrorBody } from "./config/agent-route-support";
 
@@ -32,8 +33,11 @@ export function createWebAgentGenerationRoutes(deps: WebAgentConfigRouteDependen
       }
 
       try {
-        // 生成过程要按主体可见性挑选候选技能，因此传可信主体而不是宿主认证上下文。
-        const result = await generateAgentConfig(store.actor as ActorContext, body.prompt as string);
+        // 生成要按主体可见性挑选候选技能：主体交给编写面门面，领域服务只接收已算好的候选集合。
+        const result = await getAgentConfigModule().authoring.generate(
+          store.actor as ActorContext,
+          body.prompt as string,
+        );
         return { success: true as const, data: result };
       } catch (err) {
         const errMsg = err instanceof Error ? err.message : String(err);

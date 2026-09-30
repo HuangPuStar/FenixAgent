@@ -43,6 +43,15 @@ export interface AuthorizedProviderDetail extends AuthorizedProvider {
 }
 
 /**
+ * 子行分页列表：Provider 的授权视图 + 当前页子行 + 子行全集计数。与 {@link AuthorizedProviderDetail}
+ * 分开是读法不同：详情把子行全量嵌进 Provider，列表的分页只能在 SQL 完成（决策 D3）。
+ */
+export interface AuthorizedProviderModelsPage extends AuthorizedProvider {
+  readonly items: readonly ModelRow[];
+  readonly total: number;
+}
+
+/**
  * 定位 Provider 资源行。
  *
  * 两组入口并存是协议需要：`/web` 用名称或资源键（用户看到的是名称），已发布的 `/api/models` 用
@@ -128,6 +137,15 @@ export interface ProviderFacadeApi {
     options?: ProviderWriteOptions,
   ): Promise<AuthorizedProviderDetail>;
   remove(actor: ActorContext, ref: ProviderRef): Promise<void>;
+  /**
+   * 子行分页列表；定位与授权跟 {@link ProviderFacadeApi.getById} 同一套（不可见即 `undefined`），但只读
+   * 当前页子行并给出子行全集计数——分页必须下推到 SQL，取回全量再切片会把整张子表读进进程（决策 D3）。
+   */
+  listModels(
+    actor: ActorContext,
+    ref: ProviderRef,
+    options?: { limit?: number; offset?: number },
+  ): Promise<AuthorizedProviderModelsPage | undefined>;
   /** 新增 Model 子行；需要 Provider 的 `update` 动作。 */
   addModel(
     actor: ActorContext,
@@ -266,6 +284,24 @@ export class ProviderFacade extends AuthorizedResourceFacade implements Provider
   }
 
   /**
+   * `total` 与 `items` 来自同一个可见集合：子行没有独立授权（决策 D6），Provider 可见即其全部子行可读，
+   * 因此计数与分页查询共用同一个 `provider_id` 条件，不存在"计数把不可见子行算进去"的可能。
+   */
+  async listModels(
+    actor: ActorContext,
+    ref: ProviderRef,
+    options: { limit?: number; offset?: number } = {},
+  ): Promise<AuthorizedProviderModelsPage | undefined> {
+    const row = await this.resolveVisible(actor, ref);
+    if (!row) return;
+
+    const authorized = await this.withAccess(actor, row);
+    const items = await this.deps.models.listByProviderId({ providerId: row.id, ...options });
+    const counts = await this.deps.models.countByProviderIds({ providerIds: [row.id] });
+    return { ...authorized, items, total: counts.get(row.id) ?? 0 };
+  }
+
+  /**
    * 新增 Model 子行。
    *
    * 重复 `modelId` 的判定刻意留在 route：`/web` 与 `/api` 对同一情形返回不同的错误码与文案
@@ -358,11 +394,15 @@ export class ProviderFacade extends AuthorizedResourceFacade implements Provider
     return this.deps.service.findByName({ access, name: nameOrKey });
   }
 
+  /** 可见性解析：资源 ID 或名称/资源键两条入口共用同一份 `read` 条件；不可见返回 `undefined`。 */
+  private async resolveVisible(actor: ActorContext, ref: ProviderRef): Promise<ScopedProviderRow | undefined> {
+    return ref.by === "resourceId"
+      ? this.deps.service.findById({ access: await this.listConstraint(actor, "read"), resourceId: ref.value })
+      : this.findVisible(actor, ref.value);
+  }
+
   private async requireVisible(actor: ActorContext, ref: ProviderRef): Promise<ScopedProviderRow> {
-    const row =
-      ref.by === "resourceId"
-        ? await this.deps.service.findById({ access: await this.listConstraint(actor, "read"), resourceId: ref.value })
-        : await this.findVisible(actor, ref.value);
+    const row = await this.resolveVisible(actor, ref);
     if (!row) throw new NotFoundError(`Provider '${ref.value}' not found`);
     return row;
   }

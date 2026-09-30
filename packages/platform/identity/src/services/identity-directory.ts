@@ -1,7 +1,6 @@
 import type {
   ApiSystemUserRecord,
   IdentityDirectory,
-  MemberRole,
   MembershipSummary,
   OrganizationMemberSummary,
   OrganizationSummary,
@@ -22,7 +21,8 @@ import {
   findUsersBasicInfoByIds,
   searchSystemUsers,
 } from "../repositories/user";
-import { resolveSystemAdminTenant } from "./ensure-system-admin";
+import { toMemberRole } from "./member-role";
+import { resolveSystemAdminTenant } from "./system-tenant";
 
 /**
  * `IdentityDirectory` 契约的持久化实现。
@@ -34,16 +34,6 @@ import { resolveSystemAdminTenant } from "./ensure-system-admin";
  * 本实现是纯只读投影：不判断动作、不返回归属范围、不参与事务，也不缓存结果——成员关系与组织名录
  * 会随用户操作变化，跨请求复用会读到过期视图（请求内的一次性缓存由调用方按需处理）。
  */
-
-/**
- * 把 `member.role` 收窄到契约取值域。
- *
- * 角色列是自由文本（历史数据可能写入非三态值）；契约是既有权限体系的取值域，未知值退化为最小
- * 权限 `member`，与 web 组织列表补角色时的 `?? "member"` 口径一致。
- */
-function toMemberRole(role: string | null): MemberRole {
-  return role === "owner" || role === "admin" ? role : "member";
-}
 
 /** 创建身份目录实现。 */
 export function createIdentityDirectory(): IdentityDirectory {
@@ -88,6 +78,7 @@ export function createIdentityDirectory(): IdentityDirectory {
     },
 
     async resolveSystemTenant(): Promise<SystemTenant> {
+      // 纯读取：未引导时抛错，不在读入口建号或写凭据文件（引导是宿主启动期的显式动作）
       return resolveSystemAdminTenant();
     },
 

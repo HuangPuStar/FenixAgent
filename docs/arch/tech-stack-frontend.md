@@ -78,13 +78,15 @@
 - **检测**：localStorage → navigator 兜底 → 英文 fallback
 - **新增命名空间**：创建语言文件 → 在 `apps/web/src/i18n/index.ts` 注册 → 组件中引用常量
 
-当前已有 21 个命名空间：`common`、`login`、`sidebar`、`dashboard`、`agents`、`models`、`skills`、`mcp`、`tasks`、`workflows`、`settings`、`sessions`、`environments`、`orgs`、`apikey`、`channels`、`knowledge`、`agentPanel`、`components`、`hindsight`、`agentHome`。
+当前已登记 **26 个**命名空间（`apps/web/src/i18n/index.ts` 的 `hostResources` + `packageResources` 两张表，`ns` 列表由已登记字典推导）。宿主自有 4 个：`common`、`sidebar`、`components`、`agentPanel`（读 `./locales/**`）；包自有 22 个：`agents`、`agentChat`、`dashboard`、`agentHome`、`apikey`、`login`、`orgs`、`models`、`observer`、`skills`、`mcp`、`tasksV2`、`workflows`、`channels`、`knowledge`、`machine`、`hindsight`、`prodViews`、`pluginMarket`、`sandbox`、`settings`、`uiComponents`。
+
+**与中心表的差集（偏差）**：中心表 `@fenix/web-runtime/i18n/namespace` 现有 26 个字面量，与上面的登记集两个方向都不重合——`tasks`、`sessions`、`environments`、`toolNarrator` 四个零消费空壳**有意不登记**；`agentChat`、`sandbox`、`machine`、`pluginMarket` 四个**已登记但未进中心表**，命名空间常量由各包自持字面量（前两者按「中心表只收录跨包共用项」的口径刻意不入表，后两者记为中心表待补）。
 
 ---
 
 ## 6. API Client：packages/web-runtime/web/api/request.ts
 
-前端 API 调用统一通过 `packages/web-runtime/web/api/request.ts`，每个资源域独立 API 模块（`api/tasks.ts`、`api/skills.ts` 等），自动携带认证 Cookie（`credentials: "include"`）。禁止在组件中直接使用原生 `fetch()`。
+前端 API 调用统一通过 `packages/web-runtime/web/api/request.ts`，每个资源域在自己的 owner 包内独立成 API 模块（如 `@fenix/resource-task` 的 `web/api/tasks-v2.ts`、`@fenix/resource-skill` 的 `web/api/skills.ts`），自动携带认证 Cookie（`credentials: "include"`）。禁止在组件中直接使用原生 `fetch()`。
 
 ---
 
@@ -109,21 +111,20 @@ Vercel AI SDK 的 `useChat` 通过定制 `ChatTransport` 接入后端 SSE 事件
 
 ```
 apps/web/
-  components/
-    ui/              — shadcn/ui 包装的 Radix UI 原语组件（36 个）
-    config/          — 通用业务组件（FormDialog、DataTable、ConfirmDialog 等）
-    chat/            — 聊天面板组件
-    model-icon/      — 模型图标（ModelIcon + 本地对照表）
-    model-selector/  — 模型选择器
   src/
     routes/          — TanStack Router 文件路由（`routeTree.gen.ts` 严禁手动编辑）
-    pages/           — 页面组件（agent-panel / workflow / hindsight / login）
-    hooks/           — 自定义 hooks（use-chat-state、use-session-state、usePageVisible）
-    lib/             — 工具函数（form-utils、retry、token-stats、app-brand、theme、password-crypto 等）
-    api/             — API 客户端 + SDK 实例化（sdk.ts）
-    i18n/            — i18n 配置 + locales/{en,zh}/ 翻译文件
-    types/           — 全局类型定义
-    __tests__/       — 前端测试（50+ 测试文件）
+    pages/           — 宿主专有页面（agent-panel 及其 artifacts 子目录）
+    shell/           — 应用壳与侧栏装配（布局、导航容器、Provider、鉴权后壳）
+    components/      — 宿主壳组件（错误页、路由兜底）
+    api/             — 宿主专有域客户端（只剩 branding.ts）
+    hooks/           — 宿主自有 hook（当前为空，见前端规范 §3.5）
+    lib/             — 宿主工具函数（app-brand、random-uuid-polyfill、clipboard-polyfill、streamdown-table-patch 等）
+    i18n/            — i18n 引导 + 宿主自有字典 locales/{en,zh}/（包自有字典经 `@fenix/<pkg>/web/i18n` 登记）
+    types/           — 宿主全局类型声明（global.d.ts）
+    __tests__/       — 前端测试
+packages/
+  ui-components/web/ — 通用 UI 原语（ui/）、通用业务组件（config/）、聊天组件（chat/）、样式（styles/）
+  <group>/<pkg>/web/ — 各 owner 包的 web 面（pages/、hooks/、api/、components/、i18n/）
 ```
 
 ---

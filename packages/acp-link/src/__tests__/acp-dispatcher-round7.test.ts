@@ -62,8 +62,8 @@ describe("AcpDispatcher round7 纯协议状态", () => {
     ]);
   });
 
-  // session/list 必须使用本地标题覆盖、剔除空/默认标题，并限制可见列表，避免错误会话污染前端。
-  test("session/list 应用标题覆盖并过滤不可展示会话", async () => {
+  // ACP 层保留 Agent 标题真相，剔除空/默认标题；用户重命名由 Fenix 持久化层提供。
+  test("session/list 保留 Agent 标题并过滤不可展示会话", async () => {
     const calls: Record<string, unknown>[] = [];
     const { dispatcher, sent, state } = createHarness({
       async listSessions(params) {
@@ -79,7 +79,6 @@ describe("AcpDispatcher round7 纯协议状态", () => {
       },
     });
     state.agentCapabilities = { sessionCapabilities: { list: {} } };
-    state.titleOverrides.set("ses-a", "用户命名");
 
     await dispatcher.handleMessage(request(3, "session/list", { cursor: "cursor-1", cwd: "/untrusted" }));
 
@@ -87,10 +86,7 @@ describe("AcpDispatcher round7 纯协议状态", () => {
     expect(sent[0]).toMatchObject({
       id: 3,
       result: {
-        sessions: [
-          { sessionId: "ses-a", title: "用户命名" },
-          { sessionId: "ses-c", title: "Agent title" },
-        ],
+        sessions: [{ sessionId: "ses-c", title: "Agent title" }],
         nextCursor: "next",
       },
     });
@@ -216,20 +212,14 @@ describe("AcpDispatcher round7 纯协议状态", () => {
     expect(sent[0]).toMatchObject({ id: 10, result: { deleted: true, sessionId: "ses-delete" } });
   });
 
-  // session/rename 既缓存本地标题又广播 session/update，确保不支持重命名的 agent 仍能多 session 隔离展示。
-  test("session/rename 缓存标题并发送原始更新通知", async () => {
-    const { dispatcher, sent, state } = createHarness({});
+  // 客户端重命名不是 ACP 请求；不得用反向通知和内存缓存伪造成功。
+  test("session/rename 拒绝不支持的持久变更", async () => {
+    const { dispatcher, sent } = createHarness({});
 
     await dispatcher.handleMessage(request(11, "session/rename", { sessionId: "ses-rename", title: "隔离标题" }));
 
-    expect(state.titleOverrides.get("ses-rename")).toBe("隔离标题");
     expect(sent).toEqual([
-      {
-        jsonrpc: "2.0",
-        method: "session/update",
-        params: { sessionId: "ses-rename", update: { sessionUpdate: "session_info_update", title: "隔离标题" } },
-      },
-      { jsonrpc: "2.0", id: 11, result: { sessionId: "ses-rename", title: "隔离标题" } },
+      { jsonrpc: "2.0", id: 11, error: { code: -32601, message: "session/rename is not supported by ACP" } },
     ]);
   });
 

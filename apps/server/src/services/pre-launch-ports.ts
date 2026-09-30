@@ -18,7 +18,11 @@ import {
   createAgentLaunchSpecAssembler,
   type RuntimeCredentialResolver,
 } from "@fenix/agent-config/server/agent-launch-spec";
-import type { AgentConfigLookupPort, AgentLaunchSpecPort } from "@fenix/agent-runtime/server";
+import {
+  type AgentConfigLookupPort,
+  type AgentLaunchSpecPort,
+  resolveWorkspacePath,
+} from "@fenix/agent-runtime/server";
 import { createModelService, getModelManagementModule } from "@fenix/model-management/server";
 import { getMcpServerModule } from "@fenix/resource-mcp/server";
 import { getSkillServerModule } from "@fenix/resource-skill/server";
@@ -34,9 +38,9 @@ export interface PreLaunchPortsDeps {
    */
   readonly runtimeCredentialResolver?: RuntimeCredentialResolver;
   /**
-   * Hindsight（记忆）MCP 的 API token（宿主 env `HINDSIGHT_API_TOKEN`）。
+   * Hindsight REST API token（宿主 env `HINDSIGHT_API_TOKEN`）。
    *
-   * 与其它密钥一样只经 launchSpec.env 派发到 machine，不落盘、不入日志；未配置时不注入该变量。
+   * 只经受信 launchSpec.workspaceFiles 派发到 machine 的 0600 配置文件，不进入 agent env 或日志。
    */
   readonly hindsightApiToken?: string;
 }
@@ -69,6 +73,7 @@ export function createPreLaunchPorts(deps: PreLaunchPortsDeps = {}): {
       },
     },
     // `{env:NAME}` 的真相来源是宿主 env，包内不得读 process.env；与资源模块路由共用同一解析实现。
+    resolveWorkspacePath,
     resolveProviderApiKey: resolveSecretReference,
     resolveRuntimeCredential: deps.runtimeCredentialResolver,
   });

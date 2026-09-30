@@ -50,10 +50,14 @@ function KnowledgeBlock({
   return (
     <div className={cn(KNOWLEDGE_BLOCK, className)}>
       <header className={KNOWLEDGE_HEADING} data-slot="editor-knowledge-heading">
-        <span>{icon}</span>
-        <div>
-          <strong>{title}</strong>
-          <small>{description}</small>
+        <span className="grid size-8.5 place-items-center rounded-md bg-indigo-50 text-sky-700">{icon}</span>
+        <div className="flex min-w-0 flex-col gap-0.5">
+          <strong className="text-xs text-slate-700" data-slot="editor-knowledge-heading-title">
+            {title}
+          </strong>
+          <small className="text-3xs leading-normal text-slate-400" data-slot="editor-knowledge-heading-caption">
+            {description}
+          </small>
         </div>
       </header>
       <div className={cn(KNOWLEDGE_BODY, bodyClassName)}>{children}</div>
@@ -81,12 +85,12 @@ function CompactSwitch({
   // 伴随 CSS 的 `:has([data-state="checked"])` 表达。
   return (
     <label className={KNOWLEDGE_SWITCH}>
-      <span>
-        <strong>
+      <span className="flex min-w-0 flex-col gap-0.75">
+        <strong className="flex items-center gap-2 text-xs text-slate-700">
           {title}
           {badge && <Badge variant="secondary">{badge}</Badge>}
         </strong>
-        <small>{description}</small>
+        <small className="text-3xs leading-normal text-gray-400">{description}</small>
       </span>
       <Switch checked={checked} onCheckedChange={onChange} disabled={disabled} />
     </label>
@@ -104,7 +108,11 @@ export function AgentKnowledgeSection({ form, data, disabled }: AgentKnowledgeSe
       />
       <div className={KNOWLEDGE_LAYOUT}>
         {data.hindsightEnabled && (
-          <KnowledgeBlock icon={<Brain />} title={t("memory.enableTitle")} description={t("memory.enableDescription")}>
+          <KnowledgeBlock
+            icon={<Brain className="size-3.5" />}
+            title={t("memory.enableTitle")}
+            description={t("memory.enableDescription")}
+          >
             <Controller
               name="enableMemory"
               control={form.control}
@@ -123,7 +131,7 @@ export function AgentKnowledgeSection({ form, data, disabled }: AgentKnowledgeSe
         )}
 
         <KnowledgeBlock
-          icon={<Database />}
+          icon={<Database className="size-3.5" />}
           title={t("knowledge.bindTitle")}
           description={t("editor.knowledgeBaseDescription")}
           bodyClassName={KNOWLEDGE_BODY_BASES}
@@ -145,7 +153,7 @@ export function AgentKnowledgeSection({ form, data, disabled }: AgentKnowledgeSe
         </KnowledgeBlock>
 
         <KnowledgeBlock
-          icon={<Search />}
+          icon={<Search className="size-3.5" />}
           title={t("editor.retrievalPolicy")}
           description={t("editor.retrievalPolicyDescription")}
         >

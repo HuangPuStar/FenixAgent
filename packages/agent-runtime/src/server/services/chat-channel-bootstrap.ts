@@ -9,14 +9,21 @@
 // 单例缓存是必要的：SessionChannel 构造时会向 DocManager 注册权限请求回调（单槽位
 // 装配点），重复构造会覆盖前者导致权限超时迁移失效，因此一个进程内至多一个控制器。
 
-import type { ChatChannelDependencies } from "@fenix/chat-channel/server";
+import type {
+  ChatChannelDependencies,
+  SessionTitleStore,
+  SnapshotPersistConfigSource,
+} from "@fenix/chat-channel/server";
 import {
   ChatChannelController,
   classifyPermanentSpawnFailure,
+  createRedisSessionTitleStore,
   docManager,
   isMachineOfflineError,
 } from "@fenix/chat-channel/server";
 import { log, error as logError } from "@fenix/logger";
+import { getRedisConnection } from "@fenix/platform-sdk/server";
+import type { Cluster, Redis } from "ioredis";
 import {
   markInstanceRelayAttached,
   markInstanceRelayDetached,
@@ -25,6 +32,7 @@ import {
 import { refreshInstanceEnvironment, terminateLocalDeadInstance } from "../../services/orchestration-instance";
 import { getAgentRuntimeConfig } from "../config";
 import { environmentRepo } from "../repositories/environment";
+import { createFileSessionTitleStore } from "../repositories/session-title-store";
 import { connectAgentRelay } from "../transport/agent-relay";
 import { bindRelayLifecyclePort } from "../transport/relay/lifecycle-port";
 import { agentInstanceService } from "./agent-instance-service";
@@ -46,6 +54,8 @@ type ChatChannelBootstrapDeps = {
   log: typeof log;
   logError: typeof logError;
   maxClients: () => number;
+  snapshotPersist: SnapshotPersistConfigSource;
+  sessionTitleStore: () => SessionTitleStore;
 };
 
 const defaultDeps: ChatChannelBootstrapDeps = {
@@ -76,6 +86,23 @@ const defaultDeps: ChatChannelBootstrapDeps = {
   // 到 200、负值被原样接受。schema 已随 `envDefinitions` 迁到本模块 manifest，启动期校验保证此处必是正整数。
   // 闭包保持惰性：`defaultDeps` 是模块级常量，装配期求值会撞上「基础设施尚未初始化」。
   maxClients: () => getAgentRuntimeConfig().yjsMaxClients,
+  // 快照节流 / TTL 参数同样取模块配置（F1）：三项原先由宿主 `env.ts` 声明、由 chat-channel 持久层
+  // 直读 `process.env` 并自带一份默认值，绕过启动期校验。声明已迁入本模块 manifest，值经
+  // `ChatChannelDependencies.snapshotPersist` 装入 DocManager；包内直读与包内默认值同批删除。
+  snapshotPersist: () => {
+    const config = getAgentRuntimeConfig();
+    return {
+      intervalMs: config.yjsSnapshotIntervalMs,
+      idleMs: config.yjsSnapshotIdleMs,
+      ttlSeconds: config.yjsSnapshotTtlSeconds,
+    };
+  },
+  sessionTitleStore: () => {
+    const redis = getRedisConnection<Redis | Cluster>();
+    return redis
+      ? createRedisSessionTitleStore(() => getRedisConnection<Redis | Cluster>())
+      : createFileSessionTitleStore(() => getAgentRuntimeConfig().workspaceRoot);
+  },
 };
 
 let deps: ChatChannelBootstrapDeps = defaultDeps;
@@ -106,6 +133,7 @@ function buildChatChannelDependencies(): ChatChannelDependencies {
     isMachineOffline: deps.isMachineOfflineError,
     classifyPermanentSpawnFailure: deps.classifyPermanentSpawnFailure,
     maxClients: deps.maxClients,
+    snapshotPersist: deps.snapshotPersist,
     log: deps.log,
     reportError: deps.logError,
   };
@@ -116,6 +144,7 @@ let controller: ChatChannelController | null = null;
 /** 获取 Chat 域控制器单例（YJS WS 入口与连接注册表的统一访问点）。 */
 export function getChatChannelController(): ChatChannelController {
   if (!controller) {
+    deps.docManager.setSessionTitleStore(deps.sessionTitleStore());
     controller = new ChatChannelController(buildChatChannelDependencies());
   }
   return controller;

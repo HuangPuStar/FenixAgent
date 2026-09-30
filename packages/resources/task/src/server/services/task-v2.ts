@@ -171,7 +171,8 @@ function validateTaskInput(data: Partial<CreateTaskV2Input>, isUpdate = false): 
 }
 
 // ── CRUD ──
-// 权限模型：用户 + 组织双重隔离，所有操作按 userId AND organizationId 过滤
+// 归属范围（`userId` / `organizationId`）由调用方（Facade）以显式参数给出，本层只把它当查询谓词用，
+// 不解释角色或成员关系；「以什么身份读」的决策在 Facade，不在服务。
 
 export async function createTaskV2(
   userId: string,

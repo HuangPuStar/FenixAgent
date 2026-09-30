@@ -196,11 +196,11 @@ export function ProviderEditorDialog({ target, providers, saving, onClose, onSav
         </LabeledField>
       </div>
       {!readOnly && (
-        <section className="model-dialog-section sm:col-span-2" aria-label={t("form.modelsSection")}>
-          <div className="model-dialog-section__header">
-            <div>
-              <strong>{t("form.modelsSection")}</strong>
-              <small>{t("form.modelsSectionHint")}</small>
+        <section className="model-dialog-section bg-slate-50 p-3.5 sm:col-span-2" aria-label={t("form.modelsSection")}>
+          <div className="model-dialog-section__header flex items-center justify-between gap-3">
+            <div className="flex flex-col">
+              <strong className="text-xs">{t("form.modelsSection")}</strong>
+              <small className="mt-0.5 text-3xs text-slate-400">{t("form.modelsSectionHint")}</small>
             </div>
             <Button
               type="button"
@@ -214,8 +214,9 @@ export function ProviderEditorDialog({ target, providers, saving, onClose, onSav
             </Button>
           </div>
           {/* 手动入口与「获取模型列表」并列，不藏在探测成功之后：这正是列表接口拿不到时唯一能走的路。 */}
-          <div className="model-dialog-section__manual">
+          <div className="model-dialog-section__manual flex items-center gap-1.5 mt-2.5">
             <Input
+              className="flex-1 min-w-0"
               value={manualModelId}
               onChange={(event) => setManualModelId(event.target.value)}
               // 外壳是 <form>，回车默认提交整份服务商表单；这一行把回车收成"添加"。
@@ -232,19 +233,21 @@ export function ProviderEditorDialog({ target, providers, saving, onClose, onSav
             </Button>
           </div>
           {fetchError && (
-            <p className="model-dialog-error" role="alert">
+            <p className="model-dialog-error mt-2.5 text-11 text-red-500" role="alert">
               {fetchError}
             </p>
           )}
           {modelCandidates.length > 0 && (
-            <div className="model-discovery-list">
+            <div className="model-discovery-list grid max-h-52.5 gap-0.75 overflow-auto mt-2.5">
               {modelCandidates.map((modelId) => {
                 const selected = draft.selectedModels.includes(modelId);
                 return (
                   <button
                     key={modelId}
                     type="button"
-                    className={selected ? "is-selected" : ""}
+                    className={`flex min-h-8.5 items-center justify-between rounded-5 border-0 py-0 px-2.25 text-left text-3xs ${
+                      selected ? "is-selected bg-blue-50 text-blue-600" : "bg-white text-slate-500"
+                    }`}
                     onClick={() =>
                       update(
                         "selectedModels",
@@ -255,7 +258,7 @@ export function ProviderEditorDialog({ target, providers, saving, onClose, onSav
                     }
                   >
                     <span>{modelId}</span>
-                    {selected && <Check />}
+                    {selected && <Check className="w-3.25" />}
                   </button>
                 );
               })}

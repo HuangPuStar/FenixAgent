@@ -21,6 +21,11 @@ const GRANTS: Readonly<Record<string, string[]>> = {
   provider: [],
 };
 
+/** 执行上下文由 runner 注入（§6.3）；用例用同一替身承接 log 与 warn，按调用断言实际输出的可观测字段。 */
+function createContext(log: (...args: unknown[]) => void = () => {}) {
+  return { log: (message: string) => log(message), warn: (message: string) => log(message) };
+}
+
 function stubDeps(overrides: Partial<typeof _deps> = {}) {
   const markPublic = mock(async (_target: unknown, ids: readonly string[]) => ids.length);
   const markPrivate = mock(async (_target: unknown, ids: readonly string[]) => ids.length);
@@ -30,7 +35,6 @@ function stubDeps(overrides: Partial<typeof _deps> = {}) {
   _deps.markPublic = markPublic;
   _deps.countNonPublic = async () => 0;
   _deps.markPrivate = markPrivate;
-  _deps.log = mock(() => {});
   Object.assign(_deps, overrides);
 
   return { markPublic, markPrivate };
@@ -49,7 +53,7 @@ describe("backfill resource visibility", () => {
   test("backfills public visibility per controlled resource type", async () => {
     const { markPublic } = stubDeps();
 
-    await migrateBackfillResourceVisibility.run();
+    await migrateBackfillResourceVisibility.run(createContext());
 
     const targets = markPublic.mock.calls.map((call) => (call[0] as { resourceType: string }).resourceType);
     expect(targets.sort()).toEqual(["agent_config", "mcp_server"]);
@@ -60,7 +64,7 @@ describe("backfill resource visibility", () => {
   test("skips resource types without public read grants", async () => {
     const { markPublic } = stubDeps();
 
-    await migrateBackfillResourceVisibility.run();
+    await migrateBackfillResourceVisibility.run(createContext());
 
     const targets = markPublic.mock.calls.map((call) => (call[0] as { resourceType: string }).resourceType);
     expect(targets).not.toContain("skill");
@@ -71,7 +75,9 @@ describe("backfill resource visibility", () => {
   test("stops without writing when organization principal grants exist", async () => {
     const { markPublic } = stubDeps({ countOrganizationPrincipalGrants: async () => 2 });
 
-    await expect(migrateBackfillResourceVisibility.run()).rejects.toThrow("principal_type='organization'");
+    await expect(migrateBackfillResourceVisibility.run(createContext())).rejects.toThrow(
+      "principal_type='organization'",
+    );
     expect(markPublic).not.toHaveBeenCalled();
   });
 
@@ -85,14 +91,13 @@ describe("backfill resource visibility", () => {
   // 重复执行不新增写入：已回填的行返回 0 行受影响，回填结果保持收敛。
   test("is idempotent across repeated runs", async () => {
     const { markPublic } = stubDeps();
-    await migrateBackfillResourceVisibility.run();
+    await migrateBackfillResourceVisibility.run(createContext());
 
-    // 第二次执行时主表已是 public，UPDATE 命中 0 行。
+    // 第二次执行时主表已是 public，UPDATE 命中 0 行，因此不应输出任何回填行数。
     markPublic.mockImplementation(async (_target: unknown, ids: readonly string[]) => ids.length * 0);
     const log = mock(() => {});
-    _deps.log = log;
 
-    await migrateBackfillResourceVisibility.run();
+    await migrateBackfillResourceVisibility.run(createContext(log));
 
     expect(log).not.toHaveBeenCalled();
   });
@@ -101,7 +106,7 @@ describe("backfill resource visibility", () => {
   test("compensates backfilled rows to private", async () => {
     const { markPrivate } = stubDeps();
 
-    await compensateBackfillResourceVisibility();
+    await compensateBackfillResourceVisibility(createContext());
 
     const targets = markPrivate.mock.calls.map((call) => (call[0] as { resourceType: string }).resourceType);
     expect(targets.sort()).toEqual(["agent_config", "mcp_server"]);

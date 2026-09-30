@@ -23,8 +23,8 @@ import { boolean, index, integer, jsonb, pgTable, text, timestamp, uuid, varchar
  *
  * 读写只在本包仓储：`src/server/repositories/task.ts`（执行日志）与 `src/server/repositories/task-v2.ts`
  * （定时任务）经出口 `@fenix/resource-task/db` 取用表对象与行类型——**自我引用**而非相对路径，`db/` 不在本包
- * `tsconfig.json` 的 `include` 里，走出口与外部消费方同一条解析路径。宿主测试 `apps/server/src/__tests__/
- * task-schema.test.ts` 也经该出口取 `taskExecutionLog`（宿主经 owner `./db` 读写，§6.1 组装期例外口径）。
+ * `tsconfig.json` 的 `include` 里，走出口与外部消费方同一条解析路径。表定义的列契约由本包用例
+ * `src/__tests__/task-schema.test.ts` 验证（宿主曾持有一份，§2.2 的调用期禁则补齐后随表迁回）。
  */
 // 任务执行日志表（v2 调度器使用；v1 调度器已下线）
 export const taskExecutionLog = pgTable("task_execution_log", {

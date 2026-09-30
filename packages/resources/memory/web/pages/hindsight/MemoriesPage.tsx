@@ -94,9 +94,13 @@ export function MemoriesPage() {
           <Skeleton className="h-7 w-28 rounded-md" />
           <Skeleton className="h-3 w-56 rounded-md" />
         </div>
-        <div className="memories-page-skeleton-grid grid min-h-0 flex-1 gap-4">
-          <Skeleton className="rounded-xl" />
-          <Skeleton className="rounded-xl" />
+        {/* 骨架两列：基态单列上下均分、md 起「15rem 索引列 + 剩余详情列」。曾写作
+            `md:grid-cols-[15rem_minmax(0,1fr)]` 并因此下沉到 `MemoriesPage.css`，实际可用扁平工具类等价表达：
+            列宽 15rem 就是 `w-60`（15 ÷ 0.25），`repeat(auto)` 行的均分就是 `flex-1`，md 的固定/弹性分工
+            由 `md:w-60 md:flex-none` 与 `md:min-w-0` 承担（`md:flex-none` 抵消基态的 `flex-1`）。 */}
+        <div className="flex min-h-0 flex-1 flex-col gap-4 md:flex-row">
+          <Skeleton className="flex-1 rounded-xl md:w-60 md:flex-none" />
+          <Skeleton className="flex-1 rounded-xl md:min-w-0" />
         </div>
       </div>
     );
@@ -183,14 +187,14 @@ export function MemoriesPage() {
                     type="button"
                     aria-pressed={selected}
                     onClick={() => setPerspective(id)}
-                    className={`memories-page-perspective-tab grid min-h-11 shrink-0 items-center gap-2 rounded-lg px-2 py-1.5 text-left transition-colors md:min-h-14 md:w-auto md:px-2.5 md:py-2 ${
+                    className={`flex min-h-11 shrink-0 items-center gap-2 rounded-lg px-2 py-1.5 text-left transition-colors md:min-h-14 md:w-auto md:px-2.5 md:py-2 ${
                       selected
                         ? "bg-primary/10 text-primary"
                         : "text-muted-foreground hover:bg-background hover:text-foreground"
                     }`}
                   >
                     <span
-                      className={`relative grid size-9 place-items-center rounded-full border ring-2 ring-inset transition-colors ${
+                      className={`relative grid size-9 shrink-0 place-items-center rounded-full border ring-2 ring-inset transition-colors ${
                         selected
                           ? "border-primary/40 bg-primary/10 text-primary ring-primary/25"
                           : "border-border bg-background text-muted-foreground ring-muted"
@@ -202,7 +206,7 @@ export function MemoriesPage() {
                         className={`absolute right-0.5 bottom-0.5 size-2 rounded-full border border-background ${markClass}`}
                       />
                     </span>
-                    <span className="min-w-0">
+                    <span className="min-w-0 flex-1">
                       <strong className="block text-sm text-foreground">{t(labelKey)}</strong>
                       <small className="hidden truncate text-3xs text-muted-foreground md:block">
                         {t(descriptionKey)}

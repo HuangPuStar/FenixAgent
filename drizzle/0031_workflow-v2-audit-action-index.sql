@@ -1,0 +1,1 @@
+CREATE INDEX "idx_workflow_v2_audit_log_action_workflow" ON "workflow_v2_audit_log" USING btree ("action","coze_workflow_id");

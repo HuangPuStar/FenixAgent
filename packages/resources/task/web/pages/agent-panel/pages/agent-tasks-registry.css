@@ -1,0 +1,44 @@
+.task-search-field {
+  width: min(560px, 100%);
+}
+.task-type-filter button[aria-pressed="true"] {
+  color: var(--color-blue-600);
+  background: var(--color-white);
+  box-shadow: 0 1px 4px rgb(32 48 76 / 8%);
+  font-weight: 650;
+}
+.task-table-wrap {
+  box-shadow: 0 8px 28px rgb(36 57 92 / 7%);
+}
+.task-table-wrap th:nth-child(1) {
+  width: 32%;
+}
+.task-table-wrap th:nth-child(2) {
+  width: 9%;
+}
+.task-table-wrap th:nth-child(3) {
+  width: 23%;
+}
+.task-table-wrap th:nth-child(4) {
+  width: 13%;
+}
+.task-table-wrap th:nth-child(5) {
+  width: 13%;
+}
+.task-table-wrap th:nth-child(6) {
+  width: 10%;
+}
+.task-table-wrap tr.is-disabled {
+  opacity: 0.58;
+}
+
+.task-table-wrap tbody tr:last-child td {
+  border-bottom: 0;
+}
+
+@media (max-width: 900px) {
+  .task-commandbar {
+    align-items: stretch;
+    flex-direction: column;
+  }
+}

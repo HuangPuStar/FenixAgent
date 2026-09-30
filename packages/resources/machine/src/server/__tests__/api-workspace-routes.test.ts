@@ -6,6 +6,7 @@ import { join } from "node:path";
 import { createStubSessionAuthGuardPlugin, resetTestAuth, setTestAuth } from "../../__tests__/guard-stubs";
 import { createApiWorkspaceRoutes } from "../routes/api/workspaces";
 import { setApiWorkspaceDeps } from "../services/api-workspace";
+import { initializeMachineModuleConfig, stubMachineEnvironmentRecord } from "../testing";
 
 // 路由实例文件级构造一次：会话守卫替身按请求期读取当前会话（setTestAuth 即时生效）
 const apiWorkspaceRoute = createApiWorkspaceRoutes({ authGuardPlugin: createStubSessionAuthGuardPlugin() });
@@ -16,14 +17,15 @@ function request(path: string, init?: RequestInit) {
 
 describe("API Workspace Routes", () => {
   beforeEach(() => {
+    // 环境归属校验自本批起在门面内完成（授权止于 Facade）：先按生产读取路径装配模块配置，
+    // 再声明环境记录替身，最后注入会话——守卫替身会被 initializeMachineModuleConfig 的复位清空。
+    initializeMachineModuleConfig();
+    stubMachineEnvironmentRecord({ id: "env-1", organizationId: "org-1", userId: "user-1" });
     setTestAuth({
       user: { id: "user-1", email: "user@test.com", name: "Tester" },
       authContext: { organizationId: "org-1", userId: "user-1", role: "owner" },
     });
     setApiWorkspaceDeps({
-      getOwnedEnvironment: async () => {
-        throw new Error("not stubbed");
-      },
       getRemoteMachineId: async () => null,
       remoteUploadFiles: async () => ({ files: [] }),
       resolveWorkspacePath: async () => null,
@@ -42,7 +44,6 @@ describe("API Workspace Routes", () => {
     const docsDir = join(userDir, "docs");
 
     setApiWorkspaceDeps({
-      getOwnedEnvironment: async () => ({ id: "env-1", organizationId: "org-1" }) as never,
       getRemoteMachineId: async () => null,
       resolveWorkspacePath: async () =>
         ({
@@ -78,7 +79,6 @@ describe("API Workspace Routes", () => {
   test("POST /api/environments/:environmentId/workspace/files rejects traversal paths", async () => {
     let remoteCalled = false;
     setApiWorkspaceDeps({
-      getOwnedEnvironment: async () => ({ id: "env-1", organizationId: "org-1" }) as never,
       getRemoteMachineId: async () => "machine-1",
       remoteUploadFiles: async () => {
         remoteCalled = true;

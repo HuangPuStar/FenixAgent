@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { log, error as logError } from "@fenix/logger";
+import { log, error as logError, requestAls } from "@fenix/logger";
 import schedule from "node-schedule";
 import { taskExecutionLogRepo } from "../../repositories/task";
 import type { ScheduledTaskV2Row } from "../../repositories/task-v2";
@@ -64,9 +64,16 @@ export class SchedulerService {
     }
 
     const handler = () => {
-      log(`[SchedulerService] Cron triggered for task ${task.id}`);
-      this.execute(task.id, "cron").catch((err) => {
-        logError(`[SchedulerService] Error in cron execution for task ${task.id}:`, err);
+      // cron 触发没有上游请求，关联 ID 必须在入口自建：node-schedule 的定时器继承**创建 job 时**的
+      // 异步上下文，而 job 通常由 HTTP 请求（新建/改 cron/启用任务）建立，触发时 ALS 里残留的是那个
+      // 请求的 requestId（2026-09-24 实测 `run` 与 `enterWith` 两种写法皆如此）。沿用会把一次定时执行
+      // 关联到创建它的请求上，所以这里显式自建，并用它覆盖继承来的上下文。
+      const requestId = randomUUID();
+      requestAls.run({ requestId }, () => {
+        log(`[SchedulerService] Cron triggered for task ${task.id}`, { requestId, triggeredBy: "cron" });
+        this.execute(task.id, "cron", requestId).catch((err) => {
+          logError(`[SchedulerService] Error in cron execution for task ${task.id}:`, err);
+        });
       });
     };
 
@@ -103,7 +110,19 @@ export class SchedulerService {
     return this.schedule(task);
   }
 
-  async execute(taskId: string, triggeredBy: "cron" | "manual"): Promise<TaskExecOutput> {
+  /**
+   * 执行任务。
+   *
+   * `triggerRequestId` 是触发方显式给出的关联 ID：cron 入口自建后传入（见 `schedule`，那里的值是本次
+   * 触发的权威关联 ID，必须优先于继承来的 ALS 上下文）；HTTP/manual 触发不传，由这里从 ALS 取触发请求的
+   * `requestId`；两者都缺（非请求上下文直接调用）时自建，保证每条执行都能被关联、不会退化成空值。
+   */
+  async execute(taskId: string, triggeredBy: "cron" | "manual", triggerRequestId?: string): Promise<TaskExecOutput> {
+    const requestId = triggerRequestId ?? requestAls.getStore()?.requestId ?? randomUUID();
+
+    // 首条诊断日志：放在单飞判定之前，被跳过的执行同样留下关联 ID
+    log(`[SchedulerService] Task ${taskId} execution triggered`, { requestId, triggeredBy });
+
     if (this.runningTasks.has(taskId)) {
       await taskExecutionLogRepo.create({
         id: randomUUID(),
@@ -159,7 +178,7 @@ export class SchedulerService {
         return { status: "failed", error: msg, duration: 0 };
       }
 
-      const output = await executor.execute({ task, triggeredBy });
+      const output = await executor.execute({ task, triggeredBy, requestId });
 
       await taskExecutionLogRepo.create({
         id: randomUUID(),
@@ -171,6 +190,15 @@ export class SchedulerService {
         skipReason: null,
         resultSummary: output.resultSummary ?? null,
         createdAt: new Date(),
+      });
+
+      // 执行记录（§7）：状态与耗时随关联 ID 落到日志。失败文本只存 DB（HTTP 执行器会写入外部响应正文），
+      // 不在这里重复输出，避免正文进入日志。
+      log(`[SchedulerService] Task ${taskId} execution finished`, {
+        requestId,
+        triggeredBy,
+        status: output.status,
+        durationMs: output.duration,
       });
 
       scheduledTaskV2Repo

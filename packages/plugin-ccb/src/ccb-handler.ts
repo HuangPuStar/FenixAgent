@@ -9,27 +9,49 @@ import { AcpDispatcher } from "acp-link/acp-dispatcher";
 import { spawnAcpAgent } from "acp-link/client/acp-spawn-helper";
 import type { EngineHandler, EngineStartContext } from "acp-link/client/instance-manager";
 import { resolveExecutable } from "acp-link/client/resolve-executable";
+import { prepareLaunchWorkspace } from "./runtime/environment-preparer";
+
+export interface CcbHandlerOptions {
+  /**
+   * skill 归档下载的 origin（agent 侧能访问到主服务的基址，可给 `ws(s)://`）。
+   *
+   * 与引擎命令同属 daemon / 容器侧部署配置，取值来自 `acp-runtime-cli` 读入后经 `ServerConfig` 下发的
+   * `rcsUrl`。未注入时 installer 保持 launchSpec 里的原始 URL（宿主自身生成的地址本就可达）。
+   */
+  downloadOrigin?: string;
+}
 
 /**
  * ccb 引擎 handler：spawn ccb --acp 子进程，通过 ACP stdio 通信。
+ *
+ * 引擎命令走构造参数注入（与 opencode / peri handler 同形），handler 不直读 `process.env`：daemon / 容器侧的
+ * ccb 引擎命令与参数、skill 下载 origin 都是部署配置（compose 里声明），由 `acp-runtime-cli` 读取后经
+ * `ServerConfig` 传入——宿主 env schema 不声明这些键，宿主进程内也零消费者。
  */
-export function createCcbHandler(): EngineHandler {
+export function createCcbHandler(
+  binary?: string,
+  extraArgs?: string[],
+  options: CcbHandlerOptions = {},
+): EngineHandler {
   // 延迟到 startInstance 才 resolve executable，避免机器上没有 ccb 二进制时启动失败
-  const binaryName = process.env.RCS_CCB_COMMAND ?? "ccb";
-  const args = (process.env.RCS_CCB_ARGS ?? "--acp").split(/\s+/);
+  const binaryName = binary ?? "ccb";
+  const args = extraArgs ?? ["--acp"];
 
   return {
     async prepareWorkspace(workspace: string, launchSpec: AgentLaunchSpec): Promise<void> {
-      const installedSkills = await installCcbSkills(workspace, launchSpec.skills);
+      launchSpec = await prepareLaunchWorkspace(workspace, launchSpec);
+      const installedSkills = await installCcbSkills(workspace, launchSpec.skills, {
+        downloadOrigin: options.downloadOrigin,
+      });
       const runtimeConfig = buildCcbRuntimeConfig(launchSpec, installedSkills);
       await writeCcbConfig(workspace, runtimeConfig);
 
       const mcpConfig = buildCcbMcpConfig(launchSpec);
-      if (mcpConfig) {
-        const { writeCcbMcpConfig } = await import("@fenix/ccb");
-        await writeCcbMcpConfig(workspace, mcpConfig);
-        console.log(`[ccb-handler] wrote .mcp.json with ${Object.keys(mcpConfig.mcpServers).length} servers`);
-      }
+      // .mcp.json 每次 prepare 全量重写：空集合必须落盘成 `{"mcpServers":{}}`，
+      // 否则取消全部 MCP 后旧文件残留，agent 继续加载已取消的 server。
+      const { writeCcbMcpConfig } = await import("@fenix/ccb");
+      await writeCcbMcpConfig(workspace, mcpConfig);
+      console.log(`[ccb-handler] wrote .mcp.json with ${Object.keys(mcpConfig.mcpServers).length} servers`);
 
       if (launchSpec.agent.prompt) {
         const { writeClaudeMd } = await import("@fenix/ccb");

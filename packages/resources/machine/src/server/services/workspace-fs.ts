@@ -1,7 +1,22 @@
 import { createHash } from "node:crypto";
 import { createReadStream } from "node:fs";
-import { lstat, mkdir, open, readdir, readFile, realpath, rename, rm, stat, unlink, writeFile } from "node:fs/promises";
+import {
+  link,
+  lstat,
+  mkdir,
+  open,
+  readdir,
+  readFile,
+  realpath,
+  rename,
+  rm,
+  rmdir,
+  stat,
+  unlink,
+  writeFile,
+} from "node:fs/promises";
 import { dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
+import { ValidationError } from "@fenix/platform-sdk";
 import { getEnvironmentById } from "../environment-port";
 import { getMachineHostPort } from "../host-port";
 
@@ -435,10 +450,40 @@ export async function listPathsRecursive(workspaceDir: string): Promise<{
   return { entries: results, errors };
 }
 
-/** 重命名文件或目录，自动创建目标父目录 */
+let directoryRenameBeforeMoveHook: ((destination: string) => Promise<void>) | undefined;
+
+/** 仅供目录占位后的并发冲突与清理行为测试注入变更。 */
+export function setDirectoryRenameBeforeMoveHookForTest(hook?: (destination: string) => Promise<void>): void {
+  directoryRenameBeforeMoveHook = hook;
+}
+
+/** 文件用排他 link；目录用排他 mkdir 占位后 rename，失败只清理同 inode 空占位。 */
 export async function renamePath(oldPath: string, newPath: string): Promise<void> {
+  if (oldPath === newPath) return;
+  const source = await lstat(oldPath);
+  if (newPath.startsWith(`${oldPath}${sep}`)) throw new ValidationError("不能将目录移动到自身内部");
   await mkdir(resolve(newPath, ".."), { recursive: true });
-  await rename(oldPath, newPath);
+  if (!source.isDirectory()) {
+    await link(oldPath, newPath);
+    await unlink(oldPath);
+    return;
+  }
+  await mkdir(newPath);
+  const reservation = await lstat(newPath);
+  try {
+    await directoryRenameBeforeMoveHook?.(newPath);
+    await rename(oldPath, newPath);
+  } catch (error) {
+    try {
+      const current = await lstat(newPath);
+      if (current.dev === reservation.dev && current.ino === reservation.ino) await rmdir(newPath);
+    } catch (cleanupError) {
+      if (!isErrnoException(cleanupError) || !["ENOENT", "ENOTEMPTY", "EEXIST"].includes(cleanupError.code ?? "")) {
+        throw new AggregateError([error, cleanupError], "Directory rename failed; target reservation retained");
+      }
+    }
+    throw error;
+  }
 }
 
 /** 递归创建目录（等同于 mkdir -p） */

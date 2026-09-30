@@ -1,6 +1,6 @@
 import { log } from "@fenix/logger";
 import { NotFoundError } from "@fenix/platform-sdk";
-import type { AgentLaunchSpec, McpServerConfig } from "@fenix/plugin-sdk";
+import { type AgentLaunchSpec, bindWorkspaceFiles, type McpServerConfig } from "@fenix/plugin-sdk";
 import { getAgentConfigVisibleToUser } from "../../system-entries";
 import { composeAgentSystemPrompt } from "../agent-system-prompt";
 import { buildMcpSpecs, loadAgentMcpServers } from "./mcp-resolution";
@@ -91,29 +91,34 @@ export async function buildAgentLaunchSpec(
   );
   const finalPrompt = composeAgentSystemPrompt(deps.env.agentSystemPrompt, agentConfig.name, agentConfig.prompt);
 
-  // Phase 3: 记忆与观测的环境变量按「调用方显式传入优先」的次序合并，产出最终 launchSpec。
+  // Phase 3: 记忆转换为工作区文件；观测/普通变量仍合并，Hindsight 定位由平台统一绑定。
   const memory = await buildMemoryLaunchEnv(deps, {
     agentConfigId: agentConfig.id,
     organizationId,
     userId,
     extra: (agentConfig.extra as Record<string, unknown> | null | undefined) ?? null,
   });
-  const launchEnv = { ...memory.env, ...buildLangfuseEnv(deps), ...(input.extraEnv ?? {}) };
+  const launchEnv = { ...buildLangfuseEnv(deps), ...(input.extraEnv ?? {}) };
 
-  return {
-    organizationId,
-    userId,
-    ...(environmentId ? { environmentId } : {}),
-    env: launchEnv,
-    agent: {
-      name: agentConfig.name,
-      prompt: finalPrompt,
-      ...(memory.extra ? { extra: memory.extra } : {}),
+  return bindWorkspaceFiles(
+    {
+      organizationId,
+      userId,
+      ...(environmentId ? { environmentId } : {}),
+      env: launchEnv,
+      plugins: memory.plugins,
+      workspaceFiles: memory.workspaceFiles,
+      agent: {
+        name: agentConfig.name,
+        prompt: finalPrompt,
+        ...(memory.extra ? { extra: memory.extra } : {}),
+      },
+      model,
+      skills,
+      mcpServers,
     },
-    model,
-    skills,
-    mcpServers,
-  };
+    deps.resolveWorkspacePath(organizationId, userId, environmentId ?? ""),
+  );
 }
 
 /**
@@ -135,19 +140,22 @@ export async function buildMinimalLaunchSpec(
     `${LAUNCH_SPEC_LOG_PREFIX} buildMinimalLaunchSpec: org='${input.organizationId}', user='${input.userId}', environmentId='${input.environmentId ?? ""}', provider='${modelConfig.provider}', model='${modelConfig.model}'`,
   );
 
-  return {
-    organizationId: input.organizationId,
-    userId: input.userId,
-    ...(input.environmentId ? { environmentId: input.environmentId } : {}),
-    env: { ...buildLangfuseEnv(deps), ...(input.extraEnv ?? {}) },
-    agent: {
-      name: MINIMAL_AGENT_NAME,
-      prompt: composeAgentSystemPrompt(deps.env.agentSystemPrompt, MINIMAL_AGENT_NAME),
+  return bindWorkspaceFiles(
+    {
+      organizationId: input.organizationId,
+      userId: input.userId,
+      ...(input.environmentId ? { environmentId: input.environmentId } : {}),
+      env: { ...buildLangfuseEnv(deps), ...(input.extraEnv ?? {}) },
+      agent: {
+        name: MINIMAL_AGENT_NAME,
+        prompt: composeAgentSystemPrompt(deps.env.agentSystemPrompt, MINIMAL_AGENT_NAME),
+      },
+      model: modelConfig,
+      skills: [],
+      mcpServers: [],
     },
-    model: modelConfig,
-    skills: [],
-    mcpServers: [],
-  };
+    deps.resolveWorkspacePath(input.organizationId, input.userId, input.environmentId ?? ""),
+  );
 }
 
 /** 组装器工厂：宿主在装配阶段构造一次，把 deps 收进闭包后绑定到 `AgentLaunchSpecPort`。 */

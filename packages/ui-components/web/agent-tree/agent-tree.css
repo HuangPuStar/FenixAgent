@@ -1,0 +1,26 @@
+.agent-tree {
+  --agent-tree-accent: #6be6ff;
+  --agent-tree-accent-soft: rgba(107, 230, 255, 0.35);
+  --agent-tree-accent-strong: rgba(107, 230, 255, 0.4);
+  --agent-tree-accent-deep: #0f6bff;
+  --agent-tree-accent-bright: #32b1ff;
+}
+.agent-tree-card:hover {
+  box-shadow: 0 8px 18px rgba(0, 18, 68, 0.18);
+}
+
+.agent-tree-card--selected {
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.08);
+}
+.agent-tree-card--selected::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  height: 60%;
+  border-radius: 0 2px 2px 0;
+  background: linear-gradient(180deg, var(--agent-tree-accent), var(--agent-tree-accent-deep));
+  transform: translateY(-50%);
+}
+.agent-tree-create-btn {
+  box-shadow: 0 8px 20px rgba(15, 107, 255, 0.26);
+}

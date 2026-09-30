@@ -13,7 +13,7 @@ import type {
 import { AcpLinkProcessManager, type ManagedAcpLinkProcess } from "../process/acp-link-process-manager";
 import { createPortAllocator, type PortAllocator } from "../process/port-allocator";
 import { type CcbRelayHandle, createRelayHandle, type RelayHandleDependencies } from "../relay/relay-handle";
-import { prepareWorkspaceEnvironment } from "./environment-preparer";
+import { prepareLaunchWorkspace, prepareWorkspaceEnvironment } from "./environment-preparer";
 import {
   buildCcbMcpConfig,
   buildCcbRuntimeConfig,
@@ -52,6 +52,14 @@ export interface RuntimeInstanceState {
  * 把逻辑散落在多个独立的全局模块里。
  */
 export interface CcbRuntimeDependencies {
+  /**
+   * workspace 根目录（绝对路径）。
+   *
+   * 由宿主本地执行装配点注入 `getAgentRuntimeConfig().workspaceRoot`。本包不再自行解析 workspace 根（既不读
+   * 进程环境变量、也不用进程 cwd 兜底）：第二份解析一旦与宿主分叉，同一实例的物化目录会静默落到进程 cwd 下，
+   * 排障时表现为「文件在预期目录外」。缺装配时 `resolveWorkspace` 当场报错，不做静默回落。
+   */
+  workspaceRoot?: string;
   accessWorkspace?: (workspace: string, mode: number) => Promise<void>;
   buildRuntimeConfig?: (launchSpec: AgentLaunchSpec, installedSkills: InstalledSkillReference[]) => CcbRuntimeConfig;
   createRelayHandle?: typeof createRelayHandle;
@@ -96,6 +104,7 @@ function getOrCreateState(states: Map<string, RuntimeInstanceState>, instanceId:
  */
 export function createCcbRuntime(dependencies: CcbRuntimeDependencies = {}): CcbRuntime {
   const states = new Map<string, RuntimeInstanceState>();
+  const workspaceRoot = dependencies.workspaceRoot;
   const accessWorkspace = dependencies.accessWorkspace ?? access;
   const installSkillsImpl = dependencies.installSkills ?? installSkills;
   const buildRuntimeConfig = dependencies.buildRuntimeConfig ?? buildCcbRuntimeConfig;
@@ -105,11 +114,13 @@ export function createCcbRuntime(dependencies: CcbRuntimeDependencies = {}): Ccb
   const prepareWorkspace = dependencies.prepareWorkspaceEnvironment ?? prepareWorkspaceEnvironment;
 
   function resolveWorkspace(launchSpec: AgentLaunchSpec): string {
-    const root = process.env.WORKSPACE_ROOT ?? join(process.cwd(), "workspaces");
-    if (launchSpec.environmentId) {
-      return join(root, launchSpec.organizationId, launchSpec.userId, launchSpec.environmentId);
+    if (!workspaceRoot) {
+      throw new Error("ccb runtime 未注入 workspaceRoot：宿主装配必须提供 workspace 根目录");
     }
-    return join(root, launchSpec.organizationId, launchSpec.userId);
+    if (launchSpec.environmentId) {
+      return join(workspaceRoot, launchSpec.organizationId, launchSpec.userId, launchSpec.environmentId);
+    }
+    return join(workspaceRoot, launchSpec.organizationId, launchSpec.userId);
   }
 
   return {
@@ -121,6 +132,7 @@ export function createCcbRuntime(dependencies: CcbRuntimeDependencies = {}): Ccb
       const state = getOrCreateState(states, input.instanceId);
       const wasRunning = state.status === "running" && state.process != null;
       const workspacePath = resolveWorkspace(input.launchSpec);
+      input = { ...input, launchSpec: await prepareLaunchWorkspace(workspacePath, input.launchSpec) };
       await mkdir(workspacePath, { recursive: true });
       await accessWorkspace(workspacePath, constants.R_OK | constants.W_OK);
 

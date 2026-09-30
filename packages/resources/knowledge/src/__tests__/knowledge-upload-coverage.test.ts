@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
 import { resetAllStubs } from "@fenix/platform-sdk/testing";
+import { knowledgeResourceFacade } from "../server/facades/knowledge-resource-facade";
 import {
   type KnowledgeBaseRow,
   type KnowledgeResourceRow,
@@ -13,6 +14,12 @@ import {
   setKnowledgeUploadProviderForTesting,
 } from "../server/services/knowledge-upload";
 import { initializeKnowledgeModuleConfig } from "../server/testing";
+
+/**
+ * 门面解析出的凭据替身：身份由门面绑定，领域服务只负责「什么时候取」，因此这里给出取值动作即可。
+ * 断言取值次数可证明「不需要远端凭据的路径没有解析凭据」。
+ */
+const credential = mock(async () => "test-ragflow-key");
 
 const NOW = new Date("2026-08-19T00:00:00.000Z");
 
@@ -80,42 +87,48 @@ describe("知识资源上传服务分支", () => {
     resetAllStubs();
   });
 
-  // 删除资源时跨组织知识库必须隐藏为不存在。
+  // 删除资源时跨组织知识库必须隐藏为不存在；归属判定在门面（服务只收已授权的行）。
   test("删除资源拒绝跨组织知识库", async () => {
     knowledgeBaseRepo.getById = mock(async () => knowledgeBase({ organizationId: "org-foreign" }));
+    const provider = new UploadProvider();
+    setKnowledgeUploadProviderForTesting(provider);
+    credential.mockClear();
 
-    await expect(deleteKnowledgeResource("org-1", "kb-1", "resource-1", "user-1")).resolves.toEqual({
-      success: false,
-      error: { code: "NOT_FOUND", message: "知识库不存在" },
+    await expect(
+      knowledgeResourceFacade.remove({ organizationId: "org-1", userId: "user-1" }, "kb-1", "resource-1"),
+    ).resolves.toEqual({
+      ok: false,
+      error: { kind: "not-found", code: "NOT_FOUND", message: "知识库不存在" },
     });
+    expect(credential).not.toHaveBeenCalled();
   });
 
   // 删除资源时资源与知识库不匹配不得调用远端删除。
   test("删除资源拒绝不属于知识库的记录", async () => {
-    knowledgeBaseRepo.getById = mock(async () => knowledgeBase());
     knowledgeResourceRepo.getById = mock(async () => resource({ knowledgeBaseId: "kb-other" }));
 
-    await expect(deleteKnowledgeResource("org-1", "kb-1", "resource-1", "user-1")).resolves.toEqual({
+    await expect(deleteKnowledgeResource(knowledgeBase(), credential, "resource-1")).resolves.toEqual({
       success: false,
       error: { code: "NOT_FOUND", message: "资源不存在" },
     });
+    expect(credential).not.toHaveBeenCalled();
   });
 
   // 没有远端数据集时刷新资源状态应返回空数组，避免请求 provider。
   test("刷新未同步知识库资源返回空列表", async () => {
-    knowledgeBaseRepo.getById = mock(async () => knowledgeBase({ remoteId: null }));
+    credential.mockClear();
 
-    await expect(refreshKnowledgeResourceStatus("org-1", "kb-1", "user-1")).resolves.toEqual([]);
+    await expect(refreshKnowledgeResourceStatus(knowledgeBase({ remoteId: null }), credential)).resolves.toEqual([]);
+    expect(credential).not.toHaveBeenCalled();
   });
 
   // provider 同步失败时应降级返回本地缓存并规范化资源 DTO。
   test("刷新资源在 provider 异常时返回本地缓存 DTO", async () => {
     const provider = new UploadProvider();
     setKnowledgeUploadProviderForTesting(provider);
-    knowledgeBaseRepo.getById = mock(async () => knowledgeBase());
     knowledgeResourceRepo.listByKnowledgeBase = mock(async () => [resource({ sourcePath: null, remoteId: null })]);
 
-    await expect(refreshKnowledgeResourceStatus("org-1", "kb-1", "user-1")).resolves.toEqual([
+    await expect(refreshKnowledgeResourceStatus(knowledgeBase(), credential)).resolves.toEqual([
       {
         id: "resource-1",
         knowledgeBaseId: "kb-1",

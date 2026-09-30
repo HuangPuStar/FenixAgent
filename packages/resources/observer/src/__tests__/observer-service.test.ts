@@ -268,6 +268,43 @@ describe("observer-service", () => {
     expect(obs.entityIds.some((entry) => entry.role === "machineId")).toBe(false);
   });
 
+  // 机器解析按归属读配置（E2 同形口径）：环境记录的组织上下文透传到读取点；组织缺失时不读配置，fail-closed
+  test("machine 解析按组织归属读取，组织缺失时不读配置", async () => {
+    const seen: { id: string; organizationId: string }[] = [];
+    setObserverServiceDeps(
+      makeFakeDeps({
+        listChatClients: () => [makeChat()],
+        // 归属收窄在 agent-config 侧完成：同一 id 在不同组织下返回不同结果，这里按组织模拟
+        getAgentConfigById: async (id, organizationId) => {
+          seen.push({ id, organizationId });
+          return organizationId === "org-1" ? { machineId: "mach_cfg" } : null;
+        },
+        getDefaultMachineId: () => "mach_default",
+        getEnvironment: async () => makeEnv(),
+      }),
+    );
+    let obs = (await observerService.list("acp-link"))[0];
+    expect(seen).toEqual([{ id: "acfg-1", organizationId: "org-1" }]);
+    expect(obs.entityIds.find((entry) => entry.role === "machineId")?.id).toBe("mach_cfg");
+
+    // 组织上下文为空的异常记录：不发起配置读取，直接退回默认机器
+    seen.length = 0;
+    setObserverServiceDeps(
+      makeFakeDeps({
+        listChatClients: () => [makeChat()],
+        getAgentConfigById: async (id, organizationId) => {
+          seen.push({ id, organizationId });
+          return { machineId: "mach_cfg" };
+        },
+        getDefaultMachineId: () => "mach_default",
+        getEnvironment: async () => makeEnv({ organizationId: null }),
+      }),
+    );
+    obs = (await observerService.list("acp-link"))[0];
+    expect(seen).toEqual([]);
+    expect(obs.entityIds.find((entry) => entry.role === "machineId")?.id).toBe("mach_default");
+  });
+
   // linkId 按「source:连接id」归一化，三类来源 id 前缀天然不同，全局唯一且自描述
   test("linkId 归一化：source + 来源连接 id", async () => {
     setObserverServiceDeps(

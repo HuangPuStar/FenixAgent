@@ -46,14 +46,17 @@ function createManagerForRename(): {
   manager.on("session_data", (relayId: string, payload: unknown) => {
     events.push({ relayId, event: "session_data", payload });
   });
+  manager.on("session_error", (relayId: string, payload: unknown) => {
+    events.push({ relayId, event: "session_error", payload });
+  });
   Reflect.set(manager, "sharedConnection", connection);
 
   return { manager, events, notifications };
 }
 
 describe("SessionManager 旧 relay 重命名", () => {
-  // 重命名必须只通知当前 relay，并以本地标题覆盖随后列表中的 Agent 旧值，防止不同 relay 的历史记录串台。
-  test("rename_session 转发更新并向发起 relay 返回覆盖后的列表", async () => {
+  // 旧 relay 入口也不得用反向通知伪造持久重命名成功。
+  test("rename_session 返回不支持且保持 Agent 列表原貌", async () => {
     const { manager, events, notifications } = createManagerForRename();
 
     await manager.sendData("relay-a", {
@@ -61,36 +64,12 @@ describe("SessionManager 旧 relay 重命名", () => {
       payload: { sessionId: "ses-renamed", title: "用户更新的标题" },
     });
 
-    expect(notifications).toEqual([
-      {
-        method: "session/update",
-        params: {
-          sessionId: "ses-renamed",
-          update: { sessionUpdate: "session_info_update", title: "用户更新的标题" },
-        },
-      },
-    ]);
+    expect(notifications).toEqual([]);
     expect(events).toEqual([
       {
         relayId: "relay-a",
-        event: "session_data",
-        payload: {
-          type: "session_renamed",
-          payload: { sessionId: "ses-renamed", title: "用户更新的标题" },
-        },
-      },
-      {
-        relayId: "relay-a",
-        event: "session_data",
-        payload: {
-          type: "session_list",
-          payload: {
-            sessions: [
-              { sessionId: "ses-renamed", title: "用户更新的标题" },
-              { sessionId: "ses-other", title: "其他会话" },
-            ],
-          },
-        },
+        event: "session_error",
+        payload: "session/rename is not supported by ACP",
       },
     ]);
     expect(events.some((event) => event.relayId !== "relay-a")).toBe(false);

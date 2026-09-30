@@ -49,6 +49,13 @@ const STEPS = [
     filter: (out: string) => (out.includes("✓ schema-ddl-drift") ? null : out),
   },
   {
+    // 部署模板是生成物：三份 `.example` 与声明面（宿主 env.ts + 模块 envDefinitions）零差异，
+    // 否则「部署能不能配全某个旋钮」只能靠人肉比对（§5.4）。
+    name: "env-example",
+    cmd: "bun run scripts/generate-env-example.ts --check",
+    filter: (out: string) => (out.includes("✓ env-example") ? null : out),
+  },
+  {
     name: "architecture",
     cmd: "bun run architecture:check",
     filter: (out: string) => (out.includes("✓ architecture-check") ? null : out),

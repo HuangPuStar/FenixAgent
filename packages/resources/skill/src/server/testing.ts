@@ -67,6 +67,7 @@ export function createStubSkillFacade(overrides: Partial<SkillFacadeApi> = {}): 
     remove: unstubbed("facade.remove"),
     removeById: unstubbed("facade.removeById"),
     importDirectories: unstubbed("facade.importDirectories"),
+    importSingleSkill: unstubbed("facade.importSingleSkill"),
     ...overrides,
   };
 }

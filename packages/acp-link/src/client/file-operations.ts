@@ -1,6 +1,20 @@
 import { spawn } from "node:child_process";
-import { lstat, mkdir, readdir, readFile, realpath, rename, rm, stat, writeFile } from "node:fs/promises";
+import {
+  link,
+  lstat,
+  mkdir,
+  readdir,
+  readFile,
+  realpath,
+  rename,
+  rm,
+  rmdir,
+  stat,
+  unlink,
+  writeFile,
+} from "node:fs/promises";
 import { basename, isAbsolute, join, relative, resolve, sep, win32 } from "node:path";
+import { buildWorkspaceZipEnv } from "./workspace-zip-env.js";
 
 // ============================================================================
 // Types
@@ -27,8 +41,8 @@ interface FileOpResult {
   status: "ok" | "error";
   data?: unknown;
   error?: string;
-  error_code?: "payload_too_large" | "operation_timeout" | "unsafe_symlink" | "busy";
-  status_code?: 413 | 429 | 503;
+  error_code?: "payload_too_large" | "operation_timeout" | "unsafe_symlink" | "busy" | "path_conflict";
+  status_code?: 409 | 413 | 429 | 503;
 }
 
 class FileOpError extends Error {
@@ -386,7 +400,7 @@ async function opUpload(
     await assertUploadDestination(workspace, targetPath);
 
     const buffer = Buffer.from(file.content, "base64");
-    await writeFile(targetPath, buffer);
+    await writeFile(targetPath, buffer, { flag: "wx" });
 
     const name = basename(targetPath);
     const displayPath = relative(workspace, targetPath);
@@ -404,6 +418,13 @@ async function opDelete(workspace: string, params: Record<string, unknown>): Pro
   return { ok: true };
 }
 
+let directoryRenameBeforeMoveHook: ((destination: string) => Promise<void>) | undefined;
+
+/** 仅供目录占位后的并发冲突与清理行为测试注入变更。 */
+export function setDirectoryRenameBeforeMoveHookForTest(hook?: (destination: string) => Promise<void>): void {
+  directoryRenameBeforeMoveHook = hook;
+}
+
 async function opRename(
   workspace: string,
   params: Record<string, unknown>,
@@ -413,9 +434,31 @@ async function opRename(
   if (!oldFilePath) throw new Error("Invalid oldPath: path traversal detected");
   if (!newFilePath) throw new Error("Invalid newPath: path traversal detected");
 
-  // Ensure parent dir exists
+  if (oldFilePath === newFilePath) return { oldPath: params.oldPath as string, newPath: params.newPath as string };
+  const source = await lstat(oldFilePath);
+  if (newFilePath.startsWith(`${oldFilePath}${sep}`)) throw new Error("Cannot move a directory into itself");
   await mkdir(resolve(newFilePath, ".."), { recursive: true });
-  await rename(oldFilePath, newFilePath);
+  if (!source.isDirectory()) {
+    await link(oldFilePath, newFilePath);
+    await unlink(oldFilePath);
+  } else {
+    await mkdir(newFilePath);
+    const reservation = await lstat(newFilePath);
+    try {
+      await directoryRenameBeforeMoveHook?.(newFilePath);
+      await rename(oldFilePath, newFilePath);
+    } catch (error) {
+      try {
+        const current = await lstat(newFilePath);
+        if (current.dev === reservation.dev && current.ino === reservation.ino) await rmdir(newFilePath);
+      } catch (cleanupError) {
+        if (!isErrnoException(cleanupError) || !["ENOENT", "ENOTEMPTY", "EEXIST"].includes(cleanupError.code ?? "")) {
+          throw new AggregateError([error, cleanupError], "Directory rename failed; target reservation retained");
+        }
+      }
+      throw error;
+    }
+  }
 
   return { oldPath: params.oldPath as string, newPath: params.newPath as string };
 }
@@ -553,6 +596,8 @@ async function opZip(workspace: string, params: Record<string, unknown>, signal:
   // cwd 在进程创建后由内核引用，后续 rename 不会将它切换到攻击者替换的新目录。
   const child = spawn("/bin/sh", ["-c", ZIP_FROM_CWD_SCRIPT, "zip-from-cwd", workspaceRealPath], {
     cwd: directoryRealPath,
+    // 按用途白名单构造环境（§5.4）：脚本内的 zip/find/grep 靠 PATH，且不得继承 ZIPOPT 等宿主变量
+    env: buildWorkspaceZipEnv(),
     stdio: ["ignore", "pipe", "pipe"],
   });
   const chunks: Buffer[] = [];
@@ -697,6 +742,16 @@ export async function handleFileOp(msg: FileOpMessage): Promise<FileOpResult> {
 
     return { type: "file_op_result", request_id, status: "ok", data };
   } catch (err) {
+    if (isErrnoException(err) && (err.code === "EEXIST" || err.code === "ENOTEMPTY")) {
+      return {
+        type: "file_op_result",
+        request_id,
+        status: "error",
+        error: "Target file or directory already exists; original content was not overwritten",
+        error_code: "path_conflict",
+        status_code: 409,
+      };
+    }
     return {
       type: "file_op_result",
       request_id,

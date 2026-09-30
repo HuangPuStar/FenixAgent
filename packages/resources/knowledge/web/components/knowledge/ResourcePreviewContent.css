@@ -7,7 +7,7 @@
 
 .resource-preview-content-markdown code {
   background-color: var(--color-surface-2);
-  border-radius: 0.25rem;
+  border-radius: var(--radius-sm);
   padding-inline: calc(var(--spacing) * 1.5);
   padding-block: calc(var(--spacing) * 0.5);
   color: var(--color-text-primary);

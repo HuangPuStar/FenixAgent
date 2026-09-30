@@ -1,29 +1,3 @@
-/*
- * ChatView 的深层样式（与同目录 `ChatView.tsx` 同名，由该文件 import）。
- *
- * 来源：源 `chat-design-messages.css`（阶段三删除）、`chat-loading.css`（阶段四删除；关键帧仍在
- * `../css/chat-animations.css`）与宿主 `apps/web/src/index.css` 的同名段。只搬「工具类无法表达」
- * 的部分，扁平工具类（`hidden`、`grid`、尺寸/颜色刻度）仍留在 `className`：
- *   - `.chat-empty-heading`        ← `font-[Georgia,'Songti_SC',serif]`；
- *   - `.chat-empty-prompt-list`    ← `w-[min(460px,100%)]`（源 `.chat-empty-suggestions` 的宽度）；
- *   - `.chat-empty-prompt-button`  ← `hover:shadow-[0_6px_18px_rgb(36_99_235_/_8%)]`；
- *   - `.chat-active-prompt-entry`  ← `data-[active-prompt]:animate-[chat-active-prompt-flash_…]`
- *     及其减弱动效覆盖（源 `.chat-entry--active-prompt` 与它的 `prefers-reduced-motion` 块）；
- *   - `.chat-loading-beam`         ← 加载指示器流光条的扫光（关键帧 `chat-loading-sweep`）及其
- *     减弱动效覆盖。取代原先的三点脉冲与文字微光：后者的「渐变 + 裁切文字」拆成工具类后
- *     `[background:…]` 简写把 `background-clip` 复位，文字不可见、只剩一个色块（详见下方规则注释）。
- * 值逐字等价换算：复合值按 Tailwind 的生成结果展开（`_` → 空格、`calc()` 内补全运算符两侧空格），
- * 未调整任何数值。
- *
- * 层叠注意（为什么减弱动效的覆盖必须跟着搬家）：本文件不包 `@layer`，`animation` 一旦写在这里就
- * 稳赢 `@layer utilities`；若把 `motion-reduce:data-[active-prompt]:animate-none` 留在 `className`，
- * 它会输给下面的基础声明，系统的「减弱动效」偏好将失效。故两者同址，胜负关系与迁移前一致。
- *
- * 未下沉：`[font:…]`（`<small>` 的 eyebrow）是「任意属性」（`[prop:value]` 形式），不是 FCP-WEB-02
- * 打击的任意值，保持原样。微光文字那组任意属性（`[background:…]`、`[background-size:…]`、
- * `[-webkit-background-clip:…]`、`[-webkit-text-fill-color:…]`）随加载指示器改版一并删除——它们正是
- * 蓝色方块缺陷的来源，不需要再留。
- */
 .chat-empty-heading {
   font-family: Georgia, "Songti SC", serif;
 }
@@ -35,9 +9,6 @@
 .chat-empty-prompt-button:hover {
   box-shadow: 0 6px 18px rgb(36 99 235 / 8%);
 }
-
-/* 提示词导航在运行时给消息节点打上 `data-active-prompt`（跨组件契约，见 `chat-navigation-aids.tsx`）；
-   源 `.chat-entry--active-prompt` 的 900ms 高亮闪动（关键帧定义见 `../css/chat-animations.css`）。 */
 .chat-active-prompt-entry[data-active-prompt] {
   animation: chat-active-prompt-flash 900ms ease-out;
 }
@@ -47,21 +18,9 @@
     animation: none;
   }
 }
-
-/* 加载指示器的流光条（`LoadingIndicator` 的光带）：单条光带在轨道内扫过（关键帧见
-   `../css/chat-animations.css`）。
-
-   为什么不再用文字微光：上一版把「渐变 + `background-clip: text` + 扫光」写成任意属性工具类，
-   而 `[background:…]` 简写在 `@layer utilities` 里被排在 `bg-clip-text` / `[background-size:…]`
-   之后——简写把 `background-clip` 复位成 `border-box`、`background-size` 复位成 `auto`，
-   裁切失效后渐变铺满整个行内盒，文字因 `text-transparent` 不可见，只剩一个蓝色实心方块。
-   现在的渐变只铺 2px 高的轨道、且不裁切文字，同一写法不会再产生该缺陷。 */
 .chat-loading-beam {
   animation: chat-loading-sweep 1.8s ease-in-out infinite;
 }
-
-/* 减弱动效：关掉扫光，光带停在轨道中央（`translateX(100%)` = 自身宽 1/3 的 100%，即居中）
-   作为静态点亮态——阶段文字本身不依赖动画，静态下依旧可读。 */
 @media (prefers-reduced-motion: reduce) {
   .chat-loading-beam {
     animation: none;

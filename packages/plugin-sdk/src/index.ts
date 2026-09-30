@@ -10,6 +10,7 @@ export type {
   SkillConfig,
   StdioMcpServerConfig,
   StreamableHttpMcpServerConfig,
+  WorkspaceFile,
 } from "./agent-launch-spec";
 export type {
   ConnectRelayInput,
@@ -27,3 +28,4 @@ export type {
   EngineRelayState,
   EngineSessionSummary,
 } from "./engine-relay";
+export { bindWorkspaceFiles, writeWorkspaceFiles } from "./workspace-files";

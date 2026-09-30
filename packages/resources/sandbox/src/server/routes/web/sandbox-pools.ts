@@ -1,8 +1,7 @@
 import { WebOkSchema } from "@fenix/platform-sdk";
 import { Elysia } from "elysia";
 import * as z from "zod/v4";
-import { getSandboxConfig } from "../../config";
-import { listPoolOptions } from "../../services/sandbox-admin-service";
+import { sandboxPoolFacade } from "../../facades/sandbox-pool-facade";
 import type { WebSandboxRouteDependencies } from "../dependencies";
 
 const SandboxPoolOptionSchema = z.object({
@@ -26,7 +25,9 @@ const SandboxPoolOptionsResponseSchema = WebOkSchema(
  * 改为工厂：守卫必须与宿主的认证解析是同一份实例（Elysia 的 `macro` / `state` 是实例作用域的，
  * 父实例无法向已构造的子实例回填），因此由宿主注入 `authGuardPlugin`。
  *
- * 沙盒开关在请求时从本模块配置读取：模块加载期宿主可能尚未完成基础设施初始化。
+ * 可见范围与启用开关都不在本层：路由只把 `store.authContext` 交给门面
+ * （`../../facades/sandbox-pool-facade`），组织范围与「沙盒未启用即空选项」由门面决定。沙盒开关在
+ * 请求时从本模块配置读取：模块加载期宿主可能尚未完成基础设施初始化。
  */
 export function createWebSandboxPoolsRoutes(deps: WebSandboxRouteDependencies) {
   const app = new Elysia({ name: "web-config-sandbox-pools" }).use(deps.authGuardPlugin);
@@ -34,9 +35,8 @@ export function createWebSandboxPoolsRoutes(deps: WebSandboxRouteDependencies) {
   app.get(
     "/config/sandbox-pools",
     async ({ store }) => {
-      const authContext = store.authContext!;
-      const { sandboxEnabled } = getSandboxConfig();
-      return { success: true as const, data: await listPoolOptions(authContext.organizationId, sandboxEnabled) };
+      const actor = store.authContext!;
+      return { success: true as const, data: await sandboxPoolFacade.listOptions(actor) };
     },
     {
       sessionAuth: true,

@@ -154,6 +154,25 @@ describe("SessionManager round58 内存协议分支", () => {
     });
   });
 
+  // 刷新后的会话恢复及共享 relay 并发必须按请求 sessionId 投递，不能落到连接级旧会话。
+  test("session/prompt 使用请求指定会话且不隐式创建", async () => {
+    const { manager, connection } = createHarness();
+    setActiveSession(manager, "ses-other");
+
+    await manager.sendData(
+      "relay-restored",
+      rpc(31, "session/prompt", {
+        sessionId: "ses-restored",
+        content: [{ type: "text", text: "继续" }],
+      }),
+    );
+    await Promise.resolve();
+
+    expect(connection.calls).toEqual([
+      { method: "prompt", params: { sessionId: "ses-restored", prompt: [{ type: "text", text: "继续" }] } },
+    ]);
+  });
+
   // system prompt 只能注入当前一次 prompt，避免跨回合重复污染用户输入。
   test("session/prompt 单次注入 system prompt", async () => {
     const { manager, connection } = createHarness();
@@ -425,29 +444,29 @@ describe("SessionManager round58 内存协议分支", () => {
     ]);
   });
 
-  // rename 同时写入本地覆盖并通知 agent，随后列表必须可见新标题。
-  test("session/rename 通知 agent 并覆盖列表标题", async () => {
+  // ACP 不提供客户端重命名请求；拒绝后权威列表必须仍显示 Agent 的原始标题。
+  test("session/rename 不伪造持久成功或覆盖列表标题", async () => {
     const { manager, connection, events } = createHarness();
     connection.sessions = [{ sessionId: "ses-rename", title: "旧标题" }];
 
     await manager.sendData("relay-rename", rpc(22, "session/rename", { sessionId: "ses-rename", title: "新标题" }));
     await manager.sendData("relay-rename", rpc(23, "session/list"));
 
-    expect(connection.notifications).toEqual([
-      {
-        method: "session/update",
-        params: { sessionId: "ses-rename", update: { sessionUpdate: "session_info_update", title: "新标题" } },
-      },
-    ]);
+    expect(connection.notifications).toEqual([]);
+    expect(events[0]?.payload).toEqual({
+      jsonrpc: "2.0",
+      id: 22,
+      error: { code: -32601, message: "session/rename is not supported by ACP" },
+    });
     expect(events.at(-1)?.payload).toEqual({
       jsonrpc: "2.0",
       id: 23,
-      result: { sessions: [{ sessionId: "ses-rename", title: "新标题" }] },
+      result: { sessions: [{ sessionId: "ses-rename", title: "旧标题" }] },
     });
   });
 
-  // 缺失 connection 通知接口时 rename 应作为协议错误返回，不能向其他 relay 广播。
-  test("session/rename 通知失败返回内部错误", async () => {
+  // 即使连接可用，缺失持久重命名协议时也必须返回同一个明确错误。
+  test("session/rename 返回不支持错误", async () => {
     const { manager, events } = createHarness();
     Reflect.set(manager, "sharedConnection", {});
 
@@ -457,7 +476,7 @@ describe("SessionManager round58 内存协议分支", () => {
       {
         relayId: "relay-rename-error",
         event: "session_data",
-        payload: { jsonrpc: "2.0", id: 24, error: { code: -32603, message: expect.any(String) } },
+        payload: { jsonrpc: "2.0", id: 24, error: { code: -32601, message: "session/rename is not supported by ACP" } },
       },
     ]);
   });

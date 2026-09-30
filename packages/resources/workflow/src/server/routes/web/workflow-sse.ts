@@ -3,10 +3,15 @@
  *
  * GET /web/workflow/:workflowId/events — 前端通过 EventSource 订阅，
  * 接收 workflow 状态变更事件。支持 Last-Event-ID / fromSeqNum 断线重连。
+ *
+ * 连接态留在路由的原因（数据取数已收敛到 `workflowDefFacade`，连接本身不收敛）：订阅、回放与释放在
+ * 同一条 `ReadableStream` 的生命周期内完成——`unsub` / `keepalive` / `abort` 三者必须成对出现，
+ * 跨层拆分会让「谁负责关流」变得不可判定，也无法保证 `controller.enqueue` 抛错时解绑订阅。
+ * 边界是：路由只持有连接与事件总线句柄；工作流归属仍经 Facade 校验（组织来自认证上下文）。
  */
 
 import Elysia from "elysia";
-import { getWorkflowDef } from "../../repositories/workflow-def";
+import { workflowDefFacade } from "../../facades/workflow-def-facade";
 import {
   WorkflowEventStreamParamsSchema,
   WorkflowEventStreamQuerySchema,
@@ -37,8 +42,10 @@ export function createWebWorkflowSseRoutes(deps: WorkflowRouteDependencies) {
         return error(400, { success: false, error: { code: "VALIDATION_ERROR", message: "workflowId is required" } });
       }
 
-      // 多租户关键：校验 workflowId 归属当前 organization，防止跨组织订阅 SSE 事件流
-      const wf = await getWorkflowDef(workflowId, authCtx.organizationId);
+      // 多租户关键：校验 workflowId 归属当前 organization，防止跨组织订阅 SSE 事件流。
+      // 组织范围由 Facade 从认证上下文推导（路由不再自己拼组织条件）；跨组织与不存在同样回 404，
+      // 不给出「资源存在但无权」的可探测信号。
+      const wf = await workflowDefFacade.get(authCtx, workflowId);
       if (!wf) {
         return error(404, { success: false, error: { code: "NOT_FOUND", message: "Workflow not found" } });
       }

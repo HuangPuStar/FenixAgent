@@ -67,4 +67,56 @@ describe("skill-installer", () => {
       await rm(workspace, { recursive: true, force: true });
     }
   });
+
+  // 注入 origin 时应改写下载目标：ws(s) 按同 host:port 换算成 http(s)，path 与 query 逐字保留。
+  test("rewrites the skill download origin when a download origin is injected", async () => {
+    const workspace = await createWorkspace();
+    try {
+      const requestedUrls: string[] = [];
+      const mockFetch = (async (url: string) => {
+        requestedUrls.push(String(url));
+        return new Response("zip-bytes");
+      }) as unknown as typeof fetch;
+
+      await installSkills(
+        workspace,
+        [{ name: "code-review", url: "https://localhost:3000/skills/code-review/download?token=abc" }],
+        {
+          downloadOrigin: "ws://host.docker.internal:3000",
+          fetch: mockFetch,
+          extractArchive: async (_archivePath, targetDir) => {
+            await writeFile(join(targetDir, "SKILL.md"), "# code-review\n", "utf8");
+          },
+        },
+      );
+
+      expect(requestedUrls).toEqual(["http://host.docker.internal:3000/skills/code-review/download?token=abc"]);
+    } finally {
+      await rm(workspace, { recursive: true, force: true });
+    }
+  });
+
+  // 未注入 origin 时必须逐字使用 launchSpec 里的 URL：宿主自身生成的地址本就可达，隐式改写会静默换错目标。
+  test("keeps the original skill url when no download origin is injected", async () => {
+    const workspace = await createWorkspace();
+    try {
+      const requestedUrls: string[] = [];
+      const mockFetch = (async (url: string) => {
+        requestedUrls.push(String(url));
+        return new Response("zip-bytes");
+      }) as unknown as typeof fetch;
+      const originalUrl = "http://127.0.0.1:3000/skills/code-review/download?token=abc";
+
+      await installSkills(workspace, [{ name: "code-review", url: originalUrl }], {
+        fetch: mockFetch,
+        extractArchive: async (_archivePath, targetDir) => {
+          await writeFile(join(targetDir, "SKILL.md"), "# code-review\n", "utf8");
+        },
+      });
+
+      expect(requestedUrls).toEqual([originalUrl]);
+    } finally {
+      await rm(workspace, { recursive: true, force: true });
+    }
+  });
 });

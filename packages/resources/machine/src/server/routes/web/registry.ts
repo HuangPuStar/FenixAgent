@@ -13,25 +13,18 @@ import {
   RegistryEventListResponseSchema,
   UpdateMachineSchema,
 } from "../../../schemas/registry.schema";
-import {
-  createMachine as createMachineService,
-  deleteMachine as deleteMachineService,
-  getMachine as getMachineService,
-  listEvents as listEventsService,
-  listMachines as listMachinesService,
-  updateMachine as updateMachineService,
-} from "../../services/registry";
+import { machineRegistryFacade } from "../../facades/machine-registry-facade";
 import type { WebMachineRouteDependencies } from "../dependencies";
 
 const logger = createLogger("registry");
 
 const defaultRegistryRouteDeps = {
-  createMachine: createMachineService,
-  deleteMachine: deleteMachineService,
-  getMachine: getMachineService,
-  listEvents: listEventsService,
-  listMachines: listMachinesService,
-  updateMachine: updateMachineService,
+  createMachine: machineRegistryFacade.create,
+  deleteMachine: machineRegistryFacade.remove,
+  getMachine: machineRegistryFacade.get,
+  listEvents: machineRegistryFacade.listEvents,
+  listMachines: machineRegistryFacade.list,
+  updateMachine: machineRegistryFacade.update,
 };
 
 /**
@@ -41,6 +34,9 @@ const defaultRegistryRouteDeps = {
  * （响应包装、分页换算、Date→秒级时间戳、错误码映射）。把它做成路由工厂的构造参数会迫使每个宿主用例
  * 重建 Elysia 实例，宿主的挂载点也拿不到「同一个实例」；因此改为进程级可替换的服务句柄，由
  * `@fenix/resource-machine/server/testing` 暴露替换入口，生产路径不触碰。
+ *
+ * 默认值是 **Facade 的方法**（而非领域服务函数）：路由只依赖 `MachineRegistryFacadeApi`，替换入口也随之
+ * 从「服务函数」上移到「应用接口」，与 §3.2 的依赖方向一致。
  */
 let registryRouteDeps = { ...defaultRegistryRouteDeps };
 

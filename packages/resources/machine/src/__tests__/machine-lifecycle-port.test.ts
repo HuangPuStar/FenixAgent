@@ -13,7 +13,7 @@
 
 import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
 import { resetAllStubs, stubDb } from "@fenix/platform-sdk/testing";
-import { initializeMachineModuleConfig } from "../server/testing";
+import { initializeMachineModuleConfig, stubMachineAgentConfig } from "../server/testing";
 
 const registry = await import("@fenix/resource-machine/server");
 
@@ -43,6 +43,14 @@ beforeEach(() => {
   initializeMachineModuleConfig();
   // 本文件测的就是「未绑定」，因此显式复位——同进程的其它文件可能刚绑过记录器。
   registry.resetMachineLifecyclePortForTest();
+  // 注册路径还会经 `MachineAgentConfigPort` 绑定 agent 配置：那个端口与 lifecycle port 的失败语义**刻意
+  // 相反**（未绑定即失败，见 `../server/agent-config-port`），因此必须先装配，否则本文件会因为它而红，
+  // 掩盖真正要钉的 lifecycle port 降级行为。
+  stubMachineAgentConfig({
+    getExecutionNode: async () => null,
+    isAgentConfigBoundToMachine: async () => false,
+    bindMachineIdByAgentName: async () => {},
+  });
 });
 
 afterEach(() => {

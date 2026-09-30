@@ -49,7 +49,7 @@ const REGISTRY_SECRET_DEFAULT = "rcs-registry-secret";
  * 必须成对落地**：两侧同名会被 `assertNoHostKeyOverride()` 在启动期直接拒绝（同一变量只能有一个声明处），
  * 本任务只负责声明这一半，宿主侧删除与派生下沉由主控在整合阶段同批完成。
  *
- * 十键按归属分三类，判据是「是否有唯一模块 owner」：
+ * 十三键按归属分四类，判据是「是否有唯一模块 owner」：
  * 1. **运行态旋钮**——三项并发上限、ACP 空闲 / 巡检 / 业务超时、`/acp/ws` 保活间隔、chat-channel 连接上限。
  *    消费方只有本模块的实例生命周期、`acp-ws-handler` 与 chat-channel 装配（`chat-channel-bootstrap`）。
  * 2. **环境解析与协议入口的部署值**——`REGISTRY_SECRET`（`/acp/*` 接入方共享密钥，唯一消费者是 `/acp/*`
@@ -64,6 +64,12 @@ const REGISTRY_SECRET_DEFAULT = "rcs-registry-secret";
  *    （`AgentRuntimeModuleConfig.yjsMaxClients`）。声明带来一处已知行为差异：原先非法值静默回落到 200、
  *    负值被原样接受，声明后非法值在启动期校验失败——该差异现已随收口同批生效。
  *    值仍在装配期被读一次并固化，`restartRequired: true` 与其余键口径一致。
+ * 4. **收口包内直读**——`RCS_YJS_SNAPSHOT_*` 三项（F1）：宿主 schema 原已声明，但唯一消费方 chat-channel
+ *    持久层不消费那份已校验的值，而是在包内直读同名 `process.env` 并自带一份默认值——部署进程的原始
+ *    字符串与启动期投影进模块配置的那一份因此是两个来源，默认值也多出一份真相。三项迁入本模块声明后，
+ *    宿主投影进模块配置，由 `chat-channel-bootstrap.ts` 经 `ChatChannelDependencies.snapshotPersist`
+ *    装入 DocManager，最终落到 provider options；包内直读与包内默认值同批删除，Redis 模式下缺注入即失败。
+ *    归属本模块的理由与 `YJS_MAX_CLIENTS` 相同：消费方是 chat-channel 装配面，本模块是其唯一 owner。
  *
  * 默认值语义逐键照抄宿主原文，不做「顺手改进」：`optional()` 无默认值的键（并发总量上限、定时并发上限、
  * `WORKSPACE_ROOT`）**省略** `defaultValue`——`loadDeclaredEnv` 在 `defaultValue === undefined` 时走
@@ -159,6 +165,37 @@ export const moduleManifest = {
       restartRequired: true,
       description:
         "chat-channel YJS WebSocket 的最大并发连接数；默认 200。宿主 schema 原本未声明此键（原唯一读取点是 chat-channel-bootstrap 的直读，1.7 C1 起改为经模块配置注入），本批补齐：非法值由「静默回落默认」变为启动期校验失败、负值不再被接受。",
+    },
+    // ── 运行态旋钮：chat-channel 快照持久化（F1：原宿主声明 + 包内直读）──
+    {
+      moduleId: "agent-runtime",
+      key: "RCS_YJS_SNAPSHOT_INTERVAL_MS",
+      schema: z.coerce.number().int().positive().default(2000),
+      defaultValue: 2000,
+      secret: false,
+      restartRequired: true,
+      description:
+        "Chat Doc 快照的 trailing 节流窗口（毫秒）；默认 2000。距上次成功 CAS 未达该间隔的更新只标记待写，由静默期或 destroy 收口；由装配期投影经 ChatChannelDependencies.snapshotPersist 注入 chat-channel 持久层。",
+    },
+    {
+      moduleId: "agent-runtime",
+      key: "RCS_YJS_SNAPSHOT_IDLE_MS",
+      schema: z.coerce.number().int().positive().default(500),
+      defaultValue: 500,
+      secret: false,
+      restartRequired: true,
+      description:
+        "Chat Doc 快照的静默期（毫秒）；默认 500。持续无新 update 达该时长后提前 flush 待写快照，使突发写入尽快落盘；由装配期投影经 ChatChannelDependencies.snapshotPersist 注入 chat-channel 持久层。",
+    },
+    {
+      moduleId: "agent-runtime",
+      key: "RCS_YJS_SNAPSHOT_TTL_SECONDS",
+      schema: z.coerce.number().int().positive().default(604800),
+      defaultValue: 604800,
+      secret: false,
+      restartRequired: true,
+      description:
+        "Chat Doc / Session Doc 快照 key 的滑动 TTL（秒）；默认 604800（7 天），每次成功 CAS 续期，用于自然回收旧投影世代；由装配期投影经 ChatChannelDependencies.snapshotPersist 注入 chat-channel 持久层。",
     },
     // ── 环境解析与协议入口的部署值 ──
     {

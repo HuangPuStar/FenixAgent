@@ -1,4 +1,5 @@
 import { error as logError } from "@fenix/logger";
+import type { AgentLaunchSpec } from "@fenix/plugin-sdk";
 import {
   getHindsightConfig,
   HINDSIGHT_PLUGIN_DEFAULTS,
@@ -8,32 +9,18 @@ import {
 import { LAUNCH_SPEC_LOG_PREFIX } from "./support";
 import type { AgentLaunchSpecAssemblerDeps } from "./types";
 
-/**
- * 记忆与观测的运行期环境：把「Agent 是否启用记忆」「宿主是否配置了 Hindsight / Langfuse」翻译成
- * agent 进程能直接读到的两个投递面。
- *
- * 两条投递面是并存的，不能只做一条：
- * - **opencode 引擎**读 `agent.extra.plugin`（记忆插件由运行时动态构造，旧条目必须被替换掉）
- * - **ccb 引擎**读 `launchSpec.env` 里的 `HINDSIGHT_*` 变量
- *
- * 记忆开关的两级判定（系统级基础设施可用 / Agent 级用户开关）是记忆包的领域规则，这里直接复用它的
- * 两个入口，而不是内联判条件——否则"什么算启用"就会在启动路径上出现第二份定义。
- */
-
-/** Hindsight 插件名：open/ccb 两条路径共用，也是「过滤旧条目」时要比对的键。 */
+/** 仅用于清除旧 extra 配置面；npm/市场名称的启用映射由各引擎负责。 */
 const HINDSIGHT_PLUGIN_NAME = "@konghayao/opencode-hindsight";
 
-/** 记忆注入的结果：`extra` 回写 `agent.extra`，`env` 并入 `launchSpec.env`。 */
 export interface MemoryLaunchEnv {
   readonly extra: Record<string, unknown> | null;
-  readonly env: Record<string, string>;
+  readonly plugins: NonNullable<AgentLaunchSpec["plugins"]>;
+  readonly workspaceFiles: NonNullable<AgentLaunchSpec["workspaceFiles"]>;
 }
 
 /**
- * 构造记忆相关的 extra / env；未启用时原样返回传入的 `extra`，不产生副作用。
- *
- * `bankId` 解析失败只记日志、不阻断启动：它是 Hindsight 侧的隔离标识，缺失时记忆退化为"不区分 bank"
- * 而不是让 Agent 起不来（与迁移前的行为一致）。日志与错误消息里都不出现 `HINDSIGHT_API_TOKEN`。
+ * 将记忆领域配置转换为可传输的工作区文件 DTO。配置键对齐插件 src/lib/config.ts 的 DEFAULTS，
+ * 不再把配置值放进 env 或 opencode 插件参数；银行隔离无法解析时关闭记忆，不回落到共享 bank。
  */
 export async function buildMemoryLaunchEnv(
   deps: AgentLaunchSpecAssemblerDeps,
@@ -44,54 +31,69 @@ export async function buildMemoryLaunchEnv(
     extra: Record<string, unknown> | null;
   },
 ): Promise<MemoryLaunchEnv> {
+  const configuredPlugins = input.extra?.plugin;
+  const extra = Array.isArray(configuredPlugins)
+    ? {
+        ...input.extra,
+        plugin: configuredPlugins.filter((entry) =>
+          typeof entry === "string"
+            ? entry !== HINDSIGHT_PLUGIN_NAME
+            : Array.isArray(entry) && typeof entry[0] === "string" && entry[0] !== HINDSIGHT_PLUGIN_NAME,
+        ),
+      }
+    : input.extra;
+  const disabled: MemoryLaunchEnv = { extra, plugins: [], workspaceFiles: [] };
   const hindsight = getHindsightConfig();
-  if (!hindsight) return { extra: input.extra, env: {} };
-  if (!(await isAgentMemoryEnabled(input.agentConfigId))) return { extra: input.extra, env: {} };
+  if (!hindsight || !(await isAgentMemoryEnabled(input.agentConfigId))) return disabled;
 
-  let bankId: string | null = null;
+  let bankId: string | null;
   try {
-    // bankId 是既有外部约定（Hindsight bank 标识），成员关系读取经 IdentityDirectory（由记忆包封装）。
     bankId = await resolveMemberId({ organizationId: input.organizationId, userId: input.userId });
-  } catch (error) {
-    logError(`${LAUNCH_SPEC_LOG_PREFIX} failed to resolve memberId for Hindsight bankId: ${String(error)}`, error);
+    if (!bankId) throw new Error("Hindsight 成员不存在");
+  } catch {
+    logError(`${LAUNCH_SPEC_LOG_PREFIX} Hindsight 成员解析失败，已关闭本次记忆以避免共享 bank`);
+    return disabled;
   }
 
-  // opencode 路径：用动态构造的插件条目替换 `extra.plugin` 里可能存在的旧条目（用户可手改 extra，
-  // 不替换就会出现两份同名的记忆插件，行为取决于插件加载顺序）。
-  // 校验形状而不是整体强转：`extra.plugin` 是用户可写的 JSON，非数组、或首项不是插件名的条目对
-  // opencode 没有意义，丢弃比原样透传更可预测（迁移前的实现用双强制转换原样透传）。校验到此为止：
-  // 其余条目按原样保留——它们由用户自己负责，本函数只负责替换记忆插件那一条。
-  const configuredPlugins: unknown = input.extra?.plugin;
-  const existingPlugins = (Array.isArray(configuredPlugins) ? configuredPlugins : []).filter(
-    (entry): entry is [string, Record<string, unknown>] =>
-      Array.isArray(entry) && typeof entry[0] === "string" && entry[0] !== HINDSIGHT_PLUGIN_NAME,
-  );
-  existingPlugins.push([
-    HINDSIGHT_PLUGIN_NAME,
-    {
-      ...HINDSIGHT_PLUGIN_DEFAULTS,
-      hindsightApiUrl: hindsight.url,
-      ...(bankId ? { bankId } : {}),
-    },
-  ]);
-
-  // ccb 路径：同址的 `HINDSIGHT_*` 变量；apiToken 只在宿主配置了才注入。
-  const env: Record<string, string> = {
-    HINDSIGHT_API_URL: hindsight.url,
-    HINDSIGHT_LLM_PROVIDER: "claude-code",
-    ...(bankId ? { HINDSIGHT_BANK_ID: bankId } : {}),
+  return {
+    extra,
+    plugins: ["hindsight"],
+    workspaceFiles: [
+      {
+        path: ".hindsight/workspace.json",
+        envVar: "HINDSIGHT_CONFIG",
+        content: {
+          ...HINDSIGHT_PLUGIN_DEFAULTS,
+          hindsightApiUrl: hindsight.url,
+          // null 在插件侧表示「未设置」而不是「清空」：插件 config.ts:291-292 跳过 null 值，因此这里
+          // 表达的是「平台未提供 token」，机器侧 env / 用户配置里的 token 仍会生效——与改造前一致
+          // （改造前也只有平台配置了 token 时才注入 HINDSIGHT_API_TOKEN）。
+          hindsightApiToken: deps.env.hindsightApiToken || null,
+          llmProvider: "claude-code",
+          bankId,
+          // ── 隔离钉：以下键共同决定「记忆写到哪个 bank / 从哪些 bank 读」，是隔离契约的一部分，不得删除 ──
+          // 托管文件虽是插件配置的最高层，但插件按**逐键**覆盖合并（插件 config.ts:287-295），
+          // 未在此写出的键会从低优先级层取值：插件 settings.json、~/.hindsight/<engine>.json、HINDSIGHT_* env。
+          // 而插件 bank.ts:135-164 的解析顺序是 directoryBankMap → bankIdPrefix → 静态 bankId → 动态组合，
+          // 即 directoryBankMap / bankIdPrefix 优先于 bankId：不把它们钉成空值，用户级配置就能把成员 bank
+          // 改写成任意 bank（如 USERPREFIX-member-org-a-1），托管文件里的 bankId 形同虚设。
+          // 同理 recallAdditionalBanks / recallAdditionalBankFilters 未钉死时，插件会用**平台 client
+          // （含平台 token）**对任意 bank 发起 recall（插件 hooks/recall.ts:381-407），把读取面也带出成员隔离。
+          // 空值语义：bankIdPrefix "" 与 directoryBankMap {} 让解析直接落到静态 bankId；
+          // 两个空容器让跨 bank 召回循环不进入。改这些空值时必须同步核对插件对应读取分支。
+          bankIdPrefix: "",
+          directoryBankMap: {},
+          recallAdditionalBanks: [],
+          recallAdditionalBankFilters: {},
+          // 静态模式：不允许按目录/会话组合 bank；dynamicBankGranularity 因此无需钉（静态分支不会读它）。
+          dynamicBankId: false,
+        },
+      },
+    ],
   };
-  if (deps.env.hindsightApiToken) env.HINDSIGHT_API_TOKEN = deps.env.hindsightApiToken;
-
-  return { extra: { ...(input.extra ?? {}), plugin: existingPlugins }, env };
 }
 
-/**
- * 构造透传给 machine 上 agent 进程的 Langfuse 环境变量。
- *
- * 只透传声明的三个键，避免无关 `LANGFUSE_*` 泄漏；额外变量（含 `LANGFUSE_USER_ID` 这类按实例注入的
- * 维度）由调用方经 `extraEnv` 传入，同名变量优先。SECRET_KEY 是密钥，仅随受信 relay 通道传输。
- */
+/** 观测变量仍独立下发；密钥仅经受信 relay 传输，不入日志。 */
 export function buildLangfuseEnv(deps: AgentLaunchSpecAssemblerDeps): Record<string, string> {
   const configured = deps.env.langfuse;
   const env: Record<string, string> = {};

@@ -1,4 +1,4 @@
-import { describe, expect, test } from "bun:test";
+import { afterEach, describe, expect, test } from "bun:test";
 import { constants } from "node:fs";
 import { access, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -6,10 +6,29 @@ import { join } from "node:path";
 import type { AgentLaunchSpec } from "@fenix/plugin-sdk";
 import type { ManagedAcpLinkProcess } from "../process/acp-link-process-manager";
 import type { PortAllocator } from "../process/port-allocator";
-import { createOpencodeRuntime } from "../runtime/opencode-runtime";
+import {
+  createOpencodeRuntime,
+  type OpencodeRuntime,
+  type OpencodeRuntimeDependencies,
+} from "../runtime/opencode-runtime";
 
 const mockFetch = (async () => new Response("zip-bytes")) as unknown as typeof fetch;
 type PortAllocatorStub = Pick<PortAllocator, "allocate" | "release">;
+
+// workspace 根由调用方注入（runtime 不再自行解析）：用例统一经 createRuntime 传它。
+const TEST_WORKSPACE_BASE = join(tmpdir(), `opencode-runtime-${process.pid}`);
+
+/**
+ * 用例的 runtime 工厂：注入统一的 workspace 根，其余依赖按用例覆盖。
+ */
+function createRuntime(dependencies: OpencodeRuntimeDependencies = {}): OpencodeRuntime {
+  return createOpencodeRuntime({ workspaceRoot: TEST_WORKSPACE_BASE, ...dependencies });
+}
+
+// 用例只删各自的 workspace 叶子目录，根目录在每条用例后统一清理，避免 tmpdir 累积。
+afterEach(async () => {
+  await rm(TEST_WORKSPACE_BASE, { recursive: true, force: true });
+});
 
 function createLaunchSpec(overrides: Partial<AgentLaunchSpec> = {}): AgentLaunchSpec {
   return {
@@ -35,7 +54,7 @@ function createLaunchSpec(overrides: Partial<AgentLaunchSpec> = {}): AgentLaunch
 describe("opencode-runtime prepareEnvironment", () => {
   // prepare 缓存结果，workspace 由 resolveWorkspace 自动计算
   test("caches workspace, launchSpec and prepared state", async () => {
-    const runtime = createOpencodeRuntime({
+    const runtime = createRuntime({
       skillInstallerDependencies: {
         fetch: mockFetch,
         extractArchive: async (_archivePath, targetDir) => {
@@ -61,7 +80,7 @@ describe("opencode-runtime prepareEnvironment", () => {
   // 重复 prepare 覆盖旧 skill
   test("repeated prepare replaces the previous installed skill contents", async () => {
     let version = "v1";
-    const runtime = createOpencodeRuntime({
+    const runtime = createRuntime({
       skillInstallerDependencies: {
         fetch: mockFetch,
         extractArchive: async (_archivePath, targetDir) => {
@@ -96,7 +115,7 @@ describe("opencode-runtime prepareEnvironment", () => {
 
   // skill 从有到无时，应清理 workspace 中残留的旧 skill 目录
   test("removes stale installed skills when launchSpec no longer declares them", async () => {
-    const runtime = createOpencodeRuntime({
+    const runtime = createRuntime({
       skillInstallerDependencies: {
         fetch: mockFetch,
         extractArchive: async (_archivePath, targetDir) => {
@@ -128,7 +147,7 @@ describe("opencode-runtime prepareEnvironment", () => {
 
   // prepare 会自动创建缺失的 workspace 目录
   test("creates the workspace directory when it does not exist yet", async () => {
-    const runtime = createOpencodeRuntime({
+    const runtime = createRuntime({
       skillInstallerDependencies: {
         fetch: mockFetch,
         extractArchive: async (_archivePath, targetDir) => {
@@ -150,14 +169,13 @@ describe("opencode-runtime prepareEnvironment", () => {
     }
   });
 
-  // resolveWorkspace 使用 WORKSPACE_ROOT 环境变量
-  test("respects WORKSPACE_ROOT environment variable", async () => {
-    const originalRoot = process.env.WORKSPACE_ROOT;
+  // resolveWorkspace 取注入的 workspace 根（不再读进程环境变量）
+  test("uses the injected workspace root", async () => {
     const tmpRoot = await mkdtemp(join(tmpdir(), "ws-root-"));
-    process.env.WORKSPACE_ROOT = tmpRoot;
 
     try {
-      const runtime = createOpencodeRuntime({
+      const runtime = createRuntime({
+        workspaceRoot: tmpRoot,
         skillInstallerDependencies: {
           fetch: mockFetch,
           extractArchive: async (_archivePath, targetDir) => {
@@ -174,15 +192,22 @@ describe("opencode-runtime prepareEnvironment", () => {
       const state = runtime.getInstanceState("inst_custom_root");
       expect(state?.workspace).toBe(join(tmpRoot, "org-test", "user-test", "env-test"));
     } finally {
-      if (originalRoot !== undefined) process.env.WORKSPACE_ROOT = originalRoot;
-      else delete process.env.WORKSPACE_ROOT;
       await rm(tmpRoot, { recursive: true, force: true });
     }
   });
 
+  // 未注入 workspaceRoot 时必须报错：包内不再读进程环境、也没有 cwd 兜底，静默回落会把实例写进进程 cwd。
+  test("rejects prepare when no workspace root is injected", async () => {
+    const runtime = createRuntime({ workspaceRoot: undefined });
+
+    await expect(
+      runtime.prepareEnvironment({ instanceId: "inst_no_root", launchSpec: createLaunchSpec() }),
+    ).rejects.toThrow("workspaceRoot");
+  });
+
   // 不同 orgId/userId 产生不同 workspace
   test("different orgId/userId produce different workspaces", async () => {
-    const runtime = createOpencodeRuntime({
+    const runtime = createRuntime({
       skillInstallerDependencies: {
         fetch: mockFetch,
         extractArchive: async (_archivePath, targetDir) => {
@@ -214,7 +239,7 @@ describe("opencode-runtime prepareEnvironment", () => {
 
   // environmentId 缺失时 fallback 到 org/user 两段路径
   test("falls back to org/user path when environmentId is not provided", async () => {
-    const runtime = createOpencodeRuntime({
+    const runtime = createRuntime({
       skillInstallerDependencies: {
         fetch: mockFetch,
         extractArchive: async (_archivePath, targetDir) => {
@@ -239,7 +264,7 @@ describe("opencode-runtime prepareEnvironment", () => {
 
   // 相同 org/user 下不同 envId 产生不同 workspace
   test("different envId under same org/user produces different workspaces", async () => {
-    const runtime = createOpencodeRuntime({
+    const runtime = createRuntime({
       skillInstallerDependencies: {
         fetch: mockFetch,
         extractArchive: async (_archivePath, targetDir) => {
@@ -285,7 +310,7 @@ describe("opencode-runtime lifecycle", () => {
         relayState = "closed";
       },
     };
-    const runtime = createOpencodeRuntime({
+    const runtime = createRuntime({
       skillInstallerDependencies: {
         fetch: mockFetch,
         extractArchive: async (_archivePath, targetDir) => {
@@ -335,7 +360,7 @@ describe("opencode-runtime lifecycle", () => {
       send() {},
       close() {},
     };
-    const runtime = createOpencodeRuntime({
+    const runtime = createRuntime({
       skillInstallerDependencies: {
         fetch: mockFetch,
         extractArchive: async (_archivePath, targetDir) => {
@@ -380,7 +405,7 @@ describe("opencode-runtime lifecycle", () => {
 
   // 非法状态报错
   test("throws clear errors for invalid lifecycle transitions", async () => {
-    const runtime = createOpencodeRuntime();
+    const runtime = createRuntime();
 
     await expect(runtime.startInstance({ instanceId: "inst_missing_prepare" })).rejects.toThrow(
       "must be prepared before start",

@@ -123,9 +123,37 @@ export function useComposerState({
   commandPanelOpen: controlledCommandPanelOpen,
   onCommandPanelOpenChange,
 }: ComposerStateOptions): ComposerState {
-  const [text, setText] = useSemiControlledState(draft, onDraftChange, defaultDraft ?? "");
+  const [text, setDraftText, readText] = useSemiControlledState(draft, onDraftChange, defaultDraft ?? "");
+  const autoMentions = useRef(new Map<string, { start: number; end: number; value: string }>());
+  const setText = useCallback<ComposerState["setText"]>(
+    (next) => {
+      const previous = readText();
+      const updated = typeof next === "function" ? next(previous) : next;
+      let prefix = 0;
+      while (prefix < previous.length && prefix < updated.length && previous[prefix] === updated[prefix]) prefix++;
+      let suffix = 0;
+      while (
+        suffix < previous.length - prefix &&
+        suffix < updated.length - prefix &&
+        previous[previous.length - 1 - suffix] === updated[updated.length - 1 - suffix]
+      )
+        suffix++;
+      const oldEnd = previous.length - suffix;
+      const shift = updated.length - previous.length;
+      for (const [path, mention] of autoMentions.current) {
+        if (oldEnd <= mention.start) {
+          mention.start += shift;
+          mention.end += shift;
+        } else if (prefix < mention.end && oldEnd > mention.start) {
+          autoMentions.current.delete(path);
+        }
+      }
+      setDraftText(updated);
+    },
+    [readText, setDraftText],
+  );
   const [images, setImages] = useState<UserMessageImage[]>([]);
-  const [attachments, setAttachments] = useSemiControlledState<FileAttachment[]>(
+  const [attachments, setAttachments, readAttachments] = useSemiControlledState<FileAttachment[]>(
     controlledAttachments,
     onAttachmentsChange,
     [],
@@ -171,20 +199,45 @@ export function useComposerState({
 
   const addAttachments = useCallback<ComposerState["addAttachments"]>(
     (files) => {
-      setAttachments((prev) => {
-        const existing = new Set(prev.map((file) => file.path));
-        const unique = files.filter((file) => !existing.has(file.path));
-        return unique.length === 0 ? prev : [...prev, ...unique];
+      const current = readAttachments();
+      const existing = new Set(current.map((file) => file.path));
+      const unique = files.filter((file) => {
+        if (existing.has(file.path)) return false;
+        existing.add(file.path);
+        return true;
       });
+      if (unique.length === 0) return;
+      setAttachments([...current, ...unique]);
+      const previous = readText();
+      const separator = previous && !previous.endsWith(" ") ? " " : "";
+      let offset = previous.length;
+      for (const [index, file] of unique.entries()) {
+        const value = `${index === 0 ? separator : ""}@./${file.path} `;
+        autoMentions.current.set(file.path, { start: offset, end: offset + value.length, value });
+        offset += value.length;
+      }
+      setDraftText(`${previous}${separator}${unique.map((file) => `@./${file.path}`).join(" ")} `);
     },
-    [setAttachments],
+    [readAttachments, readText, setAttachments, setDraftText],
   );
 
   const removeAttachment = useCallback(
     (path: string) => {
       setAttachments((current) => current.filter((file) => file.path !== path));
+      const mention = autoMentions.current.get(path);
+      if (!mention) return;
+      autoMentions.current.delete(path);
+      const current = readText();
+      if (current.slice(mention.start, mention.end) !== mention.value) return;
+      const removedLength = mention.end - mention.start;
+      for (const remaining of autoMentions.current.values()) {
+        if (remaining.start < mention.end) continue;
+        remaining.start -= removedLength;
+        remaining.end -= removedLength;
+      }
+      setDraftText(`${current.slice(0, mention.start)}${current.slice(mention.end)}`);
     },
-    [setAttachments],
+    [readText, setAttachments, setDraftText],
   );
 
   const toggleMcp = useCallback((mcp: McpOption) => {
@@ -222,6 +275,7 @@ export function useComposerState({
   }, []);
 
   const resetInput = useCallback(() => {
+    autoMentions.current.clear();
     setText("");
     setImages([]);
     setAttachments([]);

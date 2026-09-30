@@ -89,6 +89,21 @@ export interface SkillImportResult {
 }
 
 /**
+ * 单资源导入结果：成功携带回读后的详情，命中本组织同名资源时携带冲突名。
+ *
+ * 冲突不是异常而是"需要调用方决策"的状态：控制台把它映射成带策略选项的 409，对外接口映射成纯 409。
+ * 两者共用同一次导入与同一份冲突判定，差别只在协议表达。
+ */
+export type SkillSingleImportResult =
+  | { readonly status: "imported"; readonly detail: SkillDetailView }
+  | { readonly status: "conflict"; readonly name: string };
+
+/** 单资源导入选项；`overwrite` 为真时覆盖本组织同名资源，否则冲突原样上报。 */
+export interface SkillSingleImportOptions {
+  readonly overwrite?: boolean;
+}
+
+/**
  * Skill 资源的应用接口（Facade 的契约面）。
  *
  * 路由与其它调用方只依赖本接口，不依赖 `SkillFacade` 的继承结构或私有依赖；测试可以提供实现而不
@@ -122,6 +137,17 @@ export interface SkillFacadeApi {
     files: UploadSkillFile[],
     strategy?: ImportConflictStrategy,
   ): Promise<SkillImportResult>;
+  /**
+   * 上传导入**单个** Skill 目录，并回读导入后的详情（对外 `/api/skills` 已发布合同的上传语义）。
+   *
+   * 与 {@link SkillFacadeApi.importDirectories} 同为一次上传的两个产品口径，共用同一套写入、冲突判定、
+   * 回滚与授权：控制台允许多目录上传并由用户选择冲突策略，对外接口一次只接受一个目录、冲突直接上报。
+   */
+  importSingleSkill(
+    actor: ActorContext,
+    files: UploadSkillFile[],
+    options?: SkillSingleImportOptions,
+  ): Promise<SkillSingleImportResult>;
 }
 
 export class SkillFacade extends AuthorizedResourceFacade implements SkillFacadeApi {
@@ -382,6 +408,39 @@ export class SkillFacade extends AuthorizedResourceFacade implements SkillFacade
       skipped: result.skipped,
       conflicts: result.conflicts,
     };
+  }
+
+  /**
+   * 单资源导入：先锁定"一次一个 Skill"，再复用批量导入，最后回读详情。
+   *
+   * 「一次只允许一个 Skill」是已发布合同的产品约束（多目录上传是请求错误，不是部分成功），因此判定放
+   * 在这里而不是协议层：协议层只负责把 `overwrite` 字面量翻成策略，不自行统计目录数或挑选冲突名。
+   *
+   * 冲突名取冲突清单首个（`importDirectories` 保证清单来自本组织同名资源），清单为空时回落到上传目录名，
+   * 使 409 的 message 始终能指出是哪个 Skill——这是对外契约里唯一需要冲突名的位置。
+   *
+   * 导入结果为空（既无冲突也无导入项）与回读失败都意味着内部不变量被打破：按 500 上抛，不返回半个 DTO。
+   */
+  async importSingleSkill(
+    actor: ActorContext,
+    files: UploadSkillFile[],
+    options: SkillSingleImportOptions = {},
+  ): Promise<SkillSingleImportResult> {
+    const skillNames = [...new Set(files.map((file) => file.skillName))];
+    if (skillNames.length !== 1) {
+      throw new ValidationError("每次只允许导入一个 Skill");
+    }
+
+    const result = await this.importDirectories(actor, files, options.overwrite === true ? "overwrite" : undefined);
+    if (result.conflicts.length > 0) {
+      return { status: "conflict", name: result.conflicts[0]?.name ?? skillNames[0] ?? "unknown" };
+    }
+
+    const imported = result.imported[0];
+    if (!imported) throw new Error("Skill import returned no created entry");
+    const detail = await this.readDetailById(actor, imported.id);
+    if (!detail) throw new Error("Skill could not be reloaded");
+    return { status: "imported", detail };
   }
 
   /** 行 → 视图：描述取资源行列，路径由归属组织与名称推导（内容只属于归属组织）。 */

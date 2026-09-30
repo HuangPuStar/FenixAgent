@@ -3,7 +3,7 @@
  * `apps/server/src/routes/web/control.ts` 迁入）。
  *
  * 归属：会话事件与状态、实例归属、环境组织归属三件事的 owner 都是本包（`services/session`、
- * `agentInstanceService`、`environmentRepo`），本文件没有任何一处跨领域依赖，因此落点在本包而不是宿主。
+ * `facades/` 下的会话访问门面与环境访问门面），本文件没有任何一处跨领域依赖，因此落点在本包而不是宿主。
  *
  * 与 1.2 改判的关系：该路由在 CE 阶段 2 任务 1.2 曾被判为「必须留在宿主」——当时的理由是它同时依赖
  * Agent Runtime 的会话服务与 Machine 的事件服务，放进任一模块都会与 `resource-machine → agent-runtime`
@@ -13,26 +13,42 @@
  * 守卫由宿主注入（与 `/api/instances`、`/acp/*` 同因）：Elysia 的 `macro` / `state` 是实例作用域的，
  * 包内自建一份会让同一进程出现两套互不可见的认证状态。
  *
- * 取数方式：本包内一律直接引用实现（`services/session`、`agentInstanceService`、`environmentRepo`），
- * 不经 `getBoundAgentRuntime()`。后者是**宿主**装配完成的判据，包内路由走它等于自引用本包入口；包内
- * 路由的既有惯例（`/acp/*`、`/api/instances`）同样是直引实现。
+ * 取数方式（C2 收敛时改判）：本文件原先在路由内直引 `environmentRepo`，文件头当时把「包内路由直引实现」
+ * 写成惯例（含包内 `routes/web/instances.ts` 中与之配套的判据说明）。该说法与 §3.2「route 不直接访问
+ * repository、不自行编排归属判断」冲突，已按规范收敛：会话 → 持久实例 → 环境 → 组织的归属链整体下沉到
+ * `facades/session-access-facade`（环境读取在其内的 `facades/environment-access-facade`），本文件只保留
+ * 协议校验、认证上下文提取与「门面结论 → 响应」映射。会话事件总线不属运行 port 的能力面，仍按原口径经
+ * `session-event-bus-port` 由宿主注入，因此这里不经 `getBoundAgentRuntime()`——后者是**宿主**装配完成的
+ * 判据，包内路由走它等于自引用本包入口。
  */
 
 import { log } from "@fenix/logger";
 import { WebErrSchema, WebOkSchema } from "@fenix/platform-sdk";
 import Elysia from "elysia";
 import * as z from "zod/v4";
+import { type SessionAccessDenial, sessionAccessFacade } from "../../facades/session-access-facade";
 import { SendEventResponseSchema, SessionEventPayloadSchema } from "../../schemas/session.schema";
-import type { AgentInstanceRecord } from "../../server/repositories/agent-instance";
-import { environmentRepo } from "../../server/repositories/environment";
-import { agentInstanceService } from "../../server/services/agent-instance-service";
-import { getSession, resolveExistingSessionId, updateSessionStatus } from "../../services/session";
+import { updateSessionStatus } from "../../services/session";
 import { getEventBus, type SessionEvent } from "../../transport/event-bus";
 import { publishSessionEvent } from "../../transport/session-events";
 import type { AgentRuntimeAuthDependencies } from "../dependencies";
 
 /** 归属校验结果：失败分支直接带响应，成功分支只向调用方暴露已解析的会话标识。 */
 type OwnershipCheckResult = { error: true; response: Response } | { error: false; sessionId: string };
+
+/**
+ * 门面拒绝结论 → 对外响应。
+ *
+ * 状态码、错误码与文案与收敛前逐字一致（含两种 403 文案的区分）：跨组织会话与「实例不属于你 / 环境已消失」
+ * 在客户端可见行为上要有区别，因此这里不是一张可以随意合并的表。
+ */
+const ACCESS_DENIAL_RESPONSE: Readonly<Record<SessionAccessDenial, { status: number; code: string; message: string }>> =
+  {
+    session_not_found: { status: 404, code: "not_found", message: "Session not found" },
+    session_not_owned: { status: 403, code: "forbidden", message: "Session does not belong to your organization" },
+    environment_foreign_organization: { status: 403, code: "forbidden", message: "Not your organization's session" },
+    session_not_active: { status: 404, code: "not_found", message: "Session not active" },
+  };
 
 /**
  * 总线事件 → 响应视图。
@@ -57,10 +73,11 @@ function toSessionEventView(event: SessionEvent) {
 }
 
 /**
- * 归属校验：会话 → 实例 → 环境 → 组织逐级回查，任一边界不匹配均保守拒绝。
+ * 归属校验：只做「认证上下文是否完整」与「门面结论 → 响应」的映射。
  *
- * 原实现把命中的会话对象一并返回，但三个调用方都只取 `sessionId`（`session` 字段无消费方），
- * 迁入时删除该字段——它正是本包私有 `LightweightSession` 类型此前必须出现在路由签名里的唯一原因。
+ * 会话 → 持久实例 → 环境 → 组织的逐级回查在 `sessionAccessFacade` 内完成（资源标识是持久 instanceUid，
+ * 归属链的每一步都不依赖可伪造的 session ID 编码）；本函数保留的只是协议层判断——认证上下文缺失时按
+ * 未认证拒绝，否则把门面的拒绝结论翻成既有响应。
  */
 async function checkOwnership(
   userId: string | null,
@@ -74,54 +91,15 @@ async function checkOwnership(
       response: errorFn(403, { success: false, error: { code: "forbidden", message: "Not authenticated" } }),
     };
   }
-  const resolvedSessionId = await resolveExistingSessionId(sessionId);
-  if (!resolvedSessionId) {
+  const access = await sessionAccessFacade.resolveAccess(sessionId, orgId, userId);
+  if (!access.granted) {
+    const denial = ACCESS_DENIAL_RESPONSE[access.denial];
     return {
       error: true,
-      response: errorFn(404, { success: false, error: { code: "not_found", message: "Session not found" } }),
+      response: errorFn(denial.status, { success: false, error: { code: denial.code, message: denial.message } }),
     };
   }
-  // control 的资源标识是持久 instanceUid。先按当前用户查询实例，再通过环境回查组织归属；
-  // 任一边界不匹配均保守拒绝，避免依赖可伪造的 session ID 编码推导身份。
-  let instance: AgentInstanceRecord;
-  try {
-    instance = await agentInstanceService.getOwnedInstance(resolvedSessionId, userId);
-  } catch {
-    return {
-      error: true,
-      response: errorFn(403, {
-        success: false,
-        error: { code: "forbidden", message: "Session does not belong to your organization" },
-      }),
-    };
-  }
-  const env = await environmentRepo.getById(instance.environmentId);
-  if (!env) {
-    return {
-      error: true,
-      response: errorFn(403, {
-        success: false,
-        error: { code: "forbidden", message: "Session does not belong to your organization" },
-      }),
-    };
-  }
-  if (env.organizationId && env.organizationId !== orgId) {
-    return {
-      error: true,
-      response: errorFn(403, {
-        success: false,
-        error: { code: "forbidden", message: "Not your organization's session" },
-      }),
-    };
-  }
-  const activeSession = await getSession(resolvedSessionId);
-  if (!activeSession) {
-    return {
-      error: true,
-      response: errorFn(404, { success: false, error: { code: "not_found", message: "Session not active" } }),
-    };
-  }
-  return { error: false, sessionId: resolvedSessionId };
+  return { error: false, sessionId: access.sessionId };
 }
 
 /**

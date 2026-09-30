@@ -13,70 +13,28 @@
 import type { Cluster, Redis } from "ioredis";
 import * as Y from "yjs";
 import { getOrCreateActiveGeneration, publishActiveGeneration } from "../persist/redis";
+import type { SnapshotPersistConfig, SnapshotPersistConfigSource } from "../persist/snapshot-config";
 import { encodeYjsReplaceFrame } from "../protocol/update-frame";
-import { DEFAULT_PERMISSION_TIMEOUT_MS, DEFAULT_QUESTION_TIMEOUT_MS, type NormalizedEvent } from "../schema";
+import { DEFAULT_QUESTION_TIMEOUT_MS, type NormalizedEvent } from "../schema";
 import type { ChatDoc, ProjectionDocs, SessionDoc } from "../types";
 import { applyNormalizedEvent } from "./aggregator";
-import { getEntriesMap, getEntryOrder, hasChatDocContent, isCallbackEntryId } from "./chat-writer";
+import { getEntriesMap, getEntryOrder, getSessionRoot, hasChatDocContent, isCallbackEntryId } from "./chat-writer";
+import {
+  BATCHABLE_EVENT_TYPES,
+  DEFAULT_BATCH_WINDOW_MS,
+  normalizeUserText,
+  notifyPermissionRequested,
+  preserveAgentProjection,
+  readEntryText,
+} from "./doc-manager-projection";
 import { createChatDoc, createSessionDoc, loadChatDoc, loadSessionDoc } from "./factory";
-
-/** 合并窗口（毫秒）：文本/思考增量可落入同一窗口合并为一个 yjs:update */
-const DEFAULT_BATCH_WINDOW_MS = 16;
-
-/** 可合并的内容类事件；控制类事件（工具/权限/终态/断链）必须先 flush 再立即写入 */
-const BATCHABLE_EVENT_TYPES = new Set(["message_delta", "reasoning_delta"]);
-
-function cloneYValue(value: unknown): unknown {
-  if (value instanceof Y.Map) {
-    const clone = new Y.Map<unknown>();
-    for (const [key, child] of value.entries()) clone.set(key, cloneYValue(child));
-    return clone;
-  }
-  if (value instanceof Y.Array) {
-    const clone = new Y.Array<unknown>();
-    clone.push(value.toArray().map(cloneYValue));
-    return clone;
-  }
-  return value;
-}
-
-function preserveAgentProjection(source: Y.Doc | undefined, target: Y.Doc): void {
-  if (!source) return;
-  const sourceRoot = source.getMap("root");
-  const targetRoot = target.getMap("root");
-  target.transact(() => {
-    for (const key of ["agent", "sessions", "sessionListLoaded"]) {
-      const value = sourceRoot.get(key);
-      if (value !== undefined) targetRoot.set(key, cloneYValue(value));
-    }
-  });
-}
-
-/** 归一化用户可见文本（回显去重比较）：折叠空白后 trim，空文本归一为空串 */
-function normalizeUserText(text: string): string {
-  return text.replace(/\s+/gu, " ").trim();
-}
-
-/**
- * 按 blockOrder 拼接 entry 的文本块（与前端 chat-doc-to-structured 的 blockText 同口径）。
- * 块间用换行分隔，避免相邻块边界拼接出本不存在的连续文本（误命中回显去重）。
- */
-function readEntryText(entry: Y.Map<unknown>): string {
-  const blocks = entry.get("blocks") as Y.Map<Y.Map<unknown>> | undefined;
-  const order = entry.get("blockOrder") as Y.Array<string> | undefined;
-  if (!blocks || !order) return "";
-  return order
-    .toArray()
-    .map((blockId) => {
-      const text = blocks.get(blockId)?.get("text");
-      return text instanceof Y.Text ? text.toString() : "";
-    })
-    .join("\n");
-}
+import { SessionTitleState, type SessionTitleStore } from "./session-title-store";
 
 export interface DocManagerOptions {
   /** Redis 连接获取器（惰性求值，支持连接延迟建立） */
   getRedis?: () => Redis | Cluster | null;
+  /** 会话标题持久存储端口；生产默认使用同一 Redis 连接，测试可注入独立实现。 */
+  sessionTitleStore?: SessionTitleStore;
   /** Y.Doc update 广播回调 */
   onYjsUpdate?: ((docName: string, update: Uint8Array) => void) | null;
   /** 错误回调 */
@@ -102,7 +60,12 @@ export type QuestionRequestedHandler = (
 export class DocManager {
   private chatDocs = new Map<string, ChatDoc>();
   private sessionDocs = new Map<string, SessionDoc>();
+  private closingSessionDocs = new Map<string, Promise<void>>();
+  private readonly sessionTitles: SessionTitleState;
   private getRedis: () => Redis | Cluster | null;
+  // 只能经 setSnapshotPersistConfigSource 注入：值依赖启动后才可读的宿主模块配置，
+  // 而本类的生产单例在文件加载期就构造完成。
+  private snapshotPersistConfig: SnapshotPersistConfigSource | null = null;
   private onYjsUpdate: ((docName: string, update: Uint8Array) => void) | null;
   private onError: ((context: string, err: unknown) => void) | undefined;
   private onLog: ((msg: string) => void) | undefined;
@@ -113,6 +76,7 @@ export class DocManager {
 
   constructor(options?: DocManagerOptions) {
     this.getRedis = options?.getRedis ?? (() => null);
+    this.sessionTitles = new SessionTitleState(options?.sessionTitleStore ?? null);
     this.onYjsUpdate = options?.onYjsUpdate ?? null;
     this.onError = options?.onError;
     this.onLog = options?.onLog;
@@ -144,6 +108,24 @@ export class DocManager {
     this.onQuestionRequested = handler;
   }
 
+  /**
+   * 设置或清除快照参数来源（控制面装配注入：宿主 env 投影 → `ChatChannelDependencies.snapshotPersist`
+   * → 本方法）。单槽位装配点，与权限/问题回调同模式；只在打开 Doc 时惰性求值。
+   */
+  setSnapshotPersistConfigSource(source: SnapshotPersistConfigSource | null): void {
+    this.snapshotPersistConfig = source;
+  }
+
+  /** 宿主装配标题持久存储；Redis 与文件后端只能选择其一。 */
+  setSessionTitleStore(store: SessionTitleStore | null): void {
+    this.sessionTitles.setStore(store);
+  }
+
+  /** 解析快照参数；未注入时返回 undefined，由 factory 在 Redis 模式下明确拒绝。 */
+  private resolveSnapshotPersistConfig(): SnapshotPersistConfig | undefined {
+    return this.snapshotPersistConfig?.();
+  }
+
   /** 绑定 Y.Doc 的 update 事件到广播回调 */
   private registerDocBroadcast(ydoc: Y.Doc, docName: string): void {
     ydoc.on("update", (update: Uint8Array) => {
@@ -162,7 +144,9 @@ export class DocManager {
     const generation = redis
       ? await getOrCreateActiveGeneration(redis, rcsSessionId)
       : (this.sessionDocs.get(rcsSessionId)?.generation ?? `gen_${crypto.randomUUID()}`);
-    const doc = redis ? loadChatDoc(rcsSessionId, redis, generation) : createChatDoc(rcsSessionId, null, generation);
+    const doc = redis
+      ? loadChatDoc(rcsSessionId, redis, generation, this.resolveSnapshotPersistConfig())
+      : createChatDoc(rcsSessionId, null, generation);
     this.registerDocBroadcast(doc.ydoc, `chat:${rcsSessionId}`);
     this.chatDocs.set(rcsSessionId, doc);
     return doc;
@@ -188,9 +172,9 @@ export class DocManager {
   }
 
   // ── Session Doc ──
-
   /** 打开或获取已有的 Session Doc（_userId/_agentId 为兼容旧调用方保留） */
   async openSession(_userId: string, _agentId: string, rcsSessionId: string): Promise<SessionDoc> {
+    await this.closingSessionDocs.get(rcsSessionId);
     const existing = this.sessionDocs.get(rcsSessionId);
     if (existing) return existing;
 
@@ -199,11 +183,39 @@ export class DocManager {
       ? await getOrCreateActiveGeneration(redis, rcsSessionId)
       : (this.chatDocs.get(rcsSessionId)?.generation ?? `gen_${crypto.randomUUID()}`);
     const doc = redis
-      ? loadSessionDoc(rcsSessionId, redis, generation)
+      ? loadSessionDoc(rcsSessionId, redis, generation, this.resolveSnapshotPersistConfig())
       : createSessionDoc(rcsSessionId, null, generation);
+    try {
+      if (!(await this.sessionTitles.refresh(rcsSessionId))) throw new Error("session metadata load superseded");
+    } catch (error) {
+      await doc.destroy();
+      throw error;
+    }
     this.registerDocBroadcast(doc.ydoc, `session:${rcsSessionId}`);
     this.sessionDocs.set(rcsSessionId, doc);
     return doc;
+  }
+
+  /** 将当前 RCS 会话内的 ACP 会话标题写入 Redis 权威元数据，再更新 Session Doc 投影。 */
+  async renameSession(
+    rcsSessionId: string,
+    sessionId: string,
+    title: string,
+    boundSessionId: string | null,
+  ): Promise<void> {
+    const doc = this.sessionDocs.get(rcsSessionId);
+    if (!doc) throw new Error("session metadata unavailable");
+    await this.sessionTitles.rename(doc.ydoc, rcsSessionId, sessionId, title, boundSessionId);
+  }
+
+  /** Agent 确认删除后移除 Fenix 标题，防止同 ID 的后继列表继承旧名称。 */
+  async removeSessionTitle(rcsSessionId: string, sessionId: string): Promise<void> {
+    await this.sessionTitles.delete(rcsSessionId, sessionId);
+  }
+
+  /** 每次接收 Agent 列表前回读持久标题，确保其他进程的重命名不会被本地旧缓存覆盖。 */
+  async refreshSessionTitles(rcsSessionId: string): Promise<boolean> {
+    return this.sessionTitles.refresh(rcsSessionId);
   }
 
   getSession(rcsSessionId: string): SessionDoc | undefined {
@@ -216,16 +228,24 @@ export class DocManager {
 
   /** 关闭并销毁 Session Doc，同时取消待处理的 ACP 批次 */
   async closeSession(rcsSessionId: string): Promise<void> {
+    const existingClose = this.closingSessionDocs.get(rcsSessionId);
+    if (existingClose) return existingClose;
     this.cancelACPBatch(rcsSessionId);
     const doc = this.sessionDocs.get(rcsSessionId);
     this.sessionDocs.delete(rcsSessionId);
-    if (doc) {
-      await doc.destroy();
+    const closing = (async () => {
+      await this.sessionTitles.close(rcsSessionId);
+      if (doc) await doc.destroy();
+    })();
+    this.closingSessionDocs.set(rcsSessionId, closing);
+    try {
+      await closing;
+    } finally {
+      if (this.closingSessionDocs.get(rcsSessionId) === closing) this.closingSessionDocs.delete(rcsSessionId);
     }
   }
 
   // ── 投影换代 ──
-
   /** 返回当前 Chat/Session 投影共同世代；尚未完整打开时返回 null。 */
   getProjectionGeneration(rcsSessionId: string): string | null {
     const chat = this.chatDocs.get(rcsSessionId);
@@ -248,8 +268,10 @@ export class DocManager {
     let chat: ChatDoc | null = null;
     let session: SessionDoc | null = null;
     try {
-      chat = createChatDoc(rcsSessionId, redis, generation);
-      session = createSessionDoc(rcsSessionId, redis, generation);
+      // 换代同样走装配投影的快照参数：新 generation 的 provider 需要同一组节流 / TTL 值。
+      const snapshot = this.resolveSnapshotPersistConfig();
+      chat = createChatDoc(rcsSessionId, redis, generation, snapshot);
+      session = createSessionDoc(rcsSessionId, redis, generation, snapshot);
       const oldChat = this.chatDocs.get(rcsSessionId);
       const oldSession = this.sessionDocs.get(rcsSessionId);
       preserveAgentProjection(oldSession?.ydoc, session.ydoc);
@@ -383,20 +405,6 @@ export class DocManager {
    * 通知控制面：权限请求已投影到 Session Doc。expiresAt 以投影值为准
    * （聚合层对缺失值有默认），避免事件载荷与投影不一致导致定时器错位。
    */
-  private notifyPermissionRequested(rcsSessionId: string, sessionDoc: Y.Doc, event: NormalizedEvent): void {
-    const permissionId =
-      (event.update.permissionId as string | undefined) ?? (event.update.requestId as string | undefined);
-    if (typeof permissionId !== "string") return;
-    const projection = (sessionDoc.getMap("root").get("pendingPermissions") as Y.Map<Y.Map<unknown>> | undefined)?.get(
-      permissionId,
-    );
-    const expiresAt =
-      (projection?.get("expiresAt") as string | undefined) ??
-      (event.update.expiresAt as string | undefined) ??
-      new Date(Date.now() + DEFAULT_PERMISSION_TIMEOUT_MS).toISOString();
-    this.onPermissionRequested?.(rcsSessionId, { permissionId, expiresAt });
-  }
-
   /** 通知控制面：AskUserQuestion 问题已投影到 Session Doc（expiresAt 以投影值为准） */
   private notifyQuestionRequested(rcsSessionId: string, sessionDoc: Y.Doc, event: NormalizedEvent): void {
     const questionId = event.update.questionId as string | undefined;
@@ -431,12 +439,17 @@ export class DocManager {
       } catch (err) {
         this.onError?.(`[DocManager] flushACPBatch failed before control event ${event.type}`, err);
       }
-      const result = applyNormalizedEvent({ chat: chatDoc.ydoc, session: sessionDoc.ydoc }, event);
+      const projectedEvent = this.sessionTitles.project(
+        rcsSessionId,
+        event,
+        (getSessionRoot(sessionDoc.ydoc).get("session") as Y.Map<unknown>).get("sessionId"),
+      );
+      const result = applyNormalizedEvent({ chat: chatDoc.ydoc, session: sessionDoc.ydoc }, projectedEvent);
       if (!result.applied && result.reason) {
         this.onLog?.(`[DocManager] event rejected (${event.type}): ${result.reason}`);
       }
       if (result.applied && event.type === "permission_requested") {
-        this.notifyPermissionRequested(rcsSessionId, sessionDoc.ydoc, event);
+        notifyPermissionRequested(this.onPermissionRequested, rcsSessionId, sessionDoc.ydoc, event);
       }
       if (result.applied && event.type === "question_requested") {
         this.notifyQuestionRequested(rcsSessionId, sessionDoc.ydoc, event);
@@ -471,10 +484,7 @@ export class DocManager {
       this.cancelACPBatch(rcsSessionId);
     }
 
-    for (const doc of this.sessionDocs.values()) {
-      await doc.destroy();
-    }
-    this.sessionDocs.clear();
+    for (const rcsSessionId of [...this.sessionDocs.keys()]) await this.closeSession(rcsSessionId);
 
     for (const doc of this.chatDocs.values()) {
       await doc.destroy();

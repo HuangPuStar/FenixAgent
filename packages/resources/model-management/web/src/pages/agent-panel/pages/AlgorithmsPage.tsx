@@ -336,19 +336,36 @@ const ALL_ALGORITHMS: Algorithm[] = [
   },
 ];
 
-const CATEGORIES = ["全部", "分类", "回归", "聚类", "降维", "排序", "异常检测", "时序预测", "深度学习", "推荐", "优化"];
+/**
+ * 分类筛选项。`value` 是演示数据里的分类标记——`ALL_ALGORITHMS` 的 `categories` 是与界面无关的内容常量
+ * （口径同 `VerticalModelsPage` 的内置目录：目录内容保持中文，界面文案才走字典），所以筛选比较只认
+ * `value`，`null` 是「不过滤」这一个非数据取值；`labelKey` 是 chip 上的界面文案键，渲染时取译文。
+ */
+const CATEGORY_FILTERS: readonly { value: string | null; labelKey: string }[] = [
+  { value: null, labelKey: "algorithms.categories.all" },
+  { value: "分类", labelKey: "algorithms.categories.classification" },
+  { value: "回归", labelKey: "algorithms.categories.regression" },
+  { value: "聚类", labelKey: "algorithms.categories.clustering" },
+  { value: "降维", labelKey: "algorithms.categories.dimensionalityReduction" },
+  { value: "排序", labelKey: "algorithms.categories.ranking" },
+  { value: "异常检测", labelKey: "algorithms.categories.anomalyDetection" },
+  { value: "时序预测", labelKey: "algorithms.categories.timeSeriesForecast" },
+  { value: "深度学习", labelKey: "algorithms.categories.deepLearning" },
+  { value: "推荐", labelKey: "algorithms.categories.recommendation" },
+  { value: "优化", labelKey: "algorithms.categories.optimization" },
+];
 
 export function AlgorithmsPage() {
   // 页标题复用本包 `nav.algorithms`（文案与宿主 `agentPanel.algorithms` 逐字一致，判定见
   // `web/contribution.ts`），副标题是本包自持的 `algorithms.subtitle`——本页文案自此全在本包字典内。
   const { t } = useTranslation(MODELS_NS);
-  const [activeCategory, setActiveCategory] = useState("全部");
+  const [activeCategory, setActiveCategory] = useState<string | null>(null);
   const [selectedAlgorithm, setSelectedAlgorithm] = useState<Algorithm | null>(null);
   const [searchInput, setSearchInput] = useState("");
   const [searchQuery, setSearchQuery] = useState("");
 
   const filteredByCategory =
-    activeCategory === "全部" ? ALL_ALGORITHMS : ALL_ALGORITHMS.filter((a) => a.categories.includes(activeCategory));
+    activeCategory === null ? ALL_ALGORITHMS : ALL_ALGORITHMS.filter((a) => a.categories.includes(activeCategory));
 
   const filtered = searchQuery
     ? filteredByCategory.filter(
@@ -367,16 +384,16 @@ export function AlgorithmsPage() {
       </div>
 
       <div className="flex items-center gap-1.5 px-8 pt-5 pb-2">
-        {CATEGORIES.map((cat) => (
+        {CATEGORY_FILTERS.map((filter) => (
           <button
-            key={cat}
+            key={filter.labelKey}
             type="button"
-            onClick={() => setActiveCategory(cat)}
+            onClick={() => setActiveCategory(filter.value)}
             className={`px-3.5 py-1.5 rounded-full text-xs font-medium transition-colors ${
-              activeCategory === cat ? "bg-brand text-white" : "text-text-secondary hover:bg-surface-hover"
+              activeCategory === filter.value ? "bg-brand text-white" : "text-text-secondary hover:bg-surface-hover"
             }`}
           >
-            {cat}
+            {t(filter.labelKey)}
           </button>
         ))}
       </div>
@@ -387,7 +404,7 @@ export function AlgorithmsPage() {
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-text-muted" />
           <Input
             className="pl-9"
-            placeholder="搜索算法名称、描述、场景..."
+            placeholder={t("algorithms.searchPlaceholder")}
             value={searchInput}
             onChange={(e) => setSearchInput(e.target.value)}
             onBlur={() => setSearchQuery(searchInput)}
@@ -415,7 +432,7 @@ export function AlgorithmsPage() {
                     variant="outline"
                     className="bg-green-50 text-green-600 border-green-200 text-3xs px-1.5 py-0 h-auto"
                   >
-                    即插即用
+                    {t("algorithms.plugAndPlayBadge")}
                   </Badge>
                 </div>
                 <p className="mt-1 text-xs text-text-secondary leading-relaxed">{algo.description}</p>
@@ -430,7 +447,7 @@ export function AlgorithmsPage() {
                 className="h-auto p-0 text-xs text-brand font-medium hover:bg-transparent hover:text-brand/80"
                 onClick={() => setSelectedAlgorithm(algo)}
               >
-                查看详情
+                {t("algorithms.viewDetails")}
               </Button>
               <Button
                 variant="ghost"
@@ -442,7 +459,7 @@ export function AlgorithmsPage() {
                   )
                 }
               >
-                复制代码
+                {t("algorithms.copyCode")}
               </Button>
             </div>
           </div>

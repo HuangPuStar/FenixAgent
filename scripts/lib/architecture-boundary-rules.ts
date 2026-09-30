@@ -36,7 +36,11 @@ const FORBIDDEN_CROSS_CATEGORY: Readonly<Record<PackageCategory, readonly Packag
   "platform-sdk": ["platform-impl"],
   "platform-impl": [],
   "agent-runtime": ["platform-impl"],
-  machine: ["agent-runtime", "sandbox", "platform-impl"],
+  // machine 与 sandbox 是 Runtime 固定基础资源：它们被 agent-runtime 与彼此依赖，多一条指向其他资源包的
+  // 边就等于把「资源包 → 基础资源」的整体方向倒过来——`machine → agent-config` 曾与 agent-config →
+  // agent-runtime、agent-runtime → sandbox、sandbox → machine 三条边闭合 4 包环族（台账里 6 个
+  // no-circular 指纹的共同闭合边）。跨资源取数改经本包声明、宿主注入的窄端口。
+  machine: ["agent-runtime", "sandbox", "platform-impl", "resource"],
   sandbox: ["agent-runtime", "platform-impl"],
   resource: ["platform-impl"],
   standalone: [],
@@ -183,6 +187,50 @@ function createAppsBoundaryRule(): ArchitectureRule {
 }
 
 /**
+ * 某条导入边被 §2.3 禁止的依据：具体包之间的边，或类别之间的边。
+ *
+ * 抽出来给 `special-dependency` 与 `cross-module-db-object-import` 共用：两条规则覆盖的边有交集
+ * （`resource → platform-impl` 的表对象导入），判定各写一份则任一处漂移都会让同一处导入被两条规则
+ * 报出，台账里随之出现两条记录，「已不再违规即删除」的语义失效。
+ */
+type ForbiddenEdgeReason =
+  | { readonly kind: "package" }
+  | { readonly kind: "category"; readonly targetCategory: PackageCategory };
+
+/**
+ * §2.3 的 web 行对「浏览器的跨资源复用」单独开口：`packages/resources/<resource>/web` 可以依赖**其他资源**
+ * `./web` 公开的 DTO / API client / hook / 组件。类别禁则因此不能一刀切——把 web 贡献也套上服务端禁则，
+ * 会把矩阵明确允许的复用判成违规（machine 的文件选择面板就消费 `@fenix/resource-mcp/web`）。
+ *
+ * 只放行**对方 `./web` 出口**这一种说明符：web 贡献导入对方的服务端入口另有 `browser-entry-server-import`
+ * 硬红线兜底，这里不重复表达。
+ */
+function isAllowedResourceWebReuse(context: RuleContext, targetPackageName: string, specifier: string): boolean {
+  if (!isWebContribution(context.relativePath)) return false;
+  const webEntry = `${targetPackageName}/web`;
+  return specifier === webEntry || specifier.startsWith(`${webEntry}/`);
+}
+
+/** 判定「来源包 → 目标包」是否落在 §2.3 的禁止依赖里；`undefined` 表示这条边允许。 */
+function findForbiddenEdgeReason(
+  context: RuleContext,
+  targetPackageName: string,
+  specifier: string,
+): ForbiddenEdgeReason | undefined {
+  const forbiddenPackageEdge = FORBIDDEN_PACKAGE_DEPENDENCIES.some(
+    ([from, to]) => from === context.packageName && to === targetPackageName,
+  );
+  if (forbiddenPackageEdge) return { kind: "package" };
+
+  const category = resolvePackageCategory(context.packageDirectory);
+  const targetCategory = resolvePackageCategory(context.resolvePackageDirectory(targetPackageName));
+  if (!category || !targetCategory || !FORBIDDEN_CROSS_CATEGORY[category].includes(targetCategory)) return;
+  if (targetCategory === "resource" && isAllowedResourceWebReuse(context, targetPackageName, specifier)) return;
+
+  return { kind: "category", targetCategory };
+}
+
+/**
  * `special-dependency`：§2.3 中针对**具体模块**而非整个类别的跨类别禁则。
  *
  * 只有 package.json 声明与源码都指向某个禁止类别时才判定，因此必须在包粒度而非文件粒度生效。
@@ -195,7 +243,6 @@ function createSpecialDependencyRule(): ArchitectureRule {
       if (isSchemaAssemblyPath(context.relativePath)) return [];
       const category = resolvePackageCategory(context.packageDirectory);
       if (!category || !context.packageName) return [];
-      const forbidden = FORBIDDEN_CROSS_CATEGORY[category];
 
       const diagnostics: ArchitectureDiagnostic[] = [];
       for (const reference of getSpecifiers(context)) {
@@ -203,20 +250,62 @@ function createSpecialDependencyRule(): ArchitectureRule {
         if (!target || target === context.packageName) continue;
         if (target === "@fenix/server-app" || target === "@fenix/web-app") continue; // 由 apps-boundary 负责
 
-        const targetCategory = resolvePackageCategory(context.resolvePackageDirectory(target));
-        const forbiddenPackageEdge = FORBIDDEN_PACKAGE_DEPENDENCIES.some(
-          ([from, to]) => from === context.packageName && to === target,
-        );
-        if (!forbiddenPackageEdge && (!targetCategory || !forbidden.includes(targetCategory))) continue;
+        const reason = findForbiddenEdgeReason(context, target, reference.specifier);
+        if (!reason) continue;
 
         diagnostics.push({
           ...positionOf(context, reference.position),
           boundary: { from: context.packageName, to: target },
           filePath: context.relativePath,
-          message: forbiddenPackageEdge
-            ? `§2.3 禁止 "${context.packageName}" 依赖 "${target}"，违规边为 "${context.packageName}" → "${target}"`
-            : `§2.3 禁止 "${category}" 依赖 "${targetCategory}"，违规边为 "${context.packageName}" → "${target}"`,
+          message:
+            reason.kind === "package"
+              ? `§2.3 禁止 "${context.packageName}" 依赖 "${target}"，违规边为 "${context.packageName}" → "${target}"`
+              : `§2.3 禁止 "${category}" 依赖 "${reason.targetCategory}"，违规边为 "${context.packageName}" → "${target}"`,
           ruleId: "special-dependency",
+        });
+      }
+      return diagnostics;
+    },
+  };
+}
+
+/**
+ * `cross-module-db-object-import`：调用期代码不得导入其他模块的 `db` 表对象。
+ *
+ * `@fenix/<pkg>/db` 是为**组装期**跨模块外键开的口子（Drizzle 的 `.references()` 只接受列对象，没有
+ * 字符串名写法，§6.1）。调用期只需要表名、行类型或一次取数时，应经对方资源包公开的服务端入口，
+ * 而不是把两张模块的表定义耦合在一起——这类耦合此前只在「类别矩阵也禁止该边」时才被 `special-dependency`
+ * 拦下（如 `resource → platform-impl`），同类别之间的表对象导入（例如 agent-config 的用例取
+ * model / machine / skill 的表对象）两道门都放行，缺口由此补上。
+ *
+ * 同包自引用不算跨模块：表定义归本包，仓储经自己的 `./db` 出口取表对象是既定形态。
+ * 只认裸说明符这一条出口；相对路径伸进对方 `db/` 由 `package-no-internal-imports` 与
+ * dependency-cruiser 的 `no-cross-package-db` 负责，避免同一处导入被两条规则同时报出。
+ * 作用域限定 `packages/**`：宿主 `apps/server/src/db/schema.ts` 的身份表转出与
+ * `apps/server/src/services/data-migrates/*` 属各自的搬迁任务，本规则不介入。
+ */
+function createCrossModuleDbObjectImportRule(): ArchitectureRule {
+  return {
+    id: "cross-module-db-object-import",
+    check(context) {
+      if (!context.packageName || !context.relativePath.startsWith("packages/")) return [];
+      if (isSchemaAssemblyPath(context.relativePath)) return [];
+
+      const diagnostics: ArchitectureDiagnostic[] = [];
+      for (const reference of getSpecifiers(context)) {
+        const target = context.resolveWorkspacePackageName(reference.specifier);
+        if (!target || target === context.packageName) continue;
+        // 精确匹配 `<包名>/db`：`@fenix/x/db/schema` 一类深路径不在 exports 里，解析不到，不属本规则。
+        if (reference.specifier !== `${target}/db`) continue;
+        // 类别矩阵已禁止的边由 `special-dependency` 报出（见 `findForbiddenEdgeReason` 的分工说明）。
+        if (findForbiddenEdgeReason(context, target, reference.specifier)) continue;
+
+        diagnostics.push({
+          ...positionOf(context, reference.position),
+          boundary: { from: context.packageName, to: target },
+          filePath: context.relativePath,
+          message: `调用期不得导入 "${target}" 的表对象（"${reference.specifier}"）：该出口只供 "db/schema.ts" 组装跨模块外键，调用期请经对方公开的服务端入口取数`,
+          ruleId: "cross-module-db-object-import",
         });
       }
       return diagnostics;
@@ -269,6 +358,7 @@ export function createBoundaryRules(): readonly ArchitectureRule[] {
     createUndeclaredWorkspaceDependencyRule(),
     createAppsBoundaryRule(),
     createSpecialDependencyRule(),
+    createCrossModuleDbObjectImportRule(),
     createWebPackageNotToAppRule(),
   ];
 }

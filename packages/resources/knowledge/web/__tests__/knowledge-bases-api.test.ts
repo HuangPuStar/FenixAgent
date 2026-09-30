@@ -1,9 +1,14 @@
-import { beforeEach, describe, expect, mock, test } from "bun:test";
+import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
 
 const fetchCalls: Array<[string, RequestInit]> = [];
 
+// `globalThis.fetch` 是进程级全局且 Bun 的测试文件共享同一进程：装桩后必须还原，否则其后运行的服务端
+// 用例（如 workflow-v2 对假上游发真实请求）会收到这里的桩响应，表现为「单跑通过、全量失败」。
+let originalFetch: typeof globalThis.fetch;
+
 beforeEach(() => {
   fetchCalls.length = 0;
+  originalFetch = globalThis.fetch;
   globalThis.fetch = mock((url: string, init: RequestInit) => {
     fetchCalls.push([url, init]);
     return Promise.resolve(
@@ -12,6 +17,10 @@ beforeEach(() => {
       }),
     );
   }) as unknown as typeof fetch;
+});
+
+afterEach(() => {
+  globalThis.fetch = originalFetch;
 });
 
 function expectRequest(index: number, url: string, method: string, body?: unknown) {

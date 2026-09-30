@@ -2,21 +2,33 @@
  * Workflow Engine API 路由。
  *
  * 通过 POST /web/workflow-engine + action 分发，提供工作流的执行、取消、审批、状态查询等能力。
+ *
+ * 分层：工作流数据的读写经 `workflowDefFacade`（组织范围由 Facade 从认证上下文推导）；留在路由的是
+ * 按租户缓存的引擎与实例清理入口（`getTeamEngine` / `cleanupSpawnedInstances`），它们是运行时组合物
+ * 而非资源取数入口。
  */
 
 import { createLogger } from "@fenix/logger";
 import { WebErrSchema } from "@fenix/platform-sdk";
 import { WorkflowError } from "@fenix/workflow-engine";
 import Elysia from "elysia";
-import { getVersionYaml, getWorkflowDef, linkWorkflowSnapshotToWorkflow } from "../../repositories/workflow-def";
+import { workflowDefFacade } from "../../facades/workflow-def-facade";
 import { WorkflowEngineActionRequestSchema, WorkflowEngineActionResponseSchema } from "../../schemas";
 import { cleanupSpawnedInstances, getTeamEngine } from "../../services/workflow";
-import { resolveYaml } from "../../services/workflow/resolve-yaml";
 import { publishWorkflowEvent } from "../../services/workflow/workflow-events";
 
 import type { WorkflowRouteDependencies } from "../dependencies";
 
 const logger = createLogger("wf-engine");
+
+function isPlainObject(value: unknown): value is Record<string, unknown> {
+  return (
+    value !== null &&
+    typeof value === "object" &&
+    !Array.isArray(value) &&
+    Object.getPrototypeOf(value) === Object.prototype
+  );
+}
 
 export function createWebWorkflowEngineRoutes(deps: WorkflowRouteDependencies) {
   const app = new Elysia({ name: "web-workflow-engine" }).use(deps.authGuardPlugin).model({
@@ -33,20 +45,25 @@ export function createWebWorkflowEngineRoutes(deps: WorkflowRouteDependencies) {
       const payload = body as Record<string, unknown>;
       const action = payload.action as string;
       const engine = getTeamEngine(authCtx.organizationId);
-      const deps = { getWorkflowDef, getVersionYaml };
 
       try {
         switch (action) {
           // 执行工作流（异步启动，立即返回 runId）
           case "run": {
-            const yaml = await resolveYaml(payload, authCtx.organizationId, deps);
+            const params = payload.params;
+            if (params !== undefined && !isPlainObject(params)) {
+              return error(400, {
+                success: false,
+                error: { code: "VALIDATION_ERROR", message: "params must be an object" },
+              });
+            }
+            const yaml = await workflowDefFacade.resolveYaml(authCtx, payload);
             if (!yaml) {
               return error(400, {
                 success: false,
                 error: { code: "VALIDATION_ERROR", message: "yaml or workflowId is required" },
               });
             }
-            const params = payload.params as Record<string, unknown> | undefined;
             const workflowId = payload.workflowId as string | undefined;
             // C-P2.5：触发者 userId 透传，实例计入该用户配额桶
             const { runId, result } = engine.runAsync(yaml, params, { userId: authCtx.userId });
@@ -59,7 +76,7 @@ export function createWebWorkflowEngineRoutes(deps: WorkflowRouteDependencies) {
               async (r) => {
                 try {
                   if (workflowId) {
-                    await linkWorkflowSnapshotToWorkflow(runId, authCtx.organizationId, workflowId);
+                    await workflowDefFacade.linkSnapshot(authCtx, runId, workflowId);
                     publishWorkflowEvent(workflowId, "workflow.run_status_changed", {
                       runId,
                       dagStatus: r.status,
@@ -93,7 +110,7 @@ export function createWebWorkflowEngineRoutes(deps: WorkflowRouteDependencies) {
 
           // 干运行：校验 + 展示执行计划
           case "dryRun": {
-            const yaml = await resolveYaml(payload, authCtx.organizationId, deps);
+            const yaml = await workflowDefFacade.resolveYaml(authCtx, payload);
             if (!yaml) {
               return error(400, {
                 success: false,
@@ -200,7 +217,7 @@ export function createWebWorkflowEngineRoutes(deps: WorkflowRouteDependencies) {
             const result = await engine.rerunFrom(prevRunId, yaml, fromNodeId, { userId: authCtx.userId });
             // 回写 workflowId 到新 run 的快照
             if (workflowId) {
-              await linkWorkflowSnapshotToWorkflow(result.runId, authCtx.organizationId, workflowId);
+              await workflowDefFacade.linkSnapshot(authCtx, result.runId, workflowId);
               // 用真实 runId 发布事件，前端能正确响应
               publishWorkflowEvent(workflowId, "workflow.run_started", { runId: result.runId });
             }
@@ -226,7 +243,8 @@ export function createWebWorkflowEngineRoutes(deps: WorkflowRouteDependencies) {
         // WorkflowError 带有 code，映射为对应 HTTP 状态码
         if (err instanceof WorkflowError) {
           const code = String(err.code);
-          const status = code === "RUN_NOT_FOUND" ? 404 : code === "VALIDATION_ERROR" ? 400 : 500;
+          const status =
+            code === "RUN_NOT_FOUND" ? 404 : code === "VALIDATION_ERROR" || code === "CYCLE_DETECTED" ? 400 : 500;
           return error(status, { success: false, error: { code: code, message: err.message } });
         }
         logger.error("Unexpected error:", err);

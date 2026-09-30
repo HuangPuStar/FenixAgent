@@ -1,5 +1,6 @@
 import { WebErrSchema } from "@fenix/platform-sdk";
 import Elysia from "elysia";
+import { taskV2Facade } from "../../facades/task-v2-facade";
 import type { CreateTaskV2Request, UpdateTaskV2Request } from "../../schemas/task-v2.schema";
 import {
   ClearLogsV2ResponseSchema,
@@ -13,18 +14,7 @@ import {
   TriggerV2ResponseSchema,
   UpdateTaskV2RequestSchema,
 } from "../../schemas/task-v2.schema";
-import type { CreateTaskV2Input } from "../../services/task-v2";
-import {
-  clearExecutionLogsV2,
-  createTaskV2,
-  deleteTaskV2,
-  getTaskV2,
-  listExecutionLogsV2,
-  listTasksV2,
-  toggleTaskV2,
-  triggerTaskV2,
-  updateTaskV2,
-} from "../../services/task-v2";
+import type { CreateTaskV2Input, UpdateTaskV2Input } from "../../services/task-v2";
 import type { WebTaskRouteDependencies } from "../dependencies";
 
 /**
@@ -33,6 +23,10 @@ import type { WebTaskRouteDependencies } from "../dependencies";
  * 从宿主的实例导出改为工厂：守卫必须与宿主的认证解析是同一份实例（Elysia 的 `macro` / `state` 是实例
  * 作用域的，父实例无法向已构造的子实例回填），因此由宿主注入 `authGuardPlugin`；宿主调用点
  * `apps/server/src/routes/web/index.ts:17,52,79`（取工厂 / 注入守卫 / 挂载）已按该形态接线。
+ *
+ * 取数经 Facade（`../../facades/task-v2-facade`）：路由只把宿主的认证上下文与协议已校验的数据交出去，
+ * 归属范围（`user_id` + `organization_id`）由门面从 actor 推导；本层保留的只有协议映射——查询串解析、
+ * `NOT_FOUND` → 404 / `VALIDATION_ERROR` → 400 的状态码映射，以及无效 UUID 的 SQL 错误兜底。
  */
 export function createWebTasksV2Routes(deps: WebTaskRouteDependencies) {
   const app = new Elysia({ name: "web-tasks-v2" }).use(deps.authGuardPlugin).model({
@@ -71,18 +65,17 @@ export function createWebTasksV2Routes(deps: WebTaskRouteDependencies) {
     "/tasks/v2",
     // biome-ignore lint/suspicious/noExplicitAny: Elysia handler 参数类型推断受限
     async ({ store, query }: any) => {
-      const authCtx = store.authContext!;
+      const actor = store.authContext!;
       const q = query as Record<string, string | undefined>;
       const page = Number(q.page) || 1;
       const pageSize = Number(q.pageSize) || 20;
       const keyword = q.keyword || undefined;
       const type = q.type || undefined;
       const agentId = q.agentId || undefined;
-      return await listTasksV2(authCtx.userId, authCtx.organizationId, page, pageSize, {
-        keyword,
-        type,
-        agentId,
-      });
+      return {
+        success: true as const,
+        data: await taskV2Facade.list(actor, page, pageSize, { keyword, type, agentId }),
+      };
     },
     {
       sessionAuth: true,
@@ -101,13 +94,9 @@ export function createWebTasksV2Routes(deps: WebTaskRouteDependencies) {
     "/tasks/v2",
     // biome-ignore lint/suspicious/noExplicitAny: Elysia handler 参数类型推断受限
     async ({ store, body, error }: any) => {
-      const authCtx = store.authContext!;
+      const actor = store.authContext!;
       const payload = body as CreateTaskV2Request;
-      const result = await createTaskV2(
-        authCtx.userId,
-        authCtx.organizationId,
-        payload as unknown as CreateTaskV2Input,
-      );
+      const result = await taskV2Facade.create(actor, payload as unknown as CreateTaskV2Input);
 
       if (!result.success) {
         const err = result.error!;
@@ -133,9 +122,9 @@ export function createWebTasksV2Routes(deps: WebTaskRouteDependencies) {
     "/tasks/v2/:id",
     // biome-ignore lint/suspicious/noExplicitAny: Elysia handler 参数类型推断受限
     async ({ store, params, error }: any) => {
-      const authCtx = store.authContext!;
+      const actor = store.authContext!;
       return safeTaskOp(async () => {
-        const result = await getTaskV2(authCtx.userId, authCtx.organizationId, params.id);
+        const result = await taskV2Facade.get(actor, params.id);
         if (!result.success)
           return error(404, { success: false, error: { code: "not_found", message: result.error!.message } });
         return result;
@@ -153,15 +142,10 @@ export function createWebTasksV2Routes(deps: WebTaskRouteDependencies) {
     "/tasks/v2/:id",
     // biome-ignore lint/suspicious/noExplicitAny: Elysia handler 参数类型推断受限
     async ({ store, params, body, error }: any) => {
-      const authCtx = store.authContext!;
+      const actor = store.authContext!;
       const payload = body as UpdateTaskV2Request;
       return safeTaskOp(async () => {
-        const result = await updateTaskV2(
-          authCtx.userId,
-          authCtx.organizationId,
-          params.id,
-          payload as unknown as Record<string, unknown>,
-        );
+        const result = await taskV2Facade.update(actor, params.id, payload as unknown as UpdateTaskV2Input);
         if (!result.success) {
           const err = result.error!;
           if (err.code === "NOT_FOUND")
@@ -188,9 +172,9 @@ export function createWebTasksV2Routes(deps: WebTaskRouteDependencies) {
     "/tasks/v2/:id",
     // biome-ignore lint/suspicious/noExplicitAny: Elysia handler 参数类型推断受限
     async ({ store, params, error }: any) => {
-      const authCtx = store.authContext!;
+      const actor = store.authContext!;
       try {
-        const result = await deleteTaskV2(authCtx.userId, authCtx.organizationId, params.id);
+        const result = await taskV2Facade.remove(actor, params.id);
         if (!result.success)
           return error(404, { success: false, error: { code: "not_found", message: result.error!.message } });
         return { success: true, data: null };
@@ -215,9 +199,9 @@ export function createWebTasksV2Routes(deps: WebTaskRouteDependencies) {
     "/tasks/v2/:id/toggle",
     // biome-ignore lint/suspicious/noExplicitAny: Elysia handler 参数类型推断受限
     async ({ store, params, error }: any) => {
-      const authCtx = store.authContext!;
+      const actor = store.authContext!;
       return safeTaskOp(async () => {
-        const result = await toggleTaskV2(authCtx.userId, authCtx.organizationId, params.id);
+        const result = await taskV2Facade.toggle(actor, params.id);
         if (!result.success)
           return error(404, { success: false, error: { code: "not_found", message: result.error!.message } });
         return result;
@@ -235,9 +219,9 @@ export function createWebTasksV2Routes(deps: WebTaskRouteDependencies) {
     "/tasks/v2/:id/trigger",
     // biome-ignore lint/suspicious/noExplicitAny: Elysia handler 参数类型推断受限
     async ({ store, params, error }: any) => {
-      const authCtx = store.authContext!;
+      const actor = store.authContext!;
       return safeTaskOp(async () => {
-        const result = await triggerTaskV2(authCtx.userId, authCtx.organizationId, params.id);
+        const result = await taskV2Facade.trigger(actor, params.id);
         if (!result.success)
           return error(404, { success: false, error: { code: "not_found", message: result.error!.message } });
         return result;
@@ -255,16 +239,16 @@ export function createWebTasksV2Routes(deps: WebTaskRouteDependencies) {
     "/tasks/v2/:id/logs",
     // biome-ignore lint/suspicious/noExplicitAny: Elysia handler 参数类型推断受限
     async ({ store, params, query, error }: any) => {
-      const authCtx = store.authContext!;
+      const actor = store.authContext!;
       return safeTaskOp(async () => {
-        const taskResult = await getTaskV2(authCtx.userId, authCtx.organizationId, params.id);
-        if (!taskResult.success)
-          return error(404, { success: false, error: { code: "not_found", message: "任务不存在" } });
-
         const q = query as Record<string, string | undefined>;
         const page = Math.max(1, Number(q.page) || 1);
         const pageSize = Math.min(100, Math.max(1, Number(q.pageSize) || 20));
-        return await listExecutionLogsV2(params.id, page, pageSize);
+        // 归属确认在门面内完成：日志没有独立归属列，可读性由所属任务决定。
+        const logs = await taskV2Facade.listLogs(actor, params.id, page, pageSize);
+        if (!logs.success)
+          return error(404, { success: false, error: { code: "not_found", message: logs.error.message } });
+        return logs;
       }, error);
     },
     {
@@ -279,12 +263,9 @@ export function createWebTasksV2Routes(deps: WebTaskRouteDependencies) {
     "/tasks/v2/:id/logs",
     // biome-ignore lint/suspicious/noExplicitAny: Elysia handler 参数类型推断受限
     async ({ store, params, error }: any) => {
-      const authCtx = store.authContext!;
+      const actor = store.authContext!;
       return safeTaskOp(async () => {
-        const taskResult = await getTaskV2(authCtx.userId, authCtx.organizationId, params.id);
-        if (!taskResult.success)
-          return error(404, { success: false, error: { code: "not_found", message: "任务不存在" } });
-        const result = await clearExecutionLogsV2(authCtx.userId, authCtx.organizationId, params.id);
+        const result = await taskV2Facade.clearLogs(actor, params.id);
         if (!result.success) return error(404, { success: false, error: { code: "not_found", message: "任务不存在" } });
         return { success: true, data: null };
       }, error);

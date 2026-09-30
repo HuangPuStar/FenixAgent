@@ -3,7 +3,7 @@
 > 状态：实现基线（2026-08-05 修订，对齐 `refactor/agent-controller` 分支，验证测试 215 个全绿；2026-09-23 按现网实现核对 §8.4，登记 `/web/environments/:id/enter` 的终结式本地 catch 为例外（§8.5），测试基线沿用 2026-08-05 记录、未重跑）
 > 范围：编排域独立包 `packages/orchestration`（AgentController、AgentNodeService、AgentNode、Instance、LaunchSpecBuilder）与宿主桥接（`packages/agent-runtime/src/services/orchestration-instance.ts`、`orchestration-bootstrap.ts`、`orchestration-machine-cleanup.ts`、`packages/agent-runtime/src/transport/agent-node-bridge.ts`、`local-node-service.ts`、`packages/agent-runtime/src/server/transport/relay/external-relay.ts`）的创建、连接和生命周期。
 > 定位：本文档只定义 Agent 实例的控制与运行边界。YJS / ACP 到 YJS 的状态聚合与 Chat 域见 `docs/arch/19-yjs-chat-streaming.md`；文件操作信道（file-ws，与 acp-ws 平行的机器级信道）见 `docs/arch/12-files.md`。
-> 配套文档：`docs/design/2026-08-03-orchestration-package-prd.md` 与 `spec/global/adr/2026-08-03-orchestration-package-design.md`（重构立项与 ADR）。消费者审计报告与待决设计决策（E-P2.2 断连终态、C-P2.5 用户配额决策）的内容已并入本文档正文（§5、§2.2），不再单独成文。
+> 配套文档：`docs/design/2026-08-03-orchestration-package-prd.md` 与 `docs/adr/2026-08-03-orchestration-package-design.md`（重构立项与 ADR）。消费者审计报告与待决设计决策（E-P2.2 断连终态、C-P2.5 用户配额决策）的内容已并入本文档正文（§5、§2.2），不再单独成文。
 > 约定：本文档从"目标设计基线"修订为"已验证实现基线"，描述与代码一致的真实架构；代码演进偏离时，先更新本文档再改代码。关键实现文件以相对路径引用（行号不维护，以语义为准）。
 
 ## 1. 总体架构

@@ -4,8 +4,7 @@ import {
   ApiWorkspaceEnvironmentParamsSchema,
   ApiWorkspaceFileUploadResponseSchema,
 } from "../../../schemas/api-workspace.schema";
-import { uploadWorkspaceFiles } from "../../services/api-workspace";
-import type { MachineRequestAuth } from "../../types/auth";
+import { machineWorkspaceFacade } from "../../facades/machine-workspace-facade";
 import type { WebMachineRouteDependencies } from "../dependencies";
 
 /**
@@ -47,10 +46,10 @@ export function createApiWorkspaceRoutes(deps: WebMachineRouteDependencies) {
     "/environments/:environmentId/workspace/files",
     // biome-ignore lint/suspicious/noExplicitAny: Elysia multipart 解析与 response schema 组合时类型推断不稳定
     async ({ store, params, request, error }: any): Promise<any> => {
-      const authCtx = store.authContext as MachineRequestAuth;
+      const actor = store.authContext!;
       try {
         const formData = await request.formData();
-        return await uploadWorkspaceFiles(authCtx, params.environmentId, formData);
+        return await machineWorkspaceFacade.upload(actor, params.environmentId, formData);
       } catch (err) {
         const mapped = mapApiError(err);
         return error(mapped.status, mapped.body);

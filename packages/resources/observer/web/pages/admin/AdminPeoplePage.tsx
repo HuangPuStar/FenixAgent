@@ -95,16 +95,16 @@ function PeopleDashboard({ onAuthFailure }: { onAuthFailure: () => void }) {
             <p className="text-xs text-text-muted">{t("people.subtitle")}</p>
           </div>
           <div className="flex flex-wrap gap-2">
-            <Button variant="outline" size="sm" onClick={() => setDialog("reset")}>
-              <KeyRound className="size-3.5" />
+            <Button variant="outline" onClick={() => setDialog("reset")}>
+              <KeyRound />
               {t("people.resetPassword")}
             </Button>
-            <Button size="sm" onClick={() => setDialog("create")}>
-              <UserPlus className="size-3.5" />
+            <Button onClick={() => setDialog("create")}>
+              <UserPlus />
               {t("people.createUser")}
             </Button>
-            <Button variant="outline" size="sm" onClick={refresh} disabled={loading}>
-              <RefreshCw className="size-3.5" />
+            <Button variant="outline" onClick={refresh} disabled={loading}>
+              <RefreshCw />
               {t("states.refresh")}
             </Button>
           </div>

@@ -24,7 +24,7 @@
     "@fenix/resource-sandbox": "workspace:*",
     "@fenix/resource-skill": "workspace:*",
     "@fenix/resource-task": "workspace:*",
-    "@fenix/resource-workflow": "workspace:*",
+    "@fenix/resource-workflow-v2": "workspace:*",
     "@fenix/ui-components": "workspace:*",
     "@fenix/web-runtime": "workspace:*"
   }

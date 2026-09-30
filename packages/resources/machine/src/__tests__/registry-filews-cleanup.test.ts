@@ -1,9 +1,9 @@
 import { afterAll, beforeEach, describe, expect, mock, test } from "bun:test";
 import { stubDb } from "@fenix/platform-sdk/testing";
 import { writeRegistryEvent } from "../server/repositories/registry-event";
-import { initializeMachineModuleConfig } from "../server/testing";
+import { initializeMachineModuleConfig, stubMachineAgentConfig } from "../server/testing";
 import type { WsConnection } from "../server/transport/ws-types";
-import type { MachineRequestAuth } from "../server/types/auth";
+import type { MachineScope } from "../server/types/machine-registry";
 
 // 经包根入口取真实的 deleteMachine 与请求发送域实现：本测试要覆盖「stubDb → deleteMachine →
 // file-ws 连接清理与 pending 拒绝」整条真实链路，句柄替换（setRegistryRouteDeps 等）只用于路由层，
@@ -16,7 +16,7 @@ const requests = await import("@fenix/resource-machine/server");
 const ORG_ID = "org-1";
 const USER_ID = "user-1";
 
-const authCtx: MachineRequestAuth = { organizationId: ORG_ID, userId: USER_ID, role: "owner" };
+const scope: MachineScope = { organizationId: ORG_ID, userId: USER_ID };
 
 function createMockWs(readyState = 1): WsConnection & { _messages: string[] } {
   const messages: string[] = [];
@@ -44,17 +44,17 @@ function openRegisteredWs(
 }
 
 /**
- * 构造 deleteMachine 所需的 stubDb：三次 select 依次返回
- * machine 记录（非 online）、agentConfig 引用（空）、organization 记录（空 metadata）。
+ * 构造 deleteMachine 所需的 stubDb：两次 select 依次返回
+ * machine 记录（非 online）、organization 记录（空 metadata）。
+ *
+ * agent_config 的悬挂引用检查已不读 DB：它经宿主注入的 `MachineAgentConfigPort` 调用（见
+ * `beforeEach`），本包不再直接触碰对方的表。
  */
 function stubDeleteMachineDb(machineRecord: { id: string; status: string }, insert: ReturnType<typeof mock>): void {
   stubDb({
     select: mock()
       .mockImplementationOnce(() => ({
         from: () => ({ where: () => ({ limit: async () => [machineRecord] }) }),
-      }))
-      .mockImplementationOnce(() => ({
-        from: () => ({ where: () => ({ limit: async () => [] }) }),
       }))
       .mockImplementationOnce(() => ({
         from: () => ({ where: () => ({ limit: async () => [{}] }) }),
@@ -67,6 +67,14 @@ function stubDeleteMachineDb(machineRecord: { id: string; status: string }, inse
 beforeEach(async () => {
   // 初始化基础设施（真实 deleteMachine / writeRegistryEvent 都要读 DB，未初始化会直接抛错）
   initializeMachineModuleConfig();
+  // Agent 配置的引用检查不在本包：用例按「该组织没有配置引用这台机器」装配（与真实实现的语义一致），
+  // 不依赖测试专用默认值——端口未绑定即失败是本包刻意的失败语义。端口是整体契约，三个原语必须齐备；
+  // 本文件只走删除路径，故其余两个给出无副作用的答案。
+  stubMachineAgentConfig({
+    getExecutionNode: async () => null,
+    isAgentConfigBoundToMachine: async () => false,
+    bindMachineIdByAgentName: async () => {},
+  });
   const handler = await import("@fenix/resource-machine/server");
   handler.closeAllFileWsConnections();
 });
@@ -87,7 +95,7 @@ describe("deleteMachine 退役清理（P0-5 / D18）", () => {
     const insert = mock(() => ({ values: valuesMock }));
     stubDeleteMachineDb({ id: "mach_retire", status: "offline" }, insert);
 
-    const result = await realRegistry.deleteMachine(authCtx, "mach_retire");
+    const result = await realRegistry.deleteMachine(scope, "mach_retire");
 
     expect(result).toEqual({ deleted: true });
     // file-ws 索引已清理：isFileWsConnected 必须为 false，不再有请求路由到退役机器
@@ -111,7 +119,7 @@ describe("deleteMachine 退役清理（P0-5 / D18）", () => {
     const insert = mock(() => ({ values: valuesMock }));
     stubDeleteMachineDb({ id: "mach_idle", status: "offline" }, insert);
 
-    const result = await realRegistry.deleteMachine(authCtx, "mach_idle");
+    const result = await realRegistry.deleteMachine(scope, "mach_idle");
 
     expect(result).toEqual({ deleted: true });
     // best-effort 写入失败被 deleteMachine 捕获，但调用参数仍必须正确。

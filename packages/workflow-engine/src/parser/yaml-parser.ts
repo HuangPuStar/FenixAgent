@@ -7,7 +7,7 @@
 
 import { parse as yamlParse } from "yaml";
 import type { CustomNodeRegistry } from "../plugins/registry";
-import type { CustomNodeDef, EndNodeDef, NodeDef, NodeType, WorkflowDef } from "../types/dag";
+import type { CustomNodeDef, EndNodeDef, NodeDef, NodeType, RetryConfig, WorkflowDef } from "../types/dag";
 import { WorkflowError, WorkflowErrorCode } from "../types/errors";
 
 const VALID_NODE_TYPES: NodeType[] = [
@@ -142,6 +142,7 @@ function parseNode(raw: unknown, index: number, opts?: ParseOptions): NodeDef {
     depends_on: Array.isArray(n.depends_on) ? (n.depends_on as string[]) : undefined,
     condition: typeof n.condition === "string" ? n.condition : undefined,
     timeout: typeof n.timeout === "number" ? n.timeout : undefined,
+    retry: parseRetry(n.retry, index, n.id),
     env: isRecord(n.env) ? (n.env as Record<string, string>) : undefined,
     outputs: parseOutputs(n.outputs),
   };
@@ -355,6 +356,33 @@ function parseNode(raw: unknown, index: number, opts?: ParseOptions): NodeDef {
         inputs: isRecord(n.inputs) ? (n.inputs as Record<string, string>) : undefined,
       } as EndNodeDef;
   }
+}
+
+function parseRetry(raw: unknown, index: number, nodeId: string): RetryConfig | undefined {
+  if (raw === undefined) return;
+  if (!isRecord(raw) || !Number.isInteger(raw.count) || (raw.count as number) < 0) {
+    throw new WorkflowError(
+      `nodes[${index}] (${nodeId}): retry requires a non-negative integer 'count'`,
+      WorkflowErrorCode.INVALID_YAML,
+    );
+  }
+  if (raw.delay !== undefined && (typeof raw.delay !== "number" || !Number.isFinite(raw.delay) || raw.delay < 0)) {
+    throw new WorkflowError(
+      `nodes[${index}] (${nodeId}): retry.delay must be a non-negative number`,
+      WorkflowErrorCode.INVALID_YAML,
+    );
+  }
+  if (raw.backoff !== undefined && raw.backoff !== "fixed" && raw.backoff !== "exponential") {
+    throw new WorkflowError(
+      `nodes[${index}] (${nodeId}): retry.backoff must be 'fixed' or 'exponential'`,
+      WorkflowErrorCode.INVALID_YAML,
+    );
+  }
+  return {
+    count: raw.count as number,
+    delay: raw.delay as number | undefined,
+    backoff: raw.backoff as RetryConfig["backoff"],
+  };
 }
 
 /** 解析 outputs 字段为 { pattern, type } 结构 */

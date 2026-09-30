@@ -4,7 +4,19 @@ import {
   _resetDeps,
   type AgentConfigModelMigrationRow,
   migrateAgentConfigModelId,
-} from "../services/data-migrates/migrate-agent-config-model-id";
+} from "@fenix/agent-config/db/migration";
+import type { DataMigrationContext } from "@fenix/platform-sdk";
+
+/**
+ * 迁移日志由 runner 经 context 注入（§6.3），模块不再直连 `@fenix/logger`：每个场景把自己的 `logs`
+ * 数组接到 sink 上，沿用「一份场景一份日志」的既有断言口径。
+ */
+let activeLogSink: string[] = [];
+
+const migrationContext: DataMigrationContext = {
+  log: (message) => activeLogSink.push(message),
+  warn: (message) => activeLogSink.push(message),
+};
 
 type ProviderRow = {
   id: string;
@@ -66,9 +78,7 @@ function stubDb(
     record.model = null;
     updates.push({ agentConfigId, nextModelId });
   };
-  _deps.log = (...args: unknown[]) => {
-    logs.push(args.join(" "));
-  };
+  activeLogSink = logs;
 
   return { records, updates, logs, stableProviderQueries, legacyProviderQueries, modelQueries };
 }
@@ -94,7 +104,7 @@ describe("round52 agent config model migration", () => {
   test("空记录集不执行查找和更新", async () => {
     const db = stubDb([]);
 
-    await migrateAgentConfigModelId.run();
+    await migrateAgentConfigModelId.run(migrationContext);
 
     expect(db.updates).toEqual([]);
     expect(db.stableProviderQueries).toEqual([]);
@@ -105,7 +115,7 @@ describe("round52 agent config model migration", () => {
   test("已有正式模型的记录保持不变", async () => {
     const db = legacyFixture(migrationRow({ modelId: "chosen-model" }));
 
-    await migrateAgentConfigModelId.run();
+    await migrateAgentConfigModelId.run(migrationContext);
 
     expect(db.records[0]).toMatchObject({ modelId: "chosen-model", model: "openai/gpt-4o" });
     expect(db.updates).toEqual([]);
@@ -115,7 +125,7 @@ describe("round52 agent config model migration", () => {
   test("null 历史模型不查询提供商", async () => {
     const db = legacyFixture(migrationRow({ model: null }));
 
-    await migrateAgentConfigModelId.run();
+    await migrateAgentConfigModelId.run(migrationContext);
 
     expect(db.legacyProviderQueries).toEqual([]);
     expect(db.updates).toEqual([]);
@@ -125,7 +135,7 @@ describe("round52 agent config model migration", () => {
   test("空白历史模型不更新记录", async () => {
     const db = legacyFixture(migrationRow({ model: " \n\t " }));
 
-    await migrateAgentConfigModelId.run();
+    await migrateAgentConfigModelId.run(migrationContext);
 
     expect(db.modelQueries).toEqual([]);
     expect(db.updates).toEqual([]);
@@ -139,7 +149,7 @@ describe("round52 agent config model migration", () => {
       [{ id: "model-stable", organizationId: "org-stable", providerId: "provider-stable", modelId: "model-stable" }],
     );
 
-    await migrateAgentConfigModelId.run();
+    await migrateAgentConfigModelId.run(migrationContext);
 
     expect(db.stableProviderQueries).toEqual([["org-stable", "provider-stable"]]);
     expect(db.updates).toEqual([{ agentConfigId: "agent-1", nextModelId: "model-stable" }]);
@@ -156,7 +166,7 @@ describe("round52 agent config model migration", () => {
       [{ id: "target-model", organizationId: "target-org", providerId: "provider-1", modelId: "gpt" }],
     );
 
-    await migrateAgentConfigModelId.run();
+    await migrateAgentConfigModelId.run(migrationContext);
 
     expect(db.modelQueries).toEqual([["target-org", "provider-1", "gpt"]]);
     expect(db.updates[0]?.nextModelId).toBe("target-model");
@@ -170,7 +180,7 @@ describe("round52 agent config model migration", () => {
       [{ id: "nested-model", organizationId: "org-1", providerId: "provider-1", modelId: "family/version/model" }],
     );
 
-    await migrateAgentConfigModelId.run();
+    await migrateAgentConfigModelId.run(migrationContext);
 
     expect(db.modelQueries).toEqual([["org-1", "provider-1", "family/version/model"]]);
   });
@@ -179,7 +189,7 @@ describe("round52 agent config model migration", () => {
   test("稳定引用缺少提供商时中止", async () => {
     const db = stubDb([migrationRow({ model: "org-1/missing/gpt" })]);
 
-    await expect(migrateAgentConfigModelId.run()).rejects.toThrow("missing provider 'org-1/missing'");
+    await expect(migrateAgentConfigModelId.run(migrationContext)).rejects.toThrow("missing provider 'org-1/missing'");
     expect(db.updates).toEqual([]);
   });
 
@@ -190,7 +200,7 @@ describe("round52 agent config model migration", () => {
       [{ id: "provider-1", organizationId: "org-1", name: "provider", displayName: null }],
     );
 
-    await expect(migrateAgentConfigModelId.run()).rejects.toThrow("missing model 'gone'");
+    await expect(migrateAgentConfigModelId.run(migrationContext)).rejects.toThrow("missing model 'gone'");
     expect(db.records[0]).toMatchObject({ modelId: null, model: "org-1/provider-1/gone" });
   });
 
@@ -205,7 +215,7 @@ describe("round52 agent config model migration", () => {
       [{ id: "name-model", organizationId: "org-1", providerId: "name", modelId: "gpt" }],
     );
 
-    await migrateAgentConfigModelId.run();
+    await migrateAgentConfigModelId.run(migrationContext);
 
     expect(db.modelQueries).toEqual([["org-1", "name", "gpt"]]);
   });
@@ -218,7 +228,7 @@ describe("round52 agent config model migration", () => {
       [{ id: "display-model", organizationId: "org-1", providerId: "display", modelId: "gpt" }],
     );
 
-    await migrateAgentConfigModelId.run();
+    await migrateAgentConfigModelId.run(migrationContext);
 
     expect(db.updates[0]?.nextModelId).toBe("display-model");
   });
@@ -235,7 +245,7 @@ describe("round52 agent config model migration", () => {
       { id: "second", organizationId: "org-1", name: "also-renamed", displayName: null },
     ];
 
-    await migrateAgentConfigModelId.run();
+    await migrateAgentConfigModelId.run(migrationContext);
 
     expect(db.modelQueries).toEqual([["org-1", "first", "gpt"]]);
   });
@@ -244,7 +254,7 @@ describe("round52 agent config model migration", () => {
   test("三段引用不会回退为旧格式", async () => {
     const db = stubDb([migrationRow({ model: "openai/family/version" })]);
 
-    await expect(migrateAgentConfigModelId.run()).rejects.toThrow("missing provider 'openai/family'");
+    await expect(migrateAgentConfigModelId.run(migrationContext)).rejects.toThrow("missing provider 'openai/family'");
     expect(db.legacyProviderQueries).toEqual([]);
   });
 
@@ -252,7 +262,9 @@ describe("round52 agent config model migration", () => {
   test("无分隔符的旧格式报错", async () => {
     const db = stubDb([migrationRow({ model: "not-a-reference" })]);
 
-    await expect(migrateAgentConfigModelId.run()).rejects.toThrow("invalid legacy model ref 'not-a-reference'");
+    await expect(migrateAgentConfigModelId.run(migrationContext)).rejects.toThrow(
+      "invalid legacy model ref 'not-a-reference'",
+    );
     expect(db.updates).toEqual([]);
   });
 
@@ -260,7 +272,7 @@ describe("round52 agent config model migration", () => {
   test("旧格式提供商缺失错误包含组织", async () => {
     const db = stubDb([migrationRow({ organizationId: "isolated-org", model: "missing/gpt" })]);
 
-    await expect(migrateAgentConfigModelId.run()).rejects.toThrow("org='isolated-org'");
+    await expect(migrateAgentConfigModelId.run(migrationContext)).rejects.toThrow("org='isolated-org'");
     expect(db.updates).toEqual([]);
   });
 
@@ -271,7 +283,7 @@ describe("round52 agent config model migration", () => {
       [{ id: "provider-openai", organizationId: "org-1", name: "openai", displayName: null }],
     );
 
-    await expect(migrateAgentConfigModelId.run()).rejects.toThrow("missing legacy model 'gpt-4o'");
+    await expect(migrateAgentConfigModelId.run(migrationContext)).rejects.toThrow("missing legacy model 'gpt-4o'");
     expect(db.records[0]).toMatchObject({ modelId: null, model: "openai/gpt-4o" });
   });
 
@@ -279,7 +291,7 @@ describe("round52 agent config model migration", () => {
   test("成功迁移更新记录并记录日志", async () => {
     const db = legacyFixture();
 
-    await migrateAgentConfigModelId.run();
+    await migrateAgentConfigModelId.run(migrationContext);
 
     expect(db.records[0]).toMatchObject({ modelId: "model-gpt-4o", model: null });
     expect(db.logs).toEqual(["[data-migrate] migrated agentConfig model id='agent-1'"]);
@@ -289,8 +301,8 @@ describe("round52 agent config model migration", () => {
   test("重复运行保持幂等", async () => {
     const db = legacyFixture();
 
-    await migrateAgentConfigModelId.run();
-    await migrateAgentConfigModelId.run();
+    await migrateAgentConfigModelId.run(migrationContext);
+    await migrateAgentConfigModelId.run(migrationContext);
 
     expect(db.updates).toEqual([{ agentConfigId: "agent-1", nextModelId: "model-gpt-4o" }]);
     expect(db.logs).toHaveLength(1);
@@ -303,7 +315,7 @@ describe("round52 agent config model migration", () => {
       throw new Error("write unavailable");
     };
 
-    await expect(migrateAgentConfigModelId.run()).rejects.toThrow("write unavailable");
+    await expect(migrateAgentConfigModelId.run(migrationContext)).rejects.toThrow("write unavailable");
     expect(db.logs).toEqual([]);
   });
 });

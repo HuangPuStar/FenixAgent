@@ -26,6 +26,7 @@ import {
 } from "./json-rpc.js";
 import { buildPeriCapabilityMeta, isPeriTaskNotificationMethod } from "./peri-task-capability.js";
 import { createReconnectScheduler } from "./reconnect-scheduler.js";
+import { ServerRelayRouter } from "./server-relay-router.js";
 import { buildAgentProcessEnv } from "./spawn-env.js";
 import type { AgentCapabilities, ContentBlock, PromptCapabilities, SessionModelState } from "./types.js";
 import { getWebSocketCodeMessage, WEBSOCKET_CODES } from "./websocket-code.js";
@@ -43,7 +44,6 @@ interface AcpWs {
 }
 
 // WebSocket readyState 常量（跨运行时通用）
-const WS_OPEN = 1;
 const WS_CLOSING = 2;
 const WS_CLOSED = 3;
 
@@ -86,6 +86,15 @@ export interface ServerConfig {
   labels?: string[];
   /** Agent 类型：peri（默认）、opencode、ccb、claude-code */
   agentType?: AgentType;
+  /**
+   * ccb 槽位的引擎命令与参数（可选），仅 ccb handler 消费。
+   *
+   * 这两个键是 daemon / 容器侧的部署配置：沙箱镜像借此把 ccb 槽位指向伪装 wrapper（如 `node
+   * dsh-acp-wrapper.js`），由 `acp-runtime-cli` 从 `RCS_CCB_COMMAND` / `RCS_CCB_ARGS` 读入后传入。
+   * 未设置时 ccb handler 回退自身默认（`ccb --acp`），与传入前逐字等价。
+   */
+  ccbCommand?: string;
+  ccbArgs?: string[];
   /** 支持的引擎类型列表，注册时上报给 RCS */
   supportedEngineTypes?: { type: string; cliPath?: string }[];
   /** 用户指定的机器显示名称，可选 */
@@ -101,18 +110,17 @@ export interface AcpServerHandle {
 // Pending permission request
 interface PendingPermission {
   jsonRpcId: number | string;
+  socket: AcpWs;
   resolve: (outcome: { outcome: "cancelled" } | { outcome: "selected"; optionId: string }) => void;
   timeout: ReturnType<typeof setTimeout>;
 }
 
-// Track connected clients and their agent connections
-interface ClientState {
+// Track the Agent connection shared by this server instance
+interface RuntimeState {
   process: ChildProcess | null;
   connection: acp.ClientSideConnection | null;
-  sessionId: string | null;
   pendingPermissions: Map<string, PendingPermission>;
   /** AskUserQuestion 提问处理器（interactive_question 帧发出/答案回传/超时/取消） */
-  elicitation: ElicitationHandler;
   agentCapabilities: AgentCapabilities | null;
   promptCapabilities: PromptCapabilities | null;
   modelState: SessionModelState | null;
@@ -124,20 +132,18 @@ interface ClientState {
     }>;
     currentModeId: string;
   } | null;
-  isAlive: boolean;
-  /** 会话标题本地覆盖缓存。agent 可能不支持 session_info_update，因此需本地维护 */
-  titleOverrides: Map<string, string | null>;
 }
 
 // Heartbeat interval for WebSocket ping/pong (30 seconds)
 const HEARTBEAT_INTERVAL_MS = 30_000;
 
-function cancelPendingPermissions(clientState: ClientState): void {
-  for (const [, pending] of clientState.pendingPermissions) {
+function cancelPendingPermissions(clientState: RuntimeState, socket?: AcpWs): void {
+  for (const [requestId, pending] of clientState.pendingPermissions) {
+    if (socket && pending.socket !== socket) continue;
     clearTimeout(pending.timeout);
     pending.resolve({ outcome: "cancelled" });
+    clientState.pendingPermissions.delete(requestId);
   }
-  clientState.pendingPermissions.clear();
 }
 
 /** 将服务端 close reason 限制为单行诊断信息，避免日志注入和超长输出。 */
@@ -215,11 +221,14 @@ export function createAcpClient(config: ServerConfig): { close: () => void } {
 
   const cwd = config.cwd || process.cwd();
   const sessionMgr = new SessionManager(config.command, 5, config.cwd || process.cwd());
+  // skill 下载 origin 与引擎命令同属 daemon / 容器侧部署配置：launchSpec 里的 skill URL 由宿主按自身 base URL
+  // 生成，容器内的 localhost 指向容器自身，故这里把本进程可达的 `rcsUrl` 交给 installer 换算 origin。
+  const downloadOrigin = config.rcsUrl;
   const handlers: Record<string, EngineHandler> = {
-    opencode: createOpencodeHandler(config.command, config.args),
-    ccb: createCcbHandler(),
+    opencode: createOpencodeHandler(config.command, config.args, { downloadOrigin }),
+    ccb: createCcbHandler(config.ccbCommand, config.ccbArgs, { downloadOrigin }),
     "claude-code": createClaudeCodeHandler(),
-    peri: createPeriHandler(config.command, config.args),
+    peri: createPeriHandler(config.command, config.args, { downloadOrigin }),
   };
   const instanceMgr = new InstanceManager(handlers, config.cwd || process.cwd(), config.agentType ?? "peri");
 
@@ -880,18 +889,57 @@ export function createAcpServer(config: ServerConfig): AcpServerHandle {
   const PERMISSION_TIMEOUT_MS = 30_000;
 
   // Per-instance state — no module-level globals
-  const clients = new Map<AcpWs, ClientState>();
+  const clients = new Map<AcpWs, RuntimeState>();
+  const relayRouter = new ServerRelayRouter<AcpWs>((ws) => {
+    handleDisconnect(ws);
+    clients.delete(ws);
+    socketAlive.delete(ws);
+    elicitations.delete(ws);
+    try {
+      ws.close();
+    } catch (error) {
+      console.warn("[acp-server] relay close failed:", error instanceof Error ? error.name : typeof error);
+    }
+  });
+  const socketSessions = new Map<AcpWs, string>();
+  const socketAlive = new Map<AcpWs, boolean>();
+  const elicitations = new Map<AcpWs, ElicitationHandler>();
+  const state: RuntimeState = {
+    process: null,
+    connection: null,
+    pendingPermissions: new Map(),
+    agentCapabilities: null,
+    promptCapabilities: null,
+    modelState: null,
+    modeState: null,
+  };
+  let agentInfo: unknown = { name: command };
+  let connecting: Promise<void> | null = null;
+  let stopped = false;
   let heartbeatTimer: ReturnType<typeof setInterval> | null = null;
 
   // --- Helpers (closures over local `clients`) ---
 
   function sendMsg(ws: AcpWs, message: unknown): void {
-    if (ws.readyState === WS_OPEN) {
-      ws.send(JSON.stringify(message));
+    relayRouter.sendTo(ws, message);
+  }
+
+  function bindSession(ws: AcpWs, sessionId: string): void {
+    socketSessions.set(ws, sessionId);
+    relayRouter.bind(sessionId, ws);
+  }
+
+  function restoreSession(ws: AcpWs, previousSessionId: string | undefined, attemptedSessionId: string): void {
+    if (socketSessions.get(ws) !== attemptedSessionId) return;
+    if (previousSessionId) {
+      bindSession(ws, previousSessionId);
+    } else {
+      socketSessions.delete(ws);
+      relayRouter.unbind(ws);
     }
   }
 
-  function createClient(ws: AcpWs, clientState: ClientState): acp.Client {
+  function createClient(clientState: RuntimeState): acp.Client {
     return {
       // 与 remote 路径（spawnAcpAgent）行为对齐：发送 permission_request 到前端，等待用户响应。
       // Bun WS 的 async handler 在每次 await 时会 yield 到事件循环，不会阻塞后续 WS 消息处理，
@@ -914,17 +962,23 @@ export function createAcpServer(config: ServerConfig): AcpServerHandle {
               ];
 
         const outcome = await new Promise<acp.RequestPermissionOutcome>((resolve) => {
+          const socket = relayRouter.resolve(sessionId);
+          if (!socket) {
+            resolve({ outcome: "cancelled" });
+            return;
+          }
           const timer = setTimeout(() => {
             clientState.pendingPermissions.delete(requestId);
             resolve({ outcome: "cancelled" });
           }, PERMISSION_TIMEOUT_MS);
           clientState.pendingPermissions.set(requestId, {
             jsonRpcId: requestId,
+            socket,
             resolve,
             timeout: timer,
           });
 
-          sendMsg(ws, {
+          sendMsg(socket, {
             type: "permission_request",
             payload: {
               sessionId,
@@ -942,10 +996,14 @@ export function createAcpServer(config: ServerConfig): AcpServerHandle {
 
       // AskUserQuestion：委托公共 elicitation handler（解析 schema、发帧、
       // 120s 超时空答案、control_response 回传均在其中，见 elicitation.ts）
-      unstable_createElicitation: (params) => clientState.elicitation.handle(params),
+      unstable_createElicitation: (params) => {
+        const sessionId = "sessionId" in params && typeof params.sessionId === "string" ? params.sessionId : undefined;
+        const socket = relayRouter.resolve(sessionId);
+        return socket ? elicitations.get(socket)!.handle(params) : Promise.resolve({ action: "accept", content: {} });
+      },
 
       async sessionUpdate(params) {
-        sendMsg(ws, createNotification(ACP_METHOD.SESSION_UPDATE, params));
+        relayRouter.sendSession(params.sessionId, createNotification(ACP_METHOD.SESSION_UPDATE, params));
       },
 
       async readTextFile(_params) {
@@ -961,7 +1019,7 @@ export function createAcpServer(config: ServerConfig): AcpServerHandle {
       extNotification: async (method: string, params: Record<string, unknown>) => {
         if (isPeriTaskNotificationMethod(method)) {
           console.log(`[acp-link] forwarding Peri notification: method=${method}`);
-          sendMsg(ws, createNotification(method, params));
+          relayRouter.sendSession(params.sessionId as string | undefined, createNotification(method, params));
         }
       },
     };
@@ -977,7 +1035,7 @@ export function createAcpServer(config: ServerConfig): AcpServerHandle {
     // payload 是 {requestId, outcome} 或直接 outcome
     const requestId = (payload.requestId ?? id) as string;
     const pending = state.pendingPermissions.get(requestId);
-    if (!pending) {
+    if (!pending || pending.socket !== ws) {
       console.warn("permission response for unknown request:", requestId);
       return;
     }
@@ -1008,18 +1066,6 @@ export function createAcpServer(config: ServerConfig): AcpServerHandle {
     const state = clients.get(ws);
     if (!state) return;
 
-    // 处理 session_info_update：本地缓存标题
-    if (msg.method === ACP_METHOD.SESSION_UPDATE) {
-      const sessionId = msg.params.sessionId as string | undefined;
-      const update = msg.params.update as Record<string, unknown> | undefined;
-      if (sessionId && update?.sessionUpdate === "session_info_update") {
-        const title = update.title as string | null | undefined;
-        if (title !== undefined) {
-          state.titleOverrides.set(sessionId, title);
-        }
-      }
-    }
-
     // 转发通知给 agent
     if (state.connection) {
       try {
@@ -1035,39 +1081,49 @@ export function createAcpServer(config: ServerConfig): AcpServerHandle {
 
   // --- session/rename 请求处理 ---
 
-  async function handleRenameSession(ws: AcpWs, id: number | string, params: Record<string, unknown>): Promise<void> {
+  async function handleRenameSession(ws: AcpWs, id: number | string, _params: Record<string, unknown>): Promise<void> {
     const state = clients.get(ws);
     if (!state?.connection) {
       sendMsg(ws, createErrorResponse(id, -32000, "Not connected to agent"));
       return;
     }
 
-    const sessionId = params.sessionId as string;
-    const title = (params.title as string) ?? "";
+    sendMsg(ws, createErrorResponse(id, -32601, "session/rename is not supported by ACP"));
+  }
 
+  async function handleDeleteSession(ws: AcpWs, id: number | string, params: Record<string, unknown>): Promise<void> {
+    const state = clients.get(ws);
+    if (!state?.connection) {
+      sendMsg(ws, createErrorResponse(id, -32000, "Not connected to agent"));
+      return;
+    }
+    if (!state.agentCapabilities?.sessionCapabilities?.delete) {
+      sendMsg(ws, createErrorResponse(id, -32601, "session/delete is not supported by agent"));
+      return;
+    }
+    const sessionId = params.sessionId;
+    if (typeof sessionId !== "string" || sessionId.length === 0) {
+      sendMsg(ws, createErrorResponse(id, -32602, "Invalid sessionId"));
+      return;
+    }
     try {
-      // 本地缓存标题（agent 可能不支持 session_info_update，因此需本地维护）
-      state.titleOverrides.set(sessionId, title);
-
-      // 通过 session/update 通知转发 rename 给 agent
-      const conn = state.connection as unknown as {
-        connection: { agent: { notify: (m: string, p: unknown) => Promise<void> } };
-      };
-      await conn.connection.agent.notify("session/update", {
-        sessionId,
-        update: { sessionUpdate: "session_info_update", title },
-      });
-      sendMsg(ws, createSuccessResponse(id, { sessionId, title }));
+      await state.connection.deleteSession({ sessionId });
+      sendMsg(ws, createSuccessResponse(id, { deleted: true, sessionId }));
     } catch (error) {
-      sendMsg(ws, createErrorResponse(id, -32603, `Failed to rename session: ${(error as Error).message}`));
+      console.error("session delete failed:", error instanceof Error ? error.name : typeof error);
+      sendMsg(ws, createErrorResponse(id, -32603, "Failed to delete session"));
     }
   }
 
   // --- Agent lifecycle handlers ---
 
   async function handleConnect(ws: AcpWs): Promise<void> {
-    const state = clients.get(ws);
-    if (!state) return;
+    if (!clients.has(ws) || stopped) return;
+
+    if (connecting) {
+      await connecting;
+      return;
+    }
 
     // If already connected to a running agent, just resend status
     if (state.connection && state.process && !state.process.killed && state.process.exitCode === null) {
@@ -1076,22 +1132,27 @@ export function createAcpServer(config: ServerConfig): AcpServerHandle {
         type: "status",
         payload: {
           connected: true,
-          agentInfo: { name: command },
+          agentInfo,
           capabilities: state.agentCapabilities,
         },
       });
       return;
     }
 
-    // Kill existing process if any (only if not healthy)
+    connecting = startAgent();
+    try {
+      await connecting;
+    } finally {
+      connecting = null;
+    }
+  }
+
+  async function startAgent(): Promise<void> {
     if (state.process) {
-      cancelPendingPermissions(state);
-      state.elicitation.cancelAll();
       state.process.kill();
       state.process = null;
       state.connection = null;
     }
-
     try {
       console.log("spawning agent:", command, args);
 
@@ -1109,7 +1170,7 @@ export function createAcpServer(config: ServerConfig): AcpServerHandle {
         if (state.process === agentProcess) {
           state.process = null;
           state.connection = null;
-          state.sessionId = null;
+          relayRouter.broadcast({ type: "status", payload: { connected: false } });
         }
       });
 
@@ -1117,7 +1178,7 @@ export function createAcpServer(config: ServerConfig): AcpServerHandle {
       const output = Readable.toWeb(agentProcess.stdout!) as unknown as ReadableStream<Uint8Array>;
 
       const stream = acp.ndJsonStream(input, output);
-      const connection = new acp.ClientSideConnection((_agent) => createClient(ws, state), stream);
+      const connection = new acp.ClientSideConnection((_agent) => createClient(state), stream);
 
       state.connection = connection;
 
@@ -1136,10 +1197,15 @@ export function createAcpServer(config: ServerConfig): AcpServerHandle {
         },
       });
 
+      if (stopped || state.process !== agentProcess || state.connection !== connection) {
+        return;
+      }
+
       const agentCaps = initResult.agentCapabilities;
       // 透传 SDK 返回的全部 capabilities，包括 configOptions 等未知字段
       state.agentCapabilities = agentCaps ?? null;
       state.promptCapabilities = agentCaps?.promptCapabilities ?? null;
+      agentInfo = initResult.agentInfo;
 
       console.log(
         "agent initialized:",
@@ -1154,7 +1220,7 @@ export function createAcpServer(config: ServerConfig): AcpServerHandle {
         `periUnstableEvent=${periMeta["peri.unstableEvent"] === true}`,
       );
 
-      sendMsg(ws, {
+      relayRouter.broadcast({
         type: "status",
         payload: {
           connected: true,
@@ -1164,17 +1230,20 @@ export function createAcpServer(config: ServerConfig): AcpServerHandle {
       });
 
       connection.closed.then(() => {
+        if (state.connection !== connection) return;
         console.log("agent connection closed");
         state.connection = null;
-        state.sessionId = null;
-        sendMsg(ws, { type: "status", payload: { connected: false } });
+        relayRouter.broadcast({ type: "status", payload: { connected: false } });
       });
     } catch (error) {
+      if (state.process) state.process.kill();
+      state.process = null;
+      state.connection = null;
       console.error("agent connect failed:", (error as Error).message);
-      sendMsg(ws, {
+      relayRouter.broadcast({
         type: "error",
         payload: {
-          message: `Failed to connect: ${(error as Error).message}`,
+          message: "Failed to connect to agent",
         },
       });
     }
@@ -1195,7 +1264,7 @@ export function createAcpServer(config: ServerConfig): AcpServerHandle {
         mcpServers: [],
       });
 
-      state.sessionId = result.sessionId;
+      bindSession(ws, result.sessionId);
       state.modelState = extractModelState(result.configOptions);
       state.modeState = result.modes ?? extractModeState(result.configOptions);
       console.log("session created:", result.sessionId, "cwd:", sessionCwd);
@@ -1236,16 +1305,8 @@ export function createAcpServer(config: ServerConfig): AcpServerHandle {
       });
 
       const MAX_SESSIONS = 20;
-      // 应用本地标题覆盖（agent 可能不支持 session_info_update）
-      const withOverrides = result.sessions.map((s: acp.SessionInfo) => {
-        const override = state.titleOverrides.get(s.sessionId);
-        if (override !== undefined) {
-          return { ...s, title: override };
-        }
-        return s;
-      });
       // 过滤掉标题为空或以 "New session" 开头的会话（与 acp-dispatcher/session-manager 保持一致）
-      const filtered = withOverrides.filter(
+      const filtered = result.sessions.filter(
         (s: acp.SessionInfo) => s.title?.trim() && !s.title.trim().toLowerCase().startsWith("new session"),
       );
       const sessions = filtered.slice(0, MAX_SESSIONS);
@@ -1285,16 +1346,21 @@ export function createAcpServer(config: ServerConfig): AcpServerHandle {
       return;
     }
 
+    const sessionId = params.sessionId;
+    if (typeof sessionId !== "string" || sessionId.length === 0) {
+      sendMsg(ws, createErrorResponse(id, -32602, "Invalid sessionId"));
+      return;
+    }
+    const previousSessionId = socketSessions.get(ws);
+    bindSession(ws, sessionId);
     try {
       const sessionCwd = (params.cwd as string) || cwd;
-      const sessionId = params.sessionId as string;
       const result = await state.connection.loadSession({
         sessionId,
         cwd: sessionCwd,
         mcpServers: [],
       });
 
-      state.sessionId = sessionId;
       state.modelState = extractModelState(result.configOptions);
       state.modeState = result.modes ?? extractModeState(result.configOptions);
       console.log("session loaded:", sessionId, "cwd:", sessionCwd);
@@ -1310,6 +1376,7 @@ export function createAcpServer(config: ServerConfig): AcpServerHandle {
         }),
       );
     } catch (error) {
+      restoreSession(ws, previousSessionId, sessionId);
       console.error("session load failed:", (error as Error).message);
       sendMsg(ws, createErrorResponse(id, -32603, `Failed to load session: ${(error as Error).message}`));
     }
@@ -1328,16 +1395,21 @@ export function createAcpServer(config: ServerConfig): AcpServerHandle {
       return;
     }
 
+    const sessionId = params.sessionId;
+    if (typeof sessionId !== "string" || sessionId.length === 0) {
+      sendMsg(ws, createErrorResponse(id, -32602, "Invalid sessionId"));
+      return;
+    }
+    const previousSessionId = socketSessions.get(ws);
+    bindSession(ws, sessionId);
     try {
       const sessionCwd = (params.cwd as string) || cwd;
-      const sessionId = params.sessionId as string;
       // @ts-expect-error SDK type mismatch: unstable_resumeSession exists on Agent interface but not resolved
       const result = await state.connection.unstable_resumeSession({
         sessionId,
         cwd: sessionCwd,
       });
 
-      state.sessionId = sessionId;
       state.modelState = extractModelState(result.configOptions);
       state.modeState = result.modes ?? extractModeState(result.configOptions);
       console.log("session resumed:", sessionId, "cwd:", sessionCwd);
@@ -1353,6 +1425,7 @@ export function createAcpServer(config: ServerConfig): AcpServerHandle {
         }),
       );
     } catch (error) {
+      restoreSession(ws, previousSessionId, sessionId);
       console.error("session resume failed:", (error as Error).message);
       sendMsg(ws, createErrorResponse(id, -32603, `Failed to resume session: ${(error as Error).message}`));
     }
@@ -1360,10 +1433,15 @@ export function createAcpServer(config: ServerConfig): AcpServerHandle {
 
   async function handlePrompt(ws: AcpWs, id: number | string, params: Record<string, unknown>): Promise<void> {
     const state = clients.get(ws);
-    if (!state?.connection || !state.sessionId) {
+    const promptSessionId =
+      typeof params.sessionId === "string" && params.sessionId.length > 0 ? params.sessionId : socketSessions.get(ws);
+    if (!state?.connection || !promptSessionId) {
       sendMsg(ws, createErrorResponse(id, -32000, "No active session"));
       return;
     }
+
+    const previousSessionId = socketSessions.get(ws);
+    bindSession(ws, promptSessionId);
 
     try {
       const content = params.content as ContentBlock[];
@@ -1371,9 +1449,6 @@ export function createAcpServer(config: ServerConfig): AcpServerHandle {
         .filter((c) => c.type === "text")
         .map((c) => (c as { text: string }).text)
         .join(" ");
-      // 优先按请求携带的 sessionId 路由（并发 run 各自会话）；
-      // yjs 前端 translator 的 prompt 不带 sessionId，fallback 到连接级当前会话，保持向后兼容
-      const promptSessionId = (params.sessionId as string | undefined) ?? state.sessionId;
       console.log("[acp-server] prompt:", {
         sessionId: promptSessionId,
         id,
@@ -1388,40 +1463,36 @@ export function createAcpServer(config: ServerConfig): AcpServerHandle {
       console.log("[acp-server] prompt completed:", JSON.stringify(result).slice(0, 500));
       sendMsg(ws, createSuccessResponse(id, result));
     } catch (error) {
+      restoreSession(ws, previousSessionId, promptSessionId);
       console.error("prompt failed:", (error as Error).message);
       sendMsg(ws, createForwardedErrorResponse(id, error, `Prompt failed: ${(error as Error).message}`));
     }
   }
 
   function handleDisconnect(ws: AcpWs): void {
-    const state = clients.get(ws);
-    if (!state) return;
-
-    if (state.process) {
-      state.process.kill();
-      state.process = null;
-    }
-    state.connection = null;
-    state.sessionId = null;
-
-    sendMsg(ws, { type: "status", payload: { connected: false } });
+    if (!clients.has(ws)) return;
+    cancelPendingPermissions(state, ws);
+    elicitations.get(ws)?.cancelAll();
+    socketSessions.delete(ws);
+    relayRouter.unbind(ws);
   }
 
-  async function handleCancel(ws: AcpWs, id: number | string): Promise<void> {
+  async function handleCancel(ws: AcpWs, id: number | string, params: Record<string, unknown>): Promise<void> {
     const state = clients.get(ws);
-    if (!state?.connection || !state.sessionId) {
+    const sessionId = typeof params.sessionId === "string" ? params.sessionId : socketSessions.get(ws);
+    if (!state?.connection || !sessionId) {
       console.warn("cancel requested but no active session");
       sendMsg(ws, createSuccessResponse(id, { cancelled: false }));
       return;
     }
 
-    console.log("cancel requested, sessionId:", state.sessionId);
-    cancelPendingPermissions(state);
-    state.elicitation.cancelAll();
+    console.log("cancel requested, sessionId:", sessionId);
+    cancelPendingPermissions(state, ws);
+    elicitations.get(ws)?.cancelAll();
 
     try {
-      await state.connection.cancel({ sessionId: state.sessionId });
-      console.log("cancel sent, sessionId:", state.sessionId);
+      await state.connection.cancel({ sessionId });
+      console.log("cancel sent, sessionId:", sessionId);
       sendMsg(ws, createSuccessResponse(id, { cancelled: true }));
     } catch (error) {
       console.error("cancel failed:", (error as Error).message);
@@ -1431,7 +1502,8 @@ export function createAcpServer(config: ServerConfig): AcpServerHandle {
 
   async function handleSetSessionModel(ws: AcpWs, id: number | string, params: Record<string, unknown>): Promise<void> {
     const state = clients.get(ws);
-    if (!state?.connection || !state.sessionId) {
+    const sessionId = socketSessions.get(ws);
+    if (!state?.connection || !sessionId) {
       sendMsg(ws, createErrorResponse(id, -32000, "No active session"));
       return;
     }
@@ -1455,9 +1527,9 @@ export function createAcpServer(config: ServerConfig): AcpServerHandle {
         return;
       }
 
-      console.log("setting model, sessionId:", state.sessionId, "modelId:", modelId);
+      console.log("setting model, sessionId:", sessionId, "modelId:", modelId);
       await state.connection.setSessionConfigOption?.({
-        sessionId: state.sessionId,
+        sessionId,
         configId: "model",
         value: modelId,
       });
@@ -1472,7 +1544,8 @@ export function createAcpServer(config: ServerConfig): AcpServerHandle {
 
   async function handleSetSessionMode(ws: AcpWs, id: number | string, params: Record<string, unknown>): Promise<void> {
     const state = clients.get(ws);
-    if (!state?.connection || !state.sessionId) {
+    const sessionId = socketSessions.get(ws);
+    if (!state?.connection || !sessionId) {
       sendMsg(ws, createErrorResponse(id, -32000, "No active session"));
       return;
     }
@@ -1485,7 +1558,7 @@ export function createAcpServer(config: ServerConfig): AcpServerHandle {
     try {
       const modeId = params.modeId as string;
       await state.connection.setSessionMode({
-        sessionId: state.sessionId,
+        sessionId,
         modeId,
       });
       state.modeState = { ...state.modeState, currentModeId: modeId };
@@ -1516,10 +1589,9 @@ export function createAcpServer(config: ServerConfig): AcpServerHandle {
           // AskUserQuestion 答案回传（translator 构造的传输帧，非 JSON-RPC）：
           // request_id = questionId，extra.answers = 选中选项 label 数组（按问题顺序）。
           // 与 acp-dispatcher.ts:194 handleTransportMessage 消费形态对齐。
-          const state = clients.get(ws);
-          if (state) {
+          if (clients.has(ws)) {
             const requestId = (msg.request_id as string) ?? "";
-            if (!state.elicitation.resolve(requestId, (msg.extra ?? {}) as Record<string, unknown>)) {
+            if (!elicitations.get(ws)?.resolve(requestId, (msg.extra ?? {}) as Record<string, unknown>)) {
               console.warn("question response for unknown request:", requestId);
             }
           }
@@ -1528,10 +1600,9 @@ export function createAcpServer(config: ServerConfig): AcpServerHandle {
         case "cancel_pending_permissions": {
           // 前端 relay 断连时，主服务通过 relay handle 发送此消息，
           // 通知 acp-link server 立即取消所有待决权限请求，避免 agent 等待 30s 超时。
-          const state = clients.get(ws);
-          if (state) {
-            cancelPendingPermissions(state);
-            state.elicitation.cancelAll();
+          if (clients.has(ws)) {
+            cancelPendingPermissions(state, ws);
+            elicitations.get(ws)?.cancelAll();
           }
           break;
         }
@@ -1553,7 +1624,7 @@ export function createAcpServer(config: ServerConfig): AcpServerHandle {
           await handlePrompt(ws, id, p);
           break;
         case ACP_METHOD.SESSION_CANCEL:
-          await handleCancel(ws, id);
+          await handleCancel(ws, id, p);
           break;
         case ACP_METHOD.SESSION_SET_MODEL:
           await handleSetSessionModel(ws, id, p);
@@ -1572,6 +1643,9 @@ export function createAcpServer(config: ServerConfig): AcpServerHandle {
           break;
         case ACP_METHOD.SESSION_RENAME:
           await handleRenameSession(ws, id, p);
+          break;
+        case ACP_METHOD.SESSION_DELETE:
+          await handleDeleteSession(ws, id, p);
           break;
         default:
           sendMsg(ws, createErrorResponse(id, -32601, `Method not found: ${method}`));
@@ -1602,20 +1676,17 @@ export function createAcpServer(config: ServerConfig): AcpServerHandle {
   const server = adapter(port, host, {
     open(ws: AcpWs) {
       console.log("client connected");
-      const state: ClientState = {
-        process: null,
-        connection: null,
-        sessionId: null,
-        pendingPermissions: new Map(),
-        elicitation: createElicitationHandler((payload) => sendMsg(ws, { type: "interactive_question", payload })),
-        agentCapabilities: null,
-        promptCapabilities: null,
-        modelState: null,
-        modeState: null,
-        isAlive: true,
-        titleOverrides: new Map(),
-      };
+      if (stopped) {
+        ws.close();
+        return;
+      }
       clients.set(ws, state);
+      relayRouter.add(ws);
+      socketAlive.set(ws, true);
+      elicitations.set(
+        ws,
+        createElicitationHandler((payload) => sendMsg(ws, { type: "interactive_question", payload })),
+      );
     },
     async message(ws: AcpWs, raw: unknown) {
       try {
@@ -1635,35 +1706,36 @@ export function createAcpServer(config: ServerConfig): AcpServerHandle {
     },
     close(ws: AcpWs) {
       console.log("client disconnected");
-      const state = clients.get(ws);
-      if (state) {
-        cancelPendingPermissions(state);
-        state.elicitation.cancelAll();
-      }
       handleDisconnect(ws);
       clients.delete(ws);
+      relayRouter.remove(ws);
+      socketSessions.delete(ws);
+      socketAlive.delete(ws);
+      elicitations.delete(ws);
     },
     pong(ws: AcpWs) {
-      const state = clients.get(ws);
-      if (state) {
-        state.isAlive = true;
-      }
+      if (clients.has(ws)) socketAlive.set(ws, true);
     },
   });
 
   // Heartbeat: periodically ping all connected clients
   heartbeatTimer = setInterval(() => {
-    for (const [ws, state] of clients) {
+    for (const ws of clients.keys()) {
       if (ws.readyState === WS_CLOSED || ws.readyState === WS_CLOSING) {
+        handleDisconnect(ws);
         clients.delete(ws);
+        relayRouter.remove(ws);
+        socketSessions.delete(ws);
+        socketAlive.delete(ws);
+        elicitations.delete(ws);
         continue;
       }
-      if (!state.isAlive) {
+      if (!socketAlive.get(ws)) {
         console.log("heartbeat timeout, closing");
         ws.close();
         continue;
       }
-      state.isAlive = false;
+      socketAlive.set(ws, false);
       ws.ping();
     }
   }, HEARTBEAT_INTERVAL_MS);
@@ -1673,16 +1745,22 @@ export function createAcpServer(config: ServerConfig): AcpServerHandle {
 
   return {
     close() {
+      if (stopped) return;
+      stopped = true;
       if (heartbeatTimer) {
         clearInterval(heartbeatTimer);
         heartbeatTimer = null;
       }
-      for (const [, cs] of clients) {
-        cancelPendingPermissions(cs);
-        cs.elicitation.cancelAll();
-        if (cs.process) cs.process.kill();
-      }
+      cancelPendingPermissions(state);
+      for (const elicitation of elicitations.values()) elicitation.cancelAll();
+      if (state.process) state.process.kill();
+      state.process = null;
+      state.connection = null;
       clients.clear();
+      relayRouter.clear();
+      socketSessions.clear();
+      socketAlive.clear();
+      elicitations.clear();
       server.stop();
     },
   };

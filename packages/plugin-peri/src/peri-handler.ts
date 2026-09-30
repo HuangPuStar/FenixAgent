@@ -3,35 +3,51 @@ import { AcpDispatcher } from "acp-link/acp-dispatcher";
 import { spawnAcpAgent } from "acp-link/client/acp-spawn-helper";
 import type { EngineHandler, EngineStartContext } from "acp-link/client/instance-manager";
 import { resolveExecutable } from "acp-link/client/resolve-executable";
-import { prepareWorkspaceEnvironment, writePeriSettings } from "./runtime/environment-preparer";
+import { prepareLaunchWorkspace, prepareWorkspaceEnvironment, writePeriSettings } from "./runtime/environment-preparer";
 import { buildPeriMcpConfig, buildPeriRuntimeConfig } from "./runtime/runtime-config";
 import { installSkills } from "./runtime/skill-installer";
+
+export interface PeriHandlerOptions {
+  /**
+   * skill 归档下载的 origin（agent 侧能访问到主服务的基址，可给 `ws(s)://`）。
+   *
+   * daemon / 容器侧部署配置，取值来自 `acp-runtime-cli` 读入后经 `ServerConfig` 下发的 `rcsUrl`。未注入时
+   * installer 保持 launchSpec 里的原始 URL（宿主自身生成的地址本就可达）。
+   */
+  downloadOrigin?: string;
+}
 
 /**
  * peri 引擎 handler：spawn peri acp 子进程，通过 ACP stdio 通信。
  *
  * 用于远程 machine 侧（acp-link client 模式）：机器上已装好 peri，
- * 由 `acp-runtime peri acp` 传入命令与参数。
+ * 由 `acp-runtime peri acp` 传入命令与参数。handler 不直读 `process.env`：引擎命令与 skill 下载 origin 都是
+ * daemon / 容器侧部署配置，由 `acp-runtime-cli` 读取后经 `ServerConfig` 传入。
  *
  * 与 `@fenix/ccb` 的 handler 的差异：peri 是独立引擎，workspace 物化时写
  * `.peri/settings.json`（peri 自己的 provider/profile 配置），ccb 侧不写该文件。
  */
-export function createPeriHandler(binary?: string, extraArgs?: string[]): EngineHandler {
+export function createPeriHandler(
+  binary?: string,
+  extraArgs?: string[],
+  options: PeriHandlerOptions = {},
+): EngineHandler {
   // 延迟到 startInstance 才 resolve executable，避免机器上没有 peri 时启动失败
   const binaryName = binary ?? "peri";
   const args = extraArgs ?? ["acp"];
 
   return {
     async prepareWorkspace(workspace: string, launchSpec: AgentLaunchSpec): Promise<void> {
-      const installedSkills = await installSkills(workspace, launchSpec.skills);
+      launchSpec = await prepareLaunchWorkspace(workspace, launchSpec);
+      const installedSkills = await installSkills(workspace, launchSpec.skills, {
+        downloadOrigin: options.downloadOrigin,
+      });
       const runtimeConfig = buildPeriRuntimeConfig(launchSpec, installedSkills);
       const mcpConfig = buildPeriMcpConfig(launchSpec);
       await prepareWorkspaceEnvironment(workspace, runtimeConfig, mcpConfig, launchSpec.agent.prompt, installedSkills);
       await writePeriSettings(workspace, launchSpec);
       console.log(
-        `[peri-handler] prepared workspace: skills=${installedSkills.length} mcpServers=${
-          mcpConfig ? Object.keys(mcpConfig.mcpServers).length : 0
-        }`,
+        `[peri-handler] prepared workspace: skills=${installedSkills.length} mcpServers=${Object.keys(mcpConfig.mcpServers).length}`,
       );
     },
 

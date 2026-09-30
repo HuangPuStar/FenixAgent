@@ -1,9 +1,9 @@
 import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
 import type { EnvironmentRecord } from "@fenix/agent-runtime/runtime";
 import { readJson, resetAllStubs } from "@fenix/platform-sdk/testing";
+import type { ChannelEnvironmentLookup } from "../server/facades/channel-binding-facade";
 import type { ChannelBindingRow } from "../server/repositories/channel-binding";
 import { channelBindingRepo } from "../server/repositories/channel-binding";
-import type { ChannelEnvironmentLookup } from "../server/routes/dependencies";
 import { createWebChannelsRoutes } from "../server/routes/web/channels";
 import { setHermesClientGetter } from "../server/services/channel-provider";
 import { createStubSessionAuthGuardPlugin } from "./guard-stubs";
@@ -100,7 +100,7 @@ const originals = {
   create: channelBindingRepo.create,
   delete: channelBindingRepo.delete,
   getById: channelBindingRepo.getById,
-  list: channelBindingRepo.list,
+  listByAgentIds: channelBindingRepo.listByAgentIds,
   listByPlatformAndEnabled: channelBindingRepo.listByPlatformAndEnabled,
   update: channelBindingRepo.update,
 };
@@ -108,7 +108,7 @@ function restoreRepo() {
   channelBindingRepo.create = originals.create;
   channelBindingRepo.delete = originals.delete;
   channelBindingRepo.getById = originals.getById;
-  channelBindingRepo.list = originals.list;
+  channelBindingRepo.listByAgentIds = originals.listByAgentIds;
   channelBindingRepo.listByPlatformAndEnabled = originals.listByPlatformAndEnabled;
   channelBindingRepo.update = originals.update;
 }
@@ -128,7 +128,7 @@ describe("round54 Web 通道路由", () => {
     channelBindingRepo.create = mock(async (input) => binding(input));
     channelBindingRepo.delete = mock(async () => true);
     channelBindingRepo.getById = mock(async (id: string) => (id === "binding-1" ? binding() : binding({ id })));
-    channelBindingRepo.list = mock(async () => [binding()]);
+    channelBindingRepo.listByAgentIds = mock(async () => [binding()]);
     channelBindingRepo.update = mock(async () => {});
   });
   afterEach(() => {
@@ -184,16 +184,21 @@ describe("round54 Web 通道路由", () => {
   });
   // 空列表不得制造伪造绑定。
   test("绑定列表保留空结果", async () => {
-    channelBindingRepo.list = mock(async () => []);
+    channelBindingRepo.listByAgentIds = mock(async () => []);
     expect(await readJson(await request("/channels/bindings"))).toEqual({ success: true, data: [] });
   });
-  // 列表只能包含当前组织环境的绑定。
-  test("绑定列表过滤其他组织环境", async () => {
-    channelBindingRepo.list = mock(async () => [binding(), binding({ id: "foreign", agentId: "env-foreign" })]);
+  // 组织范围必须**下推**为环境 ID 谓词：替身按收到的 ID 集合模拟 SQL 的 `agent_id IN (...)`，
+  // 因此跨组织的行不可能出现在响应里，同时钉住「交给仓储的正是本组织的环境 ID」。
+  test("绑定列表把组织范围下推为环境 ID 谓词", async () => {
+    const listByAgentIds = mock(async (agentIds: readonly string[]) =>
+      [binding(), binding({ id: "foreign", agentId: "env-foreign" })].filter((row) => agentIds.includes(row.agentId)),
+    );
+    channelBindingRepo.listByAgentIds = listByAgentIds;
     expect(await readJson(await request("/channels/bindings"))).toEqual({
       success: true,
       data: [{ ...responseBinding(), agentName: "团队环境" }],
     });
+    expect(listByAgentIds).toHaveBeenCalledWith(["env-1"]);
   });
   // 不可读环境对应的名称必须为空。
   test("绑定列表缺少环境时返回空名称", async () => {
@@ -255,7 +260,7 @@ describe("round54 Web 通道路由", () => {
   });
   // 删除不存在绑定应返回 not found。
   test("删除不存在绑定返回 404", async () => {
-    channelBindingRepo.list = mock(async () => []);
+    channelBindingRepo.getById = mock(async (_id: string) => null);
     expect((await request("/channels/bindings/missing", { method: "DELETE" })).status).toBe(404);
   });
   // 删除跨组织绑定必须拒绝。
@@ -277,7 +282,7 @@ describe("round54 Web 通道路由", () => {
   });
   // 更新不存在绑定应失败。
   test("更新不存在绑定返回 404", async () => {
-    channelBindingRepo.list = mock(async () => []);
+    channelBindingRepo.getById = mock(async (_id: string) => null);
     expect((await json("/channels/bindings/missing", "PATCH", { enabled: false })).status).toBe(404);
   });
   // 更新跨组织绑定必须拒绝。

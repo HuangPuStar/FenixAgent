@@ -264,7 +264,7 @@ export function ChatHeader({
     <div
       className={cn(
         // 顶部卡片：玻璃磨砂浮动卡片（独立渲染）／外壳内的平面标题栏（`.acp-main-root` 子树），
-        // 两种形态与暗色覆写见 `./ChatHeader.css` 与 HEADER_CARD_CLASS 注释
+        // 两种形态见 `./ChatHeader.css` 与 HEADER_CARD_CLASS 注释
         HEADER_CARD_CLASS,
         className,
       )}

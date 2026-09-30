@@ -20,7 +20,7 @@ import { MCP_NS, mcpResources } from "@fenix/resource-mcp/web/i18n";
 import { HINDSIGHT_NS, hindsightResources } from "@fenix/resource-memory/web/i18n";
 import { SKILL_NS, skillResources } from "@fenix/resource-skill/web/i18n";
 import { TASKS_V2_NS, tasksV2Resources } from "@fenix/resource-task/web/i18n";
-import { WORKFLOW_NS, workflowResources } from "@fenix/resource-workflow/web/i18n";
+import { WORKFLOW_NS, workflowResources } from "@fenix/resource-workflow-v2/web/i18n";
 import { generatedWebContributions } from "../../../generated/web-contributions";
 
 /** 命名空间 → 两种语言的字典；登记范围就是导航项可能声明的那几个包。 */

@@ -78,13 +78,31 @@ describe("chat 样式迁移：消息簇", () => {
     expect(tokens).toContain("chat-markdown-content-styles");
     expect(tokens).toContain("wrap-anywhere");
     expect(tokens).toContain("whitespace-normal");
-    // 后代规则（标题、列表、引用、streamdown 代码块头部）落在 CSS 文件里
+    // 后代规则（标题、列表、引用、streamdown 代码块头部）落在 CSS 文件里；第三批（2026-09-28）起
+    // 表内不留 px 字面量：字号走 `var(--text-*)`，尺寸走 `calc(var(--spacing) * N)`；第四批把色值改引
+    // 调色阶 token（容器 `color: #27364f` → `var(--color-slate-700)`，ΔE2000 = 3.78，详见表头记账）。
     const css = readFileSync(join(CHAT_DIR, "primitives", "internal", "markdown-classes.css"), "utf8");
-    expect(css).toContain("color: #27364f;");
-    expect(css).toContain("font-size: 14px;");
+    expect(css).toContain("color: var(--color-slate-700);");
+    expect(css).toContain("font-size: var(--text-sm);");
     expect(css).toContain(".chat-markdown-content-styles h1 {");
     expect(css).toContain("list-style-type: disc;");
     expect(css).toContain('[data-streamdown="code-block-header"]');
+    expect(css).not.toMatch(/font-size:\s*\d+px/);
+  });
+
+  // streamdown 表格块（生成 DOM、挂不上类名）的两条修正不得被清理回退：删掉任一条，表格就退回
+  // 「窄容器里内容被逐字折断（无横向滚动）+ 工具条下拉逐字竖排」的旧症状。断言范围限于伴随表文本，
+  // 布局侧的验证口径见该表表尾注释。
+  test("streamdown 表格块的滚动与工具条下拉修正保留在伴随表里", () => {
+    const css = readFileSync(join(CHAT_DIR, "primitives", "internal", "markdown-classes.css"), "utf8");
+
+    // 表格在自带滚动容器里不吃 `max-width: 100%`：宽度回到内容宽度，横向滚动承接溢出。
+    expect(css).toContain('.chat-markdown-content-styles [data-streamdown="table-wrapper"] table {');
+    expect(css).toContain("max-width: none;");
+    // 工具条下拉补回 streamdown 未生成的 `min-w-[120px]`（token 形态）与菜单项不折行。
+    expect(css).toContain("min-width: calc(var(--spacing) * 30);");
+    expect(css).toContain("white-space: nowrap;");
+    expect(css).toContain("overflow-wrap: normal;");
   });
 
   // 深层样式下沉：`className` 只留扁平工具类与语义类名，选择器/复合值/媒体查询落在同目录 CSS。
@@ -138,6 +156,9 @@ describe("chat 样式迁移：消息簇", () => {
 
     expect(classExpressions).not.toContain("chat-scroll-to-latest");
     expect(classExpressions).not.toContain("chat-scroll-navigation");
-    expect(src).not.toContain('import "./conversation.css"');
+    // 2026-09-28：滚动按钮的伴随表由 `conversation-scroll.css` 更名为 `conversation.css`（与兄弟组件
+    // 同目录同名），import 因此指向新名字；「历史选择器不得回流」由上一条用例对同一份文件的
+    // `.chat-scroll-*` 断言承担（`chat-style-migration.test.tsx` 的 CSS 文件台账）。
+    expect(src).toContain('import "./conversation.css"');
   });
 });

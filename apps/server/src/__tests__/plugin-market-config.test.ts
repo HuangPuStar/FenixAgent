@@ -16,10 +16,17 @@ import { applyEnv, config } from "@server/config";
  * `coerce` 都在本用例的覆盖范围内，不需要另一条用例单独测声明形状。
  */
 
-/** 宿主 schema 的两个必填项；其余键由模块声明提供默认值。 */
+/**
+ * 启动面所需的全部无默认值必填项：前两枚是宿主 `env.ts` 的，后三枚由 workflow-v2 声明（2F 起该模块进
+ * `deploy/assembly/ce.json`，声明随之进入聚合面）。少给一枚即解析失败，失败信息指向模块 schema 而不是本文件
+ * 的用例意图，因此在这里一次性补齐。
+ */
 const baseInput = {
   DATABASE_URL: "postgres://127.0.0.1:5432/fenix",
   RCS_API_KEYS: "test-api-keys",
+  WORKFLOW_V2_PLATFORM_ACCOUNT_EMAIL: "workflow-v2@example.test",
+  WORKFLOW_V2_PLATFORM_ACCOUNT_PASSWORD: "test-password",
+  WORKFLOW_V2_TICKET_SECRET: "test-ticket-secret",
 };
 
 /** 走完整装配路径并把投影结果取出来。 */

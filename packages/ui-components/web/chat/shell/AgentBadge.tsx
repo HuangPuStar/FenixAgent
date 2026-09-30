@@ -26,8 +26,9 @@ import { AgentLogo } from "./internal/agent-logo";
 //   类作用域，再没有任何代码会自动加上该类，故这些变体在应用内不会命中——保留而不删除。
 // - 骨架屏的 `agent-badge-pulse` 动画定义仍在 `web/css/chat-animations.css`
 //   （`@keyframes` 属 CSS，本仓库动画定义统一留在样式表内），按名引用它的 `animation` 写在 `AgentBadge.css`。
-// - 类名不复用源 `.agent-badge*` / `.skill-tag`：宿主 `apps/web/src/index.css` 仍有同名的旧规则，
-//   复用会让那批已下线的声明重新命中；迁移守卫也把源类名列为「不得回流」。故用组件前缀的新语义名。
+// - 类名不复用源 `.agent-badge*` / `.skill-tag`：宿主 `apps/web/src/index.css` 曾保留同名的旧规则（无元素命中），
+//   复用会让那批已下线的声明重新命中；该批旧规则已于 2026-09-28 随宿主样式表清理删除，类名仍按「不得回流」
+//   清单（迁移守卫）保持不复用。故用组件前缀的新语义名。
 // =============================================================================
 
 /**
@@ -58,8 +59,9 @@ const BADGE_SOURCE_CLASS = "mt-2 shrink-0 text-3xs tracking-widest text-text-mut
 
 const BADGE_DESC_CLASS = "mt-1.25 shrink-0 text-center text-3xs leading-normal text-text-muted";
 
-/** 分隔线（源 `.agent-badge-divider` 的 `::before`/`::after` 虚线段，声明在 `AgentBadge.css`）。 */
-const BADGE_DIVIDER_CLASS = "agent-badge-rule mx-5 flex shrink-0 items-center";
+/** 分隔线（源 `.agent-badge-divider` 的 `::before`/`::after` 虚线段）：虚线的样式与颜色在
+ *  `AgentBadge.css`，1px 上边框宽度用标准工具类 `border-t` 表达（2026-09-28 第四波从表里撤回）。 */
+const BADGE_DIVIDER_CLASS = "agent-badge-rule mx-5 flex shrink-0 items-center before:border-t after:border-t";
 
 const BADGE_DOTS_CLASS = "mx-2.5 flex gap-1.5";
 

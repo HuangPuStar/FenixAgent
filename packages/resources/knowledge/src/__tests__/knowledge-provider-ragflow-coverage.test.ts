@@ -182,7 +182,7 @@ describe("RagFlowKnowledgeProvider 补充覆盖", () => {
         code: 0,
         data: {
           total: 9,
-          chunks: [{ id: "chunk-1", content: "内容", important_keywords: ["关键词"], available_int: 0 }],
+          chunks: [{ id: "chunk-1", content: "内容", important_keywords: ["关键词"], available: false }],
         },
       }),
     );
@@ -238,8 +238,8 @@ describe("RagFlowKnowledgeProvider 补充覆盖", () => {
     ).resolves.toEqual({ graph: { nodes: [], edges: [] }, mind_map: { root: "知识" } });
   });
 
-  // 删除不存在图谱是幂等操作，不应向调用方暴露 code=102。
-  test("deleteKnowledgeGraph 将图不存在业务码视为成功", async () => {
+  // code=102 也可能表示数据集不存在，不能在缺少明确图谱状态时吞错。
+  test("deleteKnowledgeGraph 不吞上游 code=102", async () => {
     installFetch(mockFetch(async () => jsonResponse({ code: 102, message: "graph not found" })));
 
     await expect(
@@ -248,7 +248,25 @@ describe("RagFlowKnowledgeProvider 补充覆盖", () => {
         remoteAccountId: "account",
         remoteUserId: "user",
       }),
-    ).resolves.toBeUndefined();
+    ).rejects.toThrow("code=102: graph not found");
+  });
+
+  // v0.26.0 通过 graph 路由只清理图谱分块，且须使用当前租户的凭据。
+  test("deleteKnowledgeGraph 调用 v0.26.0 图谱删除协议", async () => {
+    const fetchSpy = mockFetch(async () => jsonResponse({ code: 0, data: {} }));
+    installFetch(fetchSpy);
+
+    await new RagFlowKnowledgeProvider().deleteKnowledgeGraph({
+      knowledgeBaseRemoteId: "ds-1",
+      remoteAccountId: "account",
+      remoteUserId: "user",
+      apiKey: "tenant-key",
+    });
+
+    expect(fetchSpy).toHaveBeenCalledTimes(1);
+    expect(fetchSpy.mock.calls[0]?.[0]).toBe("http://ragflow.test/api/v1/datasets/ds-1/graph");
+    expect(fetchSpy.mock.calls[0]?.[1]?.method).toBe("DELETE");
+    expect(new Headers(fetchSpy.mock.calls[0]?.[1]?.headers).get("Authorization")).toBe("Bearer tenant-key");
   });
 
   // 图谱进度接口应为缺失字段提供零进度默认值。

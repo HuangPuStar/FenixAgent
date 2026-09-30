@@ -4,7 +4,7 @@ import type { McpServerServerModule } from "./module";
  * MCP 资源模块的进程级装配结果。
  *
  * 宿主启动流程调用 `createMcpServerServerModule` 后经 {@link installMcpServerModule} 装入；路由与
- * 系统路径（Hindsight 托管服务器写入）都在调用时读取它，测试可整体替换为替身。
+ * 启动参数装配（launch spec 构建）都在调用时读取它，测试可整体替换为替身。
  *
  * 未装配时 {@link getMcpServerModule} 直接报错：静默退化会让所有 MCP 端点以"资源不存在"响应，
  * 把装配故障伪装成业务结果。

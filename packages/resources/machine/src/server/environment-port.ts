@@ -29,7 +29,7 @@ export type EnvironmentRole = "owner" | "admin" | "member";
  * 本包读到的环境记录视图。
  *
  * 本包只读四个字段（`id` / `organizationId` / `userId` / `agentConfigId`：workspace 目录推导、归属判定与
- * Agent 配置解析）。形态理由与 `types/auth.ts` 的 `MachineRequestAuth` 一致：直接沿用 agent-runtime 的
+ * Agent 配置解析）。形态理由与 `types/machine-registry.ts` 的 `MachineScope` 一致：直接沿用 agent-runtime 的
  * `EnvironmentRecord`（20 个必填字段）会把包外的持久化模型钉进本包契约——上游加一列就波及本包类型，包内
  * 用例也必须构造整条记录才能替换一个原语。宿主的完整记录结构上满足本视图，无需转换。
  */

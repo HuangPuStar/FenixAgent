@@ -77,7 +77,7 @@ export interface KnowledgeBaseCreateBody {
   /** 自定义解析 pipeline ID；仅 parseMethod=pipeline 时生效 */
   pipelineId?: string | null;
   /** 内置分块方法 parser_id；仅 parseMethod=builtin 时生效 */
-  chunkMethod?: string | null;
+  chunkMethod?: string;
 }
 
 export interface KnowledgeBaseInfo {

@@ -1,6 +1,7 @@
 import type { ServerRouteHost } from "@fenix/platform-sdk/server";
 import type { AnyElysia } from "elysia";
-import type { ChannelEnvironmentLookup, WebChannelRouteDependencies } from "./routes/dependencies";
+import type { ChannelEnvironmentLookup } from "./facades/channel-binding-facade";
+import type { WebChannelRouteDependencies } from "./routes/dependencies";
 import { createWebChannelsRoutes } from "./routes/web/channels";
 
 /**

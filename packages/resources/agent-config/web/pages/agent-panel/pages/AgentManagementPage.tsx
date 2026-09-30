@@ -3,6 +3,7 @@ import { AgentBadge } from "@fenix/ui-components/chat/shell/AgentBadge";
 import { EmptyState } from "@fenix/ui-components/config/EmptyState";
 import { AppHeader } from "@fenix/ui-components/layout/app-header";
 import { AppPage } from "@fenix/ui-components/layout/app-page";
+import { Button } from "@fenix/ui-components/ui/button";
 import { Spinner } from "@fenix/ui-components/ui/spinner";
 import { unwrap } from "@fenix/web-runtime/api/request";
 import { useOrgSession } from "@fenix/web-runtime/contexts/org-session";
@@ -31,7 +32,9 @@ const FILTER_IDS: readonly FilterId[] = ["all", "general", "data", "search", "mo
 
 function useFilterLabels() {
   const { t } = useTranslation(NS.AGENTS);
-  const { t: tc } = useTranslation(NS.COMPONENTS);
+  // `statusBadge.*` 词表归 `@fenix/ui-components`（`StatusBadge` 的同名默认文案）：此处不再借宿主
+  // `components` 字典的同名副本（台账 D4）。
+  const { t: tc } = useTranslation(NS.UI_COMPONENTS);
   return useMemo(
     () => ({
       all: tc("statusBadge.all"),
@@ -178,23 +181,17 @@ export function AgentManagementPage() {
           title={t("management.title")}
           subtitle={t("management.subtitle")}
           actions={
+            // 视觉分层保留：主操作实心（`default`）、次操作描边（`outline`）。尺寸不再逐页手写——页头动作区
+            // 统一走 `Button` 默认档（36px 高 / 16px 内距 / 6px 圆角），原来这里的 40px + 圆角 8px 是第三档。
             <>
-              <button
-                type="button"
-                onClick={() => navigate({ to: "/agent/home" })}
-                className="inline-flex h-10 shrink-0 items-center gap-2 rounded-lg border border-border bg-background px-5.5 text-xs font-semibold text-text-muted transition hover:border-primary/40 hover:text-primary"
-              >
-                <Sparkles className="h-4 w-4" />
+              <Button size="sm" variant="outline" onClick={() => navigate({ to: "/agent/home" })}>
+                <Sparkles />
                 {t("management.createByChat")}
-              </button>
-              <button
-                type="button"
-                onClick={() => setCreateOpen(true)}
-                className="inline-flex h-10 shrink-0 items-center gap-2 rounded-lg bg-primary px-5.5 text-xs font-semibold text-primary-foreground shadow-sm transition hover:bg-primary/90"
-              >
-                <Plus className="h-4 w-4" />
+              </Button>
+              <Button size="sm" onClick={() => setCreateOpen(true)}>
+                <Plus />
                 {t("management.createAgent")}
-              </button>
+              </Button>
             </>
           }
         />

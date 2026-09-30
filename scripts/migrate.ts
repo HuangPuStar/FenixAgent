@@ -8,7 +8,7 @@ import { Client, Pool } from "pg";
  * **失败一律 fail-closed**：本脚本曾经把「异常 message 含 `already exists`」当作「库是 db:push 建的」而
  * 以退出码 0 结束，于是任何 message 恰好含该子串的真实失败（典型是部分执行后遗留的不一致状态下的
  * `CREATE INDEX ... already exists`）都会被伪装成成功，部署流水线无法失败停止
- * （见 `docs/need-to-change/31-gate-release-and-migration.md`）。
+ * （运维侧的判定与处置见 `docs/operations/migration.md`、`docs/operations/troubleshooting.md` 第 8 节）。
  *
  * 那个容忍之所以「看起来必要」，真实诱因是并发 DDL：`docker-compose.yml` 与
  * `docker/prod/docker-compose.yml` 让每个应用容器启动前各跑一次 `migrate.js`，多副本同时建表会互相

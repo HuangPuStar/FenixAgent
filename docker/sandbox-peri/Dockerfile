@@ -41,8 +41,13 @@ RUN mkdir -p /app/workspaces
 VOLUME ["/app/workspaces"]
 
 # peri 的插件存储复用 Claude Code 布局（`~/.claude/plugins`），插件随镜像固化在 /root/.claude。
-RUN peri plugin marketplace add vectorize-io/hindsight
-RUN peri plugin install hindsight-memory
+# 插件走 KonghaYao/hindsight-plugin：纯 JSON 清单 + `npx @peri-code/hindsight` 单文件 CLI（见该仓库 plugin/）。
+# 插件内容由远端仓库默认分支决定，Docker 层缓存看不见它：命令串不变就直接复用旧层，
+# 于是「重建镜像以拿到新插件」会静默装回旧版本。CACHE_BUST 由工作流按每次构建注入。
+ARG CACHE_BUST=unset
+RUN echo "hindsight plugin refresh: ${CACHE_BUST}" \
+    && peri plugin marketplace add KonghaYao/hindsight-plugin \
+    && peri plugin install hindsight-memory
 
 # peri ultracode 依赖 workflow 库
 RUN npm i -g @peri-code/workflow

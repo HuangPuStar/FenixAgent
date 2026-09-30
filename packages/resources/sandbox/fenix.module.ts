@@ -51,6 +51,11 @@ import { z } from "zod/v4";
  * （`RCS_FILE_WS_*`）归 machine 声明，跨模块共享键（`RCS_DB_*` / `DATABASE_URL` / `RCS_SYSTEM_API_KEYS` 等）
  * 按裁定留在宿主 schema。
  *
+ * 声明 `dependencyServices`（A3）：本模块唯一的对外服务是 `RCS_SANDBOX_CLUSTER_URL` 指向的 OpenSandbox
+ * Cluster。它是本仓代码（`packages/opensandbox-cluster`）但**不是 assembly 模块**，编排入口留在
+ * `docker/opensandbox-cluster/`；声明取 `orchestration: "separate"` 只登记依赖、探针与入口指针，
+ * 避免同一栈出现第二份编排定义。
+ *
  * 不声明 `web`：消费方是 §1.6 的 WebShell 装配，形状必须与消费端同时定型。
  */
 export const moduleManifest = {
@@ -198,6 +203,24 @@ export const moduleManifest = {
       restartRequired: true,
       description:
         "Provider 销毁沙盒资源的超时（毫秒）。默认 60000，由宿主 config.ts 的 `?? 60000` 提供（schema 无 default），由本模块删除实例时读取。",
+    },
+  ],
+  // 声明 `dependencyServices`（A3）：`RCS_SANDBOX_CLUSTER_URL` 指向的 OpenSandbox Cluster 是本仓代码
+  // （`packages/opensandbox-cluster`），但它是**独立部署单元**而不是 assembly 模块——编排入口留在
+  // `docker/opensandbox-cluster/`，本仓 deploy/compose 不重复定义（取 `orchestration: "separate"`）。
+  // `required: false` 与声明口径一致：未配置时只有 Cluster 管理面按「服务不可用」快速失败，本地执行路径不受影响。
+  dependencyServices: [
+    {
+      id: "opensandbox-cluster",
+      required: false,
+      orchestration: "separate",
+      envKeys: ["RCS_SANDBOX_CLUSTER_URL", "RCS_SANDBOX_CLUSTER_API_KEY"],
+      composeFile: "docker/opensandbox-cluster/docker-compose.yml",
+      // Cluster 的 `/health` 探针见该目录 README 的启动自检命令，两者必须是同一端点。
+      healthCheck: { kind: "http", addressKey: "RCS_SANDBOX_CLUSTER_URL", path: "/health" },
+      description:
+        "OpenSandbox Cluster 管理面（资源池、Server、沙盒绑定）。编排入口 docker/opensandbox-cluster/docker-compose.yml；" +
+        "未部署时本模块的 Cluster 管理面不可用，选择本地执行引擎的部署不受影响。",
     },
   ],
   contributions: [

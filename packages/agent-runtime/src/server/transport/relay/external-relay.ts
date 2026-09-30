@@ -16,7 +16,8 @@
  * 业务逻辑全部可单测。
  */
 
-import { log, error as logError } from "@fenix/logger";
+import { randomUUID } from "node:crypto";
+import { log, error as logError, requestAls } from "@fenix/logger";
 import type { EngineRelayHandle } from "@fenix/plugin-sdk";
 import {
   markInstanceRelayAttached,
@@ -38,7 +39,7 @@ export type ExternalRelayEnvironment = Pick<EnvironmentRecord, "id" | "organizat
 export interface ExternalRelayDeps {
   getEnvironmentById: (id: string) => Promise<ExternalRelayEnvironment | null | undefined>;
   getRunningInstancesByEnvironment: (envId: string) => SpawnedInstance[];
-  connectAgentRelay: (instanceId: string, sessionId: string) => Promise<EngineRelayHandle>;
+  connectAgentRelay: (instanceId: string, sessionId: string, requestId?: string) => Promise<EngineRelayHandle>;
   markRelayAttached: (instanceId: string) => void;
   markRelayDetached: (instanceId: string) => void;
   touchActivity: (instanceId: string, message: Record<string, unknown>) => void;
@@ -77,6 +78,8 @@ interface ExternalRelayEntry {
   agentId: string;
   /** 连接时的认证上下文（open 时路由层认证结果，用于归属校验快照） */
   authContext: Pick<AuthContext, "organizationId" | "userId">;
+  /** 本次连接的关联 ID（§7）：WS 升级无上游请求上下文时在 open 处自建，供后续日志关联同一连接 */
+  requestId: string;
   /** 连接建立时间戳 */
   openTime: number;
   /** 是否已收到 agent 的 status（含 capabilities）；决定补发 connect 是否必要 */
@@ -132,6 +135,10 @@ export async function handleExternalRelayOpen(
   authCtx: AuthContext,
   requestedInstanceId?: string,
 ): Promise<void> {
+  // 关联 ID（§7）：优先取上游请求上下文（WS 升级可能继承升级请求的 ALS），没有则自建。
+  // 本连接的后续诊断日志全部携带它，与 relayWsId 一同构成「谁在什么时候连了哪个实例」的追踪链。
+  const requestId = requestAls.getStore()?.requestId ?? randomUUID();
+
   // 在任何 await 之前注册 pending buffer，避免握手竞态丢消息
   pendingRelayMessages.set(relayWsId, []);
 
@@ -173,9 +180,9 @@ export async function handleExternalRelayOpen(
     // 完整诊断（含 instanceId）只进服务端日志
     let handle: EngineRelayHandle;
     try {
-      handle = await deps.connectAgentRelay(instanceId, "");
+      handle = await deps.connectAgentRelay(instanceId, "", requestId);
     } catch (err) {
-      logError(`[External-Relay] connectAgentRelay failed: instanceId=${instanceId}`, err);
+      logError(`[External-Relay] connectAgentRelay failed: instanceId=${instanceId}`, err, { requestId });
       ws.close(1011, "relay connect failed");
       return;
     }
@@ -203,6 +210,7 @@ export async function handleExternalRelayOpen(
       instanceId,
       agentId,
       authContext: { organizationId: authCtx.organizationId, userId: authCtx.userId },
+      requestId,
       openTime: Date.now(),
       receivedStatus: false,
     };
@@ -215,12 +223,12 @@ export async function handleExternalRelayOpen(
         // status（含 capabilities）原样转发，并记录已收到——决定补发 connect 是否必要
         if (msgType === "status") {
           entry.receivedStatus = true;
-          log("[External-Relay] ← agent status", { relayWsId, instanceId });
+          log("[External-Relay] ← agent status", { relayWsId, instanceId, requestId });
           sendToRelayWs(entry.ws, message as unknown as Record<string, unknown>);
           return;
         }
         if (msgType === "relay_closed") {
-          log("[External-Relay] ← agent relay_closed", { relayWsId, instanceId });
+          log("[External-Relay] ← agent relay_closed", { relayWsId, instanceId, requestId });
           // 先发通用 error 事件再关闭：外部 ACPClient 依赖 error/close 事件感知会话失效
           // （旧 relay-handler 同款语义，close 由客户端触发，服务端 close handler 统一清理）
           sendToRelayWs(entry.ws, { type: "error", payload: { message: "Agent connection lost" } });
@@ -256,7 +264,9 @@ export async function handleExternalRelayOpen(
         /* relay handle 可能未就绪，忽略 */
       }
     }
-    log(`[External-Relay] established: relayWsId=${relayWsId} agentId=${agentId} instanceId=${instanceId}`);
+    log(`[External-Relay] established: relayWsId=${relayWsId} agentId=${agentId} instanceId=${instanceId}`, {
+      requestId,
+    });
   } catch (err) {
     // 兜底清理（env 查询等内部错误路径）：清 pending、注销 listener、递减 relayCount，
     // 之后对客户端关闭并保留完整诊断进服务端日志
@@ -267,7 +277,7 @@ export async function handleExternalRelayOpen(
       entry.unsub?.();
       deps.markRelayDetached(entry.instanceId);
     }
-    logError(`[External-Relay] Open failed: relayWsId=${relayWsId} agentId=${agentId}`, err);
+    logError(`[External-Relay] Open failed: relayWsId=${relayWsId} agentId=${agentId}`, err, { requestId });
     try {
       ws.close(1011, "setup failed");
     } catch {
@@ -321,7 +331,7 @@ export function handleExternalRelayMessage(
     entry.relayHandle.send(parsed as { type: string; payload?: unknown });
     deps.touchActivity(entry.instanceId, parsed);
   } catch (err) {
-    logError("[External-Relay] relay send failed", err);
+    logError("[External-Relay] relay send failed", err, { requestId: entry.requestId });
     ws.close(1011, "relay send failed");
   }
 }
@@ -338,5 +348,7 @@ export function handleExternalRelayClose(_ws: WsConnection, relayWsId: string): 
   entries.delete(relayWsId);
   entry.unsub?.();
   deps.markRelayDetached(entry.instanceId);
-  log(`[External-Relay] closed: relayWsId=${relayWsId} instanceId=${entry.instanceId}`);
+  log(`[External-Relay] closed: relayWsId=${relayWsId} instanceId=${entry.instanceId}`, {
+    requestId: entry.requestId,
+  });
 }
