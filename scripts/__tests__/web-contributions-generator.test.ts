@@ -106,6 +106,18 @@ async function withWorkspace(
 const ALPHA: WebFixture = { name: "@fenix/alpha", path: "packages/resources/alpha" };
 const BETA: WebFixture = { name: "@fenix/beta", path: "packages/resources/beta" };
 
+// web ID 可以不同于资源 ID，生成物必须保留 manifest 身份而不是按路径猜测。
+test("生成物保留 workflow-v2 的 workflow web ID", async () => {
+  await withWorkspace(
+    [{ ...ALPHA, id: "workflow-v2", webId: "workflow", contribution: "@fenix/alpha/web/contribution" }],
+    { web: ["workflow"] },
+    async (root, profileFile, outputFile) => {
+      await generateWebContributions({ profileFile, repositoryRoot: root, outputFile });
+      expect(await readFile(outputFile, "utf8")).toContain('{ id: "workflow", contribution: webContribution0 }');
+    },
+  );
+});
+
 test("按 profile 的 web 顺序生成只含静态 import 的产物", async () => {
   await withWorkspace([ALPHA, BETA], { web: ["alpha", "beta"] }, async (root, profileFile, outputFile) => {
     const result = await generateWebContributions({ profileFile, repositoryRoot: root, outputFile });

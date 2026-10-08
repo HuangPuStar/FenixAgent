@@ -1,4 +1,10 @@
 {
+  "assembly": {
+    "loading": "Loading module availability...",
+    "disabled": "Module {{module}} is not enabled",
+    "disabledHint": "This module is not enabled in this deployment. Contact your administrator to check the assembly profile.",
+    "failed": "Module availability could not be loaded. Continuing with build-time capabilities."
+  },
   "loading": "Loading...",
   "save": "Save",
   "cancel": "Cancel",

@@ -18,6 +18,7 @@ import { Bot, Globe, Plus } from "lucide-react";
 import { AGENTS_NS } from "./i18n/namespace";
 
 export const webContribution: WebAppContribution = {
+  routePrefixes: ["/agent/dashboard"],
   navigation: [
     { id: "home", groupId: "core", order: 10, ns: AGENTS_NS, labelKey: "nav.home", icon: Plus },
     { id: "agents", groupId: "core", order: 20, ns: AGENTS_NS, labelKey: "nav.agents", icon: Bot },

@@ -363,6 +363,9 @@ export const ENV_TEMPLATES: readonly EnvTemplate[] = [
         "容器部署时由编排的 `environment` 显式给出（`postgres://rcs:…@postgres:5432/rcs`，优先级高于本文件），本键只在绕过容器直跑源码时才需要。",
       RCS_API_KEYS: "生产必须是长随机值（`openssl rand -hex 32`）；缺失或为空即启动失败，且不得提交。",
       RCS_BASE_URL: "填部署方可达的对外地址（如 https://agent.example.com）：影响生成的回链与 skill 下载链接。",
+      WORKFLOW_V2_PLATFORM_ACCOUNT_EMAIL:
+        "docker 部署由 `./docker/deploy.sh` 在 init / up / deploy 时按主机名生成并固化（写入本文件、之后不再改动）；" +
+        "独立部署须自行填部署方可控的邮箱，并登记为保留账号（见 docker/workflow/README.md §5）。",
     },
     undeclared: APP_UNDECLARED,
   },

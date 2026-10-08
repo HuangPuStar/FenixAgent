@@ -6,8 +6,8 @@
 # 依赖调用方已定义：SCRIPT_DIR / REPO_ROOT / TOP_COMPOSE、log / warn / die、discover_deps / feature_enabled。
 # 提供：配置项读取（env_file_value）、compose 必填键扫描（collect_required_vars / required_var_hint /
 # check_compose_requirements / has_required_key）、依赖运行态注入（apply_dep_runtime_env）、
-# 整体必填校验（validate_required_env，汇总写入全局 MISSING_REQUIRED / REQUIRED_REPORT）
-# 与 .env 落地（materialize_env_file）。
+# 整体必填校验（validate_required_env，汇总写入全局 MISSING_REQUIRED / REQUIRED_REPORT）、
+# .env 落地（materialize_env_file）与部署期身份键生成（ensure_workflow_platform_account_email）。
 #
 
 # 读取 env 文件里某个键的值：只服务校验，规则与 load_env_file 一致（忽略注释与空行、去掉成对引号）。
@@ -156,4 +156,63 @@ materialize_env_file() {
     fi
     cp "$example" "$target"
     log "生成：$rel ← ${example#"$REPO_ROOT"/}"
+}
+
+# 平台上游账号邮箱（WORKFLOW_V2_PLATFORM_ACCOUNT_EMAIL）的部署期生成：缺失时派生一个值写进主服务 env。
+#
+# 为什么需要这一步：该键由 workflow-v2 模块声明为必填（`fenix.module.ts`，无默认值，缺失即 rcs 启动失败），
+# 但它**不是编排里的 `${VAR:?}` 键**——上面的必填项扫描看不见模块声明键，于是「没填」只会在容器启动时以
+# zod 报错的形式炸出来，而不是在启动前被拦下（docs/operations/docker-topology.md §9）。
+# 为什么由脚本取值而不是留空要求人工填：它是**身份**不是密钥（不能随机生成后即弃），但部署期也不需要预知——
+# 上游账号由平台在首次引导时自助注册（`platform-account-registration.ts`），上游只校验邮箱格式、不发信
+# （workflow-v2 账号供给设计 §2.3）。
+# 两条取值口径：
+#   1. 按主机名派生（`workflow-v2-platform+<主机名>@example.com`）：同一台机器上重跑得到同一个值——
+#      即使配置被删掉再跑一次，也不会在上游多出一个账号；主机名让上游侧的账号归属可辨认。
+#      域固定用保留域 `example.com`：上游不校验可达性，这个身份也不该落在真实收件域上。
+#   2. 已有值（含部署方手填的邮箱）一律不动：改值等于换上游账号，需重新引导并人工清理旧账号
+#      （账号供给设计 §5.1），因此只能由部署方显式改。
+# 调用点：`init`（落成 .env 之后）与 `up` / `deploy`（动容器之前）。`validate` 与 `config` 干跑只读，不落盘。
+ensure_workflow_platform_account_email() {
+    local key="WORKFLOW_V2_PLATFORM_ACCOUNT_EMAIL"
+    local rel="${MAIN_ENV_FILE#"$REPO_ROOT"/}"
+    local value slug tmp mode
+    local note1="# 由 docker/deploy.sh 于部署期生成并固化：平台上游账号身份（不是密钥）。"
+    local note2="# 改值等于换上游账号：需要重新引导，并人工清理上游的旧账号（见 docker/workflow/README.md §5）。"
+    if [[ ! -f "$MAIN_ENV_FILE" ]]; then
+        warn "缺少 ${rel}：跳过 $key 的部署期生成（先跑 ./docker/deploy.sh init 生成模板）"
+        return 0
+    fi
+    value="$(env_file_value "$MAIN_ENV_FILE" "$key" || true)"
+    [[ -z "$value" ]] || return 0
+
+    # 主机名当部署标识：非法字符折成 '-'、去首尾、限长（邮箱本地部分上限 64 字节，这里留足余量）。
+    # `-s` 不被支持时退回完整主机名，取不到就留空（走不带后缀的兜底值）——本脚本开着 pipefail，
+    # 这里必须把失败收在管道内，否则「主机名取不到」会变成整个部署中断。
+    slug="$({ hostname -s 2>/dev/null || hostname 2>/dev/null || true; } | tr '[:upper:]' '[:lower:]' | tr -cs 'a-z0-9' '-')"
+    slug="${slug#-}"
+    slug="${slug%-}"
+    slug="${slug:0:24}"
+    value="workflow-v2-platform@example.com"
+    [[ -n "$slug" ]] && value="workflow-v2-platform+${slug}@example.com"
+
+    tmp="$(mktemp "${MAIN_ENV_FILE}.XXXXXX")" || die "无法在 $(dirname "$MAIN_ENV_FILE") 下建临时文件：$key 需要写入 $rel"
+    if grep -qE "^#[[:space:]]*${key}=" "$MAIN_ENV_FILE"; then
+        # 模板里这个键是注释行（模板约定：键行一律注释）：就地激活它，保持「每个键只出现一次」。
+        awk -v pattern="^#[[:space:]]*${key}=" -v note1="$note1" -v note2="$note2" -v kv="${key}=${value}" '
+            $0 ~ pattern { print note1; print note2; print kv; next }
+            { print }
+        ' "$MAIN_ENV_FILE" >"$tmp"
+    else
+        # 手工维护过的 env 文件里没有这一行：追加到末尾，不动既有排版。
+        cp "$MAIN_ENV_FILE" "$tmp"
+        printf '\n%s\n%s\n%s\n' "$note1" "$note2" "${key}=${value}" >>"$tmp"
+    fi
+    # 保持原权限（mktemp 建出来的是 0600）：改不动也不该阻塞部署，.env 的权限本来由部署方决定。
+    mode="$(stat -c '%a' "$MAIN_ENV_FILE" 2>/dev/null || stat -f '%Lp' "$MAIN_ENV_FILE" 2>/dev/null || true)"
+    if [[ -n "$mode" ]]; then
+        chmod "$mode" "$tmp" 2>/dev/null || true
+    fi
+    mv "$tmp" "$MAIN_ENV_FILE"
+    log "生成并固化 ${key}=${value}（写入 ${rel}；平台上游账号身份，改值等于换上游账号）"
 }

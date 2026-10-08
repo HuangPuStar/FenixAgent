@@ -4,7 +4,7 @@
 # 权威文档：docs/operations/docker-topology.md（§9）
 #
 # 用法（可在仓库任意位置执行，脚本自定位）：
-#   ./docker/deploy.sh init                初始化配置：把各 .env.example 落成 .env（已存在则跳过），并报告还缺哪些必填项
+#   ./docker/deploy.sh init                初始化配置：把各 .env.example 落成 .env（已存在则跳过）、生成缺失的部署期键，并报告还缺哪些必填项
 #   ./docker/deploy.sh validate            只校验必填项（与 up / deploy 启动前的检查同一套）
 #   ./docker/deploy.sh up                  启动整个环境：主服务 + 基础服务 + deploy.env 中启用的依赖
 #   ./docker/deploy.sh deploy              发布：拉镜像 → DDL 迁移 → 数据迁移 → 启动
@@ -17,6 +17,8 @@
 # 配置：默认读同目录的 deploy.env（首次使用：./docker/deploy.sh init）；同目录只有一份别的 *.env 时用它，
 #       有多份则用 --config 指定。主服务的应用配置与密钥读 docker/main/.env——与它的编排同目录，compose
 #       自己也读这一份（同一份文件，不两处维护）；共享键（POSTGRES_PASSWORD 等）由它提供给依赖编排。
+#       模块声明键不在 compose 的 ${VAR:?} 扫描面上：WORKFLOW_V2_PLATFORM_ACCOUNT_EMAIL 由本脚本在
+#       init / up / deploy 时按主机名生成并固化（validate 与 config 干跑只读；见 docker-topology.md §9）。
 # 镜像：一律固定版本、写在各 compose 文件里；本脚本不做任何镜像变量插值。
 #
 # 主服务编排固定为 docker/main/docker-compose.yml（生产形态：不声明 build、只用发布镜像）。
@@ -54,7 +56,7 @@ die() {
 }
 
 usage() {
-    sed -n '3,19p' "$0" | sed 's/^# \{0,1\}//'
+    sed -n '3,21p' "$0" | sed 's/^# \{0,1\}//'
 }
 
 # 统一执行入口：config 干跑时只打印命令，便于审计与排障。
@@ -162,6 +164,8 @@ cmd_init() {
     for name in $(discover_deps); do
         materialize_env_file "$SCRIPT_DIR/$name/.env.example" "$SCRIPT_DIR/$name/.env"
     done
+    # 部署期身份键在这里就要有值：它不在下面的必填项扫描面上，缺失只会在 rcs 启动时报错（topology §9）。
+    ensure_workflow_platform_account_email
 
     log "初始化完成，检查必填项："
     resolve_config_file || true
@@ -416,6 +420,12 @@ main() {
     check_prerequisites
     load_config
     validate_config
+
+    # 模块声明键的部署期生成（与 init 里的调用同一套）：它不在必填项扫描面上，缺失时 rcs 会以启动失败收场。
+    # `validate` 只做校验、`config` 干跑只打印命令，两者都不写盘；`deploy` 在拉镜像与迁移之前就要有值。
+    case "$cmd" in
+        up | deploy) ensure_workflow_platform_account_email ;;
+    esac
 
     case "$cmd" in
         validate) cmd_validate "$@" ;;

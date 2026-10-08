@@ -15,7 +15,7 @@
 import type { UIMessage } from "ai";
 import { ChevronLeftIcon, ChevronRightIcon } from "lucide-react";
 import "./message.css";
-import type { ComponentProps, ErrorInfo, HTMLAttributes, ReactElement, ReactNode } from "react";
+import type { ComponentProps, HTMLAttributes, ReactElement, ReactNode } from "react";
 import {
   Component,
   createContext,
@@ -36,6 +36,8 @@ import { cn } from "../../lib/cn";
 import { Button } from "../../ui/button";
 import { ButtonGroup, ButtonGroupText } from "../../ui/button-group";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "../../ui/tooltip";
+import { UI_SPEC_PLUGINS } from "../ui-spec/plugins";
+import { UISpecHostProvider } from "../ui-spec/UISpecHostContext";
 import { IframePreview } from "./iframe-preview";
 import { MARKDOWN_CONTENT_CLASS } from "./internal/markdown-classes";
 
@@ -51,8 +53,9 @@ class StreamdownErrorBoundary extends Component<{ children: ReactElement; fallba
   static getDerivedStateFromError() {
     return { hasError: true };
   }
-  componentDidCatch(error: Error, info: ErrorInfo) {
-    console.error("Streamdown failed to load:", error, info);
+  componentDidCatch() {
+    // 异常及组件栈可能携带正文，只记录稳定原因码。
+    console.error("Streamdown failed to load: render-error");
   }
   render() {
     if (this.state.hasError) {
@@ -308,6 +311,8 @@ export type MessageResponseProps = {
   children?: string;
   className?: string;
   mode?: "static" | "streaming";
+  /** 活跃候选；块内仍需观察正文增量，不代表精确 turn 身份。 */
+  isStreaming?: boolean;
   sessionId?: string;
   /** environmentId，用于构建文件预览 URL */
   envId?: string;
@@ -343,7 +348,8 @@ const renderMediaLink = ({ src, children, className: _cx, ...rest }: Record<stri
 );
 
 export const MessageResponse = memo(
-  ({ className, children, envId, ...props }: MessageResponseProps) => {
+  ({ className, children, envId, sessionId, mode = "streaming", isStreaming = false }: MessageResponseProps) => {
+    const hostContext = useMemo(() => ({ envId }), [envId]);
     const urlTransform = useCallback(
       (url: string) => {
         if (!envId) return url;
@@ -414,24 +420,35 @@ export const MessageResponse = memo(
             </div>
           }
         >
-          <LazyStreamdown
-            allowedTags={allowedTags}
-            components={components}
-            urlTransform={urlTransform}
-            // markdown 排版（标题/列表/引用/代码块/表格与 streamdown 内部 DOM）全部挂在容器上：
-            // 这些节点由 streamdown 自己渲染，本包只能给容器——见 `./internal/markdown-classes`。
-            // 说明：streamdown 的根节点只接收它自己的 props（未知属性不落到 DOM），所以 markdown
-            // 容器无法挂 `data-slot`；对它的结构断言由 markdown 元素上的 `data-streamdown="…"` 承担。
-            className={cn(MARKDOWN_CONTENT_CLASS, "message-response size-full", className)}
-            {...props}
-          >
-            {children}
-          </LazyStreamdown>
+          {/* 切换环境/会话/解析模式时重挂，避免将解析器输出差异误判为正文增量。 */}
+          <UISpecHostProvider key={JSON.stringify([sessionId, envId, mode])} value={hostContext}>
+            <LazyStreamdown
+              allowedTags={allowedTags}
+              components={components}
+              urlTransform={urlTransform}
+              plugins={UI_SPEC_PLUGINS}
+              mode={mode}
+              isAnimating={isStreaming}
+              // markdown 排版（标题/列表/引用/代码块/表格与 streamdown 内部 DOM）全部挂在容器上：
+              // 这些节点由 streamdown 自己渲染，本包只能给容器——见 `./internal/markdown-classes`。
+              // 说明：streamdown 的根节点只接收它自己的 props（未知属性不落到 DOM），所以 markdown
+              // 容器无法挂 `data-slot`；对它的结构断言由 markdown 元素上的 `data-streamdown="…"` 承担。
+              className={cn(MARKDOWN_CONTENT_CLASS, "message-response size-full", className)}
+            >
+              {children}
+            </LazyStreamdown>
+          </UISpecHostProvider>
         </Suspense>
       </StreamdownErrorBoundary>
     );
   },
-  (prevProps, nextProps) => prevProps.children === nextProps.children && prevProps.envId === nextProps.envId,
+  (prevProps, nextProps) =>
+    prevProps.children === nextProps.children &&
+    prevProps.envId === nextProps.envId &&
+    prevProps.isStreaming === nextProps.isStreaming &&
+    prevProps.mode === nextProps.mode &&
+    prevProps.className === nextProps.className &&
+    prevProps.sessionId === nextProps.sessionId,
 );
 
 MessageResponse.displayName = "MessageResponse";

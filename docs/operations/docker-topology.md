@@ -524,7 +524,7 @@ TZ=Asia/Shanghai
 
 | 命令 | 行为 |
 | --- | --- |
-| `./docker/deploy.sh init` | 初始化配置：把各 `.env.example` 落成 `.env`（已存在一律跳过、不覆盖），随后报告还缺哪些必填项 |
+| `./docker/deploy.sh init` | 初始化配置：把各 `.env.example` 落成 `.env`（已存在一律跳过、不覆盖），生成缺失的部署期身份键（见下），随后报告还缺哪些必填项 |
 | `./docker/deploy.sh validate` | 只跑启动前的必填项校验（与 `up` / `deploy` 同一套，可反复自检） |
 | `./docker/deploy.sh up`（默认） | 启动前校验 → 起主服务项目（创建 `fenix-server`）→ 按开关逐个起依赖 → 汇总状态 |
 | `./docker/deploy.sh deploy` | 发布顺序（§10）：校验 → 拉镜像 → DDL 迁移 → 数据迁移 → `up` |
@@ -542,6 +542,14 @@ TZ=Asia/Shanghai
 
 - **真相来源是 compose 的 `${VAR:?说明}`**，脚本不另维护一份必填清单：扫主服务编排（`docker/main/docker-compose.yml`）、
   `docker/common/` 与**已启用**依赖的 compose，逐项确认有值；`up` / `deploy` 在动任何容器前先跑这道闸。
+- **模块声明键不在这个扫描面上**：`${VAR:?}` 只覆盖编排插值键，而模块 `envDefinitions` 声明的必填键由 rcs **启动期**
+  校验（`apps/server/src/env-loader.ts`）——缺失的后果是容器起不来，而不是启动前被拦下。这类键当前只有
+  `WORKFLOW_V2_PLATFORM_ACCOUNT_EMAIL`（workflow-v2 声明、无默认值），所以脚本在 `init` / `up` / `deploy` 时补一道
+  **生成并固化**（`docker/lib/config.sh` 的 `ensure_workflow_platform_account_email`）：缺失时按主机名派生
+  `workflow-v2-platform+<主机名>@example.com` 写进 `docker/main/.env`，**已有值一律不动**。它是**身份**而不是密钥
+  （密钥可以随时重新生成，它一旦被上游用作账号就是该账号的所有权）：上游首次引导会用它自助注册，改值等于换上游
+  账号——需要重新引导，并人工清理上游的旧账号（见 `docker/workflow/README.md` §5）。`validate` 与 `config`（干跑）
+  只读，不生成。
 - 为什么不用 `docker compose config` 代劳：它一次只报第一个缺失键，而首次部署需要一次看全；
   逐键解析还能把 compose 里写的说明原文回显给用户。
 - 判定顺序与 Compose 一致：shell 环境（脚本已导出主服务 env 与 `deploy.env`）→ **该编排目录自己的** `.env`
@@ -758,7 +766,9 @@ docker compose up -d
 11. env 按 §8 执行：三段式排序；共享键只在主服务 env 定义；必需项一律 `${VAR:?}`；容器内地址不做同名插值；
     `docker/common/` 不设自己的 env 文件。
 12. 必填项的真相只在 compose 的 `${VAR:?}`（脚本不另存清单）；`up` / `deploy` 在动任何容器前先过这道校验；
-    `init` 只创建缺失文件，**绝不覆盖**已有 `.env`（那里面可能已经是生产配置）。
+    `init` 只创建缺失文件，**绝不覆盖**已有 `.env`（那里面可能已经是生产配置）。唯一需要脚本落值的是模块声明键
+    `WORKFLOW_V2_PLATFORM_ACCOUNT_EMAIL`——compose 里没有它（由 rcs 启动期校验），脚本在缺失时按主机名生成并固化
+    （§9）；取值规则与 `init` 一致：**只补缺失、绝不覆盖**。
 13. **消费共享实例的目录必须有一次性初始化服务**（库 / 账号 / 桶的创建与 schema 应用都在那里，形态逐条见 §6）；
     启动顺序由它自己等待 + 栈内主服务 `depends_on: service_completed_successfully` 表达，不写跨项目 `depends_on`。
 
@@ -791,6 +801,9 @@ docker compose up -d
 12. **`init` + 启动前必填项校验**：`init` 把各 `.env.example` 落成 `.env`（跳过已存在），校验读取 compose 的
     `${VAR:?}`（唯一真相，不另维护清单），失败时输出「键 → 填在哪个文件 → 说明」，`up` / `deploy` 硬拦、
     `config` 干跑只告警。代价是首次部署需要两步（init → 填 → validate/up），换来的是「不会带着半份配置启动」。
+    模块声明键（当前只有 workflow 的平台账号邮箱）用同一套时机补值：脚本在缺失时生成并固化（§9）。
+    代价是默认身份由脚本挑（主机名派生；要换成自控邮箱得重新引导并清理上游旧账号），
+    换来的是「一个模块必填键不会让新部署起不来、也不会逼部署方预先决定未来才用到的账号」。
 13. **`RCS_URL` / `RCS_SECRET` 由脚本按同机语义注入**：前者与主服务 env 的同名键语义不同（自用地址 vs 可达地址），
     后者要与主服务的 `REGISTRY_SECRET` 同值——都不适合做成共享键；依赖自己的 `.env` 优先于注入（独立部署），
     注入只影响脚本启动的那条路径。

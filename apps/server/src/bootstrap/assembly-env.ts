@@ -2,11 +2,13 @@ import { type AssemblyProfile, createModuleRegistry, type ModuleManifest } from 
 import { generatedModuleManifests } from "../../../generated/module-registry";
 import { loadAssemblyProfile } from "../assembly-config";
 import { loadServerEnv, type ServerEnv } from "../env-loader";
+import { type AssemblyModules, projectAssemblyModules } from "./assembly-modules";
 
 /** 装配期环境解析结果：已校验的 profile 与合并后的环境。 */
 export interface ResolvedAssemblyEnv {
   readonly profile: AssemblyProfile;
   readonly env: ServerEnv;
+  readonly assemblyModules: AssemblyModules;
 }
 
 /** 解析入口的装配输入；缺省走发布入口固定的 profile 与生成的模块清单。 */
@@ -29,7 +31,7 @@ export interface ResolveAssemblyEnvOptions {
  */
 export async function resolveAssemblyEnv(options: ResolveAssemblyEnvOptions = {}): Promise<ResolvedAssemblyEnv> {
   const profile = await loadAssemblyProfile(options.profilePath);
-  const { modules } = createModuleRegistry(options.manifests ?? generatedModuleManifests).resolveProfile(profile);
-  const definitions = modules.flatMap((manifest) => manifest.envDefinitions ?? []);
-  return { profile, env: loadServerEnv(definitions, options.input) };
+  const assembly = createModuleRegistry(options.manifests ?? generatedModuleManifests).resolveProfile(profile);
+  const definitions = assembly.modules.flatMap((manifest) => manifest.envDefinitions ?? []);
+  return { profile, env: loadServerEnv(definitions, options.input), assemblyModules: projectAssemblyModules(assembly) };
 }

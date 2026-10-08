@@ -182,6 +182,12 @@
         "turnError": "执行出错",
         "uploadedImage": "已上传图片"
       },
+      "uiSpec": {
+        "invalidProps": "{{type}} 的属性无效",
+        "renderFailed": "无法显示此界面，以下为原始内容。",
+        "unsupportedType": "不支持的组件：{{type}}",
+        "unsupportedVersion": "不支持的 UI Spec 版本：{{version}}"
+      },
       "periTask": {
         "detailClose": "关闭",
         "detailExpired": "此任务详情已过期。",
