@@ -1,6 +1,6 @@
 # Workflow V2 Docker 部署
 
-上游仓库：[KonghaYao/workflow-studio](https://github.com/KonghaYao/workflow-studio)。核对日期：2026-10-08；GitHub `main` 当时指向 `6aaf4c039e953ec1b00bb741512c690ab400216e`。
+上游仓库：[KonghaYao/workflow-studio](https://github.com/KonghaYao/workflow-studio)。核对日期：2026-10-08；本次交付标签 `sha-af8f16c` 对应 `af8f16c51139023876ef67d82f3f12fd2002f9bc`（取自镜像 label `org.opencontainers.image.revision`；上一版基线是 `6aaf4c039e953ec1b00bb741512c690ab400216e`）。
 
 这里部署的是 **Workflow V2 的独立上游服务**，不是本仓库旧自研 workflow engine。平台镜像不会包含上游；必须分别交付上游后端 / 画布与 FenixAgent。旧工作流定义不会自动导入 V2。
 
@@ -8,11 +8,11 @@
 
 | 文件 | 用途 |
 | --- | --- |
-| `docker-compose.yml` | 唯一独立编排文件：声明本栈的 11 个服务，其中两个（`mysql-init` / `s3-init`）是共享基础设施的一次性初始化服务；使用 fork 镜像、嵌入产物与共享网络；RCS 接入配置直接写在文件头部注释 |
+| `docker-compose.yml` | 唯一独立编排文件：声明本栈的 11 个服务，其中两个（`mysql-init` / `s3-init`）是共享基础设施的一次性初始化服务；web 用画布子路径变体镜像（产物在镜像里，不再挂载 `dist`）与共享网络；RCS 接入配置直接写在文件头部注释 |
 | `.env.example` | 本编排的非密钥配置模板；上游业务配置仍由上游 `docker/.env` 持有 |
 | `init-mysql.sh` | `mysql-init` 的执行脚本（幂等、可重跑）：等共享实例可用 → 建库建号 → 应用账号自检 → 应用上游 schema 与 Atlas。compose 以只读方式挂到容器 `/init/init-mysql.sh`，用 `/bin/sh` 解释执行（不依赖宿主的可执行位） |
 | `init-s3.sh` | `s3-init` 的执行脚本（幂等、可重跑）：等共享 rustfs 可用 → 幂等建桶（`opencoze` / `milvus`）→ 用同一份凭据自检 → 播种画布图标。挂载与执行方式同 `init-mysql.sh` |
-| `nginx.conf` | 唯一出口的 API / 静态代理，以及只读签名存储代理；替换上游默认站点配置 |
+| `nginx.conf` | 唯一出口的 API / 静态代理，以及只读签名存储代理；替换上游默认站点配置，并补上镜像不提供的画布子路径映射（`/workflow-canvas/<rest>` 剥离前缀 + SPA 回退） |
 
 **交付清单**：把本目录交付到目标机时，`init-mysql.sh` 与 `init-s3.sh` 必须一起带走——它们是各自初始化服务的 entrypoint，
 缺任一个时对应容器会因为 `create_host_path: false` 直接报错（而不是被 docker 静默建成一个同名目录然后以退出码 127 失败）。
@@ -27,7 +27,7 @@
 - 代价三：共享实例里**属于本栈的库与账号**、以及上游 schema 的初始化，改由本目录的一次性服务 `mysql-init` 承担（原先写在 mysql 容器的启动脚本里）；**属于本栈的桶与图标播种**改由 `s3-init` 承担（原先写在 minio 容器的 entrypoint 里）。两者的成败分别决定 `coze-server` 是否启动。库与账号由它幂等创建，**不依赖共享实例的 `MYSQL_DATABASE` / `MYSQL_USER`**（那两个键只在实例的数据目录首次初始化时生效，对已经存在的实例无效），也不需要运维手敲 SQL。
 - 上游 `.env` 里的 `MYSQL_HOST` / `MYSQL_PORT` / `MINIO_ENDPOINT` / `MINIO_API_HOST` / `MINIO_AK` / `MINIO_SK` **都不需要改**：前者因为服务名与端口在 common 里保持原值（容器内仍是 `mysql:3306`），后者由本目录编排在 `coze-server` 上用 `environment` 显式覆盖（Compose 里 `environment` 优先于 `env_file`）。
 
-初始化文件、上游业务配置和画布产物仍从固定提交的上游目录挂载，启动时**不读取上游 Compose 文件**。需保留上游 MySQL schema、Atlas、对象存储初始化文件（图标目录）、后端配置与构建产物；本文件的服务配置以文首基线为依据，上游升级时显式审查同步，不自动继承变化。
+初始化文件与上游业务配置仍从固定提交的上游目录挂载（**画布产物改由镜像交付**，见 §2），启动时**不读取上游 Compose 文件**。需保留上游 MySQL schema、Atlas、对象存储初始化文件（图标目录）与后端配置；本文件的服务配置以文首基线为依据，上游升级时显式审查同步，不自动继承变化。
 
 拓扑：
 
@@ -75,38 +75,49 @@ Compose 自动创建的项目默认网络：
   - 宿主内存：ES 单节点建议 ≥ 2GB 可用（容器不加内存上限时堆大小由镜像自行推导，本编排不设 `ES_JAVA_OPTS`）；**可用内存不足时不要指望它自动降级**，先扩内存或去掉同时运行的大栈。
   - 宿主磁盘：`${WORKFLOW_STUDIO_DIR}/docker/data/bitnami/elasticsearch` 所在分区留出足够空间。ES 默认磁盘水位 85% 会让分片只读、上游写入直接失败；本目录挂载的上游 `volumes/elasticsearch/elasticsearch.yml` 把水位抬到 99%，换来的只是「更晚才拒绝写入」，磁盘仍然必须监控。
 - 宿主可分配端口：`MYSQL_HOST_PORT`（默认 3306，共享 MySQL 的宿主端口，只绑回环）不冲突即可。共享 rustfs 默认**不发布宿主端口**，本栈不需要它。
-- Git、上游前端构建所需的 Node / Rush 环境；构建入口为上游 `scripts/setup_fe.sh` 与 `make fe`。
+- Git（只用于 clone 上游取配置与初始化资产；画布产物在镜像里，不再需要 Node / Rush 前端构建链）。
 - 主机有资源容纳上游完整依赖栈；具体容量应依据实际负载评估，而不是按单个 Web 服务估算。
 - 已有可用的 FenixAgent、PostgreSQL、控制台账号与组织。平台应包含 `71d3e4f4b` 的 V2 接入及后续必要修复。
 - 可以访问 GHCR 与基础镜像源。镜像拉取失败时先核对 GitHub Actions 的发布结果、标签、包可见性和主机架构。
 
-上游发布 workflow 生成两个镜像：
+上游发布 workflow 生成三个镜像，**同一 commit 同一 tag**：
 
 ```text
-ghcr.io/konghayao/workflow-studio-server:<tag>
-ghcr.io/konghayao/workflow-studio-web:<tag>
+ghcr.io/konghayao/workflow-studio-server:<tag>        # coze-server（Go 服务）
+ghcr.io/konghayao/workflow-studio-web:<tag>           # 根路径部署的 Web（本编排不用）
+ghcr.io/konghayao/workflow-studio-web-canvas:<tag>    # 画布子路径变体，本编排的 coze-web
 ```
 
-模板标签 `sha-6aaf4c0` 对应本文核对的源码基线，但**源码提交存在不保证对应镜像已成功发布**；必须通过后续 `pull` 验证。生产升级应固定新版本，确认两侧契约与画布构建再切换，不直接追随 `latest`。
+`-web-canvas` 与 `-web` 同源码，只差构建参数 `WORKFLOW_CANVAS_BASE=/workflow-canvas/`（同时决定资源前缀与 router basename）。**它的契约是**：镜像内 nginx 只在根路径 `/` 提供 SPA、`dist` 未下沉，也没有 `/workflow-canvas/` location、不做 SPA 回退——`/workflow-canvas/<rest>` 的前缀剥离与 SPA 回退由消费方负责（本栈见 §2）。两个 web 变体都只是 nginx + 静态产物，所以上游 `docker/nginx/nginx.conf` 仍从上游目录挂载。
 
-## 2. 准备上游源码与画布产物
+模板标签 `sha-af8f16c` 对应本文核对的源码基线，但**源码提交存在不保证对应镜像已成功发布**；必须通过后续 `pull` 验证。生产升级应固定新版本，确认两侧契约与画布变体再切换，不直接追随 `latest`。
+
+## 2. 准备上游源码（配置与初始化资产）
+
+画布产物不再由本机构建：`coze-web` 直接用上游发布的 `-web-canvas` 变体镜像（见 §1），构建期已注入 `WORKFLOW_CANVAS_BASE=/workflow-canvas/`。上游目录仍要 clone，但只为取**配置与初始化资产**——上游 `docker/.env`、`backend/conf`、`docker/nginx/nginx.conf`（web 的主配置）、`docker/volumes/mysql/schema.sql` 与 `docker/atlas/opencoze_latest_schema.hcl`、`docker/volumes/minio/` 下的图标；版本必须与镜像 tag 同 commit。
 
 首次部署示例（目标目录可以更换）：
 
 ```bash
 git clone https://github.com/KonghaYao/workflow-studio.git /opt/workflow-studio
-git -C /opt/workflow-studio checkout --detach 6aaf4c039e953ec1b00bb741512c690ab400216e
-
-cd /opt/workflow-studio
-WORKFLOW_CANVAS_BASE=/workflow-canvas/ make fe
-test -s frontend/apps/coze-studio/dist/index.html
+git -C /opt/workflow-studio checkout --detach af8f16c51139023876ef67d82f3f12fd2002f9bc
 ```
 
-生产可在 CI / 专用构建机执行 `make fe`，再将完整 `dist/` 产物部署到目标机同一目录。不要在已运行的 `dist` 上直接覆盖构建：先停止 Web 或使用受控发布目录切换，防止 index 与 chunk 混用。
+不再需要 Node / Rush，也不再需要 `make fe` 与 `frontend/apps/coze-studio/dist`：那套「clone 源码 + 构建 + 挂载 dist」已被镜像替换（旧产物目录留着无害，但没人再挂载它）。
 
-**为什么需要额外构建画布？** 当前上游 `frontend/Dockerfile` 和发布 workflow 没有显式注入 `WORKFLOW_CANVAS_BASE`。该变量是构建期参数，必须让 asset prefix 与 router basename 同时使用 `/workflow-canvas/`；仅给运行中的容器加变量无效。
+**画布的子路径契约**（接错了就是白屏，别只改运行期 env）：
 
-本目录将正确构建的 `dist/` **只读挂载覆盖** GHCR Web 镜像的 `/usr/share/nginx/html`，并将本目录 `nginx.conf` 挂载为出口站点配置。该目录缺失时 `create_host_path: false` 会拒绝静默创建空目录；运行前仍须检查 `index.html`，不能仅确认目录存在。只有在上游发布链路支持且验收了嵌入产物后，才能评估删除此挂载。
+- 镜像内 nginx 只在**根路径** `/` 提供 SPA，`dist` 未下沉，镜像侧**没有** `/workflow-canvas/` location，也**不做** SPA 回退；
+- 消费方必须把 `/workflow-canvas/<rest>` 剥离前缀后交给镜像（`<rest>` → 上游根路径），并自己负责 SPA 回退；
+- 本栈这两件事有两层：平台静态反代（RCS `workflow-v2`）把 `/workflow-canvas/<rest>` 与 `/workflow-canvas/` 分别映射到上游 `<rest>` 与 `/`，非静态资源的 404 回退到上游根文档——浏览器侧因此只认 `/workflow-canvas/*`；本目录 `nginx.conf` 再补一条 `location /workflow-canvas/` 做同样的剥离与回退，兜住带前缀直达 `coze-web` 的形态（宿主诊断入口 `WEB_LISTEN_ADDR`、或前置代理未剥离时）。
+
+校验只看 **basename**（**不要**用 `grep workflow-canvas`：源码里本有无关常量 `flow-workflow-canvas-dnd`，会假阳性）：
+
+```bash
+grep -ro 'basename:"[^"]*"' /usr/share/nginx/html/static/js    # 期望只有 basename:"/workflow-canvas"
+```
+
+在目标机上用运行中的容器执行同一条（`docker compose ... exec coze-web grep -ro ...`），它检查的是实际交付的那份产物。
 
 ## 3. 配置上游业务环境
 
@@ -153,8 +164,8 @@ export WORKFLOW_STUDIO_DIR=/opt/workflow-studio
 
 | 变量 | 模板值 | 用途 |
 | --- | --- | --- |
-| `WORKFLOW_STUDIO_DIR` | `/opt/workflow-studio` | 上游源码、配置、静态产物与持久化数据所在根目录 |
-| `WORKFLOW_STUDIO_TAG` | `sha-6aaf4c0` | 上游 server / web 使用相同版本标签 |
+| `WORKFLOW_STUDIO_DIR` | `/opt/workflow-studio` | 上游源码、配置与持久化数据所在根目录（画布产物不在宿主机上，在镜像里） |
+| `WORKFLOW_STUDIO_TAG` | `sha-af8f16c` | 上游 server 与画布变体（`-web-canvas`）使用相同版本标签 |
 | `WEB_LISTEN_ADDR` | `127.0.0.1:18080` | 宿主诊断入口绑定地址与端口，默认不开放公网；覆盖上游同名配置 |
 
 先起共享基础设施，再起本目录（**顺序不变量**：共享 mysql 与 rustfs 都在主服务项目里，本目录只引用它们所在的网络）：
@@ -278,7 +289,7 @@ docker compose --env-file "$WORKFLOW_STUDIO_DIR/docker/.env" \
 
 ### 反向代理与副本限制
 
-- 浏览器只访问平台统一 HTTPS origin；完整保留 `/workflow-canvas/*` 路径转发到平台，BFF 不能直接到上游。
+- 浏览器只访问平台统一 HTTPS origin；完整保留 `/workflow-canvas/*` 路径转发到平台，BFF 不能直接到上游。**前缀剥离是网关侧的责任**：平台静态反代把 `/workflow-canvas/<rest>` 映射到上游 `<rest>`、`/workflow-canvas/` 映射到上游 `/`（画布镜像只在根路径提供 SPA）；若网关再前置一层反向代理，它同样不能把带前缀的路径直接透给上游。
 - 网关不能缓存控制面 / BFF / session 响应，不能记录 Cookie、`X-Fenix-Workflow-Ticket` 或票据响应体。
 - 不添加阻止同源 iframe 的 `X-Frame-Options: DENY` 或 `frame-ancestors 'none'`；宿主 `frame-src` 应允许 `'self'`。
 - **当前工作流入口先使用单个平台进程。** 一次性 code、签发白名单、撤销记录仍在 `iframe-ticket.ts` 的进程内 Map；相同签名密钥与 Redis 不能解决跨副本票据校验。平台多副本时须将控制面与整条画布链固定到同一实例并专项验证，不能直接轮询分流。
@@ -308,6 +319,8 @@ ls -1 docker/common/data/rustfs
 ```
 
 **一次性服务的失败不会静默**：`mysql-init` / `s3-init` 非零退出时，`coze-server` 因 `depends_on: service_completed_successfully` 不会启动（`milvus` 只等 `s3-init`），`docker compose ... ps` 里 `coze-server` 会缺位或反复重启。但 `up -d` 的退出码本身不足以下结论（它还可能混着别的服务的问题），所以验收一律以第 1、2 条为准：**看到两个 `Exited (0)` 与各自的完成行才算通过**。
+
+画布产物在镜像里，用 §2 的 basename 校验查实际交付的那份（`docker compose ... exec coze-web grep -ro 'basename:"[^"]*"' /usr/share/nginx/html/static/js`，期望 `basename:"/workflow-canvas"`）。再直接请求一次画布入口与一条 `/workflow-canvas/static/js/*.js`：两处都该是 `200`，且 JS 请求回来的必须是 JavaScript 而不是被 SPA 回退成的 HTML。
 
 1. 核对平台 `/health` 的 `commitId`。它仅说明进程存活，不证明上游或画布可用。
 2. 用组织 owner / admin 进入 `/agent/workflow`，点击「初始化工作流空间」。代码会确保平台上游账号存在、登录、取个人空间并为组织绑定 App；若上游关闭自助注册，须先创建匹配账号。
@@ -344,9 +357,9 @@ docker compose --env-file "$WORKFLOW_STUDIO_DIR/docker/.env" \
 | 症状 | 排查方向 |
 | --- | --- |
 | Compose 配置解析失败 | 使用 Docker Compose v2，核对必填路径 / 版本 / 端口变量与环境文件 |
-| 找不到文件或静态挂载失败 | `WORKFLOW_STUDIO_DIR` 是否为绝对路径，原配置是否齐全，`dist/index.html` 是否已构建 |
+| 找不到文件或挂载失败（`create_host_path: false` 报错） | `WORKFLOW_STUDIO_DIR` 是否为绝对路径，上游 `docker/.env`、`backend/conf`、`docker/nginx/nginx.conf` 是否齐全（画布产物不在这里：它在镜像里） |
 | `manifest unknown` / `unauthorized` | 核对 GHCR 发布任务、确切标签和包权限；必要时用受控 token 经 `docker login --password-stdin` 登录 |
-| 画布白屏 / 根路径资源 404 | 用正确 `WORKFLOW_CANVAS_BASE` 重建整个 dist，不能只改运行期 env |
+| 画布白屏 / 资源 404（浏览器把 HTML 当 JS 解析） | ① `coze-web` 是否用的是 `-web-canvas` 变体、tag 是否与 server 一致（用 §2 的 basename 校验）；② 带前缀的请求有没有被剥离（平台静态反代与 `nginx.conf` 的 `/workflow-canvas/`）；③ 别用根路径版 `-web` 镜像顶替 |
 | 平台 502 / 503 | 两侧是否加入共享网络、上游依赖是否健康、容器内 URL 是否正确 |
 | `mysql-init` 报「共享 MySQL 不可用（300 秒内未通过认证）」 | 看它给出的两条分支：`服务器可达但 root 认证失败` → 主服务 env 的 `MYSQL_ROOT_PASSWORD` 与实例不一致；`服务器不可达` → `FENIX_FEATURE_MYSQL` 是否为 true、主服务项目是否已起、`MYSQL_HOST_PORT` 是否被占用 |
 | `mysql-init` 报「应用账号认证失败」 | 共享实例里该账号已存在但口令不同（`CREATE USER IF NOT EXISTS` 不覆盖已有账号）。按提示改 `MYSQL_PASSWORD`（主服务 env 与上游 `docker/.env` 两处）或在实例里 `ALTER USER` |
@@ -363,11 +376,11 @@ docker compose --env-file "$WORKFLOW_STUDIO_DIR/docker/.env" \
 | 图片不可见 | 签名 URL 的存储域是否可从平台访问、`MINIO_API_HOST` 与 `nginx.conf` 的 `sub_filter` / `Host` 三处是否同为 `rustfs:9000` |
 | 删除后上游对象仍在 | 检查 `pending_delete`、对账任务和审计，不直接删除本地归属记录 |
 
-持久化分三处：**共享 MySQL 在 `docker/common/data/mysql`、共享对象存储在 `docker/common/data/rustfs`**（都属主服务项目，见 §8），其余数据（Elasticsearch / Redis / etcd / Milvus、画布产物与后端配置）在下游 `${WORKFLOW_STUDIO_DIR}/docker/data/` 与 `volumes/` 下。三处都在交付面内（bind 挂载），迁移或备份要一起带走。上游 Compose 使用固定 `coze-*` 容器名，同一 Docker 主机不能直接再起第二套相同部署做蓝绿发布。
+持久化分三处：**共享 MySQL 在 `docker/common/data/mysql`、共享对象存储在 `docker/common/data/rustfs`**（都属主服务项目，见 §8），其余数据（Elasticsearch / Redis / etcd / Milvus、上游后端配置与初始化资产）在下游 `${WORKFLOW_STUDIO_DIR}/docker/data/` 与 `volumes/` 下。三处都在交付面内（bind 挂载），迁移或备份要一起带走。画布产物不在其中：它随镜像交付。上游 Compose 使用固定 `coze-*` 容器名，同一 Docker 主机不能直接再起第二套相同部署做蓝绿发布。
 
-升级顺序为备份 → 固定源码 / 镜像版本 → 重建正确画布 → 上游就绪 → 平台迁移与上线 → 全链路验收。备份必须包含平台 PostgreSQL 的归属 / 审计、**共享 MySQL 的定义 / 版本 / 运行数据**、对象存储及配置版本；凭据独立受控保管。
+升级顺序为备份 → 固定源码 / 镜像版本（server 与 `-web-canvas` 同 tag）→ 上游就绪 → 平台迁移与上线 → 全链路验收。备份必须包含平台 PostgreSQL 的归属 / 审计、**共享 MySQL 的定义 / 版本 / 运行数据**、对象存储及配置版本；凭据独立受控保管。
 
-回滚应用不会撤销数据库变更，尤其平台 `0032` 字段重命名与 `mysql-init` 的 Atlas schema apply。先评估两侧旧版本对迁移后库的兼容性，再成组回退平台、上游镜像和 dist；必要时走已验证的数据库恢复 / 补偿流程，不直接切旧镜像宣称完成。
+回滚应用不会撤销数据库变更，尤其平台 `0032` 字段重命名与 `mysql-init` 的 Atlas schema apply。先评估两侧旧版本对迁移后库的兼容性，再成组回退平台与上游镜像（server 与 `-web-canvas` 同 tag 一起换）；必要时走已验证的数据库恢复 / 补偿流程，不直接切旧镜像宣称完成。
 
 ## 8. 数据搬迁（MySQL 上移到 common）
 
@@ -484,4 +497,4 @@ docker compose -f docker/ragflow/docker-compose.yml exec ragflow getent hosts my
 - 对象存储收敛的依据：上游 `docker/docker-compose.yml` 的 minio 服务与它的 `mc` 初始化、`backend/infra/storage/impl/minio/minio.go` 的 `createBucketIfNeed`（固定用 `cn-north-1` 建桶——所以本栈把建桶前移到 `s3-init`）、以及 `docker/common/docker-compose.yml` 里 rustfs 的镜像 tag / 凭据键 / 健康检查路径。
 - `docs/arch/25-workflow-v2.md`、`docs/design/2026-09-29-workflow-v2-interface-freeze.md`、`docs/operations/upgrade.md`。
 
-本文提供可校验的部署配置；不保证 GitHub 镜像发布已成功，也不宣称本次已实际拉取镜像、启动容器或完成生产联调。本文核对日期 2026-10-08；上游 `main` 当时指向 `6aaf4c039e953ec1b00bb741512c690ab400216e`。
+本文提供可校验的部署配置；不保证 GitHub 镜像发布已成功，也不宣称本次已实际拉取镜像、启动容器或完成生产联调。本文核对日期 2026-10-08；本次交付标签 `sha-af8f16c` 对应 `af8f16c51139023876ef67d82f3f12fd2002f9bc`（上一版基线是 `6aaf4c039e953ec1b00bb741512c690ab400216e`）。

@@ -42,7 +42,9 @@
 # 控制台与 /workflow-canvas/* 均经 RCS 同源入口，不直接将 BFF 反代到上游。
 # RCS 需包含 workflow-v2 模块、控制台产物与完整 DDL / 数据迁移。
 # 当前画布票据状态仍在 RCS 进程内；Redis 不解决跨副本票据校验，先按单进程部署。
-# 上游画布必须以 WORKFLOW_CANVAS_BASE=/workflow-canvas/ 构建并交付 dist。
+# 上游画布改由 `-web-canvas` 变体镜像交付（构建期已注入 WORKFLOW_CANVAS_BASE=/workflow-canvas/，
+# 资源前缀与 router basename 都是 /workflow-canvas），不再需要 clone 源码构建 dist；
+# 镜像只在根路径 / 提供 SPA，「/workflow-canvas/<rest> 剥离前缀」与 SPA 回退由平台静态反代与本站负责。
 # 启动前创建共享网络，并同时加载上游 docker/.env 与本目录 .env：
 # docker network create fenix-server
 # docker compose --env-file "$WORKFLOW_STUDIO_DIR/docker/.env" \
@@ -435,7 +437,14 @@ services:
     command:
       - /app/opencoze
   coze-web:
-    image: ghcr.io/konghayao/workflow-studio-web:${WORKFLOW_STUDIO_TAG:?Set WORKFLOW_STUDIO_TAG}
+    # 画布子路径变体：与 workflow-studio-server 同 commit 同 tag，构建期已注入
+    # WORKFLOW_CANVAS_BASE=/workflow-canvas/（资源前缀与 router basename 都是它）。镜像内 nginx 只在
+    # 根路径 / 提供 SPA，dist 未下沉，**不提供 /workflow-canvas/ location、也不做 SPA 回退**：前缀剥离
+    # 与回退分别由平台静态反代（RCS workflow-v2）与本目录 nginx.conf 负责。
+    # 它替代了原先「clone 上游源码 + 本地构建 + 只读挂载 dist」的画布交付方式，因此下面的挂载里
+    # 不再有 ${WORKFLOW_STUDIO_DIR}/frontend/apps/coze-studio/dist；上游目录只继续提供
+    # docker/.env、backend/conf、docker/nginx/nginx.conf 与初始化资产（schema / Atlas / 图标）。
+    image: ghcr.io/konghayao/workflow-studio-web-canvas:${WORKFLOW_STUDIO_TAG:?Set WORKFLOW_STUDIO_TAG}
     container_name: coze-web
     restart: always
     ports:
@@ -445,12 +454,6 @@ services:
       - type: bind
         source: ./nginx.conf
         target: /etc/nginx/conf.d/default.conf
-        read_only: true
-        bind:
-          create_host_path: false
-      - type: bind
-        source: ${WORKFLOW_STUDIO_DIR:?Set an absolute WORKFLOW_STUDIO_DIR}/frontend/apps/coze-studio/dist
-        target: /usr/share/nginx/html
         read_only: true
         bind:
           create_host_path: false
