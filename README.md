@@ -91,6 +91,9 @@ docker compose up --build -d
 
 首次启动时，系统会创建管理员账号 `admin@fenix.com`。初始密码会写入 `RCS_SYSTEM_ADMIN_PASSWORD_FILE` 指定的文件，默认是 `data/password.txt`。
 
+生产部署（目标机无需源码与 Dockerfile）改用生产编排 `docker/main/docker-compose.yml` 与一键入口 `./docker/deploy.sh deploy`：
+见[部署](docs/operations/deployment.md)与 [Docker 编排体系](docs/operations/docker-topology.md)（dev 与生产两份编排同项目名、同网络，二选一运行）。
+
 ### 本地开发
 
 前置要求：Bun、Docker 与 Docker Compose，以及可用的 Peri Agent 引擎（本地执行的默认引擎，须在 `PATH` 上）。使用其他引擎时需自行安装对应 CLI：OpenCode 建议 `opencode-ai@1.17.12`（更高版本可能有兼容性问题）。

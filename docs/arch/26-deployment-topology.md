@@ -1,14 +1,14 @@
 # Docker 部署架构与拓扑（权威）
 
 > 状态：现状基线（2026-10-08）。
-> 范围：FenixAgent 的 Docker 部署体系——编排结构（顶层项目 / `docker/common/` / `docker/<name>/` / 交付面）、网络分层、四种部署方式（本地开发 / 生产单机 / 执行节点分离 / OpenSandbox 分离）及各自的容器与网络拓扑、数据落点、配置与发布契约。
+> 范围：FenixAgent 的 Docker 部署体系——编排结构（主服务编排 / `docker/common/` / `docker/<name>/` / 交付面）、网络分层、四种部署方式（本地开发 / 生产单机 / 执行节点分离 / OpenSandbox 分离）及各自的容器与网络拓扑、数据落点、配置与发布契约。
 > 权威性：本文是部署**结构与拓扑**的权威。脚本用法、逐键配置说明与排障步骤见运维文档：[部署](../operations/deployment.md)、[Docker 编排体系](../operations/docker-topology.md)、[升级](../operations/upgrade.md)；OpenSandbox 集群的数据模型与接口见 [OpenSandbox Cluster 当前架构](./opensandbox-cluster.md)。
-> 非目标：应用层运行架构（执行节点模型、ACP 信道、沙盒 Provider、Instance 生命周期）见 [沙盒整体架构](./19-sandbox.md)、[AgentController 编排域架构](./20-orchestration-management.md)；K8s 等平台的原生编排仓库不提供，其他平台以镜像 + `deploy/env/rcs.example` 清单接入。
+> 非目标：应用层运行架构（执行节点模型、ACP 信道、沙盒 Provider、Instance 生命周期）见 [沙盒整体架构](./19-sandbox.md)、[AgentController 编排域架构](./20-orchestration-management.md)；K8s 等平台的原生编排仓库不提供，其他平台以镜像 + `docker/main/.env.example` 清单接入。
 
 ## 1. 决策摘要
 
-1. **顶层 `docker-compose.yml` 是主服务与基础服务的唯一编排**；每个可选能力 / 执行节点对应 `docker/<name>/` 一个独立 Compose 项目。
-2. **dev / prod 共用同一份顶层文件**：dev 走 `build:`，prod 用固定 tag 的 `image:`，差异只由配置表达。
+1. **主服务与基础服务只有一处归属**：主服务编排——dev 是仓库根 `docker-compose.yml`、生产是 `docker/main/docker-compose.yml`；每个可选能力 / 执行节点对应 `docker/<name>/` 一个独立 Compose 项目。
+2. **dev / prod 各一份主服务编排**：dev 带 `build:`（本地构建），prod 不构建、只用固定 tag 的 `image:`；两份同项目名 `fenix`、同网络 `fenix-server`，**二选一运行**。
 3. **网络两层**：各 Compose 项目的默认网络 + 唯一的共享网络 `fenix-server`；共享网络成员是最小必要集。
 4. **基础服务收敛在 `docker/common/`**：PostgreSQL 必需，Redis / RustFS / MySQL 由开关启停；四个服务都是**共享实例**
    （多个栈共用一套，消费方须接入 `fenix-server`；消费方清单见 §2.4 与 §3）。共享实例只提供实例，库 / 账号 / 桶
@@ -18,7 +18,7 @@
 7. **数据一律 bind 挂载在各编排同级的 `./data/`**（不用命名卷）：备份 = 打包交付目录，搬迁 = 整目录拷走。
 8. **版本与身份写死在文件里**：镜像 tag 在各 compose 的 `image:` 行，Compose 项目名写死 `name:`，都不做环境变量插值。
 9. **发布顺序固定**：DDL 迁移 → 数据迁移 → 应用启动；主服务容器启动命令含 DDL 迁移，数据迁移由发布任务承担。
-10. **部署方式的差异只在「哪些目录出现在哪台机器」**：单机 = 全部目录一台机器；分离 = 顶层留平台机，执行节点 / OpenSandbox 目录放独立机器，跨机用宿主可达地址连接。
+10. **部署方式的差异只在「哪些目录出现在哪台机器」**：单机 = 全部目录一台机器；分离 = 主服务留平台机，执行节点 / OpenSandbox 目录放独立机器，跨机用宿主可达地址连接。
 
 ## 2. 编排结构
 
@@ -26,7 +26,7 @@
 
 | 层 | 内容 | 生命周期 |
 | --- | --- | --- |
-| 顶层项目 | 主服务 `rcs` + 基础服务（`include docker/common/`）；裸 `docker compose up -d` 即最小可用集（rcs + postgres） | 与部署同生共死 |
+| 主服务项目 | 主服务 `rcs` + 基础服务（`include docker/common/`）；生产用 `docker/main/docker-compose.yml`（无 `build:`），dev 裸 `docker compose up -d`（仓库根文件）即最小可用集（rcs + postgres） | 与部署同生共死 |
 | 依赖目录 | 可选能力与执行节点（`docker/<name>/`，一个目录一个独立 Compose 项目） | 独立起停、独立升级 |
 | 交付面 | `docker/deploy.sh` + `docker/deploy.env` + 上述文件 | 随版本发布 |
 
@@ -34,10 +34,12 @@
 
 ```text
 仓库根
-├── docker-compose.yml          # 顶层项目（dev / prod 共用）
-├── .env / .env.example         # 应用配置与密钥
-├── data/ workflow/ workspaces/ # 运行期数据（bind 挂载点，不进版本控制）
+├── docker-compose.yml          # dev 形态主服务编排（带 build:，本地构建）
+├── .env / .env.example         # dev 的应用配置与密钥（根编排与 `bun run dev` 读它）
+├── data/ workflow/ workspaces/ # dev 运行期数据（bind 挂载点，不进版本控制）
 └── docker/
+    ├── main/                   # 生产形态主服务编排（无 build:，只用发布镜像；数据落 main/ 下同名目录）
+    │                           # 应用配置与密钥是它同目录的 .env（模板 .env.example，deploy.sh init 落成）
     ├── common/                 # 基础服务：postgres / redis / rustfs / mysql；运行期数据在 common/data/
     ├── deploy.sh               # 一键入口
     ├── lib/config.sh           # 配置解析、必填项校验、依赖发现（被 deploy.sh source；交付面必须带上）
@@ -48,11 +50,11 @@
     └── opensandbox-cluster/  opensandbox-server/  opensandbox-server-tunnel/
 ```
 
-### 2.3 顶层项目（`docker-compose.yml`）
+### 2.3 主服务项目（`docker/main/docker-compose.yml`；dev 形态是仓库根 `docker-compose.yml`）
 
 ```yaml
 include:
-  - path: docker/common/docker-compose.yml   # 相对本文件解析（Compose ≥ 2.20）
+  - path: ../common/docker-compose.yml      # 相对本文件解析（Compose ≥ 2.20）
 name: fenix   # 固定项目名，不做插值：卷与容器都带项目名前缀
 networks:
   fenix-server:
@@ -60,17 +62,22 @@ networks:
 services:
   rcs:
     image: ghcr.io/huangpustar/fenixagent:sha-<...>   # 固定版本；发布时更新本行
-    build: { context: ., dockerfile: Dockerfile }     # dev 用 --build；prod 只用 image
     networks: [fenix-server]
 ```
 
 要点：
 
 - `rcs` 的启动命令为 `bun migrate.js && exec bun --no-install run dist/index.js`——DDL 迁移先于应用进程。
-- 数据挂载：`./data/peri-home`、`./data`、`./workflow`、`./workspaces`（全部相对顶层文件）。
-- 宿主端口：`FENIX_HTTP_PORT`（默认 `3001`）→ 容器 `3000`；`depends_on: postgres: { condition: service_healthy }` 直接可用（同属顶层项目）。
+- **两份文件的差异只有 `build:` 与数据落点**：dev 文件（仓库根）带 `build: { context: ., dockerfile: Dockerfile }`
+  并挂仓库根的 `./data`、`./workflow`、`./workspaces`；生产文件不声明 `build:`（目标机没有源码与 Dockerfile），
+  挂 `docker/main/` 下的同名目录。
+- **手动执行生产文件读同目录的 env**：compose 的项目目录是 `docker/main/`，插值与 `env_file` 都读那里（`docker/main/.env`），
+  所以在任意工作目录执行 `docker compose -f docker/main/docker-compose.yml …` 即可，不需要 `--env-file`；经
+  `./docker/deploy.sh` 时读的是同一份文件（脚本读入后连 `docker/deploy.env` 一起导出为 shell 环境）。
+- 数据挂载：`./data/peri-home`、`./data`、`./workflow`、`./workspaces`（全部相对编排文件）。
+- 宿主端口：`FENIX_HTTP_PORT`（默认 `3001`）→ 容器 `3000`；`depends_on: postgres: { condition: service_healthy }` 直接可用（同属主服务项目）。
 - `include` 是模型复制：common 的服务名（`postgres` / `redis` / `rustfs` / `mysql`）是全局保留名。
-- common 的服务不得引用任何依赖目录的文件与路径（顶层 `config` 在任何机器上都要能解析）。
+- common 的服务不得引用任何依赖目录的文件与路径（主服务 `config` 在任何机器上都要能解析）。
 
 ### 2.4 基础服务（`docker/common/`）
 
@@ -91,7 +98,7 @@ services:
 **共享实例的初始化归消费方**（2026-10-08 起，MySQL 从 `docker/workflow/` 上移、LiteLLM / RAGFlow / Workflow 的
 辅助服务随之收敛过来）：common 只提供实例与账号，不含任何业务 schema / 桶初始化，库、账号、桶由消费方自己的
 **一次性初始化服务**创建（`litellm-db-init`、`ragflow-mysql-init` + `ragflow-s3-init`、`mysql-init` + `s3-init`）。
-因此这些依赖目录都**不自足**：它们依赖顶层项目先起，消费方容器要接入 `fenix-server` 才能按名访问共享实例。
+因此这些依赖目录都**不自足**：它们依赖主服务项目先起，消费方容器要接入 `fenix-server` 才能按名访问共享实例。
 已知代价：消费方同时挂在两个网络上，与栈内同名服务会解析歧义（`docker/workflow/` 的 `redis`；RAGFlow 的栈内
 Valkey 已改名 `ragflow-redis` 做保留名避让），判定与处理见 `docker/workflow/README.md` §9、
 [Docker 编排体系](../operations/docker-topology.md) §3 规则 7。
@@ -104,7 +111,7 @@ Valkey 已改名 `ragflow-redis` 做保留名避让），判定与处理见 `doc
 
 每个依赖目录必须满足（逐条细则与自检清单见 [Docker 编排体系](../operations/docker-topology.md) §6）：
 
-1. `docker-compose.yml` 是唯一入口，目录自包含；以**独立项目**方式启动，不与顶层 `-f` 叠加。
+1. `docker-compose.yml` 是唯一入口，目录自包含；以**独立项目**方式启动，不与主服务 `-f` 叠加。
 2. 网络按 §3 分层：需要与主服务互通的服务接入 `fenix-server`（`external: true`），服务名全局唯一；栈内辅助服务（数据库、缓存、对象存储等）不声明 `networks`。
 3. 宿主端口只绑回环或不发布；面向外部用户的入口（如 `agent-sites` 站点端口）才绑 `0.0.0.0` 且可用环境变量覆盖。
 4. 数据 bind 到本目录同级的 `./data/`；禁止命名卷。
@@ -117,7 +124,7 @@ Valkey 已改名 `ragflow-redis` 做保留名避让），判定与处理见 `doc
 | 层 | 网络 | 成员 | 可见性 |
 | --- | --- | --- | --- |
 | ① 项目内层 | 各 Compose 项目的默认网络 | 项目声明的全部服务 | 仅同项目内互相可见 |
-| ② 主服务层 | `fenix-server`（顶层项目创建） | `rcs`、common 的基础服务、各依赖中需要与主服务互通的服务 | 网络内全部容器互相可见（跨项目） |
+| ② 主服务层 | `fenix-server`（主服务项目创建） | `rcs`、common 的基础服务、各依赖中需要与主服务互通的服务 | 网络内全部容器互相可见（跨项目） |
 
 成员判定标准唯一：**这个服务是否需要与主服务（或需要访问主服务的执行节点）直接通信。**
 
@@ -125,7 +132,7 @@ Valkey 已改名 `ragflow-redis` 做保留名避让），判定与处理见 `doc
 - 不得接入 ②：依赖栈内部的辅助服务（数据库、缓存、对象存储、消息队列、搜索引擎、向量库等，如 RAGFlow 的 `ragflow-redis` / `infinity` / 自带的 `ragflow-rustfs`、Workflow 的 `redis` / `elasticsearch` / `etcd` / `milvus`）——它们只在 ① 内被本项目的出口服务访问；**common 提供的共享实例是例外**（跨项目按名访问只能经 ②）。
 - 同时挂在 ① 与 ② 上的容器，遇到同名服务时 Docker DNS 没有优先级约定（§2.4 的已知代价）；因此共享实例的服务名是全局保留名，依赖栈不应再占用（RAGFlow 的栈内 Valkey 与自带对象存储已改名 `ragflow-redis` / `ragflow-rustfs`；workflow 的 `redis` 未改，只在两个开关同时打开时有歧义）。
 - 依赖项目里只有显式声明 `networks`（`external: true`）的服务进入 ②；接入 ② 的服务名是跨项目 DNS 名，必须全局唯一。
-- ② 由顶层项目定义并创建，依赖只引用——**依赖启动前顶层必须已启动**（顺序不变量）。
+- ② 由主服务项目定义并创建，依赖只引用——**依赖启动前主服务必须已启动**（顺序不变量）。
 - 跨机通信不走 `fenix-server`（该网络只在单机 Docker 内成立），走宿主可达地址（`RCS_URL`、`RCS_SANDBOX_CLUSTER_URL`、`FRP_PUBLIC_ADDRESS`）。
 
 ## 4. 部署方式与拓扑
@@ -163,17 +170,17 @@ flowchart LR
     RCS -.->|"profile s3"| RUSTFS[("rustfs")]
 ```
 
-`docker compose up -d --build` 即最小可用集（rcs + postgres）；`--profile redis` / `--profile s3` 附加可选基础服务。与生产单机共用同一份顶层编排。
+`docker compose up -d --build` 即最小可用集（rcs + postgres）；`--profile redis` / `--profile s3` 附加可选基础服务。与生产单机是**同项目名、同网络的两份文件**（dev 根文件 / 生产 `docker/main/`），二选一运行。
 
 ### 4.2 生产单机
 
-全部目录在同一台机器：顶层项目（主服务 + 基础服务）+ 按 feature 开关启动的依赖项目。
+全部目录在同一台机器：主服务项目（主服务 + 基础服务，`docker/main/docker-compose.yml`）+ 按 feature 开关启动的依赖项目。
 
 ```mermaid
 flowchart TB
     User["浏览器"] -->|"FENIX_HTTP_PORT（默认 3001）"| RCS["rcs（固定镜像 tag）"]
 
-    subgraph Top["顶层项目 name: fenix"]
+    subgraph Top["主服务项目 name: fenix"]
         RCS
         PG[("postgres 必需")]
         REDIS[("redis 可选")]
@@ -201,15 +208,15 @@ flowchart TB
 ./docker/deploy.sh deploy      # 拉镜像 → DDL 迁移 → 数据迁移 → 启动
 ```
 
-最小交付面（目标机**无需源码与 bun**）：`docker-compose.yml`、`docker/deploy.sh`、`docker/lib/`、`docker/deploy.env`、`docker/common/`、启用的依赖目录与根 `.env`。
+最小交付面（目标机**无需源码与 bun**）：`docker/main/`（生产编排 + 同目录 `.env` + 模板 `.env.example`）、`docker/deploy.sh`、`docker/lib/`、`docker/deploy.env`、`docker/common/`、启用的依赖目录。
 
 ### 4.3 生产 · 执行节点分离
 
-平台机只放顶层项目；`docker/sandbox-*` 以独立交付目录部署在一台或多台执行节点机上，容器内 runtime 主动出网连主服务（`RCS_URL`）。
+平台机只放主服务项目；`docker/sandbox-*` 以独立交付目录部署在一台或多台执行节点机上，容器内 runtime 主动出网连主服务（`RCS_URL`）。
 
 ```mermaid
 flowchart LR
-    User["浏览器"] -->|":3001"| RCS["平台机<br/>顶层项目：rcs + common"]
+    User["浏览器"] -->|":3001"| RCS["平台机<br/>主服务项目：rcs + common"]
 
     subgraph N1["执行节点机 A"]
         SP["docker/sandbox-peri 独立项目"]
@@ -233,7 +240,7 @@ flowchart LR
 ```mermaid
 flowchart LR
     subgraph Plat["平台机"]
-        RCS["顶层项目：rcs + common"]
+        RCS["主服务项目：rcs + common"]
         CL["docker/opensandbox-cluster<br/>（管理面，接入 fenix-server）"]
     end
     subgraph SBX["沙盒机"]
@@ -259,7 +266,8 @@ flowchart LR
 
 | 文件 | 内容 | 说明 |
 | --- | --- | --- |
-| 根 `.env` | 应用配置与密钥（含共享键） | `deploy/env/rcs.example` 是清单真相来源；`.env` 不进版本控制 |
+| `docker/main/.env` | 生产主服务的应用配置与密钥（含共享键） | 与生产编排同目录、compose 自动加载；模板 `docker/main/.env.example` 是生成物，`deploy.sh init` 落成 |
+| 根 `.env` | dev 形态的应用配置与密钥（含共享键） | 根编排与 `bun run dev` 读它；键与逐键说明的真相来源是代码声明（宿主 `env.ts` + 各模块 `envDefinitions`）；`.env` 不进版本控制 |
 | `docker/deploy.env` | 依赖开关（`FENIX_FEATURE_*`，含 common 的 `REDIS` / `S3` / `MYSQL`）与部署参数（`FENIX_HTTP_PORT` / `POSTGRES_PORT` / `MYSQL_HOST_PORT`） | 模板 `deploy.env.example` 是生成物 |
 | `docker/<name>/.env` | 依赖私有键 | 各目录自带 `.env.example`，三段式排序 |
 
@@ -271,15 +279,16 @@ flowchart LR
 
 ## 6. 数据落点与交付面
 
-- 数据落点 = 各编排文件同级的 `./data/`：顶层 `data/`、`workflow/`、`workspaces/`；基础服务 `docker/common/data/**`
+- 数据落点 = 各编排文件同级的 `./data/`：主服务在 dev 落仓库根的 `data/`、`workflow/`、`workspaces/`，生产落
+  `docker/main/` 下的同名目录；基础服务 `docker/common/data/**`
   （`postgres` 里另有网关库 `litellm`，`mysql` 里另有 workflow 的 `opencoze` 与 ragflow 的 `rag_flow`，`rustfs` 里是
   workflow 的桶；RAGFlow 的桶在它自带的 `docker/ragflow/data/rustfs`；都随交付面一起备份与搬迁）；依赖与节点各自目录的 `./data/`。全部 bind 挂载。
-- 交付面 = `docker-compose.yml` + `docker/deploy.sh` + `docker/lib/` + `docker/deploy.env` + `docker/common/` + 启用的依赖目录 + 根 `.env`；运行期数据就在这份目录里。
+- 交付面 = `docker/main/`（生产主服务编排 + 同目录 `.env`）+ `docker/deploy.sh` + `docker/lib/` + `docker/deploy.env` + `docker/common/` + 启用的依赖目录；运行期数据就在这份目录里。
 - 备份 = 打包交付目录（跳过容器与镜像）；搬迁 = 整目录拷走；`data/`、`workspaces/` 等必须进 `.gitignore`。
 
 ## 7. 发布与升级
 
-- 主服务升级：更新顶层 `rcs` 的 `image:` 行为目标 tag（进版本控制、经评审合入）→ 交付该文件 → `./docker/deploy.sh deploy`。应急时可直接改目标机文件，事后必须把同一 tag 回写仓库。
+- 主服务升级：更新 `docker/main/docker-compose.yml` 里 `rcs` 的 `image:` 行到目标 tag（dev 根编排的同一行同步；进版本控制、经评审合入）→ 交付该文件 → `./docker/deploy.sh deploy`。应急时可直接改目标机文件，事后必须把同一 tag 回写仓库。
 - 依赖升级独立于主服务：改对应目录的镜像 tag 后单独 `up -d`；主服务重启不会顺带升级依赖。
 - 消费共享实例的依赖（`ragflow` / `workflow` / `litellm`）升级时，栈内的一次性初始化服务会先跑一遍（幂等，
   只同步口令、不动已有数据）；验收看它的 `Exited (0)` 与日志末行的完成行——它失败时该栈的主服务不会启动。
@@ -287,10 +296,10 @@ flowchart LR
 
 ## 8. 部署不变量
 
-1. 顶层是主服务与基础服务的唯一归属；依赖目录不得再定义 `postgres` / `redis` / `rustfs` / `mysql`
+1. 主服务编排是主服务与基础服务的唯一归属；依赖目录不得再定义 `postgres` / `redis` / `rustfs` / `mysql`
    （**已知例外**：`docker/ragflow/` 自带的 `ragflow-rustfs`——用户裁定，理由与边界见 [编排体系](../operations/docker-topology.md) §5）。
-2. 网络只有两层；共享网络名唯一 `fenix-server`；接入它的服务名全局唯一（共享实例是「辅助服务不进 ②」的例外）；依赖启动前顶层必须已启动。
-3. 依赖目录以独立项目启动，禁止与顶层 `-f` 叠加。
+2. 网络只有两层；共享网络名唯一 `fenix-server`；接入它的服务名全局唯一（共享实例是「辅助服务不进 ②」的例外）；依赖启动前主服务必须已启动。
+3. 依赖目录以独立项目启动，禁止与主服务 `-f` 叠加。
 4. feature 开关与依赖目录一一对应，未知开关报错。
 5. 发布顺序 DDL → 数据 → 应用，不得颠倒；数据迁移不进容器启动命令。
 6. 密钥只进 `.env`。

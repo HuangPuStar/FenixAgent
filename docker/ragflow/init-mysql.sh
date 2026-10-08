@@ -7,7 +7,7 @@
 #         （compose 与脚本都不依赖宿主的可执行位）。
 # 为什么单独成文件而不内联进 compose：脚本有分支与失败诊断，内联进 YAML 标量后既难 review，
 #         也容易被 YAML 折叠规则悄悄改写（折行会把注释与后续语句并到同一行）。
-# 环境变量（由 compose 显式注入；口令分别来自本目录 .env 与仓库根 .env）：
+# 环境变量（由 compose 显式注入；口令分别来自本目录 .env 与主服务 env）：
 #         MYSQL_HOST / MYSQL_DATABASE / MYSQL_USER / MYSQL_PASSWORD / MYSQL_ROOT_PASSWORD
 #
 # 范围：只建库、建账号、授权。**不建表、不跑 schema 迁移**——RAGFlow 镜像自己的启动流程里有
@@ -66,7 +66,7 @@ if [ "$attempt" -ge 150 ]; then
     echo "[ragflow-mysql-init] 初始化中止：共享 MySQL 在 300 秒内不可用。最后一次报错：${last_error}"
     case "$last_error" in
       *"Access denied"*)
-        echo "[ragflow-mysql-init] 判定：实例在跑但 root 认证失败 → 仓库根 .env 的 MYSQL_ROOT_PASSWORD 必须与实例数据目录里的口令一致（口令写在数据目录里，改 .env 不会改库里已有的账号）。"
+        echo "[ragflow-mysql-init] 判定：实例在跑但 root 认证失败 → 主服务 env 的 MYSQL_ROOT_PASSWORD 必须与实例数据目录里的口令一致（口令写在数据目录里，改 .env 不会改库里已有的账号）。"
         ;;
       *)
         echo "[ragflow-mysql-init] 判定：连不上实例 → docker/deploy.env 的 FENIX_FEATURE_MYSQL 是否为 true、顶层项目是否已起（docker compose -f docker-compose.yml ps mysql，期望 healthy）、本容器是否在 fenix-server 网络上（docker network inspect fenix-server）。"

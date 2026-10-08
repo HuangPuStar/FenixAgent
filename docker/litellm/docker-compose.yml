@@ -16,12 +16,14 @@
 # 加 required: false 也照样报），所以 litellm-db-init 自己等实例就绪，litellm 再以「它成功退出」为前置。
 #
 # 独立项目启动（共享实例已在同一台机器上跑）。不经过 deploy.sh 时自己把两个 env 文件喂给 compose 插值：
-# 指定 --env-file 后 compose 不再自动读项目目录的 .env，所以要显式列全；**后一个优先**，因此仓库根 .env
-# 放最后——共享键（LITELLM_DB_PASSWORD / POSTGRES_PASSWORD）只定义在那里（契约 §8.3、§8.5）：
+# 指定 --env-file 后 compose 不再自动读项目目录的 .env，所以要显式列全；**后一个优先**，因此主服务 env
+# （dev 是仓库根 .env、生产是 docker/main/.env）放最后——共享键（LITELLM_DB_PASSWORD / POSTGRES_PASSWORD）
+# 只定义在那里（契约 §8.3、§8.5）：
 #   cp docker/litellm/.env.example docker/litellm/.env     # 填 LITELLM_MASTER_KEY / LITELLM_SALT_KEY
-#   docker compose --env-file docker/litellm/.env --env-file ./.env \
+#   MAIN_ENV=./.env       # 主服务 env：dev 是仓库根 .env，生产改成 docker/main/.env
+#   docker compose --env-file docker/litellm/.env --env-file "$MAIN_ENV" \
 #     -f docker/litellm/docker-compose.yml up -d
-# 随主服务一键启动：docker/deploy.env 里 FENIX_FEATURE_LITELLM=true（共享键由仓库根 .env 经脚本导出）。
+# 随主服务一键启动：docker/deploy.env 里 FENIX_FEATURE_LITELLM=true（共享键由主服务 env 经脚本导出）。
 #
 # 网络：litellm 与 litellm-db-init 都接入 fenix-server——前者被主服务按 RCS_MODEL_GATEWAY_BASE_URL 直连，
 # 两者都要按服务名 postgres 访问共享实例（跨项目 DNS 名只在 fenix-server 上，契约 §3）。
@@ -32,7 +34,7 @@ services:
     litellm-db-init:
         # 一次性：在共享实例里建 litellm 的库与角色，建完即退出（幂等，重跑只同步口令、不重建、不删数据）。
         # 库名与角色名本目录自己持有（与下方 DATABASE_URL 同值），不从环境传：它们不是部署参数，
-        # 多一个入口只会多一处能改错的地方。口令是共享键，只定义在仓库根 .env（契约 §8.3）。
+        # 多一个入口只会多一处能改错的地方。口令是共享键，只定义在主服务 env（契约 §8.3）。
         image: postgres:16-alpine
         restart: "no"
         networks:
@@ -45,7 +47,7 @@ services:
             PGPASSWORD: ${POSTGRES_PASSWORD:-rcs}
             PGDATABASE: postgres
             # 要用它建角色的口令；与 litellm 的 DATABASE_URL、共享实例里的角色口令必须是同一个值。
-            LITELLM_DB_PASSWORD: ${LITELLM_DB_PASSWORD:?LITELLM_DB_PASSWORD 未设置：请在仓库根 .env 配置（共享 postgres 里 litellm 角色的口令），建库建角色由 litellm-db-init 自动完成，见 docker/litellm/README.md}
+            LITELLM_DB_PASSWORD: ${LITELLM_DB_PASSWORD:?LITELLM_DB_PASSWORD 未设置：请在主服务 env 配置（共享 postgres 里 litellm 角色的口令），建库建角色由 litellm-db-init 自动完成，见 docker/litellm/README.md}
         # 逻辑在 ./init-db.sh（本目录的部署面文件），不内联在这里：内联后这段分支 + heredoc 无法 review，
         # 脚本里的 shell 变量还会被 compose 的插值吃掉（docker/workflow/ 的同类服务踩过这个坑）。
         # 显式覆盖入口：postgres 镜像自带的 entrypoint 会做 initdb / 参数分派，不覆盖就走错路径。
@@ -69,12 +71,12 @@ services:
             - "127.0.0.1:${LITELLM_PORT:-4000}:4000"
         environment:
             # 容器内地址写显式值（不插值同名宿主键，契约 §8.4）：postgres 是共享实例在 fenix-server 上的服务名，
-            # 库名/角色名与 litellm-db-init 写死的一致；口令是共享键，只定义在仓库根 .env（契约 §8.3）。
-            DATABASE_URL: "postgresql://litellm:${LITELLM_DB_PASSWORD:?LITELLM_DB_PASSWORD 未设置：请在仓库根 .env 配置（共享 postgres 里 litellm 角色的口令），建库建角色由 litellm-db-init 自动完成，见 docker/litellm/README.md}@postgres:5432/litellm"
-            # 共享键：随主服务启动时由仓库根 .env 提供；独立部署时在本目录 .env 提供（见 .env.example）。
-            # 两处都写时以仓库根 .env 为准（脚本把它导出为 shell 环境，优先于项目 .env，契约 §8.5）。
-            LITELLM_MASTER_KEY: ${LITELLM_MASTER_KEY:?LITELLM_MASTER_KEY 未设置：请在仓库根 .env（随主服务启动）或 docker/litellm/.env（独立部署）配置，且须与根 .env 的 RCS_MODEL_GATEWAY_ADMIN_KEY 同值}
-            LITELLM_SALT_KEY: ${LITELLM_SALT_KEY:?LITELLM_SALT_KEY 未设置：请在仓库根 .env（随主服务启动）或 docker/litellm/.env（独立部署）配置；它加密库内 Provider 凭据，已有数据的部署要填回原值}
+            # 库名/角色名与 litellm-db-init 写死的一致；口令是共享键，只定义在主服务 env（契约 §8.3）。
+            DATABASE_URL: "postgresql://litellm:${LITELLM_DB_PASSWORD:?LITELLM_DB_PASSWORD 未设置：请在主服务 env 配置（共享 postgres 里 litellm 角色的口令），建库建角色由 litellm-db-init 自动完成，见 docker/litellm/README.md}@postgres:5432/litellm"
+            # 共享键：随主服务启动时由主服务 env 提供；独立部署时在本目录 .env 提供（见 .env.example）。
+            # 两处都写时以主服务 env 为准（脚本把它导出为 shell 环境，优先于项目 .env，契约 §8.5）。
+            LITELLM_MASTER_KEY: ${LITELLM_MASTER_KEY:?LITELLM_MASTER_KEY 未设置：请在主服务 env（随主服务启动）或 docker/litellm/.env（独立部署）配置，且须与主服务 env 的 RCS_MODEL_GATEWAY_ADMIN_KEY 同值}
+            LITELLM_SALT_KEY: ${LITELLM_SALT_KEY:?LITELLM_SALT_KEY 未设置：请在主服务 env（随主服务启动）或 docker/litellm/.env（独立部署）配置；它加密库内 Provider 凭据，已有数据的部署要填回原值}
             # 丢弃上游模型不支持的请求参数，例如当前模型不接受的 thinking。
             LITELLM_DROP_PARAMS: "True"
             STORE_MODEL_IN_DB: "True"

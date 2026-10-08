@@ -9,7 +9,7 @@
 ## 拓扑
 
 ```text
-external 网络 fenix-server（顶层项目创建）：
+external 网络 fenix-server（主服务项目创建）：
     rcs（容器形态）──→ npm-registry:4873        ← 本栈唯一服务，主服务的访问入口
 
 宿主（只绑回环）：
@@ -24,8 +24,8 @@ external 网络 fenix-server（顶层项目创建）：
 ## 前置条件
 
 - Docker Engine 与 Docker Compose v2。
-- **顶层项目已启动**：`fenix-server` 由顶层（仓库根 `docker-compose.yml`）创建，本目录只以 `external: true` 引用；
-  单独跑本目录前先 `./docker/deploy.sh up`（或至少起来顶层项目），否则 `up` 会因为找不到该网络而失败。
+- **主服务项目已启动**：`fenix-server` 由主服务项目创建（dev 是仓库根 `docker-compose.yml`，生产是 `docker/main/docker-compose.yml`），本目录只以 `external: true` 引用；
+  单独跑本目录前先 `./docker/deploy.sh up`（或至少起来主服务项目），否则 `up` 会因为找不到该网络而失败。
 - 宿主端口 4873 空闲。本目录没有 env 键，端口是 compose 里的字面量，改它等于改编排（见「配置」）。
 - 首次 `npm adduser` 会在存储目录里建 `htpasswd`（凭据就存在那里）；存储目录由 Docker 在首次 `up` 时创建。
 
@@ -45,7 +45,7 @@ external 网络 fenix-server（顶层项目创建）：
 镜像 tag、容器名、回环端口、数据路径都是写死的字面量，可配置项只有 Verdaccio 自己的配置文件（本编排不挂自定义
 `config.yaml`，用的是镜像内置默认值）。因此「`init` 生成 `.env`」这一步对本目录是空操作（脚本对缺失的模板静默跳过）。
 
-应用侧（主服务读）的键都在仓库根 `.env`，按 §8.3「共享键只在根 `.env` 定义」不在这里重复：
+应用侧（主服务读）的键都在主服务 env（生产 `docker/main/.env`、dev 仓库根 `.env`），按 §8.3「共享键只在主服务 env 定义」不在这里重复：
 
 | 键 | 默认值 | 说明 |
 | --- | --- | --- |
@@ -90,7 +90,7 @@ curl -X PUT http://127.0.0.1:4873/-/user/org.couchdb.user:fenix-dev \
 
 该 token **不是 JWT、不带过期时间**：它是 `base64(签名密钥对)`，与用户一起存在 `./data/verdaccio` 里，
 删掉该用户（或清空该目录）才会失效。取到后凭 `~/.npmrc` 找到它（`//127.0.0.1:4873/:_authToken=…`），
-写进根 `.env` 的 `PLUGIN_MARKET_REGISTRY_TOKEN`，市场即以 `authorization: Bearer …` 读取。
+写进主服务 env 的 `PLUGIN_MARKET_REGISTRY_TOKEN`，市场即以 `authorization: Bearer …` 读取。
 
 **不要把端口开到公网**：它只绑回环、只服务本地开发。需要跨机访问时应让对端经 `fenix-server` 或反代访问，
 不要把 compose 里的端口行改成 `4873:4873`（那会把一个已知口令、无过期 token 的源暴露给同网段）。
@@ -140,7 +140,7 @@ npm view <你之前发布过的包名> --registry http://127.0.0.1:4873
 # 1. 配置解析（不启动任何容器）
 docker compose -f docker/npm-registry/docker-compose.yml config
 
-# 2. 起栈（顶层必须先起）
+# 2. 起栈（主服务项目必须先起）
 docker compose -f docker/npm-registry/docker-compose.yml up -d
 docker compose -f docker/npm-registry/docker-compose.yml ps        # 期望 fenix-npm-registry 为 running / healthy
 

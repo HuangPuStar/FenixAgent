@@ -21,13 +21,13 @@ bun run start        # 打开 http://127.0.0.1:7411/
 
 ## 图怎么读
 
-- **节点** = 一个 compose 文件（顶层 `docker-compose.yml`、`docker/<name>/`、以及 `docker/<name>/<sub>/` 部署变体）。
+- **节点** = 一个 compose 文件（主服务编排的两份文件：仓库根 `docker-compose.yml` 与 `docker/main/docker-compose.yml`、`docker/<name>/`、以及 `docker/<name>/<sub>/` 部署变体）。
   方框上的角标给出服务数与「同文件内的 depends_on 条数」；虚线框 = 该依赖目录在 `docker/deploy.env` 里是关闭的。
 - **边** 有三种来源，颜色区分（图例在工具条右侧）：
 
 | 边 | 含义 | 判定口径 |
 | --- | --- | --- |
-| include 引入 | 顶层 `include:` 引入另一个文件 | compose 的 `include.path`（本仓只有 root → `docker/common`） |
+| include 引入 | 主服务编排的 `include:` 引入另一个文件 | compose 的 `include.path`（本仓只有两份主服务编排 → `docker/common`） |
 | 共享网络 | 服务接入别的编排创建的 external 网络（跨项目 DNS 的唯一通路） | 非 external 声明网络的文件即创建者；接入方按服务逐个成边 |
 | 服务引用 | 值里出现了别项目的服务名 | 扫 `environment` / `command` / `entrypoint` / `healthcheck` 里的 host 位置（URL、`host:port`、`*_HOST: name`），再按全局服务名索引 + 网络可达性过滤 |
 
@@ -51,7 +51,7 @@ bun run start        # 打开 http://127.0.0.1:7411/
 ## 已知边界
 
 - **不读 `.env`**：主服务对依赖的调用地址（`RCS_MODEL_GATEWAY_BASE_URL`、`HINDSIGHT_MCP_URL`、`GOTENBERG_URL` 等）
-  在根 `.env`（不进版本控制）里，不在 compose 里，因此图上不出现「主服务 → 该依赖」的边。
+  在主服务 env（生产 `docker/main/.env`、dev 仓库根 `.env`，都不进版本控制）里，不在 compose 里，因此图上不出现「主服务 → 该依赖」的边。
   依赖接入 `fenix-server` 即表示它对主服务可见。
 - 只有一个文件解析失败时只跳过它并打印，其余照常可视化；该文件仍会出现在文件列表里。
 - 超过 400 KB 的文件只返回前 400 KB；超过 512 KB 的文件不进索引。

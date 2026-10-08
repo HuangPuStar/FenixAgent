@@ -5,7 +5,7 @@
 | 文档 | 用途 |
 | --- | --- |
 | [部署](./deployment.md) | 依赖服务、必需环境变量、环境文件从哪来，以及本地 / 单机 / 生产三种形态的真实启动顺序与启动后自检。 |
-| [Docker 编排体系](./docker-topology.md) | 编排实现权威：顶层编排与 `docker/<name>/` 依赖目录的分工、两层网络、feature 开关、`docker/deploy.sh` 入口与旧体系退役路径。 |
+| [Docker 编排体系](./docker-topology.md) | 编排实现权威：主服务编排（dev 根文件 / 生产 `docker/main/`）与 `docker/<name>/` 依赖目录的分工、两层网络、feature 开关、`docker/deploy.sh` 入口与旧体系退役路径。 |
 | [Workflow V2 部署](./workflow-deployment.md) | 平台与上游双仓交付、画布子路径构建、容器组网、配置、迁移、初始化、验收与回滚边界。 |
 | [升级](./upgrade.md) | 镜像与代码升级步骤，DDL 迁移与数据迁移的先后关系与失败判定，以及可回滚与不可回滚的边界。 |
 | [迁移](./migration.md) | `db:generate` / `db:migrate` / 数据迁移入口的实际命令与前置条件，以及本仓已有的不可逆迁移案例。 |

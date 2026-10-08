@@ -8,7 +8,7 @@
 Provider / Model 的资源 CRUD 不受影响。
 
 本目录是**独立编排**，但**不再自足**：PostgreSQL 用 `docker/common/` 的共享实例（原先自带的 `litellm-postgres`
-已删除，理由与代价见「共享 PostgreSQL」），因此**顶层项目必须先起**。数据落点也随之离开本目录：
+已删除，理由与代价见「共享 PostgreSQL」），因此**主服务项目必须先起**。数据落点也随之离开本目录：
 网关库现在躺在共享实例的数据目录 `docker/common/data/postgres` 里。
 
 ## 文件与交付清单
@@ -17,7 +17,7 @@ Provider / Model 的资源 CRUD 不受影响。
 | --- | --- |
 | `docker-compose.yml` | 唯一入口：`litellm`（出口服务）+ `litellm-db-init`（一次性建库建角色） |
 | `init-db.sh` | 初始化服务的逻辑本体，由 compose 以 `./init-db.sh:/init/init-db.sh:ro` 只读挂载、`sh` 解释执行（不依赖可执行位）。**属部署面**：独立部署时要随本目录一起交付，缺它初始化服务起不来 |
-| `.env.example` | 本目录私有键的模板；共享键在仓库根 `.env`，不在这里重复（见「配置」） |
+| `.env.example` | 本目录私有键的模板；共享键在主服务 env，不在这里重复（见「配置」） |
 | `README.md` | 本文件 |
 
 **独立部署**（网关在别的机器，或不经过 `./docker/deploy.sh`）：共享实例必须在那台机器上先起（本目录不再自带
@@ -25,26 +25,28 @@ Provider / Model 的资源 CRUD 不受影响。
 
 ```bash
 cp docker/litellm/.env.example docker/litellm/.env     # 填 LITELLM_MASTER_KEY / LITELLM_SALT_KEY
-docker compose --env-file docker/litellm/.env --env-file ./.env \
+MAIN_ENV=./.env                                        # 主服务 env：dev 是仓库根 .env，生产改成 docker/main/.env
+docker compose --env-file docker/litellm/.env --env-file "$MAIN_ENV" \
   -f docker/litellm/docker-compose.yml up -d
 ```
 
-指定 `--env-file` 后 compose **不再**自动读项目目录的 `.env`，所以两份都要列；**后一份优先**，仓库根 `.env`
-因此放最后（共享键 `LITELLM_DB_PASSWORD` / `POSTGRES_PASSWORD` 在那里）。随主服务启动时这些键由
-`./docker/deploy.sh` 从根 `.env` 导出，不需要手写这一段。
+指定 `--env-file` 后 compose **不再**自动读项目目录的 `.env`，所以两份都要列；**后一份优先**，主服务 env
+因此放最后（共享键 `LITELLM_DB_PASSWORD` / `POSTGRES_PASSWORD` 在那里；dev 是仓库根 `.env`、生产是
+`docker/main/.env`）。随主服务启动时这些键由 `./docker/deploy.sh` 从主服务 env 导出，不需要手写这一段。
 
 ## 前置条件
 
-- Docker Engine 与 Docker Compose ≥ 2.20（本目录自己的编排不依赖 `include`，但顶层项目要）。
+- Docker Engine 与 Docker Compose ≥ 2.20（本目录自己的编排不依赖 `include`，但主服务项目依赖它）。
 - **共享 PostgreSQL 先就绪（本目录不再自足）**：
   ```bash
-  ./docker/deploy.sh up                    # 顶层项目 + 已启用依赖；先在 docker/deploy.env 打开 FENIX_FEATURE_LITELLM
+  ./docker/deploy.sh up                    # 主服务项目 + 已启用依赖；先在 docker/deploy.env 打开 FENIX_FEATURE_LITELLM
   # 或不起平台主服务、只起共享实例：
-  docker compose -f docker-compose.yml up -d postgres
+  docker compose -f docker-compose.yml up -d postgres                          # dev（仓库根编排）
+  docker compose -f docker/main/docker-compose.yml up -d postgres   # 生产（自动读 docker/main/.env）
   ```
-  `postgres` 是顶层项目（仓库根 `docker-compose.yml` → `include docker/common/`）的服务名。它不在时本目录的
+  `postgres` 是主服务项目（dev 是仓库根 `docker-compose.yml`，生产是 `docker/main/docker-compose.yml`；两份都 `include docker/common/`）的服务名。它不在时本目录的
   初始化服务会等待 360 秒后带判定退出，`litellm` 不会被拉起（见「共享 PostgreSQL」）。
-- `LITELLM_MASTER_KEY` / `LITELLM_SALT_KEY` 已填（缺失即启动失败）；共享键 `LITELLM_DB_PASSWORD` 在仓库根 `.env`。
+- `LITELLM_MASTER_KEY` / `LITELLM_SALT_KEY` 已填（缺失即启动失败）；共享键 `LITELLM_DB_PASSWORD` 在主服务 env。
 - 宿主可拉取 `ghcr.io/berriai/litellm:v1.93.0` 与 `postgres:16-alpine`（后者是初始化服务用的镜像）。
 - 宿主端口：本目录只发布 `LITELLM_PORT`（默认 4000，只绑回环）；数据库端口不经过本目录。
 
@@ -56,18 +58,18 @@ docker compose --env-file docker/litellm/.env --env-file ./.env \
 
 | 键 | 位置 | 必需性 | 说明 |
 | --- | --- | --- | --- |
-| `LITELLM_MASTER_KEY` | 本目录 `.env`（独立部署）/ 仓库根 `.env`（随主服务启动） | 必需 | 网关管理密钥；必须与根 `.env` 的 `RCS_MODEL_GATEWAY_ADMIN_KEY` 同值 |
+| `LITELLM_MASTER_KEY` | 本目录 `.env`（独立部署）/ 主服务 env（随主服务启动） | 必需 | 网关管理密钥；必须与主服务 env 的 `RCS_MODEL_GATEWAY_ADMIN_KEY` 同值 |
 | `LITELLM_SALT_KEY` | 同上 | 必需 | 库内 Provider 凭据的加密盐；已有数据时填回原值，换值后旧凭据解不开 |
-| `LITELLM_DB_PASSWORD` | **仓库根 `.env`**（共享键，§8.3） | 必需 | 共享 postgres 里 `litellm` 角色的口令；初始化服务建角色与 `DATABASE_URL` 都用它，必须同一个值。取值要 URL 安全（嵌进连接串），用 `openssl rand -hex 32` 生成 |
-| `POSTGRES_PASSWORD` | 仓库根 `.env`（共享键） | 必需 | 共享实例超级用户 `rcs` 的口令；初始化服务用它建库建角色。与 `docker/common/docker-compose.yml` 同源 |
+| `LITELLM_DB_PASSWORD` | **主服务 env**（共享键，§8.3） | 必需 | 共享 postgres 里 `litellm` 角色的口令；初始化服务建角色与 `DATABASE_URL` 都用它，必须同一个值。取值要 URL 安全（嵌进连接串），用 `openssl rand -hex 32` 生成 |
+| `POSTGRES_PASSWORD` | 主服务 env（共享键） | 必需 | 共享实例超级用户 `rcs` 的口令；初始化服务用它建库建角色。与 `docker/common/docker-compose.yml` 同源 |
 | `LITELLM_PORT` | 本目录 `.env` | 默认 4000 | 宿主回环端口（`127.0.0.1`），本地源码运行与管理页用 |
 | `LITELLM_UI_PASSWORD` | 本目录 `.env` | 默认 `admin`（compose 内置） | 控制台口令；对回环以外暴露前必须改 |
-| `RCS_MODEL_GATEWAY_BASE_URL` | 仓库根 `.env` | 启用网关时必填 | 平台访问网关的**基址**，取值见下节 |
-| `RCS_MODEL_GATEWAY_ADMIN_KEY` | 仓库根 `.env` | 启用网关时必填 | = `LITELLM_MASTER_KEY` |
-| `RCS_MODEL_GATEWAY_CREDENTIAL_ENCRYPTION_KEY` | 仓库根 `.env` | 启用网关时必填 | Virtual Key 的本地加密密钥（32 字节随机串，`openssl rand -hex 32`） |
-| `RCS_MODEL_GATEWAY_ADMIN_UI_URL` | 仓库根 `.env` | 默认 `http://localhost:4000/ui/` | 管理员浏览器打开控制台；本编排带 root path，见下节 |
-| `RCS_MODEL_GATEWAY_PUBLIC_BASE_URL` | 仓库根 `.env` | 可选 | 注入公开 Provider、供**沙盒 Agent**访问的地址；沙盒不在 `fenix-server` 网络内，要填沙盒可达的宿主地址 |
-| `RCS_MODEL_GATEWAY_DEFAULT_USER_BUDGET_USD` / `RCS_MODEL_GATEWAY_DEFAULT_BUDGET_DURATION` | 仓库根 `.env` | 可选 | 首次激活用户的默认预算与周期（模块管辖） |
+| `RCS_MODEL_GATEWAY_BASE_URL` | 主服务 env | 启用网关时必填 | 平台访问网关的**基址**，取值见下节 |
+| `RCS_MODEL_GATEWAY_ADMIN_KEY` | 主服务 env | 启用网关时必填 | = `LITELLM_MASTER_KEY` |
+| `RCS_MODEL_GATEWAY_CREDENTIAL_ENCRYPTION_KEY` | 主服务 env | 启用网关时必填 | Virtual Key 的本地加密密钥（32 字节随机串，`openssl rand -hex 32`） |
+| `RCS_MODEL_GATEWAY_ADMIN_UI_URL` | 主服务 env | 默认 `http://localhost:4000/ui/` | 管理员浏览器打开控制台；本编排带 root path，见下节 |
+| `RCS_MODEL_GATEWAY_PUBLIC_BASE_URL` | 主服务 env | 可选 | 注入公开 Provider、供**沙盒 Agent**访问的地址；沙盒不在 `fenix-server` 网络内，要填沙盒可达的宿主地址 |
+| `RCS_MODEL_GATEWAY_DEFAULT_USER_BUDGET_USD` / `RCS_MODEL_GATEWAY_DEFAULT_BUDGET_DURATION` | 主服务 env | 可选 | 首次激活用户的默认预算与周期（模块管辖） |
 
 模型清单（Provider / Model / Key）是网关库里的运行时数据，由平台管理页维护，部署文件不持有。
 
@@ -88,7 +90,7 @@ docker compose --env-file docker/litellm/.env --env-file ./.env \
 | --- | --- | --- |
 | 容器内地址 | `postgres:5432` | 跨项目 DNS 名只在 `fenix-server` 上；容器内写显式值、不插值同名宿主键（§8.4） |
 | 库 / 角色 | `litellm` / `litellm` | 角色是库属主、非超级用户：它能在自己库里建表（PG 15+ 起 public schema 的 CREATE 只给库属主），别的库里没有对象权限，也不是通吃全实例的角色 |
-| 口令 | 仓库根 `.env` 的 `LITELLM_DB_PASSWORD` | 共享键只定义在根 `.env`（§8.3）；初始化服务与 `DATABASE_URL` 同值 |
+| 口令 | 主服务 env 的 `LITELLM_DB_PASSWORD` | 共享键只定义在主服务 env（§8.3）；初始化服务与 `DATABASE_URL` 同值 |
 | 建库建角色 | 本目录的一次性服务 `litellm-db-init` | 共享实例只提供「实例」、不带任何栈的业务初始化（§5）：谁持有 schema 谁负责建 |
 | 数据落点 | `docker/common/data/postgres` | 本目录不再有数据目录 |
 | 宿主端口 | 共享实例的 `127.0.0.1:${POSTGRES_PORT:-5432}` | 本目录不发布任何数据库端口（原先自带那个也没发布，所以本次不涉及端口释放） |
@@ -98,7 +100,7 @@ docker compose --env-file docker/litellm/.env --env-file ./.env \
 **代价**（必须接受）：`litellm` 与初始化服务都得接入 ② 才能按服务名寻址共享实例，因此它们也暴露在该网络里；
 共享实例的可用性成为所有消费方共同的前提。
 
-**启动顺序**：顶层项目先起。跨项目的 `depends_on` 不成立——compose 只认本项目内已定义的服务名，实测
+**启动顺序**：主服务项目先起。跨项目的 `depends_on` 不成立——compose 只认本项目内已定义的服务名，实测
 `service "litellm-db-init" depends on undefined service "postgres": invalid compose project`（带
 `required: false` 同样报错）。因此本目录用「初始化服务自己等实例就绪 → `litellm` 等初始化服务成功退出」
 这条链，代替原先指向 `litellm-postgres` 的 `depends_on`。
@@ -108,18 +110,20 @@ docker compose --env-file docker/litellm/.env --env-file ./.env \
 ```bash
 docker compose -f docker/litellm/docker-compose.yml ps -a litellm-db-init   # Exited (1) 即失败
 docker compose -f docker/litellm/docker-compose.yml logs --tail=50 litellm-db-init   # psql 原始报错 + 判定分支
-docker compose -f docker-compose.yml ps postgres                            # 期望 healthy
+docker compose -f docker-compose.yml ps postgres                            # dev（仓库根编排）；期望 healthy
+docker compose -f docker/main/docker-compose.yml ps postgres   # 生产（自动读 docker/main/.env）
 ```
 
-日志把两类原因分开写：`authentication` 分支指向「根 `.env` 的 `POSTGRES_PASSWORD` 与实例数据目录里的口令
+日志把两类原因分开写：`authentication` 分支指向「主服务 env 的 `POSTGRES_PASSWORD` 与实例数据目录里的口令
 不一致」（口令写在数据目录里，改 `.env` 不会改库里已有的账号）；其余分支指向「实例没起 / 网络不通」。
-处理：先 `./docker/deploy.sh up` 起顶层项目，再 `docker compose -f docker/litellm/docker-compose.yml up -d`。
+处理：先 `./docker/deploy.sh up` 起主服务项目，再 `docker compose -f docker/litellm/docker-compose.yml up -d`。
 
 **改了 `LITELLM_DB_PASSWORD` 之后**：把初始化服务重跑一次就够（幂等，只同步口令、不动数据）——已经成功退出的
 容器可能被 `up` 直接复用而不重跑，所以要显式要求重建：
 
 ```bash
-docker compose --env-file docker/litellm/.env --env-file ./.env \
+MAIN_ENV=./.env     # 主服务 env：dev 是仓库根 .env，生产改成 docker/main/.env
+docker compose --env-file docker/litellm/.env --env-file "$MAIN_ENV" \
   -f docker/litellm/docker-compose.yml up -d --force-recreate litellm-db-init
 ```
 
@@ -177,18 +181,24 @@ docker cp litellm-pg-old:/tmp/litellm.dump ./litellm.dump
 docker rm -f litellm-pg-old
 
 # 2) 起共享实例，并让初始化服务把库与角色建好（正常路径里它随 up 自动跑，这里单独跑一次好看日志）
-docker compose -f docker-compose.yml up -d postgres
-docker compose --env-file docker/litellm/.env --env-file ./.env \
+docker compose -f docker-compose.yml up -d postgres                          # dev（仓库根编排）
+docker compose -f docker/main/docker-compose.yml up -d postgres   # 生产（自动读 docker/main/.env）
+MAIN_ENV=./.env   # 主服务 env：dev 是仓库根 .env，生产改成 docker/main/.env
+docker compose --env-file docker/litellm/.env --env-file "$MAIN_ENV" \
   -f docker/litellm/docker-compose.yml up litellm-db-init
 
 # 3) 把备份灌进共享实例的 litellm 库（--no-owner：对象归当前连接角色 litellm，不带入旧的属主与授权）
-docker compose -f docker-compose.yml cp ./litellm.dump postgres:/tmp/litellm.dump
+docker compose -f docker-compose.yml cp ./litellm.dump postgres:/tmp/litellm.dump   # dev（仓库根编排）
+docker compose -f docker/main/docker-compose.yml cp ./litellm.dump postgres:/tmp/litellm.dump   # 生产（自动读 docker/main/.env）
 docker compose -f docker-compose.yml exec -T postgres \
   pg_restore -U litellm -d litellm --no-owner --no-privileges /tmp/litellm.dump
-docker compose -f docker-compose.yml exec -T postgres rm -f /tmp/litellm.dump
+docker compose -f docker/main/docker-compose.yml exec -T postgres \
+  pg_restore -U litellm -d litellm --no-owner --no-privileges /tmp/litellm.dump   # 生产（自动读 docker/main/.env）
+docker compose -f docker-compose.yml exec -T postgres rm -f /tmp/litellm.dump   # dev（仓库根编排）
+docker compose -f docker/main/docker-compose.yml exec -T postgres rm -f /tmp/litellm.dump   # 生产（自动读 docker/main/.env）
 
 # 4) 起网关并验收（见「验证」）
-docker compose --env-file docker/litellm/.env --env-file ./.env -f docker/litellm/docker-compose.yml up -d
+docker compose --env-file docker/litellm/.env --env-file "$MAIN_ENV" -f docker/litellm/docker-compose.yml up -d
 ```
 
 口径与坑：
@@ -199,6 +209,8 @@ docker compose --env-file docker/litellm/.env --env-file ./.env -f docker/litell
   ```bash
   docker compose -f docker-compose.yml exec -T postgres \
     psql -U litellm -d litellm -c 'DROP SCHEMA public CASCADE' -c 'CREATE SCHEMA public'
+  docker compose -f docker/main/docker-compose.yml exec -T postgres \
+    psql -U litellm -d litellm -c 'DROP SCHEMA public CASCADE' -c 'CREATE SCHEMA public'   # 生产（自动读 docker/main/.env）
   ```
 - 新旧都是 PostgreSQL 16（原先是 `postgres:16-alpine`，共享实例也是 `postgres:16-alpine`），逻辑备份在这两者
   之间安全；跨大版本的物理搬迁不安全，这里不走那条路。
@@ -221,10 +233,12 @@ rm -rf docker/litellm/data        # 不可逆：删掉这一份就只剩共享�
 
 ```bash
 # 只备份网关库（在共享实例里导出；容器内 local socket 免口令）
-docker compose -f docker-compose.yml exec -T postgres pg_dump -U litellm -Fc litellm > litellm-$(date +%Y%m%d).dump
+docker compose -f docker-compose.yml exec -T postgres pg_dump -U litellm -Fc litellm > litellm-$(date +%Y%m%d).dump   # dev（仓库根编排）
+docker compose -f docker/main/docker-compose.yml exec -T postgres pg_dump -U litellm -Fc litellm > litellm-$(date +%Y%m%d).dump   # 生产（自动读 docker/main/.env）
 
 # 恢复（先删库里已有对象；恢复后 LITELLM_SALT_KEY 必须与备份时同值）
-docker compose -f docker-compose.yml exec -T postgres pg_restore -U litellm -d litellm --clean --if-exists < litellm-YYYYmmdd.dump
+docker compose -f docker-compose.yml exec -T postgres pg_restore -U litellm -d litellm --clean --if-exists < litellm-YYYYmmdd.dump   # dev（仓库根编排）
+docker compose -f docker/main/docker-compose.yml exec -T postgres pg_restore -U litellm -d litellm --clean --if-exists < litellm-YYYYmmdd.dump   # 生产（自动读 docker/main/.env）
 ```
 
 整实例口径（连 rcs 自己的库一起）见 `docs/operations/backup-and-restore.md`：那里说的 PostgreSQL 数据目录现在
@@ -252,9 +266,14 @@ docker compose -f docker/litellm/docker-compose.yml logs --tail=50 litellm-db-in
 docker compose -f docker-compose.yml exec -T postgres \
   psql -U rcs -d postgres -tA -c "select rolname from pg_roles where rolname = 'litellm'" \
                              -c "select datname from pg_database where datname = 'litellm'"
+docker compose -f docker/main/docker-compose.yml exec -T postgres \
+  psql -U rcs -d postgres -tA -c "select rolname from pg_roles where rolname = 'litellm'" \
+                             -c "select datname from pg_database where datname = 'litellm'"   # 生产（自动读 docker/main/.env）
 # 网关的表（空库启动后由 litellm 建出；这个数 > 0 说明角色能在自己库里建对象）
 docker compose -f docker-compose.yml exec -T postgres \
   psql -U litellm -d litellm -tAc 'select count(*) from pg_stat_user_tables'
+docker compose -f docker/main/docker-compose.yml exec -T postgres \
+  psql -U litellm -d litellm -tAc 'select count(*) from pg_stat_user_tables'   # 生产（自动读 docker/main/.env）
 
 docker compose -f docker/litellm/docker-compose.yml ps
 # 平台侧：登录控制台的系统管理页，网关卡片应显示健康；或直接看 rcs 日志里是否出现 401
@@ -270,8 +289,9 @@ docker compose -f docker/litellm/docker-compose.yml ps
 
 ```bash
 cd <仓库根>
-docker compose --env-file docker/litellm/.env --env-file ./.env -f docker/litellm/docker-compose.yml pull
-docker compose --env-file docker/litellm/.env --env-file ./.env -f docker/litellm/docker-compose.yml up -d
+MAIN_ENV=./.env   # 主服务 env：dev 是仓库根 .env，生产改成 docker/main/.env
+docker compose --env-file docker/litellm/.env --env-file "$MAIN_ENV" -f docker/litellm/docker-compose.yml pull
+docker compose --env-file docker/litellm/.env --env-file "$MAIN_ENV" -f docker/litellm/docker-compose.yml up -d
 ```
 
 升级不需要额外的建库步骤：`up -d` 会先把初始化服务带到「成功退出」状态（幂等，见「数据与迁移」）。

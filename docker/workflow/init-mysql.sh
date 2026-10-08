@@ -6,7 +6,7 @@
 #         本文件以只读方式挂载到容器内 /init/init-mysql.sh（compose 与脚本都不依赖宿主的可执行位）。
 # 为什么单独成文件而不内联进 compose：脚本有分支与失败诊断，内联进 YAML 标量后既难 review 也容易被
 #         YAML 折叠规则悄悄改写（折行会把注释与后续语句并到同一行）。
-# 环境变量（由 compose 显式注入，值来自仓库根 .env / 部署 env）：
+# 环境变量（由 compose 显式注入，值来自主服务 env（生产 docker/main/.env、dev 仓库根 .env）/ 部署 env）：
 #         MYSQL_HOST / MYSQL_DATABASE / MYSQL_USER / MYSQL_PASSWORD / MYSQL_ROOT_PASSWORD
 # 只读输入：/schema.sql（上游 docker/volumes/mysql/schema.sql）
 #         /opencoze_latest_schema.hcl（上游 docker/atlas/opencoze_latest_schema.hcl）
@@ -29,7 +29,7 @@ until mysql -h "$MYSQL_HOST" -u root -p"$MYSQL_ROOT_PASSWORD" -e 'SELECT 1' >/de
   if [ "$i" -ge 150 ]; then
     echo '共享 MySQL 不可用（300 秒内未通过认证），按下面两条分别排查：' >&2
     if mysql -h "$MYSQL_HOST" -u root -p"$MYSQL_ROOT_PASSWORD" -e 'SELECT 1' 2>&1 | grep -qi 'access denied'; then
-      echo '  - 服务器可达但 root 认证失败：根 .env 的 MYSQL_ROOT_PASSWORD 与共享实例里的不一致。' >&2
+      echo '  - 服务器可达但 root 认证失败：主服务 env 的 MYSQL_ROOT_PASSWORD 与共享实例里的不一致。' >&2
     else
       echo '  - 服务器不可达：docker/deploy.env 的 FENIX_FEATURE_MYSQL 是否为 true、顶层项目是否已起、本容器是否在 fenix-server 网络上。' >&2
     fi
@@ -50,7 +50,7 @@ mysql -h "$MYSQL_HOST" -u root -p"$MYSQL_ROOT_PASSWORD" -e 'FLUSH PRIVILEGES;'
 echo '③ 用应用账号自检（口令与配置不一致时当场失败，不拖到 coze-server 连不上才查）...'
 if ! mysql -h "$MYSQL_HOST" -u "$MYSQL_USER" -p"$MYSQL_PASSWORD" -e 'SELECT 1' >/dev/null 2>&1; then
   echo '应用账号认证失败：账号已存在但口令与 MYSQL_PASSWORD 不一致（本脚本不覆盖已有账号的口令）。' >&2
-  echo '处理：要么把根 .env / 上游 docker/.env 的 MYSQL_PASSWORD 改回实例里的旧口令，要么在实例里 ALTER USER 改口令（会同时影响其他消费方）。' >&2
+  echo '处理：要么把主服务 env / 上游 docker/.env 的 MYSQL_PASSWORD 改回实例里的旧口令，要么在实例里 ALTER USER 改口令（会同时影响其他消费方）。' >&2
   exit 1
 fi
 

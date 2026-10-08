@@ -13,6 +13,9 @@
 
 services:
     sandbox-dsh:
+        # 例外：docker/ 下的依赖目录一律只引用发布镜像，只有本目录仍需从源码构建——
+        # CI（.github/workflows/docker-publish-sandbox.yml）的 matrix 里没有 dsh，GHCR 上没有它的发布镜像。
+        # 补上发布链路后，这里应改成 image: ghcr.io/huangpustar/fenixagent-sandbox-dsh:<tag>。
         build:
             context: ../../
             dockerfile: docker/sandbox-dsh/Dockerfile

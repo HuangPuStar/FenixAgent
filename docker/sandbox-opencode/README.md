@@ -32,10 +32,13 @@ RCS 主服务器                        sandbox-opencode 容器
 
 ## 镜像构建与发布
 
-本目录的 compose **从源码构建**（`build: context ../../ + dockerfile docker/sandbox-opencode/Dockerfile`），
-构建出的镜像 tag 由 Compose 生成（`sandbox-opencode-sandbox-opencode`），**不使用 CI 发布的镜像**。
+本目录的 compose **只引用 CI 发布的镜像**（固定 tag、禁止环境变量插值，§13.7）：
 
-CI 另有一条发布链路（`.github/workflows/docker-publish-sandbox.yml`，matrix 项 `opencode`）：
+```yaml
+image: ghcr.io/huangpustar/fenixagent-sandbox-opencode:v0.7.0-beta.1-opencode
+```
+
+CI 发布链路（`.github/workflows/docker-publish-sandbox.yml`，matrix 项 `opencode`）：
 
 | 项 | 值 |
 | --- | --- |
@@ -46,14 +49,14 @@ CI 另有一条发布链路（`.github/workflows/docker-publish-sandbox.yml`，m
 | 平台 | `linux/amd64`、`linux/arm64` |
 | 构建参数 | `CACHE_BUST=<run_id>`（本 Dockerfile 未声明该 ARG，仅对 peri / ccb 生效） |
 
-发布镜像的消费方是 OpenSandbox 集群（`RCS_DEFAULT_SANDBOX_IMAGE`，见
-`docker/opensandbox-cluster/deploy/fenix-integration.md`），不是本目录的 compose。
+发布镜像有两个消费方：本目录的 compose（执行节点）与 OpenSandbox 集群（`RCS_DEFAULT_SANDBOX_IMAGE`，见
+`docker/opensandbox-cluster/deploy/fenix-integration.md`）。
 
 ## 前置条件
 
 - Docker + Compose v2（本目录可独立部署到一台专用机器，不要求本机有仓库其余部分）。
 - 主服务已启动，且**该地址对本容器可达**（见「网络接入清单」）。
-- 一个 `RCS_MACHINE_ID`：控制台预创建的 Machine；作为默认节点用时与主服务根 `.env` 的
+- 一个 `RCS_MACHINE_ID`：控制台预创建的 Machine；作为默认节点用时与主服务 env（生产 `docker/main/.env`、dev 仓库根 `.env`）的
   `RCS_DEFAULT_MACHINE_ID` 一致（见 `docs/operations/deployment.md`）。
 - 首次 `up` 时若本目录下没有 `data/`，Docker 会自动创建（属主 root）。
 
@@ -62,7 +65,7 @@ CI 另有一条发布链路（`.github/workflows/docker-publish-sandbox.yml`，m
 | 键 | 位置 | 说明 |
 | --- | --- | --- |
 | `RCS_URL` | 本目录 `.env`（模板 `.env.example`） | 必填。主服务的 WS 地址，如 `ws://192.168.1.10:3001`；缺省由 `docker/deploy.sh` 注入 `ws://rcs:3000`（同机语义，依赖 `fenix-server` 的 DNS，见下） |
-| `RCS_SECRET` | 同上 | 必填。注册用共享密钥，取值必须等于主服务侧的 `REGISTRY_SECRET`（顶层 `docker-compose.yml` 注明它是「与 sandbox / 控制台共享的密钥」）。随主服务启动时由 `docker/deploy.sh` 自动派生（本目录 `.env` ＞ 根 `.env` 的 `RCS_SECRET` ＞ `REGISTRY_SECRET`，见 `docker/lib/config.sh`），无需手填；独立部署时手填同值 |
+| `RCS_SECRET` | 同上 | 必填。注册用共享密钥，取值必须等于主服务侧的 `REGISTRY_SECRET`（两份主服务编排——dev 是仓库根 `docker-compose.yml`，生产是 `docker/main/docker-compose.yml`——都注明它是「与 sandbox / 控制台共享的密钥」）。随主服务启动时由 `docker/deploy.sh` 自动派生（本目录 `.env` ＞ 主服务 env 的 `RCS_SECRET` ＞ `REGISTRY_SECRET`，见 `docker/lib/config.sh`），无需手填；独立部署时手填同值 |
 | `RCS_MACHINE_ID` | 同上 | 必填。机器 ID，空值同样视为缺失（compose 用 `${VAR:?}`） |
 | `TZ` | 同上 | 可调，默认 `Asia/Shanghai`（compose 写 `${TZ:-Asia/Shanghai}`） |
 | `AGENT_TYPE` | 镜像 `ENV`（不可在 `.env` 改） | `opencode`。改了会让主服务按错误的槽位管理 Agent |
@@ -120,8 +123,14 @@ RCS 在线 (ws://…)                              # 主服务可达
 ## 升级
 
 ```bash
-# 1. 改 Dockerfile 里的版本（opencode-ai@<版本>）后重建并重启
-docker compose -f docker/sandbox-opencode/docker-compose.yml build
+# 有新发布 tag 时：改本目录 compose 的 image 行 → 拉取 → 重启
+docker compose -f docker/sandbox-opencode/docker-compose.yml pull
+docker compose -f docker/sandbox-opencode/docker-compose.yml up -d
+
+# 改了 Dockerfile（opencode-ai@<版本> 等）要自建时：在仓库根构建同 tag 镜像，再 up
+docker build --no-cache \
+  -f docker/sandbox-opencode/Dockerfile \
+  -t ghcr.io/huangpustar/fenixagent-sandbox-opencode:v0.7.0-beta.1-opencode .
 docker compose -f docker/sandbox-opencode/docker-compose.yml up -d
 ```
 
@@ -129,8 +138,8 @@ docker compose -f docker/sandbox-opencode/docker-compose.yml up -d
 - 引擎版本写在 Dockerfile（当前 `opencode-ai@1.17.12`）：升级即改这一行。
 - 镜像里 hindsight 插件经 npm 安装（`@konghayao/opencode-hindsight`，未写版本号），而 Dockerfile 没有
   peri / ccb 那样的 `CACHE_BUST` 参数：Docker 层缓存看不见远端包的变化，命令串不变就会复用旧层。
-  **升级插件时用 `docker compose -f docker/sandbox-opencode/docker-compose.yml build --no-cache`**
-  （或后续给该 RUN 加上 `ARG CACHE_BUST` 对齐 peri / ccb）。
+  **自建时用 `--no-cache`**（或后续给该 RUN 加上 `ARG CACHE_BUST` 对齐 peri / ccb）；
+  自建会占用发布 tag 的本地镜像，需要回到发布版本时 `docker compose … pull` 覆盖回来。
 
 ## 已知限制
 

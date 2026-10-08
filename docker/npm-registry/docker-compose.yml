@@ -14,7 +14,7 @@
 # 网络与地址：接入 external 网络 fenix-server——主服务容器按 http://npm-registry:4873 访问；
 # 同时保留只绑回环的宿主端口，供主服务跑源码（bun run dev / restart-server.sh）时用 http://127.0.0.1:4873。
 #
-# 接到主服务：根 `.env` 里设 `PLUGIN_MARKET_REGISTRY_URL`（容器形态 http://npm-registry:4873，
+# 接到主服务：主服务 env 里设 `PLUGIN_MARKET_REGISTRY_URL`（容器形态 http://npm-registry:4873，
 # 源码形态 http://127.0.0.1:4873）。未配置时只有发布与预览路径失败（REGISTRY_NOT_CONFIGURED），
 # 浏览既有快照不受影响。
 #
@@ -30,7 +30,7 @@
 #     -H 'content-type: application/json' -d '{"name":"fenix-dev","password":"fenix-dev"}'
 # 该 token 不是 JWT、不带过期时间：它是 `base64(签名密钥对)`，与用户一起存在 ./data/verdaccio 里，
 # 删掉该用户（或清空该目录）才会失效。凭 `~/.npmrc` 找到它（`//127.0.0.1:4873/:_authToken=…`）后写进
-# 根 `.env` 的 `PLUGIN_MARKET_REGISTRY_TOKEN`，市场即以 `authorization: Bearer …` 读取。
+# 主服务 env 的 `PLUGIN_MARKET_REGISTRY_TOKEN`，市场即以 `authorization: Bearer …` 读取。
 
 services:
 

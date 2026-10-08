@@ -10,7 +10,7 @@ import { createWorkflowV2ModuleConfig, initializeWorkflowV2ModuleConfig } from "
  *
  * 两段彼此独立的口径：
  * 1. **声明侧**（`fenix.module.ts` 的 envDefinitions）——键集合、必填性与默认值必须与冻结 §2.2 逐项一致。
- *    它是启动期校验与 `deploy/env/rcs.example` 的真相来源，改错不会在包内报错，只会在部署时才暴露；
+ *    它是启动期校验与部署模板（`.env.example` / `docker/main/.env.example`）的真相来源，改错不会在包内报错，只会在部署时才暴露；
  * 2. **读取侧**（`config.ts` 的 `getWorkflowV2Config()`）——宿主投影进来的形状经校验后才可用，白名单的
  *    字符串 → 数组归一只发生在这里。
  *

@@ -15,8 +15,8 @@
 | `WORKSPACE_ROOT` | `<运行目录>/workspaces`（容器内 `/app/workspaces`；可由 `WORKSPACE_ROOT` 覆盖） | 每个用户的 Agent 工作区，路径公式 `{WORKSPACE_ROOT}/{organizationId}/{userId}/{environmentId}` | 用户文件与 Agent 产物丢失。注意：DB 的 `workspacePath` 是历史字段，不能用来推导真实目录 |
 | 日志目录 | `LOG_DIR`，默认相对进程 cwd 的 `logs` | `rcs.<yyyy-MM-dd>.log`（全量）与 `rcs.err.<yyyy-MM-dd>.log`（error 及以上），日期为 UTC；超过 `LOG_RETENTION_DAYS`（默认 30）的文件在跨日时清理 | 只影响事后排障，不影响业务数据 |
 | peri 全局目录 | 宿主 `./data/peri-home`（容器内 `/root/.peri`） | peri 插件与 CLI 配置（镜像构建时安装了 hindsight-memory 插件，运行期还会写入） | 容器重建后需要重新安装/配置插件 |
-| `./workflow` 目录 | 顶层编排挂载的 `./workflow`（容器 `/app/workflow`） | `Dockerfile` 与顶层编排都创建/挂载它，但当前代码树里没有写入方，内容按代码无从断定（可能为空，也可能被运行期工具使用） | 工作流定义与运行记录都在数据库里，不受影响；备份时保守纳入，避免与运行期外部工具的口径不一致 |
-| 部署输入（根 `.env`、`docker/deploy.env`、各依赖目录的 `.env`、`deploy/assembly/*.json`、前端产物） | 仓库/编排目录 | 编排与发布参数。代码与 `apps/web/dist` 可由版本重建，但 **`.env` 与 `docker/deploy.env` 是唯一副本** | 需要重新配置；密钥若未另行保管则要重新签发 |
+| `./workflow` 目录 | 两份主服务编排都挂载的 `./workflow`（容器 `/app/workflow`；dev 落仓库根，生产落 `docker/main/workflow`） | `Dockerfile` 与两份编排都创建/挂载它，但当前代码树里没有写入方，内容按代码无从断定（可能为空，也可能被运行期工具使用） | 工作流定义与运行记录都在数据库里，不受影响；备份时保守纳入，避免与运行期外部工具的口径不一致 |
+| 部署输入（主服务 env——生产 `docker/main/.env`、dev 仓库根 `.env`——、`docker/deploy.env`、各依赖目录的 `.env`、`deploy/assembly/*.json`、前端产物） | 仓库/编排目录 | 编排与发布参数。代码与 `apps/web/dist` 可由版本重建，但 **`.env` 与 `docker/deploy.env` 是唯一副本** | 需要重新配置；密钥若未另行保管则要重新签发 |
 | 共享 MySQL（仅在启用 `FENIX_FEATURE_MYSQL` 时） | bind 目录 `docker/common/data/mysql` | Workflow V2 上游栈的定义、版本与运行数据（库 `opencoze`），以及 RAGFlow 的知识库元数据（库 `rag_flow`、文档与切片记录） | 两个栈都不带自己的实例了：这里丢了，上游定义与知识库元数据都不可从别处重建 |
 | 网关库（LiteLLM，共享 PostgreSQL 实例内） | 同一个 `docker/common/data/postgres`（库 `litellm`，角色 `litellm`） | Provider 凭据、Virtual Key、预算与用量——模型网关的事实来源 | 网关需要重新配置；已签发的 Virtual Key 与其用量记录丢失 |
 | 共享对象存储（共享 RustFS，仅在启用 `FENIX_FEATURE_S3` 时） | bind 目录 `docker/common/data/rustfs` | Workflow 的桶 `opencoze`（画布图片 / 附件）与 `milvus`（向量数据） | 工作流画布产物不可从数据库重建（库里只有元数据与桶内路径） |
@@ -29,32 +29,37 @@
 
 ## 3. 编排实际挂了什么（决定数据是否落在宿主机上）
 
-顶层 `docker-compose.yml` 的挂载（数据一律 bind，见 [`docker-topology.md`](./docker-topology.md) §13.8）：
+主服务编排的挂载（数据一律 bind，见 [`docker-topology.md`](./docker-topology.md) §13.8）。**两份编排的挂载清单相同**，
+区别只在相对路径的落点：dev 是仓库根，生产是 `docker/main/`（`docker/deploy.sh` 的操作对象）：
 
-| 卷 / 目录 | 顶层 `docker-compose.yml` | 宿主落点 |
+| 卷 / 目录 | 主服务编排（dev 根文件 / 生产 `docker/main/`） | 宿主落点 |
 | --- | --- | --- |
 | 数据库（含共享实例内的网关库 `litellm`） | 挂载（`docker/common/`，随 include） | `docker/common/data/postgres` |
 | 共享 MySQL（启用 `FENIX_FEATURE_MYSQL` 时；含 workflow 库 `opencoze` 与 ragflow 库 `rag_flow`） | 挂载 | `docker/common/data/mysql` |
 | 共享对象存储 rustfs（启用 `FENIX_FEATURE_S3` 时；含 workflow 的两个固定桶 `opencoze` / `milvus`） | 挂载 | `docker/common/data/rustfs` |
 | RAGFlow 自带的对象存储 `ragflow-rustfs`（随 `docker/ragflow/` 启停；含知识库侧随用户行为增长的桶——每个知识库 / 文件目录一个） | 挂载 | `docker/ragflow/data/rustfs` |
-| `./data`（含 `SKILL_DIR`、口令文件、`peri-home`） | 挂载 | `./data` |
-| `./workflow` | 挂载 | `./workflow` |
-| `./workspaces`（`WORKSPACE_ROOT`） | 挂载 | `./workspaces` |
+| `./data`（含 `SKILL_DIR`、口令文件、`peri-home`） | 挂载 | dev `./data`；生产 `docker/main/data` |
+| `./workflow` | 挂载 | dev `./workflow`；生产 `docker/main/workflow` |
+| `./workspaces`（`WORKSPACE_ROOT`） | 挂载 | dev `./workspaces`；生产 `docker/main/workspaces` |
 | `./logs`（`LOG_DIR`） | **未挂载** | 容器重建即丢日志；需要保留时自行加一条 bind |
-| `/root/.peri` | 挂载 | `./data/peri-home`（不再是匿名卷） |
+| `/root/.peri` | 挂载 | dev `./data/peri-home`；生产 `docker/main/data/peri-home`（不再是匿名卷） |
 
 对应风险：
 
-- 顶层编排未挂 `logs`：容器重建即丢日志。容器形态下如需保留，给 `rcs` 加一条 `./logs:/app/logs` 并把 `LOG_DIR` 指过去。
+- 两份主服务编排都未挂 `logs`：容器重建即丢日志。容器形态下如需保留，给 `rcs` 加一条 `./logs:/app/logs` 并把 `LOG_DIR` 指过去。
 - 依赖目录（`docker/<name>/`）的数据一律在自己的 `./data/` 或 `./ragflow_*` 一类同级目录下，随该目录一起备份；`./docker/deploy.sh down --purge-data` 会删掉这些目录（**包括 `docker/common/data/` 下的共享实例数据**），**不要**在需要保留数据时使用。共享化之后，消费方（`workflow` / `ragflow` / `litellm`）的**库**都在共享实例里（`docker/common/data/**`）；
   **对象存储分两处**：workflow 的桶在共享实例（`docker/common/data/rustfs`），RAGFlow 的桶在它自带的实例里
   （`docker/ragflow/data/rustfs`，2026-10-08 由共享实例回退而来，见 [`docker-topology.md`](./docker-topology.md) §5）。
   备份与 `--purge-data` 的口径都要同时覆盖这两处。
-- 相对路径按**编排文件所在目录**解析：顶层是仓库根，依赖目录各自相对自己的目录。
+- 相对路径按**编排文件所在目录**解析：主服务在 dev 是仓库根、生产是 `docker/main/`，依赖目录各自相对自己的目录。
 
 ## 4. 临时备份口径（仓库暂无脚本）
 
 原则：数据库与文件目录的快照要尽量取在**同一时间点**——数据迁移会同时改库与改文件，两者错位会让「记录已落库、应用读不到文件」这类状态无法自愈。安全的做法是先在维护窗口停掉应用与数据迁移，再依次取快照。
+
+下面的命令按 **dev 形态**（仓库根编排、数据落仓库根）给出；生产机器上把 `docker compose …` 换成
+`docker compose -f docker/main/docker-compose.yml …`（在任意工作目录执行；它自动读 `docker/main/.env`），
+文件路径把 `./data`、`./workflow`、`./workspaces` 换成 `docker/main/` 下的同名目录。
 
 ```bash
 # 1) 数据库逻辑备份（postgres 容器自带 pg_dump / pg_restore）
@@ -73,7 +78,7 @@ tar -czf rustfs-$(date +%Y%m%d).tar.gz     -C docker/common/data rustfs      # w
 tar -czf ragflow-rustfs-$(date +%Y%m%d).tar.gz -C docker/ragflow/data rustfs # 知识库的桶（RAGFlow 自带实例）
 # 对象存储打包同样以停机窗口内取为稳（运行中打包可能取到半写的对象）
 
-# 3) 配置（唯一副本，按密钥材料保管，不要随普通备份分发）
+# 3) 配置（唯一副本，按密钥材料保管，不要随普通备份分发；生产把 .env 换成 docker/main/.env）
 tar -czf config-$(date +%Y%m%d).tar.gz .env docker/deploy.env
 ```
 
@@ -86,7 +91,7 @@ tar -czf config-$(date +%Y%m%d).tar.gz .env docker/deploy.env
    docker compose exec -T postgres pg_restore -U rcs -d rcs --clean --if-exists < rcs-YYYYmmdd.dump
    ```
 2. **恢复文件目录**：`SKILL_DIR`、`WORKSPACE_ROOT`、`workflow`、peri 目录（按需）。必须在启动应用前完成，否则应用会先读到空目录并可能写入新状态。
-3. **恢复共享实例与自带实例里的依赖数据**（按启用的开关）：把共享 MySQL 的两个库（`opencoze` / `rag_flow`）、共享 rustfs 的数据目录（workflow 的桶）与 `docker/ragflow/data/rustfs`（RAGFlow 自带的桶）按 §4 的备份还原回各自目录。**顺序是先起顶层项目、再起依赖栈**：栈内的一次性初始化服务是幂等的（只建缺失的库 / 桶、只同步口令，不动既有数据；`docker/ragflow/` 的 `ragflow-s3-init` 只对自带实例做能力探测、不建业务桶——多桶模式下桶由 RAGFlow 运行期自建），不会覆盖刚恢复的数据；反过来先起依赖栈会让初始化在空实例上建出新的库 / 固定名桶，与恢复点分叉。
+3. **恢复共享实例与自带实例里的依赖数据**（按启用的开关）：把共享 MySQL 的两个库（`opencoze` / `rag_flow`）、共享 rustfs 的数据目录（workflow 的桶）与 `docker/ragflow/data/rustfs`（RAGFlow 自带的桶）按 §4 的备份还原回各自目录。**顺序是先起主服务项目、再起依赖栈**：栈内的一次性初始化服务是幂等的（只建缺失的库 / 桶、只同步口令，不动既有数据；`docker/ragflow/` 的 `ragflow-s3-init` 只对自带实例做能力探测、不建业务桶——多桶模式下桶由 RAGFlow 运行期自建），不会覆盖刚恢复的数据；反过来先起依赖栈会让初始化在空实例上建出新的库 / 固定名桶，与恢复点分叉。
 4. **核对迁移进度**：比对 `drizzle."__drizzle_migrations"` 与 `data_migrate_record` 的内容是否与该版本代码期望的迁移集合一致；缺的补跑（[升级](./upgrade.md) 的发布顺序），多的必须查明来源后再决定——不要只改记录。
 5. **启动应用**（`up -d rcs`）→ 检查 `/health` 的 `status` 与 `commitId`，再抽查一次交互式 Chat 与文件访问。
 

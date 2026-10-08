@@ -13,7 +13,7 @@
 ## 前置条件
 
 - Docker Engine 与 Docker Compose ≥ 2.20。
-- 随主服务启动时**顶层项目必须先起**（`fenix-server` 由顶层创建，本目录以 `external: true` 引用）。
+- 随主服务启动时**主服务项目必须先起**（`fenix-server` 由主服务项目创建——dev 是仓库根 `docker-compose.yml`，生产是 `docker/main/docker-compose.yml`；本目录以 `external: true` 引用）。
 - `DASHSCOPE_API_KEY` 已填（LLM / Embedding / Reranker 三处共用，缺失即启动失败）。
 - 宿主能拉 `ghcr.io/vectorize-io/hindsight:0.10.2`，且**能访问 `dashscope.aliyuncs.com`**（启动时要调百炼做模型初始化）。
 - `./data/pg0` 可写且属主为 UID 1000（见「数据与迁移」）。
@@ -22,11 +22,11 @@
 
 | 键 | 位置 | 必需性 | 说明 |
 | --- | --- | --- | --- |
-| `DASHSCOPE_API_KEY` | 本目录 `.env`（独立部署）；仓库根 `.env` 亦可（随主服务启动时脚本把它导出为 shell 环境，§8.5） | 必需 | 阿里云百炼 API Key，LLM / Embedding / Reranker 共用 |
+| `DASHSCOPE_API_KEY` | 本目录 `.env`（独立部署）；主服务 env 亦可（随主服务启动时脚本把它导出为 shell 环境，§8.5） | 必需 | 阿里云百炼 API Key，LLM / Embedding / Reranker 共用 |
 | `HINDSIGHT_API_HOST_PORT` | 本目录 `.env` | 默认 8888 | API 的宿主回环端口（`127.0.0.1`），本地源码运行指向它 |
 | `HINDSIGHT_CP_HOST_PORT` | 本目录 `.env` | 默认 9999 | 控制台的宿主回环端口（`127.0.0.1`），管理员浏览器访问 |
-| `HINDSIGHT_MCP_URL` | 仓库根 `.env` | 启用记忆时必填 | 平台访问 Hindsight 的基址；取值见下节。装配期投影进模块配置，**改值需重启主服务** |
-| `HINDSIGHT_API_TOKEN` | 仓库根 `.env` | 可选 | agent-config 管辖：随 Agent 启动参数下发（写进工作区 `.hindsight/workspace.json` 的 `hindsightApiToken`，不作为 env 下发）；未配置时写 `null`。本编排**未**设置服务端鉴权，见「已知项」 |
+| `HINDSIGHT_MCP_URL` | 主服务 env（生产 `docker/main/.env`、dev 仓库根 `.env`） | 启用记忆时必填 | 平台访问 Hindsight 的基址；取值见下节。装配期投影进模块配置，**改值需重启主服务** |
+| `HINDSIGHT_API_TOKEN` | 主服务 env（生产 `docker/main/.env`、dev 仓库根 `.env`） | 可选 | agent-config 管辖：随 Agent 启动参数下发（写进工作区 `.hindsight/workspace.json` 的 `hindsightApiToken`，不作为 env 下发）；未配置时写 `null`。本编排**未**设置服务端鉴权，见「已知项」 |
 
 模型名（`qwen3.6-flash` / `text-embedding-v4` / `qwen3-rerank`）、Embedding 批大小（`64`）与百炼基址写在
 本目录 `docker-compose.yml` 的 `environment:` 里，本目录不开对应的 `.env` 开关——它们与服务端端口、模型

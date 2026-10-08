@@ -19,10 +19,10 @@
 
 本目录直接声明全部 11 个服务（含两个一次性初始化服务 `mysql-init` / `s3-init`），只有一个普通 Compose YAML，不使用 `extends`、`include`、`x-upstream`、anchor 或 `!override`。
 
-**共享基础设施不在本目录**：MySQL 与对象存储都由顶层项目 `docker/common/` 提供，开关分别是 `FENIX_FEATURE_MYSQL` 与 `FENIX_FEATURE_S3`（镜像 tag、端口、数据目录见 `docker/common/docker-compose.yml`）。Elasticsearch、Redis、etcd、Milvus、NSQ 仍是**本栈私有**的服务，留在本目录、数据仍在上游目录下。代价与理由：
+**共享基础设施不在本目录**：MySQL 与对象存储都由主服务项目提供（`docker/common/`；dev 是仓库根 `docker-compose.yml`，生产是 `docker/main/docker-compose.yml`），开关分别是 `FENIX_FEATURE_MYSQL` 与 `FENIX_FEATURE_S3`（镜像 tag、端口、数据目录见 `docker/common/docker-compose.yml`）。Elasticsearch、Redis、etcd、Milvus、NSQ 仍是**本栈私有**的服务，留在本目录、数据仍在上游目录下。代价与理由：
 
 - 收益：同一台机器上多个栈共用一套 MySQL 与一套对象存储，不再每个栈一套；它们的落点随交付面固定在 `docker/common/data/mysql` 与 `docker/common/data/rustfs`。
-- 代价一：本目录**不再是自包含的部署单元**——它依赖顶层项目先启动（共享实例在另一个 Compose 项目里，跨项目没有 `depends_on` 可表达）。独立部署本目录时也必须带上 `docker/common/`。
+- 代价一：本目录**不再是自包含的部署单元**——它依赖主服务项目先启动（共享实例在另一个 Compose 项目里，跨项目没有 `depends_on` 可表达）。独立部署本目录时也必须带上 `docker/common/`。
 - 代价二：`coze-server`、`coze-web`、`milvus`、`mysql-init`、`s3-init` 必须接入 external 网络 `fenix-server` 才能按服务名解析共享实例，因此这些容器也暴露在该网络里。
 - 代价三：共享实例里**属于本栈的库与账号**、以及上游 schema 的初始化，改由本目录的一次性服务 `mysql-init` 承担（原先写在 mysql 容器的启动脚本里）；**属于本栈的桶与图标播种**改由 `s3-init` 承担（原先写在 minio 容器的 entrypoint 里）。两者的成败分别决定 `coze-server` 是否启动。库与账号由它幂等创建，**不依赖共享实例的 `MYSQL_DATABASE` / `MYSQL_USER`**（那两个键只在实例的数据目录首次初始化时生效，对已经存在的实例无效），也不需要运维手敲 SQL。
 - 上游 `.env` 里的 `MYSQL_HOST` / `MYSQL_PORT` / `MINIO_ENDPOINT` / `MINIO_API_HOST` / `MINIO_AK` / `MINIO_SK` **都不需要改**：前者因为服务名与端口在 common 里保持原值（容器内仍是 `mysql:3306`），后者由本目录编排在 `coze-server` 上用 `environment` 显式覆盖（Compose 里 `environment` 优先于 `env_file`）。
@@ -41,7 +41,7 @@ external 网络 fenix-server：
   平台 rcs ←→ 唯一出口 coze-web
                 ├─ workflow-upstream：API / 画布静态入口
                 └─ workflow-storage：只读签名存储入口 → rustfs:9000
-  共享基础设施：mysql / rustfs（顶层项目 docker/common/ 提供）
+  共享基础设施：mysql / rustfs（主服务项目 docker/common/ 提供）
   消费方：coze-server（运行期读写库与桶）、milvus（读写自己的桶）、
           mysql-init / s3-init（一次性初始化）
 
@@ -53,20 +53,23 @@ Compose 自动创建的项目默认网络：
 
 ## 1. 前置条件
 
-- Docker Engine 与 Docker Compose v2（顶层项目含 `include`，需 ≥ 2.20）；使用标准 Compose 配置，不要求扩展 YAML 标签。
+- Docker Engine 与 Docker Compose v2（主服务项目含 `include`，需 ≥ 2.20）；使用标准 Compose 配置，不要求扩展 YAML 标签。
 - **共享 MySQL 先就绪（本目录不再自足）**：
   ```bash
-  ./docker/deploy.sh up          # 顶层项目 + 已启用依赖；使用共享库前先在 docker/deploy.env 打开 FENIX_FEATURE_MYSQL
+  ./docker/deploy.sh up          # 主服务项目 + 已启用依赖；使用共享库前先在 docker/deploy.env 打开 FENIX_FEATURE_MYSQL
   # 或不起平台主服务、只起共享服务：
-  docker compose -f docker-compose.yml --profile mysql up -d
+  docker compose -f docker-compose.yml --profile mysql up -d                          # dev（仓库根编排）
+  docker compose -f docker/main/docker-compose.yml --profile mysql up -d   # 生产（自动读 docker/main/.env）
   ```
-  `mysql` 是顶层项目（仓库根 `docker-compose.yml`）里的服务名；它不在时本目录的初始化服务会在 300 秒后明确报错退出。
-- **共享对象存储先就绪（同一份顶层项目，开关是 `FENIX_FEATURE_S3`）**：本栈已不再自带对象存储，`coze-server` 与 `milvus` 都读共享 `rustfs`。判定：
+  `mysql` 是主服务项目（dev 是仓库根 `docker-compose.yml`，生产是 `docker/main/docker-compose.yml`）里的服务名；它不在时本目录的初始化服务会在 300 秒后明确报错退出。
+- **共享对象存储先就绪（同一个主服务项目，开关是 `FENIX_FEATURE_S3`）**：本栈已不再自带对象存储，`coze-server` 与 `milvus` 都读共享 `rustfs`。判定：
   ```bash
-  docker compose -f docker-compose.yml --profile s3 up -d   # 只起共享对象存储（顶层项目未起时）
-  docker compose -f docker-compose.yml ps rustfs            # 期望 healthy
+  docker compose -f docker-compose.yml --profile s3 up -d   # dev（仓库根编排）：只起共享对象存储（主服务项目未起时）
+  docker compose -f docker/main/docker-compose.yml --profile s3 up -d   # 生产（自动读 docker/main/.env）
+  docker compose -f docker-compose.yml ps rustfs            # dev（仓库根编排）；期望 healthy
+  docker compose -f docker/main/docker-compose.yml ps rustfs            # 生产（自动读 docker/main/.env）
   ```
-  `rustfs` 同上，是顶层项目的服务名；它不在时 `s3-init` 会在 300 秒后明确报错退出，`coze-server` 与 `milvus` 因此都不启动。**顺带注意**：`coze-web` 的 nginx 在**启动时**解析 `rustfs`（不是每次请求），共享实例没起时它会直接以 `host not found in upstream "rustfs"` 起不来；共享实例重建（换 IP）后也要重启 `coze-web`，见 §7。
+  `rustfs` 同上，是主服务项目的服务名；它不在时 `s3-init` 会在 300 秒后明确报错退出，`coze-server` 与 `milvus` 因此都不启动。**顺带注意**：`coze-web` 的 nginx 在**启动时**解析 `rustfs`（不是每次请求），共享实例没起时它会直接以 `host not found in upstream "rustfs"` 起不来；共享实例重建（换 IP）后也要重启 `coze-web`，见 §7。
 - **Elasticsearch 的宿主前置条件**（ES 仍是本目录的服务、数据在上游目录；不满足时 ES 容器会反复重启，`coze-server` 也就起不来——只留在 compose 里看不出来）：
   - `vm.max_map_count` ≥ 262144（ES 建索引的硬要求）。判定：`sysctl -n vm.max_map_count`；设置：`sudo sysctl -w vm.max_map_count=262144`，并写入 `/etc/sysctl.d/99-elasticsearch.conf` 持久化。
   - 宿主内存：ES 单节点建议 ≥ 2GB 可用（容器不加内存上限时堆大小由镜像自行推导，本编排不设 `ES_JAVA_OPTS`）；**可用内存不足时不要指望它自动降级**，先扩内存或去掉同时运行的大栈。
@@ -120,14 +123,14 @@ chmod 600 docker/.env
 | 配置 | 要求 |
 | --- | --- |
 | `LISTEN_ADDR` | 容器内部使用 `:8888`；不要改成外部发布端口 `18080` |
-| MySQL 配置 | 服务名保持 `mysql`（现在指向共享实例）；`MYSQL_ROOT_PASSWORD` / `MYSQL_DATABASE` / `MYSQL_USER` / `MYSQL_PASSWORD` 必须与**仓库根 `.env`** 的同名键同值——服务端口令由 common 的 mysql 容器写入，这里填的只是本栈构造 DSN 用的那份拷贝 |
+| MySQL 配置 | 服务名保持 `mysql`（现在指向共享实例）；`MYSQL_ROOT_PASSWORD` / `MYSQL_DATABASE` / `MYSQL_USER` / `MYSQL_PASSWORD` 必须与**主服务 env**（生产 `docker/main/.env`、dev 仓库根 `.env`）的同名键同值——服务端口令由 common 的 mysql 容器写入，这里填的只是本栈构造 DSN 用的那份拷贝 |
 | Redis / ES / Milvus / NSQ | 保持上游内部服务名与端口一致，不填宿主回环地址；Redis 另有同名冲突要处理，见 §9 |
 | `MINIO_ROOT_USER` / `MINIO_ROOT_PASSWORD` / `MINIO_DEFAULT_BUCKETS` | **不再有人读**：它们是 minio 服务端自己的键，栈内 minio 已删除、建桶改由 `s3-init` 承担。留着不影响运行，但不要再当成生效配置去改 |
-| `MINIO_ENDPOINT` / `MINIO_API_HOST` / `MINIO_AK` / `MINIO_SK` | **不需要改**：本目录编排在 `coze-server` 上用 `environment` 覆盖成 `rustfs:9000` / `http://rustfs:9000` / 根 `.env` 的 `RUSTFS_*`（Compose 里 `environment` 优先于 `env_file`）。上游那份的取值从此不生效，也不要指望改它能把存储换到别处 |
+| `MINIO_ENDPOINT` / `MINIO_API_HOST` / `MINIO_AK` / `MINIO_SK` | **不需要改**：本目录编排在 `coze-server` 上用 `environment` 覆盖成 `rustfs:9000` / `http://rustfs:9000` / 主服务 env 的 `RUSTFS_*`（Compose 里 `environment` 优先于 `env_file`）。上游那份的取值从此不生效，也不要指望改它能把存储换到别处 |
 | `STORAGE_BUCKET` | 本目录编排显式覆盖为 `opencoze`：平台图片改写按 `/opencoze/` 前缀识别（`canvas-passthrough.ts`），且 `s3-init` 建的就是这个桶。改名要三处一起改 |
 | 模型 / 代码执行 / 存储配置 | 根据实际节点能力填写；画布能打开不代表节点可执行 |
 
-共享 rustfs 的凭据只定义在**仓库根 `.env`** 的 `RUSTFS_ACCESS_KEY` / `RUSTFS_SECRET_KEY`（缺省值见 `docker/common/docker-compose.yml`），不写进上游 `.env`、也不写进本目录 `.env`——它在两个 Compose 项目之间必须同值，而 `docker/deploy.sh` 只导出根 `.env`。
+共享 rustfs 的凭据只定义在**主服务 env**（生产 `docker/main/.env`、dev 仓库根 `.env`）的 `RUSTFS_ACCESS_KEY` / `RUSTFS_SECRET_KEY`（缺省值见 `docker/common/docker-compose.yml`），不写进上游 `.env`、也不写进本目录 `.env`——它在两个 Compose 项目之间必须同值，而 `docker/deploy.sh` 只导出主服务 env。
 
 这个文件含上游密钥，不提交、不打印完整内容、不放入普通备份包。上游 `.env` 与本目录 `.env` 是不同配置面，不应合并。
 
@@ -154,20 +157,23 @@ export WORKFLOW_STUDIO_DIR=/opt/workflow-studio
 | `WORKFLOW_STUDIO_TAG` | `sha-6aaf4c0` | 上游 server / web 使用相同版本标签 |
 | `WEB_LISTEN_ADDR` | `127.0.0.1:18080` | 宿主诊断入口绑定地址与端口，默认不开放公网；覆盖上游同名配置 |
 
-先起共享基础设施，再起本目录（**顺序不变量**：共享 mysql 与 rustfs 都在顶层项目里，本目录只引用它们所在的网络）：
+先起共享基础设施，再起本目录（**顺序不变量**：共享 mysql 与 rustfs 都在主服务项目里，本目录只引用它们所在的网络）：
 
 ```bash
-# 1) 顶层项目：共享 MySQL + 共享 rustfs（按需打开两个开关；脚本会带对应 profile）
+# 1) 主服务项目：共享 MySQL + 共享 rustfs（按需打开两个开关；脚本会带对应 profile）
 ./docker/deploy.sh up
 #   或只起共享服务（`docker-compose.yml` 指仓库根那份）：
-#   docker compose -f docker-compose.yml --profile mysql --profile s3 up -d
+#   docker compose -f docker-compose.yml --profile mysql --profile s3 up -d   # dev（仓库根编排）
+#   docker compose -f docker/main/docker-compose.yml --profile mysql --profile s3 up -d   # 生产（自动读 docker/main/.env）
 
 # 2) 确认共享实例可用（本目录的两个初始化服务同样依赖它们）
-docker compose -f docker-compose.yml exec mysql mysql -uroot -p"$MYSQL_ROOT_PASSWORD" -e 'SELECT 1'
-docker compose -f docker-compose.yml ps rustfs   # 期望 healthy；本栈 s3-init 就等这个健康检查
+docker compose -f docker-compose.yml exec mysql mysql -uroot -p"$MYSQL_ROOT_PASSWORD" -e 'SELECT 1'   # dev（仓库根编排）
+docker compose -f docker/main/docker-compose.yml exec mysql mysql -uroot -p"$MYSQL_ROOT_PASSWORD" -e 'SELECT 1'   # 生产（自动读 docker/main/.env）
+docker compose -f docker-compose.yml ps rustfs   # dev（仓库根编排）；期望 healthy；本栈 s3-init 就等这个健康检查
+docker compose -f docker/main/docker-compose.yml ps rustfs   # 生产（自动读 docker/main/.env）
 ```
 
-创建共享网络（顶层项目已起时它必然存在；只有手工起本目录、且已用别的方式提供共享实例时才需要）：
+创建共享网络（主服务项目已起时它必然存在；只有手工起本目录、且已用别的方式提供共享实例时才需要）：
 
 ```bash
 docker network inspect fenix-server >/dev/null 2>&1 \
@@ -217,7 +223,7 @@ docker compose --env-file "$WORKFLOW_STUDIO_DIR/docker/.env" \
 
 默认 `deploy/assembly/ce.json` 已将 `workflow-v2` 放进 `resources`，Web contribution 的导航 ID 仍为 `workflow`。自定义装配同样核对两者；不要把 Web 导航 ID 改成 `workflow-v2`。
 
-在平台环境（生产为仓库根 `.env`）注入：
+在平台环境（生产为 `docker/main/.env`、dev 为仓库根 `.env`）注入：
 
 | 变量 | 要求 / 默认值 |
 | --- | --- |
@@ -260,7 +266,7 @@ docker compose --env-file "$WORKFLOW_STUDIO_DIR/docker/.env" \
 
 本文件不启动、不替换、不自动修改 RCS。主编排固定的平台标签未必包含 V2，发布时须使用已核验的平台镜像；也不需要额外的 RCS overlay YAML。共享网络示例适用于同机 Docker；跨机器改成平台容器可达的内网 URL，存储签名地址也要可达。
 
-**本目录与顶层项目必须同机。** 共享 MySQL 只在 `fenix-server` 与宿主回环端口上可达，跨机器时本目录的初始化服务与 `coze-server` 都解析不到它。需要把上游栈放到另一台机器时，先单独评审共享实例的暴露方式（内网地址 + 认证），不要只改 `docker-compose.yml` 里的地址。
+**本目录与主服务项目必须同机。** 共享 MySQL 只在 `fenix-server` 与宿主回环端口上可达，跨机器时本目录的初始化服务与 `coze-server` 都解析不到它。需要把上游栈放到另一台机器时，先单独评审共享实例的暴露方式（内网地址 + 认证），不要只改 `docker-compose.yml` 里的地址。
 
 若平台直接在宿主源码运行，可将两项 upstream URL 设置为 `http://127.0.0.1:18080`；签名存储入口 `workflow-storage` 也须配置宿主可达的 DNS / 反代并保留正确 Host，不能直接开放共享 rustfs。模板主要面向同机容器部署，容器内 `127.0.0.1` 不是上游或宿主。
 
@@ -291,8 +297,10 @@ docker compose --env-file "$WORKFLOW_STUDIO_DIR/docker/.env" --env-file docker/w
 docker compose --env-file "$WORKFLOW_STUDIO_DIR/docker/.env" --env-file docker/workflow/.env \
   -f docker/workflow/docker-compose.yml logs --tail=30 mysql-init s3-init
 # 3) 对象确实落到共享实例：库存在于实例账号下，且 application 账号能连上
-docker compose -f docker-compose.yml exec mysql mysql -uroot -p"$MYSQL_ROOT_PASSWORD" opencoze -e "SHOW TABLES LIKE 'workflow_version';"
-docker compose -f docker-compose.yml exec mysql mysql -u"$MYSQL_USER" -p"$MYSQL_PASSWORD" opencoze -e "SELECT 1;"
+docker compose -f docker-compose.yml exec mysql mysql -uroot -p"$MYSQL_ROOT_PASSWORD" opencoze -e "SHOW TABLES LIKE 'workflow_version';"   # dev（仓库根编排）
+docker compose -f docker/main/docker-compose.yml exec mysql mysql -uroot -p"$MYSQL_ROOT_PASSWORD" opencoze -e "SHOW TABLES LIKE 'workflow_version';"   # 生产（自动读 docker/main/.env）
+docker compose -f docker-compose.yml exec mysql mysql -u"$MYSQL_USER" -p"$MYSQL_PASSWORD" opencoze -e "SELECT 1;"   # dev（仓库根编排）
+docker compose -f docker/main/docker-compose.yml exec mysql mysql -u"$MYSQL_USER" -p"$MYSQL_PASSWORD" opencoze -e "SELECT 1;"   # 生产（自动读 docker/main/.env）
 # 4)（可选）共享 rustfs 的数据落点是 bind 挂载 docker/common/data/rustfs，在宿主上看一眼即可。
 #    RustFS 与 MinIO 同形态：桶在卷下表现为目录。底层布局只是旁证，判定权威是第 2 条里
 #    s3-init 的 ③ ——那一行「opencoze milvus 均可读」是对 S3 API 的实测，不依赖布局。
@@ -331,7 +339,7 @@ docker compose --env-file "$WORKFLOW_STUDIO_DIR/docker/.env" \
 
 不要公开原始日志；上游日志可能包含内部错误与业务载荷。`down` 不删除 bind mount 数据；**不要运行 `down -v` 或删除上游 `docker/data` 来“重置”生产部署**。
 
-上面这条 `down` **不会**停掉共享 MySQL（它属于顶层项目）：本目录的 `down` 之后，共享实例仍在跑，别的消费方不受影响。反过来，停顶层项目（`./docker/deploy.sh down`）会连带停掉本目录依赖的实例，本目录必须先停或同时停。
+上面这条 `down` **不会**停掉共享 MySQL（它属于主服务项目）：本目录的 `down` 之后，共享实例仍在跑，别的消费方不受影响。反过来，停主服务项目（`./docker/deploy.sh down`）会连带停掉本目录依赖的实例，本目录必须先停或同时停。
 
 | 症状 | 排查方向 |
 | --- | --- |
@@ -340,14 +348,14 @@ docker compose --env-file "$WORKFLOW_STUDIO_DIR/docker/.env" \
 | `manifest unknown` / `unauthorized` | 核对 GHCR 发布任务、确切标签和包权限；必要时用受控 token 经 `docker login --password-stdin` 登录 |
 | 画布白屏 / 根路径资源 404 | 用正确 `WORKFLOW_CANVAS_BASE` 重建整个 dist，不能只改运行期 env |
 | 平台 502 / 503 | 两侧是否加入共享网络、上游依赖是否健康、容器内 URL 是否正确 |
-| `mysql-init` 报「共享 MySQL 不可用（300 秒内未通过认证）」 | 看它给出的两条分支：`服务器可达但 root 认证失败` → 根 `.env` 的 `MYSQL_ROOT_PASSWORD` 与实例不一致；`服务器不可达` → `FENIX_FEATURE_MYSQL` 是否为 true、顶层项目是否已起、`MYSQL_HOST_PORT` 是否被占用 |
-| `mysql-init` 报「应用账号认证失败」 | 共享实例里该账号已存在但口令不同（`CREATE USER IF NOT EXISTS` 不覆盖已有账号）。按提示改 `MYSQL_PASSWORD`（根 `.env` 与上游 `docker/.env` 两处）或在实例里 `ALTER USER` |
+| `mysql-init` 报「共享 MySQL 不可用（300 秒内未通过认证）」 | 看它给出的两条分支：`服务器可达但 root 认证失败` → 主服务 env 的 `MYSQL_ROOT_PASSWORD` 与实例不一致；`服务器不可达` → `FENIX_FEATURE_MYSQL` 是否为 true、主服务项目是否已起、`MYSQL_HOST_PORT` 是否被占用 |
+| `mysql-init` 报「应用账号认证失败」 | 共享实例里该账号已存在但口令不同（`CREATE USER IF NOT EXISTS` 不覆盖已有账号）。按提示改 `MYSQL_PASSWORD`（主服务 env 与上游 `docker/.env` 两处）或在实例里 `ALTER USER` |
 | `docker compose -f docker/workflow/docker-compose.yml logs mysql-init` 里只有 `①②③` 没有完成行 | 最后一行就是失败阶段：`②` 之后的报错是权限不足（root 口令不对），`③` 之后是应用账号口令漂移，`④` 之后是 schema / Atlas 失败 |
-| `s3-init` 报「共享 rustfs 不可用（300 秒内未通过健康检查）」 | 看它给出的两条分支：`端口可达但健康检查没通过` → 共享实例还没起完（`docker compose -f docker-compose.yml ps rustfs`）；`服务器不可达` → `FENIX_FEATURE_S3` 是否为 true、顶层项目是否已起、本容器是否在 `fenix-server` 网络上 |
-| `s3-init` 报「建桶被拒（HTTP 403）」 | 根 `.env` 的 `RUSTFS_ACCESS_KEY` / `RUSTFS_SECRET_KEY` 与共享实例启动时用的那份不一致。**独立部署时最容易踩**：漏了 `--env-file ./.env`，compose 就退回编排里的默认凭据，而共享实例用的是根 `.env` 里的那份 |
-| `s3-init` 报「桶已存在但不属于当前凭据（BucketAlreadyExists）」 | 该桶由同一实例上的**别的**凭据创建。换桶名，或把根 `.env` 的 `RUSTFS_*` 改回创建它的那份——脚本不接管别人的桶（接管了 `coze-server` 也会在访问时被拒） |
+| `s3-init` 报「共享 rustfs 不可用（300 秒内未通过健康检查）」 | 看它给出的两条分支：`端口可达但健康检查没通过` → 共享实例还没起完（dev `docker compose -f docker-compose.yml ps rustfs`；生产 `docker compose -f docker/main/docker-compose.yml ps rustfs`）；`服务器不可达` → `FENIX_FEATURE_S3` 是否为 true、主服务项目是否已起、本容器是否在 `fenix-server` 网络上 |
+| `s3-init` 报「建桶被拒（HTTP 403）」 | 主服务 env 的 `RUSTFS_ACCESS_KEY` / `RUSTFS_SECRET_KEY` 与共享实例启动时用的那份不一致。**独立部署时最容易踩**：漏了主服务 env 那一份 `--env-file`（dev 是仓库根 `.env`、生产是 `docker/main/.env`），compose 就退回编排里的默认凭据，而共享实例用的是主服务 env 里的那份 |
+| `s3-init` 报「桶已存在但不属于当前凭据（BucketAlreadyExists）」 | 该桶由同一实例上的**别的**凭据创建。换桶名，或把主服务 env 的 `RUSTFS_*` 改回创建它的那份——脚本不接管别人的桶（接管了 `coze-server` 也会在访问时被拒） |
 | `s3-init` 日志末尾有「图标播种有失败项」 | 桶已经建好、栈照常可用，只是画布 / 插件图标可能 404。按日志给出的 `up -d --force-recreate s3-init` 重跑；持续失败查上游 `docker/volumes/minio/` 下图标目录是否完整 |
-| `coze-web` 起不来，日志 `host not found in upstream "rustfs"` | nginx 在**启动时**解析上游主机名，共享 rustfs 那时不可达。先起顶层项目再起本目录；共享实例重建（换 IP）后也要 `docker compose ... restart coze-web` 刷新解析 |
+| `coze-web` 起不来，日志 `host not found in upstream "rustfs"` | nginx 在**启动时**解析上游主机名，共享 rustfs 那时不可达。先起主服务项目再起本目录；共享实例重建（换 IP）后也要 `docker compose ... restart coze-web` 刷新解析 |
 | `elasticsearch` 容器反复重启 / `coze-server` 一直不启动 | 宿主 `vm.max_map_count` 是否 ≥ 262144（不足时 ES 卡在 bootstrap check，`docker compose -f docker/workflow/docker-compose.yml logs elasticsearch` 能看到原因）；宿主内存与磁盘是否够 |
 | `coze-server` 连到了“另一个 redis” | 见「§9 已知冲突」，不要先改上游配置猜 |
 | 初始化失败 / `spaceId` 为 null | 上游登录或注册、个人空间、平台迁移与台账；不要伪造空间 ID |
@@ -355,7 +363,7 @@ docker compose --env-file "$WORKFLOW_STUDIO_DIR/docker/.env" \
 | 图片不可见 | 签名 URL 的存储域是否可从平台访问、`MINIO_API_HOST` 与 `nginx.conf` 的 `sub_filter` / `Host` 三处是否同为 `rustfs:9000` |
 | 删除后上游对象仍在 | 检查 `pending_delete`、对账任务和审计，不直接删除本地归属记录 |
 
-持久化分三处：**共享 MySQL 在 `docker/common/data/mysql`、共享对象存储在 `docker/common/data/rustfs`**（都属顶层项目，见 §8），其余数据（Elasticsearch / Redis / etcd / Milvus、画布产物与后端配置）在下游 `${WORKFLOW_STUDIO_DIR}/docker/data/` 与 `volumes/` 下。三处都在交付面内（bind 挂载），迁移或备份要一起带走。上游 Compose 使用固定 `coze-*` 容器名，同一 Docker 主机不能直接再起第二套相同部署做蓝绿发布。
+持久化分三处：**共享 MySQL 在 `docker/common/data/mysql`、共享对象存储在 `docker/common/data/rustfs`**（都属主服务项目，见 §8），其余数据（Elasticsearch / Redis / etcd / Milvus、画布产物与后端配置）在下游 `${WORKFLOW_STUDIO_DIR}/docker/data/` 与 `volumes/` 下。三处都在交付面内（bind 挂载），迁移或备份要一起带走。上游 Compose 使用固定 `coze-*` 容器名，同一 Docker 主机不能直接再起第二套相同部署做蓝绿发布。
 
 升级顺序为备份 → 固定源码 / 镜像版本 → 重建正确画布 → 上游就绪 → 平台迁移与上线 → 全链路验收。备份必须包含平台 PostgreSQL 的归属 / 审计、**共享 MySQL 的定义 / 版本 / 运行数据**、对象存储及配置版本；凭据独立受控保管。
 
@@ -380,7 +388,7 @@ MySQL 从本目录移到 `docker/common/`，对象存储（MinIO）整体退役�
 # 0) 先备份一次（后面的 cp 不是备份：拷坏了原目录也坏了）
 tar -czf workflow-mysql-$(date +%Y%m%d).tar.gz -C "$WORKFLOW_STUDIO_DIR/docker/data" mysql
 
-# 1) 停旧栈（本目录 与 顶层都停，避免还有进程在写）
+# 1) 停旧栈（本目录与主服务项目都停，避免还有进程在写）
 docker compose --env-file "$WORKFLOW_STUDIO_DIR/docker/.env" --env-file docker/workflow/.env \
   -f docker/workflow/docker-compose.yml down
 ./docker/deploy.sh down
@@ -395,7 +403,7 @@ cp -a "$WORKFLOW_STUDIO_DIR/docker/data/mysql" docker/common/data/mysql
 # 4) 按 §6 的验收命令确认库表都在
 ```
 
-MySQL 的账号口令写在数据目录里：搬过来之后根 `.env` 的 `MYSQL_*` **必须保持旧值**。`mysql-init` 会幂等创建库与账号（`CREATE ... IF NOT EXISTS`），已存在的账号它**不会**改口令——口令不一致时它会在第 ③ 步直接报「应用账号认证失败」并停下，而不是让你在 `coze-server` 的报错里猜。
+MySQL 的账号口令写在数据目录里：搬过来之后主服务 env 的 `MYSQL_*` **必须保持旧值**。`mysql-init` 会幂等创建库与账号（`CREATE ... IF NOT EXISTS`），已存在的账号它**不会**改口令——口令不一致时它会在第 ③ 步直接报「应用账号认证失败」并停下，而不是让你在 `coze-server` 的报错里猜。
 
 **B. 不迁、从零起（本机开发，或旧库没有要保留的数据）：**
 
@@ -437,7 +445,7 @@ tar -czf workflow-minio-$(date +%Y%m%d).tar.gz -C "$WORKFLOW_STUDIO_DIR/docker/d
 
 # 1) 临时起一份旧 minio 指向那份数据（用上游 docker/docker-compose.yml，或任意端口映射），
 #    同时确认共享 rustfs 已起（FENIX_FEATURE_S3=true）
-# 2) 用宿主态的 mc / rclone 把两个桶整桶镜像到 rustfs（两端都写显式地址与根 .env 的 RUSTFS_* 凭据）
+# 2) 用宿主态的 mc / rclone 把两个桶整桶镜像到 rustfs（两端都写显式地址与主服务 env 的 RUSTFS_* 凭据）
 #    mc mv（不是 mc cp）：搬迁后旧桶不再被引用，避免同一份对象在两个实例里各留一份
 # 3) 停掉临时 minio，按 §6 验收桶与图标；确认无误后再决定是否删除旧数据目录
 ```
@@ -446,7 +454,7 @@ tar -czf workflow-minio-$(date +%Y%m%d).tar.gz -C "$WORKFLOW_STUDIO_DIR/docker/d
 
 ## 9. 已知冲突：`redis` 在两个网络同名
 
-`coze-server` 现在同时接在项目默认网络（本栈的 `redis`）与 `fenix-server`（顶层项目的共享 `redis`，只在 `FENIX_FEATURE_REDIS=true` 时存在）上。Docker 的容器 DNS 对「同一个名字出现在多个已接入网络」没有优先级约定：两个网络各自的记录都会被返回，客户端取哪条取决于返回顺序。两个实例都开着时，上游 `.env` 的 `REDIS_ADDR=redis:6379` 可能连到共享 redis。
+`coze-server` 现在同时接在项目默认网络（本栈的 `redis`）与 `fenix-server`（主服务项目的共享 `redis`，只在 `FENIX_FEATURE_REDIS=true` 时存在）上。Docker 的容器 DNS 对「同一个名字出现在多个已接入网络」没有优先级约定：两个网络各自的记录都会被返回，客户端取哪条取决于返回顺序。两个实例都开着时，上游 `.env` 的 `REDIS_ADDR=redis:6379` 可能连到共享 redis。
 
 判定（两个开关都打开时执行一次，只应看到一条、且是本项目 redis 容器的地址）：
 

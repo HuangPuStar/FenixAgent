@@ -1,20 +1,19 @@
 /**
  * 部署环境变量模板生成器与漂移门禁。
  *
- * **为什么模板改成生成物**：`deploy/env/*.example` 是部署模板的真相来源（backend-development §5.4），但本条目
- * 开工时仓库里没有 `deploy/env/`；唯一的历史模板（根 `.env.example`）相对声明面已整体
- * 过期——`SKILL_DIR`、`WORKSPACE_ROOT`、`YJS_MAX_CLIENTS`、`LANGFUSE_*`、`HERMES_*`、`GOTENBERG_URL`、
- * `ACPX_G_URL`、`PLUGIN_MARKET_REGISTRY_*` 在任何受版本控制的模板里都查不到，缺一个键就意味着该旋钮在部署时
- * 只能靠代码默认值。手写补全会继续漂移，所以三份模板都改为同一次渲染的产物，由 `--check` 按字节守住。
+ * **为什么模板改成生成物**：模板过去手写，相对声明面已整体过期——`SKILL_DIR`、`WORKSPACE_ROOT`、
+ * `YJS_MAX_CLIENTS`、`LANGFUSE_*`、`HERMES_*`、`GOTENBERG_URL`、`ACPX_G_URL`、`PLUGIN_MARKET_REGISTRY_*`
+ * 在任何受版本控制的模板里都查不到，缺一个键就意味着该旋钮在部署时只能靠代码默认值。手写补全会继续漂移，
+ * 所以各份模板都改为同一次渲染的产物，由 `--check` 按字节守住。
  *
  * **覆盖面** = 宿主 `apps/server/src/env.ts` 的自有键 + 生成 registry（`apps/generated/module-registry.ts`）里
  * **全部**模块的 `envDefinitions`；刻意不按 assembly profile 过滤——profile 描述运行拓扑，模板描述「这个进程能配
  * 哪些旋钮」，按 profile 过滤会让「换个 profile 才用到的键」永久没有落点。
  *
- * **两份应用面产出 + 一份部署面产出**：`deploy/env/rcs.example` 是应用声明面的真相来源（只含声明面全量键）；
- * 根 `.env.example` 由同一次渲染加本地开发场景差异（文件头、逐键注记、该场景确有消费方但尚未在声明面上的键）。
+ * **两份应用面产出 + 一份部署面产出**：根 `.env.example`（本地开发）与 `docker/main/.env.example`（生产编排
+ * 同目录的 env 模板）渲染应用声明面的全量键，各自追加场景注记与「该场景确有消费方、但尚未在声明面上」的键。
  * `docker/deploy.env.example` 渲染的是另一个面：`docker/deploy.sh` 的开关与编排的变量插值键（含基础服务凭据
- * 的去处），由生成器从 `docker/` 的目录与顶层 / common 编排发现，与应用声明面无键集包含关系。
+ * 的去处），由生成器从 `docker/` 的目录与主服务 / common 编排发现，与应用声明面无键集包含关系。
  * 两条渲染不变量由 `scripts/__tests__/env-example-generator.test.ts` 守护：键行恒为注释行
  * （`HERMES_PLATFORMS` 一类键的空串与未设置语义不同，留成有效空行会改变行为）；密钥类键不写任何取值，连样例
  * 也不写。
@@ -29,8 +28,8 @@ import {
   COMMON_FEATURE_SWITCHES,
   DEPLOY_KEY_NOTES,
   DEPLOY_OWNER_COMMON,
+  DEPLOY_OWNER_MAIN_ENV,
   DEPLOY_OWNER_ORDER,
-  DEPLOY_OWNER_ROOT_ENV,
   DEPLOY_OWNER_SWITCHES,
   ENV_TEMPLATES,
   type EnvEntry,
@@ -179,11 +178,21 @@ export function collectEnvEntries(): EnvEntry[] {
   return [...byKey.values()].sort((left, right) => left.key.localeCompare(right.key));
 }
 
-/** 部署面的发现来源：顶层与 common 两个编排文件。依赖目录的键走各自 .env，不在部署模板的范围内。 */
-const DEPLOY_SURFACE_FILES = ["docker-compose.yml", "docker/common/docker-compose.yml"] as const;
+/**
+ * 部署面的发现来源：主服务的两份编排（dev 用仓库根文件、生产用 docker/main/）与 common。
+ * 依赖目录的键走各自 .env，不在部署模板的范围内。两份主服务编排的插值键必须一致（同一应用）。
+ */
+const DEPLOY_SURFACE_FILES = [
+  "docker-compose.yml",
+  "docker/main/docker-compose.yml",
+  "docker/common/docker-compose.yml",
+] as const;
 
-/** 不参与依赖发现的目录，与 docker/deploy.sh 的 EXCLUDED_DIRS 同一规则：common 是基础服务，随顶层 include。 */
-const DEPLOY_EXCLUDED_DIRS = new Set(["common"]);
+/**
+ * 不参与依赖发现的目录，与 docker/deploy.sh 的 EXCLUDED_DIRS 同一规则：
+ * common 是基础服务（随主服务编排 include）、main 是主服务编排本身（不是依赖单元）。
+ */
+const DEPLOY_EXCLUDED_DIRS = new Set(["common", "main"]);
 
 /** 目录名 → 开关变量名：sandbox-peri → FENIX_FEATURE_SANDBOX_PERI（同 docker/deploy.sh 的 feature_var）。 */
 function featureVarFor(name: string): string {
@@ -301,7 +310,7 @@ export async function collectDeployEntries(): Promise<EnvEntry[]> {
     const note = DEPLOY_KEY_NOTES[key];
     const info = composeKeys.get(key);
     if (note === undefined || info === undefined) {
-      throw new Error(`部署键 ${key} 已不在顶层 / common 编排中：请从 DEPLOY_KEY_NOTES 删除`);
+      throw new Error(`部署键 ${key} 已不在主服务 / common 编排中：请从 DEPLOY_KEY_NOTES 删除`);
     }
     entries.push({
       key,
@@ -312,8 +321,8 @@ export async function collectDeployEntries(): Promise<EnvEntry[]> {
       secret: note.secret === true,
       restartRequired: false,
       description: note.description,
-      // 由仓库根 .env 提供的键在这份模板里只列键与去处：模板受版本控制，值不得抄进来。
-      hideValue: note.owner === DEPLOY_OWNER_ROOT_ENV,
+      // 由主服务 env 提供的键在这份模板里只列键与去处：模板受版本控制，值不得抄进来。
+      hideValue: note.owner === DEPLOY_OWNER_MAIN_ENV,
     });
   }
   return entries;
@@ -337,7 +346,7 @@ function renderEntry(entry: EnvEntry, note: string | undefined): string[] {
   const lines = [`# ${entry.key}｜${markers.join("｜")}`, `#   ${entry.description}`];
   if (note !== undefined) lines.push(`#   注：${note}`);
   // 密钥键、多行默认值与「取值在别处」的键一律不写取值：前者受「不写样例密钥」约束，多行值写出来不可直接使用，
-  // 后者是受版本控制的模板不该承载的值（部署模板里由仓库根 .env 提供的键）。
+  // 后者是受版本控制的模板不该承载的值（部署模板里由主服务 env 提供的键）。
   const value = entry.secret || entry.multilineDefault || entry.hideValue === true ? "" : (entry.defaultValue ?? "");
   lines.push(`# ${entry.key}=${value}`);
   return lines;
@@ -386,7 +395,7 @@ function compareOwners(left: string, right: string): number {
   return left.localeCompare(right);
 }
 
-/** 部署模板不按字典序，按部署者的阅读顺序：开关 → common 可选服务 → 部署参数 → 仓库根 .env 的键。 */
+/** 部署模板不按字典序，按部署者的阅读顺序：开关 → common 可选服务 → 部署参数 → 主服务 env 的键。 */
 function compareDeployOwners(left: string, right: string): number {
   return DEPLOY_OWNER_ORDER.indexOf(left) - DEPLOY_OWNER_ORDER.indexOf(right);
 }
@@ -427,7 +436,7 @@ function describeDifference(expected: string, actual: string): string {
   );
 }
 
-/** 生成三份模板并返回写出的仓库相对路径；可注入 `repositoryRoot` 供测试在临时目录里校验。 */
+/** 生成全部模板并返回写出的仓库相对路径；可注入 `repositoryRoot` 供测试在临时目录里校验。 */
 export async function generateEnvExamples(options: { repositoryRoot?: string } = {}): Promise<readonly string[]> {
   const root = options.repositoryRoot ?? REPOSITORY_ROOT;
   const entries = collectEnvEntries();
@@ -443,7 +452,7 @@ export async function generateEnvExamples(options: { repositoryRoot?: string } =
   return ENV_TEMPLATES.map((template) => template.path);
 }
 
-/** 模板与声明面的漂移；空数组表示三份模板都与生成结果逐字节一致。 */
+/** 模板与声明面的漂移；空数组表示全部模板都与生成结果逐字节一致。 */
 export async function findEnvExampleDrift(
   options: { repositoryRoot?: string } = {},
 ): Promise<readonly EnvExampleDrift[]> {
@@ -475,7 +484,7 @@ export async function checkEnvExamples(options: { repositoryRoot?: string } = {}
     return 0;
   }
 
-  console.error(`部署环境变量模板与声明面存在 ${drift.length} 处漂移——三份模板都是生成物，不要手改：`);
+  console.error(`部署环境变量模板与声明面存在 ${drift.length} 处漂移——模板都是生成物，不要手改：`);
   for (const item of drift) console.error(`  ${item.path}\n      ${item.detail}`);
   console.error("运行 `bun run scripts/generate-env-example.ts` 重新生成并提交产物。");
   return 1;

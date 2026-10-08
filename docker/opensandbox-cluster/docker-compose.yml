@@ -17,11 +17,8 @@ services:
 
     opensandbox-cluster:
         # 发布版本（固定 tag）：发布时更新此行。禁止环境变量插值与 latest（§13.7）。
+        # 本地自建（可选）：在仓库根执行 docker build -f docker/opensandbox-cluster/Dockerfile -t <本行镜像> .
         image: ghcr.io/huangpustar/fenixagent-opensandbox-cluster:v0.2.0
-        # 本仓源码构建（dev / 离线自建）：context 是仓库根，Dockerfile 在本目录内。
-        build:
-            context: ../..
-            dockerfile: docker/opensandbox-cluster/Dockerfile
         restart: unless-stopped
         env_file:
             - .env

@@ -36,6 +36,10 @@ stdio 继承方式启动 `dsh-acp-demo`。API key 只经 `DSH_LLM_API_KEY` 环�
 
 ## 使用
 
+> **本目录是 `docker/` 下唯一仍从源码构建的依赖目录**：CI（`.github/workflows/docker-publish-sandbox.yml`）
+> 的 matrix 里没有 `dsh`，GHCR 上没有它的发布镜像，因此 compose 声明 `build:` 而不是 `image:`；
+> 同族的 peri / ccb / opencode 都只引用发布镜像。补上发布链路后这里改成 `image:` 即可。
+
 ```bash
 # 1. 填配置：cp .env.example .env，填 RCS_URL、RCS_SECRET、RCS_MACHINE_ID（唯一）
 #    （随主服务一键启动时在 docker/deploy.env 打开 FENIX_FEATURE_SANDBOX_DSH=true，脚本会注入 RCS_URL）

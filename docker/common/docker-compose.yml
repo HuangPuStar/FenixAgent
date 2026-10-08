@@ -57,7 +57,7 @@ services:
         # 与上游栈原先的 mysqld 参数一致；库/表自身的字符集在 schema 里另有声明，这里只改服务器默认值。
         command: ["--character-set-server=utf8mb4", "--collation-server=utf8mb4_unicode_ci"]
         environment:
-            # 凭据是共享键：只在仓库根 .env 定义（文档 §8）。默认值只服务本地，生产必须替换。
+            # 凭据是共享键：只在主服务 env（生产 docker/main/.env、dev 仓库根 .env）定义（文档 §8）。默认值只服务本地，生产必须替换。
             # 改口令只在数据目录为空时生效：口令写在数据目录里，已有数据时改 env 不会改库里的账号。
             MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:-root}
             MYSQL_DATABASE: ${MYSQL_DATABASE:-opencoze}
@@ -102,7 +102,7 @@ services:
     rustfs:
         # 可选：S3 兼容对象存储（RustFS，不用 MinIO）。消费方只剩 docker/workflow/（桶 opencoze / milvus，
         # 由它的 s3-init 建桶并播种图标）：原先它自带一套 MinIO，收敛到这里后按 fenix-server 上的服务名
-        # rustfs:9000 访问，凭据取仓库根 .env 的 RUSTFS_*。
+        # rustfs:9000 访问，凭据取主服务 env 的 RUSTFS_*。
         # docker/ragflow/ 曾经也是消费方，现已改为**自带栈内实例**（`ragflow-rustfs`，只在本项目网络）——
         # 那是用户裁定的特例：RAGFlow 用多桶模式，桶名是运行期 UUID（知识库 kb_id / 文件目录 parent_id），
         # 而共享实例只有全实例一对凭据、实例侧给不出按消费方的桶策略，共享实例上无法为它建立有效边界。

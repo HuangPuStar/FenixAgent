@@ -7,7 +7,7 @@
 ## 前置条件
 
 - Docker Engine + Compose v2（≥ 2.20），且允许特权容器与 `cgroup: host`。
-- 顶层项目已启动（`./docker/deploy.sh up` 或 `docker compose up -d`）：`fenix-server` 网络由顶层创建，本目录以 `external` 方式接入。
+- 主服务项目已启动（`./docker/deploy.sh up`，或在仓库根 `docker compose up -d`）：`fenix-server` 网络由主服务项目创建（dev 是仓库根 `docker-compose.yml`，生产是 `docker/main/docker-compose.yml`），本目录以 `external` 方式接入。
 - 本机至少预留数十 GB 给 `./data/docker`（DinD 内镜像与容器）与 `./workspace`（沙盒数据）。
 
 ## 启动
@@ -20,7 +20,7 @@ cp sandbox.toml.example sandbox.toml
 # 2. docker.host_ip：Cluster 和调用方可以访问的本机 IP。
 mkdir -p data/docker data/opensandbox workspace offline
 
-docker compose up -d --build
+docker compose up -d
 
 # 等待服务进入 healthy；DinD 首次启动通常需要十几秒
 docker compose ps
@@ -46,6 +46,9 @@ DinD 使用 `privileged` 和 `cgroup: host`，内部 Docker 镜像、容器与 v
 宿主端口：`OPENSANDBOX_SERVER_PORT`（管理 API）与 `SANDBOX_PORT_MIN`-`SANDBOX_PORT_MAX`（沙盒端口段）都对调用方开放，端口值用 `.env` 覆盖。
 
 镜像 tag 写死在本目录 `docker-compose.yml` 的 `image:` 行；升级 = 改该行 + `docker compose up -d`。
+本目录不声明 `build:`：需要从本仓源码自建时执行
+`docker build -f docker/opensandbox-server/Dockerfile -t ghcr.io/huangpustar/fenixagent-opensandbox-server:<tag> docker/opensandbox-server`，
+再 `docker compose up -d`；本地镜像占用同一个 tag，要回到发布版本时用 `docker compose pull` 覆盖。
 
 ## Workspace 配置
 
@@ -152,7 +155,7 @@ curl -X POST "$CLUSTER_URL/api/v1/servers/server-node-1/health-check" \
 使用 `docker-compose.yml`，会发布 Server 管理端口和沙盒动态端口：
 
 ```bash
-docker compose up -d --build
+docker compose up -d
 ```
 
 Cluster 注册时提供 Server 的可达地址：
@@ -214,7 +217,7 @@ chmod 600 frpc.toml
 
 ```bash
 cd ../opensandbox-server-tunnel
-docker compose up -d --build
+docker compose up -d
 docker compose ps
 ```
 

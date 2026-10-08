@@ -56,7 +56,7 @@ required_var_hint() {
     printf '%s' "${hit%\}}"
 }
 
-# 校验单个 compose 文件的必填项：先看 shell 环境（脚本已导出根 .env 与 deploy.env），再看该项目的 .env。
+# 校验单个 compose 文件的必填项：先看 shell 环境（脚本已导出主服务 env 与 deploy.env），再看该项目的 .env。
 # 为什么不用 `docker compose config` 代劳：它一次只报第一个缺失键，而首次部署需要一次看全。
 check_compose_requirements() {
     local label="$1" compose="$2" env_dir="$3" var value hint where
@@ -68,10 +68,10 @@ check_compose_requirements() {
         value="$(env_file_value "$env_dir/.env" "$var" || true)"
         [[ -n "$value" ]] && continue
         MISSING_REQUIRED=$((MISSING_REQUIRED + 1))
-        if [[ "$env_dir" == "$REPO_ROOT" ]]; then
-            where="仓库根 .env"
+        if [[ "$env_dir" == "$SCRIPT_DIR/main" ]]; then
+            where="docker/main/.env"
         else
-            where="${env_dir#"$REPO_ROOT"/}/.env（共享键可放仓库根 .env）"
+            where="docker/${env_dir#"$SCRIPT_DIR"/}/.env（共享键写在 docker/main/.env，由脚本带入环境）"
         fi
         missing="${missing}    - ${var} → 填在 ${where}"$'\n'
         hint="$(required_var_hint "$compose" "$var")"
@@ -88,12 +88,12 @@ has_required_key() {
 }
 
 # 依赖启动前的运行态注入：RCS_URL（地址）与 RCS_SECRET（共享密钥）。
-# 为什么单列：这两个键要由**主服务的部署配置**派生，不能从根 .env 的同名键直接取——
-#   RCS_URL：根 .env 的同名键是主服务**自用地址**（源码运行时指向本机 localhost），节点要的是
+# 为什么单列：这两个键要由**主服务的部署配置**派生，不能从主服务 env 的同名键直接取——
+#   RCS_URL：主服务 env 的同名键是主服务**自用地址**（源码运行时指向本机 localhost），节点要的是
 #            「主服务可达地址」，同名不同义，且 export 后会被 compose 读到，所以这里必须无条件给出正确值。
 #   RCS_SECRET：节点侧的键名与主服务侧的 REGISTRY_SECRET 不同名，而注册是否通过由后者决定；
-#            根 .env.example 也不声明 RCS_SECRET，缺省时从 REGISTRY_SECRET 派生，避免两处手抄漂移。
-# 取值优先级：该依赖自己的 .env ＞ 已导出的 shell 环境（根 .env） ＞ 注入值。
+#            主服务 env 模板也不声明 RCS_SECRET，缺省时从 REGISTRY_SECRET 派生，避免两处手抄漂移。
+# 取值优先级：该依赖自己的 .env ＞ 已导出的 shell 环境（主服务 env） ＞ 注入值。
 # 独立部署（不经本脚本）时由该依赖自己的 .env 提供，在别的机器上填真实地址与同值密钥。
 apply_dep_runtime_env() {
     local name="$1" compose="$SCRIPT_DIR/$1/docker-compose.yml" value
@@ -120,20 +120,20 @@ apply_dep_runtime_env() {
     fi
 }
 
-# 校验将要启动的全部项目（顶层 + common + 已启用依赖）；返回 1 表示有未填写的必填项（报告写到 stderr）。
+# 校验将要启动的全部项目（主服务 + common + 已启用依赖）；返回 1 表示有未填写的必填项（报告写到 stderr）。
 validate_required_env() {
     local name
     MISSING_REQUIRED=0
     REQUIRED_REPORT=""
-    check_compose_requirements "顶层项目 docker-compose.yml" "$TOP_COMPOSE" "$REPO_ROOT"
-    check_compose_requirements "基础服务 docker/common/" "$SCRIPT_DIR/common/docker-compose.yml" "$REPO_ROOT"
+    check_compose_requirements "主服务 docker/main/docker-compose.yml" "$TOP_COMPOSE" "$SCRIPT_DIR/main"
+    check_compose_requirements "基础服务 docker/common/" "$SCRIPT_DIR/common/docker-compose.yml" "$SCRIPT_DIR/main"
     for name in $(discover_deps); do
         feature_enabled "$name" || continue
         apply_dep_runtime_env "$name"
         check_compose_requirements "依赖 $name" "$SCRIPT_DIR/$name/docker-compose.yml" "$SCRIPT_DIR/$name"
     done
     if [[ "$MISSING_REQUIRED" -eq 0 ]]; then
-        log "必填项校验通过（顶层 + 已启用依赖）"
+        log "必填项校验通过（主服务 + 已启用依赖）"
         return 0
     fi
     {

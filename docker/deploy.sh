@@ -6,24 +6,33 @@
 # 用法（可在仓库任意位置执行，脚本自定位）：
 #   ./docker/deploy.sh init                初始化配置：把各 .env.example 落成 .env（已存在则跳过），并报告还缺哪些必填项
 #   ./docker/deploy.sh validate            只校验必填项（与 up / deploy 启动前的检查同一套）
-#   ./docker/deploy.sh up                  启动整个环境：顶层（主服务 + 基础服务）+ deploy.env 中启用的依赖
+#   ./docker/deploy.sh up                  启动整个环境：主服务 + 基础服务 + deploy.env 中启用的依赖
 #   ./docker/deploy.sh deploy              发布：拉镜像 → DDL 迁移 → 数据迁移 → 启动
-#   ./docker/deploy.sh down [--purge-data --yes]  逆序停止（依赖 → 顶层）；--purge-data 删除数据目录，需 --yes 确认
-#   ./docker/deploy.sh ps                  查看顶层与已启用依赖的状态
+#   ./docker/deploy.sh down [--purge-data --yes]  逆序停止（依赖 → 主服务）；--purge-data 删除数据目录，需 --yes 确认
+#   ./docker/deploy.sh ps                  查看主服务与已启用依赖的状态
 #   ./docker/deploy.sh logs <rcs|目录名> [--follow]
 #   ./docker/deploy.sh config              干跑：只打印将执行的命令，不启动任何容器
 #   ./docker/deploy.sh --config <路径> <命令>
 #
 # 配置：默认读同目录的 deploy.env（首次使用：./docker/deploy.sh init）；同目录只有一份别的 *.env 时用它，
-#       有多份则用 --config 指定。
+#       有多份则用 --config 指定。主服务的应用配置与密钥读 docker/main/.env——与它的编排同目录，compose
+#       自己也读这一份（同一份文件，不两处维护）；共享键（POSTGRES_PASSWORD 等）由它提供给依赖编排。
 # 镜像：一律固定版本、写在各 compose 文件里；本脚本不做任何镜像变量插值。
+#
+# 主服务编排固定为 docker/main/docker-compose.yml（生产形态：不声明 build、只用发布镜像）。
+# 仓库根 docker-compose.yml 是 dev 形态（带 build，本地构建）——不归本脚本管；两者同项目名
+# `fenix`、同网络 `fenix-server`，二选一运行。
 
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
-TOP_COMPOSE="$REPO_ROOT/docker-compose.yml"
-ENV_FILE="$REPO_ROOT/.env"
+# 主服务编排（生产形态）：docker/main/docker-compose.yml。它不声明 build，镜像必须先 pull；
+# 根 docker-compose.yml 是 dev 形态（带 build），由开发者直接 `docker compose up -d --build` 使用。
+TOP_COMPOSE="$SCRIPT_DIR/main/docker-compose.yml"
+# 主服务的 env 文件：与主服务编排同目录（compose 的项目目录就是那里，插值与 env_file 都读这一份）。
+# 仓库根 .env 只服务 dev 形态（根编排与 `bun run dev`），不是本脚本的配置来源。
+MAIN_ENV_FILE="$SCRIPT_DIR/main/.env"
 CONFIG_FILE="$SCRIPT_DIR/deploy.env"
 # --config 显式指定过配置文件吗？显式指定时不再做同目录自动发现（见 resolve_config_file）
 CONFIG_EXPLICIT=""
@@ -33,8 +42,9 @@ DRY_RUN=0
 # common 的可选服务：保留名，不对应 docker/ 下的目录（见 docker/common/docker-compose.yml）
 # 这套名字必须与 scripts/lib/env-example-spec.ts 的 COMMON_FEATURE_SWITCHES 一致（生成器测试逐项比对）
 COMMON_OPTIONAL_FEATURES="REDIS S3 MYSQL"
-# 不参与本脚本编排的目录：common 是基础服务（随顶层 include）；prod 是待退役的旧编排（迁移阶段删除）
-EXCLUDED_DIRS="common prod"
+# 不参与依赖发现的目录（与 scripts/generate-env-example.ts 的 DEPLOY_EXCLUDED_DIRS 同一规则）：
+# common 是基础服务（随主服务编排 include）；main 是主服务编排本身（compose_top 直接操作，不是依赖单元）。
+EXCLUDED_DIRS="common main"
 
 log() { printf '[deploy] %s\n' "$*"; }
 warn() { printf '[deploy] 警告：%s\n' "$*" >&2; }
@@ -63,7 +73,7 @@ version_ge() {
 
 # 解析 KEY=VALUE 配置并导出为环境变量。
 # 为什么不用 source：.env 的值是字面量，source 会展开 $、反引号等字符，密钥可能被意外改写（文档 §8）。
-# 仅支持 KEY=VALUE（值可带成对引号、可含 #），这是 deploy.env 与根 .env 的统一格式约定。
+# 仅支持 KEY=VALUE（值可带成对引号、可含 #），这是 deploy.env 与主服务 env 的统一格式约定。
 load_env_file() {
     local file="$1" line key value
     [[ -f "$file" ]] || return 0
@@ -148,7 +158,7 @@ cmd_init() {
             materialize_env_file "$SCRIPT_DIR/deploy.env.example" "$CONFIG_FILE"
         fi
     fi
-    materialize_env_file "$REPO_ROOT/.env.example" "$ENV_FILE"
+    materialize_env_file "$SCRIPT_DIR/main/.env.example" "$MAIN_ENV_FILE"
     for name in $(discover_deps); do
         materialize_env_file "$SCRIPT_DIR/$name/.env.example" "$SCRIPT_DIR/$name/.env"
     done
@@ -174,12 +184,12 @@ check_prerequisites() {
     local version
     version="$(docker compose version --short 2>/dev/null | sed 's/^v//')"
     if [[ -n "$version" ]] && ! version_ge "$version" "2.20.0"; then
-        die "Compose 版本为 ${version}：顶层编排使用 include，需要 ≥ 2.20.0"
+        die "Compose 版本为 ${version}：主服务编排使用 include，需要 ≥ 2.20.0"
     fi
-    [[ -f "$TOP_COMPOSE" ]] || die "缺少顶层编排：$TOP_COMPOSE"
+    [[ -f "$TOP_COMPOSE" ]] || die "缺少主服务编排：$TOP_COMPOSE"
     [[ -f "$SCRIPT_DIR/common/docker-compose.yml" ]] || die "缺少基础服务编排：docker/common/docker-compose.yml"
-    [[ -f "$ENV_FILE" ]] ||
-        warn "缺少 ${ENV_FILE}（应用配置与密钥）：跑 ./docker/deploy.sh init 生成模板，缺失的必填键会在启动前报错"
+    [[ -f "$MAIN_ENV_FILE" ]] ||
+        warn "缺少 ${MAIN_ENV_FILE#"$REPO_ROOT"/}（应用配置与密钥）：跑 ./docker/deploy.sh init 生成模板，缺失的必填键会在启动前报错"
 }
 
 # 列出脚本同目录下的部署配置文件（`*.env`，排除 .env 这类隐藏文件）。
@@ -221,10 +231,10 @@ resolve_config_file() {
 
 load_config() {
     load_env_file "$CONFIG_FILE"
-    # 根 .env 同时导出：依赖编排的共享键（POSTGRES_PASSWORD 等）由此提供，保证「随主服务启动」与
-    # 「独立部署」两条路径取值一致（文档 §8.5）。RCS_URL / RCS_SECRET 不靠这里传：
+    # 主服务 env（docker/main/.env）同时导出：依赖编排的共享键（POSTGRES_PASSWORD 等）由此提供，保证
+    # 「随主服务启动」与「独立部署」两条路径取值一致（文档 §8.5）。RCS_URL / RCS_SECRET 不靠这里传：
     # 它们由 apply_dep_runtime_env 按主服务配置派生（同名不同义 / 与 REGISTRY_SECRET 同值，见 lib/config.sh）。
-    load_env_file "$ENV_FILE"
+    load_env_file "$MAIN_ENV_FILE"
 }
 
 compose_top() {
@@ -248,10 +258,10 @@ cmd_up() {
     if feature_enabled S3; then profiles="--profile s3"; fi
     if feature_enabled REDIS; then profiles="$profiles --profile redis"; fi
     # 共享基础设施（mysql）：消费方（如 workflow）按服务名访问它，
-    # 因此这个开关必须在**顶层项目**上生效——消费方自己的 up 不带这个 profile。
+    # 因此这个开关必须在**主服务项目**上生效——消费方自己的 up 不带这个 profile。
     if feature_enabled MYSQL; then profiles="$profiles --profile mysql"; fi
 
-    log "启动顶层项目：主服务 + 基础服务"
+    log "启动主服务项目：主服务 + 基础服务"
     # shellcheck disable=SC2086  # profiles 为空时不传参数，为空格分隔的固定值
     compose_top $profiles up -d
 
@@ -269,23 +279,29 @@ cmd_up() {
 
 cmd_deploy() {
     validate_required_env || die "启动前校验未通过：见上面的必填项清单"
-    log "1/4 拉取主服务镜像（固定版本见顶层编排 image 行）"
+    log "1/4 拉取主服务镜像（固定版本见 docker/main 编排的 image 行）"
     compose_top pull rcs
 
     log "2/4 DDL 迁移（镜像内 migrate.js，先于应用进程）"
     compose_top run --rm rcs bun migrate.js
 
     log "3/4 数据迁移（必须与应用使用相同的数据卷与配置）"
-    compose_top run --rm rcs bun data-migration-runner.js
+    # 独立数据迁移入口是较新版本才随镜像发布的能力：更早的发布镜像没有这个文件，它们在应用启动时
+    # 自行执行数据迁移（host-startup 内置）。没有入口就跳过本步——否则部署会在旧镜像上永久卡住；
+    # 有入口时 exec 保证失败即停（退出码原样传回，不让错误被 if 结构吞掉）。
+    compose_top run --rm rcs sh -lc \
+        'if [ -f data-migration-runner.js ]; then exec bun data-migration-runner.js; fi;
+         echo "[deploy] 镜像内无 data-migration-runner.js（该发布版本在应用启动时执行数据迁移）：跳过本步"'
 
     log "4/4 启动环境"
     cmd_up
 }
 
 # 本项目的数据目录：全部是 bind 挂载（相对各自 compose 文件），没有命名卷。
+# 主服务数据在 docker/main/ 下（与生产编排同目录）；dev 形态（根编排）的数据在仓库根，不归本脚本管。
 data_dirs() {
     local name
-    printf '%s\n' "$REPO_ROOT/data" "$REPO_ROOT/workflow" "$REPO_ROOT/workspaces"
+    printf '%s\n' "$SCRIPT_DIR/main/data" "$SCRIPT_DIR/main/workflow" "$SCRIPT_DIR/main/workspaces"
     for name in $(discover_deps); do
         [[ -d "$SCRIPT_DIR/$name/data" ]] && printf '%s\n' "$SCRIPT_DIR/$name/data"
     done
@@ -333,7 +349,7 @@ cmd_down() {
         compose_dep "$name" down
     done
 
-    log "停止顶层项目"
+    log "停止主服务项目"
     # 一律带上 common 的全部 profile：`down` 的语义是「停掉这个项目」，而 profile 门控的服务
     # （redis / rustfs / mysql）在开关已关闭时不会随裸 `down` 停掉，会留下来占用
     # fenix-server 网络（网络删不掉、名字仍被解析）。带全 profile 让 down 与 up 可停的集合一致。
@@ -347,7 +363,7 @@ cmd_down() {
 
 cmd_ps() {
     local name
-    log "顶层项目状态："
+    log "主服务项目状态："
     compose_top ps
     for name in $(discover_deps); do
         if feature_enabled "$name"; then

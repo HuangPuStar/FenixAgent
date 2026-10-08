@@ -13,9 +13,10 @@
 
 services:
     sandbox-ccb:
-        build:
-            context: ../../
-            dockerfile: docker/sandbox-ccb/Dockerfile
+        # 发布版本（固定 tag）：发布时更新此行；禁止环境变量插值（§13.7）。
+        # 本地自建（可选）：在仓库根执行
+        #   docker build -f docker/sandbox-ccb/Dockerfile -t ghcr.io/huangpustar/fenixagent-sandbox-ccb:v0.7.0-beta.1-ccb .
+        image: ghcr.io/huangpustar/fenixagent-sandbox-ccb:v0.7.0-beta.1-ccb
         container_name: fenix-sandbox-ccb
         restart: unless-stopped
         environment:

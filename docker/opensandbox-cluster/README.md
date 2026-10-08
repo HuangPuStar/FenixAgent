@@ -12,7 +12,7 @@
 ## 前置条件
 
 - Docker Engine + Compose v2（≥ 2.20）。
-- 顶层项目已启动（`./docker/deploy.sh up` 或 `docker compose up -d`）：`fenix-server` 网络由顶层创建，本目录以 `external` 方式接入。
+- 主服务项目已启动（`./docker/deploy.sh up`，或在仓库根 `docker compose up -d`）：`fenix-server` 网络由主服务项目创建（dev 是仓库根 `docker-compose.yml`，生产是 `docker/main/docker-compose.yml`），本目录以 `external` 方式接入。
 - 一个供 OpenSandbox Server 节点访问的地址（`FRP_PUBLIC_ADDRESS`）。
 
 ## 启动
@@ -21,7 +21,7 @@
 cd docker/opensandbox-cluster
 cp .env.example .env
 # 填写 .env 的必需项：FRP_PUBLIC_ADDRESS / FRP_TOKEN / CLUSTER_SERVICE_API_KEY / SERVER_API_KEY_ENCRYPTION_KEY
-docker compose up -d --build
+docker compose up -d
 curl -fsS "http://127.0.0.1:${OPENSANDBOX_CLUSTER_PORT:-8080}/health"
 ```
 
@@ -43,6 +43,9 @@ Cluster 启动时会自动执行 SQLite 迁移，数据保存在本目录同级�
 | `PROXY_RESPONSE_TIMEOUT_MS` | 代理请求响应超时 |
 
 镜像 tag 写死在本目录 `docker-compose.yml` 的 `image:` 行；升级 = 改该行 + `docker compose up -d`。
+本目录不声明 `build:`：需要从本仓源码自建时，在仓库根执行
+`docker build -f docker/opensandbox-cluster/Dockerfile -t ghcr.io/huangpustar/fenixagent-opensandbox-cluster:<tag> .`，
+再 `docker compose up -d`；本地镜像占用同一个 tag，要回到发布版本时用 `docker compose pull` 覆盖。
 
 ## 网络接入清单
 
@@ -53,7 +56,7 @@ Cluster 启动时会自动执行 SQLite 迁移，数据保存在本目录同级�
 
 宿主端口：`OPENSANDBOX_CLUSTER_PORT` 只绑 `127.0.0.1`；`FRP_BIND_PORT` 是远程节点主动连入的入口，绑 `0.0.0.0`。
 
-主服务侧的对应配置（仓库根 `.env`）：`RCS_SANDBOX_CLUSTER_URL=http://opensandbox-cluster:8080`（同机部署）或 `http://<宿主机地址>:<OPENSANDBOX_CLUSTER_PORT>`（跨机部署）。
+主服务侧的对应配置（主服务 env：生产 `docker/main/.env`、dev 仓库根 `.env`）：`RCS_SANDBOX_CLUSTER_URL=http://opensandbox-cluster:8080`（同机部署）或 `http://<宿主机地址>:<OPENSANDBOX_CLUSTER_PORT>`（跨机部署）。
 
 ## 部署 OpenSandbox Server 节点
 

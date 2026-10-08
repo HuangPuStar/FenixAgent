@@ -8,7 +8,9 @@
 
 - Docker Engine + Compose v2（≥ 2.20），且允许特权容器与 `cgroup: host`。
 - Cluster 已启动，且 Server 所在机器能访问 `${FRP_PUBLIC_ADDRESS}:${FRP_BIND_PORT}`（默认 `7000`）。
-- 与 `../opensandbox-server/` 同源的镜像：默认用 `docker-compose.yml` 里写死的发布 tag；离线自建时在 `../opensandbox-server/` 执行 `docker compose build` 后，把镜像打成本目录声明的那一个 tag。
+- 与 `../opensandbox-server/` 同源的镜像：默认用 `docker-compose.yml` 里写死的发布 tag；离线自建时执行
+  `docker build -f docker/opensandbox-server/Dockerfile -t <本目录声明的那一个 tag> docker/opensandbox-server`（在仓库根），
+  两个目录的 `image:` 行必须同 tag。
 
 本目录没有 compose 插值键，因此不提供 `.env.example`：配置全在下面两个文件里。
 
@@ -48,7 +50,7 @@ docker compose stop
 
 ## 网络接入清单
 
-本目录**不接入** `fenix-server`：tunnel 模式没有任何入站流量，Server 与 frpc 只出站连接 frps，因此全部服务留在项目默认网络即可。反过来说它也不依赖顶层项目先启动，可以单独部署。
+本目录**不接入** `fenix-server`：tunnel 模式没有任何入站流量，Server 与 frpc 只出站连接 frps，因此全部服务留在项目默认网络即可。反过来说它也不依赖主服务项目先启动，可以单独部署。
 
 ## 数据落点
 

@@ -26,7 +26,7 @@ RAGFlow 检索栈：文档解析、切分、向量检索与知识库管理。kno
   └─ 127.0.0.1:18080（Web UI）、127.0.0.1:19380（HTTP API）、127.0.0.1:3200（Gotenberg /health）
      ← 都只绑回环，仅供宿主使用
 
-external 网络 fenix-server（顶层项目创建）：
+external 网络 fenix-server（主服务项目创建）：
     rcs ──→ ragflow:9380                        ← 容器形态：知识库检索出口
     rcs ──→ gotenberg:3000                      ← 容器形态：Office 转 PDF 出口
     ragflow ──→ mysql:3306                      ← 共享 MySQL（docker/common/，开关 FENIX_FEATURE_MYSQL）
@@ -47,8 +47,8 @@ external 网络 fenix-server（顶层项目创建）：
 ## 前置条件
 
 - Docker Engine 与 Docker Compose v2（本目录用标准 Compose 配置，无 `include` / profile 依赖）。
-- **顶层项目已启动**：`fenix-server` 由顶层（仓库根 `docker-compose.yml`）创建，本目录只以 `external: true` 引用。
-  单独跑本目录前先 `./docker/deploy.sh up`（或至少起来顶层项目），否则 `up` 会报
+- **主服务项目已启动**：`fenix-server` 由主服务项目创建（dev 是仓库根 `docker-compose.yml`，生产是 `docker/main/docker-compose.yml`），本目录只以 `external: true` 引用。
+  单独跑本目录前先 `./docker/deploy.sh up`（或至少起来主服务项目），否则 `up` 会报
   `network fenix-server declared as external, but could not be found`。
 - **共享基础设施已启用**：`docker/deploy.env` 里 `FENIX_FEATURE_MYSQL=true`。对象存储**不需要**任何开关——
   它是本栈自带的服务（`FENIX_FEATURE_S3` 只服务 `docker/workflow/` 的共享实例消费）。开关与依赖目录不自动联动
@@ -64,16 +64,16 @@ external 网络 fenix-server（顶层项目创建）：
 
 ## 配置
 
-应用侧（主服务读）的四个键在**仓库根 `.env`**；共享实例的凭据（本栈只用其中的 `MYSQL_ROOT_PASSWORD`）也在根 `.env`（§8.3）；
+应用侧（主服务读）的四个键在**主服务 env**（生产 `docker/main/.env`、dev 仓库根 `.env`）；共享实例的凭据（本栈只用其中的 `MYSQL_ROOT_PASSWORD`）也在主服务 env（§8.3）；
 本目录 `.env`（模板 `.env.example`）只放本栈私有的键：
 
 | 键 | 位置 | 默认值 | 说明 |
 | --- | --- | --- | --- |
-| `RAGFLOW_API_URL` | 根 `.env` | `http://localhost:9380` | 主服务访问 RAGFlow API 的基址。**容器形态必须显式改**（见下节） |
-| `RAGFLOW_API_KEY` | 根 `.env` | 空串 | RAGFlow API key，密钥；空串表示「未配置 RAGFlow」，检索链路快速失败 |
-| `RAGFLOW_REQUEST_TIMEOUT_MS` | 根 `.env` | `30000` | 单次 HTTP 请求超时（毫秒，正整数） |
-| `GOTENBERG_URL` | 根 `.env` | `http://127.0.0.1:3200` | 主服务访问 Gotenberg 的基址。**容器形态必须显式改为 `http://gotenberg:3000`**（见下节） |
-| `MYSQL_ROOT_PASSWORD` | 根 `.env` | `root` | 共享 MySQL 的 root 口令：`ragflow-mysql-init` 用它建库建号 |
+| `RAGFLOW_API_URL` | 主服务 env | `http://localhost:9380` | 主服务访问 RAGFlow API 的基址。**容器形态必须显式改**（见下节） |
+| `RAGFLOW_API_KEY` | 主服务 env | 空串 | RAGFlow API key，密钥；空串表示「未配置 RAGFlow」，检索链路快速失败 |
+| `RAGFLOW_REQUEST_TIMEOUT_MS` | 主服务 env | `30000` | 单次 HTTP 请求超时（毫秒，正整数） |
+| `GOTENBERG_URL` | 主服务 env | `http://127.0.0.1:3200` | 主服务访问 Gotenberg 的基址。**容器形态必须显式改为 `http://gotenberg:3000`**（见下节） |
+| `MYSQL_ROOT_PASSWORD` | 主服务 env | `root` | 共享 MySQL 的 root 口令：`ragflow-mysql-init` 用它建库建号 |
 | `RAGFLOW_MYSQL_PASSWORD` | 本目录 `.env` | **无默认值（必需）** | 共享 MySQL 里 `ragflow` 账号的口令；初始化服务建号时写入（已存在则同步），`ragflow` 用它拼连接串 |
 | `RAGFLOW_S3_ACCESS_KEY` / `RAGFLOW_S3_SECRET_KEY` | 本目录 `.env` | `ragflow` / `ragflow-local-dev`（编排里的缺省值） | 本栈自带 rustfs 实例的凭据：实例的 `RUSTFS_ACCESS_KEY` / `RUSTFS_SECRET_KEY` 与 `ragflow` 的 `MINIO_USER` / `MINIO_PASSWORD` 都取它。与共享实例那对（`fenix` / `fenix-local-dev`）**刻意不同值**——同机两套实例用同一对凭据会造成「其实是同一个实例」的假象 |
 | `RAGFLOW_WEB_PORT` | 本目录 `.env` | `18080` | Web UI 的宿主**回环**端口（容器内 80） |
@@ -81,22 +81,22 @@ external 网络 fenix-server（顶层项目创建）：
 | `GOTENBERG_PORT` | 本目录 `.env` | `3200` | Gotenberg 的宿主**回环**端口（容器内 3000） |
 | `RAGFLOW_REDIS_PASSWORD` | 本目录 `.env` | `ragflow_redis_2026` | 栈内 Valkey 口令：`ragflow-redis` 与 `ragflow` 两处共用 |
 
-四个应用侧键的真相来源是 `packages/resources/knowledge/fenix.module.ts` 的 `envDefinitions`（根 `.env.example` 由
-生成器产出）。`RAGFLOW_MYSQL_PASSWORD` 是本编排唯一的 `${VAR:?}` 必需键：它落在多栈共用的实例里，仓库可见的默认
+四个应用侧键的真相来源是 `packages/resources/knowledge/fenix.module.ts` 的 `envDefinitions`（主服务 env 模板由
+生成器产出：dev 是仓库根 `.env.example`、生产是 `docker/main/.env.example`）。`RAGFLOW_MYSQL_PASSWORD` 是本编排唯一的 `${VAR:?}` 必需键：它落在多栈共用的实例里，仓库可见的默认
 口令等于把库交给同机任何人；缺省时 `./docker/deploy.sh validate` 会点名它（其余键缺失时是静默使用默认值，
 生产机器必须逐项核对，别把「能起来」当成「配置对了」）。
 
-**为什么这些口令放在本目录 `.env` 而不是仓库根 `.env`**（与 `docker/litellm/` 的 `LITELLM_DB_PASSWORD` 不同）：
-根 `.env` 按 §8.3 只放**跨项目共享**的键（共享实例的 root/凭据、主服务自用配置）。`ragflow@'%'` 这个账号与
+**为什么这些口令放在本目录 `.env` 而不是主服务 env**（与 `docker/litellm/` 的 `LITELLM_DB_PASSWORD` 不同）：
+主服务 env 按 §8.3 只放**跨项目共享**的键（共享实例的 root/凭据、主服务自用配置）。`ragflow@'%'` 这个账号与
 `ragflow-rustfs` 这对凭据都只服务本栈——别的栈不读它、也不该读它；而「放依赖目录会与实例里的账号漂移」
 这个顾虑在这里不成立：唯一的值来源就是本文件，初始化服务每次运行都把实例里的口令同步成它。
-若要把根 `.env` 也纳入（与 litellm 完全同形），改动是 `scripts/lib/env-example-spec.ts` 的 `BASE_SERVICE_UNDECLARED`
+若要把主服务 env 也纳入（与 litellm 完全同形），改动是 `scripts/lib/env-example-spec.ts` 的 `BASE_SERVICE_UNDECLARED`
 里加一个条目 + 重跑 `bun run scripts/generate-env-example.ts`；这是可独立推进的一项，不阻塞本栈。
 
-密钥类键只在 `.env` 里出现：不进 `docker/deploy.env`、不进 compose、不进 git（仓库根 `.env`、`docker/deploy.env`
+密钥类键只在 `.env` 里出现：不进 `docker/deploy.env`、不进 compose、不进 git（主服务 env、`docker/deploy.env`
 与本目录 `.env` 三者都被 `.gitignore` 忽略，已用 `git check-ignore` 实测）。
 
-### 与 knowledge 模块对接：根 `.env` 该填什么
+### 与 knowledge 模块对接：主服务 env 该填什么
 
 | 运行形态 | `RAGFLOW_API_URL` | 说明 |
 | --- | --- | --- |
@@ -104,7 +104,7 @@ external 网络 fenix-server（顶层项目创建）：
 | 主服务**跑源码**（`bun run dev` / `restart-server.sh`） | `http://127.0.0.1:19380` | 走本目录发布的回环端口；改过 `RAGFLOW_API_PORT` 就跟着改 |
 
 两种形态都填**不带尾斜杠**的基址：模块的探活路径是 `<RAGFLOW_API_URL>/api/v1/system/healthz`。
-`RAGFLOW_API_KEY` 在 RAGFlow Web UI（`http://127.0.0.1:18080`）里生成后填进根 `.env`；它是密钥，不要贴进工单、日志或截图。
+`RAGFLOW_API_KEY` 在 RAGFlow Web UI（`http://127.0.0.1:18080`）里生成后填进主服务 env；它是密钥，不要贴进工单、日志或截图。
 
 `GOTENBERG_URL` 的口径与它同规则（模块的探活路径是 `<GOTENBERG_URL>/health`）：
 
@@ -188,7 +188,7 @@ external 网络 fenix-server（顶层项目创建）：
 | 寻址 | **path-style**（`http://ragflow-rustfs:9000/<bucket>/<key>`） | RAGFlow 用 minio-py 7.2.4（镜像 `pyproject.toml`）：`minio/helpers.py` 的 `_virtual_style_flag` 只在 AWS 域名（或 `aliyuncs.com`）上为真，非 AWS 端点一律路径式 |
 | region | 由客户端发现：先 `GET /<bucket>?location=`，服务端返回空则按 `us-east-1` | `minio/api.py` 的 `_get_region`；`ragflow-s3-init` 会把实测到的 region 打进日志 |
 | 签名 | SigV4（payload 哈希；不需要 aws-chunked 流式签名） | minio-py 7.2.4 不带 `STREAMING-AWS4-HMAC-SHA256-PAYLOAD`；本地 `rustfs/rustfs:1.0.1` 镜像的二进制里该标记与 `GetBucketLocation` 均存在（`grep -a -F 'STREAMING-AWS4-HMAC-SHA256-PAYLOAD'`），双向都成立 |
-| 凭据 | 本目录 `.env` 的 `RAGFLOW_S3_ACCESS_KEY` / `RAGFLOW_S3_SECRET_KEY` | 本栈私有键：`ragflow-rustfs` 的 `RUSTFS_ACCESS_KEY` / `RUSTFS_SECRET_KEY` 与 `ragflow` 的 `MINIO_USER` / `MINIO_PASSWORD` 都取它，不读仓库根 `.env` 的共享 `RUSTFS_*` |
+| 凭据 | 本目录 `.env` 的 `RAGFLOW_S3_ACCESS_KEY` / `RAGFLOW_S3_SECRET_KEY` | 本栈私有键：`ragflow-rustfs` 的 `RUSTFS_ACCESS_KEY` / `RUSTFS_SECRET_KEY` 与 `ragflow` 的 `MINIO_USER` / `MINIO_PASSWORD` 都取它，不读主服务 env 的共享 `RUSTFS_*` |
 
 `ragflow-s3-init` 就是这套判断的可执行形式：它用 RAGFlow 自带的 minio 客户端列桶（验证端点 + 凭据）、建一个
 自己的探测桶、写入-读回-删除一个探测对象、再删掉探测桶（验证 path-style 寻址、region 协商、签名与
@@ -328,9 +328,10 @@ docker network inspect fenix-server --format '{{range .Containers}}{{.Name}} {{e
 ```bash
 # 0) 导出必须在旧编排上做：升级前先做；已经升级了就用升级前的提交临时装回旧编排（临时文件别提交）
 git show <升级前提交>:docker/ragflow/docker-compose.yml > docker/ragflow/docker-compose.legacy.yml
-docker compose --env-file docker/ragflow/.env --env-file ./.env \
+MAIN_ENV=./.env       # 主服务 env：dev 是仓库根 .env，生产改成 docker/main/.env
+docker compose --env-file docker/ragflow/.env --env-file "$MAIN_ENV" \
   -f docker/ragflow/docker-compose.legacy.yml up -d mysql
-docker compose --env-file docker/ragflow/.env --env-file ./.env \
+docker compose --env-file docker/ragflow/.env --env-file "$MAIN_ENV" \
   -f docker/ragflow/docker-compose.legacy.yml exec -T mysql \
   mysqldump -uroot -p"$RAGFLOW_MYSQL_PASSWORD" --single-transaction --routines --events --triggers \
   --set-gtid-purged=OFF --databases rag_flow > /tmp/rag_flow.sql
@@ -338,8 +339,9 @@ docker compose --env-file docker/ragflow/.env --env-file ./.env \
 # 1) 打开开关起共享服务（ragflow-mysql-init 会先建好库与账号）
 ./docker/deploy.sh validate && ./docker/deploy.sh up
 
-# 2) 导入（用共享实例的 root；口令从仓库根 .env 取，避免 source 展开值里的特殊字符）
-MYSQL_ROOT_PASSWORD="$(grep -m1 '^MYSQL_ROOT_PASSWORD=' ./.env | cut -d= -f2-)"
+# 2) 导入（用共享实例的 root；口令从主服务 env 取，避免 source 展开值里的特殊字符）
+MAIN_ENV=./.env       # 主服务 env：dev 是仓库根 .env，生产改成 docker/main/.env
+MYSQL_ROOT_PASSWORD="$(grep -m1 '^MYSQL_ROOT_PASSWORD=' "$MAIN_ENV" | cut -d= -f2-)"
 docker run --rm -i --network fenix-server -e MYSQL_ROOT_PASSWORD="$MYSQL_ROOT_PASSWORD" \
   -v /tmp/rag_flow.sql:/dump.sql:ro mysql:8.4.5 \
   sh -c 'mysql -h mysql -u root -p"$MYSQL_ROOT_PASSWORD" < /dump.sql'
@@ -366,7 +368,7 @@ minio-py，理由见 `init-s3.py`；`docker/workflow/README.md` §8 的取舍与
 网络名从运行中的容器反查、不要写死项目名：
 
 ```bash
-# 0) 取本栈实例所在的网络名（顶层与本栈都已 up；换机器 / 改过项目名都不用改这段）
+# 0) 取本栈实例所在的网络名（主服务项目与本栈都已 up；换机器 / 改过项目名都不用改这段）
 NET=$(docker inspect -f '{{range $k,$v := .NetworkSettings.Networks}}{{$k}} {{end}}' \
       "$(docker compose -f docker/ragflow/docker-compose.yml ps -q ragflow-rustfs)" | awk '{print $1}')
 
@@ -433,7 +435,7 @@ docker stop ragflow-minio-legacy
 
 ## 凭据与默认口令
 
-- 共享实例的 root 口令在仓库根 `.env`（`MYSQL_ROOT_PASSWORD`），必须与 common 启动实例时用的值一致——
+- 共享实例的 root 口令在主服务 env（`MYSQL_ROOT_PASSWORD`），必须与 common 启动实例时用的值一致——
   不一致时 `ragflow-mysql-init` 会以「root 认证失败」停下，而不是让 `ragflow` 带着错的凭据跑。
   `RUSTFS_ACCESS_KEY` / `RUSTFS_SECRET_KEY` 是**共享 rustfs 实例**的凭据，本栈已经不用（见「本栈自带的 rustfs」）。
 - 本栈自己的口令/凭据都在本目录 `.env`：`RAGFLOW_MYSQL_PASSWORD`（无默认值，必需）、
@@ -471,10 +473,11 @@ docker stop ragflow-minio-legacy
 
 ```bash
 # 1) 配置解析（不启动任何容器；RAGFLOW_MYSQL_PASSWORD 是必需键，所以要带上本目录 .env）
-docker compose --env-file docker/ragflow/.env --env-file ./.env \
+MAIN_ENV=./.env       # 主服务 env：dev 是仓库根 .env，生产改成 docker/main/.env
+docker compose --env-file docker/ragflow/.env --env-file "$MAIN_ENV" \
   -f docker/ragflow/docker-compose.yml config
 
-# 2) 起栈（顶层必须先起，且 FENIX_FEATURE_MYSQL 已打开；对象存储是本栈自带，不需要 FENIX_FEATURE_S3）
+# 2) 起栈（主服务项目必须先起，且 FENIX_FEATURE_MYSQL 已打开；对象存储是本栈自带，不需要 FENIX_FEATURE_S3）
 docker compose -f docker/ragflow/docker-compose.yml up -d
 docker compose -f docker/ragflow/docker-compose.yml ps -a
 # 期望：两个初始化服务 Exited (0)、ragflow / ragflow-rustfs running、ragflow-redis / infinity healthy
@@ -494,8 +497,9 @@ docker compose -f docker/ragflow/docker-compose.yml exec ragflow getent hosts my
 docker compose -f docker/ragflow/docker-compose.yml exec ragflow-redis redis-cli -a "$RAGFLOW_REDIS_PASSWORD" INFO server | grep -E 'redis_version|valkey_version'
 # 栈内实例：期望 maxmemory=268435456、policy=allkeys-lru
 docker compose -f docker/ragflow/docker-compose.yml exec ragflow-redis redis-cli -a "$RAGFLOW_REDIS_PASSWORD" CONFIG GET maxmemory maxmemory-policy
-# 共享实例（属顶层项目）：期望 maxmemory=0 → 结论仍是不换（没有可淘汰策略，RAGFlow 的内存上限也就无处施加）
-docker compose -f docker-compose.yml exec redis redis-cli CONFIG GET maxmemory maxmemory-policy
+# 共享实例（属主服务项目）：期望 maxmemory=0 → 结论仍是不换（没有可淘汰策略，RAGFlow 的内存上限也就无处施加）
+docker compose -f docker-compose.yml exec redis redis-cli CONFIG GET maxmemory maxmemory-policy   # dev（仓库根编排）
+docker compose -f docker/main/docker-compose.yml exec redis redis-cli CONFIG GET maxmemory maxmemory-policy   # 生产（自动读 docker/main/.env）
 ```
 
 第 3 步的 `/api/v1/system/healthz` 是 knowledge 模块声明的探活路径（模块的 `dependencyServices.ragflow.healthCheck`，
@@ -542,8 +546,8 @@ docker compose -f docker-compose.yml exec redis redis-cli CONFIG GET maxmemory m
 
 | 症状 | 排查方向 |
 | --- | --- |
-| `network fenix-server ... could not be found` | 顶层项目没起：先 `./docker/deploy.sh up` |
-| `ragflow-mysql-init` 报「共享 MySQL 在 300 秒内不可用」 | 看它给出的两条分支：`root 认证失败` → 根 `.env` 的 `MYSQL_ROOT_PASSWORD` 与实例不一致；`连不上实例` → `FENIX_FEATURE_MYSQL` 是否为 true、顶层项目是否已起、本容器是否在 `fenix-server` 上 |
+| `network fenix-server ... could not be found` | 主服务项目没起：先 `./docker/deploy.sh up` |
+| `ragflow-mysql-init` 报「共享 MySQL 在 300 秒内不可用」 | 看它给出的两条分支：`root 认证失败` → 主服务 env 的 `MYSQL_ROOT_PASSWORD` 与实例不一致；`连不上实例` → `FENIX_FEATURE_MYSQL` 是否为 true、主服务项目是否已起、本容器是否在 `fenix-server` 上 |
 | `ragflow-mysql-init` 报「root 权限不足」 | 实例被加固过：认证过了但 root 不允许建库/授权。需要实例管理员放权（本栈不会改用别的账号绕过） |
 | `ragflow-s3-init` 报凭据被拒（`AccessDenied` / `SignatureDoesNotMatch`） | 本目录 `.env` 的 `RAGFLOW_S3_ACCESS_KEY` / `RAGFLOW_S3_SECRET_KEY` 必须与 `ragflow-rustfs` 启动时用的同值（同一对键同时注入两侧，改一处即可，改完 `up -d` 重建 `ragflow-rustfs`）；签名错误还要看两台机器时钟是否漂移 |
 | `ragflow-s3-init` 报「服务端没有实现这个 S3 API」 | 该版本 rustfs 与 RAGFlow 的 minio 客户端不兼容：换对象存储实现或版本，别在编排里绕过 |
@@ -556,7 +560,7 @@ docker compose -f docker-compose.yml exec redis redis-cli CONFIG GET maxmemory m
 | Office 文档预览/转换失败 | 容器形态的 `GOTENBERG_URL` 必须是 `http://gotenberg:3000`（填宿主回环的 3200 会指向容器自己）；`gotenberg` 是否在 `fenix-server` 里、宿主侧 `curl http://127.0.0.1:3200/health` 是否 200。Gotenberg 不可用时调用方回退 LibreOffice CLI，只有宿主没装 CLI 才真正不可用 |
 | 文档能上传但检索/预览读不到内容 | 对象没在本栈实例里：先看 `ragflow-s3-init` 日志（实测 region 与探测结论）；再确认该知识库 / 目录对应的桶在不在实例上（多桶模式下桶名 = `kb_id` / `parent_id`，一个都不能少）；搬迁只看对象数不够，还要看桶名是否逐字相同。**不要**为了「修好」它设回 `MINIO_BUCKET`——那会把键布局改成 `<逻辑桶>/<对象名>`，已有对象反而全部读不到（见「多桶模式与本栈的键布局」的警告） |
 | 健康检查长时间不通过 | 栈内两个辅助服务都有 healthcheck，`ragflow` 依赖它们 healthy；看 `docker compose -f docker/ragflow/docker-compose.yml logs ragflow-redis infinity` |
-| 知识库检索报未配置 | `RAGFLOW_API_KEY` 为空：在 Web UI 生成 key 后写进根 `.env` 并重启主服务 |
+| 知识库检索报未配置 | `RAGFLOW_API_KEY` 为空：在 Web UI 生成 key 后写进主服务 env 并重启主服务 |
 
 ## 需要 common 配合的点（本目录无法自行解决）
 

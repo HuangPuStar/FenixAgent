@@ -1,13 +1,20 @@
-# 顶层编排 — FenixAgent 主服务 + 基础服务（dev / prod 共用）
+# dev 编排 — FenixAgent 主服务（本地构建）+ 基础服务
 # 权威文档：docs/operations/docker-topology.md
+#
+# 本文件是 **dev 形态**：`rcs` 声明 `build:`，`docker compose up -d --build` 本地构建，
+# 数据落仓库根 ./data、./workflow、./workspaces。
+# **生产形态在 docker/main/docker-compose.yml**：不声明 build、只使用发布镜像、数据自包含在
+# docker/main/ 下。两份文件同项目名 `fenix`（容器名 `fenix-*`）、同网络 `fenix-server`：
+# **二选一运行**（同时执行后者会接管前者的容器）。生产/模拟生产的官方入口是
+# `./docker/deploy.sh deploy`，它操作的是 docker/main 那份。
 #
 # 用法：
 #   dev（容器全栈）  docker compose up -d --build
 #   dev（仅数据库）  docker compose up -d postgres            # 配合 bun run dev
 #   dev（附加服务）  docker compose --profile s3 --profile redis up -d
-#   prod             ./docker/deploy.sh deploy                # 拉镜像 → 迁移 → 启动
 #
-# 镜像一律固定版本、不用环境变量插值：发布新版本时更新 rcs 的 image 行。
+# 镜像一律固定版本、不用环境变量插值：发布新版本时同时更新本文件与 docker/main/ 的 image 行。
+# dev 用 `--build` 构建出的镜像会占用同一个 tag，之后走生产入口时 deploy.sh 会先 pull 覆盖回发布镜像。
 # 基础服务（PostgreSQL / Redis / RustFS）在 docker/common/，经 include 引入。
 
 include:
@@ -27,7 +34,9 @@ services:
 
     rcs:
         # 发布版本（固定 tag）：发布时更新此行；禁止改成环境变量插值（文档 §4.2）
-        image: ghcr.io/huangpustar/fenixagent:sha-f00efc9
+        image: ghcr.io/huangpustar/fenixagent:sha-da5eb54
+        # 仅服务 dev：`docker compose up -d --build` 本地构建，tag 即上面的 image 行。
+        # 生产形态（docker/main/）不声明 build，只用 pull 下来的发布镜像。
         build:
             context: .
             dockerfile: Dockerfile
@@ -64,7 +73,8 @@ services:
             APP_LOGO_PATH: ${APP_LOGO_PATH:-}
             RCS_SECRET_ENCRYPTION_KEY: ${RCS_SECRET_ENCRYPTION_KEY:-}
         volumes:
-            # 数据一律 bind 到本文件同级的 ./ 下（不用命名卷）：随交付面整体搬迁/备份，不受 docker 全局卷影响。
+            # dev 数据落点：bind 到本文件同级的 ./ 下（不用命名卷），随目录整体搬迁/备份。
+            # 生产形态（docker/main/）用 docker/main/ 下的同名目录，两套数据互不影响。
             # peri 全局目录（插件与 CLI 配置）与 Dockerfile 声明的 VOLUME /root/.peri 对应。
             - ./data/peri-home:/root/.peri
             - ./data:/app/data

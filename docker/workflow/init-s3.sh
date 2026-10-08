@@ -10,7 +10,7 @@
 #         要收敛掉的 MinIO 制品又引回编排里，且「全仓只剩一套对象存储」的检索口径立刻失真。本服务的镜像
 #         rustfs/rustfs:1.0.1 是仓库已有镜像（docker/common/ 的 rustfs 同款 tag），镜像内的 curl 8.22.0
 #         原生支持 --aws-sigv4，不需要新增任何镜像来源。
-# 环境变量（由 compose 显式注入；凭据只来自仓库根 .env 的 RUSTFS_*）：S3_ENDPOINT / S3_ACCESS_KEY /
+# 环境变量（由 compose 显式注入；凭据只来自主服务 env（生产 docker/main/.env、dev 仓库根 .env）的 RUSTFS_*）：S3_ENDPOINT / S3_ACCESS_KEY /
 #         S3_SECRET_KEY / S3_REGION。
 # 只读输入：/seed/default_icon、/seed/official_plugin_icon（上游 docker/volumes/minio/ 下的静态图标；
 #         原先由栈内 minio 容器的 entrypoint 用 `mc cp --recursive` 播种）。
@@ -27,8 +27,8 @@
 set -eu
 
 : "${S3_ENDPOINT:?S3_ENDPOINT 未设置：compose 必须注入共享 rustfs 的容器内地址（写显式服务名，不插值宿主键）}"
-: "${S3_ACCESS_KEY:?S3_ACCESS_KEY 未设置：compose 从仓库根 .env 的 RUSTFS_ACCESS_KEY 取值}"
-: "${S3_SECRET_KEY:?S3_SECRET_KEY 未设置：compose 从仓库根 .env 的 RUSTFS_SECRET_KEY 取值}"
+: "${S3_ACCESS_KEY:?S3_ACCESS_KEY 未设置：compose 从主服务 env 的 RUSTFS_ACCESS_KEY 取值}"
+: "${S3_SECRET_KEY:?S3_SECRET_KEY 未设置：compose 从主服务 env 的 RUSTFS_SECRET_KEY 取值}"
 # 签名域（SigV4 credential scope 里的 region）。取 RustFS 的默认 region；共享实例若改了 RUSTFS_REGION，
 # 这里必须同步，否则所有请求都会被判签名不匹配。
 S3_REGION="${S3_REGION:-us-east-1}"
@@ -139,9 +139,9 @@ for bucket in $BUCKETS; do
     403)
         echo '建桶被拒（HTTP 403）：共享 rustfs 不接受当前凭据。响应体：' >&2
         cat "$BODY_FILE" >&2 || true
-        echo '判定：RUSTFS_ACCESS_KEY / RUSTFS_SECRET_KEY（仓库根 .env）与共享实例启动时用的那份不一致——' >&2
-        echo '      两者同源：common 的 rustfs 容器直接读根 .env 的同名键，改一处即改两处；不一致只可能来自' >&2
-        echo '      「本次 up 用的 env 文件与上一次不同」（独立部署时漏了 --env-file ./.env 那一份）。' >&2
+        echo '判定：RUSTFS_ACCESS_KEY / RUSTFS_SECRET_KEY（主服务 env）与共享实例启动时用的那份不一致——' >&2
+        echo '      两者同源：common 的 rustfs 容器直接读主服务 env 的同名键，改一处即改两处；不一致只可能来自' >&2
+        echo '      「本次 up 用的 env 文件与上一次不同」（独立部署时漏了主服务 env 那一份：dev 是仓库根 .env、生产是 docker/main/.env）。' >&2
         exit 1
         ;;
     *)
@@ -163,7 +163,7 @@ for bucket in $BUCKETS; do
         cat "$BODY_FILE" >&2 || true
         echo '处理：' >&2
         echo '  - 403 AccessDenied：该桶由同一实例上的**别的凭据**创建（桶在，但当前凭据读不了）。换桶名，' >&2
-        echo '    或把仓库根 .env 的 RUSTFS_* 改回创建它的那份；脚本不接管别人的桶。' >&2
+        echo '    或把主服务 env 的 RUSTFS_* 改回创建它的那份；脚本不接管别人的桶。' >&2
         echo '  - 404 NoSuchBucket：第 ② 步的「已存在」是误判（例如请求打到了别的实例）——核对 S3_ENDPOINT。' >&2
         echo '  - 000：共享实例在两步之间掉了，按第 ① 条重跑。' >&2
         exit 1
@@ -183,4 +183,4 @@ if [ "$seed_failed" -ne 0 ]; then
     echo '排查方向：源目录是否挂载、上游 docker/volumes/minio/ 下是否还有这些图标文件、上游目录是否被清理过。' >&2
 fi
 
-echo "初始化完成：${BUCKETS} 已就绪，凭据与仓库根 .env 一致。"
+echo "初始化完成：${BUCKETS} 已就绪，凭据与主服务 env 一致。"

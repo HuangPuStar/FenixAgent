@@ -108,7 +108,7 @@ grep -n "MIGRATIONS" -A 6 apps/server/src/services/data-migrate.ts    # 本次�
 
 **症状**：容器重建后日志没了；或本地服务在 `logs/` 里找不到今天的文件。
 
-**背景**：`LOG_DIR` 默认相对进程 cwd；日期段按 **UTC** 切分（`new Date().toISOString().slice(0,10)`），跨日才切换文件；超过 `LOG_RETENTION_DAYS`（默认 30）的文件在跨日时清理。挂载上，顶层 `docker-compose.yml` 不挂 `logs`（容器重建即丢）——见[备份与恢复](./backup-and-restore.md) §3。
+**背景**：`LOG_DIR` 默认相对进程 cwd；日期段按 **UTC** 切分（`new Date().toISOString().slice(0,10)`），跨日才切换文件；超过 `LOG_RETENTION_DAYS`（默认 30）的文件在跨日时清理。挂载上，两份主服务编排都不挂 `logs`（容器重建即丢）——见[备份与恢复](./backup-and-restore.md) §3。
 
 **处置**：容器形态固定 `LOG_DIR=/app/logs` 并挂载该目录；排障前先确认时区与日期段（UTC），再确认文件还在保留期内。
 
@@ -181,22 +181,25 @@ docker compose --env-file docker/ragflow/.env --env-file ./.env \
 
 # 日志末行就是结论：脚本按阶段（①②③④）输出，失败时给原始报错 + 判定分支
 docker compose -f docker/litellm/docker-compose.yml logs --tail=50 litellm-db-init
+# ragflow 的两个初始化服务还要共享键：dev 用仓库根 .env，生产用 docker/main/.env（下同）
 docker compose --env-file docker/ragflow/.env --env-file ./.env \
   -f docker/ragflow/docker-compose.yml logs --tail=50 ragflow-mysql-init ragflow-s3-init
 # workflow 要带上游 .env，命令照该目录 README §6
 
 # 共享实例自己：开关没开时它直接缺位（postgres 恒启动，其余看 FENIX_FEATURE_*）
-docker compose -f docker-compose.yml ps postgres mysql rustfs redis
+docker compose ps postgres mysql rustfs redis                  # dev（仓库根编排）
+docker compose -f docker/main/docker-compose.yml \
+  ps postgres mysql rustfs redis                               # 生产（自动读 docker/main/.env）
 ```
 
 **处置**（按日志末尾给出的判定分支走）：
 
 | 判定 | 处置 |
 | --- | --- |
-| 实例不可达 | 对应开关是否打开（`FENIX_FEATURE_MYSQL` / `FENIX_FEATURE_S3`；`postgres` 恒启动；ragflow 的**对象存储**不需要开关，它自带实例，改为看 `docker compose -f docker/ragflow/docker-compose.yml ps ragflow-rustfs`）、顶层项目是否已起（`fenix-server` 由它创建，依赖只引用）、消费方容器是否真在 `fenix-server` 上（`docker network inspect fenix-server`） |
+| 实例不可达 | 对应开关是否打开（`FENIX_FEATURE_MYSQL` / `FENIX_FEATURE_S3`；`postgres` 恒启动；ragflow 的**对象存储**不需要开关，它自带实例，改为看 `docker compose -f docker/ragflow/docker-compose.yml ps ragflow-rustfs`）、主服务项目是否已起（`fenix-server` 由它创建，依赖只引用）、消费方容器是否真在 `fenix-server` 上（`docker network inspect fenix-server`） |
 | 认证失败 | 实例里已有的账号口令与 `.env` 不一致——口令写在实例的数据目录里，改 `.env` 不会改库里已有的账号；workflow 还要核对上游 `docker/.env` 的同名键（两处必须同值） |
 | 账号 / 库已存在但口令不同 | 幂等初始化只同步**自己那本账**的口令：把 `.env` 改对后重跑初始化服务（`up -d --force-recreate <init 服务>`），不要进库手工 `ALTER` |
-| 建桶被拒 / 桶不属于当前凭据 | 共享实例（workflow）：根 `.env` 的 `RUSTFS_ACCESS_KEY` / `RUSTFS_SECRET_KEY` 与实例启动时用的那份不一致；或该桶由同一实例上的另一对凭据创建。ragflow 的本栈自带实例：凭据在本目录 `.env` 的 `RAGFLOW_S3_ACCESS_KEY` / `RAGFLOW_S3_SECRET_KEY`（改完要重建 `ragflow-rustfs` 才生效）。独立部署时最常踩：漏了 `--env-file ./.env`，compose 退回编排里的默认凭据 |
+| 建桶被拒 / 桶不属于当前凭据 | 共享实例（workflow）：主服务 env（生产 `docker/main/.env`、dev 仓库根 `.env`）的 `RUSTFS_ACCESS_KEY` / `RUSTFS_SECRET_KEY` 与实例启动时用的那份不一致；或该桶由同一实例上的另一对凭据创建。ragflow 的本栈自带实例：凭据在本目录 `.env` 的 `RAGFLOW_S3_ACCESS_KEY` / `RAGFLOW_S3_SECRET_KEY`（改完要重建 `ragflow-rustfs` 才生效）。独立部署时最常踩：漏了 `--env-file ./.env`，compose 退回编排里的默认凭据 |
 
 重跑初始化服务是**常规收敛路径**（幂等，不动既有数据）；不要用「手工建库 / 手工建桶」绕过它——下次重跑会与手工结果
 漂移，而且失败原因（配置没打开、口令不一致、服务名解析不到）会被掩盖。共享实例的数据落点在

@@ -21,9 +21,11 @@
 # 不需要跨项目等待——跨项目的等待因此只剩 mysql 一处（ragflow-mysql-init）。
 #
 # 独立项目启动（共享实例已在同一台机器上跑）。不经 deploy.sh 时自己喂两个 env 文件：指定 --env-file 后
-# compose 不再自动读项目目录的 .env，**后一个优先**，因此仓库根 .env 放最后（共享键只定义在那里，§8.3）：
+# compose 不再自动读项目目录的 .env，**后一个优先**，因此主服务 env（dev 是仓库根 .env、生产是
+# docker/main/.env）放最后（共享键只定义在那里，§8.3）：
 #   cp docker/ragflow/.env.example docker/ragflow/.env      # 填 RAGFLOW_MYSQL_PASSWORD
-#   docker compose --env-file docker/ragflow/.env --env-file ./.env \
+#   MAIN_ENV=./.env       # 主服务 env：dev 是仓库根 .env，生产改成 docker/main/.env
+#   docker compose --env-file docker/ragflow/.env --env-file "$MAIN_ENV" \
 #     -f docker/ragflow/docker-compose.yml up -d
 # 随主服务一键启动：docker/deploy.env 里 FENIX_FEATURE_RAGFLOW=true（并打开 FENIX_FEATURE_MYSQL，
 # 开关之间不自动联动，见 §6 末）。对象存储不再是本栈要打开的开关——FENIX_FEATURE_S3 只服务 docker/workflow/。
@@ -72,7 +74,7 @@ services:
       MYSQL_USER: ragflow
       # 本栈账号的口令：栈私有键，只定义在本目录 .env（键与取值见 .env.example）。
       MYSQL_PASSWORD: ${RAGFLOW_MYSQL_PASSWORD:?RAGFLOW_MYSQL_PASSWORD 未设置：请在 docker/ragflow/.env 配置（共享 MySQL 里 ragflow 账号的口令），库与账号由 ragflow-mysql-init 自动创建，见 docker/ragflow/README.md}
-      # 共享实例的超级用户口令：共享键，只在仓库根 .env 定义（§8.3）；缺省值与 common 的缺省值一致。
+      # 共享实例的超级用户口令：共享键，只在主服务 env 定义（§8.3）；缺省值与 common 的缺省值一致。
       MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:-root}
     volumes:
       # create_host_path: false → 脚本缺失时直接报错，而不是被 docker 静默建成一个同名目录
@@ -103,7 +105,7 @@ services:
     environment:
       # 容器内地址写显式值：ragflow-rustfs 是本栈实例在 ragflow-net 上的服务名。
       S3_ENDPOINT: ragflow-rustfs:9000
-      # 本栈私有凭据：只定义在本目录 .env（键见 .env.example），**不再读仓库根 .env 的共享 RUSTFS_***
+      # 本栈私有凭据：只定义在本目录 .env（键见 .env.example），**不再读主服务 env 的共享 RUSTFS_***
       # ——那两个键只服务 docker/workflow/，混用会让「探测的是哪个实例」变得说不清。
       S3_ACCESS_KEY: ${RAGFLOW_S3_ACCESS_KEY:-ragflow}
       S3_SECRET_KEY: ${RAGFLOW_S3_SECRET_KEY:-ragflow-local-dev}

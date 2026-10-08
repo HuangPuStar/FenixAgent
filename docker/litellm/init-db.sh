@@ -34,7 +34,7 @@ if [ "$attempt" -ge 180 ]; then
     echo "初始化中止：共享 postgres 在 360 秒内不可用。最后一次报错：${last_error}" >&2
     case "$last_error" in
         *authentication*)
-            echo "判定：实例在跑但认证失败 → 根 .env 的 POSTGRES_PASSWORD 必须与实例数据目录里的口令一致（口令写在数据目录里，改 .env 不会改库里已有的账号）。" >&2
+            echo "判定：实例在跑但认证失败 → 主服务 env 的 POSTGRES_PASSWORD 必须与实例数据目录里的口令一致（口令写在数据目录里，改 .env 不会改库里已有的账号）。" >&2
             ;;
         *)
             echo "判定：连不上实例 → 顶层项目是否已起（docker compose -f docker-compose.yml ps postgres，期望 healthy）、fenix-server 网络是否存在（docker network ls）。" >&2
@@ -74,4 +74,4 @@ WHERE NOT EXISTS (SELECT 1 FROM pg_database WHERE datname = 'litellm')
 REVOKE CONNECT ON DATABASE litellm FROM PUBLIC;
 SQL
 
-echo "初始化完成：库 litellm 与角色 litellm 已就绪，口令与根 .env 一致。"
+echo "初始化完成：库 litellm 与角色 litellm 已就绪，口令与主服务 env 一致。"

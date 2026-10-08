@@ -32,8 +32,11 @@ RCS 主服务器                        sandbox-peri 容器
 
 ## 镜像构建与发布
 
-本目录的 compose **从源码构建**（`build: context ../../ + dockerfile docker/sandbox-peri/Dockerfile`），
-**不使用 CI 发布的镜像**。
+本目录的 compose **只引用 CI 发布的镜像**（固定 tag、禁止环境变量插值，§13.7）：
+
+```yaml
+image: ghcr.io/huangpustar/fenixagent-sandbox-peri:v0.7.0-beta.1-peri
+```
 
 CI 发布链路（`.github/workflows/docker-publish-sandbox.yml`，matrix 项 `peri`）：
 
@@ -47,15 +50,15 @@ CI 发布链路（`.github/workflows/docker-publish-sandbox.yml`，matrix 项 `p
 | 构建参数 | `CACHE_BUST=<run_id>` |
 
 `CACHE_BUST` 的意义：hindsight 插件内容由远端仓库默认分支决定，Docker 层缓存看不见它——命令串不变就会复用旧层，
-于是「重建镜像以拿到新插件」会静默装回旧版本。CI 每次构建都传入，手工构建时按下面的「升级」一节处理。
-发布镜像的消费方是 OpenSandbox 集群（`RCS_DEFAULT_SANDBOX_IMAGE` + `RCS_DEFAULT_SANDBOX_AGENT_TYPE=peri`，
-见 `docker/opensandbox-cluster/deploy/fenix-integration.md`）。
+于是「重建镜像以拿到新插件」会静默装回旧版本。CI 每次构建都传入，本地自建时按下面的「升级」一节处理。
+发布镜像有两个消费方：本目录的 compose（执行节点）与 OpenSandbox 集群（`RCS_DEFAULT_SANDBOX_IMAGE` +
+`RCS_DEFAULT_SANDBOX_AGENT_TYPE=peri`，见 `docker/opensandbox-cluster/deploy/fenix-integration.md`）。
 
 ## 前置条件
 
 - Docker + Compose v2（本目录可独立部署到一台专用机器）。
 - 主服务已启动，且**该地址对本容器可达**（见「网络接入清单」）。
-- 一个 `RCS_MACHINE_ID`：控制台预创建的 Machine；作为默认节点用时与主服务根 `.env` 的
+- 一个 `RCS_MACHINE_ID`：控制台预创建的 Machine；作为默认节点用时与主服务 env（生产 `docker/main/.env`、dev 仓库根 `.env`）的
   `RCS_DEFAULT_MACHINE_ID` 一致。
 - 首次 `up` 时若本目录下没有 `data/`，Docker 会自动创建（属主 root）。
 
@@ -64,7 +67,7 @@ CI 发布链路（`.github/workflows/docker-publish-sandbox.yml`，matrix 项 `p
 | 键 | 位置 | 说明 |
 | --- | --- | --- |
 | `RCS_URL` | 本目录 `.env`（模板 `.env.example`） | 必填。主服务的 WS 地址，如 `ws://192.168.1.10:3001`；缺省由 `docker/deploy.sh` 注入 `ws://rcs:3000`（同机语义，依赖 `fenix-server` 的 DNS，见下） |
-| `RCS_SECRET` | 同上 | 必填。注册用共享密钥，取值必须等于主服务侧的 `REGISTRY_SECRET`（顶层 `docker-compose.yml` 注明它是「与 sandbox / 控制台共享的密钥」）。随主服务启动时由 `docker/deploy.sh` 自动派生（本目录 `.env` ＞ 根 `.env` 的 `RCS_SECRET` ＞ `REGISTRY_SECRET`，见 `docker/lib/config.sh`），无需手填；独立部署时手填同值 |
+| `RCS_SECRET` | 同上 | 必填。注册用共享密钥，取值必须等于主服务侧的 `REGISTRY_SECRET`（两份主服务编排——dev 是仓库根 `docker-compose.yml`，生产是 `docker/main/docker-compose.yml`——都注明它是「与 sandbox / 控制台共享的密钥」）。随主服务启动时由 `docker/deploy.sh` 自动派生（本目录 `.env` ＞ 主服务 env 的 `RCS_SECRET` ＞ `REGISTRY_SECRET`，见 `docker/lib/config.sh`），无需手填；独立部署时手填同值 |
 | `RCS_MACHINE_ID` | 同上 | 必填。机器 ID，空值同样视为缺失（compose 用 `${VAR:?}`） |
 | `TZ` | 同上 | 可调，默认 `Asia/Shanghai`（compose 写 `${TZ:-Asia/Shanghai}`） |
 | `AGENT_TYPE` | 镜像 `ENV`（不可在 `.env` 改） | `peri`。改了会让主服务按错误的槽位管理 Agent |
@@ -127,14 +130,21 @@ RCS 在线 (ws://…)                              # 主服务可达
 ## 升级
 
 ```bash
-# 1. 改 Dockerfile 里的版本（peri CLI 安装源、@peri-code/workflow 等）后重建并重启
-docker compose -f docker/sandbox-peri/docker-compose.yml build --build-arg CACHE_BUST=$(date +%s)
+# 有新发布 tag 时：改本目录 compose 的 image 行 → 拉取 → 重启
+docker compose -f docker/sandbox-peri/docker-compose.yml pull
+docker compose -f docker/sandbox-peri/docker-compose.yml up -d
+
+# 改了 Dockerfile（peri CLI 安装源、@peri-code/workflow 等）要自建时：在仓库根构建同 tag 镜像，再 up
+docker build --build-arg CACHE_BUST=$(date +%s) \
+  -f docker/sandbox-peri/Dockerfile \
+  -t ghcr.io/huangpustar/fenixagent-sandbox-peri:v0.7.0-beta.1-peri .
 docker compose -f docker/sandbox-peri/docker-compose.yml up -d
 ```
 
 - 工作区与 peri 全局目录都在宿主 `./data/` 与 `../../workspaces`，重建容器不影响数据。
-- peri CLI 由官方 `install.sh` 安装（当前不带版本参数，取默认分支产物）：升级 peri 必须
-  `--build-arg CACHE_BUST=…` 或 `--no-cache`，否则会静默复用旧层（见上「镜像构建与发布」）。
+- peri CLI 由官方 `install.sh` 安装（当前不带版本参数，取默认分支产物）：自建时必须
+  `--build-arg CACHE_BUST=…` 或 `--no-cache`，否则会静默复用旧层（见上「镜像构建与发布」）；
+  自建会占用发布 tag 的本地镜像，需要回到发布版本时 `docker compose … pull` 覆盖回来。
 - 升级后按「验证」一节回归：节点上线、模型下发、会话可用。
 
 ## 已知限制
