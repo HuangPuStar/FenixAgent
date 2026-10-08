@@ -238,7 +238,7 @@ docker compose --env-file "$WORKFLOW_STUDIO_DIR/docker/.env" \
 
 | 变量 | 要求 / 默认值 |
 | --- | --- |
-| `WORKFLOW_V2_PLATFORM_ACCOUNT_EMAIL` | **必填**，专用上游账号邮箱 |
+| `WORKFLOW_V2_PLATFORM_ACCOUNT_EMAIL` | **必填**，专用上游账号邮箱；经 `docker/deploy.sh` 部署时由它在缺失时**生成并固化**（按主机名派生、写入 `docker/main/.env` 后不再改动，见 `docs/operations/docker-topology.md` §9）。独立部署须自行填部署方可控的邮箱 |
 | `WORKFLOW_V2_PLATFORM_ACCOUNT_PASSWORD` | **必填密钥**，上游账号密码 |
 | `WORKFLOW_V2_TICKET_SECRET` | **必填密钥**，建议至少 32 字节随机材料 |
 | `WORKFLOW_V2_UPSTREAM_BASE_URL` | 文件头部注释要求设置为 `http://workflow-upstream:80` |

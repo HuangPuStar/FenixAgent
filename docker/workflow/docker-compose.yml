@@ -2,7 +2,7 @@
 # 在 RCS 的环境文件中配置以下五项，密钥由受控文件 / secret store 注入：
 # WORKFLOW_V2_UPSTREAM_BASE_URL=http://workflow-upstream:80
 # WORKFLOW_CANVAS_UPSTREAM_URL=http://workflow-upstream:80
-# WORKFLOW_V2_PLATFORM_ACCOUNT_EMAIL=<专用上游账号邮箱>
+# WORKFLOW_V2_PLATFORM_ACCOUNT_EMAIL=<专用上游账号邮箱；经 docker/deploy.sh 部署时缺失会由它按主机名生成并固化>
 # WORKFLOW_V2_PLATFORM_ACCOUNT_PASSWORD=<专用上游账号密码>
 # WORKFLOW_V2_TICKET_SECRET=<至少 32 字节随机签名材料>
 # 共享基础设施（不再是本目录的服务）：
