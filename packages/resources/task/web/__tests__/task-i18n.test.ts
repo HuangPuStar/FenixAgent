@@ -79,7 +79,7 @@ function collectLiteralKeys(): Map<string, string[]> {
 
 const literalKeys = collectLiteralKeys();
 
-/** 迁入本包的面板文案键：宿主 `components.panelMode.tasks*` 的同名键由 W3 的宿主 patch 删除。 */
+/** 迁入本包的面板文案键：宿主 `components.panelMode.tasks*` 的同名键已于 2026-09-28 随宿主字典清理删除。 */
 const MIGRATED_PANEL_KEYS = [
   "panelMode.tasksEmpty",
   "panelMode.tasksListTitle",

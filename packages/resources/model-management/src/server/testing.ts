@@ -76,6 +76,7 @@ export function createStubProviderFacade(overrides: Partial<ProviderFacadeApi> =
     save: unstubbed("facade.save"),
     saveById: unstubbed("facade.saveById"),
     remove: unstubbed("facade.remove"),
+    listModels: unstubbed("facade.listModels"),
     addModel: unstubbed("facade.addModel"),
     updateModel: unstubbed("facade.updateModel"),
     removeModel: unstubbed("facade.removeModel"),

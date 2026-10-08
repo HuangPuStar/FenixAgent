@@ -486,8 +486,6 @@
     min-width: 690px;
   }
 }
-
-/* 与生产知识库协议对齐的动态表单与上传状态。 */
 .field small {
   display: block;
   margin-top: 5px;

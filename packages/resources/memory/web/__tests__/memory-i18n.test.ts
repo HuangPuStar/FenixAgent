@@ -79,33 +79,18 @@ const literalKeys = collectLiteralKeys();
 const ownLiteralKeys = new Map([...literalKeys].filter(([key]) => !key.includes(":")));
 
 /**
- * 既有的缺键清单（本切片未修，属包内既有债务，见 README「已知项」）。
+ * 缺键清单（现已清空，断言回到最严形态）。
  *
- * 为什么固定成清单而不是直接断言为空：这 12 条缺键在本切片之前就存在（两份 JSON 本次零改动，
- * `git diff --stat -- web/i18n` 无输出可证），修复它们等于替产品补写 11 条中英文案，
- * 超出「边界切断」的范围。固定清单的价值是：**新增**缺键会立刻失败，而既有债务显式可见。
+ * 2026-09-25 收口：这 12 条在本切片之前就存在，当时为避免替产品补写文案而固定成清单。本轮按判据
+ * 逐条补齐——`graph2d.*` 7 条与 `constellation.tooltip{Entities,Proofs,Tags,Id}` 4 条补进 `hindsight`
+ * 字典（缺失时这些位置分别回显 key 与默认值），`common.clear` 是点号误写，改成跨命名空间语法
+ * `common:clear` 并登记进 `CROSS_NAMESPACE_KEYS`（宿主 `common` 字典已有该键，中文界面此前固定显示
+ * 英文 "Clear"）。清单留空而不是删除：新增缺键仍走这里逐条评审，不许静默放行。
  */
-const KNOWN_MISSING_KEYS = [
-  // 点号误写：应为跨命名空间语法 `common:clear`，写成了 `common.clear`，
-  // 在 hindsight 命名空间下查不到键，靠 `defaultValue: "Clear"` 兜底 → 中文界面固定显示英文。
-  "common.clear",
-  // Constellation 的节点 tooltip 行标签缺 4 条（同组其余行标签 tooltipContext/tooltipDocument 等齐备）。
-  "constellation.tooltipEntities",
-  "constellation.tooltipId",
-  "constellation.tooltipProofs",
-  "constellation.tooltipTags",
-  // Graph2d 整组缺失：字典里没有 `graph2d` 分组，含 1 条带插值的链接类型标签。
-  "graph2d.controlsHint",
-  "graph2d.emptyState",
-  "graph2d.linkTooltipEntity",
-  "graph2d.linkTooltipWeight",
-  "graph2d.linkTypeCausal",
-  "graph2d.linkTypeGeneric",
-  "graph2d.loading",
-] as const;
+const KNOWN_MISSING_KEYS: readonly string[] = [];
 
 /** 跨命名空间引用的字面量键：必须存在于**对方**命名空间，因此不出现在本字典里。 */
-const CROSS_NAMESPACE_KEYS = ["common:cancel", "common:next", "common:previous"] as const;
+const CROSS_NAMESPACE_KEYS = ["common:cancel", "common:next", "common:previous", "common:clear"] as const;
 
 describe("hindsight 字典完整性与归属", () => {
   // 两份字典键集必须逐字一致：缺键的语言会静默回显 key。
@@ -114,9 +99,10 @@ describe("hindsight 字典完整性与归属", () => {
   // （`memories.*` / `documents.*` / `mentalModels.*` / `recall.*` / `retain.*` /
   // `memoryDetailPanel.*` / `constellation.*`），基线随之下调到清理后的实际键数（211），
   // 保持「只认当前真实规模、缩水即失败」的口径不变。
+  // 211 → 222（2026-09-25 缺键清单清空）：补入 `graph2d.*` 7 条与 `constellation.tooltip{Entities,Proofs,Tags,Id}` 4 条。
   test("en / zh 键集完全一致且规模未缩水", () => {
     expect([...zhFlat.keys()].sort()).toEqual([...enFlat.keys()].sort());
-    expect(enFlat.size).toBeGreaterThanOrEqual(211);
+    expect(enFlat.size).toBeGreaterThanOrEqual(222);
   });
 
   // 插值占位符必须成对出现，否则某一语言会显示 `{{var}}` 字面量。
@@ -129,16 +115,16 @@ describe("hindsight 字典完整性与归属", () => {
     expect(mismatched).toEqual([]);
   });
 
-  // 源码里所有字面量键都必须命中字典，既有缺键固定成清单（新增缺键即失败）。
-  test("源码字面量 t() 键除既有债务外全部命中字典", () => {
+  // 源码里所有字面量键都必须命中字典，缺键清单已清空（新增缺键即失败）。
+  test("源码字面量 t() 键全部命中字典", () => {
     const missing = [...ownLiteralKeys.keys()].filter((key) => !enFlat.has(key) && !zhFlat.has(key)).sort();
     expect(missing).toEqual([...KNOWN_MISSING_KEYS].sort());
     // 扫描有效性自检：字面量键（含跨命名空间）规模在百条量级，扫描失效会退化成空集。
     expect(literalKeys.size).toBeGreaterThanOrEqual(150);
   });
 
-  // 跨命名空间引用是包对宿主的隐式依赖，只能依赖已登记的那三条，新增必须显式评审。
-  test("跨命名空间字面量键固定为已登记的三条", () => {
+  // 跨命名空间引用是包对宿主的隐式依赖，只能依赖已登记的那四条，新增必须显式评审。
+  test("跨命名空间字面量键固定为已登记的四条", () => {
     const namespaced = [...literalKeys.keys()].filter((key) => key.includes(":")).sort();
     expect(namespaced).toEqual([...CROSS_NAMESPACE_KEYS].sort());
   });

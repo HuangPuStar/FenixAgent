@@ -5,8 +5,9 @@
  * `/tmp/agent-editor-effective-spec.md`；跨片契约（B 的 `PAGINATION*` / `LIBRARY_PICKER_NARROW` / `GROUP_FILTER_NARROW` /
  * `RETRIEVAL_OPTIONS_FIELDS`）已在 B 落地，这里只补 C 自己剩下的声明，并把两处状态钩子从类名改成 `data-*`。
  *
- * 深层选择器（子代、`:hover`）、复合值与响应式覆盖见同目录 `agent-editor-library-classes.css`；
- * 扁平工具类保留在此，导出常量名保持不变。
+ * 深层选择器（子代、`:hover` / `:has()` 变体）、复合值与响应式覆盖：2026-09-28 第三波收口后，凡有挂载点的
+ * 声明都已回到本文件与 `AgentKnowledgeSection.tsx` 的 `className`，同名 CSS 只剩 `minmax()` 列模板、
+ * `:where()` 基准列宽与两条非标准字重。扁平工具类保留在此，导出常量名保持不变。
  */
 import "./agent-editor-library-classes.css";
 
@@ -15,12 +16,13 @@ import "./agent-editor-library-classes.css";
 /** `.agent-editor-group-filter`：来源列表容器（窄桌面覆盖由 B 的 `GROUP_FILTER_NARROW` 提供）。 */
 export const GROUP_FILTER = "flex min-w-0 flex-col gap-1.25 border-r border-gray-100 bg-slate-50 p-2";
 /**
- * `.agent-editor-group-filter button`：来源按钮（40px 行 / 两列 + hover 配色见同名 CSS）。
- * 声明落到按钮自己的类名上，不再靠容器后代匹配：窄桌面覆盖（B 的 `GROUP_FILTER_NARROW`）仍走 `> button`。
+ * `.agent-editor-group-filter button`：来源按钮（40px 行 / 两列 + hover 配色）。
+ * 列模板见同名 CSS；hover 的底色与文字色 2026-09-28 从该表撤回（`hover:bg-indigo-50` / `hover:text-blue-900`，
+ * 变体特指度高于 `GROUP_FILTER_BUTTON_ACTIVE` 的基态类，选中项 hover 时仍以 hover 色为准，与撤回前一致）。
  */
 export const GROUP_FILTER_BUTTON =
   "agent-editor-group-filter__button grid min-h-10 items-center gap-2 border-0 rounded-lg bg-transparent px-2.5 py-1.75 " +
-  "text-left text-slate-500";
+  "text-left text-slate-500 hover:bg-indigo-50 hover:text-blue-900";
 /** 来源按钮选中态（原 `button.is-active`）。 */
 export const GROUP_FILTER_BUTTON_ACTIVE = "bg-indigo-50 text-blue-900";
 /** 来源名：单行省略 13px/650。 */
@@ -53,10 +55,12 @@ export const KNOWLEDGE_LAYOUT = "grid gap-3.5";
 /** `.agent-knowledge-block`：知识区块外壳。 */
 export const KNOWLEDGE_BLOCK = "overflow-hidden border border-slate-200 rounded-xl bg-white";
 /**
- * `.agent-knowledge-block__heading`：36px 图标列 + 标题/说明（图标格、字号与配色见同名 CSS）。
+ * `.agent-knowledge-block__heading`：36px 图标列（列模板见同名 CSS）+ 标题/说明。
+ * 图标格（`size-8.5` / `rounded-md` / `bg-indigo-50` / `text-sky-700`）、标题说明的字号与配色
+ * 2026-09-28 全量撤回，落在 `AgentKnowledgeSection.tsx` 的 `<span>` / `<div>` / `<strong>` / `<small>` 上。
  * 标题 12px、说明 10px 是 `text-xs` / `text-3xs` 刻度的当前生效值；迁移前手写 CSS 记的是 13px / 11px，
  * 差异来自值刻度归一化（见 `agent-editor-font-scale.test.ts` 的 `editor-knowledge-heading` 锚点），
- * 本次只做下沉，不在这里改值。
+ * 本次只做搬运，不在这里改值。
  */
 export const KNOWLEDGE_HEADING =
   "agent-knowledge-block__heading grid items-center gap-3 border-b border-gray-100 bg-slate-50 px-3.5 py-3";
@@ -67,13 +71,13 @@ export const KNOWLEDGE_BODY_BASES = "p-0";
 /** `--bases` 形态：内嵌的资源选择器去描边去圆角（原 `.agent-knowledge-block--bases .agent-resource-picker`）。 */
 export const KNOWLEDGE_BASES_PICKER = "border-0 rounded-none";
 
-/** `.agent-knowledge-switch`：记忆开关行（64px 高、两列；hover 与文案/徽标样式见同名 CSS）。
- * 行内开关本体是 `ui/switch`：`KNOWLEDGE_SWITCH_ON` 的选中底色改由 CSS 的
- * `:has([data-state="checked"])` 表达，自绘的轨道（`..._TRACK`）与圆钮（`..._KNOB`）四条类串删除。
+/** `.agent-knowledge-switch`：记忆开关行（64px 高、两列；列模板 36px 轨道列见同名 CSS）。
+ * 行内开关本体是 `ui/switch`：hover 与选中态（Radix 挂在 Switch 上的 `data-state="checked"`）底色
+ * 2026-09-28 从同名 CSS 撤回，`has-*` 变体与 `hover:` 变体都写在调用点可及之处。
  */
 export const KNOWLEDGE_SWITCH =
   "agent-knowledge-switch grid min-h-16 w-full items-center gap-3.5 border-0 rounded-md bg-slate-50 " +
-  "px-3 py-2.75 text-left text-slate-600";
+  "px-3 py-2.75 text-left text-slate-600 hover:bg-blue-50 has-[[data-state=checked]]:bg-blue-50";
 
 /** `.agent-retrieval-fields`：两列（说明字段 + 选项列，列宽模板见同名 CSS），≤1024px 单列。 */
 export const RETRIEVAL_FIELDS = "agent-retrieval-fields grid items-start gap-3 max-lg:grid-cols-1";

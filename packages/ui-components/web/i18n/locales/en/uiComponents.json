@@ -1,4 +1,19 @@
 {
+  "agentTree": {
+    "sectionTitle": "Agents",
+    "noAgents": "No agents yet",
+    "createAgent": "New Agent",
+    "newInstance": "New Instance",
+    "restart": "Restart",
+    "stop": "Stop",
+    "restartAgent": "Restart Agent",
+    "agentConfig": "Agent Config",
+    "viewAgentConfig": "View agent details",
+    "deleteAgent": "Delete Agent",
+    "expandInstances": "Expand instances",
+    "collapseInstances": "Collapse instances",
+    "remoteNode": "Remote"
+  },
   "batchActionBar": {
     "clear": "Clear",
     "selected": "{{count}} items selected"
@@ -190,7 +205,10 @@
       },
       "permissionPanel": {
         "aboutToRun": "About to run",
+        "allow": "Allow",
+        "allowSession": "Allow Session",
         "audit": "This decision will be recorded in the session audit",
+        "deny": "Deny",
         "title": "Permission required",
         "waiting": "Agent is waiting"
       },
@@ -409,6 +427,14 @@
     "thinking": "Thinking...",
     "thought": "Thought for a while",
     "thoughtFor": "Thought for {{duration}}s"
+  },
+  "resource": {
+    "internal": "Private",
+    "external": "Shared",
+    "public": "Public",
+    "makePublic": "Make public",
+    "makePrivate": "Make private",
+    "readOnly": "Read-only"
   },
   "small": "Small",
   "statusBadge": {

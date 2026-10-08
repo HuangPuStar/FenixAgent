@@ -10,11 +10,8 @@
  * `execCommand("copy")` 把 `writeText` 补上，因此正常运行时这个缺口已被兜住。无论走哪条路，本函数
  * 对「API 缺失」与「写入被拒」**一律回传 `false` 而不抛错**——调用方据此给出失败反馈，不要静默丢弃。
  *
- * 为什么原语自己不做 `execCommand` 降级：宿主那份 polyfill 已是全仓唯一的降级实现（见上），再抄一份
- * 只会得到第三种写法；它覆盖不了的场景也不是「写一段文本」能表达的——Radix 模态框内复制会因为
- * FocusScope 的焦点陷阱而失效（`focus()` 被同步抢回、隐藏 textarea 的选中内容随之丢失，2026-07
- * 的真实缺陷），那里唯一可行的写法是「选中框内已有元素再 execCommand」，需要 DOM 元素而非一段文本，
- * 因此留在调用点（`packages/platform/identity` 的 `AgentApiKeysPage`）。
+ * Radix 模态框内的 HTTP 复制另走下方 `copyDialogTextToClipboard`：宿主 polyfill 的隐藏 textarea
+ * 会被 FocusScope 抢走焦点，必须选中框内已有元素再复制。
  *
  * @param value 要写入剪贴板的文本。
  * @returns 写入成功为 `true`；剪贴板 API 缺失、写入被拒或写入抛错为 `false`。
@@ -27,5 +24,24 @@ export async function copyTextToClipboard(value: string): Promise<boolean> {
     return true;
   } catch {
     return false;
+  }
+}
+
+/** 复制模态框中已有元素的文本；HTTP 下跳过会被焦点陷阱干扰的隐藏 textarea polyfill。 */
+export async function copyDialogTextToClipboard(value: string, element: HTMLElement | null): Promise<boolean> {
+  if (globalThis.window?.isSecureContext && (await copyTextToClipboard(value))) return true;
+  if (!element || typeof document === "undefined") return false;
+  const selection = window.getSelection();
+  if (!selection) return false;
+  const range = document.createRange();
+  range.selectNodeContents(element);
+  selection.removeAllRanges();
+  selection.addRange(range);
+  try {
+    return document.execCommand("copy");
+  } catch {
+    return false;
+  } finally {
+    selection.removeAllRanges();
   }
 }

@@ -18,7 +18,6 @@
     "noEmit": true,
     "paths": {
       "@/src/*": ["./apps/web/src/*"],
-      "@/src/api/helpers": ["./apps/web/src/api/helpers.ts"],
       "@/src/i18n": ["./apps/web/src/i18n/index.ts"],
       "@/src/i18n/locales/*": ["./apps/web/src/i18n/locales/*"],
       "@/src/lib/random-uuid-polyfill": ["./apps/web/src/lib/random-uuid-polyfill.ts"],

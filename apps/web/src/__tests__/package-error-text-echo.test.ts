@@ -37,14 +37,6 @@ const ALLOWED_RAW_MESSAGE_CALLS: Record<string, { count: number; reason: string 
     count: 2,
     reason: "`ClusterActionFeedback.message` 是本地用 `t()` 拼出的文案（formatHealthCheckResult），不是服务端原文",
   },
-  "packages/resources/workflow/web/pages/workflow/hooks/use-workflow-editor-events.ts": {
-    count: 1,
-    reason: "dry-run 的 `issues[].message` 是成功响应里的逐节点校验诊断（标题已由 t() 承载，另有稳定 code）",
-  },
-  "packages/resources/workflow/web/pages/workflow/hooks/useWorkflowPersistence.ts": {
-    count: 2,
-    reason: "YAML 导入失败来自本地 `yamlToFlow`（js-yaml 的 YAMLException），描述用户自己那份文本，含行列号",
-  },
 };
 
 /** 递归收集 .ts/.tsx（跳过测试、字典目录、构建产物）。 */

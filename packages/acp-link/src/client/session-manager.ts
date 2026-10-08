@@ -55,8 +55,6 @@ export class SessionManager {
   private agentCapabilities: Record<string, unknown> | null = null;
   private activeRelayId: string | null = null;
   private systemPrompt: string | null = null;
-  /** 会话标题本地覆盖缓存。agent 可能不支持 session_info_update，因此需本地维护 */
-  private titleOverrides = new Map<string, string | null>();
 
   getCapabilities(): Record<string, unknown> | null {
     return this.agentCapabilities;
@@ -185,17 +183,10 @@ export class SessionManager {
   private async emitSessionList(sessionId: string): Promise<void> {
     try {
       const r = await this.sharedConnection!.listSessions({});
-      // 应用本地标题覆盖（agent 可能不支持 session_info_update）
-      const withOverrides = r.sessions.map((s) => {
-        const override = this.titleOverrides.get(s.sessionId);
-        return override !== undefined ? { ...s, title: override } : s;
-      });
       // 过滤掉标题为空或以 "New session" 开头的会话
       const filtered = {
         ...r,
-        sessions: withOverrides.filter(
-          (s) => s.title?.trim() && !s.title.trim().toLowerCase().startsWith("new session"),
-        ),
+        sessions: r.sessions.filter((s) => s.title?.trim() && !s.title.trim().toLowerCase().startsWith("new session")),
       };
       this.emit(sessionId, "session_data", { type: "session_list", payload: filtered });
     } catch (err) {
@@ -370,35 +361,7 @@ export class SessionManager {
           }
           break;
         case "rename_session": {
-          const targetSid = (payload.sessionId as string) ?? "";
-          const title = (payload.title as string) ?? "";
-
-          try {
-            // 本地缓存标题
-            this.titleOverrides.set(targetSid, title);
-
-            // 通过 session/update 通知转发 rename 给 agent
-            if (this.sharedConnection) {
-              const conn = this.sharedConnection as unknown as {
-                connection: { sendNotification: (m: string, p: Record<string, unknown>) => void };
-              };
-              conn.connection.sendNotification("session/update", {
-                sessionId: targetSid,
-                update: { sessionUpdate: "session_info_update", title },
-              });
-            }
-
-            this.emit(sessionId, "session_data", {
-              type: "session_renamed",
-              payload: { sessionId: targetSid, title },
-            });
-            // 重命名成功后立即刷新 session/list，让历史列表立刻显示最新标题。
-            // titleOverrides 已先写入，可覆盖 Agent 列表响应中的旧标题。
-            await this.emitSessionList(sessionId);
-          } catch (err) {
-            console.error("[session-manager] renameSession failed:", String(err));
-            this.emit(sessionId, "session_error", String(err));
-          }
+          this.emit(sessionId, "session_error", "session/rename is not supported by ACP");
           break;
         }
         default:
@@ -436,18 +399,20 @@ export class SessionManager {
           break;
         }
         case ACP_METHOD.SESSION_PROMPT: {
-          if (!this.currentAcpSessionId) {
+          const requestedSessionId = typeof p.sessionId === "string" && p.sessionId.length > 0 ? p.sessionId : null;
+          if (!requestedSessionId && !this.currentAcpSessionId) {
             const r = await this.sharedConnection!.newSession({ cwd: this.cwd, mcpServers: [] });
             this.currentAcpSessionId = r.sessionId;
           }
+          const targetSessionId = requestedSessionId ?? this.currentAcpSessionId!;
           const blocks = (p.content as acp.ContentBlock[]) ?? [];
           if (this.systemPrompt) {
             blocks.unshift({ type: "text" as const, text: this.systemPrompt });
             this.systemPrompt = null;
             console.log("[session-manager] injected system prompt");
           }
-          console.log("[session-manager] prompt (json-rpc), acpSession:", this.currentAcpSessionId);
-          this.sharedConnection!.prompt({ sessionId: this.currentAcpSessionId!, prompt: blocks })
+          console.log("[session-manager] prompt (json-rpc), acpSession:", targetSessionId);
+          this.sharedConnection!.prompt({ sessionId: targetSessionId, prompt: blocks })
             .then((result) => {
               console.log(
                 "[session-manager] prompt completed, stopReason:",
@@ -462,8 +427,10 @@ export class SessionManager {
           break;
         }
         case ACP_METHOD.SESSION_CANCEL: {
-          if (this.currentAcpSessionId) {
-            await this.sharedConnection!.cancel({ sessionId: this.currentAcpSessionId });
+          const targetSessionId =
+            typeof p.sessionId === "string" && p.sessionId.length > 0 ? p.sessionId : this.currentAcpSessionId;
+          if (targetSessionId) {
+            await this.sharedConnection!.cancel({ sessionId: targetSessionId });
           }
           this.emit(sessionId, "session_data", createSuccessResponse(id, { cancelled: true }));
           break;
@@ -513,18 +480,10 @@ export class SessionManager {
         }
         case ACP_METHOD.SESSION_LIST: {
           const r = await this.sharedConnection!.listSessions({});
-          // 应用本地标题覆盖
-          const withOverrides = r.sessions.map((s) => {
-            const override = this.titleOverrides.get(s.sessionId);
-            if (override !== undefined) {
-              return { ...s, title: override };
-            }
-            return s;
-          });
           // 过滤掉标题为空或以 "New session" 开头的会话
           const filtered = {
             ...r,
-            sessions: withOverrides.filter(
+            sessions: r.sessions.filter(
               (s) => s.title?.trim() && !s.title.trim().toLowerCase().startsWith("new session"),
             ),
           };
@@ -557,28 +516,11 @@ export class SessionManager {
           break;
         }
         case ACP_METHOD.SESSION_RENAME: {
-          const targetSid = (p.sessionId as string) ?? "";
-          const title = (p.title as string) ?? "";
-
-          try {
-            // 本地缓存标题
-            this.titleOverrides.set(targetSid, title);
-
-            // 通过 session/update 通知转发 rename 给 agent
-            if (this.sharedConnection) {
-              const conn = this.sharedConnection as unknown as {
-                connection: { sendNotification: (m: string, p: Record<string, unknown>) => void };
-              };
-              conn.connection.sendNotification("session/update", {
-                sessionId: targetSid,
-                update: { sessionUpdate: "session_info_update", title },
-              });
-            }
-
-            this.emit(sessionId, "session_data", createSuccessResponse(id, { sessionId: targetSid, title }));
-          } catch (err) {
-            this.emit(sessionId, "session_data", createErrorResponse(id, -32603, String(err)));
-          }
+          this.emit(
+            sessionId,
+            "session_data",
+            createErrorResponse(id, -32601, "session/rename is not supported by ACP"),
+          );
           break;
         }
         default:

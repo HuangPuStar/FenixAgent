@@ -335,7 +335,7 @@ export class DAGScheduler {
     } catch (error) {
       // 处理 SUSPENDED
       if (error instanceof SuspendedError) {
-        this.nodeStates.set(nodeId, "SUSPENDED" as NodeStatus);
+        this.nodeStates.set(nodeId, "SUSPENDED");
         await this.emitEvent("audit.requested", nodeId, {
           display_data: error.displayData,
         });
@@ -634,7 +634,7 @@ export class DAGScheduler {
 
     // 检查是否有 SUSPENDED 节点（SuspendedError 抛出后不会走到这里，但保险起见）
     for (const status of this.nodeStates.values()) {
-      if (status === ("SUSPENDED" as NodeStatus)) {
+      if (status === "SUSPENDED") {
         return "SUSPENDED";
       }
     }

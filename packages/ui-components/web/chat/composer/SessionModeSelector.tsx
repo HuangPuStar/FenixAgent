@@ -1,5 +1,3 @@
-import "./SessionModeSelector.css";
-
 import { Check, ChevronDown, ChevronUp, Shield } from "lucide-react";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
@@ -21,6 +19,11 @@ import type { SessionMode } from "../types";
  * 纯化改动点：`@fenix/chat-channel` 的 `SessionMode` → 包内 `../types`；
  * `@/components/ui/{button,popover}` → 包内 `../../ui/*`；命名空间改为 `UI_COMPONENTS_NS`
  * （键 `chat.components.sessionModeSelector.default`）；结构、交互与类名逐字保留。
+ *
+ * 样式（2026-09-28）：只读 chip 里盾牌图标的 `flex: 0 0 13px`（源实现是一条下划线转义空格的任意值
+ * 工具类，不属刻度档）曾按「`Npx` → `N/4` 刻度」改回 `className` 的 `shrink-0 grow-0 basis-3.25`，
+ * 后一度被当作「刻度不保原值」写进同名伴随表；令牌层已把刻度按 px 落地（`--spacing: 4px`），
+ * `basis-3.25` 即 13px，故按判据撤回 `className` 并删除该伴随表。
  */
 
 interface SessionModeSelectorProps {
@@ -56,7 +59,9 @@ export function SessionModeSelector({
         data-slot="chat-composer-security-policy"
         title={label}
       >
-        <Shield className="chat-session-mode-shield-icon h-3.25 w-3.25 text-gray-400" />
+        {/* 盾牌图标与字号同档（13px）且不参与 flex 收缩：只读 chip 在窄屏（`max-md:`）会收窄内边距，
+            不固定基准会被压扁——`shrink-0 grow-0 basis-3.25` 即源 `flex: 0 0 13px` 的同值刻度写法。 */}
+        <Shield className="shrink-0 grow-0 basis-3.25 h-3.25 w-3.25 text-gray-400" />
         <span className="overflow-hidden text-ellipsis whitespace-nowrap max-md:hidden">{label}</span>
       </span>
     );

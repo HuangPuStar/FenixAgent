@@ -1,4 +1,3 @@
-import "./AgentEditorLoadingShell.css";
 import { cn } from "@fenix/ui-components/lib/cn";
 import { Skeleton } from "@fenix/ui-components/ui/skeleton";
 import { NS } from "@fenix/web-runtime/i18n/namespace";
@@ -14,6 +13,8 @@ import {
   LOADING_MAP_ROW,
   LOADING_MAP_ROW_ACTIVE,
   MAP_COPY,
+  MAP_COPY_CAPTION,
+  MAP_COPY_TITLE,
   MAP_ICON,
   MAP_LABEL,
   SECTION_INTRO,
@@ -63,11 +64,15 @@ export function AgentEditorLoadingShell({
             {LOADING_SECTIONS.map(({ id, icon: Icon }, index) => (
               <div className={cn(LOADING_MAP_ROW, index === 0 && LOADING_MAP_ROW_ACTIVE)} key={id}>
                 <span className={MAP_ICON}>
-                  <Icon />
+                  <Icon className="w-3.5" />
                 </span>
                 <span className={MAP_COPY} data-slot="editor-map-copy">
-                  <strong>{t(`editor.sections.${id}`)}</strong>
-                  <small>{t(`editor.sectionCaptions.${id}`)}</small>
+                  <strong className={MAP_COPY_TITLE} data-slot="editor-map-copy-title">
+                    {t(`editor.sections.${id}`)}
+                  </strong>
+                  <small className={MAP_COPY_CAPTION} data-slot="editor-map-copy-caption">
+                    {t(`editor.sectionCaptions.${id}`)}
+                  </small>
                 </span>
               </div>
             ))}
@@ -80,10 +85,10 @@ export function AgentEditorLoadingShell({
             <Skeleton className="h-3 w-72 max-w-full" />
           </div>
           {/* 字段骨架：两列 62px 高，末行跨列且高 170px（与加载后的字段网格同构）。 */}
-          <div className="agent-editor-loading-fields grid gap-3.5 max-md:grid-cols-1">
-            <Skeleton />
-            <Skeleton />
-            <Skeleton />
+          <div className="grid grid-cols-2 gap-3.5 max-md:grid-cols-1">
+            <Skeleton className="h-15.5" />
+            <Skeleton className="h-15.5" />
+            <Skeleton className="col-span-full h-42.5" />
           </div>
           <span className="sr-only">{t("editor.loading")}</span>
         </main>

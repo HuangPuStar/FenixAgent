@@ -14,7 +14,7 @@ import {
   SetDefaultAgentRequestSchema,
   UpdateAgentRequestSchema,
 } from "../../../schemas/config.schema";
-import { applyAgentBindings, readAgentBindingRequest } from "../../../services/agent-bindings";
+import { hasAgentBindings, readAgentBindingRequest } from "../../../services/agent-bindings";
 import { buildAgentRelatedResourceView } from "../../../services/agent-related-resources";
 import { loadAgentTemplates } from "../../../services/agent-templates";
 import {
@@ -287,12 +287,16 @@ async function handleSet(
   const enableMemory = typeof data.enableMemory === "boolean" ? data.enableMemory : undefined;
   const publicReadable = typeof data.publicReadable === "boolean" ? data.publicReadable : undefined;
 
-  const { facade, associations } = getAgentConfigModule();
+  const { facade, associations, authoring } = getAgentConfigModule();
   const agent = await facade.update(actor, nameOrKey, toAgentConfigWriteData(data), { publicReadable });
   if (enableMemory !== undefined) {
     await associations.setMemoryEnabled(agent.id, enableMemory);
   }
-  await applyAgentBindings({ agentConfigId: agent.id, request: readAgentBindingRequest(data), actor });
+  const bindingRequest = readAgentBindingRequest(data);
+  // 没有任何绑定字段时不必经过编写面：这条保存只改配置，绑定集合保持不变。
+  if (hasAgentBindings(bindingRequest)) {
+    await authoring.applyBindings(actor, agent.id, bindingRequest);
+  }
 
   return {
     success: true,
@@ -315,7 +319,7 @@ async function handleCreate(
   const enableMemory = typeof data.enableMemory === "boolean" ? data.enableMemory : undefined;
   const publicReadable = typeof data.publicReadable === "boolean" ? data.publicReadable : undefined;
 
-  const { facade, associations } = getAgentConfigModule();
+  const { facade, associations, authoring } = getAgentConfigModule();
   // 同名检查必须在创建之前：仓储的写入是同组织同名的幂等 upsert，把重复创建留给它会把"创建已存在
   // 的 Agent"静默变成一次更新。
   //
@@ -336,7 +340,10 @@ async function handleCreate(
   if (enableMemory !== undefined) {
     await associations.setMemoryEnabled(agent.id, enableMemory);
   }
-  await applyAgentBindings({ agentConfigId: agent.id, request: readAgentBindingRequest(data), actor });
+  const bindingRequest = readAgentBindingRequest(data);
+  if (hasAgentBindings(bindingRequest)) {
+    await authoring.applyBindings(actor, agent.id, bindingRequest);
+  }
 
   return {
     success: true,

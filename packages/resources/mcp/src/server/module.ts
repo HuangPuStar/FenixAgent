@@ -41,8 +41,7 @@ export interface McpServerServerModule {
   /**
    * 领域服务（无授权判断）。
    *
-   * 只有系统初始化路径可直接调用它（例如 Hindsight 托管服务器的幂等写入）；对外路由必须走
-   * `facade`，否则会绕过授权。
+   * 对外路由必须走 `facade`，否则会绕过授权；无授权的 `*Unscoped` 读取只由启动参数装配调用。
    */
   readonly service: McpServerService;
   readonly identity: IdentityDirectory;

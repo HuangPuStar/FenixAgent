@@ -42,9 +42,15 @@ import type { AvailableCommand } from "../types";
  *
  * 样式下沉（2026-09-22，禁令 FCP-WEB-02）：网格列定义、投影与 `min/max` 复合值改由同目录
  * `CommandMenu.css` 承载——容器投影（`.chat-command-surface`）、行网格（`.chat-command-row`）、
- * 搜索行图标基准（`.chat-command-search-icon`）、滚动区高度（`.chat-command-scroll`）。
+ * 滚动区高度（`.chat-command-scroll`）。
  * 面板形态的覆盖改为「根节点挂 `--panel` 修饰类、样式表里按源顺序覆盖基类」，
  * 与原 `cn()`（tailwind-merge）的「后者胜出」等价，扁平工具类仍留在 `className`。
+ *
+ * 样式回落与归位（2026-09-28）：搜索行图标的 `flex: 0 0 15px` / `flex: 0 0 16px` 是单类选择器 +
+ * 扁平声明，曾按「`Npx` → `N/4` 刻度」改回 `className` 的 `shrink-0 grow-0 basis-3.75` / `basis-4`，
+ * 后一度被当作「刻度不保原值」写进 `CommandMenu.css`；令牌层已把刻度按 px 落地（`--spacing: 4px`），
+ * 两个刻度类即 15px / 16px，故按判据撤回 `className`，面板覆盖回到 `cn()`（tailwind-merge）
+ * 的「后者胜出」消解（与图标自身的 `h-3.75 w-3.75` / `h-4 w-4` 同档）。
  */
 
 /** Agent 已绑定的 MCP 连接（本轮上下文候选）。 */
@@ -197,11 +203,10 @@ export function CommandMenu({
             panel && "m-0 h-9.5 rounded-none border-b border-gray-100 bg-white px-3",
           )}
         >
+          {/* 图标不参与伸缩（源 `.chat-command-menu-search > svg` 的 `flex: 0 0 15px`；面板形态放宽到 16px，
+              两条都由 `cn()` 的「后者胜出」消解；`basis-*` 与 `h/w-*` 同档）。 */}
           <Search
-            className={cn(
-              "h-3.75 w-3.75 chat-command-search-icon text-gray-400",
-              panel && "h-4 w-4 chat-command-search-icon--panel",
-            )}
+            className={cn("h-3.75 w-3.75 shrink-0 grow-0 basis-3.75 text-gray-400", panel && "h-4 w-4 basis-4")}
           />
           <Input
             type="text"

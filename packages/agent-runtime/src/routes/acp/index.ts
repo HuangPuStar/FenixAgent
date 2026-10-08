@@ -3,13 +3,14 @@ import { log, error as logError } from "@fenix/logger";
 import { AppError } from "@fenix/platform-sdk";
 import Elysia, { type AnyElysia } from "elysia";
 import { v4 as uuid } from "uuid";
+import { environmentAccessFacade } from "../../facades/environment-access-facade";
+import type { EnvironmentRecord } from "../../runtime";
 import {
   AcpAgentListResponseSchema,
   AcpRegistrySecretQuerySchema,
   AcpRelayParamsSchema,
 } from "../../schemas/acp.schema";
 import { getAgentRuntimeConfig } from "../../server/config";
-import { environmentRepo } from "../../server/repositories/environment";
 import { getChatChannelController } from "../../server/services/chat-channel-bootstrap";
 import { getFileWsPort } from "../../server/services/file-ws-port";
 import { handleAcpWsClose, handleAcpWsMessage, handleAcpWsOpen } from "../../server/transport/acp-ws-handler";
@@ -99,7 +100,7 @@ function declareAcpWsRoute(app: AnyElysia, path: string, hooks: AcpWsHooks): Any
 }
 
 /** Response shape for an ACP agent */
-function toAcpAgentResponse(env: NonNullable<Awaited<ReturnType<typeof environmentRepo.getById>>>) {
+function toAcpAgentResponse(env: EnvironmentRecord) {
   return {
     id: env.id,
     agent_name: env.machineName,
@@ -116,6 +117,9 @@ function toAcpAgentResponse(env: NonNullable<Awaited<ReturnType<typeof environme
  * macro / state 是实例作用域的）；WS 升级路径用 `authenticateRequest` 自己认证——它要在 `open` 里区分
  * 「未认证 / 无组织上下文 / 通过」并分别以 4003 关闭连接，因此需要认证函数本身而不是让守卫短路请求，
  * 且必须与守卫是同一份解析。
+ *
+ * 取数方式（C2 收敛后）：环境列表与 YJS 升级路径的环境归属校验经 `facades/environment-access-facade`，
+ * 路由不直引仓储、也不自行比较组织归属（§3.2）；门面只收组织与用户两个标识，宿主 `authContext` 不整体下传。
  */
 export function createAcpRoutes(deps: AcpRouteDependencies): AnyElysia {
   // 装配按「守卫 → 路由」分条书写，WS 走 `declareAcpWsRoute`（成因见其注释）：宿主守卫跨包，
@@ -135,10 +139,8 @@ export function createAcpRoutes(deps: AcpRouteDependencies): AnyElysia {
     "/agents",
     // biome-ignore lint/suspicious/noExplicitAny: Elysia 在 response schema 下的类型推断过于严格
     async ({ store }: any) => {
-      const authCtx = store.authContext;
-      const orgId = authCtx?.organizationId ?? store.user!.id;
-      const teamEnvs = await environmentRepo.listByOrganizationId(orgId);
-      const acpEnvs = teamEnvs.filter((e) => e.workerType === "acp");
+      const orgId = store.authContext?.organizationId ?? null;
+      const acpEnvs = await environmentAccessFacade.listAcpEnvironments(orgId, store.user!.id);
       return acpEnvs.map((a) => toAcpAgentResponse(a));
     },
     {
@@ -315,9 +317,14 @@ export function createAcpRoutes(deps: AcpRouteDependencies): AnyElysia {
         return;
       }
 
-      const env = await environmentRepo.getById(agentId);
-      const authCtx = authResult.authContext;
-      if (!env || !authCtx || env.organizationId !== authCtx.organizationId || env.userId !== userId) {
+      // 归属校验经门面（§3.2：路由不直引仓储、不自行比较组织归属）：环境必须属于该用户且组织一致，
+      // 认证结果缺 `authContext` 时门面一律判不可达。
+      const environment = await environmentAccessFacade.resolveOwnedEnvironment(
+        agentId,
+        authResult.authContext?.organizationId ?? null,
+        userId,
+      );
+      if (!environment) {
         adaptWs(ws).close(4003, "unauthorized");
         return;
       }

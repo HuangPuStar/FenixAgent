@@ -104,6 +104,19 @@ export const moduleManifest = {
     contribution: "@fenix/resource-skill/web/contribution",
   },
   accessControlBindings: [skillResource.storage],
+  // 数据迁移事实（§6.3）：只声明本模块拥有哪条迁移，run/verify/compensation 的实现留在
+  // `db/data-migrations/migrate-skill-storage-by-organization.ts`，经包出口 `./db/migration` 装载。
+  // `name` 是该迁移在 `data_migrate_record` 里已落库的 ID，逐字照抄、不按 §6.3 的命名格式回改：
+  // 改名会被判为未应用而重跑。
+  dataMigrations: [
+    {
+      name: "migrate-skill-storage-by-organization",
+      // 只按 skill 表已有的组织和名字分发文件，不依赖任何其他数据迁移的写入结果。
+      dependsOn: [],
+      load: () =>
+        import("@fenix/resource-skill/db/migration").then((module) => module.migrateSkillStorageByOrganization),
+    },
+  ],
   contributions: [
     {
       id: "skill.web-config",

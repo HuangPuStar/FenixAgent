@@ -1,6 +1,5 @@
 import type { FileUIPart } from "ai";
 import { PaperclipIcon, XIcon } from "lucide-react";
-import "./message-attachments.css";
 import type { ComponentProps, HTMLAttributes } from "react";
 import { useTranslation } from "react-i18next";
 
@@ -55,7 +54,7 @@ export function MessageAttachment({ data, className, alt, onRemove, ...props }: 
           type="button"
           variant="ghost"
         >
-          <XIcon />
+          <XIcon className="size-3" />
           <span className="sr-only">{t("message.remove")}</span>
         </Button>
       )}

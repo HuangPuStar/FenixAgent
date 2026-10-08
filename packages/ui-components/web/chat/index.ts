@@ -12,10 +12,11 @@
  *
  * 末尾的 `import "./css/chat.css"` 是刻意的副作用导入：chat 簇**尚未迁成工具类**的样式在包内没有
  * 唯一宿主组件，由本聚合入口负责加载，保证「消费方导入本 barrel 即得完整视觉」。
- * 阶段五后只剩两片（见 `css/chat.css` 的「迁移进度」）：
- *   - `chat-animations.css`：五个 `@keyframes`（工具类无法表达动画定义）；
- *   - `chat-layout.css`：`.acp-main-root` / `.chat-main-column` / `.chat-interface-*` 的高度链，
- *     类名同时是宿主 `apps/web/src/index.css` 与宿主 `chat-layout.css` 的选择器，需宿主侧同步才可删。
+ * 阶段七（2026-09-28）后只剩一片（见 `css/chat.css` 的「迁移进度」）：
+ *   - `chat-animations.css`：五个 `@keyframes`（工具类无法表达动画定义）。
+ * 原第二片 `chat-layout.css` 已清空删除：`.acp-main-root` / `.chat-main-column` / `.chat-interface-*`
+ * 的 `min-width` / `min-height` / `overflow` 都是扁平声明，已就近取档到 `ACPMain` / `ChatInterface`
+ * 的 `className`，宿主同名规则（`apps/web/src/pages/agent-panel/chat-layout.css`）同批删除。
  * 其余 chat 样式（composer / 命令面板 / 工牌卡 / 会话外壳 / 消息视图 / markdown 排版 /
  * Conversation 滚动按钮 / 划词浮层 / 状态面板 / 工具时间线 / 提示词导航 / 加载指示 / 窄屏适配）
  * 已在阶段一至五迁成组件 `className` 里的工具类；包内也没有「组件自导入」的 chat 样式表了

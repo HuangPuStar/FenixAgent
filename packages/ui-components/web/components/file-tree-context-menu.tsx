@@ -35,8 +35,10 @@ export interface FileTreeDownloadState {
  * 文字色单独留给调用方：危险项需要整项保持危险色（原 `.is-danger` 规则在悬停规则之后，覆盖了悬停文字色）。
  *
  * 字号与树本体同步取 `text-sm`(14px)：菜单是同一组件的组成部分，留在 `text-xs` 会与树里同名的动作项错档。
- * 宿主 `apps/web/src/shell/artifacts-workspace.css` 的 `.file-tree-context-menu button { font-size: 12px }`
- * 未分层、会压过工具类，但它匹配的类名已在迁移中从节点上摘掉（现为 `.file-tree-context-menu-panel`），不会复活。
+ * 宿主 `apps/web/src/shell/artifacts/artifacts-workspace.css` 的 `.file-tree-context-menu button { font-size: 12px }`
+ * 未分层、会压过工具类，但它匹配的类名已在迁移中从节点上摘掉（现为 `.file-tree-context-menu-panel`）；
+ * 该规则亦已随 2026-09-28 的「伪深层」清理删除、该表随后整份退役（同日先归位到
+ * `apps/web/src/pages/agent-panel/artifacts/`），不会复活。
  */
 const MENU_ITEM_CLASS =
   "flex min-h-8 w-full items-center gap-2 rounded-sm px-2.25 py-1.5 text-left text-sm whitespace-nowrap hover:bg-surface-2 focus-visible:bg-surface-2 focus-visible:[outline:2px_solid_color-mix(in_srgb,var(--color-brand)_45%,transparent)] focus-visible:-outline-offset-2 disabled:opacity-[0.55]";
@@ -94,7 +96,7 @@ export function FileTreeContextMenu({
         className={cn(MENU_ITEM_CLASS, "text-text-secondary hover:text-text-primary")}
         onClick={onReference}
       >
-        <MessageSquareQuote aria-hidden />
+        <MessageSquareQuote className="size-3.75 shrink-0" aria-hidden />
         {t("fileTree.contextMenu.reference")}
       </button>
       <button
@@ -103,7 +105,11 @@ export function FileTreeContextMenu({
         disabled={downloading}
         onClick={() => onDownload(state.path, state.isDir)}
       >
-        {downloading ? <Loader2 className="animate-spin" aria-hidden /> : <Download aria-hidden />}
+        {downloading ? (
+          <Loader2 className="size-3.75 shrink-0 animate-spin" aria-hidden />
+        ) : (
+          <Download className="size-3.75 shrink-0" aria-hidden />
+        )}
         {download?.path === state.path
           ? download.error
             ? t("fileTree.retryDownload")
@@ -117,7 +123,7 @@ export function FileTreeContextMenu({
         className={cn(MENU_ITEM_CLASS, "text-text-secondary hover:text-text-primary")}
         onClick={() => onRenameRequest(state.path, name)}
       >
-        <Pencil aria-hidden />
+        <Pencil className="size-3.75 shrink-0" aria-hidden />
         {t("fileTree.contextMenu.rename")}
       </button>
       <button
@@ -125,7 +131,7 @@ export function FileTreeContextMenu({
         className={cn(MENU_ITEM_CLASS, "text-text-secondary hover:text-text-primary")}
         onClick={() => onMoveRequest(state.path)}
       >
-        <Move aria-hidden />
+        <Move className="size-3.75 shrink-0" aria-hidden />
         {t("fileTree.contextMenu.move")}
       </button>
       <button
@@ -133,7 +139,7 @@ export function FileTreeContextMenu({
         className={cn(MENU_ITEM_CLASS, "text-destructive")}
         onClick={() => onDeleteRequest(state.path, name)}
       >
-        <Trash2 aria-hidden />
+        <Trash2 className="size-3.75 shrink-0" aria-hidden />
         {t("fileTree.contextMenu.delete")}
       </button>
       {state.isDir && (
@@ -142,7 +148,7 @@ export function FileTreeContextMenu({
           className={cn(MENU_ITEM_CLASS, "text-text-secondary hover:text-text-primary")}
           onClick={() => onNewFolder(state.path)}
         >
-          <FolderPlus aria-hidden />
+          <FolderPlus className="size-3.75 shrink-0" aria-hidden />
           {t("fileTree.contextMenu.newFolder")}
         </button>
       )}
@@ -152,7 +158,7 @@ export function FileTreeContextMenu({
           className={cn(MENU_ITEM_CLASS, "text-text-secondary hover:text-text-primary")}
           onClick={() => onNewFile(state.path)}
         >
-          <FilePlus2 aria-hidden />
+          <FilePlus2 className="size-3.75 shrink-0" aria-hidden />
           {t("fileTree.newFile")}
         </button>
       )}

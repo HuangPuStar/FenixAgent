@@ -7,16 +7,22 @@
     "@fenix/logger": "workspace:*",
     "@fenix/orchestration": "workspace:*",
     "@fenix/platform-sdk": "workspace:*",
+    "@fenix/ui-components": "workspace:*",
     "@fenix/web-runtime": "workspace:*",
-    "drizzle-orm": "^0.45.2"
+    "ahooks": "^3.9.7",
+    "drizzle-orm": "^0.45.2",
+    "lucide-react": "^1.16.0",
+    "react-resizable-panels": "^4.11.1",
+    "sonner": "^2.0.7"
   },
   "peerDependencies": {
+    "i18next": "^26.2.0",
     "react": "^19.2.6",
-    "react-dom": "^19.2.6"
+    "react-dom": "^19.2.6",
+    "react-i18next": "^17.0.8"
   },
   "devDependencies": {
-    "@fenix/resource-mcp": "workspace:*",
-    "@fenix/ui-components": "workspace:*"
+    "@fenix/resource-mcp": "workspace:*"
   },
   "exports": {
     ".": "./src/index.ts",
@@ -26,6 +32,7 @@
     "./server/schema": "./src/server/schema.ts",
     "./server/testing": "./src/server/testing.ts",
     "./web": "./web/index.ts",
+    "./web/i18n": "./web/i18n/index.ts",
     "./file-ws-handler": "./src/server/transport/file-ws-handler.ts",
     "./file-ws-close-log": "./src/server/transport/file-ws-close-log.ts",
     "./file-ws-payload": "./src/server/transport/file-ws-payload.ts",

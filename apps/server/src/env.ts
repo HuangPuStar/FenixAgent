@@ -61,6 +61,14 @@ const envSchema = databaseConnectionPoolSchema.extend({
     .min(1)
     .refine(isAbsolute, "RCS_APPLICATION_ROOT must be an absolute path")
     .optional(),
+  // 装配 profile 的路径：缺省即应用根下的固定 profile `<RCS_APPLICATION_ROOT>/deploy/assembly/ce.json`
+  // （CE 入口）。部署面用该键选定其它 assembly profile（换产品线、灰度、受部署平台保护的只读挂载文件）。
+  // 同样要求绝对路径：相对路径随启动 cwd 漂移，读到的可能不是部署方以为的那一份。
+  RCS_ASSEMBLY_PROFILE_PATH: z
+    .string()
+    .min(1)
+    .refine(isAbsolute, "RCS_ASSEMBLY_PROFILE_PATH must be an absolute path")
+    .optional(),
   APP_BRAND_NAME: z.string().default("Fenix"),
   APP_LOGO_PATH: z.string().default(""),
 
@@ -112,21 +120,15 @@ const envSchema = databaseConnectionPoolSchema.extend({
     .string()
     .default("false")
     .transform((v) => v === "true"),
-  RCS_CCB_COMMAND: z.string().default("ccb"),
-  RCS_CCB_ARGS: z.string().default("--acp"),
+
+  // ccb 槽位的引擎命令（原 `RCS_CCB_COMMAND` / `RCS_CCB_ARGS`）不在本 schema 声明：它们是 daemon /
+  // 容器侧部署配置——唯一读取点是容器内的 `acp-runtime-cli`，宿主进程内零消费者，声明在这里既不被读取
+  // 又会被误认作宿主生效的开关。键仍保留在 `docker/sandbox-dsh/docker-compose.yml` 与部署文档中。
 
   // ── 可选：Redis 缓存 ──
   RCS_REDIS_URL: z.string().optional(),
   RCS_REDIS_PASSWORD: z.string().optional(),
   RCS_REDIS_CLUSTER: z.string().optional(),
-
-  // ── 可选：YJS Redis 快照持久化（C2 切片：SP-A1 节流 / SP-C1 TTL）──
-  // 类型/默认值/部署文档的真相来源；包内持久层（packages/chat-channel/src/persist/
-  // redis.ts）按同名变量直读（provider 创建于包内 factory 深处，暂无宿主 DI 通道），
-  // 宿主把校验后的值经 provider options 注入后应删除包内直读。非法值由包内回落默认。
-  RCS_YJS_SNAPSHOT_INTERVAL_MS: z.coerce.number().int().positive().default(2000),
-  RCS_YJS_SNAPSHOT_IDLE_MS: z.coerce.number().int().positive().default(500),
-  RCS_YJS_SNAPSHOT_TTL_SECONDS: z.coerce.number().int().positive().default(604800),
 });
 
 export type Env = z.infer<typeof envSchema>;

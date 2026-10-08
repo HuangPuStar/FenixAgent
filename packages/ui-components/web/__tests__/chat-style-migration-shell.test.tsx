@@ -26,7 +26,7 @@ describe("chat 样式迁移：外壳与空状态", () => {
     expect(tokens).toContain("rounded-2xl");
     expect(tokens).toContain("backdrop-blur-lg");
 
-    // 外壳内形态（45px、直角、白底、仅底边分隔线）、暗色覆写与 `@supports` 回退在样式表里。
+    // 外壳内形态（45px、直角、白底、仅底边分隔线）与 `@supports` 回退在样式表里。
     const css = readFileSync(join(CHAT_DIR, "shell", "ChatHeader.css"), "utf8");
     expect(css).toContain(".acp-main-root .chat-header-panel {");
     expect(css).toContain("height: calc(var(--spacing) * 11.25);");
@@ -35,7 +35,8 @@ describe("chat 样式迁移：外壳与空状态", () => {
     expect(css).toContain(".acp-main-root .chat-header-panel:not(.dark *) {");
     expect(css).toContain("background-color: var(--color-white);");
     expect(css).toContain("border-bottom-color: var(--color-gray-100);");
-    expect(css).toContain(".dark .chat-header-panel {");
+    // 源里的暗色覆写已删除且不得回流：`.dark` 在本仓无生产者（`lib/theme.tsx` 只做移除），该规则永不生效。
+    expect(css).not.toContain(".dark .chat-header-panel");
     expect(css).toContain("@supports not ((backdrop-filter: blur(16px)) or (-webkit-backdrop-filter: blur(16px)))");
   });
 

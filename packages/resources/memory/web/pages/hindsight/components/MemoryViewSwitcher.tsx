@@ -34,7 +34,7 @@ export function MemoryViewSwitcher<T extends string>({
         <Button
           key={optionValue}
           variant="ghost"
-          size="sm"
+          size="xs"
           aria-pressed={value === optionValue}
           onClick={() => onValueChange(optionValue)}
           className={cn(

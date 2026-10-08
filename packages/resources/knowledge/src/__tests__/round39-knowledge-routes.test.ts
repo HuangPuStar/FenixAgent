@@ -177,6 +177,8 @@ const originals = {
   updateBase: knowledgeBaseRepo.update,
   deleteBase: knowledgeBaseRepo.delete,
   listBases: knowledgeBaseRepo.listByOrganizationId,
+  listVisible: knowledgeBaseRepo.listVisible,
+  countVisible: knowledgeBaseRepo.countVisible,
   findBySlug: knowledgeBaseRepo.findByOrgAndSlug,
   countBindings: knowledgeBaseRepo.countBindings,
   getResource: knowledgeResourceRepo.getById,
@@ -200,6 +202,8 @@ describe("知识库 Web 路由 round39 业务覆盖", () => {
     knowledgeBaseRepo.update = originals.updateBase;
     knowledgeBaseRepo.delete = originals.deleteBase;
     knowledgeBaseRepo.listByOrganizationId = originals.listBases;
+    knowledgeBaseRepo.listVisible = originals.listVisible;
+    knowledgeBaseRepo.countVisible = originals.countVisible;
     knowledgeBaseRepo.findByOrgAndSlug = originals.findBySlug;
     knowledgeBaseRepo.countBindings = originals.countBindings;
     knowledgeResourceRepo.getById = originals.getResource;
@@ -221,7 +225,8 @@ describe("知识库 Web 路由 round39 业务覆盖", () => {
 
   // 列表应返回当前组织知识库及本地统计信息。
   test("列表聚合资源和绑定数量", async () => {
-    knowledgeBaseRepo.listByOrganizationId = mock(async () => [knowledgeBase()]);
+    knowledgeBaseRepo.listVisible = mock(async () => [knowledgeBase()]);
+    knowledgeBaseRepo.countVisible = mock(async () => 1);
     knowledgeBaseRepo.countBindings = mock(async () => 3);
     knowledgeResourceRepo.countByKnowledgeBase = mock(async () => 7);
 
@@ -236,7 +241,8 @@ describe("知识库 Web 路由 round39 业务覆盖", () => {
 
   // 上游已删除的远端数据集应在列表中显式标记。
   test("列表标记不存在的远端知识库", async () => {
-    knowledgeBaseRepo.listByOrganizationId = mock(async () => [knowledgeBase()]);
+    knowledgeBaseRepo.listVisible = mock(async () => [knowledgeBase()]);
+    knowledgeBaseRepo.countVisible = mock(async () => 1);
     knowledgeBaseRepo.countBindings = mock(async () => 0);
     knowledgeResourceRepo.countByKnowledgeBase = mock(async () => 0);
 
@@ -374,6 +380,7 @@ describe("知识库 Web 路由 round39 业务覆盖", () => {
 
   // URL 类型资源预览应重定向到原始来源，不读取本地文件。
   test("文件预览重定向 URL 资源", async () => {
+    knowledgeBaseRepo.getById = mock(async () => knowledgeBase());
     knowledgeResourceRepo.getById = mock(async () =>
       resource({ sourceType: "url", sourcePath: "https://example.test/manual" }),
     );
@@ -418,6 +425,19 @@ describe("知识库 Web 路由 round39 业务覆盖", () => {
 
     expect(response.status).toBe(404);
     expect((await response.json()) as unknown).toMatchObject({ error: { code: "NOT_FOUND" } });
+  });
+
+  // 跨组织检索必须在调用上游前与不存在的知识库同样返回 404。
+  test("搜索拒绝跨组织知识库", async () => {
+    const provider = new KnowledgeRouteProvider();
+    setKnowledgeProviderForTesting(provider);
+    knowledgeBaseRepo.getById = mock(async () => knowledgeBase({ organizationId: "org-foreign" }));
+
+    const response = await jsonRequest("/knowledgeBases/kb-1/search", "POST", { query: "安装说明" });
+
+    expect(response.status).toBe(404);
+    expect((await response.json()) as unknown).toMatchObject({ error: { code: "NOT_FOUND" } });
+    expect(provider.searchInput).toBeNull();
   });
 
   // 创建表单应在单个上游目录失败时保留其他可用选项。

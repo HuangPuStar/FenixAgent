@@ -1,7 +1,8 @@
-import { copyTextToClipboard } from "@fenix/ui-components/lib/clipboard";
+import { copyDialogTextToClipboard } from "@fenix/ui-components/lib/clipboard";
 import { Button } from "@fenix/ui-components/ui/button";
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@fenix/ui-components/ui/dialog";
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@fenix/ui-components/ui/dialog";
 import { Copy } from "lucide-react";
+import { useRef } from "react";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
 import { MODELS_NS } from "../../../../i18n/namespace";
@@ -15,6 +16,7 @@ interface AlgorithmDetailDialogProps {
 
 export function AlgorithmDetailDialog({ algorithm, open, onClose }: AlgorithmDetailDialogProps) {
   const { t } = useTranslation(MODELS_NS);
+  const codeRef = useRef<HTMLElement>(null);
 
   return (
     <Dialog open={open} onOpenChange={(v) => !v && onClose()}>
@@ -33,13 +35,13 @@ export function AlgorithmDetailDialog({ algorithm, open, onClose }: AlgorithmDet
               <DialogTitle className="text-base font-bold">{algorithm.name}</DialogTitle>
               <p className="text-xs text-text-secondary mt-0.5">{algorithm.categories.join(" · ")}</p>
             </div>
-            {/* 复制反馈走 toast（与算法卡片的复制按钮共用 @fenix/ui-components/lib/clipboard）：按钮文案不再为 2 秒回落切成「已复制」。 */}
+            {/* 详情弹窗在 HTTP 下复制框内 code，避免隐藏 textarea 被焦点陷阱打断。 */}
             <Button
               variant="outline"
               size="sm"
               className="gap-1.5 h-8 text-xs flex-shrink-0"
               onClick={() =>
-                void copyTextToClipboard(algorithm.code).then((ok) =>
+                void copyDialogTextToClipboard(algorithm.code, codeRef.current).then((ok) =>
                   ok ? toast.success(t("algorithms.copied")) : toast.error(t("algorithms.copyFailed")),
                 )
               }
@@ -55,7 +57,9 @@ export function AlgorithmDetailDialog({ algorithm, open, onClose }: AlgorithmDet
           {/* 左栏 */}
           <div className="flex-1 min-w-0">
             <h4 className="text-xs font-bold text-text-primary mb-1.5">{t("algorithms.introHeading")}</h4>
-            <p className="text-xs text-text-secondary leading-relaxed mb-4">{algorithm.description}</p>
+            <DialogDescription className="text-xs text-text-secondary leading-relaxed mb-4">
+              {algorithm.description}
+            </DialogDescription>
 
             <h4 className="text-xs font-bold text-text-primary mb-2">{t("algorithms.paramsHeading")}</h4>
             <table className="w-full text-xs">
@@ -99,7 +103,7 @@ export function AlgorithmDetailDialog({ algorithm, open, onClose }: AlgorithmDet
               <span className="text-3xs text-text-muted font-semibold tracking-wider">PYTHON</span>
             </div>
             <pre className="bg-slate-900 text-slate-200 rounded-lg p-4 text-xs leading-relaxed font-mono overflow-x-auto">
-              <code>{algorithm.code}</code>
+              <code ref={codeRef}>{algorithm.code}</code>
             </pre>
           </div>
         </div>

@@ -44,15 +44,51 @@ const PKG_NAME = (JSON.parse(readFileSync(join(PKG_ROOT, "package.json"), "utf8"
  * 子路径传递进入的纯浏览器库。workspace 包一律不收录——它们必须被递归进入，否则 `@fenix/x/server`
  * 又能穿透（见「白名单不收录 workspace 包」）。
  *
- * **本表当前为空是实测结论，不是遗漏**：入口图只有 3 个文件
- * （`web/index.ts` → `web/api/registry.ts` → `@fenix/web-runtime/web/api/request.ts`），
- * 全部是包内与 workspace 内代码，没有任何裸包说明符。空表同时是最严格的形态——一旦新增外部依赖，
- * 「包外运行时依赖在白名单内」会立即变红，强制做一次浏览器可用性评审后逐条录入。
- * 文件域 UI 组件（文件树 / 文件选择器 / 文件图标）随 §1.6 迁入后，本表按当时的传递依赖补录
- * （参考 sandbox 样本：react / lucide-react / class-variance-authority / clsx / tailwind-merge
- * 这类由 `@fenix/ui-components` 子路径带入的浏览器库）。
+ * 2026-09-24（台账 D2）文件域客户端与上传 hook 迁入后，图里首次出现裸包说明符：两条都是宿主注入的
+ * peerDependency（React 运行时与 i18n 绑定），不含 node 内建。**空表状态到此结束**——新增外部依赖
+ * 仍会立即变红，强制做一次浏览器可用性评审后逐条录入。
+ *
+ * 2026-09-24（D2 第二批）文件树容器 / tab 栏 / 文件工作区迁入，图里随之出现 `@fenix/ui-components`
+ * 子路径组件的传递依赖（该包 `web/` 不重新导出这些库，只能停在图外并逐条评审）。收录判据仍是
+ * 「无 node 依赖、可在浏览器执行」：无样式原语（radix）、类名工具（clsx / tailwind-merge /
+ * class-variance-authority）、图标与浏览期渲染库（lucide-react / react-file-icon / react-arborist /
+ * react-resizable-panels / @open-file-viewer）都已在本包消费方 `@fenix/ui-components` 的生产路径里
+ * 被浏览器加载（面板、文件树与预览 tab 本就在同一 chunk），此处只是把既成事实登记下来。
+ *
+ * 2026-09-25 批量评审（一条裁定，四个包共用）：`machine/web/index.ts` 把文件工作区（`FileTreeTab` /
+ * `artifacts-files-workspace`）随包根出口转出后，「文件域归位」的这同一批 `@fenix/ui-components` 传递
+ * 依赖同时出现在 `@fenix/resource-task` / `@fenix/resource-prod-view` / `@fenix/agent-config` 的浏览器图里
+ * （三家的逐条登记见各自守卫的 2026-09-25 段落，措辞统一指向本条）。
+ * **收录范围**：本表「经 `@fenix/ui-components` 子路径传递进入」一节中由文件域子树引入的条目——
+ * `react-arborist`、`react-resizable-panels`、`@open-file-viewer/core`、`@open-file-viewer/react`，
+ * 以及消费方自身声明的 React 运行时。**结论**：逐条核对为浏览器安全库——React 运行时 / Radix 无样式
+ * 原语 / 纯函数类名工具 / 文件图标 / 虚拟化树 / 分栏 / 文件预览内核，均不含 node 内建或服务端实现。
+ * **依据**：这批放行只作用于「裸包说明符是否可以停在图外」这一条断言，`node:*` 与 `@server/*` 的断言
+ * 不变；且本文件的负例注入用例仍在跑（注入真实 `./server` 出口后必须递归进入服务端实现并命中 node
+ * 内建），穿透检测能力未被放行削弱。
  */
-const BROWSER_SAFE_EXTERNAL: ReadonlyMap<string, string> = new Map([]);
+const BROWSER_SAFE_EXTERNAL: ReadonlyMap<string, string> = new Map([
+  ["react", "React 运行时（本包 peerDependency，宿主注入）"],
+  ["react-dom", "React DOM 运行时（本包 peerDependency；ui-components 的菜单/门户组件传递依赖）"],
+  ["react-i18next", "React i18n 绑定（本包 peerDependency；文件上传 hook 与文件树容器取本包命名空间文案）"],
+  // 本包直接依赖的普通浏览器库（可独立打进 bundle，见 package.json 的 dependencies）
+  ["ahooks", "React hooks 工具库（文件树与 Files 编排 hook 的请求状态），纯浏览器"],
+  ["lucide-react", "SVG 图标库（本包 tab 栏与 ui-components 组件共用），无 node 依赖"],
+  ["sonner", "Toast 渲染（文件操作的失败反馈），宿主亦直接依赖"],
+  // 经 @fenix/ui-components 子路径传递进入的浏览器库
+  ["@radix-ui/react-slot", "无样式原语（ui/button 传递依赖）"],
+  ["@radix-ui/react-dialog", "无样式原语（file-tree-input-dialog / ui/dialog 传递依赖）"],
+  ["@radix-ui/react-alert-dialog", "无样式原语（ui/alert-dialog 传递依赖）"],
+  ["@radix-ui/react-popover", "无样式原语（ui/popover，文件 tab 的折叠与变更列表）"],
+  ["class-variance-authority", "类名变体工具（ui/* 传递依赖），纯函数"],
+  ["clsx", "类名拼接工具（ui-components/lib/cn 传递依赖），纯函数"],
+  ["tailwind-merge", "Tailwind 类名去重（ui-components/lib/cn 传递依赖），纯函数"],
+  ["react-file-icon", "文件类型图标（components/file-icon-helper，tab 与列表都用它）"],
+  ["react-arborist", "虚拟化树（components/file-tree-arborist，文件树的渲染内核）"],
+  ["react-resizable-panels", "可拖拽分栏（ui/resizable，文件树 / 预览分栏；本包同时以类型导入其句柄类型）"],
+  ["@open-file-viewer/core", "预览内核（components/preview/* 的渲染器；随样式表一起被浏览器加载）"],
+  ["@open-file-viewer/react", "预览 React 绑定（components/preview/FileViewerPreview 的生产路径）"],
+]);
 
 const graph = walkValueGraph(WEB_ENTRY);
 /** 违规定位用仓库根相对路径：图现在跨包（web-runtime），包内相对路径会产生 `../../` 噪音。 */
@@ -72,10 +108,24 @@ const externals = graph.references.filter((ref) => ref.kind === "external");
 describe("machine web 入口浏览器可达面", () => {
   // 遍历有效性自检：图若解析失败会退化为「只有入口文件」，后续断言全部假绿。
   test("遍历有效性自检：包内模块与跨包 exports 目标都在到达集合中", () => {
-    for (const expected of ["index.ts", "api/registry.ts"]) {
+    for (const expected of [
+      "index.ts",
+      "api/registry.ts",
+      "api/fs.ts",
+      "api/file-events.ts",
+      "hooks/use-file-uploads.ts",
+      "hooks/use-file-tree-events.ts",
+      "hooks/use-artifacts-files.ts",
+      "hooks/use-drag-counter.ts",
+      "components/FileTreeTab.tsx",
+      "components/FileTabsBar.tsx",
+      "components/artifacts-files-workspace.tsx",
+      "lib/random-uuid.ts",
+      "lib/normalize-to-user-path.ts",
+    ]) {
       expect(reachedWebFiles).toContain(expected);
     }
-    expect(reachedWebFiles.size).toBeGreaterThanOrEqual(2);
+    expect(reachedWebFiles.size).toBeGreaterThanOrEqual(13);
 
     // 跨包递归的有效性：只钉一条稳定路径——web-runtime 的 request 客户端。
     // 少了这一段，「@fenix/* 被当成外部依赖放过」会以「包内断言全绿」的形式漏网。
@@ -186,23 +236,45 @@ describe("machine web 入口浏览器可达面", () => {
   });
 
   // 入口导出面：跨包消费方（agent-config 编辑器直连；宿主 route adapter 为 identity 组织机器页注入）
-  // 取用的是 registryApi 与它的类型，导出面缩水会让消费方退回深层路径。
-  test("入口从 api/registry 转出 registryApi 与记录类型", () => {
+  // 取用的是 registryApi 与它的类型；2026-09-24 起宿主文件域消费方取用的是 fs 客户端、上传 hook、
+  // 事件通道，以及 D2 第二批迁入的文件工作区与 Files 编排 hook（宿主 `ArtifactsPanel` 经本入口装配）。
+  // 导出面缩水会让消费方退回深层路径（那些路径不在 exports 里）。
+  test("入口转出 registryApi、文件域客户端、上传 hook 与文件工作区", () => {
     const source = stripComments(readFileSync(WEB_ENTRY, "utf8"));
     expect(source).toContain('from "./api/registry"');
+    expect(source).toContain('from "./api/fs"');
+    expect(source).toContain('from "./api/file-events"');
+    expect(source).toContain('from "./hooks/use-file-uploads"');
+    expect(source).toContain('from "./hooks/use-artifacts-files"');
+    expect(source).toContain('from "./components/artifacts-files-workspace"');
+    // `use-drag-counter` 的两个调用点都在包内，按「没有第二个消费者就不导出」不转出。
+    expect(source).not.toContain('from "./hooks/use-drag-counter"');
     expect(source).toMatch(/export\s+\*/);
     const registrySource = stripComments(readFileSync(join(WEB_ROOT, "api", "registry.ts"), "utf8"));
     for (const name of ["registryApi", "MachineRecord", "RegistryEvent", "MachineDetail"]) {
       expect(registrySource).toContain(name);
     }
+    const fsSource = stripComments(readFileSync(join(WEB_ROOT, "api", "fs.ts"), "utf8"));
+    for (const name of ["fsApi", "uploadFiles", "uploadChatFiles", "buildPreviewSourceUrl", "readPreviewSource"]) {
+      expect(fsSource).toContain(name);
+    }
+    const fileEventsSource = stripComments(readFileSync(join(WEB_ROOT, "api", "file-events.ts"), "utf8"));
+    for (const name of ["buildFileEventsUrl", "openFileEventsConnection", "FileEventsFrame"]) {
+      expect(fileEventsSource).toContain(name);
+    }
   });
 
-  // i18n 归属（计划 §4：键的最终所在地 = 包的 owner）：本包当前没有任何自持文案键，因此**不应**有
-  // i18n 目录或入口转出——空壳命名空间会让宿主登记一份没有字典的 ns，读键时整片回退成 key 回显。
-  // 「无自持键」是实测结论：宿主 NS 表无 machine 项、全仓无 machine 命名空间字典，
-  // 本包未迁入的页面（注册表页、文件域）读的是宿主 components / agentPanel 命名空间，随实现一起迁出。
-  test("入口不转出 i18n 命名空间（本包无自持键）", () => {
-    expect(existsSync(join(WEB_ROOT, "i18n"))).toBe(false);
+  // i18n 归属（计划 §4：键的最终所在地 = 包的 owner）：2026-09-24（台账 D2）上传 hook 迁入，本包自此
+  // 有自持文案键，字典与常量分两个模块（`i18n/namespace.ts` 只持常量、`i18n/index.ts` 持资源）。
+  // 字典**不**经 `web/index.ts` 转出——宿主 i18n 引导在启动期求值，根入口会把整个 web 面拉进首屏；
+  // 宿主按 §9.2 从 `exports["./web/i18n"]` 子路径登记。
+  test("i18n 经 ./web/i18n 子路径公开，不经根入口转出", () => {
+    expect(existsSync(join(WEB_ROOT, "i18n", "namespace.ts"))).toBe(true);
+    expect(existsSync(join(WEB_ROOT, "i18n", "index.ts"))).toBe(true);
+    const pkg = JSON.parse(readFileSync(join(PKG_ROOT, "package.json"), "utf8")) as {
+      exports?: Record<string, string>;
+    };
+    expect(pkg.exports?.["./web/i18n"]).toBe("./web/i18n/index.ts");
     const source = stripComments(readFileSync(WEB_ENTRY, "utf8"));
     expect(source).not.toMatch(/(?:from|import\s*\()\s*["'][^"']*i18n/);
   });

@@ -11,8 +11,9 @@ import { VALID_MCP_TYPES } from "./config/mcp-config";
  * 只承载领域规则（资源键解析、类型归一、工具缓存的生命周期）与持久化编排；不接收 actor、不做任何
  * 权限判断——授权在 Facade 完成，受控读取把不透明的 `access` 条件原样交给仓储下推。
  *
- * 这里的每个方法都假定调用方已完成授权：Facade 是唯一的合法调用方，系统路径（`upsertSystemServer`）
- * 由宿主在系统初始化中调用，因此单独命名并单独注释，避免与受控创建路径混用。
+ * 这里的每个方法都假定调用方已完成授权：受控方法由 Facade 调用；无授权读取（`findRowUnscoped` /
+ * `listRowsByIdsUnscoped`）只由启动参数装配（launch spec 构建）调用，命名里带 `Unscoped` 以便评审时
+ * 一眼看见绕过授权谓词的调用点。
  */
 
 /** 资源键：`<organizationId>/<resourceId>`，跨组织可见资源的稳定定位方式。 */
@@ -78,14 +79,6 @@ export interface McpServerService {
    * 无授权按 ID 批量读取（launch spec 构建）；缺失的 ID 不出现在结果里，比对由调用方完成。
    */
   listRowsByIdsUnscoped(resourceIds: readonly string[]): Promise<readonly McpServerRow[]>;
-  /** 系统托管资源的幂等写入（如 Hindsight MCP）；不做授权，只能由系统路径调用。 */
-  upsertSystemServer(input: {
-    name: string;
-    type: string;
-    config: McpServerConfig;
-    organizationId: string;
-    ownerUserId: string;
-  }): Promise<string>;
   update(input: { resourceId: string; config: McpServerConfig }): Promise<boolean>;
   setEnabled(input: { resourceId: string; enabled: boolean }): Promise<boolean>;
   /** 删除资源及其缓存的 tools。 */
@@ -146,12 +139,6 @@ export function createMcpServerService(repository: McpServerRepository): McpServ
 
     async listRowsByIdsUnscoped(resourceIds) {
       return repository.listByIdsUnscoped({ resourceIds });
-    },
-
-    async upsertSystemServer(input) {
-      const id = await repository.upsertByOrgAndName(input);
-      if (!id) throw new Error(`系统托管 MCP server '${input.name}' 写入失败`);
-      return id;
     },
 
     async update(input) {

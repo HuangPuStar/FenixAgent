@@ -9,6 +9,10 @@
  * 不属于公共面，前者是实现细节，后者只是同组别名。新增或删除模块时必须同步本文件，否则深链与整包导入会出现能力差异。
  */
 
+// agent-tree —— 侧栏智能体树：只有视图与纯派生，取数与领域操作（进入 / 重启 / 停止 / 删除）在 owner 包
+export * from "./agent-tree/agent-tree";
+export * from "./agent-tree/agent-tree-model";
+
 // chat —— Chat UI 体系（lib 纯函数 + narrators 叙述表 + view / timeline / composer / panels / shell 组件层；
 // primitives 为原 ai-elements 组，2026-09-18 改名迁入）
 export * from "./chat/composer/ChatComposer";

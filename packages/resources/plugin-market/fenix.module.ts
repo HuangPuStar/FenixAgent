@@ -44,6 +44,11 @@ import { pluginPackageResource } from "./src/server/access/plugin-package-resour
  * 具体到本模块：`PLUGIN_MARKET_REGISTRY_URL` 无默认值、未配置即 undefined，此时**只有发布与预览路径**
  * 以 `REGISTRY_NOT_CONFIGURED` 失败，浏览既有快照完全不读私有源，不受影响。
  *
+ * 声明 `dependencyServices`（A2）：私有源的编排入口是 `docker/npm-registry/docker-compose.yml`，
+ * 本仓 deploy/compose 不重复定义（`orchestration: "separate"`）。声明的价值在部署侧可见性——启用了本模块
+ * 的 profile 至少要能看到「市场依赖一个私有源、地址取哪个键、探针打哪里」，而不是等发布动作才暴露。
+ * `required: false` 与上面 env 口径一致：源不可达只让发布 / 预览失败，浏览既有快照照常。
+ *
  * 声明 `contributions`（两条，对应两条凭据族）：`/web/config/plugin-market/*`（浏览面，会话守卫）挂
  * `slot: "web-config"`，`/api/system/plugin-market/*`（管理面：列表、详情、预览、发布、下架、恢复，系统 API Key
  * 守卫）挂 `slot: "api"`。路由实例由本模块以惰性构造函数 `(host) => import("./src/server/assembly").then(...)`
@@ -132,6 +137,25 @@ export const moduleManifest = {
     },
   ],
   accessControlBindings: [pluginPackageResource.storage],
+  // 私有源的编排归属不在本仓 deploy/compose：`docker/npm-registry/docker-compose.yml` 是它自己的入口
+  // （同一份编排里的 Verdaccio 启停与卷声明都在那里），在这里再定义一遍就是第二份真相。市场也可以指向
+  // 外部私有源——地址键 `PLUGIN_MARKET_REGISTRY_URL` 就是部署方替换该入口的唯一开关。
+  dependencyServices: [
+    {
+      id: "npm-registry",
+      required: false,
+      orchestration: "separate",
+      envKeys: ["PLUGIN_MARKET_REGISTRY_URL", "PLUGIN_MARKET_REGISTRY_TOKEN"],
+      composeFile: "docker/npm-registry/docker-compose.yml",
+      // 探针路径取该编排自己的 healthcheck 端点（`/-/ping`），不另发明一条：编排判定健康与部署前自检
+      // 必须看同一处，否则会出现「自检通过、容器 unhealthy」的分裂口径。
+      healthCheck: { kind: "http", addressKey: "PLUGIN_MARKET_REGISTRY_URL", path: "/-/ping" },
+      description:
+        "npm 私有源（本仓提供的 Verdaccio 编排在 docker/npm-registry/docker-compose.yml），市场 packument " +
+        "元数据的来源。未配置 PLUGIN_MARKET_REGISTRY_URL 时只有发布与预览路径以 REGISTRY_NOT_CONFIGURED " +
+        "失败，浏览已发布的插件走本地快照，不受影响。",
+    },
+  ],
   contributions: [
     {
       id: "plugin-market.web-config",

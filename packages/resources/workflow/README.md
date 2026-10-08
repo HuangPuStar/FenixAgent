@@ -1,6 +1,6 @@
 # @fenix/resource-workflow
 
-工作流定义、版本、运行与触发的 owner：YAML 从草稿到发布、DAG 执行、SSE 事件流、Webhook 触发的服务端规则都收敛在本包；控制台画布与运行面板也由本包的浏览器出口交付。
+工作流定义、版本、运行与触发的 owner：YAML 从草稿到发布、DAG 执行、SSE 事件流、Webhook 触发的服务端规则都收敛在本包。**只有服务端**：控制台画布已改由 `@fenix/resource-workflow-v2`（工作流画布）承载，本包浏览器出口 `exports["./web"]` 与 `web/**` 已于 2026-09-29 删除（见「边界外的已知项」末条）。
 
 ## 职责
 
@@ -12,7 +12,7 @@
 - **触发与 Webhook**：`services/workflow-trigger.ts` 管理 `workflow_trigger`，对外只暴露 masked hash；`handleWebhookRequest` 供宿主 `POST /hooks/:publicHash` 调用，异步触发后立即 200。
 - **自定义节点**：`custom-tools.ts` 扫描模块配置的 `toolsDir`（缺省 `<cwd>/tools`），实例化 `CustomNode` 子类注册进 registry；目录缺失或加载失败降级为空 registry，不阻塞启动。
 - **HTTP 交付物**：会话守卫保护的 `/web/*` 控制台路由（宿主挂载在 `/web` 前缀下）：`GET|POST|PUT|PATCH|DELETE /workflow-defs*`、`GET|POST /workflow-runs*`、`POST /workflow-engine`、`GET /workflow/:workflowId/events`（SSE）、`GET /workflow-custom-tools`，以及 `/workflow-ui` 静态代理；`POST /api/workflows/:workflowId/execute` 是对外 API。
-- **浏览器侧**：`web/index.ts` 是浏览器出口（`exports["./web"]`），导出三个 API client（`workflowDefApi` / `workflowEngineApi` / `customToolsApi`）、SSE 连接函数、`WorkflowList` / `WorkflowRuns` / `WorkflowVersions` / `WorkflowBreadcrumb` 与画布纯逻辑（布局、预设、事件格式化），另经 `@fenix/resource-workflow/web/i18n` 交付 `workflowResources` / `WORKFLOW_NS`；页面与组件在 `web/pages/workflow/**`，事件钩子在 `web/lib/use-workflow-events.ts`。
+- **浏览器侧（2026-09-29 删除）**：`web/**` 与 `exports["./web"]` 已整体移除，本包不再发布任何浏览器面。原先的出口导出三个 API client（`workflowDefApi` / `workflowEngineApi` / `customToolsApi`）、SSE 连接函数、`WorkflowList` / `WorkflowRuns` / `WorkflowVersions` / `WorkflowBreadcrumb` 与画布纯逻辑；控制台现由 `@fenix/resource-workflow-v2` 接管（见 `docs/arch/25-workflow-v2.md`）。**不得**以「补齐客户端」为由重建——上面那批 `/web/*` 端点仍可用，但已无我方面向它们的浏览器消费方。
 - **模块组合根**：`src/module.ts` 的 `createWorkflowModule()` 返回进程级单例（`engines` / `customTools`），`fenix.module.ts` 是它的惰性描述符。
 
 ## 依赖边界
@@ -20,8 +20,8 @@
 本包属 `resources` 类别。依赖矩阵（`scripts/lib/architecture-boundary-rules.ts`）禁止 `resources → platform-impl`：
 
 - **不得**导入 `@fenix/identity/*` 或 `@fenix/access-control/*`；需要的身份数据只能经 `@fenix/platform-sdk` 的窄契约取得。
-- 其它包只经公开出口引用（`@fenix/*` 或 `@fenix/*/<公开子路径>`），零 `@fenix/*/src/**`。工作流编辑器经 `@fenix/agent-runtime/web/api/environments` 构建 Agent 节点选项，不依赖 agent-config 浏览器入口，也不注入宿主聊天面板。
-- 浏览器面另有 `@fenix/ui-components/*`（UI 基础组件与 `ConfirmDialog`）与 `@fenix/web-runtime/*`（`api/request`、chat 上下文队列）；这些子路径是 §6.5 的共享模块归属裁定，不是包的内部路径。
+- 其它包只经公开出口引用（`@fenix/*` 或 `@fenix/*/<公开子路径>`），零 `@fenix/*/src/**`。`web/**` 删除后本包不再有浏览器依赖，`@fenix/agent-runtime` 的浏览器边（原经 `web/api/environments` 构建 Agent 节点选项）随之消失，服务端仍直接依赖其 runtime 能力。
+- **（历史）** 浏览器面曾另有 `@fenix/ui-components/*`（UI 基础组件与 `ConfirmDialog`）与 `@fenix/web-runtime/*`（`api/request`、chat 上下文队列）；`web/**` 删除时这两个依赖与 `@xyflow/react` / `ahooks` / `dagre` / `js-yaml` / `lucide-react` / `sonner` / `@fenix/agent-config` 一并从 `package.json` 移除，`peerDependencies` 块随之清空删除。
 - `apps/server` 是唯一合法装配者（挂载路由、注入守卫、初始化模块配置与 DB）。宿主对 workflow 的反向装配边登记在架构台账，owner 1.5。
 
 ## 守卫由宿主注入
@@ -74,3 +74,6 @@ const apiWorkflows = createApiWorkflowRoutes({ authGuardPlugin });
 - **测试入口必须在仓库根**：验收命令是仓库根的 `bun test packages/resources/workflow`（39 个文件 699 用例全绿）。直接 `cd packages/resources/workflow && bun test` 会缺仓库根的 preload（`bunfig.toml` 只从 cwd 读取，`bun test --preload ../../../apps/server/src/test-utils/setup-{globals,mocks}.ts` 可复现全绿），当前有 3 个用例依赖该 preload——沙盒黄金样本同样是 3 例，属既有形态而非本包缺陷。
 - **执行入口有两个**：`/web/workflow-runs`（RESTful）与 `/web/workflow-engine`（action 分发，文件注释自述为向后兼容）。保留哪些、何时收敛由宿主与协议 owner 裁定，本任务不删。
 - **`/workflow-ui` 与包内页面不共用代码**：前者只是转发到 `acpx-g` 的静态代理，后者是包内 React 页面；目标形态由 §1.6 裁定。
+- **控制台前端已整体删除（2026-09-29，2F 批次）**：`web/**`（100 个文件，含 `index.ts` / `contribution.ts` / `i18n` / `pages/**` / `api/**` / `lib/**` / `__tests__/**`）、`package.json` 的 `exports["./web"]` 等三项出口、`fenix.module.ts` 的 `web` 块、`tsconfig.json` 的 `web/**` include 同批移除；宿主侧删 `apps/web/src/routes/agent/_panel/workflow_.$id.versions.tsx` 与 `apps/web/src/hooks/use-open-workflow-editor.ts`，`workflow.tsx` / `workflow_.$id.edit.tsx` 改为渲染 `@fenix/resource-workflow-v2/web`。`deploy/assembly/ce.json` 的 **`web` 列表仍写 `"workflow"`**——那是 workflow-v2 的 `web.id`（导航项 id 即路由目标 `/agent/workflow`），不是本包被重新启用；本包的 `resources` 条目也保留，因为上面那批服务端端点仍在装配面上。前端删除不改变任何服务端行为，`/workflow-ui` 静态代理与全部 `/web/*` 端点照旧。详见 [`docs/arch/25-workflow-v2.md`](../../../docs/arch/25-workflow-v2.md)。
+
+  连带失效的历史段落（保留原文，仅在此标注）：上面「宿主残留副本」一条中「编辑器经 `web/index.ts` 发布」「`web/__tests__/web-location-write-guard.test.ts`」与「lint 错误已清零」一条所指的 `web/pages/**` 均已随目录删除；「文本口径」命令里的 `web`、`web/**` 参数也不再可扫描。

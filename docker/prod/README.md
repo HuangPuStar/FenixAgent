@@ -13,6 +13,8 @@ cp docker/prod/.env.example docker/prod/.env
 docker compose --env-file docker/prod/.env -f docker/prod/docker-compose.yml up -d
 ```
 
+`.env.example` 是生成物（真相来源为 `deploy/env/rcs.example`，由 `bun run scripts/generate-env-example.ts` 产出）：要改模板内容，改生成器或声明处后重新生成，直接手改会被 `precheck` 的 `env-example` 步骤判定为漂移。
+
 主服务启动后，可通过 `docker compose --env-file docker/prod/.env -f docker/prod/docker-compose.yml ps` 查看状态。
 
 ## 可选部署

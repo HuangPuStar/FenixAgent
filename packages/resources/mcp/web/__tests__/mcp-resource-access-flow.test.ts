@@ -1,9 +1,10 @@
-import { beforeEach, describe, expect, mock, test } from "bun:test";
+import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
 import type { McpResourceLike } from "../lib/mcp-resource-access";
 import {
   canManageMcpSharing,
   canWriteMcp,
   filterWritableMcps,
+  getMcpCatalogName,
   getMcpDisplayName,
   getMcpKey,
   getMcpLookupKey,
@@ -37,7 +38,12 @@ function externalMcp(overrides: Partial<McpResourceLike> = {}): McpResourceLike 
   };
 }
 
+// `globalThis.fetch` 是进程级全局且 Bun 的测试文件共享同一进程：装桩后必须还原，否则其后运行的服务端
+// 用例（如 workflow-v2 对假上游发真实请求）会收到这里的桩响应，表现为「单跑通过、全量失败」。
+let originalFetch: typeof globalThis.fetch;
+
 beforeEach(() => {
+  originalFetch = globalThis.fetch;
   globalThis.fetch = mock(() =>
     Promise.resolve(
       new Response(JSON.stringify({ success: true, data: { name: "shared" } }), {
@@ -46,6 +52,10 @@ beforeEach(() => {
       }),
     ),
   ) as unknown as typeof fetch;
+});
+
+afterEach(() => {
+  globalThis.fetch = originalFetch;
 });
 
 describe("mcp resource access frontend flow", () => {
@@ -116,6 +126,24 @@ describe("mcp resource access frontend flow", () => {
     expect(getMcpDisplayName(internalMcp())).toBe("Current Team/shared");
     expect(getMcpDisplayName(externalMcp())).toBe("Source Team/shared");
     expect(getMcpDisplayName({ name: "shared" })).toBe("shared");
+  });
+
+  // 目录条目的标题只取资源名：本组织资源**不**带本组织名前缀（截图里 `Personal1/fi…` 的成因），
+  // 归属组织由条目右侧的组织角标单独展示，拼进标题等于同一个组织名在同一行出现两次并挤掉标题列宽度。
+  test("目录标题不带本组织名前缀", () => {
+    expect(getMcpCatalogName(internalMcp())).toBe("shared");
+    expect(getMcpCatalogName({ name: "shared" })).toBe("shared");
+  });
+
+  // 跨组织资源同理：目录标题仍只取资源名，区分靠来源角标与跨组织键，不靠标题里的前缀。
+  test("跨组织资源的目录标题仍只取资源名", () => {
+    const external = externalMcp();
+
+    expect(getMcpCatalogName(external)).toBe("shared");
+    expect(getMcpResourceBadgeKey(external, ACTIVE_ORG_ID)).toBe("resource.external");
+    expect(getMcpKey(external)).toBe("org-source/mcp-external");
+    // 完整标签（无独立归属位的上下文用）保持不变，两条口径各司其职。
+    expect(getMcpDisplayName(external)).toBe("Source Team/shared");
   });
 
   // 内部公开开关通过 update 方法发送 config 字段（PUT + query name + body: { config }）。

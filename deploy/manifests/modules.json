@@ -1,0 +1,325 @@
+{
+  "generatedBy": "scripts/release.ts",
+  "modules": [
+    {
+      "capabilities": [
+        "platform.access-control"
+      ],
+      "dependencyServices": [],
+      "dependsOn": [
+        "identity"
+      ],
+      "id": "access-control",
+      "kind": "access-control",
+      "manifest": "packages/platform/access-control/fenix.module.ts",
+      "package": "@fenix/access-control"
+    },
+    {
+      "capabilities": [
+        "resource.agent-config"
+      ],
+      "dependencyServices": [],
+      "dependsOn": [
+        "knowledge",
+        "mcp",
+        "memory",
+        "skill"
+      ],
+      "id": "agent-config",
+      "kind": "resource",
+      "manifest": "packages/resources/agent-config/fenix.module.ts",
+      "package": "@fenix/agent-config"
+    },
+    {
+      "capabilities": [
+        "runtime.agent"
+      ],
+      "dependencyServices": [],
+      "dependsOn": [],
+      "id": "agent-runtime",
+      "kind": "agent-runtime",
+      "manifest": "packages/agent-runtime/fenix.module.ts",
+      "package": "@fenix/agent-runtime"
+    },
+    {
+      "capabilities": [
+        "resource.channel"
+      ],
+      "dependencyServices": [],
+      "dependsOn": [],
+      "id": "channel",
+      "kind": "resource",
+      "manifest": "packages/resources/channel/fenix.module.ts",
+      "package": "@fenix/resource-channel"
+    },
+    {
+      "capabilities": [
+        "web.shell.default"
+      ],
+      "dependencyServices": [],
+      "dependsOn": [],
+      "id": "default",
+      "kind": "web-shell",
+      "manifest": "apps/web/fenix.module.ts",
+      "package": "@fenix/web-app"
+    },
+    {
+      "capabilities": [
+        "platform.identity"
+      ],
+      "dependencyServices": [],
+      "dependsOn": [],
+      "id": "identity",
+      "kind": "identity",
+      "manifest": "packages/platform/identity/fenix.module.ts",
+      "package": "@fenix/identity"
+    },
+    {
+      "capabilities": [
+        "resource.knowledge"
+      ],
+      "dependencyServices": [
+        {
+          "healthCheck": {
+            "addressKey": "RAGFLOW_API_URL",
+            "kind": "http",
+            "path": "/api/v1/system/healthz"
+          },
+          "id": "ragflow",
+          "orchestration": "separate",
+          "required": false,
+          "composeFile": "docker/ragflow/docker-compose.yml",
+          "envKeys": [
+            "RAGFLOW_API_URL",
+            "RAGFLOW_API_KEY"
+          ]
+        },
+        {
+          "healthCheck": {
+            "addressKey": "GOTENBERG_URL",
+            "kind": "http",
+            "path": "/health"
+          },
+          "id": "gotenberg",
+          "orchestration": "compose-overlay",
+          "required": false,
+          "image": "gotenberg/gotenberg:8",
+          "envKeys": [
+            "GOTENBERG_URL"
+          ]
+        }
+      ],
+      "dependsOn": [],
+      "id": "knowledge",
+      "kind": "resource",
+      "manifest": "packages/resources/knowledge/fenix.module.ts",
+      "package": "@fenix/resource-knowledge"
+    },
+    {
+      "capabilities": [
+        "resource.machine"
+      ],
+      "dependencyServices": [],
+      "dependsOn": [
+        "agent-config"
+      ],
+      "id": "machine",
+      "kind": "resource",
+      "manifest": "packages/resources/machine/fenix.module.ts",
+      "package": "@fenix/resource-machine"
+    },
+    {
+      "capabilities": [
+        "resource.mcp"
+      ],
+      "dependencyServices": [],
+      "dependsOn": [
+        "knowledge"
+      ],
+      "id": "mcp",
+      "kind": "resource",
+      "manifest": "packages/resources/mcp/fenix.module.ts",
+      "package": "@fenix/resource-mcp"
+    },
+    {
+      "capabilities": [
+        "resource.memory"
+      ],
+      "dependencyServices": [
+        {
+          "healthCheck": {
+            "addressKey": "HINDSIGHT_MCP_URL",
+            "kind": "tcp"
+          },
+          "id": "hindsight",
+          "orchestration": "separate",
+          "required": false,
+          "composeFile": "docker/hindsight/docker-compose.yml",
+          "envKeys": [
+            "HINDSIGHT_MCP_URL"
+          ]
+        }
+      ],
+      "dependsOn": [],
+      "id": "memory",
+      "kind": "resource",
+      "manifest": "packages/resources/memory/fenix.module.ts",
+      "package": "@fenix/resource-memory"
+    },
+    {
+      "capabilities": [
+        "resource.model-management"
+      ],
+      "dependencyServices": [
+        {
+          "healthCheck": {
+            "addressKey": "RCS_MODEL_GATEWAY_BASE_URL",
+            "kind": "http",
+            "path": "/health"
+          },
+          "id": "litellm",
+          "orchestration": "separate",
+          "required": false,
+          "composeFile": "docker/litellm/docker-compose.yml",
+          "envKeys": [
+            "RCS_MODEL_GATEWAY_BASE_URL",
+            "RCS_MODEL_GATEWAY_ADMIN_KEY"
+          ]
+        }
+      ],
+      "dependsOn": [
+        "agent-config"
+      ],
+      "id": "model-management",
+      "kind": "resource",
+      "manifest": "packages/resources/model-management/fenix.module.ts",
+      "package": "@fenix/model-management"
+    },
+    {
+      "capabilities": [
+        "resource.observer"
+      ],
+      "dependencyServices": [],
+      "dependsOn": [
+        "agent-config",
+        "machine"
+      ],
+      "id": "observer",
+      "kind": "resource",
+      "manifest": "packages/resources/observer/fenix.module.ts",
+      "package": "@fenix/resource-observer"
+    },
+    {
+      "capabilities": [
+        "resource.plugin-market"
+      ],
+      "dependencyServices": [
+        {
+          "healthCheck": {
+            "addressKey": "PLUGIN_MARKET_REGISTRY_URL",
+            "kind": "http",
+            "path": "/-/ping"
+          },
+          "id": "npm-registry",
+          "orchestration": "separate",
+          "required": false,
+          "composeFile": "docker/npm-registry/docker-compose.yml",
+          "envKeys": [
+            "PLUGIN_MARKET_REGISTRY_URL",
+            "PLUGIN_MARKET_REGISTRY_TOKEN"
+          ]
+        }
+      ],
+      "dependsOn": [],
+      "id": "plugin-market",
+      "kind": "resource",
+      "manifest": "packages/resources/plugin-market/fenix.module.ts",
+      "package": "@fenix/resource-plugin-market"
+    },
+    {
+      "capabilities": [
+        "resource.prod-view"
+      ],
+      "dependencyServices": [],
+      "dependsOn": [],
+      "id": "prod-view",
+      "kind": "resource",
+      "manifest": "packages/resources/prod-view/fenix.module.ts",
+      "package": "@fenix/resource-prod-view"
+    },
+    {
+      "capabilities": [
+        "resource.sandbox"
+      ],
+      "dependencyServices": [
+        {
+          "healthCheck": {
+            "addressKey": "RCS_SANDBOX_CLUSTER_URL",
+            "kind": "http",
+            "path": "/health"
+          },
+          "id": "opensandbox-cluster",
+          "orchestration": "separate",
+          "required": false,
+          "composeFile": "docker/opensandbox-cluster/docker-compose.yml",
+          "envKeys": [
+            "RCS_SANDBOX_CLUSTER_URL",
+            "RCS_SANDBOX_CLUSTER_API_KEY"
+          ]
+        }
+      ],
+      "dependsOn": [
+        "machine"
+      ],
+      "id": "sandbox",
+      "kind": "resource",
+      "manifest": "packages/resources/sandbox/fenix.module.ts",
+      "package": "@fenix/resource-sandbox"
+    },
+    {
+      "capabilities": [
+        "resource.skill"
+      ],
+      "dependencyServices": [],
+      "dependsOn": [],
+      "id": "skill",
+      "kind": "resource",
+      "manifest": "packages/resources/skill/fenix.module.ts",
+      "package": "@fenix/resource-skill"
+    },
+    {
+      "capabilities": [
+        "resource.task"
+      ],
+      "dependencyServices": [],
+      "dependsOn": [],
+      "id": "task",
+      "kind": "resource",
+      "manifest": "packages/resources/task/fenix.module.ts",
+      "package": "@fenix/resource-task"
+    },
+    {
+      "capabilities": [
+        "resource.workflow"
+      ],
+      "dependencyServices": [],
+      "dependsOn": [],
+      "id": "workflow",
+      "kind": "resource",
+      "manifest": "packages/resources/workflow/fenix.module.ts",
+      "package": "@fenix/resource-workflow"
+    },
+    {
+      "capabilities": [
+        "resource.workflow-v2"
+      ],
+      "dependencyServices": [],
+      "dependsOn": [],
+      "id": "workflow-v2",
+      "kind": "resource",
+      "manifest": "packages/resources/workflow-v2/fenix.module.ts",
+      "package": "@fenix/resource-workflow-v2"
+    }
+  ],
+  "note": "生成物：请勿手改；改声明处后运行 `bun run scripts/release.ts`。"
+}

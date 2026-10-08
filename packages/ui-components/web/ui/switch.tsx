@@ -15,10 +15,11 @@ function Switch({
   // 是 0.25 的整数倍（4.6 × 4 = 18.4 不是整数），`h-4.6` 一个字面声明都不生成，轨道高度一直由内容撑开；
   // 0.25 档里离 4.6 最近的是 4.5，故取 4.5（见 forbidden-code-patterns.md 的 FCP-WEB-05）。
   //
-  // 本应用根字号是 13px（`apps/web/src/index.css` 的 @layer base），`--spacing = .25rem = 3.25px`，故
-  // `h-4.5` = 14.625px、滑块 `size-4` = 13px、内容撑出 15px（13 + 2×1px 边框）——这条声明是把轨道从
-  // 15px 收到 14.625px（−0.375px，亚像素级）。同族 `sm` 态原本就是这个关系（`h-3.5` = 11.375px，
-  // 滑块 `size-3` = 9.75px + 2px 边框 = 11.75px），两档因此一致。
+  // 刻度已在 `@theme` 按 px 落地（`--spacing: 4px`），工具类写的就是设计值：`h-4.5` = 18px，
+  // 滑块 `size-4` = 16px + 2×1px 边框 = 18px，轨道与内容等高；`sm` 态同理（`h-3.5` = 14px、
+  // `size-3` = 12px + 2px = 14px），两档一致。
+  // 旧注记按 13px 根字号下的 rem 刻度给的读数（`--spacing` 3.25px、`h-4.5` 14.625px、`size-4` 13px、
+  // 内容撑出 15px、`h-3.5` 11.375px、`size-3` 9.75px）随令牌层改造作废。
   return (
     <SwitchPrimitive.Root
       data-slot="switch"

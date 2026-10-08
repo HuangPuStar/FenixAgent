@@ -1,143 +1,7 @@
-/* Model editor and responsive workbench styles are separated to keep page modules reviewable. */
-.model-dialog-section {
-  padding: 14px;
-  background: #f7f9fc;
-}
-.model-dialog-section__header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-}
-.model-dialog-section__header > div {
-  display: flex;
-  flex-direction: column;
-}
-.model-dialog-section__header strong {
-  font-size: 12px;
-}
-.model-dialog-section__header small {
-  margin-top: 2px;
-  color: var(--model-faint);
-  font-size: 10px;
-}
-.model-dialog-error {
-  margin: 10px 0 0;
-  color: #c44747;
-  font-size: 11px;
-}
-/* 手动模型 ID 输入行：与探测结果列表同属模型区块，输入框占满按钮之外的宽度。 */
-.model-dialog-section__manual {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  margin-top: 10px;
-}
-.model-dialog-section__manual input {
-  flex: 1;
-  min-width: 0;
-}
-.model-discovery-list {
-  display: grid;
-  max-height: 210px;
-  gap: 3px;
-  overflow: auto;
-  margin-top: 10px;
-}
 .model-discovery-list button,
 .model-discovery-list > div {
-  display: flex;
-  min-height: 34px;
-  align-items: center;
-  justify-content: space-between;
-  border: 0;
-  border-radius: 5px;
-  padding: 0 9px;
-  color: var(--model-muted);
-  background: #fff;
-  text-align: left;
   font-family: ui-monospace, monospace;
-  font-size: 10px;
 }
-.model-discovery-list button.is-selected {
-  color: var(--model-blue);
-  background: #eaf1ff;
-}
-.model-discovery-list svg {
-  width: 13px;
-}
-.model-discovery-list.is-dialog {
-  max-height: 350px;
-}
-.model-discovery-list small {
-  display: flex;
-  align-items: center;
-  gap: 4px;
-  color: #168b68;
-}
-.model-modality-field {
-  min-width: 0;
-}
-.model-modality-field legend {
-  margin-bottom: 6px;
-  font-size: 12px;
-  font-weight: 600;
-}
-.model-modality-field > div {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 5px;
-}
-.model-modality-field button {
-  display: flex;
-  min-height: 28px;
-  align-items: center;
-  gap: 4px;
-  border: 0;
-  border-radius: 5px;
-  padding: 0 8px;
-  color: var(--model-muted);
-  background: #f1f4f8;
-  font-size: 10px;
-}
-.model-modality-field button.is-selected {
-  color: var(--model-blue);
-  background: #e8f0ff;
-}
-.model-modality-field svg {
-  width: 11px;
-}
-.model-thinking-field {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 10px 12px;
-  background: #f7f9fc;
-}
-.model-thinking-field > div {
-  display: flex;
-  flex-direction: column;
-}
-.model-thinking-field strong {
-  font-size: 12px;
-}
-.model-thinking-field small {
-  margin-top: 2px;
-  color: var(--model-faint);
-  font-size: 10px;
-}
-
-.agent-models-loading {
-  display: grid;
-  gap: 18px;
-  min-height: 100%;
-  padding: 28px 32px;
-  background: #f5f7fb;
-}
-
-/* 骨架屏的两栏占位：源 `grid-cols-[238px_1fr]`，与被它模拟的主从壳同排布
-   （`agent-master-detail-workspace.css` 里的左栏定宽 238px、右栏自适应）。规则与
-   `.agent-models-loading` 同处一文件，便于改动骨架屏时一处看全。 */
 .models-loading-grid {
   grid-template-columns: 238px 1fr;
 }
@@ -147,16 +11,16 @@
     grid-template-columns: 1fr 1fr;
   }
   .models-provider-visibility {
-    min-height: 48px;
+    min-height: calc(var(--spacing) * 12);
     grid-column: 1 / -1;
-    border-top: 1px solid var(--model-line);
+    border-top: 1px solid var(--color-slate-200);
     border-left: 0;
   }
 }
 
 @media (max-width: 680px) {
   .agent-models-page {
-    padding: 20px 16px;
+    padding: calc(var(--spacing) * 5) calc(var(--spacing) * 4);
   }
   .models-provider-detail__header {
     align-items: flex-start;
@@ -168,7 +32,7 @@
   .models-provider-connection > div + div,
   .models-provider-visibility {
     grid-column: auto;
-    border-top: 1px solid var(--model-line);
+    border-top: 1px solid var(--color-slate-200);
     border-left: 0;
   }
   .models-model-catalog > header {

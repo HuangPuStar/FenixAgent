@@ -121,6 +121,43 @@ describe("web hindsight routes", () => {
     expect(fetchCalls[0].url).toBe(`${BANK_PREFIX}/memories/mem-abc`);
   });
 
+  // 上游不存在的记忆必须保持失败语义，不能把 detail: not found 包进 success: true。
+  test("GET /hindsight/memories/:id 将上游 404 映射为失败信封", async () => {
+    globalThis.fetch = (async () => Response.json({ detail: "not found" }, { status: 404 })) as typeof fetch;
+
+    const response = await webHindsight.handle(new Request("http://localhost/hindsight/memories/missing"));
+    expect(response.status).toBe(404);
+    expect(await response.json()).toEqual({
+      success: false,
+      error: { code: "not_found", message: "Memory not found" },
+    });
+  });
+
+  // 某些上游部署在 HTTP 200 中放入 not found，代理仍应返回明确的 404 失败信封。
+  test("GET /hindsight/memories/:id 拒绝上游 200 的 not found 详情", async () => {
+    globalThis.fetch = (async () => Response.json({ detail: "not found" })) as typeof fetch;
+
+    const response = await webHindsight.handle(new Request("http://localhost/hindsight/memories/missing"));
+    expect(response.status).toBe(404);
+    expect(await response.json()).toEqual({
+      success: false,
+      error: { code: "not_found", message: "Memory not found" },
+    });
+  });
+
+  // 上游其它错误也不能伪装成记忆详情成功，更不能把上游错误正文直接暴露给调用方。
+  test("GET /hindsight/memories/:id 将上游故障映射为 503", async () => {
+    globalThis.fetch = (async () =>
+      Response.json({ detail: "internal upstream detail" }, { status: 502 })) as typeof fetch;
+
+    const response = await webHindsight.handle(new Request("http://localhost/hindsight/memories/mem-abc"));
+    expect(response.status).toBe(503);
+    expect(await response.json()).toEqual({
+      success: false,
+      error: { code: "service_unavailable", message: "Hindsight service unavailable" },
+    });
+  });
+
   // 删除记忆必须显式使用 DELETE，不得误发为读取请求。
   test("DELETE /hindsight/memories/:id 使用 DELETE 方法", async () => {
     const response = await webHindsight.handle(

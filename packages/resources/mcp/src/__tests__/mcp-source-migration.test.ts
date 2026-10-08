@@ -29,9 +29,9 @@ const SOURCE_ENTRIES = ["src", "web", "db", "fenix.module.ts"];
  *
  * `apps/web/src/routes/agent/_panel/mcp.tsx` 保留在宿主是既定分工（WebShell 薄 route adapter，归 §1.6），
  * 不在本清单里，不要当成残留删除。`apps/server/src/services/config/mcp-system-server.ts`（宿主系统初始化
- * 路径的薄包装）原先同属保留面，后经任务 1.5c 核验：它的唯一端口 `RegisterSystemMcpServer` 从未被注入、
- * 宿主侧零生产消费方，已按「删除优于兼容」删除，
- * 同样不属于本清单的迁移残留。
+ * 路径的薄包装）原先同属保留面，后经任务 1.5c 核验：它的唯一端口从未被注入、宿主侧零生产消费方，已按
+ * 「删除优于兼容」删除；该端口所在的整条「把 hindsight 注册成系统 MCP server」路径随后亦按 owner 裁定
+ * 整体删除（hindsight 改由插件机制下发），同样不属于本清单的迁移残留。
  */
 const MIGRATION_PAIRS: ReadonlyArray<readonly [hostPath: string, packagePath: string]> = [
   ["apps/server/src/routes/api/mcp.ts", "src/server/routes/api/mcp.ts"],

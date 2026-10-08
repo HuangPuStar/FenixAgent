@@ -17,8 +17,9 @@ import { moduleManifest as manifest13 } from "@fenix/resource-sandbox/module";
 import { moduleManifest as manifest14 } from "@fenix/resource-skill/module";
 import { moduleManifest as manifest15 } from "@fenix/resource-task/module";
 import { moduleManifest as manifest16 } from "@fenix/resource-workflow/module";
-import { moduleManifest as manifest17 } from "../web/fenix.module.ts";
+import { moduleManifest as manifest17 } from "@fenix/resource-workflow-v2/module";
+import { moduleManifest as manifest18 } from "../web/fenix.module.ts";
 import type { ModuleManifest } from "@fenix/platform-sdk";
 
 /** 构建期收集的可信模块集合；应用启动时只能从该集合选择模块。 */
-export const generatedModuleManifests = [manifest0, manifest1, manifest2, manifest3, manifest4, manifest5, manifest6, manifest7, manifest8, manifest9, manifest10, manifest11, manifest12, manifest13, manifest14, manifest15, manifest16, manifest17] as const satisfies readonly ModuleManifest[];
+export const generatedModuleManifests = [manifest0, manifest1, manifest2, manifest3, manifest4, manifest5, manifest6, manifest7, manifest8, manifest9, manifest10, manifest11, manifest12, manifest13, manifest14, manifest15, manifest16, manifest17, manifest18] as const satisfies readonly ModuleManifest[];

@@ -86,6 +86,8 @@ function cloneLaunchSpec(launchSpec: AgentLaunchSpec): AgentLaunchSpec {
   return {
     ...launchSpec,
     env: launchSpec.env ? { ...launchSpec.env } : undefined,
+    plugins: launchSpec.plugins ? [...launchSpec.plugins] : undefined,
+    workspaceFiles: launchSpec.workspaceFiles ? structuredClone(launchSpec.workspaceFiles) : undefined,
     agent: { ...launchSpec.agent },
     model: { ...launchSpec.model },
     skills: launchSpec.skills.map((skill) => ({ ...skill })),

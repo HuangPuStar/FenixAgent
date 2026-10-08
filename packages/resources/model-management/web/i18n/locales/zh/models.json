@@ -300,7 +300,10 @@
       "litellmConfig": {
         "title": "模型配置在 LiteLLM 管理后台完成",
         "description": "配置完成后返回本页，先检查状态，再同步模型，即可同步到 Gateway Provider。",
-        "action": "前往 LiteLLM 配置"
+        "action": "前往 LiteLLM 配置",
+        "unavailable": "未配置浏览器可访问的 LiteLLM 管理地址。请设置 RCS_MODEL_GATEWAY_ADMIN_UI_URL 并重启 Fenix。",
+        "loadFailed": "读取模型网关配置失败，请重试。",
+        "retry": "重试"
       },
       "searchPlaceholder": "搜索模型",
       "filters": {
@@ -509,6 +512,22 @@
   },
   "algorithms": {
     "subtitle": "汇集主流机器学习算法，Agent 任务驱动即插即用",
+    "searchPlaceholder": "搜索算法名称、描述、场景...",
+    "plugAndPlayBadge": "即插即用",
+    "viewDetails": "查看详情",
+    "categories": {
+      "all": "全部",
+      "classification": "分类",
+      "regression": "回归",
+      "clustering": "聚类",
+      "dimensionalityReduction": "降维",
+      "ranking": "排序",
+      "anomalyDetection": "异常检测",
+      "timeSeriesForecast": "时序预测",
+      "deepLearning": "深度学习",
+      "recommendation": "推荐",
+      "optimization": "优化"
+    },
     "introHeading": "算法简介",
     "paramsHeading": "核心参数",
     "scenesHeading": "适用场景",

@@ -29,7 +29,7 @@ import {
   taskFormSchema,
   taskToFormValues,
 } from "./agent-tasks-utils";
-import "./agent-tasks.css";
+import "./AgentTasksPage.css";
 
 // ── 组件 ──
 
@@ -316,11 +316,16 @@ export function AgentTasksPage() {
     return (
       <AppPage className="agent-tasks-page">
         <AppHeader title={t("title")} subtitle={t("subtitle")} />
-        <div className="task-load-error" role="alert">
+        <div
+          className="task-load-error grid min-h-57.5 place-content-center justify-items-center gap-2 text-center text-slate-400"
+          role="alert"
+        >
           <AlertTriangle className="size-8" />
-          <strong>{unauthorized ? t("loadState.unauthorizedTitle") : t("loadState.failed")}</strong>
+          <strong className="text-sm text-slate-800">
+            {unauthorized ? t("loadState.unauthorizedTitle") : t("loadState.failed")}
+          </strong>
           {unauthorized ? (
-            <p>{t("loadState.unauthorizedHint")}</p>
+            <p className="max-w-115 text-3xs">{t("loadState.unauthorizedHint")}</p>
           ) : (
             <Button variant="outline" size="sm" onClick={refresh} disabled={loading}>
               <RefreshCw className="mr-1 size-3.5" />

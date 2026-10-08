@@ -47,7 +47,6 @@ export function createStubMcpServerService(overrides: Partial<McpServerService> 
     create: unstubbed("service.create"),
     findRowUnscoped: unstubbed("service.findRowUnscoped"),
     listRowsByIdsUnscoped: unstubbed("service.listRowsByIdsUnscoped"),
-    upsertSystemServer: unstubbed("service.upsertSystemServer"),
     update: unstubbed("service.update"),
     setEnabled: unstubbed("service.setEnabled"),
     remove: unstubbed("service.remove"),

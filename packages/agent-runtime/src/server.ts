@@ -131,6 +131,7 @@ export {
   getSessionEventBusPort,
   resetSessionEventBusPort,
 } from "./server/services/session-event-bus-port"; // 宿主注入·会话事件总线
+export { resolveWorkspacePath } from "./server/services/workspace-resolver"; // 宿主取用·启动参数文件定位，注入资源组装器
 export {
   bindAcpInstanceActivityPort,
   findMachineConnectionById,

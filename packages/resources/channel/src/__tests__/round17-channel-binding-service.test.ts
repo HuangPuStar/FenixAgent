@@ -6,7 +6,7 @@ import {
   deleteBinding,
   findBindingForMessage,
   getBinding,
-  listBindings,
+  listBindingsByAgentIds,
   updateBinding,
 } from "../server/services/channel-binding";
 
@@ -29,7 +29,7 @@ const originals = {
   create: channelBindingRepo.create,
   delete: channelBindingRepo.delete,
   getById: channelBindingRepo.getById,
-  list: channelBindingRepo.list,
+  listByAgentIds: channelBindingRepo.listByAgentIds,
   listByPlatformAndEnabled: channelBindingRepo.listByPlatformAndEnabled,
   update: channelBindingRepo.update,
 };
@@ -39,7 +39,7 @@ describe("Channel binding 服务的状态与消息匹配", () => {
     channelBindingRepo.create = originals.create;
     channelBindingRepo.delete = originals.delete;
     channelBindingRepo.getById = originals.getById;
-    channelBindingRepo.list = originals.list;
+    channelBindingRepo.listByAgentIds = originals.listByAgentIds;
     channelBindingRepo.listByPlatformAndEnabled = originals.listByPlatformAndEnabled;
     channelBindingRepo.update = originals.update;
   });
@@ -48,23 +48,26 @@ describe("Channel binding 服务的状态与消息匹配", () => {
     channelBindingRepo.create = originals.create;
     channelBindingRepo.delete = originals.delete;
     channelBindingRepo.getById = originals.getById;
-    channelBindingRepo.list = originals.list;
+    channelBindingRepo.listByAgentIds = originals.listByAgentIds;
     channelBindingRepo.listByPlatformAndEnabled = originals.listByPlatformAndEnabled;
     channelBindingRepo.update = originals.update;
   });
 
-  // 列表应把数据库的空 chatId 标准化为显式 wildcard 值。
+  // 列表应把数据库的空 chatId 标准化为显式 wildcard 值，并把给定范围原样下推给仓储。
   test("列表映射空 chatId", async () => {
-    channelBindingRepo.list = mock(async () => [binding({ chatId: null })]);
-    await expect(listBindings()).resolves.toEqual([
+    const listByAgentIds = mock(async () => [binding({ chatId: null })]);
+    channelBindingRepo.listByAgentIds = listByAgentIds;
+    await expect(listBindingsByAgentIds(["agent-1"])).resolves.toEqual([
       { id: "binding-1", platform: "telegram", chatId: null, agentId: "agent-1", enabled: true },
     ]);
+    // 范围由调用方（Facade）给出：服务层只转发，不解释组织、也不做二次过滤。
+    expect(listByAgentIds).toHaveBeenCalledWith(["agent-1"]);
   });
 
   // 空列表必须保持为空，不以伪造绑定替代。
   test("列表保留空结果", async () => {
-    channelBindingRepo.list = mock(async () => []);
-    await expect(listBindings()).resolves.toEqual([]);
+    channelBindingRepo.listByAgentIds = mock(async () => []);
+    await expect(listBindingsByAgentIds(["agent-1"])).resolves.toEqual([]);
   });
 
   // 单条查询不存在时不得暴露内部数据库形态。

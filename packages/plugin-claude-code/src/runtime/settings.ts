@@ -13,6 +13,7 @@ export interface ClaudeCodeSettings {
   env?: Record<string, string>;
   model?: string;
   modelType?: string;
+  enabledPlugins?: Record<string, boolean>;
   permissions?: {
     allow?: string[];
     deny?: string[];
@@ -48,10 +49,12 @@ function isStreamableHttp(server: McpServerConfig): server is Extract<McpServerC
 
 /**
  * 把 AgentLaunchSpec.mcpServers 转为 .mcp.json 格式。
+ *
+ * 空绑定返回空 `mcpServers` 而不是 null：`.mcp.json` 必须始终是当前启用集合的**投影**。workspace 按
+ * (org, user, environment) 复用，上一轮物化留下的文件不会自己消失，空集合用 null 表示会让调用方跳过
+ * 写入（见 `environment.ts` 的写入点），表现为「取消全部 MCP 后 agent 仍按旧清单加载工具」。
  */
-export function buildMcpConfig(launchSpec: AgentLaunchSpec): ClaudeCodeMcpConfig | null {
-  if (launchSpec.mcpServers.length === 0) return null;
-
+export function buildMcpConfig(launchSpec: AgentLaunchSpec): ClaudeCodeMcpConfig {
   const mcpServers: Record<string, ClaudeCodeMcpServerConfig> = {};
   for (const server of launchSpec.mcpServers) {
     if (isStreamableHttp(server)) {
@@ -111,6 +114,11 @@ export function buildSettings(
   // model 字段
   if (model.modelName) {
     config.model = model.modelName;
+  }
+
+  // 沿用 ccb/peri 镜像预装的市场别名；本地 Claude Code 也需安装同名市场插件。
+  if (launchSpec.plugins?.includes("hindsight")) {
+    config.enabledPlugins = { "hindsight-memory@hindsight-plugin": true };
   }
 
   return config;

@@ -1,6 +1,5 @@
 import { registerStubResetter } from "@fenix/platform-sdk/testing";
 import { Elysia } from "elysia";
-import type { MachineRequestAuth } from "../server/types/auth";
 
 /**
  * 路由工厂测试用的会话守卫替身与认证注入（迁移前宿主 `setTestAuth` / `resetTestAuth` 的包内等价物）。
@@ -32,14 +31,28 @@ export interface MachineTestUser {
   readonly name: string;
 }
 
+/**
+ * 守卫替身写入 `store.authContext` 的最小形状（宿主 `AuthContext` 的窄视图）。
+ *
+ * 刻意声明在用例侧而不是复用包内类型：这是**宿主**认证解析的产物（会话 / API Key / Environment Secret
+ * 三条路径 + active organization 解析），不是本包的概念。本包只要求它结构上满足各 Facade 的 actor
+ * （组织 + 用户；文件面额外读角色），因此这里多出 `role` 一项就够——包内曾有的
+ * `types/auth.ts`「请求认证视图」已随授权收口到 Facade 一并删除。
+ */
+export interface MachineTestAuthContext {
+  readonly organizationId: string;
+  readonly userId: string;
+  readonly role?: "owner" | "admin" | "member";
+}
+
 /** 当前替身会话：`sessionAuth` 宏在请求期读取它，因此用例内改动能立即生效（不必重建路由实例）。 */
-let session: { user: MachineTestUser | null; authContext: MachineRequestAuth | null } = {
+let session: { user: MachineTestUser | null; authContext: MachineTestAuthContext | null } = {
   user: null,
   authContext: null,
 };
 
 /** 设置替身会话（用法与迁移前宿主的 `setTestAuth` 一致）。 */
-export function setTestAuth(next: { user: MachineTestUser; authContext: MachineRequestAuth }): void {
+export function setTestAuth(next: { user: MachineTestUser; authContext: MachineTestAuthContext }): void {
   session = next;
 }
 
@@ -61,7 +74,7 @@ export function createStubSessionAuthGuardPlugin() {
     })
     .state({
       user: null as MachineTestUser | null,
-      authContext: null as MachineRequestAuth | null,
+      authContext: null as MachineTestAuthContext | null,
     })
     .macro({
       sessionAuth(enabled: boolean) {
@@ -71,7 +84,7 @@ export function createStubSessionAuthGuardPlugin() {
             store,
             error,
           }: {
-            store: { user: MachineTestUser | null; authContext: MachineRequestAuth | null };
+            store: { user: MachineTestUser | null; authContext: MachineTestAuthContext | null };
             error: (code: number, body: unknown) => Response;
           }) => {
             if (!session.user || !session.authContext) {

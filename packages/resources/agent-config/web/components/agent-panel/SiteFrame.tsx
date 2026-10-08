@@ -45,7 +45,8 @@ type LoadState = "loading" | "loaded" | "timeout";
  * 不在 RCS 后端代理业务前端流量——后端只代理 L2 PB Admin API。
  */
 export function SiteFrame({ remoteAppId, name, createdByAgentConfigId, createdByAgentConfigName }: SiteFrameProps) {
-  const { t } = useTranslation(NS.COMPONENTS);
+  // `siteFrame.*` 键随台账 D4 从宿主 `components` 字典迁入本包 `agents`（键的 owner = 消费方所在包）。
+  const { t } = useTranslation(NS.AGENTS);
   const navigate = useNavigate();
   const [loadState, setLoadState] = useState<LoadState>("loading");
   const [reloadKey, setReloadKey] = useState(0);
@@ -159,7 +160,7 @@ export function SiteFrame({ remoteAppId, name, createdByAgentConfigId, createdBy
             type="button"
             className="text-3xs text-text-dim hover:text-primary hover:underline cursor-pointer flex-shrink-0"
             onClick={handleNavigateToCreator}
-            title={`创建者: ${createdByAgentConfigName || createdByAgentConfigId}`}
+            title={t("siteFrame.createdBy", { name: createdByAgentConfigName || createdByAgentConfigId })}
           >
             {createdByAgentConfigName || createdByAgentConfigId}
           </button>

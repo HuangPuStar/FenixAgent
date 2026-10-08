@@ -62,6 +62,13 @@ import { z } from "zod/v4";
  * 四个键都在装配期被读一次并固化进模块配置（请求期不再读 env），故 `restartRequired: true`；只有
  * `RAGFLOW_API_KEY` 是密钥材料，`secret: true`（禁止进日志、响应与错误文案）。
  *
+ * 声明 `dependencyServices`（A3）：本模块是仓库里唯一同时依赖「外部多容器栈」与「单容器可自编排服务」的
+ * 模块，因此两条编排归属各有一例。RAGFlow 的编排是 `docker/ragflow/docker-compose.yml` 的多容器栈，
+ * 重复定义会把同一栈写成两份真相，故取 `orchestration: "separate"` 并只留入口指针；Gotenberg 是单容器、
+ * 仓库里没有既有编排，取 `"compose-overlay"` 让 `deploy/compose/overlays/knowledge.yml` 直接启停它——
+ * 端口映射刻意对齐 `GOTENBERG_URL` 的默认值，避免生成编排与模块默认地址互相打架。两者 `required: false`：
+ * 缺失只降级能力（Office 转换回退 LibreOffice CLI），不阻断主服务启动。
+ *
  * `create` 指向 `src/module.ts` 的组合根（进程级仓储单例），并保持惰性：registry 会被大量位置导入，
  * 不能在索引层就把 Drizzle、Elysia 与知识库服务图拖进来。
  */
@@ -141,6 +148,37 @@ export const moduleManifest = {
         " LibreOffice CLI。此处为补齐声明：默认值取自迁移前宿主直读实现（http://127.0.0.1:3200）。空串归一为" +
         " undefined 而非原样保留——模块配置对 gotenbergUrl 有 `.min(1)` 约束，原样透传空串会让服务在首次请求期" +
         "报错，而迁移前的 `process.env.GOTENBERG_URL || 默认值` 是回退默认地址。",
+    },
+  ],
+  // 两个依赖服务都是可选的：缺失时知识库只损失对应能力（RAGFlow 给不了检索、Gotenberg 转不了 Office），
+  // 主服务仍必须能起来——与 `host-startup.ts` 对 `checkRagFlowHealth()` 的实测语义一致（失败只告警）。
+  // 探针锚定上面已声明的地址键，因此插件的部署前自检不会读到不存在的键。
+  dependencyServices: [
+    {
+      id: "ragflow",
+      required: false,
+      orchestration: "separate",
+      envKeys: ["RAGFLOW_API_URL", "RAGFLOW_API_KEY"],
+      composeFile: "docker/ragflow/docker-compose.yml",
+      // 与 `checkRagFlowHealth()` 同一个端点：启动期探活与部署前自检必须看同一处，否则会出现
+      // 「自检通过、启动告警」的分裂口径。
+      healthCheck: { kind: "http", addressKey: "RAGFLOW_API_URL", path: "/api/v1/system/healthz" },
+      description:
+        "RAGFlow 检索服务。编排在 docker/ragflow/docker-compose.yml（多容器栈），本仓 deploy/compose 不重复定义；" +
+        "未部署时知识库检索不可用，Agent 知识库绑定链路快速失败。",
+    },
+    {
+      id: "gotenberg",
+      required: false,
+      orchestration: "compose-overlay",
+      envKeys: ["GOTENBERG_URL"],
+      image: "gotenberg/gotenberg:8",
+      // 宿主端口与 GOTENBERG_URL 的默认值 http://127.0.0.1:3200 对齐：容器内仍监听 3000。
+      ports: ["3200:3000"],
+      healthCheck: { kind: "http", addressKey: "GOTENBERG_URL", path: "/health" },
+      description:
+        "Gotenberg（Office 转 PDF）。单容器且仓库内没有既有编排，故由 deploy/compose 的模块 overlay 直接启停；" +
+        "未部署时调用方回退 LibreOffice CLI，只在宿主没装 LibreOffice 的镜像里才真正不可用。",
     },
   ],
   // 工厂保持惰性：registry 会被大量位置导入，不能在索引层就把 Drizzle、Elysia 与知识库服务图拖进模块图。

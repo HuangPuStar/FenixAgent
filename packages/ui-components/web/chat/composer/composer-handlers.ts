@@ -15,7 +15,7 @@ import {
   MAX_TOTAL_QUOTED_TEXT_LENGTH,
   serializeChatQuotes,
 } from "../lib/context-queue";
-import type { AvailableCommand, ChatInputMessage, FileAttachment, UserMessageImage } from "../types";
+import type { AvailableCommand, ChatInputMessage, UserMessageImage } from "../types";
 import type { McpOption } from "./CommandMenu";
 import { type ComposerExternalSubscribe, useComposerExternalInput } from "./composer-effects";
 import {
@@ -327,7 +327,6 @@ export function useComposerHandlers({
       if (prompt) setText(prompt);
     },
     onFileReference: (file) => {
-      setText((prev) => `${prev}@./${file.path} `);
       addAttachments([{ name: file.name, path: file.path }]);
       textareaRef.current?.focus();
     },
@@ -431,24 +430,6 @@ export function useComposerHandlers({
   );
 
   /**
-   * 把附件落成 `@./<workspace 相对路径>` 引用追加进正文。
-   *
-   * 这是本项目附件入口的统一约定（文件选择、拖拽上传、粘贴上传都走它）：附件清单本身经
-   * `addAttachments` 进入待发送资产行，正文里的引用让 agent 能直接读到文件；发送边界
-   * （`use-chat-input-submit`）对正文里已存在的引用不会重复追加。
-   */
-  const appendAttachmentMentions = useCallback(
-    (files: FileAttachment[]) => {
-      if (files.length === 0) return;
-      setText(
-        (previous) =>
-          `${previous}${previous && !previous.endsWith(" ") ? " " : ""}${files.map((file) => `@./${file.path}`).join(" ")} `,
-      );
-    },
-    [setText],
-  );
-
-  /**
    * 粘贴图片 → 待发送资产。
    *
    * 两条通路的选择（顺序即优先级）：
@@ -493,7 +474,6 @@ export function useComposerHandlers({
             uploadFiles(batch.map((file) => withPastedImageName(file))),
           );
           addAttachments(newAttachments);
-          appendAttachmentMentions(newAttachments);
         } catch (error) {
           notify("error", resolveUploadErrorMessage(error));
         } finally {
@@ -509,7 +489,6 @@ export function useComposerHandlers({
     [
       addAttachments,
       addImages,
-      appendAttachmentMentions,
       compressImage,
       notify,
       notifySkippedImages,
@@ -549,7 +528,6 @@ export function useComposerHandlers({
       try {
         const newAttachments = await uploadComposerFiles(otherFiles, uploadFiles);
         addAttachments(newAttachments);
-        appendAttachmentMentions(newAttachments);
       } catch (error) {
         notify("error", resolveUploadErrorMessage(error));
       }
@@ -560,7 +538,6 @@ export function useComposerHandlers({
   }, [
     addAttachments,
     addImages,
-    appendAttachmentMentions,
     compressImage,
     fileInputRef,
     notify,
@@ -598,7 +575,6 @@ export function useComposerHandlers({
   const handleFilePickerSelect = useCallback(
     (file: ComposerFileInfo) => {
       setText((prev) => prev.replace(/@$/, ""));
-      setText((prev) => `${prev}@./${file.path} `);
       addAttachments([{ name: file.name, path: file.path }]);
       setShowFilePicker(false);
       textareaRef.current?.focus();

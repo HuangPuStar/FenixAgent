@@ -31,7 +31,6 @@ import { KnowledgeBaseDetailView } from "./knowledge-base-detail-view";
 import { useKnowledgeBaseCatalog } from "./use-knowledge-base-catalog";
 import { useKnowledgeBaseDetail } from "./use-knowledge-base-detail";
 import "./AgentKnowledgeBasesPage.css";
-import "./agent-knowledge.css";
 
 export function AgentKnowledgeBasesPage() {
   const { t } = useTranslation(NS.KNOWLEDGE);
@@ -79,7 +78,10 @@ export function AgentKnowledgeBasesPage() {
   if (catalog.loading) {
     return (
       <AppPage className="agent-knowledge-page" busy>
-        <div className="knowledge-page-header-skeleton">
+        {/* 骨架屏头部的间距是设计值（`gap-6` / `pb-4` / `mb-4.5` 即 24px / 16px / 18px）：刻度已在
+            `@theme` 按 px 落地，工具类即设计值。底部的分隔线 2026-09-28 自 `.knowledge-page-header-skeleton`
+            搬回：`border-b border-slate-200` = 原 `1px #e4eaf2`。 */}
+        <div className="knowledge-page-header-skeleton flex items-start justify-between gap-6 pb-4 mb-4.5 border-b border-slate-200">
           <div>
             <Skeleton className="h-7 w-28 rounded-lg" />
             <Skeleton className="mt-2 h-3.5 w-56 rounded-md" />
@@ -144,8 +146,9 @@ export function AgentKnowledgeBasesPage() {
         }
       />
 
+      {/* 工作区上间距 18px = `mt-4.5`（刻度已在 `@theme` 按 px 落地，工具类即设计值）。 */}
       <AgentMasterDetailWorkspace
-        className="knowledge-workspace flex-1"
+        className="knowledge-workspace mt-4.5 flex-1"
         index={
           <AgentKnowledgeDirectory
             items={catalog.items}
@@ -187,17 +190,32 @@ export function AgentKnowledgeBasesPage() {
 
       {/* 向量模型管理弹窗 */}
       <Dialog open={catalog.modelDialogOpen} onOpenChange={catalog.setModelDialogOpen}>
-        <DialogContent className="knowledge-model-dialog">
-          <DialogHeader className="knowledge-model-dialog__header">
-            <DialogTitle className="knowledge-model-dialog__title">
-              <span className="knowledge-model-dialog__icon">
-                <Cpu />
+        {/* 弹窗的尺寸 / 内边距与图标盒方框是设计值，全部由工具类承担（刻度已在 `@theme` 按 px 落地）：
+            宽度上限 760px = `max-w-190`，20 24 16 内边距 = `pt-5 px-6 pb-4`，图标盒 34×34 = `size-8.5`。
+            `max-w-190` 之外还要 `sm:max-w-190`：`DialogContent` 默认 size 自带 `sm:max-w-lg`（512px），
+            媒体变体在产物里排得比无修饰符的更后，单写 `max-w-190` 只会保住窄屏那一段；
+            两条同族同类名在 `cn()`（tailwind-merge）合并阶段就消解成一条，与 `AgentKnowledgeBasesPage.css` 里
+            原来那条未分层的 `max-width: 760px` 逐宽等价。宽度 / 高度上限里的 `min()` 复合值仍在该表。
+            2026-09-28 同批撤回本弹窗的其余取值（都经 `cn()` 合并，写在 className 里的同类工具类即生效）：
+            头部下分隔线 `border-b border-slate-200`（原 `1px #e4eaf2`）、标题字号与颜色
+            `text-lg text-slate-800`（原 17px / `#17233a`；`text-lg` 与 `DialogTitle` 自带的同值，写出来是
+            为了留下「这里没被压掉」的证据）、图标盒的描边 / 圆角 / 底色 / 图标色
+            `border border-slate-200 rounded bg-slate-100 text-slate-500`（原 `1px #dbe5f1` + 9px +
+            `#f4f7fb` + `#53657e`）、图标 17px = `size-4.25`，以及说明行的 `pl-11 text-xs leading-4.5
+            text-slate-400`（原 44px 缩进 + 12px + 18px 行高 + `#8492a8`）。 */}
+        <DialogContent className="knowledge-model-dialog flex flex-col gap-0 overflow-hidden p-0 max-w-190 sm:max-w-190">
+          <DialogHeader className="knowledge-model-dialog__header flex-none gap-1.5 pt-5 px-6 pb-4 border-b border-slate-200">
+            <DialogTitle className="knowledge-model-dialog__title flex items-center gap-2.5 text-lg text-slate-800">
+              <span className="knowledge-model-dialog__icon grid place-items-center size-8.5 border border-slate-200 rounded bg-slate-100 text-slate-500">
+                <Cpu className="size-4.25" />
               </span>
               {t("toolbar.embeddingModelManager")}
             </DialogTitle>
-            <DialogDescription>{t("toolbar.embeddingModelDescription")}</DialogDescription>
+            <DialogDescription className="pl-11 text-xs leading-4.5 text-slate-400">
+              {t("toolbar.embeddingModelDescription")}
+            </DialogDescription>
           </DialogHeader>
-          <div className="knowledge-model-dialog__body">
+          <div className="knowledge-model-dialog__body min-h-0 flex-1 overflow-y-auto pt-4 px-6 pb-5.5">
             <EmbeddingModelManager canManage={canManage} inDialog onModelsChanged={catalog.refreshFormOptions} />
           </div>
         </DialogContent>

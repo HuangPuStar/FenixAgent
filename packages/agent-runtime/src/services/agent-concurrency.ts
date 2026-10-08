@@ -34,6 +34,13 @@ export interface SpawnReservation {
   readonly token: number;
   readonly userId: string;
   readonly source: InstanceSpawnSource;
+  /**
+   * 触发本次 spawn 的关联 ID（§7）：HTTP 触发取自请求上下文，独立调度入口自建。
+   *
+   * 预留期内实例尚未在 core 快照 / supplement 可见，该字段是「谁触发了这次 spawn」在并发窗口内
+   * 唯一可追踪的标识（启动中途失败时只剩它）。可选以兼容既有调用方与用例。
+   */
+  readonly requestId?: string;
 }
 
 /** 预留 token 自增序列：保证每个预留引用唯一。 */
@@ -64,10 +71,16 @@ export function getPendingSpawnReservations(): ReadonlySet<SpawnReservation> {
  * 检查通过后立即登记预留；检查失败时抛错且不登记（无残留）。
  * 调用方必须用 try/finally 保证 releaseSpawnReservation，失败路径同样释放，
  * 否则额度被永久占用。
+ *
+ * @param requestId 触发方关联 ID（§7），由调用方解析后透传，仅用于诊断关联。
  */
-export function beginSpawnReservation(userId: string, source: InstanceSpawnSource): SpawnReservation {
+export function beginSpawnReservation(
+  userId: string,
+  source: InstanceSpawnSource,
+  requestId?: string,
+): SpawnReservation {
   assertAgentConcurrencyAvailable(userId, source);
-  const reservation: SpawnReservation = { token: ++reservationTokenSeq, userId, source };
+  const reservation: SpawnReservation = { token: ++reservationTokenSeq, userId, source, requestId };
   pendingReservations.add(reservation);
   return reservation;
 }

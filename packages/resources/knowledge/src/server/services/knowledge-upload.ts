@@ -1,28 +1,28 @@
+/**
+ * 知识资源的上传、导入、状态刷新与删除。
+ *
+ * 本模块的每个入口都收**已授权的知识库行**（`KnowledgeBaseRow`）而不是 `(organizationId, knowledgeBaseId)`：
+ * 归属判定与凭据解析属于门面（见 `../facades/knowledge-access`）。迁移前这里有一份私有的
+ * `resolveKb` 同时做「读行 + 比较组织 + 解析 key」，与 `services/knowledge-base-access` 的同名判定
+ * 重复，且刷新路径还允许降级——同一规则三处实现，改错一处不会有人发现。
+ */
+
 import { randomUUID } from "node:crypto";
 import { mkdir, writeFile } from "node:fs/promises";
 import { basename, join } from "node:path";
-import type { KnowledgeResourceRow } from "../repositories/knowledge-base";
-import { knowledgeBaseRepo, knowledgeResourceRepo } from "../repositories/knowledge-base";
+import type { KnowledgeBaseRow, KnowledgeResourceRow } from "../repositories/knowledge-base";
+import { knowledgeResourceRepo } from "../repositories/knowledge-base";
 import {
   listKnowledgeBaseResources,
   resolveKnowledgeTenantIdentity,
   touchKnowledgeBaseUpdatedAt,
   upsertKnowledgeBaseStatusFromResources,
 } from "./knowledge-base";
+import type { KnowledgeBaseCredential } from "./knowledge-credential";
 import { getKnowledgeProvider } from "./knowledge-provider/registry";
 import type { KnowledgeResourceStatus } from "./knowledge-provider/types";
-import { resolveRagflowApiKey } from "./ragflow-key";
 
 const KNOWLEDGE_UPLOAD_ROOT = join(process.cwd(), "data/knowledge-upload");
-
-/** 跨组织安全的 KB 查询 + API key 解析 */
-async function resolveKb(organizationId: string, knowledgeBaseId: string, userId: string) {
-  const kb = await knowledgeBaseRepo.getById(knowledgeBaseId);
-  if (!kb) return null;
-  if (kb.organizationId !== organizationId) return null;
-  const apiKey = await resolveRagflowApiKey("global", userId, organizationId);
-  return { kb, apiKey };
-}
 
 function generateKnowledgeResourceId(): string {
   return randomUUID();
@@ -44,6 +44,13 @@ function sanitizeResource(row: KnowledgeResourceRow) {
     updatedAt: Math.floor(row.updatedAt.getTime() / 1000),
   };
 }
+
+/**
+ * 知识资源的对外 DTO：由本地行扁平化得到（刷新端点会再并入远端字段）。
+ *
+ * 由类型从实现反推，避免门面与路由各自手抄一份"看起来一样"的结构。
+ */
+export type KnowledgeResourceDto = ReturnType<typeof sanitizeResource>;
 
 /**
  * 判断远端文档删除失败是否只是“对象已不存在”。
@@ -133,17 +140,21 @@ async function completeResource(
   });
 }
 
+/**
+ * 上传一个文件资源到已授权的知识库。
+ *
+ * 凭据惰性：门面已按调用者身份绑定取值动作，这里在真正要调 provider 时才取；未同步远端的知识库
+ * （`remoteId` 为空）按迁移前的文案上抛，由门面映射为 404。
+ */
 export async function uploadKnowledgeResource(
-  organizationId: string,
-  knowledgeBaseId: string,
+  kb: KnowledgeBaseRow,
+  credential: KnowledgeBaseCredential,
   file: File,
   overwrite?: boolean,
-  userId?: string,
 ) {
-  const resolved = await resolveKb(organizationId, knowledgeBaseId, userId ?? organizationId);
-  if (!resolved) throw new Error("知识库不存在");
-  const { kb, apiKey } = resolved;
+  const knowledgeBaseId = kb.id;
   if (!kb.remoteId) throw new Error("知识库 remoteId 不存在");
+  const apiKey = await credential();
 
   const sourceName = basename(file.name || "upload.bin");
 
@@ -172,7 +183,7 @@ export async function uploadKnowledgeResource(
     }
   }
 
-  const dir = join(KNOWLEDGE_UPLOAD_ROOT, organizationId, knowledgeBaseId);
+  const dir = join(KNOWLEDGE_UPLOAD_ROOT, kb.organizationId, knowledgeBaseId);
   await mkdir(dir, { recursive: true });
   const filePath = join(dir, `${Date.now()}-${sourceName}`);
   await writeFile(filePath, Buffer.from(await file.arrayBuffer()));
@@ -204,16 +215,15 @@ export async function uploadKnowledgeResource(
   return sanitizeResource(row!);
 }
 
+/** 通过 URL 导入资源到已授权的知识库；远端失败不影响本地记录落库（返回 `error` 状态的 DTO）。 */
 export async function importKnowledgeResourceFromUrl(
-  organizationId: string,
-  knowledgeBaseId: string,
+  kb: KnowledgeBaseRow,
+  credential: KnowledgeBaseCredential,
   input: { url: string; sourceName?: string },
-  userId?: string,
 ) {
-  const resolved = await resolveKb(organizationId, knowledgeBaseId, userId ?? organizationId);
-  if (!resolved) throw new Error("知识库不存在");
-  const { kb, apiKey } = resolved;
+  const knowledgeBaseId = kb.id;
   if (!kb.remoteId) throw new Error("知识库 remoteId 不存在");
+  const apiKey = await credential();
 
   const sourceName = input.sourceName?.trim() || basename(new URL(input.url).pathname || "resource");
   const resourceId = await createOrReusePendingResource(knowledgeBaseId, "url", sourceName || input.url, input.url);
@@ -243,22 +253,34 @@ export async function importKnowledgeResourceFromUrl(
   return sanitizeResource(row!);
 }
 
-export async function listKnowledgeResources(organizationId: string, knowledgeBaseId: string, userId?: string) {
-  const resolved = await resolveKb(organizationId, knowledgeBaseId, userId ?? organizationId);
-  if (!resolved) return null;
-  const rows = await knowledgeResourceRepo.listByKnowledgeBase(knowledgeBaseId);
+/**
+ * 把资源标记为"重新解析中"。
+ *
+ * 远端已受理重解析，本地状态先落库供前端轮询；只改状态与更新时间，不动资源内容，也不需要组织或凭据
+ * （资源归属已由门面判定）。
+ */
+export async function markKnowledgeResourceProcessing(resourceId: string): Promise<void> {
+  await knowledgeResourceRepo.update(resourceId, { status: "processing", updatedAt: new Date() });
+}
+
+/** 列出已授权知识库的本地资源行；只读本地，不访问远端，也不解析凭据。 */
+export async function listKnowledgeResources(kb: KnowledgeBaseRow) {
+  const rows = await knowledgeResourceRepo.listByKnowledgeBase(kb.id);
   return rows.map(sanitizeResource);
 }
 
+/**
+ * 删除单个资源：远端删除保持幂等（远端已不存在时继续清理本地），再删除本地记录并重算知识库状态。
+ *
+ * 资源必须属于该知识库（`resourceRow.knowledgeBaseId !== knowledgeBaseId` 时判为不存在）；凭据惰性，
+ * 只有存在远端文档时才解析。
+ */
 export async function deleteKnowledgeResource(
-  organizationId: string,
-  knowledgeBaseId: string,
+  kb: KnowledgeBaseRow,
+  credential: KnowledgeBaseCredential,
   resourceId: string,
-  userId?: string,
 ) {
-  const resolved = await resolveKb(organizationId, knowledgeBaseId, userId ?? organizationId);
-  if (!resolved) return { success: false as const, error: { code: "NOT_FOUND", message: "知识库不存在" } };
-  const { kb, apiKey } = resolved;
+  const knowledgeBaseId = kb.id;
   const resourceRow = await knowledgeResourceRepo.getById(resourceId);
   if (!resourceRow || resourceRow.knowledgeBaseId !== knowledgeBaseId) {
     return { success: false as const, error: { code: "NOT_FOUND", message: "资源不存在" } };
@@ -266,6 +288,7 @@ export async function deleteKnowledgeResource(
 
   if (resourceRow.remoteId) {
     const tenantIdentity = resolveKnowledgeTenantIdentity(kb);
+    const apiKey = await credential();
     try {
       await getKnowledgeProvider().deleteResource({
         resourceRemoteId: resourceRow.remoteId,
@@ -294,12 +317,14 @@ export async function deleteKnowledgeResource(
   return { success: true as const, data: null };
 }
 
-export async function refreshKnowledgeResourceStatus(organizationId: string, knowledgeBaseId: string, userId?: string) {
-  const kb = await knowledgeBaseRepo.getById(knowledgeBaseId);
-  if (!kb) {
-    return null;
-  }
-  if (kb.organizationId !== organizationId) return null;
+/**
+ * 刷新已授权知识库的资源状态：先按远端为准同步，远端不可用（含凭据取不到）时退回本地缓存。
+ *
+ * 凭据在 `try` 内解析（惰性），因此「未配置 RAGFlow」与「远端抖动」走同一条降级路径；门面负责的是
+ * 归属判定与「用谁的身份取凭据」，不改变这里的分支。
+ */
+export async function refreshKnowledgeResourceStatus(kb: KnowledgeBaseRow, credential: KnowledgeBaseCredential) {
+  const knowledgeBaseId = kb.id;
   if (!kb.remoteId) {
     return [];
   }
@@ -308,7 +333,7 @@ export async function refreshKnowledgeResourceStatus(organizationId: string, kno
 
   // 尝试从 RAGFlow 同步最新状态；失败时回退到本地缓存数据
   try {
-    const apiKey = await resolveRagflowApiKey("global", userId ?? kb.userId, organizationId);
+    const apiKey = await credential();
     const remoteResources = await getKnowledgeProvider().listResources({
       knowledgeBaseRemoteId: kb.remoteId,
       remoteAccountId: tenantIdentity.remoteAccountId,

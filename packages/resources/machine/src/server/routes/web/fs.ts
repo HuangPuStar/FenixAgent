@@ -1,6 +1,7 @@
 // /web/environments/:id/fs/* —— 文件系统操作（收敛无分支，W5b，P1-7b）
-// 路由层只做协议接入（认证、参数提取、multipart 解析）与统一错误映射；
-// 本地/远程执行收敛到 AgentFileService 门面（docs/arch/12-files.md §2），
+// 路由层只做协议接入（认证、参数提取、multipart 解析）与统一错误映射；环境归属与角色授权在
+// machineFileFacade 内完成（§3.2「授权止于 Facade」），本层不再就地转换认证上下文，
+// 本地/远程执行收敛到 AgentFileService（docs/arch/12-files.md §2），
 // 不再出现 if (machineId) 双分支。错误码统一为 §2.4 契约表：
 // 400 validation_error / 404 not_found / 413 payload_too_large /
 // 422 config_error / 429 busy(+Retry-After) / 503 file_service_unavailable。
@@ -21,11 +22,11 @@ import {
   TreeResponseSchema,
   WriteFileRequestSchema,
 } from "../../../schemas/file.schema";
-import { gate, normalizeUploadRelativePath } from "../../services/agent-file-service";
-import type { FileAuthContext, FileWriteOptions, ReadMode } from "../../services/file-types";
+import { machineFileFacade } from "../../facades/machine-file-facade";
+import { normalizeUploadRelativePath } from "../../services/agent-file-service";
+import type { FileWriteOptions, ReadMode } from "../../services/file-types";
 import { FileServiceError } from "../../services/file-types";
 import { computeListFingerprint, computeReadFingerprint, computeTreeFingerprint } from "../../services/workspace-fs";
-import type { MachineRequestAuth } from "../../types/auth";
 import type { WebMachineRouteDependencies } from "../dependencies";
 
 /** 构造兼容旧客户端的 ASCII fallback 与 RFC 5987 UTF-8 下载文件名。 */
@@ -67,18 +68,6 @@ export function createWebFsRoutes(deps: WebMachineRouteDependencies) {
 
   // ── 公共辅助 ────────────────────────────────────────────────────
 
-  /** 由已认证上下文构造门面认证上下文：actorId=userId、source=user
-   * （写操作审计字段契约先行，P2-18 落地时前端可传 instanceId/source）。 */
-  function fileAuthContext(authCtx: MachineRequestAuth, user: { id: string }): FileAuthContext {
-    return {
-      organizationId: authCtx.organizationId,
-      userId: user.id,
-      role: authCtx.role,
-      actorId: user.id,
-      source: "user",
-    };
-  }
-
   /** FileServiceError → 统一错误响应参数（§2.4 错误码表）；busy 附 Retry-After: 1
    * （瞬时容量问题，调用方按该头退避，不得自行重试）。409 version_conflict 附带
    * currentVersion（§4.4 覆盖可感知性：当前 ETag/mtime 供消费者提示与重试）。
@@ -87,7 +76,7 @@ export function createWebFsRoutes(deps: WebMachineRouteDependencies) {
   function toFileError(err: unknown): {
     status: number;
     body: {
-      error: { type: string; message: string };
+      error: { type: string; code?: string; message: string };
       currentVersion?: { etag: string; mtimeMs: number; size: number };
     };
     retryAfter?: string;
@@ -96,7 +85,7 @@ export function createWebFsRoutes(deps: WebMachineRouteDependencies) {
     return {
       status: err.statusCode,
       body: {
-        error: { type: err.type, message: err.message },
+        error: { type: err.type, ...(err.type === "path_conflict" ? { code: err.type } : {}), message: err.message },
         ...(err.currentVersion ? { currentVersion: err.currentVersion } : {}),
       },
       retryAfter: err.type === "busy" ? "1" : undefined,
@@ -179,9 +168,9 @@ export function createWebFsRoutes(deps: WebMachineRouteDependencies) {
     "/:id/fs/tree",
     async ({ store, params, headers, set, error }) => {
       const authCtx = store.authContext!;
-      const user = store.user!;
       try {
-        const result = await gate(params.id, fileAuthContext(authCtx, user)).tree();
+        const fs = await machineFileFacade.open(authCtx, params.id);
+        const result = await fs.tree();
         // 树指纹：路径 hash + max(mtime) + 路径数；mtimes 缺失（远程弱指纹）时退化为路径 hash
         const etag = computeTreeFingerprint(result.paths, result.mtimes);
         return conditionalResponse(set, etag, headers["if-none-match"], () => ({ success: true, data: result }));
@@ -207,12 +196,12 @@ export function createWebFsRoutes(deps: WebMachineRouteDependencies) {
     // biome-ignore lint/suspicious/noExplicitAny: Elysia 在 response schema + 错误分支组合下类型推断不稳定
     async ({ store, params, query, headers, set, error }: any) => {
       const authCtx = store.authContext!;
-      const user = store.user!;
       // query path 缺失或为空串时默认工作区根（与历史行为一致；空串对列目录无意义）
       const rawPath = (query as Record<string, string | undefined>)?.path;
       const queryPath = rawPath === undefined || rawPath === "" ? "." : rawPath;
       try {
-        const entries = await gate(params.id, fileAuthContext(authCtx, user)).list(queryPath);
+        const fs = await machineFileFacade.open(authCtx, params.id);
+        const entries = await fs.list(queryPath);
         // 目录条目指纹：hash(name+type+size+modifiedAt)；modifiedAt 全 0（远程弱指纹）退化为 hash(name+type+size)
         const etag = computeListFingerprint(entries);
         return conditionalResponse(set, etag, headers["if-none-match"], () => ({ success: true, data: { entries } }));
@@ -238,7 +227,6 @@ export function createWebFsRoutes(deps: WebMachineRouteDependencies) {
     // biome-ignore lint/suspicious/noExplicitAny: Elysia 在 response schema + 错误分支组合下类型推断不稳定
     async ({ store, params, query, headers, error, set }: any) => {
       const authCtx = store.authContext!;
-      const user = store.user!;
       // biome-ignore lint/suspicious/noExplicitAny: Elysia splat param not typed
       let rawFilePath = (params as any)["*"] as string;
       // 浏览器发送的 URL 中非 ASCII 字符会被 percent-encode，Elysia 的 memoirist 路由
@@ -263,7 +251,8 @@ export function createWebFsRoutes(deps: WebMachineRouteDependencies) {
         });
       }
       try {
-        const result = await gate(params.id, fileAuthContext(authCtx, user)).read(rawFilePath, mode);
+        const fs = await machineFileFacade.open(authCtx, params.id);
+        const result = await fs.read(rawFilePath, mode);
         // read 指纹：size-mtimeMs；远程无 mtime → size-only 弱指纹（弱指纹注释见 computeReadFingerprint）
         const etag = computeReadFingerprint(result.size, result.mtimeMs);
         set.headers.ETag = etag;
@@ -331,7 +320,6 @@ export function createWebFsRoutes(deps: WebMachineRouteDependencies) {
     // biome-ignore lint/suspicious/noExplicitAny: Elysia 在 response schema + 错误分支组合下类型推断不稳定
     async ({ store, params, request, headers, error }: any) => {
       const authCtx = store.authContext!;
-      const user = store.user!;
       const options = writeOptionsFrom(headers as Record<string, string | undefined>);
       const opId = options?.opId;
       // biome-ignore lint/suspicious/noExplicitAny: Elysia splat param not typed
@@ -392,7 +380,8 @@ export function createWebFsRoutes(deps: WebMachineRouteDependencies) {
             relativePath: relativePaths[i],
           })),
         );
-        const result = await gate(params.id, fileAuthContext(authCtx, user)).upload(rawDirPath, inputs, options);
+        const fs = await machineFileFacade.open(authCtx, params.id);
+        const result = await fs.upload(rawDirPath, inputs, options);
         return withOpId({ success: true, data: result }, opId);
       } catch (e) {
         return writeErrorResponse(e, opId, error);
@@ -414,7 +403,6 @@ export function createWebFsRoutes(deps: WebMachineRouteDependencies) {
     // biome-ignore lint/suspicious/noExplicitAny: Elysia 在 response schema + 错误分支组合下类型推断不稳定
     async ({ store, params, body, headers, error }: any) => {
       const authCtx = store.authContext!;
-      const user = store.user!;
       const options = writeOptionsFrom(headers as Record<string, string | undefined>);
       const opId = options?.opId;
       // biome-ignore lint/suspicious/noExplicitAny: Elysia splat param not typed
@@ -436,7 +424,8 @@ export function createWebFsRoutes(deps: WebMachineRouteDependencies) {
         );
 
       try {
-        const result = await gate(params.id, fileAuthContext(authCtx, user)).write(rawFilePath, b.content, options);
+        const fs = await machineFileFacade.open(authCtx, params.id);
+        const result = await fs.write(rawFilePath, b.content, options);
         return withOpId({ success: true, data: result }, opId);
       } catch (e) {
         return writeErrorResponse(e, opId, error);
@@ -460,7 +449,6 @@ export function createWebFsRoutes(deps: WebMachineRouteDependencies) {
     // biome-ignore lint/suspicious/noExplicitAny: Elysia 在 response schema + 错误分支组合下类型推断不稳定
     async ({ store, params, headers, error }: any) => {
       const authCtx = store.authContext!;
-      const user = store.user!;
       const options = writeOptionsFrom(headers as Record<string, string | undefined>);
       const opId = options?.opId;
       // biome-ignore lint/suspicious/noExplicitAny: Elysia splat param not typed
@@ -472,7 +460,8 @@ export function createWebFsRoutes(deps: WebMachineRouteDependencies) {
       }
 
       try {
-        await gate(params.id, fileAuthContext(authCtx, user)).delete(rawFilePath, options);
+        const fs = await machineFileFacade.open(authCtx, params.id);
+        await fs.delete(rawFilePath, options);
         return withOpId({ success: true, data: { ok: true } }, opId);
       } catch (e) {
         // 与其他写端点不同，此处内联错误映射而非复用 writeErrorResponse：
@@ -500,12 +489,12 @@ export function createWebFsRoutes(deps: WebMachineRouteDependencies) {
     "/:id/fs/mkdir",
     async ({ store, params, body, headers, error }) => {
       const authCtx = store.authContext!;
-      const user = store.user!;
       const options = writeOptionsFrom(headers as Record<string, string | undefined>);
       const opId = options?.opId;
       const { path } = body as { path: string };
       try {
-        await gate(params.id, fileAuthContext(authCtx, user)).mkdir(path, options);
+        const fs = await machineFileFacade.open(authCtx, params.id);
+        await fs.mkdir(path, options);
         return withOpId({ success: true, data: { path } }, opId);
       } catch (e) {
         return writeErrorResponse(e, opId, error);
@@ -527,12 +516,12 @@ export function createWebFsRoutes(deps: WebMachineRouteDependencies) {
     "/:id/fs/rename",
     async ({ store, params, body, headers, error }) => {
       const authCtx = store.authContext!;
-      const user = store.user!;
       const options = writeOptionsFrom(headers as Record<string, string | undefined>);
       const opId = options?.opId;
       const { oldPath, newPath } = body as { oldPath: string; newPath: string };
       try {
-        await gate(params.id, fileAuthContext(authCtx, user)).rename(oldPath, newPath, options);
+        const fs = await machineFileFacade.open(authCtx, params.id);
+        await fs.rename(oldPath, newPath, options);
         return withOpId({ success: true, data: { oldPath, newPath } }, opId);
       } catch (e) {
         return writeErrorResponse(e, opId, error);
@@ -555,7 +544,6 @@ export function createWebFsRoutes(deps: WebMachineRouteDependencies) {
     // biome-ignore lint/suspicious/noExplicitAny: Elysia 在 response schema + 错误分支组合下类型推断不稳定
     async ({ store, params, body, headers, error }: any) => {
       const authCtx = store.authContext!;
-      const user = store.user!;
       // opId/ifMatch 对整批生效：单条 If-Match 不匹配的路径进 failed 列表（尽量删除
       // + 分别报告契约），op_id 在整批成功/错误响应中回显（§7.2 幂等重试标识）
       const options = writeOptionsFrom(headers as Record<string, string | undefined>);
@@ -566,10 +554,12 @@ export function createWebFsRoutes(deps: WebMachineRouteDependencies) {
 
       // 逐条执行并收集失败：批量删除的契约是"尽量删除 + 分别报告"，单条失败不中断整批。
       // 门面已把每条的诊断写入服务端日志，此处只透传面向用户的 message。
-      const fs = gate(params.id, fileAuthContext(authCtx, user));
       try {
         for (const p of paths) {
           try {
+            // 逐条开面：授权粒度与迁移前一致（环境归属校验原本在每次操作内执行），因此环境不可见时
+            // 仍按批量契约落到 failed 列表，而不是把响应形状变成请求级错误。
+            const fs = await machineFileFacade.open(authCtx, params.id);
             await fs.delete(p, options);
             deleted.push(p);
           } catch (e) {
@@ -598,12 +588,12 @@ export function createWebFsRoutes(deps: WebMachineRouteDependencies) {
     // biome-ignore lint/suspicious/noExplicitAny: Elysia 在 response schema + 错误分支组合下类型推断不稳定
     async ({ store, params, query, error, set }: any) => {
       const authCtx = store.authContext!;
-      const user = store.user!;
       const path = (query as Record<string, string | undefined>)?.path;
       if (!path) return error(400, { error: { type: "validation_error", message: "path query parameter required" } });
 
       try {
-        const stream = await gate(params.id, fileAuthContext(authCtx, user)).downloadZip(path);
+        const fs = await machineFileFacade.open(authCtx, params.id);
+        const stream = await fs.downloadZip(path);
         const dirName = path.split("/").filter(Boolean).pop() || "download";
         set.headers["Content-Type"] = "application/zip";
         set.headers["Content-Disposition"] = contentDispositionAttachment(`${dirName}.zip`);

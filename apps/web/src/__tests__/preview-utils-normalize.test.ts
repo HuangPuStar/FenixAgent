@@ -1,10 +1,16 @@
-import { describe, expect, test } from "bun:test";
-
-const { normalizeToUserPath } = await import("../components/agent-panel/preview/utils");
-
+// web/src/__tests__/preview-utils-normalize.test.ts
 // 预览源判定的用例（`getPreviewMimeType` / `loadByteAccuratePreviewSource` / `shouldLoadPreviewAsBlob`）
 // 已随实现归位到 `packages/ui-components/web/__tests__/preview-source.test.ts`：宿主那份逐字副本删除后，
-// 用例继续留在这里就等于「宿主用例守护包内实现」。本文件只守护宿主专有的路径规范化约定。
+// 用例继续留在这里就等于「宿主用例守护包内实现」。
+//
+// 本文件守护的是**上报路径与文件树路径的对齐约定**：实现 `normalizeToUserPath` 2026-09-24 随台账
+// `ce-standards-todo.md` D2 迁入 `@fenix/resource-machine/web`（`web/lib/normalize-to-user-path.ts`），
+// 约定本身仍横跨「Agent 工具调用上报」与「文件树展示」两侧；用例按 `RMD_08_MOVES` 的落点留在宿主，
+// 被测函数改从包出口取（旧路径 `apps/web/src/shell/artifacts/preview/utils.ts` 已删除——它 2026-09-24 随
+// 台账 D2 迁出宿主；artifacts 一簇本身也已于 2026-09-28 归位 `apps/web/src/pages/agent-panel/artifacts/`）。
+import { describe, expect, test } from "bun:test";
+
+const { normalizeToUserPath } = await import("@fenix/resource-machine/web");
 
 // =============================================================================
 // normalizeToUserPath() — Agent 工具调用上报路径的规范化

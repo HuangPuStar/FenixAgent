@@ -1,13 +1,10 @@
 import { lstat, mkdir, writeFile } from "node:fs/promises";
 import { dirname, isAbsolute, join, normalize, relative, sep } from "node:path";
 import { AppError } from "@fenix/platform-sdk";
-import { getOwnedEnvironment } from "../environment-port";
-import type { MachineRequestAuth } from "../types/auth";
 import { getRemoteMachineId, remoteUploadFiles } from "./remote-file-service";
 import { isUserPath, normalizeUserRoutePath, resolveWorkspacePath } from "./workspace-fs";
 
 type WorkspaceDeps = {
-  getOwnedEnvironment: typeof getOwnedEnvironment;
   getRemoteMachineId: typeof getRemoteMachineId;
   isUserPath: typeof isUserPath;
   normalizeUserRoutePath: typeof normalizeUserRoutePath;
@@ -26,7 +23,6 @@ type WorkspaceDeps = {
  */
 function buildDefaultDeps(): WorkspaceDeps {
   return {
-    getOwnedEnvironment,
     getRemoteMachineId,
     isUserPath,
     normalizeUserRoutePath,
@@ -99,14 +95,15 @@ export interface WorkspaceFileUploadResult {
 /**
  * 上传文件到 Environment workspace 下的 user 目录。
  * 文件语义保持 environment 级共享，而不是 session 私有文件。
+ *
+ * 环境归属校验不在这里：授权止于 Facade（§3.2），调用方必须先经
+ * `../facades/machine-workspace-facade` 确认该 environment 属于当前主体。
  */
 export async function uploadWorkspaceFiles(
-  ctx: MachineRequestAuth,
   environmentId: string,
   formData: FormData,
 ): Promise<WorkspaceFileUploadResult> {
   const deps = currentDeps();
-  await deps.getOwnedEnvironment(environmentId, ctx.organizationId, ctx.userId);
 
   const files = formData
     .getAll("files")

@@ -9,12 +9,18 @@ import { z } from "zod/v4";
  * 装配面上的消费者是宿主 `apps/server`（注册 machine 路由与 file-ws 接入、启动心跳清扫）与
  * `@fenix/resource-sandbox`（执行请求等待机器回连后寻址）。
  *
- * `dependsOn: ["agent-config"]`：本包两个文件经 `@fenix/agent-config/server` 取数——
- * `src/server/services/remote-file-service.ts` 读取 Agent 配置并解析 AgentNode（`getAgentConfigById` /
- * `resolveAgentNode`）；`src/server/services/registry.ts` 在机器删除的归属校验与机器绑定写入上走 owner 的
- * 服务入口（`isAgentConfigBoundToMachine` / `bindMachineIdByAgentName`，1.7 B7 从直读 `agent_config` 表
- * 收敛而来——`src/**` 的跨模块表访问不适用 §6.1 只覆盖 `db/**` 的组装期例外）。这是本包唯一的包间
- * **运行时**依赖。
+ * `dependsOn: ["agent-config"]`：**声明的是装配顺序与 profile 闭包，不是导入边**。本包此前有两个文件经
+ * `@fenix/agent-config/server` 取数——`src/server/services/remote-file-service.ts` 读 Agent 配置并解析
+ * AgentNode、`src/server/services/registry.ts` 做机器删除的归属校验与机器绑定写入（1.7 B7 从直读
+ * `agent_config` 表收敛而来）。这条反向边不在 §2.3 的依赖矩阵里，靠台账 `no-circular` 冻着，且它与
+ * agent-config → agent-runtime、agent-runtime → sandbox、sandbox → machine 三条边共同闭合 4 包环族；
+ * 2026-09-24 起两处取数改经本包声明的窄端口 `MachineAgentConfigPort`（`src/server/agent-config-port.ts`）
+ * 由宿主 `apps/server` 注入实现，**本包已无任何 agent-config 导入**（禁则由 `special-dependency` 的
+ * machine → resource 规则强制）。
+ *
+ * 保留 `dependsOn` 的理由：宿主注入的实现等价于 agent-config 的系统入口，需要该模块已装配；这条声明让
+ * profile 闭包把 agent-config 一起启用，而不是等运行期才暴露。方向仍是 agent-config → machine 之外的单向
+ * ——本包不导入它、不写它的表，`dependsOn` 只表达「先装配谁」。
  *
  * 装配契约（1.4 起）：本包不再导入 `@fenix/agent-runtime`，宿主运行态（workspace 根、Core runtime 节点、
  * file-ws 连接索引、断连清理）与 environment 读取改由 `apps/server` 经 `bindMachineHostPort` /

@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { WebErrSchema } from "@fenix/platform-sdk";
-import { stubDb } from "@fenix/platform-sdk/testing";
+import { SiteAppActionError } from "../server/facades/agent-site-app-facade";
 import { createWebAgentSitesRoutes } from "../server/routes/web/agent-sites";
 import {
   AgentSiteAgentConfigParamsSchema,
@@ -11,6 +11,7 @@ import {
   CreateAgentSiteAppRequestSchema,
 } from "../server/schemas/agent-site.schema";
 import { initializeAgentConfigModuleConfig } from "../server/testing";
+import { installAgentModuleStub, resetAgentModuleStub, siteAppView } from "./fixtures";
 import {
   createStubSessionAuthGuardPlugin,
   resetTestAuth,
@@ -18,43 +19,34 @@ import {
   setTestAuth,
 } from "./guard-stubs";
 
-const TEST_APP_ID = "00000000-0000-4000-8000-000000000001";
-const TEST_REMOTE_APP_ID = "app-abc12345";
+/**
+ * `/web/agent-sites` 协议层用例（错误映射、DTO 投影与绑定接口的形状）。
+ *
+ * 授权与可见性规则不在本文件验收：主体解析、发布范围读口径、写权限与创建规则都在站点 Facade 里
+ * （见 `agent-site-app-facade.test.ts`），这里用模块替身只声明"应用层返回什么 / 抛什么"，断言协议层
+ * 把它映射成契约规定的状态码、错误码与响应体。路由把 `store.actor` 原样交给 Facade 这件事，由
+ * `capturedActor` 断言。
+ */
 
 const route = createWebAgentSitesRoutes({ authGuardPlugin: createStubSessionAuthGuardPlugin() });
 
-function makeAppRow(overrides: Record<string, unknown> = {}) {
-  return {
-    id: TEST_APP_ID,
-    organizationId: "test-org",
-    userId: "test-user",
-    remoteAppId: TEST_REMOTE_APP_ID,
-    name: "my-app",
-    description: null,
-    platformToken: "tok-xxx.yyy",
-    platformTokenId: "tok-001",
-    visibility: "private",
-    appType: "pocketbase",
-    entryFile: null,
-    activeSlot: null,
-    deployedAt: null,
-    createdAt: new Date("2026-06-23"),
-    updatedAt: new Date("2026-06-23"),
-    ...overrides,
-  };
+const TEST_APP_ID = "00000000-0000-4000-8000-000000000001";
+const TEST_REMOTE_APP_ID = "app-abc12345";
+
+function request(path: string, init?: RequestInit) {
+  return route.handle(new Request(`http://localhost/agent-sites${path}`, init));
 }
 
-describe("agent-sites L1 routes", () => {
+describe("agent-sites 协议层", () => {
   const originalFetch = globalThis.fetch;
 
   beforeEach(() => {
     // 复位替身并初始化应用基础设施（DB 句柄经转发代理，见 `../server/testing.ts`）。
     initializeAgentConfigModuleConfig();
-    // 认证状态由包内守卫替身承载（迁移前读宿主 setTestAuth/setTestOrgContext）；组织与角色都由
-    // 平台 `ActorContext` 表达，路由侧不再读宿主 AuthContext。
+    resetAgentModuleStub();
+    // 认证状态由包内守卫替身承载；组织与角色都由平台 `ActorContext` 表达。
     setTestAuth({ organizationId: "test-org", userId: "test-user" });
-    // Stub fetch 避免真实网络请求
-    globalThis.fetch = (async (_input: string | URL | Request) =>
+    globalThis.fetch = (async () =>
       new Response(JSON.stringify({ success: true, data: {} }), {
         headers: { "Content-Type": "application/json" },
       })) as unknown as typeof fetch;
@@ -62,18 +54,25 @@ describe("agent-sites L1 routes", () => {
 
   afterEach(() => {
     resetTestAuth();
+    resetAgentModuleStub();
     globalThis.fetch = originalFetch;
   });
 
-  // 已认证但没有 active organization（API Key 未绑定组织）时返 401：路由读不到组织上下文就不查库，
-  // 这条分支迁移前以 `store.authContext!` 解引用无组织对象，表现是 500。
-  test("GET /apps 无 active organization 返回 401", async () => {
+  // 已认证但没有 active organization（API Key 未绑定组织）时 Facade 抛 no_organization，协议层映射为
+  // 401 + unauthorized 文案；这条分支迁移前以 `store.authContext!` 解引用无组织对象，表现是 500。
+  test("GET /apps 无组织上下文返回 401", async () => {
     setTestActorWithoutOrganization();
+    installAgentModuleStub({
+      siteFacade: {
+        list: async () => {
+          throw new SiteAppActionError("no_organization");
+        },
+      },
+    });
 
-    const res = await route.handle(new Request("http://localhost/agent-sites/apps"));
+    const res = await request("/apps");
     expect(res.status).toBe(401);
-    const json = await res.json();
-    expect(json).toEqual({
+    expect(await res.json()).toEqual({
       success: false,
       error: { code: "unauthorized", message: "请求缺少组织上下文" },
     });
@@ -81,258 +80,198 @@ describe("agent-sites L1 routes", () => {
 
   // 无任何 app 时返回空数组而不是 404，前端首次进入列表页不应看到错误态。
   test("GET /apps 返回空列表", async () => {
-    stubDb({
-      select: () => ({
-        from: () => ({
-          where: () => ({
-            orderBy: () => Promise.resolve([]),
-          }),
-        }),
-      }),
-    });
-    const res = await route.handle(new Request("http://localhost/agent-sites/apps"));
+    installAgentModuleStub({ siteFacade: { list: async () => [] } });
+
+    const res = await request("/apps");
     const json = await res.json();
+    expect(res.status).toBe(200);
     expect(json.success).toBe(true);
     expect(json.data).toEqual([]);
   });
 
-  // 列表投影必须剔除 platformToken，凭据不得随列表泄漏到浏览器。
-  test("GET /apps 返回 app 列表（不含 platformToken）", async () => {
-    const row = makeAppRow();
-    stubDb({
-      select: () => ({
-        from: () => ({
-          where: () => ({
-            orderBy: () => Promise.resolve([row]),
-          }),
-        }),
-      }),
-    });
-    const res = await route.handle(new Request("http://localhost/agent-sites/apps"));
-    const json = await res.json();
-    expect(json.success).toBe(true);
-    expect(json.data).toHaveLength(1);
-    expect(json.data[0].id).toBe(TEST_APP_ID);
-    // 不返回 platformToken
-    expect(json.data[0].platformToken).toBeUndefined();
-  });
-
-  // 跨组织的 app 一律按不存在处理（404），不区分「无权限」以免泄漏他组织资源存在性。
-  test("GET /apps/:id org 不匹配返回 404", async () => {
-    stubDb({
-      select: () => ({
-        from: () => ({
-          where: () => ({
-            limit: () => Promise.resolve([makeAppRow({ organizationId: "other-org" })]),
-          }),
-        }),
-      }),
-    });
-    const res = await route.handle(new Request(`http://localhost/agent-sites/apps/${TEST_APP_ID}`));
-    expect(res.status).toBe(404);
-    const json = await res.json();
-    expect(json).toEqual({
-      success: false,
-      error: {
-        code: "not_found",
-        message: "App 不存在",
+  // 列表投影必须剔除 platformToken，凭据不得随列表泄漏到浏览器；主体必须原样交给 Facade。
+  test("GET /apps 返回列表且不含 platformToken", async () => {
+    let capturedActor: unknown;
+    installAgentModuleStub({
+      siteFacade: {
+        list: async (actor) => {
+          capturedActor = actor;
+          return [siteAppView({ createdByAgentConfigId: "agent-1", createdByAgentConfigName: "开发智能体" })];
+        },
       },
     });
+
+    const json = await (await request("/apps")).json();
+
+    expect(json.data).toHaveLength(1);
+    expect(json.data[0].id).toBe("11111111-1111-4111-8111-111111111111");
+    expect(json.data[0].platformToken).toBeUndefined();
+    expect(json.data[0].createdByAgentConfigName).toBe("开发智能体");
+    expect(capturedActor).toMatchObject({ userId: "test-user", activeOrganizationId: "test-org" });
   });
 
-  // 同组织同用户的 app 返回详情。
-  test("GET /apps/:id 匹配返回详情", async () => {
-    stubDb({
-      select: () => ({
-        from: () => ({
-          where: () => ({
-            limit: () => Promise.resolve([makeAppRow()]),
-          }),
-        }),
-      }),
+  // 详情不可见（跨组织或他人 private）与不存在同样映射为 404 not_found。
+  test("GET /apps/:id 未命中返回 404", async () => {
+    installAgentModuleStub({
+      siteFacade: {
+        getById: async () => {
+          throw new SiteAppActionError("site_not_found");
+        },
+      },
     });
-    const res = await route.handle(new Request(`http://localhost/agent-sites/apps/${TEST_APP_ID}`));
-    const json = await res.json();
-    expect(json.success).toBe(true);
-    expect(json.data.name).toBe("my-app");
+
+    const res = await request(`/apps/${TEST_APP_ID}`);
+    expect(res.status).toBe(404);
+    expect(await res.json()).toEqual({
+      success: false,
+      error: { code: "not_found", message: "App 不存在" },
+    });
   });
 
-  // remote app id 查询通路（站点侧回查 RCS 记录）同样要能命中详情。
-  test("GET /apps/by-remote/:remoteAppId 匹配返回详情", async () => {
-    stubDb({
-      select: () => ({
-        from: () => ({
-          where: () => ({
-            limit: () => Promise.resolve([makeAppRow()]),
-          }),
-        }),
-      }),
+  // 远端 app id 查询通路（站点识别链路）同样映射详情响应。
+  test("GET /apps/by-remote/:remoteAppId 返回详情", async () => {
+    installAgentModuleStub({
+      siteFacade: { getByRemoteAppId: async () => siteAppView({ remoteAppId: TEST_REMOTE_APP_ID }) },
     });
-    const res = await route.handle(new Request(`http://localhost/agent-sites/apps/by-remote/${TEST_REMOTE_APP_ID}`));
-    const json = await res.json();
-    expect(json.success).toBe(true);
+
+    const json = await (await request(`/apps/by-remote/${TEST_REMOTE_APP_ID}`)).json();
     expect(json.data.remoteAppId).toBe(TEST_REMOTE_APP_ID);
   });
 
-  // 非属主且角色为 member 时拒绝删除：写权限只能来自属主或 org owner/admin。
-  test("DELETE /apps/:id 无写权限返回 403（member 角色）", async () => {
-    setTestAuth({ organizationId: "test-org", userId: "other-user", role: "member" });
-
-    stubDb({
-      select: () => ({
-        from: () => ({
-          where: () => ({
-            limit: () => Promise.resolve([makeAppRow()]),
-          }),
-        }),
-      }),
-    });
-    const res = await route.handle(
-      new Request(`http://localhost/agent-sites/apps/${TEST_APP_ID}`, { method: "DELETE" }),
-    );
-    expect(res.status).toBe(403);
-    const json = await res.json();
-    expect(json).toEqual({
-      success: false,
-      error: {
-        code: "forbidden",
-        message: "无权限删除此 app",
+  // 无写权限时按端点文案返回 403：同一条 forbidden 语义在不同动作上有不同说法（既有契约）。
+  test("DELETE /apps/:id 无写权限返回 403", async () => {
+    installAgentModuleStub({
+      siteFacade: {
+        remove: async () => {
+          throw new SiteAppActionError("forbidden");
+        },
       },
+    });
+
+    const res = await request(`/apps/${TEST_APP_ID}`, { method: "DELETE" });
+    expect(res.status).toBe(403);
+    expect(await res.json()).toEqual({
+      success: false,
+      error: { code: "forbidden", message: "无权限删除此 app" },
     });
   });
 
-  // Agent 未绑定站点时返回空列表，前端据此展示「未绑定」而不是错误。
-  test("GET /agent-configs/:id/sites 无绑定时返回空列表", async () => {
-    stubDb({
-      select: () => ({
-        from: () => ({
-          where: () => Promise.resolve([]),
-        }),
-      }),
+  // 上传端点的 403 文案与其他端点区分（"无权限上传文件"）。
+  test("PUT /apps/:id/files/:path 无写权限返回 403 上传文案", async () => {
+    installAgentModuleStub({
+      siteFacade: {
+        uploadFile: async () => {
+          throw new SiteAppActionError("forbidden");
+        },
+      },
     });
-    const res = await route.handle(new Request("http://localhost/agent-sites/agent-configs/agent-cfg-1/sites"));
+
+    const res = await request(`/apps/${TEST_APP_ID}/files/index.html`, { method: "PUT", body: "hello" });
+    expect(res.status).toBe(403);
+    expect((await res.json()).error.message).toBe("无权限上传文件");
+  });
+
+  // 非 custom 类型的部署拒绝必须带上 app 与当前类型，便于调用方定位（既有文案）。
+  test("POST /apps/:id/deploy 非 custom 返回 400 并带类型", async () => {
+    installAgentModuleStub({
+      siteFacade: {
+        deploy: async () => {
+          throw new SiteAppActionError("not_custom", { remoteAppId: TEST_REMOTE_APP_ID, appType: "pocketbase" });
+        },
+      },
+    });
+
+    const res = await request(`/apps/${TEST_APP_ID}/deploy`, { method: "POST", body: "archive" });
+    expect(res.status).toBe(400);
     const json = await res.json();
-    expect(json.success).toBe(true);
+    expect(json.error.code).toBe("bad_request");
+    expect(json.error.message).toContain("不是 custom 类型，无法部署");
+    expect(json.error.message).toContain(TEST_REMOTE_APP_ID);
+  });
+
+  // custom 类型没有 PocketBase：PB 透传本包先 400，避免把上游 404 误报成站点不存在。
+  test("ALL /apps/:id/api/* custom 类型返回 400", async () => {
+    installAgentModuleStub({
+      siteFacade: {
+        getPocketBaseProxyTarget: async () => {
+          throw new SiteAppActionError("pocketbase_unsupported", {
+            remoteAppId: TEST_REMOTE_APP_ID,
+            appType: "custom",
+          });
+        },
+      },
+    });
+
+    const res = await request(`/apps/${TEST_APP_ID}/api/collections`, { method: "GET" });
+    expect(res.status).toBe(400);
+    expect((await res.json()).error.message).toContain("不支持 PocketBase API");
+  });
+
+  // Agent 未绑定站点时返回空数组，前端据此展示「未绑定」而不是错误；绑定为空时不应查站点。
+  test("GET /agent-configs/:id/sites 无绑定时返回空列表", async () => {
+    installAgentModuleStub({ siteFacade: { listBoundApps: async () => [] } });
+
+    const res = await request("/agent-configs/agent-cfg-1/sites");
+    const json = await res.json();
+    expect(res.status).toBe(200);
     expect(json.data).toEqual([]);
   });
 
-  // 绑定顺序是用户可见序：repo 批量查询返回乱序时路由必须按绑定顺序重排。
-  test("GET /agent-configs/:id/sites 返回绑定 sites 详情（保持绑定顺序）", async () => {
-    const siteAppIdA = "00000000-0000-4000-8000-00000000000a";
-    const siteAppIdB = "00000000-0000-4000-8000-00000000000b";
-    const selectCalls: Array<{ cols: unknown[]; cond?: unknown }> = [];
-    // 模拟两次 select：
-    //   1) 拿绑定 siteAppId（顺序 [B, A]）
-    //   2) repo.listByIds 返回 [A, B]（乱序），路由层应按绑定顺序重排
-    let selectCount = 0;
-    stubDb({
-      select: (cols: unknown[]) => {
-        selectCalls.push({ cols });
-        selectCount += 1;
-        if (selectCount === 1) {
-          // 绑定查询：返回 B 在前
-          return {
-            from: () => ({
-              where: () => Promise.resolve([{ siteAppId: siteAppIdB }, { siteAppId: siteAppIdA }]),
-            }),
-          };
-        }
-        // repo.listByIds
-        return {
-          from: () => ({
-            where: () =>
-              Promise.resolve([
-                makeAppRow({ id: siteAppIdA, name: "app-a", remoteAppId: "app-aaa" }),
-                makeAppRow({ id: siteAppIdB, name: "app-b", remoteAppId: "app-bbb" }),
-              ]),
-          }),
-        };
+  // 绑定顺序是用户可见序：Facade 已经按绑定顺序返回，协议层必须原样保留。
+  test("GET /agent-configs/:id/sites 保持 Facade 给出的顺序", async () => {
+    installAgentModuleStub({
+      siteFacade: {
+        listBoundApps: async () => [
+          siteAppView({ id: "00000000-0000-4000-8000-00000000000b", name: "app-b", remoteAppId: "app-bbb" }),
+          siteAppView({ id: "00000000-0000-4000-8000-00000000000a", name: "app-a", remoteAppId: "app-aaa" }),
+        ],
       },
     });
-    const res = await route.handle(new Request("http://localhost/agent-sites/agent-configs/agent-cfg-1/sites"));
-    const json = await res.json();
-    expect(json.success).toBe(true);
-    expect(json.data).toHaveLength(2);
-    // 保持绑定顺序：先 B 后 A
-    expect(json.data[0].id).toBe(siteAppIdB);
-    expect(json.data[1].id).toBe(siteAppIdA);
-    expect(json.data[0].remoteAppId).toBe("app-bbb");
+
+    const json = await (await request("/agent-configs/agent-cfg-1/sites")).json();
+    expect(json.data.map((item: { name: string }) => item.name)).toEqual(["app-b", "app-a"]);
   });
 
-  // ── Custom App 部署（POST /apps/:id/deploy）─────────
-  // 仅 type=custom 的 app 支持部署；透传 gzip tar.gz 到 agent-sites 平台，
-  // 平台做解压 + TCP 探活 + 双槽位切换。RCS 写回 entry_file/slot/deployed_at。
-
-  // pocketbase 类型没有用户代码可部署，必须明确拒绝而不是透传到平台失败。
-  test("对 pocketbase 类型返 400", async () => {
-    const row = makeAppRow({ appType: "pocketbase" });
-    stubDb({
-      select: () => ({
-        from: () => ({
-          where: () => ({
-            limit: () => Promise.resolve([row]),
-          }),
-        }),
-      }),
+  // 绑定接口的两个 404 语义各有文案：Agent 配置不存在 / Site 不存在。
+  test("POST /agent-configs/:id/sites/:siteAppId 的两种 404 文案", async () => {
+    installAgentModuleStub({
+      siteFacade: {
+        bind: async () => {
+          throw new SiteAppActionError("agent_not_found");
+        },
+      },
     });
-    const res = await route.handle(
-      new Request(`http://localhost/agent-sites/apps/${TEST_APP_ID}/deploy`, {
-        method: "POST",
-        body: new ReadableStream<Uint8Array>({ start: (c) => c.close() }),
-      }),
-    );
-    expect(res.status).toBe(400);
-    const json = await res.json();
-    expect(json.error.code).toBe("bad_request");
-    expect(json.error.message).toContain("不是 custom 类型");
+    const agentMissing = await request(`/agent-configs/agent-1/sites/${TEST_APP_ID}`, { method: "POST" });
+    expect(agentMissing.status).toBe(404);
+    expect((await agentMissing.json()).error.message).toBe("Agent 配置不存在");
+
+    installAgentModuleStub({
+      siteFacade: {
+        bind: async () => {
+          throw new SiteAppActionError("site_not_found");
+        },
+      },
+    });
+    const siteMissing = await request(`/agent-configs/agent-1/sites/${TEST_APP_ID}`, { method: "POST" });
+    expect(siteMissing.status).toBe(404);
+    expect((await siteMissing.json()).error.message).toBe("Site 不存在");
   });
 
-  // 既非属主也非 owner/admin 的用户不得部署他人 app。
-  test("非 owner 非 admin 返 403", async () => {
-    const row = makeAppRow({ appType: "custom", userId: "other-user" });
-    stubDb({
-      select: () => ({
-        from: () => ({
-          where: () => ({
-            limit: () => Promise.resolve([row]),
-          }),
-        }),
-      }),
+  // 解绑走同一套映射；DELETE 天然幂等，成功体是 data: null。
+  test("DELETE /agent-configs/:id/sites/:siteAppId 成功返回 null", async () => {
+    const unbound: string[] = [];
+    installAgentModuleStub({
+      siteFacade: {
+        unbind: async (_actor, agentConfigId, siteAppId) => {
+          unbound.push(`${agentConfigId}/${siteAppId}`);
+        },
+      },
     });
-    setTestAuth({ organizationId: "test-org", userId: "test-user", role: "member" });
-    const res = await route.handle(
-      new Request(`http://localhost/agent-sites/apps/${TEST_APP_ID}/deploy`, {
-        method: "POST",
-        body: new ReadableStream<Uint8Array>({ start: (c) => c.close() }),
-      }),
-    );
-    expect(res.status).toBe(403);
-  });
 
-  // ── L2 PB 透传对 custom 类型的拒绝 ─────────────────
-  // custom 类型没有 PocketBase，PB 透传应明确返 400 而不是上游 404。
-
-  // custom 类型不含 PocketBase，PB 透传必须本包先拒绝，避免把 404 误报成站点不存在。
-  test("L2 PB 透传 /apps/:id/api/* 对 custom 类型返 400", async () => {
-    const row = makeAppRow({ appType: "custom" });
-    stubDb({
-      select: () => ({
-        from: () => ({
-          where: () => ({
-            limit: () => Promise.resolve([row]),
-          }),
-        }),
-      }),
-    });
-    const res = await route.handle(
-      new Request(`http://localhost/agent-sites/apps/${TEST_APP_ID}/api/collections`, {
-        method: "GET",
-      }),
-    );
-    expect(res.status).toBe(400);
-    const json = await res.json();
-    expect(json.error.code).toBe("bad_request");
-    expect(json.error.message).toContain("不支持 PocketBase API");
+    const res = await request(`/agent-configs/agent-1/sites/${TEST_APP_ID}`, { method: "DELETE" });
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ success: true, data: null });
+    expect(unbound).toEqual([`agent-1/${TEST_APP_ID}`]);
   });
 });
 
@@ -343,58 +282,40 @@ describe("agent-sites OpenAPI metadata", () => {
     const routes = (
       route as unknown as { routes: Array<{ path: string; method: string; hooks: Record<string, unknown> }> }
     ).routes;
-    const siteRoutes = routes.filter((item) => item.path.startsWith("/agent-sites"));
-    expect(siteRoutes.length).toBeGreaterThan(0);
 
-    const detailed = siteRoutes
-      .map((item) => item.hooks.detail as { tags?: string[] } | undefined)
-      .filter((detail): detail is { tags?: string[] } => detail !== undefined);
-    expect(detailed.length).toBeGreaterThan(0);
-    for (const detail of detailed) {
-      expect(detail.tags).toContain("Agent Sites");
+    const agentSitesRoutes = routes.filter((item) => item.path.startsWith("/agent-sites/"));
+    expect(agentSitesRoutes.length).toBeGreaterThan(0);
+    for (const item of agentSitesRoutes) {
+      const detail = item.hooks.detail as { tags?: string[] } | undefined;
+      expect(detail?.tags).toContain("Agent Sites");
     }
 
-    const listRoute = routes.find((item) => item.path === "/agent-sites/apps" && item.method === "GET");
-    expect(listRoute?.hooks.response).toBeDefined();
+    const listRoute = agentSitesRoutes.find((item) => item.method === "GET" && item.path === "/agent-sites/apps");
+    expect(listRoute).toBeDefined();
+    const response = listRoute?.hooks.response as Record<number, unknown> | undefined;
+    expect(response?.[200]).toBe(AgentSiteAppListResponseSchema);
   });
 
-  // 关键路由必须显式声明 params/body/response，避免文档与实现脱节。
-  test("关键路由显式挂载 schema 元数据", () => {
+  // 参数与请求体 schema 的绑定是协议契约的一部分：路径参数与创建请求体必须各挂各的 schema。
+  test("详情/绑定/创建路由挂载各自的参数与请求体 schema", () => {
     const routes = (
       route as unknown as { routes: Array<{ path: string; method: string; hooks: Record<string, unknown> }> }
     ).routes;
-    const listRoute = routes.find((route) => route.path === "/agent-sites/apps" && route.method === "GET");
-    const createRoute = routes.find((route) => route.path === "/agent-sites/apps" && route.method === "POST");
-    const detailRoute = routes.find((route) => route.path === "/agent-sites/apps/:id" && route.method === "GET");
-    const detailByRemoteRoute = routes.find(
-      (route) => route.path === "/agent-sites/apps/by-remote/:remoteAppId" && route.method === "GET",
-    );
+    const byId = routes.find((item) => item.path === "/agent-sites/apps/:id" && item.method === "GET");
+    expect((byId?.hooks.params as unknown) ?? undefined).toBe(AgentSiteAppIdParamsSchema);
+    const byRemote = routes.find((item) => item.path === "/agent-sites/apps/by-remote/:remoteAppId");
+    expect((byRemote?.hooks.params as unknown) ?? undefined).toBe(AgentSiteRemoteAppParamsSchema);
+    const create = routes.find((item) => item.path === "/agent-sites/apps" && item.method === "POST");
+    expect((create?.hooks.body as unknown) ?? undefined).toBe(CreateAgentSiteAppRequestSchema);
+    const bindings = routes.find((item) => item.path === "/agent-sites/agent-configs/:agentConfigId/sites");
+    expect((bindings?.hooks.params as unknown) ?? undefined).toBe(AgentSiteAgentConfigParamsSchema);
 
-    expect(listRoute?.hooks.response).toEqual({
-      200: AgentSiteAppListResponseSchema,
-      401: WebErrSchema,
-    });
-    expect(createRoute?.hooks.body).toBe(CreateAgentSiteAppRequestSchema);
-    expect(createRoute?.hooks.response).toEqual({
-      200: AgentSiteAppDetailResponseSchema,
-      401: WebErrSchema,
-    });
-    expect(detailRoute?.hooks.params).toBe(AgentSiteAppIdParamsSchema);
-    expect(detailRoute?.hooks.response).toEqual({
-      200: AgentSiteAppDetailResponseSchema,
-      401: WebErrSchema,
-      404: WebErrSchema,
-    });
-    expect(detailByRemoteRoute?.hooks.params).toBe(AgentSiteRemoteAppParamsSchema);
-    expect(detailByRemoteRoute?.hooks.response).toEqual({
-      200: AgentSiteAppDetailResponseSchema,
-      401: WebErrSchema,
-      404: WebErrSchema,
-    });
-
-    const bindingListRoute = routes.find(
-      (route) => route.path === "/agent-sites/agent-configs/:agentConfigId/sites" && route.method === "GET",
-    );
-    expect(bindingListRoute?.hooks.params).toBe(AgentSiteAgentConfigParamsSchema);
+    // 错误响应使用统一信封：所有写端点都声明了 401/403/404（列表与详情只声明到它们会产生的码）。
+    const patch = routes.find((item) => item.path === "/agent-sites/apps/:id" && item.method === "PATCH");
+    const response = patch?.hooks.response as Record<number, unknown> | undefined;
+    expect(response?.[401]).toBe(WebErrSchema);
+    expect(response?.[403]).toBe(WebErrSchema);
+    expect(response?.[404]).toBe(WebErrSchema);
+    expect(response?.[200]).toBe(AgentSiteAppDetailResponseSchema);
   });
 });

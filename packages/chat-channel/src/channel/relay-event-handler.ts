@@ -31,6 +31,7 @@ import { CALLBACK_ENTRY_PREFIX } from "../state/chat-writer";
 import type { YjsBroadcaster } from "./broadcaster";
 import type { ConnectionRegistry } from "./connection-registry";
 import { REPLAY_WINDOW_MS, type RelayMessage, type SharedRelay } from "./connection-types";
+import { failPendingSessionMutations } from "./session-mutation";
 
 /** 运行时错误只暴露稳定分类和安全文案，并以同一 ID 写入安全诊断日志。 */
 function agentRuntimeError(
@@ -293,6 +294,14 @@ export class RelayEventHandler {
       );
     }
     if (normalized) {
+      if (normalized.type === "session_list") {
+        try {
+          if (!(await this.dependencies.docManager.refreshSessionTitles(shared.rcsSessionId))) return;
+        } catch (error) {
+          this.dependencies.reportError("[YJS-FE] session title metadata read failed", error);
+          return;
+        }
+      }
       // 终态归属回传：JSON-RPC prompt 响应帧（result 带 stopReason / error）本身
       // 不携带 turnId，聚合层按 active turn 归位会误伤——连续 prompt 时旧 turn 的
       // 迟到终态会提前终结新 turn（新 turn 增量全被丢弃、答案永不出现）。按
@@ -321,6 +330,7 @@ export class RelayEventHandler {
    */
   private async handleRelayClosed(shared: SharedRelay): Promise<void> {
     const { registry } = this.dependencies;
+    failPendingSessionMutations(shared);
     // 本地实例的 relay 意外关闭（进程崩溃/被杀）：触发实例级清理，避免死实例
     // 持续占并发额度并被 ensureRunning 无限复用（C-P2.4）。远程实例由
     // terminateLocalDeadInstance 内部的 nodeId 校验排除；主动关闭路径
@@ -545,6 +555,9 @@ export class RelayEventHandler {
   ): Promise<void> {
     const { registry } = this.dependencies;
     const rpcId = rpcCheck.id as number | string | null | undefined;
+    if (rpcId !== undefined && rpcId !== null) {
+      shared.pendingSessionMutations?.get(rpcId)?.(!rpcCheck.error && "result" in rpcCheck);
+    }
 
     // error 响应（带 id、无 method 且无法规范化）：Agent 子进程意外退出时
     // acp-link 只重置 connection/sessionId 并回 status {connected:false}，不报错、
@@ -586,6 +599,16 @@ export class RelayEventHandler {
     // stopReason 的 prompt 响应 → turn_completed，此投递是结果型响应下 turn 完成的
     // 唯一事件来源），再消费登记与会话同步——保持原帧处理顺序（投递先于消费）。
     let normalized = normalizeAcpMessage(raw, msgType);
+    if (normalized) {
+      if (normalized.type === "session_list") {
+        try {
+          if (!(await this.dependencies.docManager.refreshSessionTitles(shared.rcsSessionId))) normalized = null;
+        } catch (error) {
+          this.dependencies.reportError("[YJS-FE] session title metadata read failed", error);
+          normalized = null;
+        }
+      }
+    }
     if (normalized) {
       // 终态归属回传：见 handleMessage 第三级注释（JSON-RPC prompt 响应无 turnId，
       // 按 pendingPromptTurns 登记附加，聚合层据此校验归属）

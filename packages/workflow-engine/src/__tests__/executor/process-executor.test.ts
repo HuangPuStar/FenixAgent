@@ -67,6 +67,23 @@ describe("ProcessExecutor", () => {
     });
   });
 
+  // 取消等待中的 shell 时，子进程持有的输出管道也必须及时关闭。
+  test("取消 shell 子进程树后及时返回", async () => {
+    if (process.platform === "win32") return;
+    const cancellation = new AbortController();
+    const ctx = makeCtx({ signal: cancellation.signal });
+    const startedAt = Date.now();
+    const running = executor.execute(shellNode("sleep 3 & wait"), ctx);
+    setTimeout(() => cancellation.abort(), 100);
+
+    await expect(running).rejects.toMatchObject({ code: WorkflowErrorCode.DAG_CANCELLED });
+    expect(Date.now() - startedAt).toBeLessThan(1500);
+    const events = await ctx.storage.getEvents(ctx.runId, { nodeId: "test-node" });
+    const processId = Number(events.find((event) => event.type === "node.started")?.metadata?.pid);
+    expect(processId).toBeGreaterThan(0);
+    expect(() => process.kill(-processId, 0)).toThrow();
+  });
+
   // node.failed 事件
   test("非零退出码产生 node.failed 事件", async () => {
     const ctx = makeCtx();

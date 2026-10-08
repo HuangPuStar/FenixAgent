@@ -118,12 +118,13 @@ describe("本包 i18n 字典（models 命名空间）", () => {
   // 2026-09-23 失败态收口：用量 / 预算两个 Tab 的查询失败块与主体下拉的失败提示补 3 键
   // （`usagePage.queryFailed` / `budgetsPage.queryFailed` / `usagePage.subjectLoadFailed`），
   // 因此 `modelGateway` 组由 171 变 174，总数由 410 变 413。
-  test("迁入键组数量与迁移来源一致（modelGateway 174 / modelConfig 8 / admin 6）", () => {
+  // 浏览器入口缺失、读取失败与重试分别补一条文案，原有迁入键不删减。
+  test("迁入键组数量与迁移来源一致（modelGateway 177 / modelConfig 8 / admin 6）", () => {
     const count = (set: Set<string>, prefix: string) => [...set].filter((key) => key.startsWith(`${prefix}.`)).length;
-    expect(count(enKeys, "modelGateway")).toBe(174);
+    expect(count(enKeys, "modelGateway")).toBe(177);
     expect(count(enKeys, "modelConfig")).toBe(8);
     expect(count(enKeys, "admin")).toBe(6);
-    expect(count(zhKeys, "modelGateway")).toBe(174);
+    expect(count(zhKeys, "modelGateway")).toBe(177);
     expect(count(zhKeys, "modelConfig")).toBe(8);
     expect(count(zhKeys, "admin")).toBe(6);
     // 宿主 `models` 命名空间的 41 组 200 键原样迁入；加上三组迁入键共 381 个叶子；
@@ -150,8 +151,13 @@ describe("本包 i18n 字典（models 命名空间）", () => {
     // 2026-09-24 列表接口缺失的处置入口：Provider 弹窗补手动输入模型 ID，新增 `form.{manualModelLabel,
     // manualModelPlaceholder,manualModelDuplicate}` 3 键共 416；同组的 `testDialog.errors.configureModelThenTest`
     // 只改措辞（改为指向手动入口 / OpenAI 兼容地址），不新增键。
-    expect(enKeys.size).toBe(416);
-    expect(zhKeys.size).toBe(416);
+    // 2026-09-24 D7（§4.1 用户可见字符串必须走 `t()`）收口 `AlgorithmsPage` 的硬编码中文界面文案：
+    // 徽标 / 两个按钮 / 搜索占位符各 1 键（`plugAndPlayBadge` / `viewDetails` / `searchPlaceholder`）
+    // + 分类 chip 的 11 键 `categories.*` 共 14 键共 430（页内演示数据仍是中文常量，口径同
+    // `verticalModels` 的既有判定）。
+    // WEB-CONFIG-012 的入口不可用、配置读取失败和重试各增一键，共 433。
+    expect(enKeys.size).toBe(433);
+    expect(zhKeys.size).toBe(433);
   });
 
   // 字典内不得再嵌一层命名空间前缀：宿主按 MODELS_NS 注册本文件，多一层前缀会让所有键变成 key 回显。
@@ -168,8 +174,21 @@ describe("本包 i18n 字典（models 命名空间）", () => {
 
   // 模板字面量动态键（静态扫描覆盖不到）逐条钉住：取值域来自源码里的封闭枚举
   // （`SCOPES`、`ProviderInfo["protocol"]`、`ModelSyncChange["kind"]`、密钥不可用原因码、用量主体类型）。
+  // `algorithms.categories.*` 也在此列：`AlgorithmsPage` 的分类 chip 从 `CATEGORY_FILTERS` 表里取
+  // `labelKey` 交给 `t()`（同一张表还要拿中文标记去比对演示数据，不能拆成 11 个字面量调用）。
   test("模板字面量动态键齐备", () => {
     for (const key of [
+      "algorithms.categories.all",
+      "algorithms.categories.classification",
+      "algorithms.categories.regression",
+      "algorithms.categories.clustering",
+      "algorithms.categories.dimensionalityReduction",
+      "algorithms.categories.ranking",
+      "algorithms.categories.anomalyDetection",
+      "algorithms.categories.timeSeriesForecast",
+      "algorithms.categories.deepLearning",
+      "algorithms.categories.recommendation",
+      "algorithms.categories.optimization",
       "scope.all",
       "scope.organization",
       "scope.public",

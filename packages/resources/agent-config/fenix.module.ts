@@ -3,6 +3,7 @@ import type { ModuleManifest } from "@fenix/platform-sdk";
 import type { ServerRouteHost } from "@fenix/platform-sdk/server";
 import { z } from "zod/v4";
 import { agentConfigResource } from "./src/server/access/agent-config-resource";
+import { agentSiteAppResource } from "./src/server/access/agent-site-app-resource";
 
 /**
  * AgentConfig 资源模块描述符。
@@ -26,8 +27,9 @@ import { agentConfigResource } from "./src/server/access/agent-config-resource";
  *   `src/server/repositories/agent-config-mcp.ts` 的 `listAgentMcpIds` / `syncAgentMcps` 读写）；
  * - memory：`src/server/services/agent-associations.ts` 的 `isMemoryEnabled` / `setMemoryEnabled` 转发
  *   memory 的 `isAgentMemoryEnabled` / `setEnabled`（记忆开关归 memory）；
- * - skill：`src/server/services/skill-directory.ts` 经 `@fenix/resource-skill/server/runtime` 的
- *   `getSkillServerModule` 取可见 Skill 投影，`src/server/services/builtin-skills.ts` 与
+ * - skill：`src/server/facades/agent-authoring-facade.ts` 经 `@fenix/resource-skill/server/runtime` 的
+ *   `getSkillServerModule` 取可见 Skill 投影（智能生成与 Skill 名称解析都以它为准；主体只到 Facade
+ *   为止），`src/server/services/builtin-skills.ts` 与
  *   `src/server/services/agent-launch-spec/skill-resolution.ts` 用 `@fenix/resource-skill/server/content`
  *   的归档与 frontmatter 解析装载内置 Skill，`src/server/services/agent-related-resources.ts` 另经
  *   `@fenix/resource-skill/server/config` 取 `findSkillLabelsByIds`（关联边自身由本包
@@ -37,8 +39,9 @@ import { agentConfigResource } from "./src/server/access/agent-config-resource";
  * 它们 → 本模块，写进本模块会反转装配方向并成环；`sandbox` 同样不声明——`use-agent-editor.ts` 导入的是
  * `@fenix/resource-sandbox/web`，浏览器贡献不进入服务端装配顺序（反向校验只扫 `src/**` 的值导入）。
  *
- * 声明 `accessControlBindings`：`agentConfigResource.storage` 是本模块主表（`agent_config`）的归属列
- * 声明，由 `access-control` 的工厂经 `ModuleFactoryContext.declarations` 汇总。静态导入资源注册文件是
+ * 声明 `accessControlBindings`：`agentConfigResource.storage` 与 `agentSiteAppResource.storage` 分别是本模块
+ * 两张主表（`agent_config` 与 `agent_site_app`）的归属列声明，由 `access-control` 的工厂经
+ * `ModuleFactoryContext.declarations` 汇总。静态导入资源注册文件是
  * 有意的取舍——绑定是值而不是类型，只能来自静态导出；本模块**不得**为这条边把 `access-control` 写进
  * `dependsOn`，否则授权模块与资源模块会互相等待（理由与加载代价见 `@fenix/resource-mcp` 的同类说明）。
  *
@@ -74,7 +77,7 @@ import { agentConfigResource } from "./src/server/access/agent-config-resource";
  *   本包 launch-spec 组装器（`services/agent-launch-spec/assembler.ts`）。默认值直接引用同一常量而不是
  *   复制字面量，避免两处默认值漂移。
  * - `HINDSIGHT_API_TOKEN`：运行期唯一消费者是本包 launch-spec 组装器的
- *   `services/agent-launch-spec/memory-env.ts`（把 token 注入 ccb 引擎的 `HINDSIGHT_API_TOKEN`），宿主经
+ *   `services/agent-launch-spec/memory-env.ts`（把 token 写入工作区 JSON，绝不作为 agent env 下发），宿主经
  *   `services/pre-launch-ports.ts` 以「启动前取数端口」注入而非模块配置——密钥不随地址走。**同族的
  *   `HINDSIGHT_MCP_URL` 不归本包**：它是 memory 模块的领域配置（`getHindsightConfig()` 读的是 memory 的
  *   模块配置），地址的 owner 是 memory，由 memory 的 manifest 声明；本包与宿主都只是该地址的消费者。
@@ -171,7 +174,7 @@ export const moduleManifest = {
       secret: true,
       restartRequired: true,
       description:
-        "Hindsight 记忆 MCP 的 API token（密钥：不得进入日志、响应或错误文案）。运行期唯一消费者是本包 launch-spec 组装器的 memory-env.ts（注入 ccb 引擎的 HINDSIGHT_API_TOKEN），宿主经 services/pre-launch-ports.ts 的启动前取数端口注入而非模块配置；未配置时不注入该变量。同族的 HINDSIGHT_MCP_URL 归 memory 模块。",
+        "Hindsight REST API token（密钥：不得进入日志、响应或错误文案）。宿主经 services/pre-launch-ports.ts 注入启动参数组装器，仅写入工作区 .hindsight/workspace.json 的 hindsightApiToken，不作为 agent 环境变量下发；未配置时写 null。同族的 HINDSIGHT_MCP_URL 归 memory 模块。",
     },
     {
       moduleId: "agent-config",
@@ -215,7 +218,21 @@ export const moduleManifest = {
     id: "agent-config",
     contribution: "@fenix/agent-config/web/contribution",
   },
-  accessControlBindings: [agentConfigResource.storage],
+  // 两张主表同批注册：`agent_config` 与站点 App（`agent_site_app`）。站点表只声明归属列，
+  // `visibility` 是站点的四值发布范围（不是平台受众列），理由见注册文件的文件头。
+  accessControlBindings: [agentConfigResource.storage, agentSiteAppResource.storage],
+  // 数据迁移事实（§6.3）：只声明本模块拥有哪条迁移，run/verify/compensation 的实现留在
+  // `db/data-migrations/migrate-agent-config-model-id.ts`，经包出口 `./db/migration` 装载。
+  // `name` 是该迁移在 `data_migrate_record` 里已落库的 ID，逐字照抄、不按 §6.3 的命名格式回改：
+  // 改名会被判为未应用而重跑。
+  dataMigrations: [
+    {
+      name: "migrate-agent-config-model-id",
+      // 只读 provider/model 表解析引用并回填本包的表，不依赖任何其他数据迁移的写入结果。
+      dependsOn: [],
+      load: () => import("@fenix/agent-config/db/migration").then((module) => module.migrateAgentConfigModelId),
+    },
+  ],
   contributions: [
     {
       id: "agent-config.web-config-agents",

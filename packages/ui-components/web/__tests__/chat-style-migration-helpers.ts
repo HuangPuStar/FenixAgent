@@ -34,10 +34,11 @@ void i18n.use(initReactI18next).init({
 /**
  * 迁移后不应再出现在 `class` 属性里的语义类名（阶段一至四各样式表的源选择器）。
  *
- * 例外（声明已迁成工具类，但**类名保留为其它样式表的作用域钩子**）：
- * - `acp-main-root` / `chat-main-column` / `chat-interface-column` / `chat-interface-root`：宿主
- *   `apps/web/src/index.css`、包内与宿主的 `chat-layout.css` 仍以它们作「唯一高度链」选择器——
- *   这两个样式表属后续阶段；移除条件见 `ACPMain` / `ChatInterface` 与 `chat.css` 的注释。
+ * 例外（声明已迁成工具类，但**类名保留为语义钩子或作用域钩子**）：
+ * - `acp-main-root` / `chat-main-column` / `chat-interface-column` / `chat-interface-root`：四个类名
+ *   曾是「唯一高度链」的选择器；2026-09-28「伪深层」清理把 `min-width` / `min-height` / `overflow`
+ *   就近取档进 `ACPMain` / `ChatInterface` 的 `className`，包内与宿主 `chat-layout.css` 两侧同批删除，
+ *   类名继续留在元素上作语义钩子（`acp-main-root` 还是 `ChatHeader.css` 的外壳作用域）。
  * 阶段五起**没有命令面板形态的例外**：popover/inline 外壳（`chat-command-popover`、
  * `chat-command-menu--popover`、`chat-command-menu--inline`、`chat-command-menu-header`、
  * `chat-command-menu-title`、`chat-command-menu-count`、`chat-command-menu-footer`）经复核无渲染者、

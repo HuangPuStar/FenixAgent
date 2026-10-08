@@ -1,8 +1,8 @@
 import type { ActorContext } from "@fenix/platform-sdk";
 import { WebErrSchema } from "@fenix/platform-sdk";
 import Elysia from "elysia";
-import type { AgentSiteAppRow } from "../../repositories/agent-site-app";
-import { agentSiteAppRepo } from "../../repositories/agent-site-app";
+import type { PocketBaseProxyTarget } from "../../facades/agent-site-app-facade";
+import { getAgentConfigModule } from "../../runtime";
 import {
   AgentSiteAgentConfigParamsSchema,
   AgentSiteAppIdParamsSchema,
@@ -11,23 +11,15 @@ import {
   AgentSiteBindingParamsSchema,
 } from "../../schemas/agent-site.schema";
 import { proxyToAgentSites } from "../../services/agent-sites";
-import { addAgentSiteApp, listAgentSiteAppIds, removeAgentSiteApp } from "../../services/config/agent-config-site-app";
-import { getAgentConfigById } from "../../system-entries";
 import type { WebAgentConfigRouteDependencies } from "../dependencies";
-import {
-  attachCreatorNames,
-  buildError,
-  canRead,
-  resolveSiteActor,
-  resolveSiteApp,
-  toResponse,
-} from "./agent-site-route-support";
+import { runSiteAction, toSiteFailure, toViewResponse } from "./agent-site-route-support";
 
 /**
  * AgentConfig ↔ SiteApp 绑定与 PocketBase 透传路由。
  *
  * 改为工厂（CE 阶段 2 任务 1.3）：由 `createWebAgentSitesRoutes` 注入同一份依赖后 `.use()`，守卫实例
- * 与宿主认证解析保持一致；主体经 `resolveSiteActor` 从 `store.actor` 投影。
+ * 与宿主认证解析保持一致；主体一律取 `store.actor` 并原样交给站点 Facade——组织校验（Agent 与站点都
+ * 必须在当前组织内）、绑定表读写与写权限判定都在 Facade 里完成，本文件只做协议映射。
  */
 export function createAgentSiteAssociationRoutes(deps: WebAgentConfigRouteDependencies) {
   return (
@@ -41,20 +33,11 @@ export function createAgentSiteAssociationRoutes(deps: WebAgentConfigRouteDepend
       .get(
         "/agent-configs/:agentConfigId/sites",
         async ({ params, store, status }) => {
-          const actor = resolveSiteActor(store.actor as ActorContext | null);
-          if (!actor) return status(401, buildError("unauthorized", "请求缺少组织上下文"));
-          const siteAppIds = await listAgentSiteAppIds(params.agentConfigId);
-          if (siteAppIds.length === 0) {
-            return { success: true as const, data: [] };
-          }
-          const apps = await agentSiteAppRepo.listByIds(siteAppIds, actor.organizationId);
-          // 保持绑定顺序（与勾选顺序一致，UI 展示稳定）
-          const ordered = siteAppIds
-            .map((id) => apps.find((a) => a.id === id))
-            .filter((a): a is AgentSiteAppRow => !!a && canRead(a, actor.userId));
-          const items = ordered.map(toResponse);
-          await attachCreatorNames(items);
-          return { success: true as const, data: items };
+          const actor = store.actor as ActorContext | null;
+          return runSiteAction(status, async () => {
+            const items = await getAgentConfigModule().siteFacade.listBoundApps(actor, params.agentConfigId);
+            return { success: true as const, data: items.map(toViewResponse) };
+          });
         },
         {
           sessionAuth: true,
@@ -80,21 +63,15 @@ export function createAgentSiteAssociationRoutes(deps: WebAgentConfigRouteDepend
       .post(
         "/agent-configs/:agentConfigId/sites/:siteAppId",
         async ({ params, store, status }) => {
-          const actor = resolveSiteActor(store.actor as ActorContext | null);
-          if (!actor) return status(401, buildError("unauthorized", "请求缺少组织上下文"));
-          const agentConfig = await getAgentConfigById(params.agentConfigId, actor.organizationId);
-          if (!agentConfig) {
-            return status(404, buildError("not_found", "Agent 配置不存在"));
-          }
-          // siteAppId 可能是 UUID（从 MountSiteDialog 传入）或 remoteAppId（从卡片
-          // artifacts:select-site 事件自动挂载传入）。按格式判断走不同查找方法。
-          const siteApp = await resolveSiteApp(params.siteAppId);
-          if (!siteApp || siteApp.organizationId !== actor.organizationId) {
-            return status(404, buildError("not_found", "Site 不存在"));
-          }
-          // 永远用 siteApp.id（UUID）写入绑定表，保证 listByIds 的 JOIN 正确
-          await addAgentSiteApp(params.agentConfigId, siteApp.id);
-          return { success: true as const, data: null };
+          const actor = store.actor as ActorContext | null;
+          return runSiteAction(
+            status,
+            async () => {
+              await getAgentConfigModule().siteFacade.bind(actor, params.agentConfigId, params.siteAppId);
+              return { success: true as const, data: null };
+            },
+            { site_not_found: "Site 不存在" },
+          );
         },
         {
           sessionAuth: true,
@@ -115,18 +92,15 @@ export function createAgentSiteAssociationRoutes(deps: WebAgentConfigRouteDepend
       .delete(
         "/agent-configs/:agentConfigId/sites/:siteAppId",
         async ({ params, store, status }) => {
-          const actor = resolveSiteActor(store.actor as ActorContext | null);
-          if (!actor) return status(401, buildError("unauthorized", "请求缺少组织上下文"));
-          const agentConfig = await getAgentConfigById(params.agentConfigId, actor.organizationId);
-          if (!agentConfig) {
-            return status(404, buildError("not_found", "Agent 配置不存在"));
-          }
-          const siteApp = await resolveSiteApp(params.siteAppId);
-          if (!siteApp || siteApp.organizationId !== actor.organizationId) {
-            return status(404, buildError("not_found", "Site 不存在"));
-          }
-          await removeAgentSiteApp(params.agentConfigId, siteApp.id);
-          return { success: true as const, data: null };
+          const actor = store.actor as ActorContext | null;
+          return runSiteAction(
+            status,
+            async () => {
+              await getAgentConfigModule().siteFacade.unbind(actor, params.agentConfigId, params.siteAppId);
+              return { success: true as const, data: null };
+            },
+            { site_not_found: "Site 不存在" },
+          );
         },
         {
           sessionAuth: true,
@@ -149,29 +123,21 @@ export function createAgentSiteAssociationRoutes(deps: WebAgentConfigRouteDepend
       .all(
         "/apps/:id/api/*",
         async ({ params, request, store, status }) => {
-          const actor = resolveSiteActor(store.actor as ActorContext | null);
-          if (!actor) return status(401, buildError("unauthorized", "请求缺少组织上下文"));
-          const row = await agentSiteAppRepo.getById(params.id);
-          if (!row || row.organizationId !== actor.organizationId) {
-            return status(404, buildError("not_found", "App 不存在"));
-          }
-          // custom 类型没有 PocketBase，L2 PB 透传无意义——明确拒绝避免被上游 404 误导
-          if (row.appType === "custom") {
-            return status(
-              400,
-              buildError(
-                "bad_request",
-                `Custom 类型 app ${row.remoteAppId} 不支持 PocketBase API，请走业务前端 /web/site/deploy/${row.remoteAppId}/* 或 L1 deploy 接口`,
-              ),
-            );
+          const actor = store.actor as ActorContext | null;
+          let target: PocketBaseProxyTarget;
+          try {
+            target = await getAgentConfigModule().siteFacade.getPocketBaseProxyTarget(actor, params.id);
+          } catch (error) {
+            const failure = toSiteFailure(error);
+            return status(failure.status, failure.body);
           }
           // 提取 prefix 之后的相对路径，拼回 /api/ 前缀
           const prefix = `/web/agent-sites/apps/${params.id}/api/`;
           const url = new URL(request.url);
           const relative = url.pathname.substring(url.pathname.indexOf(prefix) + prefix.length);
           const apiPath = `/api/${relative}`;
-          return proxyToAgentSites(row.remoteAppId, apiPath, request, {
-            Authorization: `Bearer ${row.platformToken}`,
+          return proxyToAgentSites(target.remoteAppId, apiPath, request, {
+            Authorization: `Bearer ${target.platformToken}`,
           });
         },
         {

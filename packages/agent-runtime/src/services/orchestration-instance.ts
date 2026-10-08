@@ -11,7 +11,8 @@
  * `AgentLaunchSpecPort`（宿主绑定 agent-config 的组装器），两条 LaunchSpec 收敛为一条。
  */
 
-import { log, error as logError } from "@fenix/logger";
+import { randomUUID } from "node:crypto";
+import { log, error as logError, requestAls } from "@fenix/logger";
 import type { Instance } from "@fenix/orchestration";
 import { NotFoundError } from "@fenix/platform-sdk";
 import type { AgentLaunchSpec } from "@fenix/plugin-sdk";
@@ -106,6 +107,7 @@ export interface SpawnInstanceViaControllerOptions {
  * @param instanceId 编排域 Instance 的 instanceId（与 core 实例一一对应）
  * @param machineId controller 已解析的节点标识（Instance.machineId 快照，禁止重读 env 推导）
  * @param extraEnv 调用方环境变量覆盖，透传给 buildAgentLaunchSpecForCore
+ * @param requestId 触发方关联 ID（§7）；此处只用于诊断日志，调用方（spawnInstanceViaController）已解析
  */
 export async function spawnInstanceViaCore(
   target: LaunchTargetRef,
@@ -113,6 +115,7 @@ export async function spawnInstanceViaCore(
   machineId: string,
   extraEnv?: Record<string, string>,
   runtimeFence?: { runtimeGeneration: number; serverEpoch: string },
+  requestId?: string,
 ): Promise<void> {
   const nodeId = machineId;
 
@@ -139,10 +142,12 @@ export async function spawnInstanceViaCore(
       });
     }
   } catch (err) {
-    logError(`[orchestration-instance] launchInstance failed: instanceId=${instanceId} nodeId=${nodeId}`, err);
+    logError(`[orchestration-instance] launchInstance failed: instanceId=${instanceId} nodeId=${nodeId}`, err, {
+      requestId,
+    });
     throw err;
   }
-  log(`[orchestration-instance] launched via core: instanceId=${instanceId} nodeId=${nodeId}`);
+  log(`[orchestration-instance] launched via core: instanceId=${instanceId} nodeId=${nodeId}`, { requestId });
 }
 
 /**
@@ -159,13 +164,23 @@ export async function spawnInstanceViaController(
   source: InstanceSpawnSource = "interactive",
   options: SpawnInstanceViaControllerOptions = {},
 ): Promise<Instance> {
+  const requestId = requestAls.getStore()?.requestId ?? randomUUID();
+
+  // 首条诊断日志：放在并发检查之前，被并发上限拒绝的启动同样留下关联 ID。
+  // 独立入口（workflow / 定时任务 / 机器回传）没有上游请求上下文，自建的关联 ID 必须在这里落日志，
+  // 否则它只出现在后续显式携带它的日志里，排障时无从知道这是同一次启动。
+  log(
+    `[orchestration-instance] spawn requested: instanceUid=${options.instanceUid ?? "n/a"} envId=${envId} source=${source}`,
+    { requestId },
+  );
+
   // 平台级/用户级并发治理：与旧 spawnInstanceFromEnvironment 首行语义对齐，
   // 并发配额统一由宿主 agent-concurrency reservation 管理；AgentController 禁止
   // 按 Environment 内存实例数重复限流。
   // 检查与 in-flight 预留合并为同一同步段（beginSpawnReservation 内部无 await），
   // 消除 "检查 → registerSupplement 注册" 窗口内并发不可见导致的同用户超发
   // （A-P2.1）；finally 兜底释放保证失败路径不永久占用额度。
-  const reservation = beginSpawnReservation(userId, source);
+  const reservation = beginSpawnReservation(userId, source, requestId);
   try {
     const controller = _deps.getOrchestrationController();
     if (!options.instanceUid) {
@@ -186,6 +201,7 @@ export async function spawnInstanceViaController(
         options.runtimeGeneration !== undefined && options.serverEpoch
           ? { runtimeGeneration: options.runtimeGeneration, serverEpoch: options.serverEpoch }
           : undefined,
+        requestId,
       );
       // 必须 await：registerSupplement 内部先查 env（DB 异步）再注册 supplement，
       // 不等待会让调用方（如 ensureRunning 的 spawnViaOrchestration）同步查
@@ -193,7 +209,7 @@ export async function spawnInstanceViaController(
       // 必须与 launch 同处 try：此处失败时 core 进程已启动、controller 活跃表已注册、
       // 节点 refCount 已 +1；若不做回滚，实例无 supplement，idle 监控（按 supplement
       // 判断）永不回收，成为仅 stopAllInstances 可清的永久孤儿。
-      await registerSupplement(envId, userId, instance.instanceId, source);
+      await registerSupplement(envId, userId, instance.instanceId, source, requestId);
     } catch (err) {
       // 回滚三侧状态：controller 活跃表 + 节点引用归还（controller.stopInstance）、
       // core 进程（facade.stopInstance）、supplement 清理。stopInstanceViaController
@@ -205,6 +221,7 @@ export async function spawnInstanceViaController(
         logError(
           `[orchestration-instance] rollback stopInstance failed: instanceId=${instance.instanceId}`,
           rollbackErr,
+          { requestId },
         );
       }
       throw err;
@@ -517,12 +534,15 @@ async function buildAgentLaunchSpecForCore(
  * 失败语义：本函数失败（env DB 查询抛错）由调用方 spawnInstanceViaController
  * 的 try/catch 回滚整个实例（controller 活跃表 + core 进程 + supplement 三侧）。
  * envCounter 在 getById 之后才递增，故失败时无编号残留，无需补偿。
+ *
+ * @param requestId 触发方关联 ID（§7），随 supplement 保存，供实例级诊断（失败回滚、闲置回收）回溯触发方。
  */
 async function registerSupplement(
   envId: string,
   userId: string,
   instanceId: string,
   source: InstanceSpawnSource,
+  requestId: string,
 ): Promise<void> {
   const env = await _deps.environmentRepo.getById(envId);
   const supplement: InstanceSupplement = {
@@ -530,6 +550,7 @@ async function registerSupplement(
     environmentId: envId,
     organizationId: env?.organizationId ?? userId,
     spawnSource: source,
+    requestId,
     lastActivityAt: Date.now(),
     relayCount: 0,
     lastRelayDetachedAt: Date.now(),

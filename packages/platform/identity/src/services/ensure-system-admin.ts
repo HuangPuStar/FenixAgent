@@ -33,7 +33,8 @@ import { getIdentityDatabase, type IdentityDatabase } from "../db";
 const systemAdminLog = createLogger("system-admin");
 
 const SYSTEM_ADMIN_NAME = "admin";
-const SYSTEM_ADMIN_EMAIL = "admin@fenix.com";
+/** 系统管理员账号邮箱；引导与只读租户解析（`system-tenant.ts`）共用同一标识。 */
+export const SYSTEM_ADMIN_EMAIL = "admin@fenix.com";
 const SYSTEM_ADMIN_ORG_NAME = "admin";
 const SYSTEM_ADMIN_ORG_SLUG = "admin";
 const PASSWORD_LENGTH = 16;
@@ -469,30 +470,5 @@ export async function ensureSystemAdmin(): Promise<SystemAdminBootstrapResult> {
       id: created.organizationId,
       slug: SYSTEM_ADMIN_ORG_SLUG,
     },
-  };
-}
-
-/**
- * 读取系统托管租户（`IdentityDirectory.resolveSystemTenant` 的实现）。
- *
- * 引导是幂等的（{@link ensureSystemAdmin} 对已存在账号不重置密码、不覆盖凭据文件），因此本方法
- * 是系统托管资源的唯一入口：调用方不需要、也不得自行判断"是否已引导"再决定要不要建号。
- *
- * 引导失败（例如 admin 账号存在但组织归属缺失）时抛错，不返回空值让调用方把系统资源写到错误
- * 归属下。`userId` / `email` 是审计主体：系统托管资源的 `user_id` 列必须写这个真实用户 ID，
- * 不得伪造 actor。
- */
-export async function resolveSystemAdminTenant(): Promise<{
-  organizationId: string;
-  organizationSlug: string;
-  userId: string;
-  email: string;
-}> {
-  const admin = await ensureSystemAdmin();
-  return {
-    organizationId: admin.organization.id,
-    organizationSlug: admin.organization.slug,
-    userId: admin.userId,
-    email: admin.email,
   };
 }

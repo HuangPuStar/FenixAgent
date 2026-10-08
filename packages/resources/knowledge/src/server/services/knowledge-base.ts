@@ -1,6 +1,7 @@
 import { randomBytes } from "node:crypto";
 import type { KnowledgeBaseRow } from "../repositories/knowledge-base";
 import { agentKnowledgeBindingRepo, knowledgeBaseRepo, knowledgeResourceRepo } from "../repositories/knowledge-base";
+import type { KnowledgeBaseCredential } from "./knowledge-credential";
 import { mergeKnowledgeBaseMetadata, readKnowledgeBaseMetadata } from "./knowledge-metadata";
 import { getKnowledgeProvider } from "./knowledge-provider/registry";
 import type {
@@ -116,6 +117,14 @@ function _toUnixTimestamp(value: Date | null | undefined): number | null {
 
 export { setKnowledgeProviderForTesting } from "./knowledge-provider/registry";
 
+/**
+ * 知识库的对外 DTO（列表项与详情同源）。
+ *
+ * 由 {@link sanitizeKnowledgeBase} 从资源行扁平化得到；两个协议入口（`/web` 控制台、`/api` 对外列表）
+ * 都返回这个形状，字段集合由它以类型表达，避免多处手抄一份"看起来一样"的接口。
+ */
+export type KnowledgeBaseListItem = ReturnType<typeof sanitizeKnowledgeBase>;
+
 export function sanitizeKnowledgeBase(
   row: KnowledgeBaseRow,
   extras?: {
@@ -198,106 +207,15 @@ export async function countKnowledgeBaseBindings(knowledgeBaseId: string): Promi
   return knowledgeBaseRepo.countBindings(knowledgeBaseId);
 }
 
-export async function listKnowledgeBasesGlobal() {
-  const rows = await knowledgeBaseRepo.listGlobal();
-  return Promise.all(
-    rows.map(async (row) =>
-      sanitizeKnowledgeBase(row, {
-        bindingsCount: await countKnowledgeBaseBindings(row.id),
-        resourcesCount: await knowledgeResourceRepo.countByKnowledgeBase(row.id),
-      }),
-    ),
-  );
-}
-
-export async function listKnowledgeBasesByTeamId(organizationId: string) {
-  const rows = await knowledgeBaseRepo.listByOrganizationId(organizationId);
-  const items = await Promise.all(
-    rows.map(async (row) =>
-      sanitizeKnowledgeBase(row, {
-        bindingsCount: await countKnowledgeBaseBindings(row.id),
-        resourcesCount: await knowledgeResourceRepo.countByKnowledgeBase(row.id),
-      }),
-    ),
-  );
-  return items;
-}
-
-/** 列表知识库 */
-export async function listKnowledgeBases(organizationId: string, _userId: string) {
-  const rows = await knowledgeBaseRepo.listByOrganizationId(organizationId);
-
-  const sanitizeWithCounts = async (rows: KnowledgeBaseRow[]) =>
-    Promise.all(
-      rows.map(async (row) =>
-        sanitizeKnowledgeBase(row, {
-          bindingsCount: await countKnowledgeBaseBindings(row.id),
-          resourcesCount: await knowledgeResourceRepo.countByKnowledgeBase(row.id),
-        }),
-      ),
-    );
-
-  const allKbs = await sanitizeWithCounts(rows);
-
-  // 并发校验 RAGFlow 端知识库是否仍存在，同时同步配置
-  const provider = getKnowledgeProvider();
-  if (provider.getDataset) {
-    const checks = allKbs
-      .filter((kb) => kb.remoteId)
-      .map(async (kb) => {
-        try {
-          const apiKey = await resolveRagflowApiKey("global", kb.userId, kb.organizationId ?? "");
-          const dataset = await provider.getDataset!({ datasetId: kb.remoteId!, apiKey });
-          if (!dataset) {
-            kb.remoteExists = false;
-          } else {
-            // 同步配置：如果本地 embeddingModel/parseMethod/chunkMethod 为空，从 RAGFlow 拉取
-            const kbRow = await knowledgeBaseRepo.getById(kb.id);
-            if (kbRow) {
-              const currentMetadata = readKnowledgeBaseMetadata(kbRow.metadata);
-              const updates: Record<string, unknown> = {};
-              if (!currentMetadata.embeddingModel && dataset.embeddingModel) {
-                updates.metadata = mergeKnowledgeBaseMetadata(kbRow.metadata, {
-                  embeddingModel: dataset.embeddingModel,
-                });
-              }
-              if (!currentMetadata.parseMethod && dataset.parseMethod) {
-                updates.metadata = mergeKnowledgeBaseMetadata(updates.metadata ?? kbRow.metadata, {
-                  parseMethod: dataset.parseMethod,
-                });
-              }
-              if (!currentMetadata.chunkMethod && dataset.chunkMethod) {
-                updates.metadata = mergeKnowledgeBaseMetadata(updates.metadata ?? kbRow.metadata, {
-                  chunkMethod: dataset.chunkMethod,
-                });
-              }
-              if (Object.keys(updates).length > 0) {
-                updates.updatedAt = new Date();
-                await knowledgeBaseRepo.update(kb.id, updates);
-                // 同步到返回数据
-                const mergedMetadata = readKnowledgeBaseMetadata(updates.metadata ?? kbRow.metadata);
-                kb.embeddingModel = mergedMetadata.embeddingModel;
-                kb.parseMethod = mergedMetadata.parseMethod;
-                kb.chunkMethod = mergedMetadata.chunkMethod;
-              }
-            }
-          }
-        } catch {
-          /* 网络异常不做标记 */
-        }
-      });
-    await Promise.allSettled(checks);
-  }
-
-  return allKbs;
-}
-
-export async function getKnowledgeBaseDetail(organizationId: string, knowledgeBaseId: string) {
-  const row = await knowledgeBaseRepo.getById(knowledgeBaseId);
-  if (!row) {
-    return null;
-  }
-  if (row.organizationId !== organizationId) return null;
+/**
+ * 组装知识库详情 DTO。
+ *
+ * 收**已授权的知识库行**而不是 `(organizationId, knowledgeBaseId)`：归属判定属于门面（见
+ * `../facades/knowledge-access`），领域服务拿到行即拿到全部上下文，不再自行比较组织——迁移前这里
+ * 有一处 `row.organizationId !== organizationId` 的判定，它与门面上的判定重复且更容易被绕过。
+ */
+export async function getKnowledgeBaseDetail(row: KnowledgeBaseRow) {
+  const knowledgeBaseId = row.id;
   const resourceRows = await knowledgeResourceRepo.listByKnowledgeBase(knowledgeBaseId, 20);
   const bindingsCount = await countKnowledgeBaseBindings(knowledgeBaseId);
   const resourcesCount = await knowledgeResourceRepo.countByKnowledgeBase(knowledgeBaseId);
@@ -364,6 +282,7 @@ export async function createKnowledgeBaseRecord(
     slug: normalizeSlug(resolvedSlug),
     name: input.name.trim(),
     description: input.description?.trim() || undefined,
+    embeddingModel: input.embeddingModel,
     parseType: effectiveParseType,
     pipelineId: effectivePipelineId,
     chunkMethod: effectiveChunkMethod,
@@ -624,17 +543,16 @@ export async function listKnowledgeFormOptions(apiKey?: string): Promise<Knowled
   };
 }
 
+/**
+ * 更新知识库的展示字段。
+ *
+ * 同样收**已授权的知识库行**：归属判定在门面，这里只做名称/slug 校验、slug 唯一性与落库。
+ */
 export async function updateKnowledgeBase(
-  organizationId: string,
-  knowledgeBaseId: string,
+  row: KnowledgeBaseRow,
   input: { name?: string; slug?: string; description?: string | null },
 ) {
-  const row = await knowledgeBaseRepo.getById(knowledgeBaseId);
-  if (!row) {
-    return { success: false as const, error: { code: "NOT_FOUND", message: "知识库不存在" } };
-  }
-  if (row.organizationId !== organizationId)
-    return { success: false as const, error: { code: "NOT_FOUND", message: "知识库不存在" } };
+  const knowledgeBaseId = row.id;
   if (input.name !== undefined) {
     const nameError = validateName(input.name);
     if (nameError) {
@@ -647,7 +565,7 @@ export async function updateKnowledgeBase(
       return { success: false as const, error: { code: "VALIDATION_ERROR", message: slugError } };
     }
     try {
-      await assertUniqueSlug(organizationId, input.slug, row.userId, knowledgeBaseId);
+      await assertUniqueSlug(row.organizationId, input.slug, row.userId, knowledgeBaseId);
     } catch (error) {
       return { success: false as const, error: { code: "VALIDATION_ERROR", message: (error as Error).message } };
     }
@@ -670,19 +588,21 @@ export async function updateKnowledgeBase(
   return { success: true as const, data: sanitizeKnowledgeBase(updated!) };
 }
 
-export async function deleteKnowledgeBase(organizationId: string, knowledgeBaseId: string, userId?: string) {
-  const row = await knowledgeBaseRepo.getById(knowledgeBaseId);
-  if (!row) {
-    return { success: false as const, error: { code: "NOT_FOUND", message: "知识库不存在" } };
-  }
-  if (row.organizationId !== organizationId)
-    return { success: false as const, error: { code: "NOT_FOUND", message: "知识库不存在" } };
-  if (row.remoteId) {
-    const tenantIdentity = resolveKnowledgeTenantIdentity(row);
-    const apiKey = await resolveRagflowApiKey("global", userId ?? row.userId, organizationId);
+/**
+ * 删除知识库：先删远端数据集（幂等：远端已不存在时继续），再清理绑定与本地记录。
+ *
+ * 收**已授权的知识库行**与**已绑定调用者身份的凭据**：归属判定在门面，凭据由门面按调用者构造。
+ * 凭据保持惰性——没有远端数据集的历史记录在迁移前不解析凭据，提前解析会让「未配置 RAGFlow」把一个
+ * 本可成功的本地删除变成失败（行为等价，逐条保持）。
+ */
+export async function deleteKnowledgeBase(kb: KnowledgeBaseRow, credential: KnowledgeBaseCredential) {
+  const knowledgeBaseId = kb.id;
+  if (kb.remoteId) {
+    const tenantIdentity = resolveKnowledgeTenantIdentity(kb);
+    const apiKey = await credential();
     try {
       await getKnowledgeProvider().deleteKnowledgeBase({
-        knowledgeBaseRemoteId: row.remoteId,
+        knowledgeBaseRemoteId: kb.remoteId,
         remoteAccountId: tenantIdentity.remoteAccountId,
         remoteUserId: tenantIdentity.remoteUserId,
         apiKey,
@@ -694,8 +614,8 @@ export async function deleteKnowledgeBase(organizationId: string, knowledgeBaseI
       }
       console.warn("Remote knowledge base is already missing; continuing local deletion", {
         knowledgeBaseId,
-        remoteId: row.remoteId,
-        organizationId,
+        remoteId: kb.remoteId,
+        organizationId: kb.organizationId,
       });
     }
   }

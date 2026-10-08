@@ -260,7 +260,7 @@ export function ChatSelectionAction({ contextScope, onQuote }: ChatSelectionActi
     >
       <button
         type="button"
-        className="px-3 py-2 text-xs font-semibold text-sky-700"
+        className="min-h-8 px-3 py-2 text-xs font-semibold text-sky-700"
         onClick={() => {
           onQuote?.(selectionAction.text, contextScope);
           window.getSelection()?.removeAllRanges();

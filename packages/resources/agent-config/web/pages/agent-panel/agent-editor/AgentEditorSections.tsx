@@ -71,7 +71,7 @@ function Identity({
         {/* 字段包装统一走 `config/LabeledField`：字段名刻度、6px 字段名/控件间距、提示的位置与配色
             都归库内，本处只留给 grid 定位用的 `min-w-0` + 列位类。 */}
         <LabeledField
-          className="min-w-0"
+          className="md:max-lg:col-start-1 min-w-0"
           label={t("form.name")}
           hint={mode === "edit" ? t("editor.nameImmutable") : undefined}
         >
@@ -86,7 +86,7 @@ function Identity({
           // 这一行是复合控件（只读输入框 + 复制按钮）：`<label>` 里出现第二个可聚焦元素会污染控件的
           // 可访问名且是非法标记，故改走 `LabeledField` 的显式关联模式，由 `htmlFor` 指向主控件。
           <LabeledField
-            className="min-w-0 max-md:col-start-1"
+            className="md:max-lg:col-start-1 min-w-0 max-md:col-start-1"
             label={t("editor.agentId")}
             hint={t("editor.agentIdHint")}
             htmlFor="agent-editor-agent-id"
@@ -99,7 +99,7 @@ function Identity({
             </div>
           </LabeledField>
         )}
-        <LabeledField className="min-w-0 col-span-full" label={t("form.description")}>
+        <LabeledField className="md:max-lg:col-start-1 min-w-0 col-span-full" label={t("form.description")}>
           <EditorInput
             id="agent-editor-description"
             disabled={disabled}
@@ -108,7 +108,7 @@ function Identity({
           />
         </LabeledField>
         <LabeledField
-          className="min-w-0 col-span-full"
+          className="md:max-lg:col-start-1 min-w-0 col-span-full"
           label={t("form.prompt")}
           hint={t("editor.characterCount", { count: form.watch("prompt").length })}
         >
@@ -122,7 +122,9 @@ function Identity({
         </LabeledField>
       </div>
       <p className={GUIDANCE}>
-        <Info />
+        {/* 尺寸与色原本在 `.agent-editor-guidance > svg`（15px / `flex: none` / `basis` 15px / blue-500），
+            第四波随该规则的删除搬到调用点。 */}
+        <Info className="w-3.75 shrink-0 basis-3.75 text-blue-500" />
         {t("editor.promptGuidance")}
       </p>
     </section>
@@ -147,8 +149,9 @@ function Model({ form, data, disabled }: { form: Props["form"]; data: Props["dat
             errorMessage={t("form.modelValidationError")}
             requireGroup
             renderIcon={(item) => (
-              <Suspense fallback={<Cpu />}>
-                <ModelIcon modelId={item.iconKey} size={20} variant="mono" />
+              // 18px 方形与 `shrink-0` 原在 `.agent-editor-option-icon > svg`（第四波随规则删除搬来）。
+              <Suspense fallback={<Cpu className="size-4.5 shrink-0" />}>
+                <ModelIcon modelId={item.iconKey} size={20} variant="mono" className="size-4.5 shrink-0" />
               </Suspense>
             )}
             disabled={disabled}
@@ -156,13 +159,15 @@ function Model({ form, data, disabled }: { form: Props["form"]; data: Props["dat
         )}
       />
       <div className={MODEL_SUMMARY}>
-        <span>
-          <Cpu />
+        <span className="grid size-10 place-items-center rounded-lg bg-indigo-50 text-sky-600">
+          <Cpu className="w-3.75" />
         </span>
-        <div>
-          <small>{t("editor.activeModel")}</small>
-          <strong>{data.models.find((item) => item.id === form.watch("modelId"))?.label}</strong>
-          <p>{t("editor.modelRestartHint")}</p>
+        <div className="flex flex-col gap-0.5">
+          <small className="text-3xs text-gray-400">{t("editor.activeModel")}</small>
+          <strong className="text-sm text-slate-700">
+            {data.models.find((item) => item.id === form.watch("modelId"))?.label}
+          </strong>
+          <p className="m-0 text-3xs leading-normal text-gray-400">{t("editor.modelRestartHint")}</p>
         </div>
       </div>
     </section>
@@ -218,7 +223,10 @@ function Capabilities({ form, data, disabled }: { form: Props["form"]; data: Pro
                 onChange={field.onChange}
                 readOnly={disabled}
                 groupMode={groupMode}
-                renderIcon={() => <ItemIcon />}
+                renderIcon={() => (
+                  // 14px 原在 `.agent-resource-picker-icon > svg`（第四波随规则删除搬到调用点）。
+                  <ItemIcon className="w-3.5" />
+                )}
               />
             )}
           />
@@ -251,10 +259,10 @@ function Runtime({ form, data, disabled }: { form: Props["form"]; data: Props["d
         )}
       />
       <div className={RUNTIME_NOTE}>
-        <Server />
+        <Server className="w-3.75 shrink-0 basis-3.75" />
         <div>
-          <strong>{t("editor.workspaceIsolationTitle")}</strong>
-          <p>{t("editor.workspaceIsolationDescription")}</p>
+          <strong className="text-xs text-gray-600">{t("editor.workspaceIsolationTitle")}</strong>
+          <p className="m-0 mt-1 text-3xs leading-normal">{t("editor.workspaceIsolationDescription")}</p>
         </div>
       </div>
     </section>
@@ -282,11 +290,15 @@ function Sharing({
         description={t("editor.sectionDescriptions.sharing")}
       />
       <div className={OWNER_CARD}>
-        <span>{form.watch("name").slice(0, 1) || "A"}</span>
-        <div>
-          <small>{t("editor.resourceOwner")}</small>
-          <strong>{data.organizationName ?? t("editor.currentOrganization")}</strong>
-          <p>{manageable ? t("editor.sharingManageable") : t("editor.sharingNotManageable")}</p>
+        <span className="grid size-10.5 place-items-center rounded-xl text-xs text-white">
+          {form.watch("name").slice(0, 1) || "A"}
+        </span>
+        <div className="flex min-w-0 flex-col gap-0.75">
+          <small className="text-3xs text-gray-400">{t("editor.resourceOwner")}</small>
+          <strong className="text-xs text-slate-700">{data.organizationName ?? t("editor.currentOrganization")}</strong>
+          <p className="m-0 text-3xs text-gray-400">
+            {manageable ? t("editor.sharingManageable") : t("editor.sharingNotManageable")}
+          </p>
         </div>
         <Badge variant="secondary">{t("editor.owner")}</Badge>
       </div>
@@ -297,7 +309,7 @@ function Sharing({
           <Toggle
             checked={field.value}
             onChange={field.onChange}
-            icon={<Globe2 />}
+            icon={<Globe2 className="w-3.75" />}
             title={t("resource.publicTitle")}
             description={manageable ? t("resource.publicDescription") : t("editor.sharingNotManageable")}
             disabled={disabled || !manageable}
@@ -305,11 +317,13 @@ function Sharing({
         )}
       />
       <div className={ACCESS_PREVIEW}>
-        <strong>{t("editor.currentVisibility")}</strong>
-        <div>
-          <span>{t("editor.currentTeam")}</span>
-          <i />
-          <span>{form.watch("publicReadable") ? t("editor.organizationWide") : t("editor.currentTeamOnly")}</span>
+        <strong className="text-3xs text-gray-500">{t("editor.currentVisibility")}</strong>
+        <div className="my-2 mx-0 flex items-center gap-2.25">
+          <span className="rounded-md bg-white px-2.25 py-1.5 text-xs text-slate-600">{t("editor.currentTeam")}</span>
+          <i className="h-0.25 w-6 bg-slate-300" />
+          <span className="rounded-md bg-white px-2.25 py-1.5 text-xs text-slate-600">
+            {form.watch("publicReadable") ? t("editor.organizationWide") : t("editor.currentTeamOnly")}
+          </span>
         </div>
       </div>
     </section>

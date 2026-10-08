@@ -89,8 +89,9 @@ export interface AuthContext {
    * 用户的**全量**组织成员关系，不只当前 active organization。
    *
    * 授权只使用其中的**当前组织**那一条（组织资源的可见范围就是 active organization），全量的
-   * 意义是身份投影完整：切组织后的角色、系统管理视图等都以全量成员关系为前提。生产路径由
-   * `services/org-context` 从 `IdentityDirectory` 填充。测试构造的上下文可以省略，此时
+   * 意义是身份投影完整：切组织后的角色、系统管理视图等都以全量成员关系为前提。生产路径：session
+   * 由 `services/org-context` 从 `IdentityDirectory` 填充，凭据路径（API key / Environment Secret）
+   * 由 `@fenix/identity` 从成员表填充（角色的唯一来源，见台账 C8）。测试构造的上下文可以省略，此时
    * {@link toActorContext} 回退为「当前组织 + 当前角色」。
    */
   memberships?: readonly { readonly organizationId: string; readonly role: "owner" | "admin" | "member" }[];
@@ -124,8 +125,10 @@ function normalizeActorRole(role: string): AuthContext["role"] {
  * 契约分支保留给系统管理形态确定后的扩展）。
  *
  * `memberships` 缺失时回退为「当前组织 + 当前角色」：只有无法解析全量成员关系的上下文（测试
- * 构造的 `setTestAuth` / `setTestOrgContext`）与系统路径的 {@link ActorSubject} 才会走该分支，
- * 请求的生产路径始终带全量成员关系。
+ * 构造的 `setTestAuth` / `setTestOrgContext`）与系统路径的 {@link ActorSubject} 才会走该分支。
+ * 请求的生产路径始终带全量成员关系——凭据路径（API key / Environment Secret）也由
+ * `@fenix/identity` 从成员表填充（台账 C8：key metadata 的角色是创建期快照，被降级后仍按旧角色
+ * 授权就是越权窗口，因此不允许再合成单条 membership）。
  */
 export function toActorContext(ctx: ActorSubject): ActorContext {
   return {
@@ -223,6 +226,8 @@ async function tryApiKeyAuth(
 
   store.user = result.user;
   store.authEnvironmentId = result.authEnvironmentId;
+  // `credentialOrganization` 已带成员表全量成员关系与当前角色（identity 侧读取），这里不再补算；
+  // 主体投影因此与 session 路径同形，不经过 `toActorContext` 的合成回退分支。
   store.authContext = result.credentialOrganization;
   store.actor = result.credentialOrganization ? toActorContext(result.credentialOrganization) : null;
   return true;

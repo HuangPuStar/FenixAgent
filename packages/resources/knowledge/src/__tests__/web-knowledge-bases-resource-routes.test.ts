@@ -134,6 +134,7 @@ describe("知识库 Web 路由资源分支", () => {
 
   // 文件预览不得接受属于其他知识库的资源 ID。
   test("GET 文件预览拒绝资源与知识库不匹配", async () => {
+    knowledgeBaseRepo.getById = mock(async () => knowledgeBase());
     knowledgeResourceRepo.getById = mock(async () => resource({ knowledgeBaseId: "kb-other" }));
 
     const response = await request("/knowledgeBases/kb-1/resources/resource-1/file");
@@ -144,12 +145,26 @@ describe("知识库 Web 路由资源分支", () => {
 
   // PDF 转换接口应拒绝 URL 类型资源，避免触发本地文件或转换进程。
   test("GET PDF 转换拒绝没有本地文件的资源", async () => {
+    knowledgeBaseRepo.getById = mock(async () => knowledgeBase());
     knowledgeResourceRepo.getById = mock(async () => resource({ sourceType: "url", sourcePath: null }));
 
     const response = await request("/knowledgeBases/kb-1/resources/resource-1/pdf");
 
     expect(response.status).toBe(400);
     expect((await response.json()) as unknown).toMatchObject({ error: { code: "NO_LOCAL_FILE" } });
+  });
+
+  // 文件与 PDF 预览都必须在读取资源前拒绝跨组织知识库。
+  test.each(["file", "pdf"])("GET %s 预览拒绝跨组织知识库", async (kind) => {
+    const readResource = mock(async () => resource({ sourcePath: "/foreign/guide.pdf" }));
+    knowledgeBaseRepo.getById = mock(async () => knowledgeBase({ organizationId: "org-foreign" }));
+    knowledgeResourceRepo.getById = readResource;
+
+    const response = await request(`/knowledgeBases/kb-1/resources/resource-1/${kind}`);
+
+    expect(response.status).toBe(404);
+    expect((await response.json()) as unknown).toMatchObject({ error: { code: "NOT_FOUND" } });
+    expect(readResource).not.toHaveBeenCalled();
   });
 
   // 资源启用状态切换应保留字符串 true 的兼容输入并转发远端身份。

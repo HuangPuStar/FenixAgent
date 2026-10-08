@@ -5,7 +5,7 @@
 // 先例一致）。职责边界：
 // - 能力上限常量（§2.4 能力上限不对称条款）：本地 100MB / 远程 20MB，
 //   W8b 起在 upload 入口强制检查；
-// - 门面契约类型：FileAuthContext / FileWriteOptions / ReadResult / StatResult /
+// - 门面契约类型：AgentFileScope / FileWriteOptions / ReadResult / StatResult /
 //   TreeResult / WriteResult / UploadFileInput / UploadResult / FileErrorType；
 // - FileServiceError：门面统一抛出的错误，路由层（W5b）按 type 映射 HTTP 响应。
 //
@@ -21,14 +21,18 @@ export const REMOTE_UPLOAD_LIMIT_MESSAGE =
   "单文件上限 20MB（远程环境）；更大文件可通过本地环境上传或让 Agent 用工具拉取";
 
 // ── 类型定义（契约）──────────────────────────────────────────────
-/** 写操作审计注入上下文（P2-18 契约字段；role 供 W17 启用检查，当前透传不校验） */
-export interface FileAuthContext {
-  organizationId: string;
-  userId: string;
-  role?: string;
-  /** 写操作审计身份：userId 或 instanceId */
-  actorId: string;
-  source: "user" | "agent" | "api";
+/**
+ * 文件域执行面的显式范围。
+ *
+ * 由 Facade 在完成归属与角色授权后构造（见 `../facades/machine-file-facade`）：执行面本身不做用户权限
+ * 判断，也不再持有组织/用户/角色——那三者的唯一用途是归属校验，已随授权上移到门面（§3.2）。
+ * `actorId` / `source` 是写操作审计字段，由门面按调用方语义决定（`/web` 面是当前用户 + `user`）。
+ */
+export interface AgentFileScope {
+  readonly environmentId: string;
+  /** 写操作审计身份：userId 或 instanceId（供未来非用户来源的调用方使用）。 */
+  readonly actorId: string;
+  readonly source: "user" | "agent" | "api";
 }
 /** 写操作可选参数（契约占位，P2 落地）：opId 幂等键 / ifMatch 条件写 / 审计字段 */
 export interface FileWriteOptions {
@@ -92,6 +96,7 @@ export type FileErrorType =
   | "config_error"
   | "busy"
   | "file_service_unavailable"
+  | "path_conflict"
   | "version_conflict";
 
 /** 门面统一抛出的错误：路由层（W5b）按 type 映射 HTTP 响应，message 面向用户 */

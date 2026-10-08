@@ -310,6 +310,27 @@ export function createPgStorageAdapter(organizationId: string): StorageAdapter {
       });
     },
 
+    async atomicRunCancel({ snapshot, event }: { snapshot: DAGSnapshot; event: DAGEvent }): Promise<void> {
+      await db.transaction(async (tx) => {
+        await tx.insert(workflowEvent).values({
+          eventId: event.event_id,
+          runId: event.run_id,
+          timestamp: new Date(event.timestamp),
+          type: event.type,
+          organizationId,
+        });
+        await tx.insert(workflowSnapshot).values({
+          snapshotId: snapshot.snapshot_id,
+          runId: snapshot.run_id,
+          lastEventId: snapshot.last_event_id,
+          timestamp: new Date(snapshot.timestamp),
+          nodeStates: snapshot.node_states,
+          dagStatus: snapshot.dag_status,
+          organizationId,
+        });
+      });
+    },
+
     // ---------- 清理 ----------
 
     /** 删除指定运行的所有关联数据（事件、快照、节点输出），在事务中执行 */

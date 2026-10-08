@@ -4,7 +4,19 @@ import {
   _resetDeps,
   type AgentConfigModelMigrationRow,
   migrateAgentConfigModelId,
-} from "../services/data-migrates/migrate-agent-config-model-id";
+} from "@fenix/agent-config/db/migration";
+import type { DataMigrationContext } from "@fenix/platform-sdk";
+
+/**
+ * 迁移日志由 runner 经 context 注入（§6.3），模块不再直连 `@fenix/logger`：需要断言日志的用例把自己的
+ * 数组接到 sink 上，其余用例沿用同一份空 sink。
+ */
+let activeLogSink: string[] = [];
+
+const migrationContext: DataMigrationContext = {
+  log: (message) => activeLogSink.push(message),
+  warn: (message) => activeLogSink.push(message),
+};
 
 const row = (overrides: Partial<AgentConfigModelMigrationRow> = {}): AgentConfigModelMigrationRow => ({
   id: "agent-1",
@@ -36,7 +48,7 @@ describe("agent config model id migration boundaries", () => {
     _deps.listPendingRows = async () => [row({ modelId: "current-model" })];
     _deps.updateAgentConfigModel = updates;
 
-    await migrateAgentConfigModelId.run();
+    await migrateAgentConfigModelId.run(migrationContext);
 
     expect(updates).not.toHaveBeenCalled();
   });
@@ -47,7 +59,7 @@ describe("agent config model id migration boundaries", () => {
     _deps.listPendingRows = async () => [row({ model: null })];
     _deps.findLegacyProviders = providers;
 
-    await migrateAgentConfigModelId.run();
+    await migrateAgentConfigModelId.run(migrationContext);
 
     expect(providers).not.toHaveBeenCalled();
   });
@@ -58,7 +70,7 @@ describe("agent config model id migration boundaries", () => {
     _deps.listPendingRows = async () => [row({ model: " \n " })];
     _deps.updateAgentConfigModel = updates;
 
-    await migrateAgentConfigModelId.run();
+    await migrateAgentConfigModelId.run(migrationContext);
 
     expect(updates).not.toHaveBeenCalled();
   });
@@ -81,7 +93,7 @@ describe("agent config model id migration boundaries", () => {
     _deps.findModelRow = modelLookup;
     _deps.updateAgentConfigModel = updates;
 
-    await migrateAgentConfigModelId.run();
+    await migrateAgentConfigModelId.run(migrationContext);
 
     expect(stableProvider).toHaveBeenCalledWith("org-stable", "provider-stable");
     expect(updates).toHaveBeenCalledWith("agent-1", "model-stable");
@@ -103,7 +115,7 @@ describe("agent config model id migration boundaries", () => {
     _deps.findModelRow = modelLookup;
     _deps.updateAgentConfigModel = async () => {};
 
-    await migrateAgentConfigModelId.run();
+    await migrateAgentConfigModelId.run(migrationContext);
 
     expect(modelLookup).toHaveBeenCalledTimes(1);
   });
@@ -113,7 +125,9 @@ describe("agent config model id migration boundaries", () => {
     _deps.listPendingRows = async () => [row({ model: "org-1/provider-gone/model-1" })];
     _deps.findStableProvider = async () => null;
 
-    await expect(migrateAgentConfigModelId.run()).rejects.toThrow("missing provider 'org-1/provider-gone'");
+    await expect(migrateAgentConfigModelId.run(migrationContext)).rejects.toThrow(
+      "missing provider 'org-1/provider-gone'",
+    );
   });
 
   // 稳定引用缺少模型时不得更新历史字段，便于后续修复后重试。
@@ -129,7 +143,7 @@ describe("agent config model id migration boundaries", () => {
     _deps.findModelRow = async () => null;
     _deps.updateAgentConfigModel = updates;
 
-    await expect(migrateAgentConfigModelId.run()).rejects.toThrow("missing model 'model-gone'");
+    await expect(migrateAgentConfigModelId.run(migrationContext)).rejects.toThrow("missing model 'model-gone'");
     expect(updates).not.toHaveBeenCalled();
   });
 
@@ -145,7 +159,7 @@ describe("agent config model id migration boundaries", () => {
     _deps.findModelRow = modelLookup;
     _deps.updateAgentConfigModel = updates;
 
-    await migrateAgentConfigModelId.run();
+    await migrateAgentConfigModelId.run(migrationContext);
 
     expect(modelLookup).toHaveBeenCalledWith("org-1", "name-match", "gpt");
     expect(updates).toHaveBeenCalledWith("agent-1", "model-for-name-match");
@@ -161,7 +175,7 @@ describe("agent config model id migration boundaries", () => {
     _deps.findModelRow = async () => ({ id: "model-display" });
     _deps.updateAgentConfigModel = updates;
 
-    await migrateAgentConfigModelId.run();
+    await migrateAgentConfigModelId.run(migrationContext);
 
     expect(updates).toHaveBeenCalledWith("agent-1", "model-display");
   });
@@ -177,7 +191,7 @@ describe("agent config model id migration boundaries", () => {
     _deps.findModelRow = modelLookup;
     _deps.updateAgentConfigModel = async () => {};
 
-    await migrateAgentConfigModelId.run();
+    await migrateAgentConfigModelId.run(migrationContext);
 
     expect(modelLookup).toHaveBeenCalledWith("org-1", "first", "gpt");
   });
@@ -186,21 +200,25 @@ describe("agent config model id migration boundaries", () => {
   test("rejects a legacy reference without a separator", async () => {
     _deps.listPendingRows = async () => [row({ model: "not-a-reference" })];
 
-    await expect(migrateAgentConfigModelId.run()).rejects.toThrow("invalid legacy model ref 'not-a-reference'");
+    await expect(migrateAgentConfigModelId.run(migrationContext)).rejects.toThrow(
+      "invalid legacy model ref 'not-a-reference'",
+    );
   });
 
   // 旧引用以斜杠开头没有 provider，必须拒绝越界格式。
   test("rejects a legacy reference without a provider name", async () => {
     _deps.listPendingRows = async () => [row({ model: "/model" })];
 
-    await expect(migrateAgentConfigModelId.run()).rejects.toThrow("invalid legacy model ref '/model'");
+    await expect(migrateAgentConfigModelId.run(migrationContext)).rejects.toThrow("invalid legacy model ref '/model'");
   });
 
   // 旧引用以斜杠结尾没有模型，必须拒绝部分格式。
   test("rejects a legacy reference without a model name", async () => {
     _deps.listPendingRows = async () => [row({ model: "provider/" })];
 
-    await expect(migrateAgentConfigModelId.run()).rejects.toThrow("invalid legacy model ref 'provider/' ".trim());
+    await expect(migrateAgentConfigModelId.run(migrationContext)).rejects.toThrow(
+      "invalid legacy model ref 'provider/' ".trim(),
+    );
   });
 
   // provider 缺失时错误必须带当前组织，避免多租户迁移排障误判。
@@ -208,7 +226,7 @@ describe("agent config model id migration boundaries", () => {
     _deps.listPendingRows = async () => [row({ organizationId: "org-isolated", model: "missing/model" })];
     _deps.findLegacyProviders = async () => [];
 
-    await expect(migrateAgentConfigModelId.run()).rejects.toThrow("org='org-isolated'");
+    await expect(migrateAgentConfigModelId.run(migrationContext)).rejects.toThrow("org='org-isolated'");
   });
 
   // 模型查询必须限制在选中 provider 的组织，避免跨租户关联同名模型。
@@ -224,7 +242,7 @@ describe("agent config model id migration boundaries", () => {
     _deps.findModelRow = modelLookup;
     _deps.updateAgentConfigModel = async () => {};
 
-    await migrateAgentConfigModelId.run();
+    await migrateAgentConfigModelId.run(migrationContext);
 
     expect(modelLookup).toHaveBeenCalledTimes(1);
   });
@@ -238,7 +256,7 @@ describe("agent config model id migration boundaries", () => {
       updates.push(id);
     };
 
-    await migrateAgentConfigModelId.run();
+    await migrateAgentConfigModelId.run(migrationContext);
 
     expect(updates).toEqual(["first", "second"]);
   });
@@ -249,7 +267,7 @@ describe("agent config model id migration boundaries", () => {
     _deps.listPendingRows = async () => [row({ id: "bad", model: "invalid" }), row({ id: "later" })];
     _deps.updateAgentConfigModel = updates;
 
-    await expect(migrateAgentConfigModelId.run()).rejects.toThrow("invalid legacy model ref");
+    await expect(migrateAgentConfigModelId.run(migrationContext)).rejects.toThrow("invalid legacy model ref");
     expect(updates).not.toHaveBeenCalled();
   });
 
@@ -259,38 +277,36 @@ describe("agent config model id migration boundaries", () => {
     _deps.listPendingRows = async () => [row({ id: "agent-a" })];
     configureSuccessfulLegacyLookup();
     _deps.updateAgentConfigModel = async () => {};
-    _deps.log = (...args: unknown[]) => {
-      logs.push(args.join(" "));
-    };
+    activeLogSink = logs;
 
-    await migrateAgentConfigModelId.run();
+    await migrateAgentConfigModelId.run(migrationContext);
 
     expect(logs).toEqual(["[data-migrate] migrated agentConfig model id='agent-a'"]);
   });
 
   // 写入失败时不能记录成功日志，避免误导后续的数据修复操作。
   test("does not log success when persisting a migration fails", async () => {
-    const logs = mock(() => {});
+    const logs: string[] = [];
     _deps.listPendingRows = async () => [row({ id: "write-failure" })];
     configureSuccessfulLegacyLookup();
     _deps.updateAgentConfigModel = async () => {
       throw new Error("write unavailable");
     };
-    _deps.log = logs;
+    activeLogSink = logs;
 
-    await expect(migrateAgentConfigModelId.run()).rejects.toThrow("write unavailable");
+    await expect(migrateAgentConfigModelId.run(migrationContext)).rejects.toThrow("write unavailable");
 
-    expect(logs).not.toHaveBeenCalled();
+    expect(logs).toEqual([]);
   });
 
   // 跳过记录不应产生日志，避免把未修改数据误报为完成。
   test("does not log skipped rows", async () => {
-    const logs = mock(() => {});
+    const logs: string[] = [];
     _deps.listPendingRows = async () => [row({ modelId: "already-set" }), row({ model: "" })];
-    _deps.log = logs;
+    activeLogSink = logs;
 
-    await migrateAgentConfigModelId.run();
+    await migrateAgentConfigModelId.run(migrationContext);
 
-    expect(logs).not.toHaveBeenCalled();
+    expect(logs).toEqual([]);
   });
 });

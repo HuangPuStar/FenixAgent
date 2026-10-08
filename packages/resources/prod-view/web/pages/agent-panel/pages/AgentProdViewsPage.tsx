@@ -118,8 +118,8 @@ export function AgentProdViewsPage() {
         title={t("title")}
         subtitle={t("subtitle")}
         actions={
-          <Button size="sm" onClick={() => editor.openCreate()}>
-            <Plus className="mr-1 h-4 w-4" />
+          <Button onClick={() => editor.openCreate()}>
+            <Plus />
             {t("create")}
           </Button>
         }

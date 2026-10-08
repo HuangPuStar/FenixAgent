@@ -8,7 +8,7 @@ import { webContribution as webContribution4 } from "@fenix/resource-memory/web/
 import { webContribution as webContribution5 } from "@fenix/model-management/web/contribution";
 import { webContribution as webContribution6 } from "@fenix/resource-skill/web/contribution";
 import { webContribution as webContribution7 } from "@fenix/resource-task/web/contribution";
-import { webContribution as webContribution8 } from "@fenix/resource-workflow/web/contribution";
+import { webContribution as webContribution8 } from "@fenix/resource-workflow-v2/web/contribution";
 import type { WebAppContribution } from "@fenix/web-runtime/shell/contribution";
 
 /**

@@ -33,6 +33,7 @@ import type { Transport } from "../transport/transport";
 import type { WorkflowDef } from "../types/dag";
 import { WorkflowError, WorkflowErrorCode } from "../types/errors";
 import type { DAGEvent, DAGSnapshot, NodeOutput } from "../types/execution";
+import { cancelSuspendedRun } from "./cancel-suspended-run";
 
 // ---------- 公开类型 ----------
 
@@ -129,6 +130,8 @@ export interface WorkflowEngine {
 
 interface ActiveRun {
   cancellation: CancellationManager;
+  cancelTransition?: Promise<void>;
+  approvalTransition?: Promise<DAGRunResult>;
   workflowDef: WorkflowDef;
   params: Record<string, unknown>;
   secrets: Record<string, string>;
@@ -184,6 +187,29 @@ export function createWorkflowEngine(options: WorkflowEngineOptions): WorkflowEn
     return validateDAG(def);
   }
 
+  function resolveRunParams(def: WorkflowDef, params: Record<string, unknown>): Record<string, unknown> {
+    const resolved = { ...params };
+    for (const [key, schema] of Object.entries(def.params ?? {})) {
+      if (!(key in resolved) && schema.default !== undefined) {
+        resolved[key] = schema.default;
+      }
+      if (schema.type !== "object" || !(key in resolved)) continue;
+      let value = resolved[key];
+      if (typeof value === "string") {
+        try {
+          value = JSON.parse(value);
+        } catch {
+          throw new WorkflowError(`Parameter '${key}' must be a JSON object`, WorkflowErrorCode.VALIDATION_ERROR);
+        }
+      }
+      if (value === null || typeof value !== "object" || Array.isArray(value)) {
+        throw new WorkflowError(`Parameter '${key}' must be a JSON object`, WorkflowErrorCode.VALIDATION_ERROR);
+      }
+      resolved[key] = value;
+    }
+    return resolved;
+  }
+
   async function run(yaml: string, params: Record<string, unknown> = {}, opts?: RunOptions): Promise<DAGRunResult> {
     const { runId, context } = await prepareRun(yaml, params, opts);
 
@@ -219,14 +245,7 @@ export function createWorkflowEngine(options: WorkflowEngineOptions): WorkflowEn
       });
     }
 
-    const resolvedParams = { ...params };
-    if (validation.def.params) {
-      for (const [key, schema] of Object.entries(validation.def.params)) {
-        if (!(key in resolvedParams) && schema.default !== undefined) {
-          resolvedParams[key] = schema.default;
-        }
-      }
-    }
+    const resolvedParams = resolveRunParams(validation.def, params);
 
     // 后台执行，返回 Promise 供调用方订阅完成事件
     const resultPromise = (async (): Promise<DAGRunResult> => {
@@ -300,14 +319,7 @@ export function createWorkflowEngine(options: WorkflowEngineOptions): WorkflowEn
 
     const runId = `run_${nanoid(10)}`;
 
-    const resolvedParams = { ...params };
-    if (validation.def.params) {
-      for (const [key, schema] of Object.entries(validation.def.params)) {
-        if (!(key in resolvedParams) && schema.default !== undefined) {
-          resolvedParams[key] = schema.default;
-        }
-      }
-    }
+    const resolvedParams = resolveRunParams(validation.def, params);
 
     let secrets: Record<string, string> = {};
     if (def.secrets && def.secrets.length > 0) {
@@ -368,7 +380,27 @@ export function createWorkflowEngine(options: WorkflowEngineOptions): WorkflowEn
         runId,
       });
     }
+    if (activeRun.cancelTransition) return activeRun.cancelTransition;
     activeRun.cancellation.cancel();
+    const transition = (async () => {
+      if (activeRun.approvalTransition) {
+        try {
+          await activeRun.approvalTransition;
+        } catch (error) {
+          if (!(error instanceof WorkflowError && error.code === WorkflowErrorCode.RUN_NOT_FOUND)) {
+            console.error(`[workflow] Approval transition failed before cancellation: runId=${runId}`, error);
+          }
+        }
+      }
+      if (await cancelSuspendedRun(runId, storage)) activeRuns.delete(runId);
+    })();
+    activeRun.cancelTransition = transition;
+    try {
+      await transition;
+    } catch (error) {
+      activeRun.cancelTransition = undefined;
+      throw error;
+    }
   }
 
   async function approveNode(runId: string, nodeId: string, token: string, data?: unknown): Promise<DAGRunResult> {
@@ -383,12 +415,34 @@ export function createWorkflowEngine(options: WorkflowEngineOptions): WorkflowEn
 
     // 2. 查找活跃运行
     const activeRun = activeRuns.get(runId);
+    if (activeRun?.cancellation.cancelled) {
+      throw new WorkflowError(`Run '${runId}' has been cancelled`, WorkflowErrorCode.RUN_NOT_FOUND, { runId });
+    }
     if (!activeRun) {
       // 非活跃运行：尝试通过 recover 恢复（recoverFromApproval 内部必然抛错，
       // 提示调用方使用 recover()；返回值仅用于类型收窄，不会真正到达）
       return recoverFromApproval(runId, nodeId, data);
     }
+    if (activeRun.approvalTransition) {
+      throw new WorkflowError(`Run '${runId}' is already being approved`, WorkflowErrorCode.VALIDATION_ERROR, {
+        runId,
+      });
+    }
+    const transition = resumeApprovedRun(runId, nodeId, activeRun, data);
+    activeRun.approvalTransition = transition;
+    try {
+      return await transition;
+    } finally {
+      activeRun.approvalTransition = undefined;
+    }
+  }
 
+  async function resumeApprovedRun(
+    runId: string,
+    nodeId: string,
+    activeRun: ActiveRun,
+    data?: unknown,
+  ): Promise<DAGRunResult> {
     // 3. 活跃运行：发射 audit.approved 事件并重新调度
     // 重新创建 DAGScheduler 继续执行（SUSPENDED 状态的恢复）
     const baseDir = defaultCwd ?? process.cwd();
@@ -409,6 +463,9 @@ export function createWorkflowEngine(options: WorkflowEngineOptions): WorkflowEn
         const output = await storage.getOutput(runId, id);
         if (output) nodeOutputs.set(id, output);
       }
+    }
+    if (activeRun.cancellation.cancelled) {
+      throw new WorkflowError(`Run '${runId}' has been cancelled`, WorkflowErrorCode.RUN_NOT_FOUND, { runId });
     }
 
     // 将审批节点标记为 COMPLETED
@@ -432,6 +489,10 @@ export function createWorkflowEngine(options: WorkflowEngineOptions): WorkflowEn
       metadata: data !== undefined ? { data } : {},
     };
     await storage.appendEvent(approvedEvent);
+
+    if (activeRun.cancellation.cancelled) {
+      throw new WorkflowError(`Run '${runId}' has been cancelled`, WorkflowErrorCode.RUN_NOT_FOUND, { runId });
+    }
 
     // 用恢复上下文重新调度
     const context: SchedulerContext = {
@@ -467,6 +528,9 @@ export function createWorkflowEngine(options: WorkflowEngineOptions): WorkflowEn
     const snapshot = await storage.getLatestSnapshot(runId);
     if (!snapshot) {
       throw new WorkflowError(`No snapshot found for run ${runId}`, WorkflowErrorCode.RECOVERY_ERROR, { runId });
+    }
+    if (snapshot.dag_status === "CANCELLED") {
+      throw new WorkflowError(`Run '${runId}' has been cancelled`, WorkflowErrorCode.RUN_NOT_FOUND, { runId });
     }
 
     // 发射 audit.approved 事件
@@ -522,6 +586,7 @@ export function createWorkflowEngine(options: WorkflowEngineOptions): WorkflowEn
   }
 
   async function getPendingApprovals(runId: string): Promise<PendingApproval[]> {
+    if ((await storage.getLatestSnapshot(runId))?.dag_status === "CANCELLED") return [];
     const events = await storage.getEvents(runId);
     const approvedNodeIds = new Set<string>();
 

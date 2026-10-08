@@ -2,26 +2,30 @@
 
 > **用途**：把「明显不该出现、但 review 容易漏」的写法固化成**可被脚本机械识别**的规则，作为 code review 之外的第二道防线。
 >
-> **状态**：Web 样式域（`FCP-WEB-01..06`）已实现并接入 `precheck`；用户口述条目 4 待补。
+> **状态**：Web 样式域已实现并接入 `precheck`——className 侧 `FCP-WEB-01..06`、伴随表侧 `FCP-WEB-07/08`；用户口述条目 4 待补。
 >
-> **级别**：`P1` = 严格禁止，命中数必须为 0（存量按目录登记在台账里，只允许下降）。
+> **级别**：`P1` = 严格禁止，命中数必须为 0（存量按目录登记在台账里，只允许下降）；`P2` = 待清理存量，
+> 命中登记在台账里、棘轮只降不升，台账即这份重构清单（07/08 属此级）。
 >
-> **反例取材**：全部来自本仓库真实代码，且被 `scripts/__tests__/web-style-rules.test.ts` 逐条锁住——
-> 文档里的反例改了而检测没改（或反之）会在测试里失败。
+> **反例取材**：全部来自本仓库真实代码——className 反例被 `scripts/__tests__/web-style-rules.test.ts` 逐条锁住，
+> 文档里的反例改了而检测没改（或反之）会在测试里失败；伴随表反例取自真实伴随表，口径以本文与
+> `scripts/lib/web-style-css-rules.ts` 为准。
 >
-> **实现**：`scripts/lib/web-style-rules.ts`（规则与判定）、`scripts/lib/web-style-debt.ts`（存量台账）、
-> `scripts/check-web-style.ts`（门禁入口）。
+> **实现**：`scripts/lib/web-style-rules.ts`（类串规则与判定）、`scripts/lib/web-style-css-rules.ts`（伴随表字面量判定）、
+> `scripts/lib/web-style-debt.ts`（存量台账）、`scripts/check-web-style.ts`（门禁入口与扫描范围）。
 
 ## 规则表
 
 | ID | 级别 | 禁止行为 | 检测信号 |
 |----|------|----------|----------|
 | `FCP-WEB-01` | P1 | 用任意值工具类（`-[...]`）写本可标准化的尺寸/颜色 | 值为 `数字+px/rem/em` 或颜色字面量（`#hex`、`rgb()`、`hsl()` 等） |
-| `FCP-WEB-02` | P1 | 深层样式（选择器嵌套、复合表达式）堆成 className | 变体含 `&`（`[&>span]:`、`[&:hover]:`）；或值含空格转义 `_` / 函数调用（`shadow-[0_4px_14px_rgb(...)]`） |
+| `FCP-WEB-02` | P1 | 深层样式（选择器嵌套、非 token 复合表达式）堆成 className | 变体含 `&`（`[&>span]:`、`[&:hover]:`）；或值含空格转义 `_` / 函数调用（`shadow-[0_4px_14px_rgb(...)]`），但值含 `var(...)` 的 token 引用复合值豁免 |
 | `FCP-WEB-03` | P1 | 手写任意 `@media` / `@supports` 变体做响应式 | 任意 at-rule 变体（`[@media...]:`）；任意断点变体（`min-[760px]:`） |
 | `FCP-WEB-04` | P1 | 负号写在工具名之后 | 工具名后紧跟 `--` 加数字（`ml--1.75`、`outline-offset--2`） |
 | `FCP-WEB-05` | P1 | 间距刻度的裸值不是 0.25 的整数倍 | 间距族的裸小数（`h-4.6`、`ml-1.8`、`-ml-1.4`），值 × 4 不是整数 |
 | `FCP-WEB-06` | P1 | 刻度族收到了它不接受的数字 | `auto-rows-*` / `auto-cols-*` 写任何数字；`grid-cols-*` / `grid-rows-*` 写小数 |
+| `FCP-WEB-07` | P2 | 伴随表写长度字面量 | `.css` 声明值里的 `数字+px/rem`（零值除外）；`@media` 预lude、注释、引号字符串不算 |
+| `FCP-WEB-08` | P2 | 伴随表写颜色字面量 | `.css` 声明值里的 `#hex`（透明色除外）与 `rgb()` / `hsl()` / `oklch()` 等颜色函数 |
 
 **优先级**：一个 token 只报一条，取最外层写法 —— 变体（03 → 02）先于值。
 `[&>svg]:w-[11px]` 要改的是结构表达式，单独把 `11px` 换成刻度没有意义。
@@ -104,9 +108,9 @@ const SUMMARY_CARD =
 
 **为什么是 P1**：这类表达式把「结构」和「表现」焊死在字符串里 —— `[&>span]` 一旦 DOM 多包一层就静默失效；重构、调试、响应式调整成本极高；同一张卡片在几处出现就会漂移成几种近似样式。**凡是需要选择器层级才能表达的样式，就是 CSS 的职责，不是工具类的职责。**
 
-**判据（避免误伤）**：单层工具类（`flex items-center gap-2 rounded-lg`）合法；出现**选择器嵌套**（`[&>*]`、`[&:hover]`、`[&_svg]`）或**复合表达式值**（`_` 空格转义、函数调用）时，即应下沉为 CSS。
+**判据（避免误伤）**：单层工具类（`flex items-center gap-2 rounded-lg`）合法；出现**选择器嵌套**（`[&>*]`、`[&:hover]`、`[&_svg]`）或**非 token 的复合表达式值**（`_` 空格转义、函数调用）时，即应下沉为 CSS。`var(...)` 是 token 体系的合法延伸：只要任意值中包含 `var(...)`，即使同时包含 `calc(...)`、下划线空格转义或其他函数调用，也按 token 引用处理，不报 02；这与 01 的 `var(...)` 豁免保持一致。
 
-**已知取舍**：`w-[min(...)]`、`bg-[linear-gradient(...)]` 这类「无法用单一刻度表达、但确实只有一处」的写法也会报 02。这是刻意的：它们同样属于「用字符串写样式」，落到有名字的 CSS 类里可读性更好。真遇到必须保留的场景，走台账登记而不是放宽规则。
+**已知取舍**：`w-[min(...)]`、`bg-[linear-gradient(...)]` 这类「无法用单一刻度表达、但确实只有一处」的非 token 复合值也会报 02。这是刻意的：它们同样属于「用字符串写样式」，落到有名字的 CSS 类里可读性更好。`var(...)` 引用（包括同时含 `calc(...)`、空格转义或其他函数调用的 token 复合值）属于例外，按 01 的 token 豁免处理；真遇到不含 `var(...)` 且必须保留的场景，走台账登记而不是放宽规则。
 
 ---
 
@@ -228,6 +232,67 @@ BEM 的 `block--modifier` 类名也长这样，都不报。
 
 ---
 
+## FCP-WEB-07 · 伴随表写长度字面量
+
+**禁止**：③伴随表（与组件同目录同名的 `.css`）的声明值里写 `px` / `rem` 字面量。
+
+**反例**
+
+```css
+.agent-editor-form-grid { grid-template-columns: 34px minmax(0, 1fr) 34px; }
+.agent-api-keys-card { width: min(520px, 100%); }
+.agent-api-keys-card::after { box-shadow: 0 0 0 3px rgb(41 112 216 / 8%); }
+```
+
+**正例**
+
+```css
+/* 刻度是 4px：N = 原 px ÷ 4，值分毫不变；刻度缺失先到两份 @theme 副本补档 */
+.agent-editor-form-grid {
+  grid-template-columns: calc(var(--spacing) * 8.5) minmax(0, 1fr) calc(var(--spacing) * 8.5);
+}
+```
+
+**为什么**：尺寸的唯一定义处是 `@theme` 的刻度（`--spacing` 及 `--radius-*` / `--text-*` / `--container-*`）。
+伴随表写死 px 后，改一处尺度就要 grep 全仓、量一套设计要读两种单位；2026-09-28 的令牌层裁定后
+伴随表**不再承载 dimensional 取值**，能撤回 `className` 的一律撤回，撤不回（伪元素、结构选择器、
+无标准变体的媒体块）的取值必须以 `var(--token)` / `calc(var(--spacing) * N)` 形态给出。
+
+**边界**：零值（`0px` / `0rem`）不报——零不是设计取值；`@media` / `@supports` / `@container` 预lude 不报
+（断点本来就以 px / rem 书写，且属规范允许的「无标准变体的媒体块」）；`var()` fallback 里的字面量**照报**，
+它确实是写死的取值。
+
+---
+
+## FCP-WEB-08 · 伴随表写颜色字面量
+
+**禁止**：③伴随表的声明值里写 `#hex` 或 `rgb()` / `hsl()` / `oklch()` 一类颜色函数。
+
+**反例**
+
+```css
+.agent-api-keys-card { color: #14213d; }
+.agent-editor-form-grid::after { box-shadow: inset 0 0 0 1px #e0e6ee; }
+.agent-tree { --agent-tree-accent: #6be6ff; }
+```
+
+**正例**
+
+```css
+.agent-api-keys-card { color: var(--color-slate-800); }
+.agent-editor-form-grid::after { box-shadow: inset 0 0 0 1px var(--color-slate-200); }
+```
+
+**为什么**：颜色是主题（深浅色、色阶）的载体。写死 hex 后，色阶归一、深色模式、后续统一改版全部失效；
+2026-09-28 已按最近色阶逐条归一过一轮（ΔE00 记账），残余的 hex 就是这轮没收干净的部分。
+色阶缺失时先到两份 `@theme` 副本补档（`apps/web/src/index.css` 与 `packages/ui-components/web/styles/theme.css`
+逐字一致），再用 `var(--color-*)` 引用，不要就地写死。
+
+**边界**：透明色（`#0000`、`#00000000`）不报——Tailwind 的 `var(--tw-ring-offset-shadow, 0 0 #0000)`
+一类管道值在各表里遍地都是，报了只会淹没真实命中。
+
+---
+
 ## 4. （待补：用户口述条目 4）
 
 ---
@@ -242,10 +307,19 @@ bun run check:web-style --write-baseline --force   # 首次建基线；抬高基
 
 已接入 `precheck`（`scripts/ci.ts` 的 `web-style` 步骤）。
 
-**扫描范围**：`apps/web/src/**`、`packages/**/web/**` 下的 `.ts` / `.tsx`（即 Tailwind `@source` 覆盖的源码）。
+**扫描范围**：`apps/web/src/**`、`packages/**/web/**` 下的 `.ts` / `.tsx`（即 Tailwind `@source` 覆盖的源码），
+外加其中**属于 ③伴随表的 `.css`**（判据是同目录存在同名 `.tsx` / `.ts`）。
 排除 `__tests__`、`*.test.*`、`*.spec.*`、`dist`、`node_modules` —— 测试里的类名字符串是断言夹具，不产生渲染成本，纳入扫描只会淹没真实命中。
 
+**`.css` 为什么只扫伴随表**：四类独立样式表里，①token 入口与②第三方覆盖表本来就是「写值」的地方，
+④模块级表待归位，只有③伴随表的约定是「不写 px / rem 与颜色字面量」（`FCP-WEB-07/08`）。
+按「同目录同名」判定而不是白名单枚举：分类会随重构搬迁，白名单会静默过期。
+
 **扫描单位是字符串字面量（AST），不是整文件正则**：反例经常被写进注释解释「不要这样写」，正则会把注释本身报成违规。
+`.css` 侧的判定单位是**声明值**：选择器、`@media` 预lude、注释与引号字符串都不进判定。
+
+`FCP-WEB-07/08` 只作用于 `.css`，与 `01..06`（类串）不重叠：同一处样式要么以工具类表达（01..06 管），
+要么下沉到伴随表（07/08 管）。
 
 **存量台账**（`scripts/web-style/exceptions.json`）：按「规则 + 目录」登记命中数，棘轮只降不升。
 
@@ -255,6 +329,9 @@ bun run check:web-style --write-baseline --force   # 首次建基线；抬高基
 
 首次接入的口径：`FCP-WEB-01` 1668 处、`FCP-WEB-02` 797 处、`FCP-WEB-03` 140 处，合计 2605 处，分布在 42 个目录、75 条（规则 × 目录）记录，`owner` 统一记「未排期」。
 
+2026-09-29 纳入伴随表字面量（`FCP-WEB-07/08`）：`07` 266 处 / 27 条、`08` 106 处 / 17 条，合计 372 处，
+覆盖 49 份伴随表——这份台账即样式大重构的清单基线，清理后重跑 `--write-baseline` 归零。
+
 **`FCP-WEB-04/05/06` 的接入口径（2026-09-23）**：零基线接入（不为新规则建存量条目）。首次全仓扫描命中
 2 处，均属当场认定的死类：`packages/ui-components/web/ui/switch.tsx` 的 `h-4.6`（已改 `h-4.5`）与
 `packages/ui-components/web/chat/view/chat-navigation-aids.tsx` 的 `auto-rows-2.5`（所在组件正在整体替换，
@@ -262,6 +339,8 @@ bun run check:web-style --write-baseline --force   # 首次建基线；抬高基
 `ml--1.75` 出现在 `input-group.tsx` 的注释里，而扫描单位是字符串字面量（AST），注释不参与判定。
 
 **台账当前为空**（`"exceptions": []`）：2026-09 的一次全量整改把 2605 处存量全部清掉，门禁回到「任何命中即失败」的严格状态。台账文件与 `--force` 语义保留，供将来出现「确需分期偿还」的存量时使用 —— 但登记前必须先问「为什么不是现在就改掉」。
+
+> **2026-09-29 口径收敛**：`FCP-WEB-01` 的 `var(...)` token 豁免优先于 `FCP-WEB-02` 的复合值判定；因此 `var(...)` 参与的 `calc(...)`、下划线空格转义或函数调用，只要不含选择器嵌套 / 任意媒体查询变体，即属于合法 Tailwind 工具类，不要求回退到 CSS。
 
 **为什么要 `--force` 才能抬高基线**：生成器若默认接受当前状态，一条命令就能把新增违规洗成存量；安全方向（下降）零摩擦，危险方向（上升）留痕。
 
@@ -278,6 +357,27 @@ bun run check:web-style --write-baseline --force   # 首次建基线；抬高基
 | `FCP-WEB-01` 任意长度/颜色 | 就近映射到标准刻度：px ÷ 4 取间距档、最近色阶、最近字号档、最近圆角/行高/字距/模糊档 | 1499 → 0 |
 | `FCP-WEB-03` 任意媒体查询/断点 | 就近落到标准断点（`max-[950px]:` → `max-lg:`、`[@media(max-width:759px)]:` → `max-md:`） | 139 → 0 |
 | `FCP-WEB-02` 深层样式 | **下沉为同目录、与源文件同名的 CSS 类**（见下） | 795 → 0；重分类后总数 817 → 0 |
+
+> **2026-09-28 裁定 —— 刻度必须落在 `@theme` token 层**：上表第一行的映射（间距 / 字号 / 圆角按名义刻度取档）
+> 只在 **16px 根字号**下与名义值等值。本仓根字号是 13px（`apps/web/src/index.css` 的 `@layer base` 定了
+> `html { font-size: 13px }`），而 Tailwind 刻度的默认值全是 rem 相对——收口前工具类实际渲染的是名义值的
+> **0.8125 倍**（`px-4` → 13px、`w-60` → 195px、`text-sm` → 11.375px、`rounded-md` → 4.875px），
+> 「px ÷ 4 取刻度」在收口前确实不是等价换算。
+> **但修法在 token 层，不在用法侧**：刻度属于 token，`@theme` 才是它的规定位置。**2026-09-28 已把两份
+> token 副本（`apps/web/src/index.css` 与 `packages/ui-components/web/styles/theme.css`）的刻度按绝对像素
+> 落地**——`--spacing: 4px`，`--radius-*` / `--text-*` / `--container-*` 同批；工具类写的就是设计值
+> （`px-4` = 16px、`w-60` = 240px、`text-sm` = 14px、`rounded-md` = 6px），与根字号无关。因此 dimensional
+> 取值继续用刻度类：**不要**写任意值（`FCP-WEB-01` 拦），**也不要**为「保住原值」把它搬进伴随表——不存在
+> 「绝对像素几何」这类下沉口，伴随表只承载**无法用扁平工具类表达**的选择器嵌套 / 复合值 / 无标准变体的
+> 媒体查询（见前端规范 §10 ③）。
+> 收口期间曾按「原值必须保持」把各域的 dimensional 声明逐条写回伴随表（宿主壳 `AgentSidebar.css` /
+> `ShellNavigation.css`、artifacts 一簇、workflow、task、knowledge / mcp / model-management、identity、
+> chat 各簇与侧栏智能体树）；**该批回迁已整体撤销**（令牌层落地后按域补做，2026-09-28 收口）——声明撤回各消费方 `className`，宿主壳两份
+> 伴随表与 `agent-panel.css` / `artifacts-workspace.css` 直接退役（无法用工具类表达者收进 `index.css` 的
+> 「宿主壳残余样式」段）。
+> **仍待复核**的是「删除型」遗漏——`02070e3b` 中**被删除而非搬进 `className`** 的声明（第三方渲染的
+> `.react-flow__minimap` / `.react-flow__edge-path` 覆写已恢复，其余随域复核）；以及此前被误判为「漂移」、
+> 实为「原值 = 刻度倍数」的取值（令牌层落地后已自动对齐，如 `h-12.5` = 50px、`h-3` = 12px）。
 
 ### 02 的下沉约定
 
@@ -305,7 +405,9 @@ bun run check:web-style --write-baseline --force   # 首次建基线；抬高基
 - `agent-editor` 面板原先「字号一律显式 px 写死、禁止 Tailwind 刻度类」，现改为「字号就近取标准档，只允许白名单刻度」。
 - chat 三片样式原先「语义类名一律不得回流 `className`」，现允许「仍被某份样式表定义的类名」作为下沉载体（判据从「类名清单」改为「今天还有没有定义」）。
 
-前者接受 ~1px 的字号偏差（如 `text-[13px]` → `text-xs`），是这次整改**唯一**允许的视觉变化；其余全部为等价换算。
+前者接受 ~1px 的字号偏差（如 `text-[13px]` → `text-xs`）：这只在「刻度渲染名义值」的前提下成立。令牌层把刻度按
+绝对像素落地后，`text-[13px]` 可直接用 `text-13`（字号档在 `@theme` 里就是 13px），偏差无需再接受；「其余全部为
+等价换算」也在**设计值**意义上重新成立（`px ÷ 4` 取到的就是设计值）。
 
 
 **与前端规范的关系**：本清单是 `docs/developer/guide/frontend-development.md` §10「样式」的**可执行子集**；该节讲「优先用什么」，这里讲「什么绝对不行 + 由谁拦」。

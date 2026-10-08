@@ -1,4 +1,3 @@
-/* 右侧嵌入式编辑工作区：保留全局导航与顶部栏，不使用页面遮罩。 */
 .agent-editor-backdrop {
   inset: 66px 12px 12px calc(var(--sidebar-width) + 12px);
   display: block;

@@ -3,9 +3,13 @@
 //
 // **为什么落 `apps/web/src/shell/`**：全局布局属于应用壳而不属于任何资源模块（standards §4.1），
 // 浏览器产物 `apps/generated/web-contributions.ts` 与 `apps/web/fenix.module.ts` 的
-// `kind: "web-shell"` 又要求壳的实现有一个确定落点。本文件与 `AgentSidebar*` / `ArtifactsPanel` /
-// 两份 CSS 在 §1.6 T11d 从 `pages/agent-panel/` 迁入本目录：它们只做品牌、布局、导航与容器，
-// 不含任何资源模块的业务语义，留在 `pages/` 会与真正的资源页面混同。
+// `kind: "web-shell"` 又要求壳的实现有一个确定落点。本文件与 `AgentSidebar*` 在 §1.6 T11d 从
+// `pages/agent-panel/` 迁入本目录：它们只做品牌、布局、导航与容器，不含任何资源模块的业务语义，留在
+// `pages/` 会与真正的资源页面混同。同批迁入的 `shell/agent-panel.css` 与两份侧栏伴随表
+// （`AgentSidebar.css` / `ShellNavigation.css`）已于 2026-09-28 退役——前者唯一存续的职责（把 chat
+// 关键帧挂进初始静态包）改由 `src/index.css` 顶部的 `@import` 承担，本文件因此不再导入样式表。
+// （同批迁入的 `ArtifactsPanel` 一簇是**页面级**的跨资源包装配，2026-09-28 已按「跟着唯一生产消费者走」
+// 归位 `apps/web/src/pages/agent-panel/artifacts/`。）
 //
 // **与 `packages/*/web` 的边界**：外壳不实现业务能力，只消费各包贡献的导航声明（见
 // `./shell-navigation.ts`）与路由目标。业务页面经 TanStack 文件路由挂在 `<Outlet/>` 上。
@@ -24,7 +28,6 @@ import { NS } from "@/src/i18n";
 import { ChatArea } from "@/src/pages/agent-panel/ChatArea";
 import { AgentSidebar } from "./AgentSidebar";
 import { PANEL_ROUTE_PREFIX, panelRoutePath } from "./shell-navigation";
-import "./agent-panel.css";
 
 /**
  * 侧栏能落到的路由目标类型：`/agent/<id>` 形态的面板页路径。
@@ -166,7 +169,7 @@ export function DefaultAppShell() {
   );
 
   return (
-    <div className="agent-panel-layout">
+    <div className="agent-panel-layout flex h-dvh w-full overflow-visible">
       <AgentSidebar
         activeNav={activeNav}
         selectedEnvironmentId={selectedEnvironmentId}
@@ -177,7 +180,10 @@ export function DefaultAppShell() {
         onEditAgent={(agentName) => setConfigDialog({ open: true, agentName })}
         onDeleteAgentEnvironments={handleDeleteAgentEnvironments}
       />
-      <div className="agent-panel-body" ref={setPanelHost}>
+      <div
+        className="agent-panel-body flex min-w-0 min-h-0 flex-1 flex-col overflow-hidden bg-(--color-canvas)"
+        ref={setPanelHost}
+      >
         <Outlet />
         <ChatArea
           agentId={lastChatAgentRef.current}

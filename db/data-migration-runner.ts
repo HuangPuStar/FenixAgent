@@ -6,19 +6,25 @@
  * `runDataMigrations()`，改由 release 步骤执行一次
  * `bun run db/data-migration-runner.ts`（镜像内为 `bun data-migration-runner.js`）。
  *
- * 按 §8「`scripts/` 只做薄编排」的口径，本入口只做：静态汇总现有注册表、按注册表声明顺序执行、日志、
- * 失败停止、完成记录归属。以下三件事都不在这里做：
- * - 迁移业务逻辑留在 `apps/server/src/services/data-migrates/*` 与各资源包内；
- * - 幂等跳过与 `data_migrate_record` 完成记录由 `runDataMigrations()` 负责，本文件不复制判定；
- * - `verify` / `compensation` / 迁移指标 / running-failed claim 状态机属 §6.3、§10.6.2 的完成态，
- *   尚未实现（未完成任务），不在本文件先搭框架。
+ * 按 §8「`scripts/` 只做薄编排」的口径，本入口只做：按装配汇总迁移清单、执行、日志、失败停止、完成记录
+ * 归属。以下三件事都不在这里做：
+ * - 迁移业务逻辑留在 `apps/server/src/services/data-migrates/*` 与各资源包的 `db/data-migrations/`；
+ * - 幂等跳过、依赖校验、`verify`、`compensation` 与 `data_migrate_record` 完成记录由宿主
+ *   `apps/server/src/services/data-migrate.ts` 的 `runDataMigrations()` 负责（契约见
+ *   `@fenix/platform-sdk` 的 `migration/data-migration`），本文件不复制判定；
+ * - 迁移指标（实际影响行数）由迁移经 `context.log` 输出，本文件只负责故障诊断的掩码与退出码。
+ *
+ * 清单**不在这里人肉维护**：它由 `resolveDataMigrations()` 从构建期收集的模块 manifest 事实汇总（各模块
+ * 在自己的 `fenix.module.ts` 声明 `dataMigrations`，迁移实现留在 owner 包的 `db/data-migrations/`），
+ * 装配里增删模块即带动清单，不再需要同步改宿主的数组。宿主自有迁移（无 owner 包能合法持有的那条）留在
+ * `services/data-migrate.ts` 与汇总逻辑同处，理由见该文件。
  *
  * 执行顺序与位置约束：
  * - 必须在 DDL 迁移（`migrate.js`）**之后**执行：数据迁移读写新结构，顺序颠倒时会因缺列/缺表失败
  *   （fail-stop，不会静默跳过）；也必须早于新版本应用进程启动。
  * - 不得像 `migrate.js` 那样写进 `docker-compose.yml` 的容器启动命令：那会让每个副本各跑一次，而数据
  *   迁移含文件副作用（skill 归档/复制），重复并发不是纯 DB no-op
- *   （见 `docs/need-to-change/31-gate-release-and-migration.md`）。
+ *   （部署期执行口径见 `docs/operations/migration.md`）。
  * - 必须挂载与应用进程相同的数据卷（镜像内 `/app/data`，`skillDir` 默认 `./data/skills`）：迁移既写库也
  *   写文件，卷不一致会留下「记录已落库、应用却读不到迁移后文件」的状态，而记录已写入使重跑变成跳过，
  *   无法靠重试自愈。
@@ -26,7 +32,7 @@
 
 /** 入口依赖；默认实现动态装载宿主模块，测试可注入替身而不触库。 */
 export interface DataMigrationRunnerDeps {
-  /** 执行注册表内所有尚未落库的迁移；失败必须抛出，由入口 fail-stop。 */
+  /** 汇总本次发布要执行的迁移清单并执行其中尚未落库的项；失败必须抛出，由入口 fail-stop。 */
   runDataMigrations: () => Promise<void>;
   /** 关闭宿主 DB 连接池，避免脚本结束后挂住。 */
   closeDatabase: () => Promise<void>;
@@ -82,13 +88,14 @@ function describeError(err: unknown, databaseUrl: string | undefined): string {
  * 应用读不到的位置。
  */
 async function createProductionDeps(): Promise<DataMigrationRunnerDeps> {
-  const [{ client, db }, envLoader, configModule, moduleConfigs, platformSdk, { runDataMigrations }] =
+  const [{ client, db }, envLoader, configModule, moduleConfigs, platformSdk, moduleRegistry, dataMigrate] =
     await Promise.all([
       import("../apps/server/src/db"),
       import("../apps/server/src/env-loader"),
       import("../apps/server/src/config"),
       import("../apps/server/src/bootstrap/module-configs"),
       import("@fenix/platform-sdk/server"),
+      import("../apps/generated/module-registry"),
       import("../apps/server/src/services/data-migrate"),
     ]);
 
@@ -104,7 +111,11 @@ async function createProductionDeps(): Promise<DataMigrationRunnerDeps> {
   });
 
   return {
-    runDataMigrations,
+    runDataMigrations: async () => {
+      // 汇总在初始化之后、执行之前：装载迁移实现可能读到模块配置（skill 迁移读 skillDir）。
+      const migrations = await dataMigrate.resolveDataMigrations(moduleRegistry.generatedModuleManifests);
+      await dataMigrate.runDataMigrations(migrations);
+    },
     closeDatabase: async () => {
       await client.end();
     },

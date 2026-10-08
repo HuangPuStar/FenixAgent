@@ -5,16 +5,18 @@
 //    `active_org_id` 的地方（身份包的 fetch 拦截器与两条 WS 通道都消费它）。任何新增的
 //    `localStorage.getItem` 直读都会让"UI 显示 A、连接操作 B"的 split-brain 重新长出来，
 //    而且只在切换组织后的窗口期暴露。
-// 2. **URL 拼装不在组件里**：`/web/file-events` 的 URL 与协议解析落在宿主域模块
-//    `api/file-events.ts`，组件只消费入口；WebSocket / EventSource 的实例化不得出现在
-//    组件与页面目录下。
+// 2. **URL 拼装不在组件里**：`/web/file-events` 的 URL 与协议解析归文件域 owner 包
+//    `@fenix/resource-machine/web` 的 `web/api/file-events.ts`（2026-09-24 随台账
+//    `ce-standards-todo.md` D2 从宿主 `apps/web/src/api/` 迁入；服务端通道本就在该包），
+//    组件只消费入口；WebSocket / EventSource 的实例化不得出现在组件与页面目录下——扫描根
+//    因此同时覆盖宿主目录与该包的非 `api/**` web 面（见末条用例）。
 
 import { afterEach, describe, expect, test } from "bun:test";
 import { resolve } from "node:path";
+import { buildFileEventsUrl, type FileEventsFrame, openFileEventsConnection } from "@fenix/resource-machine/web";
 import { initializeHappyDomWindow } from "@fenix/ui-components/testing";
 import { ACTIVE_ORG_STORAGE_KEY } from "@fenix/web-runtime/lib/active-org";
 import { Window } from "happy-dom";
-import { buildFileEventsUrl, type FileEventsFrame, openFileEventsConnection } from "../api/file-events";
 
 const repoRoot = resolve(import.meta.dir, "../../../..");
 
@@ -217,12 +219,23 @@ describe("组织 id 读取契约（§3.3）", () => {
 });
 
 describe("WS URL 拼装位置（§5.8）", () => {
-  // 组件与页面目录下不得实例化 WebSocket / EventSource（URL 拼装的直接形态）：
+  // 组件、页面与壳层目录下不得实例化 WebSocket / EventSource（URL 拼装的直接形态）：
   // 实时通道的入口一律由域模块（`api/**`）暴露。
-  test("组件与页面不实例化 WebSocket / EventSource", async () => {
+  //
+  // `shell/` 必须一并扫描：`use-file-tree-events.ts` 是文件树的事件订阅端，原在 `components/agent-panel/`
+  // 被本用例覆盖；2026-09-24 随 ArtifactsPanel 一簇收敛进 `shell/artifacts/`，若不给 shell 加扫描根，
+  // 这次位移会让它**静默逃出守卫范围**（这是"守住不变量"而非"守住目录"，目录搬家不该改变守卫结论）。
+  // 同批（台账 D2）它又随文件域迁入 `@fenix/resource-machine/web` 的 `web/hooks/`，扫描根按同一口径
+  // 追加该包 `components/hooks/lib` 三处；`api/**` 是通道自己的落点（`api/file-events.ts` 正是唯一
+  // 允许实例化 WebSocket 的模块），与宿主侧原先不扫 `api/` 一致，不在此列。
+  // 2026-09-28：artifacts 一簇由 `shell/artifacts/` 归位 `pages/agent-panel/artifacts/`（已被上面的
+  // `pages` 根覆盖），`shell/` 根按同一口径保留——它仍是壳层组件的落点，"壳层不自拼通道"的不变量不变。
+  test("组件、页面与壳层不实例化 WebSocket / EventSource", async () => {
     const files = await collectFrontendSources([
       { cwd: resolve(repoRoot, "apps/web/src/components"), pattern: "**/*.{ts,tsx}" },
       { cwd: resolve(repoRoot, "apps/web/src/pages"), pattern: "**/*.{ts,tsx}" },
+      { cwd: resolve(repoRoot, "apps/web/src/shell"), pattern: "**/*.{ts,tsx}" },
+      { cwd: resolve(repoRoot, "packages/resources/machine/web"), pattern: "{components,hooks,lib}/**/*.{ts,tsx}" },
     ]);
     expect(files.length).toBeGreaterThan(10);
 

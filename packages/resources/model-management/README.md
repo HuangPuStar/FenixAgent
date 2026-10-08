@@ -1,5 +1,9 @@
 # @fenix/model-management
 
+## 管理页浏览器入口
+
+`RCS_MODEL_GATEWAY_ADMIN_UI_URL` 是管理员浏览器访问 LiteLLM UI 的地址，独立于 Fenix 后端使用的 `RCS_MODEL_GATEWAY_BASE_URL`。默认 `localhost` 仅适用于浏览器也在本机的开发环境；远端浏览器会禁用回环地址链接并显示配置指引，配置接口失败时提供重试。部署时设置真实可达的 HTTP(S) UI 地址并重启 Fenix；改动只影响外链展示，不代理管理凭据。现场可在模型页核对新标签页目标，回滚可恢复旧前端版本。
+
 Provider / Model 资源聚合根与模型网关（凭据隔离、预算、用量、密钥管理）的 owner：领域服务、仓储、路由工厂、浏览器出口与中英文文案都在本包内。宿主 `apps/server` 与 `apps/web` 只剩装配调用；任务 1.3 的 W2 切片完成了包侧解耦（`web/**` 零宿主别名、i18n 自持、路由工厂化），任务 1.7 的 B3 把三张表与三个 pgEnum 迁入本包 `db/` 出口（包内数据访问改指 `@fenix/model-management/db`），B7 又把 `repositories/subject-agent-search.ts` 的检索 SQL 交还 `agent_config` 的 owner，因此包内 `@server/*` 现已**归零**（见「边界残留」第 1–2 条）。
 
 本 README 是五段式交付物的一份。文中的「唯一 / 只有 / 全部 / 零」都附实测命令与当次输出，未跑过的结论不写。
@@ -40,7 +44,7 @@ const webConfigModels = createWebConfigModelsRoutes({ authGuardPlugin, userModel
 - **`./server/testing` 子路径**：替身（facade / service / repository / accessControl）与模块配置夹具（`createModelManagementModuleConfig` / `initializeModelManagementModuleConfig`，默认不带任何密钥）。今天的消费方只有包内用例；目标是宿主 `setup-mocks` 与包内共用同一份字段清单，接入属宿主侧 patch（实测 `apps/server/src/test-utils/setup-mocks.ts` 只登记 `identity` 与 `sandbox` 两份基线）。
 - **两个对外路由工厂的协议边界用例**（2026-09-20 补：此前 `/api/models` 与 `/api/system/model-gateway` 零用例）：`src/__tests__/api-models-routes.test.ts`（14 例）与 `src/__tests__/api-system-model-gateway-routes.test.ts`（9 例），装配方式与 `web/config/{models,providers}` 同款——注入 `src/__tests__/guard-stubs.ts` 的守卫替身加模块 / 服务替身，不触碰宿主 `apps/server`。三类协议边界（分页 / 子行定位属于第 4 类，单列在下方）：**认证**（缺主体 / 缺系统 key 时整组端点逐个 401，替身保持未打桩，绕守卫的请求会以「未打桩」抛错失败）、**身份与组织隔离**（`/api/models` 的 body 与 query 不能改写 actor；跨组织不可见一律 404 而非 403——403 会确认资源存在；系统面的 `gatewayProviderId` 由服务层解析，query 同名参数被 schema 剥离）、**凭据不外泄**（Provider 详情 / 列表响应无 `apiKey` 明文；`/keys` 只投影白名单字段，服务返回的 `encryptedCredential` / `apiKey` 不进响应；`/config` 不回显 `modelGatewayAdminKey`；失败分支只回通用文案，不回显可能带密钥的上游正文）。
   - **「全部端点 401」这条循环的区分力上限（2026-09-20 订正注释）**：`/api/models` 的 10 个 handler 自己就有 `if (!actor) return error(401)`，而守卫替身在未解析出主体时只是把 `null` 写进 `store.actor`、不拒绝请求；**守卫根本没挂上**时该循环同样全绿。它钉的是 401 的响应形状与错误码，「守卫已生效」由新增的**「守卫把会话主体写入 store，列表按该主体身份过滤」**用例单独证明（替身 Facade 按传入 actor 的组织返回不同条目，两次换身份请求各自拿到本组织数据）。`/api/system/model-gateway` 的同类循环靠「服务替身全部未打桩」保持区分力（守卫缺席会以服务抛错失败，而不是 401）。
-  - **子表端点的覆盖**（2026-09-20 补：`GET /providers/:providerId/models` 与 `.../models/:id` 此前只出现在 401 循环里、被 null-actor 短路，从未触达 handler）：新增 5 例覆盖子行分页切片（`total` 为子行全集条数）、越界页返回空 `items` 但保留 `total`、按行 ID 定位详情并投影 `options`、行 ID 不存在时的 404、Provider 不可见时列表与详情的 404；同级还补了 `GET /providers` 自身的分页切片（`total` 为全集条数）。
+  - **子表端点的覆盖**（2026-09-20 补：`GET /providers/:providerId/models` 与 `.../models/:id` 此前只出现在 401 循环里、被 null-actor 短路，从未触达 handler）：新增 5 例覆盖子行分页（`limit`/`offset` 下推到 SQL，`total` 为子行全集条数）、越界页返回空 `items` 但保留 `total`、按行 ID 定位详情并投影 `options`、行 ID 不存在时的 404、Provider 不可见时列表与详情的 404；同级还补了 `GET /providers` 自身的分页下推（`total` 为全集条数）。分页口径于 2026-09-24 由「Facade 取全量、协议层内存切片」改为「Facade 收 `limit`/`offset` 并下推」（决策 D3），`total` 始终是全集计数、越界页空 `items` 不抛错，故用例同步改写为断言下推。
 
 ## web 面与 i18n
 

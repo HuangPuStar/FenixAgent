@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import type { ActorContext } from "@fenix/platform-sdk";
-import { ForbiddenError } from "@fenix/platform-sdk";
+import { ForbiddenError, ValidationError } from "@fenix/platform-sdk";
 import { readJson } from "@fenix/platform-sdk/testing";
 import { createApiSkillsRoutes } from "../server/routes/api/skills";
 import {
@@ -164,48 +164,60 @@ describe("API Skills Routes", () => {
     });
   });
 
-  // 上传创建走与 `/web` 一致的 multipart 协议，overwrite=true 映射为覆盖策略，成功后回读详情。
-  test("上传创建按 overwrite 传策略并返回详情", async () => {
-    let received: { strategy?: string; fileCount?: number } = {};
+  // 上传创建走与 `/web` 一致的 multipart 协议，overwrite=true 映射为覆盖选项，成功后直接返回详情。
+  // 单目录约束、冲突判定与回读都在 Facade（`importSingleSkill`），协议层只做映射，故这里断言入参与视图。
+  test("上传创建按 overwrite 传选项并返回详情", async () => {
+    let received: { overwrite?: boolean; fileCount?: number } = {};
     installSkillModuleStub({
       facade: {
-        importDirectories: async (_actor, files, strategy) => {
-          received = { fileCount: files.length, ...(strategy === undefined ? {} : { strategy }) };
-          return { imported: [authorizedSkill({ id: "skill-1" })], skipped: [], conflicts: [] };
+        importSingleSkill: async (_actor, files, options) => {
+          received = {
+            fileCount: files.length,
+            ...(options?.overwrite === undefined ? {} : { overwrite: options.overwrite }),
+          };
+          return { status: "imported", detail: authorizedSkillDetail({ id: "skill-1", content: "# Demo" }) };
         },
-        readDetailById: async () => authorizedSkillDetail({ id: "skill-1", content: "# Demo" }),
       },
     });
 
     const response = await request("/", { method: "POST", body: uploadForm("true") });
 
     expect(response.status).toBe(200);
-    expect(received).toEqual({ fileCount: 1, strategy: "overwrite" });
+    expect(received).toEqual({ fileCount: 1, overwrite: true });
     expect(await readJson(response)).toMatchObject({ id: "skill-1", content: "# Demo" });
   });
 
-  // 未传 overwrite 时不带策略：同名冲突由 Facade 返回冲突清单，协议层映射为 409。
+  // 未传 overwrite 时按"不覆盖"传给 Facade（缺省即 false）：Facade 返回冲突名，协议层据此映射 409 CONFLICT。
   test("上传命中同名冲突返回 409", async () => {
+    let received: { overwrite?: boolean } = {};
     installSkillModuleStub({
       facade: {
-        importDirectories: async () => ({
-          imported: [],
-          skipped: [],
-          conflicts: [{ name: "demo", enabled: true, path: "/skills/org-1/demo/SKILL.md" }],
-        }),
+        importSingleSkill: async (_actor, _files, options) => {
+          received = { ...(options?.overwrite === undefined ? {} : { overwrite: options.overwrite }) };
+          return { status: "conflict", name: "demo" };
+        },
       },
     });
 
     const response = await request("/", { method: "POST", body: uploadForm() });
 
     expect(response.status).toBe(409);
+    expect(received).toEqual({ overwrite: false });
     expect(await readJson(response)).toEqual({
       error: { code: "CONFLICT", message: "Skill 'demo' already exists" },
     });
   });
 
-  // 对外接口一次只允许导入一个 Skill：多技能上传是请求错误而不是部分成功。
+  // 对外接口一次只允许导入一个 Skill：Facade 抛出的校验错误必须在协议层映射为 400 + 稳定错误码。
   test("上传多个技能返回 400", async () => {
+    installSkillModuleStub({
+      facade: {
+        importSingleSkill: async () => {
+          throw new ValidationError("每次只允许导入一个 Skill");
+        },
+      },
+    });
+
     const form = new FormData();
     form.set(
       "manifest",

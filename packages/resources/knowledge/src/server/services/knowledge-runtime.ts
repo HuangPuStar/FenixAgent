@@ -1,4 +1,17 @@
-import { agentKnowledgeBindingRepo, knowledgeBaseRepo, knowledgeResourceRepo } from "../repositories/knowledge-base";
+/**
+ * 知识运行时：检索与知识图谱。
+ *
+ * 控制台端点（检索测试、图谱生成/读取/删除/进度）收**已解析的知识库行 + 调用者身份的凭据**：归属判定与
+ * 凭据解析属于门面（见 `../facades/knowledge-access`）。迁移前这里有一份 `resolveKbWithApiKey` 同时做
+ * 「读行 + 解析 key」，控制台组织口径现在只由门面决定。
+ *
+ * Agent 侧入口（`readKnowledgeResourceForAgent` / `searchKnowledgeByConfigId` / `getKnowledgeGraphForAgent`）
+ * 的授权来自 agent 知识库绑定，并按注入的组织上下文过滤，不经过控制台门面。
+ */
+
+import type { KnowledgeBaseRow } from "../repositories/knowledge-base";
+import { agentKnowledgeBindingRepo, knowledgeResourceRepo } from "../repositories/knowledge-base";
+import type { KnowledgeBaseCredential } from "./knowledge-credential";
 import { getKnowledgeProvider as getKnowledgeRuntimeProvider } from "./knowledge-provider/registry";
 import type {
   KnowledgeGraphEdge,
@@ -10,24 +23,6 @@ import type {
   RerankModelOption,
 } from "./knowledge-provider/types";
 import { resolveRagflowApiKey } from "./ragflow-key";
-
-/**
- * 获取知识库并校验访问权限（支持全局 KB 跨组织访问），同时解析 API key。
- */
-async function resolveKbWithApiKey(
-  kbId: string,
-  organizationId: string,
-  userId: string,
-): Promise<{ kb: NonNullable<Awaited<ReturnType<typeof knowledgeBaseRepo.getById>>>; apiKey: string } | null> {
-  const kb = await knowledgeBaseRepo.getById(kbId);
-  if (!kb) return null;
-  const isGlobal = true /* was global KB check */;
-  if (!isGlobal && kb.organizationId !== organizationId) return null;
-  // user 作用域用 KB 主人的 key（RAGFlow 中 dataset 属于主人）
-  const apiKeyUserId = userId;
-  const apiKey = await resolveRagflowApiKey("global", apiKeyUserId, organizationId);
-  return { kb, apiKey };
-}
 
 export interface BoundKnowledgeBase {
   id: string;
@@ -102,7 +97,7 @@ export async function resolveBoundKnowledgeBasesByConfigId(
 ): Promise<BoundKnowledgeBase[]> {
   const rows = await agentKnowledgeBindingRepo.listJoinedWithKnowledgeBaseByConfigId(agentConfigId);
   return rows
-    .filter((row) => !!row.kbRemoteId && (!orgId || row.kbOrganizationId === orgId || true))
+    .filter((row) => !!row.kbRemoteId && (orgId === undefined || row.kbOrganizationId === orgId))
     .sort((a, b) => a.priority - b.priority)
     .map((row) => ({
       id: row.kbId,
@@ -237,17 +232,17 @@ export async function searchKnowledgeDetailedForAgent(input: {
 }
 
 /**
- * 检索测试：按单个知识库 ID 检索，返回保留完整字段的详细结果（供知识库详情页检索测试 UI 使用）。
+ * 检索测试：按单个知识库检索，返回保留完整字段的详细结果（供知识库详情页检索测试 UI 使用）。
  * 与 searchKnowledgeByConfigId 的区别：
- * - 不依赖 agent 绑定，直接按知识库 ID 检索（用户在知识库详情页测试）
+ * - 不依赖 agent 绑定，直接按知识库检索（用户在知识库详情页测试）
  * - 返回 KnowledgeRetrievalDetailedResult（含三种相似度分、高亮、文档聚合）
  *
- * 组织隔离：通过 knowledgeBaseRepo.getByOrgAndId 校验该知识库属于当前组织。
+ * 访问范围：收已解析的知识库行与凭据，本函数不做组织判断——「这个 ID 能不能被当前 actor 访问」由门面
+ * 在解析阶段回答（见 `../facades/knowledge-access`）。
  */
 export async function searchKnowledgeForTest(input: {
-  organizationId: string;
-  knowledgeBaseId: string;
-  userId?: string;
+  kb: KnowledgeBaseRow;
+  credential: KnowledgeBaseCredential;
   query: string;
   topK: number;
   similarityThreshold?: number;
@@ -261,16 +256,9 @@ export async function searchKnowledgeForTest(input: {
   crossLanguages?: string[];
   metaDataFilter?: MetaDataFilter;
 }): Promise<KnowledgeRetrievalDetailedResult> {
-  // 校验知识库访问权限并解析 API key（支持全局 KB 跨组织访问）
-  const resolved = await resolveKbWithApiKey(
-    input.knowledgeBaseId,
-    input.organizationId,
-    input.userId ?? input.organizationId,
-  );
-  if (!resolved) {
-    throw new Error("Knowledge base not found");
-  }
-  const { kb, apiKey } = resolved;
+  const kb = input.kb;
+  // 凭据先解析、再校验远端定位：与迁移前 resolveKbWithApiKey 的顺序一致（凭据失败不会被误报成未同步）。
+  const apiKey = await input.credential();
   if (!kb.remoteId) {
     throw new Error("Knowledge base remote id is missing");
   }
@@ -319,19 +307,15 @@ export async function listRerankModelsForOrg(_organizationId?: string): Promise<
 
 /**
  * 触发知识库的知识图谱生成（后台 GraphRAG 流水线）。
+ *
+ * 收已解析的知识库行与凭据；凭据先解析、再校验远端定位，与迁移前顺序一致。
  */
 export async function generateKnowledgeGraphForKb(input: {
-  organizationId: string;
-  knowledgeBaseId: string;
-  userId?: string;
+  kb: KnowledgeBaseRow;
+  credential: KnowledgeBaseCredential;
 }): Promise<void> {
-  const resolved = await resolveKbWithApiKey(
-    input.knowledgeBaseId,
-    input.organizationId,
-    input.userId ?? input.organizationId,
-  );
-  if (!resolved) throw new Error("Knowledge base not found");
-  const { kb, apiKey } = resolved;
+  const kb = input.kb;
+  const apiKey = await input.credential();
   if (!kb.remoteId) throw new Error("Knowledge base remote id is missing");
 
   const provider = getKnowledgeRuntimeProvider();
@@ -347,17 +331,11 @@ export async function generateKnowledgeGraphForKb(input: {
  * 获取知识库的知识图谱数据（节点 + 边）。
  */
 export async function getKnowledgeGraphForKb(input: {
-  organizationId: string;
-  knowledgeBaseId: string;
-  userId?: string;
+  kb: KnowledgeBaseRow;
+  credential: KnowledgeBaseCredential;
 }): Promise<{ graph: { nodes: KnowledgeGraphNode[]; edges: KnowledgeGraphEdge[] }; mind_map?: unknown } | null> {
-  const resolved = await resolveKbWithApiKey(
-    input.knowledgeBaseId,
-    input.organizationId,
-    input.userId ?? input.organizationId,
-  );
-  if (!resolved) throw new Error("Knowledge base not found");
-  const { kb, apiKey } = resolved;
+  const kb = input.kb;
+  const apiKey = await input.credential();
   if (!kb.remoteId) throw new Error("Knowledge base remote id is missing");
 
   const provider = getKnowledgeRuntimeProvider();
@@ -373,17 +351,11 @@ export async function getKnowledgeGraphForKb(input: {
  * 删除知识库的知识图谱。
  */
 export async function deleteKnowledgeGraphForKb(input: {
-  organizationId: string;
-  knowledgeBaseId: string;
-  userId?: string;
+  kb: KnowledgeBaseRow;
+  credential: KnowledgeBaseCredential;
 }): Promise<void> {
-  const resolved = await resolveKbWithApiKey(
-    input.knowledgeBaseId,
-    input.organizationId,
-    input.userId ?? input.organizationId,
-  );
-  if (!resolved) throw new Error("Knowledge base not found");
-  const { kb, apiKey } = resolved;
+  const kb = input.kb;
+  const apiKey = await input.credential();
   if (!kb.remoteId) throw new Error("Knowledge base remote id is missing");
 
   const provider = getKnowledgeRuntimeProvider();
@@ -399,17 +371,11 @@ export async function deleteKnowledgeGraphForKb(input: {
  * 轮询知识图谱生成进度，返回 0~1 的进度值。
  */
 export async function pollKnowledgeGraphProgressForKb(input: {
-  organizationId: string;
-  knowledgeBaseId: string;
-  userId?: string;
+  kb: KnowledgeBaseRow;
+  credential: KnowledgeBaseCredential;
 }): Promise<{ progress: number; progressMsg?: string; taskId?: string }> {
-  const resolved = await resolveKbWithApiKey(
-    input.knowledgeBaseId,
-    input.organizationId,
-    input.userId ?? input.organizationId,
-  );
-  if (!resolved) throw new Error("Knowledge base not found");
-  const { kb, apiKey } = resolved;
+  const kb = input.kb;
+  const apiKey = await input.credential();
   if (!kb.remoteId) throw new Error("Knowledge base remote id is missing");
 
   const provider = getKnowledgeRuntimeProvider();

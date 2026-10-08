@@ -80,7 +80,7 @@ export function TagFilterInput({ value, onChange, placeholder, className }: TagF
             </span>
           ))}
           <Button variant="link" size="xs" onClick={() => onChange([])} className="text-muted-foreground">
-            {t("common.clear", { defaultValue: "Clear" })}
+            {t("common:clear")}
           </Button>
         </div>
       )}

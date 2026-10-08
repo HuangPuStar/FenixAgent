@@ -1,11 +1,16 @@
-import { beforeEach, describe, expect, mock, test } from "bun:test";
+import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
 
 // Mock fetch
 const fetchMock = { status: 200, body: {} as unknown };
 
+// `globalThis.fetch` 是进程级全局且 Bun 的测试文件共享同一进程：装桩后必须还原，否则其后运行的服务端
+// 用例（如 workflow-v2 对假上游发真实请求）会收到这里的桩响应，表现为「单跑通过、全量失败」。
+let originalFetch: typeof globalThis.fetch;
+
 beforeEach(() => {
   fetchMock.status = 200;
   fetchMock.body = {};
+  originalFetch = globalThis.fetch;
   globalThis.fetch = mock(() =>
     Promise.resolve(
       new Response(JSON.stringify(fetchMock.body), {
@@ -14,6 +19,10 @@ beforeEach(() => {
       }),
     ),
   ) as unknown as typeof fetch;
+});
+
+afterEach(() => {
+  globalThis.fetch = originalFetch;
 });
 
 describe("MCP SDK module", () => {

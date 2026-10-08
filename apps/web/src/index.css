@@ -1,28 +1,10 @@
 @import "tailwindcss";
+@import "../../../packages/ui-components/web/chat/css/chat.css";
 @plugin "@tailwindcss/typography";
-/* 应用壳与领域 Web 组件分布在 apps/web 和 packages 下的各 Web 目录，两侧都必须进入 Tailwind 扫描。 */
 @source "../**/*.{ts,tsx}";
 @source "../../../packages/**/web/**/*.{ts,tsx}";
-
-/* ============================================================
-   Forced light — 全局强制亮色
-   ------------------------------------------------------------
-   Tailwind v4 的 `dark:` 变体默认绑定 `@media (prefers-color-scheme: dark)`，
-   系统深色偏好下这些工具类会直接生效，且与本文件的 `.dark` token 块（类切换）
-   不同源——同一应用里存在两条互不相关的深色开关。这里把它重写为「类作用域」，
-   使全仓只剩一条深色开关：`<html>` 或某个祖先上的 `.dark`。
-
-   该开关当前没有生产者：原先唯一的写入点是 `@fenix/ui-components/lib/theme` 的
-   `applyTheme`（已随之删除），该模块现在只会在挂载时**移除**残留的 `dark` 类。
-   `.dark` 的 token 块与其派生规则全部保留，在无法被触发的前提下是死代码而非风险。
-   ============================================================ */
 @custom-variant dark (&:where(.dark, .dark *));
-
-/* ============================================================
-   Theme — Nexus Indigo Palette
-   ============================================================ */
 @theme {
-  /* Fonts — system-native stacks, no external CDN */
   --font-sans:
     system-ui, -apple-system, "Segoe UI", "Helvetica Neue", Helvetica, "PingFang SC", "Hiragino Sans GB",
     "Microsoft YaHei", Arial, sans-serif;
@@ -33,23 +15,93 @@
     system-ui, -apple-system, "Segoe UI", "Helvetica Neue", Helvetica, "PingFang SC", "Hiragino Sans GB",
     "Microsoft YaHei", Arial, sans-serif;
   --font-mono: ui-monospace, "Cascadia Code", "Fira Code", "JetBrains Mono", Menlo, monospace;
-
-  /* Font size — Tailwind 默认刻度最小到 xs(12px)，10px 档是本仓库自有的更小一级。
-     只给字号不给 --text-3xs--line-height：带行高会让 text-3xs 附带 line-height 声明，
-     与它替换掉的 text-[10px]（只有 font-size）不等价，属视觉变更。 */
-  --text-3xs: 10px;
-
-  /* Brand — Nexus Indigo */
+  --spacing: 4px;
+  /* 紧凑默认：只覆盖间距命名空间，不缩放尺寸、定位、行高或圆角的公共基尺。
+     小档 padding（<= 1.5）和 margin（<= 2.5）保留，避免进一步压小命中区及折叠侧栏偏移。
+     未列档位、space-* 与伴随 CSS 的 --spacing 表达式保持原值。 */
+  --padding-2: 6px;
+  --padding-2\.5: 8px;
+  --padding-3: 9px;
+  --padding-3\.5: 10px;
+  --padding-4: 12px;
+  --padding-4\.25: 13px;
+  --padding-4\.5: 14px;
+  --padding-5: 16px;
+  --padding-5\.5: 17px;
+  --padding-5\.75: 18px;
+  --padding-6: 18px;
+  --padding-7: 22px;
+  --padding-8: 24px;
+  --padding-9: 28px;
+  --padding-10: 32px;
+  --padding-12: 36px;
+  --padding-16: 48px;
+  --padding-20: 60px;
+  --padding-24: 72px;
+  --margin-3: 9px;
+  --margin-4: 12px;
+  --margin-5: 16px;
+  --margin-6: 18px;
+  --margin-8: 24px;
+  --margin-10: 32px;
+  --margin-12: 36px;
+  --margin-16: 48px;
+  --gap-1: 3px;
+  --gap-1\.5: 5px;
+  --gap-2: 6px;
+  --gap-2\.5: 8px;
+  --gap-3: 9px;
+  --gap-4: 12px;
+  --gap-5: 16px;
+  --gap-6: 18px;
+  --gap-8: 24px;
+  --gap-10: 32px;
+  --gap-12: 36px;
+  /* 目录下限随 p-2.5 收到 40px 双行内容 + 16px 内边距，不再撑出固定留白。
+     h-* / w-* / size-* 及定位不变，图标盒与 calc(--spacing) 列宽仍同尺；
+     固定高度控件保留原命中区，自然高度控件仅随 padding 收敛。 */
+  --min-height-15: 56px;
+  --radius-xs: 2px;
+  --radius-sm: 4px;
+  --radius-md: 6px;
+  --radius: 8px;
+  --radius-lg: 12px;
+  --radius-xl: 12px;
+  --radius-2xl: 16px;
+  --radius-3xl: 24px;
+  --radius-4xl: 32px;
+  --text-xs: 12px;
+  --text-sm: 14px;
+  --text-base: 16px;
+  --text-lg: 18px;
+  --text-xl: 20px;
+  --text-2xl: 24px;
+  --text-3xl: 30px;
+  --text-4xl: 36px;
+  --text-5xl: 48px;
+  --text-6xl: 60px;
+  --text-7xl: 72px;
+  --text-8xl: 96px;
+  --text-9xl: 128px;
+  --container-3xs: 256px;
+  --container-2xs: 288px;
+  --container-xs: 320px;
+  --container-sm: 384px;
+  --container-md: 448px;
+  --container-lg: 512px;
+  --container-xl: 576px;
+  --container-2xl: 672px;
+  --container-3xl: 768px;
+  --container-4xl: 896px;
+  --container-5xl: 1024px;
+  --container-6xl: 1152px;
+  --container-7xl: 1280px;
   --color-brand: #1677ff;
   --color-brand-light: #4096ff;
   --color-brand-subtle: rgba(22, 119, 255, 0.08);
   --color-brand-glow: rgba(22, 119, 255, 0.15);
-
-  /* Cyan accent */
   --color-cyan: #22d3ee;
   --color-cyan-subtle: rgba(34, 211, 238, 0.1);
-
-  /* Surfaces — bright & clean */
   --color-surface-0: #f8fafc;
   --color-surface-1: #ffffff;
   --color-surface-2: #f1f5f9;
@@ -57,47 +109,31 @@
   --color-surface-hover: #e6f0ff;
   --color-surface-elevated: #ffffff;
   --color-surface-overlay: #f1f5f9;
-
-  /* Text — slate neutrals */
+  --color-canvas: #f9fafb;
   --color-text-bright: #0f172a;
   --color-text-primary: #334155;
   --color-text-secondary: #64748b;
   --color-text-muted: #94a3b8;
   --color-text-dim: #94a3b8;
-
-  /* Inverted — for user message bubbles */
   --color-bg-inverted: #1677ff;
   --color-text-inverted: #ffffff;
-
-  /* User bubble */
   --color-user-bubble: #1677ff;
   --color-user-bubble-border: #4096ff;
-
-  /* Warning */
   --color-warning-bg: #fef3c7;
   --color-warning-border: #f59e0b;
   --color-warning-text: #92400e;
-
-  /* Status — semantic */
   --color-status-active: #10b981;
   --color-status-running: #10b981;
   --color-status-idle: #1677ff;
   --color-status-error: #ef4444;
   --color-status-warning: #f59e0b;
-  /* 成功态与 active / running 同色：三者都是「正向完成」语义，族内保持一致。 */
   --color-status-success: #10b981;
-
-  /* Accent colors */
   --color-accent-tiffany: #22d3ee;
   --color-accent-pink: #f472b6;
   --color-accent-green: #10b981;
   --color-accent-yellow: #f59e0b;
   --color-accent-red: #ef4444;
-
-  /* Tool card */
   --color-tool-card: #f1f5f9;
-
-  /* shadcn/ui tokens — Nexus Indigo */
   --color-background: #ffffff;
   --color-foreground: #0f172a;
   --color-card: #ffffff;
@@ -113,8 +149,6 @@
   --color-accent: #f1f5f9;
   --color-accent-foreground: #334155;
   --color-destructive: #ef4444;
-
-  /* Border / Input / Ring */
   --color-border: rgba(0, 0, 0, 0.1);
   --color-border-light: rgba(0, 0, 0, 0.06);
   --color-border-active: rgba(22, 119, 255, 0.35);
@@ -122,29 +156,45 @@
   --color-border-default: rgba(0, 0, 0, 0.1);
   --color-input: rgba(0, 0, 0, 0.1);
   --color-ring: #1677ff;
-
-  /* Shadows */
-  --shadow-card: 0 1px 3px rgba(0, 0, 0, 0.06), 0 1px 2px rgba(0, 0, 0, 0.04);
+  --shadow-card: 0 4px 12px -6px rgba(15, 23, 42, 0.1);
   --shadow-elevated: 0 4px 16px rgba(22, 119, 255, 0.08), 0 1px 4px rgba(0, 0, 0, 0.04);
-
-  /* Default utility values */
   --default-border-color: var(--color-border);
   --default-ring-color: var(--color-ring);
-
-  /* Radius */
-  --radius: 0.5rem;
-  --radius-lg: 0.75rem;
-
-  /* Layout */
   --navbar-height: 48px;
   --sidebar-width: 200px;
   --sidebar-collapsed: 60px;
   --topbar-height: 56px;
 }
-
-/* ============================================================
-   Dark mode — Nexus Indigo dark palette
-   ============================================================ */
+@theme static {
+  --radius-3: 3px;
+  --radius-5: 5px;
+  --radius-7: 7px;
+  --radius-9: 9px;
+  --radius-10: 10px;
+  --radius-20: 20px;
+  --tracking-2: 0.02em;
+  --tracking-3: 0.03em;
+  --tracking-4: 0.04em;
+  --tracking-6: 0.06em;
+  --tracking-8: 0.08em;
+  --tracking-15: 0.15em;
+  --tracking-neg2: -0.02em;
+  --tracking-halfpx: 0.5px;
+  --color-yellow-200: oklch(94.5% 0.129 101.54);
+  --font-weight-black: 900;
+  --text-8: 8px;
+  --text-9: 9px;
+  --text-3xs: 10px;
+  --text-11: 11px;
+  --text-13: 13px;
+  --text-15: 15px;
+  --text-16: 16px;
+  --text-17: 17px;
+  --text-22: 22px;
+  --text-28: 28px;
+  --text-32: 32px;
+  --text-38: 38px;
+}
 .dark {
   --color-brand: #4096ff;
   --color-brand-light: #69b1ff;
@@ -213,13 +263,7 @@
   --shadow-card: 0 1px 3px rgba(0, 0, 0, 0.2), 0 1px 2px rgba(0, 0, 0, 0.12);
   --shadow-elevated: 0 4px 16px rgba(22, 119, 255, 0.12), 0 1px 4px rgba(0, 0, 0, 0.1);
 }
-
-/* ============================================================
-   Base styles
-   ============================================================ */
 @layer base {
-  /* 浏览器原生控件（输入框、下拉、滚动条、表单控件内部）按本声明取色，
-     不跟随系统深色偏好；落在最外层 `html` 上，全树继承。 */
   :root {
     color-scheme: light;
   }
@@ -228,7 +272,7 @@
     background-color: var(--color-surface-0);
     color: var(--color-text-primary);
     font-family: var(--font-body);
-    font-size: 13px;
+    font-size: var(--text-13);
     line-height: 1.5;
     -webkit-font-smoothing: antialiased;
   }
@@ -241,9 +285,6 @@
     outline: none;
   }
 }
-
-/* Sonner positions the close button outside the toast by default. Keep it inside
-   the right edge so it is easier to hit and does not float over nearby UI. */
 html [data-sonner-toaster] [data-sonner-toast][data-styled="true"] {
   padding-right: 42px;
 }
@@ -254,10 +295,6 @@ html [data-sonner-toaster] [data-sonner-toast][data-styled="true"] [data-close-b
   left: auto;
   transform: translateY(-50%);
 }
-
-/* ============================================================
-   Custom scrollbar
-   ============================================================ */
 ::-webkit-scrollbar {
   width: 6px;
   height: 6px;
@@ -272,182 +309,6 @@ html [data-sonner-toaster] [data-sonner-toast][data-styled="true"] [data-close-b
 ::-webkit-scrollbar-thumb:hover {
   background: var(--color-text-muted);
 }
-
-/* ============================================================
-   Keyframes — used by TSX inline styles / Tailwind animate-[]
-   ============================================================ */
-@keyframes status-active-pulse {
-  0%,
-  100% {
-    box-shadow: 0 0 0 0 rgba(16, 185, 129, 0.4);
-  }
-  50% {
-    box-shadow: 0 0 6px 2px rgba(16, 185, 129, 0.15);
-  }
-}
-
-/* ============================================================
-   Tool call components
-   ============================================================ */
-@utility tool-status-pill {
-  display: inline-flex;
-  align-items: center;
-  padding: 1px 6px;
-  border-radius: 9999px;
-  font-size: 9px;
-  font-weight: 500;
-  line-height: 1.4;
-  white-space: nowrap;
-  flex-shrink: 0;
-}
-@utility tool-status-pill-running {
-  background-color: oklch(0.97 0.01 160);
-  color: oklch(0.55 0.15 160);
-}
-@utility tool-status-pill-complete {
-  background-color: oklch(0.97 0.01 160);
-  color: oklch(0.55 0.15 160);
-}
-@utility tool-status-pill-error {
-  background-color: oklch(0.97 0.01 25);
-  color: oklch(0.55 0.2 25);
-}
-@utility tool-status-pill-pending {
-  background-color: oklch(0.96 0.02 270);
-  color: oklch(0.55 0.2 270);
-}
-.dark .tool-status-pill-running,
-.dark .tool-status-pill-complete {
-  background-color: oklch(0.22 0.03 160);
-  color: oklch(0.75 0.15 160);
-}
-.dark .tool-status-pill-error {
-  background-color: oklch(0.22 0.03 25);
-  color: oklch(0.75 0.18 25);
-}
-.dark .tool-status-pill-pending {
-  background-color: oklch(0.22 0.03 270);
-  color: oklch(0.75 0.15 270);
-}
-
-@utility tool-call-detail-wrapper {
-  overflow: hidden;
-  transition: max-height 0.25s cubic-bezier(0.4, 0, 0.2, 1);
-}
-
-@utility tool-call-row {
-  overflow: hidden;
-}
-
-@utility tool-call-detail-code {
-  tab-size: 2;
-  word-break: break-all;
-  white-space: pre-wrap;
-}
-
-@utility tool-call-chevron {
-  transition: transform 0.2s ease;
-}
-@utility tool-call-chevron-open {
-  transform: rotate(90deg);
-}
-
-/* ============================================================
-   Chat loading dots — 品牌色脉冲波纹
-   ============================================================ */
-
-.chat-loading-dots {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  height: 20px;
-}
-
-.chat-loading-dots span {
-  width: 8px;
-  height: 8px;
-  border-radius: 50%;
-  background: var(--color-brand);
-  animation: loadingDotBounce 1.4s ease-in-out infinite both;
-}
-
-.chat-loading-dots span:nth-child(1) {
-  animation-delay: -0.32s;
-}
-
-.chat-loading-dots span:nth-child(2) {
-  animation-delay: -0.16s;
-}
-
-.chat-loading-dots span:nth-child(3) {
-  animation-delay: 0s;
-}
-
-@keyframes loadingDotBounce {
-  0%,
-  80%,
-  100% {
-    transform: scale(0.4);
-    opacity: 0.3;
-    box-shadow: 0 0 0 0 rgba(22, 119, 255, 0);
-  }
-  40% {
-    transform: scale(1);
-    opacity: 1;
-    box-shadow: 0 0 8px 2px rgba(22, 119, 255, 0.3);
-  }
-}
-
-.dark .chat-loading-dots span {
-  box-shadow: 0 0 0 0 rgba(22, 119, 255, 0);
-}
-
-@keyframes loadingDotBounceDark {
-  0%,
-  80%,
-  100% {
-    transform: scale(0.4);
-    opacity: 0.3;
-    box-shadow: 0 0 0 0 rgba(22, 119, 255, 0);
-  }
-  40% {
-    transform: scale(1);
-    opacity: 1;
-    box-shadow: 0 0 8px 2px rgba(22, 119, 255, 0.35);
-  }
-}
-
-.dark .chat-loading-dots span {
-  animation-name: loadingDotBounceDark;
-}
-
-/* "思考中" 文字微光扫过动画 */
-.loading-text-shimmer {
-  background: linear-gradient(
-    90deg,
-    var(--color-text-muted) 0%,
-    var(--color-brand-light) 50%,
-    var(--color-text-muted) 100%
-  );
-  background-size: 200% 100%;
-  -webkit-background-clip: text;
-  background-clip: text;
-  -webkit-text-fill-color: transparent;
-  animation: shimmerSlide 2s ease-in-out infinite;
-}
-
-@keyframes shimmerSlide {
-  0% {
-    background-position: 100% 0;
-  }
-  100% {
-    background-position: -100% 0;
-  }
-}
-
-/* ============================================================
-   Reduced motion
-   ============================================================ */
 @media (prefers-reduced-motion: reduce) {
   *,
   ::before,
@@ -457,325 +318,167 @@ html [data-sonner-toaster] [data-sonner-toast][data-styled="true"] [data-close-b
     transition-duration: 0.01ms;
   }
 }
-
-/* 隐藏 streamdown 渲染的代码块头部（由 Agent 消息 markdown 产生） */
 [data-streamdown="code-block-header"] {
   display: none;
 }
-
-/* 确保 streamdown 浮动操作按钮在 HTTP 下始终可点击（外层 pointer-events-none + 内层 pointer-events-auto 可能被覆盖） */
 [data-streamdown="code-block-actions"],
 [data-streamdown="mermaid-block-actions"] {
   pointer-events: auto;
 }
+.agent-sidebar {
+  --agent-sidebar-from: #1759dc;
+  --agent-sidebar-to: #0d2a6e;
+  --agent-sidebar-cyan: #6be6ff;
+  --agent-sidebar-deep: #0f6bff;
 
-/* ═══════════════════════════════════════════════════════════ */
-/* 工牌卡空状态 (Agent Badge Card Empty State)                 */
-/* ═══════════════════════════════════════════════════════════ */
-
-/* ── 工牌容器 ── */
-.agent-badge {
-  width: 224px;
-  min-height: 340px;
-  border-radius: 14px;
-  border: 1px solid var(--color-border);
-  box-shadow:
-    0 1px 3px rgba(0, 0, 0, 0.04),
-    0 4px 16px rgba(0, 0, 0, 0.03);
-  overflow: hidden;
-  position: relative;
-  display: flex;
-  flex-direction: column;
   background:
-    radial-gradient(circle, var(--color-border, #e2e8f0) 0.8px, transparent 0.8px) 0 0 / 60px 60px,
-    var(--color-surface-1, #fff);
+    linear-gradient(135deg, rgba(255, 255, 255, 0.1), transparent 48%),
+    linear-gradient(180deg, var(--agent-sidebar-from), var(--agent-sidebar-to));
+  box-shadow: 12px 0 28px rgba(12, 26, 58, 0.12);
+  transition:
+    width 300ms cubic-bezier(0.4, 0, 0.2, 1),
+    min-width 300ms cubic-bezier(0.4, 0, 0.2, 1);
 }
-.agent-badge > * {
+.agent-sidebar::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background:
+    radial-gradient(220px circle at 24px 16px, rgba(107, 230, 255, 0.18), transparent 68%),
+    linear-gradient(180deg, rgba(255, 255, 255, 0.06), transparent 38%);
+}
+.agent-sidebar > * {
   position: relative;
   z-index: 1;
 }
+.agent-sidebar-toggle {
+  position: absolute;
+  z-index: 20;
+  border-color: rgba(12, 26, 58, 0.1);
+  color: #5a6785;
+  box-shadow: 0 1px 2px rgba(12, 26, 58, 0.04);
+  transition:
+    color 0.15s,
+    box-shadow 0.15s,
+    transform 0.15s;
+}
+.agent-sidebar-toggle:hover {
+  color: var(--agent-sidebar-deep);
+  box-shadow: 0 4px 12px rgba(15, 107, 255, 0.18);
+}
+.agent-sidebar-tree-resize-handle {
+  transition: background 150ms ease;
+}
+.agent-sidebar-tree-resize-handle::after {
+  height: 8px;
+}
+.agent-sidebar-tree-resize-handle[data-resize-handle-active] {
+  background: var(--agent-sidebar-cyan);
+}
+.agent-sidebar-user-button,
+.agent-sidebar-org-row {
+  transition: background 0.15s;
+}
+.agent-sidebar-avatar {
+  background: linear-gradient(135deg, var(--agent-sidebar-cyan), var(--agent-sidebar-deep));
+  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.18);
+}
+.fenix-sidebar-logo-mark {
+  filter: drop-shadow(0 8px 18px rgba(3, 32, 110, 0.28));
+}
 
-/* ── 水印 ── */
-.agent-badge::before,
-.agent-badge::after {
-  content: attr(data-badge-name) "  " attr(data-badge-name) "  " attr(data-badge-name) "  " attr(data-badge-name);
+.fenix-sidebar-logo-text {
+  text-shadow: 0 5px 18px rgba(3, 32, 110, 0.28);
+}
+.agent-sidebar-nav {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(255, 255, 255, 0.22) transparent;
+}
+
+.agent-sidebar-nav::-webkit-scrollbar {
+  width: 6px;
+}
+
+.agent-sidebar-nav::-webkit-scrollbar-thumb {
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.22);
+}
+.agent-sidebar-nav-item.active::before {
+  content: "";
   position: absolute;
   left: 0;
+  top: 50%;
+  width: 3px;
+  height: 60%;
+  border-radius: 0 2px 2px 0;
+  background: linear-gradient(180deg, #6be6ff, #0f6bff);
+  transform: translateY(-50%);
+}
+.agent-sidebar-nav-item--collapsed.active::before {
+  left: -8px;
+}
+.artifacts-shell[data-layout="floating"] {
+  position: absolute;
+  inset-block: 0;
   right: 0;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 80px;
-  font-weight: 900;
-  color: var(--color-border, #e2e8f0);
-  pointer-events: none;
-  z-index: 0;
-  transform: rotate(-10deg);
-  white-space: nowrap;
-  letter-spacing: -0.02em;
-  overflow: hidden;
-}
-.agent-badge::before {
-  top: 41%;
-  opacity: 0.16;
-}
-.agent-badge::after {
-  top: 80%;
-  opacity: 0.16;
 }
 
-/* ── 渐变头部 ── */
-.agent-badge-header {
-  background:
-    radial-gradient(220px circle at 50% 0%, rgba(107, 230, 255, 0.22), transparent 68%),
-    linear-gradient(180deg, #1759dc, #0d2a6e);
-  padding: 24px 18px 32px;
-  text-align: center;
-  position: relative;
-  flex-shrink: 0;
+.artifacts-shell[data-layout="docked"] {
+  border-left: 1px solid var(--color-border-subtle);
 }
-.agent-badge-header::after {
+.artifacts-shell[data-layout="floating"] .artifacts-workspace {
+  box-shadow: 0 18px 34px rgba(29, 48, 84, 0.16);
+}
+
+.artifacts-shell[data-layout="docked"] .artifacts-workspace {
+  border-block: 0;
+  border-right: 0;
+  border-radius: 0;
+}
+.artifacts-shell__resizer::after {
   content: "";
   position: absolute;
-  top: 12px;
-  left: 50%;
-  transform: translateX(-50%);
-  width: 14px;
-  height: 14px;
-  border-radius: 50%;
-  background: #cbd5e1;
-  box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.1);
-}
-.agent-badge-tag {
-  display: inline-block;
-  background: rgba(255, 255, 255, 0.18);
-  color: #fff;
-  font-size: 10px;
-  font-weight: 700;
-  letter-spacing: 0.15em;
-  text-transform: uppercase;
-  padding: 4px 14px;
-  border-radius: 999px;
-  backdrop-filter: blur(4px);
-  -webkit-backdrop-filter: blur(4px);
+  inset-block: 0;
+  left: 4px;
+  width: 1px;
+  background: transparent;
+  transition: background-color 140ms ease;
 }
 
-/* ── 头像 + 信息区 ── */
-.agent-badge-body {
-  padding: 0 20px;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  flex: 1;
-  justify-content: center;
+.artifacts-shell__resizer:hover::after,
+.artifacts-shell__resizer:focus-visible::after {
+  background: var(--color-brand);
 }
-.agent-badge-avatar {
-  width: 50px;
-  height: 50px;
-  border-radius: 50%;
-  background: #fff;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  margin-top: -30px;
-  border: 3px solid #fff;
-  box-shadow:
-    0 0 0 1.5px var(--color-border, #e2e8f0),
-    0 2px 12px rgba(23, 89, 220, 0.08);
-  position: relative;
-  z-index: 2;
-  flex-shrink: 0;
+.artifacts-open-button {
+  box-shadow: 0 8px 20px rgba(29, 48, 84, 0.08);
 }
-.agent-badge-name {
-  font-size: 13px;
-  font-weight: 700;
-  color: var(--color-text-primary);
-  margin-top: 4px;
-  flex-shrink: 0;
-}
-.agent-badge-source {
-  font-size: 9px;
-  color: var(--color-text-muted, #94a3b8);
-  margin-top: 8px;
-  flex-shrink: 0;
-  text-transform: uppercase;
-  letter-spacing: 0.08em;
-}
-.agent-badge-desc {
-  font-size: 10px;
-  color: var(--color-text-muted, #64748b);
-  margin-top: 5px;
-  line-height: 1.5;
-  text-align: center;
-  flex-shrink: 0;
+.artifacts-mode-bar__tabs {
+  scrollbar-width: none;
 }
 
-/* ── 分隔线 ── */
-.agent-badge-divider {
-  margin: 0 20px;
-  display: flex;
-  align-items: center;
-  flex-shrink: 0;
+.artifacts-mode-bar__tabs::-webkit-scrollbar {
+  display: none;
 }
-.agent-badge-divider::before,
-.agent-badge-divider::after {
+.artifacts-mode-tab::after {
   content: "";
-  flex: 1;
-  border-top: 1px dashed var(--color-border, #e2e8f0);
-}
-.agent-badge-dots {
-  display: flex;
-  gap: 6px;
-  margin: 0 10px;
-}
-.agent-badge-dot {
-  width: 5px;
-  height: 5px;
-  border-radius: 50%;
-  background: #cbd5e1;
-  flex-shrink: 0;
+  position: absolute;
+  right: 8px;
+  bottom: 0;
+  left: 8px;
+  height: 2px;
+  border-radius: 2px 2px 0 0;
+  background: transparent;
 }
 
-/* ── Skills  ── */
-.agent-badge-skills {
-  padding: 10px 20px 18px;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 8px;
-  flex-shrink: 0;
+.artifacts-mode-tab.is-active::after {
+  background: var(--color-brand);
 }
-.agent-badge-skills-label {
-  font-size: 10px;
-  font-weight: 700;
-  color: var(--color-text-muted, #94a3b8);
-  text-transform: uppercase;
-  letter-spacing: 0.12em;
-}
-.agent-badge-skills-row {
-  display: flex;
-  gap: 6px;
-  justify-content: center;
-  max-width: 100%;
-  overflow: hidden;
-  flex-wrap: nowrap;
-}
-.agent-badge-skills-hint {
-  font-size: 10px;
-  color: var(--color-text-muted, #94a3b8);
-}
-.agent-badge-skills-none {
-  font-size: 12px;
-  color: var(--color-text-muted, #94a3b8);
-}
-
-/* ── Skill Tag ── */
-.skill-tag {
-  display: inline-flex;
-  align-items: center;
-  padding: 3px 9px;
-  font-size: 11px;
-  line-height: 1.4;
-  border-radius: 9999px;
-  background: var(--color-surface-2, #f1f5f9);
-  color: var(--color-text-secondary, #475569);
-  white-space: nowrap;
-  flex-shrink: 0;
-  font-family: var(--font-display, inherit);
-  border: 1px solid var(--color-border, #e5e7eb);
-  cursor: pointer;
-  transition:
-    background 0.15s,
-    border-color 0.15s,
-    color 0.15s;
-}
-.skill-tag:hover {
-  background: var(--color-surface-3, #e5e7eb);
-  border-color: var(--color-border-hover, #d1d5db);
-  color: var(--color-text-primary, #374151);
-}
-
-/* ── 管理模式下静态 skill tag（不可点击） ── */
-.skill-tag-static {
-  cursor: default;
-}
-.skill-tag-static:hover {
-  background: var(--color-surface-2, #f1f5f9);
-  border-color: var(--color-border, #e5e7eb);
-  color: var(--color-text-secondary, #475569);
-}
-
-/* ── 管理模式操作按钮 ── */
-.agent-badge-actions {
-  display: flex;
-  gap: 4px;
-  padding: 10px 20px 14px;
-  flex-shrink: 0;
-}
-.agent-badge-action {
-  flex: 1;
-  height: 26px;
-  border-radius: 6px;
-  font-size: 10px;
-  font-weight: 600;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 2px;
-  cursor: pointer;
-  transition:
-    background 0.15s,
-    border-color 0.15s;
-  border: 1px solid #d9e2ee;
-  background: #fff;
-  color: #65748a;
-}
-.agent-badge-action:hover {
-  border-color: #b9cee8;
-  color: #1677ff;
-}
-.agent-badge-action:disabled {
-  opacity: 0.6;
-  cursor: not-allowed;
-}
-.agent-badge-action-primary {
-  border: none;
-  background: #1677ff;
-  color: #fff;
-}
-.agent-badge-action-primary:hover {
-  background: #0f67df;
-}
-
-/* ── 骨架屏 ── */
-@keyframes agent-badge-pulse {
-  0%,
-  100% {
-    opacity: 0.6;
+@media (max-width: 1050px) {
+  .artifacts-shell[data-layout="floating"] {
+    top: 6px;
+    right: 6px;
+    bottom: 6px;
+    min-width: 0;
   }
-  50% {
-    opacity: 1;
-  }
-}
-.agent-badge-skeleton {
-  animation: agent-badge-pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
-}
-.agent-badge-skeleton-circle {
-  width: 50px;
-  height: 50px;
-  border-radius: 50%;
-  background: var(--color-border, #e2e8f0);
-  border: 3px solid #fff;
-  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.04);
-  flex-shrink: 0;
-}
-.agent-badge-skeleton-line {
-  border-radius: 6px;
-  background: var(--color-border, #e2e8f0);
-  flex-shrink: 0;
-}
-.agent-badge-skeleton-tag {
-  border-radius: 999px;
-  background: var(--color-surface-2, #f1f5f9);
-  flex-shrink: 0;
 }

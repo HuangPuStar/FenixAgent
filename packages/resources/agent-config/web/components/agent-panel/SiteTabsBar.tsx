@@ -53,7 +53,9 @@ export function SiteTabsBar({
   onMountClick,
   onUnmountClick,
 }: SiteTabsBarProps) {
-  const { t } = useTranslation(NS.COMPONENTS);
+  // 站点页签的 `panelMode.*` / `siteFrame.*` 键随台账 D4 迁入本包 `agents` 字典（原寄居宿主
+  // `components`），消费方随之改绑本包命名空间。
+  const { t } = useTranslation(NS.AGENTS);
   const navigate = useNavigate();
 
   // 当前激活 site 的信息

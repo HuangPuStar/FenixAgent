@@ -77,14 +77,6 @@ export interface McpServerRepository {
     ownerUserId: string;
     visibility: string;
   }): Promise<string | undefined>;
-  /** 系统托管资源（如 Hindsight）的幂等写入：同组织同名更新配置，绝不改归属列与 `visibility`。 */
-  upsertByOrgAndName(input: {
-    name: string;
-    type: string;
-    config: unknown;
-    organizationId: string;
-    ownerUserId: string;
-  }): Promise<string | undefined>;
   updateById(input: { resourceId: string; patch: { type?: string; config: unknown } }): Promise<boolean>;
   setEnabledById(input: { resourceId: string; enabled: boolean }): Promise<boolean>;
   deleteById(input: { resourceId: string }): Promise<boolean>;
@@ -195,28 +187,6 @@ export function createMcpServerRepository(query: AuthorizedResourceQuery<McpServ
         // 同组织同名唯一（`idx_mcp_server_org_name`）：冲突返回空集，由上层映射为 409，
         // 不做 upsert——那会让"创建"在并发下静默改掉既有配置。
         .onConflictDoNothing()
-        .returning({ id: mcpServer.id });
-      return rows[0]?.id;
-    },
-
-    async upsertByOrgAndName(input) {
-      const rows = await getMcpDatabase()
-        .insert(mcpServer)
-        .values({
-          name: input.name,
-          type: input.type,
-          config: input.config,
-          organizationId: input.organizationId,
-          userId: input.ownerUserId,
-          enabled: true,
-          updatedAt: new Date(),
-        })
-        // 冲突只更新连接配置：归属列（组织、owner）与 visibility 是创建期属性，系统路径也不得改写，
-        // 否则重复配置会让资源在组织之间漂移或静默改变公开受众。
-        .onConflictDoUpdate({
-          target: [mcpServer.organizationId, mcpServer.name],
-          set: { type: input.type, config: input.config, updatedAt: new Date() },
-        })
         .returning({ id: mcpServer.id });
       return rows[0]?.id;
     },

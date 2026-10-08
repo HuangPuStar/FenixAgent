@@ -8,6 +8,9 @@ FILES=$(git diff --cached --name-only --diff-filter=ACM -- '*.ts' '*.tsx' '*.js'
   | grep -v '^[^[:space:]]*/dist/' \
   | grep -v '^\\.agents/' \
   | grep -v '^[^[:space:]]*/coverage/' \
+  | grep -v '^deploy/manifests/modules.json$' \
+  | grep -v '^deploy/manifests/profiles/' \
+  | grep -v '^deploy/compose/overlays/' \
   | tr '\n' ' ')
 
 if [ -n "$FILES" ]; then

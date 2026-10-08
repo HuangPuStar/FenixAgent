@@ -267,7 +267,7 @@ export const WorkflowDagStatusSchema = z
 
 /** 节点状态枚举 */
 export const WorkflowNodeStatusSchema = z
-  .enum(["PENDING", "RUNNING", "COMPLETED", "FAILED", "CANCELLED", "SKIPPED"])
+  .enum(["PENDING", "RUNNING", "SUSPENDED", "COMPLETED", "FAILED", "CANCELLED", "SKIPPED"])
   .describe("工作流节点执行状态。");
 
 /** 节点输出 */
@@ -389,7 +389,7 @@ export const WorkflowEngineActionRequestSchema = z
     z.object({
       action: z.literal("run").describe("执行工作流。"),
       yaml: z.string().optional().describe("待执行的工作流 YAML；与 workflowId 二选一。"),
-      params: JsonObjectSchema.optional().describe("运行参数。"),
+      params: z.unknown().optional().describe("运行参数对象；由运行入口校验并返回业务错误。"),
       workflowId: z
         .string()
         .optional()

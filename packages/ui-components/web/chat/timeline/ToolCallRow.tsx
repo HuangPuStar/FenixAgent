@@ -13,11 +13,16 @@
  *   `.tool-call-row-compact` 网格的第二列，与标题下方第二行的错误信息重复（`narrate` 的
  *   `errorDetail` 优先取 `publicError.message`），故只保留第二行；脱敏错误的 Type / ID 不再展示。
  *
- * 深层样式（两处网格列定义、图标 `flex` 基准值、图标尺寸与文件链接态的 `flex`）下沉到同目录
- * `./ToolCallRow.css`，语义类名为 `.chat-tool-call-shell`（源 `.tool-call-row-compact`）、
- * `.chat-tool-call-grid`（源 `.chat-tool-call-row`）、`.chat-tool-call-icon`（源 `.tool-call-row-icon`）
- * 与 `.chat-tool-call-meta-inline`（源 `:where(.tool-call-row-copy.is-file-preview) .tool-call-row-meta`
- * 的 `flex`，随 `showFileLink` 条件挂上）。
+ * 深层样式（两处网格列定义与图标尺寸）下沉到同目录 `./ToolCallRow.css`，语义类名为
+ * `.chat-tool-call-shell`（源 `.tool-call-row-compact`）、`.chat-tool-call-grid`（源 `.chat-tool-call-row`）
+ * 与 `.chat-tool-call-icon`（源 `.tool-call-row-icon`，只承载 `> svg` 的尺寸）。
+ *
+ * 样式回落与归位（2026-09-28）：图标基座的 `flex: 0 0 22px`（源 `.tool-call-row-icon`）与文件链接态
+ * meta 槽的 `flex: 0 1 auto`（源 `:where(.tool-call-row-copy.is-file-preview) .tool-call-row-meta`）都是扁平声明，
+ * 按刻度改回 `className`：`shrink-0 grow-0 basis-5.5`（令牌层 `--spacing: 4px`，即 22px，与基座自身的
+ * `h-5.5 w-5.5` 同档）与 `grow-0 shrink basis-auto`（三族初始值）。前者一度被当作「刻度不保原值」
+ * 写进 `./ToolCallRow.css`，已撤回；两条语义类名（`.chat-tool-call-icon` / `.chat-tool-call-meta-inline`）
+ * 保留为渲染钩子（`.chat-tool-call-icon` 自身已无规则）。
  */
 
 import "./ToolCallRow.css";
@@ -157,9 +162,11 @@ export function ToolCallRow({ tool, onPreviewFile, inActivityChain = false }: To
           data-kind={kind}
           data-slot="chat-tool-call-row"
         >
+          {/* 图标基座：`h-5.5 w-5.5` 定尺寸，源 `.tool-call-row-icon` 的 `flex: 0 0 22px` 即 `basis-5.5`
+              （令牌层 `--spacing: 4px`，本槽是网格子项，`flex-*` 不参与布局，仍逐项保留源声明）。 */}
           <span
             className={cn(
-              "chat-tool-call-icon grid h-5.5 w-5.5 place-items-center rounded-full bg-white",
+              "chat-tool-call-icon shrink-0 grow-0 basis-5.5 grid h-5.5 w-5.5 place-items-center rounded-full bg-white",
               isError ? "text-red-400" : "text-slate-500",
             )}
             aria-hidden
@@ -196,10 +203,12 @@ export function ToolCallRow({ tool, onPreviewFile, inActivityChain = false }: To
                 </span>
               )}
               {result.subtitle ? (
+                // 文件链接态：meta 槽取源 `.tool-call-row-meta` 的 `flex: 0 1 auto`（`grow-0 shrink basis-auto`）
+                // 与并列的 `whitespace-nowrap`，一起由 `showFileLink` 条件挂上。
                 <span
                   className={cn(
                     "flex min-w-0 items-baseline gap-1.25 overflow-hidden text-xs font-normal text-gray-400",
-                    showFileLink && "chat-tool-call-meta-inline whitespace-nowrap",
+                    showFileLink && "chat-tool-call-meta-inline grow-0 shrink basis-auto whitespace-nowrap",
                   )}
                   data-slot="chat-tool-call-meta"
                 >

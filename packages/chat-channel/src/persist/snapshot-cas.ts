@@ -3,10 +3,12 @@
 //
 // WATCH 必须只存在于专用 duplicate 连接，不能污染全局命令连接或 Pub/Sub subscriber。
 // 写入附带滑动 TTL（SP-C1）：活跃会话每次成功 CAS 续期，失活数据自然过期回收。
+//
+// TTL 一律由调用方给出（F1）：包内不读 `process.env`、不留默认值，真相只在 agent-runtime manifest 的
+// `RCS_YJS_SNAPSHOT_TTL_SECONDS` 声明；provider 路径的值经 `options.snapshot` 注入。
 
 import type { Cluster, Redis } from "ioredis";
 import * as Y from "yjs";
-import { getSnapshotEnvConfig } from "./snapshot-config";
 
 const SNAPSHOT_PERSIST_RETRIES = 5;
 
@@ -43,7 +45,7 @@ export async function mergeYjsSnapshotWithCas(
   persistence: RedisSnapshotConnection,
   redisKey: string,
   localFull: Uint8Array,
-  ttlSeconds: number = getSnapshotEnvConfig().ttlSeconds,
+  ttlSeconds: number,
   fence?: { key: string; generation: string },
 ): Promise<boolean> {
   for (let attempt = 0; attempt < SNAPSHOT_PERSIST_RETRIES; attempt += 1) {
@@ -70,7 +72,7 @@ export async function persistYjsSnapshotWithCas(
   redis: Redis | Cluster,
   redisKey: string,
   localFull: Uint8Array,
-  ttlSeconds?: number,
+  ttlSeconds: number,
 ): Promise<boolean> {
   const persistence = redis.duplicate() as unknown as RedisSnapshotConnection;
   try {
@@ -93,7 +95,7 @@ export async function persistYjsClearedSnapshotWithCas(
   redisKey: string,
   localBaseline: Uint8Array,
   clear: (ydoc: Y.Doc) => void,
-  ttlSeconds?: number,
+  ttlSeconds: number,
 ): Promise<boolean> {
   const persistence = redis.duplicate() as unknown as RedisSnapshotConnection;
   try {
@@ -117,12 +119,7 @@ export async function persistYjsClearedSnapshotWithCas(
 
         const result = await persistence
           .multi()
-          .set(
-            redisKey,
-            Buffer.from(Y.encodeStateAsUpdate(clearedDoc)),
-            "EX",
-            ttlSeconds ?? getSnapshotEnvConfig().ttlSeconds,
-          )
+          .set(redisKey, Buffer.from(Y.encodeStateAsUpdate(clearedDoc)), "EX", ttlSeconds)
           .exec();
         watched = false; // EXEC 会自动 UNWATCH。
         if (result !== null) return true;

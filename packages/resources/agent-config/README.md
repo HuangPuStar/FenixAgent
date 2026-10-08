@@ -96,7 +96,15 @@ agent 编辑器 / 站点页面的浏览器实现方。
   不是出口，也不应成为出口。
 - 导出面覆盖实测消费方（2026-09-21）：task / prod-view 取 `agentApi`；model-management 的编辑器纯逻辑
   用例取 `agent-editor-model` 的转换与校验 schema；宿主 WebShell 的 `shell/use-shell-navigation.ts` 取
-  `sidebarConfigApi`、`shell/use-agent-sidebar-tree.ts` 取 `agentApi`。
+  `sidebarConfigApi`、`shell/use-agent-sidebar-tree.ts` 取 `agentApi`；宿主
+  `apps/web/src/pages/agent-panel/artifacts/ArtifactsPanel.tsx` 取 `useArtifactsSites`（2026-09-25，见下条）。
+- **站点取数归位**（2026-09-25，台账 D2 收尾）：`web/hooks/use-artifacts-sites.ts` 原本住在宿主
+  `apps/web/src/shell/artifacts/`，是 D2 把文件域实现迁进 `@fenix/resource-machine/web` 之后壳里
+  **最后一条取数**（该目录 2026-09-28 归位到 `apps/web/src/pages/agent-panel/artifacts/`）。前端规范 §2.5
+  允许壳持有 tab 状态与回调、但明令「壳不做取数」，§10.5.2 要求
+  hook 归所属模块 `./web`，故整体迁入本包（包根出口取用，宿主壳仍持模式切换与渲染装配，形态与
+  `ArtifactsFilesWorkspace` 一致）。随迁的 `panelMode.unmountFailed` 是本包消费、宿主字典留副本的
+  最后一例——宿主 `components` 字典的同名键已删除，键组叶子数由 `agent-i18n.test.ts` 点名。
 - **`AgentSidebarConfig` 已退场**（§1.6 T11d）：包根曾导出一个零消费方的 `AgentSidebarConfig`，与宿主
   `apps/web/src/pages/agent-panel/AgentSidebarConfig.tsx` 同源（均为 151 行，仅两处 import 不同）。
   侧栏导航的真相源现为各包 `web/contribution.ts` 的项声明 + WebShell 的分组表（`SHELL_NAV_GROUPS`），

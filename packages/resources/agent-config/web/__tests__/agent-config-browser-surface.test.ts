@@ -91,6 +91,16 @@ const BROWSER_SAFE_EXTERNAL: ReadonlyMap<string, string> = new Map([
     "文件类型图标（ui-components components/file-icon-helper 传递依赖，经本包编辑器消费的 knowledge 资源列表引入）：" +
       "纯浏览器 SVG 组件，运行时依赖只有 react / prop-types / colord（后者提供颜色解析），无 node 专有能力",
   ],
+  // 2026-09-25 新到：本包编辑器经 `registryApi` 消费 `@fenix/resource-machine/web`（机器注册表），而该包
+  // 的文件工作区（§10.5.2 归位后随包根出口转出 `ArtifactsFilesWorkspace` / `useArtifactsFiles`）会把
+  // ui-components 的文件树与预览子树一并带进本包的值导入图。这四条不是新引入的库，而是**同一条
+  // `@fenix/ui-components` 生产路径**在兄弟包出口变宽后变得可达——同一个库、同一份理由已登记在
+  // `packages/resources/machine/web/__tests__/machine-browser-surface.test.ts` 的白名单里（该包的
+  // 文件域实现直接消费它们），此处按同一口径收录，不新增豁免种类。
+  ["react-arborist", "虚拟化文件树（ui-components components/file-tree-arborist 传递依赖），纯浏览器实现"],
+  ["react-resizable-panels", "可拖拽分栏（ui-components ui/resizable 传递依赖），纯浏览器实现"],
+  ["@open-file-viewer/core", "文件预览内核（ui-components components/preview/* 传递依赖），纯浏览器实现"],
+  ["@open-file-viewer/react", "文件预览 React 绑定（同上）"],
   // 经 @fenix/model-management/web 子路径传递进入（编辑器模型选择器的品牌图标）
   // `@lobehub/icons` 的 dependencies 里还有 `antd-style`，后者在 import 期就求值
   // `window.matchMedia`：浏览器构建无影响（window 齐备），但无 DOM 的 `bun test` 进程只要被宿主
@@ -110,14 +120,19 @@ const BROWSER_SAFE_EXTERNAL: ReadonlyMap<string, string> = new Map([
 const ALIAS_SPECIFIER = /^@\//;
 
 /**
- * 跨包 web 引用只允许「包根 /web」这一个深度，唯一例外是这里登记的说明符。
+ * 跨包 web 引用只允许「包根 /web」这一个深度，例外项在此逐条登记。
  *
- * 例外项由 §6.5 的分支融合裁定点名保留：`@fenix/agent-runtime/web/api/environments` 是 agent-runtime
- * 对外发布的**窄契约出口**（站点页与 SiteFrame 取宿主同一份 environment 类型与请求），不是「顺手写深了」
- * 的路径；把它收敛成包根需要先改对方 manifest，超出本任务范围。允许项同时被断言「确实在用」，
- * 避免它退化成无人清理的死豁免。
+ * 两条例外都是 agent-runtime 对外发布的**窄契约出口**，不是「顺手写深了」的路径：
+ * - `@fenix/agent-runtime/web/api/environments` 由 §6.5 的分支融合裁定点名保留（站点页与 SiteFrame
+ *   取宿主同一份 environment 类型与请求）；
+ * - `@fenix/agent-runtime/web/api/instances` 随侧栏智能体树迁入（2026-09-28，§2.5「壳不做取数」）：
+ *   树的进入 / 重启 / 停止走的就是这份 instance 请求，收敛成包根要先改对方 manifest，超出本任务范围。
+ * 允许项同时被断言「确实在用」，避免它们退化成无人清理的死豁免。
  */
-const ALLOWED_DEEP_WEB_SPECIFIER = "@fenix/agent-runtime/web/api/environments";
+const ALLOWED_DEEP_WEB_SPECIFIERS: readonly string[] = [
+  "@fenix/agent-runtime/web/api/environments",
+  "@fenix/agent-runtime/web/api/instances",
+];
 
 const graph = walkValueGraph(WEB_ENTRY);
 /** 违规定位用仓库根相对路径：图跨包（ui-components / web-runtime / identity / 兄弟资源包），包内相对路径会产生 `../../` 噪音。 */
@@ -169,6 +184,12 @@ const CONSUMER_SYMBOLS: ReadonlyArray<{ symbol: string; owner: string }> = [
   { symbol: "AgentDashboardPage", owner: "pages/agent-panel/pages/AgentDashboardPage.tsx" },
   { symbol: "AgentHomePage", owner: "pages/agent-panel/pages/AgentHomePage.tsx" },
   { symbol: "AgentManagementPage", owner: "pages/agent-panel/pages/AgentManagementPage.tsx" },
+  // 宿主壳 `apps/web/src/pages/agent-panel/artifacts/ArtifactsPanel.tsx` 取站点取数 hook（2026-09-25 D2 收尾迁入）：
+  // 前端规范 §2.5 禁止壳取数，取数须落在域模块内，故它必须从包根可达而不是被宿主就近复制一份。
+  { symbol: "useArtifactsSites", owner: "hooks/use-artifacts-sites.ts" },
+  // 宿主壳 `apps/web/src/shell/AgentSidebar.tsx` 取侧栏智能体树容器（2026-09-28 迁入）：同一条 §2.5，
+  // 取数与四种领域操作落本包，宿主只留接线。
+  { symbol: "AgentSidebarTree", owner: "components/agent-panel/agent-sidebar-tree.tsx" },
 ];
 
 describe("agent-config web 入口浏览器可达面", () => {
@@ -191,14 +212,22 @@ describe("agent-config web 入口浏览器可达面", () => {
       "pages/agent-panel/pages/agent-home-styles.ts",
       "pages/agent-panel/pages/agent-home-template-pills.tsx",
       "lib/agent-create-navigation.ts",
+      // 2026-09-25 D2 收尾：站点取数 hook 由宿主壳迁入，随包根导出进入可达面（上游 `__tests__` 导出不被
+      // 遍历面收录，故只 +1）。
+      "hooks/use-artifacts-sites.ts",
+      // 2026-09-28：侧栏智能体树由宿主壳迁入（容器 + 弹窗 + 取数 hook 三件，+3）。
+      "components/agent-panel/agent-sidebar-tree.tsx",
+      "components/agent-panel/agent-sidebar-tree-dialogs.tsx",
+      "hooks/use-agent-sidebar-tree.ts",
     ]) {
       expect(reachedWebFiles).toContain(expected);
     }
     // §1.6 T11d 起 `pages/agent-panel/AgentSidebarConfig.tsx` 退场（宿主同源副本与包内死副本同时删除，
     // 侧栏导航改由 WebShell 消费各包的 `web/contribution.ts`），基线随之 24 → 23；T11e 又把三个
     // agent-panel 页面与创建导航助手归位进来（字典是 JSON，不在遍历面内；三个页面 + 助手 = +4）。
-    // §4.8 首页拆分再 +3（样式表 / 模板卡片 / 创建编排），基线 27 → 30。
-    expect(reachedWebFiles.size).toBeGreaterThanOrEqual(30);
+    // §4.8 首页拆分再 +3（样式表 / 模板卡片 / 创建编排），基线 27 → 30；D2 收尾迁入站点取数 hook，
+    // 基线 30 → 31；侧栏智能体树迁入再 +3（容器 / 弹窗 / 取数 hook），基线 31 → 34。
+    expect(reachedWebFiles.size).toBeGreaterThanOrEqual(34);
 
     // 跨包递归的有效性：钉住每条上游一条稳定路径（ui-components 的按钮/弹窗、web-runtime 的
     // request / namespace / org-session 契约、model-management 的编辑器依赖、兄弟资源包的
@@ -206,6 +235,7 @@ describe("agent-config web 入口浏览器可达面", () => {
     for (const expected of [
       "packages/ui-components/web/ui/button.tsx",
       "packages/ui-components/web/config/FormDialog.tsx",
+      "packages/ui-components/web/agent-tree/agent-tree.tsx",
       "packages/web-runtime/web/api/request.ts",
       "packages/web-runtime/web/i18n/namespace.ts",
       "packages/web-runtime/web/contexts/org-session.tsx",
@@ -213,10 +243,11 @@ describe("agent-config web 入口浏览器可达面", () => {
       "packages/resources/knowledge/web/index.ts",
       "packages/resources/sandbox/web/index.ts",
       "packages/agent-runtime/web/api/environments.ts",
+      "packages/agent-runtime/web/api/instances.ts",
     ]) {
       expect(reachedPackageFiles).toContain(expected);
     }
-    expect(reachedPackageFiles.size).toBeGreaterThanOrEqual(30);
+    expect(reachedPackageFiles.size).toBeGreaterThanOrEqual(32);
   });
 
   // 2026-08-17 事故的形态：`@fenix/<pkg>/<subpath>` 看起来像外部依赖，实则是穿透入口。
@@ -271,13 +302,18 @@ describe("agent-config web 入口浏览器可达面", () => {
   // `@fenix/resource-machine/web/api/registry`）会把别人的内部目录变成事实契约。
   test("兄弟包只经包根 web 出口进入（深路径仅 §6.5 登记的例外）", () => {
     const offenders = ownReferences.flatMap((ref) => {
-      if (ref.specifier === ALLOWED_DEEP_WEB_SPECIFIER) return [];
+      if (ALLOWED_DEEP_WEB_SPECIFIERS.includes(ref.specifier)) return [];
       const match = /^(@fenix\/[^/]+)\/web\/.+/.exec(ref.specifier);
       return match ? [`${describeRef(ref)}：只允许 ${match[1]}/web`] : [];
     });
     expect(offenders).toEqual([]);
-    // 例外项必须真的在用：全部收敛到包根后这条豁免应当连着被删掉，而不是留着无人记得。
-    expect(ownReferences.some((ref) => ref.specifier === ALLOWED_DEEP_WEB_SPECIFIER)).toBe(true);
+    // 例外项必须真的在用：全部收敛到包根后这些豁免应当连着被删掉，而不是留着无人记得。
+    for (const specifier of ALLOWED_DEEP_WEB_SPECIFIERS) {
+      expect(
+        ownReferences.some((ref) => ref.specifier === specifier),
+        `${specifier} 已无人引用，应连同豁免一起删除`,
+      ).toBe(true);
+    }
   });
 
   // 跨包相对说明符会随别包的目录调整而静默断裂（本包曾有一处指向 knowledge 的 CSS 相对导入），

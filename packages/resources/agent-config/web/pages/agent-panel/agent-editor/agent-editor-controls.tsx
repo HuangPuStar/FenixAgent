@@ -60,8 +60,9 @@ import {
 import { type AgentEditorOption, filterAgentEditorOptions, paginateAgentEditorOptions } from "./agent-editor-model";
 
 /**
- * 分区说明块：眉标 8px/750/等宽 + 标题 18px（760–1399 压 16px）+ 说明 12px（760–1119 收窄到 52ch）。
- * `> span` / `> h3` / `> p` 与两段窄屏覆盖见 `agent-editor-controls.css`（与 A2 的 `SECTION_INTRO` 同名同类）。
+ * 分区说明块：眉标 10px/750/等宽 + 标题 18px（`md`–`2xl` 压 16px）+ 说明 12px（`md`–`lg` 收窄到 52ch）。
+ * 字号与上边距 2026-09-28 从 `agent-editor-controls.css` 撤回（刻度类挂在下文三个子元素上，
+ * `text-16` 是本仓「只给字号」的 16px 档，与设计值一致）；字重 / 字距 / 行高 / 配色与 `52ch` 覆盖仍在表中。
  */
 const INTRO = `${SECTION_INTRO} agent-editor-section__intro`;
 /** 模型列表（`agent-model-options`）的校验态：focus ring 之外再描一圈红（源为 `[aria-invalid="true"]` 规则）。 */
@@ -72,9 +73,21 @@ const MODEL_OPTIONS_INVALID =
 export function Intro({ eyebrow, title, description }: { eyebrow: string; title: string; description: string }) {
   return (
     <header className={INTRO} data-slot="editor-section-intro">
-      <span>{eyebrow}</span>
-      <h3>{title}</h3>
-      <p>{description}</p>
+      <span className="text-3xs font-mono tracking-widest text-blue-500" data-slot="editor-section-intro-eyebrow">
+        {eyebrow}
+      </span>
+      <h3
+        className="mt-1.5 text-lg leading-tight tracking-tight text-slate-800 md:max-2xl:text-16"
+        data-slot="editor-section-intro-title"
+      >
+        {title}
+      </h3>
+      <p
+        className="mt-2 max-w-147.5 text-xs leading-relaxed text-slate-500 md:max-2xl:mt-1.5"
+        data-slot="editor-section-intro-copy"
+      >
+        {description}
+      </p>
     </header>
   );
 }
@@ -178,11 +191,11 @@ export function Toggle({
     <label className={TOGGLE_ROW}>
       <span className={TOGGLE_ICON}>{icon}</span>
       <span className={TOGGLE_COPY}>
-        <strong>
+        <strong className="flex items-center gap-1.75 text-xs text-slate-700">
           {title}
           {badge && <Badge variant="secondary">{badge}</Badge>}
         </strong>
-        <small>{description}</small>
+        <small className="text-3xs leading-normal text-gray-400">{description}</small>
       </span>
       <Switch checked={checked} onCheckedChange={onChange} disabled={disabled} />
     </label>
@@ -235,7 +248,8 @@ export function EditorPagination({
           onClick={() => onPageChange(safePage - 1)}
           aria-label={t("editor.previousPage")}
         >
-          <ChevronLeft />
+          {/* 11px 原在 `.agent-editor-pagination-button > svg`（第四波随规则删除搬到两个箭头）。 */}
+          <ChevronLeft className="w-2.75" />
         </button>
         <strong className={PAGINATION_COUNT}>
           {safePage + 1} / {pageCount}
@@ -247,7 +261,7 @@ export function EditorPagination({
           onClick={() => onPageChange(safePage + 1)}
           aria-label={t("editor.nextPage")}
         >
-          <ChevronRight />
+          <ChevronRight className="w-2.75" />
         </button>
       </div>
     </footer>
@@ -363,8 +377,8 @@ export function SinglePicker({
   return (
     <>
       <div className={SINGLE_PICKER_TOOLBAR}>
-        <label>
-          <Search />
+        <label className="flex min-w-0 flex-1 items-center gap-1.75 text-gray-400">
+          <Search className="w-3.25 shrink-0 basis-3.25" />
           <Input
             className={PICKER_INPUT}
             value={query}
@@ -375,13 +389,17 @@ export function SinglePicker({
             placeholder={t("editor.searchPlaceholder", { resource: label })}
           />
         </label>
-        <span>{t("editor.optionCount", { count: visible.length })}</span>
+        <span className="text-3xs whitespace-nowrap text-gray-400">
+          {t("editor.optionCount", { count: visible.length })}
+        </span>
       </div>
       {selected && (
         <div className={cn(SINGLE_PICKER_CURRENT, selected.unavailable && SINGLE_PICKER_CURRENT_UNAVAILABLE)}>
           <small>{t("editor.currentSelection")}</small>
-          <strong>{selected.label}</strong>
-          <span>
+          <small>{selected.label}</small>
+          <span
+            className={cn("max-md:col-span-full truncate", selected.unavailable ? "text-yellow-800" : "text-slate-400")}
+          >
             {selected.description}
             {selected.unavailable && ` · ${t("editor.unavailable")}`}
           </span>
@@ -446,15 +464,23 @@ export function SinglePicker({
                   onChange(item.id);
                 }}
               >
-                <span className={OPTION_ICON}>{renderIcon ? renderIcon(item) : <Icon />}</span>
+                {/* 图标尺寸（18px 方形 + `shrink-0`）原在 `.agent-editor-option-icon > svg`；第四波随该规则
+                    删除，改由本处兜底元素与调用点的 `renderIcon` 元素各自携带（见 AgentEditorSections）。 */}
+                <span className={OPTION_ICON}>
+                  {renderIcon ? renderIcon(item) : <Icon className="size-4.5 shrink-0" />}
+                </span>
                 <span className={OPTION_COPY}>
-                  <strong>{item.label}</strong>
-                  <small className={item.unavailable ? OPTION_COPY_HINT_UNAVAILABLE : undefined}>
+                  <strong className="line-clamp-2 text-xs leading-snug text-slate-700 wrap-anywhere">
+                    {item.label}
+                  </strong>
+                  <small
+                    className={cn("truncate text-3xs text-gray-400", item.unavailable && OPTION_COPY_HINT_UNAVAILABLE)}
+                  >
                     {item.description ?? (item.unavailable ? t("editor.unavailable") : "")}
                   </small>
                 </span>
                 <i className={cn(OPTION_CHECK, item.id === value && OPTION_CHECK_SELECTED)}>
-                  {item.id === value && <Check />}
+                  {item.id === value && <Check className="block size-2.5 shrink-0" />}
                 </i>
               </button>
             ))}

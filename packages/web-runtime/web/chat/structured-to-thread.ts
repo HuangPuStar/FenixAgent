@@ -16,6 +16,7 @@ import type {
   ToolCallData,
   ToolCallStatus,
 } from "@fenix/ui-components/chat/types";
+import { UI_COMPONENTS_NS } from "@fenix/ui-components/i18n/namespace";
 // 直接引用 i18next 全局实例（宿主 apps/web/src/i18n/index.ts 在此实例上注册各语言资源）：
 // 不 import 宿主 i18n 单例模块 —— 测试环境有测试文件 mock.module 该模块为无 default
 // 导出的假模块，静态 import 链会触发 "Missing default export"。
@@ -34,20 +35,28 @@ export function sessionOptionKindsToPermissionOptions(rawOptions: unknown): Perm
     if (kind === "allow_once") {
       result.push({
         optionId: "allow_once",
-        // i18next 未初始化（如测试环境）时 t 返回 undefined，回退 key 保证按钮文案非空
-        name: i18n.t("permissionPanel.allow", { ns: "components" }) ?? "permissionPanel.allow",
+        // i18next 未初始化（如测试环境）时 t 返回 undefined，回退 key 保证按钮文案非空。
+        // 词条 owner 是 `@fenix/ui-components`（权限确认面板的按钮词表就在该包字典里，台账 D4 从宿主
+        // `components` 字典归位到 `chat.components.permissionPanel.*`）。
+        name:
+          i18n.t("chat.components.permissionPanel.allow", { ns: UI_COMPONENTS_NS }) ??
+          "chat.components.permissionPanel.allow",
         kind: "allow_once",
       });
     } else if (kind === "allow_session") {
       result.push({
         optionId: "allow_session",
-        name: i18n.t("permissionPanel.allowSession", { ns: "components" }) ?? "permissionPanel.allowSession",
+        name:
+          i18n.t("chat.components.permissionPanel.allowSession", { ns: UI_COMPONENTS_NS }) ??
+          "chat.components.permissionPanel.allowSession",
         kind: "allow_always",
       });
     } else if (kind === "deny") {
       result.push({
         optionId: "deny",
-        name: i18n.t("permissionPanel.deny", { ns: "components" }) ?? "permissionPanel.deny",
+        name:
+          i18n.t("chat.components.permissionPanel.deny", { ns: UI_COMPONENTS_NS }) ??
+          "chat.components.permissionPanel.deny",
         kind: "reject_once",
       });
     }

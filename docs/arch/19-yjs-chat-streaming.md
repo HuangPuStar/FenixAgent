@@ -801,6 +801,10 @@ YJS 不保存可跨 Instance ACP session 恢复的旧投影，也不作为 Agent
 | 前端 WebSocket / relay 断开 | 不对 `rcsSessionId` 执行任何 YJS 状态清理 | Instance ACP session 存活时，客户端重连后同步当前实时 Y.Doc | `channel/gateway.ts` `handleClose` → `releaseRelay`（仅释放连接级资源与 relay 引用计数；Doc 保留） |
 | Instance ACP session 断链或实例回收 | 删除该 `rcsSessionId` 的 Chat Doc、Session Doc、relay handle、广播订阅和热缓存 | 后续启动或连接的是新的 Instance ACP session，并创建新的 YJS 实时投影；不加载旧 Y.Doc | `channel/relay-event-handler.ts` `relay_closed` 分支（先注销广播监听再销毁 Doc，杜绝僵尸监听器） |
 
+本地 `acp-link` 的 `createAcpServer` 以 server 实例持有 Agent 子进程、ACP 连接与活动会话。普通 relay WebSocket 关闭或 `disconnect` 只释放该连接的权限请求、提问与会话投递绑定；最后一条 relay 关闭也不终止 Agent。重连的 `connect` 复用存活的 ACP 连接并重新发送 status，刷新后继续对话由 prompt 的显式 `sessionId` 重新绑定通知路由，不执行重复的 `session/load` 回放。多个 relay 的 JSON-RPC 结果仅回发起 socket，Agent 通知按会话绑定投递；server 实例关闭才终止子进程，初始化与关闭竞态不得产生迟到的 ready 状态。
+
+所有 relay 均断开期间，Agent 仍可继续运行，但无活跃 relay 可接收其增量通知，旧 socket 上在途 RPC 的最终响应也会丢失。该边界不提供跨 relay 的内存队列或补发；客户端重连后同步现存 Y.Doc 投影并从后续交互继续，不能将断线期间未投递的增量当作已确认消息。
+
 ### 9.3 运行时更新
 
 服务端将当前 Instance ACP session data 转换并单写入 Y.Doc，再通过 ACPChannel / relay 广播给同一 `rcsSessionId` 下的前端连接。前端不得直接写入业务内容。

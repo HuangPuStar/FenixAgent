@@ -34,8 +34,8 @@ function createDispatcher(options?: {
 }
 
 describe("AcpDispatcher 协议适配", () => {
-  // session/update 的 session_info_update 必须缓存标题，同时将原始通知转发给 relay，避免本地标题与远端事件分叉
-  test("缓存会话标题并原样转发 session/update 通知", async () => {
+  // 标题通知只透传，不在 Agent 通信层维护重启后丢失的第二份标题状态。
+  test("原样转发 session/update 通知且不覆盖会话状态", async () => {
     const { dispatcher, state, sent } = createDispatcher();
     const params = {
       sessionId: "ses_1",
@@ -44,7 +44,7 @@ describe("AcpDispatcher 协议适配", () => {
 
     await dispatcher.handleMessage({ jsonrpc: "2.0", method: "session/update", params });
 
-    expect(state.titleOverrides.get("ses_1")).toBe("重命名后的会话");
+    expect(state.sessionId).toBeNull();
     expect(sent).toEqual([{ jsonrpc: "2.0", method: "session/update", params }]);
   });
 

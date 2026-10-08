@@ -97,8 +97,18 @@ export function EmbeddingModelManager({ canManage, inDialog, onModelsChanged }: 
     }
   };
 
+  // 管理器与弹窗内工具栏的间距 14px / 36px / 16px = `gap-3.5` / `min-h-9` / `gap-4`：
+  // 刻度已在 `@theme` 按 px 落地，工具类即设计值。工具栏文案 / 图标、树的描边与子层的
+  // `border-color` 也都在 `className` 上（2026-09-28），`AgentKnowledgeBasesPage.css` 里与本组件相关的
+  // 只剩一条挂不上类名的按钮 hover（树内两级行组件与 Radix Switch 的 `<button>` 拿不到 `inDialog`）。
   return (
-    <div className={inDialog ? "embedding-model-manager embedding-model-manager--dialog" : "embedding-model-manager"}>
+    <div
+      className={
+        inDialog
+          ? "embedding-model-manager embedding-model-manager--dialog flex flex-col gap-3.5"
+          : "embedding-model-manager flex flex-col gap-3.5"
+      }
+    >
       {/* 顶部工具栏（弹窗内渲染时不显示，标题由 Dialog 提供） */}
       {!inDialog && (
         <div className="flex items-center justify-between">
@@ -123,15 +133,19 @@ export function EmbeddingModelManager({ canManage, inDialog, onModelsChanged }: 
         </div>
       )}
       {inDialog && (
-        <div className="embedding-model-toolbar">
-          <p>
+        <div className="embedding-model-toolbar flex min-h-9 items-center justify-between gap-4">
+          {/* 说明文案的字号 / 颜色 2026-09-28 自 `.embedding-model-toolbar p` 的后代规则搬回
+              （`text-xs` = 原 12px、`text-slate-400` = 原 `#8492a8`），添加按钮里的图标同批自
+              `.embedding-model-toolbar svg` 搬回（`size-3.75` = 原 15px；带上 `size-` 类名后
+              `Button` 的 `[&_svg:not([class*='size-'])]:size-4` 不再命中，与原来被覆盖的结果一致）。 */}
+          <p className="text-xs text-slate-400">
             {providerCount > 0
               ? t("embeddingModel.providerInstanceSummary", { providers: providerCount, instances: instanceCount })
               : t("embeddingModel.noProviderConfigured")}
           </p>
           {canManage ? (
             <Button size="sm" onClick={openAddDialog}>
-              <Plus />
+              <Plus className="size-3.75" />
               {t("embeddingModel.addProvider")}
             </Button>
           ) : null}
@@ -164,8 +178,12 @@ export function EmbeddingModelManager({ canManage, inDialog, onModelsChanged }: 
           description={t("embeddingModel.emptyDescription")}
         />
       ) : (
-        <div className="embedding-model-tree">
-          <div className="divide-y divide-slate-100">
+        // 树容器的描边 / 圆角 2026-09-28 自 `.embedding-model-tree` 搬回（原 `1px #e1e7f0` + 10px →
+        // `border border-slate-200 rounded-lg`）。子层那条 `--dialog` 下的 `border-color` 也搬到这里：
+        // 它原样落在本元素上（本元素无边框宽度，画分隔线的是子元素自己的 `border-t border-slate-100`，
+        // 故这条声明是「有值但不可见」的，搬迁只为消掉「修饰类 + 子代选择器」）。
+        <div className="embedding-model-tree overflow-hidden bg-white border border-slate-200 rounded-lg">
+          <div className={inDialog ? "divide-y divide-slate-100 border-slate-100" : "divide-y divide-slate-100"}>
             {treeSafe.map((p) => (
               <ProviderRow
                 key={p.provider}

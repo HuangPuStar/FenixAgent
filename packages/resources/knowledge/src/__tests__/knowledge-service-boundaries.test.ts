@@ -1,5 +1,7 @@
 import { beforeEach, describe, expect, mock, test } from "bun:test";
 import { stubDb } from "@fenix/platform-sdk/testing";
+import { createKnowledgeAccess } from "../server/facades/knowledge-access";
+import { createKnowledgeResourceFacade } from "../server/facades/knowledge-resource-facade";
 import {
   createKnowledgeBaseRecord,
   resolveKnowledgeTenantIdentity,
@@ -35,7 +37,8 @@ describe("知识库服务边界", () => {
     });
   });
 
-  // 组织不匹配的知识库不得暴露其资源列表，也不得继续解析 provider 凭据。
+  // 组织不匹配的知识库不得暴露其资源列表，也不得继续解析 provider 凭据——归属判定在门面，
+  // 跨组织与不存在同码（协议层 404，与「返回空结果」的既有对外口径一致）。
   test("跨组织读取资源列表返回空结果", async () => {
     const select = mock(() => ({
       from: () => ({
@@ -53,9 +56,50 @@ describe("知识库服务边界", () => {
       }),
     }));
     stubDb({ select });
+    // 凭据一旦被解析就抛错：这条路径在迁移前后都不该走到「取远端凭据」那一步。
+    const facade = createKnowledgeResourceFacade(
+      createKnowledgeAccess(() => async () => {
+        throw new Error("跨组织路径不应解析凭据");
+      }),
+    );
 
-    await expect(listKnowledgeResources("org-1", "kb-foreign", "user-1")).resolves.toBeNull();
+    await expect(facade.list({ organizationId: "org-1", userId: "user-1" }, "kb-foreign")).resolves.toEqual({
+      ok: false,
+      error: { kind: "not-found", code: "NOT_FOUND", message: "知识库不存在" },
+    });
     expect(select).toHaveBeenCalledTimes(1);
+  });
+
+  // 已授权知识库的本地资源读取不再需要组织参数（归属判定在门面）。
+  test("已授权知识库按行读取资源列表", async () => {
+    const select = mock(() => ({
+      from: () => ({
+        where: () => ({
+          orderBy: () => ({ limit: () => Promise.resolve([]) }),
+        }),
+      }),
+    }));
+    stubDb({ select });
+
+    await expect(
+      listKnowledgeResources({
+        id: "kb-1",
+        userId: "user-1",
+        organizationId: "org-1",
+        name: "产品文档",
+        slug: "product-docs",
+        description: null,
+        provider: "ragflow",
+        remoteId: "remote-kb-1",
+        remoteAccountId: null,
+        remoteUserId: null,
+        metadata: null,
+        status: "ready",
+        lastError: null,
+        createdAt: new Date("2026-01-01T00:00:00.000Z"),
+        updatedAt: new Date("2026-01-01T00:00:00.000Z"),
+      }),
+    ).resolves.toEqual([]);
   });
 
   // 远端租户标识为空白时必须回退到知识库所有者，避免向上游传递无效身份。

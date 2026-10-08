@@ -19,6 +19,7 @@ import { createStubMcpServerService } from "@fenix/resource-mcp/server/testing";
 import { createStubSkillService } from "@fenix/resource-skill/server/testing";
 import { agentConfigResource } from "../server/access/agent-config-resource";
 import type { AgentConfigFacadeApi, AuthorizedAgentConfig } from "../server/facades/agent-config-facade";
+import type { AgentSiteAppFacadeApi, AgentSiteAppView } from "../server/facades/agent-site-app-facade";
 import type {
   UserAgentPreferencesPatch,
   UserAgentPreferencesPort,
@@ -34,6 +35,7 @@ import {
   createStubAgentConfigFacade,
   createStubAgentConfigServerModule,
   createStubAgentConfigService,
+  createStubAgentSiteAppFacade,
   createStubIdentityDirectory,
   installAgentConfigModule,
   resetAgentConfigModuleForTesting,
@@ -112,10 +114,35 @@ export function authorizedAgent(
   return { ...row, access: { actions: options.actions ?? ["read", "create", "update", "delete", "use"] } };
 }
 
+/** 站点 App 行替身（Facade 产出的视图形状）；只填断言用得到的列。 */
+export function siteAppView(overrides: Partial<AgentSiteAppView> = {}): AgentSiteAppView {
+  return {
+    id: "11111111-1111-4111-8111-111111111111",
+    organizationId: "test-org",
+    userId: "test-user",
+    remoteAppId: "app-demo",
+    name: "demo-app",
+    description: null,
+    platformToken: "platform-token",
+    platformTokenId: "token-001",
+    visibility: "private",
+    appType: "pocketbase",
+    entryFile: null,
+    activeSlot: null,
+    deployedAt: null,
+    createdByAgentConfigId: null,
+    createdAt: FIXTURE_NOW,
+    updatedAt: FIXTURE_NOW,
+    createdByAgentConfigName: null,
+    ...overrides,
+  };
+}
+
 /** 装入资源模块替身；未打桩的方法调用即失败，避免路由调用了未预期的方法而断言失真。 */
 export function installAgentModuleStub(
   deps: {
     readonly facade?: Partial<AgentConfigFacadeApi>;
+    readonly siteFacade?: Partial<AgentSiteAppFacadeApi>;
     readonly service?: Partial<AgentConfigService>;
     readonly associations?: Partial<AgentAssociations>;
     readonly identity?: Partial<IdentityDirectory>;
@@ -124,6 +151,7 @@ export function installAgentModuleStub(
   installAgentConfigModule(
     createStubAgentConfigServerModule({
       facade: createStubAgentConfigFacade(deps.facade),
+      siteFacade: createStubAgentSiteAppFacade(deps.siteFacade),
       service: createStubAgentConfigService(deps.service),
       associations: createStubAgentAssociations(deps.associations),
       identity: createStubIdentityDirectory(deps.identity),
@@ -322,6 +350,7 @@ export function launchSpecDeps(overrides: Partial<AgentLaunchSpecAssemblerDeps> 
       baseUrl: "https://platform.example.com",
       langfuse: { publicKey: "pk-1", secretKey: "sk-1", baseUrl: "https://lf.example.com" },
     },
+    resolveWorkspacePath: (org, user, env) => `/workspace/${org}/${user}/${env}`,
     resolveProviderApiKey: (raw) => {
       if (raw === null) return null;
       const reference = /^\{env:([^}]+)\}$/.exec(raw);

@@ -126,6 +126,10 @@ export function createAgentRuntimeModuleConfig(
     acpRegistrySecret: "test-acp-registry-secret",
     fileWsMaxPayloadMb: 32,
     yjsMaxClients: 200,
+    // 快照三项与 `yjsMaxClients` 同属 chat-channel 装配面，取声明的默认值（2000 / 500 / 604800）。
+    yjsSnapshotIntervalMs: 2000,
+    yjsSnapshotIdleMs: 500,
+    yjsSnapshotTtlSeconds: 604800,
     ...overrides,
   };
 }

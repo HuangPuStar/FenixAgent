@@ -18,6 +18,9 @@ export interface CreateBindingInput {
   enabled?: boolean;
 }
 
+/** 绑定的可更新字段；`platform` / `chatId` / `agentId` / `enabled` 之外一律不接受。 */
+export type UpdateBindingInput = Partial<Pick<ChannelBinding, "platform" | "chatId" | "agentId" | "enabled">>;
+
 export interface BindingMatchResult {
   binding: ChannelBinding;
   matchType: "exact" | "wildcard";
@@ -37,8 +40,14 @@ function rowToBinding(row: ChannelBindingRow): ChannelBinding {
 
 // --- CRUD ---
 
-export async function listBindings(): Promise<ChannelBinding[]> {
-  const rows = await channelBindingRepo.list();
+/**
+ * 按绑定的目标 Environment 读取绑定。
+ *
+ * `agentIds` 是调用方（Facade）从 actor 的组织推导出的归属范围——本层不解释组织、不比较 `organizationId`，
+ * 只把给定的范围下推成查询条件。传入空集合返回空列表（见仓储说明）。
+ */
+export async function listBindingsByAgentIds(agentIds: readonly string[]): Promise<ChannelBinding[]> {
+  const rows = await channelBindingRepo.listByAgentIds(agentIds);
   return rows.map(rowToBinding);
 }
 
@@ -64,10 +73,7 @@ export async function deleteBinding(id: string): Promise<boolean> {
   return channelBindingRepo.delete(id);
 }
 
-export async function updateBinding(
-  id: string,
-  data: Partial<Pick<ChannelBinding, "platform" | "chatId" | "agentId" | "enabled">>,
-): Promise<ChannelBinding | undefined> {
+export async function updateBinding(id: string, data: UpdateBindingInput): Promise<ChannelBinding | undefined> {
   const existing = await channelBindingRepo.getById(id);
   if (!existing) return;
   await channelBindingRepo.update(id, { ...data, updatedAt: new Date() });

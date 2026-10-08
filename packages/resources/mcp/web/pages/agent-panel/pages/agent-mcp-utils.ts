@@ -102,27 +102,32 @@ export function parseMcpJson(input: string): McpImportEntry[] {
   });
 }
 
-/** 校验 MCP 编辑器必填字段，返回可直接展示的 i18n key。 */
+/** 校验 MCP 编辑器字段，保留各字段的 i18n key 供表单同时展示。 */
 export function validateMcpEditor(input: {
   name: string;
   type: "local" | "remote";
   command: string;
   url: string;
-}): string | null {
-  if (!input.name.trim()) return "validation.nameRequired";
-  if (/--/.test(input.name)) return "validation.nameNoDoubleHyphen";
-  if (!/^[\p{L}0-9](?:[\p{L}0-9-]*[\p{L}0-9])?$/u.test(input.name)) return "validation.namePattern";
-  if (input.name.length > 64) return "validation.nameTooLong";
-  if (input.type === "local" && parseMcpCommand(input.command).length === 0) return "validation.commandRequired";
+}): Partial<Record<"name" | "command" | "url", string>> {
+  const errors: Partial<Record<"name" | "command" | "url", string>> = {};
+  if (!input.name.trim()) errors.name = "validation.nameRequired";
+  else if (/--/.test(input.name)) errors.name = "validation.nameNoDoubleHyphen";
+  else if (!/^[\p{L}0-9](?:[\p{L}0-9-]*[\p{L}0-9])?$/u.test(input.name)) errors.name = "validation.namePattern";
+  else if (input.name.length > 64) errors.name = "validation.nameTooLong";
+  if (input.type === "local" && parseMcpCommand(input.command).length === 0) {
+    errors.command = "validation.commandRequired";
+  }
   if (input.type === "remote") {
-    if (!input.url.trim()) return "validation.urlRequired";
-    try {
-      new URL(input.url);
-    } catch {
-      return "validation.urlInvalid";
+    if (!input.url.trim()) errors.url = "validation.urlRequired";
+    else {
+      try {
+        new URL(input.url);
+      } catch {
+        errors.url = "validation.urlInvalid";
+      }
     }
   }
-  return null;
+  return errors;
 }
 
 /** 将命令行展示值拆成 MCP local config 使用的 argv。 */

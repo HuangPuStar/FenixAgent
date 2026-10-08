@@ -5,9 +5,10 @@
  * 1. 只取源实现的扩展名分类表、`classifyFile`、`getPreviewMimeType`、`shouldLoadPreviewAsBlob`、
  *    `loadByteAccuratePreviewSource`。`buildPreviewUrl` 硬编码宿主路由，改为 `FileViewerPreview`
  *    的可选 prop 默认值；`encodePathSegment` 只有宿主路由实现需要，两处都已随宿主副本删除。
- * 2. **宿主副本已删除**（2026-09-22 前端去重）：`apps/web/src/components/agent-panel/preview/utils.ts`
+ * 2. **宿主副本已删除**（2026-09-22 前端去重）：`apps/web/src/shell/artifacts/preview/utils.ts`
  *    的对应段落原本逐字保留，但它当时已无生产消费方（`ArtifactsPanel` 走 `PreviewTab` → 本包），
- *    留下只会让扩展名分类表出现两份真相。该文件现在只剩宿主专有的 `normalizeToUserPath`。
+ *    留下只会让扩展名分类表出现两份真相。该文件当时只剩 `normalizeToUserPath`，2026-09-24 随台账 D2
+ *    整份迁入 `@fenix/resource-machine/web` 的 `web/lib/normalize-to-user-path.ts`，宿主不再保留该路径。
  * 3. 本模块不依赖 React、路由和请求单例；`loadByteAccuratePreviewSource` 的取数函数由调用方注入
  *    （**没有全局 `fetch` 兜底**，见 `PreviewFetch`），因此可独立测试，也不会把宿主的鉴权/代理策略带进包内。
  */
@@ -17,8 +18,9 @@
  *
  * **为什么必须注入、且不给全局 `fetch` 兜底**：预览 URL 指向后端的文件代理路由，取数属后端调用；
  * 本包是纯展示包、依赖矩阵不允许它依赖 `@fenix/web-runtime`，兜底会让组件重新直连后端并自行拼 URL
- * （§5.8：禁止在组件中裸调 `fetch` / 拼装后端 URL）。宿主的实现见 `apps/web/src/api/fs.ts` 的
- * `readPreviewSource`（能力缺口登记在 §5.3）。
+ * （§5.8：禁止在组件中裸调 `fetch` / 拼装后端 URL）。文件域 owner 包的实现见
+ * `@fenix/resource-machine/web` 的 `web/api/fs.ts` 的 `readPreviewSource`（2026-09-24 随台账 D2 从
+ * 宿主 `apps/web/src/api/fs.ts` 迁入；能力缺口登记在 §5.3）。
  */
 export type PreviewFetch = (url: string, init?: RequestInit) => Promise<Response>;
 

@@ -6,10 +6,15 @@ import {
   type ResourceScopeStore,
 } from "@fenix/platform-sdk";
 import { agentConfigResource } from "./access/agent-config-resource";
+import { agentSiteAppResource } from "./access/agent-site-app-resource";
+import { type AgentAuthoringFacadeApi, createAgentAuthoringFacade } from "./facades/agent-authoring-facade";
 import { AgentConfigFacade, type AgentConfigFacadeApi } from "./facades/agent-config-facade";
+import { AgentSiteAppFacade, type AgentSiteAppFacadeApi } from "./facades/agent-site-app-facade";
 import { type AgentConfigQueryStorage, createAgentConfigRepository } from "./repositories/agent-config-resource";
+import { type AgentSiteAppQueryStorage, createAgentSiteAppRepository } from "./repositories/agent-site-app";
 import { type AgentAssociations, createAgentAssociations } from "./services/agent-associations";
 import { type AgentConfigService, createAgentConfigService } from "./services/agent-config-service";
+import { createAgentSiteAppService } from "./services/agent-site-app-service";
 
 /**
  * AgentConfig 资源包组合根。
@@ -36,8 +41,19 @@ export interface AgentConfigModuleDeps {
 export interface AgentConfigServerModule {
   /** 资源注册；manifest 经它声明 `accessControlBindings`，避免两处各写一份归属列。 */
   readonly resource: typeof agentConfigResource;
+  /** 站点 App 的资源注册：`agent_site_app` 也是受控资源，与 AgentConfig 同批交给授权栈。 */
+  readonly siteResource: typeof agentSiteAppResource;
   /** 协议层入口（授权 + 领域编排 + 跨资源副作用）。 */
   readonly facade: AgentConfigFacadeApi;
+  /** 站点 App 的协议层入口（授权 + 远端平台编排 + 发布范围缓存）。 */
+  readonly siteFacade: AgentSiteAppFacadeApi;
+  /**
+   * Agent 编写面入口（智能生成 + 关联绑定同步）。
+   *
+   * 与 `associations` 的分工：`associations` 是绑定表的读写门面（不认识 actor），本门面持有主体，
+   * 负责把"当前主体可见的 Skill 范围"算好再交给它——`ActorContext` 因此不进入领域服务。
+   */
+  readonly authoring: AgentAuthoringFacadeApi;
   /**
    * 领域服务（无授权判断）。
    *
@@ -57,15 +73,25 @@ export interface AgentConfigServerModule {
 export function createAgentConfigServerModule(deps: AgentConfigModuleDeps): AgentConfigServerModule {
   const query = narrowAuthorizedQuery<AgentConfigQueryStorage>(deps.authorizedQuery);
   const service = createAgentConfigService(createAgentConfigRepository(query));
+  const authorization = {
+    accessControl: deps.accessControl,
+    scopeStore: deps.scopeStore,
+  };
+  const siteService = createAgentSiteAppService(
+    createAgentSiteAppRepository(narrowAuthorizedQuery<AgentSiteAppQueryStorage>(deps.authorizedQuery)),
+  );
+  const associations = createAgentAssociations();
   return {
     resource: agentConfigResource,
-    facade: new AgentConfigFacade(service, {
-      accessControl: deps.accessControl,
-      resource: agentConfigResource.definition,
-      scopeStore: deps.scopeStore,
+    siteResource: agentSiteAppResource,
+    facade: new AgentConfigFacade(service, { ...authorization, resource: agentConfigResource.definition }),
+    siteFacade: new AgentSiteAppFacade(siteService, {
+      ...authorization,
+      resource: agentSiteAppResource.definition,
     }),
     service,
-    associations: createAgentAssociations(),
+    associations,
+    authoring: createAgentAuthoringFacade(associations),
     identity: deps.identity,
   };
 }

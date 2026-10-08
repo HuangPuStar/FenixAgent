@@ -4,7 +4,8 @@
   // 消费方直接编译本包源码，因此每个包都必须能独立通过类型检查；此前本包无 tsconfig，只能靠宿主
   // 应用的编译程序间接覆盖到被 import 到的文件，未被引用到的文件、`db/`、`fenix.module.ts` 全无检查。
   // 门禁：`scripts/typecheck-packages.ts`（`bun run typecheck:packages`，已接入 precheck 与 CI）。
-  // - `web/**` 是浏览器面：需要 JSX 与 DOM 类型；`types: ["bun"]` 供服务端代码与包内测试使用 Bun 全局；
+  // - `types: ["bun"]` 供服务端代码与包内测试使用 Bun 全局；`lib` 含 DOM / jsx 供对上文件仍需编译的
+  //   跨包类型使用（2026-09-29 本包浏览器面下线后已无自带 `web/**`，这两项不再是本包自身需要）；
   // - `db/**` 是本包 owner 的表定义，纳入检查（跨包外键的组装期导入见 §6.1）；
   // - 无 `paths`：跨包一律走各包 `exports`，别名表留着反而会掩盖宿主导入回潮；
   // - 不写 `baseUrl`：paths 在无 baseUrl 时相对本文件解析，且 TS 6.0 起 `baseUrl` 已弃用。
@@ -30,13 +31,5 @@
   // import，垫片不在本程序里就会把对端的第三方模块与 `.css` 报成 TS7016 / TS2882（宿主
   // `apps/web/tsconfig.json` 有同款两条）。垫片归属仍是各包（`<pkg>/web/types/*.d.ts` 第三方声明、
   // `<pkg>/web/css.d.ts` 的 `*.css` 环境声明），本包不保留副本。
-  "include": [
-    "fenix.module.ts",
-    "src/**/*.ts",
-    "web/**/*.ts",
-    "web/**/*.tsx",
-    "db/**/*.ts",
-    "../../*/web/**/*.d.ts",
-    "../../*/*/web/**/*.d.ts"
-  ]
+  "include": ["fenix.module.ts", "src/**/*.ts", "db/**/*.ts", "../../*/web/**/*.d.ts", "../../*/*/web/**/*.d.ts"]
 }

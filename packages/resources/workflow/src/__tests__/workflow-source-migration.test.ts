@@ -25,7 +25,9 @@ const PKG_ROOT = resolve(import.meta.dir, "../..");
 /** 仓库根；宿主侧断言都以它为基准。 */
 const REPO_ROOT = resolve(PKG_ROOT, "../../..");
 /** 包内源码入口；README 等文档里的示例不属于可解析引用，不参与扫描。 */
-const SOURCE_ENTRIES = ["src", "web", "db", "fenix.module.ts"];
+// `web` 已于 2026-09-29（2F）随控制台前端整体删除，因此不再列入；「不得复活」由下方
+// `PACKAGE_ROOT_ABSENT_ENTRIES` 与 `manifest.exports` 的断言接管。
+const SOURCE_ENTRIES = ["src", "db", "fenix.module.ts"];
 
 /**
  * 扫描器负例夹具（§4.7.1 ③ 的收缩形态）。
@@ -74,6 +76,10 @@ const HOST_DUPLICATE_PATHS = [
   "apps/web/src/pages/workflow",
   "apps/web/src/__tests__/workflow-runs-page.test.tsx",
   "apps/web/src/__tests__/use-workflow-events.test.ts",
+  // 2F（2026-09-29）随控制台前端一起删除的两处宿主件：`WorkflowVersions` 的宿主路由壳与「打开编辑器」
+  // 的宿主 hook。它们与新包 `@fenix/resource-workflow-v2/web` 的页面并存会造成两套入口，故一并防复活。
+  "apps/web/src/routes/agent/_panel/workflow_.$id.versions.tsx",
+  "apps/web/src/hooks/use-open-workflow-editor.ts",
 ];
 
 /**
@@ -191,8 +197,14 @@ function filesUnder(entry: string): string[] {
   return sourceFiles.filter((file) => file === abs || file.startsWith(`${abs}/`));
 }
 
-/** web 贡献的已扫描文件；宿主别名只可能在 web 面出现，作用域断言按这个集合收敛。 */
-const webFiles = new Set(filesUnder("web"));
+/**
+ * 本包已整体删除、不得复活的顶层入口（相对包根）。
+ *
+ * `web/**` 是控制台前端（100 个文件，2026-09-29 2F 批次删除，接手方 `@fenix/resource-workflow-v2`）。
+ * 断言「目录不存在」而不是从 `SOURCE_ENTRIES` 里悄悄摘掉：摘掉后重建 `web/` 不会触发任何报红，
+ * 而「宿主已改指新包、旧包却重新长出一份浏览器面」正是最难在 review 里看出来的回退。
+ */
+const PACKAGE_ROOT_ABSENT_ENTRIES = ["web"];
 
 /** 相对说明符是否落在包外：`resolve` 折叠 `..` 段，宿主与兄弟资源包都会在这里现形。 */
 function escapesPackage(file: string, specifier: string): boolean {
@@ -222,18 +234,16 @@ describe("Workflow 包边界契约（任务 1.3 §1 静态条件）", () => {
       "src/server/repositories/workflow-def.ts",
       "src/server/testing.ts",
       "src/__tests__/guard-stubs.ts",
-      "web/index.ts",
-      "web/lib/use-workflow-events.ts",
-      // `web/pages/**` 的整页副本 `web/pages/WorkflowPage.tsx` 已删除（零导出、零消费者的死页）：整页实现
-      // 归宿主三份路由壳（`apps/web/src/routes/agent/_panel/workflow.tsx` 与同目录的 `.edit` / `.versions`），
-      // 本包只提供壳渲染的视图块。归属与「重复页面不得复活」的断言在
-      // `web/__tests__/web-location-write-guard.test.ts`；这里改钉视图块，保证 `web/pages/` 整体掉出扫描集时
-      // 仍有断言报红。连带删除的 `web/pages/workflow/workflow-path.ts` 只被该死页与自身用例引用，已退役。
-      "web/pages/workflow/WorkflowList.tsx",
     ]) {
       expect(sourceFiles).toContain(resolve(PKG_ROOT, expected));
     }
-    expect(sourceFiles.length).toBeGreaterThanOrEqual(60);
+    // 阈值随扫描集收缩同步下调：`web/**`（100 个文件）删除前这里钉的是 60，如今 src + db + manifest 实测
+    // 66 个 `.ts`/`.tsx`。留 10 的余量——单目录整体掉出扫描集（`src/server/` 是最大的一块）仍会报红。
+    expect(sourceFiles.length).toBeGreaterThanOrEqual(55);
+    // 删除过的顶层入口必须保持不存在：目录重建即报红，防止「宿主已改指新包、旧包又长出浏览器面」。
+    for (const absent of PACKAGE_ROOT_ABSENT_ENTRIES) {
+      expect(existsSync(resolve(PKG_ROOT, absent))).toBe(false);
+    }
     // 扫描器自检（负例夹具）分两半，缺一不可：
     //   1) 未剥注释时，块注释里的形似导入**必须**被捞出——证明夹具本身有区分力，而不是「恰好扫不到」；
     //   2) 剥掉注释后只剩真实导入——证明 `stripComments` 真的在起作用。
@@ -248,8 +258,10 @@ describe("Workflow 包边界契约（任务 1.3 §1 静态条件）", () => {
   });
 
   // 宿主别名（`@/src`、`@/components`）由 apps/web 的 tsconfig/vite 提供，包离开宿主就解析不了。
-  test("包内 web 不引用宿主别名 @/", () => {
-    const offenders = refs.filter((ref) => ref.specifier.startsWith("@/") && webFiles.has(ref.file));
+  // 断言范围曾是 `web/**`（别名只可能在那里出现）；`web/` 删除后扩到全部扫描文件——否则这条会退化成
+  // 恒真（空集合里当然没有违规），而扫描集合本身不含 `web/` 这件事由上面的「不得复活」断言守住。
+  test("包内不引用宿主别名 @/", () => {
+    const offenders = refs.filter((ref) => ref.specifier.startsWith("@/"));
     expect(offenders.map(describeRef)).toEqual([]);
   });
 
@@ -295,10 +307,14 @@ describe("Workflow 包边界契约（任务 1.3 §1 静态条件）", () => {
     expect(missing.map(([key, target]) => `${key} → ${target}`)).toEqual([]);
   });
 
-  // `./module` 与 `./web` 是模块注册与浏览器装配的锚点：指错文件会让宿主取到错误的贡献形状。
-  test("package.json 的 ./module 与 ./web 指向约定文件", () => {
+  // `./module` 是模块注册的锚点，指错文件会让宿主取到错误的贡献形状；`./web` 已于 2026-09-29（2F）删除，
+  // 这里改为钉「不存在的出口不得复活」——重新声明它等于把浏览器面接回宿主，而宿主已改指 `resource-workflow-v2`，
+  // 两边同时存在时最难发现。
+  test("package.json 的 ./module 指向约定文件，且 ./web 已不存在", () => {
     expect(manifest.exports?.["./module"]).toBe("./fenix.module.ts");
-    expect(manifest.exports?.["./web"]).toBe("./web/index.ts");
+    expect(manifest.exports?.["./web"]).toBeUndefined();
+    expect(manifest.exports?.["./web/i18n"]).toBeUndefined();
+    expect(manifest.exports?.["./web/contribution"]).toBeUndefined();
     expect(manifest.exports?.["./server"]).toBe("./src/server.ts");
   });
 

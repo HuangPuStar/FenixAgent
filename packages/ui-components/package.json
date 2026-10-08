@@ -12,6 +12,14 @@
     "./styles.css": {
       "default": "./web/styles/theme.css"
     },
+    "./agent-tree/agent-tree": {
+      "types": "./web/agent-tree/agent-tree.tsx",
+      "default": "./web/agent-tree/agent-tree.tsx"
+    },
+    "./agent-tree/agent-tree-model": {
+      "types": "./web/agent-tree/agent-tree-model.ts",
+      "default": "./web/agent-tree/agent-tree-model.ts"
+    },
     "./chat/composer/ChatComposer": {
       "types": "./web/chat/composer/ChatComposer.tsx",
       "default": "./web/chat/composer/ChatComposer.tsx"

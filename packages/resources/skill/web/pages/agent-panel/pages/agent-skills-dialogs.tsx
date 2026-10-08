@@ -48,7 +48,9 @@ const directoryInputProps = { webkitdirectory: "", directory: "" } as Record<str
 
 export function AgentSkillsDialogs(props: AgentSkillsDialogsProps) {
   const { t } = useTranslation(NS.SKILLS);
-  const { t: tComponents } = useTranslation(NS.COMPONENTS);
+  // `resource.*` 角标与公开/私有动作词表归 `@fenix/ui-components`（`StatusBadge` 的同名默认文案），
+  // 随台账 D4 从宿主 `components` 字典改指该包命名空间。
+  const { t: tComponents } = useTranslation(NS.UI_COMPONENTS);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const overwriteNames = props.conflicts.map((conflict) => conflict.name).join(", ");
   const uploadMode = !props.editingSkill && props.createMode === "upload";

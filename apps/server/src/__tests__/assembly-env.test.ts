@@ -2,7 +2,7 @@ import { expect, test } from "bun:test";
 import type { EnvDefinition, ModuleManifest } from "@fenix/platform-sdk";
 import { z } from "zod/v4";
 import { generatedModuleManifests } from "../../../generated/module-registry";
-import { loadAssemblyProfile } from "../assembly-config";
+import { loadAssemblyProfile, resolveAssemblyProfilePath } from "../assembly-config";
 import { resolveAssemblyEnv } from "../bootstrap/assembly-env";
 import { parseEnv } from "../env";
 
@@ -20,10 +20,20 @@ import { parseEnv } from "../env";
  * 真实的完整清单；需要注入声明时按模块 ID 替换其中一个。
  */
 
-/** 宿主 schema 的两个必填项；测试不读进程环境，全部经 `input` 注入。 */
+/**
+ * 真实装配面上「无默认值」的全部必填键；测试不读进程环境，全部经 `input` 注入。
+ *
+ * 前两枚是宿主 `env.ts` 的必填项；后三枚由 `workflow-v2` 声明（邮箱 / 密码 / 票据签名密钥，均无默认值）。
+ * 模块启用后它们的声明就进了聚合面，`resolveAssemblyEnv` 少给一枚即解析失败——因此本文件里每一条
+ * `resolveAssemblyEnv({ input: ... })` 都建立在「装配面所需的必填键已齐」之上。新增必填声明时同步补这里，
+ * 否则失败信息是指向模块 schema 的 ZodError，与本文件的用例意图无关。
+ */
 const baseInput = {
   DATABASE_URL: "postgres://127.0.0.1:5432/fenix",
   RCS_API_KEYS: "test-api-keys",
+  WORKFLOW_V2_PLATFORM_ACCOUNT_EMAIL: "workflow-v2@example.test",
+  WORKFLOW_V2_PLATFORM_ACCOUNT_PASSWORD: "test-password",
+  WORKFLOW_V2_TICKET_SECRET: "test-ticket-secret",
 };
 
 /** 把某个模块的 fixture 声明替换进真实清单，其余模块原样保留。 */
@@ -138,6 +148,8 @@ test("模块声明的键与宿主 env.ts schema 的键不相交", () => {
 
 // 迁出键的默认值仍由声明方给出（原先断言在 env-validation.test.ts 的「可选变量使用默认值」里）。
 // 这几个键覆盖三类形状：字符串默认值、数字 default、以及 optional 无默认值（取到 undefined）。
+// `RCS_YJS_SNAPSHOT_*` 三项（F1）原先声明在宿主 `env.ts`、由 chat-channel 持久层直读同名环境变量；
+// 声明迁入 agent-runtime manifest 后包内不再有默认值，这里守住「默认值真相只剩声明这一处」。
 test("声明键未设置时使用模块声明的默认值", async () => {
   const { env } = await resolveAssemblyEnv({ input: baseInput });
 
@@ -147,6 +159,9 @@ test("声明键未设置时使用模块声明的默认值", async () => {
   expect(env.APP_HIDDEN_SIDEBAR_TABS).toBe("");
   expect(env.RCS_USER_AGENT_MAX_CONCURRENCY).toBe(10);
   expect(env.YJS_MAX_CLIENTS).toBe(200);
+  expect(env.RCS_YJS_SNAPSHOT_INTERVAL_MS).toBe(2000);
+  expect(env.RCS_YJS_SNAPSHOT_IDLE_MS).toBe(500);
+  expect(env.RCS_YJS_SNAPSHOT_TTL_SECONDS).toBe(604800);
   expect(env.WORKSPACE_ROOT).toBeUndefined();
 });
 
@@ -170,4 +185,19 @@ test("声明键的非法值在启动期被拒绝", async () => {
   await expect(
     resolveAssemblyEnv({ input: { ...baseInput, RCS_SCHEDULED_AGENT_MAX_CONCURRENCY: "0" } }),
   ).rejects.toThrow(/RCS_SCHEDULED_AGENT_MAX_CONCURRENCY/);
+});
+
+// 装配 profile 的位置不再由源码固定：默认仍是 CE 入口的固定 profile（应用根 + 固定相对路径，与迁移前等价），
+// 部署面用 RCS_ASSEMBLY_PROFILE_PATH 换文件。加载器的缺省参数必须经同一条解析，否则「设了键不生效」。
+test("装配 profile 路径默认取 CE 入口，可由 RCS_ASSEMBLY_PROFILE_PATH 替换", async () => {
+  expect(resolveAssemblyProfilePath({ RCS_APPLICATION_ROOT: "/srv/fenix" })).toBe("/srv/fenix/deploy/assembly/ce.json");
+  expect(
+    resolveAssemblyProfilePath({
+      RCS_APPLICATION_ROOT: "/srv/fenix",
+      RCS_ASSEMBLY_PROFILE_PATH: "/etc/fenix/assembly/ee.yaml",
+    }),
+  ).toBe("/etc/fenix/assembly/ee.yaml");
+
+  // 不传路径时加载器读的就是上面解析出的那一份（这里跑真实进程环境，即仓库内的 ce.json）。
+  expect(await loadAssemblyProfile()).toEqual(await loadAssemblyProfile(resolveAssemblyProfilePath()));
 });

@@ -30,21 +30,7 @@
 import { createLogger } from "@fenix/logger";
 import { WebErrSchema } from "@fenix/platform-sdk";
 import Elysia from "elysia";
-import {
-  createWorkflowDef,
-  deleteWorkflowDef,
-  getVersions,
-  getVersionYaml,
-  getWorkflowDef,
-  listRecoverableWorkflows,
-  listWorkflowDefs,
-  publishVersion,
-  recoverWorkflows,
-  restoreVersionToDraft,
-  saveDraft,
-  setLatestVersion,
-  updateWorkflowMeta,
-} from "../../repositories/workflow-def";
+import { workflowDefFacade } from "../../facades/workflow-def-facade";
 import {
   CreateTriggerRequestSchema,
   CreateWorkflowDefRequestSchema,
@@ -57,14 +43,6 @@ import {
   WorkflowDefsPostBodySchema,
 } from "../../schemas";
 import { publishWorkflowEvent } from "../../services/workflow/workflow-events";
-import {
-  createTrigger,
-  deleteTrigger,
-  disableTrigger,
-  enableTrigger,
-  listTriggers,
-  regenerateHash,
-} from "../../services/workflow-trigger";
 
 import type { WorkflowRouteDependencies } from "../dependencies";
 
@@ -126,7 +104,7 @@ export function createWebWorkflowDefsRoutes(deps: WorkflowRouteDependencies) {
     // biome-ignore lint/suspicious/noExplicitAny: Elysia type inference limitation with sessionAuth
     async ({ store }: any) => {
       const authCtx = store.authContext!;
-      const list = await listWorkflowDefs(authCtx.organizationId);
+      const list = await workflowDefFacade.list(authCtx);
       return { success: true as const, data: list };
     },
     {
@@ -145,7 +123,7 @@ export function createWebWorkflowDefsRoutes(deps: WorkflowRouteDependencies) {
     // biome-ignore lint/suspicious/noExplicitAny: Elysia type inference limitation with sessionAuth
     async ({ store }: any) => {
       const authCtx = store.authContext!;
-      const ids = await listRecoverableWorkflows(authCtx.organizationId);
+      const ids = await workflowDefFacade.listRecoverable(authCtx);
       return { success: true as const, data: ids };
     },
     {
@@ -172,7 +150,7 @@ export function createWebWorkflowDefsRoutes(deps: WorkflowRouteDependencies) {
       }
 
       try {
-        const recovered = await recoverWorkflows(authCtx, workflowIds);
+        const recovered = await workflowDefFacade.recover(authCtx, workflowIds);
         return { success: true as const, data: recovered };
       } catch (err: unknown) {
         return handleError(err, set);
@@ -208,7 +186,7 @@ export function createWebWorkflowDefsRoutes(deps: WorkflowRouteDependencies) {
       }
 
       try {
-        await saveDraft(workflowId, authCtx, yaml);
+        await workflowDefFacade.saveDraft(authCtx, workflowId, yaml);
         publishWorkflowEvent(workflowId, "workflow.draft_updated", { yaml });
         return { success: true as const, data: null };
       } catch (err: unknown) {
@@ -240,7 +218,7 @@ export function createWebWorkflowDefsRoutes(deps: WorkflowRouteDependencies) {
       }
 
       try {
-        const vRow = await publishVersion(workflowId, authCtx);
+        const vRow = await workflowDefFacade.publish(authCtx, workflowId);
         publishWorkflowEvent(workflowId, "workflow.version_published", { version: vRow?.version });
         return { success: true as const, data: vRow };
       } catch (err: unknown) {
@@ -272,7 +250,7 @@ export function createWebWorkflowDefsRoutes(deps: WorkflowRouteDependencies) {
         return { success: false, error: { code: "VALIDATION_ERROR", message: "workflowId is required" } };
       }
 
-      const versions = await getVersions(workflowId, authCtx.organizationId);
+      const versions = await workflowDefFacade.listVersions(authCtx, workflowId);
       return { success: true as const, data: versions };
     },
     {
@@ -299,14 +277,13 @@ export function createWebWorkflowDefsRoutes(deps: WorkflowRouteDependencies) {
         return { success: false, error: { code: "VALIDATION_ERROR", message: "workflowId and version are required" } };
       }
 
-      const wf = await getWorkflowDef(workflowId, authCtx.organizationId);
+      const wf = await workflowDefFacade.get(authCtx, workflowId);
       if (!wf) {
         set.status = 404;
         return { success: false, error: { code: "NOT_FOUND", message: "Workflow not found" } };
       }
 
-      const yaml = await getVersionYaml(workflowId, version, {
-        organizationId: authCtx.organizationId,
+      const yaml = await workflowDefFacade.getVersionYaml(authCtx, workflowId, version, {
         storagePath: wf.storagePath,
       });
 
@@ -342,7 +319,7 @@ export function createWebWorkflowDefsRoutes(deps: WorkflowRouteDependencies) {
       }
 
       try {
-        await setLatestVersion(workflowId, authCtx.organizationId, version);
+        await workflowDefFacade.setLatestVersion(authCtx, workflowId, version);
         return { success: true as const, data: null };
       } catch (err: unknown) {
         return handleError(err, set);
@@ -373,7 +350,7 @@ export function createWebWorkflowDefsRoutes(deps: WorkflowRouteDependencies) {
       }
 
       try {
-        await restoreVersionToDraft(workflowId, authCtx, version);
+        await workflowDefFacade.restoreVersionToDraft(authCtx, workflowId, version);
         publishWorkflowEvent(workflowId, "workflow.draft_restored", { version });
         return { success: true as const, data: null };
       } catch (err: unknown) {
@@ -405,7 +382,7 @@ export function createWebWorkflowDefsRoutes(deps: WorkflowRouteDependencies) {
         return { success: false, error: { code: "VALIDATION_ERROR", message: "workflowId is required" } };
       }
 
-      const wf = await getWorkflowDef(workflowId, authCtx.organizationId);
+      const wf = await workflowDefFacade.get(authCtx, workflowId);
       if (!wf) {
         set.status = 404;
         return { success: false, error: { code: "NOT_FOUND", message: "Workflow not found" } };
@@ -416,10 +393,7 @@ export function createWebWorkflowDefsRoutes(deps: WorkflowRouteDependencies) {
       const q = query as any;
       const targetVersion = q?.version != null ? Number(q.version) : (wf.latestVersion ?? 0);
 
-      const yaml = await getVersionYaml(workflowId, targetVersion, {
-        organizationId: authCtx.organizationId,
-        storagePath,
-      });
+      const yaml = await workflowDefFacade.getVersionYaml(authCtx, workflowId, targetVersion, { storagePath });
 
       if (!yaml) {
         set.status = 404;
@@ -465,20 +439,14 @@ export function createWebWorkflowDefsRoutes(deps: WorkflowRouteDependencies) {
 
       const { type = "webhook", config } = body as { type?: string; config?: Record<string, unknown> };
 
-      const wf = await getWorkflowDef(workflowId, authCtx.organizationId);
+      const wf = await workflowDefFacade.get(authCtx, workflowId);
       if (!wf) {
         set.status = 404;
         return { success: false, error: { code: "NOT_FOUND", message: "Workflow not found" } };
       }
 
       try {
-        const trigger = await createTrigger({
-          organizationId: authCtx.organizationId,
-          workflowId,
-          type,
-          userId: authCtx.userId,
-          config,
-        });
+        const trigger = await workflowDefFacade.createTrigger(authCtx, workflowId, { type, config });
         return { success: true as const, data: trigger };
       } catch (err: unknown) {
         return handleError(err, set);
@@ -508,13 +476,13 @@ export function createWebWorkflowDefsRoutes(deps: WorkflowRouteDependencies) {
         return { success: false, error: { code: "VALIDATION_ERROR", message: "workflowId is required" } };
       }
 
-      const wf = await getWorkflowDef(workflowId, authCtx.organizationId);
+      const wf = await workflowDefFacade.get(authCtx, workflowId);
       if (!wf) {
         set.status = 404;
         return { success: false, error: { code: "NOT_FOUND", message: "Workflow not found" } };
       }
 
-      const triggers = await listTriggers(workflowId, authCtx.organizationId);
+      const triggers = await workflowDefFacade.listTriggers(authCtx, workflowId);
       return { success: true as const, data: triggers };
     },
     {
@@ -541,7 +509,7 @@ export function createWebWorkflowDefsRoutes(deps: WorkflowRouteDependencies) {
       }
 
       try {
-        const deleted = await deleteTrigger(triggerId, authCtx.organizationId);
+        const deleted = await workflowDefFacade.deleteTrigger(authCtx, triggerId);
         if (!deleted) {
           set.status = 404;
           return { success: false, error: { code: "NOT_FOUND", message: "Trigger not found" } };
@@ -575,7 +543,7 @@ export function createWebWorkflowDefsRoutes(deps: WorkflowRouteDependencies) {
       }
 
       try {
-        const result = await regenerateHash(triggerId, authCtx.organizationId);
+        const result = await workflowDefFacade.regenerateTriggerHash(authCtx, triggerId);
         if (!result) {
           set.status = 404;
           return { success: false, error: { code: "NOT_FOUND", message: "Trigger not found" } };
@@ -609,7 +577,7 @@ export function createWebWorkflowDefsRoutes(deps: WorkflowRouteDependencies) {
       }
 
       try {
-        const ok = await enableTrigger(triggerId, authCtx.organizationId);
+        const ok = await workflowDefFacade.enableTrigger(authCtx, triggerId);
         if (!ok) {
           set.status = 404;
           return { success: false, error: { code: "NOT_FOUND", message: "Trigger not found" } };
@@ -643,7 +611,7 @@ export function createWebWorkflowDefsRoutes(deps: WorkflowRouteDependencies) {
       }
 
       try {
-        const ok = await disableTrigger(triggerId, authCtx.organizationId);
+        const ok = await workflowDefFacade.disableTrigger(authCtx, triggerId);
         if (!ok) {
           set.status = 404;
           return { success: false, error: { code: "NOT_FOUND", message: "Trigger not found" } };
@@ -680,14 +648,13 @@ export function createWebWorkflowDefsRoutes(deps: WorkflowRouteDependencies) {
         return { success: false, error: { code: "VALIDATION_ERROR", message: "workflowId is required" } };
       }
 
-      const wf = await getWorkflowDef(workflowId, authCtx.organizationId);
+      const wf = await workflowDefFacade.get(authCtx, workflowId);
       if (!wf) {
         set.status = 404;
         return { success: false, error: { code: "NOT_FOUND", message: "Workflow not found" } };
       }
 
-      const draftYaml = await getVersionYaml(workflowId, 0, {
-        organizationId: authCtx.organizationId,
+      const draftYaml = await workflowDefFacade.getVersionYaml(authCtx, workflowId, 0, {
         storagePath: wf.storagePath,
       });
 
@@ -719,7 +686,7 @@ export function createWebWorkflowDefsRoutes(deps: WorkflowRouteDependencies) {
       const { name, description } = body as { name?: string; description?: string };
 
       try {
-        const updated = await updateWorkflowMeta(workflowId, authCtx.organizationId, { name, description });
+        const updated = await workflowDefFacade.updateMeta(authCtx, workflowId, { name, description });
         if (!updated) {
           set.status = 404;
           return { success: false, error: { code: "NOT_FOUND", message: "Workflow not found" } };
@@ -755,7 +722,7 @@ export function createWebWorkflowDefsRoutes(deps: WorkflowRouteDependencies) {
       }
 
       try {
-        const deleted = await deleteWorkflowDef(workflowId, authCtx.organizationId);
+        const deleted = await workflowDefFacade.remove(authCtx, workflowId);
         if (!deleted) {
           set.status = 404;
           return { success: false, error: { code: "NOT_FOUND", message: "Workflow not found" } };
@@ -796,7 +763,7 @@ export function createWebWorkflowDefsRoutes(deps: WorkflowRouteDependencies) {
           return error(400, { success: false, error: { code: "VALIDATION_ERROR", message: "name is required" } });
         }
         try {
-          const row = await createWorkflowDef(authCtx, { name: name.trim(), description });
+          const row = await workflowDefFacade.create(authCtx, { name: name.trim(), description });
           publishWorkflowEvent(row.id, "workflow.created", {});
           return { success: true, data: row };
         } catch (err: unknown) {
@@ -825,7 +792,7 @@ export function createWebWorkflowDefsRoutes(deps: WorkflowRouteDependencies) {
             if (!name?.trim()) {
               return error(400, { success: false, error: { code: "VALIDATION_ERROR", message: "name is required" } });
             }
-            const row = await createWorkflowDef(authCtx, { name: name.trim(), description });
+            const row = await workflowDefFacade.create(authCtx, { name: name.trim(), description });
             publishWorkflowEvent(row.id, "workflow.created", {});
             return { success: true, data: row };
           }
@@ -839,7 +806,7 @@ export function createWebWorkflowDefsRoutes(deps: WorkflowRouteDependencies) {
                 error: { code: "VALIDATION_ERROR", message: "workflowId and yaml are required" },
               });
             }
-            await saveDraft(workflowId, authCtx, yaml);
+            await workflowDefFacade.saveDraft(authCtx, workflowId, yaml);
             publishWorkflowEvent(workflowId, "workflow.draft_updated", { yaml });
             return { success: true, data: null };
           }
@@ -852,7 +819,7 @@ export function createWebWorkflowDefsRoutes(deps: WorkflowRouteDependencies) {
                 error: { code: "VALIDATION_ERROR", message: "workflowId is required" },
               });
             }
-            const vRow = await publishVersion(workflowId, authCtx);
+            const vRow = await workflowDefFacade.publish(authCtx, workflowId);
             publishWorkflowEvent(workflowId, "workflow.version_published", {
               version: vRow?.version,
             });
@@ -860,7 +827,7 @@ export function createWebWorkflowDefsRoutes(deps: WorkflowRouteDependencies) {
           }
 
           case "list": {
-            const list = await listWorkflowDefs(authCtx.organizationId);
+            const list = await workflowDefFacade.list(authCtx);
             return { success: true, data: list };
           }
 
@@ -871,10 +838,9 @@ export function createWebWorkflowDefsRoutes(deps: WorkflowRouteDependencies) {
                 success: false,
                 error: { code: "VALIDATION_ERROR", message: "workflowId is required" },
               });
-            const wf = await getWorkflowDef(workflowId, authCtx.organizationId);
+            const wf = await workflowDefFacade.get(authCtx, workflowId);
             if (!wf) return error(404, { success: false, error: { code: "NOT_FOUND", message: "Workflow not found" } });
-            const draftYaml = await getVersionYaml(workflowId, 0, {
-              organizationId: authCtx.organizationId,
+            const draftYaml = await workflowDefFacade.getVersionYaml(authCtx, workflowId, 0, {
               storagePath: wf.storagePath,
             });
             return { success: true, data: { ...wf, draftYaml } };
@@ -887,7 +853,7 @@ export function createWebWorkflowDefsRoutes(deps: WorkflowRouteDependencies) {
                 success: false,
                 error: { code: "VALIDATION_ERROR", message: "workflowId is required" },
               });
-            const versions = await getVersions(workflowId, authCtx.organizationId);
+            const versions = await workflowDefFacade.listVersions(authCtx, workflowId);
             return { success: true, data: versions };
           }
 
@@ -900,10 +866,9 @@ export function createWebWorkflowDefsRoutes(deps: WorkflowRouteDependencies) {
                 error: { code: "VALIDATION_ERROR", message: "workflowId and version are required" },
               });
             }
-            const wf = await getWorkflowDef(workflowId, authCtx.organizationId);
+            const wf = await workflowDefFacade.get(authCtx, workflowId);
             if (!wf) return error(404, { success: false, error: { code: "NOT_FOUND", message: "Workflow not found" } });
-            const yaml = await getVersionYaml(workflowId, version, {
-              organizationId: authCtx.organizationId,
+            const yaml = await workflowDefFacade.getVersionYaml(authCtx, workflowId, version, {
               storagePath: wf.storagePath,
             });
             if (!yaml)
@@ -920,7 +885,7 @@ export function createWebWorkflowDefsRoutes(deps: WorkflowRouteDependencies) {
                 error: { code: "VALIDATION_ERROR", message: "workflowId and version are required" },
               });
             }
-            await setLatestVersion(workflowId, authCtx.organizationId, version);
+            await workflowDefFacade.setLatestVersion(authCtx, workflowId, version);
             return { success: true, data: null };
           }
 
@@ -931,7 +896,7 @@ export function createWebWorkflowDefsRoutes(deps: WorkflowRouteDependencies) {
                 success: false,
                 error: { code: "VALIDATION_ERROR", message: "workflowId is required" },
               });
-            const deleted = await deleteWorkflowDef(workflowId, authCtx.organizationId);
+            const deleted = await workflowDefFacade.remove(authCtx, workflowId);
             if (!deleted)
               return error(404, { success: false, error: { code: "NOT_FOUND", message: "Workflow not found" } });
             publishWorkflowEvent(workflowId, "workflow.deleted", {});
@@ -947,7 +912,7 @@ export function createWebWorkflowDefsRoutes(deps: WorkflowRouteDependencies) {
                 success: false,
                 error: { code: "VALIDATION_ERROR", message: "workflowId is required" },
               });
-            const updated = await updateWorkflowMeta(workflowId, authCtx.organizationId, { name, description });
+            const updated = await workflowDefFacade.updateMeta(authCtx, workflowId, { name, description });
             if (!updated)
               return error(404, { success: false, error: { code: "NOT_FOUND", message: "Workflow not found" } });
             publishWorkflowEvent(workflowId, "workflow.meta_updated", { name, description });
@@ -955,7 +920,7 @@ export function createWebWorkflowDefsRoutes(deps: WorkflowRouteDependencies) {
           }
 
           case "recover": {
-            const ids = await listRecoverableWorkflows(authCtx.organizationId);
+            const ids = await workflowDefFacade.listRecoverable(authCtx);
             return { success: true, data: ids };
           }
 
@@ -967,7 +932,7 @@ export function createWebWorkflowDefsRoutes(deps: WorkflowRouteDependencies) {
                 error: { code: "VALIDATION_ERROR", message: "workflowIds array is required" },
               });
             }
-            const recovered = await recoverWorkflows(authCtx, workflowIds);
+            const recovered = await workflowDefFacade.recover(authCtx, workflowIds);
             return { success: true, data: recovered };
           }
 
@@ -980,7 +945,7 @@ export function createWebWorkflowDefsRoutes(deps: WorkflowRouteDependencies) {
                 error: { code: "VALIDATION_ERROR", message: "workflowId and version are required" },
               });
             }
-            await restoreVersionToDraft(workflowId, authCtx, version);
+            await workflowDefFacade.restoreVersionToDraft(authCtx, workflowId, version);
             publishWorkflowEvent(workflowId, "workflow.draft_restored", { version });
             return { success: true, data: null };
           }
@@ -997,13 +962,10 @@ export function createWebWorkflowDefsRoutes(deps: WorkflowRouteDependencies) {
                 error: { code: "VALIDATION_ERROR", message: "workflowId is required" },
               });
             }
-            const wf = await getWorkflowDef(workflowId, authCtx.organizationId);
+            const wf = await workflowDefFacade.get(authCtx, workflowId);
             if (!wf) return error(404, { success: false, error: { code: "NOT_FOUND", message: "Workflow not found" } });
-            const trigger = await createTrigger({
-              organizationId: authCtx.organizationId,
-              workflowId,
+            const trigger = await workflowDefFacade.createTrigger(authCtx, workflowId, {
               type: triggerType,
-              userId: authCtx.userId,
               config: triggerConfig,
             });
             return { success: true, data: trigger };
@@ -1017,9 +979,9 @@ export function createWebWorkflowDefsRoutes(deps: WorkflowRouteDependencies) {
                 error: { code: "VALIDATION_ERROR", message: "workflowId is required" },
               });
             }
-            const wf = await getWorkflowDef(workflowId, authCtx.organizationId);
+            const wf = await workflowDefFacade.get(authCtx, workflowId);
             if (!wf) return error(404, { success: false, error: { code: "NOT_FOUND", message: "Workflow not found" } });
-            const triggers = await listTriggers(workflowId, authCtx.organizationId);
+            const triggers = await workflowDefFacade.listTriggers(authCtx, workflowId);
             return { success: true, data: triggers };
           }
 
@@ -1031,7 +993,7 @@ export function createWebWorkflowDefsRoutes(deps: WorkflowRouteDependencies) {
                 error: { code: "VALIDATION_ERROR", message: "triggerId is required" },
               });
             }
-            const deleted = await deleteTrigger(triggerId, authCtx.organizationId);
+            const deleted = await workflowDefFacade.deleteTrigger(authCtx, triggerId);
             if (!deleted)
               return error(404, { success: false, error: { code: "NOT_FOUND", message: "Trigger not found" } });
             return { success: true, data: null };
@@ -1045,7 +1007,7 @@ export function createWebWorkflowDefsRoutes(deps: WorkflowRouteDependencies) {
                 error: { code: "VALIDATION_ERROR", message: "triggerId is required" },
               });
             }
-            const result = await regenerateHash(triggerId, authCtx.organizationId);
+            const result = await workflowDefFacade.regenerateTriggerHash(authCtx, triggerId);
             if (!result)
               return error(404, { success: false, error: { code: "NOT_FOUND", message: "Trigger not found" } });
             return { success: true, data: result };
@@ -1059,7 +1021,7 @@ export function createWebWorkflowDefsRoutes(deps: WorkflowRouteDependencies) {
                 error: { code: "VALIDATION_ERROR", message: "triggerId is required" },
               });
             }
-            const ok = await enableTrigger(triggerId, authCtx.organizationId);
+            const ok = await workflowDefFacade.enableTrigger(authCtx, triggerId);
             if (!ok) return error(404, { success: false, error: { code: "NOT_FOUND", message: "Trigger not found" } });
             return { success: true, data: null };
           }
@@ -1072,7 +1034,7 @@ export function createWebWorkflowDefsRoutes(deps: WorkflowRouteDependencies) {
                 error: { code: "VALIDATION_ERROR", message: "triggerId is required" },
               });
             }
-            const ok = await disableTrigger(triggerId, authCtx.organizationId);
+            const ok = await workflowDefFacade.disableTrigger(authCtx, triggerId);
             if (!ok) return error(404, { success: false, error: { code: "NOT_FOUND", message: "Trigger not found" } });
             return { success: true, data: null };
           }
@@ -1088,15 +1050,14 @@ export function createWebWorkflowDefsRoutes(deps: WorkflowRouteDependencies) {
             }
 
             let targetVersion = version;
-            const wf = await getWorkflowDef(workflowId, authCtx.organizationId);
+            const wf = await workflowDefFacade.get(authCtx, workflowId);
             if (!wf) return error(404, { success: false, error: { code: "NOT_FOUND", message: "Workflow not found" } });
             const storagePath = wf.storagePath;
             if (targetVersion === undefined) {
               targetVersion = wf.latestVersion ?? 0;
             }
 
-            const yaml = await getVersionYaml(workflowId, targetVersion, {
-              organizationId: authCtx.organizationId,
+            const yaml = await workflowDefFacade.getVersionYaml(authCtx, workflowId, targetVersion, {
               storagePath,
             });
             if (!yaml)

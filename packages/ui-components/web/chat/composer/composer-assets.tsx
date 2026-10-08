@@ -15,9 +15,13 @@ import { QuoteTruncatedBadge } from "./quote-truncated-badge";
  * 文案键按 `chat.components.composerAssets.*` 搬运；`@/src/lib/context-queue` →
  * `../lib/context-queue`；其余结构、类名、图标与文案插值逐字保留。
  *
- * 样式下沉（2026-09-22，禁令 FCP-WEB-02/03）：卡片基准宽度、图标尺寸、移除按钮的触屏常驻与
- * 引用预览浮层的定位搬进同目录 `composer-assets.css`（类名 `.chat-composer-tile*` /
+ * 样式下沉（2026-09-22，禁令 FCP-WEB-02/03）：图标尺寸、移除按钮的触屏常驻与引用预览浮层的定位
+ * 搬进同目录 `composer-assets.css`（类名 `.chat-composer-tile-preview` / `.chat-composer-tile-remove` /
  * `.chat-composer-quote-tooltip`），扁平工具类仍留在下方 `className`。
+ *
+ * 样式回落与归位（2026-09-28）：卡片基准宽度 `flex: 0 0 76px` 曾按「`Npx` → `N/4` 刻度」改回
+ * `className` 的 `shrink-0 grow-0 basis-19`，后一度被当作「刻度不保原值」写进 `composer-assets.css`；
+ * 令牌层已把刻度按 px 落地（`--spacing: 4px`），`basis-19` 即 76px，故按判据撤回 `className`。
  */
 
 /** 输入岛中待发送的单条聊天引用。 */
@@ -49,7 +53,9 @@ export function ComposerAssets({
   if (images.length === 0 && files.length === 0 && quotes.length === 0) return null;
   // 源样式表的共享声明：`.chat-composer-asset` 基类、`> img` 与 `-icon` 的同一组声明、`-remove` 按钮。
   // 需要子代选择器 / 手写媒体查询的那部分（图标尺寸、触屏常驻、预览浮层定位）在同目录 `composer-assets.css`。
-  const assetClass = "chat-composer-tile group relative w-19";
+  // 基准宽度 `flex: 0 0 76px` 由 `shrink-0 grow-0 basis-19` 表达（令牌层 `--spacing: 4px`，即 76px）；
+  // 引用卡上更早批次留下的同名 `basis-19` 与它同值，仍是那条更早的漂移（本批不动）。
+  const assetClass = "chat-composer-tile group relative w-19 shrink-0 grow-0 basis-19";
   const previewClass = "grid h-14.5 w-16 place-items-center rounded-md bg-slate-100 object-cover";
   const labelClass = "mt-1 block w-16 overflow-hidden text-3xs text-ellipsis whitespace-nowrap text-slate-600";
   const removeClass =

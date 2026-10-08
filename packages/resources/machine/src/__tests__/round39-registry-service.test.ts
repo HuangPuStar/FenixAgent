@@ -1,13 +1,18 @@
 import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
 import { resetAllStubs, stubDb, stubIdentityDirectory } from "@fenix/platform-sdk/testing";
 import { writeRegistryEvent } from "../server/repositories/registry-event";
-import { initializeMachineModuleConfig } from "../server/testing";
-import type { MachineRequestAuth } from "../server/types/auth";
+import { initializeMachineModuleConfig, stubMachineAgentConfig } from "../server/testing";
+import type { MachineScope } from "../server/types/machine-registry";
 
 // Bun 以独立模块实例加载真实服务实现，同时继续通过既有 stubDb Proxy 隔离所有数据库访问。
 const registry = await import("@fenix/resource-machine/server");
 
-const owner: MachineRequestAuth = { organizationId: "org-a", userId: "user-a", role: "owner" };
+/** Agent 配置绑定调用的记录器（注册路径经注入端口把 machineId 绑到同名配置上，不再有 DB 写入）。 */
+const agentConfigBindings: Array<{ organizationId: string; agentName: string; machineId: string }> = [];
+/** `deleteMachine` 的引用检查答案；默认「无引用」，用例按需在自身作用域内改这一条。 */
+let agentConfigBound = false;
+
+const owner: MachineScope = { organizationId: "org-a", userId: "user-a" };
 
 function limitedRows(rows: unknown[]) {
   return { from: () => ({ where: () => ({ limit: async () => rows }) }) };
@@ -39,6 +44,17 @@ function insertRecorder(writes: unknown[], fail = false) {
 // 初始化基础设施：registry 服务经 getDatabase() 读 DB，未初始化会直接抛错（包内用例不再依赖宿主 preload）
 beforeEach(() => {
   initializeMachineModuleConfig();
+  // Agent 配置的取数不在本包：注册的绑定与删除的引用检查都经宿主注入的端口调用。端口是整体契约，三个
+  // 原语必须齐备，未绑定即失败（见 `../server/agent-config-port`）；本文件用「无引用 + 记录绑定」装配。
+  agentConfigBindings.length = 0;
+  agentConfigBound = false;
+  stubMachineAgentConfig({
+    getExecutionNode: async () => null,
+    isAgentConfigBoundToMachine: async () => agentConfigBound,
+    bindMachineIdByAgentName: async (input) => {
+      agentConfigBindings.push({ ...input });
+    },
+  });
 });
 
 afterEach(() => {
@@ -123,7 +139,7 @@ describe("registry 服务第 39 轮真实业务覆盖", () => {
     const inserts: unknown[] = [];
     stubDb({ insert: insertRecorder(inserts) });
 
-    const result = await registry.createMachine(owner, { name: "builder" });
+    const result = await registry.createMachine(owner.organizationId, { name: "builder" });
 
     expect(result).toMatchObject({ name: "builder", status: "pending" });
     expect(result.initCommand).toContain(`RCS_MACHINE_ID=${result.id}`);
@@ -136,7 +152,11 @@ describe("registry 服务第 39 轮真实业务覆盖", () => {
     const inserts: unknown[] = [];
     stubDb({ insert: insertRecorder(inserts) });
 
-    const result = await registry.createMachine(owner, { name: "runner", agentName: "claude-code", labels: ["ci"] });
+    const result = await registry.createMachine(owner.organizationId, {
+      name: "runner",
+      agentName: "claude-code",
+      labels: ["ci"],
+    });
 
     expect(result.initCommand).toContain("acp-runtime claude-code acp");
     expect(inserts).toEqual([expect.objectContaining({ agentName: "claude-code", labels: ["ci"] })]);
@@ -234,7 +254,7 @@ describe("registry 服务第 39 轮真实业务覆盖", () => {
       isNew: true,
     });
     expect(updates).toContainEqual(expect.objectContaining({ status: "online", lastHeartbeatAt: expect.any(Date) }));
-    expect(updates).toContainEqual(expect.objectContaining({ machineId: "mach-new" }));
+    expect(agentConfigBindings).toEqual([{ organizationId: "org-a", agentName: "opencode", machineId: "mach-new" }]);
     expect(inserts).toEqual([expect.objectContaining({ machineId: "mach-new", type: "register" })]);
   });
 
@@ -396,20 +416,16 @@ describe("registry 服务第 39 轮真实业务覆盖", () => {
 
   // 被 Agent 配置引用的机器不能删除，以避免留下悬空 machineId。
   test("删除被 Agent 配置引用的机器时拒绝操作", async () => {
-    const select = mock()
-      .mockImplementationOnce(() => limitedRows([{ id: "mach-ref", status: "offline" }]))
-      .mockImplementationOnce(() => limitedRows([{ id: "agent-1" }]));
-    stubDb({ select });
+    agentConfigBound = true;
+    stubDb({ select: mock(() => limitedRows([{ id: "mach-ref", status: "offline" }])) });
 
     await expect(registry.deleteMachine(owner, "mach-ref")).rejects.toThrow("agent configs");
   });
 
   // 组织默认引擎引用的机器不能删除，以保持组织默认配置完整；默认引擎引用经身份目录读取。
   test("删除组织默认引擎引用的机器时拒绝操作", async () => {
-    const select = mock()
-      .mockImplementationOnce(() => limitedRows([{ id: "mach-default", status: "offline" }]))
-      .mockImplementationOnce(() => limitedRows([]));
-    stubDb({ select });
+    // 删除路径对本包只剩一次 DB 读（machine 记录）：agent_config 的引用检查已改经注入端口。
+    stubDb({ select: mock(() => limitedRows([{ id: "mach-default", status: "offline" }])) });
     stubIdentityDirectory({
       getOrganization: async () => ({ id: "org-a", name: "Org A", slug: "org-a", defaultMachineId: "mach-default" }),
     });
@@ -421,11 +437,8 @@ describe("registry 服务第 39 轮真实业务覆盖", () => {
   test("删除后 retired 事件写入尝试失败不影响删除结果", async () => {
     const deleted: string[] = [];
     const attemptedEvents: unknown[] = [];
-    const select = mock()
-      .mockImplementationOnce(() => limitedRows([{ id: "mach-retire", status: "offline" }]))
-      .mockImplementationOnce(() => limitedRows([]));
     stubDb({
-      select,
+      select: mock(() => limitedRows([{ id: "mach-retire", status: "offline" }])),
       delete: mock(() => ({ where: async () => deleted.push("mach-retire") })),
       insert: insertRecorder(attemptedEvents, true),
     });

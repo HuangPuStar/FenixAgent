@@ -1,0 +1,204 @@
+.auth-light-page::before {
+  content: "";
+  background:
+    radial-gradient(900px circle at 15% 50%, rgba(18, 46, 141, 0.06), transparent 55%),
+    radial-gradient(700px circle at 75% 25%, rgba(19, 85, 216, 0.04), transparent 50%),
+    radial-gradient(500px circle at 85% 75%, rgba(18, 46, 141, 0.03), transparent 50%);
+  animation: authBgBreathe 12s ease-in-out infinite alternate;
+}
+.auth-light-particle {
+  border-radius: 50%;
+  background: radial-gradient(circle, rgba(19, 85, 216, 0.35), transparent 70%);
+  animation: authParticleFloat linear infinite;
+}
+.auth-light-particle:nth-child(1) {
+  width: calc(var(--spacing) * 1);
+  height: calc(var(--spacing) * 1);
+  left: 12%;
+  top: 20%;
+  animation-duration: 18s;
+}
+
+.auth-light-particle:nth-child(2) {
+  width: calc(var(--spacing) * 1.5);
+  height: calc(var(--spacing) * 1.5);
+  left: 25%;
+  top: 60%;
+  animation-duration: 22s;
+  animation-delay: 2s;
+  background: radial-gradient(circle, rgba(18, 46, 141, 0.3), transparent 70%);
+}
+
+.auth-light-particle:nth-child(3) {
+  width: calc(var(--spacing) * 0.75);
+  height: calc(var(--spacing) * 0.75);
+  left: 40%;
+  top: 30%;
+  animation-duration: 15s;
+  animation-delay: 4s;
+}
+
+.auth-light-particle:nth-child(4) {
+  width: calc(var(--spacing) * 1.25);
+  height: calc(var(--spacing) * 1.25);
+  left: 55%;
+  top: 70%;
+  animation-duration: 20s;
+  animation-delay: 1s;
+  background: radial-gradient(circle, rgba(19, 85, 216, 0.3), transparent 70%);
+}
+
+.auth-light-particle:nth-child(5) {
+  width: calc(var(--spacing) * 1);
+  height: calc(var(--spacing) * 1);
+  left: 70%;
+  top: 15%;
+  animation-duration: 25s;
+  animation-delay: 3s;
+}
+
+.auth-light-particle:nth-child(6) {
+  width: calc(var(--spacing) * 1.75);
+  height: calc(var(--spacing) * 1.75);
+  left: 82%;
+  top: 55%;
+  animation-duration: 17s;
+  animation-delay: 5s;
+  background: radial-gradient(circle, rgba(18, 46, 141, 0.2), transparent 70%);
+}
+
+@keyframes authBgBreathe {
+  0% {
+    opacity: 0.8;
+    transform: scale(1);
+  }
+  100% {
+    opacity: 1;
+    transform: scale(1.04);
+  }
+}
+@keyframes authParticleFloat {
+  0% {
+    opacity: 0;
+    transform: translateY(0) translateX(0);
+  }
+  10%,
+  90% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0;
+    transform: translateY(-120vh) translateX(calc(var(--spacing) * 10));
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .auth-light-page::before,
+  .auth-light-particle {
+    animation: none;
+  }
+}
+.auth-light-panel {
+  flex: 0.95;
+}
+.auth-light-box {
+  animation: authPanelSlide 0.7s 0.2s ease-out both;
+}
+.auth-light-mobile-title {
+  color: #122e8d;
+}
+.auth-light-title {
+  color: #122e8d;
+}
+.auth-light-checkbox input {
+  accent-color: #1355d8;
+}
+.auth-light-link {
+  color: #1355d8;
+  transition: opacity 0.2s;
+}
+.auth-light-link::after {
+  content: "";
+  background: #1355d8;
+  transition: width 0.25s;
+}
+.auth-light-submit {
+  background: linear-gradient(135deg, #122e8d, #1355d8);
+  transition: all 0.35s;
+}
+.auth-light-submit::before {
+  content: "";
+  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.15), transparent);
+  transform: translateX(-100%);
+  transition: transform 0.6s;
+}
+.auth-light-submit:hover {
+  box-shadow: 0 8px 32px rgba(18, 46, 141, 0.3);
+  filter: brightness(1.08);
+  transform: translateY(-2px);
+}
+
+.auth-light-submit:hover::before {
+  transform: translateX(100%);
+}
+
+.auth-light-submit:active {
+  transform: translateY(0);
+}
+.auth-light-spinner {
+  border-radius: 50%;
+  animation: authSpin 0.6s linear infinite;
+}
+@keyframes authPanelSlide {
+  0% {
+    opacity: 0;
+    transform: translateX(calc(var(--spacing) * 5));
+  }
+  100% {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+@keyframes authSpin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .auth-light-box {
+    animation: none;
+  }
+}
+@media (max-width: 820px) {
+  .auth-light-panel {
+    flex: 1;
+    align-items: center;
+    padding: calc(var(--spacing) * 12) calc(var(--spacing) * 8);
+  }
+
+  .auth-light-mobile-brand {
+    display: block;
+  }
+}
+@media (max-width: 480px) {
+  .auth-light-panel {
+    padding: calc(var(--spacing) * 8) calc(var(--spacing) * 5) calc(var(--spacing) * 16);
+  }
+
+  .auth-light-title {
+    font-size: var(--text-2xl);
+  }
+
+  .auth-light-options {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: calc(var(--spacing) * 3);
+  }
+
+  .auth-light-footer {
+    bottom: calc(var(--spacing) * 4.5);
+  }
+}
+.login-method-tab.is-active {
+  box-shadow: 0 8px 20px rgb(30 108 255 / 12%);
+}

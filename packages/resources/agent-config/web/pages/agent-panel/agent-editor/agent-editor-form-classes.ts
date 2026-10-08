@@ -13,8 +13,8 @@ import "./agent-editor-form-classes.css";
  * `@fenix/ui-components/config/LabeledField`，字段名刻度（`text-sm font-medium`）、提示位置与
  * 字段名/控件间距（6px）都归库内，配套的 `> small` 子代规则同步删除。 */
 /** 输入/文本域的公共外观：`box-sizing` 由 preflight 提供，`outline:0` 等价 `outline-0`。 */
-const FOCUS_RING = "agent-editor-field-focus";
-const DISABLED = "agent-editor-field-disabled";
+const FOCUS_RING = "agent-editor-field-focus focus:border-indigo-400";
+const DISABLED = "disabled:cursor-not-allowed disabled:bg-slate-100 disabled:text-slate-500";
 const TRANSITION = "agent-editor-field-transition";
 /** `.agent-editor-input`：40px 高 / 9px 圆角 / 12px 横向内边距 / 13px。 */
 export const INPUT = `w-full appearance-none h-10 border border-slate-200 rounded-md bg-white px-3 py-0 outline-0 [font:inherit] text-xs leading-snug text-slate-800 ${TRANSITION} ${FOCUS_RING} ${DISABLED}`;
@@ -25,7 +25,9 @@ export const PICKER_INPUT = `w-full appearance-none h-7.5 border-0 rounded-none 
 /** `.agent-editor-button`：34px 高描边按钮。 */
 export const BUTTON =
   "agent-editor-button inline-flex h-8.5 flex-none items-center justify-center border border-slate-200 rounded-md bg-white " +
-  "px-2.5 outline-0 [font:inherit] text-xs text-slate-600 cursor-pointer";
+  "px-2.5 outline-0 [font:inherit] text-xs text-slate-600 cursor-pointer " +
+  "disabled:cursor-not-allowed disabled:opacity-45 " +
+  "enabled:hover:border-indigo-300 enabled:hover:bg-slate-50 enabled:hover:text-blue-800";
 /** 步进器宽度：原三列 34 / 58 / 34 的合计。列定义、按钮形态与数值框外观归 `ui/input-group`，
  * 原 `agent-editor-stepper` 的 grid 模板与 `STEPPER_CONTROL` / `STEPPER_BUTTON` 两条类串随之删除。 */
 export const STEPPER = "w-31.5";
@@ -33,15 +35,18 @@ export const STEPPER = "w-31.5";
 export const PROMPT_EDITOR = "agent-editor-prompt-editor min-h-45 [font-family:inherit]";
 /** `.agent-editor-guidance`：提示行（图标 + 文案，短视口收紧）。 */
 export const GUIDANCE = "agent-editor-guidance flex items-start gap-2 mt-3.5 text-3xs leading-relaxed text-slate-500";
-/** `.agent-editor-form-grid`：两列字段网格，响应式间距与子字段列位见同名 CSS。 */
-export const FORM_GRID = "agent-editor-form-grid grid gap-x-4 gap-y-5 max-md:grid-cols-1 md:max-lg:grid-cols-1";
+/** `.agent-editor-form-grid`：两列字段网格（≥64rem 两列、以下单列），响应式间距与子字段列位见同名 CSS。
+ * 两列声明原在 CSS 的 `@media (width >= 64rem)` 里，与本类串的 `lg:grid-cols-2` 逐字等价（换算依据见 CSS 文件头）。 */
+export const FORM_GRID =
+  "agent-editor-form-grid grid gap-x-4 gap-y-5 lg:grid-cols-2 max-md:grid-cols-1 md:max-lg:grid-cols-1";
 /** `.agent-editor-agent-id-row`：ID 输入 + 复制按钮一行。 */
 export const AGENT_ID_ROW = "flex gap-1.75";
 /** `.agent-editor-agent-id-row .agent-editor-input`：等宽字体 + 占满剩余宽度。 */
 export const AGENT_ID_INPUT = "min-w-0 flex-1 font-mono text-xs";
 /** `.agent-editor-agent-id-row :where(button)`（普通 button 与 `.agent-editor-button` 同值）：40px 高描边按钮。 */
 export const AGENT_ID_BUTTON =
-  "agent-editor-agent-id-button h-10 rounded-md flex-none border border-slate-200 bg-white px-3.25 py-0 text-xs text-slate-600 whitespace-nowrap";
+  "h-10 rounded-md flex-none border border-slate-200 bg-white px-3.25 py-0 text-xs text-slate-600 whitespace-nowrap " +
+  "enabled:hover:border-indigo-300 enabled:hover:bg-slate-50 enabled:hover:text-blue-800";
 
 /* ── 卡片表面（form-surfaces） ─────────────────────────────────────────── */
 
@@ -51,17 +56,18 @@ export const AGENT_ID_BUTTON =
  * 轨道与圆钮类串随之删除。 */
 export const TOGGLE_ROW =
   "agent-editor-toggle-row grid w-full min-h-16.25 items-center gap-2.5 mt-3.5 " +
-  "border border-slate-200 rounded-lg bg-white px-2.75 py-2.25 text-left text-slate-600";
-/** 开关行图标底。 */
-export const TOGGLE_ICON =
-  "agent-editor-toggle-icon grid size-8 place-items-center rounded-md bg-slate-100 text-slate-500";
+  "border border-slate-200 rounded-lg bg-white px-2.75 py-2.25 text-left text-slate-600 " +
+  "hover:border-indigo-200 hover:bg-slate-50 has-[[data-state=checked]]:border-indigo-200 has-[[data-state=checked]]:bg-slate-50";
+/** 开关行图标底。原钩子 `agent-editor-toggle-icon` 随第四波删掉 `.agent-editor-toggle-icon > svg`
+    （尺寸搬到调用点的 `icon` 元素）后已无规则定义，一并摘除。 */
+export const TOGGLE_ICON = "grid size-8 place-items-center rounded-md bg-slate-100 text-slate-500";
 /** 开关行文案：标题 13px/加粗 680，说明 11px/1.45。 */
-export const TOGGLE_COPY = "agent-editor-toggle-copy flex min-w-0 flex-col gap-0.75";
+export const TOGGLE_COPY = "flex min-w-0 flex-col gap-0.75";
 /** `.agent-model-summary`：当前模型卡片（40px 图标列）。 */
 export const MODEL_SUMMARY = "agent-model-summary grid items-center gap-3 mt-4.5 rounded-lg bg-slate-50 p-3.5";
 /** `.agent-runtime-note`：运行便签。 */
 export const RUNTIME_NOTE =
-  "agent-runtime-note flex items-center gap-2.25 mt-2.25 border border-slate-200 rounded-md bg-slate-100 px-2.5 py-2.25 text-gray-600";
+  "flex items-center gap-2.25 mt-2.25 border border-slate-200 rounded-md bg-slate-100 px-2.5 py-2.25 text-gray-600";
 /** `.agent-owner-card`：归属卡（42px 首字母格）。 */
 export const OWNER_CARD =
   "agent-owner-card grid min-h-19 items-center gap-3 border border-slate-200 rounded-xl bg-white p-3";
@@ -73,24 +79,27 @@ export const CAPABILITY_TABS = "flex w-full gap-1.25 mb-3.5 border-b border-slat
 
 /* ── 选项列表（模型 / 节点） ──────────────────────────────────────────── */
 
-/** `.agent-model-options`：两列选项网格（max-md 单列，短视口 210px 上限）。 */
-export const MODEL_OPTIONS = "agent-model-options grid max-h-77.5 gap-2 overflow-y-auto max-md:grid-cols-1";
+/** `.agent-model-options`：两列选项网格（≥48rem 两列、以下单列，短视口 210px 上限）。
+ * 两列声明原在 CSS 的 `@media (width >= 48rem)` 里，与本类串的 `md:grid-cols-2` 逐字等价。 */
+export const MODEL_OPTIONS =
+  "agent-model-options grid max-h-77.5 gap-2 overflow-y-auto md:grid-cols-2 max-md:grid-cols-1";
 /** `.agent-node-list`：单列选项网格（短视口 210px 上限）。 */
 export const NODE_LIST = "agent-node-list grid max-h-77.5 grid-cols-1 gap-1.5 overflow-y-auto";
 /** 选项行公共外观（模型 32/16 列、节点 34/18 列，由调用点补列定义）。 */
 export const OPTION_ROW =
-  "agent-editor-option-row grid min-h-13 items-center gap-2 border border-slate-200 rounded-lg bg-white px-2.25 py-2 text-left text-slate-600";
+  "grid min-h-13 items-center gap-2 border border-slate-200 rounded-lg bg-white px-2.25 py-2 text-left " +
+  "text-slate-600 disabled:cursor-not-allowed disabled:opacity-58";
 /** 选项行：选中态。 */
 export const OPTION_ROW_SELECTED = "border-indigo-300 bg-sky-50";
 /** 选项行：不可用态。 */
 export const OPTION_ROW_UNAVAILABLE = "border-stone-300 bg-orange-50 text-stone-600";
 /** 选项行：选中且禁用（值来自 `.is-selected:disabled` 与 `:has([data-slot=checkbox]:disabled)`）。 */
 export const OPTION_ROW_SELECTED_DISABLED = "border-indigo-200 bg-sky-50 opacity-[0.78]";
-/** 选项图标底（30px，图标 18px）。 */
+/** 选项图标底（30px，图标 18px；尺寸类随第四波搬到图标元素本身，原 `agent-editor-option-icon` 钩子摘除）。 */
 export const OPTION_ICON =
-  "agent-editor-option-icon flex size-7.5 items-center justify-center overflow-hidden rounded-lg bg-indigo-50 text-sky-600";
+  "flex size-7.5 items-center justify-center overflow-hidden rounded-lg bg-indigo-50 text-sky-600";
 /** 选项文案：标题最多两行 13px，说明单行 11px。 */
-export const OPTION_COPY = "agent-editor-option-copy flex min-w-0 flex-col gap-0.5";
+export const OPTION_COPY = "flex min-w-0 flex-col gap-0.5";
 /** 选项尾部的环形勾选标记（16px，勾 10px）。 */
 export const OPTION_CHECK =
   "agent-editor-option-check flex size-4 flex-none items-center justify-center overflow-hidden rounded-full border border-gray-300 bg-white text-white leading-tight";
@@ -105,7 +114,7 @@ export const OPTION_COPY_HINT_UNAVAILABLE = "text-yellow-700";
 
 /** `.agent-single-picker-toolbar`：搜索条。 */
 export const SINGLE_PICKER_TOOLBAR =
-  "agent-single-picker-toolbar flex min-h-9.5 items-center gap-2.5 mb-1.75 border border-slate-200 rounded-md bg-white px-2.5 py-0";
+  "flex min-h-9.5 items-center gap-2.5 mb-1.75 border border-slate-200 rounded-md bg-white px-2.5 py-0";
 /** `.agent-single-picker-current`：当前选择条（max-md 两列；不可用态见下）。 */
 export const SINGLE_PICKER_CURRENT =
   "agent-single-picker-current grid min-h-9 items-center gap-1.75 mb-1.75 rounded-lg bg-blue-50 px-2.25 py-1.5 text-3xs text-slate-500";
@@ -117,10 +126,14 @@ export const PICKER = "overflow-hidden border border-slate-200 rounded-xl bg-whi
 export const PICKER_SELECTED =
   "agent-resource-picker__selected grid min-h-16 items-center gap-3 border-b border-gray-100 bg-slate-50 px-3 py-2.5";
 /** `.agent-resource-picker__chips`：已选 chip 区（容器本身是列，子 chip 才横排）。 */
-export const PICKER_CHIPS = "agent-resource-picker__chips flex min-w-0 flex-col flex-wrap gap-0.75";
+export const PICKER_CHIPS = "flex min-w-0 flex-col flex-wrap gap-0.75";
+/** 已选 chip 的基态外观（原 `.agent-resource-picker__chips > button` 规则，2026-09-28 撤回；不可用态的
+ * 覆盖走 `PICKER_CHIP_UNAVAILABLE`，两点经 `cn()` 合并、后写者胜，与 CSS 里的覆盖顺序一致）。 */
+export const PICKER_CHIP =
+  "flex h-6.25 items-center gap-1.5 border-0 rounded-md bg-indigo-50 px-2 py-0 text-xs text-blue-800";
 /** chip：不可用态（含 hover）。 */
 export const PICKER_CHIP_UNAVAILABLE =
-  "agent-resource-picker-chip-unavailable border border-orange-300 bg-orange-50 text-yellow-800";
+  "border border-orange-300 bg-orange-50 text-yellow-800 " + "enabled:hover:bg-amber-100 enabled:hover:text-yellow-900";
 /** `.agent-resource-picker__copy`：列表项文案列。 */
 export const PICKER_COPY = "flex min-w-0 flex-col gap-0.75";
 /** `.agent-resource-picker__empty`：空态文案。 */
@@ -132,19 +145,21 @@ export const PICKER_SEARCH =
 export const PICKER_LIST = "agent-resource-picker__list grid max-h-70.5 gap-0.75 p-1.25 overflow-y-auto";
 /** 列表行外观（label；选中/不可用/禁用见下）。 */
 export const PICKER_ROW =
-  "agent-resource-picker-row grid min-h-13.25 items-center gap-2 border border-transparent rounded-lg bg-transparent px-2.25 py-1.75 text-left text-slate-600";
+  "agent-resource-picker-row grid min-h-13.25 items-center gap-2 border border-transparent rounded-lg bg-transparent px-2.25 py-1.75 " +
+  "text-left text-slate-600 hover:border-blue-100 hover:bg-sky-50 " +
+  "has-[[data-slot=checkbox]:disabled]:cursor-not-allowed has-[[data-slot=checkbox]:disabled]:opacity-58";
 /** 列表行：选中态。 */
 export const PICKER_ROW_SELECTED = "border-blue-100 bg-sky-50";
 /** 列表行：不可用态。 */
-export const PICKER_ROW_UNAVAILABLE =
-  "agent-resource-picker-row-unavailable border-stone-300 bg-orange-50 text-stone-600";
+export const PICKER_ROW_UNAVAILABLE = "border-stone-300 bg-orange-50 text-stone-600";
+/** 不可用选项的说明文字色（原 `.agent-resource-picker-row-unavailable small`，2026-09-28 撤回）。 */
+export const PICKER_ROW_HINT_UNAVAILABLE = "text-yellow-700";
 /** 列表行：选中且禁用。 */
 export const PICKER_ROW_SELECTED_DISABLED = "border-indigo-200 bg-sky-50 opacity-[0.78]";
 /** 列表行图标（有图标时列位 32/21）。 */
 export const PICKER_ROW_WITH_ICON = "agent-resource-picker-row-with-icon";
-/** 列表行图标底。 */
-export const PICKER_ICON =
-  "agent-resource-picker-icon grid size-7.5 place-items-center rounded-lg bg-indigo-50 text-sky-700";
+/** 列表行图标底（14px 尺寸随第四波搬到 `renderIcon` 元素，原 `agent-resource-picker-icon` 钩子摘除）。 */
+export const PICKER_ICON = "grid size-7.5 place-items-center rounded-lg bg-indigo-50 text-sky-700";
 /** 列表行标题 / 说明 / 徽标。 */
 export const PICKER_ROW_TITLE = "text-xs [font-weight:680]";
 /** 列表行说明。 */
@@ -168,9 +183,11 @@ export const PAGINATION =
   "flex min-h-8.5 items-center justify-between gap-2.5 border-t border-gray-100 px-2 py-0 text-3xs text-gray-400";
 /** `.agent-editor-pagination > div`：翻页按钮组。 */
 export const PAGINATION_GROUP = "flex items-center gap-1.5";
-/** `.agent-editor-pagination button`：24×22 方形按钮（禁用态降透明度）。 */
+/** `.agent-editor-pagination button`：24×22 方形按钮（禁用态降透明度；箭头 11px 随第四波搬到箭头元素，
+    原 `agent-editor-pagination-button` 钩子摘除）。 */
 export const PAGINATION_BUTTON =
-  "agent-editor-pagination-button grid h-5.5 w-6 place-items-center border border-slate-200 rounded-md bg-white text-slate-500";
+  "grid h-5.5 w-6 place-items-center border border-slate-200 rounded-md bg-white text-slate-500 " +
+  "disabled:cursor-default disabled:opacity-35";
 /** `.agent-editor-pagination strong`：页码。 */
 export const PAGINATION_COUNT = "min-w-9 text-center text-slate-600";
 /** `.agent-editor-root .agent-editor-library-picker`（C 的类名）在 760–1119 收窄左列。 */

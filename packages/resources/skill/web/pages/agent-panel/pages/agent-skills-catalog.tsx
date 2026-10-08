@@ -1,7 +1,6 @@
 import { MessageResponse } from "@fenix/ui-components/chat/primitives/message";
 import {
   AgentCatalogIndex,
-  AgentCatalogIndexArrow,
   AgentCatalogIndexCopy,
   AgentCatalogIndexIcon,
   AgentCatalogIndexItem,
@@ -51,7 +50,7 @@ import {
 } from "../../../lib/skill-resource-access";
 import type { SkillCatalogScope, SkillCreateMode, SkillInfo } from "./agent-skills-types";
 import { countSkillsByScope, filterSkills, isSkillAccessDenied } from "./agent-skills-utils";
-import "./agent-skills.css";
+import "./agent-skills-catalog.css";
 
 type AgentSkillsCatalogProps = {
   skills: SkillInfo[];
@@ -72,6 +71,13 @@ type AgentSkillsCatalogProps = {
   onRetry: () => void;
   onLoadDetail: (skill: SkillInfo) => Promise<SkillDetailData>;
 };
+
+/**
+ * 详情头的「公开 / 共享」角标：两种语义同款外观，原先同一串长类名在 JSX 里复制两遍，抽成模块级常量承载。
+ * 取值都是标准色阶（`blue-200` / `blue-50` / `blue-700`），不依赖页面级自定义属性。
+ */
+const SCOPE_BADGE_CLASS =
+  "shrink-0 rounded border border-blue-200 bg-blue-50 px-2 py-0.5 text-3xs font-medium text-blue-700";
 
 function getSkillIcon(skill: SkillInfo): LucideIcon {
   const value = `${skill.name} ${skill.description ?? ""}`.toLowerCase();
@@ -183,11 +189,11 @@ export function AgentSkillsCatalog(props: AgentSkillsCatalogProps) {
         subtitle={t("subtitle")}
         actions={
           <>
-            <Button variant="outline" size="sm" onClick={() => props.onCreate("upload")}>
+            <Button variant="outline" onClick={() => props.onCreate("upload")}>
               <Upload />
               {t("btn.uploadSkill")}
             </Button>
-            <Button size="sm" onClick={() => props.onCreate("text")}>
+            <Button onClick={() => props.onCreate("text")}>
               <Plus />
               {t("btn.createSkill")}
             </Button>
@@ -254,7 +260,6 @@ export function AgentSkillsCatalog(props: AgentSkillsCatalogProps) {
                         {external && !publiclyReadable ? <span>{t("scope.shared")}</span> : null}
                         {publiclyReadable ? <span>{t("scope.public")}</span> : null}
                       </AgentCatalogIndexMeta>
-                      <AgentCatalogIndexArrow />
                     </AgentCatalogIndexItem>
                   );
                 })}
@@ -293,7 +298,9 @@ function SkillDetailView({
   error?: boolean;
 }) {
   const { t } = useTranslation(NS.SKILLS);
-  const { t: tComponents } = useTranslation(NS.COMPONENTS);
+  // `resource.*` 角标与公开/私有动作词表归 `@fenix/ui-components`（`StatusBadge` 的同名默认文案），
+  // 随台账 D4 从宿主 `components` 字典改指该包命名空间。
+  const { t: tComponents } = useTranslation(NS.UI_COMPONENTS);
   const writable = canWriteSkill(skill);
   const external = isExternalSkill(skill, props.activeOrganizationId);
   const SkillIcon = getSkillIcon(skill);
@@ -301,33 +308,28 @@ function SkillDetailView({
   const organizationName = skill.organizationName ?? t("scope.organization");
   const publiclyReadable = isPublicSkill(skill);
   const header = (
-    <AgentMasterDetailHeader className="flex items-center justify-between gap-6 border-b border-[var(--skills-line)] px-8 py-6">
+    <AgentMasterDetailHeader className="flex items-center justify-between gap-6 border-b border-slate-200 px-8 py-6">
       <div className="flex min-w-0 items-center gap-4">
-        <span className="skills-detail-icon grid size-14 shrink-0 place-items-center rounded-lg bg-[var(--skills-blue-soft)] text-[var(--skills-blue)]">
-          {external ? <Share2 /> : <SkillIcon />}
+        {/* 图标尺寸原为 `.skills-detail-icon svg { width: calc(var(--spacing) * 6) }`（24px），随本轮清理搬到
+            图标自身的 `className`（`size-6` = 6 档 = 24px），页面样式表里的该类名与规则已删。 */}
+        <span className="grid size-14 shrink-0 place-items-center rounded-lg bg-blue-50 text-blue-600">
+          {external ? <Share2 className="size-6" /> : <SkillIcon className="size-6" />}
         </span>
         <div className="min-w-0">
-          <h2 className="mt-1 overflow-hidden text-ellipsis whitespace-nowrap text-xl font-bold text-[var(--skills-ink)]">
+          <h2 className="mt-1 overflow-hidden text-ellipsis whitespace-nowrap text-xl font-bold text-slate-800">
             {display.name}
           </h2>
-          <div className="flex items-center gap-2 text-3xs text-[var(--skills-faint)]">
+          <div className="flex items-center gap-2 text-3xs text-slate-400">
             <span className="max-w-64 overflow-hidden text-ellipsis whitespace-nowrap" title={organizationName}>
               {organizationName}
             </span>
-            {external ? (
-              <span className="shrink-0 rounded border border-blue-200 bg-blue-50 px-2 py-0.5 text-3xs font-medium text-blue-700">
-                {t("scope.shared")}
-              </span>
-            ) : null}
-            {publiclyReadable ? (
-              <span className="shrink-0 rounded border border-blue-200 bg-blue-50 px-2 py-0.5 text-3xs font-medium text-blue-700">
-                {t("scope.public")}
-              </span>
-            ) : null}
+            {external ? <span className={SCOPE_BADGE_CLASS}>{t("scope.shared")}</span> : null}
+            {publiclyReadable ? <span className={SCOPE_BADGE_CLASS}>{t("scope.public")}</span> : null}
           </div>
         </div>
       </div>
-      <Button variant="ghost" size="sm" onClick={() => props.onOpen(skill)}>
+      {/* 详情面板动作位不手写尺寸：与页头动作区同档，走 `Button` 默认档（36px 高 / 16px 内距 / 6px 圆角）。 */}
+      <Button variant="ghost" onClick={() => props.onOpen(skill)}>
         {writable ? <Pencil /> : <Eye />}
         {writable ? t("btn.edit") : t("btn.view")}
       </Button>
@@ -338,16 +340,16 @@ function SkillDetailView({
     <article className="min-w-0">
       <div className="p-8">
         <section className="rounded-lg bg-slate-50 px-5 py-4">
-          <span className="text-3xs font-bold tracking-widest text-[var(--skills-blue)] uppercase">Skill</span>
-          <p className="mt-3 max-w-3xl text-xs leading-6 text-[var(--skills-muted)]">
+          <span className="text-3xs font-bold tracking-widest text-blue-600 uppercase">Skill</span>
+          <p className="mt-3 max-w-3xl text-xs leading-6 text-slate-500">
             {skill.description || t("directory.noDescription")}
           </p>
         </section>
-        <section className="mt-6 border-t border-[var(--skills-line)] pt-6">
+        <section className="mt-6 border-t border-slate-200 pt-6">
           <div className="mb-4 flex items-center justify-between">
             <div>
-              <h3 className="text-xs font-semibold text-[var(--skills-ink)]">{t("detail.contentTitle")}</h3>
-              <p className="mt-1 text-3xs text-[var(--skills-faint)]">{t("detail.contentHint")}</p>
+              <h3 className="text-xs font-semibold text-slate-800">{t("detail.contentTitle")}</h3>
+              <p className="mt-1 text-3xs text-slate-400">{t("detail.contentHint")}</p>
             </div>
             <span className="rounded bg-slate-100 px-2 py-1 font-mono text-3xs text-slate-500">SKILL.md</span>
           </div>
@@ -368,13 +370,15 @@ function SkillDetailView({
               </Button>
             </div>
           ) : (
-            <MessageResponse className="skills-detail-markdown">
+            // 宽度上限 860px 由页面样式表撤到这里：`max-w-215` = 215 × 4px。其余排版仍归该表的
+            // `.skills-detail-markdown`（必须压过未分层的共享 markdown 样式表，见该文件头「保留项 2」）。
+            <MessageResponse className="skills-detail-markdown max-w-215">
               {detail?.content || t("detail.emptyContent")}
             </MessageResponse>
           )}
         </section>
         <div className="mt-7 flex flex-wrap items-center gap-2">
-          <span className="rounded-md bg-gray-100 px-2.5 py-1.5 text-3xs text-[var(--skills-muted)]">
+          <span className="rounded-md bg-gray-100 px-2.5 py-1.5 text-3xs text-slate-500">
             {isPublicSkill(skill)
               ? tComponents("resource.public")
               : writable
@@ -389,24 +393,27 @@ function SkillDetailView({
 
 function SkillDetailActions({ skill, props }: { skill: SkillInfo; props: AgentSkillsCatalogProps }) {
   const { t } = useTranslation(NS.SKILLS);
-  const { t: tComponents } = useTranslation(NS.COMPONENTS);
+  // `resource.*` 角标与公开/私有动作词表归 `@fenix/ui-components`（`StatusBadge` 的同名默认文案），
+  // 随台账 D4 从宿主 `components` 字典改指该包命名空间。
+  const { t: tComponents } = useTranslation(NS.UI_COMPONENTS);
   const writable = canWriteSkill(skill);
   const manageable = canManageSkillSharing(skill);
   const downloading = props.downloadingKey === getSkillKey(skill);
 
   return (
-    <div className="flex items-center gap-2 border-t border-[var(--skills-line)] px-8 py-4">
-      <Button variant="outline" size="sm" disabled={downloading} onClick={() => props.onDownload(skill)}>
+    // 详情面板底部动作条：按钮不手写尺寸，与页头动作区同档（`Button` 默认 36px 高）。
+    <div className="flex items-center gap-2 border-t border-slate-200 px-8 py-4">
+      <Button variant="outline" disabled={downloading} onClick={() => props.onDownload(skill)}>
         <Download /> {t("btn.download")}
       </Button>
       {manageable ? (
-        <Button variant="ghost" size="sm" onClick={() => props.onToggleSharing(skill)}>
+        <Button variant="ghost" onClick={() => props.onToggleSharing(skill)}>
           {isPublicSkill(skill) ? <LockKeyhole /> : <Globe2 />}
           {isPublicSkill(skill) ? tComponents("resource.makePrivate") : tComponents("resource.makePublic")}
         </Button>
       ) : null}
       {writable ? (
-        <Button variant="ghost" size="sm" className="text-destructive" onClick={() => props.onDelete(skill)}>
+        <Button variant="ghost" className="text-destructive" onClick={() => props.onDelete(skill)}>
           <Trash2 /> {t("btn.delete")}
         </Button>
       ) : null}
@@ -424,12 +431,12 @@ function SkillsLoading() {
         <Skeleton className="mt-2 h-4 w-72" />
       </div>
       <Skeleton className="mt-5 h-10 w-full max-w-4xl" />
-      <div className="mt-6 overflow-hidden rounded-lg border border-[var(--skills-line)] bg-white">
+      <div className="mt-6 overflow-hidden rounded-lg border border-slate-200 bg-white">
         {Array.from({ length: 8 }, (_, index) => `skill-loading-row-${index}`).map((rowKey) => (
           <div
             // 骨架占位行无领域标识，键由行下标派生：`key={index}` 会被 biome 的 lint/suspicious/noArrayIndexKey 拦下。
             key={rowKey}
-            className="flex h-15.5 items-center gap-3 border-[var(--skills-line)] border-b px-4 last:border-b-0"
+            className="flex h-15.5 items-center gap-3 border-slate-200 border-b px-4 last:border-b-0"
           >
             <Skeleton className="size-9 rounded-lg" />
             <div className="flex-1">

@@ -2,8 +2,8 @@
 //
 // 归属：面板本体与会话附件视图类型按 §6.5 的共享 web 模块裁决上收到 `@fenix/ui-components`，本包经对方
 // **包根入口**取用（`web/chat/shell/FilePickerPanel` 这类深路径不在其 exports 里，写死会把对方的内部目录
-// 变成事实契约）。宿主侧只剩把它包进 Dialog、补 `envId` 的会话入口（`apps/web/src/components/FilePickerDialog.tsx`）
-// 与 `apps/web/src/api/fs` 网络层，两者归 §1.6 随 WebShell 迁移，本包不拥有。
+// 变成事实契约）。宿主侧只剩把它包进 Dialog、补 `envId` 的会话入口（`apps/web/src/pages/agent-panel/FilePickerDialog.tsx`）；
+// fs 网络层已随 D2（2026-09-24）迁入本包 `web/api/fs.ts`，宿主入口改从包根取 `fsApi` / `uploadChatFiles`。
 //
 // 为什么要重写：旧版本用六级相对路径的运行时 `await import()` 加载宿主组件与宿主 `api/fs` 网络层，
 // 在宿主解析环境之外无法构建（§1 静态条件 3），而且断言只是「宿主文件存在且导出是函数」，不覆盖面板
@@ -55,7 +55,8 @@ describe("文件选择面板（消费方契约）", () => {
 
   // 列目录与上传回调的签名是面板与调用方之间的真实契约：参数或返回形状缩水会让调用方静默失去能力。
   // 断言主体是编译期（`FilePickerPanelProps` 不接受缺项 / 错型），运行期确认该契约可被面板消费，
-  // 并把调用方必须产出的响应形状（`entries: FileInfo[]` / `files`）钉在这里——宿主 `api/fs` 迁移时照此对齐。
+  // 并把调用方必须产出的响应形状（`entries: FileInfo[]` / `files`）钉在这里——宿主 `api/fs` 已随 D2
+  // （2026-09-24）迁入本包 `web/api/fs.ts`，本用例的形状与它对齐。
   test("注入契约保留列目录、上传与选中回调", async () => {
     const props = pickerProps({
       listDir: async (dirPath) => ({

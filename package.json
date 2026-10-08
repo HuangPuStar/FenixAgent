@@ -14,7 +14,7 @@
     "@better-auth/core": "1.6.11",
     "@better-auth/utils": "0.4.0",
     "hono": ">=4.12.25",
-    "dompurify": ">=3.4.9"
+    "dompurify": "^3.4.11"
   },
   "scripts": {
     "dev": "bun run apps/server/src/main.ts",
@@ -24,6 +24,7 @@
     "db:generate": "bunx drizzle-kit generate",
     "db:migrate": "bunx drizzle-kit migrate",
     "run-data-migrations": "bun run db/data-migration-runner.ts",
+    "release": "bun run scripts/release.ts",
     "build:web": "bunx vite build --config apps/web/vite.config.ts",
     "generate:module-registry": "bun run scripts/generate-module-registry.ts",
     "generate:web-contributions": "bun run scripts/generate-web-contributions.ts",
@@ -80,6 +81,7 @@
     "@fenix/resource-skill": "workspace:*",
     "@fenix/resource-task": "workspace:*",
     "@fenix/resource-workflow": "workspace:*",
+    "@fenix/resource-workflow-v2": "workspace:*",
     "@fenix/remote-runtime": "workspace:*",
     "@fenix/platform-sdk": "workspace:*",
     "@fenix/sandbox-provider": "workspace:*",

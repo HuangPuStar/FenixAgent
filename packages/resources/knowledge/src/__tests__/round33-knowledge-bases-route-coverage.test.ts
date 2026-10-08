@@ -167,6 +167,7 @@ const originals = {
 describe("知识库 Web 路由 round33 覆盖", () => {
   beforeEach(() => {
     initializeKnowledgeModuleConfig({ ragflowApiKey: "test-ragflow-key" });
+    knowledgeBaseRepo.getById = mock(async () => knowledgeBase());
   });
 
   afterEach(() => {
@@ -180,6 +181,7 @@ describe("知识库 Web 路由 round33 覆盖", () => {
     resetAllStubs();
   });
 
+  // 未认证请求必须由各资源端点的会话守卫拒绝。
   test.each([
     ["知识库列表", "/knowledgeBases", "GET", {}],
     ["知识库详情", "/knowledgeBases/kb-1", "GET", {}],
@@ -188,6 +190,8 @@ describe("知识库 Web 路由 round33 覆盖", () => {
     ["表单选项", "/knowledgeBases/form-options", "GET", {}],
     ["重排序模型", "/knowledgeBases/rerank-models", "GET", {}],
     ["资源列表", "/knowledgeBases/kb-1/resources", "GET", {}],
+    ["文件预览", "/knowledgeBases/kb-1/resources/resource-1/file", "GET", {}],
+    ["PDF 预览", "/knowledgeBases/kb-1/resources/resource-1/pdf", "GET", {}],
     ["资源上传", "/knowledgeBases/kb-1/resources/upload", "POST", {}],
     ["URL 导入", "/knowledgeBases/kb-1/resources/url", "POST", { url: "https://example.test/doc" }],
     ["资源删除", "/knowledgeBases/kb-1/resources/resource-1", "DELETE", {}],
@@ -196,6 +200,8 @@ describe("知识库 Web 路由 round33 覆盖", () => {
     ["检索测试", "/knowledgeBases/kb-1/search", "POST", { query: "测试" }],
     ["图谱生成", "/knowledgeBases/kb-1/graph/generate", "POST", {}],
     ["图谱读取", "/knowledgeBases/kb-1/graph", "GET", {}],
+    ["图谱删除", "/knowledgeBases/kb-1/graph", "DELETE", {}],
+    ["图谱进度", "/knowledgeBases/kb-1/graph/progress", "GET", {}],
     ["模型管理", "/knowledgeBases/models", "POST", { action: "list" }],
   ])("认证适配器缺失上下文时不暴露成功 DTO：%s", async (_name, path, method, body) => {
     const response = await deniedJsonRequest(path, method, body);
@@ -280,10 +286,11 @@ describe("知识库 Web 路由 round33 覆盖", () => {
     expect((await response.json()) as unknown).toMatchObject({ error: { code: "NOT_FOUND" } });
   });
 
+  // 文件预览缺少来源时返回明确的不可预览错误。
   test.each([
     ["不存在的资源", null, 404, "NOT_FOUND"],
-    ["URL 资源缺少地址", resource({ sourceType: "url", sourcePath: null }), 500, null],
-    ["上传资源缺少本地路径", resource({ sourcePath: null }), 500, null],
+    ["URL 资源缺少地址", resource({ sourceType: "url", sourcePath: null }), 400, "NO_LOCAL_FILE"],
+    ["上传资源缺少本地路径", resource({ sourcePath: null }), 400, "NO_LOCAL_FILE"],
   ])("资源导出文件边界：%s", async (_name, item, status, code) => {
     knowledgeResourceRepo.getById = mock(async () => item) as unknown as typeof knowledgeResourceRepo.getById;
     const response = await request("/knowledgeBases/kb-1/resources/resource-1/file");

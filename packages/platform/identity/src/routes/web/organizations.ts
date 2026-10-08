@@ -1,4 +1,5 @@
 import { type ActorContext, WebErrSchema } from "@fenix/platform-sdk";
+import { APIError } from "better-auth";
 import { Elysia } from "elysia";
 import type * as z from "zod/v4";
 import { getAuth } from "../../auth/better-auth";
@@ -88,8 +89,28 @@ interface OrgApi {
   }) => Promise<void>;
 }
 
+type OrganizationReadApi = Pick<OrgApi, "getFullOrganization" | "listMembers">;
+
 function orgApi(): OrgApi {
   return getAuth().api as unknown as OrgApi;
+}
+
+/** BetterAuth 的成员拒绝是 APIError；只转换其明确的权限/隐藏资源状态，其他异常继续上抛。 */
+export function organizationReadError(err: unknown) {
+  if (!(err instanceof APIError)) return null;
+  if (err.statusCode === 403) {
+    return {
+      status: 403 as const,
+      body: { success: false as const, error: { code: "FORBIDDEN", message: "Access denied" } },
+    };
+  }
+  if (err.statusCode === 404) {
+    return {
+      status: 404 as const,
+      body: { success: false as const, error: { code: "NOT_FOUND", message: "Organization not found" } },
+    };
+  }
+  return null;
 }
 
 type AuthStore = {
@@ -195,8 +216,9 @@ async function handleListOrganizations(
  *
  * 守卫由宿主注入：`authGuardPlugin` 提供的 `sessionAuth` macro 与 `store.authContext` 必须与宿主
  * 的认证解析是同一份实例，理由见 `../dependencies`。
+ * `readApi` 仅替换两个只读 BetterAuth 方法，以便验证拒绝异常在路由边界的 HTTP 映射。
  */
-export function createWebOrganizationsRoutes(deps: WebIdentityRouteDependencies) {
+export function createWebOrganizationsRoutes(deps: WebIdentityRouteDependencies, readApi?: OrganizationReadApi) {
   const memberManagement = new OrganizationMemberManagementFacade({});
   const app = new Elysia({ name: "web-organizations" }).use(deps.authGuardPlugin).model({
     "org-list-response": OrganizationListResponseSchema,
@@ -235,24 +257,32 @@ export function createWebOrganizationsRoutes(deps: WebIdentityRouteDependencies)
   // GET /web/organizations/:id → 获取组织详情（当前组织时含成员列表）
   app.get(
     "/organizations/:id",
-    async ({ params, request, store }) => {
-      const authStore = store as AuthStore;
-      const orgId = params.id;
-      const authCtx = authStore.authContext;
-      const isCurrentOrg = authCtx?.organizationId === orgId;
-      if (isCurrentOrg) {
-        const [org, members] = await Promise.all([
-          orgApi().getFullOrganization({ query: { organizationId: orgId }, headers: request.headers }),
-          orgApi().listMembers({ query: { organizationId: orgId }, headers: request.headers }),
-        ]);
-        const memberList = await enrichMembersWithPhoneNumbers(extractMembers(members));
-        return {
-          success: true as const,
-          data: serializeOrganizationDetail(org, memberList),
-        } satisfies OrganizationGetResponse;
+    async ({ params, request, store, error }) => {
+      try {
+        const api = readApi ?? orgApi();
+        const authStore = store as AuthStore;
+        const orgId = params.id;
+        const authCtx = authStore.authContext;
+        const isCurrentOrg = authCtx?.organizationId === orgId;
+        if (isCurrentOrg) {
+          const [org, members] = await Promise.all([
+            api.getFullOrganization({ query: { organizationId: orgId }, headers: request.headers }),
+            api.listMembers({ query: { organizationId: orgId }, headers: request.headers }),
+          ]);
+          const memberList = await enrichMembersWithPhoneNumbers(extractMembers(members));
+          return {
+            success: true as const,
+            data: serializeOrganizationDetail(org, memberList),
+          } satisfies OrganizationGetResponse;
+        }
+        const org = await api.getFullOrganization({ query: { organizationId: orgId }, headers: request.headers });
+        return { success: true as const, data: serializeOrganizationInfo(org) } satisfies OrganizationGetResponse;
+      } catch (err) {
+        const mapped = organizationReadError(err);
+        if (mapped?.status === 403) return error(403, mapped.body);
+        if (mapped?.status === 404) return error(404, mapped.body);
+        throw err;
       }
-      const org = await orgApi().getFullOrganization({ query: { organizationId: orgId }, headers: request.headers });
-      return { success: true as const, data: serializeOrganizationInfo(org) } satisfies OrganizationGetResponse;
     },
     {
       sessionAuth: true,
@@ -385,13 +415,20 @@ export function createWebOrganizationsRoutes(deps: WebIdentityRouteDependencies)
   // GET /web/organizations/:id/members → 获取成员列表
   app.get(
     "/organizations/:id/members",
-    async ({ params, request }) => {
-      const members = await orgApi().listMembers({
-        query: { organizationId: params.id },
-        headers: request.headers,
-      });
-      const memberData = await enrichMembersWithPhoneNumbers(extractMembers(members));
-      return { success: true as const, data: memberData.map(serializeMember) } satisfies MemberListResponse;
+    async ({ params, request, error }) => {
+      try {
+        const members = await (readApi ?? orgApi()).listMembers({
+          query: { organizationId: params.id },
+          headers: request.headers,
+        });
+        const memberData = await enrichMembersWithPhoneNumbers(extractMembers(members));
+        return { success: true as const, data: memberData.map(serializeMember) } satisfies MemberListResponse;
+      } catch (err) {
+        const mapped = organizationReadError(err);
+        if (mapped?.status === 403) return error(403, mapped.body);
+        if (mapped?.status === 404) return error(404, mapped.body);
+        throw err;
+      }
     },
     {
       sessionAuth: true,
@@ -399,6 +436,7 @@ export function createWebOrganizationsRoutes(deps: WebIdentityRouteDependencies)
         200: MemberListResponseSchema,
         400: WebErrSchema,
         403: WebErrSchema,
+        404: WebErrSchema,
         500: WebErrSchema,
       },
       detail: {

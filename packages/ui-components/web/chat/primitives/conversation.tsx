@@ -1,6 +1,6 @@
 import { ArrowDownIcon, UserIcon } from "lucide-react";
 import type { ComponentProps, ReactNode } from "react";
-import "./conversation-scroll.css";
+import "./conversation.css";
 import { useCallback } from "react";
 import { useTranslation } from "react-i18next";
 import { StickToBottom, useStickToBottomContext } from "use-stick-to-bottom";
@@ -82,10 +82,15 @@ export const ConversationScrollButton = ({ className, ...props }: ConversationSc
 
   return (
     <Button
-      // 尺寸/底色/阴影/backdrop 与 hover 配色在 `conversation-scroll.css`；
-      // 该表未分层，因此其 `padding-inline: 11px` 稳定压过 Button `size="sm"` 的 `has-[>svg]:px-2.5`。
+      // 底色/阴影/backdrop、`padding-inline` 与 hover 配色在 `conversation.css`；
+      // 该表未分层，因此其 `padding-inline: calc(var(--spacing) * 2.75)` 稳定压过 Button `size="sm"` 的
+      // `has-[>svg]:px-2.5`（后者特指度 (0,1,1) 且同在 `@layer utilities`，搬成 `px-2.75` 会被压回 10px，
+      // 故必须留在样式表）。高度/字号/基础色/悬停色四条扁平声明按刻度与色阶回到这里：`h-7.5` / `text-xs` /
+      // `text-slate-600` / `hover:text-slate-700` 由 `cn()` 的后置位置经 tailwind-merge 消解 Button 的
+      // `h-8` / `text-sm` / `hover:text-accent-foreground`，令牌层已把刻度按 px 落地（30px / 12px），
+      // 与原先由未分层声明取胜的结果一致。
       className={cn(
-        "chat-conversation-scroll-button w-auto gap-1.5 rounded-full border-0 font-medium hover:bg-white",
+        "chat-conversation-scroll-button w-auto h-7.5 text-xs text-slate-600 gap-1.5 rounded-full border-0 font-medium hover:bg-white hover:text-slate-700",
         className,
       )}
       onClick={handleScrollToBottom}
@@ -162,7 +167,8 @@ export const ConversationScrollButtons = ({
 
   return (
     <div
-      // 源 `conversation.css` 的 `.chat-scroll-navigation`：贴底居中，预留宿主浮动产物面板宽度。
+      // 源实现那张 `conversation.css`（阶段三已迁空删除的历史表，与同目录同名伴随表无关）的
+      // `.chat-scroll-navigation`：贴底居中，预留宿主浮动产物面板宽度。
       className={cn(
         "absolute bottom-3 left-[calc((100%-var(--chat-floating-artifacts-width,0px))/2)] z-[24] flex -translate-x-1/2",
         className,

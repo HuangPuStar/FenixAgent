@@ -11,6 +11,7 @@ import type { ClientConnection, SharedRelay, WsConnection } from "./connection-t
 import { type PendingInitialSync, synchronizeInitialDocs } from "./gateway-sync";
 import type { RelayEventHandler } from "./relay-event-handler";
 import type { SessionChannel, SessionConnection } from "./session-channel";
+import { failPendingSessionMutations, waitForSessionMutation } from "./session-mutation";
 
 const KEEPALIVE_INTERVAL = 30_000;
 /** session/list 轮询间隔（毫秒），用于同步 agent 侧 session 变更（仅保留心跳语义） */
@@ -390,6 +391,7 @@ export class Gateway {
     // 在途 prompt 登记随 relay 释放一并清空
     shared.pendingPromptIds?.clear();
     shared.pendingPromptTurns?.clear();
+    failPendingSessionMutations(shared);
     // 回放窗口定时器一并清理（同泄漏语义），窗口判定缓存随之重置
     if (shared.replayWindowTimer) {
       clearTimeout(shared.replayWindowTimer);
@@ -469,6 +471,10 @@ export class Gateway {
           if (!shared.pendingPromptTurns) shared.pendingPromptTurns = new Map();
           shared.pendingPromptTurns.set(rpcId, turnId);
         }
+      },
+      awaitSessionMutation: (rpcId) => {
+        if (!shared) return { completed: Promise.resolve(false), cancel: () => {} };
+        return waitForSessionMutation(shared, rpcId);
       },
     };
   }

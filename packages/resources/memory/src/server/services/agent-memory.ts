@@ -12,14 +12,21 @@ import { getHindsightConfig } from "./hindsight";
 // 禁止各自内联查表、解析 extra.plugin 或直读环境变量。
 // ────────────────────────────────────────────
 
-/** Hindsight 插件运行时默认参数（不存储于数据库，运行时动态构造） */
+/**
+ * Hindsight 插件运行时默认参数（不存储于数据库，运行时动态构造）。
+ *
+ * **刻意不写 `retainTags`**：插件默认值是 `['{session_id}']`（`src/lib/config.ts:115`），会话标签是
+ * `recallTags` 过滤能成立的前提——文档已写入就无法事后补打（同文件 :111-115 的注释）。托管文件是插件
+ * 配置的最高层，一旦在这里写 `retainTags: []`，会话标签会被对所有引擎静默关闭；需要限制标签时应由
+ * 平台显式给出非空集合。`dynamicBankId` / `bankIdPrefix` / `directoryBankMap` 等隔离键不在本表内，
+ * 由启动参数组装器在托管文件里单独钉死（见 `@fenix/agent-config` 的 `agent-launch-spec/memory-env`）。
+ */
 export const HINDSIGHT_PLUGIN_DEFAULTS: Record<string, unknown> = {
   autoRecall: true,
   autoRetain: true,
   recallBudget: "mid",
   recallTags: [],
   recallTagsMatch: "any",
-  retainTags: [],
   retainEveryNTurns: 3,
   debug: false,
 };

@@ -1,18 +1,16 @@
+import { ForbiddenError } from "@fenix/platform-sdk";
 import { Elysia } from "elysia";
+import { hindsightFacade } from "../../facades/hindsight-facade";
 import { HindsightStatusResponseSchema } from "../../schemas/hindsight.schema";
-import { getHindsightConfig, proxyToHindsight, resolveMemberId } from "../../services/hindsight";
 import type { WebHindsightRouteDependencies } from "../dependencies";
 
-/** 构造 Hindsight v1 bank 路径前缀：/v1/default/banks/{bankId} */
-const bankPath = (bankId: string) => `/v1/default/banks/${encodeURIComponent(bankId)}`;
-
 /**
- * 路径段编码：与 `bankPath` 里 bankId 的处理同口径。
+ * 路径段编码。
  *
  * 上游资源 id 与 bankId 一样是不可信输入，必须先编码再拼进 URL。不编码时有两层归一化会把路径改掉：
  * Elysia 会把 `%2f`、`%2e` 解码进 `params`，`proxyToHindsight` 又直接 `fetch(url + path)`，而 `fetch`
- * 会对拼接结果做点段归一化——`/v1/default/banks/{bank}/` 前缀因此可被 `../` 穿透，越权读写同一
- * Hindsight 主机上他人 bank 的记忆、文档、心智模型与实体。
+ * 会对拼接结果做点段归一化——bank 前缀因此可被 `../` 穿透，越权读写同一 Hindsight 主机上他人 bank 的
+ * 记忆、文档、心智模型与实体。
  *
  * 合法 id（UUID 等）编码后逐字不变，因此这是纯粹的收窄，不改变既有正常行为。
  */
@@ -33,13 +31,25 @@ const withQs = (base: string, query: Record<string, string>) => {
 const ok = <T>(data: T) => ({ success: true as const, data });
 
 /**
+ * 门面拒绝（actor 无法映射到 bank）→ 既有 403 信封；其余异常交给调用方按上游失败处理。
+ *
+ * 错误码字面量 `forbidden` 是既有对外契约（平台 `ForbiddenError` 的 `FORBIDDEN` 与之大小写不同，不能
+ * 直接透出），因此这里只取 message。
+ */
+function forbiddenResponse(err: unknown, error: (status: number, body: unknown) => Response): Response | null {
+  if (!(err instanceof ForbiddenError)) return null;
+  return error(403, { success: false, error: { code: "forbidden", message: err.message } });
+}
+
+/**
  * `/web/hindsight/**` 控制台路由工厂（17 条端点：status / graph / memories / documents / mental-models / entities）。
  *
  * 守卫由宿主注入（`deps.authGuardPlugin`）：Elysia 的 macro / state 是实例作用域的，父实例无法向
  * 已构造的子实例回填，本包不得 import `@server/plugins/auth`（否则离开宿主即无法构造与测试）。
  *
- * `/status` 在请求期读取模块配置；其余端点把请求透传到当前用户的 Hindsight bank，并在无法解析
- * bank 时返回 403、上游不可达时返回 503——两类失败都不回显上游错误内容。
+ * 路由只做协议适配：把路径参数与 query 拼成 bank 相对路径，交给 `hindsightFacade`（actor → bank 的解析与
+ * 拒绝语义都在门面里），并在无法解析 bank 时返回 403、上游不可达时返回 503——两类失败都不回显上游错误
+ * 内容。
  */
 export function createWebHindsightRoutes(deps: WebHindsightRouteDependencies) {
   const app = new Elysia({ name: "web-hindsight", prefix: "/hindsight" })
@@ -49,21 +59,12 @@ export function createWebHindsightRoutes(deps: WebHindsightRouteDependencies) {
     })
 
     // ── Status ──────────────────────────────────────────────
-    // 检查 Hindsight 配置状态，尝试解析 bankId
+    // 检查 Hindsight 配置状态，并在启用时解析当前 actor 的 bankId
     .get(
       "/status",
       async ({ store }) => {
-        const config = getHindsightConfig();
-        let bankId: string | null = null;
-        if (config && store.authContext) {
-          bankId = await resolveMemberId(store.authContext);
-        }
-        return {
-          success: true as const,
-          data: config
-            ? ({ enabled: true as const, url: config.url, bankId } as const)
-            : ({ enabled: false as const } as const),
-        };
+        const status = await hindsightFacade.status(store.authContext ?? null);
+        return { success: true as const, data: status };
       },
       {
         sessionAuth: true,
@@ -81,13 +82,15 @@ export function createWebHindsightRoutes(deps: WebHindsightRouteDependencies) {
     .get(
       "/graph",
       async ({ query, store, error }) => {
-        const bankId = await resolveMemberId(store.authContext!);
-        if (!bankId)
-          return error(403, { success: false, error: { code: "forbidden", message: "Cannot resolve bank ID" } });
         try {
-          const res = await proxyToHindsight(withQs(`${bankPath(bankId)}/graph`, query as Record<string, string>));
+          const res = await hindsightFacade.proxy(
+            store.authContext!,
+            withQs("/graph", query as Record<string, string>),
+          );
           return ok(await res.json());
         } catch (err) {
+          const denied = forbiddenResponse(err, error);
+          if (denied) return denied;
           console.error("[hindsight] GET /graph proxy failed:", err);
           return error(503, {
             success: false,
@@ -109,13 +112,12 @@ export function createWebHindsightRoutes(deps: WebHindsightRouteDependencies) {
     .get(
       "/bank-stats",
       async ({ store, error }) => {
-        const bankId = await resolveMemberId(store.authContext!);
-        if (!bankId)
-          return error(403, { success: false, error: { code: "forbidden", message: "Cannot resolve bank ID" } });
         try {
-          const res = await proxyToHindsight(`${bankPath(bankId)}/stats`);
+          const res = await hindsightFacade.proxy(store.authContext!, "/stats");
           return ok(await res.json());
         } catch (err) {
+          const denied = forbiddenResponse(err, error);
+          if (denied) return denied;
           console.error("[hindsight] GET /bank-stats proxy failed:", err);
           return error(503, {
             success: false,
@@ -138,15 +140,15 @@ export function createWebHindsightRoutes(deps: WebHindsightRouteDependencies) {
     .get(
       "/memories",
       async ({ query, store, error }) => {
-        const bankId = await resolveMemberId(store.authContext!);
-        if (!bankId)
-          return error(403, { success: false, error: { code: "forbidden", message: "Cannot resolve bank ID" } });
         try {
-          const res = await proxyToHindsight(
-            withQs(`${bankPath(bankId)}/memories/list`, query as Record<string, string>),
+          const res = await hindsightFacade.proxy(
+            store.authContext!,
+            withQs("/memories/list", query as Record<string, string>),
           );
           return ok(await res.json());
         } catch (err) {
+          const denied = forbiddenResponse(err, error);
+          if (denied) return denied;
           console.error("[hindsight] GET /memories proxy failed:", err);
           return error(503, {
             success: false,
@@ -168,13 +170,34 @@ export function createWebHindsightRoutes(deps: WebHindsightRouteDependencies) {
     .get(
       "/memories/:id",
       async ({ params, store, error }) => {
-        const bankId = await resolveMemberId(store.authContext!);
-        if (!bankId)
-          return error(403, { success: false, error: { code: "forbidden", message: "Cannot resolve bank ID" } });
         try {
-          const res = await proxyToHindsight(`${bankPath(bankId)}/memories/${segment(params.id)}`);
-          return ok(await res.json());
+          const res = await hindsightFacade.proxy(store.authContext!, `/memories/${segment(params.id)}`);
+          // Hindsight 的 404 响应带有 { detail: "not found" }；不可再包进成功信封。
+          if (res.status === 404) {
+            return error(404, {
+              success: false,
+              error: { code: "not_found", message: "Memory not found" },
+            });
+          }
+          if (!res.ok) {
+            console.error("[hindsight] GET /memories/:id upstream failed:", res.status);
+            return error(503, {
+              success: false,
+              error: { code: "service_unavailable", message: "Hindsight service unavailable" },
+            });
+          }
+          const detail: unknown = await res.json();
+          // 部分 Hindsight 版本把不存在的记录以 200 + detail 表示，仍需恢复为资源缺失语义。
+          if (detail !== null && typeof detail === "object" && "detail" in detail && detail.detail === "not found") {
+            return error(404, {
+              success: false,
+              error: { code: "not_found", message: "Memory not found" },
+            });
+          }
+          return ok(detail);
         } catch (err) {
+          const denied = forbiddenResponse(err, error);
+          if (denied) return denied;
           console.error("[hindsight] GET /memories/:id proxy failed:", err);
           return error(503, {
             success: false,
@@ -196,15 +219,14 @@ export function createWebHindsightRoutes(deps: WebHindsightRouteDependencies) {
     .delete(
       "/memories/:id",
       async ({ params, store, error }) => {
-        const bankId = await resolveMemberId(store.authContext!);
-        if (!bankId)
-          return error(403, { success: false, error: { code: "forbidden", message: "Cannot resolve bank ID" } });
         try {
-          const res = await proxyToHindsight(`${bankPath(bankId)}/memories/${segment(params.id)}`, {
+          const res = await hindsightFacade.proxy(store.authContext!, `/memories/${segment(params.id)}`, {
             method: "DELETE",
           });
           return ok(await res.json());
         } catch (err) {
+          const denied = forbiddenResponse(err, error);
+          if (denied) return denied;
           console.error("[hindsight] DELETE /memories/:id proxy failed:", err);
           return error(503, {
             success: false,
@@ -226,17 +248,16 @@ export function createWebHindsightRoutes(deps: WebHindsightRouteDependencies) {
     .post(
       "/memories",
       async ({ body, store, error }) => {
-        const bankId = await resolveMemberId(store.authContext!);
-        if (!bankId)
-          return error(403, { success: false, error: { code: "forbidden", message: "Cannot resolve bank ID" } });
         try {
-          const res = await proxyToHindsight(`${bankPath(bankId)}/memories`, {
+          const res = await hindsightFacade.proxy(store.authContext!, "/memories", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify(body),
           });
           return ok(await res.json());
         } catch (err) {
+          const denied = forbiddenResponse(err, error);
+          if (denied) return denied;
           console.error("[hindsight] POST /memories proxy failed:", err);
           return error(503, {
             success: false,
@@ -259,17 +280,16 @@ export function createWebHindsightRoutes(deps: WebHindsightRouteDependencies) {
     .post(
       "/recall",
       async ({ body, store, error }) => {
-        const bankId = await resolveMemberId(store.authContext!);
-        if (!bankId)
-          return error(403, { success: false, error: { code: "forbidden", message: "Cannot resolve bank ID" } });
         try {
-          const res = await proxyToHindsight(`${bankPath(bankId)}/memories/recall`, {
+          const res = await hindsightFacade.proxy(store.authContext!, "/memories/recall", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify(body),
           });
           return ok(await res.json());
         } catch (err) {
+          const denied = forbiddenResponse(err, error);
+          if (denied) return denied;
           console.error("[hindsight] POST /recall proxy failed:", err);
           return error(503, {
             success: false,
@@ -291,17 +311,16 @@ export function createWebHindsightRoutes(deps: WebHindsightRouteDependencies) {
     .post(
       "/reflect",
       async ({ body, store, error }) => {
-        const bankId = await resolveMemberId(store.authContext!);
-        if (!bankId)
-          return error(403, { success: false, error: { code: "forbidden", message: "Cannot resolve bank ID" } });
         try {
-          const res = await proxyToHindsight(`${bankPath(bankId)}/reflect`, {
+          const res = await hindsightFacade.proxy(store.authContext!, "/reflect", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify(body),
           });
           return ok(await res.json());
         } catch (err) {
+          const denied = forbiddenResponse(err, error);
+          if (denied) return denied;
           console.error("[hindsight] POST /reflect proxy failed:", err);
           return error(503, {
             success: false,
@@ -324,13 +343,15 @@ export function createWebHindsightRoutes(deps: WebHindsightRouteDependencies) {
     .get(
       "/documents",
       async ({ query, store, error }) => {
-        const bankId = await resolveMemberId(store.authContext!);
-        if (!bankId)
-          return error(403, { success: false, error: { code: "forbidden", message: "Cannot resolve bank ID" } });
         try {
-          const res = await proxyToHindsight(withQs(`${bankPath(bankId)}/documents`, query as Record<string, string>));
+          const res = await hindsightFacade.proxy(
+            store.authContext!,
+            withQs("/documents", query as Record<string, string>),
+          );
           return ok(await res.json());
         } catch (err) {
+          const denied = forbiddenResponse(err, error);
+          if (denied) return denied;
           console.error("[hindsight] GET /documents proxy failed:", err);
           return error(503, {
             success: false,
@@ -352,9 +373,6 @@ export function createWebHindsightRoutes(deps: WebHindsightRouteDependencies) {
     .post(
       "/documents",
       async ({ body, store, error }) => {
-        const bankId = await resolveMemberId(store.authContext!);
-        if (!bankId)
-          return error(403, { success: false, error: { code: "forbidden", message: "Cannot resolve bank ID" } });
         try {
           // Elysia 自动解析 multipart body，重构 FormData 转发给 Hindsight
           const fd = new FormData();
@@ -366,12 +384,14 @@ export function createWebHindsightRoutes(deps: WebHindsightRouteDependencies) {
               fd.append(key, value);
             }
           }
-          const res = await proxyToHindsight(`${bankPath(bankId)}/documents`, {
+          const res = await hindsightFacade.proxy(store.authContext!, "/documents", {
             method: "POST",
             body: fd,
           });
           return ok(await res.json());
         } catch (err) {
+          const denied = forbiddenResponse(err, error);
+          if (denied) return denied;
           console.error("[hindsight] POST /documents proxy failed:", err);
           return error(503, {
             success: false,
@@ -394,15 +414,14 @@ export function createWebHindsightRoutes(deps: WebHindsightRouteDependencies) {
     .delete(
       "/documents/:id",
       async ({ params, store, error }) => {
-        const bankId = await resolveMemberId(store.authContext!);
-        if (!bankId)
-          return error(403, { success: false, error: { code: "forbidden", message: "Cannot resolve bank ID" } });
         try {
-          const res = await proxyToHindsight(`${bankPath(bankId)}/documents/${segment(params.id)}`, {
+          const res = await hindsightFacade.proxy(store.authContext!, `/documents/${segment(params.id)}`, {
             method: "DELETE",
           });
           return ok(await res.json());
         } catch (err) {
+          const denied = forbiddenResponse(err, error);
+          if (denied) return denied;
           console.error("[hindsight] DELETE /documents/:id proxy failed:", err);
           return error(503, {
             success: false,
@@ -424,15 +443,15 @@ export function createWebHindsightRoutes(deps: WebHindsightRouteDependencies) {
     .get(
       "/documents/:id/chunks",
       async ({ params, query, store, error }) => {
-        const bankId = await resolveMemberId(store.authContext!);
-        if (!bankId)
-          return error(403, { success: false, error: { code: "forbidden", message: "Cannot resolve bank ID" } });
         try {
-          const res = await proxyToHindsight(
-            withQs(`${bankPath(bankId)}/documents/${segment(params.id)}/chunks`, query as Record<string, string>),
+          const res = await hindsightFacade.proxy(
+            store.authContext!,
+            withQs(`/documents/${segment(params.id)}/chunks`, query as Record<string, string>),
           );
           return ok(await res.json());
         } catch (err) {
+          const denied = forbiddenResponse(err, error);
+          if (denied) return denied;
           console.error("[hindsight] GET /documents/:id/chunks proxy failed:", err);
           return error(503, {
             success: false,
@@ -455,13 +474,12 @@ export function createWebHindsightRoutes(deps: WebHindsightRouteDependencies) {
     .get(
       "/mental-models",
       async ({ store, error }) => {
-        const bankId = await resolveMemberId(store.authContext!);
-        if (!bankId)
-          return error(403, { success: false, error: { code: "forbidden", message: "Cannot resolve bank ID" } });
         try {
-          const res = await proxyToHindsight(`${bankPath(bankId)}/mental-models`);
+          const res = await hindsightFacade.proxy(store.authContext!, "/mental-models");
           return ok(await res.json());
         } catch (err) {
+          const denied = forbiddenResponse(err, error);
+          if (denied) return denied;
           console.error("[hindsight] GET /mental-models proxy failed:", err);
           return error(503, {
             success: false,
@@ -483,13 +501,12 @@ export function createWebHindsightRoutes(deps: WebHindsightRouteDependencies) {
     .get(
       "/mental-models/:id",
       async ({ params, store, error }) => {
-        const bankId = await resolveMemberId(store.authContext!);
-        if (!bankId)
-          return error(403, { success: false, error: { code: "forbidden", message: "Cannot resolve bank ID" } });
         try {
-          const res = await proxyToHindsight(`${bankPath(bankId)}/mental-models/${segment(params.id)}`);
+          const res = await hindsightFacade.proxy(store.authContext!, `/mental-models/${segment(params.id)}`);
           return ok(await res.json());
         } catch (err) {
+          const denied = forbiddenResponse(err, error);
+          if (denied) return denied;
           console.error("[hindsight] GET /mental-models/:id proxy failed:", err);
           return error(503, {
             success: false,
@@ -511,15 +528,14 @@ export function createWebHindsightRoutes(deps: WebHindsightRouteDependencies) {
     .delete(
       "/mental-models/:id",
       async ({ params, store, error }) => {
-        const bankId = await resolveMemberId(store.authContext!);
-        if (!bankId)
-          return error(403, { success: false, error: { code: "forbidden", message: "Cannot resolve bank ID" } });
         try {
-          const res = await proxyToHindsight(`${bankPath(bankId)}/mental-models/${segment(params.id)}`, {
+          const res = await hindsightFacade.proxy(store.authContext!, `/mental-models/${segment(params.id)}`, {
             method: "DELETE",
           });
           return ok(await res.json());
         } catch (err) {
+          const denied = forbiddenResponse(err, error);
+          if (denied) return denied;
           console.error("[hindsight] DELETE /mental-models/:id proxy failed:", err);
           return error(503, {
             success: false,
@@ -542,13 +558,15 @@ export function createWebHindsightRoutes(deps: WebHindsightRouteDependencies) {
     .get(
       "/entities",
       async ({ query, store, error }) => {
-        const bankId = await resolveMemberId(store.authContext!);
-        if (!bankId)
-          return error(403, { success: false, error: { code: "forbidden", message: "Cannot resolve bank ID" } });
         try {
-          const res = await proxyToHindsight(withQs(`${bankPath(bankId)}/entities`, query as Record<string, string>));
+          const res = await hindsightFacade.proxy(
+            store.authContext!,
+            withQs("/entities", query as Record<string, string>),
+          );
           return ok(await res.json());
         } catch (err) {
+          const denied = forbiddenResponse(err, error);
+          if (denied) return denied;
           console.error("[hindsight] GET /entities proxy failed:", err);
           return error(503, {
             success: false,
@@ -570,13 +588,12 @@ export function createWebHindsightRoutes(deps: WebHindsightRouteDependencies) {
     .get(
       "/entities/:id",
       async ({ params, store, error }) => {
-        const bankId = await resolveMemberId(store.authContext!);
-        if (!bankId)
-          return error(403, { success: false, error: { code: "forbidden", message: "Cannot resolve bank ID" } });
         try {
-          const res = await proxyToHindsight(`${bankPath(bankId)}/entities/${segment(params.id)}`);
+          const res = await hindsightFacade.proxy(store.authContext!, `/entities/${segment(params.id)}`);
           return ok(await res.json());
         } catch (err) {
+          const denied = forbiddenResponse(err, error);
+          if (denied) return denied;
           console.error("[hindsight] GET /entities/:id proxy failed:", err);
           return error(503, {
             success: false,
@@ -598,15 +615,15 @@ export function createWebHindsightRoutes(deps: WebHindsightRouteDependencies) {
     .get(
       "/entities/graph",
       async ({ query, store, error }) => {
-        const bankId = await resolveMemberId(store.authContext!);
-        if (!bankId)
-          return error(403, { success: false, error: { code: "forbidden", message: "Cannot resolve bank ID" } });
         try {
-          const res = await proxyToHindsight(
-            withQs(`${bankPath(bankId)}/entities/graph`, query as Record<string, string>),
+          const res = await hindsightFacade.proxy(
+            store.authContext!,
+            withQs("/entities/graph", query as Record<string, string>),
           );
           return ok(await res.json());
         } catch (err) {
+          const denied = forbiddenResponse(err, error);
+          if (denied) return denied;
           console.error("[hindsight] GET /entities/graph proxy failed:", err);
           return error(503, {
             success: false,

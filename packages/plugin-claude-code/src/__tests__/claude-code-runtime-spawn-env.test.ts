@@ -6,7 +6,7 @@ import { join } from "node:path";
 import type { AgentLaunchSpec } from "@fenix/plugin-sdk";
 import { createClaudeCodeRuntime } from "../runtime/claude-code-runtime";
 
-/** 最小 LaunchSpec；workspace 由 organizationId / userId / environmentId 拼出，故用临时目录做根。 */
+/** 最小 LaunchSpec；workspace 由注入的根目录与组织/用户/环境三段拼出。 */
 function createSpec(organizationId: string): AgentLaunchSpec {
   return {
     organizationId,
@@ -49,12 +49,12 @@ describe("Claude Code runtime spawn 环境白名单", () => {
     });
 
     try {
-      const runtime = createClaudeCodeRuntime();
-      await runtime.prepareEnvironment({ instanceId: "inst-env", launchSpec: createSpec(root) });
+      const runtime = createClaudeCodeRuntime({ workspaceRoot: root });
+      await runtime.prepareEnvironment({ instanceId: "inst-env", launchSpec: createSpec("org-test") });
       await runtime.startInstance({ instanceId: "inst-env" });
       const env = options[0]?.env as NodeJS.ProcessEnv;
 
-      expect(options[0]?.cwd).toBe(join(root, "user-test", "env-test"));
+      expect(options[0]?.cwd).toBe(join(root, "org-test", "user-test", "env-test"));
       expect(env.ACP_ENGINE_TYPE).toBe("claude-code");
       expect(env).not.toHaveProperty("DATABASE_URL");
       expect(env).not.toHaveProperty("RCS_API_KEYS");
@@ -83,8 +83,8 @@ describe("Claude Code runtime spawn 环境白名单", () => {
     });
 
     try {
-      const runtime = createClaudeCodeRuntime();
-      await runtime.prepareEnvironment({ instanceId: "inst-model", launchSpec: createSpec(root) });
+      const runtime = createClaudeCodeRuntime({ workspaceRoot: root });
+      await runtime.prepareEnvironment({ instanceId: "inst-model", launchSpec: createSpec("org-test") });
       await runtime.startInstance({ instanceId: "inst-model" });
       const env = options[0]?.env as NodeJS.ProcessEnv;
 

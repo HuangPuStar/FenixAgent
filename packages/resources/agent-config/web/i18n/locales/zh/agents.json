@@ -231,6 +231,122 @@
       "unknownName": "未知站点"
     }
   },
+  "siteDeployment": {
+    "title": "应用部署",
+    "subtitle": "把 Agent 能力发布为可访问的站点，并管理访问范围与安全令牌。",
+    "toolbarLabel": "应用搜索与可见性筛选",
+    "search": "搜索应用、远程 ID 或创建者",
+    "creator": "创建者",
+    "visibility": {
+      "label": "访问范围",
+      "all": "全部",
+      "private": "仅自己",
+      "org": "组织内",
+      "authenticated": "已登录",
+      "public": "公开"
+    },
+    "directory": {
+      "title": "已部署应用",
+      "summary": "当前显示 {{count}} 个应用",
+      "noDescription": "暂无应用说明"
+    },
+    "status": {
+      "published": "已发布"
+    },
+    "empty": "暂无已部署应用",
+    "emptySearch": "没有匹配的应用",
+    "emptyHint": "创建应用后即可获得独立访问入口。",
+    "actions": {
+      "create": "新建应用",
+      "open": "打开",
+      "edit": "编辑",
+      "delete": "删除",
+      "rotateToken": "重签 Token",
+      "more": "更多应用操作",
+      "retry": "重试"
+    },
+    "pagination": {
+      "label": "应用分页",
+      "previous": "上一页",
+      "next": "下一页"
+    },
+    "dialog": {
+      "createTitle": "新建应用",
+      "editTitle": "编辑应用",
+      "deleteTitle": "确认删除",
+      "deleteDescription": "确认删除应用「{{name}}」？此操作会同时删除远程应用，且不可撤销。"
+    },
+    "form": {
+      "name": "名称",
+      "namePlaceholder": "例如 my-app",
+      "description": "描述",
+      "descriptionPlaceholder": "可选描述"
+    },
+    "toast": {
+      "created": "应用创建成功",
+      "updated": "应用已更新",
+      "deleted": "应用已删除",
+      "tokenRotated": "Token 已重签"
+    },
+    "errors": {
+      "load": "应用列表加载失败",
+      "loadHint": "请重试；若持续失败，请联系组织管理员。",
+      "save": "保存应用失败",
+      "delete": "删除应用失败",
+      "rotate": "重签 Token 失败",
+      "nameRequired": "名称不能为空",
+      "creatorInactive": "创建该应用的智能体暂未激活",
+      "creatorNavigation": "无法打开创建者"
+    }
+  },
+  "panelMode": {
+    "sitesTabAriaLabel": "站点选择栏",
+    "mountSite": "挂载站点",
+    "mountSiteAriaLabel": "挂载站点",
+    "unmountSite": "卸载",
+    "unmountSiteAriaLabel": "卸载站点",
+    "mountDialogTitle": "挂载站点",
+    "mountDialogHint": "选择要挂载到此 Agent 的站点",
+    "mountDialogConfirm": "挂载 {{count}}",
+    "mountDialogConfirmNone": "挂载",
+    "noAvailableSites": "没有可挂载的站点",
+    "mountSuccess": "已挂载 {{count}} 个站点",
+    "mountFailed": "挂载失败",
+    "unmountFailed": "卸载失败",
+    "sitesLoadFailed": "加载站点列表失败",
+    "retry": "重试"
+  },
+  "siteFrame": {
+    "createdBy": "创建者：{{name}}",
+    "share": "分享",
+    "reload": "刷新站点",
+    "openInNewTab": "在新标签页打开",
+    "loading": "加载站点中...",
+    "loadTimeout": "站点加载超时",
+    "loadTimeoutHint": "站点可能在后台继续加载，可刷新重试或在新标签页打开",
+    "traceToCreatorTooltip": "切换到创建此站点的智能体",
+    "traceToCreatorNotFound": "该智能体暂未激活，无法跳转",
+    "navigateFailed": "跳转失败",
+    "notCreatorTooltip": "此站点由其他智能体创建，你只能操作数据，无法修改站点文件。点击溯源切换到创建者智能体。"
+  },
+  "restarting": "重启中...",
+  "restartConfirm": "重启选中",
+  "restartLater": "稍后",
+  "configSavedRestartTitle": "配置已保存",
+  "configSavedRestartDescription": "配置已保存，需要重启智能体实例才能生效。是否立即重启？",
+  "restartSuccess": "实例已重启",
+  "restartFailedSaved": "配置已保存，但重启失败",
+  "noInstancesToRestart": "没有运行中的实例可重启",
+  "restartTitle": "重启智能体实例",
+  "restartDescription": "选择需要重启的实例。配置更改需要重启才能生效。",
+  "selectAll": "全选",
+  "restartFailed": "重启失败",
+  "stopSuccess": "实例已停止",
+  "stopInstanceFailed": "停止实例失败",
+  "deleteAgentTitle": "删除智能体",
+  "deleteAgentConfirm": "确定要删除智能体 \"{{name}}\" 吗？此操作不可撤销。",
+  "deleteSuccess": "智能体已删除",
+  "deleteFailed": "删除智能体失败",
   "memory": {
     "enableTitle": "智能体记忆",
     "enableDescription": "启用跨会话记忆能力"

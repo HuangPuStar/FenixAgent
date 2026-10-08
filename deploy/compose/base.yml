@@ -1,0 +1,92 @@
+# 基础编排：本仓主服务进程 + 它自己的数据库与缓存。
+#
+# 为什么这一层是手写的：主服务进程不是模块——`apps/*` 的 manifest 只允许 `kind: "web-shell"`，
+# 而 `DATABASE_URL` / `RCS_REDIS_URL` 是宿主自有键（apps/server/src/env.ts）。模块的依赖服务在
+# `overlays/` 里（生成物，由 scripts/release.ts 从各模块 manifest 派生），两者用 `-f` 叠加。
+#
+# 用法（cwd = 仓库根）：
+#   docker compose -f deploy/compose/base.yml up -d --build                 # 主服务 + 必需依赖
+#   docker compose -f deploy/compose/base.yml --profile redis up -d         # 额外启用 Redis
+#   docker compose -f deploy/compose/base.yml -f deploy/compose/overlays/knowledge.yml up -d
+#
+# 相对路径按 compose 项目目录（本文件所在目录）解析，因此仓库根一律写作 `../..`。
+
+services:
+  postgres:
+    # 必需依赖：DATABASE_URL 在宿主 schema 里是必填且无默认值，缺失即启动失败。
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: rcs
+      POSTGRES_PASSWORD: rcs
+      POSTGRES_DB: rcs
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U rcs"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    # 可选依赖（`--profile redis` 才启动）：未配置 RCS_REDIS_URL 时缓存回退进程内 Map、
+    # Y.Doc 快照不做持久化；生产也可改为指向外部托管 Redis，本服务不是必选项。
+    image: redis:7-alpine
+    profiles: ["redis"]
+    restart: unless-stopped
+    command: ["redis-server", "--appendonly", "yes"]
+    volumes:
+      - redis-data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  rcs:
+    # 本仓主服务进程。默认从当前源码构建并打本地 tag；发布部署用 FENIX_RCS_IMAGE 指向已推送的镜像。
+    image: ${FENIX_RCS_IMAGE:-fenixagent:local}
+    build:
+      context: ../..
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    # 可选配置的传入通道（与仓库根 `docker-compose.yml` 同口径）；必填键缺失会在启动期明确失败。
+    env_file:
+      - path: ../../.env
+        required: false
+    environment:
+      LOG_FORMAT: json
+      RCS_HOST: 0.0.0.0
+      RCS_PORT: 3000
+      RCS_BASE_URL: ${RCS_BASE_URL:-http://localhost:3001}
+      DATABASE_URL: postgres://rcs:rcs@postgres:5432/rcs
+    depends_on:
+      postgres:
+        condition: service_healthy
+    ports:
+      - "${RCS_PUBLISHED_PORT:-3001}:3000"
+    volumes:
+      - ../../data:/app/data
+      - ../../workspaces:/app/workspaces
+      - ../../workflow:/app/workflow
+      # peri 全局目录（插件与 CLI 配置）持久化到命名卷，与 Dockerfile 声明的 VOLUME /root/.peri 对应。
+      - rcs-peri-home:/root/.peri
+    # DDL 迁移先于应用进程；数据迁移不在启动命令里。
+    command: ["sh", "-lc", "bun migrate.js && exec bun --no-install run dist/index.js"]
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "bun",
+          "-e",
+          "fetch('http://127.0.0.1:3000/health').then((r) => r.ok ? process.exit(0) : process.exit(1)).catch(() => process.exit(1))",
+        ]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
+
+volumes:
+  postgres-data:
+  redis-data:
+  rcs-peri-home:

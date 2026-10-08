@@ -33,6 +33,7 @@
     "@fenix/platform-sdk": "workspace:*",
     "@fenix/resource-task": "workspace:*",
     "@fenix/resource-workflow": "workspace:*",
+    "@fenix/resource-workflow-v2": "workspace:*",
     "@keyv/redis": "^5.1.6",
     "drizzle-orm": "^0.45.2",
     "elysia": "^1.4.28",

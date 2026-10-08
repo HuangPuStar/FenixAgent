@@ -16,7 +16,8 @@ import { AgentSitesCatalog, type SiteVisibilityFilter } from "./agent-sites-cata
 const PAGE_SIZE = 20;
 
 export function AgentSitesPage() {
-  const { t } = useTranslation(NS.AGENT_PANEL);
+  // `siteDeployment.*` 键随台账 D4 从宿主 `agentPanel` 字典迁入本包 `agents`。
+  const { t } = useTranslation(NS.AGENTS);
   const navigate = useNavigate();
   const [query, setQuery] = useState("");
   const [visibility, setVisibility] = useState<SiteVisibilityFilter>("all");

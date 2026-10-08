@@ -126,7 +126,25 @@ export class ProcessExecutor implements NodeExecutor {
           next_delay_ms: delay,
         });
 
-        await new Promise((resolve) => setTimeout(resolve, delay));
+        await new Promise<void>((resolve, reject) => {
+          const onAbort = () => {
+            clearTimeout(timer);
+            signal.removeEventListener("abort", onAbort);
+            reject(
+              new WorkflowError(
+                ctx.signal.aborted ? "Node cancelled" : "Node timed out",
+                ctx.signal.aborted ? WorkflowErrorCode.DAG_CANCELLED : WorkflowErrorCode.NODE_TIMEOUT,
+                { node_id: node.id },
+              ),
+            );
+          };
+          const timer = setTimeout(() => {
+            signal.removeEventListener("abort", onAbort);
+            resolve();
+          }, delay);
+          signal.addEventListener("abort", onAbort, { once: true });
+          if (signal.aborted) onAbort();
+        });
       }
 
       try {
@@ -157,62 +175,103 @@ export class ProcessExecutor implements NodeExecutor {
     ctx: NodeExecutionContext,
     signal: AbortSignal,
   ): Promise<NodeOutput> {
+    if (signal.aborted) {
+      throw new WorkflowError(
+        ctx.signal.aborted ? "Node cancelled" : "Node timed out",
+        ctx.signal.aborted ? WorkflowErrorCode.DAG_CANCELLED : WorkflowErrorCode.NODE_TIMEOUT,
+        { node_id: node.id },
+      );
+    }
     // 发射 node.started 事件
     const subprocess = Bun.spawn(command, {
       cwd,
+      detached: process.platform !== "win32",
       // spawn 边界再收敛一次：即使上游合并逻辑变化，非白名单键也不会进入子进程
       env: buildWorkflowNodeEnv(env),
       stdout: "pipe",
       stderr: "pipe",
     });
 
-    // 信号中止时杀掉子进程
-    const onAbort = () => subprocess.kill("SIGKILL");
+    const killParent = () => {
+      try {
+        subprocess.kill("SIGKILL");
+      } catch (error) {
+        if (subprocess.exitCode === null) console.error("[workflow] Failed to stop shell process", error);
+      }
+    };
+    let stopRequested = false;
+    const stopProcessTree = () => {
+      if (stopRequested) return;
+      stopRequested = true;
+      if (process.platform === "win32") {
+        try {
+          const killer = Bun.spawn(["taskkill", "/PID", String(subprocess.pid), "/T", "/F"], {
+            stdout: "ignore",
+            stderr: "ignore",
+          });
+          void killer.exited
+            .then((code) => {
+              if (code !== 0) killParent();
+            })
+            .catch(killParent);
+          return;
+        } catch {
+          killParent();
+          return;
+        }
+      }
+      try {
+        process.kill(-subprocess.pid, "SIGKILL");
+      } catch {
+        killParent();
+      }
+    };
+    const onAbort = () => stopProcessTree();
     signal.addEventListener("abort", onAbort, { once: true });
+    if (signal.aborted) onAbort();
 
-    await this.emitEvent(ctx, "node.started", node, {
-      inputs: ctx.resolvedInputs,
-      pid: subprocess.pid,
-    });
-
-    // 收集 stdout
     const stdoutChunks: Uint8Array[] = [];
-    const stdoutReader = subprocess.stdout.getReader();
-
-    // 收集 stderr（异步，有大小限制）
     const stderrChunks: Uint8Array[] = [];
     let stderrSize = 0;
     let stderrExceeded = false;
-    const stderrReader = subprocess.stderr.getReader();
+    let exitCode: number;
+    try {
+      await this.emitEvent(ctx, "node.started", node, {
+        inputs: ctx.resolvedInputs,
+        pid: subprocess.pid,
+      });
 
-    const stderrPromise = (async () => {
-      while (true) {
-        const { done, value } = await stderrReader.read();
-        if (done) break;
-        stderrChunks.push(value);
-        stderrSize += value.byteLength;
-        if (stderrSize > MAX_STDERR_SIZE) {
-          stderrExceeded = true;
-          subprocess.kill("SIGKILL");
-          break;
-        }
-      }
-    })();
-
-    // 读取 stdout
-    while (true) {
-      const { done, value } = await stdoutReader.read();
-      if (done) break;
-      stdoutChunks.push(value);
+      const stdoutReader = subprocess.stdout.getReader();
+      const stderrReader = subprocess.stderr.getReader();
+      await Promise.all([
+        (async () => {
+          while (true) {
+            const { done, value } = await stdoutReader.read();
+            if (done) break;
+            stdoutChunks.push(value);
+          }
+        })(),
+        (async () => {
+          while (true) {
+            const { done, value } = await stderrReader.read();
+            if (done) break;
+            stderrChunks.push(value);
+            stderrSize += value.byteLength;
+            if (stderrSize > MAX_STDERR_SIZE) {
+              stderrExceeded = true;
+              stopProcessTree();
+              break;
+            }
+          }
+        })(),
+      ]);
+      exitCode = await subprocess.exited;
+    } catch (error) {
+      stopProcessTree();
+      throw error;
+    } finally {
+      signal.removeEventListener("abort", onAbort);
     }
-
-    // 等待 stderr 收集完成
-    await stderrPromise;
-
-    signal.removeEventListener("abort", onAbort);
-
-    // 等待进程退出
-    const exitCode = await subprocess.exited;
 
     // stderr 超限
     if (stderrExceeded) {

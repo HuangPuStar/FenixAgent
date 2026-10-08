@@ -150,7 +150,8 @@ describe("chat 样式迁移：Agent 工牌卡", () => {
     expect(badge).toContain('data-badge-name="Code Agent"');
     expect(badge).toContain('data-slot="agent-badge"');
     // 骨架屏动画：`@keyframes` 仍在 CSS，按名引用它的 `animation` 随样式下沉搬进了 `shell/AgentBadge.css`
-    // （任意值写法 `animate-[…]` 已被 FCP-WEB-02 禁止，JSX 侧只剩语义类）。
+    // （任意值写法 animate-[ … ] 已被 FCP-WEB-02 禁止，JSX 侧只剩语义类）。
+    // 注：注释里不逐字写候选类名——Tailwind 会扫描（含 `__tests__` 的）ts/tsx 文本，逐字候选会进产物生成死规则。
     expect(classTokens(skeleton)).toContain("agent-badge-skeleton-pulse");
     expect(readFileSync(join(CHAT_DIR, "shell", "AgentBadge.css"), "utf8")).toContain("animation: agent-badge-pulse");
   });
@@ -178,10 +179,20 @@ describe("chat 样式迁移：CSS 文件台账", () => {
     ]) {
       expect(existsSync(join(CSS_DIR, file))).toBe(false);
     }
-    // 组件自导入的两片（阶段三删除）
-    for (const file of ["primitives/conversation.css", "primitives/chat-message-content.css"]) {
-      expect(existsSync(join(CHAT_DIR, file))).toBe(false);
-    }
+    // 组件自导入的旧片（阶段三删除）：`chat-message-content.css` 仍是「不得复活」。
+    // `primitives/conversation.css` 这个名字在 2026-09-28 被**新表**复用——滚动按钮的伴随表由
+    // `conversation-scroll.css` 更名为 `conversation.css`（为与兄弟 `conversation.tsx` 同目录同名）。
+    // 守卫意图不变（历史表的选择器不得回流），改为钉住新表的内容边界：存在、只含新表的按钮选择器、
+    // 不含历史表的 `.chat-scroll-navigation` / `.chat-scroll-to-latest`。
+    expect(existsSync(join(CHAT_DIR, "primitives", "chat-message-content.css"))).toBe(false);
+    // 只断言**选择器**：文件头会解释「与历史表的 `.chat-scroll-*` 一族无关」，注释不参与判定。
+    const scrollButtonCss = readFileSync(join(CHAT_DIR, "primitives", "conversation.css"), "utf8").replace(
+      /\/\*[\s\S]*?\*\//g,
+      "",
+    );
+    expect(scrollButtonCss).toContain(".chat-conversation-scroll-button");
+    expect(scrollButtonCss).not.toContain(".chat-scroll-navigation");
+    expect(scrollButtonCss).not.toContain(".chat-scroll-to-latest");
   });
 
   // 仍在的样式表不得回流已迁移的选择器（回流意味着同一属性有了两个来源）。

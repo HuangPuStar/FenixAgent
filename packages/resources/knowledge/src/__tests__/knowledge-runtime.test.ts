@@ -86,7 +86,7 @@ describe("知识运行时绑定解析", () => {
       ]),
     );
 
-    await expect(resolveBoundKnowledgeBasesByConfigId("agent-1", "other-org")).resolves.toEqual([
+    await expect(resolveBoundKnowledgeBasesByConfigId("agent-1")).resolves.toEqual([
       {
         id: "kb-first",
         remoteId: "remote-first",
@@ -110,6 +110,27 @@ describe("知识运行时绑定解析", () => {
         embeddingModel: "embedding-a",
       },
     ]);
+  });
+
+  // 有组织上下文的 Agent 只可读取本组织绑定，旧的空归属记录也不得跨租户放行。
+  test("按当前组织过滤绑定知识库", async () => {
+    stubDb(
+      createJoinedBindingsQuery(
+        ["org-1", "org-foreign", null].map((organizationId, index) => ({
+          kbId: `kb-${index}`,
+          kbRemoteId: `remote-${index}`,
+          kbUserId: "owner-1",
+          kbOrganizationId: organizationId,
+          priority: index,
+        })),
+      ),
+    );
+
+    const result = await resolveBoundKnowledgeBasesByConfigId("agent-1", "org-1");
+
+    expect(result.map((item) => item.id)).toEqual(["kb-0"]);
+    await expect(resolveBoundKnowledgeBasesByConfigId("agent-1", "org-missing")).resolves.toEqual([]);
+    await expect(resolveBoundKnowledgeBasesByConfigId("agent-1", "")).resolves.toEqual([]);
   });
 
   // Agent 没有可检索的知识库绑定时必须直接返回空结果，避免访问密钥或上游 provider。

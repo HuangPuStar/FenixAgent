@@ -1,0 +1,19 @@
+.agent-mcp-page {
+  color: var(--color-slate-800);
+}
+.mcp-master-detail {
+  min-height: 0;
+}
+.mcp-tool-list > div {
+  grid-template-columns: minmax(120px, 0.35fr) minmax(0, 1fr);
+  box-shadow: inset 0 -1px var(--color-slate-200);
+}
+.mcp-tool-list > div:last-child {
+  box-shadow: none;
+}
+
+@media (max-width: 900px) {
+  .mcp-detail-facts {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}

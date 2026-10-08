@@ -398,6 +398,23 @@ describe("知识库 Web 路由 round65 未覆盖分支", () => {
     });
   });
 
+  // 跨组织图谱请求必须在调用 provider 前统一隐藏知识库。
+  test.each([
+    ["生成", "/knowledgeBases/kb-1/graph/generate", "POST"],
+    ["读取", "/knowledgeBases/kb-1/graph", "GET"],
+    ["删除", "/knowledgeBases/kb-1/graph", "DELETE"],
+    ["进度", "/knowledgeBases/kb-1/graph/progress", "GET"],
+  ])("%s图谱拒绝跨组织知识库", async (_name, path, method) => {
+    const provider = new RuntimeProvider();
+    setKnowledgeRuntimeProviderForTesting(provider);
+    knowledgeBaseRepo.getById = mock(async () => knowledgeBase({ organizationId: "org-foreign" }));
+
+    const response = await request(path, { method });
+
+    expect(response.status).toBe(404);
+    expect((await response.json()) as unknown).toMatchObject({ error: { code: "NOT_FOUND" } });
+  });
+
   // 图谱 provider 故障必须映射为网关错误。
   test("图谱生成映射 provider 异常", async () => {
     const provider = new RuntimeProvider();

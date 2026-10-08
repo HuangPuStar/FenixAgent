@@ -18,6 +18,7 @@ import { dirname, isAbsolute, join, relative, sep } from "node:path";
 import { Readable } from "node:stream";
 import { NotFoundError, ValidationError } from "@fenix/platform-sdk";
 import type { FileOpOptions } from "../transport/file-ws-requests";
+import { buildDownloadZipEnv } from "./download-zip-env";
 import { type FileChangeKind, publishFileChanged } from "./file-event-limiter";
 import { normalizeUploadRelativePath } from "./file-path-validator";
 import {
@@ -296,7 +297,7 @@ class LocalBackend implements BackEnd {
       await mkdirp(dirname(destPath));
       await uploadBeforeWriteHook?.(destPath);
       await assertUploadDestination(workspaceDir, destPath);
-      await writeFile(destPath, file.content);
+      await writeFile(destPath, file.content, { flag: "wx" });
       const displayPath = dir ? `${dir}/${relPath}` : relPath;
       uploaded.push({ name: file.name, path: displayPath, size: file.content.byteLength });
       this.publishLocal(envId, "upload", displayPath, options);
@@ -341,6 +342,8 @@ class LocalBackend implements BackEnd {
     if (!info.isDirectory()) throw new ValidationError("目标不是目录");
     const child = spawn("zip", ["-r", "-q", "-", "."], {
       cwd: resolved.resolved,
+      // 按用途白名单构造环境（§5.4）：zip 会把宿主的 ZIPOPT/ZIP 当命令行选项，且不得拿到宿主密钥
+      env: buildDownloadZipEnv(),
       stdio: ["ignore", "pipe", "ignore"],
     });
     // @types/node 22.20.1 缺陷：class EventEmitter 的实例方法声明在 interface 合并中，

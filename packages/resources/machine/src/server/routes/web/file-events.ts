@@ -1,11 +1,12 @@
 import { error as logError, warn as logWarn } from "@fenix/logger";
-import { AppError, NotFoundError } from "@fenix/platform-sdk";
+import { AppError } from "@fenix/platform-sdk";
 import Elysia from "elysia";
 
 import { FileEventsSubscribeSchema } from "../../../schemas/file-events.schema";
 import { getMachineConfig } from "../../config";
-import { getOwnedEnvironment } from "../../environment-port";
+import { machineFileFacade } from "../../facades/machine-file-facade";
 import { subscribe } from "../../services/file-event-queue";
+import { FileServiceError } from "../../services/file-types";
 import type { WsConnection } from "../../transport/ws-types";
 import type { MachineRequestAuthResult, WebFileEventsRouteDependencies } from "../dependencies";
 
@@ -17,7 +18,8 @@ import type { MachineRequestAuthResult, WebFileEventsRouteDependencies } from ".
  * 订阅/限连/生命周期逻辑全部在可单测的 handler 层，不依赖框架类型。
  *
  * 契约要点：
- * - 订阅帧 `{ type: "subscribe", environments: [...] }` 逐环境 getOwnedEnvironment 校验；
+ * - 订阅帧 `{ type: "subscribe", environments: [...] }` 逐环境经 `machine-file-facade` 的
+ *   `authorizeEventSubscription` 校验访问权（授权止于门面，§3.2：本层不自行判定归属）；
  *   无权限显式回 `{ type: "subscribe_error", environment_id, code: "forbidden" }`。
  * - 连接上限为服务级独立池（RCS_FILE_EVENTS_MAX_CLIENTS，与 YJS_MAX_CLIENTS 分池），
  *   超限 close 1013。
@@ -145,20 +147,25 @@ async function handleFileEventsMessage(
   }
 }
 
-/** 订阅单个环境：先校验访问权，无权限显式回 subscribe_error 帧 */
+/** 订阅单个环境：先经门面校验访问权，无权限显式回 subscribe_error 帧 */
 async function subscribeEnvironment(state: FileEventsClientState, envId: string): Promise<void> {
   if (state.subscribedEnvironments.has(envId)) {
     return;
   }
   try {
-    await getOwnedEnvironment(envId, state.auth.organizationId, state.auth.userId);
+    // 归属判定归文件域门面（§3.2）：本层只把已认证上下文投影成 actor，不自己解释环境归属规则。
+    await machineFileFacade.authorizeEventSubscription(
+      { organizationId: state.auth.organizationId, userId: state.auth.userId },
+      envId,
+    );
   } catch (err) {
-    if (err instanceof NotFoundError) {
-      // 环境不存在或不属于当前组织：按契约显式回 forbidden，区分"无权限"与"网络故障"
+    if (err instanceof FileServiceError && (err.type === "not_found" || err.type === "forbidden")) {
+      // 环境不存在 / 不属于当前组织 / 不属于本人：按契约显式回 forbidden，区分"无权限"与"网络故障"。
+      // 拒绝与不可见共用同一码值：对订阅方而言两者都是「这条环境流不可订阅」，区分它们反而泄露存在性。
       state.ws.send(JSON.stringify({ type: "subscribe_error", environment_id: envId, code: "forbidden" }));
       return;
     }
-    // 非权限类错误（如存储故障）不回 forbidden（避免误导订阅方），仅保留诊断上下文
+    // 非权限类错误（如存储故障、文件服务不可用）不回 forbidden（避免误导订阅方），仅保留诊断上下文
     logError(`[file-events] access check failed for environment ${envId}:`, err);
     return;
   }

@@ -1,0 +1,39 @@
+.agent-api-keys-page {
+  color: #14213d;
+}
+.api-key-security-note {
+  color: #8f651f;
+}
+.api-key-security-note strong {
+  color: #6e4e18;
+}
+.api-key-security-note p {
+  color: #947640;
+}
+.api-key-search {
+  width: min(520px, 100%);
+}
+.api-key-search:focus-within {
+  box-shadow: 0 0 0 3px rgb(41 112 216 / 8%);
+}
+.api-key-table [data-slot="table-head"] {
+  font-weight: 650;
+}
+.api-key-row-icon {
+  color: #a9751f;
+}
+.api-key-table .api-key-action-column button:hover {
+  color: #bf4e55;
+}
+.api-key-reveal {
+  grid-template-columns: minmax(0, 1fr);
+}
+.api-key-reveal-heading span {
+  color: #8b6b32;
+}
+@media (max-width: 680px) {
+  .api-key-toolbar {
+    align-items: stretch;
+    flex-direction: column;
+  }
+}

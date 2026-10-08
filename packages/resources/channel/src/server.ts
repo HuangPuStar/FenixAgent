@@ -6,7 +6,8 @@
  * `@fenix/resource-channel/web`。
  */
 
-export type { ChannelEnvironmentLookup, WebChannelRouteDependencies } from "./server/routes/dependencies";
+export type { ChannelEnvironmentLookup } from "./server/facades/channel-binding-facade";
+export type { WebChannelRouteDependencies } from "./server/routes/dependencies";
 export { createWebChannelsRoutes } from "./server/routes/web/channels";
 export * from "./server/services/acp-event-bus-port";
 export * from "./server/services/channel-binding";

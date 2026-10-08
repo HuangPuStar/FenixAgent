@@ -33,8 +33,17 @@ const PKG_ROOT = resolve(WEB_ROOT, "..");
  * 2026-09-24 加载指示器改版（阶段文字 + 流光条）：删掉不再使用的 `chat.components.chatView.thinking`
  *   （唯一消费方是旧指示器），换成 `chat.components.chatView.stage.{thinking,generating,callingTool,working}`
  *   4 键（阶段文案，键名与 `LoadingStage` 一一对应），280 → 283。
+ * 2026-09-24 台账 D4（两份宿主字典的键归属拆分余量）：按 §9.2「只有真正跨资源包共用的词条才进共享包」
+ *   收编两批跨资源包词条——`resource.*` 6 键（角标与公开/私有动作，产出方是 skill / mcp / agent-config /
+ *   model-management，消费方是本包 `StatusBadge` 的调用方）与 `chat.components.permissionPanel.{allow,
+ *   allowSession,deny}` 3 键（权限确认按钮，产出方 `@fenix/web-runtime` 的会话三态映射、渲染方本包
+ *   `PermissionPanel`），共 9 键。基线同时从 283 拉回实际键数：此前基线已低于实测值（315），
+ *   本次按 §「只许增不许减」的判据对齐为 324。
+ * 2026-09-28 侧栏智能体树视图批次：宿主 `shell/AgentSidebarTree.tsx` 的视图与纯派生迁入本包
+ *   `web/agent-tree/`（取数与四种领域操作留在 `@fenix/agent-config/web`），它渲染的 13 条文案
+ *   （区标题、空态、五个动作标题、展开/收起、远程标记）随之落在 `agentTree.*`，324 → 337。
  */
-const KEY_BASELINE = 283;
+const KEY_BASELINE = 337;
 
 const EN = JSON.parse(readFileSync(join(WEB_ROOT, "i18n/locales/en/uiComponents.json"), "utf8")) as Record<
   string,
@@ -123,6 +132,25 @@ describe("ui-components uiComponents 字典完整性", () => {
     const missing = [...literalKeys.keys()].filter((key) => !enFlat.has(key) && !zhFlat.has(key));
     expect(missing).toEqual([]);
     expect(literalKeys.size).toBeGreaterThanOrEqual(190);
+  });
+
+  // 台账 D4 收编的跨资源包共享词条：宿主 `components` 字典的同名副本已删除，这里的键就是唯一原告，
+  // 少一个即四个资源包的角标 / 权限按钮整片回显 key。
+  test("D4 收编的跨资源包共享词条齐备", () => {
+    for (const key of [
+      "resource.internal",
+      "resource.external",
+      "resource.public",
+      "resource.makePublic",
+      "resource.makePrivate",
+      "resource.readOnly",
+      "chat.components.permissionPanel.allow",
+      "chat.components.permissionPanel.allowSession",
+      "chat.components.permissionPanel.deny",
+    ]) {
+      expect(enFlat.has(key), `en 缺 ${key}`).toBe(true);
+      expect(zhFlat.has(key), `zh 缺 ${key}`).toBe(true);
+    }
   });
 
   // 命名空间前缀不得写进键：字典处于 `uiComponents` 命名空间内，`uiComponents.xxx` 会翻译成

@@ -17,6 +17,13 @@
  * 是原先 `text-xs`(12px) 的相邻上一档，小按钮原来的 `text-3xs`(10px) 随之取 `text-xs`。
  * 尺寸只写在工具类里：本包伴随 CSS（`file-tree-*.css`）不包 `@layer`、优先级高于 `@layer utilities`，
  * 一旦把 font-size 落回那些文件，这里的工具类会被静默压过。
+ *
+ * **2026-09-28 补记**：图标尺寸原由伴随表的祖先选择器（`.file-tree-panel__actions svg` 14px、
+ * `.file-tree-search > svg` / `.file-tree-search button svg` 13px、`.file-tree-section-upload-button svg`
+ * 16px、`.file-tree-view-feedback > svg` 24px）声明——这与「尺寸只写在工具类里」的口径相悖，且那些取值
+ * 都能被刻度类精确复现（1 档 = 4px）。按同日裁定逐条撤回图标元素自身的 `size-*`，伴随表里的对应声明删除；
+ * 图标全部由本文件的 JSX 直接渲染，`className` 槽就在元素上，无需选择器（FCP-WEB-02 的成因随之消失）。
+ * 第三批同址撤回反馈主图标的 `opacity: 0.65`（`opacity-65`），`.file-tree-view-feedback > svg` 整条删除。
  */
 
 import { Folder, FolderInput, FolderPlus, Loader2, RefreshCw, Search, Upload, X } from "lucide-react";
@@ -34,7 +41,8 @@ import "./file-tree-view.css";
 
 /**
  * 面板标题栏按钮样式（原 `.file-tree-panel__actions button` 及其 `:hover` / `:focus-visible`
- * / `:disabled` 规则）：26px 方块，图标 14px。
+ * / `:disabled` 规则）：26px 方块，图标 14px（`size-3.5`，写在各图标元素上；原由伴随表的
+ * `.file-tree-panel__actions svg` 声明，2026-09-28 撤回）。
  */
 const PANEL_ACTION_CLASS =
   "inline-grid size-6.5 place-items-center rounded-sm text-text-muted hover:bg-surface-2 hover:text-text-primary focus-visible:bg-surface-2 focus-visible:text-text-primary disabled:opacity-[0.45]";
@@ -122,7 +130,7 @@ export function FileTreeView(props: FileTreeViewProps) {
             title={t("fileTree.refresh")}
             aria-label={t("fileTree.refresh")}
           >
-            <RefreshCw className={props.loading ? "animate-spin" : undefined} aria-hidden />
+            <RefreshCw className={cn("size-3.5", props.loading && "animate-spin")} aria-hidden />
           </button>
           <button
             type="button"
@@ -131,7 +139,7 @@ export function FileTreeView(props: FileTreeViewProps) {
             disabled={!canMutate}
             title={t("fileTree.contextMenu.newFolder")}
           >
-            <FolderPlus aria-hidden />
+            <FolderPlus className="size-3.5" aria-hidden />
           </button>
           <button
             type="button"
@@ -140,7 +148,7 @@ export function FileTreeView(props: FileTreeViewProps) {
             disabled={props.uploading || !canMutate}
             title={t("fileTree.upload")}
           >
-            <Upload aria-hidden />
+            <Upload className="size-3.5" aria-hidden />
           </button>
           <button
             type="button"
@@ -149,7 +157,7 @@ export function FileTreeView(props: FileTreeViewProps) {
             disabled={props.uploading || !canMutate}
             title={t("fileTree.uploadFolder")}
           >
-            <FolderInput aria-hidden />
+            <FolderInput className="size-3.5" aria-hidden />
           </button>
           <input ref={props.fileInputRef} type="file" multiple hidden onChange={props.onFileInputChange} />
           <input
@@ -166,7 +174,7 @@ export function FileTreeView(props: FileTreeViewProps) {
       </div>
 
       <label className="file-tree-search mx-2 mb-2 flex h-7.5 shrink-0 items-center gap-1.5 rounded-md bg-surface-2 px-2 text-text-muted focus-within:shadow-[inset_0_0_0_1px_color-mix(in_srgb,var(--color-brand)_32%,transparent)]">
-        <Search aria-hidden />
+        <Search className="size-3.25" aria-hidden />
         <input
           type="search"
           className="w-full min-w-0 border-0 bg-transparent text-sm text-text-primary outline-none"
@@ -177,7 +185,7 @@ export function FileTreeView(props: FileTreeViewProps) {
         />
         {props.searchQuery && (
           <button type="button" onClick={() => props.onSearchChange("")} aria-label={t("fileTree.clearSearch")}>
-            <X aria-hidden />
+            <X className="size-3.25" aria-hidden />
           </button>
         )}
       </label>
@@ -204,7 +212,7 @@ export function FileTreeView(props: FileTreeViewProps) {
         )}
         {props.stale ? (
           <Feedback
-            icon={<Loader2 className="animate-spin" />}
+            icon={<Loader2 className="size-6 animate-spin opacity-65" />}
             text={t("fileTree.staleBanner")}
             action={
               <button
@@ -218,12 +226,12 @@ export function FileTreeView(props: FileTreeViewProps) {
             }
           />
         ) : props.loading ? (
-          <Feedback icon={<Loader2 className="animate-spin" />} text={t("tree.loading")} />
+          <Feedback icon={<Loader2 className="size-6 animate-spin opacity-65" />} text={t("tree.loading")} />
         ) : props.normalizedSearch ? (
           props.hasSearchResults ? (
             <FileTreeSections {...props} />
           ) : (
-            <Feedback icon={<Search />} text={t("fileTree.noSearchResults")} />
+            <Feedback icon={<Search className="size-6 opacity-65" />} text={t("fileTree.noSearchResults")} />
           )
         ) : (
           <FileTreeSections {...props} />
@@ -277,7 +285,11 @@ function FileTreeSections(props: FileTreeViewProps) {
               onDeleteRequest={props.onDeleteRequest}
             />
           ) : (
-            <Feedback icon={<Folder />} text={t("fileTree.emptyState")} detail={t("fileTree.emptyHint")} />
+            <Feedback
+              icon={<Folder className="size-6 opacity-65" />}
+              text={t("fileTree.emptyState")}
+              detail={t("fileTree.emptyHint")}
+            />
           )}
         </div>
       </section>
@@ -293,7 +305,7 @@ function FileTreeSections(props: FileTreeViewProps) {
             onClick={() => props.onUploadClick("user")}
             disabled={props.uploading || !(props.canMutate ?? true)}
           >
-            <Upload aria-hidden />
+            <Upload className="size-4" aria-hidden />
           </button>
         </div>
         <div className="min-h-0 min-w-0 flex-1 overflow-hidden">
@@ -310,7 +322,7 @@ function FileTreeSections(props: FileTreeViewProps) {
             />
           ) : (
             <Feedback
-              icon={<Folder />}
+              icon={<Folder className="size-6 opacity-65" />}
               text={t("fileTree.userEmptyState")}
               // 「我的文件」分区高度只有工作区的一半：复用同一反馈组件但压缩间距，并隐去图标与第二行说明。
               className="file-tree-view-feedback--compact min-h-11 p-2"

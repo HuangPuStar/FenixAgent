@@ -1,22 +1,24 @@
 // AgentFileService —— 统一文件执行面（W5a，P1-7a）
-// 路由层与执行后端之间的唯一门面：认证校验（gate）→ 路由决策（machineId
-// 回退链）→ 统一路径校验 → BackEnd 执行 → 统一错误映射。fs.ts 双分支（W5b）
-// 收敛后路由层只调本门面；后续波次小改（W6 校验接 validator / W7 事件发布 /
-// W12b 启用 opId/ifMatch）。接口即契约一次到位（read 带 mode、写操作带可选
-// opId/ifMatch 与 actorId/source 注入参数），避免后续返工。
+// 文件域的领域执行面：路由决策（machineId 回退链）→ 统一路径校验 → BackEnd 执行
+// → 统一错误映射。fs.ts 双分支（W5b）收敛后 `/web` 文件路由只经
+// `../facades/machine-file-facade` 进入本层；后续波次小改（W6 校验接 validator /
+// W7 事件发布 / W12b 启用 opId/ifMatch）。接口即契约一次到位（read 带 mode、写操作
+// 带可选 opId/ifMatch 与 actorId/source 注入参数），避免后续返工。
+//
+// 认证/授权不在这里：环境归属与角色（`member` → 403，fail-closed）由 Facade 在打开执行面
+// 之前判定（§3.2「授权止于 Facade」），本层只接受已授权的显式范围（AgentFileScope）。
 //
 // 模块拆分（保持单文件 ≤500 行，CLAUDE.md）：类型契约与能力上限常量在
 // file-types.ts；执行后端（BackEnd / LocalBackend / RemoteBackend /
-// If-Match 版本比对）与路由决策在 file-backends.ts；本文件仅保留门面。
+// If-Match 版本比对）与路由决策在 file-backends.ts；本文件仅保留执行面。
 
 import { createLogger } from "@fenix/logger";
 import { AppError, ValidationError } from "@fenix/platform-sdk";
-import { getOwnedEnvironment } from "../environment-port";
 import { BusyError } from "../transport/file-ws-requests";
 import { type BackEnd, resolveExecutionBackend } from "./file-backends";
 import { assertSafePath as assertPathSafe, normalizeUploadRelativePath } from "./file-path-validator";
 import {
-  type FileAuthContext,
+  type AgentFileScope,
   type FileErrorType,
   FileServiceError,
   type FileWriteOptions,
@@ -66,10 +68,22 @@ function validateUploadInputs(dir: string, files: UploadFileInput[]): void {
 }
 
 // ── 错误映射（backend 细节只进日志，message 面向用户）─────────
-function mapFileError(err: unknown): FileServiceError {
+/**
+ * 把执行期异常收敛成文件域错误信封（§2.4 错误码表）。
+ *
+ * 导出给 Facade 复用：环境归属失败发生在门面里（授权止于门面，§3.2），但对外必须与执行期失败同一套
+ * 分类与文案，否则同一个「环境不可见」会在 403/404 与 503 之间漂移。
+ */
+export function mapFileError(err: unknown): FileServiceError {
   if (err instanceof FileServiceError) return err;
+  if (err instanceof Error && "code" in err && (err.code === "EEXIST" || err.code === "ENOTEMPTY")) {
+    return new FileServiceError("目标文件或目录已存在，未覆盖原内容，请修改名称后重试", "path_conflict", 409);
+  }
   if (err instanceof BusyError) return new FileServiceError("文件服务繁忙，请稍后重试", "busy", 429);
   if (err instanceof AppError) {
+    if (err.statusCode === 409 && err.code === "path_conflict") {
+      return new FileServiceError("目标文件或目录已存在，未覆盖原内容，请修改名称后重试", "path_conflict", 409);
+    }
     const byStatus: Record<number, FileErrorType> = {
       400: "validation_error",
       403: "forbidden",
@@ -87,8 +101,14 @@ function mapFileError(err: unknown): FileServiceError {
   return new FileServiceError("文件服务不可用，请稍后重试", "file_service_unavailable", 503);
 }
 
-// ── 门面（§2.1）─────────────────────────────────────────────────
-/** 门面统一操作入口（envId 由 gate 注入，参数来自已认证环境上下文） */
+// ── 领域执行面（§2.1）────────────────────────────────────────────
+/**
+ * 文件域执行面：一个已授权环境上的本地/远程文件操作。
+ *
+ * 实例由 {@link createAgentFileService} 以**显式范围**构造，不接受 actor、不做用户权限判断——环境归属与
+ * 角色的授权在 `../facades/machine-file-facade` 完成（§3.2）。因此本接口的每个方法都假定「调用方已确认
+ * 该环境属于当前主体」。
+ */
 export interface AgentFileService {
   tree(path?: string): Promise<TreeResult>;
   list(path: string): Promise<FileEntry[]>;
@@ -103,50 +123,34 @@ export interface AgentFileService {
 }
 
 class AgentFileServiceImpl implements AgentFileService {
-  constructor(
-    private envId: string,
-    private auth: FileAuthContext,
-  ) {}
+  constructor(private scope: AgentFileScope) {}
   private async run<T>(op: (backend: BackEnd) => Promise<T>, validate?: () => void): Promise<T> {
     try {
       validate?.();
-      await this.ensureEnvironment();
-      const backend = await resolveExecutionBackend(this.envId);
+      const backend = await resolveExecutionBackend(this.scope.environmentId);
       return await op(backend);
     } catch (err) {
       throw mapFileError(err);
     }
   }
-  private async ensureEnvironment(): Promise<void> {
-    // role 目前只透传不校验（角色检查归 W17）：本包的 role 来自宿主认证上下文（字符串），
-    // 与 environment-core 的 EnvironmentRole 字面量联合不同源，故在调用点做一次最小收窄；
-    // W17 启用检查时，role 必须在认证边界完成校验后再传进来。
-    const getOwned = getOwnedEnvironment as (
-      envId: string,
-      organizationId: string,
-      userId?: string,
-      role?: string,
-    ) => Promise<unknown>;
-    await getOwned(this.envId, this.auth.organizationId, this.auth.userId, this.auth.role);
-  }
   private writeOptions(options?: FileWriteOptions): FileWriteOptions {
-    return { ...options, actorId: this.auth.actorId, source: this.auth.source };
+    return { ...options, actorId: this.scope.actorId, source: this.scope.source };
   }
   async tree(path?: string): Promise<TreeResult> {
     const validate = () => (path ? assertSafePath(path) : undefined);
-    return this.run((b) => b.tree(this.envId, path), validate);
+    return this.run((b) => b.tree(this.scope.environmentId, path), validate);
   }
   async list(path: string): Promise<FileEntry[]> {
     const validate = () => assertSafePath(path);
-    return this.run((b) => b.list(this.envId, path), validate);
+    return this.run((b) => b.list(this.scope.environmentId, path), validate);
   }
   async read(path: string, mode: ReadMode): Promise<ReadResult> {
     const validate = () => assertSafePath(path);
-    return this.run((b) => b.read(this.envId, path, mode), validate);
+    return this.run((b) => b.read(this.scope.environmentId, path, mode), validate);
   }
   async write(path: string, content: string, options?: FileWriteOptions): Promise<WriteResult> {
     const validate = () => assertSafePath(path);
-    return this.run((b) => b.write(this.envId, path, content, this.writeOptions(options)), validate);
+    return this.run((b) => b.write(this.scope.environmentId, path, content, this.writeOptions(options)), validate);
   }
   async upload(dir: string, files: UploadFileInput[], options?: FileWriteOptions): Promise<UploadResult> {
     const validate = () => validateUploadInputs(dir, files);
@@ -156,35 +160,40 @@ class AgentFileServiceImpl implements AgentFileService {
       // 远程 >20MB 从可上传变 413 是破坏性契约变更，message 面向用户（§7.6 能力回退声明）。
       const oversized = files.find((f) => f.content.byteLength > b.uploadMaxBytes);
       if (oversized) throw new FileServiceError(REMOTE_UPLOAD_LIMIT_MESSAGE, "payload_too_large", 413);
-      return b.upload(this.envId, dir, files, this.writeOptions(options));
+      return b.upload(this.scope.environmentId, dir, files, this.writeOptions(options));
     }, validate);
   }
   async delete(path: string, options?: FileWriteOptions): Promise<void> {
     const validate = () => assertSafePath(path);
-    return this.run((b) => b.delete(this.envId, path, this.writeOptions(options)), validate);
+    return this.run((b) => b.delete(this.scope.environmentId, path, this.writeOptions(options)), validate);
   }
   async mkdir(path: string, options?: FileWriteOptions): Promise<void> {
     const validate = () => assertSafePath(path);
-    return this.run((b) => b.mkdir(this.envId, path, this.writeOptions(options)), validate);
+    return this.run((b) => b.mkdir(this.scope.environmentId, path, this.writeOptions(options)), validate);
   }
   async rename(oldPath: string, newPath: string, options?: FileWriteOptions): Promise<void> {
     const validate = () => {
       assertSafePath(oldPath);
       assertSafePath(newPath);
     };
-    return this.run((b) => b.rename(this.envId, oldPath, newPath, this.writeOptions(options)), validate);
+    return this.run((b) => b.rename(this.scope.environmentId, oldPath, newPath, this.writeOptions(options)), validate);
   }
   async stat(path: string): Promise<StatResult> {
     const validate = () => assertSafePath(path);
-    return this.run((b) => b.stat(this.envId, path), validate);
+    return this.run((b) => b.stat(this.scope.environmentId, path), validate);
   }
   async downloadZip(path: string): Promise<NodeJS.ReadableStream> {
     const validate = () => assertSafePath(path);
-    return this.run((b) => b.downloadZip(this.envId, path), validate);
+    return this.run((b) => b.downloadZip(this.scope.environmentId, path), validate);
   }
 }
 
-/** 门面入口：envId + 认证上下文（orgId/userId 归属校验，role 透传待 W17 启用） */
-export function gate(envId: string, authCtx: FileAuthContext): AgentFileService {
-  return new AgentFileServiceImpl(envId, authCtx);
+/**
+ * 构造某环境的文件执行面。
+ *
+ * 只接受显式范围（环境 + 写操作审计身份），环境归属与角色授权由 Facade 前置完成——迁移前这里还接收
+ * 组织/用户/角色并在每次操作内调用 `getOwnedEnvironment`，那是把应用层授权放在领域执行面里（§3.2）。
+ */
+export function createAgentFileService(scope: AgentFileScope): AgentFileService {
+  return new AgentFileServiceImpl(scope);
 }

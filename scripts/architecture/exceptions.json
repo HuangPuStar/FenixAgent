@@ -1,137 +1,83 @@
 {
   "_comment": [
-    "架构例外台账：登记存量边界违规，精确到「规则 + 来源包 + 目标包」，每条带所属任务号与移除条件。",
+    "架构例外台账：登记存量边界违规，精确到「规则 + 来源包 + 目标包」，每条带承接方与移除条件。",
     "门禁（scripts/check-dependency-boundaries.ts）只阻断未登记的**新增**违规，并在某条不再违规时报错要求删除。",
-    "owner 取值：在排任务的编号（如 1.6 / 1.7）或「未排期」——后者表示该违规不属于任何在排任务的范围，",
-    "是本次门禁修复后被如实暴露出来的既有债务。逐包核查结论与裁定记录见 `docs/design/ce-ee-refactoring/ce-standards-todo.md`：",
-    "该文件是当前的规范符合性台账，逐条给出缺口、规范条款与现状证据，并另表列出待延期 / 待优化项的裁定依据；",
-    "本条目的 owner 与移除条件口径与它一致。",
+    "owner 取值：在排任务的编号（如 1.6 / 1.7），或 `EX-<n>（责任条目）`——EX-n 是本文件 exceptions 数组的序号",
+    "（增删条目时同步重排），责任条目写明「关闭这条违规要做的那件事」。**不得留「未排期」这类无承接方的占位**：",
+    "读表人无从判断谁在管。逐条核查结论与裁定记录见 `docs/design/ce-ee-refactoring/ce-standards-todo.md`。",
     "禁止把 from / to 写成通配（加载器会直接拒绝）：通配会让整类边界静默失效。",
     "【环的代表边与 owner 归属】no-circular 的粒度为「每环一条」：环上每条边不逐条上报，from / to 只是该环上被挑中的一条",
     "**真实边**（相邻两点），不是环的参与者全集。被挑中的边若落在包内，包对指纹就会把跨包环显示成包内自环",
-    "（`@fenix/resource-machine → @fenix/resource-machine` 这一指纹即如此，本族在该指纹下的 10 处全是跨包环）。归属一律看",
-    "cycle 数组里的参与者包集合，不看 from / to 的包名；环长 = cycle 数组长度（环上节点数）。代表边不稳定：别的改动收窄",
-    "装配面后，代表边会在包对之间迁移、指纹计数随之外观变化，环本身不变——所以「删掉某条指纹下的条目」不等于环被消解，",
+    "（`@fenix/peri → @fenix/peri` 这一指纹即如此：环的真实边是 `@fenix/peri → acp-link` 与 `acp-link → @fenix/peri`）。",
+    "归属一律看 cycle 数组里的参与者包集合，不看 from / to 的包名；环长 = cycle 数组长度（环上节点数）。代表边不稳定：",
+    "别的改动收窄装配面后，代表边会在包对之间迁移、指纹计数随之外观变化，环本身不变——所以「删掉某条指纹下的条目」不等于环被消解，",
     "各条 removeWhen 只写真正闭合该环的那条边。",
-    "【全局口径，2026-09-21 1.5g 复测】工作树 872010416、2411 modules、按 `check:dependencies` 的参数重跑：上报 48 条环、",
-    "参与环的边 84 条。其中 4 包环族（agent-config / agent-runtime / resource-machine / resource-sandbox）实测 38 处、",
-    "分布在 6 个包对指纹下、环长 11–17，每条环各含一次固定的 4 条跨包边（machine → agent-config、agent-config → agent-runtime、",
-    "agent-runtime → sandbox、sandbox → machine），共同闭合边是 §2.3 矩阵外的 machine → agent-config。此前各条尾注里的 223 / 161",
-    "（更早口径）与 79 / 47（W6b-3 口径）至此统一：1.4 曾登记「各 owner 或最终收口统一」，本段即那次收口。",
-    "各条 rationale 里的家族级数字是各自改写时点的快照（如 machine → machine 条目仍写「族内总数 37 处」，那是 W6b-3 时点的实测，",
-    "本次实测为 38 处）；快照与本段不一致时以本段与届时实测为准，各条应在自己的 owner 任务改写时同步。",
-    "【4 包环族 owner 改挂「未排期」，2026-09-21 用户裁定】agent-config / agent-runtime / resource-machine / resource-sandbox 这 6 个",
-    "no-circular 指纹（machine → agent-config、machine → machine、sandbox → machine、sandbox → sandbox、agent-runtime → agent-runtime、",
-    "agent-config → agent-config）的删除条件全部挂在同一条边上——machine → agent-config（§2.3 矩阵外的反向边，其三条未触发风险与",
-    "两条候选修复路径见该条 rationale 末段）——而该边没有任何在排分片承接，原 owner 1.4 已结项（该族已退出 1.4 范围，待延期登记见 `ce-standards-todo.md` 的「待延期执行项」表）。",
-    "故按用户裁定统一改挂「未排期」（不假手已结项任务），待 machine 包的方向收敛任务立项时改挂它的编号；届时删掉",
-    "remote-file-service.ts:1 那一行 import 即可一次清掉 6 条。",
-    "owner 必须指向**真正承接**该违规的排期任务，或显式的「未排期」；**不得保留已结项任务号**——那会让读表人误以为有人在管（2026-09-21 按用户裁定清理过一次：1.2 / 1.4 / 1.5 三个号当时清零，改挂 1.7 或「未排期」）。"
+    "【2026-09-24 复测，E1 收口后】口径：`node node_modules/dependency-cruiser/bin/dependency-cruise.mjs --config .dependency-cruiser.cjs",
+    "--output-type json apps packages`，再按 `check-dependency-boundaries.ts` 的包名归一统计（2650 modules / 13 处 no-circular / 6 个包对指纹）。",
+    "上一版 13 条里，4 包环族（agent-config / agent-runtime / resource-machine / resource-sandbox）的 6 条 no-circular 已**删除**：",
+    "该族此前实测 38 处环 / 6 个包对指纹 / 环长 11–17，共同闭合边是矩阵外的 `@fenix/resource-machine → @fenix/agent-config`；",
+    "E1 把 machine 的两处取数改为宿主注入的 `MachineAgentConfigPort`（`packages/resources/machine/src/server/agent-config-port.ts`），",
+    "本包源码不再引用 agent-config 的任何出口，环族随之整体消失（复测已无任何 machine / agent-config / agent-runtime / sandbox 参与的环）。",
+    "现存 6 条 no-circular 分两支：acp-link ↔ 插件包（ccb / claude-code / opencode / peri）双向依赖族，与两个包内入口自环",
+    "（ccb / claude-code / opencode 的 handler 以包名导入自身根入口、resource-knowledge 的 agent-knowledge 同样）；",
+    "另有 1 条 undeclared-workspace-dependency（acp-runtime-cli 的构建期输入）。"
   ],
   "exceptions": [
     {
       "rule": "no-circular",
-      "from": "@fenix/agent-runtime",
-      "to": "@fenix/agent-runtime",
-      "owner": "未排期",
-      "removeWhen": "machine 删除 §2.3 依赖矩阵外的 `machine → agent-config` 反向边（本族 38 处环的共同闭合边，每条环各含一次）——该边一删，本条与其余 5 个指纹（1.4 名下 4 条 + `@fenix/agent-config → @fenix/agent-config`）一并消失。原先写的「1.5 下沉 apps/server 能力」已不是本条的移除条件：原 32 处环**每条都含** `@fenix/server-app → @fenix/agent-runtime`（32 处），该边随 1.5b / 1.5c 归零后本条降到 14 处，剩余环里已无任何宿主参与者。",
-      "rationale": "1.5g 复测（2026-09-21，工作树 872010416，2411 modules，按 `check:dependencies` 的参数重跑）据实改写：实测 **14 处环（环长 14–17）**；上次记载「32 处环（环长 3–9）」，处数与环长均不符。参与包只剩一族：@fenix/agent-config ↔ @fenix/agent-runtime ↔ @fenix/resource-machine ↔ @fenix/resource-sandbox（14 处）。上次记载的三支里，含 @fenix/server-app 的两支（27 处 + 3 处）与含 @fenix/resource-knowledge 的第三支（2 处）已随 1.5b / 1.5c 的包 → 宿主边下沉整体归零；本条 `from` / `to` 落在 agent-runtime 包内边，是代表边分布的结果，不是包内自环。环上跨包边已同质化为固定 4 条、每条环各含一次：@fenix/agent-runtime → @fenix/resource-sandbox、@fenix/agent-config → @fenix/agent-runtime、@fenix/resource-machine → @fenix/agent-config、@fenix/resource-sandbox → @fenix/resource-machine（本指纹下各 14 处）。根因随之改写：不再是「包 ↔ 应用倒置」，而是矩阵外的 @fenix/resource-machine → @fenix/agent-config 反向边闭合本族环；该边同时是 1.4 名下 4 条同族条目的共同闭合边，本族实测 38 处环、分布在 6 个包对指纹下，本条是其中之一。owner：未排期（原 1.5；2026-09-21 按用户裁定改挂，族内 6 个指纹的共同闭合边与退场口径见 `_comment` 的「4 包环族 owner 改挂」段）。"
-    },
-    {
-      "rule": "no-circular",
-      "from": "@fenix/resource-machine",
-      "to": "@fenix/agent-config",
-      "owner": "未排期",
-      "removeWhen": "machine 删除 machine → agent-config 反向边（W6b-3 实测这一族 37 处环每条都含该边一次，是本族环的共同闭合边）；machine → agent-runtime 反向边按 §五 的方向收敛目标一并删除（它在 W6b-3 实测中已不再出现在本族环上）；或本边经「改指窄入口（`./server/runtime` / `./server/config`）或改为宿主注入 lookup 端口」消失后一并删除（2026-09-21 记，见 rationale 末段）",
-      "rationale": "W6b-3 交付后（abd24f9b0，2397 modules）实测 **1 处环（环长 13）**，与上次记载一致。参与包：@fenix/agent-config ↔ @fenix/agent-runtime ↔ @fenix/resource-machine ↔ @fenix/resource-sandbox（1 处）。环上相邻的真实边各 1 条：@fenix/resource-machine → @fenix/agent-config（machine/services/remote-file-service.ts 读 agent_config 的 agentNode / machineId）、@fenix/agent-config →（dynamic import @fenix/agent-runtime/runtime） → @fenix/agent-runtime/services/orchestration-bootstrap → @fenix/resource-sandbox → @fenix/resource-machine。根因：§2.3 只登记 sandbox → machine、agent-config → agent-runtime 与 agent-runtime → sandbox/machine，环由矩阵外的 machine → agent-config 反向边闭合（同族环 W6b-3 实测 37 处，本条目 1 处）。代表边不稳定：W4 与 W6b 两次去掉若干 agent-runtime 装配面边后，这条环的代表边在包对之间反复迁移，环本身、总数与根因均未变化（W4a 的 20 → 19 台账收缩是同一现象）。\n\n**（1.5 结项复核补记，2026-09-21）本代表边对应的真实依赖是一行生产代码**：`packages/resources/machine/src/server/services/remote-file-service.ts:1` 的 `import { type AgentNode, getAgentConfigById, resolveAgentNode } from \"@fenix/agent-config/server\"`（第 61–62 行读 agent_config 行取 `agentNode` / `machineId` 以定位 machine）。它不只是账目问题，三条眼下未触发、已核实的风险：① `getAgentConfigById` 经 `getAgentConfigModule()` 读 agent-config 的**模块单例**，未装配即抛错（`packages/resources/agent-config/src/server/runtime.ts:25-30`，包内明示「不做兜底」），因此 **machine 的文件 API 可用性取决于 profile 是否启用 agent-config**——`ce.json` 恒启用才掩盖了这层依赖，最小 profile 或只装 machine 的集成测试会当场失败；这也正撞上 §2.3 对 machine「不得回调 repository、singleton 或生命周期实现」的措辞。② machine 静态导入的是 agent-config 的 **barrel**（`@fenix/agent-config/server`），连带把该包的 elysia 路由面拉进 machine 的加载图，当前安全仅依赖 `ce.json` 的拓扑序恰好先装 agent-config，与 agent-config `./server/runtime` 注释里「宿主只要装配结果时不要经 `./server` barrel」的既有约定相悖。③ 本边与其余三条边构成环并已登记为例外，故新增同类反向边不再产生告警（可观测性损失，非功能损失）。\n\n**处置裁定（用户，2026-09-21）：本轮只记账、不修复**，修复留待后续任务；两条候选路径见 `removeWhen` 的加注。另注：`remote-file-service.ts:61` 的调用未传 `organizationId`，该路径不做归属校验，修复时需一并核对上游是否已按组织校验过该 environment。本边无在排分片承接（1.4 已结项）；2026-09-21 按用户裁定 owner 改挂「未排期」（原 1.4，族内退场口径见 `_comment` 的「4 包环族 owner 改挂」段），本边与下游读取点的待整改登记见 `ce-standards-todo.md` 的 E1 / E2。"
-    },
-    {
-      "rule": "no-circular",
-      "from": "@fenix/agent-config",
-      "to": "@fenix/agent-config",
-      "owner": "未排期",
-      "removeWhen": "同 `@fenix/agent-runtime → @fenix/agent-runtime` 一条：machine 删除矩阵外的 `machine → agent-config` 反向边后，本指纹的 3 处环与同族其余 35 处一并消失。原 removeWhen 的「1.5 下沉 apps/server 能力」已随 1.5c 交付，实测剩余 3 处环里已无任何 @fenix/server-app 参与者。",
-      "rationale": "1.5g 复测（2026-09-21，工作树 872010416，2411 modules，按 `check:dependencies` 的参数重跑）据实改写：实测 **3 处环（环长 14–15）**；上次记载「10 处环（环长 8–12）」，处数与环长均不符。参与包只剩一族：@fenix/agent-config ↔ @fenix/agent-runtime ↔ @fenix/resource-machine ↔ @fenix/resource-sandbox（3 处）。上次记载的「@fenix/agent-config ↔ @fenix/agent-runtime（7 处）」两包形态，以及含 @fenix/resource-skill / @fenix/server-app 的两支（2 处 + 1 处），实测均已不再出现在本指纹下——前者随 agent-config 取数面收敛消失，后者随 1.5b / 1.5c 的包 → 宿主边下沉归零。根因改写：agent-config → agent-runtime 本身是 §2.3 登记的合法方向，本指纹下的环同样由矩阵外的 @fenix/resource-machine → @fenix/agent-config 反向边闭合，与 1.4 名下 4 条同族（本族实测 38 处 / 6 指纹 / 环长 11–17）。owner：未排期（原 1.5；2026-09-21 按用户裁定改挂，理由同 `@fenix/agent-runtime → @fenix/agent-runtime` 一条，退场口径见 `_comment` 的「4 包环族 owner 改挂」段）。"
-    },
-    {
-      "rule": "no-circular",
       "from": "@fenix/resource-knowledge",
       "to": "@fenix/resource-knowledge",
-      "owner": "未排期",
-      "removeWhen": "包内入口自环消除：`src/server/services/agent-knowledge.ts` 不再以包名导入自身入口（改为相对导入，或 `src/server.ts` 不再 `export *` 该服务）即可。该自环由阶段 1 的 PHY-05 资源闭包迁移（0b4ec5858，2026-09-16）引入，早于阶段 2，不由任何阶段 2 任务消除。",
-      "rationale": "1.5g 复测（2026-09-21，工作树 872010416，2411 modules，按 `check:dependencies` 的参数重跑）据实改写：实测 **1 处环（环长 2）**；上次记载「2 处环（环长 2–11）」，其中含 @fenix/server-app 的那 1 处已随 1.5 的包 → 宿主边下沉归零，同批消失的还有本包 apps-boundary 残留（knowledge 三张表已随 §1.7 B9 迁入本包 `db/`，宿主导入归零、该残留条目同批删除；2026-09-22 订正）。剩下的 1 处是**纯包内自环**：`src/server/services/agent-knowledge.ts:2` 以包名导入 `@fenix/resource-knowledge/server` 取 `agentKnowledgeBindingRepo` / `knowledgeBaseRepo`，而 `src/server.ts:20` 又 `export * from \"./server/services/agent-knowledge\"`——环长 2、无跨包边。owner：未排期（2026-09-21 由 1.5 改派；原 removeWhen 的前提——环内有指向 @fenix/server-app 的能力面——已随 1.5c 消失，本环不属于阶段 2 任何任务，正合 `_comment` 对「未排期」的定义）。"
-    },
-    {
-      "rule": "no-circular",
-      "from": "@fenix/resource-machine",
-      "to": "@fenix/resource-machine",
-      "owner": "未排期",
-      "removeWhen": "machine 删除 machine → agent-config 反向边（W6b-3 实测这一族 37 处环每条都含该边一次，是本族环的共同闭合边）",
-      "rationale": "W6b-3 交付后（abd24f9b0，2397 modules）实测 **10 处环（环长 11–16）**；上次记载为「37 处环（环长 11–17）」，据实改写。参与包：@fenix/agent-config ↔ @fenix/agent-runtime ↔ @fenix/resource-machine ↔ @fenix/resource-sandbox（10 处）。环上出现的跨包边恰好每条环各一次：@fenix/resource-machine → @fenix/agent-config（10 处）、@fenix/agent-config → @fenix/agent-runtime（10 处）、@fenix/agent-runtime → @fenix/resource-sandbox（10 处）、@fenix/resource-sandbox → @fenix/resource-machine（10 处）。根因：§2.3 只登记 sandbox → machine、agent-config → agent-runtime 与 agent-runtime → sandbox/machine，环由矩阵外的 machine → agent-config 反向边闭合。上次记载的 37 处是该族环在这一指纹下的上报数：W6b 收窄 agent-runtime 的装配面导出后代表边重新分布到 6 个包对（本条目 37 → 10 处），族内总数仍为 37 处、环长范围仍为 11–17，根因与参与包集合未变。owner：未排期（原 1.4；2026-09-21 按用户裁定改挂，族内退场口径见 `_comment` 的「4 包环族 owner 改挂」段）。"
-    },
-    {
-      "rule": "no-circular",
-      "from": "@fenix/resource-sandbox",
-      "to": "@fenix/resource-machine",
-      "owner": "未排期",
-      "removeWhen": "machine 删除 machine → agent-config 反向边（W6b-3 实测这一族 37 处环每条都含该边一次，是本族环的共同闭合边）",
-      "rationale": "W6b-3 交付后（abd24f9b0，2397 modules）实测 **3 处环（环长 12–15）**；上次记载为「3 处环（环长 14）」，处数一致、环长与实测不符，据实改写。参与包：@fenix/agent-config ↔ @fenix/agent-runtime ↔ @fenix/resource-machine ↔ @fenix/resource-sandbox（3 处）。环上出现的跨包边恰好每条环各一次：@fenix/resource-machine → @fenix/agent-config（3 处）、@fenix/agent-config → @fenix/agent-runtime（3 处）、@fenix/agent-runtime → @fenix/resource-sandbox（3 处）、@fenix/resource-sandbox → @fenix/resource-machine（3 处）。根因：§2.3 只登记 sandbox → machine、agent-config → agent-runtime 与 agent-runtime → sandbox/machine，环由矩阵外的 machine → agent-config 反向边闭合。owner：未排期（原 1.4；2026-09-21 按用户裁定改挂，族内退场口径见 `_comment` 的「4 包环族 owner 改挂」段）。"
-    },
-    {
-      "rule": "no-circular",
-      "from": "@fenix/resource-sandbox",
-      "to": "@fenix/resource-sandbox",
-      "owner": "未排期",
-      "removeWhen": "machine 删除 machine → agent-config 反向边（W6b-3 实测这一族 37 处环每条都含该边一次，是本族环的共同闭合边）",
-      "rationale": "W6b-3 交付后（abd24f9b0，2397 modules）实测 **7 处环（环长 12–15）**；上次记载为「8 处环（环长 6–16）」，据实改写。参与包：@fenix/agent-config ↔ @fenix/agent-runtime ↔ @fenix/resource-machine ↔ @fenix/resource-sandbox（7 处）——上次记载的「@fenix/resource-machine ↔ @fenix/resource-sandbox（5 处）」这类两包形态在 W6b-3 实测中不再出现在本指纹下。环上出现的跨包边恰好每条环各一次：@fenix/resource-machine → @fenix/agent-config（7 处）、@fenix/agent-config → @fenix/agent-runtime（7 处）、@fenix/agent-runtime → @fenix/resource-sandbox（7 处）、@fenix/resource-sandbox → @fenix/resource-machine（7 处）。根因：§2.3 只登记 sandbox → machine、agent-config → agent-runtime 与 agent-runtime → sandbox/machine，环由矩阵外的 machine → agent-config 反向边闭合；上次记载的「由反向的 machine → sandbox 闭合」形态在本指纹下已不再出现。owner：未排期（原 1.4；2026-09-21 按用户裁定改挂，族内退场口径见 `_comment` 的「4 包环族 owner 改挂」段）。"
+      "owner": "EX-1 包内入口自环（agent-knowledge 不再以包名导入自身根入口）",
+      "removeWhen": "`src/server/services/agent-knowledge.ts` 不再以包名导入自身入口（改为相对导入，或 `src/server.ts` 不再 `export *` 该服务）即可——环上无跨包边，消除任一条边都解环。",
+      "rationale": "2026-09-24 复测实测 **1 处环（环长 2）**：`packages/resources/knowledge/src/server/services/agent-knowledge.ts` → `packages/resources/knowledge/src/server.ts`。真实边两条：`agent-knowledge.ts:2` 以包名导入 `@fenix/resource-knowledge/server` 取 `agentKnowledgeBindingRepo` / `knowledgeBaseRepo`；`src/server.ts:22` 是 `export * from \"./server/services/agent-knowledge\"`。环上无跨包边，是纯包内自环。该自环由阶段 1 的 PHY-05 资源闭包迁移（0b4ec5858，2026-09-16）引入，早于阶段 2；阶段 2 的 1.5c 曾把同批的宿主参与者（@fenix/server-app）清零，本环不受影响。"
     },
     {
       "rule": "no-circular",
       "from": "@fenix/ccb",
       "to": "@fenix/ccb",
-      "owner": "未排期",
-      "removeWhen": "包内入口自环消除；跨 acp-link 的 3 处按用户裁定不改动",
-      "rationale": "4 处环（环长 2–5）。参与包：@fenix/ccb ↔ acp-link（3 处）；@fenix/ccb（1 处）。环上出现的主要跨包边：@fenix/ccb → acp-link（3 处）、acp-link → @fenix/ccb（3 处）。根因：包内入口自环（handler 以包名导入自身根入口）或包内组合面自环；插件包 ↔ acp-link 双向依赖（acp-link 根入口值导入 handler，handler 反向导入 acp-link）。"
+      "owner": "EX-2 ccb 包内入口自环（ccb-handler 改相对导入）；跨 acp-link 的 3 处属 EX-6 的双向依赖",
+      "removeWhen": "包内入口自环消除（`ccb-handler.ts` 不再以包名导入 `@fenix/ccb`）即删除本指纹下的 1 处；同指纹下跨 acp-link 的 3 处只有 EX-6 的双向依赖解掉才会消失，那 3 处按既有裁定不改动。",
+      "rationale": "2026-09-24 复测实测 **4 处环**：包内 1 处（环长 2）+ 跨 acp-link 3 处（环长 4 / 4 / 5）。包内自环的真实边：`packages/plugin-ccb/src/ccb-handler.ts:6` 以包名值导入 `@fenix/ccb`（第 49、55 行另有同名的动态 `import(\"@fenix/ccb\")`），`packages/plugin-ccb/src/index.ts:1` 又 `export { createCcbHandler }` 导出该 handler。跨 acp-link 的 3 处环参与包为 @fenix/ccb ↔ acp-link，环上真实边两条：`src/plugin.ts` / `src/runtime/ccb-runtime.ts` → `src/process/acp-link-process-manager.ts:1` 的 `import { createAcpServer } from \"acp-link\"`；`packages/acp-link/src/server.ts:5` 的 `import { createCcbHandler } from \"@fenix/ccb\"`。"
     },
     {
       "rule": "no-circular",
       "from": "@fenix/claude-code",
       "to": "@fenix/claude-code",
-      "owner": "未排期",
-      "removeWhen": "包内入口自环消除",
-      "rationale": "1 处环（环长 2）。参与包：@fenix/claude-code（1 处）。环上无跨包边（包内自环）。根因：包内入口自环（handler 以包名导入自身根入口）或包内组合面自环。"
+      "owner": "EX-3 包内入口自环（claude-code-handler 改相对导入）",
+      "removeWhen": "包内入口自环消除：`claude-code-handler.ts` 不再以包名导入 `@fenix/claude-code`（`packages/plugin-claude-code/src/index.ts` 仍导出该 handler，只需改导入形式）。",
+      "rationale": "2026-09-24 复测实测 **1 处环（环长 2）**，与上一版记载一致：`packages/plugin-claude-code/src/claude-code-handler.ts` → `packages/plugin-claude-code/src/index.ts`。真实边：`claude-code-handler.ts:7` 以包名值导入 `@fenix/claude-code`（第 25、31 行另有动态 `import(\"@fenix/claude-code\")`），`index.ts` 导出该 handler。本指纹下**没有**跨 acp-link 的环：该包不经 `process/acp-link-process-manager.ts` 启动 acp-link（与 ccb / opencode 的差异就在这里）。"
     },
     {
       "rule": "no-circular",
       "from": "@fenix/opencode",
       "to": "@fenix/opencode",
-      "owner": "未排期",
-      "removeWhen": "包内入口自环消除；跨 acp-link 的 3 处按用户裁定不改动",
-      "rationale": "4 处环（环长 2–5）。参与包：@fenix/opencode ↔ acp-link（3 处）；@fenix/opencode（1 处）。环上出现的主要跨包边：@fenix/opencode → acp-link（3 处）、acp-link → @fenix/opencode（3 处）。根因：包内入口自环（handler 以包名导入自身根入口）或包内组合面自环；插件包 ↔ acp-link 双向依赖（acp-link 根入口值导入 handler，handler 反向导入 acp-link）。"
+      "owner": "EX-4 opencode 包内入口自环（opencode-handler 改相对导入）；跨 acp-link 的 3 处属 EX-6 的双向依赖",
+      "removeWhen": "包内入口自环消除（`opencode-handler.ts` 不再以包名导入 `@fenix/opencode`）即删除本指纹下的 1 处；同指纹下跨 acp-link 的 3 处只有 EX-6 的双向依赖解掉才会消失，那 3 处按既有裁定不改动。",
+      "rationale": "2026-09-24 复测实测 **4 处环**：包内 1 处（环长 2）+ 跨 acp-link 3 处（环长 4 / 4 / 5）。包内自环的真实边：`packages/plugin-opencode/src/opencode-handler.ts:1` 以包名值导入 `@fenix/opencode`，`packages/plugin-opencode/src/index.ts` 又导出该 handler。跨 acp-link 的 3 处环参与包为 @fenix/opencode ↔ acp-link，环上真实边两条：`src/plugin.ts` / `src/runtime/opencode-runtime.ts` → `src/process/acp-link-process-manager.ts:1` 的 `import { createAcpServer } from \"acp-link\"`；`packages/acp-link/src/server.ts:7` 的 `import { createOpencodeHandler } from \"@fenix/opencode\"`。"
     },
     {
       "rule": "no-circular",
       "from": "@fenix/peri",
       "to": "@fenix/peri",
-      "owner": "未排期",
-      "removeWhen": "包的进程管理面不再值导入 acp-link 根入口（`process/acp-link-process-manager.ts` 的 createAcpServer），或 acp-link 根入口不再值导入插件 handler；跨 acp-link 的 2 处按既有裁定不改动",
-      "rationale": "2 处环（环长 4–5）。参与包：@fenix/peri ↔ acp-link（2 处）。环上出现的主要跨包边：@fenix/peri → acp-link（2 处）、acp-link → @fenix/peri（2 处）。根因与本台账中 @fenix/ccb / @fenix/opencode / @fenix/claude-code 同族条目一致：插件包 ↔ acp-link 双向依赖（acp-link 根入口值导入 handler，`process/acp-link-process-manager.ts` 反向导入 acp-link 的 createAcpServer），代表边在包对之间迁移故落在本包内。与同族条目的差异：@fenix/peri 的 handler 用相对路径导入包内模块，不产生「以包名导入自身根入口」的包内自环，因此本包只有这一个指纹。环的代表边语义、归属依据、上报粒度与环长定义见本台账 `_comment` 的「环的代表边与 owner 归属」段。"
+      "owner": "EX-5 acp-link ↔ @fenix/peri 双向依赖（代表边落在 peri 侧；与 EX-6 是同一族的两个指纹）",
+      "removeWhen": "`packages/plugin-peri/src/process/acp-link-process-manager.ts` 不再值导入 acp-link 根入口的 createAcpServer，或 `packages/acp-link/src/server.ts` 不再值导入 peri handler；两条边任一条消失，本指纹的 2 处环与 EX-6 的 1 处一并消失。",
+      "rationale": "2026-09-24 复测实测 **2 处环（环长 4 / 5）**，与上一版记载的处数一致。参与包：@fenix/peri ↔ acp-link（2 处，与 ccb / opencode 的跨包部分同族）。环上真实边两条：`packages/plugin-peri/src/process/acp-link-process-manager.ts:1` 的 `import { type AcpServerHandle, createAcpServer } from \"acp-link\"`（经 `src/runtime/peri-runtime.ts` / `src/plugin.ts` 进来）；`packages/acp-link/src/server.ts:8` 的 `import { createPeriHandler } from \"@fenix/peri\"`。与同族 ccb / opencode 的差异：peri 的 handler 用相对路径导入包内模块（`packages/plugin-peri/src/peri-handler.ts` 不导入 `@fenix/peri`），因此本包**没有**「以包名导入自身根入口」的包内自环，只有这一个指纹。环的代表边语义、归属依据、上报粒度与环长定义见本台账 `_comment` 的「环的代表边与 owner 归属」段。"
     },
     {
       "rule": "no-circular",
       "from": "acp-link",
       "to": "@fenix/peri",
-      "owner": "未排期",
-      "removeWhen": "acp-link 根入口不再值导入插件 handler，或 @fenix/peri 的进程管理面不再值导入 acp-link 根入口（同一族的闭合边，与 `@fenix/peri → @fenix/peri` 那条一并消失）",
-      "rationale": "1 处环（环长 4）。参与包：acp-link ↔ @fenix/peri（1 处）。环上相邻的真实边：acp-link/src/server.ts 值导入 createPeriHandler（新增 peri 引擎时按既有四引擎 handler 映射加入），@fenix/peri 经 process/acp-link-process-manager.ts → index.ts 回到 acp-link 根入口。根因与同族条目一致（插件包 ↔ acp-link 双向依赖），本条只是代表边落在 acp-link 侧的那一环。环的代表边语义、归属依据、上报粒度与环长定义见本台账 `_comment` 的「环的代表边与 owner 归属」段。"
+      "owner": "EX-6 acp-link ↔ 插件包双向依赖（ccb / opencode / peri 三处跨包环的共同闭合边；需先立项再解，无在排任务）",
+      "removeWhen": "`packages/acp-link/src/server.ts` 不再值导入插件 handler（改为运行期注入 / 工厂注册），或插件包不再值导入 acp-link 根入口（`process/acp-link-process-manager.ts` 的 createAcpServer 改为注入）；两条边任一条消失，本条与 EX-2 / EX-4 里跨 acp-link 的部分、EX-5 一并消失。",
+      "rationale": "2026-09-24 复测实测**本指纹 1 处环（环长 4）**，同族跨包环共 7 处（ccb 3 + opencode 3 + peri 1，分布在 EX-2 / EX-4 / EX-5 与本条四个指纹下）。环上真实边两条：`packages/acp-link/src/server.ts:5-8` 值导入四个插件 handler（`createCcbHandler` / `createClaudeCodeHandler` / `createOpencodeHandler` / `createPeriHandler`），插件包经 `src/process/acp-link-process-manager.ts:1` 反向值导入 acp-link 根入口的 `createAcpServer`。本包同族的 claude-code 只有包内自环（不经该 process manager），故不在跨包环里。§2.3 的依赖矩阵对独立 SDK/插件包只禁「包间依赖环」；解环需要先把「引擎 handler 注册」从 acp-link 根入口的值导入改成注入，属独立立项，**缺承接方**——登记在此显式记账，不再挂「未排期」占位。环的代表边语义、归属依据、上报粒度与环长定义见本台账 `_comment` 的「环的代表边与 owner 归属」段。"
     },
     {
       "rule": "undeclared-workspace-dependency",
       "from": "@fenix-agent/acp-runtime-cli",
       "to": "acp-link",
-      "owner": "未排期",
-      "removeWhen": "该包不再把 acp-link 作为构建期输入（改为 external 发布），或 acp-link 正式发布后改为普通 dependencies",
-      "rationale": "实测 1 处导入 / 1 个文件。src/bin.ts 从 acp-link 根入口导入 startServer，但 package.json 只把它声明在 devDependencies。这在该包是正确声明：`bun build` 把 acp-link 连同其插件依赖打进单一产物 dist/bin.js（实测 dist/bin.js 内无裸 `acp-link` 导入），发布物自包含，消费者不需要 acp-link。把 `workspace:*` 提升为运行时 dependencies 会改变已发布 npm 包的依赖语义，超出 1.1 范围，故登记为豁免。此条由 1.1 修掉「只认 @fenix/ 前缀」的解析盲区后暴露。"
+      "owner": "EX-7 acp-runtime-cli 的构建期输入（acp-link 打进 dist，不列为运行时依赖）",
+      "removeWhen": "该包不再把 acp-link 作为构建期输入（改为 external 发布），或 acp-link 正式发布后改为普通 dependencies。",
+      "rationale": "2026-09-24 复测实测仍为 **1 处导入 / 1 个文件**：`packages/acp-runtime-cli/src/bin.ts:33` 从 acp-link 根入口导入 `startServer`，而 `package.json` 只把它声明在 `devDependencies`（`devDependencies.acp-link: workspace:*`）。这在该包是正确声明：`bun build src/bin.ts --outfile dist/bin.js --target=bun --minify` 把 acp-link 连同其插件依赖打进单一产物，发布物自包含，消费者不需要 acp-link。把 `workspace:*` 提升为运行时 dependencies 会改变已发布 npm 包的依赖语义，超出本条范围，故登记为豁免。"
     }
   ]
 }

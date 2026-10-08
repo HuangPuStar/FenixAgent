@@ -78,9 +78,18 @@ export interface ModelWriteData {
 }
 
 export interface ModelRepository {
-  /** 枚举某 Provider 下的全部模型（详情视图与 `/api` 分页都在内存里切分，与迁移前一致）。 */
-  listByProviderId(input: { providerId: string }): Promise<ModelRow[]>;
-  /** 批量模型计数，供 Provider 列表展示；不存在的 Provider 不出现在结果里。 */
+  /**
+   * 枚举某 Provider 下的模型，按 {@link MODEL_LIST_ORDER} 升序。
+   *
+   * 给定 `limit` / `offset` 时由 SQL 完成分页（决策 D3：子行列表不得取回全量再内存切片），省略时返回
+   * 全量，供 Provider 详情把子行内嵌进响应。排序是分页的前提：没有确定的次序键，两次查询的"第 N 行"
+   * 可能不是同一行，翻页会重复或漏读。
+   */
+  listByProviderId(input: { providerId: string; limit?: number; offset?: number }): Promise<ModelRow[]>;
+  /**
+   * 批量模型计数，供 Provider 列表的 `modelCount` 与子行分页列表的 `total` 使用——两者要的都是"某
+   * Provider 下全部子行"的条数；不存在的 Provider 不出现在结果里。
+   */
   countByProviderIds(input: { providerIds: readonly string[] }): Promise<ReadonlyMap<string, number>>;
   findById(input: { providerId: string; id: string }): Promise<ModelRow | undefined>;
   findByModelId(input: { providerId: string; modelId: string }): Promise<ModelRow | undefined>;
@@ -140,7 +149,15 @@ export function createModelRepository(): ModelRepository {
 
   return {
     async listByProviderId(input) {
-      return database().select().from(model).where(eq(model.providerId, input.providerId));
+      const query = database()
+        .select()
+        .from(model)
+        .where(eq(model.providerId, input.providerId))
+        .orderBy(...MODEL_LIST_ORDER);
+      // 分页按需追加：`limit()` / `offset()` 在原 builder 上生效并返回它自身。省略边界才是"取全量"，
+      // 把 `undefined` 交给 Drizzle 会落进它未文档化的"无限制"语义，含义不清楚。
+      const limited = input.limit === undefined ? query : query.limit(input.limit);
+      return input.offset === undefined ? limited : limited.offset(input.offset);
     },
 
     async countByProviderIds(input) {

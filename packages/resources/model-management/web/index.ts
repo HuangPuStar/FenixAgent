@@ -24,9 +24,11 @@
 // `simplifyModelDisplayName` 的唯一实现在 `@fenix/ui-components`（Chat 输入岛的模型标签与
 // 本包的下拉标签都要用同一份化简规则）。此处保留同名转发，本包对外出口不变。
 export { simplifyModelDisplayName } from "@fenix/ui-components/chat/lib/simplify-model-display-name";
-// API 客户端：`/web/config/models`、`/web/config/providers`、`/web/model-gateway` 与 `/api` 用量查询
+// API 客户端：`/web/config/models`、`/web/config/providers`、`/web/model-gateway`、`/api` 用量查询
+// 与本包路由 `/web/agents/.../peri-tasks/:taskId/detail` 的 Peri 任务详情取数
 export * from "./api/model-gateway";
 export * from "./api/models";
+export * from "./api/peri-task-details";
 export * from "./api/providers";
 // 组件：模型配置对话框与模型品牌图标。`@lobehub/icons` 只在 ModelIcon 内出现，纯逻辑模块不加载它
 // （CLAUDE.md 前端边界：不得让纯逻辑测试间接加载图标包）。

@@ -218,6 +218,15 @@
     "of": "/",
     "close": "关闭"
   },
+  "graph2d": {
+    "loading": "正在加载图谱...",
+    "emptyState": "这组记忆暂无可视化的图谱数据",
+    "linkTypeCausal": "因果：{{type}}",
+    "linkTypeGeneric": "{{type}}",
+    "linkTooltipEntity": "实体",
+    "linkTooltipWeight": "权重",
+    "controlsHint": "滚轮缩放 · 拖动平移"
+  },
   "constellation": {
     "hudStats": "记忆: {{memories}} · 可见: {{visible}} · 标签: {{labels}} · 链接: {{links}} · 缩放: {{zoom}}x",
     "linkTypeSemantic": "语义",
@@ -236,6 +245,10 @@
     "tooltipOccurred": "发生时间",
     "tooltipMentioned": "提及时间",
     "tooltipDocument": "文档",
+    "tooltipEntities": "实体",
+    "tooltipProofs": "证据",
+    "tooltipTags": "标签",
+    "tooltipId": "ID",
     "tooltipLinks": "{{count}} 条链接"
   },
   "nav": {

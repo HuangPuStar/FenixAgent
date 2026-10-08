@@ -84,6 +84,8 @@ export interface SharedRelay {
    * 被 clobber、绑定校验丢弃当前会话增量、误开回放窗口）。请求出口登记、响应消费后删除。
    */
   pendingSessionSyncIds?: Set<number | string>;
+  /** 会话变更按 RPC id 等待 Agent 结果，避免发送成功被误报为持久化成功。 */
+  pendingSessionMutations?: Map<number | string, (succeeded: boolean) => void>;
   /**
    * 最近一次发出的会话同步请求 rpcId（create/load/resume）。
    * 同一 relay 上可能同时存在多个在途会话同步请求（用户在响应到达前再次切换会话，

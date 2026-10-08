@@ -7,12 +7,12 @@
 //   i18n 由宿主 ns=components 收敛到 UI_COMPONENTS_NS 的 chat.components.* key。
 //   视觉、结构、交互与 data-* 契约均未改动。
 //
-// 深层样式（两条子代选择器）下沉到同目录 `./PermissionPanel.css`，语义类名为
-// `.chat-permission-badge`（图标徽标）与 `.chat-permission-audit-note`（审计脚注），
-// 源选择器分别是 `.chat-interaction-icon svg` 与 `.chat-permission-audit svg`。
+// 两个图标的尺寸（源 `.chat-interaction-icon svg` 14px、`.chat-permission-audit svg` 13px）改由图标自身的
+// 扁平工具类承担：被删样式表里的 `calc(var(--spacing) * 3.5 / 3.25)` 就是 `size-3.5` / `size-3.25`，
+// 令牌层按 px 落地后（1 刻度 = 4px）分别渲染 14px / 13px，与源值相等——旧注记「1 刻度 = 0.25rem」按
+// rem 刻度写成，随令牌层改造作废。`.chat-permission-badge` / `.chat-permission-audit-note`
+// 类名保留为语义钩子，同名样式表已删除。
 // =============================================================================
-
-import "./PermissionPanel.css";
 
 import { KeyRound, ShieldCheck } from "lucide-react";
 import { useState } from "react";
@@ -67,9 +67,9 @@ function PermissionCard({ request, onRespond }: PermissionCardProps) {
       collapsed={collapsed}
       onToggleCollapsed={() => setCollapsed((value) => !value)}
       badge={
-        // 源 `.chat-interaction-icon`（25px 方块 + 14px 图标；图标尺寸在 ./PermissionPanel.css）。
+        // 源 `.chat-interaction-icon`（25px 方块 + 14px 图标；图标尺寸由 `size-3.5` 承担）。
         <span className="chat-permission-badge grid h-6.25 w-6.25 place-items-center rounded-md bg-indigo-50 text-blue-600">
-          <KeyRound />
+          <KeyRound className="size-3.5" />
         </span>
       }
       title={t("chat.components.permissionPanel.title")}
@@ -96,9 +96,9 @@ function PermissionCard({ request, onRespond }: PermissionCardProps) {
           {inputSummary}
         </code>
       )}
-      {/* 源 `.chat-permission-audit`（13px 图标尺寸在 ./PermissionPanel.css）。 */}
+      {/* 源 `.chat-permission-audit`（13px 图标尺寸由 `size-3.25` 承担）。 */}
       <p className="chat-permission-audit-note mt-2 flex items-center gap-1.25 text-3xs text-slate-400">
-        <ShieldCheck />
+        <ShieldCheck className="size-3.25" />
         {t("chat.components.permissionPanel.audit")}
       </p>
     </ChatInteractionRegion>

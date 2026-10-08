@@ -1,0 +1,30 @@
+/* biome-ignore-all lint/style/noDescendingSpecificity: 模型工作台的选择器按容器 / 头部 / 内容的层级组织，
+   同子树上的混合特指度是刻意选择（复核：本仓 biome 2.4.16 下该规则对合成反例也不报，指令属约定登记）。 */
+.agent-models-page {
+  color: var(--color-slate-800);
+}
+.models-provider-detail__header {
+  box-shadow: inset 0 -1px var(--color-slate-200);
+}
+.models-provider-detail-brand {
+  color: var(--provider-color);
+  background: color-mix(in srgb, var(--provider-color) 9%, white);
+}
+.models-provider-connection {
+  grid-template-columns: minmax(220px, 1.2fr) minmax(170px, 0.8fr) minmax(190px, 0.8fr);
+  box-shadow: inset 0 -1px var(--color-slate-200);
+}
+.models-provider-connection > div {
+  grid-template-columns: 16px 72px minmax(0, 1fr);
+}
+.models-model-list {
+  box-shadow: inset 0 1px var(--color-slate-200);
+}
+
+.models-model-row {
+  grid-template-columns: minmax(180px, 1fr) auto;
+  box-shadow: inset 0 -1px var(--color-slate-200);
+}
+.models-model-icon {
+  background: color-mix(in srgb, var(--provider-color) 8%, white);
+}

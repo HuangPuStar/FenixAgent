@@ -61,7 +61,10 @@
       "!!**/coverage",
       "!!**/docs",
       "!!**/routeTree.gen.ts",
-      "!!apps/generated"
+      "!!apps/generated",
+      "!!deploy/manifests/modules.json",
+      "!!deploy/manifests/profiles",
+      "!!deploy/compose/overlays"
     ],
     "ignoreUnknown": true
   },
@@ -84,16 +87,6 @@
           },
           "complexity": {
             "useOptionalChain": "off"
-          }
-        }
-      }
-    },
-    {
-      "includes": ["apps/web/src/components/agent-panel/preview/**"],
-      "linter": {
-        "rules": {
-          "suspicious": {
-            "noArrayIndexKey": "off"
           }
         }
       }

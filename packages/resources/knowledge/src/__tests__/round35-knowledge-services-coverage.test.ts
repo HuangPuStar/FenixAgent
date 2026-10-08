@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
 import { resetAllStubs } from "@fenix/platform-sdk/testing";
+import { knowledgeRuntimeFacade } from "../server/facades/knowledge-runtime-facade";
 import {
   agentKnowledgeBindingRepo,
   type KnowledgeBaseRow,
@@ -7,6 +8,7 @@ import {
   knowledgeBaseRepo,
   knowledgeResourceRepo,
 } from "../server/repositories/knowledge-base";
+import type { KnowledgeBaseCredential } from "../server/services/knowledge-credential";
 import { RagFlowKnowledgeProvider } from "../server/services/knowledge-provider/ragflow";
 import {
   deleteKnowledgeGraphForKb,
@@ -65,6 +67,13 @@ function resource(overrides: Partial<KnowledgeResourceRow> = {}): KnowledgeResou
     ...overrides,
   };
 }
+
+/**
+ * 门面解析出的凭据替身：取值身份由门面绑定（见 `facades/knowledge-access`），领域服务只负责
+ * 「什么时候取」，因此服务用例给出取值动作即可；取值结果与 `initializeKnowledgeModuleConfig` 里配置的
+ * key 一致，便于继续断言透传到 provider 的 `apiKey`。
+ */
+const credential: KnowledgeBaseCredential = async () => "test-ragflow-key";
 
 class ServiceProvider extends RagFlowKnowledgeProvider {
   addInputs: Parameters<RagFlowKnowledgeProvider["addResource"]>[0][] = [];
@@ -258,7 +267,7 @@ describe("第35轮知识服务真实业务边界", () => {
     knowledgeBaseRepo.getById = mock(async () => kb());
     setKnowledgeUploadProviderForTesting(provider);
 
-    const result = await importKnowledgeResourceFromUrl("org-1", "kb-1", { url, sourceName }, "user-1");
+    const result = await importKnowledgeResourceFromUrl(kb(), credential, { url, sourceName });
 
     expect(result).toMatchObject({
       knowledgeBaseId: "kb-1",
@@ -288,7 +297,7 @@ describe("第35轮知识服务真实业务边界", () => {
     knowledgeBaseRepo.getById = mock(async () => kb());
     setKnowledgeUploadProviderForTesting(provider);
 
-    await expect(deleteKnowledgeResource("org-1", "kb-1", "resource-1", "user-1")).resolves.toEqual({
+    await expect(deleteKnowledgeResource(kb(), credential, "resource-1")).resolves.toEqual({
       success: true,
       data: null,
     });
@@ -309,12 +318,9 @@ describe("第35轮知识服务真实业务边界", () => {
     knowledgeBaseRepo.getById = mock(async () => kb());
     setKnowledgeUploadProviderForTesting(provider);
 
-    const result = await importKnowledgeResourceFromUrl(
-      "org-1",
-      "kb-1",
-      { url: "https://docs.example.test/fail.md" },
-      "user-1",
-    );
+    const result = await importKnowledgeResourceFromUrl(kb(), credential, {
+      url: "https://docs.example.test/fail.md",
+    });
 
     expect(result).toMatchObject({ sourceName: "fail.md", status: "error", lastError: message, remoteId: null });
   });
@@ -337,7 +343,7 @@ describe("第35轮知识服务真实业务边界", () => {
     knowledgeBaseRepo.getById = mock(async () => kb({ remoteId: rowsOrRemoteId === null ? null : "remote-kb-1" }));
     setKnowledgeUploadProviderForTesting(provider);
 
-    const result = await listKnowledgeResources("org-1", "kb-1", "user-1");
+    const result = await listKnowledgeResources(kb({ remoteId: rowsOrRemoteId === null ? null : "remote-kb-1" }));
 
     expect(result).toHaveLength(rows.length);
     expect(result?.every((item) => item.knowledgeBaseId === "kb-1")).toBe(true);
@@ -371,7 +377,7 @@ describe("第35轮知识服务真实业务边界", () => {
     knowledgeBaseRepo.getById = mock(async () => kb());
     setKnowledgeUploadProviderForTesting(provider);
 
-    const result = await refreshKnowledgeResourceStatus("org-1", "kb-1", "user-1");
+    const result = await refreshKnowledgeResourceStatus(kb(), credential);
 
     expect(result?.some((item) => item.remoteId === remoteId)).toBe(true);
     expect(rows.some((item) => item.remoteId === remoteId)).toBe(true);
@@ -384,10 +390,9 @@ describe("第35轮知识服务真实业务边界", () => {
     ["轮询", pollKnowledgeGraphProgressForKb],
   ])("图谱%s使用远端身份和组织范围", async (_caseName, action) => {
     const provider = new ServiceProvider();
-    knowledgeBaseRepo.getById = mock(async () => kb({ remoteAccountId: " account ", remoteUserId: " user " }));
     setKnowledgeRuntimeProviderForTesting(provider);
 
-    await action({ organizationId: "org-1", knowledgeBaseId: "kb-1", userId: "user-1" });
+    await action({ kb: kb({ remoteAccountId: " account ", remoteUserId: " user " }), credential: credential });
 
     expect(provider.graphInputs[0]).toMatchObject({
       knowledgeBaseRemoteId: "remote-kb-1",
@@ -398,17 +403,19 @@ describe("第35轮知识服务真实业务边界", () => {
   });
 
   test.each([
-    ["图谱生成", generateKnowledgeGraphForKb],
-    ["图谱读取", getKnowledgeGraphForKb],
-    ["图谱删除", deleteKnowledgeGraphForKb],
-    ["图谱轮询", pollKnowledgeGraphProgressForKb],
-  ])("%s拒绝不存在知识库", async (_caseName, action) => {
+    ["生成", knowledgeRuntimeFacade.generateGraph],
+    ["读取", knowledgeRuntimeFacade.getGraph],
+    ["删除", knowledgeRuntimeFacade.deleteGraph],
+    ["轮询", knowledgeRuntimeFacade.pollGraphProgress],
+  ])("%s图谱拒绝不存在知识库", async (_caseName, action) => {
     knowledgeBaseRepo.getById = mock(async () => null) as unknown as typeof knowledgeBaseRepo.getById;
     setKnowledgeRuntimeProviderForTesting(new ServiceProvider());
 
-    await expect(action({ organizationId: "org-1", knowledgeBaseId: "missing", userId: "user-1" })).rejects.toThrow(
-      "Knowledge base not found",
-    );
+    // 知识库不存在时在访问 provider 前统一返回 404 分类。
+    await expect(action({ organizationId: "org-1", userId: "user-1" }, "missing")).resolves.toEqual({
+      ok: false,
+      error: { kind: "not-found", code: "NOT_FOUND", message: "Knowledge base not found" },
+    });
   });
 
   test.each([
@@ -417,10 +424,9 @@ describe("第35轮知识服务真实业务边界", () => {
     ["图谱删除", deleteKnowledgeGraphForKb],
     ["图谱轮询", pollKnowledgeGraphProgressForKb],
   ])("%s拒绝缺失远端 ID", async (_caseName, action) => {
-    knowledgeBaseRepo.getById = mock(async () => kb({ remoteId: null }));
     setKnowledgeRuntimeProviderForTesting(new ServiceProvider());
 
-    await expect(action({ organizationId: "org-1", knowledgeBaseId: "kb-1", userId: "user-1" })).rejects.toThrow(
+    await expect(action({ kb: kb({ remoteId: null }), credential: credential })).rejects.toThrow(
       "Knowledge base remote id is missing",
     );
   });
@@ -486,13 +492,12 @@ describe("第35轮知识服务真实业务边界", () => {
     ["双空白回退", " ", " "],
   ])("切片检索 DTO 对%s规范化远端身份", async (_caseName, remoteAccountId, remoteUserId) => {
     const provider = new ServiceProvider();
-    knowledgeBaseRepo.getById = mock(async () => kb({ remoteAccountId, remoteUserId }));
     setKnowledgeRuntimeProviderForTesting(provider);
 
     await expect(
       searchKnowledgeForTest({
-        organizationId: "org-1",
-        knowledgeBaseId: "kb-1",
+        kb: kb({ remoteAccountId, remoteUserId }),
+        credential: credential,
         query: "切片",
         topK: 2,
         page: 1,

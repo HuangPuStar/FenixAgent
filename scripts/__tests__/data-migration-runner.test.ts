@@ -1,15 +1,34 @@
 import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
-import { _deps, _resetDeps, type DataMigrate, runDataMigrations } from "../../apps/server/src/services/data-migrate";
+import type { DataMigration } from "@fenix/platform-sdk";
+import { _deps, _resetDeps, runDataMigrations } from "../../apps/server/src/services/data-migrate";
 import { runDataMigrationEntrypoint } from "../../db/data-migration-runner";
 
 const repoRoot = resolve(import.meta.dir, "../..");
 
+/** 构造测试用迁移：契约的六个字段全部必填，用例只覆盖本场景关心的那几个。 */
+function fakeMigration(spec: Pick<DataMigration, "name"> & Partial<DataMigration>): DataMigration {
+  return {
+    name: spec.name,
+    dependsOn: spec.dependsOn ?? [],
+    metadata: spec.metadata ?? { expectedRows: "0 行", lockRisk: "none", observableFields: ["rows"] },
+    run: spec.run ?? (async () => undefined),
+    verify: spec.verify ?? (async () => undefined),
+    compensation: spec.compensation ?? { kind: "none", reason: "测试替身无副作用可补偿" },
+  };
+}
+
+/**
+ * 本入口只注入 `() => Promise<void>`，清单因此经闭包传入：每个用例替换的是「本次发布要执行哪些迁移」，
+ * 与生产一致——汇总（装配事实 + 宿主自有迁移）发生在注入点之上，被测的只是执行与退出码。
+ */
+let scheduledMigrations: readonly DataMigration[] = [];
+
 /** 只保留被注入替身替换的那部分依赖，其余用静默替身，避免测试输出污染断言。 */
 function createRunnerDeps(overrides: { closeDatabase: () => Promise<void>; onError?: (message: string) => void }) {
   return {
-    runDataMigrations,
+    runDataMigrations: () => runDataMigrations(scheduledMigrations),
     closeDatabase: overrides.closeDatabase,
     log: () => {},
     logError: overrides.onError ?? (() => {}),
@@ -19,6 +38,7 @@ function createRunnerDeps(overrides: { closeDatabase: () => Promise<void>; onErr
 describe("部署期数据迁移入口", () => {
   beforeEach(() => {
     _resetDeps();
+    scheduledMigrations = [];
   });
 
   afterEach(() => {
@@ -28,25 +48,25 @@ describe("部署期数据迁移入口", () => {
   // 已应用项按 data_migrate_record 跳过，未应用项执行后写入完成记录，入口以 0 退出并关闭连接。
   test("skips applied migrations and exits 0", async () => {
     const executed: string[] = [];
-    const applied: DataMigrate = {
+    const applied: DataMigration = fakeMigration({
       name: "migrate-a",
       run: mock(async () => {
         executed.push("migrate-a");
       }),
-    };
-    const pending: DataMigrate = {
+    });
+    const pending: DataMigration = fakeMigration({
       name: "migrate-b",
       run: mock(async () => {
         executed.push("migrate-b");
       }),
-    };
+    });
     const insertRecord = mock(async (name: string) => {
       executed.push(`record:${name}`);
     });
-    _deps.migrates = [applied, pending];
     _deps.listAppliedMigrationNames = async () => ["migrate-a"];
     _deps.insertDataMigrateRecord = insertRecord;
     _deps.log = mock(() => {});
+    scheduledMigrations = [applied, pending];
 
     const code = await runDataMigrationEntrypoint(
       createRunnerDeps({
@@ -64,23 +84,23 @@ describe("部署期数据迁移入口", () => {
   // 任一迁移失败即中止：后续迁移不执行、不写成功记录，入口以非 0 退出且仍关闭连接。
   test("stops at the first failure and exits non-zero", async () => {
     const executed: string[] = [];
-    const failing: DataMigrate = {
+    const failing: DataMigration = fakeMigration({
       name: "migrate-a",
       run: mock(async () => {
         throw new Error("boom");
       }),
-    };
-    const later: DataMigrate = {
+    });
+    const later: DataMigration = fakeMigration({
       name: "migrate-b",
       run: mock(async () => {
         executed.push("migrate-b");
       }),
-    };
+    });
     const insertRecord = mock(async () => undefined);
-    _deps.migrates = [failing, later];
     _deps.listAppliedMigrationNames = async () => [];
     _deps.insertDataMigrateRecord = insertRecord;
     _deps.log = mock(() => {});
+    scheduledMigrations = [failing, later];
 
     const errors: string[] = [];
     const code = await runDataMigrationEntrypoint(
@@ -100,10 +120,10 @@ describe("部署期数据迁移入口", () => {
 
   // 关闭连接失败不改变迁移结果：记录已落库，不能因连接未关就判失败并让发布任务重复执行。
   test("keeps the exit code when closing the database fails", async () => {
-    _deps.migrates = [{ name: "migrate-a", run: mock(async () => undefined) }];
     _deps.listAppliedMigrationNames = async () => [];
     _deps.insertDataMigrateRecord = mock(async () => undefined);
     _deps.log = mock(() => {});
+    scheduledMigrations = [fakeMigration({ name: "migrate-a", run: mock(async () => undefined) })];
 
     const errors: string[] = [];
     const code = await runDataMigrationEntrypoint(

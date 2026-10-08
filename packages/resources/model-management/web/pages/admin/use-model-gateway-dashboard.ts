@@ -67,7 +67,10 @@ export function useModelGatewayDashboard({ onAuthFailure }: { onAuthFailure: () 
   });
   const configRequest = useRequest(() => modelGatewayApi.getConfiguration(), {
     manual: true,
-    onError: handleGatewayRequestError,
+    onError: (error) => {
+      console.error("[model-gateway] configuration request failed", error);
+      handleGatewayRequestError(error);
+    },
   });
   const syncRequest = useRequest(() => modelGatewayApi.sync(), {
     manual: true,
@@ -182,6 +185,9 @@ export function useModelGatewayDashboard({ onAuthFailure }: { onAuthFailure: () 
     loadTabSources,
     status,
     config: configRequest.data,
+    configError: configRequest.error,
+    configLoading: configRequest.loading,
+    onRetryConfig: () => void configRequest.run(),
     checking,
     syncing,
     busy,

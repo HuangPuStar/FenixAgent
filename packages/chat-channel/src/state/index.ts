@@ -46,6 +46,7 @@ export {
   loadSessionDoc,
 } from "./factory";
 export { expireQuestion, respondQuestion } from "./question";
+export { createRedisSessionTitleStore, type SessionTitleStore } from "./session-title-store";
 export {
   applyRemoteDocUpdate,
   createYjsStore,

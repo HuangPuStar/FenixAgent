@@ -30,8 +30,9 @@ const INDENT = 12;
 
 /**
  * 行内操作按钮（新建 / 刷新）的样式；由原先的 `.file-tree-row-action` 及其 `:hover` / `:focus-visible`
- * / `svg` 规则逐条翻译而来，26px 方块 + 14px 图标。图标尺寸下沉到 `file-tree-arborist.css`，
- * 其余扁平工具类留在下面常量里。
+ * / `svg` 规则逐条翻译而来，26px 方块 + 14px 图标。图标尺寸（`size-3.5`）写在各图标元素自身；
+ * 原由 `.file-tree-row-action svg` / `.file-tree-row-action--delete svg` 声明的 14px 已于 2026-09-28
+ * 撤回（两条选择器的取值相同，撤回后合并的那条规则删除）。其余扁平工具类留在下面常量里。
  */
 const ROW_ACTION_CLASS =
   "file-tree-row-action inline-grid size-6.5 place-items-center rounded-sm text-text-muted hover:bg-surface-2 hover:text-text-primary focus-visible:bg-surface-2 focus-visible:text-text-primary";
@@ -39,7 +40,7 @@ const ROW_ACTION_CLASS =
 /**
  * 删除按钮样式。原 `.file-tree-row-action--delete` 在靠后的规则里整体覆盖了悬停配色（底色改危险色浅底、
  * 文字改危险色），这里直接写成独立一份，避免与通用悬停类在同属性上争夺优先级。
- * 图标尺寸与通用态同值，合并写在 `file-tree-arborist.css` 里。
+ * 图标尺寸与通用态同值，同样写在图标元素自身（`size-3.5`）。
  */
 const ROW_ACTION_DANGER_CLASS =
   "file-tree-row-action--delete inline-grid size-6.5 place-items-center rounded-sm text-text-muted hover:bg-destructive/10 hover:text-destructive focus-visible:bg-destructive/10 focus-visible:text-destructive";
@@ -132,7 +133,7 @@ export function FileTreeArborist({
           className="file-tree-arborist-sticky-folder pointer-events-none absolute inset-x-0 top-0 z-[2] flex h-8 items-center gap-0.5 border-b border-border-subtle bg-surface-2 px-2.5 text-sm font-normal text-text-secondary"
           aria-hidden
         >
-          <FolderOpen />
+          <FolderOpen className="size-4" />
           <span className="ml-auto">{stickyFolder.path}</span>
         </div>
       )}
@@ -211,15 +212,16 @@ function FileTreeNode({
       >
         {data.isDir ? (
           node.isOpen ? (
-            <FolderOpen aria-hidden />
+            <FolderOpen className="size-4" aria-hidden />
           ) : (
-            <Folder aria-hidden />
+            <Folder className="size-4" aria-hidden />
           )
         ) : (
           // 文件图标与目录图标共用同一个 16px 图标位：不再套 12px 的 `size-3` 内层容器
           // （那层容器让图标走行盒基线定位 —— 实测比行中心低 4.75px、比目录图标小 6.25px 且右移 3.13px）。
-          // 图标位尺寸由 `file-tree-arborist.css` 的 `.file-tree-arborist-toggle > .file-type-icon` 决定，
-          // 与目录图标同一条规则；这里不再写尺寸，避免被那条未分层规则静默压过。
+          // 目录图标的 16px 写在图标元素自身（`size-4`，原 `.file-tree-arborist-toggle > svg` 的未分层
+          // 声明已于 2026-09-28 撤回）；文件图标同样 16px，由 `FileTypeIcon` 的外框默认类 `size-4` 提供，
+          // 与目录图标等值。这里不再写尺寸——外框自带默认档，重复传一次只会多一份同值类。
           <FileTypeIcon filename={data.name} />
         )}
       </button>
@@ -243,7 +245,7 @@ function FileTreeNode({
               viewProps.onNewFile(data.path);
             }}
           >
-            <FilePlus2 aria-hidden />
+            <FilePlus2 className="size-3.5" aria-hidden />
           </button>
         )}
         <button
@@ -255,7 +257,7 @@ function FileTreeNode({
             viewProps.onRefresh();
           }}
         >
-          <RefreshCw aria-hidden />
+          <RefreshCw className="size-3.5" aria-hidden />
         </button>
         <button
           type="button"
@@ -266,7 +268,7 @@ function FileTreeNode({
             viewProps.onDeleteRequest(data.path, data.name);
           }}
         >
-          <Trash2 aria-hidden />
+          <Trash2 className="size-3.5" aria-hidden />
         </button>
       </span>
     </div>

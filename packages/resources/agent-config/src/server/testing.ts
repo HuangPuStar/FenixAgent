@@ -1,8 +1,11 @@
 import type { IdentityDirectory } from "@fenix/platform-sdk";
 import { getDbStub, initializeTestApplicationInfrastructure, resetAllStubs } from "@fenix/platform-sdk/testing";
 import { agentConfigResource } from "./access/agent-config-resource";
+import { agentSiteAppResource } from "./access/agent-site-app-resource";
 import type { AgentConfigModuleConfig } from "./config";
+import { createAgentAuthoringFacade } from "./facades/agent-authoring-facade";
 import type { AgentConfigFacadeApi } from "./facades/agent-config-facade";
+import type { AgentSiteAppFacadeApi } from "./facades/agent-site-app-facade";
 import type { AgentConfigServerModule } from "./module";
 import type { AgentAssociations } from "./services/agent-associations";
 import type { AgentConfigService } from "./services/agent-config-service";
@@ -91,6 +94,32 @@ export function createStubAgentConfigFacade(overrides: Partial<AgentConfigFacade
   };
 }
 
+/**
+ * 站点 App 的应用 Facade 替身（协议层用例只声明"应用层返回什么"）。
+ *
+ * 默认全部未打桩即失败：站点路由调用了用例未预期的方法时立即暴露，而不是静默返回 undefined。
+ */
+export function createStubAgentSiteAppFacade(overrides: Partial<AgentSiteAppFacadeApi> = {}): AgentSiteAppFacadeApi {
+  return {
+    list: unstubbed("siteFacade.list"),
+    getById: unstubbed("siteFacade.getById"),
+    getByRemoteAppId: unstubbed("siteFacade.getByRemoteAppId"),
+    create: unstubbed("siteFacade.create"),
+    update: unstubbed("siteFacade.update"),
+    remove: unstubbed("siteFacade.remove"),
+    rotateToken: unstubbed("siteFacade.rotateToken"),
+    uploadFile: unstubbed("siteFacade.uploadFile"),
+    uploadBundle: unstubbed("siteFacade.uploadBundle"),
+    deploy: unstubbed("siteFacade.deploy"),
+    getPocketBaseProxyTarget: unstubbed("siteFacade.getPocketBaseProxyTarget"),
+    listBoundApps: unstubbed("siteFacade.listBoundApps"),
+    bind: unstubbed("siteFacade.bind"),
+    unbind: unstubbed("siteFacade.unbind"),
+    findPublishTarget: unstubbed("siteFacade.findPublishTarget"),
+    ...overrides,
+  };
+}
+
 export function createStubAgentConfigService(overrides: Partial<AgentConfigService> = {}): AgentConfigService {
   return {
     list: unstubbed("service.list"),
@@ -165,11 +194,18 @@ export function createStubIdentityDirectory(overrides: Partial<IdentityDirectory
 export function createStubAgentConfigServerModule(
   overrides: Partial<AgentConfigServerModule> = {},
 ): AgentConfigServerModule {
+  const associations = overrides.associations ?? createStubAgentAssociations();
   return {
     resource: overrides.resource ?? agentConfigResource,
+    siteResource: overrides.siteResource ?? agentSiteAppResource,
     facade: overrides.facade ?? createStubAgentConfigFacade(),
+    siteFacade: overrides.siteFacade ?? createStubAgentSiteAppFacade(),
     service: overrides.service ?? createStubAgentConfigService(),
-    associations: overrides.associations ?? createStubAgentAssociations(),
+    associations,
+    // 编写面门面默认是**真实实现**，接在（可替换的）绑定门面上：它的两条跨资源读取都经模块装配
+    // （Skill 的可见投影由装入的 Skill 替身给出），因此协议层用例仍能断言"名称→ID 解析 + 绑定写入"
+    // 的完整链路，而不是只断言"某个门面被调用"。
+    authoring: overrides.authoring ?? createAgentAuthoringFacade(associations),
     identity: overrides.identity ?? createStubIdentityDirectory(),
   };
 }

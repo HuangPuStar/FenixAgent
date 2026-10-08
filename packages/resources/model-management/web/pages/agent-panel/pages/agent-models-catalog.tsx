@@ -1,6 +1,5 @@
 import {
   AgentCatalogIndex,
-  AgentCatalogIndexArrow,
   AgentCatalogIndexCopy,
   AgentCatalogIndexIcon,
   AgentCatalogIndexItem,
@@ -49,6 +48,32 @@ import {
 } from "./agent-models-utils";
 
 const SCOPES: ProviderScope[] = ["all", "organization", "public"];
+
+/**
+ * 供应商 / 模型操作按钮的公共类串——原 `.models-provider-controls button, .models-model-actions button`
+ * 的排布、边框与常态取色，以及 `:hover` / `.is-danger:hover` 两条状态配色。
+ *
+ * 两族按钮的差异只有高度下限（`min-h-7.5` / `min-h-6.75`）与内边距（`px-2` / `px-1.5`）：原先由后写的
+ * `.models-model-actions button` 覆盖规则按层叠顺序给出，现在按最终值写在各渲染点。
+ * 值映射与 ΔE00 见 `AgentModelsPage.css` 文件头（`--model-muted` → `slate-500`、`--model-blue` →
+ * `blue-600`、`--model-blue-soft` → `blue-50`、危险态 `#d84a4a` / `#fff0f0` → `red-500` / `red-50`）。
+ */
+const ACTION_BTN = "flex items-center gap-1.25 rounded-md border-0 bg-transparent py-0 text-3xs text-slate-500";
+/** 常态悬停配色（原 `:hover`）。 */
+const ACTION_BTN_HOVER = "hover:bg-blue-50 hover:text-blue-600";
+/** 危险态悬停配色（原 `.is-danger:hover`）。 */
+const ACTION_BTN_HOVER_DANGER = "hover:bg-red-50 hover:text-red-500";
+
+/**
+ * 测试徽标的三态字色——原 `.models-model-test.is-running / .is-success / .is-error` 三条状态规则。
+ * 三态互斥，渲染点只挂其中一条（值映射见 `AgentModelsPage.css` 文件头：`--model-blue` → `blue-600`、
+ * `#168b68` → `emerald-600`、`#d84a4a` → `red-500`）。
+ */
+const TEST_STATUS_COLOR: Record<ModelTestState["status"], string> = {
+  running: "text-blue-600",
+  success: "text-emerald-600",
+  error: "text-red-500",
+};
 
 interface ModelsCatalogProps {
   providers: ProviderInfo[];
@@ -125,7 +150,10 @@ export function AgentModelsCatalog(props: ModelsCatalogProps) {
         scopeGroupLabel={t("scope.label")}
       />
       {props.detailFailures.length > 0 && (
-        <div className="models-partial-error" role="alert">
+        <div
+          className="models-partial-error flex min-h-9.5 items-center justify-between mb-3 py-0 pl-3.5 pr-2.5 text-xs"
+          role="alert"
+        >
           <span>{t("partialLoadError", { count: props.detailFailures.length })}</span>
           <Button variant="ghost" size="sm" onClick={props.onRetry}>
             <RefreshCw />
@@ -177,8 +205,10 @@ function ProviderIndex({
   onSelect: (provider: ProviderInfo) => void;
 }) {
   const { t } = useTranslation(MODELS_NS);
-  // 目录栏外观（内边距 / 底色 / 分隔线 / 行距 / 条目三态 / 图标盒 / 字号）全在共享构件集的伴生 CSS，
-  // 本页不再给任何取值——2026-09-23 的裁定是「全部样式统一，不要观感不统一」。
+  // 目录栏外观（内边距 / 底色 / 分隔线 / 行距 / 条目三态 / 图标盒 / 字号）全在共享组件
+  // `agent-catalog-index.tsx` 的 `className`（伴生 CSS 只剩工具类表达不了的三类：挂不上类名的内层 svg
+  // 与尾注 `<span>`、外壳的列模板、窄屏媒体块），本页不再给任何取值——2026-09-23 的裁定是「全部样式统一，
+  // 不要观感不统一」。
   return (
     <AgentCatalogIndex
       title={t("providerIndex.title")}
@@ -198,13 +228,15 @@ function ProviderIndex({
             return (
               <AgentCatalogIndexItem
                 key={key}
-                // 选中配色与箭头显隐由共享 CSS 按 `aria-current="page"` 驱动（本页此前的 `is-selected` 已删）。
+                // 选中配色（`aria-[current=page]:…`）与箭头显隐（`group-aria-[current=page]:opacity-100`）都由共享
+                // 组件 `className` 的变体类按 `aria-current="page"` 驱动，本页不必自己标类名。
                 selected={active}
                 onClick={() => onSelect(provider)}
               >
-                {/* 品牌图标是彩色 svg，`--ant-color-text-description` 只影响它的
-                    单色兜底分支；图标盒的尺寸 / 圆角 / 白底由共享 CSS 给。`size` 与图标盒内层 svg
-                    同尺（共享 CSS 也会把 svg 统一到该尺寸，这里显式传入是为了让彩色图标按同一视框渲染）。 */}
+                {/* 品牌图标是彩色 svg，`--ant-color-text-description` 只影响它的单色兜底分支；图标盒的尺寸 /
+                    圆角 / 白底是共享组件 `className` 里的 `h-8.5` / `rounded` / `bg-white`。内层 svg 的渲染尺寸
+                    由伴生 CSS 的 `.agent-catalog-index-icon svg` 钉在 20px（`calc(var(--spacing) * 5)`，1 档 = 4px）：
+                    这里传的 `size={16}` 只写进 svg 的宽高属性，会被那条未分层的结构选择器覆盖，不决定渲染尺寸。 */}
                 <AgentCatalogIndexIcon className="[--ant-color-text-description:currentColor]">
                   <ModelIcon modelId={iconModelId} size={16} />
                 </AgentCatalogIndexIcon>
@@ -222,7 +254,6 @@ function ProviderIndex({
                   {external && !publiclyReadable ? <span>{t("scope.shared")}</span> : null}
                   {publiclyReadable ? <span>{t("scope.public")}</span> : null}
                 </AgentCatalogIndexMeta>
-                <AgentCatalogIndexArrow />
               </AgentCatalogIndexItem>
             );
           })}
@@ -246,48 +277,74 @@ function ProviderDetail(props: ModelsCatalogProps & { provider: ProviderInfo; he
   const color = getProviderColor(provider.id);
   const header = (
     <div style={{ "--provider-color": color } as CSSProperties}>
-      <AgentMasterDetailHeader className="models-provider-detail__header">
-        <div className="models-provider-identity">
-          <span className="models-provider-detail-brand [--ant-color-text-description:currentColor]">
+      <AgentMasterDetailHeader className="models-provider-detail__header flex min-h-20 items-center justify-between gap-4.5 px-5 py-3.5">
+        <div className="models-provider-identity flex min-w-0 items-center gap-3.25">
+          <span className="models-provider-detail-brand grid size-10.5 shrink-0 grow-0 basis-10.5 place-items-center rounded-9 [--ant-color-text-description:currentColor]">
             <ModelIcon modelId={iconModelId} size={25} />
           </span>
           <div>
-            <div className="models-provider-meta">
-              <span>{t(`protocolOptions.${provider.protocol}`)}</span>
-              {provider.kind === "gateway" && <span>{t("gateway.tag")}</span>}
-              <code>{provider.id}</code>
+            <div className="models-provider-meta flex items-center gap-2">
+              <span className="text-9 font-bold uppercase text-blue-600 tracking-4">
+                {t(`protocolOptions.${provider.protocol}`)}
+              </span>
+              {provider.kind === "gateway" && (
+                <span className="text-9 font-bold uppercase text-blue-600 tracking-4">{t("gateway.tag")}</span>
+              )}
+              <code className="text-9 text-slate-400">{provider.id}</code>
             </div>
-            <h2>{provider.name || provider.id}</h2>
-            <div className="models-provider-organization">
-              <small>
+            <h2 className="mt-0.75 mb-0.5 text-17 leading-[1.2]">{provider.name || provider.id}</h2>
+            <div className="models-provider-organization flex items-center gap-1.5">
+              <small className="text-9 text-slate-400">
                 {external ? t("scope.shared") : t("scope.organization")} ·{" "}
                 {t("providerIndex.models", { count: models.length })}
               </small>
               {external && !publiclyReadable ? (
-                <span className="models-provider-public-badge">{t("scope.shared")}</span>
+                <span className="models-provider-public-badge inline-block rounded-5 border border-blue-200 px-1.5 py-0.75 bg-blue-50 text-9 text-blue-700 font-semibold whitespace-nowrap">
+                  {t("scope.shared")}
+                </span>
               ) : null}
-              {publiclyReadable ? <span className="models-provider-public-badge">{t("scope.public")}</span> : null}
+              {publiclyReadable ? (
+                <span className="models-provider-public-badge inline-block rounded-5 border border-blue-200 px-1.5 py-0.75 bg-blue-50 text-9 text-blue-700 font-semibold whitespace-nowrap">
+                  {t("scope.public")}
+                </span>
+              ) : null}
             </div>
           </div>
         </div>
-        <div className="models-provider-controls">
+        <div className="models-provider-controls flex gap-0.75">
           {provider.kind === "gateway" && (
-            <button type="button" onClick={() => props.onViewGatewayUsage(provider)}>
+            <button
+              type="button"
+              className={`${ACTION_BTN} min-h-7.5 px-2 ${ACTION_BTN_HOVER}`}
+              onClick={() => props.onViewGatewayUsage(provider)}
+            >
               {t("gateway.myUsage")}
             </button>
           )}
           {writable ? (
             <>
-              <button type="button" onClick={() => props.onEditProvider(provider)}>
-                <Pencil /> {t("actions.edit")}
+              <button
+                type="button"
+                className={`${ACTION_BTN} min-h-7.5 px-2 ${ACTION_BTN_HOVER}`}
+                onClick={() => props.onEditProvider(provider)}
+              >
+                <Pencil className="w-3.25 text-blue-600" /> {t("actions.edit")}
               </button>
-              <button type="button" className="is-danger" onClick={() => props.onDeleteProvider(provider)}>
-                <Trash2 /> {t("actions.delete")}
+              <button
+                type="button"
+                className={`is-danger ${ACTION_BTN} min-h-7.5 px-2 ${ACTION_BTN_HOVER_DANGER}`}
+                onClick={() => props.onDeleteProvider(provider)}
+              >
+                <Trash2 className="w-3.25 text-blue-600" /> {t("actions.delete")}
               </button>
             </>
           ) : (
-            <button type="button" onClick={() => props.onViewProvider(provider)}>
-              <Eye /> {t("actions.view")}
+            <button
+              type="button"
+              className={`${ACTION_BTN} min-h-7.5 px-2 ${ACTION_BTN_HOVER}`}
+              onClick={() => props.onViewProvider(provider)}
+            >
+              <Eye className="w-3.25 text-blue-600" /> {t("actions.view")}
             </button>
           )}
         </div>
@@ -296,22 +353,26 @@ function ProviderDetail(props: ModelsCatalogProps & { provider: ProviderInfo; he
   );
   if (props.headerOnly) return header;
   return (
-    <article className="models-provider-detail" style={{ "--provider-color": color } as CSSProperties}>
-      <div className="models-provider-connection">
-        <div>
-          <Server />
-          <small>{t("connection.endpoint")}</small>
-          <code title={provider.baseURL ?? undefined}>{provider.baseURL ?? t("connection.defaultEndpoint")}</code>
+    <article className="models-provider-detail min-w-0 bg-white" style={{ "--provider-color": color } as CSSProperties}>
+      <div className="models-provider-connection grid bg-slate-50 px-5">
+        <div className="grid min-h-12 min-w-0 items-center gap-1.75 py-0 px-2.5">
+          <Server className="w-3.5 text-blue-600" />
+          <small className="text-9 text-slate-400">{t("connection.endpoint")}</small>
+          <code className="text-3xs truncate text-slate-800" title={provider.baseURL ?? undefined}>
+            {provider.baseURL ?? t("connection.defaultEndpoint")}
+          </code>
         </div>
-        <div>
-          <KeyRound />
-          <small>{t("connection.credential")}</small>
-          <code>{provider.keyHint ?? t("connection.managedCredential")}</code>
+        <div className="grid min-h-12 min-w-0 items-center gap-1.75 border-l border-slate-200 py-0 px-2.5">
+          <KeyRound className="w-3.5 text-blue-600" />
+          <small className="text-9 text-slate-400">{t("connection.credential")}</small>
+          <code className="text-3xs truncate text-slate-800">
+            {provider.keyHint ?? t("connection.managedCredential")}
+          </code>
         </div>
-        <label className="models-provider-visibility">
-          <span>
-            <strong>{t("connection.shared")}</strong>
-            <small>{t("connection.sharedDescription")}</small>
+        <label className="models-provider-visibility flex min-w-0 items-center justify-between gap-3 border-l border-slate-200 px-2.5">
+          <span className="flex min-w-0 flex-col">
+            <strong className="text-3xs">{t("connection.shared")}</strong>
+            <small className="text-9 text-slate-400">{t("connection.sharedDescription")}</small>
           </span>
           <Switch
             checked={publiclyReadable}
@@ -321,24 +382,26 @@ function ProviderDetail(props: ModelsCatalogProps & { provider: ProviderInfo; he
           />
         </label>
       </div>
-      <section className="models-model-catalog">
-        <header>
-          <div>
-            <h3>{t("modelsSection.title")}</h3>
-            <small>{t("modelsSection.description", { count: models.length })}</small>
+      <section className="models-model-catalog px-5 pt-4.5 pb-6">
+        <header className="flex items-center justify-between gap-4 mb-3">
+          <div className={writable ? "gap-1.25" : "flex gap-1.25"}>
+            <h3 className="mb-0.5 text-15">{t("modelsSection.title")}</h3>
+            <small className="text-3xs text-slate-400">
+              {t("modelsSection.description", { count: models.length })}
+            </small>
           </div>
           {writable && (
-            <div>
+            <div className="flex gap-1.25">
               <Button
                 variant="ghost"
-                size="sm"
+                size="xs"
                 disabled={props.discovering}
                 onClick={() => props.onDiscoverModels(provider)}
               >
                 {props.discovering ? <LoaderCircle className="animate-spin" /> : <Search />}
                 {t("form.fetchModels")}
               </Button>
-              <Button size="sm" onClick={() => props.onCreateModel(provider)}>
+              <Button size="xs" onClick={() => props.onCreateModel(provider)}>
                 <Plus />
                 {t("modelSubrow.addButtonLabel")}
               </Button>
@@ -398,45 +461,67 @@ function ModelRow({
 }) {
   const { t } = useTranslation(MODELS_NS);
   return (
-    <div className="models-model-row">
-      <div className="models-model-summary">
-        <span className="models-model-icon [--ant-color-text-description:currentColor]">
+    <div className="models-model-row grid min-h-13.5 items-center gap-2.5 hover:bg-slate-50 px-2 py-1.5">
+      <div className="models-model-summary flex min-w-0 items-center gap-2.25">
+        <span className="models-model-icon grid size-7 shrink-0 grow-0 basis-7 place-items-center rounded-md [--ant-color-text-description:currentColor]">
           <ModelIcon modelId={model.id} size={17} />
         </span>
-        <span className="models-model-identity">
-          <strong>{model.name || model.id}</strong>
-          <code>{model.id}</code>
+        <span className="models-model-identity flex min-w-0 flex-col">
+          <strong className="text-xs truncate">{model.name || model.id}</strong>
+          <code className="mt-0.5 truncate text-9 text-slate-400">{model.id}</code>
           {/* 失败原因在列表里直接可见（单行截断 + 徽标 title 给出全文），不是只藏在 tooltip 里。 */}
-          {test?.status === "error" && test.detail && <small className="models-model-test-detail">{test.detail}</small>}
+          {test?.status === "error" && test.detail && (
+            <small className="models-model-test-detail truncate mt-0.5 text-9 text-red-500">{test.detail}</small>
+          )}
         </span>
       </div>
-      <div className="models-model-actions">
+      <div className="models-model-actions flex items-center gap-0.25">
         {test && (
-          <span className={`models-model-test is-${test.status}`} title={test.detail}>
+          <span
+            className={`models-model-test flex items-center gap-1 mr-1 text-9 ${TEST_STATUS_COLOR[test.status]}`}
+            title={test.detail}
+          >
             {test.status === "running" ? (
-              <LoaderCircle className="animate-spin" />
+              <LoaderCircle className="w-3 animate-spin" />
             ) : test.status === "success" ? (
-              <CheckCircle2 />
+              <CheckCircle2 className="w-3" />
             ) : (
-              <XCircle />
+              <XCircle className="w-3" />
             )}
             {t(`testStatus.${test.status}`)}
           </span>
         )}
         {writable ? (
           <>
-            <button type="button" disabled={testing} onClick={() => onTest(provider, model)}>
+            <button
+              type="button"
+              className={`${ACTION_BTN} min-h-6.75 px-1.5 ${ACTION_BTN_HOVER}`}
+              disabled={testing}
+              onClick={() => onTest(provider, model)}
+            >
               {t("actions.test")}
             </button>
-            <button type="button" onClick={() => onEdit(provider, model)}>
+            <button
+              type="button"
+              className={`${ACTION_BTN} min-h-6.75 px-1.5 ${ACTION_BTN_HOVER}`}
+              onClick={() => onEdit(provider, model)}
+            >
               {t("actions.edit")}
             </button>
-            <button type="button" className="is-danger" onClick={() => onDelete(provider, model)}>
+            <button
+              type="button"
+              className={`is-danger ${ACTION_BTN} min-h-6.75 px-1.5 ${ACTION_BTN_HOVER_DANGER}`}
+              onClick={() => onDelete(provider, model)}
+            >
               {t("actions.delete")}
             </button>
           </>
         ) : (
-          <button type="button" onClick={() => onView(provider, model)}>
+          <button
+            type="button"
+            className="min-h-6.75 gap-1.25 rounded-md text-3xs py-0 px-1.5"
+            onClick={() => onView(provider, model)}
+          >
             {t("actions.view")}
           </button>
         )}

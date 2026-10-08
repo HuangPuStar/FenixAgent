@@ -16,7 +16,8 @@ export const { useSession, signIn, signUp, signOut } = authClient;
  * 不走 `request()` 的原因（前端规范 §5.3 例外登记）：该路由成功时返回 better-auth 的代理响应体、
  * 失败时返回顶层 `{ code, message }`（如 PHONE_NUMBER_EXISTS），而 `request()` 只识别
  * `{ success, data }` 包装与 `error.{code,message}`，改写后错误文案会退化成「请求失败 (4xx)」——
- * 属用户可见回归。补 `request()` 顶层 message/code 能力（need-to-change 25）后再收口。
+ * 属用户可见回归。补 `request()` 顶层 message/code 能力（登记见《目标架构与开发规范》§11「优化项」的
+ * 「前端请求错误建模」）后再收口。
  */
 export async function signUpWithPhone(body: { name: string; phoneNumber: string; password: string }) {
   const response = await fetch("/api/auth/sign-up/phone", {

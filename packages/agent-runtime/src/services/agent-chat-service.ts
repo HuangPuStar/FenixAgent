@@ -1,5 +1,6 @@
+import { randomUUID } from "node:crypto";
 import { environment } from "@fenix/agent-runtime/db";
-import { log, error as logError } from "@fenix/logger";
+import { log, error as logError, requestAls } from "@fenix/logger";
 import { NotFoundError } from "@fenix/platform-sdk";
 import type { EngineRelayHandle, EngineRelayMessage } from "@fenix/plugin-sdk";
 import { and, eq } from "drizzle-orm";
@@ -354,6 +355,11 @@ export interface OpenAgentSessionInput {
   /** 可选：恢复已有会话时传入 ACP session ID */
   sessionId?: string;
   startSource: InstanceSpawnSource;
+  /**
+   * 触发本次会话的关联 ID（§7）：HTTP 触发由路由从请求上下文取出后传入，
+   * 定时 / 队列等独立入口传入口自建的值；不传时由本函数兜底解析（见 openAgentSession）。
+   */
+  requestId?: string;
 }
 
 export interface OpenAgentSessionResult {
@@ -371,6 +377,13 @@ export interface OpenAgentSessionResult {
  * @param input.agentConfigId — agent_config.id（非 environment.id），用于解析 Environment 与持久 Instance
  */
 export async function openAgentSession(input: OpenAgentSessionInput): Promise<OpenAgentSessionResult> {
+  // 关联 ID 解析顺序与调度入口一致（§7）：调用方显式传入 > 当前 HTTP 请求上下文 > 独立入口自建。
+  // 首条诊断日志放在 UUID 校验之前：非法 agentConfigId 被拒时同样留下关联 ID。
+  const requestId = input.requestId ?? requestAls.getStore()?.requestId ?? randomUUID();
+  log(`[agent-chat] Opening session: agentConfigId=${input.agentConfigId} startSource=${input.startSource}`, {
+    requestId,
+  });
+
   // 1. 解析 agentConfigId (agent_config.id) → environmentId
   // 仅对有效 UUID 做索引查询；非 UUID 提前拒绝，避免经 createWebEnvironment 降级时
   // 触发 Postgres "invalid input syntax for type uuid" 裸错误。
@@ -397,7 +410,9 @@ export async function openAgentSession(input: OpenAgentSessionInput): Promise<Op
 
   if (existingRows.length > 0) {
     environmentId = existingRows[0].id;
-    log(`[agent-chat] Reusing existing environment: environmentId=${environmentId} agentId=${input.agentConfigId}`);
+    log(`[agent-chat] Reusing existing environment: environmentId=${environmentId} agentId=${input.agentConfigId}`, {
+      requestId,
+    });
   } else {
     // 自动创建 environment（名称组合避免与手动创建的环境冲突）
     // agentId 预期为标准 UUID（a-f0-9 小写），为防止非标准 ID 导致 kebab-case 校验失败，做 sanitize
@@ -411,7 +426,9 @@ export async function openAgentSession(input: OpenAgentSessionInput): Promise<Op
       autoStart: true,
     });
     environmentId = env.id;
-    log(`[agent-chat] Auto-created environment: environmentId=${environmentId} agentId=${input.agentConfigId}`);
+    log(`[agent-chat] Auto-created environment: environmentId=${environmentId} agentId=${input.agentConfigId}`, {
+      requestId,
+    });
   }
 
   // 2. 解析并确保持久 api/primary runtime。请求只拥有 turn/relay，不拥有 runtime 生命周期。
@@ -421,14 +438,15 @@ export async function openAgentSession(input: OpenAgentSessionInput): Promise<Op
     automaticSelection: "api",
   });
   await deps.ensureInstanceRuntime(instance);
-  log(`[agent-chat] Instance ready: instanceId=${instance.id}`);
+  log(`[agent-chat] Instance ready: instanceId=${instance.id}`, { requestId });
 
   // 3-5. 连接 relay → 创建 AgentSession → startPromptTurn。
   // 失败和正常 dispose 都只关闭本请求的 relay/listener；持久 runtime 由 Coordinator 管理。
   let session: AgentSession | null = null;
   try {
-    const handle = await deps.connectAgentRelay(instance.id, input.sessionId ?? "");
-    log(`[agent-chat] Relay connected: instanceId=${instance.id}`);
+    // requestId 随 ConnectInstanceRelayRequest 进入 core 的 relay 链路，使两侧日志可关联
+    const handle = await deps.connectAgentRelay(instance.id, input.sessionId ?? "", requestId);
+    log(`[agent-chat] Relay connected: instanceId=${instance.id}`, { requestId });
 
     session = createAgentSession({
       relayHandle: handle,
@@ -440,7 +458,7 @@ export async function openAgentSession(input: OpenAgentSessionInput): Promise<Op
   } catch (err) {
     if (session) {
       await session.dispose().catch((rollbackErr) => {
-        logError(`[agent-chat] Failed to release session for instance ${instance.id}:`, rollbackErr);
+        logError(`[agent-chat] Failed to release session for instance ${instance.id}:`, rollbackErr, { requestId });
       });
     }
     throw err;

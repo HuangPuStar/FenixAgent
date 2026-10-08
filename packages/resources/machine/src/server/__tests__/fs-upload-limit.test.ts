@@ -6,7 +6,7 @@
 // 不构造 ~27MB 大帧后才被 W8a 32MB 载荷兜底）。
 
 import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
-import { mkdtemp, rm, stat } from "node:fs/promises";
+import { mkdtemp, readFile, rm, stat } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { stubDb } from "@fenix/platform-sdk/testing";
@@ -68,6 +68,15 @@ function workspaceDir(): string {
 }
 
 describe("本地环境（无 machine 配置）", () => {
+  // 同名文件上传返回可供前端 ApiError 分类的409 code，并保留已上传原字节。
+  test("上传冲突响应携带 path_conflict code", async () => {
+    expect((await fsRoutes.handle(uploadRequest(1, "same.txt"))).status).toBe(200);
+    const response = await fsRoutes.handle(uploadRequest(2, "same.txt"));
+    expect(response.status).toBe(409);
+    expect(await response.json()).toMatchObject({ error: { code: "path_conflict", type: "path_conflict" } });
+    expect(await readFile(join(workspaceDir(), "user/sub/same.txt"))).toEqual(Buffer.alloc(1, 1));
+  });
+
   // 本地 upload 100MB 上限保持：20MB 文件应成功上传落盘（不受远程 20MB 限制影响）
   test("本地 20MB 上传成功", async () => {
     const response = await fsRoutes.handle(uploadRequest(20 * MB, "big20.bin"));

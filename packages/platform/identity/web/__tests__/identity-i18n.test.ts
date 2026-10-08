@@ -1,5 +1,5 @@
 // web/__tests__/identity-i18n.test.ts
-// 守护 identity 三份字典（apikey / orgs / settings）的完整性，以及「键的最终所在地 = 包的 owner」这条归属约束。
+// 守护 identity 四份字典（apikey / login / orgs / settings）的完整性，以及「键的最终所在地 = 包的 owner」这条归属约束。
 //
 // 为什么必须静态断言：i18next 缺键时回退成「显示 key 本身」，界面不报错，只有中英文来回切换才暴露。
 // 这里直接读 JSON 文件（不经过 i18next 单例），因此不受测试里 react-i18next 模块 mock 的影响
@@ -8,8 +8,12 @@
 // T4 期间的「借宿主命名空间的键」债务已由 T9（§1.6 i18n 归属重划）结清：
 // `ChangePasswordDialog` 的 11 个键随 `git mv` 从宿主 `locales/*/settings.json` 落到本包
 // `locales/*/settings.json`，`OrgContext` 的 `orgSwitchFailed` 从宿主 `components` 命名空间搬入本包
-// `orgs.json`。因此本文件不再有借键白名单：字面量键必须**全部**落在本包三份字典内（下面的断言直接
+// `orgs.json`。因此本文件不再有借键白名单：字面量键必须**全部**落在本包四份字典内（下面的断言直接
 // 检查这一点），宿主也不再注册 `settings` 的宿主副本、不再持有 `components.orgSwitchFailed`。
+//
+// `login` 由「无阻塞批」（登录簇归位）成为第四份：登录页及其本地组件随实现迁入本包后，该命名空间的
+// 字面量键扫描范围（web 下全部非测试源码）与字典必须仍然对齐，否则下面的「字面量键都在字典内」
+// 会立刻变红——这正是把新字典一并纳入本文件而不是另写一份的原因。
 
 import { describe, expect, test } from "bun:test";
 import { readdirSync, readFileSync, statSync } from "node:fs";
@@ -21,6 +25,8 @@ const I18N_ROOT = join(WEB_ROOT, "i18n");
 
 const APIKEY_EN = readJson("apikey", "en");
 const APIKEY_ZH = readJson("apikey", "zh");
+const LOGIN_EN = readJson("login", "en");
+const LOGIN_ZH = readJson("login", "zh");
 const ORGS_EN = readJson("orgs", "en");
 const ORGS_ZH = readJson("orgs", "zh");
 const SETTINGS_EN = readJson("settings", "en");
@@ -64,12 +70,14 @@ function collectSources(directory: string): string[] {
 const sources = collectSources(WEB_ROOT);
 const APIKEY_EN_FLAT = flatten(APIKEY_EN);
 const APIKEY_ZH_FLAT = flatten(APIKEY_ZH);
+const LOGIN_EN_FLAT = flatten(LOGIN_EN);
+const LOGIN_ZH_FLAT = flatten(LOGIN_ZH);
 const ORGS_EN_FLAT = flatten(ORGS_EN);
 const ORGS_ZH_FLAT = flatten(ORGS_ZH);
 const SETTINGS_EN_FLAT = flatten(SETTINGS_EN);
 const SETTINGS_ZH_FLAT = flatten(SETTINGS_ZH);
-/** 本包自持键的并集：三个命名空间的键互不重叠，合并后用于字面量扫描。 */
-const OWNED = new Map([...APIKEY_EN_FLAT, ...ORGS_EN_FLAT, ...SETTINGS_EN_FLAT]);
+/** 本包自持键的并集：四个命名空间的键互不重叠，合并后用于字面量扫描。 */
+const OWNED = new Map([...APIKEY_EN_FLAT, ...LOGIN_EN_FLAT, ...ORGS_EN_FLAT, ...SETTINGS_EN_FLAT]);
 
 /**
  * 源码里出现的全部字面量 `t("key")`，记录它出现在哪些文件（动态键如 `` t(`roles.${role}`) `` 由下面的
@@ -107,11 +115,18 @@ describe("identity 字典完整性", () => {
     expect(SETTINGS_EN_FLAT.size).toBeGreaterThanOrEqual(11);
   });
 
+  // login 同理（登录簇归位时从宿主搬入的第四份字典）。
+  test("login 的 en / zh 键集完全一致", () => {
+    expect([...LOGIN_ZH_FLAT.keys()].sort()).toEqual([...LOGIN_EN_FLAT.keys()].sort());
+    expect(LOGIN_EN_FLAT.size).toBeGreaterThanOrEqual(30);
+  });
+
   // 插值占位符必须成对出现，否则某一语言会把 {{var}} 当字面量显示出来。
   test("同一键在 en / zh 的插值占位符一致", () => {
     const placeholders = (value: string) => [...value.matchAll(/\{\{(\w+)\}\}/g)].map((match) => match[1]).sort();
     for (const [en, zh] of [
       [APIKEY_EN_FLAT, APIKEY_ZH_FLAT],
+      [LOGIN_EN_FLAT, LOGIN_ZH_FLAT],
       [ORGS_EN_FLAT, ORGS_ZH_FLAT],
       [SETTINGS_EN_FLAT, SETTINGS_ZH_FLAT],
     ] as const) {
@@ -132,11 +147,18 @@ describe("identity 字典完整性", () => {
   });
 
   // 动态键族无法被字面量扫描覆盖，逐个点名：漏一个就是界面上多出一串 key。
-  // roles.* 与 machineStatus.* 直接内插变量；*MachineDialog.* 由 MachineFields 的 prefix 参数拼接。
-  test("动态键族齐备（角色、机器状态、机器表单两套前缀）", () => {
+  // roles.* 与 machineStatus.* 直接内插变量；*MachineDialog.* 由 MachineFields 的 prefix 参数拼接；
+  // login 的 features.* 由登录品牌列的能力卡数组（titleKey / descKey 字段）取出，字面量 t() 扫不到。
+  test("动态键族齐备（角色、机器状态、机器表单两套前缀、登录能力卡）", () => {
     for (const key of ["roles.owner", "roles.admin", "roles.member", "machineStatus.online", "machineStatus.offline"]) {
       expect(ORGS_EN_FLAT.has(key)).toBe(true);
       expect(ORGS_ZH_FLAT.has(key)).toBe(true);
+    }
+    for (const prefix of ["orchestration", "security", "conversation", "organization"]) {
+      for (const field of [prefix, `${prefix}Desc`]) {
+        expect(LOGIN_EN_FLAT.has(`features.${field}`)).toBe(true);
+        expect(LOGIN_ZH_FLAT.has(`features.${field}`)).toBe(true);
+      }
     }
     for (const prefix of ["createMachineDialog", "editMachineDialog"]) {
       for (const suffix of ["name", "namePlaceholder", "labels", "labelsPlaceholder", "agentName"]) {
@@ -146,10 +168,10 @@ describe("identity 字典完整性", () => {
     }
   });
 
-  // 键归属：字典里不得出现带命名空间前缀的寄居键（`orgs.` / `apikey.`），也不得混入别的命名空间的
-  // 前缀（`settings.` / `components.`）——那是 T9 说的「键的最终所在地 = 包的 owner」被打破的形态。
+  // 键归属：字典里不得出现带命名空间前缀的寄居键（`orgs.` / `apikey.` / `login.`），也不得混入别的
+  // 命名空间的前缀（`settings.` / `components.`）——那是 T9 说的「键的最终所在地 = 包的 owner」被打破的形态。
   test("字典中不存在带命名空间前缀的寄居键", () => {
-    const foreign = [...OWNED.keys()].filter((key) => /^(orgs|apikey|settings|components|common)\./.test(key));
+    const foreign = [...OWNED.keys()].filter((key) => /^(orgs|apikey|login|settings|components|common)\./.test(key));
     expect(foreign).toEqual([]);
   });
 });
@@ -158,14 +180,23 @@ describe("identity i18n 出口契约", () => {
   // 命名空间常量必须与中心表同值：宿主注册字典时按的是同一张表，两处字面量分歧的症状是
   // 整片文案回退成 key 回显，且构建期不可见。
   test("命名空间常量等于共享 NS 表的取值，且与字典文件名一致", async () => {
-    const { APIKEY_NS, ORGS_NS, SETTINGS_NS, apikeyResources, orgResources, settingsResources } = await import(
-      "../i18n"
-    );
+    const {
+      APIKEY_NS,
+      LOGIN_NS,
+      ORGS_NS,
+      SETTINGS_NS,
+      apikeyResources,
+      loginResources,
+      orgResources,
+      settingsResources,
+    } = await import("../i18n");
     expect(APIKEY_NS).toBe(NS.APIKEY);
+    expect(LOGIN_NS).toBe(NS.LOGIN);
     expect(ORGS_NS).toBe(NS.ORGS);
     expect(SETTINGS_NS).toBe(NS.SETTINGS);
-    expect([APIKEY_NS, ORGS_NS, SETTINGS_NS]).toEqual(["apikey", "orgs", "settings"]);
+    expect([APIKEY_NS, LOGIN_NS, ORGS_NS, SETTINGS_NS]).toEqual(["apikey", "login", "orgs", "settings"]);
     expect(apikeyResources.en).toEqual(APIKEY_EN);
+    expect(loginResources.zh).toEqual(LOGIN_ZH);
     expect(orgResources.zh).toEqual(ORGS_ZH);
     expect(settingsResources.zh).toEqual(SETTINGS_ZH);
   });
@@ -174,7 +205,7 @@ describe("identity i18n 出口契约", () => {
   // 路径漂移会让出口解析失败（启动期即崩），因此这里钉住「出口指向同一批文件」。
   test("web/i18n 出口指向同一批 JSON，且不引用宿主路径", () => {
     const entrySource = readFileSync(join(I18N_ROOT, "index.ts"), "utf8");
-    for (const name of ["apikey", "orgs", "settings"]) {
+    for (const name of ["apikey", "login", "orgs", "settings"]) {
       for (const lng of ["en", "zh"]) {
         expect(statSync(join(I18N_ROOT, "locales", lng, `${name}.json`)).isFile()).toBe(true);
         expect(entrySource).toContain(`./locales/${lng}/${name}.json`);

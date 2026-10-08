@@ -2,32 +2,35 @@
 //
 // 归属：文件树视图（搜索框 / 双分区 / 反馈态 / 上传目标）按 §6.5 的共享 web 模块裁决上收到
 // `@fenix/ui-components`，本包经对方**包根入口**取用（`web/components/file-tree-view` 这类深路径不在其
-// exports 里，实测 `ResolveMessage: Cannot find module`）。宿主的容器 `FileTreeTab`（下载、重试、WS 事件）
-// 与页面装配 `artifacts-files-workspace.tsx` 未随包迁移，归 §1.6。
+// exports 里，实测 `ResolveMessage: Cannot find module`）。容器 `FileTreeTab`（下载、重试、WS 事件）与
+// 页面装配 `artifacts-files-workspace.tsx` 已于 2026-09-24（台账 D2）从宿主迁入本包 `web/components/`，
+// 本文件仍是**视图契约**这一层（容器行为需要 DOM 环境，见下方覆盖说明）。
 //
 // 为什么要重写：旧版本以六级相对路径 import 宿主 `FileTreeTab` 的校验函数，并逐个 `readFileSync` 宿主
 // 源码文件做**字符串包含**断言（§1 静态条件 3 的 11 处命中里占 5 处）；那类断言钉的是文本而不是行为，
 // 宿主实现一挪就断，也让包无法离开宿主解析环境构建。现在改为对共享视图做 SSR 行为断言。
 //
-// 文件名保留历史命名：旧版本覆盖的是「文件树 + 弹窗」这一组宿主文件，容器未随包迁移，本文件随之收敛到
-// 视图契约本身。
+// 文件名保留历史命名：旧版本覆盖的是「文件树 + 弹窗」这一组宿主文件；容器迁入本包后（D2），本文件
+// 收敛到视图契约本身，容器行为另需 DOM 环境，不在此重复。
 //
 // i18n 说明：资源包不初始化 i18next，`t()` 回退为 key 本身，因此断言锚在**键名**上（视图向宿主请求哪条
 // 文案）；文案内容由 owner 包 `web/i18n/locales/*/uiComponents.json` 保证。
 //
-// 覆盖下降说明（每条都对应一个未随包迁移的 owner，不是删除能力）：
+// 覆盖下降说明（每条都对应一个当时未随包迁移的 owner，不是删除能力）：
 // - 重命名 / 移动的字节数校验（`isValidFileTreeBasename`、`getFileTreeNameByteLength`、`isValidFileTreeMovePath`）
-//   仍只在宿主 `apps/web/src/components/agent-panel/FileTreeTab.tsx`，随 §1.6 迁移；服务端同名规则由
+//   2026-09-24（D2）随容器迁入本包 `web/components/FileTreeTab.tsx`，纯函数断言随迁到
+//   `web/__tests__/file-tree-name-validation.test.ts`；服务端同名规则由
 //   `src/server/__tests__/file-path-validator.test.ts` 覆盖。
 // - 弹窗 `maxLength={255}`：`FileTreeInputDialog` 走 radix Dialog 门户，SSR 输出为空串，无法在此断言；
 //   属 owner `@fenix/ui-components`（见报告「遗留」）。
 // - CSS 断言（sticky 目录条、悬浮操作、浮层阴影）：样式已随 `@fenix/ui-components` 的迁移改为 Tailwind
 //   工具类（原 `file-tree.css` 已删除），本文件改为断言 `data-slot` 结构锚点；宿主
-//   `artifacts-workspace.css` 里的同名规则类名已不再匹配（死规则），旧断言是宿主的源码文本扫描。
+//   `artifacts-workspace.css`（2026-09-28 已退役）里的同名规则类名早已不再匹配，旧断言是宿主的源码文本扫描。
 // - 节点级操作（每个节点的刷新 / 删除按钮）与右键菜单门户：react-arborist 在 SSR 下不渲染节点
 //   （实测 `data-slot="file-tree-arborist"` 为空），需 DOM 环境；面板 owner 已迁出本包。
-// - 宿主容器行为（下载状态、重试、`FileTabsBar` 与预览面板顺序）：`FileTreeTab` / `artifacts-files-workspace.tsx`
-//   未迁移，归 §1.6。
+// - 容器行为（下载状态、重试、`FileTabsBar` 与预览面板顺序）：容器与工作区 2026-09-24（D2）已迁入本包
+//   `web/components/`，断言它们仍需 DOM 环境（`bun test` 的默认环境不提供 ResizeObserver / arborist
+//   渲染），本文件不重复承担那部分覆盖。
 import { describe, expect, test } from "bun:test";
 import type { FileTreeViewProps } from "@fenix/ui-components";
 import { FileTreeView } from "@fenix/ui-components";

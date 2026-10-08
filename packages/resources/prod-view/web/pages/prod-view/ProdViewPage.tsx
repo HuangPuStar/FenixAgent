@@ -8,9 +8,15 @@ import { useTranslation } from "react-i18next";
 import { type ProdViewModulesConfig, prodViewApi } from "../../api/prod-views";
 import { PROD_VIEWS_NS } from "../../i18n/namespace";
 
-// 本页用到的 `.agent-panel-layout` / `.agent-panel-body` 定义在宿主 apps/web 的 agent-panel.css，
-// 由挂载本页的路由 `apps/web/src/routes/view/$prodViewId.tsx` 以副作用导入加载（它在 lazy 之前导入，
-// 样式先于页面组件执行）。本包不再自带该 CSS 的导入：包内 web 面禁止宿主别名，而样式表仍属宿主资源。
+// 本页的页面壳类名 `.agent-panel-layout` / `.agent-panel-body` 是宿主 apps/web 的钩子（取值已随
+// 2026-09 的样式整改就近取档搬到这些元素自己的工具类上，宿主样式表不再为它们声明属性）。
+// 宿主侧原先由挂载本页的路由 `apps/web/src/routes/view/$prodViewId.tsx` 与 `DefaultAppShell.tsx` 以副作用
+// 导入加载 `agent-panel.css`；该表 2026-09-28 已退役（唯一存续的职责是把 chat 关键帧挂进初始静态包，改由
+// `apps/web/src/index.css` 顶部那条 `@import` 承载），这两个挂载点因此都不再导入样式表。
+// `bg-(--color-canvas)` 消费的 `--color-canvas` 定义在两份逐字一致的 `@theme`
+// token 副本（`apps/web/src/index.css` 与 `packages/ui-components/web/styles/theme.css`）里——原在
+// `agent-panel.css` 的 `:root`，2026-09-28 随样式收口归位 token。
+// 本包不自带该 CSS 的导入：包内 web 面禁止宿主别名，而样式表仍属宿主资源。
 
 /**
  * 分享页需要宿主提供的聊天容器端口。
@@ -60,14 +66,14 @@ export function ProdViewPage({ chatArea: ChatArea }: ProdViewPageProps) {
   const unauthorized = loadError instanceof ApiError && loadError.code === "UNAUTHORIZED";
 
   return (
-    <div className="agent-panel-layout !flex-col">
+    <div className="agent-panel-layout flex h-dvh w-full overflow-visible !flex-col">
       {/* 极简 header：复用 agent 页面的 CSS 变量，确保暗色模式一致 */}
       <div className="flex h-10 shrink-0 items-center justify-between border-b border-border/40 bg-surface-1 px-4 text-sm">
         <span className="font-medium text-text-primary">{viewConfig?.name ?? t("title")}</span>
         <span className="text-xs text-text-dim">FenixAgent</span>
       </div>
 
-      <div className="agent-panel-body">
+      <div className="agent-panel-body flex min-w-0 min-h-0 flex-1 flex-col overflow-hidden bg-(--color-canvas)">
         {loading ? (
           <Spinner variant="panel" label={<span className="sr-only">{t("loading")}</span>} />
         ) : loadError ? (

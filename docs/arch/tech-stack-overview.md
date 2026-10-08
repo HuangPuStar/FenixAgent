@@ -91,7 +91,7 @@ flowchart LR
 | 外部服务 | 对接模块 | 关系说明 |
 |---------|---------|---------|
 | [RagFlow](https://ragflow.io) | 知识库 | 知识库通过 Provider 抽象层委托给 RagFlow 做索引与检索，RagFlow 是当前唯一实现 |
-| Hindsight | 配置中心 | Agent 配置时自动绑定 Hindsight，Agent 会话产生的长期记忆由 Hindsight 存储与召回 |
+| Hindsight | 配置中心 | 启用记忆的 Agent 经启动参数注入 Hindsight 插件（不写 `mcp_server` 表），会话产生的长期记忆由 Hindsight 存储与召回 |
 | Agent Sites | 机器注册 | Agent 生成的 Web 应用托管在 Agent Sites，控制平面通过机器注册表路由转发 |
 
 ### 2.3 层级职责

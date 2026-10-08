@@ -18,6 +18,13 @@
  *                       必须与实际启动的 agent 命令匹配，否则 RCS 无法管理生命周期
  *   SUPPORTED_ENGINE_TYPES  该 machine 支持的引擎列表，JSON 格式
  *                            默认: '[{"type":"opencode"},{"type":"ccb"},{"type":"claude-code"},{"type":"peri"}]'
+ *   RCS_CCB_COMMAND      ccb 槽位的引擎命令（可选，覆盖 argv 的 <agent-command>）
+ *   RCS_CCB_ARGS         ccb 槽位的引擎参数，空格分隔（可选，覆盖 argv 的 [agent-args...]）
+ *
+ * `RCS_CCB_*` 是 daemon / 容器侧部署配置（宿主 env schema 不声明它们，宿主进程内无消费者）：
+ * 沙箱镜像借此把 ccb 槽位指向伪装 wrapper，例如 `RCS_CCB_COMMAND=node` +
+ * `RCS_CCB_ARGS=/usr/local/bin/dsh-acp-wrapper.js`。这里读一次，经 `ServerConfig` 注入 ccb handler，
+ * 插件包内不再直读环境变量。
  *
  * 工作区路径: workspace 根目录为启动目录 (cwd)，实例路径自动按
  *   {cwd}/{organizationId}/{userId}/{environmentId} 计算。
@@ -64,6 +71,8 @@ if (args.length === 0) {
   console.log("  AGENT_TYPE          Agent 类型: peri (默认)、opencode、ccb、claude-code");
   console.log("                     必须与实际 agent 命令匹配，否则 RCS 无法管理生命周期");
   console.log("  SUPPORTED_ENGINE_TYPES  支持的引擎列表 JSON，默认全部四种");
+  console.log("  RCS_CCB_COMMAND     ccb 槽位的引擎命令（可选，覆盖 argv；仅 AGENT_TYPE=ccb 生效）");
+  console.log("  RCS_CCB_ARGS        ccb 槽位的引擎参数，空格分隔（可选）");
   process.exit(1);
 }
 
@@ -98,6 +107,11 @@ try {
 
 const [command, ...agentArgs] = args;
 
+// ccb 槽位的引擎命令与参数：部署键优先，未设置时回退 argv（与 opencode / peri 槽位同一语义，
+// 使 `AGENT_TYPE=ccb acp-runtime <引擎命令> ...` 这种不带部署键的用法同样生效）。
+const ccbCommand = process.env.RCS_CCB_COMMAND || command;
+const ccbArgs = process.env.RCS_CCB_ARGS ? process.env.RCS_CCB_ARGS.split(/\s+/).filter(Boolean) : agentArgs;
+
 console.log(`RCS 在线 (${wsUrl})`);
 console.log(`启动 ACP Runtime 节点...`);
 console.log(`  Agent:        ${command} ${agentArgs.join(" ")}`);
@@ -118,6 +132,8 @@ await startServer({
   host: "localhost",
   command: command!,
   args: agentArgs,
+  ccbCommand,
+  ccbArgs,
   cwd: process.cwd(),
   rcsUrl: wsUrl,
   rcsSecret: RCS_SECRET!,

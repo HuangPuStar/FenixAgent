@@ -10,6 +10,8 @@ import { describe, expect, test } from "bun:test";
 import { readdirSync, readFileSync, statSync } from "node:fs";
 import { join, relative, resolve } from "node:path";
 
+import { uiComponentsResources } from "@fenix/ui-components/i18n";
+
 const WEB_ROOT = resolve(import.meta.dir, "..");
 const EN = JSON.parse(readFileSync(join(WEB_ROOT, "i18n/locales/en/skills.json"), "utf8")) as Record<string, unknown>;
 const ZH = JSON.parse(readFileSync(join(WEB_ROOT, "i18n/locales/zh/skills.json"), "utf8")) as Record<string, unknown>;
@@ -111,13 +113,30 @@ describe("skill 字典完整性", () => {
     }
   });
 
-  // 角标键（resource.internal / public / external）属于 components 命名空间，不是本包的键：
-  // getSkillResourceBadgeKey 只产出键名，取值由消费方在 NS.COMPONENTS 下解析（当前字典仍在宿主
-  // apps/web/src/i18n/locales/<lng>/components.json）。本包字典不得私自复制一份，否则同一句话
-  // 会有两个 owner，改一处另一处静默变成旧文案。
-  test("字典中不存在 resource.* 角标键（归属 components 命名空间）", () => {
+  // 角标键（resource.internal / public / external）与公开/私有动作词（resource.makePublic /
+  // makePrivate / readOnly）不是本包的键：`getSkillResourceBadgeKey` 只产出键名，取值由消费方在
+  // `@fenix/ui-components` 的 `uiComponents` 命名空间下解析。台账 D4 前它们寄居宿主 `components`
+  // 字典；该词表同时被 skill / mcp / agent-config / model-management 四个资源的页面产出、被本包页面
+  // 与宿主侧栏消费，按 §9.2「只有真正跨资源包共用的词条才进共享包」归到 `@fenix/ui-components`（该包
+  // 的 `StatusBadge` 就是角标的渲染者，`statusBadge.*` 词表已在其中）。本包字典不得私自复制一份，
+  // 否则同一句话会有两个 owner，改一处另一处静默变成旧文案。
+  test("字典中不存在 resource.* 角标键（owner 是 @fenix/ui-components）", () => {
     const borrowed = [...enFlat.keys()].filter((key) => key.startsWith("resource."));
     expect(borrowed).toEqual([]);
+  });
+
+  // 迁出后的正向断言（原豁免只写「不在本包」，键迁走后可能两边都没有）：这批词条必须真的落在共享包
+  // 字典里，且本包消费方一律按 `NS.UI_COMPONENTS` 取。留一处 `NS.COMPONENTS` 就回到「键的 owner 与
+  // 消费方分属两侧」的旧形态，且宿主字典里的副本已随本批删除——那处界面会整片回显 key。
+  test("resource.* 词条落在 @fenix/ui-components，且本包消费方绑该命名空间", () => {
+    const shared = uiComponentsResources.zh as unknown as Record<string, Record<string, string>>;
+    for (const key of ["internal", "external", "public", "makePublic", "makePrivate", "readOnly"]) {
+      expect(shared.resource?.[key], `@fenix/ui-components 字典缺 resource.${key}`).toBeString();
+    }
+    const offenders = collectSources(WEB_ROOT)
+      .filter((file) => /useTranslation\(\s*NS\.COMPONENTS\s*\)/.test(readFileSync(file, "utf8")))
+      .map((file) => relative(WEB_ROOT, file));
+    expect(offenders).toEqual([]);
   });
 
   // 键的最终所在地 = 包的 owner：skill 的键注册在 `skills` 命名空间，不得出现寄居在其他命名空间的

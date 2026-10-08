@@ -163,7 +163,7 @@ README 与守卫注释里「identity 是上游迁移中间态」的说明文字�
   两条路任选其一即可移除此条目。改动落在本包 `web/**`，随 W3 或后续波次收口。
 - **宿主 `apps/web` 直连（§1.6 T11e 后）**：`routes/agent/_panel/tasks.tsx` 这个薄 route adapter 已改指
   `@fenix/resource-task/web`（保留在宿主是既定分工）；`vite.config.ts` 的 `@/src/api/tasks-v2` 与
-  `@/src/pages/agent-panel/pages/AgentTasksPage` 两条 alias 随之失去全部消费方。`apps/web/src/shell/ArtifactsPanel.tsx`
+  `@/src/pages/agent-panel/pages/AgentTasksPage` 两条 alias 随之失去全部消费方。`apps/web/src/pages/agent-panel/artifacts/ArtifactsPanel.tsx`
   的 `TasksPanel` import 原先是穿透包内的深层相对路径（`../../../../packages/resources/task/web/pages/agent-panel/TasksPanel`），
   已随 §1.6 T11e-4b 改为 `@fenix/resource-task/web`；宿主侧自此不再有绕过 `exports` 的写法。上述两条 alias
   与其他全部桥接条目同批从宿主两张别名表删除（2026-09-21 实测 `git grep -n '"@/src/api/tasks-v2"'` 0 命中）。
@@ -173,13 +173,11 @@ README 与守卫注释里「identity 是上游迁移中间态」的说明文字�
   `tasksV2Resources.en/zh` 以 `TASKS_V2_NS` 登记；宿主不再按相对路径 import 包内 JSON。宿主的 `NS` 表
   改为 `{ ...SHARED_NS }` 后已无 `"tasksV2"` 字面量（`web-runtime` 的中心表持有该值），本包
   `TASKS_V2_NS` 与宿主注册同源。
-- **宿主 `components.json` 待删键**：6 个 `panelMode.tasks*`（`tasksEmpty` / `tasksListTitle` /
-  `tasksLoadFailed` / `tasksManage` / `tasksToggleFailed` / `tasksTriggerFailed`，读者已改为读本包字典）
-  与 2 个全仓无读者键（`tasksCount` / `tasksViewLogs`）——位于宿主
-  `apps/web/src/i18n/locales/{en,zh}/components.json:57-64`（`tasks` 单数在 :56，不在清单内），
-  按 `grep -rn 'tasksCount\|tasksViewLogs' apps packages --include='*.ts' --include='*.tsx'` 除字典自身外
-  0 命中。删除属共享文件波次，本包只记录清单。
-  `panelMode.tasks`（单数）不在此列：宿主 `apps/web/src/components/agent-panel/TopModeTabs.tsx:23`
+- **宿主 `components.json` 旧面板键已清（2026-09-28）**：6 个 `panelMode.tasks*`（`tasksEmpty` / `tasksListTitle` /
+  `tasksLoadFailed` / `tasksManage` / `tasksToggleFailed` / `tasksTriggerFailed`，读者早已改读本包字典）
+  已从宿主 `apps/web/src/i18n/locales/{en,zh}/components.json` 删除（en / zh 同批，键集仍对称）；
+  同条原记的 2 个无读者键（`tasksCount` / `tasksViewLogs`）复扫时已不在字典，更早批次即已清出。
+  `panelMode.tasks`（单数）保留：宿主 `apps/web/src/pages/agent-panel/artifacts/TopModeTabs.tsx:23`
   仍用它渲染面板标签，属宿主面板外壳的文案。
 - **`error.*` 键的读取方已到位（2026-09-23 第 19 轮更新）**：本条原记「6 个 `error.*` 键无读取方」（`invalidHeaders` /
   `nameRequired` / `cronRequired` / `urlRequired` / `agentRequired` / `promptRequired`）。前 5 个现已由
@@ -208,6 +206,8 @@ README 与守卫注释里「identity 是上游迁移中间态」的说明文字�
   反之，共享基础设施包（ui-components / web-runtime）是白名单断言的责任范围，其新增外部库必须在这里评审。
 - **宿主侧两处已收口（2026-09-22 订正）**：`deploy/assembly/ce.json` 的 `resources` 已登记本模块（实测 13 项含 `task`，`web` 9 项亦含 `task`；本行此前记的「仍是空列表、登记本模块属 W3 装配清单」自 `c9620787` 起已闭环）；
   宿主 `apps/server/src/__tests__/task-schema.test.ts:3` 已随 §1.7 B12 改从本包出口 `@fenix/resource-task/db`
-  取 `taskExecutionLog`（宿主经 owner `./db` 读写，§6.1 组装期例外的既有形态；该文件仍留在宿主是既有分工——
-  `scripts/__tests__/rmd-07-migration.test.ts` 与 `scripts/root-source-owner-rules.ts` 都按宿主路径登记它）；
+  取 `taskExecutionLog`（宿主经 owner `./db` 读写，§6.1 组装期例外的既有形态）；该用例随后在 §2.2 调用期禁则
+  补齐时（`cross-module-db-object-import`）随表落回本包 `src/__tests__/task-schema.test.ts`——调用期导入对方
+  `db` 表对象不再被两层门禁遗漏，`scripts/__tests__/rmd-07-migration.test.ts` 与
+  `scripts/root-source-owner-rules.ts` 的登记随之更新；
   文件内自写的 SQLite 建表 DDL 与列名断言不变（不取 Drizzle 表对象的断言本来就不受迁移影响）。

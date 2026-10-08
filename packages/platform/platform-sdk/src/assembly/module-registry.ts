@@ -1,4 +1,4 @@
-import type { ModuleKind, ModuleManifest } from "./module-manifest";
+import type { DependencyService, ModuleKind, ModuleManifest } from "./module-manifest";
 import type { AssemblyProfile } from "./profile";
 import { isModuleId, parseAssemblyProfile } from "./profile";
 
@@ -24,6 +24,47 @@ function assertStableId(id: string, label: string): void {
 }
 
 /**
+ * 校验模块的依赖服务声明。
+ *
+ * 三条不变量都在这里、也只在这里裁决：探针必须锚定本模块声明过的环境变量键（否则部署前自检会去读
+ * 一个不存在的键，静默探活失败）；两种编排归属各自的必填字段互斥（同一服务不能被两处同时定义）；
+ * 服务 ID 在模块内唯一。跨模块的同名服务由部署生成按 ID 合并，那里再校验声明一致性。
+ */
+function assertDependencyServices(manifest: ModuleManifest): void {
+  const declaredKeys = new Set((manifest.envDefinitions ?? []).map((definition) => definition.key));
+  const seen = new Set<string>();
+
+  const assertDeclaredKey = (service: DependencyService, key: string): void => {
+    if (!declaredKeys.has(key)) {
+      throw new Error(`模块 ${manifest.id} 的依赖服务 ${service.id} 引用了未声明的环境变量 ${key}`);
+    }
+  };
+
+  for (const service of manifest.dependencyServices ?? []) {
+    assertStableId(service.id, `模块 ${manifest.id} 的依赖服务 ID `);
+    if (seen.has(service.id)) throw new Error(`模块 ${manifest.id} 重复声明依赖服务 ${service.id}`);
+    seen.add(service.id);
+
+    for (const key of service.envKeys ?? []) assertDeclaredKey(service, key);
+    assertDeclaredKey(service, service.healthCheck.addressKey);
+
+    if (service.orchestration === "compose-overlay") {
+      if (!service.image) throw new Error(`依赖服务 ${service.id} 由本仓编排时必须声明 image`);
+      if (service.composeFile) {
+        throw new Error(`依赖服务 ${service.id} 由本仓编排时不得声明 composeFile（编排入口即本模块 overlay）`);
+      }
+    } else {
+      if (!service.composeFile) {
+        throw new Error(`依赖服务 ${service.id} 的编排在别处时必须声明 composeFile 作为入口指针`);
+      }
+      if (service.image || service.ports) {
+        throw new Error(`依赖服务 ${service.id} 的编排不在本仓时不得声明 image 或 ports`);
+      }
+    }
+  }
+}
+
+/**
  * 创建只读模块 registry。
  *
  * 此函数不扫描文件、不动态 import；它只校验生成器已经静态导入的 manifest 集合。
@@ -36,6 +77,7 @@ export function createModuleRegistry(manifests: readonly ModuleManifest[]): Modu
     assertStableId(manifest.id, "模块 ID ");
     if (byId.has(manifest.id)) throw new Error(`模块 ID 重复: ${manifest.id}`);
     byId.set(manifest.id, manifest);
+    assertDependencyServices(manifest);
 
     const dependencies = new Set<string>();
     for (const dependencyId of manifest.dependsOn) {

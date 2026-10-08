@@ -124,7 +124,7 @@ async function replayEvents(snapshot: DAGSnapshot, storage: StorageAdapter): Pro
         nodeStates.set(event.node_id, "SKIPPED");
         break;
       case "audit.requested":
-        nodeStates.set(event.node_id, "SUSPENDED" as NodeStatus);
+        nodeStates.set(event.node_id, "SUSPENDED");
         break;
       case "audit.approved":
         nodeStates.set(event.node_id, "COMPLETED");

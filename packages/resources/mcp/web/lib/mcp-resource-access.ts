@@ -70,9 +70,32 @@ export function getMcpResourceBadgeKey(server: McpResourceLike, activeOrganizati
   return "resource.internal";
 }
 
-/** 展示名：跨组织资源补上归属组织名以便区分同名资源，否则直接用资源名。 */
+/**
+ * 完整展示标签：跨组织资源补上归属组织名，用于**没有独立归属位**的上下文（选项列表、检索字段、日志一类——
+ * 那里一个组织名只能塞进字符串本身，不配角标）。
+ *
+ * 目录里的标题**不要**用它，用 {@link getMcpCatalogName}：目录条目的归属组织有自己的载体（右侧角标、
+ * 详情头元信息行），把来源组织再拼进标题就是同一个组织名在同一行出现两次。
+ */
 export function getMcpDisplayName(server: McpResourceLike) {
   const organizationName = server.organizationName;
   if (organizationName) return `${organizationName}/${server.name}`;
+  return server.name;
+}
+
+/**
+ * 目录条目（列表标题 + 详情头标题）展示的名称：**只取资源名**。
+ *
+ * 归属组织在同一屏里已经各有自己的载体、各展示一次——条目列右侧的组织角标、详情头的元信息行、
+ * Agent 编辑器里按归属分组的分组标题。再拼进名称就是同一个组织名在同一行出现两次，并且吃掉标题列的宽度：
+ * 本组织资源也会被拼成 `Personal1/filesystem`，在列表里压成 `Personal1/fi…`，而前缀对读者没有增量信息
+ * （名称本就只在组织内唯一，看到这一行的人已经知道自己在哪个组织里）。
+ *
+ * 跨组织同名资源照旧分得清：角标与分组标签都由 `scope.organizationId` 渲染，跨组织键见 {@link getMcpKey}。
+ *
+ * 与技能目录同构：`getSkillDisplayName`（`agent-skills-catalog.tsx`）也把完整标签拆成「名称 + 命名空间」，
+ * 标题只取名称、命名空间另起角标；Agent 管理页的 `AgentBadge` 同理（`name` + 独立 `sourceOrg` 标签）。
+ */
+export function getMcpCatalogName(server: McpResourceLike) {
   return server.name;
 }

@@ -121,8 +121,6 @@
     grid-template-columns: 1fr;
   }
 }
-
-/* 大数据量选择器的通用工具栏与分页 */
 .agent-single-picker-toolbar {
   display: flex;
   min-height: 38px;

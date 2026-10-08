@@ -11,8 +11,8 @@
  *   **唯一替换点**（`stubAgentRuntimePort`），直引包内模块函数等于给同一批能力开第二个替换点——
  *   正是 1.4 W3b 收敛掉的那种形态（用例此前靠 monkey-patch 包内单例）；
  * - 取绑定入口不会产生第二套运行状态：`createAgentRuntime()` 内部持有的都是本包模块级单例
- *   （实例服务、实例注册表、relay 连接表），多次构造等价。该判据同样解释了 `control.ts` 为什么直引：
- *   它用的是会话总线与仓储，不属运行 port 的能力面（总线另经 `session-event-bus-port` 由宿主注入）。
+ *   （实例服务、实例注册表、relay 连接表），多次构造等价。该判据同样解释了 `control.ts` 为什么不走这里：
+ *   它用的是会话总线与包内门面，不属运行 port 的能力面（总线另经 `session-event-bus-port` 由宿主注入）。
  *
  * 守卫由宿主注入（与 `/api/instances`、`/acp/*`、`/web/sessions/*` 同因）：Elysia 的 `macro` / `state`
  * 是实例作用域的，包内自建一份会让同一进程出现两套互不可见的认证状态。

@@ -31,7 +31,7 @@ import {
 import type { AgentEditorData } from "./use-agent-editor";
 
 /** 眉标（面板右栏 / 模板对话框）：design 层生效值为 750/8px/0.16em/#3470da。 */
-const EYEBROW = "agent-editor-chrome-eyebrow text-3xs tracking-widest text-blue-500";
+const EYEBROW = "agent-editor-chrome-eyebrow font-mono text-3xs tracking-widest text-blue-500";
 /** 面板头部：base(78px/22px/gap 22) 被 design(62px/14px/gap 14) 覆盖，移动端补 safe-area 上边距，760–700h 压到 58px。 */
 const HEADER =
   "agent-editor-chrome-header flex flex-none items-center justify-between gap-3.5 border-b border-slate-200 bg-white/95 " +
@@ -51,11 +51,13 @@ const CLOSE_BUTTON = "agent-editor-chrome-close-button !size-8.5 !rounded-lg bg-
 const TEMPLATE_CARD =
   "agent-editor-template-card block w-full rounded-lg border border-slate-200 bg-white px-3 py-2.75 text-left text-gray-500 " +
   "focus-visible:border-indigo-300 focus-visible:bg-slate-50 focus-visible:text-blue-800 focus-visible:outline-0";
-/** 汇总卡：design 层（72px 高 / 32px 图标列 / hover 左移 2px 并加深阴影）。 */
+/** 汇总卡：design 层（72px 高 / 32px 图标列 / hover 左移 2px 并加深阴影）。
+ * hover 位移 2026-09-28 从伴随表撤回（`-0.125rem` 在 13px 根字号下渲染 1.625px，`-translate-x-0.5` 即 2px
+ * 设计值）；同行高亮 / 投影仍在同名 CSS，其 `transition` 已随属性改成 `translate`。 */
 const SUMMARY_CARD =
   "agent-editor-summary-card grid w-full min-h-18 items-center gap-2.5 rounded-lg border " +
   "border-slate-200 bg-white/94 px-2.25 py-2.5 text-left text-slate-600 md:max-lg:min-h-12 " +
-  "md:max-lg:px-1.75 md:max-lg:py-1.5";
+  "md:max-lg:px-1.75 md:max-lg:py-1.5 hover:-translate-x-0.5 hover:border-indigo-300";
 
 export function AgentEditorHeader({
   title,
@@ -84,7 +86,7 @@ export function AgentEditorHeader({
     <header className={HEADER}>
       <div className="flex min-w-0 items-center gap-2.25">
         <span className="agent-editor-chrome-logo grid size-9 flex-none basis-9 place-items-center overflow-hidden rounded-lg text-white">
-          <Sparkles />
+          <Sparkles className="w-4.25" />
         </span>
         <div className="min-w-0">
           <div className="flex items-center gap-2">
@@ -108,7 +110,7 @@ export function AgentEditorHeader({
           >
             {name || t("editor.unnamedAgent")}
             {agentId && (
-              <code className="agent-editor-chrome-agent-id overflow-hidden text-ellipsis max-md:hidden">
+              <code className="before:mr-1.75 before:content-['·'] overflow-hidden text-ellipsis max-md:hidden">
                 {agentId}
               </code>
             )}
@@ -117,8 +119,8 @@ export function AgentEditorHeader({
       </div>
       <div className="flex h-full items-center gap-2">
         <div className={cn("flex flex-col items-end gap-0.75 text-3xs text-text-primary", loading && "invisible")}>
-          <span className="agent-editor-chrome-runtime flex items-center gap-1.25 text-3xs [font-weight:650] text-slate-700">
-            <CircleDot />
+          <span className="flex items-center gap-1.25 text-3xs [font-weight:650] text-slate-700">
+            <CircleDot className="w-2.5 text-teal-700" />
             {t("editor.runtimeInstances")}
           </span>
           <small className="text-3xs text-gray-400">{t("editor.lastSaved")}</small>
@@ -167,13 +169,21 @@ export function AgentTemplatePicker({
   return (
     <Dialog open onOpenChange={(open) => !open && onClose()}>
       <DialogContent className="agent-editor-template-dialog !gap-3.5 !border-slate-200 !bg-slate-50 !p-5 max-w-xl">
-        <div className="agent-editor-template-header" data-slot="editor-template-header">
+        <div data-slot="editor-template-header">
           <span className={EYEBROW}>{t("editor.templatesEyebrow")}</span>
-          <DialogTitle>{t("editor.templateTitle")}</DialogTitle>
-          <DialogDescription>{t("editor.templateDescription")}</DialogDescription>
+          <DialogTitle className="mt-1.5 text-16 tracking-tight text-slate-800" data-slot="editor-template-title">
+            {t("editor.templateTitle")}
+          </DialogTitle>
+          <DialogDescription
+            className="mt-1.5 text-xs leading-normal text-slate-500"
+            data-slot="editor-template-description"
+          >
+            {t("editor.templateDescription")}
+          </DialogDescription>
         </div>
-        <div className="agent-editor-template-search">
+        <div>
           <Input
+            className="border-slate-200 bg-white"
             value={query}
             onChange={(event) => {
               setQuery(event.target.value);
@@ -182,7 +192,9 @@ export function AgentTemplatePicker({
             aria-label={t("editor.searchTemplates")}
             placeholder={t("editor.searchTemplates")}
           />
-          <p role="status">{t("editor.resultCount", { count: filtered.length, total: templates.length })}</p>
+          <p role="status" className="mt-1.5 text-3xs leading-normal text-slate-500">
+            {t("editor.resultCount", { count: filtered.length, total: templates.length })}
+          </p>
         </div>
         <div className="grid max-h-80 gap-1.75 overflow-y-auto overscroll-contain pr-0.75">
           {filtered.length ? (
@@ -280,11 +292,14 @@ export function AgentEditorSummary({
       <div className="mt-2.5 grid gap-2 md:max-lg:gap-1.5 md:max-lg:mt-2">
         {cards.map((card) => (
           <button type="button" key={card.label} className={SUMMARY_CARD} onClick={() => onSectionChange(card.section)}>
-            <span>{card.icon}</span>
+            <span className="grid size-8 place-items-center rounded-md bg-indigo-50 text-blue-600 max-md:size-6">
+              {card.icon}
+            </span>
             <div>
-              <small className="agent-editor-summary-card-label text-3xs tracking-normal text-gray-400">
-                {card.label}
-              </small>
+              {/* 卡片标题：10px/500。`font-weight: 500` 原在伴随 CSS 的 `.agent-editor-summary-card-label` 里，
+                  是扁平类名 + 扁平值（伪深层），已换算成 `font-medium`（`--font-weight-medium: 500`，逐值等价），
+                  语义类名随之删除——没有第二条声明需要它当钩子。 */}
+              <small className="text-3xs font-medium tracking-normal text-gray-400">{card.label}</small>
               <strong
                 className="agent-editor-summary-card-value mt-0.5 overflow-hidden text-ellipsis whitespace-nowrap text-xs leading-snug text-slate-700"
                 title={card.value}
@@ -295,20 +310,22 @@ export function AgentEditorSummary({
                 {card.meta}
               </em>
             </div>
-            <ChevronRight />
+            <ChevronRight className="w-2.75 text-gray-400" />
           </button>
         ))}
       </div>
       {/* 便签的 background 引用未定义 token（--color-primary-subtle），实际透明，故只迁 color。 */}
-      <div className="agent-editor-summary-note mt-3.5 flex gap-2 rounded-lg p-2.5 text-primary md:max-lg:hidden">
-        <Brain />
+      <div className="mt-3.5 flex gap-2 rounded-lg p-2.5 text-primary md:max-lg:hidden">
+        <Brain className="w-3.25 shrink-0" />
         <p className="text-3xs leading-normal text-text-muted">
           <strong className="mb-0.5 block text-xs text-text-primary">{t("editor.summaryHowItWorks")}</strong>
           {t("editor.summaryHowItWorksDescription")}
         </p>
       </div>
-      <div className="agent-editor-summary-safety mt-2.25 flex items-center gap-1.25 text-3xs text-text-muted md:max-lg:hidden">
-        <Check />
+      {/* `agent-editor-summary-safety` 语义类随 `<48rem` 之外最后一条规则（`> svg` 宽度）撤回而删除：
+          宽度现在挂在图标自身的 `w-2.5`，类名已没有样式表定义，留着只是空钩子。 */}
+      <div className="mt-2.25 flex items-center gap-1.25 text-3xs text-text-muted md:max-lg:hidden">
+        <Check className="w-2.5" />
         {t("editor.summarySafety")}
       </div>
     </aside>

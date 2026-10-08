@@ -286,8 +286,8 @@ running → completed | failed | interrupted
 - `docs/arch/19-yjs-chat-streaming.md` 是本次重构的目标架构基线，重构完成后升级为"实现基线"
 - `docs/arch/20-orchestration-management.md` 提供 `ensureRunning` / 实例生命周期依赖
 - `docs/arch/changes.md` 需同步新增本次改动记录
-- `spec/global/adr/2026-08-04-chat-channel-package-design.md` 记录包设计与评审决策（grill-with-docs 输出）
-- `spec/global/CONTEXT.md` 领域词汇需更新 Chat 域术语（Turn、SessionChannel、Action/Ack、commandId、pendingPermissions）
+- `docs/adr/2026-08-04-chat-channel-package-design.md` 记录包设计与评审决策（grill-with-docs 输出）
+- `docs/arch/domain-glossary.md` 领域词汇需更新 Chat 域术语（Turn、SessionChannel、Action/Ack、commandId、pendingPermissions）
 
 ### 风险提示
 

@@ -356,7 +356,7 @@ IMChannel 包含：
 
 **现状（重构前）**：`docs/arch/19-yjs-chat-streaming.md` 是目标设计基线，与代码存在系统性差距——Y.Doc schema 与文档契约不符且 Doc 职责错位（`chat:` 装状态、`session:` 装时间线）、聚合层直接消费文档明令禁止的 `agent_message_chunk` 私有帧、无 Action/Ack 协议与 `commandId` 幂等、无显式 Turn 状态机、权限解析无 CAS 保护、Chat 域逻辑横跨包与宿主且 `yjs-frontend/` 直接耦合 `environmentRepo` / `resolveWorkspacePath` / `acp-idle-monitor` / `cache`。
 
-**目标**：按 PRD（`docs/design/2026-08-04-yjs-chat-streaming-prd.md`）与 ADR（`spec/global/adr/2026-08-04-chat-channel-package-design.md`）的 16 项评审决策完成 Chat 流式链路重构，把 19 号文档升级为"实现基线"（与 20 号文档相同路径）。
+**目标**：按 PRD（`docs/design/2026-08-04-yjs-chat-streaming-prd.md`）与 ADR（`docs/adr/2026-08-04-chat-channel-package-design.md`）的 16 项评审决策完成 Chat 流式链路重构，把 19 号文档升级为"实现基线"（与 20 号文档相同路径）。
 
 **实施内容**：
 

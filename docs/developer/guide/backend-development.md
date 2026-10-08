@@ -245,7 +245,7 @@ return this.authorizedQuery.list({
 ### 4.3 隔离红线
 
 - 前端传入的 workspace/cwd、组织 ID、owner 一律不可信；组织上下文按 `x-active-org-id` header → `activeOrganizationId` query → `active_org_id` cookie 优先级提取。
-- API Key 的组织上下文必须由 key metadata 恢复并**重新校验成员关系**；异常时保守拒绝。
+- API Key 的组织上下文必须由 key metadata 恢复并**重新校验成员关系**；角色取成员表当前值，凭据里的创建期快照不参与判定；异常时保守拒绝。
 - 文件路径必须经过词法校验（绝对路径、`..`、控制字符）与 realpath 越界检查，防 symlink 逃逸。
 - 前端的可见/不可见只是体验，服务端 Facade 授权才是安全边界。
 
@@ -295,7 +295,7 @@ const config = getModuleConfig<AgentRuntimeEnv>("agent-runtime");
 - 模块只声明真正的部署级配置（DB 连接、对象存储、模型网关、Sandbox 地址、第三方密钥）；名称、模型、Skill、发布状态等业务配置存数据库。
 - 应用基础设施只放「整台 server 共用、启动时创建、关闭时释放」的东西。随请求、用户、组织、事务或资源变化的对象（service、repository、Facade、ActorContext、事务）一律不得放入，只能经参数、包公开 API 或宿主装配传递。
 - 测试用 `initializeTestApplicationInfrastructure` / `overrideModuleConfig` / `resetApplicationInfrastructure` 设置独立的 DB 与配置，不修改全局 `process.env`，也不 mock `apps/server`。
-- `deploy/env/*.example` 是部署模板的真相来源，只含变量名、说明与非敏感样例；真实 `.env` 永不提交，密钥来自部署平台的 secret store、K8s/Docker secret 或受控文件。
+- `deploy/env/*.example` 是部署模板的真相来源，由 `bun run scripts/generate-env-example.ts` 从「宿主 `env.ts` 自有键 + 全部模块 `envDefinitions`」机械导出，`precheck` 的 `env-example` 步骤按字节比对，**手改生成物会直接失败**；根 `.env.example` 与 `docker/prod/.env.example` 是同一渲染产物的场景薄文件。模板只含变量名、说明与非敏感样例，密钥键一律留空；真实 `.env` 永不提交，密钥来自部署平台的 secret store、K8s/Docker secret 或受控文件。
 
 ## 6. 数据库与迁移
 

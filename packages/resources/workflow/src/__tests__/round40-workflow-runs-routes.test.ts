@@ -132,6 +132,47 @@ describe("Round 40 workflow-runs 路由业务覆盖", () => {
     expect(foreign).not.toHaveBeenCalled();
   });
 
+  // 审批节点挂起时，快照响应必须接受节点与 DAG 的 SUSPENDED 状态。
+  test("详情返回审批挂起快照", async () => {
+    spyOn(getTeamEngine("org-round40"), "getRunStatus").mockResolvedValue({
+      snapshot_id: "snapshot-suspended",
+      run_id: "run-suspended",
+      last_event_id: "event-suspended",
+      timestamp: "2026-08-19T00:00:00.000Z",
+      node_states: { approval: { status: "SUSPENDED" } },
+      dag_status: "SUSPENDED",
+    });
+
+    const response = await request("/workflow-runs/run-suspended");
+
+    expect(response.status).toBe(200);
+    expect((await readJson(response)).data.node_states.approval.status).toBe("SUSPENDED");
+  });
+
+  // REST 校验入口遇到循环依赖应返回 400 和稳定业务错误码。
+  test("干运行循环依赖返回 400", async () => {
+    spyOn(getTeamEngine("org-round40"), "dryRun").mockImplementation(() => {
+      throw new WorkflowError("cycle", WorkflowErrorCode.CYCLE_DETECTED);
+    });
+
+    const response = await request("/workflow-runs/dry", post({ yaml: "name: cycle" }));
+
+    expect(response.status).toBe(400);
+    expect((await readJson(response)).error.code).toBe("CYCLE_DETECTED");
+  });
+
+  // REST 执行入口在调度前发现循环时也必须返回 HTTP 400。
+  test("启动运行循环依赖返回 400", async () => {
+    spyOn(getTeamEngine("org-round40"), "runAsync").mockImplementation(() => {
+      throw new WorkflowError("cycle", WorkflowErrorCode.CYCLE_DETECTED);
+    });
+
+    const response = await request("/workflow-runs", post({ yaml: "name: cycle" }));
+
+    expect(response.status).toBe(400);
+    expect((await readJson(response)).error.code).toBe("CYCLE_DETECTED");
+  });
+
   // 不存在的详情统一映射为 404，避免将引擎错误直接抛给客户端。
   test("详情不存在运行映射为 404", async () => {
     spyOn(getTeamEngine("org-round40"), "getRunStatus").mockRejectedValue(

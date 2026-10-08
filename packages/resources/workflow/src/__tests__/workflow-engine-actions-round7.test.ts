@@ -82,6 +82,30 @@ describe("POST /web/workflow-engine action 分发", () => {
     expect(runAsync).not.toHaveBeenCalled();
   });
 
+  // action 执行入口的循环依赖错误应由请求方修正，不能报告为服务故障。
+  test("run 循环依赖返回 400", async () => {
+    spyOn(getTeamEngine("org-engine-1"), "runAsync").mockImplementation(() => {
+      throw new WorkflowError("cycle", WorkflowErrorCode.CYCLE_DETECTED);
+    });
+
+    const response = await request({ action: "run", yaml: "name: cycle" });
+
+    expect(response.status).toBe(400);
+    expect((await readJson(response)).error.code).toBe("CYCLE_DETECTED");
+  });
+
+  // action 入口必须把非对象的顶层 params 作为业务错误拒绝，避免字符串被展开成字符键。
+  test("run 拒绝非对象顶层 params 并返回 400", async () => {
+    const runAsync = spyOn(getTeamEngine("org-engine-1"), "runAsync");
+
+    for (const params of [null, [], '{"value":1}']) {
+      const response = await request({ action: "run", yaml: "name: invalid", params });
+      expect(response.status).toBe(400);
+      expect((await readJson(response)).error.code).toBe("VALIDATION_ERROR");
+    }
+    expect(runAsync).not.toHaveBeenCalled();
+  });
+
   // dryRun 需返回 engine 给出的完整执行计划，供前端在不执行任务时预览依赖关系。
   test("dryRun 返回校验结果和执行计划", async () => {
     const engine = getTeamEngine("org-engine-1");
@@ -103,6 +127,18 @@ describe("POST /web/workflow-engine action 分发", () => {
       },
     });
     expect(dryRun).toHaveBeenCalledWith("name: preview");
+  });
+
+  // 循环依赖属于可修正的定义错误，action 校验入口应返回 HTTP 400。
+  test("dryRun 循环依赖返回 400", async () => {
+    spyOn(getTeamEngine("org-engine-1"), "dryRun").mockImplementation(() => {
+      throw new WorkflowError("cycle", WorkflowErrorCode.CYCLE_DETECTED);
+    });
+
+    const response = await request({ action: "dryRun", yaml: "name: cycle" });
+
+    expect(response.status).toBe(400);
+    expect((await readJson(response)).error.code).toBe("CYCLE_DETECTED");
   });
 
   // dryRun 没有可解析的定义时必须在调用 engine 前失败，避免把空工作流当作有效计划。

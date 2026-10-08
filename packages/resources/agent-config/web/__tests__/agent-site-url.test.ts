@@ -17,7 +17,7 @@ const legacyEncodedUrl = (remoteAppId: string) => `/web/site/deploy/${encodeURIC
 
 describe("buildAgentSiteUrl", () => {
   test("平台生成的 app-xxxxxxxx 口径下与重构前两种写法逐字一致", () => {
-    // 实测取值来源：apps/web/src/shell/ArtifactsPanel.tsx（`app-91a0621c`）、
+    // 实测取值来源：apps/web/src/pages/agent-panel/artifacts/ArtifactsPanel.tsx（`app-91a0621c`）、
     // docs/developer/site-url-migration.md（`app-e1895c18`）、宿主聚合验证记录（`app-verify0`）。
     for (const remoteAppId of ["app-91a0621c", "app-e1895c18", "app-verify0"]) {
       expect(buildAgentSiteUrl(remoteAppId)).toBe(legacyRawUrl(remoteAppId));

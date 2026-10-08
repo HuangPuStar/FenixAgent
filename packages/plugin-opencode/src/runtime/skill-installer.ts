@@ -12,6 +12,14 @@ const execFileAsync = promisify(execFile);
 export interface SkillInstallerDependencies {
   fetch?: typeof fetch;
   extractArchive?: (archivePath: string, targetDir: string) => Promise<void>;
+  /**
+   * skill 归档下载所用的主服务地址（由调用方注入）。
+   *
+   * 语义是「agent 侧能够访问到主服务的基址」：daemon / 沙盒容器里的 `localhost` 指向容器自身，而 launchSpec
+   * 里的 skill URL 由宿主按自身 base URL 生成，故远端场景需要把它换成本进程可达的地址。可给 `ws(s)://`
+   * （daemon 部署键 `RCS_URL` 即此形）或 `http(s)://`，插件只取 origin；未注入时不做任何改写。
+   */
+  downloadOrigin?: string;
 }
 
 async function defaultExtractArchive(archivePath: string, targetDir: string): Promise<void> {
@@ -20,18 +28,17 @@ async function defaultExtractArchive(archivePath: string, targetDir: string): Pr
 }
 
 /**
- * 根据 RCS_URL 环境变量替换下载 URL 的 origin。
+ * 按注入的下载 origin 替换原始下载 URL 的 origin。
  *
- * RCS_URL 是 WebSocket 地址（ws:// 或 wss://），
- * 转换为对应的 HTTP 协议后替换原始 URL 的 origin 部分。
- * 未设置 RCS_URL 时维持原样。
+ * origin 由调用方经 `SkillInstallerDependencies.downloadOrigin` 注入（部署键 `RCS_URL` 的真身在 daemon /
+ * 容器侧，本包不读 `process.env`）：ws:// 与 wss:// 按同 host:port 换算成 http:// 与 https:// 后取 origin，
+ * 已给 http(s) 时原样取 origin。未注入时逐字返回原 URL——这条是既有语义，删除它会让「不传参」变成隐式改写。
  */
-function resolveDownloadUrl(originalUrl: string): string {
-  const rcsUrl = process.env.RCS_URL;
-  if (!rcsUrl) return originalUrl;
+function resolveDownloadUrl(originalUrl: string, downloadOrigin?: string): string {
+  if (!downloadOrigin) return originalUrl;
 
   // ws://host:port → http://host:port  /  wss://host:port → https://host:port
-  const httpUrl = rcsUrl.replace(/^ws(s?):\/\//, "http$1://");
+  const httpUrl = downloadOrigin.replace(/^ws(s?):\/\//, "http$1://");
   const base = new URL(httpUrl);
   const original = new URL(originalUrl);
 
@@ -88,7 +95,7 @@ export async function installSkills(
       const stagedTargetDir = join(stagedSkillsDir, skill.name);
       const installedTargetDir = join(skillsDir, skill.name);
 
-      const downloadUrl = resolveDownloadUrl(skill.url);
+      const downloadUrl = resolveDownloadUrl(skill.url, dependencies.downloadOrigin);
       console.log(`[skill-installer] 下载 skill "${skill.name}"`);
       await mkdir(stagedTargetDir, { recursive: true });
       await mkdir(dirname(archivePath), { recursive: true });

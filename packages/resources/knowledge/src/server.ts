@@ -21,5 +21,6 @@ export type { KnowledgeRouteDependencies, SessionAuthContext } from "./server/ro
 export { createWebKnowledgeBaseRoutes } from "./server/routes/web/knowledge-bases";
 export * from "./server/services/agent-knowledge";
 export * from "./server/services/knowledge-base";
+export * from "./server/services/knowledge-base-list";
 export { checkRagFlowHealth } from "./server/services/knowledge-provider/ragflow";
 export * from "./server/services/knowledge-runtime";

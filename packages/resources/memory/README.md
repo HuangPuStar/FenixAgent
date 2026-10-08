@@ -1,6 +1,6 @@
 # @fenix/resource-memory
 
-Hindsight 长期记忆在平台内的唯一 owner：记忆可用性判定、Hindsight MCP server 与 bank 的幂等登记（登记能力当前无生产调用方，见已知项 9）、`agent_memory_config` 的读写，以及 `/web/hindsight/**` 代理路由与记忆控制台页面。
+Hindsight 长期记忆在平台内的唯一 owner：记忆可用性判定、bank 成员隔离（首次 retain 自动建库，见已知项 9）、`agent_memory_config` 的读写，以及 `/web/hindsight/**` 代理路由与记忆控制台页面。hindsight MCP 不由本包登记为系统 MCP server——它经 Agent 启动参数的插件机制下发（`@fenix/agent-config` 的 `agent-launch-spec/memory-env`）。
 
 ## 定位与 owner
 
@@ -23,12 +23,12 @@ Hindsight 长期记忆在平台内的唯一 owner：记忆可用性判定、Hind
 
 ## 服务端交付物
 
-`bun test packages/resources/memory`：**107 pass / 0 fail / 281 expect() calls / 10 文件**（`env -u ANTHROPIC_MODEL` 消除会话环境变量污染后实测；§1.7 B10 表定义迁出后本包测试集合未变，`expect` 计数 +1 来自浏览器面负例新增的递归深度断言、+4 来自 2026-09-22 去重新增的四条可达面清单项，2026-09-22 复核再 +1）。较 W2 切片收口的 97 pass / 8 文件增加 `web/__tests__/hindsight-failure.test.ts`、`web/__tests__/hindsight-failure-notice.test.tsx` 两个文件，以及 §1.3(6) 的失败分类与渲染契约用例。
+`bun test packages/resources/memory`：**114 pass / 0 fail / 322 expect() calls / 12 文件**（2026-09-28 实测）。本轮删除 hindsight 系统 MCP 登记路径后，`src/__tests__/hindsight-service.test.ts` 与 `hindsight-facade.test.ts` 各删 3 条用例（见已知项 9）。此前的记录值：**107 pass / 0 fail / 281 expect() calls / 10 文件**（`env -u ANTHROPIC_MODEL` 消除会话环境变量污染后实测；§1.7 B10 表定义迁出后本包测试集合未变，`expect` 计数 +1 来自浏览器面负例新增的递归深度断言、+4 来自 2026-09-22 去重新增的四条可达面清单项，2026-09-22 复核再 +1）。较 W2 切片收口的 97 pass / 8 文件增加 `web/__tests__/hindsight-failure.test.ts`、`web/__tests__/hindsight-failure-notice.test.tsx` 两个文件，以及 §1.3(6) 的失败分类与渲染契约用例。
 
 - **判定入口**：`src/server/services/agent-memory.ts` 的两级模型——系统级 `isHindsightAvailable()`（模块配置是否给出 `hindsightMcpUrl`）与 Agent 级 `isAgentMemoryEnabled(agentConfigId)`（`agent_memory_config.enabled`），由 `shouldEnableAgentMemory()` 组合。`HINDSIGHT_PLUGIN_DEFAULTS` 是同文件导出的插件运行时默认值。
 - **模块配置**：`src/server/config.ts` 的 `getMemoryConfig()` 经平台 `getModuleConfig("memory")` 读取，用 `z.strictObject` 校验（`hindsightMcpUrl` 可选；形状非法抛错并且不回显字段值）。**空串与字段缺失同等视为「未配置」**：docker 默认部署的 `HINDSIGHT_MCP_URL: ${HINDSIGHT_MCP_URL:-}` 在 .env 未设置时透传空串，不归一就会让「未部署记忆」从静默禁用变成校验抛错（`web/__tests__/hindsight-service.test.ts` 用例钉住）。包内**不读** `process.env`（实测生产代码 0 处命中），值的来源是宿主 `apps/server/src/env.ts` 解析后的 `HINDSIGHT_MCP_URL`。
 - **数据访问**：`src/server/db.ts` 的 `getMemoryDatabase()`（= 平台 `getDatabase<T>()`，请求期读取）；`src/server/repositories/agent-memory-config.ts` 是唯一数据访问点（`getByAgentConfigId` / `setEnabled` 幂等 upsert），route 不碰 db。`agent_memory_config` 的**表对象**自 §1.7 B10 起由本包 `db/schema.ts` 持有，仓储经出口 `@fenix/resource-memory/db` 取用（自我引用而非相对路径：`db/` 不进包 `tsconfig.json` 的 `include`，只有走包 `exports` 才能被解析，`@fenix/agent-config` 同形）。
-- **bank 与 MCP 登记**：`ensureHindsightMcpServer(ctx, { registerSystemMcpServer })` 先用 `getIdentityDirectory().resolveMembershipId()` 把「当前用户在活跃组织下的 member id」解析为 bank ID（不直查身份表），再幂等登记系统托管 MCP server，最后 `ensureBank()` 以 `PUT /v1/default/banks/{bankId}` 保证 bank 存在。系统 MCP 的写入经**参数注入**，不 import `@fenix/resource-mcp`：`dependsOn` 冻结为 `[]`，而生成器的 `assertDependsOnDeclared` 要求 `dependsOn` 每条都能在 `package.json` 找到 `workspace:` 区间，直接 import 会以「未声明编译依赖」失败。**该登记能力当前无生产调用方**（迁移前也无），影响与移除条件见已知项 9。
+- **bank 创建**：Hindsight 在首次 retain 时自动创建 bank，平台不预创建，已删除孤儿 `ensureBank` 及其四条专属测试。证据见已知项 9。系统托管 MCP server 登记路径保持删除，`/web/hindsight/**` 代理路由保持不变。
 - **路由工厂**：`src/server/routes/web/hindsight.ts` 导出 `createWebHindsightRoutes({ authGuardPlugin })`（实测 19 个处理器：`GET /status`、`GET /graph`、`GET /bank-stats`、`GET|POST|DELETE /memories(/:id)`、`POST /recall`、`POST /reflect`、`GET|POST|DELETE /documents(/:id)`、`GET /documents/:id/chunks`、`GET|DELETE /mental-models(/:id)`、`GET /entities`、`GET /entities/:id`、`GET /entities/graph`），守卫与依赖类型在 `src/server/routes/dependencies.ts`（只声明 `AnyElysia`）。守卫必须注入而不能在包内 `.use()`：Elysia 的 `macro` / `state` 是实例作用域的，父实例无法向已构造的子实例回填；`AuthContext` 也只取用到的 `{ organizationId, userId }`，不引用宿主类型。除 status 外，无法解析 bank 映射为 403、上游不可达映射为 503。
 - **测试设施**：`src/server/testing.ts` 提供 `createMemoryModuleConfig()` / `initializeMemoryModuleConfig()`；`src/__tests__/guard-stubs.ts` 是会话守卫替身（携带组织上下文，供跨组织隔离用例切换）。
 
@@ -52,7 +52,7 @@ Hindsight 长期记忆在平台内的唯一 owner：记忆可用性判定、Hind
 | HEAD 导入（处数） | 改法 |
 | --- | --- |
 | `@server/plugins/auth`（4：2 处生产 + 2 处测试的 `setTestAuth` / `AuthContext`） | 生产改路由工厂 + 宿主注入守卫；测试改包内 `src/__tests__/guard-stubs.ts` 替身 |
-| `@server/services/config`（1，`upsertSystemMcpServer`） | `ensureHindsightMcpServer()` 的参数注入 `RegisterSystemMcpServer` |
+| `@server/services/config`（1，`upsertSystemMcpServer`） | `ensureHindsightMcpServer()` 的参数注入端口（该登记路径随后已按 owner 裁定整体删除，见已知项 9） |
 | `@server/services/config-utils`（1，`configSuccess`） | 路由内 `ok()` 信封（与既有 `/web/*` 响应形状一致） |
 | `@server/services/org-context`（1，测试 `setTestOrgContext`） | 守卫替身直接携带组织上下文，`setTestOrgContext` 用例消失 |
 | `@server/db`（1，`db` 句柄） | `getMemoryDatabase()`（平台 `getDatabase()`） |
@@ -68,7 +68,7 @@ Hindsight 长期记忆在平台内的唯一 owner：记忆可用性判定、Hind
 
 ## 已知项
 
-1. **12 个既有缺键**（`web/__tests__/memory-i18n.test.ts` 的 `KNOWN_MISSING_KEYS` 清单钉住，JSON 未改）：`common.clear`（跨命名空间用点号 `common.clear` 而非宿主的分隔符，英文侧回落到 `defaultValue`）、`constellation.tooltip{Entities,Id,Proofs,Tags}`、`graph2d.{controlsHint,emptyState,linkTooltipEntity,linkTooltipWeight,linkTypeCausal,linkTypeGeneric,loading}`。补译文属产品文案，不在本切片。
+1. ~~**12 个既有缺键**~~ **已收口（2026-09-25）**：`graph2d.{loading,emptyState,linkTypeCausal,linkTypeGeneric,linkTooltipEntity,linkTooltipWeight,controlsHint}` 7 条与 `constellation.tooltip{Entities,Proofs,Tags,Id}` 4 条已补入 `web/i18n/locales/{en,zh}/hindsight.json`（此前分别回显 key 与默认值）；`common.clear` 是点号误写，消费点改为跨命名空间语法 `common:clear` 并登记进 `CROSS_NAMESPACE_KEYS`（宿主 `common` 字典已有该键，中文界面此前固定显示英文 "Clear"）。`KNOWN_MISSING_KEYS` 留空并保留断言，新增缺键仍逐条评审。
 2. ~~**`web/pages/hindsight/components/CompactMarkdown.tsx` 无消费者**~~ **已删除（前端规范 §6.5 收口）**：该文件是 `streamdown` 之外的第二条 Markdown 渲染链（`react-markdown` + `remark-gfm`，无 sanitize），零消费者；按「删除优于兼容」连同同名 `CompactMarkdown.css` 一并删除，`react-markdown` / `remark-gfm` 也从本包 `dependencies` 移除（包内已无其它消费者）。原先钉住「它不得被浏览器面误引」的用例随文件删除——浏览器图现在连这个文件都不存在，守卫失去对象。后续要在记忆页渲染 Markdown 时走 `@fenix/ui-components` 的 `MessageResponse`（§6.1 的唯一渲染链）。
 3. ~~**`happy-dom-window.ts` 有 4 份副本**~~ **已收敛（§1.6 T10a）**：全仓唯一实现现为 `@fenix/ui-components/testing` 的 `initializeHappyDomWindow`，本包 `web/__tests__/happy-dom-window.ts` 与其余三份副本已删除，2 个调用点改经该子路径导入（happy-dom 由 `@fenix/ui-components` 声明为 devDependency）。
 4. **真实守卫的拒绝路径无覆盖**：迁移前有两条「未认证访问必须 401」用例，守卫改为注入后包内无法表达（注入真实守卫即等于依赖宿主）；宿主 `apps/server/src/__tests__/` 实测暂无 hindsight 用例，该合同归 §1.5。缺口写在 `src/__tests__/guard-stubs.ts` 头部。
@@ -76,4 +76,16 @@ Hindsight 长期记忆在平台内的唯一 owner：记忆可用性判定、Hind
 6. **2 处既有 latent 类型错误**（2026-09-22 复核订正：此前记「1 处 / `:13`」，实测两处同因、行号已漂移）：`web/__tests__/hindsight-api-error.test.ts:14,29`（fetch 替身缺 Bun 的 `preconnect`）。内容与 HEAD 逐字相同；此前被包内 tsconfig 的 `baseUrl` 弃用告警（TS5101，fatal）掩盖，本切片修掉该配置错误后才可见。修法是给替身补参数并收窄类型，属既有测试文件的独立修复，未顺手改（`bunx tsc -p packages/resources/memory/tsconfig.json --noEmit` 现在只剩这两条）。
 7. **超大文件（既有，违反「单文件 ≤ 500 行」，未在本切片拆分）**：路由文件 628 行（HEAD 592 行，本切片 +18 行是工厂外壳、其余差额来自已知项 5 的格式化）、`DataView.tsx` 968 行、`Constellation.tsx` 978 行、`Graph2d.tsx` 713 行（2026-09-22 复核实测；W2 切片时分别是 1034 / 1023 / 737 行，差额来自 `0b449172` / `b0ba483a` / `ff198a85` 的收敛，不是新债）。拆分属模块边界重构，与本切片的目标（切边界、补交付物）正交，留给后续 review；在拆分前这批文件是包内对 CLAUDE.md「单文件不得超过 500 行」的已知例外。**2026-09-23 前端规范 §4.8 批次四已拆分（v3.0.20）**：`Constellation.tsx`（978 → 壳 329）、`DataView.tsx`（955 → 壳 323）、`Graph2d.tsx`（713 → 壳 130）按职责拆开，拆后最大 393 行，本条对这三个 web 文件的例外随之失效（两套图谱的图形逻辑仍按 §4.8 的裁定不归一，只拆文件内部职责 + 收敛因果族链接类型名单这一处外围重复）；路由文件 628 行属服务端代码、不在前端规范 §4.8 的统计口径内，仍是 CLAUDE.md 全局 500 行规则的已知例外。
 8. **§1.4 待办（不在本包）**：`packages/agent-runtime/src/services/launch-spec-builder.ts:579,613` 仍直读 `process.env.HINDSIGHT_MCP_URL` / `HINDSIGHT_API_TOKEN` 构造启动参数；本包不下发这两个环境变量的读取职责（§1.4 收敛）。
-9. **交付能力当前无生产调用方（`ensureHindsightMcpServer` / `ensureBank`）——需 owner 裁定「接线 or 删除」**：实测 `command grep -rn "ensureHindsightMcpServer\|ensureBank" apps packages scripts --include="*.ts"` 在 `apps/**`、`scripts/**` 命中 0 处生产调用，包内命中只有 `src/server/services/hindsight.ts` 的定义、`ensureHindsightMcpServer` 内部对 `ensureBank` 的调用，以及 `src/__tests__/hindsight-service.test.ts` 的 7 条用例；`git grep HEAD -- apps scripts` 里宿主侧只有 `upsertSystemMcpServer` 的定义与测试替身，没有任何 `ensureHindsightMcpServer` 调用点。**这是迁移前就存在的死能力，不是本切片新引入的缺口**（因此不删：删掉的是「已被验证过的登记实现」，接线时还要重写）。**影响**：记忆 bank 与系统托管 MCP server 的幂等登记在运行时不可达——`agent_memory_config` 写入与 `/web/hindsight/**` 转发都不经过它，但「启用记忆时自动建好 bank/MCP」这条路径永远不会执行，用户必须由部署侧或管理员手工准备 bank，否则 `resolveMembershipId` 之外的请求会以 403「无法解析 bank ID」进入本切片新增的无权限分支。**移除/接线的条件**：由 owner 二选一——(a) 接线：在记忆启用流程（`setEnabled` 的调用点或宿主对应 `/web` 入口）调用 `ensureHindsightMcpServer(ctx, { registerSystemMcpServer })`，届时需同步 `dependsOn`/`package.json` 依赖声明与集成测试（当前 `dependsOn: []` 靠参数注入绕开编译依赖，接线后该约束要重新评审）；(b) 删除：连带删除 `src/server/services/hindsight.ts` 的登记实现、`resolveMemberId` 与上述 7 条用例。裁定前保留实现与用例。**可追踪**：本条即追踪入口（§1.3 交付面的已知缺口），owner 裁定后应落到具体任务再闭环。**2026-09-21 更新（任务 1.5c 收尾）**：宿主侧那份 `upsertSystemMcpServer` 薄包装（`apps/server/src/services/config/mcp-system-server.ts` 与其转发 barrel `services/config/index.ts`）已按「零生产消费方」删除——它的唯一消费者是本条所述那条未接线的路径，删除只是消除一份死适配器，不改变上面的 (a)/(b) 裁定；选 (a) 接线时在装配点注入一次 `getMcpServerModule().service.upsertSystemServer` 委托即可。
+9. **MCP 登记与孤儿 `ensureBank` 均已删除（2026-09-28）**：系统 MCP 登记删除结果保持不变。本次只读核对插件仓 `src/lib/bank.ts:244-246`：mission 设置失败不阻断，注释明确 bank 在首次 retain 自动创建；`src/hooks/retain.ts:360-365` 直接调用 retain，`src/mcp/server.ts:282,306` 的 ingest 同样直接 retain，没有建库前置请求；`src/hooks/recall.ts:360-373` 对缺失 bank 等 recall 错误记录后返回，不阻断对话。原平台 `ensureBank` 仅做 `PUT /v1/default/banks/{bankId}` + 空 JSON body，且无生产调用方，故删除而非接回启动路径。首次写入前的查询可能返回缺失 bank，不能据此判定平台下发失败。
+
+## 工作区配置下发契约
+
+- 资源组装器将 memory 配置、平台插件默认值、成员 bankId、宿主 `HINDSIGHT_API_TOKEN` 转为 `AgentLaunchSpec.workspaceFiles: Array<{path, content, envVar?}>`，这是可序列化协议 DTO，不共享领域对象；`content` 是完整扁平 JSON，字段对齐插件 DEFAULTS。
+- 文件固定 `.hindsight/workspace.json`，唯一保留的 agent 配置 env 是 `HINDSIGHT_CONFIG`（绝对定位路径）。部署输入 `HINDSIGHT_MCP_URL` 与 `HINDSIGHT_API_TOKEN` 保留，后者只进入文件而不下发为 env。平台先用注入的 `resolveWorkspacePath` 绑定路径，machine 边界按实际 workspace 重定位，支持两端根目录不同。
+- 四引擎的本地 `prepareEnvironment` 与远程 handler 共用各自 preparer 和 SDK 文件物化函数：每次原子全量替换、不 merge，文件权限 0600，`managed` 含 writer/workspaceRoot/writtenAt；刷新仍沿用 core 的同 workspace 串行语义。
+- `plugins: ["hindsight"]` 是独立启用信号：opencode 映射 `@konghayao/opencode-hindsight`，空插件参数；ccb/peri/claude-code 映射 `enabledPlugins["hindsight-memory@hindsight-plugin"] = true`。npm 名与市场别名必须匹配 sandbox / sandbox-ccb / sandbox-peri 镜像预装，本地 Claude Code 需安装同名市场插件。
+- opencode 不再按名称剔除 MCP：平台系统注册路径已删除，用户自行配置的同名 MCP 是普通资源，不能被静默丢弃。
+- bank 成员解析失败或为空时仅关闭本次记忆，不回退共享默认 bank，也不阻断 Agent 启动。
+- **托管键集是隔离契约**：插件按逐键覆盖合并配置（插件 `config.ts:287-295`，`null` 视为未设置而跳过），托管文件虽是最高层，但**未写出的键会从低优先级层取值**（插件 `settings.json`、`~/.hindsight/<engine>.json`、`HINDSIGHT_*` env）。因此 `memory-env.ts` 除 `bankId` 外还显式钉死：`bankIdPrefix: ""`、`directoryBankMap: {}`、`dynamicBankId: false`（插件 `bank.ts:135-164` 的解析顺序里前两者优先于静态 `bankId`，缺任一个都能被用户级配置改写成任意 bank）、`recallAdditionalBanks: []` 与 `recallAdditionalBankFilters: {}`（否则插件会用含平台 token 的 client 对任意 bank 发起 recall，插件 `hooks/recall.ts:381-407`）。`dynamicBankGranularity` 无需钉：`dynamicBankId: false` 时该分支不被读取。
+- **刻意不写 `retainTags`**：插件默认是 `['{session_id}']`（插件 `config.ts:115`），会话标签是 `recallTags` 过滤的前提且写入后无法补打（同文件 :111-115）。写 `retainTags: []` 会对所有引擎静默关闭标签。历史差异：改造前 opencode 经 plugin options 收到 `[]`，ccb/peri/claude-code 收到插件默认；现在四引擎统一走插件默认 `['{session_id}']`。
+- `hindsightApiToken` 平台未配置时写 `null`：插件把 `null` 当「未设置」，因此机器侧 env / 用户配置的 token 仍可生效，与改造前一致；这不是"清空旧凭据"。

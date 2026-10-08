@@ -28,8 +28,10 @@
 //   cn 改为包内 ../../lib/cn；Button 改为包内 ../../ui/button；
 //   i18n 由宿主 ns=components 收敛到 UI_COMPONENTS_NS 的 chat.components.* key。
 //
-// 深层样式（选项序号徽标的 `flex` 基准值）下沉到同目录 `./QuestionPanel.css`，语义类名为
-// `.chat-question-option-index`，源选择器 `.chat-question-options > button > span`。
+// 样式（2026-09-28）：序号徽标的 `flex` 基准值（源 `.chat-question-options > button > span` 的
+// `flex: 0 0 21px`）曾按刻度改成 `shrink-0 grow-0 basis-5.25`，后一度被写进同目录 `./QuestionPanel.css`
+// 的 `.chat-question-option-index`；令牌层已把刻度按 px 落地（`--spacing: 4px`），`basis-5.25` 即 21px，
+// 故按判据撤回 `className`；提问卡片宽度覆盖（双类提权）仍在该表。
 
 import "./QuestionPanel.css";
 
@@ -235,8 +237,9 @@ function QuestionCard({ question, onRespond }: QuestionCardProps) {
               disabled={isSubmitting}
               onClick={() => selectOption(option.label)}
             >
-              {/* 源 `.chat-question-options > button > span`（序号/勾选徽标；`flex` 基准值在 ./QuestionPanel.css）。 */}
-              <span className="chat-question-option-index grid h-5.25 w-5.25 place-items-center rounded-sm bg-gray-100 text-3xs">
+              {/* 源 `.chat-question-options > button > span`（序号/勾选徽标：不参与伸缩，`flex: 0 0 21px`
+                  即 `shrink-0 grow-0 basis-5.25`，与下面的 `h-5.25 w-5.25` 同档）。 */}
+              <span className="shrink-0 grow-0 basis-5.25 grid h-5.25 w-5.25 place-items-center rounded-sm bg-gray-100 text-3xs">
                 {isSelected ? <Check className="h-3.25 w-3.25" /> : String.fromCharCode(65 + optionIndex)}
               </span>
               <div>

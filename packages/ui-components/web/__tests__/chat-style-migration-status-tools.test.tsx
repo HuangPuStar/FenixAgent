@@ -193,15 +193,26 @@ describe("chat 样式迁移：工具时间线", () => {
     expect(html).toContain('data-slot="chat-tool-call-file-link"');
     expect(html).toContain('data-slot="chat-tool-call-details-button"');
     // 行容器四种网格列与图标尺寸（源 `.chat-tool-call-row` / `.tool-call-row-icon`）已下沉到
-    // `timeline/ToolCallRow.css`，`className` 里只留语义类名。
+    // `timeline/ToolCallRow.css`；两条扁平 `flex` 声明里，图标基座的 `flex: 0 0 22px` 由 `className` 的
+    // 刻度类承担（令牌层 `--spacing: 4px`，`basis-5.5` 即 22px），file-preview 分支 meta 槽的
+    // `flex: 0 1 auto` 不含长度单位，同样留在 `className`。
     const tokens = classTokens(html);
     expect(tokens).toContain("chat-tool-call-grid");
     expect(tokens).toContain("chat-tool-call-icon");
+    // 图标基座不得回落为三族初始值那侧：`shrink-0 grow-0 basis-5.5` 即源 `flex: 0 0 22px`。
+    expect(tokens).toContain("shrink-0");
+    expect(tokens).toContain("grow-0");
+    expect(tokens).toContain("basis-5.5");
     // 文件链接态下 meta 槽的 `flex: 0 1 auto`（源 `.tool-call-row-meta` 的 file-preview 分支）。
     expect(tokens).toContain("chat-tool-call-meta-inline");
-    const toolCss = readChatSource("timeline/ToolCallRow.css");
+    expect(tokens).toContain("basis-auto");
+    // 声明侧断言先剥掉注释：本表文件头会引用被搬走/回迁的原文（`flex: 0 0 22px` 等），不剥离会把说明文字
+    // 误判成回流（与「提示词导航轨」用例同一口径）。
+    // 守住的是「本表不得出现任何 `flex` 简写」这条不变量（本组件的 flex 取值要么是刻度类、要么是三族初始值），
+    // 不逐值列举：逐值断言会让别的 `flex:` 写法静默回流。
+    const toolCss = readChatSource("timeline/ToolCallRow.css").replace(/\/\*[\s\S]*?\*\//g, "");
     expect(toolCss).toContain("grid-template-columns: 22px minmax(0, 1fr) auto auto");
-    expect(toolCss).toContain("flex: 0 0 22px");
+    expect(toolCss).not.toContain("flex:");
     expect(toolCss).toContain("width: calc(var(--spacing) * 3.75)");
   });
 

@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { environment } from "@fenix/agent-runtime/db";
 import type { AuthorizedResourceQuery } from "@fenix/platform-sdk";
 import { resetAllStubs, stubDb } from "@fenix/platform-sdk/testing";
+import { getTableName } from "drizzle-orm";
 import {
   type AgentConfigQueryStorage,
   createAgentConfigRepository,
@@ -49,7 +49,10 @@ describe("deleteAgentConfig", () => {
         callback({
           delete: (table: unknown) => ({
             where: () => {
-              if (table === environment) {
+              // 判据是 Drizzle 表名而不是 agent-runtime 的表对象：`environment` 归对方 owner 包，
+              // 调用期导入它的 `@fenix/agent-runtime/db` 是 §2.2 要根除的耦合（表名即 DDL 契约，
+              // 用它同样能唯一识别这一次删除）。
+              if (getTableName(table as never) === "environment") {
                 deletedTables.push("environment");
                 return Promise.resolve({ count: 2 });
               }

@@ -1289,7 +1289,7 @@ export class RagFlowKnowledgeProvider implements KnowledgeProvider {
           id: string;
           content: string;
           important_keywords?: string[];
-          available_int?: number;
+          available?: boolean;
         }>;
       }>
     >(
@@ -1306,7 +1306,7 @@ export class RagFlowKnowledgeProvider implements KnowledgeProvider {
       content: c.content ?? "",
       chunkIndex: (input.page - 1) * input.pageSize + idx + 1,
       importantKeywords: Array.isArray(c.important_keywords) ? c.important_keywords : [],
-      enabled: c.available_int !== 0,
+      enabled: c.available !== false,
     }));
 
     return {
@@ -1402,24 +1402,8 @@ export class RagFlowKnowledgeProvider implements KnowledgeProvider {
     apiKey?: string;
   }): Promise<void> {
     const datasetId = input.knowledgeBaseRemoteId;
-    // v0.26.0 正确端点：DELETE /api/v1/datasets/{id}/knowledge_graph
-    try {
-      await this.request(
-        `/api/v1/datasets/${datasetId}/knowledge_graph`,
-        {
-          method: "DELETE",
-        },
-        input.apiKey,
-      );
-    } catch (err) {
-      // 图不存在时 RAGFlow 返回 code != 0，视为幂等删除
-      const message = err instanceof Error ? err.message : "";
-      if (message.includes("code=102")) {
-        console.log("[ragflow] deleteKnowledgeGraph: graph not found, treating as success", { datasetId });
-        return;
-      }
-      throw err;
-    }
+    // v0.26.0 的 graph 路由只删除图谱分块；不能改用会改变其他索引状态的路由。
+    await this.request(`/api/v1/datasets/${datasetId}/graph`, { method: "DELETE" }, input.apiKey);
   }
 
   async pollKnowledgeGraphProgress(input: {

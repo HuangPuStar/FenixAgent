@@ -79,6 +79,15 @@ import { providerResource } from "./src/server/access/provider-resource";
  * （请求期不再读 env），故 `restartRequired: true`；只有 `_ADMIN_KEY` 与 `_CREDENTIAL_ENCRYPTION_KEY`
  * 是密钥材料，`secret: true`（禁止进日志、响应与错误文案，`src/server/config.ts` 的报错已只回字段路径与
  * 错误码）。
+ *
+ * 声明 `dependencyServices`（A2）：网关是外部产品（适配 LiteLLM），编排入口在
+ * `docker/litellm/docker-compose.yml`，本仓 deploy/compose 只记录依赖与探针，不重复定义其编排
+ * （`orchestration: "separate"`）。探针锚定 `RCS_MODEL_GATEWAY_BASE_URL`，路径与适配器的
+ * `checkHealth()` 一致（`@fenix/model-gateway-litellm` 的 adapter 打的是 `${baseUrl}/health`）——网关挂在
+ * `/litellm` 一类子路径下时探针会随地址键一起走对路径，不会退化成「自检报不可达、实际可用」。地址键与
+ * 管理密钥都列进 `envKeys`：部署方据此对齐 Fenix 侧地址与网关自身的 master key。`required: false`：
+ * 未配置 `_ADMIN_KEY` / `_CREDENTIAL_ENCRYPTION_KEY` 时网关运行时整体不启用（`runtime.ts` 的判据），
+ * Provider / Model 的资源 CRUD 照常，主服务必须能起来。
  */
 export const moduleManifest = {
   id: "model-management",
@@ -176,6 +185,22 @@ export const moduleManifest = {
       restartRequired: true,
       description:
         "新用户默认预算周期（如 30d / monthly）；permanent、once 与空串被归一成 undefined，表达「不创建周期性预算」。装配期由宿主投影为模块配置 modelGatewayDefaultBudgetDuration，改后需重启。",
+    },
+  ],
+  // 网关的编排归属不在本仓 deploy/compose：`docker/litellm/docker-compose.yml` 是它自己的入口，同一栈
+  // 在这里再定义一遍就是第二份真相。探针地址取地址键而不是写死主机名——部署面配的还是同一个键。
+  dependencyServices: [
+    {
+      id: "litellm",
+      required: false,
+      orchestration: "separate",
+      envKeys: ["RCS_MODEL_GATEWAY_BASE_URL", "RCS_MODEL_GATEWAY_ADMIN_KEY"],
+      composeFile: "docker/litellm/docker-compose.yml",
+      healthCheck: { kind: "http", addressKey: "RCS_MODEL_GATEWAY_BASE_URL", path: "/health" },
+      description:
+        "LiteLLM 模型网关（凭据、预算与用量的事实来源）。编排入口 docker/litellm/docker-compose.yml；" +
+        "网关地址也可指向托管服务，因此本仓不重复定义该编排。未部署或未配置网关管理凭证与加密密钥时，" +
+        "网关运行时整体不启用，Provider / Model 的资源 CRUD 不受影响。",
     },
   ],
   contributions: [

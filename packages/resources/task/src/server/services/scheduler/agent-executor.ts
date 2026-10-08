@@ -60,7 +60,7 @@ export const agentExecutor: TaskExecutor = {
   type: "agent",
 
   async execute(input: TaskExecInput): Promise<TaskExecOutput> {
-    const { task } = input;
+    const { task, requestId } = input;
     const def = parseDefinition(task.definition);
     const startTime = Date.now();
 
@@ -104,14 +104,18 @@ export const agentExecutor: TaskExecutor = {
       const duration = Date.now() - startTime;
       const resultSummary = extractPlainText(events);
 
-      log(`[agent-executor] Task ${task.id} completed: duration=${duration}ms summaryLen=${resultSummary.length}`);
+      // 关联 ID 取自显式输入（§7）；未给时记 null，与日志条目里由 ALS 注入的 requestId 字段区分开
+      // （那个字段是当前异步上下文，直接调用本执行器时未必属于本次执行）
+      log(`[agent-executor] Task ${task.id} completed: duration=${duration}ms summaryLen=${resultSummary.length}`, {
+        requestId: requestId ?? null,
+      });
       return { status: "success", duration, resultSummary };
     } catch (err) {
       const duration = Date.now() - startTime;
       const msg = err instanceof Error ? err.message : String(err);
       const isTimeout = msg === "Agent execution timeout";
 
-      logError(`[agent-executor] Task ${task.id} failed:`, msg);
+      logError(`[agent-executor] Task ${task.id} failed:`, msg, { requestId: requestId ?? null });
       return {
         status: isTimeout ? "timeout" : "failed",
         duration,

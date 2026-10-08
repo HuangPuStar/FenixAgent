@@ -63,6 +63,12 @@ export interface AgentRuntimeModuleConfig {
   readonly fileWsMaxPayloadMb: number;
   /** `/yjs/*` 的连接上限（`YJS_MAX_CLIENTS`）；超限关闭新连接并回 `too_many_connections`。 */
   readonly yjsMaxClients: number;
+  /** Chat Doc 快照的 trailing 节流窗口（毫秒，`RCS_YJS_SNAPSHOT_INTERVAL_MS`）。 */
+  readonly yjsSnapshotIntervalMs: number;
+  /** Chat Doc 快照的静默期（毫秒，`RCS_YJS_SNAPSHOT_IDLE_MS`）：无新 update 该时长后提前 flush。 */
+  readonly yjsSnapshotIdleMs: number;
+  /** Chat Doc 快照的滑动 TTL（秒，`RCS_YJS_SNAPSHOT_TTL_SECONDS`），每次成功 CAS 续期。 */
+  readonly yjsSnapshotTtlSeconds: number;
   /** 本地执行的默认引擎类型（`RCS_DEFAULT_ENGINE_TYPE`）；缺省时调用方回退 `"peri"`。 */
   readonly defaultEngineType?: string;
   /** 平台对外基址（宿主 `getBaseUrl()` 的已解析结果），注入 launch spec 的 `USER_META_BASE_URL`。 */
@@ -92,6 +98,9 @@ const AgentRuntimeModuleConfigSchema: z.ZodType<AgentRuntimeModuleConfig> = z.st
   acpRegistrySecret: z.string().min(1),
   fileWsMaxPayloadMb: z.number().int().positive(),
   yjsMaxClients: z.number().int().positive(),
+  yjsSnapshotIntervalMs: z.number().int().positive(),
+  yjsSnapshotIdleMs: z.number().int().positive(),
+  yjsSnapshotTtlSeconds: z.number().int().positive(),
   defaultEngineType: z.string().min(1).optional(),
   baseUrl: z.string().min(1),
 });

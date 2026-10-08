@@ -1,7 +1,7 @@
-import { type AgentNode, getAgentConfigById, resolveAgentNode } from "@fenix/agent-config/server";
 import { AppError } from "@fenix/platform-sdk";
 import { machine } from "@fenix/resource-machine/db";
 import { eq } from "drizzle-orm";
+import { getMachineAgentConfigPort, type MachineAgentConfigNode } from "../agent-config-port";
 import { getMachineConfig } from "../config";
 import { getMachineDatabase } from "../db";
 import { getEnvironmentById } from "../environment-port";
@@ -9,7 +9,13 @@ import { getMachineSandboxRoutePort, type SandboxRouteResult } from "../sandbox-
 import { type FileOpOptions, isFileWsConnected, sendFileOpAndWait } from "../transport/file-ws-port";
 
 type RemoteMachineResolutionInput = {
-  agentNode: AgentNode | null;
+  /**
+   * 环境绑定的 Agent 配置声明的执行节点；无绑定或无配置时为 null。
+   *
+   * 取数经 `MachineAgentConfigPort`（宿主装配注入），本包不导入 agent-config 的入口，也不自己解析
+   * `agentNode` / `machineId` 的优先级——那份规则只在 owner 侧存在一份。
+   */
+  agentNode: MachineAgentConfigNode | null;
   sandboxMachineId: string | null;
   sandboxSelected: boolean;
   defaultMachineId: string | null;
@@ -17,7 +23,7 @@ type RemoteMachineResolutionInput = {
 
 /** 根据运行节点配置选择文件操作使用的 Machine 身份。 */
 export function selectRemoteMachineId(input: RemoteMachineResolutionInput): string | null {
-  if (input.agentNode && "kind" in input.agentNode && input.agentNode.kind === "machine") {
+  if (input.agentNode?.kind === "machine") {
     return input.agentNode.machineId;
   }
   if (input.sandboxSelected) return input.sandboxMachineId;
@@ -58,8 +64,17 @@ const REMOTE_ZIP_TIMEOUT_MS = 60_000 + (REMOTE_ZIP_MAX_BYTES / (2 * 1024 * 1024)
 export async function getRemoteMachineId(envId: string): Promise<string | null> {
   const env = await getEnvironmentById(envId);
   if (!env) return null;
-  const agentCfg = env.agentConfigId ? await getAgentConfigById(env.agentConfigId) : null;
-  const agentNode = agentCfg ? resolveAgentNode(agentCfg) : {};
+  // 归属上下文取自环境本身（`environment.organization_id` 是 NOT NULL 列，视图的可空只是投影宽松）。
+  // 没有组织上下文时不读 Agent 配置：拿不到归属就无法判定「这个配置是不是本组织的」，宁可退回默认机器
+  // 或本地 FS，也不做一次无归属的取数（§10.3 多租户隔离）。
+  const organizationId = env.organizationId ?? "";
+  const agentNode =
+    env.agentConfigId && organizationId
+      ? await getMachineAgentConfigPort().getExecutionNode({
+          agentConfigId: env.agentConfigId,
+          organizationId,
+        })
+      : null;
 
   // 沙盒分支归 sandbox 判定：池选择与活跃实例查询读的是它自己的模块配置和池、实例表，本包不反向查询，
   // 只取它装配时注入的端口结果。端口为空表示该 assembly profile 未装配沙盒模块——降级为「无沙盒能力」，
@@ -67,7 +82,7 @@ export async function getRemoteMachineId(envId: string): Promise<string | null> 
   const sandboxPort = getMachineSandboxRoutePort();
   const sandboxRoute: SandboxRouteResult = sandboxPort
     ? await sandboxPort.resolveSandboxRoute({
-        explicitSandboxPoolId: agentNode?.kind === "sandbox" ? (agentNode.sandboxPoolId ?? null) : null,
+        explicitSandboxPoolId: agentNode?.kind === "sandbox" ? agentNode.sandboxPoolId : null,
         boundToMachine: agentNode?.kind === "machine",
         organizationId: env.organizationId ?? env.userId ?? "",
         userId: env.userId ?? "",
@@ -221,7 +236,12 @@ export async function remoteUploadFiles(
     120_000,
     options,
   );
-  if (result.status === "error") throw new Error(result.error as string);
+  if (result.status === "error") {
+    if (result.errorCode === "path_conflict" && result.statusCode === 409) {
+      throw new AppError("目标文件或目录已存在，未覆盖原内容，请修改名称后重试", "path_conflict", 409);
+    }
+    throw new Error(result.error as string);
+  }
 
   const data = result.data as { files?: Array<{ name?: unknown; path?: unknown; size?: unknown }> } | undefined;
   if (!data || !Array.isArray(data.files) || data.files.length !== files.length) {
@@ -283,7 +303,12 @@ export async function remoteRename(
     undefined,
     options,
   );
-  if (result.status === "error") throw new Error(result.error as string);
+  if (result.status === "error") {
+    if (result.errorCode === "path_conflict" && result.statusCode === 409) {
+      throw new AppError("目标文件或目录已存在，未覆盖原内容，请修改名称后重试", "path_conflict", 409);
+    }
+    throw new Error(result.error as string);
+  }
   return result.data as { oldPath: string; newPath: string };
 }
 

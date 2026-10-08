@@ -4,18 +4,39 @@ import { AcpDispatcher } from "acp-link/acp-dispatcher";
 import { spawnAcpAgent } from "acp-link/client/acp-spawn-helper";
 import type { EngineHandler, EngineStartContext } from "acp-link/client/instance-manager";
 import { resolveExecutable } from "acp-link/client/resolve-executable";
+import { prepareLaunchWorkspace } from "./runtime/environment-preparer";
+
+export interface OpencodeHandlerOptions {
+  /**
+   * skill 归档下载的 origin（agent 侧能访问到主服务的基址，可给 `ws(s)://`）。
+   *
+   * daemon / 容器侧部署配置，取值来自 `acp-runtime-cli` 读入后经 `ServerConfig` 下发的 `rcsUrl`。未注入时
+   * installer 保持 launchSpec 里的原始 URL（宿主自身生成的地址本就可达）。
+   */
+  downloadOrigin?: string;
+}
 
 /**
  * OpenCode 引擎 handler：spawn opencode acp 子进程，通过 ACP stdio 通信。
+ *
+ * handler 不直读 `process.env`：引擎命令与 skill 下载 origin 都是 daemon / 容器侧部署配置，由
+ * `acp-runtime-cli` 读取后经 `ServerConfig` 传入。
  */
-export function createOpencodeHandler(binary?: string, extraArgs?: string[]): EngineHandler {
+export function createOpencodeHandler(
+  binary?: string,
+  extraArgs?: string[],
+  options: OpencodeHandlerOptions = {},
+): EngineHandler {
   // 延迟到 startInstance 才 resolve executable，避免机器上没有 opencode 时启动失败
   const binaryName = binary ?? "opencode";
   const args = extraArgs ?? ["acp"];
 
   return {
     async prepareWorkspace(workspace: string, launchSpec: AgentLaunchSpec): Promise<void> {
-      const installedSkills = await installSkills(workspace, launchSpec.skills);
+      launchSpec = await prepareLaunchWorkspace(workspace, launchSpec);
+      const installedSkills = await installSkills(workspace, launchSpec.skills, {
+        downloadOrigin: options.downloadOrigin,
+      });
       const runtimeConfig = buildOpencodeRuntimeConfig(launchSpec, installedSkills);
       await writeOpencodeConfig(workspace, runtimeConfig);
     },

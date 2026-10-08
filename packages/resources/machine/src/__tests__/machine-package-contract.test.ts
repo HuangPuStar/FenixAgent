@@ -215,15 +215,25 @@ describe("Machine 包边界契约（任务 1.3 §1 静态条件）", () => {
     expect(sourceFiles.length).toBeGreaterThanOrEqual(80);
     // 正向控制：必须有一条已知存在的说明符能被扫到，否则下面「零宿主导入」的断言会退化成恒真。
     // 载体随残留迁出而更换：表定义残留（`@server/db/schema`）已全部消失，§1.7 B7 收口后本包零
-    // `@server` 导入，于是改钉本次收口的实际落点——`registry.ts` 的 agent_config 读写必须经 owner
-    // 的公开入口 `@fenix/agent-config/server`，而不是回头直读对方的 `db` 或宿主 schema。
-    // 这条同时是 B7 的行为契约：若哪天有人把绑定/引用检查改回包内 SQL，它会立刻变红。
+    // `@server` 导入，载体一度是 `registry.ts` 的 `@fenix/agent-config/server`。2026-09-24 那条反向边
+    // 收口为宿主注入的 `MachineAgentConfigPort`（下一条用例），载体改为本包自身的 `./db` 出口——
+    // `registry.ts` 读写自己的 `machine` / `registry_event` 表，是本包最不会被误删的一条导入。
     expect(refs).toContainEqual(
       expect.objectContaining({
         file: resolve(PKG_ROOT, "src/server/services/registry.ts"),
-        specifier: "@fenix/agent-config/server",
+        specifier: "@fenix/resource-machine/db",
       }),
     );
+  });
+
+  // E1 的行为契约：本包不得再导入 `@fenix/agent-config` 的任何出口。那条边不在 §2.3 矩阵里，且与
+  // agent-config → agent-runtime、agent-runtime → sandbox、sandbox → machine 三条边闭合 4 包环族；
+  // 收口形态是「本包声明窄端口 + 宿主注入实现」（`src/server/agent-config-port.ts`）。架构门禁的
+  // machine → resource 规则同样拦这条边，这里从包内重申一次：门禁看的是导入，本用例看的是本包源码。
+  test("包内不引用 agent-config 的入口", () => {
+    const offenders = refs.filter((ref) => ref.specifier.startsWith("@fenix/agent-config"));
+
+    expect(offenders.map(describeRef)).toEqual([]);
   });
 
   // RMD-02 完成后宿主与包内旧路径都不能保留 Machine/File 的同名实现或兼容垫片。

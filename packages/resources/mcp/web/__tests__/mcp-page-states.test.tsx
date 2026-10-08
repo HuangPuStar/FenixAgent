@@ -26,6 +26,7 @@ import { afterAll, afterEach, beforeEach, describe, expect, mock, test } from "b
 import { Window } from "happy-dom";
 import { act, createElement, type ReactElement, type ReactNode } from "react";
 import { createRoot, type Root } from "react-dom/client";
+import { translate } from "./fixtures/mcp-page-state-translations";
 
 // 告知 React 当前为测试环境，消除 act() 警告
 (globalThis as Record<string, unknown>).IS_REACT_ACT_ENVIRONMENT = true;
@@ -69,6 +70,10 @@ const DOM_GLOBALS = [
   "PointerEvent",
   "ResizeObserver",
   "SVGElement",
+  // 与 `HTMLElement` 必须成对注入：只注入前者会让「有 DOM」成立而 `customElements` 仍是 undefined，
+  // 此后任何求值 streamdown 组件链路的文件都以 `ReferenceError: customElements is not defined`
+  // 崩在测试之间的空档里（口径见 `@fenix/ui-components/web/testing.ts` 的成对注入约束）。
+  "customElements",
 ] as const;
 
 const originalGlobals = new Map<string, unknown>([
@@ -88,35 +93,6 @@ globals.cancelAnimationFrame = win.cancelAnimationFrame.bind(win);
 globals.getComputedStyle = win.getComputedStyle.bind(win);
 globals.addEventListener = win.addEventListener.bind(win);
 globals.removeEventListener = win.removeEventListener.bind(win);
-
-/** 用例断言到的键，按实际文案取值；未登记的键回显自身，便于快速发现漏登记的断言目标。 */
-const MOCK_TRANSLATIONS: Record<string, string> = {
-  empty: "暂无 MCP 插件",
-  emptyHint: "点击「新建服务器」创建第一个 MCP 插件",
-  emptySearch: "没有匹配的 MCP 插件",
-  emptySearchHint: "换个关键词或切换筛选范围",
-  "formDialog.save": "保存",
-  "formDialog.cancel": "取消",
-  "loadState.retry": "重试",
-  "loadState.title": "无法加载插件目录",
-  "loadState.unauthorizedTitle": "无权查看插件目录",
-  "loadState.unauthorizedHint": "当前账号或所属组织已无权访问 MCP 插件，重试不会改变结果。",
-  "dialog.editTitle": "编辑 MCP 服务器",
-  "dialog.loadDetailFailed": "无法读取该服务器的配置",
-  "dialog.loadDetailFailedHint": "现在保存只会再报一次校验错误，请重试或关闭后重新打开。",
-};
-
-/**
- * 翻译替身。必须是模块级稳定引用——弹窗的加载 effect 把 `t` 写进依赖数组，不稳定会让它反复重跑。
- * 插值按 `{{var}}` 还原，与真实 i18next 口径一致。
- */
-function translate(key: string, opts?: Record<string, unknown>): string {
-  let result = MOCK_TRANSLATIONS[key] ?? key;
-  for (const [name, value] of Object.entries(opts ?? {})) {
-    result = result.replace(`{{${name}}}`, String(value));
-  }
-  return result;
-}
 
 /**
  * `react-i18next` 替身的跨包并集出口：`useTranslation` 由本文件自带翻译表，
@@ -413,6 +389,20 @@ describe("AgentMcpPage 目录加载状态", () => {
     expect(buttonByText("重试")).toBeUndefined();
     expect(text()).not.toContain("暂无 MCP 插件");
   });
+
+  // 条目标题只显示资源名：归属组织由条目右侧的组织角标单独展示，标题再带 `Personal1/` 前缀就是同一个
+  // 组织名在同一行出现两次，并把标题列挤到截断（截图里的 `Personal1/fi…`）。角标必须照旧显示组织名——
+  // 去掉后缀不等于把来源藏起来。列表与详情头同源（同一份 `getMcpCatalogName`），因此这一条负向断言
+  // 同时覆盖两处：任一处回退拼前缀都会让 `Personal1/filesystem` 重新出现在页面上。
+  test("条目标题不带本组织名前缀，组织名只出现在角标里", async () => {
+    responses = [listSuccess([{ ...writableServer, name: "filesystem", organizationName: "Personal1" }])];
+    const AgentMcpPage = await importMcpPage();
+    await render(createElement(AgentMcpPage));
+
+    expect(text()).toContain("filesystem");
+    expect(text()).not.toContain("Personal1/filesystem");
+    expect(text()).toContain("Personal1");
+  });
 });
 
 describe("AgentMcpDialog 详情加载状态", () => {
@@ -464,5 +454,23 @@ describe("AgentMcpDialog 详情加载状态", () => {
       (input) => (input as unknown as HTMLInputElement).value === "shared",
     );
     expect(nameField).toBeDefined();
+  });
+});
+
+describe("AgentMcpDialog 创建校验", () => {
+  // 空 remote 表单须同时指出名称与 URL，标记对应控件，且不能触发网络写请求。
+  test("空 remote 表单同时提示两个必填字段且不发送创建请求", async () => {
+    const AgentMcpDialog = await importMcpDialog();
+    await render(createElement(AgentMcpDialog, { target: "create", onClose: () => {}, onSaved: () => {} }));
+
+    const save = buttonByText("保存");
+    expect(save).toBeDefined();
+    await click(save as HTMLButtonElement);
+
+    expect(text()).toContain("名称不能为空");
+    expect(text()).toContain("URL 不能为空");
+    expect(win.document.querySelector("#mcp-server-name")?.getAttribute("aria-invalid")).toBe("true");
+    expect(win.document.querySelector("#mcp-server-url")?.getAttribute("aria-invalid")).toBe("true");
+    expect(fetchCalls).toEqual([]);
   });
 });

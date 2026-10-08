@@ -5,6 +5,7 @@
   "dependencies": {
     "@fenix/agent-config": "workspace:*",
     "@fenix/agent-runtime": "workspace:*",
+    "@fenix/chat-channel": "workspace:*",
     "@fenix/identity": "workspace:*",
     "@fenix/logger": "workspace:*",
     "@fenix/platform-sdk": "workspace:*",
@@ -37,6 +38,7 @@
     "./server": "./src/server.ts",
     "./web": "./web/index.ts",
     "./web/contribution": "./web/contribution.ts",
+    "./web/hooks/use-task-views": "./web/hooks/use-task-views.ts",
     "./web/i18n": "./web/i18n/index.ts"
   }
 }

@@ -1,12 +1,20 @@
 import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
 import { resetAllStubs, stubDb } from "@fenix/platform-sdk/testing";
-import { initializeMachineModuleConfig } from "../server/testing";
-import type { MachineRequestAuth } from "../server/types/auth";
+import { initializeMachineModuleConfig, stubMachineAgentConfig } from "../server/testing";
+import type { MachineScope } from "../server/types/machine-registry";
 
 const registry = await import("@fenix/resource-machine/server");
 
 /** 机器生命周期通知的记录器（§1.7 B4 前置后，注册只通报事件，投影由 sandbox 侧写自己的表）。 */
 const lifecycleCalls: Array<{ event: "registered" | "heartbeat"; machineId: string; at: Date }> = [];
+
+/**
+ * Agent 配置绑定调用的记录器（`registerMachine` 经注入端口把 `machineId` 绑到同名配置上）。
+ *
+ * `agent_config` 的写入属对方领域，本包只表达「把上报的 agentName 绑到这台机器」的意图，因此这里记录的是
+ * **端口调用**而不是 DB 写入次数。
+ */
+const agentConfigBindings: Array<{ organizationId: string; agentName: string; machineId: string }> = [];
 
 /**
  * 按用例重新绑定记录用端口。
@@ -28,8 +36,8 @@ function bindLifecycleRecorder(): void {
   });
 }
 
-const owner: MachineRequestAuth = { organizationId: "org-a", userId: "user-a", role: "owner" };
-const foreign: MachineRequestAuth = { organizationId: "org-b", userId: "user-b", role: "owner" };
+const owner: MachineScope = { organizationId: "org-a", userId: "user-a" };
+const foreign: MachineScope = { organizationId: "org-b", userId: "user-b" };
 
 function chain(rows: unknown[]) {
   return {
@@ -70,6 +78,17 @@ function insert(calls: unknown[]) {
 beforeEach(() => {
   initializeMachineModuleConfig();
   bindLifecycleRecorder();
+  // Agent 配置的取数不在本包：注册路径的绑定与删除路径的引用检查都经宿主注入的端口调用，用例在这里装配
+  // 记录用实现（不依赖测试专用默认值：端口未绑定即失败是本包刻意的失败语义）。端口是整体契约，三个原语
+  // 必须齐备；本文件不涉及执行节点解析，故给出「无节点」的答案。
+  agentConfigBindings.length = 0;
+  stubMachineAgentConfig({
+    getExecutionNode: async () => null,
+    isAgentConfigBoundToMachine: async () => false,
+    bindMachineIdByAgentName: async (input) => {
+      agentConfigBindings.push({ ...input });
+    },
+  });
 });
 
 afterEach(() => {
@@ -78,6 +97,7 @@ afterEach(() => {
   registry.resetMachineLifecyclePortForTest();
   resetAllStubs();
   lifecycleCalls.length = 0;
+  agentConfigBindings.length = 0;
 });
 
 describe("registry 服务真实业务覆盖", () => {
@@ -154,7 +174,7 @@ describe("registry 服务真实业务覆盖", () => {
     test(`管理员预创建${name}机器使用待注册状态`, async () => {
       const writes: unknown[] = [];
       stubDb({ insert: insert(writes) });
-      const result = await registry.createMachine(owner, { name });
+      const result = await registry.createMachine(owner.organizationId, { name });
       expect(result.id).toStartWith("mach_");
       expect(result).toMatchObject({ name, status: "pending" });
       expect(result.initCommand).toContain(`RCS_MACHINE_ID=${result.id}`);
@@ -178,7 +198,7 @@ describe("registry 服务真实业务覆盖", () => {
     test(`预创建机器保留${agentName}引擎和标签`, async () => {
       const writes: unknown[] = [];
       stubDb({ insert: insert(writes) });
-      const result = await registry.createMachine(owner, {
+      const result = await registry.createMachine(owner.organizationId, {
         name: "engine-machine",
         agentName,
         labels: ["ci", agentName],
@@ -201,8 +221,12 @@ describe("registry 服务真实业务覆盖", () => {
         machineId: "mach-register",
       });
       expect(result).toEqual({ id: "mach-register", isNew: status === "pending" });
-      expect(updates.length).toBeGreaterThanOrEqual(2);
+      // 唯一一次 DB 写入是机器行激活；agent_config 的绑定已改为端口调用（见下方断言）。
+      expect(updates).toHaveLength(1);
       expect(writes).toHaveLength(1);
+      expect(agentConfigBindings).toEqual([
+        { organizationId: "org-a", agentName: "opencode", machineId: "mach-register" },
+      ]);
     });
   }
 
@@ -226,9 +250,11 @@ describe("registry 服务真实业务覆盖", () => {
         id: machineId,
         isNew: false,
       });
-      // 两次写入 = 机器行更新 + agent_config 绑定；沙盒实例投影已不属本包，改为经端口通报（下一行）。
-      expect(updates.length).toBe(2);
+      // 一次 DB 写入 = 机器行激活；agent_config 的绑定改经注入端口（第二次写入因此不再出现在 stubDb 上）；
+      // 沙盒实例投影已不属本包，改为经端口通报（下一行）。
+      expect(updates).toHaveLength(1);
       expect(writes).toHaveLength(1);
+      expect(agentConfigBindings).toEqual([{ organizationId: "org-a", agentName: "opencode", machineId }]);
       expect(lifecycleCalls).toEqual([{ event: "registered", machineId, at: expect.any(Date) }]);
     });
   }

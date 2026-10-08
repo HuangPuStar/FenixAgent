@@ -23,12 +23,12 @@
 //      且不再出现任何任意值字号（`text-[Npx]`，含窄屏图标化的 0——它已改由伴随 CSS 表达）；
 //   ③ 字符串类名里同一变体（同属性）只有一个字号类，不允许「挂两个同属性工具类」；
 //   ④ 关键角色的字号按锚点冻结，className 刻度类与伴随 CSS 子代规则**两处都断言**（见 ROLE_ANCHORS）；
-//   ⑤ 迁移完成后目录里只剩登记的关键帧 CSS，且它不含任何选择器规则；
-//   ⑥ 分区入场动画的关键帧与引用都在（关键帧无法用工具类表达，是唯一登记的保留项）；
+//   ⑤ 迁移收口后目录里没有例外：每份 `.css` 都与同名源文件配对（伴随表），宿主钩子只定义一次；
+//   ⑥ 分区入场动画的关键帧（在 `agent-editor-classes.css`）与引用它的 `animation:` 声明都在；
 //   ⑦ `AgentFormDialog.tsx` 不再有面板 CSS 的副作用导入；
 //   ⑧ 伴随 CSS 里没有「被子孙规则压死的声明」（同选择器同属性，一端 `!important` 一端不带）。
 //
-// 拦得住：越界字号、同属性双值、分片半删、语义类名回流、锚点角色字号漂移、关键帧丢失，
+// 拦得住：越界字号、同属性双值、分片半删、语义类名回流、锚点角色字号漂移、关键帧丢失、宿主钩子漂移，
 // 以及下沉时丢掉源类的 `!` 前缀语义（⑧）——后者是真实的踩坑：`className` 里的 `!p-0` 会生成
 // `padding:0!important`，改写成 CSS 时漏掉 `!`，声明看起来正常却永远不生效。
 // 拦不住：① 清单外新增的文字元素（新元素必须登记进 ROLE_ANCHORS 才受 ④ 保护）；
@@ -307,28 +307,35 @@ const SLICES = [
   },
 ] as const;
 
-/** 迁移完成后唯一允许保留的样式表：关键帧 + 登记过的宿主钩子（两者都无法用工具类表达）。 */
-const RETAINED_FILE = "agent-editor-retained.css";
-/** 保留文件里唯一登记的宿主钩子选择器（`.agent-panel-body` 由宿主 `apps/web` 渲染，见文件注释）。 */
+/**
+ * 关键帧与宿主钩子的落点：`SECTION` 的伴随表（`agent-editor-classes.ts` 顶部副作用导入本表进构建）。
+ * 两者 2026-09-28 从 `agent-editor-retained.css` 迁入——收口后目录里不再有「登记保留文件」这条例外。
+ */
+const KEYFRAMES_FILE = "agent-editor-classes.css";
+/** 宿主钩子选择器（`.agent-panel-body` 由宿主 `apps/web` 渲染，声明只能留在 {@link KEYFRAMES_FILE}）。 */
 const RETAINED_HOST_HOOK = ".agent-panel-body";
 
 /**
  * 面板允许的 Tailwind 文字刻度类 → px。
  *
  * 口径在 2026-09 整改后由「一律显式 px 写死」改为「就近取标准档，只允许白名单刻度」
- * （见 `docs/developer/guide/forbidden-code-patterns.md` 的连带影响）。`text-3xs` 是仓库在 `@theme`
- * 自补的 10px 档（`packages/ui-components/web/styles/theme.css`），其余取 Tailwind 默认主题。
+ * （见 `docs/developer/guide/forbidden-code-patterns.md` 的连带影响）。`text-3xs` / `text-13` / `text-16`
+ * 是仓库在 `@theme` 自补的 10 / 13 / 16px 档（`packages/ui-components/web/styles/theme.css`，三者都
+ * **只给字号、不给行高**），其余取 Tailwind 默认主题。2026-09-28 的 dimensional 撤回把伴随表里的
+ * `font-size` 搬回 `className`，`text-13` / `text-16` 因此进入本白名单。
  */
 const TIER_PX: Record<string, number> = {
   "text-3xs": 10,
   "text-xs": 12,
+  "text-13": 13,
   "text-sm": 14,
+  "text-16": 16,
   "text-base": 16,
   "text-lg": 18,
 };
 
 /** 任意 Tailwind 文字刻度类（是否在白名单内由 {@link TIER_PX} 判定）；可带变体前缀。 */
-const TIER_UTILITY = /(?:^|:)(text-(?:3xs|xs|sm|base|lg|xl|[2-9]xl))$/;
+const TIER_UTILITY = /(?:^|:)(text-(?:3xs|xs|13|sm|16|base|lg|xl|[2-9]xl))$/;
 
 /**
  * 已迁移的分片（判据 = 该片 CSS 文件全部消失）。
@@ -360,7 +367,8 @@ const DEFINED_CLASS_NAMES = definedClassNames();
 
 /**
  * 迁移后不应再出现在 `className` 里的语义类名前缀（各 CSS 文件的源选择器）。
- * 例外：无——保留项只有关键帧文件，没有靠类名当钩子的样式表。
+ * 例外：无——收口后没有「无同名源文件」的页面级样式表；唯一的类名钩子 `.agent-panel-body` 不在本包
+ * 渲染点上（由宿主 `apps/web` 渲染），它的定义与守卫见 ⑤。
  */
 const RETIRED_PREFIXES = [
   "agent-editor",
@@ -421,13 +429,14 @@ const ROLE_ANCHORS: Array<{
   {
     slice: "A2",
     slot: "editor-map-copy",
-    note: "左栏条目标题与说明",
+    note: "左栏条目容器（自身不声明字号，字号在标题/说明元素上）",
     inherits: true,
-    cssFonts: [
-      { selector: ".agent-editor-map-copy > strong", px: 12 },
-      { selector: ".agent-editor-map-copy > small", px: 10 },
-    ],
   },
+  // 2026-09-28 dimensional 撤回：`> strong` / `> small` 的 font-size 从伴随表搬进 `className`
+  // （12px→`text-xs`、10px→`text-3xs`），锚点随之从 `cssFonts`（选择器在容器子元素上）改为
+  // 挂在两个子元素自身的 `data-slot` 上；加载壳与加载完成态共用 `agent-editor-classes.ts` 的同一对常量。
+  { slice: "A2", slot: "editor-map-copy-title", note: "左栏条目标题", classNameTiers: ["text-xs"] },
+  { slice: "A2", slot: "editor-map-copy-caption", note: "左栏条目说明", classNameTiers: ["text-3xs"] },
   { slice: "A2", slot: "editor-summary-eyebrow", note: "右栏眉标", classNameTiers: ["text-3xs"] },
   {
     slice: "A2",
@@ -438,15 +447,15 @@ const ROLE_ANCHORS: Array<{
   {
     slice: "A2",
     slot: "editor-template-header",
-    note: "模板对话框头部（对话框标题 16px）",
+    note: "模板对话框头部容器（自身不声明字号）",
     inherits: true,
     // 眉标在本模板对话框里是直接挂在 `<span>` 上的 `EYEBROW` 常量（与右栏共用），由
     // `editor-summary-eyebrow` 锚点锁定，故此处不登记 `> span` 的字号。
-    cssFonts: [
-      { selector: ".agent-editor-template-header > h2", px: 16 },
-      { selector: ".agent-editor-template-header > p", px: 12 },
-    ],
   },
+  // 标题与说明都是库组件（`DialogTitle` / `DialogDescription`，均透传 `className` 与 `data-slot`）；
+  // 2026-09-28 从伴随表撤回字号与上边距：`text-16`（16px，只给字号）/ `text-xs`。
+  { slice: "A2", slot: "editor-template-title", note: "模板对话框标题", classNameTiers: ["text-16"] },
+  { slice: "A2", slot: "editor-template-description", note: "模板对话框说明", classNameTiers: ["text-xs"] },
   { slice: "A2", slot: "editor-template-empty", note: "模板列表空态", classNameTiers: ["text-3xs"] },
   {
     slice: "A2",
@@ -463,39 +472,45 @@ const ROLE_ANCHORS: Array<{
   {
     slice: "A2",
     slot: "editor-footer-state",
-    note: "页脚状态块",
+    note: "页脚状态块容器（自身不声明字号）",
     inherits: true,
-    cssFonts: [
-      { selector: ".agent-editor-footer__state span", px: 12 },
-      { selector: ".agent-editor-footer__state strong", px: 12 },
-      { selector: ".agent-editor-footer__state small", px: 10 },
-    ],
   },
+  // 2026-09-28 dimensional 撤回：数字格与两行文案的 font-size 从伴随表搬进 `className`
+  // （`0.75rem`→`text-xs`、`10px`→`text-3xs`），锚点分挂到三个元素自身。
+  { slice: "A2", slot: "editor-footer-state-count", note: "页脚状态数字格", classNameTiers: ["text-xs"] },
+  { slice: "A2", slot: "editor-footer-state-title", note: "页脚状态标题", classNameTiers: ["text-xs"] },
+  { slice: "A2", slot: "editor-footer-state-caption", note: "页脚状态说明", classNameTiers: ["text-3xs"] },
   {
     slice: "B",
     slot: "editor-section-intro",
-    note: "分区说明块（眉标 10 / 标题 18→16 / 说明 12）",
+    note: "分区说明块容器（自身不声明字号）",
     inherits: true,
-    cssFonts: [
-      { selector: ".agent-editor-section__intro > span", px: 10 },
-      { selector: ".agent-editor-section__intro > h3", px: 18 },
-      { selector: ".agent-editor-section__intro > p", px: 12 },
-      { selector: ".agent-editor-section__intro > h3", px: 16, media: "(width >= 48rem) and (width < 96rem)" },
-    ],
   },
+  // 2026-09-28 dimensional 撤回：眉标 10px、标题 18px（`md:max-2xl` 压 16px）、说明 12px 与两条上边距
+  // 从伴随表搬进 `className`，锚点分挂到三个元素自身。标题那对是**成对搬**——只搬媒体档会让未分层的
+  // 18px 反压 `md:max-2xl:text-16`。`md:max-2xl` = 768–1535.98px，与原设计区间 760–1399px 的差异是
+  // 「任意媒体查询就近落标准断点」的既有结果（与 `editor-summary-title` 同口径），非本次引入。
+  { slice: "B", slot: "editor-section-intro-eyebrow", note: "分区眉标", classNameTiers: ["text-3xs"] },
+  {
+    slice: "B",
+    slot: "editor-section-intro-title",
+    note: "分区标题（768–1535.98px 压 16px）",
+    classNameTiers: ["text-lg", "md:max-2xl:text-16"],
+  },
+  { slice: "B", slot: "editor-section-intro-copy", note: "分区说明", classNameTiers: ["text-xs"] },
   // 字段标签（原 slot `editor-field-label`，`text-xs`）已随字段包装改走 `config/LabeledField` 移除：
   // 字段名刻度由库内给定（`text-sm font-medium text-text-primary`），本仓不再声明刻度类，
   // `LabeledField` 把 `className` 透传到根 `<div>`、字号挂在内部 `<span>` 上，锚点无法按 slot + class 文本锁定。
   {
     slice: "C",
     slot: "editor-knowledge-heading",
-    note: "知识区块标题与说明",
+    note: "知识区块头部容器（自身不声明字号）",
     inherits: true,
-    cssFonts: [
-      { selector: ".agent-knowledge-block__heading > div > strong", px: 12 },
-      { selector: ".agent-knowledge-block__heading > div > small", px: 10 },
-    ],
   },
+  // 2026-09-28 dimensional 撤回：标题 12px / 说明 10px 从伴随表搬进 `className`；两元素在头部
+  // `<header>` 的 `<div>` 里（原选择器 `> div > strong` / `> div > small`），锚点挂到元素自身。
+  { slice: "C", slot: "editor-knowledge-heading-title", note: "知识区块标题", classNameTiers: ["text-xs"] },
+  { slice: "C", slot: "editor-knowledge-heading-caption", note: "知识区块说明", classNameTiers: ["text-3xs"] },
 ];
 
 /** 守卫扫描的源码文件（锚点与类串常量求值共用；常量集中在 agent-editor-classes.ts）。 */
@@ -733,6 +748,39 @@ function closeBrace(text: string, open: number): number {
 }
 
 /**
+ * 目录内全部样式表的**规则块**（选择器 + 声明块原文），走查口径与 {@link readCssDeclarations} 一致
+ * （只下钻一层 `@media`，`@keyframes` 里的 `from` / `to` 不是选择器）。保留「规则」这个粒度是为了按
+ * 规则计数：同一选择器被拆成两条规则时，声明并集可能碰巧拼回原样，规则计数能拆穿它（见 ⑤ 的宿主钩子）。
+ */
+function readCssRules(): Array<{ file: string; selector: string; body: string }> {
+  const rules: Array<{ file: string; selector: string; body: string }> = [];
+  for (const file of readdirSync(EDITOR_DIR)
+    .filter((name) => name.endsWith(".css"))
+    .sort()) {
+    walk(file, readEditorFile(file).replace(/\/\*[\s\S]*?\*\//g, ""));
+  }
+  return rules;
+
+  function walk(file: string, text: string): void {
+    let index = 0;
+    while (index < text.length) {
+      const open = text.indexOf("{", index);
+      if (open < 0) return;
+      // 取 `{` 之前最后一段：顶层可能有 `@import "…";` 直接跟在选择器前面，整段当选择器会切错。
+      const rawHead = text.slice(index, open);
+      const head = rawHead.slice(rawHead.lastIndexOf(";") + 1).trim();
+      const close = closeBrace(text, open);
+      if (head.startsWith("@")) {
+        if (/^@media\b/.test(head)) walk(file, text.slice(open + 1, close));
+      } else {
+        rules.push({ file, selector: head, body: text.slice(open + 1, close) });
+      }
+      index = close + 1;
+    }
+  }
+}
+
+/**
  * 简写属性 → 它实际写到的分量（只列本目录出现过的简写，不做完整 CSS 展开）。
  * 用途是判断两条声明是否在争同一个分量：`padding` 与 `padding-inline` 重叠，`padding` 与 `color` 不重叠。
  */
@@ -921,38 +969,39 @@ describe("Agent Editor：Tailwind 迁移与字号刻度", () => {
     expect(readEditorFile("AgentEditorChrome.css")).toContain(".agent-editor-chrome-close-button:hover {");
   });
 
-  // 迁移完成后目录里只允许留下登记文件：关键帧 + `.agent-panel-body` 宿主钩子（两者都在文件头写了移除条件），
-  // 外加「与源文件同名的伴随样式表」——它们是 Web 样式下沉的合法载体（见 DEFINED_CLASS_NAMES）。
-  test("迁移完成后只剩登记的关键帧、宿主钩子与源文件伴随样式表", () => {
+  // 收口（2026-09-28）后目录里不再有「登记保留文件」这条例外：每份 `.css` 都必须与同名源文件配对
+  // （伴随表，由持有样式的模块在顶部 import），目录里再出现无同名兄弟的样式表就说明又有声明没迁完。
+  // 同一测试钉住宿主钩子：`.agent-panel-body` 无法用工具类表达、类名又不在本包渲染点上（由宿主渲染），
+  // 只能留在伴随表里——整目录恰好一条规则、声明恰为 position / isolation 两条，多一条或拆成两条规则即漂移。
+  test("迁移收口后目录里每份样式表都与同名源文件配对，且宿主钩子只定义一次", () => {
     if (!allMigrated) return;
-    const sourceNames = new Set(SCAN_FILES.map((file) => file.replace(/\.tsx?$/, "")));
-    const remaining = readdirSync(EDITOR_DIR).filter(
-      (name) => name.endsWith(".css") && name !== RETAINED_FILE && !sourceNames.has(name.replace(/\.css$/, "")),
+    const entries = readdirSync(EDITOR_DIR);
+    const sourceNames = new Set(
+      entries.filter((name) => /\.tsx?$/.test(name)).map((name) => name.replace(/\.tsx?$/, "")),
     );
-    expect(remaining).toEqual([]);
+    const unpaired = entries.filter((name) => name.endsWith(".css") && !sourceNames.has(name.replace(/\.css$/, "")));
+    expect(unpaired).toEqual([]);
 
-    // 保留文件只能是 @keyframes + 那一条宿主钩子：出现其它选择器规则就说明有声明没迁完。
-    const css = readFileSync(join(EDITOR_DIR, RETAINED_FILE), "utf8").replace(/\/\*[\s\S]*?\*\//g, "");
-    expect(css).toContain("@keyframes agent-editor-section-enter");
-    // 规则头按「`{` 之前的片段」取，而不是按「以 `{` 结尾的行」——单行规则
-    // （`.agent-editor-panel { color: red; }`）会从行尾判定里漏掉（红证时实测到过这个盲区）。
-    const ruleHeads = [...css.replace(/@keyframes[\s\S]*?\n\}/g, "").matchAll(/(?:^|\})\s*([.#a-zA-Z[][^{}@]*?)\s*\{/g)]
-      .map((match) => match[1].trim())
-      .filter((head) => !/^(from|to|\d+%)/.test(head));
-    expect([...new Set(ruleHeads)]).toEqual([RETAINED_HOST_HOOK]);
+    const hostRules = readCssRules().filter((rule) => rule.selector === RETAINED_HOST_HOOK);
+    expect(hostRules.map((rule) => rule.file)).toEqual([KEYFRAMES_FILE]);
+    const declarations = hostRules.flatMap((rule) =>
+      rule.body
+        .split(";")
+        .map((declaration) => declaration.trim())
+        .filter(Boolean),
+    );
+    expect(declarations).toEqual(["position: relative", "isolation: isolate"]);
   });
 
-  // 分区入场动画：关键帧留在保留文件里，引用随 `SECTION` 的深层样式下沉到伴随样式表（`animation` 简写里含关键帧名）；
-  // 两侧缺一都会让分区标题不再淡入。
+  // 分区入场动画：关键帧随 2026-09-28 收口迁入 `agent-editor-classes.css`（`SECTION` 的伴随表，
+  // 引用它的 `animation:` 声明就在该表的 `.agent-editor-section` 里）；两侧缺一都会让分区标题不再淡入。
   test("分区入场动画的关键帧与引用都在", () => {
     if (!allMigrated) return;
-    expect(readFileSync(join(EDITOR_DIR, RETAINED_FILE), "utf8")).toContain("@keyframes agent-editor-section-enter");
+    expect(readEditorFile(KEYFRAMES_FILE)).toContain("@keyframes agent-editor-section-enter");
     const referenced = readdirSync(EDITOR_DIR)
-      .filter((name) => name.endsWith(".css") && name !== RETAINED_FILE)
+      .filter((name) => name.endsWith(".css"))
       .some((name) =>
-        /animation:[^;]*agent-editor-section-enter/.test(
-          readFileSync(join(EDITOR_DIR, name), "utf8").replace(/\/\*[\s\S]*?\*\//g, ""),
-        ),
+        /animation:[^;]*agent-editor-section-enter/.test(readEditorFile(name).replace(/\/\*[\s\S]*?\*\//g, "")),
       );
     expect(referenced).toBe(true);
   });
@@ -968,8 +1017,9 @@ describe("Agent Editor：Tailwind 迁移与字号刻度", () => {
     expect(readEditorFile("AgentEditorLoadingShell.tsx")).toContain("<AgentEditorHeader");
   });
 
-  // 面板 CSS 的副作用导入必须随文件一起消失，否则构建期会去找已删除的文件；
-  // 只有保留文件允许继续被副作用导入（关键帧与宿主钩子仍要进构建）。
+  // 面板 CSS 的副作用导入必须随文件一起消失，否则构建期会去找已删除的文件；收口后 `AgentFormDialog.tsx`
+  // 已不再有任何 `agent-editor*.css` 副作用导入——关键帧与宿主钩子现随伴随表（`agent-editor-classes.ts`
+  // 顶部的 import）进构建，不经过本文件。
   test("AgentFormDialog 不再副作用导入已删除的面板 CSS", () => {
     const imports = [...readFileSync(DIALOG_FILE, "utf8").matchAll(/^import "\.\/(agent-editor[\w-]*\.css)";$/gm)].map(
       (match) => match[1],
@@ -978,6 +1028,6 @@ describe("Agent Editor：Tailwind 迁移与字号刻度", () => {
       slice.cssFiles.filter((file) => imports.includes(file)).map((file) => `${slice.name} → ${file}`),
     );
     expect(orphaned).toEqual([]);
-    if (allMigrated) expect(imports).toEqual([RETAINED_FILE]);
+    if (allMigrated) expect(imports).toEqual([]);
   });
 });

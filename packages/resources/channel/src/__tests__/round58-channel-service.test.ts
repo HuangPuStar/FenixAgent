@@ -6,7 +6,7 @@ import {
   deleteBinding,
   findBindingForMessage,
   getBinding,
-  listBindings,
+  listBindingsByAgentIds,
   updateBinding,
 } from "../server/services/channel-binding";
 
@@ -29,7 +29,7 @@ const originals = {
   create: channelBindingRepo.create,
   delete: channelBindingRepo.delete,
   getById: channelBindingRepo.getById,
-  list: channelBindingRepo.list,
+  listByAgentIds: channelBindingRepo.listByAgentIds,
   listByPlatformAndEnabled: channelBindingRepo.listByPlatformAndEnabled,
   update: channelBindingRepo.update,
 };
@@ -38,7 +38,7 @@ function restoreRepo() {
   channelBindingRepo.create = originals.create;
   channelBindingRepo.delete = originals.delete;
   channelBindingRepo.getById = originals.getById;
-  channelBindingRepo.list = originals.list;
+  channelBindingRepo.listByAgentIds = originals.listByAgentIds;
   channelBindingRepo.listByPlatformAndEnabled = originals.listByPlatformAndEnabled;
   channelBindingRepo.update = originals.update;
 }
@@ -49,26 +49,26 @@ describe("round58 通道绑定服务内存隔离", () => {
 
   // 空内存平台配置不得生成虚假绑定。
   test("空配置列表返回空数组", async () => {
-    channelBindingRepo.list = mock(async () => []);
-    await expect(listBindings()).resolves.toEqual([]);
+    channelBindingRepo.listByAgentIds = mock(async () => []);
+    await expect(listBindingsByAgentIds(["agent-1"])).resolves.toEqual([]);
   });
 
   // 列表必须保留仓储配置的顺序。
   test("列表保留平台配置顺序", async () => {
-    channelBindingRepo.list = mock(async () => [row({ id: "first" }), row({ id: "second" })]);
-    await expect(listBindings()).resolves.toMatchObject([{ id: "first" }, { id: "second" }]);
+    channelBindingRepo.listByAgentIds = mock(async () => [row({ id: "first" }), row({ id: "second" })]);
+    await expect(listBindingsByAgentIds(["agent-1"])).resolves.toMatchObject([{ id: "first" }, { id: "second" }]);
   });
 
   // wildcard 配置必须以 null 暴露给调用者。
   test("列表标准化 wildcard chatId", async () => {
-    channelBindingRepo.list = mock(async () => [row({ chatId: null })]);
-    await expect(listBindings()).resolves.toMatchObject([{ chatId: null }]);
+    channelBindingRepo.listByAgentIds = mock(async () => [row({ chatId: null })]);
+    await expect(listBindingsByAgentIds(["agent-1"])).resolves.toMatchObject([{ chatId: null }]);
   });
 
   // 服务返回的列表项不得携带仓储时间戳等内部字段。
   test("列表脱离仓储内部字段", async () => {
-    channelBindingRepo.list = mock(async () => [row()]);
-    const [binding] = await listBindings();
+    channelBindingRepo.listByAgentIds = mock(async () => [row()]);
+    const [binding] = await listBindingsByAgentIds(["agent-1"]);
     expect(binding).toEqual({
       id: "binding-1",
       platform: "feishu",
@@ -81,8 +81,8 @@ describe("round58 通道绑定服务内存隔离", () => {
   // 返回对象必须与内存行隔离，防止调用方改写缓存配置。
   test("列表结果与内存行隔离", async () => {
     const stored = row();
-    channelBindingRepo.list = mock(async () => [stored]);
-    const [binding] = await listBindings();
+    channelBindingRepo.listByAgentIds = mock(async () => [stored]);
+    const [binding] = await listBindingsByAgentIds(["agent-1"]);
     binding.enabled = false;
     expect(stored.enabled).toBeTrue();
   });

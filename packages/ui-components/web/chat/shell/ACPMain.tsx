@@ -234,7 +234,7 @@ export function ACPMain({
       {/* root 加 p-3 gap-3：让顶部 ChatHeader 浮动卡片与下方内容统一外边距，
           形成上下两个玻璃磨砂卡片悬浮在子页面背景上的视觉效果。
           acp-main-root：共享高度链与 ChatHeader 样式的作用域钩子 */}
-      <div className="acp-main-root flex h-full w-full flex-col bg-white text-gray-800">
+      <div className="acp-main-root flex h-full w-full min-w-0 min-h-0 flex-col overflow-hidden bg-white text-gray-800">
         {/* 顶部 ChatHeader — 仅展示当前会话标题；会话列表统一从侧边栏进入 */}
         {/* readonly 时整体隐藏 */}
         {!readonly && (
@@ -320,8 +320,9 @@ export function ACPMain({
           )}
 
           {/* 聊天区域 */}
-          {/* chat-main-column 保留为类名：`web/chat/css/chat-layout.css`（下一阶段迁移）与宿主同款
-              样式表仍以它作为「唯一高度链」选择器；本行新增的几何工具类即原 `chat-design-shell.css` 的声明。 */}
+          {/* chat-main-column 是「唯一高度链」的语义钩子：高度链的声明已随 2026-09-28「伪深层」清理
+              就近取档到本行工具类与根节点 `acp-main-root`（包内 `web/chat/css/chat-layout.css` 与宿主
+              `apps/web/src/pages/agent-panel/chat-layout.css` 同批清空删除，两侧不再有同名规则）。 */}
           <div className="chat-main-column relative flex flex-1 min-h-0 min-w-0 flex-col overflow-hidden bg-white">
             <ChatInterface
               ref={chatRef}

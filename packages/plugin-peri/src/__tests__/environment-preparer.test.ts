@@ -120,8 +120,43 @@ describe("environment-preparer", () => {
     }
   });
 
-  // 没有 MCP server 与 agent prompt 时不应留下空配置文件，避免覆盖用户既有 workspace 内容
-  test("无 MCP 与 prompt 时不写多余文件", async () => {
+  // 取消全部 MCP 后，复用 workspace 里的旧 .mcp.json 必须被改写为空集合，否则 agent 继续加载已取消的 server
+  test("MCP 绑定清空后 .mcp.json 被全量重写为空集合", async () => {
+    const workspace = await createWorkspace();
+    try {
+      const launchSpec = createLaunchSpec();
+      const runtimeConfig = buildPeriRuntimeConfig(launchSpec, []);
+
+      await prepareWorkspaceEnvironment(
+        workspace,
+        runtimeConfig,
+        buildPeriMcpConfig(launchSpec),
+        launchSpec.agent.prompt,
+        [],
+      );
+      const before = JSON.parse(await readFile(join(workspace, ".mcp.json"), "utf8")) as {
+        mcpServers: Record<string, unknown>;
+      };
+      expect(Object.keys(before.mcpServers)).toEqual(["local-server", "remote-server"]);
+
+      await prepareWorkspaceEnvironment(
+        workspace,
+        runtimeConfig,
+        buildPeriMcpConfig({ ...launchSpec, mcpServers: [] }),
+        [],
+      );
+
+      const after = JSON.parse(await readFile(join(workspace, ".mcp.json"), "utf8")) as {
+        mcpServers: Record<string, unknown>;
+      };
+      expect(after.mcpServers).toEqual({});
+    } finally {
+      await rm(workspace, { recursive: true, force: true });
+    }
+  });
+
+  // 空 MCP 集合仍需落盘（写空 mcpServers），只有缺失的 prompt 不产生文件，避免留下无内容的 CLAUDE.md
+  test("无 MCP 与 prompt 时空集合落盘且不写 CLAUDE.md", async () => {
     const workspace = await createWorkspace();
     try {
       const launchSpec = createLaunchSpec();
@@ -133,7 +168,10 @@ describe("environment-preparer", () => {
         buildPeriMcpConfig({ ...launchSpec, mcpServers: [] }),
       );
 
-      expect(await Bun.file(join(workspace, ".mcp.json")).exists()).toBe(false);
+      const mcp = JSON.parse(await readFile(join(workspace, ".mcp.json"), "utf8")) as {
+        mcpServers: Record<string, unknown>;
+      };
+      expect(mcp.mcpServers).toEqual({});
       expect(await Bun.file(join(workspace, "CLAUDE.md")).exists()).toBe(false);
       expect(await Bun.file(join(workspace, ".claude", "settings.local.json")).exists()).toBe(true);
     } finally {

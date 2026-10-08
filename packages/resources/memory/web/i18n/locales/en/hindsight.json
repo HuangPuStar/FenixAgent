@@ -218,6 +218,15 @@
     "of": "of",
     "close": "Close"
   },
+  "graph2d": {
+    "loading": "Loading graph...",
+    "emptyState": "No graph data for this memory set yet",
+    "linkTypeCausal": "causal: {{type}}",
+    "linkTypeGeneric": "{{type}}",
+    "linkTooltipEntity": "Entity",
+    "linkTooltipWeight": "Weight",
+    "controlsHint": "Scroll to zoom · Drag to pan"
+  },
   "constellation": {
     "hudStats": "Memories: {{memories}} · Visible: {{visible}} · Labels: {{labels}} · Links: {{links}} · Zoom: {{zoom}}x",
     "linkTypeSemantic": "Semantic",
@@ -236,6 +245,10 @@
     "tooltipOccurred": "Occurred",
     "tooltipMentioned": "Mentioned",
     "tooltipDocument": "Document",
+    "tooltipEntities": "Entities",
+    "tooltipProofs": "Proofs",
+    "tooltipTags": "Tags",
+    "tooltipId": "ID",
     "tooltipLinks": "{{count}} links"
   },
   "nav": {

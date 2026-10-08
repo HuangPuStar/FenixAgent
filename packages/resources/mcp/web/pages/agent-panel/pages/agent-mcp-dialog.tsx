@@ -15,6 +15,7 @@ import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
 import { mcpApi } from "../../../api/mcp";
 import { canWriteMcp, getMcpLookupKey } from "../../../lib/mcp-resource-access";
+import { createKeyValueRow, KeyValueEditor, type KeyValueRow, toEntries } from "./agent-mcp-key-value-editor";
 import {
   buildMcpPayload,
   type KeyValueEntry,
@@ -25,23 +26,6 @@ import {
 } from "./agent-mcp-utils";
 
 export type McpEditorTarget = "create" | McpServerInfo | null;
-
-/**
- * 键值行的视图模型：在提交用的 `KeyValueEntry` 上补一个渲染 id。
- *
- * 为什么行需要自己的 id（而不是数组下标或内容派生 key）：下标会在删除中间行时把下一行的 DOM 状态
- * 错配给上一行；内容（key/value）在输入过程中逐字变化，React 会因此重挂载输入框、每次击键都丢焦点。
- * id 只在创建行时生成、在编辑期间稳定，且不会进入 payload——提交走 `buildMcpPayload`，它只读 key/value。
- */
-type KeyValueRow = KeyValueEntry & { id: string };
-
-/** 行 id 只需在单个列表实例内唯一（无排序/跨列表比较需求），模块级自增即可，不需加密随机源。 */
-let rowSequence = 0;
-
-function createKeyValueRow(key = "", value = ""): KeyValueRow {
-  rowSequence += 1;
-  return { id: `row-${rowSequence}`, key, value };
-}
 
 type FormState = {
   name: string;
@@ -74,6 +58,7 @@ const EMPTY_FORM: FormState = {
 export function AgentMcpDialog({ target, onClose, onSaved }: Props) {
   const { t } = useTranslation(NS.MCP);
   const [form, setForm] = useState<FormState>(EMPTY_FORM);
+  const [fieldErrors, setFieldErrors] = useState<ReturnType<typeof validateMcpEditor>>({});
   const [createMode, setCreateMode] = useState<"manual" | "json">("manual");
   const [jsonInput, setJsonInput] = useState("");
   const [loadingDetail, setLoadingDetail] = useState(false);
@@ -89,6 +74,7 @@ export function AgentMcpDialog({ target, onClose, onSaved }: Props) {
     if (!target) return;
     // 换目标（含从失败态重试）先清掉上一次的错误：否则重试成功后旧提示会留在界面上。
     setDetailError(null);
+    setFieldErrors({});
     if (target === "create") {
       setForm(EMPTY_FORM);
       setCreateMode("manual");
@@ -168,8 +154,6 @@ export function AgentMcpDialog({ target, onClose, onSaved }: Props) {
         return { importedCount: entries.length };
       }
 
-      const validationKey = validateMcpEditor(form);
-      if (validationKey) throw new Error(t(validationKey));
       const payload = buildMcpPayload(form);
       await (server ? unwrap(mcpApi.update(server.name, payload)) : unwrap(mcpApi.create(form.name, payload)));
       return { importedCount: null };
@@ -195,6 +179,15 @@ export function AgentMcpDialog({ target, onClose, onSaved }: Props) {
     },
   );
 
+  const submit = () => {
+    if (createMode === "manual" || server) {
+      const errors = validateMcpEditor(form);
+      setFieldErrors(errors);
+      if (Object.keys(errors).length > 0) return;
+    }
+    save.run();
+  };
+
   const testUrl = useRequest(
     () => unwrap(mcpApi.testUrl(form.url, entriesToRecord(form.headers), toTimeout(form.timeout))),
     {
@@ -217,14 +210,20 @@ export function AgentMcpDialog({ target, onClose, onSaved }: Props) {
       open={target !== null}
       onOpenChange={(open) => !open && onClose()}
       title={server ? (readOnly ? t("dialog.detailTitle") : t("dialog.editTitle")) : t("dialog.createTitle")}
-      onSubmit={save.run}
+      onSubmit={submit}
       loading={save.loading || loadingDetail}
       hideSubmit={readOnly || detailError !== null}
       submitLabel={!server && createMode === "json" ? t("dialog.importAction") : undefined}
       width="sm:max-w-2xl"
     >
       {!server ? (
-        <Tabs value={createMode} onValueChange={(value) => setCreateMode(value as "manual" | "json")}>
+        <Tabs
+          value={createMode}
+          onValueChange={(value) => {
+            setCreateMode(value as "manual" | "json");
+            setFieldErrors({});
+          }}
+        >
           <TabsList className="grid w-full grid-cols-2">
             <TabsTrigger value="manual">{t("dialog.manualTab")}</TabsTrigger>
             <TabsTrigger value="json">{t("dialog.jsonTab")}</TabsTrigger>
@@ -258,14 +257,29 @@ export function AgentMcpDialog({ target, onClose, onSaved }: Props) {
         </div>
       ) : (
         <div className="space-y-4" aria-busy={loadingDetail}>
-          <LabeledField label={t("form.name")} hint={server ? t("dialog.nameImmutable") : undefined}>
+          <LabeledField
+            label={t("form.name")}
+            htmlFor="mcp-server-name"
+            hint={server ? t("dialog.nameImmutable") : undefined}
+          >
             <Input
+              id="mcp-server-name"
               value={form.name}
-              onChange={(event) => setForm({ ...form, name: event.target.value })}
+              onChange={(event) => {
+                setForm({ ...form, name: event.target.value });
+                setFieldErrors((errors) => ({ ...errors, name: undefined }));
+              }}
+              aria-invalid={Boolean(fieldErrors.name)}
+              aria-describedby={fieldErrors.name ? "mcp-server-name-error" : undefined}
               disabled={readOnly || Boolean(server)}
               placeholder="my-mcp-server"
               className="font-mono text-sm"
             />
+            {fieldErrors.name && (
+              <p id="mcp-server-name-error" role="alert" className="text-xs text-destructive">
+                {t(fieldErrors.name)}
+              </p>
+            )}
           </LabeledField>
 
           <LabeledField
@@ -274,7 +288,10 @@ export function AgentMcpDialog({ target, onClose, onSaved }: Props) {
           >
             <Select
               value={form.type}
-              onValueChange={(value) => setForm({ ...form, type: value as FormState["type"] })}
+              onValueChange={(value) => {
+                setForm({ ...form, type: value as FormState["type"] });
+                setFieldErrors({});
+              }}
               disabled={readOnly || Boolean(server)}
             >
               <SelectTrigger>
@@ -289,14 +306,25 @@ export function AgentMcpDialog({ target, onClose, onSaved }: Props) {
 
           {form.type === "local" ? (
             <>
-              <LabeledField label={t("form.command")} hint={t("form.commandHint")}>
+              <LabeledField label={t("form.command")} htmlFor="mcp-server-command" hint={t("form.commandHint")}>
                 <Input
+                  id="mcp-server-command"
                   value={form.command}
-                  onChange={(event) => setForm({ ...form, command: event.target.value })}
+                  onChange={(event) => {
+                    setForm({ ...form, command: event.target.value });
+                    setFieldErrors((errors) => ({ ...errors, command: undefined }));
+                  }}
+                  aria-invalid={Boolean(fieldErrors.command)}
+                  aria-describedby={fieldErrors.command ? "mcp-server-command-error" : undefined}
                   disabled={readOnly}
                   placeholder="npx @modelcontextprotocol/server-filesystem"
                   className="font-mono text-sm"
                 />
+                {fieldErrors.command && (
+                  <p id="mcp-server-command-error" role="alert" className="text-xs text-destructive">
+                    {t(fieldErrors.command)}
+                  </p>
+                )}
               </LabeledField>
               <KeyValueEditor
                 label={t("form.environment")}
@@ -315,7 +343,12 @@ export function AgentMcpDialog({ target, onClose, onSaved }: Props) {
                   <Input
                     id="mcp-server-url"
                     value={form.url}
-                    onChange={(event) => setForm({ ...form, url: event.target.value })}
+                    onChange={(event) => {
+                      setForm({ ...form, url: event.target.value });
+                      setFieldErrors((errors) => ({ ...errors, url: undefined }));
+                    }}
+                    aria-invalid={Boolean(fieldErrors.url)}
+                    aria-describedby={fieldErrors.url ? "mcp-server-url-error" : undefined}
                     disabled={readOnly}
                     placeholder="https://example.com/mcp"
                     className="flex-1 font-mono text-sm"
@@ -329,6 +362,11 @@ export function AgentMcpDialog({ target, onClose, onSaved }: Props) {
                     {testUrl.loading ? t("btn.testing") : t("btn.test")}
                   </Button>
                 </div>
+                {fieldErrors.url && (
+                  <p id="mcp-server-url-error" role="alert" className="text-xs text-destructive">
+                    {t(fieldErrors.url)}
+                  </p>
+                )}
               </LabeledField>
               <KeyValueEditor
                 label={t("form.headers")}
@@ -366,73 +404,6 @@ export function AgentMcpDialog({ target, onClose, onSaved }: Props) {
 }
 
 type Props = { target: McpEditorTarget; onClose: () => void; onSaved: () => void };
-
-function KeyValueEditor({
-  label,
-  entries,
-  disabled,
-  onChange,
-  namePlaceholder = "KEY",
-  valuePlaceholder = "VALUE",
-}: {
-  label: string;
-  entries: KeyValueRow[];
-  disabled: boolean;
-  onChange: (entries: KeyValueRow[]) => void;
-  namePlaceholder?: string;
-  valuePlaceholder?: string;
-}) {
-  const { t } = useTranslation(NS.MCP);
-  const update = (index: number, patch: Partial<KeyValueEntry>) =>
-    onChange(entries.map((entry, entryIndex) => (entryIndex === index ? { ...entry, ...patch } : entry)));
-  return (
-    <div>
-      {/* 这里的字段名**不用 `LabeledField`**：它不是「字段名在上、控件在下」的形态，而是「字段名与
-          「添加」按钮同一行、控件是若干行输入框」的组标签——没有哪一个输入框该独占这个名字（标到第一行
-          的 key 输入框上，读屏会把它念成「环境变量」，反而误导），所以显式关联也不适用。组标签的正确
-          语义是 `fieldset`/`legend` 或 `role="group"` + `aria-labelledby`，本轮不改结构。 */}
-      <div className="mb-2 flex items-center justify-between">
-        <label className="text-sm font-medium text-text-primary">{label}</label>
-        <Button
-          type="button"
-          size="xs"
-          variant="outline"
-          disabled={disabled}
-          onClick={() => onChange([...entries, createKeyValueRow()])}
-        >
-          {t("btn.add")}
-        </Button>
-      </div>
-      <div className="space-y-2">
-        {entries.map((entry, index) => (
-          <div className="flex items-center gap-2" key={entry.id}>
-            <Input
-              value={entry.key}
-              placeholder={namePlaceholder}
-              disabled={disabled}
-              onChange={(event) => update(index, { key: event.target.value })}
-            />
-            <Input
-              value={entry.value}
-              placeholder={valuePlaceholder}
-              disabled={disabled}
-              onChange={(event) => update(index, { value: event.target.value })}
-            />
-            <Button
-              type="button"
-              size="xs"
-              variant="ghost"
-              disabled={disabled}
-              onClick={() => onChange(entries.filter((_, entryIndex) => entryIndex !== index))}
-            >
-              {t("btn.delete")}
-            </Button>
-          </div>
-        ))}
-      </div>
-    </div>
-  );
-}
 
 function OAuthEditor({
   form,
@@ -478,12 +449,6 @@ function OAuthEditor({
       </div>
     </Collapsible>
   );
-}
-
-function toEntries(record?: Record<string, unknown>): KeyValueRow[] {
-  return record
-    ? Object.entries(record).map(([key, value]) => createKeyValueRow(key, String(value)))
-    : [createKeyValueRow()];
 }
 
 function entriesToRecord(entries: KeyValueEntry[]): Record<string, string> | undefined {

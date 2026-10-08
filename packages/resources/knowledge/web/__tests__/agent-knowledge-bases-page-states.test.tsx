@@ -159,6 +159,10 @@ const DOM_GLOBALS = [
   "InputEvent",
   "MutationObserver",
   "ResizeObserver",
+  // 与 `HTMLElement` 必须成对注入：只注入前者会让「有 DOM」成立而 `customElements` 仍是 undefined，
+  // 此后任何求值 streamdown 组件链路的文件都以 `ReferenceError: customElements is not defined`
+  // 崩在测试之间的空档里（口径见 `@fenix/ui-components/web/testing.ts` 的成对注入约束）。
+  "customElements",
 ];
 for (const key of DOM_GLOBALS) {
   const value = (win as unknown as Record<string, unknown>)[key];

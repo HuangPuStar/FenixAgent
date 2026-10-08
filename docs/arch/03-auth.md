@@ -71,9 +71,17 @@ Machine → ws://<host>/acp/ws?secret=<REGISTRY_SECRET>
 
 1. 先检查 better-auth session cookie
 2. 无 session 时尝试 **Environment Secret**——命中后以 environment 属主为审计主体，组织上下文取
-   该 environment 绑定的组织（个人 environment 回落为属主）
-3. 仍未命中时尝试 better-auth API Key——从 key metadata 恢复组织，并二次校验成员关系仍然有效，
-   校验异常保守拒绝
+   该 environment 绑定的组织（未绑定组织的个人 environment 回落为属主 ID）
+3. 仍未命中时尝试 better-auth API Key——从 key metadata 恢复**组织入口**（key 字符串本身不携带组织信息）
+
+**角色与成员关系一律回成员表读当前值**：凭据自带的角色（API key metadata 的 `role`、Environment
+Secret 所属的环境记录）是创建期快照，不参与判定。命中凭据后按 `userId` 读全量成员关系，凭据声明的
+组织必须出现在其中，否则保守拒绝；成员关系不可验证（存储故障）时同样拒绝——认证失败与存储故障对外
+不可区分，不得在授权事实未知时放行。这样用户被降级或移出组织后，旧凭据不会按旧角色继续授权。
+
+> 兼容性：历史遗留的「个人 environment」（`organization_id == userId`）不在任何成员关系中，其
+> Environment Secret 从该口径生效起会被拒绝；当前三种创建路径（控制台、`/api` 自动创建、prod-view）
+> 都要求显式 `organizationId`，不会再产生此类行。
 
 ```mermaid
 flowchart TD

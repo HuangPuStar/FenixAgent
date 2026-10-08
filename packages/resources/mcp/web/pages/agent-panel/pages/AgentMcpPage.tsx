@@ -15,7 +15,9 @@ import type { McpCatalogScope } from "./agent-mcp-utils";
 
 export function AgentMcpPage() {
   const { t } = useTranslation(NS.MCP);
-  const { t: tComponents } = useTranslation(NS.COMPONENTS);
+  // `resource.*` 角标与公开/私有动作词表归 `@fenix/ui-components`（`StatusBadge` 的同名默认文案），
+  // 随台账 D4 从宿主 `components` 字典改指该包命名空间。
+  const { t: tComponents } = useTranslation(NS.UI_COMPONENTS);
   // 当前组织 id 用于判定资源归属：`/web` 视图只给 scope.organizationId，需要本地比对才知道是否外部资源。
   // 取值经 `@fenix/web-runtime` 的 org/session 契约（§1.6 T7），实现方是身份包的 `OrgProvider`——
   // 契约的 context 实例唯一，故与宿主挂载的是同一份；本包不依赖平台实现，也不另建组织状态。

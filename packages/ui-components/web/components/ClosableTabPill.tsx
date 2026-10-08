@@ -1,7 +1,8 @@
 // web/components/ClosableTabPill.tsx
 // 可关闭的 tab pill（图标 + 标签 + 可选附加内容 + 关闭按钮）。
 //
-// 归属：宿主 `apps/web/src/components/agent-panel/FileTabsBar.tsx` 与 `@fenix/resource-agent-config`
+// 归属：文件 tab 栏（2026-09-24 随台账 D2 迁入 `@fenix/resource-machine` 的
+// `web/components/FileTabsBar.tsx`）与 `@fenix/resource-agent-config`
 // 的 `web/components/agent-panel/SiteTabsBar.tsx` 此前各自手抄同一套 pill 容器类串（选中/未选中的配色、
 // 高度、圆角、内边距、hover 显隐关闭按钮的 group 命名），按「归属由消费者集合决定」下沉到共享组件库。
 //

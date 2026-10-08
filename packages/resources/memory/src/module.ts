@@ -1,8 +1,8 @@
 /**
  * Memory 模块的运行时表面。
  *
- * 本包的服务端能力都是**无状态函数**：记忆开关判定（`shouldEnableAgentMemory`）、记忆库登记
- * （`ensureBank` / `ensureHindsightMcpServer`）、路由工厂与仓储查询都经 `@fenix/resource-memory/server`
+ * 本包的服务端能力都是**无状态函数**：记忆开关判定（`shouldEnableAgentMemory`）、
+ * 路由工厂与仓储查询都经 `@fenix/resource-memory/server`
  * 直接调用，没有需要「对象身份」的进程级单例（对比 sandbox 的实例锁与 channel 的网关连接）。
  * 因此组合根只承载模块标识，不在这里重复包装纯函数——与 `@fenix/resource-sandbox`、
  * `@fenix/resource-channel` 的组合根同口径：只暴露需要对象身份的能力。

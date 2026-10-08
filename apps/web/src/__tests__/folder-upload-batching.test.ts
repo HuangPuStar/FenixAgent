@@ -1,6 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { MAX_UPLOAD_BATCH_SIZE_BYTES, uploadFiles } from "../api/fs";
-import { createUploadBatches } from "../components/agent-panel/use-file-uploads";
+import { createUploadBatches, MAX_UPLOAD_BATCH_SIZE_BYTES, uploadFiles } from "@fenix/resource-machine/web";
 
 describe("目录上传分批", () => {
   test("大目录按字节分批且保持相对路径与同名文件对应", () => {

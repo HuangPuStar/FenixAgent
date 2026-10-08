@@ -25,6 +25,7 @@ import { applyPermissionExpiration, applyPermissionResolution } from "../state/p
 import { expireQuestion, respondQuestion } from "../state/question";
 import type { ProjectionDocs } from "../types";
 import { CommandCoordinator } from "./command-coordinator";
+import { deleteSessionAction, renameSessionAction } from "./session-mutation-action";
 import { type ActionSinks, type Command, CommandExecutionError, type CommandOutcome } from "./types";
 
 /** 取消超时兜底（毫秒）：cancel 后 Agent 未确认（进程挂起/断连）时 turn 收敛为 interrupted */
@@ -60,6 +61,8 @@ export interface SessionConnection {
    * 可选注入，宿主由 gateway 提供。
    */
   registerPendingPrompt?: (rpcId: number | string, turnId: string | undefined) => void;
+  /** 登记会话变更响应；relay 断开或超时时以 false 完成。 */
+  awaitSessionMutation?: (rpcId: number | string) => { completed: Promise<boolean>; cancel: () => void };
 }
 
 export interface SessionChannelDependencies {
@@ -202,6 +205,17 @@ export class SessionChannel {
 
     const { docManager } = this.dependencies;
 
+    if (command.type === "rename_session") {
+      await renameSessionAction(
+        docManager,
+        connection,
+        command.sessionId,
+        command.payload.title,
+        this.dependencies.reportError,
+      );
+      return {};
+    }
+
     if (command.type === "list_sessions") {
       // 守卫：Agent status 到达前不发 list_sessions（ACP 初始化未完成时列表不可信）。
       // 静默跳过而非报错：status 未到是连接建立瞬间的正常竞态，前端无需感知。
@@ -265,6 +279,10 @@ export class SessionChannel {
     // （连续 prompt 时旧 turn 的迟到终态不得终结新 turn）。
     if (command.type === "send_prompt") {
       connection.registerPendingPrompt?.(rpc.id as number | string, turnId);
+    }
+    if (command.type === "delete_session") {
+      await deleteSessionAction(docManager, connection, command.sessionId, rpc, this.dependencies.reportError);
+      return {};
     }
     try {
       await connection.sendToRelay(rpc);

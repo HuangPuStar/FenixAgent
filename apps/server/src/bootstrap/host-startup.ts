@@ -12,6 +12,7 @@ import type { AssemblyProfile } from "@fenix/platform-sdk/assembly";
 import { getHermesClient, initHermesClient } from "@fenix/resource-channel/server";
 import { checkRagFlowHealth } from "@fenix/resource-knowledge/server";
 import {
+  bindMachineAgentConfigPort,
   closeAllFileWsConnections,
   findMachineLabelsByIds,
   startFileWsSweep,
@@ -32,6 +33,7 @@ import { findDeprecatedEnvVars } from "../env";
 import { readDeclaredEnv, type ServerEnv } from "../env-loader";
 import { closeCache } from "../services/cache";
 import { initCoreRuntime } from "../services/core-bootstrap";
+import { machineAgentConfigPort } from "../services/machine-agent-config-port";
 import { createModelGatewaySubjectVerification } from "../services/model-gateway-subject-verification";
 import { createPreLaunchPorts, type PreLaunchPortsDeps } from "../services/pre-launch-ports";
 import { syncBuiltin } from "../services/sync-builtin";
@@ -173,7 +175,13 @@ export async function startHostRuntime(
   // 导入 agent-config 的入口。
   bindMachineLookupPort({ findMachineLabelsByIds });
   bindModelLookupPort({ findModelLabelsByIds });
-  startupLog.info("Pre-launch ports bound (agent launch spec / agent config lookup / machine labels / model labels)");
+  // machine 的 Agent 配置取数端口（反向）：machine 不再导入 agent-config 的入口（矩阵外反向边，台账
+  // `@fenix/resource-machine → @fenix/agent-config` 的移除条件），改由这里绑上 owner 的实现。位置必须
+  // 在这里：`wireHostRuntime` 刻意不导入 agent-config，而本文件本来就持有它的入口。
+  bindMachineAgentConfigPort(machineAgentConfigPort);
+  startupLog.info(
+    "Pre-launch ports bound (agent launch spec / agent config lookup / machine labels / model labels / machine agent config)",
+  );
 
   // 沙盒默认池初始化与崩溃恢复（Sandbox 能力，早于 core runtime 启动）。
   // 失败不阻断启动：沙盒不可用时仅影响沙盒执行节点，普通执行路径不受影响。

@@ -59,7 +59,7 @@ export interface OpencodeRuntimeConfig {
   model: string;
   agent: Record<string, OpencodeAgentConfig>;
   mcp: Record<string, OpencodeMcpConfig>;
-  plugin?: Array<[string, Record<string, unknown>]>;
+  plugin?: Array<string | [string, Record<string, unknown>]>;
 }
 
 function toProviderPackage(protocol: AgentLaunchSpec["model"]["protocol"]): string {
@@ -160,9 +160,20 @@ export function buildOpencodeRuntimeConfig(
         disable: false,
       },
     },
-    mcp: toMcpRecord(launchSpec.mcpServers.filter((s) => s.name !== "hindsight")),
-    ...(launchSpec.agent.extra?.plugin && Array.isArray(launchSpec.agent.extra.plugin)
-      ? { plugin: launchSpec.agent.extra.plugin as Array<[string, Record<string, unknown>]> }
-      : {}),
+    // 平台已删除系统 Hindsight MCP 注册；用户自建同名 MCP 仍是普通资源，不再按名称剔除。
+    mcp: toMcpRecord(launchSpec.mcpServers),
+    plugin: [
+      ...(Array.isArray(launchSpec.agent.extra?.plugin)
+        ? launchSpec.agent.extra.plugin.filter((entry): entry is string | [string, Record<string, unknown>] =>
+            typeof entry === "string"
+              ? entry !== "@konghayao/opencode-hindsight"
+              : Array.isArray(entry) && typeof entry[0] === "string" && entry[0] !== "@konghayao/opencode-hindsight",
+          )
+        : []),
+      // npm 名须与 docker/sandbox/Dockerfile 预装一致；参数为空，唯一配置面是工作区文件。
+      ...(launchSpec.plugins?.includes("hindsight")
+        ? [["@konghayao/opencode-hindsight", {}] as [string, Record<string, unknown>]]
+        : []),
+    ],
   };
 }

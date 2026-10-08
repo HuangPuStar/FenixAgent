@@ -35,6 +35,11 @@ import { appendFileSync, mkdirSync, readdirSync, unlinkSync } from "node:fs";
 import { Writable } from "node:stream";
 import pino from "pino";
 import pretty from "pino-pretty";
+import { LOG_SOURCE_PREFIXES, readLogDir } from "./sources";
+
+// 已知日志源的只读枚举与控制台读取面（`LOG_DIR` 的解析、命名规则、白名单）。
+// 写入侧与本表的同源性见 `./sources` 的文件头：读取侧不得自行 readdir 或另写一份命名规则。
+export * from "./sources";
 
 // ━━━━━ 类型 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
@@ -99,7 +104,7 @@ export const requestAls = new AsyncLocalStorage<RequestContext>();
 const isTest = process.env.NODE_ENV === "test" || (typeof Bun !== "undefined" && !!Bun.env.BUN_TEST);
 const logFormat = process.env.LOG_FORMAT ?? "pretty";
 const logLevel = isTest ? "silent" : (process.env.LOG_LEVEL ?? "info");
-const logDir = process.env.LOG_DIR ?? "logs";
+const logDir = readLogDir();
 const logRetentionDays = parseInt(process.env.LOG_RETENTION_DAYS ?? "30", 10);
 const usePretty = logFormat !== "json";
 
@@ -207,11 +212,12 @@ function buildPinoInstance() {
     streams.push(process.stdout);
   }
 
-  streams.push(new DailyRollingFileStream(logDir, "rcs"));
-  streams.push({
-    level: "error",
-    stream: new DailyRollingFileStream(logDir, "rcs.err"),
-  });
+  // 文件流按 `./sources` 的前缀表建：读取侧（控制台日志投影）只认同一张表认得的文件名，
+  // 在这里另写一遍前缀就会让「写进去的日志读不到」变成静默行为。
+  for (const source of LOG_SOURCE_PREFIXES) {
+    const stream = new DailyRollingFileStream(logDir, source.prefix);
+    streams.push(source.minLevel ? { level: source.minLevel, stream } : stream);
+  }
 
   return pino(options, pino.multistream(streams));
 }

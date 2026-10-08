@@ -35,7 +35,8 @@ export const agentSiteFormSchema = z.object({
 const VISIBILITIES = ["private", "org", "authenticated", "public"] as const;
 
 export function AgentSiteForm() {
-  const { t } = useTranslation(NS.AGENT_PANEL);
+  // 站点表单字段体的 `siteDeployment.*` 键随台账 D4 从宿主 `agentPanel` 字典迁入本包 `agents`。
+  const { t } = useTranslation(NS.AGENTS);
   const {
     register,
     setValue,

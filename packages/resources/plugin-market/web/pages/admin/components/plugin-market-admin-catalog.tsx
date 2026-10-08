@@ -13,7 +13,6 @@
 
 import {
   AgentCatalogIndex,
-  AgentCatalogIndexArrow,
   AgentCatalogIndexCopy,
   AgentCatalogIndexIcon,
   AgentCatalogIndexItem,
@@ -148,7 +147,6 @@ export function PluginMarketAdminCatalog(props: Props) {
                           <span>{view.latestVersion ?? t("directory.noVersion")}</span>
                         )}
                       </AgentCatalogIndexMeta>
-                      <AgentCatalogIndexArrow />
                     </AgentCatalogIndexItem>
                   );
                 })}

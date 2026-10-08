@@ -29,12 +29,12 @@
   "exports": {
     ".": "./src/index.ts",
     "./db": "./db/schema.ts",
+    "./db/migration": "./db/data-migrations/migrate-skill-storage-by-organization.ts",
     "./module": "./fenix.module.ts",
     "./server": "./src/server.ts",
     "./server/runtime": "./src/server/runtime.ts",
     "./server/content": "./src/server-content.ts",
     "./server/config": "./src/server-config.ts",
-    "./server/migration": "./src/server-migration.ts",
     "./server/testing": "./src/server/testing.ts",
     "./web": "./web/index.ts",
     "./web/contribution": "./web/contribution.ts",

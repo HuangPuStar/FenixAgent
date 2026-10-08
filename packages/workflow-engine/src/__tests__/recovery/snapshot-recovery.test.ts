@@ -157,7 +157,7 @@ async function simulatePartialRun(
     nodeStates[nodeId] = { status: "COMPLETED" };
   }
   for (const nodeId of suspendedNodeIds) {
-    nodeStates[nodeId] = { status: "SUSPENDED" as unknown as DAGSnapshot["node_states"][string]["status"] };
+    nodeStates[nodeId] = { status: "SUSPENDED" };
   }
   for (const nodeId of startedOnlyNodeIds) {
     nodeStates[nodeId] = { status: "RUNNING" };

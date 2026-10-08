@@ -364,6 +364,60 @@ describe("architecture check CLI", () => {
     expect(result.stdout).toContain("special-dependency");
   });
 
+  // §2.3 的 machine 行禁止依赖其他 resources 包：这类边（如 machine → agent-config）与 agent-config →
+  // agent-runtime、agent-runtime → sandbox、sandbox → machine 一起闭合 4 包环族，因此不能只靠台账冻着。
+  test("rejects machine imports of other resource packages", async () => {
+    const root = await createFixture({
+      "package.json": WORKSPACE_ROOT_MANIFEST,
+      "packages/resources/agent-config/package.json": '{"name":"@fenix/agent-config"}\n',
+      "packages/resources/machine/package.json":
+        '{"name":"@fenix/resource-machine","dependencies":{"@fenix/agent-config":"workspace:*"}}\n',
+      "packages/resources/machine/src/server/services/remote-file-service.ts":
+        'import { getAgentConfigById } from "@fenix/agent-config/server";\nvoid getAgentConfigById;\n',
+    });
+
+    const result = await runCheck(root);
+
+    expect(result.exitCode).toBe(1);
+    expect(result.stdout).toContain("[special-dependency]");
+    expect(result.stdout).toContain('"@fenix/resource-machine" → "@fenix/agent-config"');
+  });
+
+  // §2.3 的 web 行单独允许资源包浏览器面复用其他资源 `./web` 的公开入口（机器文件选择面板消费
+  // `@fenix/resource-mcp/web` 就是这种形态）：machine → resource 的服务端禁则不适用于这条边。
+  test("allows machine web contributions to reuse another resource's web entry", async () => {
+    const root = await createFixture({
+      "package.json": WORKSPACE_ROOT_MANIFEST,
+      "packages/resources/mcp/package.json": '{"name":"@fenix/resource-mcp"}\n',
+      "packages/resources/machine/package.json":
+        '{"name":"@fenix/resource-machine","dependencies":{"@fenix/resource-mcp":"workspace:*"}}\n',
+      "packages/resources/machine/web/pages/file-picker.ts":
+        'import type { McpResourceLike } from "@fenix/resource-mcp/web";\nexport type Picker = McpResourceLike;\n',
+    });
+
+    const result = await runCheck(root);
+
+    expect(result.exitCode).toBe(0);
+  });
+
+  // 放行只覆盖对方的 `./web` 出口：同一个 package 的服务端入口在浏览器面仍然违规（这里由 §2.3 的
+  // machine → resource 规则报出），避免"整条类别禁则被 web 面整体旁路"。
+  test("still rejects machine web contributions importing another resource's server entry", async () => {
+    const root = await createFixture({
+      "package.json": WORKSPACE_ROOT_MANIFEST,
+      "packages/resources/agent-config/package.json": '{"name":"@fenix/agent-config"}\n',
+      "packages/resources/machine/package.json":
+        '{"name":"@fenix/resource-machine","dependencies":{"@fenix/agent-config":"workspace:*"}}\n',
+      "packages/resources/machine/web/pages/file-picker.ts":
+        'import { resolveAgentNode } from "@fenix/agent-config/server";\nvoid resolveAgentNode;\n',
+    });
+
+    const result = await runCheck(root);
+
+    expect(result.exitCode).toBe(1);
+    expect(result.stdout).toContain("[special-dependency]");
+  });
+
   // §6.1 的 schema 组装期例外：Drizzle 的 .references() 只接受列对象，跨模块外键只能在 db/schema.ts
   // 里导入对方的表对象，因此 db/** 的跨包导入不由 §2.3 判定。
   test("allows cross-package table imports under db/", async () => {
@@ -434,6 +488,48 @@ describe("architecture check CLI", () => {
     expect(result.exitCode).toBe(1);
     expect(result.stdout).toContain("package-no-internal-imports");
     expect(result.stdout).toContain("../../../agent-runtime/db/schema");
+  });
+
+  // §2.2：`@fenix/<pkg>/db` 只服务 db/schema.ts 的跨模块外键组装期。调用期（src/ 与 web/）取对方表
+  // 对象是同类别之间唯一没有门禁覆盖的耦合——`special-dependency` 见同类别即放行，dependency-cruiser
+  // 的包类别规则同样不命中。这条固化缺口已经补上：调用期两条路径都必须失败。
+  test("rejects cross-module db object imports from call-site code", async () => {
+    const root = await createFixture({
+      "package.json": WORKSPACE_ROOT_MANIFEST,
+      "packages/resources/task/package.json": '{"name":"@fenix/resource-task"}\n',
+      "packages/resources/task/db/schema.ts": "export const taskExecutionLog = {};\n",
+      "packages/resources/consumer/package.json":
+        '{"name":"@fenix/consumer","dependencies":{"@fenix/resource-task":"workspace:*"}}\n',
+      "packages/resources/consumer/src/repository.ts":
+        'import { taskExecutionLog } from "@fenix/resource-task/db";\nvoid taskExecutionLog;\n',
+      "packages/resources/consumer/web/api/tasks.ts":
+        'import { taskExecutionLog } from "@fenix/resource-task/db";\nvoid taskExecutionLog;\n',
+    });
+
+    const result = await runCheck(root);
+
+    expect(result.exitCode).toBe(1);
+    expect(result.stdout).toContain("[cross-module-db-object-import]");
+    expect(result.stdout).toContain("packages/resources/consumer/src/repository.ts");
+    expect(result.stdout).toContain("packages/resources/consumer/web/api/tasks.ts");
+    // 同一处导入只允许一条规则负责：这条边是 resource → resource，category 矩阵不禁止，`special-dependency`
+    // 保持沉默，否则台账会为同一行留下两条记录。
+    expect(result.stdout).not.toContain("[special-dependency]");
+  });
+
+  // 同包自引用不是跨模块耦合：表定义归本包，仓储与包内用例经自己的 `./db` 出口取表对象是既定形态。
+  test("accepts same-package db object imports from the owning module", async () => {
+    const root = await createFixture({
+      "package.json": WORKSPACE_ROOT_MANIFEST,
+      "packages/resources/consumer/package.json": '{"name":"@fenix/consumer"}\n',
+      "packages/resources/consumer/db/schema.ts": "export const consumerRow = {};\n",
+      "packages/resources/consumer/src/repository.ts":
+        'import { consumerRow } from "@fenix/consumer/db";\nvoid consumerRow;\n',
+    });
+
+    const result = await runCheck(root);
+
+    expect(result.exitCode).toBe(0);
   });
 
   // §158 要求同类别内部的方向也能被门禁判定：identity 与 access-control 同属 platform-impl，
@@ -555,6 +651,7 @@ describe("architecture check CLI", () => {
       "web-contributions",
       "owner-inventory",
       "schema-ddl-drift",
+      "env-example",
       "architecture",
       "web-style",
       "tsc (server)",

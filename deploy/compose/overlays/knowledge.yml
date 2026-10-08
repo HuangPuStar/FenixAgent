@@ -1,0 +1,10 @@
+# 此文件由 scripts/release.ts 生成，请勿手动编辑。
+#
+# 模块 knowledge 声明的依赖服务：叠加本文件即启停它们。
+# ragflow：编排入口 docker/ragflow/docker-compose.yml（探针 http ${RAGFLOW_API_URL}/api/v1/system/healthz），本文件不重复定义。
+services:
+  gotenberg:
+    image: gotenberg/gotenberg:8
+    ports:
+      - "3200:3000"
+    restart: unless-stopped
