@@ -575,11 +575,11 @@ tunnel Server：Server 内的 frpc 主动访问 frps 的 `FRP_BIND_PORT`，Clust
 direct 节点使用 DinD 部署：
 
 ```text
-docker/opensandbox-server/docker-compose.dind.yml
+docker/opensandbox-server/docker-compose.yml
         |
         v
 OpenSandbox Server 容器
-  |-- /var/lib/docker  -> docker-data volume
+  |-- /var/lib/docker  -> ./data/docker（bind）
   |-- /workspace -> ./workspace
   `-- /offline -> ./offline
         |

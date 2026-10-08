@@ -10,8 +10,8 @@ import { Client, Pool } from "pg";
  * `CREATE INDEX ... already exists`）都会被伪装成成功，部署流水线无法失败停止
  * （运维侧的判定与处置见 `docs/operations/migration.md`、`docs/operations/troubleshooting.md` 第 8 节）。
  *
- * 那个容忍之所以「看起来必要」，真实诱因是并发 DDL：`docker-compose.yml` 与
- * `docker/prod/docker-compose.yml` 让每个应用容器启动前各跑一次 `migrate.js`，多副本同时建表会互相
+ * 那个容忍之所以「看起来必要」，真实诱因是并发 DDL：主服务编排（仓库根 / `docker/main/` 两份）让应用容器启动前各跑一次
+ * `migrate.js`，多副本同时建表会互相
  * 撞出 `already exists`。诱因由 advisory lock 消除（同一常量 key 串行化），不再需要靠吞错兜底。
  *
  * 历史 db:push 建立的库（没有 `drizzle."__drizzle_migrations"` 记录）需要一次显式的基线化，前置步骤见

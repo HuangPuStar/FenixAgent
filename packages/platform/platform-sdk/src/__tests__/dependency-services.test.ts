@@ -6,8 +6,8 @@ import { createModuleRegistry, type DependencyService, type ModuleManifest } fro
  * 依赖服务声明（`dependencyServices`）的校验契约。
  *
  * 独立于 `assembly.test.ts`：那边验证装配顺序与生命周期，这里只验证「模块声明的依赖服务能不能被部署侧
- * 信任」——探针锚点、编排归属的必填字段、服务 ID 唯一性。这三条错了不会让应用起不来，但会让
- * `deploy/manifests` 与 `deploy/compose/overlays` 描述一个不存在的服务，所以必须在 registry 层拦下。
+ * 信任」——探针锚点、编排归属的必填字段、服务 ID 唯一性。这三条错了不会让应用起不来，但会让部署视图
+ * 描述一个不存在的服务（探针打不到、编排入口指向不存在的位置），所以必须在 registry 层拦下。
  */
 
 /** 构造一个只带依赖服务声明的模块；`envKeys` 声明面刻意与探针锚点分开，便于构造非法组合。 */

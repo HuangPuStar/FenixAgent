@@ -1,0 +1,91 @@
+# docker/main/ —— 主服务编排（生产形态）：只使用发布镜像，不声明 `build:`
+#
+# 权威文档：docs/operations/docker-topology.md §4
+#
+# 与仓库根 `docker-compose.yml`（dev 形态，带 `build:`）的关系：
+#   - 两者同项目名 `fenix`、同网络 `fenix-server`：**二选一运行**，同时执行会互相接管容器；
+#   - dev（本地构建）：仓库根文件 `docker compose up -d --build`；
+#   - 生产/模拟生产：本文件，镜像一律来自 GHCR 固定 tag，不构建。
+#
+# 用法（官方入口，/部署到目标机时随 `docker/` 目录整体交付）：
+#   ./docker/deploy.sh deploy              # 拉镜像 → DDL 迁移 → 数据迁移 → 启动
+#   ./docker/deploy.sh up                  # 只启动（镜像已就绪时）
+# env 文件**就在本目录**：compose 的项目目录即本文件所在目录，变量插值与下面的 `env_file` 都读同目录的
+# `.env`（模板是同目录 `.env.example`，`./docker/deploy.sh init` 或 `cp .env.example .env` 生成）。
+# 因此手动运行时不必指定 `--env-file`，也不依赖仓库根 .env：
+#   docker compose -f docker/main/docker-compose.yml up -d
+# 经 deploy.sh 时读的是同一份文件（脚本读入后导出，值一致）；`.env` 缺失时缺的必填键会在启动前报错。
+#
+# 数据落点：本目录下的 ./data、./workflow、./workspaces（随交付面搬迁/备份），与 dev 形态
+# （仓库根同名目录）分开。基础服务数据在 docker/common/data/（由 include 引入的编排决定）。
+
+include:
+    - path: ../common/docker-compose.yml
+
+# 固定项目名（不做插值）：与根文件一致——容器名和网络名都带项目名前缀，换名字等于换一套空数据。
+name: fenix
+
+networks:
+    # 主服务网络：由顶层项目创建，各依赖目录以 external 方式接入（文档 §3）
+    fenix-server:
+        name: fenix-server
+
+services:
+
+    rcs:
+        # 发布版本（固定 tag）：发布时更新此行；禁止改成环境变量插值（文档 §4.2）。
+        # 生产形态不声明 `build:`：目标机上没有 Dockerfile 与源码，镜像必须先 pull。
+        image: ghcr.io/huangpustar/fenixagent:sha-da5eb54
+        restart: unless-stopped
+        networks:
+            - fenix-server
+        # 将同目录 .env 中的可选应用配置（包括模型网关）传给容器；缺失时仍可直接启动。
+        env_file:
+            - path: .env
+              required: false
+        depends_on:
+            postgres:
+                condition: service_healthy
+        ports:
+            - "${FENIX_HTTP_PORT:-3001}:3000"
+        environment:
+            LOG_FORMAT: json
+            RCS_HOST: 0.0.0.0
+            RCS_PORT: 3000
+            # 使用模版创建 Agent 功能需要如下环境变量
+            # OPENAI_API_KEY:
+            # OPENAI_BASE_URL: https://api.deepseek.com/v1/
+            # OPENAI_MODEL: deepseek-v4-flash
+            RCS_BASE_URL: http://localhost:3000
+            RCS_API_KEYS: ${RCS_API_KEYS:?RCS_API_KEYS 未设置：请在 docker/main/.env 配置（模板 docker/main/.env.example）}
+            # 仅跳过启动时的 schedulerService.start()；不是全局只读模式，默认 false。
+            RCS_DISABLE_SCHEDULER: ${RCS_DISABLE_SCHEDULER:-false}
+            # 与 sandbox / 控制台共享的密钥；默认值只服务本地，生产必须用本目录 .env 覆盖。
+            REGISTRY_SECRET: ${REGISTRY_SECRET:-rcs-local-dev-secret}
+            # 容器内连接串写显式值：不用 ${DATABASE_URL} 插值，避免宿主值污染（文档 §8.4）。
+            DATABASE_URL: postgres://rcs:${POSTGRES_PASSWORD:-rcs}@postgres:5432/rcs
+            ACPX_G_URL: http://localhost:8848
+            APP_BRAND_NAME: ${APP_BRAND_NAME:-Fenix}
+            APP_LOGO_PATH: ${APP_LOGO_PATH:-}
+            RCS_SECRET_ENCRYPTION_KEY: ${RCS_SECRET_ENCRYPTION_KEY:-}
+        volumes:
+            # 数据一律 bind 到本文件同级的 ./ 下（不用命名卷）：随交付面整体搬迁/备份，不受 docker 全局卷影响。
+            # peri 全局目录（插件与 CLI 配置）与 Dockerfile 声明的 VOLUME /root/.peri 对应。
+            - ./data/peri-home:/root/.peri
+            - ./data:/app/data
+            - ./workflow:/app/workflow
+            - ./workspaces:/app/workspaces
+        # 在主进程启动前先完成数据库迁移
+        command: ["sh", "-lc", "bun migrate.js && exec bun --no-install run dist/index.js"]
+        healthcheck:
+            test:
+                [
+                    "CMD",
+                    "bun",
+                    "-e",
+                    "fetch('http://127.0.0.1:3000/health').then((r) => r.ok ? process.exit(0) : process.exit(1)).catch(() => process.exit(1))",
+                ]
+            interval: 30s
+            timeout: 5s
+            retries: 3
+            start_period: 20s

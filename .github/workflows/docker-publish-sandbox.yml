@@ -22,7 +22,7 @@ jobs:
       matrix:
         include:
           - name: opencode
-            dockerfile: docker/sandbox/Dockerfile
+            dockerfile: docker/sandbox-opencode/Dockerfile
           - name: ccb
             dockerfile: docker/sandbox-ccb/Dockerfile
           - name: peri
