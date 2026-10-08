@@ -206,7 +206,7 @@ export function LoginPage() {
 
             {/* 忘记密码 / 用户协议 / 隐私政策 对应页面暂未实现，先隐藏这些入口；注册也不再强制勾选协议 */}
             {!isSignUp && (
-              <div className="auth-light-options -mt-0.5 mb-2 flex items-center justify-between text-13 text-slate-900/45">
+              <div className="auth-light-options -mt-0.5 mb-2 flex items-center justify-between py-4 text-13 text-slate-900/45">
                 <label className="auth-light-checkbox inline-flex items-center gap-2 cursor-pointer hover:text-slate-900/65">
                   <input
                     checked={rememberLogin}
