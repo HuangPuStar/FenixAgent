@@ -5,12 +5,51 @@
  * 然后在任何模块开始运行前调用 {@link initializeApplicationInfrastructure} 完成唯一初始化。
  * 包只能通过本模块读取已注册的基础设施，不得导入 `apps/server` 的 env、config、db 或内部路径。
  *
- * 本模块刻意不导入 Drizzle、不读取环境变量、不创建连接池，也不包含领域逻辑；它只保存宿主
- * 传进来的对象引用。{@link ServerRouteHost} 是同一取向的另一半：宿主在挂载路由贡献时把协议适配面
- * 交给包，字段类型一律为 `unknown`，本模块因此仍然不依赖任何 HTTP 框架。
+ * 本模块不耦合具体 DB client、driver 或 schema，不读取环境变量、不创建连接池，也不包含领域逻辑；
+ * 它只保存宿主传进来的对象引用。为生成事务级 PostgreSQL 控制语句可使用 Drizzle SQL wrapper。
+ * {@link ServerRouteHost} 是同一取向的另一半：宿主在挂载路由贡献时把协议适配面交给包，字段类型一律为
+ * `unknown`，本模块因此仍然不依赖任何 HTTP 框架。
  */
 
+import { AsyncLocalStorage } from "node:async_hooks";
+import { sql } from "drizzle-orm";
 import type { IdentityDirectory } from "./identity/identity-directory";
+
+/** Drizzle SQLWrapper 的最小结构，避免平台契约包依赖其类型定义。 */
+interface SqlStatement {
+  getSQL(): unknown;
+}
+
+/** 事务句柄的最小结构，避免平台契约包依赖具体数据库驱动。 */
+interface TransactionHandle {
+  execute(statement: SqlStatement): Promise<unknown>;
+}
+
+/** 支持回调事务的数据库客户端最小结构。 */
+interface TransactionalDatabase {
+  transaction<T>(callback: (transaction: TransactionHandle) => Promise<T>): Promise<T>;
+}
+
+interface TransactionScope {
+  readonly database: TransactionHandle;
+  statementTimeoutMs: number;
+}
+
+const transactionStorage = new AsyncLocalStorage<TransactionScope>();
+
+/** PostgreSQL 单条 SQL 默认允许的最长执行时间。 */
+export const DEFAULT_STATEMENT_TIMEOUT_MS = 10_000;
+
+/** 执行事务回调的选项。 */
+export interface RunInTransactionOptions {
+  /**
+   * 单条 SQL 的最长执行时间（毫秒），不是整个回调的总时长。
+   *
+   * PostgreSQL 16 可通过 `SET LOCAL statement_timeout` 可靠取消慢 SQL，却没有可严格依赖的
+   * `transaction_timeout`；因此这里不使用 `Promise.race` 伪造超时。外部副作用和后台任务不受事务保护。
+   */
+  readonly timeoutMs?: number;
+}
 
 interface ApplicationInfrastructure {
   readonly database: unknown;
@@ -73,7 +112,44 @@ export function initializeApplicationInfrastructure(input: InitializeApplication
  * 只能在处理请求、任务或启动逻辑时调用，不能在模块文件加载时调用，否则可能早于宿主初始化。
  */
 export function getDatabase<TDatabase = unknown>(): TDatabase {
-  return requireInfrastructure().database as TDatabase;
+  return (transactionStorage.getStore()?.database ?? requireInfrastructure().database) as TDatabase;
+}
+
+/**
+ * 在 REQUIRED 事务中运行回调。
+ *
+ * `timeoutMs` 限制的是每条 SQL 而非整个回调：PostgreSQL 16 的 `SET LOCAL statement_timeout`
+ * 能可靠取消慢 SQL，但没有可严格依赖的 `transaction_timeout`，不能用 `Promise.race` 伪造。外部副作用
+ * 和后台任务不受事务保护。
+ */
+export async function runInTransaction<T>(
+  callback: () => Promise<T>,
+  options: RunInTransactionOptions = {},
+): Promise<T> {
+  const timeoutMs = options.timeoutMs ?? DEFAULT_STATEMENT_TIMEOUT_MS;
+  if (!Number.isSafeInteger(timeoutMs) || timeoutMs <= 0) {
+    throw new Error(`timeoutMs 必须是大于 0 的安全整数，收到: ${timeoutMs}`);
+  }
+
+  const activeScope = transactionStorage.getStore();
+  if (activeScope) {
+    if (timeoutMs < activeScope.statementTimeoutMs) {
+      activeScope.statementTimeoutMs = timeoutMs;
+      await activeScope.database.execute(createStatementTimeoutSql(timeoutMs));
+    }
+    return callback();
+  }
+
+  const database = requireInfrastructure().database as TransactionalDatabase;
+  return database.transaction(async (transaction) => {
+    await transaction.execute(createStatementTimeoutSql(timeoutMs));
+    return transactionStorage.run({ database: transaction, statementTimeoutMs: timeoutMs }, callback);
+  });
+}
+
+/** 仅在 timeout 已通过整数校验后创建 PostgreSQL 的本地语句超时设置。 */
+function createStatementTimeoutSql(timeoutMs: number): SqlStatement {
+  return sql.raw(`SET LOCAL statement_timeout = '${timeoutMs}ms'`);
 }
 
 /**
