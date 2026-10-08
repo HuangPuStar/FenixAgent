@@ -7,27 +7,53 @@
 - [`deploy/fenix-integration.md`](deploy/fenix-integration.md)
 - [`fenix-sandbox-ops.sh`](../../fenix-sandbox-ops.sh)
 
+契约与边界见 [`docs/operations/docker-topology.md`](../../docs/operations/docker-topology.md)（§3 网络分层、§6 依赖目录契约）。
+
+## 前置条件
+
+- Docker Engine + Compose v2（≥ 2.20）。
+- 顶层项目已启动（`./docker/deploy.sh up` 或 `docker compose up -d`）：`fenix-server` 网络由顶层创建，本目录以 `external` 方式接入。
+- 一个供 OpenSandbox Server 节点访问的地址（`FRP_PUBLIC_ADDRESS`）。
+
 ## 启动
 
 ```bash
 cd docker/opensandbox-cluster
 cp .env.example .env
-# 手动修改 .env 中的鉴权密钥
+# 填写 .env 的必需项：FRP_PUBLIC_ADDRESS / FRP_TOKEN / CLUSTER_SERVICE_API_KEY / SERVER_API_KEY_ENCRYPTION_KEY
 docker compose up -d --build
-curl -fsS http://127.0.0.1:${PORT:-8080}/health
+curl -fsS "http://127.0.0.1:${OPENSANDBOX_CLUSTER_PORT:-8080}/health"
 ```
 
-Cluster 启动时会自动执行 SQLite 迁移，数据保存在 Compose volume `opensandbox-cluster-data` 中。
+也可由一键入口启动：在 `docker/deploy.env` 里打开 `FENIX_FEATURE_OPENSANDBOX_CLUSTER=true`，再执行 `./docker/deploy.sh up`。
+
+Cluster 启动时会自动执行 SQLite 迁移，数据保存在本目录同级的 `./data/opensandbox-cluster.db`（bind 挂载，随交付面搬迁）。
 
 ## 配置
 
 | 参数 | 说明 |
 | --- | --- |
-| `PORT` | 宿主机对外端口，默认 `8080` |
-| `CLUSTER_SERVICE_API_KEY` | 调用方访问 Cluster 的鉴权 Token |
-| `SERVER_API_KEY_ENCRYPTION_KEY` | 32 字节密钥，用于加密 Server API Key |
+| `FRP_PUBLIC_ADDRESS` | **必需**。Server 访问 frps 的地址（域名或 IP） |
+| `FRP_TOKEN` | **必需**。frpc/frps 登录认证与 Plugin 路径令牌 |
+| `CLUSTER_SERVICE_API_KEY` | **必需**。调用方访问 Cluster 的鉴权 Token；主服务的 `RCS_SANDBOX_CLUSTER_API_KEY` 填同值 |
+| `SERVER_API_KEY_ENCRYPTION_KEY` | **必需**。32 字节密钥，用于加密 Server API Key |
+| `FRP_BIND_PORT` | frps 对外登录端口，默认 `7000` |
+| `OPENSANDBOX_CLUSTER_PORT` | 管理 API 的宿主端口（只绑回环），默认 `8080` |
 | `PROXY_CONNECT_TIMEOUT_MS` | 连接 OpenSandbox Server 的超时 |
 | `PROXY_RESPONSE_TIMEOUT_MS` | 代理请求响应超时 |
+
+镜像 tag 写死在本目录 `docker-compose.yml` 的 `image:` 行；升级 = 改该行 + `docker compose up -d`。
+
+## 网络接入清单
+
+| 服务 | 网络 | 理由 |
+| --- | --- | --- |
+| `opensandbox-cluster` | 项目默认网络 + `fenix-server` | 主服务经 `fenix-server` 以 `http://opensandbox-cluster:8080` 调用管理 API；默认网络用于 frps 回调 Plugin（`opensandbox-cluster:8081`） |
+| `frps` | 项目默认网络 | 只服务远程节点的隧道接入，主服务不直连 |
+
+宿主端口：`OPENSANDBOX_CLUSTER_PORT` 只绑 `127.0.0.1`；`FRP_BIND_PORT` 是远程节点主动连入的入口，绑 `0.0.0.0`。
+
+主服务侧的对应配置（仓库根 `.env`）：`RCS_SANDBOX_CLUSTER_URL=http://opensandbox-cluster:8080`（同机部署）或 `http://<宿主机地址>:<OPENSANDBOX_CLUSTER_PORT>`（跨机部署）。
 
 ## 部署 OpenSandbox Server 节点
 
@@ -69,10 +95,7 @@ curl -X POST "$CLUSTER_URL/api/v1/servers" \
 
 ```bash
 docker compose stop
-docker run --rm \
-  -v opensandbox-cluster_opensandbox-cluster-data:/data \
-  -v "$PWD:/backup" \
-  alpine cp /data/opensandbox-cluster.db /backup/opensandbox-cluster.db
+cp data/opensandbox-cluster.db /backup/opensandbox-cluster.db
 docker compose start
 ```
 
@@ -82,8 +105,8 @@ docker compose start
 
 默认 Compose 同时启动 Cluster 和单实例 `frps`。宿主机只发布：
 
-- Cluster 管理 API：`8080`；
-- FRP 登录端口：`7000`，可通过 `FRP_BIND_PORT` 修改。
+- Cluster 管理 API：`OPENSANDBOX_CLUSTER_PORT`（默认 `8080`，只绑回环）；
+- FRP 登录端口：`FRP_BIND_PORT`（默认 `7000`，对沙盒机器开放）。
 
 Cluster 的 Plugin `8081` 和 frps vhost `7080` 仅在 Docker 内部网络可见。
 

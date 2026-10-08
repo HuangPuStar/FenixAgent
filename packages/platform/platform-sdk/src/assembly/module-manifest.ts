@@ -73,9 +73,9 @@ export type DependencyServiceHealthCheck =
  * 模块声明的依赖服务（数据库、缓存、检索引擎、文档转换、外部网关等）。
  *
  * 消费方有两处，同一份声明同时服务它们：
- * 1. **部署生成**（`scripts/release.ts`）：`orchestration: "compose-overlay"` 的服务会把
- *    `image` / `ports` 写进 `deploy/compose/overlays/<module>.yml`，使该模块的依赖能随叠加的
- *    overlay 独立启停；`"separate"` 的服务只把依赖与编排入口指针写进部署视图。
+ * 1. **部署视图**：`orchestration` 与 `composeFile` 标明该依赖的编排归属，供部署方按依赖顺序启动与排障；
+ *    编排本身由 `docker/<name>/docker-compose.yml` 承载，由 `docker/deploy.env` 的 feature 开关启停，
+ *    本声明不重复定义任何容器（真相只有一份）。
  * 2. **部署前自检（preflight）**：`healthCheck` 与 `required` 决定部署前探活哪些地址、
  *    哪些失败必须阻断（`required: true`）、哪些只告警（`required: false`，例如未部署 RAGFlow
  *    时知识库检索不可用，但主服务必须能起来）。
@@ -90,15 +90,15 @@ export interface DependencyService {
   /**
    * 编排归属。
    *
-   * - `"compose-overlay"`：由本仓 `deploy/compose/` 定义并启停，必须同时声明 `image`；
+   * - `"compose-overlay"`：本仓为该依赖提供了编排与镜像，必须同时声明 `image`；
    * - `"separate"`：自有编排入口在 `composeFile`。第三方产品的独立编排（RAGFlow / Hindsight
-   *   一类）与本仓独立部署单元（如 `packages/opensandbox-cluster`）都取此值——部署生成**不重复定义**
+   *   一类）与本仓独立部署单元（如 `packages/opensandbox-cluster`）都取此值——**不重复定义**
    *   它们的服务，只记录依赖、探针与入口，避免同一编排出现两份真相。
    */
   readonly orchestration: "compose-overlay" | "separate";
   /** 声明该服务地址的 `envDefinitions` 键；探针与部署配置都按这些键取值。无地址键时省略。 */
   readonly envKeys?: readonly string[];
-  /** `orchestration: "compose-overlay"` 的容器镜像，部署生成原样写入模块 overlay。 */
+  /** `orchestration: "compose-overlay"` 的容器镜像。 */
   readonly image?: string;
   /** `orchestration: "compose-overlay"` 的宿主端口映射（`"3200:3000"`），与 `envKeys` 的默认地址相符。 */
   readonly ports?: readonly string[];

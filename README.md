@@ -115,7 +115,7 @@ bash restart-server.sh
 
 使用上面的 Docker Compose 命令即可在一台机器上运行控制服务与默认 Agent 引擎，适合体验、开发和单机环境。
 
-可选集成与远端 Sandbox 的 Docker Compose 启动方式见 [进阶部署指南](docker/prod/README.md)。
+可选集成与远端 Sandbox 的 Docker Compose 启动方式见 [Docker 编排体系](docs/operations/docker-topology.md)。
 
 ### 远端执行节点
 
@@ -143,7 +143,7 @@ docker run -d \
   fenix-sandbox
 ```
 
-`RCS_URL`、`RCS_SECRET` 与 `RCS_MACHINE_ID` 均为必填项。其他引擎请使用对应的 `docker/sandbox/`（OpenCode）、`docker/sandbox-ccb/` 或 `docker/sandbox-dsh/` 镜像。远端节点的程序接口与 ACP 桥接能力见 [`packages/acp-link`](packages/acp-link/README.md)。
+`RCS_URL`、`RCS_SECRET` 与 `RCS_MACHINE_ID` 均为必填项。其他引擎请使用对应的 `docker/sandbox-opencode/`（OpenCode）、`docker/sandbox-ccb/` 或 `docker/sandbox-dsh/` 镜像。远端节点的程序接口与 ACP 桥接能力见 [`packages/acp-link`](packages/acp-link/README.md)。
 
 ### DeepSeek Harness（DSH）
 

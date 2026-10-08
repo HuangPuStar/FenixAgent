@@ -1,45 +1,65 @@
+# docker/opensandbox-cluster/ —— OpenSandbox 管理面（Cluster + frps 隧道入口）
+#
+# 权威文档：docs/operations/docker-topology.md（§3 网络分层、§6 依赖目录契约、§8 env 规范）
+#
+# 独立项目启动（不与顶层 -f 叠加）：
+#   cd docker/opensandbox-cluster && cp .env.example .env && docker compose up -d
+#   或由 ./docker/deploy.sh 按 FENIX_FEATURE_OPENSANDBOX_CLUSTER=true 启动
+#
+# 网络接入（§3）：
+#   opensandbox-cluster 同时接入 fenix-server 与项目默认网络——前者供主服务以 http://opensandbox-cluster:8080
+#   调用管理 API，后者用于 frps 回调 Plugin（frps.toml 的 addr = "opensandbox-cluster:8081"）；
+#   frps 只留在项目默认网络：它服务的是远程节点的隧道接入，主服务不直连它。
+#
+# 数据落点：bind 到本文件同级的 ./data/（§13.8），随交付面整体打包/搬迁。
+
 services:
-  opensandbox-cluster:
-    build:
-      context: ../..
-      dockerfile: docker/opensandbox-cluster/Dockerfile
-    image: ${OPENSANDBOX_CLUSTER_IMAGE:-aos/opensandbox-cluster:latest}
-    ports:
-      - "${PORT:-8080}:8080"
-    expose:
-      - "8081"
-    env_file:
-      - .env
-    environment:
-      FRP_PUBLIC_ADDRESS: ${FRP_PUBLIC_ADDRESS:?FRP_PUBLIC_ADDRESS is required}
-      FRP_BIND_PORT: ${FRP_BIND_PORT:-7000}
-      FRP_TOKEN: ${FRP_TOKEN:?FRP_TOKEN is required}
-    volumes:
-      - opensandbox-cluster-data:/data
-    restart: unless-stopped
-    networks:
-      - cluster-internal
 
-  frps:
-    image: ghcr.io/fatedier/frps:v0.69.0
-    command: ["-c", "/etc/frp/frps.toml"]
-    ports:
-      - "${FRP_BIND_PORT:-7000}:7000"
-    expose:
-      - "7080"
-    environment:
-      FRP_TOKEN: ${FRP_TOKEN:?FRP_TOKEN is required}
-    volumes:
-      - ./frps.toml:/etc/frp/frps.toml:ro
-    depends_on:
-      - opensandbox-cluster
-    networks:
-      - cluster-internal
-    restart: unless-stopped
+    opensandbox-cluster:
+        # 发布版本（固定 tag）：发布时更新此行。禁止环境变量插值与 latest（§13.7）。
+        image: ghcr.io/huangpustar/fenixagent-opensandbox-cluster:v0.2.0
+        # 本仓源码构建（dev / 离线自建）：context 是仓库根，Dockerfile 在本目录内。
+        build:
+            context: ../..
+            dockerfile: docker/opensandbox-cluster/Dockerfile
+        restart: unless-stopped
+        env_file:
+            - .env
+        environment:
+            # 容器内地址与路径写显式值，不从宿主视角的 .env 透传同名键（§8.4）。
+            HOST: 0.0.0.0
+            PORT: 8080
+            DATABASE_PATH: /data/opensandbox-cluster.db
+            # 必填项：缺失或为空即在此拦下，报错信息即修复指引（§13.12）。
+            CLUSTER_SERVICE_API_KEY: ${CLUSTER_SERVICE_API_KEY:?CLUSTER_SERVICE_API_KEY 未设置：请填 docker/opensandbox-cluster/.env}
+            SERVER_API_KEY_ENCRYPTION_KEY: ${SERVER_API_KEY_ENCRYPTION_KEY:?SERVER_API_KEY_ENCRYPTION_KEY 未设置：请填 docker/opensandbox-cluster/.env（32 字节）}
+            FRP_PUBLIC_ADDRESS: ${FRP_PUBLIC_ADDRESS:?FRP_PUBLIC_ADDRESS 未设置：请填 docker/opensandbox-cluster/.env}
+            FRP_BIND_PORT: ${FRP_BIND_PORT:-7000}
+            FRP_TOKEN: ${FRP_TOKEN:?FRP_TOKEN 未设置：请填 docker/opensandbox-cluster/.env}
+        ports:
+            # 只绑回环：供本机运维 curl（fenix-sandbox-ops.sh）与健康检查；跨项目的调用走 fenix-server 网络。
+            - "127.0.0.1:${OPENSANDBOX_CLUSTER_PORT:-8080}:8080"
+        networks:
+            - default
+            - fenix-server
 
-volumes:
-  opensandbox-cluster-data:
+    frps:
+        image: ghcr.io/fatedier/frps:v0.69.0
+        command: ["-c", "/etc/frp/frps.toml"]
+        restart: unless-stopped
+        environment:
+            FRP_TOKEN: ${FRP_TOKEN:?FRP_TOKEN 未设置：请填 docker/opensandbox-cluster/.env}
+        # 远程沙盒节点主动连入的隧道入口，必须对沙盒机器可达（§6.4 的外部入口），端口用 .env 覆盖。
+        ports:
+            - "${FRP_BIND_PORT:-7000}:7000"
+        volumes:
+            - ./frps.toml:/etc/frp/frps.toml:ro
+        depends_on:
+            - opensandbox-cluster
+        # 不声明 networks：留在项目默认网络，既不进主服务层，也不影响内部 frpc 接入。
 
 networks:
-  cluster-internal:
-    name: opensandbox-cluster-internal
+    # 主服务层由顶层 docker-compose.yml 创建；依赖目录只引用（§3）。
+    fenix-server:
+        external: true
+        name: fenix-server

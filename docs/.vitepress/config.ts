@@ -115,6 +115,7 @@ export default defineConfig({
             { text: "总体架构", link: "/arch/tech-stack-overview" },
             { text: "后端技术栈", link: "/arch/tech-stack-backend" },
             { text: "前端技术栈", link: "/arch/tech-stack-frontend" },
+            { text: "Docker 部署架构与拓扑", link: "/arch/26-deployment-topology" },
             { text: "领域术语表", link: "/arch/domain-glossary" },
           ],
         },
@@ -195,6 +196,8 @@ export default defineConfig({
           items: [
             { text: "总览", link: "/operations/" },
             { text: "部署", link: "/operations/deployment" },
+            { text: "Docker 编排体系", link: "/operations/docker-topology" },
+            { text: "Workflow V2 部署", link: "/operations/workflow-deployment" },
             { text: "升级", link: "/operations/upgrade" },
             { text: "迁移", link: "/operations/migration" },
             { text: "备份与恢复", link: "/operations/backup-and-restore" },

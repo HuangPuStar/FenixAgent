@@ -1,0 +1,467 @@
+# RCS 接入配置（RCS 单独部署，本文件不启动 RCS）：
+# 在 RCS 的环境文件中配置以下五项，密钥由受控文件 / secret store 注入：
+# WORKFLOW_V2_UPSTREAM_BASE_URL=http://workflow-upstream:80
+# WORKFLOW_CANVAS_UPSTREAM_URL=http://workflow-upstream:80
+# WORKFLOW_V2_PLATFORM_ACCOUNT_EMAIL=<专用上游账号邮箱>
+# WORKFLOW_V2_PLATFORM_ACCOUNT_PASSWORD=<专用上游账号密码>
+# WORKFLOW_V2_TICKET_SECRET=<至少 32 字节随机签名材料>
+# 共享基础设施（不再是本目录的服务）：
+#   - MySQL 由顶层项目 docker/common/ 提供，开关是 FENIX_FEATURE_MYSQL（见 docker/common/docker-compose.yml）；
+#   - 对象存储（S3）用共享的 rustfs，开关是 FENIX_FEATURE_S3——**本栈原先自带的 minio 服务已删除**，
+#     建桶与图标播种改由本目录的一次性服务 s3-init 承担（原先写在 minio 容器的 entrypoint 里）。
+# Elasticsearch 仍在**本目录**，数据与初始化方式不变。
+#   - 启动顺序：**先起顶层项目**（./docker/deploy.sh up，或至少
+#     docker compose -f docker-compose.yml --profile mysql --profile s3 up -d），再起本目录；
+#     独立部署时也必须带上 common（见 README §1）。
+#   - 地址不变：容器内仍按服务名 mysql:3306 访问（上游 .env 的 MYSQL_HOST / MYSQL_PORT 不需要改），
+#     因为服务名与端口在 common 里保持原值。
+#   - 对象存储地址：容器内按服务名 rustfs:9000 访问（S3 API），凭据取仓库根 .env 的 RUSTFS_*。
+#     上游 .env 里的 MINIO_ENDPOINT / MINIO_API_HOST / MINIO_AK / MINIO_SK **不需要改**：本文件在
+#     coze-server 上用 environment 显式覆盖（Compose 里 environment 优先于 env_file）。
+#   - 代价：coze-server、milvus 与 s3-init 必须接入 external 网络 fenix-server 才能解析到共享实例，
+#     因此这三个容器也暴露在该网络里；且当共享 redis（FENIX_FEATURE_REDIS=true）同时启用时，共享网络的
+#     `redis` 与栈内 `redis` 同名，解析会歧义——见 README「已知冲突」。
+#   - 数据落点：MySQL 在 docker/common/data/mysql、对象存储在 docker/common/data/rustfs（都是 bind）；
+#     Elasticsearch、redis、etcd、milvus 的数据仍在 `${WORKFLOW_STUDIO_DIR}/docker/data/` 下。
+#     旧的对象数据目录 `${WORKFLOW_STUDIO_DIR}/docker/data/minio` 已不再被任何服务挂载，处置见 README §8。
+#
+# 只有出口 coze-web、以及需要访问共享 mysql / rustfs 的 coze-server / mysql-init / s3-init / milvus
+# 接入 external 网络 fenix-server；其余服务使用 Compose 默认网络。
+# RCS 接入 fenix-server，例如：
+# services:
+#   rcs:
+#     networks: [fenix-server]
+# networks:
+#   fenix-server:
+#     external: true
+#     name: fenix-server
+# workflow-upstream 与 workflow-storage 都指向 coze-web；存储经只读代理，**不直连共享 rustfs**。
+# 上游 .env 里仍保留 MINIO_ENDPOINT / MINIO_API_HOST / STORAGE_BUCKET；本文件在 coze-server 上覆盖成
+# rustfs:9000 / http://rustfs:9000 / opencoze（environment 覆盖 env_file），上游那份不需要改。
+# 控制台与 /workflow-canvas/* 均经 RCS 同源入口，不直接将 BFF 反代到上游。
+# RCS 需包含 workflow-v2 模块、控制台产物与完整 DDL / 数据迁移。
+# 当前画布票据状态仍在 RCS 进程内；Redis 不解决跨副本票据校验，先按单进程部署。
+# 上游画布必须以 WORKFLOW_CANVAS_BASE=/workflow-canvas/ 构建并交付 dist。
+# 启动前创建共享网络，并同时加载上游 docker/.env 与本目录 .env：
+# docker network create fenix-server
+# docker compose --env-file "$WORKFLOW_STUDIO_DIR/docker/.env" \
+#   --env-file docker/workflow/.env -f docker/workflow/docker-compose.yml up -d
+
+name: fenix-workflow
+services:
+  mysql-init:
+    # 一次性初始化（job 语义：执行完即退出，不常驻、不 restart），按顺序做完才放 coze-server 起来：
+    #   等共享实例可用并可认证 → 幂等创建本栈的库与账号 → 应用账号自检 → 应用上游 schema.sql / Atlas。
+    # 具体分支与报错文案见 docker/workflow/init-mysql.sh（本目录的交付面文件，随目录一起交付）。
+    # 为什么不用共享实例的 MYSQL_DATABASE / MYSQL_USER 代劳：那两个键只在共享实例的**数据目录首次初始化**
+    # 时生效，对已经存在的实例（别的栈先起过）完全无效——本栈不能把「库和账号存在」寄托在别人的首启上。
+    # 幂等：CREATE ... IF NOT EXISTS / GRANT / Atlas apply 都可重复执行，重跑不覆盖既有数据（见脚本头注释）。
+    # 镜像复用本目录已有的 mysql:8.4.5（自带 mysql 客户端与 curl，原 mysql 服务同款），不新增镜像来源。
+    image: mysql:8.4.5
+    restart: "no"
+    # 只跟共享 MySQL 通信，因此只接 fenix-server（不需要项目默认网络）。
+    environment:
+      # 容器内地址写显式值（不插值同名宿主键，文档 §8.4）：mysql 是共享 MySQL 在 fenix-server 上的服务名。
+      MYSQL_HOST: mysql
+      # 凭据是共享键（仓库根 .env）；缺省值与 common 的默认值一致，独立部署按上游 .env 的值填。
+      MYSQL_DATABASE: ${MYSQL_DATABASE:-opencoze}
+      MYSQL_USER: ${MYSQL_USER:-coze}
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD:-coze123}
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:-root}
+    volumes:
+      # create_host_path: false → 脚本缺失时直接报错，而不是被 docker 静默建成一个同名目录
+      - type: bind
+        source: ./init-mysql.sh
+        target: /init/init-mysql.sh
+        read_only: true
+        bind:
+          create_host_path: false
+      - >-
+        ${WORKFLOW_STUDIO_DIR:?Set an absolute
+        WORKFLOW_STUDIO_DIR}/docker/volumes/mysql/schema.sql:/schema.sql:ro
+      - >-
+        ${WORKFLOW_STUDIO_DIR:?Set an absolute
+        WORKFLOW_STUDIO_DIR}/docker/atlas/opencoze_latest_schema.hcl:/opencoze_latest_schema.hcl:ro
+    # 初始化逻辑单独成文件（docker/workflow/init-mysql.sh），只读挂载后由 /bin/sh 解释执行：
+    # compose 里保持「哪些服务、什么顺序、挂什么」可读，分支与报错文案留给脚本。
+    # 必须显式覆盖 entrypoint：镜像自带的 entrypoint 会把参数当 mysqld 启动参数劫持掉。
+    entrypoint: ["/bin/sh", "/init/init-mysql.sh"]
+    # 没有 depends_on：共享 MySQL 属于另一个 Compose 项目，Compose 只允许依赖本项目内已定义的服务
+    # （写 mysql 会直接报 "depends on undefined service"）；顶层项目先起是启动顺序不变量（README §1），
+    # 就绪判定与失败诊断都在脚本里，非零退出码由 depends_on 它的 coze-server 反映出来。
+    networks:
+      - fenix-server
+  s3-init:
+    # 一次性初始化（job 语义：执行完即退出，不常驻、不 restart），按顺序做完才放 coze-server / milvus 起来：
+    #   等共享 rustfs 可用 → 幂等创建本栈的两个桶（opencoze / milvus）→ 用同一份凭据自检 → 播种画布图标。
+    # 具体分支与报错文案见 docker/workflow/init-s3.sh（本目录的交付面文件，随目录一起交付）。
+    # 为什么需要它：建桶与图标播种原先写在栈内 minio 容器的 entrypoint 里（上游形态）；minio 收敛到共享
+    #   rustfs 后那段初始化没有归属，改由本服务承担。顺带把「桶一定存在」变成 coze-server 的启动前置，
+    #   而不是依赖上游自己的 createBucketIfNeed——它固定用 `cn-north-1` 建桶，在共享实例上是个多余变量。
+    # 幂等：PUT /<bucket> 命中已存在的桶时返回 409，脚本按「已存在」处理；重跑不动桶里任何对象。
+    # 镜像复用 docker/common/ 的 rustfs 同款 tag（仓库已有镜像，不新增来源）：镜像里的 curl 8.22.0 原生
+    #   支持 --aws-sigv4，建桶不需要 mc——仓库里带 mc 的只有 MinIO 镜像，用它等于把要收敛掉的制品引回来。
+    image: rustfs/rustfs:1.0.1
+    restart: "no"
+    # 只跟共享 rustfs 通信，因此只接 fenix-server（不需要项目默认网络）。
+    environment:
+      # 容器内地址写显式值（不插值同名宿主键，文档 §8.4）：rustfs 是共享实例在 fenix-server 上的服务名。
+      S3_ENDPOINT: rustfs:9000
+      # 凭据是共享键（仓库根 .env）；缺省值与 common 的默认值一致，独立部署时按同一份根 .env 填。
+      S3_ACCESS_KEY: ${RUSTFS_ACCESS_KEY:-fenix}
+      S3_SECRET_KEY: ${RUSTFS_SECRET_KEY:-fenix-local-dev}
+      # SigV4 签名域：RustFS 的默认 region。共享实例若改了 RUSTFS_REGION，这里必须同步（脚本头有说明）。
+      S3_REGION: ${RUSTFS_REGION:-us-east-1}
+    volumes:
+      # create_host_path: false → 脚本缺失时直接报错，而不是被 docker 静默建成一个同名目录
+      - type: bind
+        source: ./init-s3.sh
+        target: /init/init-s3.sh
+        read_only: true
+        bind:
+          create_host_path: false
+      # 图标播种源：仍是上游 volumes/minio 下的静态图标目录（原 minio 容器挂的就是这两份，路径不变）。
+      # 这里用短语法（不设 create_host_path: false）：目录缺失时 docker 会建空的，脚本第 ④ 步会以
+      # 「里面没有文件」出声——图标不是就绪前提，不该把整个栈卡死（见脚本头「例外」一段）。
+      - ${WORKFLOW_STUDIO_DIR:?Set an absolute WORKFLOW_STUDIO_DIR}/docker/volumes/minio/default_icon:/seed/default_icon:ro
+      - >-
+        ${WORKFLOW_STUDIO_DIR:?Set an absolute
+        WORKFLOW_STUDIO_DIR}/docker/volumes/minio/official_plugin_icon:/seed/official_plugin_icon:ro
+    # 初始化逻辑单独成文件（docker/workflow/init-s3.sh），只读挂载后由 /bin/sh 解释执行。
+    # 必须显式覆盖 entrypoint：镜像自带的 entrypoint 会把参数当成 rustfs 启动参数劫持掉。
+    entrypoint: ["/bin/sh", "/init/init-s3.sh"]
+    # 没有 depends_on：共享 rustfs 属于另一个 Compose 项目，Compose 只允许依赖本项目内已定义的服务
+    # （写 rustfs 会直接报 "depends on undefined service"）；就绪判定与失败诊断都在脚本里，
+    # 非零退出码由 depends_on 它的 coze-server 与 milvus 反映出来。
+    networks:
+      - fenix-server
+  redis:
+    image: bitnamilegacy/redis:8.0
+    container_name: coze-redis
+    restart: always
+    user: root
+    privileged: true
+    env_file:
+      - ${WORKFLOW_STUDIO_DIR:?Set an absolute WORKFLOW_STUDIO_DIR}/docker/.env
+    environment:
+      - REDIS_AOF_ENABLED=${REDIS_AOF_ENABLED:-no}
+      - REDIS_PORT_NUMBER=${REDIS_PORT_NUMBER:-6379}
+      - REDIS_IO_THREADS=${REDIS_IO_THREADS:-4}
+      - ALLOW_EMPTY_PASSWORD=${ALLOW_EMPTY_PASSWORD:-yes}
+    volumes:
+      - ${WORKFLOW_STUDIO_DIR:?Set an absolute WORKFLOW_STUDIO_DIR}/docker/data/bitnami/redis:/bitnami/redis/data:rw,Z
+    command: |
+      bash -c "
+        /opt/bitnami/scripts/redis/setup.sh
+        # Set proper permissions for data directories
+        chown -R redis:redis /bitnami/redis/data
+        chmod g+s /bitnami/redis/data
+
+        exec /opt/bitnami/scripts/redis/entrypoint.sh /opt/bitnami/scripts/redis/run.sh
+      "
+    healthcheck:
+      test:
+        - CMD
+        - redis-cli
+        - ping
+      interval: 5s
+      timeout: 10s
+      retries: 10
+      start_period: 10s
+  elasticsearch:
+    image: bitnamilegacy/elasticsearch:8.18.0
+    container_name: coze-elasticsearch
+    restart: always
+    user: root
+    privileged: true
+    env_file:
+      - ${WORKFLOW_STUDIO_DIR:?Set an absolute WORKFLOW_STUDIO_DIR}/docker/.env
+    environment:
+      - TEST=1
+    volumes:
+      - >-
+        ${WORKFLOW_STUDIO_DIR:?Set an absolute
+        WORKFLOW_STUDIO_DIR}/docker/data/bitnami/elasticsearch:/bitnami/elasticsearch/data
+      - >-
+        ${WORKFLOW_STUDIO_DIR:?Set an absolute
+        WORKFLOW_STUDIO_DIR}/docker/volumes/elasticsearch/elasticsearch.yml:/opt/bitnami/elasticsearch/config/my_elasticsearch.yml
+      - >-
+        ${WORKFLOW_STUDIO_DIR:?Set an absolute
+        WORKFLOW_STUDIO_DIR}/docker/volumes/elasticsearch/analysis-smartcn.zip:/opt/bitnami/elasticsearch/analysis-smartcn.zip:rw,Z
+      - >-
+        ${WORKFLOW_STUDIO_DIR:?Set an absolute
+        WORKFLOW_STUDIO_DIR}/docker/volumes/elasticsearch/setup_es.sh:/setup_es.sh
+      - >-
+        ${WORKFLOW_STUDIO_DIR:?Set an absolute
+        WORKFLOW_STUDIO_DIR}/docker/volumes/elasticsearch/es_index_schema:/es_index_schema
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - curl -f http://localhost:9200 && [ -f /tmp/es_plugins_ready ] && [ -f /tmp/es_init_complete ]
+      interval: 5s
+      timeout: 10s
+      retries: 10
+      start_period: 10s
+    command: |
+      bash -c "
+        /opt/bitnami/scripts/elasticsearch/setup.sh
+        # Set proper permissions for data directories
+        chown -R elasticsearch:elasticsearch /bitnami/elasticsearch/data
+        chmod g+s /bitnami/elasticsearch/data
+
+        # Create plugin directory
+        mkdir -p /bitnami/elasticsearch/plugins;
+
+        # Unzip plugin to plugin directory and set correct permissions
+        echo 'Installing smartcn plugin...';
+        if [ ! -d /opt/bitnami/elasticsearch/plugins/analysis-smartcn ]; then
+
+          # Download plugin package locally
+          echo 'Copying smartcn plugin...';
+          cp /opt/bitnami/elasticsearch/analysis-smartcn.zip /tmp/analysis-smartcn.zip
+
+          elasticsearch-plugin install file:///tmp/analysis-smartcn.zip
+          if [[ "$$?" != "0" ]]; then
+            echo 'Plugin installation failed, exiting operation';
+            rm -rf /opt/bitnami/elasticsearch/plugins/analysis-smartcn
+            exit 1;
+          fi;
+          rm -f /tmp/analysis-smartcn.zip;
+        fi;
+
+        # Create marker file indicating plugin installation success
+        touch /tmp/es_plugins_ready;
+        echo 'Plugin installation successful, marker file created';
+
+        # Start initialization script in background
+        (
+          echo 'Waiting for Elasticsearch to be ready...'
+          until curl -s -f http://localhost:9200/_cat/health >/dev/null 2>&1; do
+            echo 'Elasticsearch not ready, waiting...'
+            sleep 2
+          done
+          echo 'Elasticsearch is ready!'
+
+          # Run ES initialization script
+          echo 'Running Elasticsearch initialization...'
+          sed 's/\r$$//' /setup_es.sh > /setup_es_fixed.sh
+          chmod +x /setup_es_fixed.sh
+          /setup_es_fixed.sh --index-dir /es_index_schema
+          # Create marker file indicating initialization completion
+          touch /tmp/es_init_complete
+          echo 'Elasticsearch initialization completed successfully!'
+        ) &
+
+        # Start Elasticsearch
+        exec /opt/bitnami/scripts/elasticsearch/entrypoint.sh /opt/bitnami/scripts/elasticsearch/run.sh
+        echo -e "⏳ Adjusting Elasticsearch disk watermark settings..."
+      "
+  etcd:
+    image: bitnamilegacy/etcd:3.5
+    container_name: coze-etcd
+    user: root
+    restart: always
+    privileged: true
+    env_file:
+      - ${WORKFLOW_STUDIO_DIR:?Set an absolute WORKFLOW_STUDIO_DIR}/docker/.env
+    environment:
+      - ETCD_AUTO_COMPACTION_MODE=revision
+      - ETCD_AUTO_COMPACTION_RETENTION=1000
+      - ETCD_QUOTA_BACKEND_BYTES=4294967296
+      - ALLOW_NONE_AUTHENTICATION=yes
+    volumes:
+      - ${WORKFLOW_STUDIO_DIR:?Set an absolute WORKFLOW_STUDIO_DIR}/docker/data/bitnami/etcd:/bitnami/etcd:rw,Z
+      - >-
+        ${WORKFLOW_STUDIO_DIR:?Set an absolute
+        WORKFLOW_STUDIO_DIR}/docker/volumes/etcd/etcd.conf.yml:/opt/bitnami/etcd/conf/etcd.conf.yml:ro,Z
+    command: |
+      bash -c "
+        /opt/bitnami/scripts/etcd/setup.sh
+        # Set proper permissions for data and config directories
+        chown -R etcd:etcd /bitnami/etcd
+        chmod g+s /bitnami/etcd
+
+        exec /opt/bitnami/scripts/etcd/entrypoint.sh /opt/bitnami/scripts/etcd/run.sh
+      "
+    healthcheck:
+      test:
+        - CMD
+        - etcdctl
+        - endpoint
+        - health
+      interval: 5s
+      timeout: 10s
+      retries: 10
+      start_period: 10s
+  milvus:
+    container_name: coze-milvus
+    image: milvusdb/milvus:v2.5.10
+    user: root
+    privileged: true
+    restart: always
+    env_file:
+      - ${WORKFLOW_STUDIO_DIR:?Set an absolute WORKFLOW_STUDIO_DIR}/docker/.env
+    command: |
+      bash -c "
+        # Set proper permissions for data directories
+        chown -R root:root /var/lib/milvus
+        chmod g+s /var/lib/milvus
+
+        exec milvus run standalone
+      "
+    security_opt:
+      - seccomp:unconfined
+    environment:
+      ETCD_ENDPOINTS: etcd:2379
+      # 对象存储是共享 rustfs（栈内 minio 已删除）：地址写显式服务名，凭据只取仓库根 .env 的 RUSTFS_*。
+      # 变量的 MINIO_* 拼写是 Milvus 自己的配置键，改不了——它说的是「S3 兼容存储」，不是「MinIO 服务」。
+      MINIO_ADDRESS: rustfs:9000
+      MINIO_BUCKET_NAME: milvus
+      MINIO_ACCESS_KEY_ID: ${RUSTFS_ACCESS_KEY:-fenix}
+      MINIO_SECRET_ACCESS_KEY: ${RUSTFS_SECRET_KEY:-fenix-local-dev}
+      MINIO_USE_SSL: false
+      LOG_LEVEL: debug
+    volumes:
+      - ${WORKFLOW_STUDIO_DIR:?Set an absolute WORKFLOW_STUDIO_DIR}/docker/data/milvus:/var/lib/milvus:rw,Z
+    healthcheck:
+      test:
+        - CMD
+        - curl
+        - -f
+        - http://localhost:9091/healthz
+      interval: 5s
+      timeout: 10s
+      retries: 10
+      start_period: 10s
+    depends_on:
+      etcd:
+        condition: service_healthy
+      # 共享 rustfs 在另一个 Compose 项目里，跨项目写不出健康依赖；改成本栈的桶初始化跑完为前置——
+      # s3-init 自己带对共享实例的等待与诊断，milvus 不必再各自重试（失败码也会在这里显式卡住）。
+      s3-init:
+        condition: service_completed_successfully
+    networks:
+      # 默认网络：etcd 等服务名在这里解析。
+      # fenix-server：按服务名 rustfs 访问共享对象存储——跨项目 DNS 名只在这个网络上（文档 §3）。
+      default: {}
+      fenix-server: {}
+  nsqlookupd:
+    image: nsqio/nsq:v1.2.1
+    container_name: coze-nsqlookupd
+    command: /nsqlookupd
+    restart: always
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - nsqlookupd --version
+      interval: 5s
+      timeout: 10s
+      retries: 10
+      start_period: 10s
+  nsqd:
+    image: nsqio/nsq:v1.2.1
+    container_name: coze-nsqd
+    command: /nsqd --lookupd-tcp-address=nsqlookupd:4160 --broadcast-address=nsqd
+    restart: always
+    depends_on:
+      nsqlookupd:
+        condition: service_healthy
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - /nsqd --version
+      interval: 5s
+      timeout: 10s
+      retries: 10
+      start_period: 10s
+  nsqadmin:
+    image: nsqio/nsq:v1.2.1
+    container_name: coze-nsqadmin
+    command: /nsqadmin --lookupd-http-address=nsqlookupd:4161
+    restart: always
+    depends_on:
+      nsqlookupd:
+        condition: service_healthy
+  coze-server:
+    image: ghcr.io/konghayao/workflow-studio-server:${WORKFLOW_STUDIO_TAG:?Set WORKFLOW_STUDIO_TAG}
+    restart: always
+    container_name: coze-server
+    env_file:
+      - ${WORKFLOW_STUDIO_DIR:?Set an absolute WORKFLOW_STUDIO_DIR}/docker/.env
+    # 对象存储改指共享 rustfs（栈内 minio 已删除）。这些键**覆盖**上面 env_file 里的上游同名值——
+    # Compose 里 environment 优先于 env_file，所以上游 docker/.env 不需要为这次收敛改一个字。
+    # 上游那份里的 MINIO_ROOT_USER / MINIO_ROOT_PASSWORD / MINIO_DEFAULT_BUCKETS 从此没人读：
+    # 它们是 minio 服务端自己的键，留着无害，但不要再当成生效配置。
+    environment:
+      # 地址写显式服务名，不插值同名宿主键（文档 §8.4）；rustfs 在 fenix-server 上。
+      MINIO_ENDPOINT: rustfs:9000
+      # 预签名 URL 的签名域：必须同时满足两件事——① 出口代理能把它改写成 workflow-storage
+      # （nginx.conf 的 sub_filter 写死了这个值）；② 存储虚拟主机的 Host 与它逐字相同（否则签名不匹配）。
+      MINIO_API_HOST: http://rustfs:9000
+      MINIO_AK: ${RUSTFS_ACCESS_KEY:-fenix}
+      MINIO_SK: ${RUSTFS_SECRET_KEY:-fenix-local-dev}
+      # 字符串形式的 "false"：Compose 的 environment 只收字符串，写裸 false 会被当成布尔值。
+      MINIO_USE_SSL: "false"
+      # 桶名显式写死（上游默认也是它）：平台按 `/opencoze/` 前缀识别存储直链
+      # （packages/resources/workflow-v2/src/server/services/canvas-passthrough.ts），且 s3-init 建的就是这个桶。
+      # 写在这里是为了让「谁读哪个桶」在评审时一眼可比，改名要三处一起改。
+      STORAGE_BUCKET: opencoze
+    volumes:
+      - ${WORKFLOW_STUDIO_DIR:?Set an absolute WORKFLOW_STUDIO_DIR}/docker/.env:/app/.env
+      - ${WORKFLOW_STUDIO_DIR:?Set an absolute WORKFLOW_STUDIO_DIR}/backend/conf:/app/resources/conf
+    depends_on:
+      # 共享 MySQL / rustfs 都在顶层项目（另一个 Compose 项目）里，跨项目不能声明健康依赖：改由本栈的
+      # 一次性初始化服务承担——mysql-init 成功退出即代表共享实例可用且上游 schema 已应用；s3-init 成功
+      # 退出即代表共享 rustfs 可用且 opencoze / milvus 两个桶都已就绪。
+      mysql-init:
+        condition: service_completed_successfully
+      s3-init:
+        condition: service_completed_successfully
+      redis:
+        condition: service_healthy
+      elasticsearch:
+        condition: service_healthy
+      milvus:
+        condition: service_healthy
+    networks:
+      # 默认网络：redis / elasticsearch / milvus / nsq 等服务名在这里解析。
+      # fenix-server：按服务名 mysql 访问共享实例（上游 .env 里的 MYSQL_HOST 因此不需要改），
+      # 并按服务名 rustfs 访问共享对象存储。
+      # 代价：本容器对 fenix-server 上的一切可见——共享 redis 同时启用时，`redis` 在两个网络同名，
+      # 解析会歧义（见 README「已知冲突」）。
+      default: {}
+      fenix-server: {}
+    command:
+      - /app/opencoze
+  coze-web:
+    image: ghcr.io/konghayao/workflow-studio-web:${WORKFLOW_STUDIO_TAG:?Set WORKFLOW_STUDIO_TAG}
+    container_name: coze-web
+    restart: always
+    ports:
+      - ${WEB_LISTEN_ADDR:?Set WEB_LISTEN_ADDR}:80
+    volumes:
+      - ${WORKFLOW_STUDIO_DIR:?Set an absolute WORKFLOW_STUDIO_DIR}/docker/nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+      - type: bind
+        source: ./nginx.conf
+        target: /etc/nginx/conf.d/default.conf
+        read_only: true
+        bind:
+          create_host_path: false
+      - type: bind
+        source: ${WORKFLOW_STUDIO_DIR:?Set an absolute WORKFLOW_STUDIO_DIR}/frontend/apps/coze-studio/dist
+        target: /usr/share/nginx/html
+        read_only: true
+        bind:
+          create_host_path: false
+    depends_on:
+      - coze-server
+    networks:
+      default: {}
+      fenix-server:
+        aliases:
+          - workflow-upstream
+          - workflow-storage
+networks:
+  fenix-server:
+    name: fenix-server
+    external: true

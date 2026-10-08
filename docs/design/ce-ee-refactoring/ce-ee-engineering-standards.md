@@ -429,9 +429,8 @@ packages/resources/agent-config/db/data-migrations/
 | `check-module-boundaries` | 检查禁止依赖与公开入口 |
 | `migrate` | 运行当前仓库的 DDL 迁移 |
 | `run-data-migrations` | 执行已登记且幂等的数据迁移 |
-| `release` | 串联迁移、部署与失败判断 |
 
-`deploy/compose` 使用“基础编排 + 可选 profile/overlay”：主服务、数据库、模型网关、知识库、Sandbox 等可独立启停。模块声明其依赖服务与健康检查；部署入口根据静态装配的模块生成/选择 profile，而不是由业务代码自行启动 Docker。
+`docker/` 承载编排：顶层 `docker-compose.yml` 是 dev / prod 共用的主服务与基础服务编排，`docker/<name>/` 是每个可选依赖的独立编排（各自的 `docker-compose.yml` + `.env.example` + README），由 `docker/deploy.sh` 按 `docker/deploy.env` 的 feature 开关启停；依赖之间只经共享网络 `fenix-server` 互通，辅助服务留在各自项目网络。部署与发布顺序由脚本串联（拉镜像 → DDL 迁移 → 数据迁移 → 启动），不由业务代码自行启动 Docker，也不再有由模块声明生成的部署产物。权威文档：`docs/operations/docker-topology.md`。
 
 本节仅规定通用构建及部署职责。
 

@@ -1,18 +1,175 @@
+# docker/ragflow/ —— RAGFlow 检索栈 + Office 转 PDF（knowledge 模块使用）
+# 权威文档：docs/operations/docker-topology.md §3（网络分层）、§5（共享对象存储与 ragflow 特例）、
+#           §5.1（共享基础设施）、§6（依赖目录契约）
+#
+# 本栈消费 docker/common/ 的**一个**共享服务（开关在 docker/deploy.env）：
+#   - mysql（FENIX_FEATURE_MYSQL）：知识库元数据库；容器内地址 mysql:3306（fenix-server 上的服务名）
+# 对象存储是**特例：本栈自带**（栈内服务 ragflow-rustfs，只在 ragflow-net）——RAGFlow 用多桶模式（每个知识库
+# kb_id、每个文件目录 parent_id 是实例上一个真实桶，桶名是运行期 UUID，且这是与存量数据一致的布局），
+# 而共享实例只有**全实例一对凭据**、实例侧也给不出「按消费方的桶策略」，在共享实例上无法为它建立有效的隔离
+# 边界。把它隔离到自己的实例后，越权与跨栈桶命名空间问题同时消失。边界（照抄不放大）：**只用 RustFS 镜像**
+# （rustfs/rustfs:1.0.1，与 common 同版本，不得引回 MinIO）、不接 fenix-server、不发布宿主端口、服务名避开
+# 保留名 `rustfs`。完整裁定与理由见 README「本栈自带的 rustfs（为什么它是特例）」，文档口径见 §5。
+# 栈内保留的服务：ragflow-redis（Valkey，不换共享 redis 的证据见 README「共享 Redis」）、infinity、
+# ragflow-rustfs、gotenberg。
+#
+# 启动顺序（不变量）：顶层项目先起（共享实例与 fenix-server 由它创建）→ 本目录两个一次性初始化服务
+# 成功退出 → ragflow 启动。跨项目的 depends_on 表达不了（实测报 "depends on undefined service"），
+# 所以「共享实例是否就绪」由初始化服务自己等：带超时、按错误分支给出判定，非零退出码经
+# depends_on: service_completed_successfully 反映到 ragflow 上，失败不静默。
+# 对象存储这一处已被简化：ragflow-rustfs 是同项目服务，就绪直接由 depends_on: service_healthy 保证，
+# 不需要跨项目等待——跨项目的等待因此只剩 mysql 一处（ragflow-mysql-init）。
+#
+# 独立项目启动（共享实例已在同一台机器上跑）。不经 deploy.sh 时自己喂两个 env 文件：指定 --env-file 后
+# compose 不再自动读项目目录的 .env，**后一个优先**，因此仓库根 .env 放最后（共享键只定义在那里，§8.3）：
+#   cp docker/ragflow/.env.example docker/ragflow/.env      # 填 RAGFLOW_MYSQL_PASSWORD
+#   docker compose --env-file docker/ragflow/.env --env-file ./.env \
+#     -f docker/ragflow/docker-compose.yml up -d
+# 随主服务一键启动：docker/deploy.env 里 FENIX_FEATURE_RAGFLOW=true（并打开 FENIX_FEATURE_MYSQL，
+# 开关之间不自动联动，见 §6 末）。对象存储不再是本栈要打开的开关——FENIX_FEATURE_S3 只服务 docker/workflow/。
+#
+# 网络：出口 `ragflow` 与 `gotenberg` 接入 external 网络 fenix-server（主服务按 http://ragflow:9380 与
+# http://gotenberg:3000 访问它们）；ragflow-mysql-init 也接 fenix-server——那是唯一能按服务名寻址共享实例的
+# 地方，它只在初始化期间存在（restart: "no"）。这三个服务名因此都是 fenix-server 上的跨项目 DNS 名，必须
+# 全局唯一：本栈刻意不用 `mysql` / `redis` / `rustfs` 这些保留名（§3 规则 7）——`ragflow` 容器同时挂在两张网上，
+# 栈内若也有一个叫 `rustfs` 的服务，它解析这个名字时两条记录都会被返回（取哪条取决于返回顺序）。处置与栈内
+# Valkey 相同：`ragflow-redis`、本栈自带的对象存储 `ragflow-rustfs`。
+# ragflow-net（本项目网络）：ragflow-redis / infinity / ragflow-rustfs / ragflow-s3-init 在这里；
+# ragflow-mysql-init 只挂 fenix-server（它不访问栈内任何服务），ragflow 同时挂在两张网上。
+# 宿主端口只绑回环（18080 / 19380 / 3200），仅供本地源码调试；容器形态一律走 fenix-server，不发布宿主端口。
+# ragflow-rustfs 同样不发布宿主端口（要本机调试时按该服务内被注释的两行放开，且只绑回环）。
+#
+# 数据：ragflow 的日志与运行数据仍 bind 在本目录 ./ragflow_logs 与 ./ragflow_data；**对象数据回本目录**
+# ./data/rustfs（本栈实例的 bind，契约 §13.8）；元数据仍在共享实例（docker/common/data/mysql）。
+# 本目录的历史布局（./ragflow_redis_data、./ragflow_infinity_data）本次不动——新旧两种布局的对照见
+# README「数据落点」；旧目录 ./ragflow_mysql_data、./ragflow_minio_data 的迁移与保留条件见 README「数据搬迁」。
+# 镜像 tag 一律固定版本、写在本文件里，不经环境变量插值（§13.7）。
+
 networks:
   ragflow-net:
+    # 项目内层网络：栈内辅助服务（ragflow-redis / infinity）只在这里
     driver: bridge
+  fenix-server:
+    # 主服务层网络：顶层项目（仓库根 docker-compose.yml）创建，本目录只引用；
+    # 因此本目录启动前顶层必须已启动（§3 规则 5）。
+    external: true
 
 services:
+  # ── 一次性初始化：在共享 MySQL 里建本栈的库与账号 ──────────────────────────────
+  # 属本目录交付面：逻辑在 ./init-mysql.sh，只读挂载后由 /bin/sh 解释执行（compose 里保持
+  # 「哪些服务、什么顺序、挂什么」可读，分支与报错文案留给脚本）。
+  ragflow-mysql-init:
+    # 镜像与共享实例同版本（mysql:8.4.5）：SQL 语法与认证插件与实例一致，也自带 mysql 客户端；
+    # 与 docker/workflow/ 的 mysql-init 同一形态、同一镜像来源（不新增镜像）。
+    image: mysql:8.4.5
+    restart: "no"
+    # 必须显式覆盖 entrypoint：镜像自带的 entrypoint 会把参数当 mysqld 启动参数劫持掉。
+    entrypoint: ["/bin/sh", "/init/init-mysql.sh"]
+    environment:
+      # 容器内地址写显式值，不插值同名宿主键（§8.4）：mysql 是共享实例在 fenix-server 上的服务名。
+      MYSQL_HOST: mysql
+      MYSQL_DATABASE: rag_flow
+      MYSQL_USER: ragflow
+      # 本栈账号的口令：栈私有键，只定义在本目录 .env（键与取值见 .env.example）。
+      MYSQL_PASSWORD: ${RAGFLOW_MYSQL_PASSWORD:?RAGFLOW_MYSQL_PASSWORD 未设置：请在 docker/ragflow/.env 配置（共享 MySQL 里 ragflow 账号的口令），库与账号由 ragflow-mysql-init 自动创建，见 docker/ragflow/README.md}
+      # 共享实例的超级用户口令：共享键，只在仓库根 .env 定义（§8.3）；缺省值与 common 的缺省值一致。
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:-root}
+    volumes:
+      # create_host_path: false → 脚本缺失时直接报错，而不是被 docker 静默建成一个同名目录
+      - type: bind
+        source: ./init-mysql.sh
+        target: /init/init-mysql.sh
+        read_only: true
+        bind:
+          create_host_path: false
+    # 没有 depends_on：共享 MySQL 属于另一个 Compose 项目，Compose 只允许依赖本项目内已定义的服务
+    # （写 mysql 会直接报 "depends on undefined service"）；就绪判定在脚本里，退出码由 depends_on 它的
+    # ragflow 反映出来。
+    networks:
+      - fenix-server
+
+  # ── 一次性初始化：探测本栈 rustfs 实例的能力（建桶 / 读写 / 删对象） ──────────────
+  ragflow-s3-init:
+    # 复用本栈已有的 ragflow 镜像：不新增镜像来源，而且它自带的正是 RAGFlow 运行期用的 minio 客户端
+    # （minio-py 7.2.4），于是这一步同时也是「RAGFlow 能否与 rustfs 通话」的兼容性验证——
+    # path-style 寻址、GetBucketLocation 区域探测、SigV4 签名、建桶 + 读写 + 删对象的能力，全部在启动前走一遍。
+    # 多桶模式下本栈的桶由 RAGFlow 运行期自建（桶名是 kb_id / parent_id 这样的 UUID，事先不存在），
+    # 因此本服务建的是它自己的探测桶，跑完即删（详见 ./init-s3.py 的头注释）。
+    image: infiniflow/ragflow:v0.26.0
+    restart: "no"
+    # 直接用 python3 跑脚本（镜像内 PATH 已指向自带 venv，minio 就在里面）：S3 初始化逻辑用客户端库
+    # 写比用 shell + 手搓 SigV4 可靠得多，也不需要额外引入 mc / aws-cli 这类客户端镜像。
+    entrypoint: ["python3", "/init/init-s3.py"]
+    environment:
+      # 容器内地址写显式值：ragflow-rustfs 是本栈实例在 ragflow-net 上的服务名。
+      S3_ENDPOINT: ragflow-rustfs:9000
+      # 本栈私有凭据：只定义在本目录 .env（键见 .env.example），**不再读仓库根 .env 的共享 RUSTFS_***
+      # ——那两个键只服务 docker/workflow/，混用会让「探测的是哪个实例」变得说不清。
+      S3_ACCESS_KEY: ${RAGFLOW_S3_ACCESS_KEY:-ragflow}
+      S3_SECRET_KEY: ${RAGFLOW_S3_SECRET_KEY:-ragflow-local-dev}
+    volumes:
+      - type: bind
+        source: ./init-s3.py
+        target: /init/init-s3.py
+        read_only: true
+        bind:
+          create_host_path: false
+    depends_on:
+      # 同项目内成立：实例就绪由健康检查保证。这是本栈相对共享实例的简化——不再需要跨项目的等待。
+      ragflow-rustfs:
+        condition: service_healthy
+    networks:
+      # 只访问同项目的对象存储实例，因此不进 fenix-server（接入面越小，跨项目 DNS 名越不容易撞车）。
+      - ragflow-net
+
+  # ── 本栈自带的对象存储（**特例**：不接 docker/common/ 的共享 rustfs） ─────────────────
+  # 为什么是特例：RAGFlow 用多桶模式（每个知识库 kb_id、每个文件目录 parent_id 是运行期 UUID 的**真实桶**，
+  # 且这是与存量数据一致的布局），而共享实例只有全实例一对凭据、实例侧也给不出「按消费方的桶策略」——
+  # 在共享实例上为它建立有效的隔离边界做不到。隔离到自己的实例后，越权与跨栈桶命名空间问题同时消失。
+  # 裁定与四条边界见 README「本栈自带的 rustfs（为什么它是特例）」与 docs/operations/docker-topology.md §5。
+  ragflow-rustfs:
+    # 只用 RustFS（不得引回 MinIO）；版本与 common 的共享实例一致，便于两处对照排障。
+    image: rustfs/rustfs:1.0.1
+    restart: unless-stopped
+    environment:
+      # 与 docker/common/docker-compose.yml 的 rustfs 逐字同参（卷路径与控制台开关），差异只在凭据：
+      # 这里用**本栈私有键**，默认值与共享实例那对（fenix / fenix-local-dev）刻意不同——同一台机器上两套
+      # 实例用同一对凭据，会造成「其实是同一个实例」的假象，排障时会指错对象。
+      RUSTFS_VOLUMES: /data
+      RUSTFS_ACCESS_KEY: ${RAGFLOW_S3_ACCESS_KEY:-ragflow}
+      RUSTFS_SECRET_KEY: ${RAGFLOW_S3_SECRET_KEY:-ragflow-local-dev}
+      RUSTFS_CONSOLE_ENABLE: "true"
+    volumes:
+      # 契约 §13.8：数据一律 bind 同级 ./data/...（本目录的历史布局 ./ragflow_*_data 本次不动，
+      # 新旧两种布局的对照见 README「数据落点」）。
+      - ./data/rustfs:/data
+    # S3 API（9000）与控制台（9001）默认只在内网可用；本机调试需要时按下面两行放开，且只绑回环（契约 §6.4）。
+    # ports:
+    #     - "127.0.0.1:9000:9000"
+    #     - "127.0.0.1:9001:9001"
+    healthcheck:
+      # 逐字照抄 common 的 rustfs：镜像行为只在 common 上被实测过，不引入未验证的取值差异。
+      test: ["CMD", "curl", "-f", "http://localhost:9000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+    networks:
+      # 只在项目内网络：它不是共享基础设施，没有跨项目寻址需求，因此不接 fenix-server，也不发布宿主端口。
+      # 服务名不叫 `rustfs`：`rustfs` 是共享实例在 fenix-server 上的保留名（§3 规则 7）。ragflow 容器同时
+      # 挂在两张网上，栈内若也有一个 `rustfs`，它解析这个名字时两条记录都会被返回——与 `ragflow-redis` 同一处置。
+      - ragflow-net
+
   ragflow:
     image: infiniflow/ragflow:v0.26.0
     restart: unless-stopped
     command:
       - --enable-adminserver
     ports:
-      # RAGFlow Web 页面：避免占用 80
-      - "18080:80"
-      # RAGFlow HTTP API：避免占用 9380
-      - "19380:9380"
+      # RAGFlow Web 页面：只绑回环，用浏览器拿 API key、建知识库
+      - "127.0.0.1:${RAGFLOW_WEB_PORT:-18080}:80"
+      # RAGFlow HTTP API：只绑回环，供本地源码运行（bun run dev）的 RAGFLOW_API_URL 使用
+      - "127.0.0.1:${RAGFLOW_API_PORT:-19380}:9380"
     expose:
       - "80"
       - "9380"
@@ -22,21 +179,36 @@ services:
       DOC_ENGINE: infinity
       API_PROXY_SCHEME: python
 
+      # 共享 MySQL（docker/common/，开关 FENIX_FEATURE_MYSQL）：地址是 fenix-server 上的服务名 mysql。
+      # 库与账号由 ragflow-mysql-init 幂等创建，ragflow 只拿到「自己那个库」的权限（不是实例的应用账号，
+      # 也不是 root）——共享实例上按栈分账号，是为了让一个栈的口令轮换、越权访问都不外溢到别的栈。
       MYSQL_HOST: mysql
       MYSQL_PORT: 3306
-      MYSQL_USER: root
-      MYSQL_PASSWORD: ${RAGFLOW_MYSQL_PASSWORD:-ragflow_root_2026}
+      MYSQL_USER: ragflow
+      MYSQL_PASSWORD: ${RAGFLOW_MYSQL_PASSWORD:?RAGFLOW_MYSQL_PASSWORD 未设置：请在 docker/ragflow/.env 配置（共享 MySQL 里 ragflow 账号的口令），库与账号由 ragflow-mysql-init 自动创建，见 docker/ragflow/README.md}
       MYSQL_DBNAME: rag_flow
       MYSQL_MAX_PACKET: 1073741824
 
-      REDIS_HOST: redis
+      # 栈内 Valkey：不换共享 redis 的四条证据见 README「共享 Redis」；服务名已从 `redis` 改为
+      # `ragflow-redis`——共享 redis 的服务名是保留名，ragflow 同时挂在两张网上，同名会让 DNS 解析歧义。
+      REDIS_HOST: ragflow-redis
       REDIS_PORT: 6379
       REDIS_PASSWORD: ${RAGFLOW_REDIS_PASSWORD:-ragflow_redis_2026}
 
-      MINIO_HOST: minio
+      # 本栈自带的对象存储（栈内服务 ragflow-rustfs，只在 ragflow-net）：**特例**，不接共享 rustfs——
+      # 裁定与理由见本文件头部与 README「本栈自带的 rustfs（为什么它是特例）」。
+      # **刻意不设桶名** —— 这是多桶模式，不是漏配：RAGFlow 的「逻辑桶」（知识库 kb_id、文件目录 parent_id）
+      # 会成为本栈实例上的真实桶，且由 RAGFlow 在首次写入时自建（rag/utils/minio_conn.py 的 put()：
+      # `if not self.bucket and not self.conn.bucket_exists(bucket): make_bucket(bucket)`）——桶名是运行期
+      # UUID，任何初始化服务都无法事先建出来，所以本栈不再有「建桶」这一步（探测见 ragflow-s3-init）。
+      # 选多桶的理由：它与**既有存量数据布局一致**（旧栈内 MinIO 同样是每个逻辑桶一个桶），搬迁时对象键不用重打。
+      # 警告：事后擅自设回 `MINIO_BUCKET`（本编排里那行已删除；它对应上游 service_conf.yaml 的 `minio.bucket`）
+      # 会把键布局改成 `<逻辑桶>/<对象名>`（use_prefix_path 生效），使已有对象全部读不到——那是数据可见性回归，
+      # 必须先按 README「数据搬迁」做对象搬迁才能改，不要只加一行环境变量。
+      MINIO_HOST: ragflow-rustfs
       MINIO_PORT: 9000
-      MINIO_USER: ${RAGFLOW_MINIO_USER:-rag_flow}
-      MINIO_PASSWORD: ${RAGFLOW_MINIO_PASSWORD:-infini_rag_flow}
+      MINIO_USER: ${RAGFLOW_S3_ACCESS_KEY:-ragflow}
+      MINIO_PASSWORD: ${RAGFLOW_S3_SECRET_KEY:-ragflow-local-dev}
 
       INFINITY_HOST: infinity
       INFINITY_THRIFT_PORT: 23817
@@ -59,43 +231,47 @@ services:
       - ./ragflow_logs:/ragflow/logs
       - ./ragflow_data:/ragflow/data
     depends_on:
-      mysql:
+      # 两个初始化服务成功退出 = 共享 MySQL 里有库有账号、本栈实例的能力探测通过；失败时这里直接不放行
+      ragflow-mysql-init:
+        condition: service_completed_successfully
+      ragflow-s3-init:
+        condition: service_completed_successfully
+      # 对象存储是同项目服务，就绪由它自己的健康检查保证（不再需要跨项目等待，跨项目只剩 mysql 一处）
+      ragflow-rustfs:
         condition: service_healthy
-      redis:
-        condition: service_healthy
-      minio:
+      ragflow-redis:
         condition: service_healthy
       infinity:
         condition: service_healthy
     networks:
+      # 出口之一：接入主服务层（主服务按 http://ragflow:9380 访问它），同时留在栈内网络访问辅助服务（§3）
       - ragflow-net
+      - fenix-server
 
-  mysql:
-    image: mysql:8.0.39
+  # Office 文档转 PDF。由 knowledge 模块按 GOTENBERG_URL 直连，是「文档先转 PDF、再交给 RAGFlow 解析」
+  # 这条链路上的上游；并入本栈的理由就是它与 ragflow 同属一个能力的两个环节，共用一份 .env 与一次启停，
+  # 不再需要独立的 feature 开关（原 docker/gotenberg/ 目录与 FENIX_FEATURE_GOTENBERG 已退役）。
+  # 它不依赖栈内任何服务（ragflow-redis / infinity），因此只挂 fenix-server，不进 ragflow-net：
+  # 网络成员是「需要与主服务直接通信」的最小必要集，多挂一张网只会扩大栈间可达面（§3）。
+  # 宿主端口只供本地源码调试（GOTENBERG_URL=http://127.0.0.1:3200，与模块声明的默认值对齐）。
+  gotenberg:
+    image: gotenberg/gotenberg:8
     restart: unless-stopped
-    environment:
-      MYSQL_ROOT_PASSWORD: ${RAGFLOW_MYSQL_PASSWORD:-ragflow_root_2026}
-      MYSQL_DATABASE: rag_flow
-    command:
-      - --max_connections=1000
-      - --character-set-server=utf8mb4
-      - --collation-server=utf8mb4_unicode_ci
-      - --default-authentication-plugin=mysql_native_password
-      - --tls_version=TLSv1.2,TLSv1.3
-      - --binlog_expire_logs_seconds=604800
-    expose:
-      - "3306"
-    volumes:
-      - ./ragflow_mysql_data:/var/lib/mysql
-    healthcheck:
-      test: ["CMD", "mysqladmin", "ping", "-uroot", "-p${RAGFLOW_MYSQL_PASSWORD:-ragflow_root_2026}"]
-      interval: 10s
-      timeout: 10s
-      retries: 120
     networks:
-      - ragflow-net
+      - fenix-server
+    ports:
+      - "127.0.0.1:${GOTENBERG_PORT:-3200}:3000"
+    healthcheck:
+      test: ["CMD", "curl", "--silent", "--fail", "http://localhost:3000/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
 
-  redis:
+  # 栈内 Valkey。**保留而不是换成共享 redis**，理由与证据见 README「共享 Redis（为什么不换）」：
+  # 共享实例没有鉴权（无 requirepass），而 RAGFlow 的入口脚本在口令为空时会退回内置默认口令，
+  # 于是「把 RAGFlow 指到无口令实例」这条路径根本走不通；镜像与上游 valkey:8 一致，口令每次启动从命令行取。
+  # 服务名不加 `redis`：共享 redis 的服务名是保留名，ragflow 在两张网上，同名会造成解析歧义（§3 规则 7）。
+  ragflow-redis:
     image: valkey/valkey:8
     restart: unless-stopped
     command:
@@ -112,26 +288,6 @@ services:
       - ./ragflow_redis_data:/data
     healthcheck:
       test: ["CMD", "redis-cli", "-a", "${RAGFLOW_REDIS_PASSWORD:-ragflow_redis_2026}", "ping"]
-      interval: 10s
-      timeout: 10s
-      retries: 120
-    networks:
-      - ragflow-net
-
-  minio:
-    image: pgsty/minio:RELEASE.2026-03-25T00-00-00Z
-    restart: unless-stopped
-    command: ["server", "--console-address", ":9001", "/data"]
-    environment:
-      MINIO_ROOT_USER: ${RAGFLOW_MINIO_USER:-rag_flow}
-      MINIO_ROOT_PASSWORD: ${RAGFLOW_MINIO_PASSWORD:-infini_rag_flow}
-    expose:
-      - "9000"
-      - "9001"
-    volumes:
-      - ./ragflow_minio_data:/data
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
       interval: 10s
       timeout: 10s
       retries: 120

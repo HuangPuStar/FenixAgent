@@ -179,17 +179,17 @@ frpc 负责网络层自动重连；Cluster 负责状态恢复。代理请求遇�
 
 | 模式 | Compose | 网络要求 |
 | --- | --- | --- |
-| direct | `docker/opensandbox-server/docker-compose.dind.yml` | Cluster 必须能访问 Server 入站端口 |
+| direct | `docker/opensandbox-server/docker-compose.yml` | Cluster 必须能访问 Server 入站端口 |
 | tunnel | `docker/opensandbox-server-tunnel/docker-compose.yml` | Server 只需访问 frps 登录端口 |
 
 tunnel 配置下载后放在独立目录，执行：
 
 ```bash
 cd docker/opensandbox-server-tunnel
-docker compose up -d --build
+docker compose up -d
 ```
 
-独立 Compose 使用独立 project 和 Docker volume，不会覆盖 direct/dind 部署。
+独立 Compose 使用独立 project 与 bind 挂载的数据目录（`./data/`），不会覆盖 direct/dind 部署。
 
 ### 6.2 验证重点
 

@@ -2,6 +2,14 @@
 
 本目录只提供一种部署方式：单镜像、单容器 DinD。镜像内复用了官方 `docker:dind` 的 Docker daemon 初始化逻辑。
 
+契约与边界见 [`docs/operations/docker-topology.md`](../../docs/operations/docker-topology.md)（§3 网络分层、§6 依赖目录契约）。
+
+## 前置条件
+
+- Docker Engine + Compose v2（≥ 2.20），且允许特权容器与 `cgroup: host`。
+- 顶层项目已启动（`./docker/deploy.sh up` 或 `docker compose up -d`）：`fenix-server` 网络由顶层创建，本目录以 `external` 方式接入。
+- 本机至少预留数十 GB 给 `./data/docker`（DinD 内镜像与容器）与 `./workspace`（沙盒数据）。
+
 ## 启动
 
 ```bash
@@ -10,26 +18,40 @@ cp sandbox.toml.example sandbox.toml
 # 手动编辑 sandbox.toml：
 # 1. server.api_key：节点 API Key，注册到 Cluster 时使用相同值；
 # 2. docker.host_ip：Cluster 和调用方可以访问的本机 IP。
-mkdir -p data workspace offline
+mkdir -p data/docker data/opensandbox workspace offline
 
-docker compose -f docker-compose.dind.yml up -d --build
+docker compose up -d --build
 
 # 等待服务进入 healthy；DinD 首次启动通常需要十几秒
-docker compose -f docker-compose.dind.yml ps
+docker compose ps
 
 # 查看是否启动成功
 curl -fsS "http://127.0.0.1:${OPENSANDBOX_SERVER_PORT:-8090}/health"
 ```
 
-DinD 使用 `privileged` 和 `cgroup: host`，并通过 `docker-data` 持久化内部 Docker 镜像、容器和 volume。不要挂载宿主机 `/var/run/docker.sock`；该部署使用容器内独立的 Docker daemon。沙盒端口范围必须与 `.env` 和 `sandbox.toml` 保持一致。
+也可由一键入口启动：在 `docker/deploy.env` 里打开 `FENIX_FEATURE_OPENSANDBOX_SERVER=true`，再执行 `./docker/deploy.sh up`。
+
+DinD 使用 `privileged` 和 `cgroup: host`，内部 Docker 镜像、容器与 volume 保存在 `./data/docker`（bind 挂载）。不要挂载宿主机 `/var/run/docker.sock`；该部署使用容器内独立的 Docker daemon。沙盒端口范围必须与 `.env` 和 `sandbox.toml` 保持一致。
 
 如服务器不支持 `privileged` 和 `cgroup: host`，请走物理机部署原生 OpenSandbox Server（参考官方文档）。
+
+## 网络接入清单
+
+| 服务 | 网络 | 理由 |
+| --- | --- | --- |
+| `opensandbox-server` | `fenix-server` | 同机部署时 Cluster 以 `http://opensandbox-server:8080` 注册并调用节点；跨机部署用宿主机地址 + `OPENSANDBOX_SERVER_PORT` |
+
+服务名在 `fenix-server` 网络上全局唯一：同一台机器不要同时起本目录的 direct 形态与 [`../opensandbox-server-tunnel/`](../opensandbox-server-tunnel/README.md) 的 tunnel 形态。
+
+宿主端口：`OPENSANDBOX_SERVER_PORT`（管理 API）与 `SANDBOX_PORT_MIN`-`SANDBOX_PORT_MAX`（沙盒端口段）都对调用方开放，端口值用 `.env` 覆盖。
+
+镜像 tag 写死在本目录 `docker-compose.yml` 的 `image:` 行；升级 = 改该行 + `docker compose up -d`。
 
 ## Workspace 配置
 
 Workspace 配置用于存放沙盒运行的 Workspace 数据，统一使用 `/workspace`，如需要修改，必须同步调整下面几个地方：
 
-1、`docker-compose.dind.yml` 中挂载的路径：
+1、`docker-compose.yml` 中挂载的路径：
 
 ```yaml
 - ./workspace:/workspace
@@ -87,8 +109,8 @@ DinD 使用的是 Server 容器内部的 Docker daemon。宿主机执行 `docker
 
 ```bash
 cp opensandbox-images.tar offline/
-docker compose -f docker-compose.dind.yml up -d
-docker compose -f docker-compose.dind.yml exec opensandbox-server \
+docker compose up -d
+docker compose exec opensandbox-server \
   docker load -i /offline/opensandbox-images.tar
 ```
 
@@ -127,10 +149,10 @@ curl -X POST "$CLUSTER_URL/api/v1/servers/server-node-1/health-check" \
 
 ### direct 模式
 
-使用 `docker-compose.dind.yml`，会发布 Server 管理端口和沙盒动态端口：
+使用 `docker-compose.yml`，会发布 Server 管理端口和沙盒动态端口：
 
 ```bash
-docker compose -f docker-compose.dind.yml up -d --build
+docker compose up -d --build
 ```
 
 Cluster 注册时提供 Server 的可达地址：

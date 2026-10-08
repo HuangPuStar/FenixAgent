@@ -295,7 +295,7 @@ const config = getModuleConfig<AgentRuntimeEnv>("agent-runtime");
 - 模块只声明真正的部署级配置（DB 连接、对象存储、模型网关、Sandbox 地址、第三方密钥）；名称、模型、Skill、发布状态等业务配置存数据库。
 - 应用基础设施只放「整台 server 共用、启动时创建、关闭时释放」的东西。随请求、用户、组织、事务或资源变化的对象（service、repository、Facade、ActorContext、事务）一律不得放入，只能经参数、包公开 API 或宿主装配传递。
 - 测试用 `initializeTestApplicationInfrastructure` / `overrideModuleConfig` / `resetApplicationInfrastructure` 设置独立的 DB 与配置，不修改全局 `process.env`，也不 mock `apps/server`。
-- `deploy/env/*.example` 是部署模板的真相来源，由 `bun run scripts/generate-env-example.ts` 从「宿主 `env.ts` 自有键 + 全部模块 `envDefinitions`」机械导出，`precheck` 的 `env-example` 步骤按字节比对，**手改生成物会直接失败**；根 `.env.example` 与 `docker/prod/.env.example` 是同一渲染产物的场景薄文件。模板只含变量名、说明与非敏感样例，密钥键一律留空；真实 `.env` 永不提交，密钥来自部署平台的 secret store、K8s/Docker secret 或受控文件。
+- `deploy/env/*.example` 是部署模板的真相来源，由 `bun run scripts/generate-env-example.ts` 从「宿主 `env.ts` 自有键 + 全部模块 `envDefinitions`」机械导出，`precheck` 的 `env-example` 步骤按字节比对，**手改生成物会直接失败**；根 `.env.example` 与 `docker/deploy.env.example` 是同一渲染产物的另外两个面（应用面场景薄文件、部署面开关与编排插值键）。模板只含变量名、说明与非敏感样例，密钥键一律留空；真实 `.env` 永不提交，密钥来自部署平台的 secret store、K8s/Docker secret 或受控文件。
 
 ## 6. 数据库与迁移
 
