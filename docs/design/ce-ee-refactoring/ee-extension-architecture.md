@@ -38,7 +38,7 @@ EE 可以复用 CE 资源包公开的 `./web` API client、DTO 和组件；局�
 | --- | --- | --- |
 | 替换身份、租户、权限 | 在 platform 实现 `AccessControlModule`，app 静态替换 | 在资源 service 中读取 CE member/role 表 |
 | `AccessControlModule` 缺能力 | 见 5.1 | 给现有接口塞客户专属 optional 字段或 `as any` |
-| EE 对资源增加发布/审批/版本 | EE resources 包：自有 schema、状态机、Facade 覆盖/组合、route/web contribution；参考 §5.2 | 修改 CE 资源表加入 EE 字段，或复制 CE CRUD |
+| EE 对资源增加发布/审批/版本 | EE resources 包：自有 schema、状态机、Facade 覆盖/组合、route/web contribution；跨 CE/EE 的原子数据库写入见 §5.3；参考 §5.2 | 修改 CE 资源表加入 EE 字段，或复制 CE CRUD |
 | 前端局部/整体差异 | EE 资源模块的 `web/` 复用 API client/组件或替换页面，在 app 静态选择 | fork 整个 CE web app、运行时注入路由 |
 | 新增从未有过的业务功能 | 新建 EE resource/agent-runtime/web 模块，声明依赖、schema、routes、UI、测试 | 将功能塞进 platform-sdk 或 app.ts |
 | 新引擎/RAG/MCP/Sandbox/部署目标 | 实现对应静态插件 SDK，app 选择 provider | 将 provider 特例写进 domain service |
@@ -118,3 +118,21 @@ EE 需要对某些资源（如智能体）进行发布管理，会产生新的 V
 1. CE 公共 Facade 与跨资源关联只使用唯一、不可变的资源 ID；EE 为资源增加版本时，每个可引用版本拥有独立 ID，tag 或 version 只是 EE 模块内部指向该 ID 的别名，不得将 tag、version 或通用 params 加入 CE 公共接口。
 2. 基础 list 仍列出具体资源记录，相当于列出所有版本对象；按逻辑资源聚合、列出 tag、解析 tag 等能力由 EE 资源模块扩展。
 3. AgentConfig 等引用者只保存依赖版本的确定 ID；版本内容变化必须产生新 ID，禁止在原 ID 下覆盖已被引用的内容。
+
+### 5.3 跨 CE/EE 组合写入的事务
+
+EE 对 CE 资源增加审批、发布或版本等组合业务，若 EE 自有表写入必须与 CE 写入同时提交或回滚，应在 EE 组合 Facade 或 job 编排入口调用 `@fenix/platform-sdk/server` 的 `runInTransaction()`；route 只调用该 Facade，不持有事务边界。该入口提供 `REQUIRED` 语义：最外层创建事务，内层 CE/EE 调用自动复用；CE 不需要为此在 Facade、Service 或 Repository 方法上新增 `tx` 参数。
+
+```ts
+// EE 组合 Facade：EE 审批记录与 CE AgentConfig 更新同成同败。
+await runInTransaction(async () => {
+  await approvalRepository.createPending(input); // EE 表，经 getDatabase() 自动取得 tx
+  await agentConfigFacade.update(actor, command); // CE 表，自动复用同一 tx
+});
+```
+
+资源包的持久化访问必须在处理逻辑时动态经 `getDatabase()` 取得句柄，不得缓存根 DB 或直连 pool；环境事务存在时该入口返回当前 transaction，否则返回宿主根 DB。事务上下文仅在同一进程、由该回调派生的异步上下文传播；所有 DB 工作必须在回调返回前 await 完成。不得在事务中启动未等待的后台任务，也不得以 `Promise.all()` 并发执行数据库写入。
+
+`runInTransaction(fn, { timeoutMs })` 的默认 `timeoutMs` 为 `10_000`，语义是 PostgreSQL 的**单条 SQL** `statement_timeout`，不是整个业务回调的总时限。当前标准部署使用 PostgreSQL 16；`SET LOCAL statement_timeout` 会在事务结束时自动恢复，能可靠取消慢 SQL，而严格全事务时限不属于本版本承诺。嵌套调用只能收紧既有 SQL 超时，不能放宽。
+
+HTTP/RPC、文件、Agent 启停和消息投递不受数据库 rollback 保护，禁止放入该回调以声称原子性；需要可靠交付时使用 outbox、状态机或补偿机制。
