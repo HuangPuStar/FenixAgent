@@ -1,6 +1,7 @@
 // web/__tests__/ui-spec-render.test.tsx
 // `ui-spec` 渲染层的行为守卫（计划 §5.4 第 4 项）：正常 Spec、未知类型占位、坏输入原文降级、
-// DOM 文本安全、官方容器锚点、宿主上下文隔离与「无请求」。
+// DOM 文本安全、官方容器锚点、宿主上下文隔离与「无请求」，外加 L4 错误边界（块内抛错落占位与原文、
+// `code` 变化后重置恢复）。
 //
 // 口径说明：
 // - 直接渲染 `UISpecBlock`（streamdown renderer 的入参形状），**不**经 streamdown 的围栏分派 ——
@@ -16,9 +17,10 @@ import { afterAll, afterEach, beforeAll, describe, expect, test } from "bun:test
 import { initializeHappyDomWindow } from "@fenix/ui-components/testing";
 import { Window } from "happy-dom";
 import { createInstance } from "i18next";
-import { act } from "react";
+import { act, type ComponentType } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { initReactI18next } from "react-i18next/initReactI18next";
+import { type UISpecRegistryProps, uiSpecRegistry } from "../chat/ui-spec/registry";
 import { UI_SPEC_LIMITS } from "../chat/ui-spec/spec";
 import { UISpecBlock } from "../chat/ui-spec/UISpecBlock";
 import { UISpecHostProvider, useUISpecHost } from "../chat/ui-spec/UISpecHostContext";
@@ -385,5 +387,64 @@ describe("ui-spec 渲染层", () => {
     expect(raw.textContent).toContain(expectedText("chat.components.uiSpec.unsupportedVersion", { version: 2 }));
     expect(raw.querySelector("pre")?.textContent).toBe(code);
     expect(harness.host.querySelector('[data-slot="ui-spec-stack"]')).toBeNull();
+  });
+
+  // L4 错误边界（§1.5）：块内子组件 render 抛错 → 整块占位（`renderFailed` 文案 + 原文 pre）→
+  // `code` 变化即重置，不锁死。
+  //
+  // 触发方式：把真实注册表里 `Text` 的条目临时换成真实的抛错组件，其余环节（`UISpecBlock` → 懒模块
+  // `UISpecView` → `resolveElement` → 注册表查表 → 组件 render）全部走真实分派路径，不 mock 任何模块；
+  // 注入在 finally 里还原，避免泄漏给同进程后续文件。
+  test("块内子组件 render 抛错：块级占位给文案与原文，code 变化后边界重置并恢复渲染", async () => {
+    const registry = uiSpecRegistry as Map<string, ComponentType<UISpecRegistryProps>>;
+    const originalTextEntry = registry.get("Text");
+    function ThrowingText(): never {
+      throw new Error("ui-spec 渲染层用例：注入的抛错子组件");
+    }
+    registry.set("Text", ThrowingText);
+
+    try {
+      const broken = specCode({
+        version: 1,
+        root: "root",
+        elements: {
+          root: { type: "Stack", props: { gap: "sm" }, children: ["leaf"] },
+          leaf: { type: "Text", props: { text: "抛错的子组件" } },
+        },
+      });
+      const harness = await mount(broken);
+      // 等占位里的原文落地：Suspense 兜底同样带 `data-slot="ui-spec-block"`，直接等它会把空 div 当结果。
+      await waitFor(harness.host, '[data-slot="ui-spec-raw"]');
+
+      const block = harness.host.querySelector('[data-slot="ui-spec-block"]');
+      expect(block).not.toBeNull();
+      // 容器模块本身也可能是崩掉的那一环：占位不走官方容器（§1.5 L4）。
+      expect(block?.getAttribute("data-streamdown")).toBeNull();
+      expect(harness.host.querySelector('[data-streamdown="code-block"]')).toBeNull();
+      expect(block?.textContent).toContain(expectedText("chat.components.uiSpec.renderFailed"));
+      expect(block?.querySelector("pre")?.textContent).toBe(broken);
+      // 抛错的是叶子，但降级粒度是**整块**：兄弟与父级都不保留。
+      expect(harness.host.querySelector('[data-slot="ui-spec-stack"]')).toBeNull();
+
+      // `code` 变化即重置：不重置的话边界会一直停在占位（锁死），恢复后的正文永远不出现。
+      const recovered = specCode({
+        version: 1,
+        root: "root",
+        elements: {
+          root: { type: "Stack", props: { gap: "md" }, children: ["table"] },
+          table: { type: "Table", props: { caption: "恢复后的正文", columns: ["名称"], rows: [["甲"]] } },
+        },
+      });
+      await update(harness, recovered);
+      await waitFor(harness.host, '[data-slot="ui-spec-stack"]');
+
+      expect(harness.host.querySelector('[data-slot="ui-spec-raw"]')).toBeNull();
+      expect(harness.host.textContent).not.toContain(expectedText("chat.components.uiSpec.renderFailed"));
+      expect(harness.host.querySelector('[data-streamdown="code-block"]')).not.toBeNull();
+      expect(harness.host.querySelector("caption")?.textContent).toBe("恢复后的正文");
+    } finally {
+      if (originalTextEntry === undefined) registry.delete("Text");
+      else registry.set("Text", originalTextEntry);
+    }
   });
 });
