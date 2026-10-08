@@ -56,7 +56,11 @@ export const resourcePermissionTypeEnum = pgEnum("resource_permission_type", [
 export const resourcePermissionPrincipalEnum = pgEnum("resource_permission_principal", ["all", "organization"]);
 export const resourcePermissionActionEnum = pgEnum("resource_permission_action", ["read"]);
 
-// Share Link 分享链接表
+// 分享链接与下方 `shareEventSnapshot` 随分享功能整体下线，全仓已零读写方（`git grep` 仅命中这两张表自身
+// 的定义与自 FK）。与 `resourcePermission` 不同，删除它们没有回填次序约束：启动期 data migration 只读
+// `resource_permission`，不读这两张表。
+// removeWhen：确认无对外分发的存量分享链接后的下一个发布，与 `resourcePermission` 同批生成 DROP TABLE
+// 迁移（两句 DDL 的次序：先 `share_event_snapshot` 再 `share_link`，外键在本表上）。
 export const shareLink = pgTable(
   "share_link",
   {
@@ -76,7 +80,8 @@ export const shareLink = pgTable(
   (t) => [index("idx_share_link_org_id").on(t.organizationId)],
 );
 
-// Share Event Snapshot 分享事件快照表
+// 分享事件快照表：仅经 `share_link_id` 级联于上方分享链接，零独立读写方，移除条件见 `shareLink` 处的
+// `removeWhen`（DROP 须与 `share_link` 同批，且次序在前）。
 export const shareEventSnapshot = pgTable("share_event_snapshot", {
   id: uuid("id").primaryKey().defaultRandom(),
   shareLinkId: uuid("share_link_id").references(() => shareLink.id, { onDelete: "cascade" }),

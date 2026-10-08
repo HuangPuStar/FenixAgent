@@ -2,41 +2,17 @@
   "marketTabs": {
     "label": "Marketplace categories"
   },
-  "filePicker": {
-    "title": "Select File",
-    "fileTooLarge": "{{name}} is too large (max {{max}})"
-  },
   "panelMode": {
     "panelTabs": "Right workspace",
     "files": "Files",
     "sites": "Sites",
-    "sitesTabAriaLabel": "Site selector",
     "sitesEmptyTitle": "No sites bound",
     "sitesEmptyHint": "Bind a site in Agent config to preview it here.",
     "pendingDiff": "{{count}} new file change(s) pending in Files",
-    "mountSite": "Mount Site",
-    "mountSiteAriaLabel": "Mount site",
-    "unmountSite": "Unmount",
-    "unmountSiteAriaLabel": "Unmount site",
-    "mountDialogTitle": "Mount Sites",
-    "mountDialogHint": "Select sites to mount to this agent",
-    "mountDialogConfirm": "Mount {{count}}",
-    "mountDialogConfirmNone": "Mount",
-    "noAvailableSites": "No more sites available to mount",
+    "pendingDiffOverflow": "99+",
     "unmountConfirmTitle": "Unmount site?",
     "unmountConfirm": "Unmount \"{{name}}\" from this agent?",
-    "mountSuccess": "Mounted {{count}} site(s)",
-    "mountFailed": "Mount failed",
-    "unmountFailed": "Unmount failed",
-    "sitesLoadFailed": "Failed to load site list",
-    "retry": "Retry",
     "tasks": "Tasks",
-    "tasksEmpty": "No scheduled tasks bound to this agent",
-    "tasksManage": "Manage Tasks",
-    "tasksLoadFailed": "Failed to load task list",
-    "tasksToggleFailed": "Failed to toggle task status",
-    "tasksTriggerFailed": "Failed to trigger task",
-    "tasksListTitle": "Tasks",
     "views": "Views",
     "floating": "Floating",
     "docked": "Docked",
@@ -45,53 +21,17 @@
     "close": "Close right workspace"
   },
   "siteFrame": {
-    "share": "Share",
-    "reload": "Reload site",
-    "openInNewTab": "Open in new tab",
-    "loading": "Loading site...",
     "loadingSites": "Loading agent sites...",
-    "loadFailed": "Failed to load sites",
-    "loadTimeout": "Site load timed out",
-    "loadTimeoutHint": "The site may still be loading in the background. Try reloading or open it in a new tab.",
-    "traceToCreatorTooltip": "Switch to the agent that created this site",
-    "traceToCreatorNotFound": "This agent is not running yet, cannot open its chat",
-    "navigateFailed": "Navigation failed",
-    "notCreatorTooltip": "This site was created by another agent. You can operate data but cannot modify site files. Click Trace to switch to the creator agent."
+    "loadFailed": "Failed to load sites"
   },
   "fileTree": {
     "emptyState": "No files in workspace",
     "emptyHint": "Use the toolbar or drag files here to upload",
     "userEmptyState": "No files",
     "retry": "Retry",
-    "uploadFailed": "Upload failed",
-    "uploadPartialIndeterminate": "{{message}} Some files may already have been uploaded; the exact number is unknown. The file list has been refreshed.",
     "staleBanner": "File service temporarily unavailable, reconnecting...",
-    "renameFailed": "Rename failed",
-    "moveFailed": "Move failed",
-    "mkdirFailed": "Create folder failed",
-    "newFileFailed": "Create file failed",
     "dropToUpload": "Drop files to upload",
-    "uploadTo": "Upload to: {{path}}",
-    "downloadFailed": "Download failed",
-    "closeTab": "Close tab",
-    "moreTabs": "{{count}} more tabs",
-    "dialog": {
-      "renameTitle": "Rename",
-      "renameDescription": "Enter a new file or folder name",
-      "moveTitle": "Move",
-      "moveDescription": "Enter the full destination path",
-      "newFileTitle": "New File",
-      "newFileDescription": "Enter the new file name",
-      "newFolderTitle": "New Folder",
-      "newFolderDescription": "Enter the new folder name",
-      "invalidName": "The name is required and cannot contain / or NUL, or be . or ..",
-      "nameTooLong": "Name is too long (maximum 255 bytes)",
-      "invalidPath": "The destination path is required and cannot contain NUL",
-      "confirm": "Confirm"
-    },
-    "contextMenu": {
-      "delete": "Delete"
-    }
+    "uploadTo": "Upload to: {{path}}"
   },
   "tree": {
     "showMore": "+{{count}} more",
@@ -100,24 +40,12 @@
     "retry": "Retry",
     "empty": "No items"
   },
-  "resource": {
-    "internal": "Private",
-    "external": "Shared",
-    "public": "Public",
-    "makePublic": "Make public",
-    "makePrivate": "Make private",
-    "readOnly": "Read-only"
-  },
   "chatComposer": {
     "fileTooLarge": "A file cannot exceed 100 MB",
     "filesTooLarge": "The total upload cannot exceed 100 MB"
   },
-  "statusBadge": {
-    "all": "All"
-  },
   "confirmDialog": {
-    "confirm": "Confirm",
-    "cancel": "Cancel"
+    "confirm": "Confirm"
   },
   "formDialog": {
     "save": "Save",
@@ -126,11 +54,6 @@
   },
   "toolCallRow": {
     "openFile": "Open File"
-  },
-  "permissionPanel": {
-    "allow": "Allow",
-    "allowSession": "Allow Session",
-    "deny": "Deny"
   },
   "askUser": {
     "submit": "Submit",

@@ -1,0 +1,37 @@
+{
+  "changedFiles": {
+    "title": "变更文件"
+  },
+  "filePicker": {
+    "fileTooLarge": "{{name}} 太大了（上限 {{max}}）"
+  },
+  "fileTree": {
+    "uploadFailed": "上传失败",
+    "pathConflict": "目标文件或目录已存在，原内容未覆盖。请修改名称后重试。",
+    "uploadPartialIndeterminate": "{{message}} 部分文件可能已经上传，确切数量未知；文件列表已刷新。",
+    "renameFailed": "重命名失败",
+    "moveFailed": "移动失败",
+    "mkdirFailed": "创建文件夹失败",
+    "newFileFailed": "创建文件失败",
+    "downloadFailed": "下载失败",
+    "closeTab": "关闭标签",
+    "moreTabs": "还有 {{count}} 个标签",
+    "dialog": {
+      "renameTitle": "重命名",
+      "renameDescription": "输入新的文件或文件夹名称",
+      "moveTitle": "移动",
+      "moveDescription": "输入目标完整路径",
+      "newFileTitle": "新建文件",
+      "newFileDescription": "输入新文件名称",
+      "newFolderTitle": "新建文件夹",
+      "newFolderDescription": "输入新文件夹名称",
+      "invalidName": "名称不能为空，且不能包含 /、NUL，也不能是 . 或 ..",
+      "nameTooLong": "名称过长（最多 255 字节）",
+      "invalidPath": "目标路径不能为空且不能包含 NUL",
+      "confirm": "确认"
+    },
+    "contextMenu": {
+      "delete": "删除"
+    }
+  }
+}

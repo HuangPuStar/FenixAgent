@@ -1,9 +1,9 @@
 /**
  * 文件树数据模型与纯函数（从 apps/web 的 `agent-panel/file-tree-model.ts` 复制并纯化）。
  *
- * 纯化取舍：源文件导出的 `MAX_FILE_UPLOAD_SIZE_LABEL` 依赖宿主的上传上限常量
- * （`@/src/api/fs` 的 `MAX_UPLOAD_SIZE_BYTES`），属业务配置，未随包迁移；
- * 需要该文案的宿主自行拼接。
+ * 纯化取舍：源文件导出的 `MAX_FILE_UPLOAD_SIZE_LABEL` 依赖文件域的上传上限常量
+ * （`@fenix/resource-machine` 的 `web/api/fs.ts` 导出 `MAX_UPLOAD_SIZE_BYTES`，2026-09-24 随台账 D2
+ * 由宿主迁入该包），属业务配置，未随包迁移；需要该文案的调用方自行拼接。
  */
 
 import type { TreeNodeData } from "../ui/tree";

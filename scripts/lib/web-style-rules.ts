@@ -19,10 +19,13 @@
 
 import ts from "typescript";
 
-/** 一条被禁止的样式写法。`level` 与文档一致：`P1` 表示严格禁止、命中数必须清零。 */
+/**
+ * 一条被禁止的样式写法。`level` 与文档一致：
+ * `P1` = 严格禁止、命中数必须清零；`P2` = 待清理存量，命中已登记在台账里、棘轮只降不升（重构清单）。
+ */
 export interface WebStyleRule {
   id: WebStyleRuleId;
-  level: "P1";
+  level: "P1" | "P2";
   title: string;
   /** 判定口径的一句话说明；同时用于失败输出，保证「报错信息 == 文档口径」。 */
   detail: string;
@@ -68,9 +71,30 @@ export const WEB_STYLE_RULES = [
     detail:
       "auto-rows-* / auto-cols-* 只收 min / max / fr / auto 一类关键字（不收任何数字），grid-cols-* / grid-rows-* 只收非负整数（不收小数）——写了不受支持的数值即死类",
   },
+  {
+    id: "FCP-WEB-07",
+    level: "P2",
+    title: "伴随表写长度字面量",
+    detail:
+      "③伴随表里写 px / rem 字面量；应改用 var(--token) 或 calc(var(--spacing) * N)，刻度缺失先到 @theme 补档（零值除外）",
+  },
+  {
+    id: "FCP-WEB-08",
+    level: "P2",
+    title: "伴随表写颜色字面量",
+    detail: "③伴随表里写 #hex / rgb() 等颜色字面量；应改用 var(--color-*) 色阶 token（透明色除外）",
+  },
 ] as const satisfies readonly WebStyleRule[];
 
-export type WebStyleRuleId = "FCP-WEB-01" | "FCP-WEB-02" | "FCP-WEB-03" | "FCP-WEB-04" | "FCP-WEB-05" | "FCP-WEB-06";
+export type WebStyleRuleId =
+  | "FCP-WEB-01"
+  | "FCP-WEB-02"
+  | "FCP-WEB-03"
+  | "FCP-WEB-04"
+  | "FCP-WEB-05"
+  | "FCP-WEB-06"
+  | "FCP-WEB-07"
+  | "FCP-WEB-08";
 
 /** 默认文档路径，失败输出里指回规则定义处。 */
 export const WEB_STYLE_RULES_DOC = "docs/developer/guide/forbidden-code-patterns.md";

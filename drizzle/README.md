@@ -101,7 +101,7 @@
 
 ### 场景 3.4：历史 `db:push` 库需要一次显式基线化
 
-背景：迁移入口曾经把「异常 message 含 `already exists`」当作「库是先 `db:push` 建的」而按成功退出；该容忍已删除，迁移失败一律非 0 退出（理由见 `docs/need-to-change/31-gate-release-and-migration.md`）。因此历史用 `db:push` 直接推平 schema、没有 `drizzle."__drizzle_migrations"` 记录的环境，第一次执行 `migrate.js` 会在重复建表处失败。
+背景：迁移入口曾经把「异常 message 含 `already exists`」当作「库是先 `db:push` 建的」而按成功退出；该容忍已删除，迁移失败一律非 0 退出（理由见 `docs/operations/troubleshooting.md` 第 8 节）。因此历史用 `db:push` 直接推平 schema、没有 `drizzle."__drizzle_migrations"` 记录的环境，第一次执行 `migrate.js` 会在重复建表处失败。
 
 这类库需要**一次显式的基线化**：把「结构确实已经存在的那部分迁移」记为已应用，之后交给 `migrate.js` 继续应用剩余迁移。判定「哪些已经存在」必须由人确认（场景三开头的三处核对点），不能由脚本猜。
 
@@ -132,39 +132,61 @@ psql "$DATABASE_URL" -c \
 | 类型 | 内容 | 执行方式 |
 |------|------|----------|
 | DDL 迁移（`drizzle/`） | 表结构变更（新增列、索引等） | `bun run db:migrate` 或 `migrate.js` |
-| 数据迁移（`data-migrate.ts`） | 已有数据的批量处理/搬迁 | 部署期入口 `db/data-migration-runner.ts` 执行一次 |
+| 数据迁移（`packages/**/db/data-migrations/`） | 已有数据的批量处理/搬迁 | 部署期入口 `db/data-migration-runner.ts` 执行一次 |
 
 ### 如何新增一个数据迁移
 
-1. 在 `src/services/data-migrates/` 下新建一个文件，实现 `DataMigrate` 接口：
+迁移代码与 schema 一样归**发起变更的模块**（§6.3），落点是该模块的 `db/data-migrations/`，与它的 `db/schema.ts` 同级。宿主 `src/services/data-migrates/` 只保留没有 owner 包能合法持有的迁移（当前仅四资源 `visibility` 回填，理由见该文件头部）。
+
+1. 在 owner 包新建 `packages/resources/<module>/db/data-migrations/<名字>.ts`，实现 `DataMigration` 契约（`@fenix/platform-sdk` 的 `migration/data-migration`，六个字段全部必填）：
 
 ```ts
-// src/services/data-migrates/migrate-xxx.ts
-import { db } from "../../db";
-import { someTable } from "../../db/schema";
+// packages/resources/agent-config/db/data-migrations/20260924-backfill-xxx.ts
+import { agentConfig } from "@fenix/agent-config/db";          // 本包（或别包）owner 的表对象，经包出口 `./db` 取
+import type { DataMigration } from "@fenix/platform-sdk";
+import { eq } from "drizzle-orm";
+import { getAgentConfigDatabase } from "../../src/server/db"; // 库句柄经包内受限入口取，每次调用重新取、不在模块作用域缓存
 
-export const migrateXxx = {
-  name: "migrate-xxx",  // 唯一标识，会写入 data_migrate_record 表
-  async run(): Promise<void> {
-    // 对已有数据执行批量处理
-    // 注意：迁移逻辑需要保证幂等性，避免重复执行时出错
+export const backfillXxx: DataMigration = {
+  // 全局唯一 ID，格式 `<模块>/<YYYYMMDD>-<名字>`（日期取首次进入仓库的那天）。
+  // 落 data_migrate_record 后即成为发布契约：改名会被判为未应用而重跑。
+  name: "agent-config/20260924-backfill-xxx",
+  dependsOn: [],                     // 必须已完成的 DDL 或数据迁移 ID
+  metadata: {                        // 静态元信息，执行前由 runner 输出
+    expectedRows: "约 500 行（按 xxx 判据）",
+    lockRisk: "row-level",           // 逐批 UPDATE，不把整个迁移包进一个长事务
+    observableFields: ["rows"],      // run 必须输出的字段名
   },
+  async run(context) {
+    // 幂等、可重试、按批提交；进度经 context.log 输出
+    const db = getAgentConfigDatabase();
+    const rows = await db.update(agentConfig).set({ /* ... */ }).where(eq(agentConfig.id, "0")).returning({ id: agentConfig.id });
+    context.log(`[data-migrate] backfilled xxx rows=${rows.length}`);
+  },
+  async verify(context) {
+    // 从目标侧断言结果已完整；抛错即视为迁移未完成（runner 不写完成记录）
+  },
+  compensation: { kind: "none", reason: "旧值已不保留副本，靠重跑收敛" }, // 无可补偿也必须显式声明
 };
 ```
 
-2. 在 `src/services/data-migrate.ts` 的 `_deps.migrates` 数组中注册：
+2. 在包的 `package.json` 增加 `exports` 子路径指向该文件（与既有迁移同批，例如 `"./db/migration": "./db/data-migrations/<名字>.ts"`）：模块外的消费者只经包出口引用，不穿透路径。
+   同一 owner 包出现**第二条及以后**的数据迁移时，两条不得复用 `"./db/migration"` 这一个子路径（后写的会覆盖前写的，而 runner 会因拿不到实现而判装载失败）——从第二条起用带短名的子路径区分，例如 `"./db/migration/<短名>": "./db/data-migrations/<名字>.ts"`，`fenix.module.ts` 的 `load` 也指到对应那一条。既有的 `"./db/migration"` 保持不动：它是已发布迁移的装载入口，改名等于让 runner 找不到实现。
+
+3. 在包的 `fenix.module.ts` 声明该迁移的事实——ID、依赖与实现入口：
 
 ```ts
-import { migrateXxx } from "./data-migrates/migrate-xxx";
-
-export const _deps = {
-  migrates: [
-    migrateSkillStorageByOrganization,
-    migrateXxx,  // 新增的迁移按顺序追加
-  ] as DataMigrate[],
-  // ...
-};
+// packages/resources/agent-config/fenix.module.ts
+dataMigrations: [
+  {
+    name: "agent-config/20260924-backfill-xxx", // 与实现的 name 逐字相同
+    dependsOn: [],
+    load: () => import("@fenix/agent-config/db/migration").then((module) => module.backfillXxx),
+  },
+],
 ```
+
+4. 宿主不需要任何改动：部署期入口按装配汇总各模块 manifest 声明的迁移事实（外加宿主自有迁移）后统一执行，装配里增删模块即带动清单。声明与实现的 ID / 依赖在装载时逐字校验，写错会在执行前失败，而不是静默跑成另一条迁移。
 
 ### 执行机制
 
@@ -172,9 +194,10 @@ export const _deps = {
   **应用进程启动不执行数据迁移**：一次性迁移只由部署发布任务承担，避免每个副本各跑一次含文件副作用的迁移。
 - 发布顺序固定为：DDL 迁移（`migrate.js`）→ 数据迁移（`data-migration-runner.js`）→ 部署新版本进程。
 - 该步骤的运行环境必须与应用一致（同一份环境变量与数据卷）：迁移会读模块配置（如 `skillDir`）并写文件。
+- 迁移清单由 `resolveDataMigrations()` 汇总：各模块 manifest 声明的 `dataMigrations` 事实（按 registry 顺序）加宿主自有迁移，重复 ID 与声明/实现不一致都会在执行前失败。
 - 每个迁移执行前会查询 `data_migrate_record` 表，**已执行过的迁移会自动跳过**。
 - 迁移成功后将 `name` 写入 `data_migrate_record` 表作为执行记录。
-- 迁移按 `_deps.migrates` 数组中的顺序依次执行，不可变更已有迁移的顺序。
+- 迁移按清单顺序依次执行；顺序只决定日志顺序，依赖一律由各迁移的 `dependsOn` 表达并在执行前校验。
 - 任一迁移失败即中止后续迁移并以非 0 退出，部署流水线据此失败停止。
 
 ### 注意事项

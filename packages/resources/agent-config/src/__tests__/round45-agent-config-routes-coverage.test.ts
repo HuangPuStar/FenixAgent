@@ -1,12 +1,7 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { agentSiteApp } from "@fenix/agent-config/db";
-import { model, provider } from "@fenix/model-management/db";
 import { resetAllStubs, stubDb } from "@fenix/platform-sdk/testing";
-import { knowledgeBase } from "@fenix/resource-knowledge/db";
 import { InvalidKnowledgeBindingError } from "@fenix/resource-knowledge/server";
-import { machine } from "@fenix/resource-machine/db";
-import { mcpServer } from "@fenix/resource-mcp/db";
-import { skill } from "@fenix/resource-skill/db";
+import { getTableName } from "drizzle-orm";
 import { createWebConfigAgentsRoutes } from "../server/routes/web/config/agents";
 import { initializeAgentConfigModuleConfig } from "../server/testing";
 import {
@@ -36,36 +31,19 @@ function request(path: string) {
   return route.handle(new Request(`http://localhost${path}`));
 }
 
-/** 按表身份分发查询结果：标签投影按表查行，与调用顺序无关。 */
-function installDbRows(byTable: {
-  readonly model?: unknown[];
-  readonly provider?: unknown[];
-  readonly machine?: unknown[];
-  readonly skill?: unknown[];
-  readonly mcpServer?: unknown[];
-  readonly knowledgeBase?: unknown[];
-  readonly agentSiteApp?: unknown[];
-}) {
+/**
+ * 按表名分发查询结果：标签投影按 `db.select().from(<表>)` 查行，与调用顺序无关。
+ *
+ * 判据刻意用 Drizzle 表名（`getTableName`）而不是导入对方模块的表对象：表定义归各自 owner 包，
+ * 调用期导入对方的 `@fenix/<pkg>/db` 正是 §2.2 要根除的耦合。替身只需要「哪张表返回哪些行」
+ * 这一层稳定事实——表名就是 DDL 契约，与被测的标签投影逐表对应。
+ */
+function installDbRows(byTable: Record<string, unknown[] | undefined>) {
   stubDb({
     select: () => ({
       from: (table: unknown) => ({
         where: () => {
-          const rows =
-            table === model
-              ? (byTable.model ?? [])
-              : table === provider
-                ? (byTable.provider ?? [])
-                : table === machine
-                  ? (byTable.machine ?? [])
-                  : table === skill
-                    ? (byTable.skill ?? [])
-                    : table === mcpServer
-                      ? (byTable.mcpServer ?? [])
-                      : table === knowledgeBase
-                        ? (byTable.knowledgeBase ?? [])
-                        : table === agentSiteApp
-                          ? (byTable.agentSiteApp ?? [])
-                          : [];
+          const rows = byTable[getTableName(table as never)] ?? [];
           return {
             limit: async () => rows,
             // biome-ignore lint/suspicious/noThenProperty: Drizzle 查询构造器在 await 时必须是 thenable。
@@ -131,9 +109,9 @@ describe("round45 Agent 配置路由补充覆盖", () => {
       // 标签投影由 owner 包实现（`@fenix/resource-skill/server/config`），按 `skill.name` 取标签。
       skill: [{ id: "skill-1", name: "检索" }],
       // 标签投影由 owner 包实现，按 `mcp_server.name` 取标签（不再是调用方自己的 `label` 别名）。
-      mcpServer: [{ id: "mcp-1", name: "浏览器" }],
-      knowledgeBase: [{ id: "kb-1", name: "知识库", slug: "docs" }],
-      agentSiteApp: [{ id: "site-1", name: "站点", remoteAppId: "remote-1" }],
+      mcp_server: [{ id: "mcp-1", name: "浏览器" }],
+      knowledge_base: [{ id: "kb-1", name: "知识库", slug: "docs" }],
+      agent_site_app: [{ id: "site-1", name: "站点", remoteAppId: "remote-1" }],
     });
 
     const response = await request("/config/agents?name=org-source/agent-source");

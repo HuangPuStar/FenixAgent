@@ -2,7 +2,7 @@ import type { ActorContext } from "@fenix/platform-sdk";
 import { WebErrSchema, WebOkSchema } from "@fenix/platform-sdk";
 import Elysia from "elysia";
 import * as z from "zod/v4";
-import { agentSiteAppRepo } from "../../repositories/agent-site-app";
+import { getAgentConfigModule } from "../../runtime";
 import {
   AgentSiteAppDetailResponseSchema,
   AgentSiteAppFileParamsSchema,
@@ -16,26 +16,9 @@ import {
   type UpdateAgentSiteAppRequest,
   UpdateAgentSiteAppRequestSchema,
 } from "../../schemas/agent-site.schema";
-import {
-  createRemoteApp,
-  deleteRemoteApp,
-  deployCustomApp,
-  issuePlatformToken,
-  revokePlatformToken,
-  uploadRemoteBundle,
-  uploadRemoteFile,
-} from "../../services/agent-sites";
-import { invalidateAppCache } from "../agent-sites-proxy";
 import type { WebAgentConfigRouteDependencies } from "../dependencies";
 import { createAgentSiteAssociationRoutes } from "./agent-site-association-routes";
-import {
-  attachCreatorNames,
-  buildError,
-  canRead,
-  canWrite,
-  resolveSiteActor,
-  toResponse,
-} from "./agent-site-route-support";
+import { FORBIDDEN_MESSAGE, runSiteAction, toViewResponse } from "./agent-site-route-support";
 
 /**
  * `/web/agent-sites` 协议层（站点 App CRUD / Token / 文件上传 / 部署）。
@@ -43,9 +26,11 @@ import {
  * 改为工厂（CE 阶段 2 任务 1.3）：守卫必须与宿主的认证解析是同一份实例（Elysia 的 `macro` / `state`
  * 是实例作用域的，父实例无法向已构造的子实例回填），因此由宿主注入 `authGuardPlugin`。
  *
- * 主体一律取 `store.actor`（平台 `ActorContext`）并经 `resolveSiteActor` 投影：组织、用户与当前组织
- * 角色都从可信主体解析，不再读宿主 `AuthContext` 的字段。无法解析主体时返回 401（迁移前用
- * `store.authContext!` 断言后直接取字段，无组织上下文会以 TypeError 变成 500）。
+ * 本文件只做协议适配：主体一律取 `store.actor`（平台 `ActorContext`）并原样交给站点 Facade——组织、
+ * 用户、可见范围、写权限与创建规则都由 Facade 与授权模块产出，这里不解释角色或 `visibility`；
+ * 失败经 `runSiteAction` 映射为 `/web` 状态码与文案。无法定位组织资源的主体由 Facade 抛
+ * `no_organization`，映射为 401（迁移前用 `store.authContext!` 断言后直接取字段，无组织上下文会以
+ * TypeError 变成 500）。
  */
 export function createWebAgentSitesRoutes(deps: WebAgentConfigRouteDependencies) {
   const app = new Elysia({ name: "web-agent-sites", prefix: "/agent-sites" })
@@ -56,13 +41,11 @@ export function createWebAgentSitesRoutes(deps: WebAgentConfigRouteDependencies)
     .get(
       "/apps",
       async ({ store, status }) => {
-        const actor = resolveSiteActor(store.actor as ActorContext | null);
-        if (!actor) return status(401, buildError("unauthorized", "请求缺少组织上下文"));
-        const rows = await agentSiteAppRepo.listByOrg(actor.organizationId);
-        const visible = rows.filter((r) => canRead(r, actor.userId));
-        const items = visible.map(toResponse);
-        await attachCreatorNames(items);
-        return { success: true as const, data: items };
+        const actor = store.actor as ActorContext | null;
+        return runSiteAction(status, async () => {
+          const items = await getAgentConfigModule().siteFacade.list(actor);
+          return { success: true as const, data: items.map(toViewResponse) };
+        });
       },
       {
         sessionAuth: true,
@@ -73,7 +56,7 @@ export function createWebAgentSitesRoutes(deps: WebAgentConfigRouteDependencies)
         detail: {
           tags: ["Agent Sites"],
           summary: "获取 agent sites app 列表",
-          description: "返回当前组织下所有 app。",
+          description: "返回当前组织下当前用户可见的 app。",
         },
       },
     )
@@ -81,15 +64,11 @@ export function createWebAgentSitesRoutes(deps: WebAgentConfigRouteDependencies)
     .get(
       "/apps/:id",
       async ({ params, store, status }) => {
-        const actor = resolveSiteActor(store.actor as ActorContext | null);
-        if (!actor) return status(401, buildError("unauthorized", "请求缺少组织上下文"));
-        const row = await agentSiteAppRepo.getById(params.id);
-        if (!row || row.organizationId !== actor.organizationId || !canRead(row, actor.userId)) {
-          return status(404, buildError("not_found", "App 不存在"));
-        }
-        const item = toResponse(row);
-        await attachCreatorNames([item]);
-        return { success: true as const, data: item };
+        const actor = store.actor as ActorContext | null;
+        return runSiteAction(status, async () => {
+          const item = await getAgentConfigModule().siteFacade.getById(actor, params.id);
+          return { success: true as const, data: toViewResponse(item) };
+        });
       },
       {
         sessionAuth: true,
@@ -110,15 +89,11 @@ export function createWebAgentSitesRoutes(deps: WebAgentConfigRouteDependencies)
     .get(
       "/apps/by-remote/:remoteAppId",
       async ({ params, store, status }) => {
-        const actor = resolveSiteActor(store.actor as ActorContext | null);
-        if (!actor) return status(401, buildError("unauthorized", "请求缺少组织上下文"));
-        const row = await agentSiteAppRepo.getByRemoteAppId(params.remoteAppId);
-        if (!row || row.organizationId !== actor.organizationId || !canRead(row, actor.userId)) {
-          return status(404, buildError("not_found", "App 不存在"));
-        }
-        const item = toResponse(row);
-        await attachCreatorNames([item]);
-        return { success: true as const, data: item };
+        const actor = store.actor as ActorContext | null;
+        return runSiteAction(status, async () => {
+          const item = await getAgentConfigModule().siteFacade.getByRemoteAppId(actor, params.remoteAppId);
+          return { success: true as const, data: toViewResponse(item) };
+        });
       },
       {
         sessionAuth: true,
@@ -139,34 +114,19 @@ export function createWebAgentSitesRoutes(deps: WebAgentConfigRouteDependencies)
     .post(
       "/apps",
       async ({ store, body, status }) => {
-        const actor = resolveSiteActor(store.actor as ActorContext | null);
-        if (!actor) return status(401, buildError("unauthorized", "请求缺少组织上下文"));
-        const b = body as CreateAgentSiteAppRequest;
-
-        // 1. 在 agent-sites 创建远程 app（透传 type，默认 pocketbase）
-        const remote = await createRemoteApp(b.name, b.type);
-
-        // 2. 申请 platform token（custom 类型其实用不到 token——没有 PB，
-        //    但保留以保持 RCS DB schema 一致；后续如需迁移回 pocketbase 也无缝）
-        const token = await issuePlatformToken(remote.id);
-
-        // 3. 写入 RCS DB
-        const row = await agentSiteAppRepo.create({
-          organizationId: actor.organizationId,
-          userId: actor.userId,
-          remoteAppId: remote.id,
-          name: remote.name,
-          description: b.description,
-          platformToken: token.token,
-          platformTokenId: token.token_id,
-          visibility: (b.visibility as "private" | "org" | "authenticated" | "public") ?? "private",
-          appType: b.type,
-          createdByAgentConfigId: b.agentConfigId ?? null,
+        const actor = store.actor as ActorContext | null;
+        const request = body as CreateAgentSiteAppRequest;
+        return runSiteAction(status, async () => {
+          // 远端 app 创建、token 申请与本地持久化都在 Facade 里编排（顺序与回滚语义见 Facade）。
+          const item = await getAgentConfigModule().siteFacade.create(actor, {
+            name: request.name,
+            ...(request.description === undefined ? {} : { description: request.description }),
+            visibility: request.visibility,
+            type: request.type,
+            ...(request.agentConfigId === undefined ? {} : { agentConfigId: request.agentConfigId }),
+          });
+          return { success: true as const, data: toViewResponse(item) };
         });
-
-        const item = toResponse(row);
-        await attachCreatorNames([item]);
-        return { success: true as const, data: item };
       },
       {
         sessionAuth: true,
@@ -186,28 +146,20 @@ export function createWebAgentSitesRoutes(deps: WebAgentConfigRouteDependencies)
     .patch(
       "/apps/:id",
       async ({ params, store, body, status }) => {
-        const actor = resolveSiteActor(store.actor as ActorContext | null);
-        if (!actor) return status(401, buildError("unauthorized", "请求缺少组织上下文"));
-        const b = body as UpdateAgentSiteAppRequest;
-        const row = await agentSiteAppRepo.getById(params.id);
-        if (!row || row.organizationId !== actor.organizationId) {
-          return status(404, buildError("not_found", "App 不存在"));
-        }
-        if (!canWrite(row, actor.userId, actor.role)) {
-          return status(403, buildError("forbidden", "无权限修改此 app"));
-        }
-        const updated = await agentSiteAppRepo.update(params.id, {
-          name: b.name,
-          description: b.description,
-          visibility: b.visibility as "private" | "org" | "authenticated" | "public" | undefined,
-        });
-        // 更新 visibility 后立即使代理缓存失效，避免旧权限继续生效最多 60s
-        if (b.visibility !== undefined) {
-          invalidateAppCache(updated!.remoteAppId);
-        }
-        const item = toResponse(updated!);
-        await attachCreatorNames([item]);
-        return { success: true as const, data: item };
+        const actor = store.actor as ActorContext | null;
+        const request = body as UpdateAgentSiteAppRequest;
+        return runSiteAction(
+          status,
+          async () => {
+            const item = await getAgentConfigModule().siteFacade.update(actor, params.id, {
+              ...(request.name === undefined ? {} : { name: request.name }),
+              ...(request.description === undefined ? {} : { description: request.description }),
+              ...(request.visibility === undefined ? {} : { visibility: request.visibility }),
+            });
+            return { success: true as const, data: toViewResponse(item) };
+          },
+          { forbidden: FORBIDDEN_MESSAGE.update },
+        );
       },
       {
         sessionAuth: true,
@@ -230,20 +182,15 @@ export function createWebAgentSitesRoutes(deps: WebAgentConfigRouteDependencies)
     .delete(
       "/apps/:id",
       async ({ params, store, status }) => {
-        const actor = resolveSiteActor(store.actor as ActorContext | null);
-        if (!actor) return status(401, buildError("unauthorized", "请求缺少组织上下文"));
-        const row = await agentSiteAppRepo.getById(params.id);
-        if (!row || row.organizationId !== actor.organizationId) {
-          return status(404, buildError("not_found", "App 不存在"));
-        }
-        if (!canWrite(row, actor.userId, actor.role)) {
-          return status(403, buildError("forbidden", "无权限删除此 app"));
-        }
-        // 先调 agent-sites 删除远程 app
-        await deleteRemoteApp(row.remoteAppId);
-        // 再 RCS DB hard delete
-        await agentSiteAppRepo.delete(params.id);
-        return { success: true as const, data: null };
+        const actor = store.actor as ActorContext | null;
+        return runSiteAction(
+          status,
+          async () => {
+            await getAgentConfigModule().siteFacade.remove(actor, params.id);
+            return { success: true as const, data: null };
+          },
+          { forbidden: FORBIDDEN_MESSAGE.delete },
+        );
       },
       {
         sessionAuth: true,
@@ -267,26 +214,15 @@ export function createWebAgentSitesRoutes(deps: WebAgentConfigRouteDependencies)
     .post(
       "/apps/:id/rotate-token",
       async ({ params, store, status }) => {
-        const actor = resolveSiteActor(store.actor as ActorContext | null);
-        if (!actor) return status(401, buildError("unauthorized", "请求缺少组织上下文"));
-        const row = await agentSiteAppRepo.getById(params.id);
-        if (!row || row.organizationId !== actor.organizationId) {
-          return status(404, buildError("not_found", "App 不存在"));
-        }
-        if (!canWrite(row, actor.userId, actor.role)) {
-          return status(403, buildError("forbidden", "无权限操作此 app"));
-        }
-        try {
-          await revokePlatformToken(row.platformTokenId);
-        } catch {
-          console.warn(`[agent-sites] 吊销旧 token 失败 tokenId=${row.platformTokenId}，继续申请新 token`);
-        }
-        const token = await issuePlatformToken(row.remoteAppId);
-        await agentSiteAppRepo.update(params.id, {
-          platformToken: token.token,
-          platformTokenId: token.token_id,
-        });
-        return { success: true as const, data: null };
+        const actor = store.actor as ActorContext | null;
+        return runSiteAction(
+          status,
+          async () => {
+            await getAgentConfigModule().siteFacade.rotateToken(actor, params.id);
+            return { success: true as const, data: null };
+          },
+          { forbidden: FORBIDDEN_MESSAGE.rotateToken },
+        );
       },
       {
         sessionAuth: true,
@@ -310,18 +246,20 @@ export function createWebAgentSitesRoutes(deps: WebAgentConfigRouteDependencies)
     .put(
       "/apps/:id/files/:path",
       async ({ params, request, store, status }) => {
-        const actor = resolveSiteActor(store.actor as ActorContext | null);
-        if (!actor) return status(401, buildError("unauthorized", "请求缺少组织上下文"));
-        const row = await agentSiteAppRepo.getById(params.id);
-        if (!row || row.organizationId !== actor.organizationId) {
-          return status(404, buildError("not_found", "App 不存在"));
-        }
-        if (!canWrite(row, actor.userId, actor.role)) {
-          return status(403, buildError("forbidden", "无权限上传文件"));
-        }
-        // biome-ignore lint/suspicious/noExplicitAny: 透传 raw binary body 到上游 agent-sites 平台，不匹配 Elysia schema 类型
-        const result = await uploadRemoteFile(row.remoteAppId, params.path, request.body as any);
-        return { success: true as const, data: result.data };
+        const actor = store.actor as ActorContext | null;
+        return runSiteAction(
+          status,
+          async () => {
+            const data = await getAgentConfigModule().siteFacade.uploadFile(
+              actor,
+              params.id,
+              params.path,
+              request.body as ReadableStream<Uint8Array> | null,
+            );
+            return { success: true as const, data };
+          },
+          { forbidden: FORBIDDEN_MESSAGE.uploadFile },
+        );
       },
       {
         sessionAuth: true,
@@ -343,18 +281,19 @@ export function createWebAgentSitesRoutes(deps: WebAgentConfigRouteDependencies)
     .post(
       "/apps/:id/files/bundle",
       async ({ params, request, store, status }) => {
-        const actor = resolveSiteActor(store.actor as ActorContext | null);
-        if (!actor) return status(401, buildError("unauthorized", "请求缺少组织上下文"));
-        const row = await agentSiteAppRepo.getById(params.id);
-        if (!row || row.organizationId !== actor.organizationId) {
-          return status(404, buildError("not_found", "App 不存在"));
-        }
-        if (!canWrite(row, actor.userId, actor.role)) {
-          return status(403, buildError("forbidden", "无权限上传文件"));
-        }
-        // biome-ignore lint/suspicious/noExplicitAny: 透传 gzip tar raw body 到上游 agent-sites 平台
-        const result = await uploadRemoteBundle(row.remoteAppId, request.body as any);
-        return { success: true as const, data: result.data };
+        const actor = store.actor as ActorContext | null;
+        return runSiteAction(
+          status,
+          async () => {
+            const data = await getAgentConfigModule().siteFacade.uploadBundle(
+              actor,
+              params.id,
+              request.body as ReadableStream<Uint8Array> | null,
+            );
+            return { success: true as const, data };
+          },
+          { forbidden: FORBIDDEN_MESSAGE.uploadFile },
+        );
       },
       {
         sessionAuth: true,
@@ -379,44 +318,28 @@ export function createWebAgentSitesRoutes(deps: WebAgentConfigRouteDependencies)
     .post(
       "/apps/:id/deploy",
       async ({ params, request, store, status }) => {
-        const actor = resolveSiteActor(store.actor as ActorContext | null);
-        if (!actor) return status(401, buildError("unauthorized", "请求缺少组织上下文"));
-        const row = await agentSiteAppRepo.getById(params.id);
-        if (!row || row.organizationId !== actor.organizationId) {
-          return status(404, buildError("not_found", "App 不存在"));
-        }
-        if (!canWrite(row, actor.userId, actor.role)) {
-          return status(403, buildError("forbidden", "无权限部署此 app"));
-        }
-        // 类型校验：只有 custom 类型支持部署（pocketbase 由平台托管，无需部署代码）
-        if (row.appType !== "custom") {
-          return status(
-            400,
-            buildError("bad_request", `App ${row.remoteAppId} 不是 custom 类型，无法部署（当前: ${row.appType}）`),
-          );
-        }
-        // 透传 gzip body 到平台，平台做解压 + 探活 + 切换
-        // biome-ignore lint/suspicious/noExplicitAny: 透传 gzip tar.gz raw body 到上游 agent-sites 平台部署
-        const remote = await deployCustomApp(row.remoteAppId, request.body as any);
-        // 平台返回的 slot 是 "a" | "b"，DB 与响应 schema 均要求此字面量类型
-        const slot = remote.data.slot as "a" | "b";
-        // 写入 RCS DB 记录部署元数据（entry_file / slot / deployed_at）
-        const now = new Date();
-        await agentSiteAppRepo.update(params.id, {
-          entryFile: remote.data.entry_file,
-          activeSlot: slot,
-          deployedAt: now,
-        });
-        return {
-          success: true as const,
-          data: {
-            files: remote.data.files,
-            totalBytes: remote.data.total_bytes,
-            entryFile: remote.data.entry_file,
-            slot,
-            deployedAt: Math.floor(now.getTime() / 1000),
+        const actor = store.actor as ActorContext | null;
+        return runSiteAction(
+          status,
+          async () => {
+            const result = await getAgentConfigModule().siteFacade.deploy(
+              actor,
+              params.id,
+              request.body as ReadableStream<Uint8Array> | null,
+            );
+            return {
+              success: true as const,
+              data: {
+                files: result.files,
+                totalBytes: result.totalBytes,
+                entryFile: result.entryFile,
+                slot: result.slot,
+                deployedAt: Math.floor(result.deployedAt.getTime() / 1000),
+              },
+            };
           },
-        };
+          { forbidden: FORBIDDEN_MESSAGE.deploy },
+        );
       },
       {
         sessionAuth: true,

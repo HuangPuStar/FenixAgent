@@ -31,6 +31,15 @@ export const AGENT_HOME_STYLES = `
           align-items: center;
           justify-content: center;
           padding: 40px 24px;
+          /* 高度取内容的自然高度，**不允许被父级列 flex 压缩**：压缩后容器高被钉在视口高，
+             而本容器的 justify-content 是 center——超出部分会对称地溢出容器上下两侧，滚动容器
+             （.agent-home-page 的 overflow: auto）的可滚动区却只向右下延伸，于是溢出到容器上方的
+             那一半（顶部品牌区 + 表单的「返回」按钮）既滚不到、也点不到。
+             实测（headless Chromium 1440×900，复刻本页 DOM + 构建产物 CSS）：90 段提示词下压缩时
+             容器高 900px、返回按钮落在 scrollTop=0 之上的 -6291px 处（elementFromPoint 命中 null），
+             滚到底部也只把它推到 -12714px；同一根因下，模板卡片多到 30 张时品牌区被顶到 -123px。
+             去掉压缩后：scrollTop=0 时返回按钮 top=178 且命中自身，滚到底部吸顶在 top=12。 */
+          flex-shrink: 0;
         }
         .agent-home-header {
           margin-bottom: 38px;
@@ -202,7 +211,16 @@ export const AGENT_HOME_STYLES = `
         .agent-home-form-header {
           display: flex;
           align-items: center;
-          margin-bottom: 18px;
+          /* 「返回」是长模板提示词下唯一能退出表单的入口，必须**始终留在视口里**：吸顶跟随
+             .agent-home-page 这个滚动容器，提示词再长也不会把它顶出去。
+             内边距与负上边距相抵（12 - 12 = 0），静止时按钮位置与改动前逐字一致；
+             滚动时卡片上内边距已移出视口，这 12px 白底正好补在按钮上方，内容从白带下穿过。 */
+          position: sticky;
+          top: 0;
+          z-index: 2;
+          margin: -12px 0 18px;
+          padding: 12px 0;
+          background: #fff;
         }
         .agent-home-back-btn {
           display: inline-flex;

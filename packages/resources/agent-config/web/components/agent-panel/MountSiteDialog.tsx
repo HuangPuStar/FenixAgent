@@ -53,7 +53,10 @@ export function MountSiteDialog({
   boundSiteAppIds,
   onMounted,
 }: MountSiteDialogProps) {
-  const { t } = useTranslation(NS.COMPONENTS);
+  // `panelMode.*` 挂载弹窗键随台账 D4 迁入本包 `agents`；`confirmDialog.cancel` 的 owner 是
+  // `@fenix/ui-components`（`ConfirmDialog` 的同名默认文案），故另取该包命名空间，不再借宿主字典。
+  const { t } = useTranslation(NS.AGENTS);
+  const { t: tUi } = useTranslation(NS.UI_COMPONENTS);
   const [selected, setSelected] = useState<Set<string>>(new Set());
 
   // 每次 open 都重拉以保证最新（关闭期间可能新建过 site）
@@ -194,7 +197,7 @@ export function MountSiteDialog({
 
         <DialogFooter>
           <Button variant="outline" onClick={() => onOpenChange(false)} disabled={submitting}>
-            {t("confirmDialog.cancel")}
+            {tUi("confirmDialog.cancel")}
           </Button>
           <Button onClick={handleConfirm} disabled={submitting || selected.size === 0 || candidates.length === 0}>
             {submitting

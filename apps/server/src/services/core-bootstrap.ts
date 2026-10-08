@@ -1,4 +1,5 @@
 import { getBoundAgentRuntime } from "@fenix/agent-runtime/runtime";
+import { getAgentRuntimeConfig } from "@fenix/agent-runtime/server";
 import { createEnginePlugin as createCcbPlugin } from "@fenix/ccb";
 import { createClaudeCodePlugin } from "@fenix/claude-code";
 import { type CoreRuntimeFacade, createCoreRuntime } from "@fenix/core";
@@ -20,8 +21,16 @@ let facade: CoreRuntimeFacade | null = null;
 const remoteTransports = new Map<string, RemoteTransport>();
 
 function defaultCreateFacade(): CoreRuntimeFacade {
+  // workspace 根取 agent-runtime 模块配置（宿主启动期已解析的绝对路径，唯一真源），由本装配点注入各引擎
+  // plugin：插件 runtime 不再自己读 `WORKSPACE_ROOT`，也不再用进程 cwd 兜底（F2）。
+  const { workspaceRoot } = getAgentRuntimeConfig();
   return createCoreRuntime({
-    plugins: [createOpencodePlugin(), createClaudeCodePlugin(), createCcbPlugin(), createPeriPlugin()],
+    plugins: [
+      createOpencodePlugin({ workspaceRoot }),
+      createClaudeCodePlugin({ workspaceRoot }),
+      createCcbPlugin({ workspaceRoot }),
+      createPeriPlugin({ workspaceRoot }),
+    ],
     nodes: config.disableLocalExecution
       ? []
       : [

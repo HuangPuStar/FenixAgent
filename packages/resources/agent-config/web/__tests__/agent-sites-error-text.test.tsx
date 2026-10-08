@@ -1,5 +1,5 @@
 // web/__tests__/agent-sites-error-text.test.tsx
-// 守护站点目录失败态的**文案来源**：`EmptyState` 的说明只能取 `agentPanel` 命名空间的键，不得回显
+// 守护站点目录失败态的**文案来源**：`EmptyState` 的说明只能取本包 `agents` 命名空间的键，不得回显
 // `error.message`。
 //
 // 为什么必须钉住：`AgentSitesPage` 用 `unwrap()` 取列表，抛出的 `ApiError.message` 就是后端错误信封
@@ -9,21 +9,20 @@
 //
 // 为什么用真实渲染 + 真实 i18next：被钉住的行为是「原始 message 不出现在渲染结果里」+「失败块仍是
 // 可恢复的 `role="alert"` + 重试」，两者都取决于分支顺序与最终落到哪个元素。`siteDeployment.*` 的键
-// 落在宿主字典（agentPanel 命名空间由宿主登记，见 §9.2 的跨包裁定），包内测试不读宿主文件，因此
-// 用**本文件自带的资源**初始化真实的 i18next 单例：断言的是接线（说明取哪个键、不取 error.message），
-// 文案本身由夹具给。
+// 随台账 D4 从宿主 `agentPanel` 字典迁入本包 `agents`（消费方即本包页面），因此此处直接按本包命名空间
+// 声明夹具资源：断言的是接线（说明取哪个键、不取 error.message），文案本身由夹具给。
 //
 // 不用 `mock.module`：本包 `src/__tests__/agent-config-source-migration.test.ts` 的「包内测试不直接
 // mock 模块」是零容忍守卫（CLAUDE.md 测试红线），替身一律走真实库或平台 `/testing`。
 
 import { afterAll, afterEach, describe, expect, test } from "bun:test";
 import { initializeHappyDomWindow } from "@fenix/ui-components/testing";
-import { NS } from "@fenix/web-runtime/i18n/namespace";
 import { Window } from "happy-dom";
 import i18next from "i18next";
 import { act, createElement, type ReactElement } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { initReactI18next } from "react-i18next";
+import { AGENTS_NS } from "../i18n/namespace";
 
 (globalThis as Record<string, unknown>).IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -40,11 +39,11 @@ const RAW_SERVER_MESSAGE = 'relation "site_app" does not exist (hint: run migrat
 await i18next.use(initReactI18next).init({
   lng: "zh",
   fallbackLng: "zh",
-  ns: [NS.AGENT_PANEL],
-  defaultNS: NS.AGENT_PANEL,
+  ns: [AGENTS_NS],
+  defaultNS: AGENTS_NS,
   resources: {
     zh: {
-      [NS.AGENT_PANEL]: {
+      [AGENTS_NS]: {
         siteDeployment: {
           title: "站点部署",
           subtitle: "把智能体发布成可访问的应用",

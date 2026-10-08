@@ -1,11 +1,21 @@
-import { beforeEach, describe, expect, mock, test } from "bun:test";
+import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
 import { getEventListeners } from "node:events";
 
 const fetchMock = { status: 200, body: {} as unknown };
 
+/**
+ * 真实 fetch 的引用，`afterEach` 用它还原。
+ *
+ * `globalThis.fetch` 是进程级全局，而 Bun 的测试文件共享同一进程：只装不还可能让其后运行的文件（服务端
+ * 侧对假上游发真实 HTTP 的用例）收到这里的桩响应，症状是「单独跑通过、全量跑失败」，且失败点与泄漏源
+ * 相隔很远（实测：workflow-v2 的登录用例读到桩的 `{success:true}` 信封，报「登录被上游拒绝（HTTP 200）」）。
+ */
+let originalFetch: typeof globalThis.fetch;
+
 beforeEach(() => {
   fetchMock.status = 200;
   fetchMock.body = {};
+  originalFetch = globalThis.fetch;
   globalThis.fetch = mock(() =>
     Promise.resolve(
       new Response(JSON.stringify(fetchMock.body), {
@@ -14,6 +24,10 @@ beforeEach(() => {
       }),
     ),
   ) as unknown as typeof fetch;
+});
+
+afterEach(() => {
+  globalThis.fetch = originalFetch;
 });
 
 /** 执行请求后取出 fetch 调用的 RequestInit，便于断言注入与合并之后的请求头。 */

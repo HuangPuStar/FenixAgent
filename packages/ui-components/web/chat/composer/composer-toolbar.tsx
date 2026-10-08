@@ -22,7 +22,6 @@ interface ComposerToolbarProps {
   commands?: readonly AvailableCommand[];
   mcpCount?: number;
   disabled: boolean;
-  isLoading: boolean;
   canCancel: boolean;
   isCancelling: boolean;
   canSend: boolean;
@@ -47,7 +46,6 @@ export function ComposerToolbar({
   commands,
   mcpCount = 0,
   disabled,
-  isLoading,
   canCancel,
   isCancelling,
   canSend,
@@ -72,6 +70,10 @@ export function ComposerToolbar({
   return (
     <div className="flex min-h-11 min-w-0 items-center gap-2.5 px-2.5 pt-1.25 pb-1.75">
       <div className="flex min-w-0 items-center gap-0.75 overflow-hidden">
+        {/* 技能面板入口只受 `disabled`（会话系统未就绪）约束，不受 `isLoading` 约束：面板是「为下一条
+            消息编排」的输入附属物——选中技能只把 `/名称` 写进草稿、不触发发送，与正文输入框、附件入口
+            和斜杠 `/`（同一面板的另一条入口）保持一致。此前这里额外按 `isLoading` 禁用，turn 运行期间
+            点击技能按钮没有任何反馈，用户看到的就是「技能弹窗打不开」（2026-09-28 修）。 */}
         {(commands?.length ?? 0) + mcpCount > 0 ? (
           <button
             type="button"
@@ -79,7 +81,7 @@ export function ComposerToolbar({
             data-open={commandPanelOpen || undefined}
             data-slot="chat-composer-plugin"
             aria-expanded={commandPanelOpen}
-            disabled={disabled || isLoading}
+            disabled={disabled}
             onClick={() => onCommandPanelOpenChange(!commandPanelOpen)}
           >
             <Blocks className="h-3.75 w-3.75" /> {t("chat.components.chatComposer.skillButton")}{" "}

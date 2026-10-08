@@ -41,9 +41,9 @@ function httpServer(overrides: Partial<Extract<McpServerConfig, { type: "streama
 }
 
 describe("Claude Code settings 协议配置", () => {
-  // 空 MCP 列表不生成无意义的配置文件内容
-  test("空 MCP 列表返回 null", () => {
-    expect(buildMcpConfig(createSpec())).toBeNull();
+  // 空 MCP 列表仍产出空 mcpServers：.mcp.json 由该结果整体覆盖写入，返回 null 会让取消全部 MCP 后旧文件残留
+  test("空 MCP 列表返回空集合而不是 null", () => {
+    expect(buildMcpConfig(createSpec())).toEqual({ mcpServers: {} });
   });
 
   // stdio 协议保留服务端名称和启动命令

@@ -8,7 +8,7 @@ Chat 域独立包（合并原 `@fenix/acp-server` 全部能力）。覆盖三层
 
 宿主通过 `packages/agent-runtime/src/server/services/chat-channel-bootstrap.ts` 装配 `ChatChannelController` 单例；其他包只能经 `@fenix/agent-runtime/server` 使用该能力，包内不直接 import 宿主模块。
 
-架构契约见 `docs/arch/19-yjs-chat-streaming.md`（实现基线）；设计决策见 `spec/global/adr/2026-08-04-chat-channel-package-design.md`。
+架构契约见 `docs/arch/19-yjs-chat-streaming.md`（实现基线）；设计决策见 `docs/adr/2026-08-04-chat-channel-package-design.md`。
 
 ## 安装
 

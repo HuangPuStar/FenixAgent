@@ -9,6 +9,7 @@ import {
   knowledgeResourceRepo,
 } from "../server/repositories/knowledge-base";
 import { initializeKnowledgeModuleConfig } from "../server/testing";
+import { type CapturedVisibleQuery, describeCondition, pagedList } from "./visible-query-stub";
 
 const NOW = new Date("2026-08-19T00:00:00.000Z");
 
@@ -164,12 +165,91 @@ describe("round46 知识库仓储真实行为", () => {
     expectLoose(await knowledgeBaseRepo.countBindings("kb-1")).toBe(0);
   });
 
-  // 全局列表应返回排序查询的完整结果。
-  test("全局知识库列表返回所有行", async () => {
-    const rows = [{ id: "kb-2" }, { id: "kb-1" }];
-    const result = Promise.resolve(rows);
-    stubDb({ select: () => ({ from: () => ({ orderBy: () => result }) }) });
-    expectLoose(await knowledgeBaseRepo.listGlobal()).toMatchObject(rows);
+  // 可见集合分页下推：本组织范围把组织条件交给 WHERE（列与绑定值都要对），排序与 LIMIT/OFFSET 挂在同一条
+  // 查询链上，不在内存切片。
+  test("可见集合按组织过滤并下推排序与分页", async () => {
+    const captured: CapturedVisibleQuery = { orderBy: [] };
+    stubDb({ select: () => pagedList([{ id: "kb-1" }], captured) });
+
+    const rows = await knowledgeBaseRepo.listVisible({
+      organizationId: "org-1",
+      includeGlobal: false,
+      limit: 2,
+      offset: 4,
+    });
+
+    expectLoose(rows).toMatchObject([{ id: "kb-1" }]);
+    // 条件本身：`organization_id = <actor 的组织>`。绑错组织或漏掉组织列都会在这里变红。
+    expect(describeCondition(captured.where)).toEqual({ columns: ["organization_id"], values: ["org-1"] });
+    expect(captured.limit).toBe(2);
+    expect(captured.offset).toBe(4);
+    expect(captured.orderBy).toHaveLength(2);
+  });
+
+  // 全局范围不追加组织条件：可见集合＝全表，WHERE 整段省略（`undefined`，不是"不过滤的恒真条件"），
+  // 分页仍由数据库完成。
+  test("全局范围不加组织条件但仍下推分页", async () => {
+    const captured: CapturedVisibleQuery = { orderBy: [] };
+    stubDb({ select: () => pagedList([], captured) });
+
+    await knowledgeBaseRepo.listVisible({
+      organizationId: "org-1",
+      includeGlobal: true,
+      limit: 20,
+      offset: 0,
+    });
+
+    expect(captured.where).toBeUndefined();
+    expect(captured.limit).toBe(20);
+    expect(captured.offset).toBe(0);
+  });
+
+  // 不分页时不得退化成 LIMIT 0：控制台列表要拿到整个可见集合。
+  test("不传分页参数时不追加 LIMIT 与 OFFSET", async () => {
+    const captured: CapturedVisibleQuery = { orderBy: [] };
+    stubDb({ select: () => pagedList([{ id: "kb-1" }], captured) });
+
+    await knowledgeBaseRepo.listVisible({ organizationId: "org-1", includeGlobal: false });
+
+    expect(captured.limit).toBeUndefined();
+    expect(captured.offset).toBeUndefined();
+  });
+
+  // 计数走聚合查询并返回数值；可见条件与列表逐字相同（同一列、同一绑定值：见上一条用例的期望值）——
+  // 两份条件一旦分叉，total 描述的就是另一个集合，翻页会翻出可见集合之外。
+  test("可见集合计数与列表共用同一份可见条件", async () => {
+    const captured: CapturedVisibleQuery = { orderBy: [] };
+    stubDb({
+      select: () => ({
+        from: () => ({
+          where: (condition: unknown) => {
+            captured.where = condition;
+            return Promise.resolve([{ count: 7 }]);
+          },
+        }),
+      }),
+    });
+
+    expectLoose(await knowledgeBaseRepo.countVisible({ organizationId: "org-1", includeGlobal: false })).toBe(7);
+    expect(describeCondition(captured.where)).toEqual({ columns: ["organization_id"], values: ["org-1"] });
+  });
+
+  // 计数也要能表达「全表」：并入全局时同样整段省略 WHERE，否则 total 会小于列表实际可见的行数。
+  test("可见集合计数在全局范围不加组织条件", async () => {
+    const captured: CapturedVisibleQuery = { orderBy: [] };
+    stubDb({
+      select: () => ({
+        from: () => ({
+          where: (condition: unknown) => {
+            captured.where = condition;
+            return Promise.resolve([{ count: 9 }]);
+          },
+        }),
+      }),
+    });
+
+    expectLoose(await knowledgeBaseRepo.countVisible({ organizationId: "org-1", includeGlobal: true })).toBe(9);
+    expect(captured.where).toBeUndefined();
   });
 
   // 数据库异常应原样传播给上层事务或错误处理器。

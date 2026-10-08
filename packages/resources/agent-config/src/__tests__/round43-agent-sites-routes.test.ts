@@ -1,111 +1,24 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { stubDb } from "@fenix/platform-sdk/testing";
-import type { SQL } from "drizzle-orm";
-import { PgDialect } from "drizzle-orm/pg-core";
 import { createWebAgentSitesRoutes } from "../server/routes/web/agent-sites";
 import { initializeAgentConfigModuleConfig } from "../server/testing";
-import { installAgentModuleStub, resetAgentModuleStub, scopedAgent } from "./fixtures";
+import { installAgentModuleStub, resetAgentModuleStub, siteAppView } from "./fixtures";
 import { createStubSessionAuthGuardPlugin, resetTestAuth, setTestAuth } from "./guard-stubs";
 
 /**
- * Agent Sites（`/web/agent-sites`）的路由用例。
+ * `/web/agent-sites` 协议层用例（成功路径与上游透传）。
  *
- * Sites 自身的持久化仍走 `agentSiteAppRepo` + `stubDb`；其中"这个 Agent 属于当前组织吗"的判定已经
- * 收敛到 AgentConfig 资源模块，因此用模块替身（`service.findRowUnscoped`）表达，不再经配置服务桩。
- * 绑定写入（`addAgentSiteApp` / `removeAgentSiteApp`）是真实实现写 `agent_config_site_app`，用 db 替身
- * 观察写入结果——它是本包私有的绑定表，不属于任何 Facade。
- *
- * 认证与配置都经包内接缝（迁移前读宿主 `setTestAuth` / `setTestOrgContext` 与运行环境变量）：主体是平台
- * `ActorContext`，站点链路配置经模块配置注入（`src/server/testing.ts` 的转发代理同时提供 DB 句柄）。
+ * 授权、可见性与写权限的**规则**不在本文件验收——它们已经是站点 Facade 的职责（见
+ * `agent-site-app-facade.test.ts`）；本文件用模块替身声明"应用层返回什么"，断言协议层把它映射成
+ * 契约规定的响应体，并把远端调用参数（路径、platform token）原样透传。
  */
 
 const route = createWebAgentSitesRoutes({ authGuardPlugin: createStubSessionAuthGuardPlugin() });
 
 const appId = "11111111-1111-4111-8111-111111111111";
-const otherAppId = "22222222-2222-4222-8222-222222222222";
-const now = new Date("2026-08-19T00:00:00.000Z");
-const dialect = new PgDialect();
-let selectResults: unknown[][];
-let createdValues: Record<string, unknown> | undefined;
-let updatedValues: Record<string, unknown> | undefined;
-let deleted = false;
-/** `db.delete(...).where(...)` 收到的参数；绑定解绑用它断言"写进去的是 UUID" */
-let deletedParams: unknown[] = [];
-/** `db.insert(agent_config_site_app).values(...)` 收到的值；绑定断言用它。 */
-let boundValues: Record<string, unknown>[] = [];
+const remoteAppId = "app-demo";
+
 let requests: Array<{ url: string; init: RequestInit | undefined }>;
 let originalFetch: typeof fetch;
-
-function app(overrides: Record<string, unknown> = {}) {
-  return {
-    id: appId,
-    organizationId: "org-1",
-    userId: "user-1",
-    remoteAppId: "app-demo",
-    name: "demo-app",
-    description: null,
-    platformToken: "platform-token",
-    platformTokenId: "token-old",
-    visibility: "private",
-    appType: "pocketbase",
-    entryFile: null,
-    activeSlot: null,
-    deployedAt: null,
-    createdByAgentConfigId: null,
-    createdAt: now,
-    updatedAt: now,
-    ...overrides,
-  };
-}
-
-function chain(rows: unknown[]) {
-  return {
-    // biome-ignore lint/suspicious/noThenProperty: Drizzle 查询构造器在 await 时必须是 thenable。
-    then(resolve: (value: unknown[]) => unknown) {
-      return Promise.resolve(rows).then(resolve);
-    },
-    limit: async () => rows,
-    orderBy: async () => rows,
-  };
-}
-
-function stubRouteDb() {
-  stubDb({
-    select: () => ({ from: () => ({ where: () => chain(selectResults.shift() ?? []) }) }),
-    insert: () => ({
-      values: (values: Record<string, unknown>) => ({
-        returning: async () => {
-          createdValues = values;
-          return [app(values)];
-        },
-        onConflictDoNothing: async () => {
-          boundValues.push(values);
-        },
-      }),
-    }),
-    update: () => ({
-      set: (values: Record<string, unknown>) => ({
-        where: () => ({
-          returning: async () => {
-            updatedValues = values;
-            return [app(values)];
-          },
-        }),
-      }),
-    }),
-    delete: () => ({
-      where: (condition: SQL) => {
-        deleted = true;
-        deletedParams = dialect.sqlToQuery(condition).params;
-        return Promise.resolve({ count: 1 });
-      },
-    }),
-  });
-}
-
-function authenticate(role: "owner" | "admin" | "member" = "owner", userId = "user-1", organizationId = "org-1") {
-  setTestAuth({ organizationId, userId, role });
-}
 
 function request(path: string, init?: RequestInit) {
   return route.handle(new Request(`http://localhost/agent-sites${path}`, init));
@@ -113,21 +26,6 @@ function request(path: string, init?: RequestInit) {
 
 function json(path: string, method: string, body: Record<string, unknown> = {}) {
   return request(path, { method, headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
-}
-
-function remoteResponse(url: string) {
-  if (url.endsWith("/api/apps") && requests.at(-1)?.init?.method === "POST") {
-    return { data: { id: "app-created", name: "created-app", type: "custom" } };
-  }
-  if (url.endsWith("/api/tokens")) {
-    return { data: { token: "token-new", token_id: "token-new-id" } };
-  }
-  if (url.includes("/deploy")) {
-    return { data: { files: 2, total_bytes: 64, entry_file: "main.ts", slot: "b" } };
-  }
-  if (url.includes("/bundle")) return { data: { files: 2 } };
-  if (url.includes("/files/")) return { data: { path: "index.html", bytes: 12 } };
-  return { data: { proxied: true } };
 }
 
 describe("round43 Agent Sites Web 路由", () => {
@@ -138,22 +36,16 @@ describe("round43 Agent Sites Web 路由", () => {
       agentSitesMasterKey: "test-master-key",
     });
     resetAgentModuleStub();
-    selectResults = [];
-    createdValues = undefined;
-    updatedValues = undefined;
-    deleted = false;
-    deletedParams = [];
-    boundValues = [];
     requests = [];
     originalFetch = globalThis.fetch;
     const fetchStub = async (input: string | URL | Request, init?: RequestInit): Promise<Response> => {
-      const url = input.toString();
-      requests.push({ url, init });
-      return new Response(JSON.stringify(remoteResponse(url)), { headers: { "content-type": "application/json" } });
+      requests.push({ url: input.toString(), init });
+      return new Response(JSON.stringify({ data: { proxied: true } }), {
+        headers: { "content-type": "application/json" },
+      });
     };
     globalThis.fetch = Object.assign(fetchStub, { preconnect: originalFetch.preconnect });
-    stubRouteDb();
-    authenticate();
+    setTestAuth({ organizationId: "test-org", userId: "test-user" });
   });
 
   afterEach(() => {
@@ -162,221 +54,187 @@ describe("round43 Agent Sites Web 路由", () => {
     resetTestAuth();
   });
 
-  // 未认证请求必须在业务处理前被认证守卫拒绝（守卫替身未登录即短路，不进入 handler）。
+  // 未认证请求必须在业务处理前被认证守卫拒绝（守卫替身未登录即短路，不进入 handler，也就不触达 Facade）。
   test("未认证访问列表返回 401", async () => {
     resetTestAuth();
+    installAgentModuleStub({
+      siteFacade: {
+        list: async () => {
+          throw new Error("未认证请求不应进入应用层");
+        },
+      },
+    });
+
     expect((await request("/apps")).status).toBe(401);
   });
 
-  // 列表仅展示当前用户可读的 private app，同时保留组织可见 app。
-  test("列表过滤其他用户的 private app", async () => {
-    selectResults = [
-      [
-        app(),
-        app({ id: otherAppId, userId: "user-2", remoteAppId: "app-private" }),
-        app({
-          id: "33333333-3333-4333-8333-333333333333",
-          userId: "user-2",
-          remoteAppId: "app-org",
-          visibility: "org",
-        }),
-      ],
-    ];
+  // 列表把 Facade 给出的行原样映射为响应，并保留顺序（Facade 已按创建时间排好）。
+  test("列表映射 Facade 给出的行并保持顺序", async () => {
+    installAgentModuleStub({
+      siteFacade: {
+        list: async () => [
+          siteAppView({ id: "a", name: "app-a", remoteAppId: "app-aaa" }),
+          siteAppView({ id: "b", name: "app-b", remoteAppId: "app-bbb" }),
+        ],
+      },
+    });
+
     const response = await request("/apps");
+    const json = await response.json();
     expect(response.status).toBe(200);
-    expect((await response.json()).data.map((item: { remoteAppId: string }) => item.remoteAppId)).toEqual([
-      "app-demo",
-      "app-org",
-    ]);
+    expect(json.data.map((item: { remoteAppId: string }) => item.remoteAppId)).toEqual(["app-aaa", "app-bbb"]);
   });
 
-  // 有创建者配置时应批量补充创建者名称。
+  // 有创建者配置时响应携带创建者名称（前端列表与卡片用它做展示）。
   test("列表附加创建者配置名称", async () => {
-    selectResults = [[app({ createdByAgentConfigId: "agent-1" })], [{ id: "agent-1", name: "开发智能体" }]];
+    installAgentModuleStub({
+      siteFacade: {
+        list: async () => [siteAppView({ createdByAgentConfigId: "agent-1", createdByAgentConfigName: "开发智能体" })],
+      },
+    });
+
     const body = await (await request("/apps")).json();
     expect(body.data[0].createdByAgentConfigName).toBe("开发智能体");
   });
 
-  // 不存在的 UUID 详情必须映射为统一 not_found 错误。
-  test("详情不存在返回 404", async () => {
-    selectResults = [[]];
-    const response = await request(`/apps/${appId}`);
-    expect(response.status).toBe(404);
-    expect((await response.json()).error.code).toBe("not_found");
-  });
+  // 远端 app id 查询通路（站点识别链路）返回详情；远端 id 原样传给 Facade。
+  test("按远端 ID 查询返回详情", async () => {
+    const seen: string[] = [];
+    installAgentModuleStub({
+      siteFacade: {
+        getByRemoteAppId: async (_actor, remote) => {
+          seen.push(remote);
+          return siteAppView({ remoteAppId: "app-remote", visibility: "org", userId: "user-2" });
+        },
+      },
+    });
 
-  // 跨组织的记录即使按 ID 查到也不得泄露详情。
-  test("详情拒绝跨组织 app", async () => {
-    selectResults = [[app({ organizationId: "org-2" })]];
-    expect((await request(`/apps/${appId}`)).status).toBe(404);
-  });
-
-  // 非创建者不能读取同组织 private app。
-  test("详情拒绝其他用户的 private app", async () => {
-    selectResults = [[app({ userId: "user-2" })]];
-    expect((await request(`/apps/${appId}`)).status).toBe(404);
-  });
-
-  // 远端 app id 查询可返回组织范围内公开可读 app。
-  test("按远端 ID 查询组织可见 app", async () => {
-    selectResults = [[app({ remoteAppId: "app-remote", visibility: "org", userId: "user-2" })]];
     const body = await (await request("/apps/by-remote/app-remote")).json();
     expect(body.data).toMatchObject({ remoteAppId: "app-remote", visibility: "org" });
+    expect(seen).toEqual(["app-remote"]);
   });
 
-  // 创建 custom app 要串联远端创建、token 申请和本地持久化。
-  test("创建 custom app 持久化远端 token 与归属", async () => {
+  // 创建请求体经 schema 默认值补齐后交给 Facade，响应体是 Facade 给出的行。
+  test("创建把请求字段交给 Facade", async () => {
+    const created: Array<Record<string, unknown>> = [];
+    installAgentModuleStub({
+      siteFacade: {
+        create: async (_actor, input) => {
+          created.push(input as unknown as Record<string, unknown>);
+          return siteAppView({ appType: "custom", visibility: "public" });
+        },
+      },
+    });
+
     const response = await json("/apps", "POST", {
       name: "created-app",
       type: "custom",
       visibility: "public",
       agentConfigId: "agent-1",
     });
+
     expect(response.status).toBe(200);
-    expect(createdValues).toMatchObject({
-      organizationId: "org-1",
-      userId: "user-1",
-      remoteAppId: "app-created",
-      platformToken: "token-new",
-      appType: "custom",
-      visibility: "public",
-      createdByAgentConfigId: "agent-1",
-    });
+    expect(created).toEqual([{ name: "created-app", visibility: "public", type: "custom", agentConfigId: "agent-1" }]);
   });
 
-  // 不符合 kebab-case 的名称必须被 schema 在远端调用前拒绝。
+  // 不符合 kebab-case 的名称必须被 schema 在进入应用层前拒绝。
   test("创建校验非法名称", async () => {
+    installAgentModuleStub({
+      siteFacade: {
+        create: async () => {
+          throw new Error("非法请求不应进入应用层");
+        },
+      },
+    });
+
     const response = await json("/apps", "POST", { name: "Invalid Name" });
     expect(response.status).toBe(422);
-    expect(requests).toHaveLength(0);
   });
 
-  // 更新不存在 app 时不能执行写入。
-  test("更新不存在 app 返回 404", async () => {
-    selectResults = [[]];
-    expect((await json(`/apps/${appId}`, "PATCH", { name: "new-name" })).status).toBe(404);
-    expect(updatedValues).toBeUndefined();
-  });
+  // 更新把可写字段透传给 Facade，并映射回更新后的行。
+  test("更新透传可写字段并返回新行", async () => {
+    const updates: Array<Record<string, unknown>> = [];
+    installAgentModuleStub({
+      siteFacade: {
+        update: async (_actor, id, input) => {
+          updates.push({ id, ...(input as unknown as Record<string, unknown>) });
+          return siteAppView({ name: "new-name", description: "说明", visibility: "org" });
+        },
+      },
+    });
 
-  // 普通成员不能修改其他用户创建的 app。
-  test("成员不能更新他人 app", async () => {
-    authenticate("member");
-    selectResults = [[app({ userId: "user-2" })]];
-    expect((await json(`/apps/${appId}`, "PATCH", { name: "new-name" })).status).toBe(403);
-  });
-
-  // owner 可以更新名称、描述与可见性。
-  test("owner 更新 app 属性", async () => {
-    selectResults = [[app()]];
     const response = await json(`/apps/${appId}`, "PATCH", {
       name: "new-name",
       description: "说明",
       visibility: "org",
     });
+    const body = await response.json();
+
     expect(response.status).toBe(200);
-    expect(updatedValues).toMatchObject({ name: "new-name", description: "说明", visibility: "org" });
+    expect(updates).toEqual([{ id: appId, name: "new-name", description: "说明", visibility: "org" }]);
+    expect(body.data).toMatchObject({ name: "new-name", visibility: "org" });
   });
 
-  // 删除跨组织 app 时不能触发远端删除。
-  test("删除跨组织 app 返回 404", async () => {
-    selectResults = [[app({ organizationId: "org-2" })]];
-    expect((await request(`/apps/${appId}`, { method: "DELETE" })).status).toBe(404);
-    expect(requests).toHaveLength(0);
-  });
-
-  // admin 可删除他人 app，且远端删除先于本地硬删除。
-  test("admin 删除 app", async () => {
-    authenticate("admin");
-    selectResults = [[app({ userId: "user-2" })]];
-    const response = await request(`/apps/${appId}`, { method: "DELETE" });
-    expect(response.status).toBe(200);
-    expect(requests[0]?.url).toContain("/api/apps/app-demo");
-    expect(deleted).toBe(true);
-  });
-
-  // 旧 token 吊销失败不应阻止申请新 token 并更新本地记录。
-  test("重签 token 在吊销失败后继续", async () => {
-    selectResults = [[app()]];
-    const fetchStub = async (input: string | URL | Request, init?: RequestInit): Promise<Response> => {
-      const url = input.toString();
-      requests.push({ url, init });
-      if (url.includes("token-old")) return new Response(JSON.stringify({ message: "gone" }), { status: 404 });
-      return new Response(JSON.stringify(remoteResponse(url)), { headers: { "content-type": "application/json" } });
-    };
-    globalThis.fetch = Object.assign(fetchStub, { preconnect: originalFetch.preconnect });
-    expect((await request(`/apps/${appId}/rotate-token`, { method: "POST" })).status).toBe(200);
-    expect(updatedValues).toMatchObject({ platformToken: "token-new", platformTokenId: "token-new-id" });
-  });
-
-  // 单文件上传将路径和二进制请求体转交上游。
+  // 单文件上传把路径与二进制请求体转交 Facade，并把上游数据原样放进响应。
   test("上传单个文件", async () => {
-    selectResults = [[app()]];
+    const uploads: Array<Record<string, unknown>> = [];
+    installAgentModuleStub({
+      siteFacade: {
+        uploadFile: async (_actor, id, path, body) => {
+          uploads.push({ id, path, hasBody: body !== null });
+          return { path: "index.html", bytes: 12 };
+        },
+      },
+    });
+
     const response = await request(`/apps/${appId}/files/index.html`, { method: "PUT", body: "hello" });
     expect(response.status).toBe(200);
     expect((await response.json()).data).toEqual({ path: "index.html", bytes: 12 });
+    expect(uploads).toEqual([{ id: appId, path: "index.html", hasBody: true }]);
   });
 
-  // bundle 上传使用独立上游端点并返回平台数据。
+  // bundle 上传走独立端点，上游返回数据同样原样回给调用方。
   test("批量上传 bundle", async () => {
-    selectResults = [[app()]];
+    installAgentModuleStub({ siteFacade: { uploadBundle: async () => ({ files: [{ path: "a.js", bytes: 1 }] }) } });
+
     const response = await request(`/apps/${appId}/files/bundle`, { method: "POST", body: "bundle" });
     expect(response.status).toBe(200);
-    expect(requests[0]?.url).toContain("/bundle");
+    expect((await response.json()).data).toEqual({ files: [{ path: "a.js", bytes: 1 }] });
   });
 
-  // PocketBase app 不支持 custom deploy，应在调用平台前拒绝。
-  test("PocketBase app 拒绝部署", async () => {
-    selectResults = [[app()]];
-    expect((await request(`/apps/${appId}/deploy`, { method: "POST", body: "archive" })).status).toBe(400);
-    expect(requests).toHaveLength(0);
-  });
+  // custom app 部署把平台元数据映射为响应（时间戳降到秒级，与前端契约一致）。
+  test("custom app 部署返回秒级元数据", async () => {
+    const deployedAt = new Date("2026-08-19T00:00:00.000Z");
+    installAgentModuleStub({
+      siteFacade: {
+        deploy: async () => ({ files: 2, totalBytes: 64, entryFile: "main.ts", slot: "b", deployedAt }),
+      },
+    });
 
-  // custom app 部署将平台元数据写回本地并返回秒级时间。
-  test("custom app 部署写入元数据", async () => {
-    selectResults = [[app({ appType: "custom" })]];
     const response = await request(`/apps/${appId}/deploy`, { method: "POST", body: "archive" });
     const body = await response.json();
     expect(response.status).toBe(200);
-    expect(updatedValues).toMatchObject({ entryFile: "main.ts", activeSlot: "b" });
-    expect(body.data).toMatchObject({ files: 2, totalBytes: 64, slot: "b" });
-  });
-
-  // 绑定前先确认 agent config 在当前组织内。
-  test("绑定不存在 agent config 返回 404", async () => {
-    installAgentModuleStub({ service: { findRowUnscoped: async () => undefined } });
-    expect((await request(`/agent-configs/agent-1/sites/${appId}`, { method: "POST" })).status).toBe(404);
-  });
-
-  // remoteAppId 绑定必须解析为本地 UUID 后写入关系表。
-  test("按远端 ID 绑定 site", async () => {
-    installAgentModuleStub({
-      service: { findRowUnscoped: async () => scopedAgent({ id: "agent-1", organizationId: "org-1" }) },
+    expect(body.data).toMatchObject({
+      files: 2,
+      totalBytes: 64,
+      entryFile: "main.ts",
+      slot: "b",
+      deployedAt: Math.floor(deployedAt.getTime() / 1000),
     });
-    selectResults = [[app()]];
-    const response = await request("/agent-configs/agent-1/sites/app-demo", { method: "POST" });
-    expect(response.status).toBe(200);
-    expect(boundValues).toEqual([{ agentConfigId: "agent-1", siteAppId: appId }]);
   });
 
-  // UUID 绑定使用本地 ID 查询路径，避免将 UUID 当作远端 ID。
-  test("按 UUID 解绑 site", async () => {
+  // PocketBase 代理注入 platform token，并保留既有契约下的相对路径与 query。
+  //
+  // 路径拼接沿用迁移前的实现（按 `/web/agent-sites/apps/:id/api/` 前缀做字符串裁剪），既有用例断言的
+  // 正是它当前产出的路径——本批不改协议行为，因此断言与迁移前保持一致；该前缀与路由实际挂载前缀不
+  // 一致导致的少裁剪问题是既有缺陷，不在本批范围内（见整改回报）。
+  test("PocketBase API 代理注入 token 并保留路径", async () => {
     installAgentModuleStub({
-      service: { findRowUnscoped: async () => scopedAgent({ id: "agent-1", organizationId: "org-1" }) },
+      siteFacade: {
+        getPocketBaseProxyTarget: async () => ({ remoteAppId, platformToken: "platform-token" }),
+      },
     });
-    selectResults = [[app()]];
-    expect((await request(`/agent-configs/agent-1/sites/${appId}`, { method: "DELETE" })).status).toBe(200);
-    expect(deletedParams).toEqual(["agent-1", appId]);
-  });
 
-  // custom app 不得进入 PocketBase 管理 API 代理。
-  test("custom app 拒绝 PocketBase API 代理", async () => {
-    selectResults = [[app({ appType: "custom" })]];
-    expect((await request(`/apps/${appId}/api/collections/cards`, { method: "GET" })).status).toBe(400);
-  });
-
-  // PocketBase 代理注入平台 token 并保留完整相对 API 路径。
-  test("PocketBase API 代理注入 token", async () => {
-    selectResults = [[app()]];
     const response = await request(`/apps/${appId}/api/collections/cards?expand=author`, { method: "GET" });
     expect(response.status).toBe(200);
     expect(requests[0]?.url).toContain("/app-demo/api/lections/cards?expand=author");

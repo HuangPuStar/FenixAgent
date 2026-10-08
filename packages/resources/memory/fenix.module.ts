@@ -5,10 +5,12 @@ import { z } from "zod/v4";
 /**
  * Memory 资源模块描述符。
  *
- * Hindsight 长期记忆的唯一 owner：记忆可用性判定（系统级 + Agent 级）、Hindsight MCP server 与 bank 的
- * 幂等登记、`agent_memory_config` 的读写（唯一数据访问点），以及 `/web/hindsight/**` 代理路由。
+ * Hindsight 长期记忆的唯一 owner：记忆可用性判定（系统级 + Agent 级）、
+ * `agent_memory_config` 的读写（唯一数据访问点），以及
+ * `/web/hindsight/**` 代理路由。hindsight MCP 不再登记为系统 MCP server：它改由启动参数的插件机制
+ * 下发（`@fenix/agent-config` 的 `agent-launch-spec/memory-env`）。
  * 服务端交付物集中在 `@fenix/resource-memory/server`（`src/server.ts`）：判定入口
- * `shouldEnableAgentMemory()`、插件默认参数 `HINDSIGHT_PLUGIN_DEFAULTS`、bank 登记 `ensureHindsightMcpServer()`
+ * `shouldEnableAgentMemory()`、插件默认参数 `HINDSIGHT_PLUGIN_DEFAULTS`
  * 与转发出口 `proxyToHindsight()`，路由以工厂导出 `createWebHindsightRoutes({ authGuardPlugin })`
  * （宿主 `apps/server/src/routes/web/index.ts` 挂载，属任务 1.3 §4 的共享文件改动）。
  * 浏览器面在 `@fenix/resource-memory/web`（`web/index.ts`：页面、`hindsightApi`、i18n 资源）。
@@ -19,8 +21,8 @@ import { z } from "zod/v4";
  * `getModuleConfig("memory")` 读取部署配置）——platform-sdk 是跨域契约包、不注册模块，不产生装配边。
  * 本包 `src/**` 对宿主的内部导入自 §1.7 B10 起**归零**（原先那一处是
  * `src/server/repositories/agent-memory-config.ts` 的 `@server/db/schema` 表定义），台账 `apps-boundary`
- * 的条目随之删除。系统托管 MCP server 的写入（`@fenix/resource-mcp` 的系统路径）经
- * `ensureHindsightMcpServer()` 的参数注入，不构成模块边。
+ * 的条目随之删除。系统托管 MCP server 的登记路径已按 owner 裁定删除（hindsight 只走插件下发），
+ * 本包不再持有指向 `@fenix/resource-mcp` 的任何注入端口。
  * `db/schema.ts`（§1.7 B10 新增）是唯一的例外面：它按外键目标导入 `@fenix/agent-config/db` 的
  * `agentConfig` 列对象，已写入 `package.json` 的 `dependencies`，但**不进** `dependsOn`——生成器的
  * 装配依赖校验（`assertDependsOnComplete`）只扫 `src/**`，且表定义表达的是「列对象来自谁的迁移链」，
@@ -75,6 +77,10 @@ import { z } from "zod/v4";
  * `apps/server/src/bootstrap/host-startup.ts` 在启动期读出后经 launch spec 端口注入 agent 进程，本包只消费
  * 派生结果（`getHindsightConfig().url`）。按「键归唯一模块」的口径由该模块声明，本包不重复：两处声明意味着
  * 同一契约的校验强度与默认值语义要维护两份，而 `assertDefinitions` 只在逐字段完全一致时才放行。
+ *
+ * 声明 `dependencyServices`（A3）：Hindsight 的部署面就是 `HINDSIGHT_MCP_URL` 一个键，依赖声明因此只有
+ * 一条——它让部署前自检知道「启用了 memory 就该探 `HINDSIGHT_MCP_URL` 的 TCP 可达性」，且明确该服务的
+ * 编排在 `docker/hindsight/` 而不在本仓 deploy/compose（不重复定义第三方编排）。
  */
 export const moduleManifest = {
   id: "memory",
@@ -93,6 +99,23 @@ export const moduleManifest = {
         "Hindsight 长期记忆 MCP 服务地址；无默认值——未设置（含 docker-compose 透传的空串）即「记忆能力整体未启用」。" +
         '装配期由宿主投影为 memory 模块配置，本包在启动后经 getModuleConfig("memory") 读取，用于 /web/hindsight ' +
         "代理上游、系统级记忆可用性判据与 Hindsight MCP server 的登记。",
+    },
+  ],
+  // 声明 `dependencyServices`（A3）：Hindsight 是外部产品，编排入口在 `docker/hindsight/docker-compose.yml`，
+  // 本仓 deploy/compose 只记录依赖与探针（`orchestration: "separate"`）。它没有公开的健康端点，因此探针是
+  // **较弱的** TCP 可达性断言——不拿一个猜来的 HTTP 路径冒充健康检查。`required: false`：未部署记忆即
+  // 「记忆能力整体未启用」，主服务照常启动。
+  dependencyServices: [
+    {
+      id: "hindsight",
+      required: false,
+      orchestration: "separate",
+      envKeys: ["HINDSIGHT_MCP_URL"],
+      composeFile: "docker/hindsight/docker-compose.yml",
+      healthCheck: { kind: "tcp", addressKey: "HINDSIGHT_MCP_URL" },
+      description:
+        "Hindsight 长期记忆服务（MCP 形态）。未部署时 /web/hindsight 上游不可达、系统级记忆判据为「未启用」，" +
+        "不阻断主服务启动。",
     },
   ],
   web: {

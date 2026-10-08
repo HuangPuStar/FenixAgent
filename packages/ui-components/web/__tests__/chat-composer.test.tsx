@@ -172,6 +172,45 @@ describe("ChatComposer 纯化接缝", () => {
     expect(container.querySelectorAll('[data-slot="chat-composer-asset"]').length).toBe(1);
   });
 
+  // 移除附件只删除该卡片自动插入的引用，重新加入不重复；用户已有的同路径正文仍保留。
+  test("removing an attachment clears only its automatic mention", () => {
+    let emit: ((event: ComposerExternalEvent) => void) | undefined;
+    mount({
+      onSubmit: () => {},
+      defaultDraft: "用户写的 @./src/index.ts",
+      subscribeExternal: (handler) => {
+        emit = handler;
+        return () => {};
+      },
+    });
+    const file = { name: "index.ts", path: "src/index.ts" };
+    act(() => emit?.({ type: "file-reference", file }));
+    expect(container.querySelector("textarea")?.value).toBe("用户写的 @./src/index.ts @./src/index.ts ");
+    const remove = container.querySelector('[aria-label="Remove index.ts"]') as HTMLButtonElement | null;
+    expect(remove).not.toBeNull();
+    act(() => remove?.click());
+    expect(container.querySelector("textarea")?.value).toBe("用户写的 @./src/index.ts");
+    act(() => emit?.({ type: "file-reference", file }));
+    expect(container.querySelector("textarea")?.value).toBe("用户写的 @./src/index.ts @./src/index.ts ");
+  });
+
+  // 自动引用被用户改写后失去自动删除资格，移除卡片应保留编辑过的正文。
+  test("removing an attachment preserves an edited mention", () => {
+    let emit: ((event: ComposerExternalEvent) => void) | undefined;
+    mount({
+      onSubmit: () => {},
+      subscribeExternal: (handler) => {
+        emit = handler;
+        return () => {};
+      },
+    });
+    act(() => emit?.({ type: "file-reference", file: { name: "index.ts", path: "src/index.ts" } }));
+    act(() => emit?.({ type: "suggested-prompt", prompt: "用户修改 @./src/index.ts" }));
+    const remove = container.querySelector('[aria-label="Remove index.ts"]') as HTMLButtonElement | null;
+    act(() => remove?.click());
+    expect(container.querySelector("textarea")?.value).toBe("用户修改 @./src/index.ts");
+  });
+
   // 未注入 uploadFiles 时附件按钮禁用（源实现以 envId 是否存在判定），注入后可用
   test("attachment button follows uploadFiles injection", () => {
     mount({ onSubmit: () => {} });
@@ -542,6 +581,22 @@ describe("ChatComposer interaction", () => {
     act(() => (button as unknown as HTMLButtonElement).click());
     expect(interruptCalls).toBe(0);
     expect(submitCalls).toBe(0);
+  });
+
+  // turn 运行中（isLoading）技能按钮必须仍可点击并打开能力面板：面板只把 `/技能名` 写进草稿、
+  // 不触发发送，属于「为下一条消息编排」的输入附属物，与正文输入框、附件入口和斜杠 `/`
+  // 的可用性一致。回归保护：该按钮曾按 isLoading 禁用，点击毫无反馈（用户报「技能弹窗打不开」）。
+  test("skill panel stays clickable while a turn is running", () => {
+    const commands = [{ name: "review", description: "审查代码" }];
+    mount({ onSubmit: () => {}, isLoading: true, canCancel: true, commands });
+
+    const trigger = container.querySelector('[data-slot="chat-composer-plugin"]');
+    expect(trigger).not.toBeNull();
+    expect(trigger?.hasAttribute("disabled")).toBe(false);
+
+    act(() => (trigger as unknown as HTMLButtonElement).click());
+    expect(container.querySelector("[data-active]")).not.toBeNull();
+    expect(container.textContent).toContain("review");
   });
 });
 

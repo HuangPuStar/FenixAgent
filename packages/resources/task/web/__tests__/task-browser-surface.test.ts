@@ -95,6 +95,22 @@ const BROWSER_SAFE_EXTERNAL: ReadonlyMap<string, string> = new Map([
     "文件类型图标（ui-components components/file-icon-helper 传递依赖，经 @fenix/agent-config/web → knowledge 资源列表引入）：" +
       "纯浏览器 SVG 组件，运行时依赖只有 react / prop-types / colord（后者提供颜色解析），无 node 专有能力",
   ],
+  // 2026-09-25：本包页面 → `@fenix/agent-config/web`（`agentApi`）→ 该包编辑器 → `@fenix/resource-machine/web`
+  // 包根出口，随「文件域归位」把 ui-components 的文件工作区子树（文件树 / 预览 / 分栏）带进本包图；
+  // 以下五条即该子树的传递依赖。评审裁定与依据见
+  // `packages/resources/machine/web/__tests__/machine-browser-surface.test.ts` 白名单上方的 2026-09-25
+  // 批量评审记录（同一条 ui-components 生产路径，此处不另立说法）。
+  ["react-arborist", "虚拟化文件树（ui-components components/file-tree-arborist 传递依赖），纯浏览器实现"],
+  ["react-resizable-panels", "可拖拽分栏（ui-components ui/resizable 传递依赖），纯浏览器实现"],
+  [
+    "@open-file-viewer/core",
+    "文件预览内核（ui-components components/preview/* 传递依赖，随样式表一起被浏览器加载），纯浏览器实现",
+  ],
+  ["@open-file-viewer/react", "文件预览 React 绑定（ui-components components/preview/FileViewerPreview 的生产路径）"],
+  [
+    "react-dom",
+    "React DOM 运行时（本包 peerDependency，宿主注入；ui-components components/file-tree-context-menu 的 createPortal 传递依赖）",
+  ],
 ]);
 
 const graph = walkValueGraph(WEB_ENTRY);

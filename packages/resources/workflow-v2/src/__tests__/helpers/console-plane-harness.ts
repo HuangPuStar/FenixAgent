@@ -1,0 +1,208 @@
+// 控制面（`/web/workflow-v2/workflows*`）用例的共享夹具：真实 Postgres 句柄、会话守卫替身、上游替身与
+// 审计断言读取。抽出来的理由与包内既有口径一致（`canvas-bff.test.ts` 的注释也说明了这一点）：替身依赖
+// Drizzle/Bun 的具体形状，各文件各留一份时容易在「谓词是否真的生效」上产生细微差异。
+//
+// 本文件不是用例文件（文件名不含 `.test.`），`bun test` 不会把它当作用例收集；它只被同目录的用例导入。
+
+import { initializeTestApplicationInfrastructure, readJson, resetAllStubs } from "@fenix/platform-sdk/testing";
+import {
+  workflowV2AuditLog,
+  workflowV2OrgApp,
+  workflowV2PlatformAccount,
+  workflowV2Workflow,
+} from "@fenix/resource-workflow-v2/db";
+import { and, eq, like } from "drizzle-orm";
+import { drizzle } from "drizzle-orm/node-postgres";
+import { Elysia } from "elysia";
+import { Pool } from "pg";
+import type { UpstreamCallInput, UpstreamCallResult } from "../../server/services/upstream-client";
+import { registerWorkflow } from "../../server/services/workflow-registry";
+
+type Database = ReturnType<typeof drizzle>;
+
+const CONNECTION_STRING = process.env.DATABASE_URL;
+const pool = CONNECTION_STRING ? new Pool({ connectionString: CONNECTION_STRING, max: 2 }) : null;
+const handle: Database | null = pool ? drizzle(pool) : null;
+
+/**
+ * 库是否可达：连不上时整组跳过并打印原因（CI 没有数据库服务，硬失败会让 `bun test packages/` 变成不可用
+ * 门禁）；跳过是显式的，不是静默通过。
+ */
+export const databaseReachable =
+  (await pool
+    ?.query("SELECT 1")
+    .then(() => handle !== null)
+    .catch(() => false)) ?? false;
+
+if (!databaseReachable) console.warn("[workflow-v2 控制面用例] 跳过：DATABASE_URL 未配置或本地 Postgres 不可达。");
+
+/** 取真实句柄；跳过组之外的用例不应调用它。 */
+export function database(): Database {
+  if (!handle) throw new Error("本地 Postgres 不可达，测试数据层未装配");
+  return handle;
+}
+
+/** 收尾：关掉本进程的测试连接池。 */
+export async function closeTestPool(): Promise<void> {
+  await pool?.end();
+}
+
+/** 复位替身后注入数据库句柄（应用基础设施只允许初始化一次，不复位第二条用例就会抛错）。 */
+export function installDatabase(injected: unknown = database()): void {
+  resetAllStubs();
+  initializeTestApplicationInfrastructure({ database: injected });
+}
+
+const TEST_PREFIX = "wf2-test-";
+/** 本次运行的唯一后缀：避免与上一次崩溃残留的行、或并行的另一次运行相互干扰。 */
+const RUN = crypto.randomUUID().slice(0, 8);
+
+export const ORG_A = `${TEST_PREFIX}${RUN}-a`;
+export const ORG_B = `${TEST_PREFIX}${RUN}-b`;
+export const SPACE_ID = `${TEST_PREFIX}${RUN}-space`;
+export const APP_ID = `${TEST_PREFIX}${RUN}-app`;
+export const OWNER_ID = `${TEST_PREFIX}${RUN}-user`;
+
+/** 测试对象的上游 ID；一律带前缀，清理与断言都按前缀走。 */
+export const upstreamId = (suffix: string): string => `${TEST_PREFIX}${RUN}-${suffix}`;
+
+/** 上游成功信封（`code: 0` 是唯一成功判定，见契约快照 §3 F5）。 */
+export const upstreamOk = (body: Record<string, unknown>): UpstreamCallResult => ({
+  status: 200,
+  body: { code: 0, ...body },
+});
+
+/** 上游业务失败信封；`msg` 用上游服务端的原文形态，发布拒绝的区分依赖它。 */
+export const upstreamFail = (code: number, msg: string): UpstreamCallResult => ({ status: 200, body: { code, msg } });
+
+/** 上游调用替身：记录每次入参、按路径返回预置响应；未注册路径直接失败，避免用例静默打到真实上游。 */
+export function createUpstreamStub(responses: Record<string, () => UpstreamCallResult | Promise<UpstreamCallResult>>) {
+  const calls: UpstreamCallInput[] = [];
+  const call = async (input: UpstreamCallInput): Promise<UpstreamCallResult> => {
+    calls.push(input);
+    const handler = responses[input.path];
+    if (!handler) throw new Error(`测试未注册的上游路径：${input.path}`);
+    return handler();
+  };
+  return { call, calls };
+}
+
+/** 某次上游调用的请求体；断言服务端注入值用。 */
+export const sentBody = (calls: readonly UpstreamCallInput[], index: number): Record<string, unknown> =>
+  (calls[index]?.body ?? {}) as Record<string, unknown>;
+
+/**
+ * 会话守卫替身：只提供工厂注册路由所需的 `sessionAuth` 宏与 `store.authContext`；不复制宿主鉴权策略
+ * （那条链路由宿主用例覆盖）。
+ */
+export function createStubAuthGuard() {
+  let actor: { organizationId: string; userId: string } | null = null;
+  const plugin = new Elysia({ name: "wf2-test-session-auth" })
+    .state({ authContext: null as { organizationId: string; userId: string } | null })
+    .macro({
+      sessionAuth(enabled: boolean) {
+        if (!enabled) return {};
+        return {
+          beforeHandle({ store }: { store: { authContext: { organizationId: string; userId: string } | null } }) {
+            if (actor) store.authContext = actor;
+          },
+        };
+      },
+    });
+  return {
+    plugin,
+    /** 切换当前请求的 actor；`null` 表示未认证。 */
+    setActor(next: { organizationId: string; userId: string } | null) {
+      actor = next;
+    },
+  };
+}
+
+/** 写平台账号与租户 App 绑定；`onConflictDoNothing` 让每条用例重复装配保持幂等。 */
+export async function seedBinding(): Promise<void> {
+  // 平台账号是单行表且读取取 `createdAt` 最早的一行：固定用 epoch 让本文件的行走稳定胜出，因而不必
+  // 删除库里可能存在的其它行（那会破坏本机既有数据）。
+  await database()
+    .insert(workflowV2PlatformAccount)
+    .values({
+      platformUserId: `${TEST_PREFIX}${RUN}-account`,
+      platformSpaceId: SPACE_ID,
+      email: "workflow-v2-test@example.invalid",
+      status: "active",
+      createdAt: new Date(0),
+      updatedAt: new Date(0),
+    })
+    .onConflictDoNothing();
+  await database()
+    .insert(workflowV2OrgApp)
+    .values({ organizationId: ORG_A, appId: APP_ID, name: "测试租户 App", status: "active" })
+    .onConflictDoNothing();
+}
+
+/** 登记一条记录（不经路由），可选直接置已发布版本，供「版本自增」用例做前置条件。 */
+export async function seedRecord(suffix: string, publishedVersion: string | null = null, organizationId = ORG_A) {
+  const record = await registerWorkflow({
+    organizationId,
+    upstreamWorkflowId: upstreamId(suffix),
+    appId: APP_ID,
+    name: `阶段三 ${suffix}`,
+    ownerUserId: OWNER_ID,
+    visibility: "private",
+  });
+  if (publishedVersion !== null) {
+    await database().update(workflowV2Workflow).set({ publishedVersion }).where(eq(workflowV2Workflow.id, record.id));
+  }
+  return record;
+}
+
+/** 对被测应用发一次请求。 */
+export const request = (app: Elysia, path: string, init?: RequestInit) =>
+  app.handle(new Request(`http://localhost${path}`, init));
+
+/** JSON 请求初始化。 */
+export const jsonInit = (method: string, body: unknown): RequestInit => ({
+  method,
+  headers: { "content-type": "application/json" },
+  body: JSON.stringify(body),
+});
+
+/** 控制面响应体的最小断言形状（成功与失败两个信封）。 */
+export const readBody = async (response: Response) =>
+  (await readJson(response)) as {
+    success: boolean;
+    data?: { version?: string; commitId?: string; id?: string; upstreamWorkflowId?: string; ok?: boolean };
+    error?: { code: string; message: string };
+  };
+
+/** 读原始行（绕过仓储的软删谓词）：断言发布的写回与删除的状态变化。 */
+export async function readRawRow(upstreamWorkflowId: string) {
+  const [row] = await database()
+    .select()
+    .from(workflowV2Workflow)
+    .where(eq(workflowV2Workflow.upstreamWorkflowId, upstreamWorkflowId))
+    .limit(1);
+  return row;
+}
+
+/** 读某组织某动作的审计流水；断言审计覆盖时只关心这几个字段（不含 body 与上游原文）。 */
+export async function readAuditRows(organizationId: string, action: string) {
+  return database()
+    .select({
+      upstreamWorkflowId: workflowV2AuditLog.upstreamWorkflowId,
+      result: workflowV2AuditLog.result,
+      errorCode: workflowV2AuditLog.errorCode,
+      actorUserId: workflowV2AuditLog.actorUserId,
+      requestId: workflowV2AuditLog.requestId,
+    })
+    .from(workflowV2AuditLog)
+    .where(and(eq(workflowV2AuditLog.organizationId, organizationId), eq(workflowV2AuditLog.action, action)));
+}
+
+/** 清掉本文件写过的测试数据；只看前缀，绝不触碰既有行。 */
+export async function cleanupTestRows(): Promise<void> {
+  const pattern = `${TEST_PREFIX}%`;
+  await database().delete(workflowV2Workflow).where(like(workflowV2Workflow.upstreamWorkflowId, pattern));
+  await database().delete(workflowV2AuditLog).where(like(workflowV2AuditLog.organizationId, pattern));
+  await database().delete(workflowV2OrgApp).where(like(workflowV2OrgApp.organizationId, pattern));
+  await database().delete(workflowV2PlatformAccount).where(like(workflowV2PlatformAccount.platformUserId, pattern));
+}

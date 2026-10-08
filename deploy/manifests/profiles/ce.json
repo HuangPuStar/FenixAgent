@@ -1,0 +1,148 @@
+{
+  "compose": {
+    "files": [
+      "deploy/compose/base.yml",
+      "deploy/compose/overlays/knowledge.yml"
+    ],
+    "up": "docker compose -f deploy/compose/base.yml -f deploy/compose/overlays/knowledge.yml up -d"
+  },
+  "dependencyServices": [
+    {
+      "declaredBy": [
+        "knowledge"
+      ],
+      "description": "Gotenberg（Office 转 PDF）。单容器且仓库内没有既有编排，故由 deploy/compose 的模块 overlay 直接启停；未部署时调用方回退 LibreOffice CLI，只在宿主没装 LibreOffice 的镜像里才真正不可用。",
+      "healthCheck": {
+        "addressKey": "GOTENBERG_URL",
+        "kind": "http",
+        "path": "/health"
+      },
+      "id": "gotenberg",
+      "orchestration": "compose-overlay",
+      "required": false,
+      "envKeys": [
+        "GOTENBERG_URL"
+      ],
+      "overlays": [
+        "deploy/compose/overlays/knowledge.yml"
+      ]
+    },
+    {
+      "declaredBy": [
+        "memory"
+      ],
+      "description": "Hindsight 长期记忆服务（MCP 形态）。未部署时 /web/hindsight 上游不可达、系统级记忆判据为「未启用」，不阻断主服务启动。",
+      "healthCheck": {
+        "addressKey": "HINDSIGHT_MCP_URL",
+        "kind": "tcp"
+      },
+      "id": "hindsight",
+      "orchestration": "separate",
+      "required": false,
+      "envKeys": [
+        "HINDSIGHT_MCP_URL"
+      ],
+      "composeFile": "docker/hindsight/docker-compose.yml"
+    },
+    {
+      "declaredBy": [
+        "model-management"
+      ],
+      "description": "LiteLLM 模型网关（凭据、预算与用量的事实来源）。编排入口 docker/litellm/docker-compose.yml；网关地址也可指向托管服务，因此本仓不重复定义该编排。未部署或未配置网关管理凭证与加密密钥时，网关运行时整体不启用，Provider / Model 的资源 CRUD 不受影响。",
+      "healthCheck": {
+        "addressKey": "RCS_MODEL_GATEWAY_BASE_URL",
+        "kind": "http",
+        "path": "/health"
+      },
+      "id": "litellm",
+      "orchestration": "separate",
+      "required": false,
+      "envKeys": [
+        "RCS_MODEL_GATEWAY_BASE_URL",
+        "RCS_MODEL_GATEWAY_ADMIN_KEY"
+      ],
+      "composeFile": "docker/litellm/docker-compose.yml"
+    },
+    {
+      "declaredBy": [
+        "plugin-market"
+      ],
+      "description": "npm 私有源（本仓提供的 Verdaccio 编排在 docker/npm-registry/docker-compose.yml），市场 packument 元数据的来源。未配置 PLUGIN_MARKET_REGISTRY_URL 时只有发布与预览路径以 REGISTRY_NOT_CONFIGURED 失败，浏览已发布的插件走本地快照，不受影响。",
+      "healthCheck": {
+        "addressKey": "PLUGIN_MARKET_REGISTRY_URL",
+        "kind": "http",
+        "path": "/-/ping"
+      },
+      "id": "npm-registry",
+      "orchestration": "separate",
+      "required": false,
+      "envKeys": [
+        "PLUGIN_MARKET_REGISTRY_URL",
+        "PLUGIN_MARKET_REGISTRY_TOKEN"
+      ],
+      "composeFile": "docker/npm-registry/docker-compose.yml"
+    },
+    {
+      "declaredBy": [
+        "sandbox"
+      ],
+      "description": "OpenSandbox Cluster 管理面（资源池、Server、沙盒绑定）。编排入口 docker/opensandbox-cluster/docker-compose.yml；未部署时本模块的 Cluster 管理面不可用，选择本地执行引擎的部署不受影响。",
+      "healthCheck": {
+        "addressKey": "RCS_SANDBOX_CLUSTER_URL",
+        "kind": "http",
+        "path": "/health"
+      },
+      "id": "opensandbox-cluster",
+      "orchestration": "separate",
+      "required": false,
+      "envKeys": [
+        "RCS_SANDBOX_CLUSTER_URL",
+        "RCS_SANDBOX_CLUSTER_API_KEY"
+      ],
+      "composeFile": "docker/opensandbox-cluster/docker-compose.yml"
+    },
+    {
+      "declaredBy": [
+        "knowledge"
+      ],
+      "description": "RAGFlow 检索服务。编排在 docker/ragflow/docker-compose.yml（多容器栈），本仓 deploy/compose 不重复定义；未部署时知识库检索不可用，Agent 知识库绑定链路快速失败。",
+      "healthCheck": {
+        "addressKey": "RAGFLOW_API_URL",
+        "kind": "http",
+        "path": "/api/v1/system/healthz"
+      },
+      "id": "ragflow",
+      "orchestration": "separate",
+      "required": false,
+      "envKeys": [
+        "RAGFLOW_API_URL",
+        "RAGFLOW_API_KEY"
+      ],
+      "composeFile": "docker/ragflow/docker-compose.yml"
+    }
+  ],
+  "enabledModules": [
+    "identity",
+    "access-control",
+    "agent-runtime",
+    "agent-config",
+    "channel",
+    "knowledge",
+    "machine",
+    "mcp",
+    "memory",
+    "model-management",
+    "observer",
+    "plugin-market",
+    "prod-view",
+    "sandbox",
+    "skill",
+    "task",
+    "workflow",
+    "workflow-v2"
+  ],
+  "generatedBy": "scripts/release.ts",
+  "note": "生成物：请勿手改；改声明处后运行 `bun run scripts/release.ts`。",
+  "profile": "ce",
+  "profileFile": "deploy/assembly/ce.json"
+}

@@ -49,6 +49,8 @@ Agent 运行时
 - `status`：empty / indexing / ready / error
 - `lastError`：最近一次错误信息
 
+控制台检索、图谱（含生成、删除及进度）、文件和 PDF 预览均在 Resource Facade 验证 active organization，跨组织与不存在统一返回 404；Agent 检索按认证上下文的组织过滤绑定。全局 RAGFlow key 仅是上游连接凭据，不赋予跨组织读取权限。
+
 创建知识库时，同步在远程 Provider 那边也创建一个对应的索引。删除时同步删除远程资源。
 
 ### KnowledgeUpload（文件上传）

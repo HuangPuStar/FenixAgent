@@ -53,21 +53,33 @@ function sessionGuard() {
 /**
  * 按调用顺序返回查询结果的 DB 替身。
  *
- * 凭据解析有固定查询顺序：先按 `referenceId` 查用户，再查该用户是否为目标组织成员。两步都走
- * `select().from().where().limit()` 链；某个步骤抛错用来覆盖"成员关系不可验证"的保守拒绝分支。
+ * 凭据解析有固定查询顺序：先按 `referenceId` / environment 属主查用户，再读该用户的全量成员关系。
+ * 两条查询的链尾不同（用户查询 `.limit(1)`、成员关系查询 `.orderBy(...).execute()`），两种链尾共用
+ * 同一步结果；某个步骤抛错用来覆盖"成员关系不可验证"的保守拒绝分支。
  */
 function sequencedDb(steps: (() => unknown[])[]) {
   let call = 0;
   return {
     select: () => ({
       from: () => ({
-        where: () => ({
-          limit: async () => steps[call++]?.() ?? [],
-        }),
+        where: () => {
+          const step = steps[call++] ?? (() => []);
+          return {
+            limit: async () => step(),
+            orderBy: () => ({ execute: async () => step() }),
+          };
+        },
       }),
     }),
   };
 }
+
+/** 只认凭据的守卫：暴露授权实际消费的主体投影（`store.actor`）。 */
+function actorGuard() {
+  return new Elysia().use(authGuardPlugin).get("/actor", ({ store }) => store.actor, { apiKeyAuth: true });
+}
+
+const actorRequest = () => new Request("http://localhost/actor", { headers: { Authorization: "Bearer api-key" } });
 
 const apiKeyRequest = () => new Request("http://localhost/resource", { headers: { Authorization: "Bearer api-key" } });
 
@@ -356,23 +368,73 @@ describe("round45 auth plugin", () => {
     expect(verifyCalled).toBeFalse();
   });
 
-  // API key 的组织上下文只能由 key metadata 恢复（key 字符串本身不携带组织信息）。
-  test("API key 恢复 key metadata 的组织与角色", async () => {
+  // API key 只提供「当前组织入口」，角色与全量成员关系必须回成员表读取（key metadata 的角色快照不参与判定）。
+  test("API key 组织入口来自 metadata、角色来自成员表", async () => {
     stubAuthApi({
       getSession: async () => null,
       verifyApiKey: async () => ({
         valid: true,
-        key: { referenceId: user.id, organizationId: "org-key", metadata: { role: "admin" } },
+        // metadata.role 故意与成员表相反：旧实现按快照判成 owner，新实现必须按成员表判成 admin。
+        key: { referenceId: user.id, organizationId: "org-key", metadata: { role: "owner" } },
       }),
     });
     // 未命中 environment secret 的 Bearer 凭据继续走 API key 校验（替身默认无该入口，须显式声明）。
     stubEnvironmentRepo({ getBySecret: async () => null });
-    stubDb(sequencedDb([() => [{ id: user.id, name: user.name, email: user.email }], () => [{ userId: user.id }]]));
+    stubDb(
+      sequencedDb([
+        () => [{ id: user.id, name: user.name, email: user.email }],
+        () => [{ organizationId: "org-key", role: "admin" }],
+      ]),
+    );
 
     const result = await authenticateRequest(apiKeyRequest());
 
-    expect(result?.authContext).toEqual({ organizationId: "org-key", userId: user.id, role: "admin" });
+    expect(result?.authContext).toEqual({
+      organizationId: "org-key",
+      userId: user.id,
+      role: "admin",
+      memberships: [{ organizationId: "org-key", role: "admin" }],
+    });
     expect(result?.authSession).toBeNull();
+  });
+
+  // 角色被降级后，同一把 API key 必须按成员表的新角色授权（创建期快照不得继续生效）。
+  test("API key 角色降级后按新角色授权", async () => {
+    stubAuthApi({
+      getSession: async () => null,
+      verifyApiKey: async () => ({
+        valid: true,
+        key: { referenceId: user.id, organizationId: "org-key", metadata: { role: "owner" } },
+      }),
+    });
+    stubEnvironmentRepo({ getBySecret: async () => null });
+    let memberRole = "owner";
+    stubDb({
+      select: () => ({
+        from: () => ({
+          where: () => ({
+            limit: async () => [{ id: user.id, name: user.name, email: user.email }],
+            orderBy: () => ({ execute: async () => [{ organizationId: "org-key", role: memberRole }] }),
+          }),
+        }),
+      }),
+    });
+
+    const guard = actorGuard();
+    const before = await readJson(await guard.handle(actorRequest()));
+    expect(before).toMatchObject({
+      userId: user.id,
+      activeOrganizationId: "org-key",
+      memberships: [{ organizationId: "org-key", role: "owner" }],
+    });
+
+    memberRole = "member";
+    const after = await readJson(await guard.handle(actorRequest()));
+    expect(after).toMatchObject({
+      userId: user.id,
+      activeOrganizationId: "org-key",
+      memberships: [{ organizationId: "org-key", role: "member" }],
+    });
   });
 
   // key 未携带任何组织元数据时必须拒绝，不能让请求落到无组织的默认上下文。
@@ -394,7 +456,12 @@ describe("round45 auth plugin", () => {
       verifyApiKey: async () => ({ valid: true, key: { referenceId: user.id, organizationId: "org-other" } }),
     });
     stubEnvironmentRepo({ getBySecret: async () => null });
-    stubDb(sequencedDb([() => [{ id: user.id, name: user.name, email: user.email }], () => []]));
+    stubDb(
+      sequencedDb([
+        () => [{ id: user.id, name: user.name, email: user.email }],
+        () => [{ organizationId: "org-key", role: "owner" }],
+      ]),
+    );
 
     expect(await authenticateRequest(apiKeyRequest())).toBeNull();
   });
@@ -418,7 +485,7 @@ describe("round45 auth plugin", () => {
     expect(await authenticateRequest(apiKeyRequest())).toBeNull();
   });
 
-  // Environment Secret 路径的组织上下文取 environment 归属，并回传命中的 environment ID。
+  // Environment Secret 路径的组织上下文取 environment 归属，角色取自成员表，并回传命中的 environment ID。
   test("Environment Secret 恢复 environment 组织上下文", async () => {
     stubAuthApi({ getSession: async () => null });
     stubEnvironmentRepo({
@@ -428,14 +495,54 @@ describe("round45 auth plugin", () => {
         organizationId: "org-env",
       }),
     });
-    stubDb(sequencedDb([() => [{ id: user.id, name: user.name, email: user.email }]]));
+    stubDb(
+      sequencedDb([
+        () => [{ id: user.id, name: user.name, email: user.email }],
+        () => [
+          { organizationId: "org-personal", role: "owner" },
+          { organizationId: "org-env", role: "admin" },
+        ],
+      ]),
+    );
 
     const result = await authenticateRequest(
       new Request("http://localhost/resource", { headers: { Authorization: "Bearer env-secret" } }),
     );
 
     expect(result?.authEnvironmentId).toBe("env-1");
-    expect(result?.authContext).toEqual({ organizationId: "org-env", userId: user.id, role: "member" });
+    expect(result?.authContext).toEqual({
+      organizationId: "org-env",
+      userId: user.id,
+      role: "admin",
+      memberships: [
+        { organizationId: "org-personal", role: "owner" },
+        { organizationId: "org-env", role: "admin" },
+      ],
+    });
+  });
+
+  // environment 绑定的组织已不在用户成员关系中时（被移出组织）必须拒绝，不得按 environment 归属放行。
+  test("Environment Secret 非成员时拒绝", async () => {
+    stubAuthApi({ getSession: async () => null });
+    stubEnvironmentRepo({
+      getBySecret: async () => ({
+        id: "env-2",
+        userId: user.id,
+        organizationId: "org-left",
+      }),
+    });
+    stubDb(
+      sequencedDb([
+        () => [{ id: user.id, name: user.name, email: user.email }],
+        () => [{ organizationId: "org-personal", role: "owner" }],
+      ]),
+    );
+
+    expect(
+      await authenticateRequest(
+        new Request("http://localhost/resource", { headers: { Authorization: "Bearer env-secret" } }),
+      ),
+    ).toBeNull();
   });
 
   // session guard 应将 seam 用户、session 和组织上下文写入 route store。

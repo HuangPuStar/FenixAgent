@@ -97,10 +97,14 @@ RUN ln -sf /usr/local/bin/bun /usr/local/bin/node \
 # 安装方式与 docker/sandbox-peri/Dockerfile 一致；未预装则默认引擎启动即失败。
 RUN export PERI_INSTALL_DIR=/opt/.peri-binary && curl -fsSL https://raw.githubusercontent.com/konghayao/peri/main/scripts/install.sh | bash
 ENV PATH="/opt/.peri-binary:$PATH"
-# 记忆插件：launchSpec.env 带 HINDSIGHT_API_URL 时
-# peri 的 settings.local.json 会开启 hindsight-memory@hindsight
-RUN peri plugin marketplace add vectorize-io/hindsight
-RUN peri plugin install hindsight-memory
+# 记忆插件：launchSpec.plugins 显式包含 hindsight 时
+# peri 的 settings.local.json 会开启 hindsight-memory@hindsight-plugin
+# 插件内容由远端仓库默认分支决定，Docker 层缓存看不见它：命令串不变就直接复用旧层，
+# 于是「重建镜像以拿到新插件」会静默装回旧版本。CACHE_BUST 由工作流按每次构建注入。
+ARG CACHE_BUST=unset
+RUN echo "hindsight plugin refresh: ${CACHE_BUST}" \
+    && peri plugin marketplace add KonghaYao/hindsight-plugin \
+    && peri plugin install hindsight-memory
 RUN rm -rf /root/.bun/install/cache /tmp/bun-*
 
 COPY --from=build /app/dist ./dist

@@ -408,6 +408,74 @@ describe("SkillFacade 导入", () => {
     await expect(facade.importDirectories(actor, [])).rejects.toThrow("未提供任何上传文件");
     expect(readContent("org-1", "demo")).toBeNull();
   });
+
+  // 对外上传契约一次只允许一个 Skill：多目录上传是请求错误（400），且不得进入写入路径。
+  test("importSingleSkill 拒绝多目录上传且不写入", async () => {
+    let conflictProbes = 0;
+    const { facade } = buildFacade({
+      service: {
+        listByNames: async () => {
+          conflictProbes += 1;
+          return [];
+        },
+      },
+    });
+
+    await expect(
+      facade.importSingleSkill(actor, [
+        { skillName: "demo", relativePath: "SKILL.md", content: "---\nname: demo\n---\nBody" },
+        { skillName: "other", relativePath: "SKILL.md", content: "---\nname: other\n---\nBody" },
+      ]),
+    ).rejects.toThrow("每次只允许导入一个 Skill");
+
+    expect(conflictProbes).toBe(0);
+    expect(readContent("org-1", "demo")).toBeNull();
+    expect(readContent("org-1", "other")).toBeNull();
+  });
+
+  // 未开覆盖时冲突以结果形式上报（而不是抛出）：冲突名必须在 Facade 定下，协议层才能映射出稳定的 409。
+  test("importSingleSkill 命中同名时上报冲突名且不写入", async () => {
+    const { facade } = buildFacade({
+      service: {
+        listByNames: async (input) => (input.names.length === 0 ? [] : [scopedSkill({ name: "demo" })]),
+      },
+    });
+
+    const result = await facade.importSingleSkill(actor, [
+      { skillName: "demo", relativePath: "SKILL.md", content: "---\nname: demo\n---\nBody" },
+    ]);
+
+    expect(result).toEqual({ status: "conflict", name: "demo" });
+    expect(readContent("org-1", "demo")).toBeNull();
+  });
+
+  // 开启覆盖时同名资源被覆盖并回读详情：对外上传成功后返回的 DTO 与详情接口同源。
+  test("importSingleSkill 开启覆盖时写入并回读详情", async () => {
+    const detailQueries: string[] = [];
+    const { facade } = buildFacade({
+      service: {
+        listByNames: async (input) => (input.names.length === 0 ? [] : [scopedSkill({ name: "demo" })]),
+        upsertByOrgAndName: async () => "skill-1",
+        findById: async (input) => {
+          detailQueries.push(input.resourceId);
+          return scopedSkill({ id: "skill-1", name: "demo" });
+        },
+      },
+    });
+
+    const result = await facade.importSingleSkill(
+      actor,
+      [{ skillName: "demo", relativePath: "SKILL.md", content: "---\nname: demo\n---\nBody" }],
+      { overwrite: true },
+    );
+
+    expect(result).toMatchObject({
+      status: "imported",
+      detail: { id: "skill-1", content: expect.stringContaining("Body") },
+    });
+    expect(detailQueries).toEqual(["skill-1"]);
+    expect(readContent("org-1", "demo")).toContain("Body");
+  });
 });
 
 describe("SkillFacade 授权映射", () => {

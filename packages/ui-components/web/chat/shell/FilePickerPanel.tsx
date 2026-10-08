@@ -293,7 +293,7 @@ export function FilePickerPanel({ listDir, uploadFiles, onSelect, onClose, class
               key={entry.path}
               type="button"
               onClick={() => handleItemClick(entry)}
-              className="w-full flex items-center gap-2.5 px-3 py-2 rounded-lg text-left hover:bg-surface-2 transition-colors group"
+              className="w-full flex min-h-8 items-center gap-2.5 px-3 py-2 rounded-lg text-left hover:bg-surface-2 transition-colors group"
             >
               {entry.type === "dir" ? (
                 <Folder className="h-4 w-4 text-brand flex-shrink-0" />

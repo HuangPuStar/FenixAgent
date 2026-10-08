@@ -1,4 +1,19 @@
 {
+  "agentTree": {
+    "sectionTitle": "智能体",
+    "noAgents": "暂无智能体",
+    "createAgent": "新建智能体",
+    "newInstance": "新建实例",
+    "restart": "重启",
+    "stop": "停止",
+    "restartAgent": "重启智能体",
+    "agentConfig": "智能体配置",
+    "viewAgentConfig": "查看智能体详情",
+    "deleteAgent": "删除智能体",
+    "expandInstances": "展开实例",
+    "collapseInstances": "收起实例",
+    "remoteNode": "远程"
+  },
   "batchActionBar": {
     "clear": "清除",
     "selected": "已选择 {{count}} 项"
@@ -190,7 +205,10 @@
       },
       "permissionPanel": {
         "aboutToRun": "即将执行",
+        "allow": "允许",
+        "allowSession": "允许本次会话",
         "audit": "本次选择将记录在会话审计中",
+        "deny": "拒绝",
         "title": "权限确认",
         "waiting": "Agent 正在等待"
       },
@@ -409,6 +427,14 @@
     "thinking": "思考中...",
     "thought": "思考了一会",
     "thoughtFor": "思考了 {{duration}} 秒"
+  },
+  "resource": {
+    "internal": "私有",
+    "external": "共享",
+    "public": "公开",
+    "makePublic": "设为公开",
+    "makePrivate": "设为私有",
+    "readOnly": "只读"
   },
   "small": "小",
   "statusBadge": {

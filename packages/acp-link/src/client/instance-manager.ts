@@ -2,7 +2,7 @@ import type { ChildProcess } from "node:child_process";
 import { mkdir } from "node:fs/promises";
 import { join } from "node:path";
 import type * as acp from "@agentclientprotocol/sdk";
-import type { AgentLaunchSpec } from "@fenix/plugin-sdk";
+import { type AgentLaunchSpec, bindWorkspaceFiles } from "@fenix/plugin-sdk";
 import { type AcpDispatcher, type AcpSessionState, createAcpSessionState } from "../acp-dispatcher.js";
 import { registerWorkspace, unregisterWorkspace } from "./workspace-registry.js";
 
@@ -97,6 +97,8 @@ export class InstanceManager {
     const effectiveType = (engineType ?? this.defaultEngine) as AgentType;
     const handler = this.getHandler(effectiveType);
     const workspace = this.resolveWorkspace(launchSpec);
+    // 传输 DTO 在机器边界重定位，start 与 refresh 保存的都是实际 workspace 的环境快照。
+    launchSpec = bindWorkspaceFiles(launchSpec, workspace);
     const existing = this.instances.get(instanceId);
     if (existing && (existing.runtimeGeneration !== runtimeGeneration || existing.serverEpoch !== serverEpoch)) {
       await this.stop(instanceId, existing.runtimeGeneration, existing.serverEpoch);

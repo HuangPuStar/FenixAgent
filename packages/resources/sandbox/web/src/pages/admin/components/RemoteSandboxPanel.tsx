@@ -132,7 +132,7 @@ export function RemoteSandboxPanel({ server, onAuthFailure }: RemoteSandboxPanel
       <div className="mt-2 rounded border border-dashed border-border bg-muted/10">
         <button
           type="button"
-          className="flex w-full items-center gap-2 px-3 py-2 text-left text-xs font-medium"
+          className="flex w-full min-h-8 items-center gap-2 px-3 py-2 text-left text-xs font-medium"
           aria-expanded={expanded}
           aria-controls="remote-sandbox-list"
           onClick={() => setExpanded((value) => !value)}

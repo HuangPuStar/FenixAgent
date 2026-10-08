@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { createModelService } from "@fenix/model-management/server";
 import { createStubModelRepository, createStubProviderRepository } from "@fenix/model-management/server/testing";
 import { AppError, NotFoundError } from "@fenix/platform-sdk";
+import { resetAllStubs, stubDb, stubIdentityDirectory } from "@fenix/platform-sdk/testing";
 import { createStubMcpServerService } from "@fenix/resource-mcp/server/testing";
 import { createSkillModuleConfig, createStubSkillService } from "@fenix/resource-skill/server/testing";
 import { createAgentLaunchSpecAssembler } from "../server/services/agent-launch-spec";
@@ -53,7 +54,43 @@ describe("AgentLaunchSpec 组装", () => {
     initializeAgentConfigModuleConfig({}, { memory: {}, skill: createSkillModuleConfig() });
   });
 
-  afterEach(() => resetAgentModuleStub());
+  afterEach(() => {
+    resetAgentModuleStub();
+    resetAllStubs();
+  });
+
+  // 真实组装链必须携带文件 DTO 并使用注入的权威 workspace，禁止 extraEnv 恢复旧配置环境变量。
+  test("记忆文件经完整组装链下发并注入绝对定位路径", async () => {
+    initializeAgentConfigModuleConfig(
+      {},
+      { memory: { hindsightMcpUrl: "http://hindsight:9999" }, skill: createSkillModuleConfig() },
+    );
+    stubVisibleAgentConfig();
+    stubDb({ select: () => ({ from: () => ({ where: () => ({ limit: async () => [{ enabled: true }] }) }) }) });
+    stubIdentityDirectory({ resolveMembershipId: async () => "member-1" });
+    const calls: string[][] = [];
+    const assembler = createAgentLaunchSpecAssembler(
+      launchSpecDeps({
+        resolveWorkspacePath: (...parts) => {
+          calls.push(parts);
+          return "/resolved/org/user/env";
+        },
+      }),
+    );
+    const spec = await assembler.buildAgentLaunchSpec({
+      organizationId: "org-1",
+      userId: "user-1",
+      agentConfigId: "agent-1",
+      environmentId: "env-1",
+      environmentSecret: crypto.randomUUID(),
+      extraEnv: { HINDSIGHT_API_URL: "stale", HINDSIGHT_CONFIG: "/stale" },
+    });
+    expect(calls).toEqual([["org-1", "user-1", "env-1"]]);
+    expect(spec.plugins).toEqual(["hindsight"]);
+    expect(spec.workspaceFiles?.[0].content.bankId).toBe("member-1");
+    expect(spec.env?.HINDSIGHT_CONFIG).toBe("/resolved/org/user/env/.hindsight/workspace.json");
+    expect(Object.keys(spec.env ?? {}).filter((key) => key.startsWith("HINDSIGHT_"))).toEqual(["HINDSIGHT_CONFIG"]);
+  });
 
   // 配置对该用户不可见时按"不存在"失败：可见性判定在组装器内完成，调用方无从伪造主体。
   test("配置不可见时抛 NotFoundError", async () => {

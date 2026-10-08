@@ -1,5 +1,6 @@
 import { WebErrSchema } from "@fenix/platform-sdk";
 import { Elysia } from "elysia";
+import { prodViewFacade } from "../../../facades/prod-view-facade";
 import {
   CreateProdViewSchema,
   IdParamsSchema,
@@ -7,7 +8,6 @@ import {
   OkResponseSchema,
   UpdateProdViewSchema,
 } from "../../../schemas/prod-view.schema";
-import * as prodViewService from "../../../services/prod-view";
 import type { WebProdViewRouteDependencies } from "../../dependencies";
 
 /**
@@ -19,6 +19,9 @@ import type { WebProdViewRouteDependencies } from "../../dependencies";
  *
  * 端点路径保持相对形式（`/config/prod-views...`）：挂载前缀由宿主
  * `apps/server/src/routes/web/config/index.ts` 决定，本包不自造前缀。
+ *
+ * 取数经 Facade：路由把认证上下文与已校验的请求数据交出去，组织范围与创建归属由 Facade 从 actor
+ * 推导——请求体里夹带的 `organizationId` / `createdBy` 不会被采信。
  */
 export function createWebConfigProdViewsRoutes(deps: WebProdViewRouteDependencies) {
   const app = new Elysia({ name: "web-config-prod-views" }).use(deps.authGuardPlugin);
@@ -28,7 +31,7 @@ export function createWebConfigProdViewsRoutes(deps: WebProdViewRouteDependencie
     "/config/prod-views",
     async ({ store, query }) => {
       const actor = store.authContext!;
-      return prodViewService.listProdViews(actor, query);
+      return prodViewFacade.list(actor, query);
     },
     {
       sessionAuth: true,
@@ -47,7 +50,7 @@ export function createWebConfigProdViewsRoutes(deps: WebProdViewRouteDependencie
     "/config/prod-views/:id",
     async ({ store, params }) => {
       const actor = store.authContext!;
-      return prodViewService.getProdView(actor, params.id);
+      return prodViewFacade.get(actor, params.id);
     },
     {
       sessionAuth: true,
@@ -62,7 +65,7 @@ export function createWebConfigProdViewsRoutes(deps: WebProdViewRouteDependencie
     "/config/prod-views",
     async ({ store, body }) => {
       const actor = store.authContext!;
-      return prodViewService.createProdView(actor, body);
+      return prodViewFacade.create(actor, body);
     },
     {
       sessionAuth: true,
@@ -77,7 +80,7 @@ export function createWebConfigProdViewsRoutes(deps: WebProdViewRouteDependencie
     "/config/prod-views/:id",
     async ({ store, params, body, status }) => {
       const actor = store.authContext!;
-      const result = await prodViewService.updateProdView(actor, params.id, body);
+      const result = await prodViewFacade.update(actor, params.id, body);
       if (!result.success) return status(404, { success: false as const, error: result.error });
       return result;
     },
@@ -95,7 +98,7 @@ export function createWebConfigProdViewsRoutes(deps: WebProdViewRouteDependencie
     "/config/prod-views/:id",
     async ({ store, params, status }) => {
       const actor = store.authContext!;
-      const result = await prodViewService.deleteProdView(actor, params.id);
+      const result = await prodViewFacade.remove(actor, params.id);
       if (!result.success) return status(404, { success: false as const, error: result.error });
       return result;
     },

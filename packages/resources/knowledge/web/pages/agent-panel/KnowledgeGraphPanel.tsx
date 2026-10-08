@@ -243,14 +243,14 @@ export function KnowledgeGraphPanel({ knowledgeBaseId, canManage = false }: Know
       )}
 
       {/* 空态 */}
-      {!graphLoading && !graphErrorMessage && !graphData && !generating && (
+      {!graphLoading && !graphErrorMessage && nodeCount === 0 && !generating && (
         <div className="grid min-h-96 place-content-center rounded-xl bg-slate-50 border border-slate-100">
           <EmptyState icon={<Network />} title={t("graph.empty")} description={t("graph.emptyHint")} />
         </div>
       )}
 
       {/* G6 力导向图 */}
-      {!graphLoading && graphData && nodeCount > 0 && (
+      {!graphLoading && !graphErrorMessage && graphData && nodeCount > 0 && (
         <div className="rounded-xl bg-white border border-slate-100 overflow-hidden shadow-sm">
           {/* 顶栏：节点/边计数 + 操作提示 */}
           <div className="flex items-center justify-between px-4 py-2.5 border-b border-slate-100 bg-gray-50">

@@ -18,8 +18,10 @@ services:
             RCS_URL: ${RCS_URL:?RCS_URL is required}
             RCS_SECRET: ${RCS_SECRET:?RCS_SECRET is required}
             RCS_MACHINE_ID: ${RCS_MACHINE_ID:?RCS_MACHINE_ID is required}
-            # ccb handler 通过这两个变量覆盖引擎启动命令：
+            # ccb 槽位的引擎命令：容器内的 acp-runtime（acp-runtime-cli）读取后注入 ccb handler，
+            # 覆盖镜像 CMD 的 argv：
             #   node /usr/local/bin/dsh-acp-wrapper.js（wrapper 解析 ccb settings 生成 cordis.yml 并 exec dsh）
+            # 这两个键是 daemon / 容器侧部署配置——宿主 env schema 不声明它们，写在宿主 .env 里不起作用。
             RCS_CCB_COMMAND: node
             RCS_CCB_ARGS: /usr/local/bin/dsh-acp-wrapper.js
         volumes:

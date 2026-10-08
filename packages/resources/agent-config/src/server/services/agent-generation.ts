@@ -1,13 +1,30 @@
-import type { ActorContext } from "@fenix/platform-sdk";
 import OpenAI from "openai";
 import { getAgentConfigConfig } from "../config";
-import { listVisibleSkills } from "./skill-directory";
+
+/**
+ * Agent 智能生成的领域服务。
+ *
+ * **不认识 actor**：候选 Skill 由 Facade 按主体可见范围算好后传入（`facades/agent-authoring-facade.ts`），
+ * 本文件只负责提示词组装、LLM 调用与结果映射。
+ */
 
 /** Skill 条目（前端用 name + description 展示，用 id 提交） */
 export interface SkillItem {
   id: string;
   name: string;
   description: string;
+}
+
+/**
+ * 候选 Skill 投影：只有"当前主体可见"的那部分，由 Facade 从 Skill 的 Facade 取得。
+ *
+ * 与 `SkillItem` 同形但不合并：一个是生成的输入（可见范围），一个是生成的输出（推荐绑定项），
+ * 让它们在类型上分开，改一侧时不会静默影响另一侧的语义。
+ */
+export interface VisibleSkill {
+  readonly id: string;
+  readonly name: string;
+  readonly description: string;
 }
 
 /** Agent 智能生成结果 */
@@ -34,14 +51,21 @@ function generationModel(): string {
   return model;
 }
 
-/** 调用 LLM 生成 Agent 配置 */
-export async function generateAgentConfig(actor: ActorContext, prompt: string): Promise<AgentGenerationResult> {
+/**
+ * 调用 LLM 生成 Agent 配置。
+ *
+ * `skills` 是调用方（Facade）按主体可见范围算好的候选集合：只在其中推荐，生成结果才能直接绑定；
+ * 推荐范围之外的名称只会得到无效绑定。
+ */
+export async function generateAgentConfig(input: {
+  readonly prompt: string;
+  readonly skills: readonly VisibleSkill[];
+}): Promise<AgentGenerationResult> {
   if (!isGenerationConfigured()) {
     throw new Error("NOT_CONFIGURED");
   }
 
-  // 只在当前主体可见的 Skill 里推荐：生成结果要能直接绑定，推荐不可见的名称只会得到无效绑定。
-  const skills = await listVisibleSkills(actor);
+  const { prompt, skills } = input;
   const skillList = skills.map((s) => `- ${s.name}: ${s.description}`).join("\n");
 
   const systemPrompt = `你是一个智能体配置生成助手。根据用户的需求描述，生成智能体的配置信息。

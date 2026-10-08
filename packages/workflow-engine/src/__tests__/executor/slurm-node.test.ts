@@ -4,7 +4,7 @@
 
 import { describe, expect, test } from "bun:test";
 import { SshJobTransport } from "../../plugins/job-transport";
-import { mapSlurmState, type SlurmConfig, SlurmNode } from "../../plugins/slurm-node";
+import { buildSshProcessEnv, mapSlurmState, type SlurmConfig, SlurmNode } from "../../plugins/slurm-node";
 import type { ExecuteContext, InputDef } from "../../plugins/types";
 import { WorkflowErrorCode } from "../../types/errors";
 import { FakeSshExecutor } from "./fake-ssh-executor";
@@ -620,5 +620,53 @@ describe("SlurmNode.generateHeader() with ctx.inputs", () => {
     expect(header).not.toContain("SKIP_NULL");
     expect(header).not.toContain("SKIP_UNDEF");
     expect(header).not.toContain("SKIP_OBJ");
+  });
+});
+
+// ── BunSshExecutor 子进程环境 ──
+// 断言白名单产物本身（不真起 ssh）：BunSshExecutor 用同一函数构造 spawn 的 env，
+// 宿主密钥一旦被继承，远端命令与 ProxyCommand 都能读到（§5.4）。
+
+describe("buildSshProcessEnv()", () => {
+  /** 模拟宿主环境：既有 ssh 依赖的基础变量，也有必须拦下的宿主密钥。 */
+  function hostEnv(): NodeJS.ProcessEnv {
+    return {
+      PATH: "/usr/bin:/bin",
+      HOME: "/home/fenix",
+      LC_ALL: "zh_CN.UTF-8",
+      DATABASE_URL: "postgres://host/leak",
+      RCS_API_KEYS: "host-api-keys",
+      RCS_SYSTEM_API_KEYS: "host-system-keys",
+      RCS_SECRET_PROVIDER: "host-secret",
+      LANGFUSE_SECRET_KEY: "host-langfuse-secret",
+    };
+  }
+
+  // 宿主密钥（数据库连接串、API Key、langfuse secret）不得随 ssh 子进程外传
+  test("不继承宿主密钥", () => {
+    const env = buildSshProcessEnv(hostEnv());
+
+    expect(env).not.toHaveProperty("DATABASE_URL");
+    expect(env).not.toHaveProperty("RCS_API_KEYS");
+    expect(env).not.toHaveProperty("RCS_SYSTEM_API_KEYS");
+    expect(env).not.toHaveProperty("LANGFUSE_SECRET_KEY");
+  });
+
+  // ssh 认证与命令查找依赖的基础变量、locale 前缀必须保留，否则连不上集群
+  test("保留 ssh 依赖的基础变量与 locale", () => {
+    const env = buildSshProcessEnv(hostEnv());
+
+    expect(env).toMatchObject({
+      PATH: "/usr/bin:/bin",
+      HOME: "/home/fenix",
+      LC_ALL: "zh_CN.UTF-8",
+    });
+  });
+
+  // 返回值必须是新对象：共享宿主环境对象会让后续写入污染进程环境
+  test("返回新对象而非宿主环境本体", () => {
+    const base = hostEnv();
+
+    expect(buildSshProcessEnv(base)).not.toBe(base);
   });
 });

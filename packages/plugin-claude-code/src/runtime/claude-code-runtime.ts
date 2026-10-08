@@ -1,6 +1,7 @@
 import { type ChildProcess, spawn } from "node:child_process";
 import { join } from "node:path";
 import type {
+  AgentLaunchSpec,
   ConnectRelayInput,
   EngineRelayHandle,
   EngineRelayMessage,
@@ -10,7 +11,7 @@ import type {
   StopInstanceInput,
 } from "@fenix/plugin-sdk";
 import { buildAgentProcessEnv } from "acp-link/spawn-env";
-import { prepareWorkspaceEnvironment } from "./environment";
+import { prepareLaunchWorkspace, prepareWorkspaceEnvironment } from "./environment";
 import { buildMcpConfig, buildSettings } from "./settings";
 import { installSkills } from "./skill-installer";
 
@@ -37,16 +38,46 @@ function pickDefinedHostEnv(key: string): Record<string, string> {
 }
 
 /**
+ * runtime 子模块的依赖注入接口。
+ */
+export interface ClaudeCodeRuntimeDependencies {
+  /**
+   * workspace 根目录（绝对路径）。
+   *
+   * 由宿主本地执行装配点注入 `getAgentRuntimeConfig().workspaceRoot`。本包不再自行解析 workspace 根（也不读
+   * 进程环境变量）：旧实现按 `join(organizationId, userId, environmentId)` 拼**相对路径**，实际落点是
+   * 「宿主进程 cwd / org / user / env」——既不是 `{WORKSPACE_ROOT}/{org}/{user}/{env}` 的形态，又与宿主解析出的
+   * 根目录静默分叉，排障时表现为「skill 装到了预期目录外」。缺装配时 `resolveWorkspace` 当场报错，不做静默回落。
+   */
+  workspaceRoot?: string;
+}
+
+/**
  * Claude Code engine runtime。
  * 通过 spawn acp-link 子进程方式管理 Claude Code Agent 实例。
  */
-export function createClaudeCodeRuntime(): EngineRuntime {
+export function createClaudeCodeRuntime(dependencies: ClaudeCodeRuntimeDependencies = {}): EngineRuntime {
   const instances = new Map<string, InstanceState>();
+  const workspaceRoot = dependencies.workspaceRoot;
+
+  /**
+   * 按 `{root}/{org}/{user}/{env}` 形态解析实例 workspace；无 environmentId 时退到 `{root}/{org}/{user}`
+   * （与 ccb / opencode / peri 三个 runtime 同形）。
+   */
+  function resolveWorkspace(spec: AgentLaunchSpec): string {
+    if (!workspaceRoot) {
+      throw new Error("claude-code runtime 未注入 workspaceRoot：宿主装配必须提供 workspace 根目录");
+    }
+    if (spec.environmentId) {
+      return join(workspaceRoot, spec.organizationId, spec.userId, spec.environmentId);
+    }
+    return join(workspaceRoot, spec.organizationId, spec.userId);
+  }
 
   return {
     async prepareEnvironment(input: PrepareEnvironmentInput): Promise<void> {
-      const spec = input.launchSpec;
-      const workspace = join(spec.organizationId, spec.userId, spec.environmentId ?? "");
+      const workspace = resolveWorkspace(input.launchSpec);
+      const spec = await prepareLaunchWorkspace(workspace, input.launchSpec);
       const previous = instances.get(input.instanceId);
 
       const installedSkills = await installSkills(workspace, spec.skills);

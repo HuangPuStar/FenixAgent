@@ -12,9 +12,8 @@ import { useAgentModelsData } from "./agent-models-data";
 import { DiscoveryDialog, ModelDeleteDialogs, ModelEditorDialog } from "./agent-models-dialogs";
 import type { ModelDialogTarget, ProviderDialogTarget } from "./agent-models-types";
 import { getProviderKey, type ProviderScope, providerMatchesScope } from "./agent-models-utils";
-import "./agent-models.css";
+import "./AgentModelsPage.css";
 import "./agent-models-dialogs.css";
-import "./agent-models-states.css";
 import { MODELS_NS } from "../../../i18n/namespace";
 import { ProviderEditorDialog } from "./provider-editor-dialog";
 
@@ -192,7 +191,7 @@ export function AgentModelsPage() {
 
 function ModelsLoading() {
   return (
-    <div className="agent-models-loading" aria-busy="true">
+    <div className="agent-models-loading grid gap-4.5 min-h-full bg-slate-100 px-8 py-7" aria-busy="true">
       <div>
         <Skeleton className="h-7 w-36" />
         <Skeleton className="mt-2 h-4 w-80" />

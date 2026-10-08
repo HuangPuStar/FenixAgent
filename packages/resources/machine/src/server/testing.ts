@@ -18,6 +18,7 @@ import {
   registerStubResetter,
   resetAllStubs,
 } from "@fenix/platform-sdk/testing";
+import { setMachineAgentConfigPort } from "./agent-config-port";
 import type { MachineModuleConfig } from "./config";
 import { getMachineConfig } from "./config";
 import type { MachineEnvironmentRecord } from "./environment-port";
@@ -130,6 +131,17 @@ export function stubMachineEnvironmentRecord(record: MachineEnvironmentRecord | 
 }
 
 /**
+ * 替换 Agent 配置取数实现（执行节点读取、机器引用检查、机器注册绑定）。
+ *
+ * 用例必须显式打桩：端口未绑定即失败（见 `./agent-config-port` 的失败语义），而 Agent 配置的实现不在本包
+ * ——包内用例拿不到真实实现，也不允许回头导入对方的入口。因此涉及「环境绑定 Agent 配置」或「删除 / 注册
+ * 机器」的用例要在这里给出自己的答案，不能依赖一个测试专用的默认值：默认值会让「未装配」在用例里静默通过。
+ */
+export function stubMachineAgentConfig(overrides: Parameters<typeof setMachineAgentConfigPort>[0]): void {
+  setMachineAgentConfigPort(overrides);
+}
+
+/**
  * 替换 file-ws 传输实现（连接查询 / 文件操作请求应答）。
  *
  * 传 `null` 恢复包内真实实现，便于「默认实现仍然生效」的断言。
@@ -144,6 +156,7 @@ export function stubFileWsTransport(overrides: Parameters<typeof setFileWsTransp
 registerStubResetter(() => {
   setFileWsTransport(null);
   setMachineEnvironmentPort(null);
+  setMachineAgentConfigPort(null);
   setMachineHostPort(null);
 });
 

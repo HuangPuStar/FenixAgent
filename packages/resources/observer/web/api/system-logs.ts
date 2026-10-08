@@ -1,11 +1,20 @@
 import { ApiError, request, unwrap } from "@fenix/web-runtime/api/request";
 import { getAdminKey } from "@fenix/web-runtime/lib/admin-key";
 
-export interface SystemLogFile {
-  name: string;
+/**
+ * 日志源视图模型。
+ *
+ * 与后端投影面的字段一一对应，且**只有**这些字段：客户端拿不到文件路径，也拿不到未投影的原始行
+ * （§7「只读取经过权限过滤的日志投影」）。`id` 由服务端枚举产生，是唯一可回传的位置标识，
+ * 不是路径片段——传文件名或 `../` 会被服务端当成格式非法的 ID 拒绝。
+ */
+export interface SystemLogSource {
+  id: string;
+  kind: "app" | "error";
+  /** 日志日期（`yyyy-MM-dd`，UTC）。 */
+  date: string;
   size: number;
   modifiedAt: string;
-  isErrorLog: boolean;
 }
 
 export interface SystemLogEntry {
@@ -18,15 +27,15 @@ export interface SystemLogEntry {
 }
 
 export interface SystemLogSearchResult {
-  file: SystemLogFile;
+  source: SystemLogSource;
   entries: SystemLogEntry[];
   totalMatches: number;
   truncated: boolean;
 }
 
-/** 日志检索入参；`limit` 为服务端返回条数上限（缺省 500）。 */
+/** 日志检索入参；`sourceId` 由列表接口给出，`limit` 为服务端返回条数上限（缺省 500）。 */
 export interface SystemLogSearchInput {
-  file: string;
+  sourceId: string;
   q: string;
   errorOnly: boolean;
   limit?: number;
@@ -34,11 +43,11 @@ export interface SystemLogSearchInput {
 
 /** acp-link 之外的系统日志域模块出口（§5.5：单一 `*Api` 对象）。 */
 export const systemLogsApi = {
-  /** 拉取可读日志文件列表（Bearer master key）。 */
-  fetchFiles: (): Promise<{ files: SystemLogFile[] }> =>
-    unwrap(request<{ files: SystemLogFile[] }>("/api/system/logs/", { bearerToken: getAdminKey() ?? undefined })),
+  /** 拉取可检索的日志源（Bearer master key）。 */
+  fetchSources: (): Promise<{ sources: SystemLogSource[] }> =>
+    unwrap(request<{ sources: SystemLogSource[] }>("/api/system/logs/", { bearerToken: getAdminKey() ?? undefined })),
 
-  /** 在指定日志文件内检索（limit 为服务端返回条数上限，默认 500）。 */
+  /** 在指定日志源内检索投影后的日志行（limit 为服务端返回条数上限，默认 500）。 */
   search: (input: SystemLogSearchInput): Promise<SystemLogSearchResult> =>
     unwrap(
       request<SystemLogSearchResult>("/api/system/logs/search", {
@@ -49,31 +58,34 @@ export const systemLogsApi = {
     ),
 
   /**
-   * 拉取日志文件内容（调用方负责落盘）。
+   * 拉取日志源的**投影导出**（调用方负责落盘）。
+   *
+   * 响应体是 JSON Lines 的投影结果（每行一条已脱敏、已裁剪的记录），不是底层文件字节——导出与检索共用
+   * 服务端同一条投影管线，因此不存在「检索被脱敏、下载拿到原文」的旁路。
    *
    * 返回响应体 `Blob` 而不自己触发下载：按前端规范 5.1「组件负责：调用域模块 → 处理结果 → 更新 UI」，
    * 创建锚点、`click()` 与用完 `revokeObjectURL` 都是 UI 职责，由调用方（`pages/admin/AdminLogsPage.tsx`）
    * 承担；本方法只做取数与错误归一。这与沙箱域 `systemSandboxApi.cluster.downloadTunnelConfig`
    * （同样只回内容、由 `ClusterPanel` 落盘）是同一分工，域模块内不再出现任何 DOM 调用。
    *
-   * 为什么这里保留裸 `fetch`（**`request()` 的能力缺口，不是本模块的取巧**）：下载端点的成功响应是
-   * `text/plain` 流，而 `request()` 只解 `{ success, data }` JSON 信封——非 JSON 分支会先把 body 读成
-   * 文本再按 `success` 字段判形，二进制内容在那一步就被消费掉并归一为 SERVER_ERROR（实现见
+   * 为什么这里保留裸 `fetch`（**`request()` 的能力缺口，不是本模块的取巧**）：本端点的成功响应是非 JSON
+   * 的流，而 `request()` 只解 `{ success, data }` JSON 信封——非 JSON 分支会先把 body 读成文本再按
+   * `success` 字段判形，流内容在那一步就被消费掉并归一为 SERVER_ERROR（实现见
    * `web-runtime/web/api/request.ts` 的非 JSON 分支）。该缺口记在前端规范 5.3「非标准响应适配」的
-   * 「已知能力缺口」里，规范给的修法是**给 `request()` 补 blob/流响应能力，不是在调用点继续手写**。
-   * 因此本方法是这一处缺口的临时收容点：全模块的裸 `fetch` 只此一处；`request()` 支持 blob 后，
-   * 本方法应整体退回 `request()` + `unwrap()`，不要在这里新增第二套下载路径。
+   * 「已知能力缺口」里，规范给的修法是**给 `request()` 补流响应能力，不是在调用点继续手写**。
+   * 因此本方法是这一处缺口的临时收容点：全模块的裸 `fetch` 只此一处；`request()` 支持流后，
+   * 本方法应整体退回 `request()` + `unwrap()`，不要在这里新增第二套导出路径。
    *
    * 失败语义与统一层一致：非 2xx 一律抛 `ApiError`，code 与 `unwrap()` 同源（取 `/api/system/*` 的
    * `{ error: { code, message } }` 信封），信封不可用时按状态码兜底成 UNAUTHORIZED / SERVER_ERROR，
-   * 这样 401 → UNAUTHORIZED 的归一化与其它 `/api/system/*` 调用完全相同，调用方不必为下载单写一条
+   * 这样 401 → UNAUTHORIZED 的归一化与其它 `/api/system/*` 调用完全相同，调用方不必为导出单写一条
    * 鉴权失败分支（见 `buildDownloadError` 的说明）。
    *
    * 抛错即契约：调用方必须接住（`useRequest` 的 onError 或 try/catch）。本方法不吞错、也不自己弹提示——
    * 用户可见文案归页面（`t()`），这里只提供可分类的错误。
    */
-  download: async (file: string): Promise<Blob> => {
-    const response = await fetch(`/api/system/logs/download?file=${encodeURIComponent(file)}`, {
+  download: async (sourceId: string): Promise<Blob> => {
+    const response = await fetch(`/api/system/logs/download?sourceId=${encodeURIComponent(sourceId)}`, {
       credentials: "include",
       headers: { Authorization: `Bearer ${getAdminKey() ?? ""}` },
     });

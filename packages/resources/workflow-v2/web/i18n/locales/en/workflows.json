@@ -1,0 +1,133 @@
+{
+  "nav": {
+    "workflow": "Workflow"
+  },
+  "page": {
+    "workflow_title": "Workflow Orchestration",
+    "workflow_subtitle": "Manage and orchestrate workflows"
+  },
+  "list": {
+    "create": "New Workflow",
+    "create_title": "New Workflow",
+    "create_submit": "Create & Open",
+    "create_error": "Could not create the workflow",
+    "name_label": "Name",
+    "name_placeholder": "e.g. Support Q&A flow",
+    "desc_label": "Description",
+    "desc_placeholder": "Workflow description (optional)",
+    "cancel": "Cancel",
+    "rename": "Rename",
+    "rename_title": "Rename workflow",
+    "rename_submit": "Save",
+    "rename_failed": "Rename failed, please retry",
+    "delete": "Delete",
+    "delete_confirm_title": "Delete workflow",
+    "delete_confirm": "Delete \"{{name}}\"? It will be removed from the list and its canvas will no longer open.",
+    "delete_success": "Deleted \"{{name}}\"",
+    "delete_failed": "Delete failed, please retry",
+    "notice_dismiss": "Dismiss notice",
+    "open_canvas": "Open canvas",
+    "column_name": "Name",
+    "column_status": "Status",
+    "column_actions": "Actions",
+    "table_modified": "Last modified",
+    "pagination_total": "{{total}} records",
+    "form": {
+      "name_invalid": "Enter a name of 1-200 characters",
+      "desc_too_long": "Description must be at most 2000 characters"
+    },
+    "status": {
+      "published": "Published",
+      "unpublished": "Unpublished",
+      "pending_delete": "Deleting"
+    },
+    "loading": "Loading...",
+    "load_failed": "Failed to load workflows",
+    "load_failed_hint": "Please retry; if it keeps failing, contact your organization administrator.",
+    "retry": "Retry",
+    "unauthorized_title": "No permission to view workflows",
+    "unauthorized_hint": "Your account or the active organization no longer has access to workflows. Switch organization or ask an administrator to grant access — retrying will not help.",
+    "no_workflows": "No workflows yet",
+    "no_workflows_hint": "Click \"New Workflow\" to create your first workflow",
+    "blocked": {
+      "unbound": {
+        "title": "Workflow space not initialized yet",
+        "description": "This organization has no workflow space yet, so the workflow list is unavailable. Click the button below to initialize it — the space name is taken from your organization name, there is nothing to fill in, and clicking again simply returns the existing space.",
+        "initialize": "Initialize workflow space",
+        "initializing": "Initializing..."
+      },
+      "degraded": {
+        "title": "Upstream not ready",
+        "description": "The workflow app bound to this organization is marked unavailable upstream, so workflows cannot be read right now. Contact an administrator, then retry."
+      }
+    },
+    "initialize_failed": "Could not initialize the workflow space. Please retry; if it keeps failing, contact your organization administrator.",
+    "initialize_failed_session": "The platform workflow account is unavailable right now, so initialization did not finish. Please retry later or contact your organization administrator.",
+    "initialize_failed_upstream": "The upstream service is temporarily unavailable and initialization did not finish. Please retry later.",
+    "initialize_failed_unauthorized": "This session is not allowed to initialize a workflow space. Sign in again, then retry.",
+    "delete_refused": {
+      "reviewing": "This workflow is under first-release review and cannot be deleted yet. Check the review result in the canvas, then retry.",
+      "unpublish_required": "This workflow must be unpublished in the canvas before it can be deleted.",
+      "unknown": "The upstream service does not allow deleting this workflow right now. Check its release state in the canvas, then retry."
+    },
+    "relative_now": "just now",
+    "relative_minutes": "{{count}} min ago",
+    "relative_hours": "{{count}} hr ago",
+    "relative_days": "{{count}} days ago"
+  },
+  "canvas": {
+    "frameTitle": "Workflow canvas",
+    "announce": {
+      "loading": "Preparing the canvas",
+      "connecting": "Loading the canvas",
+      "ready": "Canvas is ready",
+      "blocked": "Canvas is unavailable",
+      "failed": "Canvas failed to load",
+      "sessionExpired": "Canvas session expired"
+    },
+    "state": {
+      "timeout": {
+        "title": "Canvas initialization timed out",
+        "description": "The canvas did not finish initializing within 10 seconds. The upstream service may be busy or the network slow. Please retry."
+      },
+      "loadFailed": {
+        "title": "Canvas failed to load",
+        "description": "The canvas page could not be loaded. Check your connection and retry."
+      },
+      "handshakeFailed": {
+        "title": "Canvas session could not be established",
+        "description": "Access credentials were not delivered to the canvas, so the workflow was not opened. Please retry."
+      },
+      "canvasError": {
+        "title": "Canvas error",
+        "description": "The canvas reported an internal error and editing cannot continue."
+      },
+      "sessionExpired": {
+        "title": "Session expired",
+        "description": "The canvas credentials expired and cannot be renewed. Sign in again and reopen the workflow from the list."
+      },
+      "blocked": {
+        "unbound": {
+          "title": "Workflow space not initialized yet",
+          "description": "This organization has no workflow space yet, so the canvas cannot be opened. Initialize it on the workflow list page, then retry."
+        },
+        "degraded": {
+          "title": "Upstream not ready",
+          "description": "The workflow app bound to this organization is marked unavailable upstream, so the canvas cannot be opened right now. Contact an administrator, then retry."
+        },
+        "spaceMissing": {
+          "title": "Upstream not ready",
+          "description": "The platform workflow account's space is still initializing, so the canvas cannot be opened yet. This page retries automatically in a moment; if it keeps failing, contact your organization administrator."
+        },
+        "probeFailed": {
+          "title": "Upstream state unknown",
+          "description": "Reading the tenant binding or platform account failed, so the canvas was not opened. Please retry."
+        }
+      }
+    },
+    "action": {
+      "retry": "Retry",
+      "backToList": "Back to list"
+    }
+  }
+}

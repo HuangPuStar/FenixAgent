@@ -300,7 +300,10 @@
       "litellmConfig": {
         "title": "Configure models in the LiteLLM admin console",
         "description": "Return here after configuration, check status, then synchronize models to the Gateway Provider.",
-        "action": "Configure in LiteLLM"
+        "action": "Configure in LiteLLM",
+        "unavailable": "No browser-accessible LiteLLM admin address is configured. Set RCS_MODEL_GATEWAY_ADMIN_UI_URL and restart Fenix.",
+        "loadFailed": "Could not load model gateway configuration. Please retry.",
+        "retry": "Retry"
       },
       "searchPlaceholder": "Search models",
       "filters": {
@@ -509,6 +512,22 @@
   },
   "algorithms": {
     "subtitle": "A collection of mainstream ML algorithms — plug & play for Agent tasks",
+    "searchPlaceholder": "Search algorithm name, description, or scenario...",
+    "plugAndPlayBadge": "Plug & play",
+    "viewDetails": "View details",
+    "categories": {
+      "all": "All",
+      "classification": "Classification",
+      "regression": "Regression",
+      "clustering": "Clustering",
+      "dimensionalityReduction": "Dimensionality reduction",
+      "ranking": "Ranking",
+      "anomalyDetection": "Anomaly detection",
+      "timeSeriesForecast": "Time series",
+      "deepLearning": "Deep learning",
+      "recommendation": "Recommendation",
+      "optimization": "Optimization"
+    },
     "introHeading": "Algorithm overview",
     "paramsHeading": "Core parameters",
     "scenesHeading": "Use cases",

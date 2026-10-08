@@ -17,11 +17,18 @@ export type FullRelayHandle = EngineRelayHandle & {
 /**
  * 通过 CoreRuntimeFacade 连接 Agent relay handle。
  * 共享于 WS relay 和 HTTP OpenAI 端点。
+ *
+ * @param requestId 触发本次连接的关联 ID（§7）：由调用方解析（HTTP 请求上下文或独立入口自建），
+ *   随 ConnectInstanceRelayRequest 进入 core 的 relay 链路；缺省时不携带。
  */
-export async function connectAgentRelay(instanceId: string, sessionId: string): Promise<EngineRelayHandle> {
+export async function connectAgentRelay(
+  instanceId: string,
+  sessionId: string,
+  requestId?: string,
+): Promise<EngineRelayHandle> {
   const facade = getBoundCoreRuntime();
   try {
-    const handle = await facade.connectInstanceRelay({ instanceId, sessionId });
+    const handle = await facade.connectInstanceRelay({ instanceId, sessionId, requestId });
     const full = handle as FullRelayHandle;
     if (full.ready) await full.ready;
     return handle;

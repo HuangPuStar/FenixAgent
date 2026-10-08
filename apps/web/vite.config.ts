@@ -29,7 +29,6 @@ export default defineConfig({
       // 必须排在 `@/src/i18n` 之前（vite 按声明顺序取首个匹配），否则字典目录会被 i18n 单例吃掉。
       "@/src/i18n/locales": path.resolve(__dirname, "src/i18n/locales"),
       "@/src/i18n": path.resolve(__dirname, "src/i18n"),
-      "@/src/api/helpers": path.resolve(__dirname, "src/api/helpers.ts"),
       "@/src/lib/random-uuid-polyfill": path.resolve(__dirname, "src/lib/random-uuid-polyfill.ts"),
       "@/src": path.resolve(__dirname, "src"),
       "@server": path.resolve(__dirname, "../server/src"),

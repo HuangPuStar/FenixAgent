@@ -106,8 +106,14 @@ export function KnowledgeBaseDetailView(props: KnowledgeBaseDetailViewProps) {
 
           {!props.loading && (
             <div className="flex-1 min-h-0 overflow-y-auto pr-1">
-              <div className="knowledge-detail">
-                <section className="knowledge-detail-header">
+              {/* 详情容器的行距 / 内边距（`gap-4` / `p-5` 即 16px / 20px）、详情头的内边距
+                  （`p-4.5` 即 18px）、概览三列的 `gap-2.5` / `mt-4` / `pt-3.5`（即 10px / 16px / 14px）
+                  都是设计值：刻度已在 `@theme` 按 px 落地，工具类即设计值，不再写回 `AgentKnowledgeBasesPage.css`。
+                  2026-09-28 同批撤回本区块的其余取值：详情头描边 / 圆角
+                  （`border border-slate-200 rounded-lg` = 原 `1px #e3e9f1` + 10px 圆角）与概览的上分隔线
+                  （`border-t border-slate-100` = 原 `1px #edf1f6`）。 */}
+              <div className="knowledge-detail flex min-h-full flex-col gap-4 p-5">
+                <section className="knowledge-detail-header bg-white p-4.5 border border-slate-200 rounded-lg">
                   <div className="flex flex-wrap items-start justify-between gap-4">
                     <div className="min-w-0">
                       <div className="flex items-center gap-2">
@@ -147,11 +153,10 @@ export function KnowledgeBaseDetailView(props: KnowledgeBaseDetailViewProps) {
                       </div>
                     </div>
                     <div className="flex shrink-0 items-center gap-2">
-                      <Button size="sm" variant="outline" disabled={!props.canManage} onClick={props.onEdit}>
+                      <Button variant="outline" disabled={!props.canManage} onClick={props.onEdit}>
                         {t("btn.edit")}
                       </Button>
                       <Button
-                        size="sm"
                         variant="ghost"
                         className="text-red-500 hover:bg-red-50 hover:text-red-600"
                         disabled={!props.canManage}
@@ -161,7 +166,7 @@ export function KnowledgeBaseDetailView(props: KnowledgeBaseDetailViewProps) {
                       </Button>
                     </div>
                   </div>
-                  <div className="knowledge-detail-summary">
+                  <div className="knowledge-detail-summary grid grid-cols-3 gap-2.5 mt-4 pt-3.5 border-t border-slate-100">
                     <ConfigItem
                       icon={<Cpu className="size-4 text-blue-500" />}
                       label={t("detailConfig.embeddingModel")}
@@ -184,10 +189,15 @@ export function KnowledgeBaseDetailView(props: KnowledgeBaseDetailViewProps) {
                 </section>
 
                 {/* Tab 切换：文档 | 检索测试 */}
+                {/* 覆盖 `Tabs` 自带工具的 `flex` / `flex-col` / `gap-3`（12px）写在 `className` 里：
+                    `Tabs` 用 `cn()`（tailwind-merge）合并，`gap-3` 顶掉它自带的 `gap-2`，`flex-col` 与
+                    它自带的 `data-[orientation=horizontal]:flex-col` 同值；页面样式表
+                    `AgentKnowledgeBasesPage.css`（原 `agent-knowledge.css`）里那条未分层的 `.knowledge-tabs`
+                    规则随之删除（同一属性只由一边声明）。 */}
                 <Tabs
                   value={props.tab}
                   onValueChange={(v) => props.onTabChange(v as KnowledgeDetailTab)}
-                  className="knowledge-tabs"
+                  className="knowledge-tabs flex min-h-0 flex-1 flex-col gap-3"
                 >
                   <TabsList>
                     <TabsTrigger value="documents">{t("tabs.documents")}</TabsTrigger>

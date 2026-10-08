@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
+import { knowledgeBaseFacade } from "../server/facades/knowledge-base-facade";
 import {
   agentKnowledgeBindingRepo,
   type KnowledgeBaseRow,
@@ -12,7 +13,6 @@ import {
   listKnowledgeFormOptions,
   listProviderEmbeddingModels,
   setKnowledgeProviderForTesting,
-  updateKnowledgeBase,
   verifyEmbeddingProvider,
 } from "../server/services/knowledge-base";
 import { RagFlowKnowledgeProvider } from "../server/services/knowledge-provider/ragflow";
@@ -181,6 +181,7 @@ describe("知识库 service 隔离分支", () => {
         parseMethod: "pipeline",
         pipelineId: " pipe-1 ",
         chunkMethod: "book",
+        embeddingModel: "text-embedding-v2@provider",
       },
       "user-1",
     );
@@ -194,7 +195,58 @@ describe("知识库 service 隔离分支", () => {
       parseType: 2,
       pipelineId: "pipe-1",
       chunkMethod: null,
+      embeddingModel: "text-embedding-v2@provider",
     });
+    expect(knowledgeBaseRepo.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        metadata: expect.objectContaining({ embeddingModel: "text-embedding-v2@provider" }),
+      }),
+    );
+  });
+
+  // 创建时必须把用户选择的嵌入模型透传给 provider，不能静默使用上游默认模型。
+  test.each(["builtin", "pipeline"] as const)("创建 %s 知识库时透传所选嵌入模型", async (parseMethod) => {
+    const provider = new ControlledProvider();
+    setKnowledgeProviderForTesting(provider);
+    knowledgeBaseRepo.findByOrgAndSlug = mock(async () => null) as unknown as typeof knowledgeBaseRepo.findByOrgAndSlug;
+    knowledgeBaseRepo.create = mock(async (input) => kb({ ...input, id: "kb-created", remoteId: "remote-created" }));
+
+    const result = await createKnowledgeBaseRecord(
+      "org-1",
+      {
+        name: "所选模型知识库",
+        slug: "selected-model",
+        embeddingModel: "selected-embedding@provider-instance@provider",
+        parseMethod,
+        ...(parseMethod === "pipeline" ? { pipelineId: "pipe-selected" } : { chunkMethod: "book" }),
+      },
+      "user-1",
+    );
+
+    expect(result).toMatchObject({ success: true, data: { id: "kb-created" } });
+    expect(provider.created).toMatchObject({
+      embeddingModel: "selected-embedding@provider-instance@provider",
+      parseType: parseMethod === "pipeline" ? 2 : 1,
+      pipelineId: parseMethod === "pipeline" ? "pipe-selected" : null,
+      chunkMethod: parseMethod === "pipeline" ? null : "book",
+    });
+  });
+
+  // 不指定嵌入模型的调用仍应保留上游默认模型行为，避免创建服务强制写入额外默认值。
+  test("创建知识库未指定嵌入模型时不替代上游默认值", async () => {
+    const provider = new ControlledProvider();
+    setKnowledgeProviderForTesting(provider);
+    knowledgeBaseRepo.findByOrgAndSlug = mock(async () => null) as unknown as typeof knowledgeBaseRepo.findByOrgAndSlug;
+    knowledgeBaseRepo.create = mock(async (input) => kb({ ...input, id: "kb-created", remoteId: "remote-created" }));
+
+    const result = await createKnowledgeBaseRecord(
+      "org-1",
+      { name: "默认模型知识库", slug: "default-model" },
+      "user-1",
+    );
+
+    expect(result).toMatchObject({ success: true, data: { id: "kb-created" } });
+    expect(provider.created).toHaveProperty("embeddingModel", undefined);
   });
 
   // 创建前 slug 冲突必须短路，不能创建远端 dataset。
@@ -212,32 +264,37 @@ describe("知识库 service 隔离分支", () => {
     expect(provider.created).toBeNull();
   });
 
-  // 更新跨组织记录必须伪装为不存在，防止泄漏另一组织的资源存在性。
+  // 更新跨组织记录必须伪装为不存在，防止泄漏另一组织的资源存在性（归属判定在门面，服务只收已授权行）。
   test("更新跨组织知识库返回 NOT_FOUND", async () => {
     knowledgeBaseRepo.getById = mock(async () => kb({ organizationId: "org-foreign" }));
+    const update = mock(async () => undefined);
+    knowledgeBaseRepo.update = update;
 
-    await expect(updateKnowledgeBase("org-1", "kb-1", { name: "不应更新" })).resolves.toEqual({
-      success: false,
-      error: { code: "NOT_FOUND", message: "知识库不存在" },
+    await expect(
+      knowledgeBaseFacade.update({ organizationId: "org-1", userId: "user-1" }, "kb-1", { name: "不应更新" }),
+    ).resolves.toEqual({
+      ok: false,
+      error: { kind: "not-found", code: "NOT_FOUND", message: "知识库不存在" },
     });
+    expect(update).not.toHaveBeenCalled();
   });
 
   // 更新应标准化 slug 和空白描述，防止将无效展示值持久化。
   test("更新知识库时标准化 slug 与描述", async () => {
     let changes: Record<string, unknown> | null = null;
-    knowledgeBaseRepo.getById = mock(async () => kb());
     knowledgeBaseRepo.findByOrgAndSlug = mock(async () => null) as unknown as typeof knowledgeBaseRepo.findByOrgAndSlug;
     knowledgeBaseRepo.update = mock(async (_id, input) => {
       changes = input;
     });
+    knowledgeBaseRepo.getById = mock(async () => kb());
 
-    const result = await updateKnowledgeBase("org-1", "kb-1", {
+    const result = await knowledgeBaseFacade.update({ organizationId: "org-1", userId: "user-1" }, "kb-1", {
       name: " 新名称 ",
       slug: " New-Slug ",
       description: "   ",
     });
 
-    expect(result).toMatchObject({ success: true, data: { id: "kb-1" } });
+    expect(result).toMatchObject({ ok: true, data: { id: "kb-1" } });
     expect(changes).toMatchObject({ name: "新名称", slug: "new-slug", description: null });
   });
 
@@ -250,11 +307,10 @@ describe("知识库 service 隔离分支", () => {
     setKnowledgeProviderForTesting(provider);
     const deleteBindings = mock(async () => undefined);
     const deleteBase = mock(async () => true);
-    knowledgeBaseRepo.getById = mock(async () => kb());
     knowledgeBaseRepo.delete = deleteBase;
     agentKnowledgeBindingRepo.deleteByKnowledgeBaseId = deleteBindings;
 
-    await expect(deleteKnowledgeBase("org-1", "kb-1", "user-1")).resolves.toEqual({
+    await expect(deleteKnowledgeBase(kb(), async () => "test-ragflow-key")).resolves.toEqual({
       success: true,
       data: { ok: true },
     });

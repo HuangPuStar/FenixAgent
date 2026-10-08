@@ -90,28 +90,37 @@ export const MAP_TRIGGER =
   "lg:max-2xl:!min-h-11 lg:max-2xl:!gap-1.75 lg:max-2xl:!px-1.75 lg:max-2xl:!py-1 " +
   "md:max-lg:!min-h-11 md:max-lg:!gap-1.75 md:max-lg:!px-1.5 md:max-lg:!py-1 " +
   "max-md:!w-34 max-md:!min-h-10.5";
-/** 导航图标底：32px（760–1399 压到 26px）；选中行里变白底蓝字（父级 `group/maprow`）；图标 14px 见同名 CSS。 */
+/** 导航图标底：32px（760–1399 压到 26px）；选中行里变白底蓝字（父级 `group/maprow`）；图标尺寸在图标上（`w-3.5`，2026-09-28 自伴随表撤回）。 */
 export const MAP_ICON =
-  "agent-editor-map-icon grid size-8 place-items-center rounded-md bg-slate-100 text-slate-500 " +
+  "grid size-8 place-items-center rounded-md bg-slate-100 text-slate-500 " +
   "md:max-2xl:size-6.5 " +
   "group-data-[state=active]/maprow:bg-white group-data-[state=active]/maprow:text-blue-600";
 /** 导航条目状态徽标：刻度与配色归 `ui/badge`（`variant="secondary"`），此处只保留两档窄桌面的隐藏。 */
 export const MAP_BADGE = "md:max-lg:hidden max-md:hidden";
 /**
  * 导航条目文案：标题继承行色（design 层 `color: inherit`），说明固定灰。
- * 标题/说明的字号、行高、字重与单行省略，以及 760–1119 隐藏说明，见同名 CSS 的
- * `.agent-editor-map-copy > strong / small`。
+ * 行高、字重、单行省略与 760–1119 隐藏说明仍在同名 CSS 的 `.agent-editor-map-copy > strong / small`；
+ * 字号 2026-09-28 从该表撤回（`0.75rem`→`text-xs`、`10px`→`text-3xs`），挂在下面两个常量上——
+ * 加载壳与加载完成态两处渲染点共用同一常量，字号才不会在两种状态间漂移。
  */
 export const MAP_COPY = "agent-editor-map-copy flex min-w-0 flex-col";
+/** 左栏条目标题：字号 12px（原 CSS `font-size: 0.75rem` 在 13px 根字号下渲染 9.75px，撤回后归一设计值）
+ * + 行高 `leading-snug`（1.375，2026-09-28 第三波从同名 CSS 撤回）。 */
+export const MAP_COPY_TITLE = "text-xs leading-snug";
+/** 左栏条目说明：字号 10px（`text-3xs` 是「只给字号」的自有档，与原 `font-size: 10px` 等价）+ 行高、
+ * 单行省略（`truncate` = overflow / text-overflow / white-space 三条）、字重、灰色与窄桌面隐藏，
+ * 2026-09-28 第三波一并从同名 CSS 撤回（原 `md:max-lg` 媒体块 `display: none` 即 `md:max-lg:hidden`）。 */
+export const MAP_COPY_CAPTION = "text-3xs truncate leading-snug font-normal text-gray-400 md:max-lg:hidden";
 /**
- * 中栏内容区：白底。
- * 内边距按「宽度档 × 高度档」写成互斥条件（避免同属性多值看生成顺序），整族已下沉到同名 CSS 的
- * `.agent-editor-content`，`≤759px` 的纵向伸缩仍由这里的 `max-md:flex-1` 表达。
+ * 中栏内容区：白底 + base 内边距（原 `.agent-editor-content` 的 `padding: 16px 20px 20px`，
+ * 2026-09-28 第三波撤回为 `pt-4 px-5 pb-5`）。其余内边距按「宽度档 × 高度档」写成互斥条件
+ * （避免同属性多值看生成顺序），仍在同名 CSS 的 `.agent-editor-content` 里（值用 `calc(var(--spacing) * N)`）；
+ * `≤759px` 的纵向伸缩仍由这里的 `max-md:flex-1` 表达。
  *
  * 本栏是上方 `CONFIG_MAP` 注记里那条「三栏滚动链」的**基准**：迁移后本栏就不带 `overscroll-contain`，
  * 左右两栏已于 2026-09-23 对齐到本栏（实测本栏贴底后滚轮会继续滚 `main`）。
  */
-export const CONTENT = "agent-editor-content overflow-x-hidden bg-white max-md:flex-1";
+export const CONTENT = "agent-editor-content overflow-x-hidden bg-white max-md:flex-1 pt-4 px-5 pb-5";
 /**
  * 右栏汇总：左分隔线 + 淡径向渐变底（渐变见同名 CSS 的 `.agent-editor-summary`，底色由 `bg-slate-50` 提供）。
  *
@@ -147,7 +156,8 @@ export const ERROR_STATE =
   "flex h-full min-h-75 flex-col items-center justify-center gap-2.5 p-6 text-center text-text-muted";
 /** 分区说明块：底部间距在 760–1399 收到 20px、短视口（≤700h）收到 12px（互斥条件组合，三段覆盖见同名 CSS）。 */
 export const SECTION_INTRO = "agent-editor-section__intro mb-6.5";
-/** 分区容器：720px 居中 + 入场动画（宽度与动画在同名 CSS；关键帧留在 `agent-editor-retained.css`）。 */
+/** 分区容器：720px 居中 + 入场动画（宽度、动画与关键帧定义都在同名 CSS，关键帧于 2026-09-28 从
+ * `agent-editor-retained.css` 迁入）。 */
 export const SECTION = "agent-editor-section mx-auto p-0";
 /** 加载壳导航行：与左栏条目同构（46px 行高 / 27px 图标列，列定义见同名 CSS）。 */
 export const LOADING_MAP_ROW =

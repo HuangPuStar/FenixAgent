@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
+import { knowledgeBaseFacade } from "../server/facades/knowledge-base-facade";
 import {
   agentKnowledgeBindingRepo,
   type KnowledgeBaseRow,
@@ -9,12 +10,10 @@ import {
   addEmbeddingProvider,
   createKnowledgeBaseRecord,
   deleteKnowledgeBase,
-  getKnowledgeBaseDetail,
   isRemoteKnowledgeBaseMissingError,
   listConfiguredProviderTree,
   listEmbeddingFactories,
   listInstanceEmbeddingModels,
-  listKnowledgeBases,
   listProviderEmbeddingModels,
   resolveKnowledgeTenantIdentity,
   setEmbeddingModelStatus,
@@ -23,6 +22,7 @@ import {
   upsertKnowledgeBaseStatusFromResources,
   verifyEmbeddingProvider,
 } from "../server/services/knowledge-base";
+import { listVisibleKnowledgeBases, syncRemoteState } from "../server/services/knowledge-base-list";
 import { RagFlowKnowledgeProvider } from "../server/services/knowledge-provider/ragflow";
 import { initializeKnowledgeModuleConfig } from "../server/testing";
 
@@ -89,7 +89,8 @@ const originals = {
   baseFindSlug: knowledgeBaseRepo.findByOrgAndSlug,
   baseGet: knowledgeBaseRepo.getById,
   baseList: knowledgeBaseRepo.listByOrganizationId,
-  baseGlobal: knowledgeBaseRepo.listGlobal,
+  baseVisible: knowledgeBaseRepo.listVisible,
+  baseVisibleCount: knowledgeBaseRepo.countVisible,
   baseUpdate: knowledgeBaseRepo.update,
   baseCountBindings: knowledgeBaseRepo.countBindings,
   resourceCount: knowledgeResourceRepo.countByKnowledgeBase,
@@ -109,7 +110,8 @@ describe("round62 知识库 service 补充覆盖", () => {
     knowledgeBaseRepo.findByOrgAndSlug = originals.baseFindSlug;
     knowledgeBaseRepo.getById = originals.baseGet;
     knowledgeBaseRepo.listByOrganizationId = originals.baseList;
-    knowledgeBaseRepo.listGlobal = originals.baseGlobal;
+    knowledgeBaseRepo.listVisible = originals.baseVisible;
+    knowledgeBaseRepo.countVisible = originals.baseVisibleCount;
     knowledgeBaseRepo.update = originals.baseUpdate;
     knowledgeBaseRepo.countBindings = originals.baseCountBindings;
     knowledgeResourceRepo.countByKnowledgeBase = originals.resourceCount;
@@ -199,11 +201,16 @@ describe("round62 知识库 service 补充覆盖", () => {
     expect(provider.created).toMatchObject({ userId: "org-1", organizationId: "org-1" });
   });
 
-  // 详情接口必须对其他组织的记录伪装为不存在。
+  // 详情接口必须对其他组织的记录伪装为不存在（归属判定在门面）。
   test("详情隔离跨组织知识库", async () => {
     knowledgeBaseRepo.getById = mock(async () => kb({ organizationId: "org-2" }));
 
-    await expect(getKnowledgeBaseDetail("org-1", "kb-1")).resolves.toBeNull();
+    await expect(knowledgeBaseFacade.getDetail({ organizationId: "org-1", userId: "user-1" }, "kb-1")).resolves.toEqual(
+      {
+        ok: false,
+        error: { kind: "not-found", code: "NOT_FOUND", message: "知识库不存在" },
+      },
+    );
   });
 
   // provider 返回空 dataset 时列表应标记远端对象缺失。
@@ -214,11 +221,15 @@ describe("round62 知识库 service 补充覆盖", () => {
       }
     }
     setKnowledgeProviderForTesting(new MissingDatasetProvider());
-    knowledgeBaseRepo.listByOrganizationId = mock(async () => [kb()]);
+    knowledgeBaseRepo.listVisible = mock(async () => [kb()]);
+    knowledgeBaseRepo.countVisible = mock(async () => 1);
     knowledgeBaseRepo.countBindings = mock(async () => 0);
     knowledgeResourceRepo.countByKnowledgeBase = mock(async () => 0);
 
-    await expect(listKnowledgeBases("org-1", "ignored")).resolves.toMatchObject([{ remoteExists: false }]);
+    // 控制台列表的组成（本组织可见集 + 远端回填）由 Facade 编排，本用例钉的是回填本身的口径。
+    const { items } = await listVisibleKnowledgeBases({ organizationId: "org-1", visibility: "organization" });
+    await syncRemoteState(items);
+    expect(items).toMatchObject([{ remoteExists: false }]);
   });
 
   // 远端配置缺失时列表应回填本地元数据并更新返回 DTO。
@@ -236,16 +247,17 @@ describe("round62 知识库 service 补充覆盖", () => {
       }
     }
     setKnowledgeProviderForTesting(new DatasetProvider());
-    knowledgeBaseRepo.listByOrganizationId = mock(async () => [kb({ metadata: null })]);
+    knowledgeBaseRepo.listVisible = mock(async () => [kb({ metadata: null })]);
+    knowledgeBaseRepo.countVisible = mock(async () => 1);
     knowledgeBaseRepo.countBindings = mock(async () => 0);
     knowledgeResourceRepo.countByKnowledgeBase = mock(async () => 0);
     knowledgeBaseRepo.getById = mock(async () => kb({ metadata: null }));
     const update = mock(async () => undefined);
     knowledgeBaseRepo.update = update;
 
-    await expect(listKnowledgeBases("org-1", "ignored")).resolves.toMatchObject([
-      { embeddingModel: "embed", parseMethod: "builtin", chunkMethod: "book" },
-    ]);
+    const { items } = await listVisibleKnowledgeBases({ organizationId: "org-1", visibility: "organization" });
+    await syncRemoteState(items);
+    expect(items).toMatchObject([{ embeddingModel: "embed", parseMethod: "builtin", chunkMethod: "book" }]);
     expect(update).toHaveBeenCalledWith("kb-1", expect.objectContaining({ metadata: expect.any(Object) }));
   });
 
@@ -365,16 +377,17 @@ describe("round62 知识库 service 补充覆盖", () => {
     ).rejects.toThrow("permission denied");
   });
 
-  // 没有远端 ID 的历史记录只清理本地关联数据。
+  // 没有远端 ID 的历史记录只清理本地关联数据，且不解析远端凭据。
   test("删除无远端 ID 的知识库不调用 provider", async () => {
     const provider = new Provider();
     setKnowledgeProviderForTesting(provider);
-    knowledgeBaseRepo.getById = mock(async () => kb({ remoteId: null }));
     agentKnowledgeBindingRepo.deleteByKnowledgeBaseId = mock(async () => undefined);
     knowledgeBaseRepo.delete = mock(async () => true);
+    const credential = mock(async () => "round62-key");
 
-    await expect(deleteKnowledgeBase("org-1", "kb-1")).resolves.toMatchObject({ success: true });
+    await expect(deleteKnowledgeBase(kb({ remoteId: null }), credential)).resolves.toMatchObject({ success: true });
     expect(provider.deleted).toBeNull();
+    expect(credential).not.toHaveBeenCalled();
   });
 
   // 非“对象不存在”的远端删除失败不能误删本地数据。
@@ -385,11 +398,10 @@ describe("round62 知识库 service 补充覆盖", () => {
       }
     }
     setKnowledgeProviderForTesting(new DeniedProvider());
-    knowledgeBaseRepo.getById = mock(async () => kb());
     const remove = mock(async () => true);
     knowledgeBaseRepo.delete = remove;
 
-    await expect(deleteKnowledgeBase("org-1", "kb-1")).rejects.toThrow("timeout");
+    await expect(deleteKnowledgeBase(kb(), async () => "round62-key")).rejects.toThrow("timeout");
     expect(remove).not.toHaveBeenCalled();
   });
 

@@ -32,13 +32,15 @@ export function buildModuleConfigs(env: ServerEnv, config: AppConfig): Readonly<
       disableSignup: config.disableSignup,
       betterAuthSecret: readDeclaredEnv<string | undefined>(env, "BETTER_AUTH_SECRET"),
     },
-    // Agent Runtime 模块配置：运行态旋钮（三项并发上限、ACP 空闲/巡检/业务超时、WS 保活间隔）、环境解析与
-    // `/acp/*` 协议入口的部署值（本地节点开关、兜底机器、workspace 根、注册密钥、file-ws 帧上限），以及启动
-    // 组装残留的两个输入（`defaultEngineType` / `baseUrl`）。三项并发上限缺省即「不限制」，`config` 已把 env 的
-    // optional 语义原样带过来（`undefined` 而非 0）。启动组装的其余职责随 W4 的 launch-spec 装配搬去
-    // agent-config（经 `AgentLaunchSpecPort`），留下的这两个值仍由本包的 `buildAgentLaunchSpecForCore` 消费：
-    // 前者决定本地执行的引擎类型，后者注入 platformEnv 的 `USER_META_BASE_URL`；1.5b 起它们与本块其余键同一
-    // 路径注入，本包不再直读宿主 `@server/config`。
+    // Agent Runtime 模块配置：运行态旋钮（三项并发上限、ACP 空闲/巡检/业务超时、WS 保活间隔、chat-channel
+    // 连接上限与快照节流/TTL 三项）、环境解析与 `/acp/*` 协议入口的部署值（本地节点开关、兜底机器、workspace
+    // 根、注册密钥、file-ws 帧上限），以及启动组装残留的两个输入（`defaultEngineType` / `baseUrl`）。三项并发
+    // 上限缺省即「不限制」，`config` 已把 env 的 optional 语义原样带过来（`undefined` 而非 0）。启动组装的其余
+    // 职责随 W4 的 launch-spec 装配搬去 agent-config（经 `AgentLaunchSpecPort`），留下的这两个值仍由本包的
+    // `buildAgentLaunchSpecForCore` 消费：前者决定本地执行的引擎类型，后者注入 platformEnv 的
+    // `USER_META_BASE_URL`；1.5b 起它们与本块其余键同一路径注入，本包不再直读宿主 `@server/config`。
+    // 快照三项（F1）原先在宿主 `env.ts` 声明、由 chat-channel 持久层直读，本批改为声明在 agent-runtime
+    // manifest 并经此处投影，包内直读与包内默认值同批删除。
     "agent-runtime": {
       agentMaxConcurrency: config.agentMaxConcurrency,
       userAgentMaxConcurrency: config.userAgentMaxConcurrency,
@@ -55,6 +57,9 @@ export function buildModuleConfigs(env: ServerEnv, config: AppConfig): Readonly<
       acpRegistrySecret: readDeclaredEnv<string>(env, "REGISTRY_SECRET"),
       fileWsMaxPayloadMb: env.RCS_FILE_WS_MAX_PAYLOAD_MB,
       yjsMaxClients: readDeclaredEnv<number>(env, "YJS_MAX_CLIENTS"),
+      yjsSnapshotIntervalMs: readDeclaredEnv<number>(env, "RCS_YJS_SNAPSHOT_INTERVAL_MS"),
+      yjsSnapshotIdleMs: readDeclaredEnv<number>(env, "RCS_YJS_SNAPSHOT_IDLE_MS"),
+      yjsSnapshotTtlSeconds: readDeclaredEnv<number>(env, "RCS_YJS_SNAPSHOT_TTL_SECONDS"),
     },
     // 机器模块配置：远程机器兜底 ID 与 file-ws 治理参数，全部来自宿主已校验的 env/config。
     machine: {
@@ -128,6 +133,25 @@ export function buildModuleConfigs(env: ServerEnv, config: AppConfig): Readonly<
       acpxGUrl: config.acpxGUrl,
       toolsDir: readDeclaredEnv<string>(env, "WORKFLOW_TOOLS_DIR"),
       hmacSecret: readDeclaredEnv<string | undefined>(env, "RCS_WORKFLOW_HMAC_SECRET"),
+    },
+    // Workflow V2 模块配置：九枚键全部是本模块自己声明的部署键（`fenix.module.ts` 的 envDefinitions，
+    // 冻结 §2.2），宿主只做透传。2F 起模块已在 `deploy/assembly/ce.json` 的 `resources` 列表里，
+    // `loadServerEnv` 因此聚合了这九枚键，三枚必填项已在启动期由声明方 schema 校验，这里取到的都是已解析值。
+    // `nodeWhitelist` 传逗号分隔**字符串**（声明面的形状），拆成类型名数组是包内 `getWorkflowV2Config()`
+    // 的职责：节点类型名是 workflow-v2 的领域知识，宿主不解释它。
+    "workflow-v2": {
+      upstreamBaseUrl: readDeclaredEnv<string>(env, "WORKFLOW_V2_UPSTREAM_BASE_URL"),
+      canvasUpstreamUrl: readDeclaredEnv<string>(env, "WORKFLOW_CANVAS_UPSTREAM_URL"),
+      accountEmail: readDeclaredEnv<string>(env, "WORKFLOW_V2_PLATFORM_ACCOUNT_EMAIL"),
+      accountPassword: readDeclaredEnv<string>(env, "WORKFLOW_V2_PLATFORM_ACCOUNT_PASSWORD"),
+      ticketSecret: readDeclaredEnv<string>(env, "WORKFLOW_V2_TICKET_SECRET"),
+      codeTtlSeconds: readDeclaredEnv<number>(env, "WORKFLOW_V2_IFRAME_CODE_TTL_SECONDS"),
+      ticketTtlSeconds: readDeclaredEnv<number>(env, "WORKFLOW_V2_IFRAME_TICKET_TTL_SECONDS"),
+      upstreamTimeoutMs: readDeclaredEnv<number>(env, "WORKFLOW_V2_UPSTREAM_TIMEOUT_MS"),
+      nodeWhitelist: readDeclaredEnv<string>(env, "WORKFLOW_V2_NODE_WHITELIST"),
+      reconcileIntervalSeconds: readDeclaredEnv<number>(env, "WORKFLOW_V2_RECONCILE_INTERVAL_SECONDS"),
+      bffRateLimitPerMinute: readDeclaredEnv<number>(env, "WORKFLOW_V2_BFF_RATE_LIMIT_PER_MINUTE"),
+      sessionRateLimitPerMinute: readDeclaredEnv<number>(env, "WORKFLOW_V2_SESSION_RATE_LIMIT_PER_MINUTE"),
     },
     // 模型管理模块配置：网关适配器参数与默认预算。管理密钥与凭据加密密钥未配置时是 `undefined`，
     // 包侧据此判定「网关未启用」而不会退化成无鉴权网关；默认预算周期已由 env schema 把

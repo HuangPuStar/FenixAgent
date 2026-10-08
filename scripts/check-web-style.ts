@@ -1,8 +1,12 @@
 /**
- * Web 样式禁止行为门禁（`FCP-WEB-01..06`）。
+ * Web 样式禁止行为门禁（`FCP-WEB-01..08`）。
  *
  * 规则与反例见 `docs/developer/guide/forbidden-code-patterns.md`，检测核心在
- * `scripts/lib/web-style-rules.ts`。本文件只负责：遍历扫描范围 → 加载存量台账 → 阻断新增 → 输出证据。
+ * `scripts/lib/web-style-rules.ts`（className 字符串）与 `scripts/lib/web-style-css-rules.ts`（伴随表字面量）。
+ * 本文件只负责：遍历扫描范围 → 加载存量台账 → 阻断新增 → 输出证据。
+ *
+ * `.css` 只扫**伴随表**（同目录存在同名 `.tsx` / `.ts` 的那一类）：token 入口、第三方覆盖表与模块级表
+ * 本来就要写值，纳入判定只会制造噪声；判定见 `isCompanionStyleSheet`。
  *
  * 判定：
  * - 台账里**没有**的「规则 + 目录」组合出现命中 → 失败（新增违规）。
@@ -20,9 +24,11 @@
  * 门禁会变成摆设。因此安全方向（下降）零摩擦，危险方向（上升）留痕。
  */
 
+import { existsSync } from "node:fs";
 import { mkdir, writeFile } from "node:fs/promises";
 import { dirname, resolve } from "node:path";
 
+import { findCssLiteralViolations } from "./lib/web-style-css-rules";
 import {
   buildWebStyleDebt,
   compareWebStyleDebt,
@@ -45,7 +51,10 @@ const repositoryRoot = resolve(import.meta.dir, "..");
 
 /** 扫描范围：宿主 web 应用与各 owner 包的 web 面——即 Tailwind `@source` 覆盖的那批源码。 */
 const SCAN_PATTERNS = ["apps/web/src/**/*", "packages/**/web/**/*"] as const;
-const SOURCE_EXTENSIONS = [".ts", ".tsx"] as const;
+/** `.ts` / `.tsx` 走 className 规则；`.css` 只取伴随表（见 `isCompanionStyleSheet`）。 */
+const SCANNED_EXTENSIONS = [".ts", ".tsx", ".css"] as const;
+/** 伴随表的判据：同目录同名兄弟。token 入口（index.css / theme.css）、overrides.css 与 chat/css/*.css 都没有兄弟。 */
+const COMPANION_SIBLING_EXTENSIONS = [".tsx", ".ts"] as const;
 const EXCLUDED_SEGMENTS = ["node_modules", "dist", "__tests__"] as const;
 const TEST_FILE_PATTERN = /\.(?:test|spec)\.[cm]?[jt]sx?$/;
 
@@ -59,14 +68,14 @@ export interface WebStyleCheckOptions {
   force?: boolean;
 }
 
-/** 列出扫描范围内的源文件（仓库相对、POSIX、去重排序）。 */
+/** 列出扫描范围内的候选文件（`.ts` / `.tsx` / `.css`，仓库相对、POSIX、去重排序）。 */
 export async function listWebStyleFiles(root: string = repositoryRoot): Promise<string[]> {
   const files = new Set<string>();
 
   for (const pattern of SCAN_PATTERNS) {
     for await (const path of new Bun.Glob(pattern).scan({ cwd: root, dot: false, onlyFiles: true })) {
       const relativePath = path.replaceAll("\\", "/");
-      if (!SOURCE_EXTENSIONS.some((extension) => relativePath.endsWith(extension))) continue;
+      if (!SCANNED_EXTENSIONS.some((extension) => relativePath.endsWith(extension))) continue;
       if (TEST_FILE_PATTERN.test(relativePath)) continue;
       if (relativePath.split("/").some((segment) => EXCLUDED_SEGMENTS.some((excluded) => segment === excluded))) {
         continue;
@@ -78,12 +87,27 @@ export async function listWebStyleFiles(root: string = repositoryRoot): Promise<
   return [...files].sort();
 }
 
+/**
+ * 判定一份 `.css` 是否属于「③伴随表」（规范 §10 的独立样式表分类）——判据是与源文件同目录同名。
+ *
+ * 不按白名单枚举：分类会随重构搬迁，白名单会静默过期；而「同目录同名」正是伴随表的定义本身
+ * （`AgentEditorChrome.tsx` ↔ `AgentEditorChrome.css`），token 入口、第三方覆盖表与模块级表都没有兄弟。
+ */
+export function isCompanionStyleSheet(root: string, relativePath: string): boolean {
+  const withoutExtension = relativePath.slice(0, -".css".length);
+  return COMPANION_SIBLING_EXTENSIONS.some((extension) => existsSync(resolve(root, `${withoutExtension}${extension}`)));
+}
+
 /** 扫描全部目标文件并返回命中，按「规则 → 路径 → 行」排序，保证输出稳定可 diff。 */
 export async function collectWebStyleViolations(root: string = repositoryRoot): Promise<WebStyleViolation[]> {
   const violations: WebStyleViolation[] = [];
 
   for (const relativePath of await listWebStyleFiles(root)) {
     const source = await Bun.file(resolve(root, relativePath)).text();
+    if (relativePath.endsWith(".css")) {
+      if (isCompanionStyleSheet(root, relativePath)) violations.push(...findCssLiteralViolations(relativePath, source));
+      continue;
+    }
     violations.push(...findWebStyleViolations(relativePath, source));
   }
 
@@ -205,6 +229,8 @@ export async function checkWebStyle(options: WebStyleCheckOptions = {}): Promise
   console.error("修法：尺寸/颜色改用标准刻度或 token；深层样式下沉为 CSS 类；响应式改用规范断点。");
   console.error("死类（04/05/06，写了但不会生成任何声明）：负号前置（-ml-1.75）、刻度取 0.25 的整数倍、");
   console.error("auto-rows-*/auto-cols-* 只用关键字、grid-cols-*/grid-rows-* 只用非负整数。");
+  console.error("伴随表字面量（07/08）：长度改 var(--token) / calc(var(--spacing) * N)，颜色改 var(--color-*) 色阶；");
+  console.error("刻度或色阶缺失先到两份 @theme 副本补档，不要就地写死 px / hex。");
   console.error("台账只登记存量：确属待清理的历史写法才有条目，新增写法一律现场修掉。");
   return 1;
 }

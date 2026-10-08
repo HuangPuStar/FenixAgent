@@ -5,6 +5,7 @@ import {
   knowledgeBaseRepo,
   knowledgeResourceRepo,
 } from "../server/repositories/knowledge-base";
+import type { KnowledgeBaseCredential } from "../server/services/knowledge-credential";
 import { RagFlowKnowledgeProvider } from "../server/services/knowledge-provider/ragflow";
 import {
   deleteKnowledgeGraphForKb,
@@ -91,6 +92,12 @@ const originals = {
   joinedBindings: agentKnowledgeBindingRepo.listJoinedWithKnowledgeBaseByConfigId,
   findResources: knowledgeResourceRepo.findByRemoteIds,
 };
+
+/**
+ * 门面解析出的凭据替身：取值身份由门面绑定（见 `facades/knowledge-access`），领域服务只负责
+ * 「什么时候取」，取值结果与 `initializeKnowledgeModuleConfig` 里配置的 key 一致。
+ */
+const credential: KnowledgeBaseCredential = async () => "test-ragflow-key";
 
 describe("知识运行时服务分支", () => {
   beforeEach(() => {
@@ -240,13 +247,11 @@ describe("知识运行时服务分支", () => {
   test("知识库检索测试透传分页和高级参数", async () => {
     const provider = new RuntimeProvider();
     setKnowledgeRuntimeProviderForTesting(provider);
-    knowledgeBaseRepo.getById = mock(async () => knowledgeBase());
 
     await expect(
       searchKnowledgeForTest({
-        organizationId: "org-1",
-        knowledgeBaseId: "kb-1",
-        userId: "user-1",
+        kb: knowledgeBase(),
+        credential,
         query: "部署",
         topK: 5,
         page: 2,
@@ -269,10 +274,8 @@ describe("知识运行时服务分支", () => {
 
   // 缺失 remoteId 的知识库不得进入 provider 检索路径。
   test("知识库检索测试拒绝缺失远端 ID", async () => {
-    knowledgeBaseRepo.getById = mock(async () => knowledgeBase(null));
-
     await expect(
-      searchKnowledgeForTest({ organizationId: "org-1", knowledgeBaseId: "kb-1", query: "部署", topK: 5 }),
+      searchKnowledgeForTest({ kb: knowledgeBase(null), credential, query: "部署", topK: 5 }),
     ).rejects.toThrow("Knowledge base remote id is missing");
   });
 
@@ -280,9 +283,8 @@ describe("知识运行时服务分支", () => {
   test("生成知识图谱转发远端身份", async () => {
     const provider = new RuntimeProvider();
     setKnowledgeRuntimeProviderForTesting(provider);
-    knowledgeBaseRepo.getById = mock(async () => knowledgeBase());
 
-    await generateKnowledgeGraphForKb({ organizationId: "org-1", knowledgeBaseId: "kb-1", userId: "user-1" });
+    await generateKnowledgeGraphForKb({ kb: knowledgeBase(), credential });
 
     expect(provider.graphInput).toMatchObject({
       knowledgeBaseRemoteId: "remote-kb-1",
@@ -295,14 +297,15 @@ describe("知识运行时服务分支", () => {
   test("图谱读取删除与进度轮询复用访问校验", async () => {
     const provider = new RuntimeProvider();
     setKnowledgeRuntimeProviderForTesting(provider);
-    knowledgeBaseRepo.getById = mock(async () => knowledgeBase());
 
-    await expect(getKnowledgeGraphForKb({ organizationId: "org-1", knowledgeBaseId: "kb-1" })).resolves.toEqual({
+    await expect(getKnowledgeGraphForKb({ kb: knowledgeBase(), credential })).resolves.toEqual({
       graph: { nodes: [], edges: [] },
     });
-    await deleteKnowledgeGraphForKb({ organizationId: "org-1", knowledgeBaseId: "kb-1" });
-    await expect(
-      pollKnowledgeGraphProgressForKb({ organizationId: "org-1", knowledgeBaseId: "kb-1" }),
-    ).resolves.toEqual({ progress: 0.5, progressMsg: "处理中", taskId: "task-1" });
+    await deleteKnowledgeGraphForKb({ kb: knowledgeBase(), credential });
+    await expect(pollKnowledgeGraphProgressForKb({ kb: knowledgeBase(), credential })).resolves.toEqual({
+      progress: 0.5,
+      progressMsg: "处理中",
+      taskId: "task-1",
+    });
   });
 });

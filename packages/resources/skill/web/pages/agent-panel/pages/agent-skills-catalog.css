@@ -1,0 +1,60 @@
+.agent-skills-page {
+  color: var(--color-slate-800);
+}
+.skills-detail-markdown {
+  color: var(--color-slate-500);
+  font-size: var(--text-xs);
+  line-height: 1.75;
+}
+.skills-detail-markdown :where(h1, h2, h3) {
+  margin: 20px 0 8px;
+  color: var(--color-slate-800);
+  font-weight: 700;
+  line-height: 1.35;
+}
+
+.skills-detail-markdown :where(h1, h2, h3):first-child {
+  margin-top: 0;
+}
+.skills-detail-markdown h1 {
+  font-size: var(--text-lg);
+}
+.skills-detail-markdown h2 {
+  font-size: var(--text-base);
+}
+.skills-detail-markdown h3 {
+  font-size: var(--text-13);
+}
+.skills-detail-markdown p {
+  margin: 8px 0;
+}
+.skills-detail-markdown :where(ul, ol) {
+  margin: 8px 0;
+  padding-left: calc(var(--spacing) * 5);
+}
+.skills-detail-markdown ul {
+  list-style: disc;
+}
+.skills-detail-markdown ol {
+  list-style: decimal;
+}
+.skills-detail-markdown code {
+  border-radius: var(--radius-sm);
+  padding: 2px 5px;
+  color: var(--color-slate-700);
+  background: var(--color-slate-100);
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: var(--text-xs);
+}
+.skills-detail-markdown pre {
+  overflow-x: auto;
+  margin: 12px 0;
+  border-radius: var(--radius);
+  padding: calc(var(--spacing) * 3.5);
+  background: var(--color-slate-100);
+}
+
+.skills-detail-markdown pre code {
+  padding: 0;
+  background: transparent;
+}

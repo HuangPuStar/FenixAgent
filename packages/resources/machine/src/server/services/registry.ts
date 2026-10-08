@@ -1,38 +1,37 @@
-import { bindMachineIdByAgentName, isAgentConfigBoundToMachine } from "@fenix/agent-config/server";
 import { log } from "@fenix/logger";
 import { getIdentityDirectory } from "@fenix/platform-sdk/server";
 import { machine, registryEvent } from "@fenix/resource-machine/db";
 import { and, desc, eq, isNull, or, sql } from "drizzle-orm";
+import { getMachineAgentConfigPort } from "../agent-config-port";
 import { getMachineDatabase } from "../db";
 import { getMachineLifecyclePort } from "../machine-lifecycle-port";
 import { writeRegistryEvent } from "../repositories/registry-event";
 import { closeMachineFileWsConnection } from "../transport/file-ws-handler";
-import type { MachineRequestAuth } from "../types/auth";
+import type {
+  MachineCreateInput,
+  MachineListFilters,
+  MachineScope,
+  MachineUpdateInput,
+} from "../types/machine-registry";
 
 function genId(prefix: string): string {
   return `${prefix}_${crypto.randomUUID().slice(0, 22)}`;
 }
 
-function buildMachineOwnershipConditions(ctx: MachineRequestAuth) {
+function buildMachineOwnershipConditions(scope: MachineScope) {
   return [
-    eq(machine.organizationId, ctx.organizationId),
-    or(isNull(machine.userId), eq(machine.userId, ctx.userId)),
+    eq(machine.organizationId, scope.organizationId),
+    or(isNull(machine.userId), eq(machine.userId, scope.userId)),
   ] as const;
 }
 
 export async function listMachines(
-  ctx: MachineRequestAuth,
-  filters: {
-    status?: "online" | "offline";
-    type?: "machine" | "sandbox" | "all";
-    labels?: string[];
-    limit?: number;
-    offset?: number;
-  },
+  scope: MachineScope,
+  filters: MachineListFilters,
 ): Promise<{ data: (typeof machine.$inferSelect)[]; total: number }> {
   const conditions = [
-    or(isNull(machine.organizationId), eq(machine.organizationId, ctx.organizationId)),
-    or(isNull(machine.userId), eq(machine.userId, ctx.userId)),
+    or(isNull(machine.organizationId), eq(machine.organizationId, scope.organizationId)),
+    or(isNull(machine.userId), eq(machine.userId, scope.userId)),
   ];
 
   if (filters.status) {
@@ -70,7 +69,7 @@ export async function listMachines(
 }
 
 export async function getMachine(
-  ctx: MachineRequestAuth,
+  scope: MachineScope,
   id: string,
 ): Promise<(typeof machine.$inferSelect & { recentEvents: (typeof registryEvent.$inferSelect)[] }) | null> {
   const rows = await getMachineDatabase()
@@ -79,8 +78,8 @@ export async function getMachine(
     .where(
       and(
         eq(machine.id, id),
-        or(isNull(machine.organizationId), eq(machine.organizationId, ctx.organizationId)),
-        or(isNull(machine.userId), eq(machine.userId, ctx.userId)),
+        or(isNull(machine.organizationId), eq(machine.organizationId, scope.organizationId)),
+        or(isNull(machine.userId), eq(machine.userId, scope.userId)),
       ),
     )
     .limit(1);
@@ -99,7 +98,7 @@ export async function getMachine(
 }
 
 export async function listEvents(
-  ctx: MachineRequestAuth,
+  scope: MachineScope,
   machineId: string,
   opts: { limit: number; offset: number },
 ): Promise<{ data: (typeof registryEvent.$inferSelect)[]; total: number }> {
@@ -109,8 +108,8 @@ export async function listEvents(
     .where(
       and(
         eq(machine.id, machineId),
-        or(isNull(machine.organizationId), eq(machine.organizationId, ctx.organizationId)),
-        or(isNull(machine.userId), eq(machine.userId, ctx.userId)),
+        or(isNull(machine.organizationId), eq(machine.organizationId, scope.organizationId)),
+        or(isNull(machine.userId), eq(machine.userId, scope.userId)),
       ),
     )
     .limit(1);
@@ -140,8 +139,8 @@ export async function listEvents(
  * 返回 machine id 和包含 RCS_MACHINE_ID + RCS_SECRET 的初始化命令。
  */
 export async function createMachine(
-  ctx: MachineRequestAuth,
-  params: { name: string; labels?: string[]; agentName?: string },
+  organizationId: string,
+  params: MachineCreateInput,
 ): Promise<{ id: string; name: string; status: "pending"; initCommand: string }> {
   const id = genId("mach");
   const now = new Date();
@@ -150,7 +149,7 @@ export async function createMachine(
 
   await getMachineDatabase().insert(machine).values({
     id,
-    organizationId: ctx.organizationId,
+    organizationId,
     userId: null,
     agentName,
     name: params.name,
@@ -364,14 +363,16 @@ export async function updateHeartbeat(machineId: string): Promise<void> {
 
 /**
  * 由管理面调用，更新机器的名称、标签和引擎类型。
- * 仅允许组织管理员操作，校验组织归属。
+ *
+ * 归属谓词由 `scope` 给出（组织 + 当前用户），不可见或不存在时一律 `not found`——本层不做用户权限判断，
+ * 授权止于 Facade（§3.2）。
  */
 export async function updateMachine(
-  ctx: MachineRequestAuth,
+  scope: MachineScope,
   id: string,
-  params: { name?: string; labels?: string[]; agentName?: string },
+  params: MachineUpdateInput,
 ): Promise<typeof machine.$inferSelect> {
-  const ownershipConditions = buildMachineOwnershipConditions(ctx);
+  const ownershipConditions = buildMachineOwnershipConditions(scope);
   const rows = await getMachineDatabase()
     .select()
     .from(machine)
@@ -405,8 +406,8 @@ export async function updateMachine(
  * 1. 在线机器不可删除，避免删除后仍保留活跃连接。
  * 2. 被 Agent 配置或组织默认引擎引用的机器不可删除，避免产生悬空 machineId。
  */
-export async function deleteMachine(ctx: MachineRequestAuth, id: string): Promise<{ deleted: true }> {
-  const ownershipConditions = buildMachineOwnershipConditions(ctx);
+export async function deleteMachine(scope: MachineScope, id: string): Promise<{ deleted: true }> {
+  const ownershipConditions = buildMachineOwnershipConditions(scope);
   const rows = await getMachineDatabase()
     .select()
     .from(machine)
@@ -422,15 +423,15 @@ export async function deleteMachine(ctx: MachineRequestAuth, id: string): Promis
     throw new Error(`machine '${id}' is online and cannot be deleted`);
   }
 
-  // 悬挂引用守卫经 owner 的公开入口判定：`machine_id` 列的语义与「哪条 Agent 配置跑在这台机器上」的
-  // 归属规则属 Agent 配置领域，本包只表达「这台机器还能不能删」这个业务意图，不自己解释该列、也不在
-  // 本包重写归属条件（表已随 §1.7 B7 迁至 `@fenix/agent-config/db`）。
-  if (await isAgentConfigBoundToMachine(ctx.organizationId, id)) {
+  // 悬挂引用守卫经注入端口判定：`machine_id` 列的语义与「哪条 Agent 配置跑在这台机器上」的归属规则属
+  // Agent 配置领域，本包只表达「这台机器还能不能删」这个业务意图，不自己解释该列、也不读对方的表
+  // （表已随 §1.7 B7 迁至 `@fenix/agent-config/db`，实现由宿主装配注入，见 `../agent-config-port`）。
+  if (await getMachineAgentConfigPort().isAgentConfigBoundToMachine(scope.organizationId, id)) {
     throw new Error(`machine '${id}' is still referenced by agent configs`);
   }
 
   // 组织默认引擎引用经目录读取：`organization` 表的 owner 是身份模块，本包不得直查该表。
-  const organization = await getIdentityDirectory().getOrganization(ctx.organizationId);
+  const organization = await getIdentityDirectory().getOrganization(scope.organizationId);
   if (organization?.defaultMachineId === id) {
     throw new Error(`machine '${id}' is still referenced by organization default engine`);
   }
@@ -465,13 +466,14 @@ export async function deleteMachine(ctx: MachineRequestAuth, id: string): Promis
  * 机器注册上报的 `agentName` 是它与 Agent 配置之间唯一的身份线索；本包只表达「这台机器上线了、引擎是
  * `agentName`」这个意图。**为什么匹配与写入都归 owner**：「按名称匹配本组织同名配置、同名多条一起绑定、
  * 绑定同时刷新 `updatedAt`」都是 `machine_id` 列的语义，属 Agent 配置领域（§4.8 第 7 条：调用期跨包写随
- * 表迁出收敛为 owner 的写入口），本包不再自持归属条件，也不直接触碰该表。
+ * 表迁出收敛为 owner 的写入口），本包不再自持归属条件，也不直接触碰该表——写入口经宿主注入的
+ * `MachineAgentConfigPort`（见 `../agent-config-port`）调用，本包不导入对方的入口。
  *
  * `tenantId` 为空表示无法确定组织范围，此时不绑定（既有前置条件，与"无组织即无匹配范围"一致）。
  */
 async function bindAgentConfigs(machineId: string, agentName: string, tenantId: string | null): Promise<void> {
   if (!tenantId) return;
-  await bindMachineIdByAgentName({ organizationId: tenantId, agentName, machineId });
+  await getMachineAgentConfigPort().bindMachineIdByAgentName({ organizationId: tenantId, agentName, machineId });
 }
 
 /** 服务启动时调用：将所有 online 状态的 machine 重置为 offline（服务重启后 WS 连接均已断开） */

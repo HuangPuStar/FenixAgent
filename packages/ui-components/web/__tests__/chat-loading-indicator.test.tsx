@@ -153,7 +153,7 @@ describe("chat 加载指示器：流光条与无障碍", () => {
   });
 
   // 缺陷根因守卫：蓝色方块来自「文字渐变 + `background-clip: text`」拆成任意属性工具类——
-  // `[background:…]` 简写在 `@layer utilities` 里排在 `bg-clip-text` / `[background-size:…]` 之后，
+  // [background: …] 简写在 `@layer utilities` 里排在 `bg-clip-text` / [background-size: …] 之后，
   // 简写把 `background-clip` 复位成 `border-box`，渐变于是铺满整个行内盒，文字因 `text-transparent`
   // 不可见。该组合不得以任何形式回流到加载指示器的源码里。
   test("文字渐变 + 裁切文字的写法不得回流", () => {

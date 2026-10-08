@@ -287,6 +287,7 @@ export async function loadManifestSource(
 
   const sourceText = await readFile(resolve(repositoryRoot, candidate.manifestFile), "utf8");
   const sourceFile = parseTypeScriptSource(candidate.manifestFile, sourceText);
+  const objectLiteral = requireManifestObject(sourceFile, candidate.manifestFile);
 
   return {
     candidate,
@@ -296,6 +297,6 @@ export async function loadManifestSource(
     packageDirectory,
     packageName: packageManifest.name,
     sourceFile,
-    web: readWebContribution(requireManifestObject(sourceFile, candidate.manifestFile), candidate.manifestFile),
+    web: readWebContribution(objectLiteral, candidate.manifestFile),
   };
 }

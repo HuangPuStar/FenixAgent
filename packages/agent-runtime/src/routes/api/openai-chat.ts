@@ -1,4 +1,4 @@
-import { log, error as logError } from "@fenix/logger";
+import { log, error as logError, requestAls } from "@fenix/logger";
 import Elysia from "elysia";
 import * as z from "zod/v4";
 import { OpenAIChatCompletionRequestSchema, OpenAIErrorResponseSchema } from "../../schemas/openai-chat.schema";
@@ -82,6 +82,9 @@ export function createOpenaiChatRoutes(deps: AgentRuntimeAuthDependencies) {
         organizationId: authCtx.organizationId,
         sessionId,
         startSource: "interactive",
+        // 宿主请求中间件写入 ALS 的关联 ID（§7）：显式传入编排域，
+        // 使实例 / relay 链路的日志能与本次 HTTP 请求对齐
+        requestId: requestAls.getStore()?.requestId,
       });
       const turn = result.turn;
       const instanceId = result.instanceId;

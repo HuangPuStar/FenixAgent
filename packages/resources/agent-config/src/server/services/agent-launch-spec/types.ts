@@ -21,7 +21,7 @@ import type { AgentAssociations } from "../agent-associations";
  * 组装需要的运行期配置。
  *
  * 其中三项携带密钥（{@link AgentLaunchSpecEnv.hindsightApiToken} 与 {@link AgentLaunchSpecEnv.langfuse}
- * 的 secretKey）：它们随 launchSpec.env 派发到 machine 上的 agent 进程，属受信 relay 通道传输，
+ * 的 secretKey）：Hindsight 凭据仅进入 workspaceFiles，Langfuse 随 env 派发；均属受信 relay 通道传输，
  * 不得落日志，也不得写进 Agent 配置的资源行。
  */
 export interface AgentLaunchSpecEnv {
@@ -29,7 +29,7 @@ export interface AgentLaunchSpecEnv {
   readonly agentSystemPrompt: string;
   /** 平台基地址：知识库 MCP 入口为 `${baseUrl}/mcp/knowledge`。 */
   readonly baseUrl: string;
-  /** Hindsight（记忆）MCP 的 API token；未配置时不注入该变量。 */
+  /** Hindsight REST API token；仅写工作区 JSON，未配置时写 null 覆盖旧凭据。 */
   readonly hindsightApiToken?: string;
   /** Langfuse 观测透传（宿主 `config.langfuse*`）；三个键各自独立，未配置的不注入。 */
   readonly langfuse?: {
@@ -79,6 +79,8 @@ export interface AgentLaunchSpecAssemblerDeps {
   /** Provider 行里 `{env:VAR}` 形式的 apiKey 解引用；环境变量的所有权在宿主，故注入。 */
   readonly resolveProviderApiKey: (raw: string | null) => string | null;
   readonly resolveRuntimeCredential?: RuntimeCredentialResolver;
+  /** 宿主注入 runtime 的权威工作区解析器；资源包不读取运行时配置。 */
+  readonly resolveWorkspacePath: (organizationId: string, userId: string, environmentId: string) => string;
 }
 
 /** 按 Agent 配置组装完整启动参数。 */

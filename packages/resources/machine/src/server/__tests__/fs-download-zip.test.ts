@@ -12,8 +12,7 @@ import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { Readable } from "node:stream";
-import { gate } from "../services/agent-file-service";
-import type { FileAuthContext } from "../services/file-types";
+import { type MachineFileActor, machineFileFacade } from "../facades/machine-file-facade";
 import {
   initializeMachineModuleConfig,
   lockMachineWorkspaceRoot,
@@ -25,12 +24,11 @@ const ORG_ID = "org-1";
 const USER_ID = "user-1";
 const ENV_ID = "env-1";
 
-const authCtx: FileAuthContext = {
+/** 调用方 actor：组织 + 属主 + 角色（角色参与环境归属检查，member 一律 403 fail-closed）。 */
+const ACTOR: MachineFileActor = {
   organizationId: ORG_ID,
   userId: USER_ID,
   role: "owner",
-  actorId: USER_ID,
-  source: "user",
 };
 
 let workspaceRoot: string;
@@ -119,7 +117,7 @@ describe("downloadZip 子进程生命周期", () => {
   test("zip 不可执行（缺失）→ 503 file_service_unavailable，不挂死响应", async () => {
     // F5：spawn("zip") ENOENT 必须映射 503 统一错误（§2.4 契约），不得让流以
     // 未捕获错误中断已发出的响应（headers 发出后消费者只能看到连接中断）
-    const fs = gate(ENV_ID, authCtx);
+    const fs = await machineFileFacade.open(ACTOR, ENV_ID);
     await fs.mkdir("user/dir");
     const emptyBin = join(workspaceRoot, "empty-bin");
     await mkdir(emptyBin, { recursive: true });
@@ -143,7 +141,7 @@ describe("downloadZip 子进程生命周期", () => {
     // "存活"）；destroy 前等待 ready 标记，消除"信号早于 handler 注册"竞态。
     // 脚本用 `await new Promise(() => {})` 保持事件循环活跃：busy loop 若写成
     // 同步 while(true) 会饿死信号 handler（信号经事件循环递达，JS 忙循环不释放）
-    const fs = gate(ENV_ID, authCtx);
+    const fs = await machineFileFacade.open(ACTOR, ENV_ID);
     await fs.mkdir("user/dir");
     const pidFile = join(workspaceRoot, "fake-zip.pid");
     const diedFlag = join(workspaceRoot, "fake-zip-died");
@@ -191,6 +189,38 @@ describe("downloadZip 子进程生命周期", () => {
     }
   }, 15000);
 
+  test("子进程环境按白名单构造 → 宿主密钥与 ZIPOPT 不进 zip 进程，PATH 保留", async () => {
+    // F3：downloadZip 直接 spawn("zip")，不传 env 会整包继承宿主环境（§5.4）。假 zip 把自己的
+    // process.env 落盘，断言宿主密钥与会被 zip 当命令行选项的 ZIPOPT 都不在其中；PATH 必须在，
+    // 否则真实 zip 连命令查找都过不去（上面的 ENOENT 用例即是那个失败面）。
+    const fs = await machineFileFacade.open(ACTOR, ENV_ID);
+    await fs.mkdir("user/dir");
+    const envFile = join(workspaceRoot, "fake-zip-env.json");
+    const restorePath = await installFakeZip(
+      `const fs = require("node:fs");\n` + `fs.writeFileSync("{envFile}", JSON.stringify(process.env));\n`,
+      { envFile },
+    );
+    const prevDatabaseUrl = process.env.DATABASE_URL;
+    const prevZipOpt = process.env.ZIPOPT;
+    process.env.DATABASE_URL = "postgres://host/leak";
+    process.env.ZIPOPT = "-X";
+    try {
+      const stream = await fs.downloadZip("user/dir");
+      await collectStream(stream);
+      const childEnv = JSON.parse(await readFile(envFile, "utf8")) as Record<string, string>;
+
+      expect(childEnv.PATH).toBe(process.env.PATH);
+      expect(childEnv).not.toHaveProperty("DATABASE_URL");
+      expect(childEnv).not.toHaveProperty("ZIPOPT");
+    } finally {
+      restorePath();
+      if (prevDatabaseUrl === undefined) delete process.env.DATABASE_URL;
+      else process.env.DATABASE_URL = prevDatabaseUrl;
+      if (prevZipOpt === undefined) delete process.env.ZIPOPT;
+      else process.env.ZIPOPT = prevZipOpt;
+    }
+  }, 15000);
+
   test("正常读完流 → 不误 kill 仍存活的 zip 子进程", async () => {
     // 打包完成先 end 再 close（autoDestroy）；此时子进程可能仍在收尾（zip 写完
     // stdout 尚未退出），不得误 kill——只有客户端断开（无 end 的 close）才终止
@@ -200,7 +230,7 @@ describe("downloadZip 子进程生命周期", () => {
     // kill（close 先于 end），SIGTERM 送达时进程仍存活（sleep 10），标记必然
     // 落盘。断言只依赖"kill 未送达"（sigtermFlag 不存在），不依赖 bash 启动
     // 速度——启动慢只推迟 EOF，不影响断言正确性（15s timeout 兜底）
-    const fs = gate(ENV_ID, authCtx);
+    const fs = await machineFileFacade.open(ACTOR, ENV_ID);
     await fs.mkdir("user/dir");
     const sigtermFlag = join(workspaceRoot, "fake-zip-sigterm");
     const restorePath = await installFakeZip(

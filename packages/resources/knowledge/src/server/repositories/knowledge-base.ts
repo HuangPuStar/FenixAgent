@@ -1,5 +1,5 @@
 import { agentKnowledgeBinding, knowledgeBase, knowledgeResource } from "@fenix/resource-knowledge/db";
-import { and, count, desc, eq, inArray, sql } from "drizzle-orm";
+import { and, count, desc, eq, inArray, type SQL, sql } from "drizzle-orm";
 import { getKnowledgeDatabase } from "../db";
 
 /** KnowledgeBase 行类型 */
@@ -14,6 +14,24 @@ export type KnowledgeResourceInsert = typeof knowledgeResource.$inferInsert;
 export type AgentKnowledgeBindingRow = typeof agentKnowledgeBinding.$inferSelect;
 export type AgentKnowledgeBindingInsert = typeof agentKnowledgeBinding.$inferInsert;
 
+/**
+ * 可见集合的查询范围。
+ *
+ * `includeGlobal` 为真表示把"全局（跨组织共享）知识库"并入可见集合。知识库表没有发布或可见性列
+ * （`visibility` 只存在于五张受控资源主表上），本资源的"全局"就是"已存在的知识库"，因此并入后可见
+ * 集合＝全表；这里仍把范围显式写在参数上，由调用方声明，仓储不替调用方猜。
+ */
+export interface KnowledgeBaseVisibilityQuery {
+  readonly organizationId: string;
+  readonly includeGlobal: boolean;
+}
+
+/** 可见集合的分页读取参数；`limit` / `offset` 不传表示取整个可见集合（控制台列表没有分页参数）。 */
+export interface KnowledgeBaseVisibilityPageQuery extends KnowledgeBaseVisibilityQuery {
+  readonly limit?: number;
+  readonly offset?: number;
+}
+
 /** KnowledgeBase 仓储接口 */
 export interface IKnowledgeBaseRepo {
   getById(knowledgeBaseId: string): Promise<KnowledgeBaseRow | null>;
@@ -23,12 +41,19 @@ export interface IKnowledgeBaseRepo {
   listByOrganizationId(organizationId: string): Promise<KnowledgeBaseRow[]>;
   getByOrgAndId(organizationId: string, knowledgeBaseId: string): Promise<KnowledgeBaseRow | null>;
   findByOrgAndSlug(organizationId: string, slug: string, userId?: string): Promise<KnowledgeBaseRow | null>;
+  /**
+   * 可见集合的分页读取。
+   *
+   * 与 {@link IKnowledgeBaseRepo.countVisible} 是同一份可见条件的两次 SQL：分页、排序与计数都落在数据库，
+   * 调用方不得先读全量再在内存里筛选或切片。
+   */
+  listVisible(input: KnowledgeBaseVisibilityPageQuery): Promise<KnowledgeBaseRow[]>;
+  /** 可见集合的总数；必须与 `listVisible` 共用 {@link visibleWhere} 产出的条件。 */
+  countVisible(input: KnowledgeBaseVisibilityQuery): Promise<number>;
   create(data: KnowledgeBaseInsert): Promise<KnowledgeBaseRow>;
   update(knowledgeBaseId: string, data: Partial<KnowledgeBaseInsert>): Promise<void>;
   delete(knowledgeBaseId: string): Promise<boolean>;
   countBindings(knowledgeBaseId: string): Promise<number>;
-  /** 列出所有知识库 */
-  listGlobal(): Promise<KnowledgeBaseRow[]>;
 }
 
 /** KnowledgeResource 仓储接口 */
@@ -86,6 +111,29 @@ export interface IAgentKnowledgeBindingRepo {
     kbRemoteAccountId: string | null;
     kbRemoteUserId: string | null;
   } | null>;
+}
+
+/**
+ * 可见集合的 WHERE 条件：本组织行始终可见，`includeGlobal` 时并入全局（跨组织共享）行。
+ *
+ * 返回 `undefined` 表示不加条件（全表），Drizzle 会把该情形编译成不带 WHERE 的查询——可见集合因此
+ * 是**一份**结果集，不需要把两个来源的数组拼起来再去重。
+ */
+function visibleWhere(input: KnowledgeBaseVisibilityQuery): SQL | undefined {
+  return input.includeGlobal ? undefined : eq(knowledgeBase.organizationId, input.organizationId);
+}
+
+/**
+ * 可见集合的排序：本组织行优先，其次按更新时间倒序。
+ *
+ * 「本组织优先」保留下推前的排序口径（那时是"本组织来源数组 ‖ 全局来源数组"，组织行天然排在前面），
+ * 因此同一份数据的翻页边界与改动前一致。
+ */
+function visibleOrder(input: KnowledgeBaseVisibilityQuery) {
+  return [
+    sql`CASE WHEN ${knowledgeBase.organizationId} = ${input.organizationId} THEN 0 ELSE 1 END`,
+    desc(knowledgeBase.updatedAt),
+  ];
 }
 
 class PgKnowledgeBaseRepo implements IKnowledgeBaseRepo {
@@ -180,9 +228,24 @@ class PgKnowledgeBaseRepo implements IKnowledgeBaseRepo {
     return row?.count ?? 0;
   }
 
-  async listGlobal() {
+  async listVisible(input: KnowledgeBaseVisibilityPageQuery) {
     const db = getKnowledgeDatabase();
-    return db.select().from(knowledgeBase).orderBy(desc(knowledgeBase.updatedAt));
+    // `$dynamic()` 允许按需追加 LIMIT / OFFSET：排序与分页因此作用在可见集合上，而不是先取全表再截取。
+    let query = db
+      .select()
+      .from(knowledgeBase)
+      .where(visibleWhere(input))
+      .orderBy(...visibleOrder(input))
+      .$dynamic();
+    if (input.limit !== undefined) query = query.limit(input.limit);
+    if (input.offset !== undefined) query = query.offset(input.offset);
+    return query;
+  }
+
+  async countVisible(input: KnowledgeBaseVisibilityQuery) {
+    const db = getKnowledgeDatabase();
+    const [row] = await db.select({ count: count() }).from(knowledgeBase).where(visibleWhere(input));
+    return row?.count ?? 0;
   }
 }
 

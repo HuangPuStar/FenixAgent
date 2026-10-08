@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, mock, test } from "bun:test";
+import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
 
 import {
   buildPreviewSourceUrl,
@@ -7,7 +7,7 @@ import {
   encodeWorkspaceUrlPath,
   fsApi,
   readPreviewSource,
-} from "../api/fs";
+} from "@fenix/resource-machine/web";
 
 const fetchMock = {
   lastUrl: "",
@@ -15,10 +15,15 @@ const fetchMock = {
   body: null as BodyInit | null | undefined,
 };
 
+// `globalThis.fetch` 是进程级全局且 Bun 的测试文件共享同一进程：装桩后必须还原，否则其后运行的文件
+// 会收到这里的桩响应，表现为「单跑通过、全量失败」。
+let originalFetch: typeof globalThis.fetch;
+
 beforeEach(() => {
   fetchMock.lastUrl = "";
   fetchMock.method = "";
   fetchMock.body = null;
+  originalFetch = globalThis.fetch;
   globalThis.fetch = mock(async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
     fetchMock.lastUrl = String(input);
     fetchMock.method = init?.method ?? "GET";
@@ -28,6 +33,10 @@ beforeEach(() => {
       headers: { "Content-Type": "application/json" },
     });
   }) as unknown as typeof fetch;
+});
+
+afterEach(() => {
+  globalThis.fetch = originalFetch;
 });
 
 describe("buildUploadUrl", () => {
@@ -150,7 +159,7 @@ describe("workspace download", () => {
 describe("uploadChatFiles", () => {
   // Chat 的拖拽、Paperclip 和文件面板共用此入口，目标必须固定为 user/，不得受浏览目录影响。
   test("always uploads to the user file area", async () => {
-    const { uploadChatFiles } = await import("../api/fs");
+    const { uploadChatFiles } = await import("@fenix/resource-machine/web");
     await uploadChatFiles("env_1", [new File(["content"], "a.txt")]);
     expect(fetchMock.lastUrl).toBe("/web/environments/env_1/fs/user");
     expect(fetchMock.method).toBe("POST");
@@ -160,7 +169,7 @@ describe("uploadChatFiles", () => {
 describe("uploadFiles", () => {
   // 回归：无 targetDir 时实际发出的请求 URL 以 /fs/ 结尾（修复根上传 404 的端到端断言）
   test("upload without targetDir sends POST to /fs/", async () => {
-    const { uploadFiles } = await import("../api/fs");
+    const { uploadFiles } = await import("@fenix/resource-machine/web");
     await uploadFiles("env_1", [new File(["content"], "a.txt")]);
     expect(fetchMock.lastUrl).toBe("/web/environments/env_1/fs/");
     expect(fetchMock.method).toBe("POST");
@@ -169,7 +178,7 @@ describe("uploadFiles", () => {
 
   // 指定目录时上传请求指向对应子目录，URL 行为与根上传一致收敛于 buildUploadUrl
   test("upload with targetDir sends POST to /fs/<dir>", async () => {
-    const { uploadFiles } = await import("../api/fs");
+    const { uploadFiles } = await import("@fenix/resource-machine/web");
     await uploadFiles("env_1", [new File(["content"], "a.txt")], { targetDir: "docs" });
     expect(fetchMock.lastUrl).toBe("/web/environments/env_1/fs/docs");
     expect(fetchMock.method).toBe("POST");

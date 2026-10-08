@@ -206,7 +206,7 @@ export function useKnowledgeBaseCatalog({
       embeddingModel,
       parseMethod: formParseMethod,
       pipelineId: formParseMethod === "pipeline" ? formPipeline || null : null,
-      chunkMethod: formParseMethod === "builtin" ? formChunkMethod || null : null,
+      ...(formParseMethod === "builtin" && formChunkMethod ? { chunkMethod: formChunkMethod } : {}),
     });
   };
 

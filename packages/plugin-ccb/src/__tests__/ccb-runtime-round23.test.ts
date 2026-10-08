@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, test } from "bun:test";
+import { afterEach, describe, expect, test } from "bun:test";
 import { rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -7,20 +7,10 @@ import type { AcpLinkProcessManager, ManagedAcpLinkProcess } from "../process/ac
 import type { PortAllocator } from "../process/port-allocator";
 import { type CcbRuntimeDependencies, createCcbRuntime, type RuntimeInstanceState } from "../runtime/ccb-runtime";
 
+// workspace 根由调用方注入（runtime 不再自行解析）：用例统一用它，afterEach 清理整棵树。
 const workspaceRoot = join(tmpdir(), `ccb-runtime-round23-${process.pid}`);
-let previousWorkspaceRoot: string | undefined;
-
-beforeEach(() => {
-  previousWorkspaceRoot = process.env.WORKSPACE_ROOT;
-  process.env.WORKSPACE_ROOT = workspaceRoot;
-});
 
 afterEach(async () => {
-  if (previousWorkspaceRoot === undefined) {
-    delete process.env.WORKSPACE_ROOT;
-  } else {
-    process.env.WORKSPACE_ROOT = previousWorkspaceRoot;
-  }
   await rm(workspaceRoot, { recursive: true, force: true });
 });
 
@@ -84,6 +74,7 @@ function createFakes(overrides: Partial<CcbRuntimeDependencies> = {}): RuntimeFa
     stops,
     prepared,
     dependencies: {
+      workspaceRoot,
       accessWorkspace: async () => {},
       installSkills: async () => [],
       buildRuntimeConfig: () => ({ env: { CONFIGURED: "yes" } }),
@@ -169,6 +160,12 @@ describe("ccb-runtime 注入式生命周期", () => {
     const runtime = createCcbRuntime(createFakes().dependencies);
     await runtime.prepareEnvironment({ instanceId: "no-env", launchSpec: launchSpec({ environmentId: undefined }) });
     expect(runtime.getInstanceState("no-env")?.workspace).toMatch(/round23-org[/\\]round23-user$/);
+  });
+
+  // 未注入 workspaceRoot 时必须报错：包内不再读进程环境、也没有 cwd 兜底，静默回落会把实例写进进程 cwd。
+  test("未注入 workspaceRoot 时拒绝 prepare", async () => {
+    const runtime = createCcbRuntime(createFakes({ workspaceRoot: undefined }).dependencies);
+    await expect(prepare(runtime, "no-root")).rejects.toThrow("workspaceRoot");
   });
 
   // 注入 prepare 钩子失败时保留错误文本，供上层诊断。

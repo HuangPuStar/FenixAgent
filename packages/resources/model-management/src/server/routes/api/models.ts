@@ -44,8 +44,9 @@ import type { ApiModelManagementRouteDependencies } from "../dependencies";
  * `resourceAccess` 是**唯一**保留旧字段形状的位置（决策 D2），由 `toResourceAccessView` 从
  * `scope + access.actions` 派生；Model 相关响应迁移前就不含该字段，此处保持。
  *
- * 分页保持迁移前语义：`facade.list` 给出当前主体可见的全部条目与总数，route 在内存里切片，不引入新的
- * 分页/计数查询；`total` 与 `items` 始终来自同一个可见集合。
+ * 分页与计数下推到数据库的授权查询（决策 D3）：`facade.list` / `facade.listModels` 只取当前页，route
+ * 只把 `page` / `pageSize` 换算成 `limit` / `offset`，不再"全量读出后内存切片"。对外合同因此保持不变：
+ * `total` 是**当前调用方可访问的全集**计数（不是当页条数），越界页返回空 `items` 且不抛错。
  *
  * 路由改为**工厂**：会话守卫由宿主注入（Elysia 的 `macro` / `state` 是实例作用域的，包内自建守卫会让
  * `/api` 出现两套互不可见的认证状态），见 `../../dependencies`。
@@ -227,18 +228,16 @@ export function createApiModelsRoutes(deps: ApiModelManagementRouteDependencies)
 
       try {
         const { facade, identity } = getModelManagementModule();
-        const { items, total } = await facade.list(actor);
+        // 分页下推到 SQL：先取本页再解析组织名，名录查询也只覆盖本页出现的组织，不随全量条数增长。
+        const { items, total } = await facade.list(actor, { limit: pageSize, offset: (page - 1) * pageSize });
         const names = await resolveOrganizationNames(
           identity,
           items.map((item) => item.scope.organizationId),
         );
-        const start = (page - 1) * pageSize;
         return {
-          items: items
-            .slice(start, start + pageSize)
-            .map((item) =>
-              toProviderListItem(item, actor.activeOrganizationId, names.get(item.scope.organizationId ?? "")),
-            ),
+          items: items.map((item) =>
+            toProviderListItem(item, actor.activeOrganizationId, names.get(item.scope.organizationId ?? "")),
+          ),
           total,
           page,
           pageSize,
@@ -487,17 +486,22 @@ export function createApiModelsRoutes(deps: ApiModelManagementRouteDependencies)
 
       try {
         const { facade } = getModelManagementModule();
-        const detail = await facade.getById(actor, providerId);
-        if (!detail) {
+        // 子行分页同样在 SQL 完成（决策 D3）：只读当前页，`total` 是子行全集条数，越界页得到空 items。
+        const modelPage = await facade.listModels(
+          actor,
+          { by: "resourceId", value: providerId },
+          { limit: pageSize, offset: (page - 1) * pageSize },
+        );
+        if (!modelPage) {
           return error(404, { error: { code: "NOT_FOUND", message: `Provider '${providerId}' not found` } });
         }
 
-        // 子表没有独立分页查询：取父级详情后在内存里切片，`total` 与 `items` 来自同一份子行集合。
-        const models = detail.models.map((model) => toModelSummary(detail.id, model, detail.name));
-        const total = models.length;
-        const start = (page - 1) * pageSize;
-        const items = models.slice(start, start + pageSize);
-        return { items, total, page, pageSize };
+        return {
+          items: modelPage.items.map((model) => toModelSummary(modelPage.id, model, modelPage.name)),
+          total: modelPage.total,
+          page,
+          pageSize,
+        };
       } catch (err) {
         const mapped = mapApiError(err);
         return error(mapped.status, mapped.body);

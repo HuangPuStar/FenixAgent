@@ -4,6 +4,7 @@ import Elysia from "elysia";
 import * as z from "zod/v4";
 import type { AuthorizedMcpServer } from "../../../facades/mcp-server-facade";
 import { getMcpServerModule } from "../../../runtime";
+import { buildCommandProbeEnv } from "../../../services/command-probe-env";
 import {
   type McpRemoteConfig,
   type McpServerConfig,
@@ -208,7 +209,12 @@ async function handleTest(actor: ActorContext, nameOrKey: string): Promise<WebHa
   if (config.type === "local") {
     const cmd = (config.command as string[])[0];
     try {
-      const proc = Bun.spawn(["which", cmd], { stdout: "pipe", stderr: "pipe" });
+      // 探测子进程按用途白名单构造环境（§5.4）：命令名来自管理端配置，不得继承宿主环境
+      const proc = Bun.spawn(["which", cmd], {
+        env: buildCommandProbeEnv(),
+        stdout: "pipe",
+        stderr: "pipe",
+      });
       await proc.exited;
       if (proc.exitCode === 0) {
         return { success: true, data: { name, reachable: true, protocol: false, message: `命令 "${cmd}" 可用` } };

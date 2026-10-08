@@ -1,6 +1,14 @@
 import { mkdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
+import { type AgentLaunchSpec, bindWorkspaceFiles, writeWorkspaceFiles } from "@fenix/plugin-sdk";
 import type { CcbMcpConfig, CcbRuntimeConfig, InstalledSkillReference } from "./runtime-config";
+
+/** 本地与 machine 共用的启动文件物化边界，配置转换前完成全量重写。 */
+export async function prepareLaunchWorkspace(workspace: string, spec: AgentLaunchSpec): Promise<AgentLaunchSpec> {
+  const bound = bindWorkspaceFiles(spec, workspace);
+  await writeWorkspaceFiles(workspace, bound.workspaceFiles);
+  return bound;
+}
 
 export const CCB_DIR_NAME = ".claude";
 export const CCB_CONFIG_FILENAME = "settings.local.json";
@@ -61,7 +69,7 @@ export async function writeClaudeMd(workspace: string, content: string): Promise
 export async function prepareWorkspaceEnvironment(
   workspace: string,
   config: CcbRuntimeConfig,
-  mcpConfig: CcbMcpConfig | null,
+  mcpConfig: CcbMcpConfig,
   agentPrompt?: string,
   _installedSkills: InstalledSkillReference[] = [],
 ): Promise<PreparedWorkspacePaths> {
@@ -72,10 +80,9 @@ export async function prepareWorkspaceEnvironment(
     await writeCcbConfig(workspace, config);
   }
 
-  // .mcp.json
-  if (mcpConfig) {
-    await writeCcbMcpConfig(workspace, mcpConfig);
-  }
+  // .mcp.json：每次物化全量重写（空集合写 `{"mcpServers":{}}`），不做条件跳过。
+  // 复用 workspace 时旧文件仍在，只有重写才能让「取消/移除 MCP」生效，否则 agent 继续加载已取消的 server。
+  await writeCcbMcpConfig(workspace, mcpConfig);
 
   // CLAUDE.md（workspace 根目录，与 .mcp.json 同级）
   if (agentPrompt) {

@@ -17,6 +17,13 @@ export interface InstanceSupplement {
   organizationId: string;
   /** 实例创建来源，用于并发分类与审计。 */
   spawnSource: InstanceSpawnSource;
+  /**
+   * 触发本次实例启动的关联 ID（§7）：HTTP 触发取自请求上下文，独立调度 / 机器回传入口自建。
+   *
+   * 实例在 core 快照与 registry 里都只有 instanceId，没有「谁触发了它」的信息；该字段让启动链路的
+   * 诊断日志（含失败回滚）能回溯到触发方。可选：既有手工注册（测试、幽灵实例对账）无触发方。
+   */
+  requestId?: string;
   /** 最近一次非保活 ACP 业务消息时间 */
   lastActivityAt: number;
   /** 当前绑定到该实例的前端 relay 连接数 */

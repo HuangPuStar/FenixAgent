@@ -39,6 +39,7 @@
     "./web/i18n": {
       "types": "./web/i18n/index.ts",
       "default": "./web/i18n/index.ts"
-    }
+    },
+    "./web/pages/login/LoginPage": "./web/pages/login/LoginPage.tsx"
   }
 }

@@ -1,7 +1,7 @@
 import { WebErrSchema } from "@fenix/platform-sdk";
 import { Elysia } from "elysia";
+import { prodViewFacade } from "../../facades/prod-view-facade";
 import { IdParamsSchema, OkResponseSchema } from "../../schemas/prod-view.schema";
-import { loadProdView } from "../../services/prod-view";
 import type { WebProdViewRouteDependencies } from "../dependencies";
 
 /**
@@ -12,6 +12,9 @@ import type { WebProdViewRouteDependencies } from "../dependencies";
  * `web-prod-views`，避免与同批装配的其它 `/web/prod-views` 路由发生 Elysia 静默去重。
  *
  * 端点路径保持相对形式：挂载前缀由宿主 `apps/server/src/routes/web/index.ts` 决定。
+ *
+ * 取数经 Facade：路由只把认证上下文与协议参数交出去，"以哪个组织、哪个用户去读"由 Facade 推导，
+ * 路由不接触仓储也不解释归属。
  */
 export function createWebProdViewsRoutes(deps: WebProdViewRouteDependencies) {
   const app = new Elysia({ name: "web-prod-views" }).use(deps.authGuardPlugin);
@@ -20,7 +23,7 @@ export function createWebProdViewsRoutes(deps: WebProdViewRouteDependencies) {
     "/prod-views/:id/load",
     async ({ store, params, status }) => {
       const actor = store.authContext!;
-      const result = await loadProdView(actor, params.id);
+      const result = await prodViewFacade.load(actor, params.id);
       if (!result.success) return status(404, { success: false as const, error: result.error });
       return result;
     },

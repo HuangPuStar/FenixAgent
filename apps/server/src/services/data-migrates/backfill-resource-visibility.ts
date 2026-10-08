@@ -1,6 +1,6 @@
 import { agentConfig } from "@fenix/agent-config/db";
-import { log } from "@fenix/logger";
 import { provider } from "@fenix/model-management/db";
+import type { DataMigration, DataMigrationContext } from "@fenix/platform-sdk";
 import { mcpServer } from "@fenix/resource-mcp/db";
 import { skill } from "@fenix/resource-skill/db";
 import { and, count, eq, inArray, ne } from "drizzle-orm";
@@ -9,6 +9,18 @@ import { resourcePermission } from "../../db/schema";
 
 /**
  * 把旧 `resource_permission` 的"公开读"授权回填到资源主表的 `visibility` 列。
+ *
+ * 归属：本迁移**不能**落任何 owner 包的 `db/data-migrations/`（§6.3 的常规落点是那里），因此留在宿主。
+ * 两条约束同时成立，且没有任何一个包能同时满足：
+ * 1. 它必须读旧授权栈的 `resource_permission` 表——该表定义在宿主 `apps/server/src/db/schema.ts`，
+ *    是经裁定暂留的宿主表。包不得依赖 `apps/**`（`apps-boundary`），因此没有 owner 包能拿到这张表。
+ * 2. 它按资源 id 写 4 张别包 owner 的主表（agent_config / skill / mcp_server / provider）。把回填拆成
+ *    4 个包内迁移确实能消除跨包写，但会改动发布契约：迁移 ID 已落 `data_migrate_record`，拆分即改名，
+ *    runner 会判为未应用而重跑（§6.3「已应用的迁移不改名」）；且 4 份回填各自校验会失去「四张表同批
+ *    收敛完成」这一整体判据。
+ * 迁移 ID 的模块前缀 `access-control/` 指的是发起变更的授权栈（CE 阶段 2 任务 1.2），而 access-control
+ * 是 platform 层实现，按依赖矩阵不得依赖任何资源包、也不持有业务表，同样放不下这份代码。
+ * 因此本文件按「无单包可合法持有」保留在宿主，直到 `resource_permission` 被 DROP。
  *
  * 背景：旧授权栈用 `resource_permission` 中 `principal_type='all' AND action='read'` 表达"任意
  * 已认证用户可读"，新授权栈把公开受众收敛为资源自身的 `visibility` 列。四张受控资源主表
@@ -130,7 +142,6 @@ export const _deps = {
   markPublic,
   countNonPublic,
   markPrivate,
-  log,
 };
 
 export function _resetDeps() {
@@ -139,10 +150,14 @@ export function _resetDeps() {
   _deps.markPublic = markPublic;
   _deps.countNonPublic = countNonPublic;
   _deps.markPrivate = markPrivate;
-  _deps.log = log;
 }
 
-/** 公开受众是否已经收敛完成：不存在"有公开读授权但仍不是 public"的行。 */
+/**
+ * 公开受众是否已经收敛完成：不存在「有公开读授权但仍不是 public」的行。
+ *
+ * 回填只写「公开读授权已存在」的行，因此正常情况下这里必然为 0；非 0 说明 UPDATE 的判据与这里的判据口径
+ * 不一致（例如批大小、id 过滤或状态过滤被改动），必须失败而不是写成完成记录。
+ */
 export async function verifyBackfillResourceVisibility(): Promise<void> {
   for (const target of RESOURCE_TARGETS) {
     const resourceIds = await _deps.listPublicReadResourceIds(target.resourceType);
@@ -154,18 +169,28 @@ export async function verifyBackfillResourceVisibility(): Promise<void> {
 }
 
 /** 补偿入口：供发布回滚流程在需要撤销公开受众时调用。 */
-export async function compensateBackfillResourceVisibility(): Promise<void> {
+export async function compensateBackfillResourceVisibility(context: DataMigrationContext): Promise<void> {
   for (const target of RESOURCE_TARGETS) {
     const resourceIds = await _deps.listPublicReadResourceIds(target.resourceType);
     if (resourceIds.length === 0) continue;
     const reverted = await _deps.markPrivate(target, resourceIds);
-    _deps.log(`[data-migrate] compensate resource visibility type='${target.resourceType}' rows=${reverted}`);
+    context.log(`[data-migrate] compensate resource visibility type='${target.resourceType}' rows=${reverted}`);
   }
 }
 
-export const migrateBackfillResourceVisibility = {
+export const migrateBackfillResourceVisibility: DataMigration = {
   name: "access-control/20260919-backfill-resource-visibility",
-  async run(): Promise<void> {
+  // 只读旧授权表并按资源 id 回填主表，不依赖任何其他数据迁移的写入结果。
+  dependsOn: [],
+  metadata: {
+    expectedRows:
+      "resource_permission 中 principal_type='all' AND action='read' 的去重 resource_id 数（仅统计可解析为 uuid 的取值）；" +
+      "无此类授权的库与已回填过的库为 0 行",
+    // 按 500 行一批 UPDATE 且每批独立提交，行锁随批释放；单批影响 4 张受控资源主表之一。
+    lockRisk: "row-level",
+    observableFields: ["resourceType", "rows"],
+  },
+  async run(context) {
     const organizationGrants = await _deps.countOrganizationPrincipalGrants();
     if (organizationGrants > 0) {
       throw new Error(
@@ -179,11 +204,15 @@ export const migrateBackfillResourceVisibility = {
       if (resourceIds.length === 0) continue;
       const migrated = await _deps.markPublic(target, resourceIds);
       if (migrated > 0) {
-        _deps.log(`[data-migrate] backfilled resource visibility type='${target.resourceType}' rows=${migrated}`);
+        context.log(`[data-migrate] backfilled resource visibility type='${target.resourceType}' rows=${migrated}`);
       }
     }
-
-    // 回填本身只写"公开读授权已存在"的行，因此这里必须为 0；不为 0 说明语句与判据口径不一致。
-    await verifyBackfillResourceVisibility();
+  },
+  verify: verifyBackfillResourceVisibility,
+  compensation: {
+    kind: "handler",
+    // 回填是单向收敛，撤销即把由公开读授权推导出的 public 改回 private；只作用于仍有公开读授权的资源 id，
+    // 因此不会波及迁移之后由用户自己设为 public 的其他资源。
+    run: compensateBackfillResourceVisibility,
   },
 };

@@ -13,6 +13,7 @@
  *   适合需要在脚本内重写某 key 的场景（例如 WORK_DIR 派生子目录）。
  */
 
+import { buildWorkflowNodeEnv } from "../executor/node-env";
 import { WorkflowError, WorkflowErrorCode } from "../types/errors";
 import type { NodeOutput } from "../types/execution";
 import type { JobTransport } from "./job-transport";
@@ -405,6 +406,21 @@ export function mapSlurmState(slurmState: string, exitCode: number | null): JobR
 
 // ── BunSshExecutor ──
 
+/**
+ * SSH 子进程环境：复用节点白名单，禁止继承宿主 `process.env`（§5.4）。
+ *
+ * ssh 是宿主直接 spawn 的命令行，不重建环境就会连带把 `DATABASE_URL`、`RCS_API_KEYS`、
+ * `RCS_SECRET_*` 交给它以及它按 `ProxyCommand` 拉起的子进程。远端命令由 ssh 参数携带、与本函数
+ * 无关：这里决定的是**本端**进程环境。复用 `buildWorkflowNodeEnv`（同包、同一信任边界）中
+ * `PATH`（ProxyCommand 等子命令查找）与 `HOME`（ssh 读取 `~/.ssh/config`、`known_hosts` 与私钥）。
+ *
+ * 已知取舍：白名单不含 `SSH_AUTH_SOCK`，因此不走 ssh-agent（`BatchMode=yes` 的密钥文件认证不受
+ * 影响）；依赖 ssh-agent 的部署须显式把该键加入白名单并同步本注释。
+ */
+export function buildSshProcessEnv(base: NodeJS.ProcessEnv = process.env): Record<string, string | undefined> {
+  return buildWorkflowNodeEnv(undefined, base);
+}
+
 /** 基于 Bun.spawn 的 SSH 执行器生产实现 */
 export class BunSshExecutor implements SshExecutor {
   async exec(
@@ -413,6 +429,7 @@ export class BunSshExecutor implements SshExecutor {
     _opts?: { cwd?: string; timeout?: number },
   ): Promise<{ stdout: string; stderr: string; exitCode: number }> {
     const proc = Bun.spawn(["/usr/bin/ssh", "-o", "BatchMode=yes", host, command], {
+      env: buildSshProcessEnv(),
       stdout: "pipe",
       stderr: "pipe",
     });

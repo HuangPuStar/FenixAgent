@@ -17,7 +17,6 @@
 
 import {
   AgentCatalogIndex,
-  AgentCatalogIndexArrow,
   AgentCatalogIndexCopy,
   AgentCatalogIndexIcon,
   AgentCatalogIndexItem,
@@ -154,8 +153,9 @@ export function PluginMarketCatalog(props: Props) {
                   return (
                     <AgentCatalogIndexItem
                       key={view.slug}
-                      // `selected` 产出 `aria-current="page"`：既是读屏的「当前页」契约，也是共享 CSS 里
-                      // 选中配色与箭头显隐的唯一依据。
+                      // `selected` 产出 `aria-current="page"`：既是读屏的「当前页」契约，也是共享组件
+                      // `className` 变体（选中配色 `aria-[current=page]:…`、箭头显隐
+                      // `group-aria-[current=page]:opacity-100`）的唯一依据。
                       selected={active}
                       onClick={() => props.onSelect(view.slug)}
                     >
@@ -170,7 +170,6 @@ export function PluginMarketCatalog(props: Props) {
                       <AgentCatalogIndexMeta>
                         <span>{view.latestVersion ?? t("directory.noVersion")}</span>
                       </AgentCatalogIndexMeta>
-                      <AgentCatalogIndexArrow />
                     </AgentCatalogIndexItem>
                   );
                 })}

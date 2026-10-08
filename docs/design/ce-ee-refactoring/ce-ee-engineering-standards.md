@@ -133,7 +133,7 @@ export interface SkillReferenceResolver {
 | `packages/platform/access-control` | `platform-sdk`、同一产品版本的 `identity` 公开入口、无业务语义基础依赖 | `agent-runtime`、`resources`、`apps`、Identity 的内部路径 | Identity 与 AccessControl 保持两个包，普通资源不得依赖此具体实现 |
 | `packages/` 中除 `platform/*`、`agent-runtime`、`resources/*` 外的包 | 按各包自身的 SDK 或插件职责声明 | 包间依赖环 | 独立 SDK/插件包，如 `acp-link`、`core`、`orchestration`、`chat-channel`、`remote-runtime`；服务模块直接通过包引用使用其能力，不适用服务模块依赖矩阵的其他限制 |
 | `packages/agent-runtime`（`@fenix/agent-runtime`） | `platform-sdk`、四个基础运行包、Machine/Sandbox 的专用公开运行入口、无业务语义基础依赖 | 除 Machine/Sandbox 外的 `resources`、具体 AccessControl/Identity、`apps`、Machine/Sandbox 内部路径（跨模块外键的表对象引用见 §6.1） | 组合 Environment、Instance、生命周期、并发与 relay/session；固定编译方向是 `agent-runtime → sandbox → machine` 及 `agent-runtime → machine` |
-| `packages/resources/machine` | `platform-sdk`、本资源声明的基础依赖 | `agent-runtime`、Sandbox、具体 AccessControl/Identity、`apps`、其他包内部路径 | Runtime 固定基础资源；拥有注册、心跳、文件与在线状态，不得回调 Runtime repository、singleton 或生命周期实现 |
+| `packages/resources/machine` | `platform-sdk`、本资源声明的基础依赖 | `agent-runtime`、Sandbox、其他 `resources/*` 包、具体 AccessControl/Identity、`apps`、其他包内部路径 | Runtime 固定基础资源；拥有注册、心跳、文件与在线状态，不得回调 Runtime repository、singleton 或生命周期实现。跨资源取数（Agent 配置的执行节点、机器绑定关系）经本包声明、宿主装配注入的窄端口 `MachineAgentConfigPort` 完成，不得导入对方的服务端入口——`machine → agent-config` 曾与 `agent-config → agent-runtime`、`agent-runtime → sandbox`、`sandbox → machine` 闭合 4 包环族 |
 | `packages/resources/sandbox` | `platform-sdk`、Machine 公开入口、Sandbox Provider 公开 API、本资源声明的基础依赖 | `agent-runtime`、具体 AccessControl/Identity、`apps`、其他包内部路径 | Runtime 固定基础资源；拥有执行环境供给、恢复和管理面，多实现差异留在 Provider 插件点 |
 | 其他 `packages/resources/<resource>` | `platform-sdk`、本资源声明的基础依赖、其他资源包根入口公开的 service/DTO；按需依赖根入口公开接口 | `apps`、具体 AccessControl/Identity、其他资源的内部 `src/**`、repository/schema（跨模块外键的表对象引用见 §6.1） | 资源的授权只依赖 `AccessControlModule` 契约；需要身份的只读投影（用户展示信息、组织名录、成员关系、系统托管租户）时经 `platform-sdk` 的 `IdentityDirectory` 窄契约，由 app 装配注入；资源间规则见上一节 |
 | `packages/resources/<resource>/web` | 本资源及其他资源 `./web` 公开的 DTO/API client/hook/组件、已作为公开入口发布的共享 UI、Web SDK | 所有服务端 `services`、`repositories`、db、adapter；其他资源 `web/src/**`；`apps/web` 内部 | 浏览器边界，不得把 server 代码带入 bundle。共享 UI 目前没有独立公开入口，资源 web 不得因此穿透 `apps/web` 内部；复用方式（提取公开入口或其他）单独决定 |
@@ -505,7 +505,7 @@ packages/resources/agent-config/db/data-migrations/
 1. 关键数据迁移重试/verify/compensation、生产镜像启动与关闭均通过。
 2. 关键用户流程、稳定协议、多租户授权、三条 Agent 通信路径、YJS、Machine/File/Sandbox、Task/Workflow 均有自动化回归证据。
 3. `bun run precheck`、`bun run build:web`、`bun run docs:build` 和关键 E2E 全部通过，且没有 error 或 warning。
-4. 旧实现、兼容 shim、双写和待决设计矛盾为零；边界豁免与依赖残留必须逐条登记并写明 owner 与移除条件，**未登记的**残留为零；实际架构、开发指南、运维说明和必要 ADR 与代码一致。
+4. 旧实现、兼容 shim、双写和待决设计矛盾为零；边界豁免与依赖残留必须逐条登记并写明 owner 与移除条件，**未登记的**残留为零（登记处：`docs/design/ce-ee-refactoring/boundary-exemptions.md`，代码文件头的登记段是摘要而非登记本身）；实际架构、开发指南、运维说明和必要 ADR 与代码一致。
 
 ## 11. 优化项（非必须）
 
@@ -518,3 +518,4 @@ packages/resources/agent-config/db/data-migrations/
 | deploy-preflight | 部署前置的只读校验：env、DB 连通性、迁移状态、镜像版本、依赖服务。作用是把失败提前到「还没动生产」的时刻——现状只有容器启动命令 `bun migrate.js && …` 兜底，属于「边做边发现」，迁移改到一半失败会留下需补偿的不一致状态。五类中 DB 连通性与迁移状态价值最高（env 校验启动期已有）；依赖服务健康检查需先给 `ModuleManifest` 加「依赖服务 + 健康检查」字段 | §8 脚本表；§6.2 规则 5 |
 | 发布物清单 | 发布物附带版本清单、SBOM、兼容说明、migration manifest、env manifest。现状只带 `commitId`（`Dockerfile` 的构建参数仅 `GIT_COMMIT_SHA`），上述清单一项都没有；原 `build-release` 脚本（构建 server/console 并生成版本与 SBOM 信息）不存在，与本节同属一件事 | §8 脚本表；§10.6.5 |
 | readiness 与发布证据 | readiness 端点（区分进程存活与就绪）、备份点、失败回滚、不可逆迁移补偿证据。现状 `/health` 恒 ok 只表达进程存活，无 readiness 端点；备份点、回滚与补偿均无脚本或文档 | §10.6.5；§6.2 规则 5 |
+| 前端请求错误建模 | `request()` 收敛到单一异常语义（失败即 `ApiError`，不再返回 `{ success: false }` 交给调用方判断），并给网络层兜底文案（`请求失败 (${status})`）一个可翻译的出处。现状：`packages/web-runtime/web/api/request.ts` 与 `packages/{resources/skill,resources/knowledge,resources/observer}/web/api/*` 的兜底串是硬编码中文，违反 §4.1「用户可见字符串走 `t()`」；`packages/platform/identity/web/lib/auth-client.ts` 的注册请求因此保留手写 `fetch`（前端规范 §5.3 已登记为例外）。该项历史上以「在途项 25」跟踪，其原登记目录 `docs/need-to-change/` 已随文档清理（`42a5f820`）删除，故收编到本节，指针改为唯一的登记处 | §4.1；前端规范 §5.3 |

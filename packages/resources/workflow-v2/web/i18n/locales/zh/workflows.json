@@ -1,0 +1,133 @@
+{
+  "nav": {
+    "workflow": "智能体编排"
+  },
+  "page": {
+    "workflow_title": "智能体编排",
+    "workflow_subtitle": "管理与编排工作流"
+  },
+  "list": {
+    "create": "新建工作流",
+    "create_title": "新建工作流",
+    "create_submit": "创建并打开",
+    "create_error": "创建工作流失败",
+    "name_label": "名称",
+    "name_placeholder": "例如：客服问答流程",
+    "desc_label": "描述",
+    "desc_placeholder": "工作流描述（可选）",
+    "cancel": "取消",
+    "rename": "重命名",
+    "rename_title": "重命名工作流",
+    "rename_submit": "保存",
+    "rename_failed": "重命名失败，请重试",
+    "delete": "删除",
+    "delete_confirm_title": "删除工作流",
+    "delete_confirm": "确定要删除「{{name}}」吗？删除后它将从列表移除，画布不再可打开。",
+    "delete_success": "已删除「{{name}}」",
+    "delete_failed": "删除失败，请重试",
+    "notice_dismiss": "关闭提示",
+    "open_canvas": "打开画布",
+    "column_name": "名称",
+    "column_status": "状态",
+    "column_actions": "操作",
+    "table_modified": "最后修改",
+    "pagination_total": "共 {{total}} 条",
+    "form": {
+      "name_invalid": "请输入 1-200 个字符的名称",
+      "desc_too_long": "描述最多 2000 个字符"
+    },
+    "status": {
+      "published": "已发布",
+      "unpublished": "未发布",
+      "pending_delete": "删除中"
+    },
+    "loading": "加载中...",
+    "load_failed": "工作流列表加载失败",
+    "load_failed_hint": "请重试；若持续失败，请联系组织管理员。",
+    "retry": "重试",
+    "unauthorized_title": "无权限查看工作流",
+    "unauthorized_hint": "当前账号或所属组织已无权访问工作流。请切换组织或联系管理员开通权限，重试不会改变结果。",
+    "no_workflows": "暂无工作流",
+    "no_workflows_hint": "点击「新建工作流」创建你的第一个工作流",
+    "blocked": {
+      "unbound": {
+        "title": "尚未初始化工作流空间",
+        "description": "当前组织还没有工作流空间，工作流列表无法使用。点击下方按钮即可完成初始化：空间名称取自组织名称，无需填写，重复点击会直接返回已有的空间。",
+        "initialize": "初始化工作流空间",
+        "initializing": "正在初始化..."
+      },
+      "degraded": {
+        "title": "上游未就绪",
+        "description": "本组织绑定的工作流应用已被上游标记为不可用，工作流暂时无法读取。请联系管理员处理后重试。"
+      }
+    },
+    "initialize_failed": "初始化工作流空间失败，请重试；若持续失败，请联系组织管理员。",
+    "initialize_failed_session": "平台工作流账号当前不可用，初始化未能完成。请稍后重试或联系组织管理员。",
+    "initialize_failed_upstream": "上游服务暂时不可用，初始化未完成。请稍后重试。",
+    "initialize_failed_unauthorized": "当前会话无权初始化工作流空间，请重新登录后再试。",
+    "delete_refused": {
+      "reviewing": "该工作流正在首发审核中，暂时不能删除。请在画布内确认审核结果后再试。",
+      "unpublish_required": "该工作流需要先在画布内下架，才能删除。",
+      "unknown": "上游暂时不允许删除该工作流。请在画布内检查发布状态后再试。"
+    },
+    "relative_now": "刚刚",
+    "relative_minutes": "{{count}} 分钟前",
+    "relative_hours": "{{count}} 小时前",
+    "relative_days": "{{count}} 天前"
+  },
+  "canvas": {
+    "frameTitle": "工作流画布",
+    "announce": {
+      "loading": "正在准备画布",
+      "connecting": "画布加载中",
+      "ready": "画布已就绪",
+      "blocked": "画布暂不可用",
+      "failed": "画布加载失败",
+      "sessionExpired": "画布会话已失效"
+    },
+    "state": {
+      "timeout": {
+        "title": "画布初始化超时",
+        "description": "画布没有在 10 秒内完成初始化，可能是上游繁忙或网络较慢。请重试。"
+      },
+      "loadFailed": {
+        "title": "画布加载失败",
+        "description": "画布页面未能加载。请检查网络后重试。"
+      },
+      "handshakeFailed": {
+        "title": "画布会话建立失败",
+        "description": "未能向画布下发访问凭据，工作流没有打开。请重试。"
+      },
+      "canvasError": {
+        "title": "画布出错",
+        "description": "画布内部报告了错误，当前无法继续编辑。"
+      },
+      "sessionExpired": {
+        "title": "会话已失效",
+        "description": "画布访问凭据已失效且无法续期。请重新登录后从工作流列表重新进入。"
+      },
+      "blocked": {
+        "unbound": {
+          "title": "尚未初始化工作流空间",
+          "description": "当前组织还没有工作流空间，工作流画布无法打开。请到工作流列表页完成初始化后重试。"
+        },
+        "degraded": {
+          "title": "上游未就绪",
+          "description": "本组织绑定的工作流应用已被上游标记为不可用，画布暂时打不开。请联系管理员处理后重试。"
+        },
+        "spaceMissing": {
+          "title": "上游未就绪",
+          "description": "平台工作流账号的空间正在初始化，画布暂时打不开。本页会自动重试几次，稍等即可；若持续如此，请联系组织管理员。"
+        },
+        "probeFailed": {
+          "title": "无法确认上游状态",
+          "description": "读取租户绑定或平台账号状态失败，因此没有打开画布。请稍后重试。"
+        }
+      }
+    },
+    "action": {
+      "retry": "重试",
+      "backToList": "返回列表"
+    }
+  }
+}

@@ -12,6 +12,7 @@ import {
   PICKER,
   PICKER_CHECKBOX,
   PICKER_CHECKBOX_CHECKED,
+  PICKER_CHIP,
   PICKER_CHIP_UNAVAILABLE,
   PICKER_CHIPS,
   PICKER_COPY,
@@ -21,6 +22,7 @@ import {
   PICKER_LIST,
   PICKER_ROW,
   PICKER_ROW_HINT,
+  PICKER_ROW_HINT_UNAVAILABLE,
   PICKER_ROW_SELECTED,
   PICKER_ROW_SELECTED_DISABLED,
   PICKER_ROW_TITLE,
@@ -116,9 +118,9 @@ export function AgentResourcePicker({
   return (
     <div className={cn(PICKER, className)} role="group" aria-label={label}>
       <div className={PICKER_SELECTED}>
-        <div>
-          <strong>{t("editor.selectedCount", { count: value.length })}</strong>
-          <small>{t("editor.changeSelection")}</small>
+        <div className="flex min-w-0 flex-col gap-0.75">
+          <strong className="text-xs text-slate-700">{t("editor.selectedCount", { count: value.length })}</strong>
+          <small className="text-3xs text-gray-400">{t("editor.changeSelection")}</small>
         </div>
         {/* 已选 chip 走库内共用原语 `components/RemovableChip`（整枚可点即移除）：本处、ChatComposer 的
             技能 chip 与 MCP chip 三处此前各写一份同样的按钮 + 尾随 `X`，差异只在类串与文案。 */}
@@ -131,7 +133,7 @@ export function AgentResourcePicker({
               return (
                 <RemovableChip
                   key={item.id}
-                  className={item.unavailable ? PICKER_CHIP_UNAVAILABLE : undefined}
+                  className={cn(PICKER_CHIP, item.unavailable && PICKER_CHIP_UNAVAILABLE)}
                   data-unavailable={item.unavailable ? "true" : undefined}
                   onRemove={() => toggle(item)}
                   disabled={readOnly}
@@ -153,7 +155,7 @@ export function AgentResourcePicker({
         </div>
       </div>
       <label className={PICKER_SEARCH}>
-        <Search />
+        <Search className="w-3.25 shrink-0 basis-3.25" />
         <Input
           className={PICKER_INPUT}
           value={query}
@@ -208,7 +210,7 @@ export function AgentResourcePicker({
                   {renderIcon && <span className={PICKER_ICON}>{renderIcon(item)}</span>}
                   <span className={PICKER_COPY}>
                     <strong className={PICKER_ROW_TITLE}>{item.label}</strong>
-                    <small className={PICKER_ROW_HINT}>
+                    <small className={cn(PICKER_ROW_HINT, item.unavailable && PICKER_ROW_HINT_UNAVAILABLE)}>
                       {item.description ?? (item.unavailable ? t("editor.unavailable") : "")}
                     </small>
                   </span>

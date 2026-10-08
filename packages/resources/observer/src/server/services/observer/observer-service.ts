@@ -45,7 +45,14 @@ export interface ObserverServiceDeps {
   listExternalRelayEntries: () => readonly ExternalRelayConnectionSnapshot[];
   listChatClients: () => readonly ChatClientConnectionSnapshot[] | Promise<readonly ChatClientConnectionSnapshot[]>;
   getEnvironment: (id: string) => Promise<EnvironmentRecord | null | undefined>;
-  getAgentConfigById: (id: string) => Promise<{ machineId: string | null } | null | undefined>;
+  /**
+   * 按**归属**读 agent config 的执行节点（E2 同形口径）。
+   *
+   * `organizationId` 是必填参数而不是可选：这个 seam 的用途只有「解析某环境的机器」，把组织上下文做成可选
+   * 会留下「忘了传」的语法空间，而漏传的后果是按 id 取到别的组织声明的 machineId。需要的调用点都在
+   * `environment` 记录上取组织，传参成本为零。
+   */
+  getAgentConfigById: (id: string, organizationId: string) => Promise<{ machineId: string | null } | null | undefined>;
   getDefaultMachineId: () => string | null;
   // ── name(id) 展示名称解析（文档 §4 names；只读、即用即弃，不缓存）──
   /** instanceUid → 持久实例名称；未知实例返回 undefined。 */
@@ -66,7 +73,7 @@ const defaultDeps: ObserverServiceDeps = {
   // 调用时经属性访问转发到当前绑定，用例换绑替身才能生效（setup-mocks 注释记载过「绑定一次引用
   // 会固化导致 stub 失效」的事故）：故这里写 `getBoundAgentRuntime().observe.x()` 而不是把方法摘出来存。
   getEnvironment: (id) => getBoundAgentRuntime().observe.getEnvironmentRecord(id),
-  getAgentConfigById: (id) => getAgentConfigById(id),
+  getAgentConfigById: (id, organizationId) => getAgentConfigById(id, organizationId),
   // 兜底 machine 是 Machine 模块的配置字段（`RCS_DEFAULT_MACHINE_ID` 的 owner 在那边），这里读唯一来源
   // 而不是在观察模块的配置里复制一份同名值：两处各持一份必然漂移。请求时读取——模块加载期宿主可能尚未
   // 完成基础设施初始化。
@@ -187,8 +194,11 @@ export class ObserverService {
       // machine 解析链：agentConfig.machineId → defaultMachineId → null（D5 / §4.5）。
       // 不复用 getRemoteMachineId：它带 file-ws 连通性检查且可抛 422/503，不适合纯观察。
       resolveHostMachineId: async (env) => {
-        if (env.agentConfigId) {
-          const agentCfg = await deps.getAgentConfigById(env.agentConfigId);
+        // 组织上下文缺失时不读 Agent 配置（fail-closed，与 machine 侧 `getRemoteMachineId` 同一口径）：
+        // `environment.organizationId` 为空的记录属数据异常，此时按 id 读配置会跨过归属校验。
+        const organizationId = env.organizationId ?? "";
+        if (env.agentConfigId && organizationId) {
+          const agentCfg = await deps.getAgentConfigById(env.agentConfigId, organizationId);
           if (agentCfg?.machineId) return agentCfg.machineId;
         }
         return deps.getDefaultMachineId();

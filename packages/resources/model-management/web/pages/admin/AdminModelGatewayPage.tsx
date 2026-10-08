@@ -54,6 +54,9 @@ function ModelGatewayDashboard({ onAuthFailure }: { onAuthFailure: () => void })
     loadTabSources,
     status,
     config,
+    configError,
+    configLoading,
+    onRetryConfig,
     checking,
     syncing,
     busy,
@@ -118,6 +121,9 @@ function ModelGatewayDashboard({ onAuthFailure }: { onAuthFailure: () => void })
           <ModelGatewayModelsPanel
             status={status}
             config={config}
+            configError={configError}
+            configLoading={configLoading}
+            onRetryConfig={onRetryConfig}
             checking={checking}
             syncing={syncing}
             busy={busy}

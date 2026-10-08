@@ -68,6 +68,9 @@ export interface StorageAdapter {
    */
   atomicNodeComplete(opts: { output: NodeOutput; snapshot: DAGSnapshot; event: DAGEvent }): Promise<void>;
 
+  /** 原子写入运行取消事件与终态快照，失败时不得留下半条转换。 */
+  atomicRunCancel(opts: { snapshot: DAGSnapshot; event: DAGEvent }): Promise<void>;
+
   // ---------- 清理 ----------
 
   /** 删除指定运行的所有关联数据（事件、快照、输出、状态、摘要） */

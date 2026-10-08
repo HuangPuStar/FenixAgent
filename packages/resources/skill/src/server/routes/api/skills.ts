@@ -46,7 +46,13 @@ function mapApiError(err: unknown): { status: number; body: { error: { code: str
   };
 }
 
-/** 批量解析归属组织名称；名录不可用时字段整体省略。 */
+/**
+ * 批量解析归属组织名称；名录不可用时字段整体省略。
+ *
+ * 刻意不 import `/web` 的 `skill-route-support`：那份 helper 与 `/web` 的错误映射、视图映射（`success`
+ * 信封与 `scope/access` 视图）同处一个模块，对外 adapter 只应依赖平台契约与 Facade，避免外发契约被
+ * 内部协议层的改动牵动。
+ */
 async function resolveOrganizationNames(
   identity: IdentityDirectory,
   organizationIds: readonly (string | undefined)[],
@@ -239,27 +245,12 @@ export function createApiSkillsRoutes(deps: SkillRouteDependencies) {
       try {
         const { facade, identity } = getSkillServerModule();
         const { files, formData } = await readSkillUploadForm(request);
-        const overwrite = resolveOverwrite(formData);
-
-        const skillNames = [...new Set(files.map((file) => file.skillName))];
-        if (skillNames.length !== 1) {
-          throw new AppError("每次只允许导入一个 Skill", "VALIDATION_ERROR", 400);
+        // 单目录约束、冲突判定与回读都在 Facade：本层只把 `overwrite` 字面量翻成策略再映射结果。
+        const result = await facade.importSingleSkill(actor, files, { overwrite: resolveOverwrite(formData) });
+        if (result.status === "conflict") {
+          return error(409, { error: { code: "CONFLICT", message: `Skill '${result.name}' already exists` } });
         }
-
-        const result = await facade.importDirectories(actor, files, overwrite ? "overwrite" : undefined);
-        if (result.conflicts.length > 0) {
-          const conflictName = result.conflicts[0]?.name ?? skillNames[0] ?? "unknown";
-          return error(409, { error: { code: "CONFLICT", message: `Skill '${conflictName}' already exists` } });
-        }
-
-        const imported = result.imported[0];
-        if (!imported) {
-          return error(500, { error: { code: "INTERNAL_ERROR", message: "Skill import returned no created entry" } });
-        }
-        const detail = await facade.readDetailById(actor, imported.id);
-        if (!detail) {
-          return error(500, { error: { code: "INTERNAL_ERROR", message: "Skill could not be reloaded" } });
-        }
+        const { detail } = result;
         const organizationNames = await resolveOrganizationNames(identity, [detail.scope.organizationId]);
         return toApiSkillDetail(
           detail,

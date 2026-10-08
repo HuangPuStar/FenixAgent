@@ -75,10 +75,14 @@ export function AgentGenerationForm({ initialData, onCreate, loading }: AgentGen
         {/* System Prompt */}
         <div>
           <Label className={FIELD_LABEL_CLASS}>{t("promptLabel")}</Label>
+          {/* 基础 `Textarea` 带 `field-sizing-content`（随内容长高），而模板提示词是几千字的长文档
+              （最长的一条把文本域撑到 13305px 高，整张表单随之远超视口）。这里补 `max-h-96` 限高，
+              让长提示词在**文本域自身的滚动条**里滚动，不再把表单和顶部「返回」按钮一起推走。
+              上限与聊天输入框（`prompt-input-textarea.tsx` 的 `max-h-48`）同族，取更宽松的一档。 */}
           <Textarea
             value={systemPrompt}
             onChange={(e) => setSystemPrompt(e.target.value)}
-            className="min-h-28 rounded-lg border-slate-900/10 bg-slate-100 text-sm leading-relaxed text-slate-900 shadow-none transition-colors focus-visible:border-blue-600 focus-visible:ring-3 focus-visible:ring-blue-600/10"
+            className="min-h-28 max-h-96 overflow-y-auto rounded-lg border-slate-900/10 bg-slate-100 text-sm leading-relaxed text-slate-900 shadow-none transition-colors focus-visible:border-blue-600 focus-visible:ring-3 focus-visible:ring-blue-600/10"
           />
         </div>
 

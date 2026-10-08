@@ -9,10 +9,6 @@ const RMD_07_MOVES = [
   ["src/services/config/types.ts", "apps/server/src/services/config/types.ts"],
   ["src/services/core-bootstrap.ts", "apps/server/src/services/core-bootstrap.ts"],
   ["src/services/data-migrate.ts", "apps/server/src/services/data-migrate.ts"],
-  [
-    "src/services/data-migrates/migrate-agent-config-model-id.ts",
-    "apps/server/src/services/data-migrates/migrate-agent-config-model-id.ts",
-  ],
   ["src/services/sync-builtin.ts", "apps/server/src/services/sync-builtin.ts"],
   ["src/types/global.d.ts", "apps/server/src/types/global.d.ts"],
   ...[
@@ -42,7 +38,6 @@ const RMD_07_MOVES = [
     "round52-agent-model-migration.test.ts",
     "sanitize-execution-log.test.ts",
     "structured-logger.test.ts",
-    "task-schema.test.ts",
     "test-openai-chat.sh",
     "workspace-symlink-escape.test.ts",
   ].map((file) => [`src/__tests__/${file}`, `apps/server/src/__tests__/${file}`] as const),
@@ -79,8 +74,21 @@ const RMD_07_MOVES = [
  * 该表的真相来源本就在 `packages/platform/identity/db/schema.ts`，读写却留在宿主，属「表与它的读写分处
  * 两层」；迁入 `repositories/user-config.ts` 后两者同址（DB 句柄改为 `getIdentityDatabase()`），宿主经
  * 包入口取用（唯一消费者是 `services/resource-module-ports.ts` 的两个偏好端口）。
+ * §2.2 调用期禁则补齐时（`cross-module-db-object-import`）的一项：`src/__tests__/task-schema.test.ts`。
+ * 它验证的是 `task_execution_log` 的列契约，而表定义已随 §1.7 B12 迁入 `packages/resources/task/db/schema.ts`，
+ * 宿主那份成了调用期导入对方 `db` 表对象的残留。用例随表落回 owner 包，宿主不再持有本包表的消费方；
+ * 同批修掉的 agent-config 五处表对象导入都在包内用例里，不在本表。
+ * §6.3 数据迁移归属（台账 B1）的一项：`migrate-agent-config-model-id.ts` 原先只「宿主编排」而迁移体留在
+ * 宿主，模块归属名存实亡；迁入 owner 包 `db/data-migrations/`，库句柄改由 `@fenix/agent-config/db/migration`
+ * 提供（同批迁走的 skill 那条在包内自有测试中校验，不在本表）。迁移 ID 与 `run` / `verify` / `compensation`
+ * 逐字未动，已落库的执行记录不受影响。
  */
 const RMD_07_RELOCATED = [
+  [
+    "src/__tests__/task-schema.test.ts",
+    "apps/server/src/__tests__/task-schema.test.ts",
+    "packages/resources/task/src/__tests__/task-schema.test.ts",
+  ],
   [
     "src/schemas/api-model.schema.ts",
     "apps/server/src/schemas/api-model.schema.ts",
@@ -156,6 +164,11 @@ const RMD_07_RELOCATED = [
     "apps/server/src/services/config/user-config.ts",
     "packages/platform/identity/src/repositories/user-config.ts",
   ],
+  [
+    "src/services/data-migrates/migrate-agent-config-model-id.ts",
+    "apps/server/src/services/data-migrates/migrate-agent-config-model-id.ts",
+    "packages/resources/agent-config/db/data-migrations/migrate-agent-config-model-id.ts",
+  ],
 ] as const;
 
 describe("RMD-07 server-host migration", () => {
@@ -220,14 +233,14 @@ describe("RMD-07 server-host migration", () => {
   // model-management / agent-config / identity 包），理由见 relocated 的文档注释。
   // 任务 1.5c 的死代码删除一项（本轮移出本表，无新 owner）：`services/config/index.ts`。它是
   // `upsertSystemMcpServer` 的转发 barrel，另两条导出（`AuthContext`、`PermissionAction` /
-  // `PermissionConfig`）也无导入方；而 `upsertSystemMcpServer` 服务的唯一端口
-  // `RegisterSystemMcpServer` 从未被注入（`ensureHindsightMcpServer` 全仓只有测试调用），整条
-  // Hindsight MCP 登记路径未接线，宿主这份属零生产消费方的薄包装，按「删除优于兼容」删除。
+  // `PermissionConfig`）也无导入方；而 `upsertSystemMcpServer` 服务的唯一端口从未被注入（Hindsight
+  // MCP 登记路径全仓只有测试调用，该路径随后已按 owner 裁定整体删除——hindsight 只走 plugin 下发），
+  // 宿主这份属零生产消费方的薄包装，按「删除优于兼容」删除。
   // 同批删除的 `services/config/mcp-system-server.ts`
   // （上述 barrel 的被转发对象，从未单独登记）与 `services/config-utils.ts` 的信封函数（文件本体保留
   // `resolveApiKey`）不在本表内。
   test("removes every legacy source and retains its exact server-host target", () => {
-    expect(RMD_07_MOVES).toHaveLength(39);
+    expect(RMD_07_MOVES).toHaveLength(37);
     for (const [source, target] of RMD_07_MOVES) {
       expect(existsSync(source), `legacy source still exists: ${source}`).toBe(false);
       expect(existsSync(target), `server-host target is missing: ${target}`).toBe(true);
@@ -237,7 +250,7 @@ describe("RMD-07 server-host migration", () => {
   // Provider / Model / Machine / AgentRuntime 契约、会话控制面与 Webhook 入口的 owner 已在包内：
   // 旧根路径与宿主路径都不得复活，包内必须有唯一落点。
   test("relocates the provider, model, agent runtime, session-control and webhook contracts", () => {
-    expect(RMD_07_RELOCATED).toHaveLength(15);
+    expect(RMD_07_RELOCATED).toHaveLength(17);
     for (const [legacy, shell, owner] of RMD_07_RELOCATED) {
       expect(existsSync(legacy), `legacy source still exists: ${legacy}`).toBe(false);
       expect(existsSync(shell), `host copy still exists: ${shell}`).toBe(false);

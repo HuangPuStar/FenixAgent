@@ -2,7 +2,7 @@
 export type DAGStatus = "PENDING" | "RUNNING" | "SUSPENDED" | "FAILED" | "CANCELLED" | "ERROR" | "SUCCESS";
 
 /** 节点状态 */
-export type NodeStatus = "PENDING" | "RUNNING" | "COMPLETED" | "FAILED" | "CANCELLED" | "SKIPPED";
+export type NodeStatus = "PENDING" | "RUNNING" | "SUSPENDED" | "COMPLETED" | "FAILED" | "CANCELLED" | "SKIPPED";
 
 /** 统一节点输出格式 */
 export interface NodeOutput {

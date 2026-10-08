@@ -16,11 +16,11 @@ import type { AnyElysia } from "elysia";
  *
  * 只声明用到的两个字段（而非宿主的完整 `AuthContext`）：资源包不解释 `role` 等身份语义，
  * 也不应因为宿主给 authContext 加字段而被迫跟进。宿主传入更宽的对象天然满足本类型。
+ *
+ * 类型本身由应用层持有（`facades/workflow-def-facade` 的 `WorkflowActor`）：它是 Facade 的入参契约，
+ * 这里按路由侧的名字转出，避免同一形状在两处各写一份。类型转发不产生运行时依赖。
  */
-export interface WorkflowActorContext {
-  readonly organizationId: string;
-  readonly userId: string;
-}
+export type { WorkflowActor as WorkflowActorContext } from "../facades/workflow-def-facade";
 
 /** `/web/*` 控制台路由与 `/api/workflows/*` 的宿主注入依赖（两者都由会话守卫保护）。 */
 export interface WorkflowRouteDependencies {

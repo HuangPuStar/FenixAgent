@@ -1,0 +1,37 @@
+{
+  "changedFiles": {
+    "title": "Changed Files"
+  },
+  "filePicker": {
+    "fileTooLarge": "{{name}} is too large (max {{max}})"
+  },
+  "fileTree": {
+    "uploadFailed": "Upload failed",
+    "pathConflict": "A target file or directory already exists. Its original content was not overwritten. Rename it and try again.",
+    "uploadPartialIndeterminate": "{{message}} Some files may already have been uploaded; the exact number is unknown. The file list has been refreshed.",
+    "renameFailed": "Rename failed",
+    "moveFailed": "Move failed",
+    "mkdirFailed": "Create folder failed",
+    "newFileFailed": "Create file failed",
+    "downloadFailed": "Download failed",
+    "closeTab": "Close tab",
+    "moreTabs": "{{count}} more tabs",
+    "dialog": {
+      "renameTitle": "Rename",
+      "renameDescription": "Enter a new file or folder name",
+      "moveTitle": "Move",
+      "moveDescription": "Enter the full destination path",
+      "newFileTitle": "New File",
+      "newFileDescription": "Enter the new file name",
+      "newFolderTitle": "New Folder",
+      "newFolderDescription": "Enter the new folder name",
+      "invalidName": "The name is required and cannot contain / or NUL, or be . or ..",
+      "nameTooLong": "Name is too long (maximum 255 bytes)",
+      "invalidPath": "The destination path is required and cannot contain NUL",
+      "confirm": "Confirm"
+    },
+    "contextMenu": {
+      "delete": "Delete"
+    }
+  }
+}

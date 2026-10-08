@@ -133,6 +133,12 @@ export function createInMemoryStorage(): StorageAdapter {
       events.set(runId, evtList);
     },
 
+    async atomicRunCancel({ snapshot, event }: { snapshot: DAGSnapshot; event: DAGEvent }): Promise<void> {
+      const runId = snapshot.run_id;
+      snapshots.set(runId, [...(snapshots.get(runId) ?? []), snapshot]);
+      events.set(runId, [...(events.get(runId) ?? []), event]);
+    },
+
     // ---------- 清理 ----------
 
     async deleteRun(runId: string): Promise<void> {

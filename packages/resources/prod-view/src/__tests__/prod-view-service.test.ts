@@ -3,6 +3,8 @@
 //
 // 覆盖边界：本文件用链式替身覆盖服务分支与参数传递；环境的真实创建（Agent 配置可读性校验、workspace
 // 路径、自动启动）属于 agent-runtime，由该包自己的用例覆盖，这里只断言本包交出去的那份参数。
+// 服务层只收显式范围（`organizationId` / `userId`），「范围从 actor 推导」由 facade 用例覆盖
+// （./prod-view-facade.test.ts）——两处的断言集合刻意不重叠，避免「传进来的组织对不对」被算两次。
 
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { initializeTestApplicationInfrastructure, resetAllStubs, stubDb } from "@fenix/platform-sdk/testing";
@@ -11,7 +13,6 @@ import {
   getProdView,
   listProdViews,
   loadProdView,
-  type ProdViewActor,
   type ProdViewServiceDeps,
   setProdViewDeps,
   updateProdView,
@@ -25,7 +26,9 @@ import {
   prodViewRow,
 } from "./prod-view-db-stub";
 
-const ACTOR: ProdViewActor = { organizationId: "org-1", userId: "user-1" };
+/** 调用方（Facade）推导出的显式范围：服务只认这两个值，不再收 actor。 */
+const ORGANIZATION_ID = "org-1";
+const USER_ID = "user-1";
 
 /** 装配 DB 替身（先登记句柄、再初始化基础设施：基础设施持有的是引用）。 */
 function installDbStub(stub: ProdViewDbStub): void {
@@ -65,12 +68,12 @@ describe("prod-view 服务分支", () => {
     resetAllStubs();
   });
 
-  // 列表按调用者组织查询：组织取自认证上下文而不是请求，断言绑定值落到 actor 的组织上。
-  test("listProdViews 以调用者组织查询", async () => {
+  // 列表按传入的组织查询：服务不认识 actor，组织谓词的绑定值必须来自调用方给的 `organizationId`。
+  test("listProdViews 以显式组织查询", async () => {
     const stub = createProdViewDbStub([prodViewRow({ organizationId: "org-1" })]);
     installDbStub(stub);
 
-    const result = await listProdViews(ACTOR, { agentId: AGENT_ID });
+    const result = await listProdViews(ORGANIZATION_ID, { agentId: AGENT_ID });
 
     expect(result.success).toBe(true);
     expect(result.data).toHaveLength(1);
@@ -83,7 +86,7 @@ describe("prod-view 服务分支", () => {
   test("getProdView 无记录时返回 NOT_FOUND", async () => {
     installDbStub(createProdViewDbStub([]));
 
-    const result = await getProdView(ACTOR, "pv-missing");
+    const result = await getProdView(ORGANIZATION_ID, "pv-missing");
 
     expect(result).toEqual({ success: false, error: { code: "NOT_FOUND", message: "ProdView not found" } });
   });
@@ -93,7 +96,7 @@ describe("prod-view 服务分支", () => {
     const stub = createProdViewDbStub([]);
     installDbStub(stub);
 
-    const result = await updateProdView(ACTOR, "pv-missing", { name: "新名" });
+    const result = await updateProdView(ORGANIZATION_ID, "pv-missing", { name: "新名" });
 
     expect(result).toEqual({ success: false, error: { code: "NOT_FOUND", message: "ProdView not found" } });
     expect(stub.writes.updates).toHaveLength(0);
@@ -104,7 +107,7 @@ describe("prod-view 服务分支", () => {
     const stub = createProdViewDbStub([]);
     installDbStub(stub);
 
-    const result = await deleteProdView(ACTOR, "pv-missing");
+    const result = await deleteProdView(ORGANIZATION_ID, "pv-missing");
 
     expect(result).toEqual({ success: false, error: { code: "NOT_FOUND", message: "ProdView not found" } });
   });
@@ -115,7 +118,7 @@ describe("prod-view 服务分支", () => {
     installDbStub(stub);
     stub.flags.deleteReturnsEmpty = true;
 
-    const result = await deleteProdView(ACTOR, "pv-1");
+    const result = await deleteProdView(ORGANIZATION_ID, "pv-1");
 
     expect(result).toEqual({ success: false, error: { code: "DELETE_FAILED", message: "Failed to delete" } });
   });
@@ -124,7 +127,7 @@ describe("prod-view 服务分支", () => {
   test("deleteProdView 成功时返回 ok 信封", async () => {
     installDbStub(createProdViewDbStub([prodViewRow({ id: "pv-1" })]));
 
-    await expect(deleteProdView(ACTOR, "pv-1")).resolves.toEqual({ success: true, data: { ok: true } });
+    await expect(deleteProdView(ORGANIZATION_ID, "pv-1")).resolves.toEqual({ success: true, data: { ok: true } });
   });
 
   // 加载端点对不存在的视图返回 NOT_FOUND，且不得为此创建环境（否则每次探测都会留下环境与实例）。
@@ -132,7 +135,7 @@ describe("prod-view 服务分支", () => {
     installDbStub(createProdViewDbStub([]));
     const { envInputs } = installRecordingDeps();
 
-    const result = await loadProdView(ACTOR, "pv-missing");
+    const result = await loadProdView(ORGANIZATION_ID, USER_ID, "pv-missing");
 
     expect(result).toEqual({ success: false, error: { code: "NOT_FOUND", message: "ProdView not found" } });
     expect(envInputs).toHaveLength(0);
@@ -144,7 +147,7 @@ describe("prod-view 服务分支", () => {
     installDbStub(stub);
     const { envInputs } = installRecordingDeps();
 
-    const result = await loadProdView(ACTOR, "pv-1");
+    const result = await loadProdView(ORGANIZATION_ID, USER_ID, "pv-1");
 
     expect(result).toEqual({ success: false, error: { code: "DISABLED", message: "ProdView is disabled" } });
     expect(envInputs).toHaveLength(0);
@@ -164,7 +167,7 @@ describe("prod-view 服务分支", () => {
     installDbStub(stub);
     const { envInputs, instanceInputs } = installRecordingDeps();
 
-    const result = await loadProdView(ACTOR, "pv-1");
+    const result = await loadProdView(ORGANIZATION_ID, USER_ID, "pv-1");
 
     expect(result.success).toBe(true);
     if (!result.success) throw new Error("加载失败，后续断言无意义");
@@ -189,13 +192,13 @@ describe("prod-view 服务分支", () => {
     });
   });
 
-  // 组织隔离：调用者组织与视图所属组织不同时，查询绑定值必须是调用者的组织（跨组织读不到他人视图）。
-  test("loadProdView 以调用者组织定位记录", async () => {
+  // 组织隔离：调用方给的组织与视图所属组织不同时，查询绑定值必须是调用方的组织（跨组织读不到他人视图）。
+  test("loadProdView 以显式组织定位记录", async () => {
     const stub = createProdViewDbStub([prodViewRow({ organizationId: "org-2", id: "pv-2" })]);
     installDbStub(stub);
     installRecordingDeps();
 
-    await loadProdView({ organizationId: "org-2", userId: "user-2" }, "pv-2");
+    await loadProdView("org-2", "user-2", "pv-2");
 
     const clause = stub.whereClauses.at(-1);
     expect(collectParamValues(clause)).toContain("org-2");

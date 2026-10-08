@@ -18,6 +18,7 @@ import {
   textFrames,
 } from "./connection-test-helpers";
 import type { RelayMessage, SharedRelay } from "./connection-types";
+import { waitForSessionMutation } from "./session-mutation";
 
 /** 构造挂在 rcs-1 上的共享 relay（handle 可覆写） */
 function relayOn(rcsSessionId: string, handleOverrides: Partial<SharedRelay["handle"]> = {}): SharedRelay {
@@ -25,6 +26,30 @@ function relayOn(rcsSessionId: string, handleOverrides: Partial<SharedRelay["han
 }
 
 describe("RelayEventHandler", () => {
+  // Agent 的 JSON-RPC 成功/失败响应必须按 id 完成对应变更等待器。
+  test("settles session mutation waiters from matching RPC responses", async () => {
+    const registry = new ConnectionRegistry();
+    const broadcaster = new YjsBroadcaster(registry);
+    const handler = createRelayEvents(registry, broadcaster, []);
+    const relay = relayOn("rcs-1");
+    const success = waitForSessionMutation(relay, 81);
+    const failure = waitForSessionMutation(relay, 82);
+
+    await handler.createMessageHandler(relay)({
+      jsonrpc: "2.0",
+      id: 81,
+      result: { deleted: true, sessionId: "ses-target" },
+    } as RelayMessage);
+    await handler.createMessageHandler(relay)({
+      jsonrpc: "2.0",
+      id: 82,
+      error: { code: -32601, message: "unsupported" },
+    } as RelayMessage);
+
+    expect(await success.completed).toBe(true);
+    expect(await failure.completed).toBe(false);
+    expect(relay.pendingSessionMutations?.size).toBe(0);
+  });
   // 过期 ACP session 的 update 必须在共享 relay 消费边界丢弃，不能进入 processACP。
   test("filters stale session updates against the bound ACP session", async () => {
     const registry = new ConnectionRegistry();

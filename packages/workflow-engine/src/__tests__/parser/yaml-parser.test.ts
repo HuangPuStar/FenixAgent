@@ -32,6 +32,23 @@ test("解析有效 YAML 得到 WorkflowDef", () => {
   expect(def.nodes[1].depends_on).toEqual(["step1"]);
 });
 
+// YAML 节点的重试配置必须进入执行定义，不能在解析时丢失。
+test("解析节点 retry 配置", () => {
+  const def = parseWorkflowYaml(
+    `schema_version: '1'\nname: retry\nnodes:\n  - id: task\n    type: shell\n    command: exit 7\n    retry:\n      count: 1\n      delay: 0\n      backoff: fixed\n`,
+  );
+  expect(def.nodes[0].retry).toEqual({ count: 1, delay: 0, backoff: "fixed" });
+});
+
+// 非法重试次数应在 YAML 边界被拒绝，避免运行期出现无效循环。
+test("拒绝非法 retry 次数", () => {
+  expect(() =>
+    parseWorkflowYaml(
+      `schema_version: '1'\nname: bad-retry\nnodes:\n  - id: task\n    type: shell\n    command: exit 7\n    retry:\n      count: -1\n`,
+    ),
+  ).toThrow(WorkflowError);
+});
+
 // 解析缺少 schema_version 的 YAML
 test("缺少 schema_version 报错", () => {
   expect(() =>

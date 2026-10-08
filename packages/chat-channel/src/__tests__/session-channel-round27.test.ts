@@ -142,19 +142,21 @@ describe("SessionChannel 内存协议与状态边界", () => {
     expect(registered).toEqual([1]);
   });
 
-  // rename_session 保留标题并绑定传入会话。
-  test("rename_session 转发标题", async () => {
-    const harness = await createHarness();
-    await submit(harness, { action: "rename_session", commandId: "rename-1", sessionId: "ses-2", title: "新标题" });
-    expect(harness.sent[0]).toMatchObject({
-      method: "session/rename",
-      params: { sessionId: "ses-2", title: "新标题" },
+  // 没有持久存储时重命名必须明确失败，不能回退为 Agent RPC 的假成功。
+  test("rename_session 缺持久存储时失败", async () => {
+    const harness = await createHarness({
+      awaitSessionMutation: () => ({ completed: Promise.resolve(true), cancel: () => {} }),
     });
+    await submit(harness, { action: "rename_session", commandId: "rename-1", sessionId: "ses-2", title: "新标题" });
+    expect(harness.sent).toEqual([]);
+    expect(harness.errors.at(-1)?.error.type).toBe("ACTION.AGENT_UNAVAILABLE");
   });
 
   // delete_session 转发目标会话。
   test("delete_session 转发目标会话", async () => {
-    const harness = await createHarness();
+    const harness = await createHarness({
+      awaitSessionMutation: () => ({ completed: Promise.resolve(true), cancel: () => {} }),
+    });
     await submit(harness, { action: "delete_session", commandId: "delete-1", sessionId: "ses-2" });
     expect(harness.sent[0]).toMatchObject({ method: "session/delete", params: { sessionId: "ses-2" } });
   });
@@ -409,6 +411,24 @@ describe("SessionChannel 内存协议与状态边界", () => {
     await submit(harness, action);
     expect(harness.replacements).toHaveLength(1);
     expect(harness.sent).toHaveLength(1);
+  });
+
+  // 刷新恢复已有投影时不重复请求全量回放，后续 prompt 仍必须绑定恢复后的服务端会话。
+  test.each([null, "ses-saved"])("恢复连接绑定 %s 后 prompt 使用投影会话", async (acpSessionId) => {
+    const harness = await createHarness({ acpSessionId, sessionLoaded: false });
+    getSessionInfo(harness.manager.getSessionYdoc("rcs-1")!).set("sessionId", "ses-saved");
+    harness.manager.registerUserMessage("rcs-1", "已保存的用户消息");
+    await submit(harness, { action: "load_session", commandId: "restore-saved", sessionId: "ses-saved" });
+    expect(harness.sent).toEqual([]);
+    expect(harness.replacements).toEqual([]);
+    await submit(harness, {
+      action: "send_prompt",
+      commandId: "prompt-after-restore",
+      sessionId: "ses-untrusted",
+      content: [{ type: "text", text: "刷新后继续" }],
+    });
+    expect(harness.sent[0]).toMatchObject({ method: "session/prompt", params: { sessionId: "ses-saved" } });
+    await harness.manager.closeAll();
   });
 
   // sessionLoaded 为 false 且投影不匹配时，首次 load 必须请求 Agent。

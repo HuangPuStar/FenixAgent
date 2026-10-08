@@ -1,6 +1,15 @@
 import { mkdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
+import { type AgentLaunchSpec, bindWorkspaceFiles, writeWorkspaceFiles } from "@fenix/plugin-sdk";
+
 import type { InstalledSkillReference, OpencodeRuntimeConfig } from "./runtime-config";
+
+/** 本地与 machine 共用的启动文件物化边界，配置转换前完成全量重写。 */
+export async function prepareLaunchWorkspace(workspace: string, spec: AgentLaunchSpec): Promise<AgentLaunchSpec> {
+  const bound = bindWorkspaceFiles(spec, workspace);
+  await writeWorkspaceFiles(workspace, bound.workspaceFiles);
+  return bound;
+}
 
 export const OPENCODE_DIR_NAME = ".opencode";
 export const OPENCODE_SKILLS_DIR_NAME = "skills";

@@ -249,6 +249,34 @@ describe("KnowledgeGraphPanel 取数失败与取消", () => {
     expect(container.textContent).toContain(TEXT.graph.emptyHint);
   });
 
+  // 成功返回空 graph 对象也应显示空态；重查时加载和错误必须优先，不能把取数失败误报为空图。
+  test("空节点图谱呈现空态且不覆盖后续加载与错误", async () => {
+    const container = render(panel("kb-empty"));
+    await flushMicrotasks();
+    expect(container.textContent).not.toContain(TEXT.graph.empty);
+
+    respond("kb-empty/graph", ok({ graph: { nodes: [], edges: [] } }));
+    await flushMicrotasks();
+
+    expect(container.querySelector('[role="alert"]')).toBeNull();
+    expect(container.textContent).toContain(TEXT.graph.empty);
+    expect(container.textContent).toContain(TEXT.graph.emptyHint);
+    expect(container.textContent).not.toContain(`${TEXT.graph.nodes}:`);
+
+    rerender(panel("kb-failed"));
+    await flushMicrotasks();
+    expect(pending.some((item) => item.url.includes("kb-failed/graph"))).toBe(true);
+    expect(container.textContent).not.toContain(TEXT.graph.empty);
+    expect(container.querySelector('[role="alert"]')).toBeNull();
+
+    respond("kb-failed/graph", fail("图谱服务暂不可用", 503));
+    await flushMicrotasks();
+
+    expect(container.querySelector('[role="alert"]')?.textContent).toContain(TEXT.graph.loadFailed);
+    expect(container.textContent).not.toContain(TEXT.graph.empty);
+    expect(container.textContent).not.toContain(`${TEXT.graph.nodes}:`);
+  });
+
   // 成功响应仍要把数据落到面板上（不渲染 G6：本环境的断言止于「数据到手」这一步的可见结果——
   // 顶部出现节点 / 关系计数栏）。
   test("取数成功渲染节点与关系计数", async () => {

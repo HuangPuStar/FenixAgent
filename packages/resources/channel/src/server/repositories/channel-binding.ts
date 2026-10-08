@@ -1,5 +1,5 @@
 import { channelBinding } from "@fenix/resource-channel/db";
-import { and, eq } from "drizzle-orm";
+import { and, eq, inArray } from "drizzle-orm";
 import { getChannelDatabase } from "../db";
 
 /** ChannelBinding 行类型 */
@@ -8,7 +8,15 @@ export type ChannelBindingInsert = typeof channelBinding.$inferInsert;
 
 /** ChannelBinding 仓储接口 */
 export interface IChannelBindingRepo {
-  list(): Promise<ChannelBindingRow[]>;
+  /**
+   * 按绑定的目标 Environment 读取。
+   *
+   * 没有「读全表」的方法：通道绑定表不带 `organization_id`，它的租户边界由 `agent_id` 指向的
+   * Environment 表达，调用方（Facade）先把组织翻译成 Environment ID 集合，本方法把该集合下推成
+   * `agent_id IN (...)`。留下一个无范围的 `list()` 就等于留一条「先读全量再在应用层按组织过滤」的
+   * 现成捷径（这正是本方法取代的写法）。
+   */
+  listByAgentIds(agentIds: readonly string[]): Promise<ChannelBindingRow[]>;
   getById(bindingId: string): Promise<ChannelBindingRow | null>;
   create(data: ChannelBindingInsert): Promise<ChannelBindingRow>;
   delete(bindingId: string): Promise<boolean>;
@@ -25,8 +33,14 @@ export interface IChannelBindingRepo {
  * 模块级单例，无法在包内测试中替换）。
  */
 class PgChannelBindingRepo implements IChannelBindingRepo {
-  async list() {
-    return getChannelDatabase().select().from(channelBinding);
+  async listByAgentIds(agentIds: readonly string[]) {
+    // 空集合：`IN ()` 不是合法 SQL，而「该组织没有任何 Environment」本来就等价于空结果——提前返回，
+    // 既避免无效查询，也让该情形与「查询失败」在日志里可区分。
+    if (agentIds.length === 0) return [];
+    return getChannelDatabase()
+      .select()
+      .from(channelBinding)
+      .where(inArray(channelBinding.agentId, [...agentIds]));
   }
 
   async getById(bindingId: string) {

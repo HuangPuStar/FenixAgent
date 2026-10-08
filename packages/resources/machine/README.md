@@ -12,9 +12,10 @@
 **调用期的跨包取数一律经宿主注入的端口**（2026-09-21 §1.7 B1 起）：`@fenix/agent-runtime` 经
 `MachineRegistryPort.findMachineAgentNamesByIds`、`@fenix/resource-agent-config` 经它自己的
 `MachineLookupPort.findMachineLabelsByIds` 取机器展示投影，两者都由宿主绑定到本包
-`repositories/machine-repository.ts` 的实现。消费方**不得**导入本包的表对象（§2.2 / §2.3：组装期例外只在
-各包 `db/` 内成立），也**不得**直接导入本包的公开入口——本包 `dependsOn` 已含 `agent-config`
-（`remote-file-service.ts` 解析 AgentNode，B7 起还有 `registry.ts` 经它读写 `agent_config.machineId`），
+`repositories/machine-repository.ts` 的实现。反方向同理：本包要看 Agent 配置的执行节点或改写机器绑定，
+经自己声明的 `MachineAgentConfigPort`（2026-09-24 E1 起，见「宿主运行态端口」），由宿主绑定 agent-config
+的实现。消费方**不得**导入本包的表对象（§2.2 / §2.3：组装期例外只在各包 `db/` 内成立），也**不得**直接
+导入本包的公开入口——本包 `dependsOn` 已含 `agent-config`（本包的取数实现需要它已装配），
 agent-config 再反向声明 `dependsOn: ["machine"]` 会在模块
 装配期闭合二元环，所有 profile 都会因装配顺序失败。`@fenix/agent-runtime` 的机器注册 / 心跳 / 断连能力
 同走 `MachineRegistryPort`，`@fenix/agent-config` 的浏览器侧只经 `./web` 取 `registryApi`。机器元数据不在
@@ -80,29 +81,50 @@ agent-config 再反向声明 `dependsOn: ["machine"]` 会在模块
   巡检定时器、文件事件队列三处可变状态各要求进程内唯一），`fenix.module.ts` 是它的惰性描述符。
   声明 `contributions`（1.5e / 1.5f，四条 `app-route`：三条挂 `web`、一条挂 `api`，见 `fenix.module.ts`）；不声明 `web`：消费方是 §1.6 的 WebShell 装配，形状需与消费端同时定型。
 - **测试装配**：`/server/testing` 提供 `createMachineModuleConfig` / `initializeMachineModuleConfig` /
-  `stubMachineConfig` / `stubMachineEnvironment(Record)` / `stubFileWsTransport` 与三个句柄替换入口；
-  包内用例另用 `src/__tests__/guard-stubs.ts` 注入守卫替身。
+  `stubMachineConfig` / `stubMachineEnvironment(Record)` / `stubMachineAgentConfig` / `stubFileWsTransport`
+  与三个句柄替换入口（lifecycle / heartbeat / registry 路由）；
+  包内用例另用 `src/__tests__/guard-stubs.ts` 注入守卫替身。`stubMachineAgentConfig` 必须显式给出三个原语：
+  端口是整体契约，未绑定即失败——用例不能依赖测试专用的默认值，否则「未装配」会在用例里静默通过。
 
 ## web 面与 i18n
 
-- **浏览器出口**：`web/index.ts`（`package.json` 的 `exports["./web"]` 指向它），当前导出面是
-  `web/api/registry.ts` 的 `registryApi` 与记录 / 查询 / 响应类型。跨包消费方（agent-config 的 Agent 编辑器、
-  identity 的组织机器页）取用的就是这一份，必须走包根 `@fenix/resource-machine/web`——`web/api/registry` 这类
+- **浏览器出口**：`web/index.ts`（`package.json` 的 `exports["./web"]` 指向它），导出面 = 机器注册表客户端
+  （`web/api/registry.ts` 的 `registryApi` 与记录 / 查询 / 响应类型）+ 文件域客户端 `web/api/fs.ts`
+  （`fsApi`、上传 / 下载 / 预览源读取与 `MAX_UPLOAD_*` 常量）+ 文件变更事件通道
+  （`web/api/file-events.ts`：`/web/file-events` 的 WS URL、订阅帧与帧归一）+ 文件域容器
+  （`web/components/FileTreeTab.tsx`、`web/components/FileTabsBar.tsx`、`web/components/artifacts-files-workspace.tsx`）
+  + 编排 hook（`web/hooks/use-file-uploads.ts`、`use-artifacts-files.ts`、`use-file-tree-events.ts`）与纯工具
+  （`web/lib/normalize-to-user-path.ts`、`web/lib/random-uuid.ts`）。全部 2026-09-24 随台账
+  `ce-standards-todo.md` D2 由宿主 `apps/web/src/api/{fs,file-events}.ts` 与
+  `apps/web/src/shell/artifacts/{FileTreeTab,FileTabsBar,artifacts-files-workspace,use-artifacts-files,use-file-tree-events}.tsx`
+  迁入（该簇 2026-09-28 归位到 `apps/web/src/pages/agent-panel/artifacts/`，上述文件都不在其中；同一批的
+  `use-drag-counter.ts` 只服务包内两个调用点，按「没有第二个消费者就不导出」不转出）。
+  跨包消费方（agent-config 的 Agent 编辑器、identity 的组织机器页、宿主的 artifacts 面板与聊天取件入口）
+  取用的就是这一份，必须走包根 `@fenix/resource-machine/web`——`web/api/registry` 这类
   深层路径会把本包的内部目录变成事实契约。
 - **浏览器面守卫**：`web/__tests__/machine-browser-surface.test.ts` 静态走值导入图（`web/__tests__/value-import-graph.ts`），
-  跨包说明符经对方 `exports` 递归进入；白名单当前为空（实测入口图只有 3 个文件、无裸包说明符），
+  跨包说明符经对方 `exports` 递归进入；白名单 18 条——宿主注入的 peerDependency（`react` / `react-dom` /
+  `react-i18next`）、本包直接依赖的浏览器库（`ahooks` / `lucide-react` / `sonner`）与经 `@fenix/ui-components`
+  子路径传递进入的库（radix 原语、`clsx` / `tailwind-merge` / `class-variance-authority`、`react-file-icon` /
+  `react-arborist` / `react-resizable-panels`、`@open-file-viewer/*`），每条在测试文件里带收录理由；
   另含负例注入（`@fenix/resource-machine/server` 必须被拦下）与「相对路径不得越界到 `apps/web`」一条。
-- **i18n 零迁出零迁入**（键的最终所在地 = 包的 owner）：本包没有自持命名空间，也没有需要迁出的寄居键，
-  因此**不建** `web/i18n/**`——空壳命名空间会让宿主登记一份没有字典的 ns，读键时整片回退成 key 回显。
-  实测口径：宿主 `apps/web/src/i18n/index.ts` 的 `NS` 表无 machine 项（`grep -in machine` 命中 0）；
-  `git ls-files` 里唯一的 machine JSON 是本包 `package.json` 本身，没有任何 i18n 字典；observer 命名空间按
-  「递归展开全部键（含数组内对象键）」对齐 `HEAD` 快照——zh / en 各 364 键，丢失 0、新增 0，其中 4 个含 machine 字样的键
-  （`overview.machines` / `tree.machineTree` / `tree.selectMachine` / `flat.machineId`）是 observer 页面自身的
-  标签，不属本包。本包尚未迁入的页面（注册表页、文件域）读的是宿主 `components` / `agentPanel` 命名空间，
-  键随实现一起在 §1.6 迁出。
+- **i18n 自持 `machine` 命名空间**（键的最终所在地 = 包的 owner）：`web/i18n/namespace.ts` 持 `MACHINE_NS` 常量、
+  `web/i18n/index.ts` 持 `locales/{en,zh}/machine.json` 资源，经 `exports["./web/i18n"]` 公开、不经根入口转出
+  （宿主 i18n 引导在启动期求值，根入口会把整个 web 面拉进首屏）。当前 24 键：`filePicker.fileTooLarge` 与
+  `fileTree.{uploadFailed,uploadPartialIndeterminate}` 随上传 hook 迁入；`fileTree.{renameFailed,moveFailed,
+  mkdirFailed,newFileFailed,downloadFailed,closeTab,moreTabs,dialog.*,contextMenu.delete}` 与
+  `changedFiles.title` 随文件树容器与 tab 栏迁入（中文键的消费方只剩本包）。宿主 `components.fileTree` 保留的
+  `emptyState` / `emptyHint` / `userEmptyState` / `retry` / `staleBanner` 是同名键在 `uiComponents` 命名空间
+  已另有一份（消费方是 `@fenix/ui-components` 的文件树视图），`dropToUpload` / `uploadTo` 的消费方是宿主面板
+  自己的拖拽遮罩——它们不随迁，否则会在包字典里变成死键（`web/__tests__/machine-i18n.test.ts` 双向断言）。
+  宿主 `apps/web/src/i18n/index.ts` 已按 `MACHINE_NS` 登记；`MACHINE_NS` 的字面量在本包声明
+  （中心表 `@fenix/web-runtime/i18n/namespace` 尚未收录，同 sandbox 先例），待中心表补齐后改用 `NS.MACHINE`。
+  **订正**：本段此前记「本包没有自持命名空间，因此不建 `web/i18n/**`」——其前提是「没有需要迁出的寄居键」，
+  D2 迁入上传 hook 后该前提失效，字典按 §9.2 落位。
 - **测试归属（W2.5 收敛后）**：`web/src/__tests__/` 的 6 个文件全部改为对**共享实现公开入口**的消费方断言，
   不再有一处穿透到 `apps/web`：`grep -rnE '\.\./\.\./\.\./.*apps/web' packages/resources/machine` 实测 0 命中
-  （收敛前为 **5 个文件 / 11 处**，其中 `file-picker-dialog` 的 2 处是运行时动态 `import()` 宿主组件与宿主 `api/fs`）。
+  （收敛前为 **5 个文件 / 11 处**，其中 `file-picker-dialog` 的 2 处是运行时动态 `import()` 宿主组件与宿主
+  `api/fs`——该客户端现已归本包 `web/api/fs.ts`，见 D2）。
   逐个文件的落点与覆盖下降说明：
   - `file-icon-helper-round39` / `file-icon-and-card-registry-pure` → `@fenix/ui-components/components/file-icon-helper`
     与 `/lib/card-renderer`；共享 `FileTypeIcon` 比宿主版本多一层尺寸容器，扩展名 / 颜色 / glyph 映射断言因此落在
@@ -111,11 +133,13 @@ agent-config 再反向声明 `dependsOn: ["machine"]` 会在模块
     深路径实测 `Cannot find module`，不能写成深路径。
   - `file-tree-dialog`（改名 `file-tree-dialog.test.tsx`，与 `file-picker-dialog` 一致）→ `@fenix/ui-components` 包根的
     `FileTreeView` SSR 行为断言：工具条刷新优先、双分区与 `data-upload-target`、stale 横幅落在文件内容区内、
-    空数据保分区与空态。覆盖下降四项（重命名 / 移动的字节数校验、弹窗 `maxLength`、节点级操作与右键菜单、
-    宿主容器与 CSS）在文件头逐条记明 owner（宿主 `FileTreeTab.tsx` → §1.6；radix 门户与 arborist 在 SSR 下无输出）。
+    空数据保分区与空态。覆盖下降四项中的三项在文件头逐条记明 owner（弹窗 `maxLength`、节点级操作与右键
+    菜单、容器交互需要的 DOM 环境）；「重命名 / 移动的字节数校验」那一项已随 D2 的容器迁入归位：
+    `web/__tests__/file-tree-name-validation.test.ts` 断言三个纯函数的 UTF-8 字节上限与非法字符口径。
   - `file-picker-dialog` → `@fenix/ui-components` 包根的 `FilePickerPanel` + `FileInfo`：面板与视图类型已上收，
-    宿主只剩「包进 Dialog + 补 `envId`」的会话入口（`apps/web/src/components/FilePickerDialog.tsx`）与 `apps/web/src/api/fs`
-    网络层，两者归 §1.6；面板的目录加载在 mount effect 里跑，SSR 只覆盖首屏结构与注入契约。
+    宿主只剩「包进 Dialog + 补 `envId`」的会话入口（`apps/web/src/pages/agent-panel/FilePickerDialog.tsx`），
+    其网络层自 D2（2026-09-24）起取自本包 `web/api/fs.ts`；面板的目录加载在 mount effect 里跑，
+    SSR 只覆盖首屏结构与注入契约。
   - `file-picker-round49-pure` → `@fenix/resource-mcp/web`（保留本分支的 `scope` + `access.actions` 授权语义）。
 - **条件 3 的常驻守护**：`src/__tests__/machine-package-contract.test.ts`（由 `machine-source-migration.test.ts`
   就地改写并改名，与 prod-view 的同级契约测试命名对齐）已从「只断言文件存在与导出名」（计划 §7 风险 3 点名的假绿实例）
@@ -175,36 +199,45 @@ agent-config 再反向声明 `dependsOn: ["machine"]` 会在模块
   宿主 barrel 里的这些导入是**值导入**（zod schema），改指包根会把本包的整个 server 图拉进宿主的 schema
   barrel；`./server/schema` 的存在意义正是给这条路径留一个窄口，因此「删出口」与「改指包根」必须同批评估，
   不能只删出口——knowledge / mcp 两个包有同形状的 `./server/schema` 与同一批宿主消费点，三者应一起定夺。
-- **反向边已消除（1.4，2026-09-20）**：`machine → sandbox`（1 处）与 `machine → agent-runtime`（9 处）已随
-  「宿主运行态端口」落地清零，方向固定为 `sandbox → machine`、`agent-runtime → machine`；台账里的两条
-  `special-dependency` 与一条 `no-circular` 同批删除。`dependsOn: ["agent-config"]` 现在是本包唯一的包间
-  运行时依赖，B7 后代码证据有两处：`src/server/services/remote-file-service.ts` 值导入
-  `getAgentConfigById` / `resolveAgentNode`，`src/server/services/registry.ts` 值导入
-  `isAgentConfigBoundToMachine` / `bindMachineIdByAgentName`。
-  **反向边消失不等于环消失**：B7 之后本包已无指向宿主的边（`@server/**` 归零，见「定位与 owner」与
-  「边界残留」），但 `machine → agent-config` 这条矩阵内的边仍在——B7 只是把它从「直读对方表」改成「经对方
-  `./server` 入口」，见证边未消失。台账里 machine 相关的 `no-circular` 条目因此仍有 **2 条真实违规**
-  （实测 `python3 -c "import json;d=json.load(open('scripts/architecture/exceptions.json'));print([e['rule']
-  for e in d['exceptions'] if e.get('from')=='@fenix/resource-machine'])"` → `['no-circular','no-circular']`），
-  其 `removeWhen` 仍以「删除 `machine → agent-config` 反向边」为条件。本包名下其它规则的条目已一条不剩。
+- **反向边已全部消除（1.4 + E1）**：`machine → sandbox`（1 处）与 `machine → agent-runtime`（9 处）随
+  1.4 的「宿主运行态端口」清零，方向固定为 `sandbox → machine`、`agent-runtime → machine`；台账里的两条
+  `special-dependency` 与一条 `no-circular` 同批删除。`machine → agent-config`（§2.3 矩阵外的反向边，也是
+  4 包环族的共同闭合边）随 2026-09-24 E1 清零：`remote-file-service.ts` 的 `getAgentConfigById` /
+  `resolveAgentNode` 与 `registry.ts` 的 `isAgentConfigBoundToMachine` / `bindMachineIdByAgentName` 改经本包
+  声明的 `MachineAgentConfigPort`（宿主装配注入，见「宿主运行态端口」），本包源码对 `@fenix/agent-config`
+  的引用数为 0（实测 `grep -rn '@fenix/agent-config' src/ fenix.module.ts` 仅剩注释文本；
+  `machine-package-contract.test.ts` 的「包内不引用 agent-config 的入口」用例常驻守护）。**环**随之消解：
+  agent-config ↔ agent-runtime ↔ machine ↔ sandbox 这一族不再闭合，台账里 machine 与 agent-config 名下的
+  6 条 `no-circular` 条目同批删除（`removeWhen` 写的正是这条边）。新禁则由架构门禁的
+  `special-dependency` 规则承担——§2.3 的 machine 行禁止依赖其他 `resources/*` 包，矩阵与门禁同批补齐。
 
 ## 宿主运行态端口
 
-本包不导入 `@fenix/agent-runtime`（1.4 起），它需要的三类**只存在于装配层**的能力改由端口注入，绑定语义与
-agent-runtime 的 `bindCoreRuntimePort` 一致：装配阶段一次绑定（重复绑定报错），未绑定即失败、不隐式回退到本地
-实现——回退会让宿主持有的运行态与包内看到的裂成两份。
+本包不导入 `@fenix/agent-runtime`（1.4 起）、不导入 `@fenix/agent-config`（E1 起）：它需要的**只存在于装配层
+或对方模块**的能力改由端口注入，绑定语义与 agent-runtime 的 `bindCoreRuntimePort` 一致：装配阶段一次绑定
+（重复绑定报错），未绑定即失败、不隐式回退到本地实现——回退会让宿主持有的运行态与包内看到的裂成两份，或
+让「取不到」与「确实没有」混成一种结果。
 
 | 端口 | 绑定方 | 提供的原语 |
 |------|--------|-----------|
 | `MachineHostPort`（`src/server/host-port.ts`） | 宿主 `apps/server` | workspace 根路径、Core runtime 节点查询 / 注销、file-ws 连接索引、断连清理 |
 | `MachineEnvironmentPort`（`src/server/environment-port.ts`） | 宿主 `apps/server` | 环境记录读取与归属校验（实现仍在 agent-runtime） |
+| `MachineAgentConfigPort`（`src/server/agent-config-port.ts`） | 宿主 `apps/server` | Agent 配置的执行节点读取（带组织归属）、机器引用检查、机器注册绑定（实现来自 agent-config） |
 | `MachineSandboxRoutePort`（`src/server/sandbox-route-port.ts`） | `@fenix/resource-sandbox` | 「环境该路由到哪台机器」的沙盒判定（读 sandbox 自己的配置与池、实例表） |
 
-`MachineSandboxRoutePort` 与另外两个的失败语义不同：**未装配返回 null**，调用方按「该 assembly profile 没有
+`MachineAgentConfigPort` 与 `MachineHostPort` / `MachineEnvironmentPort` 的差别在**实现来源**：前两者的实现是
+宿主的进程级单例（包内无法持有第二份），本端口的实现是 owner（`@fenix/agent-config`）的公开入口——宿主只做
+适配（`apps/server/src/services/machine-agent-config-port.ts`），因为「执行节点怎么解析」「哪条配置算绑在这台
+机器上」是对方的领域规则，本包只表达业务意图。`getExecutionNode` 的入参必带 `organizationId`：机器文件路径
+不得因「环境绑定的配置 ID 撞上」而按别的组织声明的节点路由（§10.3 多租户隔离）。
+
+`MachineSandboxRoutePort` 与另外三个的失败语义不同：**未装配返回 null**，调用方按「该 assembly profile 没有
 沙盒能力」降级而不是报错——不含 sandbox 模块的部署里 `getRemoteMachineId` 必须照常走默认机器或本地 FS。
 
-绑定发生在 `apps/server/src/main.ts`（前两个）与 `createSandboxModule()`（第三个）；测试侧宿主 preload 用同一
-组绑定转发到 stub 注册表，包内用例另经 `setMachineHostPort` / `setMachineEnvironmentPort` 的浅合并替换层打桩。
+绑定发生在 `apps/server/src/bootstrap/host-wiring.ts`（前两个）、`host-startup.ts`（第三个：与 agent-config 的
+另两个端口放在一起，`host-wiring` 刻意不导入 agent-config 的入口）与 `createSandboxModule()`（第四个）；测试侧
+宿主 preload 用同一组绑定转发到 stub 注册表（前两个），包内用例另经 `setMachineHostPort` /
+`setMachineEnvironmentPort` / `stubMachineAgentConfig` 的浅合并替换层打桩。
 
 ## 守卫由宿主注入
 
@@ -248,13 +281,15 @@ const webFileEvents = createWebFileEventsRoutes({ authenticateRequest });
 
 - **跨包表访问已全部闭环（原「跨包表访问残留（owner §1.4）」）**：本包曾直接读写两张不属于自己的表，两条都在
   §1.7 内闭环，不再有本包不修的跨包表访问：
-  1. ~~`agent_config`（owner `@fenix/agent-config`）~~：**已闭环（§1.7 B7，2026-09-22）**。此前
-     `registry.ts` 在删除机器前直读 `agent_config.machineId` 做引用检查，并在 `bindAgentConfigs` 里**写**该列，
-     两条路径都没有对方公开 API（写路径尤其没有绑定入口）。B7 随表迁出补上两个 owner 入口：读走
-     `isAgentConfigBoundToMachine(ctx.organizationId, id)`（`registry.ts:428`），写走
-     `bindMachineIdByAgentName({ organizationId, agentName, machineId })`（`registry.ts:474` 的
-     `bindAgentConfigs` 转调）。本包只表达「这台机器还能不能删」「把上报的 `agentName` 绑到这台机器」两个业务
-     意图，不再自己解释 `machine_id` 列、也不在本包重写归属条件。
+  1. ~~`agent_config`（owner `@fenix/agent-config`）~~：**已闭环（§1.7 B7，2026-09-22；E1 收口取数方向，
+     2026-09-24）**。此前 `registry.ts` 在删除机器前直读 `agent_config.machineId` 做引用检查，并在
+     `bindAgentConfigs` 里**写**该列，两条路径都没有对方公开 API（写路径尤其没有绑定入口）。B7 随表迁出补上
+     两个 owner 入口：读走 `isAgentConfigBoundToMachine(ctx.organizationId, id)`、写走
+     `bindMachineIdByAgentName({ organizationId, agentName, machineId })`；E1 再把这两处与
+     `remote-file-service.ts` 的执行节点读取一起改为经本包声明的 `MachineAgentConfigPort`（宿主注入 owner 的
+     实现），本包源码因此不再引用 agent-config 的任何出口。本包只表达「这台机器还能不能删」「把上报的
+     `agentName` 绑到这台机器」「这个环境该走哪台机器」三个业务意图，不解释 `machine_id` 列、不重写节点解析
+     优先级、也不在本包重写归属条件。
   2. ~~`sandbox_instance`（owner `@fenix/resource-sandbox`）~~：**已闭环（§1.7 B4 前置，2026-09-22）**。
      本包此前经 `src/server/services/machine-sandbox-projection.ts` 直接 UPDATE `sandbox_instance`，把机器注册 /
      心跳投影为实例状态；该表归 sandbox 后这条路径成为 §2.3 的 `machine → sandbox` 写路径，而 §6.1 的组装期例外
@@ -270,10 +305,48 @@ const webFileEvents = createWebFileEventsRoutes({ authenticateRequest });
   （逐个文件跑 `grep -c "getMachineDatabase("` → 26 + 1 + 1），其中 `registry.ts` 一个文件 26 处——B7 前为
   30 处与 28 处，差额是 `registry.ts` 里直读 / 直写 `agent_config.machineId` 的两处改为调用 owner 入口。
   收敛到 repository 属 §1.4 的边界收敛范围；新增数据库操作一律进 repository，不要沿这条路径继续扩散。
+- **`/api` 工作区上传与 `/web` 文件上传仍是同一个动作的两套实现（§3.1 的薄 adapter 未收敛）**：两条链路的
+  业务动作相同（把 multipart 文件写进某个 environment 的 workspace），等价部分为「经 `resolveWorkspacePath`
+  解析同一个 workspace 根 + 拒绝 `..` 越界 + 落盘前 symlink 防护」，但**对外契约与语义有实质差异**，在拿到
+  裁定前不得强行合并（合并任一侧都会改变已发布 `/api` 合同的可见行为）：
+  1. **路径作用域**：`/api` 只接受 `user/` 子树（`api-workspace.ts` 的 `normalizeUserRoutePath` + `isUserPath`，
+     越界 400）；`/web` 自 F1 起允许 workspace 根内任意路径（`file-path-validator.assertSafePath`）。
+  2. **远程落点**：`/api` 发往机器前剥掉 `user/` 前缀，`/web` 原样下发——同一条逻辑路径在远程机器上落到两个
+     不同目录；`/api` 的响应再把机器返回的路径重新标成 `user/...` 掩盖了这个差异。
+  3. **单文件上限**：`/api` 本地 50MB；`/web` 本地 100MB / 远程 20MB（`file-types.ts` 的能力上限不对称条款）。
+     远程分支最终都受 `remote-file-service.ts` 的 20MB 约束，本地分支的阈值确实不同。
+  4. **授权口径**：`/api` 只按组织 + 属主（`machine-workspace-facade` 不下传角色）；`/web` 下传角色，
+     `member` 一律 403（`machine-file-facade`）。这两条口径都是既有行为，收敛时必须先裁定取哪一条。
+  5. **幂等与副作用**：`/web` 支持 `opId` 幂等键与 `If-Match` 条件写，并在本地写成功后发布 `file_changed`
+     事件（订阅方据此刷新）；`/api` 两者都没有，本地写入不广播变更事件。
+  6. **相对路径校验**：`/api` 自带一份校验（拒绝反斜杠、NUL、绝对路径与 `..`），`/web` 走共享的
+     `file-path-validator`（`\` 与 `/` 同视为分隔符、拒绝控制字符与超长单段）——同一份 `relativePaths` 在两侧的
+     接受集合不同。
+  7. **错误信封**：`/api` 用平台契约的 `{ error: { code, message } }`（`routes/api/workspaces.ts` 的 `mapApiError`
+     只认 `AppError` 的 `statusCode` + `code`）；`/web` 用 `{ error: { type, message } }`（按
+     `FileServiceError.type` 映射）。
+  - **owner**：两面都在本包（`src/server/services/api-workspace.ts` 与
+    `agent-file-service.ts` + `file-backends.ts`）；其中 `/api` 一面是已发布的外部合同。
+  - **现状依据**：`docs/arch/12-files.md` §2.4 表注明「`/api/*` 文件面（`api-workspace.ts`）收敛到本契约时
+    另行评估」、§10 二期清单列「`/api/*` 第三套实现的收敛评估」；按 §3.1，已发布 `/api` 合同的变更或退役必须
+    经独立 ADR、消费者盘点和迁移窗口，因此当前不做收敛，证据与建议已交主控裁定。
+  - **移除条件**：主控给出「并入文件域 Facade」的裁定与迁移窗口后，`routes/api/workspaces.ts` 改为调用
+    `machine-file-facade`（协议形状与错误码在 adapter 内保持），`services/api-workspace.ts` 的第二套写入、
+    校验与上限逻辑整体删除；届时本条与 `workspace-fs.ts` 里 `isUserPath` / `normalizeUserRoutePath` 的
+    「对外契约」保留注记一并评估。
 - **`src/server/routes/web/fs.ts` 627 行**：超出单文件 500 行约束；§三 裁决文件域留在 machine，拆分落点与时机未定。
-- **`@fenix/ui-components` 目前只在 `devDependencies`**：本包的 5 个 web 用例（图标 / 文件树 / 文件选择面板）
-  断言的是共享 UI 包的公开入口（`components/file-icon-helper`、`lib/card-renderer`、包根的文件树视图与选择面板、
-  `ui/dialog`），生产代码尚未引用；文件域组件（文件树 / 文件选择器 / 文件图标）随 §1.6 迁入后需升级为 `dependencies`。
+  web 侧客户端已随 D2（2026-09-24）归位本包 `web/api/fs.ts`；同批（D2 第二批）文件树容器、tab 栏、文件工作区
+  与事件通道客户端也迁入 `web/**`，宿主侧只剩跨包装配（`apps/web/src/pages/agent-panel/artifacts/` 的 `ArtifactsPanel` /
+  `TopModeTabs` / 站点绑定对话框——站点与任务来自 agent-config 与 task，machine 不得导入）。
+- **`@fenix/ui-components` 已从 `devDependencies` 升为 `dependencies`**（2026-09-24，D2 第二批）：文件域组件
+  （文件树容器、tab 栏、文件工作区）迁入后，生产代码经该包公开入口取用文件树视图、预览 tab、分栏与基础原语。
+  同批新增的普通浏览器库（`ahooks` / `lucide-react` / `sonner` / `react-resizable-panels`）与既有测试用
+  `@fenix/resource-mcp` 的分工不变：前者进 `dependencies`，后两者（`@fenix/resource-mcp`）只在 `devDependencies`。
+- **`@fenix/agent-config` 仍是 `dependencies` 里的未引用项**：E1（2026-09-24）把本包的取数改为宿主注入的
+  `MachineAgentConfigPort` 后，`src/**` 与 `web/**` 已零导入（`src/__tests__/machine-package-contract.test.ts`
+  的「包内不引用 agent-config 的入口」断言把这一点钉住）；按 §2.1「`dependencies` 里没有任何导入的条目必须删除」
+  应删除，但本包的 `dependsOn: ["agent-config"]`（装配顺序需要它在先）是另一条独立声明，删除依赖声明与它无关，
+  属台账未列出的收尾项，**移除条件**：确认无消费方依赖本包携带该编译期边后删除。
 - **`@fenix/resource-mcp` 是 `devDependencies`（仅测试用）**：`file-picker-round49-pure` 断言的是对方授权视图
   助手的消费面，不是本包生产依赖。
 - **`src/server/__tests__/file-ws-events.test.ts` 首例存在约 0.2%/次的既存竞态**（非本次引入：该断言与

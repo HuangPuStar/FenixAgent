@@ -231,6 +231,122 @@
       "unknownName": "Unknown Site"
     }
   },
+  "siteDeployment": {
+    "title": "App Deployment",
+    "subtitle": "Publish agent capabilities as accessible sites and manage access and security tokens.",
+    "toolbarLabel": "App search and visibility filters",
+    "search": "Search apps, remote IDs, or creators",
+    "creator": "Creator",
+    "visibility": {
+      "label": "Visibility",
+      "all": "All",
+      "private": "Private",
+      "org": "Organization",
+      "authenticated": "Signed in",
+      "public": "Public"
+    },
+    "directory": {
+      "title": "Deployed apps",
+      "summary": "Showing {{count}} apps",
+      "noDescription": "No app description"
+    },
+    "status": {
+      "published": "Published"
+    },
+    "empty": "No deployed apps",
+    "emptySearch": "No matching apps",
+    "emptyHint": "Create an app to get a standalone access point.",
+    "actions": {
+      "create": "New app",
+      "open": "Open",
+      "edit": "Edit",
+      "delete": "Delete",
+      "rotateToken": "Rotate token",
+      "more": "More app actions",
+      "retry": "Retry"
+    },
+    "pagination": {
+      "label": "App pagination",
+      "previous": "Previous",
+      "next": "Next"
+    },
+    "dialog": {
+      "createTitle": "New app",
+      "editTitle": "Edit app",
+      "deleteTitle": "Confirm deletion",
+      "deleteDescription": "Delete app “{{name}}”? This also deletes the remote app and cannot be undone."
+    },
+    "form": {
+      "name": "Name",
+      "namePlaceholder": "For example, my-app",
+      "description": "Description",
+      "descriptionPlaceholder": "Optional description"
+    },
+    "toast": {
+      "created": "App created",
+      "updated": "App updated",
+      "deleted": "App deleted",
+      "tokenRotated": "Token rotated"
+    },
+    "errors": {
+      "load": "Could not load apps",
+      "loadHint": "Retry. If it keeps failing, contact your organization administrator.",
+      "save": "Could not save app",
+      "delete": "Could not delete app",
+      "rotate": "Could not rotate token",
+      "nameRequired": "Name is required",
+      "creatorInactive": "The agent that created this app is not active",
+      "creatorNavigation": "Could not open creator"
+    }
+  },
+  "panelMode": {
+    "sitesTabAriaLabel": "Site selector",
+    "mountSite": "Mount Site",
+    "mountSiteAriaLabel": "Mount site",
+    "unmountSite": "Unmount",
+    "unmountSiteAriaLabel": "Unmount site",
+    "mountDialogTitle": "Mount Sites",
+    "mountDialogHint": "Select sites to mount to this agent",
+    "mountDialogConfirm": "Mount {{count}}",
+    "mountDialogConfirmNone": "Mount",
+    "noAvailableSites": "No more sites available to mount",
+    "mountSuccess": "Mounted {{count}} site(s)",
+    "mountFailed": "Mount failed",
+    "unmountFailed": "Unmount failed",
+    "sitesLoadFailed": "Failed to load site list",
+    "retry": "Retry"
+  },
+  "siteFrame": {
+    "createdBy": "Created by: {{name}}",
+    "share": "Share",
+    "reload": "Reload site",
+    "openInNewTab": "Open in new tab",
+    "loading": "Loading site...",
+    "loadTimeout": "Site load timed out",
+    "loadTimeoutHint": "The site may still be loading in the background. Try reloading or open it in a new tab.",
+    "traceToCreatorTooltip": "Switch to the agent that created this site",
+    "traceToCreatorNotFound": "This agent is not running yet, cannot open its chat",
+    "navigateFailed": "Navigation failed",
+    "notCreatorTooltip": "This site was created by another agent. You can operate data but cannot modify site files. Click Trace to switch to the creator agent."
+  },
+  "restarting": "Restarting...",
+  "restartConfirm": "Restart Selected",
+  "restartLater": "Later",
+  "configSavedRestartTitle": "Configuration Saved",
+  "configSavedRestartDescription": "Configuration has been saved. Agent instances need to restart for changes to take effect. Restart now?",
+  "restartSuccess": "Instance restarted",
+  "restartFailedSaved": "Configuration was saved, but restart failed",
+  "noInstancesToRestart": "No running instances to restart",
+  "restartTitle": "Restart Agent Instances",
+  "restartDescription": "Select instances to restart. Configuration changes require a restart to take effect.",
+  "selectAll": "Select All",
+  "restartFailed": "Restart failed",
+  "stopSuccess": "Instance stopped",
+  "stopInstanceFailed": "Failed to stop instance",
+  "deleteAgentTitle": "Delete Agent",
+  "deleteAgentConfirm": "Are you sure you want to delete agent \"{{name}}\"? This action cannot be undone.",
+  "deleteSuccess": "Agent deleted",
+  "deleteFailed": "Failed to delete agent",
   "memory": {
     "enableTitle": "Agent Memory",
     "enableDescription": "Enable agent memory across conversations"

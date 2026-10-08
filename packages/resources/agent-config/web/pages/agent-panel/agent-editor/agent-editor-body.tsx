@@ -37,6 +37,8 @@ import {
   FOOTER_STATE,
   MAP_BADGE,
   MAP_COPY,
+  MAP_COPY_CAPTION,
+  MAP_COPY_TITLE,
   MAP_ICON,
   MAP_LABEL,
   MAP_TABS_LIST,
@@ -101,7 +103,10 @@ export function AgentEditorBody(
   },
 ) {
   const { t } = useTranslation(NS.AGENTS);
-  const { t: tp } = useTranslation(NS.AGENT_PANEL);
+  // `restarting` / `restartConfirm` / `restartLater` / `configSavedRestart*` 随台账 D4 从宿主
+  // `agentPanel` 字典迁入本包：`translatePanel` 与 `translate` 因此同源，保留两个绑定只为不改
+  // `useAgentEditor` 的端口形状。
+  const { t: tp } = useTranslation(NS.AGENTS);
   const { mobile } = props;
   const [activeSection, setActiveSection] = useState<AgentEditorSection>("identity");
   const [templateOpen, setTemplateOpen] = useState(false);
@@ -271,11 +276,15 @@ export function AgentEditorBody(
                 {SECTIONS.map(({ id, icon: Icon }) => (
                   <TabsTrigger key={id} value={id} className={MAP_TRIGGER}>
                     <span className={MAP_ICON}>
-                      <Icon />
+                      <Icon className="w-3.5" />
                     </span>
                     <span className={MAP_COPY} data-slot="editor-map-copy">
-                      <strong>{t(`editor.sections.${id}`)}</strong>
-                      <small>{t(`editor.sectionCaptions.${id}`)}</small>
+                      <strong className={MAP_COPY_TITLE} data-slot="editor-map-copy-title">
+                        {t(`editor.sections.${id}`)}
+                      </strong>
+                      <small className={MAP_COPY_CAPTION} data-slot="editor-map-copy-caption">
+                        {t(`editor.sectionCaptions.${id}`)}
+                      </small>
                     </span>
                     <Badge variant="secondary" className={MAP_BADGE}>
                       {getSectionStatus(id)}
@@ -308,10 +317,19 @@ export function AgentEditorBody(
           </Tabs>
           <footer className={FOOTER}>
             <div className={FOOTER_STATE} data-slot="editor-footer-state">
-              <span>{form.formState.isDirty ? "1" : <Check />}</span>
-              <p>
-                <strong>{form.formState.isDirty ? t("editor.unsaved") : t("editor.savedState")}</strong>
-                <small>{t("editor.draftStatus")}</small>
+              <span
+                className="grid size-7 flex-none basis-7 place-items-center rounded-md bg-indigo-50 text-xs text-blue-800"
+                data-slot="editor-footer-state-count"
+              >
+                {form.formState.isDirty ? "1" : <Check />}
+              </span>
+              <p className="m-0 flex flex-col gap-0.5">
+                <strong className="text-xs text-slate-700" data-slot="editor-footer-state-title">
+                  {form.formState.isDirty ? t("editor.unsaved") : t("editor.savedState")}
+                </strong>
+                <small className="text-3xs text-gray-400" data-slot="editor-footer-state-caption">
+                  {t("editor.draftStatus")}
+                </small>
               </p>
             </div>
             {!readOnly && form.formState.isDirty && (

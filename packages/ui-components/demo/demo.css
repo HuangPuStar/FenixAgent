@@ -1,28 +1,6 @@
-/*
- * demo 样式入口。
- *
- * 三个 @import 的顺序有语义：
- * 1. `tailwindcss` —— 引擎本体；
- * 2. `../web/styles/theme.css` —— 包内设计 token 与 @source（web/ 目录），与消费方接入方式一致；
- * 3. `tw-animate-css` —— 只为展示页补上 animate-in / animate-out / animate-accordion-* 等动画类，
- *    包本身不引入它（宿主没有该依赖时组件仍然可用，只是没有过渡动画）。
- *
- * 展示页的布局样式（左侧导航 + 右侧内容、区块间距、示例卡片边框、token 网格等 20 个
- * `demo-*` 类）已全部迁进各组件的 className 工具类；本文件只保留两类**无法用工具类表达**的规则：
- * 1. 入口指令（上面三个 @import）；
- * 2. 元素级全局默认（html / body / #root 与滚动条）——它们的挂载点在 React 树之外，
- *    没有可写 className 的元素。
- *
- * 这两个部分都不参与包的发布产物。
- */
-
 @import "tailwindcss";
 @import "../web/styles/theme.css";
 @import "tw-animate-css";
-
-/* 与源宿主 apps/web/src/index.css 的 @layer base 对齐：13px 基准字号 + --font-body
-   决定组件的视觉尺寸，缺了会让展示页比宿主里明显偏大；底色与字色同样取宿主的
-   surface-0 / text-primary（而非 --color-background/--color-foreground）。 */
 html,
 body,
 #root {
@@ -42,8 +20,6 @@ body {
   line-height: 1.5;
   -webkit-font-smoothing: antialiased;
 }
-
-/* 源宿主的自定义滚动条。属于应用壳，只为展示页观感一致而复制，不进包产物。 */
 ::-webkit-scrollbar {
   width: 6px;
   height: 6px;

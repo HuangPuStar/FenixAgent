@@ -316,9 +316,9 @@ export const ChatInterface = forwardRef<ChatInterfaceHandle, ChatInterfaceProps>
   const [selectedPeriTask, setSelectedPeriTask] = useState<PeriTaskViewProjection | null>(null);
 
   return (
-    <div className="chat-interface-root flex h-full min-h-0 min-w-0 flex-1">
-      {/* chat-interface-column 保留为类名：`web/chat/css/chat-layout.css`（下一阶段迁移）与宿主同款
-          样式表仍以它作为「唯一高度链」选择器；本行新增的几何工具类即原 `chat-design-shell.css` 的声明。 */}
+    <div className="chat-interface-root flex h-full min-w-0 min-h-0 flex-1 overflow-hidden">
+      {/* chat-interface-column 是「唯一高度链」的语义钩子：高度链的声明已随 2026-09-28「伪深层」清理
+          就近取档到本行工具类与根节点 `.chat-interface-root`（两侧同名 `chat-layout.css` 同批清空删除）。 */}
       <div className="chat-interface-column relative flex flex-1 min-h-0 min-w-0 flex-col overflow-hidden bg-white">
         {/* Peri Task 详情抽屉（宿主渲染；未注入时任务行只读） */}
         {renderPeriTaskDetail && selectedPeriTask
@@ -346,7 +346,7 @@ export const ChatInterface = forwardRef<ChatInterfaceHandle, ChatInterfaceProps>
             // 提问卡片与输入岛同源、但不相等：先套输入岛的宽度容器，再按每侧一条台阶收进
             // （两个常量都定义在 `../composer/ChatComposer`）；卡片自身不声明宽度。
             // 2026-09-24：此前它沿用 `panels/chat-interaction-region.css` 的 px 台阶
-            // `min(756px, calc(100% - 64px))`——与输入岛的 rem 刻度不同源，宽屏下比输入岛宽、
+            // `min(756px, calc(100% - 64px))`——那条是写死的 px，与输入岛宽度不同源，宽屏下比输入岛宽、
             // 中宽屏下 `calc(100% - 64px)` 近似拉满（用户反馈「卡片横跨整个聊天区」）。
             // 权限卡片仍走那条旧台阶：本次范围只含提问卡片（同样是一层包装即可切换，未顺手改）。
             <div className={CHAT_COMPOSER_WIDTH_CLASS}>
