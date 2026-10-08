@@ -70,8 +70,13 @@
     ├── ragflow/  litellm/  hindsight/  npm-registry/  agent-sites/
     ├── workflow/               # Workflow V2 上游栈
     ├── sandbox-peri/  sandbox-dsh/  sandbox-ccb/  sandbox-opencode/   # 执行节点（引擎沙箱）
-    └── opensandbox-cluster/  opensandbox-server/  opensandbox-server-tunnel/
+    ├── opensandbox-cluster/  opensandbox-server/  opensandbox-server-tunnel/
+    └── compose-explorer/       # 本地只读的依赖关系可视化（bun run start；见该目录 README）
 ```
+
+> `docker/compose-explorer/` 不进交付面：它是**开发期**查看编排关系的本地工具（只读扫描 compose 文件，把本文档
+> 与部署脚本一并列为可读文件；不参与部署，`deploy.sh` 不引用它）。它按本文件与各目录 README 的口径推断跨项目
+> 关系，因此它给出的图**是编排的视图，不是另一份权威**——冲突时以本文件为准。
 
 数据落点一律「各自 compose 文件同级的 `./data/`」（§13.8）；每份配置描述一台机器，`docker/deploy.env` 就是那台机器的开关表。
 

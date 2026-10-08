@@ -1,0 +1,13 @@
+{
+  "name": "compose-explorer",
+  "private": true,
+  "type": "module",
+  "description": "docker/ 编排依赖关系可视化（只读本地工具）",
+  "scripts": {
+    "start": "bun run src/main.ts",
+    "dev": "bun run --watch src/main.ts"
+  },
+  "dependencies": {
+    "yaml": "^2.9.1"
+  }
+}
