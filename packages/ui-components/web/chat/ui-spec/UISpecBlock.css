@@ -1,0 +1,51 @@
+/**
+ * `ui-spec` 块的伴随样式表：只补「自有 data-slot 作用域内」的实测缺口，不改宿主、不改既有 markdown 表。
+ *
+ * 缺口来源与 `chat/primitives/internal/markdown-classes.ts` 记录的同一条事实：宿主 `apps/web/src/index.css`
+ * 的 `@source` 只扫 `apps/web` 与各包的 `web/` 面，`node_modules/streamdown/dist` 不在扫描面内，官方容器 /
+ * 骨架自带的类串因此**部分不生成**。逐条核对（`apps/web/src` 与各包 `web/` 全量 grep 类串）：
+ *
+ * - 容器：`my-4 / gap-2 / p-2 / rounded-xl / border / border-border` 均已由本仓源码生成，且
+ *   `markdown-classes.css` 另有一层 `[data-streamdown="code-block"]` 外观声明 → **不补**。
+ * - 骨架：`w-full / rounded-xl / border / border-border / overflow-hidden / flex / items-center /
+ *   justify-center / p-4 / size-4 / animate-spin` 均已生成；**未生成**的是 `h-[46px]`、`bg-muted/80`、
+ *   `divide-y divide-border`。本表补前两条；第三条是一条 1px 分隔线，补它要写长度字面量
+ *   （FCP-WEB-07 禁止，本目录尚无存量额度），故**不补** —— 影响仅限骨架内两条带之间少一条细线，
+ *   容器自身的圆角与边框仍在。
+ *
+ * 长度一律 `calc(var(--spacing) * N)`、颜色一律取 token（`color-mix` + `var(--color-*)`）：
+ * 不写 px / rem / 颜色字面量（FCP-WEB-07 / 08）。
+ *
+ * 另有三处「自有元素」补偿，原因是 markdown 排版表**未包 `@layer`**，以 (0,1,1) 压过工具类：
+ *
+ * - 原文 pre：`.chat-markdown-content-styles pre` 的上下外边距会落到容器内部（容器已 `padding: 0`），
+ *   故归零；内边距与横向滚动仍沿用那张表的 `pre` / `pre code` 声明。
+ * - 自有表格：`.chat-markdown-content-styles table { max-width: 100% }` 会把宽表钉死在滚动容器宽度上
+ *   （streamdown 自己的表格块因同一条规则需要在 `markdown-classes.css` 里单独放开），这里同样放开
+ *   宽度上限，让 `ui/table.tsx` 自带的 `overflow-x-auto` 容器真正可滚；列对齐同理 ——
+ *   `th, td { text-align: left }` 会压过 `text-right` 工具类，故按 `[data-align]` 直接声明。
+ *
+ * 选择器一律带 `[data-slot="ui-spec-block"]` 前缀（两条属性 → (0,2,1)），既限定在本块内，
+ * 又能稳定压过上面那张未分层表；块级错误边界的兜底分支也带同名根属性，两条路径都吃得到这些规则。
+ */
+
+/* 官方骨架：高度与底色两条类串未生成（见文件头）。 */
+[data-slot="ui-spec-skeleton"] > div > div:first-child {
+  height: calc(var(--spacing) * 11.5);
+  background-color: color-mix(in srgb, var(--color-muted) 80%, transparent);
+}
+
+/* 原文 pre：外边距会让正文挤在容器边框内。 */
+[data-slot="ui-spec-block"] [data-slot="ui-spec-raw"] pre {
+  margin: 0;
+}
+
+/* 自有表格：放开 markdown 的宽度上限，恢复「内容宽度 + 横向滚动」。 */
+[data-slot="ui-spec-block"] [data-slot="ui-spec-table"] table {
+  max-width: none;
+}
+
+/* 自有表格：列对齐（markdown 的 `text-align: left` 未分层，工具类压不过它）。 */
+[data-slot="ui-spec-block"] [data-slot="ui-spec-table"] [data-align="right"] {
+  text-align: right;
+}

@@ -308,6 +308,26 @@
       "types": "./web/chat/types.ts",
       "default": "./web/chat/types.ts"
     },
+    "./chat/ui-spec/plugins": {
+      "types": "./web/chat/ui-spec/plugins.ts",
+      "default": "./web/chat/ui-spec/plugins.ts"
+    },
+    "./chat/ui-spec/spec": {
+      "types": "./web/chat/ui-spec/spec.ts",
+      "default": "./web/chat/ui-spec/spec.ts"
+    },
+    "./chat/ui-spec/UISpecBlock": {
+      "types": "./web/chat/ui-spec/UISpecBlock.tsx",
+      "default": "./web/chat/ui-spec/UISpecBlock.tsx"
+    },
+    "./chat/ui-spec/UISpecHostContext": {
+      "types": "./web/chat/ui-spec/UISpecHostContext.tsx",
+      "default": "./web/chat/ui-spec/UISpecHostContext.tsx"
+    },
+    "./chat/ui-spec/UISpecView": {
+      "types": "./web/chat/ui-spec/UISpecView.tsx",
+      "default": "./web/chat/ui-spec/UISpecView.tsx"
+    },
     "./chat/view/ChatQuoteMessage": {
       "types": "./web/chat/view/ChatQuoteMessage.tsx",
       "default": "./web/chat/view/ChatQuoteMessage.tsx"

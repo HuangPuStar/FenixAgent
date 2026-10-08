@@ -182,6 +182,12 @@
         "turnError": "Execution failed",
         "uploadedImage": "Uploaded image"
       },
+      "uiSpec": {
+        "invalidProps": "Invalid properties for {{type}}",
+        "renderFailed": "Unable to display this UI. Original content is shown below.",
+        "unsupportedType": "Unsupported component: {{type}}",
+        "unsupportedVersion": "Unsupported UI Spec version: {{version}}"
+      },
       "periTask": {
         "detailClose": "Close",
         "detailExpired": "This task detail has expired.",
