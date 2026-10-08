@@ -10,8 +10,8 @@
 - 存活与版本：`curl -s http://<host>:<port>/health` → `status` / `commitId` / `startedAt` / `version`；`commitId` 与 `git rev-parse HEAD` 对照可确认跑的是哪个版本。
 
 ```bash
-docker compose -f docker/prod/docker-compose.yml logs -f --tail=200 rcs    # 容器形态
-tail -f logs/rcs.$(date -u +%F).log                                        # 源码形态
+docker compose logs -f --tail=200 rcs                        # 容器形态（仓库根）
+tail -f logs/rcs.$(date -u +%F).log                          # 源码形态
 ```
 
 ## 1. 端口占用 / `EADDRINUSE`
@@ -50,7 +50,7 @@ lsof -tiTCP:$RCS_PORT -sTCP:LISTEN      # 宿主/容器主端口是否被别的�
 
 ```bash
 psql "$DATABASE_URL" -c "select id, machine_info from machine order by id;"   # 机器是否登记
-docker compose -f docker/prod/docker-compose.yml logs --tail=200 rcs | grep -i "file-ws"
+docker compose logs --tail=200 rcs | grep -i "file-ws"
 ```
 
 **处置**：503 先恢复 file-ws 连接（机器侧重启/重连对应运行时）；422 则去机器管理面确认该 ID 是否存在或是否写错。**不要**通过删除 `machineId` 让它“回落本地”来掩盖问题——那会把用户在远程的预期悄悄改成落到平台机器上。
@@ -108,7 +108,7 @@ grep -n "MIGRATIONS" -A 6 apps/server/src/services/data-migrate.ts    # 本次�
 
 **症状**：容器重建后日志没了；或本地服务在 `logs/` 里找不到今天的文件。
 
-**背景**：`LOG_DIR` 默认相对进程 cwd；日期段按 **UTC** 切分（`new Date().toISOString().slice(0,10)`），跨日才切换文件；超过 `LOG_RETENTION_DAYS`（默认 30）的文件在跨日时清理。挂载上，根 `docker-compose.yml` 不挂 `logs`（容器重建即丢），`docker/prod/docker-compose.yml` 挂了 `./logs`（相对 `docker/prod/`）。
+**背景**：`LOG_DIR` 默认相对进程 cwd；日期段按 **UTC** 切分（`new Date().toISOString().slice(0,10)`），跨日才切换文件；超过 `LOG_RETENTION_DAYS`（默认 30）的文件在跨日时清理。挂载上，两份主服务编排都不挂 `logs`（容器重建即丢）——见[备份与恢复](./backup-and-restore.md) §3。
 
 **处置**：容器形态固定 `LOG_DIR=/app/logs` 并挂载该目录；排障前先确认时区与日期段（UTC），再确认文件还在保留期内。
 
@@ -136,15 +136,15 @@ grep -n "MIGRATIONS" -A 6 apps/server/src/services/data-migrate.ts    # 本次�
 
 **症状**：知识库或记忆能力报连接失败。
 
-**背景**：它们都是**独立编排**，主服务必须通过 rcs 容器**可路由**的地址访问，不能写 `localhost`（`docker/prod/.env.example` 的键注记直接点名了这一点）。Hindsight 还依赖主编排创建的 `fenix-ver-net` 网络，必须先启动主服务。
+**背景**：它们都是**独立编排**（`docker/<name>/docker-compose.yml`，由 `docker/deploy.env` 的 feature 开关启停），主服务必须通过 rcs 容器**可路由**的地址访问，不能写 `localhost`：同机部署用共享网络 `fenix-server` 上的服务名（如 `http://ragflow:9380`），跨机部署用宿主可达地址。连不上也可能不是地址问题：这三者都消费 `docker/common/` 的共享实例（ragflow 只消费其中的 `mysql`——它的对象存储是自带实例，见[编排体系](./docker-topology.md) §5），栈没起来时先在 §15 看它的一次性初始化服务。
 
-**处置**：改成容器网络内可解析的地址（或宿主可达 IP），改完重建 `rcs` 容器：`docker compose --env-file docker/prod/.env -f docker/prod/docker-compose.yml up -d rcs`。
+**处置**：改成容器网络内可解析的地址（或宿主可达 IP），改完重建 `rcs` 容器：`docker compose up -d rcs`（仓库根）。网络分层见[编排体系](./docker-topology.md) §3。
 
 ## 13. 切换默认执行节点后出现重复连接
 
 **症状**：同一个 `RCS_MACHINE_ID` 有两个节点同时连上来；或新节点没接管、旧节点还在接流量。
 
-**背景**：用 Sandbox 替代本机节点时，需要同时设置 `RCS_DEFAULT_MACHINE_ID` 与 `RCS_DISABLE_LOCAL_EXECUTION=true`，Sandbox 的 `RCS_SECRET` 必须与主服务的 `REGISTRY_SECRET` 一致，`RCS_MACHINE_ID` 必须与 `RCS_DEFAULT_MACHINE_ID` 一致（`docker/prod/README.md`）。
+**背景**：用 Sandbox 替代本机节点时，需要同时设置 `RCS_DEFAULT_MACHINE_ID` 与 `RCS_DISABLE_LOCAL_EXECUTION=true`，Sandbox 的 `RCS_SECRET` 必须与主服务的 `REGISTRY_SECRET` 一致，`RCS_MACHINE_ID` 必须与 `RCS_DEFAULT_MACHINE_ID` 一致（各 sandbox 目录的 README，见[编排体系](./docker-topology.md) §6）。
 
 **处置**：**先起新节点并确认已连接，再停旧节点**，避免同一个 `RCS_MACHINE_ID` 重复连接。
 
@@ -155,3 +155,52 @@ grep -n "MIGRATIONS" -A 6 apps/server/src/services/data-migrate.ts    # 本次�
 **背景**：模板里标了「改值需重启」的键在**装配期**被固化——它们参与模块配置投影，不是运行期热读；容器形态下 `.env` 也不等于进程环境（`environment` 段优先于 `env_file`）。
 
 **处置**：改完环境文件后重建容器（`up -d rcs`）或重启进程；确认取值来自哪一层（编排 `environment` / `env_file` / 平台 secret store）。注意宿主与模块**同名键不得两处声明**，`assertNoHostKeyOverride()` 会在启动期直接拒绝——若启动即失败，先看这条错误。
+
+## 15. 共享实例没起来 / 栈内初始化服务失败
+
+**症状**：依赖栈的主服务（`ragflow`、`coze-server`、`litellm`）没起来或反复重启；起来了但报连不上库 / 桶；
+主服务侧调用对应能力（知识库、工作流、模型网关）失败。
+
+**背景**：`docker/common/` 的四个服务是**共享实例**（`postgres` / `redis` / `rustfs` / `mysql`），只提供实例、不做
+任何栈的业务初始化；库、账号、桶由消费方**栈内的一次性初始化服务**创建（`docker/workflow/` 的 `mysql-init` /
+`s3-init`、`docker/ragflow/` 的 `ragflow-mysql-init` / `ragflow-s3-init`、`docker/litellm/` 的 `litellm-db-init`）。
+`docker/ragflow/` 有一处不同：它的对象存储是**本栈自带实例** `ragflow-rustfs`（不接 `fenix-server`、不受
+`FENIX_FEATURE_S3` 影响），它的 `ragflow-s3-init` 探测的是这个实例，就绪由同项目的 `service_healthy` 保证——
+见[编排体系](./docker-topology.md) §5。初始化非 0 退出时，依赖它的主服务不会启动——这是设计行为，不是
+「容器没拉起来」。跨项目的 `depends_on` 不成立，
+所以「共享实例是否就绪」是初始化服务自己等的（带超时，失败时按分支给判定）。
+
+**定位**（先看退出码，再看日志末行）：
+
+```bash
+docker ps -a                      # 一次性服务必须 Exited (0)；非 0 时它依赖的栈内主服务会缺位或反复重启
+docker compose -f docker/workflow/docker-compose.yml ps -a mysql-init s3-init
+docker compose -f docker/litellm/docker-compose.yml ps -a litellm-db-init
+docker compose --env-file docker/ragflow/.env --env-file ./.env \
+  -f docker/ragflow/docker-compose.yml ps -a            # 两个初始化服务 + ragflow
+
+# 日志末行就是结论：脚本按阶段（①②③④）输出，失败时给原始报错 + 判定分支
+docker compose -f docker/litellm/docker-compose.yml logs --tail=50 litellm-db-init
+# ragflow 的两个初始化服务还要共享键：dev 用仓库根 .env，生产用 docker/main/.env（下同）
+docker compose --env-file docker/ragflow/.env --env-file ./.env \
+  -f docker/ragflow/docker-compose.yml logs --tail=50 ragflow-mysql-init ragflow-s3-init
+# workflow 要带上游 .env，命令照该目录 README §6
+
+# 共享实例自己：开关没开时它直接缺位（postgres 恒启动，其余看 FENIX_FEATURE_*）
+docker compose ps postgres mysql rustfs redis                  # dev（仓库根编排）
+docker compose -f docker/main/docker-compose.yml \
+  ps postgres mysql rustfs redis                               # 生产（自动读 docker/main/.env）
+```
+
+**处置**（按日志末尾给出的判定分支走）：
+
+| 判定 | 处置 |
+| --- | --- |
+| 实例不可达 | 对应开关是否打开（`FENIX_FEATURE_MYSQL` / `FENIX_FEATURE_S3`；`postgres` 恒启动；ragflow 的**对象存储**不需要开关，它自带实例，改为看 `docker compose -f docker/ragflow/docker-compose.yml ps ragflow-rustfs`）、主服务项目是否已起（`fenix-server` 由它创建，依赖只引用）、消费方容器是否真在 `fenix-server` 上（`docker network inspect fenix-server`） |
+| 认证失败 | 实例里已有的账号口令与 `.env` 不一致——口令写在实例的数据目录里，改 `.env` 不会改库里已有的账号；workflow 还要核对上游 `docker/.env` 的同名键（两处必须同值） |
+| 账号 / 库已存在但口令不同 | 幂等初始化只同步**自己那本账**的口令：把 `.env` 改对后重跑初始化服务（`up -d --force-recreate <init 服务>`），不要进库手工 `ALTER` |
+| 建桶被拒 / 桶不属于当前凭据 | 共享实例（workflow）：主服务 env（生产 `docker/main/.env`、dev 仓库根 `.env`）的 `RUSTFS_ACCESS_KEY` / `RUSTFS_SECRET_KEY` 与实例启动时用的那份不一致；或该桶由同一实例上的另一对凭据创建。ragflow 的本栈自带实例：凭据在本目录 `.env` 的 `RAGFLOW_S3_ACCESS_KEY` / `RAGFLOW_S3_SECRET_KEY`（改完要重建 `ragflow-rustfs` 才生效）。独立部署时最常踩：漏了 `--env-file ./.env`，compose 退回编排里的默认凭据 |
+
+重跑初始化服务是**常规收敛路径**（幂等，不动既有数据）；不要用「手工建库 / 手工建桶」绕过它——下次重跑会与手工结果
+漂移，而且失败原因（配置没打开、口令不一致、服务名解析不到）会被掩盖。共享实例的数据落点在
+`docker/common/data/**`，进容器前先确认你要看的数据确实在那里（[备份与恢复](./backup-and-restore.md) §3）。

@@ -80,7 +80,7 @@ import { z } from "zod/v4";
  *
  * 声明 `dependencyServices`（A3）：Hindsight 的部署面就是 `HINDSIGHT_MCP_URL` 一个键，依赖声明因此只有
  * 一条——它让部署前自检知道「启用了 memory 就该探 `HINDSIGHT_MCP_URL` 的 TCP 可达性」，且明确该服务的
- * 编排在 `docker/hindsight/` 而不在本仓 deploy/compose（不重复定义第三方编排）。
+ * 编排在 `docker/hindsight/`（本仓不重复定义第三方编排）。
  */
 export const moduleManifest = {
   id: "memory",
@@ -102,7 +102,7 @@ export const moduleManifest = {
     },
   ],
   // 声明 `dependencyServices`（A3）：Hindsight 是外部产品，编排入口在 `docker/hindsight/docker-compose.yml`，
-  // 本仓 deploy/compose 只记录依赖与探针（`orchestration: "separate"`）。它没有公开的健康端点，因此探针是
+  // 本仓只记录依赖与探针（`orchestration: "separate"`）。它没有公开的健康端点，因此探针是
   // **较弱的** TCP 可达性断言——不拿一个猜来的 HTTP 路径冒充健康检查。`required: false`：未部署记忆即
   // 「记忆能力整体未启用」，主服务照常启动。
   dependencyServices: [

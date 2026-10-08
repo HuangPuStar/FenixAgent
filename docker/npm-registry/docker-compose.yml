@@ -1,29 +1,36 @@
-# npm 私有源（Verdaccio）—— 插件市场（packages/resources/plugin-market）的元数据来源。
+# docker/npm-registry/ —— npm 私有源（Verdaccio）—— 插件市场（packages/resources/plugin-market）的元数据来源。
+# 权威文档：docs/operations/docker-topology.md §3（网络分层）、§6（依赖目录契约）；
+# 认证、取 token、旧卷迁移等操作细节见本目录 README.md。
 #
 # 为什么单独一份：市场的元数据来自**外部 npm 私有源**，本仓只读不写（不下载、不解压 tarball）。
-# 本地开发要真跑通「预览 / 发布」就需要一个可写的源，本文件只负责这一个依赖；主服务仍按
-# README 的流程在宿主机跑（`bun run dev` / `restart-server.sh`）。
+# 本地开发要真跑通「预览 / 发布」就需要一个可写的源，本文件只负责这一个依赖。
 #
-# Usage:
+# Usage（需顶层项目已创建 fenix-server 网络：先 ./docker/deploy.sh up 或至少起顶层项目）：
 #   docker compose -f docker/npm-registry/docker-compose.yml up -d
 #   docker compose -f docker/npm-registry/docker-compose.yml logs -f
-#   docker compose -f docker/npm-registry/docker-compose.yml down     # 卷保留已发布的包
+#   docker compose -f docker/npm-registry/docker-compose.yml down     # 数据在 ./data/verdaccio，down 不丢
+# 随主服务一键启动：docker/deploy.env 里 FENIX_FEATURE_NPM_REGISTRY=true
 #
-# 接到主服务：根 `.env` 里设 `PLUGIN_MARKET_REGISTRY_URL=http://127.0.0.1:4873`。
-# 未配置时只有发布与预览路径失败（REGISTRY_NOT_CONFIGURED），浏览既有快照不受影响。
+# 网络与地址：接入 external 网络 fenix-server——主服务容器按 http://npm-registry:4873 访问；
+# 同时保留只绑回环的宿主端口，供主服务跑源码（bun run dev / restart-server.sh）时用 http://127.0.0.1:4873。
+#
+# 接到主服务：主服务 env 里设 `PLUGIN_MARKET_REGISTRY_URL`（容器形态 http://npm-registry:4873，
+# 源码形态 http://127.0.0.1:4873）。未配置时只有发布与预览路径失败（REGISTRY_NOT_CONFIGURED），
+# 浏览既有快照不受影响。
 #
 # 试发布一个带 `mcpp` 字段的测试包（Verdaccio 默认配置：读取匿名开放，发布需要认证）：
-#   npm adduser --registry http://127.0.0.1:4873    # 首次，凭据落在卷内的 htpasswd
+#   npm adduser --registry http://127.0.0.1:4873    # 首次，凭据落在 ./data/verdaccio 内的 htpasswd
 #   npm publish  --registry http://127.0.0.1:4873   # 包的 package.json 需带 mcpp 字段
 #
 # 认证（可选）：默认配置下读取是 `access: $all`，市场不配 token 也能读；token 只在把读取收紧到
-# `$authenticated` 时才必需。本地开发账号是 `fenix-dev` / `fenix-dev`——它只服务这个回环绑定的
-# dev 源，**不要把端口开到公网**。token 用下面这条取得（首次调用即创建用户并返回 token）：
+# `$authenticated` 时才必需。本地开发账号是 `fenix-dev` / `fenix-dev`——它只服务这个回环绑定的 dev 源，
+# **不要把端口开到公网**（要跨机访问就经 fenix-server 或反代，不要改成 `4873:4873`，见 §6.4）。
+# token 用下面这条取得（首次调用即创建用户并返回 token）：
 #   curl -X PUT http://127.0.0.1:4873/-/user/org.couchdb.user:fenix-dev \
 #     -H 'content-type: application/json' -d '{"name":"fenix-dev","password":"fenix-dev"}'
-# 该 token 不是 JWT、不带过期时间：它是 `base64(签名密钥对)`，与用户一起存在卷里，删用户或
-# `down -v` 才会失效。凭 `~/.npmrc` 找到它（`//127.0.0.1:4873/:_authToken=…`）后写进根 `.env` 的
-# `PLUGIN_MARKET_REGISTRY_TOKEN`，市场即以 `authorization: Bearer …` 读取。
+# 该 token 不是 JWT、不带过期时间：它是 `base64(签名密钥对)`，与用户一起存在 ./data/verdaccio 里，
+# 删掉该用户（或清空该目录）才会失效。凭 `~/.npmrc` 找到它（`//127.0.0.1:4873/:_authToken=…`）后写进
+# 主服务 env 的 `PLUGIN_MARKET_REGISTRY_TOKEN`，市场即以 `authorization: Bearer …` 读取。
 
 services:
 
@@ -31,13 +38,16 @@ services:
         image: verdaccio/verdaccio:6
         container_name: fenix-npm-registry
         restart: unless-stopped
+        networks:
+            # 接入主服务层：容器形态的主服务按 http://npm-registry:4873 直接访问（§3）
+            - fenix-server
         ports:
-            # 只绑回环：这是本地开发用的源，不对外暴露。要让同网段其他机器访问时改成 "4873:4873"。
+            # 只绑回环：这是本地开发用的源，不对外暴露（§6.4）。容器形态走 fenix-server，不用这个端口。
             - "127.0.0.1:4873:4873"
         volumes:
-            # 已发布的包、上游缓存与用户库（htpasswd）都在这里；不命名会在重建容器时换一个
-            # 匿名卷，已发布的测试包随之丢失。
-            - npm-registry-storage:/verdaccio/storage
+            # 已发布的包、上游缓存与用户库（htpasswd）都在这里：bind 到本目录 ./data/verdaccio，
+            # 数据留在交付面内、可直接打包搬迁（§13.8）。旧命名卷 npm-registry-storage 的迁移办法见 README。
+            - ./data/verdaccio:/verdaccio/storage
         healthcheck:
             # 镜像里没有 curl / wget，用镜像自带的 node 直接探活。
             test:
@@ -52,5 +62,7 @@ services:
             retries: 3
             start_period: 10s
 
-volumes:
-    npm-registry-storage:
+networks:
+    fenix-server:
+        # 主服务层网络：顶层项目（仓库根 docker-compose.yml）创建，本目录只引用
+        external: true

@@ -62,12 +62,19 @@ import { z } from "zod/v4";
  * 四个键都在装配期被读一次并固化进模块配置（请求期不再读 env），故 `restartRequired: true`；只有
  * `RAGFLOW_API_KEY` 是密钥材料，`secret: true`（禁止进日志、响应与错误文案）。
  *
- * 声明 `dependencyServices`（A3）：本模块是仓库里唯一同时依赖「外部多容器栈」与「单容器可自编排服务」的
- * 模块，因此两条编排归属各有一例。RAGFlow 的编排是 `docker/ragflow/docker-compose.yml` 的多容器栈，
- * 重复定义会把同一栈写成两份真相，故取 `orchestration: "separate"` 并只留入口指针；Gotenberg 是单容器、
- * 仓库里没有既有编排，取 `"compose-overlay"` 让 `deploy/compose/overlays/knowledge.yml` 直接启停它——
- * 端口映射刻意对齐 `GOTENBERG_URL` 的默认值，避免生成编排与模块默认地址互相打架。两者 `required: false`：
- * 缺失只降级能力（Office 转换回退 LibreOffice CLI），不阻断主服务启动。
+ * 声明 `dependencyServices`（A3）：两个依赖服务都指向 `docker/ragflow/docker-compose.yml`，因此都取
+ * `orchestration: "separate"` 并只留入口指针。`separate` 的判据是「编排入口在 `composeFile`、本声明不重复
+ * 定义它的服务」，不是「编排是否属于第三方」：Gotenberg 并入 RAGFlow 栈后，它的镜像与宿主端口只在那一份
+ * compose 里定义一次；此处若继续沿用 `"compose-overlay"`，按契约就必须再声明 `image` / `ports`，同一容器
+ * 于是有了两份真相（registry 层也把 `image` / `ports` 与 `composeFile` 判为互斥）。两者共用同一份编排与
+ * 同一个开关 `FENIX_FEATURE_RAGFLOW`——Gotenberg 原先的独立目录 `docker/gotenberg/` 与
+ * `FENIX_FEATURE_GOTENBERG` 已退役，部署面不再有它的独立开关；但 ID 仍是 `gotenberg`（它仍是独立服务、
+ * 有独立探针），合并按 ID 做，与 RAGFlow 的声明互不覆盖。
+ *
+ * 地址口径：容器形态（RCS 在 `fenix-server` 内）走共享网络的服务名 `http://ragflow:9380` 与
+ * `http://gotenberg:3000`；宿主回环端口只服务源码运行（`bun run dev`），`GOTENBERG_URL` 的默认值
+ * `http://127.0.0.1:3200` 就是后者，与 compose 里发布的回环端口刻意对齐，避免编排与模块默认地址互相打架。
+ * 两者 `required: false`：缺失只降级能力（检索不可用、Office 转换回退 LibreOffice CLI），不阻断主服务启动。
  *
  * `create` 指向 `src/module.ts` 的组合根（进程级仓储单例），并保持惰性：registry 会被大量位置导入，
  * 不能在索引层就把 Drizzle、Elysia 与知识库服务图拖进来。
@@ -147,7 +154,9 @@ export const moduleManifest = {
         "Gotenberg（Office 转 PDF）服务基址，装配期由宿主投影为模块配置 gotenbergUrl；不可用时调用方回退" +
         " LibreOffice CLI。此处为补齐声明：默认值取自迁移前宿主直读实现（http://127.0.0.1:3200）。空串归一为" +
         " undefined 而非原样保留——模块配置对 gotenbergUrl 有 `.min(1)` 约束，原样透传空串会让服务在首次请求期" +
-        "报错，而迁移前的 `process.env.GOTENBERG_URL || 默认值` 是回退默认地址。",
+        "报错，而迁移前的 `process.env.GOTENBERG_URL || 默认值` 是回退默认地址。默认值只服务源码运行：服务并入" +
+        " docker/ragflow/docker-compose.yml 后发布的是宿主回环端口 3200，容器形态必须显式改成共享网络内的" +
+        " `http://gotenberg:3000`（端口口径与理由见该目录 README）。",
     },
   ],
   // 两个依赖服务都是可选的：缺失时知识库只损失对应能力（RAGFlow 给不了检索、Gotenberg 转不了 Office），
@@ -164,20 +173,20 @@ export const moduleManifest = {
       // 「自检通过、启动告警」的分裂口径。
       healthCheck: { kind: "http", addressKey: "RAGFLOW_API_URL", path: "/api/v1/system/healthz" },
       description:
-        "RAGFlow 检索服务。编排在 docker/ragflow/docker-compose.yml（多容器栈），本仓 deploy/compose 不重复定义；" +
+        "RAGFlow 检索服务。编排在 docker/ragflow/docker-compose.yml（多容器栈），本仓不重复定义；" +
         "未部署时知识库检索不可用，Agent 知识库绑定链路快速失败。",
     },
     {
       id: "gotenberg",
       required: false,
-      orchestration: "compose-overlay",
+      orchestration: "separate",
       envKeys: ["GOTENBERG_URL"],
-      image: "gotenberg/gotenberg:8",
-      // 宿主端口与 GOTENBERG_URL 的默认值 http://127.0.0.1:3200 对齐：容器内仍监听 3000。
-      ports: ["3200:3000"],
+      // 与 ragflow 同一份编排：服务定义、镜像与宿主端口都在那里，本声明只留入口指针。
+      composeFile: "docker/ragflow/docker-compose.yml",
       healthCheck: { kind: "http", addressKey: "GOTENBERG_URL", path: "/health" },
       description:
-        "Gotenberg（Office 转 PDF）。单容器且仓库内没有既有编排，故由 deploy/compose 的模块 overlay 直接启停；" +
+        "Gotenberg（Office 转 PDF）。编排在 docker/ragflow/docker-compose.yml（与 RAGFlow 同一 compose 项目、" +
+        "随开关 FENIX_FEATURE_RAGFLOW 一起启停），本仓不重复定义；容器形态按 http://gotenberg:3000 访问。" +
         "未部署时调用方回退 LibreOffice CLI，只在宿主没装 LibreOffice 的镜像里才真正不可用。",
     },
   ],

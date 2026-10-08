@@ -1,0 +1,61 @@
+# docker/opensandbox-server/ —— OpenSandbox Server 执行节点（DinD / direct 模式）
+#
+# 权威文档：docs/operations/docker-topology.md（§3 网络分层、§6 依赖目录契约、§8 env 规范）
+#
+# 独立项目启动（不与顶层 -f 叠加）：
+#   cd docker/opensandbox-server && cp .env.example .env && cp sandbox.toml.example sandbox.toml
+#   编辑 sandbox.toml（api_key / docker.host_ip / port_range_*）后：docker compose up -d
+#   或由 ./docker/deploy.sh 按 FENIX_FEATURE_OPENSANDBOX_SERVER=true 启动
+#
+# 网络接入（§3）：opensandbox-server 接入 fenix-server，供同机的 Cluster 以
+#   http://opensandbox-server:8080 注册；跨机部署时 Cluster 用宿主机地址 + OPENSANDBOX_SERVER_PORT。
+#   服务名在 fenix-server 网络上全局唯一，同一台机器不要同时起 direct 与 tunnel 两种形态。
+#
+# 数据落点：bind 到本文件同级的 ./data/ 与 ./workspace/（§13.8）；DinD 的内部镜像/容器状态在 ./data/docker。
+
+services:
+
+    opensandbox-server:
+        # 发布版本（固定 tag）：发布时更新此行。禁止环境变量插值与 latest（§13.7）。
+        # 本地自建（可选）：docker build -f docker/opensandbox-server/Dockerfile -t <本行镜像> docker/opensandbox-server
+        image: ghcr.io/huangpustar/fenixagent-opensandbox-server:v0.2.0
+        command:
+            - opensandbox-server
+            - --config
+            - /etc/opensandbox/sandbox.toml
+        # DinD 需要容器内的独立 Docker daemon；不要挂载宿主机 /var/run/docker.sock。
+        privileged: true
+        cgroup: host
+        restart: unless-stopped
+        ports:
+            # 管理面入口：Cluster 注册时用的 base_url 指向它，跨机部署必须可达，端口用 .env 覆盖（§6.4）。
+            - "${OPENSANDBOX_SERVER_PORT:-8090}:8080"
+            # DinD 内沙盒的对外端口段，必须与 sandbox.toml 的 [docker] port_range_* 一致。
+            - "${SANDBOX_PORT_MIN:-10000}-${SANDBOX_PORT_MAX:-10100}:${SANDBOX_PORT_MIN:-10000}-${SANDBOX_PORT_MAX:-10100}"
+        volumes:
+            # DinD 的内部 Docker 状态（镜像、容器、卷）。
+            - ./data/docker:/var/lib/docker
+            # Cluster 注册该节点时 workspace_root 用 /workspace；改路径需同步 sandbox.toml 的 allowed_host_paths。
+            - ./workspace:/workspace
+            # 离线沙盒镜像包：docker compose exec 进容器后 docker load -i /offline/*.tar。
+            - ./offline:/offline:ro
+            - ./sandbox.toml:/etc/opensandbox/sandbox.toml:ro
+            # Server 自身的状态目录（server.db 等）。
+            - ./data/opensandbox:/root/.opensandbox
+        healthcheck:
+            test:
+                - CMD-SHELL
+                - >-
+                    python -c "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8080/health', timeout=2)"
+            interval: 5s
+            timeout: 3s
+            retries: 30
+            start_period: 10s
+        networks:
+            - fenix-server
+
+networks:
+    # 主服务层由顶层 docker-compose.yml 创建；依赖目录只引用（§3）。
+    fenix-server:
+        external: true
+        name: fenix-server

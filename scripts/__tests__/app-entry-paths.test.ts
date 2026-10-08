@@ -190,7 +190,6 @@ test("开发、构建和静态托管使用 apps 入口", () => {
   expect(dockerfile).toContain("ENV RCS_APPLICATION_ROOT=/app");
   expect(dockerfile).toContain('CMD ["bun", "dist/index.js"]');
   expect(readRepoFile("docker-compose.yml")).toContain("run dist/index.js");
-  expect(readRepoFile("docker/prod/docker-compose.yml")).toContain("run dist/index.js");
 });
 
 // 生产镜像必须安装 apps workspace 依赖、构建完整 server，并只复制 apps 下的运行产物。

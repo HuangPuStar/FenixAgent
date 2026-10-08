@@ -401,6 +401,7 @@
     "packages/platform/platform-sdk": {
       "name": "@fenix/platform-sdk",
       "dependencies": {
+        "drizzle-orm": "^0.45.2",
         "zod": "^4.4.3",
       },
     },

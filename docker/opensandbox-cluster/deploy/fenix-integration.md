@@ -90,6 +90,12 @@ docker load -i /opt/fenix-deploy/opensandbox-images.tar
 
 docker-compose.yml 使用目录中的即可。
 
+> 本目录的 compose 是**独立的部署单元**：它自建 `opensandbox` 网络、管理端口对局域网开放，不加入平台侧的
+> `fenix-server` 网络（平台所在的机器用 `docker/opensandbox-cluster/` 与 `docker/opensandbox-server/` 两份，
+> 见 `docs/operations/docker-topology.md` §3、§6）。数据落在本目录（`opensandbox-cluster-data/`、
+> `opensandbox-server-docker-data/`、`workspace/`、`data/`）；`frps.toml` 引用上一级目录
+> `docker/opensandbox-cluster/frps.toml`，交付到沙盒机时需一并带上。
+
 生成`.env`，样例：
 
 ```dotenv

@@ -3,6 +3,14 @@ node_modules
 dist
 coverage
 .env
+# 部署配置（每台机器一份，模板见 docker/deploy.env.example）
+deploy.env
+# agent-sites 运行期产物（data 目录已由通用规则忽略）
+docker/agent-sites/public/
+# 编排的 bind 挂载点（运行期数据，不进版本控制）：dev 在仓库根；生产在 docker/main/ 下
+# （data / workspaces 由上面的通用规则忽略，workflow 需要单独一条）
+/workflow/
+docker/main/workflow/
 *.log
 .idea
 .vscode

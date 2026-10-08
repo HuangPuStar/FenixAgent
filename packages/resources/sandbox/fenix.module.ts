@@ -207,7 +207,7 @@ export const moduleManifest = {
   ],
   // 声明 `dependencyServices`（A3）：`RCS_SANDBOX_CLUSTER_URL` 指向的 OpenSandbox Cluster 是本仓代码
   // （`packages/opensandbox-cluster`），但它是**独立部署单元**而不是 assembly 模块——编排入口留在
-  // `docker/opensandbox-cluster/`，本仓 deploy/compose 不重复定义（取 `orchestration: "separate"`）。
+  // `docker/opensandbox-cluster/`，本仓不重复定义（取 `orchestration: "separate"`）。
   // `required: false` 与声明口径一致：未配置时只有 Cluster 管理面按「服务不可用」快速失败，本地执行路径不受影响。
   dependencyServices: [
     {

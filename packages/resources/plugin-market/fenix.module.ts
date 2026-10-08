@@ -45,7 +45,7 @@ import { pluginPackageResource } from "./src/server/access/plugin-package-resour
  * 以 `REGISTRY_NOT_CONFIGURED` 失败，浏览既有快照完全不读私有源，不受影响。
  *
  * 声明 `dependencyServices`（A2）：私有源的编排入口是 `docker/npm-registry/docker-compose.yml`，
- * 本仓 deploy/compose 不重复定义（`orchestration: "separate"`）。声明的价值在部署侧可见性——启用了本模块
+ * 本仓不重复定义（`orchestration: "separate"`）。声明的价值在部署侧可见性——启用了本模块
  * 的 profile 至少要能看到「市场依赖一个私有源、地址取哪个键、探针打哪里」，而不是等发布动作才暴露。
  * `required: false` 与上面 env 口径一致：源不可达只让发布 / 预览失败，浏览既有快照照常。
  *
@@ -137,7 +137,7 @@ export const moduleManifest = {
     },
   ],
   accessControlBindings: [pluginPackageResource.storage],
-  // 私有源的编排归属不在本仓 deploy/compose：`docker/npm-registry/docker-compose.yml` 是它自己的入口
+  // 私有源的编排归属不在本仓：`docker/npm-registry/docker-compose.yml` 是它自己的入口
   // （同一份编排里的 Verdaccio 启停与卷声明都在那里），在这里再定义一遍就是第二份真相。市场也可以指向
   // 外部私有源——地址键 `PLUGIN_MARKET_REGISTRY_URL` 就是部署方替换该入口的唯一开关。
   dependencyServices: [

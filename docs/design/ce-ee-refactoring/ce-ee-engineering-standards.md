@@ -338,7 +338,7 @@ Logger 保持 `@fenix/logger` 的独立进程级日志入口，不进入应用�
 
 ### 5.4 密钥与前端边界
 
-- `deploy/env/*.example` 是部署模板的真相来源，只有变量名、说明和非敏感样例；真实 `.env` 永不提交。
+- 环境变量模板是生成物（`.env.example`、`docker/main/.env.example`、`docker/deploy.env.example`），真相来源是代码声明（宿主 `env.ts` 与模块 `envDefinitions`），只有变量名、说明和非敏感样例；真实 `.env` 永不提交。
 - 密钥来自部署平台 secret store、Docker/K8s secret 或受控文件，应用日志、错误响应、测试 fixture 和诊断包均不得输出其值。
 - 子进程、Sandbox、Provider 只能获得按模块显式构造的环境白名单，不能透传整个 `process.env`。
 - 前端 `apps/web` 不读取 server env，也永远拿不到 secret。公开构建配置由独立 `webEnv` 声明；运行时变化的品牌、导航和功能开关从受控的 `/web` 配置接口读取。
@@ -429,9 +429,8 @@ packages/resources/agent-config/db/data-migrations/
 | `check-module-boundaries` | 检查禁止依赖与公开入口 |
 | `migrate` | 运行当前仓库的 DDL 迁移 |
 | `run-data-migrations` | 执行已登记且幂等的数据迁移 |
-| `release` | 串联迁移、部署与失败判断 |
 
-`deploy/compose` 使用“基础编排 + 可选 profile/overlay”：主服务、数据库、模型网关、知识库、Sandbox 等可独立启停。模块声明其依赖服务与健康检查；部署入口根据静态装配的模块生成/选择 profile，而不是由业务代码自行启动 Docker。
+`docker/` 承载编排：主服务与基础服务的编排是 dev 形态的仓库根 `docker-compose.yml`（带 `build:`）与生产形态的 `docker/main/docker-compose.yml`（无 `build:`，只用发布镜像；两份同项目名与网络，二选一运行），`docker/<name>/` 是每个可选依赖的独立编排（各自的 `docker-compose.yml` + `.env.example` + README），由 `docker/deploy.sh` 按 `docker/deploy.env` 的 feature 开关启停；依赖之间只经共享网络 `fenix-server` 互通，辅助服务留在各自项目网络。部署与发布顺序由脚本串联（拉镜像 → DDL 迁移 → 数据迁移 → 启动），不由业务代码自行启动 Docker，也不再有由模块声明生成的部署产物。权威文档：`docs/operations/docker-topology.md`。
 
 本节仅规定通用构建及部署职责。
 

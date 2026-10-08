@@ -61,10 +61,7 @@
       "!!**/coverage",
       "!!**/docs",
       "!!**/routeTree.gen.ts",
-      "!!apps/generated",
-      "!!deploy/manifests/modules.json",
-      "!!deploy/manifests/profiles",
-      "!!deploy/compose/overlays"
+      "!!apps/generated"
     ],
     "ignoreUnknown": true
   },

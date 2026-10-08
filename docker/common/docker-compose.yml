@@ -1,0 +1,135 @@
+# docker/common/ —— 平台基础服务（PostgreSQL / Redis / RustFS / MySQL）
+#
+# 权威文档：docs/operations/docker-topology.md §5
+# 由顶层 docker-compose.yml 通过 include 引入，随主服务一起启停；本文件不单独运行。
+#
+# 服务名（postgres / redis / rustfs / mysql）是 fenix-server 网络上的跨项目 DNS 名，
+# 属全局保留名：其他编排不得使用同名服务。fenix-server 网络由顶层项目定义（本文件只引用）。
+#
+# 开关（docker/deploy.env）：
+#   FENIX_FEATURE_REDIS=true → 启动 redis（--profile redis）
+#   FENIX_FEATURE_S3=true    → 启动 rustfs（--profile s3）
+#   FENIX_FEATURE_MYSQL=true → 启动 mysql（--profile mysql）
+# postgres 为必需项，恒启动。
+#
+# 为什么 mysql 在这里（而不是依赖目录里）：它是**可被多个栈共用**的基础设施——同一台机器上不该为每个栈
+# 再起一套 MySQL。放这里的两个直接后果，必须先看懂再改：
+#   1) 它是通用实例，**不含任何栈的业务初始化**（建业务库、应用 schema 迁移）。初始化归持有 schema 的那一方：
+#      `docker/workflow/` 与 `docker/ragflow/` 各用自己的初始化服务承担（见各目录 README）。本文件因此不引用任何依赖目录或
+#      `WORKFLOW_STUDIO_DIR` —— 顶层 include 的插值环境在**没装任何依赖**的机器上也要成立
+#      （`docker compose -f docker-compose.yml config` 必须能跑）。
+#   2) 消费方必须接入 fenix-server 才能按服务名解析到它；代价是消费方也暴露在该网络里（文档 §3）。
+#
+# 数据落点：一律 bind 到本文件同级的 ./data/ 下（不用命名卷）——数据随交付面整体搬迁/备份，
+# 不受 docker 全局卷影响，也不会因项目名变化而指向另一套空卷。相对路径相对**本文件**解析。
+
+services:
+
+    postgres:
+        # 必需：DATABASE_URL 在宿主 schema 中必填且无默认值（apps/server/src/env.ts），缺失即应用启动失败。
+        image: postgres:16-alpine
+        restart: unless-stopped
+        environment:
+            POSTGRES_USER: rcs
+            POSTGRES_DB: rcs
+            POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-rcs}
+        ports:
+            # 只绑回环：本地源码开发（bun run dev）需要，不对外暴露。
+            - "127.0.0.1:${POSTGRES_PORT:-5432}:5432"
+        volumes:
+            - ./data/postgres:/var/lib/postgresql/data
+        healthcheck:
+            test: ["CMD-SHELL", "pg_isready -U rcs"]
+            interval: 5s
+            timeout: 5s
+            retries: 5
+        networks:
+            - fenix-server
+
+    mysql:
+        # 可选：共享关系库（消费方：docker/workflow/ 的库 opencoze、docker/ragflow/ 的库 rag_flow；库名 / 账号名
+        # 与两栈原有取值保持一致，且都由消费方自己的一次性初始化服务创建，见文件头第 1 条）。
+        # 只做「实例」的事：字符集、账号、数据目录、健康检查。schema 与业务数据的初始化**不在这里**——
+        # 它属于持有 schema 的栈（见文件头第 1 条），因此共享实例可以在别的机器上为别的消费方服务。
+        image: mysql:8.4.5
+        profiles: ["mysql"]
+        restart: unless-stopped
+        # 与上游栈原先的 mysqld 参数一致；库/表自身的字符集在 schema 里另有声明，这里只改服务器默认值。
+        command: ["--character-set-server=utf8mb4", "--collation-server=utf8mb4_unicode_ci"]
+        environment:
+            # 凭据是共享键：只在主服务 env（生产 docker/main/.env、dev 仓库根 .env）定义（文档 §8）。默认值只服务本地，生产必须替换。
+            # 改口令只在数据目录为空时生效：口令写在数据目录里，已有数据时改 env 不会改库里的账号。
+            MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:-root}
+            MYSQL_DATABASE: ${MYSQL_DATABASE:-opencoze}
+            MYSQL_USER: ${MYSQL_USER:-coze}
+            MYSQL_PASSWORD: ${MYSQL_PASSWORD:-coze123}
+        ports:
+            # 只绑回环：供 mysqldump / 客户端排障；容器之间走 fenix-server 的 3306，不经过宿主。
+            - "127.0.0.1:${MYSQL_HOST_PORT:-3306}:3306"
+        volumes:
+            - ./data/mysql:/var/lib/mysql
+        healthcheck:
+            # 用真实查询而不是 `mysqladmin ping`：ping 在口令不对时同样返回成功（服务器活着就算通过），
+            # 那样「口令改了但数据目录还是旧的」这类漂移不会暴露；这里连不上就直接 unhealthy。
+            test:
+                [
+                    "CMD-SHELL",
+                    "mysql -h 127.0.0.1 -u\"$$MYSQL_USER\" -p\"$$MYSQL_PASSWORD\" -e 'SELECT 1' >/dev/null 2>&1",
+                ]
+            interval: 10s
+            timeout: 5s
+            retries: 5
+            start_period: 30s
+        networks:
+            - fenix-server
+
+    redis:
+        # 可选：未启用时缓存回退进程内 Map（apps/server/src/services/cache.ts），Y.Doc 快照不做持久化。
+        image: redis:7-alpine
+        profiles: ["redis"]
+        restart: unless-stopped
+        command: ["redis-server", "--appendonly", "yes"]
+        volumes:
+            - ./data/redis:/data
+        healthcheck:
+            test: ["CMD", "redis-cli", "ping"]
+            interval: 5s
+            timeout: 5s
+            retries: 5
+        networks:
+            - fenix-server
+
+    rustfs:
+        # 可选：S3 兼容对象存储（RustFS，不用 MinIO）。消费方只剩 docker/workflow/（桶 opencoze / milvus，
+        # 由它的 s3-init 建桶并播种图标）：原先它自带一套 MinIO，收敛到这里后按 fenix-server 上的服务名
+        # rustfs:9000 访问，凭据取主服务 env 的 RUSTFS_*。
+        # docker/ragflow/ 曾经也是消费方，现已改为**自带栈内实例**（`ragflow-rustfs`，只在本项目网络）——
+        # 那是用户裁定的特例：RAGFlow 用多桶模式，桶名是运行期 UUID（知识库 kb_id / 文件目录 parent_id），
+        # 而共享实例只有全实例一对凭据、实例侧给不出按消费方的桶策略，共享实例上无法为它建立有效边界。
+        # 理由与四条边界见 docker/ragflow/README.md 与 docs/operations/docker-topology.md §5。
+        # 代价（现在只对 workflow 成立）：凭据是**全实例一对**——拿到就能读写实例上任何桶，桶的归属只靠
+        # 消费方初始化服务自己的约定（本文件不引用任何依赖目录，见文件头第 1 条）；要按消费方分账号 /
+        # 分桶策略得等实例侧提供多用户与策略。
+        image: rustfs/rustfs:1.0.1
+        profiles: ["s3"]
+        restart: unless-stopped
+        environment:
+            RUSTFS_VOLUMES: /data
+            RUSTFS_ACCESS_KEY: ${RUSTFS_ACCESS_KEY:-fenix}
+            RUSTFS_SECRET_KEY: ${RUSTFS_SECRET_KEY:-fenix-local-dev}
+            RUSTFS_CONSOLE_ENABLE: "true"
+        volumes:
+            - ./data/rustfs:/data
+        # S3 API（9000）与控制台（9001）默认只在内网可用；本机调试需要时按下面两行放开，
+        # 且只绑回环（契约 §6.4）。
+        # ports:
+        #     - "127.0.0.1:9000:9000"
+        #     - "127.0.0.1:9001:9001"
+        healthcheck:
+            test: ["CMD", "curl", "-f", "http://localhost:9000/health"]
+            interval: 30s
+            timeout: 10s
+            retries: 3
+            start_period: 10s
+        networks:
+            - fenix-server

@@ -36,8 +36,13 @@ stdio 继承方式启动 `dsh-acp-demo`。API key 只经 `DSH_LLM_API_KEY` 环�
 
 ## 使用
 
+> **本目录是 `docker/` 下唯一仍从源码构建的依赖目录**：CI（`.github/workflows/docker-publish-sandbox.yml`）
+> 的 matrix 里没有 `dsh`，GHCR 上没有它的发布镜像，因此 compose 声明 `build:` 而不是 `image:`；
+> 同族的 peri / ccb / opencode 都只引用发布镜像。补上发布链路后这里改成 `image:` 即可。
+
 ```bash
-# 1. 修改 docker-compose.yml：RCS_SECRET、RCS_MACHINE_ID（唯一）、RCS_URL
+# 1. 填配置：cp .env.example .env，填 RCS_URL、RCS_SECRET、RCS_MACHINE_ID（唯一）
+#    （随主服务一键启动时在 docker/deploy.env 打开 FENIX_FEATURE_SANDBOX_DSH=true，脚本会注入 RCS_URL）
 # 2. 构建并启动
 docker compose -f docker/sandbox-dsh/docker-compose.yml build
 docker compose -f docker/sandbox-dsh/docker-compose.yml up -d
@@ -48,6 +53,21 @@ docker compose -f docker/sandbox-dsh/docker-compose.yml up -d
 
 模型不需要在容器内配置：主服务器为 Agent 绑定模型后，ccb handler 会把配置
 下发到 workspace 的 settings.local.json，wrapper 自动翻译。
+
+## 网络接入清单
+
+| 服务 | 接入 `fenix-server` | 理由 |
+| --- | --- | --- |
+| `sandbox-dsh` | 是 | 主动出网（容器内 acp-link 连主服务）、无入站流量，但要按服务名连主服务：同机一键启动时脚本注入 `ws://rcs:3000`，`rcs` 只在该网络内可解析，因此声明 `networks: [fenix-server]`（`external: true`）。代价是该网络内的 `postgres` / `redis` 对本容器也可达。 |
+
+跨机时填主服务可达地址（端口即 `FENIX_HTTP_PORT`，默认 3001）；独立节点机器上先
+`docker network create fenix-server`（只为名字解析），或改填宿主可达地址并删掉 `networks` 段换取彻底隔离。
+宿主不发布任何端口。
+
+## 数据与挂载
+
+数据在 `./data/workspaces`（bind，相对本 compose 文件解析）；容器以 root 运行，其创建的文件属主为 root。
+容器名固定为 `fenix-sandbox-dsh`（契约 §6.8）。
 
 ## 模型注入映射
 

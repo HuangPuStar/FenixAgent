@@ -11,8 +11,8 @@ import * as z from "zod/v4";
  * 逗号分隔**字符串**是部署面的表达（env 只能是字符串），拆成运行时消费的类型名数组是模块内的形状归一，
  * 归这里而不是宿主——节点类型名是本模块的领域知识，宿主不该理解它。
  *
- * 与 `envDefinitions` 的分工：那边承担启动期校验与部署模板（`deploy/env/rcs.example`）的生成，本文件是
- * 运行期读取面。**两处都不写默认值**——默认值只在声明侧（`envDefinitions` 的 schema 与 `defaultValue`），
+ * 与 `envDefinitions` 的分工：那边承担启动期校验与部署模板（`.env.example` / `docker/main/.env.example`）的生成，
+ * 本文件是运行期读取面。**两处都不写默认值**——默认值只在声明侧（`envDefinitions` 的 schema 与 `defaultValue`），
  * 宿主投影过来的对象因此是完整的；本文件的 schema 缺字段即报错，把「宿主投影漏字段」暴露在读配置的
  * 那一刻，而不是让它静默落成 undefined 传到更远处。
  */

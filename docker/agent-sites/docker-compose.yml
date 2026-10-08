@@ -1,0 +1,36 @@
+# docker/agent-sites/ —— Agent Sites 站点发布运行时（agent-config 模块使用）
+# 权威文档：docs/operations/docker-topology.md §6（依赖目录契约）
+#
+# 独立项目启动（站点可在独立机器部署）：
+#   cp docker/agent-sites/.env.example docker/agent-sites/.env
+#   docker compose -f docker/agent-sites/docker-compose.yml up -d
+# 随主服务一键启动：docker/deploy.env 里 FENIX_FEATURE_AGENT_SITES=true
+#
+# 网络：接入 fenix-server（主服务按 http://agent-sites:3000 访问）；
+# 宿主端口对外发布——站点本身要供外部访问。
+
+services:
+
+    agent-sites:
+        image: ghcr.io/konghayao/agent-sites:v0.3.2
+        restart: unless-stopped
+        networks:
+            - fenix-server
+        environment:
+            HOST: 0.0.0.0
+            PORT: 3000
+            # PocketBase 实例端口范围（站点运行时）
+            PB_PORT_MIN: 9000
+            PB_PORT_MAX: 11000
+            MAX_APPS: 50
+            # 共享键：随主服务启动时由主服务 env 提供；独立部署时在本目录 .env 提供（见 .env.example）
+            AGENT_SITES_MASTER_KEY: ${AGENT_SITES_MASTER_KEY:?AGENT_SITES_MASTER_KEY 未设置：请在主服务 env（随主服务启动：生产 docker/main/.env、dev 仓库根 .env）或 docker/agent-sites/.env（独立部署）配置}
+        volumes:
+            - ./data:/app/data
+            - ./public:/app/public
+        ports:
+            - "${AGENT_SITES_PORT:-26778}:3000"
+
+networks:
+    fenix-server:
+        external: true

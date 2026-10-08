@@ -1,4 +1,6 @@
 import { afterEach, describe, expect, test } from "bun:test";
+import type { SQLWrapper } from "drizzle-orm";
+import { PgDialect } from "drizzle-orm/pg-core";
 import {
   getDatabase,
   getModuleConfig,
@@ -6,7 +8,64 @@ import {
   initializeApplicationInfrastructure,
   overrideModuleConfig,
   resetApplicationInfrastructure,
+  runInTransaction,
 } from "../server";
+
+const POSTGRES_DIALECT = new PgDialect();
+
+interface TestTransaction {
+  readonly id: number;
+  execute(query: SQLWrapper): Promise<void>;
+}
+
+interface TestTransactionDatabase {
+  readonly events: string[];
+  readonly transactions: TestTransaction[];
+  transaction<T>(callback: (transaction: TestTransaction) => Promise<T>): Promise<T>;
+}
+
+type ExecuteHook = (query: SQLWrapper, sqlText: string) => Promise<void>;
+
+/** 创建记录事务边界与语句执行的最小数据库替身。 */
+function createTestTransactionDatabase(executeHook?: ExecuteHook): TestTransactionDatabase {
+  const events: string[] = [];
+  const transactions: TestTransaction[] = [];
+
+  return {
+    events,
+    transactions,
+    async transaction<T>(callback: (transaction: TestTransaction) => Promise<T>): Promise<T> {
+      const transaction: TestTransaction = {
+        id: transactions.length + 1,
+        async execute(query: SQLWrapper): Promise<void> {
+          const sqlText = POSTGRES_DIALECT.sqlToQuery(query.getSQL()).sql;
+          events.push(sqlText);
+          await executeHook?.(query, sqlText);
+        },
+      };
+      transactions.push(transaction);
+      events.push("begin");
+
+      try {
+        const result = await callback(transaction);
+        events.push("commit");
+        return result;
+      } catch (error) {
+        events.push("rollback");
+        throw error;
+      }
+    },
+  };
+}
+
+/** 创建可由测试显式放行的 Promise 屏障。 */
+function createDeferred(): { readonly promise: Promise<void>; resolve(): void } {
+  let resolve!: () => void;
+  const promise = new Promise<void>((complete) => {
+    resolve = complete;
+  });
+  return { promise, resolve };
+}
 
 afterEach(() => {
   resetApplicationInfrastructure();
@@ -106,5 +165,196 @@ describe("application infrastructure", () => {
     expect(() =>
       initializeApplicationInfrastructure({ database: {}, moduleConfigs: {}, redisConnection: null }),
     ).not.toThrow();
+  });
+
+  // 根事务回调内应暴露 tx，结束后恢复进程级根数据库。
+  test("根 runInTransaction 在回调中暴露 tx 并在完成后恢复根数据库", async () => {
+    const database = createTestTransactionDatabase();
+    initializeApplicationInfrastructure({ database, moduleConfigs: {}, redisConnection: null });
+
+    let callbackDatabase: TestTransaction | undefined;
+    await runInTransaction(
+      async () => {
+        callbackDatabase = getDatabase<TestTransaction>();
+        expect(callbackDatabase).toBe(database.transactions[0]);
+      },
+      { timeoutMs: 321 },
+    );
+
+    expect(getDatabase<typeof database>()).toBe(database);
+    expect(database.events).toEqual(["begin", "SET LOCAL statement_timeout = '321ms'", "commit"]);
+  });
+
+  // REQUIRED 嵌套事务复用外层 tx，并只收紧语句超时。
+  test("嵌套 REQUIRED 事务复用同一 tx 并收紧超时", async () => {
+    const database = createTestTransactionDatabase();
+    initializeApplicationInfrastructure({ database, moduleConfigs: {}, redisConnection: null });
+
+    let outerDatabase: TestTransaction | undefined;
+    let innerDatabase: TestTransaction | undefined;
+    await runInTransaction(
+      async () => {
+        outerDatabase = getDatabase<TestTransaction>();
+        await runInTransaction(
+          async () => {
+            innerDatabase = getDatabase<TestTransaction>();
+          },
+          { timeoutMs: 80 },
+        );
+      },
+      { timeoutMs: 321 },
+    );
+
+    expect(database.transactions).toHaveLength(1);
+    expect(outerDatabase).toBe(database.transactions[0]);
+    expect(innerDatabase).toBe(database.transactions[0]);
+    expect(database.events).toEqual([
+      "begin",
+      "SET LOCAL statement_timeout = '321ms'",
+      "SET LOCAL statement_timeout = '80ms'",
+      "commit",
+    ]);
+  });
+
+  // 并发嵌套调用必须共享已同步收紧的范围，不能由较宽的后续调用重新放宽数据库超时。
+  test("并发嵌套 REQUIRED 事务不会放宽已收紧的超时", async () => {
+    const statement80Started = createDeferred();
+    const releaseStatement80 = createDeferred();
+    const database = createTestTransactionDatabase(async (_query, sqlText) => {
+      if (sqlText === "SET LOCAL statement_timeout = '80ms'") {
+        statement80Started.resolve();
+        await releaseStatement80.promise;
+      }
+    });
+    initializeApplicationInfrastructure({ database, moduleConfigs: {}, redisConnection: null });
+
+    await runInTransaction(
+      async () => {
+        const inner80 = runInTransaction(async () => undefined, { timeoutMs: 80 });
+        await statement80Started.promise;
+        const inner160 = runInTransaction(async () => undefined, { timeoutMs: 160 });
+        await inner160;
+        releaseStatement80.resolve();
+        await Promise.all([inner80, inner160]);
+      },
+      { timeoutMs: 321 },
+    );
+
+    expect(database.transactions).toHaveLength(1);
+    expect(database.events).toEqual([
+      "begin",
+      "SET LOCAL statement_timeout = '321ms'",
+      "SET LOCAL statement_timeout = '80ms'",
+      "commit",
+    ]);
+  });
+
+  // 回调失败必须原样拒绝，并由根事务回滚。
+  test("回调抛错时回滚并拒绝同一错误", async () => {
+    const database = createTestTransactionDatabase();
+    initializeApplicationInfrastructure({ database, moduleConfigs: {}, redisConnection: null });
+    const expectedError = new Error("expected failure");
+
+    await expect(
+      runInTransaction(async () => {
+        throw expectedError;
+      }),
+    ).rejects.toBe(expectedError);
+
+    expect(database.events).toEqual(["begin", "SET LOCAL statement_timeout = '10000ms'", "rollback"]);
+  });
+
+  // 未指定 timeout 时应使用 10000ms 的默认 statement_timeout。
+  test("省略 timeout 时使用默认 statement_timeout", async () => {
+    const database = createTestTransactionDatabase();
+    initializeApplicationInfrastructure({ database, moduleConfigs: {}, redisConnection: null });
+
+    await runInTransaction(async () => undefined);
+
+    expect(database.events).toEqual(["begin", "SET LOCAL statement_timeout = '10000ms'", "commit"]);
+  });
+
+  // 非正、非整数或非有限 timeout 必须在开启事务前拒绝。
+  test.each([
+    0,
+    -1,
+    1.5,
+    Number.NaN,
+    Number.POSITIVE_INFINITY,
+  ])("非法 timeout %p 在开启事务前拒绝", async (timeoutMs) => {
+    const database = createTestTransactionDatabase();
+    initializeApplicationInfrastructure({ database, moduleConfigs: {}, redisConnection: null });
+
+    await expect(runInTransaction(async () => undefined, { timeoutMs })).rejects.toThrow();
+
+    expect(database.transactions).toHaveLength(0);
+  });
+
+  // 内层超时比外层宽松时不能放宽已生效的 statement_timeout。
+  test("内层较宽 timeout 不执行第二次 SET LOCAL", async () => {
+    const database = createTestTransactionDatabase();
+    initializeApplicationInfrastructure({ database, moduleConfigs: {}, redisConnection: null });
+
+    await runInTransaction(
+      async () => {
+        await runInTransaction(async () => undefined, { timeoutMs: 999 });
+      },
+      { timeoutMs: 80 },
+    );
+
+    expect(database.transactions).toHaveLength(1);
+    expect(database.events).toEqual(["begin", "SET LOCAL statement_timeout = '80ms'", "commit"]);
+  });
+
+  // 并发根事务的 AsyncLocalStorage 上下文必须相互隔离。
+  test("并发根事务分别读取各自的 tx", async () => {
+    const database = createTestTransactionDatabase();
+    initializeApplicationInfrastructure({ database, moduleConfigs: {}, redisConnection: null });
+    const bothEntered = createDeferred();
+    const release = createDeferred();
+    const callbackTransactions: Array<{ readonly before: TestTransaction; readonly after: TestTransaction }> = [];
+    let enteredCount = 0;
+    const markEntered = (): void => {
+      enteredCount += 1;
+      if (enteredCount === 2) {
+        bothEntered.resolve();
+      }
+    };
+
+    const first = runInTransaction(async () => {
+      const before = getDatabase<TestTransaction>();
+      markEntered();
+      await release.promise;
+      callbackTransactions.push({ before, after: getDatabase<TestTransaction>() });
+    });
+    const second = runInTransaction(async () => {
+      const before = getDatabase<TestTransaction>();
+      markEntered();
+      await release.promise;
+      callbackTransactions.push({ before, after: getDatabase<TestTransaction>() });
+    });
+
+    let barrierTimeout: ReturnType<typeof setTimeout> | undefined;
+    let outcomes: PromiseSettledResult<unknown>[] = [];
+    try {
+      await Promise.race([
+        bothEntered.promise,
+        new Promise<never>((_, reject) => {
+          barrierTimeout = setTimeout(() => reject(new Error("并发事务未能同时进入回调")), 1_000);
+        }),
+      ]);
+    } finally {
+      if (barrierTimeout) {
+        clearTimeout(barrierTimeout);
+      }
+      release.resolve();
+      outcomes = await Promise.allSettled([first, second]);
+    }
+
+    expect(outcomes.every((outcome) => outcome.status === "fulfilled")).toBeTrue();
+    expect(database.transactions).toHaveLength(2);
+    expect(callbackTransactions[0]?.before).toBe(callbackTransactions[0]?.after);
+    expect(callbackTransactions[1]?.before).toBe(callbackTransactions[1]?.after);
+    expect(callbackTransactions[0]?.before).not.toBe(callbackTransactions[1]?.before);
   });
 });

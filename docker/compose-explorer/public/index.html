@@ -1,0 +1,61 @@
+<!doctype html>
+<html lang="zh-CN">
+    <head>
+        <meta charset="utf-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1" />
+        <title>Compose 编排依赖图</title>
+        <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Ctext y='24' font-size='24'%3E%E2%97%88%3C/text%3E%3C/svg%3E" />
+        <link rel="stylesheet" href="/assets/style.css" />
+    </head>
+    <body>
+        <header class="topbar">
+            <div class="title">
+                <span class="logo">◈</span>
+                <div>
+                    <h1>Compose 编排依赖图</h1>
+                    <p id="summary">正在扫描 docker/ …</p>
+                </div>
+            </div>
+            <div class="topbar-actions">
+                <input id="search" type="search" placeholder="搜索编排 / 服务 / 镜像" autocomplete="off" />
+                <button id="refresh" type="button" title="重新扫描磁盘">重新扫描</button>
+            </div>
+        </header>
+
+        <nav class="toolbar">
+            <div class="group" role="group" aria-label="关系类型">
+                <span class="group-label">关系</span>
+                <label class="chip"><input type="checkbox" data-kind="include" checked /> include 引入</label>
+                <label class="chip"><input type="checkbox" data-kind="network" checked /> 共享网络</label>
+                <label class="chip"><input type="checkbox" data-kind="service" checked /> 服务引用</label>
+            </div>
+            <div class="group">
+                <button id="reset-view" class="ghost" type="button">重置视图</button>
+            </div>
+            <div class="legend" id="legend"></div>
+        </nav>
+
+        <main class="main">
+            <section class="graph-wrap">
+                <svg id="graph" role="img" aria-label="compose 编排依赖图"></svg>
+                <div class="hint">滚轮缩放 · 拖拽平移 · 点击节点看文件</div>
+                <div class="tooltip" id="tooltip" hidden></div>
+            </section>
+
+            <div class="splitter" id="splitter" title="拖动调整宽度"></div>
+
+            <aside class="panel">
+                <div class="tabs">
+                    <button class="tab is-active" data-tab="detail" type="button">详情</button>
+                    <button class="tab" data-tab="files" type="button">文件</button>
+                    <button class="tab" data-tab="warnings" type="button">告警 <span id="warning-count">0</span></button>
+                </div>
+                <div class="tab-body" id="tab-detail"></div>
+                <div class="tab-body" id="tab-files" hidden></div>
+                <div class="tab-body" id="tab-warnings" hidden></div>
+            </aside>
+        </main>
+
+        <script type="module" src="/assets/main.ts"></script>
+    </body>
+</html>
