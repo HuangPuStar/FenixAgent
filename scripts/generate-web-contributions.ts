@@ -197,7 +197,7 @@ async function selectContributions(
   return selected;
 }
 
-function renderContributions(selected: readonly SelectedContribution[]): string {
+function renderContributions(selected: readonly SelectedContribution[], webIds: readonly string[]): string {
   const imports = selected.map(
     (specifier, index) => `import { webContribution as webContribution${index} } from "${specifier}";`,
   );
@@ -215,6 +215,9 @@ function renderContributions(selected: readonly SelectedContribution[]): string 
     " * 本文件是它的浏览器一半，真正把载荷 import 进来。两端由同一份 profile 与同一批 manifest 派生。",
     " */",
     `export const generatedWebContributions = [${names}] as const satisfies readonly ${CONTRIBUTION_TYPE_NAME}[];`,
+    "",
+    "/** 构建期能力上界，ID 来自 manifest.web.id，与贡献载荷保持一一对应。 */",
+    `export const generatedWebContributionEntries = [${webIds.map((id, index) => `{ id: ${JSON.stringify(id)}, contribution: webContribution${index} }`).join(", ")}] as const;`,
     "",
   ].join("\n");
 }
@@ -235,7 +238,7 @@ export async function generateWebContributions(
   const sources = await Promise.all(candidates.map((candidate) => loadManifestSource(repositoryRoot, candidate)));
 
   const selected = await selectContributions(repositoryRoot, webIds, enabledIds, sources);
-  const generatedSource = renderContributions(selected);
+  const generatedSource = renderContributions(selected, webIds);
 
   if (options.check) {
     let currentSource: string;

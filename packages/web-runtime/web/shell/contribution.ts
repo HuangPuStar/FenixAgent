@@ -11,10 +11,8 @@
 // 依赖拖进服务端装配图（§1.6 用户裁定：浏览器产物独立于 server registry）。两者是同一概念的
 // 两侧：server 侧选择「哪些 web 模块参与装配」，浏览器侧承载「装配什么」。
 //
-// 载荷只声明**导航**一项能力。standards §4.1 提到的另外三类（权限提示、页面元数据、路由目标声明）
-// 暂不实现：路由目标已由导航项的 `id` 表达（Shell 组装 `/agent/<id>`），页面本体走 TanStack 文件
-// 路由（standards:274「不要尝试运行时注入路由」），权限提示与页面元数据目前没有第二个真实消费方。
-// 按「抽象延迟到第二个真实用例出现」的原则留白，而不是先把四类槽位一次铺满。
+// 导航入口同时作为装配能力的路径归属；非导航入口以 routePrefixes 补充，统一由 Shell 拦截。
+// 页面本体仍走 TanStack 文件路由，不在运行期注入路由。
 
 import type { LucideIcon } from "lucide-react";
 
@@ -53,4 +51,6 @@ export interface WebNavigationItem {
 /** 一个包向 WebShell 贡献的浏览器面能力。目前只有导航。 */
 export interface WebAppContribution {
   readonly navigation?: readonly WebNavigationItem[];
+  /** 非导航入口的路径前缀；导航入口及子路径由 Shell 自动派生，额外页面在 owner 处声明。 */
+  readonly routePrefixes?: readonly string[];
 }

@@ -14,7 +14,10 @@ const apiWorkflowRoutes = createApiWorkflowRoutes({ authGuardPlugin });
 // `/web` 聚合同样是工厂：1.5e 起路由贡献由装配期登记（`bootstrap/route-contributions`）。本用例检查
 // 「文档示例指向真实注册的路由」，因此两个槽都喂各包的真实路由（不跑装配的理由见 helper 文件头）；
 // 宿主手写的只剩 `branding` 与 `/web/config` 聚合实例，由 `createWebApp` 自己挂载。
-const webRoutes = createWebApp({ web: createTestWebRoutes(), webConfig: createTestWebConfigRoutes() });
+const webRoutes = createWebApp(
+  { web: createTestWebRoutes(), webConfig: createTestWebConfigRoutes() },
+  { modules: [], web: [] },
+);
 
 interface DocumentedRequest {
   file: string;

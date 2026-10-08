@@ -32,7 +32,7 @@ import { buildHealthInfo } from "./services/build-info";
  */
 const startedAt = new Date().toISOString();
 
-const { profile, env } = await resolveAssemblyEnv();
+const { profile, env, assemblyModules } = await resolveAssemblyEnv();
 applyEnv(env);
 
 // 装配期接线 + 启动序（两者都必须在 app 构造前完成：`app-route` 贡献是在装配时登记、在下方
@@ -109,7 +109,12 @@ const app = new Elysia({
   // better-auth handler
   .use(authPlugin)
   // Web control panel routes：装配期登记的 app-route 贡献按聚合槽注入（未启用贡献的槽位为空数组）
-  .use(createWebApp({ web: takeRouteContributions(WEB_SLOT), webConfig: takeRouteContributions(WEB_CONFIG_SLOT) }))
+  .use(
+    createWebApp(
+      { web: takeRouteContributions(WEB_SLOT), webConfig: takeRouteContributions(WEB_CONFIG_SLOT) },
+      assemblyModules,
+    ),
+  )
   // External API routes：装配期登记的 app-route 贡献按 `api` 聚合槽注入
   // （`/api/agents`、`/api/knowledge-bases`、`/api/skills`、`/api/models`、`/api/mcp`、
   // `/api/system/*`、`/api/environments/*`、`/api/workflows/*` 与 OpenAI 兼容对话端点）

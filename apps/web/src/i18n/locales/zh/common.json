@@ -1,4 +1,10 @@
 {
+  "assembly": {
+    "loading": "正在读取模块启用状态...",
+    "disabled": "模块 {{module}} 未启用",
+    "disabledHint": "当前部署未启用此模块，请联系管理员确认装配配置。",
+    "failed": "模块清单读取失败，暂按构建期能力继续使用。"
+  },
   "loading": "加载中...",
   "save": "保存",
   "cancel": "取消",

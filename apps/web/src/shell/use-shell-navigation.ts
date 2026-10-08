@@ -12,6 +12,8 @@ import { sidebarConfigApi } from "@fenix/agent-config/web";
 import { useRequest } from "ahooks";
 import { useTranslation } from "react-i18next";
 import { NS } from "@/src/i18n";
+import { useAssemblyCapabilities } from "./AssemblyCapabilitiesProvider";
+import { assemblyHiddenTabs } from "./assembly-capabilities";
 import { ASSEMBLED_NAV_GROUPS, filterNavGroups, type ShellNavGroup } from "./shell-navigation";
 
 /**
@@ -24,6 +26,7 @@ import { ASSEMBLED_NAV_GROUPS, filterNavGroups, type ShellNavGroup } from "./she
  * 陈旧时间沿用迁移前的取值，行为与旧实现逐字一致。
  */
 export function useShellNavigation(): ShellNavGroup[] {
+  const { enabled, loading } = useAssemblyCapabilities();
   const { t } = useTranslation(NS.SIDEBAR);
   const { data } = useRequest(
     async () => {
@@ -42,5 +45,5 @@ export function useShellNavigation(): ShellNavGroup[] {
     items: group.items,
   }));
 
-  return filterNavGroups(translatedGroups, data ?? []);
+  return loading ? [] : filterNavGroups(translatedGroups, [...(data ?? []), ...assemblyHiddenTabs(enabled)]);
 }
