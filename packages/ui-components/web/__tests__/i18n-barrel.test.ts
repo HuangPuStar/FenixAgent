@@ -43,7 +43,7 @@ const PKG_ROOT = resolve(WEB_ROOT, "..");
  *   `web/agent-tree/`（取数与四种领域操作留在 `@fenix/agent-config/web`），它渲染的 13 条文案
  *   （区标题、空态、五个动作标题、展开/收起、远程标记）随之落在 `agentTree.*`，324 → 337。
  */
-const KEY_BASELINE = 337;
+const KEY_BASELINE = 341;
 
 const EN = JSON.parse(readFileSync(join(WEB_ROOT, "i18n/locales/en/uiComponents.json"), "utf8")) as Record<
   string,

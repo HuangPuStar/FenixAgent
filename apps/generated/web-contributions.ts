@@ -18,3 +18,6 @@ import type { WebAppContribution } from "@fenix/web-runtime/shell/contribution";
  * 本文件是它的浏览器一半，真正把载荷 import 进来。两端由同一份 profile 与同一批 manifest 派生。
  */
 export const generatedWebContributions = [webContribution0, webContribution1, webContribution2, webContribution3, webContribution4, webContribution5, webContribution6, webContribution7, webContribution8] as const satisfies readonly WebAppContribution[];
+
+/** 构建期能力上界，ID 来自 manifest.web.id，与贡献载荷保持一一对应。 */
+export const generatedWebContributionEntries = [{ id: "agent-config", contribution: webContribution0 }, { id: "identity", contribution: webContribution1 }, { id: "knowledge", contribution: webContribution2 }, { id: "mcp", contribution: webContribution3 }, { id: "memory", contribution: webContribution4 }, { id: "model-management", contribution: webContribution5 }, { id: "skill", contribution: webContribution6 }, { id: "task", contribution: webContribution7 }, { id: "workflow", contribution: webContribution8 }] as const;

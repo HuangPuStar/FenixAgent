@@ -8,6 +8,8 @@ import { ErrorBoundary, type FallbackProps } from "react-error-boundary";
 import { useTranslation } from "react-i18next";
 import { Toaster } from "sonner";
 import { ErrorPage } from "@/src/components/error-page";
+import { AssemblyCapabilitiesProvider } from "@/src/shell/AssemblyCapabilitiesProvider";
+import { AssemblyRouteGate } from "@/src/shell/AssemblyRouteGate";
 
 // 根布局边界（§7.1 放置矩阵第 1 行）：整个应用的兜底——`RootComponent` 四个分支（会话加载中 /
 // 未登录直出 / 未登录壳 / 主壳）里任何没被下级边界接住的渲染异常都在这里收口，不再整页白屏。
@@ -18,7 +20,9 @@ export const Route = createRootRoute({
       FallbackComponent={RootErrorFallback}
       onError={(error, info) => console.error("[Root] 渲染失败", error, info)}
     >
-      <RootComponent />
+      <AssemblyCapabilitiesProvider>
+        <RootComponent />
+      </AssemblyCapabilitiesProvider>
     </ErrorBoundary>
   ),
   notFoundComponent: NotFoundPage,
@@ -63,7 +67,9 @@ function RootComponent() {
   if (!session) {
     return (
       <ThemeProvider>
-        <Outlet />
+        <AssemblyRouteGate>
+          <Outlet />
+        </AssemblyRouteGate>
       </ThemeProvider>
     );
   }
@@ -71,7 +77,9 @@ function RootComponent() {
   return (
     <ThemeProvider>
       <OrgProvider>
-        <Outlet />
+        <AssemblyRouteGate>
+          <Outlet />
+        </AssemblyRouteGate>
         <Toaster richColors closeButton position="top-right" />
       </OrgProvider>
     </ThemeProvider>

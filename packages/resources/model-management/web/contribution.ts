@@ -22,6 +22,7 @@ import { Binary, Cpu, Layers } from "lucide-react";
 import { MODELS_NS } from "./i18n/namespace";
 
 export const webContribution: WebAppContribution = {
+  routePrefixes: ["/agent/model-gateway-usage", "/admin/model-gateway"],
   navigation: [
     { id: "models", groupId: "config", order: 10, ns: MODELS_NS, labelKey: "nav.models", icon: Cpu },
     { id: "algorithms", groupId: "config", order: 20, ns: MODELS_NS, labelKey: "nav.algorithms", icon: Binary },

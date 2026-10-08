@@ -339,7 +339,9 @@ export function AssistantBubble({
             // Chunks lack a unique identifier.
             // biome-ignore lint/suspicious/noArrayIndexKey: 同上前提——协议块无唯一 id，且本包启用了 react 域规则；chunks 不重排。
             <div key={i} className="min-w-0 max-w-full text-sm text-slate-700 leading-relaxed">
-              <MessageResponse envId={envId}>{chunk.text}</MessageResponse>
+              <MessageResponse envId={envId} sessionId={sessionId} isStreaming={!!isStreaming && i === all.length - 1}>
+                {chunk.text}
+              </MessageResponse>
             </div>
           );
         })}
