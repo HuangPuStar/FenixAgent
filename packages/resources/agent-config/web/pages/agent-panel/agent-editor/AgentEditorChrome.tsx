@@ -1,6 +1,16 @@
 import "./AgentEditorChrome.css";
 import { StatusBadge } from "@fenix/ui-components/config/StatusBadge";
 import { cn } from "@fenix/ui-components/lib/cn";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@fenix/ui-components/ui/alert-dialog";
 import { Button } from "@fenix/ui-components/ui/button";
 import { Input } from "@fenix/ui-components/ui/input";
 import { NS } from "@fenix/web-runtime/i18n/namespace";
@@ -107,9 +117,9 @@ export function AgentEditorHeader({
 
 /**
  * 模板面板：工作区右栏常驻的模板列表（2026-10-09 从「从模板构建」对话框改为常驻列，故不再有遮罩、
- * 关闭动作与焦点回还）。搜索、结果计数、分页与「点击应用」原样保留；应用后表单字段就地更新，
- * 反馈由页脚草稿态承担。是否渲染由调用方决定：只读态或无模板时整列不渲染，工作区随之回落两列
- * （见 `agent-editor-classes.ts` 的 `NO_TEMPLATE_PANEL`）；列几何见同文件的 `TEMPLATE_PANEL`。
+ * 关闭动作与焦点回还）。搜索、结果计数与分页原样保留；卡片点击先经确认弹窗（见下），应用后表单字段
+ * 就地更新，反馈由页脚草稿态承担。是否渲染由调用方决定：只读态或无模板时整列不渲染，工作区随之回落
+ * 两列（见 `agent-editor-classes.ts` 的 `NO_TEMPLATE_PANEL`）；列几何见同文件的 `TEMPLATE_PANEL`。
  */
 export function AgentTemplatePanel({
   templates,
@@ -121,70 +131,107 @@ export function AgentTemplatePanel({
   const { t } = useTranslation(NS.AGENTS);
   const [query, setQuery] = useState("");
   const [page, setPage] = useState(0);
+  /**
+   * 待应用模板与弹窗开关**分离**：关闭时保留 `pending`——Radix 的关闭动画期间标题仍在渲染，
+   * 清空会让「应用模板「X」？」闪成空名字；每次打开前必被覆盖，不存在脏读。
+   */
+  const [pending, setPending] = useState<AgentTemplate | null>(null);
+  const [confirmOpen, setConfirmOpen] = useState(false);
   const filtered = templates.filter((template) =>
     `${template.name} ${template.description}`.toLocaleLowerCase().includes(query.toLocaleLowerCase()),
   );
   const paged = paginateAgentEditorOptions(filtered, page);
   return (
-    <aside className={TEMPLATE_PANEL} aria-label={t("editor.templateTitle")}>
-      <div data-slot="editor-template-header">
-        <span className={EYEBROW} data-slot="editor-template-eyebrow">
-          {t("editor.templatesEyebrow")}
-        </span>
-        {/* 原生 `<h3>` / `<p>`（原 `DialogTitle` / `DialogDescription`）：刻度不变，但不再经组件内的 `cn`
-            合并——`text-16` 不在 tailwind-merge 的字号组里，与同一元素上的 `text-slate-800` 一起进 `cn`
-            会被丢掉（`docs/design/issues/2026-09-28-web-style-closure-defects.md` §五.2）。 */}
-        <h3
-          className="mt-1.5 text-16 leading-none font-semibold tracking-tight text-slate-800"
-          data-slot="editor-template-title"
-        >
-          {t("editor.templateTitle")}
-        </h3>
-        <p className="mt-1.5 text-xs leading-normal text-slate-500" data-slot="editor-template-description">
-          {t("editor.templateDescription")}
-        </p>
-      </div>
-      <div className="mt-3.5">
-        <Input
-          className="border-slate-200 bg-white"
-          value={query}
-          onChange={(event) => {
-            setQuery(event.target.value);
-            setPage(0);
-          }}
-          aria-label={t("editor.searchTemplates")}
-          placeholder={t("editor.searchTemplates")}
-        />
-        <p role="status" className="mt-1.5 text-3xs leading-normal text-slate-500">
-          {t("editor.resultCount", { count: filtered.length, total: templates.length })}
-        </p>
-      </div>
-      {/* 列表不再自设高度：整列是滚动容器（`TEMPLATE_PANEL` 的 `overflow-y-auto`），嵌套滚动会让滚轮
-          落在卡片上时吃掉一次滚动却不移动列表。 */}
-      <div className="mt-2.5 grid gap-1.75">
-        {filtered.length ? (
-          paged.items.map((template) => (
-            <button key={template.id} type="button" className={TEMPLATE_CARD} onClick={() => onApply(template)}>
-              <strong className="text-xs text-slate-700">{template.name}</strong>
-              <p className="mt-1 line-clamp-2 text-3xs leading-normal text-slate-400">{template.description}</p>
-              <span className="agent-editor-template-count mt-1.75 block text-3xs text-blue-600">
-                {t("editor.templateSkillCount", { count: template.skills.length })}
-              </span>
-            </button>
-          ))
-        ) : (
-          <p className="py-8 px-3 text-center text-3xs text-gray-400" data-slot="editor-template-empty">
-            {t("editor.noMatchingResources")}
+    <>
+      <aside className={TEMPLATE_PANEL} aria-label={t("editor.templateTitle")}>
+        <div data-slot="editor-template-header">
+          <span className={EYEBROW} data-slot="editor-template-eyebrow">
+            {t("editor.templatesEyebrow")}
+          </span>
+          {/* 原生 `<h3>` / `<p>`（原 `DialogTitle` / `DialogDescription`）：刻度不变，但不再经组件内的 `cn`
+              合并——`text-16` 不在 tailwind-merge 的字号组里，与同一元素上的 `text-slate-800` 一起进 `cn`
+              会被丢掉（`docs/design/issues/2026-09-28-web-style-closure-defects.md` §五.2）。 */}
+          <h3
+            className="mt-1.5 text-16 leading-none font-semibold tracking-tight text-slate-800"
+            data-slot="editor-template-title"
+          >
+            {t("editor.templateTitle")}
+          </h3>
+          <p className="mt-1.5 text-xs leading-normal text-slate-500" data-slot="editor-template-description">
+            {t("editor.templateDescription")}
           </p>
-        )}
-      </div>
-      <EditorPagination
-        className="mt-2.5"
-        page={paged.page}
-        pageSize={AGENT_EDITOR_PAGE_SIZE}
-        total={filtered.length}
-        onPageChange={setPage}
-      />
-    </aside>
+        </div>
+        <div className="mt-3.5">
+          <Input
+            className="border-slate-200 bg-white"
+            value={query}
+            onChange={(event) => {
+              setQuery(event.target.value);
+              setPage(0);
+            }}
+            aria-label={t("editor.searchTemplates")}
+            placeholder={t("editor.searchTemplates")}
+          />
+          <p role="status" className="mt-1.5 text-3xs leading-normal text-slate-500">
+            {t("editor.resultCount", { count: filtered.length, total: templates.length })}
+          </p>
+        </div>
+        {/* 列表不再自设高度：整列是滚动容器（`TEMPLATE_PANEL` 的 `overflow-y-auto`），嵌套滚动会让滚轮
+            落在卡片上时吃掉一次滚动却不移动列表。 */}
+        <div className="mt-2.5 grid gap-1.75">
+          {filtered.length ? (
+            paged.items.map((template) => (
+              <button
+                key={template.id}
+                type="button"
+                className={TEMPLATE_CARD}
+                onClick={() => {
+                  setPending(template);
+                  setConfirmOpen(true);
+                }}
+              >
+                <strong className="text-xs text-slate-700">{template.name}</strong>
+                <p className="mt-1 line-clamp-2 text-3xs leading-normal text-slate-400">{template.description}</p>
+                <span className="agent-editor-template-count mt-1.75 block text-3xs text-blue-600">
+                  {t("editor.templateSkillCount", { count: template.skills.length })}
+                </span>
+              </button>
+            ))
+          ) : (
+            <p className="py-8 px-3 text-center text-3xs text-gray-400" data-slot="editor-template-empty">
+              {t("editor.noMatchingResources")}
+            </p>
+          )}
+        </div>
+        <EditorPagination
+          className="mt-2.5"
+          page={paged.page}
+          pageSize={AGENT_EDITOR_PAGE_SIZE}
+          total={filtered.length}
+          onPageChange={setPage}
+        />
+      </aside>
+      {/* 应用前确认：模板一次性替换 Prompt 与 Skills（创建态还替换名称），卡片点击不直接生效。
+          确认按钮点击后由 Radix 自行关闭并触发 `onOpenChange`；取消按钮复用 `dialog.cancel`，
+          描述复用面板顶部的 `templateDescription`（同一条替换规则，不复制同义键）。 */}
+      <AlertDialog open={confirmOpen} onOpenChange={setConfirmOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>{t("editor.applyTemplateTitle", { name: pending?.name ?? "" })}</AlertDialogTitle>
+            <AlertDialogDescription>{t("editor.templateDescription")}</AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>{t("dialog.cancel")}</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => {
+                if (pending) onApply(pending);
+              }}
+            >
+              {t("editor.applyTemplateConfirm")}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+    </>
   );
 }

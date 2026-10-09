@@ -68,6 +68,8 @@
     "templateDescription": "模板会替换 Prompt 和 Skills；创建时还会替换名称。",
     "searchTemplates": "搜索模板",
     "templateSkillCount": "包含 {{count}} 个 Skill",
+    "applyTemplateTitle": "应用模板「{{name}}」？",
+    "applyTemplateConfirm": "应用模板",
     "selectedCount": "已选 {{count}} 项",
     "resultCount": "显示 {{count}} / 共 {{total}} 项",
     "previousPage": "上一页",

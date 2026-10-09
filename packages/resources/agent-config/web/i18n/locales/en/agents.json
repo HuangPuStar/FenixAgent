@@ -68,6 +68,8 @@
     "templateDescription": "A template replaces Prompt and Skills, and also the name when creating.",
     "searchTemplates": "Search templates",
     "templateSkillCount": "Includes {{count}} Skill(s)",
+    "applyTemplateTitle": "Apply the “{{name}}” template?",
+    "applyTemplateConfirm": "Apply template",
     "selectedCount": "{{count}} selected",
     "resultCount": "Showing {{count}} of {{total}}",
     "previousPage": "Previous",

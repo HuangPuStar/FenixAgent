@@ -56,6 +56,10 @@ const WEB_ROOT = resolve(import.meta.dir, "..");
  * （`use-agent-editor.ts` 的 `description`），只随汇总栏一起失去了一个消费点。
  * 与 2026-09-22 那次同理：删的是**全仓零引用的死键**，不是「本包消费的键」，故保留原判据
  * （仍为下界断言，继续拦住静默缩水）。329 - 18 = 311。
+ *
+ * 上调到 313（2026-10-09，模板应用确认弹窗）：模板卡点击由「直接应用」改为经 `AlertDialog` 确认，
+ * 新增 `applyTemplateTitle`（`{{name}}` 插值）与 `applyTemplateConfirm` 两键；描述复用
+ * `templateDescription`、取消复用 `dialog.cancel`，不复制同义键。311 + 2 = 313，下界不变。
  */
 const MIGRATED_KEY_BASELINE = 311;
 
