@@ -251,6 +251,30 @@ describe("DefaultAccessControl", () => {
     );
   });
 
+  // 创建期已解析的范围必须原样交给 scope store，不能在初始化阶段再次按 member 身份判定 create。
+  test("initializes the scope store with the already resolved scope", async () => {
+    const scope: ResourceScope = { organizationId: "org-1", visibility: "private" };
+    const initialized: Array<{ resourceType: string; resourceId: string; scope: ResourceScope }> = [];
+    const accessControl = new DefaultAccessControl({
+      initialize: async (input) => {
+        initialized.push(input);
+      },
+      getMany: async () => new Map(),
+      update: async () => undefined,
+      remove: async () => undefined,
+    });
+
+    await accessControl.initializeResourceAccess({
+      actor: actor("member"),
+      resource,
+      resourceId: "resource-1",
+      scope,
+    });
+
+    expect(initialized).toEqual([{ resourceType: resource.type, resourceId: "resource-1", scope }]);
+    expect(initialized[0]?.scope).toBe(scope);
+  });
+
   // 列表条件是不透明句柄：只暴露产出者、资源类型与动作，载荷键不进 JSON、不被资源模块读取。
   test("emits an opaque list constraint carrying the resolved facts", async () => {
     const accessControl = create({ visibility: "private" });
