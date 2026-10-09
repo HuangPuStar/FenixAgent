@@ -49,8 +49,15 @@ const WEB_ROOT = resolve(import.meta.dir, "..");
  * 动作结果 5 键（`restartFailed` / `stopSuccess` / `stopInstanceFailed` / `deleteSuccess` / `deleteFailed`）、
  * 删除确认 2 键（`deleteAgentTitle` / `deleteAgentConfirm`），共 10 键——进入失败复用既有
  * `enterFailed`，不复制同义键。319 + 10 = 329。
+ *
+ * 下调到 311（2026-10-09，编辑器右栏改版）：右栏「当前配置」汇总栏整栏删除、头部「从模板构建」
+ * 按钮随模板列表改为常驻面板，两者独占的 18 个键一并删除（`configurationOverview`、`summary*` 15 个、
+ * `buildFromTemplate`）。`defaultRuntime` 不在其中：它同时是运行环境分区默认节点的说明
+ * （`use-agent-editor.ts` 的 `description`），只随汇总栏一起失去了一个消费点。
+ * 与 2026-09-22 那次同理：删的是**全仓零引用的死键**，不是「本包消费的键」，故保留原判据
+ * （仍为下界断言，继续拦住静默缩水）。329 - 18 = 311。
  */
-const MIGRATED_KEY_BASELINE = 329;
+const MIGRATED_KEY_BASELINE = 311;
 
 const EN = JSON.parse(readFileSync(join(WEB_ROOT, "i18n/locales/en/agents.json"), "utf8")) as Record<string, unknown>;
 const ZH = JSON.parse(readFileSync(join(WEB_ROOT, "i18n/locales/zh/agents.json"), "utf8")) as Record<string, unknown>;

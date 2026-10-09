@@ -105,7 +105,7 @@ identity 三轮、editor 两轮、task / 其余各两轮；六域同批先后被
 ## 五、未决与候选
 
 1. **10.5px**（`.fenix-sidebar-logo-sub`）：点号不能构成合法 CSS token 名（`--text-10.5` 不可用；`--text-10-5` 名字可读性差）→ **已裁定并落实：归一到 `text-3xs`（10px，副字标 −0.5px）**；字距同批补档为 `tracking-4`（第四波），对应规则已随类名落地删除。
-2. **`text-16` 的顺序依赖**：编辑器 `DialogTitle` 上 `text-16` 与库内 `text-lg` 并存靠产物顺序决胜（tailwind-merge 不把 `text-16` 归入字号组）——已记录在 `AgentEditorChrome.css` 头注释；改库默认类时必须重跑产物抽样。
+2. **`text-16` 的顺序依赖**：编辑器 `DialogTitle` 上 `text-16` 与库内 `text-lg` 并存靠产物顺序决胜（tailwind-merge 不把 `text-16` 归入字号组，实测 `twMerge("text-lg …", "… text-16 … text-slate-800")` 会丢掉 `text-16`）；改库默认类时必须重跑产物抽样。**该实例已消失（2026-10-09）**：模板列表改为右栏常驻面板时 `DialogTitle` 换成原生 `<h3>`（不再经 `cn` 合并，`text-16` 与同元素上的 `text-slate-800` 不再互斥）；泛化结论仍成立——`text-<自补档>` 不要与同元素的文字色类一起进 `cn`。
 3. **机械门禁候选**：为 `*.css` 增加「px 字号 / 圆角 / 间距字面量与裸色值」的棘轮扫描（与 `check:web-style` 同族，只降不升），可机械拦截 E2 / E3 的复发；需先定义合法保留白名单（第三方 DOM、生成 DOM、**不含 token 引用的复合值**、字距、伪元素等）。Tailwind 工具类侧的 `var(...)` token 引用（包括与 `calc(...)`、下划线空格转义或其他函数组合的复合值）按 `FCP-WEB-01` 的豁免处理，不应作为 CSS 回迁候选。
 4. **流程候选**：收口类任务开工模板（终态定义 + 保留清单 + 验证矩阵 + 判据自检），可并入 `docs/design/ce-ee-refactoring/ce-standards-todo.md` 或后续批次。
 5. **`var()` 引用的剪枝风险（机制已确认）**：Tailwind 按「有无工具类消费」决定主题变量是否产出——**`var()` 引用不保活**（实证：`markdown-classes.css` 的 `h1` 用 `var(--text-22)`，产物 `:root` 仍无 `--text-22`；同一构建里无类消费的 `--text-32` / `--radius-7` 同样被剪）。处理：把「自有字号档 / 自有圆角档」改为 `@theme static`（两份副本同批，强制产出全部自有档），不要塞 px 回退值。**第二处实例**：`--color-yellow-200`（v4 默认调色板、被 `RetrievalTestPanel.css` 以 `var()` 引用）按**同值重声明**进 `@theme static` 保活（改动该行须与 `node_modules/tailwindcss/theme.css` 逐字一致）。

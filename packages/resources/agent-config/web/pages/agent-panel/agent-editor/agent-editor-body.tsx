@@ -1,4 +1,5 @@
 import { EmptyState } from "@fenix/ui-components/config/EmptyState";
+import { cn } from "@fenix/ui-components/lib/cn";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -21,7 +22,7 @@ import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
 import { isAgentWritable } from "../../../lib/agent-resource-access";
 import { isValidAgentNameInput } from "../../../lib/agent-utils";
-import { AgentEditorHeader, AgentEditorSummary, AgentTemplatePicker } from "./AgentEditorChrome";
+import { AgentEditorHeader, AgentTemplatePanel } from "./AgentEditorChrome";
 import { AgentEditorLoadingShell } from "./AgentEditorLoadingShell";
 import { type AgentEditorSection, AgentEditorSections } from "./AgentEditorSections";
 // 仅类型：容器（`AgentFormDialog.tsx`）决定「模态 / portal 工作区」并渲染本组件，
@@ -36,6 +37,7 @@ import {
   FOOTER_ACTIONS,
   FOOTER_STATE,
   MAP_BADGE,
+  MAP_BADGE_MISSING,
   MAP_COPY,
   MAP_COPY_CAPTION,
   MAP_COPY_TITLE,
@@ -43,6 +45,7 @@ import {
   MAP_LABEL,
   MAP_TABS_LIST,
   MAP_TRIGGER,
+  NO_TEMPLATE_PANEL,
   NOTICE_BAR,
   WORKSPACE_TABS,
 } from "./agent-editor-classes";
@@ -91,7 +94,7 @@ function firstInvalidField(errors: FieldErrors<AgentEditorValues>): keyof AgentE
 }
 
 /**
- * 编辑器主体：配置地图（左）+ 分节表单（右）+ 摘要 + 页脚 + 三个确认弹窗。
+ * 编辑器主体：配置地图（左）+ 分节表单（中）+ 模板面板（右）+ 页脚 + 两个确认弹窗。
  *
  * 从 `AgentFormDialog.tsx` 拆出（§4.7）：容器只管「用哪种壳渲染」（移动端 Sheet / 桌面 portal
  * 工作区）与打开时的焦点交接，本文件承担全部表单状态与保存流程。
@@ -109,9 +112,7 @@ export function AgentEditorBody(
   const { t: tp } = useTranslation(NS.AGENTS);
   const { mobile } = props;
   const [activeSection, setActiveSection] = useState<AgentEditorSection>("identity");
-  const [templateOpen, setTemplateOpen] = useState(false);
   const [closeConfirmOpen, setCloseConfirmOpen] = useState(false);
-  const templateTriggerRef = useRef<HTMLButtonElement>(null);
   const initializedEditorKeyRef = useRef<string | null>(null);
   const editor = useAgentEditor({ ...props, translate: t, translatePanel: tp });
   const form = useForm<AgentEditorValues>({
@@ -129,7 +130,6 @@ export function AgentEditorBody(
     if (!props.open) {
       initializedEditorKeyRef.current = null;
       setActiveSection("identity");
-      setTemplateOpen(false);
     }
   }, [props.open]);
 
@@ -176,6 +176,7 @@ export function AgentEditorBody(
       });
     },
   );
+  /** 应用模板：替换 Prompt 与 Skills，创建态另替换名称。面板常驻，应用后就地更新表单并靠页脚草稿态提示。 */
   const applyTemplate = (template: AgentTemplate) => {
     form.setValue("prompt", template.prompt, { shouldDirty: true });
     if (props.mode === "create") form.setValue("name", template.name, { shouldDirty: true });
@@ -183,8 +184,6 @@ export function AgentEditorBody(
       .map((name) => editor.data?.skills.find((skill) => skill.label === name || skill.label.endsWith(`/${name}`))?.id)
       .filter((id): id is string => !!id);
     form.setValue("skillIds", ids, { shouldDirty: true });
-    setTemplateOpen(false);
-    requestAnimationFrame(() => templateTriggerRef.current?.focus());
   };
   useEffect(() => {
     if (!props.open) return;
@@ -226,15 +225,24 @@ export function AgentEditorBody(
     );
   if (!editor.data) return null;
   const data = editor.data;
-  const getSectionStatus = (section: AgentEditorSection): string => {
-    if (section === "identity") return values.name ? t("editor.complete") : t("editor.incomplete");
-    if (section === "model") return values.modelId ? t("editor.configured") : t("editor.notConfigured");
+  /** 模板面板是否占据工作区右列：只读态与无模板都不渲染（工作区随之回落两列，见 `NO_TEMPLATE_PANEL`）。 */
+  const showTemplate = !readOnly && data.templates.length > 0;
+  /** 配置地图条目的状态徽标。`missing` 的两类缺失态（待完善 / 未配置）在渲染时标红，提示补全该分区；
+   * 其余状态（完整 / 已配置 / 数字计数 / 组织内 / 仅团队 / 默认）沿用中性徽标。 */
+  const filled = (label: string) => ({ label, missing: false });
+  const missing = (label: string) => ({ label, missing: true });
+  const getSectionStatus = (section: AgentEditorSection) => {
+    if (section === "identity") return values.name ? filled(t("editor.complete")) : missing(t("editor.incomplete"));
+    if (section === "model")
+      return values.modelId ? filled(t("editor.configured")) : missing(t("editor.notConfigured"));
     if (section === "capabilities")
-      return String(values.skillIds.length + values.mcpIds.length + values.siteAppIds.length);
-    if (section === "knowledge") return String(values.knowledgeBaseIds.length);
-    if (section === "runtime") return t("editor.configured");
-    if (section === "sharing") return values.publicReadable ? t("editor.organizationVisible") : t("editor.teamOnly");
-    return values.extra.trim() && values.extra.trim() !== "{}" ? t("editor.configured") : t("editor.defaultStatus");
+      return filled(String(values.skillIds.length + values.mcpIds.length + values.siteAppIds.length));
+    if (section === "knowledge") return filled(String(values.knowledgeBaseIds.length));
+    if (section === "runtime") return filled(t("editor.configured"));
+    if (section === "sharing")
+      return filled(values.publicReadable ? t("editor.organizationVisible") : t("editor.teamOnly"));
+    const hasExtra = !!values.extra.trim() && values.extra.trim() !== "{}";
+    return filled(hasExtra ? t("editor.configured") : t("editor.defaultStatus"));
   };
 
   return (
@@ -252,9 +260,6 @@ export function AgentEditorBody(
             name={values.name}
             agentId={props.mode === "edit" ? data.agentId : null}
             readOnly={readOnly}
-            showTemplate={!readOnly && data.templates.length > 0}
-            templateTriggerRef={templateTriggerRef}
-            onTemplate={() => setTemplateOpen(true)}
             onClose={requestClose}
           />
           {readOnly && (
@@ -266,31 +271,34 @@ export function AgentEditorBody(
             value={activeSection}
             onValueChange={(value) => setActiveSection(value as AgentEditorSection)}
             orientation={mobile ? "horizontal" : "vertical"}
-            className={WORKSPACE_TABS}
+            className={cn(WORKSPACE_TABS, !showTemplate && NO_TEMPLATE_PANEL)}
           >
             <nav className={CONFIG_MAP} aria-label={t("editor.configurationMap")}>
               <span className={MAP_LABEL} data-slot="editor-map-label">
                 {t("editor.configurationMap")}
               </span>
               <TabsList variant="line" className={MAP_TABS_LIST}>
-                {SECTIONS.map(({ id, icon: Icon }) => (
-                  <TabsTrigger key={id} value={id} className={MAP_TRIGGER}>
-                    <span className={MAP_ICON}>
-                      <Icon className="w-3.5" />
-                    </span>
-                    <span className={MAP_COPY} data-slot="editor-map-copy">
-                      <strong className={MAP_COPY_TITLE} data-slot="editor-map-copy-title">
-                        {t(`editor.sections.${id}`)}
-                      </strong>
-                      <small className={MAP_COPY_CAPTION} data-slot="editor-map-copy-caption">
-                        {t(`editor.sectionCaptions.${id}`)}
-                      </small>
-                    </span>
-                    <Badge variant="secondary" className={MAP_BADGE}>
-                      {getSectionStatus(id)}
-                    </Badge>
-                  </TabsTrigger>
-                ))}
+                {SECTIONS.map(({ id, icon: Icon }) => {
+                  const sectionStatus = getSectionStatus(id);
+                  return (
+                    <TabsTrigger key={id} value={id} className={MAP_TRIGGER}>
+                      <span className={MAP_ICON}>
+                        <Icon className="w-3.5" />
+                      </span>
+                      <span className={MAP_COPY} data-slot="editor-map-copy">
+                        <strong className={MAP_COPY_TITLE} data-slot="editor-map-copy-title">
+                          {t(`editor.sections.${id}`)}
+                        </strong>
+                        <small className={MAP_COPY_CAPTION} data-slot="editor-map-copy-caption">
+                          {t(`editor.sectionCaptions.${id}`)}
+                        </small>
+                      </span>
+                      <Badge variant="secondary" className={cn(MAP_BADGE, sectionStatus.missing && MAP_BADGE_MISSING)}>
+                        {sectionStatus.label}
+                      </Badge>
+                    </TabsTrigger>
+                  );
+                })}
               </TabsList>
             </nav>
             <main className={CONTENT}>
@@ -313,7 +321,7 @@ export function AgentEditorBody(
                 </TabsContent>
               ))}
             </main>
-            <AgentEditorSummary values={values} data={data} onSectionChange={setActiveSection} />
+            {showTemplate && <AgentTemplatePanel templates={data.templates} onApply={applyTemplate} />}
           </Tabs>
           <footer className={FOOTER}>
             <div className={FOOTER_STATE} data-slot="editor-footer-state">
@@ -364,16 +372,6 @@ export function AgentEditorBody(
           </footer>
         </fieldset>
       </form>
-      {templateOpen && (
-        <AgentTemplatePicker
-          templates={data.templates}
-          onApply={applyTemplate}
-          onClose={() => {
-            setTemplateOpen(false);
-            requestAnimationFrame(() => templateTriggerRef.current?.focus());
-          }}
-        />
-      )}
       <AlertDialog open={closeConfirmOpen} onOpenChange={setCloseConfirmOpen}>
         <AlertDialogContent>
           <AlertDialogHeader>
