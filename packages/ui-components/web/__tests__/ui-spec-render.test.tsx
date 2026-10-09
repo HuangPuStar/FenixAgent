@@ -238,6 +238,8 @@ describe("ui-spec 渲染层", () => {
     expect(okContainer.getAttribute("data-slot")).toBe("ui-spec-block");
     expect(okContainer.getAttribute("data-language")).toBe("ui-spec");
     expect(okContainer.getAttribute("data-incomplete")).toBeNull();
+    // 组件态打状态标记：伴随表据此关闭代码块外壳（边框 / 底色 / 圆角）
+    expect(okContainer.getAttribute("data-ui-spec-state")).toBe("ready");
     expect(okContainer.querySelector('[data-streamdown="code-block-header"]')).not.toBeNull();
     expect(okContainer.querySelector('[data-slot="ui-spec-stack"]')).not.toBeNull();
 
@@ -245,6 +247,8 @@ describe("ui-spec 渲染层", () => {
     const badContainer = await waitFor(badHarness.host, '[data-streamdown="code-block"]');
 
     expect(badContainer.querySelector('[data-slot="ui-spec-raw"]')).not.toBeNull();
+    // 降级态保持代码块外观：不出现 ready 标记
+    expect(badContainer.getAttribute("data-ui-spec-state")).toBeNull();
   });
 
   // 宿主上下文（§1.2）：envId 由宿主注入，两个 Provider 相互隔离，Spec 改不动它。

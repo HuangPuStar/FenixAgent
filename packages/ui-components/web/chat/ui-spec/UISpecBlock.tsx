@@ -48,6 +48,8 @@ interface BlockMemory {
 interface UISpecBlockFrameProps {
   language: string;
   isIncomplete: boolean;
+  /** 渲染态：`ready` = 正文是自有组件（伴随表据此关闭「代码块外壳」）；缺省 = 骨架 / 降级态。 */
+  state?: "ready";
   /** 正文；缺省时渲染官方骨架（骨架同样来自动态模块，本文件静态引不到它）。 */
   children?: ReactNode;
 }
@@ -72,9 +74,14 @@ const LazyBlockFrame = lazy(async () => {
     );
   }
 
-  function UISpecBlockFrame({ language, isIncomplete, children }: UISpecBlockFrameProps) {
+  function UISpecBlockFrame({ language, isIncomplete, state, children }: UISpecBlockFrameProps) {
     return (
-      <CodeBlockContainer data-slot="ui-spec-block" language={language} isIncomplete={isIncomplete}>
+      <CodeBlockContainer
+        data-slot="ui-spec-block"
+        data-ui-spec-state={state}
+        language={language}
+        isIncomplete={isIncomplete}
+      >
         <CodeBlockHeader language={language} />
         <Suspense fallback={<UISpecSkeleton />}>{children ?? <UISpecSkeleton />}</Suspense>
       </CodeBlockContainer>
@@ -184,10 +191,13 @@ export function UISpecBlock({ code, isIncomplete, language }: CustomRendererProp
   }, [code, parsed]);
 
   let body: ReactNode;
+  // 组件态标记：只有「正文渲染为自有组件」才关掉代码块外壳（见 UISpecBlock.css），其余态保持代码块外观。
+  let componentReady = false;
   if (overLimit) {
     body = <UISpecRawCode code={code} />;
   } else if (parsed?.status === "ok") {
     body = <LazyUISpecView spec={parsed.spec} />;
+    componentReady = true;
   } else if (parsed?.status === "degraded" && parsed.reason === "version") {
     // 版本占位带原文里的实际版本号：对「过新」与「过旧」都不谎称方向（§1.5 L2）。
     body = (
@@ -208,7 +218,7 @@ export function UISpecBlock({ code, isIncomplete, language }: CustomRendererProp
       }
     >
       <Suspense fallback={<div data-slot="ui-spec-block" />}>
-        <LazyBlockFrame isIncomplete={isIncomplete} language={language}>
+        <LazyBlockFrame isIncomplete={isIncomplete} language={language} state={componentReady ? "ready" : undefined}>
           {skeletonVisible ? undefined : body}
         </LazyBlockFrame>
       </Suspense>

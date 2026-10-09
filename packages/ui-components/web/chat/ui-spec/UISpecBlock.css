@@ -35,6 +35,18 @@
   background-color: color-mix(in srgb, var(--color-muted) 80%, transparent);
 }
 
+/*
+ * 组件态关闭「代码块外壳」：成功渲染的 Spec 是结构化内容而非代码，留着
+ * `markdown-classes.css` 给 `[data-streamdown="code-block"]` 的边框 / 底色 / 圆角会让它看起来仍是一个
+ * 代码块。骨架态与降级态不受影响——那两态正是要借代码块的外观（骨架=占了位还没内容，原文=就是代码）。
+ * 容器上下外边距保留，维持与上下文的节奏。选择器带元素名凑到 (0,2,1)，压过该表的 (0,2,0)。
+ */
+div[data-slot="ui-spec-block"][data-ui-spec-state="ready"] {
+  border: 0;
+  background-color: transparent;
+  border-radius: 0;
+}
+
 /* 原文 pre：外边距会让正文挤在容器边框内。 */
 [data-slot="ui-spec-block"] [data-slot="ui-spec-raw"] pre {
   margin: 0;
