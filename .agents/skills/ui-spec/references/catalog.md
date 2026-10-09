@@ -1,7 +1,7 @@
 # ui-spec 类型目录（切片 1）
 
 <!--
-  本文档是 `packages/ui-components/web/chat/ui-spec/catalog.ts` 的对外说明，也是 Agent 的唯一类型清单。
+  本文档是 `packages/ui-components/web/chat/ui-spec/catalog.ts` 的 schema 与边界详解；SKILL.md 已内联完整类型清单。
   两者由 packages/ui-components/web/__tests__/ui-spec-catalog-doc-sync.test.ts 双向钉住：改代码必须改这里，改这里必须改代码。
 
   同步测试依赖以下格式契约，改格式前先看测试：
@@ -28,7 +28,7 @@
 - `root`：入口元素的 id，必须存在于 `elements` 中。
 - `elements`：id → 元素 的扁平表。元素只有 `type`、`props`、`children` 三个字段，多写一个字段整块降级为原文。
 - 每个元素都要能从 `root` 走到；同一个元素只能出现在一个父元素的 `children` 里；引用不能成环。
-- `Text` 与 `Table` 是叶子节点，不要给它们 `children`。
+- `Text` 与 `Table` 是叶子节点，生成时省略 `children`（校验也接受空数组，非空则整块降级）。
 
 ## 全局限额
 
@@ -36,15 +36,15 @@
 | --- | --- | --- |
 | `maxCodeChars` | 单个 `ui-spec` 围栏正文字符数（UTF-16 code unit，围栏末尾的换行也算在内） | 64000 |
 | `maxElements` | `elements` 的条目数 | 200 |
-| `maxDepth` | 从 `root` 起算的嵌套深度（`root` 记 1） | 12 |
+| `maxDepth` | 树深度（`root` 记 1）；props 对象/数组嵌套深度也复用此限额 | 12 |
 | `maxChildren` | 单个元素 `children` 的元素个数 | 40 |
-| `maxString` | 任一字符串的长度 | 2000 |
-| `maxIdChars` | 元素 id（`elements` 的键）长度 | 80 |
+| `maxString` | props 中任意字符串键或值的长度 | 2000 |
+| `maxIdChars` | `root` 与元素 id（`elements` 的键）长度 | 80 |
 | `maxTypeChars` | 元素 `type` 长度 | 80 |
 | `maxTableRows` | `Table.rows` 的行数 | 50 |
 | `maxTableCols` | `Table.columns`、每行单元格数、`align` 的长度 | 8 |
 
-超过任一限额，整块降级为原文（不截断成貌似完整的 UI）。
+全局超限整块降级为原文；`maxTableRows` / `maxTableCols` 是目录级约束，超限为该表 `invalid-props` 占位。caption、列名、单元格的专属长度超限同样按元素处理，但若先触发全局字符串上限则整块降级。均不静默截断成貌似完整的 UI。
 
 ## 跨字段约束
 
