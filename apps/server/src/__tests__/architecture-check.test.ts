@@ -645,8 +645,7 @@ describe("architecture check CLI", () => {
     expect(result.exitCode).toBe(0);
     expect(result.stderr).toBe("");
     expect(result.stdout.trim().split("\n")).toEqual([
-      "format",
-      "import-sort",
+      "biome",
       "module-registry",
       "web-contributions",
       "owner-inventory",
@@ -656,10 +655,8 @@ describe("architecture check CLI", () => {
       "web-style",
       "tsc (server)",
       "tsc (web)",
-      "tsc (app skeletons)",
       "tsc (packages)",
       "dependency-boundaries",
-      "lint",
       "server-and-script-tests",
       "package-tests",
       "web-app-tests",

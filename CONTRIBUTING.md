@@ -128,6 +128,7 @@ bun run dev
 bun run dev:web
 bun run build:web
 bun run precheck
+bun run fastcheck
 bun run check:dependencies
 bun run docs:dev
 bun run docs:build
@@ -182,6 +183,8 @@ MCP 服务器资源管理使用控制台 `/web/config/mcp` 与已发布的 `/api
 ```bash
 bun run precheck
 ```
+
+`bun run fastcheck` 是同一套静态门禁 + 仅受影响测试的快检，供改一处跑一次的迭代节奏使用：类型检查用 `tsc-rs` 加速（探活失败自动回退官方 `tsc`；发布门禁 `precheck` 始终用官方 `tsc`），加 `--no-tests` 可退化为纯静态快检。它**不替代** `bun run precheck`——宿主侧集成回归只有全量三批测试能覆盖。
 
 如开发环境提供 `fenix-code-review` 等审查能力，可作为提交前的可选辅助；它不能替代 `bun run precheck`、受影响前端的 `bun run build:web`、数据库迁移或文档构建验证。
 

@@ -273,9 +273,11 @@ test("编译后的静态插件从非仓库工作目录读取应用根", async ()
 });
 
 // 质量门禁必须扫描唯一的 server 源码目录，避免根 src 删除后脚本悄悄跳过后端代码。
+// 测试批次命令的真相来源是 `scripts/lib/check-gates.ts`：`scripts/ci.ts`（precheck）与
+// `scripts/fastcheck.ts` 都从那里取步骤，两处都断一次，接线被拆掉时才能在这里失败。
 test("质量脚本使用 apps server 源码目录", () => {
   const packageJson = JSON.parse(readRepoFile("package.json")) as { scripts: Record<string, string> };
-  const ciScript = readRepoFile("scripts/ci.ts");
+  const gatesScript = readRepoFile("scripts/lib/check-gates.ts");
   const githubWorkflow = readRepoFile(".github/workflows/ci.yml");
 
   for (const script of ["lint", "lint:fix", "format", "format:check"]) {
@@ -288,10 +290,10 @@ test("质量脚本使用 apps server 源码目录", () => {
     "bun test apps/web/src/__tests__/",
   ];
   for (const entry of testEntries) {
-    expect(ciScript).toContain(entry);
+    expect(gatesScript).toContain(entry);
     expect(githubWorkflow).toContain(entry);
   }
-  expect(ciScript).not.toContain("bun test src/__tests__/");
+  expect(gatesScript).not.toContain("bun test src/__tests__/");
   expect(githubWorkflow).not.toContain("find src/__tests__");
 });
 

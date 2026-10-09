@@ -463,7 +463,9 @@ DDL 迁移与数据迁移必须分离：结构变更走 `drizzle/`，存量数�
 - 新表与新字段是否满足 §6.1 的主标识、时间字段、租户字段与枚举约束。
 - 注释、日志、测试、i18n 与架构文档是否同步更新。
 
-自动化门禁（`bun run precheck`，即 `scripts/ci.ts`）按序执行：format、import-sort、module-registry、web-contributions、owner-inventory、schema-ddl-drift、architecture、tsc（server / web / app skeletons / packages）、dependency-boundaries、lint、server-and-script-tests、package-tests、web-app-tests。
+自动化门禁（`bun run precheck`，即 `scripts/ci.ts`）分三波执行：`biome check --write`（格式化 + import 排序 + 安全修复，写盘）→ 静态门禁（module-registry、web-contributions、owner-inventory、schema-ddl-drift、env-example、architecture、web-style、tsc（server / web / packages）、dependency-boundaries，波内受限并发）→ 三批 `bun test`（server-and-script-tests、package-tests、web-app-tests）。
+
+单任务收尾用 `bun run fastcheck`（`scripts/fastcheck.ts`，静态步骤与 precheck 同源，类型检查改用 `tsc-rs` 加速、探活失败回退官方 `tsc`，测试按改动路径只跑受影响范围）；它不替代 precheck：宿主侧集成回归只有全量三批测试能覆盖。
 
 - `architecture` 阶段（`bun run architecture:check`）阻断可通过静态语法可靠判断的违规：反向依赖、跨包穿透 `src/**`、`zod` 非 `v4` 导入等。
 - `dependency-boundaries` 阶段（`bun run check:dependencies`）依据 §1.2 矩阵与例外台账 `scripts/architecture/exceptions.json`，只阻断**未登记**的新增违规，并在某条不再违规时要求删除条目；违反时输出源文件、目标文件与规则名。禁止通配登记或长期基线豁免。
