@@ -150,7 +150,11 @@ export function LoginPage() {
             </button>
           </div>
 
-          <form className="auth-light-form" onSubmit={handleSubmit}>
+          {/* 字段纵向节奏由本行的 `flex flex-col gap-5` 承载：原 `.auth-light-form`
+              （`display:flex; flex-direction:column; gap:20px`）在 2026-09-28 按 DOM 归属重拆样式表时整条丢失，
+              字段两两相贴（实测 0px，相邻行 18/6/12px）。gap 按紧凑标尺同档收回（`--gap-5` = 16px，与
+              切换 tab 的 `mb-6` = 18px 同族，略小于区段间距即是设计意图），因此该节奏必须留在本类串上。 */}
+          <form className="auth-light-form flex flex-col gap-5" onSubmit={handleSubmit}>
             {isSignUp && (
               <AuthInput
                 autoComplete="name"
@@ -204,9 +208,12 @@ export function LoginPage() {
               />
             )}
 
-            {/* 忘记密码 / 用户协议 / 隐私政策 对应页面暂未实现，先隐藏这些入口；注册也不再强制勾选协议 */}
+            {/* 忘记密码 / 用户协议 / 隐私政策 对应页面暂未实现，先隐藏这些入口；注册也不再强制勾选协议。
+                本行不补上下内距：内距只加在父 div 上、`label` 是内容宽的 inline-flex，点到的是 label 自身，
+                多出的 `py-4` 只是白（2026-10-08 单行补偿的正是上一条丢失的 gap）。行距由表单 `gap-5` 统一给出，
+                下方 8px `mb-2` 保留提交按钮与选项行的分离。 */}
             {!isSignUp && (
-              <div className="auth-light-options -mt-0.5 mb-2 flex items-center justify-between py-4 text-13 text-slate-900/45">
+              <div className="auth-light-options -mt-0.5 mb-2 flex items-center justify-between text-13 text-slate-900/45">
                 <label className="auth-light-checkbox inline-flex items-center gap-2 cursor-pointer hover:text-slate-900/65">
                   <input
                     checked={rememberLogin}
