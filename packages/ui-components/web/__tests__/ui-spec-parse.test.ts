@@ -117,6 +117,36 @@ describe("parseUISpec：L1 JSON", () => {
       expect(parseUISpec(input)).toEqual(JSON_ERROR);
     }
   });
+
+  // 折行粘贴会在字符串字面量内留下裸换行；修复后应正常解析而不是整块降级
+  test("字符串字面量内的裸换行修复后通过", () => {
+    const code = '{"version":1,"root":"root","elements":{"root":{"type":"Text","props":{"text":"健康检\n查通过。"}}}}';
+    const result = parseUISpec(code);
+    expect(result.status).toBe("ok");
+    if (result.status !== "ok") return;
+    expect(result.spec.elements.root.props).toEqual({ text: "健康检查通过。" });
+  });
+
+  // 字符串外的裸换行是合法空白（对照项）：修复不得做成全局换行删除
+  test("字符串外的裸换行不影响解析", () => {
+    const code = '{\n  "version": 1,\n  "root": "root",\n  "elements": { "root": { "type": "Text" } }\n}';
+    expect(parseUISpec(code).status).toBe("ok");
+  });
+
+  // 转义序列按原义保留：修复不触碰 \n 这类合法写法
+  test("合法转义不受修复影响", () => {
+    const code = '{"version":1,"root":"root","elements":{"root":{"type":"Text","props":{"text":"a\\nb"}}}}';
+    const result = parseUISpec(code);
+    expect(result.status).toBe("ok");
+    if (result.status !== "ok") return;
+    expect(result.spec.elements.root.props).toEqual({ text: "a\nb" });
+  });
+
+  // 修复只认换行：裸 tab 等其他控制字符仍整块降级（折行场景不会产生它们）
+  test("字符串内裸 tab 仍降级", () => {
+    const code = '{"version":1,"root":"root","elements":{"root":{"type":"Text","props":{"text":"a\tb"}}}}';
+    expect(parseUISpec(code)).toEqual(JSON_ERROR);
+  });
 });
 
 describe("parseUISpec：L1 结构（包络）", () => {

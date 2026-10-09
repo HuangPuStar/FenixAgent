@@ -305,9 +305,9 @@ type AgentCatalogIndexCopyProps = {
   title: ReactNode;
   /** 副标题（`<small>`）：技能库放描述、MCP 放摘要、知识库放资源数、组织页放 slug。 */
   subtitle: ReactNode;
-  /** 标题行的附加类名——只用于页面独有语义；基类（`text-sm leading-5 text-slate-800`）在本组件内。 */
+  /** 标题行的附加类名——只用于页面独有语义；基类（`text-xs leading-5 text-slate-800`）在本组件内。 */
   titleClassName?: string;
-  /** 副标题行的附加类名——同上（基类 `mt-1 text-xs leading-4 text-slate-400`）。 */
+  /** 副标题行的附加类名——同上（基类 `mt-1 text-3xs leading-4 text-slate-400`）。 */
   subtitleClassName?: string;
   className?: string;
 };
@@ -317,10 +317,15 @@ type AgentCatalogIndexCopyProps = {
  *
  * 截断（`truncate` = `overflow: hidden` + `text-overflow: ellipsis` + `white-space: nowrap`）是
  * 「238px 列里塞长名字」不撑破布局的前提，落在两个元素各自的 `className` 上——它与字号 / 字重 / 颜色 /
- * 行高 / 间距（`text-sm leading-5 text-slate-800` / `mt-1 text-xs leading-4 text-slate-400`）同批从
+ * 行高 / 间距（`text-xs leading-5 text-slate-800` / `mt-1 text-3xs leading-4 text-slate-400`）同批从
  * 伴生表收上来：`<strong>` 与 `<small>` 都是本组件直接渲染的，元素上就有槽位，不需要子选择器。
  * 页面仍可用 `titleClassName` / `subtitleClassName` 表达页面语义。
  * 槽本身的两行竖排是 `className` 里的 `flex min-w-0 flex-col`。
+ *
+ * 2026-10-09 字号降档：两行字号各降一档（`text-sm` → `text-xs`、`text-xs` → `text-3xs`），**行高保持**
+ * （`leading-5` / `leading-4`）。行高不动是刻意的——条目下限 `--min-height-15`（56px，见宿主 `index.css`）
+ * 按「20 + 4 + 16 + 上下各 8px」推导，且该 token 另有知识库输入框在用；只改字号即可满足「条目文字小一档」
+ * 而不动行高、不牵连别页布局（守卫见 `apps/web/src/__tests__/compact-theme.test.ts`）。
  */
 export function AgentCatalogIndexCopy({
   title,
@@ -331,8 +336,8 @@ export function AgentCatalogIndexCopy({
 }: AgentCatalogIndexCopyProps) {
   return (
     <span className={cn("agent-catalog-index-copy flex min-w-0 flex-col", className)}>
-      <strong className={cn("truncate text-sm leading-5 text-slate-800", titleClassName)}>{title}</strong>
-      <small className={cn("mt-1 truncate text-xs leading-4 text-slate-400", subtitleClassName)}>{subtitle}</small>
+      <strong className={cn("truncate text-xs leading-5 text-slate-800", titleClassName)}>{title}</strong>
+      <small className={cn("mt-1 truncate text-3xs leading-4 text-slate-400", subtitleClassName)}>{subtitle}</small>
     </span>
   );
 }

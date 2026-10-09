@@ -46,6 +46,8 @@ const BROWSER_SAFE_EXTERNAL: ReadonlyMap<string, string> = new Map([
   ["ahooks", "React hooks 工具库（本包依赖，宿主亦直接依赖）"],
   ["lucide-react", "SVG 图标库（本包依赖，宿主亦直接依赖）"],
   ["sonner", "Toast 渲染（本包依赖，宿主亦直接依赖）"],
+  // 图内经 `@fenix/ui-components` 子路径进入：本包 web 自身不引 zod（server 侧引），故此处一并注明到达路径。
+  ["zod", "运行时校验（本包依赖 zod/v4，纯函数，无 node 依赖；经 ui-components 的 chat/ui-spec/catalog 进图）"],
   // 经 @fenix/ui-components 子路径传递进入：无 node 依赖的浏览器库
   //
   // 2026-09-22 台账收敛：删除 `@radix-ui/react-popover`（原注「ui/popover 传递依赖」）与

@@ -283,28 +283,29 @@ function ProviderDetail(props: ModelsCatalogProps & { provider: ProviderInfo; he
             <ModelIcon modelId={iconModelId} size={25} />
           </span>
           <div>
-            <div className="models-provider-meta flex items-center gap-2">
-              <span className="text-9 font-bold uppercase text-blue-600 tracking-4">
+            {/* 两行结构（2026-10-09）：第 1 行 main 是服务商名称，第 2 行 sub 合并原「协议 / 网关 / provider id」
+                与「归属组织 + 模型数 + 公开徽标」两行——三行头部比技能库 / MCP 的两行头多一层，观感不齐。
+                合并行的字号由容器给（`text-3xs`，即原 `text-9` 就近取到的标准档），子元素只留各自配色。 */}
+            <h2 className="text-lg leading-tight">{provider.name || provider.id}</h2>
+            <div className="models-provider-meta mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-3xs">
+              <span className="font-bold uppercase text-blue-600 tracking-4">
                 {t(`protocolOptions.${provider.protocol}`)}
               </span>
               {provider.kind === "gateway" && (
-                <span className="text-9 font-bold uppercase text-blue-600 tracking-4">{t("gateway.tag")}</span>
+                <span className="font-bold uppercase text-blue-600 tracking-4">{t("gateway.tag")}</span>
               )}
-              <code className="text-9 text-slate-400">{provider.id}</code>
-            </div>
-            <h2 className="mt-0.75 mb-0.5 text-17 leading-[1.2]">{provider.name || provider.id}</h2>
-            <div className="models-provider-organization flex items-center gap-1.5">
-              <small className="text-9 text-slate-400">
+              <code className="text-slate-400">{provider.id}</code>
+              <small className="text-slate-400">
                 {external ? t("scope.shared") : t("scope.organization")} ·{" "}
                 {t("providerIndex.models", { count: models.length })}
               </small>
               {external && !publiclyReadable ? (
-                <span className="models-provider-public-badge inline-block rounded-5 border border-blue-200 px-1.5 py-0.75 bg-blue-50 text-9 text-blue-700 font-semibold whitespace-nowrap">
+                <span className="models-provider-public-badge inline-block rounded-5 border border-blue-200 px-1.5 py-0.75 bg-blue-50 text-blue-700 font-semibold whitespace-nowrap">
                   {t("scope.shared")}
                 </span>
               ) : null}
               {publiclyReadable ? (
-                <span className="models-provider-public-badge inline-block rounded-5 border border-blue-200 px-1.5 py-0.75 bg-blue-50 text-9 text-blue-700 font-semibold whitespace-nowrap">
+                <span className="models-provider-public-badge inline-block rounded-5 border border-blue-200 px-1.5 py-0.75 bg-blue-50 text-blue-700 font-semibold whitespace-nowrap">
                   {t("scope.public")}
                 </span>
               ) : null}
@@ -357,14 +358,14 @@ function ProviderDetail(props: ModelsCatalogProps & { provider: ProviderInfo; he
       <div className="models-provider-connection grid bg-slate-50 px-5">
         <div className="grid min-h-12 min-w-0 items-center gap-1.75 py-0 px-2.5">
           <Server className="w-3.5 text-blue-600" />
-          <small className="text-9 text-slate-400">{t("connection.endpoint")}</small>
+          <small className="text-3xs text-slate-400">{t("connection.endpoint")}</small>
           <code className="text-3xs truncate text-slate-800" title={provider.baseURL ?? undefined}>
             {provider.baseURL ?? t("connection.defaultEndpoint")}
           </code>
         </div>
         <div className="grid min-h-12 min-w-0 items-center gap-1.75 border-l border-slate-200 py-0 px-2.5">
           <KeyRound className="w-3.5 text-blue-600" />
-          <small className="text-9 text-slate-400">{t("connection.credential")}</small>
+          <small className="text-3xs text-slate-400">{t("connection.credential")}</small>
           <code className="text-3xs truncate text-slate-800">
             {provider.keyHint ?? t("connection.managedCredential")}
           </code>
@@ -372,7 +373,7 @@ function ProviderDetail(props: ModelsCatalogProps & { provider: ProviderInfo; he
         <label className="models-provider-visibility flex min-w-0 items-center justify-between gap-3 border-l border-slate-200 px-2.5">
           <span className="flex min-w-0 flex-col">
             <strong className="text-3xs">{t("connection.shared")}</strong>
-            <small className="text-9 text-slate-400">{t("connection.sharedDescription")}</small>
+            <small className="text-3xs text-slate-400">{t("connection.sharedDescription")}</small>
           </span>
           <Switch
             checked={publiclyReadable}
@@ -385,7 +386,7 @@ function ProviderDetail(props: ModelsCatalogProps & { provider: ProviderInfo; he
       <section className="models-model-catalog px-5 pt-4.5 pb-6">
         <header className="flex items-center justify-between gap-4 mb-3">
           <div className={writable ? "gap-1.25" : "flex gap-1.25"}>
-            <h3 className="mb-0.5 text-15">{t("modelsSection.title")}</h3>
+            <h3 className="mb-0.5 text-sm">{t("modelsSection.title")}</h3>
             <small className="text-3xs text-slate-400">
               {t("modelsSection.description", { count: models.length })}
             </small>
@@ -468,17 +469,17 @@ function ModelRow({
         </span>
         <span className="models-model-identity flex min-w-0 flex-col">
           <strong className="text-xs truncate">{model.name || model.id}</strong>
-          <code className="mt-0.5 truncate text-9 text-slate-400">{model.id}</code>
+          <code className="mt-0.5 truncate text-3xs text-slate-400">{model.id}</code>
           {/* 失败原因在列表里直接可见（单行截断 + 徽标 title 给出全文），不是只藏在 tooltip 里。 */}
           {test?.status === "error" && test.detail && (
-            <small className="models-model-test-detail truncate mt-0.5 text-9 text-red-500">{test.detail}</small>
+            <small className="models-model-test-detail truncate mt-0.5 text-3xs text-red-500">{test.detail}</small>
           )}
         </span>
       </div>
       <div className="models-model-actions flex items-center gap-0.25">
         {test && (
           <span
-            className={`models-model-test flex items-center gap-1 mr-1 text-9 ${TEST_STATUS_COLOR[test.status]}`}
+            className={`models-model-test flex items-center gap-1 mr-1 text-3xs ${TEST_STATUS_COLOR[test.status]}`}
             title={test.detail}
           >
             {test.status === "running" ? (

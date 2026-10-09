@@ -56,7 +56,7 @@
 }
 ```
 
-要点：`Stack.children` 里写的是其它元素的 id；`Text` 与 `Table` 是叶子节点，不能带 `children`。
+要点：`Stack.children` 里写的是其它元素的 id；`Text` 与 `Table` 是叶子节点，省略 `children`（空数组也合法，非空则整块降级）。
 
 ## 示例 3：对照与提醒（Stack + Table + Text）
 

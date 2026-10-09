@@ -15,6 +15,14 @@ import type { UISpecTypeName } from "./catalog";
 export const UI_SPEC_VERSION = 1;
 
 /**
+ * 围栏语言标识：正文里写成 ```ui-spec（**大小写敏感**，与 streamdown 的精确语言匹配口径一致）。
+ *
+ * 定义放在契约层而不是注册层：解析侧（`fence-repair`）与注册侧（`plugins`）都要用同一字面量，
+ * 放这里可让纯文本处理模块不必依赖组件注册模块。`plugins.ts` 原样再导出，既有引用路径不变。
+ */
+export const UI_SPEC_LANGUAGE = "ui-spec";
+
+/**
  * 冻结限额（§1.4，数值不在此处改动）。
  *
  * 长度口径为 renderer 收到的 JS 字符串 `.length`（UTF-16 code units）：

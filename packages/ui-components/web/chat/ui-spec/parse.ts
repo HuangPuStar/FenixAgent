@@ -45,6 +45,40 @@ const ELEMENT_KEYS = new Set(["type", "props", "children"]);
 const MAX_PROPS_NESTING = L.maxDepth;
 
 /**
+ * 修复 JSON 字符串字面量内的裸换行（`\n` / `\r`）；无裸换行时原样返回。
+ *
+ * 成因：从定宽渲染环境（终端、80 列编辑器、被硬折行的转载文本）复制长文本时，软换行会变成硬换行，
+ * JSON 字符串里因此混入裸换行；JSON 规范禁止字符串字面量内出现控制字符，`JSON.parse` 会以
+ * `Unterminated string` 这类看似无关的错误失败，整块降级。
+ *
+ * 口径：**删除换行符本身**，其余字符（含折行点前后的空格）原样保留——折行不引入内容，行尾/行首
+ * 空白本就属于原文本，删除换行即还原。合法 JSON 的字符串内不含裸换行，故本函数对合法输入恒等；
+ * 越界猜测只可能落在**确实非法**的输入上，且不做任何其他修补（不补括号、不补引号、不改转义）。
+ */
+function repairBareNewlinesInStrings(code: string): string {
+  let out = "";
+  let changed = false;
+  let inString = false;
+  let escaped = false;
+  for (const char of code) {
+    if (!inString) {
+      if (char === '"') inString = true;
+    } else if (escaped) {
+      escaped = false;
+    } else if (char === "\\") {
+      escaped = true;
+    } else if (char === '"') {
+      inString = false;
+    } else if (char === "\n" || char === "\r") {
+      changed = true;
+      continue;
+    }
+    out += char;
+  }
+  return changed ? out : code;
+}
+
+/**
  * 解析并校验 ui-spec 正文。
  *
  * - `ok`：返回归一化后的 Spec（只含白名单键，props/children 缺省已按 `{}` / `[]` 补齐）；
@@ -62,8 +96,15 @@ export function parseUISpec(code: string): UISpecParseResult {
   try {
     raw = JSON.parse(code);
   } catch {
-    // L1 JSON：语法错误（半截 JSON、注释、尾逗号、单引号等）整块降级，不补括号、不猜内容
-    return { status: "degraded", reason: "json" };
+    // L1 JSON：语法错误（半截 JSON、注释、尾逗号、单引号等）整块降级，不补括号、不猜内容。
+    // 唯一的重试是折行修复：见 repairBareNewlinesInStrings 的成因说明。
+    const repaired = repairBareNewlinesInStrings(code);
+    if (repaired === code) return { status: "degraded", reason: "json" };
+    try {
+      raw = JSON.parse(repaired);
+    } catch {
+      return { status: "degraded", reason: "json" };
+    }
   }
 
   const tree = readTree(raw);

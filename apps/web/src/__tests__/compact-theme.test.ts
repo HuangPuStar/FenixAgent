@@ -120,7 +120,8 @@ describe("全站紧凑标尺", () => {
     expect(catalog).toContain("min-h-15 min-w-0");
     expect(catalog).toContain("h-8.5");
     expect(catalog).toContain("calc(var(--spacing)*8.5)");
-    expect(catalog).toContain("truncate text-sm leading-5");
-    expect(catalog).toContain("mt-1 truncate text-xs leading-4");
+    // 字号降一档（14 → 12 / 12 → 10）时**行高不动**，上面那条 40px 双行内容与 56px 下限的推导才继续成立。
+    expect(catalog).toContain("truncate text-xs leading-5");
+    expect(catalog).toContain("mt-1 truncate text-3xs leading-4");
   });
 });
