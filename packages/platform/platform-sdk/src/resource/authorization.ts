@@ -115,14 +115,15 @@ export interface AccessControlModule {
     organizationId?: string;
   }): Promise<ResourceScope>;
   /**
-   * side-table 型 `ResourceScopeStore`（EE）的独立初始化路径。
+   * 创建阶段初始化资源范围：主表 INSERT 后、受控资源 reload 前调用。
    *
-   * CE 使用主表归属列，创建期走 `resolveInitialScope`，不调用本方法。
+   * `scope` 已在 INSERT 前由 `resolveInitialScope` 解析并随主表行写入；实现不得再次解析它。
    */
   initializeResourceAccess(input: {
     actor: ActorContext;
     resource: ResourceDefinition;
     resourceId: string;
+    readonly scope: ResourceScope;
   }): Promise<void>;
   /** 详情、修改、删除、运行等单资源操作的统一校验。 */
   authorize(input: AuthorizationInput): Promise<void>;

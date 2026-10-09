@@ -25,9 +25,11 @@ export class ColumnResourceScopeStore implements ResourceScopeStore {
     }
   }
 
-  /** CE 的归属列随资源行 INSERT 写入，不存在"先建行再初始化范围"的路径。 */
-  async initialize(): Promise<void> {
-    throw new Error("CE 的归属列随资源行写入，不存在独立的 ResourceScopeStore.initialize 路径");
+  /**
+   * 范围已随主表 INSERT 写入；此 no-op 仅用于共享初始化协议，不能补写或变更资源归属。
+   */
+  async initialize(input: { resourceType: string; resourceId: string; scope: ResourceScope }): Promise<void> {
+    this.requireBinding(input.resourceType);
   }
 
   async getMany(input: { resourceType: string; resourceIds: readonly string[] }): Promise<Map<string, ResourceScope>> {

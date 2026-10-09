@@ -1,6 +1,7 @@
 import type { ResourceQueryConstraint } from "@fenix/platform-sdk";
 import type { SQL } from "drizzle-orm";
 import type {
+  AgentConfigCreateResult,
   AgentConfigRepository,
   AgentConfigRow,
   AgentConfigWriteData,
@@ -64,7 +65,7 @@ export interface AgentConfigService {
     organizationId: string;
     ownerUserId: string;
     visibility: string;
-  }): Promise<string | undefined>;
+  }): Promise<AgentConfigCreateResult | undefined>;
   update(input: { resourceId: string; data: AgentConfigWriteData }): Promise<boolean>;
   /** 删除资源行与其绑定 Environment（同一事务）；实例停止由 Facade 在此之前完成。 */
   remove(input: { resourceId: string; organizationId: string }): Promise<boolean>;

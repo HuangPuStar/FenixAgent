@@ -7,6 +7,7 @@ import {
   NotFoundError,
   ResourceAccessDeniedError,
   type ResourceAction,
+  type ResourceScope,
 } from "@fenix/platform-sdk";
 import type { AgentConfigWriteData, ScopedAgentConfigRow } from "../repositories/agent-config-resource";
 import { AGENT_CONFIG_LIST_ORDER } from "../repositories/agent-config-resource";
@@ -166,24 +167,35 @@ export class AgentConfigFacade extends AuthorizedResourceFacade implements Agent
    * 同组织同名走仓储的冲突分支（幂等 upsert）：冲突分支只更新可写列，不改归属列，因此重复提交不会
    * 让资源换主或静默改变公开受众。需要 409 的协议入口在调用前用 {@link existsInOrganization} 做
    * 同组织同名检查——口径与这里的冲突目标一致，不得改用可见性判定。
+   *
+   * 此 Facade 不主动开启事务：需要把资源行、初始化关系与其它业务写入原子组合的调用方，应在入口
+   * 包裹 `runInTransaction()`；默认初始化不写独立数据，事务边界由调用方决定。
    */
   async create(actor: ActorContext, input: AgentConfigCreateInput): Promise<AuthorizedAgentConfig> {
-    const scope = await this.resolveCreateScope(actor);
-    if (scope.organizationId === undefined) {
+    let scope = await this.resolveCreateScope(actor);
+    scope = {
+      ...scope,
+      visibility: input.publicReadable === true ? "public" : scope.visibility,
+    };
+    const organizationId = scope.organizationId;
+    if (organizationId === undefined) {
       throw new Error("AgentConfig 归属组织缺失：组织资源必须落在某个组织上");
     }
 
-    const resourceId = await this.service.create({
+    const result = await this.service.create({
       name: input.name,
       data: input.data,
-      organizationId: scope.organizationId,
+      organizationId,
       ownerUserId: scope.ownerUserId ?? actor.userId,
-      visibility: input.publicReadable === true ? "public" : scope.visibility,
+      visibility: scope.visibility,
     });
-    if (resourceId === undefined) {
+    if (result === undefined) {
       throw new Error("AgentConfig 创建未返回资源 ID");
     }
-    return this.reload(actor, resourceId, input.name);
+    if (result.created) {
+      await this.initializeResourceAccess(actor, result.id, scope);
+    }
+    return this.reload(actor, result.id, input.name);
   }
 
   /** 更新配置与公开受众；公开受众变更由 {@link AuthorizedResourceFacade.setVisibility} 再校验一次。 */
@@ -290,6 +302,16 @@ export class AgentConfigFacade extends AuthorizedResourceFacade implements Agent
     const authorized = await this.getById(actor, resourceId);
     if (!authorized) throw new NotFoundError(`Agent '${label}' not found`);
     return authorized;
+  }
+
+  /** 创建期登记初始访问范围，确保回读前授权状态已完整可见。 */
+  private async initializeResourceAccess(actor: ActorContext, resourceId: string, scope: ResourceScope): Promise<void> {
+    await this.options.accessControl.initializeResourceAccess({
+      actor,
+      resource: this.options.resource,
+      resourceId,
+      scope,
+    });
   }
 
   /** 把平台的授权拒绝映射为对外 403；其它错误保持原样，避免把故障伪装成权限问题。 */
