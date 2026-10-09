@@ -161,7 +161,7 @@ make fe
 1. **非嵌入态 gate 放在组件内**（`NodeSidebar` 内 `isEmbedded()` 为 false 即返回 null），而不是在 `page.tsx` 写 `isEmbedded() ? NodeSidebar : EmptySidebar`：adapter 包**未声明** `@coze-arch/bot-http` 依赖（pnpm 下 phantom import 解析不到；同仓先例 `apps/coze-studio/src/routes/index.tsx:76-78` 有同样说明），而 playground 包已依赖该包，判据与 `utils/embedded-node-scope.ts` 同源。渲染结果与 `EmptySidebar` 等价（非嵌入为 null）。
 2. **侧栏不写 `addNodeRef`**（不实现 `useImperativeHandle`）：容器把同一个 ref 同时挂在 `<Sidebar>` 与 `<AddNodeModalProvider>` 上（`components/workflow-container/index.tsx:105,232-233`），画布 drop 依赖 provider 写出的 `handleAddNode`；侧栏渲染序在前，若也写 ref 会与 provider 争用同一 ref，故只渲染列表。
 3. **已知缺口（最小实现）**：`Api` / `SubWorkflow` / `Imageflow` 的**点击**添加在上游走弹层（`node-panel/components/panel.tsx:164-219` 的 `openPlugin` / `openWorkflow` / `openImageflow`），依赖 `AddNodeModalProvider` 的 context，而侧栏与 provider 是兄弟节点、拿不到该 context；这三类节点同时不在嵌入白名单内（当前数据链路不可达），故侧栏对它们不做点击添加，代码内已注释缺口描述、影响范围与移除条件（把侧栏移进 provider 子树后按 panel.tsx 分支补齐）。**拖拽入口不受影响**（拖拽经画布 drop → provider，链路完整）。
-4. **宿主侧 iframe 最小宽度无需调整**：侧栏 228px 占位后，1200px 的 iframe 内画布文档宽度与视口一致（无横向溢出），五档视口（1440/1280/1100/1024/900）下宿主页面亦无横向滚动回归，故未改 `packages/resources/workflow-v2/web/pages/canvas/canvas-host-page.tsx` 的 `min-w-300` 常量。
+4. **宿主侧 iframe 最小宽度无需调整**：侧栏 228px 占位后，1200px 的 iframe 内画布文档宽度与视口一致（无横向溢出），五档视口（1440/1280/1100/1024/900）下宿主页面亦无横向滚动回归，故未改 `packages/resources/workflow-v2/web/pages/canvas/canvas-host-page.tsx` 的 `min-w-300` 常量。**（2026-10-09 作废，见 §9：`min-w-300` 已删除。本条把「上游文档的 1200px 下限」误当成了布局固有属性，实际画布本身可随容器收缩。）**
 
 ### 6.3 上游同步冲突处理提示
 
@@ -273,3 +273,59 @@ curl -s http://127.0.0.1:18080/ | md5
 - `isEmbedded()` 的判定源在 `@coze-arch/bot-http`；若上游改动该 API 名称或语义（`utils/embedded-node-scope.ts`、`components/node-sidebar` 与本处共 3 个使用点），三处需同步。
 - 若上游把「交互模式」按钮移出工具栏或改掉 `data-testid="workflow.detail.toolbar.interactive"`，本文档的几何证据会失效，但结论（浮层锚在工具栏按钮上、向上展开覆盖画布）与修复方式不受影响。
 
+
+## 9. 增量改造：画布宽度随宿主容器收缩（1F-4）
+
+> 日期：2026-10-09 · 状态：**宿主侧已实施；上游侧已改代码（未构建、未部署）**
+> 触发缺陷：窄窗口下工作流区域显示不随宽度变化——画布右侧（发布按钮、试运行、右侧属性区）被裁在视口外，宿主页面出现横向滚动条。
+> 本节同时**作废 §6.2 第 4 条**（「宿主侧 iframe 最小宽度无需调整」）：那条结论把「上游文档的 1200px 下限」当成了布局固有属性。
+
+### 9.1 根因（两处，实测）
+
+| 层 | 位置 | 行为 |
+|---|---|---|
+| 宿主 | `packages/resources/workflow-v2/web/pages/canvas/canvas-host-page.tsx` | 给 iframe 加 `min-w-300`（=1200px），容器用 `overflow-x-auto` 承接溢出——窄视口下画布无法随容器收缩，右半部分只能横向滚动才看得到 |
+| 上游 | `@coze-arch/bot-utils` 的 `setPCBody()`（写 `<html>/<body>` 内联 `min-width: 1200px; min-height: 600px`）+ `apps/coze-studio/src/global.less` 的 `html, body { min-width: 1200px }` | 画布**文档**被钉死 1200px：iframe 再窄，`documentElement.scrollWidth` 恒为 1200 |
+
+`.coz-layout` 一系（左节点栏 / 画布 / 右侧属性）是 flex + `width: 100%`，**没有**自己的固定宽度——旧结论「上游不收缩」是把文档下限当成布局固有造成的。实测（`)` 见 §9.3）：把文档下限打回 0 后，1600〜800px 逐档收缩，侧栏仍为 228px、底部工具栏与发布按钮全部落在视口内。
+
+### 9.2 改动
+
+| 仓 | 文件 | 改动 |
+|---|---|---|
+| 本仓 | `packages/resources/workflow-v2/web/pages/canvas/canvas-host-page.tsx` | 删 `CANVAS_FRAME_MIN_WIDTH_CLASS`；容器 `overflow-x-auto overflow-y-hidden` → `overflow-hidden`；宽度契约注释改为「iframe 铺满容器，宽度由容器单方决定」 |
+| 本仓 | `packages/resources/workflow-v2/web/__tests__/canvas-host-fallbacks.test.tsx` | 宽度契约测试改为钉住「`w-full`、无 `min-w-`、容器 `overflow-hidden`、祖先无横向滚动层」 |
+| 上游 | `frontend/packages/arch/bot-utils/src/viewport.ts` | 新增 `isEmbeddedDocument()`（iframe 判据，语义同 `@coze-arch/bot-http` 的 `isEmbedded()`，本包不声明该依赖故就地实现） |
+| 上游 | `frontend/packages/foundation/global-adapter/src/hooks/use-app-init/use-responsive-body-style.ts`、`frontend/packages/arch/bot-hooks-adapter/src/use-responsive-body-style.ts` | 嵌入态改走 `setMobileBody()`（不写宽高下限），独立部署仍走 `setPCBody()` |
+
+嵌入态判据落在 `useSetResponsiveBodyStyle`：它是画布文档宽高下限的**唯一写入方**（`global.less` 的同名规则被内联样式覆盖；`global-layout` 那条只在路由配 `showMobileTips` 时生效，画布路由未配）。
+
+### 9.3 实测（本机真实产物 + 静态托管探针，见 §9.4）
+
+产物：上游 `frontend/apps/coze-studio/dist`（`sha-af8f16c` 同部署版本）。iframe 宽度逐档：
+
+| iframe 宽 | 改前 `scrollWidth` | 改前发布按钮 | 改后（对照注入）`scrollWidth` | 改后发布按钮 |
+|---|---|---|---|---|
+| 1600 | 1600 | 1584 | 1600 | 1584 |
+| 1280 | 1280 | 1264 | 1280 | 1264 |
+| 1100 | **1200** | **1184（裁）** | 1100 | 1084 |
+| 1024 | **1200** | **1184（裁）** | 1024 | 1008 |
+| 900 | **1200** | **1184（裁）、试运行 948（裁）** | 900 | 884 |
+| 800 | **1200** | **1184（裁）、试运行 948（裁）、添加节点 821（裁）** | 800 | 784 |
+
+改后侧栏恒为 228px，缩放控件与三件套按钮全部在视口内；剩余越界元素只有画布自身的图形图层（`gedit-playground-*`，可平移，属正常）。
+
+### 9.4 复测探针与验收
+
+工具：`tmp/workflow-canvas-width-probe/`（`bun server.ts` 托管产物 + 最小 BFF mock + 宽度可控 iframe；`node probe.mjs` 判定，用法与判定标准见该目录 `README.md`）。
+
+- **验收口径**：不带 `--override` 跑 `node probe.mjs`，1600/1280/1100/1024/900/800 六档全 OK——即每档 `scrollWidth === innerWidth`、三件套按钮与缩放控件 `right <= innerWidth`、侧栏 228px。
+- **`--override` 对照**：注入 `html,body{min-width:0!important}`，用来证明「除文档下限外没有别的宽度卡点」；**不能作为验收结论**。
+- **待办（上游产物重建后）**：`WORKFLOW_CANVAS_BASE=/workflow-canvas/ rush rebuild -o @coze-studio/app` → 按 §7 流程替换 `bin/resources/static` 与 `backend/static` → 跑上述验收。本次未构建，故**尚未有重建后的 Ok 证据**。
+- 本次已完成的验证：宿主侧 `bun test packages/resources/workflow-v2/web/__tests__/canvas-host-fallbacks.test.tsx` 12/12 通过、`bun run build:web` 与 `bun run precheck` 通过；上游侧 `packages/arch/bot-utils` 的 `tsc -b tsconfig.build.json` + `vitest __tests__/viewport.test.ts`（5/5，含嵌入态三例）与三个改动包的 `eslint` 均通过。
+
+### 9.5 上游同步冲突处理提示
+
+- 上游若自行给嵌入态加上「文档尺寸随容器」的处理（例如把 `setPCBody` 的阈值改成按容器判断），本节的 4 个上游改动点可直接撤掉：`isEmbeddedDocument()` 删除、两处 hook 回到 `if (isResponsive)` 单分支。
+- 上游若**重新引入**文档级 `min-width`（新增内联样式或全局 less 规则），宿主会先表现为画布内侧一条横向滚动条（而不是页面级滚动），复测探针的第 1 条判定会直接失败。
+- `global.less` 的 `html, body { min-width: 1200px }` 仍在：它服务于上游独立站的 PC 布局，嵌入态靠内联样式覆盖——上游若把内联样式改成 CSS 类，覆盖关系会反转，需重新核对。

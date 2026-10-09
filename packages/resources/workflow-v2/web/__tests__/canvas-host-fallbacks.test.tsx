@@ -175,18 +175,20 @@ describe("上游未就绪的降级", () => {
     expect(frameOrNull(mount.container)).not.toBeNull();
   });
 
-  // 宽度契约（happy-dom 量不到布局，这里只钉住那条唯一的横向滚动层与 iframe 的宽度下限）：
-  // 上游画布的根容器是固定 1200px 的三栏布局；若 iframe 交给容器宽度（去掉 `min-w-300`），窄视口下
-  // 画布会**文档级**溢出，出现「iframe 内部 + 容器」两级横向滚动且右侧面板被 iframe 边缘裁掉。
-  test("iframe 带宽度下限，横向滚动只有容器一层", async () => {
+  // 宽度契约（happy-dom 量不到布局，这里只钉住宽度归属）：iframe 铺满容器，宽度由容器单方决定。
+  // 上游画布早期是固定 1200px 文档，宿主据此给过 iframe 一个 1200px 下限 + 容器横向滚动；上游已在嵌入态
+  // 去掉文档下限（详见 canvas-host-page.tsx 的宽度契约注释），宿主因此不得再保留宽度下限或横向滚动层——
+  // 任何一处残留都会在窄视口下把右侧属性区推出容器。
+  test("iframe 铺满容器，宿主不保留宽度下限与横向滚动层", async () => {
     await mount.render(page());
 
     const iframe = frameOrNull(mount.container);
     if (iframe === null) throw new Error("iframe 未渲染");
-    expect(iframe.className).toContain("min-w-300");
+    expect(iframe.className).toContain("w-full");
+    expect(iframe.className).not.toContain("min-w-");
     const frameHost = iframe.parentElement;
-    expect(frameHost?.className).toContain("overflow-x-auto");
-    // 两层嵌套滚动是这次的缺陷形态：容器之外的祖先不得再开横向滚动。
+    expect(frameHost?.className).toContain("overflow-hidden");
+    expect(frameHost?.className ?? "").not.toContain("overflow-x-auto");
     expect(frameHost?.parentElement?.className ?? "").not.toContain("overflow-x-auto");
   });
 });
