@@ -53,6 +53,22 @@ describe("C-3 消息接线契约", () => {
     expect(html).not.toContain("&quot;version&quot;");
   });
 
+  // 未闭合的 ui-spec 围栏在非流式时先补全再交给 streamdown：组件与尾随正文各自归位
+  test("非流式未闭合围栏补全后组件与正文各自归位", async () => {
+    const html = await renderSettled(<MessageResponse>{`${fence(completeCode)}\n\n尾随**加粗**说明`}</MessageResponse>);
+    expect(html).toContain("接线成功");
+    expect(html).toContain('data-streamdown="strong"');
+    expect(html).not.toContain("&quot;version&quot;");
+  });
+
+  // 流式中的未闭合是正常中间态：不补全，避免后续增量落到围栏外
+  test("流式未闭合围栏不补全", async () => {
+    const html = await renderSettled(
+      <MessageResponse isStreaming>{`${fence(completeCode)}\n\n尾随**加粗**说明`}</MessageResponse>,
+    );
+    expect(html).not.toContain('data-streamdown="strong"');
+  });
+
   test("宿主 Context 相互隔离，未提供时为空", async () => {
     function HostProbe() {
       return <span>{useUISpecHost().envId ?? "no-env"}</span>;

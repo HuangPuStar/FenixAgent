@@ -36,6 +36,7 @@ import { cn } from "../../lib/cn";
 import { Button } from "../../ui/button";
 import { ButtonGroup, ButtonGroupText } from "../../ui/button-group";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "../../ui/tooltip";
+import { repairUnclosedUISpecFence } from "../ui-spec/fence-repair";
 import { UI_SPEC_PLUGINS } from "../ui-spec/plugins";
 import { UISpecHostProvider } from "../ui-spec/UISpecHostContext";
 import { IframePreview } from "./iframe-preview";
@@ -410,6 +411,14 @@ export const MessageResponse = memo(
       return { ...base, ...registered } as Components;
     }, []);
 
+    // 未闭合的 ui-spec 围栏会吞掉其后全部正文（CommonMark 语义），在交给 streamdown 前先补全：
+    // JSON 回到围栏内解析、说明文字回到正文渲染，见 `ui-spec/fence-repair.ts`。
+    // 只在非流式做——流式中的未闭合是正常中间态，提前补全会让后续增量落到围栏外。
+    const content = useMemo(
+      () => (!isStreaming && typeof children === "string" ? repairUnclosedUISpecFence(children) : children),
+      [children, isStreaming],
+    );
+
     return (
       <StreamdownErrorBoundary fallback={children}>
         <Suspense
@@ -435,7 +444,7 @@ export const MessageResponse = memo(
               // 容器无法挂 `data-slot`；对它的结构断言由 markdown 元素上的 `data-streamdown="…"` 承担。
               className={cn(MARKDOWN_CONTENT_CLASS, "message-response size-full", className)}
             >
-              {children}
+              {content}
             </LazyStreamdown>
           </UISpecHostProvider>
         </Suspense>

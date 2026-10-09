@@ -10,10 +10,11 @@
  */
 
 import type { PluginConfig } from "streamdown";
+import { UI_SPEC_LANGUAGE } from "./spec";
 import { UISpecBlock } from "./UISpecBlock";
 
-/** 围栏语言标识：正文里写成 ```ui-spec。 */
-export const UI_SPEC_LANGUAGE = "ui-spec";
+/** 围栏语言标识：正文里写成 ```ui-spec。定义在 `spec.ts`（解析侧与注册侧共用），此处再导出保持既有引用路径。 */
+export { UI_SPEC_LANGUAGE };
 
 /** streamdown 插件配置：把 `ui-spec` 围栏交给自有渲染器；撤销本常量即恢复普通代码块。 */
 export const UI_SPEC_PLUGINS: PluginConfig = {
