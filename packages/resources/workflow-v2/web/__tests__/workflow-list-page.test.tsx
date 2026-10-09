@@ -18,7 +18,7 @@
 
 import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
 import { createInstance } from "i18next";
-import { act, createElement, type ReactElement, type ReactNode } from "react";
+import { act, createContext, createElement, type ReactElement, type ReactNode, useContext, useState } from "react";
 import type { Resolver } from "react-hook-form";
 import { I18nextProvider } from "react-i18next";
 import {
@@ -119,6 +119,44 @@ mock.module("@fenix/ui-components/config/ConfirmDialog", () => ({
       : null,
 }));
 
+// 日志弹窗的壳同样是 Radix：内容在 happy-dom 下不挂载，换成直通替身，好让「行操作 → 按本地主键取记录」
+// 这条接线可断言（弹窗自身的三态由 `workflow-log-dialog.test.tsx` 覆盖）。
+mock.module("@fenix/ui-components/ui/dialog", () => ({
+  Dialog: ({ open, children }: { open?: boolean; children?: ReactNode }) =>
+    open ? createElement("div", null, children) : null,
+  DialogContent: ({ children }: { children?: ReactNode }) => createElement("div", null, children),
+  DialogHeader: ({ children }: { children?: ReactNode }) => createElement("div", null, children),
+  DialogTitle: ({ children }: { children?: ReactNode }) => createElement("h2", null, children),
+  DialogDescription: ({ children }: { children?: ReactNode }) => createElement("p", null, children),
+}));
+
+/**
+ * 行操作下拉的替身。
+ *
+ * Radix 的 `DropdownMenuContent` 走 portal，在 happy-dom 下同样不挂载；而「发布 / 重命名 / 删除」现在都在菜单
+ * 里，不换替身就没法断言这三条接线。替身保留「点触发器才展开」的语义（`useState` 就是那一步），否则任何一条
+ * 用例都会同时看到三个菜单项，点错也照样通过。
+ */
+mock.module("@fenix/ui-components/ui/dropdown-menu", () => {
+  const OpenContext = createContext<{ open: boolean; toggle: () => void }>({ open: false, toggle: () => {} });
+  return {
+    DropdownMenu: ({ children }: { children?: ReactNode }) => {
+      const [open, setOpen] = useState(false);
+      const value = { open, toggle: () => setOpen((current) => !current) };
+      return createElement(OpenContext.Provider, { value }, children);
+    },
+    DropdownMenuTrigger: ({ children }: { children?: ReactNode }) => {
+      const { toggle } = useContext(OpenContext);
+      return createElement("span", { "data-testid": "row-actions-trigger", role: "button", onClick: toggle }, children);
+    },
+    DropdownMenuContent: ({ children }: { children?: ReactNode }) =>
+      useContext(OpenContext).open ? createElement("div", null, children) : null,
+    DropdownMenuItem: ({ children, onClick }: { children?: ReactNode; onClick?: () => void }) =>
+      createElement("button", { type: "button", onClick }, children),
+    DropdownMenuSeparator: () => null,
+  };
+});
+
 afterEach(() => {
   mock.restore();
 });
@@ -152,8 +190,14 @@ let bindingRoute: FetchRoute;
 let orgAppCreateRoute: FetchRoute;
 /** 只按 URL 前缀分派：列表的 GET / DELETE 都落在同一前缀上，由方法区分。 */
 let workflowDeleteRoute: FetchRoute;
+/** 发布（`POST /workflows/:id/publish`）与发布记录读取（`GET /workflows/:id/publish-records`）。 */
+let publishRoute: FetchRoute;
+let recordsRoute: FetchRoute;
 
 function route(call: FetchCall): FetchRoute {
+  // 发布记录也是 `GET /workflows/*` 前缀，必须先于列表分派，否则会拿到列表的信封（形状不对，页面会当失败）。
+  if (call.method === "GET" && call.url.includes("/publish-records")) return recordsRoute;
+  if (call.method === "POST" && call.url.endsWith("/publish")) return publishRoute;
   if (call.method === "GET" && call.url.startsWith("/web/workflow-v2/workflows")) return listRoute;
   if (call.method === "DELETE" && call.url.startsWith("/web/workflow-v2/workflows")) return workflowDeleteRoute;
   // `/org-app` 一条路径两种语义：GET 是绑定探测、POST 是建绑，必须先按方法分流再落到探测上。
@@ -175,6 +219,8 @@ beforeEach(() => {
   bindingRoute = BOUND_ACTIVE;
   orgAppCreateRoute = webOk({ appId: "app-1" });
   workflowDeleteRoute = webOk({ deleted: true, strategy: 0 });
+  publishRoute = webOk({ version: "v0.0.2", commitId: "" });
+  recordsRoute = webOk({ current: { publishedVersion: "v0.0.2" }, records: [] });
   router = installFetchRouter(route);
   mount = mountCanvas();
 });
@@ -224,6 +270,11 @@ async function click(element: HTMLElement): Promise<void> {
     element.click();
   });
   await mount.flush();
+}
+
+/** 展开某一行（当前只有一行）的「更多」下拉：发布 / 重命名 / 删除都在菜单里。 */
+async function openRowMenu(): Promise<void> {
+  await click(byTestId("row-actions-trigger"));
 }
 
 /** 列表取数次数（分页、重试、删除后刷新都落在这里）。 */
@@ -371,6 +422,7 @@ describe("未绑定态的初始化入口", () => {
 describe("删除的数据流", () => {
   test("确认后发出 DELETE，成功则刷新列表并给出提示", async () => {
     await mount.render(page());
+    await openRowMenu();
     await click(buttonByText("list.delete"));
     await click(byTestId("confirm-delete"));
 
@@ -387,6 +439,7 @@ describe("删除的数据流", () => {
     await mount.render(page());
     const before = listGetCount();
 
+    await openRowMenu();
     await click(buttonByText("list.delete"));
     await click(byTestId("confirm-delete"));
 
@@ -424,6 +477,7 @@ describe("新建与重命名的接线", () => {
   // 重命名必须预填当前名称：空白表单会让用户以为要重新输入，而提交空名称会被 schema 拦下。
   test("重命名以当前名称为默认值提交，成功后刷新列表", async () => {
     await mount.render(page());
+    await openRowMenu();
     await click(buttonByText("list.rename"));
 
     expect(inputById("workflow-rename-name").value).toBe(ITEM.name);
@@ -436,9 +490,52 @@ describe("新建与重命名的接线", () => {
     expect(listGetCount()).toBe(2);
   });
 
-  test("打开画布入口指向该行的上游 workflow ID", async () => {
+  test("「打开」入口指向该行的上游 workflow ID", async () => {
     await mount.render(page());
     const link = mount.container.querySelector("a");
     expect(link?.getAttribute("href")).toBe("/agent/workflow/upstream-wf-1/edit");
+  });
+});
+
+describe("发布与日志入口", () => {
+  // 发布按**本地主键**寻址，请求体固定带 force（与上游画布内的发布按钮同口径，理由见模型文件）；
+  // 成功后必须刷新列表：状态列与版本号是本地登记值，只有重取才会跟上服务端结果。
+  test("发布按本地主键发请求，成功后提示版本并刷新列表", async () => {
+    await mount.render(page());
+    const before = listGetCount();
+
+    await openRowMenu();
+    await click(buttonByText("publish.action"));
+
+    const publishCall = callTo("/web/workflow-v2/workflows/wf-local-1/publish", "POST");
+    expect(publishCall?.body).toEqual({ force: true });
+    expect(mount.container.textContent).toContain("publish.success");
+    expect(listGetCount()).toBe(before + 1);
+  });
+
+  // 失败按稳定错误码上屏（此处是最常见的「草稿未通过 test_run」），且不刷新列表——上游没发布，列表没变。
+  test("发布失败按错误码提示且不刷新列表", async () => {
+    publishRoute = webErr("WORKFLOW_DRAFT_NOT_VERIFIED", "needs to pass the test run", 409);
+    await mount.render(page());
+    const before = listGetCount();
+
+    await openRowMenu();
+    await click(buttonByText("publish.action"));
+
+    expect(mount.container.textContent).toContain("publish.failed_draft_not_verified");
+    expect(mount.container.textContent).not.toContain("publish.success");
+    expect(listGetCount()).toBe(before);
+  });
+
+  // 日志是纯读取，弹窗打开才发请求（不提前预取），且按行上的本地主键取数。
+  test("打开日志弹窗才按本地主键取数", async () => {
+    await mount.render(page());
+    expect(router.callsTo("/publish-records")).toHaveLength(0);
+
+    await click(buttonByText("list.log"));
+
+    const logsCall = callTo("/web/workflow-v2/workflows/wf-local-1/publish-records", "GET");
+    expect(logsCall).toBeDefined();
+    expect(mount.container.textContent).toContain("log.title");
   });
 });

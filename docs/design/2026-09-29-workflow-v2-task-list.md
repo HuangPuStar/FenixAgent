@@ -62,6 +62,8 @@
 
 - [x] 3A `[A]` 调试透传：`test_run`/`test_resume`/`cancel` + 过程轮询（含退避预算）
 - [x] 3B `[A]` 发布与 trace：`publish`（版本递增）、发布记录、`list_spans`/`get_trace`
+      ——控制台发布入口与日志查看于 2026-10-09 补齐（列表页行操作「更多 → 发布」与「日志」弹窗、`GET /workflows/:id/publish-records`）；
+      记录取自上游 `list_publish_workflow`，该端点在当前上游构建是桩实现（契约快照 F12），故界面的空态是常态而非缺陷
 - [x] 3C `[A]` 审计与指标接入；错误映射与 503 熔断降级
 - [x] 3D `[B]` 宿主侧错误兜底与用户提示（`web/pages/canvas/canvas-status-views.tsx`：骨架、初始化超时、上游不可用、会话失效、未绑定引导）
 - [x] 3E `[A]` **平台账号 `spaceId` 投影（P0，画布可达的前置）**：`routes/web/platform-account.ts` 的

@@ -5,6 +5,9 @@
 // （`use-canvas-handshake`：取 code → 兑换 → `token` 下发 → 续期 → 撤销）；④ 超时与失败的降级；
 // ⑤ `navigate-out` 交宿主路由返回列表。
 //
+// 发布**不在本页**：画布 iframe 内已有上游自带的发布按钮，控制台的发布入口在列表页行操作（`../list/`）。
+// 宿主页曾短暂加过一层发布工具栏，2026-10-09 移除——同一动作两个入口会让「在哪发布」变成需要解释的问题。
+//
 // 本页是**票据持有方**：票据在 `use-canvas-handshake` 的内存里，画布侧只拿到票据值；续期与撤销因此都在
 // 宿主侧闭环（冻结 §7 为什么选 `token` 路径的理由）。
 //
@@ -32,19 +35,6 @@ export interface WorkflowCanvasHostPageProps {
 
 /** 画布 iframe 的 `sandbox`（设计 §5.3 逐字取值）。 */
 const CANVAS_FRAME_SANDBOX = "allow-scripts allow-same-origin allow-forms allow-popups allow-downloads allow-modals";
-
-/**
- * iframe 的宽度下限（= 上游画布文档的宽度下限）。
- *
- * 上游画布的根容器 `.coz-layout` 是**固定 1200px** 的三栏布局（左侧面板 + 画布 + 右侧属性面板），
- * 实测其在窄于该值时不会自适应收缩，而是让画布**文档本身**变宽（`documentElement.scrollWidth` 恒为
- * 1200）。若把 iframe 交给容器宽度（`w-full`），两级横向滚动会同时出现：iframe 内部一条（上游文档
- * 溢出）＋ 右面板被 iframe 右边缘裁掉。因此这里给 iframe 一个不小于上游下限的宽度，并让**容器**
- * 成为唯一一层横向滚动（`overflow-x-auto`）：画布按设计宽度渲染，页面自身不产生滚动条。
- *
- * 取值用主题间距刻度（`--spacing: 4px`，`min-w-300` = 1200px），不写任意值类（FCP-WEB-01）。
- */
-const CANVAS_FRAME_MIN_WIDTH_CLASS = "min-w-300";
 
 /**
  * `space-missing` 的自愈预算：**有界**自动重试的次数与间隔。
@@ -121,25 +111,31 @@ export function WorkflowCanvasHostPage({ upstreamWorkflowId }: WorkflowCanvasHos
     <div className="relative flex h-full min-h-0 flex-1 flex-col">
       <CanvasAnnouncement label={t(canvasAnnouncementKey(state))} />
       {state.kind === "frame" && frameUrl !== null ? (
-        // 唯一一层横向滚动落在这里：iframe 有宽度下限（上游画布的固定三栏），窄视口下由本容器滚动，
-        // 而不是让 iframe 内部再出一条横向滚动条（页面自身因此始终无横向滚动条）。
-        <div className="relative min-h-0 flex-1 overflow-x-auto overflow-y-hidden">
-          <iframe
-            ref={handshake.iframeRef}
-            key={handshake.frameKey}
-            src={frameUrl}
-            title={t("canvas.frameTitle")}
-            sandbox={CANVAS_FRAME_SANDBOX}
-            referrerPolicy="no-referrer"
-            // ready 之前盖着骨架：即使骨架被读屏跳过，指针事件也不该落到尚未握手的画布上。
-            className={cn("h-full w-full border-0", CANVAS_FRAME_MIN_WIDTH_CLASS, showStatus && "pointer-events-none")}
-          />
-          {showStatus ? (
-            <div className="absolute inset-0">
-              <CanvasStatusPanel state={state} onRetry={handleRetry} />
-            </div>
-          ) : null}
-        </div>
+        <>
+          {/* 宽度契约：iframe 铺满容器（`w-full`），画布随容器宽度收缩，**本页任何一层都不承担横向滚动**。
+              上游画布曾是固定 1200px 文档（`html/body` 的 `min-width`），当时靠给 iframe 一个 1200px 下限 +
+              容器 `overflow-x-auto` 兜住；上游已在嵌入态去掉该下限（`@coze-arch/bot-utils` 的
+              `isEmbeddedDocument()` + 两处 `useSetResponsiveBodyStyle`），实测 1600～800px 逐档
+              `documentElement.scrollWidth` 等于 iframe 宽度、底部工具栏与发布按钮均在视口内，故此处不再补偿。
+              验收口径：宿主页面不出现横向滚动；上游若重新引入文档级下限，画布内侧会先出现一条横向滚动条。 */}
+          <div className="relative min-h-0 flex-1 overflow-hidden">
+            <iframe
+              ref={handshake.iframeRef}
+              key={handshake.frameKey}
+              src={frameUrl}
+              title={t("canvas.frameTitle")}
+              sandbox={CANVAS_FRAME_SANDBOX}
+              referrerPolicy="no-referrer"
+              // ready 之前盖着骨架：即使骨架被读屏跳过，指针事件也不该落到尚未握手的画布上。
+              className={cn("h-full w-full border-0", showStatus && "pointer-events-none")}
+            />
+            {showStatus ? (
+              <div className="absolute inset-0">
+                <CanvasStatusPanel state={state} onRetry={handleRetry} />
+              </div>
+            ) : null}
+          </div>
+        </>
       ) : (
         <div className="min-h-0 flex-1">
           <CanvasStatusPanel state={state} onRetry={handleRetry} />

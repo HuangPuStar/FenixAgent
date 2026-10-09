@@ -21,30 +21,56 @@ import { registerWorkflow } from "../../server/services/workflow-registry";
 type Database = ReturnType<typeof drizzle>;
 
 const CONNECTION_STRING = process.env.DATABASE_URL;
-const pool = CONNECTION_STRING ? new Pool({ connectionString: CONNECTION_STRING, max: 2 }) : null;
-const handle: Database | null = pool ? drizzle(pool) : null;
+
+/**
+ * 连接池与句柄按需建立、关池后置空。
+ *
+ * 为什么不是模块加载时建一次：本文件被同目录多个用例文件共享（Bun 的测试进程里模块实例是共享的），而每个
+ * 文件收尾都会调 `closeTestPool()`——一次性建立的池会被先跑完的那个文件关掉，其后的文件全部撞上
+ * 「Cannot use a pool after calling end on the pool」。按需重建让「哪个文件先跑」不再影响结果。
+ */
+let pool: Pool | null = null;
+let handle: Database | null = null;
+
+function ensureHandle(): Database | null {
+  if (CONNECTION_STRING === undefined || CONNECTION_STRING.length === 0) return null;
+  if (handle === null) {
+    pool = new Pool({ connectionString: CONNECTION_STRING, max: 2 });
+    handle = drizzle(pool);
+  }
+  return handle;
+}
 
 /**
  * 库是否可达：连不上时整组跳过并打印原因（CI 没有数据库服务，硬失败会让 `bun test packages/` 变成不可用
  * 门禁）；跳过是显式的，不是静默通过。
  */
-export const databaseReachable =
-  (await pool
-    ?.query("SELECT 1")
-    .then(() => handle !== null)
-    .catch(() => false)) ?? false;
+export const databaseReachable = await (async () => {
+  const initial = ensureHandle();
+  if (initial === null) return false;
+  try {
+    await pool?.query("SELECT 1");
+    return true;
+  } catch {
+    return false;
+  }
+})();
 
 if (!databaseReachable) console.warn("[workflow-v2 控制面用例] 跳过：DATABASE_URL 未配置或本地 Postgres 不可达。");
 
 /** 取真实句柄；跳过组之外的用例不应调用它。 */
 export function database(): Database {
-  if (!handle) throw new Error("本地 Postgres 不可达，测试数据层未装配");
-  return handle;
+  const current = ensureHandle();
+  if (current === null) throw new Error("本地 Postgres 不可达，测试数据层未装配");
+  return current;
 }
 
-/** 收尾：关掉本进程的测试连接池。 */
+/** 收尾：关掉本进程的测试连接池；之后的用例需要时按需重建（见 `ensureHandle`）。 */
 export async function closeTestPool(): Promise<void> {
-  await pool?.end();
+  const current = pool;
+  pool = null;
+  handle = null;
+  await current?.end();
 }
 
 /** 复位替身后注入数据库句柄（应用基础设施只允许初始化一次，不复位第二条用例就会抛错）。 */
@@ -170,7 +196,21 @@ export const jsonInit = (method: string, body: unknown): RequestInit => ({
 export const readBody = async (response: Response) =>
   (await readJson(response)) as {
     success: boolean;
-    data?: { version?: string; commitId?: string; id?: string; upstreamWorkflowId?: string; ok?: boolean };
+    data?: {
+      version?: string;
+      commitId?: string;
+      id?: string;
+      upstreamWorkflowId?: string;
+      ok?: boolean;
+      /** 发布概况（`GET /workflows/:id/publish-records`）：上游当前发布版本 + 上游发布记录。 */
+      current?: { publishedVersion: string | null };
+      records?: Array<{
+        workflowId: string | null;
+        name: string | null;
+        publishedAt: string | null;
+        ownerId: string | null;
+      }>;
+    };
     error?: { code: string; message: string };
   };
 

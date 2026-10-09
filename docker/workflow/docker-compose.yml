@@ -386,7 +386,10 @@ services:
       nsqlookupd:
         condition: service_healthy
   coze-server:
+    # 上游只发布 amd64（GHCR 上无 arm64 变体）：写死平台，否则 arm64 主机（Mac）拉取直接报
+    # no matching manifest；上游补发 arm64 后与 coze-web 一起删除本行。
     image: ghcr.io/konghayao/workflow-studio-server:${WORKFLOW_STUDIO_TAG:?Set WORKFLOW_STUDIO_TAG}
+    platform: linux/amd64
     restart: always
     container_name: coze-server
     env_file:
@@ -444,7 +447,9 @@ services:
     # 它替代了原先「clone 上游源码 + 本地构建 + 只读挂载 dist」的画布交付方式，因此下面的挂载里
     # 不再有 ${WORKFLOW_STUDIO_DIR}/frontend/apps/coze-studio/dist；上游目录只继续提供
     # docker/.env、backend/conf、docker/nginx/nginx.conf 与初始化资产（schema / Atlas / 图标）。
+    # 与 coze-server 同因：上游只发布 amd64，写死平台，arm64 主机（Mac）才拉得到。
     image: ghcr.io/konghayao/workflow-studio-web-canvas:${WORKFLOW_STUDIO_TAG:?Set WORKFLOW_STUDIO_TAG}
+    platform: linux/amd64
     container_name: coze-web
     restart: always
     ports:
