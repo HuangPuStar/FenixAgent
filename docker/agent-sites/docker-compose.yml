@@ -12,7 +12,10 @@
 services:
 
     agent-sites:
+        # 上游只发布 amd64（GHCR 上无 arm64 变体）：写死平台，否则 arm64 主机（Mac）拉取直接报
+        # no matching manifest；上游补发 arm64 后删除本行。
         image: ghcr.io/konghayao/agent-sites:v0.3.2
+        platform: linux/amd64
         restart: unless-stopped
         networks:
             - fenix-server

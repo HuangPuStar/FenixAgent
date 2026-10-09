@@ -771,6 +771,11 @@ docker compose up -d
     （§9）；取值规则与 `init` 一致：**只补缺失、绝不覆盖**。
 13. **消费共享实例的目录必须有一次性初始化服务**（库 / 账号 / 桶的创建与 schema 应用都在那里，形态逐条见 §6）；
     启动顺序由它自己等待 + 栈内主服务 `depends_on: service_completed_successfully` 表达，不写跨项目 `depends_on`。
+14. **上游未发布 arm64 变体的镜像必须写 `platform: linux/amd64`**：不写时 arm64 主机（Mac）拉取直接报
+    `no matching manifest` 装不起来。核对方式 `docker buildx imagetools inspect <image>`；现状五处（4 个镜像）——
+    `docker/agent-sites/` 的 `agent-sites`、`docker/ragflow/` 的 `ragflow` 与 `ragflow-s3-init`、
+    `docker/workflow/` 的 `coze-server` 与 `coze-web`。上游补发 arm64 后删除该行：它只是“该镜像只有 amd64”的兜底，
+    不是把栈锁在 amd64；对多架构镜像一律不加（强制模拟会白丢 arm64 的原生性能）。
 
 ## 14. 审阅要点（本版给出的关键取舍）
 

@@ -97,7 +97,10 @@ services:
     # path-style 寻址、GetBucketLocation 区域探测、SigV4 签名、建桶 + 读写 + 删对象的能力，全部在启动前走一遍。
     # 多桶模式下本栈的桶由 RAGFlow 运行期自建（桶名是 kb_id / parent_id 这样的 UUID，事先不存在），
     # 因此本服务建的是它自己的探测桶，跑完即删（详见 ./init-s3.py 的头注释）。
+    # 上游只发布 amd64（Docker Hub 上无 arm64 变体）：写死平台，否则 arm64 主机（Mac）拉取直接报
+    # no matching manifest；上游补发 arm64 后与本栈 ragflow 服务一起删除本行。
     image: infiniflow/ragflow:v0.26.0
+    platform: linux/amd64
     restart: "no"
     # 直接用 python3 跑脚本（镜像内 PATH 已指向自带 venv，minio 就在里面）：S3 初始化逻辑用客户端库
     # 写比用 shell + 手搓 SigV4 可靠得多，也不需要额外引入 mc / aws-cli 这类客户端镜像。
@@ -163,7 +166,10 @@ services:
       - ragflow-net
 
   ragflow:
+    # 上游只发布 amd64（Docker Hub 上无 arm64 变体）：写死平台让 arm64 主机（Mac）走模拟运行，
+    # 否则拉取直接报 no matching manifest；上游补发 arm64 后与 ragflow-s3-init 一起删除本行。
     image: infiniflow/ragflow:v0.26.0
+    platform: linux/amd64
     restart: unless-stopped
     command:
       - --enable-adminserver
