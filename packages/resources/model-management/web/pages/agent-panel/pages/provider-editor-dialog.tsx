@@ -232,8 +232,10 @@ export function ProviderEditorDialog({ target, providers, saving, onClose, onSav
               {t("actions.add")}
             </Button>
           </div>
+          {/* 原 11px 与 `text-3xs`(10px) / `text-xs`(12px) 等距，按本仓「等距取大」口径落 `text-xs`：
+              错误提示比同页辅助文案更看重可读性。 */}
           {fetchError && (
-            <p className="model-dialog-error mt-2.5 text-11 text-red-500" role="alert">
+            <p className="model-dialog-error mt-2.5 text-xs text-red-500" role="alert">
               {fetchError}
             </p>
           )}
