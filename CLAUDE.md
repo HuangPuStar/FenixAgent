@@ -13,7 +13,7 @@
 9. **确保变更可验证、可观测、可回滚**：每项改动都应行为可测试、运行状态可观测、故障可定位，并兼顾向后兼容和回滚路径；错误与日志必须保留诊断上下文，但不得泄露敏感信息。
 10. **删除优于兼容**：内部路径重构时直接删除过时实现，禁止新增兼容层、deprecated shim 或双写逻辑；对外契约（`/api/*` 等稳定接口、数据库迁移）的兼容性按协议契约单独评估，属于合同义务而非迁就旧代码。
 
-> **变更速查**：通常提交前运行 `bun run precheck`；修改前端后额外运行 `bun run build:web`；修改 schema 后运行 `bun run db:generate --name <module>-<change>` 和 `bun run db:migrate`；涉及存量数据搬迁、修复或回填时，DDL 后还要运行 `bun run run-data-migrations`。
+> **变更速查**：单任务收尾跑 `bun run fastcheck`（静态门禁 + 受影响测试的快速验证），提交前跑 `bun run precheck`（预发布全量门禁）；修改前端后额外运行 `bun run build:web`；修改 schema 后运行 `bun run db:generate --name <module>-<change>` 和 `bun run db:migrate`；涉及存量数据搬迁、修复或回填时，DDL 后还要运行 `bun run run-data-migrations`。
 
 ## 文档使用与规范入口
 
@@ -75,7 +75,8 @@ bun run dev:web                     # 前端开发
 bun run build:web                   # 前端生产构建
 bun run docs:dev                    # 文档开发
 bun run docs:build                  # 文档构建
-bun run precheck                    # 完整质量门禁；实际步骤以 scripts/ci.ts 为准
+bun run precheck                    # 预发布全量门禁；实际步骤以 scripts/ci.ts 为准
+bun run fastcheck                   # 单任务收尾快检（tsc-rs 类型检查 + 受影响测试）；不替代 precheck
 bun run db:generate --name <module>-<change> # 生成 Drizzle 迁移
 bun run db:migrate                  # 执行迁移
 bun run run-data-migrations         # 执行已登记的存量数据迁移
@@ -87,6 +88,7 @@ bun run run-data-migrations         # 执行已登记的存量数据迁移
 - 前端改动：运行相关 `bun test apps/web/src/__tests__/<file>.test.ts` 和 `bun run build:web`，完成后运行 `bun run precheck`；生产构建不可省略，因为后端从 `apps/web/dist/` 挂载静态资源。
 - 数据库改动：生成并审查迁移，执行 `bun run db:migrate`；涉及存量数据变更时再执行 `bun run run-data-migrations`，然后运行相关测试和 `bun run precheck`。
 - 文档站点改动：运行 `bun run docs:build`。
+- 迭代中可用 `bun run fastcheck` 快检（静态门禁与 precheck 同源，类型检查用 `tsc-rs`，探活失败自动回退官方 `tsc`；测试只跑本次改动影响到的范围）；它不替代 `precheck`：宿主侧集成回归只有三批全量测试能覆盖。
 - 常规任务提交前 `precheck` 必须全绿。`precheck` 已覆盖 server、script、package 与 web 测试，但不能替代前端生产构建。
 
 ## 架构边界与模块契约

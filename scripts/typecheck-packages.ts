@@ -25,14 +25,33 @@
  * - 判定：按 `文件:行:错误码` 去重后仍有非测试诊断即失败（同一文件可能被多个包的程序各报一次，
  *   去重后仍逐条列出「哪些包的程序报了它」）。
  *
- * **只读**：不写盘、不改文件，逐包执行 `tsc -p <pkg>/tsconfig.json --noEmit`。
+ * **只读**：不改任何源码，逐包执行 `<checker> -p <pkg>/tsconfig.json --noEmit`。唯一的写盘是 `tsc` 的
+ * 增量缓存（`--incremental` + `--tsBuildInfoFile`，落在 `node_modules/.cache/fenix-precheck/`）：本门禁
+ * 是全套 precheck 里最重的一步（35 个包，冷启动实测 ~24s），增量缓存让「连续多次改动后复跑」只需
+ * 重新检查受影响的包。缓存只影响速度，正确性由 tsc 按文件版本与配置哈希判定；删掉该目录即可回到冷启动。
+ *
+ * **检查器**：`--bin <name>` 指定 `node_modules/.bin/` 下的检查器，默认 `tsc`；快检传 `--bin tsc-rs`
+ * （取舍见 `scripts/lib/check-gates.ts` 头部）。`tsc-rs` 不走增量缓存——两套工具链的 tsbuildinfo 格式
+ * 不同，共用同名缓存会互相误判；它冷跑 38 包（8 路并发）实测约 3s，缓存收益可忽略，且不写盘更干净。
  */
 
-import { existsSync, readdirSync } from "node:fs";
+import { existsSync, mkdirSync, readdirSync } from "node:fs";
 import { join, resolve } from "node:path";
 
+import { TSC_BUILD_INFO_DIR } from "./lib/check-runner";
+
 const repositoryRoot = resolve(import.meta.dir, "..");
-const tscBin = join(repositoryRoot, "node_modules", ".bin", "tsc");
+
+/** `--bin <name>`：`node_modules/.bin/` 下的检查器名，默认官方 `tsc`（发布门禁口径）。 */
+const binArgIndex = process.argv.indexOf("--bin");
+const checkerName = binArgIndex >= 0 ? process.argv[binArgIndex + 1] : "tsc";
+if (checkerName === undefined || checkerName === "--bin") {
+  console.error("用法：bun run scripts/typecheck-packages.ts [--bin <name>]（默认 tsc）");
+  process.exit(1);
+}
+const checkerBin = join(repositoryRoot, "node_modules", ".bin", checkerName);
+/** 只有 `tsc` 用增量缓存：`tsc-rs` 的 tsbuildinfo 格式不同，共用同名缓存会互相误判。 */
+const useIncrementalCache = checkerName === "tsc";
 
 /**
  * 并发上限。实测（10 核机、35 个包）：总 CPU 约 280s，8 路并发后 wall 约 35s；
@@ -90,9 +109,18 @@ function collectPackages(): { entries: PackageEntry[]; missing: string[] } {
   return { entries, missing };
 }
 
-/** 跑一次包级 tsc，只回传诊断行（tsc 的退出码对「有错误」与「配置坏」都是 1，故以诊断行判定）。 */
+/** 增量缓存文件路径：按包目录命名，避免同一包在不同分组下重名。 */
+function buildInfoPath(entry: PackageEntry): string {
+  return join(TSC_BUILD_INFO_DIR, `pkg-${entry.dir.replaceAll("/", "-")}.tsbuildinfo`);
+}
+
+/** 跑一次包级类型检查，只回传诊断行（退出码对「有错误」与「配置坏」都可能非零，故以诊断行判定）。 */
 async function runTsc(entry: PackageEntry): Promise<string[]> {
-  const proc = Bun.spawn([tscBin, "-p", entry.config, "--noEmit"], {
+  const args = ["-p", entry.config, "--noEmit"];
+  if (useIncrementalCache) {
+    args.push("--incremental", "--tsBuildInfoFile", buildInfoPath(entry));
+  }
+  const proc = Bun.spawn([checkerBin, ...args], {
     cwd: repositoryRoot,
     stdout: "pipe",
     stderr: "pipe",
@@ -143,12 +171,20 @@ function mergeFindings(results: ReadonlyMap<string, string[]>): Finding[] {
 
 /** 执行门禁并返回进程退出码。 */
 export async function checkPackageTypecheck(): Promise<number> {
+  if (!existsSync(checkerBin)) {
+    console.error(`找不到类型检查器 ${checkerBin}（由 --bin 指定，默认 tsc；tsc-rs 需先 bun install）`);
+    return 1;
+  }
+
   const { entries, missing } = collectPackages();
   if (missing.length > 0) {
     console.error(`以下 workspace 包没有包级 tsconfig，本门禁覆盖不到它们（每包都必须有）：`);
     for (const dir of missing) console.error(`  ${dir}/tsconfig.json`);
     return 1;
   }
+
+  // tsBuildInfoFile 的父目录必须存在，否则 tsc 报 TS5033（无法写入缓存）——门禁不该因为缓存路径缺失而红。
+  if (useIncrementalCache) mkdirSync(TSC_BUILD_INFO_DIR, { recursive: true });
 
   const findings = mergeFindings(await runAll(entries));
   const production = findings.filter((finding) => !TEST_FILE_PATTERN.test(finding.file));
@@ -164,7 +200,7 @@ export async function checkPackageTypecheck(): Promise<number> {
   }
 
   console.log(
-    `✓ typecheck-packages (pkg=${entries.length} errors=0 ignored-tests=${ignored})` +
+    `✓ typecheck-packages (checker=${checkerName} pkg=${entries.length} errors=0 ignored-tests=${ignored})` +
       `\n  测试文件的既有错误按脚本头部登记的移除条件豁免，见 scripts/typecheck-packages.ts。`,
   );
   return 0;

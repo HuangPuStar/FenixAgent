@@ -472,7 +472,7 @@ import 顺序由 Biome 的 import-sort 统一（`precheck` 会跑），形态是
 
 ## 11. 开发落地清单
 ### 11.1 提交前自检
-- **门禁**：`bun run precheck` 通过（17 步，见 §11.2）；前端改动额外跑 `bun run build:web`（后端从 `apps/web/dist/` 挂载静态资源，类型检查通过 ≠ 构建通过）；前端用例随 `precheck` 第 15–17 步（三批 `bun test`：`apps/server/src/__tests__/` + `scripts/__tests__/` + `platform-sdk`、`packages/`、`apps/web/src/__tests__/`）跑过；迭代时可先单独跑 `bun test packages/<该包>/web/__tests__/`，交付前仍以整批为准；每个 `test(...)` 上方有一行中文注释说明行为与业务意图。
+- **门禁**：`bun run precheck` 通过（15 步，见 §11.2）；前端改动额外跑 `bun run build:web`（后端从 `apps/web/dist/` 挂载静态资源，类型检查通过 ≠ 构建通过）；前端用例随 `precheck` 末波的三批 `bun test`（`apps/server/src/__tests__/` + `scripts/__tests__/` + `platform-sdk`、`packages/`、`apps/web/src/__tests__/`）跑过；迭代时可先单独跑 `bun test packages/<该包>/web/__tests__/`，交付前仍以整批为准；每个 `test(...)` 上方有一行中文注释说明行为与业务意图。
 - 用户可见字符串全部走 `t()`、插值用 `{{var}}`、en / zh key 对称；导航用 `useNavigate()` / `<Link>`，不用 `window.location` 写操作。
 - 新增页面：路由壳放 `apps/web/src/routes/agent/_panel/`、实现放 owner 包 `web/pages/` 并经懒加载引入（见 §2.5），已在 `web/contribution.ts` 加导航项并补包字典；新增路由后跑过一次 dev 或 build（`routeTree.gen.ts` 才会重生）。
 - API 调用经域模块，且已 `unwrap()` 或显式判断 `success`；组件中无裸 `fetch`、无自拼后端 URL；失败没有被映射成 empty 或成功状态；Loading 态有骨架屏守卫、Empty 态有占位提示。
@@ -480,7 +480,14 @@ import 顺序由 Biome 的 import-sort 统一（`precheck` 会跑），形态是
 - 表单用 `FormDialog` + `formConfig`（react-hook-form + zod），不手写 `useState` 校验；Dialog `onOpenChange` 中清理状态、表单重置用 `key`；`dangerouslySetInnerHTML` 不经清洗不得使用、新增 iframe 显式声明 `sandbox`；无 API Key / Token 存入 localStorage、无原生 `confirm()`。
 
 ### 11.2 自动化检测
-`bun run precheck` = `scripts/ci.ts` 的 17 步，顺序：format → import-sort → `generate:module-registry --check` → `generate:web-contributions --check` → `check:root-owner-inventory` → `check:schema-ddl-drift` → `architecture` → `check:web-style` → tsc(server) → tsc(web) → tsc(app skeletons) → tsc(packages) → `check:dependencies` → lint → 三批 `bun test`（`apps/server/src/__tests__/ scripts/__tests__/ packages/platform/platform-sdk/src/__tests__/`、`packages/`、`apps/web/src/__tests__/`）。
+`bun run precheck` = `scripts/ci.ts` 的 15 步，**分三波执行**（波内受限并发；步骤定义与取消合并的理由见脚本头部注释）：
+1. `biome`：`biome check --write`，一次完成格式化、import 排序与安全修复（写盘，故须独占先行）；
+2. 静态门禁：`generate:module-registry --check`、`generate:web-contributions --check`、`check:root-owner-inventory`、`check:schema-ddl-drift`、`env-example --check`、`architecture`、`check:web-style`、tsc(server)、tsc(web)、tsc(packages)、`check:dependencies`；
+3. 三批 `bun test`：`apps/server/src/__tests__/ scripts/__tests__/ packages/platform/platform-sdk/src/__tests__/`、`packages/`、`apps/web/src/__tests__/`。
+
+三步 tsc 均带 `--incremental`，`tsbuildinfo` 落在 `node_modules/.cache/fenix-precheck/`：它是可随时删除的加速缓存，不参与门禁判定。
+
+单任务收尾用 `bun run fastcheck`（`scripts/fastcheck.ts`）：静态部分与 precheck 共用 `scripts/lib/check-gates.ts` 的同一份步骤定义（三条生成物门禁同样是 `--check` 只读形态，不会替你把生成物写最新），类型检查改用 `tsc-rs` 加速且不带增量缓存（探活失败回退官方 `tsc`；发布门禁 precheck 始终用官方 `tsc`），测试只跑 `scripts/lib/affected-tests.ts` 判定的受影响范围（按改动路径命中宿主 / web / 具体包，包改动再沿反向依赖纳入消费方包）；`--no-tests` 退化为纯静态快检。它不替代 precheck：反向依赖闭包不含 `apps/server` / `apps/web` 两个宿主消费方，宿主侧集成回归只有全量三批测试能覆盖。
 
 #### 硬红线（`scripts/check-architecture.ts`，零容忍）
 - `browser-entry-server-import`：浏览器生产代码（`apps/web/src/**`、各包 `web/**`）不得导入 `node:*`、`@server/*`、`@fenix/chat-channel/server`（测试代码可用服务端测试工具）；`package-no-internal-imports`：跨 workspace 包不得绕过公开导出访问 `@fenix/*/src/*`、`@fenix/*/web/src/*`，也不得用相对路径越界到其他包的 `src/`、`web/src/`、`db/`。
@@ -523,4 +530,4 @@ import 顺序由 Biome 的 import-sort 统一（`precheck` 会跑），形态是
 - 单文件 500 行上限 — 未自动化（`precheck` 不管）；前端生产文件已**清零**（超限 0、最大 496，复测命令与口径见 §4.8），新增模块仍靠 review。
 - 组件重复开发检测 — 未自动化；包内同名同形态已收敛（workflow 的 `CollapsibleGroup`，见 §4.8），**跨包**重复仍无门禁，判据「第二个包开始消费就该下沉」（§4.1）。
 - i18n 全仓 key 对称、`[object Object]` — 包级与宿主各有测试（14 份 `packages/**/web/__tests__/*-i18n.test.ts` + `ui-components` 的 `i18n-barrel.test.ts` + 宿主 `host-i18n.test.ts`），**跨包漏注册**无门禁（见 §9.4）。
-- import 分组顺序、格式化 — 已由 Biome 覆盖（`import-sort` + `format`）。
+- import 分组顺序、格式化 — 已由 Biome 覆盖（`precheck` 的 `biome` 步骤，`biome check --write` 一次完成 import 排序 + 格式化 + 安全修复）。

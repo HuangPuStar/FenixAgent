@@ -150,6 +150,7 @@
         "react": "^19.2.6",
         "react-dom": "^19.2.6",
         "tailwindcss": "^4.3.0",
+        "tsc-rs": "0.1.0",
         "tw-animate-css": "^1.4.0",
         "typescript": "^6.0.3",
         "vite": "^8.0.14",
@@ -1842,6 +1843,10 @@
 
     "@tokenizer/token": ["@tokenizer/token@0.3.0", "https://registry.npmmirror.com/@tokenizer/token/-/token-0.3.0.tgz", {}, "sha512-OvjF+z51L3ov0OyAU0duzsYuvO01PH7x4t6DJx+guahgTnBHkhJdG7soQeTSFLWN3efnHyibZ4Z8l2EuWwJN3A=="],
 
+    "@tsc-rs/darwin-arm64": ["@tsc-rs/darwin-arm64@0.1.0", "https://registry.npmmirror.com/@tsc-rs/darwin-arm64/-/darwin-arm64-0.1.0.tgz", { "os": "darwin", "cpu": "arm64" }, "sha512-VgS/GcwcSOOdSlQnpw4etSnL5xFZNwfuPIa7KtBpfC6Qg1Fg0w150s58a00Zs6D6DnDd7yBxx3XgHcyNLjzaPA=="],
+
+    "@tsc-rs/linux-x64": ["@tsc-rs/linux-x64@0.1.0", "https://registry.npmmirror.com/@tsc-rs/linux-x64/-/linux-x64-0.1.0.tgz", { "os": "linux", "cpu": "x64" }, "sha512-gzswr3ihKhkviz2ZcmkyVomXY4jqMPT4cWu/rjJqbJtMXJJHuZ9H5Eqv2fcCX9AB0i18EmPNva7Gp7NYaAdpJA=="],
+
     "@types/bun": ["@types/bun@1.3.14", "https://registry.npmmirror.com/@types/bun/-/bun-1.3.14.tgz", { "dependencies": { "bun-types": "1.3.14" } }, "sha512-h1hFqFVcvAvD9j9K7ZW7vd82aSA+rTdznZa+5bwvCwqSB1jmmfLcbIWhOLx1/+boy/xmjgCs/OMUL8hRJSmnPw=="],
 
     "@types/cytoscape": ["@types/cytoscape@3.31.0", "https://registry.npmmirror.com/@types/cytoscape/-/cytoscape-3.31.0.tgz", { "dependencies": { "cytoscape": "*" } }, "sha512-EXHOHxqQjGxLDEh5cP4te6J0bi7LbCzmZkzsR6f703igUac8UGMdEohMyU3GHAayCTZrLQOMnaE/lqB2Ekh8Ww=="],
@@ -3435,6 +3440,8 @@
     "ts-dedent": ["ts-dedent@2.2.0", "https://registry.npmmirror.com/ts-dedent/-/ts-dedent-2.2.0.tgz", {}, "sha512-q5W7tVM71e2xjHZTlgfTDoPF/SmqKG5hddq9SzR49CH2hayqRKJtQ4mtRlSxKaJlR/+9rEM+mnBHf7I2/BQcpQ=="],
 
     "ts-md5": ["ts-md5@2.0.1", "https://registry.npmmirror.com/ts-md5/-/ts-md5-2.0.1.tgz", {}, "sha512-yF35FCoEOFBzOclSkMNEUbFQZuv89KEQ+5Xz03HrMSGUGB1+r+El+JiGOFwsP4p9RFNzwlrydYoTLvPOuICl9w=="],
+
+    "tsc-rs": ["tsc-rs@0.1.0", "https://registry.npmmirror.com/tsc-rs/-/tsc-rs-0.1.0.tgz", { "optionalDependencies": { "@tsc-rs/darwin-arm64": "0.1.0", "@tsc-rs/linux-x64": "0.1.0" }, "bin": { "tsc-rs": "bin/tsc-rs" } }, "sha512-ibJNjypqagRtvc3wrQALo4VxOd0QmujczOIqMm97ioTkRuMS3UQlmX3f17IkhsLwgQ2az4UuWzfuaYliUdf3xQ=="],
 
     "tsconfig-paths": ["tsconfig-paths@4.2.0", "https://registry.npmmirror.com/tsconfig-paths/-/tsconfig-paths-4.2.0.tgz", { "dependencies": { "json5": "^2.2.2", "minimist": "^1.2.6", "strip-bom": "^3.0.0" } }, "sha512-NoZ4roiN7LnbKn9QqE1amc9DJfzvZXxF4xDavcOWt1BPkdx+m+0gJuPM+S0vCe7zTJMYUP0R8pO2XMr+Y8oLIg=="],
 
