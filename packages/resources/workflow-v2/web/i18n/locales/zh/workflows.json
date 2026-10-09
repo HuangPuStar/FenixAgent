@@ -26,7 +26,9 @@
     "delete_success": "已删除「{{name}}」",
     "delete_failed": "删除失败，请重试",
     "notice_dismiss": "关闭提示",
-    "open_canvas": "打开画布",
+    "open": "打开",
+    "log": "日志",
+    "more_actions": "更多操作",
     "column_name": "名称",
     "column_status": "状态",
     "column_actions": "操作",
@@ -129,5 +131,39 @@
       "retry": "重试",
       "backToList": "返回列表"
     }
+  },
+  "publish": {
+    "action": "发布",
+    "action_publishing": "发布中…",
+    "success": "已发布「{{name}}」 {{version}}",
+    "failed": "发布失败，请重试",
+    "failed_unauthorized": "当前会话无权发布该工作流，请重新登录后再试。",
+    "failed_not_found": "该工作流在工作流空间里已不存在，请刷新列表后重试。",
+    "failed_unbound": "当前组织尚未初始化工作流空间，请先在列表页完成初始化。",
+    "failed_degraded": "本组织绑定的工作流应用已被上游标记为不可用，暂时无法发布。请联系管理员处理后重试。",
+    "failed_session": "平台工作流账号当前不可用，发布未完成。请稍后重试或联系组织管理员。",
+    "failed_draft_not_verified": "当前草稿尚未通过调试运行，请先在画布中运行一次，再发布。",
+    "failed_version_not_incremental": "发布版本号未严格递增：本地记录的版本落后于上游（多因在画布内发布过）。请先在画布中核对版本，再重试。",
+    "failed_version_invalid": "本地记录的发布版本号不合法，需先修复该记录才能发布。",
+    "failed_timeout": "上游服务响应超时，发布结果未知。请稍后到「日志」确认实际状态，再决定是否重试。",
+    "failed_upstream": "上游拒绝了本次发布，请稍后重试；若持续失败，请在画布内检查发布状态。"
+  },
+  "log": {
+    "title": "日志 · {{name}}",
+    "description": "发布记录与当前发布版本都来自上游工作流引擎，平台侧不保存发布日志。",
+    "loading": "正在读取发布记录",
+    "failed_title": "发布记录读取失败",
+    "failed_hint": "未能从上游读到该工作流的发布记录与当前版本。请稍后重试。",
+    "empty_title": "上游暂无发布记录",
+    "empty_hint": "上游工作流引擎没有返回该工作流的发布记录（记录由上游维护，平台侧不生成）。",
+    "current_upstream": "上游当前版本",
+    "current_local": "本地登记版本",
+    "current_none": "未发布",
+    "drift_hint": "本地登记版本与上游不一致：本地版本落后时，下一次发布会以上游「版本未自增」被拒绝。请以画布内的发布状态为准。",
+    "drift_match": "本地登记版本与上游一致。",
+    "record_published_at": "发布时间：{{time}}",
+    "record_owner": "发布者：{{owner}}",
+    "record_value_unknown": "上游未提供",
+    "retry": "重试"
   }
 }

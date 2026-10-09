@@ -365,6 +365,7 @@ test("真实 profile 装配后各包的路由进入对应槽", async () => {
     "PATCH /workflow-v2/workflows/:id",
     "DELETE /workflow-v2/workflows/:id",
     "POST /workflow-v2/workflows/:id/publish",
+    "GET /workflow-v2/workflows/:id/publish-records",
     "POST /workflow-v2/iframe-code",
   ]);
   expect(slottedRoutes(WEB_CONFIG_SLOT)).toEqual([

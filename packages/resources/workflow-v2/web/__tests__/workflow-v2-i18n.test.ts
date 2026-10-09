@@ -22,6 +22,7 @@ import {
   LIST_I18N_SCOPE,
   UPDATED_AT_KEYS,
 } from "../pages/list/workflow-list-model";
+import { PUBLISH_ACTION_LABEL_KEYS, publishErrorKey } from "../pages/list/workflow-publish-model";
 
 const WEB_ROOT = resolve(import.meta.dir, "..");
 const EN = JSON.parse(readFileSync(join(WEB_ROOT, "i18n/locales/en/workflows.json"), "utf8")) as Record<
@@ -93,8 +94,8 @@ const literalKeys = collectLiteralKeys();
 describe("workflows 字典完整性", () => {
   test("en / zh 键集完全一致", () => {
     expect([...zhFlat.keys()].sort()).toEqual([...enFlat.keys()].sort());
-    // 下限只防「字典被清空」这类事故；新增页面时同步上调（当前含导航项、画布宿主页与列表页三组键）。
-    expect(enFlat.size).toBeGreaterThanOrEqual(60);
+    // 下限只防「字典被清空」这类事故；新增页面时同步上调（当前含导航项、画布宿主页、列表页、发布与日志五组键）。
+    expect(enFlat.size).toBeGreaterThanOrEqual(100);
   });
 
   test("en / zh 同一键的插值占位符一致", () => {
@@ -163,6 +164,21 @@ describe("workflows 字典完整性", () => {
       initializeErrorKey(new ApiError("", "INTERNAL_ERROR")),
       `${LIST_I18N_SCOPE}.pagination_total`,
       ...Object.values(UPDATED_AT_KEYS),
+      // 发布失败的文案同样由页面 `t(notice.messageKey)` / `t(feedback.messageKey)` 取（动态键，扫描看不到）：
+      // 按已登记码逐个枚举，兜底分支同样必须能查到——漏一个就会在界面上显示裸 key。
+      publishErrorKey(new ApiError("", "UNAUTHENTICATED")),
+      publishErrorKey(new ApiError("", "WORKFLOW_NOT_FOUND")),
+      publishErrorKey(new ApiError("", "ORG_APP_NOT_BOUND")),
+      publishErrorKey(new ApiError("", "PLATFORM_ACCOUNT_DEGRADED")),
+      publishErrorKey(new ApiError("", "PLATFORM_SESSION_UNAVAILABLE")),
+      publishErrorKey(new ApiError("", "WORKFLOW_DRAFT_NOT_VERIFIED")),
+      publishErrorKey(new ApiError("", "WORKFLOW_VERSION_NOT_INCREMENTAL")),
+      publishErrorKey(new ApiError("", "WORKFLOW_VERSION_INVALID")),
+      publishErrorKey(new ApiError("", "UPSTREAM_TIMEOUT")),
+      publishErrorKey(new ApiError("", "UPSTREAM_REJECTED")),
+      publishErrorKey(new Error("not an ApiError")),
+      // 发布按钮的两态文案（表格与工具栏用同一对键，见 `PUBLISH_ACTION_LABEL_KEYS`）。
+      ...Object.values(PUBLISH_ACTION_LABEL_KEYS),
     ];
     const missing = dynamicKeys.filter((key) => !enFlat.has(key) || !zhFlat.has(key));
     expect(missing).toEqual([]);

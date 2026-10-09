@@ -54,7 +54,7 @@ flowchart TB
 
 | 组件 | 负责 | 不负责 |
 |---|---|---|
-| 控制台（`apps/web` + `workflow-v2/web`） | 列表/创建/删除、iframe 宿主、握手与票据转发、错误与降级 UI | 不直连上游；不持有平台凭据 |
+| 控制台（`apps/web` + `workflow-v2/web`） | 列表/创建/删除、发布与日志（上游发布记录）查看、iframe 宿主、握手与票据转发、错误与降级 UI | 不直连上游；不持有平台凭据 |
 | workflow-v2（后端） | 身份映射、归属真相源、参数注入、票据签发与校验、上游会话、透传、审计 | 不解释 workflow schema；不执行节点 |
 | 上游服务 | workflow 定义/版本/运行/发布的权威实现；画布静态资源 | 不感知我方租户与用户 |
 
@@ -91,6 +91,11 @@ flowchart TB
 
 透传面只开放三条上游前缀，其余一律 404：`/api/workflow_api/`、`/api/common/upload/`、`/api/playground_api/get_imagex_url`（后两条来自阶段 0 实测，见设计 §9.1.1 第 5 条）。
 
+控制台侧的上游读取一律走控制台面（`callUpstream`），**不开第二条透传路径**：列表行操作「日志」的发布记录与
+上游当前发布版本由 `GET /web/workflow-v2/workflows/:id/publish-records` 转发 `list_publish_workflow` 与 `canvas`
+的 `data.workflow_version`。发布写入是 `POST /web/workflow-v2/workflows/:id/publish`（列表行操作的「更多」内）；
+平台侧不保存发布记录，画布宿主页也不再自带发布入口（画布内已有上游按钮）。
+
 工程口径：
 
 - **两条响应口径在路由层分界，不得混用**：画布 SDK 按上游信封解析，且部分上游接口是裸对象（`list_spans` 只有顶层 `spans`），任何「统一包一层」都会打断它（冻结 §6）。
@@ -124,7 +129,7 @@ flowchart TB
 
 | 数据 | 真相源 | 同步策略 |
 |---|---|---|
-| workflow schema、版本、发布状态、运行记录 | 上游 | 透传读取；列表以上游分页结果为主 |
+| workflow schema、版本、发布状态、运行记录 | 上游 | 透传读取；列表以上游分页结果为主；**发布记录不落本地**——控制台的「发布记录」经控制台面转发 `list_publish_workflow`（当前上游构建为桩实现，恒返回 `data:null`，界面按合法空态呈现），「上游当前发布版本」取 `canvas` 的 `data.workflow_version` |
 | 归属（org/app/owner）、本地可见性、审计 | 本地 | 创建走「先上游后本地 + 失败补偿删除」；本地缺失时按需补写 |
 | 删除 | 双方 | 本地软删 + 调上游删除；上游删除失败置 `sync_state = pending_delete`，由对账任务重试 |
 

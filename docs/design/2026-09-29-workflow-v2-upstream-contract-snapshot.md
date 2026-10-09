@@ -126,6 +126,9 @@
 **F11 · `publish` 的前置条件是「当前草稿已通过一次 `test_run`」。**
 新建 workflow 直接 `publish`（无论带不带 `workflow_version`）返回 `777777775 …'s current draft needs to pass the test run before publishing`；同一 workflow 在 `test_run` 跑完（`get_process.executeStatus=2`）后立刻成功。含义：控制台的「发布」动作不能只调 `publish`，必须串起 `test_run` → 轮询 `get_process` 至终态 → `publish`；错误提示也要区分「草稿未验证」与「版本号非法」两种 `777777775`。
 
+**F12 · `list_publish_workflow` 在当前上游构建里是桩实现（2026-10-09 补，源码级）。**
+上游 `backend/api/handler/coze/workflow_service.go` 的 `ListPublishWorkflow` 只做参数绑定后 `resp := new(...); c.JSON(...)`——不调用任何 application service，路由中间件 `_listpublishworkflowMw()` 同样为空；`released_workflows` 同形。这与 §2 第 22 行的 `data:null` 实测互相印证：**空记录是上游当前构建的固定回答**，不是「探针账号没有发布记录」。含义：控制台的发布记录界面必须以空态为常态呈现（见设计 §4.2 的「发布记录的可用性口径」），且不能为此在平台侧造本地记录——上游补齐该端点前，界面的上游事实来自 `canvas` 的 `data.workflow_version`。
+
 ## 4. 如何复跑
 
 ### 4.1 环境变量
