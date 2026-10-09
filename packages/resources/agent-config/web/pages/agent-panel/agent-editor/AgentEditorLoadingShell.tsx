@@ -18,7 +18,7 @@ import {
   MAP_ICON,
   MAP_LABEL,
   SECTION_INTRO,
-  SUMMARY_ASIDE,
+  TEMPLATE_PANEL,
   WORKSPACE,
 } from "./agent-editor-classes";
 
@@ -50,9 +50,6 @@ export function AgentEditorLoadingShell({
         agentId={null}
         readOnly
         loading
-        showTemplate={false}
-        templateTriggerRef={{ current: null }}
-        onTemplate={() => undefined}
         onClose={onClose}
       />
       <div className={WORKSPACE}>
@@ -92,9 +89,15 @@ export function AgentEditorLoadingShell({
           </div>
           <span className="sr-only">{t("editor.loading")}</span>
         </main>
-        <aside className={SUMMARY_ASIDE} aria-hidden="true">
-          <Skeleton className="h-3 w-20" />
-          <Skeleton className="mt-4 h-14 w-full" />
+        {/* 右栏骨架与完成态的模板面板同构：眉标 / 标题 / 说明 / 搜索框 / 模板卡。
+            加载期无从判断模板是否存在（`data` 未到，`templates.length > 0` 还不成立），按常见情形占位；
+            数据到达后由完成态决定右栏去留（无模板时走 `NO_TEMPLATE_PANEL` 回落两列），本壳随之卸载。 */}
+        <aside className={TEMPLATE_PANEL} aria-hidden="true">
+          <Skeleton className="h-2.5 w-16" />
+          <Skeleton className="mt-2 h-4 w-28" />
+          <Skeleton className="mt-2 h-3 w-full" />
+          <Skeleton className="mt-3.5 h-9 w-full" />
+          <Skeleton className="mt-2.5 h-14 w-full" />
           <Skeleton className="mt-2 h-14 w-full" />
           <Skeleton className="mt-2 h-14 w-full" />
         </aside>

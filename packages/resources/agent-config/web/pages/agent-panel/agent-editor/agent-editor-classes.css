@@ -15,19 +15,32 @@
 .agent-editor-root textarea {
   font-family: inherit;
 }
+/* 工作区列定义：左栏配置地图 / 中栏内容 / 右栏模板面板。
+   `.agent-editor-workspace--no-template-panel` 是「右栏不渲染」时的同族变体（只读态或 `data.templates`
+   为空，见 `agent-editor-classes.ts` 的 `NO_TEMPLATE_PANEL`）：三列定义下少一个子项仍会留出 216px 空列，
+   故按渲染事实回落两列。两个类名的选择器特指度相同、媒体块又在基础块之后，变体必须在每个断点各写一次。 */
 .agent-editor-workspace {
   grid-template-columns: 216px minmax(430px, 1fr) 216px;
+}
+.agent-editor-workspace--no-template-panel {
+  grid-template-columns: 216px minmax(430px, 1fr);
 }
 
 @media (width >= 48rem) and (width < 64rem) {
   .agent-editor-workspace {
     grid-template-columns: 148px minmax(280px, 1fr) 190px;
   }
+  .agent-editor-workspace--no-template-panel {
+    grid-template-columns: 148px minmax(280px, 1fr);
+  }
 }
 
 @media (width >= 64rem) and (width < 96rem) {
   .agent-editor-workspace {
     grid-template-columns: 168px minmax(360px, 1fr) 220px;
+  }
+  .agent-editor-workspace--no-template-panel {
+    grid-template-columns: 168px minmax(360px, 1fr);
   }
 }
 .agent-editor-map-trigger {
@@ -77,9 +90,6 @@
   .agent-editor-content {
     padding: calc(var(--spacing) * 3.5);
   }
-}
-.agent-editor-summary {
-  background-image: radial-gradient(circle at 90% 0%, rgb(50 108 221 / 8%), transparent 36%);
 }
 .agent-editor-footer {
   box-shadow: 0 -10px 30px rgb(31 54 91 / 4%);

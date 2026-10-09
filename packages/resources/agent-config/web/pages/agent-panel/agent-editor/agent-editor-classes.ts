@@ -2,7 +2,7 @@
  * 「新建 Agent」面板的 Tailwind 类串常量（A2 迁移：`agent-editor.css` + `-design.css` + `-responsive.css`）。
  *
  * 为什么集中在这里：同一个视觉构件会在多处渲染（面板外壳同时用于桌面 `<section>` 与移动端 `SheetContent`；
- * 三栏工作区/左栏导航/中栏内容/右栏汇总/页脚在加载壳与完成态各渲染一次）。类串写两份必然漂移，而源 CSS 里
+ * 三栏工作区/左栏导航/中栏内容/右栏模板面板/页脚在加载壳与完成态各渲染一次）。类串写两份必然漂移，而源 CSS 里
  * 它们本来就是同一个选择器——集中一处才是等价表达。
  *
  * 命名口径：常量名对应源选择器去掉 `agent-editor-` 前缀后的语义；注释里标出各断点/层级的来源，便于与
@@ -43,8 +43,8 @@ export const WORKSPACE_TABS =
 /**
  * 左栏导航：列布局 + 右分隔线；≤759 变成横向滚动条带。
  *
- * **本栏与右栏（下方 `SUMMARY_ASIDE`、`AgentEditorChrome.tsx` 里右栏的内联同类串）一律不带
- * `overscroll-contain`**（2026-09-23 裁定；结构守卫见 `__tests__/agent-editor-overscroll-chain.test.ts`）：
+ * **本栏与右栏（下方 `TEMPLATE_PANEL`）一律不带 `overscroll-contain`**（2026-09-23 裁定；结构守卫见
+ * `__tests__/agent-editor-overscroll-chain.test.ts`）：
  *
  * - 机制：三栏都是工作区里的常规流列，且位于**更长可滚祖先**之内——宿主是智能体管理页时，祖先链上
  *   唯一可被用户滚动的容器是 `AppPage` 的 `main`（headless Chrome 复刻实测 1440×900：clientH 900 /
@@ -95,8 +95,12 @@ export const MAP_ICON =
   "grid size-8 place-items-center rounded-md bg-slate-100 text-slate-500 " +
   "md:max-2xl:size-6.5 " +
   "group-data-[state=active]/maprow:bg-white group-data-[state=active]/maprow:text-blue-600";
-/** 导航条目状态徽标：刻度与配色归 `ui/badge`（`variant="secondary"`），此处只保留两档窄桌面的隐藏。 */
-export const MAP_BADGE = "md:max-lg:hidden max-md:hidden";
+/** 导航条目状态徽标：刻度与配色归 `ui/badge`（`variant="secondary"`），此处只保留两档窄桌面的隐藏，
+ * 并把字号在库内 `text-xs`（12px）基础上下调一档到 `text-3xs`（10px）——本面板七档刻度里的下一档
+ * （见 `__tests__/agent-editor-font-scale.test.ts` 的 `TIER_PX`）。 */
+export const MAP_BADGE = "text-3xs md:max-lg:hidden max-md:hidden";
+/** 两类缺失态（待完善 / 未配置）的徽标配色：淡红底 + 深红字，经 `cn` 覆盖 `variant="secondary"` 的底色与文字色。 */
+export const MAP_BADGE_MISSING = "bg-red-50 text-red-700";
 /**
  * 导航条目文案：标题继承行色（design 层 `color: inherit`），说明固定灰。
  * 行高、字重、单行省略与 760–1119 隐藏说明仍在同名 CSS 的 `.agent-editor-map-copy > strong / small`；
@@ -122,18 +126,30 @@ export const MAP_COPY_CAPTION = "text-3xs truncate leading-snug font-normal text
  */
 export const CONTENT = "agent-editor-content overflow-x-hidden bg-white max-md:flex-1 pt-4 px-5 pb-5";
 /**
- * 右栏汇总：左分隔线 + 淡径向渐变底（渐变见同名 CSS 的 `.agent-editor-summary`，底色由 `bg-slate-50` 提供）。
+ * 右栏模板面板：左分隔线 + 淡灰底，整列滚动。
  *
- * 本常量供**加载壳**（`AgentEditorLoadingShell`）使用；完成态是 `AgentEditorChrome.tsx` 里的内联同类串
- * （`.agent-editor-summary-aside`）。两者同理**不带 `overscroll-contain`**——机制、实测读数与代价见上方
- * `CONFIG_MAP` 注记，改回前先读那条。
+ * 加载壳（`AgentEditorLoadingShell`）与完成态的模板面板共用本常量——2026-10-09 之前右栏是「当前配置」
+ * 汇总，加载壳与完成态各写一份类串（完成态那份缺窄桌面的内边距覆盖，两处本就不一致）；改名后只剩
+ * 这一个来源。与左栏 `CONFIG_MAP`、中栏 `CONTENT` 一样**不带 `overscroll-contain`**——机制、实测读数
+ * 与代价见上方 `CONFIG_MAP` 注记，改回前先读那条。
+ *
+ * `max-md`：≤759px 工作区是纵向 flex 列，面板钉住固定高并 `flex-none`。中栏是 `flex-1`（`flex-basis: 0`），
+ * 负剩余空间里它的收缩权重为 0、一分都拿不到——面板若按内容高度撑开，中栏会被压成 0（headless Chrome
+ * 实测 390×844：面板内容 900px 时中栏 0px / 面板 658px；钉住 320px 后中栏 338px / 面板 320px）。
+ * `h-80`（320px）与旧模板对话框列表的上限同值；面板整列可滚，列表照常翻到底。
  */
-export const SUMMARY_ASIDE =
-  "agent-editor-summary min-h-0 overflow-y-auto border-l border-slate-200 bg-slate-50 " +
+export const TEMPLATE_PANEL =
+  "min-h-0 overflow-y-auto border-l border-slate-200 bg-slate-50 " +
   "px-3 pt-4 pb-3.5 " +
   "lg:max-2xl:[padding:12px_10px_10px] " +
   "md:max-lg:[padding:10px_8px_8px] " +
-  "md:max-lg:block";
+  "max-md:h-80 max-md:flex-none max-md:border-l-0 max-md:border-t";
+/**
+ * 无模板面板时的工作区变体：只读态或 `data.templates` 为空时右列不渲染（不留空壳），列数随渲染事实回落
+ * 两列——三列定义下留一个空列会白占 216px（760–1119px 190px / 1120–1399px 220px）。列定义见同名 CSS，
+ * 三个断点各一份并与 `.agent-editor-workspace` 逐条对应。
+ */
+export const NO_TEMPLATE_PANEL = "agent-editor-workspace--no-template-panel";
 /** 页脚：上分隔线；≤759 改纵向并留 safe-area 下边距（上方投影与 safe-area 下边距见同名 CSS）。 */
 export const FOOTER =
   "agent-editor-footer relative z-[4] flex flex-none items-center justify-between gap-2.5 border-t border-slate-200 " +

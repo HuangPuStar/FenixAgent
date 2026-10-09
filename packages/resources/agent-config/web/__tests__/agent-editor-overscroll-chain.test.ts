@@ -19,9 +19,10 @@
 // 三栏都有，迁移时只有中栏丢了这一行，三栏本就不一致——漏改一处不会报错，只会在界面上表现为
 // 「滚轮在某些列上突然不动」，没有任何运行时断言能发现它。
 //
-// 拦得住：三栏里任意一栏被单独加回或漏删 `overscroll-contain`（含右栏的两个来源：加载壳常量与完成态
-// 内联类串）、以及左栏 `≤759px` 横向条带变体被顺手改动。
-// 拦不住：① 类串被搬到新常量/新渲染点后仍带该类（本文件只认登记过的四处来源）；
+// 拦得住：三栏里任意一栏被单独加回或漏删 `overscroll-contain`（右栏的唯一来源是
+// `agent-editor-classes.ts` 的 `TEMPLATE_PANEL`）、左栏 `≤759px` 横向条带变体被顺手改动，
+// 以及「右栏不渲染时工作区回落两列」在某个断点上漏写（2026-10-09 右栏改为模板面板时新增）。
+// 拦不住：① 类串被搬到新常量/新渲染点后仍带该类（本文件只认登记过的来源）；
 // ② 运行时动态挂载的其它滚动容器（如 ui-components 内部节点）；③ Radix portal 里的浮层。
 
 import { describe, expect, test } from "bun:test";
@@ -30,7 +31,6 @@ import { join, resolve } from "node:path";
 
 const EDITOR_DIR = resolve(import.meta.dir, "../pages/agent-panel/agent-editor");
 const CLASSES_FILE = "agent-editor-classes.ts";
-const CHROME_FILE = "AgentEditorChrome.tsx";
 const DIALOG_FILE = "AgentFormDialog.tsx";
 const BODY_FILE = "agent-editor-body.tsx";
 const LOADING_SHELL_FILE = "AgentEditorLoadingShell.tsx";
@@ -54,27 +54,20 @@ function classConstant(file: string, name: string): string {
   return [...body.slice(0, end).matchAll(/"([^"]*)"/g)].map((chunk) => chunk[1]).join("");
 }
 
-/** 右栏在完成态不是常量，而是 `AgentEditorChrome.tsx` 里 `<aside>` 的内联类串。 */
-function summaryAsideClass(): string {
-  const match = readEditorFile(CHROME_FILE).match(/<aside className="(agent-editor-summary-aside[^"]*)"/);
-  if (!match) throw new Error(`${CHROME_FILE} 里找不到右栏（agent-editor-summary-aside）的内联类串`);
-  return match[1];
+/** 右栏（模板面板）在加载壳与完成态共用 `agent-editor-classes.ts` 的同一常量，故只有一处来源。 */
+function templatePanelClass(): string {
+  return classConstant(CLASSES_FILE, "TEMPLATE_PANEL");
 }
 
 /**
- * 三栏的**四处**类串来源（右栏有两个：加载壳常量 + 完成态内联）。
+ * 三栏的**三处**类串来源。
  * `role` 进断言消息，红的时候直接指出是哪一栏。
  */
 function columns(): Array<{ role: string; source: string; classes: string }> {
   return [
     { role: "左栏配置地图", source: `${CLASSES_FILE} CONFIG_MAP`, classes: classConstant(CLASSES_FILE, "CONFIG_MAP") },
     { role: "中栏内容区（基准）", source: `${CLASSES_FILE} CONTENT`, classes: classConstant(CLASSES_FILE, "CONTENT") },
-    {
-      role: "右栏汇总（加载壳）",
-      source: `${CLASSES_FILE} SUMMARY_ASIDE`,
-      classes: classConstant(CLASSES_FILE, "SUMMARY_ASIDE"),
-    },
-    { role: "右栏汇总（完成态）", source: `${CHROME_FILE} <aside>`, classes: summaryAsideClass() },
+    { role: "右栏模板面板", source: `${CLASSES_FILE} TEMPLATE_PANEL`, classes: templatePanelClass() },
   ];
 }
 
@@ -82,25 +75,25 @@ function columns(): Array<{ role: string; source: string; classes: string }> {
 const hasToken = (classes: string, token: string): boolean => classes.split(/\s+/).filter(Boolean).includes(token);
 
 describe("智能体编辑面板三栏的滚动链", () => {
-  test("四处类串都能解析出来，且渲染点确实引用它们（守卫不空转）", () => {
+  test("三处类串都能解析出来，且渲染点确实引用它们（守卫不空转）", () => {
     for (const column of columns()) {
       // 空串会让「都不含 overscroll-contain」平凡成立，必须先钉住解析本身有效。
       expect(column.classes.length).toBeGreaterThan(0);
     }
     // 左/右两栏是被裁定的限高滚动列，中栏是本次对齐的基准（`overflow-x-hidden` 使 `overflow-y` 计算为 auto）。
     expect(hasToken(classConstant(CLASSES_FILE, "CONFIG_MAP"), "overflow-y-auto")).toBe(true);
-    expect(hasToken(classConstant(CLASSES_FILE, "SUMMARY_ASIDE"), "overflow-y-auto")).toBe(true);
+    expect(hasToken(classConstant(CLASSES_FILE, "TEMPLATE_PANEL"), "overflow-y-auto")).toBe(true);
     expect(hasToken(classConstant(CLASSES_FILE, "CONTENT"), "overflow-x-hidden")).toBe(true);
 
     // 常量只有挂在真实渲染点上才受本守卫覆盖：面板（桌面 + 移动 Sheet）的标记在
     // `agent-editor-body.tsx`（§4.7 拆分后 `AgentFormDialog.tsx` 只剩容器与 portal），
-    // 加载壳走 AgentEditorLoadingShell；右栏完成态由 AgentEditorSummary 的内联类串承担。
+    // 加载壳走 AgentEditorLoadingShell；右栏由 `AgentTemplatePanel` 与加载壳的同名常量承担。
     expect(readEditorFile(DIALOG_FILE)).toContain("<AgentEditorBody");
     expect(readEditorFile(BODY_FILE)).toContain("className={CONFIG_MAP}");
     expect(readEditorFile(BODY_FILE)).toContain("className={CONTENT}");
-    expect(readEditorFile(BODY_FILE)).toContain("<AgentEditorSummary");
+    expect(readEditorFile(BODY_FILE)).toContain("<AgentTemplatePanel");
     expect(readEditorFile(LOADING_SHELL_FILE)).toContain("className={CONFIG_MAP}");
-    expect(readEditorFile(LOADING_SHELL_FILE)).toContain("className={SUMMARY_ASIDE}");
+    expect(readEditorFile(LOADING_SHELL_FILE)).toContain("className={TEMPLATE_PANEL}");
   });
 
   test("三栏在 overscroll-contain 上一致（当前期望：都不含）", () => {
@@ -112,7 +105,7 @@ describe("智能体编辑面板三栏的滚动链", () => {
     // ② 冻结期望＝「都不带」这一支（对齐头部/页脚/中栏的既有实测行为：含类会让面板露不全时滚不回去）。
     //    将来若要整体改回「都带」，把 ① 换成 `filter((entry) => !entry.含该属性)` 即可——但别只改一栏，
     //    那正是本用例存在的理由。
-    expect(flags.map((entry) => entry.含该属性)).toEqual([false, false, false, false]);
+    expect(flags.map((entry) => entry.含该属性)).toEqual([false, false, false]);
   });
 
   test("左栏 ≤759px 的横向条带变体保持原样（不受本次裁定影响）", () => {
@@ -121,5 +114,29 @@ describe("智能体编辑面板三栏的滚动链", () => {
     const configMap = classConstant(CLASSES_FILE, "CONFIG_MAP");
     expect(hasToken(configMap, "max-md:overflow-x-auto")).toBe(true);
     expect(hasToken(configMap, "max-md:overflow-y-hidden")).toBe(true);
+  });
+
+  // 2026-10-09 右栏从「当前配置」汇总改为模板面板后新增的不变量：右栏不渲染时（只读态或无模板）
+  // 工作区必须回落两列，否则三列定义会留一个 216px（窄桌面 190/220px）的空列。
+  // 两个类名特指度相同、媒体块在基础块之后，所以变体必须在每个断点各写一次——漏一个断点不会报错，
+  // 只会在那个宽度区间里白占一列，没有任何运行时断言能发现它。
+  test("右栏不渲染时工作区回落两列（三个断点各一份，前两列与三列定义逐值一致）", () => {
+    const source = readEditorFile("agent-editor-classes.css").replace(/\/\*[\s\S]*?\*\//g, "");
+    const rules = [...source.matchAll(/\.agent-editor-workspace(--no-template-panel)?\s*\{([^}]*)\}/g)].map(
+      (match) => ({
+        变体: Boolean(match[1]),
+        // 列值里含 `minmax(430px, 1fr)` 这类带括号的函数，按「不在括号内的空白」切列。
+        列: (match[2].match(/grid-template-columns:\s*([^;]+);/)?.[1] ?? "")
+          .trim()
+          .split(/\s+(?![^()]*\))/)
+          .filter(Boolean),
+      }),
+    );
+    expect(rules.map((rule) => rule.变体)).toEqual([false, true, false, true, false, true]);
+    for (let index = 0; index < rules.length; index += 2) {
+      expect(rules[index + 1].列).toEqual(rules[index].列.slice(0, 2));
+    }
+    // 渲染点：`agent-editor-body.tsx` 只在 `showTemplate` 为假时挂变体（只读态与无模板都不留空壳）。
+    expect(readEditorFile(BODY_FILE)).toContain("!showTemplate && NO_TEMPLATE_PANEL");
   });
 });

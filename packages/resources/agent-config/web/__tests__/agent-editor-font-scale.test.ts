@@ -406,10 +406,11 @@ const RETIRED_PREFIXES = [
  * - `inherits`：元素自身不声明字号、值由继承决定的登记位。它本身不产生断言，只让「这里没有受控字号」
  *   在 review 时可见——这类元素的最终 px 取决于宿主/浏览器默认字号，本仓库未声明，故不冻结数值。
  *
- * 数值口径：字号就近取标准档、接受约 1px 偏差。唯一非刻度值是头部模板按钮窄屏图标化的 `font-size: 0`
- * （0 不能被「就近取档」消化，就近档是 10px——那是 10px 偏差而非 1px，故按原意保留 0）。
- * 锚点名与数值都不允许漂移；`editor-summary-title` 的覆盖区间从 760–1399px 变为 768–1535.98px，
- * 是「任意媒体查询就近落标准断点」的直接结果（`md:max-2xl`）。
+ * 数值口径：字号就近取标准档、接受约 1px 偏差。历史上唯一的非刻度值是头部模板按钮窄屏图标化的
+ * `font-size: 0`（0 不能被「就近取档」消化，就近档是 10px——那是 10px 偏差而非 1px，故按原意保留 0）；
+ * 该按钮随「模板改常驻面板」于 2026-10-09 删除，本表因此不再出现非刻度值。
+ * 锚点名与数值都不允许漂移；元素随组件一起消失时锚点同批删除，不留空钩子——锚点在源码里找不到
+ * 对应 `data-slot` 时，本表的断言会直接变红。
  */
 const ROLE_ANCHORS: Array<{
   slice: string;
@@ -437,38 +438,21 @@ const ROLE_ANCHORS: Array<{
   // 挂在两个子元素自身的 `data-slot` 上；加载壳与加载完成态共用 `agent-editor-classes.ts` 的同一对常量。
   { slice: "A2", slot: "editor-map-copy-title", note: "左栏条目标题", classNameTiers: ["text-xs"] },
   { slice: "A2", slot: "editor-map-copy-caption", note: "左栏条目说明", classNameTiers: ["text-3xs"] },
-  { slice: "A2", slot: "editor-summary-eyebrow", note: "右栏眉标", classNameTiers: ["text-3xs"] },
-  {
-    slice: "A2",
-    slot: "editor-summary-title",
-    note: "右栏标题（768–1535.98px 压 16px）",
-    classNameTiers: ["text-lg", "md:max-2xl:text-base"],
-  },
+  // 右栏 2026-10-09 从「当前配置」汇总改为模板面板：原 `editor-summary-eyebrow`（眉标）与
+  // `editor-summary-title`（<h3>，18/16px）随组件删除；模板面板的眉标沿用同一 `EYEBROW` 常量，
+  // 锚点改挂在 `editor-template-eyebrow` 上，不再有第二个来源。
+  { slice: "A2", slot: "editor-template-eyebrow", note: "模板面板眉标", classNameTiers: ["text-3xs"] },
   {
     slice: "A2",
     slot: "editor-template-header",
-    note: "模板对话框头部容器（自身不声明字号）",
+    note: "模板面板头部容器（自身不声明字号）",
     inherits: true,
-    // 眉标在本模板对话框里是直接挂在 `<span>` 上的 `EYEBROW` 常量（与右栏共用），由
-    // `editor-summary-eyebrow` 锚点锁定，故此处不登记 `> span` 的字号。
   },
-  // 标题与说明都是库组件（`DialogTitle` / `DialogDescription`，均透传 `className` 与 `data-slot`）；
-  // 2026-09-28 从伴随表撤回字号与上边距：`text-16`（16px，只给字号）/ `text-xs`。
-  { slice: "A2", slot: "editor-template-title", note: "模板对话框标题", classNameTiers: ["text-16"] },
-  { slice: "A2", slot: "editor-template-description", note: "模板对话框说明", classNameTiers: ["text-xs"] },
+  // 标题与说明原为库组件（`DialogTitle` / `DialogDescription`），随 2026-10-09 的「对话框改常驻面板」
+  // 换成同刻度的原生 `<h3>` / `<p>`：`text-16`（16px，只给字号）+ `text-xs` 保持不变，其余继承字号。
+  { slice: "A2", slot: "editor-template-title", note: "模板面板标题", classNameTiers: ["text-16"] },
+  { slice: "A2", slot: "editor-template-description", note: "模板面板说明", classNameTiers: ["text-xs"] },
   { slice: "A2", slot: "editor-template-empty", note: "模板列表空态", classNameTiers: ["text-3xs"] },
-  {
-    slice: "A2",
-    slot: "editor-mobile-template",
-    note: "头部模板按钮（窄屏图标化归 0）",
-    inherits: true,
-    // 两条同选择器的声明：基础 12px 与窄屏 0。窄屏那条必须带 `!important` 才能压过基础规则，
-    // 否则本锚点会「断言通过但实际不生效」——同类死声明由 ⑧ 兜底。
-    cssFonts: [
-      { selector: ".agent-editor-chrome-template-trigger > button", px: 12 },
-      { selector: ".agent-editor-chrome-template-trigger > button", px: 0, media: "(width < 48rem)" },
-    ],
-  },
   {
     slice: "A2",
     slot: "editor-footer-state",
@@ -489,7 +473,8 @@ const ROLE_ANCHORS: Array<{
   // 2026-09-28 dimensional 撤回：眉标 10px、标题 18px（`md:max-2xl` 压 16px）、说明 12px 与两条上边距
   // 从伴随表搬进 `className`，锚点分挂到三个元素自身。标题那对是**成对搬**——只搬媒体档会让未分层的
   // 18px 反压 `md:max-2xl:text-16`。`md:max-2xl` = 768–1535.98px，与原设计区间 760–1399px 的差异是
-  // 「任意媒体查询就近落标准断点」的既有结果（与 `editor-summary-title` 同口径），非本次引入。
+  // 「任意媒体查询就近落标准断点」的既有结果（原右栏标题 `editor-summary-title` 同口径，已于 2026-10-09
+  // 随汇总栏删除），非本次引入。
   { slice: "B", slot: "editor-section-intro-eyebrow", note: "分区眉标", classNameTiers: ["text-3xs"] },
   {
     slice: "B",
@@ -845,8 +830,8 @@ describe("Agent Editor：Tailwind 迁移与字号刻度", () => {
   });
 
   // 口径在 2026-09 整改后由「字号一律显式 px 写死」改为「就近取标准档，只允许白名单刻度」：
-  // 越档仍要拦（`text-xl` 这类不在白名单内），任意值 px 则一律不许回流 `className`——窄屏图标化的
-  // `0` 已改由伴随 CSS 表达（见 ROLE_ANCHORS 的 `editor-mobile-template`）。
+  // 越档仍要拦（`text-xl` 这类不在白名单内），任意值 px 则一律不许回流 `className`——唯一出现过的
+  // 「非刻度字号」（头部模板按钮窄屏图标化的 `0`）已随按钮于 2026-10-09 删除，`0` 也不再是合法来源。
   // 一个文件被多个分片共享（如 `AgentFormDialog.tsx`）时，以「所有列入它的分片都迁完」为门。
   test("面板 JSX 的字号只用白名单刻度，且不出现任意值字号", () => {
     const pending = new Set(SLICES.filter((slice) => !migrated(slice)).flatMap((slice) => [...slice.tsxFiles]));
@@ -931,8 +916,9 @@ describe("Agent Editor：Tailwind 迁移与字号刻度", () => {
 
   // 下沉最容易丢的是源类的 `!` 前缀语义：`className` 里的 `!p-0` 生成 `padding:0!important`，
   // 改写成 CSS 时漏掉 `!`，同一选择器下基础规则的 important 恒胜——那条声明看起来完全正常却永不生效。
-  // 真实踩坑：`AgentEditorChrome.css` 的窄屏按钮块 `padding: 0` / `font-size: 10px` 被基础规则的
-  // `padding-inline` / `font-size`（均带 `!important`）压死，32px 宽的按钮仍留着 10px 横内边距与 12px 字号。
+  // 真实踩坑（原例已随 2026-10-09 删除头部模板按钮而消失，机制不变）：`AgentEditorChrome.css` 的窄屏
+  // 按钮块 `padding: 0` / `font-size: 10px` 被基础规则的 `padding-inline` / `font-size`（均带 `!important`）
+  // 压死，32px 宽的按钮仍留着 10px 横内边距与 12px 字号。
   // 判据限定「选择器文本完全相同」：同一选择器即同特指度，important 与非 important 之间不存在翻盘。
   test("伴随样式表里没有被子孙规则压死的声明", () => {
     const declarations = readCssDeclarations();
