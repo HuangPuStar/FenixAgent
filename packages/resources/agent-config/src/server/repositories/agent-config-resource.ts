@@ -70,6 +70,12 @@ export interface AgentConfigWriteData {
   readonly agentNode?: unknown;
 }
 
+/** 创建结果：用于区分首次资源初始化与同名请求的幂等更新。 */
+export interface AgentConfigCreateResult {
+  readonly id: string;
+  readonly created: boolean;
+}
+
 export interface AgentConfigRepository {
   listReadable(input: AgentConfigReadInput): Promise<ResourcePage<ScopedAgentConfigRow>>;
   findReadableById(input: {
@@ -98,7 +104,7 @@ export interface AgentConfigRepository {
     organizationId: string;
     ownerUserId: string;
     visibility: string;
-  }): Promise<string | undefined>;
+  }): Promise<AgentConfigCreateResult | undefined>;
   updateById(input: { resourceId: string; data: AgentConfigWriteData }): Promise<boolean>;
   /**
    * 删除资源行与绑定其上的 Environment（同一事务）。
@@ -211,7 +217,8 @@ export function createAgentConfigRepository(
 
     async create(input) {
       const set = writeSet(input.data);
-      const rows = await getAgentConfigDatabase()
+      const database = getAgentConfigDatabase();
+      const inserted = await database
         .insert(agentConfig)
         .values({
           organizationId: input.organizationId,
@@ -220,13 +227,19 @@ export function createAgentConfigRepository(
           visibility: input.visibility,
           ...set,
         })
-        .onConflictDoUpdate({
-          target: [agentConfig.organizationId, agentConfig.name],
-          // 冲突分支只更新可写列：归属列是创建期属性，重复创建不得改主或改公开受众。
-          set,
-        })
+        .onConflictDoNothing({ target: [agentConfig.organizationId, agentConfig.name] })
         .returning({ id: agentConfig.id });
-      return rows[0]?.id;
+      const insertedId = inserted[0]?.id;
+      if (insertedId !== undefined) return { id: insertedId, created: true };
+
+      // 同名冲突只更新可写列：归属列是创建期属性，重复创建不得改主或改公开受众。
+      const updated = await database
+        .update(agentConfig)
+        .set(set)
+        .where(and(eq(agentConfig.organizationId, input.organizationId), eq(agentConfig.name, input.name)))
+        .returning({ id: agentConfig.id });
+      const updatedId = updated[0]?.id;
+      return updatedId === undefined ? undefined : { id: updatedId, created: false };
     },
 
     async updateById(input) {

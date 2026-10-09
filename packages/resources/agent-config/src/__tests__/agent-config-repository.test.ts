@@ -207,8 +207,8 @@ describe("AgentConfig 仓储下推", () => {
     expect((listInputs[0] as { limit?: number }).limit).toBe(1);
   });
 
-  // 冲突分支只更新可写列：重复创建不得改主、不得重置公开受众，否则一次保存就会让资源漂移。
-  test("create 的冲突更新不写归属列", async () => {
+  // 冲突分支只更新可写列，并明确返回 created=false，重复创建不得重新初始化资源访问关系。
+  test("create 的冲突更新不写归属列且标记为非首次创建", async () => {
     let conflictSet: Record<string, unknown> | undefined;
     let insertedValues: Record<string, unknown> | undefined;
     stubDb({
@@ -216,10 +216,15 @@ describe("AgentConfig 仓储下推", () => {
         values: (values: Record<string, unknown>) => {
           insertedValues = values;
           return {
-            onConflictDoUpdate: ({ set }: { set: Record<string, unknown> }) => {
-              conflictSet = set;
-              return { returning: async () => [{ id: "agent-1" }] };
-            },
+            onConflictDoNothing: () => ({ returning: async () => [] }),
+          };
+        },
+      }),
+      update: () => ({
+        set: (set: Record<string, unknown>) => {
+          conflictSet = set;
+          return {
+            where: () => ({ returning: async () => [{ id: "agent-1" }] }),
           };
         },
       }),
@@ -227,7 +232,7 @@ describe("AgentConfig 仓储下推", () => {
     const { query } = createRecordingQuery();
     const repository = createAgentConfigRepository(query);
 
-    const id = await repository.create({
+    const result = await repository.create({
       name: "demo",
       data: { description: "Demo", modelId: "11111111-1111-4111-8111-111111111111" },
       organizationId: "org-1",
@@ -235,7 +240,7 @@ describe("AgentConfig 仓储下推", () => {
       visibility: "public",
     });
 
-    expect(id).toBe("agent-1");
+    expect(result).toEqual({ id: "agent-1", created: false });
     // 创建分支写入归属：归属列是创建期属性，唯一索引冲突（同组织同名）由 INSERT 侧的取值决定。
     expect(insertedValues).toMatchObject({
       organizationId: "org-1",
@@ -248,6 +253,29 @@ describe("AgentConfig 仓储下推", () => {
       expect(conflictSet).not.toHaveProperty(column);
     }
     expect(conflictSet).toMatchObject({ description: "Demo" });
+  });
+
+  // 新插入必须显式标记 created=true，Facade 才会执行首次资源访问初始化。
+  test("create 的首次插入标记为首次创建", async () => {
+    stubDb({
+      insert: () => ({
+        values: () => ({
+          onConflictDoNothing: () => ({ returning: async () => [{ id: "agent-new" }] }),
+        }),
+      }),
+    });
+    const { query } = createRecordingQuery();
+    const repository = createAgentConfigRepository(query);
+
+    const result = await repository.create({
+      name: "demo",
+      data: {},
+      organizationId: "org-1",
+      ownerUserId: "user-1",
+      visibility: "private",
+    });
+
+    expect(result).toEqual({ id: "agent-new", created: true });
   });
 
   // 更新同样只写可写列：保存配置不得让资源换组织、换属主或改变公开受众。

@@ -83,21 +83,17 @@ export class DefaultAccessControl implements AccessControlModule {
     return { organizationId, visibility: "private" };
   }
 
-  /**
-   * side-table 型范围的独立初始化路径（EE）。
-   *
-   * CE 的 `ColumnResourceScopeStore.initialize` 直接报错：归属列随资源行写入，不存在"先建行
-   * 再初始化范围"的窗口；EE 替换 scopeStore 后本方法即生效。
-   */
+  /** 将创建期已解析并写入主表的范围交给 store 完成其初始化协议。 */
   async initializeResourceAccess(input: {
     actor: ActorContext;
     resource: ResourceDefinition;
     resourceId: string;
+    readonly scope: ResourceScope;
   }): Promise<void> {
     await this.scopeStore.initialize({
       resourceType: input.resource.type,
       resourceId: input.resourceId,
-      scope: await this.resolveInitialScope(input),
+      scope: input.scope,
     });
   }
 
