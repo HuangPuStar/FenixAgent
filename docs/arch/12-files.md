@@ -170,6 +170,7 @@ interface AgentFileService {
 | 变更事件 | 任何 backend 的写操作成功都由 AgentFileService 统一发布 `file_changed`（含 `source`/`actorId`，§4.3） |
 | 条件请求 | 所有读操作由 AgentFileService 统一派生 ETag（§4.2） |
 | **能力上限不对称条款** | 本地/远程的**能力上限差异必须显式声明**（如 upload：本地 100MB、远程 20MB**【已实施**：远程 >20MB 上传返回 413 `payload_too_large`，破坏性契约变更（>20MB 从可上传变 413）声明见 §7.6**】**；zip：远程 ≤100MB），不落入"消费者无感"承诺——无感指结构，不是能力。差异需在响应或文档可查（§7.6） |
+| **请求体上限 ≠ 单文件上限** | 上限校验分两层，取值**不得相等**：产品口径的"单文件 ≤ 100MB（本地）"由 AgentFileService 按文件字节数判定；宿主传输层的请求体兜底要额外留出 multipart 框架开销（boundary、每部分头部、`relativePaths` 字段），取值见 `apps/server/src/plugins/body-limit.ts`（100MB + 8MB）。取等号时恰好 100MB 的文件（前端按 100×1024×1024 放行）会在进入门面前被宿主 413 拦下——AOS-BUG-005 现场，且错误文案会与产品上限混淆 |
 
 **machineId 配置校验（v2，区分三种根因）**：`getRemoteMachineId` 增加 DB 存在性校验——machineId 不存在于组织 → `422 config_error`（message 提示去管理面检查配置）；存在但 file-ws 未连 → `503 file_service_unavailable`（现状三种根因都归 503，误导排障）。
 
@@ -441,7 +442,7 @@ sequenceDiagram
 - **busy 的 HTTP 映射（运营修订）**：`busy` → **429 + `Retry-After: 1`**（瞬时容量问题，不是服务端故障）；不得映射 503（503 会让集成方误判故障并停止退避）。`busy` 拒绝计入指标。
 - **字节（S2 修复）**：
   - **WS 消息最大载荷 32MB**：在服务端 WS 层配置 maxPayload 并在**消息解析前**做显式检查——现状 `MAX_WS_MESSAGE_SIZE=10MB` 检查在 Elysia 自动 `JSON.parse`（createWSMessageParser 对 `{` 开头字符串先 parse）之后才生效，对大 JSON 帧**形同虚设**，100MB upload 实际以 ~133MB base64 单帧全量进内存（代码改造点，§10 P1）。
-  - `upload` 单文件上限：**远程 100MB → 20MB**（base64 帧 ~27MB < 32MB 载荷）；本地保持 100MB（multipart 落盘）。**能力回退声明（三视角修订）**：20MB 是能力回退，破坏性契约变更（>20MB 从可上传变 413）；替代通道——分块上传**从二期提前到 P1 边界**（§10），过渡期 413 响应带用户可读文案（"单文件上限 20MB（远程环境）；更大文件可通过本地环境上传或让 Agent 用工具拉取"）；前端上传大小常量必须与后端同源（现状 100MB 硬编码 5 处，改上限必漂移）。
+  - `upload` 单文件上限：**远程 100MB → 20MB**（base64 帧 ~27MB < 32MB 载荷）；本地保持 100MB（multipart 落盘）。**能力回退声明（三视角修订）**：20MB 是能力回退，破坏性契约变更（>20MB 从可上传变 413）；替代通道——分块上传**从二期提前到 P1 边界**（§10），过渡期 413 响应带用户可读文案（"单文件上限 20MB（远程环境）；更大文件可通过本地环境上传或让 Agent 用工具拉取"）；前端上传大小常量必须与后端同源（现状 100MB 硬编码 5 处，改上限必漂移）；**改单文件上限时宿主请求体兜底（`apps/server/src/plugins/body-limit.ts`）必须同步，且始终大于它**——差值就是 multipart 框架余量，取等号即回归 AOS-BUG-005（§2.4「请求体上限 ≠ 单文件上限」，`request-body-limit.test.ts` 钉住）。
   - `zip` 单包 ≤ 100MB，**分块回传**（`file_op_chunk` 系列帧，单块 ≤ 1MB）；>100MB 返回明确错误（413 + 建议选择子目录），**不得截断**。分块下载需进度信号（首帧携带总大小/块数），无 Content-Length 的下载必须有块计数帧。
 - **重试预算与背压共享**：迁移重发 + 自动重试合计 ≤ 1 次额外执行（§7.3），不放大载荷。
 - **批量删除（三视角修订）**：机器端 `delete` 明确**目录递归语义**（一次 file_op 删整树），`/fs/batch` 对目录只发一次；v2 给批量删除分配 op_id 组幂等（现状远程逐文件 N 次往返，10 万文件目录分钟级起步、断连即部分删除）。
