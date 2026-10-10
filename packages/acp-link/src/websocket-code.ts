@@ -1,6 +1,10 @@
 /** WebSocket 业务 code 与固定提示的协议定义；重连策略由各使用方自行决定。 */
 export const WEBSOCKET_CODES = {
   INSTANCE_RECLAIMED: { code: 4001, message: "实例已回收，停止自动重连" },
+  // 用户主动停止实例（服务端 `stopInstanceRuntime` 的严格停止路径）：对客户端是**预期内终态**，
+  // 与 4001 同族但语义不同——重连不会恢复（coordinator 持有停止意图，直到显式 restart），
+  // 且不该作为错误展示。消费方：`@fenix/chat-channel` 的关闭码策略表。
+  INSTANCE_STOPPED: { code: 4002, message: "实例已停止，停止自动重连" },
   UNAUTHORIZED: {
     code: 4003,
     message: "认证失败，请检查 RCS_SECRET 与服务端 REGISTRY_SECRET 是否一致",

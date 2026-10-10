@@ -46,10 +46,16 @@ const INLINE_ERROR_CARD_CLASS = "mx-4 mt-3";
  * 三个消费点（空态骨架、断开态错误卡、登录失败）共用这一份，避免同一间距写三遍而各自漂移。
  *
  * 两处细节按原值搬：`h-full` 而不是 `flex-1`——本面板还会经 `chatPanel` 端口注入 workflow 编辑器，
- * 那里的宿主容器没有 flex 上下文；`text-muted` 传给 `PublicErrorCard` 时会经 `cn()`（tailwind-merge）
+ * 那里的宿主容器没有 flex 上下文；`text-text-muted` 传给 `PublicErrorCard` 时会经 `cn()`（tailwind-merge）
  * 压掉卡片自带的 `text-destructive`，与收口前 `.agent-welcome-empty` 的未分层覆写同效。
+ *
+ * 2026-10-10 修：文字色 token 是 `text-text-muted`（`--color-text-muted`，浅色 #94a3b8），**不是**
+ * `text-muted`（`--color-muted: #f1f5f9` 是 shadcn 的**面色**档，浅色下近白）。收口时误写了面色档，
+ * 于是空态标题/说明在白底上不可见；更糟的是传给 `PublicErrorCard` 时它同样压掉了 `text-destructive`
+ * 却换成近白，整面板只剩 `bg-destructive/10` 的浅红底——即「红底白字看不见」的现场。
+ * 判据：本仓库只有 `--color-text-*` 一族是文字色，`--color-muted`/`--color-secondary` 是面色（见 index.css）。
  */
-const EMPTY_STATE_SHELL_CLASS = "flex h-full flex-col items-center justify-center gap-3 text-muted";
+const EMPTY_STATE_SHELL_CLASS = "flex h-full flex-col items-center justify-center gap-3 text-text-muted";
 
 /**
  * 面板级空态骨架：「居中大图标 + 主文案 + 说明」。
@@ -69,8 +75,9 @@ function PanelEmptyState({ icon, title, description }: { icon?: ReactNode; title
   return (
     <div className={EMPTY_STATE_SHELL_CLASS}>
       {icon}
-      {/* 主文案 16px 走 `text-16`（px 档令牌，且不带行高；`text-base` 虽同为 16px，但会连带 1.5 的行高）。 */}
-      <p className="text-16 font-semibold text-secondary">{title}</p>
+      {/* 主文案 16px 走 `text-16`（px 档令牌，且不带行高；`text-base` 虽同为 16px，但会连带 1.5 的行高）。
+          色取 `text-text-secondary`（#64748b）：`text-secondary` 是面色档（#f1f5f9），浅色下与白底同色。 */}
+      <p className="text-16 font-semibold text-text-secondary">{title}</p>
       {description && <p className="text-13">{description}</p>}
     </div>
   );
@@ -130,6 +137,7 @@ function ChatPanelView({
     classifiedError,
     actionError,
     autoReconnecting,
+    terminalUiCode,
     rcsSessionKey,
     chatState,
     sessionState,
@@ -155,6 +163,20 @@ function ChatPanelView({
         icon={<Bot className="h-16 w-16 opacity-30" />}
         title={t("selectAgent")}
         description={t("selectAgentDesc")}
+      />
+    );
+  }
+
+  // 实例已停止（服务端 4002）：终态但**不是故障**——用户在侧栏主动停止的结果，重连不会恢复
+  // （服务端持有停止意图，直到显式 restart），故此处不显示错误卡，只提示回侧栏重启实例。
+  // 必须排在错误卡分支之前：`classifiedError` 是会话级残留值，早先任何一次 error 帧都会让它非空，
+  // 排在后面会被它抢走（现象：主动停止被报成「Agent 实例启动失败。」红色满屏卡）。
+  if (terminalUiCode === "instance_stopped") {
+    return (
+      <PanelEmptyState
+        icon={<Bot className="h-16 w-16 opacity-30" />}
+        title={t("instanceStopped")}
+        description={t("instanceStoppedDesc")}
       />
     );
   }

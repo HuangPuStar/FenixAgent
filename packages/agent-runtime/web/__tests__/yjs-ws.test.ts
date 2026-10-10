@@ -2,7 +2,7 @@ import { afterEach, describe, expect, test } from "bun:test";
 import { initializeHappyDomWindow } from "@fenix/ui-components/testing";
 import { ACTIVE_ORG_STORAGE_KEY } from "@fenix/web-runtime/lib/active-org";
 import { Window } from "happy-dom";
-import { buildYjsUrl, getTerminalYjsWsErrorCode } from "../yjs/yjs-ws";
+import { buildYjsUrl, getTerminalYjsWsErrorCode, resolveYjsWsCloseOutcome } from "../yjs/yjs-ws";
 
 // buildYjsUrl 依赖 window.location，组织参数经持久层契约读取；两者都在这里补齐最小环境。
 const win = initializeHappyDomWindow(new Window());
@@ -71,6 +71,8 @@ describe("yjs websocket adapter", () => {
   // （transport/ws-close-codes.ts），这里锁住**改前的逐码判定结果**，防止收敛引入行为变化。
   test("逐码返回 UI 语义错误码", () => {
     expect(getTerminalYjsWsErrorCode(4001)).toBe("instance_idle_reclaimed");
+    // 4002：用户主动停止实例（2026-10-10 补入策略表）——终态且是预期内结果，渲染层据此展示中性空态
+    expect(getTerminalYjsWsErrorCode(4002)).toBe("instance_stopped");
     expect(getTerminalYjsWsErrorCode(4004)).toBe("environment_unavailable");
     expect(getTerminalYjsWsErrorCode(4500)).toBe("machine_unavailable");
     expect(getTerminalYjsWsErrorCode(4501)).toBe("client_keepalive_timeout");
@@ -93,5 +95,24 @@ describe("yjs websocket adapter", () => {
     // 例外不得扩散：其他终态码即使携带同一 reason 仍按自身语义判定
     expect(getTerminalYjsWsErrorCode(4001, "slow consumer resync timeout")).toBe("instance_idle_reclaimed");
     expect(getTerminalYjsWsErrorCode(4503, "slow consumer resync timeout")).toBeNull();
+  });
+
+  // 连接状态机消费的是策略表两列的合并视图：`terminal` 决定停不停自动重连，`uiCode` 决定渲染什么。
+  // 两者必须同源——分开判定正是修复前「停止实例却继续重连」的入口。
+  test("关闭码 → 客户端处置（终态 + UI 语义）", () => {
+    expect(resolveYjsWsCloseOutcome(4002, "instance_stopped")).toEqual({
+      terminal: true,
+      uiCode: "instance_stopped",
+    });
+    // 1013 容量拒绝：有 UI 语义但不是终态（现状：靠退避与短连接计数收敛，不据此停重连）
+    expect(resolveYjsWsCloseOutcome(1013)).toEqual({ terminal: false, uiCode: "too_many_connections" });
+    // 同一码的非终态来源：两列一起归零，避免「照旧重连但已按终态上屏」
+    expect(resolveYjsWsCloseOutcome(1013, "slow consumer resync timeout")).toEqual({
+      terminal: false,
+      uiCode: null,
+    });
+    // 未知码（如正常关闭 1000 / 网络中断 1006）：既不终态也无语义
+    expect(resolveYjsWsCloseOutcome(1000)).toEqual({ terminal: false, uiCode: null });
+    expect(resolveYjsWsCloseOutcome(1006)).toEqual({ terminal: false, uiCode: null });
   });
 });

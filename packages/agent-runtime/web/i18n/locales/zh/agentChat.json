@@ -5,6 +5,8 @@
   "loadingUser": "正在加载用户信息...",
   "authFailed": "登录状态异常",
   "authFailedDesc": "无法获取当前用户信息，请点击重试；如持续失败请刷新页面或重新登录",
+  "instanceStopped": "实例已停止",
+  "instanceStoppedDesc": "该实例已被主动停止，当前不会再自动连接；在左侧边栏重新启动该实例后即可继续对话",
   "agentDisconnected": "Agent 未连接",
   "agentOfflineDesc": "Agent 尚未上线，请确保 acp-link 已启动",
   "reconnecting": "重连中...",

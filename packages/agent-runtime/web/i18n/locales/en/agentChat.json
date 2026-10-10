@@ -5,6 +5,8 @@
   "loadingUser": "Loading user info...",
   "authFailed": "Session unavailable",
   "authFailedDesc": "Could not resolve the current user. Click retry; if it persists, refresh the page or sign in again.",
+  "instanceStopped": "Instance stopped",
+  "instanceStoppedDesc": "This instance was stopped and will not reconnect automatically. Restart it from the sidebar to continue the conversation.",
   "agentDisconnected": "Agent not connected",
   "agentOfflineDesc": "Agent is not online. Please make sure acp-link is started.",
   "reconnecting": "Reconnecting...",

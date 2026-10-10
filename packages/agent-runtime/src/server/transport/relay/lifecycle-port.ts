@@ -1,3 +1,5 @@
+import { WEBSOCKET_CODES } from "acp-link/websocket-code";
+
 /** Relay 生命周期回调由 Chat 装配层绑定，避免 transport 反向依赖服务层。 */
 export interface RelayLifecyclePort {
   closeClientsByInstance(instanceId: string, code: number, reason: string): void;
@@ -40,7 +42,9 @@ export function closeRelayConnectionsForIdleReclaim(instanceId: string): void {
 }
 
 export function closeRelayConnectionsForStoppedInstance(instanceId: string): void {
-  getRelayLifecyclePort().closeClientsByInstance(instanceId, 4002, "instance_stopped");
+  // 码取自 acp-link 的协议常量：客户端按同一个常量识别「用户主动停止」（策略表
+  // `@fenix/chat-channel/src/transport/ws-close-codes.ts`），发送方与判定方不得各自写字面量。
+  getRelayLifecyclePort().closeClientsByInstance(instanceId, WEBSOCKET_CODES.INSTANCE_STOPPED.code, "instance_stopped");
 }
 
 export function reclaimInstanceYjsDocs(instanceId: string): Promise<void> {

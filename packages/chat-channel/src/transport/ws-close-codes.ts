@@ -20,6 +20,7 @@ import { WEBSOCKET_CODES } from "acp-link/websocket-code";
 /** UI 语义错误码（即服务端关闭原因词表；apps/web 的连接错误态消费同一批字面量）。 */
 export type TerminalWsUiCode =
   | "instance_idle_reclaimed"
+  | "instance_stopped"
   | "environment_unavailable"
   | "machine_unavailable"
   | "client_keepalive_timeout"
@@ -54,6 +55,16 @@ export const WS_CLOSE_CODE_POLICY: readonly WsCloseCodePolicyEntry[] = [
     code: WEBSOCKET_CODES.INSTANCE_RECLAIMED.code,
     stopReconnect: true,
     uiCode: "instance_idle_reclaimed",
+  },
+  // 4002：用户在侧栏主动停止实例（生产方 `agent-runtime` 的 `closeRelayConnectionsForStoppedInstance`）。
+  // 与 4001 同为终态，但它是**用户预期内**的结果而非故障：重连不恢复（coordinator 持有停止意图，
+  // 直到显式 restart），所以既不能自动重连，也不该按错误展示——`uiCode` 供 UI 渲染中性的
+  // 「实例已停止」空态；缺了这条，客户端会退避重连一次、拿到 4502 spawn_rejected 的公开错误，
+  // 用户主动停止反被报成「Agent 实例启动失败。」（2026-10-10 修）。
+  {
+    code: WEBSOCKET_CODES.INSTANCE_STOPPED.code,
+    stopReconnect: true,
+    uiCode: "instance_stopped",
   },
   {
     code: WEBSOCKET_CODES.INVALID_REFERENCE.code,
