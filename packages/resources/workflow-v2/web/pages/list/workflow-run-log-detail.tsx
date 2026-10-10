@@ -16,7 +16,6 @@
 
 import { EmptyState } from "@fenix/ui-components/config/EmptyState";
 import { StatusBadge } from "@fenix/ui-components/config/StatusBadge";
-import { Button } from "@fenix/ui-components/ui/button";
 import { Skeleton } from "@fenix/ui-components/ui/skeleton";
 import { unwrap } from "@fenix/web-runtime/api/request";
 import { useRequest } from "ahooks";

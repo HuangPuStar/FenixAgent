@@ -1,11 +1,12 @@
-# Workflow V2：运行日志「出入参数」读路径（行内展开）
+# Workflow V2：运行日志「出入参数」读路径（主从两栏）
 
 - **日期**：2026-10-10
 - **提出方**：FenixAgent 控制台（`workflow-v2` 模块）；需求原文是「运行记录里能看到这次运行的出入参数」
 - **目标**：在上游工作流引擎（opencoze / workflow-studio）不提供运行级 input/output 的现状下，
   让控制台的运行日志能按需查看某次运行的输入与输出
-- **状态**：**已落地**——服务端 `GET /web/workflow-v2/run-records/:executeId/io`（懒加载）+ 运行日志弹窗
-  行内展开；契约与映射见 `services/workflow-run-io.ts` 文件头
+- **状态**：**已落地**——服务端 `GET /web/workflow-v2/run-records/:executeId/io`（按选中项取一次）+ 运行日志
+  弹窗的主从两栏（左栏按执行 ID 列运行、右栏看选中项的输入与输出）；契约与映射见
+  `services/workflow-run-io.ts` 文件头
 - **关联**：[运行日志清单契约](./2026-10-09-workflow-v2-upstream-run-list-api-request.md) §7（`list_spans`）、
   [契约快照](./2026-09-29-workflow-v2-upstream-contract-snapshot.md) §2 第 16 行（`get_process`）、
   架构 [25-workflow-v2](../arch/25-workflow-v2.md) §8「运行日志」
@@ -16,7 +17,8 @@
 `input`、运行输出 = End 节点（`NodeType="End"`）的 `output`（空串时回退 `raw_output`）。数据源是
 `GET /api/workflow_api/get_process`（会话面），**运行结束后仍可查**，因此覆盖历史记录而不只是运行中轮询。
 
-界面形态是**运行日志弹窗内的行内展开**（懒加载），不新增详情页、不改清单端点：清单接口 `list_spans`
+界面形态是**运行日志弹窗内的主从两栏**：左窄栏按执行 ID 列运行记录，选中一条（打开时默认选中第一条）即在
+右宽栏看它的输入与输出；出入参数按选中项单独取一次。不新增详情页、不改清单端点——清单接口 `list_spans`
 按契约不回 input/output，给整页列表补 N 次上游查询不成立。
 
 ## 2. 数据源选型（备选与排除理由）
@@ -59,8 +61,8 @@
   502/503/504。响应 `{ input, output }`，两段均可为 null。
 - 请求口径：只送上游声明的三个 query（`workflow_id` = 注册表里的上游 ID、`space_id` = 绑定行、`execute_id`
   = 路径参数），方法恒 GET；键集完全相等由用例钉住。
-- 界面：行内展开按钮（`executeId` 与 `upstreamWorkflowId` 缺一不渲染）、懒加载一次、收起不丢数据、
-  行内错误 + 行内重试（不升级成整页错误，也不重取整个清单）。
+- 界面：按选中项取一次——右栏看到哪一条就取哪一条（`executeId` 与 `upstreamWorkflowId` 缺一的记录不可选中）、
+  重复点同一条不重复请求、右栏错误 + 右栏重试（不升级成整页错误，也不重取整个清单）。
 
 ## 5. 已知边界与残留风险
 
@@ -68,8 +70,8 @@
    「本组织 workflow + 他组织 execute_id」这一构造在上游会被照常返回。风险受限的依据：execute id 只在本
    组织的运行记录里可见，且调用方无法用本地主键拼装上游 ID（`findWorkflowByUpstreamId` 只认本组织已登记
    的 `upstream_workflow_id`）。**移除条件**：上游按 execute id 查询时校验「该运行属于请求的 workflow」，
-   或平台侧改为「先按 `list_spans` 校验该 execute 出现在本 workflow 的窗口内再取详情」（代价：每次展开多
-   一次清单调用）。
+   或平台侧改为「先按 `list_spans` 校验该 execute 出现在本 workflow 的窗口内再取详情」（代价：每次查看某条
+   记录的出入参数都多一次清单调用）。
 2. **运行记录保留期未验证**：本地没有早于 7 天的运行样本，无法判定 `get_process` 对过期运行的行为。终态
    运行可查（§3）说明它是库侧读取而非内存快照，但保留策略未知。**验证条件**：在真实环境用一条超过 7 天的
    运行记录试读一次；若返回空壳，界面显示「上游未提供」，与「这次运行确实没有输入输出」同形。
@@ -80,7 +82,7 @@
 ## 6. 验证
 
 - 服务端：`src/__tests__/workflow-run-io.test.ts`（挂载、请求键集、取值与回退、404/409/502/503/504 各档）。
-- 前端：`web/__tests__/workflow-run-log-model.test.ts`（行模型与格式化）、
-  `web/__tests__/workflow-run-log-dialog.test.tsx`（懒加载一次、收起不重复请求、在途加载态、行内失败与重试、
-  缺归属要素不给入口）、`web/__tests__/workflow-v2-i18n.test.ts`（字典完整性）。
+- 前端：`web/__tests__/workflow-run-log-model.test.ts`（行模型、左栏选中解析与格式化）、
+  `web/__tests__/workflow-run-log-dialog.test.tsx`（按选中项只取一次、重复点同一条不重复请求、在途加载态、
+  右栏失败与重试、缺归属要素不可选中）、`web/__tests__/workflow-v2-i18n.test.ts`（字典完整性）。
 - 探针（只读、本地上游）：`get_process` 的形状与负例结论见 §3；临时工作流探针用完即删，未留残留。

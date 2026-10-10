@@ -225,11 +225,12 @@ export function createWebWorkflowV2RunRoutes(
   );
 
   /**
-   * `GET /web/workflow-v2/run-records/:executeId/io` — 单次运行的出入参数（运行记录行的懒加载详情）。
+   * `GET /web/workflow-v2/run-records/:executeId/io` — 单次运行的出入参数（运行日志弹窗右栏的详情）。
    *
    * 清单的 `list_spans` **不返回** input/output（上游契约如此），所以出入参数只能按 execute id 单独取：上游
    * `get_process` 的节点结果里，运行输入是 Start 节点的 `input`、运行输出是 End 节点的 `output`（映射口径见
-   * `services/workflow-run-io.ts` 文件头）。按行懒加载——一次展开一次调用，不给清单加 N 次上游查询。
+   * `services/workflow-run-io.ts` 文件头）。按选中项取一次——右栏切换到哪一条就调用哪一条，不给清单加 N 次
+   * 上游查询。
    *
    * 归属校验按上游 ID（`findWorkflowByUpstreamId`）：运行记录条目里带的就是它。已知边界：上游按 execute id
    * 查询时不校验「该运行属于这个 workflow」（实测：workflow_id 不存在也回 `code=0` 并原样回显参数），若调用方
