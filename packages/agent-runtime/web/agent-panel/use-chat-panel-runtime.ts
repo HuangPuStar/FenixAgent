@@ -21,6 +21,7 @@ import {
   type ActionError,
   createDeterministicRcsSessionId,
   type PublicErrorInfo,
+  type TerminalWsUiCode,
 } from "@fenix/chat-channel";
 import { useChatPageVisible } from "@fenix/web-runtime/hooks/use-page-visible";
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
@@ -33,7 +34,7 @@ import { useSessionState } from "../hooks/use-session-state";
 import { AGENT_CHAT_NS } from "../i18n/namespace";
 import { randomUUID } from "../lib/random-uuid";
 import { applyDocHubUpdate, getDocHubStateVectors, replaceDocHubUpdate } from "../yjs/doc-hub";
-import { buildYjsUrl, createYjsWs, type YjsWsState } from "../yjs/yjs-ws";
+import { buildYjsUrl, createYjsWs, resolveYjsWsCloseOutcome, type YjsWsState } from "../yjs/yjs-ws";
 import type { PeriTaskViewsResult, UsePeriTaskViews } from "./chat-panel-host-ports";
 
 /** `ACPMain` 的出站回调集合（`sessionState.acpSessionId` 变化时重建，见下）。 */
@@ -77,6 +78,14 @@ export interface ChatPanelRuntime {
   actionError: ActionError | null;
   /** 非终态断开后的自动重连标记：UI 展示轻提示而非整屏「已断开」。 */
   autoReconnecting: boolean;
+  /**
+   * 最近一次终态关闭的 UI 语义码（策略表的 `uiCode`），非终态断开或新连接开始时为 null。
+   *
+   * 为什么单列一项而不是复用 `classifiedError`：`uiCode` 描述的是**连接为什么结束**（用户主动停止、
+   * 实例被回收…），与「服务端发过哪个公开错误」是两回事——4001/4002 这类关闭不带 error 帧，
+   * 事件到达时也不产生错误对象。渲染层据此区分「预期内终态」与「故障」（见 ChatPanel 分支）。
+   */
+  terminalUiCode: TerminalWsUiCode | null;
   /** RCS session id（Y.Doc 命名用），未就绪时为 undefined。 */
   rcsSessionKey: string | undefined;
   chatState: ReturnType<typeof useChatState>["state"];
@@ -121,6 +130,8 @@ export function useChatPanelRuntime({
   // 非终态断开（网络抖动/服务端重启）后客户端会自动重连：标记后 UI 展示轻提示，
   // 而不是整屏"已断开"（终态断开才需要手动干预）。connecting/connected 时清除。
   const [autoReconnecting, setAutoReconnecting] = useState(false);
+  // 终态关闭码的 UI 语义（策略表 uiCode）：只有终态关闭才有值，新连接开始时清空。
+  const [terminalUiCode, setTerminalUiCode] = useState<TerminalWsUiCode | null>(null);
   const yjsWsRef = useRef<ReturnType<typeof createYjsWs> | null>(null);
   const pageVisible = useChatPageVisible();
 
@@ -291,17 +302,24 @@ export function useChatPanelRuntime({
       },
       getYjsStateVectors: () => getDocHubStateVectors(rcsSessionKey),
       onError: (error) => setClassifiedError(error),
-      onClose: () => {
-        // 非终态断开（网络抖动/服务端重启）：客户端会自动重连（指数退避）。
-        // 必须同步置 disconnected——若保持 connected，UI 显示已连接而 WS 实际
+      onClose: (close) => {
+        // 关闭码语义取自策略表（`resolveYjsWsCloseOutcome`，同一份知识，见 yjs-ws.ts）：
+        // 终态码（4001 实例回收 / 4002 用户主动停止 / 4004 / 4500 / 4501 / 4502）客户端不会再自动重连，
+        // 此时 autoReconnecting 必须为 false——否则 UI 谎报「正在自动重连」，而实际在等用户手动恢复。
+        const outcome = resolveYjsWsCloseOutcome(close.code, close.reason);
+        setAutoReconnecting(!outcome.terminal);
+        // 终态码的 UI 语义留给渲染层；非终态断开（网络抖动/服务端重启）置空，避免上一次的语义残留。
+        setTerminalUiCode(outcome.uiCode);
+        // 非终态断开必须同步置 disconnected——若保持 connected，UI 显示已连接而 WS 实际
         // 断开，sendViaWs 会静默失败（消息无声消失）；disconnected 渲染分支
         // 由 autoReconnecting 标记展示"正在自动重连"轻提示。
-        setAutoReconnecting(true);
         setConnectionState("disconnected");
       },
       onConnectionState: (state: YjsWsState) => {
         if (state === "connecting") {
           setAutoReconnecting(false);
+          // 新连接开始即作废旧终止语义：先前「实例已停止」的空态不得跨过一次成功重连留存。
+          setTerminalUiCode(null);
           setConnectionState("connecting");
         } else if (state === "connected") {
           setAutoReconnecting(false);
@@ -428,6 +446,7 @@ export function useChatPanelRuntime({
     classifiedError,
     actionError,
     autoReconnecting,
+    terminalUiCode,
     rcsSessionKey,
     chatState,
     sessionState,

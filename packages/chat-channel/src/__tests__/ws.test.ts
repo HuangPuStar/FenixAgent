@@ -366,6 +366,16 @@ describe("createYjsWsClient", () => {
     expect(timers).toHaveLength(0);
   });
 
+  // 用户主动停止实例（4002）后服务端持有停止意图，重连只会撞 4502 的「启动失败」：
+  // 客户端必须就地停住，等待用户显式重启。
+  test("4002 关闭码不自动重连", () => {
+    const client = createClient();
+    client.connect();
+    FakeWebSocket.instances[0]?.closeFromServer(4002, "instance_stopped");
+
+    expect(timers).toHaveLength(0);
+  });
+
   // 远程机器不可用时，继续建连无法恢复服务，客户端必须停止自动重连。
   test("4500 关闭码不自动重连", () => {
     const client = createClient();

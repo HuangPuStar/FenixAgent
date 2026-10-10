@@ -278,8 +278,12 @@ export async function stopInstanceViaController(
   try {
     await facade.stopInstance(instanceId);
   } catch (err) {
-    if (!isInstanceNotFoundError(err)) failures.push(err);
+    // 同一错误码也用于「记录存在但 runtime entry 丢失」，不能把未知事实当作不存在。
+    if (!isInstanceNotFoundError(err) || facade.getInstance(instanceId) !== null) failures.push(err);
     logError(`[orchestration-instance] core stopInstance failed: instanceId=${instanceId}`, err);
+  }
+  if (mode === "strict" && failures.length > 0) {
+    throw new AggregateError(failures, `Failed to fully stop Agent Instance '${instanceId}'`);
   }
   globalInstanceRegistry.unregister(instanceId);
   // SP-C2：停止成功后先关闭该 instance 的所有前端 YJS client，使 gateway close
@@ -298,9 +302,6 @@ export async function stopInstanceViaController(
     await _deps.reclaimYjsDocs(instanceId);
   } catch (err) {
     logError(`[orchestration-instance] yjs doc reclaim failed after stop: instanceId=${instanceId}`, err);
-  }
-  if (mode === "strict" && failures.length > 0) {
-    throw new AggregateError(failures, `Failed to fully stop Agent Instance '${instanceId}'`);
   }
 }
 

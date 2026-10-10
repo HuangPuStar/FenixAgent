@@ -255,7 +255,10 @@ export function createCcbRuntime(dependencies: CcbRuntimeDependencies = {}): Ccb
 
     async stopInstance(input) {
       const state = getOrCreateState(states, input.instanceId);
-      if (state.status === "stopped" || (!state.process && !state.port)) {
+      if (
+        state.status === "stopped" ||
+        ((state.status === "idle" || state.status === "prepared") && !state.process && !state.port)
+      ) {
         state.status = "stopped";
         return;
       }
@@ -265,7 +268,7 @@ export function createCcbRuntime(dependencies: CcbRuntimeDependencies = {}): Ccb
           await state.relay.close();
         }
         state.relay = null;
-        await processManager.stop(input.instanceId);
+        await processManager.stop(input.instanceId, true);
         if (dependencies.stopInstance) {
           await dependencies.stopInstance(input, state);
         }

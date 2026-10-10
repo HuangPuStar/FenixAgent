@@ -87,11 +87,5 @@ export function createOpencodeHandler(
       console.log(`[opencode-handler] started: ${instanceId}`);
       return { capabilities };
     },
-
-    async stopInstance(state) {
-      if (state.process && !state.process.killed) {
-        state.process.kill("SIGTERM");
-      }
-    },
   };
 }

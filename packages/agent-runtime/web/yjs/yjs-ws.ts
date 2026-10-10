@@ -18,6 +18,28 @@ import { readActiveOrgId } from "@fenix/web-runtime/lib/active-org";
 export type { YjsWsState };
 
 /**
+ * 关闭码 → 客户端处置（策略表两列的合并视图）：`terminal` 是传输层语义（不再自动重连），
+ * `uiCode` 是 UI 语义（渲染什么状态）。判据与逐码结果都在 `@fenix/chat-channel` 的策略表，
+ * 本函数只是转导，不另立字面量。
+ *
+ * `nonTerminalReason` 的例外只对「同一码有两个语义来源」的码生效（当前仅 1013）：带该 reason
+ * 关闭时本轮按非终态处理（自动重连后由全量快照同步恢复），此时 `terminal` 与 `uiCode` 都回到空值。
+ */
+export interface YjsWsCloseOutcome {
+  terminal: boolean;
+  uiCode: TerminalWsUiCode | null;
+}
+
+export function resolveYjsWsCloseOutcome(code: number, reason?: string): YjsWsCloseOutcome {
+  const entry = WS_CLOSE_CODE_POLICY.find((policy) => policy.code === code);
+  if (!entry) return { terminal: false, uiCode: null };
+  if (entry.nonTerminalReason !== undefined && entry.nonTerminalReason === reason) {
+    return { terminal: false, uiCode: null };
+  }
+  return { terminal: entry.stopReconnect, uiCode: entry.uiCode };
+}
+
+/**
  * 终端关闭码对应的用户可读语义。
  * 服务端以这些码关闭时，YJS 客户端停止自动重连，由 UI 提供手动恢复入口。
  * 词表本体在 `@fenix/chat-channel` 的关闭码策略表（`transport/ws-close-codes.ts`），
@@ -26,13 +48,8 @@ export type { YjsWsState };
 export type YjsTerminalErrorCode = TerminalWsUiCode;
 
 export function getTerminalYjsWsErrorCode(code: number, reason?: string): YjsTerminalErrorCode | null {
-  const entry = WS_CLOSE_CODE_POLICY.find((policy) => policy.code === code);
-  if (!entry) return null;
-  // 同一关闭码可能有多个语义来源，由策略表的 nonTerminalReason 标注非终态的那一个：
-  // 1013 的慢消费者追赶超时（broadcaster SP-A7）自动重连后走全量快照同步恢复，
-  // 不得展示"须手动恢复"的终态错误；其余原因（含容量拒绝）按 uiCode 展示。
-  if (entry.nonTerminalReason !== undefined && entry.nonTerminalReason === reason) return null;
-  return entry.uiCode;
+  // 与 `resolveYjsWsCloseOutcome` 同源同实现，避免两处对同一张表各写一份判定。
+  return resolveYjsWsCloseOutcome(code, reason).uiCode;
 }
 
 export interface YjsChatLocator {

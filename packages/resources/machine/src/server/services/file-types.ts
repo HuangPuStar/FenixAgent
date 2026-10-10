@@ -13,6 +13,9 @@
 // 执行后端（file-backends.ts）与路由层共同引用，避免互相导入成环。
 
 // ── 能力上限常量（§2.4 能力上限不对称条款，W8b 起在 upload 入口强制检查）──
+// 改本地上限时必须同步宿主传输层的请求体兜底 `apps/server/src/plugins/body-limit.ts`（它必须**大于**本
+// 上限，差值留给 multipart 框架开销，取等号就是 AOS-BUG-005：恰好 100MB 的文件进不了门面）；
+// `apps/server/src/__tests__/request-body-limit.test.ts` 钉住这条关系。
 export const LOCAL_UPLOAD_MAX_BYTES = 100 * 1024 * 1024;
 export const REMOTE_UPLOAD_MAX_BYTES = 20 * 1024 * 1024;
 /** upload 超限的 413 用户可读文案（跨 plan 契约固定，测试断言锁定；remote-file-service.ts

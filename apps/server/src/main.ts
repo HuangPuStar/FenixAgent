@@ -14,6 +14,7 @@ import { API_SLOT, APP_SLOT, takeRouteContributions, WEB_CONFIG_SLOT, WEB_SLOT }
 import { applyEnv, config } from "./config";
 import { createExternalOpenApiPlugin, createWebOpenApiPlugin } from "./openapi";
 import { authPlugin } from "./plugins/auth";
+import { bodyLimitPlugin } from "./plugins/body-limit";
 import { corsPlugin } from "./plugins/cors";
 import { errorPlugin } from "./plugins/error-handler";
 import { deriveRequestId, injectRequestId, logRequest, logResponse } from "./plugins/logger";
@@ -61,24 +62,9 @@ const app = new Elysia({
   // 不能挂在这里的 onError：errorPlugin 返回映射响应会终止 onError 链，
   // 且其前的 hook 读不到最终状态，日志会丢失或记录错误状态。
   .use(errorPlugin)
-  // 全局请求体大小限制 100MB（文件上传、工作流任务等场景）
-  .onBeforeHandle(({ request }) => {
-    const contentLength = request.headers.get("content-length");
-    if (contentLength && parseInt(contentLength, 10) > 100 * 1024 * 1024) {
-      return new Response(
-        JSON.stringify({
-          error: {
-            type: "PAYLOAD_TOO_LARGE",
-            message: "Request body exceeds 100MB limit",
-          },
-        }),
-        {
-          status: 413,
-          headers: { "Content-Type": "application/json" },
-        },
-      );
-    }
-  })
+  // 全局请求体大小守卫（文件上传、工作流任务等场景的内存兜底；取值与 AOS-BUG-005 的由来见
+  // `plugins/body-limit.ts`）。必须挂在聚合路由之前：body 一旦被解析，这道闸门就形同虚设。
+  .use(bodyLimitPlugin)
   // Path normalization: collapse double slashes
   .onBeforeHandle(({ request }) => {
     const url = new URL(request.url);

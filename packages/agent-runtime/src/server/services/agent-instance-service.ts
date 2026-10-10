@@ -76,7 +76,16 @@ const runtimeAdapter: RuntimeAdapter = {
   async stop(instanceUid, generation, signal) {
     signal.throwIfAborted();
     const current = getCoreRuntime().getInstance(instanceUid);
-    if (current?.runtimeGeneration !== generation || current.serverEpoch !== SERVER_EPOCH) return;
+    if (!current) {
+      if (getAgentInstanceRuntimeOperations().hasActiveInstance(instanceUid)) {
+        throw new Error("Agent runtime entry is missing; stop cannot be confirmed");
+      }
+      return;
+    }
+    if (current.status === "stopped") return;
+    if (current.runtimeGeneration !== generation || current.serverEpoch !== SERVER_EPOCH) {
+      throw new Error("Agent runtime fence mismatch; stop cannot be confirmed");
+    }
     await getAgentInstanceRuntimeOperations().stopInstance(instanceUid, "strict");
   },
 };

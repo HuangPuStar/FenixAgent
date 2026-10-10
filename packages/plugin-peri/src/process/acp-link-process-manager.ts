@@ -28,10 +28,11 @@ export interface AcpLinkProcessManagerConfig {
 
 export interface AcpLinkProcessManagerDependencies {
   resolveExecutable?: (command: string) => string;
+  createServer?: typeof createAcpServer;
 }
 
 interface ProcessEntry {
-  handle: AcpServerHandle;
+  handle: AcpServerHandle | null;
   port: number;
   status: AcpLinkProcessStatus;
 }
@@ -42,6 +43,7 @@ interface ProcessEntry {
 export class AcpLinkProcessManager {
   private readonly processes = new Map<string, ProcessEntry>();
   private readonly resolveExecutableImpl: (command: string) => string;
+  private readonly createServer: typeof createAcpServer;
   private readonly command: string;
   private readonly args: string[];
 
@@ -51,13 +53,14 @@ export class AcpLinkProcessManager {
   ) {
     this.command = config.command;
     this.args = config.args;
+    this.createServer = dependencies.createServer ?? createAcpServer;
     this.resolveExecutableImpl = dependencies.resolveExecutable ?? resolveExecutable;
   }
 
   async start(input: StartAcpLinkInput): Promise<ManagedAcpLinkProcess> {
     const executable = this.resolveExecutableImpl(this.command);
 
-    const handle = createAcpServer({
+    const handle = this.createServer({
       port: input.port,
       host: DEFAULT_HOST,
       command: executable,
@@ -81,13 +84,16 @@ export class AcpLinkProcessManager {
     };
   }
 
-  async stop(instanceId: string): Promise<void> {
+  async stop(instanceId: string, requireEntry = false): Promise<void> {
     const entry = this.processes.get(instanceId);
+    if (!entry && requireEntry) throw new Error("Agent process entry is missing; stop cannot be confirmed");
     if (!entry || entry.status === "stopped") {
       return;
     }
-    entry.handle.close();
+    if (!entry.handle) throw new Error("Agent process handle is missing; stop cannot be confirmed");
+    await entry.handle.close();
     entry.status = "stopped";
-    this.processes.delete(instanceId);
+    entry.handle = null;
+    // 保留已确认停止的事实，runtime 后续 hook 失败重试时不能误报 entry 丢失。
   }
 }

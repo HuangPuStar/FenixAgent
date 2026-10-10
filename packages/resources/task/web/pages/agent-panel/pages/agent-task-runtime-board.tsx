@@ -129,10 +129,13 @@ function TaskRuntimeRow({ task, now, windowHours }: { task: TaskV2Info; now: num
         )}
         {scheduled.length > 0 && (
           <svg
+            // 暂停态取 `text-text-muted`（#94a3b8）：stroke-current 描在 `bg-white` 卡片的浅色轨上，
+            // 原先的 `text-muted` 是面色档（浅色 #f1f5f9，与轨底纹同色 = 暂停刻度不可见；暗色 #334155
+            // 又会在同一张白卡上变深）。文字/描边一律用 `--color-text-*` 一族。
             className={
               task.enabled
                 ? "absolute inset-0 h-full w-full overflow-visible text-brand"
-                : "absolute inset-0 h-full w-full overflow-visible text-muted"
+                : "absolute inset-0 h-full w-full overflow-visible text-text-muted"
             }
             viewBox="0 0 1000 16"
             preserveAspectRatio="none"

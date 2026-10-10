@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { resetAllStubs } from "@fenix/platform-sdk/testing";
 import { createWebInstancesRoutes } from "../routes/web/instances";
 import type { AgentInstanceRecord } from "../server/repositories/agent-instance";
+import { AgentInstanceRuntimeCoordinator } from "../server/services/agent-instance-runtime-coordinator";
 import { resetAgentRuntimePort, stubAgentRuntimePort } from "../server/testing";
 import { createStubAgentRuntimeAuthGuardPlugin, resetTestAuth, setTestAuth } from "./guard-stubs";
 
@@ -60,6 +61,26 @@ describe("Web Instance runtime actions", () => {
     expect(response.status).toBe(200);
     expect((await response.json()) as unknown).toEqual({ success: true, data: null });
     expect(calls).toEqual([`stop:${defaultInstance.id}:strict`]);
+  });
+
+  // 未确认退出必须贯穿 coordinator 和 route；保留停止意图，禁止自动重启掩盖残留进程。
+  test("strict stop 未确认退出返回错误并保留 unknown", async () => {
+    const coordinator = new AgentInstanceRuntimeCoordinator({
+      async start() {},
+      async stop() {
+        throw new Error("Agent process exit could not be confirmed after SIGKILL");
+      },
+    });
+    await coordinator.ensureRuntime(defaultInstance);
+    stubAgentRuntimePort({
+      getOwnedInstance: async () => defaultInstance,
+      getOwnedEnvironment: async () => ({ id: defaultInstance.environmentId }) as never,
+      stopInstanceRuntime: (instance, mode) => coordinator.stopRuntime(instance, mode),
+    });
+    const response = await request(`/instances/${defaultInstance.id}/stop`, "POST");
+    expect(response.status).toBeGreaterThanOrEqual(400);
+    expect(coordinator.snapshot(defaultInstance.id).state).toBe("unknown");
+    await expect(coordinator.ensureRuntime(defaultInstance)).rejects.toThrow("unknown");
   });
 
   // Default 实例重启必须复用原 uid，不能通过 delete + spawn 模拟重启。

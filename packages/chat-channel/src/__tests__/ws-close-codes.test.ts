@@ -9,12 +9,13 @@
 import { describe, expect, test } from "bun:test";
 import { WS_CLOSE_CODE_POLICY } from "../transport/ws-close-codes";
 
-/** 基线：收敛前 `transport/ws.ts` 的 `NO_RECONNECT_CODES` 字面量。 */
-const BASELINE_NO_RECONNECT_CODES = [4001, 4004, 4500, 4501, 4502, 4503];
+/** 基线：收敛前 `transport/ws.ts` 的 `NO_RECONNECT_CODES` 字面量（4002 于 2026-10-10 补入）。 */
+const BASELINE_NO_RECONNECT_CODES = [4001, 4002, 4004, 4500, 4501, 4502, 4503];
 
 /** 基线：收敛前 `agent-runtime/web/yjs/yjs-ws.ts` 的 code → UI 语义字面量（null = 无 UI 语义）。 */
 const BASELINE_UI_CODES = new Map<number, string | null>([
   [4001, "instance_idle_reclaimed"],
+  [4002, "instance_stopped"],
   [4004, "environment_unavailable"],
   [4500, "machine_unavailable"],
   [4501, "client_keepalive_timeout"],

@@ -28,6 +28,7 @@ import { buildPeriCapabilityMeta, isPeriTaskNotificationMethod } from "./peri-ta
 import { createReconnectScheduler } from "./reconnect-scheduler.js";
 import { ServerRelayRouter } from "./server-relay-router.js";
 import { buildAgentProcessEnv } from "./spawn-env.js";
+import { stopAgentProcess } from "./stop-agent-process.js";
 import type { AgentCapabilities, ContentBlock, PromptCapabilities, SessionModelState } from "./types.js";
 import { getWebSocketCodeMessage, WEBSOCKET_CODES } from "./websocket-code.js";
 import { decodeJsonWsMessage, WsPayloadTooLargeError } from "./ws-message.js";
@@ -104,7 +105,7 @@ export interface ServerConfig {
 }
 
 export interface AcpServerHandle {
-  close: () => void;
+  close: () => Promise<void>;
 }
 
 // Pending permission request
@@ -211,7 +212,7 @@ export function buildRegisterMessage(config: ServerConfig): object {
 // Client mode: connects to RCS registry as WebSocket client
 // ---------------------------------------------------------------------------
 
-export function createAcpClient(config: ServerConfig): { close: () => void } {
+export function createAcpClient(config: ServerConfig): AcpServerHandle {
   if (!config.rcsUrl) {
     throw new Error("rcsUrl is required for client mode");
   }
@@ -856,7 +857,7 @@ export function createAcpClient(config: ServerConfig): { close: () => void } {
   connect();
 
   return {
-    close: () => {
+    close: async () => {
       manualClose = true;
       if (fileWsReconnectTimer) {
         clearTimeout(fileWsReconnectTimer);
@@ -873,6 +874,7 @@ export function createAcpClient(config: ServerConfig): { close: () => void } {
       reconnectScheduler.cancel();
       sessionMgr.stopAll();
       ws?.close();
+      await instanceMgr.cleanSlate();
     },
   };
 }
@@ -1149,10 +1151,11 @@ export function createAcpServer(config: ServerConfig): AcpServerHandle {
 
   async function startAgent(): Promise<void> {
     if (state.process) {
-      state.process.kill();
+      await stopAgentProcess(state.process);
       state.process = null;
       state.connection = null;
     }
+    if (stopped) return;
     try {
       console.log("spawning agent:", command, args);
 
@@ -1236,7 +1239,9 @@ export function createAcpServer(config: ServerConfig): AcpServerHandle {
         relayRouter.broadcast({ type: "status", payload: { connected: false } });
       });
     } catch (error) {
-      if (state.process) state.process.kill();
+      // EOF 会使在途 initialize 拒绝，不能在这里抢先 SIGTERM 破坏 close 的 drain。
+      if (stopped) return;
+      if (state.process) await stopAgentProcess(state.process);
       state.process = null;
       state.connection = null;
       console.error("agent connect failed:", (error as Error).message);
@@ -1743,25 +1748,33 @@ export function createAcpServer(config: ServerConfig): AcpServerHandle {
   const displayUrl = `ws://${host === "0.0.0.0" ? "localhost" : host}:${server.port}/ws`;
   console.log(`[acp-server] started on ${displayUrl}, agent: ${command} ${args.join(" ")}`);
 
+  let closing: Promise<void> | null = null;
   return {
     close() {
-      if (stopped) return;
+      if (closing) return closing;
       stopped = true;
-      if (heartbeatTimer) {
-        clearInterval(heartbeatTimer);
-        heartbeatTimer = null;
-      }
-      cancelPendingPermissions(state);
-      for (const elicitation of elicitations.values()) elicitation.cancelAll();
-      if (state.process) state.process.kill();
-      state.process = null;
-      state.connection = null;
-      clients.clear();
-      relayRouter.clear();
-      socketSessions.clear();
-      socketAlive.clear();
-      elicitations.clear();
-      server.stop();
+      closing = (async () => {
+        if (heartbeatTimer) {
+          clearInterval(heartbeatTimer);
+          heartbeatTimer = null;
+        }
+        cancelPendingPermissions(state);
+        for (const elicitation of elicitations.values()) elicitation.cancelAll();
+        if (state.process) await stopAgentProcess(state.process);
+        state.process = null;
+        state.connection = null;
+        clients.clear();
+        relayRouter.clear();
+        socketSessions.clear();
+        socketAlive.clear();
+        elicitations.clear();
+        server.stop();
+      })().catch((error) => {
+        // 关闭失败仍禁止新连接，但保留进程句柄以便再次确认停止。
+        closing = null;
+        throw error;
+      });
+      return closing;
     },
   };
 }
@@ -1782,9 +1795,14 @@ export async function startServer(config: ServerConfig): Promise<void> {
     console.log("  Press Ctrl+C to stop");
     console.log();
     const handle = createAcpClient(config);
-    const shutdown = () => {
-      handle.close();
-      process.exit(0);
+    const shutdown = async () => {
+      try {
+        await handle.close();
+        process.exit(0);
+      } catch {
+        console.error("[acp-client] 关闭失败，Agent 退出未确认");
+        process.exitCode = 1;
+      }
     };
     process.on("SIGINT", shutdown);
     process.on("SIGTERM", shutdown);
@@ -1810,9 +1828,14 @@ export async function startServer(config: ServerConfig): Promise<void> {
   console.log(`  Press Ctrl+C to stop`);
   console.log();
 
-  const shutdown = () => {
-    handle.close();
-    process.exit(0);
+  const shutdown = async () => {
+    try {
+      await handle.close();
+      process.exit(0);
+    } catch {
+      console.error("[acp-server] 关闭失败，Agent 退出未确认");
+      process.exitCode = 1;
+    }
   };
   process.on("SIGINT", shutdown);
   process.on("SIGTERM", shutdown);
