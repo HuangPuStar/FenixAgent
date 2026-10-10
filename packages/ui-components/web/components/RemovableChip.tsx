@@ -3,16 +3,17 @@
 //
 // 为什么抽：三处真实用例此前各自手写同一个 `<button type="button">` + 尾随 `<X />`，并且都靠
 // 「单击整枚触发移除」这一种交互承载语义（没有独立的关闭按钮、没有第二个可聚焦元素）：
-//   1. `@fenix/resource-agent-config` 的 `AgentResourcePicker` 已选 chip（单击移除已选资源）；
+//   1. `@fenix/resource-agent-config` 的 `AgentResourcePicker` 已选 chip（该列 2026-10-09 按产品口径
+//      整块删除，选择与移除都改由下方列表承担）；
 //   2. `web/chat/composer/ChatComposer` 的技能 chip（单击移除该斜杠命令）；
 //   3. 同文件同区域的 MCP chip（单击取消该 MCP 的勾选）。
 // 三处的外观本就不同（底色/描边/刻度各异），差异全部由 `className` 表达，不做 variant 收敛——
 // 本原语钉住的是结构（按钮 + 尾随 `X`）与交互（单击整枚即移除）这两件三处逐字重复的事。
 //
 // 契约：
-//   - 尾随 `X` 由本组件渲染，且是 `<button>` 的**直接子元素**：三处消费方的既有伴随 CSS 都按
-//     `> svg` 选中它来定图标尺寸（如 `.agent-resource-picker__chips > button > svg`、
-//     `.chat-composer-capability-chip > svg`），因此这里不能改用图标槽位或包一层。
+//   - 尾随 `X` 由本组件渲染，且是 `<button>` 的**直接子元素**：消费方的既有伴随 CSS 按
+//     `> svg` 选中它来定图标尺寸（`.chat-composer-capability-chip > svg`），因此这里不能改用
+//     图标槽位或包一层。
 //   - 不接 i18n：可见文案与无障碍名（`aria-label` / `title`）都由调用方传入，`children` 里带
 //     `sr-only` 补充也由调用方决定（本项目既有约定：库内组件不绑定业务命名空间）。
 //   - 其余 `<button>` 属性（`disabled` / `title` / `aria-label` / `data-*` …）原样透传。

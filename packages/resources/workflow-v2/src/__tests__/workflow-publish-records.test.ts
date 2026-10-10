@@ -1,10 +1,12 @@
 // 发布记录读路径（`GET /web/workflow-v2/workflows/:id/publish-records`）的行为契约。
 //
-// 这条端点支撑列表页的「日志」弹窗（发布记录 + 上游当前发布版本），因此重点断言四件事：
+// 这条端点支撑列表页的「日志」弹窗（上游当前发布版本 + 上游渠道发布记录 + 平台侧发布动作），重点断言五件事：
 // ① 认证与归属：未认证 401、跨组织与不存在一律 404（对外同形，不泄漏存在性）；
-// ② 未绑定租户 App 时读记录走 409（与发布、创建同一张绑定失败表）；
-// ③ 归一化：发布记录全部来自上游、缺失字段如实为 null，上游 `data:null` 是**合法空态**而不是失败；
-// ④ 上游失败如实映射（业务失败 502、熔断 503），不吞成空列表——「读不到」与「上游说没有」是两件事。
+// ② 未绑定租户 App 时读记录走 409（与创建、删除同一张绑定失败表）；
+// ③ 记录来自**应用级**渠道发布读出口（工作流级的 `list_publish_workflow` 在上游是桩实现，见服务层文件头），
+//    只搬运上游真实字段（版本、渠道结果、打包失败明细），上游空数组是**合法空态**而不是失败；
+// ④ 平台侧发布动作来自本地审计流水（时间/操作人/结果），是控制台发布动作的唯一可见处；
+// ⑤ 上游失败如实映射（业务失败 502、熔断 503），不吞成空列表——「读不到」与「上游说没有」是两件事。
 //
 // 夹具（数据库句柄、守卫与上游替身）在 `helpers/console-plane-harness.ts`；无数据库时整组跳过（显式打印原因）。
 
@@ -13,6 +15,7 @@ import { Elysia } from "elysia";
 import { createWebWorkflowV2Routes } from "../server/routes/web";
 import { createWebWorkflowV2PublishRoutes } from "../server/routes/web/workflow-publish";
 import { createWebWorkflowV2WorkflowRoutes } from "../server/routes/web/workflows";
+import { recordAuditTrail } from "../server/services/audit-trail";
 import { type UpstreamCallResult, UpstreamCircuitOpenError } from "../server/services/upstream-client";
 import {
   cleanupTestRows,
@@ -21,7 +24,6 @@ import {
   createUpstreamStub,
   databaseReachable,
   installDatabase,
-  jsonInit,
   ORG_A,
   ORG_B,
   OWNER_ID,
@@ -47,8 +49,8 @@ function createConsolePlaneApp(
     .use(createWebWorkflowV2PublishRoutes({ authGuardPlugin: guard.plugin }, { callUpstream: upstream.call }));
 }
 
-/** 上游发布记录端点的成功响应（`data.workflows[]` 是记录数组；上游空态是 `data:null`）。 */
-const recordsOk = (workflows: unknown[]) => upstreamOk({ data: { workflows, total: workflows.length } });
+/** 应用级渠道发布记录端点的成功响应（`data[]` 是记录数组，元素形如上游 `PublishRecordDetail`）。 */
+const recordsOk = (records: unknown[]) => upstreamOk({ data: records });
 /** 上游 canvas 端点的成功响应：本模块只消费 `data.workflow_version`。 */
 const canvasOk = (publishedVersion: string | null) =>
   upstreamOk({ data: { workflow_version: publishedVersion ?? "", workflow: { schema_json: "{}" } } });
@@ -86,19 +88,24 @@ describe.skipIf(!databaseReachable)("发布记录与上游身份解析（真实 
     guard.setActor(null);
   });
 
-  // 主体路径：两条上游调用都注入平台空间的 space_id（客户端自报值不参与），记录按 workflow_ids 收窄，
-  // 缺失字段如实为 null；canvas 的 workflow_version 是「上游当前版本」的唯一来源。
-  test("读记录注入 space_id 并归一化上游记录与当前版本", async () => {
+  // 主体路径：两条上游调用各自注入服务端解析出的身份（渠道记录用注册表的 appId，canvas 用上游 workflow ID +
+  // 平台空间），记录只搬运上游真实字段；记录级状态由渠道结果与打包明细派生（上游记录级状态字段不可用）。
+  test("读记录注入 appId 与 space_id 并归一化渠道结果与当前版本", async () => {
     const record = await seedRecord("records-ok", "v0.0.3");
-    responses["/api/workflow_api/list_publish_workflow"] = () =>
+    responses["/api/intelligence_api/publish/publish_record_list"] = () =>
       recordsOk([
         {
-          basic_info: {
-            id: record.upstreamWorkflowId,
-            name: "客服问答流程",
-            publish_time: 1_760_000_000,
-            owner_id: "u-1",
-          },
+          publish_record_id: "1",
+          version_number: "v0.0.2",
+          publish_status: 0,
+          connector_publish_result: [{ connector_id: "1024", connector_name: "API", connector_publish_status: 2 }],
+        },
+        {
+          publish_record_id: "2",
+          version_number: "v0.0.3",
+          publish_status: 0,
+          connector_publish_result: [{ connector_id: "1024", connector_name: "API", connector_publish_status: 0 }],
+          publish_status_detail: { pack_failed_detail: [{ entity_name: "坏掉的工作流" }] },
         },
       ]);
     responses["/api/workflow_api/canvas"] = () => canvasOk("v0.0.3");
@@ -107,28 +114,34 @@ describe.skipIf(!databaseReachable)("发布记录与上游身份解析（真实 
     const body = await readBody(response);
 
     expect(response.status).toBe(200);
-    expect(sentBody(upstream.calls, 0)).toEqual({
-      space_id: SPACE_ID,
-      workflow_ids: [record.upstreamWorkflowId],
-      size: 20,
-    });
+    // project_id 取自本地注册表的 appId（客户端不参与）；canvas 读用上游 workflow ID + 平台空间。
+    expect(sentBody(upstream.calls, 0)).toEqual({ project_id: record.appId });
     expect(sentBody(upstream.calls, 1)).toEqual({ workflow_id: record.upstreamWorkflowId, space_id: SPACE_ID });
     expect(body.data?.current).toEqual({ publishedVersion: "v0.0.3" });
+    // 倒序展示（最近发布优先）；状态由真实字段派生：渠道全成功 → done，有打包失败明细 → pack_failed。
     expect(body.data?.records).toEqual([
       {
-        workflowId: record.upstreamWorkflowId,
-        name: "客服问答流程",
-        publishedAt: new Date(1_760_000_000 * 1000).toISOString(),
-        ownerId: "u-1",
+        version: "v0.0.3",
+        status: "pack_failed",
+        channels: [{ connectorId: "1024", connectorName: "API", status: "in_progress" }],
+        packFailedResources: ["坏掉的工作流"],
+      },
+      {
+        version: "v0.0.2",
+        status: "done",
+        channels: [{ connectorId: "1024", connectorName: "API", status: "success" }],
+        packFailedResources: [],
       },
     ]);
+    // 平台侧动作来自本地审计流水：本用例没有发布动作，因此是空数组（不是 null，也不是伪造的一行）。
+    expect(body.data?.actions).toEqual([]);
   });
 
-  // 当前上游构建的 `list_publish_workflow` 是桩实现（返回 `data:null`）：空记录是**合法空态**，
-  // 不得报错、也不得用本地版本伪造一条记录（否则界面上的「暂无记录」会变成永远不出现的分支）。
-  test("上游 data:null 时返回空记录且不伪造本地数据", async () => {
+  // 上游没有渠道发布记录时返回空数组：这是**合法空态**（应用从未发布到渠道），不得报错、也不得用本地版本
+  // 伪造一条记录（否则界面上的「暂无记录」会变成永远不出现的分支）。
+  test("上游无渠道发布记录时返回空数组且不伪造本地数据", async () => {
     const record = await seedRecord("records-null", "v0.0.1");
-    responses["/api/workflow_api/list_publish_workflow"] = () => upstreamOk({ data: null });
+    responses["/api/intelligence_api/publish/publish_record_list"] = () => recordsOk([]);
     responses["/api/workflow_api/canvas"] = () => canvasOk(null);
 
     const response = await request(app, `/workflows/${record.id}/publish-records`);
@@ -140,20 +153,62 @@ describe.skipIf(!databaseReachable)("发布记录与上游身份解析（真实 
     expect(body.data?.current).toEqual({ publishedVersion: null });
   });
 
-  // 上游忽略 workflow_ids 时必须自行过滤：把别的 workflow 的记录显示在当前 workflow 名下比空列表更糟。
-  test("过滤掉不属于该 workflow 的上游记录", async () => {
-    const record = await seedRecord("records-filter");
-    responses["/api/workflow_api/list_publish_workflow"] = () =>
+  // 认不出的渠道状态码如实为 null（不猜成成功/失败），记录级状态随之落到 in_progress：
+  // 不认识的取值不该被翻译成一个看似精确的结论。
+  test("认不出的渠道状态码归一为 null 且记录状态保守落在进行中", async () => {
+    const record = await seedRecord("records-unknown-code");
+    responses["/api/intelligence_api/publish/publish_record_list"] = () =>
       recordsOk([
-        { basic_info: { id: "someone-else", name: "别人的流程" } },
-        { basic_info: { id: record.upstreamWorkflowId } },
+        {
+          version_number: "v9.9.9",
+          connector_publish_result: [{ connector_id: "999", connector_name: null, connector_publish_status: 42 }],
+        },
       ]);
-    responses["/api/workflow_api/canvas"] = () => canvasOk("v1.0.0");
+    responses["/api/workflow_api/canvas"] = () => canvasOk("v9.9.9");
 
     const body = await readBody(await request(app, `/workflows/${record.id}/publish-records`));
 
     expect(body.data?.records).toHaveLength(1);
-    expect(body.data?.records?.[0]?.name).toBeNull();
+    expect(body.data?.records?.[0]?.status).toBe("in_progress");
+    expect(body.data?.records?.[0]?.channels?.[0]?.status).toBeNull();
+  });
+
+  // 平台侧发布动作来自本地审计流水：控制台的发布动作在上游**没有任何记录**，这一段是「我点过的发布结果如何」
+  // 的唯一来源，因此必须随响应返回，并只收本组织 + 本 workflow 的行。
+  test("平台侧发布动作随响应返回且按组织与 workflow 过滤", async () => {
+    const record = await seedRecord("records-actions");
+    responses["/api/intelligence_api/publish/publish_record_list"] = () => recordsOk([]);
+    responses["/api/workflow_api/canvas"] = () => canvasOk("v0.0.1");
+    await recordAuditTrail({
+      organizationId: ORG_A,
+      actorUserId: OWNER_ID,
+      action: "workflow.publish",
+      upstreamWorkflowId: record.upstreamWorkflowId,
+      result: "ok",
+      errorCode: null,
+    });
+    // 别的组织、以及同一组织的别的动作，都不得混进来。
+    await recordAuditTrail({
+      organizationId: `${ORG_A}-other`,
+      actorUserId: OWNER_ID,
+      action: "workflow.publish",
+      upstreamWorkflowId: record.upstreamWorkflowId,
+      result: "failed",
+      errorCode: "INTERNAL_ERROR",
+    });
+    await recordAuditTrail({
+      organizationId: ORG_A,
+      actorUserId: OWNER_ID,
+      action: "workflow.create",
+      upstreamWorkflowId: record.upstreamWorkflowId,
+      result: "ok",
+      errorCode: null,
+    });
+
+    const body = await readBody(await request(app, `/workflows/${record.id}/publish-records`));
+
+    expect(body.data?.actions).toHaveLength(1);
+    expect(body.data?.actions?.[0]).toMatchObject({ result: "ok", errorCode: null });
   });
 
   // 只读端点同样按本地注册表做归属判定：别的组织的记录对外与「不存在」同形（404），不泄漏存在性。
@@ -183,7 +238,7 @@ describe.skipIf(!databaseReachable)("发布记录与上游身份解析（真实 
   // 上游业务失败不是空列表：如实映射为 502，让界面上给出「重试」而不是「暂无记录」。
   test("上游业务失败映射 502 且不退回空态", async () => {
     const record = await seedRecord("records-rejected");
-    responses["/api/workflow_api/list_publish_workflow"] = () => upstreamFail(777777775, "boom");
+    responses["/api/intelligence_api/publish/publish_record_list"] = () => upstreamFail(777777775, "boom");
     responses["/api/workflow_api/canvas"] = () => canvasOk("v0.0.1");
 
     const response = await request(app, `/workflows/${record.id}/publish-records`);
@@ -195,7 +250,7 @@ describe.skipIf(!databaseReachable)("发布记录与上游身份解析（真实 
   // canvas 那一半失败同样要暴露：只报「记录可用、版本未知」会让漂移比对静默失效。
   test("canvas 读取失败时整体失败而非降级", async () => {
     const record = await seedRecord("records-canvas-failed");
-    responses["/api/workflow_api/list_publish_workflow"] = () => recordsOk([]);
+    responses["/api/intelligence_api/publish/publish_record_list"] = () => recordsOk([]);
     responses["/api/workflow_api/canvas"] = () => upstreamFail(700012006, "authentication failed: session not exist");
 
     const response = await request(app, `/workflows/${record.id}/publish-records`);
@@ -207,26 +262,14 @@ describe.skipIf(!databaseReachable)("发布记录与上游身份解析（真实 
   // 熔断打开是「没发出请求的失败」：503 让界面知道这是暂不可用（可稍后重试），不是「上游说没有记录」。
   test("熔断打开时读记录返回 503", async () => {
     const record = await seedRecord("records-circuit");
-    responses["/api/workflow_api/list_publish_workflow"] = () => {
-      throw new UpstreamCircuitOpenError("/api/workflow_api/list_publish_workflow", 1000);
+    responses["/api/intelligence_api/publish/publish_record_list"] = () => {
+      throw new UpstreamCircuitOpenError("/api/intelligence_api/publish/publish_record_list", 1000);
     };
 
     const response = await request(app, `/workflows/${record.id}/publish-records`);
 
     expect(response.status).toBe(503);
     expect((await readBody(response)).error?.code).toBe("UPSTREAM_UNAVAILABLE");
-  });
-
-  // 已经挂在这个应用上的发布写路径不能被新只读端点影响：存在性校验仍是 404（回归线）。
-  test("发布端点行为不因新增只读端点改变", async () => {
-    const record = await seedRecord("publish-still-works");
-    responses["/api/workflow_api/publish"] = () =>
-      upstreamOk({ data: { publish_commit_id: "commit-9", success: true } });
-
-    const response = await request(app, `/workflows/${record.id}/publish`, jsonInit("POST", { force: true }));
-
-    expect(response.status).toBe(200);
-    expect((await readBody(response)).data?.version).toBe("v0.0.1");
   });
 });
 

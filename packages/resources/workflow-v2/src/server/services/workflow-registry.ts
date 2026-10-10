@@ -12,7 +12,6 @@ import {
   listActive,
   markPendingDelete,
   updateActiveName,
-  updateActivePublishedVersion,
   type WorkflowRow,
 } from "../repositories/workflow-registry-repository";
 
@@ -50,8 +49,6 @@ export interface WorkflowRecord {
   name: string;
   ownerUserId: string;
   visibility: string;
-  /** 上游侧最新发布版本；未发布为 null。 */
-  publishedVersion: string | null;
   /** 软删状态；`pending_delete` 表示上游删除待对账任务重试。 */
   syncState: "active" | "pending_delete";
 }
@@ -131,7 +128,6 @@ function toRecord(row: WorkflowRow): WorkflowRecord {
     name: row.name,
     ownerUserId: row.ownerUserId,
     visibility: row.visibility,
-    publishedVersion: row.publishedVersion,
     // 数据库列是 text（不加 CHECK 以免影响后续状态扩展），这里收窄成契约里的两态。
     syncState: row.syncState === "pending_delete" ? "pending_delete" : "active",
   };
@@ -191,9 +187,7 @@ export async function listWorkflows(orgId: string, input: WorkflowListInput): Pr
  * 请求、上游重试回调都会走到这里）。身份已被别的组织持有时抛 {@link WorkflowRegistrationConflictError}，
  * 且不返回对方记录的任何字段——那会把跨租户的存在性变成探测面。
  */
-export async function registerWorkflow(
-  input: Omit<WorkflowRecord, "id" | "syncState" | "publishedVersion">,
-): Promise<WorkflowRecord> {
+export async function registerWorkflow(input: Omit<WorkflowRecord, "id" | "syncState">): Promise<WorkflowRecord> {
   // 前置查询与插入同在一个 try 里：前置查询也可能因数据库不可用而失败，而**任何**本地读写失败都要走
   // 「写待清理标记 + 抛补偿错误」这条路，否则上游刚创建的对象会既没有本地归属、也没有补偿依据。
   try {
@@ -246,21 +240,6 @@ export async function renameWorkflow(orgId: string, workflowId: string, name: st
 }
 
 /**
- * 写回发布成功后的新版本；未命中（不存在、已软删或跨组织）返回 null。
- *
- * 调用时机**只能**是上游 `publish` 成功之后（见仓储同名函数的注释）。返回 null 不代表发布失败——上游
- * 已经发布了，只是本地行在并发下被软删/迁移；调用方据此记日志与审计，**不**把已成功的发布改判为失败。
- */
-export async function recordPublishedVersion(
-  orgId: string,
-  upstreamWorkflowId: string,
-  publishedVersion: string,
-): Promise<WorkflowRecord | null> {
-  const row = await updateActivePublishedVersion(orgId, upstreamWorkflowId, publishedVersion);
-  return row ? toRecord(row) : null;
-}
-
-/**
  * 软删（`sync_state` → `pending_delete` + `deleted_at`）；上游删除结果由对账任务收敛。
  *
  * 重复删除或跨组织调用抛 {@link WorkflowNotFoundError}：静默成功会让上层在「这行不属于你」时也返回成功。
@@ -278,10 +257,7 @@ export async function softDeleteWorkflow(orgId: string, upstreamWorkflowId: stri
  * 标记写入本身失败（数据库整体不可用）时不再抛错——原始失败必须原样上抛，否则调用方看到的是
  * 「标记失败」而不是「登记失败」，补偿决策会走错分支。
  */
-async function recordCleanupMarker(
-  input: Omit<WorkflowRecord, "id" | "syncState" | "publishedVersion">,
-  cause: unknown,
-): Promise<boolean> {
+async function recordCleanupMarker(input: Omit<WorkflowRecord, "id" | "syncState">, cause: unknown): Promise<boolean> {
   try {
     await appendAuditLog({
       organizationId: input.organizationId,

@@ -30,6 +30,7 @@ import {
   WorkflowRegistrationConflictError,
   WorkflowRegistrationFailedError,
 } from "../server/services/workflow-registry";
+import { createTestScopedDatabase } from "./helpers/scoped-database";
 
 // ── 数据库装配 ──
 
@@ -54,9 +55,17 @@ function database(): Database {
 }
 
 /** 装配句柄：`resetAllStubs` 必须在前——应用基础设施只允许初始化一次，不复位第二条用例就会抛错。 */
+/**
+ * 装配注入的句柄（每条用例都显式给：真实句柄或本文件的故障注入替身）。
+ *
+ * 一律再套一层**台账读作用域**（`helpers/scoped-database.ts`）：台账是全局单行表、读路径取全表首行，未加作用域
+ * 时本机主库上的真实台账行会被当成「本组织的账号」，把 `space_id` 断言与绑定判定全部带偏（实测：一行最早期
+ * 时间的非前缀行可让本文件的控制面用例集体失败）。作用域只过滤台账的 `select`，故障注入替身的语义不受影响
+ * （它本就把 `where` 视作透明）。
+ */
 function installDatabase(injected: unknown): void {
   resetAllStubs();
-  initializeTestApplicationInfrastructure({ database: injected });
+  initializeTestApplicationInfrastructure({ database: createTestScopedDatabase(injected, TEST_PREFIX) });
 }
 
 // ── 测试数据 ──
@@ -232,7 +241,6 @@ describe.skipIf(!databaseReachable)("workflow-v2 本地注册表（真实 Postgr
     expect(found?.name).toBe(input.name);
     expect(found?.ownerUserId).toBe(OWNER_ID);
     expect(found?.visibility).toBe("private");
-    expect(found?.publishedVersion).toBeNull();
     expect(found?.syncState).toBe("active");
 
     expect((await registerWorkflow(input)).id).toBe(created.id);

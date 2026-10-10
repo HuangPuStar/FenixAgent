@@ -364,8 +364,9 @@ test("真实 profile 装配后各包的路由进入对应槽", async () => {
     "POST /workflow-v2/workflows",
     "PATCH /workflow-v2/workflows/:id",
     "DELETE /workflow-v2/workflows/:id",
-    "POST /workflow-v2/workflows/:id/publish",
     "GET /workflow-v2/workflows/:id/publish-records",
+    // 运行日志是页面级读路径（不挂在单个 workflow 上），挂载位置与声明序在发布路由之后、票据之前。
+    "GET /workflow-v2/run-records",
     "POST /workflow-v2/iframe-code",
   ]);
   expect(slottedRoutes(WEB_CONFIG_SLOT)).toEqual([
@@ -527,6 +528,8 @@ test("真实 profile 装配后各包的路由进入对应槽", async () => {
     "POST /api/system/sandbox-server/servers/:serverId/sandboxes/:sandboxId/commands",
     // workflow
     "POST /api/workflows/:workflowId/execute",
+    // workflow-v2（对外触发面；控制台面在 web 槽，画布透传面与静态反代在 app 槽）
+    "POST /api/workflow-v2/workflows/:id/run",
   ]);
   expect(slottedRoutes(APP_SLOT)).toEqual([
     // agent-runtime（`/acp` 下四条是 WS 升级，method 记为 WS）

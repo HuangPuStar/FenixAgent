@@ -1,6 +1,9 @@
 // web/__tests__/workflow-v2-i18n.test.ts
-// 守护 workflows 字典的完整性：en / zh 键集一致、插值占位符一致、web 面用到的键都能查到，以及**包外**消费点
-// （宿主 route 用同一个命名空间取页面标题）用到的键也在字典内。
+// 守护 workflows 字典的完整性：en / zh 键集一致、插值占位符一致、web 面用到的键都能查到。
+//
+// 「包外消费点」这条守护已随页面标题与动作迁回包内页面（宿主 `/agent/workflow` 路由现在只是 `Suspense` 壳，
+// 里没有 `t()` 调用点）而删除：机制在时它守的是「宿主 route 里的字面量键」——现在这类调用点不存在了，
+// 留着只会是一条永远无法失败的用例。
 //
 // 为什么必须静态断言：i18next 缺键时回退为「显示 key 本身」，界面不报错，只有中英来回切换才暴露
 // （前端规范 §9.3）。这里直接读 `i18n/locales/**` 的 JSON，不经过 i18next 单例，因此不受测试中
@@ -10,7 +13,7 @@
 // 扫描看不到，改为直接调那个纯函数枚举它的返回值。
 
 import { describe, expect, test } from "bun:test";
-import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
+import { readdirSync, readFileSync, statSync } from "node:fs";
 import { join, relative, resolve } from "node:path";
 import { ApiError } from "@fenix/web-runtime/api/request";
 import type { WorkflowV2WorkflowItem } from "../api/workflows";
@@ -21,8 +24,15 @@ import {
   initializeErrorKey,
   LIST_I18N_SCOPE,
   UPDATED_AT_KEYS,
+  WORKFLOW_STATUS_HINT_KEYS,
 } from "../pages/list/workflow-list-model";
-import { PUBLISH_ACTION_LABEL_KEYS, publishErrorKey } from "../pages/list/workflow-publish-model";
+import {
+  RUN_MODE_LABEL_KEYS,
+  RUN_STATUS_LABEL_KEYS,
+  runErrorKey,
+  runModeKey,
+  runStatusKey,
+} from "../pages/list/workflow-run-log-model";
 
 const WEB_ROOT = resolve(import.meta.dir, "..");
 const EN = JSON.parse(readFileSync(join(WEB_ROOT, "i18n/locales/en/workflows.json"), "utf8")) as Record<
@@ -33,17 +43,6 @@ const ZH = JSON.parse(readFileSync(join(WEB_ROOT, "i18n/locales/zh/workflows.jso
   string,
   unknown
 >;
-
-/**
- * 包外消费点：键的 owner 是本包字典，但 `t()` 的调用点在宿主 route 里。
- *
- * 2F 换包时旧包的 `page.*` 组没随迁到新包字典，调用点却还在（宿主 `workflow.tsx` 的页面标题），
- * 症状就是页头直接显示 `page.workflow_title` 字面量——包内静态扫描看不到这些调用点，只能显式列出。
- * 新增/移动宿主 route 时同步这份清单；文件不存在即失败（不静默跳过，否则守护会随重构一起消失）。
- */
-const EXTERNAL_CONSUMER_FILES = ["apps/web/src/routes/agent/_panel/workflow.tsx"] as const;
-
-const REPOSITORY_ROOT = resolve(WEB_ROOT, "../../../..");
 
 /** 把嵌套字典摊平成点号路径：`canvas.state.timeout.title`；顶层键保持原样。 */
 function flatten(source: Record<string, unknown>, prefix = ""): Map<string, string> {
@@ -113,6 +112,19 @@ describe("workflows 字典完整性", () => {
     expect(literalKeys.size).toBeGreaterThanOrEqual(15);
   });
 
+  // 运行日志的空态与模式/状态文案必须齐全：缺一条就会在界面上显示成 i18n 键本身（i18next 缺键只回显键，
+  // 不报错），而这几条恰好是「列表里到底显示了什么」的解释来源。
+  test("运行日志的空态与模式/状态文案齐全", () => {
+    const required = [
+      "run.empty_title",
+      "run.empty_hint",
+      ...Object.values(RUN_MODE_LABEL_KEYS),
+      ...Object.values(RUN_STATUS_LABEL_KEYS),
+    ];
+    const missing = required.filter((key) => !enFlat.has(key) || !zhFlat.has(key));
+    expect(missing).toEqual([]);
+  });
+
   // 动态键（播报文案）扫描不到，直接枚举纯函数的返回值——它们同样必须能查到。
   test("状态播报的动态键都在字典内", () => {
     const announcementKeys = [
@@ -144,6 +156,7 @@ describe("workflows 字典完整性", () => {
       name: "示例",
       ownerUserId: "user-1",
       visibility: "private",
+      publishState: "unpublished",
       publishedVersion: null,
       syncState: "active",
       updatedAt: "2026-09-29T00:00:00.000Z",
@@ -151,7 +164,8 @@ describe("workflows 字典完整性", () => {
     });
     const dynamicKeys = [
       describeWorkflowStatus(item({ syncState: "pending_delete" })).labelKey,
-      describeWorkflowStatus(item({ publishedVersion: "1.0.0" })).labelKey,
+      describeWorkflowStatus(item({ publishState: "published", publishedVersion: "v1.0.0" })).labelKey,
+      describeWorkflowStatus(item({ publishState: "unknown" })).labelKey,
       describeWorkflowStatus(item({})).labelKey,
       deleteRefusalKey(1),
       deleteRefusalKey(2),
@@ -164,39 +178,33 @@ describe("workflows 字典完整性", () => {
       initializeErrorKey(new ApiError("", "INTERNAL_ERROR")),
       `${LIST_I18N_SCOPE}.pagination_total`,
       ...Object.values(UPDATED_AT_KEYS),
-      // 发布失败的文案同样由页面 `t(notice.messageKey)` / `t(feedback.messageKey)` 取（动态键，扫描看不到）：
-      // 按已登记码逐个枚举，兜底分支同样必须能查到——漏一个就会在界面上显示裸 key。
-      publishErrorKey(new ApiError("", "UNAUTHENTICATED")),
-      publishErrorKey(new ApiError("", "WORKFLOW_NOT_FOUND")),
-      publishErrorKey(new ApiError("", "ORG_APP_NOT_BOUND")),
-      publishErrorKey(new ApiError("", "PLATFORM_ACCOUNT_DEGRADED")),
-      publishErrorKey(new ApiError("", "PLATFORM_SESSION_UNAVAILABLE")),
-      publishErrorKey(new ApiError("", "WORKFLOW_DRAFT_NOT_VERIFIED")),
-      publishErrorKey(new ApiError("", "WORKFLOW_VERSION_NOT_INCREMENTAL")),
-      publishErrorKey(new ApiError("", "WORKFLOW_VERSION_INVALID")),
-      publishErrorKey(new ApiError("", "UPSTREAM_TIMEOUT")),
-      publishErrorKey(new ApiError("", "UPSTREAM_REJECTED")),
-      publishErrorKey(new Error("not an ApiError")),
-      // 发布按钮的两态文案（表格与工具栏用同一对键，见 `PUBLISH_ACTION_LABEL_KEYS`）。
-      ...Object.values(PUBLISH_ACTION_LABEL_KEYS),
+      ...Object.values(WORKFLOW_STATUS_HINT_KEYS),
+      // 运行日志：失败文案同 `initializeErrorKey` 口径按错误码取（动态键，扫描看不到），逐分支枚举；
+      // 状态文案同样由三元表达式取键（`runStatusKey`），含「未知」档与 null 兜底。
+      runErrorKey(new ApiError("", "UNAUTHENTICATED")),
+      runErrorKey(new ApiError("", "WORKFLOW_NOT_FOUND")),
+      runErrorKey(new ApiError("", "ORG_APP_NOT_BOUND")),
+      runErrorKey(new ApiError("", "PLATFORM_ACCOUNT_DEGRADED")),
+      runErrorKey(new ApiError("", "PLATFORM_ACCOUNT_NOT_PROVISIONED")),
+      runErrorKey(new ApiError("", "PLATFORM_SESSION_UNAVAILABLE")),
+      runErrorKey(new ApiError("", "UPSTREAM_TIMEOUT")),
+      runErrorKey(new ApiError("", "UPSTREAM_UNAVAILABLE")),
+      runErrorKey(new Error("not an ApiError")),
+      // 状态/模式两套键同样由三元表达式取键（`runStatusKey` / `runModeKey`），含「未知」档与 null 兜底。
+      runStatusKey("running"),
+      runStatusKey("succeeded"),
+      runStatusKey("failed"),
+      runStatusKey("canceled"),
+      runStatusKey("interrupted"),
+      runStatusKey(null),
+      runModeKey("debug"),
+      runModeKey("release"),
+      runModeKey("node_debug"),
+      runModeKey(null),
+      ...Object.values(RUN_STATUS_LABEL_KEYS),
+      ...Object.values(RUN_MODE_LABEL_KEYS),
     ];
     const missing = dynamicKeys.filter((key) => !enFlat.has(key) || !zhFlat.has(key));
-    expect(missing).toEqual([]);
-  });
-
-  // 包外消费点：宿主 route 用同一命名空间取页面标题，键仍归本包。缺键时页头会显示 `page.workflow_title`
-  // 字面量（2F 换包时真实发生过：旧包的 `page.*` 组没随迁），而包内扫描看不到这些调用点。
-  test("包外消费点的字面量键都在字典内", () => {
-    const missing: string[] = [];
-    for (const relativePath of EXTERNAL_CONSUMER_FILES) {
-      const absolutePath = join(REPOSITORY_ROOT, relativePath);
-      if (!existsSync(absolutePath)) {
-        throw new Error(`包外消费点文件不存在：${relativePath}；若宿主 route 已移动，请更新本用例的清单`);
-      }
-      for (const match of readFileSync(absolutePath, "utf8").matchAll(/\bt\(\s*"([^"]+)"/g)) {
-        if (!enFlat.has(match[1]) || !zhFlat.has(match[1])) missing.push(`${relativePath} → ${match[1]}`);
-      }
-    }
     expect(missing).toEqual([]);
   });
 });

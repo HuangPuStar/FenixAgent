@@ -187,7 +187,6 @@ function workflowRow(organizationId: string, upstreamWorkflowId: string) {
     name: `工作流 ${upstreamWorkflowId}`,
     ownerUserId: USER_ID,
     visibility: "private",
-    publishedVersion: null,
     syncState: "active",
   };
 }
@@ -538,14 +537,15 @@ describe("canvas-bff 注入与响应后处理", () => {
 
   // 时间戳原样透传、不做单位换算：`workflow_list` 的 create_time/update_time 是秒，`list_spans` 的
   // start_at/end_at 是毫秒，任何「统一成毫秒 / 秒」的改写都会静默改变画布的展示口径（冻结 §6，快照 F7）。
-  // 同时覆盖 `list_spans` 的裸形状（无 code/msg/data 包装）——包装会打断画布 SDK 的解析（快照 F6）。
-  test("时间戳原样透传（秒与毫秒都不换算、裸形状不包装）", async () => {
+  // 同时覆盖 `list_spans` 的**原样透传（不包装、不改形状）**——它是顶层扁平信封 `{code,msg,spans}`（2026-10-09
+  // 上游 `3a028cf1` 起；此前是桩实现），任何改写都会打断画布 SDK 的解析（快照 F6）。
+  test("时间戳原样透传（秒与毫秒都不换算、不包装、不改形状）", async () => {
     const listEnvelope = {
       code: 0,
       msg: "success",
       data: { workflow_list: [{ workflow_id: WF_A, create_time: 1790678418, update_time: 1790678418 }], total: 1 },
     };
-    const spansPayload = { spans: [{ start_at: 1790678418000, end_at: 1790678420000 }] };
+    const spansPayload = { code: 0, msg: "", spans: [{ start_at: 1790678418000, end_at: 1790678420000 }] };
     const app = setup((recorded) => jsonResponse(recorded.path.endsWith("list_spans") ? spansPayload : listEnvelope));
     const ticket = mintTicket(ORG_A, WF_A);
 

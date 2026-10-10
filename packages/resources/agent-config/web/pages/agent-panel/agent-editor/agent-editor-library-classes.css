@@ -1,8 +1,10 @@
 .agent-editor-group-filter__button {
   grid-template-columns: minmax(0, 1fr) auto;
 }
-:where(.agent-editor-library-picker) {
-  grid-template-columns: 168px minmax(0, 1fr);
+/* 需要被 className 覆盖的列模板只下沉「值」：模板本体留在工具类层（`grid-cols-(--…)`），
+ * 否则这里未分层的普通声明会恒压过 `@layer utilities`（2026-10-09 资源选择器缺陷，见同名 .ts 文件头）。 */
+.agent-editor-library-picker {
+  --agent-editor-library-picker-columns: calc(var(--spacing) * 42) minmax(0, 1fr);
 }
 .agent-knowledge-block__heading {
   grid-template-columns: 36px minmax(0, 1fr);
@@ -16,6 +18,6 @@
 .agent-knowledge-switch > span > strong {
   font-weight: 680;
 }
-:where(.agent-retrieval-fields) {
-  grid-template-columns: minmax(0, 1fr) minmax(210px, 0.7fr);
+.agent-retrieval-fields {
+  --agent-retrieval-fields-columns: minmax(0, 1fr) minmax(calc(var(--spacing) * 52.5), 0.7fr);
 }

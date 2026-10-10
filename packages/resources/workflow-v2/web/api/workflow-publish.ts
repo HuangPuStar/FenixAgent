@@ -1,11 +1,16 @@
 // web/api/workflow-publish.ts
-// 列表页「发布」动作与「日志」弹窗的域模块（冻结 §4.3 的 `/web/workflow-v2/workflows*` 控制面）。
+// 「发布日志」弹窗的域模块（冻结 §4.3 的 `/web/workflow-v2/workflows*` 控制面）。
+// 控制台发布入口已撤除：发布动作在上游侧完成（画布 / 上游控制台），平台只读发布概况。
 //
 // 两条端点都按**本地主键**寻址（`/workflows/:id/...`）：归属与组织隔离由服务端按本地注册表判定，客户端不
 // 参与身份拼装。
 //
-// 发布记录**全部来自上游**（服务端转发 `list_publish_workflow` 与 canvas 的当前发布版本），平台侧不落任何发布
-// 日志——本层因此不缓存、不合并本地状态：`records` 为空就是上游没有记录（合法空态），不是「还没加载」。
+// 发布概况有三段（服务端一次返回，字段一一对应）：
+// - `current`：上游当前发布版本（canvas 的 `workflow_version`）；
+// - `records`：**上游渠道发布记录**（应用级读出口 `intelligence_api/publish/publish_record_list`；工作流级的
+//   `list_publish_workflow` 在该上游构建里是桩实现，见服务端 `workflow-publish-records.ts` 的文件头）；
+// - `actions`：**平台侧发布动作**（本地审计流水：时间、操作人、结果），回答「我在控制台点过的发布结果如何」。
+// 本层不缓存、不合并：某一段为空就是那一侧确实没有记录（合法空态），不是「还没加载」。
 //
 // 信封口径与 `workflows.ts` 同源：`request()` 已解掉 `{ success, data }` 一层，失败**返回** `{ success: false }`
 // 而不 throw（§5.2），调用方必须 `unwrap()` 或显式判 `success`。文案属视图层：本层不带用户可见字符串。
@@ -20,65 +25,53 @@ export interface WorkflowPublishRequestOptions {
   readonly signal?: AbortSignal;
 }
 
-/** 发布入参：`description` 是版本说明，`force` 跳过上游「草稿必须先通过调试运行」的前置校验。 */
-export interface WorkflowV2PublishInput {
-  readonly description?: string;
-  readonly force?: boolean;
-}
-
-/** 发布结果：`version` 由服务端生成（首发布 v0.0.1、其后 patch 自增），`commitId` 上游当前恒为空串。 */
-export interface WorkflowV2PublishResult {
-  readonly version: string;
-  readonly commitId: string;
+/** 渠道发布结果（服务端 `PublishChannelSchema` 逐字段对应）：渠道名 + 该渠道的发布状态。 */
+export interface WorkflowV2PublishChannel {
+  readonly connectorId: string | null;
+  readonly connectorName: string | null;
+  readonly status: "success" | "failed" | "auditing" | "in_progress" | "disabled" | null;
 }
 
 /**
- * 上游发布记录条目（服务端 `PublishRecordSchema` 逐字段对应）。
+ * 渠道发布记录条目（服务端 `PublishRecordSchema` 逐字段对应）。
  *
- * 三项都可为 null：上游缺失的字段如实为 null，本层不造默认值、不省略键（禁止幻影字段）。
+ * 上游记录**没有时间与操作人**（thrift 无这两个字段），因此这里也不给；`status` 由渠道结果与打包失败明细
+ * 派生（上游记录级 `publish_status` 在该构建恒为 0，不可用）。
  */
 export interface WorkflowV2PublishRecord {
-  readonly workflowId: string | null;
-  readonly name: string | null;
-  /** ISO 8601 时间串；上游未回发布时间时为 null。 */
-  readonly publishedAt: string | null;
-  readonly ownerId: string | null;
+  readonly version: string | null;
+  readonly status: "done" | "pack_failed" | "in_progress";
+  readonly channels: readonly WorkflowV2PublishChannel[];
+  /** 打包失败涉及的上游对象名。 */
+  readonly packFailedResources: readonly string[];
 }
 
-/** 发布概况：上游记录的当前发布版本 + 上游发布记录（两项都不是本地数据）。 */
+/** 平台侧发布动作（本地审计流水的一行）。 */
+export interface WorkflowV2PublishAction {
+  /** ISO 8601 时间串。 */
+  readonly occurredAt: string;
+  /** 操作人展示名；名录读不到或用户已删时为 null。 */
+  readonly actorName: string | null;
+  /** 归一化结果：`ok` / `upstream_rejected` / `failed` / `upstream_unavailable` … */
+  readonly result: string;
+  readonly errorCode: string | null;
+}
+
+/** 发布概况：上游当前版本 + 上游渠道发布记录 + 平台侧发布动作。 */
 export interface WorkflowV2PublishOverview {
   readonly current: {
     /** 上游当前发布版本；未发布时为 null。 */
     readonly publishedVersion: string | null;
   };
   readonly records: readonly WorkflowV2PublishRecord[];
+  readonly actions: readonly WorkflowV2PublishAction[];
 }
 
 /**
- * 发布一个新版本（本地主键寻址）。
+ * 读取发布概况（服务端一次返回三段：当前版本、上游渠道发布记录、平台侧发布动作）。
  *
- * 失败码按分支处理：未绑定租户 App 409 `ORG_APP_NOT_BOUND`、绑定降级 503 `PLATFORM_ACCOUNT_DEGRADED`、
- * 上游业务拒绝 409（`WORKFLOW_DRAFT_NOT_VERIFIED` / `WORKFLOW_VERSION_NOT_INCREMENTAL` /
- * `WORKFLOW_VERSION_INVALID`）或 502 `UPSTREAM_*`，文案由 UI 按码取字典（§9.3）。
- */
-export function publishWorkflow(
-  id: string,
-  input: WorkflowV2PublishInput = {},
-  options: WorkflowPublishRequestOptions = {},
-): Promise<ApiResponse<WorkflowV2PublishResult>> {
-  return request<WorkflowV2PublishResult>(`${WORKFLOWS_PATH}/:id/publish`, {
-    method: "POST",
-    params: { id },
-    body: input,
-    signal: options.signal,
-  });
-}
-
-/**
- * 读取发布概况（上游数据经服务端转发；`records` 为空数组表示上游没有记录）。
- *
- * 供列表页的「日志」弹窗使用：它同时回答「上游现在认的版本」与「上游记录过哪些发布」，两项都不是本地数据，
- * 因此本层不缓存、不合并本地状态。
+ * 供列表页的「日志」弹窗使用：它同时回答「上游现在认的版本」「上游把哪些版本发布到渠道」「平台侧点过哪些
+ * 发布、结果如何」，三段来源不同（上游 / 本地审计），本层原样透传、不合并。
  */
 export function fetchPublishOverview(
   id: string,

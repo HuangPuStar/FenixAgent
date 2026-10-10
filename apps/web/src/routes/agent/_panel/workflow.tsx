@@ -1,39 +1,24 @@
-import { WORKFLOW_NS } from "@fenix/resource-workflow-v2/web/i18n";
-import { AppHeader } from "@fenix/ui-components/layout/app-header";
-import { AppPage } from "@fenix/ui-components/layout/app-page";
 import { createFileRoute } from "@tanstack/react-router";
 import { lazy, Suspense } from "react";
-import { useTranslation } from "react-i18next";
 import { PanelRouteFallback } from "@/src/components/panel-route-fallback";
 
 // 只经 lazy 进入：静态导入包入口会在路由壳上留下一条无法代码分割的静态边，整个包入口会被打进首屏 chunk
 // （见前端规范 §2.4）。
+//
+// 壳里**没有标题区与动作**：页面级 `AppPage` + `AppHeader`（含「新建工作流」按钮）由包内页面渲染——标题区的
+// 动作需要页面的弹窗状态，壳不做取数也不持有页面状态（前端规范 §2.7；同目录 `mcp.tsx` 的 tab 说明记了同一条
+// 口径，`channels.tsx` / `skills.tsx` 等 12 个路由都是这一形态）。
 const WorkflowListPage = lazy(() =>
   import("@fenix/resource-workflow-v2/web").then((m) => ({ default: m.WorkflowListPage })),
 );
 
-/**
- * `/agent/workflow`：工作流列表。
- *
- * 宿主侧只剩「页头 + 内容区」两层：列表、创建、重命名、删除与上游未就绪的引导全部在包内实现
- * （`@fenix/resource-workflow-v2/web`），宿主不再自己渲染「新建」按钮——包内列表页自带该动作，
- * 两处各放一个会让同一次新建出现两个入口。
- *
- * 运行记录 tab 已随自研引擎前端下线：运行与 trace 由上游画布承载，不再有独立的宿主路由与 tab 栏。
- */
-function WorkflowListRoutePage() {
-  const { t } = useTranslation(WORKFLOW_NS);
-
-  return (
-    <AppPage>
-      <AppHeader title={t("page.workflow_title")} subtitle={t("page.workflow_subtitle")} />
-      <Suspense fallback={<PanelRouteFallback size="sm" className="py-20" />}>
-        <WorkflowListPage />
-      </Suspense>
-    </AppPage>
-  );
-}
-
+// 本壳必须自持 `Suspense`：缺了它，懒加载挂起会冒泡到父级布局壳（同目录 `_panel.tsx`）的边界，
+// 那里的 fallback 是整屏 `Spinner variant="screen"`，会把整个 WebShell（侧栏、聊天保活）卸载重建，
+// 用户看到的就是一次「整页刷新」。页面自身的 `loading` 只覆盖取数，接不住代码块加载。
 export const Route = createFileRoute("/agent/_panel/workflow")({
-  component: WorkflowListRoutePage,
+  component: () => (
+    <Suspense fallback={<PanelRouteFallback />}>
+      <WorkflowListPage />
+    </Suspense>
+  ),
 });

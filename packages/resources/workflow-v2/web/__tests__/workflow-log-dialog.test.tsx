@@ -46,21 +46,29 @@ void i18n.init({ lng: "zh", fallbackLng: "zh", initAsync: false, resources: {} }
 const WORKFLOW_ID = "wf-local-1";
 const WORKFLOW_NAME = "客服问答流程";
 
-/** 上游返回一条完整记录 + 当前发布版本。 */
+/** 上游返回一条完整记录（版本 + 渠道结果）+ 一条平台侧发布动作 + 当前发布版本。 */
 const OVERVIEW_WITH_RECORD = webOk({
   current: { publishedVersion: "v0.0.3" },
   records: [
     {
-      workflowId: "upstream-wf-1",
-      name: "客服问答流程",
-      publishedAt: "2026-10-09T02:00:00.000Z",
-      ownerId: "platform-user-1",
+      version: "v0.0.2",
+      status: "done",
+      channels: [{ connectorId: "1024", connectorName: "API", status: "success" }],
+      packFailedResources: [],
+    },
+  ],
+  actions: [
+    {
+      occurredAt: "2026-10-09T02:00:00.000Z",
+      actorName: "张三",
+      result: "ok",
+      errorCode: null,
     },
   ],
 });
 
-/** 上游没有记录（当前上游构建返回 `data:null` 的归一结果）：合法空态，不是失败。 */
-const OVERVIEW_EMPTY = webOk({ current: { publishedVersion: null }, records: [] });
+/** 上游没有渠道发布记录（且平台侧也没有动作）：两段都是合法空态，不是失败。 */
+const OVERVIEW_EMPTY = webOk({ current: { publishedVersion: null }, records: [], actions: [] });
 
 let overviewRoute: FetchRoute;
 let router: FetchRouter;
@@ -82,12 +90,8 @@ afterEach(() => {
   router.restore();
 });
 
-/** 渲染弹窗；`localPublishedVersion` 缺省为 null（本地未登记发布版本）。 */
-function dialog(options: {
-  readonly open?: boolean;
-  readonly localPublishedVersion?: string | null;
-  readonly workflowId?: string | null;
-}) {
+/** 渲染弹窗；`workflowId` 缺省为已知目标（`null` 用来钉「目标未确定时不取数」）。 */
+function dialog(options: { readonly open?: boolean; readonly workflowId?: string | null }) {
   return createElement(
     I18nextProvider,
     { i18n },
@@ -96,7 +100,6 @@ function dialog(options: {
       onOpenChange: () => {},
       workflowId: options.workflowId === undefined ? WORKFLOW_ID : options.workflowId,
       workflowName: WORKFLOW_NAME,
-      localPublishedVersion: options.localPublishedVersion ?? null,
     }),
   );
 }
@@ -133,11 +136,40 @@ describe("日志弹窗的取数与三态", () => {
     expect(mount.container.querySelector('[aria-busy="true"]')).toBeNull();
     expect(textOf(mount.container)).toContain("log.current_upstream");
     expect(textOf(mount.container)).toContain("v0.0.3");
-    expect(textOf(mount.container)).toContain("客服问答流程");
-    // 时间与发布者走插值（`{{time}}` / `{{owner}}`）：字典为空时 i18next 回显键本身，取值由模型用例钉住，
-    // 这里只证明两行都在渲染路径上。
-    expect(textOf(mount.container)).toContain("log.record_published_at");
-    expect(textOf(mount.container)).toContain("log.record_owner");
+    // 上游记录是**版本级**的（没有名称/时间/操作人字段）：这里钉住版本号与渠道结果，钉住「不幻造字段」。
+    expect(textOf(mount.container)).toContain("log.record_version");
+    expect(textOf(mount.container)).toContain("log.record_channels");
+    // 平台侧发布动作（本地审计）与记录并排渲染：它的字段是时间 + 操作人 + 结果，取值由服务端决定，
+    // 这里只证明整段在渲染路径上（两段来源不同，不能互相替代）。
+    expect(textOf(mount.container)).toContain("log.actions_title");
+    expect(textOf(mount.container)).toContain("log.action_time");
+    expect(textOf(mount.container)).toContain("log.action_actor");
+    expect(textOf(mount.container)).toContain("log.action_result");
+  });
+
+  // 渠道结果与打包失败明细来自上游真实字段（记录级状态由它们派生）：两行都要在渲染路径上，
+  // 这样「发布到哪个渠道、成没成、打包失败的是谁」才看得见。
+  test("渲染渠道结果与打包失败明细", async () => {
+    overviewRoute = webOk({
+      current: { publishedVersion: "v0.0.3" },
+      records: [
+        {
+          version: "v0.0.3",
+          status: "pack_failed",
+          channels: [{ connectorId: "1024", connectorName: "API", status: "in_progress" }],
+          packFailedResources: ["坏掉的工作流"],
+        },
+      ],
+      actions: [],
+    });
+    await mount.render(dialog({}));
+
+    expect(textOf(mount.container)).toContain("log.record_pack_failed");
+    // 渠道状态走插值参数（字典为空时 i18next 回显键本身），因此这里只钉渠道那一行在渲染路径上；
+    // 状态码 → 文案键的映射由模型用例逐个钉住（`workflow-publish-model.test.ts`）。
+    expect(textOf(mount.container)).toContain("log.record_channels");
+    // 平台侧动作为空时整段不渲染（不给用户看一个恒空的标题）。
+    expect(textOf(mount.container)).not.toContain("log.actions_title");
   });
 
   // 上游没有记录时必须渲染空态而不是空列表：`data:null` 是上游的合法回答（当前上游构建恒如此）。
@@ -177,22 +209,14 @@ describe("日志弹窗的取数与三态", () => {
   });
 });
 
-describe("本地版本与上游版本的对照", () => {
-  // 画布内发布不写回本地版本（已知缺口）：本地落后时必须显式提示，否则用户只会在下一次发布被拒时才发现。
-  test("本地版本落后于上游时给出漂移提示", async () => {
-    await mount.render(dialog({ localPublishedVersion: "v0.0.1" }));
+describe("版本呈现只以上游为准", () => {
+  // 平台不维护版本镜像（用户口径「不做版本管理」）：弹窗不得再出现「本地版本」一行，
+  // 否则用户会以为存在两套版本，并去追问哪个才是真的。
+  test("只呈现上游版本，没有本地版本对照行", async () => {
+    await mount.render(dialog({}));
 
-    expect(textOf(mount.container)).toContain("log.current_local");
-    expect(textOf(mount.container)).toContain("v0.0.1");
-    expect(textOf(mount.container)).toContain("log.drift_hint");
-    expect(textOf(mount.container)).not.toContain("log.drift_match");
-  });
-
-  // 两侧一致时给正向结论（不是把提示藏起来）：用户据此确认「这次发布已经同步」。
-  test("两侧一致时给出匹配结论且不带漂移警告", async () => {
-    await mount.render(dialog({ localPublishedVersion: "v0.0.3" }));
-
-    expect(textOf(mount.container)).toContain("log.drift_match");
-    expect(textOf(mount.container)).not.toContain("log.drift_hint");
+    expect(textOf(mount.container)).toContain("log.current_upstream");
+    expect(textOf(mount.container)).toContain("v0.0.3");
+    expect(textOf(mount.container)).not.toContain("log.current_local");
   });
 });

@@ -57,7 +57,9 @@
 | 26 | 节点模板列表 | `POST /api/workflow_api/node_template_list` | `{}`（可选 `need_types`/`node_types`） | `data.template_list[]`,`data.cate_list[]` | — | 不传 `need_types` 返回全部模板；v2 需按白名单过滤 |
 | 27 | 节点面板搜索 | `POST /api/workflow_api/node_panel_search` | `search_type`,`space_id`,`search_key`,`page_or_cursor`,`page_size`,`exclude_workflow_id` | `data:null`（`search_key` 为空时） | — | thrift 里六个字段均非 optional（缺省行为未逐项验证）；v2 需按白名单过滤 |
 | 28 | 图片签名 | `POST /api/workflow_api/sign_image_url` | `uri` | 顶层 `url`（不在 `data` 内）+ `code`/`msg` | — | 返回带 `X-Amz-*` 查询串的 minio 预签名 URL；查询串是签名，禁止入库/入日志 |
-| 29 | 运行 span 列表 | `POST /api/workflow_api/list_spans` | `start_at`,`end_at`（毫秒）,`workflow_id` | `{spans:[…]}`（**顶层是裸对象，无 `code`/`msg`/`data`**） | — | 未命中时为 `{"spans":null}`；时间戳单位是**毫秒**（核销 §9.1 第 5 条的时间戳部分） |
+| 29 | 运行 span 列表 | `POST /api/workflow_api/list_spans` | `workflow_id`,`start_at`,`end_at`（毫秒）,`limit`,`offset`,`desc_by_start_time`,`status`,`execute_mode`,`input` | `{code,msg,spans:[Span]}`（**扁平信封**） | 非法参数 → HTTP 400 | 时间戳单位**毫秒**。**2026-10-09 上游已实现**（commit `3a028cf1`，此前是桩）：只列根执行（`parent_node_id IS NULL OR = ''`），`limit` 钳制 0→20/>50→50，`end_at`→now、`start_at`→end_at−7d；平台要的字段一半在 span、一半在 `tags`（`log_id`/`version`/`mode`/`status`/`node_count`/`error_code`/`duration`/`created_at`/`execute_id`）——映射口径见 `services/workflow-run-records.ts` |
+| 29b | 渠道发布记录（**应用级**，上游控制台在用） | `POST /api/intelligence_api/publish/publish_record_list` | `project_id` | `{data:[{publish_record_id,version_number,publish_status,connector_publish_result[],publish_status_detail}]}` | — | **2026-10-09 实测有数据**：版本号、渠道结果（`connector_publish_status` 2=成功/3=失败/0=进行中）、打包失败明细（`pack_failed_detail[].entity_name`）可用；记录级 `publish_status` 在该构建**恒为 0**（应用行状态未 hydrate，与库里 5/1 不一致）→ 不可用，平台侧由渠道结果派生。记录**没有时间字段**（thrift 无 create_time）→ 不展示 |
+| 29c | 工作流级发布记录 / 已发布工作流列表 | `POST /api/workflow_api/list_publish_workflow` / `released_workflows` | — | `{data:null}` | — | **2026-10-09 复核：两者都是桩实现**（`workflow_service.go:793` / `:236` 只做参数绑定返回空结构体），且上游前端从不调用 `list_publish_workflow`（`use-add-node-modal` 里 `released_workflows` 有一处调用，注释写着「This may fail」） |
 | 30 | 运行 trace 详情 | `POST /api/workflow_api/get_trace` | query：`workflow_id`,`execute_id`,`start_at`,`end_at`（POST 请求体可空） | `{}`（无数据时为 Go 零值对象） | 用 GET 调用 → HTTP 404 `not found` | **POST + query 混合**，最容易接错的一个接口 |
 | 31 | 删除 workflow | `POST /api/workflow_api/delete` | `workflow_id`,`space_id` | `data.status`（`0`=成功） | — | 返回 `data.status` 而非 `code` 语义，需单独判定 |
 | 32 | 批量删除 | `POST /api/workflow_api/batch_delete` | `workflow_id_list`,`space_id` | `data.status` | — | 探针只用它删本轮创建的一次性 workflow |
@@ -108,8 +110,8 @@
 **F5 · 失败响应有两种编码，不能只按 HTTP 状态判定。**
 业务失败多为 HTTP 200 + `code≠0`；thrift 必填缺失为 HTTP 400 + `code=400`；无 Cookie 为 HTTP 401/`code=401`；而 Go panic 兜底在 `test_run`/`node_type` 场景会返回 **HTTP 500 + 纯文本 `code=… message=…`（非 JSON）**。BFF 的错误处理必须同时覆盖「HTTP 状态」「JSON 业务码」「非 JSON 文本」三种形态。
 
-**F6 · 运行历史的响应形状不统一（核销 §9.1 第 7 条）。**
-`list_spans` 是**裸对象**（顶层只有 `spans`，无 `code`/`msg`/`data`，未命中为 `{"spans":null}`）；`sign_image_url` 的 `url` 在**顶层**而非 `data` 内（仍带 `code`/`msg`）；`get_process`/`get_node_execute_history` 是标准包裹；`get_trace` 无数据返回 `{}`。含义：BFF **原样透传**的规则（冻结文档 §6）在这几个接口上尤其重要——任何"统一包一层"或"以 `data` 取值"的改写都会破坏画布 SDK 的解析。
+**F6 · 运行历史的响应形状不统一（核销 §9.1 第 7 条；2026-10-09 按上游 `3a028cf1` 更新）。**
+`list_spans` 现为**顶层扁平信封** `{code,msg,spans}`（**无 `data` 包装**，未命中为 `{"code":0,"msg":"","spans":[]}`；采集当日是桩实现、回 `{"spans":null}`，见 §2 第 29 行）；**裸对象**的表述只保留给仍成立的接口——`sign_image_url`（`url` 在**顶层**而非 `data` 内，仍带 `code`/`msg`）、`update_meta`/`cancel`（无 `data`）、`get_trace`（无数据返回 `{}`）；`get_process`/`get_node_execute_history` 是标准包裹。含义：BFF **原样透传**的规则（冻结文档 §6）在这几个接口上尤其重要——任何"统一包一层"或"以 `data` 取值"的改写都会破坏画布 SDK 的解析。
 
 **F7 · 时间戳单位确认。**
 `list_spans` 的 `start_at`/`end_at` 是**毫秒**（thrift 注释与实测一致）；`workflow.create_time`/`update_time` 是**秒**。混用会导致 trace 查询永远为空。
@@ -184,7 +186,7 @@ WORKFLOW_V2_PROBE_EMAIL=<探针邮箱> WORKFLOW_V2_PROBE_PASSWORD=<探针密码>
 | `history_schema` 成功样本 | 缺有效 `commit_id`（`save` 不回传 commit_id，`canvas` 也不返回）；当前只记录 panic 样本 |
 | `test_resume` 成功样本 | 需要一个会中断的工作流（问答/输入节点）与 `event_id`；探针用 start→end 空跑，取不到中断事件 |
 | `released_workflows` / `list_publish_workflow` 的非空样本 | 需要把 App 作为「产品」发布上架（上游审核链路），超出探针范围 |
-| `list_spans` / `get_trace` 的有数据样本 | 空跑工作流无有效 span 落 ES，本批次 3 次运行均为空；带真实节点（LLM/HTTP/代码）的 trace 留待阶段 3 |
+| ~~`list_spans` / `get_trace` 的有数据样本~~ | **2026-10-09 结案（结论与预期相反）**：有真实执行也不会有数据——两个端点都是**桩实现**（样本：workflow `7694581096108785664` 的 3 次成功执行，窗口覆盖其 `create_time`，`list_spans` 仍回 `{"spans":null}`、`get_trace` 回 `{}`）。执行级数据要从 `get_process` / `get_node_execute_history`（会话面，需 `execute_id`）或 `/v1/workflow/get_run_history`（PAT，GET，需 `execute_id`）取。**2026-10-09 更新**：`list_spans` 的结论已失效——上游同日以 commit `3a028cf1` 补上实现（契约见 [run-list-api-request](./2026-10-09-workflow-v2-upstream-run-list-api-request.md) §7），平台同日切回 HTTP；`get_trace` **仍为桩实现**（`GetTraceSDK`），关于它的结论维持不变 |
 | 白名单节点的执行与 `node_type` 细节 | 探针只跑默认的 start→end 空图，`node_type` 返回的 `nodes_properties` 未覆盖 llm/http/code 等节点的真实字段；节点白名单（2C）需在阶段 1 用真实节点补测 |
 | 并发与限流（§9.1 第 5 条） | 未做压测；单会话限制已由 A4 证实，配额上限未知 |
 | 多副本并发登录（§9.1 第 3 条） | 单进程验证了「重登踢旧会话」，多副本行为需部署后验证 |

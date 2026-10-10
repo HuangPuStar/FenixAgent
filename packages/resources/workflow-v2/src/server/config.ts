@@ -48,6 +48,8 @@ export interface WorkflowV2Config {
   bffRateLimitPerMinute: number;
   /** 票据端点（`session/*`）的每用户 / 每来源每分钟令牌数；默认 60。 */
   sessionRateLimitPerMinute: number;
+  /** 对外触发面（`/api/workflow-v2/*`）的每调用方每分钟令牌数；默认 60（外部重试会产生真实运行，故收紧）。 */
+  apiRateLimitPerMinute: number;
 }
 
 /**
@@ -59,9 +61,8 @@ export interface WorkflowV2Config {
  */
 export type WorkflowV2ModuleConfigInput = Omit<WorkflowV2Config, "nodeWhitelist"> & { nodeWhitelist: string };
 
-/** 逗号分隔的白名单串 → 类型名数组；逐项去空白并丢弃空项（尾逗号、`a, ,b` 都不产生空字符串项）。 */ function parseNodeWhitelist(
-  raw: string,
-): string[] {
+/** 逗号分隔的白名单串 → 类型名数组；逐项去空白并丢弃空项（尾逗号、`a, ,b` 都不产生空字符串项）。 */
+function parseNodeWhitelist(raw: string): string[] {
   return raw
     .split(",")
     .map((name) => name.trim())
@@ -92,6 +93,7 @@ const WorkflowV2ConfigSchema: z.ZodType<WorkflowV2Config> = z.strictObject({
   reconcileIntervalSeconds: z.number().int().nonnegative(),
   bffRateLimitPerMinute: z.number().int().positive(),
   sessionRateLimitPerMinute: z.number().int().positive(),
+  apiRateLimitPerMinute: z.number().int().positive(),
 });
 
 /**

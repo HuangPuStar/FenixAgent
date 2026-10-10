@@ -1,6 +1,7 @@
 // web/__tests__/workflow-list-page.test.tsx
-// 列表页的关键数据流：取数三态（loading / empty / error+retry）、无权限不给重试、上游未就绪的引导，以及
-// 新建 / 重命名 / 删除三个动作的接线与「删除被上游策略拒绝」的结局。
+// 列表页的关键数据流：取数三态（loading / empty / error+retry）、无权限不给重试、上游未就绪的引导，卡片语义
+// （点卡片进画布、卡片上的「更多」菜单收纳日志 / 运行日志 / 调用接口 / 重命名 / 删除），以及「删除被上游策略
+// 拒绝」的结局。发布动作已不在控制台（上游侧完成），列表只读发布状态。
 //
 // 为什么必须真实渲染：被钉住的行为是「失败不会退化成空态」「重试真的重新发一笔请求」「deleted=false 时
 // 记录仍在列表里且不重取」——这些取决于 `useRequest` 的状态流转、分支顺序与回调接线，源码里出现对应字样
@@ -175,6 +176,7 @@ const ITEM = {
   name: "客服问答流程",
   ownerUserId: "user-1",
   visibility: "private",
+  publishState: "unpublished" as const,
   publishedVersion: null,
   syncState: "active" as const,
   updatedAt: new Date().toISOString(),
@@ -190,14 +192,16 @@ let bindingRoute: FetchRoute;
 let orgAppCreateRoute: FetchRoute;
 /** 只按 URL 前缀分派：列表的 GET / DELETE 都落在同一前缀上，由方法区分。 */
 let workflowDeleteRoute: FetchRoute;
-/** 发布（`POST /workflows/:id/publish`）与发布记录读取（`GET /workflows/:id/publish-records`）。 */
-let publishRoute: FetchRoute;
+/** 发布记录读取（`GET /workflows/:id/publish-records`）。 */
 let recordsRoute: FetchRoute;
+/** 运行日志（`GET /run-records`，页面级读路径）。 */
+let runRecordsRoute: FetchRoute;
 
 function route(call: FetchCall): FetchRoute {
+  // 运行记录是页面级端点（不挂在 `/workflows` 下），与列表、发布记录的路径互不包含。
+  if (call.method === "GET" && call.url.includes("/run-records")) return runRecordsRoute;
   // 发布记录也是 `GET /workflows/*` 前缀，必须先于列表分派，否则会拿到列表的信封（形状不对，页面会当失败）。
   if (call.method === "GET" && call.url.includes("/publish-records")) return recordsRoute;
-  if (call.method === "POST" && call.url.endsWith("/publish")) return publishRoute;
   if (call.method === "GET" && call.url.startsWith("/web/workflow-v2/workflows")) return listRoute;
   if (call.method === "DELETE" && call.url.startsWith("/web/workflow-v2/workflows")) return workflowDeleteRoute;
   // `/org-app` 一条路径两种语义：GET 是绑定探测、POST 是建绑，必须先按方法分流再落到探测上。
@@ -219,8 +223,16 @@ beforeEach(() => {
   bindingRoute = BOUND_ACTIVE;
   orgAppCreateRoute = webOk({ appId: "app-1" });
   workflowDeleteRoute = webOk({ deleted: true, strategy: 0 });
-  publishRoute = webOk({ version: "v0.0.2", commitId: "" });
-  recordsRoute = webOk({ current: { publishedVersion: "v0.0.2" }, records: [] });
+  recordsRoute = webOk({ current: { publishedVersion: "v0.0.2" }, records: [], actions: [] });
+  runRecordsRoute = webOk({
+    items: [],
+    platformRuns: [],
+    workflows: [{ id: ITEM.id, name: ITEM.name }],
+    scannedWorkflows: 1,
+    workflowTotal: 1,
+    truncated: false,
+    hasMoreUpstream: false,
+  });
   router = installFetchRouter(route);
   mount = mountCanvas();
 });
@@ -242,6 +254,26 @@ function buttonByText(label: string): HTMLButtonElement {
     if ((button.textContent ?? "").trim() === label) return button as unknown as HTMLButtonElement;
   }
   throw new Error(`按钮未渲染：${label}`);
+}
+
+/** 同名按钮的全部匹配（页头入口与卡片菜单项会重名，下拉替身展开后两者同时在 DOM 里）。 */
+function buttonsByText(label: string): HTMLButtonElement[] {
+  return [...mount.container.querySelectorAll("button")].filter(
+    (button) => (button.textContent ?? "").trim() === label,
+  ) as unknown as HTMLButtonElement[];
+}
+
+/**
+ * 取**最后一个**同名按钮。
+ *
+ * 页面 DOM 顺序是「页头 → 卡片区」，因此展开菜单后重名的按钮里，靠后的那个一定是菜单项——用例要点的正是它
+ * （页头那个在未展开菜单时也能被 `buttonByText` 命中，直接点会点错对象）。
+ */
+function lastButtonByText(label: string): HTMLButtonElement {
+  const matches = buttonsByText(label);
+  const last = matches.at(-1);
+  if (!last) throw new Error(`按钮未渲染：${label}`);
+  return last;
 }
 
 function byTestId(testId: string): HTMLElement {
@@ -272,7 +304,16 @@ async function click(element: HTMLElement): Promise<void> {
   await mount.flush();
 }
 
-/** 展开某一行（当前只有一行）的「更多」下拉：发布 / 重命名 / 删除都在菜单里。 */
+/** 容器里的卡片本体（`role="button"`，名字里带卡片标题）；当前夹具只有一张。 */
+function cards(): HTMLElement[] {
+  return [...mount.container.querySelectorAll<HTMLElement>('h2 button[aria-label^="list.open_card"]')];
+}
+
+function cardCount(): number {
+  return cards().length;
+}
+
+/** 展开卡片右上角的「更多」下拉：日志 / 发布 / 重命名 / 删除都在菜单里。 */
 async function openRowMenu(): Promise<void> {
   await click(byTestId("row-actions-trigger"));
 }
@@ -292,28 +333,49 @@ function callTo(fragment: string, method: string): FetchCall | undefined {
 }
 
 describe("取数与视图状态", () => {
-  // 首帧必须是骨架：`loading` 期间渲染空态或表格都会谎报「数据已到」。
-  test("取数中渲染骨架，完成后渲染表格行", async () => {
+  // 首帧必须是骨架：`loading` 期间渲染空态或卡片都会谎报「数据已到」。
+  test("取数中渲染骨架，完成后渲染卡片", async () => {
     act(() => {
       mount.root.render(page());
     });
     // 取数链还停在微任务队列里，这一帧就是骨架屏（同步断言，不需要假时钟）。
     expect(mount.container.querySelector('[aria-busy="true"]')).not.toBeNull();
-    expect(mount.container.querySelector("table")).toBeNull();
+    expect(cardCount()).toBe(0);
 
     await mount.flush();
-    expect(mount.container.querySelector("table")).not.toBeNull();
+    expect(cardCount()).toBe(1);
     expect(mount.container.textContent).toContain(ITEM.name);
     expect(mount.container.textContent).toContain("list.status.unpublished");
   });
 
-  test("空列表渲染空态（而不是表格与失败块）", async () => {
+  // 状态列是**上游**口径：上游说已发布就把版本号原样呈现（上游自带 `v` 前缀，再拼一次会成 `vv0.0.1`）。
+  test("上游已发布时卡片显示版本号", async () => {
+    listRoute = webOk({ items: [{ ...ITEM, publishState: "published", publishedVersion: "v0.0.1" }], total: 1 });
+    await mount.render(page());
+
+    expect(mount.container.textContent).toContain("list.status.published");
+    expect(mount.container.textContent).toContain("v0.0.1");
+    expect(mount.container.textContent).not.toContain("vv0.0.1");
+    expect(mount.container.textContent).not.toContain("list.status.unpublished");
+  });
+
+  // 读不到上游状态时必须显示「状态未知」而不是「未发布」——后者正是本次报障的错误方向
+  // （上游已发布、界面显示未发布），且会让用户以为工作流从未发布。
+  test("状态读取失败时卡片显示状态未知而不是未发布", async () => {
+    listRoute = webOk({ items: [{ ...ITEM, publishState: "unknown" }], total: 1 });
+    await mount.render(page());
+
+    expect(mount.container.textContent).toContain("list.status.unknown");
+    expect(mount.container.textContent).not.toContain("list.status.unpublished");
+  });
+
+  test("空列表渲染空态（而不是卡片与失败块）", async () => {
     listRoute = LIST_EMPTY;
     await mount.render(page());
 
     expect(mount.container.textContent).toContain("list.no_workflows");
     expect(mount.container.textContent).toContain("list.no_workflows_hint");
-    expect(mount.container.querySelector("table")).toBeNull();
+    expect(cardCount()).toBe(0);
     // 空是合法结果：不给重试。
     expect(mount.container.textContent).not.toContain("list.retry");
   });
@@ -324,7 +386,7 @@ describe("取数与视图状态", () => {
     await mount.render(page());
 
     expect(mount.container.textContent).toContain("list.load_failed");
-    expect(mount.container.querySelector("table")).toBeNull();
+    expect(cardCount()).toBe(0);
 
     const before = listGetCount();
     listRoute = LIST_ONE;
@@ -343,14 +405,14 @@ describe("取数与视图状态", () => {
     expect(mount.container.textContent).not.toContain("list.retry");
   });
 
-  // 未绑定租户 App 时列表可能仍有历史记录，但那些工作流打开必然失败：给引导而不是渲染一张点不动的表。
-  test("未绑定租户 App 时给绑定引导，不渲染表格", async () => {
+  // 未绑定租户 App 时列表可能仍有历史记录，但那些工作流打开必然失败：给引导而不是渲染一堆点不动的卡片。
+  test("未绑定租户 App 时给绑定引导，不渲染卡片", async () => {
     bindingRoute = webOk({ appId: null, status: "unbound" });
     await mount.render(page());
 
     expect(mount.container.textContent).toContain("list.blocked.unbound.title");
     expect(mount.container.textContent).not.toContain(ITEM.name);
-    expect(mount.container.querySelector("table")).toBeNull();
+    expect(cardCount()).toBe(0);
     // 创建在上游没归属时必然失败（409），入口一并置灰。
     expect(buttonByText("list.create").disabled).toBe(true);
   });
@@ -487,55 +549,129 @@ describe("新建与重命名的接线", () => {
 
     const patch = callTo("/web/workflow-v2/workflows/wf-local-1", "PATCH");
     expect(patch?.body).toEqual({ name: "改名后的流程" });
+    expect(mount.container.textContent).toContain("list.rename_success");
     expect(listGetCount()).toBe(2);
   });
 
-  test("「打开」入口指向该行的上游 workflow ID", async () => {
+  // 卡片本体就是「打开」：点它进画布，深链参数是**上游** workflow ID（票据与画布 URL 都以它为准）。
+  test("点击卡片进入该工作流的画布", async () => {
     await mount.render(page());
-    const link = mount.container.querySelector("a");
-    expect(link?.getAttribute("href")).toBe("/agent/workflow/upstream-wf-1/edit");
+
+    await click(cards()[0]);
+
+    expect(navigations).toEqual([{ to: "/agent/workflow/$id/edit", params: { id: "upstream-wf-1" } }]);
   });
 });
 
-describe("发布与日志入口", () => {
-  // 发布按**本地主键**寻址，请求体固定带 force（与上游画布内的发布按钮同口径，理由见模型文件）；
-  // 成功后必须刷新列表：状态列与版本号是本地登记值，只有重取才会跟上服务端结果。
-  test("发布按本地主键发请求，成功后提示版本并刷新列表", async () => {
+describe("卡片上的更多菜单与日志入口", () => {
+  // 菜单与卡片的点击面必须隔离：点「更多」只展开菜单，不能顺手把用户送进画布。
+  test("点「更多」不会触发卡片的进画布动作", async () => {
     await mount.render(page());
-    const before = listGetCount();
 
-    await openRowMenu();
-    await click(buttonByText("publish.action"));
+    await click(byTestId("row-actions-trigger"));
 
-    const publishCall = callTo("/web/workflow-v2/workflows/wf-local-1/publish", "POST");
-    expect(publishCall?.body).toEqual({ force: true });
-    expect(mount.container.textContent).toContain("publish.success");
-    expect(listGetCount()).toBe(before + 1);
+    expect(navigations).toEqual([]);
+    expect(mount.container.textContent).toContain("list.log");
+    expect(buttonsByText("run.entry")).toHaveLength(1);
+    expect(buttonByText("api.entry")).toBeDefined();
+    expect(buttonByText("list.rename")).toBeDefined();
+    expect(buttonByText("list.delete")).toBeDefined();
   });
 
-  // 失败按稳定错误码上屏（此处是最常见的「草稿未通过 test_run」），且不刷新列表——上游没发布，列表没变。
-  test("发布失败按错误码提示且不刷新列表", async () => {
-    publishRoute = webErr("WORKFLOW_DRAFT_NOT_VERIFIED", "needs to pass the test run", 409);
-    await mount.render(page());
-    const before = listGetCount();
-
-    await openRowMenu();
-    await click(buttonByText("publish.action"));
-
-    expect(mount.container.textContent).toContain("publish.failed_draft_not_verified");
-    expect(mount.container.textContent).not.toContain("publish.success");
-    expect(listGetCount()).toBe(before);
-  });
-
-  // 日志是纯读取，弹窗打开才发请求（不提前预取），且按行上的本地主键取数。
+  // 日志是纯读取，弹窗打开才发请求（不提前预取），且按卡片上的本地主键取数。
   test("打开日志弹窗才按本地主键取数", async () => {
     await mount.render(page());
     expect(router.callsTo("/publish-records")).toHaveLength(0);
 
+    // 日志在「更多」菜单里（卡片右上角），先展开再点。
+    await openRowMenu();
     await click(buttonByText("list.log"));
 
     const logsCall = callTo("/web/workflow-v2/workflows/wf-local-1/publish-records", "GET");
     expect(logsCall).toBeDefined();
     expect(mount.container.textContent).toContain("log.title");
+  });
+
+  // 「调用接口」与日志并列（同属读取类入口）：弹窗拿的是**这一张卡片**的本地主键，因此地址指向该工作流；
+  // 正文是纯静态内容，打开它不该产生任何请求。
+  test("点「更多」里的调用接口打开弹窗并展示该工作流的调用地址", async () => {
+    await mount.render(page());
+
+    await openRowMenu();
+    await click(buttonByText("api.entry"));
+
+    expect(mount.container.textContent).toContain("api.title");
+    expect(mount.container.textContent).toContain("/api/workflow-v2/workflows/wf-local-1/run");
+    expect(router.callsTo("/api/workflow-v2")).toHaveLength(0);
+  });
+});
+
+describe("页头的运行日志入口", () => {
+  // `AppHeader` 的 actions 是单一 ReactNode 槽：加第二个按钮必须包成 fragment，且两个按钮都要真的渲染出来
+  // （fragment 写错时典型故障就是后一个按钮连同标签一起消失）。
+  test("页头同时渲染运行日志与新建工作流两个按钮", async () => {
+    await mount.render(page());
+
+    expect(buttonByText("list.all_run_logs")).toBeDefined();
+    expect(buttonByText("list.create")).toBeDefined();
+  });
+
+  // 运行日志是页面级视图：打开才取数，且「全部工作流」不带 workflowId（由服务端扇出并合并）。
+  test("点页头入口打开弹窗并按全部工作流取数", async () => {
+    await mount.render(page());
+    expect(router.callsTo("/run-records")).toHaveLength(0);
+
+    await click(buttonByText("list.all_run_logs"));
+
+    const call = callTo("/web/workflow-v2/run-records", "GET");
+    expect(call).toBeDefined();
+    expect(call?.url).not.toContain("workflowId");
+    expect(mount.container.textContent).toContain("run.title");
+  });
+
+  // 卡片无需展开菜单即可查看单工作流日志，打开前不预取，也不能误导航到画布。
+  test("卡片上的运行日志直接打开单工作流弹窗并按该主键取数", async () => {
+    await mount.render(page());
+    expect(router.callsTo("/run-records")).toHaveLength(0);
+    expect(mount.container.textContent).not.toContain("list.log");
+
+    expect(buttonsByText("run.entry")).toHaveLength(1);
+    await click(lastButtonByText("run.entry"));
+    expect(navigations).toEqual([]);
+
+    const call = callTo("/web/workflow-v2/run-records", "GET");
+    expect(call?.url).toContain("workflowId=wf-local-1");
+    // 单工作流模式：限定标题 + 没有筛选器（页面级模式才给筛选器）。
+    expect(mount.container.textContent).toContain("run.title_scoped");
+    expect(mount.container.querySelector("select")).toBeNull();
+  });
+
+  // 两个入口打开的是**同一个**弹窗实例（同一个视图的两种模式）：模式由 `workflowId` 这个 prop 决定，不依赖上
+  // 一次渲染留下的状态。真实界面里弹窗会挡住背景入口（Radix 的模态语义），因此这里直接驱动状态来钉住
+  // 「页面级 → 单工作流」的切换不串：切换后请求换成该主键、筛选器不再出现。
+  test("两个入口共用弹窗但模式互不串", async () => {
+    await mount.render(page());
+
+    await click(buttonByText("list.all_run_logs"));
+    expect(callTo("/web/workflow-v2/run-records", "GET")?.url).not.toContain("workflowId");
+    expect(mount.container.querySelector("select")).not.toBeNull();
+
+    await openRowMenu();
+    await click(lastButtonByText("run.entry"));
+
+    const calls = router.callsTo("/run-records");
+    expect(calls.at(-1)?.url).toContain("workflowId=wf-local-1");
+    expect(mount.container.querySelector("select")).toBeNull();
+  });
+
+  // 两条日志读路径互不牵连：卡片级的「发布日志」不该顺手把运行记录也取回来（反之亦然）。
+  test("两条日志读路径各自独立取数", async () => {
+    await mount.render(page());
+
+    await openRowMenu();
+    await click(buttonByText("list.log"));
+
+    expect(router.callsTo("/publish-records")).toHaveLength(1);
+    expect(router.callsTo("/run-records")).toHaveLength(0);
   });
 });

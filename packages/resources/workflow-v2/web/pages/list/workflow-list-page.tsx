@@ -1,8 +1,15 @@
 // pages/list/workflow-list-page.tsx
 // 列表页：`/agent/workflow` 渲染的页面（设计 §6.2 的「列表页」行）。职责是**编排**：
 // ① 取数（列表 + 租户 App 绑定，二者同批）；② 分派视图状态（骨架 / 空 / 失败+重试 / 无权限 / 上游未就绪 /
-// 表格）；③ 装配动作（新建 → 打开画布、行操作「打开 / 日志 / 更多（发布、重命名、删除）」、初始化工作流空间）
-// 与结果提示；④ 分页。
+// 卡片网格）；③ 装配动作（新建 → 打开画布、「更多」菜单内的日志 / 调用接口 / 发布 / 重命名 / 删除、
+// 初始化工作流空间）与结果提示；④ 分页。
+//
+// 页面壳（`AppPage` + `AppHeader`）由**本页**渲染：宿主的 `/agent/workflow` 路由只是 `Suspense` + lazy
+// 壳（与 `channels.tsx` / `skills.tsx` 同形）。理由与同目录 `mcp.tsx` 记的一致——标题区的动作需要页面的
+// 弹窗状态，壳不做取数也不持有页面状态（前端规范 §2.7）。「新建工作流」因此落在 `AppHeader` 的 `actions`
+// 槽位（与 `AgentChannelsPage` 的 `newBinding` 按钮同款），不再占用内容区顶部的一整行。
+//
+// 卡片按名称、发布信息、登记时间分层；标题与底部按钮进入画布，运行日志常驻底部，其他动作留在「更多」。
 //
 // 列表与绑定**必须一起判**：未绑定租户 App 时列表可能仍有历史记录，但那些工作流在上游没有归属、打开必然
 // 失败——渲染成表格比空表更糟（用户点开才发现坏掉）。因此绑定探测失败与列表取数失败同处理：这一屏没准备好。
@@ -19,21 +26,26 @@
 // **三种结局**（删掉 / 被上游策略拒绝 / 请求失败）分别给提示，被拒绝时记录仍在列表里，不刷新也不假装删掉了
 // （冻结 §4.3）。
 //
-// 发布与日志的口径（本次新增）：发布是**写上游**的动作（版本号由服务端按上游 SemVer 口径生成），成功即刷新
-// 列表让状态列与版本号跟上；失败按稳定错误码给提示，四类原因的下一步动作不同（见 `publishErrorKey`）。日志
-// 是**纯读取**：只在弹窗打开时向上游取，平台侧不缓存、不落盘（数据来源见
-// `src/server/services/workflow-publish-records.ts`）。
+// 发布与日志的口径：列表页只**读**上游发布状态（`publishState` / `publishedVersion`）并展示，不提供控制台发布
+// 入口——发布动作在上游侧完成（画布 / 上游控制台），平台不再触发。日志是**纯读取**：只在弹窗打开时向上游取，
+// 平台侧不缓存、不落盘（数据来源见 `src/server/services/workflow-publish-records.ts`）。
+//
+// 两种「日志」是两个层级的视图，入口刻意分开：**发布日志**（`WorkflowLogDialog`）挂在卡片的「更多」菜单里，
+// 回答「这一个 workflow 发布过什么」；**运行日志**（`WorkflowRunLogDialog`）有两个入口——页头 actions 槽给
+// 页面级视图（组织内全部工作流，带筛选器），卡片底部按钮给单工作流视图（只查该工作流），两者共用同一个
+// 弹窗组件、由 `runLogTarget` 分辨模式。三条读路径各自独立取数、互不共享。
 
+import { AppHeader } from "@fenix/ui-components/layout/app-header";
+import { AppPage } from "@fenix/ui-components/layout/app-page";
 import { Button } from "@fenix/ui-components/ui/button";
 import { Pagination } from "@fenix/ui-components/ui/pagination";
 import { unwrap } from "@fenix/web-runtime/api/request";
 import { useNavigate } from "@tanstack/react-router";
 import { useRequest } from "ahooks";
-import { Plus, X } from "lucide-react";
+import { Activity, Plus, RefreshCw, X } from "lucide-react";
 import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { createOrgApp, fetchOrgAppBinding } from "../../api/canvas-session";
-import { publishWorkflow } from "../../api/workflow-publish";
 import {
   createWorkflow,
   deleteWorkflow,
@@ -42,6 +54,8 @@ import {
   type WorkflowV2WorkflowItem,
 } from "../../api/workflows";
 import { WORKFLOW_NS } from "../../i18n/namespace";
+import { WorkflowApiDialog } from "./workflow-api-dialog";
+import { WorkflowListCards } from "./workflow-list-cards";
 import {
   WorkflowCreateDialog,
   type WorkflowCreateFormValues,
@@ -58,9 +72,8 @@ import {
   resolveListViewState,
 } from "./workflow-list-model";
 import { WorkflowListSkeleton, WorkflowListStatusView } from "./workflow-list-status-views";
-import { WorkflowListTable } from "./workflow-list-table";
 import { WorkflowLogDialog } from "./workflow-log-dialog";
-import { CONSOLE_PUBLISH_FORCE, publishErrorKey } from "./workflow-publish-model";
+import { WorkflowRunLogDialog } from "./workflow-run-log-dialog";
 
 /**
  * 页面级提示：删除的三种结局 + 初始化失败。删除被上游拒绝时**记录仍在**，所以这条提示是用户唯一的解释来源
@@ -70,23 +83,27 @@ import { CONSOLE_PUBLISH_FORCE, publishErrorKey } from "./workflow-publish-model
  */
 type ListNotice =
   | { readonly kind: "deleted"; readonly name: string }
+  | { readonly kind: "renamed" }
   | { readonly kind: "delete_refused"; readonly strategyKey: string }
   | { readonly kind: "delete_failed" }
   /** 初始化失败：文案按**稳定错误码**取字典键（`initializeErrorKey`），不带上屏的服务端原文。 */
-  | { readonly kind: "initialize_failed"; readonly messageKey: string }
-  /** 发布成功：带上服务端生成的版本号（用户在列表里据此核对状态列）。 */
-  | { readonly kind: "published"; readonly name: string; readonly version: string }
-  /** 发布失败：同样按稳定错误码取字典键（`publishErrorKey`），四类原因的下一步动作不同。 */
-  | { readonly kind: "publish_failed"; readonly messageKey: string };
+  | { readonly kind: "initialize_failed"; readonly messageKey: string };
+
+/**
+ * 运行日志弹窗的目标（见 `WorkflowRunLogDialog` 的两种模式）。
+ *
+ * `all` 是页面级入口（页头），`one` 是单工作流入口（卡片底部）——两者的差别只在查询主体与是否显示筛选器，
+ * 因此共用一个弹窗实例与一份状态，避免出现「打开了哪个」的两份真值。
+ */
+type RunLogTarget = { readonly kind: "all" } | { readonly kind: "one"; readonly item: WorkflowV2WorkflowItem };
 
 /** 提示条配色按语义分档；色值来自主题 token，不新造类名。 */
 const NOTICE_TONES: Record<ListNotice["kind"], string> = {
+  renamed: "border-border-subtle bg-surface-1 text-text-secondary",
   deleted: "border-border-subtle bg-surface-1 text-text-secondary",
   delete_refused: "border-warning-border bg-warning-bg text-warning-text",
   delete_failed: "border-status-error/40 bg-surface-1 text-status-error",
   initialize_failed: "border-status-error/40 bg-surface-1 text-status-error",
-  published: "border-border-subtle bg-surface-1 text-text-secondary",
-  publish_failed: "border-status-error/40 bg-surface-1 text-status-error",
 };
 
 /** 提示条：成功用 `role="status"`（不打断读屏），拒绝与失败用 `role="alert"`。 */
@@ -94,15 +111,14 @@ function ListNoticeBar({ notice, onDismiss }: { readonly notice: ListNotice; rea
   const { t } = useTranslation(WORKFLOW_NS);
   let text: string;
   if (notice.kind === "deleted") text = t("list.delete_success", { name: notice.name });
+  else if (notice.kind === "renamed") text = t("list.rename_success");
   else if (notice.kind === "delete_refused") text = t(notice.strategyKey);
   else if (notice.kind === "initialize_failed") text = t(notice.messageKey);
-  else if (notice.kind === "published") text = t("publish.success", { name: notice.name, version: notice.version });
-  else if (notice.kind === "publish_failed") text = t(notice.messageKey);
   else text = t("list.delete_failed");
 
   return (
     <div
-      role={notice.kind === "deleted" || notice.kind === "published" ? "status" : "alert"}
+      role={notice.kind === "deleted" || notice.kind === "renamed" ? "status" : "alert"}
       className={`flex items-start justify-between gap-2 rounded-lg border px-3 py-2 text-xs ${NOTICE_TONES[notice.kind]}`}
     >
       <span>{text}</span>
@@ -126,6 +142,16 @@ export function WorkflowListPage() {
   const [notice, setNotice] = useState<ListNotice | null>(null);
   /** 日志弹窗的目标；null 表示弹窗关闭（弹窗正文只在打开时取数）。 */
   const [logsTarget, setLogsTarget] = useState<WorkflowV2WorkflowItem | null>(null);
+  /** 调用接口弹窗的目标；null 表示弹窗关闭（正文是纯静态内容，不取数）。 */
+  const [apiTarget, setApiTarget] = useState<WorkflowV2WorkflowItem | null>(null);
+  /**
+   * 运行日志弹窗的目标：`null` = 关闭；`{ kind: "all" }` = 页面级（页头入口，组织内全部工作流）；
+   * `{ kind: "one", item }` = 单工作流（卡片底部入口）。
+   *
+   * 两种入口共用一个弹窗实例：它们是同一个视图的两种模式（差别只在查询主体与是否显示筛选器），开两个实例会
+   * 让「哪个是当前打开的」出现两份真值。关闭即卸载，因此切换模式时正文（含筛选值）自然重来。
+   */
+  const [runLogTarget, setRunLogTarget] = useState<RunLogTarget | null>(null);
   // 表单重置计数器：每次打开递增，`FormDialog` 的 `key` 随之变化 = 重挂载 = 全新表单实例（§4.3）。
   const [formKey, setFormKey] = useState(0);
 
@@ -196,30 +222,12 @@ export function WorkflowListPage() {
       onSuccess: () => {
         setRenameTarget(null);
         setRenameError(null);
+        setNotice({ kind: "renamed" });
         list.refresh();
       },
       onError: (error) => {
         console.error(t("list.rename_failed"), error);
         setRenameError(t("list.rename_failed"));
-      },
-    },
-  );
-
-  // 发布：一次点击一个 workflow（串行由表格侧置灰保证），成功后刷新列表让状态列与版本号跟上服务端结果。
-  // 记录查看是**独立读取**，不在这里预取——弹窗打开才请求（§3.4「不提前发请求」）。
-  const publish = useRequest(
-    (target: WorkflowV2WorkflowItem) => unwrap(publishWorkflow(target.id, { force: CONSOLE_PUBLISH_FORCE })),
-    {
-      manual: true,
-      onSuccess: (result, params) => {
-        const [target] = params;
-        setNotice({ kind: "published", name: target.name, version: result.version });
-        list.refresh();
-      },
-      onError: (error) => {
-        // `ApiError.message` 是后端信封原文（含上游措辞），只进日志；上屏按稳定错误码取字典键（§9.3）。
-        console.error(t("publish.failed"), error);
-        setNotice({ kind: "publish_failed", messageKey: publishErrorKey(error) });
       },
     },
   );
@@ -248,66 +256,106 @@ export function WorkflowListPage() {
   const totalPages = Math.max(1, Math.ceil((state.kind === "ready" ? state.total : 0) / LIST_PAGE_SIZE));
   // 上游未就绪与无权限时创建必然失败（409 `ORG_APP_NOT_BOUND` / 401）：置灰而不是让用户点出一个错误弹窗，
   // 原因由下方的状态块给出。取数中不禁用——绑定状态还没到，不拿「还没问」当「不能建」。
-  const createDisabled = state.kind === "blocked" || state.kind === "unauthorized";
+  // 运行日志走同一条前置链（绑定与组织上下文），因此同档置灰，不做出第二个判定口径。
+  const actionsDisabled = state.kind === "blocked" || state.kind === "unauthorized";
+
+  const openCreate = () => {
+    setCreateError(null);
+    setFormKey((key) => key + 1);
+    setCreateOpen(true);
+  };
 
   return (
-    <div className="flex min-h-0 flex-1 flex-col gap-3">
-      <div className="flex items-center justify-end">
-        <Button
-          size="sm"
-          disabled={createDisabled}
-          onClick={() => {
-            setCreateError(null);
-            setFormKey((key) => key + 1);
-            setCreateOpen(true);
-          }}
-        >
-          <Plus />
-          {t("list.create")}
-        </Button>
+    <AppPage>
+      <AppHeader
+        title={t("page.workflow_title")}
+        subtitle={t("page.workflow_subtitle")}
+        // 标题区的主动作：与页面同一层状态（弹窗、失败提示都在下面那几个 `useRequest` 里），
+        // 因此按钮与它打开的弹窗都归本页，壳只负责排版（见文件头）。
+        //
+        // actions 是单一 ReactNode 槽，两个动作必须包成 fragment：直接塞数组会被 React 要求补 key，而
+        // `AppHeader` 只做 `flex gap-2` 排版（`app-header.tsx`），fragment 不产生额外盒子。
+        actions={
+          <>
+            {/* 页头入口是**页面级**视图（组织内的运行记录）；单工作流的入口在卡片底部按钮里。 */}
+            <Button
+              size="sm"
+              variant="outline"
+              disabled={actionsDisabled}
+              onClick={() => setRunLogTarget({ kind: "all" })}
+            >
+              <Activity />
+              {t("list.all_run_logs")}
+            </Button>
+            <Button size="sm" disabled={actionsDisabled} onClick={openCreate}>
+              <Plus />
+              {t("list.create")}
+            </Button>
+          </>
+        }
+      />
+
+      <div className="@container mt-6 flex min-h-0 flex-1 flex-col gap-4">
+        {notice !== null ? <ListNoticeBar notice={notice} onDismiss={() => setNotice(null)} /> : null}
+        {state.kind === "ready" || state.kind === "empty" || state.kind === "loading" ? (
+          <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border-subtle pb-3">
+            <div className="flex flex-wrap items-baseline gap-3">
+              <h2 className="text-sm font-semibold">{t("list.collection_title")}</h2>
+              {state.kind !== "loading" ? (
+                <span className="text-xs text-text-muted">
+                  {t("list.collection_total", { total: state.kind === "ready" ? state.total : 0 })}
+                </span>
+              ) : null}
+            </div>
+            <Button size="sm" variant="ghost" onClick={list.refresh} disabled={list.loading}>
+              <RefreshCw aria-hidden="true" />
+              {t("list.refresh")}
+            </Button>
+          </div>
+        ) : null}
+
+        {state.kind === "ready" ? (
+          <div className="flex min-h-0 flex-1 flex-col gap-4">
+            <WorkflowListCards
+              items={state.items}
+              onOpenCanvas={(item) => {
+                // 深链参数是上游 workflow ID（与票据、画布 URL 的 `workflow_id` 逐字一致）。
+                void navigate({ to: "/agent/workflow/$id/edit", params: { id: item.upstreamWorkflowId } });
+              }}
+              onOpenLogs={setLogsTarget}
+              onOpenRunLogs={(item) => setRunLogTarget({ kind: "one", item })}
+              onOpenApi={setApiTarget}
+              onRename={(item) => {
+                setRenameError(null);
+                setFormKey((key) => key + 1);
+                setRenameTarget(item);
+              }}
+              onDelete={setDeleteTarget}
+            />
+            <Pagination
+              page={page}
+              totalPages={totalPages}
+              total={state.total}
+              pageSize={LIST_PAGE_SIZE}
+              onPageChange={setPage}
+              translationPrefix={LIST_I18N_SCOPE}
+              t={t}
+            />
+          </div>
+        ) : state.kind === "loading" ? (
+          <WorkflowListSkeleton />
+        ) : (
+          <WorkflowListStatusView
+            state={state}
+            onRetry={list.refresh}
+            onCreate={openCreate}
+            onInitialize={() => {
+              void initialize.run();
+            }}
+            initializing={initialize.loading}
+          />
+        )}
       </div>
-
-      {notice !== null ? <ListNoticeBar notice={notice} onDismiss={() => setNotice(null)} /> : null}
-
-      {state.kind === "ready" ? (
-        <div className="flex min-h-0 flex-1 flex-col gap-2">
-          <WorkflowListTable
-            items={state.items}
-            publishingId={publish.loading ? (publish.params[0]?.id ?? null) : null}
-            onPublish={(item) => {
-              setNotice(null);
-              void publish.run(item);
-            }}
-            onOpenLogs={setLogsTarget}
-            onRename={(item) => {
-              setRenameError(null);
-              setFormKey((key) => key + 1);
-              setRenameTarget(item);
-            }}
-            onDelete={setDeleteTarget}
-          />
-          <Pagination
-            page={page}
-            totalPages={totalPages}
-            total={state.total}
-            pageSize={LIST_PAGE_SIZE}
-            onPageChange={setPage}
-            translationPrefix={LIST_I18N_SCOPE}
-            t={t}
-          />
-        </div>
-      ) : state.kind === "loading" ? (
-        <WorkflowListSkeleton />
-      ) : (
-        <WorkflowListStatusView
-          state={state}
-          onRetry={list.refresh}
-          onInitialize={() => {
-            void initialize.run();
-          }}
-          initializing={initialize.loading}
-        />
-      )}
 
       <WorkflowCreateDialog
         open={createOpen}
@@ -342,8 +390,25 @@ export function WorkflowListPage() {
         }}
         workflowId={logsTarget?.id ?? null}
         workflowName={logsTarget?.name ?? ""}
-        localPublishedVersion={logsTarget?.publishedVersion ?? null}
       />
-    </div>
+      {/* 运行日志：页头入口给「全部工作流」，卡片底部给单个工作流；两种模式共用一个弹窗实例。 */}
+      <WorkflowRunLogDialog
+        open={runLogTarget !== null}
+        onOpenChange={(open) => {
+          if (!open) setRunLogTarget(null);
+        }}
+        workflowId={runLogTarget?.kind === "one" ? runLogTarget.item.id : null}
+        workflowName={runLogTarget?.kind === "one" ? runLogTarget.item.name : ""}
+      />
+      {/* 调用接口：卡片级的接入信息（地址里带该工作流的本地主键），纯静态内容、不发请求。 */}
+      <WorkflowApiDialog
+        open={apiTarget !== null}
+        onOpenChange={(open) => {
+          if (!open) setApiTarget(null);
+        }}
+        workflowId={apiTarget?.id ?? null}
+        workflowName={apiTarget?.name ?? ""}
+      />
+    </AppPage>
   );
 }

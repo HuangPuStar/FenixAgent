@@ -125,25 +125,6 @@ export async function updateActiveName(
 }
 
 /**
- * 写回「已发布版本」；返回更新后的行，未命中（或已软删）返回 undefined。
- *
- * 只由发布闭环调用，且**只能**在上游 publish 成功之后调用：该列是版本自增的唯一依据（设计 §4.2），写早于
- * 上游会让下一次发布拿着一个尚未发布的版本号去自增，与上游记录错位。
- */
-export async function updateActivePublishedVersion(
-  organizationId: string,
-  upstreamWorkflowId: string,
-  publishedVersion: string,
-): Promise<WorkflowRow | undefined> {
-  const [row] = await getWorkflowV2Database()
-    .update(workflowV2Workflow)
-    .set({ publishedVersion, updatedAt: new Date() })
-    .where(and(activeScope(organizationId), eq(workflowV2Workflow.upstreamWorkflowId, upstreamWorkflowId)))
-    .returning();
-  return row;
-}
-
-/**
  * 置软删（`sync_state` = `pending_delete` + `deleted_at`），返回受影响行数。
  *
  * 行保留：上游侧删除由对账任务重试，删掉本地行会让「上游还存在」的对象失去归属记录。受影响行数为 0

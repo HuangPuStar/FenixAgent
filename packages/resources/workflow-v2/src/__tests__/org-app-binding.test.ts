@@ -26,6 +26,7 @@ import {
 import { bootstrapPlatformAccount, ensurePlatformAccount } from "../server/services/platform-account-bootstrap";
 import { getUpstreamSession } from "../server/services/upstream-session";
 import { createWorkflowV2ModuleConfig } from "../server/testing";
+import { createTestScopedDatabase } from "./helpers/scoped-database";
 
 type Database = ReturnType<typeof drizzle>;
 
@@ -203,8 +204,16 @@ function seedUpstreamApp(name = "既有 App"): string {
   return botId;
 }
 
-/** 装配句柄与模块配置：`resetAllStubs` 必须在前——应用基础设施只允许初始化一次，不复位第二条用例就会抛错。 */
-function install(injected: unknown = database()): void {
+/**
+ * 装配句柄与模块配置：`resetAllStubs` 必须在前——应用基础设施只允许初始化一次，不复位第二条用例就会抛错。
+ *
+ * 默认注入**带测试作用域**的句柄：本文件会用真实句柄跑引导链路（`ensureOrgApp` → 建账号/建 App），而台账是
+ * 全局单行表、读路径取全表首行。未加作用域时，本机主库上任何一行真实台账都会被当成「已有账号」读进来，随后
+ * 在引导的「已存在行」分支被改写成测试身份（`platform_user_id` 变成本文件前缀），最后被本文件的前缀清理删掉
+ * ——真实行就此消失（实测：本文件单独跑一次即可删掉一行非前缀台账行）。作用域把台账读收进 `TEST_PREFIX`，
+ * 本文件只与自己的行打交道；写语句与其余表不受影响（见 `helpers/scoped-database.ts`）。
+ */
+function install(injected: unknown = createTestScopedDatabase(database(), TEST_PREFIX)): void {
   resetAllStubs();
   initializeTestApplicationInfrastructure({
     database: injected,

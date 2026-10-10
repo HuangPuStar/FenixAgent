@@ -1,61 +1,99 @@
 /**
- * 控制面「发布记录 + 上游当前发布版本」的**读路径**。
+ * 控制面「发布日志」的**读路径**：上游当前发布版本 + 上游渠道发布记录 + 平台侧发布动作。
  *
- * 数据来源只有上游两处，本模块不落任何本地发布记录（用户口径：发布记录用上游的数据，平台侧无需第二份）：
- * - `POST /api/workflow_api/list_publish_workflow`：发布记录（上游白名单里的「发布记录」端点，见设计 §4.2）；
- *   请求用 `workflow_ids` 收窄到单个 workflow，`size` 是 thrift 必填（缺它上游回 HTTP 400，契约快照 §2 第 22 行）。
- * - `POST /api/workflow_api/canvas`：**当前发布版本**。上游没有独立的「当前版本」读接口
- *   （契约快照 F3：`workflow_detail.version` 发布前后均为空串、`history_schema` 缺有效 `commit_id` 时 panic），
- *   canvas 的 `data.workflow_version`（上游 `wf.LatestPublishedVersion`）是唯一可用来源。代价是这份响应同时带
- *   回整份 `schema_json`（大 workflow 可达数百 KB），我们只读一个字段、其余即弃——换取「状态以上游为准」，
- *   不为此新增本地版本镜像（本地 `published_version` 只服务版本自增，见 `workflow-publish.ts` 文件头）。
+ * ## 数据来源与选型（2026-10-09 穷尽核对上游路由表与上游前端调用点）
  *
- * **已知缺口（部署方需知情）**：当前关联上游构建里 `list_publish_workflow` 是桩实现
- * （`backend/api/handler/coze/workflow_service.go` 的 `ListPublishWorkflow` 直接返回空结构体），实测返回
- * `data: null`；因此本接口在现行上游上记录列表**恒为空**，UI 必须把它当合法空态呈现，而不是当失败。
- * 记录非空的前提是上游补齐该端点（上游侧发布记录属于 App 上架审核链路，超出工作流发布范围）。
+ * 上游里「按 workflow 列发布记录」的端点 `POST /api/workflow_api/list_publish_workflow` 与
+ * `POST /api/workflow_api/released_workflows` 在当前关联构建里都是**桩实现**
+ * （`backend/api/handler/coze/workflow_service.go:793` / `:236` 只做参数绑定后返回空结构体；实测带真实
+ * workflow 仍回 `data:null`），且上游前端**根本不调用** `list_publish_workflow`。
+ *
+ * 真正有数据、且上游自己的控制台在用的发布记录读出口是**应用级**的：
+ * `POST /api/intelligence_api/publish/publish_record_list`（上游
+ * `frontend/packages/studio/workspace/project-publish/src/hooks/use-publish-status.tsx:150` 调
+ * `intelligenceApi.GetPublishRecordList`；实测返回版本号 + 渠道发布结果 + 打包失败明细）。
+ * 平台侧的租户 workflow 就挂在租户应用下，因此这些记录正是「把该工作流的版本发布到渠道」的事件序列。
+ *
+ * 另外两处**上游不可得**、但平台自己持有的诚实来源，作为 `actions` 一并给出（控制台用户真正关心的是
+ * 「我在控制台点过的发布结果如何」；上游只记录发布产物，不记录控制台动作）：
+ * - `workflow_v2_audit_log` 的 `workflow.publish` 行：时间 + 操作人 + 归一化结果（本地表，读失败只降级该段）。
+ *
+ * ## 上游字段的可用性（不显示幻造字段）
+ *
+ * - `version_number` ✓、`connector_publish_result[]`（渠道 id/名称/状态）✓、`publish_status_detail.pack_failed_detail[]` ✓；
+ * - `publish_status`（记录级状态）在该构建里**恒为 0**（上游 `GetPublishRecordList` 未 hydrate 应用行状态，
+ *   实测与库里 `app_release_record.publish_status` 的 5/1 不一致）→ **不显示**，改为由渠道结果与打包明细
+ *   派生一个保守的三态（见 {@link deriveRecordStatus}）；
+ * - 记录里**没有时间**字段（thrift `PublishRecordDetail` 无 create_time）→ 不显示时间，不猜。
  *
  * 失败语义与写路径同口径：传输/会话失败**原样抛**，由控制面的统一失败映射转 502/503/504
- * （`routes/web/workflow-http.ts`）；上游业务失败（`code≠0` / 非 2xx）由本模块如实带回原始结果，路由层再映射。
+ * （`routes/web/workflow-http.ts`）；上游业务失败（`code≠0` / 非 2xx）如实带回原始结果，路由层再映射。
  */
 
 import { createLogger } from "@fenix/logger";
+import { getIdentityDirectory } from "@fenix/platform-sdk/server";
+import { workflowV2AuditLog } from "@fenix/resource-workflow-v2/db";
+import { and, desc, eq } from "drizzle-orm";
+import { getWorkflowV2Database } from "../repositories/database";
 import { callUpstream, type UpstreamCallInput, type UpstreamCallResult } from "./upstream-client";
 
 const logger = createLogger("wf2-publish-records");
 
-/** 上游发布记录端点（白名单内的既有端点，不新增上游路径）。 */
-const LIST_PUBLISH_PATH = "/api/workflow_api/list_publish_workflow";
-/** 上游画布端点：本模块只取其中的 `workflow_version`。 */
+/** 应用级发布记录端点（上游控制台在用的真实读出口，见文件头）。 */
+const PUBLISH_RECORD_LIST_PATH = "/api/intelligence_api/publish/publish_record_list";
+/** 上游画布端点：本模块只取其中的 `workflow_version`（当前发布版本）。 */
 const CANVAS_PATH = "/api/workflow_api/canvas";
+/** 控制台发布动作的审计动作名（与 `audit-trail.ts` 同字面量；从那里 import 会形成服务间环，故本地声明并登记）。 */
+const PUBLISH_ACTION = "workflow.publish";
 
-/** 一次读取的发布记录条数上界：单个 workflow 的记录不会多，超出部分不翻页（列表不以条数取胜）。 */
-const RECORD_PAGE_SIZE = 20;
+/** 上游渠道发布状态码 → 平台稳定取值（上游 `ConnectorPublishStatus`）。 */
+export type WorkflowPublishChannelStatus = "success" | "failed" | "auditing" | "in_progress" | "disabled";
 
-/**
- * 发布记录条目（归一化后）。
- *
- * 上游 `PublishBasicWorkflowData` 里带连接器聚合、token 消耗等字段，控制台不消费，因此**不搬运**
- * （协议 DTO 与视图模型在边界处独立转换）：只保留能回答「这个 workflow 什么时候发布的、谁发布的」的三项。
- * 上游缺失的字段一律为 null，不造默认值、不省略键（前端类型据此一一对应）。
- */
-export interface WorkflowPublishRecord {
-  /** 记录对应的上游 workflow ID；上游未回时为 null（此时该条记录不参与本 workflow 的过滤，见下）。 */
-  readonly workflowId: string | null;
-  readonly name: string | null;
-  /** 发布时间（ISO 8601，UTC）；上游未回时为 null。 */
-  readonly publishedAt: string | null;
-  /** 发布者（上游用户 ID 串）；上游未回时为 null。 */
-  readonly ownerId: string | null;
+/** 一条渠道发布结果（只搬运控制台展示所需的字段）。 */
+export interface WorkflowPublishChannelResult {
+  readonly connectorId: string | null;
+  readonly connectorName: string | null;
+  readonly status: WorkflowPublishChannelStatus | null;
 }
 
-/** 发布概况：上游当前发布版本 + 上游发布记录。 */
+/**
+ * 记录级状态：由**真实可得**的字段派生（记录级 `publish_status` 在该构建恒为 0，不可用）。
+ *
+ * - `pack_failed`：上游给了打包失败明细（`pack_failed_detail` 非空）；
+ * - `done`：至少一个渠道且全部 `success`；
+ * - `in_progress`：其余情况（含渠道未给终态、无渠道）——不把不确定说成成功或失败。
+ */
+export type WorkflowPublishRecordStatus = "done" | "pack_failed" | "in_progress";
+
+/** 一条发布记录（归一化后）。 */
+export interface WorkflowPublishRecord {
+  readonly version: string | null;
+  readonly status: WorkflowPublishRecordStatus;
+  readonly channels: readonly WorkflowPublishChannelResult[];
+  /** 打包失败涉及的上游对象名（工作流/插件），空数组表示上游未给出打包失败信息。 */
+  readonly packFailedResources: readonly string[];
+}
+
+/** 平台侧发布动作（审计流水的一行）。 */
+export interface WorkflowPublishAction {
+  /** 发生时间（ISO 8601，UTC）。 */
+  readonly occurredAt: string;
+  /** 操作人展示名；名录读不到或用户已删时为 null（此时前端只显示时间与结果）。 */
+  readonly actorName: string | null;
+  /** 归一化结果：`ok` / `upstream_rejected` / `failed` / `upstream_unavailable` … */
+  readonly result: string;
+  /** 我方错误码（如 `WORKFLOW_VERSION_UNPARSEABLE`）；成功为 null。 */
+  readonly errorCode: string | null;
+}
+
+/** 发布概况：上游当前发布版本 + 上游渠道发布记录 + 平台侧发布动作。 */
 export interface WorkflowPublishOverview {
   readonly current: {
     /** 上游记录的当前发布版本（canvas `WorkflowVersion`）；上游未发布或未回该字段时为 null。 */
     readonly publishedVersion: string | null;
   };
   readonly records: readonly WorkflowPublishRecord[];
+  readonly actions: readonly WorkflowPublishAction[];
 }
 
 /**
@@ -71,8 +109,12 @@ export type WorkflowPublishOverviewUpstreamCall = (input: UpstreamCallInput) => 
 export interface WorkflowPublishOverviewInput {
   /** 上游 workflow ID（本模块的查询主体，客户端的本地主键不进这里）。 */
   readonly upstreamWorkflowId: string;
+  /** 该 workflow 所属的上游应用 ID（渠道发布记录的查询键，取自本地注册表）。 */
+  readonly appId: string;
   /** 注入的 `space_id`（平台个人空间）；客户端自报的同名字段不参与。 */
   readonly spaceId: string;
+  /** 组织 ID：平台侧动作从本组织的审计流水里读（多租户隔离的谓词）。 */
+  readonly organizationId: string;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -100,49 +142,142 @@ function readNonEmptyString(body: unknown, path: readonly string[]): string | nu
   return typeof value === "string" && value.length > 0 ? value : null;
 }
 
-/**
- * 上游时间戳 → ISO 串。
- *
- * 单位无法从契约确认（thrift 里只有 `Int64`；同一份 IDL 的 `create_time`/`update_time` 在上游实现里是
- * **秒**，但发布记录端点没有可对照的非空样本）。这里按量级判别：`≥ 10^11` 视为毫秒，否则视为秒——两个
- * 单位都能得到合理时间，而不是把秒当毫秒显示成 1970、或把毫秒当秒显示成五万年后的日期。落库/上屏形状统一
- * 为 ISO 串，前端不猜单位。
- */
-const EPOCH_MILLISECONDS_THRESHOLD = 1e11;
+/** 渠道状态码 → 稳定取值；认不出的码返回 null（不猜）。 */
+function toChannelStatus(value: unknown): WorkflowPublishChannelStatus | null {
+  if (typeof value !== "number") return null;
+  switch (value) {
+    case 0:
+      return "in_progress";
+    case 1:
+      return "auditing";
+    case 2:
+      return "success";
+    case 3:
+      return "failed";
+    case 4:
+      return "disabled";
+    default:
+      return null;
+  }
+}
 
-function toIsoString(body: unknown, path: readonly string[]): string | null {
-  const value = readPath(body, path);
-  if (typeof value !== "number" || !Number.isFinite(value) || value <= 0) return null;
-  const milliseconds = value >= EPOCH_MILLISECONDS_THRESHOLD ? value : value * 1000;
-  return new Date(milliseconds).toISOString();
+/** 读一条记录里的渠道结果数组。 */
+function readChannels(entry: unknown): WorkflowPublishChannelResult[] {
+  const raw = readPath(entry, ["connector_publish_result"]);
+  if (!Array.isArray(raw)) return [];
+  return raw.map((item) => ({
+    connectorId: readNonEmptyString(item, ["connector_id"]),
+    connectorName: readNonEmptyString(item, ["connector_name"]),
+    status: toChannelStatus(readPath(item, ["connector_publish_status"])),
+  }));
+}
+
+/** 读打包失败明细里的资源名（上游 `pack_failed_detail[].entity_name`）。 */
+function readPackFailedResources(entry: unknown): string[] {
+  const raw = readPath(entry, ["publish_status_detail", "pack_failed_detail"]);
+  if (!Array.isArray(raw)) return [];
+  return raw.map((item) => readNonEmptyString(item, ["entity_name"])).filter((name): name is string => name !== null);
+}
+
+/** 由真实字段派生记录状态（见 {@link WorkflowPublishRecordStatus} 的说明）。 */
+function deriveRecordStatus(
+  channels: readonly WorkflowPublishChannelResult[],
+  packFailed: readonly string[],
+): WorkflowPublishRecordStatus {
+  if (packFailed.length > 0) return "pack_failed";
+  if (channels.length > 0 && channels.every((channel) => channel.status === "success")) return "done";
+  return "in_progress";
+}
+
+/** `data[]` → 发布记录（倒序：上游按记录 id 升序返回，控制台按「最近发布优先」展示）。 */
+function readRecords(body: unknown): WorkflowPublishRecord[] {
+  const raw = readPath(body, ["data"]);
+  if (!Array.isArray(raw)) return [];
+  return raw
+    .map((entry) => {
+      const channels = readChannels(entry);
+      const packFailedResources = readPackFailedResources(entry);
+      return {
+        version: readNonEmptyString(entry, ["version_number"]),
+        status: deriveRecordStatus(channels, packFailedResources),
+        channels,
+        packFailedResources,
+      } satisfies WorkflowPublishRecord;
+    })
+    .reverse();
 }
 
 /**
- * `data.workflows[]` → 发布记录。
+ * 读平台侧发布动作（本组织的审计流水，按时间倒序）。
  *
- * 只认 `workflow_ids` 过滤**之后**仍属于本 workflow 的条目：上游的 `workflow_ids` 是可选过滤字段，若它被
- * 忽略（或未来语义变化），不过滤就会把别的 workflow 的记录显示在本 workflow 名下——那比空列表更糟。
- * 上游未回 `basic_info.id` 的条目无从判断归属，如实保留（此时对话框的条数由上游决定，不做本地猜测）。
+ * **永不抛错**：这是「平台自己看过什么」的补充段落，读失败只降级成空列表 + warn 日志，绝不影响上游数据的
+ * 展示（对话框的主体是上游版本与渠道记录）。审计表与注册表同库，注册表读得通时它几乎不会单独失败。
  */
-function readRecords(body: unknown, upstreamWorkflowId: string): WorkflowPublishRecord[] {
-  const raw = readPath(body, ["data", "workflows"]);
-  if (!Array.isArray(raw)) return [];
-  const records: WorkflowPublishRecord[] = [];
-  for (const entry of raw) {
-    const workflowId = readNonEmptyString(entry, ["basic_info", "id"]);
-    if (workflowId !== null && workflowId !== upstreamWorkflowId) continue;
-    records.push({
-      workflowId,
-      name: readNonEmptyString(entry, ["basic_info", "name"]),
-      publishedAt: toIsoString(entry, ["basic_info", "publish_time"]),
-      ownerId: readNonEmptyString(entry, ["basic_info", "owner_id"]),
+export async function listWorkflowPublishActions(
+  organizationId: string,
+  upstreamWorkflowId: string,
+  limit = 20,
+): Promise<WorkflowPublishAction[]> {
+  let rows: Array<{
+    actorUserId: string;
+    result: string;
+    errorCode: string | null;
+    createdAt: Date;
+  }>;
+  try {
+    rows = await getWorkflowV2Database()
+      .select({
+        actorUserId: workflowV2AuditLog.actorUserId,
+        result: workflowV2AuditLog.result,
+        errorCode: workflowV2AuditLog.errorCode,
+        createdAt: workflowV2AuditLog.createdAt,
+      })
+      .from(workflowV2AuditLog)
+      .where(
+        and(
+          eq(workflowV2AuditLog.organizationId, organizationId),
+          eq(workflowV2AuditLog.action, PUBLISH_ACTION),
+          eq(workflowV2AuditLog.upstreamWorkflowId, upstreamWorkflowId),
+        ),
+      )
+      .orderBy(desc(workflowV2AuditLog.createdAt))
+      .limit(limit);
+  } catch (error) {
+    logger.warn("workflow-v2 平台侧发布动作读取失败，仅展示上游数据", {
+      organizationId,
+      upstreamWorkflowId,
+      error: error instanceof Error ? error.message : String(error),
+    });
+    return [];
+  }
+  if (rows.length === 0) return [];
+
+  // 操作人展示名：批量读名录，读不到就留 null（不把用户 ID 直接上屏，也不因名录故障丢弃整段）。
+  const actorNames = new Map<string, string>();
+  try {
+    const directory = getIdentityDirectory();
+    const infos = await directory.listUserDisplayInfo([...new Set(rows.map((row) => row.actorUserId))]);
+    for (const [id, info] of infos) {
+      const name = info.name?.trim();
+      if (name !== undefined && name.length > 0) actorNames.set(id, name);
+    }
+  } catch (error) {
+    logger.warn("workflow-v2 发布动作的操作人名录读取失败，仅展示时间与结果", {
+      organizationId,
+      error: error instanceof Error ? error.message : String(error),
     });
   }
-  return records;
+
+  return rows.map((row) => ({
+    occurredAt: row.createdAt.toISOString(),
+    actorName: actorNames.get(row.actorUserId) ?? null,
+    result: row.result,
+    errorCode: row.errorCode,
+  }));
 }
 
 /**
- * 读取发布概况：先取发布记录（本接口的主体），再取 canvas 的当前发布版本。
+ * 读取发布概况：先取上游渠道发布记录（主体），再取 canvas 的当前发布版本，最后补平台侧发布动作。
  *
  * 为什么 canvas 失败不做降级：它是「以上游为准」的那一半状态，静默降级成「未知」会让对话框看起来正常、
  * 实际少一半事实（前端拿 `current.publishedVersion` 与本地登记版本比对漂移，缺了它比对就无效）。
@@ -155,17 +290,14 @@ export async function fetchWorkflowPublishOverview(
   const upstream = options.callUpstream ?? callUpstream;
 
   const recordsResult = await upstream({
-    path: LIST_PUBLISH_PATH,
-    body: {
-      // space_id / owner_id 由服务端注入：owner 收窄为平台账号（平台账号是上游唯一用户），客户端自报值不参与。
-      space_id: input.spaceId,
-      workflow_ids: [input.upstreamWorkflowId],
-      size: RECORD_PAGE_SIZE,
-    },
+    path: PUBLISH_RECORD_LIST_PATH,
+    // project_id 由服务端从本地注册表注入：客户端自报值不参与（归属已由路由按组织谓词判定）。
+    body: { project_id: input.appId },
   });
   if (!isUpstreamSuccess(recordsResult)) {
-    logger.warn("workflow-v2 读取发布记录失败", {
+    logger.warn("workflow-v2 读取渠道发布记录失败", {
       upstreamWorkflowId: input.upstreamWorkflowId,
+      appId: input.appId,
       upstreamStatus: recordsResult.status,
       upstreamCode: readPath(recordsResult.body, ["code"]),
     });
@@ -189,7 +321,8 @@ export async function fetchWorkflowPublishOverview(
     ok: true,
     overview: {
       current: { publishedVersion: readNonEmptyString(canvasResult.body, ["data", "workflow_version"]) },
-      records: readRecords(recordsResult.body, input.upstreamWorkflowId),
+      records: readRecords(recordsResult.body),
+      actions: await listWorkflowPublishActions(input.organizationId, input.upstreamWorkflowId),
     },
   };
 }

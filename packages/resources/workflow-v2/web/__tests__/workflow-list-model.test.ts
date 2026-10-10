@@ -26,6 +26,7 @@ const ITEM: WorkflowV2WorkflowItem = {
   name: "示例",
   ownerUserId: "user-1",
   visibility: "private",
+  publishState: "unpublished",
   publishedVersion: null,
   syncState: "active",
   updatedAt: "2026-09-29T00:00:00.000Z",
@@ -78,22 +79,35 @@ describe("视图状态的分支优先级", () => {
 });
 
 describe("状态列与删除结果", () => {
-  test("已发布 / 未发布 / 删除中 三分支各带自己的键与版本号", () => {
-    expect(describeWorkflowStatus({ ...ITEM, publishedVersion: "1.2.0" })).toEqual({
+  test("已发布 / 未发布 / 未知 / 删除中 四分支各带自己的键与版本号", () => {
+    expect(describeWorkflowStatus({ ...ITEM, publishState: "published", publishedVersion: "v1.2.0" })).toEqual({
       tone: "success",
       labelKey: "list.status.published",
-      version: "1.2.0",
+      version: "v1.2.0",
     });
     expect(describeWorkflowStatus(ITEM)).toEqual({
       tone: "neutral",
       labelKey: "list.status.unpublished",
       version: null,
     });
+    // 读取失败必须与「未发布」分开（本次报障的方向）：键不同，版本号不猜。
+    expect(describeWorkflowStatus({ ...ITEM, publishState: "unknown" })).toEqual({
+      tone: "neutral",
+      labelKey: "list.status.unknown",
+      version: null,
+    });
     // 删除中优先于已发布：它有版本号但已不是可编辑对象。
-    expect(describeWorkflowStatus({ ...ITEM, syncState: "pending_delete", publishedVersion: "1.2.0" })).toEqual({
+    expect(
+      describeWorkflowStatus({
+        ...ITEM,
+        syncState: "pending_delete",
+        publishState: "published",
+        publishedVersion: "v1.2.0",
+      }),
+    ).toEqual({
       tone: "warning",
       labelKey: "list.status.pending_delete",
-      version: "1.2.0",
+      version: "v1.2.0",
     });
   });
 

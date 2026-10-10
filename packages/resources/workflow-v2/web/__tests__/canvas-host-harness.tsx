@@ -88,8 +88,13 @@ export interface FetchRouter {
   restore(): void;
 }
 
-/** 安装 fetch 桩：`route` 按请求返回响应，全部请求进 `calls`。 */
-export function installFetchRouter(route: (call: FetchCall) => FetchRoute): FetchRouter {
+/**
+ * 安装 fetch 桩：`route` 按请求返回响应，全部请求进 `calls`。
+ *
+ * `route` 允许返回 Promise：默认的同步路由覆盖绝大多数用例，而「取数在途时界面是什么样」只能靠一个**未决**的
+ * 响应把那一帧钉住（响应一旦立即兑现，微任务排空后就已经是终态，中间态观察不到）。
+ */
+export function installFetchRouter(route: (call: FetchCall) => FetchRoute | Promise<FetchRoute>): FetchRouter {
   const calls: FetchCall[] = [];
   const original = globalThis.fetch;
   globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
@@ -103,7 +108,7 @@ export function installFetchRouter(route: (call: FetchCall) => FetchRoute): Fetc
       body: readRequestBody(init?.body),
     };
     calls.push(call);
-    return jsonResponse(route(call));
+    return jsonResponse(await route(call));
   }) as typeof fetch;
   return {
     calls,

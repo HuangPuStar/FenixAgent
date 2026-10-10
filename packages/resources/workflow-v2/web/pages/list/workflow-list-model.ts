@@ -16,6 +16,17 @@ import type { WorkflowV2DeleteResult, WorkflowV2WorkflowItem } from "../../api/w
 /** 列表分页大小；写死一档，页脚不提供页长切换（`24 条/页` 这类选择是本地偏好，需要持久化才有意义）。 */
 export const LIST_PAGE_SIZE = 20;
 
+/** 按内容容器宽度排布，避免侧栏展开后仍按视口断点把卡片挤窄；骨架与列表共用。 */
+export const WORKFLOW_GRID_CLASS = "grid grid-cols-1 gap-4 @2xl:grid-cols-2 @5xl:grid-cols-3 @7xl:grid-cols-4";
+
+/** 四态解释只补充已知事实，不把发布状态等同于运行健康度。 */
+export const WORKFLOW_STATUS_HINT_KEYS = {
+  published: "list.status_hint.published",
+  unpublished: "list.status_hint.unpublished",
+  unknown: "list.status_hint.unknown",
+  pending_delete: "list.status_hint.pending_delete",
+} as const;
+
 /**
  * 本页的 i18n 键族前缀，同时是传给共享 `Pagination` 的 `translationPrefix`。
  *
@@ -72,7 +83,7 @@ export function resolveListViewState(snapshot: WorkflowListSnapshot): WorkflowLi
   return { kind: "ready", items: snapshot.items, total: snapshot.total };
 }
 
-/** 状态列的呈现描述：色调 + 文案键 + 已发布版本号（未发布为 null）。 */
+/** 状态列的呈现描述：色调 + 文案键 + 上游发布版本号（未发布或状态未知均为 null）。 */
 export interface WorkflowStatusDescriptor {
   readonly tone: StatusTone;
   readonly labelKey: string;
@@ -83,18 +94,26 @@ export interface WorkflowStatusDescriptor {
  * 状态列语义：以「能不能用」而不是 `syncState` 的字段名说话。
  *
  * - `pending_delete` 优先：删除进行中的记录即使有已发布版本也不再是可编辑对象；
- * - 有 `publishedVersion` → 已发布（附版本号），否则未发布（草稿）。
+ * - 之后按**上游**发布态取键：`published` 附版本号、`unpublished` 是上游明确回答的未发布；
+ * - `unknown`（本次没读到上游状态）必须与未发布分开——把它渲染成「未发布」正是本次报障的错误方向，
+ *   用户看到的是「它没发布」，而事实是「我们不知道」；
+ * - 版本号取自上游（形如 `v0.0.1`，自带前缀），视图层原样呈现，不再拼前缀。
  *
- * 色调只给语义，配色留在 `StatusBadge`（§4.1）。
+ * 色调只给语义，配色留在 `StatusBadge`（§4.1）：未知不借 `warning`（那是「删除中」的语义，且未知不是资源
+ * 自身的问题），用中性色 + 明确文案。
  */
 export function describeWorkflowStatus(item: WorkflowV2WorkflowItem): WorkflowStatusDescriptor {
   if (item.syncState === "pending_delete") {
     return { tone: "warning", labelKey: "list.status.pending_delete", version: item.publishedVersion };
   }
-  if (item.publishedVersion !== null) {
-    return { tone: "success", labelKey: "list.status.published", version: item.publishedVersion };
+  switch (item.publishState) {
+    case "published":
+      return { tone: "success", labelKey: "list.status.published", version: item.publishedVersion };
+    case "unpublished":
+      return { tone: "neutral", labelKey: "list.status.unpublished", version: null };
+    default:
+      return { tone: "neutral", labelKey: "list.status.unknown", version: null };
   }
-  return { tone: "neutral", labelKey: "list.status.unpublished", version: null };
 }
 
 /** 删除结果：`deleted` 为真才是删掉了；否则是上游按策略拒绝，`strategy` 说明原因。 */
