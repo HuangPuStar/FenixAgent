@@ -81,7 +81,15 @@ async function doProxy(
 
   let identity: SiteRequestIdentity | null = null;
   if (target.visibility !== "public") {
-    identity = await deps.authenticateRequest(request);
+    let authRequest = request;
+    if (target.visibility === "org") {
+      // AOS-BUG-001：新窗口与子资源不带控制台组织头，发布访问应按站点组织校验成员关系，而非当前组织。
+      // 只投影认证所需的 URL / headers，不消耗原请求体；组织提示仍由宿主认证校验，凭据组织边界不变。
+      const headers = new Headers(request.headers);
+      headers.set("x-active-org-id", target.organizationId);
+      authRequest = new Request(request.url, { headers, signal: request.signal });
+    }
+    identity = await deps.authenticateRequest(authRequest);
   }
   const reject = checkVisibility(target, identity);
   if (reject) {
