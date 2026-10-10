@@ -10,7 +10,7 @@
 | Agent Sites | 发布和运行 Agent 生成的站点 | 活跃站点数 |
 | Hindsight | Agent 长期记忆的存储与召回 | 记忆量、调用并发 |
 | RAGFlow | 文档解析、切分、Embedding、检索与知识库管理 | 分片数、索引并发 |
-| Langfuse | Agent 和模型调用的 Trace、观测与分析 | 事件量、保留期 |
+| Peri-Fuse / Langfuse | Agent 和模型调用的 Trace、观测与分析 | 事件量、保留期 |
 
 除明确说明外，以下磁盘公式只计算**在线主副本**；备份、异地副本、快照和滚动升级余量必须另行预留。生产节点不建议长期以超过 70% 的 CPU、内存或磁盘使用率运行。
 
@@ -115,6 +115,8 @@ Langfuse 不纳入统一公式。官方 Helm Chart 的生产 sizing 建议按组
 | 内置对象存储（SeaweedFS） | 2 C | 4 GiB | — |
 
 官方 Chart 默认配置 1 个 Web、1 个 Worker、1 个 ClickHouse 和 3 个 Keeper；按上表 limit 合计为 `14 C / 26.5 GiB`，已声明磁盘为 `210 GiB`（ClickHouse 100 GiB、3 个 Keeper 各 20 GiB、SeaweedFS 50 GiB）。对象存储容量仍须按 Trace 附件、导出和事件归档另行增加。生产可使用外置 PostgreSQL、ClickHouse、Redis 和对象存储，但必须在对应托管服务上保留等价资源。官方没有按事件量或保留期给出统一换算公式，事件量应通过 ClickHouse 和对象存储的实际增长率压测确定。参考 [Langfuse 官方 Helm Chart sizing](https://github.com/langfuse/langfuse-k8s#sizing)。
+
+本仓库部署面交付的观测实现是 **Peri-Fuse**（Langfuse 兼容，`docker/peri-fuse/`）：单容器 + 内嵌 Turso/SQLite，不依赖 ClickHouse / Redis / S3 / Worker，因此**上表的组件规格不适用**——按单实例起步，规格随上报并发与 Trace 保留期压测确定；磁盘按上游基准折算（25 万 Trace / 113 万 Observation 的数据目录约 1.6 GB，未开自动清理时随事件量线性增长）。上表只在改用官方 Langfuse 全栈时适用。
 
 ## 5. 使用方式
 

@@ -33,6 +33,10 @@
 > （与生产编排同目录，compose 的插值来源随之确定，目标机不再需要 `--env-file`）；生成器因此多产出一份
 > `docker/main/.env.example`，`deploy.sh` 读的也是这一份（§4.2、§8、§11.2）。仓库根 `.env` 保留给 dev 形态。
 > 没有跟着收敛的是**缓存**与 workflow 的 Elasticsearch，理由与代价见 §5.1。
+> **2026-10-10 追加：新增依赖目录 `docker/peri-fuse/`**（LLM 观测，Langfuse 兼容实现，单容器 + 内嵌 Turso/SQLite，
+> 无 ClickHouse / Redis / S3）。消费方是**Agent 进程**（本地执行在 `rcs` 容器内、沙箱节点在各自容器内），按
+> `LANGFUSE_BASE_URL` 直连上报；主服务只透传 `LANGFUSE_*` 三键、不做转接。开关 `FENIX_FEATURE_PERI_FUSE`
+> 已进生成物（§7），目录契约见 §6，操作面见该目录 README。
 
 ## 1. 设计结论速览
 
@@ -76,7 +80,7 @@
     ├── deploy.sh               # 一键入口
     ├── lib/config.sh           # 配置解析、必填项校验、依赖发现（被 deploy.sh source；交付面必须带上）
     ├── deploy.env / .example   # 部署配置（开关与参数，见 §7；.example 是生成物）
-    ├── ragflow/  litellm/  hindsight/  npm-registry/  agent-sites/
+    ├── ragflow/  litellm/  hindsight/  peri-fuse/  npm-registry/  agent-sites/
     ├── workflow/               # Workflow V2 上游栈
     ├── sandbox-peri/  sandbox-dsh/  sandbox-ccb/  sandbox-opencode/   # 执行节点（引擎沙箱）
     ├── opensandbox-cluster/  opensandbox-server/  opensandbox-server-tunnel/
@@ -110,6 +114,7 @@
 
 - 必须接入 ②：`rcs`；common 的全部基础服务（`postgres` / `redis` / `rustfs` / `mysql`——它们的服务名是跨项目 DNS 名）；
   依赖的对外出口服务——RAGFlow 的 API 服务与同栈的 `gotenberg`、`litellm`、`hindsight`、`npm-registry`、`agent-sites`、
+  观测服务 `peri-fuse`（上报方是 Agent 进程：本地执行在 `rcs` 容器内、沙箱节点在各自容器内，按服务名直连它）、
   Workflow 的 `coze-web`（唯一出口）；**共享基础设施的消费方**（Workflow 的 `coze-server` / `milvus` 与它的一次性
   初始化服务 `mysql-init` / `s3-init`、RAGFlow 的初始化服务 `ragflow-mysql-init`、
   LiteLLM 的初始化服务 `litellm-db-init`）；
@@ -331,7 +336,9 @@ services:
    独立部署时 `cp .env.example .env` 填完即可启动。
 10. **只引用发布镜像**：`image:` 写死发布 tag（禁止 `latest` 与环境变量插值），不声明 `build:`——交付单元不带源码；
     本地自建改用 `docker build -f docker/<name>/Dockerfile …`（命令在各目录 README）。唯一例外是 `docker/sandbox-dsh/`
-    （GHCR 上还没有它的发布镜像，见 §13.15）。
+    （GHCR 上还没有它的发布镜像，见 §13.15）。**版本键例外**（2026-10-10 登记）：`image:` 行可以写成
+    `${<NAME>_VERSION:-<缺省 tag>}`——缺省值仍在 compose 里（git 里看到的就是默认要跑的版本），部署方在**该依赖自己的**
+    `.env` 覆盖它，键不进 `docker/deploy.env`（§7）；已登记：`docker/peri-fuse/` 的 `PERIFUSE_VERSION`。
 
 ### 一次性初始化服务（消费共享实例的目录必备）
 
@@ -370,6 +377,7 @@ services:
 | `RAGFLOW` | `docker/ragflow/` | knowledge 检索 + Office 转 PDF（gotenberg 服务并入本目录） | `RAGFLOW_API_URL` / `RAGFLOW_API_KEY` / `GOTENBERG_URL`；**依赖共享实例** `FENIX_FEATURE_MYSQL`；对象存储是**本栈自带**（`ragflow-rustfs`），不依赖 `FENIX_FEATURE_S3`（§5） |
 | `LITELLM` | `docker/litellm/` | model-management：模型网关 | `RCS_MODEL_GATEWAY_*` |
 | `HINDSIGHT` | `docker/hindsight/` | memory：长期记忆 | `HINDSIGHT_MCP_URL`、`DASHSCOPE_API_KEY` |
+| `PERI_FUSE` | `docker/peri-fuse/` | agent-config：Agent 观测透传（Trace 上报；主服务不访问本服务） | `LANGFUSE_BASE_URL` / `LANGFUSE_PUBLIC_KEY` / `LANGFUSE_SECRET_KEY` |
 | `NPM_REGISTRY` | `docker/npm-registry/` | plugin-market：元数据源 | `PLUGIN_MARKET_REGISTRY_*` |
 | `AGENT_SITES` | `docker/agent-sites/` | agent-config：站点部署 | `AGENT_SITES_MASTER_KEY` 等 |
 | `WORKFLOW` | `docker/workflow/` | workflow-v2 | `WORKFLOW_STUDIO_DIR` 等，另有前置条件（见该目录 README）；**依赖共享实例** `FENIX_FEATURE_MYSQL` 与 `FENIX_FEATURE_S3`（§5.1） |
@@ -409,6 +417,7 @@ FENIX_FEATURE_SANDBOX_OPENCODE=false
 FENIX_FEATURE_OPENSANDBOX_CLUSTER=false
 FENIX_FEATURE_OPENSANDBOX_SERVER=false
 FENIX_FEATURE_OPENSANDBOX_SERVER_TUNNEL=false
+FENIX_FEATURE_PERI_FUSE=false
 
 # ── common 的可选服务（随主服务项目启动，不对应目录）──
 FENIX_FEATURE_REDIS=false
@@ -428,12 +437,13 @@ MYSQL_HOST_PORT=3306          # 只绑回环
 - 默认全部关闭；`postgres` 恒启动，`S3` / `REDIS` / `MYSQL` 归 common 的可选服务。
   保留开关与目录开关一样只负责「起哪些服务」，**不做消费方与共享服务之间的自动联动**（理由见 §6 末）。
 - **镜像键不在这里**：版本固定写在各 compose 的 `image:` 行（§4.2）；`docker/deploy.env` 里出现镜像键即视为设计漂移。
+  登记例外是**版本键**（§6 规则 10）：`image:` 行可用 `${<NAME>_VERSION:-<缺省 tag>}`，该键写进**依赖自己的** `.env`，仍不进本文件。
 - 密钥**不进** `docker/deploy.env`（它进版本控制，模板为 `docker/deploy.env.example`）；密钥只进主服务 env
   （`docker/main/.env`，dev 是仓库根 `.env`）。
 - `docker/deploy.env.example` 是**生成物**（`bun run scripts/generate-env-example.ts`，与 `.env.example`、
   `docker/main/.env.example` 同批产出）；开关清单以脚本发现的目录为准，模板只负责把
   清单落成文件，不手工维护。
-  上面这份示例的开关名单与生成物一致（16 个：13 个目录开关 + `REDIS` / `S3` / `MYSQL`），核对方式：
+  上面这份示例的开关名单与生成物一致（17 个：14 个目录开关 + `REDIS` / `S3` / `MYSQL`），核对方式：
   `grep -E '^# FENIX_FEATURE_[A-Z0-9_]+=' docker/deploy.env.example | sort` 与上面的名单逐行相同。
 - **配置文件解析**（脚本行为，见 §9）：默认读与脚本同目录的 `docker/deploy.env`；它不存在而同目录恰好只有
   一份 `*.env` 时用那一份（部署方常按机器命名，如 `prod.env`）；有多份则报错列出、要求 `--config` 指定，不替你猜。
@@ -697,6 +707,7 @@ docker compose up -d
 | `docker/agent-sites/` | 已建（含 README 与三段式 `.env.example`），是后续依赖目录的样板；`docker/gotenberg/` 曾以同样形态存在，已按上表并入 `docker/ragflow/` |
 | `docker/sandbox-{peri,dsh,ccb,opencode}/` | `RCS_URL` / `RCS_SECRET` / `RCS_MACHINE_ID` 走 `.env.example`（同机启动由脚本注入 `RCS_URL`，独立部署填真实地址）；辅助服务一律留在项目网络，只有执行节点接入 `fenix-server`。**2026-10-08 起 peri / ccb / opencode 的 compose 只引用发布镜像**（`ghcr.io/huangpustar/fenixagent-sandbox-<name>:v0.7.0-beta.1-<name>`，与主服务同版本；本地自建见各目录 README）；`dsh` 是唯一例外——GHCR 上没有它的发布镜像，仍从源码构建（§13.15） |
 | `docker/{ragflow,litellm,hindsight,npm-registry,workflow}/` | 已补齐契约：固定镜像版本、端口回环绑定、网络接入清单、README；ragflow / litellm / hindsight 新增三段式 `.env.example`（npm-registry / workflow 无插值键，故不设） |
+| `docker/peri-fuse/` | **2026-10-10 新增**：LLM 观测（Langfuse 兼容实现，单容器 + 内嵌 Turso/SQLite，无 ClickHouse / Redis / S3）。消费方是 **Agent 进程**（本地执行在 `rcs` 容器内、沙箱节点在各自容器内），按 `LANGFUSE_BASE_URL=http://peri-fuse:23332` 直连上报；主服务只透传 `LANGFUSE_*` 三键、不做转接。宿主端口默认只绑回环，`.env` 暴露 `PERIFUSE_BIND_ADDR` / `PERIFUSE_HOST_PORT` / `PERIFUSE_SALT`；**版本键 `PERIFUSE_VERSION`**（覆盖 compose 的缺省 tag，§6 规则 10 的登记例外） |
 | `docker/opensandbox-{cluster,server,server-tunnel}/` | 已补齐契约：镜像固定为 `…/v0.2.0`（不再插值）、`opensandbox-server` 改名并补开关；**2026-10-08 起三者的 compose 都不声明 `build:`**，只引用发布 tag（本地自建命令见各目录 README，隧道目录不再需要在 server 侧打标） |
 
 ### 12.2 迁移阶段（每阶段独立可验证）

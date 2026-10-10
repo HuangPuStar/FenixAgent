@@ -1,0 +1,49 @@
+# docker/peri-fuse/ —— LLM 观测服务（Langfuse 兼容实现，Agent 的 Trace 落这里）
+# 权威文档：docs/operations/docker-topology.md §6（依赖目录契约）
+#
+# 独立项目启动：
+#   cp docker/peri-fuse/.env.example docker/peri-fuse/.env
+#   docker compose -f docker/peri-fuse/docker-compose.yml up -d
+# 随主服务一键启动：docker/deploy.env 里 FENIX_FEATURE_PERI_FUSE=true。
+#
+# 网络：接入 fenix-server——消费方是**Agent 进程**（本地执行在 rcs 容器内、沙箱执行节点在各自容器内，
+# 都按 LANGFUSE_BASE_URL=http://peri-fuse:23332 直连上报）。主服务只把 LANGFUSE_PUBLIC_KEY /
+# LANGFUSE_SECRET_KEY / LANGFUSE_BASE_URL 透传给 agent 进程（agent-config 的 buildLangfuseEnv()），
+# 自身不访问、无转接层。
+# 宿主端口默认只绑回环：管理员浏览器看控制台、宿主上的本地源码运行（bun run dev）连 localhost。
+#
+# 镜像版本：缺省值写在下行的插值里（上游 release tag 0.5.0），部署方可用本目录 .env 的 PERIFUSE_VERSION
+# 覆盖——这是「镜像 tag 写死、不做环境变量插值」契约的**登记例外**（缺省仍在版本控制里，git 里看到的
+# 就是要跑的版本；部署环境只在显式钉版本时参与，见 README「升级」与 docker-topology.md §6.10）。
+# GHCR 上另有 `latest` / `main` / 提交短哈希 tag——核对 2026-10-10，`latest` 指向比 0.5.0 新的提交构建，
+# 要跟主线就把缺省值换成对应提交 tag。
+
+services:
+
+    peri-fuse:
+        image: ghcr.io/konghayao/peri-fuse:${PERIFUSE_VERSION:-0.5.0}
+        container_name: fenix-peri-fuse
+        restart: unless-stopped
+        networks:
+            - fenix-server
+        ports:
+            # 宿主发布地址与端口由本目录 .env 覆盖（PERIFUSE_BIND_ADDR / PERIFUSE_HOST_PORT）：
+            # 默认只绑回环，给本机浏览器与宿主上的 Agent 用；容器之间走 fenix-server 的 23332。
+            # Agent 在别的机器时按 README「容器内地址 vs 宿主地址」放开绑定地址。
+            # 容器内端口固定 23332（镜像 LITE_SERVER_PORT 的默认值），不插值宿主同名键（契约 §8.4）。
+            - "${PERIFUSE_BIND_ADDR:-127.0.0.1}:${PERIFUSE_HOST_PORT:-23332}:23332"
+        environment:
+            # 单容器模式：数据落内嵌 Turso/SQLite，无需 ClickHouse / Redis / S3。
+            LANGFUSE_MODE: lite
+            LITE_SERVER_PORT: "23332"
+            # API key 哈希盐（密钥）：留空则首次启动自动生成并持久化到容器内 /app/data/.salt。
+            # 键名加前缀，避免与宿主机上无关的 SALT 同名碰撞（契约 §8.4 的同一考虑）。
+            SALT: ${PERIFUSE_SALT:-}
+        volumes:
+            # 数据一律 bind 到本文件同级的 ./data（契约 §6.5：禁止命名卷）：三份 .turso.db 与 .salt
+            # 都在这里，随交付面搬迁/备份，升级镜像不丢数据。
+            - ./data:/app/data
+
+networks:
+    fenix-server:
+        external: true

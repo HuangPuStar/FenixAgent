@@ -201,7 +201,7 @@ export const moduleManifest = {
       secret: false,
       restartRequired: true,
       description:
-        "自托管 Langfuse 的基址。透传路径同 LANGFUSE_PUBLIC_KEY；未配置则不注入，此时 peri 侧走其默认 SaaS 端点。",
+        "自托管 Langfuse（含 Peri-Fuse 等兼容实现，部署见 docker/peri-fuse/）的基址。透传路径同 LANGFUSE_PUBLIC_KEY；未配置则不注入，此时 peri 侧走其默认 SaaS 端点。",
     },
     {
       moduleId: "agent-config",
