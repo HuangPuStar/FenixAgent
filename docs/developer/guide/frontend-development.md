@@ -86,7 +86,7 @@ const search = useSearch({ strict: false }) as { runId?: string }; // 宿主未�
 包内页面读宿主动态段必须用带 `from` 的形式——此时**宿主的 route id 成为跨包契约**，改宿主路由要同步搜跨包引用。`useSearch({ strict: false })` 的断言**不做运行时校验**，新增查询参数要自己兜底默认值。
 
 ### 2.3 鉴权与重定向
-- **全局守卫只有一处**：`apps/web/src/routes/__root.tsx`，用 `useEffect` + `navigate` 实现（不是 `beforeLoad`）——会话未就绪渲染 spinner；未登录且非 `/login` 非 `/admin` 渲染 `null` 并跳 `/login`；已登录访问 `/login` 跳 `/agent`。
+- **全局守卫只有一处**：`apps/web/src/routes/__root.tsx`，用 `useEffect` + `navigate` 实现（不是 `beforeLoad`），决策表在 `apps/web/src/shell/session-guard.ts`（有单测）——会话未就绪渲染 spinner；疑似未登录（非 `/login` 非 `/admin`）先延迟复核一次会话再跳 `/login`（复核期间渲染 spinner），复核命中会话则不跳；已登录访问 `/login` 跳 `/agent`。**两个跳转一律 `replace`**：会话判定在「有/无」之间抖动时（如浏览器存量 cookie），即时跳转会让两侧互跳成 `/ctrl/login ↔ /ctrl/agent` 死循环——复核是挡住单次 null 的闸门，不得删。
 - `/admin` **豁免 better-auth 会话**，由页面内 `AdminKeyGate`（`@fenix/ui-components/config/AdminKeyGate` 配 `@fenix/web-runtime/hooks/use-admin-key-gate`）把关（见 §6.3）。
 - 路由壳内的重定向一律用 `beforeLoad` + `throw redirect`。
 
@@ -129,7 +129,7 @@ const search = useSearch({ strict: false }) as { runId?: string }; // 宿主未�
 装配在 `apps/web/src/routes/__root.tsx`，**是四分支条件树，不是一条线形链**：
 
 - 会话加载中 → `<ThemeProvider>` + spinner
-- 未登录、非 `/login` 非 `/admin` → `null`（靠 §2.3 的 effect 跳转）
+- 疑似未登录、非 `/login` 非 `/admin` → `<ThemeProvider>` + spinner（会话复核中，见 §2.3；复核为空后由守卫 effect 跳 `/login`）
 - 未登录、`/login` 或 `/admin` → `<ThemeProvider><Outlet /></ThemeProvider>`——**无 OrgProvider、无 Toaster**
 - 已登录 → `<ThemeProvider><OrgProvider><Outlet /><Toaster richColors closeButton position="top-right" /></OrgProvider></ThemeProvider>`
 

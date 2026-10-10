@@ -1,15 +1,16 @@
-import { OrgProvider, useSession } from "@fenix/identity/web";
+import { authClient, OrgProvider, useSession } from "@fenix/identity/web";
 import { ThemeProvider } from "@fenix/ui-components/lib/theme";
 import { ErrorFallback } from "@fenix/ui-components/ui/error-fallback";
 import { Spinner } from "@fenix/ui-components/ui/spinner";
 import { createRootRoute, Outlet, useNavigate, useRouterState } from "@tanstack/react-router";
-import { useEffect } from "react";
+import { useEffect, useRef, useState } from "react";
 import { ErrorBoundary, type FallbackProps } from "react-error-boundary";
 import { useTranslation } from "react-i18next";
 import { Toaster } from "sonner";
 import { ErrorPage } from "@/src/components/error-page";
 import { AssemblyCapabilitiesProvider } from "@/src/shell/AssemblyCapabilitiesProvider";
 import { AssemblyRouteGate } from "@/src/shell/AssemblyRouteGate";
+import { decideSessionGuard, SESSION_NULL_VERIFY_DELAY_MS } from "@/src/shell/session-guard";
 
 // 根布局边界（§7.1 放置矩阵第 1 行）：整个应用的兜底——`RootComponent` 四个分支（会话加载中 /
 // 未登录直出 / 未登录壳 / 主壳）里任何没被下级边界接住的渲染异常都在这里收口，不再整页白屏。
@@ -34,23 +35,52 @@ function RootErrorFallback({ resetErrorBoundary }: FallbackProps) {
 }
 
 function RootComponent() {
-  const { data: session, isPending } = useSession();
+  const { data: session, isPending, refetch } = useSession();
   const navigate = useNavigate();
   const pathname = useRouterState({ select: (s) => s.location.pathname });
   const { t } = useTranslation("common");
   // /admin 观察面板独立于 better-auth 会话体系：无 session 也可访问，
   // 由页面内 AdminKeyGate（共享组件库）把关（docs/arch/21 §5），不触发登录跳转。
   const isAdminPath = pathname.startsWith("/admin");
+  // 「疑似未登录」的复核状态：置位后复核仍为空才跳登录页（决策表与动机见 shell/session-guard）。
+  const verifiedNullRef = useRef(false);
+  // 复核确认无会话后会话 atom 不变，靠它触发下一轮决策去执行跳转。
+  const [verifyTick, setVerifyTick] = useState(0);
 
   useEffect(() => {
-    if (isPending) return;
-    if (!session && pathname !== "/login" && !isAdminPath) {
-      void navigate({ to: "/login" });
+    const action = decideSessionGuard({
+      hasSession: Boolean(session),
+      isPending,
+      pathname,
+      isAdminPath,
+      verifiedNull: verifiedNullRef.current,
+    });
+    // 会话恢复或落到两个豁免面（登录页 / 管理面）后，为下一轮「疑似未登录」重新开始复核；
+    // 复核进行中的 isPending 刻意不重置，否则复核会把自己抹掉、退化成每秒一次的复核循环。
+    if (session || pathname === "/login" || isAdminPath) verifiedNullRef.current = false;
+    if (action === "to-agent") {
+      void navigate({ to: "/agent", replace: true });
+      return;
     }
-    if (session && pathname === "/login") {
-      void navigate({ to: "/agent" });
+    if (action === "to-login") {
+      void navigate({ to: "/login", replace: true });
+      return;
     }
-  }, [session, isPending, pathname, navigate, isAdminPath]);
+    if (action !== "verify") return;
+    // 复核：延迟后主动再问一次会话，仍为空才在下一轮决策里跳登录页（此时置位 verifiedNull）。
+    const timer = setTimeout(() => {
+      verifiedNullRef.current = true;
+      void authClient
+        .getSession()
+        .then((result) => {
+          // 会话其实还在（瞬时抖动）：刷新全局会话状态让页面回到正常分支，不发生跳转。
+          if (result?.data) void refetch();
+          else setVerifyTick((tick) => tick + 1);
+        })
+        .catch(() => setVerifyTick((tick) => tick + 1));
+    }, SESSION_NULL_VERIFY_DELAY_MS);
+    return () => clearTimeout(timer);
+  }, [session, isPending, pathname, navigate, isAdminPath, refetch, verifyTick]);
 
   if (isPending) {
     return (
@@ -60,8 +90,13 @@ function RootComponent() {
     );
   }
 
+  // 疑似未登录：复核结束前渲染加载态（不再白屏），复核仍为空时由上面的守卫跳登录页。
   if (!session && pathname !== "/login" && !isAdminPath) {
-    return null;
+    return (
+      <ThemeProvider>
+        <Spinner variant="screen" size="lg" label={t("connecting")} className="gap-4" />
+      </ThemeProvider>
+    );
   }
 
   if (!session) {
