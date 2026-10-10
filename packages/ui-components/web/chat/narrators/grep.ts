@@ -15,7 +15,7 @@
  */
 
 import { Search } from "lucide-react";
-import { truncate } from "../lib/tool-call-utils";
+import { truncate } from "../../lib/format";
 import { compactDetailValue } from "./helpers";
 import type { ToolNarrator } from "./types";
 

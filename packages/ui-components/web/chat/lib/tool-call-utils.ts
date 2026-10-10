@@ -3,13 +3,15 @@
  *
  * 来源：`packages/agent-runtime/web/components/chat/tool-call-utils.ts`（旧路径，已于 2026-09-21 由 f2741a82d 删除） 逐字复制
  * `CardStyle` / `CARD_STYLES` / `cardKindToStyle` / `supportsFilePreview` / `KIND_LABELS` /
- * `simplifyToolName` / `kindLabel` / `truncate` / `isHindsightTool` / `formatOutput`。
+ * `simplifyToolName` / `kindLabel` / `isHindsightTool` / `formatOutput`。
  *
  * 纯化改动点：
  * - 类型改为从包内 `../types` 导入（不引 `@/src/lib/types`）。
  * - 色值、映射表、匹配分支与源逐字一致，未做 token 化。
+ * - `truncate` 于 2026-10-10 迁到 `web/lib/format.ts`（与 trace 面板的同名实现合并成一份），本模块改为引用。
  */
 
+import { truncate } from "../../lib/format";
 import type { ToolCallData, ToolCardKind } from "../types";
 
 // =============================================================================
@@ -171,16 +173,6 @@ export function kindLabel(kind: ToolCardKind): string {
 // =============================================================================
 // 工具函数
 // =============================================================================
-
-/**
- * 截断字符串，超长加省略号。
- *
- * 全包唯一的实现（2026-09-22 前端去重）：`chat/narrators/helpers.ts` 曾逐字复制一份，
- * 两份各自演化会让同一条文案在两处截断长度不一致，故收敛到此处，narrator 侧直接引用。
- */
-export function truncate(str: string, max: number): string {
-  return str.length > max ? `${str.slice(0, max)}…` : str;
-}
 
 /** 判断是否为 hindsight 工具（HindsightToolCard 用此函数过滤）。复制自 `packages/agent-runtime/web/components/chat/tool-call-utils.ts`（旧路径，已于 2026-09-21 由 f2741a82d 删除）。 */
 export function isHindsightTool(title: string): boolean {

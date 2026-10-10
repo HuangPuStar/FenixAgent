@@ -13,7 +13,7 @@
  */
 
 import { Terminal } from "lucide-react";
-import { truncate } from "../lib/tool-call-utils";
+import { truncate } from "../../lib/format";
 import type { ToolNarrator } from "./types";
 
 export const bashNarrator: ToolNarrator = {

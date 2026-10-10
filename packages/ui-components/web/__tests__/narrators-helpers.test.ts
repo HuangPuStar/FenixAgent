@@ -16,7 +16,7 @@ import {
  * 所有用例平移到包内同名实现（该实现为源文件逐字复制），断言与中文意图注释均保持不变。
  *
  * 测试范围：本模块导出的工具函数全覆盖。
- * `truncate` 已收敛到 `../chat/lib/tool-call-utils`，其用例见 `tool-call-utils-pure.test.tsx`。
+ * `truncate` 是 `../lib/format` 的展示原语，其用例见 `format.test.ts`。
  * 不使用 mock（纯函数），遵循前端测试规范（参考 config-helpers.test.ts）。
  * 全程无 DOM / i18n 依赖（被测模块只 import 包内纯逻辑），因此不引入 happy-dom 引导。
  */

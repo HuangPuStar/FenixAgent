@@ -7,7 +7,6 @@ import {
   kindLabel,
   simplifyToolName,
   supportsFilePreview,
-  truncate,
 } from "../chat/lib/tool-call-utils";
 import type { ToolCallData, ToolCardKind } from "../chat/types";
 
@@ -17,7 +16,8 @@ import type { ToolCallData, ToolCardKind } from "../chat/types";
  * 来源：`packages/agent-runtime/web/__tests__/tool-call-utils-pure.test.tsx` 逐字迁移
  * （CE 阶段 2 §1.6 T6c1：旧聊天实现整体退场，用例随实现迁入 owner 包）。
  * 导入路径按 A→B 表改写：`../components/chat/tool-call-utils` → `../chat/lib/tool-call-utils`、
- * `../lib/types` → `../chat/types`；用例名、断言与每个 test 上方的中文意图注释逐字保留。
+ * `../lib/types` → `../chat/types`；用例名、断言与每个 test 上方的中文意图注释逐字保留
+ * （例外：`truncate` 的两条用例随实现于 2026-10-10 迁入 `format.test.ts`）。
  *
  * 全程无 DOM / i18n / 宿主依赖（被测模块只 import 包内纯逻辑与纯类型），
  * 因此不引入 happy-dom 引导，也不做文案断言。
@@ -111,17 +111,6 @@ describe("tool-call-utils", () => {
   test("kindLabel 返回已知标签和 unknown 空标签", () => {
     expect(kindLabel("question")).toBe("Question");
     expect(kindLabel("unknown")).toBe("");
-  });
-
-  // 截断阈值内及恰好阈值的内容必须完整保留，避免无谓省略。
-  test("短文本和边界长度文本不截断", () => {
-    expect(truncate("abc", 3)).toBe("abc");
-    expect(truncate("ab", 3)).toBe("ab");
-  });
-
-  // 超过阈值的内容要截断并追加单字符省略号，限制卡片输出尺寸。
-  test("超长文本截断并追加省略号", () => {
-    expect(truncate("abcd", 3)).toBe("abc…");
   });
 
   // Hindsight 工具判断应忽略大小写，保证不同引擎的命名都能被筛选。
