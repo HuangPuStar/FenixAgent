@@ -96,6 +96,10 @@ beforeAll(() => {
 afterAll(async () => {
   upstreamServer?.stop(true);
   upstreamServer = null;
+  // 库不可达时整组用例被 `describe.skipIf` 跳过、数据层从未装配：清理必须一并跳过，否则 `cleanupTestRows()`
+  // 里的 `database()` 会抛错，把「显式跳过」变成退出码 1 的硬失败（同目录其余控制面用例的收尾都是这个口径，
+  // 例如 `workflow-console-audit.test.ts`）。库可用时行为与从前完全一致。
+  if (!databaseReachable) return;
   await cleanupTestRows();
   await closeTestPool();
 });
