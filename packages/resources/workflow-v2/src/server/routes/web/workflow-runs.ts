@@ -29,7 +29,8 @@ import { WebErrSchema, WebOkSchema } from "@fenix/platform-sdk";
 import { Elysia } from "elysia";
 import * as z from "zod/v4";
 import { callUpstream } from "../../services/upstream-client";
-import { findWorkflowById, listWorkflows } from "../../services/workflow-registry";
+import { findWorkflowById, findWorkflowByUpstreamId, listWorkflows } from "../../services/workflow-registry";
+import { fetchWorkflowRunIo } from "../../services/workflow-run-io";
 import { fetchWorkflowRunRecords, type WorkflowRunTarget } from "../../services/workflow-run-records";
 import type { WorkflowV2RouteDependencies } from "../dependencies";
 import {
@@ -59,6 +60,30 @@ const RunRecordsQuerySchema = z.object({
   /** 本地主键；缺省＝全部工作流（组织内前若干个）。 */
   workflowId: z.string().min(1).optional(),
 });
+
+/** 出入参数端点的路径参数：目标运行的 execute id（上游 `workflow_execution.id` 的字符串形态）。 */
+const RunIoParamsSchema = z.object({
+  executeId: z.string().min(1),
+});
+
+const RunIoQuerySchema = z.object({
+  /**
+   * **上游 workflow ID**（不是本地主键）：运行记录条目里的 `workflowId` 即此值。
+   *
+   * 与清单端点的 `workflowId`（本地主键）是两套标识，刻意用不同参数名避免误用：运行记录里只有上游 ID，
+   * 服务端据此做归属校验（`findWorkflowByUpstreamId`，跨组织与不存在同形 404）。
+   */
+  upstreamWorkflowId: z.string().min(1),
+});
+
+const RunIoResponseSchema = WebOkSchema(
+  z.object({
+    /** 运行输入（Start 节点的 `input`，JSON 序列化字符串）；上游缺失时为 null。 */
+    input: z.string().nullable(),
+    /** 运行输出（End 节点的 `output`，JSON 序列化字符串）；上游缺失时为 null。 */
+    output: z.string().nullable(),
+  }),
+);
 
 /**
  * 运行记录条目：字段与服务层 `WorkflowRunRecord` 一一对应（上游缺失的一律 null，不省略键）。
@@ -195,6 +220,86 @@ export function createWebWorkflowV2RunRoutes(
           "按开始时间倒序合并、超上屏上界裁剪），窗口固定最近 7 天；平台侧不保存运行记录。上游无记录时 items 为" +
           "空数组（合法空态，不是失败）；上游失败按统一映射（502/503/504），任一目标失败即整批失败。" +
           "platformRuns 是平台触发的运行（本地审计；画布内的试运行不经过平台，不在其中）。",
+      },
+    },
+  );
+
+  /**
+   * `GET /web/workflow-v2/run-records/:executeId/io` — 单次运行的出入参数（运行记录行的懒加载详情）。
+   *
+   * 清单的 `list_spans` **不返回** input/output（上游契约如此），所以出入参数只能按 execute id 单独取：上游
+   * `get_process` 的节点结果里，运行输入是 Start 节点的 `input`、运行输出是 End 节点的 `output`（映射口径见
+   * `services/workflow-run-io.ts` 文件头）。按行懒加载——一次展开一次调用，不给清单加 N 次上游查询。
+   *
+   * 归属校验按上游 ID（`findWorkflowByUpstreamId`）：运行记录条目里带的就是它。已知边界：上游按 execute id
+   * 查询时不校验「该运行属于这个 workflow」（实测：workflow_id 不存在也回 `code=0` 并原样回显参数），若调用方
+   * 构造「本组织 workflowId + 他组织 executeId」，上游会照常返回——execute id 只在本组织运行记录里可见，且
+   * 归属校验仍拦下未登记的 workflow，风险受限（登记与移除条件见 `docs/design/2026-10-10-workflow-v2-run-io.md` §5）。
+   */
+  app.get(
+    "/run-records/:executeId/io",
+    async ({ store, query, params, status }) => {
+      const actor = readActor(store);
+      if (!actor) return status(401, failBody(UNAUTHENTICATED_FAILURE));
+      const resolution = await resolveBinding(actor.organizationId);
+      if (resolution.kind !== "ready") {
+        const failure = bindingFailure(resolution.kind);
+        return status(failure.httpStatus, failBody(failure.body));
+      }
+
+      const record = await findWorkflowByUpstreamId(actor.organizationId, query.upstreamWorkflowId);
+      if (!record) return status(404, failBody(NOT_FOUND_FAILURE));
+
+      let outcome: Awaited<ReturnType<typeof fetchWorkflowRunIo>>;
+      try {
+        outcome = await fetchWorkflowRunIo(
+          {
+            upstreamWorkflowId: record.upstreamWorkflowId,
+            executeId: params.executeId,
+            platformSpaceId: resolution.binding.platformSpaceId,
+          },
+          { callUpstream: upstream },
+        );
+      } catch (error) {
+        const failure = upstreamFailure(
+          "读取运行出入参数",
+          { thrown: error },
+          { organizationId: actor.organizationId, upstreamWorkflowId: record.upstreamWorkflowId },
+        );
+        return status(failure.httpStatus, failBody(failure.body));
+      }
+      if (!outcome.ok) {
+        const failure = upstreamFailure(
+          "读取运行出入参数",
+          { result: outcome.result },
+          { organizationId: actor.organizationId, upstreamWorkflowId: record.upstreamWorkflowId },
+        );
+        return status(failure.httpStatus, failBody(failure.body));
+      }
+
+      return { success: true as const, data: outcome.io };
+    },
+    {
+      sessionAuth: true,
+      params: RunIoParamsSchema,
+      query: RunIoQuerySchema,
+      response: {
+        200: RunIoResponseSchema,
+        401: WebErrSchema,
+        404: WebErrSchema,
+        409: WebErrSchema,
+        500: WebErrSchema,
+        502: WebErrSchema,
+        503: WebErrSchema,
+        504: WebErrSchema,
+      },
+      detail: {
+        tags: ["Workflow V2"],
+        summary: "读取单次运行的出入参数",
+        description:
+          "返回 { input, output }：运行输入取上游 `get_process` 的 Start 节点 `input`，运行输出取 End 节点的 " +
+          "`output`（缺失时为 null，不造默认值）。`upstreamWorkflowId` 是运行记录条目里的工作流 ID（上游 ID），" +
+          "归属由服务端按本地注册表校验（跨组织与不存在同形 404）。上游失败按统一映射（502/503/504）。",
       },
     },
   );

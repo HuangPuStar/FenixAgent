@@ -115,3 +115,31 @@ export function fetchRunRecords(
     signal: options.signal,
   });
 }
+
+/**
+ * 单次运行的出入参数（服务端 `RunIoResponseSchema` 逐字段对应）。
+ *
+ * 上游没有运行级的 input/output 字段：`input` 是 Start 节点的输入、`output` 是 End 节点的输出（映射口径见
+ * 服务端 `services/workflow-run-io.ts`）；两者都是 JSON 序列化字符串，格式化展示属视图层。
+ */
+export interface WorkflowV2RunIo {
+  readonly input: string | null;
+  readonly output: string | null;
+}
+
+/**
+ * 读取单次运行的出入参数（运行记录行的展开详情）。
+ *
+ * `upstreamWorkflowId` 取记录条目里的 `WorkflowV2RunRecord.workflowId`——**上游 ID**，与清单筛选用的本地主键
+ * 是两套标识；服务端按它做归属校验（跨组织与不存在同形 404）。失败码与清单同表，文案由 UI 按码取字典。
+ */
+export function fetchRunIo(
+  query: { readonly upstreamWorkflowId: string; readonly executeId: string },
+  options: WorkflowRunRequestOptions = {},
+): Promise<ApiResponse<WorkflowV2RunIo>> {
+  return request<WorkflowV2RunIo>(`${RUN_RECORDS_PATH}/${encodeURIComponent(query.executeId)}/io`, {
+    method: "GET",
+    query: { upstreamWorkflowId: query.upstreamWorkflowId },
+    signal: options.signal,
+  });
+}

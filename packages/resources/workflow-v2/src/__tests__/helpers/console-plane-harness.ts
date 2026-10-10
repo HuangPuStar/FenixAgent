@@ -259,6 +259,13 @@ export const readBody = async (response: Response) =>
       truncated?: boolean;
       /** 上游可能还有更早的运行（页满推断，见服务层 `WorkflowRunRecords.hasMoreUpstream`）。 */
       hasMoreUpstream?: boolean;
+      /**
+       * 单次运行的出入参数（`GET /run-records/:executeId/io`，与 `RunIoResponseSchema` 逐字段对应）。
+       *
+       * 两段都是 JSON 序列化字符串；上游缺对应节点时为 null（服务端不猜、不造默认值）。
+       */
+      input?: string | null;
+      output?: string | null;
     };
     error?: { code: string; message: string };
   };
