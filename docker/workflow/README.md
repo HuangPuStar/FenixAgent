@@ -1,6 +1,6 @@
 # Workflow V2 Docker 部署
 
-上游仓库：[KonghaYao/workflow-studio](https://github.com/KonghaYao/workflow-studio)。核对日期：2026-10-08；本次交付标签 `sha-af8f16c` 对应 `af8f16c51139023876ef67d82f3f12fd2002f9bc`（取自镜像 label `org.opencontainers.image.revision`；上一版基线是 `6aaf4c039e953ec1b00bb741512c690ab400216e`）。
+上游仓库：[KonghaYao/workflow-studio](https://github.com/KonghaYao/workflow-studio)。核对日期：2026-10-10；本次交付标签 `sha-cd796ef` 对应 `cd796ef91eae2fd77989eef868874104f6933b37`（取自镜像 label `org.opencontainers.image.revision`；上一版基线是 `af8f16c51139023876ef67d82f3f12fd2002f9bc`）。
 
 这里部署的是 **Workflow V2 的独立上游服务**，不是本仓库旧自研 workflow engine。平台镜像不会包含上游；必须分别交付上游后端 / 画布与 FenixAgent。旧工作流定义不会自动导入 V2。
 
@@ -90,7 +90,7 @@ ghcr.io/konghayao/workflow-studio-web-canvas:<tag>    # 画布子路径变体，
 
 `-web-canvas` 与 `-web` 同源码，只差构建参数 `WORKFLOW_CANVAS_BASE=/workflow-canvas/`（同时决定资源前缀与 router basename）。**它的契约是**：镜像内 nginx 只在根路径 `/` 提供 SPA、`dist` 未下沉，也没有 `/workflow-canvas/` location、不做 SPA 回退——`/workflow-canvas/<rest>` 的前缀剥离与 SPA 回退由消费方负责（本栈见 §2）。两个 web 变体都只是 nginx + 静态产物，所以上游 `docker/nginx/nginx.conf` 仍从上游目录挂载。
 
-模板标签 `sha-af8f16c` 对应本文核对的源码基线，但**源码提交存在不保证对应镜像已成功发布**；必须通过后续 `pull` 验证。生产升级应固定新版本，确认两侧契约与画布变体再切换，不直接追随 `latest`。
+模板标签 `sha-cd796ef` 对应本文核对的源码基线；镜像已在 GHCR 发布（2026-10-10 构建，tags list 与 manifest 已核对可读，未执行 pull 与容器运行验证）。生产升级应固定新版本，确认两侧契约与画布变体再切换，不直接追随 `latest`。
 
 ## 2. 准备上游源码（配置与初始化资产）
 
@@ -100,7 +100,7 @@ ghcr.io/konghayao/workflow-studio-web-canvas:<tag>    # 画布子路径变体，
 
 ```bash
 git clone https://github.com/KonghaYao/workflow-studio.git /opt/workflow-studio
-git -C /opt/workflow-studio checkout --detach af8f16c51139023876ef67d82f3f12fd2002f9bc
+git -C /opt/workflow-studio checkout --detach cd796ef91eae2fd77989eef868874104f6933b37
 ```
 
 不再需要 Node / Rush，也不再需要 `make fe` 与 `frontend/apps/coze-studio/dist`：那套「clone 源码 + 构建 + 挂载 dist」已被镜像替换（旧产物目录留着无害，但没人再挂载它）。
@@ -165,7 +165,7 @@ export WORKFLOW_STUDIO_DIR=/opt/workflow-studio
 | 变量 | 模板值 | 用途 |
 | --- | --- | --- |
 | `WORKFLOW_STUDIO_DIR` | `/opt/workflow-studio` | 上游源码、配置与持久化数据所在根目录（画布产物不在宿主机上，在镜像里） |
-| `WORKFLOW_STUDIO_TAG` | `sha-af8f16c` | 上游 server 与画布变体（`-web-canvas`）使用相同版本标签 |
+| `WORKFLOW_STUDIO_TAG` | `sha-cd796ef` | 上游 server 与画布变体（`-web-canvas`）使用相同版本标签 |
 | `WEB_LISTEN_ADDR` | `127.0.0.1:18080` | 宿主诊断入口绑定地址与端口，默认不开放公网；覆盖上游同名配置 |
 
 先起共享基础设施，再起本目录（**顺序不变量**：共享 mysql 与 rustfs 都在主服务项目里，本目录只引用它们所在的网络）：
@@ -497,4 +497,4 @@ docker compose -f docker/ragflow/docker-compose.yml exec ragflow getent hosts my
 - 对象存储收敛的依据：上游 `docker/docker-compose.yml` 的 minio 服务与它的 `mc` 初始化、`backend/infra/storage/impl/minio/minio.go` 的 `createBucketIfNeed`（固定用 `cn-north-1` 建桶——所以本栈把建桶前移到 `s3-init`）、以及 `docker/common/docker-compose.yml` 里 rustfs 的镜像 tag / 凭据键 / 健康检查路径。
 - `docs/arch/25-workflow-v2.md`、`docs/design/2026-09-29-workflow-v2-interface-freeze.md`、`docs/operations/upgrade.md`。
 
-本文提供可校验的部署配置；不保证 GitHub 镜像发布已成功，也不宣称本次已实际拉取镜像、启动容器或完成生产联调。本文核对日期 2026-10-08；本次交付标签 `sha-af8f16c` 对应 `af8f16c51139023876ef67d82f3f12fd2002f9bc`（上一版基线是 `6aaf4c039e953ec1b00bb741512c690ab400216e`）。
+本文提供可校验的部署配置；本次核对了 GHCR 的 tags list 与 manifest（镜像存在、revision 与源码基线一致），但不宣称已实际拉取镜像、启动容器或完成生产联调。本文核对日期 2026-10-10；本次交付标签 `sha-cd796ef` 对应 `cd796ef91eae2fd77989eef868874104f6933b37`（上一版基线是 `af8f16c51139023876ef67d82f3f12fd2002f9bc`）。
