@@ -1,5 +1,15 @@
 export type KnowledgeBaseStatus = "empty" | "indexing" | "ready" | "error";
-export type KnowledgeResourceStatus = "pending" | "processing" | "ready" | "error";
+
+/**
+ * 知识资源状态。
+ *
+ * `empty`（无可用内容）与 `ready` 的区分来自 AOS-BUG-003：远端解析任务结束（run=DONE）**不等于**
+ * 文档可用于检索。RAGFlow 对结构损坏的文件会以 `No chunk built from <file>` 收尾并把 run 置为 DONE
+ * （`chunk_count = 0`）；若照旧映射成 `ready`，界面会显示「就绪 / 0 分块」，用户误以为已入库而实际
+ * 检索不到任何内容。故解析结束且分块数为 0 记为 `empty`，与「解析失败」（`error`）分开表达，
+ * 让前端能给出「重新上传 / 检查文件」的具体建议。
+ */
+export type KnowledgeResourceStatus = "pending" | "processing" | "ready" | "error" | "empty";
 
 /** 知识库解析方法：内置分块器或自定义 pipeline */
 export type KnowledgeParseMethod = "builtin" | "pipeline";

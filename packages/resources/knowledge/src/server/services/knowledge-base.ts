@@ -644,6 +644,13 @@ export async function listKnowledgeBaseResources(knowledgeBaseId: string, limit?
   return knowledgeResourceRepo.listByKnowledgeBase(knowledgeBaseId, limit);
 }
 
+/**
+ * 按资源行重算知识库状态。
+ *
+ * 三类计数之外的资源状态（当前只有 `empty`：解析结束但零分块）**不参与**判定：它既不宣告知识库
+ * 就绪——否则知识库会跟着误导用户「可检索」，也不把知识库标成 `error`——单份损坏文件不该让整个
+ * 知识库报错。只由 `empty` 资源构成的知识库因此落在默认值 `empty`（无可用内容）。
+ */
 export async function upsertKnowledgeBaseStatusFromResources(knowledgeBaseId: string) {
   const summary = await knowledgeResourceRepo.getStatusSummary(knowledgeBaseId);
 

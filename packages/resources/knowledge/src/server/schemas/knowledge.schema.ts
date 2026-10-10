@@ -3,10 +3,15 @@ import * as z from "zod/v4";
 /** 知识库状态 */
 export const KnowledgeBaseStatusSchema = z.enum(["empty", "indexing", "ready", "error"]).describe("知识库状态。");
 
-/** 知识资源状态 */
+/**
+ * 知识资源状态。
+ *
+ * `empty` = 解析任务已结束但未产出任何分块（如文件损坏），文档不可用于检索；与语义上的「解析失败」
+ * `error` 分开，便于前端给出不同的处理建议（重新上传 vs 重新解析）。
+ */
 export const KnowledgeResourceStatusSchema = z
-  .enum(["pending", "processing", "ready", "error"])
-  .describe("知识资源处理状态。");
+  .enum(["pending", "processing", "ready", "error", "empty"])
+  .describe("知识资源处理状态：empty 表示解析结束但无可用内容。");
 
 /** 知识资源项 */
 export const KnowledgeResourceItemSchema = z.object({

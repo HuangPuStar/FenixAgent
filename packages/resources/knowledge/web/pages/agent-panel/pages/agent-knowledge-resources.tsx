@@ -9,7 +9,7 @@ import { ExternalLink, File, RefreshCw, Trash2, Upload } from "lucide-react";
 import type { RefObject } from "react";
 import { useTranslation } from "react-i18next";
 import type { KnowledgeResourceInfo } from "../../../types/knowledge";
-import { KB_STATUS_TONES, kbStatusLabel } from "./knowledge-status";
+import { kbStatusLabel, RESOURCE_STATUS_TONES, resourceStatusHintKey } from "./knowledge-status";
 
 interface AgentKnowledgeResourcesProps {
   resources: KnowledgeResourceInfo[];
@@ -132,28 +132,7 @@ export function AgentKnowledgeResources(props: AgentKnowledgeResourcesProps) {
                   {resource.chunkCount ?? "—"}
                 </TableCell>
                 <TableCell className={TABLE_CELL_CLASS}>
-                  {resource.runStatus === "RUNNING" && resource.parseProgress != null ? (
-                    // `before:absolute`：原 `AgentKnowledgeBasesPage.css` 的
-                    // `.knowledge-resource-progress::before { position: absolute }`（2026-09-28 第三波撤回；
-                    // 伪元素的内容 `content: ""` 仍留在该表——内容不是「挂类」能表达的对象）。
-                    <div className="knowledge-resource-progress flex min-w-27.5 items-center gap-1.75 before:absolute">
-                      <span
-                        className="knowledge-resource-progress__bar h-1.25 max-w-19.5 flex-1 rounded-full bg-blue-500"
-                        style={{ width: `${Math.round(resource.parseProgress * 100)}%` }}
-                      />
-                      <small className="text-3xs text-slate-500">{Math.round(resource.parseProgress * 100)}%</small>
-                    </div>
-                  ) : (
-                    // 状态胶囊此前是本包手写的 `.knowledge-resource-status.is-*` 色表（还带一份逐字
-                    // 相同的 `statusClass` 副本），改由库的 StatusBadge 承担配色；文案随之与详情头部
-                    // 同口径走字典（原先这里直接上屏后端原文 `ready`，中文界面里另一处写「就绪」）。
-                    <StatusBadge
-                      status={resource.status}
-                      label={kbStatusLabel(t, resource.status)}
-                      toneMap={KB_STATUS_TONES}
-                      indicator="dot"
-                    />
-                  )}
+                  <ResourceStatusCell resource={resource} />
                 </TableCell>
                 <TableCell className={`${TABLE_CELL_CLASS} text-center`}>
                   <Switch
@@ -176,7 +155,10 @@ export function AgentKnowledgeResources(props: AgentKnowledgeResourcesProps) {
                       <RefreshCw className={props.reparsingResourceId === resource.id ? "animate-spin" : ""} />
                       {t("reparse.btn")}
                     </Button>
-                    {resource.status === "ready" && (
+                    {/* 解析已结束（`ready` / `empty`）即可看源文件：`empty` 正是最需要打开原文件核对的
+                        时刻（提示里让用户「检查文件」），而预览取的是源文件本身（`/resources/:id/file`），
+                        与是否产出分块无关。`error` 维持原口径不给预览。 */}
+                    {(resource.status === "ready" || resource.status === "empty") && (
                       <Button
                         size="icon-sm"
                         variant="ghost"
@@ -206,5 +188,52 @@ export function AgentKnowledgeResources(props: AgentKnowledgeResourcesProps) {
         </Table>
       )}
     </section>
+  );
+}
+
+/**
+ * 资源状态单元格：解析中显示进度条，其余显示状态胶囊；不可检索的资源另补一行处理建议。
+ *
+ * 为什么单列成组件：调用点整行是 JSX 表达式体，要在这里多算一个「建议键」就得把近百行改成块体；
+ * 而这条分支本身自洽（一个资源状态 → 一种呈现），独立后渲染与文案都能各自加注释。
+ *
+ * 为什么要建议句（AOS-BUG-003）：文件损坏时远端仍以 run=DONE、零分块收尾，只给状态词（原先写「就绪」）
+ * 不足以让人发现文档其实检索不到；建议由状态推出（`resourceStatusHintKey`），把下一步动作说出来。
+ */
+function ResourceStatusCell({ resource }: { resource: KnowledgeResourceInfo }) {
+  const { t } = useTranslation(NS.KNOWLEDGE);
+
+  if (resource.runStatus === "RUNNING" && resource.parseProgress != null) {
+    return (
+      // `before:absolute`：原 `AgentKnowledgeBasesPage.css` 的
+      // `.knowledge-resource-progress::before { position: absolute }`（2026-09-28 第三波撤回；
+      // 伪元素的内容 `content: ""` 仍留在该表——内容不是「挂类」能表达的对象）。
+      <div className="knowledge-resource-progress flex min-w-27.5 items-center gap-1.75 before:absolute">
+        <span
+          className="knowledge-resource-progress__bar h-1.25 max-w-19.5 flex-1 rounded-full bg-blue-500"
+          style={{ width: `${Math.round(resource.parseProgress * 100)}%` }}
+        />
+        <small className="text-3xs text-slate-500">{Math.round(resource.parseProgress * 100)}%</small>
+      </div>
+    );
+  }
+
+  const hintKey = resourceStatusHintKey(resource.status);
+  return (
+    <div className="flex flex-col items-start gap-1">
+      {/* 状态胶囊此前是本包手写的 `.knowledge-resource-status.is-*` 色表（还带一份逐字
+          相同的 `statusClass` 副本），改由库的 StatusBadge 承担配色；文案随之与详情头部
+          同口径走字典（原先这里直接上屏后端原文 `ready`，中文界面里另一处写「就绪」）。
+          `title` 挂远端 progress_msg 原文：结论由胶囊与建议句给出，上游日志只在悬停时补诊断。 */}
+      <span title={resource.lastError ?? undefined}>
+        <StatusBadge
+          status={resource.status}
+          label={kbStatusLabel(t, resource.status)}
+          toneMap={RESOURCE_STATUS_TONES}
+          indicator="dot"
+        />
+      </span>
+      {hintKey && <span className="max-w-45 text-3xs leading-4 text-slate-500">{t(hintKey)}</span>}
+    </div>
   );
 }
