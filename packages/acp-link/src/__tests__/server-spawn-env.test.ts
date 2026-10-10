@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, spyOn, test } from "bun:test";
 import * as childProcess from "node:child_process";
+import { EventEmitter } from "node:events";
 import { PassThrough } from "node:stream";
 import { createAcpServer, type ServerConfig } from "../server.js";
 
@@ -27,14 +28,22 @@ class FakeWs {
 
 /** 假 Agent 子进程：只提供 handleConnect 读取的标准流与生命周期钩子。 */
 function createFakeProcess(): childProcess.ChildProcess {
-  return {
+  const proc = Object.assign(new EventEmitter(), {
     stdin: new PassThrough(),
     stdout: new PassThrough(),
     killed: false,
-    exitCode: null,
-    kill(): void {},
-    on(): void {},
-  } as unknown as childProcess.ChildProcess;
+    exitCode: null as number | null,
+    signalCode: null,
+    kill() {
+      return true;
+    },
+  });
+  proc.stdin.once("finish", () => {
+    proc.exitCode = 0;
+    proc.stdout.end();
+    proc.emit("exit", 0);
+  });
+  return proc as unknown as childProcess.ChildProcess;
 }
 
 const config: ServerConfig = {
@@ -50,7 +59,7 @@ const config: ServerConfig = {
 interface Harness {
   handlers: CapturedWebsocketHandlers;
   spawnCalls: Array<{ options: childProcess.SpawnOptions }>;
-  close(): void;
+  close(): Promise<void>;
 }
 
 /** 用假 serve + 假 spawn 拉起 server，返回可直接驱动 connect 帧的 harness。 */
@@ -106,7 +115,7 @@ describe("acp-link server spawn 环境白名单", () => {
       expect(env).not.toHaveProperty("RCS_API_KEYS");
       expect(env).not.toHaveProperty("RCS_SYSTEM_API_KEYS");
     } finally {
-      harness.close();
+      await harness.close();
       for (const [key, value] of Object.entries(previous)) {
         if (value === undefined) delete process.env[key];
         else process.env[key] = value;
@@ -128,7 +137,7 @@ describe("acp-link server spawn 环境白名单", () => {
       });
       expect(env.PATH).toBe(process.env.PATH);
     } finally {
-      harness.close();
+      await harness.close();
     }
   });
 });

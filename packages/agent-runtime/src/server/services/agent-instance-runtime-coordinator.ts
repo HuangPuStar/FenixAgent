@@ -301,7 +301,10 @@ export class AgentInstanceRuntimeCoordinator {
         } else {
           await this.adapter.stop(instance.id, generation - 1, signal);
         }
-        if (entry.generation === generation) entry.state = "stopped";
+        signal.throwIfAborted();
+        if (entry.generation !== generation) throw new Error("Runtime stop confirmation was superseded");
+        entry.state = "stopped";
+        entry.lastFailure = null;
         return;
       }
       if (operation === "ensure" && this.adapter.hasActiveRuntime?.(instance.id)) {

@@ -100,11 +100,5 @@ export function createPeriHandler(
       console.log(`[peri-handler] started: ${instanceId}`);
       return { capabilities };
     },
-
-    async stopInstance(state) {
-      if (state.process && !state.process.killed) {
-        state.process.kill("SIGTERM");
-      }
-    },
   };
 }

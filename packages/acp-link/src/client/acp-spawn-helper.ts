@@ -86,6 +86,7 @@ export async function spawnAcpAgent(
         pending.resolve({ outcome: "cancelled" });
       }
       pendingPermissions.clear();
+      elicitation.cancelAll();
       return true;
     }
     const pending = pendingPermissions.get(requestId);

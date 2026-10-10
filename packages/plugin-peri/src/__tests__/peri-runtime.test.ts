@@ -416,6 +416,18 @@ describe("peri-runtime 注入式生命周期", () => {
     expect(fakes.released).toEqual([]);
   });
 
+  // running 状态即使丢失 process/port 也不能直接成功，仍必须向 manager 请求事实确认。
+  test("活动实例句柄丢失仍执行停止确认", async () => {
+    const fakes = createFakes();
+    const runtime = createPeriRuntime(fakes.dependencies);
+    await start(runtime);
+    const state = runtime.getInstanceState("instance")!;
+    state.process = null;
+    state.port = null;
+    await runtime.stopInstance({ instanceId: "instance" });
+    expect(fakes.stops).toEqual(["instance"]);
+  });
+
   // 不同实例拥有独立端口与进程记录。
   test("多个实例隔离端口和进程", async () => {
     const fakes = createFakes();

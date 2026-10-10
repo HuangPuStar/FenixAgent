@@ -4,6 +4,7 @@ import { join } from "node:path";
 import type * as acp from "@agentclientprotocol/sdk";
 import { type AgentLaunchSpec, bindWorkspaceFiles } from "@fenix/plugin-sdk";
 import { type AcpDispatcher, type AcpSessionState, createAcpSessionState } from "../acp-dispatcher.js";
+import { stopAgentProcess } from "../stop-agent-process.js";
 import { registerWorkspace, unregisterWorkspace } from "./workspace-registry.js";
 
 // 四种引擎类型
@@ -164,16 +165,15 @@ export class InstanceManager {
       runtimeGeneration !== undefined &&
       (state.runtimeGeneration !== runtimeGeneration || state.serverEpoch !== serverEpoch)
     ) {
-      return;
+      throw new Error("Agent runtime fence mismatch; stop cannot be confirmed");
     }
 
+    // 先完成公共 ACP EOF 收尾，handler 不得抢先杀父进程而跳过派生进程清理。
+    await state.dispatcher?.handleMessage({ type: "cancel_pending_permissions" });
+    if (state.process) await stopAgentProcess(state.process);
     const handler = this.handlers.get(state.agentType);
     if (handler?.stopInstance) {
       await handler.stopInstance(state);
-    }
-
-    if (state.process && !state.process.killed) {
-      state.process.kill("SIGTERM");
     }
 
     if (state.launchSpec?.environmentId) {

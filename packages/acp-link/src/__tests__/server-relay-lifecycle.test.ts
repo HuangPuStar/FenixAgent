@@ -46,6 +46,7 @@ function createAgent(autoInitialize: boolean) {
     stdout,
     killed: false,
     exitCode: null as number | null,
+    signalCode: null,
     kill() {
       killCount += 1;
       this.killed = true;
@@ -55,6 +56,11 @@ function createAgent(autoInitialize: boolean) {
       this.emit("exit", 0);
       return true;
     },
+  });
+  stdin.once("finish", () => {
+    process.exitCode = 0;
+    stdout.end();
+    process.emit("exit", 0);
   });
   const respond = (id: number | string, result: unknown) => {
     stdout.write(`${JSON.stringify({ jsonrpc: "2.0", id, result })}\n`);
@@ -129,7 +135,7 @@ function createAgent(autoInitialize: boolean) {
   };
 }
 
-const handles: Array<{ close(): void }> = [];
+const handles: Array<{ close(): Promise<void> }> = [];
 const restoreSpies: Array<() => void> = [];
 
 function createHarness(autoInitialize = true) {
@@ -210,8 +216,8 @@ async function prompt(harness: ReturnType<typeof createHarness>, ws: FakeWs, id:
   expect(ws.messages.find((message) => message.id === id)).toMatchObject({ result: { stopReason: "end_turn" } });
 }
 
-afterEach(() => {
-  for (const handle of handles.splice(0)) handle.close();
+afterEach(async () => {
+  for (const handle of handles.splice(0)) await handle.close();
   for (const restore of restoreSpies.splice(0)) restore();
 });
 
@@ -374,9 +380,11 @@ describe("本地 Agent 实例与 relay 生命周期隔离", () => {
     await newSession(harness, ws);
     disconnect(harness, ws);
     expect(harness.agents[0]?.killCount).toBe(0);
-    harness.handle.close();
-    harness.handle.close();
-    expect(harness.agents[0]?.killCount).toBe(1);
+    const closing = harness.handle.close();
+    expect(harness.handle.close()).toBe(closing);
+    await closing;
+    expect(harness.agents[0]?.killCount).toBe(0);
+    expect(harness.agents[0]?.process.exitCode).toBe(0);
   });
 
   // 初始化中的旧页面关闭后，新 relay 应复用同一次启动，不能丢失初始化结果或再启动进程。
@@ -405,9 +413,9 @@ describe("本地 Agent 实例与 relay 生命周期隔离", () => {
     harness.handlers.open(ws);
     await harness.handlers.message(ws, JSON.stringify({ type: "connect" }));
     await waitUntil(() => (harness.agents[0]?.requests.length ?? 0) > 0);
-    harness.handle.close();
-    await Bun.sleep(1);
-    expect(harness.agents[0]?.killCount).toBe(1);
+    await harness.handle.close();
+    expect(harness.agents[0]?.killCount).toBe(0);
+    expect(harness.agents[0]?.process.exitCode).toBe(0);
     expect(
       ws.messages.some((message) => {
         const payload = message.payload as Record<string, unknown> | undefined;
@@ -430,7 +438,8 @@ describe("本地 Agent 实例与 relay 生命周期隔离", () => {
     harness.agents[0]?.failInitialization();
     await waitUntil(() => secondWs.messages.some((message) => message.type === "error"));
     expect(JSON.stringify(secondWs.messages)).not.toContain("sensitive upstream details");
-    expect(harness.agents[0]?.killCount).toBe(1);
+    expect(harness.agents[0]?.killCount).toBe(0);
+    expect(harness.agents[0]?.process.exitCode).toBe(0);
     const retry = send(harness, secondWs, { type: "connect" });
     await waitUntil(() => (harness.agents[1]?.requests.length ?? 0) > 0);
     harness.agents[1]?.initialize();
