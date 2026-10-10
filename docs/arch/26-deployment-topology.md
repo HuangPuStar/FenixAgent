@@ -16,7 +16,7 @@
 5. **一个开关对应一个目录**：`docker/deploy.env` 的 `FENIX_FEATURE_<NAME>` 决定依赖项目是否启动；未知开关是错误。
 6. **一键入口 `./docker/deploy.sh`**：`init` / `validate` / `up` / `deploy` / `down` / `ps` / `logs`，任意机器只需 Docker + bash + 一份配置。
 7. **数据一律 bind 挂载在各编排同级的 `./data/`**（不用命名卷）：备份 = 打包交付目录，搬迁 = 整目录拷走。
-8. **版本与身份写死在文件里**：镜像 tag 在各 compose 的 `image:` 行，Compose 项目名写死 `name:`，都不做环境变量插值。
+8. **版本与身份写死在文件里**：镜像 tag 在各 compose 的 `image:` 行，Compose 项目名写死 `name:`，都不做环境变量插值。唯一例外是**版本键**（2026-10-10 登记）：依赖目录可把 tag 写成 `${<NAME>_VERSION:-<缺省 tag>}`——缺省值仍在 compose（git 里看到的就是默认版本），覆盖只写在该目录自己的 `.env`，不进 `docker/deploy.env`；已登记 `docker/peri-fuse/` 的 `PERIFUSE_VERSION`。
 9. **发布顺序固定**：DDL 迁移 → 数据迁移 → 应用启动；主服务容器启动命令含 DDL 迁移，数据迁移由发布任务承担。
 10. **部署方式的差异只在「哪些目录出现在哪台机器」**：单机 = 全部目录一台机器；分离 = 主服务留平台机，执行节点 / OpenSandbox 目录放独立机器，跨机用宿主可达地址连接。
 
@@ -44,7 +44,7 @@
     ├── deploy.sh               # 一键入口
     ├── lib/config.sh           # 配置解析、必填项校验、依赖发现（被 deploy.sh source；交付面必须带上）
     ├── deploy.env / .example   # 部署配置（开关与参数；.example 是生成物）
-    ├── ragflow/  litellm/  hindsight/  npm-registry/  agent-sites/
+    ├── ragflow/  litellm/  hindsight/  peri-fuse/  npm-registry/  agent-sites/
     ├── workflow/               # Workflow V2 上游栈
     ├── sandbox-peri/  sandbox-dsh/  sandbox-ccb/  sandbox-opencode/   # 执行节点（引擎沙箱）
     └── opensandbox-cluster/  opensandbox-server/  opensandbox-server-tunnel/
@@ -128,7 +128,7 @@ Valkey 已改名 `ragflow-redis` 做保留名避让），判定与处理见 `doc
 
 成员判定标准唯一：**这个服务是否需要与主服务（或需要访问主服务的执行节点）直接通信。**
 
-- 必须接入 ②：`rcs`；common 的全部基础服务（`postgres` / `redis` / `rustfs` / `mysql`）；依赖的对外出口服务（RAGFlow API 与同栈的 `gotenberg`、`litellm`、`hindsight`、`npm-registry`、`agent-sites`、Workflow 的 `coze-web` 与共享实例消费方 `coze-server` / `milvus`、各栈的一次性初始化服务 `mysql-init` / `s3-init` / `ragflow-mysql-init` / `litellm-db-init`（`ragflow-s3-init` 不在其中——它只访问同项目的自带实例）、sandbox / opensandbox 的管理面与节点）。
+- 必须接入 ②：`rcs`；common 的全部基础服务（`postgres` / `redis` / `rustfs` / `mysql`）；依赖的对外出口服务（RAGFlow API 与同栈的 `gotenberg`、`litellm`、`hindsight`、`npm-registry`、`agent-sites`）与观测服务 `peri-fuse`（上报方是 Agent 进程：本地执行在 `rcs` 容器内、沙箱节点在各自容器内，按服务名直连它）、Workflow 的 `coze-web` 与共享实例消费方 `coze-server` / `milvus`、各栈的一次性初始化服务 `mysql-init` / `s3-init` / `ragflow-mysql-init` / `litellm-db-init`（`ragflow-s3-init` 不在其中——它只访问同项目的自带实例）、sandbox / opensandbox 的管理面与节点）。
 - 不得接入 ②：依赖栈内部的辅助服务（数据库、缓存、对象存储、消息队列、搜索引擎、向量库等，如 RAGFlow 的 `ragflow-redis` / `infinity` / 自带的 `ragflow-rustfs`、Workflow 的 `redis` / `elasticsearch` / `etcd` / `milvus`）——它们只在 ① 内被本项目的出口服务访问；**common 提供的共享实例是例外**（跨项目按名访问只能经 ②）。
 - 同时挂在 ① 与 ② 上的容器，遇到同名服务时 Docker DNS 没有优先级约定（§2.4 的已知代价）；因此共享实例的服务名是全局保留名，依赖栈不应再占用（RAGFlow 的栈内 Valkey 与自带对象存储已改名 `ragflow-redis` / `ragflow-rustfs`；workflow 的 `redis` 未改，只在两个开关同时打开时有歧义）。
 - 依赖项目里只有显式声明 `networks`（`external: true`）的服务进入 ②；接入 ② 的服务名是跨项目 DNS 名，必须全局唯一。
@@ -189,7 +189,7 @@ flowchart TB
     end
 
     subgraph Deps["依赖项目（一个目录一个独立 Compose）"]
-        CAP["能力依赖<br/>ragflow（含 gotenberg）/ litellm / hindsight<br/>npm-registry / agent-sites / workflow"]
+        CAP["能力依赖<br/>ragflow（含 gotenberg）/ litellm / hindsight / peri-fuse<br/>npm-registry / agent-sites / workflow"]
         NODE["执行节点载体<br/>sandbox-* / opensandbox-*"]
     end
 
@@ -303,7 +303,7 @@ flowchart LR
 4. feature 开关与依赖目录一一对应，未知开关报错。
 5. 发布顺序 DDL → 数据 → 应用，不得颠倒；数据迁移不进容器启动命令。
 6. 密钥只进 `.env`。
-7. 镜像 tag 与 Compose 项目名写死在文件里，不做环境变量插值，不用 `latest`。
+7. 镜像 tag 与 Compose 项目名写死在文件里，不做环境变量插值，不用 `latest`（版本键例外见 §1 决策 8）。
 8. 数据一律 bind 挂载在交付目录内，禁止命名卷与匿名卷。
 9. Compose ≥ 2.20；include 与独立启动文件的相对路径均相对其自身目录解析。
 10. 每个依赖目录必须有 README 与 `.env.example`；新增依赖 = 新目录 + 开关登记。

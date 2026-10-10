@@ -189,8 +189,8 @@
     "entry": "运行日志",
     "title": "运行日志",
     "title_scoped": "运行日志 · {{name}}",
-    "description": "运行记录来自上游工作流引擎，平台侧不保存；列表含执行 ID、模式、状态、时间、耗时与节点数，运行详情可在上游调试页查看。",
-    "description_scoped": "该工作流的运行记录来自上游工作流引擎，平台侧不保存；列表含执行 ID、模式、状态、时间、耗时与节点数。",
+    "description": "运行记录来自上游工作流引擎，平台侧不保存；左侧按执行 ID 列出运行与状态，选中一条即可在右侧查看该次运行的输入参数与输出结果。",
+    "description_scoped": "该工作流的运行记录来自上游工作流引擎，平台侧不保存；左侧按执行 ID 列出运行与状态，选中一条即可在右侧查看该次运行的输入参数与输出结果。",
     "filter_label": "工作流",
     "filter_all": "全部工作流",
     "loading": "正在读取运行记录",
@@ -205,6 +205,7 @@
     "failed_upstream": "上游拒绝了本次读取，请稍后重试；若持续失败，请联系组织管理员。",
     "failed": "运行记录读取失败，请重试。",
     "retry": "重试",
+    "records_title": "执行记录",
     "empty_title": "该工作流还没有运行记录",
     "empty_hint": "上游在最近 7 天内没有该工作流的执行记录——跑过一次之后这里就会有行。",
     "scope_hint": "已扫描 {{scanned}} 个工作流的运行记录（共 {{total}} 个），更早创建的工作流未包含在内。",
@@ -227,6 +228,7 @@
     "platform_result": "结果：{{result}}",
     "platform_error": "错误码：{{code}}",
     "platform_hint": "来自平台自身的调用流水；画布内的试运行不经过平台，不在这里。",
+    "platform_no_io": "平台触发的运行只有平台侧的调用流水，上游没有这次运行的输入参数与输出结果。",
     "result": {
       "ok": "成功",
       "upstream_rejected": "被上游拒绝",
@@ -241,7 +243,12 @@
     },
     "record_execute_id": "执行 ID：{{id}}",
     "record_node_count": "节点数：{{count}}",
-    "record_error": "错误码：{{code}}"
+    "record_error": "错误码：{{code}}",
+    "detail_unavailable": "上游没有给这些运行提供执行 ID 或所属工作流，无法查看它们的输入与输出。",
+    "io_loading": "正在读取出入参数",
+    "io_failed_title": "出入参数读取失败",
+    "io_input": "输入参数",
+    "io_output": "输出结果"
   },
   "api": {
     "entry": "调用接口",

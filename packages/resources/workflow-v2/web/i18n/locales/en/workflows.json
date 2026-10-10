@@ -189,8 +189,8 @@
     "entry": "Run Log",
     "title": "Run log",
     "title_scoped": "Run log · {{name}}",
-    "description": "Run records come from the upstream workflow engine and are not stored by the platform. Each row shows execution ID, mode, status, time, duration and node count; open the upstream debug page for details.",
-    "description_scoped": "This workflow's run records come from the upstream workflow engine and are not stored by the platform. Each row shows execution ID, mode, status, time, duration and node count.",
+    "description": "Run records come from the upstream workflow engine and are not stored by the platform. The left column lists runs by execution ID with their status; pick one to see that run's input parameters and output result on the right.",
+    "description_scoped": "This workflow's run records come from the upstream workflow engine and are not stored by the platform. The left column lists runs by execution ID with their status; pick one to see that run's input parameters and output result on the right.",
     "filter_label": "Workflow",
     "filter_all": "All workflows",
     "loading": "Loading run records",
@@ -205,6 +205,7 @@
     "failed_upstream": "The upstream service rejected this read. Please retry later; if it keeps failing, contact your organization administrator.",
     "failed": "Could not load run records. Please retry.",
     "retry": "Retry",
+    "records_title": "Executions",
     "empty_title": "No run records for this workflow yet",
     "empty_hint": "The upstream engine has no execution for this workflow in the last 7 days — rows appear here after it runs once.",
     "scope_hint": "Scanned the run records of {{scanned}} of {{total}} workflows; workflows created earlier are not included.",
@@ -227,6 +228,7 @@
     "platform_result": "Result: {{result}}",
     "platform_error": "Error code: {{code}}",
     "platform_hint": "From the platform's own call log; canvas-side test runs do not go through the platform and are not listed here.",
+    "platform_no_io": "Platform-triggered runs only leave a call record on the platform side; the upstream engine has no input parameters or output result for them.",
     "result": {
       "ok": "succeeded",
       "upstream_rejected": "rejected by upstream",
@@ -241,7 +243,12 @@
     },
     "record_execute_id": "Execution ID: {{id}}",
     "record_node_count": "Nodes: {{count}}",
-    "record_error": "Error code: {{code}}"
+    "record_error": "Error code: {{code}}",
+    "detail_unavailable": "The upstream engine provided no execution ID or owning workflow for these runs, so their input and output cannot be opened.",
+    "io_loading": "Reading input and output",
+    "io_failed_title": "Could not load input and output",
+    "io_input": "Input parameters",
+    "io_output": "Output result"
   },
   "api": {
     "entry": "Call API",
