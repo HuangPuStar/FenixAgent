@@ -125,6 +125,14 @@ describe("workflows 字典完整性", () => {
     expect(missing).toEqual([]);
   });
 
+  // 主从两栏的说明类文案同样是「界面为什么长这样」的解释来源，缺一条就只显示键名：左栏是什么、为什么这条
+  // 记录点不开、平台记录为什么没有输入输出、详情读取失败是哪一块坏了。
+  test("运行日志两栏的说明文案齐全", () => {
+    const required = ["run.records_title", "run.detail_unavailable", "run.io_failed_title", "run.platform_no_io"];
+    const missing = required.filter((key) => !enFlat.has(key) || !zhFlat.has(key));
+    expect(missing).toEqual([]);
+  });
+
   // 动态键（播报文案）扫描不到，直接枚举纯函数的返回值——它们同样必须能查到。
   test("状态播报的动态键都在字典内", () => {
     const announcementKeys = [

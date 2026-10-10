@@ -11,12 +11,16 @@ import { ApiError } from "@fenix/web-runtime/api/request";
 import type { WorkflowV2RunRecord } from "../api/workflow-runs";
 import {
   formatRunDuration,
+  formatRunIoValue,
   formatRunTime,
   RUN_MODE_LABEL_KEYS,
   RUN_STATUS_LABEL_KEYS,
+  resolveRunSelection,
   runErrorKey,
   runModeKey,
+  runSelectionKey,
   runStatusKey,
+  toPlatformRunRow,
   toRunRecordRow,
 } from "../pages/list/workflow-run-log-model";
 
@@ -101,6 +105,17 @@ describe("记录行的视图模型", () => {
     expect(row.errorCode).toBeNull();
   });
 
+  // 上游 ID 必须原样带到详情取数目标上：出入参数的详情查询按它做归属校验（清单的筛选用的是本地主键，
+  // 两套标识不能混）。上游没给时定型成 null——视图据此不提供选中入口，而不是拼出一个查不到的请求。
+  test("上游 ID 原样带上，缺失时为 null", () => {
+    expect(toRunRecordRow(record(), 0, "zh-CN").io).toEqual({
+      executeId: "7694582493076258816",
+      upstreamWorkflowId: "7694581096108785664",
+    });
+    expect(toRunRecordRow(record({ workflowId: null }), 0, "zh-CN").io).toBeNull();
+    expect(toRunRecordRow(record({ executeId: null }), 0, "zh-CN").io).toBeNull();
+  });
+
   // 时间、耗时、节点数与错误码缺失时必须是 null / null（由视图换成「上游未提供」），不能落成空串或 `Invalid Date`。
   test("缺失字段定型为 null 且行键退化为序号", () => {
     const row = toRunRecordRow(
@@ -145,5 +160,107 @@ describe("时间与耗时格式化", () => {
     expect(formatRunDuration(null)).toBeNull();
     expect(formatRunDuration(-1)).toBeNull();
     expect(formatRunDuration(Number.NaN)).toBeNull();
+  });
+});
+
+describe("出入参数上屏格式化", () => {
+  // 上游回的是 JSON 序列化字符串（无缩进、中国话里的字段名全挤在一行）：按两空格缩进重排，用户才看得出结构。
+  test("JSON 字符串按两空格缩进重排", () => {
+    expect(formatRunIoValue('{"hello":"io-probe"}')).toBe('{\n  "hello": "io-probe"\n}');
+    expect(formatRunIoValue("[1,2]")).toBe("[\n  1,\n  2\n]");
+  });
+
+  // 形态不受我方能控（可能是纯文本、也可能是上游自己的截断形态）：解析失败保持原文，比报错或隐藏更能说明现状。
+  // 引号包裹的字符串是**合法 JSON**，重排后是带引号的字面量——照实显示，不替上游「还原」成裸文本。
+  test("非 JSON 原文照抄，null 保持 null", () => {
+    expect(formatRunIoValue("上游截断的输出…")).toBe("上游截断的输出…");
+    expect(formatRunIoValue('"plain"')).toBe('"plain"');
+    expect(formatRunIoValue("")).toBe("");
+    expect(formatRunIoValue(null)).toBeNull();
+  });
+});
+
+describe("平台侧运行记录的视图模型", () => {
+  // 平台记录与执行记录共处一个选中空间，键必须带前缀且含归属与时刻：撞车会让右栏显示另一次运行的详情；
+  // 时间在模型层就格式化（无效串回落 null），视图不再碰 `Date`。
+  test("键带平台前缀、时间已格式化、结果与错误码原样带上", () => {
+    const row = toPlatformRunRow(
+      {
+        upstreamWorkflowId: "7694581096108785664",
+        occurredAt: "2026-10-09T02:00:00.000Z",
+        result: "ok",
+        errorCode: null,
+      },
+      "zh-CN",
+    );
+
+    expect(row.key).toBe("platform:7694581096108785664-2026-10-09T02:00:00.000Z");
+    expect(row.time).toBe(new Date("2026-10-09T02:00:00.000Z").toLocaleString("zh-CN"));
+    expect(row.result).toBe("ok");
+    expect(row.errorCode).toBeNull();
+  });
+
+  // 上游归属缺失（平台侧也没记上）与坏时间串都不能让键或时间变成 `undefined` / `Invalid Date`。
+  test("归属缺失与坏时间串都有兜底", () => {
+    const row = toPlatformRunRow(
+      { upstreamWorkflowId: null, occurredAt: "not-a-date", result: "upstream_rejected", errorCode: "502" },
+      "zh-CN",
+    );
+
+    expect(row.key).toBe("platform:unknown-not-a-date");
+    expect(row.time).toBeNull();
+    expect(row.errorCode).toBe("502");
+  });
+});
+
+describe("左栏选中项的解析", () => {
+  const row = (overrides: Partial<WorkflowV2RunRecord> = {}, index = 0) =>
+    toRunRecordRow(record(overrides), index, "zh-CN");
+  const platform = (occurredAt: string, result = "ok") =>
+    toPlatformRunRow({ upstreamWorkflowId: "7694581096108785664", occurredAt, result, errorCode: null }, "zh-CN");
+
+  // 打开即选中第一条**可查看详情**的执行记录：空态等待会让用户以为这里没东西可看；缺执行 ID 的行不算候选，
+  // 否则右栏会停在一个永远取不到数的选中项上。
+  test("默认选中第一条可查看详情的执行记录", () => {
+    const rows = [row({ executeId: null }, 0), row({ executeId: "id-2" }, 1)];
+    const selection = resolveRunSelection(rows, [], null);
+
+    expect(selection.key).toBe(runSelectionKey(rows[1]));
+    expect(selection.run?.executeId).toBe("id-2");
+    expect(selection.platform).toBeNull();
+  });
+
+  // 选中键在**当前这一批**里不存在时（切换筛选换了一批）必须回落，不能保留一条已经不在列表里的记录：
+  // 右栏显示的运行必须能在左栏找到。
+  test("选中键不在本批内时回落到第一条", () => {
+    const rows = [row({ executeId: "id-9" }, 0)];
+    const selection = resolveRunSelection(rows, [], "run:已删除的记录");
+
+    expect(selection.key).toBe(runSelectionKey(rows[0]));
+    expect(selection.run?.executeId).toBe("id-9");
+  });
+
+  // 平台记录也可选中（右栏据它的字段给「没有输入输出」的说明）：执行记录一条都不可选时它是默认选中，
+  // 但只要有可选的执行记录，默认就轮不到它——执行记录才是主内容。
+  test("无可选执行记录时选中第一条平台记录，有则不抢默认", () => {
+    const platformRows = [platform("2026-10-09T02:00:00.000Z")];
+    const withoutRuns = resolveRunSelection([row({ executeId: null })], platformRows, null);
+    const withRuns = resolveRunSelection([row({ executeId: "id-1" })], platformRows, null);
+
+    expect(withoutRuns.key).toBe(platformRows[0].key);
+    expect(withoutRuns.platform?.result).toBe("ok");
+    expect(withoutRuns.run).toBeNull();
+    expect(withRuns.key).toBe("run:id-1");
+    expect(withRuns.platform).toBeNull();
+  });
+
+  // 一条都选不中（记录缺执行 ID、也没有平台记录）时给空选中：右栏据此说明「缺执行 ID」而不是留白，
+  // 崩溃或硬塞一条不存在的记录都不可接受。
+  test("没有任何可选中项时给出空选中", () => {
+    const selection = resolveRunSelection([row({ executeId: null })], [], null);
+
+    expect(selection.key).toBeNull();
+    expect(selection.run).toBeNull();
+    expect(selection.platform).toBeNull();
   });
 });
