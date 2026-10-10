@@ -1,0 +1,44 @@
+{
+  "graph": {
+    "header": {
+      "observation": "Observation / agent output",
+      "modelTokens": "Model / tokens",
+      "duration": "Duration",
+      "time": "Time"
+    },
+    "control": {
+      "showRows": "Show individual rows",
+      "groupTools": "Group consecutive tools",
+      "rows": "Rows",
+      "compact": "Compact"
+    },
+    "empty": {
+      "title": "No generation or tool calls yet",
+      "hint": "Generation and tool calls will appear as trace points."
+    },
+    "node": {
+      "generation": "Generation",
+      "tool": "Tool",
+      "subagent": "Subagent"
+    },
+    "branch": {
+      "background": "Background",
+      "synchronous": "Synchronous",
+      "returned": "Returned",
+      "backgroundShort": "BG",
+      "syncShort": "Sync"
+    },
+    "running": "running",
+    "tokens": "{{amount}} tok",
+    "row": {
+      "startedAt": "Started +{{offset}}",
+      "relativeTime": "Time relative to trace start"
+    },
+    "footer": {
+      "timeOrder": "Time order",
+      "grouped": "consecutive tools and sibling forks grouped",
+      "individual": "one event per row",
+      "hiddenSpans": "{{hidden}} ordinary spans hidden"
+    }
+  }
+}
