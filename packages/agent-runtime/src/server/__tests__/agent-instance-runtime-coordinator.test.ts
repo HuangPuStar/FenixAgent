@@ -172,8 +172,8 @@ describe("AgentInstanceRuntimeCoordinator", () => {
     expect(coordinator.snapshot(instance.id).state).toBe("running");
   });
 
-  // stop 执行期间到达的 ensure 必须在 stop 后真正重启，不能继承 stop 的成功结果。
-  test("ensure queued behind stop starts runtime", async () => {
+  // AOS-BUG-002：stop 期间到达的自动 ensure 不得在停止成功后重新启动实例。
+  test("ensure during stop cannot restart runtime", async () => {
     let releaseStop: (() => void) | undefined;
     let starts = 0;
     const stopGate = new Promise<void>((resolve) => {
@@ -190,11 +190,11 @@ describe("AgentInstanceRuntimeCoordinator", () => {
     const coordinator = new AgentInstanceRuntimeCoordinator(adapter);
     await coordinator.ensureRuntime(instance);
     const stopping = coordinator.stopRuntime(instance, "strict");
-    const ensuring = coordinator.ensureRuntime(instance);
+    await expect(coordinator.ensureRuntime(instance)).rejects.toMatchObject({ code: "INSTANCE_STOPPED" });
     releaseStop?.();
-    await Promise.all([stopping, ensuring]);
-    expect(starts).toBe(2);
-    expect(coordinator.snapshot(instance.id).state).toBe("running");
+    await stopping;
+    expect(starts).toBe(1);
+    expect(coordinator.snapshot(instance.id).state).toBe("stopped");
   });
 
   // restart 的停止阶段失败意味着真实 runtime 未知，不能错误标记为 stopped 后重复启动。
