@@ -86,7 +86,8 @@ const search = useSearch({ strict: false }) as { runId?: string }; // 宿主未�
 包内页面读宿主动态段必须用带 `from` 的形式——此时**宿主的 route id 成为跨包契约**，改宿主路由要同步搜跨包引用。`useSearch({ strict: false })` 的断言**不做运行时校验**，新增查询参数要自己兜底默认值。
 
 ### 2.3 鉴权与重定向
-- **全局守卫只有一处**：`apps/web/src/routes/__root.tsx`，用 `useEffect` + `navigate` 实现（不是 `beforeLoad`），决策表在 `apps/web/src/shell/session-guard.ts`（有单测）——会话未就绪渲染 spinner；疑似未登录（非 `/login` 非 `/admin`）先延迟复核一次会话再跳 `/login`（复核期间渲染 spinner），复核命中会话则不跳；已登录访问 `/login` 跳 `/agent`。**两个跳转一律 `replace`**：会话判定在「有/无」之间抖动时（如浏览器存量 cookie），即时跳转会让两侧互跳成 `/ctrl/login ↔ /ctrl/agent` 死循环——复核是挡住单次 null 的闸门，不得删。
+- **全局守卫只有一处**：`apps/web/src/routes/__root.tsx`，用 `useEffect` + `navigate` 实现（不是 `beforeLoad`），决策表在 `apps/web/src/shell/session-guard.ts`（有单测）——会话未就绪渲染 spinner；疑似未登录（非 `/login` 非 `/admin`）先延迟复核一次会话再跳 `/login`（复核期间渲染 spinner），复核命中会话则不跳；已登录访问 `/login` 跳 `/agent`。**守卫的两个跳转（`/login`、`/agent`）一律 `replace`**：会话判定在「有/无」之间抖动时（如浏览器存量 cookie），即时跳转会让两侧互跳成 `/ctrl/login ↔ /ctrl/agent` 死循环。**复核计时器必须挂 `ref`**（不随 effect 清理）：重定向抖动会让 `pathname` 以毫秒级节奏变化，计时器若绑在 effect 生命周期上会被反复清掉重排，复核永远完不成、守卫永远不跳登录页——「复核」是挡住单次 null 的闸门，不得删，也不得让它可被路径抖动取消。
+- **入口 `/` → `/agent` 必须用 `beforeLoad` + `throw redirect`**（`apps/web/src/routes/index.tsx`），不得写成组件里的 `useEffect(navigate)`：入口匹配在 `/agent` 完成重定向前**仍是已提交的匹配**，过渡期间的重新挂载会把导航 effect 再跑一遍；`/agent` 又被它自己的 `beforeLoad` 换成 `/agent/home`，于是 URL 在 `/ctrl/agent ↔ /ctrl/agent/home` 之间以毫秒级节奏互跳——每次导航都顶掉上一次尚未提交的 load，循环自己停不下来（实测：真实产物里 4ms 内跳 6 次，浏览器里可持续数秒）。`beforeLoad` 每次 load 只执行一次、不随 React 提交重跑，因此不存在这条反馈回路。守卫是唯一例外：它按 `pathname` 条件边沿触发（跳 `/login`/`/agent` 后条件立即不再成立），重挂载不会重复生效。
 - `/admin` **豁免 better-auth 会话**，由页面内 `AdminKeyGate`（`@fenix/ui-components/config/AdminKeyGate` 配 `@fenix/web-runtime/hooks/use-admin-key-gate`）把关（见 §6.3）。
 - 路由壳内的重定向一律用 `beforeLoad` + `throw redirect`。
 

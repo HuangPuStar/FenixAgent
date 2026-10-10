@@ -44,8 +44,20 @@ function RootComponent() {
   const isAdminPath = pathname.startsWith("/admin");
   // 「疑似未登录」的复核状态：置位后复核仍为空才跳登录页（决策表与动机见 shell/session-guard）。
   const verifiedNullRef = useRef(false);
+  // 复核计时器挂 ref 而不是随 effect 清理：路由抖动（重定向往返会让 pathname 以几十毫秒的节奏变化）
+  // 每次都会重跑 effect，若把计时器绑在 effect 生命周期上，抖动会把复核一遍遍清掉重排，
+  // 复核永远完不成，守卫也就永远不跳登录页——正是「循环停不下来」的成因之一。
+  const verifyTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   // 复核确认无会话后会话 atom 不变，靠它触发下一轮决策去执行跳转。
   const [verifyTick, setVerifyTick] = useState(0);
+
+  // 只负责卸载清理：在途复核不应把定时器留给已卸载的组件。
+  useEffect(() => {
+    return () => {
+      if (verifyTimerRef.current) clearTimeout(verifyTimerRef.current);
+      verifyTimerRef.current = null;
+    };
+  }, []);
 
   useEffect(() => {
     const action = decideSessionGuard({
@@ -55,9 +67,13 @@ function RootComponent() {
       isAdminPath,
       verifiedNull: verifiedNullRef.current,
     });
-    // 会话恢复或落到两个豁免面（登录页 / 管理面）后，为下一轮「疑似未登录」重新开始复核；
-    // 复核进行中的 isPending 刻意不重置，否则复核会把自己抹掉、退化成每秒一次的复核循环。
-    if (session || pathname === "/login" || isAdminPath) verifiedNullRef.current = false;
+    // 会话恢复或落到两个豁免面（登录页 / 管理面）后，为下一轮「疑似未登录」重新开始复核，
+    // 并取消在途复核；复核进行中的 isPending 刻意不重置，否则复核会把自己抹掉、退化成每秒一次的复核循环。
+    if (session || pathname === "/login" || isAdminPath) {
+      verifiedNullRef.current = false;
+      if (verifyTimerRef.current) clearTimeout(verifyTimerRef.current);
+      verifyTimerRef.current = null;
+    }
     if (action === "to-agent") {
       void navigate({ to: "/agent", replace: true });
       return;
@@ -67,8 +83,11 @@ function RootComponent() {
       return;
     }
     if (action !== "verify") return;
+    // 已在复核中就不再重排：等这次结果即可，路径抖动不参与复核的生命周期。
+    if (verifyTimerRef.current) return;
     // 复核：延迟后主动再问一次会话，仍为空才在下一轮决策里跳登录页（此时置位 verifiedNull）。
-    const timer = setTimeout(() => {
+    verifyTimerRef.current = setTimeout(() => {
+      verifyTimerRef.current = null;
       verifiedNullRef.current = true;
       void authClient
         .getSession()
@@ -79,7 +98,6 @@ function RootComponent() {
         })
         .catch(() => setVerifyTick((tick) => tick + 1));
     }, SESSION_NULL_VERIFY_DELAY_MS);
-    return () => clearTimeout(timer);
   }, [session, isPending, pathname, navigate, isAdminPath, refetch, verifyTick]);
 
   if (isPending) {
