@@ -288,23 +288,26 @@ describe("AgentResourcePicker 组件交互", () => {
   });
 
   // 已绑定 unavailable 项保留明确提示且可移除，未绑定 unavailable 项必须禁用。
+  // 2026-10-09 起已选 chip 列整体删除，移除的唯一入口就是列表行本身（取消勾选）。
   test("unavailable 资源只允许移除", async () => {
     const container = win.document.createElement("div");
     win.document.body.appendChild(container);
     root = createRoot(container as unknown as HTMLElement);
     await act(async () => root?.render(<UnavailablePickerFixture />));
-    const buttons = Array.from(container.querySelectorAll<"button">("button"));
-    const chip = buttons.find((button) => button.getAttribute("data-unavailable") === "true");
-    const checkboxes = Array.from(container.querySelectorAll<"button">("button"));
+    const buttons = () => Array.from(container.querySelectorAll<"button">("button"));
     const removeCandidates = copyCandidates("editor.removeUnavailableResource", { name: "Hidden" });
     const blockedCandidates = copyCandidates("editor.unavailableResource", { name: "Blocked" });
-    const hidden = checkboxes.find((checkbox) => hasLabel(checkbox, removeCandidates));
-    const blocked = checkboxes.find((checkbox) => hasLabel(checkbox, blockedCandidates));
-    expect(hasLabel(chip, removeCandidates), "已绑定 unavailable 项应带「移除」文案").toBe(true);
-    expect(hidden?.disabled).toBe(false);
-    expect(blocked?.disabled).toBe(true);
-    act(() => chip?.click());
-    expect(container.querySelector("[data-slot=picker-chips] [data-unavailable=true]")).toBeNull();
+    const hiddenAfterRemove = copyCandidates("editor.unavailableResource", { name: "Hidden" });
+    const hidden = buttons().find((button) => hasLabel(button, removeCandidates));
+    const blocked = buttons().find((button) => hasLabel(button, blockedCandidates));
+    expect(hidden?.disabled, "已绑定 unavailable 项应可移除").toBe(false);
+    expect(blocked?.disabled, "未绑定 unavailable 项应禁用").toBe(true);
+    act(() => hidden?.click());
+    // 移除后该行回到「未绑定」语义：禁用，且文案从「移除不可用资源」换成「不可用，无法新增」。
+    expect(hidden?.disabled).toBe(true);
+    expect(hasLabel(hidden, hiddenAfterRemove)).toBe(true);
+    // 已选 chip 区是 2026-10-09 的产品决策（整块删除），不能静默回流。
+    expect(container.querySelector("[data-slot=picker-chips]")).toBeNull();
   });
 
   // Capabilities tabs 应建立完整关联，并用左右方向键移动激活项和焦点。

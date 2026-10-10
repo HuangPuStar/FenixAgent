@@ -52,12 +52,6 @@
 .agent-single-picker-current-unavailable {
   box-shadow: inset 0 0 0 1px #ead2aa;
 }
-.agent-resource-picker__selected {
-  grid-template-columns: 116px minmax(0, 1fr);
-}
-.agent-resource-picker__chips > button > svg {
-  width: calc(var(--spacing) * 2.75);
-}
 .agent-resource-picker__search > kbd {
   border-radius: var(--radius-sm);
   background-color: var(--color-slate-100);
@@ -119,15 +113,12 @@
   }
 }
 @media (min-width: 760px) and (max-width: 1119px) {
+  /* 已选区摘要行在窄屏只收窄高度与内边距：两列模板与 `gap` 随 chip 列一起删除，`small` 的隐藏原本
+   * 是为 82px 摘要列腾位置，单列后不再需要（摘要行现在整行可用）。 */
   .agent-resource-picker__selected {
     min-height: calc(var(--spacing) * 11.5);
-    grid-template-columns: 82px minmax(0, 1fr);
-    gap: calc(var(--spacing) * 2);
     padding-inline: calc(var(--spacing) * 2);
     padding-block: calc(var(--spacing) * 1.5);
-  }
-  .agent-resource-picker__selected small {
-    display: none;
   }
   .agent-resource-picker__search {
     height: calc(var(--spacing) * 8);
@@ -145,8 +136,11 @@
     padding-inline: calc(var(--spacing) * 1.5);
     padding-block: var(--spacing);
   }
-  .agent-editor-library-picker-narrow {
-    grid-template-columns: 110px minmax(0, 1fr);
+  /* 窄屏收窄也只改模板变量的值（模板引用在 B 的 `LIBRARY_PICKER` 里）；平铺态（单来源、无左来源栏）
+   * 由 `:not` 排除——本表未分层，不加这层守卫就会压死 className 里的 `grid-cols-1`，节点选择器的列表
+   * 会被挤进 110px 左栏（同 2026-10-09 的资源选择器缺陷）。 */
+  .agent-editor-library-picker-narrow:not([data-flat="true"]) {
+    --agent-editor-library-picker-columns: calc(var(--spacing) * 27.5) minmax(0, 1fr);
   }
   .agent-editor-group-filter-narrow > button {
     padding-inline: calc(var(--spacing) * 1.5);

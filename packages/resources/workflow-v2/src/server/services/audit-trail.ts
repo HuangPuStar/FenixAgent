@@ -36,8 +36,22 @@ export const WORKFLOW_AUDIT_ACTIONS = {
   createCompensation: CREATE_COMPENSATION_ACTION,
   /** 对账补写孤儿归属行（上游存在、本地注册表缺失的历史对象）。 */
   reconcileBackfill: "workflow.reconcile.backfill",
-  /** 发布版本（成功/被上游拒绝/传输失败）。 */
+  /**
+   * 发布版本（成功/被上游拒绝/传输失败）。
+   *
+   * 写入方是控制台发布入口，该入口已于 2026-10-10 撤除（发布在上游侧完成）：本动作**不再产生新行**，
+   * 但「发布日志」弹窗仍按这个字面量读取历史行（`workflow-publish-records.ts` 的 `PUBLISH_ACTION`），
+   * 因此登记保留——它是历史审计数据的读侧契约。
+   */
   publish: "workflow.publish",
+  /**
+   * 对外接口触发的运行（`POST /api/workflow-v2/workflows/:id/run`）。
+   *
+   * 与 `publish` 并列在动作名第三段：`workflow.run.external` 明确区分「谁触发的」——控制台内的调试运行由画布
+   * 直达上游、不经平台，因此这条流水只对应外部调用方，按它即可回答「谁在什么时候从外部触发了哪些工作流」。
+   * 流水只落身份与结果字段，**不含入参与输出原文**（入参可能含业务数据）。
+   */
+  runExternal: "workflow.run.external",
 } as const;
 
 /** 一条控制面审计流水；`result` 是归一化结果（`ok` / `failed` / `strategy_rejected` / `pending_delete` …）。 */

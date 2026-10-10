@@ -122,22 +122,13 @@ export const SINGLE_PICKER_CURRENT =
 export const SINGLE_PICKER_CURRENT_UNAVAILABLE = "agent-single-picker-current-unavailable bg-orange-50 text-yellow-800";
 /** `.agent-resource-picker`：资源选择器外壳。 */
 export const PICKER = "overflow-hidden border border-slate-200 rounded-xl bg-white";
-/** `.agent-resource-picker__selected`：已选区（116px 说明列；760–1119 收窄并隐藏小注）。 */
+/** `.agent-resource-picker__selected`：已选区摘要（单列；右侧 chip 列 2026-10-09 删除，选择与移除都在下方列表）。
+ *  760–1119px 只收窄高度与内边距（见伴随表），列模板已随 chip 列一并消失。 */
 export const PICKER_SELECTED =
-  "agent-resource-picker__selected grid min-h-16 items-center gap-3 border-b border-gray-100 bg-slate-50 px-3 py-2.5";
-/** `.agent-resource-picker__chips`：已选 chip 区（容器本身是列，子 chip 才横排）。 */
-export const PICKER_CHIPS = "flex min-w-0 flex-col flex-wrap gap-0.75";
-/** 已选 chip 的基态外观（原 `.agent-resource-picker__chips > button` 规则，2026-09-28 撤回；不可用态的
- * 覆盖走 `PICKER_CHIP_UNAVAILABLE`，两点经 `cn()` 合并、后写者胜，与 CSS 里的覆盖顺序一致）。 */
-export const PICKER_CHIP =
-  "flex h-6.25 items-center gap-1.5 border-0 rounded-md bg-indigo-50 px-2 py-0 text-xs text-blue-800";
-/** chip：不可用态（含 hover）。 */
-export const PICKER_CHIP_UNAVAILABLE =
-  "border border-orange-300 bg-orange-50 text-yellow-800 " + "enabled:hover:bg-amber-100 enabled:hover:text-yellow-900";
+  "agent-resource-picker__selected flex min-w-0 min-h-16 flex-col justify-center gap-0.75 border-b border-gray-100 " +
+  "bg-slate-50 px-3 py-2.5";
 /** `.agent-resource-picker__copy`：列表项文案列。 */
 export const PICKER_COPY = "flex min-w-0 flex-col gap-0.75";
-/** `.agent-resource-picker__empty`：空态文案。 */
-export const PICKER_EMPTY = "text-3xs";
 /** `.agent-resource-picker__search`：搜索行（39px 高）。 */
 export const PICKER_SEARCH =
   "agent-resource-picker__search flex h-9.75 items-center gap-2 border-b border-gray-100 px-3 py-0 text-gray-400";

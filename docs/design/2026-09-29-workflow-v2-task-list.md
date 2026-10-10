@@ -54,6 +54,8 @@
 - [x] 2B `[A]` 本地注册表：列表/创建/重命名/删除 + 创建补偿 + `pending_delete`
 - [x] 2C `[A]` 节点白名单过滤（`node-scope`，覆盖三类节点接口）
 - [x] 2D `[B]` 列表页：表格、创建、删除确认、loading/empty/error+retry
+      ——2026-10-09 改为**卡片网格**（点卡片进画布、「更多」菜单收纳日志 / 调用接口 / 重命名 / 删除；发布入口于 2026-10-10 撤除；「新建工作流」
+      移到页面 header 的 actions 槽位，页面壳 `AppPage`/`AppHeader` 由包内页面渲染、宿主路由退化为 `Suspense` 壳）
 - [x] 2E `[C]` 上游前端：壳裁剪（header 按钮、发布简化）、节点面板兜底过滤、埋点静默
 - [x] 2F `[E]` 删除批次（独占）：旧 `web/` 目录、宿主路由、i18n、exports、宿主测试、deploy 清单、生成物重跑 —— 与 2D 串行（同文件域）
 - [x] 2G `[门禁]` `bun run precheck` + `bun run build:web` 全绿
@@ -62,8 +64,10 @@
 
 - [x] 3A `[A]` 调试透传：`test_run`/`test_resume`/`cancel` + 过程轮询（含退避预算）
 - [x] 3B `[A]` 发布与 trace：`publish`（版本递增）、发布记录、`list_spans`/`get_trace`
-      ——控制台发布入口与日志查看于 2026-10-09 补齐（列表页行操作「更多 → 发布」与「日志」弹窗、`GET /workflows/:id/publish-records`）；
-      记录取自上游 `list_publish_workflow`，该端点在当前上游构建是桩实现（契约快照 F12），故界面的空态是常态而非缺陷
+      ——控制台发布入口与日志查看于 2026-10-09 补齐（卡片菜单内的「发布」与两个日志弹窗、`GET /workflows/:id/publish-records` 与运行日志读路径）；
+      发布记录取上游**应用级** `publish_record_list`（工作流级 `list_publish_workflow` 是桩实现，契约快照 F12），运行日志的「列出执行历史」上游没有读出口（见 arch 25 §7）
+      ——**2026-10-09 结案（上句「没有读出口」随之失效）**：上游同日以 commit `3a028cf1` 补实现在 `list_spans`（契约见 `docs/design/2026-10-09-workflow-v2-upstream-run-list-api-request.md` §7），平台同日切回 HTTP（读路径见 `docs/arch/25-workflow-v2.md` §8），本条完成
+      ——**2026-10-10 收口：控制台发布入口整体撤除**（发布是旧有逻辑，动作在上游侧完成）：卡片菜单的「发布」与 `publish.*` 文案、控制台面 `POST /workflows/:id/publish` 及其服务端闭环（含发布后的渠道主动同步）一并删除；保留发布记录读路径、卡片的上游发布状态展示与版本号算术（对外触发链路的运行前自愈仍用，见 `docs/arch/25-workflow-v2.md` §8）
 - [x] 3C `[A]` 审计与指标接入；错误映射与 503 熔断降级
 - [x] 3D `[B]` 宿主侧错误兜底与用户提示（`web/pages/canvas/canvas-status-views.tsx`：骨架、初始化超时、上游不可用、会话失效、未绑定引导）
 - [x] 3E `[A]` **平台账号 `spaceId` 投影（P0，画布可达的前置）**：`routes/web/platform-account.ts` 的

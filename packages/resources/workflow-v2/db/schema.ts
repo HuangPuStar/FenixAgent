@@ -96,7 +96,10 @@ export const workflowV2Workflow = pgTable(
     ownerUserId: text("owner_user_id").notNull(),
     /** 平台受众列，默认 `private`；授权谓词由 `@fenix/access-control` 产出。 */
     visibility: text("visibility").notNull().default("private"),
-    /** 上游侧最新发布版本号；未发布为 null。 */
+    /**
+     * **遗留列，已无读写方**：发布版本以上游为唯一事实来源（`services/workflow-publish-state.ts`），本列
+     * 既不写入也不再被读取（旧行可能仍存历史值）。待单独排期迁移删除；在那之前不要用它推导任何状态。
+     */
     publishedVersion: text("published_version"),
     /** `active` | `pending_delete`：软删状态，对账任务据此重试上游删除。 */
     syncState: text("sync_state").notNull().default("active"),

@@ -1,5 +1,14 @@
 /**
- * 租户（organization）↔ 上游应用（bot）绑定的**唯一写侧**（设计 §3.2：一个 organization 一个 App）。
+ * 租户（organization）↔ 上游应用绑定的**唯一写侧**（设计 §3.2：一个 organization 一个 App）。
+ *
+ * ## 载体是「应用（Project）」而不是「bot」（2026-10-09 实测，理由见
+ * `docs/design/2026-10-09-workflow-v2-api-channel-release.md`）
+ *
+ * workflow 的 `project_id` 指向应用，而「把应用发布到 API 渠道」是 `connector_workflow_version` 唯一的写入
+ * 路径——对外触发接口能跑起来的前提；bot 载体没有这条链路（bot 发布实测不写登记表）。
+ *
+ * 兼容旧载体：上游构建没有应用接口（HTTP 404）时退回 bot 载体，绑定与控制台照常可用（对外触发会明确报出
+ * 缺少渠道登记）。移除条件：固定镜像的上游构建确定提供应用接口后，删除 {@link LEGACY_BOT_CARRIER} 分支。
  *
  * 为什么绑定关系必须落本地：上游只校验「平台账号属于该 space」（`checkUserSpace`），没有「按空间列 App」
  * 的接口（契约快照 §3 F9），App 一旦在本地丢失就再也找不回来。`workflow_v2_org_app` 的两个唯一索引
@@ -24,20 +33,12 @@ import { getIdentityDirectory } from "@fenix/platform-sdk/server";
 import { workflowV2OrgApp } from "@fenix/resource-workflow-v2/db";
 import { eq } from "drizzle-orm";
 import { getWorkflowV2Database } from "../repositories/database";
+import { APP_CARRIER, type AppCarrier, type AppExistence, LEGACY_BOT_CARRIER } from "./app-carrier";
 import { ensurePlatformAccount } from "./platform-account-bootstrap";
 import type { UpstreamCallResult } from "./upstream-client";
 import { callUpstream, UPSTREAM_PANIC_CODE } from "./upstream-client";
 
 const logger = createLogger("wf2-org-app");
-
-/** 建租户 App 的端点（冻结 §4.2 的运维面动作）。 */
-const CREATE_APP_PATH = "/api/draftbot/create";
-
-/** 按 id 查 App 详情：实测唯一能校验「租户 App 是否存活」的入口（契约快照 §2 第 4 行）。 */
-const GET_APP_INFO_PATH = "/api/playground_api/draftbot/get_draft_bot_info";
-
-/** 删除 App：只用于并发收敛后清理孤儿，不参与绑定生命周期。 */
-const DELETE_APP_PATH = "/api/draftbot/delete";
 
 /** `icon_uri` 必填，用上游自带的默认 App 图标（契约快照 §2 第 5 行）。 */
 const DEFAULT_APP_ICON_URI = "default_icon/default_app_icon.png";
@@ -48,8 +49,13 @@ const DEFAULT_APP_ICON_URI = "default_icon/default_app_icon.png";
  */
 const APP_DESCRIPTION = "FenixAgent workflow-v2 tenant app";
 
-/** 上游「目标不存在」业务码：不存在的 `bot_id` → `100000000 invalid parameter : agent <id> not found`。 */
-export const UPSTREAM_APP_NOT_FOUND_CODE = 100000000;
+/**
+ * 载体协议（端点、请求体、响应读取、不存在判定）在 `app-carrier.ts`；这里只做绑定生命周期。
+ *
+ * `UPSTREAM_APP_NOT_FOUND_CODE` 继续从本模块转出：它是对外可见的常量（契约快照 §2 第 4 行），
+ * 消费方按模块边界引用它，不跟着内部文件拆分走。
+ */
+export { UPSTREAM_APP_NOT_FOUND_CODE } from "./app-carrier";
 
 /**
  * 组织名不可用时的展示名回退值。
@@ -119,22 +125,6 @@ function isUpstreamSuccess(result: UpstreamCallResult): boolean {
   return result.status === 200 && readBusinessCode(result.body) === 0;
 }
 
-/** 读 App 详情里的展示名；缺失时为 null（调用方回退到既有名字）。 */
-function readBotName(body: unknown): string | null {
-  if (!isRecord(body) || !isRecord(body.data) || !isRecord(body.data.bot_info)) return null;
-  const name = body.data.bot_info.name;
-  return typeof name === "string" && name.length > 0 ? name : null;
-}
-
-/** 读创建响应里的 `data.bot_id`（JSON 里按字符串序列化，也接受数字形态）。 */
-function readBotId(body: unknown): string | null {
-  if (!isRecord(body) || !isRecord(body.data)) return null;
-  const botId = body.data.bot_id;
-  if (typeof botId === "string" && botId.length > 0) return botId;
-  if (typeof botId === "number" && Number.isFinite(botId)) return String(botId);
-  return null;
-}
-
 /** 唯一索引冲突判定：Drizzle 把驱动错误包在 `cause` 里，逐层下钻（同 `workflow-registry` 口径）。 */
 function isUniqueConstraintError(error: unknown): boolean {
   if (!error || typeof error !== "object") return false;
@@ -162,27 +152,34 @@ function upstreamLogFields(result: UpstreamCallResult): Record<string, unknown> 
   };
 }
 
-/** App 存活探测的三种结果：「在」「上游明确说不存在」「未确认」（不可达/被拒/形状不认识）。 */
-type AppExistence =
-  | { readonly kind: "ok"; readonly name: string | null }
-  | { readonly kind: "missing" }
-  | { readonly kind: "unreachable" };
-
-/** 探测绑定目标是否仍在上游侧存在；只对「明确不存在」返回 missing。 */
-async function inspectUpstreamApp(appId: string): Promise<AppExistence> {
+/** 用一个载体探测绑定目标是否存在；只对「明确不存在」返回 missing。 */
+async function inspectWithCarrier(carrier: AppCarrier, appId: string): Promise<AppExistence> {
   let result: UpstreamCallResult;
   try {
-    result = await callUpstream({ path: GET_APP_INFO_PATH, body: { bot_id: appId } });
+    result = await callUpstream({ path: carrier.infoPath, body: carrier.infoBody(appId) });
   } catch (error) {
     logger.warn("workflow-v2 租户 App 存活探测未能完成", { appId, error: describeError(error) });
     return { kind: "unreachable" };
   }
-  if (readBusinessCode(result.body) === UPSTREAM_APP_NOT_FOUND_CODE) return { kind: "missing" };
+  if (readBusinessCode(result.body) === carrier.notFoundCode) return { kind: "missing" };
+  if (carrier.missingEndpointMeansAbsent && result.status === 404) return { kind: "missing" };
   if (!isUpstreamSuccess(result)) {
     logger.warn("workflow-v2 租户 App 存活探测被上游拒绝", { appId, ...upstreamLogFields(result) });
     return { kind: "unreachable" };
   }
-  return { kind: "ok", name: readBotName(result.body) };
+  return { kind: "ok", name: carrier.readName(result.body) };
+}
+
+/**
+ * 探测绑定目标是否仍在上游侧存在。
+ *
+ * 应用载体优先：绑定的载体就是它。应用侧「不存在」（业务码 `101000002`）或「该构建没有应用接口」（HTTP 404）
+ * 时再探一次旧载体（bot），让迁移期的历史绑定照常可用；两次都不在即 missing。
+ */
+async function inspectUpstreamApp(appId: string): Promise<AppExistence> {
+  const app = await inspectWithCarrier(APP_CARRIER, appId);
+  if (app.kind !== "missing") return app;
+  return await inspectWithCarrier(LEGACY_BOT_CARRIER, appId);
 }
 
 /** 按组织读绑定；未绑定时返回 null。读接口不打上游（冻结 §4.3 的只读语义）。 */
@@ -251,31 +248,52 @@ export async function probeOrgAppBinding(organizationId: string): Promise<OrgApp
   return { kind: "active", binding: { ...binding, status: "active" } };
 }
 
-/** 在上游建一个租户 App；失败按「调用抛错」与「上游拒绝」分开归因。 */
-async function createUpstreamApp(platformSpaceId: string, name: string): Promise<string> {
+/** 建租户 App 的请求体；两个载体字段一致，只有端点与 id 字段不同。 */
+function createAppBody(platformSpaceId: string, name: string): Record<string, unknown> {
+  return {
+    // space_id 由服务端注入（平台个人空间），客户端不可传入（冻结 §6 的注入白名单）。
+    space_id: platformSpaceId,
+    name,
+    description: APP_DESCRIPTION,
+    icon_uri: DEFAULT_APP_ICON_URI,
+  };
+}
+
+/** 用一个载体建 App；失败按「调用抛错」与「上游拒绝」分开归因，HTTP 404（接口不存在）原样返回给调用方。 */
+async function createWithCarrier(
+  carrier: AppCarrier,
+  platformSpaceId: string,
+  name: string,
+): Promise<{ readonly result: UpstreamCallResult } | { readonly appId: string }> {
   let result: UpstreamCallResult;
   try {
-    result = await callUpstream({
-      path: CREATE_APP_PATH,
-      body: {
-        // space_id 由服务端注入（平台个人空间），客户端不可传入（冻结 §6 的注入白名单）。
-        space_id: platformSpaceId,
-        name,
-        description: APP_DESCRIPTION,
-        icon_uri: DEFAULT_APP_ICON_URI,
-      },
-    });
+    result = await callUpstream({ path: carrier.createPath, body: createAppBody(platformSpaceId, name) });
   } catch (error) {
     logger.error("workflow-v2 创建租户 App 的请求未能完成", { error: describeError(error) });
     throw new OrgAppBindingError("upstream_unavailable", "创建上游应用 的请求未能完成", { cause: error });
   }
+  const appId = carrier.readCreatedId(result.body);
+  if (!isUpstreamSuccess(result) || appId === null) return { result };
+  return { appId };
+}
 
-  const botId = readBotId(result.body);
-  if (!isUpstreamSuccess(result) || botId === null) {
-    logger.error("workflow-v2 创建租户 App 被上游拒绝", upstreamLogFields(result));
+/**
+ * 在上游建一个租户 App：应用载体优先，仅当该构建没有应用接口（HTTP 404）时退回 bot 载体（见文件头）。
+ */
+async function createUpstreamApp(platformSpaceId: string, name: string): Promise<string> {
+  const created = await createWithCarrier(APP_CARRIER, platformSpaceId, name);
+  if ("appId" in created) return created.appId;
+
+  if (created.result.status === 404) {
+    logger.warn("workflow-v2 上游没有应用接口，退回 bot 载体建租户 App", { carrier: LEGACY_BOT_CARRIER.label });
+    const legacy = await createWithCarrier(LEGACY_BOT_CARRIER, platformSpaceId, name);
+    if ("appId" in legacy) return legacy.appId;
+    logger.error("workflow-v2 创建租户 App 被上游拒绝", upstreamLogFields(legacy.result));
     throw new OrgAppBindingError("upstream_rejected", "上游拒绝了创建 App 的请求");
   }
-  return botId;
+
+  logger.error("workflow-v2 创建租户 App 被上游拒绝", upstreamLogFields(created.result));
+  throw new OrgAppBindingError("upstream_rejected", "上游拒绝了创建 App 的请求");
 }
 
 /**
@@ -283,15 +301,45 @@ async function createUpstreamApp(platformSpaceId: string, name: string): Promise
  *
  * 它在上游侧没有任何本地绑定，而上游没有「按空间列 App」的接口，不删就永久残留；删除失败只记日志，
  * 由对账任务（4A）兜底——与 2B 的 workflow 创建补偿同一口径。
+ *
+ * 应用载体优先；「这个 id 不是应用」或「该构建没有应用接口」时才用旧载体（bot）再试一次。
  */
 async function compensateOrphanApp(platformSpaceId: string, appId: string): Promise<void> {
+  let result: UpstreamCallResult;
   try {
-    const result = await callUpstream({ path: DELETE_APP_PATH, body: { space_id: platformSpaceId, bot_id: appId } });
-    if (isUpstreamSuccess(result)) {
-      logger.warn("workflow-v2 并发收敛后已清理孤儿 App", { appId });
+    result = await callUpstream({
+      path: APP_CARRIER.deletePath,
+      body: APP_CARRIER.deleteBody(appId, platformSpaceId),
+    });
+  } catch (error) {
+    logger.error("workflow-v2 孤儿 App 清理调用失败，留待对账任务重试", { appId, error: describeError(error) });
+    return;
+  }
+  if (isUpstreamSuccess(result)) {
+    logger.warn("workflow-v2 并发收敛后已清理孤儿 App", { appId });
+    return;
+  }
+  const absent = result.status === 404 || readBusinessCode(result.body) === APP_CARRIER.notFoundCode;
+  if (!absent) {
+    logger.error("workflow-v2 孤儿 App 清理被上游拒绝，留待对账任务重试", { appId, ...upstreamLogFields(result) });
+    return;
+  }
+
+  try {
+    const legacy = await callUpstream({
+      path: LEGACY_BOT_CARRIER.deletePath,
+      body: LEGACY_BOT_CARRIER.deleteBody(appId, platformSpaceId),
+    });
+    if (isUpstreamSuccess(legacy)) {
+      logger.warn("workflow-v2 并发收敛后已清理孤儿 App（旧载体）", { appId });
       return;
     }
-    logger.error("workflow-v2 孤儿 App 清理被上游拒绝，留待对账任务重试", { appId, ...upstreamLogFields(result) });
+    // 两个载体都说这个 id 不在：孤儿已经不存在，收敛完成。
+    if (readBusinessCode(legacy.body) === LEGACY_BOT_CARRIER.notFoundCode) {
+      logger.info("workflow-v2 孤儿 App 已不存在，无需清理", { appId });
+      return;
+    }
+    logger.error("workflow-v2 孤儿 App 清理被上游拒绝，留待对账任务重试", { appId, ...upstreamLogFields(legacy) });
   } catch (error) {
     logger.error("workflow-v2 孤儿 App 清理调用失败，留待对账任务重试", { appId, error: describeError(error) });
   }

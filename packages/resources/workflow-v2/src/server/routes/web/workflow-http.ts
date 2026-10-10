@@ -13,6 +13,8 @@
 import { createLogger } from "@fenix/logger";
 import type { TenantBindingSnapshot } from "../../repositories/tenant-binding-repository";
 import { findTenantBinding } from "../../repositories/tenant-binding-repository";
+import { findOrgAppBinding } from "../../services/org-app-binding";
+import { ensurePlatformAccountWithinBudget } from "../../services/platform-account-bootstrap";
 import {
   transportFailureKind,
   UPSTREAM_PANIC_CODE,
@@ -57,6 +59,18 @@ export const UNAUTHENTICATED_FAILURE: Failure = { code: "UNAUTHENTICATED", messa
 
 /** 目标在本地不可见：不存在、已软删或跨组织（三者对外同形，避免存在性泄漏）。 */
 export const NOT_FOUND_FAILURE: Failure = { code: "WORKFLOW_NOT_FOUND", message: "工作流不存在" };
+
+/**
+ * 上游响应成功、但没有该 workflow 的发布信息（实测上游**省略**不认识的 id）。
+ *
+ * 与「上游业务拒绝」区分：上游并没有拒绝，只是没给出要求的事实；而在事实缺失时发布动作**必须**中止——
+ * 版本号要以上游当前版本为基准自增，猜一个只会换来误导性的「未自增」错误。沿用既有码 `UPSTREAM_REJECTED`
+ * 与 502（客户端已按「上游侧问题，稍后重试」处置），不新造错误码。
+ */
+export const UPSTREAM_VERSION_UNKNOWN_FAILURE: HttpFailure = {
+  httpStatus: 502,
+  body: { code: "UPSTREAM_REJECTED", message: "上游未返回该工作流的当前发布版本，已中止本次发布" },
+};
 
 /** 上游调用端口；与 `callUpstream` 同形，缺省即真实实现。 */
 export type WorkflowV2UpstreamCall = (input: UpstreamCallInput) => Promise<UpstreamCallResult>;
@@ -141,25 +155,68 @@ export function upstreamFailure(
 }
 
 /**
- * 租户绑定不可用时的失败体与状态码：未绑定 → 409（先绑定 App 再建 workflow），降级 → 503（暂时不可用，
- * 可重试；设计 §4.6「写接口直接失败，不做无边界重试」）。
+ * 租户绑定不可用时的失败体与状态码。
+ *
+ * - `not_bound`（本地没有该组织的 App 行）→ 409：这是**用户可自修**的状态，列表页的未绑定态就带着「初始化
+ *   工作流空间」按钮（`POST /org-app` 幂等建绑），因此文案指向那个入口；
+ * - `account_missing`（App 行在、平台账号台账缺行）→ 503：这是**用户修不了**的状态，只能靠按需引导自愈或由
+ *   运维补台账，因此文案不得再说「去列表页初始化」——那里因为已绑定根本不显示那个按钮（曾经的误导，见
+ *   `resolveBinding` 的说明）；
+ * - `degraded`（账号或绑定被上游标记不可用）→ 503：可重试/需管理员介入，设计 §4.6「写接口直接失败，不做
+ *   无边界重试」。
  */
-export const bindingFailure = (kind: "not_bound" | "degraded"): HttpFailure =>
-  kind === "not_bound"
-    ? { httpStatus: 409, body: { code: "ORG_APP_NOT_BOUND", message: "当前组织尚未初始化工作流空间" } }
-    : { httpStatus: 503, body: { code: "PLATFORM_ACCOUNT_DEGRADED", message: "平台工作流账号或租户绑定处于降级状态" } };
+export const bindingFailure = (kind: "not_bound" | "degraded" | "account_missing"): HttpFailure => {
+  if (kind === "not_bound") {
+    return { httpStatus: 409, body: { code: "ORG_APP_NOT_BOUND", message: "当前组织尚未初始化工作流空间" } };
+  }
+  if (kind === "account_missing") {
+    return { httpStatus: 503, body: { code: "PLATFORM_ACCOUNT_NOT_PROVISIONED", message: "平台工作流账号尚未就绪" } };
+  }
+  return {
+    httpStatus: 503,
+    body: { code: "PLATFORM_ACCOUNT_DEGRADED", message: "平台工作流账号或租户绑定处于降级状态" },
+  };
+};
 
 /** 租户绑定解析结果。 */
 export type BindingResolution =
   | { readonly kind: "ready"; readonly binding: TenantBindingSnapshot }
   | { readonly kind: "not_bound" }
+  /** App 行在、平台账号台账缺行且按需引导未成功（用户无法自修，与 `not_bound` 分开以便给出正确指引）。 */
+  | { readonly kind: "account_missing" }
   | { readonly kind: "degraded" };
 
+/**
+ * 解析当前组织的租户绑定。
+ *
+ * **为什么「台账缺行」要在读路径上按需引导**：平台账号台账（`workflow_v2_platform_account`，全局单行）是
+ * `space_id` 的唯一来源，而它的唯一写入点是引导路径。该行一旦丢失（历史库被清理、库重建、迁移演练等），
+ * 绑定与 App 都还在、列表页照常显示卡片（它的门是 `findOrgAppBinding`，只读 `workflow_v2_org_app`），但
+ * 所有经本函数的接口都会拼不出 `space_id`。**两条读路径的前置条件因此曾经不一致**：页面看起来一切正常，
+ * 点「运行日志」却收到 409 `ORG_APP_NOT_BOUND` +「请先在列表页完成初始化」，而列表页**没有**那个按钮
+ * （`resolveListViewState` 只在 `unbound`/`degraded` 时给引导）——用户被指到一个不存在的入口。
+ *
+ * 收敛口径：与平台账号读接口（`GET /platform-account`）**同一套自愈**——台账缺行时跑一次有界按需引导
+ * （单飞 + 预算 + 失败不抛，见 `ensurePlatformAccountWithinBudget`），成功即恢复到正常绑定。
+ *
+ * 分辨「谁缺」是刻意的：App 行缺失（真正的未绑定）**不触发任何出站**，保持立即 409 与列表页初始化引导；
+ * 只有「App 行在 + 台账缺行」才付出这一次引导的代价。数据库故障仍按原样向上抛（与改动前一致，不降级）。
+ */
 export async function resolveBinding(organizationId: string): Promise<BindingResolution> {
   const binding = await findTenantBinding(organizationId);
-  if (!binding) return { kind: "not_bound" };
-  if (binding.platformStatus !== "active" || binding.appStatus !== "active") return { kind: "degraded" };
-  return { kind: "ready", binding };
+  if (binding) {
+    if (binding.platformStatus !== "active" || binding.appStatus !== "active") return { kind: "degraded" };
+    return { kind: "ready", binding };
+  }
+
+  const app = await findOrgAppBinding(organizationId);
+  if (app === null) return { kind: "not_bound" };
+
+  await ensurePlatformAccountWithinBudget();
+  const recovered = await findTenantBinding(organizationId);
+  if (!recovered) return { kind: "account_missing" };
+  if (recovered.platformStatus !== "active" || recovered.appStatus !== "active") return { kind: "degraded" };
+  return { kind: "ready", binding: recovered };
 }
 
 /**

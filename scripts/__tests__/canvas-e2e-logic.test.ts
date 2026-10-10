@@ -107,7 +107,8 @@ describe("inspectEnvelope", () => {
     expect(inspectEnvelope(null).keys).toEqual([]);
   });
 
-  // `list_spans` 是裸对象（无 code/data），顶层键要如实带出来供人工比对。
+  // 非信封载荷（无 `code`/`msg`/`data`）的顶层键要如实带出来供人工比对；`list_spans` 自上游 2026-10-09
+  // 提交 `3a028cf1` 起已是扁平信封 `{code,msg,spans}`，此处只验证判读逻辑的非信封分支。
   test("reports top-level keys for non-envelope payloads", () => {
     const inspection = inspectEnvelope({ spans: [], extra: 1 });
     expect(inspection.hasEnvelope).toBe(false);

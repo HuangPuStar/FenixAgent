@@ -50,10 +50,11 @@ test("未配置的旋钮按声明默认值投影", () => {
     ticketTtlSeconds: 900,
     upstreamTimeoutMs: 10_000,
     nodeWhitelist: "1,2,3,5,8,11,13,15,18,20,30,31,45,58",
-    // 4A/4B（2026-09-29）追加的三枚旋钮：默认值必须经同一条投影路径到达包内。
+    // 4A/4B（2026-09-29）追加的三枚旋钮 + 对外触发面的限流旋钮：默认值必须经同一条投影路径到达包内。
     reconcileIntervalSeconds: 300,
     bffRateLimitPerMinute: 1200,
     sessionRateLimitPerMinute: 60,
+    apiRateLimitPerMinute: 60,
   };
 
   expect(projectWorkflowV2Config(requiredInput)).toEqual(expected);
@@ -75,6 +76,7 @@ test("显式配置逐字段透传", () => {
     reconcileIntervalSeconds: 300,
     bffRateLimitPerMinute: 1200,
     sessionRateLimitPerMinute: 60,
+    apiRateLimitPerMinute: 60,
   };
 
   expect(
@@ -92,16 +94,18 @@ test("显式配置逐字段透传", () => {
   ).toEqual(expected);
 });
 
-// 三枚追加旋钮显式配置时同样逐字段透传（含 `0`：对账禁用是合法取值，不能被默认值回填抹掉）。
+// 四枚追加旋钮显式配置时同样逐字段透传（含 `0`：对账禁用是合法取值，不能被默认值回填抹掉）。
 test("对账与限流旋钮显式配置时透传（含禁用值 0）", () => {
   const projected = projectWorkflowV2Config({
     ...requiredInput,
     WORKFLOW_V2_RECONCILE_INTERVAL_SECONDS: "0",
     WORKFLOW_V2_BFF_RATE_LIMIT_PER_MINUTE: "600",
     WORKFLOW_V2_SESSION_RATE_LIMIT_PER_MINUTE: "30",
+    WORKFLOW_V2_API_RATE_LIMIT_PER_MINUTE: "10",
   }) as WorkflowV2ModuleConfigInput;
 
   expect(projected.reconcileIntervalSeconds).toBe(0);
   expect(projected.bffRateLimitPerMinute).toBe(600);
   expect(projected.sessionRateLimitPerMinute).toBe(30);
+  expect(projected.apiRateLimitPerMinute).toBe(10);
 });

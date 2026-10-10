@@ -159,14 +159,27 @@ export async function findPlatformAccount(): Promise<PlatformAccountSnapshot | n
 /**
  * 标记账号为 degraded 并记下降级原因（表里没有原因列，原因只进日志）。
  *
+ * **必须先定位到那一行再按主键更新**：台账按部署只应有一行，但存储层只保证 `platform_user_id` 唯一（改邮箱、
+ * 换账号、多个部署共用同一库都会留下多行），而这里要标记的是**本部署读到的那个账号**
+ * （{@link findPlatformAccountRow} 与读路径 `findTenantBinding` 取的是同一行，口径因此一致）。早先的实现是一条
+ * 无 `where` 的 UPDATE，等于把整张表一起标成 degraded —— 在共享库/开发库上会篡改别的部署（乃至真实部署）的
+ * 账号状态，本机测试的失败分支也会顺带改掉真实行。台账本来没有行时（纯首次引导失败）**不写任何东西**：
+ * 没有可标记的对象，失败原因只进日志，绝不能退化成「全表更新」。
+ *
  * 只在引导失败的路径上调用，且**永不抛错**：调用方此时已在处理原始失败，降级标记再失败只会掩盖它；
  * 写失败进 error 日志，由运维从日志侧发现。
  */
 async function markPlatformAccountDegraded(reason: string): Promise<void> {
   try {
+    const existing = await findPlatformAccountRow();
+    if (existing === null) {
+      logger.warn("workflow-v2 平台账号引导失败且台账无行，仅记日志", { reason });
+      return;
+    }
     await getWorkflowV2Database()
       .update(workflowV2PlatformAccount)
-      .set({ status: "degraded", lastError: reason, updatedAt: new Date() });
+      .set({ status: "degraded", lastError: reason, updatedAt: new Date() })
+      .where(eq(workflowV2PlatformAccount.id, existing.id));
     logger.warn("workflow-v2 平台账号置为 degraded", { reason });
   } catch (error) {
     logger.error("workflow-v2 平台账号降级标记写入失败", {

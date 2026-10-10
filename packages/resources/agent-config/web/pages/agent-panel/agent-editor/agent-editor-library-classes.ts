@@ -6,8 +6,14 @@
  * `RETRIEVAL_OPTIONS_FIELDS`）已在 B 落地，这里只补 C 自己剩下的声明，并把两处状态钩子从类名改成 `data-*`。
  *
  * 深层选择器（子代、`:hover` / `:has()` 变体）、复合值与响应式覆盖：2026-09-28 第三波收口后，凡有挂载点的
- * 声明都已回到本文件与 `AgentKnowledgeSection.tsx` 的 `className`，同名 CSS 只剩 `minmax()` 列模板、
- * `:where()` 基准列宽与两条非标准字重。扁平工具类保留在此，导出常量名保持不变。
+ * 声明都已回到本文件与 `AgentKnowledgeSection.tsx` 的 `className`，同名 CSS 只剩三处**没有工具类覆盖**的
+ * 列模板（来源按钮 / 知识区块头 / 记忆开关）、两条非标准字重与两个**列宽模板变量**。导出常量名保持不变。
+ *
+ * 需要被 `className` 覆盖的模板不下沉成 `grid-template-columns`，只下沉「值」（自定义属性），由类串用
+ * `grid-cols-(--…)` 引用——伴随表**未分层**，写死的普通声明在层叠上恒压过 `@layer utilities`（`:where()`
+ * 只压特指度，压不过层序）。2026-10-09 的缺陷正是这么来的：`:where(.agent-editor-library-picker)` 的 168px
+ * 模板压死了平铺态的 `grid-cols-1`，单来源的技能 / MCP / Sites 列表被挤进 168px 左栏、右侧整片留白。
+ * 窄屏收窄同理，它现在只改同一个变量的值（B 的 `LIBRARY_PICKER_NARROW`），窄屏下的平铺态也由工具类层裁决。
  */
 import "./agent-editor-library-classes.css";
 
@@ -32,10 +38,12 @@ export const GROUP_FILTER_LABEL = "overflow-hidden text-ellipsis whitespace-nowr
 
 /* ── 两层资源库（library） ─────────────────────────────────────────────── */
 
-/** `.agent-editor-library-picker`：左来源栏 + 右结果区（168px 左列的网格模板见同名 CSS，250px 最小高在此）。 */
+/** `.agent-editor-library-picker`：左来源栏 + 右结果区（250px 最小高在此，列宽模板见同名 CSS 的
+ *  `--agent-editor-library-picker-columns`——值留 CSS、引用走工具类，平铺态才能真正覆盖，理由见文件头）。 */
 export const LIBRARY_PICKER =
-  "agent-editor-library-picker grid min-h-62.5 overflow-hidden border border-slate-200 rounded-xl bg-white";
-/** `.is-flat`：单分类时收成单列并去掉最小高。 */
+  "agent-editor-library-picker grid min-h-62.5 grid-cols-(--agent-editor-library-picker-columns) " +
+  "overflow-hidden border border-slate-200 rounded-xl bg-white";
+/** `.is-flat`：单来源时收成单列并去掉最小高（同层覆盖，twMerge 会丢掉上面的模板引用）。 */
 export const LIBRARY_PICKER_FLAT = "min-h-0 grid-cols-1";
 /** 资源选择器内嵌形态：外壳自己已有描边与圆角，内层不再重复。 */
 export const LIBRARY_PICKER_EMBEDDED = "min-h-0 border-0 rounded-none";
@@ -79,8 +87,9 @@ export const KNOWLEDGE_SWITCH =
   "agent-knowledge-switch grid min-h-16 w-full items-center gap-3.5 border-0 rounded-md bg-slate-50 " +
   "px-3 py-2.75 text-left text-slate-600 hover:bg-blue-50 has-[[data-state=checked]]:bg-blue-50";
 
-/** `.agent-retrieval-fields`：两列（说明字段 + 选项列，列宽模板见同名 CSS），≤1024px 单列。 */
-export const RETRIEVAL_FIELDS = "agent-retrieval-fields grid items-start gap-3 max-lg:grid-cols-1";
+/** `.agent-retrieval-fields`：两列（说明字段 + 选项列），≤1024px 单列；模板同样留在工具类层，理由见文件头。 */
+export const RETRIEVAL_FIELDS =
+  "agent-retrieval-fields grid items-start gap-3 grid-cols-(--agent-retrieval-fields-columns) max-lg:grid-cols-1";
 /** `.agent-retrieval-options`：选项列（子字段的两列行由 B 的 `RETRIEVAL_OPTIONS_FIELDS` 提供）。 */
 export const RETRIEVAL_OPTIONS = "grid gap-2.25";
 /** `#agent-editor-default-namespaces`：默认命名空间文本域（92px 最小高、可纵向拉伸）。 */

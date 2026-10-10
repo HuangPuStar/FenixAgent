@@ -152,6 +152,7 @@ export function buildModuleConfigs(env: ServerEnv, config: AppConfig): Readonly<
       reconcileIntervalSeconds: readDeclaredEnv<number>(env, "WORKFLOW_V2_RECONCILE_INTERVAL_SECONDS"),
       bffRateLimitPerMinute: readDeclaredEnv<number>(env, "WORKFLOW_V2_BFF_RATE_LIMIT_PER_MINUTE"),
       sessionRateLimitPerMinute: readDeclaredEnv<number>(env, "WORKFLOW_V2_SESSION_RATE_LIMIT_PER_MINUTE"),
+      apiRateLimitPerMinute: readDeclaredEnv<number>(env, "WORKFLOW_V2_API_RATE_LIMIT_PER_MINUTE"),
     },
     // 模型管理模块配置：网关适配器参数与默认预算。管理密钥与凭据加密密钥未配置时是 `undefined`，
     // 包侧据此判定「网关未启用」而不会退化成无鉴权网关；默认预算周期已由 env schema 把

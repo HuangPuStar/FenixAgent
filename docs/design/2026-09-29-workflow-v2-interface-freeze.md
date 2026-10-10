@@ -82,7 +82,7 @@
 |---|---|
 | `workflow_v2_platform_account` | `id` pk、`platform_user_id` text unique、`platform_space_id` text、`email` text、`status` text（`active`/`degraded`）、`last_login_at`、`last_probe_at`、`last_error` text、`created_at`、`updated_at` |
 | `workflow_v2_org_app` | `id` pk、`organization_id` text unique、`app_id` text unique、`name` text、`status` text、`created_at`、`updated_at` |
-| `workflow_v2_workflow` | `id` pk（uuid）、`organization_id` text、`upstream_workflow_id` text unique、`app_id` text、`name` text、`owner_user_id` text、`visibility` text default `'private'`、`published_version` text、`sync_state` text default `'active'`（`active`/`pending_delete`）、`deleted_at`、`created_at`、`updated_at`；索引 `(organization_id, deleted_at)` |
+| `workflow_v2_workflow` | `id` pk（uuid）、`organization_id` text、`upstream_workflow_id` text unique、`app_id` text、`name` text、`owner_user_id` text、`visibility` text default `'private'`、`published_version` text（**遗留列**：2026-10-09 起无读写方，待迁移删除）、`sync_state` text default `'active'`（`active`/`pending_delete`）、`deleted_at`、`created_at`、`updated_at`；索引 `(organization_id, deleted_at)` |
 | `workflow_v2_audit_log` | `id` pk、`organization_id`、`actor_user_id`、`action`、`upstream_workflow_id`、`request_id`、`result` text、`error_code` text、`created_at`；索引 `(organization_id, created_at)` |
 
 迁移：`drizzle.config.ts` 的 `schema` 数组追加本包出口 → `bun run db:generate --name workflow-v2-init` → 审查 → `bun run db:migrate`。
@@ -150,10 +150,10 @@ export function isNodeAllowed(type: string): boolean;
 export interface WorkflowRecord {
   id: string; organizationId: string; upstreamWorkflowId: string; appId: string;
   name: string; ownerUserId: string; visibility: string;
-  publishedVersion: string | null; syncState: "active" | "pending_delete";
+  syncState: "active" | "pending_delete";
 }
 export function findWorkflowByUpstreamId(orgId: string, upstreamWorkflowId: string): Promise<WorkflowRecord | null>;
-export function registerWorkflow(input: Omit<WorkflowRecord, "id" | "syncState" | "publishedVersion">): Promise<WorkflowRecord>;
+export function registerWorkflow(input: Omit<WorkflowRecord, "id" | "syncState">): Promise<WorkflowRecord>;
 export function softDeleteWorkflow(orgId: string, upstreamWorkflowId: string): Promise<void>;
 ```
 

@@ -69,7 +69,12 @@ test("启用 workflow-v2 恢复 workflow web ID 与路由贡献", async () => {
     expect(data.web).toContain("workflow");
     expect(data.modules).toContain("workflow-v2");
     expect(data.web.every((id) => !id.includes("/") && !id.includes("@"))).toBe(true);
-    expect(mounted).toEqual(["workflow-v2.web-control", "workflow-v2.canvas-bff", "workflow-v2.canvas-static"]);
+    expect(mounted).toEqual([
+      "workflow-v2.web-control",
+      "workflow-v2.external-api",
+      "workflow-v2.canvas-bff",
+      "workflow-v2.canvas-static",
+    ]);
   } finally {
     await assembly.dispose();
   }

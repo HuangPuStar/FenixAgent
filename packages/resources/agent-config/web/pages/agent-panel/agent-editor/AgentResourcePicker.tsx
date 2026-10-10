@@ -1,4 +1,3 @@
-import { RemovableChip } from "@fenix/ui-components/components/RemovableChip";
 import { EmptyState } from "@fenix/ui-components/config/EmptyState";
 import { cn } from "@fenix/ui-components/lib/cn";
 import { Checkbox } from "@fenix/ui-components/ui/checkbox";
@@ -12,11 +11,7 @@ import {
   PICKER,
   PICKER_CHECKBOX,
   PICKER_CHECKBOX_CHECKED,
-  PICKER_CHIP,
-  PICKER_CHIP_UNAVAILABLE,
-  PICKER_CHIPS,
   PICKER_COPY,
-  PICKER_EMPTY,
   PICKER_ICON,
   PICKER_INPUT,
   PICKER_LIST,
@@ -106,9 +101,6 @@ export function AgentResourcePicker({
   );
   const activeGroup = filteredOptions.activeGroup;
   const paged = paginateAgentEditorOptions(filtered, page);
-  const selectedOptions = value.map(
-    (id) => options.find((item) => item.id === id) ?? { id, label: id, unavailable: true },
-  );
   const toggle = (item: AgentEditorOption) => {
     const exists = selected.has(item.id);
     if (item.unavailable && !exists) return;
@@ -117,42 +109,11 @@ export function AgentResourcePicker({
   };
   return (
     <div className={cn(PICKER, className)} role="group" aria-label={label}>
+      {/* 已选区只留摘要：右侧的已选 chip 列（连 ✕ 移除）2026-10-09 按产品口径整块删除，选择与移除都
+          由下方列表承担；摘要行因此从两列网格（116px 摘要 + chips）收成单列，不留空列。 */}
       <div className={PICKER_SELECTED}>
-        <div className="flex min-w-0 flex-col gap-0.75">
-          <strong className="text-xs text-slate-700">{t("editor.selectedCount", { count: value.length })}</strong>
-          <small className="text-3xs text-gray-400">{t("editor.changeSelection")}</small>
-        </div>
-        {/* 已选 chip 走库内共用原语 `components/RemovableChip`（整枚可点即移除）：本处、ChatComposer 的
-            技能 chip 与 MCP chip 三处此前各写一份同样的按钮 + 尾随 `X`，差异只在类串与文案。 */}
-        <div className={PICKER_CHIPS} data-slot="picker-chips">
-          {selectedOptions.length ? (
-            selectedOptions.map((item) => {
-              const unavailableText = item.unavailable
-                ? t("editor.selectedUnavailableResource", { name: item.label })
-                : undefined;
-              return (
-                <RemovableChip
-                  key={item.id}
-                  className={cn(PICKER_CHIP, item.unavailable && PICKER_CHIP_UNAVAILABLE)}
-                  data-unavailable={item.unavailable ? "true" : undefined}
-                  onRemove={() => toggle(item)}
-                  disabled={readOnly}
-                  aria-label={
-                    item.unavailable
-                      ? t("editor.removeUnavailableResource", { name: item.label })
-                      : t("editor.removeResource", { name: item.label })
-                  }
-                  title={unavailableText}
-                >
-                  {item.label}
-                  {item.unavailable && <span className="sr-only">{t("editor.unavailable")}</span>}
-                </RemovableChip>
-              );
-            })
-          ) : (
-            <span className={PICKER_EMPTY}>{t("editor.noneSelected")}</span>
-          )}
-        </div>
+        <strong className="text-xs text-slate-700">{t("editor.selectedCount", { count: value.length })}</strong>
+        <small className="text-3xs text-gray-400">{t("editor.changeSelection")}</small>
       </div>
       <label className={PICKER_SEARCH}>
         <Search className="w-3.25 shrink-0 basis-3.25" />

@@ -17,7 +17,7 @@
 // 胜负退化成「样式表里的生成顺序」——不可控。漏改一处不会报错，只会在界面上表现为「同一组件里同角色
 // 文字大小不一致」，没有任何运行时断言能发现它。
 //
-// 本文件断言八件事：
+// 本文件断言十件事：
 //   ① 每个分片的 CSS 是**整片**删除（不允许删一半），且删干净的片其 tsx 里不再有语义类名；
 //   ② 面板 JSX 的字号只用白名单刻度（`text-3xs` / `text-xs` / `text-sm` / `text-base` / `text-lg`），
 //      且不再出现任何任意值字号（`text-[Npx]`，含窄屏图标化的 0——它已改由伴随 CSS 表达）；
@@ -26,7 +26,9 @@
 //   ⑤ 迁移收口后目录里没有例外：每份 `.css` 都与同名源文件配对（伴随表），宿主钩子只定义一次；
 //   ⑥ 分区入场动画的关键帧（在 `agent-editor-classes.css`）与引用它的 `animation:` 声明都在；
 //   ⑦ `AgentFormDialog.tsx` 不再有面板 CSS 的副作用导入；
-//   ⑧ 伴随 CSS 里没有「被子孙规则压死的声明」（同选择器同属性，一端 `!important` 一端不带）。
+//   ⑧ 伴随 CSS 里没有「被子孙规则压死的声明」（同选择器同属性，一端 `!important` 一端不带）；
+//   ⑨ 需要被 `className` 覆盖的列模板留在工具类层，伴随表只下沉模板变量（未分层，声明下沉回去会让覆盖静默失效）；
+//   ⑩ 资源选择器的已选区是单列摘要（右侧 chip 列 2026-10-09 删除后不留幻影列）。
 //
 // 拦得住：越界字号、同属性双值、分片半删、语义类名回流、锚点角色字号漂移、关键帧丢失、宿主钩子漂移，
 // 以及下沉时丢掉源类的 `!` 前缀语义（⑧）——后者是真实的踩坑：`className` 里的 `!p-0` 会生成
@@ -953,6 +955,80 @@ describe("Agent Editor：Tailwind 迁移与字号刻度", () => {
     expect(tokens.filter((token) => /^!(?:bg|text)-/.test(token))).toEqual([]);
     // 反面条件：伴随表的 `:hover` 覆盖还在。哪天它被删了，上面这条限制就该一并重新评估。
     expect(readEditorFile("AgentEditorChrome.css")).toContain(".agent-editor-chrome-close-button:hover {");
+  });
+
+  // ⑨ 需要被 `className` 覆盖的模板不能以「声明」形态留在伴随表：伴随表未分层，普通声明**恒赢**
+  // `@layer utilities`（`:where()` 只压特指度，压不过层序）。2026-10-09 的真实缺陷：
+  // `:where(.agent-editor-library-picker)` 的 168px 模板压死了 `LIBRARY_PICKER_FLAT` 的 `grid-cols-1`，
+  // 单来源的技能 / MCP / Sites 列表被挤进 168px 左栏、右侧整片留白（jsdom 无布局，行为测试看不见）。
+  // 现行口径：模板本体留在工具类层（类串里的 `grid-cols-(--…)`），伴随表只下沉「值」——同名的自定义属性，
+  // 因为在同一元素上给工具类判胜负是层序的活，未分层只配提供值（先例见 `ui/alert-dialog.css`）。
+  // 判据：① 两个类串都引用 `grid-cols-(--…)`；② 伴随表里凡命中这两个语义类的声明只能是该变量本身
+  // （`grid-template-columns` / `min-height` 一类会被 className 覆盖的属性出现即违规）；③ 窄屏收窄
+  // （760–1119px）同样只改变量，且必须带 `:not([data-flat="true"])` 守卫，不得压死平铺态的单列。
+  test("资源选择器与检索选项的列模板留在工具类层，伴随表只下沉模板变量", () => {
+    const constants = constantValues(SCAN_FILES.map(readEditorFile));
+    const declarations = readCssDeclarations();
+    const violations: string[] = [];
+    const templates: Array<[string, string, string]> = [
+      ["LIBRARY_PICKER", "agent-editor-library-picker", "--agent-editor-library-picker-columns"],
+      ["RETRIEVAL_FIELDS", "agent-retrieval-fields", "--agent-retrieval-fields-columns"],
+    ];
+
+    for (const [name, semanticClass, variable] of templates) {
+      const tokens = (constants.get(name) ?? "").split(/\s+/).filter(Boolean);
+      if (!tokens.includes(`grid-cols-(${variable})`)) {
+        violations.push(
+          `${name} 的类串没有引用 grid-cols-(${variable})（模板回到伴随表后，同一元素上的覆盖会静默失效）`,
+        );
+      }
+      // 整词匹配：`.agent-editor-library-picker` 是 `.agent-editor-library-picker-narrow` 的前缀。
+      const owned = declarations.filter((declaration) =>
+        new RegExp(`\\.${semanticClass}(?![\\w-])`).test(declaration.selector),
+      );
+      if (!owned.some((declaration) => declaration.property === variable)) {
+        violations.push(`${variable} 没有在伴随表里定义，引用会落空成 none`);
+      }
+      for (const declaration of owned) {
+        if (declaration.property !== variable) {
+          violations.push(
+            `${declaration.file} 的 \`${declaration.selector}\` 在被覆盖元素上声明了 ${declaration.property}`,
+          );
+        }
+      }
+    }
+
+    for (const declaration of declarations) {
+      if (!declaration.selector.includes(".agent-editor-library-picker-narrow")) continue;
+      if (declaration.property !== "--agent-editor-library-picker-columns") {
+        violations.push(`窄屏收窄 \`${declaration.selector}\` 声明了 ${declaration.property}，它必须只改模板变量的值`);
+      }
+      if (!declaration.selector.includes("[data-flat")) {
+        violations.push(`\`${declaration.selector}\` 没有排除平铺态，不留神就会压死单列的 grid-cols-1`);
+      }
+    }
+    expect(violations).toEqual([]);
+  });
+
+  // ⑩ 已选区在 2026-10-09 按产品口径删掉右侧 chip 列，只保留「已选 N 项 / 搜索或更改选择」摘要：
+  // 摘要行必须收敛成单列，不留幻影列。判据：类串不带网格（`grid` / `grid-cols-*`），伴随表里不得再给
+  // `.agent-resource-picker__selected` 声明 `grid-template-columns`——chip 列若要回来，必然要重新引入
+  // 那条两列模板，这两条断言就是回流路径上的闸门。
+  test("资源选择器已选区是单列摘要，chip 列不得回流", () => {
+    const constants = constantValues(SCAN_FILES.map(readEditorFile));
+    const tokens = (constants.get("PICKER_SELECTED") ?? "").split(/\s+/).filter(Boolean);
+    const violations = tokens
+      .filter((token) => token === "grid" || token.startsWith("grid-cols-"))
+      .map((token) => `PICKER_SELECTED 带上了网格类 ${token}（单列摘要不需要列模板）`);
+    for (const declaration of readCssDeclarations()) {
+      if (declaration.property !== "grid-template-columns") continue;
+      // 整词匹配：`.agent-resource-picker__selected` 没有 `-` 变体，但保持与 ⑨ 同口径。
+      if (!/\.agent-resource-picker__selected(?![\w-])/.test(declaration.selector)) continue;
+      violations.push(
+        `${declaration.file} 的 \`${declaration.selector}\` 又声明了 grid-template-columns（幻影列回流）`,
+      );
+    }
+    expect(violations).toEqual([]);
   });
 
   // 收口（2026-09-28）后目录里不再有「登记保留文件」这条例外：每份 `.css` 都必须与同名源文件配对

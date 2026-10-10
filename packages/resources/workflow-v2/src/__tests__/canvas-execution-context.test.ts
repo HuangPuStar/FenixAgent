@@ -36,7 +36,6 @@ beforeEach(() => {
             name: "execution context",
             ownerUserId: USER_ID,
             visibility: "private",
-            publishedVersion: null,
             syncState: "active",
           }
         : null,

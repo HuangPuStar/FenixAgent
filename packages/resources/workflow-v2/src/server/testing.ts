@@ -31,6 +31,7 @@ const TEST_RECONCILE_INTERVAL_SECONDS = 0;
 /** fixture 里的限流阈值：与 manifest 默认值一致（用例要放宽/收紧时经 overrides 覆盖）。 */
 const TEST_BFF_RATE_LIMIT_PER_MINUTE = 1200;
 const TEST_SESSION_RATE_LIMIT_PER_MINUTE = 60;
+const TEST_API_RATE_LIMIT_PER_MINUTE = 60;
 
 /**
  * 构造一份字段齐全的模块配置（写入形状）。
@@ -54,6 +55,7 @@ export function createWorkflowV2ModuleConfig(
     reconcileIntervalSeconds: TEST_RECONCILE_INTERVAL_SECONDS,
     bffRateLimitPerMinute: TEST_BFF_RATE_LIMIT_PER_MINUTE,
     sessionRateLimitPerMinute: TEST_SESSION_RATE_LIMIT_PER_MINUTE,
+    apiRateLimitPerMinute: TEST_API_RATE_LIMIT_PER_MINUTE,
     ...overrides,
   };
 }

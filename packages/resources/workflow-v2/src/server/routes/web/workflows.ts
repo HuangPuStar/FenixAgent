@@ -4,9 +4,9 @@ import { Elysia } from "elysia";
 import * as z from "zod/v4";
 import { createWorkflowAuditWriter, WORKFLOW_AUDIT_ACTIONS } from "../../services/audit-trail";
 import { callUpstream, type UpstreamCallResult } from "../../services/upstream-client";
+import { listWorkflowsWithPublishStatus } from "../../services/workflow-publish-state";
 import {
   findWorkflowById,
-  listWorkflows,
   registerWorkflow,
   renameWorkflow,
   softDeleteWorkflow,
@@ -31,7 +31,8 @@ import {
 } from "./workflow-http";
 
 /**
- * `/web/workflow-v2/workflows` — 本地注册表的列表、创建、重命名与删除；发布在 `workflow-publish.ts`（3B）。
+ * `/web/workflow-v2/workflows` — 本地注册表的列表、创建、重命名与删除；发布记录的读出口在
+ * `workflow-publish.ts`（发布动作已于 2026-10-10 撤除，平台只读上游状态）。
  *
  * 归属校验全部落在服务端：组织谓词只从会话上下文推导，创建/改名注入的 `space_id` / `project_id` 取自
  * `workflow_v2_platform_account` / `workflow_v2_org_app`，客户端同名入参一律被忽略（冻结 §4.3/§6）。
@@ -89,6 +90,12 @@ const WorkflowItemSchema = z.object({
   name: z.string(),
   ownerUserId: z.string(),
   visibility: z.string(),
+  /**
+   * 上游发布态（`workflow_detail_info` 的 `latest_flow_version`）：`unknown` 表示本次没读到，
+   * 前端**必须**与「未发布」分开呈现（见 `services/workflow-publish-state.ts`）。
+   */
+  publishState: z.enum(["published", "unpublished", "unknown"]),
+  /** 上游当前发布版本；仅 `published` 时非 null。 */
   publishedVersion: z.string().nullable(),
   syncState: z.enum(["active", "pending_delete"]),
   updatedAt: z.string(),
@@ -114,7 +121,18 @@ export function createWebWorkflowV2WorkflowRoutes(
       const actor = readActor(store);
       if (!actor) return status(401, failBody(UNAUTHENTICATED_FAILURE));
       // 已软删（pending_delete）的记录不在可见集里：控制台看不到，也就不会再有人对它发请求。
-      const page = await listWorkflows(actor.organizationId, { page: query.page, size: query.size, name: query.name });
+      // 绑定解析走 `resolveBinding`（与发布、发布记录、运行日志**同一口径**）：台账缺行时按需引导自愈，
+      // 状态列才能与同一页面的其它读路径给出同一个真相；绑定不可用时不 409（页面有自己的引导屏），
+      // 只把状态降级成「未知」。
+      const resolution = await resolveBinding(actor.organizationId);
+      const page = await listWorkflowsWithPublishStatus(
+        actor.organizationId,
+        { page: query.page, size: query.size, name: query.name },
+        resolution.kind === "ready"
+          ? { platformSpaceId: resolution.binding.platformSpaceId, unavailableReason: null }
+          : { platformSpaceId: null, unavailableReason: resolution.kind },
+        { callUpstream: upstream },
+      );
       return { success: true as const, data: page };
     },
     {
@@ -124,7 +142,10 @@ export function createWebWorkflowV2WorkflowRoutes(
       detail: {
         tags: ["Workflow V2"],
         summary: "列出当前组织的工作流",
-        description: "query page/size/name，返回 { items, total }。列表来自本地注册表，已软删的工作流不可见。",
+        description:
+          "query page/size/name，返回 { items, total }。列表项来自本地注册表（已软删的不可见），" +
+          "`publishState` / `publishedVersion` 取自上游当前发布版本：`unknown` 表示本次未读到，" +
+          "不等于「未发布」。绑定解析与其它读路径同口径（台账缺行时按需自愈），不可用时只降级状态、不影响列表。",
       },
     },
   );

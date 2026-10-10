@@ -18,7 +18,7 @@ import { AlertTriangle, Inbox, Link2Off, Plus, RefreshCw, ShieldAlert, WifiOff }
 import type { ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import { WORKFLOW_NS } from "../../i18n/namespace";
-import type { WorkflowListViewState } from "./workflow-list-model";
+import { WORKFLOW_GRID_CLASS, type WorkflowListViewState } from "./workflow-list-model";
 
 /** 骨架 / 空态 / 失败之外的状态（渲染表格与骨架的两种状态由调用方分支）。 */
 export type WorkflowListInactiveState = Exclude<WorkflowListViewState, { kind: "loading" } | { kind: "ready" }>;
@@ -51,17 +51,37 @@ interface ListStatusDescription {
 /** 状态图标统一尺寸（不写尺寸类时 `EmptyState` 用 lucide 默认的 24px，与既有页面不一致）。 */
 const ICON_CLASS = "size-6";
 
-/** 表格骨架：列宽对齐真实列的相对比例，取数完成时的跳动只发生在行内容上。 */
+/**
+ * 卡片骨架的占位键（与 `workflow-list-cards.tsx` 的网格同形）：取数完成时的跳动只发生在文字行上。
+ *
+ * 键写成固定字面量而不是数组下标：下标做 key 是 biome 的 `noArrayIndexKey` 禁则，且骨架是静态占位，
+ * 复用同一组常量没有身份问题。
+ */
+const SKELETON_CARD_KEYS = ["card-1", "card-2", "card-3", "card-4", "card-5", "card-6"] as const;
+
 export function WorkflowListSkeleton() {
   const { t } = useTranslation(WORKFLOW_NS);
   // `role="status"` + `aria-busy` 让读屏知道这里是「正在加载」而不是空列表；骨架本身没有可读文案，
   // 语义靠 `aria-label` 补（与旧列表页同款）。
   return (
-    <div aria-busy="true" aria-label={t("list.loading")} className="flex flex-col gap-2" role="status">
-      <Skeleton className="h-9 w-full" />
-      <Skeleton className="h-12 w-full" />
-      <Skeleton className="h-12 w-full" />
-      <Skeleton className="h-12 w-full" />
+    <div aria-busy="true" aria-label={t("list.loading")} className={WORKFLOW_GRID_CLASS} role="status">
+      {SKELETON_CARD_KEYS.map((key) => (
+        <div key={key} aria-hidden="true" className="overflow-hidden rounded-xl border bg-card">
+          <div className="flex items-center gap-3 p-5 pb-4">
+            <Skeleton className="size-10 rounded-xl" />
+            <Skeleton className="h-5 w-2/3" />
+          </div>
+          <div className="space-y-3 px-5 pb-4">
+            <Skeleton className="h-7 w-28" />
+            <Skeleton className="h-10 w-full" />
+            <Skeleton className="h-4 w-36" />
+          </div>
+          <div className="flex justify-between border-t px-4 py-3">
+            <Skeleton className="h-8 w-24" />
+            <Skeleton className="h-8 w-24" />
+          </div>
+        </div>
+      ))}
     </div>
   );
 }
@@ -126,6 +146,7 @@ function describeStatus(state: WorkflowListInactiveState, t: Translate): ListSta
 export interface WorkflowListStatusViewProps {
   readonly state: WorkflowListInactiveState;
   readonly onRetry: () => void;
+  readonly onCreate: () => void;
   /** 主动作（一键初始化工作流空间）的回调；只有未绑定态会渲染它，其余状态传入也不会被调用。 */
   readonly onInitialize: () => void;
   /**
@@ -148,7 +169,13 @@ export interface WorkflowListStatusViewProps {
  * 覆盖成立靠 Tailwind 的产出顺序（`.pb-*` 排在 `.py-*` 之后，与 `p` → `px`/`py` → `pt`/`pb` 的档位顺序一致），
  * 不是 `cn` 替我们消解：`twMerge` 只认同一冲突族内的完整覆盖，`py-10` 与 `pb-2` 会被一起保留、由样式表顺序定胜负。
  */
-export function WorkflowListStatusView({ state, onRetry, onInitialize, initializing }: WorkflowListStatusViewProps) {
+export function WorkflowListStatusView({
+  state,
+  onRetry,
+  onCreate,
+  onInitialize,
+  initializing,
+}: WorkflowListStatusViewProps) {
   const { t } = useTranslation(WORKFLOW_NS);
   const { icon, title, description, tone, retryable, primaryAction } = describeStatus(state, t);
   const stackedRetry = primaryAction !== null && retryable;
@@ -161,18 +188,24 @@ export function WorkflowListStatusView({ state, onRetry, onInitialize, initializ
         description={description}
         tone={tone}
         role={tone === "danger" ? "alert" : undefined}
-        className={stackedRetry ? "pb-2" : undefined}
+        className={
+          stackedRetry
+            ? "rounded-xl border border-border-subtle bg-card pb-2"
+            : "rounded-xl border border-border-subtle bg-card py-16"
+        }
         action={
-          primaryAction
-            ? {
-                label: initializing ? t("list.blocked.unbound.initializing") : primaryAction.label,
-                icon: primaryAction.icon,
-                onClick: onInitialize,
-                disabled: initializing,
-              }
-            : retryable
-              ? { label: t("list.retry"), onClick: onRetry, icon: <RefreshCw className="size-4" /> }
-              : undefined
+          state.kind === "empty"
+            ? { label: t("list.create"), onClick: onCreate, icon: <Plus className="size-4" /> }
+            : primaryAction
+              ? {
+                  label: initializing ? t("list.blocked.unbound.initializing") : primaryAction.label,
+                  icon: primaryAction.icon,
+                  onClick: onInitialize,
+                  disabled: initializing,
+                }
+              : retryable
+                ? { label: t("list.retry"), onClick: onRetry, icon: <RefreshCw className="size-4" /> }
+                : undefined
         }
       />
       {stackedRetry ? (

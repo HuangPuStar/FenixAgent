@@ -27,6 +27,9 @@ export interface WorkflowRequestOptions {
  *
  * `syncState` 是本地注册表的同步状态：列表只回 `active` 的记录（已软删的不可见），`pending_delete` 因此
  * 只在「删除进行中」这类竞态下短暂出现，UI 仍要能表达它而不是当成未知值。
+ *
+ * `publishState` / `publishedVersion` 是**上游**口径（平台不维护本地版本镜像）：`unknown` 表示本次没读到，
+ * UI 必须与「未发布」分开呈现（把它渲染成「未发布」正是本次报障的错误方向）。
  */
 export interface WorkflowV2WorkflowItem {
   /** 本地注册表主键（`PATCH` / `DELETE` 的路径参数）。 */
@@ -38,7 +41,9 @@ export interface WorkflowV2WorkflowItem {
   readonly name: string;
   readonly ownerUserId: string;
   readonly visibility: string;
-  /** 已发布版本号；从未发布为 null。 */
+  /** 上游发布态；`unknown` 只表示没读到，不代表未发布。 */
+  readonly publishState: "published" | "unpublished" | "unknown";
+  /** 上游当前发布版本（形如 `v0.0.1`，**已带 `v` 前缀**）；仅 `published` 时非 null。 */
   readonly publishedVersion: string | null;
   readonly syncState: "active" | "pending_delete";
   /** ISO 8601 时间串（服务端 `Date#toISOString()`）。 */

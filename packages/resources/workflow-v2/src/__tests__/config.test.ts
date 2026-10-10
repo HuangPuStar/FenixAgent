@@ -19,9 +19,11 @@ import { createWorkflowV2ModuleConfig, initializeWorkflowV2ModuleConfig } from "
  */
 
 /**
- * 冻结 §2.2 的九枚键 + 4A/4B（2026-09-29）追加的三枚对账/限流旋钮；顺序即声明序（部署模板按它生成）。
+ * 冻结 §2.2 的九枚键 + 4A/4B（2026-09-29）追加的三枚对账/限流旋钮 + 对外触发面（2026-10-09）追加的
+ * 一枚限流旋钮；顺序即声明序（部署模板按它生成）。
  *
- * 三枚新键尚未回写进冻结 §2.2（该文件属文档 owner，本轮任务不得改 `docs/**`），落差已在任务回报里登记。
+ * 后四枚尚未回写进冻结 §2.2（`docs/design/**` 由设计 owner 维护），落差登记在 `docs/arch/25-workflow-v2.md`
+ * 与本次任务回报里。
  */
 const DECLARED_KEYS = [
   "WORKFLOW_V2_UPSTREAM_BASE_URL",
@@ -36,6 +38,7 @@ const DECLARED_KEYS = [
   "WORKFLOW_V2_RECONCILE_INTERVAL_SECONDS",
   "WORKFLOW_V2_BFF_RATE_LIMIT_PER_MINUTE",
   "WORKFLOW_V2_SESSION_RATE_LIMIT_PER_MINUTE",
+  "WORKFLOW_V2_API_RATE_LIMIT_PER_MINUTE",
 ] as const;
 
 /** 无默认值的三枚必填键。 */
@@ -55,7 +58,7 @@ const requiredInput: Record<string, string> = {
 // 声明键是键 owner 的唯一表达：多一枚少一枚都说明冻结 §2.2（+ 4A/4B 追加的三枚）与本包脱节。
 test("manifest 声明冻结 §2.2 与 4A/4B 追加的全部键", () => {
   expect(moduleManifest.envDefinitions.map((definition) => definition.key)).toEqual([...DECLARED_KEYS]);
-  // 两枚密钥材料必须标 secret：preflight 与部署模板据此决定是否脱敏。
+  // 三枚密钥材料必须标 secret：preflight 与部署模板据此决定是否脱敏。
   const secretKeys = moduleManifest.envDefinitions
     .filter((definition) => definition.secret)
     .map((definition) => definition.key);
@@ -73,10 +76,12 @@ test("未配置的旋钮按声明默认值解析", () => {
   expect(env.WORKFLOW_V2_UPSTREAM_TIMEOUT_MS).toBe(10_000);
   // 许可集默认值是数字串（冻结 §5 更正后）：名称形式会被判定层忽略并回退默认集，不能作为声明值。
   expect(env.WORKFLOW_V2_NODE_WHITELIST).toBe("1,2,3,5,8,11,13,15,18,20,30,31,45,58");
-  // 对账默认开启（5 分钟一轮）；限流阈值默认值必须与设计里的「远高于正常画布轮询」量级一致。
+  // 对账默认开启（5 分钟一轮）；限流阈值默认值必须与设计里的「远高于正常画布轮询」量级一致，
+  // 对外触发面则相反——每次调用都可能产生一次真实运行，默认值取与票据端点同档的 60。
   expect(env.WORKFLOW_V2_RECONCILE_INTERVAL_SECONDS).toBe(300);
   expect(env.WORKFLOW_V2_BFF_RATE_LIMIT_PER_MINUTE).toBe(1200);
   expect(env.WORKFLOW_V2_SESSION_RATE_LIMIT_PER_MINUTE).toBe(60);
+  expect(env.WORKFLOW_V2_API_RATE_LIMIT_PER_MINUTE).toBe(60);
 });
 
 // 必填键缺失必须在启动期失败（消息含键名，部署才知道该配哪个），且失败点与配置了哪些键无关。

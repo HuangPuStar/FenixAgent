@@ -11,12 +11,13 @@ import {
   workflowV2PlatformAccount,
   workflowV2Workflow,
 } from "@fenix/resource-workflow-v2/db";
-import { and, eq, like } from "drizzle-orm";
+import { and, eq, like, notLike } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/node-postgres";
 import { Elysia } from "elysia";
 import { Pool } from "pg";
 import type { UpstreamCallInput, UpstreamCallResult } from "../../server/services/upstream-client";
 import { registerWorkflow } from "../../server/services/workflow-registry";
+import { createTestScopedDatabase as scopePlatformAccountReads } from "./scoped-database";
 
 type Database = ReturnType<typeof drizzle>;
 
@@ -73,8 +74,18 @@ export async function closeTestPool(): Promise<void> {
   await current?.end();
 }
 
-/** 复位替身后注入数据库句柄（应用基础设施只允许初始化一次，不复位第二条用例就会抛错）。 */
-export function installDatabase(injected: unknown = database()): void {
+/**
+ * 复位替身后注入数据库句柄（应用基础设施只允许初始化一次，不复位第二条用例就会抛错）。
+ *
+ * **默认注入带测试作用域的句柄**（见 {@link createTestScopedDatabase}）：本机主库上可能存在真实台账行，而台账
+ * 是全局单行表、读路径按 `created_at` 取全表首行——真实行（或任何非本用例前缀的行）一旦比本用例种下的行更早，
+ * 就会顶掉「本组织的账号」：`space_id` 断言、绑定判定与按需引导全部跑偏（实测：一行 epoch 时间的探针行足以让
+ * 发布与注册表用例集体失败），反过来用例的引导写入还会改写那一行、再被前缀清理删掉——既污染真实数据，也让
+ * 「我的行是最早的一行」成为隐性假设。作用域只影响台账的**读**，其余表与所有写语句原样落库。
+ *
+ * 需要未加作用域的裸句柄时显式传 `database()`（当前没有这样的用例；引入前请先说明理由）。
+ */
+export function installDatabase(injected: unknown = createTestScopedDatabase()): void {
   resetAllStubs();
   initializeTestApplicationInfrastructure({ database: injected });
 }
@@ -144,8 +155,14 @@ export function createStubAuthGuard() {
   };
 }
 
-/** 写平台账号与租户 App 绑定；`onConflictDoNothing` 让每条用例重复装配保持幂等。 */
-export async function seedBinding(): Promise<void> {
+/**
+ * 写平台账号与租户 App 绑定；`onConflictDoNothing` 让每条用例重复装配保持幂等。
+ *
+ * `organizationId` / `appId` 可换：运行日志的「无工作流」用例需要一个**已绑定但不含任何记录**的组织，而
+ * `ORG_A` 会被同目录多个用例写入（不能复用来断言空目录）；`app_id` 有唯一约束，因此换组织时必须同时换
+ * App ID，否则第二行会被 `onConflictDoNothing` 静默跳过、组织仍停留在「未绑定」。
+ */
+export async function seedBinding(organizationId: string = ORG_A, appId: string = APP_ID): Promise<void> {
   // 平台账号是单行表且读取取 `createdAt` 最早的一行：固定用 epoch 让本文件的行走稳定胜出，因而不必
   // 删除库里可能存在的其它行（那会破坏本机既有数据）。
   await database()
@@ -161,7 +178,7 @@ export async function seedBinding(): Promise<void> {
     .onConflictDoNothing();
   await database()
     .insert(workflowV2OrgApp)
-    .values({ organizationId: ORG_A, appId: APP_ID, name: "测试租户 App", status: "active" })
+    .values({ organizationId, appId, name: "测试租户 App", status: "active" })
     .onConflictDoNothing();
 }
 
@@ -210,6 +227,38 @@ export const readBody = async (response: Response) =>
         publishedAt: string | null;
         ownerId: string | null;
       }>;
+      /**
+       * 运行日志（`GET /run-records`）：归一化记录 + 筛选选项 + 扫描口径。
+       *
+       * `items` 与 `routes/web/workflow-runs.ts` 的 `RunRecordSchema` **逐字段对应**（上游缺失的一律 null、
+       * 不省略键）：形状漂移时这里的 `toEqual` 断言会直接报类型错，而不是放行一个与契约不符的响应。
+       */
+      items?: Array<{
+        workflowId: string | null;
+        workflowName: string | null;
+        executeId: string | null;
+        logId: string | null;
+        version: string | null;
+        mode: "debug" | "release" | "node_debug" | null;
+        status: "running" | "succeeded" | "failed" | "canceled" | "interrupted" | null;
+        durationMs: number | null;
+        createdAt: string | null;
+        errorCode: string | null;
+        nodeCount: number | null;
+      }>;
+      /** 平台侧运行记录（`PlatformRunSchema`）：平台触发的运行在本地审计流水里的留痕。 */
+      platformRuns?: Array<{
+        upstreamWorkflowId: string | null;
+        occurredAt: string;
+        result: string;
+        errorCode: string | null;
+      }>;
+      workflows?: Array<{ id: string; name: string }>;
+      scannedWorkflows?: number;
+      workflowTotal?: number;
+      truncated?: boolean;
+      /** 上游可能还有更早的运行（页满推断，见服务层 `WorkflowRunRecords.hasMoreUpstream`）。 */
+      hasMoreUpstream?: boolean;
     };
     error?: { code: string; message: string };
   };
@@ -236,6 +285,60 @@ export async function readAuditRows(organizationId: string, action: string) {
     })
     .from(workflowV2AuditLog)
     .where(and(eq(workflowV2AuditLog.organizationId, organizationId), eq(workflowV2AuditLog.action, action)));
+}
+
+/**
+ * 只删平台账号台账行（保留租户 App 绑定），复现「台账缺行但绑定还在」这一运维状态。
+ *
+ * 该状态的成因是台账行的唯一写入点是引导路径，而历史库清理/库重建/迁移演练都会让行丢失（见
+ * `platform-account-bootstrap.ts` 的 `ensurePlatformAccountWithinBudget` 文件内说明）；此时列表页照常显示
+ * 卡片（它的门只读 `workflow_v2_org_app`），而需要 `space_id` 的接口全部失效。
+ */
+export async function clearPlatformAccount(): Promise<void> {
+  await database()
+    .delete(workflowV2PlatformAccount)
+    .where(like(workflowV2PlatformAccount.platformUserId, `${TEST_PREFIX}%`));
+}
+
+/**
+ * 读平台账号台账当前有几行（**只看本用例前缀**）。
+ *
+ * 只数测试前缀行：台账是全局单行表，`ensurePlatformAccountWithinBudget` 恢复时会按上游登录响应回显的
+ * `user_id_str` 写行，因此**假上游的用户 ID 必须带本前缀**（用 {@link upstreamId} 构造），否则恢复出来的行既
+ * 躲过 `clearPlatformAccount`、也躲过 `cleanupTestRows`，会污染同库的其它用例。
+ */
+export async function countPlatformAccounts(): Promise<number> {
+  const rows = await database()
+    .select({ id: workflowV2PlatformAccount.id })
+    .from(workflowV2PlatformAccount)
+    .where(like(workflowV2PlatformAccount.platformUserId, `${TEST_PREFIX}%`));
+  return rows.length;
+}
+
+/** 台账里**非本用例前缀**的行（本机主库上的真实行）：用例用它断言「没碰真实数据」。 */
+export async function readForeignPlatformAccounts() {
+  return await database()
+    .select({
+      id: workflowV2PlatformAccount.id,
+      platformUserId: workflowV2PlatformAccount.platformUserId,
+      status: workflowV2PlatformAccount.status,
+      lastError: workflowV2PlatformAccount.lastError,
+      updatedAt: workflowV2PlatformAccount.updatedAt,
+    })
+    .from(workflowV2PlatformAccount)
+    .where(notLike(workflowV2PlatformAccount.platformUserId, `${TEST_PREFIX}%`));
+}
+
+/**
+ * 把「平台账号台账」的**读取**收进本用例前缀的数据库句柄（其余表与语句原样转发）。
+ *
+ * 实现与完整理由见 `helpers/scoped-database.ts`——本函数只是把本文件的句柄与前缀绑上去。要点：台账是全局单行
+ * 表、生产读路径取全表首行，未加作用域的用例会被本机主库上的真实行顶掉归属，甚至把真实行的身份改写后被前缀
+ * 清理删掉。**本文件的注入默认走它**（见 {@link installDatabase}），因此本文件所有用例都不再依赖「全表为空」
+ * 或「我的行是最早的一行」这类脆弱假设。
+ */
+export function createTestScopedDatabase(): unknown {
+  return scopePlatformAccountReads(database(), TEST_PREFIX);
 }
 
 /** 清掉本文件写过的测试数据；只看前缀，绝不触碰既有行。 */

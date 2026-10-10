@@ -5,8 +5,14 @@
  * `callUpstream()`，不在各自的位置拼 URL、读 fetch 或复制鉴权头。理由与 `upstream-session` 同源——会话头、超时
  * 预算与「鉴权失败重放一次」这三件事只要有一处旁路，失效判定就会分裂（设计 §4.7）。
  *
+ * 两条面各有一个出口：`callUpstream()` 走会话面（`/api/*` + Cookie），`callUpstreamOpenApi()` 走 OpenAPI 面
+ * （`/v1/*` + Bearer PAT，对外触发接口用）。两者共用同一份熔断结算与失效判定口径，差别只在凭据来源。
+ * 唯二的例外是**取凭据本身的请求**：登录（`upstream-session`）与换取 PAT（`upstream-pat`）各自发一次请求，
+ * 否则会与本文件成环且互相触发重放。
+ *
  * 契约要点：
- * - `path` 以 `/api/` 开头，相对 `upstreamBaseUrl`；带查询串的 GET 用 `query` 传，不写在 `path` 里；
+ * - `path` 以 `/api/` 开头（OpenAPI 面以 `/v1/` 开头），相对 `upstreamBaseUrl`；带查询串的 GET 用
+ *   `query` 传，不写在 `path` 里；
  * - 超时取 `timeoutMs ?? config.upstreamTimeoutMs`；本函数**不做重试**（只读接口的退避预算归调用方，
  *   写接口不重试——设计 §4.7）；
  * - 鉴权失败（401 或鉴权失败码）自动 `invalidate()` + 重登 + **重放一次**，重放仍失败即抛错；
@@ -23,6 +29,7 @@
 import { createLogger } from "@fenix/logger";
 import { getWorkflowV2Config } from "../config";
 import { getUpstreamHealth, type UpstreamFailureKind } from "./upstream-health";
+import { getUpstreamPat } from "./upstream-pat";
 import { getUpstreamSession, UPSTREAM_AUTH_FAILED_CODE, UpstreamSessionUnavailableError } from "./upstream-session";
 
 const logger = createLogger("wf-v2-upstream-client");
@@ -35,6 +42,22 @@ export const UPSTREAM_PANIC_CODE = 777777775;
 
 export interface UpstreamCallInput {
   /** 上游路径，以 `/api/` 开头（透传面的允许前缀见冻结 §6）。 */
+  path: string;
+  method?: "GET" | "POST";
+  query?: Record<string, string>;
+  body?: unknown;
+  /** 单次调用超时；缺省取模块配置的 `upstreamTimeoutMs`。 */
+  timeoutMs?: number;
+}
+
+/**
+ * OpenAPI 面（`/v1/*`，Bearer PAT）的调用入参。
+ *
+ * 与 {@link UpstreamCallInput} 分开声明而不是给 `path` 放宽前缀：两条面的**凭据不同**（会话 Cookie vs PAT），
+ * 混用一个入参类型会让「这条路径该带哪种凭据」只能靠运行时字符串判断，而凭据注入正是本文件唯一要收口的事。
+ */
+export interface UpstreamOpenApiCallInput {
+  /** 上游路径，以 `/v1/` 开头（当前唯一消费方是 `POST /v1/workflow/run`）。 */
   path: string;
   method?: "GET" | "POST";
   query?: Record<string, string>;
@@ -135,6 +158,16 @@ function assertUpstreamPath(path: string): void {
   }
 }
 
+/** OpenAPI 面的出站路径校验：必须以 `/v1/` 开头（`/api/*` 面不接受 PAT，混用会静默拿不到鉴权）。 */
+function assertOpenApiPath(path: string): void {
+  if (!path.startsWith("/v1/") || path.includes("..")) {
+    throw new UpstreamRequestError(
+      "UPSTREAM_INVALID_PATH",
+      `OpenAPI 路径必须以 /v1/ 开头且不得包含 ..（收到：${path}）`,
+    );
+  }
+}
+
 /** 拼接上游 URL：基址去尾斜杠，query 一律经 `URLSearchParams` 编码（调用方不要把查询串写进 path）。 */
 function buildUpstreamUrl(baseUrl: string, path: string, query: Record<string, string> | undefined): string {
   const url = `${baseUrl.replace(/\/+$/, "")}${path}`;
@@ -162,10 +195,14 @@ function parseResponseBody(text: string): unknown {
  *
  * 超时经 `AbortController` 实现并覆盖到响应体读完为止；`timedOut` 标志用于把「我方超时」与「上游连接
  * 失败」区分开（两者的调用方处置不同：前者可重试，后者要判上游可用性）。
+ *
+ * `headers` 由两条面各自给足**凭据头**（`/api/*` 面是 `Cookie`，`/v1/*` 面是 `Authorization`）：凭据只在此处
+ * 进入请求，调用方不各自拼头，失效判定也就不会分裂；两种凭据永不混发（`/v1/*` 上带 Cookie 没有意义，
+ * 而 `/api/*` 上带 Bearer 会被会话中间件忽略）。
  */
 async function sendUpstreamRequest(
-  input: UpstreamCallInput,
-  cookieHeader: string,
+  input: { path: string; method?: "GET" | "POST"; query?: Record<string, string>; body?: unknown },
+  headers: Record<string, string>,
   timeoutMs: number,
 ): Promise<UpstreamCallResult> {
   const config = getWorkflowV2Config();
@@ -182,7 +219,7 @@ async function sendUpstreamRequest(
     const response = await fetch(url, {
       method,
       headers: {
-        Cookie: cookieHeader,
+        ...headers,
         // 上游只在 POST + application/json 下绑定请求体，其它 Content-Type 会得到「参数缺失」类错误。
         ...(method === "POST" ? { "Content-Type": "application/json" } : {}),
       },
@@ -205,34 +242,33 @@ async function sendUpstreamRequest(
 }
 
 /**
- * 单次上游调用（不含业务重试）；鉴权失败自动 invalidate + 重登 + 重放一次，外层套最小熔断（3C）。
+ * 熔断结算（3C）：请求前取名额（打开态直接短路、不发请求），请求后按下表结算——5xx 与传输/会话级异常计入
+ * 失败，其余（含 400/720701011 等业务失败码）视为**上游可达**并清零计数。
  *
- * 重放只发生一次：重登后的请求仍被判失效，说明问题不在会话（上游异常或账号被外部踢键），此时抛
- * `UpstreamSessionUnavailableError` 让调用方按「平台账号不可用」降级，绝不循环重登。
- *
- * 熔断计数口径：请求前 `tryAcquire()` 取名额（打开态直接短路、不发请求），请求后按下表结算——
- * 5xx 与传输/会话级异常计入失败，其余（含 400/720701011 等业务失败码）视为**上游可达**并清零计数。
- * 结算必须恰好一次：`try/catch` 覆盖到返回路径，别让半开探测名额悬空（见 `upstream-health`）。
+ * 抽取成函数而不是在两条面各写一遍：结算必须恰好一次（`try/catch` 覆盖到返回路径，别让半开探测名额悬空，
+ * 见 `upstream-health`），两份实现迟早在某个出口漏掉一次结算。
  */
-export async function callUpstream(input: UpstreamCallInput): Promise<UpstreamCallResult> {
-  assertUpstreamPath(input.path);
+async function runWithCircuitBreaker(
+  path: string,
+  run: () => Promise<UpstreamCallResult>,
+): Promise<UpstreamCallResult> {
   const health = getUpstreamHealth();
   if (!health.tryAcquire()) {
     const { state, consecutiveFailures, cooldownRemainingMs } = health.snapshot();
     logger.warn("上游熔断打开，本次调用直接短路", {
-      path: input.path,
+      path,
       circuitState: state,
       consecutiveFailures,
       cooldownRemainingMs,
     });
-    throw new UpstreamCircuitOpenError(input.path, cooldownRemainingMs);
+    throw new UpstreamCircuitOpenError(path, cooldownRemainingMs);
   }
 
   try {
-    const result = await callUpstreamWithSession(input);
+    const result = await run();
     if (result.status >= 500) {
       // 5xx 是上游自身故障（含 panic 兜底的纯文本 500）：上游活着但没有正确服务，计入熔断。
-      logger.warn("上游返回 5xx，计入熔断", { path: input.path, upstreamStatus: result.status });
+      logger.warn("上游返回 5xx，计入熔断", { path, upstreamStatus: result.status });
       health.recordUpstreamFailure("upstream_5xx");
     } else {
       health.recordUpstreamSuccess();
@@ -243,20 +279,77 @@ export async function callUpstream(input: UpstreamCallInput): Promise<UpstreamCa
     if (kind === null) {
       health.recordLocalError();
     } else {
-      logger.warn("上游传输/会话级失败，计入熔断", { path: input.path, failureKind: kind });
+      logger.warn("上游传输/会话级失败，计入熔断", { path, failureKind: kind });
       health.recordUpstreamFailure(kind);
     }
     throw error;
   }
 }
 
-/** 单次上游调用（含鉴权失败重放一次）；熔断的状态与计数全部由 {@link callUpstream} 负责。 */
+/**
+ * 单次上游调用（不含业务重试）；鉴权失败自动 invalidate + 重登 + 重放一次，外层套最小熔断（3C）。
+ *
+ * 重放只发生一次：重登后的请求仍被判失效，说明问题不在会话（上游异常或账号被外部踢键），此时抛
+ * `UpstreamSessionUnavailableError` 让调用方按「平台账号不可用」降级，绝不循环重登。
+ */
+export async function callUpstream(input: UpstreamCallInput): Promise<UpstreamCallResult> {
+  assertUpstreamPath(input.path);
+  return await runWithCircuitBreaker(input.path, () => callUpstreamWithSession(input));
+}
+
+/**
+ * OpenAPI 面（`/v1/*`）的单次调用：Bearer PAT，令牌失效自动重建 + 重放一次，外层共用同一份熔断。
+ *
+ * 为什么共用熔断：`/api/*` 与 `/v1/*` 是同一个上游进程的两个协议面，一边不可达时另一边的失败也会
+ * 连续计满阈值——两份计数器只会让短路判定变慢。
+ *
+ * 失效判定与 `/api/*` 面同源（HTTP 401 或业务码 `700012006`）：PAT 无效时上游在**中间件**阶段就返回 401，
+ * 因此这两条判据已经覆盖「令牌被删/过期/账号异常」。重建走 `upstream-pat`（凭平台账号会话），重建后仍被判
+ * 失效即抛 `UpstreamSessionUnavailableError`——那是平台凭据链的问题，重放第三次不会变好。
+ */
+export async function callUpstreamOpenApi(input: UpstreamOpenApiCallInput): Promise<UpstreamCallResult> {
+  assertOpenApiPath(input.path);
+  return await runWithCircuitBreaker(input.path, () => callUpstreamWithPat(input));
+}
+
+/** 单次 OpenAPI 调用（含令牌失效重建一次）；熔断的状态与计数全部由 {@link runWithCircuitBreaker} 负责。 */
+async function callUpstreamWithPat(input: UpstreamOpenApiCallInput): Promise<UpstreamCallResult> {
+  const config = getWorkflowV2Config();
+  const timeoutMs = input.timeoutMs ?? config.upstreamTimeoutMs;
+  const pat = getUpstreamPat();
+
+  const first = await sendUpstreamRequest(input, bearerHeader(await pat.ensureToken()), timeoutMs);
+  if (!isAuthFailure(first)) return first;
+
+  logger.warn("上游判定平台令牌失效，重建后重放一次", {
+    status: first.status,
+    code: readBusinessCode(first.body),
+    path: input.path,
+  });
+  pat.invalidate();
+  const replayed = await sendUpstreamRequest(input, bearerHeader(await pat.ensureToken()), timeoutMs);
+  if (isAuthFailure(replayed)) {
+    const code = readBusinessCode(replayed.body);
+    throw new UpstreamSessionUnavailableError(
+      "rejected",
+      `重建令牌后仍被上游拒绝（HTTP ${replayed.status}${code === undefined ? "" : `，code=${code}`}）`,
+    );
+  }
+  return replayed;
+}
+
+/** 出站鉴权头；令牌只在这一次拼接里出现，不进入日志、错误与返回值。 */
+function bearerHeader(token: string): Record<string, string> {
+  return { Authorization: `Bearer ${token}` };
+}
+
+/** 单次上游调用（含鉴权失败重放一次）；熔断的状态与计数全部由 {@link runWithCircuitBreaker} 负责。 */
 async function callUpstreamWithSession(input: UpstreamCallInput): Promise<UpstreamCallResult> {
   const config = getWorkflowV2Config();
   const timeoutMs = input.timeoutMs ?? config.upstreamTimeoutMs;
   const session = getUpstreamSession();
 
-  const first = await sendUpstreamRequest(input, await session.ensureCookie(), timeoutMs);
+  const first = await sendUpstreamRequest(input, { Cookie: await session.ensureCookie() }, timeoutMs);
   if (!isAuthFailure(first)) return first;
 
   logger.warn("上游判定会话失效，重登后重放一次", {
@@ -265,7 +358,7 @@ async function callUpstreamWithSession(input: UpstreamCallInput): Promise<Upstre
     path: input.path,
   });
   session.invalidate();
-  const replayed = await sendUpstreamRequest(input, await session.ensureCookie(), timeoutMs);
+  const replayed = await sendUpstreamRequest(input, { Cookie: await session.ensureCookie() }, timeoutMs);
   if (isAuthFailure(replayed)) {
     const code = readBusinessCode(replayed.body);
     throw new UpstreamSessionUnavailableError(

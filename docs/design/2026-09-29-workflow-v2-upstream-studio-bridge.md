@@ -20,9 +20,11 @@
    - **FenixAgent 平台整体 ↔ 上游的 1 个用户**（其个人空间是唯一 space）；
    - **租户（organization）↔ 上游的 1 个 App（bot）**；
    - 每个用户创建的 workflow 创建在该租户 App 下（`space_id`=平台个人空间，`project_id`=租户 App）。
-3. 控制台提供最小可用界面：workflow 列表/创建/重命名/删除 + 画布宿主页（iframe）；画布内完成编辑与调试运行。
-   控制台的发布入口在**列表页行操作**（走控制面 `POST /workflows/:id/publish`），行操作的「日志」可查看上游发布
-   记录与上游当前发布版本——记录与版本都取自上游，平台侧不保存发布日志；画布内的发布按钮保持原样（见 §4.3）。
+3. 控制台提供最小可用界面：workflow **卡片网格**列表（卡片可点进画布）/创建/重命名/删除 + 画布宿主页
+   （iframe）；画布内完成编辑与调试运行。
+   控制台**不提供发布入口**（2026-10-10 撤除：发布是旧有逻辑，动作在上游侧完成，画布内的发布按钮保持原样，见
+   §4.3），卡片的「发布日志」只读上游渠道发布记录与上游当前发布版本（均取自上游；平台侧历史发布动作的审计作为
+   `actions` 段展示，不再产生新行），「运行日志」直连上游执行记录。
 4. 首版只覆盖**工作流本身**：基础节点（开始/结束/LLM/HTTP/代码/条件/问答/文本处理/变量等），不含知识库、插件、数据库、子流程、循环等重型节点。
 
 ### 1.3 非目标
@@ -164,19 +166,28 @@ flowchart LR
 | `POST /api/workflow_api/delete` / `batch_delete` / `delete_strategy` | 删除与引用策略 | `space_id` | 同上 + 本地软删 |
 | `POST /api/workflow_api/test_run` / `test_resume` / `cancel` | 调试运行 | `space_id`、`bot_id`/`project_id` | 同上 |
 | `GET /api/workflow_api/get_process` / `get_node_execute_history` | 运行过程轮询 | `space_id` | 同上 |
-| `POST /api/workflow_api/publish` | 发布版本 | `space_id`；`workflow_version` 由 workflow-v2 递增生成 | 同上 |
-| `POST /api/workflow_api/list_publish_workflow` | 发布记录 | `space_id`、`owner_id` 收窄为平台账号；`workflow_ids` 收窄到单个 workflow | 同上 |
-| `POST /api/workflow_api/list_spans` / `get_trace` | 运行 trace | `space_id` | 同上 |
+| `POST /api/workflow_api/workflow_detail_info` | 当前发布版本（列表状态列 + 发布自增的基准） | `space_id`；`workflow_filter_list` 收窄到本页/本条的 workflow | 同上 |
+| `POST /api/workflow_api/publish` | 发布版本 | `space_id`；`workflow_version` 由 workflow-v2 按**上游当前版本**递增生成 | 同上 |
+| `POST /api/intelligence_api/publish/publish_record_list` | 发布记录（**应用级真实读出口**，控制台「发布日志」在用） | `project_id`=租户 App | 同上 |
+| `POST /api/workflow_api/list_publish_workflow` | 发布记录（**桩实现，已不调用**） | — | 保留在清单里仅为记录复核结论（见下方口径） |
+| `POST /api/workflow_api/list_spans` / `get_trace` | 运行 trace | `space_id` | 同上（**2026-10-09 更新**：上游已补实现 `list_spans`，见 run-list-api-request §7；`get_trace` 仍为桩） |
 | `POST /api/workflow_api/node_type` / `node_template_list` / `node_panel_search` | 节点面板 | `space_id`；**响应按白名单过滤**（§4.8） | 同上 |
 | `POST /api/workflow_api/validate_tree` | 画布校验 | `space_id` | 同上 |
 | `POST /api/workflow_api/sign_image_url`、`copy`、`released_workflows`、`workflow_detail*` | 按画布实际调用补入 | `space_id` | 同上 |
 | `POST /api/draftbot/create` | 建租户 App（运维面） | `space_id` | 平台运维动作 |
 | `POST /api/passport/web/email/login/` | 平台账号登录（运维面） | — | 平台运维动作 |
 
-**发布记录的可用性口径（2026-10-09 核对）**：`list_publish_workflow` 在当前关联上游构建里是**桩实现**
-（`backend/api/handler/coze/workflow_service.go` 的 `ListPublishWorkflow` 直接返回空结构体），实测返回
-`data:null`。因此控制台的「发布记录」以空态呈现是**上游的合法回答**，不是平台缺陷；上游补齐该端点前，界面
-另外给出「上游当前发布版本」（`canvas` 的 `data.workflow_version`），保证查看界面始终有上游事实可依据。
+**发布记录的读出口口径（2026-10-09 穷尽核对 + 只读取证）**：工作流级的 `list_publish_workflow` 与
+`released_workflows` 在当前关联上游构建里都是**桩实现**（`backend/api/handler/coze/workflow_service.go` 的
+`ListPublishWorkflow` / `ReleasedWorkflows` 直接返回空结构体），实测 `list_publish_workflow` 返回
+`{"data":null,"code":0,"msg":""}`（带 `workflow_ids` 收窄与不带都同形；上游访问日志 200、耗时 <1 ms，
+说明请求形状本身没有问题路径），且上游前端**从不调用**它。上游自己的控制台在用、**有真实数据**的发布记录
+读出口是应用级 `intelligence_api/publish/publish_record_list`（`use-publish-status.tsx` 调
+`intelligenceApi.GetPublishRecordList`）——平台的租户 workflow 就挂在租户应用下，因此「发布日志」改取该端点：
+版本号、渠道结果、打包失败明细；记录级 `publish_status` 在该构建恒为 0、记录也没有时间与操作人（thrift 无
+这两个字段），平台不造这些字段，状态改由渠道结果与打包明细派生。控制台自己的发布动作（上游只记录发布产物、
+不记录控制台动作）曾由本地审计补齐为 `actions`（时间 / 操作人展示名 / 结果 / 错误码）；控制台发布入口于
+2026-10-10 撤除后，该段只读**历史行**，不再产生新行。
 
 ### 4.3 控制台接口面（`/web/workflow-v2/*`）
 
@@ -189,12 +200,12 @@ flowchart LR
 | `GET /org-app` | — | `{ appId?, status }` |
 | `POST /org-app` | `{ name }` | `{ appId }`（建租户 App 并绑定） |
 | `POST /org-app/rebind` | `{ appId }` | `{ ok }` |
-| `GET /workflows` | query `page/size/name/status` | `{ items: [{ id, upstreamWorkflowId, name, desc, iconUri, status, ownerUserId, publishedVersion, updatedAt }], total }` |
+| `GET /workflows` | query `page/size/name` | `{ items: [{ id, upstreamWorkflowId, appId, name, ownerUserId, visibility, publishState, publishedVersion, syncState, updatedAt }], total }`；`publishState`（`published`/`unpublished`/`unknown`）与 `publishedVersion` 取自上游当前发布版本，`unknown` 表示本次没读到——**不等于**「未发布」（2026-10-09 修正）。绑定解析与其它读路径同口径（`resolveBinding`：台账缺行时按需引导自愈），不可用时只降级状态、列表仍 200 |
 | `POST /workflows` | `{ name, desc?, iconUri? }` | `{ id, upstreamWorkflowId }` |
 | `PATCH /workflows/:id` | `{ name?, desc?, iconUri? }` | `{ ok }` |
 | `DELETE /workflows/:id` | query `force?` | `{ deleted, strategy? }` |
-| `POST /workflows/:id/publish` | `{ description?, force? }` | `{ version, commitId }` |
-| `GET /workflows/:id/publish-records` | — | `{ current: { publishedVersion }, records: [{ workflowId, name, publishedAt, ownerId }] }`；两项都取自上游，**平台侧不落发布记录** |
+| ~~`POST /workflows/:id/publish`~~ | — | **已于 2026-10-10 撤除**（发布是旧有逻辑，动作在上游侧完成；发布版本号算术保留在 `services/workflow-publish-version.ts` 供渠道自愈使用） |
+| `GET /workflows/:id/publish-records` | — | `{ current: { publishedVersion }, records: [{ version, status, channels, packFailedResources }], actions: [{ occurredAt, actorName, result, errorCode }] }`；`current` 取上游 canvas 的 `workflow_version`，`records` 取上游应用级 `publish_record_list`，`actions` 是平台侧发布动作（本地审计，历史行）。上游无记录时 `records` 为空数组（合法空态） |
 | `POST /iframe-code` | `{ workflowId, view? }` | `{ code, expiresIn }`（一次性，60s，绑定 user+org+workflow） |
 
 ### 4.4 画布透传面（`/workflow-canvas/bff/*`）
@@ -214,7 +225,7 @@ flowchart LR
 |---|---|---|
 | `workflow_v2_platform_account` | `platform_user_id`, `platform_space_id`, `email`, `status`, `last_login_at`, `last_probe_at`, `last_error` | 单行；**不存 session_key** |
 | `workflow_v2_org_app` | `organization_id`, `app_id`, `status` | `unique(organization_id)`、`unique(app_id)` |
-| `workflow_v2_workflow` | `id`, `organization_id`, `upstream_workflow_id`, `app_id`, `name`, `owner_user_id`, `visibility`, `published_version`, `sync_state`, `deleted_at` | `unique(upstream_workflow_id)`、`index(organization_id, deleted_at)` |
+| `workflow_v2_workflow` | `id`, `organization_id`, `upstream_workflow_id`, `app_id`, `name`, `owner_user_id`, `visibility`, `sync_state`, `deleted_at`；`published_version` 为遗留列（已无读写方，待迁移删除） | `unique(upstream_workflow_id)`、`index(organization_id, deleted_at)` |
 | `workflow_v2_audit_log` | `organization_id`, `actor_user_id`, `action`, `upstream_workflow_id`, `request_id`, `result`, `error_code`, `created_at` | `index(organization_id, created_at)` |
 
 迁移流程遵循仓库规范：`bun run db:generate --name workflow-v2-<change>` → 审查 SQL → `bun run db:migrate`；`drizzle.config.ts` 需登记新包 schema 出口。
@@ -323,7 +334,7 @@ iframe URL 约定：
 | 路由 basename 与资源前缀 | `frontend/apps/coze-studio/src/routes/index.tsx`（`createBrowserRouter`）与 rsbuild 配置 | 单变量 `WORKFLOW_CANVAS_BASE`（默认 `/`）同时驱动 `output.assetPrefix` 与 router basename；**二者缺一即白屏**；验收：子路径直达与刷新均不 404 | M |
 | Space/用户态注桩 | `frontend/packages/workflow/playground/src/workflow-playground.tsx`（`useSpaceStore` 分支）与 `global-adapter` 的 `useUserInfo` | 跳过空间列表拉取、写入满足 `setSpace`/`checkSpaceID` 的 stub（`inited:true`）、最小 user stub；验收：无上游登录态可独立渲染 | M |
 | ~~Provider 自举~~ **（已核销：不需要）** | — | 1F 实测：Theme Provider 由应用壳提供、i18n 是模块单例且语言可经 `lng` 注入、全局常量是构建期 define——只要走同一 rsbuild 管线就不缺，**无需新增 Provider**。真正要做的是去掉画布路由的登录闸门（`requireAuth`，用嵌入判定分支，不要改 `useCheckLogin` 本身）。验收：直开画布无 `ReferenceError` 且不跳登录页 | S |
-| 壳与导航裁剪 | `frontend/packages/workflow/playground/src/components/workflow-header/index.tsx`、`publish-button-v2/*`、`adapter/playground/src/hooks/use-navigate-back.tsx` | 隐藏返回、Reference、协作者、积分、渠道发布等入口；**返回**改走 `postMessage`；验收：头部仅保留历史、调试、发布（简版）。发布按钮**保留在画布内**且仍由画布经 BFF 直连上游 `POST /api/workflow_api/publish`（**不是** `postMessage`），控制台的发布入口是另一条独立路径（控制面 `POST /workflows/:id/publish`） | M |
+| 壳与导航裁剪 | `frontend/packages/workflow/playground/src/components/workflow-header/index.tsx`、`publish-button-v2/*`、`adapter/playground/src/hooks/use-navigate-back.tsx` | 隐藏返回、Reference、协作者、积分、渠道发布等入口；**返回**改走 `postMessage`；验收：头部仅保留历史、调试、发布（简版）。发布按钮**保留在画布内**且仍由画布经 BFF 直连上游 `POST /api/workflow_api/publish`（**不是** `postMessage`），这也是平台唯一的发布路径——控制台的发布入口（控制面 `POST /workflows/:id/publish`）已于 2026-10-10 撤除 | M |
 | 节点面板过滤（兜底） | `frontend/packages/workflow/playground/src/components/node-panel/hooks/use-search-node.ts` | 若存在前端硬编码分类，按同一白名单过滤；验收：面板仅出现保留节点 | S |
 | 埋点与上报静默 | `frontend/packages/arch/{tea,slardar,report-events,report-tti}` | 关闭或不初始化上报；验收：请求面板无第三方埋点流量 | S |
 | 反代与响应头 | 我方服务（`packages/resources/workflow-v2` 的 `routes/canvas/static-proxy.ts`，无外部 nginx） | 入站剥离上游 `Set-Cookie`、注入 `frame-ancestors 'self'`；**出站必须注入平台账号 `session_key`**——上游除静态白名单外全站过 session 中间件，实测 `/workflow-canvas/*` 不带 cookie 时连 JS 都 401（见接口冻结 §2.1.1 / 设计 §9.1.1 第 2 条）；验收：可嵌入、仅同源可嵌、子路径资源可达 | S |
@@ -340,19 +351,23 @@ iframe URL 约定：
 
 - 侧栏导航项 id 保持 `workflow`（`groupId: core`、`order: 30`），文案与图标零变化（新包复用 `workflows` i18n 命名空间与 `nav.workflow` 键）。
 - 路由 `/agent/workflow`（列表）保留；`/agent/workflow/$id/edit` 改为画布宿主页；`/agent/workflow/$id/versions` 删除
-  （自研版本页不再存在；发布改由控制面入口触发，发布记录读取上游数据，见 §6.2）。
+  （自研版本页不再存在；发布记录读取上游数据，发布动作在画布内完成，见 §6.2）。
 
 ### 6.2 新界面（`packages/resources/workflow-v2/web`）
 
 | 页面 | 内容 | 必备状态 |
 |---|---|---|
-| 列表页 | 标准表格（名称、状态 / 发布版本、最后修改）+ 分页；顶部「新建工作流」；行操作收为三项——**打开**、**日志**、**更多**（下拉内为发布、重命名、删除） | loading / empty / error+retry / 删除确认与失败回滚提示 / 权限不足态 |
+| 列表页 | 卡片网格（`Card` 原语 + `grid sm:grid-cols-2 xl:grid-cols-3`）：每卡显示名称、上游发布态与版本、登记更新时间；卡片标题与「打开画布」按钮进画布，**「运行日志」按钮直接可见**，右上角「更多」菜单收纳发布日志 / 调用接口 / 重命名 / 删除（「发布」于 2026-10-10 撤除，发布在上游侧完成）；分页在网格下方；页面壳 `AppPage` + `AppHeader`（「新建工作流」在 header 的 actions 槽位）由本页渲染 | loading / empty / error+retry / 删除确认与失败回滚提示 / 权限不足态 |
 | 画布宿主页 | 全高 iframe、握手（bind/refresh/signout）、错误与超时降级、返回导航 | 骨架 / 初始化超时 / 上游不可用 + 重试 / 会话过期覆盖层 |
-| 日志弹窗（列表行操作打开） | 上游当前发布版本 + 上游发布记录（与本地登记版本的漂移提示） | loading / empty（上游无记录）/ error+retry |
+| 日志弹窗（卡片「更多」内的发布日志 / 卡片底部的运行日志） | 发布日志：上游当前版本 + 上游渠道发布记录 + 平台侧发布动作（**历史行**：控制台发布入口已于 2026-10-10 撤除，该段不再产生新行）；运行日志：上游本次执行的单条详情（上游没有「列出执行历史」的读出口，见 `docs/arch/25-workflow-v2.md` §7）与平台触发的运行记录（**2026-10-09 更新**：① 上游同日以 commit `3a028cf1` 实现 `list_spans`（契约见 run-list-api-request §7），平台同日切回 HTTP，上句「没有读出口」随之失效；② 此处的「单条详情」已演化为**运行清单**——读路径见 `docs/arch/25-workflow-v2.md` §8，响应字段含 `items`/`platformRuns`/`truncated`/`hasMoreUpstream`；③ `get_trace` 仍为桩实现，**清单已可用、单条 trace 详情仍空**，本行在 trace 维度的表述不受影响） | loading / empty（上游无记录时写明是上游现状）/ error+retry |
 
-发布与日志的状态反馈都落在页面内（本包不依赖宿主 `<Toaster>`）：列表页用提示条承载成功 / 失败 / 被拒三类结局，
-进行中由按钮 loading 表达；每行的发布按钮在菜单项里自带进行中态且全表串行（并发发布同一 workflow 只会撞上
-「版本未自增」）。
+日志读取与列表动作的状态反馈都落在页面内（本包不依赖宿主 `<Toaster>`）：列表页用提示条承载成功 / 失败 / 被拒三类
+结局，进行中由按钮 loading 表达（发布按钮与其「全表串行」约束随发布入口一并撤除，2026-10-10）。
+
+**卡片封面（2026-10-09 调研结论：不做）**：上游 `Workflow` 结构确实带 `icon_uri` / `url`（"workflow 的 icon 的 url"），
+但它只出现在 `workflow_list` / `canvas` 的响应里——控制台列表读的是**本地注册表**（不调上游），拿封面要么每卡加一次
+上游调用（`canvas` 还带回整份 `schema_json`），要么新加本地列缓存；而我们的 create 路径只写上游默认图标
+（`default_icon/default_workflow_icon.png`），缓存列在画布内换图标后会立刻过期。两条路都不划算，卡片因此不带封面。
 
 请求一律经 `@fenix/web-runtime/api/request` + `unwrap()`；组件复用 `@fenix/ui-components`，图标用 `lucide-react`，用户可见文案全部走 `t()`。
 
@@ -407,14 +422,16 @@ iframe URL 约定：
 
 ### 阶段 3：调试与发布
 
-- `test_run` / `test_resume` / `cancel`、过程轮询、`publish`、发布记录与运行 trace；
+- `test_run` / `test_resume` / `cancel`、过程轮询、发布记录与运行 trace（控制台 `publish` 于 2026-10-10 撤除，改为只读上游发布状态）；
 - 审计与指标接入；错误降级与重试预算；
-- **控制台发布入口（2026-10-09 补）**：列表页行操作调控制面 `POST /workflows/:id/publish`（本地主键寻址），
-  行操作「日志」经 `GET /workflows/:id/publish-records` 读上游；上游当前构建的 `list_publish_workflow` 是桩实现
-  （见 §4.2 的口径），记录为空是合法空态。宿主页曾加过一层发布工具栏，同日移除——画布 iframe 内已有上游自带的
-  发布按钮，同一动作两个入口会让「在哪发布」变成需要解释的问题；
-- 验证：编辑→调试→发布→运行历史闭环；上游 503 时控制台其余功能不受影响；
-- 回滚：关闭控制台发布入口（两个按钮与记录弹窗），保留编辑与调试；画布内发布不受影响。
+- **控制台发布入口（2026-10-09 补，2026-10-10 撤除）**：曾由卡片菜单调控制面 `POST /workflows/:id/publish`（本地
+  主键寻址，版本基准取上游当前版本），发布是旧有逻辑，动作现回到上游侧（画布内按钮）；「发布日志」保留，经
+  `GET /workflows/:id/publish-records` 读上游应用级渠道发布记录并附平台侧历史发布动作；工作流级的
+  `list_publish_workflow` 是桩实现且不再调用（见 §4.2 的口径），应用级记录为空才是合法空态。
+  宿主页曾加过一层发布工具栏、同日移除——画布 iframe 内已有上游自带的发布按钮，同一动作两个入口会让「在哪发布」
+  变成需要解释的问题；控制台入口的撤除同样出于这一口径；
+- 验证：编辑→调试→运行历史闭环（发布在上游侧完成）；上游 503 时控制台其余功能不受影响；
+- 回滚：回退对应提交即可恢复控制台发布入口；本次改动不动数据库与上游契约，回滚无残留。
 
 ### 阶段 4：对账与加固
 
@@ -437,9 +454,9 @@ iframe URL 约定：
 
 - 列表页：loading/empty/error+retry/删除失败回滚、权限不足态；
 - 宿主页：握手时序（ready→bind→bound）、超时降级、`navigate-out` 交宿主路由；
-- 发布与日志（2026-10-09 补）：失败按稳定错误码 → 文案键的分流、行操作「更多」内的发布接线、日志弹窗的
-  loading/empty/error+retry 与本地↔上游版本漂移提示（`workflow-list-page.test.tsx`、`workflow-log-dialog.test.tsx`、
-  `workflow-publish-model.test.ts`）；
+- 发布状态与日志（2026-10-09 补，2026-10-10 随发布入口撤除调整）：上游发布状态的只读展示、两个日志弹窗的
+  loading/empty/error+retry（`workflow-list-page.test.tsx`、`workflow-log-dialog.test.tsx`、
+  `workflow-run-log-dialog.test.tsx`、`workflow-publish-model.test.ts`）；
 - 使用 stub 模拟 `postMessage` 与 BFF，不做跨域真实联调断言。
 
 ### 8.3 观测
@@ -466,7 +483,7 @@ iframe URL 约定：
 6. 上游静态资源响应头（`X-Frame-Options`/CSP）与 basename/资源前缀改造的实际可行性；
    - ✅ 结论：上游**完全不发 `X-Frame-Options`/CSP/`X-Content-Type-Options`**，iframe 不被上游阻止（`frame-ancestors` 须我方反代注入）；资源前缀改造是**必须项**且**反代必须注入上游会话 cookie**——除根路径与静态白名单外全站过 session 中间件，`/workflow-canvas/*` 不带 cookie 时连 JS 资源都 401。证据：`curl -I` 对 `/`、`/favicon.png`、`/static/js/index~0.e53a5992.js` 均无 `X-Frame-Options`/`Content-Security-Policy`/安全头；`index.html` 引用为**绝对路径** `/static/js/...`、`/favicon.png`，且 `frontend/apps/coze-studio/rsbuild.config.ts` 未设 `base`/`publicPath`（前缀改造需改构建配置或反代重写）；无 cookie 请求 `/workflow-canvas/`、`/workflow-canvas/static/js/index~0.e53a5992.js`、`/workflow-canvas/favicon.png` → 全部 `HTTP 401`，而同源 `/`、`/static/js/...`、`/favicon.png` → `HTTP 200`（静态白名单见 `backend/api/middleware/request_inspector.go` 的 `isStaticFile`）。
 7. 运行历史取数通道选择：`list_spans`/`get_trace`（session）与 `/v1/workflow/get_run_history`（PAT）的字段与权限差异；
-   - ✅ 结论：两条通道都可用且**字段口径不同**——session 通道（POST）给**节点级**明细但 trace 两接口在本例返回空；PAT 通道给**运行级**记录且 `execute_id` 为必填（缺失会 panic）。证据：session 通道 `POST /api/workflow_api/list_spans {workflow_id,space_id,start_at,end_at(毫秒),limit}` → `{"spans":null}`（**裸形状，无 `{code,msg}` 包装**）；`POST /api/workflow_api/get_trace?...` → `{}`；`GET /api/workflow_api/get_node_execute_history?workflow_id=..&execute_id=..&node_id=..&node_type=1&space_id=..` → `{"code":0,"data":{"nodeId":"100001","nodeStatus":3,"input":"...","output":"...","nodeExeCost":"0.007s",...}}`（注意 `list_spans`/`get_trace` 用 `GET` 会 `HTTP 404`，二者仅注册为 POST）。PAT 通道：`POST /api/permission_api/pat/create_personal_access_token_and_permission {name,duration_day:"30"}` → `code:0` 返回 `pat_<redacted>`（`duration_day:"permanent"` 会 `HTTP 500`，必须用数字天数）；`GET /v1/workflow/get_run_history?workflow_id=..&execute_id=.. -H 'Authorization: Bearer pat_<redacted>'` → `{"data":[{"execute_id":...,"execute_status":"Success","log_id":"09a808fc-...","input":"{\"input\":\"hello\"}","output":"{\"output\":\"hello\"}","cost":"0.00000","debug_url":"http://localhost:18080/work_flow?...","create_time":1790678461}],"BaseResp":null}`——`execute_status` 是字符串而 session 通道 `executeStatus` 是数字枚举；缺 `execute_id` → `HTTP 200 {"code":777777775,...strconv.ParseInt: parsing \"\"...Go 堆栈外泄}`。
+   - ✅ 结论：两条通道都可用且**字段口径不同**——session 通道（POST）给**节点级**明细但 trace 两接口在本例返回空；PAT 通道给**运行级**记录且 `execute_id` 为必填（缺失会 panic）。证据：session 通道 `POST /api/workflow_api/list_spans {workflow_id,space_id,start_at,end_at(毫秒),limit}` → `{"spans":null}`（**裸形状，无 `{code,msg}` 包装**）；`POST /api/workflow_api/get_trace?...` → `{}`；`GET /api/workflow_api/get_node_execute_history?workflow_id=..&execute_id=..&node_id=..&node_type=1&space_id=..` → `{"code":0,"data":{"nodeId":"100001","nodeStatus":3,"input":"...","output":"...","nodeExeCost":"0.007s",...}}`（注意 `list_spans`/`get_trace` 用 `GET` 会 `HTTP 404`，二者仅注册为 POST）。PAT 通道：`POST /api/permission_api/pat/create_personal_access_token_and_permission {name,duration_day:"30"}` → `code:0` 返回 `pat_<redacted>`（`duration_day:"permanent"` 会 `HTTP 500`，必须用数字天数）；`GET /v1/workflow/get_run_history?workflow_id=..&execute_id=.. -H 'Authorization: Bearer pat_<redacted>'` → `{"data":[{"execute_id":...,"execute_status":"Success","log_id":"09a808fc-...","input":"{\"input\":\"hello\"}","output":"{\"output\":\"hello\"}","cost":"0.00000","debug_url":"http://localhost:18080/work_flow?...","create_time":1790678461}],"BaseResp":null}`——`execute_status` 是字符串而 session 通道 `executeStatus` 是数字枚举；缺 `execute_id` → `HTTP 200 {"code":777777775,...strconv.ParseInt: parsing \"\"...Go 堆栈外泄}`。 **2026-10-09 更新**：`list_spans` 已由上游补实现（commit `3a028cf1`，契约见 [run-list-api-request](./2026-10-09-workflow-v2-upstream-run-list-api-request.md) §7），本行的 `{"spans":null}` 是桩实现时期的实测；`get_trace` 仍为桩。本行其余实测记录保持原样。
 8. 上传与图片签名（`sign_image_url`、上传 token）在反代路径下的可用性。
    - ❌ 不通过（接口本身可用，但产物在反代路径下**不可直接使用**，需先补反代与白名单，详见 9.1.1 第 5 条）：证据：`POST /api/workflow_api/sign_image_url {uri:"default_icon/default_workflow_icon.png"}` → `{"code":0}`，返回 `http://127.0.0.1:9000/opencoze/...`（**存储服务预签名直链，host 非上游自身**，浏览器无法经 `/workflow-canvas/*` 到达）；`POST /api/playground_api/get_imagex_url {uris:[...]}` 同样返回 `127.0.0.1:9000` 链接；`POST /api/workflow_api/upload/auth_token {scene:"imageflow"}` → `{"code":0,"data":{"upload_path_prefix":"imageflow-","upload_host":"127.0.0.1:18080/api/common/upload/apply_upload_action","schema":"http","auth":{凭据字段全空}}}`，`scene` 仅支持 `imageflow`（其它值 → `{"code":777777775,"msg":"Workflow operation failure: scene  is not supported"}`），而 `/api/common/upload/*` 与 `/api/playground_api/get_imagex_url` 均**不在** §6 的 `/api/workflow_api/` 白名单内。未端到端验证浏览器上传链路。
 
