@@ -135,6 +135,8 @@
   "resources": {
     "title": "资源（{{count}}）",
     "empty": "暂无资源",
+    "noContentHint": "解析已完成但未提取到有效内容，文件可能已损坏；请检查文件或重新上传",
+    "failedHint": "解析失败，请重新解析；若反复失败请检查文件后重新上传",
     "colStatus": "状态",
     "colChunks": "分块数",
     "colEnabled": "启用",
@@ -157,6 +159,7 @@
     "processing": "处理中",
     "pending": "等待中",
     "indexing": "索引中",
+    "empty": "无可用内容",
     "error": "错误"
   },
   "actions": {

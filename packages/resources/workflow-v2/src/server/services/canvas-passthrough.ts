@@ -88,9 +88,6 @@ const NODE_SCOPE_PATHS: ReadonlySet<string> = new Set([
   "/api/workflow_api/node_panel_search",
 ]);
 
-/** 返回存储直链的端点（冻结 §6.1）：只在这两条上改写 URL，避免误伤其它响应里的同形字段。 */
-const IMAGE_URL_PATHS: ReadonlySet<string> = new Set(["/api/workflow_api/sign_image_url", IMAGEX_URL_PATH]);
-
 // ── 请求体上界与超时 ──
 
 /** JSON 请求体上界：画布 `save` 的 `schema` 随节点数增长，正常图在数百 KB 量级，8 MiB 是留足余量的硬顶。 */
@@ -274,6 +271,9 @@ const STORAGE_PROXY_PREFIX = "/workflow-canvas/storage";
  */
 function toStorageProxyUrl(value: unknown, upstreamOrigin: string): string | null {
   if (typeof value !== "string") return null;
+  // 预筛：改写的前提就是 pathname 以存储桶前缀开头，不含它的字符串（绝大多数文本字段，包括画布 schema 这类
+  // 大字符串）直接跳过，省掉 `new URL` 的解析与异常构造——全响应扫描的成本由此压到「只有含锚点的串才真解析」。
+  if (!value.includes(STORAGE_PATH_PREFIX)) return null;
   let parsed: URL;
   try {
     parsed = new URL(value);
@@ -284,32 +284,64 @@ function toStorageProxyUrl(value: unknown, upstreamOrigin: string): string | nul
   return `${STORAGE_PROXY_PREFIX}${parsed.pathname}${parsed.search}`;
 }
 
-/** 图片端点的 URL 字段改写：`sign_image_url` 的 `url` 在顶层，`get_imagex_url` 在 `data.url_info[].url`。 */
-function rewriteStorageUrls(body: unknown, path: string, upstreamOrigin: string): unknown {
-  if (!IMAGE_URL_PATHS.has(path)) return body;
-  const root = body;
-  if (!isRecord(root)) return body;
+/**
+ * 存储直链改写的遍历上界。
+ *
+ * 响应体是上游可控数据：递归必须有界，否则深层嵌套或超大响应能把请求线程钉在遍历里。正常业务响应
+ * （画布 schema、列表、节点元数据）的嵌套与节点数远低于这两个值，触界只可能是异常输入。
+ */
+const STORAGE_REWRITE_MAX_DEPTH = 32;
+const STORAGE_REWRITE_MAX_NODES = 20_000;
 
-  if (path === IMAGEX_URL_PATH) {
-    const data = root.data;
-    const urlInfo = isRecord(data) ? data.url_info : null;
-    if (!isRecord(urlInfo)) return body;
+/**
+ * 改写响应体里的存储直链（全响应扫描，结构共享：未改动的子树返回原引用）。
+ *
+ * 为什么是全响应而不是按端点清单：内联签名直链的不止冻结 §6.1 的两条图片端点——节点元数据面
+ * （`node_type` / `node_template_list` / `node_panel_search`）同样内联直链，按端点白名单改写会让画布节点
+ * 图标直连内网 host（`rustfs:9000` / `workflow-storage`）成片失败，且上游新增端点会持续漏改。误伤面由
+ * {@link toStorageProxyUrl} 的判定收窄（仅「origin 非上游自身且路径落在存储桶下」），遍历由深度与节点数
+ * 上界兜底；触界即停止扫描并告警（已改写部分保留）。
+ * 移除条件：上游能配置对外存储域（或本包拿到存储基址配置）时整段删除，回到纯透传。
+ */
+function rewriteStorageUrls(body: unknown, upstreamOrigin: string): unknown {
+  const budget = { nodes: STORAGE_REWRITE_MAX_NODES };
+  const rewritten = rewriteStorageNode(body, upstreamOrigin, 0, budget);
+  if (budget.nodes <= 0) {
+    logger.warn("存储直链改写触达节点上界，响应未被完整扫描", { limit: STORAGE_REWRITE_MAX_NODES });
+  }
+  return rewritten;
+}
+
+/** 单节点改写：先认直链，再按数组/对象下钻；预算耗尽或超深时原样返回（不再深入）。 */
+function rewriteStorageNode(value: unknown, upstreamOrigin: string, depth: number, budget: { nodes: number }): unknown {
+  if (budget.nodes <= 0 || depth > STORAGE_REWRITE_MAX_DEPTH) return value;
+  budget.nodes -= 1;
+
+  const proxied = toStorageProxyUrl(value, upstreamOrigin);
+  if (proxied !== null) return proxied;
+
+  if (Array.isArray(value)) {
     let changed = false;
-    const nextUrlInfo: Record<string, unknown> = {};
-    for (const [uri, entry] of Object.entries(urlInfo)) {
-      const rewritten = isRecord(entry) ? toStorageProxyUrl(entry.url, upstreamOrigin) : null;
-      if (!isRecord(entry) || rewritten === null) {
-        nextUrlInfo[uri] = entry;
-        continue;
-      }
-      nextUrlInfo[uri] = { ...entry, url: rewritten };
-      changed = true;
-    }
-    return changed ? { ...root, data: { ...(data as Record<string, unknown>), url_info: nextUrlInfo } } : body;
+    const next = value.map((item) => {
+      const rewritten = rewriteStorageNode(item, upstreamOrigin, depth + 1, budget);
+      if (rewritten !== item) changed = true;
+      return rewritten;
+    });
+    return changed ? next : value;
   }
 
-  const rewritten = toStorageProxyUrl(root.url, upstreamOrigin);
-  return rewritten === null ? body : { ...root, url: rewritten };
+  if (isRecord(value)) {
+    let changed = false;
+    const next: Record<string, unknown> = {};
+    for (const [key, item] of Object.entries(value)) {
+      const rewritten = rewriteStorageNode(item, upstreamOrigin, depth + 1, budget);
+      if (rewritten !== item) changed = true;
+      next[key] = rewritten;
+    }
+    return changed ? next : value;
+  }
+
+  return value;
 }
 
 /**
@@ -331,7 +363,7 @@ function postProcessResponse(body: unknown, path: string): unknown {
     return { code: UPSTREAM_PANIC_CODE, msg: MSG_UPSTREAM_REJECTED };
   }
   const scoped = NODE_SCOPE_PATHS.has(path) ? filterNodePayload(body, path) : body;
-  return rewriteStorageUrls(scoped, path, upstreamOriginOf());
+  return rewriteStorageUrls(scoped, upstreamOriginOf());
 }
 
 /** 上游基址的 origin：判定存储直链时排除上游自身的 URL。 */

@@ -6,7 +6,7 @@
 
 - **仓储**：`src/server/repositories/knowledge-base.ts` 是 `knowledge_base` / `knowledge_resource` / `agent_knowledge_binding` 三张表的唯一数据访问点（35 个方法，每个方法首行 `const db = getKnowledgeDatabase()`），导出 `knowledgeBaseRepo` / `knowledgeResourceRepo` / `agentKnowledgeBindingRepo` 三个单例。三张表的**定义**自 §1.7 B9 起由本包持有（`db/schema.ts`，出口 `@fenix/resource-knowledge/db`），因此本包对宿主 `@server/*` 已零引用：实测 `grep -rn --include="*.ts" -E 'from "@server/' src web db` → 0 命中；`services/**` 与 `routes/**` 都不直接取句柄。
 - **知识库领域**：`src/server/services/knowledge-base.ts` 负责 slug 生成与唯一性校验、名称与 slug 的本地校验（在访问 DB 和 provider 之前拒绝）、状态推导（`upsertKnowledgeBaseStatusFromResources`）、删除前的绑定占用检查，以及创建表单选项（`listKnowledgeFormOptions`：嵌入模型 / 分块方法 / pipeline）。
-- **Provider 抽象**：`src/server/services/knowledge-provider/types.ts` 定义 `KnowledgeProvider` 契约（dataset 创建与列举、检索、检索测试、`readResource`、知识图谱、模型目录），唯一实现是同目录 `ragflow.ts` 的 `RagFlowKnowledgeProvider`（`:27` 的 `mapRunStatus` 把 RAGFlow 的 run 字符串映射为 `pending/processing/ready/error`，`checkRagFlowHealth()` 供宿主启动期探活——宿主调用点 `apps/server/src/main.ts:383`）；`registry.ts` 的 `getKnowledgeProvider()` 是惰性单例，`setKnowledgeProviderForTesting()` 是包内测试 seam。
+- **Provider 抽象**：`src/server/services/knowledge-provider/types.ts` 定义 `KnowledgeProvider` 契约（dataset 创建与列举、检索、检索测试、`readResource`、知识图谱、模型目录），唯一实现是同目录 `ragflow.ts` 的 `RagFlowKnowledgeProvider`（`:34` 的 `mapRunStatus` 把 RAGFlow 的 run 字符串映射为 `pending/processing/ready/error/empty`——`empty` 表示解析任务结束但零分块，见下节；`checkRagFlowHealth()` 供宿主启动期探活——宿主调用点 `apps/server/src/main.ts:383`）；`registry.ts` 的 `getKnowledgeProvider()` 是惰性单例，`setKnowledgeProviderForTesting()` 是包内测试 seam。
 - **资源入库**：`knowledge-upload.ts` 负责上传落盘、URL 导入、重新解析、状态刷新与删除，并按资源汇总回写知识库状态；上传与导入是幂等的（按 sourceName / remoteId 复用 pending 资源）。
 - **Agent 绑定与检索**：`agent-knowledge.ts` 维护 binding 的读写与策略归一化（`searchFirst` / `maxResults` / `defaultNamespaces`）；`knowledge-runtime.ts` 按绑定知识库检索、读取单个资源、生成/读取/删除知识图谱并轮询进度，检索按 embedding model 分组（RAGFlow 要求同一请求的 dataset 同模型），远端失败只跳过该分组不整单失败。
 - **HTTP 交付物**：两条路由都以工厂形式导出——`createWebKnowledgeBaseRoutes(deps)`（23 条控制台端点：CRUD、资源上传与文件/PDF 预览、chunk 管理与启停、检索测试、知识图谱，以及 action 风格的 `POST /web/knowledgeBases/models` 模型管理）与 `createApiKnowledgeBaseRoutes(deps)`（`/api/knowledge-bases`，对外只读分页列表，1 条端点）。工厂出参是 Elysia 实例（`name` 分别为 `web-knowledge-bases` / `api-knowledge-bases`），宿主挂载点见「边界外的已知项」。
@@ -53,6 +53,27 @@
 - **「全局 KB」短路未收敛**：`knowledge-runtime.ts` 保留 `isGlobal = true` 与 `|| true` 的组织过滤短路（历史行为），跨组织可见性未经 `@fenix/access-control` 判定；属 §1.4 授权收敛范围，本任务只做边界切断。
 - **`resource → @fenix/identity` 已消除**：见「依赖边界」（§1.6 T7 改经 `@fenix/web-runtime` 的 org/session 契约，台账条目已删除）。上一版 README 记的「machine 改名中间态留下 17 处无法解析导入、门禁结论不可信」本轮实测已不成立：脚本扫描 `packages/resources/machine/src/**/*.ts`（85 个文件）相对导入解析失败 0 处，`machine/web` 仅 1 处（`web/__tests__/machine-browser-surface.test.ts -> ./api/registry`，在该包自己的用例内）。本包 `src`（43 文件）与 `web`（20 文件）各 0 处。门禁本身的结论需由编排者复跑 `bun run check:dependencies` 确认，本包只给静态扫描结果。
 - **包内 lint 已清零（W2.5 修复）**：上一版 README 列的 8 条 error（`web/components/knowledge/ResourcePreviewContent.tsx` ×5、`web/src/pages/agent-panel/components/ChunkDetailSheet.tsx` ×2、`web/src/pages/agent-panel/components/RetrievalTestPanel.tsx` ×1）本轮全部处置，`./node_modules/.bin/biome check packages/resources/knowledge`（W2.5 时 69 个文件，本轮新增两个文件后为 71 个文件）0 error / 0 warning。处置口径与一处**刻意偏离**见下节。
+
+## 解析结束但零分块的状态口径（2026-10-10，AOS-BUG-003）
+
+- **缺陷**：截断 PDF 的解析任务以 `run=DONE`、`chunk_count=0` 收尾（RAGFlow 侧只留 `No chunk built from <file>`），
+  而 `mapRunStatus` 当时只看 run，把「任务结束」当成「可用于检索」，资源落成 `ready`，界面显示「就绪 / 0 分块」，
+  用户无法发现文档其实检索不到任何内容。
+- **口径**：`KnowledgeResourceStatus` 新增 `empty`（无可用内容），`run=DONE` 且**上游明确给出** `chunk_count = 0`
+  时映射为它；`chunk_count` 缺失仍按 `ready`（不拿字段缺省猜测内容为空），`RUNNING`/`UNSTART` 的零分块也不降级
+  （解析中的分块数天然为 0）。`error` 仍专指解析失败，两者给用户的建议不同（重新上传 vs 重新解析）。
+- **边界**：`empty` 不进 `upsertKnowledgeBaseStatusFromResources` 的任何计数——既不宣告知识库就绪，也不把单个损坏
+  文件放大成知识库 `error`（只由 `empty` 构成的知识库落在默认值 `empty`）。该状态随资源列表同步**持久化**到
+  `knowledge_resource.status`（列是 `varchar`，无迁移），因此 RAGFlow 不可用时的本地缓存回退也保留结论。
+  轮询判据只看 `runStatus`（`RUNNING`/`UNSTART`/`DONE`/`FAIL`），`empty` 不会让轮询跑到次数上限。
+- **展示**：资源表的建议句由 `resourceStatusHintKey` 按状态取字典（`resources.noContentHint` / `resources.failedHint`），
+  胶囊色调用 `RESOURCE_STATUS_TONES`（`empty` → warning；不复用 `KB_STATUS_TONES`，因为知识库级 `empty` 是「新建、
+  尚未上传」，那里报黄会让新知识库一出场就带警告）。远端 `progress_msg` 原文只作为胶囊的 `title` 诊断信息上屏。
+  「预览」按钮的判据由 `ready` 放宽到 `ready | empty`：提示让用户检查文件，而预览取的是源文件本身
+  （`/resources/:id/file`），不随分块有无而失效；`error` 维持原口径不给预览。
+- **契约**：`/web` 的 `KnowledgeResourceStatusSchema`（zod 枚举）与前端渲染同步接受 `empty`；新增文案
+  `status.empty`、`resources.noContentHint`、`resources.failedHint` 已进 en/zh 两份字典（键集一致由
+  `web/__tests__/knowledge-i18n.test.ts` 守护，动态键在「状态与预览分类键齐备」里显式登记）。
 
 ## 前端去重（2026-09-22）
 

@@ -1,3 +1,4 @@
+import { AppError } from "@fenix/platform-sdk";
 import type { AgentInstanceRecord } from "../repositories/agent-instance";
 
 export type RuntimeStopMode = "strict" | "best-effort";
@@ -34,6 +35,8 @@ interface RuntimeEntry {
   machineId: string | null;
   /** 该机器的 clean-slate 已确认,但条目仍有在飞操作,复位需延后到操作释放槽位之后。 */
   pendingCleanSlate: boolean;
+  /** AOS-BUG-002：停止意图独立于运行状态，重连、死亡或 clean-slate 通知不得解除。 */
+  manuallyStopped: boolean;
 }
 
 export interface RuntimeCoordinatorOptions {
@@ -227,6 +230,11 @@ export class AgentInstanceRuntimeCoordinator {
     if (entry.state === "unknown" && operation !== "stop") {
       return Promise.reject(new Error(`Runtime state for '${instance.id}' is unknown`));
     }
+    if (operation === "ensure" && entry.manuallyStopped) {
+      return Promise.reject(new AppError("Agent Instance is stopped; restart it explicitly", "INSTANCE_STOPPED", 409));
+    }
+    // 必须先封住自动启动再释放 runtime/聊天连接，防止 stop 的异步窗口被重连抢占。
+    if (operation === "stop") entry.manuallyStopped = true;
     if (entry.operation && entry.operationPromise) {
       if (entry.operation === operation) return this.#wait(entry.operationPromise, waiterSignal);
       if (PRIORITY[entry.operation] >= PRIORITY[operation]) {
@@ -308,6 +316,8 @@ export class AgentInstanceRuntimeCoordinator {
         return;
       }
       entry.state = "running";
+      // 仅当前世代的显式重启成功才能解除停止意图；失败或被 stop 抢占仍保持禁止懒启动。
+      if (operation === "restart") entry.manuallyStopped = false;
       entry.lastFailure = null;
     } catch (error) {
       if (entry.generation === generation) {
@@ -344,6 +354,7 @@ export class AgentInstanceRuntimeCoordinator {
         abortController: null,
         machineId: null,
         pendingCleanSlate: false,
+        manuallyStopped: false,
       };
       this.#entries.set(instanceUid, entry);
     }

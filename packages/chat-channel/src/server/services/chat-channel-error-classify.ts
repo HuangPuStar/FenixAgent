@@ -49,6 +49,8 @@ export function isMachineOfflineError(err: unknown): boolean {
 export function classifyPermanentSpawnFailure(err: unknown): string | null {
   if (err instanceof AppError) {
     if (err.code === "AUTO_START_DISABLED") return "auto_start_disabled";
+    // AOS-BUG-002：重连不能撤销用户停止意图；沿用 4502 终态，待显式重启后再连接。
+    if (err.code === "INSTANCE_STOPPED") return "instance_stopped";
     return null;
   }
   if (err instanceof OrchestrationError) {

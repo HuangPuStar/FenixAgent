@@ -321,6 +321,83 @@ describe("RagFlowKnowledgeProvider", () => {
     expect(results[3].lastError).toBe("error");
   });
 
+  // AOS-BUG-003：解析任务结束（run=DONE）不代表产出内容。RAGFlow 对结构损坏的文件以
+  // `No chunk built from <file>` + chunk_count=0 收尾，这类文档检索不到任何内容，
+  // 必须映射成 empty 而不是 ready，否则界面显示「就绪 / 0 分块」误导用户。
+  test("listResources 把解析完成但零分块的文档映射为 empty", async () => {
+    globalThis.fetch = mock(async () => ({
+      ok: true,
+      json: async () => ({
+        code: 0,
+        data: {
+          total: 1,
+          docs: [
+            {
+              id: "d1",
+              name: "demo-truncated.pdf",
+              run: "DONE",
+              chunk_count: 0,
+              progress_msg: "No chunk built from demo-truncated.pdf",
+            },
+          ],
+        },
+      }),
+    })) as unknown as typeof fetch;
+
+    const provider = new RagFlowKnowledgeProvider();
+    const results = await provider.listResources({
+      knowledgeBaseRemoteId: "ds_abc123",
+      remoteAccountId: "user1",
+      remoteUserId: "user1",
+    });
+
+    expect(results[0].status).toBe("empty");
+    expect(results[0].chunkCount).toBe(0);
+    // 远端原文保留在 lastError 里：状态给结论，原文留给悬停诊断。
+    expect(results[0].lastError).toBe("No chunk built from demo-truncated.pdf");
+  });
+
+  // 反向用例：解析出分块的文档必须保持 ready，修复不得把正常文件一起降级。
+  test("listResources 保持有分块文档的 ready 语义", async () => {
+    globalThis.fetch = mock(async () => ({
+      ok: true,
+      json: async () => ({
+        code: 0,
+        data: { total: 1, docs: [{ id: "d1", name: "sample.pdf", run: "DONE", chunk_count: 1 }] },
+      }),
+    })) as unknown as typeof fetch;
+
+    const provider = new RagFlowKnowledgeProvider();
+    const results = await provider.listResources({
+      knowledgeBaseRemoteId: "ds_abc123",
+      remoteAccountId: "user1",
+      remoteUserId: "user1",
+    });
+
+    expect(results[0].status).toBe("ready");
+    expect(results[0].chunkCount).toBe(1);
+  });
+
+  // 解析中的文档分块数天然为 0：按 run 优先判定，不能被误判成「无可用内容」而在上传过程中就报异常。
+  test("listResources 不把解析中的零分块文档判为 empty", async () => {
+    globalThis.fetch = mock(async () => ({
+      ok: true,
+      json: async () => ({
+        code: 0,
+        data: { total: 1, docs: [{ id: "d1", name: "sample.pdf", run: "RUNNING", chunk_count: 0, progress: 0.5 }] },
+      }),
+    })) as unknown as typeof fetch;
+
+    const provider = new RagFlowKnowledgeProvider();
+    const results = await provider.listResources({
+      knowledgeBaseRemoteId: "ds_abc123",
+      remoteAccountId: "user1",
+      remoteUserId: "user1",
+    });
+
+    expect(results[0].status).toBe("processing");
+  });
+
   test("listResources 分页遍历所有文档", async () => {
     const fetchSpy = mock()
       .mockImplementationOnce(async () => ({

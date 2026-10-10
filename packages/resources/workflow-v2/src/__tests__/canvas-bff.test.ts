@@ -585,6 +585,61 @@ describe("canvas-bff 注入与响应后处理", () => {
       data: { url_info: { "uri-1": { url: proxied }, "uri-2": { url: external } } },
     });
   });
+
+  // 内联签名直链的不止图片面：节点元数据的图标字段同样是存储直链。只按端点白名单改写会让画布节点图标
+  // 直连内网 host（实测 `workflow-storage`，浏览器不可达）成片 502；全响应递归后任意端点、任意嵌套深度
+  // 都换，非存储 URL 一个字节不动。
+  test("节点元数据端点：嵌套图标字段的存储直链同样改写", async () => {
+    const signed = `${STORAGE_ORIGIN}/opencoze/default_icon/workflow_icon/icon-llm.jpg?X-Amz-Signature=fixture`;
+    const proxied = "/workflow-canvas/storage/opencoze/default_icon/workflow_icon/icon-llm.jpg?X-Amz-Signature=fixture";
+    const external = "https://cdn.example.invalid/icon.png";
+    const app = setup((recorded) =>
+      recorded.path.endsWith("node_type")
+        ? jsonResponse({
+            code: 0,
+            msg: "success",
+            data: {
+              node_types: ["3", "5"],
+              nodes_properties: [
+                { type: "3", name: "LLM", icon: { url: signed } },
+                { type: "5", name: "Code", icon: { url: external } },
+              ],
+            },
+          })
+        : envelope({}),
+    );
+    const ticket = mintTicket(ORG_A, WF_A);
+
+    const response = await call(app, upstreamPath("node_type"), { ticket, body: { workflow_id: WF_A } });
+    expect(await response.json()).toEqual({
+      code: 0,
+      msg: "success",
+      data: {
+        node_types: ["3", "5"],
+        nodes_properties: [
+          { type: "3", name: "LLM", icon: { url: proxied } },
+          { type: "5", name: "Code", icon: { url: external } },
+        ],
+      },
+    });
+  });
+
+  // 全响应递归必须有界（响应体是上游可控数据）：触界的契约是「停止深入、已改写部分保留、请求正常返回」，
+  // 不是抛错或爆栈——图片加载失败可诊断，请求 500 不可诊断。
+  test("超深嵌套触达深度上界：不再改写，但请求正常返回", async () => {
+    const signed = `${STORAGE_ORIGIN}/opencoze/deep.png?X-Amz-Signature=fixture`;
+    let nested: unknown = { url: signed };
+    for (let index = 0; index < 40; index += 1) nested = { child: nested };
+    const app = setup(() => jsonResponse({ code: 0, msg: "success", data: nested }));
+    const ticket = mintTicket(ORG_A, WF_A);
+
+    const response = await call(app, upstreamPath("workflow_detail"), { ticket, body: { workflow_id: WF_A } });
+    expect(response.status).toBe(200);
+    let cursor = (await response.json()) as Record<string, unknown>;
+    cursor = cursor.data as Record<string, unknown>;
+    for (let index = 0; index < 40; index += 1) cursor = cursor.child as Record<string, unknown>;
+    expect(cursor.url).toBe(signed);
+  });
 });
 
 describe("canvas-bff 请求体约束与失败映射", () => {

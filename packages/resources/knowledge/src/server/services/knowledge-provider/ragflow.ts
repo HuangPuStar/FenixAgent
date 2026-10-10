@@ -12,6 +12,7 @@ import type {
   KnowledgeProvider,
   KnowledgeResourceContent,
   KnowledgeResourceSnapshot,
+  KnowledgeResourceStatus,
   KnowledgeRetrievalDetailedResult,
   KnowledgeSearchResult,
   MetaDataFilter,
@@ -22,16 +23,22 @@ import type {
 
 /**
  * 将 RagFlow 文档 run 字段映射为统一的 KnowledgeResourceStatus。
- * RagFlow 文档列表接口直接返回 run 字符串，DONE 表示解析完成。
+ *
+ * RagFlow 文档列表接口直接返回 run 字符串，DONE 表示**解析任务结束**，不表示文档产出内容：
+ * 结构损坏的文件会被 RAGFlow 以 `No chunk built from <file>` 收尾，run 仍是 DONE 而 `chunk_count = 0`
+ * （AOS-BUG-003 的现场证据）。这类文档检索不到任何内容，因此映射为 `empty` 而不是 `ready`。
+ *
+ * `chunk_count` 缺失（上游未返回该字段）时仍按 `ready` 处理：只有上游明确给出数字 0 才降级，
+ * 避免字段缺省把正常文档误判为无内容。
  */
-function mapRunStatus(runStatus: string | undefined): "pending" | "processing" | "ready" | "error" {
+function mapRunStatus(runStatus: string | undefined, chunkCount: number | undefined): KnowledgeResourceStatus {
   switch (runStatus) {
     case "UNSTART":
       return "pending";
     case "RUNNING":
       return "processing";
     case "DONE":
-      return "ready";
+      return chunkCount === 0 ? "empty" : "ready";
     case "FAIL":
       return "error";
     default:
@@ -907,7 +914,8 @@ export class RagFlowKnowledgeProvider implements KnowledgeProvider {
           knowledgeBaseRemoteId: datasetId,
           sourceName: cleanName,
           sourceType: doc.type ?? "unknown",
-          status: mapRunStatus(doc.run),
+          // 解析任务结束与「有可用分块」是两件事：零分块的 DONE 文档记为 empty，见 mapRunStatus。
+          status: mapRunStatus(doc.run, doc.chunk_count),
           source: doc.source_url ?? null,
           lastError: doc.progress_msg ?? null,
           enabled: doc.status !== "0",

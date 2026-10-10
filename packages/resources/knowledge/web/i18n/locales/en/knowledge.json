@@ -135,6 +135,8 @@
   "resources": {
     "title": "Resources ({{count}})",
     "empty": "No resources",
+    "noContentHint": "Parsing finished but no usable content was extracted — the file may be corrupted; check it or upload again",
+    "failedHint": "Parsing failed; re-parse the document, and check the file or upload again if it keeps failing",
     "colStatus": "Status",
     "colChunks": "Chunks",
     "colEnabled": "Enabled",
@@ -157,6 +159,7 @@
     "processing": "Processing",
     "pending": "Pending",
     "indexing": "Indexing",
+    "empty": "No usable content",
     "error": "Error"
   },
   "actions": {

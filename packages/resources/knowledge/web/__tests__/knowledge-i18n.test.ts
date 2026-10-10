@@ -105,8 +105,18 @@ describe("knowledge 字典完整性", () => {
   });
 
   // 资源状态与预览类型表用动态键拼装，单独断言这批键存在（字面量扫描覆盖不到）。
+  // `status.empty` 与两条建议句来自 AOS-BUG-003 的「解析结束但零分块」提示，同样由函数拼键
+  // （`kbStatusLabel` / `resourceStatusHintKey`），漏登记只会在界面上露出键名。
   test("状态与预览分类键齐备（动态键无法被字面量扫描覆盖）", () => {
-    for (const key of ["status.pending", "status.processing", "status.ready", "status.error"]) {
+    for (const key of [
+      "status.pending",
+      "status.processing",
+      "status.ready",
+      "status.error",
+      "status.empty",
+      "resources.noContentHint",
+      "resources.failedHint",
+    ]) {
       expect(enFlat.has(key)).toBe(true);
       expect(zhFlat.has(key)).toBe(true);
     }

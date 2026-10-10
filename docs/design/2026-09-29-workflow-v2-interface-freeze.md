@@ -209,12 +209,14 @@ export function softDeleteWorkflow(orgId: string, upstreamWorkflowId: string): P
 
 ## 6.1 图片与附件直链（首版策略）
 
-上游返回的 URL 指向存储服务（`127.0.0.1:9000` 之类的 MinIO 内网地址），浏览器不可达。首版采取**最小必要**的两步，不做通用 URL 重写框架：
+上游返回的 URL 指向存储服务（MinIO 内网地址；经 `coze-web` 的 `sub_filter` 后对浏览器呈 `http://workflow-storage/...`），浏览器不可达。策略为**最小必要**的两步，不做通用 URL 重写框架：
 
 1. `WORKFLOW_CANVAS_UPSTREAM_URL` 之外新增存储域的反代前缀 `/workflow-canvas/storage/*` → 上游存储地址，仅允许 GET/HEAD，响应剥离 `Set-Cookie`。
-2. 透传响应在写回浏览器前，把响应体中**已知字段**（`sign_image_url`/`get_imagex_url` 的 URL 值、`url`/`icon_uri` 等）的存储 origin 替换为 `/workflow-canvas/storage`。替换只针对固定已知 origin 前缀，不做正则泛化，避免误伤。
+2. 透传响应在写回浏览器前，把响应体中的存储直链 origin 替换为 `/workflow-canvas/storage`。**判定**只认「origin 不是上游自身 且 pathname 落在已知存储桶（`/opencoze/`）下」，不做正则泛化，避免误伤；**扫描范围**是全响应递归（深度与节点数有上界），不按端点或字段清单。
 
 ⚠️ 该替换属于「无法只靠透传解决」的例外交付；实现时必须在代码注释里写明原因与移除条件（上游若能配置对外存储域即可删除）。
+
+2026-10-10 修订：第 2 步的扫描范围由「已知字段清单」放宽为「全响应递归」。内联存储直链的端点不止两条图片端点——`node_type` / `node_template_list` / `node_panel_search` 等节点元数据响应同样内联签名直链（实测画布节点图标被浏览器直连 `http://workflow-storage/...`，成片 502），按清单改写对上游新增端点会持续漏改。原始约束「判定只认固定前缀、不做正则泛化」不变，误伤面仍由同一份严格判定收窄；遍历有上界（深度 32 / 节点 20000），触界停止扫描并告警（`canvas-passthrough.ts` 的 `rewriteStorageUrls`）。
 
 ## 6.2 调试运行轮询预算（`get_process`，3A 落地口径）
 
