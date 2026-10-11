@@ -3,6 +3,7 @@ import { useEffect } from "react";
 import { useTranslation } from "react-i18next";
 import { Toaster } from "sonner";
 import { OrgProvider } from "../contexts/OrgContext";
+import { useInitialSessionLoading } from "../hooks/use-initial-session-loading";
 import { useSession } from "../lib/auth-client";
 import { ThemeProvider } from "../lib/theme";
 
@@ -13,6 +14,7 @@ export const Route = createRootRoute({
 
 function RootComponent() {
   const { data: session, isPending } = useSession();
+  const isInitialSessionLoading = useInitialSessionLoading(isPending);
   const navigate = useNavigate();
   const pathname = useRouterState({ select: (s) => s.location.pathname });
   const { t } = useTranslation("common");
@@ -30,7 +32,7 @@ function RootComponent() {
     }
   }, [session, isPending, pathname, navigate, isAdminPath]);
 
-  if (isPending) {
+  if (isInitialSessionLoading) {
     return (
       <ThemeProvider defaultTheme="light">
         <div className="flex h-screen flex-col items-center justify-center gap-4">
