@@ -1,5 +1,5 @@
 import { ticketMessages } from "@fenix/resource-tickets/db";
-import { and, eq, inArray } from "drizzle-orm";
+import { and, eq, inArray, sql } from "drizzle-orm";
 import { getTicketsDatabase } from "../db";
 
 /**
@@ -35,6 +35,15 @@ export interface TicketMessageRepository {
   }): Promise<TicketMessageRow | undefined>;
   findByMessageId(input: { messageId: string }): Promise<TicketMessageRow | undefined>;
   findManyByMessageIds(input: { projectId: string; messageIds: readonly string[] }): Promise<TicketMessageRow[]>;
+  /**
+   * 正文改写后的归属刷新：换新 `body_hash`、`revision + 1` 并记录改写者。
+   *
+   * 只由「描述被改写」与「评论被编辑」两条路径调用：`revision` 表达的是**正文被改写了几次**，把标题、
+   * 状态、标签或指派也算进来，`body_hash` 与 `revision` 的对应关系就失效（恢复核对与作者核验都读它
+   * 们判「这条内容是否仍是我方写入的那一份」）。`author_id` 与 `author_name_snapshot` 保持不变——
+   * 编辑不转移作者，方案 §7 要求保留原始作者。
+   */
+  updateRevision(input: { id: string; bodyHash: string; lastEditorId: string }): Promise<TicketMessageRow>;
 }
 
 export function createTicketMessageRepository(): TicketMessageRepository {
@@ -93,6 +102,24 @@ export function createTicketMessageRepository(): TicketMessageRepository {
         .where(
           and(eq(ticketMessages.projectId, input.projectId), inArray(ticketMessages.messageId, [...input.messageIds])),
         );
+    },
+
+    async updateRevision(input) {
+      const [row] = await getTicketsDatabase()
+        .update(ticketMessages)
+        .set({
+          bodyHash: input.bodyHash,
+          // 自增在 SQL 内完成：读改写会让两个并发编辑各自基于同一旧值写回，一次改写被吞掉。
+          revision: sql`${ticketMessages.revision} + 1`,
+          lastEditorId: input.lastEditorId,
+        })
+        .where(eq(ticketMessages.id, input.id))
+        .returning();
+      if (row === undefined) {
+        // 归属行是写入路径与终态同事务落库的产物，更新零行只可能是账本与数据不一致。
+        throw new Error("ticket_messages 归属行不存在，无法刷新正文版本");
+      }
+      return row;
     },
   };
 }

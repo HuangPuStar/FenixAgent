@@ -1,0 +1,1 @@
+CREATE INDEX "ticket_operations_inflight_idx" ON "ticket_operations" USING btree ("project_id","target_id","kind") WHERE "ticket_operations"."status" NOT IN ('succeeded','failed');

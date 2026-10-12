@@ -662,6 +662,129 @@ describe("ticket_operations 仓储", () => {
     expect(row?.messageId).toBe("msg-1");
     expect(whereColumns(selectsOf(database.calls)[0] ?? {})).toContain("message_id");
   });
+
+  // checkpoint 是单语句 jsonb 追加，两个绑定参数都带显式类型标注——裸参数在真实 Postgres 上会 42P18。
+  test("checkpoint 单语句追加 steps 并给参数显式类型标注", async () => {
+    const database = useDatabase();
+    const repository = createTicketOperationRepository();
+
+    await repository.checkpoint({
+      operationId: "operation-1",
+      step: "index_written",
+      expected: { issueNumber: "7" },
+    });
+
+    const update = updatesOf(database.calls)[0];
+    const result = renderSql(update?.values?.result);
+    // `jsonb_build_object` 的可变参数类型只由实参自身决定：缺 `::text` 的 `$1` 会让整条语句在真实库上失败，
+    // 而这条 UPDATE 挂在「远端已成功、本地收尾之前」，失败即把成功写收敛成 `uncertain`（对外 202）。
+    expect(result).toContain("jsonb_build_object('step', $1::text, 'at', now(), 'expected', $2::jsonb)");
+    // 追加语义：新步骤接在既有 steps 之后，读改写会在并发/重试下丢掉另一条核对记录。
+    expect(result).toContain(`coalesce("ticket_operations"."result" -> 'steps', '[]'::jsonb) || jsonb_build_array(`);
+    expect(paramsOf(update?.values?.result)).toEqual(["index_written", JSON.stringify({ issueNumber: "7" })]);
+    expect(update?.values?.updatedAt).toBeInstanceOf(Date);
+    expect(whereColumns(update ?? {})).toEqual(["id"]);
+  });
+
+  // 周期核对的扫描面只含未定状态，按最早触动的先核对，并让刚领取的行留在下一轮。
+  test("findUnsettled 只扫未定状态并按更新时间升序", async () => {
+    const database = useDatabase({ selectRows: { ticket_operations: [FIXTURE_OPERATION] } });
+    const repository = createTicketOperationRepository();
+
+    const rows = await repository.findUnsettled({ updatedBefore: FIXTURE_NOW, limit: 50 });
+
+    expect(rows.map((row) => row.id)).toEqual(["operation-1"]);
+    const select = selectsOf(database.calls)[0];
+    expect(whereColumns(select ?? {})).toEqual(expect.arrayContaining(["status", "updated_at"]));
+    // 取值集合必须真的进 SQL：`needs_review` 已交人工，反复核对只会重复产出同一个结论。
+    expect(paramsOf(select?.where)).toEqual(["dispatching", "uncertain", FIXTURE_NOW.toISOString()]);
+    expect(renderSql(select?.where)).toContain("<=");
+    expect(renderSql(select?.orderBy?.[0])).toBe(`"ticket_operations"."updated_at" asc`);
+    expect(select?.limit).toBe(50);
+  });
+
+  // 在途互斥的谓词：同项目 + 同对象 + 互斥操作组 + 状态不在终态，命中即拒绝同对象的后续写。
+  test("hasInFlightTarget 按对象与状态集合判定在途", async () => {
+    const database = useDatabase({ selectRows: { ticket_operations: [{ id: "operation-9" }] } });
+    const repository = createTicketOperationRepository();
+
+    const hit = await repository.hasInFlightTarget({
+      projectId: "project-1",
+      targetId: "7",
+      kinds: ["issue.update", "issue.labels"],
+      excludeOperationId: "operation-1",
+    });
+
+    expect(hit).toBe(true);
+    const select = selectsOf(database.calls)[0];
+    expect(whereColumns(select ?? {})).toEqual(
+      expect.arrayContaining(["project_id", "target_id", "kind", "status", "id"]),
+    );
+    expect(renderSql(select?.where)).toContain(`"ticket_operations"."status" not in ($5, $6)`);
+    expect(paramsOf(select?.where)).toEqual([
+      "project-1",
+      "7",
+      "issue.update",
+      "issue.labels",
+      "succeeded",
+      "failed",
+      "operation-1",
+    ]);
+
+    // 空结果即「无在途变更」：写路径据此放行本次修改。
+    useDatabase({ selectRows: { ticket_operations: [] } });
+    const clearRepository = createTicketOperationRepository();
+    expect(
+      await clearRepository.hasInFlightTarget({
+        projectId: "project-1",
+        targetId: "7",
+        kinds: ["issue.update"],
+        excludeOperationId: "operation-1",
+      }),
+    ).toBe(false);
+  });
+
+  // 详情路径的定位查询与在途判定同谓词，取最新一条命中行，并可按需排除本次声明的操作行。
+  test("findInFlightTargetId 取最新命中行且可排除本次声明行", async () => {
+    const database = useDatabase({ selectRows: { ticket_operations: [{ id: "operation-9" }] } });
+    const repository = createTicketOperationRepository();
+
+    expect(
+      await repository.findInFlightTargetId({
+        projectId: "project-1",
+        targetId: "7",
+        kinds: ["comment.update"],
+        excludeOperationId: "operation-1",
+      }),
+    ).toBe("operation-9");
+
+    const select = selectsOf(database.calls)[0];
+    expect(renderSql(select?.where)).toContain(`"ticket_operations"."id" <> $6`);
+    expect(renderSql(select?.orderBy?.[0])).toBe(`"ticket_operations"."created_at" desc`);
+    expect(select?.limit).toBe(1);
+
+    // 详情路径不传排除项：本次自己的操作行同样要能定位，界面才提示得出去核对。
+    const detailDatabase = useDatabase({ selectRows: { ticket_operations: [] } });
+    const detailRepository = createTicketOperationRepository();
+    expect(
+      await detailRepository.findInFlightTargetId({ projectId: "project-1", targetId: "7", kinds: ["comment.update"] }),
+    ).toBeUndefined();
+    expect(whereColumns(selectsOf(detailDatabase.calls)[0] ?? {})).not.toContain("id");
+  });
+
+  // 终态写入前的加锁复查必须带 FOR UPDATE，否则并发核对会各自带着旧判断写入并互相覆盖结论。
+  test("findByIdForUpdate 按主键加行锁", async () => {
+    const database = useDatabase({ selectRows: { ticket_operations: [FIXTURE_OPERATION] } });
+    const repository = createTicketOperationRepository();
+
+    const row = await repository.findByIdForUpdate({ operationId: "operation-1" });
+
+    expect(row?.id).toBe("operation-1");
+    const select = selectsOf(database.calls)[0];
+    expect(select?.forUpdate).toBe(true);
+    expect(whereColumns(select ?? {})).toEqual(["id"]);
+    expect(select?.limit).toBe(1);
+  });
 });
 
 describe("ticket_messages 仓储", () => {

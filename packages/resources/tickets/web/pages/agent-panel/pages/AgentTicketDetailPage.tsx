@@ -1,8 +1,12 @@
 /**
- * 工单详情页：标题、状态、编号、作者（含外部来源标注）、负责人、正文、时间与返回列表。
+ * 工单详情页：标题、状态与写入口、元信息（负责人 / 标签）、正文、评论区，以及关闭确认与字段编辑弹窗。
  *
  * props 由宿主路由壳用 `Route.useParams()` 读好后传入（URL 显式带 `projectId`）：包内不认识宿主 route id，
  * 跨包契约只剩这一个 props 形状。`number` 是字符串——外部数字 ID 在协议里不退化，本页也不做数值转换。
+ *
+ * **页面是唯一持有写状态机的地方**（`useTicketDetail`），评论与标签的写路径都汇进它：同一工单只允许一笔
+ * 未确认的写（方案 §9.6），两个横幅或两套禁用口径会立刻自相矛盾。三块写入口共享一个 `writeDisabled`：
+ * 「有待确认的写」或「任一写动作进行中」都禁用——这条聚合放在页面而不是各组件里，新增入口时才不会漏一处。
  *
  * 正文渲染用 `MessageResponse mode="static"`（前端规范 §6.1 指定的唯一 Markdown 链路）。2026-10-12 核实：
  * `packages/ui-components/web/chat/primitives/message.tsx:311-320` 确有 `mode` prop，渲染经 streamdown +
@@ -14,24 +18,27 @@
  */
 
 import { MessageResponse } from "@fenix/ui-components/chat/primitives/message";
+import { ConfirmDialog } from "@fenix/ui-components/config/ConfirmDialog";
 import { EmptyState } from "@fenix/ui-components/config/EmptyState";
 import { AppHeader } from "@fenix/ui-components/layout/app-header";
 import { AppPage } from "@fenix/ui-components/layout/app-page";
-import { Badge } from "@fenix/ui-components/ui/badge";
 import { Button } from "@fenix/ui-components/ui/button";
 import { Skeleton } from "@fenix/ui-components/ui/skeleton";
-import { unwrap } from "@fenix/web-runtime/api/request";
+import { useOrgSession } from "@fenix/web-runtime/contexts/org-session";
 import { Link } from "@tanstack/react-router";
-import { useRequest } from "ahooks";
-import { AlertTriangle, ArrowLeft, RefreshCw } from "lucide-react";
-import type { ReactNode } from "react";
+import { AlertTriangle, ArrowLeft, CircleCheck, CircleSlash, Pencil, RefreshCw } from "lucide-react";
+import { useState } from "react";
 import { useTranslation } from "react-i18next";
-import { toast } from "sonner";
-import { ticketApi } from "../../../api/tickets";
+import { useTicketComments } from "../../../hooks/use-ticket-comments";
+import { useTicketDetail } from "../../../hooks/use-ticket-detail";
+import { useTicketLabels } from "../../../hooks/use-ticket-labels";
 import { TICKETS_NS } from "../../../i18n/namespace";
 import { isNotFoundError, isUnauthorizedError } from "../../../lib/ticket-errors";
-import { formatTicketTime } from "../components/ticket-format";
+import { TicketCommentSection } from "../components/ticket-comment-section";
+import { TicketDetailMeta } from "../components/ticket-detail-meta";
+import { TicketFieldsDialog } from "../components/ticket-fields-dialog";
 import { TicketStateBadge } from "../components/ticket-state-badge";
+import { TicketWriteBanner } from "../components/ticket-write-banner";
 
 export interface AgentTicketDetailPageProps {
   /** 路由段 `$projectId`：所有工单资源 URL 都显式带项目，历史链接不随默认项目切换漂移。 */
@@ -42,17 +49,32 @@ export interface AgentTicketDetailPageProps {
 
 export function AgentTicketDetailPage({ projectId, number }: AgentTicketDetailPageProps) {
   const { t, i18n } = useTranslation(TICKETS_NS);
+  const session = useOrgSession();
+  const detail = useTicketDetail(projectId, number);
+  const [fieldsOpen, setFieldsOpen] = useState(false);
+  /** 每次打开递增：`FormDialog` 在自身组件体里建 `useForm`，只改 `open` 会让上一次的输入留到下一次。 */
+  const [fieldsFormKey, setFieldsFormKey] = useState(0);
+  const [closeConfirmOpen, setCloseConfirmOpen] = useState(false);
+  const [labelsOpen, setLabelsOpen] = useState(false);
 
-  const { data, loading, error, refresh } = useRequest(async () => unwrap(ticketApi.get(projectId, number)), {
-    refreshDeps: [projectId, number],
-    onError: (err: Error) => {
-      // 只上屏字典文案：`ApiError.message` 是后端信封原文，只进 console（§9.3）。
-      console.error("ticket detail load failed", err);
-      toast.error(t("toast.detailLoadFailed"));
-    },
+  const comments = useTicketComments(projectId, number, {
+    blocked: detail.blocked,
+    // 详情拿到之前不取评论：404/403 时评论区不会渲染，为它多发一次注定失败的请求只会多一条 toast。
+    enabled: detail.data !== undefined,
+    onUncertain: detail.reportUncertain,
+    // 兜底通道：本次写被服务端以「已有在途变更」拒绝时，刷新详情把快照里的 pendingOperationId 取回来。
+    onOperationPending: detail.refresh,
+  });
+  const labels = useTicketLabels(projectId, number, {
+    applyTicket: detail.applyTicket,
+    blocked: detail.blocked,
+    enabled: labelsOpen,
+    reloadLatest: detail.reloadLatest,
+    reportUncertain: detail.reportUncertain,
+    ticket: detail.data,
   });
 
-  if (loading && !data) {
+  if (detail.loading && !detail.data) {
     return (
       <AppPage busy>
         <BackToListLink />
@@ -66,9 +88,9 @@ export function AgentTicketDetailPage({ projectId, number }: AgentTicketDetailPa
     );
   }
 
-  if (error) {
-    const unauthorized = isUnauthorizedError(error);
-    const notFound = isNotFoundError(error);
+  if (detail.error) {
+    const unauthorized = isUnauthorizedError(detail.error);
+    const notFound = isNotFoundError(detail.error);
     // 三条失败路径都不给同一个界面：无权限与「不存在或无权访问」是持久结论（重试只会再拿一次同样的
     // 状态码），其余失败才保留重试入口。
     const title = unauthorized
@@ -92,8 +114,8 @@ export function AgentTicketDetailPage({ projectId, number }: AgentTicketDetailPa
               : {
                   label: t("loadState.retry"),
                   icon: <RefreshCw className="size-3.5" />,
-                  onClick: refresh,
-                  disabled: loading,
+                  onClick: detail.refresh,
+                  disabled: detail.loading,
                 }
           }
           description={description}
@@ -106,24 +128,65 @@ export function AgentTicketDetailPage({ projectId, number }: AgentTicketDetailPa
     );
   }
 
+  const data = detail.data;
   if (!data) return null;
 
+  const busy = detail.busy || comments.creating || comments.updating || labels.saving;
+  const writeDisabled = detail.blocked || busy;
+
+  const openFieldsDialog = (): void => {
+    setFieldsFormKey((key) => key + 1);
+    setFieldsOpen(true);
+  };
+
   return (
-    <AppPage>
+    <AppPage busy={busy}>
       <BackToListLink />
       <AppHeader
         actions={
           <>
             <TicketStateBadge state={data.state} />
-            <Button disabled={loading} onClick={refresh} variant="outline">
+            <Button disabled={detail.loading} onClick={detail.refresh} variant="outline">
               <RefreshCw className="size-4" />
               {t("action.refresh")}
             </Button>
+            <Button disabled={writeDisabled} onClick={openFieldsDialog} variant="outline">
+              <Pencil className="size-4" />
+              {t("action.edit")}
+            </Button>
+            {data.state === "open" ? (
+              <Button disabled={writeDisabled} onClick={() => setCloseConfirmOpen(true)} variant="outline">
+                <CircleSlash className="size-4" />
+                {t("action.close")}
+              </Button>
+            ) : (
+              <Button
+                disabled={writeDisabled}
+                onClick={() => {
+                  // 重开不确认：恢复「进行中」是可逆的低风险动作，且点击意图明确（少一次点击）。
+                  void detail.changeState("open");
+                }}
+                variant="outline"
+              >
+                <CircleCheck className="size-4" />
+                {t("action.reopen")}
+              </Button>
+            )}
           </>
         }
         subtitle={data.title}
         title={`#${data.issueNumber}`}
       />
+
+      {detail.pendingOperationId === null ? null : (
+        <TicketWriteBanner
+          onResolve={() => {
+            void detail.resolveOperation();
+          }}
+          resolution={detail.resolution}
+          resolving={detail.resolving}
+        />
+      )}
 
       {data.syncStatus === "stale" ? (
         <p className="mt-3 text-xs text-status-warning" role="status">
@@ -131,31 +194,55 @@ export function AgentTicketDetailPage({ projectId, number }: AgentTicketDetailPa
         </p>
       ) : null}
 
-      <dl className="mt-4 grid gap-x-6 gap-y-3 text-xs sm:grid-cols-2 lg:grid-cols-3">
-        <Fact label={t("detail.authorLabel")}>{data.author.name}</Fact>
-        <Fact label={t("detail.assigneeLabel")}>
-          {data.assignee === null ? t("list.unassigned") : data.assignee.name}
-        </Fact>
-        <Fact label={t("detail.updatedAtLabel")}>{formatTicketTime(data.providerUpdatedAt, i18n.language)}</Fact>
-      </dl>
-      <p className="mt-2 text-xs text-text-dim">
-        {t("detail.syncedAtLabel", { time: formatTicketTime(data.syncedAt, i18n.language) })}
-      </p>
-
-      {/* 归属未经受信记录核验时必须明说：外部自填的身份不能被当成既有事实（方案 §7）。 */}
-      {data.author.source === "external" ? (
-        <div
-          className="mt-3 flex flex-wrap items-center gap-2 rounded-md border border-border bg-surface-1 px-3 py-2 text-xs text-text-secondary"
-          role="status"
-        >
-          <Badge variant="outline">{t("detail.externalAuthor")}</Badge>
-          <span>{t("detail.externalAuthorHint")}</span>
-        </div>
-      ) : null}
+      <TicketDetailMeta
+        disabled={writeDisabled}
+        labels={labels}
+        labelsOpen={labelsOpen}
+        locale={i18n.language}
+        onAssign={(userId) => {
+          void detail.assign(userId);
+        }}
+        onLabelsOpenChange={setLabelsOpen}
+        projectId={projectId}
+        ticket={data}
+      />
 
       <section className="mt-4 min-w-0 rounded-md border border-border bg-surface-1 p-4">
         <MessageResponse mode="static">{data.body}</MessageResponse>
       </section>
+
+      <TicketCommentSection busy={busy} comments={comments} locale={i18n.language} viewerUserId={session.userId} />
+
+      {/* 弹窗重置靠 `key`（父级每次打开换一个）：只改 `open` 不会重建 `FormDialog` 内部的表单实例。 */}
+      <TicketFieldsDialog
+        conflict={detail.fieldsConflict}
+        disabled={writeDisabled}
+        key={`fields-${fieldsFormKey}`}
+        onOpenChange={setFieldsOpen}
+        onReload={detail.reloadLatest}
+        onSubmit={detail.submitFields}
+        open={fieldsOpen}
+        reloading={detail.loading}
+        submitting={detail.busy}
+        ticket={data}
+      />
+
+      <ConfirmDialog
+        confirmLabel={t("action.close")}
+        description={t("state.closeDescription")}
+        loading={detail.busy}
+        onConfirm={() => {
+          void (async () => {
+            // 任何终局都关确认框：结论已由 toast 给出（冲突时详情钩子还会自动刷新一次），
+            // 重试入口是页头那颗「关闭工单」——留着一个停留在「确认中」的确认框只会挡住信息。
+            await detail.changeState("closed");
+            setCloseConfirmOpen(false);
+          })();
+        }}
+        onOpenChange={setCloseConfirmOpen}
+        open={closeConfirmOpen}
+        title={t("state.closeTitle")}
+      />
     </AppPage>
   );
 }
@@ -168,15 +255,5 @@ function BackToListLink() {
       <ArrowLeft className="size-3.5" />
       {t("action.back")}
     </Link>
-  );
-}
-
-/** 元信息单元：`dt` 弱化、`dd` 用正文色，刻度与 `AppHeader` 的副标题一致。 */
-function Fact({ label, children }: { label: string; children: ReactNode }) {
-  return (
-    <div>
-      <dt className="text-text-dim">{label}</dt>
-      <dd className="mt-1 text-text-primary">{children}</dd>
-    </div>
   );
 }

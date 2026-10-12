@@ -21,7 +21,9 @@ import {
   TicketProjectParamsSchema,
   TicketResponseSchema,
   TicketUncertainResponseSchema,
+  TicketUpdateRequestSchema,
 } from "../../../schemas/ticket.schema";
+import { TicketLabelSetRequestSchema } from "../../../schemas/ticket-label.schema";
 import { getTicketsServerModule } from "../../runtime";
 import { requireTicketIdempotencyKey, TicketIdempotencyHeadersSchema, ticketHandler } from "./web-error";
 
@@ -118,7 +120,93 @@ export function registerTicketRoutes(app: AnyElysia): void {
         tags: ["Tickets"],
         summary: "获取工单详情",
         description:
-          "按工单号返回详情：正文回源托管平台并剥离身份头，作者归属经本包归属账本核验（未通过核验为 external）。项目或工单不存在返回 404，托管平台不可用返回 503（不返回空正文）。",
+          "按工单号返回详情：正文回源托管平台并剥离身份头，作者归属经本包归属账本核验（未通过核验为 external）。项目或工单不存在返回 404，托管平台不可用返回 503（不返回空正文）。pendingOperationId 非空表示该工单有在途修改，调用方应引导用户先复核。",
+      },
+    },
+  );
+
+  // ── PATCH /tickets/:projectId/:number ──
+  app.patch(
+    "/tickets/:projectId/:number",
+    ticketHandler<z.infer<typeof TicketDetailParamsSchema>, unknown, z.infer<typeof TicketUpdateRequestSchema>>(
+      async (route, actor) => {
+        const idempotencyKey = requireTicketIdempotencyKey(route.headers);
+        const outcome = await getTicketsServerModule().tickets.update(
+          actor,
+          route.params.projectId,
+          route.params.number,
+          route.body,
+          idempotencyKey,
+        );
+        if (outcome.kind === "uncertain") {
+          return { status: 202, data: { operationId: outcome.operationId, status: "uncertain" as const } };
+        }
+        return { status: 200, data: { ticket: outcome.ticket, operationId: outcome.operationId } };
+      },
+    ),
+    {
+      sessionAuth: true,
+      params: TicketDetailParamsSchema,
+      headers: TicketIdempotencyHeadersSchema,
+      body: TicketUpdateRequestSchema,
+      response: {
+        200: TicketResponseSchema,
+        202: TicketUncertainResponseSchema,
+        400: WebErrSchema,
+        401: WebErrSchema,
+        403: WebErrSchema,
+        404: WebErrSchema,
+        409: WebErrSchema,
+        503: WebErrSchema,
+      },
+      detail: {
+        tags: ["Tickets"],
+        summary: "修改工单",
+        description:
+          "修改标题/描述/负责人/状态（字段缺席表示不改，assigneeId: null 表示取消指派，至少提供一项），必须带 expectedVersion 与 Idempotency-Key。内容字段要求创建者或管理员，状态与负责人要求创建者、当前负责人或管理员；负责人必须是组织成员。版本不一致返回 409 VERSION_CONFLICT，同键不同内容返回 409 IDEMPOTENCY_CONFLICT，同目标已有在途修改返回 409 TICKET_OPERATION_PENDING。项目暂停返回 503，上游结果未定返回 202。",
+      },
+    },
+  );
+
+  // ── PUT /tickets/:projectId/:number/labels ──
+  app.put(
+    "/tickets/:projectId/:number/labels",
+    ticketHandler<z.infer<typeof TicketDetailParamsSchema>, unknown, z.infer<typeof TicketLabelSetRequestSchema>>(
+      async (route, actor) => {
+        const idempotencyKey = requireTicketIdempotencyKey(route.headers);
+        const outcome = await getTicketsServerModule().tickets.setLabels(
+          actor,
+          route.params.projectId,
+          route.params.number,
+          route.body,
+          idempotencyKey,
+        );
+        if (outcome.kind === "uncertain") {
+          return { status: 202, data: { operationId: outcome.operationId, status: "uncertain" as const } };
+        }
+        return { status: 200, data: { ticket: outcome.ticket, operationId: outcome.operationId } };
+      },
+    ),
+    {
+      sessionAuth: true,
+      params: TicketDetailParamsSchema,
+      headers: TicketIdempotencyHeadersSchema,
+      body: TicketLabelSetRequestSchema,
+      response: {
+        200: TicketResponseSchema,
+        202: TicketUncertainResponseSchema,
+        400: WebErrSchema,
+        401: WebErrSchema,
+        403: WebErrSchema,
+        404: WebErrSchema,
+        409: WebErrSchema,
+        503: WebErrSchema,
+      },
+      detail: {
+        tags: ["Tickets"],
+        summary: "设置工单标签",
+        description:
+          "把工单标签整体设置为 labelIds（全量集合语义，空数组表示清空），必须带 expectedVersion 与 Idempotency-Key。要求创建者或管理员；labelIds 里存在本项目未定义的标签返回 400 LABEL_UNKNOWN。版本不一致返回 409 VERSION_CONFLICT，同目标已有在途修改返回 409 TICKET_OPERATION_PENDING。项目暂停返回 503，上游结果未定返回 202。",
       },
     },
   );

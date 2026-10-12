@@ -17,13 +17,19 @@
  */
 
 import { ValidationError } from "@fenix/platform-sdk";
-import { IdempotencyConflictError } from "../errors";
+import type { TICKET_OPERATION_KINDS } from "../../schemas/ticket-operation.schema";
+import { IdempotencyConflictError, TicketChangeInFlightError } from "../errors";
 import { ticketsProjectLockKey, withTicketLock } from "../repositories/advisory-lock";
 import type { TicketOperationRepository, TicketOperationRow } from "../repositories/ticket-operations";
 import { IDEMPOTENCY_KEY_PATTERN } from "./ticket-limits";
 
-/** 操作类型（`ticket_operations.kind`）；T02 只有这两条写路径，T03 起新增值必须同批扩视图枚举。 */
-export type TicketOperationKind = "issue.create" | "project.provision";
+/**
+ * 操作类型（`ticket_operations.kind`）；取值域在协议 schema 里定义，本层只派生类型。
+ *
+ * 派生而不是另写一份联合：新增一种操作时协议枚举、响应校验与视图收敛必须同批更新，把定义放在协议侧
+ * 让「忘了改」在编译期就暴露（`z.enum` 与 `requireKnown` 都吃同一份列表）。
+ */
+export type TicketOperationKind = (typeof TICKET_OPERATION_KINDS)[number];
 
 /**
  * `step` 的取值域（§8.6 冻结给 T03 复用）。
@@ -43,7 +49,34 @@ export const TICKET_OPERATION_STEP = {
   upstreamFailed: "upstream_failed",
   /** 建仓库响应回读的 owner 与请求不一致（决策 D1）。 */
   ownerMismatch: "owner_mismatch",
+  /** 远端工单内容已写入，本地索引与归属未刷（部分成功，T03）。 */
+  issueUpdated: "issue_updated",
+  /** 远端标签集合已写入，本地索引未刷（部分成功，T03）。 */
+  labelsUpdated: "labels_updated",
+  /** 远端评论已创建，本地归属未写（部分成功，T03）。 */
+  commentCreated: "comment_created",
+  /** 远端评论已改写，本地归属未刷（部分成功，T03）。 */
+  commentUpdated: "comment_updated",
+  /** 远端标签已写，本地无后续写（成功终态，T03）。 */
+  upstreamApplied: "upstream_applied",
+  /** 评论归属已写（成功终态，对应工单侧的 `index_written`，T03）。 */
+  ownershipWritten: "ownership_written",
+  /** 恢复核对发现多个匹配或超窗口，等待运维（方案 §9.6，T03）。 */
+  needsReview: "needs_review",
+  /** 恢复核对确认远端未落库，可安全重提（T03）。 */
+  notApplied: "not_applied",
 } as const;
+
+/**
+ * 会改写同一工单对象、彼此必须互斥的操作（§9.7「未确认的同工单变更阻止后续修改」）。
+ *
+ * `issue.create` 刻意不在组内：创建没有「同一对象的既有变更」可言，把它拉进来会让同一工单上的两次
+ * 独立创建互相阻塞（那是纯粹的功能倒退）。评论创建同理（两个成员同时评论不是冲突）。
+ */
+export const ISSUE_CHANGE_KINDS: readonly TicketOperationKind[] = ["issue.update", "issue.labels"];
+
+/** 会改写同一条评论的操作：只与该评论的另一条在途修改互斥。 */
+export const COMMENT_CHANGE_KINDS: readonly TicketOperationKind[] = ["comment.update"];
 
 /** `begin` 的输入；`intent` 是待发送内容的原文，成功/明确失败后由仓储改写为摘要。 */
 export interface TicketOperationBeginInput {
@@ -61,6 +94,18 @@ export interface TicketOperationBeginInput {
   readonly intent: Record<string, unknown>;
   /** 领取时写入的步骤名（例如 `dispatching` / `project_ready`）。 */
   readonly step: string;
+  /**
+   * 目标对象坐标：工单域与评论创建传工单号、评论修改传评论 ID，**领取时**写入（T02 只在成功终态写）。
+   * 在途互斥要靠它在领取前就认出「同一对象」，因此不能在成功后再补。
+   */
+  readonly targetId?: string | null;
+  /**
+   * 互斥范围（advisory lock 键）：缺省是组织级项目锁（T02 口径）；工单域写路径传
+   * `ticketsIssueLockKey(projectId, issueNumber)`，让同一工单的「声明 + 在途检查 + 领取」串行。
+   */
+  readonly lockKey?: string;
+  /** 在途互斥组：命中同组且同 `targetId` 的非终态操作时抛 `TicketChangeInFlightError`（§5.5）。 */
+  readonly guardKinds?: readonly TicketOperationKind[];
 }
 
 /**
@@ -89,6 +134,15 @@ export type TicketOperationAdmission =
 export interface TicketOperationService {
   /** §8.2 步骤 1–2：声明 + 领取，在一把组织级短锁与一个事务内完成。 */
   begin(input: TicketOperationBeginInput): Promise<TicketOperationAdmission>;
+  /**
+   * 追加一步的核对记录（§6.1）。远端每完成一步就写下可机器核对的预期，恢复核对（§8）据此认领
+   * 「远端已写、本地未写」的部分成功，并在失败重放时还原出同一个错误。
+   */
+  checkpoint(input: {
+    readonly operationId: string;
+    readonly step: string;
+    readonly expected: Readonly<Record<string, unknown>>;
+  }): Promise<void>;
   succeed(input: {
     readonly operationId: string;
     readonly step: string;
@@ -103,13 +157,29 @@ export interface TicketOperationService {
     readonly result: Record<string, unknown>;
   }): Promise<void>;
   /** 结果未定（`WRITE_UNCERTAIN`、崩溃残留）：保留 intent 原文供 T03 按 `message_id` 回源核对。 */
-  markUncertain(input: { readonly operationId: string; readonly step: string }): Promise<void>;
+  markUncertain(input: {
+    readonly operationId: string;
+    readonly step: string;
+    /** 恢复核对判定「多义或超窗口」时传 `needs_review`（§8.3），缺省是 `uncertain`。 */
+    readonly status?: "uncertain" | "needs_review";
+  }): Promise<void>;
   /** 可见性：仅操作的 actor 本人（决策 D5），查不到一律 404。 */
   findForActor(input: {
     readonly organizationId: string;
     readonly actorId: string;
     readonly operationId: string;
   }): Promise<TicketOperationRow | undefined>;
+  /**
+   * 未确认变更的定位（裁定三.15）：同一对象上最新一条非终态修改操作的 ID，没有则 `undefined`。
+   *
+   * 与 `begin` 的在途互斥**同谓词**，详情视图的 `pendingOperationId` 只能从这里取：两处各写一份查询，
+   * 界面提示与写路径的拒绝条件就会分叉。
+   */
+  findInFlightTarget(input: {
+    readonly projectId: string;
+    readonly targetId: string;
+    readonly kinds: readonly TicketOperationKind[];
+  }): Promise<string | undefined>;
 }
 
 export function createTicketOperationService(operations: TicketOperationRepository): TicketOperationService {
@@ -120,12 +190,21 @@ export function createTicketOperationService(operations: TicketOperationReposito
       if (!IDEMPOTENCY_KEY_PATTERN.test(input.idempotencyKey)) {
         throw new ValidationError("Idempotency-Key 不合法：需 8–128 位字母、数字、下划线或短横线");
       }
-      return withTicketLock(ticketsProjectLockKey(input.organizationId), async () => {
+      return withTicketLock(input.lockKey ?? ticketsProjectLockKey(input.organizationId), async () => {
+        const targetId = input.targetId ?? null;
+        const guardKinds = input.guardKinds ?? [];
+        // 声明「要互斥」却给不出坐标是调用方的编程错误：静默跳过会让这次写入失去互斥保护（§5.5 的唯一防线），
+        // 因此在这里直接失败，而不是悄悄放行。
+        if (guardKinds.length > 0 && (input.projectId === null || targetId === null)) {
+          throw new Error("在途互斥需要 projectId 与 targetId：缺少目标对象坐标的写路径不得声明 guardKinds");
+        }
+
         const { outcome, row } = await operations.claim({
           organizationId: input.organizationId,
           actorId: input.actorId,
           kind: input.kind,
           projectId: input.projectId,
+          targetId,
           idempotencyKey: input.idempotencyKey,
           requestHash: input.requestHash,
           messageId: input.messageId,
@@ -153,6 +232,19 @@ export function createTicketOperationService(operations: TicketOperationReposito
           if (row.status !== "pending") return { kind: "in_flight" as const, operationId: row.id };
         }
 
+        // 【T03】在途互斥（§5.1 第 4 步）：同一对象上还有未确认的变更时拒绝本次修改（§9.7）。必须与
+        // claim/markDispatching 同一事务，否则两个不同幂等键的并发请求会各自读到「无在途变更」并各自领取。
+        // 只在「裁决通过、准备领取」这条分支上执行：同键重试在上一段就拿到 replayed/in_flight，不会被自己挡住。
+        if (guardKinds.length > 0 && input.projectId !== null && targetId !== null) {
+          const blocked = await operations.hasInFlightTarget({
+            projectId: input.projectId,
+            targetId,
+            kinds: guardKinds,
+            excludeOperationId: row.id,
+          });
+          if (blocked) throw new TicketChangeInFlightError();
+        }
+
         // 待领取（新建行或上一执行者尚未领取）：条件更新是并发下唯一的执行者选举点。
         const acquired = await operations.markDispatching({ operationId: row.id, step: input.step });
         if (!acquired) return { kind: "in_flight" as const, operationId: row.id };
@@ -162,6 +254,10 @@ export function createTicketOperationService(operations: TicketOperationReposito
 
     async succeed(input) {
       await operations.markSucceeded(input);
+    },
+
+    async checkpoint(input) {
+      await operations.checkpoint(input);
     },
 
     async fail(input) {
@@ -174,6 +270,10 @@ export function createTicketOperationService(operations: TicketOperationReposito
 
     async findForActor(input) {
       return operations.findForActor(input);
+    },
+
+    async findInFlightTarget(input) {
+      return operations.findInFlightTargetId(input);
     },
   };
 }

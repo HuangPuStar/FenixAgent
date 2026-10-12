@@ -35,6 +35,7 @@ import {
   isUncertainAccepted,
   ticketFormSignature,
 } from "../../../lib/ticket-write-outcome";
+import { FieldError } from "./field-error";
 
 /** 标题上限（字符），与后端 `TICKET_TITLE_MAX_LENGTH` 一致。 */
 const TICKET_TITLE_MAX_CHARS = 200;
@@ -153,16 +154,5 @@ function TicketCreateFields() {
         <FieldError messageKey={formState.errors.body?.message} />
       </div>
     </div>
-  );
-}
-
-/** 字段错误行：渲染在 `LabeledField` **之外**，否则错误文案会并进控件的可访问名。 */
-function FieldError({ messageKey }: { messageKey?: string }) {
-  const { t } = useTranslation(TICKETS_NS);
-  if (messageKey === undefined) return null;
-  return (
-    <p className="mt-1 text-xs text-status-error" role="alert">
-      {t(messageKey)}
-    </p>
   );
 }

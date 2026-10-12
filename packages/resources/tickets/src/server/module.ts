@@ -7,14 +7,20 @@ import {
   type ResourceScopeStore,
 } from "@fenix/platform-sdk";
 import { ticketProjectResource } from "./access/ticket-project-resource";
+import { createTicketCommentFacade, type TicketCommentFacadeApi } from "./facades/ticket-comment-facade";
 import { createTicketFacade, type TicketFacadeApi } from "./facades/ticket-facade";
+import { createTicketLabelFacade, type TicketLabelFacadeApi } from "./facades/ticket-label-facade";
 import { createTicketProjectFacade, type TicketProjectFacadeApi } from "./facades/ticket-project-facade";
 import { createTicketIndexRepository } from "./repositories/ticket-index";
 import { createTicketMessageRepository } from "./repositories/ticket-messages";
 import { createTicketOperationRepository } from "./repositories/ticket-operations";
 import { createTicketProjectRepository, type TicketProjectQueryStorage } from "./repositories/ticket-projects";
+import { createTicketCommentService } from "./services/ticket-comment-service";
+import { createTicketEditService } from "./services/ticket-edit-service";
+import { createTicketLabelService } from "./services/ticket-label-service";
 import { createTicketOperationService } from "./services/ticket-operation-service";
 import { createTicketProjectService } from "./services/ticket-project-service";
+import { createTicketRecoveryService } from "./services/ticket-recovery-service";
 import { createTicketService } from "./services/ticket-service";
 
 /**
@@ -28,9 +34,10 @@ import { createTicketService } from "./services/ticket-service";
  * 注入方有两种，共用本函数这一处构造：registry 工厂（`src/module.ts` 的 `createTicketsModule`，依赖取自
  * `context.modules` 与平台 SDK）与测试（直接注入替身，见 §10）。本函数只构造，不读 DB、不写单例。
  *
- * 实例复用是有意的：项目服务同时被两个 Facade 使用（工单读写要先解析可见项目），操作账本服务同时被
- * 项目服务、工单服务与两个 Facade 使用（幂等领取与 404/202 判定）。各造一份会让同一批表出现多条读改写
- * 路径，幂等与可见性判定随之分叉。
+ * 实例复用是有意的：项目服务同时被四个 Facade 使用（工单读写、评论、标签都要先解析可见项目），操作账本
+ * 服务同时被项目服务、工单服务、工单修改服务与四个 Facade 使用（幂等领取与 404/202 判定），仓储实例同样
+ * 在多条路径间共享（恢复核对要读与其它路径完全相同的表）。各造一份会让同一批表出现多条读改写路径，幂等
+ * 与可见性判定随之分叉。
  */
 
 export interface TicketsModuleDeps {
@@ -49,6 +56,8 @@ export interface TicketsServerModule {
   readonly resource: typeof ticketProjectResource;
   readonly projects: TicketProjectFacadeApi;
   readonly tickets: TicketFacadeApi;
+  readonly comments: TicketCommentFacadeApi;
+  readonly labels: TicketLabelFacadeApi;
   readonly identity: IdentityDirectory;
 }
 
@@ -56,13 +65,24 @@ export interface TicketsServerModule {
 export function createTicketsServerModule(deps: TicketsModuleDeps): TicketsServerModule {
   const query = narrowAuthorizedQuery<TicketProjectQueryStorage>(deps.authorizedQuery);
   const projectsRepository = createTicketProjectRepository(query);
-  const operations = createTicketOperationService(createTicketOperationRepository());
+  const operationsRepository = createTicketOperationRepository();
+  const operations = createTicketOperationService(operationsRepository);
   const projects = createTicketProjectService({ projects: projectsRepository, operations, git: deps.git });
-  const tickets = createTicketService({
-    messages: createTicketMessageRepository(),
-    index: createTicketIndexRepository(),
-    operations,
+  const messages = createTicketMessageRepository();
+  const index = createTicketIndexRepository();
+  const tickets = createTicketService({ messages, index, operations, git: deps.git });
+  const edit = createTicketEditService({ messages, index, operations, git: deps.git, identity: deps.identity });
+  const comments = createTicketCommentService({ messages, operations, git: deps.git });
+  const labels = createTicketLabelService({ operations, git: deps.git });
+  // 恢复核对（§8.1）只在 `GET /ticket-operations/:operationId` 命中未定状态时跑一次；它读账本与远端，
+  // 不写远端。装配在组合根而不是 Facade 里，Facade 因此只依赖一个「取结论」的窄端口。
+  const recovery = createTicketRecoveryService({
     git: deps.git,
+    projects: projectsRepository,
+    operations: operationsRepository,
+    index,
+    messages,
+    identity: deps.identity,
   });
 
   return {
@@ -72,6 +92,7 @@ export function createTicketsServerModule(deps: TicketsModuleDeps): TicketsServe
       scopeStore: deps.scopeStore,
       projects,
       operations,
+      identity: deps.identity,
     }),
     tickets: createTicketFacade({
       accessControl: deps.accessControl,
@@ -80,6 +101,21 @@ export function createTicketsServerModule(deps: TicketsModuleDeps): TicketsServe
       projects,
       operations,
       service: tickets,
+      edit,
+      recovery,
+    }),
+    comments: createTicketCommentFacade({
+      accessControl: deps.accessControl,
+      scopeStore: deps.scopeStore,
+      identity: deps.identity,
+      projects,
+      comments,
+    }),
+    labels: createTicketLabelFacade({
+      accessControl: deps.accessControl,
+      scopeStore: deps.scopeStore,
+      projects,
+      labels,
     }),
     identity: deps.identity,
   };

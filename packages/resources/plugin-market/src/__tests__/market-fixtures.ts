@@ -141,6 +141,7 @@ export function createStubIdentity(overrides: Partial<IdentityDirectory> = {}): 
       return SYSTEM_TENANT;
     },
     listOrganizationsWithMembers: async () => unstubbed(),
+    listOrganizationMembers: async () => unstubbed(),
     ...overrides,
   };
   return { identity, tenantReads: () => reads };

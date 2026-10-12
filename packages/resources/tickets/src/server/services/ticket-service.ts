@@ -9,8 +9,9 @@
  * 1. **先声明幂等再出站**（`ticket-operation-service.begin`）：远端写入必须在账本里已有 `pending` 行，
  *    否则崩溃会留下「远端有工单、本端一无所知」的孤儿；`message_id` 也在这一步生成并落库，重试不会换 id。
  * 2. **成功终态与索引/归属写入同一事务**：`ticket_messages`（作者归属证据）、`ticket_index`（列表数据源）、
- *    `markSucceeded` 三者要么全成要么全不成。这一步失败时**不**回滚成 `failed`：远端对象已经存在，重试同键
- *    会看到 `dispatching` → 202，由 T03 按 `message_id` 回源核对补齐（§8.3 步骤 8，绝不二次创建）。
+ *    `markSucceeded` 三者要么全成要么全不成。这一步失败时**不**回滚成 `failed`，也不报失败：远端对象已经
+ *    存在，本端只是没记完，因此直接返回 202（裁定一.3），账本保持 `dispatching`，由 T03 按 `message_id`
+ *    回源核对补齐（§8.3 步骤 8，绝不二次创建）。
  * 3. **作者只取凭据主体**：请求体里没有任何身份字段，`actorId` 由 Facade 从可信主体传入；远端返回的头部自填
  *    作者一律不采信（`resolveTicketAuthor` 只在归属记录与正文摘要同时吻合时才认 AOS 作者）。
  *
@@ -20,6 +21,7 @@
 
 import { randomUUID } from "node:crypto";
 import type { GitIssue, GitScopedClient, GitService } from "@fenix/git/server";
+import { error as logError } from "@fenix/logger";
 import { ConflictError, ForbiddenError, NotFoundError } from "@fenix/platform-sdk";
 import { runInTransaction } from "@fenix/platform-sdk/server";
 import { appErrorFromOperationResult, GitUnavailableError, toOperationFailureResult } from "../errors";
@@ -29,15 +31,13 @@ import { computeContentVersion } from "./content-version";
 import { classifyGitFailure } from "./git-failure";
 import { buildTicketBody, hashBody, parseTicketBody } from "./identity-header";
 import { type AuthorResolution, resolveTicketAuthor } from "./ticket-author";
+import { connectTicketGitClient, type TicketBindingScope } from "./ticket-git-client";
 import {
   TICKET_OPERATION_STEP,
   type TicketOperationAdmission,
   type TicketOperationService,
 } from "./ticket-operation-service";
 import { hashTicketRequest, issueCreateTargetPath } from "./ticket-request-hash";
-
-/** 工单模块在 Git 绑定里的消费者 ID（与开通路径写入 `allowedConsumers` 的键一致）。 */
-const TICKET_CONSUMER_ID = "tickets";
 
 /** 标签投影（详情来自远端，列表来自索引的 ID 集合）。 */
 export interface TicketIssueLabel {
@@ -120,37 +120,8 @@ export interface TicketServiceDeps {
   readonly git: GitService;
 }
 
-/** 详情路径的最小入参：项目行已由 Facade 取到，这里只取需要的三列。 */
-export interface TicketIssueScope {
-  readonly organizationId: string;
-  readonly projectId: string;
-  readonly bindingId: string;
-}
-
 export function createTicketService(deps: TicketServiceDeps): TicketService {
   const { messages, index, operations, git } = deps;
-
-  /** 绑定不可用一律是装配/数据故障（§8.3 步骤 5），报 503 而不是伪装成「工单不存在」。 */
-  function toBindingError(error: unknown): Error {
-    const failure = classifyGitFailure(error);
-    if (failure === undefined) return error instanceof Error ? error : new Error(String(error));
-    if (failure.kind === "definite" && failure.code === "RATE_LIMITED") {
-      return new GitUnavailableError("托管平台限流，请稍后重试", "GIT_RATE_LIMITED");
-    }
-    return new GitUnavailableError("仓库绑定不可用：绑定已暂停或应用授权已被收回");
-  }
-
-  async function connect(scope: TicketIssueScope): Promise<GitScopedClient> {
-    try {
-      return await git.createScopedClient({
-        consumerId: TICKET_CONSUMER_ID,
-        organizationId: scope.organizationId,
-        bindingId: scope.bindingId,
-      });
-    } catch (error) {
-      throw toBindingError(error);
-    }
-  }
 
   /** 详情：远端读取失败按「确定失败」映射，读路径不产生账本记录。 */
   function toIssueReadError(error: unknown): Error {
@@ -199,12 +170,12 @@ export function createTicketService(deps: TicketServiceDeps): TicketService {
     },
 
     async getIssue(input) {
-      const scope: TicketIssueScope = {
+      const scope: TicketBindingScope = {
         organizationId: input.organizationId,
         projectId: input.projectId,
         bindingId: input.bindingId,
       };
-      const client = await connect(scope);
+      const client = await connectTicketGitClient(git, scope);
       let issue: GitIssue;
       try {
         issue = await client.issues.get(input.issueNumber);
@@ -282,7 +253,7 @@ export function createTicketService(deps: TicketServiceDeps): TicketService {
 
       let client: GitScopedClient;
       try {
-        client = await connect({
+        client = await connectTicketGitClient(git, {
           organizationId: input.organizationId,
           projectId: input.projectId,
           bindingId: input.bindingId,
@@ -323,41 +294,56 @@ export function createTicketService(deps: TicketServiceDeps): TicketService {
         labelNames: issue.labels.map((label) => label.name),
       });
 
-      // 成功终态与索引/归属写入同一事务：三者任一失败都整体回滚，操作保持 dispatching 交给 T03 核对。
-      const indexRow = await runInTransaction(async () => {
-        await messages.insert({
-          projectId: input.projectId,
-          objectKind: "issue",
-          providerObjectId: issue.number,
-          messageId,
-          authorId: input.actorId,
-          authorNameSnapshot: input.authorName,
-          bodyHash,
-          revision: 1,
+      // 成功终态与索引/归属写入同一事务：三者要么全成、要么全不成。
+      // 本地这一段失败时**返回 202 而不是抛错**（裁定一.3，与 `issue.update` 等新路径同类）：远端工单已经
+      // 建出来了，把响应说成失败是说谎；按方案 §9 也不能宣称原子完成。账本保持 `dispatching`（`step` 停在
+      // `dispatching`），由恢复核对按 `message_id` 回源补齐——这条路径的可观测信号就是账本行。
+      let indexRow: TicketIndexRow;
+      try {
+        indexRow = await runInTransaction(async () => {
+          await messages.insert({
+            projectId: input.projectId,
+            objectKind: "issue",
+            providerObjectId: issue.number,
+            messageId,
+            authorId: input.actorId,
+            authorNameSnapshot: input.authorName,
+            bodyHash,
+            revision: 1,
+          });
+          const row = await index.upsertIssue({
+            projectId: input.projectId,
+            issueNumber: issue.number,
+            title: issue.title,
+            state: issue.state,
+            authorId: input.actorId,
+            authorName: input.authorName,
+            assigneeId: null,
+            labelIds: issue.labels.map((label) => label.id),
+            contentVersion: version,
+            providerUpdatedAt: issue.providerUpdatedAt === null ? null : new Date(issue.providerUpdatedAt),
+            syncStatus: "ready",
+          });
+          await operations.succeed({
+            operationId,
+            step: TICKET_OPERATION_STEP.indexWritten,
+            targetId: issue.number,
+            result: { issueNumber: issue.number, messageId, version },
+            // 正文原文在成功这一刻从账本消失，只留可复核的摘要（§8.2）。
+            intentSummary: { titleLength: input.title.length, bodyHash },
+          });
+          return row;
         });
-        const row = await index.upsertIssue({
+      } catch (error) {
+        // 诊断上下文只带账本坐标与远端对象号，不带请求正文（§12.6）；测试环境下日志器静默。
+        logError("工单已在托管平台建出，本地终态写入失败：转 202 待恢复核对", {
+          operationId,
           projectId: input.projectId,
           issueNumber: issue.number,
-          title: issue.title,
-          state: issue.state,
-          authorId: input.actorId,
-          authorName: input.authorName,
-          assigneeId: null,
-          labelIds: issue.labels.map((label) => label.id),
-          contentVersion: version,
-          providerUpdatedAt: issue.providerUpdatedAt === null ? null : new Date(issue.providerUpdatedAt),
-          syncStatus: "ready",
+          error,
         });
-        await operations.succeed({
-          operationId,
-          step: TICKET_OPERATION_STEP.indexWritten,
-          targetId: issue.number,
-          result: { issueNumber: issue.number, messageId, version },
-          // 正文原文在成功这一刻从账本消失，只留可复核的摘要（§8.2）。
-          intentSummary: { titleLength: input.title.length, bodyHash },
-        });
-        return row;
-      });
+        return { kind: "uncertain", operationId };
+      }
 
       return {
         kind: "created",
@@ -456,7 +442,7 @@ export function createTicketService(deps: TicketServiceDeps): TicketService {
   /**
    * 写工单失败的对外映射（§8.3 步骤 6）：上游对 `issues.create` 的确定拒绝各自对应一个状态码。
    *
-   * 这里与 `toBindingError`（步骤 5 的 `createScopedClient` 失败）是两处不同的映射，虽然 Git 错误码同源：
+   * 这里与 `toTicketBindingError`（步骤 5 的 `createScopedClient` 失败）是两处不同的映射，虽然 Git 错误码同源：
    * 绑定拿不到是**装配/数据故障**（503，本端的问题）；`issues.create` 报 `FORBIDDEN` 则是仓库层面的明确
    * 拒绝（403，调用方或运维要处理的事实）。把两者合并会要么把权限问题伪装成故障，要么反过来。
    */

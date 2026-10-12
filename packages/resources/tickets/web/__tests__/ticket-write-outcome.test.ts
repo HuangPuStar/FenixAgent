@@ -21,9 +21,14 @@
 
 import { describe, expect, test } from "bun:test";
 
-import type { TicketCreateResult, TicketDetail } from "../api/tickets";
+import type { TicketCreateResult, TicketDetail, TicketWriteResult } from "../api/tickets";
 import { ticketApi } from "../api/tickets";
-import { createIdempotencyKeyHolder, isUncertainAccepted, ticketFormSignature } from "../lib/ticket-write-outcome";
+import {
+  createIdempotencyKeyHolder,
+  isUncertainAccepted,
+  ticketFormSignature,
+  writeSignature,
+} from "../lib/ticket-write-outcome";
 import { ticketFormSchema } from "../pages/agent-panel/components/ticket-create-dialog";
 
 /** 201 工单本体：字段与后端 `TicketDetailViewSchema` 一致（含 `web/api/tickets.ts` 回填的 `projectId`）。 */
@@ -39,6 +44,7 @@ const CREATED_TICKET: TicketDetail = {
   syncedAt: "2026-10-12T08:00:01.000Z",
   syncStatus: "ready",
   body: "复现步骤……",
+  pendingOperationId: null,
   projectId: "11111111-1111-4111-8111-111111111111",
 };
 
@@ -64,6 +70,54 @@ describe("创建响应判别 isUncertainAccepted", () => {
     expect(isUncertainAccepted(pseudo)).toBe(false);
     // 反向自检：加回 status 后同一条断言必须翻转，否则上面那条可能只是因为函数恒返回 false 而假绿。
     expect(isUncertainAccepted({ ...pseudo, status: "uncertain" } as TicketCreateResult)).toBe(true);
+  });
+
+  // 入参放宽成泛型联合后，评论 / 标签 / 工单修改的写结果走同一个判别函数：判别错的后果与创建一致
+  //（把 200 当成待确认 → 用户被告知「确认中」却明明写入成功；把 202 当成成功 → 宣布一件未定的事已完成）。
+  // 这里同时验证收窄方向：200 分支必须仍能取到 `.ticket`/`.comment` 这类资源体。
+  test("工单更新结果同样按 status 判别，200 分支保留资源体", () => {
+    const success: TicketWriteResult = { ticket: CREATED_TICKET, operationId: "op-4" };
+    const accepted: TicketWriteResult = { operationId: "op-5", status: "uncertain" };
+
+    expect(isUncertainAccepted(success)).toBe(false);
+    expect(isUncertainAccepted(accepted)).toBe(true);
+    if (isUncertainAccepted(success)) throw new Error("200 结果被误判为受理体");
+    expect(success.ticket.pendingOperationId).toBeNull();
+  });
+});
+
+describe("写请求的内容指纹与换代", () => {
+  // 指纹是「同键不同内容」判定的另一半：字段按固定顺序拼装，`null` / `undefined` 归一成空串，
+  // 因此「正文缺省」与「正文为空串」是同一次提交。分隔符必须保留——少拼一个字段（末尾空串）应当
+  // 得到不同指纹，否则服务端按 A 内容持久化的键会被前端当成 B 内容的重试。
+  test("writeSignature 稳定、空值归一，且不把少一个字段与空串混同", () => {
+    expect(writeSignature(["标题", null, "正文"])).toBe(writeSignature(["标题", undefined, "正文"]));
+    expect(writeSignature([])).toBe("");
+    expect(writeSignature(["标题"])).not.toBe(writeSignature(["标题", ""]));
+  });
+
+  // `expectedVersion` 必须参与指纹：冲突后用户刷新拿到新版本，指纹随之变化 → 自动换新键。
+  // 若漏掉版本，重试会命中服务端已持久化的那次失败（失败重放），永远发不出去。
+  test("writeSignature 含 expectedVersion：版本变化即指纹变化", () => {
+    expect(writeSignature(["标题", "v1"])).not.toBe(writeSignature(["标题", "v2"]));
+  });
+
+  // 换代点：动作成功之后（同一界面要能连发第二个动作，如内联评论框连发两条）与明确失败/幂等冲突之后
+  // 都要 `reset()`；reset 之后再取一次必须是新键，否则第二次提交会被服务端当成第一次的重放。
+  test("holder.reset() 之后再取键换代，未 reset 时同内容复用", () => {
+    let counter = 0;
+    const holder = createIdempotencyKeyHolder(() => {
+      counter += 1;
+      return `key-${counter}`;
+    });
+
+    const first = holder.take("body:第一条");
+    expect(holder.take("body:第一条")).toBe(first);
+
+    holder.reset();
+    const second = holder.take("body:第一条");
+    expect(second).not.toBe(first);
+    expect(second).toBe("key-2");
   });
 });
 
@@ -258,5 +312,7 @@ function ticketDto() {
     syncedAt: "2026-10-12T08:00:01.000Z",
     syncStatus: "ready",
     body: "复现步骤……",
+    // 无在途写：创建响应同样是详情视图，待确认的载体字段必须存在于夹具里（写它的人不会漏）。
+    pendingOperationId: null,
   };
 }

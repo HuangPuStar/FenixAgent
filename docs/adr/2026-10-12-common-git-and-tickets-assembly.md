@@ -1,7 +1,7 @@
 # ADR：公共 Git 独立 common 类别，并以可选装配槽接入
 
 - **日期**：2026-10-12
-- **状态**：**已接受**；决定 1–3 已实施（`@fenix/git`、`ce-git.json` 与 `docker/git/` 已交付），决定 4 已实施（工单包、五张表与页面已交付，后续能力见[工单模块架构](../arch/29-tickets.md) §10）
+- **状态**：**已接受**；决定 1–3 已实施（`@fenix/git`、`ce-git.json` 与 `docker/git/` 已交付），决定 4 已实施（工单包、五张表、十六条路由与页面已交付，含工单修改、评论读写、标签读写与操作查询触发的单次恢复核对；仍未实现的能力见[工单模块架构](../arch/29-tickets.md) §10）
 - **关联**：架构 [公共 Git 模块](../arch/28-common-git.md)、[工单模块](../arch/29-tickets.md)、运维 [公共 Git 运维说明](../operations/common-git.md)、[工单运维说明](../operations/tickets.md)、部署契约 [Docker 编排体系](../operations/docker-topology.md) §6 / §13、既有裁定 [装配 profile 派生的前后端模块启用标识](./2026-10-08-assembly-capability-gate.md)
 
 ## 背景
@@ -23,7 +23,7 @@
 3. **Forgejo 作为共享外部依赖，由 `FENIX_FEATURE_GIT` 独立编排**（`docker/git/docker-compose.yml` 独立 Compose 项目，默认关闭），与 assembly 的启用**相互独立、不自动映射**。
    理由：Forgejo 是多个消费者共用的外部服务，生命周期由部署层持有；关掉工单不等于可以停 Forgejo，起 Forgejo 也不等于某个 AOS 进程启用了 Git 能力。「两层开关不自动映射」是既有通用口径，本决定只是把它套到本模块上。
 4. **工单模块是 Git 的消费者、默认关闭**：`@fenix/resource-tickets` 的 `dependsOn` 含 `git`，经 `GitService.createScopedClient` 取受控作用域，启用面由 `ce-tickets.json` 决定；git 不依赖工单、不理解工单与通知语义。
-   理由：依赖方向一旦反过来（git 认识工单），公共层就无法再被第二个消费者复用。**本条已实施**：工单包、五张表与页面已交付；评论、指派、事件同步、附件与恢复核对等未实现能力见 [工单模块架构](../arch/29-tickets.md) §10。
+   理由：依赖方向一旦反过来（git 认识工单），公共层就无法再被第二个消费者复用。**本条已实施**：工单包、五张表、十六条路由与页面已交付——工单修改（含负责人与状态）、评论读取/创建/改写、项目标签读写、成员目录与操作查询触发的单次恢复核对都已接入；仍未实现的是恢复核对的周期扫描、事件同步、附件与站内通知，逐条见 [工单模块架构](../arch/29-tickets.md) §10。
 
 ## 考虑过的替代方案
 

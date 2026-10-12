@@ -15,7 +15,10 @@
     "back": "Back to list",
     "prevPage": "Previous",
     "nextPage": "Next",
-    "refresh": "Refresh"
+    "refresh": "Refresh",
+    "edit": "Edit",
+    "close": "Close ticket",
+    "reopen": "Reopen ticket"
   },
   "list": {
     "columnNumber": "Number",
@@ -39,8 +42,78 @@
     "assigneeLabel": "Assignee",
     "updatedAtLabel": "Updated",
     "syncedAtLabel": "Synced {{time}}",
+    "labelsLabel": "Labels",
     "externalAuthor": "External source / unverified",
     "externalAuthorHint": "This content has no trusted local attribution record; the author is pending verification."
+  },
+  "labels": {
+    "none": "No labels",
+    "edit": "Edit labels",
+    "save": "Save labels",
+    "empty": "This project has no labels yet",
+    "maxCount": "Select up to 20 labels",
+    "loadFailed": "Failed to load project labels",
+    "saved": "Labels updated",
+    "failed": "Failed to update labels",
+    "accepted": "Label changes are being confirmed; refresh later to see the result"
+  },
+  "assignee": {
+    "label": "Assignee",
+    "searchPlaceholder": "Search members",
+    "empty": "No matching members",
+    "clear": "Clear assignee",
+    "loadMore": "Load more members",
+    "loadFailed": "Failed to load members",
+    "updated": "Assignee updated",
+    "failed": "Failed to update the assignee",
+    "accepted": "The assignment is being confirmed; refresh later to see the result"
+  },
+  "state": {
+    "closeTitle": "Close this ticket?",
+    "closeDescription": "Comments are still allowed after closing, and you can reopen it at any time.",
+    "closed": "Ticket closed",
+    "reopened": "Ticket reopened",
+    "failed": "Failed to update the ticket state",
+    "accepted": "The state change is being confirmed; refresh later to see the result"
+  },
+  "edit": {
+    "title": "Edit ticket",
+    "saved": "Ticket updated",
+    "failed": "Failed to update the ticket",
+    "accepted": "The change is being confirmed; refresh later to see the result"
+  },
+  "comment": {
+    "sectionTitle": "Comments",
+    "empty": "No comments yet",
+    "placeholder": "Write a comment (Markdown supported)",
+    "submit": "Post comment",
+    "created": "Comment posted",
+    "createFailed": "Failed to post the comment",
+    "createAccepted": "The comment is being confirmed; refresh later to see the result",
+    "loadFailed": "Failed to load comments",
+    "loadMore": "Load earlier comments",
+    "edit": "Edit comment",
+    "save": "Save changes",
+    "cancel": "Cancel",
+    "updated": "Comment updated",
+    "updateFailed": "Failed to update the comment",
+    "updateAccepted": "The comment change is being confirmed; refresh later to see the result"
+  },
+  "write": {
+    "uncertainTitle": "Submission pending confirmation",
+    "uncertainHint": "This ticket has an unconfirmed change; editing stays blocked until it is confirmed.",
+    "check": "Check result",
+    "checking": "Checking",
+    "checkFailed": "Failed to check the operation result",
+    "statusPending": "The operation is still in progress; check again later.",
+    "statusSucceeded": "The operation succeeded.",
+    "statusFailed": "The operation failed; you can submit again.",
+    "statusUncertain": "The result is still undetermined; check again later.",
+    "statusNeedsReview": "This operation needs manual review; contact your operator.",
+    "conflict": "Someone else changed this content; load the latest version and submit again.",
+    "reload": "Load latest",
+    "idempotencyConflict": "The submission state is inconsistent; please retry.",
+    "paused": "Ticket writes are currently unavailable (organization paused or upstream failure); try again later."
   },
   "loadState": {
     "failed": "Failed to load tickets",
@@ -64,11 +137,14 @@
     "degraded": "Ticket sync is degraded; the data may be out of date."
   },
   "status": { "open": "Open", "closed": "Closed" },
+  "permission": { "denied": "You do not have permission to perform this action; ask an organization admin." },
   "validation": {
     "titleRequired": "Enter a title",
     "titleMax": "The title must be at most 200 characters",
     "bodyRequired": "Enter a description",
-    "bodyMax": "The description must be at most 64 KiB"
+    "bodyMax": "The description must be at most 64 KiB",
+    "commentRequired": "Enter a comment",
+    "commentMax": "The comment must be at most 64 KiB"
   },
   "toast": {
     "projectsLoadFailed": "Failed to load ticket projects",

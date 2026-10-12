@@ -73,9 +73,16 @@ export const TicketSummaryViewSchema = z.object({
   syncStatus: z.enum(["ready", "stale"]),
 });
 
-/** 详情：在列表行之上补**已剥离身份头**的正文（前端不渲染协议头）。 */
+/**
+ * 详情：在列表行之上补**已剥离身份头**的正文（前端不渲染协议头）与未终结的修改操作 ID。
+ *
+ * `pendingOperationId` 是「未确认变更阻止后续修改」跨刷新可见的唯一载体（裁定三.15）：非空时该工单的
+ * 所有写入口都应被锁上，并给出「去核对」的入口；后端此刻也确实会拒绝这些写（在途互斥）。它是可空字段
+ * 而不是可选字段——`null` 与「服务端没返回」在排查时必须能区分开。
+ */
 export const TicketDetailViewSchema = TicketSummaryViewSchema.extend({
   body: z.string(),
+  pendingOperationId: z.string().nullable(),
 });
 
 /** 列表响应：`nextCursor` 为 `null` 表示没有下一页。 */
@@ -108,6 +115,32 @@ export const TicketUncertainResponseSchema = WebOkSchema(
     status: z.literal("uncertain"),
   }),
 );
+
+/**
+ * 修改工单（`PATCH /web/tickets/:projectId/:number`）：标题/描述/负责人/状态四选一，必须带 expectedVersion。
+ *
+ * 字段缺席表示「不改」，与显式 `null` 严格区分：`assigneeId: null` 是「取消指派」这个动作本身，
+ * 用 `||` 或默认值兜底会把它折叠成“不改”（zod 的 `undefined` 与 `null` 是两个不同的输入）。
+ * 标签不在这里：它有独立的 `PUT .../labels`（全量集合语义），合并进 PATCH 会让“清空标签”与“本次不改标签”
+ * 在同一个可选字段上无法区分。
+ */
+export const TicketUpdateRequestSchema = z
+  .strictObject({
+    title: z.string().min(1).max(TICKET_TITLE_MAX_LENGTH).optional(),
+    body: z.string().min(1).optional(),
+    /** null = 取消指派；缺席 = 不改（zod 区分 undefined 与 null，不要用 `||` 兜默认）。 */
+    assigneeId: z.string().min(1).nullable().optional(),
+    state: z.enum(["open", "closed"]).optional(),
+    expectedVersion: z.string().regex(/^[0-9a-f]{64}$/),
+  })
+  .refine(
+    (value) =>
+      value.title !== undefined ||
+      value.body !== undefined ||
+      value.assigneeId !== undefined ||
+      value.state !== undefined,
+    { message: "至少提供 title、body、assigneeId 或 state" },
+  );
 
 /** 工单路径参数：`projectId` 是 uuid（工单资源 URL 显式带项目，避免默认项目切换后链接漂移）。 */
 export const TicketProjectParamsSchema = z.object({

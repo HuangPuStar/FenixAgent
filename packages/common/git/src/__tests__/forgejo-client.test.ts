@@ -229,6 +229,16 @@ describe("分页", () => {
     expect((await client(lastPage.fetchImpl).listIssues(REF, {})).nextCursor).toBeNull();
   });
 
+  // rel="last" 透出为 lastCursor（评论倒序靠它定位最新一页）；缺 Link 头时不得编造末页页码。
+  test("exposes the last page from the Link header", async () => {
+    const link = `<${BASE_URL}/api/v1/repos/acme/demo/issues?page=2&limit=30>; rel="next", <${BASE_URL}/api/v1/repos/acme/demo/issues?page=7&limit=30>; rel="last"`;
+    const withLast = createStub(() => jsonResponse([issueDto()], { headers: { link } }));
+    expect((await client(withLast.fetchImpl).listIssues(REF, {})).lastCursor).toBe("7");
+
+    const noHeader = createStub(() => jsonResponse([issueDto()]));
+    expect((await client(noHeader.fetchImpl).listIssues(REF, {})).lastCursor).toBeNull();
+  });
+
   // Link 头整体缺失（被中间代理剥掉）时退化为「本页非空就有下一页」：宁可多读一个空页，也不静默截断列表。
   test("falls back to a non-empty page when the Link header is missing", async () => {
     const withItems = createStub(() => jsonResponse([issueDto()]));
@@ -236,6 +246,93 @@ describe("分页", () => {
 
     const empty = createStub(() => jsonResponse([]));
     expect((await client(empty.fetchImpl).listIssues(REF, {})).nextCursor).toBeNull();
+  });
+});
+
+describe("时间窗过滤", () => {
+  // since 落到工单列表的 query 且与分页/筛选共存：恢复核对靠它把扫描面收窄到本次操作之后的窗口。
+  test("maps since onto the issue list query", async () => {
+    const { calls, fetchImpl } = createStub(() => jsonResponse([issueDto()]));
+
+    await client(fetchImpl).listIssues(REF, { since: "2026-10-12T00:00:00Z", state: "all", limit: 100 });
+
+    const params = new URL(callAt(calls, 0).url).searchParams;
+    expect(params.get("since")).toBe("2026-10-12T00:00:00Z");
+    expect(params.get("state")).toBe("all");
+    expect(params.get("limit")).toBe("100");
+  });
+
+  // 评论列表同样接受 since：万级评论的讨论串按创建时间升序返回，从第一页翻永远扫不到最新那条。
+  test("maps since onto the comment list query", async () => {
+    const { calls, fetchImpl } = createStub(() => jsonResponse([]));
+
+    await client(fetchImpl).listComments(REF, "12", { since: "2026-10-12T00:00:00Z", limit: 100 });
+
+    const params = new URL(callAt(calls, 0).url).searchParams;
+    expect(params.get("since")).toBe("2026-10-12T00:00:00Z");
+    expect(params.get("limit")).toBe("100");
+    expect(new URL(callAt(calls, 0).url).pathname).toBe("/api/v1/repos/acme/demo/issues/12/comments");
+  });
+
+  // 未提供或空串时不发 since：空值会被上游当成非法时间，而缺省的语义是「不设时间窗」。
+  test("omits the since parameter when it is absent or empty", async () => {
+    const { calls, fetchImpl } = createStub(() => jsonResponse([]));
+    const forgejo = client(fetchImpl);
+
+    await forgejo.listIssues(REF, {});
+    await forgejo.listIssues(REF, { since: "" });
+
+    expect(calls.map((call) => new URL(call.url).searchParams.has("since"))).toEqual([false, false]);
+  });
+});
+
+describe("评论读取", () => {
+  // 单条评论走仓库作用域的评论端点（路径不含工单编号），所属工单编号只能从响应的 issue_url 末段解析。
+  test("reads a single comment and resolves the issue number from issue_url", async () => {
+    const { calls, fetchImpl } = createStub(() =>
+      jsonResponse({
+        id: 9,
+        body: "已修复",
+        user: { id: 1, login: "alice" },
+        issue_url: `${BASE_URL}/api/v1/repos/acme/demo/issues/12`,
+        updated_at: "2026-10-12T01:02:03Z",
+      }),
+    );
+
+    const comment = await client(fetchImpl).getComment(REF, "9");
+
+    expect(callAt(calls, 0).url).toBe(`${BASE_URL}/api/v1/repos/acme/demo/issues/comments/9`);
+    expect(callAt(calls, 0).init?.method).toBe("GET");
+    expect(comment).toEqual({
+      id: "9",
+      issueNumber: "12",
+      body: "已修复",
+      author: { id: "1", name: "alice" },
+      providerUpdatedAt: "2026-10-12T01:02:03.000Z",
+    });
+  });
+
+  // 评论不存在或不属于该仓库时上游给 404：映射为 NOT_FOUND，且不回显上游正文（正文可能含用户内容）。
+  test("maps a missing comment to NOT_FOUND without echoing the upstream body", async () => {
+    const { fetchImpl } = createStub(() => errorResponse(404));
+
+    const error = await gitErrorOf(client(fetchImpl).getComment(REF, "9"));
+
+    expect(error.code).toBe("NOT_FOUND");
+    expect(error.status).toBe(404);
+    expect(error.message).not.toContain(UPSTREAM_MESSAGE);
+  });
+
+  // 评论编号不是十进制整数时判为不存在且不发请求：路径段来自调用方，不能让它把请求折到别的端点上。
+  test("rejects a non-decimal comment id without issuing a request", async () => {
+    const { calls, fetchImpl } = createStub(() => jsonResponse({}));
+    const forgejo = client(fetchImpl);
+
+    for (const commentId of ["", "9/../..", "abc"]) {
+      const error = await gitErrorOf(forgejo.getComment(REF, commentId));
+      expect(error.code).toBe("NOT_FOUND");
+    }
+    expect(calls).toHaveLength(0);
   });
 });
 

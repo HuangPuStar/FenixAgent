@@ -48,3 +48,39 @@ export const TICKET_LIST_MAX_LIMIT = 100;
  * （`IDEMPOTENCY_KEY_REQUIRED` / `IDEMPOTENCY_KEY_INVALID`），前端据此区分提示文案。
  */
 export const IDEMPOTENCY_KEY_PATTERN = /^[A-Za-z0-9_-]{8,128}$/;
+
+/** 评论列表的默认页大小；上限沿用 {@link TICKET_LIST_MAX_LIMIT}（适配器的夹取上限同为 100）。 */
+export const TICKET_COMMENT_DEFAULT_LIMIT = 30;
+
+/** 项目标签名长度：1–50（Forgejo 侧无硬上限，这是本模块对 UI 与可读性的约束）。 */
+export const TICKET_LABEL_NAME_MAX_LENGTH = 50;
+
+/** 项目标签描述长度上限；与名称一样只在本模块收口。 */
+export const TICKET_LABEL_DESCRIPTION_MAX_LENGTH = 200;
+
+/**
+ * 恢复核对的回源扫描上限（页数 × {@link RECOVERY_SCAN_PAGE_LIMIT} 条）。
+ *
+ * 只做**有界**核对：超过上限仍找不到就保持 `uncertain`（方案 §9.6「持续未找到也保持 uncertain，不能自动
+ * 创建第二份」），把「有没有落库」变成 15 分钟后的 `needs_review` 而不是一次全量回放。
+ */
+export const RECOVERY_SCAN_MAX_PAGES = 5;
+
+/** 恢复扫描每页条数：取适配器上限，让 5 页覆盖 500 条的对象窗口。 */
+export const RECOVERY_SCAN_PAGE_LIMIT = 100;
+
+/**
+ * `intent.since` 的回拨余量：扫描窗口取「领取时刻 - 1 分钟」。
+ *
+ * 回拨是给上游时间戳精度与时钟偏移留量；不设更大的值是因为窗口越大、扫描面越大，而核对的目标只是
+ * 「本次操作附近的写入」，历史数据不参与判定。
+ */
+export const RECOVERY_SINCE_SKEW_MS = 60_000;
+
+/**
+ * 超过这个时长仍未找到匹配的未定操作 → `needs_review`（方案 §9.6 的人工介入窗口）。
+ *
+ * 判定不引入计划任务：核对时比较 `now - created_at`，因此 T04 只需要加定时器触发核对，
+ * 窗口语义已经在这里收口。
+ */
+export const RECOVERY_NEEDS_REVIEW_AFTER_MS = 15 * 60 * 1000;

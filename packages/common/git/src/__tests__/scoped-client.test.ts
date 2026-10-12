@@ -284,9 +284,31 @@ describe("已授权时的透传", () => {
     await expectForbidden(() => client.labels.list(), "labels.read");
     await expectForbidden(() => client.labels.create({ name: "bug" }), "labels.write");
     await expectForbidden(() => client.comments.list("7"), "comments.read");
+    await expectForbidden(() => client.comments.get("9"), "comments.read");
     await expectForbidden(() => client.comments.create("7", { body: "hi" }), "comments.write");
     await expectForbidden(() => client.comments.edit("9", { body: "hi" }), "comments.write");
     expect(calls).toHaveLength(0);
+  });
+
+  // 单条评论读取按绑定坐标与评论 ID 拼仓库作用域路径，工单编号来自响应的 issue_url（写入前的核验依据）。
+  test("comments.get 按绑定坐标拼路径", async () => {
+    const { calls, fetchImpl } = createFetchStub([
+      {
+        id: 9,
+        body: "hi",
+        user: { id: 11, login: "alice" },
+        issue_url: `${CONNECTION.baseUrl}/api/v1/repos/acme/demo/issues/7`,
+      },
+    ]);
+    const client = scopedFor(bindingOf({ allowedConsumers: { tickets: ["comments.read"] } }), "tickets", fetchImpl);
+
+    const comment = await client.comments.get("9");
+
+    expect(calls).toHaveLength(1);
+    expect(calls[0]?.url).toBe(`${REPOSITORY_URL}/issues/comments/9`);
+    expect(calls[0]?.init?.method).toBe("GET");
+    expect(comment.issueNumber).toBe("7");
+    expect(comment.body).toBe("hi");
   });
 
   // 写评论时正文只在请求体里出现，凭据与正文都不进 URL。

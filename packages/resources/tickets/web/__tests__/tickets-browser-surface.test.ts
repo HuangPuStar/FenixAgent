@@ -48,8 +48,14 @@ const PKG_NAME = (JSON.parse(readFileSync(join(PKG_ROOT, "package.json"), "utf8"
  * 又能穿透（见「白名单不收录 workspace 包」）。未收录的库一旦被引入就会让本测试变红，从而强制做一次
  * 浏览器可用性评审。
  *
- * **清单是逐条评审当前真实图的产物**（2026-10-12 实测：52 文件 / 182 引用，外部根恰 18 个），
+ * **清单是逐条评审当前真实图的产物**（2026-10-12 T03 详情页落地后实测：76 文件 / 314 引用，外部根恰 22 个），
  * 不是「见过的库先记上」的宽表：多登记的条目会让后来引入的同名依赖静默通过评审。
+ *
+ * T03 追加的四条（`cmdk`、`@radix-ui/react-popover`、`@radix-ui/react-checkbox`、`@radix-ui/react-alert-dialog`）
+ * 同样出自真实图的评审，只是**评审对象是四个 `ui/*` 原语的入口文件**：用本目录的 `walkValueGraph` 逐个走
+ * `packages/ui-components/web/ui/{command,popover,checkbox,alert-dialog}.tsx`，新出现的外部根恰好就是这四个
+ * （其余根已在表内）。评论编辑器、指派选择器、标签多选与关闭确认落进本包页面后，这四条即进入本包图；
+ * 不预登记的唯一后果是守卫在界面落地的同一刻变红，而那一步没有可做的评审了。
  */
 const BROWSER_SAFE_EXTERNAL: ReadonlyMap<string, string> = new Map([
   // 宿主提供：本包 package.json 声明的 peerDependency
@@ -64,13 +70,17 @@ const BROWSER_SAFE_EXTERNAL: ReadonlyMap<string, string> = new Map([
   ["zod", "运行期 schema 校验（本包 dependencies；创建表单校验，图内说明符是 `zod/v4`）"],
   // 经 @fenix/ui-components 子路径传递进入：无 node 依赖的浏览器库
   ["@hookform/resolvers", "表单校验适配器（config/FormDialog 的 zodResolver 传递依赖），纯函数"],
+  ["@radix-ui/react-alert-dialog", "无样式原语（ui/alert-dialog 传递依赖；关闭工单确认弹窗），纯浏览器"],
+  ["@radix-ui/react-checkbox", "无样式原语（ui/checkbox 传递依赖；标签多选行），纯浏览器"],
   ["@radix-ui/react-dialog", "无样式原语（ui/dialog 与 config/FormDialog 传递依赖），纯浏览器"],
+  ["@radix-ui/react-popover", "无样式原语（ui/popover 传递依赖；负责人选择器），纯浏览器"],
   ["@radix-ui/react-select", "无样式原语（ui/select 传递依赖），纯浏览器"],
   ["@radix-ui/react-separator", "无样式原语（ui/separator 传递依赖），纯浏览器"],
   ["@radix-ui/react-slot", "无样式原语（ui/button、ui/badge 传递依赖），纯浏览器"],
   ["@radix-ui/react-tooltip", "无样式原语（ui/tooltip 传递依赖），纯浏览器"],
   ["class-variance-authority", "类名变体工具（ui/* 传递依赖），纯函数"],
   ["clsx", "类名拼接工具（lib/cn 传递依赖），纯函数"],
+  ["cmdk", "无样式命令面板（ui/command 传递依赖；成员搜索列表），纯浏览器"],
   ["tailwind-merge", "Tailwind 类名去重（lib/cn 传递依赖），纯函数"],
   ["streamdown", '流式 Markdown 渲染（chat/primitives/message 传递依赖；详情正文 mode="static" 走它），浏览器安全'],
 ]);
@@ -112,24 +122,42 @@ describe("tickets web 入口浏览器可达面", () => {
   test("遍历有效性自检：包内模块与跨包 exports 目标都在到达集合中", () => {
     for (const expected of [
       "index.ts",
+      "api/ticket-comments.ts",
+      "api/ticket-operations.ts",
       "api/ticket-projects.ts",
       "api/tickets.ts",
       "i18n/index.ts",
       "i18n/namespace.ts",
+      "hooks/use-ticket-comments.ts",
+      "hooks/use-ticket-detail.ts",
+      "hooks/use-ticket-labels.ts",
       "hooks/use-ticket-list.ts",
+      "hooks/use-ticket-members.ts",
       "lib/ticket-errors.ts",
+      "lib/ticket-permissions.ts",
+      "lib/ticket-write-failure.ts",
       "lib/ticket-write-outcome.ts",
       "pages/agent-panel/pages/AgentTicketsPage.tsx",
       "pages/agent-panel/pages/AgentTicketDetailPage.tsx",
+      "pages/agent-panel/components/field-error.tsx",
+      "pages/agent-panel/components/ticket-assignee-picker.tsx",
+      "pages/agent-panel/components/ticket-comment-composer.tsx",
+      "pages/agent-panel/components/ticket-comment-item.tsx",
+      "pages/agent-panel/components/ticket-comment-section.tsx",
+      "pages/agent-panel/components/ticket-conflict-notice.tsx",
       "pages/agent-panel/components/ticket-create-dialog.tsx",
+      "pages/agent-panel/components/ticket-detail-meta.tsx",
+      "pages/agent-panel/components/ticket-fields-dialog.tsx",
       "pages/agent-panel/components/ticket-filter-bar.tsx",
+      "pages/agent-panel/components/ticket-format.ts",
+      "pages/agent-panel/components/ticket-labels-editor.tsx",
       "pages/agent-panel/components/ticket-list-table.tsx",
       "pages/agent-panel/components/ticket-state-badge.tsx",
-      "pages/agent-panel/components/ticket-format.ts",
+      "pages/agent-panel/components/ticket-write-banner.tsx",
     ]) {
       expect(reachedWebFiles).toContain(expected);
     }
-    expect(reachedWebFiles.size).toBeGreaterThanOrEqual(15);
+    expect(reachedWebFiles.size).toBeGreaterThanOrEqual(33);
 
     // 跨包递归的有效性：钉住本包 web 面的公共底座（ui-components 的按钮与 Markdown 链路、
     // web-runtime 的 request/NS）。少了这一段，「@fenix/* 被当成外部依赖放过」会以「包内断言全绿」的形状漏网。

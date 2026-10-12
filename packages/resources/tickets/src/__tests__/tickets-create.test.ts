@@ -15,7 +15,7 @@ import {
 import { getIdentityDirectory } from "@fenix/platform-sdk/server";
 import { initializeTestApplicationInfrastructure, resetAllStubs } from "@fenix/platform-sdk/testing";
 import { TICKET_PROJECT_RESOURCE_TYPE } from "../server/access/ticket-project-resource";
-import { IdempotencyConflictError, VersionConflictError } from "../server/errors";
+import { IdempotencyConflictError, TicketChangeInFlightError, VersionConflictError } from "../server/errors";
 import { createTicketFacade, type TicketFacadeApi } from "../server/facades/ticket-facade";
 import type { TicketIndexRepository, TicketIndexRow } from "../server/repositories/ticket-index";
 import type { TicketMessageRepository, TicketMessageRow } from "../server/repositories/ticket-messages";
@@ -23,7 +23,13 @@ import type { TicketOperationRepository, TicketOperationRow } from "../server/re
 import type { TicketProjectRow } from "../server/repositories/ticket-projects";
 import { mapTicketError, type TicketStatusWriter } from "../server/routes/web/web-error";
 import { computeContentVersion } from "../server/services/content-version";
-import { createTicketOperationService } from "../server/services/ticket-operation-service";
+import { createTicketEditService } from "../server/services/ticket-edit-service";
+import {
+  COMMENT_CHANGE_KINDS,
+  createTicketOperationService,
+  ISSUE_CHANGE_KINDS,
+  TICKET_OPERATION_STEP,
+} from "../server/services/ticket-operation-service";
 import type { TicketProjectService } from "../server/services/ticket-project-service";
 import { hashTicketRequest, issueCreateTargetPath } from "../server/services/ticket-request-hash";
 import {
@@ -94,7 +100,13 @@ interface OperationStore {
   readonly repository: TicketOperationRepository;
 }
 
-/** 记录型操作账本：复刻 `claim` 的唯一键裁决与 `markDispatching` 的条件更新语义（SQL 侧见 repositories.test.ts）。 */
+/**
+ * 记录型操作账本：复刻 `claim` 的唯一键裁决、`markDispatching` 的条件更新与 `hasInFlightTarget`
+ * 的对象在途谓词（SQL 侧见 repositories.test.ts）。
+ *
+ * 替身没有事务回滚语义：真实实现在 `begin` 里抛错时，本次声明行会随事务一起消失，这里做不到——因此
+ * 涉及互斥拒绝的用例只断言「既存行未被改写」，不断言行数。
+ */
 function createOperationStore(): OperationStore {
   const rows: TicketOperationRow[] = [];
   const require = (operationId: string): TicketOperationRow => {
@@ -102,6 +114,25 @@ function createOperationStore(): OperationStore {
     if (row === undefined) throw new Error("替身账本里没有这条操作");
     return row;
   };
+  /** 在途谓词（`hasInFlightTarget` 与 `findInFlightTargetId` 共用一份，避免替身内部两份判定分叉）。 */
+  const findInFlightOperationId = (input: {
+    readonly projectId: string;
+    readonly targetId: string;
+    readonly kinds: readonly string[];
+    readonly excludeOperationId?: string;
+  }): string | undefined =>
+    rows
+      .filter(
+        (row) =>
+          row.projectId === input.projectId &&
+          row.targetId === input.targetId &&
+          input.kinds.includes(row.kind) &&
+          row.id !== input.excludeOperationId &&
+          // 终态（succeeded / failed）不算在途；`needs_review` 算，与仓储实现的谓词一致。
+          row.status !== "succeeded" &&
+          row.status !== "failed",
+      )
+      .sort((left, right) => right.createdAt.getTime() - left.createdAt.getTime())[0]?.id;
   return {
     rows,
     repository: {
@@ -119,7 +150,7 @@ function createOperationStore(): OperationStore {
           projectId: input.projectId,
           actorId: input.actorId,
           kind: input.kind,
-          targetId: null,
+          targetId: input.targetId ?? null,
           idempotencyKey: input.idempotencyKey,
           requestHash: input.requestHash,
           messageId: input.messageId,
@@ -167,6 +198,33 @@ function createOperationStore(): OperationStore {
       },
       async findByMessageId(messageId) {
         return rows.find((row) => row.messageId === messageId);
+      },
+      // 按主键加锁读（`SELECT ... FOR UPDATE` 的替身）：单进程测试没有并发，语义与仓储一致。
+      async findByIdForUpdate({ operationId }) {
+        return rows.find((candidate) => candidate.id === operationId);
+      },
+      async hasInFlightTarget(input) {
+        return findInFlightOperationId(input) !== undefined;
+      },
+      // 与 hasInFlightTarget 同谓词（共用同一个局部函数），只多取回命中的操作 ID。
+      async findInFlightTargetId({ projectId, targetId, kinds, excludeOperationId }) {
+        return findInFlightOperationId({ projectId, targetId, kinds, excludeOperationId });
+      },
+      // 复刻单语句 jsonb 追加的结果形状（`result.steps[]` 只是审计轨迹：恢复核对的事实源是
+      // `ticket_operations.step` 列与 `expected_version` / `intent`，全仓没有 `result.steps` 的读取点）。
+      async checkpoint({ operationId, step, expected }) {
+        const row = require(operationId);
+        const result = typeof row.result === "object" && row.result !== null ? { ...row.result } : {};
+        const steps = Array.isArray(result.steps) ? result.steps : [];
+        row.result = { ...result, steps: [...steps, { step, at: FIXTURE_NOW, expected }] };
+      },
+      async findUnsettled({ updatedBefore, limit }) {
+        return rows
+          .filter(
+            (row) => (row.status === "dispatching" || row.status === "uncertain") && row.updatedAt <= updatedBefore,
+          )
+          .sort((left, right) => left.updatedAt.getTime() - right.updatedAt.getTime())
+          .slice(0, limit);
       },
     },
   };
@@ -218,6 +276,15 @@ function createMessageStore(): MessageStore {
       },
       async findManyByMessageIds({ projectId, messageIds }) {
         return rows.filter((row) => row.projectId === projectId && messageIds.includes(row.messageId));
+      },
+      // 正文改写只换哈希与版本：作者与作者快照保持不变（编辑不转移作者）。
+      async updateRevision({ id, bodyHash, lastEditorId }) {
+        const row = rows.find((candidate) => candidate.id === id);
+        if (row === undefined) throw new Error("ticket_messages 归属行不存在，无法刷新正文版本");
+        row.bodyHash = bodyHash;
+        row.revision += 1;
+        row.lastEditorId = lastEditorId;
+        return row;
       },
     },
   };
@@ -310,6 +377,7 @@ function createGitHarness(): GitHarness {
     },
     comments: {
       list: async () => unused("comments.list"),
+      get: async () => unused("comments.get"),
       create: async () => unused("comments.create"),
       edit: async () => unused("comments.edit"),
     },
@@ -426,6 +494,14 @@ function createFacadeWith(harness: Harness): TicketFacadeApi {
     projects,
     operations: createTicketOperationService(harness.operationStore.repository),
     service: harness.service,
+    // 本文件只覆盖创建路径（`issue.create`）；修改路径的用例在各自的文件里，这里给同一批替身构造即可。
+    edit: createTicketEditService({
+      messages: harness.messageStore.repository,
+      index: harness.indexStore.repository,
+      operations: createTicketOperationService(harness.operationStore.repository),
+      git: harness.git.service,
+      identity: getIdentityDirectory(),
+    }),
   });
 }
 
@@ -548,22 +624,25 @@ describe("建工单 — 202 未定结果的产生条件", () => {
     expect(harness.messageStore.rows).toEqual([]);
   });
 
-  // 本地终态写入失败（唯一索引冲突等）时保持 dispatching 并上抛：同键重试只返回未定，绝不二次创建。
-  test("本地终态写入失败后同键重试返回未定且不再出站", async () => {
+  // 远端已建出、本地终态写入失败（唯一索引冲突等）时**直接返回未定**而不是上抛（裁定一.3）：响应说「失败」是
+  // 说谎，账本保持 dispatching 供恢复核对按 message_id 回源补齐；同键重试只返回未定，绝不二次创建。
+  test("本地终态写入失败后返回未定，同键重试仍返回未定且不再出站", async () => {
     const harness = createHarness();
     harness.git.setCreateIssue(async (input) => gitIssue({ title: input.title, body: input.body }));
     harness.messageStore.failInsertWith(new Error("ticket_messages 唯一索引冲突：message_id 已存在"));
 
-    await expect(harness.service.createIssue(createInput())).rejects.toThrow("唯一索引冲突");
-    // 归属与索引行都不落库，操作保持 dispatching（远端对象已存在，恢复核对归 T03）。
+    const outcome = await harness.service.createIssue(createInput());
+
+    expect(outcome).toEqual({ kind: "uncertain", operationId: harness.operationStore.rows[0]?.id });
+    // 归属与索引行都不落库，操作停在 dispatching（step 同值：这一段没有任何终态可写）。
     expect(harness.messageStore.rows).toEqual([]);
     expect(harness.indexStore.rows).toEqual([]);
-    expect(harness.operationStore.rows[0]).toMatchObject({ status: "dispatching" });
+    expect(harness.operationStore.rows[0]).toMatchObject({ status: "dispatching", step: "dispatching" });
 
     harness.messageStore.failInsertWith(null);
     const retry = await harness.service.createIssue(createInput());
 
-    expect(retry.kind).toBe("uncertain");
+    expect(retry).toEqual({ kind: "uncertain", operationId: harness.operationStore.rows[0]?.id });
     expect(harness.git.createIssueInputs.length).toBe(1);
   });
 
@@ -660,5 +739,194 @@ describe("建工单 — 上游确定失败的收敛", () => {
       result: { statusCode: 409, code: "ALREADY_EXISTS" },
     });
     expect(harness.git.createIssueInputs.length).toBe(1);
+  });
+});
+
+describe("操作账本 — 在途互斥（§5.5 / §9.7）", () => {
+  /** 同工单上的一条在途修改：默认是另一个幂等键的 `issue.update`（`ISSUE_CHANGE_KINDS` 的成员）。 */
+  function inFlightRow(overrides: Partial<TicketOperationRow> = {}): TicketOperationRow {
+    return {
+      id: "operation-inflight",
+      organizationId: ORG_A,
+      projectId: PROJECT_A,
+      actorId: "user_member",
+      kind: "issue.update",
+      targetId: "42",
+      idempotencyKey: "idem-key-0002",
+      requestHash: "hash-2",
+      messageId: null,
+      expectedVersion: "v1",
+      intent: { title: "改过的标题" },
+      step: TICKET_OPERATION_STEP.issueUpdated,
+      status: "dispatching",
+      result: null,
+      createdAt: FIXTURE_NOW,
+      updatedAt: FIXTURE_NOW,
+      ...overrides,
+    };
+  }
+
+  /** 以工单 42 为目标的修改声明；幂等键与在途行不同，即「另一次修改」而不是同键重试。 */
+  const modification = {
+    organizationId: ORG_A,
+    actorId: "user_member",
+    kind: "issue.labels" as const,
+    projectId: PROJECT_A,
+    targetId: "42",
+    guardKinds: ISSUE_CHANGE_KINDS,
+    idempotencyKey: "idem-key-0003",
+    requestHash: "hash-3",
+    messageId: null,
+    expectedVersion: "v1",
+    intent: { labelNames: ["bug"] },
+    step: TICKET_OPERATION_STEP.dispatching,
+  };
+
+  // 同一工单上有未确认的变更时拒绝后续修改：放行会让两次远端写入各自基于过期内容覆盖彼此（§9.7）。
+  test("同对象的在途变更拒绝新的修改声明", async () => {
+    const harness = createHarness();
+    const existing = inFlightRow();
+    harness.operationStore.rows.push(existing);
+    const operations = createTicketOperationService(harness.operationStore.repository);
+
+    const failure = await operations.begin(modification).catch((error: unknown) => error);
+
+    expect(failure).toBeInstanceOf(TicketChangeInFlightError);
+    // 产出码取前端契约的 F2 兜底码（t03 裁定三.15）；同义码 TICKET_CHANGE_IN_FLIGHT 只登记在还原表里。
+    expect(failure).toMatchObject({ code: "TICKET_OPERATION_PENDING", statusCode: 409 });
+    // 阻塞判定绝不改写阻塞方：在途行原样留在账本里等自己的恢复核对。
+    expect(existing).toMatchObject({ status: "dispatching", step: TICKET_OPERATION_STEP.issueUpdated });
+  });
+
+  // 终态行与其它工单上的在途行都不算阻塞：声明照常领取，目标坐标在领取时即写进账本供后续互斥定位。
+  test("终态与其它对象的操作不阻止声明且坐标在领取时落库", async () => {
+    const harness = createHarness();
+    harness.operationStore.rows.push(
+      inFlightRow({ id: "operation-settled", status: "succeeded", step: TICKET_OPERATION_STEP.issueUpdated }),
+    );
+    harness.operationStore.rows.push(inFlightRow({ id: "operation-other-target", targetId: "7" }));
+    const operations = createTicketOperationService(harness.operationStore.repository);
+
+    const admission = await operations.begin(modification);
+    if (admission.kind !== "acquired") throw new Error(`期望领取成功，实际是 ${admission.kind}`);
+
+    expect(harness.operationStore.rows.find((row) => row.id === admission.operationId)).toMatchObject({
+      status: "dispatching",
+      step: TICKET_OPERATION_STEP.dispatching,
+      targetId: "42",
+    });
+  });
+
+  // 声明互斥却给不出目标坐标是调用方的编程错误：静默放行会让这次写入失去唯一的互斥防线（§5.5）。
+  test("声明互斥但缺少目标坐标时报编程错误且零副作用", async () => {
+    const harness = createHarness();
+    const operations = createTicketOperationService(harness.operationStore.repository);
+
+    await expect(operations.begin({ ...modification, targetId: undefined })).rejects.toThrow(
+      "在途互斥需要 projectId 与 targetId",
+    );
+    // 校验在声明之前：连垃圾行都不会留下。
+    expect(harness.operationStore.rows).toEqual([]);
+  });
+
+  // `needs_review` 表示该对象的远端状态有歧义、等人处理：此时继续写入会用未经核对的新数据覆盖待核对的变更。
+  test("needs_review 的在途变更同样阻塞后续修改", async () => {
+    const harness = createHarness();
+    harness.operationStore.rows.push(inFlightRow({ status: "needs_review", step: TICKET_OPERATION_STEP.needsReview }));
+    const operations = createTicketOperationService(harness.operationStore.repository);
+
+    const failure = await operations.begin(modification).catch((error: unknown) => error);
+
+    expect(failure).toBeInstanceOf(TicketChangeInFlightError);
+  });
+
+  // 评论创建不进互斥组：两个成员同时评论同一工单不是冲突，把它算作冲突是纯粹的功能倒退（§5.5）。
+  test("评论创建不被同一工单上的在途修改阻塞", async () => {
+    const harness = createHarness();
+    harness.operationStore.rows.push(inFlightRow());
+    const operations = createTicketOperationService(harness.operationStore.repository);
+
+    const admission = await operations.begin({
+      ...modification,
+      kind: "comment.create",
+      guardKinds: undefined,
+      idempotencyKey: "idem-key-0004",
+      requestHash: "hash-4",
+      intent: { body: "一条评论", issueNumber: "42" },
+    });
+
+    expect(admission.kind).toBe("acquired");
+  });
+
+  // 评论修改的互斥范围是「同一条评论」而不是整个工单：改评论 A 不该阻塞改评论 B（§5.5）。
+  test("评论修改只与同一条评论的在途修改互斥", async () => {
+    const harness = createHarness();
+    harness.operationStore.rows.push(
+      inFlightRow({ id: "operation-comment", kind: "comment.update", targetId: "comment-1" }),
+    );
+    const operations = createTicketOperationService(harness.operationStore.repository);
+
+    const blocked = await operations
+      .begin({
+        ...modification,
+        kind: "comment.update",
+        guardKinds: COMMENT_CHANGE_KINDS,
+        targetId: "comment-1",
+        idempotencyKey: "idem-key-0005",
+        requestHash: "hash-5",
+      })
+      .catch((error: unknown) => error);
+    expect(blocked).toBeInstanceOf(TicketChangeInFlightError);
+
+    const sibling = await operations.begin({
+      ...modification,
+      kind: "comment.update",
+      guardKinds: COMMENT_CHANGE_KINDS,
+      targetId: "comment-2",
+      idempotencyKey: "idem-key-0006",
+      requestHash: "hash-6",
+    });
+    expect(sibling.kind).toBe("acquired");
+  });
+
+  // 同键重试在裁决阶段就拿到未定（202），不会走到互斥那一步：幂等键的主人必须能回来查自己的操作。
+  test("同键重试不被自己的在途行判成 409", async () => {
+    const harness = createHarness();
+    harness.operationStore.rows.push(
+      inFlightRow({
+        id: "operation-same-key",
+        kind: "issue.labels",
+        idempotencyKey: modification.idempotencyKey,
+        requestHash: modification.requestHash,
+        step: TICKET_OPERATION_STEP.dispatching,
+      }),
+    );
+    const operations = createTicketOperationService(harness.operationStore.repository);
+
+    const admission = await operations.begin(modification);
+
+    expect(admission).toMatchObject({ kind: "in_flight", operationId: "operation-same-key" });
+    expect(harness.operationStore.rows).toHaveLength(1);
+  });
+
+  // 同键成功重放优先于他人在途变更：裁决顺序先于互斥，否则一次已完成的提交会因为别人在写而变成 409。
+  test("同键成功重放优先于他人在途变更", async () => {
+    const harness = createHarness();
+    harness.operationStore.rows.push(
+      inFlightRow({
+        id: "operation-succeeded",
+        kind: "issue.labels",
+        status: "succeeded",
+        idempotencyKey: modification.idempotencyKey,
+        requestHash: modification.requestHash,
+        result: { ticket: { number: "42" } },
+      }),
+      inFlightRow(),
+    );
+    const operations = createTicketOperationService(harness.operationStore.repository);
+
+    const admission = await operations.begin(modification);
+
+    expect(admission).toMatchObject({ kind: "replayed", operationId: "operation-succeeded" });
   });
 });

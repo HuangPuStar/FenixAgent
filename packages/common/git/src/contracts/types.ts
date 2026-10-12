@@ -78,12 +78,27 @@ export interface GitComment {
 export interface GitPage<TItem> {
   readonly items: readonly TItem[];
   readonly nextCursor: string | null;
+  /**
+   * 最后一页的页码（`Link` 头 `rel="last"`）；头缺失、无 `last` 或分页参数被上游忽略时为 null。
+   *
+   * 存在的唯一理由：评论按创建时间**升序**返回，而评论区要「先给最新一页」——消费方据此把游标定位到
+   * 末页，一次读就能拿到最新的一页，不必从头翻完整个讨论串（方案 §12 的万级评论门槛）。
+   * 它是 `Link` 头的透出，不是分页事实源；`nextCursor` 仍按 `rel="next"` 判定末页。
+   */
+  readonly lastCursor?: string | null;
 }
 
 /** 列表游标查询；`limit` 的默认值与上限由适配器按方案约定（默认 30、最大 100）夹取。 */
 export interface GitListQuery {
   readonly cursor?: string | null;
   readonly limit?: number;
+  /**
+   * 只返回该时间之后创建/更新的对象（RFC3339）。
+   *
+   * 恢复核对用它把扫描面收窄到本次操作附近的窗口：Forgejo 的列表按创建时间**升序**返回，长讨论串
+   * （万级评论）从第一页翻永远扫不到最新那条。空串按「不提供」处理。
+   */
+  readonly since?: string;
 }
 
 /** Issue 列表查询：`state` / `labels` / `query` 是方案 §8 约定的筛选维度。 */

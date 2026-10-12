@@ -1,5 +1,5 @@
 /**
- * 工单域模块：列表、详情、创建（`/web/tickets/:projectId...`）。
+ * 工单域模块：列表、详情、创建与三种写动作（`/web/tickets/:projectId...`）。
  *
  * 类型逐字段对应后端 `TicketSummaryViewSchema` / `TicketDetailViewSchema` / `TicketListResponseSchema` /
  * `TicketResponseSchema` / `TicketUncertainResponseSchema`（本包 `src/schemas/ticket.schema.ts`）。两处与
@@ -64,9 +64,16 @@ interface TicketSummaryDto {
   syncStatus: TicketSyncStatus;
 }
 
-/** 后端返回的详情，与 `TicketDetailViewSchema` 逐字段一致（不含回填字段）。 */
+/**
+ * 后端返回的详情，与 `TicketDetailViewSchema` 逐字段一致（不含回填字段）。
+ *
+ * `pendingOperationId` 是「未确认的同工单变更」的可见载体（裁定三.15）：非空表示该工单上有一笔
+ * 未终结的写（`pending` / `dispatching` / `uncertain` / `needs_review`），此时服务端会拒绝后续修改。
+ * 它必须来自服务端——纯内存的 202 状态在刷新后就消失了，用户只能靠一次注定失败的写才发现被阻塞。
+ */
 interface TicketDetailDto extends TicketSummaryDto {
   body: string;
+  pendingOperationId: string | null;
 }
 
 /** 列表行（含回填的 {@link TicketSummary.projectId}），供列表页直接渲染与建链接。 */
@@ -78,9 +85,13 @@ export interface TicketSummary extends TicketSummaryDto {
   readonly projectId: string;
 }
 
-/** 详情：列表行之上补**已剥离身份头**的正文（身份头是服务端协议头，不渲染给人看）。 */
+/**
+ * 详情：列表行之上补**已剥离身份头**的正文（身份头是服务端协议头，不渲染给人看）；
+ * `pendingOperationId` 非空时该工单的写入口必须全部禁用（服务端也会拒绝，界面提前告知）。
+ */
 export interface TicketDetail extends TicketSummary {
   body: string;
+  pendingOperationId: string | null;
 }
 
 /** 列表页：游标分页，`nextCursor` 为 `null` 表示没有下一页；游标对前端是不透明字符串。 */
@@ -127,8 +138,35 @@ export interface TicketWriteAccepted {
 /** 创建响应：201 工单本体，202 受理体；判别用 `web/lib/ticket-write-outcome.ts` 的类型守卫。 */
 export type TicketCreateResult = TicketCreateOutcome | TicketWriteAccepted;
 
-/** 后端创建响应（201）：`ticket` 尚未回填 `projectId`。 */
-interface TicketCreateOutcomeDto {
+/**
+ * 工单字段更新：只发**本次动作涉及的字段**，不做全字段回写——页面里的旧标题/旧正文与远端最新内容
+ * 可能已不同，全量回写会把一次冲突变成静默覆盖（服务端只能靠版本挡住，却会凭空制造冲突）。
+ */
+export interface TicketUpdateBody {
+  /** 提交那一刻取到的 {@link TicketDetail.version}，不是打开表单时的快照。 */
+  expectedVersion: string;
+  title?: string;
+  body?: string;
+  /** `null` = 取消指派；省略 = 不改（两者语义不同，不得用 `||` 兜默认）。 */
+  assigneeId?: string | null;
+  state?: TicketState;
+}
+
+/** 标签挂载请求体：`labelIds` 是**目标集合的全量列表**（不是增量），空数组表示清空标签。 */
+export interface TicketLabelSetBody {
+  labelIds: string[];
+  expectedVersion: string;
+}
+
+/** 工单级写的统一结果：200 带新视图，202 带受理体（判别用 `isUncertainAccepted`）。 */
+export type TicketWriteResult = { ticket: TicketDetail; operationId: string } | TicketWriteAccepted;
+
+/**
+ * 后端写响应（200/201）：`{ ticket, operationId }`，`ticket` 尚未回填 `projectId`。
+ * 创建、修改、标签三条路径的后端形状完全一致，共用一份私有 DTO——各写一份会让「202 与 200 靠
+ * `status` 的存在性区分」这个前提在三条路径上各自漂移。
+ */
+interface TicketWriteOutcomeDto {
   ticket: TicketDetailDto;
   operationId: string;
 }
@@ -150,6 +188,17 @@ function attachDetailProjectId(projectId: string, ticket: TicketDetailDto): Tick
 /** 失败信封原样透传：工单错误不携带附加 `data`（`error.code` 才是调用方的分支依据）。 */
 function passthroughFailure(response: ApiResponse<unknown>): { success: false; error: ApiResponse<unknown>["error"] } {
   return { success: false, error: response.error };
+}
+
+/**
+ * 把写响应整形为前端结果：202 原样透传，200/201 回填 `projectId` 后返回新视图。
+ *
+ * 两种形状靠 `status` 的**存在性**区分：202 受理体带 `status`，工单本体只有 `state`（各自的 schema 已把
+ * 这个区分钉死在类型上，故不需要额外的值判别）；调用方对拿到手的结果用 `isUncertainAccepted` 再判别一次。
+ */
+function toWriteResult(projectId: string, outcome: TicketWriteOutcomeDto | TicketWriteAccepted): TicketWriteResult {
+  if ("status" in outcome) return outcome;
+  return { operationId: outcome.operationId, ticket: attachDetailProjectId(projectId, outcome.ticket) };
 }
 
 export const ticketApi = {
@@ -184,21 +233,56 @@ export const ticketApi = {
     body: TicketCreateBody,
     idempotencyKey: string,
   ): Promise<ApiResponse<TicketCreateResult>> => {
-    const response = await request<TicketCreateOutcomeDto | TicketWriteAccepted>("/web/tickets/:projectId", {
+    const response = await request<TicketWriteOutcomeDto | TicketWriteAccepted>("/web/tickets/:projectId", {
       method: "POST",
       params: { projectId },
       body,
       headers: { "Idempotency-Key": idempotencyKey },
     });
     if (!response.success || response.data === undefined) return passthroughFailure(response);
-    const outcome = response.data;
-    // 两种响应形状靠 `status` 的**存在性**区分：202 受理体带 `status`，201 工单本体只有 `state`
-    //（各自的 schema 已把这个区分钉死在类型上，故不需要额外的值判别）。只有 201 需要回填 projectId；
-    // 调用方对拿到手的结果用 `web/lib/ticket-write-outcome.ts` 的 `isUncertainAccepted` 做判别。
-    if ("status" in outcome) return { success: true, data: outcome };
-    return {
-      success: true,
-      data: { operationId: outcome.operationId, ticket: attachDetailProjectId(projectId, outcome.ticket) },
-    };
+    return { success: true, data: toWriteResult(projectId, response.data) };
+  },
+
+  /**
+   * 修改工单（标题 / 描述 / 负责人 / 状态）。请求体只带本次动作的字段 + `expectedVersion`；
+   * 服务端按「回源内容指纹」比对版本，不符即 409 `VERSION_CONFLICT` 且不产生任何写入。
+   */
+  update: async (
+    projectId: string,
+    number: string,
+    body: TicketUpdateBody,
+    idempotencyKey: string,
+  ): Promise<ApiResponse<TicketWriteResult>> => {
+    const response = await request<TicketWriteOutcomeDto | TicketWriteAccepted>("/web/tickets/:projectId/:number", {
+      method: "PATCH",
+      params: { projectId, number },
+      body,
+      headers: { "Idempotency-Key": idempotencyKey },
+    });
+    if (!response.success || response.data === undefined) return passthroughFailure(response);
+    return { success: true, data: toWriteResult(projectId, response.data) };
+  },
+
+  /**
+   * 挂载工单标签（全量集合语义）。标签参与内容指纹，因此同样要 `expectedVersion`：不带它就会静默覆盖
+   * 他人对标签的并发修改。上限由服务端（`LABEL_MAX_COUNT`）最终拒绝，前端只做提前告知。
+   */
+  setLabels: async (
+    projectId: string,
+    number: string,
+    body: TicketLabelSetBody,
+    idempotencyKey: string,
+  ): Promise<ApiResponse<TicketWriteResult>> => {
+    const response = await request<TicketWriteOutcomeDto | TicketWriteAccepted>(
+      "/web/tickets/:projectId/:number/labels",
+      {
+        method: "PUT",
+        params: { projectId, number },
+        body,
+        headers: { "Idempotency-Key": idempotencyKey },
+      },
+    );
+    if (!response.success || response.data === undefined) return passthroughFailure(response);
+    return { success: true, data: toWriteResult(projectId, response.data) };
   },
 };

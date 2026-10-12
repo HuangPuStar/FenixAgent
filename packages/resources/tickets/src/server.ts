@@ -15,22 +15,37 @@
 export { TICKET_PROJECT_RESOURCE_TYPE, ticketProjectResource } from "./server/access/ticket-project-resource";
 export { createTicketsWebRoutes } from "./server/assembly";
 export {
+  AssigneeNotMemberError,
   GitUnavailableError,
   IdempotencyConflictError,
   RepositoryConflictError,
+  TicketChangeInFlightError,
   TicketsPausedError,
+  TicketWriteNotAppliedError,
+  UnknownLabelError,
   VersionConflictError,
 } from "./server/errors";
+export type {
+  TicketCommentFacadeApi,
+  TicketCommentWriteOutcomeView,
+} from "./server/facades/ticket-comment-facade";
 export type {
   TicketActorView,
   TicketCreateOutcome,
   TicketDetailView,
+  TicketEditOutcomeView,
   TicketFacadeApi,
   TicketListPage,
   TicketListQuery,
   TicketOperationView,
   TicketSummaryView,
+  TicketUpdateInput,
 } from "./server/facades/ticket-facade";
+export type {
+  TicketLabelFacadeApi,
+  TicketLabelWriteInput,
+  TicketLabelWriteOutcomeView,
+} from "./server/facades/ticket-label-facade";
 export type {
   TicketProjectFacadeApi,
   TicketProjectOverview,
@@ -38,6 +53,13 @@ export type {
   TicketProvisionInput,
   TicketProvisionOutcome,
 } from "./server/facades/ticket-project-facade";
+export type {
+  TicketCommentPageView,
+  TicketCommentView,
+  TicketMemberPageView,
+  TicketMemberView,
+  TicketProjectLabelView,
+} from "./server/facades/ticket-view";
 export { createTicketsServerModule, type TicketsModuleDeps, type TicketsServerModule } from "./server/module";
 export type { WebTicketRouteDependencies } from "./server/routes/dependencies";
 export { getTicketsServerModule, installTicketsServerModule, resetTicketsServerModule } from "./server/runtime";

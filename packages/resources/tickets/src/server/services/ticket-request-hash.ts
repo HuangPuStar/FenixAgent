@@ -29,6 +29,36 @@ export function projectProvisionTargetPath(): string {
   return "/web/ticket-projects/default";
 }
 
+/** 修改工单（标题/描述/负责人/状态）的目标路径。 */
+export function issueUpdateTargetPath(projectId: string, issueNumber: string): string {
+  return `/web/tickets/${projectId}/${issueNumber}`;
+}
+
+/** 全量设置工单标签集合的目标路径（与工单本体分开：同键的两类请求不得互相判成重放）。 */
+export function issueLabelsTargetPath(projectId: string, issueNumber: string): string {
+  return `/web/tickets/${projectId}/${issueNumber}/labels`;
+}
+
+/** 创建评论的目标路径。 */
+export function commentCreateTargetPath(projectId: string, issueNumber: string): string {
+  return `/web/tickets/${projectId}/${issueNumber}/comments`;
+}
+
+/** 修改评论的目标路径；`commentId` 参与，避免同键在不同评论上被判成重放。 */
+export function commentUpdateTargetPath(projectId: string, issueNumber: string, commentId: string): string {
+  return `/web/tickets/${projectId}/${issueNumber}/comments/${commentId}`;
+}
+
+/** 新建项目标签的目标路径。 */
+export function labelCreateTargetPath(projectId: string): string {
+  return `/web/ticket-projects/${projectId}/labels`;
+}
+
+/** 修改项目标签的目标路径。 */
+export function labelUpdateTargetPath(projectId: string, labelId: string): string {
+  return `/web/ticket-projects/${projectId}/labels/${labelId}`;
+}
+
 /**
  * 计算请求指纹。
  *

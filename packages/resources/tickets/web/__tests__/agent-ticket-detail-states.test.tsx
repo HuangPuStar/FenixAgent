@@ -16,6 +16,7 @@
 import { afterAll, afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { UI_COMPONENTS_NS, uiComponentsResources } from "@fenix/ui-components/i18n";
 import { initializeHappyDomWindow } from "@fenix/ui-components/testing";
+import { OrgSessionProvider } from "@fenix/web-runtime/contexts/org-session";
 import {
   createMemoryHistory,
   createRootRoute,
@@ -106,6 +107,15 @@ const TEXT = ticketsResources.zh;
 // 被测页面必须在注入 DOM 全局之后动态加载：它的静态依赖链里有 streamdown（模块求值期读全局 DOM）。
 const { AgentTicketDetailPage } = await import("../pages/agent-panel/pages/AgentTicketDetailPage");
 
+/**
+ * 组织/会话上下文挂**真实** `OrgSessionProvider`（前端合同 §4.5）：详情页的评论编辑入口按
+ * `viewer.userId` 判定「是不是作者本人」；`useOrgSession()` 不在 Provider 内会**抛错**（契约刻意不回落
+ * 默认值），因此用例必须自己提供投影。取值与用例夹具对齐：作者的 `id` 是 `user-1`，会话里的 `userId`
+ * 同样给 `user-1`（本人评论显示编辑入口）；`isOwner: false` 更贴近普通成员的真实视角——写入口一律
+ * 不按身份隐藏（只有评论编辑按作者精确控制），服务端才是判定点。
+ */
+const ORG_SESSION = { organizationId: "org-1", userId: "user-1", isOwner: false, pending: false };
+
 const PROJECT_ID = "11111111-1111-4111-8111-111111111111";
 const NUMBER = "42";
 
@@ -126,6 +136,9 @@ type StubResponse = { status: number; body: unknown };
 let detailResponses: StubResponse[] = [];
 let detailCalls = 0;
 
+/** 已发出的请求（方法 + URL）：待确认态用例要断言「渲染快照里的未确认写不会偷偷带出请求」。 */
+let recordedCalls: { url: string; method: string }[] = [];
+
 function jsonResponse({ status, body }: StubResponse): Response {
   return {
     ok: status >= 200 && status < 300,
@@ -137,10 +150,19 @@ function jsonResponse({ status, body }: StubResponse): Response {
   } as unknown as Response;
 }
 
+/** 评论首屏：空页。本文件只覆盖详情自身的状态分支，评论行为归评论区自己的用例。 */
+function commentsPage(): StubResponse {
+  return { status: 200, body: { success: true, data: { items: [], nextCursor: null } } };
+}
+
 function stubFetch(): () => void {
   const original = globalThis.fetch;
-  globalThis.fetch = (async (input: RequestInfo | URL) => {
+  globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
     const url = typeof input === "string" ? input : input.toString();
+    recordedCalls.push({ url, method: init?.method ?? "GET" });
+    // 详情页挂载时会取评论首屏（页面既有行为）。这条分支必须先判：`.../comments` 也以详情 URL 为前缀，
+    // 落到下面那条会拿详情响应冒充评论页（两者形状不同，页面会在渲染评论列表时崩）。
+    if (url.startsWith(`/web/tickets/${PROJECT_ID}/${NUMBER}/comments`)) return jsonResponse(commentsPage());
     if (!url.startsWith(`/web/tickets/${PROJECT_ID}/${NUMBER}`)) throw new Error(`未预期的请求：${url}`);
     const response = detailResponses[Math.min(detailCalls, detailResponses.length - 1)];
     detailCalls += 1;
@@ -176,6 +198,8 @@ function detailSuccess(overrides: Record<string, unknown> = {}): StubResponse {
           syncedAt: "2026-10-12T08:00:01.000Z",
           syncStatus: "ready",
           body: "复现步骤：点击登录后页面空白。",
+          // 无在途写：写入口可用。待确认态的用例由 `overrides` 换成具体的 operationId。
+          pendingOperationId: null,
           ...overrides,
         },
       },
@@ -211,6 +235,7 @@ function createTestRouter() {
 beforeEach(() => {
   detailResponses = [detailSuccess()];
   detailCalls = 0;
+  recordedCalls = [];
   detailProps = { projectId: PROJECT_ID, number: NUMBER };
   restoreFetch = stubFetch();
   // 失败用例会经 `request()` 的失败日志与页面的 onError 打屏：静音它们，避免预期间的错误输出
@@ -246,7 +271,15 @@ async function renderDetail(): Promise<void> {
     root = createRoot(container);
   });
   await act(async () => {
-    root.render(createElement(I18nextProvider, { i18n }, createElement(RouterProvider, { router })));
+    // Provider 链用 JSX 而不是 `createElement` 的第三参：Provider 的 props 类型把 `children` 标成必填，
+    // 走第三参时 TS 不接受（TS2769），而把它当 prop 传又会撞上 biome 的 `noChildrenProp`。
+    root.render(
+      <OrgSessionProvider value={ORG_SESSION}>
+        <I18nextProvider i18n={i18n}>
+          <RouterProvider router={router} />
+        </I18nextProvider>
+      </OrgSessionProvider>,
+    );
   });
   for (let index = 0; index < 6; index += 1) {
     await act(async () => {
@@ -275,6 +308,11 @@ async function click(button: HTMLButtonElement): Promise<void> {
       await new Promise((resolve) => setTimeout(resolve, 0));
     });
   }
+}
+
+/** 已发出的写请求（非 GET）。待确认态下它必须恒为空：未确认的写不允许再叠加第二笔。 */
+function writeCalls(): { url: string; method: string }[] {
+  return recordedCalls.filter((call) => call.method !== "GET");
 }
 
 describe("AgentTicketDetailPage 详情状态", () => {
@@ -361,5 +399,54 @@ describe("AgentTicketDetailPage 详情状态", () => {
     expect(text()).toContain(TEXT.detail.externalAuthorHint);
     // 名字仍然展示（是上游事实），但必须与「待核对」同屏出现。
     expect(text()).toContain("路人甲");
+  });
+
+  // 详情页不只是「读得到」：页头必须同时给出两个写入口（编辑 / 关闭工单），正文下方必须挂出评论区
+  // 标题与空态。少任何一样，用户看到的就是「读得到、改不了」或「读得到、说不了话」的页面。
+  test("成功态同时给出编辑 / 关闭入口与评论区的标题和空态", async () => {
+    await renderDetail();
+
+    expect(buttonByText(TEXT.action.edit)).toBeDefined();
+    expect(buttonByText(TEXT.action.close)).toBeDefined();
+    expect(text()).toContain(TEXT.comment.sectionTitle);
+    expect(text()).toContain(TEXT.comment.empty);
+    // 待确认横幅只在真有待确认的写时出现（快照 `pendingOperationId` 为 null 就不许常驻）。
+    expect(text()).not.toContain(TEXT.write.uncertainTitle);
+  });
+
+  // 快照带着未确认的写（`pendingOperationId` 非空）时，三块写入口必须**一起**锁上：页头的「编辑」「关闭工单」
+  // 与评论框（输入域 + 发表评论）。少锁一处就自相矛盾——服务端同一工单只接受一笔未确认的写。刷新是读路径，
+  // 不受影响：用户正是靠它取回最新快照。禁用必须是真禁用：点它连请求都不许发出去。
+  test("存在待确认写时三个写入口一并禁用，读路径不受影响", async () => {
+    detailResponses = [detailSuccess({ pendingOperationId: "op-9" })];
+    await renderDetail();
+
+    const edit = buttonByText(TEXT.action.edit);
+    const close = buttonByText(TEXT.action.close);
+    const submit = buttonByText(TEXT.comment.submit);
+    const textarea = container.querySelector(`textarea[aria-label="${TEXT.comment.placeholder}"]`);
+    expect(edit?.disabled).toBe(true);
+    expect(close?.disabled).toBe(true);
+    expect(submit?.disabled).toBe(true);
+    expect((textarea as HTMLTextAreaElement | null)?.disabled).toBe(true);
+    expect(buttonByText(TEXT.action.refresh)?.disabled).toBe(false);
+
+    const before = recordedCalls.length;
+    await click(close as HTMLButtonElement);
+    expect(recordedCalls.length).toBe(before);
+    expect(writeCalls()).toEqual([]);
+  });
+
+  // 待确认态来自**快照本身**（跨刷新可见，前端合同 §6.4）：详情返回 `pendingOperationId` 后，首屏就要挂出
+  // 横幅与「核对结果」入口，且不得为此发写请求或自动核对——核对是用户的显式动作（T02 决策 D3：不轮询）。
+  test("快照带待确认操作时首屏即挂出横幅，且不自动发写请求", async () => {
+    detailResponses = [detailSuccess({ pendingOperationId: "op-9" })];
+    await renderDetail();
+
+    expect(text()).toContain(TEXT.write.uncertainTitle);
+    expect(text()).toContain(TEXT.write.uncertainHint);
+    expect(buttonByText(TEXT.write.check)).toBeDefined();
+    expect(writeCalls()).toEqual([]);
+    expect(recordedCalls.filter((call) => call.url.startsWith("/web/ticket-operations/"))).toEqual([]);
   });
 });

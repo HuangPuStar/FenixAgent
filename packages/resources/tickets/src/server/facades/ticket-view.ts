@@ -14,10 +14,13 @@
  *    不得据其名称做任何权限判断（判定一律在服务端）。
  */
 
-import type { UserDisplayInfo } from "@fenix/platform-sdk";
+import type { OrganizationMemberRef, UserDisplayInfo } from "@fenix/platform-sdk";
+import { TICKET_OPERATION_KINDS } from "../../schemas/ticket-operation.schema";
 import type { TicketIndexRow } from "../repositories/ticket-index";
 import type { TicketOperationRow } from "../repositories/ticket-operations";
 import { type AuthorResolution, FALLBACK_ACTOR_NAME } from "../services/ticket-author";
+import type { TicketCommentFacts } from "../services/ticket-comment-service";
+import type { TicketLabelFacts } from "../services/ticket-label-service";
 import type { TicketOperationKind } from "../services/ticket-operation-service";
 import type { TicketIssueFacts } from "../services/ticket-service";
 
@@ -54,6 +57,63 @@ export interface TicketSummaryView {
 export interface TicketDetailView extends TicketSummaryView {
   /** 已剥离身份头的用户正文；不含 YAML 头部（前端不渲染协议头）。 */
   readonly body: string;
+  /**
+   * 本工单上未终结的修改操作 ID（`issue.update` / `issue.labels` 且状态未到终态），没有则为 `null`。
+   *
+   * 这是「未确认变更阻止后续修改」在**刷新后**仍然可见的唯一载体（裁定三.15）：202 与内存态都会随
+   * 页面刷新消失，而服务端此刻已经在拒绝这次修改。它必须与 `begin` 的在途互斥**同谓词**，否则会出现
+   * 「界面没提示、写下去却被拒」或反过来的假阻塞。
+   */
+  readonly pendingOperationId: string | null;
+}
+
+/**
+ * 评论视图。`version` 是评论内容指纹（编辑时的 `expectedVersion`），**必须**随列表与写响应返回：
+ * 前端拿不到它就只能先失败一次 409 才知道内容变了。
+ */
+export interface TicketCommentView {
+  readonly commentId: string;
+  readonly issueNumber: string;
+  readonly body: string;
+  readonly author: TicketActorView;
+  readonly version: string;
+  readonly providerUpdatedAt: string | null;
+}
+
+/** 评论列表页：`items` 内部最新在前，`nextCursor` 指向更早一页（分页机制见 `ticket-comment-page.ts`）。 */
+export interface TicketCommentPageView {
+  readonly items: readonly TicketCommentView[];
+  readonly nextCursor: string | null;
+}
+
+/**
+ * 项目标签目录项：工单视图里的标签投影再加 `description`。
+ *
+ * 与 {@link TicketLabelView} 分开而不是加可选字段：前者来自索引行（只有 ID 与上游回读的名称颜色），
+ * 后者来自标签目录回源，多出的描述只对目录有意义；合并会让「列表里的标签为什么没有描述」变成运行期问题。
+ */
+export interface TicketProjectLabelView {
+  readonly id: string;
+  readonly name: string;
+  readonly color: string | null;
+  readonly description: string | null;
+}
+
+/**
+ * 可指派成员投影（裁定二.6）：只有标识与姓名。
+ *
+ * 身份目录的其它读取路径（`searchUsers` / `listOrganizationsWithMembers`）会带出 email、手机号与账号
+ * 状态；本视图刻意不声明它们，让「PII 不得从这条路由出去」在类型上就是可检查的。
+ */
+export interface TicketMemberView {
+  readonly userId: string;
+  readonly name: string;
+}
+
+export interface TicketMemberPageView {
+  readonly items: readonly TicketMemberView[];
+  /** 同一 `q` 下的命中总数（跨页），界面据此判断还有没有更多。 */
+  readonly total: number;
 }
 
 export interface TicketListPage {
@@ -74,7 +134,8 @@ export interface TicketOperationView {
   readonly updatedAt: string;
 }
 
-const OPERATION_KIND_VALUES: readonly TicketOperationKind[] = ["issue.create", "project.provision"];
+/** 操作类型的取值域：与协议 schema 共用同一份列表（定义处见 `schemas/ticket-operation.schema.ts`）。 */
+const OPERATION_KIND_VALUES: readonly TicketOperationKind[] = TICKET_OPERATION_KINDS;
 const OPERATION_STATUS_VALUES: readonly TicketOperationStatus[] = [
   "pending",
   "dispatching",
@@ -113,6 +174,15 @@ export function collectIndexActorIds(rows: readonly TicketIndexRow[]): string[] 
   return [...ids];
 }
 
+/** 评论列表要批量解析展示名的 AOS 主体；一次列表只发一次身份目录查询（未通过核验的评论没有可信主体）。 */
+export function collectCommentActorIds(items: readonly TicketCommentFacts[]): string[] {
+  const ids = new Set<string>();
+  for (const item of items) {
+    if (item.author.source === "aos") ids.add(item.author.authorId);
+  }
+  return [...ids];
+}
+
 /** 核验结论 → 作者视图；`aos` 的展示名取身份目录当前值，缺失时回退写入期快照。 */
 function toActorView(author: AuthorResolution, displayNames: DisplayNames): TicketActorView {
   if (author.source === "external") return { id: null, name: author.authorName, source: "external" };
@@ -146,8 +216,17 @@ export function toTicketSummaryView(row: TicketIndexRow, displayNames: DisplayNa
   };
 }
 
-/** 详情事实（回源 + 核验后的结果）→ 详情视图。 */
-export function toTicketDetailView(facts: TicketIssueFacts, displayNames: DisplayNames): TicketDetailView {
+/**
+ * 详情事实（回源 + 核验后的结果）→ 详情视图。
+ *
+ * `pendingOperationId` 由调用方单独查得后传入而不是由本函数去查：展示名解析与在途查询是两次无关的
+ * 凭据读取，合并会让「投影」掺进 IO（也与本文件「纯投影」的定位冲突）。
+ */
+export function toTicketDetailView(
+  facts: TicketIssueFacts,
+  displayNames: DisplayNames,
+  pendingOperationId: string | null,
+): TicketDetailView {
   return {
     issueNumber: facts.issueNumber,
     title: facts.title,
@@ -160,7 +239,35 @@ export function toTicketDetailView(facts: TicketIssueFacts, displayNames: Displa
     syncedAt: facts.syncedAt,
     syncStatus: facts.syncStatus,
     body: facts.body,
+    pendingOperationId,
   };
+}
+
+/** 评论事实（已剥离身份头 + 已核验作者）→ 评论视图。 */
+export function toTicketCommentView(facts: TicketCommentFacts, displayNames: DisplayNames): TicketCommentView {
+  return {
+    commentId: facts.commentId,
+    issueNumber: facts.issueNumber,
+    body: facts.body,
+    author: toActorView(facts.author, displayNames),
+    version: facts.version,
+    providerUpdatedAt: facts.providerUpdatedAt,
+  };
+}
+
+/** 标签事实（上游投影）→ 目录视图；字段同名同义，不做任何加工。 */
+export function toTicketProjectLabelView(facts: TicketLabelFacts): TicketProjectLabelView {
+  return { id: facts.id, name: facts.name, color: facts.color, description: facts.description };
+}
+
+/**
+ * 身份目录的成员投影 → 成员视图。
+ *
+ * 这一层是**白名单搬运**而不是展开：只挑 `userId` 与 `name`，将来身份目录给投影加字段（例如头像）
+ * 也不会自动流到 `/web` 上。改写此处必须同时评估「新字段是否属于该组织可见的公开信息」。
+ */
+export function toTicketMemberView(ref: OrganizationMemberRef): TicketMemberView {
+  return { userId: ref.userId, name: ref.name };
 }
 
 /** 负责人视图：AOS 主体优先身份目录，外部账号（远端直写）按 `external` 呈现。 */
@@ -178,7 +285,7 @@ function toAssigneeView(facts: TicketIssueFacts, displayNames: DisplayNames): Ti
   return null;
 }
 
-/** 账本行 → 操作视图；T02 只有「建工单」与「开通项目」两种操作，取值域由视图枚举固定。 */
+/** 账本行 → 操作视图；取值域由视图枚举与协议 schema 共用（新增 kind/status 必须同批，否则这里直接抛错）。 */
 export function toTicketOperationView(row: TicketOperationRow): TicketOperationView {
   return {
     operationId: row.id,

@@ -1,4 +1,4 @@
-import { and, asc, eq, ilike, inArray, or } from "drizzle-orm";
+import { and, asc, count, eq, ilike, inArray, or, sql } from "drizzle-orm";
 import { member, organization, user } from "../../db/schema";
 import { getIdentityDatabase } from "../db";
 import { normalizeChineseMainlandPhoneNumber } from "../services/phone-number";
@@ -146,6 +146,60 @@ export async function findMembershipId(organizationId: string, userId: string): 
     .where(and(eq(member.organizationId, organizationId), eq(member.userId, userId)))
     .limit(1);
   return rows[0]?.id;
+}
+
+/**
+ * 组织成员的分页读取结果。
+ *
+ * 只含 `userId` 与 `name` 两列：这个形状专供「成员候选集」这类只需标识与展示名的消费方，
+ * 有意与 {@link OrganizationMemberRow} 的全字段展平区分开。新增列等于把身份信息扩散给所有调用方，
+ * 需要邮箱/手机号的系统管理面必须另走既有查询。
+ */
+export interface OrganizationMemberPageRow {
+  readonly userId: string;
+  readonly name: string;
+}
+
+/**
+ * 分页读取一个组织的成员（按姓名、用户 ID 升序），并返回同谓词下的总数。
+ *
+ * 组织谓词拼进 SQL 而不是读到内存再过滤：跨组织的行不可能被本函数返回。`keyword` 非空白时对姓名做
+ * **子串匹配**（`strpos(lower(name), lower(keyword)) > 0`，大小写不敏感，trim 口径与 `searchSystemUsers`
+ * 一致），不匹配邮箱或手机号——它们是账号标识，不该成为成员下拉框的检索维度。
+ *
+ * 这里刻意不复用 `searchSystemUsers` 的 `ilike '%…%'`：那是通配符语义，用户输入里的 `%` / `_` 会被当成
+ * 模式字符（只输入 `%` 即列出全部成员），而本方法是下拉框的子串过滤，输入必须整体按字面量匹配。分页与
+ * `count()` 同条件，`limit`/`offset` 的边界由调用方按契约（`page` 从 1 起、`pageSize` 1..100）校验，
+ * 本层不做静默裁剪。
+ */
+export async function listOrganizationMemberPage(input: {
+  organizationId: string;
+  keyword?: string;
+  page: number;
+  pageSize: number;
+}): Promise<{ items: OrganizationMemberPageRow[]; total: number }> {
+  const db = getIdentityDatabase();
+  const keyword = input.keyword?.trim();
+  // 不用 `ilike`：通配符语义会让 `%` / `_` 变成模式字符（`q=%` 返回全部成员），`strpos` 只做字面量子串匹配。
+  const condition = keyword
+    ? and(eq(member.organizationId, input.organizationId), sql`strpos(lower(${user.name}), lower(${keyword})) > 0`)
+    : eq(member.organizationId, input.organizationId);
+
+  const [items, totalRows] = await Promise.all([
+    db
+      .select({ userId: user.id, name: user.name })
+      .from(member)
+      .innerJoin(user, eq(member.userId, user.id))
+      .where(condition)
+      .orderBy(asc(user.name), asc(user.id))
+      .limit(input.pageSize)
+      .offset((input.page - 1) * input.pageSize),
+    db.select({ value: count() }).from(member).innerJoin(user, eq(member.userId, user.id)).where(condition),
+  ]);
+  const total = totalRows[0];
+  // `count()` 在有 WHERE 的聚合下恒返回一行；缺行说明驱动异常，按 0 处理会让分页静默错位，故显式失败。
+  if (!total) throw new Error("organization member count returned no row");
+  return { items, total: total.value };
 }
 
 /**

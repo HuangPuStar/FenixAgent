@@ -1,5 +1,5 @@
 /**
- * `/web/ticket-projects*` 协议层：组织工单项目的查询、开通与默认项目切换（backend contract §9.1 路由 1–3）。
+ * `/web/ticket-projects*` 协议层：组织工单项目的查询、开通、默认项目切换与可指派成员（backend contract §9.1 路由 1–3 与 §1.1 路由 9）。
  *
  * 只做协议适配：请求体/路径参数的形状校验、把请求交给 Facade、把 Facade 的结果映射成状态码与 `/web` 信封。
  * **授权判定一律不在这里**——「谁能开通、谁能切换」由 `TicketProjectFacade` 经 `AccessControlModule` 判定
@@ -7,12 +7,16 @@
  *
  * 列表对成员开放（读项目是成员的默认动作），开通与切换是管理动作。开通走 202 分支时表示上游结果未定
  * （§8.3），前端据此提示「提交结果确认中」并按 `operationId` 复核，本层不重试、不轮询。
+ *
+ * 成员列表（路由 9）是**收窄投影**：只回 `{userId,name}`，身份目录可能带出的 email / 手机号 / 账号状态
+ * 一律不出现在这条路由（裁定二.6）；它只要求项目 `read`，因为候选人是组织成员公开信息、用于表单下拉。
  */
 
 import { WebErrSchema } from "@fenix/platform-sdk";
 import type { AnyElysia } from "elysia";
 import type * as z from "zod/v4";
-import { TicketUncertainResponseSchema } from "../../../schemas/ticket.schema";
+import { TicketProjectParamsSchema, TicketUncertainResponseSchema } from "../../../schemas/ticket.schema";
+import { TicketMemberListResponseSchema, TicketMemberQuerySchema } from "../../../schemas/ticket-member.schema";
 import {
   TicketProjectOverviewResponseSchema,
   TicketProjectPatchRequestSchema,
@@ -107,6 +111,34 @@ export function registerTicketProjectRoutes(app: AnyElysia): void {
         summary: "切换默认项目或启停组织工单",
         description:
           "defaultProjectId 切换默认项目（目标必须处于可用状态，暂停中的项目设为默认返回 409）；status 启停组织工单（作用在默认项目上）。两者至少提供一项，返回更新后的项目总览。",
+      },
+    },
+  );
+
+  // ── GET /ticket-projects/:projectId/members ──
+  app.get(
+    "/ticket-projects/:projectId/members",
+    ticketHandler<z.infer<typeof TicketProjectParamsSchema>, z.infer<typeof TicketMemberQuerySchema>>(
+      async (route, actor) => ({
+        data: await getTicketsServerModule().projects.listMembers(actor, route.params.projectId, route.query),
+      }),
+    ),
+    {
+      sessionAuth: true,
+      params: TicketProjectParamsSchema,
+      query: TicketMemberQuerySchema,
+      response: {
+        200: TicketMemberListResponseSchema,
+        400: WebErrSchema,
+        401: WebErrSchema,
+        404: WebErrSchema,
+        503: WebErrSchema,
+      },
+      detail: {
+        tags: ["Tickets"],
+        summary: "列出可指派成员",
+        description:
+          "按项目所在组织分页列出可指派成员（工单负责人下拉的数据源），q 对姓名做模糊匹配。只回 { userId, name }：email、手机号与账号状态等敏感字段不在这条路由的投影里。项目不存在或跨组织返回 404。",
       },
     },
   );

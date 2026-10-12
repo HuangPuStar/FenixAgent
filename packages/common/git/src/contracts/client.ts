@@ -48,6 +48,13 @@ export interface GitScopedIssueOperations {
 /** 评论操作。 */
 export interface GitScopedCommentOperations {
   list(issueNumber: string, query?: GitListQuery): Promise<GitPage<GitComment>>;
+  /**
+   * 读取单条评论；评论不属于该仓库或不存在时抛 `NOT_FOUND`。
+   *
+   * 这是**写入之前**唯一能同时拿到评论当前正文与所属工单编号的入口：消费者据此核验「评论确属该工单」
+   * 并算出它的当前版本；在长篇讨论串里用 `list` 逐页找一条评论不可行。
+   */
+  get(commentId: string): Promise<GitComment>;
   create(issueNumber: string, input: CreateCommentInput): Promise<GitComment>;
   edit(commentId: string, input: EditCommentInput): Promise<GitComment>;
 }

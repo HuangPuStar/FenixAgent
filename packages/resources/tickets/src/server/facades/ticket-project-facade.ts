@@ -26,9 +26,8 @@ import {
   AuthorizedResourceFacade,
   type AuthorizedResourceFacadeOptions,
   ConflictError,
-  ForbiddenError,
+  type IdentityDirectory,
   NotFoundError,
-  ResourceAccessDeniedError,
   type ResourceAction,
   type ResourceQueryConstraint,
   type ResourceScopeStore,
@@ -37,7 +36,13 @@ import { ticketProjectResource } from "../access/ticket-project-resource";
 import type { TicketProjectRow } from "../repositories/ticket-projects";
 import type { TicketOperationService } from "../services/ticket-operation-service";
 import type { TicketProjectService } from "../services/ticket-project-service";
-import { type TicketOperationView, toTicketOperationView } from "./ticket-view";
+import { runTicketAuthorized } from "./ticket-action-guard";
+import {
+  type TicketMemberPageView,
+  type TicketOperationView,
+  toTicketMemberView,
+  toTicketOperationView,
+} from "./ticket-view";
 
 export interface TicketProjectView {
   readonly id: string;
@@ -95,6 +100,17 @@ export interface TicketProjectFacadeApi {
     actor: ActorContext,
     input: { projectId?: string; status?: "active" | "paused" },
   ): Promise<TicketProjectOverview>;
+  /**
+   * 可指派成员候选（分页 + 姓名关键词）。
+   *
+   * 只需项目 `read`：候选人是组织成员的公开投影，用于表单下拉，不构成管理动作。返回值**只有**
+   * `{ userId, name }`（裁定二.6）——身份目录里带 email / 手机号 / 账号状态的读取路径不从这里经过。
+   */
+  listMembers(
+    actor: ActorContext,
+    projectId: string,
+    query: { readonly q?: string; readonly page: number; readonly pageSize: number },
+  ): Promise<TicketMemberPageView>;
 }
 
 export interface TicketProjectFacadeDeps {
@@ -103,6 +119,8 @@ export interface TicketProjectFacadeDeps {
   /** 项目领域服务（无授权判断）；同一实例同时被工单 Facade 复用。 */
   readonly projects: TicketProjectService;
   readonly operations: TicketOperationService;
+  /** 成员候选的投影来源；只读 `listOrganizationMembers`（收窄到 ID 与姓名），不参与授权判定。 */
+  readonly identity: IdentityDirectory;
 }
 
 /** 项目行 → 协议视图；`repository` 是开通时写入的坐标快照（展示与排障用，不参与授权）。 */
@@ -143,16 +161,43 @@ function toOverview(rows: readonly TicketProjectRow[]): TicketProjectOverview {
 class TicketProjectFacade extends AuthorizedResourceFacade implements TicketProjectFacadeApi {
   private readonly projects: TicketProjectService;
   private readonly operations: TicketOperationService;
+  private readonly identity: IdentityDirectory;
 
   constructor(options: AuthorizedResourceFacadeOptions, deps: TicketProjectFacadeDeps) {
     super(options);
     this.projects = deps.projects;
     this.operations = deps.operations;
+    this.identity = deps.identity;
   }
 
   async list(actor: ActorContext): Promise<TicketProjectOverview> {
     const access = await this.listConstraint(actor, "read");
     return toOverview(await this.projects.listReadable(access));
+  }
+
+  /**
+   * 成员候选：先按受控读取解析项目（跨组织 → 404，与其它项目路径同形），再按**项目所属组织**查成员。
+   *
+   * 组织取自项目行而不是 `actor.activeOrganizationId`：两者在正常情况下相同，但项目的归属才是「这份候选
+   * 名单服务哪个组织」的权威答案；用 actor 的上下文会让「项目行与 actor 组织不一致」这种异常状态悄悄
+   * 产出一份别组织的成员列表。
+   */
+  async listMembers(
+    actor: ActorContext,
+    projectId: string,
+    query: { readonly q?: string; readonly page: number; readonly pageSize: number },
+  ): Promise<TicketMemberPageView> {
+    const access = await this.listConstraint(actor, "read");
+    const project = await this.projects.findReadable({ access, projectId });
+    if (project === undefined) throw new NotFoundError("工单项目不存在");
+    const page = await this.identity.listOrganizationMembers({
+      organizationId: project.organizationId,
+      ...(query.q === undefined ? {} : { keyword: query.q }),
+      page: query.page,
+      pageSize: query.pageSize,
+    });
+    // 白名单搬运（`toTicketMemberView`）而不是直接展开身份目录的返回值：投影将来加字段也不会自动外泄。
+    return { items: page.items.map(toTicketMemberView), total: page.total };
   }
 
   async provisionDefault(
@@ -241,24 +286,14 @@ class TicketProjectFacade extends AuthorizedResourceFacade implements TicketProj
     return target;
   }
 
-  /** 平台的授权拒绝 → 对外 403；其它错误原样上抛，避免把存储故障伪装成权限问题。 */
+  /** 平台的授权拒绝 → 对外 403；其它错误原样上抛，避免把存储故障伪装成权限问题（收窄实现在共用文件）。 */
   private async requireAction(actor: ActorContext, action: ResourceAction, projectId: string): Promise<void> {
-    try {
-      await this.authorizeAction(actor, action, projectId);
-    } catch (error) {
-      if (error instanceof ResourceAccessDeniedError) throw new ForbiddenError("当前主体无权执行该项目动作");
-      throw error;
-    }
+    await runTicketAuthorized(() => this.authorizeAction(actor, action, projectId), "当前主体无权执行该项目动作");
   }
 
   /** 创建期初始归属的授权拒绝 → 对外 403（成员没有开通项目的动作）。 */
   private async resolveCreateScope(actor: ActorContext) {
-    try {
-      return await this.resolveInitialScope(actor);
-    } catch (error) {
-      if (error instanceof ResourceAccessDeniedError) throw new ForbiddenError("当前主体无权开通工单项目");
-      throw error;
-    }
+    return await runTicketAuthorized(() => this.resolveInitialScope(actor), "当前主体无权开通工单项目");
   }
 }
 

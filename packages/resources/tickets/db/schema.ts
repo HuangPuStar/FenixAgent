@@ -102,6 +102,16 @@ export const ticketOperations = pgTable(
     uniqueIndex("ticket_operations_idempotency_uq").on(table.organizationId, table.actorId, table.idempotencyKey),
     index("ticket_operations_status_idx").on(table.status, table.updatedAt),
     index("ticket_operations_project_idx").on(table.projectId),
+    /**
+     * 在途变更互斥的查询索引（T03 §5.5）：每次写操作都要问一次「同一对象上还有没有未确认的变更」，
+     * 而这张表随写入线性增长，没有索引时该查询会随项目历史全表扫。
+     *
+     * 谓词与 §5.5 的阻塞状态集合逐字一致；终态行不进索引（它们永不参与互斥判定），因此用**部分索引**
+     * 而不是普通复合索引——`status` 是低基数且被写频繁更新的列，普通索引会让每次终态写入都多维护一条。
+     */
+    index("ticket_operations_inflight_idx")
+      .on(table.projectId, table.targetId, table.kind)
+      .where(sql`${table.status} NOT IN ('succeeded','failed')`),
   ],
 );
 

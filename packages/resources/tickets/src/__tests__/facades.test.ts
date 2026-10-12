@@ -31,7 +31,11 @@ import {
 } from "@fenix/platform-sdk/testing";
 import { TicketCreateRequestSchema } from "../schemas/ticket.schema";
 import { OperationNotFoundError, RepositoryOwnerMismatchError, TicketsPausedError } from "../server/errors";
-import { createTicketFacade, type TicketFacadeApi } from "../server/facades/ticket-facade";
+import {
+  createTicketFacade,
+  type TicketFacadeApi,
+  type TicketOperationRecoveryPort,
+} from "../server/facades/ticket-facade";
 import { createTicketProjectFacade, type TicketProjectFacadeApi } from "../server/facades/ticket-project-facade";
 import type { TicketIndexRepository, TicketIndexRow } from "../server/repositories/ticket-index";
 import type { TicketMessageRepository, TicketMessageRow } from "../server/repositories/ticket-messages";
@@ -42,7 +46,8 @@ import type {
   TicketProjectRow,
 } from "../server/repositories/ticket-projects";
 import { buildTicketBody, hashBody, parseTicketBody } from "../server/services/identity-header";
-import { createTicketOperationService } from "../server/services/ticket-operation-service";
+import { createTicketEditService } from "../server/services/ticket-edit-service";
+import { createTicketOperationService, TICKET_OPERATION_STEP } from "../server/services/ticket-operation-service";
 import { createTicketProjectService, reservedRepositoryName } from "../server/services/ticket-project-service";
 import { createTicketService } from "../server/services/ticket-service";
 
@@ -275,7 +280,10 @@ interface OperationStore {
   readonly repository: TicketOperationRepository;
 }
 
-/** 记录型操作账本：复刻 `claim` 的唯一键裁决与 `markDispatching` 的条件更新语义（SQL 侧见 repositories.test.ts）。 */
+/**
+ * 记录型操作账本：复刻 `claim` 的唯一键裁决、`markDispatching` 的条件更新与 `hasInFlightTarget`
+ * 的对象在途谓词（SQL 侧见 repositories.test.ts）。
+ */
 function createOperationStore(): OperationStore {
   const rows: TicketOperationRow[] = [];
   const find = (operationId: string) => rows.find((row) => row.id === operationId);
@@ -284,6 +292,25 @@ function createOperationStore(): OperationStore {
     if (row === undefined) throw new Error("替身账本里没有这条操作");
     return row;
   };
+  /** 在途谓词（`hasInFlightTarget` 与 `findInFlightTargetId` 共用一份，避免替身内部两份判定分叉）。 */
+  const findInFlightOperationId = (input: {
+    readonly projectId: string;
+    readonly targetId: string;
+    readonly kinds: readonly string[];
+    readonly excludeOperationId?: string;
+  }): string | undefined =>
+    rows
+      .filter(
+        (row) =>
+          row.projectId === input.projectId &&
+          row.targetId === input.targetId &&
+          input.kinds.includes(row.kind) &&
+          row.id !== input.excludeOperationId &&
+          // 终态（succeeded / failed）不算在途；`needs_review` 算，与仓储实现的谓词一致。
+          row.status !== "succeeded" &&
+          row.status !== "failed",
+      )
+      .sort((left, right) => right.createdAt.getTime() - left.createdAt.getTime())[0]?.id;
   return {
     rows,
     repository: {
@@ -301,7 +328,7 @@ function createOperationStore(): OperationStore {
           projectId: input.projectId,
           actorId: input.actorId,
           kind: input.kind,
-          targetId: null,
+          targetId: input.targetId ?? null,
           idempotencyKey: input.idempotencyKey,
           requestHash: input.requestHash,
           messageId: input.messageId,
@@ -349,6 +376,33 @@ function createOperationStore(): OperationStore {
       },
       async findByMessageId(messageId) {
         return rows.find((row) => row.messageId === messageId);
+      },
+      // 按主键加锁读（`SELECT ... FOR UPDATE` 的替身）：单进程测试没有并发，语义与仓储一致。
+      async findByIdForUpdate({ operationId }) {
+        return find(operationId);
+      },
+      async hasInFlightTarget(input) {
+        return findInFlightOperationId(input) !== undefined;
+      },
+      // 与 hasInFlightTarget 同谓词（共用同一个局部函数），只多取回命中的操作 ID。
+      async findInFlightTargetId({ projectId, targetId, kinds, excludeOperationId }) {
+        return findInFlightOperationId({ projectId, targetId, kinds, excludeOperationId });
+      },
+      // 复刻单语句 jsonb 追加的结果形状（`result.steps[]` 只是审计轨迹：恢复核对的事实源是
+      // `ticket_operations.step` 列与 `expected_version` / `intent`，全仓没有 `result.steps` 的读取点）。
+      async checkpoint({ operationId, step, expected }) {
+        const row = require(operationId);
+        const result = typeof row.result === "object" && row.result !== null ? { ...row.result } : {};
+        const steps = Array.isArray(result.steps) ? result.steps : [];
+        row.result = { ...result, steps: [...steps, { step, at: FIXTURE_NOW, expected }] };
+      },
+      async findUnsettled({ updatedBefore, limit }) {
+        return rows
+          .filter(
+            (row) => (row.status === "dispatching" || row.status === "uncertain") && row.updatedAt <= updatedBefore,
+          )
+          .sort((left, right) => left.updatedAt.getTime() - right.updatedAt.getTime())
+          .slice(0, limit);
       },
     },
   };
@@ -401,6 +455,15 @@ function createMessageStore(): MessageStore {
       },
       async findManyByMessageIds({ projectId, messageIds }) {
         return rows.filter((row) => row.projectId === projectId && messageIds.includes(row.messageId));
+      },
+      // 正文改写只换哈希与版本：作者与作者快照保持不变（编辑不转移作者）。
+      async updateRevision({ id, bodyHash, lastEditorId }) {
+        const row = rows.find((candidate) => candidate.id === id);
+        if (row === undefined) throw new Error("ticket_messages 归属行不存在，无法刷新正文版本");
+        row.bodyHash = bodyHash;
+        row.revision += 1;
+        row.lastEditorId = lastEditorId;
+        return row;
       },
     },
   };
@@ -586,6 +649,7 @@ function createGitHarness() {
     },
     comments: {
       list: async () => unused("comments.list"),
+      get: async () => unused("comments.get"),
       create: async () => unused("comments.create"),
       edit: async () => unused("comments.edit"),
     },
@@ -647,7 +711,7 @@ interface Harness {
 }
 
 /** 装配被测的两条 Facade：真实的领域服务与操作账本服务 + 注入的仓储与 Git 替身。 */
-function createHarness(): Harness {
+function createHarness(options: { readonly recovery?: TicketOperationRecoveryPort } = {}): Harness {
   const git = createGitHarness();
   const constraints: ResourceQueryConstraint[] = [];
   const accessControl = createFakeAccessControl(constraints);
@@ -667,6 +731,13 @@ function createHarness(): Harness {
     operations,
     git: git.service,
   });
+  const edit = createTicketEditService({
+    messages: messageStore.repository,
+    index: indexStore.repository,
+    operations,
+    git: git.service,
+    identity: getIdentityDirectory(),
+  });
   return {
     git,
     projectStore,
@@ -678,6 +749,7 @@ function createHarness(): Harness {
       scopeStore: unusedScopeStore(),
       projects: projectService,
       operations,
+      identity: getIdentityDirectory(),
     }),
     tickets: createTicketFacade({
       accessControl,
@@ -686,6 +758,9 @@ function createHarness(): Harness {
       projects: projectService,
       operations,
       service: ticketService,
+      edit,
+      // 缺省不装配恢复核对：既有用例因此走 T02 的「只读账本」语义。
+      ...(options.recovery === undefined ? {} : { recovery: options.recovery }),
     }),
   };
 }
@@ -1039,5 +1114,70 @@ describe("工单 Facade — 开通编排", () => {
     await expect(harness.tickets.getOperation(testActor("user_admin", undefined), outcome.operationId)).rejects.toThrow(
       OperationNotFoundError,
     );
+  });
+});
+
+describe("工单 Facade — 操作读路径上的恢复核对", () => {
+  /** 未定状态的账本行：`dispatching` 表示崩溃/在途残留，是恢复核对的触发条件之一（§8.1）。 */
+  function operationRow(overrides: Partial<TicketOperationRow> = {}): TicketOperationRow {
+    return {
+      id: randomUUID(),
+      organizationId: ORG_A,
+      projectId: PROJECT_A,
+      actorId: "user_member",
+      kind: "issue.create",
+      targetId: null,
+      idempotencyKey: IDEMPOTENCY_KEY,
+      requestHash: "hash-1",
+      messageId: "msg_pending",
+      expectedVersion: null,
+      intent: { title: "预览页打不开" },
+      step: TICKET_OPERATION_STEP.dispatching,
+      status: "dispatching",
+      result: null,
+      createdAt: FIXTURE_NOW,
+      updatedAt: FIXTURE_NOW,
+      ...overrides,
+    };
+  }
+
+  // 未定状态触发一次恢复核对：返回给调用方的是核对后的账本行，而不是核对前的旧快照（§8.1）。
+  test("未定状态触发恢复核对并返回核对结果", async () => {
+    const row = operationRow();
+    const reconciled: TicketOperationRow = { ...row, status: "succeeded", step: "index_written", targetId: "42" };
+    const seen: string[] = [];
+    const harness = createHarness({
+      recovery: {
+        async reconcile({ organizationId, actorId, operationId }) {
+          seen.push(`${organizationId}:${actorId}:${operationId}`);
+          return { operation: reconciled };
+        },
+      },
+    });
+    harness.operationStore.rows.push(row);
+
+    const viewed = await harness.tickets.getOperation(testActor("user_member", ORG_A, "member"), row.id);
+
+    expect(seen).toEqual([`${ORG_A}:user_member:${row.id}`]);
+    expect(viewed).toMatchObject({ operationId: row.id, status: "succeeded", targetId: "42" });
+  });
+
+  // 终态不触发核对：已定论的操作再回源只会白花一次上游调用（§8.1 只核对 dispatching / uncertain）。
+  test("终态操作不触发恢复核对", async () => {
+    const harness = createHarness({
+      recovery: {
+        async reconcile() {
+          throw new Error("终态操作不应触发恢复核对");
+        },
+      },
+    });
+    harness.operationStore.rows.push(operationRow({ status: "succeeded", step: "index_written" }));
+
+    const viewed = await harness.tickets.getOperation(
+      testActor("user_member", ORG_A, "member"),
+      harness.operationStore.rows[0]?.id ?? "",
+    );
+
+    expect(viewed.status).toBe("succeeded");
   });
 });

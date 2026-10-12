@@ -145,6 +145,10 @@ export function createScopedClientFromBinding(input: CreateScopedClientFromBindi
         guard(OPERATIONS.commentsRead);
         return client.listComments(repository, issueNumber, query ?? {});
       },
+      async get(commentId: string): Promise<GitComment> {
+        guard(OPERATIONS.commentsRead);
+        return client.getComment(repository, commentId);
+      },
       async create(issueNumber: string, commentInput: CreateCommentInput): Promise<GitComment> {
         guard(OPERATIONS.commentsWrite);
         return client.createComment(repository, issueNumber, commentInput.body);

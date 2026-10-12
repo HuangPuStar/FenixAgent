@@ -88,8 +88,9 @@ describe("tickets 字典完整性与自持性", () => {
   // 两份字典键集必须逐字一致：缺键的语言会静默回显 key。
   test("en / zh 键集完全一致", () => {
     expect([...zhFlat.keys()].sort()).toEqual([...enFlat.keys()].sort());
-    // 58 是当前真实键数（2026-10-12，删掉无消费方的 sync.syncing 后）；低于它说明 flatten 没走到 nested 层，后续断言会假绿。
-    expect(enFlat.size).toBeGreaterThanOrEqual(58);
+    // 122 是当前真实键数（2026-10-12，T03 补评论/指派/标签/状态/待确认全批文案，并删掉零消费方的
+    // assignee.placeholder 后）；低于它说明 flatten 没走到 nested 层，后续断言会假绿。
+    expect(enFlat.size).toBeGreaterThanOrEqual(122);
   });
 
   // 插值占位符必须成对出现，否则某一语言会显示 {{var}} 字面量（本包有 loadedCount / syncedAtLabel 两处）。
@@ -112,22 +113,26 @@ describe("tickets 字典完整性与自持性", () => {
   });
 
   // `ticketFormSchema` 的 message 是「裸字符串」形态（zod 不认键类型），字面量 t() 扫描扫不到它：
-  // 这里单独把 schema 源码里的 `validation.*` 字面量对齐到字典，否则写错的键会原样显示在表单错误行上。
-  // `bodyRequired` 是本批补上的那条（后端 `body` 必填 `min(1)`，此前靠原生 required 兜底）——
-  // 它同时被「正文为空 → 校验拦截」的组件用例覆盖，这条静态断言保证的是键真的在字典里。
-  test("创建表单的 zod 校验键都在字典内", () => {
-    const source = readFileSync(join(WEB_ROOT, "pages/agent-panel/components/ticket-create-dialog.tsx"), "utf8");
-    const keys = [...source.matchAll(/"validation\.[A-Za-z]+"/g)].map((match) => match[0].slice(1, -1));
-    // 扫描有效性自检：标题必填/上限 + 正文必填/上限四条键缺一不可，正则失配时不能假绿。
+  // 这里把 `web/**` **全部源码**里的 `validation.*` 字面量对齐到字典，否则写错的键会原样显示在表单错误行上。
+  // 覆盖面从创建表单扩到全部表单（字段编辑、评论）——每个新表单再补一条文件级断言，只会漏掉下一个。
+  test("源码里的 zod 校验键都在字典内", () => {
+    const usage = new Map<string, string[]>();
+    for (const file of sources) {
+      for (const match of readFileSync(file, "utf8").matchAll(/"validation\.[A-Za-z]+"/g)) {
+        const key = match[0].slice(1, -1);
+        usage.set(key, [...(usage.get(key) ?? []), relative(WEB_ROOT, file)]);
+      }
+    }
+    // 扫描有效性自检：创建表单的四条键（标题/描述 × 必填/上限）必须被扫到，正则失配或源码被整目录跳过时不能假绿。
     for (const key of [
       "validation.titleRequired",
       "validation.titleMax",
       "validation.bodyRequired",
       "validation.bodyMax",
     ]) {
-      expect(keys).toContain(key);
+      expect([...usage.keys()]).toContain(key);
     }
-    const missing = keys.filter((key) => !enFlat.has(key) || !zhFlat.has(key));
+    const missing = [...usage.keys()].filter((key) => !enFlat.has(key) || !zhFlat.has(key));
     expect(missing).toEqual([]);
   });
 

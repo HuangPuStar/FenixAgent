@@ -10,7 +10,16 @@
     "open": "进行中",
     "closed": "已关闭"
   },
-  "action": { "create": "新建工单", "back": "返回列表", "prevPage": "上一页", "nextPage": "下一页", "refresh": "刷新" },
+  "action": {
+    "create": "新建工单",
+    "back": "返回列表",
+    "prevPage": "上一页",
+    "nextPage": "下一页",
+    "refresh": "刷新",
+    "edit": "编辑",
+    "close": "关闭工单",
+    "reopen": "重新打开"
+  },
   "list": {
     "columnNumber": "编号",
     "columnTitle": "标题",
@@ -33,8 +42,78 @@
     "assigneeLabel": "负责人",
     "updatedAtLabel": "更新时间",
     "syncedAtLabel": "同步于 {{time}}",
+    "labelsLabel": "标签",
     "externalAuthor": "外部来源／待核对",
     "externalAuthorHint": "该内容缺少受信的本地归属记录，作者归属待核验。"
+  },
+  "labels": {
+    "none": "无标签",
+    "edit": "编辑标签",
+    "save": "保存标签",
+    "empty": "该项目还没有标签",
+    "maxCount": "最多选择 20 个标签",
+    "loadFailed": "加载项目标签失败",
+    "saved": "标签已更新",
+    "failed": "更新标签失败",
+    "accepted": "标签修改提交结果确认中，稍后刷新查看"
+  },
+  "assignee": {
+    "label": "负责人",
+    "searchPlaceholder": "搜索成员",
+    "empty": "没有匹配的成员",
+    "clear": "取消指派",
+    "loadMore": "加载更多成员",
+    "loadFailed": "加载成员失败",
+    "updated": "负责人已更新",
+    "failed": "更新负责人失败",
+    "accepted": "指派提交结果确认中，稍后刷新查看"
+  },
+  "state": {
+    "closeTitle": "关闭这个工单？",
+    "closeDescription": "关闭后仍可评论，也可以随时重新打开。",
+    "closed": "工单已关闭",
+    "reopened": "工单已重新打开",
+    "failed": "更新工单状态失败",
+    "accepted": "状态变更结果确认中，稍后刷新查看"
+  },
+  "edit": {
+    "title": "编辑工单",
+    "saved": "工单已更新",
+    "failed": "更新工单失败",
+    "accepted": "修改提交结果确认中，稍后刷新查看"
+  },
+  "comment": {
+    "sectionTitle": "评论",
+    "empty": "还没有评论",
+    "placeholder": "写下你的评论（支持 Markdown）",
+    "submit": "发表评论",
+    "created": "评论已发表",
+    "createFailed": "发表评论失败",
+    "createAccepted": "评论提交结果确认中，稍后刷新查看",
+    "loadFailed": "加载评论失败",
+    "loadMore": "加载更早的评论",
+    "edit": "编辑评论",
+    "save": "保存修改",
+    "cancel": "取消",
+    "updated": "评论已更新",
+    "updateFailed": "更新评论失败",
+    "updateAccepted": "评论修改结果确认中，稍后刷新查看"
+  },
+  "write": {
+    "uncertainTitle": "提交结果确认中",
+    "uncertainHint": "该工单有一笔修改尚未确认，确认前暂时不能继续修改。",
+    "check": "核对结果",
+    "checking": "正在核对",
+    "checkFailed": "核对操作结果失败",
+    "statusPending": "操作仍在处理中，请稍后再核对。",
+    "statusSucceeded": "该操作已完成。",
+    "statusFailed": "该操作已失败，可重新提交。",
+    "statusUncertain": "结果仍未确定，请稍后再核对。",
+    "statusNeedsReview": "该操作需人工核验，请联系运维。",
+    "conflict": "内容已被他人修改，请加载最新内容后重新提交。",
+    "reload": "加载最新内容",
+    "idempotencyConflict": "提交状态不一致，请重试。",
+    "paused": "工单写入当前不可用（组织暂停或上游故障），请稍后再试。"
   },
   "loadState": {
     "failed": "工单加载失败",
@@ -53,11 +132,14 @@
   "disabled": { "title": "组织尚未开通工单", "hint": "请组织管理员先开通默认工单项目。" },
   "sync": { "degraded": "工单同步已降级，数据可能不是最新。" },
   "status": { "open": "进行中", "closed": "已关闭" },
+  "permission": { "denied": "你没有执行该操作的权限，请联系组织管理员。" },
   "validation": {
     "titleRequired": "请填写标题",
     "titleMax": "标题最多 200 个字符",
     "bodyRequired": "请填写描述",
-    "bodyMax": "描述最长 64 KiB"
+    "bodyMax": "描述最长 64 KiB",
+    "commentRequired": "请填写评论内容",
+    "commentMax": "评论最长 64 KiB"
   },
   "toast": {
     "projectsLoadFailed": "加载工单项目失败",

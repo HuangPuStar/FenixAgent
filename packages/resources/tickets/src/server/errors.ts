@@ -49,6 +49,49 @@ export class VersionConflictError extends AppError {
 }
 
 /**
+ * 同一对象上还有未确认的变更：拒绝后续修改，等前一次核对完成（方案 §9.7 / 裁定二.9）。
+ *
+ * 错误码取裁定三.15 的 `TICKET_OPERATION_PENDING`——前端「待确认」的兜底分支只认这个码，写路径必须给出
+ * 同一个码才能把它转成「先去核对」而不是普通冲突。类名沿用 backend contract §5.4 的
+ * `TicketChangeInFlightError`；同一条规则**只产出一个码**，合同 §1.4 里的 `TICKET_CHANGE_IN_FLIGHT`
+ * 仅作为重放还原表的同义键存在（见文件末的还原表），避免前端要同时认两个码。
+ */
+export class TicketChangeInFlightError extends AppError {
+  constructor(message = "该工单还有一次未确认的变更，确认完成后才能继续修改") {
+    super(message, "TICKET_OPERATION_PENDING", 409);
+    this.name = "TicketChangeInFlightError";
+  }
+}
+
+/**
+ * 恢复核对确认远端没有落库：该次修改可安全重提（换个幂等键）。
+ *
+ * 只出现在重放路径：`failed` 行的结果被还原成同一个错误，让同键重试拿到与首次一致的答复。
+ */
+export class TicketWriteNotAppliedError extends AppError {
+  constructor(message = "该修改未在托管平台生效，请重新提交") {
+    super(message, "WRITE_NOT_APPLIED", 409);
+    this.name = "TicketWriteNotAppliedError";
+  }
+}
+
+/** 负责人不是当前组织的成员（含已离职）：指派前必须现查成员关系，绝不按请求体自填的 id 落库。 */
+export class AssigneeNotMemberError extends AppError {
+  constructor(message = "负责人必须是当前组织的有效成员") {
+    super(message, "ASSIGNEE_NOT_MEMBER", 400);
+    this.name = "AssigneeNotMemberError";
+  }
+}
+
+/** 标签不在该仓库的标签集合内：拒绝而不是静默丢弃，否则用户会以为标签挂上了。 */
+export class UnknownLabelError extends AppError {
+  constructor(message = "标签不存在或不属于该项目") {
+    super(message, "LABEL_UNKNOWN", 400);
+    this.name = "UnknownLabelError";
+  }
+}
+
+/**
  * 仓库绑定冲突：上游报「同名仓库已存在」但 AOS 没有对应绑定记录。
  *
  * 刻意不复用代码即接管：那种情况下的仓库归属未确认，唯一安全的出路是让调用方显式走 `bind` 模式
@@ -100,6 +143,15 @@ const OPERATION_FAILURE_REHYDRATION: Readonly<Record<string, (message: string) =
   GIT_RATE_LIMITED: (message) => new GitUnavailableError(message, "GIT_RATE_LIMITED"),
   REPOSITORY_ALREADY_BOUND: (message) => new RepositoryConflictError(message),
   GIT_OWNER_MISMATCH: (message) => new RepositoryOwnerMismatchError(message),
+  // T03：写路径的版本冲突与三种「领取之前」的判定。它们都不产生账本行，写进表里是为了同键第二次请求
+  // 在极端时序下仍得到同一个错误类（§5.4）。
+  VERSION_CONFLICT: (message) => new VersionConflictError(message),
+  WRITE_NOT_APPLIED: (message) => new TicketWriteNotAppliedError(message),
+  ASSIGNEE_NOT_MEMBER: (message) => new AssigneeNotMemberError(message),
+  LABEL_UNKNOWN: (message) => new UnknownLabelError(message),
+  TICKET_OPERATION_PENDING: (message) => new TicketChangeInFlightError(message),
+  /** 同义码（合同 §1.4 的命名）：本批不产出，仅用于还原人工改库或早期版本写下的行。 */
+  TICKET_CHANGE_IN_FLIGHT: (message) => new TicketChangeInFlightError(message),
 };
 
 /**

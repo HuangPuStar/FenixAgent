@@ -18,6 +18,14 @@ import { createHash } from "node:crypto";
 const CONTENT_VERSION_PREFIX = "fenix.tickets.v1";
 
 /**
+ * 评论指纹的版本前缀；与工单前缀**刻意不同**。
+ *
+ * 评论没有标题、状态与标签，同一条正文在工单与评论两处必须得到不同的指纹：共用前缀会让「把评论正文
+ * 填进工单版本」这类串味在比较中通过，而两者的写路径与核对口径完全不同。
+ */
+const COMMENT_VERSION_PREFIX = "fenix.tickets.comment.v1";
+
+/**
  * 正文归一化：统一 `\n`、去掉尾部空白。
  *
  * 写入路径与读取路径必须共用本函数：gray-matter 序列化会补一个尾换行、解析又会去掉一个前导换行，
@@ -49,5 +57,17 @@ export function computeContentVersion(input: {
         [...input.labelNames].sort(),
       ]),
     )
+    .digest("hex");
+}
+
+/**
+ * 评论版本：前缀独立，只覆盖**剥离身份头之后**的正文（评论没有标题/状态/标签）。
+ *
+ * 与工单版本同一套规范化（`normalizeBody`），否则「写进去的评论」与「回源读出的评论」会因尾换行差异
+ * 得到不同指纹，每次提交都判成版本冲突。
+ */
+export function computeCommentVersion(body: string): string {
+  return createHash("sha256")
+    .update(JSON.stringify([COMMENT_VERSION_PREFIX, normalizeBody(body)]))
     .digest("hex");
 }

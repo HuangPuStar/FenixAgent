@@ -53,6 +53,7 @@ const DECIMAL_PAGE = /^[1-9]\d*$/;
 const DECIMAL_ID = /^\d+$/;
 const DOTS_ONLY = /^\.+$/;
 const NEXT_LINK_PATTERN = /<([^>]+)>\s*;\s*rel="?next"?/i;
+const LAST_LINK_PATTERN = /<([^>]+)>\s*;\s*rel="?last"?/i;
 /** `Link` 头里可能是相对 URL，解析需要一个不会真正被请求的占位基址。 */
 const LINK_BASE_URL = "http://link.invalid";
 
@@ -119,19 +120,47 @@ function pageQuery(page: number, limit: number): string {
 }
 
 /**
+ * 时间窗过滤（RFC3339）：只返回该时间之后创建/更新的对象。
+ *
+ * 空串按「不提供」处理：调用方缺省的语义是「不设时间窗」，写成 `since=` 只会被上游当成非法时间而失败。
+ * 值原样透传、不本地归一：格式化由调用方按同一 RFC3339 口径产出，这里改写只会让两处的表示漂移。
+ */
+function applySince(params: URLSearchParams, since: string | undefined): void {
+  if (since !== undefined && since.length > 0) params.set("since", since);
+}
+
+/**
  * 从 `Link` 头取下一页页码。
  *
  * Forgejo 会把 `limit` 按自身上限夹取，因此「本页条数 < 请求条数」既不能证明没有下一页，也不能证明有；
  * 只有 `rel="next"` 是分页事实源。头里可能同时带 prev/first/last，只认 next。
  */
 function nextPageFromLink(linkHeader: string): string | null {
-  const match = NEXT_LINK_PATTERN.exec(linkHeader);
+  return pageFromLink(linkHeader, NEXT_LINK_PATTERN, "next");
+}
+
+/**
+ * 从 `Link` 头取**最后一页**页码（`rel="last"`）；头缺失或无 last 时返回 null。
+ *
+ * 与 `nextPageFromLink` 的区别是「缺头就返回 null」而不是退化为「非空即有下一页」：没有 `Link` 头时连
+ * 是否有末页都无法回答，编造一个末页页码会让调用方读到一页并非最新的评论。消费方（评论列表）在拿到
+ * null 时退化为「只读第一页」，并在响应里如实表达没有更早的页。
+ */
+function lastPageFromLink(linkHeader: string | null): string | null {
+  if (linkHeader === null) return null;
+  return pageFromLink(linkHeader, LAST_LINK_PATTERN, "last");
+}
+
+/** 从 `Link` 头解析指定 `rel` 的页码；解析失败只告警并返回 null（分页退化为「无更多页」而非报错）。 */
+function pageFromLink(linkHeader: string, pattern: RegExp, rel: string): string | null {
+  const match = pattern.exec(linkHeader);
   if (match === null) return null;
   try {
     const page = new URL(match[1], LINK_BASE_URL).searchParams.get("page");
     return page !== null && DECIMAL_PAGE.test(page) ? page : null;
   } catch (error) {
     logger.warn("git.forgejo.link_header_invalid", {
+      rel,
       reason: error instanceof Error ? error.name : typeof error,
     });
     return null;
@@ -231,12 +260,17 @@ export class ForgejoClient {
     if (query.state !== undefined) params.set("state", query.state);
     if (query.labels !== undefined && query.labels.length > 0) params.set("labels", query.labels.join(","));
     if (query.query !== undefined && query.query.length > 0) params.set("q", query.query);
+    applySince(params, query.since);
     const { body, headers } = await this.#http.getJsonWithHeaders(
       `${repoBase(ref)}/issues?${params.toString()}`,
       operationContext(ref, operationId),
     );
     const items = mapItems(body, "工单列表", toGitIssue);
-    return { items, nextCursor: resolveNextCursor(headers.get("link"), page, items.length) };
+    return {
+      items,
+      nextCursor: resolveNextCursor(headers.get("link"), page, items.length),
+      lastCursor: lastPageFromLink(headers.get("link")),
+    };
   }
 
   async getIssue(ref: RepositoryRef, issueNumber: string): Promise<GitIssue> {
@@ -307,12 +341,26 @@ export class ForgejoClient {
     const operationId = newOperationId();
     const page = parseCursor(query.cursor);
     const limit = clampLimit(query.limit);
+    const params = new URLSearchParams(pageQuery(page, limit));
+    applySince(params, query.since);
     const { body, headers } = await this.#http.getJsonWithHeaders(
-      `${issueBase(ref, issueNumber)}/comments?${pageQuery(page, limit)}`,
+      `${issueBase(ref, issueNumber)}/comments?${params.toString()}`,
       operationContext(ref, operationId),
     );
     const items = mapItems(body, "评论列表", (item) => toGitComment(item, issueNumber));
-    return { items, nextCursor: resolveNextCursor(headers.get("link"), page, items.length) };
+    return {
+      items,
+      nextCursor: resolveNextCursor(headers.get("link"), page, items.length),
+      lastCursor: lastPageFromLink(headers.get("link")),
+    };
+  }
+
+  /** 读取单条评论；评论不存在或不在该仓库下时上游给 404，原样映射为 `NOT_FOUND`。 */
+  async getComment(ref: RepositoryRef, commentId: string): Promise<GitComment> {
+    const operationId = newOperationId();
+    const payload = await this.#http.getJson(commentBase(ref, commentId), operationContext(ref, operationId));
+    // 该端点路径不含工单编号，mapper 从响应的 issue_url 取。
+    return toGitComment(payload);
   }
 
   async createComment(ref: RepositoryRef, issueNumber: string, body: string): Promise<GitComment> {
