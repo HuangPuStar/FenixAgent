@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { ForbiddenError, NotFoundError } from "@fenix/platform-sdk";
+import { NotFoundError } from "@fenix/platform-sdk";
 import { resetAllStubs } from "@fenix/platform-sdk/testing";
 import { stubEnvironmentRepo } from "../server/testing";
 
@@ -23,10 +23,13 @@ afterEach(() => {
   resetAllStubs();
 });
 
-describe("getOwnedEnvironment 角色化授权（D17，403/404 分离）", () => {
-  // member 写操作（传 role）必须抛 403 ForbiddenError，且不得伪装成 404。
-  test("member write request is rejected with 403 ForbiddenError", async () => {
-    await expect(getOwnedEnvironment(ENV_ID, ORG_ID, USER_ID, "member")).rejects.toThrow(ForbiddenError);
+describe("getOwnedEnvironment 归属授权", () => {
+  // member 对本人当前组织的 Environment 有完整管理权限，不应因组织角色被拒绝。
+  test("member management request passes for owned environment", async () => {
+    await expect(getOwnedEnvironment(ENV_ID, ORG_ID, USER_ID, "member")).resolves.toMatchObject({
+      id: ENV_ID,
+      organizationId: ORG_ID,
+    });
   });
 
   // owner 写操作放行，返回环境记录。
