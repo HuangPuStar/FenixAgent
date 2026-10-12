@@ -1,8 +1,8 @@
 # 公共 Git 模块架构（common-git）
 
-> 状态：实现基线（2026-10-12；T01 交付接入层，事件消费与附件见 §7）
+> 状态：实现基线（2026-10-12；接入层与首个消费者工单均已交付，事件消费与附件见 §7）
 > 范围：`@fenix/git` 的定位与边界、接口面与作用域语义、错误模型、四张账本表、安全约束、可选装配与运行参数。
-> 定位：本文是 `packages/common/git` 的**实现基线**，只描述已落地的事实。事件分发、附件与工单模块不在本版范围，未实现部分逐条列在 §7。
+> 定位：本文是 `packages/common/git` 的**实现基线**，只描述已落地的事实。事件分发与附件在本文范围之外，未实现部分逐条列在 §7；工单模块自身的架构见 [工单模块架构](./29-tickets.md)。
 > 约定：代码演进偏离本文档时，先更新文档再改代码。部署与运维步骤（Forgejo 编排、连接配置样例、排障）见 [运维说明](../operations/common-git.md)，目录契约见 [Docker 编排体系](../operations/docker-topology.md)。
 
 ## 0. 硬边界
@@ -22,7 +22,7 @@
 
 **为什么需要独立类别**：这份能力被宿主装配、被多个上层业务消费者共用（工单是第一个，见下），而它自己不依赖任何资源包。把它放进某个资源包会迫使其他消费者反向依赖那个包的领域实现，直接闭合出环；放进 `platform/*` 又不对——它不是平台契约，也不提供授权/身份语义。因此新增 `common` 类别并**只允许指向平台契约与独立工具包**：`scripts/lib/architecture-boundary-rules.ts` 中 `common` 的禁则为 `platform-impl` / `agent-runtime` / `machine` / `sandbox` / `resource` / `apps-server` / `apps-web`，任意一条指向这些上层的边都会立刻闭合出环。
 
-**与工单的单向依赖**：工单模块（`@fenix/resource-tickets`，`packages/resources/tickets`，**本版未实现**）的 `dependsOn` 含 `git`，经 `GitService.createScopedClient` 取得受控作用域；git 不依赖工单，也不理解工单与通知语义。装配校验在产生副作用前拒绝「声明了 tickets 却没有 git」的组合；反向不存在。
+**与工单的单向依赖**：工单模块（`@fenix/resource-tickets`，`packages/resources/tickets`）是第一个消费者，已接入建工单、查列表与详情、组织项目初始化；它的 `dependsOn` 含 `git`，经 `GitService.createScopedClient` 取得受控作用域。git 不依赖工单，也不理解工单与通知语义；装配校验在产生副作用前拒绝「声明了 tickets 却没有 git」的组合，反向不存在。工单侧的能力范围与未实现清单见 [工单模块架构](./29-tickets.md)。
 
 跨包依赖只有 `@fenix/platform-sdk`（`getDatabase()` 与 `ModuleFactoryContext`）与 `@fenix/logger`；包内不读 `process.env`、不 import `apps/**`、不 import 其他资源包的 `src/**`，跨包只走公开 `exports`。
 
@@ -41,7 +41,7 @@
 
 **作用域与每次操作复查**：`consumerId`、`organizationId` 与 `repositoryRef` 在创建期由服务端解析并绑定（来自认证上下文、绑定记录与静态消费者注册，**不从请求正文取**），客户端不提供任何修改作用域的方法。创建期判定包含：绑定存在（否则 `NOT_FOUND`）、组织归属匹配（否则 `FORBIDDEN`，消息不说明绑定属于哪个组织，避免把其他租户标识透给未授权调用方）、连接存在（`NOT_FOUND`）、凭据引用可解析且不是初始化凭据（`FORBIDDEN`）、该 consumer 的授权集合非空（`FORBIDDEN`）。此后**每次调用**都复查本进程持有的绑定快照：绑定 `status = active`，且操作名在 `allowedConsumers[consumerId]` 内。
 
-复查用内存快照、不重查库，这是刻意的：绑定只在创建作用域客户端时读一次，包内再加一层缓存只会制造两份互相不一致的授权视图；**跨进程的撤销**（另一副本改的绑定）不在本层生效范围，由 T04 的事件同步与后续验证覆盖（§7）。拒绝一律 `FORBIDDEN`——「你无权做这件事」与「这个对象不存在」对调用方是不同的结论。
+复查用内存快照、不重查库，这是刻意的：绑定只在创建作用域客户端时读一次，包内再加一层缓存只会制造两份互相不一致的授权视图；**跨进程的撤销**（另一副本改的绑定）不在本层生效范围，由事件同步（§7 未实现）与后续验证覆盖。拒绝一律 `FORBIDDEN`——「你无权做这件事」与「这个对象不存在」对调用方是不同的结论。
 
 操作名（`repositories.read`、`issues.read` / `issues.write`、`comments.read` / `comments.write`、`labels.read` / `labels.write`）是**持久化契约**：它们写在 `git_repository_bindings.allowed_consumers` 里，改名不会报错，只会让存量授权静默失效。只能追加新名字。`ensureIssuesEnabled` 按 `issues.write` 判定。
 
@@ -71,7 +71,7 @@
 | `git_events` | 已接收的 Webhook 事件（去重账本）：同 `delivery_id` 重送返回成功但不再生成投递记录 | `UNIQUE(binding_id, delivery_id)`、`received_at` 索引 |
 | `git_event_deliveries` | 投递账本：每个事件 × 每个订阅各一行，记 `status` / `attempts` / 租约与 `last_error` | `UNIQUE(event_id, subscription_id)`、`(status, next_attempt_at)` 调度索引 |
 
-**口径**：Forgejo 是事实源，这四张表只记 AOS 侧「谁绑定了什么、谁订阅了什么、收到过什么、投递到哪一步」；查询索引与站内通知属工单模块（`@fenix/resource-tickets`，未实现），不在本包建表。**保留与重试的数值是既定合同，调度属 T04**：事件载荷在全部消费者确认后保留 7 天、去重标识保留 30 天；未确认投递最长保留 30 天，超过后把订阅标记为 `needs_resync`，先全量校对再恢复处理，不静默丢弃；投递用短事务 + `SKIP LOCKED` 领取、租约默认 60 秒 / 15 秒续约、失败按 5 秒至 5 分钟退避、最多 10 次后进入 `failed` 待重试。表定义在本批一次成型，但本版没有任何代码执行上述清理与调度（§7）。
+**口径**：Forgejo 是事实源，这四张表只记 AOS 侧「谁绑定了什么、谁订阅了什么、收到过什么、投递到哪一步」；查询索引与站内通知属工单模块（`@fenix/resource-tickets`，两张表已建好，通知的写入路径未实现），不在本包建表。**保留与重试的数值是既定合同，调度属未实现部分（§7）**：事件载荷在全部消费者确认后保留 7 天、去重标识保留 30 天；未确认投递最长保留 30 天，超过后把订阅标记为 `needs_resync`，先全量校对再恢复处理，不静默丢弃；投递用短事务 + `SKIP LOCKED` 领取、租约默认 60 秒 / 15 秒续约、失败按 5 秒至 5 分钟退避、最多 10 次后进入 `failed` 待重试。表定义在本批一次成型，但本版没有任何代码执行上述清理与调度（§7）。
 
 ## 5. 安全约束
 
@@ -100,9 +100,9 @@ profile 位置由部署面给出：不带 `RCS_ASSEMBLY_PROFILE_PATH` 时是应�
 
 ### 6.2 单例与释放
 
-`createGitModule()` 惰性且幂等：进程内第一次调用构造，之后返回同一实例；失败**不缓存**失败的 promise（一次拼错路径不应让进程在内存里永久记住这个错误）。构造前先向宿主 `registerCleanup` 登记释放动作，宿主关闭序与启动失败清理都经 `assembly.dispose()` 触发；`dispose()` 只清空单例（本版无定时器与长连接），T04 的后台消费循环接入时同样挂在这里。
+`createGitModule()` 惰性且幂等：进程内第一次调用构造，之后返回同一实例；失败**不缓存**失败的 promise（一次拼错路径不应让进程在内存里永久记住这个错误）。构造前先向宿主 `registerCleanup` 登记释放动作，宿主关闭序与启动失败清理都经 `assembly.dispose()` 触发；`dispose()` 只清空单例（本版无定时器与长连接），后台消费循环（§7 未实现）接入时同样挂在这里。
 
-**宿主接线的缺口在 T01 一并补上**：`apps/server/src/bootstrap/host-startup.ts` 此前丢弃 `bootstrapServerAssembly()` 的返回值，导致模块登记的 cleanup 永不执行；现在句柄落在 `hostAssembly`，在正常关闭序（晚于 runtime drain、早于 cache 与 DB——模块 cleanup 可能仍要读写这两者）与启动失败路径各调用一次，`dispose()` 自身幂等，两边都命中也只真正清理一次。
+**宿主接线的缺口在接入层交付时一并补上**：`apps/server/src/bootstrap/host-startup.ts` 此前丢弃 `bootstrapServerAssembly()` 的返回值，导致模块登记的 cleanup 永不执行；现在句柄落在 `hostAssembly`，在正常关闭序（晚于 runtime drain、早于 cache 与 DB——模块 cleanup 可能仍要读写这两者）与启动失败路径各调用一次，`dispose()` 自身幂等，两边都命中也只真正清理一次。
 
 ### 6.3 环境变量与健康检查
 
@@ -121,11 +121,11 @@ profile 位置由部署面给出：不带 `RCS_ASSEMBLY_PROFILE_PATH` 时是应�
 
 以下能力在方案范围内但**本版没有代码**，不要按已存在处理：
 
-1. **T04 事件消费与 Webhook 接收**：没有接收入口、验签、事件分发与投递消费循环，也没有 §4 的清理任务与租约调度；四张表与订阅/投递的形状已定型，但没有任何进程写它们。
-2. **T05 附件**：`repositories` / `issues` / `comments` / `labels` 之外没有附件接口（上传、列表、下载），领域类型中也不含附件形状。
-3. **`scripts/git-bootstrap.ts` 与 `bun run git:bootstrap`**：仓库内不存在该脚本与对应 npm script；初始化目前只能由宿主进程内调用 `GitAdminService`，或在 Forgejo 侧手工建仓库与令牌（见运维说明）。
-4. **宿主管理接口**：`GitAdminService` 没有对外路由，manifest 也未声明任何 route contribution 或 web contribution；本版没有任何 `/web/*` 或 `/api/*` 面暴露 Git 能力。
-5. **工单模块与前端页面**（T02+，`@fenix/resource-tickets`、`deploy/assembly/ce-tickets.json`、工单表与页面）——全部未交付；工单对 git 的依赖方向已在 §1 写定，作为既定方向而非现状。
+1. **事件消费与 Webhook 接收**：没有接收入口、验签、事件分发与投递消费循环，也没有 §4 的清理任务与租约调度；订阅与投递两类表的形状已定型，但没有任何进程写它们。
+2. **附件**：`repositories` / `issues` / `comments` / `labels` 之外没有附件接口（上传、列表、下载），领域类型中也不含附件形状。
+3. **`scripts/git-bootstrap.ts` 与 `bun run git:bootstrap`**：仓库内不存在该脚本与对应 npm script；仓库创建与绑定登记目前只能经宿主进程内的 `GitAdminService`，启用工单后由 `POST /web/ticket-projects/default` 驱动，没有工单时只能先在 Forgejo 侧手工建仓库与令牌（见运维说明）。
+4. **宿主管理接口**：`GitAdminService` 没有对外路由，manifest 也未声明任何 route contribution 或 web contribution；本模块自身不暴露 `/web/*` 或 `/api/*` 面，Git 能力目前只经工单的路由间接使用（§1）。
+5. **工单只用了最窄的一段消费面**：`@fenix/resource-tickets` 已交付（五张表、七条路由、页面与 `ce-tickets.json`），实际用到的 git 能力只有仓库创建/绑定与 Issue 读写；评论、指派、标签、关闭重开、事件同步、附件与通知都还没有代码，逐条见 [工单模块架构](./29-tickets.md) §10。
 6. **preflight 探活执行器**：宿主装配支持 `preflight` 选项，但生产启动路径没有传入具体实现，因此 `dependencyServices` 的声明目前不产生任何探活动作（`AOS_GIT_FORGEJO_URL` 也因此只作为部署面约定存在）。
 
 ## 8. 验证
@@ -134,3 +134,4 @@ profile 位置由部署面给出：不带 `RCS_ASSEMBLY_PROFILE_PATH` 时是应�
 - `packages/common/git/src/__tests__/forgejo-client.test.ts`、`forgejo-mapper.test.ts`：URL 拼接与 token 头、分页游标、错误码映射、写方法提升为 `WRITE_UNCERTAIN`、同源重定向限制、DTO → 领域类型的严格校验。
 - `packages/common/git/src/__tests__/scoped-client.test.ts`：未授权 consumer、操作不在授权集合、绑定 `paused` 一律 `FORBIDDEN`。
 - `apps/server/src/__tests__/git-tickets-assembly.test.ts`：`ce.json` 不含 git、`ce-git.json` 只多一个模块、未配置时 create 阶段失败且错误消息不回显凭据、`dispose()` 可重复调用。用例不读进程环境、不触网，「装配成功」本身就是「没有出站请求」的证据。
+- 工单侧（含 `tickets-assembly.test.ts`）只在其包内以桩件替换 `GitService`，不覆盖真实 Forgejo 交互；用例清单见 [工单模块架构](./29-tickets.md) §11。

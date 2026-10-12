@@ -4,7 +4,10 @@
 
 `ce.json` 固定 CE 产品线选择的 access-control、Agent Runtime 和 Web Shell ID。registry 与 bootstrap 必须拒绝未知模块、类别不匹配及缺少工厂的基础模块。
 
-本目录还保存**可选能力**的 profile：`ce-git.json` 是在 `ce.json` 基础上只追加资源模块 `git`（Forgejo 之上的公共托管平台接入层，见 `docs/arch/28-common-git.md`）的组合，`web` 列表不变。启用方式是把 `RCS_ASSEMBLY_PROFILE_PATH` 指向它的绝对路径；默认 `ce.json` 不含 `git`，因此默认既不启用通用 Git 能力、也不出站访问 Forgejo（服务容器由部署开关 `FENIX_FEATURE_GIT` 独立控制，两者不自动映射）。构建期按可选 profile 生成浏览器贡献用 `bun run generate:web-contributions --profile <profile.json>`（可与 `--check` 组合）；产物只有一份，它与服务端启动所用的 profile 必须一致。工单模块启用时的 profile（`ce-tickets.json`）随工单模块交付。
+本目录还保存**可选能力**的 profile：`ce-git.json` 是在 `ce.json` 基础上只追加资源模块 `git`（Forgejo 之上的公共托管平台接入层，见 `docs/arch/28-common-git.md`）的组合，`web` 列表不变。启用方式是把 `RCS_ASSEMBLY_PROFILE_PATH` 指向它的绝对路径；默认 `ce.json` 不含 `git`，因此默认既不启用通用 Git 能力、也不出站访问 Forgejo（服务容器由部署开关 `FENIX_FEATURE_GIT` 独立控制，两者不自动映射）。构建期按可选 profile 生成浏览器贡献用 `bun run generate:web-contributions --profile <profile.json>`（可与 `--check` 组合）；产物只有一份，它与服务端启动所用的 profile 必须一致。工单启用时的 profile `ce-tickets.json` 已随本目录交付：它在 `ce.json` 基础上追加资源模块 `git`、`tickets` 与 web 贡献 `tickets`（`web` 列表元素是 manifest 的 `web.id`，不是包名），启用方式与构建方式同 `ce-git.json`——把 `RCS_ASSEMBLY_PROFILE_PATH` 指向它的绝对路径，构建期用 `bun run generate:web-contributions --profile deploy/assembly/ce-tickets.json`。
+
+- 关掉工单、保留 Git：换成 `ce-git.json`（相对 `ce-tickets.json` 只从 `resources`/`web` 移除 `tickets`，**保留** `git`）。
+- 完全不用 Git 才换回 `ce.json`。
 
 ## 字段与校验
 
@@ -29,7 +32,7 @@
 
 拉取失败（含非法响应）按构建期清单 fail-open，显示非阻断提示与重试按钮，并记录一次 `assembly_modules_fetch_failed` 结构化错误信号，不输出原始异常或响应。清单是当前浏览器应用生命周期的快照，部署变更后需重新打开/刷新应用；端点禁止 HTTP 缓存。部署滚动更新应保证请求落在一致 profile 的后端集合。
 
-例如关闭新工作流：从部署 profile 的 `resources` 移除 `workflow-v2`，同时从 `web` 移除 `workflow`（两种 ID 不同），重启服务。未移除 web 引用会按既有 registry 规则启动失败，而非悄悄修正。`apps/server/src/__tests__/fixtures/assembly-without-workflow.json` 用于前后端测试示范，默认 `ce.json` 不变；旧 `workflow` 资源模块与新 `workflow-v2` 是独立模块，本机制不改变旧 API。
+例如关闭新工作流：从部署 profile 的 `resources` 移除 `workflow-v2`，同时从 `web` 移除 `workflow`（两种 ID 不同），重启服务。未移除 web 引用会按既有 registry 规则启动失败，而非悄悄修正。`apps/server/src/__tests__/fixtures/assembly-without-workflow.json` 用于前后端测试示范，默认 `ce.json` 不变；旧 `workflow` 资源模块与新 `workflow-v2` 是独立模块，本机制不改变旧 API。关闭工单同理：`data.web` 不再含 `tickets`，含工单的 bundle 据此隐藏入口并拦截 `/agent/tickets/*`；默认 bundle 里没有该贡献，自然也没有入口。
 
 `docker/deploy.env` 的 `FENIX_FEATURE_*` 仍属于部署服务开关，不自动映射装配 profile。长期决策见 `docs/adr/2026-10-08-assembly-capability-gate.md`。
 

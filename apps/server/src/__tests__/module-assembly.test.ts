@@ -150,8 +150,9 @@ test("bootstrapServerAssembly 按依赖序装配并逆序幂等释放", async ()
 
 // 授权绑定只从声明面收集（§1.5f 起宿主不再手写 `bindings` 列表）：每个受控资源主表都必须各自声明
 // 自己的 `storage`，漏声明的那一个会在运行期以「未注册存储绑定」报错，而不是静默放宽授权范围。
-// 六项 = 五张以 `visibility` 表达平台受众的主表 + `agent_site_app`（站点的 `visibility` 是发布范围，
-// 注册只声明归属列，见 `agent-config/src/server/access/agent-site-app-resource.ts` 文件头）。
+// 七项 = 五张以 `visibility` 表达平台受众的主表 + `agent_site_app`（站点的 `visibility` 是发布范围，见
+// `agent-config/src/server/access/agent-site-app-resource.ts` 文件头）+ `ticket_project`（工单项目无受众列、
+// 只声明归属列，见 `packages/resources/tickets/src/server/access/ticket-project-resource.ts` 文件头）。
 test("受控资源 manifest 各自声明存储绑定", async () => {
   const declaredTypes = contractManifests
     .flatMap((manifest) => manifest.accessControlBindings ?? [])
@@ -165,6 +166,7 @@ test("受控资源 manifest 各自声明存储绑定", async () => {
     "plugin_market_package",
     "provider",
     "skill",
+    "ticket_project",
   ]);
 });
 

@@ -1,0 +1,70 @@
+{
+  "nav": { "tickets": "工单" },
+  "title": "工单",
+  "subtitle": "创建并查看组织内的工单",
+  "filter": {
+    "searchPlaceholder": "搜索工单标题",
+    "searchLabel": "搜索工单",
+    "stateLabel": "工单状态",
+    "all": "全部",
+    "open": "进行中",
+    "closed": "已关闭"
+  },
+  "action": { "create": "新建工单", "back": "返回列表", "prevPage": "上一页", "nextPage": "下一页", "refresh": "刷新" },
+  "list": {
+    "columnNumber": "编号",
+    "columnTitle": "标题",
+    "columnState": "状态",
+    "columnAuthor": "作者",
+    "columnAssignee": "负责人",
+    "columnUpdatedAt": "更新时间",
+    "unassigned": "未指派",
+    "loadedCount": "已加载 {{count}} 条"
+  },
+  "create": {
+    "title": "新建工单",
+    "titleLabel": "标题",
+    "titlePlaceholder": "一句话描述问题",
+    "bodyLabel": "描述",
+    "bodyPlaceholder": "补充复现步骤与期望结果（支持 Markdown）"
+  },
+  "detail": {
+    "authorLabel": "作者",
+    "assigneeLabel": "负责人",
+    "updatedAtLabel": "更新时间",
+    "syncedAtLabel": "同步于 {{time}}",
+    "externalAuthor": "外部来源／待核对",
+    "externalAuthorHint": "该内容缺少受信的本地归属记录，作者归属待核验。"
+  },
+  "loadState": {
+    "failed": "工单加载失败",
+    "unauthorizedTitle": "无权访问工单",
+    "unauthorizedHint": "当前账号未被授权查看该组织的工单，请联系组织管理员开通权限。",
+    "notFoundTitle": "工单不存在",
+    "notFoundHint": "该工单不存在，或你没有访问权限。",
+    "retry": "重试"
+  },
+  "empty": {
+    "title": "暂无工单",
+    "hint": "新建一个工单开始协作。",
+    "searchTitle": "没有匹配的工单",
+    "searchHint": "换个关键词或清空筛选条件再试。"
+  },
+  "disabled": { "title": "组织尚未开通工单", "hint": "请组织管理员先开通默认工单项目。" },
+  "sync": { "degraded": "工单同步已降级，数据可能不是最新。" },
+  "status": { "open": "进行中", "closed": "已关闭" },
+  "validation": {
+    "titleRequired": "请填写标题",
+    "titleMax": "标题最多 200 个字符",
+    "bodyRequired": "请填写描述",
+    "bodyMax": "描述最长 64 KiB"
+  },
+  "toast": {
+    "projectsLoadFailed": "加载工单项目失败",
+    "loadFailed": "加载工单列表失败",
+    "detailLoadFailed": "加载工单详情失败",
+    "created": "工单已创建",
+    "createFailed": "创建工单失败",
+    "createAccepted": "提交结果确认中，稍后刷新查看结果"
+  }
+}

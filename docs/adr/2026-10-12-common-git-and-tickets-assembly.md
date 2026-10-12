@@ -1,8 +1,8 @@
 # ADR：公共 Git 独立 common 类别，并以可选装配槽接入
 
 - **日期**：2026-10-12
-- **状态**：**已接受**；决定 1–3 已实施（T01 交付 `@fenix/git`、`ce-git.json` 与 `docker/git/`），决定 4 为既定方向、**尚未实施**
-- **关联**：架构 [公共 Git 模块](../arch/28-common-git.md)、运维 [公共 Git 运维说明](../operations/common-git.md)、部署契约 [Docker 编排体系](../operations/docker-topology.md) §6 / §13、既有裁定 [装配 profile 派生的前后端模块启用标识](./2026-10-08-assembly-capability-gate.md)
+- **状态**：**已接受**；决定 1–3 已实施（`@fenix/git`、`ce-git.json` 与 `docker/git/` 已交付），决定 4 已实施（工单包、五张表与页面已交付，后续能力见[工单模块架构](../arch/29-tickets.md) §10）
+- **关联**：架构 [公共 Git 模块](../arch/28-common-git.md)、[工单模块](../arch/29-tickets.md)、运维 [公共 Git 运维说明](../operations/common-git.md)、[工单运维说明](../operations/tickets.md)、部署契约 [Docker 编排体系](../operations/docker-topology.md) §6 / §13、既有裁定 [装配 profile 派生的前后端模块启用标识](./2026-10-08-assembly-capability-gate.md)
 
 ## 背景
 
@@ -22,8 +22,8 @@
    理由：装配已经是「构建期选择、运行期只能收窄」的唯一真相源（bundle 是上界），再加一套动态注册会与它争夺同一件事的解释权；用现有槽位还能自动获得 profile 校验、`/web/system/modules` 能力发现与生成物守卫。
 3. **Forgejo 作为共享外部依赖，由 `FENIX_FEATURE_GIT` 独立编排**（`docker/git/docker-compose.yml` 独立 Compose 项目，默认关闭），与 assembly 的启用**相互独立、不自动映射**。
    理由：Forgejo 是多个消费者共用的外部服务，生命周期由部署层持有；关掉工单不等于可以停 Forgejo，起 Forgejo 也不等于某个 AOS 进程启用了 Git 能力。「两层开关不自动映射」是既有通用口径，本决定只是把它套到本模块上。
-4. **工单模块（T02+）是 Git 的消费者、默认关闭**：`@fenix/resource-tickets` 的 `dependsOn` 含 `git`，经 `GitService.createScopedClient` 取受控作用域，启用面由 `ce-tickets.json` 决定；git 不依赖工单、不理解工单与通知语义。
-   理由：依赖方向一旦反过来（git 认识工单），公共层就无法再被第二个消费者复用。**本条是既定方向，工单包、工单表与页面在本 ADR 落笔时均未实现**。
+4. **工单模块是 Git 的消费者、默认关闭**：`@fenix/resource-tickets` 的 `dependsOn` 含 `git`，经 `GitService.createScopedClient` 取受控作用域，启用面由 `ce-tickets.json` 决定；git 不依赖工单、不理解工单与通知语义。
+   理由：依赖方向一旦反过来（git 认识工单），公共层就无法再被第二个消费者复用。**本条已实施**：工单包、五张表与页面已交付；评论、指派、事件同步、附件与恢复核对等未实现能力见 [工单模块架构](../arch/29-tickets.md) §10。
 
 ## 考虑过的替代方案
 
@@ -41,4 +41,4 @@
 - `common` 类别会被后续能力「顺手放进来」：判据是**被多个上层复用且不依赖任何资源领域**，单一消费者专用的能力仍应放进它自己的资源包。
 - 新增两个开关位需要运维理解：装配层（`ce-git.json`）与部署层（`FENIX_FEATURE_GIT`）都要显式打开才有可用功能；两者都不做自动联动，代价是操作步骤多一步，收益是共享 Forgejo 不被单个消费者绑死。
 - 工单默认关闭意味着含工单的浏览器 bundle 必须单独构建（`bun run generate:web-contributions --profile …` + `bun run build:web`）；只改服务端配置不会让旧 bundle 获得工单页面。
-- 回滚只动装配与容器开关：换回 `ce.json`、`FENIX_FEATURE_GIT=false`，**不 drop 四张账本表、不删除 Forgejo 仓库**；未确认的写入（`WRITE_UNCERTAIN`）按 `operationId` 与消息标识回源核对，不随回滚清除。
+- 回滚只动装配与容器开关：关工单保留 Git 用 `ce-git.json`（Forgejo 仍可服务其他消费者），完全关闭换回 `ce.json` 并 `FENIX_FEATURE_GIT=false`；**不 drop 账本与工单表、不删除 Forgejo 仓库**。未确认的写入（`WRITE_UNCERTAIN` / 202）按 `operationId` 与消息标识回源核对，不随回滚清除；完整口径见[工单运维说明](../operations/tickets.md) §5。

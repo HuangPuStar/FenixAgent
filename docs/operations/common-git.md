@@ -64,8 +64,8 @@
 3. **应用 DDL 迁移**：`bun run db:migrate`（本次是 `drizzle/0033_common-git-tables.sql`）；有存量数据搬迁时再跑 `bun run run-data-migrations`（本批没有数据迁移）。发布顺序固定 DDL → 数据 → 应用，不得颠倒；未启用 git 的部署同样要执行这一步（表属于主服务的库，与装配无关）。
 4. **配置主服务**：设 `AOS_GIT_CONFIG_FILE`（绝对路径，指向 §2 的 JSON）、`AOS_GIT_PROVISION_TOKEN`、`AOS_GIT_SERVICE_TOKEN`、`AOS_GIT_FORGEJO_URL`。
 5. **用启用了 git 的装配启动主服务**：profile 换成 `deploy/assembly/ce-git.json`（`RCS_ASSEMBLY_PROFILE_PATH` 传绝对路径，或由发布入口固定），启动主服务。启用 git 却没有任何连接时，模块在产生副作用前报错并指向 `AOS_GIT_CONFIG_FILE`——这是配置缺失的判定信号，不是「没有 Git 能力」的降级。
-6. **初始化绑定（后续任务，本版不可用）**：`bun run scripts/git-bootstrap.ts` 与 `bun run git:bootstrap` **尚未实现**（随 T07 交付），仓库内没有可执行的自动初始化命令。在此之前只能在 Forgejo 侧手工建仓库与令牌；绑定的自动化登记同样没有入口（宿主管理接口与初始化脚本都未交付），`git_repository_bindings` 目前只由包内 `bindExistingRepository` 写入，而本版没有调用它的外部入口。
-7. **调用侧使用**：消费者经 `GitService.createScopedClient` 取受控作用域。本版没有任何对外路由暴露 Git 能力，普通消费者（工单，未实现）也尚未接入，因此第 5 步之后**没有终端用户可见的功能**——请按「接入层已就绪、消费方待交付」理解。
+6. **初始化绑定**：`bun run scripts/git-bootstrap.ts` 与 `bun run git:bootstrap` **尚未实现**，Git 自身也没有对外路由，绑定的唯一外部入口是工单的项目开通 `POST /web/ticket-projects/default`（`mode:"create"` 建私有仓库并开启 Issues，`mode:"bind"` 按 owner/name 回源解析已有仓库），两者都经 `GitAdminService` 写 `git_repository_bindings`。没有工单时只能先在 Forgejo 侧手工建仓库与令牌，再等绑定入口接通（开通步骤见[工单运维说明](./tickets.md) §3）。
+7. **调用侧使用**：消费者经 `GitService.createScopedClient` 取受控作用域，管理动作走 `GitService.admin`；目前唯一的消费者是工单，用到的只有仓库创建/绑定与 Issue 读写。Git 自身没有任何对外路由，终端用户可见的功能全部经工单页面呈现，启用工单见[工单运维说明](./tickets.md) §2。
 
 ## 5. 共享 PostgreSQL 的库与角色
 
@@ -95,7 +95,7 @@ CREATE DATABASE forgejo OWNER forgejo ENCODING 'UTF8';
 | 业务调用报 `NOT_FOUND`，消息「连接 … 未在 `AOS_GIT_CONFIG_FILE` 中配置」 | 绑定记录的 `connection_id` 与配置文件里的连接 `id` 不一致 | 对齐两处 id（绑定一行只认一个连接） |
 | 业务调用报 `FORBIDDEN`，消息「仓库绑定 … 不属于当前组织」 | 调用方传入的组织与绑定记录的 `organization_id` 不一致 | 核对创建作用域客户端时注入的组织上下文；消息刻意不透露绑定属于哪个组织 |
 | 业务调用报 `UNAVAILABLE`/`RATE_LIMITED`（读已自动重试 2 次） | Forgejo 不可达、被限流或网络故障 | `curl -fsS "$AOS_GIT_FORGEJO_URL/api/healthz"`；`docker compose -f docker/git/docker-compose.yml ps` 与容器日志。**Forgejo 不可达不阻断主服务启动**（依赖声明 `required: false`），只是 Git 能力降级 |
-| 业务调用报 `WRITE_UNCERTAIN` | 写请求超时、连接中断，或收到成功状态但响应体无法解析——**远端是否落库未知** | **禁止盲目重发**：重放会造出第二份对象。先按 `operationId` 在运维日志里定位这次调用，再带外键坐标（连接、`owner/name`、Issue 编号或消息标识）到 Forgejo 侧核对是否已经落库；确认未落库才重试，确认已落库则按既有对象收敛。调用方自行生成的恢复核对流程属 T02/T04，本版**没有自动核对**，只能人工处置 |
+| 业务调用报 `WRITE_UNCERTAIN` | 写请求超时、连接中断，或收到成功状态但响应体无法解析——**远端是否落库未知** | **禁止盲目重发**：重放会造出第二份对象。先按 `operationId` 在运维日志里定位这次调用，再带外键坐标（连接、`owner/name`、Issue 编号或消息标识）到 Forgejo 侧核对是否已经落库；确认未落库才重试，确认已落库则按既有对象收敛。工单侧会把这类结果转成 202 并留下 `uncertain` 操作记录，但**自动恢复核对没有实现**，仍按上述步骤人工处置（见[工单运维说明](./tickets.md) §6） |
 | 模块日志只有 `git.module.ready` 与连接 id 列表 | 正常：进程启动时模块只记连接拓扑，不含凭据；适配器首次调用才连 Forgejo | 若期望的出站请求没有发生，先确认调用方是否真的调用了作用域客户端 |
 
 ## 7. 回滚边界

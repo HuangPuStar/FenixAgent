@@ -33,6 +33,7 @@
     "@fenix/orchestration": "workspace:*",
     "@fenix/platform-sdk": "workspace:*",
     "@fenix/resource-task": "workspace:*",
+    "@fenix/resource-tickets": "workspace:*",
     "@fenix/resource-trace": "workspace:*",
     "@fenix/resource-workflow": "workspace:*",
     "@fenix/resource-workflow-v2": "workspace:*",

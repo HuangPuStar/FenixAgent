@@ -1,0 +1,81 @@
+{
+  "nav": { "tickets": "Tickets" },
+  "title": "Tickets",
+  "subtitle": "Create and review tickets in your organization",
+  "filter": {
+    "searchPlaceholder": "Search ticket titles",
+    "searchLabel": "Search tickets",
+    "stateLabel": "Ticket state",
+    "all": "All",
+    "open": "Open",
+    "closed": "Closed"
+  },
+  "action": {
+    "create": "New ticket",
+    "back": "Back to list",
+    "prevPage": "Previous",
+    "nextPage": "Next",
+    "refresh": "Refresh"
+  },
+  "list": {
+    "columnNumber": "Number",
+    "columnTitle": "Title",
+    "columnState": "State",
+    "columnAuthor": "Author",
+    "columnAssignee": "Assignee",
+    "columnUpdatedAt": "Updated",
+    "unassigned": "Unassigned",
+    "loadedCount": "{{count}} loaded"
+  },
+  "create": {
+    "title": "New ticket",
+    "titleLabel": "Title",
+    "titlePlaceholder": "Describe the problem in one line",
+    "bodyLabel": "Description",
+    "bodyPlaceholder": "Add steps to reproduce and the expected result (Markdown supported)"
+  },
+  "detail": {
+    "authorLabel": "Author",
+    "assigneeLabel": "Assignee",
+    "updatedAtLabel": "Updated",
+    "syncedAtLabel": "Synced {{time}}",
+    "externalAuthor": "External source / unverified",
+    "externalAuthorHint": "This content has no trusted local attribution record; the author is pending verification."
+  },
+  "loadState": {
+    "failed": "Failed to load tickets",
+    "unauthorizedTitle": "No access to tickets",
+    "unauthorizedHint": "Your account is not authorized to view this organization's tickets. Ask an organization admin for access.",
+    "notFoundTitle": "Ticket not found",
+    "notFoundHint": "This ticket does not exist, or you do not have access to it.",
+    "retry": "Retry"
+  },
+  "empty": {
+    "title": "No tickets yet",
+    "hint": "Create a ticket to start collaborating.",
+    "searchTitle": "No matching tickets",
+    "searchHint": "Try another keyword or clear the filters."
+  },
+  "disabled": {
+    "title": "Tickets are not enabled for this organization",
+    "hint": "Ask an organization admin to set up the default ticket project."
+  },
+  "sync": {
+    "degraded": "Ticket sync is degraded; the data may be out of date."
+  },
+  "status": { "open": "Open", "closed": "Closed" },
+  "validation": {
+    "titleRequired": "Enter a title",
+    "titleMax": "The title must be at most 200 characters",
+    "bodyRequired": "Enter a description",
+    "bodyMax": "The description must be at most 64 KiB"
+  },
+  "toast": {
+    "projectsLoadFailed": "Failed to load ticket projects",
+    "loadFailed": "Failed to load the ticket list",
+    "detailLoadFailed": "Failed to load the ticket",
+    "created": "Ticket created",
+    "createFailed": "Failed to create the ticket",
+    "createAccepted": "Submission is being confirmed; refresh later to see the result"
+  }
+}

@@ -162,6 +162,7 @@ export default defineConfig({
             { text: "Agent Sites", link: "/arch/18-agent-sites" },
             { text: "插件市场", link: "/arch/24-plugin-market" },
             { text: "公共 Git", link: "/arch/28-common-git" },
+            { text: "工单", link: "/arch/29-tickets" },
           ],
         },
         {
@@ -202,6 +203,7 @@ export default defineConfig({
             { text: "Docker 编排体系", link: "/operations/docker-topology" },
             { text: "Workflow V2 部署", link: "/operations/workflow-deployment" },
             { text: "公共 Git（Forgejo）", link: "/operations/common-git" },
+            { text: "工单（Tickets）", link: "/operations/tickets" },
             { text: "升级", link: "/operations/upgrade" },
             { text: "迁移", link: "/operations/migration" },
             { text: "备份与恢复", link: "/operations/backup-and-restore" },
