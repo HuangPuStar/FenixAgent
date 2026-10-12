@@ -7,8 +7,8 @@
  * 「谁可以操作这个环境的文件」这件应用层决策落在领域执行面里。
  *
  * 本层做两件事：
- *   1. **授权**：环境必须属于 actor 的当前组织与本人；`role` 为 `member` 时一律拒绝
- *      （`getOwnedEnvironment` 抛 403，fail-closed）；
+ *   1. **授权**：环境必须属于 actor 的当前组织与本人；文件属于个人 workspace，组织角色不额外收紧
+ *      本人的文件访问权；
  *   2. **换成显式范围**：把 actor 换成 {@link AgentFileScope}（环境 + 写操作审计身份）后交给执行面，
  *      执行面不再持有组织/用户/角色。
  *
@@ -31,9 +31,9 @@ import { type AgentFileService, createAgentFileService, mapFileError } from "../
  * 不 import 宿主 `AuthContext`（那是 `apps/server` 协议层的类型，包一旦依赖它就无法独立构建）；宿主的
  * `AuthContext` 是它的结构超集，调用点无需转换。
  *
- * `role` 参与判定，不是「仅透传」字段：环境归属检查对 `member` 一律拒绝（403 fail-closed）。取值域与
- * `agent-runtime` 的 `EnvironmentRole` 一致；缺省表示调用方未声明角色，此时归属检查只按组织与属主判定
- * （与迁移前 `FileAuthContext.role` 为 `undefined` 时的行为相同）。
+ * `role` 保留在主体投影中供其它文件入口保持协议兼容，但文件访问只按组织与 Environment 属主判定。
+ * 取值域与 `agent-runtime` 的 `EnvironmentRole` 一致；归属校验不下传该字段，因此 member 可操作本人
+ * workspace，而跨组织与跨属主仍由同一归属校验拒绝。
  */
 export interface MachineFileActor {
   readonly organizationId: string;
@@ -58,8 +58,8 @@ export interface MachineFileFacadeApi {
    * 只是扩大授权面。判定按读操作语义完成（不下传角色，`member` 可订阅共享环境的变更），理由见本文件
    * `requireOwnedEnvironment` 的说明。
    *
-   * 拒绝时抛 `FileServiceError`：不存在 / 跨组织 / 跨属主 → `not_found` 404，需要更高角色的写操作 → `forbidden`
-   * 403。路由据 `type` 决定回 `subscribe_error` 帧还是只记日志——分类（而非异常类）是两侧共用的判据，
+   * 拒绝时抛 `FileServiceError`：不存在 / 跨组织 / 跨属主 → `not_found` 404。路由据 `type` 决定回
+   * `subscribe_error` 帧还是只记日志——分类（而非异常类）是两侧共用的判据，
    * 避免同一个「环境不可见」在执行期与订阅期落进不同分支。
    */
   authorizeEventSubscription(actor: MachineFileActor, environmentId: string): Promise<void>;
@@ -68,9 +68,8 @@ export interface MachineFileFacadeApi {
 /**
  * 归属判定的唯一实现：两个入口都经此处，包内不存在第二份判据。
  *
- * `role` 由调用方按**动作语义**决定是否下传，这里不做隐式默认：`undefined` 表示读操作（`member` 放行），
- * `member` 表示需要 owner/admin 的写操作（拒绝）。这条语义归 `getOwnedEnvironment`（owner：agent-runtime），
- * 本层只负责把它的失败换成文件域错误信封。
+ * 文件读写都只按组织与 workspace 属主判定，不下传 actor 角色。管理类 Environment 操作的 owner/admin
+ * 门槛仍由其调用方显式传 role；文件门面不复用该门槛，避免共享 Agent 的成员失去本人 workspace。
  */
 async function requireOwnedEnvironment(
   actor: MachineFileActor,
@@ -88,7 +87,7 @@ async function requireOwnedEnvironment(
 /** 进程级无状态实现：Facade 不持有连接、缓存或 actor，每次调用只用入参推导范围。 */
 export const machineFileFacade: MachineFileFacadeApi = {
   async open(actor, environmentId) {
-    await requireOwnedEnvironment(actor, environmentId, actor.role);
+    await requireOwnedEnvironment(actor, environmentId, undefined);
     // 审计身份由本层决定：`/web` 面的写操作主体是当前用户（source=user），执行面只接收结果。
     return createAgentFileService({ environmentId, actorId: actor.userId, source: "user" });
   },
