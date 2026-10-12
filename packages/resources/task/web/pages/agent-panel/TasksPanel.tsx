@@ -28,6 +28,17 @@ interface TasksPanelProps {
   agentId: string | null;
 }
 
+/**
+ * 取一句可上屏的失败原因。
+ *
+ * `unwrap()` 抛出的 `ApiError.message` 就是服务端错误信封原文，面板必须把它上屏——换成固定字典文案
+ * 会让用户与测试都定位不到后端故障（2026-10-12 的「错误文案收口」即因此回滚）。字典文案只在取不到原因
+ * （非 Error 抛出或 message 为空）时兜底。
+ */
+function failureMessage(error: unknown): string | null {
+  return error instanceof Error && error.message ? error.message : null;
+}
+
 export function TasksPanel({ agentId }: TasksPanelProps) {
   // 面板文案统一读本包命名空间：`panelMode.tasks*` 曾借宿主 `components` 命名空间（键的最终所在地 = 包的 owner，
   // 计划 §4），现随 `web/i18n/locales/{en,zh}/tasks-v2.json` 自持；宿主同名键由 W3 的宿主 patch 删除。
@@ -47,8 +58,10 @@ export function TasksPanel({ agentId }: TasksPanelProps) {
     refresh,
   } = useRequest(async () => unwrap(taskV2Api.list({ agentId: agentId!, pageSize: 50 })), {
     ready: !!agentId,
-    onError: () => {
-      toast.error(taskT("panelMode.tasksLoadFailed"));
+    onError: (err) => {
+      console.error("Failed to load bound tasks", err);
+      // 服务端信封原文优先上屏：面板没有可重试以外的手段，把后端故障压成固定文案会让用户与测试都定位不到。
+      toast.error(failureMessage(err) ?? taskT("panelMode.tasksLoadFailed"));
     },
   });
 
@@ -72,9 +85,10 @@ export function TasksPanel({ agentId }: TasksPanelProps) {
       // catch 永远不可达，用户既看不到失败提示、也会基于未变更的状态刷新。
       await unwrap(taskV2Api.trigger(taskId));
       refresh();
-    } catch {
-      // 失败提示同样只走本包字典：`t()` 不会返回空值，原先的英文兜底串是永远走不到的死代码
-      toast.error(taskT("panelMode.tasksTriggerFailed"));
+    } catch (err) {
+      // 失败原因取服务端原文：原先只给固定文案，用户与测试都拿不到后端给出的原因。
+      console.error("Trigger task failed", err);
+      toast.error(failureMessage(err) ?? taskT("panelMode.tasksTriggerFailed"));
     } finally {
       setTriggeringIds((prev) => removeIdFromSet(prev, taskId));
     }
@@ -86,8 +100,10 @@ export function TasksPanel({ agentId }: TasksPanelProps) {
       // 同 handleTrigger：不解包则失败被当成成功，状态未变却刷新列表、也不提示。
       await unwrap(taskV2Api.toggle(taskId));
       refresh();
-    } catch {
-      toast.error(taskT("panelMode.tasksToggleFailed"));
+    } catch (err) {
+      // 同 handleTrigger：服务端原文优先，固定文案只在取不到原因时兜底。
+      console.error("Toggle task failed", err);
+      toast.error(failureMessage(err) ?? taskT("panelMode.tasksToggleFailed"));
     } finally {
       setTogglingIds((prev) => removeIdFromSet(prev, taskId));
     }
@@ -150,10 +166,11 @@ export function TasksPanel({ agentId }: TasksPanelProps) {
         {error ? (
           // 持久错误分支（`role="alert"`）：失败不能落进下面的「暂无任务」空态，否则用户分不清
           // 「加载失败」与「确实没有绑定任务」；非授权失败必须给重试入口，授权失败只说明原因。
+          // 说明行放服务端信封原文：toast 会被错过，这一屏才是持久的失败解释。
           <EmptyState
             icon={<AlertTriangle className="size-6" />}
             title={unauthorized ? taskT("loadState.unauthorizedTitle") : taskT("panelMode.tasksLoadFailed")}
-            description={unauthorized ? taskT("loadState.unauthorizedHint") : undefined}
+            description={unauthorized ? taskT("loadState.unauthorizedHint") : (failureMessage(error) ?? undefined)}
             tone="danger"
             role="alert"
             action={unauthorized ? undefined : { label: taskT("loadState.retry"), onClick: refresh, disabled: loading }}

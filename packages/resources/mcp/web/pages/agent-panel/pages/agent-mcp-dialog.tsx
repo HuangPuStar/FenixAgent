@@ -120,7 +120,7 @@ export function AgentMcpDialog({ target, onClose, onSaved }: Props) {
       })
       .catch((error: Error) => {
         console.error(t("toast.loadDetailFailed"), error);
-        toast.error(t("toast.loadDetailFailed"));
+        toast.error(error.message || t("toast.loadDetailFailed"));
         // 只弹 toast 会让编辑窗口停在空表单上（保存时再报「名称必填」），因此同时进入持久错误态，
         // 由渲染层给出 role="alert" 的说明与重试入口；弹窗关闭或换目标时错误态自然作废。
         if (active) setDetailError(error);

@@ -447,7 +447,8 @@ describe("ChunkDetailSheet 切片列表的失败态", () => {
     expect(chunkCalls).toBe(2);
     expect(text()).toContain("切片一号内容");
     expect(alertRegions().length).toBe(0);
-    expect(toastErrors).toEqual([TEXT.chunk.fetchFailed]);
+    // 瞬时提示要带上服务端错误信封原文（用户与测试都靠它定位后端故障），字典文案不再是唯一来源
+    expect(toastErrors).toEqual(["boom"]);
   });
 });
 

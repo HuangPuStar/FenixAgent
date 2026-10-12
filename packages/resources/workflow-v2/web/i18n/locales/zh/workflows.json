@@ -60,6 +60,7 @@
     },
     "loading": "加载中...",
     "load_failed": "工作流列表加载失败",
+    "load_failed_with": "工作流列表加载失败：{{message}}",
     "load_failed_hint": "请重试；若持续失败，请联系组织管理员。",
     "retry": "重试",
     "unauthorized_title": "无权限查看工作流",
@@ -78,7 +79,7 @@
         "description": "本组织绑定的工作流应用已被上游标记为不可用，工作流暂时无法读取。请联系管理员处理后重试。"
       }
     },
-    "initialize_failed": "初始化工作流空间失败，请重试；若持续失败，请联系组织管理员。",
+    "initialize_failed": "初始化工作流空间失败：{{message}}。请重试；若持续失败，请联系组织管理员。",
     "initialize_failed_session": "平台工作流账号当前不可用，初始化未能完成。请稍后重试或联系组织管理员。",
     "initialize_failed_upstream": "上游服务暂时不可用，初始化未完成。请稍后重试。",
     "initialize_failed_unauthorized": "当前会话无权初始化工作流空间，请重新登录后再试。",
@@ -203,7 +204,7 @@
     "failed_session": "平台工作流账号当前不可用，运行记录未能读取。请稍后重试或联系组织管理员。",
     "failed_timeout": "上游服务响应超时，运行记录未能读取。请稍后重试。",
     "failed_upstream": "上游拒绝了本次读取，请稍后重试；若持续失败，请联系组织管理员。",
-    "failed": "运行记录读取失败，请重试。",
+    "failed": "运行记录读取失败：{{message}}",
     "retry": "重试",
     "records_title": "执行记录",
     "empty_title": "该工作流还没有运行记录",

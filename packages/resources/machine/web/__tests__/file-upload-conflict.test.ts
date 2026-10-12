@@ -69,11 +69,13 @@ describe("文件冲突反馈", () => {
     expect(machineResources.en.fileTree.pathConflict).toContain("not overwritten");
   });
 
-  // 非冲突错误继续使用操作自己的稳定文案，不能将任意后端message当成冲突反馈。
-  test("非冲突错误保持通用失败文案", () => {
+  // 非冲突错误把服务端 message 原样上屏，用户与测试才能定位后端故障；只有 message 为空才退回兜底文案。
+  test("非冲突错误回显服务端 message", () => {
     expect(getFileOperationErrorMessage(new ApiError("internal failure", "SERVER_ERROR"), translate, "上传失败")).toBe(
-      "上传失败",
+      "internal failure",
     );
-    expect(getFileOperationErrorMessage(new Error("path_conflict"), translate, "移动失败")).toBe("移动失败");
+    expect(getFileOperationErrorMessage(new Error("disk full"), translate, "移动失败")).toBe("disk full");
+    expect(getFileOperationErrorMessage(new ApiError("", "SERVER_ERROR"), translate, "上传失败")).toBe("上传失败");
+    expect(getFileOperationErrorMessage(undefined, translate, "上传失败")).toBe("上传失败");
   });
 });

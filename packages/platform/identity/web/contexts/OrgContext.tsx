@@ -125,6 +125,7 @@ export function OrgProvider({ children }: { children: ReactNode }) {
             setRole(oldTarget.role ?? "");
           }
         }
+        // 字典带 `{{message}}` 槽位：把服务端错误信封的 `message` 一并上屏，日志保留完整诊断。
         toast.error(t("orgSwitchFailed", { message: (err as Error).message }));
       }
     },

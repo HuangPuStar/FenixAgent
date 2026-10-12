@@ -93,8 +93,9 @@ export function fetchOrgAppBinding(options: CanvasRequestOptions = {}): Promise<
  * 提交不会造出第二个空间；首次调用会顺带完成平台账号引导（登录并落库账号身份），所以调用可能比普通写操作慢。
  *
  * 失败码全部是稳定枚举（`UNAUTHENTICATED` / `INTERNAL_ERROR` / `PLATFORM_SESSION_UNAVAILABLE` /
- * `UPSTREAM_UNAVAILABLE` / `UPSTREAM_REJECTED`），文案由 UI 按码取字典（§9.3），
- * **不回显服务端 message**。权限上只要求已认证会话：任意成员都能初始化，这不是管理员动作。
+ * `UPSTREAM_UNAVAILABLE` / `UPSTREAM_REJECTED`）：UI 侧由 `initializeErrorKey` 分流，稳定码取可执行的字典
+ * 文案，未登记的码回显服务端信封原文（见 `web/pages/list/error-message.ts`）。
+ * 权限上只要求已认证会话：任意成员都能初始化，这不是管理员动作。
  */
 export function createOrgApp(options: CanvasRequestOptions = {}): Promise<ApiResponse<{ appId: string }>> {
   return request<{ appId: string }>("/web/workflow-v2/org-app", {

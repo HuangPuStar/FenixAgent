@@ -148,12 +148,12 @@ export function KnowledgeGraphPanel({ knowledgeBaseId, canManage = false }: Know
         } catch (error) {
           stopProgressPolling();
           console.error("[KnowledgeGraphPanel] progress polling failed", error);
-          toast.error(t("graph.progressFailed"));
+          toast.error(error instanceof Error ? error.message : t("graph.progressFailed"));
         }
       }, POLL_INTERVAL_MS);
     } catch (err) {
       console.error("[KnowledgeGraphPanel] generate failed", err);
-      toast.error(t("graph.generateFailed"));
+      toast.error(err instanceof Error ? err.message : t("graph.generateFailed"));
       setGenerating(false);
       setProgress(null);
     }
@@ -169,7 +169,7 @@ export function KnowledgeGraphPanel({ knowledgeBaseId, canManage = false }: Know
       toast.success(t("graph.deleteSuccess"));
     } catch (err) {
       console.error("[KnowledgeGraphPanel] delete failed", err);
-      toast.error(t("graph.deleteFailed"));
+      toast.error(err instanceof Error ? err.message : t("graph.deleteFailed"));
     }
   }, [knowledgeBaseId, mutateGraph, t]);
 

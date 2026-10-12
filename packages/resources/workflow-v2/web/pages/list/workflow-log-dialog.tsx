@@ -25,6 +25,7 @@ import { History, Inbox, RefreshCw, TriangleAlert } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { fetchPublishOverview } from "../../api/workflow-publish";
 import { WORKFLOW_NS } from "../../i18n/namespace";
+import { errorMessage } from "./error-message";
 import {
   formatPublishTime,
   PUBLISH_ACTION_RESULT_KEYS,
@@ -89,12 +90,12 @@ function WorkflowLogBody({ workflowId }: { readonly workflowId: string }) {
   }
 
   if (overview.error || !overview.data) {
-    // 失败不退回空态：给重试（读取本身可恢复），文案按固定键而非服务端原文（§9.3）。
+    // 失败不退回空态：给重试（读取本身可恢复）；服务端信封原文优先作为说明上屏，取不到才用字典里的处置建议。
     return (
       <EmptyState
         icon={<TriangleAlert className={ICON_CLASS} />}
         title={t("log.failed_title")}
-        description={t("log.failed_hint")}
+        description={errorMessage(overview.error) ?? t("log.failed_hint")}
         tone="danger"
         className="py-8"
         role="alert"

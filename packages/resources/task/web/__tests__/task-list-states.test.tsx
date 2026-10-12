@@ -370,8 +370,7 @@ describe("AgentTasksPage 列表加载状态", () => {
 
 describe("TasksPanel 列表加载状态", () => {
   // 侧栏面板同样要能区分「加载失败」与「没有绑定任务」，并给出重试入口。
-  // 注意：面板失败块走的是 `panelMode.tasksLoadFailed`，尚未回显服务端 message（TasksPanel 不在
-  // 本次「失败提示回显服务端 message」的改动清单内，故此处的固定文案断言仍与实际行为一致）。
+  // 说明行必须带上服务端信封原文（标题仍是本包字典文案）：toast 会被错过，失败块才是持久的失败解释。
   test("加载失败显示持久错误分支与重试，重试成功后渲染列表", async () => {
     listResponses = [failure("SERVER_ERROR", "boom", 500), successList()];
     logResponses = [successLogs()];
@@ -379,6 +378,7 @@ describe("TasksPanel 列表加载状态", () => {
 
     expect(alertRegions().length).toBe(1);
     expect(text()).toContain("加载任务列表失败");
+    expect(text()).toContain("boom");
     expect(text()).not.toContain("暂无绑定的定时任务");
 
     await click(buttonByText("重试") as HTMLButtonElement);
@@ -386,6 +386,20 @@ describe("TasksPanel 列表加载状态", () => {
     expect(listCalls).toBe(2);
     expect(text()).toContain("每日备份");
     expect(alertRegions().length).toBe(0);
+  });
+
+  // 侧栏面板的启停失败与整页同口径：提示必须带服务端原始 message（页面上没有 DOM 落点，只能断言 toast 入参）
+  test("侧栏启停失败把服务端原始 message 上屏", async () => {
+    listResponses = [successList()];
+    logResponses = [successLogs()];
+    toggleResponses = [failure("SERVER_ERROR", "boom", 500)];
+    await render(createElement(TasksPanel, { agentId: "agent-1" }));
+
+    await click(buttonByLabel("停用") as HTMLButtonElement);
+
+    expect(toggleCalls).toBe(1);
+    expect(toastErrors.length).toBe(1);
+    expect(toastErrors[0]).toContain("boom");
   });
 
   // 无权限分支在侧栏同样不给重试：再点一次只会拿到同一个 403

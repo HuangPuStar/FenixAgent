@@ -17,6 +17,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
 import { agentSitesApi, type SiteApp } from "../../api/sites";
+import { errorMessage } from "../../lib/error-message";
 
 interface SiteOption {
   id: string;
@@ -105,27 +106,31 @@ export function MountSiteDialog({
   const { run: runBindSites, loading: submitting } = useRequest(
     async (ids: string[]) => {
       let failed = 0;
+      // 第一条失败原因随结果一起回传：失败项可能只有一条，但用户看到的提示原先是一句固定文案，
+      // 后端给出的原因就此丢掉（`console.error` 只有开发者在控制台能看到）。
+      let firstError: string | null = null;
       for (const id of ids) {
         try {
           await unwrap(agentSitesApi.bindSite(agentConfigId, id));
         } catch (err) {
           failed++;
+          firstError ??= errorMessage(err);
           console.error("[MountSiteDialog] 绑定 site 失败", { siteAppId: id, err });
         }
       }
-      return { failed, ids };
+      return { failed, ids, firstError };
     },
     {
       manual: true,
-      onSuccess: ({ failed, ids }: { failed: number; ids: string[] }) => {
+      onSuccess: ({ failed, ids, firstError }: { failed: number; ids: string[]; firstError: string | null }) => {
         if (failed === 0) {
           toast.success(t("panelMode.mountSuccess", { count: ids.length }));
           onMounted();
           onOpenChange(false);
         } else {
-          // 部分失败也触发 reload 让用户看到实际生效项，但给出错误提示
+          // 部分失败也触发 reload 让用户看到实际生效项，并给出失败原因（服务端原文优先，取不到才用字典文案）
           onMounted();
-          toast.error(t("panelMode.mountFailed"));
+          toast.error(firstError ?? t("panelMode.mountFailed"));
         }
       },
     },

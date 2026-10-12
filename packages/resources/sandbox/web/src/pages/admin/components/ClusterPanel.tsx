@@ -98,7 +98,7 @@ export function ClusterPanel({ data, loading, error, onRefresh, onAction }: Clus
   };
   // 已有数据时保留面板内容，只在首屏（无 data）时占位，避免刷新闪回骨架（占位块见 PanelStates）。
   if (loading && !data) return <PanelLoadingState />;
-  if (error && !data) return <PanelErrorState message={t("clusterError")} onRetry={onRefresh} />;
+  if (error && !data) return <PanelErrorState message={error.message || t("clusterError")} onRetry={onRefresh} />;
   return (
     <div className="space-y-6">
       <Card>

@@ -18,9 +18,19 @@ describe("agent api keys utils", () => {
     expect(result).toBe("创建失败：已存在同名 API 密钥，请更换名称");
   });
 
-  // 未识别的错误仍应回退到通用失败文案，避免提示缺失。
-  test("falls back to generic create failure message", () => {
-    const result = getApiKeyCreateErrorMessage(new Error("unknown"), (key) => messages[key] ?? key);
+  // 未识别的错误要把服务端错误信封原文上屏，用户与测试才能定位后端故障。
+  test("echoes server message for unknown errors", () => {
+    const result = getApiKeyCreateErrorMessage(
+      new ApiError("数据库连接失败", "INTERNAL_ERROR"),
+      (key) => messages[key] ?? key,
+    );
+
+    expect(result).toBe("数据库连接失败");
+  });
+
+  // 抛出非 Error 值时没有 message 可用，退回字典文案兜底，避免提示缺失。
+  test("falls back to generic create failure message without message", () => {
+    const result = getApiKeyCreateErrorMessage("boom", (key) => messages[key] ?? key);
 
     expect(result).toBe("创建 API 密钥失败");
   });

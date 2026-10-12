@@ -18,6 +18,7 @@ import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
 import { agentApi } from "../../../api/agents";
 import { getAgentConfigLookupKey, getAgentDisplayName, isExternalAgent } from "../../../lib/agent-resource-access";
+import { errorMessage } from "../../../lib/error-message";
 import { AgentFormDialog } from "../agent-editor/AgentFormDialog";
 import "./AgentManagementPage.css";
 
@@ -100,7 +101,8 @@ export function AgentManagementPage() {
     {
       onError: (err) => {
         console.error("Failed to load agents:", err);
-        toast.error(t("loadFailed", { defaultValue: "加载智能体失败" }));
+        // 服务端信封原文优先上屏（原先还借 `defaultValue` 塞了一句硬编码中文兜底，与字典两份真相）。
+        toast.error(errorMessage(err) ?? t("loadFailed"));
       },
     },
   );
@@ -163,7 +165,9 @@ export function AgentManagementPage() {
       manual: true,
       onError: (err) => {
         console.error("Failed to enter agent:", err);
-        toast.error(t("enterFailed", { defaultValue: "进入对话失败" }));
+        // 与侧栏树同一键：提示必须带服务端信封原文（`unwrap()` 抛出的 `ApiError.message`），只进日志
+        // 或只上屏固定文案都会让用户与测试定位不到后端故障。
+        toast.error(t("enterFailed", { message: (err as Error).message }));
       },
       onFinally: () => setEnteringId(null),
     },

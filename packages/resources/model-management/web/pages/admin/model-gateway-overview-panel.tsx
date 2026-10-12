@@ -103,8 +103,8 @@ export function OverviewPanel({
           tone="danger"
           role="alert"
           icon={<TriangleAlert />}
-          // 标题只取字典（§9.3）：原先直接把 `ApiError.message`（后端错误信封原文）当标题
-          title={t("modelGateway.overview.loadFailed")}
+          // 优先展示服务端返回的失败原因（`ApiError.message`），字典文案只在无 message 时兜底。
+          title={error.message || t("modelGateway.overview.loadFailed")}
           className="py-8"
         />
       )}

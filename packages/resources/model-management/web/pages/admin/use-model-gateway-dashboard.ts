@@ -56,7 +56,8 @@ export function useModelGatewayDashboard({ onAuthFailure }: { onAuthFailure: () 
    */
   const handleSubjectSearchError = (error: Error) => {
     console.error("[model-gateway] subject search failed", error);
-    toast.error(t("modelGateway.usagePage.subjectLoadFailed"));
+    // 上屏用服务端错误信封的 message，字典文案只在没有可读 message 时兜底。
+    toast.error(error.message || t("modelGateway.usagePage.subjectLoadFailed"));
     handleGatewayRequestError(error);
   };
 
@@ -111,9 +112,9 @@ export function useModelGatewayDashboard({ onAuthFailure }: { onAuthFailure: () 
       if (feedback.level === "success") toast.success(t(feedback.translationKey, feedback.values));
       else toast.error(t(feedback.translationKey, feedback.values));
     } catch (error) {
-      // 上屏只给字典文案（§9.3）：`ApiError.message` 是后端错误信封原文，只进这里。
+      // 上屏取服务端错误信封的 message（`ApiError.message`），字典文案只在没有可读 message 时兜底。
       console.error("[model-gateway] connection check failed", error);
-      toast.error(t("modelGateway.connectionCheck.requestFailed"));
+      toast.error(error instanceof Error ? error.message : t("modelGateway.connectionCheck.requestFailed"));
     }
   }
 

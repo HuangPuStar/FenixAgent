@@ -296,7 +296,8 @@ describe("ProdViewsPanel 列表加载状态", () => {
     await render(createElement(ProdViewsPanel, { agentId: "agent-1" }));
 
     expect(alertRegion()).not.toBeNull();
-    expect(text()).toContain("加载视图失败");
+    // 失败原因上屏服务端 message（`panel.loadFailed` 只在无 message 时兜底），否则用户与测试都无法定位
+    expect(text()).toContain("boom");
     // 关键回归点：失败响应（5xx 与 200 + success:false 两种形态）都不允许落进「点击 + 创建」空态
     expect(text()).not.toContain("点击 + 创建发布视图");
 

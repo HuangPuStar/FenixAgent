@@ -67,7 +67,8 @@ export function SpreadsheetPreview({ kbId, resourceId, filename }: SpreadsheetPr
         }
       } catch (err) {
         console.error("Failed to load spreadsheet:", err);
-        if (!cancelled) setError(t("preview.loadError"));
+        // 读取失败的原因（`ApiError.message` 即错误信封原文）优先上屏，字典文案只在没有 message 时兜底。
+        if (!cancelled) setError(err instanceof Error && err.message ? err.message : t("preview.loadError"));
       } finally {
         if (!cancelled) setLoading(false);
       }

@@ -66,7 +66,7 @@ export function ChunkDetailSheet({ open, onClose, kbId, resource }: ChunkDetailS
         // 持久错误态由渲染分支按「error && 无数据」接管列表区；toast 只作为
         // 「已有数据时翻页/搜索失败」的瞬时补充提示（此时列表保留旧数据，见渲染分支）。
         setError(err);
-        toast.error(t("chunk.fetchFailed"));
+        toast.error(err instanceof Error ? err.message : t("chunk.fetchFailed"));
       } finally {
         setLoading(false);
       }
@@ -115,7 +115,7 @@ export function ChunkDetailSheet({ open, onClose, kbId, resource }: ChunkDetailS
       await unwrap(kbApi.switchChunk({ kbId, resourceId: resource.id, chunkId }, { enabled }));
     } catch (err) {
       console.error("Failed to switch chunk", err);
-      toast.error(t("chunk.toggleFailed"));
+      toast.error(err instanceof Error ? err.message : t("chunk.toggleFailed"));
       // 回滚
       setData({
         ...data,

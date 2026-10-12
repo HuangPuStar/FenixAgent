@@ -75,8 +75,8 @@ export function parseCanvasMessage(raw: unknown): { type: string; payload: unkno
 /**
  * `error` 消息里的 `retryable`（冻结 §7 的载荷字段）：只有显式为 `true` 才给重试入口。
  *
- * 画布上报的 `code` / `message` **不上屏**：`message` 是对方进程的诊断串，界面一律按稳定 error code 取
- * 字典文案（前端规范 §9.3「不展示 raw message」）。
+ * 画布上报的 `code` / `message` **不上屏**：`message` 是画布里那个独立进程的诊断串（冻结 §7 的载荷字段），
+ * 不是本服务的错误信封；界面按画布的稳定 error code 取字典文案。
  */
 export function readCanvasErrorRetryable(payload: unknown): boolean {
   if (typeof payload !== "object" || payload === null) return false;

@@ -111,7 +111,8 @@ export function AgentSkillsCatalog(props: AgentSkillsCatalogProps) {
   const [selectedKey, setSelectedKey] = useState<string | null>(null);
   const [detail, setDetail] = useState<SkillDetailData | null>(null);
   const [detailLoading, setDetailLoading] = useState(false);
-  const [detailError, setDetailError] = useState(false);
+  // 详情加载失败的原因：`null` 表示无错误，空串表示失败但服务端没给 message（渲染时兜底字典文案）。
+  const [detailError, setDetailError] = useState<string | null>(null);
   const selectedSkill = filtered.find((skill) => getSkillKey(skill) === selectedKey) ?? filtered[0] ?? null;
 
   useEffect(() => {
@@ -122,15 +123,16 @@ export function AgentSkillsCatalog(props: AgentSkillsCatalogProps) {
     if (!selectedSkill) return;
     let current = true;
     setDetail(null);
-    setDetailError(false);
+    setDetailError(null);
     setDetailLoading(true);
     props
       .onLoadDetail(selectedSkill)
       .then((result) => {
         if (current) setDetail(result);
       })
-      .catch(() => {
-        if (current) setDetailError(true);
+      .catch((cause: unknown) => {
+        console.error("[skills] 加载 Skill 详情失败", cause);
+        if (current) setDetailError(cause instanceof Error ? cause.message : "");
       })
       .finally(() => {
         if (current) setDetailLoading(false);
@@ -288,14 +290,15 @@ function SkillDetailView({
   headerOnly = false,
   detail = null,
   loading = false,
-  error = false,
+  error = null,
 }: {
   skill: SkillInfo;
   props: AgentSkillsCatalogProps;
   headerOnly?: boolean;
   detail?: SkillDetailData | null;
   loading?: boolean;
-  error?: boolean;
+  /** 失败原因（服务端 message 优先）；`null` 表示无错误，空串表示失败但无 message，渲染时兜底字典文案。 */
+  error?: string | null;
 }) {
   const { t } = useTranslation(NS.SKILLS);
   // `resource.*` 角标与公开/私有动作词表归 `@fenix/ui-components`（`StatusBadge` 的同名默认文案），
@@ -359,12 +362,12 @@ function SkillDetailView({
               <Skeleton className="h-3 w-full" />
               <Skeleton className="h-3 w-4/5" />
             </div>
-          ) : error ? (
+          ) : error != null ? (
             <div
               className="flex items-center justify-between rounded-lg bg-orange-50 px-4 py-3 text-3xs text-yellow-700"
               role="alert"
             >
-              <span>{t("detail.loadError")}</span>
+              <span>{error || t("detail.loadError")}</span>
               <Button variant="ghost" size="xs" onClick={() => props.onOpen(skill)}>
                 {t("btn.view")}
               </Button>

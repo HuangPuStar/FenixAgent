@@ -59,7 +59,7 @@ export function PluginMarketAdminDashboard({ onAuthFailure }: { onAuthFailure: (
       console.error(t("toast.loadListFailed"), error);
       // 凭据失效不是「加载失败」：门上有明确提示，这里再弹一次只会让人以为是市场本身出了问题。
       if (isUnauthorizedError(error)) onAuthFailure();
-      else toast.error(t("toast.loadListFailed"));
+      else toast.error(t("toast.loadListFailedWith", { message: error instanceof Error ? error.message : "" }));
     },
   });
   const packages = catalog.data?.packages ?? [];
@@ -114,7 +114,9 @@ export function PluginMarketAdminDashboard({ onAuthFailure }: { onAuthFailure: (
       }
       const fallback = pending.kind === "unpublish" ? t("toast.unpublishFailed") : t("toast.restoreFailed");
       console.error(fallback, response.error);
-      toast.error(fallback);
+      // 上屏把信封 message 插进槽位（写路径不 `unwrap`，原文在 `response.error` 里）：失败原因必须可见，
+      // 只在服务端没给 message 时才退回与动作对应的稳定文案。
+      toast.error(t("toast.actionFailedWith", { message: response.error?.message ?? fallback }));
     } finally {
       setWriting(false);
     }

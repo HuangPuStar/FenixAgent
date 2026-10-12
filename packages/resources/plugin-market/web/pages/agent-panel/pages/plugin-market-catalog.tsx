@@ -88,9 +88,9 @@ export function PluginMarketCatalog(props: Props) {
         <EmptyState
           icon={<AlertTriangle />}
           title={t("loadState.title")}
-          // 说明取本包字典，不回显服务端 `error.message`（§9.3）：信封原文是后端文案、可能带内部实现细节，
-          // 且不随界面语言变化。原始对象由容器在 `useRequest` 的 `onError` 里落日志，排障上下文没丢。
-          description={t("loadState.hint")}
+          // 说明取服务端 `message`——失败原因必须上屏（信封原文由容器在 `useRequest` 的 `onError` 里
+          // 继续落日志）；字典文案退化为 message 为空时的兜底。
+          description={props.error.message || t("loadState.hint")}
           tone="danger"
           role="alert"
           className="flex min-h-96 flex-col items-center justify-center"

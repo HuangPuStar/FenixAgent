@@ -20,6 +20,7 @@ import { Trans, useTranslation } from "react-i18next";
 import { toast } from "sonner";
 import { agentApi } from "../../../api/agents";
 import { AGENT_HOME_NS } from "../../../i18n/namespace";
+import { errorMessage } from "../../../lib/error-message";
 import type { GenerationFormData } from "../components/AgentGenerationForm";
 import { AgentGenerationForm } from "../components/AgentGenerationForm";
 import { createAgentAndResolveChatTarget } from "./agent-home-creation";
@@ -57,7 +58,7 @@ export function AgentHomePage() {
       console.error("[agent-home] Failed to load templates:", err);
       // 模板区失败后只剩「或从模板快速开始」标签 + 空容器，与「确实没有模板」在界面上同形；
       // 该分支没有可重试的失败区，故补一次可见提示，避免把加载失败读成产品没有模板。
-      toast.error(t("templatesFailed"));
+      toast.error(errorMessage(err) ?? t("templatesFailed"));
     },
   });
   const templates = templatesData?.templates ?? [];
@@ -75,7 +76,7 @@ export function AgentHomePage() {
       },
       onError: (err) => {
         console.error("[agent-home] Generation request failed:", err);
-        toast.error(t("generationFailed"));
+        toast.error(errorMessage(err) ?? t("generationFailed"));
         setPhase("idle");
       },
     },
@@ -104,7 +105,7 @@ export function AgentHomePage() {
       manual: true,
       onError: (err) => {
         console.error("[agent-home] Create and navigate failed:", err);
-        toast.error(t("createFailed"));
+        toast.error(errorMessage(err) ?? t("createFailed"));
       },
     },
   );

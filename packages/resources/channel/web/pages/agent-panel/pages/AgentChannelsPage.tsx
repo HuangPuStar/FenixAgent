@@ -52,7 +52,9 @@ export function AgentChannelsPage() {
       // 没有持久错误页，必须用 toast 兜底，否则这次刷新失败对用户完全不可见。
       // 判据与 lib/channel-list-state 的 `error && itemCount === 0` 同源；此处按条数而非按
       // 渲染分支判断：ahooks 在失败前置 loading 为 true，onError 看到的上一轮分支是 loading。
-      if (bindingCountRef.current > 0) toast.error(t("loadBindingsFailed"));
+      if (bindingCountRef.current > 0) {
+        toast.error(err instanceof Error ? err.message : t("loadBindingsFailed"));
+      }
     },
   });
   const bindings: ChannelBinding[] = Array.isArray(listData?.[0]) ? listData[0] : [];
@@ -74,7 +76,7 @@ export function AgentChannelsPage() {
       },
       onError: (err) => {
         console.error("Save failed", err);
-        toast.error(t("createBindingFailed"));
+        toast.error(err instanceof Error ? err.message : t("createBindingFailed"));
       },
     },
   );
@@ -90,7 +92,7 @@ export function AgentChannelsPage() {
     },
     onError: (err) => {
       console.error("Delete failed", err);
-      toast.error(t("deleteBindingFailed"));
+      toast.error(err instanceof Error ? err.message : t("deleteBindingFailed"));
     },
   });
 

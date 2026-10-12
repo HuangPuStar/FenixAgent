@@ -193,9 +193,9 @@ function ArtifactsPanelView({
         <div className={SITES_STATUS_STRIP_CLASS}>{t("siteFrame.loadingSites")}</div>
       )}
       {topMode === "sites" && sites.length > 0 && sitesLoadError && (
-        // 文案不带原始 `sitesLoadError.message`：那是站点接口错误信封的原文（§9.3）。这条属于
-        // 「列表已加载、重取失败」的降级提示，原始 error 仍在取数侧的 `onError` 里进了 `console.error`。
-        <div className={SITES_STATUS_STRIP_CLASS}>{t("siteFrame.loadFailed")}</div>
+        // 这条是「列表已加载、重取失败」的降级提示：回显站点接口错误信封的 message，用户与测试才能定位后端故障
+        // （字典文案只作 message 为空时的兜底）。原始 error 另在取数侧的 `onError` 里进了 `console.error`。
+        <div className={SITES_STATUS_STRIP_CLASS}>{t("siteFrame.loadFailed", { message: sitesLoadError.message })}</div>
       )}
 
       {/* Files 模式：完整文件区；Tasks 模式：定时任务列表；Views 模式：发布视图列表；Trace 模式：观测调用链；

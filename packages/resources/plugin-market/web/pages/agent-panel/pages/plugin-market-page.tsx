@@ -32,8 +32,9 @@ export function PluginMarketPage() {
   const catalog = useRequest(() => unwrap(pluginMarketApi.list()), {
     onError: (error) => {
       console.error(t("toast.loadListFailed"), error);
-      // 上屏只给字典文案（§9.3）：`error.message` 是 `unwrap` 抛出的 `ApiError.message`（后端信封原文）
-      toast.error(t("toast.loadListFailed"));
+      // 上屏把服务端 `error.message`（`unwrap` 抛出的 `ApiError.message`，即错误信封原文）插进槽位：
+      // 失败原因必须可见，固定文案会让用户与测试都定位不到后端故障。
+      toast.error(t("toast.loadListFailedWith", { message: error.message }));
     },
   });
   const packages = catalog.data?.packages ?? [];

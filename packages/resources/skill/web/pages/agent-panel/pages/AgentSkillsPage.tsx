@@ -187,7 +187,7 @@ export function AgentSkillsPage() {
       setDialogOpen(true);
     } catch (error) {
       console.error(t("toast.loadDetailFailed"), error);
-      toast.error(t("toast.loadDetailFailed"));
+      toast.error(error instanceof Error ? error.message : t("toast.loadDetailFailed"));
     }
   };
 
@@ -254,7 +254,7 @@ export function AgentSkillsPage() {
         URL.revokeObjectURL(blobUrl);
       } catch (error) {
         console.error(t("toast.downloadFailed"), error);
-        toast.error(t("toast.downloadFailed"));
+        toast.error(error instanceof Error ? error.message : t("toast.downloadFailed"));
       } finally {
         setDownloadingSkillKey(null);
       }

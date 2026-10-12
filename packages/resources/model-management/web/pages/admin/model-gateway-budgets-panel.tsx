@@ -208,7 +208,7 @@ export function ModelGatewayBudgetsPanel({
           // 失败块顶掉表格（含上一轮的行），重试即「按当前筛选重查一次」。
           <EmptyState
             icon={<AlertTriangle />}
-            title={t("modelGateway.budgetsPage.queryFailed")}
+            title={budgetsRequest.error.message || t("modelGateway.budgetsPage.queryFailed")}
             tone="danger"
             role="alert"
             className="py-12"

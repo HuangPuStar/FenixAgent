@@ -194,7 +194,8 @@ export const FileTreeTab = forwardRef<FileTreeTabHandle, FileTreeTabProps>(funct
       },
       onError: (err) => {
         console.error("Delete failed:", err);
-        toast.error(t("fileTree.contextMenu.delete"));
+        // 与重命名 / 移动同一口径：服务端信封原文优先上屏，取不到原因才退回字典文案。
+        toast.error(getFileOperationErrorMessage(err, t, t("fileTree.contextMenu.delete")));
       },
     },
   );
