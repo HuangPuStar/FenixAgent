@@ -73,11 +73,8 @@ export function AgentTasksPage() {
     {
       refreshDeps: [page, debouncedKeyword, typeFilter],
       onError: (err: Error) => {
-        // 列表失败的主反馈是下面那个持久 `role="alert"` 分支（带重试）；这条 toast 只补一个即时信号。
-        // 两者都只上屏字典文案：`err.message` 是 `unwrap` 抛出的 `ApiError.message`（后端信封原文，
-        // 含 SQL/服务端措辞），只进 `console.error`（§9.3）。
         console.error("task list load failed", err);
-        toast.error(t("toast.loadFailed"));
+        toast.error(err.message);
       },
     },
   );
@@ -94,8 +91,9 @@ export function AgentTasksPage() {
     {
       onError: (err: Error) => {
         console.error("agent list load failed", err);
-        // agent 列表喂的是任务表单里的 agent 下拉，静默失败会让用户以为「没有可用 agent」
-        toast.error(t("toast.agentListLoadFailed"));
+        // agent 列表喂的是任务表单里的 agent 下拉，静默失败会让用户以为「没有可用 agent」。
+        // 服务端 `message` 优先上屏，字典文案只在它是空串时兜底。
+        toast.error(err.message || t("toast.agentListLoadFailed"));
       },
     },
   );
@@ -160,11 +158,8 @@ export function AgentTasksPage() {
         setTimeout(() => refresh(), 100);
       },
       onError: (err: Error) => {
-        // 五个 mutation 一律只上屏本包字典文案，原始 `ApiError.message` 留在 `console.error`（§9.3）：
-        // 保存失败的具体原因（cron 非法 / 名称冲突 / 无权限）是服务端措辞，翻译成前端文案反而会
-        // 说成一句不精确的承诺；用户能做的都是「改完再存一次」。
         console.error("save task failed", err);
-        toast.error(t("toast.saveFailed"));
+        toast.error(err.message);
       },
     },
   );
@@ -194,7 +189,7 @@ export function AgentTasksPage() {
     },
     onError: (err: Error) => {
       console.error("toggle task failed", err);
-      toast.error(t("toast.toggleFailed"));
+      toast.error(err.message);
     },
   });
 
@@ -221,7 +216,7 @@ export function AgentTasksPage() {
       },
       onError: (err: Error) => {
         console.error("trigger task failed", err);
-        toast.error(t("toast.triggerFailed"));
+        toast.error(err.message);
       },
       // ahooks v3 onFinally 签名: (params, data, error)，第一个参数是输入参数
       onFinally: (params) => {
@@ -242,7 +237,7 @@ export function AgentTasksPage() {
     },
     onError: (err: Error) => {
       console.error("delete task failed", err);
-      toast.error(t("toast.deleteFailed"));
+      toast.error(err.message);
     },
   });
 
@@ -256,7 +251,7 @@ export function AgentTasksPage() {
     },
     onError: (err: Error) => {
       console.error("clear logs failed", err);
-      toast.error(t("toast.clearLogsFailed"));
+      toast.error(err.message);
     },
   });
 
@@ -311,6 +306,7 @@ export function AgentTasksPage() {
   // 加载失败必须落到持久分支：只弹 toast 时，toast 消失后 `tasks` 退化成空数组、界面显示「暂无任务」，
   // 「加载失败」与「确实没有任务」不可区分，用户也没有恢复入口。401/403 是持久授权状态，
   // 单列无权限分支且不给重试（再点一次只会拿到同一个拒绝）。
+  // 失败原因直接回显服务端 `message`：换成固定文案会让用户与测试都定位不到后端故障。
   if (listError) {
     const unauthorized = isUnauthorizedError(listError);
     return (
@@ -322,7 +318,7 @@ export function AgentTasksPage() {
         >
           <AlertTriangle className="size-8" />
           <strong className="text-sm text-slate-800">
-            {unauthorized ? t("loadState.unauthorizedTitle") : t("loadState.failed")}
+            {unauthorized ? t("loadState.unauthorizedTitle") : t("loadState.failed", { message: listError.message })}
           </strong>
           {unauthorized ? (
             <p className="max-w-115 text-3xs">{t("loadState.unauthorizedHint")}</p>

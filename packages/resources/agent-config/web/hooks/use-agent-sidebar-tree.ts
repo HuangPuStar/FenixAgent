@@ -203,10 +203,10 @@ export function useAgentSidebarTree({
       manual: true,
       onFinally: () => setEnteringTargetId(null),
       onError: (err) => {
-        // 四个 mutation 的失败提示统一只上屏本包的字典文案：`err.message` 是 `unwrap` 抛出的
-        // `ApiError.message`，即后端错误信封原文；原始 error 对象仍进 `console.error` 保诊断上下文。
+        // 失败提示必须带上服务端信封原文（`unwrap()` 抛出的 `ApiError.message`）：只上屏固定文案会让
+        // 用户与测试都拿不到后端故障原因；原始 error 对象同时进日志，留下可查的诊断上下文。
         console.error("Failed to enter instance:", err);
-        toast.error(t("enterFailed"));
+        toast.error(t("enterFailed", { message: (err as Error).message }));
       },
     },
   );
@@ -232,7 +232,7 @@ export function useAgentSidebarTree({
       onFinally: () => setPendingInstanceId(null),
       onError: (err) => {
         console.error("Failed to restart instance:", err);
-        toast.error(t("restartFailed"));
+        toast.error(t("restartFailed", { message: (err as Error).message }));
       },
     },
   );
@@ -251,7 +251,7 @@ export function useAgentSidebarTree({
       onFinally: () => setPendingInstanceId(null),
       onError: (err) => {
         console.error("Failed to stop instance:", err);
-        toast.error(t("stopInstanceFailed"));
+        toast.error(t("stopInstanceFailed", { message: (err as Error).message }));
       },
     },
   );
@@ -276,7 +276,7 @@ export function useAgentSidebarTree({
       onFinally: () => setDeleteTarget(null),
       onError: (err) => {
         console.error("Failed to delete agent:", err);
-        toast.error(t("deleteFailed"));
+        toast.error(t("deleteFailed", { message: (err as Error).message }));
       },
     },
   );

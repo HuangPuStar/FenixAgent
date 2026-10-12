@@ -1,5 +1,7 @@
 # 前端开发规范
-> **版本**：v3.2.0 | **最后更新**：2026-09-24 | **维护者**：前端团队
+> **版本**：v3.2.1 | **最后更新**：2026-10-12 | **维护者**：前端团队
+>
+> **本版要点**：撤销「错误文案收口」，失败提示重新暴露服务端错误信封的 `message`（§9.3）。
 >
 > 只记**当前规则**与**尚未收口的偏离**；变更日志与已收口条目已删，历史见 `git log --follow -- docs/developer/guide/frontend-development.md`。
 
@@ -329,15 +331,14 @@ import 顺序由 Biome 的 import-sort 统一（`precheck` 会跑），形态是
 - **禁止**在组件中直接写 `fetch` / `XMLHttpRequest`、在 `useEffect` 中裸调 `fetch`（能力缺口见 §5.3，须登记后由域模块承载）、拼装后端 URL（含 WebSocket URL，见 §8.1）；**禁止**在域模块中重复定义 `request()`（统一从 `@fenix/web-runtime/api/request` import）、在 API 模块内调用 `toast.error`（UI 层职责，错误由组件 `onError` 处理）。
 - **禁止**新增 `/v1`、`/v2` 历史前缀（由 `frontend-no-legacy-api-prefix` 规则阻断，见 §11.2）；**禁止**绕过包 `exports` 深引 `@fenix/<pkg>/src/*`、`@fenix/<pkg>/web/src/*`；**禁止**直接 `await` 域模块并依赖 `catch`（必须解包，见 §5.2）；**禁止**把失败静默映射成 empty 或成功状态。
 - **禁止**在用户可感知失败的位置只写 `console.error` 而不给用户可见反馈——判据是三条**同时**成立：① 位置在组件 / 页面 / hook 的 `catch` 或异步失败分支里；② 失败由用户操作触发，或使用户正在看的内容不可用；③ 同作用域（同一函数内）没有别的用户可见反馈（`toast` / 内联错误态 / 降级 UI）。这条规则**没有门禁，只能人工 review**；三类位置**必然豁免**：域模块与请求基建（模块内禁止 UI 反馈）、ErrorBoundary 的 `onError`（降级 UI 本身就是可见反馈，§7.1）、后台触发路径（轮询 / WS-SSE 回调 / 定时器 / 订阅）。
-- 补反馈时用 `toast.error(t("<key>"))`，**保留原有 `console.error`**（它承载诊断上下文）；`packages/ui-components/**` 内部不直接调宿主 `toast`，只经 `onNotice` / `onError` 端口抛出文案；`/login` 与 `/admin` 下没有 `Toaster`（§3.1），这两条路径上的失败必须用内联错误态——那里 `toast.error` 是静默 no-op。
+- 补反馈时把服务端 message 交给用户（`toast.error(err.message)`，或经字典键的 `{{message}}` 槽位，见 §9.3），**保留原有 `console.error`**（它承载诊断上下文）；`packages/ui-components/**` 内部不直接调宿主 `toast`，只经 `onNotice` / `onError` 端口抛出文案；`/login` 与 `/admin` 下没有 `Toaster`（§3.1），这两条路径上的失败必须用内联错误态——那里 `toast.error` 是静默 no-op。
 
 ### 5.9 现状偏离
 - `identity/web/contexts/OrgContext.tsx` 的 `refreshOrgs` 失败只 `console.error`（页面级失败块已由 `AgentOrganizationsPage` 自己的取数承担，§3.6）与 `agent-config/web/components/agent-panel/SiteFrame.tsx` 挂载二维码后台预生成失败只留 `console.error`（分享弹层停在永久 spinner）— 各自补上不依赖 toast 的持久失败态后移除
 - 解包归属两代写法：9 个模块域内 `unwrap()`（machine `fs.ts` / 宿主 `peri-task-details.ts`、`model-gateway`、`observer`、`system-logs`、`system-people-tree`、`hindsight`、sandbox `system-organizations` / `system-sandbox`），另有 3 个 blob 家族模块（`knowledge-bases`、`skills`、`system-sandbox` 部分方法）域内抛错，去重后合计 11 个模块的对外签名是数据或抛错、不是 Result — 迁到 §5.4 的「新增返回 `ApiResponse`」后移除（新增代码不要扩大这个面）
 - machine `web/api/fs.ts` 写操作每次调用新生成 `opId`（`randomUUID()`），重发同一动作服务端无法据此幂等去重，`request()` **不自动重试**（`docs/arch/12-files.md` §7.2）— opId 生成上移到「用户动作」层（或让域模块接受调用方传入 opId）后移除
 - `frontend-no-legacy-api-prefix` 只识别裸 `request(...)`，成员调用 `this.request("/v1/...")` 或裸 `fetch("/v1/...")` 会绕过 — 当前控制台代码无 `/v1`、`/v2` 命中，但不要依赖这条规则做全量保证
-- 失败提示回显服务端 `err.message` 只剩 5 处登记了理由的豁免（处数由 `apps/web/src/__tests__/package-error-text-echo.test.ts` 按括号配对钉住）：mcp `testUrl` 探测（2 处）、knowledge 厂商 Key 校验（1 处）、sandbox `feedback.message`（2 处）— 各自理由消失（诊断另有承载 / 文案改 `t()`）后收口。自研工作流前端下线时一并去掉的两条（`WorkflowEditor` dry-run 的 `issues[].message`、YAML 导入失败）无需再收口
-- `knowledge/web/pages/agent-panel/pages/agent-knowledge-load-failure.tsx` **有意**展示服务端 message 作排障上下文，与 §9.3 口径冲突（涉 4 个调用点、5 条既有断言）— 单独裁定后移除；`model-management` 的 `loadProvidersError` / `loadModelConfigError` / `batchDeleteError` / `modelSubrow.testModel.error` 为全仓零引用死键 — 按「不删除无关死代码」登记于此，随所在代码清理时移除
+- `model-management` 的 `loadProvidersError` / `loadModelConfigError` / `batchDeleteError` / `modelSubrow.testModel.error` 为全仓零引用死键 — 按「不删除无关死代码」登记于此，随所在代码清理时移除
 
 ## 6. 安全规范
 前端安全是质量基线：以下规则**必须**遵守，违反需在 code review 中 block。
@@ -367,7 +368,6 @@ import 顺序由 Biome 的 import-sort 统一（`precheck` 会跑），形态是
 
 ### 6.5 现状偏离
 - `dangerouslySetInnerHTML` 的 3 处调用点（knowledge 的 docx 分支与切片详情、检索高亮）全部走 `knowledge/web/lib/sanitize-html.ts` 的显式白名单（`sanitizeHighlightHtml` / `sanitizeRichHtml`，`sanitize-html.test.ts` 钉住白名单内容与接线）— 白名单里的 `class` 另行裁定后移除。
-- 错误文案回显：Chat 域按稳定 `error.type` 映射字典（`public-error-text.ts`，协议侧「不得使用原始异常文本」，`public-error-i18n.test.ts` 守护）；域模块与页面的失败提示只上屏本包字典文案，守卫 `apps/web/src/__tests__/package-error-text-echo.test.ts` — 豁免清单与未收口项（§5.9）收口后移除。
 - DOMPurify 的运行时行为在本仓测试环境测不出（happy-dom 限制，真实浏览器不受影响），清洗用例只断言白名单与接线（§11.2）— 测试环境能真实断言渲染后 HTML 后移除。
 - `console.log`：仅 `use-cytoscape-graph.ts`（图谱初始化，含 2 条样例元素）与 `use-workflow-editor-events.ts`（Ctrl/Cmd+Shift+D 显式触发的调试入口）打用户数据，其余只打长度 / 大小 / 类型；`request.ts` 记完整 URL（含 query），全仓无调用方把凭据放进 query — 一旦出现凭据入日志或 query 即须脱敏并移除本条。
 
@@ -445,7 +445,7 @@ import 顺序由 Biome 的 import-sort 统一（`precheck` 会跑），形态是
 ### 9.3 规则
 - 禁止在 JSX 中硬编码用户可见字符串；命名空间用包的 `NS` 常量，不写字符串字面量；中文注释与 `console.log` 不受 i18n 限制。
 - **en / zh 的 key 必须对称**，新增 key 同批补齐两种语言并同步包内 `web/__tests__/*-i18n.test.ts` 基线；**日期、数字、相对时间必须取当前 locale**，不得在共享组件中固定 `zh-CN`。
-- **API / domain 错误按稳定 error code 映射到 message key**，未知错误使用安全通用文案，**不展示 raw message**（Chat 域是样板：`public-error-text.ts` + 协议侧约束 + `public-error-i18n.test.ts`）。
+- **失败提示必须暴露服务端错误信封的 `message`**（即 `unwrap()` 抛出的 `ApiError.message`）：`err.message` 原样上屏，或经字典键的 `{{message}}` 槽位带语境前缀（`t("x.failedWith", { message: err.message })`）——**字典文案只在 message 为空时兜底**；不得用固定通用文案覆盖服务端 message（那会把后端问题屏蔽在接口侧，2026-10-12 裁定撤销原「不展示 raw message」口径）。已知稳定业务 code 的友好映射（如 `path_conflict`）保留；Chat 域仍按 ACP `PublicError.type` 映射（协议侧封闭登记表：`public-error-text.ts` + `public-error-i18n.test.ts` 守护），不受本条影响。
 - **纯逻辑模块与后端不得 import UI i18n 或图标依赖**（见 §10）。
 
 ### 9.4 现状偏离
@@ -458,7 +458,7 @@ import 顺序由 Biome 的 import-sort 统一（`precheck` 会跑），形态是
 - `agent-config` 兜底文案 12 处（`AgentManagementPage.tsx` 8、`AgentHomePage.tsx` 3、`SiteFrame.tsx` 的 `title`）— 删掉 `defaultValue` 兜底（靠 i18n 测试保证键齐），默认提示模板与 `title` 改走 `t()`。
 - 首屏静态加载全部语言与全部 namespace — 按 route / feature 拆分懒加载。
 - 语言切换没有 UI 组件（检测、`rcs-lang` 持久化与 `fallbackLng` 都是宿主启动决策）— 补语言切换 UI。
-- 复扫无需重判的两类（**不是用户可见文案、不属违规**）：开发诊断串 28 处（`console.warn/error` 与错误边界的 `onError`，含前述 1 条诊断日志串）；域模块内部错误消息 26 处（`web-runtime/api/request.ts`、machine `api/fs.ts`、knowledge / skill / observer 的 api 归一分支、`shell-navigation.ts`、`org-session.tsx`、identity `auth-client.ts`）— 界面一律按稳定 error code 取字典文案、**不展示 raw message**，这些串只进 `console` 与 `ApiError.message`。
+- 复扫无需重判的两类（**均非「前端编写、需 i18n 的用户可见文案」，不属违规**）：开发诊断串 28 处（`console.warn/error` 与错误边界的 `onError`，含前述 1 条诊断日志串）；域模块内部错误消息 26 处（`web-runtime/api/request.ts`、machine `api/fs.ts`、knowledge / skill / observer 的 api 归一分支、`shell-navigation.ts`、`org-session.tsx`、identity `auth-client.ts`）— 按 §9.3，失败提示原样上屏服务端 message，这些串会随 `ApiError.message` 送达用户；但它们是**服务端 / 归一层的诊断文本**，不是前端编写、需 i18n 的界面文案，故不计入硬编码文案。
 
 ## 10. 样式
 - 默认 Tailwind v4 工具类，不写 CSS；配置只在 CSS 里：CSS-first、无 `tailwind.config.*`，token 写 `@theme`，自定义工具类 `@utility` 只在宿主 `apps/web/src/index.css`；**禁止 `@apply`**（当前零使用，勿引入）。**刻度在 `@theme` 按绝对像素落地**（2026-09-28 裁定）：本仓根字号 13px，而 Tailwind 刻度的默认值全是 rem 相对（`--spacing: 0.25rem` 只渲染 3.25px），两份 token 副本已把 `--spacing: 4px` 与 `--radius-*` / `--text-*` / `--container-*` 写成设计值的绝对像素——工具类在任何根字号下渲染的都是设计值（`p-4` = 16px、`w-60` = 240px、`text-sm` = 14px、`rounded-md` = 6px）。**不要**为「保住原值」把尺寸 / 间距 / 字号写进 CSS 或任意值（`FCP-WEB-01` 拦）；刻度要改就到 `@theme` 改。

@@ -5,6 +5,7 @@
   "searchPlaceholder": "搜索智能体...",
   "emptyMessage": "暂无智能体，点击「新建智能体模板」添加",
   "loadError": "加载Agent列表失败: {{message}}",
+  "unknownError": "未知错误",
   "columns": {
     "name": "名称"
   },
@@ -128,7 +129,6 @@
     "unnamedAgent": "未命名智能体",
     "loading": "正在加载智能体配置…",
     "loadFailed": "无法加载智能体配置",
-    "loadFailedHint": "请重试；若持续失败，请联系组织管理员。",
     "retry": "重试",
     "missingTarget": "编辑模式缺少智能体标识",
     "loadRequired": "智能体详情尚未成功加载，不能保存",
@@ -272,10 +272,12 @@
     },
     "errors": {
       "load": "应用列表加载失败",
-      "loadHint": "请重试；若持续失败，请联系组织管理员。",
+      "loadWith": "应用列表加载失败：{{message}}",
       "save": "保存应用失败",
       "delete": "删除应用失败",
+      "deleteWith": "删除应用失败：{{message}}",
       "rotate": "重签 Token 失败",
+      "rotateWith": "重签 Token 失败：{{message}}",
       "nameRequired": "名称不能为空",
       "creatorInactive": "创建该应用的智能体暂未激活",
       "creatorNavigation": "无法打开创建者"
@@ -317,18 +319,18 @@
   "configSavedRestartTitle": "配置已保存",
   "configSavedRestartDescription": "配置已保存，需要重启智能体实例才能生效。是否立即重启？",
   "restartSuccess": "实例已重启",
-  "restartFailedSaved": "配置已保存，但重启失败",
+  "restartFailedSaved": "配置已保存，但重启失败: {{message}}",
   "noInstancesToRestart": "没有运行中的实例可重启",
   "restartTitle": "重启智能体实例",
   "restartDescription": "选择需要重启的实例。配置更改需要重启才能生效。",
   "selectAll": "全选",
-  "restartFailed": "重启失败",
+  "restartFailed": "重启失败: {{message}}",
   "stopSuccess": "实例已停止",
-  "stopInstanceFailed": "停止实例失败",
+  "stopInstanceFailed": "停止实例失败: {{message}}",
   "deleteAgentTitle": "删除智能体",
   "deleteAgentConfirm": "确定要删除智能体 \"{{name}}\" 吗？此操作不可撤销。",
   "deleteSuccess": "智能体已删除",
-  "deleteFailed": "删除智能体失败",
+  "deleteFailed": "删除智能体失败: {{message}}",
   "memory": {
     "enableTitle": "智能体记忆",
     "enableDescription": "启用跨会话记忆能力"
@@ -341,7 +343,7 @@
   "save": {
     "successCreate": "Agent已创建",
     "successUpdate": "Agent已更新",
-    "errorGeneric": "保存失败"
+    "errorGeneric": "保存失败: {{message}}"
   },
   "categories": {
     "general": "通用助理",
@@ -373,5 +375,5 @@
   },
   "loadFailed": "加载智能体失败",
   "envCreateFailed": "创建运行环境失败",
-  "enterFailed": "进入智能体失败"
+  "enterFailed": "进入智能体失败: {{message}}"
 }

@@ -23,7 +23,7 @@
   },
   "siteFrame": {
     "loadingSites": "加载 Agent 绑定的站点...",
-    "loadFailed": "加载站点失败"
+    "loadFailed": "加载站点失败：{{message}}"
   },
   "fileTree": {
     "emptyState": "工作区暂无文件",
