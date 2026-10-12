@@ -14,6 +14,7 @@
     "unmountConfirm": "确定卸载此 Agent 的 \"{{name}}\" 站点？",
     "tasks": "定时任务",
     "views": "发布视图",
+    "trace": "调用链",
     "floating": "浮动",
     "docked": "固定",
     "dock": "固定右侧工作区",

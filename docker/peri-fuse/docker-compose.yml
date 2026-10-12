@@ -36,6 +36,9 @@ services:
             # 单容器模式：数据落内嵌 Turso/SQLite，无需 ClickHouse / Redis / S3。
             LANGFUSE_MODE: lite
             LITE_SERVER_PORT: "23332"
+            # 本地数据库引擎：turso（默认）或 sqlite（Bun 内置 bun:sqlite）。
+            # 与 .env 的 PERIFUSE_ENGINE 插值；缺省 turso，保持既有部署行为不变。
+            PERIFUSE_ENGINE: ${PERIFUSE_ENGINE:-turso}
             # API key 哈希盐（密钥）：留空则首次启动自动生成并持久化到容器内 /app/data/.salt。
             # 键名加前缀，避免与宿主机上无关的 SALT 同名碰撞（契约 §8.4 的同一考虑）。
             SALT: ${PERIFUSE_SALT:-}

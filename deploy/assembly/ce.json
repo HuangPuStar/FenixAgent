@@ -17,6 +17,7 @@
     "sandbox",
     "skill",
     "task",
+    "trace",
     "workflow",
     "workflow-v2"
   ],

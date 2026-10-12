@@ -167,5 +167,13 @@ export function buildModuleConfigs(env: ServerEnv, config: AppConfig): Readonly<
       modelGatewayDefaultUserBudgetUsd: config.modelGatewayDefaultUserBudgetUsd,
       modelGatewayDefaultBudgetDuration: config.modelGatewayDefaultBudgetDuration,
     },
+    // Trace 观测模块配置：与 Agent 侧上报用的是**同一组**连接参数（`LANGFUSE_*`，声明 owner 是
+    // agent-config），本模块只是控制台侧的读取方，故不重复声明环境键，只在这里把已解析的三个值投影过去。
+    // 缺任一键即「观测读取未启用」，包侧据此返回 configured=false 而不是发一次注定 401 的请求。
+    trace: {
+      langfuseBaseUrl: config.langfuseBaseUrl,
+      langfusePublicKey: config.langfusePublicKey,
+      langfuseSecretKey: config.langfuseSecretKey,
+    },
   };
 }

@@ -49,6 +49,10 @@
       "types": "./web/hooks/use-page-visible.ts",
       "default": "./web/hooks/use-page-visible.ts"
     },
+    "./hooks/use-request-signal": {
+      "types": "./web/hooks/use-request-signal.ts",
+      "default": "./web/hooks/use-request-signal.ts"
+    },
     "./chat/structured-to-thread": {
       "types": "./web/chat/structured-to-thread.ts",
       "default": "./web/chat/structured-to-thread.ts"

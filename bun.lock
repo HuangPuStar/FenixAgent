@@ -39,6 +39,7 @@
         "@fenix/resource-sandbox": "workspace:*",
         "@fenix/resource-skill": "workspace:*",
         "@fenix/resource-task": "workspace:*",
+        "@fenix/resource-trace": "workspace:*",
         "@fenix/resource-workflow": "workspace:*",
         "@fenix/resource-workflow-v2": "workspace:*",
         "@fenix/sandbox-provider": "workspace:*",
@@ -189,6 +190,7 @@
         "@fenix/resource-sandbox": "workspace:*",
         "@fenix/resource-skill": "workspace:*",
         "@fenix/resource-task": "workspace:*",
+        "@fenix/resource-trace": "workspace:*",
         "@fenix/resource-workflow": "workspace:*",
         "@fenix/resource-workflow-v2": "workspace:*",
         "@keyv/redis": "^5.1.6",
@@ -223,6 +225,7 @@
         "@fenix/resource-sandbox": "workspace:*",
         "@fenix/resource-skill": "workspace:*",
         "@fenix/resource-task": "workspace:*",
+        "@fenix/resource-trace": "workspace:*",
         "@fenix/resource-workflow-v2": "workspace:*",
         "@fenix/ui-components": "workspace:*",
         "@fenix/web-runtime": "workspace:*",
@@ -824,6 +827,28 @@
         "react-i18next": "^17.0.8",
       },
     },
+    "packages/resources/trace": {
+      "name": "@fenix/resource-trace",
+      "dependencies": {
+        "@fenix/chat-channel": "workspace:*",
+        "@fenix/platform-sdk": "workspace:*",
+        "@fenix/ui-components": "workspace:*",
+        "@fenix/web-runtime": "workspace:*",
+        "ahooks": "^3.9.7",
+        "elysia": "^1.4.28",
+        "lucide-react": "^1.16.0",
+        "zod": "^4.4.3",
+      },
+      "devDependencies": {
+        "happy-dom": "^20.9.0",
+      },
+      "peerDependencies": {
+        "i18next": "^26.2.0",
+        "react": "^19.2.6",
+        "react-dom": "^19.2.6",
+        "react-i18next": "^17.0.8",
+      },
+    },
     "packages/resources/workflow": {
       "name": "@fenix/resource-workflow",
       "dependencies": {
@@ -1352,6 +1377,8 @@
     "@fenix/resource-skill": ["@fenix/resource-skill@workspace:packages/resources/skill"],
 
     "@fenix/resource-task": ["@fenix/resource-task@workspace:packages/resources/task"],
+
+    "@fenix/resource-trace": ["@fenix/resource-trace@workspace:packages/resources/trace"],
 
     "@fenix/resource-workflow": ["@fenix/resource-workflow@workspace:packages/resources/workflow"],
 

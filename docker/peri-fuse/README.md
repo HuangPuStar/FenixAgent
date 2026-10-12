@@ -3,11 +3,20 @@
 平台的 **LLM 观测服务**：Agent（peri）的模型调用 Trace、成本与调试信息上报到这里，在控制台查看。
 Peri-Fuse 是 Langfuse 的兼容实现——单容器 + 内嵌 Turso/SQLite，不需要 ClickHouse / Redis / S3 / Worker。
 
-**平台侧没有转接层**：上报由 **Agent 进程直连** Peri-Fuse（peri 的 langfuse-client 读 `LANGFUSE_BASE_URL` /
-`LANGFUSE_PUBLIC_KEY` / `LANGFUSE_SECRET_KEY` 三个同名环境变量）；主服务只负责把这组键随 Agent 启动参数
-透传下去（`packages/resources/agent-config/src/server/services/agent-launch-spec/memory-env.ts` 的
-`buildLangfuseEnv()`），自身不访问本服务。三键的声明面在 `packages/resources/agent-config/fenix.module.ts`，
-宿主配置投影在 `apps/server/src/config.ts` 的 `langfuse*`；**改值需重启主服务**（装配期固化）。
+**写入侧没有转接层，读取侧有一个只读薄层**：
+
+- **上报（写入）** 由 **Agent 进程直连** Peri-Fuse（peri 的 langfuse-client 读 `LANGFUSE_BASE_URL` /
+  `LANGFUSE_PUBLIC_KEY` / `LANGFUSE_SECRET_KEY` 三个同名环境变量）；主服务只负责把这组键随 Agent 启动参数
+  透传下去（`packages/resources/agent-config/src/server/services/agent-launch-spec/memory-env.ts` 的
+  `buildLangfuseEnv()`）。
+- **控制台读取** 由主服务经 `packages/resources/trace`（`@fenix/resource-trace`）以**服务端薄层**访问同一基址的
+  两个公开读接口（`/api/public/traces`、`/api/public/v2/observations`），经 `/web/.../traces*` 转给 Chat 右侧的
+  Trace 面板。薄层不是网关：只有具名只读端点、Basic 凭据只在服务端组装，**密钥不下发浏览器**；面板也不接受
+  浏览器指定「查谁的观测」——会话由认证主体 + environment + 实例 uid 推导后从 Session Doc 取活跃 ACP 会话 id。
+
+三键的声明面在 `packages/resources/agent-config/fenix.module.ts`，宿主配置投影在 `apps/server/src/config.ts` 的
+`langfuse*`（`trace` 模块经 `apps/server/src/bootstrap/module-configs.ts` 复用同一组值，不另行声明环境键）；
+**改值需重启主服务**（装配期固化），写入侧与读取侧**同时**受这次重启影响。
 
 ## 前置条件
 
@@ -36,7 +45,7 @@ Peri-Fuse 是 Langfuse 的兼容实现——单容器 + 内嵌 Turso/SQLite，�
 
 | 服务 | 接入 `fenix-server` | 理由 |
 | --- | --- | --- |
-| `peri-fuse` | 是 | 上报方是 Agent 进程：本地执行的 Agent 跑在 `rcs` 容器内、沙箱执行的跑在各自节点容器内，都按服务名 `peri-fuse:23332` 直连它（命中契约 §3 的成员判定标准——「需要访问主服务的执行节点」要与它通信） |
+| `peri-fuse` | 是 | 写入方是 Agent 进程：本地执行的 Agent 跑在 `rcs` 容器内、沙箱执行的跑在各自节点容器内，都按服务名 `peri-fuse:23332` 直连它；读取方是主服务本身（Trace 面板的薄层，见下节）。两者都要求它留在 `fenix-server` 网络上 |
 
 本目录只有一个服务，没有辅助服务需要留在项目默认网络。
 
@@ -52,6 +61,10 @@ Peri-Fuse 是 Langfuse 的兼容实现——单容器 + 内嵌 Turso/SQLite，�
 
 写错地址不会让主服务报错——上报失败只丢 Trace，业务对话照常。排查「控制台没有数据」时先核对这条地址。
 
+读取侧（平台的 Trace 面板）用的是**同一个基址**：容器形态下主服务与 Agent 同在 `fenix-server` 网络，`http://peri-fuse:23332`
+对两者都可达，因此不需要第二组配置。但它的失败面是**可见的**：地址不可达时面板显示「观测后端不可达」（503），
+凭据无效时显示「观测后端拒绝了读取请求」（502，真实原因只在主服务日志里）。
+
 ## 接入步骤
 
 1. 起服务：`./docker/deploy.sh up`（先在 `docker/deploy.env` 打开 `FENIX_FEATURE_PERI_FUSE=true`），或按本目录开头注释独立启动。
@@ -66,6 +79,8 @@ Peri-Fuse 是 Langfuse 的兼容实现——单容器 + 内嵌 Turso/SQLite，�
 
 4. 重启主服务（三键在装配期读入）。之后新起的 Agent 实例即开始上报；已运行的实例要用新参数重启才会带上三键。
 5. 触发一次 Agent 对话，回到控制台确认出现 Trace。
+6. 在同一 workspace 的 Chat 右侧面板切到 **Trace** 页签，应能看到这次会话的 run 列表与调用图（列表为空但显示
+   「未配置观测读取」时，说明第 3 步的三键没进主服务 env，或主服务还没重启）。
 
 ## 数据与迁移
 
@@ -101,4 +116,8 @@ docker compose -f docker/peri-fuse/docker-compose.yml up -d
 
 1. **鉴权面**：数据 API 需要项目 API key，MCP 端点（`/mcp`）与静态页是公开只读；Peri-Fuse 没有平台级多租户隔离，因此宿主端口默认只绑回环。
 2. **规模上限**：单文件 SQLite 的写入能力有上限，适合本地开发 / 小队 / 单机部署；更大的量按上游 README 换远程 Turso（本目录未开该开关）。
-3. **观测故障不影响业务**：服务没起或地址写错时，Agent 上报失败只丢 Trace，不阻塞对话与工作流。
+3. **观测故障不影响业务**：服务没起或地址写错时，Agent 上报失败只丢 Trace，不阻塞对话与工作流。读取侧同理：
+   面板按 503 / 502 显式报错并给重试出口，不影响对话本身。
+4. **读取侧的鉴权与隔离**：平台的 `/web/.../traces*` 按 Environment 归属鉴权（不存在、跨组织、跨用户一律 404），
+   Langfuse 的会话过滤条件由服务端从 Session Doc 取；但 Peri-Fuse 自身只有项目级 API key，**没有平台级多租户
+   隔离**，因此它仍不得直接暴露公网（与第 1 条一致）。

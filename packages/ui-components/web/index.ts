@@ -149,6 +149,7 @@ export * from "./ui/form";
 export * from "./ui/hover-card";
 export * from "./ui/input";
 export * from "./ui/input-group";
+export * from "./ui/json-view";
 export * from "./ui/label";
 export * from "./ui/pagination";
 export * from "./ui/popover";

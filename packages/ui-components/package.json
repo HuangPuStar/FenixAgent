@@ -588,6 +588,10 @@
       "types": "./web/ui/input-group.tsx",
       "default": "./web/ui/input-group.tsx"
     },
+    "./ui/json-view": {
+      "types": "./web/ui/json-view.tsx",
+      "default": "./web/ui/json-view.tsx"
+    },
     "./ui/label": {
       "types": "./web/ui/label.tsx",
       "default": "./web/ui/label.tsx"

@@ -2,6 +2,7 @@ import { SiteFrame, SiteTabsBar, useArtifactsSites } from "@fenix/agent-config/w
 import { ArtifactsFilesWorkspace, useArtifactsFiles } from "@fenix/resource-machine/web";
 import { type ProdViewModulesConfig, ProdViewsPanel } from "@fenix/resource-prod-view/web";
 import { TasksPanel } from "@fenix/resource-task/web";
+import { TracePanel } from "@fenix/resource-trace/web";
 import type { ChangedFile } from "@fenix/ui-components/chat/lib/extract-changed-files";
 import { Button } from "@fenix/ui-components/ui/button";
 import { ErrorFallback } from "@fenix/ui-components/ui/error-fallback";
@@ -19,6 +20,8 @@ const SITES_STATUS_STRIP_CLASS = "px-3 py-1 text-3xs text-text-dim border-b bord
 interface ArtifactsPanelProps {
   envId: string | null;
   agentConfigId?: string | null;
+  /** 实例 uid（前端路由的 sessionId 段）；Trace 面板据此定位要读的观测会话。 */
+  sessionId?: string | null;
   changedFiles?: ChangedFile[];
   /** ProdView 模块配置，控制面板 tab 的显示/隐藏 */
   modulesConfig?: ProdViewModulesConfig;
@@ -50,7 +53,7 @@ interface ArtifactsPanelProps {
  *
  * 落点（2026-09-28）：本文件连同 `TopModeTabs.tsx` / `artifacts-dialogs.tsx` 从 `apps/web/src/shell/artifacts/`
  * 归位到 `apps/web/src/pages/agent-panel/artifacts/`，**不迁出宿主**——这一簇同时装配 agent-config /
- * machine / prod-view / task 四家的 UI，进组件库违反其零依赖定位，进任一资源包违反 §2.3 依赖矩阵。位移的
+ * machine / prod-view / task / trace 五家的 UI，进组件库违反其零依赖定位，进任一资源包违反 §2.3 依赖矩阵。位移的
  * 理由只是「跟着唯一生产消费者走」：消费者是页面 `pages/agent-panel/chat-workspace-artifacts.tsx`
  * （懒加载本文件），`shell/` 保留应用壳与侧栏装配的语义。同目录的伴随样式表
  * `artifacts-workspace.css` 已于 2026-09-28 退役（几何撤回各消费方 `className`，残余规则收进
@@ -68,14 +71,16 @@ export function ArtifactsPanel(props: ArtifactsPanelProps) {
 }
 
 /**
- * Chat 右侧真实工作区。本组件只剩两件事：**模式切换**（Files / Sites / Tasks / Views）与**渲染装配**；
- * 两条数据流都在各自 owner 包内——Files 的 tab / 角标 / 拖拽上传在 `@fenix/resource-machine/web` 的
- * `useArtifactsFiles`，Sites 的取数与挂载/卸载编排在 `@fenix/agent-config/web` 的 `useArtifactsSites`。
+ * Chat 右侧真实工作区。本组件只剩两件事：**模式切换**（Files / Sites / Tasks / Views / Trace）与**渲染装配**；
+ * 取数全在各自 owner 包内——Files 的 tab / 角标 / 拖拽上传在 `@fenix/resource-machine/web` 的
+ * `useArtifactsFiles`，Sites 的取数与挂载/卸载编排在 `@fenix/agent-config/web` 的 `useArtifactsSites`，
+ * Trace 的列表/图/详情三段取数在 `@fenix/resource-trace/web` 的 `TracePanel` 内部。
  * 这里的 `t` 只取壳自己渲染的文案（模式标签、状态条、空态标题），站点域的文案按 §9.2 从包命名空间取。
  */
 function ArtifactsPanelView({
   envId,
   agentConfigId: agentConfigIdProp,
+  sessionId = null,
   changedFiles = [],
   modulesConfig,
   layoutMode = "floating",
@@ -92,12 +97,16 @@ function ArtifactsPanelView({
   const isFilesMode = topMode === "files";
 
   const availableModes = useMemo<TopMode[]>(() => {
-    if (!modulesConfig) return ["files", "sites", "tasks", "views"];
+    // 无 `modulesConfig` = 控制台自己的聊天页：五种模式全给。
+    if (!modulesConfig) return ["files", "sites", "tasks", "views", "trace"];
     const modes: TopMode[] = [];
     if (modulesConfig.filesPanel?.enabled !== false) modes.push("files");
     if (modulesConfig.sitesPanel?.enabled !== false) modes.push("sites");
     if (modulesConfig.tasksPanel?.enabled !== false) modes.push("tasks");
     if (modulesConfig.viewsPanel?.enabled !== false) modes.push("views");
+    // Trace **不进**分享页（`modulesConfig` 存在即分享页）：它的路由按 Environment 归属鉴权，访问者不是
+    // 环境属主时只会得到 403；而且观测里含工具输入输出的原文，本就不该出现在对外发布的视图里。
+    // 选项枚举归 `@fenix/resource-prod-view`，故不在这里给它加一个「可配置」的面板开关。
     return modes;
   }, [modulesConfig]);
 
@@ -189,7 +198,8 @@ function ArtifactsPanelView({
         <div className={SITES_STATUS_STRIP_CLASS}>{t("siteFrame.loadFailed")}</div>
       )}
 
-      {/* Files 模式：完整文件区；Tasks 模式：定时任务列表；Views 模式：发布视图列表；Sites 模式：二级 site tab + iframe */}
+      {/* Files 模式：完整文件区；Tasks 模式：定时任务列表；Views 模式：发布视图列表；Trace 模式：观测调用链；
+          Sites 模式：二级 site tab + iframe */}
       {isFilesMode ? (
         <ArtifactsFilesWorkspace
           envId={envId}
@@ -206,6 +216,8 @@ function ArtifactsPanelView({
         <TasksPanel agentId={agentConfigId} />
       ) : topMode === "views" ? (
         <ProdViewsPanel agentId={agentConfigId} />
+      ) : topMode === "trace" ? (
+        <TracePanel environmentId={envId} sessionId={sessionId} />
       ) : sites.length === 0 ? (
         // Sites 模式 + 未绑定任何 site：空状态提示 + 直接挂载入口（agentConfigId 就绪时显示）
         <div className="flex-1 min-h-0 min-w-0 flex flex-col items-center justify-center gap-3 px-6 text-center">

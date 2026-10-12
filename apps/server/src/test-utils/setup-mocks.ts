@@ -30,6 +30,7 @@ import { createMachineModuleConfig } from "@fenix/resource-machine/server/testin
 import { createMemoryModuleConfig } from "@fenix/resource-memory/server/testing";
 import { createSandboxModuleConfig } from "@fenix/resource-sandbox/server/testing";
 import { createSkillModuleConfig } from "@fenix/resource-skill/server/testing";
+import { createTraceModuleConfig } from "@fenix/resource-trace/server/testing";
 import { createWorkflowModuleConfig } from "@fenix/resource-workflow/server/testing";
 import { getConfigPgStub, resetConfigPgStubs } from "./stubs/config-pg-stub";
 import {
@@ -205,6 +206,7 @@ registerModuleConfigBaseline("memory", createMemoryModuleConfig());
 registerModuleConfigBaseline("model-management", createModelManagementModuleConfig());
 registerModuleConfigBaseline("sandbox", createSandboxModuleConfig());
 registerModuleConfigBaseline("skill", createSkillModuleConfig());
+registerModuleConfigBaseline("trace", createTraceModuleConfig());
 registerModuleConfigBaseline("workflow", createWorkflowModuleConfig());
 
 // ── 宿主模块替身的复位登记 ──

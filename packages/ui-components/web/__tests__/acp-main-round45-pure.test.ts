@@ -4,6 +4,7 @@
  * 来源：`packages/agent-runtime/web/__tests__/acp-main-round45-pure.test.ts` 逐条迁移。
  * 纯化改动点：被测模块改指包内 `../chat/lib/tool-call-utils`，类型改指包内 `../chat/types`；
  * 本文件不渲染 React、不触碰 DOM，因此不需要 happy-dom / i18n 引导。
+ * （`truncate` 的两条用例随实现于 2026-10-10 迁入 `format.test.ts`。）
  */
 
 import { describe, expect, test } from "bun:test";
@@ -14,7 +15,6 @@ import {
   kindLabel,
   simplifyToolName,
   supportsFilePreview,
-  truncate,
 } from "../chat/lib/tool-call-utils";
 import type { ToolCallData } from "../chat/types";
 
@@ -81,16 +81,6 @@ describe("ACPMain 依赖的工具调用纯逻辑", () => {
   // 已知类型标签应返回展示名称而非原始协议值。
   test("web-search 的标签为 Search", () => {
     expect(kindLabel("web-search")).toBe("Search");
-  });
-
-  // 负数上限遵循 slice 语义，仍应在结果末尾追加省略号。
-  test("负数截断上限保留末尾前的文本", () => {
-    expect(truncate("abcd", -1)).toBe("abc…");
-  });
-
-  // 空字符串超过负数上限时也应明确体现已截断。
-  test("空字符串配合负数上限返回省略号", () => {
-    expect(truncate("", -1)).toBe("…");
   });
 
   // 只有精确 hindsight_ 前缀才属于 Hindsight 工具。

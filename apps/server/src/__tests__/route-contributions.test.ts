@@ -319,6 +319,10 @@ test("真实 profile 装配后各包的路由进入对应槽", async () => {
     "POST /tasks/v2/:id/trigger",
     "GET /tasks/v2/:id/logs",
     "DELETE /tasks/v2/:id/logs",
+    // trace
+    "GET /agents/:environmentId/sessions/:sessionId/traces",
+    "GET /agents/:environmentId/sessions/:sessionId/traces/:traceId/observations",
+    "GET /agents/:environmentId/sessions/:sessionId/traces/:traceId/observations/:observationId",
     // workflow
     "GET /workflow-defs",
     "GET /workflow-defs/recoverable",
@@ -367,6 +371,7 @@ test("真实 profile 装配后各包的路由进入对应槽", async () => {
     "GET /workflow-v2/workflows/:id/publish-records",
     // 运行日志是页面级读路径（不挂在单个 workflow 上），挂载位置与声明序在发布路由之后、票据之前。
     "GET /workflow-v2/run-records",
+    "GET /workflow-v2/run-records/:executeId/io",
     "POST /workflow-v2/iframe-code",
   ]);
   expect(slottedRoutes(WEB_CONFIG_SLOT)).toEqual([
