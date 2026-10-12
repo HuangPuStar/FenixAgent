@@ -129,6 +129,7 @@ export interface SkillReferenceResolver {
 | 包类别 | 可以依赖 | 禁止依赖 | 说明 |
 | --- | --- | --- | --- |
 | `packages/platform/platform-sdk` | 语言标准库和无业务语义的基础依赖 | `platform` 具体实现、`agent-runtime`、`resources`、`apps` | 最底层契约：资源范围、授权端口、身份目录投影、系统管理协议 schema、装配 profile、模块 manifest、应用基础设施访问规则等；不创建或拥有 DB 等具体基础设施 |
+| `packages/common/<name>` | `platform-sdk`、无业务语义的基础依赖（如 `logger`） | `platform` 具体实现、`agent-runtime`、`machine`/`sandbox`、`resources`、`apps` | 被上层复用的公共能力包（首个成员 `@fenix/git`：Forgejo 之上的托管平台接入层）；它同时被资源包与宿主消费，因此指向任何上层的边都会立刻闭合出环。授权与身份只经 `platform-sdk` 契约或调用方注入的显式窄端口取得，不得导入具体 AccessControl/Identity 实现 |
 | `packages/platform/identity` | `platform-sdk`、认证/存储等必要基础依赖 | `access-control`、`agent-runtime`、`resources`、`apps` | 有状态平台模块，拥有用户、组织、成员、认证/API Key 及其 DB、route、Web；产出可信身份上下文和公开 Identity Service |
 | `packages/platform/access-control` | `platform-sdk`、同一产品版本的 `identity` 公开入口、无业务语义基础依赖 | `agent-runtime`、`resources`、`apps`、Identity 的内部路径 | Identity 与 AccessControl 保持两个包，普通资源不得依赖此具体实现 |
 | `packages/` 中除 `platform/*`、`agent-runtime`、`resources/*` 外的包 | 按各包自身的 SDK 或插件职责声明 | 包间依赖环 | 独立 SDK/插件包，如 `acp-link`、`core`、`orchestration`、`chat-channel`、`remote-runtime`；服务模块直接通过包引用使用其能力，不适用服务模块依赖矩阵的其他限制 |

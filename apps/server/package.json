@@ -13,6 +13,7 @@
     "@fenix/ccb": "workspace:*",
     "@fenix/claude-code": "workspace:*",
     "@fenix/core": "workspace:*",
+    "@fenix/git": "workspace:*",
     "@fenix/identity": "workspace:*",
     "@fenix/logger": "workspace:*",
     "@fenix/model-management": "workspace:*",

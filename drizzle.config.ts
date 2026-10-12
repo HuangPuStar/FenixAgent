@@ -13,7 +13,8 @@ export default defineConfig({
   // `@fenix/resource-prod-view/db`（任务 1.7 B11）、定时任务与执行日志两张表
   // `@fenix/resource-task/db`（任务 1.7 B12）、IM 通道三张表 `@fenix/resource-channel/db`
   // （任务 1.7 B13，B 块最后一批）、上游桥接四张表 `@fenix/resource-workflow-v2/db`
-  // （workflow-v2 任务 1A）。
+  // （workflow-v2 任务 1A）、公共 Git 四张表 `@fenix/git/db`（T01 公共 Git 模块，位于
+  // `packages/common/` 这一新分组下）。
   // B13 之后宿主 schema 只剩身份表转出、`data_migrate_record` 与 D3 裁定的三张旧授权栈表。
   schema: [
     "./apps/server/src/db/schema.ts",
@@ -33,6 +34,7 @@ export default defineConfig({
     "./packages/resources/task/db/schema.ts",
     "./packages/resources/workflow/db/schema.ts",
     "./packages/resources/workflow-v2/db/schema.ts",
+    "./packages/common/git/db/schema.ts",
   ],
   out: "./drizzle",
   dialect: "postgresql",

@@ -17,6 +17,7 @@
         "@fenix/chat-channel": "workspace:*",
         "@fenix/claude-code": "workspace:*",
         "@fenix/core": "workspace:*",
+        "@fenix/git": "workspace:*",
         "@fenix/identity": "workspace:*",
         "@fenix/logger": "workspace:*",
         "@fenix/model-gateway-litellm": "workspace:*",
@@ -171,6 +172,7 @@
         "@fenix/ccb": "workspace:*",
         "@fenix/claude-code": "workspace:*",
         "@fenix/core": "workspace:*",
+        "@fenix/git": "workspace:*",
         "@fenix/identity": "workspace:*",
         "@fenix/logger": "workspace:*",
         "@fenix/model-management": "workspace:*",
@@ -318,6 +320,15 @@
       },
       "devDependencies": {
         "@types/node": "^22.0.0",
+      },
+    },
+    "packages/common/git": {
+      "name": "@fenix/git",
+      "dependencies": {
+        "@fenix/logger": "workspace:*",
+        "@fenix/platform-sdk": "workspace:*",
+        "drizzle-orm": "^0.45.2",
+        "zod": "^4.4.3",
       },
     },
     "packages/core": {
@@ -1331,6 +1342,8 @@
     "@fenix/claude-code": ["@fenix/claude-code@workspace:packages/plugin-claude-code"],
 
     "@fenix/core": ["@fenix/core@workspace:packages/core"],
+
+    "@fenix/git": ["@fenix/git@workspace:packages/common/git"],
 
     "@fenix/identity": ["@fenix/identity@workspace:packages/platform/identity"],
 

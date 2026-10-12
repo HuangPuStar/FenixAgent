@@ -16,6 +16,7 @@ import { normalizePath } from "./workspace-packages";
 type PackageCategory =
   | "platform-sdk"
   | "platform-impl"
+  | "common"
   | "agent-runtime"
   | "machine"
   | "sandbox"
@@ -35,6 +36,10 @@ type PackageCategory =
 const FORBIDDEN_CROSS_CATEGORY: Readonly<Record<PackageCategory, readonly PackageCategory[]>> = {
   "platform-sdk": ["platform-impl"],
   "platform-impl": [],
+  // common 是**底座**：它同时被资源包与平台实现依赖（如 `@fenix/git` 被宿主装配、被工单模块消费），
+  // 因此指向任何上层的边都会立刻闭合出环。允许保留的只有平台契约（`platform-sdk`）与独立工具包
+  // （`standalone`，如 logger），二者都不反过来依赖上层。
+  common: ["platform-impl", "agent-runtime", "machine", "sandbox", "resource", "apps-server", "apps-web"],
   "agent-runtime": ["platform-impl"],
   // machine 与 sandbox 是 Runtime 固定基础资源：它们被 agent-runtime 与彼此依赖，多一条指向其他资源包的
   // 边就等于把「资源包 → 基础资源」的整体方向倒过来——`machine → agent-config` 曾与 agent-config →
@@ -71,6 +76,9 @@ export function resolvePackageCategory(packageDirectory: string | undefined): Pa
   if (packageDirectory === "packages/platform/platform-sdk") return "platform-sdk";
   if (PLATFORM_IMPL_DIRECTORIES.includes(packageDirectory)) return "platform-impl";
   if (packageDirectory === "packages/agent-runtime") return "agent-runtime";
+  // `packages/common/`：被上层复用的公共能力（首个成员是 git）。它必须早于 `resources` 判定被识别，
+  // 否则会落进 `standalone` 而失去全部禁则。
+  if (packageDirectory.startsWith("packages/common/")) return "common";
   if (packageDirectory === "packages/resources/machine") return "machine";
   if (packageDirectory === "packages/resources/sandbox") return "sandbox";
   if (packageDirectory.startsWith("packages/resources/")) return "resource";

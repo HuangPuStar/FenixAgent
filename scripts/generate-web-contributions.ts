@@ -31,6 +31,9 @@ const MANIFEST_GLOBS = { apps: "apps/*/fenix.module.ts", packages: "packages/**/
  *
  * 只支持 JSON：浏览器产物是**构建期**固定交付，而 profile 的 YAML 形态是部署期覆盖入口。
  * 部署期换 profile 不会重新打包浏览器 bundle，二者的差异由 §1.6 T12 记入 `deploy/assembly/README.md`。
+ *
+ * CLI 的 `--profile <path>` 用来按另一份 profile（如 `deploy/assembly/ce-git.json`）生成或校验；产物只有
+ * 一个文件，因此它必须与服务端启动所用的 profile 一致，否则运行期清单会把产物里的入口全部收窄掉。
  */
 const DEFAULT_PROFILE_FILE = "deploy/assembly/ce.json";
 
@@ -261,7 +264,22 @@ export async function generateWebContributions(
 }
 
 if (import.meta.main) {
-  const check = process.argv.includes("--check");
-  const result = await generateWebContributions({ check });
+  const args = process.argv.slice(2);
+  const check = args.includes("--check");
+
+  // `--profile <path>`：按非默认 profile 生成或校验。产物是**单一构建期文件**（`apps/generated/web-contributions.ts`），
+  // 因此换 profile 只应在「确实要按该 profile 交付浏览器 bundle」时做；服务端与它必须指向同一份 profile。
+  const profileIndex = args.indexOf("--profile");
+  let profileFile: string | undefined;
+  if (profileIndex !== -1) {
+    const value = args[profileIndex + 1];
+    if (value === undefined || value.startsWith("--")) {
+      console.error("用法: bun run scripts/generate-web-contributions.ts [--check] [--profile <profile.json>]");
+      process.exit(1);
+    }
+    profileFile = value;
+  }
+
+  const result = await generateWebContributions({ check, profileFile });
   console.log(`${check ? "已验证" : "已生成"} ${result.contributionCount} 个 web contribution: ${result.outputFile}`);
 }

@@ -349,7 +349,13 @@ services:
 `docker/litellm/` 的 `litellm-db-init`（`init-db.sh`）。其中两例形态特殊，评审时不要照抄成通例：
 `docker/ragflow/` 的 `ragflow-s3-init`（多桶模式下它**没有可预建的桶**，只建自己的探测桶做实例能力探测、且目标是
 **同项目自带实例**，等待靠 `service_healthy` 而不是跨项目重试，见 §5）与 `docker/ragflow/` 的自带实例本身
-（它是「对象存储一律用共享实例」的例外，见 §5）。新增或改动这类服务时逐条核对：
+（它是「对象存储一律用共享实例」的例外，见 §5）。**已知例外一处**（2026-10-12 登记）：`docker/git/` 不设一次性
+初始化服务，它的库与角色由运维按该目录 README 的显式步骤在启动前创建——共享实例往往早已初始化，
+`docker-entrypoint-initdb.d` 那时不再执行，而库必须存在于 Forgejo 首次启动之前（它自己建表与迁移，连不上库就
+直接退出），建库与启动 Forgejo 因而是一个部署动作的两个步骤，不拆容器。代价是幂等与阶段化诊断由 README 的
+运维步骤承担，没有可复跑的栈内服务；照 §13.1 的口径，加新的同类例外需要同样明确的裁定与理由。
+
+新增或改动这类服务时逐条核对：
 
 1. **栈内一次性服务 + 独立脚本文件**：服务定义在消费方自己的 compose 里（`restart: "no"`，跑完即退出），
    逻辑放同目录的独立脚本，**不内联进 compose 的 `command` / `entrypoint`**——脚本有分支与失败诊断，内联进 YAML
@@ -386,6 +392,7 @@ services:
 | `OPENSANDBOX_CLUSTER` | `docker/opensandbox-cluster/` | sandbox 管理面 | `FRP_PUBLIC_ADDRESS` / `FRP_TOKEN` / `CLUSTER_SERVICE_API_KEY` / `SERVER_API_KEY_ENCRYPTION_KEY` |
 | `OPENSANDBOX_SERVER` | `docker/opensandbox-server/` | sandbox 执行面（DinD 服务端） | `OPENSANDBOX_SERVER_PORT` 等，无必需键 |
 | `OPENSANDBOX_SERVER_TUNNEL` | `docker/opensandbox-server-tunnel/` | sandbox 执行面（frpc 隧道） | 无插值键（配置在 `frpc.toml`） |
+| `GIT` | `docker/git/` | common Git / tickets：仓库与工单的事实源（Forgejo） | `AOS_GIT_CONFIG_FILE` / `AOS_GIT_FORGEJO_URL`、`FORGEJO_DB_PASSWORD`；**依赖共享实例** `postgres`（库与账号由运维显式初始化，见该目录 README） |
 
 `docker/opensandbox-server-tunnel/` 与 `opensandbox-server` 同镜像、只引用发布 tag，不声明 `build:`（§13.15）；
 本地自建时在 `docker/opensandbox-server/` 的 Dockerfile 上打同一 tag（见该目录 README），两个目录的 `image:` 行必须同 tag。
@@ -419,6 +426,7 @@ FENIX_FEATURE_OPENSANDBOX_CLUSTER=false
 FENIX_FEATURE_OPENSANDBOX_SERVER=false
 FENIX_FEATURE_OPENSANDBOX_SERVER_TUNNEL=false
 FENIX_FEATURE_PERI_FUSE=false
+FENIX_FEATURE_GIT=false
 
 # ── common 的可选服务（随主服务项目启动，不对应目录）──
 FENIX_FEATURE_REDIS=false
@@ -444,7 +452,7 @@ MYSQL_HOST_PORT=3306          # 只绑回环
 - `docker/deploy.env.example` 是**生成物**（`bun run scripts/generate-env-example.ts`，与 `.env.example`、
   `docker/main/.env.example` 同批产出）；开关清单以脚本发现的目录为准，模板只负责把
   清单落成文件，不手工维护。
-  上面这份示例的开关名单与生成物一致（17 个：14 个目录开关 + `REDIS` / `S3` / `MYSQL`），核对方式：
+  上面这份示例的开关名单与生成物一致（18 个：15 个目录开关 + `REDIS` / `S3` / `MYSQL`），核对方式：
   `grep -E '^# FENIX_FEATURE_[A-Z0-9_]+=' docker/deploy.env.example | sort` 与上面的名单逐行相同。
 - **配置文件解析**（脚本行为，见 §9）：默认读与脚本同目录的 `docker/deploy.env`；它不存在而同目录恰好只有
   一份 `*.env` 时用那一份（部署方常按机器命名，如 `prod.env`）；有多份则报错列出、要求 `--config` 指定，不替你猜。
@@ -783,6 +791,8 @@ docker compose up -d
     （§9）；取值规则与 `init` 一致：**只补缺失、绝不覆盖**。
 13. **消费共享实例的目录必须有一次性初始化服务**（库 / 账号 / 桶的创建与 schema 应用都在那里，形态逐条见 §6）；
     启动顺序由它自己等待 + 栈内主服务 `depends_on: service_completed_successfully` 表达，不写跨项目 `depends_on`。
+    **已知例外一处**（2026-10-12 登记）：`docker/git/` 的库与角色由运维按该目录 README 的显式步骤在启动前创建，
+    不设一次性初始化服务（理由与代价见 §6）。
 14. **上游未发布 arm64 变体的镜像必须写 `platform: linux/amd64`**：不写时 arm64 主机（Mac）拉取直接报
     `no matching manifest` 装不起来。核对方式 `docker buildx imagetools inspect <image>`；现状五处（4 个镜像）——
     `docker/agent-sites/` 的 `agent-sites`、`docker/ragflow/` 的 `ragflow` 与 `ragflow-s3-init`、

@@ -60,6 +60,7 @@
     "@fenix/agent-config": "workspace:*",
     "@fenix/ccb": "workspace:*",
     "@fenix/chat-channel": "workspace:*",
+    "@fenix/git": "workspace:*",
     "@fenix/identity": "workspace:*",
     "@fenix/model-gateway-litellm": "workspace:*",
     "@fenix/model-gateway-sdk": "workspace:*",

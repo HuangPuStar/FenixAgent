@@ -15,6 +15,7 @@ const ADR_SIDEBAR_GROUP = {
     { text: "Chat 域独立包设计（chat-channel）", link: "/adr/2026-08-04-chat-channel-package-design" },
     { text: "知识库 /api 列表合同变更", link: "/adr/2026-09-24-knowledge-bases-api-list-contract" },
     { text: "Agent Sites 发布面可见性解释权", link: "/adr/2026-09-25-agent-sites-publish-face-visibility" },
+    { text: "公共 Git 独立 common 类别与可选装配", link: "/adr/2026-10-12-common-git-and-tickets-assembly" },
   ],
 };
 
@@ -160,6 +161,7 @@ export default defineConfig({
             { text: "知识库", link: "/arch/11-knowledge" },
             { text: "Agent Sites", link: "/arch/18-agent-sites" },
             { text: "插件市场", link: "/arch/24-plugin-market" },
+            { text: "公共 Git", link: "/arch/28-common-git" },
           ],
         },
         {
@@ -199,6 +201,7 @@ export default defineConfig({
             { text: "部署", link: "/operations/deployment" },
             { text: "Docker 编排体系", link: "/operations/docker-topology" },
             { text: "Workflow V2 部署", link: "/operations/workflow-deployment" },
+            { text: "公共 Git（Forgejo）", link: "/operations/common-git" },
             { text: "升级", link: "/operations/upgrade" },
             { text: "迁移", link: "/operations/migration" },
             { text: "备份与恢复", link: "/operations/backup-and-restore" },

@@ -1,0 +1,68 @@
+# docker/git/ —— Forgejo 公共 Git 服务（common Git 与工单模块的事实源）
+# 权威文档：docs/operations/docker-topology.md §6（依赖目录契约）
+#
+# 独立项目启动（共享 postgres 已在同一台机器上跑）：
+#   cp docker/git/.env.example docker/git/.env      # 填 FORGEJO_DB_PASSWORD（共享实例里 forgejo 角色的口令）
+#   docker compose -f docker/git/docker-compose.yml up -d
+# 随主服务一键启动：docker/deploy.env 里 FENIX_FEATURE_GIT=true。
+# 接入已有 Forgejo（别的机器或既有实例）：不启动本目录，只配主服务的 AOS_GIT_CONFIG_FILE（见 README）。
+#
+# 数据库不在本目录：本服务只共享 docker/common/ 的 postgres **实例**，库与账号由运维在启动前显式创建
+# （命令见 README「共享 PostgreSQL」）。为什么不用一次性初始化服务（§6 的默认形态）：共享实例往往早已初始化，
+# postgres 镜像的 docker-entrypoint-initdb.d 那时不会再执行；而库必须存在于 Forgejo 首次启动之前——它自己
+# 负责建表与迁移，连不上库就直接退出，所以「建库」与「启动 Forgejo」是同一个部署动作的两个步骤，不拆容器。
+#
+# 网络：接入 fenix-server（主服务按连接配置的 baseUrl=http://forgejo:3000 访问容器内 API，也用它探活）；
+# 宿主端口只绑回环，供本地源码运行（bun run dev）与管理员浏览器访问。
+#
+# 镜像定版：写死 LTS 补丁 tag（15.0.x 是 v15 LTS 的补丁线）；digest 待 T00 真实拉取后固定到本行
+# （docker buildx imagetools inspect codeberg.org/forgejo/forgejo:15.0.9），固定时同步 README。
+
+services:
+
+    forgejo:
+        image: codeberg.org/forgejo/forgejo:15.0.9
+        container_name: fenix-forgejo
+        restart: unless-stopped
+        networks:
+            - fenix-server
+        ports:
+            # 只绑回环：本地源码运行与管理界面（http://127.0.0.1:3210）用；容器之间走 fenix-server 的 3000。
+            # 不发布 SSH(22)：平台只走 HTTP API，需要 SSH 克隆的部署自行加映射并同步 ROOT_URL 口径。
+            - "127.0.0.1:${FORGEJO_HOST_PORT:-3210}:3000"
+        environment:
+            # 配置一律走 ini 映射（FORGEJO__<section>__<KEY>），不手工维护 app.ini：容器重建即按 .env 收敛，
+            # 手工改过的 app.ini 会成为下一次排障的隐藏变量。
+            FORGEJO__database__DB_TYPE: postgres
+            # HOST 在 postgres 语义里要带端口；默认值是共享实例在 fenix-server 上的服务名（不插值同名宿主键）。
+            FORGEJO__database__HOST: "${FORGEJO_DB_HOST:-postgres}:${FORGEJO_DB_PORT:-5432}"
+            FORGEJO__database__NAME: ${FORGEJO_DB_NAME:-forgejo}
+            FORGEJO__database__USER: ${FORGEJO_DB_USER:-forgejo}
+            FORGEJO__database__PASSWD: ${FORGEJO_DB_PASSWORD:?FORGEJO_DB_PASSWORD 未设置：请在 docker/git/.env 配置共享 postgres 里 forgejo 角色的口令（建库建角色见 docker/git/README.md）}
+            # 跳过网页安装向导：管理员账号只由运维在容器内创建（README「首次初始化」），
+            # 向导关掉即不给「谁先打开谁成为管理员」留窗口。
+            FORGEJO__security__INSTALL_LOCK: "true"
+            # v15 镜像默认信任任意来源的代理头（security.REVERSE_PROXY_TRUSTED_PROXIES=*）。本部署不经反向代理，
+            # 收紧到回环：否则任何人直连 3000 都能伪造 X-Forwarded-* 影响鉴权判断。
+            FORGEJO__security__REVERSE_PROXY_TRUSTED_PROXIES: "127.0.0.0/8,::1/128"
+            # 对外基址：AOS 连接配置的 baseUrl 与它同源；留空跟随 FORGEJO_HOST_PORT，容器形态改成 http://forgejo:3000/。
+            FORGEJO__server__ROOT_URL: ${FORGEJO_ROOT_URL:-http://127.0.0.1:${FORGEJO_HOST_PORT:-3210}/}
+        volumes:
+            # 仓库、附件、LFS、avatar、app.ini（/data/gitea/conf/app.ini）与自动生成的 SECRET_KEY 都在这里；
+            # 相对本文件解析，./data/ 不进版本控制（.gitignore 的 data 规则）。
+            - ./data/forgejo:/data
+            # 配置目录：15.0.9 镜像不写 /etc/forgejo（app.ini 在 /data 卷内，见镜像的 /etc/s6/gitea/setup），
+            # 保留挂载是为 rootless 或后续版本的镜像改用该路径时配置不落空——空目录无副作用，代价只是多一个挂载点。
+            - ./data/forgejo-config:/etc/forgejo
+        healthcheck:
+            # Forgejo 在数据库连不上或迁移未完成前不启动 HTTP 监听（镜像里是 InitDBEngine 的重试循环），
+            # 所以 /api/healthz 的 200 同时覆盖「库可用」。库不可达时本服务会反复重启，判定见 README「启动」。
+            test: ["CMD", "curl", "-fsS", "-o", "/dev/null", "http://127.0.0.1:3000/api/healthz"]
+            interval: 10s
+            timeout: 5s
+            retries: 6
+            start_period: 30s
+
+networks:
+    fenix-server:
+        external: true
