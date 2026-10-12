@@ -189,6 +189,12 @@ flowchart TB
     某工作流在窗口内**恰好** 20 条时也会置真（上游不区分「正好装满」与「被裁掉」）。
   - 平台侧那一段（`platformRuns`）来自本地审计（`workflow.run.external`），回答「平台触发过几次、结果如何」；
     与上游清单分开展示，画布内的试运行不在其中（不伪造）。
+  - **出入参数（2026-10-10）**：上游没有运行级 input/output，`list_spans` 也不回这两项，因此它们**由节点级结果
+    合成**——`GET /web/workflow-v2/run-records/:executeId/io`（懒加载，行内展开）转发 `get_process`，取
+    Start 节点的 `input` 与 End 节点的 `output`（空串回退 `raw_output`）；`upstreamWorkflowId` 是**上游 ID**
+    （与清单端点的本地主键不同名），归属仍由平台侧校验。已知边界：上游不校验运行与 workflow 的归属
+    （实测 `workflow_id` 不存在也回 `code=0` 并原样回显参数），execute id 只在本组织运行记录里可见。
+    实测、负例与移除条件见[设计记录](../design/2026-10-10-workflow-v2-run-io.md)。
 - **发布记录：读出口从「上游工作流级桩实现」换成「上游应用级真实记录 + 平台侧动作」（2026-10-09）**。上游的 `workflow_api/list_publish_workflow` 与 `released_workflows` 在该构建都是桩实现（实测带真实 workflow 仍回 `data:null`），且上游前端**从不调用**前者；上游控制台真正在用的是**应用级** `intelligence_api/publish/publish_record_list`（`studio/workspace/project-publish/src/hooks/use-publish-status.tsx:150`）。因此 `GET /web/workflow-v2/workflows/:id/publish-records` 改为：当前发布版本（canvas，不变）+ 应用级渠道发布记录（版本号 / 渠道结果 / 打包失败明细，**不显示**该构建恒为 0 的记录级 `publish_status`，也不显示上游没有的时间与操作人）+ **平台侧发布动作**（本地审计 `workflow.publish`：时间 / 操作人展示名 / 结果 / 错误码）——最后一段是控制台发布动作的唯一可见处（上游只记录发布产物，不记录控制台动作）。
 - **控制台发布入口整体撤除（2026-10-10）**：发布是旧有逻辑，动作在上游侧完成（画布内按钮 / 上游控制台），平台不再触发。撤除范围：列表卡片菜单的「发布」与 `publish.*` 文案、控制台面 `POST /web/workflow-v2/workflows/:id/publish` 及其服务端闭环（版本自增 + 上游 `publish` 调用 + 业务拒绝分类）、发布成功后的渠道主动同步（`syncApiChannelAfterPublish`）与该动作的审计常量。保留三样：① `workflow-publish-version.ts` 的版本号算术——对外触发链路的运行前自愈（`api-channel-release.ts`）仍需要「严格大于当前版本」的新版本号；② 发布记录读路径与 `workflow.publish` 审计常量的登记——「平台发布动作」段读历史行，不再产生新行；③ 列表卡片的上游发布状态展示（`publishState` / `publishedVersion`）。**代价与兜底**：发布后不再主动登记 API 渠道，发布后的第一次外部调用会先吃一次 `777777778`、再由运行前自愈登记并重试一次（功能可用，只是多一次失败回执）。
 - **绑定门的两条读路径曾不一致，已于 2026-10-09 收敛**：列表页的门是 `GET /org-app` → `findOrgAppBinding`（只读 `workflow_v2_org_app`），而运行日志/发布记录/创建/删除的门是 `resolveBinding` → `findTenantBinding`（要求**平台账号台账行 + 绑定行都在**）。平台账号台账（`workflow_v2_platform_account`，全局单行）的唯一写入点是引导路径，该行一旦丢失（历史库清理、库重建、迁移演练），就会出现「列表页照常显示卡片、点运行日志却收到 409 `ORG_APP_NOT_BOUND` +『请先在列表页完成初始化』」——而列表页因为已绑定**根本没有那个按钮**，用户被指到一个不存在的入口。现改为：`resolveBinding` 在「绑定行在 + 台账缺行」时先跑一次有界按需引导（与 `GET /platform-account` 同一套 `ensurePlatformAccountWithinBudget`，单飞 + 预算 + 失败不抛），成功即恢复；仍失败则回 503 `PLATFORM_ACCOUNT_NOT_PROVISIONED`（用户修不了的状态不得再引导去初始化）。真正的未绑定（没有绑定行）保持立即 409 且零出站。

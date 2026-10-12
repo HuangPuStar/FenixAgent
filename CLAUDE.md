@@ -17,6 +17,7 @@
 
 ## 文档使用与规范入口
 
+- 汇报风格：用户有阅读障碍，需要你减少汇报字数，多多使用 order list 结构化表达。
 - 前端开发规范：`docs/developer/guide/frontend-development.md`
   - 覆盖目录结构、路由、状态管理、组件、API、i18n、样式和安全规范。
   - 前端标准使用 tailwind CSS 标准类名，不得自造，不得额外使用非必须 CSS 文件。
