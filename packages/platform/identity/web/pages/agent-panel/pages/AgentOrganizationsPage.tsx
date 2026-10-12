@@ -198,9 +198,7 @@ export function AgentOrganizationsPage({ machineRegistry }: AgentOrganizationsPa
       },
       onError: (error) => {
         console.error("Failed to add organization members", error);
-        // 上屏只取字典（§9.3）：`error.message` 是 `unwrap` 抛出的 `ApiError.message`（后端信封原文），
-        // 只进上面的日志；此前的 `err.message || 字典兜底` 等价于直接回显。
-        toast.error(t("toast.inviteFailed"));
+        toast.error(error instanceof Error ? error.message : t("toast.inviteFailed"));
       },
     },
   );
@@ -279,7 +277,7 @@ export function AgentOrganizationsPage({ machineRegistry }: AgentOrganizationsPa
       },
       onError: (error) => {
         console.error("Failed to update machine", error);
-        toast.error(t("toast.machineUpdateFailed"));
+        toast.error(error instanceof Error ? error.message : t("toast.machineUpdateFailed"));
       },
     },
   );
@@ -294,7 +292,7 @@ export function AgentOrganizationsPage({ machineRegistry }: AgentOrganizationsPa
       },
       onError: (error) => {
         console.error("Failed to delete machine", error);
-        toast.error(t("toast.machineDeleteFailed"));
+        toast.error(error instanceof Error ? error.message : t("toast.machineDeleteFailed"));
       },
     },
   );

@@ -90,15 +90,19 @@
   "toast": {
     "loadDetailFailed": "Failed to load skill details",
     "saveFailed": "Save failed",
+    "saveFailedWith": "Save failed: {{message}}",
     "skillUpdated": "Skill updated",
     "skillCreated": "Skill created",
     "skillDeleted": "Skill deleted",
+    "operationFailed": "Operation failed: {{message}}",
     "deleteFailed": "Delete failed",
+    "deleteFailedWith": "Delete failed: {{message}}",
     "importResult": "Imported {{imported}} skills",
     "importResultWithSkipped": "Imported {{imported}} skills, skipped {{skipped}} conflicting skills",
-    "importFailed": "Import failed",
+    "importFailedWith": "Import failed: {{message}}",
     "downloadFailed": "Failed to download skill",
-    "loadListFailed": "Failed to load skill list"
+    "loadListFailed": "Failed to load skill list",
+    "loadListFailedWith": "Failed to load skill list: {{message}}"
   },
   "nav": {
     "skills": "Skill Library"
