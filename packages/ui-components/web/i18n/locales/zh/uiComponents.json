@@ -404,6 +404,14 @@
     "saving": "保存中..."
   },
   "fullscreen": "全屏",
+  "jsonViewer": {
+    "empty": "（空）",
+    "circular": "[循环引用]",
+    "tooDeep": "[嵌套过深，已省略]",
+    "moreEntries": "… 还有 {{count}} 项未渲染",
+    "showMore": "展开全文",
+    "showLess": "收起"
+  },
   "large": "大",
   "medium": "中",
   "message": {

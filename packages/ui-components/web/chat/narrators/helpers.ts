@@ -7,8 +7,9 @@
  * `isOpencodeDirectoryOutput` / `isOpencodeFileOutput` / `extractDisplayMeta` / `resolveToolCardKind`
  * 与 `ToolCallDisplayMeta`。
  *
- * `truncate` 不属于本模块：它与 `../lib/tool-call-utils` 中的同名函数逐字相同，
- * 收敛为 `../lib/tool-call-utils` 一份（2026-09-22 前端去重），narrator 侧改为直接引用。
+ * `truncate` 不属于本模块：它是 `web/lib/format.ts` 的展示原语（2026-09-22 先由 narrator 收敛到
+ * `../lib/tool-call-utils`，2026-10-10 再与 trace 面板的同名实现合并、随其他格式化原语落到 `lib/format`），
+ * 本模块按需直接引用。
  *
  * 所有函数都是纯函数，无副作用，便于单测。
  * 设计原则：宽容处理 rawInput / rawOutput 的字段变体
@@ -19,7 +20,7 @@
  * 因此本模块不依赖任何宿主模块。类型改从 `../types` 导入。
  */
 
-import { truncate } from "../lib/tool-call-utils";
+import { truncate } from "../../lib/format";
 import { classifyToolSemantic, semanticToToolCardKind } from "../lib/tool-semantic";
 import type { ToolCallData, ToolCardKind } from "../types";
 

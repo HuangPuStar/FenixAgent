@@ -15,8 +15,9 @@ import { useCallback, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { UI_COMPONENTS_NS } from "../../i18n/namespace";
 import { cn } from "../../lib/cn";
+import { truncate } from "../../lib/format";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "../../ui/dialog";
-import { formatOutput, truncate } from "../lib/tool-call-utils";
+import { formatOutput } from "../lib/tool-call-utils";
 import type { ToolCallData } from "../types";
 import { ToolJsonBlock } from "./tool-json-block";
 

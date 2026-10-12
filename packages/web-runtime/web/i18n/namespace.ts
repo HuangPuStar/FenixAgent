@@ -40,6 +40,7 @@ export const NS = {
    * 命名空间归属该包，故不在此处重复声明常量，只登记名称以保证宿主 `ns` 列表齐全。
    */
   UI_COMPONENTS: "uiComponents",
+  TRACE: "trace",
 } as const;
 
 export type Namespace = (typeof NS)[keyof typeof NS];

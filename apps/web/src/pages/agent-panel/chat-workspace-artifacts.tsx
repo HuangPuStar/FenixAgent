@@ -48,6 +48,8 @@ const ArtifactsPanel = lazy(() => import("./artifacts/ArtifactsPanel").then((m) 
 interface ChatWorkspaceArtifactsProps {
   /** 当前活跃 Environment；为 null 时不拉取实例详情。 */
   agentId: string | null;
+  /** 实例 uid（URL 的 sessionId 段）；Trace 面板据此定位要读的观测会话。 */
+  sessionId: string | null;
   /** 实例重启版本：重启后 ArtifactsPanel 必须重建（挂在它的 `key` 上）。 */
   agentRestartVersion: number;
   /** ProdView 模块配置，控制右侧附加面板的显示/隐藏 */
@@ -88,6 +90,7 @@ function readArtifactsLayout(): ArtifactsLayoutMode {
  */
 export function ChatWorkspaceArtifacts({
   agentId,
+  sessionId,
   agentRestartVersion,
   modulesConfig,
   children,
@@ -294,6 +297,7 @@ export function ChatWorkspaceArtifacts({
               key={`${agentId}-${agentRestartVersion}`}
               envId={agentId}
               agentConfigId={agentConfigId}
+              sessionId={sessionId}
               changedFiles={changedFiles}
               modulesConfig={modulesConfig}
               layoutMode={effectiveLayout}

@@ -41,6 +41,7 @@ const EXPECTED_SERVER_MODULES = [
   ["prod-view", "resource"],
   ["sandbox", "resource"],
   ["task", "resource"],
+  ["trace", "resource"],
   ["workflow", "resource"],
   ["workflow-v2", "resource"],
 ];

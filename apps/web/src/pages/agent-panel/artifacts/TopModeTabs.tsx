@@ -1,9 +1,9 @@
 import { cn } from "@fenix/ui-components/lib/cn";
-import { Calendar, Eye, FilesIcon, Globe, PanelRight, PanelRightDashed, X } from "lucide-react";
+import { Activity, Calendar, Eye, FilesIcon, Globe, PanelRight, PanelRightDashed, X } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { NS } from "@/src/i18n";
 
-export type TopMode = "files" | "sites" | "tasks" | "views";
+export type TopMode = "files" | "sites" | "tasks" | "views" | "trace";
 
 interface TopModeTabsProps {
   topMode: TopMode;
@@ -22,11 +22,12 @@ const MODE_META: Record<TopMode, { icon: typeof FilesIcon; labelKey: string }> =
   sites: { icon: Globe, labelKey: "panelMode.sites" },
   tasks: { icon: Calendar, labelKey: "panelMode.tasks" },
   views: { icon: Eye, labelKey: "panelMode.views" },
+  trace: { icon: Activity, labelKey: "panelMode.trace" },
 };
 
 /**
- * TopModeTabs —— ArtifactsPanel 顶部的一级 tab 栏（Files / Sites / Tasks / Views），按 `availableModes`
- * 白名单决定显示哪些 tab、按什么顺序。
+ * TopModeTabs —— ArtifactsPanel 顶部的一级 tab 栏（Files / Sites / Tasks / Views / Trace），按
+ * `availableModes` 白名单决定显示哪些 tab、按什么顺序。
  *
  * 归属：`ArtifactsPanel` 的私有件，随它同住 `apps/web/src/pages/agent-panel/artifacts/`（2026-09-28 由
  * `apps/web/src/shell/artifacts/` 归位，见 `ArtifactsPanel.tsx` 文件头）。它只做渲染与回调转发，不取数、

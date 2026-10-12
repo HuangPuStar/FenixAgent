@@ -42,8 +42,11 @@ const PKG_ROOT = resolve(WEB_ROOT, "..");
  * 2026-09-28 侧栏智能体树视图批次：宿主 `shell/AgentSidebarTree.tsx` 的视图与纯派生迁入本包
  *   `web/agent-tree/`（取数与四种领域操作留在 `@fenix/agent-config/web`），它渲染的 13 条文案
  *   （区标题、空态、五个动作标题、展开/收起、远程标记）随之落在 `agentTree.*`，324 → 337。
+ * 2026-10-10 trace 面板下沉批次：`JsonViewer` 从 `@fenix/resource-trace` 的 `web/components/detail/`
+ *   迁入本包 `web/ui/json-view.tsx`（键的最终所在地 = 包的 owner），它的 6 条文案落在 `jsonViewer.*`
+ *   （空值、循环引用、嵌套过深、条目截断、展开/收起），341 → 347。
  */
-const KEY_BASELINE = 341;
+const KEY_BASELINE = 347;
 
 const EN = JSON.parse(readFileSync(join(WEB_ROOT, "i18n/locales/en/uiComponents.json"), "utf8")) as Record<
   string,

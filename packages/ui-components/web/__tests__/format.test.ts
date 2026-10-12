@@ -1,7 +1,17 @@
 import { describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
-import { formatClockTime, formatDate, formatDateTime } from "@fenix/ui-components/lib/format";
+import {
+  formatClockTime,
+  formatCost,
+  formatDate,
+  formatDateTime,
+  formatDurationMs,
+  formatInterval,
+  formatSeconds,
+  formatTokens,
+  truncate,
+} from "@fenix/ui-components/lib/format";
 
 /**
  * 格式化原语的契约测试。
@@ -87,6 +97,94 @@ describe("formatDate", () => {
 
   test("接受 epoch 毫秒：API 密钥契约是 number | string | null", () => {
     expect(formatDate(Date.parse(ISO), { locale: "en-US", timeZone: "UTC" })).toBe("Sep 22, 2026");
+  });
+});
+
+describe("formatDurationMs / formatSeconds / formatInterval", () => {
+  // 三个量级各自的形态：毫秒取整、秒留一位小数、分钟用 m/s 组合。
+  test("时长按量级切换单位与精度", () => {
+    expect(formatDurationMs(812)).toBe("812 ms");
+    expect(formatDurationMs(2000)).toBe("2.0 s");
+    expect(formatDurationMs(65_400)).toBe("1m 5s");
+  });
+
+  // 量级切换按原值判断：999.6 取整后是 1000，也必须留在毫秒档，否则单位会跳档。
+  test("毫秒档取整到 1000 也不跳成秒档", () => {
+    expect(formatDurationMs(999.6)).toBe("1000 ms");
+    expect(formatDurationMs(1000)).toBe("1.0 s");
+  });
+
+  // 负时长只可能来自时钟回拨或上游脏数据：按「没有值」回退，比渲染 -3 ms 更能提示问题。
+  test("缺失、非有限数与负数回退 fallback", () => {
+    for (const empty of [null, undefined, Number.NaN, Number.POSITIVE_INFINITY, -1]) {
+      expect(formatDurationMs(empty)).toBe("—");
+    }
+    expect(formatDurationMs(null, { fallback: "无" })).toBe("无");
+  });
+
+  // 上游以秒计量（latency / timeToFirstToken）：与毫秒口径同形，千分位以下同样落到毫秒档。
+  test("formatSeconds 与 formatDurationMs 同口径，只是入参单位是秒", () => {
+    expect(formatSeconds(1.24)).toBe("1.2 s");
+    expect(formatSeconds(0.312)).toBe("312 ms");
+    expect(formatSeconds(null)).toBe("—");
+  });
+
+  // 两次时间点相减：ISO 串与 epoch 毫秒是同一个值的两种写法，结果必须一致。
+  test("formatInterval 接受 ISO 串与 epoch 毫秒", () => {
+    const start = "2026-09-22T15:04:05Z";
+    const end = "2026-09-22T15:04:06.500Z";
+    expect(formatInterval(start, end)).toBe("1.5 s");
+    expect(formatInterval(Date.parse(start), Date.parse(end))).toBe("1.5 s");
+  });
+
+  // 任一缺失 / 非法，或 end 早于 start（时钟倒挂），都回退——界面上不出现负时长。
+  test("formatInterval 对缺失、非法与时钟倒挂回退 fallback", () => {
+    expect(formatInterval(null, "2026-09-22T15:04:05Z")).toBe("—");
+    expect(formatInterval("2026-09-22T15:04:05Z", "")).toBe("—");
+    expect(formatInterval("nope", "2026-09-22T15:04:05Z")).toBe("—");
+    expect(formatInterval("2026-09-22T15:04:05Z", "2026-09-22T15:04:04Z")).toBe("—");
+  });
+});
+
+describe("formatTokens / formatCost", () => {
+  // 断言显式给 locale：紧凑计数的刻度随区域变（zh-CN 是万 / 亿），不锁定就会随机器区域漂移。
+  test("令牌数走紧凑计数，区域决定刻度", () => {
+    expect(formatTokens(950, { locale: "en-US" })).toBe("950");
+    expect(formatTokens(1234, { locale: "en-US" })).toBe("1.2K");
+    expect(formatTokens(2_500_000, { locale: "en-US" })).toBe("2.5M");
+    expect(formatTokens(12_500, { locale: "zh-CN" })).toBe("1.3万");
+  });
+
+  // 0 是有效值（新会话的令牌数就是 0），照常渲染，只有缺失才回退。
+  test("令牌数 0 照常渲染，缺失回退 fallback", () => {
+    expect(formatTokens(0)).toBe("0");
+    expect(formatTokens(null)).toBe("—");
+    expect(formatTokens(undefined, { fallback: "-" })).toBe("-");
+  });
+
+  // 一次真实计费不能显示成 $0.00（与「免费」无法区分），因此小额改用 3 位有效数字。
+  test("金额按档位选精度，0 与缺失分得开", () => {
+    expect(formatCost(0)).toBe("$0.00");
+    expect(formatCost(0.00213)).toBe("$0.00213");
+    expect(formatCost(1.2)).toBe("$1.20");
+    expect(formatCost(null)).toBe("—");
+    expect(formatCost(-0.5)).toBe("—");
+  });
+});
+
+describe("truncate", () => {
+  // 阈值内与恰好阈值都原样保留，只有超长才补省略号（省略号不计入 max）。
+  test("阈值内与边界长度不截断", () => {
+    expect(truncate("abc", 3)).toBe("abc");
+    expect(truncate("ab", 3)).toBe("ab");
+    expect(truncate("abcd", 3)).toBe("abc…");
+  });
+
+  // 负数上限不做校验，按 String.prototype.slice 的语义走——2026-10-10 从 tool-call-utils 与 trace 面板
+  // 合并时保留的既有行为，用例随实现迁移。
+  test("负数上限按 slice 语义截断", () => {
+    expect(truncate("abcd", -1)).toBe("abc…");
+    expect(truncate("", -1)).toBe("…");
   });
 });
 

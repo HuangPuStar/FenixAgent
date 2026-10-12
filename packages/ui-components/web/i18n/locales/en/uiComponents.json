@@ -404,6 +404,14 @@
     "saving": "Saving..."
   },
   "fullscreen": "Fullscreen",
+  "jsonViewer": {
+    "empty": "(empty)",
+    "circular": "[Circular reference]",
+    "tooDeep": "[Too deeply nested, omitted]",
+    "moreEntries": "… {{count}} more entries not rendered",
+    "showMore": "Show more",
+    "showLess": "Show less"
+  },
   "large": "Large",
   "medium": "Medium",
   "message": {

@@ -34,8 +34,9 @@
 > `docker/main/.env.example`，`deploy.sh` 读的也是这一份（§4.2、§8、§11.2）。仓库根 `.env` 保留给 dev 形态。
 > 没有跟着收敛的是**缓存**与 workflow 的 Elasticsearch，理由与代价见 §5.1。
 > **2026-10-10 追加：新增依赖目录 `docker/peri-fuse/`**（LLM 观测，Langfuse 兼容实现，单容器 + 内嵌 Turso/SQLite，
-> 无 ClickHouse / Redis / S3）。消费方是**Agent 进程**（本地执行在 `rcs` 容器内、沙箱节点在各自容器内），按
-> `LANGFUSE_BASE_URL` 直连上报；主服务只透传 `LANGFUSE_*` 三键、不做转接。开关 `FENIX_FEATURE_PERI_FUSE`
+> 无 ClickHouse / Redis / S3）。写入侧消费方是**Agent 进程**（本地执行在 `rcs` 容器内、沙箱节点在各自容器内），按
+> `LANGFUSE_BASE_URL` 直连上报；读取侧由主服务经 `packages/resources/trace` 的只读薄层访问同一基址，供 Chat 的
+> Trace 面板使用（薄层不代理任意路径，密钥只在服务端）。开关 `FENIX_FEATURE_PERI_FUSE`
 > 已进生成物（§7），目录契约见 §6，操作面见该目录 README。
 
 ## 1. 设计结论速览
@@ -707,7 +708,7 @@ docker compose up -d
 | `docker/agent-sites/` | 已建（含 README 与三段式 `.env.example`），是后续依赖目录的样板；`docker/gotenberg/` 曾以同样形态存在，已按上表并入 `docker/ragflow/` |
 | `docker/sandbox-{peri,dsh,ccb,opencode}/` | `RCS_URL` / `RCS_SECRET` / `RCS_MACHINE_ID` 走 `.env.example`（同机启动由脚本注入 `RCS_URL`，独立部署填真实地址）；辅助服务一律留在项目网络，只有执行节点接入 `fenix-server`。**2026-10-08 起 peri / ccb / opencode 的 compose 只引用发布镜像**（`ghcr.io/huangpustar/fenixagent-sandbox-<name>:v0.7.0-beta.1-<name>`，与主服务同版本；本地自建见各目录 README）；`dsh` 是唯一例外——GHCR 上没有它的发布镜像，仍从源码构建（§13.15） |
 | `docker/{ragflow,litellm,hindsight,npm-registry,workflow}/` | 已补齐契约：固定镜像版本、端口回环绑定、网络接入清单、README；ragflow / litellm / hindsight 新增三段式 `.env.example`（npm-registry / workflow 无插值键，故不设） |
-| `docker/peri-fuse/` | **2026-10-10 新增**：LLM 观测（Langfuse 兼容实现，单容器 + 内嵌 Turso/SQLite，无 ClickHouse / Redis / S3）。消费方是 **Agent 进程**（本地执行在 `rcs` 容器内、沙箱节点在各自容器内），按 `LANGFUSE_BASE_URL=http://peri-fuse:23332` 直连上报；主服务只透传 `LANGFUSE_*` 三键、不做转接。宿主端口默认只绑回环，`.env` 暴露 `PERIFUSE_BIND_ADDR` / `PERIFUSE_HOST_PORT` / `PERIFUSE_SALT`；**版本键 `PERIFUSE_VERSION`**（覆盖 compose 的缺省 tag，§6 规则 10 的登记例外） |
+| `docker/peri-fuse/` | **2026-10-10 新增**：LLM 观测（Langfuse 兼容实现，单容器 + 内嵌 Turso/SQLite，无 ClickHouse / Redis / S3）。写入侧消费方是 **Agent 进程**（本地执行在 `rcs` 容器内、沙箱节点在各自容器内），按 `LANGFUSE_BASE_URL=http://peri-fuse:23332` 直连上报；读取侧由主服务（`@fenix/resource-trace` 的只读薄层 → `/web/.../traces*`）访问同一基址，故本目录必须留在 `fenix-server` 网络上（§6 规则 3 的成员判定因此从「执行节点」扩到「主服务也会读它」）。宿主端口默认只绑回环，`.env` 暴露 `PERIFUSE_BIND_ADDR` / `PERIFUSE_HOST_PORT` / `PERIFUSE_SALT`；**版本键 `PERIFUSE_VERSION`**（覆盖 compose 的缺省 tag，§6 规则 10 的登记例外） |
 | `docker/opensandbox-{cluster,server,server-tunnel}/` | 已补齐契约：镜像固定为 `…/v0.2.0`（不再插值）、`opensandbox-server` 改名并补开关；**2026-10-08 起三者的 compose 都不声明 `build:`**，只引用发布 tag（本地自建命令见各目录 README，隧道目录不再需要在 server 侧打标） |
 
 ### 12.2 迁移阶段（每阶段独立可验证）

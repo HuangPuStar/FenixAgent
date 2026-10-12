@@ -198,6 +198,7 @@ export function ChatArea({ agentId, sessionId, visible, deletedEnvironmentIds, m
         >
           <ChatWorkspaceArtifacts
             agentId={activeAgentId}
+            sessionId={sessionId ?? null}
             agentRestartVersion={activeAgentRestartVersion}
             modulesConfig={modulesConfig}
           >
