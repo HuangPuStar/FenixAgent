@@ -99,6 +99,26 @@
     "updateFailed": "Failed to update the comment",
     "updateAccepted": "The comment change is being confirmed; refresh later to see the result"
   },
+  "attachment": {
+    "sectionTitle": "Attachments",
+    "hint": "Up to {{size}} per file, {{max}} files per selection",
+    "empty": "No attachments yet",
+    "loadFailed": "Failed to load attachments",
+    "add": "Add attachment",
+    "queued": "Queued",
+    "uploading": "Uploading",
+    "cancel": "Cancel upload",
+    "retry": "Retry",
+    "remove": "Remove",
+    "uploaded": "Attachment uploaded",
+    "uploadFailed": "Attachment upload failed",
+    "accepted": "The attachment upload is being confirmed; refresh later to see the result",
+    "rejectedTooLarge": "{{name}} exceeds {{size}} and was not queued",
+    "rejectedTooMany": "At most {{max}} files per selection; the rest were not queued",
+    "rejectedEmpty": "{{name}} is empty and was not queued",
+    "download": "Download",
+    "downloadFailed": "Failed to download the attachment"
+  },
   "write": {
     "uncertainTitle": "Submission pending confirmation",
     "uncertainHint": "This ticket has an unconfirmed change; editing stays blocked until it is confirmed.",

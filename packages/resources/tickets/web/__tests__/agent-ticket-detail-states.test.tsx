@@ -155,6 +155,11 @@ function commentsPage(): StubResponse {
   return { status: 200, body: { success: true, data: { items: [], nextCursor: null } } };
 }
 
+/** 附件列表：空列表。附件行为归附件自己的用例。 */
+function attachmentsPage(): StubResponse {
+  return { status: 200, body: { success: true, data: { items: [] } } };
+}
+
 function stubFetch(): () => void {
   const original = globalThis.fetch;
   globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
@@ -163,6 +168,9 @@ function stubFetch(): () => void {
     // 详情页挂载时会取评论首屏（页面既有行为）。这条分支必须先判：`.../comments` 也以详情 URL 为前缀，
     // 落到下面那条会拿详情响应冒充评论页（两者形状不同，页面会在渲染评论列表时崩）。
     if (url.startsWith(`/web/tickets/${PROJECT_ID}/${NUMBER}/comments`)) return jsonResponse(commentsPage());
+    // 附件列表：详情页挂载时按工单取一次（页面既有行为）。同样必须先于详情分支判——`.../attachments`
+    // 也以详情 URL 为前缀，落到下面那条会把详情响应当成附件页（形状不同，页面会在渲染附件区时崩）。
+    if (url.startsWith(`/web/tickets/${PROJECT_ID}/${NUMBER}/attachments`)) return jsonResponse(attachmentsPage());
     if (!url.startsWith(`/web/tickets/${PROJECT_ID}/${NUMBER}`)) throw new Error(`未预期的请求：${url}`);
     const response = detailResponses[Math.min(detailCalls, detailResponses.length - 1)];
     detailCalls += 1;

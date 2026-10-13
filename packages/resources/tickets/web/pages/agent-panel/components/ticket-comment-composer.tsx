@@ -12,7 +12,7 @@
 import { Button } from "@fenix/ui-components/ui/button";
 import { Textarea } from "@fenix/ui-components/ui/textarea";
 import { RefreshCw } from "lucide-react";
-import { useState } from "react";
+import { type ReactNode, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { TICKETS_NS } from "../../../i18n/namespace";
 
@@ -34,6 +34,11 @@ export interface TicketCommentComposerProps {
   disabled: boolean;
   /** 写失败的内联提示（如 409 的 `write.conflict`），已翻译。 */
   errorMessage?: string;
+  /**
+   * 附件选择入口（由调用方注入，只有新建态传）：附件挂在工单上而不是评论上，因此它出现在「写评论」旁边
+   * 只是用户动线的自然位置，编辑已有评论时不再出现。
+   */
+  attachmentPicker?: ReactNode;
   /** 冲突时的「加载最新内容」入口；不传即不渲染该按钮。 */
   onReload?: () => void;
   reloading?: boolean;
@@ -48,6 +53,7 @@ export function TicketCommentComposer({
   submitting,
   disabled,
   errorMessage,
+  attachmentPicker,
   onReload,
   reloading = false,
 }: TicketCommentComposerProps) {
@@ -95,6 +101,7 @@ export function TicketCommentComposer({
         <Button disabled={disabled || submitting} onClick={handleSubmit} size="sm" type="button">
           {mode === "create" ? t("comment.submit") : t("comment.save")}
         </Button>
+        {attachmentPicker}
         {mode === "edit" && onCancel !== undefined ? (
           <Button disabled={submitting} onClick={onCancel} size="sm" type="button" variant="ghost">
             {t("comment.cancel")}

@@ -156,6 +156,10 @@ function stubFetch(): () => void {
       operationCalls += 1;
       return jsonResponse(response);
     }
+    // 附件列表：详情页挂载时按工单取一次（页面既有行为），不属于本文件断言的写路径。
+    if (url.startsWith(`/web/tickets/${PROJECT_ID}/${NUMBER}/attachments`)) {
+      return jsonResponse({ status: 200, body: { success: true, data: { items: [] } } });
+    }
     if (url.startsWith(`/web/tickets/${PROJECT_ID}/${NUMBER}`)) {
       if (method === "PATCH") {
         const response = nextOf(patchResponses, patchCalls);

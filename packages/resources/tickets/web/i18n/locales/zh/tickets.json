@@ -99,6 +99,26 @@
     "updateFailed": "更新评论失败",
     "updateAccepted": "评论修改结果确认中，稍后刷新查看"
   },
+  "attachment": {
+    "sectionTitle": "附件",
+    "hint": "单个文件不超过 {{size}}，每次最多 {{max}} 个",
+    "empty": "还没有附件",
+    "loadFailed": "加载附件失败",
+    "add": "添加附件",
+    "queued": "等待上传",
+    "uploading": "上传中",
+    "cancel": "取消上传",
+    "retry": "重试",
+    "remove": "移除",
+    "uploaded": "附件已上传",
+    "uploadFailed": "附件上传失败",
+    "accepted": "附件上传结果确认中，稍后刷新查看",
+    "rejectedTooLarge": "{{name}} 超过 {{size}}，未加入上传",
+    "rejectedTooMany": "一次最多上传 {{max}} 个文件，其余未加入",
+    "rejectedEmpty": "{{name}} 是空文件，未加入上传",
+    "download": "下载",
+    "downloadFailed": "下载附件失败"
+  },
   "write": {
     "uncertainTitle": "提交结果确认中",
     "uncertainHint": "该工单有一笔修改尚未确认，确认前暂时不能继续修改。",

@@ -168,6 +168,10 @@ function stubFetch(): () => void {
       idempotencyKey: new Headers(init?.headers).get("idempotency-key"),
     });
 
+    // 附件列表：详情页挂载时按工单取一次（页面既有行为）。与评论同理，必须先于详情分支判。
+    if (url.startsWith(`/web/tickets/${PROJECT_ID}/${NUMBER}/attachments`)) {
+      return jsonResponse({ status: 200, body: { success: true, data: { items: [] } } });
+    }
     // 评论路径必须先判：它也以详情 URL 为前缀，落到下面那条会拿详情响应冒充评论页。
     if (url.startsWith(commentsPath())) {
       if (method === "POST") return jsonResponse(postResponse);

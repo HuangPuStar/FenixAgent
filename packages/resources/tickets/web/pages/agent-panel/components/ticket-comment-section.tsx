@@ -13,6 +13,7 @@ import { EmptyState } from "@fenix/ui-components/config/EmptyState";
 import { Button } from "@fenix/ui-components/ui/button";
 import { Skeleton } from "@fenix/ui-components/ui/skeleton";
 import { AlertTriangle, ChevronUp, RefreshCw } from "lucide-react";
+import type { ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import type { TicketCommentsState } from "../../../hooks/use-ticket-comments";
 import { TICKETS_NS } from "../../../i18n/namespace";
@@ -27,9 +28,17 @@ export interface TicketCommentSectionProps {
   locale: string;
   /** 别的写动作进行中：评论区的写入口一并禁用（同一工单同一时刻只允许一笔写）。 */
   busy: boolean;
+  /** 附件选择入口节点，透传给新建表单（附件挂工单，编辑评论时不出现）。 */
+  attachmentPicker?: ReactNode;
 }
 
-export function TicketCommentSection({ comments, viewerUserId, locale, busy }: TicketCommentSectionProps) {
+export function TicketCommentSection({
+  comments,
+  viewerUserId,
+  locale,
+  busy,
+  attachmentPicker,
+}: TicketCommentSectionProps) {
   const { t } = useTranslation(TICKETS_NS);
   const writeDisabled = busy || comments.blocked;
   const editing = comments.editing;
@@ -39,6 +48,7 @@ export function TicketCommentSection({ comments, viewerUserId, locale, busy }: T
       <h2 className="text-sm font-medium text-text-primary">{t("comment.sectionTitle")}</h2>
       <div className="mt-3">
         <TicketCommentComposer
+          attachmentPicker={attachmentPicker}
           disabled={writeDisabled}
           mode="create"
           onChange={comments.setCreateDraft}

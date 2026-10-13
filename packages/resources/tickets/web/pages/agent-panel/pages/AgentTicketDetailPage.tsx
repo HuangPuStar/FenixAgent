@@ -29,11 +29,13 @@ import { Link } from "@tanstack/react-router";
 import { AlertTriangle, ArrowLeft, CircleCheck, CircleSlash, Pencil, RefreshCw } from "lucide-react";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
+import { useTicketAttachments } from "../../../hooks/use-ticket-attachments";
 import { useTicketComments } from "../../../hooks/use-ticket-comments";
 import { useTicketDetail } from "../../../hooks/use-ticket-detail";
 import { useTicketLabels } from "../../../hooks/use-ticket-labels";
 import { TICKETS_NS } from "../../../i18n/namespace";
 import { isNotFoundError, isUnauthorizedError } from "../../../lib/ticket-errors";
+import { TicketAttachmentPicker, TicketAttachmentSection } from "../components/ticket-attachment-section";
 import { TicketCommentSection } from "../components/ticket-comment-section";
 import { TicketDetailMeta } from "../components/ticket-detail-meta";
 import { TicketFieldsDialog } from "../components/ticket-fields-dialog";
@@ -72,6 +74,12 @@ export function AgentTicketDetailPage({ projectId, number }: AgentTicketDetailPa
     reloadLatest: detail.reloadLatest,
     reportUncertain: detail.reportUncertain,
     ticket: detail.data,
+  });
+
+  // 附件与评论同层装配（附件区挂在详情页，输入框旁的入口经 props 注入评论表单）。
+  const attachments = useTicketAttachments(projectId, number, {
+    enabled: detail.data !== undefined,
+    onUncertain: detail.reportUncertain,
   });
 
   if (detail.loading && !detail.data) {
@@ -211,7 +219,24 @@ export function AgentTicketDetailPage({ projectId, number }: AgentTicketDetailPa
         <MessageResponse mode="static">{data.body}</MessageResponse>
       </section>
 
-      <TicketCommentSection busy={busy} comments={comments} locale={i18n.language} viewerUserId={session.userId} />
+      {/* 附件是工单级的（上游端点以工单号为坐标），因此列表放在评论区之外、之上：贴着评论渲染会让读者
+          以为附件属于紧邻的那条评论。上传入口则贴着输入框（见下），两者共享同一个 hook 实例。 */}
+      <TicketAttachmentSection attachments={attachments} locale={i18n.language} />
+
+      <TicketCommentSection
+        attachmentPicker={
+          <TicketAttachmentPicker
+            // 与其它写入口同口径禁用：有待确认的写或有写在途时不再开第二笔（附件写入同样落一条在途操作）。
+            // 上传本身不计入 `busy`：它不该让整页进入遮罩态，用户在上传期间仍可阅读与滚动。
+            disabled={writeDisabled || attachments.uploading}
+            onSelect={attachments.addFiles}
+          />
+        }
+        busy={busy}
+        comments={comments}
+        locale={i18n.language}
+        viewerUserId={session.userId}
+      />
 
       {/* 弹窗重置靠 `key`（父级每次打开换一个）：只改 `open` 不会重建 `FormDialog` 内部的表单实例。 */}
       <TicketFieldsDialog
