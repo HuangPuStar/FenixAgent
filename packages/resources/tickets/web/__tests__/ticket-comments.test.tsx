@@ -475,7 +475,11 @@ describe("工单评论区", () => {
 
     expect(commentWrites("POST").length).toBe(1);
     expect(textareas()[0]?.value).toBe("断网时写下的评论");
-    expect(toastTitlesSince(toastBaseline)).toContain(TEXT.comment.createFailed);
+    // 通用失败上屏服务端信封原文（夹具 `failure()` 的 message 是 "boom"），固定文案只在 message 为空时
+    // 兜底：这里若回退成 `TEXT.comment.createFailed`，就等于又在接口侧把后端故障盖掉了。
+    const failureToasts = toastTitlesSince(toastBaseline);
+    expect(failureToasts).toContain("boom");
+    expect(failureToasts).not.toContain(TEXT.comment.createFailed);
     // 失败不是「禁用到底」：按钮必须还能再点一次，否则用户只能刷新页面重写。
     expect((buttonByText(TEXT.comment.submit) as HTMLButtonElement).disabled).toBe(false);
 

@@ -113,7 +113,7 @@ export function useTicketComments(
       onSuccess: (page) => setPages([page]),
       onError: (err: Error) => {
         console.error("ticket comments load failed", err);
-        toast.error(t("comment.loadFailed"));
+        toast.error(err.message || t("comment.loadFailed"));
       },
     },
   );
@@ -126,7 +126,7 @@ export function useTicketComments(
       onError: (err: Error) => {
         // 已加载的评论仍然可用，失败只提示（重试入口就是那颗按钮本身，点击即重取同一游标）。
         console.error("ticket comments load older failed", err);
-        toast.error(t("comment.loadFailed"));
+        toast.error(err.message || t("comment.loadFailed"));
       },
     },
   );
@@ -158,7 +158,7 @@ export function useTicketComments(
       },
       onError: (err: Error) => {
         console.error("ticket comments reload failed", err);
-        toast.error(t("comment.loadFailed"));
+        toast.error(err.message || t("comment.loadFailed"));
       },
     },
   );

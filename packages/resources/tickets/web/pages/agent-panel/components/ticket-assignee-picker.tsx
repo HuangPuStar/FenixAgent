@@ -138,6 +138,8 @@ function MemberListFooter({
     return (
       <div className="flex flex-wrap items-center gap-2 border-t px-2 py-2 text-xs text-text-secondary" role="alert">
         <span>{t("assignee.loadFailed")}</span>
+        {/* 服务端信封原文与固定文案并列：固定文案说明「哪一步失败」，原文才给出可定位的原因。 */}
+        {error.message ? <span>{error.message}</span> : null}
         <Button onClick={onRetry} size="sm" type="button" variant="outline">
           <RefreshCw className="size-3.5" />
           {t("loadState.retry")}

@@ -82,7 +82,8 @@ export function useTicketMembers(projectId: string, options: TicketMembersOption
     onError: (err: Error) => {
       // 已加载的候选仍然可用：只补一条即时提示，不把列表换成错误态。
       console.error("ticket members load more failed", err);
-      toast.error(t("assignee.loadFailed"));
+      // 服务端 `message` 优先上屏（它才是可定位的失败原因），字典文案只在它是空串时兜底。
+      toast.error(err.message || t("assignee.loadFailed"));
     },
   });
 

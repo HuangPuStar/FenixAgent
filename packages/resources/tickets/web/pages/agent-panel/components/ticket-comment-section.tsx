@@ -63,7 +63,8 @@ export function TicketCommentSection({ comments, viewerUserId, locale, busy }: T
             icon: <RefreshCw className="size-3.5" />,
             onClick: comments.retryFirst,
           }}
-          description={t("comment.loadFailed")}
+          // 说明行放服务端信封原文，与标题的固定文案分工：标题给出「哪一步失败」，说明给出「为什么」。
+          description={comments.error?.message || t("comment.loadFailed")}
           icon={<AlertTriangle className="size-6" />}
           role="alert"
           title={t("comment.loadFailed")}

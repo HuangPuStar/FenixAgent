@@ -58,7 +58,9 @@ export interface TicketWriteFailureContext {
  * 把一次写失败归类成 {@link TicketWriteOutcome}，并施加与该类绑定的固定副作用。
  *
  * 判别顺序即合同的优先级：在途互斥先于版本冲突（两者都是 409，但前者不该让用户去刷新重试），
- * 权限先于通用失败（403 不给重试入口）。服务端信封原文只进 console —— 上屏一律用字典文案。
+ * 权限先于通用失败（403 不给重试入口）。**只有稳定业务码换字典文案**（在途互斥 / 版本冲突 / 幂等冲突 /
+ * 403 / 404 / 503 这三码合一），这些分支的下一步动作是确定的；落到通用失败时取服务端信封原文——用固定
+ * 文案盖住它，用户与排障都拿不到后端给出的原因。
  */
 export function settleTicketWriteFailure(error: unknown, context: TicketWriteFailureContext): TicketWriteOutcome {
   const { t, holder } = context;
@@ -92,6 +94,6 @@ export function settleTicketWriteFailure(error: unknown, context: TicketWriteFai
     return "failed";
   }
   console.error(context.logLabel, error);
-  toast.error(t(context.failureMessageKey));
+  toast.error(error instanceof Error && error.message ? error.message : t(context.failureMessageKey));
   return "failed";
 }
