@@ -228,7 +228,7 @@ controller.spawnInstance(envId, userId)
 ### 与现有文档的联动
 
 - `docs/arch/20-orchestration-management.md` 是目标架构基线
-- `docs/arch/changes.md` 的改动 1-4、12 与本 PRD 相关
+- `docs/arch/20-orchestration-management.md` 记录本 PRD 落地后仍有效的架构事实与约束
 - `docs/design/2026-07-08-system-default-machine-engine-design.md` 中 machine fallback 逻辑在实现 AgentNodeService 时参考
 
 ### 风险提示

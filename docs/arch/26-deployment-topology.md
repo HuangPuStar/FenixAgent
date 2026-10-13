@@ -2,7 +2,7 @@
 
 > 状态：现状基线（2026-10-08）。
 > 范围：FenixAgent 的 Docker 部署体系——编排结构（主服务编排 / `docker/common/` / `docker/<name>/` / 交付面）、网络分层、四种部署方式（本地开发 / 生产单机 / 执行节点分离 / OpenSandbox 分离）及各自的容器与网络拓扑、数据落点、配置与发布契约。
-> 权威性：本文是部署**结构与拓扑**的权威。脚本用法、逐键配置说明与排障步骤见运维文档：[部署](../operations/deployment.md)、[Docker 编排体系](../operations/docker-topology.md)、[升级](../operations/upgrade.md)；OpenSandbox 集群的数据模型与接口见 [OpenSandbox Cluster 当前架构](./opensandbox-cluster.md)。
+> 权威性：本文是部署**结构与拓扑**的权威。脚本用法、逐键配置说明与排障步骤见运维文档：[部署](../operations/deployment.md)、[Docker 编排体系](../operations/docker-topology.md)、[升级](../operations/upgrade.md)；OpenSandbox 集群的数据模型与接口见 [OpenSandbox Cluster 当前架构](./28-opensandbox-cluster.md)。
 > 非目标：应用层运行架构（执行节点模型、ACP 信道、沙盒 Provider、Instance 生命周期）见 [沙盒整体架构](./19-sandbox.md)、[AgentController 编排域架构](./20-orchestration-management.md)；K8s 等平台的原生编排仓库不提供，其他平台以镜像 + `docker/main/.env.example` 清单接入。
 
 ## 1. 决策摘要
@@ -317,5 +317,5 @@ flowchart LR
 | [部署](../operations/deployment.md) | 依赖服务、环境文件来源、启动顺序与启动后自检（操作步骤） |
 | [升级](../operations/upgrade.md) / [迁移](../operations/migration.md) | 镜像与代码升级、DDL 与数据迁移的先后关系与失败判定 |
 | [备份与恢复](../operations/backup-and-restore.md) | 备份对象与恢复顺序 |
-| [OpenSandbox Cluster 当前架构](./opensandbox-cluster.md) | 集群数据模型、接口、代理与错误一致性 |
+| [OpenSandbox Cluster 当前架构](./28-opensandbox-cluster.md) | 集群数据模型、接口、代理与错误一致性 |
 | [沙盒整体架构](./19-sandbox.md) / [AgentController 编排域架构](./20-orchestration-management.md) | 应用层运行架构：执行节点模型、Provider 抽象、Instance 生命周期 |

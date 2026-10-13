@@ -285,7 +285,7 @@ running → completed | failed | interrupted
 
 - `docs/arch/19-yjs-chat-streaming.md` 是本次重构的目标架构基线，重构完成后升级为"实现基线"
 - `docs/arch/20-orchestration-management.md` 提供 `ensureRunning` / 实例生命周期依赖
-- `docs/arch/changes.md` 需同步新增本次改动记录
+- `docs/arch/19-yjs-chat-streaming.md` 需同步落地后仍有效的架构事实与约束
 - `docs/arch/19-yjs-chat-streaming.md` 记录当前包设计与实现基线
 - `docs/arch/domain-glossary.md` 领域词汇需更新 Chat 域术语（Turn、SessionChannel、Action/Ack、commandId、pendingPermissions）
 

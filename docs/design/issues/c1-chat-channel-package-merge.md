@@ -29,7 +29,7 @@
 - [ ] 原 acp-server 的全部导出面在 `@fenix/chat-channel` 下可用，`index.ts` 导出与原包完全对齐（可 grep 对比导出列表）
 - [ ] 迁入的测试（原 acp-server 测试）在包内全绿（`cd packages/chat-channel && bun test`）
 - [ ] `bun run precheck` 全绿；`bun run build:web` 通过；`bun run check:deps` 无新告警
-- [ ] `docs/arch/changes.md` 已记录包合并
+- [ ] `docs/arch/19-yjs-chat-streaming.md` 已反映包合并后的当前边界
 
 ## Blocked by
 

@@ -17,14 +17,14 @@
    - §7.2/8.2 修订：事件日志与租约标注为"不实现（评审决策，YJS CRDT 已保证文档一致性，`commandId` 去重承担防重复副作用）"，`leaseEpoch` 标注类型占位（Q5）；
    - §10 节：连接时序差异标注"二期优化项"（Q13）；
    - 模块表同步：`SessionLeaseManager` 标注占位、模块归属更新为 `packages/chat-channel` 子目录。
-2. **`docs/arch/changes.md`**：新增本次改动记录（包合并、schema 切换、协议落地、状态机、权限 CAS、断链语义）。
+2. **`docs/arch/19-yjs-chat-streaming.md`**：同步本次落地后仍有效的协议、状态机、权限 CAS 与断链语义。
 3. **README 同步**：原 `packages/acp-server/README.md` 内容并入 `packages/chat-channel/README.md`（新语义：协议基础 + 聚合层 + 控制面）。
 4. **最终验收**：全量验证（见验收标准），确认 19 号文档描述与代码一致（无文档宣称但代码不存在的机制，无代码存在但文档未记录的机制）。
 
 ## Acceptance criteria
 
 - [ ] 19 号文档升级为"实现基线"，无与代码冲突的表述（逐节核对 Q4/Q5/Q6/Q7/Q9/Q13 修订点）
-- [ ] `docs/arch/changes.md` 记录完整（包合并、引用迁移、协议、状态机、权限、断链）
+- [ ] `docs/arch/19-yjs-chat-streaming.md` 已反映当前协议、状态机、权限与断链约束
 - [ ] `packages/chat-channel/README.md` 就位，原 acp-server README 无残留
 - [ ] `bun run precheck` 全绿；`bun run build:web` 通过；全部包内测试（含 C1-C7 新增）全绿
 - [ ] 与 `docs/arch/19-yjs-chat-streaming.md` 逐节核对完成，确认文档即实现

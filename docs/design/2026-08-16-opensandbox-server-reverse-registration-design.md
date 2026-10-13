@@ -1,7 +1,7 @@
 # OpenSandbox Server 反向连接与 FRP 隧道设计
 
 > 本文记录 tunnel 能力的设计决策和实现边界。系统当前架构以
-> [`docs/arch/opensandbox-cluster.md`](../arch/opensandbox-cluster.md) 为准，部署步骤以各目录 README 为准。
+> [`docs/arch/28-opensandbox-cluster.md`](../arch/28-opensandbox-cluster.md) 为准，部署步骤以各目录 README 为准。
 
 ## 1. 背景与目标
 

@@ -1,6 +1,6 @@
 # ACP 主工作流程 — 全栈技术栈连线
 
-> **架构演进说明**：前端已从"Relay + YJS 双通道"收拢为单 `/acp/yjs` 统一通道（详见 [改动 13](../arch/changes.md#改动-13前端-ws-通道从-relayyjs-双通道收拢为单-acpyjs-通道)）。`/acp/relay/:agentId` 端点服务侧仍存在，但前端不再使用；`createRelayClient()` / `buildRelayUrl()` 为死代码。
+> **架构演进说明**：前端已从"Relay + YJS 双通道"收拢为单 `/acp/yjs` 统一通道；当前链路见 [YJS 流式链路](../arch/19-yjs-chat-streaming.md)。`/acp/relay/:agentId` 端点服务侧仍存在，但前端不再使用；`createRelayClient()` / `buildRelayUrl()` 为死代码。
 
 ## 整体分层架构
 
