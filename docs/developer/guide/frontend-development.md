@@ -10,7 +10,7 @@
 ## 0. 使用约定
 ### 0.1 适用范围
 - **覆盖**：`apps/web/**`（宿主）与 `packages/**/web/**`（owner 包 web 面）。
-- **不覆盖**：`ui-sandbox/`（独立设计沙盘，不在 workspace、不参与 `precheck`）、`packages/**/src/server/**` 与 `packages/chat-channel/src/server.ts`（归后端规范）。二者中的写法不是本规范的反例，也不要照抄。
+- **不覆盖**：`packages/**/src/server/**` 与 `packages/chat-channel/src/server.ts`（归后端规范）。二者中的写法不是本规范的反例，也不要照抄。
 
 ### 0.2 规则与现状
 - 只写**当前规则**——代码已按此实现、可据以 review 的不变量。各章末 **「现状偏离」** 只记尚未落地的位置，每条一行：`位置 — 移除条件`。
@@ -471,7 +471,7 @@ import 顺序由 Biome 的 import-sort 统一（`precheck` 会跑），形态是
 - 字体：系统字体栈，**禁止外部字体链接与 `@font-face`**；`--font-sans` / `--font-display` / `--font-body` 三者同值、`--font-mono` 独立，均应用在 `html, body`。
 
 ### 10.1 现状偏离
-- **计数口径**（即 §10 四类里剩下的第四类）：枚举 `find apps/web/src -name '*.css'`、`find packages -path '*/web/*' -name '*.css'`（排除 `node_modules` / `dist`），**计入**无同目录同名 `.tsx` / `.ts` 兄弟的 `.css`；**排除** ① token 入口（宿主 `index.css` 710 行——除 `@theme` 外另含「宿主壳残余样式」段、`theme.css` 377 行）、② `overrides.css`（48 行）、③ 类别 ③ 伴随表（73 份 / 5766 行）、④ `ui-components/web/chat/css/*.css`（2 份 / 137 行）；**口径外** `ui-sandbox/`、`docs/**`、`e2e/playwright-report/**`、`tmp/**`、`.worktrees/**` 与包内 demo `demo.css`。**改本节就重跑该分类脚本重算，不要用「上次的数字 ± 本批增删」维护。**
+- **计数口径**（即 §10 四类里剩下的第四类）：枚举 `find apps/web/src -name '*.css'`、`find packages -path '*/web/*' -name '*.css'`（排除 `node_modules` / `dist`），**计入**无同目录同名 `.tsx` / `.ts` 兄弟的 `.css`；**排除** ① token 入口（宿主 `index.css` 710 行——除 `@theme` 外另含「宿主壳残余样式」段、`theme.css` 377 行）、② `overrides.css`（48 行）、③ 类别 ③ 伴随表（73 份 / 5766 行）、④ `ui-components/web/chat/css/*.css`（2 份 / 137 行）；**口径外** `docs/**`、`e2e/playwright-report/**`、`tmp/**`、`.worktrees/**` 与包内 demo `demo.css`。**改本节就重跑该分类脚本重算，不要用「上次的数字 ± 本批增删」维护。**
 - **`tw-animate-css` 声明了依赖但源仓库从未 `@import` 它**（仅包内 demo 导入，已登记在该包 README 已知限制）— 应用入口 `@import` 它后移除。
 
 ## 11. 开发落地清单
