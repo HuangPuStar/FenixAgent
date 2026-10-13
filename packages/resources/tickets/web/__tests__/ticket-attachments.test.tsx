@@ -535,3 +535,52 @@ describe("附件下载", () => {
     }
   });
 });
+
+describe("粘贴图片（评论框）", () => {
+  /** 构造剪贴板替身：happy-dom 无真实 DataTransfer，粘贴只消费 `files` / `items` 两个入口。 */
+  function clipboardOf(files: File[], options: { itemsOnly?: boolean } = {}): DataTransfer {
+    const items = files.map((file) => ({ kind: "file", type: file.type, getAsFile: () => file }));
+    return { files: options.itemsOnly ? [] : files, items } as unknown as DataTransfer;
+  }
+
+  /** 在评论输入框上派发一次粘贴；返回事件以便断言是否被拦截（`defaultPrevented`）。 */
+  function paste(clipboard: DataTransfer): Event {
+    const textarea = container.querySelector("textarea");
+    if (textarea === null) throw new Error("评论框未渲染 textarea");
+    const event = new win.ClipboardEvent("paste", { bubbles: true, cancelable: true });
+    // happy-dom 的 ClipboardEvent init 不接受外部 DataTransfer，直接挂属性：React 以
+    // `"clipboardData" in event` 判定后原样取用（见 react-dom 的 clipboardData 分支）。
+    Object.defineProperty(event, "clipboardData", { value: clipboard, configurable: true });
+    textarea.dispatchEvent(event as unknown as Event);
+    return event as unknown as Event;
+  }
+
+  // 粘贴截图走与「添加附件」同一条队列；图片只在 `items` 里的来源（从网页复制图片、部分截图工具）也要识别，
+  // 并换成带时间戳的唯一名——恢复核对按「文件名 + 字节数」认领结果，默认的 image.png 重名会让它转人工。
+  test("剪贴板图片（files 为空、只在 items 里）入队上传并换成唯一名", async () => {
+    uploadResponses = [uploadSuccess(attachment("9", "pasted-image.png", 4))];
+    await renderDetail();
+
+    await act(async () => {
+      paste(clipboardOf([fileOf("image.png", 4)], { itemsOnly: true }));
+    });
+    await flush();
+
+    expect(uploadCalls.length).toBe(1);
+    expect(uploadCalls[0]?.fileName).toMatch(/^pasted-image-\d{8}-\d{6}-\d+-[a-z0-9]{6}\.png$/);
+    expect(uploadCalls[0]?.fileSize).toBe(4);
+  });
+
+  // 纯文本粘贴必须保持浏览器默认行为：拦截它会让「往评论里粘一段文字」彻底失效（本 hook 也拿文字没办法）。
+  test("纯文本粘贴不拦截、不入队", async () => {
+    await renderDetail();
+
+    let event: Event | undefined;
+    await act(async () => {
+      event = paste({ files: [], items: [] } as unknown as DataTransfer);
+    });
+
+    expect(event?.defaultPrevented).toBe(false);
+    expect(uploadCalls).toEqual([]);
+  });
+});

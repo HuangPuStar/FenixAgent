@@ -136,6 +136,7 @@ describe("tickets web 入口浏览器可达面", () => {
       "hooks/use-ticket-list.ts",
       "hooks/use-ticket-members.ts",
       "lib/ticket-attachment-limits.ts",
+      "lib/ticket-clipboard-images.ts",
       "lib/ticket-errors.ts",
       "lib/ticket-permissions.ts",
       "lib/ticket-write-failure.ts",

@@ -235,6 +235,9 @@ export function AgentTicketDetailPage({ projectId, number }: AgentTicketDetailPa
         busy={busy}
         comments={comments}
         locale={i18n.language}
+        // 粘贴图片与「添加附件」是同一条队列；这里不按 `uploading` 禁用（粘贴的是新内容，队列排得下），
+        // 而「有待确认的写 / 评论提交中」由输入框自身的 `disabled` 拦住（禁用的 textarea 不触发粘贴事件）。
+        onPasteFiles={attachments.addFiles}
         viewerUserId={session.userId}
       />
 

@@ -12,9 +12,10 @@
 import { Button } from "@fenix/ui-components/ui/button";
 import { Textarea } from "@fenix/ui-components/ui/textarea";
 import { RefreshCw } from "lucide-react";
-import { type ReactNode, useState } from "react";
+import { type ClipboardEvent, type ReactNode, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { TICKETS_NS } from "../../../i18n/namespace";
+import { readPastedImageFiles, renamePastedImage } from "../../../lib/ticket-clipboard-images";
 
 /**
  * 评论长度上限。与后端 `MESSAGE_MAX_BYTES`（64 KiB 字节）同源，但这里是**字符**数的粗粒度预检：
@@ -39,6 +40,12 @@ export interface TicketCommentComposerProps {
    * 只是用户动线的自然位置，编辑已有评论时不再出现。
    */
   attachmentPicker?: ReactNode;
+  /**
+   * 粘贴图片的出口（与 `attachmentPicker` 同时传、同样只在新建态）：有图片时拦截默认粘贴并交给调用方
+   * 入队；纯文本、HTML 与普通文件的粘贴保持浏览器默认行为。改名（带时间戳的唯一名）在入口处完成，理由
+   * 见 `lib/ticket-clipboard-images.ts`。
+   */
+  onPasteFiles?: (files: File[]) => void;
   /** 冲突时的「加载最新内容」入口；不传即不渲染该按钮。 */
   onReload?: () => void;
   reloading?: boolean;
@@ -54,12 +61,22 @@ export function TicketCommentComposer({
   disabled,
   errorMessage,
   attachmentPicker,
+  onPasteFiles,
   onReload,
   reloading = false,
 }: TicketCommentComposerProps) {
   const { t } = useTranslation(TICKETS_NS);
   /** 本地校验提示（i18n 键）；一次输入变化即清掉，避免用户改完还看着旧报错。 */
   const [localError, setLocalError] = useState<string | null>(null);
+
+  const handlePaste = (event: ClipboardEvent<HTMLTextAreaElement>): void => {
+    if (onPasteFiles === undefined) return;
+    const files = readPastedImageFiles(event.clipboardData);
+    if (files.length === 0) return;
+    // 剪贴板里同时有文本与图片（从网页复制图文）时只取图片：文本进去也无法表达「这段文字原本带图」。
+    event.preventDefault();
+    onPasteFiles(files.map((file) => renamePastedImage(file)));
+  };
 
   const handleChange = (next: string): void => {
     setLocalError(null);
@@ -89,6 +106,7 @@ export function TicketCommentComposer({
         className="min-h-24"
         disabled={disabled || submitting}
         onChange={(event) => handleChange(event.target.value)}
+        onPaste={onPasteFiles === undefined ? undefined : handlePaste}
         placeholder={t("comment.placeholder")}
         value={value}
       />

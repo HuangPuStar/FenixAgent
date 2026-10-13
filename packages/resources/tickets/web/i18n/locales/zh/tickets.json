@@ -101,7 +101,7 @@
   },
   "attachment": {
     "sectionTitle": "附件",
-    "hint": "单个文件不超过 {{size}}，每次最多 {{max}} 个",
+    "hint": "单个文件不超过 {{size}}，每次最多 {{max}} 个，也可直接在输入框粘贴图片",
     "empty": "还没有附件",
     "loadFailed": "加载附件失败",
     "add": "添加附件",

@@ -30,6 +30,8 @@ export interface TicketCommentSectionProps {
   busy: boolean;
   /** 附件选择入口节点，透传给新建表单（附件挂工单，编辑评论时不出现）。 */
   attachmentPicker?: ReactNode;
+  /** 粘贴图片的出口，与 `attachmentPicker` 同传（编辑态粘贴保持浏览器默认行为）。 */
+  onPasteFiles?: (files: File[]) => void;
 }
 
 export function TicketCommentSection({
@@ -38,6 +40,7 @@ export function TicketCommentSection({
   locale,
   busy,
   attachmentPicker,
+  onPasteFiles,
 }: TicketCommentSectionProps) {
   const { t } = useTranslation(TICKETS_NS);
   const writeDisabled = busy || comments.blocked;
@@ -52,6 +55,7 @@ export function TicketCommentSection({
           disabled={writeDisabled}
           mode="create"
           onChange={comments.setCreateDraft}
+          onPasteFiles={onPasteFiles}
           onSubmit={() => {
             void comments.createComment(comments.createDraft);
           }}

@@ -101,7 +101,7 @@
   },
   "attachment": {
     "sectionTitle": "Attachments",
-    "hint": "Up to {{size}} per file, {{max}} files per selection",
+    "hint": "Up to {{size}} per file, {{max}} files per selection; you can also paste images into the input",
     "empty": "No attachments yet",
     "loadFailed": "Failed to load attachments",
     "add": "Add attachment",
