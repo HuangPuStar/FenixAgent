@@ -48,7 +48,7 @@ export function AddProviderDialog({ open, onOpenChange, onAdded }: AddProviderDi
     onSuccess: (data) => setFactories((data ?? []).sort((a, b) => a.name.localeCompare(b.name))),
     onError: (err) => {
       console.error("Failed to load embedding factories", err);
-      toast.error(t("embeddingModel.factoriesLoadFailed"));
+      toast.error(err instanceof Error ? err.message : t("embeddingModel.factoriesLoadFailed"));
     },
   });
 
@@ -94,7 +94,7 @@ export function AddProviderDialog({ open, onOpenChange, onAdded }: AddProviderDi
       onAdded();
     } catch (err) {
       console.error("Failed to add embedding instance", err);
-      toast.error(t("embeddingModel.addFailed"));
+      toast.error(err instanceof Error ? err.message : t("embeddingModel.addFailed"));
     } finally {
       setSubmitting(false);
     }

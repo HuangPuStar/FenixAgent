@@ -6,6 +6,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
 import { agentSitesApi, type SiteApp } from "../api/sites";
+import { errorMessage } from "../lib/error-message";
 
 interface UseArtifactsSitesOptions {
   envId: string | null;
@@ -82,8 +83,9 @@ export function useArtifactsSites({
       onError: (err: unknown) => {
         console.error("[ArtifactsPanel] 加载 agent 绑定 sites 失败", err);
         // 加载失败在 0 站点时不会命中面板的行内错误条（那条要求 sites.length > 0），
-        // 此时界面会落进「未绑定站点」空态，把失败伪装成空数据；toast 是这里唯一的失败信号。
-        toast.error(t("panelMode.sitesLoadFailed"));
+        // 此时界面会落进「未绑定站点」空态，把失败伪装成空数据；toast 是这里唯一的失败信号，
+        // 因此它必须带上服务端信封原文（固定文案会让用户与测试都定位不到后端故障）。
+        toast.error(errorMessage(err) ?? t("panelMode.sitesLoadFailed"));
       },
     },
   );
@@ -107,8 +109,10 @@ export function useArtifactsSites({
         // 后台确认：从 DB 拉最新列表，确保最终一致性
         if (agentConfigId) loadSites(agentConfigId);
       },
-      onError: () => {
-        toast.error(t("panelMode.unmountFailed"));
+      onError: (err: unknown) => {
+        // 解绑失败原先既没有日志也没有原文：选中态停在被解绑的站点上，用户看不到任何原因。
+        console.error("[ArtifactsPanel] 卸载站点失败", err);
+        toast.error(errorMessage(err) ?? t("panelMode.unmountFailed"));
       },
     },
   );
@@ -131,8 +135,8 @@ export function useArtifactsSites({
       onError: (err: unknown) => {
         console.error("[ArtifactsPanel] 自动挂载站点失败", err);
         // 失败由用户点击 <agent-sites> 卡片触发，已切到 Sites 模式但选不中站点，
-        // 不提示会让用户以为点击没生效。
-        toast.error(t("panelMode.mountFailed"));
+        // 不提示会让用户以为点击没生效；原因取服务端信封原文，固定文案只作兜底。
+        toast.error(errorMessage(err) ?? t("panelMode.mountFailed"));
       },
     },
   );

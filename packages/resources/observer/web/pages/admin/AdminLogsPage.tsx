@@ -64,7 +64,7 @@ function LogsDashboard({ onAuthFailure }: { onAuthFailure: () => void }) {
     onSuccess: (blob, params) => saveBlobAsFile(blob, `${params[0]}.projected.jsonl`),
     onError: (error) => {
       if (error instanceof ApiError && error.code === "UNAUTHORIZED") onAuthFailure();
-      else toast.error(t("logs.downloadError"));
+      else toast.error(error instanceof Error ? error.message : t("logs.downloadError"));
     },
   });
 
@@ -173,7 +173,7 @@ function LogsDashboard({ onAuthFailure }: { onAuthFailure: () => void }) {
             {searchRequest.error ? (
               <div role="alert" className="flex items-center gap-2 text-sm text-destructive">
                 <AlertCircle className="size-4" />
-                {t("logs.searchError")}
+                {searchRequest.error.message || t("logs.searchError")}
               </div>
             ) : result ? (
               <LogResults result={result} />

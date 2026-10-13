@@ -314,12 +314,10 @@ export function useAgentEditor(options: UseAgentEditorOptions) {
     },
     onSuccess: (data) => setProgressiveData(data),
     onError: (error) => {
-      // 读失败的上屏文案在 `AgentFormDialog` 里取 `loadError.message`，所以这里就得换成字典文案
-      // ——原样保留 `ApiError` 等于让「读智能体配置失败」把后端信封原文显示给用户（§9.3）。
-      // 原始 error 对象进日志，诊断上下文不丢；`loadError` 的另外两个来源（`editor.missingTarget`
-      // / `editor.loadRequired`）本来就是字典文案，继续走同一条通道。
+      // 原始 error 同时进日志：它的 message 会原样出现在编辑器的失败说明里（`agent-editor-body.tsx`
+      // 的 `editor.loadError.message`），日志留一份可查的诊断上下文。
       console.error("Failed to load agent configuration", error);
-      setLoadError(new Error(t("editor.loadFailedHint")));
+      setLoadError(error instanceof Error ? error : new Error(String(error)));
     },
   });
 
@@ -348,7 +346,7 @@ export function useAgentEditor(options: UseAgentEditorOptions) {
       manual: true,
       onError: (error) => {
         console.error("Failed to save agent configuration", error);
-        toast.error(t("save.errorGeneric"));
+        toast.error(t("save.errorGeneric", { message: error instanceof Error ? error.message : t("unknownError") }));
       },
     },
   );
@@ -372,7 +370,7 @@ export function useAgentEditor(options: UseAgentEditorOptions) {
       manual: true,
       onError: (error) => {
         console.error("Failed to restart agent after save", error);
-        toast.error(tp("restartFailedSaved"));
+        toast.error(tp("restartFailedSaved", { message: error instanceof Error ? error.message : String(error) }));
       },
     },
   );

@@ -108,7 +108,7 @@ function ObserverDashboard({ onAuthFailure }: { onAuthFailure: () => void }) {
           <LoadingSkeleton />
         ) : error ? (
           <EmptyState
-            title={t("states.error")}
+            title={error.message || t("states.error")}
             tone="danger"
             role="alert"
             action={{ label: t("states.retry"), onClick: refresh, icon: <RefreshCw /> }}

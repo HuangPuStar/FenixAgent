@@ -33,6 +33,8 @@ interface RecordedRequest {
   cookie: string | null;
   /** 画布票据头：静态面不该外发它（票据只服务 bff 面）。 */
   ticket: string | null;
+  /** 出站 `Host` 头：存储改道时分录用（连接地址 ≠ 虚拟主机名），其余面必须与连接地址一致。 */
+  host: string | null;
 }
 
 let upstreamServer: ReturnType<typeof Bun.serve> | null = null;
@@ -58,6 +60,7 @@ function record(request: Request): RecordedRequest {
     path: `${url.pathname}${url.search}`,
     cookie: request.headers.get("cookie"),
     ticket: request.headers.get("x-fenix-workflow-ticket"),
+    host: request.headers.get("host"),
   };
 }
 
@@ -138,7 +141,7 @@ function withTimeout<T>(promise: Promise<T>, ms: number, message: string): Promi
 /** 构造被测路由；每个用例重建一次，代理实例的存储域解析状态不跨用例泄漏。 */
 function setup(
   handler: (request: RecordedRequest) => Response | Promise<Response>,
-  overrides: { canvasUpstreamUrl?: string } = {},
+  overrides: { canvasUpstreamUrl?: string; storageUpstreamUrl?: string } = {},
 ) {
   upstreamHandler = handler;
   storageHandler = unsetHandler;
@@ -147,6 +150,9 @@ function setup(
   initializeWorkflowV2ModuleConfig({
     upstreamBaseUrl: upstreamBaseUrl(),
     canvasUpstreamUrl: overrides.canvasUpstreamUrl ?? upstreamBaseUrl(),
+    // 只在用例显式给出时注入：`undefined`（直连直链 origin）与「配了空串」在代理里是两种形状，
+    // fixture 不得把它们混同（与宿主投影层的口径一致）。
+    ...(overrides.storageUpstreamUrl === undefined ? {} : { storageUpstreamUrl: overrides.storageUpstreamUrl }),
     accountEmail: TEST_EMAIL,
     accountPassword: TEST_PASSWORD,
   });
@@ -438,6 +444,43 @@ describe("canvas-static-proxy", () => {
     // 解析只发生一次：第二个请求直接复用已记住的 origin。
     await call(app, `${CANVAS_PREFIX}/storage/opencoze/icon.png?X-Amz-Signature=fixture`);
     expect(requests.filter((request) => request.path.startsWith("/api/workflow_api/sign_image_url"))).toHaveLength(1);
+  });
+
+  // 存储改道（2026-10-12）：直链 host 是上游容器网络里的别名，平台解析不到时连接已配置的上游入口，直链主机名
+  // 改走 `Host` 头——上游反代按它选中存储站，签名因此不受影响（实测 `Host: workflow-storage` 命中存储站而非
+  // 画布 SPA）；未配置该键时行为与改道前逐字一致（由本文件其余存储用例覆盖）。
+  test("存储出站基址改道时连接该基址并把直链主机名作为 Host 头", async () => {
+    const storageHost = new URL(storageBaseUrl()).host;
+    const { app } = setup(
+      (recorded) => {
+        if (recorded.path.startsWith("/api/passport/")) return loginOk();
+        if (recorded.path.startsWith("/api/workflow_api/sign_image_url")) {
+          return new Response(JSON.stringify({ url: `${storageBaseUrl()}/opencoze/icon.png`, code: 0, msg: "" }), {
+            status: 200,
+            headers: { "content-type": "application/json" },
+          });
+        }
+        // 改道后的存储请求落到这里（真实形态是上游反代命中存储站）。
+        return new Response("png-bytes", { status: 200, headers: { "content-type": "image/png" } });
+      },
+      { storageUpstreamUrl: upstreamBaseUrl() },
+    );
+
+    const response = await call(app, `${CANVAS_PREFIX}/storage/opencoze/icon.png?X-Amz-Signature=fixture`);
+
+    expect(response.status).toBe(200);
+    expect(await response.text()).toBe("png-bytes");
+    const storageHop = upstreamRequests.find((request) => request.path.startsWith("/opencoze/"));
+    expect(storageHop?.path).toBe("/opencoze/icon.png?X-Amz-Signature=fixture");
+    // 连接的是配置的入口，虚拟主机名仍是直链里的 host（真实部署里是 `workflow-storage`）。
+    expect(storageHop?.host).toBe(storageHost);
+    // 改道不改变凭据边界：存储仍是「另一个系统」，平台会话不得随行。
+    expect(storageHop?.cookie).toBeNull();
+    // 直链 host 若被当作连接地址用，请求根本到不了这里（假对象存储只在自身端口上监听）。
+    expect(storageRequests).toHaveLength(0);
+    // 改道只作用于存储面：同一实例内取签名 URL 的出站 Host 仍是上游自身的地址。
+    const signHop = upstreamRequests.find((request) => request.path.startsWith("/api/workflow_api/sign_image_url"));
+    expect(signHop?.host).toBe(new URL(upstreamBaseUrl()).host);
   });
 
   // 存储域的方法门：写请求一律 405，且不得触达存储服务。

@@ -23,8 +23,11 @@ import { WORKFLOW_GRID_CLASS, type WorkflowListViewState } from "./workflow-list
 /** 骨架 / 空态 / 失败之外的状态（渲染表格与骨架的两种状态由调用方分支）。 */
 export type WorkflowListInactiveState = Exclude<WorkflowListViewState, { kind: "loading" } | { kind: "ready" }>;
 
-/** `t` 的最小签名；用于在组件外描述状态（包内不引入域外类型）。 */
-type Translate = (key: string) => string;
+/**
+ * `t` 的最小签名；用于在组件外描述状态（包内不引入域外类型）。带插值的调用同样在内：失败标题要把服务端信封
+ * 原文插进 `{{message}}` 槽位（见 `MESSAGE_SLOT_RESOURCES` 同款口径的用例）。
+ */
+type Translate = (key: string, options?: { message?: string }) => string;
 
 /**
  * 状态块的**主动作**：能真正改变状态的那个动作（未绑定态的「初始化工作流空间」）。
@@ -134,7 +137,9 @@ function describeStatus(state: WorkflowListInactiveState, t: Translate): ListSta
     default:
       return {
         icon: <AlertTriangle className={ICON_CLASS} />,
-        title: t("list.load_failed"),
+        // 服务端错误信封原文优先上屏（未登记的失败没有可执行的下一步动作，原文是定位后端故障的唯一线索）；
+        // 取不到原文（绑定探测结果缺失这类本地状态）才退回通用标题 + 重试说明。
+        title: state.message ? t("list.load_failed_with", { message: state.message }) : t("list.load_failed"),
         description: t("list.load_failed_hint"),
         tone: "danger",
         retryable: true,

@@ -73,10 +73,10 @@ export function EmbeddingModelManager({ canManage, inDialog, onModelsChanged }: 
   } = useRequest(() => unwrap(embeddingModelApi.list()), {
     refreshDeps: [refreshKey],
     onError: (err) => {
-      // 此前只上屏、不落日志：原始对象先进诊断通道。文案只取字典（§9.3），
-      // `err.message` 是 `unwrap` 抛出的 `ApiError.message`（后端信封原文）。
+      // 此前只上屏、不落日志：原始对象先进诊断通道。上屏取服务端 `err.message`（`unwrap` 抛出的
+      // `ApiError.message`，即错误信封原文），字典文案只在它为空时兜底。
       console.error("Failed to load embedding model tree", err);
-      toast.error(t("embeddingModel.listLoadFailed"));
+      toast.error(err.message || t("embeddingModel.listLoadFailed"));
     },
   });
 
@@ -93,7 +93,7 @@ export function EmbeddingModelManager({ canManage, inDialog, onModelsChanged }: 
       onModelsChanged?.();
     } catch (err) {
       console.error("Failed to delete embedding instance", err);
-      toast.error(t("embeddingModel.deleteFailed"));
+      toast.error(err instanceof Error && err.message ? err.message : t("embeddingModel.deleteFailed"));
     }
   };
 
@@ -162,10 +162,11 @@ export function EmbeddingModelManager({ canManage, inDialog, onModelsChanged }: 
       ) : listError ? (
         // 失败必须与「确实还没配置供应商」分开：`tree` 在失败时停在 `undefined`，`providerCount` 也是 0，
         // 照旧渲染只会得到「暂无已配置的模型供应商」——与空态同形（§3.4）。重试走 `refresh`（重新拉取）。
+        // 标题带服务端 `message` 槽位：失败原因必须上屏，字典文案只在 message 为空时留个前缀。
         <EmptyState
           className="py-16"
           icon={<TriangleAlert />}
-          title={t("embeddingModel.listLoadFailed")}
+          title={t("embeddingModel.listLoadFailed", { message: listError.message })}
           tone="danger"
           role="alert"
           action={{ label: t("embeddingModel.retry"), onClick: refresh, icon: <RefreshCw />, disabled: loading }}

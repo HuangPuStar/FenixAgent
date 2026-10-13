@@ -82,9 +82,9 @@ export function PluginMarketDetail(props: DetailProps) {
         <EmptyState
           icon={<AlertTriangle />}
           title={t("loadState.detailTitle")}
-          // 说明取本包字典，不回显服务端 `error.message`（§9.3）：信封原文只由容器在 `useRequest` 的
-          // `onError` 里落日志，上屏文案必须随界面语言走。
-          description={t("loadState.detailHint")}
+          // 说明取服务端 `message`——失败原因必须上屏，固定文案会让用户与测试都定位不到后端故障；
+          // 字典文案退化为 message 为空时的兜底（重试入口与标题不变）。
+          description={props.error.message || t("loadState.detailHint")}
           tone="danger"
           role="alert"
           className="flex min-h-80 flex-col items-center justify-center"

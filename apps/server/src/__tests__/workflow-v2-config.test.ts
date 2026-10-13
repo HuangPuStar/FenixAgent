@@ -58,6 +58,10 @@ test("未配置的旋钮按声明默认值投影", () => {
   };
 
   expect(projectWorkflowV2Config(requiredInput)).toEqual(expected);
+  // 可选键（2026-10-12）未配置即 `undefined`，不能投影成 `""` 或某个默认基址：代理据「是不是 undefined」
+  // 判定走直连直链 origin 的默认路径，空串会变成非法地址。
+  const projected = projectWorkflowV2Config(requiredInput) as WorkflowV2ModuleConfigInput;
+  expect(projected.storageUpstreamUrl).toBeUndefined();
 });
 
 // 显式配置逐字段透传：字符串数字经声明的 z.coerce 归一为数字，白名单保持声明面的逗号分隔串
@@ -66,6 +70,8 @@ test("显式配置逐字段透传", () => {
   const expected: WorkflowV2ModuleConfigInput = {
     upstreamBaseUrl: "http://upstream.internal:8888",
     canvasUpstreamUrl: "http://canvas.internal:8888",
+    // 存储出站的可选键：显式配置时与其余字段走同一条透传路径。
+    storageUpstreamUrl: "http://workflow-entry.internal:8888",
     accountEmail: "platform@example.invalid",
     accountPassword: "explicit-password",
     ticketSecret: "explicit-ticket-secret",
@@ -83,6 +89,7 @@ test("显式配置逐字段透传", () => {
     projectWorkflowV2Config({
       WORKFLOW_V2_UPSTREAM_BASE_URL: expected.upstreamBaseUrl,
       WORKFLOW_CANVAS_UPSTREAM_URL: expected.canvasUpstreamUrl,
+      WORKFLOW_V2_STORAGE_UPSTREAM_URL: expected.storageUpstreamUrl,
       WORKFLOW_V2_PLATFORM_ACCOUNT_EMAIL: expected.accountEmail,
       WORKFLOW_V2_PLATFORM_ACCOUNT_PASSWORD: expected.accountPassword,
       WORKFLOW_V2_TICKET_SECRET: expected.ticketSecret,

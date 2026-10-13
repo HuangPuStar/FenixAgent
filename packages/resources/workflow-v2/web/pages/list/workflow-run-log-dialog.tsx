@@ -53,6 +53,7 @@ import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import { fetchRunRecords, type WorkflowV2RunLogPage, type WorkflowV2RunWorkflowOption } from "../../api/workflow-runs";
 import { WORKFLOW_NS } from "../../i18n/namespace";
+import { errorMessage } from "./error-message";
 import { PlatformRunDetail, RunIoDetail } from "./workflow-run-log-detail";
 import { RunIndex } from "./workflow-run-log-index";
 import { resolveRunSelection, runErrorKey, toPlatformRunRow, toRunRecordRow } from "./workflow-run-log-model";
@@ -239,14 +240,14 @@ function WorkflowRunLogBody({ workflowId }: { readonly workflowId: string | null
   });
 
   if (runs.error) {
-    // 失败不退回空态：给重试（读取本身可恢复），文案按固定键而非服务端原文（§9.3）。错误态在固定外框里居中，
-    // 否则外框下半屏会留一大块空白，看起来像内容被截断。
+    // 失败不退回空态：给重试（读取本身可恢复）；稳定码给可执行的处置说明，未登记的失败把服务端信封原文
+    // 插进通用键的槽位。错误态在固定外框里居中，否则外框下半屏会留一大块空白，看起来像内容被截断。
     return (
       <div className="flex min-h-0 flex-1 items-center justify-center">
         <EmptyState
           icon={<TriangleAlert className={ICON_CLASS} />}
           title={t("run.failed_title")}
-          description={t(runErrorKey(runs.error))}
+          description={t(runErrorKey(runs.error), { message: errorMessage(runs.error) ?? "" })}
           tone="danger"
           className="py-8"
           role="alert"

@@ -45,7 +45,7 @@
     "cancel": "Cancel"
   },
   "embeddingModel": {
-    "listLoadFailed": "Failed to load model list",
+    "listLoadFailed": "Failed to load model list: {{message}}",
     "retry": "Retry",
     "deleteConfirm": "Delete instance \"{{instance}}\"?\nThis removes the instance (under provider {{provider}}) and all its model configurations ({{count}}). Knowledge base retrieval using these models will fail and cannot be recovered.",
     "instanceDeleted": "Instance deleted",

@@ -209,9 +209,9 @@ export function AgentEditorBody(
     // 读取失败态走库内统一状态块（§4.1「空态 / 失败 / 无权限刻意共用一个骨架」）：图标、标题、
     // 说明、重试按钮的排版与配色都由 `EmptyState` 决定，本处只传文案与 `role="alert"`。
     // `ERROR_STATE` 保留为容器定位类（撑满 + 居中）；原来给标题/说明补字号的伴随 CSS 规则随之下沉删除。
-    // `loadError.message` 自本批起**只可能是字典文案**：三个来源分别是 `editor.loadFailedHint`
-    // （`use-agent-editor` 的取数失败，原始 `ApiError` 已收敛在那一侧进日志）、`editor.missingTarget`
-    // 与 `editor.loadRequired`，不再有后端信封原文（§9.3）。
+    // `loadError.message` 有两个来源：`use-agent-editor` 的取数失败（`unwrap()` 抛出的 `ApiError.message`，
+    // 即后端错误信封原文——原样上屏，用户与测试都要能读到后端故障原因，原始对象同时进那一侧的
+    // `console.error`），或编辑模式缺标识时的 `editor.missingTarget`。
     return (
       <EmptyState
         role="alert"

@@ -50,7 +50,7 @@ export function PoolTree({
   const { t } = useTranslation(SANDBOX_NS);
   // 已有数据时保留列表、把刷新状态交给 header 的按钮（避免整屏闪回骨架）；只有首屏加载才占位。
   if (loading && pools.length === 0) return <PanelLoadingState />;
-  if (error && pools.length === 0) return <PanelErrorState message={t("error")} onRetry={onRetry} />;
+  if (error && pools.length === 0) return <PanelErrorState message={error.message || t("error")} onRetry={onRetry} />;
   return (
     <div className="space-y-3">
       <div className="flex justify-end">

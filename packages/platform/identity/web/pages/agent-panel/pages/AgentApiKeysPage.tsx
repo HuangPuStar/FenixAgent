@@ -140,7 +140,7 @@ export function AgentApiKeysPage() {
   } = useRequest(() => unwrap(apiKeyApi.list()), {
     onError: (requestError) => {
       console.error("Failed to load API keys", requestError);
-      toast.error(t("toast.loadFailed"));
+      toast.error(requestError instanceof Error ? requestError.message : t("toast.loadFailed"));
     },
   });
   const filteredKeys = filterApiKeys(keys, searchQuery);
@@ -165,7 +165,7 @@ export function AgentApiKeysPage() {
     },
     onError: (requestError) => {
       console.error("Failed to revoke API key", requestError);
-      toast.error(t("toast.deleteFailed"));
+      toast.error(requestError instanceof Error ? requestError.message : t("toast.deleteFailed"));
     },
   });
 
@@ -248,7 +248,7 @@ export function AgentApiKeysPage() {
             tone="danger"
             role="alert"
             icon={<AlertTriangle />}
-            title={t("toast.loadFailed")}
+            title={error.message || t("toast.loadFailed")}
             action={{ label: t("btn.retry"), icon: <RefreshCw />, onClick: refresh }}
             className={EMPTY_STATE_FILL_CLASS}
           />

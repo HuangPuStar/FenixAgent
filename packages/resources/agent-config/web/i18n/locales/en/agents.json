@@ -5,6 +5,7 @@
   "searchPlaceholder": "Search agents...",
   "emptyMessage": "No agents yet. Click \"New Agent Template\" to add one",
   "loadError": "Failed to load agent list: {{message}}",
+  "unknownError": "Unknown error",
   "columns": {
     "name": "Name"
   },
@@ -128,7 +129,6 @@
     "unnamedAgent": "Unnamed agent",
     "loading": "Loading agent configuration…",
     "loadFailed": "Unable to load agent configuration",
-    "loadFailedHint": "Retry. If it keeps failing, contact your organization administrator.",
     "retry": "Retry",
     "missingTarget": "Edit mode requires an agent identifier",
     "loadRequired": "Agent details have not loaded successfully and cannot be saved",
@@ -272,10 +272,12 @@
     },
     "errors": {
       "load": "Could not load apps",
-      "loadHint": "Retry. If it keeps failing, contact your organization administrator.",
+      "loadWith": "Could not load apps: {{message}}",
       "save": "Could not save app",
       "delete": "Could not delete app",
+      "deleteWith": "Could not delete app: {{message}}",
       "rotate": "Could not rotate token",
+      "rotateWith": "Could not rotate token: {{message}}",
       "nameRequired": "Name is required",
       "creatorInactive": "The agent that created this app is not active",
       "creatorNavigation": "Could not open creator"
@@ -317,18 +319,18 @@
   "configSavedRestartTitle": "Configuration Saved",
   "configSavedRestartDescription": "Configuration has been saved. Agent instances need to restart for changes to take effect. Restart now?",
   "restartSuccess": "Instance restarted",
-  "restartFailedSaved": "Configuration was saved, but restart failed",
+  "restartFailedSaved": "Configuration was saved, but restart failed: {{message}}",
   "noInstancesToRestart": "No running instances to restart",
   "restartTitle": "Restart Agent Instances",
   "restartDescription": "Select instances to restart. Configuration changes require a restart to take effect.",
   "selectAll": "Select All",
-  "restartFailed": "Restart failed",
+  "restartFailed": "Restart failed: {{message}}",
   "stopSuccess": "Instance stopped",
-  "stopInstanceFailed": "Failed to stop instance",
+  "stopInstanceFailed": "Failed to stop instance: {{message}}",
   "deleteAgentTitle": "Delete Agent",
   "deleteAgentConfirm": "Are you sure you want to delete agent \"{{name}}\"? This action cannot be undone.",
   "deleteSuccess": "Agent deleted",
-  "deleteFailed": "Failed to delete agent",
+  "deleteFailed": "Failed to delete agent: {{message}}",
   "memory": {
     "enableTitle": "Agent Memory",
     "enableDescription": "Enable agent memory across conversations"
@@ -341,7 +343,7 @@
   "save": {
     "successCreate": "Agent created",
     "successUpdate": "Agent updated",
-    "errorGeneric": "Save failed"
+    "errorGeneric": "Save failed: {{message}}"
   },
   "categories": {
     "general": "General Assistant",
@@ -373,5 +375,5 @@
   },
   "loadFailed": "Failed to load agents",
   "envCreateFailed": "Failed to create runtime environment",
-  "enterFailed": "Failed to enter agent"
+  "enterFailed": "Failed to enter agent: {{message}}"
 }

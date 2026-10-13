@@ -55,6 +55,9 @@ export function ResourcePreviewContent({ resource, kbId }: ResourcePreviewConten
     sourceName: resource.sourceName,
     category,
   });
+  // 正文读取失败的原因（`ApiError.message` 即错误信封原文）优先上屏，与 `use-resource-preview` 的 toast 同源；
+  // 字典文案只在没有 message 时兜底——否则占位块会把已到手的失败原因换成一句无从定位的通用文案。
+  const fetchErrorMessage = fetchError?.message || t("preview.loadError");
 
   // ── 渲染各类型预览内容 ──
   const renderContent = () => {
@@ -96,7 +99,7 @@ export function ResourcePreviewContent({ resource, kbId }: ResourcePreviewConten
 
       case "markdown":
         if (fetchLoading) return <MarkdownSkeleton />;
-        if (fetchError || !fetchedContent) return <PreviewPlaceholder message={t("preview.loadError")} />;
+        if (fetchError || !fetchedContent) return <PreviewPlaceholder message={fetchErrorMessage} />;
         return (
           <div className="flex-1 overflow-auto p-6">
             <div className="resource-preview-content-markdown prose prose-sm max-w-none dark:prose-invert prose-headings:text-text-primary prose-p:text-text-primary prose-strong:text-text-primary prose-li:text-text-primary">
@@ -112,7 +115,7 @@ export function ResourcePreviewContent({ resource, kbId }: ResourcePreviewConten
 
       case "text":
         if (fetchLoading) return <TextSkeleton />;
-        if (fetchError || !fetchedContent) return <PreviewPlaceholder message={t("preview.loadError")} />;
+        if (fetchError || !fetchedContent) return <PreviewPlaceholder message={fetchErrorMessage} />;
         return (
           <pre className="flex-1 overflow-auto m-0 p-4 bg-surface-2 text-text-primary text-xs font-mono whitespace-pre-wrap break-all rounded-md border border-border">
             {fetchedContent}
@@ -121,7 +124,7 @@ export function ResourcePreviewContent({ resource, kbId }: ResourcePreviewConten
 
       case "html":
         if (fetchLoading) return <TextSkeleton />;
-        if (fetchError || !fetchedContent) return <PreviewPlaceholder message={t("preview.loadError")} />;
+        if (fetchError || !fetchedContent) return <PreviewPlaceholder message={fetchErrorMessage} />;
         return (
           <iframe
             srcDoc={fetchedContent}

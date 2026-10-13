@@ -108,6 +108,7 @@ flowchart TB
 - 路由声明序：`bff` 必须先于静态反代——后者是通配路由，顺序错会吞掉透传请求。
 - 静态反代**出站**注入平台账号 `session_key`：上游除静态白名单外全站经 session 中间件，`/workflow-canvas/*` 不带 cookie 时连 JS 资源都 401。**入站**剥离上游 `Set-Cookie` 并注入 `frame-ancestors`；两个方向不可混为一谈。
 - 两处例外改写（均属「无法只靠透传解决」，须在代码内注明移除条件）：上游 panic 响应（`code 777777775`，`msg` 含 Go 堆栈与内部路径）替换为固定文案；图片/附件直链是存储服务内网地址，按已知 origin 前缀改写为 `/workflow-canvas/storage/*`，不做泛化重写。
+- 存储出站的**连接地址与虚拟主机名分开**（2026-10-12）：直链 host 是上游反代的别名（`workflow-storage`，只在上游容器网络内可解析），平台与它不同网时（宿主源码运行、跨机部署）直连必然解析失败、画布内图片成片 502（`error: TypeError`）。此时用 `WORKFLOW_V2_STORAGE_UPSTREAM_URL` 把出站**连接**改道到已可达的上游入口，直链 host 仍作 `Host` 头——上游反代按 Host 选站后把它恢复成对象存储签名用的名字，故签名不参与该校验。未配置＝沿用直连直链 origin（容器内网互通的部署零影响）。
 - 节点范围裁剪的权威在服务端：`node-scope.ts` 对 `node_type` / `node_template_list` / `node_panel_search` 按 **fail-closed 许可集**（节点类型为数字字符串）过滤，客户端无法绕过。
 
 ### 5.1 对外触发面（`POST /api/workflow-v2/workflows/:id/run`）
@@ -200,6 +201,7 @@ flowchart TB
 - **绑定门的两条读路径曾不一致，已于 2026-10-09 收敛**：列表页的门是 `GET /org-app` → `findOrgAppBinding`（只读 `workflow_v2_org_app`），而运行日志/发布记录/创建/删除的门是 `resolveBinding` → `findTenantBinding`（要求**平台账号台账行 + 绑定行都在**）。平台账号台账（`workflow_v2_platform_account`，全局单行）的唯一写入点是引导路径，该行一旦丢失（历史库清理、库重建、迁移演练），就会出现「列表页照常显示卡片、点运行日志却收到 409 `ORG_APP_NOT_BOUND` +『请先在列表页完成初始化』」——而列表页因为已绑定**根本没有那个按钮**，用户被指到一个不存在的入口。现改为：`resolveBinding` 在「绑定行在 + 台账缺行」时先跑一次有界按需引导（与 `GET /platform-account` 同一套 `ensurePlatformAccountWithinBudget`，单飞 + 预算 + 失败不抛），成功即恢复；仍失败则回 503 `PLATFORM_ACCOUNT_NOT_PROVISIONED`（用户修不了的状态不得再引导去初始化）。真正的未绑定（没有绑定行）保持立即 409 且零出站。
 - **降级标记曾是无 `where` 的全表更新，已于 2026-10-09 收敛**：`platform-account-bootstrap.markPlatformAccountDegraded` 早先是一条不带 `where` 的 UPDATE，会把 `workflow_v2_platform_account` 的**所有行**（含其它部署/共享库里的真实行、以及测试用例自己的行）一并标成 `degraded`。台账按部署只应有一行，但存储层只保证 `platform_user_id` 唯一，改邮箱、换账号、多部署共库都会留下多行，因此必须按主键定位：现改为先读「读路径认定的那一行」（`findPlatformAccountRow`，与 `findTenantBinding` 同口径）再按 `id` 更新，台账本来没有行时不写任何东西（纯首次引导失败只记日志）。
 - **上游仓侧**（外部仓库，工作区未提交）：`frontend/**` 的宿主桥与 axios 注入、rsbuild 资源前缀与路由 basename、画布注桩、头部裁剪与埋点静默已改（清单见[前端改造记录](../design/2026-09-29-workflow-v2-upstream-frontend-changes.md)）。
+- **存储出站改道键（2026-10-12）**：新增可选 env `WORKFLOW_V2_STORAGE_UPSTREAM_URL`（无默认值，键集累计十四枚；未设置＝直连直链 origin）。起因见 §5 末条——宿主源码运行的部署解析不到直链内网别名，图片路由成片 502；改道只换连接基址，凭据边界不变（存储面依旧不发平台会话）。本键与 4A/4B 起累计的五枚追加键**尚未回写进冻结 §2.2**（`docs/design/**` 由设计 owner 维护）。
 
 阶段划分与任务编号见 [任务清单](../design/2026-09-29-workflow-v2-task-list.md)。
 

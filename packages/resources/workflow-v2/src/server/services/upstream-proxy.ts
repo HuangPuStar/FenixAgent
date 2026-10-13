@@ -15,7 +15,8 @@
  * 2. **入站剥离会话材料**：上游 `Set-Cookie` 绝不到浏览器。响应头按**白名单复制**（不是复制全部再删几个），
  *    `Set-Cookie`、`X-Frame-Options` 与 hop-by-hop 头因此天然落在转发集合之外。
  * 3. **存储域是另一个系统**：预签名直链自带鉴权，所以只允许 GET/HEAD，且**不带**平台会话——把上游的
- *    `session_key` 发给对象存储等于把凭据送出本模块的信任边界。
+ *    `session_key` 发给对象存储等于把凭据送出本模块的信任边界。出站目标经 `storageUpstreamUrl` 改道时，
+ *    `Host` 仍保留直链里的主机名（那是上游反代的虚拟主机名，不是可解析地址），见 `proxyStorage`。
  */
 
 import { createLogger } from "@fenix/logger";
@@ -211,6 +212,13 @@ async function sendRequest(input: {
   method: string;
   /** 出站 `Cookie` 头；存储域为 `null`（另一个系统，不发平台凭据）。 */
   cookieHeader: string | null;
+  /**
+   * 出站 `Host` 头；不给即按 URL 直取。
+   *
+   * 只服务「连接地址 ≠ 虚拟主机名」一种形态：存储域改道时 URL 指向上游入口，而 Host 必须是直链里的别名，
+   * 上游反代按它选中存储站（见 `proxyStorage`）。Bun 的 fetch 允许显式覆盖该头，其余调用点不要传。
+   */
+  hostHeader?: string;
   timeoutMs: number;
   signal: AbortSignal;
 }): Promise<TransportResult> {
@@ -230,6 +238,7 @@ async function sendRequest(input: {
       method: input.method,
       headers: {
         ...(input.cookieHeader === null ? {} : { Cookie: input.cookieHeader }),
+        ...(input.hostHeader === undefined ? {} : { Host: input.hostHeader }),
         "accept-encoding": "identity",
       },
       signal: controller.signal,
@@ -366,9 +375,10 @@ export function createCanvasUpstreamProxy(): CanvasUpstreamProxy {
   /**
    * 解析存储域 origin：向上游要一张签名 URL，取它的 origin。
    *
-   * 为什么不新增环境变量：冻结 §2.2 的键集已定，且该 origin 由上游自己的对象存储配置决定（部署面可能换
-   * 端口或域名），从**出链来源**处取比再拉一个配置键更不容易漂移。移除条件：上游支持配置对外存储域，或
-   * 部署面给出存储基址配置键时，本段发现逻辑连同下面的取样对象一并删除。
+   * 为什么 origin 不来自配置键：冻结 §2.2 的键集已定，且该 origin 由上游自己的对象存储配置决定（部署面
+   * 可能换端口或域名），从**出链来源**处取比再拉一个配置键更不容易漂移。`WORKFLOW_V2_STORAGE_UPSTREAM_URL`
+   * （2026-10-12）只改**连接的基址**，直链主机名仍要经本段发现（改道时它作为 `Host` 头），故发现逻辑不因
+   * 该键而可删。移除条件：上游支持配置对外存储域时，本段连同下面的取样对象一并删除。
    */
   async function discoverStorageOrigin(): Promise<string | null> {
     try {
@@ -447,7 +457,15 @@ export function createCanvasUpstreamProxy(): CanvasUpstreamProxy {
     }
   }
 
-  /** 存储域面：GET/HEAD 到发现的存储 origin，不带平台会话。 */
+  /**
+   * 存储域面：GET/HEAD 到发现的存储 origin，不带平台会话。
+   *
+   * **连接地址与虚拟主机名分开**（2026-10-12）：直链的 host 是上游反代的别名（`workflow-storage`），只在该
+   * 上游自己的容器网络里可解析——平台与它不同网时（宿主源码运行、跨机部署），直连必然 `TypeError`，画布内
+   * 图片成片 502。配了 `storageUpstreamUrl` 就连接该基址，直链 host 改走 `Host` 头：
+   * 上游反代按 Host 选存储站，并把它恢复成对象存储签名用的名字，所以签名不依赖本键（实测 `Host:
+   * workflow-storage` 打上游入口命中存储站而非画布 SPA）。未配置时不发 `Host` 头，行为与改道前逐字一致。
+   */
   async function proxyStorage(request: Request, rest: string): Promise<Response> {
     const method = normalizeReadMethod(request.method);
     if (method === null) return methodNotAllowedResponse();
@@ -458,13 +476,16 @@ export function createCanvasUpstreamProxy(): CanvasUpstreamProxy {
     if (origin === null) return canvasErrorResponse(502, "画布存储域不可用");
 
     const config = getWorkflowV2Config();
+    // `storageOrigin` 由 `readStorageOrigin` 从 `new URL(...).origin` 落成，再解析一次不会抛。
+    const hostHeader = config.storageUpstreamUrl === undefined ? undefined : new URL(origin).host;
     try {
-      const target = buildUpstreamUrl(origin, path, new URL(request.url).search);
+      const target = buildUpstreamUrl(config.storageUpstreamUrl ?? origin, path, new URL(request.url).search);
       if (target === null) return canvasErrorResponse(400, "invalid path");
       const result = await sendRequest({
         url: target,
         method,
         cookieHeader: null,
+        ...(hostHeader === undefined ? {} : { hostHeader }),
         timeoutMs: config.upstreamTimeoutMs,
         signal: request.signal,
       });

@@ -156,7 +156,7 @@
   "error": {
     "operationFailed": "Operation failed"
   },
-  "orgSwitchFailed": "Failed to switch organization",
+  "orgSwitchFailed": "Failed to switch organization: {{message}}",
   "nav": {
     "organizations": "Organizations"
   }

@@ -77,12 +77,19 @@ export function TracePanel({ environmentId, sessionId, className }: TracePanelPr
     return <div className={cn("flex h-full min-h-0 min-w-0 flex-1 flex-col", className)}>{content}</div>;
   }
 
-  /** 失败态：给重试出口，且不把 `error.message` 回显到界面（原始错误只进 console）。 */
-  function failure(title: string, retry: () => void) {
+  /**
+   * 失败态：给重试出口，并把服务端错误信封的 `message` 作为说明上屏——固定文案会让用户与测试都定位不到
+   * 后端故障；`message` 为空时只剩标题（原始错误对象仍由取数层的 `onError` 进 console）。
+   *
+   * `error` 收 `unknown` 而不是 `Error`：两个取数 hook 如实声明 `unknown`（真伪判别留给视图层），
+   * 写成 `Error` 会让调用点被迫用断言把类型「修好」。
+   */
+  function failure(title: string, retry: () => void, error?: unknown) {
     return (
       <EmptyState
         icon={<AlertTriangle className="size-5 text-status-warning" />}
         title={title}
+        description={error instanceof Error && error.message ? error.message : undefined}
         tone="danger"
         role="alert"
         action={{ label: t("list.retry"), onClick: retry }}
@@ -110,7 +117,7 @@ export function TracePanel({ environmentId, sessionId, className }: TracePanelPr
         </div>
       );
     }
-    if (list.error) return failure(t("list.loadFailed"), list.refresh);
+    if (list.error) return failure(t("list.loadFailed"), list.refresh, list.error);
     if (list.data && !list.data.configured) {
       return (
         <EmptyState
@@ -180,7 +187,7 @@ export function TracePanel({ environmentId, sessionId, className }: TracePanelPr
 
   function detailOrGraph() {
     if (selectedObservationId) {
-      if (detail.error) return failure(t("panel.detailLoadFailed"), detail.refresh);
+      if (detail.error) return failure(t("panel.detailLoadFailed"), detail.refresh, detail.error);
       // 详情数据未到前不渲染半张详情：IO 是详情的全部内容，缺了它先显示头部只会让人以为输出为空。
       if (detail.loading || !detail.observation) {
         return (
@@ -202,7 +209,7 @@ export function TracePanel({ environmentId, sessionId, className }: TracePanelPr
         </div>
       );
     }
-    if (graph.error) return failure(t("panel.graphLoadFailed"), graph.refresh);
+    if (graph.error) return failure(t("panel.graphLoadFailed"), graph.refresh, graph.error);
     if (graph.observations.length === 0) {
       return <EmptyState title={t("panel.graphEmpty")} className={EMPTY_STATE_FILL_CLASS} />;
     }

@@ -75,7 +75,8 @@ export function PluginMarketAdminCatalog(props: Props) {
       <EmptyState
         icon={<AlertTriangle />}
         title={t("loadState.title")}
-        description={t("loadState.hint")}
+        // 说明取服务端 `message`：失败原因必须上屏，字典文案退化为 message 为空时的兜底。
+        description={props.error.message || t("loadState.hint")}
         tone="danger"
         role="alert"
         className="flex min-h-96 flex-col items-center justify-center"

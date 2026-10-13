@@ -60,9 +60,9 @@ function PeopleDashboard({ onAuthFailure }: { onAuthFailure: () => void }) {
     onError: (err) => {
       if (err instanceof ApiError && err.code === "UNAUTHORIZED") onAuthFailure();
       else {
-        // 原始 error 进日志；原先把它塞进 toast 的 description（§9.3 禁止回显信封原文）
+        // 原始 error 进日志，同时把服务端 message 作为 toast 的说明上屏：失败原因必须能让用户与测试定位。
         console.error(t("people.actionError"), err);
-        toast.error(t("people.actionError"));
+        toast.error(t("people.actionError"), { description: err instanceof Error ? err.message : undefined });
       }
     },
   });
@@ -77,9 +77,9 @@ function PeopleDashboard({ onAuthFailure }: { onAuthFailure: () => void }) {
       onError: (err) => {
         if (err instanceof ApiError && err.code === "UNAUTHORIZED") onAuthFailure();
         else {
-          // 原始 error 进日志；原先把它塞进 toast 的 description（§9.3 禁止回显信封原文）
+          // 同建号：说明取服务端 message，日志保留原始 error。
           console.error(t("people.actionError"), err);
-          toast.error(t("people.actionError"));
+          toast.error(t("people.actionError"), { description: err instanceof Error ? err.message : undefined });
         }
       },
     },

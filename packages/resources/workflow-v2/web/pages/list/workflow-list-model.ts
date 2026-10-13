@@ -12,6 +12,7 @@ import type { StatusTone } from "@fenix/ui-components/config/StatusBadge";
 import { ApiError } from "@fenix/web-runtime/api/request";
 import type { WorkflowV2OrgAppBinding } from "../../api/canvas-session";
 import type { WorkflowV2DeleteResult, WorkflowV2WorkflowItem } from "../../api/workflows";
+import { errorMessage } from "./error-message";
 
 /** 列表分页大小；写死一档，页脚不提供页长切换（`24 条/页` 这类选择是本地偏好，需要持久化才有意义）。 */
 export const LIST_PAGE_SIZE = 20;
@@ -53,8 +54,8 @@ export type WorkflowListViewState =
   | { readonly kind: "loading" }
   /** 会话失效或被拒：给说明，不给重试。 */
   | { readonly kind: "unauthorized" }
-  /** 网络 / 服务端失败：给重试。 */
-  | { readonly kind: "failed" }
+  /** 网络 / 服务端失败：给重试；`message` 是服务端错误信封原文（取不到时为 null，按通用文案呈现）。 */
+  | { readonly kind: "failed"; readonly message: string | null }
   /** 上游未就绪（未绑定 / 降级）：给引导与重试，重新探测即可自愈。 */
   | { readonly kind: "blocked"; readonly reason: "unbound" | "degraded" }
   | { readonly kind: "empty" }
@@ -74,8 +75,12 @@ export interface WorkflowListSnapshot {
 /** 分支顺序即优先级：进行中 > 失败 > 上游未就绪 > 空 > 就绪。 */
 export function resolveListViewState(snapshot: WorkflowListSnapshot): WorkflowListViewState {
   if (snapshot.loading) return { kind: "loading" };
-  if (snapshot.error) return { kind: isUnauthorizedError(snapshot.error) ? "unauthorized" : "failed" };
-  if (!snapshot.binding) return { kind: "failed" };
+  if (snapshot.error) {
+    return isUnauthorizedError(snapshot.error)
+      ? { kind: "unauthorized" }
+      : { kind: "failed", message: errorMessage(snapshot.error) };
+  }
+  if (!snapshot.binding) return { kind: "failed", message: null };
   if (snapshot.binding.status !== "active") {
     return { kind: "blocked", reason: snapshot.binding.status === "unbound" ? "unbound" : "degraded" };
   }
@@ -144,15 +149,13 @@ export function deleteRefusalKey(strategy: number | null): string {
 }
 
 /**
- * 初始化工作流空间失败的「稳定错误码 → 字典键」映射（§9.3：错误文案取码，不取 message）。
+ * 初始化工作流空间失败的「稳定错误码 → 字典键」映射。
  *
- * 为什么必须走码：`unwrap()` 抛出的 `ApiError.message` 是后端错误信封的原文，其中 `UPSTREAM_*` 分支
- * 带的是上游措辞、`INTERNAL_ERROR` 带的是服务端内部描述——上屏等于把不是我方写的句子当成产品文案
- * （本包比全仓门禁更严：**任何**用户可见字符串都不得来自 `err.message`）。
- *
- * 四个分支对应**用户下一步动作不同**的四类：会话失效要重新登录、平台账号不可用要等引导恢复或找管理员、
- * 上游不可达 / 拒绝稍后重试即可；其余（`INTERNAL_ERROR`、请求层归一出的 `NETWORK_ERROR` / `SERVER_ERROR`、
- * 以及后续新增的码）一律走通用文案——不认识的失败不该被翻译成一句看似精确的承诺。
+ * 走码的理由：这几个码的**下一步动作不同**（会话失效要重新登录、平台账号不可用要等引导恢复、上游不可达
+ * 稍后重试即可），字典里的句子直接给出对应动作，比原文更好用。其余失败（`INTERNAL_ERROR`、请求层归一出的
+ * `NETWORK_ERROR` / `SERVER_ERROR`、以及后续新增的码）没有确定动作，返回通用键 `list.initialize_failed`：
+ * 它带 `{{message}}` 槽位，由调用方把服务端信封原文（`ApiError.message`）插进去——把未登记的失败压成一句
+ * 固定文案，会让用户与测试都定位不到后端故障。
  */
 export function initializeErrorKey(error: unknown): string {
   const code = error instanceof ApiError ? error.code : null;

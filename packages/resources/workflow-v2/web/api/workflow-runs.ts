@@ -102,7 +102,8 @@ export interface WorkflowV2RunLogPage {
  *
  * `workflowId` 取**本地主键**：归属与组织隔离由服务端按本地注册表判定，客户端不参与身份拼装，也不接触上游 ID。
  * 失败码：未绑定租户 App 409 `ORG_APP_NOT_BOUND`、绑定降级 503 `PLATFORM_ACCOUNT_DEGRADED`、筛选目标不可见
- * 404 `WORKFLOW_NOT_FOUND`、上游失败 502/503/504 `UPSTREAM_*`，文案由 UI 按码取字典（§9.3）。
+ * 404 `WORKFLOW_NOT_FOUND`、上游失败 502/503/504 `UPSTREAM_*`，稳定码由 UI 换成可执行的字典文案，
+ * 未登记的码把信封原文原样上屏（见 `web/pages/list/error-message.ts` 的口径）。
  */
 export function fetchRunRecords(
   query: { readonly workflowId?: string } = {},

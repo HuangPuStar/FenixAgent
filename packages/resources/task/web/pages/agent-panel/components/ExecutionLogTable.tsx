@@ -75,8 +75,8 @@ export function ExecutionLogTable({
       defaultParams: [1],
       refreshDeps: [taskId, ...(refreshDeps ?? [])],
       ready,
-      // 失败态的可见反馈是下面的 `EmptyState`（`role="alert"` + 重试，§5.8）；原始 `ApiError`
-      // 只在这一行留诊断上下文——失败块自本批起不再回显 `error.message`（§9.3）。
+      // 失败态的可见反馈是下面的 `EmptyState`（`role="alert"` + 重试，§5.8），标题里已回显服务端
+      // message；这里再留一份原始 `ApiError` 到控制台，便于把界面提示与后端日志对上。
       onError: (err: unknown) => console.error("task logs load failed", err),
     },
   );
@@ -102,7 +102,7 @@ export function ExecutionLogTable({
           // `disabled: loading`：ahooks 在新请求期间**不清空** error（只在成功时置回 undefined），
           // 所以重试中错误块仍在渲染，不禁用就能连点重发同页请求。
           <EmptyState
-            title={unauthorized ? t("loadState.unauthorizedTitle") : t("loadState.failed")}
+            title={unauthorized ? t("loadState.unauthorizedTitle") : t("loadState.failed", { message: error.message })}
             description={unauthorized ? t("loadState.unauthorizedHint") : undefined}
             tone="danger"
             role="alert"

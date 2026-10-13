@@ -10,8 +10,9 @@
 // 环境与替身口径沿用同目录的画布用例：DOM 全局装配与 fetch 路由桩直接复用 `./canvas-host-harness`
 // （happy-dom 的全局注入必须成对且完整，第二份副本必然漂移；那份装置里的 `mountCanvas()` 只是
 // 「建容器 + createRoot + render/flush/unmount」，与画布无关）。另加三处替换：
-//   - `react-i18next` 不替换：用真实实例但 `resources: {}`，断言按 **i18n 键**回显做（与画布用例同款），
-//     字典本身的完整性由 `workflow-v2-i18n.test.ts` 静态守护；
+//   - `react-i18next` 不替换：用真实实例，字典默认留空（断言按 **i18n 键**回显做，与画布用例同款），
+//     字典本身的完整性由 `workflow-v2-i18n.test.ts` 静态守护。唯一例外是带 `{{message}}` 槽位的键——
+//     「服务端信封原文必须上屏」只有插值真的发生才看得见（见 `MESSAGE_SLOT_RESOURCES`）；
 //   - `@fenix/ui-components` 的两个弹窗：Radix 弹窗内容在 happy-dom 下不挂载（portal 容器建立、内容为空），
 //     用同签名替身把「确认删除」「提交表单」两条接线暴露出来，字段体与校验照常渲染；
 //   - `@tanstack/react-router`：导航是 `<Link>` 与 `useNavigate()`，脱离 RouterProvider 会抛错，替身记录
@@ -22,6 +23,8 @@ import { createInstance } from "i18next";
 import { act, createContext, createElement, type ReactElement, type ReactNode, useContext, useState } from "react";
 import type { Resolver } from "react-hook-form";
 import { I18nextProvider } from "react-i18next";
+import zhWorkflows from "../i18n/locales/zh/workflows.json";
+import { WORKFLOW_NS } from "../i18n/namespace";
 import {
   type FetchCall,
   type FetchRoute,
@@ -164,8 +167,29 @@ afterEach(() => {
 
 const { WorkflowListPage } = await import("../pages/list/workflow-list-page");
 
+/**
+ * 只登记**带 `{{message}}` 槽位**的键：字典留空时 i18next 回显键名，`t(key, { message })` 里的服务端原文
+ * 不会出现在 DOM 上，「失败提示必须带上原文」这条性质就无从断言。取值直接读本包 zh 字典——用例里不出现第二
+ * 份文案；字典哪天把槽位丢掉（原文被固定文案吞掉，正是本次要防的方向），这几条断言会立刻失败。
+ */
+const MESSAGE_SLOT_RESOURCES = {
+  zh: {
+    [WORKFLOW_NS]: {
+      list: {
+        load_failed_with: zhWorkflows.list.load_failed_with,
+        initialize_failed: zhWorkflows.list.initialize_failed,
+      },
+    },
+  },
+};
+
+/** 槽位替换：断言取「字典那句话 + 服务端原文」的实际结果，不必另抄一份文案。 */
+function withMessage(template: string, message: string): string {
+  return template.replace("{{message}}", message);
+}
+
 const i18n = createInstance();
-void i18n.init({ lng: "zh", fallbackLng: "zh", initAsync: false, resources: {} });
+void i18n.init({ lng: "zh", fallbackLng: "zh", initAsync: false, resources: MESSAGE_SLOT_RESOURCES });
 
 // ── 契约夹具（字段与 `api/workflows.ts` 的类型逐项对应） ──
 
@@ -385,7 +409,9 @@ describe("取数与视图状态", () => {
     listRoute = webErr("INTERNAL_ERROR", "boom", 500);
     await mount.render(page());
 
-    expect(mount.container.textContent).toContain("list.load_failed");
+    // 失败块把服务端信封原文带上屏（固定文案会把后端故障吞掉），且不得落成空态文案。
+    expect(mount.container.textContent).toContain(withMessage(zhWorkflows.list.load_failed_with, "boom"));
+    expect(mount.container.textContent).not.toContain("list.no_workflows");
     expect(cardCount()).toBe(0);
 
     const before = listGetCount();
@@ -463,9 +489,9 @@ describe("未绑定态的初始化入口", () => {
     expect(mount.container.textContent).not.toContain("list.blocked.unbound.title");
   });
 
-  // 失败给出页面级提示：没有弹窗可以承载失败，文案按**稳定错误码**取字典，服务端信封原文（可能是上游措辞）
-  // 不上屏——本包任何用户可见字符串都不得来自 `err.message`。
-  test("初始化失败给出提示条，留在未绑定态且不回显服务端原文", async () => {
+  // 失败给出页面级提示：有稳定码的失败按码取字典（该码的下一步动作已确定，比原文更好用）；未登记的失败
+  // 把服务端信封原文带上屏——把后端故障压成一句固定文案，用户与测试都定位不到。
+  test("初始化失败给出提示条，稳定码取字典键且留在未绑定态", async () => {
     await renderUnbound();
     orgAppCreateRoute = webErr("PLATFORM_SESSION_UNAVAILABLE", "RAW-UPSTREAM-TEXT", 503);
     const listBefore = listGetCount();
@@ -478,6 +504,18 @@ describe("未绑定态的初始化入口", () => {
     expect(mount.container.textContent).toContain("list.blocked.unbound.title");
     // 失败不刷新：绑定没成，重取只会把同一屏原样取回来（真正的失败解释在提示条里）。
     expect(listGetCount()).toBe(listBefore);
+  });
+
+  // 未登记的失败（`INTERNAL_ERROR` 这类没有确定动作的码）：通用键带 `{{message}}` 槽位，必须把原文插上屏。
+  test("未登记的失败把服务端原文带进通用提示条", async () => {
+    await renderUnbound();
+    orgAppCreateRoute = webErr("INTERNAL_ERROR", "RAW-UPSTREAM-TEXT", 500);
+
+    await click(buttonByText("list.blocked.unbound.initialize"));
+
+    // 未登记的码取**通用键**：它带 `{{message}}` 槽位，服务端原文必须真的插进去上屏。
+    expect(mount.container.textContent).toContain(withMessage(zhWorkflows.list.initialize_failed, "RAW-UPSTREAM-TEXT"));
+    expect(mount.container.textContent).not.toContain("list.initialize_failed_session");
   });
 });
 

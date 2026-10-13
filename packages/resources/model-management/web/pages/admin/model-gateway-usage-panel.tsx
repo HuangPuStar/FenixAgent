@@ -159,7 +159,7 @@ export function ModelGatewayUsagePanel({
           // 失败块顶掉下方结果区（含上一轮的旧指标），重试即「按当前范围与筛选重查一次」。
           <EmptyState
             icon={<AlertTriangle />}
-            title={t("modelGateway.usagePage.queryFailed")}
+            title={usageRequest.error.message || t("modelGateway.usagePage.queryFailed")}
             tone="danger"
             role="alert"
             className="py-12"

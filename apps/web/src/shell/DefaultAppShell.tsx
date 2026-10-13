@@ -134,8 +134,8 @@ export function DefaultAppShell() {
       } catch (e) {
         console.error("创建智能体后导航失败:", e);
         // 智能体此时已经创建成功，失败的是「进入实例并打开会话」这一步。
-        // 不提示的话用户停在列表页，会以为创建整体失败而重复创建。
-        toast.error(t("agentCreatedNavFailed"));
+        // 不提示的话用户停在列表页，会以为创建整体失败而重复创建；提示带上服务端 message 以便定位。
+        toast.error(e instanceof Error ? e.message : t("agentCreatedNavFailed"));
       }
     },
     [navigate, t],

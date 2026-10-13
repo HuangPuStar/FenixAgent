@@ -68,9 +68,9 @@ export function useKnowledgeBaseCatalog({
   } = useRequest(() => unwrap(kbApi.list()), {
     onError: (err) => {
       console.error("Failed to load knowledge bases", err);
-      // 列表失败只上屏字典文案（§9.3）：`err.message` 是 `unwrap` 抛出的 `ApiError.message`，即后端
-      // 错误信封原文（服务端措辞、表名、路径都可能出现），只进上面的日志。
-      toast.error(t("loadError"));
+      // 服务端 `err.message`（`unwrap` 抛出的 `ApiError.message`，即错误信封原文）优先上屏——它才是
+      // 可定位的失败原因；字典文案只在 message 为空时兜底。
+      toast.error(err.message || t("loadError"));
     },
   });
 
@@ -105,7 +105,7 @@ export function useKnowledgeBaseCatalog({
       },
       onError: (err) => {
         console.error("Create failed", err);
-        toast.error(t("toast.saveFailed"));
+        toast.error(err.message || t("toast.saveFailed"));
       },
     },
   );
@@ -124,7 +124,7 @@ export function useKnowledgeBaseCatalog({
       },
       onError: (err) => {
         console.error("Update failed", err);
-        toast.error(t("toast.saveFailed"));
+        toast.error(err.message || t("toast.saveFailed"));
       },
     },
   );
@@ -144,7 +144,7 @@ export function useKnowledgeBaseCatalog({
     },
     onError: (err) => {
       console.error("Delete failed", err);
-      toast.error(t("toast.deleteFailed"));
+      toast.error(err.message || t("toast.deleteFailed"));
     },
   });
 
@@ -230,9 +230,9 @@ export function useKnowledgeBaseCatalog({
       setUnassociatedList(list);
     } catch (err) {
       // 此前只上屏、不落日志：原始 error 对象必须先留在诊断通道里（§5.8 的判据只约束「必须有用户
-      // 可见反馈」，不豁免日志）。文案同样只取字典（§9.3）。
+      // 可见反馈」，不豁免日志）。上屏取服务端 message，字典文案只在它为空时兜底。
       console.error("Failed to list unassociated knowledge bases", err);
-      toast.error(t("toast.listUnassociatedFailed"));
+      toast.error(err instanceof Error && err.message ? err.message : t("toast.listUnassociatedFailed"));
     } finally {
       setImportLoading(false);
     }
@@ -250,7 +250,7 @@ export function useKnowledgeBaseCatalog({
       refresh();
     } catch (err) {
       console.error("Failed to import knowledge base", err);
-      toast.error(t("toast.importFailed"));
+      toast.error(err instanceof Error && err.message ? err.message : t("toast.importFailed"));
     } finally {
       setImportingRemoteId(null);
     }

@@ -194,7 +194,8 @@ export const FileTreeTab = forwardRef<FileTreeTabHandle, FileTreeTabProps>(funct
       },
       onError: (err) => {
         console.error("Delete failed:", err);
-        toast.error(t("fileTree.contextMenu.delete"));
+        // 与重命名 / 移动同一口径：服务端信封原文优先上屏，取不到原因才退回字典文案。
+        toast.error(getFileOperationErrorMessage(err, t, t("fileTree.contextMenu.delete")));
       },
     },
   );
@@ -205,7 +206,7 @@ export const FileTreeTab = forwardRef<FileTreeTabHandle, FileTreeTabProps>(funct
     onSuccess: closeInputDialogAndRefresh,
     onError: (err) => {
       console.error("Mkdir failed:", err);
-      toast.error(t("fileTree.mkdirFailed"));
+      toast.error(err.message || t("fileTree.mkdirFailed"));
     },
   });
 
@@ -217,7 +218,7 @@ export const FileTreeTab = forwardRef<FileTreeTabHandle, FileTreeTabProps>(funct
       onSuccess: closeInputDialogAndRefresh,
       onError: (err) => {
         console.error("New file failed:", err);
-        toast.error(t("fileTree.newFileFailed"));
+        toast.error(err.message || t("fileTree.newFileFailed"));
       },
     },
   );
@@ -352,11 +353,8 @@ export const FileTreeTab = forwardRef<FileTreeTabHandle, FileTreeTabProps>(funct
       } catch (error) {
         if (controller.signal.aborted) return;
         setDownload({ path: nodePath, isDir, error: true });
-        // 下载失败同样只上屏字典文案（§9.3）：`downloadWorkspacePath` 抛出的是带后端信封原文的
-        // `ApiError`，其中的路径与 syscall 措辞属内部实现，只进日志。可见的失败态由
-        // `download.error` 承担，这条 toast 只补一句「为什么没下来」。
         console.error("Download failed:", error);
-        toast.error(t("fileTree.downloadFailed"));
+        toast.error(error instanceof Error && error.message ? error.message : t("fileTree.downloadFailed"));
       } finally {
         if (downloadControllerRef.current === controller) downloadControllerRef.current = null;
       }

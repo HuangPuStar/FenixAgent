@@ -198,7 +198,7 @@ export function MentalModelsView() {
       refreshModels();
     } catch (err) {
       console.error("Failed to delete mental model:", err);
-      toast.error(t("mentalModels.deleteFailed"));
+      toast.error(err instanceof Error ? err.message : t("mentalModels.deleteFailed"));
     }
   };
 

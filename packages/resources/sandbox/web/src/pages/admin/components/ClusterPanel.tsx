@@ -91,14 +91,14 @@ export function ClusterPanel({ data, loading, error, onRefresh, onAction }: Clus
       anchor.click();
       URL.revokeObjectURL(url);
     } catch (cause) {
-      // 下载失败只上屏字典文案（§9.3）：`cause.message` 是后端信封原文，只进日志
-      console.error(t("tunnelConfigDownloadError"), cause);
-      toast.error(t("tunnelConfigDownloadError"));
+      toast.error(t("tunnelConfigDownloadError"), {
+        description: cause instanceof Error ? cause.message : undefined,
+      });
     }
   };
   // 已有数据时保留面板内容，只在首屏（无 data）时占位，避免刷新闪回骨架（占位块见 PanelStates）。
   if (loading && !data) return <PanelLoadingState />;
-  if (error && !data) return <PanelErrorState message={t("clusterError")} onRetry={onRefresh} />;
+  if (error && !data) return <PanelErrorState message={error.message || t("clusterError")} onRetry={onRefresh} />;
   return (
     <div className="space-y-6">
       <Card>
