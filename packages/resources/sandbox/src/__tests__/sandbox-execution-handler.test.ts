@@ -6,6 +6,14 @@ afterEach(() => {
   resetAllStubs();
 });
 
+/**
+ * 补偿路径用例的连接等待超时：首次等待必须超时（readOnline 初始 false），重试后的等待必须成功。
+ * 两次等待共用此值——1ms 时"成功"那次只剩 1ms 判定窗口，负载下会被调度抖动吃掉而让补偿多走一级
+ * （recover 被意外调用，与 `round37-service-boundaries.test.ts` 在 CI 上的偶发失败同根因）；
+ * 50ms 足以覆盖判定路径（入口检查 + 一次 readOnline 微任务）。
+ */
+const CONNECT_TIMEOUT_MS = 50;
+
 // Sandbox 启动等待 Machine online 后，寻址节点必须返回 machine_id。
 test("waits for the machine to become online and returns its id", async () => {
   const manager = {
@@ -93,7 +101,7 @@ test("retries the existing provider resource after the first ACP timeout", async
       providerKey: "ignored",
       userId: "user_test",
       template: { type: "image", value: "ignored" },
-      runtimeConnectTimeoutMs: 1,
+      runtimeConnectTimeoutMs: CONNECT_TIMEOUT_MS,
     } as never),
   ).resolves.toMatchObject({ nodeId: "mach_sandbox_sbi_recover" });
 
@@ -132,7 +140,7 @@ test("recreates the sandbox when retrying the existing provider resource fails",
       providerKey: "ignored",
       userId: "user_test",
       template: { type: "image", value: "ignored" },
-      runtimeConnectTimeoutMs: 1,
+      runtimeConnectTimeoutMs: CONNECT_TIMEOUT_MS,
     } as never),
   ).resolves.toMatchObject({ nodeId: "mach_sandbox_sbi_rebuild" });
 
