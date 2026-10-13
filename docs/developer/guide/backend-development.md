@@ -149,6 +149,7 @@ packages/resources/<resource>/
 | `drizzle/` | 不可变 DDL 链与 `meta/`（snapshot、journal），必须整体提交 |
 | `db/` | 仓库级迁移执行器 `data-migration-runner.ts`，不含业务迁移逻辑 |
 | `deploy/assembly/` | 装配 profile（选择已构建模块的组合） |
+| `docker/` | 容器交付物：主服务与依赖的 Compose、Dockerfile、无密钥环境模板和 `deploy.sh`；详细契约见 `docs/operations/docker-topology.md` |
 | `scripts/` | 开发、校验、构建、迁移、发布的薄命令入口 |
 | `docs/arch/`、`docs/adr/` | 当前架构说明、关键架构决策记录 |
 | `docs/operations/` | 部署、升级、迁移、备份、排障 |

@@ -27,11 +27,13 @@ fenix/ 或 fenix-ee/
 │   └── data-migration-runner.ts         # 仅负责汇总、排序、记录和执行模块迁移
 ├── drizzle/                             # 本仓库生成的不可变 DDL 链与 meta（Drizzle Kit 默认输出目录）
 ├── deploy/
-│   ├── assembly/                        # 选择已构建模块组合的 JSON/YAML profile
-│   ├── compose/                         # Compose 基础编排与 profile/overlay
-│   ├── images/                          # Dockerfile、镜像构建上下文
-│   ├── env/                             # 无密钥的环境变量模板与字段说明
-│   └── manifests/                       # Helm/Kustomize 等未来部署适配器（按需创建）
+│   └── assembly/                        # 选择已构建模块组合的 JSON/YAML profile
+├── docker/                              # 容器交付：Compose、镜像构建上下文、环境模板与部署脚本
+│   ├── main/                            # 主服务生产编排与应用环境模板
+│   ├── common/                          # 主服务编排纳入的共享基础服务
+│   ├── <name>/                          # 独立依赖或沙箱节点的 Compose、Dockerfile 与私有环境模板
+│   ├── deploy.env.example               # 无密钥的部署开关与参数模板
+│   └── deploy.sh                        # 初始化、校验、部署与运维入口
 ├── scripts/                             # 开发、校验、构建、迁移、发布的薄命令入口
 ├── docs/
 │   ├── arch/                            # 当前真实架构与模块边界
@@ -42,11 +44,11 @@ fenix/ 或 fenix-ee/
 └── upstream/fenix/                      # 仅 EE：Git submodule
 ```
 
-`upstream/fenix/` 及 EE 的替换实现只表示商业仓库的目标归属；未来 `deploy/manifests/` 等未使用目录也不因图示而创建。
+`upstream/fenix/` 及 EE 的替换实现只表示商业仓库的目标归属；`docker/<name>/` 仅在存在对应独立部署单元时创建，不因图示预建目录。
 
 ### 1.1 目录责任
 
-- `apps/server` 持有服务入口、现有 HTTP/WebSocket 接入、启动组装与进程生命周期；`apps/web` 持有控制台入口、壳与路由适配。`apps/generated` 是生成代码的归属，`deploy/assembly` 是现有装配配置的归属；不因目录图创建新的装配机制。
+- `apps/server` 持有服务入口、现有 HTTP/WebSocket 接入、启动组装与进程生命周期；`apps/web` 持有控制台入口、壳与路由适配。`apps/generated` 是生成代码的归属，`deploy/assembly` 是现有装配配置的归属；`docker/` 是容器交付物的归属，不因目录图创建新的装配或部署机制。
 - `packages/platform/platform-sdk` 只归属无具体业务实现的平台稳定契约和应用基础设施访问入口，不包含 DB、route 或 Web，也不依赖任何具体平台或资源模块。应用基础设施只定义受限的注册与读取规则，不创建或拥有具体基础设施。
 - `packages/` 中除 `platform/`、`agent-runtime/`、`resources/` 外的包均为独立 SDK 或插件包。服务模块直接通过包引用使用其能力；这些包不适用资源包内部目录或服务模块依赖规则，只要求包间依赖无环。
 - `packages/platform/identity` 与 `packages/platform/access-control` 是同一版本成套替换的有状态平台模块。Identity 拥有用户、组织、成员、认证/API Key 及相应 DB、route、Web；AccessControl 可依赖 Identity 的公开入口，但不得导入其 repository、schema 或内部路径。`packages/resources/identity-admin` 已随 CE 阶段 2 任务 1.2 按职责拆分并删除，未保留兼容包或 re-export shim。
@@ -55,7 +57,7 @@ fenix/ 或 fenix-ee/
 - 四个基础运行包保持独立 workspace、依赖和测试边界。在线链路的高耦合由 `@fenix/agent-runtime` 组合，不等于将基础能力合并成一个物理 package。
 - `packages/agent-runtime` 持有运行组合；LaunchSpec 中的业务资源解析归所属资源，Workflow 仍归自身业务 owner。Machine 与 Sandbox 保持独立资源包及各自 DB/Web owner，但作为 Runtime 的固定基础资源，允许 `agent-runtime → sandbox → machine` 及 `agent-runtime → machine` 的公开入口依赖；Machine/Sandbox 不得反向依赖 Runtime。
 - `packages/resources/<resource>/web` 是该业务页面、API client、i18n 和专有前端组件的物理归属；共同的全局壳与通用组件归 `apps/web`。
-- `db/` 和 `deploy/` 是仓库级交付物，不属于任意业务模块；模块通过显式贡献接入它们。
+- `db/`、`deploy/` 与 `docker/` 是仓库级交付物，不属于任意业务模块；模块通过显式贡献接入它们。
 
 ### 1.2 资源包内部目录示例
 
