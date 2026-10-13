@@ -1,3 +1,6 @@
+# syntax=docker/dockerfile:1.20
+# 钉住 1.20 是为了 deps 阶段的 `COPY --parents`（1.20 起稳定）。
+
 FROM ghcr.io/astral-sh/uv:latest AS uv
 
 FROM oven/bun:1 AS base
@@ -7,12 +10,18 @@ FROM base AS deps
 COPY package.json bun.lock ./
 COPY apps/server/package.json apps/server/package.json
 COPY apps/web/package.json apps/web/package.json
-COPY packages ./packages
+# 只取各 workspace 包的 package.json（--parents 保留目录结构）：bun install 只需要它建立依赖图，
+# 而 `COPY packages ./packages` 会让任意源码改动都击穿本层、使每次提交都重跑 install。
+# `**` 覆盖 workspaces 声明的 packages/* 与 packages/*/* 两层；改 workspaces 层次时同步这里的模式。
+COPY --parents packages/**/package.json ./
 RUN bun install --frozen-lockfile
 
 FROM deps AS build
 ARG GIT_COMMIT_SHA=unknown
 COPY tsconfig.json tsconfig.base.json ./
+# deps 阶段只带了 package.json，构建（web bundle 与 server bundle）需要完整源码。
+# 本层与紧随其后的 RUN 同源失效，不额外损失缓存。
+COPY packages ./packages
 COPY apps/server ./apps/server
 COPY apps/web ./apps/web
 # 装配产物（生成物，受版本控制）：apps/web/src/shell/shell-navigation.ts 与
@@ -44,8 +53,12 @@ CMD ["bun", "migrate.js"]
 FROM deps AS data-migrate-build
 COPY db ./db
 COPY apps/server ./apps/server
+# runner 用字面量 import() 引用装配产物与 web 模块，bun build 会沿这些路径解析并内联，
+# 缺任一路径即 "Could not resolve" 构建失败（曾因缺这两行导致迁移镜像构建失败）。
 COPY apps/generated ./apps/generated
 COPY apps/web/fenix.module.ts ./apps/web/fenix.module.ts
+# deps 阶段只剩 package.json，而 runner 同时内联 @fenix/* 与 apps/server 源码，必须补回完整源码。
+COPY packages ./packages
 RUN bun build db/data-migration-runner.ts --target=bun --outdir /tmp/data-migrate-bundle
 
 FROM oven/bun:1 AS data-migrate
