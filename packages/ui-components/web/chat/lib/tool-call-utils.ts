@@ -174,9 +174,25 @@ export function kindLabel(kind: ToolCardKind): string {
 // 工具函数
 // =============================================================================
 
-/** 判断是否为 hindsight 工具（HindsightToolCard 用此函数过滤）。复制自 `packages/agent-runtime/web/components/chat/tool-call-utils.ts`（旧路径，已于 2026-09-21 由 f2741a82d 删除）。 */
+/**
+ * Hindsight 工具名形态（忽略大小写）：
+ * - `hindsight_<action>`：opencode 插件 `@konghayao/opencode-hindsight` 的直挂工具名；
+ * - `mcp__<server>__<tool>`：ccb / peri / claude-code 经市场插件 `hindsight-memory@hindsight-plugin`
+ *   注册的 MCP 工具。server 段按引擎规则可能带插件命名空间（插件 `.mcp.json` 的 server 名固定为
+ *   `hindsight`，peri 把插件来源拼成 `plugin:<plugin>:<server>` 并净化成 `plugin_<plugin>_<server>`），
+ *   因此只要求 server 段里含 `hindsight` 词元，不绑定插件名与分隔符；
+ * - `agent_knowledge_<action>`：同一插件的 MCP 工具族名（宿主如剥掉 MCP 命名空间即此形态）。
+ */
+const HINDSIGHT_TOOL_PATTERN = /^(?:hindsight_|agent_knowledge_)|^mcp__[a-z0-9_-]*hindsight[a-z0-9_-]*__/i;
+
+/**
+ * 判断是否为 Hindsight 记忆工具（HindsightToolCard 用此函数过滤）。
+ * 复制自 `packages/agent-runtime/web/components/chat/tool-call-utils.ts`（旧路径，已于 2026-09-21 由 f2741a82d 删除），
+ * 在原有单形态判定（只认 `hindsight_` 前缀）之外补齐 MCP 侧形态——漏判会让记忆工具落进普通工具行，
+ * 该行的 rawInput 兜底（见 `narrators/helpers` 的 `query → web-search`）把检索记忆显示成“搜索网页”。
+ */
 export function isHindsightTool(title: string): boolean {
-  return title.toLowerCase().startsWith("hindsight_");
+  return HINDSIGHT_TOOL_PATTERN.test(title);
 }
 
 /**
