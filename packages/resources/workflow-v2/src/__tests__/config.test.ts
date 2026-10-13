@@ -20,14 +20,15 @@ import { createWorkflowV2ModuleConfig, initializeWorkflowV2ModuleConfig } from "
 
 /**
  * 冻结 §2.2 的九枚键 + 4A/4B（2026-09-29）追加的三枚对账/限流旋钮 + 对外触发面（2026-10-09）追加的
- * 一枚限流旋钮；顺序即声明序（部署模板按它生成）。
+ * 一枚限流旋钮 + 2026-10-12 追加的可选键 `WORKFLOW_V2_STORAGE_UPSTREAM_URL`；顺序即声明序（部署模板按它生成）。
  *
- * 后四枚尚未回写进冻结 §2.2（`docs/design/**` 由设计 owner 维护），落差登记在 `docs/arch/25-workflow-v2.md`
+ * 后五枚尚未回写进冻结 §2.2（`docs/design/**` 由设计 owner 维护），落差登记在 `docs/arch/25-workflow-v2.md`
  * 与本次任务回报里。
  */
 const DECLARED_KEYS = [
   "WORKFLOW_V2_UPSTREAM_BASE_URL",
   "WORKFLOW_CANVAS_UPSTREAM_URL",
+  "WORKFLOW_V2_STORAGE_UPSTREAM_URL",
   "WORKFLOW_V2_PLATFORM_ACCOUNT_EMAIL",
   "WORKFLOW_V2_PLATFORM_ACCOUNT_PASSWORD",
   "WORKFLOW_V2_TICKET_SECRET",
@@ -71,6 +72,9 @@ test("未配置的旋钮按声明默认值解析", () => {
 
   expect(env.WORKFLOW_V2_UPSTREAM_BASE_URL).toBe("http://127.0.0.1:18080");
   expect(env.WORKFLOW_CANVAS_UPSTREAM_URL).toBe("http://127.0.0.1:18080");
+  // 可选键没有默认值：未配置就是 `undefined`（=存储出站直连直链 origin），不能落成空串——空串在模块
+  // schema 里是非法地址，会把「未配置」变成启动期失败。
+  expect(env.WORKFLOW_V2_STORAGE_UPSTREAM_URL).toBeUndefined();
   expect(env.WORKFLOW_V2_IFRAME_CODE_TTL_SECONDS).toBe(60);
   expect(env.WORKFLOW_V2_IFRAME_TICKET_TTL_SECONDS).toBe(900);
   expect(env.WORKFLOW_V2_UPSTREAM_TIMEOUT_MS).toBe(10_000);
@@ -82,6 +86,16 @@ test("未配置的旋钮按声明默认值解析", () => {
   expect(env.WORKFLOW_V2_BFF_RATE_LIMIT_PER_MINUTE).toBe(1200);
   expect(env.WORKFLOW_V2_SESSION_RATE_LIMIT_PER_MINUTE).toBe(60);
   expect(env.WORKFLOW_V2_API_RATE_LIMIT_PER_MINUTE).toBe(60);
+});
+
+// 可选键显式配置时原样解析：不给默认值、不做 URL 归一——连接基址拼不出去时由出站处的 URL 解析兜底成 502。
+test("存储出站基址显式配置时原样解析", () => {
+  const env = loadDeclaredEnv(moduleManifest.envDefinitions, {
+    ...requiredInput,
+    WORKFLOW_V2_STORAGE_UPSTREAM_URL: "http://workflow-entry.internal:18080",
+  });
+
+  expect(env.WORKFLOW_V2_STORAGE_UPSTREAM_URL).toBe("http://workflow-entry.internal:18080");
 });
 
 // 必填键缺失必须在启动期失败（消息含键名，部署才知道该配哪个），且失败点与配置了哪些键无关。
@@ -106,7 +120,10 @@ test("数值旋钮接受字符串并归一为数字", () => {
 
 // 读取侧：宿主投影的形状经校验后才可用，白名单的「逗号分隔串 → 类型名数组」只在这一步发生。
 test("模块配置按声明形状读取并把白名单拆成数组", () => {
-  const config = createWorkflowV2ModuleConfig({ nodeWhitelist: "start, llm ,,http," });
+  const config = createWorkflowV2ModuleConfig({
+    nodeWhitelist: "start, llm ,,http,",
+    storageUpstreamUrl: "http://workflow-entry.internal:18080",
+  });
   initializeWorkflowV2ModuleConfig(config);
 
   const resolved = getWorkflowV2Config();
@@ -115,6 +132,7 @@ test("模块配置按声明形状读取并把白名单拆成数组", () => {
   expect(resolved.accountPassword).toBe(config.accountPassword);
   expect(resolved.codeTtlSeconds).toBe(60);
   expect(resolved.nodeWhitelist).toEqual(["start", "llm", "http"]);
+  expect(resolved.storageUpstreamUrl).toBe("http://workflow-entry.internal:18080");
 });
 
 // 宿主投影漏字段时读配置即失败：错误必须给出字段路径，便于定位到 module-configs.ts 的那一行。

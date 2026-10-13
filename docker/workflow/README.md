@@ -279,7 +279,7 @@ docker compose --env-file "$WORKFLOW_STUDIO_DIR/docker/.env" \
 
 **本目录与主服务项目必须同机。** 共享 MySQL 只在 `fenix-server` 与宿主回环端口上可达，跨机器时本目录的初始化服务与 `coze-server` 都解析不到它。需要把上游栈放到另一台机器时，先单独评审共享实例的暴露方式（内网地址 + 认证），不要只改 `docker-compose.yml` 里的地址。
 
-若平台直接在宿主源码运行，可将两项 upstream URL 设置为 `http://127.0.0.1:18080`；签名存储入口 `workflow-storage` 也须配置宿主可达的 DNS / 反代并保留正确 Host，不能直接开放共享 rustfs。模板主要面向同机容器部署，容器内 `127.0.0.1` 不是上游或宿主。
+若平台直接在宿主源码运行，可将两项 upstream URL 设置为 `http://127.0.0.1:18080`；签名存储入口 `workflow-storage` 只在上游容器网络内可解析，宿主侧有两条等效路径：把 `WORKFLOW_V2_STORAGE_UPSTREAM_URL` 也设为 `http://127.0.0.1:18080`（**推荐**：平台连接它，直链主机名只作 `Host` 头交给上游反代选站，签名不参与该校验，因此无需改宿主 DNS），或自行配置宿主可达的 DNS / 反代并保留正确 Host。两条路径都不得直接开放共享 rustfs。模板主要面向同机容器部署，容器内 `127.0.0.1` 不是上游或宿主。
 
 ### 存储同样通过唯一出口
 

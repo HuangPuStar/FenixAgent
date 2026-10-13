@@ -23,6 +23,13 @@ export interface WorkflowV2Config {
   upstreamBaseUrl: string;
   /** `/workflow-canvas/*` 静态反代的上游基址；与 `upstreamBaseUrl` 分开配置以支持入口分离。 */
   canvasUpstreamUrl: string;
+  /**
+   * 存储域出站的**连接**基址；未配置即 `undefined`＝直连 `sign_image_url` 返回的 origin。
+   *
+   * 配置后连接该基址、直链里的主机名只作 `Host` 头：上游给的是它网络内的别名（`workflow-storage`），
+   * 平台解析不到时由本键把出站改道到已可达的上游入口，同时保住上游反代的虚拟主机选择（见 `upstream-proxy.ts`）。
+   */
+  storageUpstreamUrl?: string;
   /** 平台上游账号的登录邮箱；不是密钥材料，但仍不得进面向用户的响应。 */
   accountEmail: string;
   /** 平台上游账号的登录密码；密钥材料，禁止进日志、响应与错误文案。 */
@@ -82,6 +89,8 @@ function parseNodeWhitelist(raw: string): string[] {
 const WorkflowV2ConfigSchema: z.ZodType<WorkflowV2Config> = z.strictObject({
   upstreamBaseUrl: z.string().min(1),
   canvasUpstreamUrl: z.string().min(1),
+  // 可选键：缺省即「直连直链 origin」，因此不能给默认值（给空串会把「未配置」变成「配置成了空地址」）。
+  storageUpstreamUrl: z.string().optional(),
   accountEmail: z.string().min(1),
   accountPassword: z.string().min(1),
   ticketSecret: z.string().min(1),

@@ -142,6 +142,9 @@ export function buildModuleConfigs(env: ServerEnv, config: AppConfig): Readonly<
     "workflow-v2": {
       upstreamBaseUrl: readDeclaredEnv<string>(env, "WORKFLOW_V2_UPSTREAM_BASE_URL"),
       canvasUpstreamUrl: readDeclaredEnv<string>(env, "WORKFLOW_CANVAS_UPSTREAM_URL"),
+      // 可选键（2026-10-12）：未配置即 `undefined`＝存储出站直连直链 origin。不给默认值、不做空串归一——
+      // 「空串」在模块 schema 里是非法地址而不是「未配置」，两者不能混成一个形状。
+      storageUpstreamUrl: readDeclaredEnv<string | undefined>(env, "WORKFLOW_V2_STORAGE_UPSTREAM_URL"),
       accountEmail: readDeclaredEnv<string>(env, "WORKFLOW_V2_PLATFORM_ACCOUNT_EMAIL"),
       accountPassword: readDeclaredEnv<string>(env, "WORKFLOW_V2_PLATFORM_ACCOUNT_PASSWORD"),
       ticketSecret: readDeclaredEnv<string>(env, "WORKFLOW_V2_TICKET_SECRET"),

@@ -25,6 +25,11 @@ import { z } from "zod/v4";
  * 上游超时、节点白名单、对账周期、三枚限流）。两枚默认值与上游服务同机（`http://127.0.0.1:18080`），
  * 三枚必填（账号邮箱/密码、票据签名密钥），其余为带默认值的旋钮。
  *
+ * 2026-10-12 追加 `WORKFLOW_V2_STORAGE_UPSTREAM_URL`（可选）：存储域出站的连接基址。起因是宿主源码运行
+ * 的部署解析不到上游签名直链里的内网别名（`workflow-storage`，只在上游容器网络内可达），图片成片 502
+ * （`error: TypeError`）——此时把存储出站指到平台已可达的上游入口，直链主机名退化为 `Host` 头即可。
+ * 未设置＝沿用直连直链 origin 的原行为，对容器内网可达的部署零影响。
+ *
  * 历史：2026-10-09 曾为「运行日志执行列表」临时增加五枚上游库只读连接键
  * （`WORKFLOW_V2_UPSTREAM_DB_*`）；上游于同日（commit `3a028cf1`）实现 `list_spans` 后按 ADR
  * `2026-10-09-workflow-v2-upstream-db-read.md` 的移除条件整体删除，运行列表已切回 HTTP。这些键的唯一运行期消费者是本包
@@ -70,6 +75,18 @@ export const moduleManifest = {
         "`/workflow-canvas/*` 静态反代的上游基址（上游自带前端的静态资源）；默认 http://127.0.0.1:18080。" +
         "与 `WORKFLOW_V2_UPSTREAM_BASE_URL` 分开声明，供静态资源与 API 分别指向不同入口时独立配置；装配期固化 " +
         "进模块配置，改值需重启进程。",
+    },
+    {
+      moduleId: "workflow-v2",
+      key: "WORKFLOW_V2_STORAGE_UPSTREAM_URL",
+      schema: z.string().optional(),
+      secret: false,
+      restartRequired: true,
+      description:
+        "存储域出站的**连接**基址（可选）：平台解析不到上游签名直链的内网别名（如 `workflow-storage`，" +
+        "只在上游容器网络内可达）时，用它指向已可达的上游入口。未设置＝直连直链 origin（容器网络互通的" +
+        "部署无需配置）；设置后连接该基址，并把直链里的主机名作为 `Host` 头保留（直链 host 是上游反代的" +
+        "虚拟主机名，只用于选站，签名由该反代恢复为对象存储的 Host，不参与校验）。不是密钥。",
     },
     {
       moduleId: "workflow-v2",
