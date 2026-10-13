@@ -1,0 +1,149 @@
+import OpenAI from "openai";
+import { getAgentConfigConfig } from "../config";
+
+/**
+ * Agent 智能生成的领域服务。
+ *
+ * **不认识 actor**：候选 Skill 由 Facade 按主体可见范围算好后传入（`facades/agent-authoring-facade.ts`），
+ * 本文件只负责提示词组装、LLM 调用与结果映射。
+ */
+
+/** Skill 条目（前端用 name + description 展示，用 id 提交） */
+export interface SkillItem {
+  id: string;
+  name: string;
+  description: string;
+}
+
+/**
+ * 候选 Skill 投影：只有"当前主体可见"的那部分，由 Facade 从 Skill 的 Facade 取得。
+ *
+ * 与 `SkillItem` 同形但不合并：一个是生成的输入（可见范围），一个是生成的输出（推荐绑定项），
+ * 让它们在类型上分开，改一侧时不会静默影响另一侧的语义。
+ */
+export interface VisibleSkill {
+  readonly id: string;
+  readonly name: string;
+  readonly description: string;
+}
+
+/** Agent 智能生成结果 */
+export interface AgentGenerationResult {
+  name: string;
+  systemPrompt: string;
+  skills: SkillItem[];
+}
+
+/**
+ * 检查生成功能是否已配置。
+ *
+ * 判定依据是宿主下发的模型名（`agentGenerationModel`），不再读运行环境变量：API Key 由 OpenAI SDK
+ * 从环境自行读取，宿主只在 Key 可用时下发模型名，包侧因此不需要（也无法）复刻「Key 是否存在」的判定。
+ */
+export function isGenerationConfigured(): boolean {
+  return getAgentConfigConfig().agentGenerationModel !== undefined;
+}
+
+/** 取本次生成使用的模型名；未配置时由调用方先经 {@link isGenerationConfigured} 短路。 */
+function generationModel(): string {
+  const model = getAgentConfigConfig().agentGenerationModel;
+  if (!model) throw new Error("NOT_CONFIGURED");
+  return model;
+}
+
+/**
+ * 调用 LLM 生成 Agent 配置。
+ *
+ * `skills` 是调用方（Facade）按主体可见范围算好的候选集合：只在其中推荐，生成结果才能直接绑定；
+ * 推荐范围之外的名称只会得到无效绑定。
+ */
+export async function generateAgentConfig(input: {
+  readonly prompt: string;
+  readonly skills: readonly VisibleSkill[];
+}): Promise<AgentGenerationResult> {
+  if (!isGenerationConfigured()) {
+    throw new Error("NOT_CONFIGURED");
+  }
+
+  const { prompt, skills } = input;
+  const skillList = skills.map((s) => `- ${s.name}: ${s.description}`).join("\n");
+
+  const systemPrompt = `你是一个智能体配置生成助手。根据用户的需求描述，生成智能体的配置信息。
+
+你需要返回一个 JSON 对象，包含以下字段：
+- name: 智能体的名称，必须是中文（如"周报助手"、"代码审查专家"、"PPT大纲生成器"）。禁止使用英文，禁止使用 kebab-case 或 snake_case，禁止包含连字符
+- systemPrompt: 智能体的系统提示词，详细描述智能体的角色和行为
+- skills: 推荐启用的技能名称数组，从下面的可用技能列表中选择
+
+示例输出：
+{"name": "周报助手", "systemPrompt": "你是一个周报撰写助手...", "skills": ["skill-name"]}
+
+可用技能列表：
+${skillList || "（暂无可用技能）"}
+
+请只返回 JSON，不要包含其他内容。`;
+
+  // 使用标准 OpenAI SDK 环境变量：OPENAI_API_KEY、OPENAI_BASE_URL
+  const client = new OpenAI();
+
+  let response: OpenAI.Chat.Completions.ChatCompletion;
+  try {
+    response = await client.chat.completions.create({
+      model: generationModel(),
+      messages: [
+        { role: "system", content: systemPrompt },
+        { role: "user", content: prompt },
+      ],
+      response_format: { type: "json_object" },
+    });
+  } catch (err: unknown) {
+    // 细分 OpenAI SDK 错误类型，提供可诊断的错误信息
+    const e = err as Record<string, unknown>;
+    const statusCode = e.status as number | undefined;
+    const apiMessage =
+      (e.error as { message?: string } | undefined)?.message ?? (e.message as string | undefined) ?? String(err);
+
+    if (statusCode === 401 || statusCode === 403) {
+      throw new Error(`OPENAI_AUTH_ERROR: ${apiMessage}`);
+    }
+    if (statusCode === 429) {
+      throw new Error(`OPENAI_RATE_LIMIT: ${apiMessage}`);
+    }
+    if (e.name === "APIConnectionError") {
+      throw new Error(`OPENAI_CONNECTION_ERROR: ${apiMessage}`);
+    }
+    // 可能是不支持 response_format json_object 的模型
+    throw new Error(`OPENAI_API_ERROR: ${apiMessage}`);
+  }
+
+  const content = response.choices[0]?.message?.content;
+  if (!content) {
+    throw new Error("PARSE_ERROR");
+  }
+
+  let parsed: { name?: string; systemPrompt?: string; skills?: string[] };
+  try {
+    parsed = JSON.parse(content) as { name?: string; systemPrompt?: string; skills?: string[] };
+  } catch (err) {
+    console.error("[agent-generation] Failed to parse LLM response:", err);
+    throw new Error("PARSE_ERROR");
+  }
+
+  if (!parsed.name || !parsed.systemPrompt) {
+    throw new Error("PARSE_ERROR");
+  }
+
+  // 将 LLM 返回的 skill 名称映射为 { id, name, description } 对象，前端用 name + description 展示、id 提交
+  const skillNameToInfo = new Map(
+    skills.map((s) => [s.name.toLowerCase(), { id: s.id, name: s.name, description: s.description }]),
+  );
+  const mappedSkills = (parsed.skills ?? [])
+    .map((name: string) => skillNameToInfo.get(name.toLowerCase()))
+    .filter((item): item is SkillItem => !!item);
+
+  return {
+    name: parsed.name,
+    systemPrompt: parsed.systemPrompt,
+    skills: mappedSkills,
+  };
+}

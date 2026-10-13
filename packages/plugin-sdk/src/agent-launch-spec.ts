@@ -81,6 +81,16 @@ export interface StreamableHttpMcpServerConfig {
  */
 export type McpServerConfig = StdioMcpServerConfig | StreamableHttpMcpServerConfig;
 
+/** 平台托管的工作区 JSON 文件 DTO；仅含可序列化数据，不携带领域服务或宿主绝对路径。 */
+export interface WorkspaceFile {
+  /** 工作区内相对路径；执行端校验禁止越界与符号链接。 */
+  path: string;
+  /** 完整 JSON 内容，每次 prepare 全量替换；可能含凭据，禁止记录到日志。 */
+  content: Record<string, unknown>;
+  /** 只传递该文件绝对位置的环境变量名，由统一物化边界重定位。 */
+  envVar?: string;
+}
+
 /**
  * Agent 启动配置规范。
  */
@@ -89,6 +99,9 @@ export interface AgentLaunchSpec {
   userId: string;
   environmentId?: string;
   env?: Record<string, string>;
+  /** 引擎无关的插件能力标识；具体 npm 名/市场别名由引擎适配。 */
+  plugins?: "hindsight"[];
+  workspaceFiles?: WorkspaceFile[];
   agent: AgentConfig;
   model: ModelConfig;
   skills: SkillConfig[];

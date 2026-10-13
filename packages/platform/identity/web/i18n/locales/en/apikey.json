@@ -1,0 +1,58 @@
+{
+  "title": "API Keys",
+  "subtitle": "Manage API keys for agent authentication",
+  "btn": {
+    "create": "Create Key",
+    "copy": "Copy",
+    "revoke": "Revoke",
+    "retry": "Retry"
+  },
+  "searchPlaceholder": "Search keys...",
+  "emptyMessage": "No API keys yet. Create one to get started.",
+  "summary": "keys",
+  "security": {
+    "title": "Key security",
+    "description": "Only names and prefixes are stored. Revoke and recreate a leaked key immediately; its original value cannot be recovered."
+  },
+  "column": {
+    "name": "Name",
+    "prefix": "Key prefix",
+    "created": "Created",
+    "lastUsed": "Last used",
+    "expires": "Expires"
+  },
+  "date": {
+    "never": "—",
+    "neverUsed": "Never used",
+    "neverExpires": "Never expires"
+  },
+  "dialog": {
+    "createTitle": "Create API Key",
+    "close": "Close",
+    "keyCreated": "New API Key Created",
+    "keyWarning": "You will not be able to see this key again after closing this dialog. Make sure to copy it now."
+  },
+  "form": {
+    "name": "Name"
+  },
+  "confirm": {
+    "revokeTitle": "Revoke API Key",
+    "revokeDescription": "Are you sure you want to revoke this API Key? Agents using it will no longer be able to connect. This action cannot be undone."
+  },
+  "validation": {
+    "nameRequired": "Please enter a name for the key"
+  },
+  "toast": {
+    "loadFailed": "Failed to load API Keys",
+    "createFailed": "Failed to create API Key",
+    "duplicateName": "Creation failed: an API Key with this name already exists. Please choose a different name.",
+    "created": "API Key created",
+    "copied": "Copied",
+    "copyFailed": "Copy failed, please select and copy manually",
+    "deleteFailed": "Failed to revoke API Key",
+    "deleted": "API Key revoked"
+  },
+  "nav": {
+    "apikeys": "API Key"
+  }
+}

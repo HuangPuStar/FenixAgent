@@ -1,0 +1,32 @@
+.chat-header-panel {
+  transition:
+    border-color 0.2s ease,
+    box-shadow 0.2s ease;
+}
+.chat-header-panel:hover {
+  box-shadow: 0 4px 20px rgb(0 0 0 / 30%);
+}
+.acp-main-root .chat-header-panel {
+  height: calc(var(--spacing) * 11.25);
+  border-radius: 0;
+  backdrop-filter: none;
+}
+
+.acp-main-root .chat-header-panel:hover {
+  box-shadow: none;
+}
+.acp-main-root .chat-header-panel:not(.dark *) {
+  background-color: var(--color-white);
+  border-inline-width: 0;
+  border-inline-style: var(--tw-border-style, solid);
+  border-top-width: 0;
+  border-top-style: var(--tw-border-style, solid);
+  border-bottom-width: 1px;
+  border-bottom-style: var(--tw-border-style, solid);
+  border-bottom-color: var(--color-gray-100);
+}
+@supports not ((backdrop-filter: blur(16px)) or (-webkit-backdrop-filter: blur(16px))) {
+  .chat-header-panel {
+    background-color: var(--color-surface-1);
+  }
+}

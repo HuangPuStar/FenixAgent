@@ -1,0 +1,16 @@
+.ofv-host {
+  flex-direction: column-reverse;
+}
+.ofv-root {
+  border: 0;
+}
+.ofv-toolbar {
+  border-bottom: none;
+  border-top: 1px solid var(--ofv-border);
+}
+.ofv-toolbar-search {
+  margin-left: auto;
+}
+.ofv-code-actions {
+  display: none;
+}

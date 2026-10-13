@@ -1,6 +1,8 @@
 import { afterEach, describe, expect, test } from "bun:test";
 import * as Y from "yjs";
 import { createRedisProvider, persistYjsClearedSnapshotWithCas } from "../persist/redis";
+import type { SnapshotPersistConfig } from "../persist/snapshot-config";
+import { createChatDoc } from "../state/factory";
 
 type MessageListener = (channel: Buffer | string, message: Buffer) => void;
 type ErrorListener = () => void;
@@ -222,6 +224,17 @@ const nextMicrotask = async (): Promise<void> => {
 
 const sleep = (ms: number): Promise<void> => new Promise((resolve) => setTimeout(resolve, ms));
 
+/**
+ * 测试用快照参数：默认值与 agent-runtime manifest 的声明默认值同值，按用例覆盖单字段。
+ *
+ * provider 现在要求显式传入这一组参数（F1）：生产值由宿主装配投影、经
+ * `ChatChannelDependencies.snapshotPersist` 装入 DocManager，包内不再保留默认值——
+ * 默认值的唯一真相是 `envDefinitions` 声明。
+ */
+function snapshotConfig(overrides: Partial<SnapshotPersistConfig> = {}): SnapshotPersistConfig {
+  return { intervalMs: 2000, idleMs: 500, ttlSeconds: 604800, ...overrides };
+}
+
 describe("createRedisProvider", () => {
   const docs: Y.Doc[] = [];
 
@@ -234,7 +247,7 @@ describe("createRedisProvider", () => {
     const redis = new RedisDouble();
     const ydoc = new Y.Doc();
     docs.push(ydoc);
-    const provider = createRedisProvider(redis as never, "session:commands", ydoc);
+    const provider = createRedisProvider(redis as never, "session:commands", ydoc, { snapshot: snapshotConfig() });
     await nextMicrotask();
 
     const subscriber = redis.subscribers[0];
@@ -263,7 +276,7 @@ describe("createRedisProvider", () => {
     const redis = new RedisDouble();
     const ydoc = new Y.Doc();
     docs.push(ydoc);
-    const provider = createRedisProvider(redis as never, "session:one", ydoc);
+    const provider = createRedisProvider(redis as never, "session:one", ydoc, { snapshot: snapshotConfig() });
     await nextMicrotask();
 
     const state = ydoc.getMap<string>("state");
@@ -291,8 +304,12 @@ describe("createRedisProvider", () => {
     const firstDoc = new Y.Doc();
     const secondDoc = new Y.Doc();
     docs.push(firstDoc, secondDoc);
-    const firstProvider = createRedisProvider(redis as never, "session:concurrent", firstDoc);
-    const secondProvider = createRedisProvider(redis as never, "session:concurrent", secondDoc);
+    const firstProvider = createRedisProvider(redis as never, "session:concurrent", firstDoc, {
+      snapshot: snapshotConfig(),
+    });
+    const secondProvider = createRedisProvider(redis as never, "session:concurrent", secondDoc, {
+      snapshot: snapshotConfig(),
+    });
     await nextMicrotask();
 
     redis.conflictNextExecs = 1;
@@ -308,7 +325,9 @@ describe("createRedisProvider", () => {
 
     const restored = new Y.Doc();
     docs.push(restored);
-    const restoredProvider = createRedisProvider(redis as never, "session:concurrent", restored);
+    const restoredProvider = createRedisProvider(redis as never, "session:concurrent", restored, {
+      snapshot: snapshotConfig(),
+    });
     await nextMicrotask();
 
     expect(restored.getMap("state").toJSON()).toEqual({ fromFirst: "one", fromSecond: "two" });
@@ -327,7 +346,7 @@ describe("createRedisProvider", () => {
     const redis = new RedisDouble(Buffer.from(legacySnapshot));
     const ydoc = new Y.Doc();
     docs.push(ydoc);
-    const provider = createRedisProvider(redis as never, "session:legacy", ydoc);
+    const provider = createRedisProvider(redis as never, "session:legacy", ydoc, { snapshot: snapshotConfig() });
     await nextMicrotask();
 
     expect(ydoc.getMap("state").toJSON()).toEqual({ legacy: "restored" });
@@ -342,7 +361,7 @@ describe("createRedisProvider", () => {
     const ydoc = new Y.Doc();
     const source = new Y.Doc();
     docs.push(ydoc);
-    const provider = createRedisProvider(redis as never, "session:remote", ydoc);
+    const provider = createRedisProvider(redis as never, "session:remote", ydoc, { snapshot: snapshotConfig() });
     await nextMicrotask();
 
     source.getMap("state").set("remote", "applied");
@@ -363,8 +382,12 @@ describe("createRedisProvider", () => {
     const secondDoc = new Y.Doc();
     const source = new Y.Doc();
     docs.push(firstDoc, secondDoc);
-    const firstProvider = createRedisProvider(redis as never, "session:first", firstDoc);
-    const secondProvider = createRedisProvider(redis as never, "session:second", secondDoc);
+    const firstProvider = createRedisProvider(redis as never, "session:first", firstDoc, {
+      snapshot: snapshotConfig(),
+    });
+    const secondProvider = createRedisProvider(redis as never, "session:second", secondDoc, {
+      snapshot: snapshotConfig(),
+    });
     await nextMicrotask();
 
     source.getMap("state").set("remote", "first-only");
@@ -391,7 +414,9 @@ describe("createRedisProvider", () => {
     const remoteSource = new Y.Doc();
     const snapshotSource = new Y.Doc();
     docs.push(ydoc);
-    const provider = createRedisProvider(redis as never, "session:initial-order", ydoc);
+    const provider = createRedisProvider(redis as never, "session:initial-order", ydoc, {
+      snapshot: snapshotConfig(),
+    });
 
     redis.emitMessage("yjs:channel:session:initial-order", Buffer.from(Y.encodeStateAsUpdate(remoteSource)));
     expect(redis.getBufferCalls).toBe(0);
@@ -423,7 +448,9 @@ describe("createRedisProvider", () => {
     const ydoc = new Y.Doc();
     const source = new Y.Doc();
     docs.push(ydoc);
-    const provider = createRedisProvider(redis as never, "session:subscribe-handoff", ydoc);
+    const provider = createRedisProvider(redis as never, "session:subscribe-handoff", ydoc, {
+      snapshot: snapshotConfig(),
+    });
 
     source.getMap("state").set("remote", "received-before-ready");
     redis.emitMessage("yjs:channel:session:subscribe-handoff", Buffer.from(Y.encodeStateAsUpdate(source)));
@@ -443,7 +470,9 @@ describe("createRedisProvider", () => {
     const ydoc = new Y.Doc();
     const snapshotSource = new Y.Doc();
     docs.push(ydoc);
-    const provider = createRedisProvider(redis as never, "session:pending-local", ydoc);
+    const provider = createRedisProvider(redis as never, "session:pending-local", ydoc, {
+      snapshot: snapshotConfig(),
+    });
     await nextMicrotask();
 
     const state = ydoc.getMap<string>("state");
@@ -475,7 +504,9 @@ describe("createRedisProvider", () => {
     const redis = new RedisDouble();
     const ydoc = new Y.Doc();
     docs.push(ydoc);
-    const provider = createRedisProvider(redis as never, "session:subscriber-error", ydoc);
+    const provider = createRedisProvider(redis as never, "session:subscriber-error", ydoc, {
+      snapshot: snapshotConfig(),
+    });
     const subscriber = redis.subscribers[0];
 
     expect(() => subscriber?.emitError()).not.toThrow();
@@ -494,7 +525,9 @@ describe("createRedisProvider", () => {
     const redis = new RedisDouble(null, undefined, () => subscriber);
     const ydoc = new Y.Doc();
     docs.push(ydoc);
-    const provider = createRedisProvider(redis as never, "session:subscribe-throw", ydoc);
+    const provider = createRedisProvider(redis as never, "session:subscribe-throw", ydoc, {
+      snapshot: snapshotConfig(),
+    });
     await nextMicrotask();
 
     expect(subscriber.disconnected).toBe(true);
@@ -514,7 +547,9 @@ describe("createRedisProvider", () => {
     const redis = new RedisDouble(null, undefined, () => new SubscriberDouble(() => subscribe.promise));
     const ydoc = new Y.Doc();
     docs.push(ydoc);
-    const provider = createRedisProvider(redis as never, "session:pending-destroy", ydoc);
+    const provider = createRedisProvider(redis as never, "session:pending-destroy", ydoc, {
+      snapshot: snapshotConfig(),
+    });
     const subscriber = redis.subscribers[0];
 
     await expect(
@@ -535,7 +570,9 @@ describe("createRedisProvider", () => {
     const loadFailureRedis = new RedisDouble(null, () => Promise.reject(new Error("load failed")));
     const loadFailureDoc = new Y.Doc();
     docs.push(loadFailureDoc);
-    const loadFailureProvider = createRedisProvider(loadFailureRedis as never, "session:load-failure", loadFailureDoc);
+    const loadFailureProvider = createRedisProvider(loadFailureRedis as never, "session:load-failure", loadFailureDoc, {
+      snapshot: snapshotConfig(),
+    });
     await nextMicrotask();
 
     loadFailureDoc.getMap("state").set("afterLoadFailure", true);
@@ -554,6 +591,7 @@ describe("createRedisProvider", () => {
       subscribeFailureRedis as never,
       "session:subscribe-failure",
       subscribeFailureDoc,
+      { snapshot: snapshotConfig() },
     );
     await nextMicrotask();
 
@@ -609,11 +647,13 @@ describe("createRedisProvider", () => {
           meta.set("loading", null);
         });
       },
+      604800,
     );
 
     expect(persisted).toBe(true);
     expect(redis.sets).toHaveLength(1);
-    expect(redis.sets[0]?.ttlSeconds).toBeGreaterThan(0); // SP-C1：快照写入附带 TTL
+    // SP-C1：快照写入附带调用方给出的 TTL（F1 起不再有包内默认值）。
+    expect(redis.sets[0]?.ttlSeconds).toBe(604800);
     Y.applyUpdate(restored, redis.sets[0]?.value ?? Buffer.alloc(0));
     expect(restored.getArray("messages").toArray()).toEqual([]);
     expect(restored.getArray("structuredMessages").toArray()).toEqual([]);
@@ -630,7 +670,7 @@ describe("createRedisProvider", () => {
     const ydoc = new Y.Doc();
     const source = new Y.Doc();
     docs.push(ydoc);
-    const provider = createRedisProvider(redis as never, "session:destroyed", ydoc);
+    const provider = createRedisProvider(redis as never, "session:destroyed", ydoc, { snapshot: snapshotConfig() });
     await nextMicrotask();
 
     ydoc.getMap("state").set("value", "pending");
@@ -663,8 +703,7 @@ describe("createRedisProvider", () => {
     const ydoc = new Y.Doc();
     docs.push(ydoc);
     const provider = createRedisProvider(redis as never, "session:throttle", ydoc, {
-      snapshotIntervalMs: 5000,
-      snapshotIdleMs: 60,
+      snapshot: snapshotConfig({ intervalMs: 5000, idleMs: 60 }),
     });
     await nextMicrotask();
 
@@ -697,8 +736,7 @@ describe("createRedisProvider", () => {
     const ydoc = new Y.Doc();
     docs.push(ydoc);
     const provider = createRedisProvider(redis as never, "session:interval-rate", ydoc, {
-      snapshotIntervalMs: 120,
-      snapshotIdleMs: 60000,
+      snapshot: snapshotConfig({ intervalMs: 120, idleMs: 60000 }),
     });
     await nextMicrotask();
 
@@ -736,8 +774,7 @@ describe("createRedisProvider", () => {
     const ydoc = new Y.Doc();
     docs.push(ydoc);
     const provider = createRedisProvider(redis as never, "session:destroy-flush", ydoc, {
-      snapshotIntervalMs: 60000,
-      snapshotIdleMs: 60000,
+      snapshot: snapshotConfig({ intervalMs: 60000, idleMs: 60000 }),
     });
     await nextMicrotask();
 
@@ -758,7 +795,7 @@ describe("createRedisProvider", () => {
     const redis = new RedisDouble();
     const ydoc = new Y.Doc();
     docs.push(ydoc);
-    const provider = createRedisProvider(redis as never, "session:self-loop", ydoc);
+    const provider = createRedisProvider(redis as never, "session:self-loop", ydoc, { snapshot: snapshotConfig() });
     await nextMicrotask();
 
     let updateCount = 0;
@@ -814,9 +851,10 @@ describe("createRedisProvider", () => {
     const firstDoc = new Y.Doc();
     const secondDoc = new Y.Doc();
     docs.push(firstDoc, secondDoc);
-    const first = createRedisProvider(redis as never, "session:fanout", firstDoc);
+    const first = createRedisProvider(redis as never, "session:fanout", firstDoc, { snapshot: snapshotConfig() });
     const secondPublisherId = new Uint8Array(16).fill(0xab);
     const second = createRedisProvider(redis as never, "session:fanout", secondDoc, {
+      snapshot: snapshotConfig(),
       publisherId: secondPublisherId,
     });
     await nextMicrotask();
@@ -839,7 +877,7 @@ describe("createRedisProvider", () => {
     const ydoc = new Y.Doc();
     docs.push(ydoc);
     const provider = createRedisProvider(redis as never, "session:ttl-config", ydoc, {
-      snapshotTtlSeconds: 3600,
+      snapshot: snapshotConfig({ ttlSeconds: 3600 }),
     });
     await nextMicrotask();
 
@@ -852,23 +890,6 @@ describe("createRedisProvider", () => {
     await provider.destroy();
   });
 
-  // SP-C1：未显式配置时使用默认 TTL（7 天 = 604800 秒）。
-  test("uses the default seven-day snapshot TTL when not configured", async () => {
-    const redis = new RedisDouble();
-    const ydoc = new Y.Doc();
-    docs.push(ydoc);
-    const provider = createRedisProvider(redis as never, "session:ttl-default", ydoc);
-    await nextMicrotask();
-
-    ydoc.getMap("state").set("value", "persisted");
-    await nextMicrotask();
-
-    expect(redis.sets).toHaveLength(1);
-    expect(redis.sets[0]?.ttlSeconds).toBe(604800);
-
-    await provider.destroy();
-  });
-
   // SP-0：CAS 打点仅含尺寸/耗时/标识，不包含会话内容。
   test("reports snapshot CAS metrics without leaking content", async () => {
     const redis = new RedisDouble();
@@ -876,6 +897,7 @@ describe("createRedisProvider", () => {
     docs.push(ydoc);
     const lines: string[] = [];
     const provider = createRedisProvider(redis as never, "session:metrics", ydoc, {
+      snapshot: snapshotConfig(),
       log: (line) => lines.push(line),
     });
     await nextMicrotask();
@@ -895,4 +917,13 @@ describe("createRedisProvider", () => {
       expect(line).not.toContain("metrics-secret-content");
     }
   });
+});
+
+// F1：包内不再保留快照参数的第二份默认值——Redis 模式下拿不到装配注入的参数时必须立即失败，
+// 而不是静默用代码里的默认值（默认值真相只在 agent-runtime manifest 的 `envDefinitions` 声明，
+// 断言见 apps/server/src/__tests__/assembly-env.test.ts）。
+test("rejects Redis-mode docs when snapshot parameters are not injected", () => {
+  const redis = new RedisDouble();
+
+  expect(() => createChatDoc("rcs_missing_snapshot_config", redis as never)).toThrow("快照参数未注入");
 });

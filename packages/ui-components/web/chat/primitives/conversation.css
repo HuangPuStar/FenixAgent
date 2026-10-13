@@ -1,0 +1,7 @@
+.chat-conversation-scroll-button {
+  background-color: color-mix(in srgb, var(--color-white) 96%, transparent);
+  padding-left: calc(var(--spacing) * 2.75);
+  padding-right: calc(var(--spacing) * 2.75);
+  box-shadow: 0 6px 18px rgb(30 50 80 / 12%);
+  backdrop-filter: blur(calc(var(--spacing) * 2.5));
+}

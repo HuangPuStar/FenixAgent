@@ -1,25 +1,19 @@
 <script setup>
-import { nextTick, watch } from "vue";
+import { nextTick } from "vue";
 import { useData } from "vitepress";
 // biome-ignore lint/correctness/noUnusedImports: used in template as <DefaultTheme.Layout>
 import DefaultTheme from "vitepress/theme";
 import { createMermaidRenderer } from "vitepress-mermaid-renderer";
 
 // biome-ignore lint/correctness/useHookAtTopLevel: VitePress useData, not React
-const { frontmatter, isDark } = useData();
+const { frontmatter } = useData();
 const _isHome = frontmatter.value.layout === "page" && frontmatter.value.home !== false;
 
-// 初始化 Mermaid 渲染器，响应暗色/亮色主题切换
-const initMermaid = () => {
-  createMermaidRenderer({
-    theme: isDark.value ? "dark" : "default",
-  });
-};
-nextTick(() => initMermaid());
-watch(
-  () => isDark.value,
-  () => initMermaid(),
-);
+// 初始化 Mermaid 渲染器。全站强制亮色（config.ts 的 appearance: false 让 isDark 恒为 false），
+// 因此主题固定为 Mermaid 的 "default"，这里既不再读 isDark，也不再监听它变化。
+nextTick(() => {
+  createMermaidRenderer({ theme: "default" });
+});
 </script>
 
 <template>

@@ -1,0 +1,12 @@
+.table-header tr {
+  border-bottom-style: var(--tw-border-style, solid);
+  border-bottom-width: 1px;
+}
+.table-body tr:last-child {
+  border-style: var(--tw-border-style, solid);
+  border-width: 0;
+}
+.table-footer > tr:last-child {
+  border-bottom-style: var(--tw-border-style, solid);
+  border-bottom-width: 0;
+}

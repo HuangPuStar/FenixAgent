@@ -1,0 +1,15 @@
+.chat-status-panel-card {
+  box-shadow: 0 12px 34px rgb(30 64 120 / 8%);
+}
+
+.chat-status-rows {
+  max-height: min(16rem, 35vh);
+}
+
+.chat-status-row {
+  grid-template-columns: 18px minmax(0, 1fr) auto;
+}
+
+.chat-status-collapse-toggle > svg {
+  width: calc(var(--spacing) * 3.75);
+}

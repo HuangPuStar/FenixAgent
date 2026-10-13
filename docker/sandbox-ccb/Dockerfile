@@ -32,8 +32,13 @@ COPY --from=acp-runtime-build /tmp/acp-runtime/dist/bin.js /usr/local/bin/acp-ru
 # 安装 Claude Code (CCB)
 RUN npm install -g claude-code-best@2.8.1
 
-# 安装 CCB Hindsight 记忆插件
-RUN ccb plugin marketplace add vectorize-io/hindsight && ccb plugin install hindsight-memory
+# 安装 CCB Hindsight 记忆插件（KonghaYao/hindsight-plugin：纯 JSON 清单 + `npx @peri-code/hindsight` CLI）
+# 插件内容由远端仓库默认分支决定，Docker 层缓存看不见它：命令串不变就直接复用旧层，
+# 于是「重建镜像以拿到新插件」会静默装回旧版本。CACHE_BUST 由工作流按每次构建注入。
+ARG CACHE_BUST=unset
+RUN echo "hindsight plugin refresh: ${CACHE_BUST}" \
+    && ccb plugin marketplace add KonghaYao/hindsight-plugin \
+    && ccb plugin install hindsight-memory
 
 RUN mkdir -p /app/workspaces
 VOLUME ["/app/workspaces"]
@@ -41,7 +46,5 @@ VOLUME ["/app/workspaces"]
 RUN alias claude='ccb'
 
 ENV AGENT_TYPE=ccb
-# IS_PERI=1 时额外生成 .peri/settings.json（Peri 客户端模式），默认 0
-ENV IS_PERI=0
 # acp-runtime 启动 CCB agent 并注册到 RCS
 CMD ["bun", "/usr/local/bin/acp-runtime.js", "ccb", "--acp"]

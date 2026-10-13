@@ -2,17 +2,20 @@
 // Redis 快照持久化 provider 与 Pub/Sub 增量分发（chat:{id} / session:{id} 共用）。
 //
 // 丢失语义（SP-A1）：快照持久化是 trailing 节流的尽力而为写入——距上次成功 CAS
-// ≥ RCS_YJS_SNAPSHOT_INTERVAL_MS（默认 2s）或静默期（RCS_YJS_SNAPSHOT_IDLE_MS，
+// ≥ 节流窗口（`RCS_YJS_SNAPSHOT_INTERVAL_MS`，默认 2s）或静默期（`RCS_YJS_SNAPSHOT_IDLE_MS`，
 // 默认 500ms 无新 update）才执行一次全量 CAS 合并；destroy()（closeChat/closeSession
 // 的统一收口）强制 flush 未落盘快照。节流窗口内进程崩溃会丢失窗口内更新，但快照本就
 // 不是权威——权威是 Agent 侧 ACP session 历史，可经 load_session 回放重建（见
 // docs/design/2026-08-04-yjs-chat-streaming-prd.md「兼容与演进」）。Pub/Sub 增量路径
 // 不节流，实时性不受影响。
+//
+// 三个参数经 `options.snapshot` 注入（宿主模块配置的投影），包内不读 `process.env`、不留默认值：
+// 真相只在 agent-runtime manifest 的 `envDefinitions`（见 `./snapshot-config.ts`）。
 
 import type { Cluster, Redis } from "ioredis";
 import * as Y from "yjs";
 import { mergeYjsSnapshotWithCas, type RedisSnapshotConnection } from "./snapshot-cas";
-import { defaultSnapshotMetricsLog, getSnapshotEnvConfig, reportSnapshotCasMetric } from "./snapshot-config";
+import { defaultSnapshotMetricsLog, reportSnapshotCasMetric, type SnapshotPersistConfig } from "./snapshot-config";
 import { framePublishUpdate, isSamePublisherId, PUBLISHER_ID, parseFramedPublish } from "./snapshot-framing";
 
 export type { RedisSnapshotConnection, RedisSnapshotTransaction } from "./snapshot-cas";
@@ -53,16 +56,15 @@ export async function publishActiveGeneration(
   return Number(result) === 1;
 }
 
-/** createRedisProvider 的可选配置（宿主 DI / 测试注入通道）。 */
+/** createRedisProvider 的配置（宿主装配注入 + 测试注入通道）。 */
 export interface RedisProviderOptions {
   /** 投影世代；提供时快照 key 与 Pub/Sub channel 均隔离，旧 provider 无法污染新投影。 */
   generation?: string;
-  /** trailing 节流窗口：距上次成功 CAS 的最小间隔（毫秒） */
-  snapshotIntervalMs?: number;
-  /** 静默期：持续无新 update 该时长后提前 flush（毫秒） */
-  snapshotIdleMs?: number;
-  /** 快照滑动 TTL（秒），每次成功 CAS 续期 */
-  snapshotTtlSeconds?: number;
+  /**
+   * 快照节流 / TTL 参数，必填。包内不提供默认值：默认值真相只属于 agent-runtime 的
+   * `envDefinitions` 声明，这里再写一份会让「部署配置与代码默认值不一致」静默生效。
+   */
+  snapshot: SnapshotPersistConfig;
   /**
    * 发布者标识（16 字节）。生产留空使用模块级进程 UUID（同进程消息自环过滤，
    * 一个进程内同一 channel 只有一个 provider）；仅供测试在单进程内模拟双进程
@@ -77,20 +79,19 @@ export function createRedisProvider(
   redis: Redis | Cluster,
   docName: string,
   ydoc: Y.Doc,
-  options?: RedisProviderOptions,
+  options: RedisProviderOptions,
 ): { destroy(): Promise<void> } {
-  const envConfig = getSnapshotEnvConfig();
-  const snapshotIntervalMs = options?.snapshotIntervalMs ?? envConfig.intervalMs;
-  const snapshotIdleMs = options?.snapshotIdleMs ?? envConfig.idleMs;
-  const snapshotTtlSeconds = options?.snapshotTtlSeconds ?? envConfig.ttlSeconds;
-  const metricsLog = options?.log ?? defaultSnapshotMetricsLog;
+  const snapshotIntervalMs = options.snapshot.intervalMs;
+  const snapshotIdleMs = options.snapshot.idleMs;
+  const snapshotTtlSeconds = options.snapshot.ttlSeconds;
+  const metricsLog = options.log ?? defaultSnapshotMetricsLog;
 
-  const persistenceName = options?.generation ? `${docName}:${options.generation}` : docName;
+  const persistenceName = options.generation ? `${docName}:${options.generation}` : docName;
   const redisKey = `${REDIS_KEY_PREFIX}${persistenceName}`;
   const channel = `${REDIS_CHANNEL_PREFIX}${persistenceName}`;
   const rcsSessionId = docName.slice(docName.indexOf(":") + 1);
   const activeGenerationKey = `${ACTIVE_GENERATION_PREFIX}${rcsSessionId}`;
-  const generation = options?.generation;
+  const generation = options.generation;
 
   // ioredis Cluster supports pub/sub at runtime but TypeScript types differ;
   // cast to Redis for method access (same pattern as KeyvRedis in cache.ts).
@@ -98,7 +99,7 @@ export function createRedisProvider(
 
   const remoteUpdateOrigin = Symbol("redis-provider-remote-update");
   // 生产使用模块级进程 UUID（同进程自环过滤）；测试可注入不同值模拟双进程互发。
-  const publisherId = options?.publisherId ?? PUBLISHER_ID;
+  const publisherId = options.publisherId ?? PUBLISHER_ID;
   const pendingLocalUpdates: Uint8Array[] = [];
   let readyForLocalUpdates = false;
   let localSnapshotPending = false;

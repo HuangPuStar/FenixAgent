@@ -1,0 +1,507 @@
+import { cn } from "@fenix/ui-components/lib/cn";
+import { Badge } from "@fenix/ui-components/ui/badge";
+import { Button } from "@fenix/ui-components/ui/button";
+import { Input } from "@fenix/ui-components/ui/input";
+import { InputGroup, InputGroupButton, InputGroupInput } from "@fenix/ui-components/ui/input-group";
+import { Switch } from "@fenix/ui-components/ui/switch";
+import { Textarea } from "@fenix/ui-components/ui/textarea";
+import { NS } from "@fenix/web-runtime/i18n/namespace";
+import { Check, ChevronLeft, ChevronRight, Cpu, Minus, Plus, Search } from "lucide-react";
+import {
+  type ButtonHTMLAttributes,
+  type InputHTMLAttributes,
+  type ReactNode,
+  type TextareaHTMLAttributes,
+  useState,
+} from "react";
+import { useTranslation } from "react-i18next";
+import { SECTION_INTRO } from "./agent-editor-classes";
+import "./agent-editor-controls.css";
+import {
+  BUTTON,
+  GROUP_FILTER_NARROW,
+  INPUT,
+  LIBRARY_PICKER_NARROW,
+  MODEL_OPTIONS,
+  NODE_LIST,
+  OPTION_CHECK,
+  OPTION_CHECK_SELECTED,
+  OPTION_COPY,
+  OPTION_COPY_HINT_UNAVAILABLE,
+  OPTION_ICON,
+  OPTION_ROW,
+  OPTION_ROW_SELECTED,
+  OPTION_ROW_SELECTED_DISABLED,
+  OPTION_ROW_UNAVAILABLE,
+  PAGINATION,
+  PAGINATION_BUTTON,
+  PAGINATION_COUNT,
+  PAGINATION_GROUP,
+  PICKER_INPUT,
+  SINGLE_PICKER_CURRENT,
+  SINGLE_PICKER_CURRENT_UNAVAILABLE,
+  SINGLE_PICKER_TOOLBAR,
+  STEPPER,
+  TEXTAREA,
+  TOGGLE_COPY,
+  TOGGLE_ICON,
+  TOGGLE_ROW,
+} from "./agent-editor-form-classes";
+import {
+  GROUP_FILTER,
+  GROUP_FILTER_BUTTON,
+  GROUP_FILTER_BUTTON_ACTIVE,
+  GROUP_FILTER_LABEL,
+  LIBRARY_PICKER,
+  LIBRARY_PICKER_FLAT,
+  LIBRARY_PICKER_RESULTS,
+  PAGINATION_IN_RESULTS,
+} from "./agent-editor-library-classes";
+import { type AgentEditorOption, filterAgentEditorOptions, paginateAgentEditorOptions } from "./agent-editor-model";
+
+/**
+ * 分区说明块：眉标 10px/750/等宽 + 标题 18px（`md`–`2xl` 压 16px）+ 说明 12px（`md`–`lg` 收窄到 52ch）。
+ * 字号与上边距 2026-09-28 从 `agent-editor-controls.css` 撤回（刻度类挂在下文三个子元素上，
+ * `text-16` 是本仓「只给字号」的 16px 档，与设计值一致）；字重 / 字距 / 行高 / 配色与 `52ch` 覆盖仍在表中。
+ */
+const INTRO = `${SECTION_INTRO} agent-editor-section__intro`;
+/** 模型列表（`agent-model-options`）的校验态：focus ring 之外再描一圈红（源为 `[aria-invalid="true"]` 规则）。 */
+const MODEL_OPTIONS_INVALID =
+  "aria-invalid:rounded-lg aria-invalid:outline-2 aria-invalid:outline-offset-3 " +
+  "aria-invalid:outline-[color-mix(in_srgb,var(--color-destructive,#dc2626)_45%,transparent)]";
+
+export function Intro({ eyebrow, title, description }: { eyebrow: string; title: string; description: string }) {
+  return (
+    <header className={INTRO} data-slot="editor-section-intro">
+      <span className="text-3xs font-mono tracking-widest text-blue-500" data-slot="editor-section-intro-eyebrow">
+        {eyebrow}
+      </span>
+      <h3
+        className="mt-1.5 text-lg leading-tight tracking-tight text-slate-800 md:max-2xl:text-16"
+        data-slot="editor-section-intro-title"
+      >
+        {title}
+      </h3>
+      <p
+        className="mt-2 max-w-147.5 text-xs leading-relaxed text-slate-500 md:max-2xl:mt-1.5"
+        data-slot="editor-section-intro-copy"
+      >
+        {description}
+      </p>
+    </header>
+  );
+}
+
+/* `EditorField` / `Field` 别名已删除：字段包装统一由 `@fenix/ui-components/config/LabeledField` 承担
+ * （identity / mcp / model-management 三个包早已迁移到它）。原实现的字段名刻度、hint 位置与
+ * 「`<label>` 包裹复合控件」三点都与库内不同：迁移同时把提示移出可访问名，并让含按钮的行走显式关联。 */
+
+/**
+ * 输入 / 文本域 / 按钮三个封装只承担「把本面板的类串常量交给基础组件」这一件事：
+ * 元素本体是 `@fenix/ui-components/ui/*` 的原语，`INPUT` / `TEXTAREA` / `BUTTON` 经 `className`
+ * 透传（`cn` 里 tailwind-merge 消解同族冲突，后传者胜），伴随 CSS 的钩子类（`agent-editor-field-*`、
+ * `agent-editor-button`）因此仍在元素上，面板原有外观与层叠关系不变。
+ */
+export function EditorInput(props: InputHTMLAttributes<HTMLInputElement>) {
+  return <Input {...props} className={cn(INPUT, props.className)} />;
+}
+
+export function EditorTextarea(props: TextareaHTMLAttributes<HTMLTextAreaElement>) {
+  return <Textarea {...props} className={cn(TEXTAREA, props.className)} />;
+}
+
+export function EditorButton(props: ButtonHTMLAttributes<HTMLButtonElement>) {
+  // `variant="outline"` 是本面板描边按钮的语义锚点；底色/描边/尺寸仍由 `BUTTON` 类串决定。
+  return <Button {...props} variant="outline" className={cn(BUTTON, props.className)} />;
+}
+
+export function EditorStepperField({
+  value,
+  onChange,
+  min,
+  max,
+  disabled,
+  decreaseLabel,
+  increaseLabel,
+}: {
+  value: number;
+  onChange: (value: number) => void;
+  min: number;
+  max: number;
+  disabled: boolean;
+  decreaseLabel: string;
+  increaseLabel: string;
+}) {
+  const update = (next: number) => onChange(Math.min(max, Math.max(min, next)));
+  // 外壳、两侧按钮与中间数值框都由 `ui/input-group` 提供：加减按钮的 `disabled` 边界、`aria-label`、
+  // 数字框的 `min/max/value/onChange` 语义与原来逐条一致，只有外观改由库内决定。
+  return (
+    <InputGroup className={STEPPER}>
+      <InputGroupButton
+        size="icon-sm"
+        onClick={() => update(value - 1)}
+        disabled={disabled || value <= min}
+        aria-label={decreaseLabel}
+      >
+        <Minus />
+      </InputGroupButton>
+      <InputGroupInput
+        className="text-center"
+        type="number"
+        min={min}
+        max={max}
+        value={value}
+        disabled={disabled}
+        onChange={(event) => update(event.currentTarget.valueAsNumber || min)}
+      />
+      <InputGroupButton
+        size="icon-sm"
+        onClick={() => update(value + 1)}
+        disabled={disabled || value >= max}
+        aria-label={increaseLabel}
+      >
+        <Plus />
+      </InputGroupButton>
+    </InputGroup>
+  );
+}
+
+export function Toggle({
+  checked,
+  onChange,
+  icon,
+  title,
+  description,
+  badge,
+  disabled,
+}: {
+  checked: boolean;
+  onChange: (value: boolean) => void;
+  icon: ReactNode;
+  title: string;
+  description: string;
+  badge?: string;
+  disabled: boolean;
+}) {
+  // 开关本体换成 `ui/switch`（Radix），整行可点的语义改由 `<label>` 承接：
+  // label 隐式关联它唯一的可标记后代（Switch 渲染为 `button[role=switch][aria-checked]`），
+  // 点行任意位置由浏览器转发给控件，读屏也仍能念出「标题 + 说明」这一整行的名字。
+  // 原来的行级 `data-state="on"` 因此不复存在，选中态的行底色/描边改由伴随 CSS 用 `:has()` 表达。
+  return (
+    <label className={TOGGLE_ROW}>
+      <span className={TOGGLE_ICON}>{icon}</span>
+      <span className={TOGGLE_COPY}>
+        <strong className="flex items-center gap-1.75 text-xs text-slate-700">
+          {title}
+          {badge && <Badge variant="secondary">{badge}</Badge>}
+        </strong>
+        <small className="text-3xs leading-normal text-gray-400">{description}</small>
+      </span>
+      <Switch checked={checked} onCheckedChange={onChange} disabled={disabled} />
+    </label>
+  );
+}
+
+/**
+ * 资源列表分页条 —— **刻意不进库**（不进 `packages/ui-components`）。
+ *
+ * 库内 `ui/pagination` 的契约与本处不等价，四项都是硬差异（逐条核对过该组件的实现）：
+ *   - 页码语义：库内是 1-based（`getPageNumbers()` 返回 1 … totalPages，改 pageSize 时 `onPageChange(1)`），
+ *     本处是 0-based（`page` / `onPageChange(safePage ± 1)`）；
+ *   - 形态：库内恒渲染「总数 + pageSize 下拉 + 页码按钮组（含省略号分页）」，本处是「区间计数 + 上一页 /
+ *     页码 / 下一页」——页码组与 pageSize 选择器在这里都不是想要的交互；
+ *   - 文案：库内要求调用方传 `t`，默认命名空间前缀是 `runs`（`runs.pagination_total` 等），而本包是
+ *     `AGENTS` 命名空间，借 `runs.*` 的键只会退化成裸 key；
+ *   - 定位：库内根节点的样式（`flex items-center justify-between gap-4 py-3`）写死且**不接受 `className`**，
+ *     而本处正是靠调用方 `className`（`PAGINATION_IN_RESULTS` / `PAGINATION_EMBEDDED`）把分页条顶到结果区底部。
+ * 结论：替换等于换一套分页交互 + 文案契约，不是组件替换。将来若要收敛，先给 `ui/pagination` 补 0-based
+ * 模式与 `className` 入参，再回来迁。
+ */
+export function EditorPagination({
+  page,
+  pageSize,
+  total,
+  onPageChange,
+  className,
+}: {
+  page: number;
+  pageSize: number;
+  total: number;
+  onPageChange: (value: number) => void;
+  /** 调用点补充分页条样式（如结果区贴底 / 内嵌形态收边距）。 */
+  className?: string;
+}) {
+  const { t } = useTranslation(NS.AGENTS);
+  const pageCount = Math.max(1, Math.ceil(total / pageSize));
+  const safePage = Math.min(Math.max(0, page), pageCount - 1);
+  if (total === 0 || pageCount === 1) return null;
+  return (
+    <footer className={cn(PAGINATION, className)} data-slot="pagination">
+      <span>
+        {safePage * pageSize + 1}–{Math.min((safePage + 1) * pageSize, total)} / {total}
+      </span>
+      <div className={PAGINATION_GROUP}>
+        <button
+          type="button"
+          className={PAGINATION_BUTTON}
+          disabled={safePage === 0}
+          onClick={() => onPageChange(safePage - 1)}
+          aria-label={t("editor.previousPage")}
+        >
+          {/* 11px 原在 `.agent-editor-pagination-button > svg`（第四波随规则删除搬到两个箭头）。 */}
+          <ChevronLeft className="w-2.75" />
+        </button>
+        <strong className={PAGINATION_COUNT}>
+          {safePage + 1} / {pageCount}
+        </strong>
+        <button
+          type="button"
+          className={PAGINATION_BUTTON}
+          disabled={safePage + 1 >= pageCount}
+          onClick={() => onPageChange(safePage + 1)}
+          aria-label={t("editor.nextPage")}
+        >
+          <ChevronRight className="w-2.75" />
+        </button>
+      </div>
+    </footer>
+  );
+}
+
+/**
+ * 资源库左栏的**纵向来源列** —— **刻意不进库**（不进 `packages/ui-components`）。
+ *
+ * 库内最接近的是 `config/ScopeFilterBar`，但它是配置型目录页的「一行内：搜索框 + 横向作用域药丸」骨架，
+ * 与本处形态不同：本处是资源选择器左栏里的纵向来源列（等宽列、`border-r` 右分隔线、`bg-slate-50` 灰底，
+ * 每行「来源名 + 计数徽标」，选中态整行换底），左侧没有搜索框、选项也不横排。两者只共享「一组互斥选项 +
+ * 计数」这一个抽象，把本处换成它等于把左栏重做成横向条带——是布局重设计，不是组件替换。
+ * （本组件在本包内被 `AgentResourcePicker` 与 `SinglePicker` 两处以同一形态复用，暂不需要再抽象。）
+ */
+export function EditorGroupFilter({
+  options,
+  value,
+  onChange,
+  hideAll = false,
+}: {
+  options: AgentEditorOption[];
+  value: string;
+  onChange: (value: string) => void;
+  hideAll?: boolean;
+}) {
+  const { t } = useTranslation(NS.AGENTS);
+  const groups = Array.from(
+    options.reduce((result, option) => {
+      const group =
+        option.group ?? (option.unavailable ? { id: "unavailable", label: t("editor.unavailableBindings") } : null);
+      if (!group) return result;
+      const current = result.get(group.id);
+      result.set(group.id, { ...group, count: (current?.count ?? 0) + 1 });
+      return result;
+    }, new Map<string, { id: string; label: string; scope?: "organization" | "shared"; count: number }>()),
+  ).map(([, group]) => group);
+  if (groups.length === 0) return null;
+  return (
+    <nav
+      className={cn(GROUP_FILTER, GROUP_FILTER_NARROW)}
+      data-slot="group-filter"
+      aria-label={t("editor.resourceSources")}
+    >
+      {!hideAll && (
+        <button
+          type="button"
+          className={cn(GROUP_FILTER_BUTTON, value === "all" && GROUP_FILTER_BUTTON_ACTIVE)}
+          data-active={value === "all" ? "true" : undefined}
+          onClick={() => onChange("all")}
+        >
+          <span className={GROUP_FILTER_LABEL}>{t("editor.allSources")}</span>
+          <Badge variant="secondary">{options.length}</Badge>
+        </button>
+      )}
+      {groups.map((group) => (
+        <button
+          type="button"
+          key={group.id}
+          className={cn(GROUP_FILTER_BUTTON, value === group.id && GROUP_FILTER_BUTTON_ACTIVE)}
+          data-active={value === group.id ? "true" : undefined}
+          onClick={() => onChange(group.id)}
+        >
+          <span className={GROUP_FILTER_LABEL}>{group.label}</span>
+          <Badge variant="secondary">{group.count}</Badge>
+        </button>
+      ))}
+    </nav>
+  );
+}
+
+export function SinglePicker({
+  options,
+  value,
+  onChange,
+  label,
+  icon: Icon,
+  disabled,
+  invalid = false,
+  errorMessage,
+  requireGroup = false,
+  renderIcon,
+}: {
+  options: AgentEditorOption[];
+  value: string;
+  onChange: (value: string) => void;
+  label: string;
+  icon: typeof Cpu;
+  disabled: boolean;
+  invalid?: boolean;
+  errorMessage?: string;
+  requireGroup?: boolean;
+  renderIcon?: (item: AgentEditorOption) => ReactNode;
+}) {
+  const { t } = useTranslation(NS.AGENTS);
+  const [query, setQuery] = useState("");
+  const [group, setGroup] = useState("all");
+  const [page, setPage] = useState(0);
+  const size = 6;
+  const showGroups = options.some((item) => item.group);
+  const selected = options.find((item) => item.id === value);
+  const defaultGroup = selected?.group?.id ?? options.find((item) => item.group)?.group?.id ?? "all";
+  const requestedGroup = requireGroup && group === "all" ? defaultGroup : group;
+  const firstPass = filterAgentEditorOptions(options, query, requestedGroup);
+  const fallbackGroup = requireGroup ? firstPass.matching.find((item) => item.group)?.group?.id : undefined;
+  const filtered =
+    requireGroup && firstPass.activeGroup === "all" && fallbackGroup
+      ? filterAgentEditorOptions(options, query, fallbackGroup)
+      : firstPass;
+  const { matching, visible, activeGroup } = filtered;
+  const paged = paginateAgentEditorOptions(visible, page, size);
+  const listClass = Icon === Cpu ? cn(MODEL_OPTIONS, MODEL_OPTIONS_INVALID) : NODE_LIST;
+  return (
+    <>
+      <div className={SINGLE_PICKER_TOOLBAR}>
+        <label className="flex min-w-0 flex-1 items-center gap-1.75 text-gray-400">
+          <Search className="w-3.25 shrink-0 basis-3.25" />
+          <Input
+            className={PICKER_INPUT}
+            value={query}
+            onChange={(event) => {
+              setQuery(event.target.value);
+              setPage(0);
+            }}
+            placeholder={t("editor.searchPlaceholder", { resource: label })}
+          />
+        </label>
+        <span className="text-3xs whitespace-nowrap text-gray-400">
+          {t("editor.optionCount", { count: visible.length })}
+        </span>
+      </div>
+      {selected && (
+        <div className={cn(SINGLE_PICKER_CURRENT, selected.unavailable && SINGLE_PICKER_CURRENT_UNAVAILABLE)}>
+          <small>{t("editor.currentSelection")}</small>
+          <small>{selected.label}</small>
+          <span
+            className={cn("max-md:col-span-full truncate", selected.unavailable ? "text-yellow-800" : "text-slate-400")}
+          >
+            {selected.description}
+            {selected.unavailable && ` · ${t("editor.unavailable")}`}
+          </span>
+        </div>
+      )}
+      <div
+        className={cn(LIBRARY_PICKER, LIBRARY_PICKER_NARROW, !showGroups && LIBRARY_PICKER_FLAT)}
+        data-slot="library-picker"
+        data-flat={!showGroups ? "true" : undefined}
+      >
+        {showGroups && (
+          <EditorGroupFilter
+            options={matching}
+            value={activeGroup}
+            hideAll={requireGroup}
+            onChange={(next) => {
+              setGroup(next);
+              setPage(0);
+            }}
+          />
+        )}
+        <div className={LIBRARY_PICKER_RESULTS}>
+          <div
+            id={Icon === Cpu ? "agent-editor-model-options" : undefined}
+            className={listClass}
+            role="radiogroup"
+            tabIndex={-1}
+            aria-label={label}
+            aria-invalid={invalid}
+            aria-describedby={invalid && errorMessage ? "agent-editor-model-error" : undefined}
+          >
+            {paged.items.map((item) => (
+              <button
+                className={cn(
+                  OPTION_ROW,
+                  Icon === Cpu ? "agent-editor-option-row--model" : "agent-editor-option-row--node",
+                  item.id === value && OPTION_ROW_SELECTED,
+                  item.unavailable && OPTION_ROW_UNAVAILABLE,
+                  item.id === value && (disabled || item.unavailable) && OPTION_ROW_SELECTED_DISABLED,
+                )}
+                type="button"
+                role="radio"
+                aria-checked={item.id === value}
+                aria-label={
+                  item.unavailable
+                    ? item.id === value
+                      ? t("editor.selectedUnavailableResource", { name: item.label })
+                      : t("editor.unavailableResource", { name: item.label })
+                    : undefined
+                }
+                title={
+                  item.unavailable
+                    ? item.id === value
+                      ? t("editor.selectedUnavailableResource", { name: item.label })
+                      : t("editor.unavailableResource", { name: item.label })
+                    : undefined
+                }
+                disabled={disabled || item.unavailable}
+                key={item.id}
+                onClick={() => {
+                  setGroup(item.group?.id ?? activeGroup);
+                  onChange(item.id);
+                }}
+              >
+                {/* 图标尺寸（18px 方形 + `shrink-0`）原在 `.agent-editor-option-icon > svg`；第四波随该规则
+                    删除，改由本处兜底元素与调用点的 `renderIcon` 元素各自携带（见 AgentEditorSections）。 */}
+                <span className={OPTION_ICON}>
+                  {renderIcon ? renderIcon(item) : <Icon className="size-4.5 shrink-0" />}
+                </span>
+                <span className={OPTION_COPY}>
+                  <strong className="line-clamp-2 text-xs leading-snug text-slate-700 wrap-anywhere">
+                    {item.label}
+                  </strong>
+                  <small
+                    className={cn("truncate text-3xs text-gray-400", item.unavailable && OPTION_COPY_HINT_UNAVAILABLE)}
+                  >
+                    {item.description ?? (item.unavailable ? t("editor.unavailable") : "")}
+                  </small>
+                </span>
+                <i className={cn(OPTION_CHECK, item.id === value && OPTION_CHECK_SELECTED)}>
+                  {item.id === value && <Check className="block size-2.5 shrink-0" />}
+                </i>
+              </button>
+            ))}
+          </div>
+          {invalid && errorMessage && (
+            <p id="agent-editor-model-error" className="mt-2 text-3xs text-destructive" role="alert">
+              {errorMessage}
+            </p>
+          )}
+          <EditorPagination
+            page={page}
+            total={visible.length}
+            pageSize={size}
+            onPageChange={setPage}
+            className={PAGINATION_IN_RESULTS}
+          />
+        </div>
+      </div>
+    </>
+  );
+}
+
+export const ToggleField = Toggle;
+export const JsonField = EditorTextarea;

@@ -25,6 +25,7 @@ import { applyPermissionExpiration, applyPermissionResolution } from "../state/p
 import { expireQuestion, respondQuestion } from "../state/question";
 import type { ProjectionDocs } from "../types";
 import { CommandCoordinator } from "./command-coordinator";
+import { deleteSessionAction, renameSessionAction } from "./session-mutation-action";
 import { type ActionSinks, type Command, CommandExecutionError, type CommandOutcome } from "./types";
 
 /** 取消超时兜底（毫秒）：cancel 后 Agent 未确认（进程挂起/断连）时 turn 收敛为 interrupted */
@@ -60,14 +61,14 @@ export interface SessionConnection {
    * 可选注入，宿主由 gateway 提供。
    */
   registerPendingPrompt?: (rpcId: number | string, turnId: string | undefined) => void;
+  /** 登记会话变更响应；relay 断开或超时时以 false 完成。 */
+  awaitSessionMutation?: (rpcId: number | string) => { completed: Promise<boolean>; cancel: () => void };
 }
 
 export interface SessionChannelDependencies {
   docManager: DocManager;
   /** 新 ACP session 创建前刷新当前实例的 workspace 配置与 Skills。 */
   refreshInstanceEnvironment?: (connection: SessionConnection) => Promise<void>;
-  /** 仅供滚动升级期间兼容旧装配；projection replacement 不再调用。 */
-  prepareClearSessionSnapshot?: (connection: SessionConnection) => Promise<void>;
   /** 新投影交换后重绑 broadcaster 并向同 RCS 会话全部客户端发送 replace frame。 */
   replaceProjection: (projection: ProjectionDocs) => void;
   /** 会话切换后同步 acpSessionId 到同一 instance+user 的所有客户端 */
@@ -108,8 +109,8 @@ export class SessionChannel {
     dependencies.docManager.setPermissionRequestedHandler((rcsSessionId, permission) => {
       this.armPermissionExpiry(rcsSessionId, permission.permissionId, permission.expiresAt);
     });
-    // AskUserQuestion 问题投影成功 → 安排 60s 超时迁移（与权限定时器同模式：
-    // acp-link 侧 60s 自动 resolve 空答案，投影必须同步失效否则前端弹窗悬挂）。
+    // AskUserQuestion 问题投影成功 → 安排 120s 超时迁移（与权限定时器同模式：
+    // acp-link 侧 120s 自动 resolve 空答案，投影必须同步失效否则前端弹窗悬挂）。
     dependencies.docManager.setQuestionRequestedHandler((rcsSessionId, question) => {
       this.armQuestionExpiry(rcsSessionId, question.questionId, question.expiresAt);
     });
@@ -204,6 +205,17 @@ export class SessionChannel {
 
     const { docManager } = this.dependencies;
 
+    if (command.type === "rename_session") {
+      await renameSessionAction(
+        docManager,
+        connection,
+        command.sessionId,
+        command.payload.title,
+        this.dependencies.reportError,
+      );
+      return {};
+    }
+
     if (command.type === "list_sessions") {
       // 守卫：Agent status 到达前不发 list_sessions（ACP 初始化未完成时列表不可信）。
       // 静默跳过而非报错：status 未到是连接建立瞬间的正常竞态，前端无需感知。
@@ -267,6 +279,10 @@ export class SessionChannel {
     // （连续 prompt 时旧 turn 的迟到终态不得终结新 turn）。
     if (command.type === "send_prompt") {
       connection.registerPendingPrompt?.(rpc.id as number | string, turnId);
+    }
+    if (command.type === "delete_session") {
+      await deleteSessionAction(docManager, connection, command.sessionId, rpc, this.dependencies.reportError);
+      return {};
     }
     try {
       await connection.sendToRelay(rpc);
@@ -470,7 +486,7 @@ export class SessionChannel {
     return migrated;
   }
 
-  // ── AskUserQuestion 超时（60s，与 acp-link 自动空答案对齐）──
+  // ── AskUserQuestion 超时（120s，与 acp-link 自动空答案对齐）──
 
   /**
    * 为问题请求安排过期定时器（幂等：同 questionId 已有定时器则跳过，
@@ -486,7 +502,7 @@ export class SessionChannel {
     if (timers.has(questionId)) return;
 
     const parsed = new Date(expiresAt).getTime();
-    // 超时固定与 acp-link 60s 自动空答案对齐（DEFAULT_QUESTION_TIMEOUT_MS），
+    // 超时固定与 acp-link 120s 自动空答案对齐（DEFAULT_QUESTION_TIMEOUT_MS），
     // 不提供配置覆盖：acp-link 侧无对应配置项，可配会破坏两侧失效时刻一致
     const timeoutMs = Number.isFinite(parsed) ? Math.max(0, parsed - Date.now()) : DEFAULT_QUESTION_TIMEOUT_MS;
     const timer = setTimeout(() => {

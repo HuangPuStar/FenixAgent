@@ -1,0 +1,115 @@
+.auth-light-brand-panel {
+  flex: 1.15;
+  background: linear-gradient(135deg, #122e8d, #1a4aad);
+}
+.auth-light-brand-panel::before {
+  content: "";
+  background: radial-gradient(800px circle at 30% 40%, rgba(255, 255, 255, 0.08), transparent 60%);
+}
+.auth-light-brand-panel::after {
+  content: "";
+  top: 8%;
+  height: 84%;
+  background: linear-gradient(
+    to bottom,
+    transparent,
+    rgba(255, 255, 255, 0.12),
+    rgba(255, 255, 255, 0.2),
+    rgba(255, 255, 255, 0.12),
+    transparent
+  );
+  animation: authDividerPulse 4s ease-in-out infinite;
+}
+.auth-light-logo-glow {
+  border-radius: 50%;
+  transform: translate(-50%, -50%);
+  background: radial-gradient(circle, rgba(255, 215, 0, 0.08), transparent 70%);
+  animation: authRingExpand 4s ease-in-out infinite;
+}
+.auth-light-brand-title {
+  animation: authTitleFade 0.8s ease-out both;
+}
+.auth-light-brand-sub {
+  animation: authTitleFade 0.8s 0.15s ease-out both;
+}
+.auth-light-features {
+  grid-template-columns: 1fr 1fr;
+  animation: authTitleFade 0.8s 0.3s ease-out both;
+}
+.auth-light-feature {
+  transition: all 0.3s;
+}
+.auth-light-tags {
+  animation: authTitleFade 0.8s 0.45s ease-out both;
+}
+.auth-light-tags span {
+  transition: all 0.3s;
+}
+
+@keyframes authDividerPulse {
+  0%,
+  100% {
+    opacity: 0.6;
+  }
+  50% {
+    opacity: 1;
+  }
+}
+
+@keyframes authRingExpand {
+  0%,
+  100% {
+    opacity: 0.6;
+    transform: translate(-50%, -50%) scale(1);
+  }
+  50% {
+    opacity: 1;
+    transform: translate(-50%, -50%) scale(1.25);
+  }
+}
+@keyframes authTitleFade {
+  0% {
+    opacity: 0;
+    transform: translateY(calc(var(--spacing) * 3));
+  }
+  100% {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .auth-light-logo img,
+  .auth-light-logo-glow,
+  .auth-light-brand-title,
+  .auth-light-brand-sub,
+  .auth-light-features,
+  .auth-light-tags {
+    animation: none;
+  }
+}
+@media (max-width: 1024px) {
+  .auth-light-features {
+    grid-template-columns: 1fr;
+  }
+}
+@media (max-width: 820px) {
+  .auth-light-brand-panel {
+    display: none;
+  }
+}
+.auth-light-input {
+  transition: all 0.25s;
+}
+.auth-light-input:focus {
+  border-color: #1355d8;
+  box-shadow: 0 0 0 3px rgba(19, 85, 216, 0.1);
+}
+.auth-light-input:-webkit-autofill {
+  /* biome-ignore lint/complexity/noImportantStyles: Chrome autofill 的 UA 内联样式只有 !important 能覆盖，去掉会退回蓝底自动填充 */
+  -webkit-box-shadow: 0 0 0 30px var(--color-white) inset !important;
+  /* biome-ignore lint/complexity/noImportantStyles: 同上，与 -webkit-box-shadow 成对覆盖 autofill 背景与文字色 */
+  -webkit-text-fill-color: #1a1a2e !important;
+}
+.auth-light-toggle {
+  transition: color 0.2s;
+}

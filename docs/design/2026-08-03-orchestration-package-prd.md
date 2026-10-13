@@ -39,7 +39,7 @@
 
 ### 架构决策摘要
 
-在 ADR `spec/global/adr/2026-08-03-orchestration-package-design.md` 中已确认 17 项决策，摘要如下：
+在 ADR `docs/adr/2026-08-03-orchestration-package-design.md` 中已确认 17 项决策，摘要如下：
 
 | 决策 | 结论 |
 |------|------|

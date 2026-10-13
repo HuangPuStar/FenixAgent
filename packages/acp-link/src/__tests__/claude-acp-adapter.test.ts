@@ -3,6 +3,10 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { createClaudeAcpConnection } from "../client/claude-acp-adapter";
+import { isolateHostAnthropicModel } from "./env-isolation";
+
+// 断言默认模型回退，须先屏蔽宿主注入的 ANTHROPIC_MODEL。
+isolateHostAnthropicModel();
 
 interface SentJsonRpc {
   jsonrpc: "2.0";

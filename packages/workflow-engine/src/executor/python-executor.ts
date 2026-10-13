@@ -19,6 +19,7 @@ import type { NodeExecutionContext, NodeExecutor } from "../scheduler/dag-schedu
 import type { PythonNodeDef } from "../types/dag";
 import { WorkflowError, WorkflowErrorCode } from "../types/errors";
 import type { NodeOutput } from "../types/execution";
+import { buildWorkflowNodeEnv } from "./node-env";
 
 const MAX_STDERR_SIZE = 10 * 1024 * 1024;
 const TRUNCATE_SIZE = 2000;
@@ -48,8 +49,8 @@ export class PythonExecutor implements NodeExecutor {
     const preamble = resolvedInputs ? generatePythonPreamble(resolvedInputs) : "";
     const fullCode = preamble ? `${preamble}\n${code}` : code;
 
-    // 合并环境变量：进程环境 + env（静态）+ secrets
-    const env: Record<string, string | undefined> = { ...(process.env as Record<string, string>) };
+    // 合并环境变量：宿主白名单 + env（静态）+ secrets
+    const env: Record<string, string | undefined> = buildWorkflowNodeEnv();
 
     const nodeEnv = (ctx.resolvedInputs.env as Record<string, string>) ?? pyNode.env;
     if (nodeEnv) {
@@ -148,7 +149,8 @@ export class PythonExecutor implements NodeExecutor {
 
       const subprocess = this.runtime.spawn(["python3", scriptPath], {
         cwd,
-        env: { ...(process.env as Record<string, string>), ...env },
+        // spawn 边界再收敛一次：即使上游合并逻辑变化，非白名单键也不会进入子进程
+        env: buildWorkflowNodeEnv(env),
         stdout: "pipe",
         stderr: "pipe",
       });
@@ -267,7 +269,8 @@ export class PythonExecutor implements NodeExecutor {
   ): Promise<void> {
     const pip = this.runtime.spawn(["pip", "install", "--quiet", ...requirements], {
       cwd,
-      env: { ...(process.env as Record<string, string>), ...env },
+      // pip 会执行任意第三方包代码，环境同样只吃白名单
+      env: buildWorkflowNodeEnv(env),
       stdout: "pipe",
       stderr: "pipe",
     });

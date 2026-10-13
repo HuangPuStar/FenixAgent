@@ -1,0 +1,16 @@
+{
+  "name": "@fenix/platform-sdk",
+  "description": "跨领域平台契约",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts",
+    "./assembly": "./src/assembly/profile.ts",
+    "./server": "./src/server.ts",
+    "./testing": "./src/testing/index.ts"
+  },
+  "dependencies": {
+    "drizzle-orm": "^0.45.2",
+    "zod": "^4.4.3"
+  }
+}

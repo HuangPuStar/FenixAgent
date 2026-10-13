@@ -1,0 +1,276 @@
+{
+  "nav": {
+    "workflow": "智能体编排"
+  },
+  "page": {
+    "workflow_title": "智能体编排",
+    "workflow_subtitle": "管理与编排工作流"
+  },
+  "list": {
+    "create": "新建工作流",
+    "create_title": "新建工作流",
+    "create_submit": "创建并打开",
+    "create_error": "创建工作流失败",
+    "name_label": "名称",
+    "name_placeholder": "例如：客服问答流程",
+    "desc_label": "描述",
+    "desc_placeholder": "工作流描述（可选）",
+    "cancel": "取消",
+    "rename": "重命名",
+    "rename_title": "重命名工作流",
+    "rename_submit": "保存",
+    "rename_failed": "重命名失败，请重试",
+    "delete": "删除",
+    "delete_confirm_title": "删除工作流",
+    "delete_confirm": "确定要删除「{{name}}」吗？删除后它将从列表移除，画布不再可打开。",
+    "delete_success": "已删除「{{name}}」",
+    "delete_failed": "删除失败，请重试",
+    "notice_dismiss": "关闭提示",
+    "log": "发布日志",
+    "more_actions": "更多操作",
+    "more_for": "更多操作：{{name}}",
+    "run_logs_for": "运行日志：{{name}}",
+    "open_canvas": "打开画布",
+    "published_version": "当前发布版本：{{version}}",
+    "updated_label": "信息更新",
+    "updated_hint": "本地登记信息的更新时间，不代表画布保存或运行时间。",
+    "collection_title": "工作流列表",
+    "collection_total": "共 {{total}} 个工作流",
+    "refresh": "刷新列表",
+    "all_run_logs": "全部运行日志",
+    "rename_success": "工作流名称已更新",
+    "status_hint": {
+      "published": "已发布版本可在发布日志中查看。",
+      "unpublished": "尚无发布版本，打开画布继续编排。",
+      "unknown": "暂未读取到发布状态，不代表未发布。请刷新重试。",
+      "pending_delete": "正在删除，暂不可编辑或发布。"
+    },
+    "open_card": "打开画布：{{name}}",
+    "last_modified": "最后修改：{{time}}",
+    "pagination_total": "共 {{total}} 条",
+    "form": {
+      "name_invalid": "请输入 1-200 个字符的名称",
+      "desc_too_long": "描述最多 2000 个字符"
+    },
+    "status": {
+      "published": "已发布",
+      "unpublished": "未发布",
+      "unknown": "状态未知",
+      "pending_delete": "删除中"
+    },
+    "loading": "加载中...",
+    "load_failed": "工作流列表加载失败",
+    "load_failed_with": "工作流列表加载失败：{{message}}",
+    "load_failed_hint": "请重试；若持续失败，请联系组织管理员。",
+    "retry": "重试",
+    "unauthorized_title": "无权限查看工作流",
+    "unauthorized_hint": "当前账号或所属组织已无权访问工作流。请切换组织或联系管理员开通权限，重试不会改变结果。",
+    "no_workflows": "暂无工作流",
+    "no_workflows_hint": "点击「新建工作流」创建你的第一个工作流",
+    "blocked": {
+      "unbound": {
+        "title": "尚未初始化工作流空间",
+        "description": "当前组织还没有工作流空间，工作流列表无法使用。点击下方按钮即可完成初始化：空间名称取自组织名称，无需填写，重复点击会直接返回已有的空间。",
+        "initialize": "初始化工作流空间",
+        "initializing": "正在初始化..."
+      },
+      "degraded": {
+        "title": "上游未就绪",
+        "description": "本组织绑定的工作流应用已被上游标记为不可用，工作流暂时无法读取。请联系管理员处理后重试。"
+      }
+    },
+    "initialize_failed": "初始化工作流空间失败：{{message}}。请重试；若持续失败，请联系组织管理员。",
+    "initialize_failed_session": "平台工作流账号当前不可用，初始化未能完成。请稍后重试或联系组织管理员。",
+    "initialize_failed_upstream": "上游服务暂时不可用，初始化未完成。请稍后重试。",
+    "initialize_failed_unauthorized": "当前会话无权初始化工作流空间，请重新登录后再试。",
+    "delete_refused": {
+      "reviewing": "该工作流正在首发审核中，暂时不能删除。请在画布内确认审核结果后再试。",
+      "unpublish_required": "该工作流需要先在画布内下架，才能删除。",
+      "unknown": "上游暂时不允许删除该工作流。请在画布内检查发布状态后再试。"
+    },
+    "relative_now": "刚刚",
+    "relative_minutes": "{{count}} 分钟前",
+    "relative_hours": "{{count}} 小时前",
+    "relative_days": "{{count}} 天前"
+  },
+  "canvas": {
+    "frameTitle": "工作流画布",
+    "announce": {
+      "loading": "正在准备画布",
+      "connecting": "画布加载中",
+      "ready": "画布已就绪",
+      "blocked": "画布暂不可用",
+      "failed": "画布加载失败",
+      "sessionExpired": "画布会话已失效"
+    },
+    "state": {
+      "timeout": {
+        "title": "画布初始化超时",
+        "description": "画布没有在 10 秒内完成初始化，可能是上游繁忙或网络较慢。请重试。"
+      },
+      "loadFailed": {
+        "title": "画布加载失败",
+        "description": "画布页面未能加载。请检查网络后重试。"
+      },
+      "handshakeFailed": {
+        "title": "画布会话建立失败",
+        "description": "未能向画布下发访问凭据，工作流没有打开。请重试。"
+      },
+      "canvasError": {
+        "title": "画布出错",
+        "description": "画布内部报告了错误，当前无法继续编辑。"
+      },
+      "sessionExpired": {
+        "title": "会话已失效",
+        "description": "画布访问凭据已失效且无法续期。请重新登录后从工作流列表重新进入。"
+      },
+      "blocked": {
+        "unbound": {
+          "title": "尚未初始化工作流空间",
+          "description": "当前组织还没有工作流空间，工作流画布无法打开。请到工作流列表页完成初始化后重试。"
+        },
+        "degraded": {
+          "title": "上游未就绪",
+          "description": "本组织绑定的工作流应用已被上游标记为不可用，画布暂时打不开。请联系管理员处理后重试。"
+        },
+        "spaceMissing": {
+          "title": "上游未就绪",
+          "description": "平台工作流账号的空间正在初始化，画布暂时打不开。本页会自动重试几次，稍等即可；若持续如此，请联系组织管理员。"
+        },
+        "probeFailed": {
+          "title": "无法确认上游状态",
+          "description": "读取租户绑定或平台账号状态失败，因此没有打开画布。请稍后重试。"
+        }
+      }
+    },
+    "action": {
+      "retry": "重试",
+      "backToList": "返回列表"
+    }
+  },
+  "log": {
+    "title": "发布日志 · {{name}}",
+    "description": "发布记录与当前发布版本来自上游工作流引擎；控制台自己的发布动作由平台审计记录呈现，见下方「平台发布动作」。",
+    "loading": "正在读取发布记录",
+    "failed_title": "发布记录读取失败",
+    "failed_hint": "未能从上游读到该工作流的发布记录与当前版本。请稍后重试。",
+    "empty_title": "上游还没有渠道发布记录",
+    "empty_hint": "发布记录来自「把工作流空间发布到渠道」的动作（上游应用级接口）；控制台内的发布动作见下方「平台发布动作」。",
+    "current_upstream": "上游当前版本",
+    "current_none": "未发布",
+    "record_value_unknown": "上游未提供",
+    "retry": "重试",
+    "record_version": "版本：{{version}}",
+    "record_channels": "渠道：{{channels}}",
+    "record_pack_failed": "打包失败：{{names}}",
+    "record_status": {
+      "done": "发布完成",
+      "pack_failed": "打包失败",
+      "in_progress": "进行中"
+    },
+    "channel_status": {
+      "success": "成功",
+      "failed": "失败",
+      "auditing": "审核中",
+      "in_progress": "进行中",
+      "disabled": "已停用",
+      "unknown": "未知"
+    },
+    "actions_title": "平台发布动作",
+    "action_time": "时间：{{time}}",
+    "action_actor": "操作人：{{name}}",
+    "action_result": "结果：{{result}}",
+    "action_error": "错误码：{{code}}",
+    "action_result_ok": "成功",
+    "action_result_upstream_rejected": "被上游拒绝",
+    "action_result_upstream_unavailable": "上游不可用",
+    "action_result_failed": "失败"
+  },
+  "run": {
+    "entry": "运行日志",
+    "title": "运行日志",
+    "title_scoped": "运行日志 · {{name}}",
+    "description": "运行记录来自上游工作流引擎，平台侧不保存；左侧按执行 ID 列出运行与状态，选中一条即可在右侧查看该次运行的输入参数与输出结果。",
+    "description_scoped": "该工作流的运行记录来自上游工作流引擎，平台侧不保存；左侧按执行 ID 列出运行与状态，选中一条即可在右侧查看该次运行的输入参数与输出结果。",
+    "filter_label": "工作流",
+    "filter_all": "全部工作流",
+    "loading": "正在读取运行记录",
+    "failed_title": "运行记录读取失败",
+    "failed_unauthorized": "当前会话无权查看运行记录，请重新登录后再试。",
+    "failed_not_found": "所选工作流在工作流空间里已不存在，请刷新列表后重试。",
+    "failed_unbound": "当前组织尚未初始化工作流空间，请先在列表页完成初始化。",
+    "failed_degraded": "本组织绑定的工作流应用已被上游标记为不可用，暂时无法读取运行记录。请联系管理员处理后重试。",
+    "failed_account_not_provisioned": "平台工作流账号尚未就绪，暂时无法读取运行记录。请稍后重试；若持续如此，请联系组织管理员。",
+    "failed_session": "平台工作流账号当前不可用，运行记录未能读取。请稍后重试或联系组织管理员。",
+    "failed_timeout": "上游服务响应超时，运行记录未能读取。请稍后重试。",
+    "failed_upstream": "上游拒绝了本次读取，请稍后重试；若持续失败，请联系组织管理员。",
+    "failed": "运行记录读取失败：{{message}}",
+    "retry": "重试",
+    "records_title": "执行记录",
+    "empty_title": "该工作流还没有运行记录",
+    "empty_hint": "上游在最近 7 天内没有该工作流的执行记录——跑过一次之后这里就会有行。",
+    "scope_hint": "已扫描 {{scanned}} 个工作流的运行记录（共 {{total}} 个），更早创建的工作流未包含在内。",
+    "truncated_hint": "记录较多，仅显示最近 {{count}} 条。",
+    "upstream_more_hint": "上游按工作流返回的记录条数有上限，可能还有更早的运行未显示。",
+    "record_started_at": "开始时间：{{time}}",
+    "record_duration": "耗时：{{duration}}",
+    "name_unknown": "未知工作流",
+    "value_unknown": "上游未提供",
+    "status": {
+      "running": "运行中",
+      "succeeded": "成功",
+      "failed": "失败",
+      "canceled": "已取消",
+      "interrupted": "已中断",
+      "unknown": "未知"
+    },
+    "platform_title": "平台触发的运行（对外接口）",
+    "platform_time": "时间：{{time}}",
+    "platform_result": "结果：{{result}}",
+    "platform_error": "错误码：{{code}}",
+    "platform_hint": "来自平台自身的调用流水；画布内的试运行不经过平台，不在这里。",
+    "platform_no_io": "平台触发的运行只有平台侧的调用流水，上游没有这次运行的输入参数与输出结果。",
+    "result": {
+      "ok": "成功",
+      "upstream_rejected": "被上游拒绝",
+      "upstream_unavailable": "上游不可用",
+      "failed": "失败"
+    },
+    "mode": {
+      "debug": "试运行",
+      "release": "发布运行",
+      "node_debug": "节点调试",
+      "unknown": "未知模式"
+    },
+    "record_execute_id": "执行 ID：{{id}}",
+    "record_node_count": "节点数：{{count}}",
+    "record_error": "错误码：{{code}}",
+    "detail_unavailable": "上游没有给这些运行提供执行 ID 或所属工作流，无法查看它们的输入与输出。",
+    "io_loading": "正在读取出入参数",
+    "io_failed_title": "出入参数读取失败",
+    "io_input": "输入参数",
+    "io_output": "输出结果"
+  },
+  "api": {
+    "entry": "调用接口",
+    "title": "调用接口 · {{name}}",
+    "description": "外部系统用控制台 API 密钥调用该接口即可触发这个工作流的运行；平台侧只做鉴权、归属校验与转发，不做业务处理。",
+    "endpoint_label": "调用地址",
+    "copy": "复制",
+    "copy_endpoint": "复制调用地址",
+    "copy_example_sync": "复制同步调用示例",
+    "copy_example_async": "复制异步调用示例",
+    "copied": "已复制",
+    "copy_failed": "复制失败，请手动选中文本复制",
+    "auth_title": "认证方式",
+    "auth_hint": "在控制台的 API 密钥页面创建密钥（明文只在创建时展示一次），放进 Authorization 请求头：",
+    "examples_title": "调用示例",
+    "params_title": "参数说明",
+    "example_sync": "同步调用（等待运行结束并返回输出）",
+    "example_async": "异步调用（立即返回 executeId，结果在上游调试页查看）",
+    "param_parameters": "工作流入参：可直接给 JSON 对象，或给它的 JSON 字符串；缺省表示不传参。",
+    "param_is_async": "true 立即返回 executeId 不等待结果；false（默认）等待本次运行结束后返回 data。",
+    "param_ext": "可选的运行时用户标识，透传给上游作为本次运行的用户；缺省时以上游平台账号身份运行。",
+    "params_note": "运行的是工作流的已发布版本：尚未发布时返回 409（WORKFLOW_NOT_PUBLISHED），工作流不存在或不属于当前组织返回 404，用于调用接口的密钥需要属于该工作流所在组织。"
+  }
+}

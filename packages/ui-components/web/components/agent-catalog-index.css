@@ -1,0 +1,40 @@
+.agent-catalog-index-item-shell {
+  grid-template-columns: minmax(0, 1fr) auto;
+}
+.agent-catalog-index-icon svg {
+  width: calc(var(--spacing) * 5);
+  height: calc(var(--spacing) * 5);
+}
+.agent-catalog-index-meta > span {
+  max-width: 100%;
+  overflow: hidden;
+  border-radius: calc(infinity * 1px);
+  padding: 0 calc(var(--spacing) * 1);
+  color: var(--color-blue-700);
+  background: var(--color-blue-50);
+  font-size: var(--text-3xs);
+  font-weight: 500;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+@media (width < 48rem) {
+  .agent-catalog-index-nav[data-strip="md"] {
+    display: flex;
+    overflow-x: auto;
+  }
+
+  .agent-catalog-index-nav[data-strip="md"] > * {
+    flex: 0 0 auto;
+  }
+}
+
+@media (width <= 900px) {
+  .agent-catalog-index-nav[data-strip="900px"] {
+    display: flex;
+    overflow-x: auto;
+  }
+
+  .agent-catalog-index-nav[data-strip="900px"] > * {
+    flex: 0 0 auto;
+  }
+}

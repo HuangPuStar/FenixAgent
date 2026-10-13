@@ -1,0 +1,23 @@
+{
+  "identity": "identity",
+  "accessControl": "access-control",
+  "agentRuntime": "agent-runtime",
+  "webShell": "default",
+  "resources": [
+    "agent-config",
+    "channel",
+    "knowledge",
+    "machine",
+    "mcp",
+    "memory",
+    "model-management",
+    "observer",
+    "plugin-market",
+    "prod-view",
+    "sandbox",
+    "skill",
+    "task",
+    "workflow"
+  ],
+  "web": ["agent-config", "identity", "knowledge", "mcp", "memory", "model-management", "skill", "task"]
+}

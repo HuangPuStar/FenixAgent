@@ -1,0 +1,116 @@
+/**
+ * 会话事件的规范化与发布（1.5c 从宿主 `apps/server/src/services/transport.ts` 迁入）。
+ *
+ * 命名：原名 `transport` 在宿主语境下可读，但本包已有 `src/transport/` 目录，且该目录里
+ * `event-bus.ts` 才是「传输原语」本身；本文件的职责是「把上游载荷规范化后发布到会话总线」，
+ * 因此定名 `session-events`。
+ *
+ * 与 `publishSessionEvent` 配套的 `normalizePayload` 是它的投影函数：Webhook / relay / 控制面
+ * 的上游载荷形状各异（裸字符串、`{content}`、`{message:{content}}`、content block 数组），
+ * 统一在这里压平出 `content` 字段，前端渲染不再各自兜底。
+ */
+
+import { v4 as uuid } from "uuid";
+import { getEventBus } from "./event-bus";
+
+/**
+ * Extract plain text from various message payload formats.
+ * Handles:
+ *   { content: "text" }
+ *   { message: { role: "user", content: "text" } }
+ *   { message: { content: [{type:"text",text:"..."}] } }
+ */
+function extractContent(payload: unknown): string {
+  if (!payload || typeof payload !== "object") {
+    return typeof payload === "string" ? payload : "";
+  }
+
+  const p = payload as Record<string, unknown>;
+
+  // Direct content field
+  if (typeof p.content === "string" && p.content) return p.content;
+
+  // message.content (child process format)
+  const msg = p.message;
+  if (msg && typeof msg === "object") {
+    const mc = (msg as Record<string, unknown>).content;
+    if (typeof mc === "string") return mc;
+    if (Array.isArray(mc)) {
+      return mc
+        .filter((b: unknown) => typeof b === "object" && b !== null && (b as Record<string, unknown>).type === "text")
+        .map((b: Record<string, unknown>) => (b as Record<string, unknown>).text || "")
+        .join("");
+    }
+  }
+
+  return "";
+}
+
+/**
+ * Normalize event payload into a flat structure with guaranteed `content` string.
+ * Preserves original payload in `raw` field and keeps tool-specific fields.
+ */
+export function normalizePayload(type: string, payload: unknown): Record<string, unknown> {
+  if (!payload || typeof payload !== "object") {
+    return { content: typeof payload === "string" ? payload : "", raw: payload };
+  }
+
+  const p = payload as Record<string, unknown>;
+  const content = extractContent(payload);
+
+  const normalized: Record<string, unknown> = {
+    content,
+    raw: payload,
+  };
+
+  if (typeof p.uuid === "string" && p.uuid) normalized.uuid = p.uuid;
+  if (typeof p.isSynthetic === "boolean") normalized.isSynthetic = p.isSynthetic;
+  if (typeof p.status === "string") normalized.status = p.status;
+  if (typeof p.subtype === "string") normalized.subtype = p.subtype;
+
+  // Preserve tool fields
+  if (p.tool_name) normalized.tool_name = p.tool_name;
+  if (p.name) normalized.tool_name = p.name;
+  if (p.tool_input) normalized.tool_input = p.tool_input;
+  if (p.input) normalized.tool_input = p.input;
+
+  // Preserve permission fields
+  if (p.request_id) normalized.request_id = p.request_id;
+  if (p.request) normalized.request = p.request;
+  if (p.approved !== undefined) normalized.approved = p.approved;
+  if (p.updated_input) normalized.updated_input = p.updated_input;
+
+  // permission_request 事件可能携带 message 字段
+  if (p.message) normalized.message = p.message;
+
+  if (type === "task_state") {
+    if (typeof p.task_list_id === "string") normalized.task_list_id = p.task_list_id;
+    if (typeof p.taskListId === "string") normalized.taskListId = p.taskListId;
+    if (Array.isArray(p.tasks)) normalized.tasks = p.tasks;
+  }
+
+  return normalized;
+}
+
+/** Publish an event to a session's bus (in-memory only) */
+export function publishSessionEvent(
+  sessionId: string,
+  type: string,
+  payload: unknown,
+  direction: "inbound" | "outbound",
+) {
+  const bus = getEventBus(sessionId);
+  const eventId = uuid();
+
+  const normalized = normalizePayload(type, payload);
+
+  const event = bus.publish({
+    id: eventId,
+    sessionId,
+    type,
+    payload: normalized,
+    direction,
+  });
+
+  return event;
+}

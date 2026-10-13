@@ -1,0 +1,492 @@
+import { EMPTY_STATE_FILL_CLASS, EmptyState } from "@fenix/ui-components/config/EmptyState";
+import { AppHeader } from "@fenix/ui-components/layout/app-header";
+import { AppPage } from "@fenix/ui-components/layout/app-page";
+import { copyTextToClipboard } from "@fenix/ui-components/lib/clipboard";
+import { Button } from "@fenix/ui-components/ui/button";
+import { unwrap } from "@fenix/web-runtime/api/request";
+import { NS } from "@fenix/web-runtime/i18n/namespace";
+import { useRequest } from "ahooks";
+import { AlertTriangle, Plus, RefreshCw } from "lucide-react";
+import { useCallback, useEffect, useState } from "react";
+import { useTranslation } from "react-i18next";
+import { toast } from "sonner";
+import { type OrgMember, type OrgMemberCandidate, orgApi } from "../../../api/organizations";
+import { useOrg } from "../../../contexts/OrgContext";
+import { useSession } from "../../../lib/auth-client";
+import { OrganizationsDialogs } from "./agent-organizations-dialogs";
+import type {
+  MachineCreateResult,
+  MachineFormState,
+  MachineRegistryPort,
+  MachineView,
+  OrganizationListItem,
+} from "./agent-organizations-types";
+import { nameToSlug, parseLabels, readDefaultMachineId } from "./agent-organizations-utils";
+import { OrganizationsWorkspace } from "./agent-organizations-workspace";
+
+const EMPTY_MACHINE_FORM: MachineFormState = { name: "", labels: "", agentName: "peri" };
+
+/** 组织页的宿主注入点。 */
+export interface AgentOrganizationsPageProps {
+  /**
+   * 机器注册表能力。§2.3 禁止 platform 实现依赖 resources，因此本页不 import
+   * `@fenix/resource-machine`，由宿主 route adapter 注入其 `registryApi`；
+   * 端口形状与字段漂移的约束见 `agent-organizations-types.ts`。
+   */
+  machineRegistry: MachineRegistryPort;
+}
+
+export function AgentOrganizationsPage({ machineRegistry }: AgentOrganizationsPageProps) {
+  const { t } = useTranslation(NS.ORGS);
+  const { org: currentOrg, refreshOrgs } = useOrg();
+  const { data: session } = useSession();
+  const currentUserId = session?.user?.id ?? null;
+  const [selectedOrgId, setSelectedOrgId] = useState<string | null>(null);
+  const [createOpen, setCreateOpen] = useState(false);
+  const [formName, setFormName] = useState("");
+  const [formSlug, setFormSlug] = useState("");
+  const [editingName, setEditingName] = useState(false);
+  const [editName, setEditName] = useState("");
+  const [deleteOpen, setDeleteOpen] = useState(false);
+  const [inviteOpen, setInviteOpen] = useState(false);
+  const [inviteKeyword, setInviteKeyword] = useState("");
+  const [debouncedInviteKeyword, setDebouncedInviteKeyword] = useState("");
+  const [selectedCandidates, setSelectedCandidates] = useState<OrgMemberCandidate[]>([]);
+  const [inviteRole, setInviteRole] = useState("member");
+  const [removeMemberTarget, setRemoveMemberTarget] = useState<OrgMember | null>(null);
+  const [defaultMachineId, setDefaultMachineId] = useState("local");
+  const [engineDirty, setEngineDirty] = useState(false);
+  const [savingEngine, setSavingEngine] = useState(false);
+  const [machineCreateOpen, setMachineCreateOpen] = useState(false);
+  const [machineEditOpen, setMachineEditOpen] = useState(false);
+  const [machineDeleteTarget, setMachineDeleteTarget] = useState<MachineView | null>(null);
+  const [machineEditTarget, setMachineEditTarget] = useState<MachineView | null>(null);
+  const [machineForm, setMachineForm] = useState<MachineFormState>(EMPTY_MACHINE_FORM);
+  const [machineCreateResult, setMachineCreateResult] = useState<MachineCreateResult | null>(null);
+
+  const {
+    data: organizationsRaw = [],
+    error: organizationsError,
+    refresh: reloadOrganizations,
+  } = useRequest(() => unwrap(orgApi.list()), {
+    onError: (error) => {
+      console.error("Failed to load organizations", error);
+      toast.error(error instanceof Error ? error.message : t("toast.loadDetailFailed"));
+    },
+  });
+  const organizations = organizationsRaw as OrganizationListItem[];
+  const {
+    data: detail,
+    loading: detailLoading,
+    refresh: refreshDetail,
+  } = useRequest(() => unwrap(orgApi.get(selectedOrgId!)), {
+    ready: !!selectedOrgId,
+    refreshDeps: [selectedOrgId],
+    onError: (error) => {
+      console.error("Failed to load organization detail", error);
+      toast.error(error instanceof Error ? error.message : t("toast.loadDetailFailed"));
+    },
+  });
+  const {
+    data: machinesResponse,
+    loading: machinesLoading,
+    refresh: refreshMachines,
+  } = useRequest(() => unwrap(machineRegistry.list({ limit: 50 })), {
+    ready: !!selectedOrgId,
+    refreshDeps: [selectedOrgId],
+    onError: (error) => {
+      // 机器列表此前完全静默：失败时 `machines` 停在空数组，与「这个组织还没绑定机器」同形。
+      // 机器区在组织页里是次要内容（与组织本身同页），本轮只补诊断日志与瞬时提示，
+      // 持久失败块需要把状态透进 `OrganizationsWorkspace`，见 §3.6 的现状偏离。
+      console.error("Failed to load machines", error);
+      toast.error(error instanceof Error ? error.message : t("toast.machinesLoadFailed"));
+    },
+  });
+  const machines = machinesResponse?.items ?? [];
+  const members = detail?.members ?? [];
+  const selectedRole = organizations.find((organization) => organization.id === selectedOrgId)?.role;
+  const canManage = selectedRole === "owner" || selectedRole === "admin";
+  const isOwner = selectedRole === "owner";
+
+  useEffect(() => {
+    if (selectedOrgId) return;
+    setSelectedOrgId(currentOrg?.id ?? organizations[0]?.id ?? null);
+  }, [currentOrg, organizations, selectedOrgId]);
+  useEffect(() => {
+    const timer = window.setTimeout(() => setDebouncedInviteKeyword(inviteKeyword.trim()), 250);
+    return () => window.clearTimeout(timer);
+  }, [inviteKeyword]);
+  useEffect(() => {
+    if (!detail) return;
+    setDefaultMachineId(readDefaultMachineId(detail.metadata));
+    setEngineDirty(false);
+  }, [detail]);
+
+  const resetCreateOrganization = useCallback(() => {
+    setFormName("");
+    setFormSlug("");
+  }, []);
+  const resetInvite = useCallback(() => {
+    setInviteKeyword("");
+    setDebouncedInviteKeyword("");
+    setSelectedCandidates([]);
+    setInviteRole("member");
+  }, []);
+  const resetMachine = useCallback(() => {
+    setMachineForm(EMPTY_MACHINE_FORM);
+    setMachineEditTarget(null);
+    setMachineCreateResult(null);
+  }, []);
+
+  const { run: runCreate, loading: createLoading } = useRequest(
+    (name: string, slug: string) => unwrap(orgApi.create({ name: name.trim(), slug: slug || nameToSlug(name) })),
+    {
+      manual: true,
+      onSuccess: (organization) => {
+        toast.success(t("toast.createSuccess"));
+        setCreateOpen(false);
+        resetCreateOrganization();
+        reloadOrganizations();
+        refreshOrgs();
+        setSelectedOrgId(organization.id);
+      },
+      onError: (error) => {
+        console.error("Failed to create organization", error);
+        toast.error(error instanceof Error ? error.message : t("toast.createFailed"));
+      },
+    },
+  );
+  const { run: runUpdateName, loading: updateNameLoading } = useRequest(
+    (name: string) => unwrap(orgApi.update(selectedOrgId!, { name: name.trim() })),
+    {
+      manual: true,
+      onSuccess: () => {
+        setEditingName(false);
+        refreshDetail();
+        reloadOrganizations();
+        refreshOrgs();
+      },
+      onError: (error) => {
+        console.error("Failed to update organization", error);
+        toast.error(error instanceof Error ? error.message : t("toast.updateFailed"));
+      },
+    },
+  );
+  const { data: memberCandidates = [], loading: memberCandidatesLoading } = useRequest(
+    () => unwrap(orgApi.searchMemberCandidates(selectedOrgId!, debouncedInviteKeyword)),
+    {
+      ready: inviteOpen && !!selectedOrgId && debouncedInviteKeyword.length >= 3,
+      refreshDeps: [inviteOpen, selectedOrgId, debouncedInviteKeyword],
+      onError: (error) => {
+        // 候选查询此前完全静默：失败时候选停在空数组，弹窗会显示「没有匹配的成员」——与「关键词确实
+        // 没匹配到」同形（§3.4）。这是用户输入触发的查询，按 §5.8 补可见反馈与诊断日志。
+        console.error("Failed to load member candidates", error);
+        toast.error(error instanceof Error ? error.message : t("toast.candidatesLoadFailed"));
+      },
+    },
+  );
+  const { run: runAddMember, loading: inviteLoading } = useRequest(
+    (candidates: OrgMemberCandidate[], role: string) =>
+      unwrap(orgApi.addMember(selectedOrgId!, { userIds: candidates.map((candidate) => candidate.id), role })),
+    {
+      manual: true,
+      onSuccess: () => {
+        toast.success(t("toast.inviteSent"));
+        setInviteOpen(false);
+        resetInvite();
+        refreshDetail();
+      },
+      onError: (error) => {
+        console.error("Failed to add organization members", error);
+        toast.error(error instanceof Error ? error.message : t("toast.inviteFailed"));
+      },
+    },
+  );
+  const { run: runRemoveMember, loading: removeMemberLoading } = useRequest(
+    (memberId: string) => unwrap(orgApi.removeMember(selectedOrgId!, memberId)),
+    {
+      manual: true,
+      onSuccess: () => {
+        setRemoveMemberTarget(null);
+        refreshDetail();
+      },
+      onError: (error) => {
+        console.error("Failed to remove member", error);
+        toast.error(error instanceof Error ? error.message : t("toast.removeFailed"));
+      },
+    },
+  );
+  const { run: runUpdateRole } = useRequest(
+    (memberId: string, role: string) => unwrap(orgApi.updateRole(selectedOrgId!, memberId, role)),
+    {
+      manual: true,
+      onSuccess: refreshDetail,
+      onError: (error) => {
+        console.error("Failed to update member role", error);
+        toast.error(error instanceof Error ? error.message : t("toast.roleUpdateFailed"));
+      },
+    },
+  );
+  const { run: runDelete, loading: deleteLoading } = useRequest(() => unwrap(orgApi.del(selectedOrgId!)), {
+    manual: true,
+    onSuccess: () => {
+      setDeleteOpen(false);
+      setSelectedOrgId(null);
+      reloadOrganizations();
+      refreshOrgs();
+    },
+    onError: (error) => {
+      console.error("Failed to delete organization", error);
+      toast.error(error instanceof Error ? error.message : t("toast.deleteFailed"));
+    },
+  });
+
+  const { run: runCreateMachine, loading: createMachineLoading } = useRequest(
+    (form: MachineFormState) =>
+      unwrap(
+        machineRegistry.create({ name: form.name.trim(), labels: parseLabels(form.labels), agentName: form.agentName }),
+      ),
+    {
+      manual: true,
+      onSuccess: (result) => {
+        setMachineCreateResult(result);
+        refreshMachines();
+      },
+      onError: (error) => {
+        console.error("Failed to create machine", error);
+        toast.error(error instanceof Error ? error.message : t("toast.machineCreateFailed"));
+      },
+    },
+  );
+  const { run: runUpdateMachine, loading: updateMachineLoading } = useRequest(
+    (machineId: string, form: MachineFormState) =>
+      unwrap(
+        machineRegistry.update(machineId, {
+          name: form.name.trim(),
+          labels: parseLabels(form.labels),
+          agentName: form.agentName,
+        }),
+      ),
+    {
+      manual: true,
+      onSuccess: () => {
+        toast.success(t("toast.machineUpdateSuccess"));
+        setMachineEditOpen(false);
+        resetMachine();
+        refreshMachines();
+      },
+      onError: (error) => {
+        console.error("Failed to update machine", error);
+        toast.error(error instanceof Error ? error.message : t("toast.machineUpdateFailed"));
+      },
+    },
+  );
+  const { run: runDeleteMachine, loading: deleteMachineLoading } = useRequest(
+    (machineId: string) => unwrap(machineRegistry.remove(machineId)),
+    {
+      manual: true,
+      onSuccess: () => {
+        toast.success(t("toast.machineDeleteSuccess"));
+        setMachineDeleteTarget(null);
+        refreshMachines();
+      },
+      onError: (error) => {
+        console.error("Failed to delete machine", error);
+        toast.error(error instanceof Error ? error.message : t("toast.machineDeleteFailed"));
+      },
+    },
+  );
+
+  const saveDefaultEngine = useCallback(async () => {
+    if (!selectedOrgId || !detail) return;
+    setSavingEngine(true);
+    try {
+      await unwrap(
+        orgApi.updateMetadata(selectedOrgId, {
+          name: detail.name,
+          slug: detail.slug,
+          metadata: {
+            ...(detail.metadata ?? {}),
+            defaultEngine: { machineId: defaultMachineId === "local" ? "" : defaultMachineId },
+          },
+        }),
+      );
+      toast.success(t("toast.updateSuccess"));
+      setEngineDirty(false);
+      refreshDetail();
+    } catch (error) {
+      console.error("Failed to update default engine", error);
+      toast.error(error instanceof Error ? error.message : t("toast.updateFailed"));
+    } finally {
+      setSavingEngine(false);
+    }
+  }, [defaultMachineId, detail, refreshDetail, selectedOrgId, t]);
+
+  // 复制反馈统一走 toast（见 @fenix/ui-components/lib/clipboard）：此前的 2 秒「已复制」文本回落只覆盖成功路径，
+  // 非安全上下文里复制会静默失败，用户看到的却仍是成功。
+  const handleCopyId = useCallback(() => {
+    if (!selectedOrgId) return;
+    void copyTextToClipboard(selectedOrgId).then((ok) =>
+      ok ? toast.success(t("copied")) : toast.error(t("copyFailed")),
+    );
+  }, [selectedOrgId, t]);
+
+  // 组织列表是整页的**数据源**：取不到时列表与详情一起空掉。此前失败只弹一次 toast、页面照旧渲染
+  // 「暂无组织」空态（`noOrgs`），用户会把「请求挂了」读成「我确实没有组织」（§3.4）。
+  // 判据带 `organizations.length === 0`：已有列表时某次刷新失败保留旧内容，不让一次失败掀掉整页。
+  if (organizationsError && organizations.length === 0) {
+    return (
+      <AppPage>
+        <EmptyState
+          icon={<AlertTriangle />}
+          title={t("loadState.title")}
+          description={t("loadState.description")}
+          tone="danger"
+          role="alert"
+          className={EMPTY_STATE_FILL_CLASS}
+          action={{ label: t("loadState.retry"), onClick: reloadOrganizations, icon: <RefreshCw /> }}
+        />
+      </AppPage>
+    );
+  }
+
+  return (
+    <AppPage>
+      <AppHeader
+        title={t("title")}
+        subtitle={t("subtitle")}
+        actions={
+          <Button onClick={() => setCreateOpen(true)}>
+            <Plus className="size-4" />
+            {t("createDialog.title")}
+          </Button>
+        }
+      />
+      <OrganizationsWorkspace
+        organizations={organizations}
+        selectedOrgId={selectedOrgId}
+        onSelectOrg={setSelectedOrgId}
+        detail={detail}
+        detailLoading={detailLoading}
+        members={members}
+        machines={machines}
+        machinesLoading={machinesLoading}
+        canManage={canManage}
+        isOwner={isOwner}
+        currentUserId={currentUserId}
+        editingName={editingName}
+        editName={editName}
+        updateNameLoading={updateNameLoading}
+        defaultMachineId={defaultMachineId}
+        engineDirty={engineDirty}
+        savingEngine={savingEngine}
+        onEditNameChange={setEditName}
+        onStartEditName={() => {
+          setEditName(detail?.name ?? "");
+          setEditingName(true);
+        }}
+        onCancelEditName={() => setEditingName(false)}
+        onSaveName={() => editName.trim() && runUpdateName(editName)}
+        onCopyId={handleCopyId}
+        onOpenInvite={() => setInviteOpen(true)}
+        onUpdateRole={runUpdateRole}
+        onRemoveMember={setRemoveMemberTarget}
+        onDefaultMachineChange={(machineId) => {
+          setDefaultMachineId(machineId);
+          setEngineDirty(true);
+        }}
+        onSaveDefaultEngine={saveDefaultEngine}
+        onCancelDefaultEngine={() => {
+          setDefaultMachineId(readDefaultMachineId(detail?.metadata));
+          setEngineDirty(false);
+        }}
+        onOpenCreateMachine={() => {
+          resetMachine();
+          setMachineCreateOpen(true);
+        }}
+        onRefreshMachines={refreshMachines}
+        onEditMachine={(machine) => {
+          setMachineEditTarget(machine);
+          setMachineForm({
+            name: machine.name ?? "",
+            labels: (machine.labels ?? []).filter(Boolean).join(", "),
+            agentName: machine.agentName,
+          });
+          setMachineEditOpen(true);
+        }}
+        onDeleteMachine={setMachineDeleteTarget}
+        onDeleteOrganization={() => setDeleteOpen(true)}
+      />
+      <OrganizationsDialogs
+        createOpen={createOpen}
+        formName={formName}
+        formSlug={formSlug}
+        createLoading={createLoading}
+        onCreateOpenChange={(open) => {
+          setCreateOpen(open);
+          if (!open) resetCreateOrganization();
+        }}
+        onFormNameChange={(name) => {
+          const previousSlug = nameToSlug(formName);
+          setFormName(name);
+          if (!formSlug || formSlug === previousSlug) setFormSlug(nameToSlug(name));
+        }}
+        onFormSlugChange={setFormSlug}
+        onCreate={() => runCreate(formName, formSlug)}
+        inviteOpen={inviteOpen}
+        inviteKeyword={inviteKeyword}
+        debouncedInviteKeyword={debouncedInviteKeyword}
+        selectedCandidates={selectedCandidates}
+        memberCandidates={memberCandidates}
+        memberCandidatesLoading={memberCandidatesLoading}
+        inviteRole={inviteRole}
+        inviteLoading={inviteLoading}
+        onInviteOpenChange={(open) => {
+          setInviteOpen(open);
+          if (!open) resetInvite();
+        }}
+        onInviteKeywordChange={setInviteKeyword}
+        onCandidateAdd={(candidate) => {
+          setSelectedCandidates((current) => [...current, candidate]);
+          setInviteKeyword("");
+          setDebouncedInviteKeyword("");
+        }}
+        onCandidateRemove={(candidateId) =>
+          setSelectedCandidates((current) => current.filter((candidate) => candidate.id !== candidateId))
+        }
+        onInviteRoleChange={setInviteRole}
+        onInvite={() => runAddMember(selectedCandidates, inviteRole)}
+        deleteOpen={deleteOpen}
+        organizationName={detail?.name}
+        deleteLoading={deleteLoading}
+        onDeleteOpenChange={setDeleteOpen}
+        onDelete={runDelete}
+        removeMemberTarget={removeMemberTarget}
+        removeMemberLoading={removeMemberLoading}
+        onRemoveMemberTargetChange={setRemoveMemberTarget}
+        onConfirmRemoveMember={() => removeMemberTarget && runRemoveMember(removeMemberTarget.id)}
+        machineCreateOpen={machineCreateOpen}
+        machineEditOpen={machineEditOpen}
+        machineDeleteTarget={machineDeleteTarget}
+        machineCreateResult={machineCreateResult}
+        machineForm={machineForm}
+        createMachineLoading={createMachineLoading}
+        updateMachineLoading={updateMachineLoading}
+        deleteMachineLoading={deleteMachineLoading}
+        onMachineCreateOpenChange={(open) => {
+          setMachineCreateOpen(open);
+          if (!open) resetMachine();
+        }}
+        onMachineEditOpenChange={(open) => {
+          setMachineEditOpen(open);
+          if (!open) resetMachine();
+        }}
+        onMachineDeleteTargetChange={setMachineDeleteTarget}
+        onMachineFormChange={setMachineForm}
+        onCreateMachine={() => runCreateMachine(machineForm)}
+        onUpdateMachine={() => machineEditTarget && runUpdateMachine(machineEditTarget.id, machineForm)}
+        onDeleteMachine={() => machineDeleteTarget && runDeleteMachine(machineDeleteTarget.id)}
+      />
+    </AppPage>
+  );
+}

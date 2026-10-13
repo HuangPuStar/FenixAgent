@@ -1,0 +1,60 @@
+import { describe, expect, test } from "bun:test";
+import { bashNarrator } from "../chat/narrators/bash";
+import type { NarrationContext } from "../chat/narrators/types";
+import type { ToolCallData } from "../chat/types";
+
+/**
+ * bashNarrator 单测。
+ *
+ * 覆盖：match 规则、verb、object 的 $ 前缀、命令截断、字段缺失降级。
+ *
+ * 来源：`packages/agent-runtime/web/__tests__/bash.test.ts` 逐字迁移，
+ * 仅改写导入路径（narrator / 类型改指包内 `../chat/**`）。
+ */
+
+const mockT = ((key: string) => key) as unknown as NarrationContext["t"];
+
+function makeCtx(rawInput: unknown): NarrationContext {
+  return {
+    tool: {
+      id: "t1",
+      title: "Bash",
+      status: "complete",
+      rawInput: rawInput as Record<string, unknown>,
+    } as ToolCallData,
+    kind: "bash",
+    status: "complete",
+    t: mockT,
+  };
+}
+
+describe("bashNarrator", () => {
+  // kinds 包含 "bash"
+  test("kinds 包含 bash", () => {
+    expect(bashNarrator.kinds).toContain("bash");
+  });
+
+  // 中文动作必须明确表达命令执行行为
+  test("verb 是 '执行命令'", () => {
+    expect(bashNarrator.verb).toBe("执行命令");
+  });
+
+  // object 加 $ 前缀作为终端命令的视觉提示（与 verb 拼 title 时为"执行 $ npm install"）
+  test("object 加 $ 前缀", () => {
+    const { object } = bashNarrator.getDisplay(makeCtx({ command: "npm install" }));
+    expect(object).toBe("$ npm install");
+  });
+
+  // 超长命令截断到 120 字符 + 省略号（加 "$ " 前缀后总长 ≤ 123）
+  test("长命令截断到 120 字符", () => {
+    const longCmd = "x".repeat(200);
+    const { object } = bashNarrator.getDisplay(makeCtx({ command: longCmd }));
+    expect((object as string).length).toBeLessThanOrEqual(123); // "$ " + 120 + …
+  });
+
+  // 缺失 command 字段时降级为 "$ "
+  test("无 command 字段时降级", () => {
+    const { object } = bashNarrator.getDisplay(makeCtx({}));
+    expect(object).toBe("$ ");
+  });
+});

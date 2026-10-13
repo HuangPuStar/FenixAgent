@@ -1,0 +1,3 @@
+.knowledge-graph-progress-fill {
+  box-shadow: 0 0 10px color-mix(in oklab, var(--color-indigo-500) 35%, transparent);
+}

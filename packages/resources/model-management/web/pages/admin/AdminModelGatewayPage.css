@@ -1,0 +1,7 @@
+.model-gateway-usage-row {
+  grid-template-columns: 24rem minmax(8rem, 1fr) auto;
+}
+
+.model-gateway-overview-facts {
+  grid-template-columns: auto 1fr;
+}

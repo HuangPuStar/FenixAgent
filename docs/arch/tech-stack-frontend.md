@@ -44,7 +44,7 @@
 
 ### 通用业务组件
 
-在 shadcn/ui 原语之上封装了一套通用业务组件（`web/components/config/`），统一项目内高频交互模式：
+在 shadcn/ui 原语之上封装了一套通用业务组件（`@fenix/ui-components/web/config/`，经 `@fenix/ui-components/config/<name>` 引用），统一项目内高频交互模式：
 
 | 组件 | 用途 |
 |------|------|
@@ -53,10 +53,9 @@
 | **`ConfirmDialog`** | 确认操作对话框，支持 destructive 变体 |
 | **`BatchActionBar`** | 批量操作悬浮栏 |
 | **`EmptyState`** | 空状态占位卡片 |
-| **`ModelConfigDialog`** | 模型配置专用对话框 |
+| **`ModelConfigDialog`** | 模型配置专用对话框（归 `packages/resources/model-management/web/components/config/ModelConfigDialog.tsx`，不在 `ui-components`） |
 | **`StatusBadge`** | 状态徽标，用于标识启用/禁用等二元状态 |
 | **`ModelIcon`** | 模型图标组件，优先查本地对照表，兜底到 `@lobehub/icons`，禁止业务代码直接 import 图标 |
-| **`ModelSelectorPopover`** / **`ModelSelectorPicker`** | 模型选择器组件 |
 
 ---
 
@@ -64,9 +63,9 @@
 
 与后端 better-auth 三路认证体系对接：
 
-- **better-auth 客户端**（`web/src/lib/auth-client.ts`）：`createAuthClient` + `organizationClient` + `apiKeyClient`，导出 `useSession`/`signIn`/`signUp`/`signOut`
+- **better-auth 客户端**（`packages/platform/identity/web/lib/auth-client.ts`）：`createAuthClient` + `organizationClient` + `apiKeyClient`，导出 `useSession`/`signIn`/`signUp`/`signOut`
 - **组织上下文传递**：活跃组织 ID 存 localStorage，通过 HTTP header 注入到 `/web/*` 和 `/api/*` 请求；WebSocket relay 通过 query param 传递（因 WS 不支持自定义 header）
-- **API Client 自动认证**：`web/src/api/request.ts` 自动携带 Cookie（`credentials: "include"`）
+- **API Client 自动认证**：`packages/web-runtime/web/api/request.ts` 自动携带 Cookie（`credentials: "include"`）
 
 ---
 
@@ -77,15 +76,17 @@
 - **命名空间**：使用 `NS` 常量组织翻译资源，禁止字符串字面量
 - **翻译文件**：按语言（`en/zh`）和命名空间组织 JSON 文件
 - **检测**：localStorage → navigator 兜底 → 英文 fallback
-- **新增命名空间**：创建语言文件 → 在 `web/src/i18n/index.ts` 注册 → 组件中引用常量
+- **新增命名空间**：创建语言文件 → 在 `apps/web/src/i18n/index.ts` 注册 → 组件中引用常量
 
-当前已有 21 个命名空间：`common`、`login`、`sidebar`、`dashboard`、`agents`、`models`、`skills`、`mcp`、`tasks`、`workflows`、`settings`、`sessions`、`environments`、`orgs`、`apikey`、`channels`、`knowledge`、`agentPanel`、`components`、`hindsight`、`agentHome`。
+当前已登记 **26 个**命名空间（`apps/web/src/i18n/index.ts` 的 `hostResources` + `packageResources` 两张表，`ns` 列表由已登记字典推导）。宿主自有 4 个：`common`、`sidebar`、`components`、`agentPanel`（读 `./locales/**`）；包自有 22 个：`agents`、`agentChat`、`dashboard`、`agentHome`、`apikey`、`login`、`orgs`、`models`、`observer`、`skills`、`mcp`、`tasksV2`、`workflows`、`channels`、`knowledge`、`machine`、`hindsight`、`prodViews`、`pluginMarket`、`sandbox`、`settings`、`uiComponents`。
+
+**与中心表的差集（偏差）**：中心表 `@fenix/web-runtime/i18n/namespace` 现有 26 个字面量，与上面的登记集两个方向都不重合——`tasks`、`sessions`、`environments`、`toolNarrator` 四个零消费空壳**有意不登记**；`agentChat`、`sandbox`、`machine`、`pluginMarket` 四个**已登记但未进中心表**，命名空间常量由各包自持字面量（前两者按「中心表只收录跨包共用项」的口径刻意不入表，后两者记为中心表待补）。
 
 ---
 
-## 6. API Client：web/src/api/request.ts
+## 6. API Client：packages/web-runtime/web/api/request.ts
 
-前端 API 调用统一通过 `web/src/api/request.ts`，每个资源域独立 API 模块（`api/tasks.ts`、`api/skills.ts` 等），自动携带认证 Cookie（`credentials: "include"`）。禁止在组件中直接使用原生 `fetch()`。
+前端 API 调用统一通过 `packages/web-runtime/web/api/request.ts`，每个资源域在自己的 owner 包内独立成 API 模块（如 `@fenix/resource-task` 的 `web/api/tasks-v2.ts`、`@fenix/resource-skill` 的 `web/api/skills.ts`），自动携带认证 Cookie（`credentials: "include"`）。禁止在组件中直接使用原生 `fetch()`。
 
 ---
 
@@ -95,13 +96,13 @@
 
 ### SSE 实时通信适配
 
-Vercel AI SDK 的 `useChat` 通过定制 `ChatTransport`（`web/src/lib/rcs-transport.ts`）接入后端 SSE 事件流，而非默认的 HTTP stream。`rcs-chat-adapter.ts` 负责将后端会话事件转换为 AI SDK 的 thread entries。
+Vercel AI SDK 的 `useChat` 通过定制 `ChatTransport` 接入后端 SSE 事件流，而非默认的 HTTP stream。`rcs-chat-adapter.ts` 负责将后端会话事件转换为 AI SDK 的 thread entries。
 
 ### ACP/YJS 通信通道
 
 前端通过单条 `/acp/yjs/:agentId` WebSocket 连接后端，使用 YJS CRDT 进行增量数据同步：
 
-- **`buildYjsUrl()`** / **`createYjsWs()`**：`web/src/yjs/yjs-ws.ts` 中封装，自动拼装协议、主机、agentId 参数
+- **`buildYjsUrl()`** / **`createYjsWs()`**：`packages/agent-runtime/web/yjs/yjs-ws.ts` 中封装，自动拼装协议、主机、agentId 参数
 - **ChatPanel**：前端 WS 唯一入口，在挂载时创建连接
 
 ---
@@ -109,22 +110,21 @@ Vercel AI SDK 的 `useChat` 通过定制 `ChatTransport`（`web/src/lib/rcs-tran
 ## 8. 前端项目目录结构
 
 ```
-web/
-  components/
-    ui/              — shadcn/ui 包装的 Radix UI 原语组件（36 个）
-    config/          — 通用业务组件（FormDialog、DataTable、ConfirmDialog 等）
-    chat/            — 聊天面板组件
-    model-icon/      — 模型图标（ModelIcon + 本地对照表）
-    model-selector/  — 模型选择器
+apps/web/
   src/
     routes/          — TanStack Router 文件路由（`routeTree.gen.ts` 严禁手动编辑）
-    pages/           — 页面组件（agent-panel / workflow / hindsight / login）
-    hooks/           — 自定义 hooks（use-chat-state、use-session-state、usePageVisible、useMetaAgent）
-    lib/             — 工具函数（form-utils、retry、token-stats、app-brand、theme、password-crypto 等）
-    api/             — API 客户端 + SDK 实例化（sdk.ts）
-    i18n/            — i18n 配置 + locales/{en,zh}/ 翻译文件
-    types/           — 全局类型定义
-    __tests__/       — 前端测试（50+ 测试文件）
+    pages/           — 宿主专有页面（agent-panel 及其 artifacts 子目录）
+    shell/           — 应用壳与侧栏装配（布局、导航容器、Provider、鉴权后壳）
+    components/      — 宿主壳组件（错误页、路由兜底）
+    api/             — 宿主专有域客户端（只剩 branding.ts）
+    hooks/           — 宿主自有 hook（当前为空，见前端规范 §3.5）
+    lib/             — 宿主工具函数（app-brand、random-uuid-polyfill、clipboard-polyfill、streamdown-table-patch 等）
+    i18n/            — i18n 引导 + 宿主自有字典 locales/{en,zh}/（包自有字典经 `@fenix/<pkg>/web/i18n` 登记）
+    types/           — 宿主全局类型声明（global.d.ts）
+    __tests__/       — 前端测试
+packages/
+  ui-components/web/ — 通用 UI 原语（ui/）、通用业务组件（config/）、聊天组件（chat/）、样式（styles/）
+  <group>/<pkg>/web/ — 各 owner 包的 web 面（pages/、hooks/、api/、components/、i18n/）
 ```
 
 ---
@@ -132,7 +132,7 @@ web/
 ## 9. 前端测试方案
 
 - **运行环境**：bun test + happy-dom + React Testing Library
-- **测试文件命名**：`<功能>-flow.test.ts`，位于 `web/src/__tests__/`
+- **测试文件命名**：`<功能>-flow.test.ts`，位于 `apps/web/src/__tests__/`
 - **Mock 策略**：fetch mock 或 MSW，禁止在测试文件中使用 `mock.module()`
 - **测试原则**：只测关键流程（表单提交、数据操作、导航路由、状态联动），不写类型检查测试和纯 UI 结构断言
 
@@ -140,8 +140,8 @@ web/
 
 ## 10. 构建与启动
 
-- **启动流程**：`bootstrap.ts` → `loadAppBrand()` 加载品牌配置 → `main.tsx` → `createRouter()` + `RouterProvider`
-- **build**：`bun run build:web`，产物写入 `web/dist/`，后端通过 `@elysiajs/static` 以 `base: "/ctrl/"` 前缀托管
+- **启动流程**：`apps/web/src/main.tsx` → `loadAppBrand()` 加载品牌配置 → `createRouter()` + `RouterProvider`
+- **build**：`bun run build:web`，产物写入 `apps/web/dist/`，后端通过 `@elysiajs/static` 以 `base: "/ctrl/"` 前缀托管
 - **Vite 代理**：dev 模式下 `/web`、`/api`、`/acp` 代理到后端
 - **vendor chunk 拆分**：8 个独立 chunk（shiki / mermaid / motion / vendor / ai-sdk / radix-ui / tanstack / hookform），控制包体积
 - **关键约束**：TanStack Router Vite 插件必须在 `plugins` 数组第一位；修改前端代码后必须 `build:web` 才能生效

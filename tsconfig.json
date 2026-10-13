@@ -15,8 +15,34 @@
     "declarationMap": false,
     "outDir": "dist",
     "allowImportingTsExtensions": true,
-    "noEmit": true
+    "noEmit": true,
+    "paths": {
+      "@/src/*": ["./apps/web/src/*"],
+      "@/src/i18n": ["./apps/web/src/i18n/index.ts"],
+      "@/src/i18n/locales/*": ["./apps/web/src/i18n/locales/*"],
+      "@/src/lib/random-uuid-polyfill": ["./apps/web/src/lib/random-uuid-polyfill.ts"],
+      // 只保留宿主自有别名。指向 `packages/**` 的一批桥接别名（`@/src/api/*`、`@/src/pages/**`、
+      // `@/src/lib/*`、`@/src/components/**`、`@/src/types/*`）已随 §1.6 T11e 全部删除：消费方改直连
+      // 各包公开出口后它们零消费，留着只会让「包内实现」在宿主侧有一个永不过期的写法。同批删除了
+      // `apps/web/vite.config.ts` 里的对应条目——两张表必须一致，dependency-cruiser 也读这张表。
+      // 宿主自有别名必须列在这里（`@/src/*` 通配只覆盖宿主 `src/`）。
+      // 两表的键写法无法机械对账——vite 表用前缀键（`@/src/i18n/locales`），本表用带 `*` 的路径键
+      // （`@/src/i18n/locales/*`）——所以每增删一条都必须同批改 `apps/web/vite.config.ts` 的
+      // `resolve.alias`，否则会出现「门禁能解析、生产构建解析不到」。
+      "@server/*": ["./apps/server/src/*"]
+    }
   },
-  "include": ["src/**/*.ts"],
-  "exclude": ["node_modules", "dist", "web"]
+  // `db/` 只放部署期数据迁移入口（release 步骤，不进应用启动序列），其类型正确性直接影响
+  // 运维可执行性，故纳入检查；根 `scripts/` 同为运维可执行面（门禁脚本 + 生产迁移入口
+  // `scripts/migrate.ts`），一并纳入 —— 此前它不在任何 tsconfig 的 include 内，`tsc --noEmit`
+  // 从不检查它们。
+  //
+  // `scripts/__tests__/` 是本 include 的唯一例外：纳入前实测该目录有 4 条既有类型错误
+  // （2 条 `root-source-owner-inventory.test.ts`、各 1 条 `module-registry-generator.test.ts` /
+  // `rmd-06-migration.test.ts`），逐条修复要改测试断言与 fixture 形状，超出本次范围（本次口径
+  // 不动测试文件）。移除条件：4 条错误修复后删掉 `exclude` 里的 `scripts/__tests__` 条目，
+  // 届时 `scripts/**/*.ts` 可整体纳入。该目录当前仍由 `bun test scripts/__tests__/`（precheck
+  // 与 CI 的 `server, script, and platform SDK tests` 步骤）在运行时覆盖。
+  "include": ["apps/server/src/**/*.ts", "db/**/*.ts", "scripts/**/*.ts"],
+  "exclude": ["node_modules", "dist", "scripts/__tests__"]
 }

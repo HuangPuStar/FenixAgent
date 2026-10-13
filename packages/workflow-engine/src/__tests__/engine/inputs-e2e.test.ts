@@ -79,6 +79,25 @@ nodes:
 // ========== params 通过 inputs 注入 ==========
 
 describe("inputs 端到端：params 注入", () => {
+  // object 参数中的 JSON 文本应在运行入口解析，节点收到的是对象语义。
+  test("object 参数 JSON 文本在执行前转换为对象", async () => {
+    const { engine } = makeEngine();
+    const yaml = `schema_version: '1'\nname: object-param\nparams:\n  payload:\n    type: object\nnodes:\n  - id: use-payload\n    type: shell\n    command: printf '%s' "$PAYLOAD"\n    inputs:\n      PAYLOAD: params.payload\n`;
+    const { runId, result: completion } = engine.runAsync(yaml, { payload: '{"value":42}' });
+    const result = await completion;
+    expect(result.status).toBe("SUCCESS");
+    const started = (await engine.getEvents(runId)).find((event) => event.type === "dag.started");
+    expect(started?.metadata?.params).toEqual({ payload: { value: 42 } });
+    expect((await engine.getOutput(runId, "use-payload"))?.stdout).toBe('{"value":42}');
+  });
+
+  // 非对象 JSON 不能作为声明为 object 的运行参数进入调度器。
+  test("object 参数拒绝数组和非法 JSON", async () => {
+    const { engine } = makeEngine();
+    const yaml = `schema_version: '1'\nname: object-param\nparams:\n  payload:\n    type: object\nnodes:\n  - id: use-payload\n    type: shell\n    command: echo ok\n`;
+    await expect(engine.run(yaml, { payload: "[1]" })).rejects.toMatchObject({ code: "VALIDATION_ERROR" });
+    expect(() => engine.runAsync(yaml, { payload: "{" })).toThrow();
+  });
   test("params 通过 inputs 注入到 shell 环境变量", async () => {
     const { engine } = makeEngine();
 
@@ -152,6 +171,36 @@ nodes:
 
     const output = await engine.getOutput(result.runId, "compute");
     expect(output?.stdout.trim()).toBe("10");
+  });
+});
+
+describe("YAML 节点重试", () => {
+  // 失败节点按 YAML 配置重试一次，依赖节点不能启动。
+  test("失败 shell 重试一次后保持失败并跳过下游", async () => {
+    const { engine, storage } = makeEngine();
+    const yaml = `schema_version: '1'\nname: retry-failure\nnodes:\n  - id: fail\n    type: shell\n    command: exit 7\n    retry:\n      count: 1\n      delay: 0\n  - id: downstream\n    type: shell\n    command: echo reached\n    depends_on: [fail]\n`;
+    const result = await engine.run(yaml);
+    const events = await storage.getEvents(result.runId);
+
+    expect(result.status).toBe("FAILED");
+    expect(events.filter((event) => event.type === "node.retrying" && event.node_id === "fail")).toHaveLength(1);
+    expect(events.filter((event) => event.type === "node.started" && event.node_id === "downstream")).toHaveLength(0);
+  });
+});
+
+describe("运行取消", () => {
+  // 取消等待命令后，运行快照应在原等待结束前进入取消终态。
+  test("取消 sleep 节点及时生成 CANCELLED 快照", async () => {
+    if (process.platform === "win32") return;
+    const { engine } = makeEngine();
+    const yaml = `schema_version: '1'\nname: cancellable\nnodes:\n  - id: wait\n    type: shell\n    command: sleep 3 & wait\n`;
+    const { runId, result } = engine.runAsync(yaml);
+    await new Promise((resolve) => setTimeout(resolve, 100));
+    const cancelledAt = Date.now();
+    await engine.cancel(runId);
+    expect((await result).status).toBe("CANCELLED");
+    expect((await engine.getRunStatus(runId))?.dag_status).toBe("CANCELLED");
+    expect(Date.now() - cancelledAt).toBeLessThan(1500);
   });
 });
 

@@ -22,7 +22,7 @@ jobs:
       matrix:
         include:
           - name: opencode
-            dockerfile: docker/sandbox/Dockerfile
+            dockerfile: docker/sandbox-opencode/Dockerfile
           - name: ccb
             dockerfile: docker/sandbox-ccb/Dockerfile
           - name: peri
@@ -71,6 +71,8 @@ jobs:
           push: true
           platforms: linux/amd64,linux/arm64
           tags: ${{ steps.tags.outputs.tags }}
+          build-args: |
+            CACHE_BUST=${{ github.run_id }}
           labels: |
             org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
             org.opencontainers.image.variant=sandbox-${{ matrix.name }}

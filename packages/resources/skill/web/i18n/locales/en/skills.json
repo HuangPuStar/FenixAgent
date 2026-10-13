@@ -1,0 +1,110 @@
+{
+  "title": "Skill Library",
+  "subtitle": "Package Agent workflows as readable instructions so capabilities stay consistent across agents.",
+  "search": "Search Skills",
+  "empty": "Your skill library is empty",
+  "emptyHint": "Create or upload a skill to give Agents a reusable way of working.",
+  "emptySearch": "No matching skills",
+  "emptySearchHint": "Try another search term or ownership filter.",
+  "toolbar": {
+    "label": "Search and ownership filters"
+  },
+  "scope": {
+    "label": "Skill ownership",
+    "all": "All",
+    "organization": "This organization",
+    "shared": "Shared with me",
+    "public": "Public"
+  },
+  "directory": {
+    "title": "Skill directory",
+    "summary": "Showing {{visible}} of {{total}}",
+    "noDescription": "No purpose documented",
+    "private": "Private"
+  },
+  "accessDenied": {
+    "title": "No permission to view skills",
+    "description": "Your account is not allowed to view this organization's skill library. Sign in with an account that has access, or ask your organization administrator to grant it."
+  },
+  "loadState": {
+    "title": "Could not load skills",
+    "retry": "Try again"
+  },
+  "detail": {
+    "contentTitle": "Skill instructions",
+    "contentHint": "The SKILL.md content read and followed by Agents",
+    "loadError": "Could not load the skill content. Open details to retry.",
+    "emptyContent": "No skill instructions"
+  },
+  "column": {
+    "name": "Skill Name"
+  },
+  "btn": {
+    "download": "Download",
+    "edit": "Edit",
+    "view": "View",
+    "delete": "Delete",
+    "createSkill": "Add Skill",
+    "uploadSkill": "Import",
+    "reselect": "Reselect"
+  },
+  "dialog": {
+    "editTitle": "Edit Skill",
+    "detailTitle": "Skill Details",
+    "createTitle": "New Skill",
+    "save": "Save",
+    "startUpload": "Start Upload",
+    "uploadTitle": "Upload Skill"
+  },
+  "form": {
+    "name": "Skill Name",
+    "description": "Description",
+    "content": "Content",
+    "descriptionPlaceholder": "Optional, briefly describe the skill purpose",
+    "contentHint": "Markdown-formatted skill instructions",
+    "contentPlaceholder": "Enter Markdown content...",
+    "nameRequired": "Name cannot be empty",
+    "contentRequired": "Content cannot be empty"
+  },
+  "upload": {
+    "selectFolder": "Click to select a folder containing skills",
+    "selectFolderHint": "Each subdirectory will be recognized as a skill, and must contain SKILL.md",
+    "selectedDirs": "Selected {{count}} directories",
+    "files": "{{count}} files",
+    "missingSkillMd": "Missing SKILL.md",
+    "importable": "Importable"
+  },
+  "confirm": {
+    "deleteTitle": "Confirm Delete",
+    "deleteDescription": "This action is irreversible. Are you sure you want to delete skill \"{{name}}\"?",
+    "overwriteTitle": "Confirm Overwrite Conflicting Skills",
+    "overwriteDescription": "Overwriting will replace existing skill content for these directories: {{names}}. Old files will be deleted. Are you sure you want to continue?",
+    "overwriteConfirm": "Confirm Overwrite"
+  },
+  "conflict": {
+    "title": "Detected skill name conflicts",
+    "skipConflicts": "Skip Conflicting Items",
+    "overwriteExisting": "Overwrite Existing Skills",
+    "detected": "Detected skills with the same name, please choose to skip or overwrite"
+  },
+  "toast": {
+    "loadDetailFailed": "Failed to load skill details",
+    "saveFailed": "Save failed",
+    "saveFailedWith": "Save failed: {{message}}",
+    "skillUpdated": "Skill updated",
+    "skillCreated": "Skill created",
+    "skillDeleted": "Skill deleted",
+    "operationFailed": "Operation failed: {{message}}",
+    "deleteFailed": "Delete failed",
+    "deleteFailedWith": "Delete failed: {{message}}",
+    "importResult": "Imported {{imported}} skills",
+    "importResultWithSkipped": "Imported {{imported}} skills, skipped {{skipped}} conflicting skills",
+    "importFailedWith": "Import failed: {{message}}",
+    "downloadFailed": "Failed to download skill",
+    "loadListFailed": "Failed to load skill list",
+    "loadListFailedWith": "Failed to load skill list: {{message}}"
+  },
+  "nav": {
+    "skills": "Skill Library"
+  }
+}

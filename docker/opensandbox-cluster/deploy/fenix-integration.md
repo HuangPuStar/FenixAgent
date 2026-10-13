@@ -90,6 +90,12 @@ docker load -i /opt/fenix-deploy/opensandbox-images.tar
 
 docker-compose.yml 使用目录中的即可。
 
+> 本目录的 compose 是**独立的部署单元**：它自建 `opensandbox` 网络、管理端口对局域网开放，不加入平台侧的
+> `fenix-server` 网络（平台所在的机器用 `docker/opensandbox-cluster/` 与 `docker/opensandbox-server/` 两份，
+> 见 `docs/operations/docker-topology.md` §3、§6）。数据落在本目录（`opensandbox-cluster-data/`、
+> `opensandbox-server-docker-data/`、`workspace/`、`data/`）；`frps.toml` 引用上一级目录
+> `docker/opensandbox-cluster/frps.toml`，交付到沙盒机时需一并带上。
+
 生成`.env`，样例：
 
 ```dotenv
@@ -235,7 +241,7 @@ RCS_SANDBOX_CLUSTER_URL=http://<宿主机局域网 IP>:8080
 RCS_SANDBOX_CLUSTER_API_KEY=替换为 Cluster API Key
 RCS_DEFAULT_SANDBOX_POOL_ID=default
 RCS_DEFAULT_SANDBOX_IMAGE=ghcr.io/huangpustar/fenixagent-sandbox-peri:v0.4.0-beta.1-peri
-RCS_DEFAULT_SANDBOX_AGENT_TYPE=ccb
+RCS_DEFAULT_SANDBOX_AGENT_TYPE=peri
 RCS_DEFAULT_SANDBOX_RESOURCES_JSON='{
   "cpu": 2,
   "memoryMb": 512,
@@ -244,10 +250,7 @@ RCS_DEFAULT_SANDBOX_RESOURCES_JSON='{
   "environment": {
     "TZ": "Asia/Shanghai",
     "RCS_URL": "ws://替换为AOS地址",
-    "RCS_SECRET": "替换为 REGISTRY_SECRET",
-    "IS_PERI": "1",
-    "RCS_CCB_COMMAND": "peri",
-    "RCS_CCB_ARGS": "acp"
+    "RCS_SECRET": "替换为 REGISTRY_SECRET"
   },
   "volumes": [
     {
@@ -274,7 +277,7 @@ RCS_DEFAULT_SANDBOX_EXTRA_JSON='{
 }'
 ```
 
-Peri 配置需要将 `RCS_CCB_COMMAND` 设置为 `peri`、`RCS_CCB_ARGS` 设置为 `acp`，并通过 `IS_PERI=1` 启用 Peri 配置生成。这里的 `entrypoint` 使用镜像中的 Bun 直接启动 `/usr/local/bin/acp-runtime.js peri acp`；`workspace` 保存工作区，`peri-global` 保存 Peri 的全局目录。
+Peri 沙盒镜像已注册为 peri 原生节点（`AGENT_TYPE=peri`），无需 `IS_PERI` 或 `RCS_CCB_COMMAND` / `RCS_CCB_ARGS`（后两者是 daemon / 容器侧部署键，仅 ccb 槽位使用，宿主 env schema 不声明）：沙盒由 peri handler 完成 workspace 物化并启动 peri。这里的 `entrypoint` 使用镜像中的 Bun 直接启动 `/usr/local/bin/acp-runtime.js peri acp`；`workspace` 保存工作区，`peri-global` 保存 Peri 的全局目录。
 
 ### 5.2 OpenCode
 

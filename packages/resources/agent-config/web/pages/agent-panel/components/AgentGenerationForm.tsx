@@ -1,0 +1,131 @@
+import { Button } from "@fenix/ui-components/ui/button";
+import { Input } from "@fenix/ui-components/ui/input";
+import { Label } from "@fenix/ui-components/ui/label";
+import { Textarea } from "@fenix/ui-components/ui/textarea";
+import { X } from "lucide-react";
+import { useCallback, useState } from "react";
+import { useTranslation } from "react-i18next";
+import { toast } from "sonner";
+
+import { AGENT_HOME_NS } from "../../../i18n/namespace";
+import { errorMessage } from "../../../lib/error-message";
+import "./AgentGenerationForm.css";
+
+export interface SkillItem {
+  id: string;
+  name: string;
+  description: string;
+}
+
+export interface GenerationFormData {
+  name: string;
+  systemPrompt: string;
+  skills: SkillItem[];
+}
+
+interface AgentGenerationFormProps {
+  initialData: GenerationFormData;
+  onCreate: (data: GenerationFormData) => Promise<void>;
+  loading?: boolean;
+}
+
+/**
+ * 名称与 System Prompt 两个字段名共用的标签配方：两处逐字重复（skills 那处多一档下边距，
+ * 是既存差异、保持原样），字号 / 字重 / 字距 / 颜色要一起变，抽一处避免只改到一个。
+ */
+const FIELD_LABEL_CLASS = "mb-1.5 text-xs font-bold tracking-wider text-slate-500";
+
+/** 截取 description 前 N 个字符 */
+function truncate(text: string, max: number) {
+  if (!text) return "";
+  return text.length > max ? `${text.slice(0, max)}…` : text;
+}
+
+export function AgentGenerationForm({ initialData, onCreate, loading }: AgentGenerationFormProps) {
+  const { t } = useTranslation(AGENT_HOME_NS);
+  const [name, setName] = useState(initialData.name);
+  const [systemPrompt, setSystemPrompt] = useState(initialData.systemPrompt);
+  const [skills, setSkills] = useState(initialData.skills);
+
+  const handleRemoveSkill = useCallback((skillId: string) => {
+    setSkills((prev) => prev.filter((s) => s.id !== skillId));
+  }, []);
+
+  const handleSubmit = useCallback(async () => {
+    try {
+      await onCreate({ name, systemPrompt, skills });
+    } catch (err) {
+      // 失败原因取服务端信封原文：固定文案会让用户与测试都定位不到后端故障。
+      console.error("[agent-home] Create agent failed:", err);
+      toast.error(errorMessage(err) ?? t("createFailed"));
+    }
+  }, [name, systemPrompt, skills, onCreate, t]);
+
+  return (
+    <div className="agent-generation-form w-full">
+      <div className="flex flex-col gap-5">
+        {/* 名称 */}
+        <div>
+          <Label className={FIELD_LABEL_CLASS}>{t("nameLabel")}</Label>
+          <Input
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            className="h-11 rounded-lg border-slate-900/10 bg-slate-100 text-sm text-slate-900 shadow-none transition-colors focus-visible:border-blue-600 focus-visible:ring-3 focus-visible:ring-blue-600/10"
+          />
+        </div>
+
+        {/* System Prompt */}
+        <div>
+          <Label className={FIELD_LABEL_CLASS}>{t("promptLabel")}</Label>
+          {/* 基础 `Textarea` 带 `field-sizing-content`（随内容长高），而模板提示词是几千字的长文档
+              （最长的一条把文本域撑到 13305px 高，整张表单随之远超视口）。这里补 `max-h-96` 限高，
+              让长提示词在**文本域自身的滚动条**里滚动，不再把表单和顶部「返回」按钮一起推走。
+              上限与聊天输入框（`prompt-input-textarea.tsx` 的 `max-h-48`）同族，取更宽松的一档。 */}
+          <Textarea
+            value={systemPrompt}
+            onChange={(e) => setSystemPrompt(e.target.value)}
+            className="min-h-28 max-h-96 overflow-y-auto rounded-lg border-slate-900/10 bg-slate-100 text-sm leading-relaxed text-slate-900 shadow-none transition-colors focus-visible:border-blue-600 focus-visible:ring-3 focus-visible:ring-blue-600/10"
+          />
+        </div>
+
+        {/* Skills */}
+        {skills.length > 0 && (
+          <div>
+            <Label className="mb-2 text-xs font-bold tracking-wider text-slate-500">{t("skillsLabel")}</Label>
+            <div className="flex flex-wrap gap-2">
+              {skills.map((skill) => (
+                <div
+                  key={skill.id}
+                  className="flex max-w-full items-start gap-2 rounded-lg border border-blue-600/15 bg-blue-600/5 px-3 py-2"
+                >
+                  <div className="flex-1 min-w-0">
+                    <span className="text-xs font-semibold text-blue-600">{skill.name}</span>
+                    {skill.description && (
+                      <span className="ml-1.5 text-3xs text-slate-500">{truncate(skill.description, 30)}</span>
+                    )}
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => handleRemoveSkill(skill.id)}
+                    className="mt-0.5 shrink-0 text-blue-600/45 transition-colors hover:text-blue-600"
+                  >
+                    <X className="h-3.5 w-3.5" />
+                  </button>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* 创建按钮 */}
+        <Button
+          onClick={handleSubmit}
+          disabled={loading || !name.trim()}
+          className="agent-generation-form-submit mt-1 h-11 rounded-lg bg-gradient-to-r from-blue-600 to-blue-400 px-4 text-sm font-bold tracking-wide text-white transition-all hover:-translate-y-0.5 hover:from-blue-600 hover:to-sky-500 disabled:translate-y-0 disabled:opacity-60"
+        >
+          {loading ? "..." : t("createButton")}
+        </Button>
+      </div>
+    </div>
+  );
+}

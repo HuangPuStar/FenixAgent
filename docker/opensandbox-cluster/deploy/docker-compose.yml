@@ -1,3 +1,14 @@
+# 独立沙盒机的三种服务合一编排（Cluster + frps + Server）
+#
+# 用途：给**不跑 FenixAgent 平台**的沙盒机一次性起整套管理面与执行节点（离线部署流程见同目录
+# fenix-integration.md）。平台所在的机器不用这一份：那边的 Cluster 与节点分别由
+# docker/opensandbox-cluster/ 与 docker/opensandbox-server/ 提供，两者经共享网络 fenix-server 互通、
+# 宿主端口只绑回环（见 docs/operations/docker-topology.md §3、§6）。
+#
+# 本文件因此是**另一个部署单元**而非前两者的副本：它按「一台机器既是管理面又是节点」组网
+# （自建 opensandbox 网络、管理端口对局域网开放），不引用 fenix-server。
+# 镜像 tag 与 docker/opensandbox-cluster/、docker/opensandbox-server/ 保持一致，升级时三处同改。
+
 services:
   opensandbox-cluster:
     image: ghcr.io/huangpustar/fenixagent-opensandbox-cluster:v0.2.0

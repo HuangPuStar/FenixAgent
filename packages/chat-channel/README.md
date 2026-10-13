@@ -6,9 +6,9 @@ Chat 域独立包（合并原 `@fenix/acp-server` 全部能力）。覆盖三层
 - **聚合层（`src/state/`）**：把规范化事件投影到 Yjs CRDT 文档（Chat Doc / Session Doc），微批次合并、Redis 快照持久化与广播回调。
 - **控制面（`src/channel/`）**：YJS 前端 WebSocket 生命周期（Gateway）、会话频道与 Action/Ack 协议（SessionChannel / CommandCoordinator）、relay 入站消费与断链清理（RelayEventHandler）、同 `rcsSessionId` fan-out 与背压（YjsBroadcaster）。
 
-宿主（主服务）只保留桥接层 `src/services/chat-channel-bootstrap.ts`（装配 `ChatChannelController` 单例），包内不直接 import 任何宿主模块。
+宿主通过 `packages/agent-runtime/src/server/services/chat-channel-bootstrap.ts` 装配 `ChatChannelController` 单例；其他包只能经 `@fenix/agent-runtime/server` 使用该能力，包内不直接 import 宿主模块。
 
-架构契约见 `docs/arch/19-yjs-chat-streaming.md`（实现基线）；设计决策见 `spec/global/adr/2026-08-04-chat-channel-package-design.md`。
+架构契约见 `docs/arch/19-yjs-chat-streaming.md`（实现基线）；设计决策见 `docs/adr/2026-08-04-chat-channel-package-design.md`。
 
 ## 安装
 
@@ -30,18 +30,21 @@ src/
 ├── transport/   # createYjsWsClient（前端同构 WS 客户端）
 ├── util/        # createDeterministicRcsSessionId
 ├── schema.ts    # Chat Doc / Session Doc 新 schema 与规范化事件类型
-├── index.ts     # 浏览器安全导出面（web vite alias 直连，禁止 re-export 服务端模块）
+├── index.ts     # 浏览器安全导出面（禁止 re-export 服务端模块）
 └── server.ts    # 服务端完整导出面 = index + channel + persist + state
 ```
+
+> 本包**不含任何 UI**：聊天界面自 CE 阶段 2 §1.6 T5d 起整体归 `@fenix/ui-components`（`web/chat/**`），
+> 包内 `web/` 已删除。
 
 ### 双入口导出
 
 | 入口 | 内容 | 消费方 |
 |------|------|--------|
-| `@fenix/chat-channel` | 类型、schema、`chat-writer`、`yjs-store`、`protocol`、`transport`、`util`（无 node 运行时依赖） | 前端（vite alias 直连源码）+ 双端共享纯函数 |
+| `@fenix/chat-channel` | 类型、schema、`chat-writer`、`yjs-store`、`protocol`、`transport`、`util`（无 node 运行时依赖） | 浏览器（经包 `exports` 解析源码，宿主不再登记 vite alias）+ 双端共享纯函数 |
 | `@fenix/chat-channel/server` | 上述 + `channel` 控制面 + `persist` 持久化 + `state` 聚合层（DocManager / factory / aggregator 等） | 仅服务端（Bun） |
 
-边界由 `src/__tests__/chat-channel-browser-surface.test.ts` 静态走根入口值导入图守护；从根入口 re-export 服务端模块会把 node 依赖打进浏览器 bundle（2026-08-17 `node:crypto` 事故）。
+边界由 `packages/chat-channel/src/__tests__/chat-channel-browser-surface.test.ts` 静态走根入口值导入图守护；从根入口 re-export 服务端模块会把 node 依赖打进浏览器 bundle（2026-08-17 `node:crypto` 事故）。
 
 ## 快速开始
 
@@ -100,10 +103,10 @@ await dm.closeAll();
 
 控制面各模块为纯协议实现，宿主能力全部经 `ChatChannelDependencies` 构造器注入
 （环境解析、workspace、实例生命周期、relay 连接、空闲监控、Redis 快照、日志），
-宿主侧通过 `src/services/chat-channel-bootstrap.ts` 装配单例：
+宿主侧的桥接实现位于 `packages/agent-runtime/src/server/services/chat-channel-bootstrap.ts`，消费方通过公开入口装配单例：
 
 ```typescript
-import { getChatChannelController } from "src/services/chat-channel-bootstrap";
+import { getChatChannelController } from "@fenix/agent-runtime/server";
 
 const controller = getChatChannelController();
 // WebSocket open / message / close 全部委托给 controller.gateway

@@ -1,0 +1,163 @@
+{
+  "title": "组织管理",
+  "subtitle": "管理你的组织和团队成员",
+  "myOrgs": "我的组织",
+  "noOrgs": "暂无组织",
+  "loadState": {
+    "title": "组织列表加载失败",
+    "description": "当前无法读取组织列表，这不代表账号下没有组织。",
+    "retry": "重试"
+  },
+  "selectOrg": "选择一个组织查看详情",
+  "defaultEngine": "默认执行节点",
+  "form": {
+    "machineLocal": "本地运行"
+  },
+  "workspace": {
+    "people": "团队访问",
+    "runtime": "运行资源",
+    "engineDescription": "新会话默认使用的执行节点"
+  },
+  "roles": {
+    "owner": "拥有者",
+    "admin": "管理员",
+    "member": "成员"
+  },
+  "edit": "编辑",
+  "cancel": "取消",
+  "save": "保存",
+  "saving": "保存中...",
+  "create": "创建",
+  "creating": "创建中...",
+  "members": "成员 ({{count}})",
+  "inviteMember": "添加成员",
+  "noMembers": "暂无成员",
+  "machines": "机器 ({{count}})",
+  "noMachines": "暂无机器",
+  "machineStatus": {
+    "online": "在线",
+    "offline": "离线"
+  },
+  "machineAgent": "Agent",
+  "machineHost": "主机",
+  "machineLabels": "标签",
+  "machineLastSeen": "最近心跳",
+  "machineNever": "无",
+  "machineRefresh": "刷新",
+  "machineRefreshing": "刷新中...",
+  "table": {
+    "user": "用户",
+    "role": "角色",
+    "actions": "操作"
+  },
+  "dangerZone": {
+    "title": "危险区域",
+    "description": "删除组织将同时删除所有关联资源，此操作不可撤销。",
+    "deleteOrg": "删除组织",
+    "cannotDeleteLast": "无法删除最后一个组织，请先创建一个新组织。"
+  },
+  "createDialog": {
+    "title": "创建组织",
+    "name": "名称",
+    "namePlaceholder": "组织名称",
+    "slug": "Slug",
+    "description": "描述",
+    "descriptionPlaceholder": "可选"
+  },
+  "inviteDialog": {
+    "title": "添加成员",
+    "searchLabel": "搜索用户",
+    "searchPlaceholder": "输入姓名、邮箱或手机号进行搜索",
+    "searchReplacePlaceholder": "继续输入可重新选择成员",
+    "searchMorePlaceholder": "继续输入可搜索并追加成员",
+    "searchHint": "输入至少 3 个字符后，从全站用户中搜索并选择成员",
+    "searchMinChars": "至少输入 3 个字符后才开始搜索",
+    "searching": "搜索中...",
+    "empty": "未找到匹配用户",
+    "alreadyMember": "已在组织内",
+    "alreadySelected": "已选择",
+    "removeSelected": "取消已选成员",
+    "role": "角色",
+    "invite": "添加",
+    "inviting": "添加中..."
+  },
+  "deleteDialog": {
+    "title": "确认删除组织",
+    "description": "即将删除组织「{{name}}」，所有关联资源将被永久删除。此操作不可撤销。",
+    "confirmDelete": "确认删除",
+    "deleting": "删除中..."
+  },
+  "removeMemberDialog": {
+    "title": "确认移除成员",
+    "description": "即将将成员「{{name}}」移出该组织，其将失去对组织内资源的访问权限。",
+    "confirmRemove": "确认移除",
+    "removing": "移除中..."
+  },
+  "orgId": "组织 ID",
+  "copyId": "复制 ID",
+  "copy": "复制",
+  "copied": "已复制",
+  "copyFailed": "复制失败，请手动选中文本复制。",
+  "editName": {
+    "placeholder": "组织名称"
+  },
+  "done": "完成",
+  "machineId": "机器 ID",
+  "addMachine": "新增机器",
+  "createMachineDialog": {
+    "title": "新增机器",
+    "name": "机器名称",
+    "namePlaceholder": "例如 sandbox-01",
+    "labels": "标签",
+    "labelsPlaceholder": "逗号分隔，例如 sandbox,production",
+    "agentName": "引擎类型",
+    "agentNamePlaceholder": "选择引擎类型",
+    "resultTitle": "机器创建成功",
+    "resultDesc": "请将以下信息发送给机器管理员，在客户端设置环境变量后启动 acp-runtime。",
+    "initCommand": "初始化命令"
+  },
+  "editMachineDialog": {
+    "title": "编辑机器",
+    "name": "机器名称",
+    "namePlaceholder": "例如 sandbox-01",
+    "labels": "标签",
+    "labelsPlaceholder": "逗号分隔，例如 sandbox,production",
+    "agentName": "引擎类型"
+  },
+  "deleteMachineDialog": {
+    "title": "确认删除机器",
+    "description": "即将删除机器「{{name}}」。如果机器在线或仍被引用，删除会被拒绝。",
+    "confirmDelete": "确认删除",
+    "deleting": "删除中..."
+  },
+  "toast": {
+    "loadDetailFailed": "加载组织详情失败",
+    "createSuccess": "组织创建成功",
+    "createFailed": "创建组织失败",
+    "updateSuccess": "组织信息已更新",
+    "updateFailed": "更新失败",
+    "inviteSent": "成员已添加",
+    "inviteFailed": "添加成员失败",
+    "removeSuccess": "成员已移除",
+    "removeFailed": "移除成员失败",
+    "roleUpdated": "角色已更新",
+    "roleUpdateFailed": "更新角色失败",
+    "machinesLoadFailed": "机器列表加载失败，重新进入页面可重试。",
+    "candidatesLoadFailed": "成员候选加载失败，重新输入即可重试。",
+    "deleteSuccess": "组织已删除",
+    "deleteFailed": "删除组织失败",
+    "machineCreateSuccess": "机器{{name}}已创建（ID: {{id}}）",
+    "machineCreateFailed": "创建机器失败",
+    "machineUpdateSuccess": "机器已更新",
+    "machineUpdateFailed": "更新机器失败",
+    "machineDeleteSuccess": "机器已删除",
+    "machineDeleteFailed": "删除机器失败"
+  },
+  "error": {
+    "operationFailed": "操作失败"
+  },
+  "orgSwitchFailed": "切换组织失败：{{message}}",
+  "nav": {
+    "organizations": "组织"
+  }
+}

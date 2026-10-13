@@ -1,0 +1,3 @@
+.agent-management-grid {
+  grid-template-columns: repeat(auto-fill, 224px);
+}

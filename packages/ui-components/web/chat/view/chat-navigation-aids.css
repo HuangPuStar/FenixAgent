@@ -1,0 +1,7 @@
+.chat-prompt-rail-anchor {
+  left: max(8px, calc(50% - 446px));
+}
+
+.chat-selection-quote-popover {
+  box-shadow: 0 9px 26px rgb(30 50 80 / 14%);
+}

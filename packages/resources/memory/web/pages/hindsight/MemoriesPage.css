@@ -1,0 +1,13 @@
+.memories-page-workspace {
+  grid-template-rows: auto minmax(0, 1fr);
+  min-height: 0;
+}
+.memories-page-workspace > div [data-slot="scroll-area-viewport"] > div {
+  height: 100%;
+}
+
+@media (width >= 48rem) {
+  .memories-page-workspace {
+    grid-template-rows: repeat(1, minmax(0, 1fr));
+  }
+}

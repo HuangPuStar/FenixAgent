@@ -1,0 +1,5 @@
+@media (width >= 80rem) {
+  .model-gateway-usage-panels {
+    grid-template-columns: 2fr 0.92fr;
+  }
+}

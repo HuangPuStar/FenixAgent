@@ -1,0 +1,163 @@
+{
+  "title": "Organizations",
+  "subtitle": "Manage your organizations and team members",
+  "myOrgs": "My Organizations",
+  "noOrgs": "No organizations yet",
+  "loadState": {
+    "title": "Could not load organizations",
+    "description": "The organization list is unavailable right now — this is not an empty account.",
+    "retry": "Retry"
+  },
+  "selectOrg": "Select an organization to view details",
+  "defaultEngine": "Default runtime",
+  "form": {
+    "machineLocal": "Run locally"
+  },
+  "workspace": {
+    "people": "Team access",
+    "runtime": "Runtime resources",
+    "engineDescription": "Default execution node for new sessions"
+  },
+  "roles": {
+    "owner": "Owner",
+    "admin": "Admin",
+    "member": "Member"
+  },
+  "edit": "Edit",
+  "cancel": "Cancel",
+  "save": "Save",
+  "saving": "Saving...",
+  "create": "Create",
+  "creating": "Creating...",
+  "members": "Members ({{count}})",
+  "inviteMember": "Add Member",
+  "noMembers": "No members yet",
+  "machines": "Machines ({{count}})",
+  "noMachines": "No machines yet",
+  "machineStatus": {
+    "online": "Online",
+    "offline": "Offline"
+  },
+  "machineAgent": "Agent",
+  "machineHost": "Host",
+  "machineLabels": "Labels",
+  "machineLastSeen": "Last Heartbeat",
+  "machineNever": "Never",
+  "machineRefresh": "Refresh",
+  "machineRefreshing": "Refreshing...",
+  "table": {
+    "user": "User",
+    "role": "Role",
+    "actions": "Actions"
+  },
+  "dangerZone": {
+    "title": "Danger Zone",
+    "description": "Deleting the organization will also delete all associated resources. This action cannot be undone.",
+    "deleteOrg": "Delete Organization",
+    "cannotDeleteLast": "You cannot delete the last organization. Please create a new one first."
+  },
+  "createDialog": {
+    "title": "Create Organization",
+    "name": "Name",
+    "namePlaceholder": "Organization name",
+    "slug": "Slug",
+    "description": "Description",
+    "descriptionPlaceholder": "Optional"
+  },
+  "inviteDialog": {
+    "title": "Add Member",
+    "searchLabel": "Search User",
+    "searchPlaceholder": "Search by name, email, or phone number",
+    "searchReplacePlaceholder": "Keep typing to replace the selected member",
+    "searchMorePlaceholder": "Keep typing to search and add more members",
+    "searchHint": "Type at least 3 characters to search all users and choose members",
+    "searchMinChars": "Enter at least 3 characters before searching",
+    "searching": "Searching...",
+    "empty": "No matching users found",
+    "alreadyMember": "Already in organization",
+    "alreadySelected": "Selected",
+    "removeSelected": "Remove selected member",
+    "role": "Role",
+    "invite": "Add",
+    "inviting": "Adding..."
+  },
+  "deleteDialog": {
+    "title": "Confirm Delete Organization",
+    "description": "You are about to delete organization \"{{name}}\". All associated resources will be permanently deleted. This action cannot be undone.",
+    "confirmDelete": "Confirm Delete",
+    "deleting": "Deleting..."
+  },
+  "removeMemberDialog": {
+    "title": "Confirm Remove Member",
+    "description": "You are about to remove member \"{{name}}\" from this organization. They will lose access to all resources in it.",
+    "confirmRemove": "Confirm Remove",
+    "removing": "Removing..."
+  },
+  "orgId": "Organization ID",
+  "copyId": "Copy ID",
+  "copy": "Copy",
+  "copied": "Copied",
+  "copyFailed": "Copy failed. Select the text and copy it manually.",
+  "editName": {
+    "placeholder": "Organization name"
+  },
+  "done": "Done",
+  "machineId": "Machine ID",
+  "addMachine": "Add Machine",
+  "createMachineDialog": {
+    "title": "Add Machine",
+    "name": "Machine Name",
+    "namePlaceholder": "e.g. sandbox-01",
+    "labels": "Labels",
+    "labelsPlaceholder": "Comma separated, e.g. sandbox,production",
+    "agentName": "Engine Type",
+    "agentNamePlaceholder": "Select engine type",
+    "resultTitle": "Machine Created",
+    "resultDesc": "Share the following information with the machine administrator. Set the environment variables on the client before starting acp-runtime.",
+    "initCommand": "Init Command"
+  },
+  "editMachineDialog": {
+    "title": "Edit Machine",
+    "name": "Machine Name",
+    "namePlaceholder": "e.g. sandbox-01",
+    "labels": "Labels",
+    "labelsPlaceholder": "Comma separated, e.g. sandbox,production",
+    "agentName": "Engine Type"
+  },
+  "deleteMachineDialog": {
+    "title": "Confirm Delete Machine",
+    "description": "You are about to delete machine \"{{name}}\". The request will be rejected if it is online or still referenced.",
+    "confirmDelete": "Confirm Delete",
+    "deleting": "Deleting..."
+  },
+  "toast": {
+    "loadDetailFailed": "Failed to load organization details",
+    "createSuccess": "Organization created",
+    "createFailed": "Failed to create organization",
+    "updateSuccess": "Organization info updated",
+    "updateFailed": "Update failed",
+    "inviteSent": "Member added",
+    "inviteFailed": "Failed to add member",
+    "removeSuccess": "Member removed",
+    "removeFailed": "Failed to remove member",
+    "roleUpdated": "Role updated",
+    "roleUpdateFailed": "Failed to update role",
+    "machinesLoadFailed": "Could not load machines. Reopen the page to retry.",
+    "candidatesLoadFailed": "Could not load member candidates. Type again to retry.",
+    "deleteSuccess": "Organization deleted",
+    "deleteFailed": "Failed to delete organization",
+    "machineCreateSuccess": "Machine {{name}} created (ID: {{id}})",
+    "machineCreateFailed": "Failed to create machine",
+    "machineUpdateSuccess": "Machine updated",
+    "machineUpdateFailed": "Failed to update machine",
+    "machineDeleteSuccess": "Machine deleted",
+    "machineDeleteFailed": "Failed to delete machine"
+  },
+  "error": {
+    "operationFailed": "Operation failed"
+  },
+  "orgSwitchFailed": "Failed to switch organization: {{message}}",
+  "nav": {
+    "organizations": "Organizations"
+  }
+}

@@ -1,0 +1,9 @@
+.agent-master-detail-workspace {
+  height: calc(100dvh - 210px);
+  box-shadow: 0 12px 38px rgb(36 57 92 / 8%);
+}
+@media (width >= 48rem) {
+  .agent-master-detail-workspace {
+    grid-template-columns: 238px minmax(0, 1fr);
+  }
+}

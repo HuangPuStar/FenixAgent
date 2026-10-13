@@ -1,0 +1,444 @@
+import { createDeterministicRcsSessionId } from "@fenix/chat-channel";
+import { log, error as logError } from "@fenix/logger";
+import { AppError } from "@fenix/platform-sdk";
+import Elysia, { type AnyElysia } from "elysia";
+import { v4 as uuid } from "uuid";
+import { environmentAccessFacade } from "../../facades/environment-access-facade";
+import type { EnvironmentRecord } from "../../runtime";
+import {
+  AcpAgentListResponseSchema,
+  AcpRegistrySecretQuerySchema,
+  AcpRelayParamsSchema,
+} from "../../schemas/acp.schema";
+import { getAgentRuntimeConfig } from "../../server/config";
+import { getChatChannelController } from "../../server/services/chat-channel-bootstrap";
+import { getFileWsPort } from "../../server/services/file-ws-port";
+import { handleAcpWsClose, handleAcpWsMessage, handleAcpWsOpen } from "../../server/transport/acp-ws-handler";
+import {
+  handleExternalRelayClose,
+  handleExternalRelayMessage,
+  handleExternalRelayOpen,
+} from "../../server/transport/relay/external-relay";
+import type { RequestAuthResult } from "../../types/auth";
+import type { WsConnection } from "../../types/ws-types";
+import type { AcpRouteDependencies } from "../dependencies";
+
+/** Maximum WebSocket message size: 10 MB — 仅用于 acp-ws / yjs / relay（file-ws 用 RCS_FILE_WS_MAX_PAYLOAD_MB，见下） */
+const MAX_WS_MESSAGE_SIZE = 10 * 1024 * 1024;
+
+/**
+ * 统一尺寸检查（acp-ws / yjs / relay 共用，10MB 上限不变）。
+ *
+ * 字符串按 UTF-8 字节、二进制帧按 byteLength；object 帧（Elysia 默认
+ * `createWSMessageParser` 已把 `{` 开头单行 JSON 自动 parse 成对象）必须补
+ * 重序列化检查——仅 `typeof === "string"` 检查会绕过（D12 残留），
+ * 而 uWS 全局 maxPayloadLength 已放宽到 32MB（file-ws 需要），
+ * 若不补检查，本端点真实上限将从 16MB 静默变为 32MB。
+ */
+function isOverWsLimit(data: unknown): boolean {
+  return (
+    getFileWsPort().checkWsMessageSize(data as string | Uint8Array, MAX_WS_MESSAGE_SIZE) ||
+    getFileWsPort().checkParsedObjectSize(data, MAX_WS_MESSAGE_SIZE)
+  );
+}
+
+/**
+ * file-ws 单帧最大载荷（字节），来源模块配置的 `fileWsMaxPayloadMb`（宿主 `RCS_FILE_WS_MAX_PAYLOAD_MB`，默认 32MB，§7.6）。
+ *
+ * 惰性求值并缓存：模块配置由宿主在装配阶段注入，本模块可能在装配完成前被静态 import，
+ * 不能在模块顶层读取；首次消息到达时配置已就绪，取一次后缓存（配置进程内不可变）。
+ */
+let fileWsMaxPayloadBytes: number | null = null;
+function getFileWsMaxPayloadBytes(): number {
+  fileWsMaxPayloadBytes ??= getAgentRuntimeConfig().fileWsMaxPayloadMb * 1024 * 1024;
+  return fileWsMaxPayloadBytes;
+}
+
+/** Adapt Elysia WS to WsConnection interface */
+// biome-ignore lint/suspicious/noExplicitAny: Elysia WS type not directly compatible with WsConnection
+function adaptWs(ws: any): WsConnection {
+  return {
+    // 二进制 yjs:update 帧（SP-A4）必须走 sendBinary：Elysia 的 send 对 object 一律
+    // JSON.stringify，Uint8Array 会被序列化成数字索引对象文本而非透传二进制
+    send: (data: string | Uint8Array) => {
+      if (typeof data === "string") ws.send(data);
+      else ws.sendBinary(data);
+    },
+    close: (code?: number, reason?: string) => ws.close(code, reason),
+    get readyState() {
+      return ws.readyState;
+    },
+    // 背压检测（SP-A7）：Bun ServerWebSocket 以 getBufferedAmount() 暴露待发送缓冲，
+    // 不暴露则按 0 处理（永不拥塞，与历史行为一致）
+    get bufferedAmount() {
+      return typeof ws.getBufferedAmount === "function" ? ws.getBufferedAmount() : 0;
+    },
+  };
+}
+
+/**
+ * Elysia `ws()` 的 hooks 参数类型。
+ *
+ * 从 Elysia 自己的签名取（`Parameters<AnyElysia["ws"]>[1]`），而不是手写一份 WS 上下文形状：hooks
+ * 里的 `open` / `message` / `close` 参数类型、`detail`、`query` 的模型引用都仍由 Elysia 提供上下文
+ * 类型，将来升级 Elysia 时约束跟着走。
+ */
+type AcpWsHooks = Parameters<AnyElysia["ws"]>[1];
+
+/**
+ * 在 `AnyElysia` 上注册 WS 路由（等价于 `app.ws(path, hooks)`，多一层是为了 hooks 参数的静态类型）。
+ *
+ * 为什么不直接把 hooks 字面量写进 `app.ws()`：宿主守卫跨包注入，接收者只能是 `AnyElysia`（泛型实参
+ * 全为 `any`），此时 Elysia 需要**从字面量实参**推导 Input / Schema / MacroContext，条件类型在 `any`
+ * 上展开的深度会超过 TS 上限（TS2589，`/ws`、`/file-ws`、`/yjs`、`/relay` 四处都会触发；`.get()`
+ * 的泛型层级更浅，直接调用没问题，故 HTTP 路由不走这里）。把 hooks 的静态类型预先固定为
+ * `AcpWsHooks`（并先收进变量再传参）后，Elysia 不再对该字面量做深度推导，类型检查与运行时行为都与
+ * 直接调用一致——`query` 的模型引用、宏、hooks 形状依旧在**注册期**由 Elysia 解析和校验。
+ */
+function declareAcpWsRoute(app: AnyElysia, path: string, hooks: AcpWsHooks): AnyElysia {
+  return app.ws(path, hooks);
+}
+
+/** Response shape for an ACP agent */
+function toAcpAgentResponse(env: EnvironmentRecord) {
+  return {
+    id: env.id,
+    agent_name: env.machineName,
+    status: (env.status === "active" ? "online" : "offline") as "online" | "offline",
+    last_seen_at: env.lastPollAt ? env.lastPollAt.getTime() / 1000 : null,
+    created_at: env.createdAt.getTime() / 1000,
+  };
+}
+
+/**
+ * `/acp/*` 路由工厂（机器接入 WS、前端 YJS WS、外部客户端 Relay WS 与 ACP Agent 列表）。
+ *
+ * 两个宿主依赖（CE 阶段 2 任务 1.4 W2）：会话守卫必须与宿主 `/web/*` 路由是同一份实例（Elysia 的
+ * macro / state 是实例作用域的）；WS 升级路径用 `authenticateRequest` 自己认证——它要在 `open` 里区分
+ * 「未认证 / 无组织上下文 / 通过」并分别以 4003 关闭连接，因此需要认证函数本身而不是让守卫短路请求，
+ * 且必须与守卫是同一份解析。
+ *
+ * 取数方式（C2 收敛后）：环境列表与 YJS 升级路径的环境归属校验经 `facades/environment-access-facade`，
+ * 路由不直引仓储、也不自行比较组织归属（§3.2）；门面只收组织与用户两个标识，宿主 `authContext` 不整体下传。
+ */
+export function createAcpRoutes(deps: AcpRouteDependencies): AnyElysia {
+  // 装配按「守卫 → 路由」分条书写，WS 走 `declareAcpWsRoute`（成因见其注释）：宿主守卫跨包，
+  // 接收者类型只能是 `AnyElysia`，本函数不对它的泛型做任何假设。
+  //
+  // 守卫必须**先于**路由注册挂上：`sessionAuth: true` 是注册期解析的宏，顺序反了请求期不会校验
+  // （`__tests__/acp-routes-auth.test.ts` 覆盖这一点）。
+  const base: AnyElysia = new Elysia({ name: "acp", prefix: "/acp" });
+  const app: AnyElysia = base.use(deps.authGuardPlugin).model({
+    "acp-agent-list-response": AcpAgentListResponseSchema,
+    "acp-relay-params": AcpRelayParamsSchema,
+    "acp-registry-secret-query": AcpRegistrySecretQuerySchema,
+  });
+
+  /** GET /acp/agents — List current user's team ACP agents */
+  const withAgentList: AnyElysia = app.get(
+    "/agents",
+    // biome-ignore lint/suspicious/noExplicitAny: Elysia 在 response schema 下的类型推断过于严格
+    async ({ store }: any) => {
+      const orgId = store.authContext?.organizationId ?? null;
+      const acpEnvs = await environmentAccessFacade.listAcpEnvironments(orgId, store.user!.id);
+      return acpEnvs.map((a) => toAcpAgentResponse(a));
+    },
+    {
+      sessionAuth: true,
+      response: "acp-agent-list-response",
+      detail: {
+        tags: ["ACP"],
+        summary: "获取 ACP Agent 列表",
+        description: "返回当前组织下所有使用 ACP worker 的环境列表及在线状态摘要。",
+      },
+    },
+  );
+
+  /** WS /acp/ws — WebSocket endpoint for acp-link connections */
+  const withMachineWs: AnyElysia = declareAcpWsRoute(withAgentList, "/ws", {
+    detail: {
+      tags: ["ACP"],
+      summary: "ACP 机器接入 WebSocket",
+      description:
+        "供 `acp-link` 或兼容机器侧运行时接入的 WebSocket 端点。连接时必须通过 query 参数提供 `secret`，且需与服务端 `REGISTRY_SECRET` 匹配。建立连接后，客户端按 ACP/注册中心协议发送消息帧，服务端负责机器注册、状态同步和消息转发。",
+    },
+    query: "acp-registry-secret-query",
+    async open(ws) {
+      const url = new URL(ws.data.request.url);
+      const secret = url.searchParams.get("secret");
+      const registrySecret = getAgentRuntimeConfig().acpRegistrySecret;
+
+      if (!secret || !registrySecret || secret !== registrySecret) {
+        log("[ACP-WS] Upgrade rejected: invalid or missing registry secret");
+        adaptWs(ws).close(4003, "unauthorized");
+        return;
+      }
+
+      const wsId = `acp_ws_${uuid().replace(/-/g, "")}`;
+      // biome-ignore lint/suspicious/noExplicitAny: Elysia WS data extension
+      (ws.data as any).__acpWsId = wsId;
+      log(`[ACP-WS] Machine upgrade accepted: wsId=${wsId} secret matched`);
+      handleAcpWsOpen(adaptWs(ws), wsId, "__machine__", null, true);
+    },
+    message(ws, data) {
+      // Elysia's parseMessage auto-parses JSON strings into objects;
+      // pass the already-parsed object directly to avoid redundant stringify→parse.
+      if (isOverWsLimit(data)) {
+        logError(`[ACP-WS] Message too large: ${getFileWsPort().estimateWsMessageBytes(data)} bytes`);
+        adaptWs(ws).close(1009, "message too large");
+        return;
+      }
+      // biome-ignore lint/suspicious/noExplicitAny: Elysia WS data extension pattern
+      const wsId = (ws.data as any).__acpWsId as string | undefined;
+      if (wsId) {
+        handleAcpWsMessage(adaptWs(ws), wsId, data as string | Record<string, unknown>);
+      }
+    },
+    close(ws, code, reason) {
+      // biome-ignore lint/suspicious/noExplicitAny: Elysia WS data extension pattern
+      const wsId = (ws.data as any).__acpWsId as string | undefined;
+      if (wsId) {
+        handleAcpWsClose(adaptWs(ws), wsId, code, reason);
+      }
+    },
+  });
+
+  /** WS /acp/file-ws — WebSocket endpoint for remote file operations */
+  const withFileWs: AnyElysia = declareAcpWsRoute(withMachineWs, "/file-ws", {
+    detail: {
+      tags: ["ACP"],
+      summary: "ACP 远程文件 WebSocket",
+      description:
+        "供远端运行时执行文件读写操作的 WebSocket 端点。连接时同样要求 query 参数 `secret` 与服务端 `REGISTRY_SECRET` 匹配，消息帧格式由远程文件协议决定。",
+    },
+    query: "acp-registry-secret-query",
+    parse(ws, message) {
+      // 解析前显式检查（D12）：Elysia 的 createWSMessageParser 会在自定义 parse 之前
+      // 对 `{` 开头字符串先做 JSON.parse，大 JSON 帧全量进内存后 10MB 上限形同虚设。
+      // 此处先按真实字节数检查，超限 close(1009)（uWS 语义：消息过大）；未超原样返回，
+      // 阻止 Elysia 默认 parse 破坏 NDJSON 多行帧（整帧 parse 必失败，单对象帧会被
+      // parse 成 object 改变分发语义——NDJSON 逐行解析统一在 message 回调完成）。
+      // 返回空串哨兵：close 后 Elysia 仍会分发本条消息，空串经 parseFileWsMessage
+      // 解析出 0 条消息，超大帧不会进入业务处理。
+      // 已知框架限制（记录在案）：单行 JSON 对象帧会被默认 parser 提前 parse 成
+      // object，到不了本函数的字符串检查——该路径由 uWS 全局 maxPayloadLength
+      // （apps/server/src/main.ts，32MB）在解析前硬拦截（超限即断连，客户端侧表现为 1006），
+      // file-ws 32MB 上限在 uWS 层真实生效；本钩子覆盖 NDJSON 多行帧与二进制帧。
+      if (typeof message === "string" && getFileWsPort().checkWsMessageSize(message, getFileWsMaxPayloadBytes())) {
+        logError(`[File-WS] Message too large: ${Buffer.byteLength(message)} bytes`);
+        adaptWs(ws).close(1009, "message too large");
+        return "";
+      }
+      return message;
+    },
+    async open(ws) {
+      const url = new URL(ws.data.request.url);
+      const secret = url.searchParams.get("secret");
+      const registrySecret = getAgentRuntimeConfig().acpRegistrySecret;
+
+      if (!secret || !registrySecret || secret !== registrySecret) {
+        log("[File-WS] Upgrade rejected: invalid or missing registry secret");
+        adaptWs(ws).close(4003, "unauthorized");
+        return;
+      }
+
+      const wsId = `file_ws_${uuid().replace(/-/g, "")}`;
+      // biome-ignore lint/suspicious/noExplicitAny: Elysia WS data extension
+      (ws.data as any).__fileWsId = wsId;
+      log(`[File-WS] Upgrade accepted: wsId=${wsId}`);
+      getFileWsPort().handleFileWsOpen(adaptWs(ws), wsId);
+    },
+    message(ws, data) {
+      // biome-ignore lint/suspicious/noExplicitAny: Elysia WS data extension pattern
+      const wsId = (ws.data as any).__fileWsId as string | undefined;
+      if (!wsId) return;
+      if (typeof data !== "string") {
+        // 防御分支：parse 钩子已把文本帧归一为字符串，此处仅兜底二进制等异常帧
+        getFileWsPort().handleFileWsMessage(adaptWs(ws), wsId, data as string | Record<string, unknown>);
+        return;
+      }
+      // NDJSON 逐行解析（坏行记日志跳过，不中断整批），逐条分发；尺寸检查已在 parse 钩子完成
+      for (const msg of getFileWsPort().parseFileWsMessage(data)) {
+        getFileWsPort().handleFileWsMessage(adaptWs(ws), wsId, msg);
+      }
+    },
+    close(ws, code, reason) {
+      // biome-ignore lint/suspicious/noExplicitAny: Elysia WS data extension pattern
+      const wsId = (ws.data as any).__fileWsId as string | undefined;
+      if (wsId) {
+        log(getFileWsPort().formatFileWsCloseLog(wsId, code, reason));
+        getFileWsPort().handleFileWsClose(adaptWs(ws), wsId);
+      }
+    },
+  });
+
+  /** WS /acp/yjs/:agentId — YJS-only WebSocket endpoint for frontend */
+  const withYjsWs: AnyElysia = declareAcpWsRoute(withFileWs, "/yjs/:agentId", {
+    detail: {
+      tags: ["ACP"],
+      summary: "YJS Frontend WebSocket",
+      description:
+        "专用于前端的 YJS WebSocket 端点。仅传输 yjs:update CRDT 增量消息和简单 JSON 出站命令。不涉及 ACP JSON-RPC 协议。",
+    },
+    params: "acp-relay-params",
+    async open(ws) {
+      const yjsWsId = `yjs_${uuid().replace(/-/g, "")}`;
+      // biome-ignore lint/suspicious/noExplicitAny: Elysia WS data extension pattern
+      (ws.data as any).__yjsWsId = yjsWsId;
+
+      let authResult: RequestAuthResult | null = null;
+      try {
+        authResult = await deps.authenticateRequest(ws.data.request);
+      } catch (err) {
+        if (err instanceof AppError && err.code === "RATE_LIMITED") {
+          adaptWs(ws).close(4008, "rate_limited");
+          return;
+        }
+        throw err;
+      }
+      if (!authResult?.user) {
+        adaptWs(ws).close(4003, "unauthorized");
+        return;
+      }
+
+      const userId = authResult.user.id;
+      const agentId = ws.data.params.agentId;
+      const url = new URL(ws.data.request.url);
+      const instanceUid = url.searchParams.get("instanceUid");
+      const rcsSessionId = url.searchParams.get("rcsSessionId");
+      const acpSessionId = url.searchParams.get("acpSessionId") ?? undefined;
+      if (!instanceUid || !rcsSessionId) {
+        adaptWs(ws).close(4000, "invalid chat locator");
+        return;
+      }
+      const expectedRcsSessionId = createDeterministicRcsSessionId(agentId, userId, instanceUid);
+      if (rcsSessionId !== expectedRcsSessionId) {
+        adaptWs(ws).close(4003, "unauthorized");
+        return;
+      }
+
+      // 归属校验经门面（§3.2：路由不直引仓储、不自行比较组织归属）：环境必须属于该用户且组织一致，
+      // 认证结果缺 `authContext` 时门面一律判不可达。
+      const environment = await environmentAccessFacade.resolveOwnedEnvironment(
+        agentId,
+        authResult.authContext?.organizationId ?? null,
+        userId,
+      );
+      if (!environment) {
+        adaptWs(ws).close(4003, "unauthorized");
+        return;
+      }
+
+      log(`[YJS-WS] Opening: wsId=${yjsWsId} user=${userId} agentId=${agentId} instanceUid=${instanceUid}`);
+
+      try {
+        await getChatChannelController().gateway.handleOpen(adaptWs(ws), yjsWsId, userId, agentId, {
+          instanceUid,
+          rcsSessionId: expectedRcsSessionId,
+          acpSessionId,
+        });
+      } catch (err) {
+        const message = err instanceof Error ? err.message : String(err);
+        logError(`[YJS-WS] Open failed: ${message}`, err);
+        try {
+          adaptWs(ws).close(1011, "setup failed");
+        } catch {
+          /* ignore */
+        }
+      }
+    },
+    message(ws, data) {
+      if (isOverWsLimit(data)) {
+        logError(`[YJS-WS] Message too large: ${getFileWsPort().estimateWsMessageBytes(data)} bytes`);
+        adaptWs(ws).close(1009, "message too large");
+        return;
+      }
+      // biome-ignore lint/suspicious/noExplicitAny: Elysia WS data extension pattern
+      const yjsWsId = (ws.data as any).__yjsWsId as string | undefined;
+      if (yjsWsId) {
+        const payload =
+          typeof data === "string"
+            ? data
+            : data instanceof Uint8Array
+              ? data
+              : ArrayBuffer.isView(data)
+                ? new Uint8Array(data.buffer, data.byteOffset, data.byteLength)
+                : data instanceof ArrayBuffer
+                  ? new Uint8Array(data)
+                  : JSON.stringify(data);
+        getChatChannelController().gateway.handleMessage(adaptWs(ws), yjsWsId, payload);
+      }
+    },
+    close(ws) {
+      // biome-ignore lint/suspicious/noExplicitAny: Elysia WS data extension pattern
+      const yjsWsId = (ws.data as any).__yjsWsId as string | undefined;
+      if (yjsWsId) {
+        getChatChannelController().gateway.handleClose(yjsWsId);
+      }
+    },
+  });
+
+  /** WS /acp/relay/:agentId — 供 API Key 外部客户端经 connect API 建立 ACP JSON-RPC 中继 */
+  const withRelayWs: AnyElysia = declareAcpWsRoute(withYjsWs, "/relay/:agentId", {
+    detail: {
+      tags: ["ACP"],
+      summary: "ACP 外部客户端 Relay WebSocket",
+      description:
+        "供 API Key 外部客户端经 connect API 获取 wsUrl 后建立 ACP JSON-RPC 中继。服务端仅做传输层转发，不实现会话协议；query 可选携带 instanceId，用于多实例环境精确指定实例。",
+    },
+    params: "acp-relay-params",
+    async open(ws) {
+      const relayWsId = `ext_relay_${uuid().replace(/-/g, "")}`;
+      // biome-ignore lint/suspicious/noExplicitAny: Elysia WS data extension pattern
+      (ws.data as any).__relayWsId = relayWsId;
+
+      let authResult: RequestAuthResult | null = null;
+      try {
+        authResult = await deps.authenticateRequest(ws.data.request);
+      } catch (err) {
+        if (err instanceof AppError && err.code === "RATE_LIMITED") {
+          adaptWs(ws).close(4008, "rate_limited");
+          return;
+        }
+        throw err;
+      }
+      if (!authResult?.user || !authResult.authContext) {
+        adaptWs(ws).close(4003, "unauthorized");
+        return;
+      }
+
+      // query 携带的 instanceId 用于多实例环境精确连接（connect API 返回的 wsUrl 已附带）；
+      // 解析放在路由层，handler 只接收解析结果，便于脱离 Elysia 单测。
+      const url = new URL(ws.data.request.url);
+      const requestedInstanceId = url.searchParams.get("instanceId") || undefined;
+      await handleExternalRelayOpen(
+        adaptWs(ws),
+        relayWsId,
+        ws.data.params.agentId,
+        authResult.authContext,
+        requestedInstanceId,
+      );
+    },
+    message(ws, data) {
+      if (isOverWsLimit(data)) {
+        logError(`[External-Relay] Message too large: ${getFileWsPort().estimateWsMessageBytes(data)} bytes`);
+        adaptWs(ws).close(1009, "message too large");
+        return;
+      }
+      // biome-ignore lint/suspicious/noExplicitAny: Elysia WS data extension pattern
+      const relayWsId = (ws.data as any).__relayWsId as string | undefined;
+      if (relayWsId) {
+        handleExternalRelayMessage(adaptWs(ws), relayWsId, data as string | Record<string, unknown>);
+      }
+    },
+    close(ws) {
+      // biome-ignore lint/suspicious/noExplicitAny: Elysia WS data extension pattern
+      const relayWsId = (ws.data as any).__relayWsId as string | undefined;
+      if (relayWsId) {
+        handleExternalRelayClose(adaptWs(ws), relayWsId);
+      }
+    },
+  });
+
+  return withRelayWs;
+}

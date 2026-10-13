@@ -67,6 +67,23 @@ describe("ProcessExecutor", () => {
     });
   });
 
+  // 取消等待中的 shell 时，子进程持有的输出管道也必须及时关闭。
+  test("取消 shell 子进程树后及时返回", async () => {
+    if (process.platform === "win32") return;
+    const cancellation = new AbortController();
+    const ctx = makeCtx({ signal: cancellation.signal });
+    const startedAt = Date.now();
+    const running = executor.execute(shellNode("sleep 3 & wait"), ctx);
+    setTimeout(() => cancellation.abort(), 100);
+
+    await expect(running).rejects.toMatchObject({ code: WorkflowErrorCode.DAG_CANCELLED });
+    expect(Date.now() - startedAt).toBeLessThan(1500);
+    const events = await ctx.storage.getEvents(ctx.runId, { nodeId: "test-node" });
+    const processId = Number(events.find((event) => event.type === "node.started")?.metadata?.pid);
+    expect(processId).toBeGreaterThan(0);
+    expect(() => process.kill(-processId, 0)).toThrow();
+  });
+
   // node.failed 事件
   test("非零退出码产生 node.failed 事件", async () => {
     const ctx = makeCtx();
@@ -152,6 +169,24 @@ describe("ProcessExecutor", () => {
 
     expect(output.exit_code).toBe(0);
     expect(output.stdout.trim()).toBe("from_node_env");
+  });
+
+  // 宿主进程的密钥变量（DATABASE_URL 等）不得出现在 shell 节点的子进程环境里。
+  test("子进程环境不继承宿主密钥", async () => {
+    const previous = process.env.DATABASE_URL;
+    process.env.DATABASE_URL = "postgres://host/leak";
+    const ctx = makeCtx();
+    const node = shellNode('printf "%s" "$DATABASE_URL"');
+
+    try {
+      const output = await executor.execute(node, ctx);
+
+      expect(output.exit_code).toBe(0);
+      expect(output.stdout).toBe("");
+    } finally {
+      if (previous === undefined) delete process.env.DATABASE_URL;
+      else process.env.DATABASE_URL = previous;
+    }
   });
 
   // secrets 注入为环境变量

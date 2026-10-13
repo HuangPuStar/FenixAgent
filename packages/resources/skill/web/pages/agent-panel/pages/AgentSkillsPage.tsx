@@ -1,0 +1,324 @@
+import { unwrap } from "@fenix/web-runtime/api/request";
+import { useOrgSession } from "@fenix/web-runtime/contexts/org-session";
+import { NS } from "@fenix/web-runtime/i18n/namespace";
+import { dispatchConfigChange } from "@fenix/web-runtime/lib/config-events";
+import type {
+  SkillUploadConflictResponse,
+  SkillUploadConflictStrategy,
+  UploadSkillSummary,
+} from "@fenix/web-runtime/types/config";
+import { useRequest } from "ahooks";
+import { type ChangeEvent, useCallback, useState } from "react";
+import { useTranslation } from "react-i18next";
+import { toast } from "sonner";
+import { skillConfigApi } from "../../../api/skills";
+import {
+  canManageSkillSharing,
+  canWriteSkill,
+  getSkillKey,
+  getSkillLookupKey,
+  isPublicSkill,
+} from "../../../lib/skill-resource-access";
+import { buildSkillUploadFormData, parseSkillUploadFiles, validateUploadBatch } from "../../../lib/skill-upload";
+import { AgentSkillsCatalog } from "./agent-skills-catalog";
+import { AgentSkillsDialogs } from "./agent-skills-dialogs";
+import type { SkillCatalogScope, SkillCreateMode, SkillInfo } from "./agent-skills-types";
+import { getSkillFormValidationError } from "./agent-skills-utils";
+
+type SkillUploadResult = { imported: unknown[]; skipped: unknown[] };
+
+function normalizeSkillUploadResult(response: unknown): SkillUploadResult {
+  const data = response as Partial<SkillUploadResult> | null;
+  return {
+    imported: Array.isArray(data?.imported) ? data.imported : [],
+    skipped: Array.isArray(data?.skipped) ? data.skipped : [],
+  };
+}
+
+function getUploadConflictData(error: unknown): SkillUploadConflictResponse | null {
+  if (
+    !error ||
+    typeof error !== "object" ||
+    !("code" in error) ||
+    (error as { code?: string }).code !== "SKILL_CONFLICT"
+  ) {
+    return null;
+  }
+  const data = (error as { data?: SkillUploadConflictResponse }).data;
+  if (!data || !Array.isArray(data.conflicts) || !Array.isArray(data.allowedStrategies)) return null;
+  return data;
+}
+
+export function AgentSkillsPage() {
+  const { t } = useTranslation(NS.SKILLS);
+  // `resource.*` 角标与公开/私有动作词表归 `@fenix/ui-components`（`StatusBadge` 的同名默认文案），
+  // 随台账 D4 从宿主 `components` 字典改指该包命名空间。
+  const { t: tComponents } = useTranslation(NS.UI_COMPONENTS);
+  // 当前组织 id 用于判定资源归属（`/web` 视图只给 scope.organizationId）：取值经
+  // `@fenix/web-runtime` 的 org/session 契约（§1.6 T7），实现方是身份包的 `OrgProvider`。
+  const { organizationId } = useOrgSession();
+  // 契约用 `null` 表示「无活动组织」，本包比较函数与子组件的入参口径是 `string | undefined`：
+  // 在取值处一次归一，调用点保持既有形状，避免把 `| null` 扩散进各处签名。
+  const activeOrganizationId = organizationId ?? undefined;
+  const [dialogOpen, setDialogOpen] = useState(false);
+  const [editingSkill, setEditingSkill] = useState<SkillInfo | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<string | null>(null);
+  const [createMode, setCreateMode] = useState<SkillCreateMode>("text");
+  const [formName, setFormName] = useState("");
+  const [formDescription, setFormDescription] = useState("");
+  const [formContent, setFormContent] = useState("");
+  const [uploadItems, setUploadItems] = useState<UploadSkillSummary[]>([]);
+  const [uploadError, setUploadError] = useState<string | null>(null);
+  const [conflicts, setConflicts] = useState<SkillUploadConflictResponse["conflicts"]>([]);
+  const [overwriteConfirmOpen, setOverwriteConfirmOpen] = useState(false);
+  const [downloadingSkillKey, setDownloadingSkillKey] = useState<string | null>(null);
+  const [query, setQuery] = useState("");
+  const [scope, setScope] = useState<SkillCatalogScope>("all");
+  const editingReadOnly = editingSkill ? !canWriteSkill(editingSkill) : false;
+
+  const resetUploadState = useCallback(() => {
+    setUploadItems([]);
+    setUploadError(null);
+    setConflicts([]);
+    setOverwriteConfirmOpen(false);
+  }, []);
+
+  const catalog = useRequest(() => unwrap(skillConfigApi.list()), {
+    onError: (error) => {
+      console.error(t("toast.loadListFailed"), error);
+      toast.error(t("toast.loadListFailedWith", { message: error.message }));
+    },
+  });
+  const skills = catalog.data?.skills ?? [];
+  const loadSkillDetail = useCallback((skill: SkillInfo) => unwrap(skillConfigApi.get(getSkillLookupKey(skill))), []);
+
+  const createSkill = useRequest(
+    (params: { name: string; description: string; content: string }) =>
+      unwrap(skillConfigApi.create(params.name, { description: params.description, content: params.content })),
+    {
+      manual: true,
+      onSuccess: () => {
+        toast.success(t("toast.skillCreated"));
+        setDialogOpen(false);
+        catalog.refresh();
+        dispatchConfigChange("skills");
+      },
+      onError: (error) => toast.error(t("toast.saveFailedWith", { message: error.message })),
+    },
+  );
+
+  const updateSkill = useRequest(
+    (params: { name: string; description: string; content: string }) =>
+      unwrap(skillConfigApi.update(params.name, { description: params.description, content: params.content })),
+    {
+      manual: true,
+      onSuccess: () => {
+        // 更新与创建共用同一份成功反馈文案口径：表单关闭 + 列表刷新之外，必须有一条可见反馈，
+        // 否则用户只能从「对话框关了」推断保存是否生效。
+        toast.success(t("toast.skillUpdated"));
+        setDialogOpen(false);
+        catalog.refresh();
+        dispatchConfigChange("skills");
+      },
+      onError: (error) => toast.error(t("toast.saveFailedWith", { message: error.message })),
+    },
+  );
+
+  const uploadSkills = useRequest((formData: FormData) => skillConfigApi.upload(formData), {
+    manual: true,
+    onSuccess: (response) => {
+      if (response.success) {
+        const result = normalizeSkillUploadResult(response.data);
+        toast.success(
+          result.skipped.length > 0
+            ? t("toast.importResultWithSkipped", { imported: result.imported.length, skipped: result.skipped.length })
+            : t("toast.importResult", { imported: result.imported.length }),
+        );
+        setDialogOpen(false);
+        resetUploadState();
+        catalog.refresh();
+        dispatchConfigChange("skills");
+        return;
+      }
+      const conflictData = getUploadConflictData(response.error);
+      if (conflictData) {
+        setConflicts(conflictData.conflicts);
+        toast.error(t("conflict.detected"));
+      } else {
+        toast.error(t("toast.importFailedWith", { message: response.error?.message ?? "" }));
+      }
+    },
+  });
+
+  const deleteSkill = useRequest((name: string) => unwrap(skillConfigApi.del(name)), {
+    manual: true,
+    onSuccess: () => {
+      // 删除是不可逆操作，成功反馈与失败反馈同等必要：列表刷新后的「少了那一条」不足以证明删成功。
+      toast.success(t("toast.skillDeleted"));
+      setDeleteTarget(null);
+      catalog.refresh();
+      dispatchConfigChange("skills");
+    },
+    onError: (error) => {
+      console.error(t("toast.deleteFailed"), error);
+      toast.error(t("toast.deleteFailedWith", { message: error.message }));
+    },
+  });
+
+  const openCreate = (mode: SkillCreateMode) => {
+    setEditingSkill(null);
+    setCreateMode(mode);
+    setFormName("");
+    setFormDescription("");
+    setFormContent("");
+    resetUploadState();
+    setDialogOpen(true);
+  };
+
+  const openSkill = async (skill: SkillInfo) => {
+    setEditingSkill(skill);
+    setCreateMode("text");
+    resetUploadState();
+    try {
+      const detail = await unwrap(skillConfigApi.get(getSkillLookupKey(skill)));
+      setFormName(detail.name ?? "");
+      setFormDescription(detail.description ?? "");
+      setFormContent(detail.content ?? "");
+      setDialogOpen(true);
+    } catch (error) {
+      console.error(t("toast.loadDetailFailed"), error);
+      toast.error(error instanceof Error ? error.message : t("toast.loadDetailFailed"));
+    }
+  };
+
+  const toggleSharing = async (skill: SkillInfo) => {
+    if (!canManageSkillSharing(skill)) return;
+    const publicReadable = !isPublicSkill(skill);
+    try {
+      await unwrap(skillConfigApi.updateAccess(skill.name, publicReadable));
+      toast.success(publicReadable ? tComponents("resource.makePublic") : tComponents("resource.makePrivate"));
+      catalog.refresh();
+      dispatchConfigChange("skills");
+    } catch (error) {
+      console.error(t("toast.saveFailed"), error);
+      toast.error(t("toast.saveFailedWith", { message: (error as Error).message }));
+    }
+  };
+
+  const selectUpload = (event: ChangeEvent<HTMLInputElement>) => {
+    const items = parseSkillUploadFiles(Array.from(event.target.files ?? []));
+    setUploadItems(items);
+    setUploadError(validateUploadBatch(items));
+    setConflicts([]);
+  };
+
+  const upload = (strategy?: SkillUploadConflictStrategy) => {
+    const validationError = validateUploadBatch(uploadItems);
+    if (validationError) {
+      setUploadError(validationError);
+      toast.error(validationError);
+      return;
+    }
+    uploadSkills.run(buildSkillUploadFormData(uploadItems, strategy));
+  };
+
+  const submitDialog = () => {
+    if (!editingSkill && createMode === "upload") {
+      upload();
+      return;
+    }
+    const validationError = getSkillFormValidationError(formName, formContent);
+    if (validationError) {
+      toast.error(t(validationError));
+      return;
+    }
+    const payload = { name: editingSkill?.name ?? formName, description: formDescription, content: formContent };
+    if (editingSkill) updateSkill.run(payload);
+    else createSkill.run(payload);
+  };
+
+  const download = useCallback(
+    async (skill: SkillInfo) => {
+      const skillKey = getSkillKey(skill);
+      setDownloadingSkillKey(skillKey);
+      try {
+        // 域模块返回已解包的 Blob，失败抛 ApiError；组件不再判断 Response 状态。
+        const blob = await skillConfigApi.download(getSkillLookupKey(skill));
+        const blobUrl = URL.createObjectURL(blob);
+        const link = document.createElement("a");
+        link.href = blobUrl;
+        link.download = `${skill.name}.zip`;
+        document.body.appendChild(link);
+        link.click();
+        link.remove();
+        URL.revokeObjectURL(blobUrl);
+      } catch (error) {
+        console.error(t("toast.downloadFailed"), error);
+        toast.error(error instanceof Error ? error.message : t("toast.downloadFailed"));
+      } finally {
+        setDownloadingSkillKey(null);
+      }
+    },
+    [t],
+  );
+
+  return (
+    <div className="flex min-h-0 flex-1">
+      <AgentSkillsCatalog
+        skills={skills}
+        activeOrganizationId={activeOrganizationId}
+        loading={catalog.loading}
+        error={catalog.error}
+        query={query}
+        scope={scope}
+        downloadingKey={downloadingSkillKey}
+        onQueryChange={setQuery}
+        onScopeChange={setScope}
+        onCreate={openCreate}
+        onDownload={(skill) => void download(skill)}
+        onOpen={(skill) => void openSkill(skill)}
+        onDelete={(skill) => setDeleteTarget(skill.name)}
+        onToggleSharing={(skill) => void toggleSharing(skill)}
+        onRetry={catalog.refresh}
+        onLoadDetail={loadSkillDetail}
+      />
+      <AgentSkillsDialogs
+        dialogOpen={dialogOpen}
+        editingSkill={editingSkill}
+        editingReadOnly={editingReadOnly}
+        createMode={createMode}
+        formName={formName}
+        formDescription={formDescription}
+        formContent={formContent}
+        uploadItems={uploadItems}
+        uploadError={uploadError}
+        conflicts={conflicts}
+        saving={createSkill.loading || updateSkill.loading}
+        uploading={uploadSkills.loading}
+        deleteOpen={deleteTarget !== null}
+        deleteTarget={deleteTarget}
+        overwriteOpen={overwriteConfirmOpen}
+        onDialogOpenChange={(open) => {
+          setDialogOpen(open);
+          if (!open) resetUploadState();
+        }}
+        onFormNameChange={setFormName}
+        onFormDescriptionChange={setFormDescription}
+        onFormContentChange={setFormContent}
+        onUploadSelection={selectUpload}
+        onReselect={resetUploadState}
+        onSubmit={submitDialog}
+        onResolveConflicts={upload}
+        onRequestOverwrite={() => setOverwriteConfirmOpen(true)}
+        onDeleteOpenChange={(open) => {
+          if (!open) setDeleteTarget(null);
+        }}
+        onDeleteConfirm={() => {
+          if (deleteTarget) deleteSkill.run(deleteTarget);
+        }}
+        onOverwriteOpenChange={setOverwriteConfirmOpen}
+        onOverwriteConfirm={() => upload("overwrite")}
+      />
+    </div>
+  );
+}

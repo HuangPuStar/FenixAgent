@@ -1,0 +1,456 @@
+import { FormDialog } from "@fenix/ui-components/config/FormDialog";
+import { LabeledField } from "@fenix/ui-components/config/LabeledField";
+import { Button } from "@fenix/ui-components/ui/button";
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@fenix/ui-components/ui/collapsible";
+import { Input } from "@fenix/ui-components/ui/input";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@fenix/ui-components/ui/select";
+import { Tabs, TabsList, TabsTrigger } from "@fenix/ui-components/ui/tabs";
+import { Textarea } from "@fenix/ui-components/ui/textarea";
+import { unwrap } from "@fenix/web-runtime/api/request";
+import { NS } from "@fenix/web-runtime/i18n/namespace";
+import type { McpServerInfo } from "@fenix/web-runtime/types/config";
+import { useRequest } from "ahooks";
+import { useEffect, useState } from "react";
+import { useTranslation } from "react-i18next";
+import { toast } from "sonner";
+import { mcpApi } from "../../../api/mcp";
+import { canWriteMcp, getMcpLookupKey } from "../../../lib/mcp-resource-access";
+import { createKeyValueRow, KeyValueEditor, type KeyValueRow, toEntries } from "./agent-mcp-key-value-editor";
+import {
+  buildMcpPayload,
+  type KeyValueEntry,
+  McpImportError,
+  parseMcpJson,
+  stringifyMcpCommand,
+  validateMcpEditor,
+} from "./agent-mcp-utils";
+
+export type McpEditorTarget = "create" | McpServerInfo | null;
+
+type FormState = {
+  name: string;
+  type: "local" | "remote";
+  command: string;
+  url: string;
+  environment: KeyValueRow[];
+  headers: KeyValueRow[];
+  timeout: string;
+  oauthClientId: string;
+  oauthClientSecret: string;
+  oauthScope: string;
+  oauthRedirectUri: string;
+};
+
+const EMPTY_FORM: FormState = {
+  name: "",
+  type: "remote",
+  command: "",
+  url: "",
+  environment: [createKeyValueRow()],
+  headers: [createKeyValueRow()],
+  timeout: "",
+  oauthClientId: "",
+  oauthClientSecret: "",
+  oauthScope: "",
+  oauthRedirectUri: "",
+};
+
+export function AgentMcpDialog({ target, onClose, onSaved }: Props) {
+  const { t } = useTranslation(NS.MCP);
+  const [form, setForm] = useState<FormState>(EMPTY_FORM);
+  const [fieldErrors, setFieldErrors] = useState<ReturnType<typeof validateMcpEditor>>({});
+  const [createMode, setCreateMode] = useState<"manual" | "json">("manual");
+  const [jsonInput, setJsonInput] = useState("");
+  const [loadingDetail, setLoadingDetail] = useState(false);
+  const [detailError, setDetailError] = useState<Error | null>(null);
+  // 详情加载失败后的重试：自增即重新触发下面的加载 effect（错误态在 effect 开头被清掉）。
+  const [reloadKey, setReloadKey] = useState(0);
+  const [oauthExpanded, setOauthExpanded] = useState(false);
+  const server = target && target !== "create" ? target : null;
+  const readOnly = server ? !canWriteMcp(server) : false;
+
+  // biome-ignore lint/correctness/useExhaustiveDependencies: reloadKey 是刻意的重触发信号（详情读失败后点重试重新拉取），规则看不到「依赖变化即重启加载」的意图；移除它会丢掉重试语义（同批 agent-config 的 SiteFrame reloadKey 同款）。
+  useEffect(() => {
+    if (!target) return;
+    // 换目标（含从失败态重试）先清掉上一次的错误：否则重试成功后旧提示会留在界面上。
+    setDetailError(null);
+    setFieldErrors({});
+    if (target === "create") {
+      setForm(EMPTY_FORM);
+      setCreateMode("manual");
+      setJsonInput("");
+      setOauthExpanded(false);
+      return;
+    }
+    let active = true;
+    setLoadingDetail(true);
+    void unwrap(mcpApi.get(getMcpLookupKey(target)))
+      .then(({ config }) => {
+        if (!active) return;
+        if ("type" in config && config.type === "local") {
+          setForm({
+            ...EMPTY_FORM,
+            name: target.name,
+            type: "local",
+            command: stringifyMcpCommand(config.command),
+            environment: toEntries(config.environment),
+            timeout: config.timeout == null ? "" : String(config.timeout),
+          });
+          setOauthExpanded(false);
+          return;
+        }
+        if ("type" in config && config.type === "remote") {
+          setForm({
+            ...EMPTY_FORM,
+            name: target.name,
+            type: "remote",
+            url: config.url,
+            headers: toEntries(config.headers),
+            timeout: config.timeout == null ? "" : String(config.timeout),
+            oauthClientId: config.oauth && typeof config.oauth === "object" ? (config.oauth.clientId ?? "") : "",
+            oauthClientSecret:
+              config.oauth && typeof config.oauth === "object" ? (config.oauth.clientSecret ?? "") : "",
+            oauthScope: config.oauth && typeof config.oauth === "object" ? (config.oauth.scope ?? "") : "",
+            oauthRedirectUri: config.oauth && typeof config.oauth === "object" ? (config.oauth.redirectUri ?? "") : "",
+          });
+          setOauthExpanded(Boolean(config.oauth));
+          return;
+        }
+        setForm({ ...EMPTY_FORM, name: target.name });
+      })
+      .catch((error: Error) => {
+        console.error(t("toast.loadDetailFailed"), error);
+        toast.error(error.message || t("toast.loadDetailFailed"));
+        // 只弹 toast 会让编辑窗口停在空表单上（保存时再报「名称必填」），因此同时进入持久错误态，
+        // 由渲染层给出 role="alert" 的说明与重试入口；弹窗关闭或换目标时错误态自然作废。
+        if (active) setDetailError(error);
+      })
+      .finally(() => active && setLoadingDetail(false));
+    return () => {
+      active = false;
+    };
+  }, [t, target, reloadKey]);
+
+  const save = useRequest(
+    async () => {
+      if (!server && createMode === "json") {
+        let entries: ReturnType<typeof parseMcpJson>;
+        try {
+          entries = parseMcpJson(jsonInput);
+        } catch (error) {
+          if (error instanceof McpImportError) throw new Error(t(error.key));
+          throw error;
+        }
+        const createdNames: string[] = [];
+        try {
+          for (const entry of entries) {
+            await unwrap(mcpApi.create(entry.name, entry.config));
+            createdNames.push(entry.name);
+          }
+        } catch (error) {
+          await Promise.allSettled(createdNames.map((name) => unwrap(mcpApi.del(name))));
+          throw error;
+        }
+        return { importedCount: entries.length };
+      }
+
+      const payload = buildMcpPayload(form);
+      await (server ? unwrap(mcpApi.update(server.name, payload)) : unwrap(mcpApi.create(form.name, payload)));
+      return { importedCount: null };
+    },
+    {
+      manual: true,
+      onSuccess: ({ importedCount }) => {
+        toast.success(
+          importedCount === null
+            ? server
+              ? t("toast.serverUpdated")
+              : t("toast.serverCreated")
+            : t("toast.imported", { count: importedCount }),
+        );
+        onSaved();
+        onClose();
+      },
+      onError: (error) => {
+        console.error(t("toast.saveFailed"), error);
+        toast.error(error.message || t("toast.saveFailed"));
+      },
+    },
+  );
+
+  const submit = () => {
+    if (createMode === "manual" || server) {
+      const errors = validateMcpEditor(form);
+      setFieldErrors(errors);
+      if (Object.keys(errors).length > 0) return;
+    }
+    save.run();
+  };
+
+  const testUrl = useRequest(
+    () => unwrap(mcpApi.testUrl(form.url, entriesToRecord(form.headers), toTimeout(form.timeout))),
+    {
+      manual: true,
+      onSuccess: (result) => {
+        if (result.reachable && result.protocol) toast.success(t("toast.testSuccessSimple"));
+        else if (result.reachable) toast.warning(t("toast.testReachable", { message: result.message ?? "" }));
+        else toast.error(t("toast.testFailed", { message: result.message ?? t("toast.saveFailed") }));
+      },
+      onError: (error) => toast.error(t("toast.testFailedWith", { message: error.message })),
+    },
+  );
+
+  return (
+    <FormDialog
+      open={target !== null}
+      onOpenChange={(open) => !open && onClose()}
+      title={server ? (readOnly ? t("dialog.detailTitle") : t("dialog.editTitle")) : t("dialog.createTitle")}
+      onSubmit={submit}
+      loading={save.loading || loadingDetail}
+      hideSubmit={readOnly || detailError !== null}
+      submitLabel={!server && createMode === "json" ? t("dialog.importAction") : undefined}
+      width="sm:max-w-2xl"
+    >
+      {!server ? (
+        <Tabs
+          value={createMode}
+          onValueChange={(value) => {
+            setCreateMode(value as "manual" | "json");
+            setFieldErrors({});
+          }}
+        >
+          <TabsList className="grid w-full grid-cols-2">
+            <TabsTrigger value="manual">{t("dialog.manualTab")}</TabsTrigger>
+            <TabsTrigger value="json">{t("dialog.jsonTab")}</TabsTrigger>
+          </TabsList>
+        </Tabs>
+      ) : null}
+      {detailError ? (
+        // 详情读不到时不能把空表单当「已加载」呈现：给出说明与重试，并在修好前禁用提交。
+        <div className="flex flex-col items-center gap-2 py-10 text-center">
+          <p className="text-sm text-destructive" role="alert">
+            {t("dialog.loadDetailFailed")}
+          </p>
+          <p className="text-xs text-text-muted">{t("dialog.loadDetailFailedHint")}</p>
+          <Button type="button" variant="outline" onClick={() => setReloadKey((key) => key + 1)}>
+            {t("loadState.retry")}
+          </Button>
+        </div>
+      ) : !server && createMode === "json" ? (
+        <div className="space-y-3">
+          <LabeledField label={t("form.jsonConfig")} hint={t("form.jsonConfigHint")}>
+            <Textarea
+              value={jsonInput}
+              onChange={(event) => setJsonInput(event.target.value)}
+              placeholder={
+                '{\n  "mcpServers": {\n    "example": {\n      "url": "https://example.com/mcp"\n    }\n  }\n}'
+              }
+              className="min-h-72 resize-y font-mono text-xs"
+              spellCheck={false}
+            />
+          </LabeledField>
+        </div>
+      ) : (
+        <div className="space-y-4" aria-busy={loadingDetail}>
+          <LabeledField
+            label={t("form.name")}
+            htmlFor="mcp-server-name"
+            hint={server ? t("dialog.nameImmutable") : undefined}
+          >
+            <Input
+              id="mcp-server-name"
+              value={form.name}
+              onChange={(event) => {
+                setForm({ ...form, name: event.target.value });
+                setFieldErrors((errors) => ({ ...errors, name: undefined }));
+              }}
+              aria-invalid={Boolean(fieldErrors.name)}
+              aria-describedby={fieldErrors.name ? "mcp-server-name-error" : undefined}
+              disabled={readOnly || Boolean(server)}
+              placeholder="my-mcp-server"
+              className="font-mono text-sm"
+            />
+            {fieldErrors.name && (
+              <p id="mcp-server-name-error" role="alert" className="text-xs text-destructive">
+                {t(fieldErrors.name)}
+              </p>
+            )}
+          </LabeledField>
+
+          <LabeledField
+            label={t("form.type")}
+            hint={form.type === "local" ? t("form.typeLocalDesc") : t("form.typeRemoteDesc")}
+          >
+            <Select
+              value={form.type}
+              onValueChange={(value) => {
+                setForm({ ...form, type: value as FormState["type"] });
+                setFieldErrors({});
+              }}
+              disabled={readOnly || Boolean(server)}
+            >
+              <SelectTrigger>
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="local">{t("form.typeLocalOption")}</SelectItem>
+                <SelectItem value="remote">{t("form.typeRemoteOption")}</SelectItem>
+              </SelectContent>
+            </Select>
+          </LabeledField>
+
+          {form.type === "local" ? (
+            <>
+              <LabeledField label={t("form.command")} htmlFor="mcp-server-command" hint={t("form.commandHint")}>
+                <Input
+                  id="mcp-server-command"
+                  value={form.command}
+                  onChange={(event) => {
+                    setForm({ ...form, command: event.target.value });
+                    setFieldErrors((errors) => ({ ...errors, command: undefined }));
+                  }}
+                  aria-invalid={Boolean(fieldErrors.command)}
+                  aria-describedby={fieldErrors.command ? "mcp-server-command-error" : undefined}
+                  disabled={readOnly}
+                  placeholder="npx @modelcontextprotocol/server-filesystem"
+                  className="font-mono text-sm"
+                />
+                {fieldErrors.command && (
+                  <p id="mcp-server-command-error" role="alert" className="text-xs text-destructive">
+                    {t(fieldErrors.command)}
+                  </p>
+                )}
+              </LabeledField>
+              <KeyValueEditor
+                label={t("form.environment")}
+                entries={form.environment}
+                disabled={readOnly}
+                onChange={(environment) => setForm({ ...form, environment })}
+              />
+            </>
+          ) : (
+            <>
+              {/* 字段名走**显式关联**：children 是 URL 输入框 + 「测试」按钮，隐式关联会把按钮文案
+                  并进 URL 输入框的可访问名（读屏念成「URL 测试」），且 `<label>` 里出现第二个可标记
+                  元素本身就不合法。字段名只标注输入框。 */}
+              <LabeledField label={t("form.url")} htmlFor="mcp-server-url">
+                <div className="flex gap-2">
+                  <Input
+                    id="mcp-server-url"
+                    value={form.url}
+                    onChange={(event) => {
+                      setForm({ ...form, url: event.target.value });
+                      setFieldErrors((errors) => ({ ...errors, url: undefined }));
+                    }}
+                    aria-invalid={Boolean(fieldErrors.url)}
+                    aria-describedby={fieldErrors.url ? "mcp-server-url-error" : undefined}
+                    disabled={readOnly}
+                    placeholder="https://example.com/mcp"
+                    className="flex-1 font-mono text-sm"
+                  />
+                  <Button
+                    type="button"
+                    variant="outline"
+                    disabled={readOnly || !form.url.trim() || testUrl.loading}
+                    onClick={testUrl.run}
+                  >
+                    {testUrl.loading ? t("btn.testing") : t("btn.test")}
+                  </Button>
+                </div>
+                {fieldErrors.url && (
+                  <p id="mcp-server-url-error" role="alert" className="text-xs text-destructive">
+                    {t(fieldErrors.url)}
+                  </p>
+                )}
+              </LabeledField>
+              <KeyValueEditor
+                label={t("form.headers")}
+                entries={form.headers}
+                disabled={readOnly}
+                namePlaceholder={t("headerNamePlaceholder")}
+                valuePlaceholder={t("headerValuePlaceholder")}
+                onChange={(headers) => setForm({ ...form, headers })}
+              />
+              <OAuthEditor
+                form={form}
+                disabled={readOnly}
+                open={oauthExpanded}
+                onOpenChange={setOauthExpanded}
+                onChange={setForm}
+              />
+            </>
+          )}
+
+          <LabeledField label={t("form.timeout")} hint={t("form.timeoutHint")}>
+            <Input
+              type="number"
+              min={1}
+              value={form.timeout}
+              onChange={(event) => setForm({ ...form, timeout: event.target.value })}
+              disabled={readOnly}
+              placeholder="5000"
+              className="font-mono text-sm"
+            />
+          </LabeledField>
+        </div>
+      )}
+    </FormDialog>
+  );
+}
+
+type Props = { target: McpEditorTarget; onClose: () => void; onSaved: () => void };
+
+function OAuthEditor({
+  form,
+  disabled,
+  open,
+  onOpenChange,
+  onChange,
+}: {
+  form: FormState;
+  disabled: boolean;
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  onChange: (form: FormState) => void;
+}) {
+  const { t } = useTranslation(NS.MCP);
+  return (
+    <Collapsible open={open} onOpenChange={disabled ? undefined : onOpenChange}>
+      <div className="rounded-lg border border-border-light">
+        <CollapsibleTrigger className="flex w-full items-center justify-between px-4 py-3 text-sm font-medium text-text-primary">
+          {t("form.oauthConfig")}
+          <span className="text-xs text-text-muted">{open ? t("form.oauthCollapse") : t("form.oauthExpand")}</span>
+        </CollapsibleTrigger>
+        <CollapsibleContent>
+          <div className="grid grid-cols-2 gap-3 border-t border-border-light px-4 pb-4 pt-4">
+            {(["oauthClientId", "oauthClientSecret", "oauthScope", "oauthRedirectUri"] as const).map((key) => (
+              <LabeledField
+                key={key}
+                label={t(
+                  `form.${key === "oauthClientId" ? "clientId" : key === "oauthClientSecret" ? "clientSecret" : key === "oauthScope" ? "scope" : "redirectUri"}`,
+                )}
+              >
+                <Input
+                  type={key === "oauthClientSecret" ? "password" : "text"}
+                  value={form[key]}
+                  disabled={disabled}
+                  placeholder={t("form.optional")}
+                  onChange={(event) => onChange({ ...form, [key]: event.target.value })}
+                />
+              </LabeledField>
+            ))}
+          </div>
+        </CollapsibleContent>
+      </div>
+    </Collapsible>
+  );
+}
+
+function entriesToRecord(entries: KeyValueEntry[]): Record<string, string> | undefined {
+  const valid = entries.filter((entry) => entry.key.trim());
+  return valid.length ? Object.fromEntries(valid.map((entry) => [entry.key, entry.value])) : undefined;
+}
+
+function toTimeout(value: string): number | undefined {
+  return value ? Number.parseInt(value, 10) : undefined;
+}

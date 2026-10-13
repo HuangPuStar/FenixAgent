@@ -1,0 +1,61 @@
+.agent-badge-card {
+  background:
+    radial-gradient(circle, var(--color-border) 0.8px, transparent 0.8px) 0 0 / 60px 60px,
+    var(--color-surface-1);
+  box-shadow:
+    0 1px 3px rgb(0 0 0 / 4%),
+    0 4px 16px rgb(0 0 0 / 3%);
+}
+.agent-badge-card > * {
+  position: relative;
+  z-index: 1;
+}
+.agent-badge-card::before,
+.agent-badge-card::after {
+  content: attr(data-badge-name) "  " attr(data-badge-name) "  " attr(data-badge-name) "  " attr(data-badge-name);
+  position: absolute;
+  inset-inline: 0;
+  z-index: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  white-space: nowrap;
+  pointer-events: none;
+  rotate: -10deg;
+  font-size: var(--text-3xl);
+  line-height: var(--tw-leading, var(--text-3xl--line-height));
+  font-weight: var(--font-weight-black);
+  letter-spacing: var(--tracking-tight);
+  color: var(--color-border);
+  opacity: 0.16;
+}
+
+.agent-badge-card::before {
+  top: 41%;
+}
+
+.agent-badge-card::after {
+  top: 80%;
+}
+.agent-badge-banner {
+  background:
+    radial-gradient(220px circle at 50% 0%, rgb(107 230 255 / 22%), transparent 68%),
+    linear-gradient(180deg, #1759dc, #0d2a6e);
+}
+.agent-badge-banner::after {
+  box-shadow: inset 0 1px 2px rgb(0 0 0 / 10%);
+}
+.agent-badge-rule::before,
+.agent-badge-rule::after {
+  content: "";
+  flex: 1;
+  border-style: dashed;
+  border-color: var(--color-border);
+}
+.agent-badge-skeleton-pulse {
+  animation: agent-badge-pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+}
+.agent-badge-skeleton-avatar {
+  box-shadow: 0 2px 12px rgb(0 0 0 / 4%);
+}

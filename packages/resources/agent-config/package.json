@@ -1,0 +1,70 @@
+{
+  "name": "@fenix/agent-config",
+  "version": "0.1.0",
+  "description": "AgentConfig 基础资源领域能力",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts",
+    "./db": "./db/schema.ts",
+    "./db/migration": "./db/data-migrations/migrate-agent-config-model-id.ts",
+    "./module": "./fenix.module.ts",
+    "./server": "./src/server.ts",
+    "./server/testing": "./src/server/testing.ts",
+    "./server/runtime": "./src/server/runtime.ts",
+    "./web": "./web/index.ts",
+    "./web/contribution": "./web/contribution.ts",
+    "./web/i18n": "./web/i18n/index.ts",
+    "./web/lib/agent-create-navigation": "./web/lib/agent-create-navigation.ts",
+    "./web/lib/agent-node": "./web/lib/agent-node.ts",
+    "./web/lib/agent-resource-access": "./web/lib/agent-resource-access.ts",
+    "./web/lib/agent-utils": "./web/lib/agent-utils.ts",
+    "./server/system-prompt": "./src/server/services/agent-system-prompt.ts",
+    "./server/agent-launch-spec": "./src/server/services/agent-launch-spec/index.ts",
+    "./server/agent-config-lookup": "./src/server/services/agent-config-lookup.ts",
+    "./server/api-agent-schema": "./src/server/schemas/api-agent.schema.ts",
+    "./server/config": "./src/server/services/config/agent-config.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "bun test"
+  },
+  "dependencies": {
+    "@fenix/agent-runtime": "workspace:*",
+    "@fenix/identity": "workspace:*",
+    "@fenix/logger": "workspace:*",
+    "@fenix/model-management": "workspace:*",
+    "@fenix/platform-sdk": "workspace:*",
+    "@fenix/plugin-sdk": "workspace:*",
+    "@fenix/resource-knowledge": "workspace:*",
+    "@fenix/resource-machine": "workspace:*",
+    "@fenix/resource-mcp": "workspace:*",
+    "@fenix/resource-memory": "workspace:*",
+    "@fenix/resource-sandbox": "workspace:*",
+    "@fenix/resource-skill": "workspace:*",
+    "@fenix/ui-components": "workspace:*",
+    "@fenix/web-runtime": "workspace:*",
+    "@hookform/resolvers": "^5.4.0",
+    "ahooks": "^3.9.7",
+    "drizzle-orm": "^0.45.2",
+    "elysia": "^1.4.28",
+    "gray-matter": "^4.0.3",
+    "lucide-react": "^1.16.0",
+    "openai": "^6.42.0",
+    "qrcode": "^1.5.4",
+    "react-hook-form": "^7.76.0",
+    "sonner": "^2.0.7",
+    "zod": "^4.4.3"
+  },
+  "peerDependencies": {
+    "@tanstack/react-router": "^1.170.7",
+    "i18next": "^26.2.0",
+    "react": "^19.2.6",
+    "react-dom": "^19.2.6",
+    "react-i18next": "^17.0.8"
+  },
+  "devDependencies": {
+    "@types/qrcode": "^1.5.6",
+    "happy-dom": "^20.9.0"
+  }
+}

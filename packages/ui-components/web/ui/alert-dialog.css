@@ -1,0 +1,14 @@
+.alert-dialog-content {
+  --alert-dialog-content-max-width: calc(100% - calc(var(--spacing) * 8));
+}
+.alert-dialog-header {
+  grid-template-rows: auto 1fr;
+}
+.alert-dialog-header:has([data-slot="alert-dialog-media"]) {
+  grid-template-rows: auto auto 1fr;
+}
+@media (min-width: 40rem) {
+  .alert-dialog-content[data-size="default"] .alert-dialog-header:has([data-slot="alert-dialog-media"]) {
+    grid-template-rows: auto 1fr;
+  }
+}

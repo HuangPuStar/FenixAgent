@@ -1,0 +1,14 @@
+.chunk-detail-content video,
+.chunk-detail-content img {
+  max-width: 100%;
+  border-radius: var(--radius);
+}
+
+.chunk-detail-content table {
+  width: 100%;
+}
+
+.chunk-detail-content a {
+  color: var(--color-indigo-500);
+  text-decoration-line: underline;
+}

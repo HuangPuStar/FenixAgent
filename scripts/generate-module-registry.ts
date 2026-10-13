@@ -1,0 +1,386 @@
+import { mkdir, readFile, writeFile } from "node:fs/promises";
+import { dirname, relative, resolve } from "node:path";
+
+import type ts from "typescript";
+
+import {
+  type ArchitectureException,
+  type ArchitectureLedger,
+  loadArchitectureLedger,
+} from "./lib/architecture-exceptions";
+import { getImportReferences, parseTypeScriptSource } from "./lib/import-references";
+import {
+  collectManifestCandidates,
+  collectRepositoryFiles,
+  findManifestObject,
+  findRuntimeFields,
+  loadManifestSource,
+  type ManifestDescriptor,
+  type ManifestLocation,
+  normalizePath,
+  readExportTarget,
+} from "./lib/module-manifest-source";
+
+const GENERATED_HEADER = "// 此文件由 scripts/generate-module-registry.ts 生成，请勿手动编辑。";
+const PACKAGE_MODULE_EXPORT_KEY = "./module";
+/** 模块服务端生产代码的扫描范围；`web/**` 不参与服务端装配顺序。 */
+const MODULE_SOURCE_PATTERNS = ["src/**/*.ts", "src/**/*.tsx"] as const;
+const TEST_DIRECTORY_SEGMENT = "__tests__/";
+const WORKSPACE_PACKAGE_PREFIX = "@fenix/";
+/**
+ * 台账里只记录「环上相邻两点」的规则名。
+ *
+ * dependency-cruiser 的 `no-circular` 违规给出的 `from` / `to` 是这个环里被挑中的一条**真实边**，
+ * 不是参与环的全部包对；把它当「这两个包的边已被登记」会在别的包对上产生假豁免。
+ */
+const CYCLE_RULE_NAME = "no-circular";
+
+/** 受版本控制的 manifest 扫描根：workspace 包与应用骨架。 */
+const MANIFEST_GLOBS = { apps: "apps/*/fenix.module.ts", packages: "packages/**/fenix.module.ts" } as const;
+
+/** registry 生成或检查的配置。 */
+export interface GenerateModuleRegistryOptions {
+  readonly repositoryRoot?: string;
+  readonly outputFile?: string;
+  readonly check?: boolean;
+}
+
+/** registry 生成结果，供 CLI 和测试报告确定性模块数量。 */
+export interface GenerateModuleRegistryResult {
+  readonly moduleCount: number;
+  readonly outputFile: string;
+}
+
+interface DiscoveredModule {
+  /** 仓库相对 POSIX 路径，用于稳定排序与错误信息。 */
+  readonly manifestFile: string;
+  /** manifest 所在包目录，仓库相对 POSIX 路径。 */
+  readonly packageDirectory: string;
+  readonly packageName: string;
+  readonly dependencies: Readonly<Record<string, string>>;
+  readonly descriptor: ManifestDescriptor;
+  /** `packages/**` 走公开 `exports["./module"]`；`apps/*` 由生成物相对导入。 */
+  readonly location: ManifestLocation;
+}
+
+/**
+ * `web-shell` manifest 会被生成物静态引入 server 装配图，必须保持零运行期引用。
+ *
+ * 本断言是「Shell 落 `apps/web`」这一设计修订成立的前提：没有它，相对导入会让浏览器依赖
+ * 沿 registry 进入 server 的编译与运行图。
+ */
+function assertWebShellIsPureMetadata(sourceFile: ts.SourceFile, manifestFile: string): void {
+  for (const reference of getImportReferences(sourceFile)) {
+    if (reference.kind !== "type") {
+      throw new Error(
+        `web-shell manifest 只能使用 import type，不得出现值导入或再导出 ("${reference.specifier}"): ${manifestFile}`,
+      );
+    }
+  }
+
+  const objectLiteral = findManifestObject(sourceFile);
+  const runtimeFields = objectLiteral ? findRuntimeFields(objectLiteral) : [];
+  if (runtimeFields.length > 0) {
+    throw new Error(`web-shell manifest 不得声明运行期字段 ${runtimeFields.join(", ")}: ${manifestFile}`);
+  }
+}
+
+/** 模块包必须把 manifest 暴露为稳定公开入口，否则 registry 无法用静态 import 引用它。 */
+function assertModuleExport(
+  repositoryRoot: string,
+  packageDirectory: string,
+  exportsField: unknown,
+  manifestFile: string,
+): void {
+  const target = readExportTarget(exportsField, PACKAGE_MODULE_EXPORT_KEY);
+  if (target === undefined) {
+    throw new Error(`模块包必须在 package.json 声明 exports["./module"] 指向 manifest: ${packageDirectory}`);
+  }
+
+  const packageDirectoryAbsolute = resolve(repositoryRoot, packageDirectory);
+  const expectedTarget = normalizePath(relative(packageDirectoryAbsolute, resolve(repositoryRoot, manifestFile)));
+  const resolvedTarget = normalizePath(relative(packageDirectoryAbsolute, resolve(packageDirectoryAbsolute, target)));
+  if (resolvedTarget !== expectedTarget) {
+    throw new Error(`exports["./module"] 必须指向 ${expectedTarget}，实际指向 ${resolvedTarget}: ${packageDirectory}`);
+  }
+}
+
+/**
+ * 校验 `dependsOn` 的每个条目都指向已注册模块，且是本包显式声明的编译依赖。
+ *
+ * 本函数只做「声明了就必须成立」的一半：装配依赖必须落在 `workspace:` 区间上，否则发布形态会指向
+ * 错误版本。反方向（本包真实导入了哪个已注册模块）由 `assertDependsOnComplete` 负责。
+ */
+function assertDependsOnDeclared(modules: readonly DiscoveredModule[]): void {
+  const packageNameByModuleId = new Map<string, string>();
+  for (const module of modules) {
+    const owner = packageNameByModuleId.get(module.descriptor.id);
+    if (owner !== undefined) {
+      throw new Error(`模块 ID 重复: ${module.descriptor.id} (${owner} 与 ${module.packageName})`);
+    }
+    packageNameByModuleId.set(module.descriptor.id, module.packageName);
+  }
+
+  for (const module of modules) {
+    for (const dependencyId of module.descriptor.dependsOn) {
+      if (dependencyId === module.descriptor.id) {
+        throw new Error(`模块 ${module.descriptor.id} 不能依赖自身: ${module.manifestFile}`);
+      }
+
+      const dependencyPackage = packageNameByModuleId.get(dependencyId);
+      if (dependencyPackage === undefined) {
+        throw new Error(`模块 ${module.descriptor.id} 的 dependsOn 引用了未注册模块 ${dependencyId}`);
+      }
+
+      const range = module.dependencies[dependencyPackage];
+      if (range === undefined || !range.startsWith("workspace:")) {
+        throw new Error(
+          `模块 ${module.descriptor.id} 依赖 ${dependencyId}，但 ${module.packageName} 的 package.json 未声明编译依赖 "${dependencyPackage}": "workspace:*"`,
+        );
+      }
+    }
+  }
+}
+
+/** 装配依赖反向校验覆盖的模块类别；见 `assertDependsOnComplete` 的范围说明。 */
+const ASSEMBLY_CHECKED_KIND = "resource";
+
+/** 从 `@fenix/<pkg>` 或 `@fenix/<pkg>/<subpath>` 取出 workspace 包名；非 workspace 说明符返回 undefined。 */
+function readWorkspacePackageName(specifier: string): string | undefined {
+  if (!specifier.startsWith(WORKSPACE_PACKAGE_PREFIX)) return;
+  const [scope, name] = specifier.split("/");
+  return scope && name ? `${scope}/${name}` : undefined;
+}
+
+/** 已注册的 `packages/**` 模块，按 package name 与模块 ID 双向索引；应用级 Shell 不参与装配依赖。 */
+function indexDiscoveredModules(modules: readonly DiscoveredModule[]): {
+  readonly byId: ReadonlyMap<string, DiscoveredModule>;
+  readonly byPackageName: ReadonlyMap<string, DiscoveredModule>;
+} {
+  const byId = new Map<string, DiscoveredModule>();
+  const byPackageName = new Map<string, DiscoveredModule>();
+  for (const module of modules) {
+    if (module.location !== "package") continue;
+    byId.set(module.descriptor.id, module);
+    byPackageName.set(module.packageName, module);
+  }
+  return { byId, byPackageName };
+}
+
+/**
+ * 台账中按「来源包 + 目标包」登记的边。
+ *
+ * `no-circular` 条目给的是环上被挑中的一条真实边而不是边级事实，因此不作为依赖边登记使用；
+ * 其余规则（`apps-boundary`、`special-dependency` 等）都是精确的包对违规，可以据此判定
+ * 「这条边已被登记为已知违规」。
+ */
+function indexLedgeredEdges(ledger: ArchitectureLedger): ReadonlyMap<string, ArchitectureException> {
+  const edges = new Map<string, ArchitectureException>();
+  for (const exception of ledger.exceptions.values()) {
+    if (exception.rule === CYCLE_RULE_NAME) continue;
+    edges.set(`${exception.from} ${exception.to}`, exception);
+  }
+  return edges;
+}
+
+/** 模块服务端生产代码文件（`src/**`，排除 `__tests__`），按代码点顺序稳定排序。 */
+async function collectModuleSourceFiles(repositoryRoot: string, packageDirectory: string): Promise<string[]> {
+  const patterns = MODULE_SOURCE_PATTERNS.map((pattern) => `${packageDirectory}/${pattern}`);
+  const files = (await Promise.all(patterns.map((pattern) => collectRepositoryFiles(repositoryRoot, pattern)))).flat();
+  return files
+    .filter((file) => !file.includes(TEST_DIRECTORY_SEGMENT))
+    .sort((left, right) => (left < right ? -1 : left > right ? 1 : 0));
+}
+
+/**
+ * 校验资源包的 `dependsOn` 覆盖本包服务端代码对其它已注册资源模块的静态导入。
+ *
+ * `assertDependsOnDeclared` 只保证「声明了就必须成立」，对「导入了已注册模块却写 `dependsOn: []`」
+ * 零检查：装配校验（platform-sdk 的 `visit()`）对未声明的边既不排拓扑序也不报「依赖未启用模块」，
+ * 于是 profile 可以带着一张假依赖图启动，直到模块加载期才炸。本函数补上这个方向。
+ *
+ * 判定范围（每条都对应一种「不构成装配依赖」的情形）：
+ *
+ * - 只算 `resource` 类别模块：资源包之间的运行期耦合一旦装配就必须成套启用，这正是 1.3 建立的
+ *   资源包交付契约。`agent-runtime` / `identity` 等基础模块在 profile 里是固定槽位（`requireFoundation`
+ *   总是启用），它们的跨类别边由 §2.3 依赖矩阵与架构台账（owner 1.4）负责。
+ * - 只算**值导入**：`import type` 与全 type 具名导入编译期擦除，不产生运行期耦合。
+ * - `import()` 也计入：它只是延迟求值，仍是运行期真实耦合，失败点更晚。
+ * - 只算本包服务端生产代码（`src/**`，排除 `__tests__`）：web 贡献不进入服务端装配顺序，它依赖
+ *   哪些模块由 profile 的 `web` 列表表达。
+ * - 目标包尚未提供 manifest 时不作要求：此刻 `dependsOn` 里写它会让 `assertDependsOnDeclared`
+ *   以「引用了未注册模块」失败，因此这条边在目标注册的那一刻才被强制——正好是它能被声明的最早时刻。
+ * - 已由台账登记为越界边（`apps-boundary`、`special-dependency` 等）的包对不要求声明：那类边必须
+ *   彻底消除，而不是编码成装配依赖——台账本身受「不再违规即删除」校验，因此无法用来长期豁免。
+ *
+ * 反向也校验：已登记为越界的边不得写进 `dependsOn`。声明它会让两个模块在 profile 里成套启用并
+ * 构成装配循环，而这个循环只有在 profile 同时启用两者时才暴露。
+ */
+async function assertDependsOnComplete(
+  modules: readonly DiscoveredModule[],
+  repositoryRoot: string,
+  ledger: ArchitectureLedger,
+): Promise<void> {
+  const { byId, byPackageName } = indexDiscoveredModules(modules);
+  const ledgeredEdges = indexLedgeredEdges(ledger);
+  const violations: string[] = [];
+
+  for (const module of modules) {
+    if (module.location !== "package" || module.descriptor.kind !== ASSEMBLY_CHECKED_KIND) continue;
+
+    const importedModules = new Map<string, string>();
+    for (const file of await collectModuleSourceFiles(repositoryRoot, module.packageDirectory)) {
+      const sourceText = await readFile(resolve(repositoryRoot, file), "utf8");
+      if (!sourceText.includes(WORKSPACE_PACKAGE_PREFIX)) continue;
+
+      const sourceFile = parseTypeScriptSource(file, sourceText);
+      for (const reference of getImportReferences(sourceFile)) {
+        if (reference.kind === "type") continue;
+        const dependencyPackageName = readWorkspacePackageName(reference.specifier);
+        if (dependencyPackageName === undefined || dependencyPackageName === module.packageName) continue;
+
+        const dependency = byPackageName.get(dependencyPackageName);
+        if (!dependency || dependency.descriptor.kind !== ASSEMBLY_CHECKED_KIND) continue;
+        if (importedModules.has(dependency.descriptor.id)) continue;
+
+        const line = sourceFile.getLineAndCharacterOfPosition(reference.position).line + 1;
+        importedModules.set(dependency.descriptor.id, `${file}:${line}`);
+      }
+    }
+
+    for (const [dependencyId, site] of importedModules) {
+      if (module.descriptor.dependsOn.includes(dependencyId)) continue;
+      const dependency = byId.get(dependencyId);
+      if (!dependency) continue;
+      if (ledgeredEdges.has(`${module.packageName} ${dependency.packageName}`)) continue;
+      violations.push(
+        `模块 ${module.descriptor.id} 的服务端代码导入了已注册模块 ${dependencyId}（${site}），` +
+          `但 manifest 未声明 dependsOn: ["${dependencyId}"]`,
+      );
+    }
+
+    for (const dependencyId of module.descriptor.dependsOn) {
+      const dependency = byId.get(dependencyId);
+      if (!dependency) continue;
+      const exception = ledgeredEdges.get(`${module.packageName} ${dependency.packageName}`);
+      if (!exception) continue;
+      violations.push(
+        `模块 ${module.descriptor.id} 的 dependsOn 声明了 ${dependencyId}，但 ${exception.from} -> ${exception.to} ` +
+          `已由架构台账登记为越界边（rule: ${exception.rule}, owner: ${exception.owner}）：` +
+          "这类边必须消除，不能编码成装配依赖——两个模块同时启用时装配顺序会因循环失败",
+      );
+    }
+  }
+
+  if (violations.length > 0) {
+    throw new Error(`装配依赖与代码不一致 ${violations.length} 处:\n  ${violations.join("\n  ")}`);
+  }
+}
+
+/** `packages/**` 走公开导出，`apps/*` 由生成物相对导入，避免引入 apps → apps 的包依赖。 */
+function renderImportSpecifier(module: DiscoveredModule, repositoryRoot: string, outputDirectory: string): string {
+  if (module.location === "package") return `${module.packageName}/module`;
+
+  const relativePath = normalizePath(relative(outputDirectory, resolve(repositoryRoot, module.manifestFile)));
+  return relativePath.startsWith(".") ? relativePath : `./${relativePath}`;
+}
+
+function renderRegistry(modules: readonly DiscoveredModule[], repositoryRoot: string, outputDirectory: string): string {
+  const manifestImports = modules.map(
+    (module, index) =>
+      `import { moduleManifest as manifest${index} } from "${renderImportSpecifier(module, repositoryRoot, outputDirectory)}";`,
+  );
+  const manifestNames = modules.map((_, index) => `manifest${index}`).join(", ");
+  return [
+    GENERATED_HEADER,
+    "",
+    ...manifestImports,
+    'import type { ModuleManifest } from "@fenix/platform-sdk";',
+    "",
+    "/** 构建期收集的可信模块集合；应用启动时只能从该集合选择模块。 */",
+    `export const generatedModuleManifests = [${manifestNames}] as const satisfies readonly ModuleManifest[];`,
+    "",
+  ].join("\n");
+}
+
+async function discoverModules(repositoryRoot: string): Promise<readonly DiscoveredModule[]> {
+  const candidates = await collectManifestCandidates(repositoryRoot, MANIFEST_GLOBS);
+
+  return Promise.all(
+    candidates.map(async (candidate): Promise<DiscoveredModule> => {
+      const source = await loadManifestSource(repositoryRoot, candidate);
+      const { descriptor, packageDirectory, packageName } = source;
+      const manifestFile = candidate.manifestFile;
+
+      if (candidate.location === "app") {
+        if (descriptor.kind !== "web-shell") {
+          throw new Error(`apps 下的 manifest 只能是 web-shell 类别，实际为 ${descriptor.kind}: ${manifestFile}`);
+        }
+        assertWebShellIsPureMetadata(source.sourceFile, manifestFile);
+      } else {
+        if (descriptor.kind === "web-shell") {
+          // WebShell 是应用级组合而不是资源模块，见 ce-ee-engineering-standards §4.1。
+          throw new Error(`web-shell manifest 必须位于 apps/ 而不是 packages/: ${manifestFile}`);
+        }
+        assertModuleExport(repositoryRoot, packageDirectory, source.exportsField, manifestFile);
+      }
+
+      return {
+        dependencies: source.dependencies,
+        descriptor,
+        location: candidate.location,
+        manifestFile,
+        packageDirectory,
+        packageName,
+      };
+    }),
+  );
+}
+
+/** 扫描受版本控制的 workspace manifest，并生成或校验只含静态 import 的 registry。 */
+export async function generateModuleRegistry(
+  options: GenerateModuleRegistryOptions = {},
+): Promise<GenerateModuleRegistryResult> {
+  const repositoryRoot = resolve(options.repositoryRoot ?? resolve(import.meta.dir, ".."));
+  const outputFile = resolve(options.outputFile ?? resolve(repositoryRoot, "apps/generated/module-registry.ts"));
+  const discovered = await discoverModules(repositoryRoot);
+  assertDependsOnDeclared(discovered);
+  await assertDependsOnComplete(discovered, repositoryRoot, await loadArchitectureLedger(repositoryRoot));
+
+  // 排序必须基于 UTF-16 代码单元：生成的 registry 会进入版本控制，不能受构建机 locale 影响。
+  const modules = [...discovered].sort((left, right) =>
+    left.packageName < right.packageName ? -1 : left.packageName > right.packageName ? 1 : 0,
+  );
+  for (let index = 1; index < modules.length; index += 1) {
+    if (modules[index - 1]?.packageName === modules[index]?.packageName) {
+      throw new Error(`模块 package name 重复: ${modules[index]?.packageName}`);
+    }
+  }
+
+  const registrySource = renderRegistry(modules, repositoryRoot, dirname(outputFile));
+
+  if (options.check) {
+    let currentSource: string;
+    try {
+      currentSource = await readFile(outputFile, "utf8");
+    } catch (error) {
+      throw new Error(`静态 module registry 不存在: ${normalizePath(relative(repositoryRoot, outputFile))}`, {
+        cause: error,
+      });
+    }
+    if (currentSource !== registrySource) {
+      throw new Error("静态 module registry 已过期，请运行 bun run generate:module-registry");
+    }
+  } else {
+    await mkdir(dirname(outputFile), { recursive: true });
+    await writeFile(outputFile, registrySource);
+  }
+
+  return { moduleCount: modules.length, outputFile };
+}
+
+if (import.meta.main) {
+  const check = process.argv.includes("--check");
+  const result = await generateModuleRegistry({ check });
+  console.log(`${check ? "已验证" : "已生成"} ${result.moduleCount} 个模块 manifest: ${result.outputFile}`);
+}

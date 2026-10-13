@@ -476,8 +476,6 @@
     10px ui-monospace,
     monospace;
 }
-
-/* 记忆工作台：与模型库共享左侧索引、右侧内容的空间模型。 */
 .memory-page {
   --memory-blue: #2463eb;
   --memory-line: #e9edf4;
@@ -841,8 +839,6 @@
     display: none;
   }
 }
-
-/* 世界事实的四种浏览方式仅表达信息形态，不承载真实可视化依赖。 */
 .memory-display-modes {
   display: flex;
   gap: 3px;

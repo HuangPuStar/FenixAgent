@@ -94,6 +94,54 @@ curl -X GET 'https://rcs.example.com/api/agents?page=1&pageSize=20' \
 }
 ```
 
+## 触发工作流运行
+
+`POST /api/workflow-v2/workflows/:id/run` 触发指定工作流的**已发布版本**运行；`:id` 是控制台里的工作流主键（在控制台的工作流列表页「更多 → 调用接口」里可以直接看到调用地址与示例）。
+
+```bash
+curl -X POST 'https://rcs.example.com/api/workflow-v2/workflows/9f1c2f9e-0d3a-4c6b-8f21-2a7b0f5c1d33/run' \
+  -H 'Authorization: Bearer rcs_xxx' \
+  -H 'Content-Type: application/json' \
+  -d '{"parameters":{"input":"hello"},"isAsync":false}'
+```
+
+`isAsync: false`（默认）等待本次运行结束后返回输出；`isAsync: true` 立即返回 `executeId`，结果需要到上游调试页查看。
+
+示例响应（同步）：
+
+```json
+{
+  "executeId": "6900000000000000001",
+  "data": "{\"output\":\"hello\"}",
+  "token": 7,
+  "cost": "0.01000",
+  "debugUrl": "http://127.0.0.1:18080/work_flow?execute_id=6900000000000000001"
+}
+```
+
+### 调用前置：工作流必须已发布到「API 渠道」
+
+除了「先发布工作流」，上游还要求该工作流的**当前发布版本已登记到 API 渠道**（上游表 `connector_workflow_version` 里
+有 `connector_id = 1024` 这一行）——上游的 OpenAPI 运行路径会在执行前校验它。平台把这件事自愈掉：
+
+- 工作流**发布成功后**平台会立即同步登记（无需等到第一次调用）；若首次运行仍拿到上游的「版本未登记」回执，平台会在
+  该请求内**自动补登记**（把租户应用发布到 API 渠道，版本号取自上游当前版本自增）并重试一次；成功后同一工作流的
+  后续运行不再需要补登记；
+- 补登记本身失败（上游不可达、冷却窗口内、租户应用不是可发布的应用实体）时，接口返回 `409`
+  `WORKFLOW_NOT_REGISTERED_TO_API_CHANNEL`，**稍后重试**即可，不需要调用方改参数；
+- 自动补登记会以上游当前草稿生成一个新版本（这是上游「发布到渠道」的语义），因此它会改变工作流的当前发布版本。
+
+注意：
+
+- 只能触发**已发布**的工作流，未发布返回 `409 WORKFLOW_NOT_PUBLISHED`
+- 工作流不存在或不属于调用方所在组织返回 `404 WORKFLOW_NOT_FOUND`（两者同形，不区分）
+- 参数不是合法 JSON 对象返回 `422 INVALID_PARAMETERS`
+- 当前发布版本尚未登记到 API 渠道返回 `409 WORKFLOW_NOT_REGISTERED_TO_API_CHANNEL`（平台会自动补登记并重试一次，
+  仍失败时按此码返回，可稍后重试）
+- 调用方身份（API Key）所在组织必须与工作流所属组织一致
+- 上游没有幂等键：**重试等于再运行一次**，请按业务语义自行去重
+- 限流按调用方身份计数（默认每分钟 60 次），超限返回 `429` 与 `Retry-After`
+
 ## 更多接口
 
 更多接口的使用方式，请直接参考：

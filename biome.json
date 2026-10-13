@@ -60,13 +60,14 @@
       "!!**/.agents",
       "!!**/coverage",
       "!!**/docs",
-      "!!**/routeTree.gen.ts"
+      "!!**/routeTree.gen.ts",
+      "!!apps/generated"
     ],
     "ignoreUnknown": true
   },
   "overrides": [
     {
-      "includes": ["src/__tests__/**", "web/src/__tests__/**", "packages/*/src/__tests__/**"],
+      "includes": ["apps/server/src/__tests__/**", "apps/web/src/__tests__/**", "packages/*/src/__tests__/**"],
       "linter": {
         "rules": {
           "suspicious": {
@@ -83,16 +84,6 @@
           },
           "complexity": {
             "useOptionalChain": "off"
-          }
-        }
-      }
-    },
-    {
-      "includes": ["web/src/components/agent-panel/preview/**"],
-      "linter": {
-        "rules": {
-          "suspicious": {
-            "noArrayIndexKey": "off"
           }
         }
       }

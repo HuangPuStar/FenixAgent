@@ -1,0 +1,138 @@
+.agent-editor-panel,
+.agent-editor-mobile {
+  box-shadow:
+    0 18px 48px rgb(29 64 126 / 14%),
+    0 2px 8px rgb(29 64 126 / 8%);
+}
+
+.agent-editor-panel {
+  width: min(1180px, calc(100% - 24px));
+  max-height: calc(100dvh - 1.5rem);
+}
+.agent-editor-root,
+.agent-editor-root button,
+.agent-editor-root input,
+.agent-editor-root textarea {
+  font-family: inherit;
+}
+/* 工作区列定义：左栏配置地图 / 中栏内容 / 右栏模板面板。
+   `.agent-editor-workspace--no-template-panel` 是「右栏不渲染」时的同族变体（只读态或 `data.templates`
+   为空，见 `agent-editor-classes.ts` 的 `NO_TEMPLATE_PANEL`）：三列定义下少一个子项仍会留出 216px 空列，
+   故按渲染事实回落两列。两个类名的选择器特指度相同、媒体块又在基础块之后，变体必须在每个断点各写一次。 */
+.agent-editor-workspace {
+  grid-template-columns: 216px minmax(430px, 1fr) 216px;
+}
+.agent-editor-workspace--no-template-panel {
+  grid-template-columns: 216px minmax(430px, 1fr);
+}
+
+@media (width >= 48rem) and (width < 64rem) {
+  .agent-editor-workspace {
+    grid-template-columns: 148px minmax(280px, 1fr) 190px;
+  }
+  .agent-editor-workspace--no-template-panel {
+    grid-template-columns: 148px minmax(280px, 1fr);
+  }
+}
+
+@media (width >= 64rem) and (width < 96rem) {
+  .agent-editor-workspace {
+    grid-template-columns: 168px minmax(360px, 1fr) 220px;
+  }
+  .agent-editor-workspace--no-template-panel {
+    grid-template-columns: 168px minmax(360px, 1fr);
+  }
+}
+.agent-editor-map-trigger {
+  grid-template-columns: 32px minmax(0, 1fr) auto;
+}
+
+@media (width >= 48rem) and (width < 64rem) {
+  .agent-editor-map-trigger {
+    grid-template-columns: 24px minmax(0, 1fr);
+  }
+}
+
+@media (width >= 64rem) and (width < 96rem) {
+  .agent-editor-map-trigger {
+    grid-template-columns: 26px minmax(0, 1fr) auto;
+  }
+}
+.agent-editor-map-copy > strong {
+  font-weight: 680;
+}
+@media (min-width: 1120px) and (max-width: 1399px) and (min-height: 701px) {
+  .agent-editor-content {
+    padding: calc(var(--spacing) * 3.5) calc(var(--spacing) * 4.5) calc(var(--spacing) * 4);
+  }
+}
+@media (min-width: 760px) and (max-width: 1119px) and (min-height: 701px) {
+  .agent-editor-content {
+    padding: calc(var(--spacing) * 3.5) calc(var(--spacing) * 3) calc(var(--spacing) * 4);
+  }
+}
+@media (min-width: 1400px) and (max-height: 700px) {
+  .agent-editor-content {
+    padding: calc(var(--spacing) * 3) calc(var(--spacing) * 5) calc(var(--spacing) * 3.5);
+  }
+}
+@media (min-width: 1120px) and (max-width: 1399px) and (max-height: 700px) {
+  .agent-editor-content {
+    padding: calc(var(--spacing) * 3) calc(var(--spacing) * 4.5) calc(var(--spacing) * 3.5);
+  }
+}
+@media (min-width: 760px) and (max-width: 1119px) and (max-height: 700px) {
+  .agent-editor-content {
+    padding: calc(var(--spacing) * 3) calc(var(--spacing) * 3) calc(var(--spacing) * 3.5);
+  }
+}
+@media (width < 48rem) {
+  .agent-editor-content {
+    padding: calc(var(--spacing) * 3.5);
+  }
+}
+.agent-editor-footer {
+  box-shadow: 0 -10px 30px rgb(31 54 91 / 4%);
+}
+
+@media (width < 48rem) {
+  .agent-editor-footer {
+    padding-bottom: max(calc(var(--spacing) * 3), env(safe-area-inset-bottom));
+  }
+}
+.agent-editor-footer__state span {
+  font-weight: 750;
+}
+.agent-editor-section {
+  width: min(720px, 100%);
+  animation: agent-editor-section-enter 180ms ease both;
+}
+@media (min-width: 1120px) and (max-width: 1399px) and (min-height: 701px) {
+  .agent-editor-section__intro {
+    margin-bottom: calc(var(--spacing) * 5);
+  }
+}
+@media (min-width: 760px) and (max-width: 1119px) and (min-height: 701px) {
+  .agent-editor-section__intro {
+    margin-bottom: calc(var(--spacing) * 5);
+  }
+}
+@media (min-width: 760px) and (max-height: 700px) {
+  .agent-editor-section__intro {
+    margin-bottom: calc(var(--spacing) * 3);
+  }
+}
+.agent-editor-loading-map-row {
+  grid-template-columns: 27px minmax(0, 1fr);
+}
+.agent-panel-body {
+  position: relative;
+  isolation: isolate;
+}
+
+@keyframes agent-editor-section-enter {
+  from {
+    opacity: 0;
+    transform: translateY(calc(var(--spacing) * 1));
+  }
+}

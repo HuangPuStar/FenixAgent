@@ -54,7 +54,7 @@ const PREPARE_TIMEOUT_MS = 60_000;
 export interface WsConnectionLike {
   readyState: number;
   send(data: string): void;
-  onmessage: ((event: { data: string | Buffer }) => void) | null;
+  onmessage?: ((event: { data: string | Buffer }) => void) | null;
 }
 
 /**
@@ -102,19 +102,20 @@ export function createWsRemoteTransport(ws: WsConnectionLike): RemoteTransport {
 
   // 劫持 onmessage（直连场景，acp-link 直接连接 transport 时使用）
   const originalOnMessage = ws.onmessage;
-  ws.onmessage = (event: { data: string | Buffer }) => {
-    if (originalOnMessage) originalOnMessage(event);
+  if ("onmessage" in ws)
+    ws.onmessage = (event: { data: string | Buffer }) => {
+      if (originalOnMessage) originalOnMessage(event);
 
-    const text = typeof event.data === "string" ? event.data : event.data.toString();
-    for (const line of text.split("\n").filter(Boolean)) {
-      try {
-        const msg: TransportMessage = JSON.parse(line);
-        handleMessage(msg);
-      } catch {
-        // 忽略格式错误
+      const text = typeof event.data === "string" ? event.data : event.data.toString();
+      for (const line of text.split("\n").filter(Boolean)) {
+        try {
+          const msg: TransportMessage = JSON.parse(line);
+          handleMessage(msg);
+        } catch {
+          // 忽略格式错误
+        }
       }
-    }
-  };
+    };
 
   let requestIdCounter = 0;
   function nextRequestId(): string {

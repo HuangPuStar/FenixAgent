@@ -53,7 +53,6 @@ function createHarness(overrides: Partial<SessionChannelDependencies> = {}): Har
   const docManager = new DocManager({ onError: () => {}, onLog: () => {} });
   const channel = new SessionChannel({
     docManager,
-    prepareClearSessionSnapshot: async () => {},
     syncSessionId: () => {},
     reportError: () => {},
     ...overrides,

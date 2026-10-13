@@ -1,0 +1,7 @@
+.file-tree-sections-grid {
+  grid-template-rows: minmax(112px, 3fr) minmax(68px, 2fr);
+}
+.file-tree-view-feedback--compact > svg,
+.file-tree-view-feedback--compact p + p {
+  display: none;
+}

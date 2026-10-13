@@ -362,8 +362,6 @@
   width: 10px;
   flex: 0 0 10px;
 }
-
-/* 当前配置是组成摘要，不表示固定执行链路。 */
 .agent-summary-grid {
   gap: 8px;
   margin-top: 14px;

@@ -1,0 +1,166 @@
+import {
+  type FileTreeContextMenuState,
+  type FileTreeDownloadState,
+  FileTreeView,
+  filterFileTree,
+  parsePathsToTree,
+  splitFileTreeSections,
+} from "@fenix/ui-components";
+import { useState } from "react";
+import { useTranslation } from "react-i18next";
+
+import { DEMO_NS } from "../i18n";
+
+/**
+ * File L1 分区：文件树 —— 树容器与节点交互。
+ *
+ * 这一层的边界是「只有树」：FileTreeView 是纯展示组件，自身不碰任何文件接口 —— 树数据、展开态、
+ * 搜索关键词、右键菜单、删除确认与下载反馈全部由调用方注入。真实宿主用一个容器把 fs API 与
+ * WebSocket 事件接进来（源仓库的 FileTreeTab），这里用本文件的假数据 harness 顶替，
+ * 覆盖 loading / stale / 空态 / 搜索结果 / 右键菜单 / 删除确认几种状态。
+ *
+ * 上层的部分不在本分区：叠在树上的新建 / 重命名对话框是 File L2 的主题，文件内容渲染是 Preview
+ * 分区。示例数据是模块级静态常量（DEMO_PATHS 经 parsePathsToTree 解析成树），零网络、零路由。
+ */
+
+const DEMO_PATHS = [
+  "user/notes.md",
+  "user/drafts/",
+  "user/drafts/idea.md",
+  "README.md",
+  "report.pdf",
+  "budget.xlsx",
+  "archive.zip",
+  "src/",
+  "src/index.ts",
+  "src/lib/",
+  "src/lib/utils.ts",
+];
+
+const DEMO_TREE = parsePathsToTree(DEMO_PATHS);
+
+export function FileL1Section() {
+  const { t } = useTranslation(DEMO_NS);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [expandedIds, setExpandedIds] = useState<string[]>(["user", "user/drafts", "src", "src/lib"]);
+  const [loading, setLoading] = useState(false);
+  const [stale, setStale] = useState(false);
+  const [contextMenu, setContextMenu] = useState<FileTreeContextMenuState | null>(null);
+  const [deleteConfirm, setDeleteConfirm] = useState<{ path: string; name: string } | null>(null);
+  const [download, setDownload] = useState<FileTreeDownloadState | null>(null);
+  const [selected, setSelected] = useState<string | null>(null);
+
+  const normalizedSearch = searchQuery.trim().toLocaleLowerCase();
+  const sections = splitFileTreeSections(DEMO_TREE);
+  const workspaceNodes = filterFileTree(sections.workspace, normalizedSearch);
+  const userNodes = filterFileTree(sections.user, normalizedSearch);
+
+  return (
+    <section>
+      <h1 data-slot="demo-section-title" className="mb-6 text-[24px] font-semibold">
+        {t("sections.fileL1")}
+      </h1>
+      <p className="mt-3 text-text-muted text-[12px]">{t("sectionHints.fileL1")}</p>
+
+      <div className="mb-5 p-5 border border-border rounded-lg bg-surface-1">
+        <h2 data-slot="demo-example-title" className="mb-4 text-text-secondary text-[13px] font-medium">
+          FileTreeView
+        </h2>
+        <div className="flex flex-wrap items-center gap-3 mb-3">
+          <button
+            type="button"
+            className="block w-full mb-0.5 px-2.5 py-[7px] border-0 rounded-[var(--radius)] bg-transparent text-[14px] text-left cursor-pointer text-text-secondary hover:bg-surface-2 hover:text-text-primary"
+            onClick={() => setLoading((value) => !value)}
+          >
+            loading: {String(loading)}
+          </button>
+          <button
+            type="button"
+            className="block w-full mb-0.5 px-2.5 py-[7px] border-0 rounded-[var(--radius)] bg-transparent text-[14px] text-left cursor-pointer text-text-secondary hover:bg-surface-2 hover:text-text-primary"
+            onClick={() => setStale((value) => !value)}
+          >
+            stale: {String(stale)}
+          </button>
+          {selected && <span className="mt-3 text-text-muted text-[12px]">selected: {selected}</span>}
+        </div>
+        {/* 树需要确定高度才能虚拟化：宿主里高度来自 artifacts 面板，这里给定值。 */}
+        <div
+          className="flex h-[460px] overflow-hidden rounded-md border border-border bg-surface-1"
+          onContextMenu={(event) => {
+            if (event.target === event.currentTarget) setContextMenu(null);
+          }}
+        >
+          <FileTreeView
+            canMutate
+            contextMenu={contextMenu}
+            deleteConfirm={deleteConfirm}
+            deleting={false}
+            download={download}
+            dragOver={false}
+            expandedIds={expandedIds}
+            fileInputRef={{ current: null }}
+            folderInputRef={{ current: null }}
+            hasSearchResults={workspaceNodes.length > 0 || userNodes.length > 0}
+            loading={loading}
+            normalizedSearch={normalizedSearch}
+            onCloseDelete={() => setDeleteConfirm(null)}
+            onConfirmDelete={() => {
+              setDeleteConfirm(null);
+              setContextMenu(null);
+            }}
+            onContextMenu={(event) => {
+              const row = (event.target as HTMLElement).closest<HTMLElement>("[data-node-id]");
+              const path = row?.dataset.nodeId;
+              const isDir = row?.dataset.isDir === "true";
+              setContextMenu(path ? { x: event.clientX, y: event.clientY, path, isDir } : null);
+            }}
+            onDeleteRequest={(path, name) => setDeleteConfirm({ path, name })}
+            onDownload={(path, isDir) => {
+              setDownload({ path, isDir, error: false });
+              setTimeout(() => setDownload(null), 1200);
+            }}
+            onDragEnter={() => {}}
+            onDragLeave={() => {}}
+            onDragOver={() => {}}
+            onDrop={() => {}}
+            onFileInputChange={() => {}}
+            onFolderInputChange={() => {}}
+            onFolderUploadClick={() => {}}
+            onMoveRequest={() => {}}
+            onNewFile={() => {}}
+            onNewFolder={() => {}}
+            onReference={() => setContextMenu(null)}
+            onRefresh={() => {}}
+            onRenameRequest={() => {}}
+            onSearchChange={setSearchQuery}
+            onSelect={(node) => setSelected(node.path)}
+            onToggle={(nodeId, expanded) =>
+              setExpandedIds((ids) => (expanded ? [...ids, nodeId] : ids.filter((id) => id !== nodeId)))
+            }
+            onUploadClick={() => {}}
+            searchQuery={searchQuery}
+            showTree
+            stale={stale}
+            treeVersion={0}
+            uploading={false}
+            userHasNodes={sections.user.length > 0}
+            userNodes={userNodes}
+            workspaceHasNodes={sections.workspace.length > 0}
+            workspaceNodes={workspaceNodes}
+          />
+        </div>
+        <p className="mt-3 text-text-muted text-[12px]">
+          文件类型图标由 <code>FileTypeIcon</code>（react-file-icon）渲染，尺寸由组件自带的 16px 外框决定； 树里的 12px
+          图标位靠 <code>max-h-full max-w-full</code> 收窄。
+        </p>
+        <p className="mt-3 text-text-muted text-[12px]">
+          上面这棵树的全部行为都来自本文件：展开/折叠写 <code>expandedIds</code>，搜索框写 <code>searchQuery</code> 并由{" "}
+          <code>splitFileTreeSections</code> / <code>filterFileTree</code> 预处理，右键菜单、删除确认、下载反馈分别是{" "}
+          <code>contextMenu</code> / <code>deleteConfirm</code> / <code>download</code>{" "}
+          三个受控状态；未接线的回调一律留成空函数。真实宿主用一个容器把 fs API 与 WebSocket 事件接进来（源仓库的{" "}
+          <code>FileTreeTab</code>），这里用本文件的假数据 harness 顶替。
+        </p>
+      </div>
+    </section>
+  );
+}

@@ -1,145 +1,42 @@
 /**
- * CI 全通过脚本 — 只输出有用的信息。
+ * precheck — **预发布全量门禁**（发布前必须全绿）。单任务收尾的快检见 `scripts/fastcheck.ts`。
  *
- * 步骤：biome format → biome check (import 排序) → architecture → tsc → biome lint → bun test
- * 格式/lint 自动修复，类型检查和测试只报告失败项。
+ * **三波结构**（波内受限并发，执行语义见 `scripts/lib/check-runner.ts`，步骤目录见 `check-gates.ts`）：
+ * 1. 写盘修复：`biome check --write`，单步串行——后续所有门禁都读同一批文件，它必须先完成。
+ * 2. 静态门禁：生成物、架构、依赖边界、类型检查（tsc ×3）——互不依赖，按耗时降序受限并发。
+ * 3. 测试：三批**全量** `bun test`。
+ *
+ * **定位**：本命令回答「能不能发布」。它不追求快——全量测试（实测 890 个测试文件 / 10450 个用例）
+ * 本身就是耗时下限，不要为了缩短它而削弱覆盖；日常迭代与单任务收尾用 `bun run fastcheck`。
+ *
+ * **为什么分波而不是全串行**：原实现 18 步逐个 `execSync`，wall 是各步耗时之和；实测 4 个 tsc 步骤
+ * 就占约 70s，其中 `tsc (app skeletons)` 的 web 半边与 `tsc (web)` **逐字重复**、server 半边是根
+ * `tsc` 的文件子集（两者同继承 `tsconfig.base.json`，include 亦被根配置覆盖）。该步骤已删除；其余
+ * 互不依赖的步骤改为并发，wall 由同波最慢的步骤决定。
+ *
+ * **为什么 biome 只跑一遍**：`biome check --write` 一次完成格式化、import 排序与**安全修复**，且修复后
+ * 仍有 error 时退出码为 1、只有 warning 时为 0——原实现的三遍（`format --write` →
+ * `check --write --linter-enabled=false` → `check`）等价于此，只是把同一批文件扫了三遍。行为的唯一差异
+ * 是安全修复现在会就地生效（此前仅格式与 import 排序会），这正是「格式/lint 自动修复」的原意。
+ *
+ * **为什么测试单独一波**：`tsc (packages)` 自身已是 8 路并发，再叠加三批全量 `bun test` 会把机器打到
+ * 过载（仓库里已有「并行负载下偶发失败」的记录：`round37-service-boundaries.test.ts` 的 sandbox 补偿
+ * 边界）。分开跑把测试期间的峰值负载压到门禁波之下，用约 20s 的 wall 换取结果稳定。
  */
 
-import { execSync } from "node:child_process";
+import { STATIC_GATES, TEST_BATCHES } from "./lib/check-gates";
+import { BIOME_STEP, isListRequested, printStepList, runWaves, type Wave } from "./lib/check-runner";
 
-const STEPS = [
-  {
-    name: "format",
-    cmd: "biome format --write src/ web/src/ web/components/ packages/ scripts/ docs/.vitepress/",
-    filter: (out: string) => {
-      if (out.includes("No fixes applied") || out.includes("Formatted")) return null;
-      return out;
-    },
-  },
-  {
-    name: "import-sort",
-    cmd: "biome check --write --linter-enabled=false src/ web/src/ web/components/ packages/ scripts/ docs/.vitepress/",
-    filter: (out: string) => {
-      if (out.includes("No fixes applied") || out.includes("Checked")) return null;
-      return out;
-    },
-  },
-  {
-    name: "architecture",
-    cmd: "bun run architecture:check",
-    filter: (out: string) => (out.includes("✓ architecture-check") ? null : out),
-  },
-  {
-    name: "tsc (server)",
-    cmd: "tsc --noEmit",
-    filter: (out: string) => {
-      const errors = out.split("\n").filter((l) => l.includes("error TS"));
-      return errors.length > 0 ? errors.join("\n") : null;
-    },
-  },
-  {
-    name: "tsc (web)",
-    cmd: "cd web && tsc --noEmit",
-    filter: (out: string) => {
-      const errors = out.split("\n").filter((l) => l.includes("error TS"));
-      return errors.length > 0 ? errors.join("\n") : null;
-    },
-  },
-  {
-    name: "lint",
-    cmd: "biome check src/ web/src/ web/components/ packages/ scripts/ docs/.vitepress/",
-    filter: (out: string) => {
-      if (out.includes("Checked") && !out.includes("error") && !out.includes("warning")) return null;
-      // 只保留有问题的文件行
-      const lines = out.split("\n").filter((l) => !l.match(/^Checked\s/) && l.trim() !== "");
-      return lines.length > 0 ? lines.join("\n") : null;
-    },
-  },
-  {
-    name: "test",
-    cmd: "bun test src/__tests__/ 2>&1",
-    filter: (out: string) => {
-      const lines = out.split("\n");
+const WAVES: readonly Wave[] = [
+  // 写盘阶段必须独占：它改动文件，后面所有步骤都读文件。
+  { concurrency: 1, steps: [BIOME_STEP] },
+  { concurrency: 6, steps: STATIC_GATES },
+  { concurrency: 3, steps: TEST_BATCHES },
+];
 
-      // 提取汇总行
-      const summary = lines.filter((l) => /^\s*\d+ (pass|fail|skip)/.test(l) || /^Ran /.test(l));
-
-      // 提取失败测试
-      const failedTests: string[] = [];
-      let inFailBlock = false;
-      for (const line of lines) {
-        if (line.includes("(fail)")) {
-          inFailBlock = true;
-          failedTests.push(line.trim());
-        } else if (inFailBlock && line.trim() === "") {
-          inFailBlock = false;
-        } else if (inFailBlock) {
-          // 失败测试的错误详情（diff、at 行等）
-          if (
-            line.includes("error:") ||
-            line.startsWith(" ") ||
-            line.startsWith("+") ||
-            line.startsWith("-") ||
-            line.startsWith("at ")
-          ) {
-            failedTests.push(line);
-          }
-        }
-      }
-
-      if (failedTests.length > 0) {
-        return [...failedTests, "", ...summary].join("\n");
-      }
-      return summary.length > 0 ? summary.join("\n") : null;
-    },
-  },
-] as const;
-
-function runStep(step: (typeof STEPS)[number]): { ok: boolean; output: string | null; ms: number } {
-  const start = Date.now();
-  try {
-    const raw = execSync(step.cmd, {
-      encoding: "utf-8",
-      timeout: 300_000,
-      stdio: ["pipe", "pipe", "pipe"],
-    });
-    const ms = Date.now() - start;
-    return { ok: true, output: step.filter(raw), ms };
-  } catch (err: unknown) {
-    const ms = Date.now() - start;
-    const e = err as { stdout?: string; stderr?: string; status?: number };
-    const combined = [e.stdout ?? "", e.stderr ?? ""].join("\n");
-    return { ok: false, output: step.filter(combined), ms };
-  }
-}
-
-// --- main ---
-
-if (process.argv.includes("--list")) {
-  for (const step of STEPS) console.log(step.name);
+if (isListRequested()) {
+  printStepList(WAVES.flatMap((wave) => wave.steps));
   process.exit(0);
 }
 
-const totalStart = Date.now();
-let allPassed = true;
-
-for (const step of STEPS) {
-  const { ok, output, ms } = runStep(step);
-
-  const icon = ok ? "✓" : "✗";
-  const tag = ok ? "" : " FAILED";
-  console.log(`${icon} ${step.name} (${ms}ms)${tag}`);
-
-  if (output) {
-    // 缩进输出，跟步骤名区分开
-    for (const line of output.split("\n")) {
-      console.log(`  ${line}`);
-    }
-  }
-
-  if (!ok) allPassed = false;
-}
-
-const totalMs = Date.now() - totalStart;
-console.log(`\n${allPassed ? "✓ All passed" : "✗ Some steps failed"} (${totalMs}ms)`);
-process.exit(allPassed ? 0 : 1);
+process.exit((await runWaves(WAVES)) ? 0 : 1);

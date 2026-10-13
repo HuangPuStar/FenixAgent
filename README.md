@@ -71,8 +71,8 @@ Agent 引擎可以在平台所在机器或独立的远端节点执行。平台�
 
 | Agent 引擎 | ACP 接入 | 平台所在机器执行 | 远端节点执行 | 说明 |
 | --- | --- | --- | --- | --- |
-| OpenCode | 支持 | 支持 | 支持 | 内置 Agent 引擎（默认） |
-| Peri | 支持 | 支持 | 支持 | 内置 Agent 引擎（rust实现，兼容Claude Code生态，资源占用极低，建议生产使用） |
+| OpenCode | 支持 | 支持 | 支持 | 内置 Agent 引擎 |
+| Peri | 支持 | 支持 | 支持 | 内置 Agent 引擎（rust实现，兼容Claude Code生态，资源占用极低，建议生产使用）；**本地执行（平台所在机器）默认引擎** |
 | Claude Code | 支持 | 支持 | 支持 | 内置 Agent 引擎 |
 | claude-code-best（ccb） | 支持 | 支持 | 支持 | 内置 Agent 引擎 |
 | DeepSeek Harness（DSH） | 原生支持 | 支持 | 支持 | 内置 Agent 引擎（接入详见 [DSH 文档](docker/sandbox-dsh/README.md)） |
@@ -87,13 +87,16 @@ Agent 引擎可以在平台所在机器或独立的远端节点执行。平台�
 docker compose up --build -d
 ```
 
-默认服务地址为 <http://localhost:3001/>，并提供 OpenCode Agent 引擎。
+默认服务地址为 <http://localhost:3001/>，并内置 Peri Agent 引擎（本地执行的默认引擎）。
 
 首次启动时，系统会创建管理员账号 `admin@fenix.com`。初始密码会写入 `RCS_SYSTEM_ADMIN_PASSWORD_FILE` 指定的文件，默认是 `data/password.txt`。
 
+生产部署（目标机无需源码与 Dockerfile）改用生产编排 `docker/main/docker-compose.yml` 与一键入口 `./docker/deploy.sh deploy`：
+见[部署](docs/operations/deployment.md)与 [Docker 编排体系](docs/operations/docker-topology.md)（dev 与生产两份编排同项目名、同网络，二选一运行）。
+
 ### 本地开发
 
-前置要求：Bun、Docker 与 Docker Compose，以及可用的 OpenCode Agent 引擎（建议使用版本opencode-ai@1.17.12，更高版本可能有兼容性问题）。
+前置要求：Bun、Docker 与 Docker Compose，以及可用的 Peri Agent 引擎（本地执行的默认引擎，须在 `PATH` 上）。使用其他引擎时需自行安装对应 CLI：OpenCode 建议 `opencode-ai@1.17.12`（更高版本可能有兼容性问题）。
 
 ```bash
 # 仅启动 PostgreSQL
@@ -115,7 +118,7 @@ bash restart-server.sh
 
 使用上面的 Docker Compose 命令即可在一台机器上运行控制服务与默认 Agent 引擎，适合体验、开发和单机环境。
 
-可选集成与远端 Sandbox 的 Docker Compose 启动方式见 [进阶部署指南](docker/prod/README.md)。
+可选集成与远端 Sandbox 的 Docker Compose 启动方式见 [Docker 编排体系](docs/operations/docker-topology.md)。
 
 ### 远端执行节点
 
@@ -129,10 +132,10 @@ FenixAgent Control Plane                    Remote Machine
 └────────────────────────┘                 └──────────────────────────┘
 ```
 
-Linux 环境可用 OpenCode 沙盒镜像启动远端节点：
+Linux 环境可用 Peri 沙盒镜像启动远端节点：
 
 ```bash
-docker build -f docker/sandbox/Dockerfile -t fenix-sandbox .
+docker build -f docker/sandbox-peri/Dockerfile -t fenix-sandbox .
 
 docker run -d \
   --name fenix-sandbox \
@@ -143,7 +146,7 @@ docker run -d \
   fenix-sandbox
 ```
 
-`RCS_URL`、`RCS_SECRET` 与 `RCS_MACHINE_ID` 均为必填项。其他引擎请使用对应的 `docker/sandbox-ccb/`、`docker/sandbox-dsh/` 或 `docker/sandbox-peri/` 镜像。远端节点的程序接口与 ACP 桥接能力见 [`packages/acp-link`](packages/acp-link/README.md)。
+`RCS_URL`、`RCS_SECRET` 与 `RCS_MACHINE_ID` 均为必填项。其他引擎请使用对应的 `docker/sandbox-opencode/`（OpenCode）、`docker/sandbox-ccb/` 或 `docker/sandbox-dsh/` 镜像。远端节点的程序接口与 ACP 桥接能力见 [`packages/acp-link`](packages/acp-link/README.md)。
 
 ### DeepSeek Harness（DSH）
 

@@ -1,0 +1,3 @@
+.sandbox-instance-row {
+  grid-template-columns: minmax(220px, 1fr) minmax(260px, 1.2fr) 24px auto;
+}

@@ -356,7 +356,7 @@ IMChannel 包含：
 
 **现状（重构前）**：`docs/arch/19-yjs-chat-streaming.md` 是目标设计基线，与代码存在系统性差距——Y.Doc schema 与文档契约不符且 Doc 职责错位（`chat:` 装状态、`session:` 装时间线）、聚合层直接消费文档明令禁止的 `agent_message_chunk` 私有帧、无 Action/Ack 协议与 `commandId` 幂等、无显式 Turn 状态机、权限解析无 CAS 保护、Chat 域逻辑横跨包与宿主且 `yjs-frontend/` 直接耦合 `environmentRepo` / `resolveWorkspacePath` / `acp-idle-monitor` / `cache`。
 
-**目标**：按 PRD（`docs/design/2026-08-04-yjs-chat-streaming-prd.md`）与 ADR（`spec/global/adr/2026-08-04-chat-channel-package-design.md`）的 16 项评审决策完成 Chat 流式链路重构，把 19 号文档升级为"实现基线"（与 20 号文档相同路径）。
+**目标**：按 PRD（`docs/design/2026-08-04-yjs-chat-streaming-prd.md`）与 ADR（`docs/adr/2026-08-04-chat-channel-package-design.md`）的 16 项评审决策完成 Chat 流式链路重构，把 19 号文档升级为"实现基线"（与 20 号文档相同路径）。
 
 **实施内容**：
 
@@ -470,3 +470,72 @@ IMChannel 包含：
 5. **交叉引用修正**：`tech-stack-overview.md`、`tech-stack-backend.md` 的实时通信引用从 05 改为 19 号文档；`.vitepress/config.ts` 导航移除 08、05 改名为 "Chat 前端界面"。
 
 **影响**：纯文档修订，无代码/行为变化；docs 站点构建通过（`bun run docs:build`）。
+
+---
+
+## 改动 19：新增插件市场模块（plugin-market）
+
+**状态**：✅ 已实施（2026-09-23）
+
+**现状（实施前）**：主服务没有插件市场能力。外部独立项目 `open-mcp-market` 里有一份约 7000 行的 MCP 插件市场服务（`packages/mcp-market`），其领域模型与安全边界已经过完整设计，但宿主是自建 HTTP 框架 + SQLite + 单账户 admin-auth，与本仓库的 Elysia + Postgres/Drizzle + better-auth 多租户栈不兼容。
+
+**目标**：把市场本体移植为主服务的一个资源模块 `packages/resources/plugin-market`，npm 私有源作为**外部只读依赖**（部署级配置注入 base URL 与 token），领域规则与不可信数据的安全边界逐条保留，认证与授权整体换成仓库既有机制。
+
+**实施内容**：
+
+1. **领域模型原样沿用**：一个插件 = 一个 NPM package（身份 `(source_id, package_name)`），一个插件版本 = 一个 exact version，`package.json#mcpp` 携带分发元数据（0..n 个 agent / skill / MCP server 成员），发布后在市场内冻结为不可变快照。
+2. **三张新表**（`drizzle/0029_plugin-market-init.sql`）：`plugin_market_package`（聚合根 + latest 指针 + 授权归属列）、`plugin_market_publication`（不可变快照 + 可见性水印）、`plugin_market_admin_operation`（审计流水）。复合外键、唯一索引与 `CHECK` 由 DDL 强保证；源项目的两条 latest 规则因迁移链禁止手写 PL/pgSQL 触发器而降为「应用层顺序保证 + 只读审计」（`domain/invariants.ts`）。
+3. **规则层是纯函数**：`domain/catalog.ts` 产出写清单（`CatalogWrite[]`），仓储在同一事务里按序执行，写路径全程持事务级咨询锁。这样「`noop` 零副作用」「latest 回退」「逻辑时钟前移」都成为可执行断言，而不是只写在 SQL 里的口头约定。
+4. **授权用既有语义表达全局目录**：条目归属固定为系统托管租户（`slug = 'admin'`，由服务端解析注入），`visibility = 'public'` + `publicDefaultActions: ["read"]` 让任意已认证主体可读，写权落在归属组织 owner/admin。读口径由写权推出：写权主体可见整包下架的条目，其余人只看到公开面。
+5. **私有源只读边界**：快照契约（`npm-registry/types.ts`）是安全边界而非数据形状，原始 packument 与未列字段永不进市场存储；22 项限额、secret 正则、迭代深度探测、SRI 形状校验逐条保留；**市场永不请求 tarball**。只有预览与「确认发布但库内无此版本」两条路径出网，恢复与幂等分支不出网。
+6. **六条 `/web/config/plugin-market/*` 路由** + 封闭错误码清单（11 个，每个都有产出点与消费点）；`PREVIEW_CHANGED` 409 携带重新读到的快照供前端原地重新确认。
+7. **前端目录页**（master-detail，不新增详情路由）覆盖六态，发布弹窗两步（预览 → 确认），写动作不做 `unwrap` 以保住冲突信息；市场条目不是 Agent 运行时配置，写入后不广播配置变更。
+8. **文档**：新建 `docs/arch/24-plugin-market.md` 作为实现基线，`CLAUDE.md` 的受控资源主表口径从「四张」更新为「五张」（`plugin_market_package` 的 `visibility` 默认 `public` 是该表的语义要求）。
+
+**明确不在本期范围**：`http-source` 第二来源（MCP over HTTP 发现客户端）、静态页生成与失效、admin-auth（由 better-auth 替换）、服务端分页与检索、插件安装 / 绑定到 Agent 配置、对外 `/api` 面。偏离逐条登记在模块 `README.md`。
+
+**影响**：全部改动可加性——新包 + 三张新表 + 若干登记项与生成物，不触碰任何既有表、既有数据与既有接口。回滚 = 回退提交 + 删除三张表 + 重跑两个 generate 脚本，无存量数据迁移。
+
+
+---
+
+## 改动 20：npm 插件市场并入「插件市场」页，改为可切换 tab
+
+**状态**：✅ 已实施（2026-09-23）
+
+**现状（实施前）**：npm 插件市场（改动 19）作为独立资源模块接入时自带一条 `web` 导航贡献，侧栏于是出现两项语义相近的「插件市场」——`/agent/mcp` 的 MCP 市场与 `/agent/plugin-market` 的 npm 市场。用户必须先猜「我要的插件在哪个市场」，选错就要退回去换入口。
+
+**目标**：两个市场合并为同一页的两个 tab，侧栏只保留一项入口；tab 状态可分享、可后退；两个市场各保留自己的完整页面壳与动作。
+
+**实施内容**：
+
+1. **宿主路由改为 tab 壳**：`apps/web/src/routes/agent/_panel/mcp.tsx` 承载 tab 栏与两个市场的 `lazy()` 装配，`?tab=npm` 选中 npm 市场、缺省即 MCP 市场（tab 状态放 URL 而非组件 state，刷新与前进后退都保持一致）。壳**只装配不取数**（前端规范 §2.7）：发布按钮的可见性来自页面自己取到的 `canPublish`，因此标题区连同动作留在各包内，两个市场各自保留 `AppPage` + `AppHeader`。
+2. **独立入口撤除**：删除路由文件 `apps/web/src/routes/agent/_panel/plugin-market.tsx`；`fenix.module.ts` 移除 `web` 字段、`package.json` 移除 `./web/contribution` 出口、`deploy/assembly/ce.json` 的 `web` 列表移除本包，`apps/generated/web-contributions.ts` 与 `routeTree.gen.ts` 重生成（web 贡献包 10 → 9，导航项 15 → 14）。此后本包与 `channel` / `prod-view` 同形：有宿主路由、无导航项。
+3. **文案归属不变**（前端规范 §9，各包自有字典）：tab 名由各包出（`mcp:tabs.mcp` / `pluginMarket:tabs.npm`），tab 栏的 `aria-label` 属宿主 chrome，用宿主字典 `components:marketTabs.label`；三处 en / zh 同步。
+4. **守卫**：新增 `apps/web/src/__tests__/plugin-market-tab-merge.test.ts`——从真实路由表断言独立路径已不可达、导航 id 只剩 `mcp`，并从宿主路由壳源码断言两个市场都被装配，外加三处字典键的双语覆盖。包侧 `plugin-market-browser-surface.test.ts` 改为**反例断言**：`./web/contribution` 出口一旦重新声明即失败，防止第二项侧栏入口复活。`shell-navigation.test.ts` 的迁移前快照同步记明本次合并。
+
+**影响**：纯前端装配层改动加登记项调整，服务端契约、数据库与领域规则零变化。回滚 = 回退提交 + 重跑 `generate:web-contributions` 与 `build:web`。
+
+---
+
+## 改动 21：插件市场的管理动作迁入管理台，浏览面退化为只读
+
+**状态**：✅ 已实施（2026-09-24）
+
+**现状（实施前）**：npm 插件市场（改动 19）把两条读路由与四条写路由（preview / publish / unpublish / restore）一起挂在浏览面 `/web/config/plugin-market/*`，凭据是浏览器会话；控制台页面同时承担浏览与发布。代价有三条：写权是**平台级**动作（条目归属系统托管租户），浏览器会话里却要先经「当前主体能否在系统租户下写」这条绕路推导写权；页面因此必须做能力探测、逐行 `access` 与冲突重试，而它们只对极少数平台运维者有意义；「市场是什么」与「谁能改市场」两个问题被压在同一张凭据上，任何一次写权判定调整都会同时改变浏览体验。
+
+**目标**：把写路径切到平台既有的系统 API Key 面（与 observer 的 `/api/system/logs`、sandbox 的 `/api/system/sandbox-pools` 同一类：凭据本身就是判据），控制台那一面退化为纯只读浏览。两处不是同一页面的两个入口，而是**两种凭据下的两种能力**。
+
+**实施内容**：
+
+1. **服务端两条面分槽**：新增 `src/server/routes/api/system-plugin-market.ts`（六条 `/api/system/plugin-market/*` 路由，`systemApiKeyAuth` 守卫由宿主注入）；`plugin-market-support.ts` 从 `web/config/` 提到 `routes/` 根作为两面共用的协议映射助手；`web/config/plugin-market.ts` 只剩两条读路由。`fenix.module.ts` 的 `contributions` 因此从「web-config 一条」变成「web-config（浏览）+ api（管理）」两条。
+2. **Facade 方法按凭据族分组**：`list` / `getDetail` 收 `ActorContext`（浏览面授权谓词下推），`listAll` / `getDetailAll` 与四个写方法**不收**（管理面没有可信主体，`SystemTenant` 的 `userId` 是审计主体）。混用是编译期错误而非运行期约定。写路径**不在 Facade 做第二遍角色判定**——两处各判一次正是「按钮按旧规则显示、写入按新规则拒绝」这类漂移的来源。
+3. **能力位与逐行 `access` 撤除**：浏览面没有任何写入口，`canPublish` 只会让前端渲染一个与真实判据无关的按钮；管理面能进来就能写，逐行能力位同样无消费方。授权不受影响——`listConstraint` 早已把谓词编译进 SQL。
+4. **读口径分档**：浏览面恒为公开面（整包下架的条目不存在，详情与「不存在」同响应 404）；管理面走全量口径（含下架条目与 `unpublishedAt` 水印）。写路径的 409 `PREVIEW_CHANGED` 仍携带新快照——管理面的四个写方法**刻意不做 `unwrap`**，否则这条冲突信息会被信封丢掉。
+5. **前端拆成两条面**：新增 `web/pages/admin/AdminPluginMarketPage.tsx`（`AdminKeyGate` 门，master key 存 sessionStorage）与 `pages/admin/components/*`（dashboard / catalog / publish-dialog / publish-form）；展示件提到 `web/components/plugin-market-detail.tsx` 供两面共用，版本历史的**写动作列由管理面注入**。浏览面删除全部写入口。纯逻辑按消费方拆成 `web/lib/plugin-market-utils.ts`（两面共用）与 `web/lib/plugin-market-admin-utils.ts`（管理面专有：`countAdminScopes`、多一档「已下架」的 `filterAdminPackages`、`readPreviewChangedPayload`、`changeToastKey`）。
+6. **宿主登记**：新增 `apps/web/src/routes/admin/plugin-market.tsx`（懒加载管理页）与 `apps/web/src/routes/admin.tsx` 的侧栏项（字典 `admin.nav`）；包字典新增 `admin.*` 与 `detail.hiddenPackage`。
+7. **守卫随能力边界一起搬**：`plugin-market-browser-surface.test.ts` 新增「浏览面子图不可达管理面（API、写逻辑、管理页）」的值导入图断言与「入口不转出内部件」负例；新增宿主契约测试 `plugin-market-admin-route.test.ts`（路由表 / 导航项 / 双语字典三处）；`route-contributions.test.ts` 的期望从 `web-config` 四条写路由改为 `api` 槽六条。
+8. **文档**：`docs/arch/24-plugin-market.md` 的 §0 / §5 / §7 / §8 / §9 按两条面重写（§8 拆为 8.1 浏览面与 8.2 管理面）。
+
+**影响**：服务端为路由迁移 + 授权入口收敛，**领域规则、数据模型与数据库零变化**（无迁移、无存量数据动作）；前端为页面搬迁与能力面收窄，控制台用户可见的变化是「市场里不能再发布」——这是本次改动的意图而非回归。回滚 = 回退提交 + 重跑 `generate:module-registry`。
+

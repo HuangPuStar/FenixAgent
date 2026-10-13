@@ -1,0 +1,23 @@
+{
+  "panel": {
+    "title": "Trace",
+    "refresh": "刷新",
+    "close": "关闭",
+    "graphLoadFailed": "调用图加载失败",
+    "graphEmpty": "这条 Run 没有可绘制的节点",
+    "detailLoadFailed": "节点详情加载失败"
+  },
+  "list": {
+    "heading": "本次会话的 Run",
+    "total": "共 {{total}} 条",
+    "loading": "正在加载 Run…",
+    "empty": "这次会话还没有产生 Run",
+    "loadFailed": "Run 列表加载失败",
+    "retry": "重试",
+    "notConfiguredTitle": "观测读取未启用",
+    "notConfiguredHint": "部署未配置 LANGFUSE_* 连接参数，控制台无法读取这次会话的观测数据。",
+    "noSessionTitle": "尚未建立 Agent 会话",
+    "noSessionHint": "这次对话还没有创建 ACP 会话，暂时没有可读取的 Run。",
+    "selectHint": "选择左侧的一条 Run 查看调用图"
+  }
+}

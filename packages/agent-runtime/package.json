@@ -1,0 +1,105 @@
+{
+  "name": "@fenix/agent-runtime",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": {
+      "types": "./src/index.ts",
+      "default": "./src/index.ts"
+    },
+    "./db": {
+      "types": "./db/schema.ts",
+      "default": "./db/schema.ts"
+    },
+    "./module": {
+      "types": "./fenix.module.ts",
+      "default": "./fenix.module.ts"
+    },
+    "./runtime": {
+      "types": "./src/runtime.ts",
+      "default": "./src/runtime.ts"
+    },
+    "./server": {
+      "types": "./src/server.ts",
+      "default": "./src/server.ts"
+    },
+    "./server/testing": {
+      "types": "./src/server/testing.ts",
+      "default": "./src/server/testing.ts"
+    },
+    "./server/environment": {
+      "types": "./src/server/repositories/environment.ts",
+      "default": "./src/server/repositories/environment.ts"
+    },
+    "./server/orchestration-environment": {
+      "types": "./src/server/repositories/environment-orchestration.ts",
+      "default": "./src/server/repositories/environment-orchestration.ts"
+    },
+    "./web": {
+      "types": "./web/index.ts",
+      "default": "./web/index.ts"
+    },
+    "./web/agent-panel/chat-area-lifecycle": {
+      "types": "./web/agent-panel/chat-area-lifecycle.ts",
+      "default": "./web/agent-panel/chat-area-lifecycle.ts"
+    },
+    "./web/api/environments": {
+      "types": "./web/api/environments.ts",
+      "default": "./web/api/environments.ts"
+    },
+    "./web/api/instances": {
+      "types": "./web/api/instances.ts",
+      "default": "./web/api/instances.ts"
+    },
+    "./web/hooks/chat-auth-state": {
+      "types": "./web/hooks/chat-auth-state.ts",
+      "default": "./web/hooks/chat-auth-state.ts"
+    },
+    "./web/hooks/chat-visible-reconnect": {
+      "types": "./web/hooks/chat-visible-reconnect.ts",
+      "default": "./web/hooks/chat-visible-reconnect.ts"
+    },
+    "./web/i18n": {
+      "types": "./web/i18n/index.ts",
+      "default": "./web/i18n/index.ts"
+    }
+  },
+  "scripts": {
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "bun test"
+  },
+  "dependencies": {
+    "@fenix/agent-config": "workspace:*",
+    "@fenix/chat-channel": "workspace:*",
+    "@fenix/core": "workspace:*",
+    "@fenix/identity": "workspace:*",
+    "@fenix/logger": "workspace:*",
+    "@fenix/orchestration": "workspace:*",
+    "@fenix/platform-sdk": "workspace:*",
+    "@fenix/plugin-sdk": "workspace:*",
+    "@fenix/remote-runtime": "workspace:*",
+    "@fenix/resource-machine": "workspace:*",
+    "@fenix/resource-sandbox": "workspace:*",
+    "@fenix/ui-components": "workspace:*",
+    "@fenix/web-runtime": "workspace:*",
+    "acp-link": "workspace:*",
+    "browser-image-compression": "^2.0.2",
+    "drizzle-orm": "^0.45.2",
+    "ioredis": "^5.10.1",
+    "lucide-react": "^1.16.0",
+    "react-error-boundary": "^6.1.2",
+    "sonner": "^2.0.7",
+    "uuid": "^14.0.0",
+    "yjs": "^13.6.31"
+  },
+  "peerDependencies": {
+    "i18next": "^26.2.0",
+    "react": "^19.2.6",
+    "react-dom": "^19.2.6",
+    "react-i18next": "^17.0.8"
+  },
+  "devDependencies": {
+    "happy-dom": "^20.9.0"
+  }
+}

@@ -33,21 +33,28 @@ RUN printf 'registry=%s\n' \
 COPY --from=oven/bun:1 /usr/local/bin/bun /usr/local/bin/bun
 COPY --from=acp-runtime-build /tmp/acp-runtime/dist/bin.js /usr/local/bin/acp-runtime.js
 
-# 整个 peri（binary + 版本管理 + 配置）安装到 /opt/.peri-binary
+# 与根 Dockerfile 保持同一官方安装方式；该镜像独立构建，不能复用控制面镜像层，故保留此处安装。
 RUN export PERI_INSTALL_DIR=/opt/.peri-binary && curl -fsSL https://raw.githubusercontent.com/konghayao/peri/main/scripts/install.sh | bash
 ENV PATH="/opt/.peri-binary:$PATH"
 
 RUN mkdir -p /app/workspaces
 VOLUME ["/app/workspaces"]
 
-RUN peri plugin marketplace add vectorize-io/hindsight
-RUN peri plugin install hindsight-memory
+# peri 的插件存储复用 Claude Code 布局（`~/.claude/plugins`），插件随镜像固化在 /root/.claude。
+# 插件走 KonghaYao/hindsight-plugin：纯 JSON 清单 + `npx @peri-code/hindsight` 单文件 CLI（见该仓库 plugin/）。
+# 插件内容由远端仓库默认分支决定，Docker 层缓存看不见它：命令串不变就直接复用旧层，
+# 于是「重建镜像以拿到新插件」会静默装回旧版本。CACHE_BUST 由工作流按每次构建注入。
+ARG CACHE_BUST=unset
+RUN echo "hindsight plugin refresh: ${CACHE_BUST}" \
+    && peri plugin marketplace add KonghaYao/hindsight-plugin \
+    && peri plugin install hindsight-memory
 
 # peri ultracode 依赖 workflow 库
 RUN npm i -g @peri-code/workflow
 
-ENV AGENT_TYPE=ccb
-# Peri 客户端模式，额外生成 .peri/settings.json
-ENV IS_PERI=1
-# acp-runtime 启动 CCB agent 并注册到 RCS
+# peri 是独立引擎插件（@fenix/peri）：节点直接以 peri handler 启动 peri CLI。
+# 不再走「ccb 槽位跑 peri」，因此也不需要 IS_PERI 与 RCS_CCB_COMMAND/RCS_CCB_ARGS——
+# workspace 物化由 peri handler 完成，`.peri/settings.json` 无条件写出。
+ENV AGENT_TYPE=peri
+# acp-runtime 启动 peri agent 并注册到 RCS
 CMD ["bun", "/usr/local/bin/acp-runtime.js", "peri", "acp"]

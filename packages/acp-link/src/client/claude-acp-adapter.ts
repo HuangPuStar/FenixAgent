@@ -470,10 +470,15 @@ export function createClaudeAcpConnection(
                 }>;
                 const iqaId = `iqa_${Date.now()}`;
                 const answerPromise = new Promise<Record<string, unknown>>((resolve) => {
+                  // 等待用户应答的超时：超时后以空答案喂回工具结果，CC 按空答案继续执行。
+                  // 与 elicitation 路径的 `ELICITATION_TIMEOUT_MS`、以及 chat-channel 的
+                  // `DEFAULT_QUESTION_TIMEOUT_MS`（问题投影 expiresAt）保持同值 120s——三处
+                  // 同值才能保证「弹窗可见期 ≤ agent 等待期」，任一处偏小都会让前端弹窗
+                  // 悬挂（agent 已继续）或提前消失（用户已无法作答）。
                   const timer = setTimeout(() => {
                     interactiveAnswers.delete(iqaId);
                     resolve({});
-                  }, 60000);
+                  }, 120000);
                   interactiveAnswers.set(iqaId, { resolve, timer });
                 });
                 send({

@@ -1,0 +1,7 @@
+.dropdown-menu-item svg,
+.dropdown-menu-checkbox-item svg,
+.dropdown-menu-radio-item svg,
+.dropdown-menu-sub-trigger svg {
+  pointer-events: none;
+  flex-shrink: 0;
+}

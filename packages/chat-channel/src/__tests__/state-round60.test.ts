@@ -308,9 +308,15 @@ test("清理回调失败时释放监听和临时连接", async () => {
   const redis = new MemoryRedis(storage);
 
   await expect(
-    persistYjsClearedSnapshotWithCas(redis as never, "snapshot:clear-error", updateWith("message", "x"), () => {
-      throw new Error("clear failed");
-    }),
+    persistYjsClearedSnapshotWithCas(
+      redis as never,
+      "snapshot:clear-error",
+      updateWith("message", "x"),
+      () => {
+        throw new Error("clear failed");
+      },
+      46,
+    ),
   ).rejects.toThrow("clear failed");
 
   expect(storage.unwatchCalls).toBe(1);

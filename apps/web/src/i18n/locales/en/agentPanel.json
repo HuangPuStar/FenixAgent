@@ -1,0 +1,7 @@
+{
+  "showArtifacts": "Show artifacts panel",
+  "resizeArtifacts": "Resize right workspace",
+  "connecting": "Connecting...",
+  "loading_agent_panel": "Loading agent panel...",
+  "agentCreatedNavFailed": "Agent created, but the chat failed to open. Reopen it from the list."
+}

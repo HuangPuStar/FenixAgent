@@ -1,0 +1,27 @@
+.chat-user-message-shell {
+  border-radius: 14px 14px 4px 14px;
+}
+
+.chat-message-action-bar {
+  top: calc(100% - 2px);
+  box-shadow: 0 6px 18px rgb(30 50 80 / 12%);
+}
+@media (hover: none) {
+  .chat-message-action-bar {
+    opacity: 1;
+    pointer-events: auto;
+    translate: none;
+  }
+}
+.chat-thought-trigger > svg:first-child {
+  display: none;
+}
+
+.chat-thought-trigger > svg:last-child {
+  margin-left: calc(var(--spacing) * 0.5);
+}
+@media (width < 40rem) {
+  .chat-message-image-dialog {
+    max-width: min(92vw, 960px);
+  }
+}

@@ -17,9 +17,13 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      # 版本不是随手定的：bun 1.4.2 的 `bun test --isolate` 在 Linux x64 大套件下会间歇
+      # `panic(main thread): abort() called`（oven-sh/bun#44599；本仓实测同一提交两次运行崩一次），
+      # 1.4.3 修掉了这一类 isolate 崩溃（见 Bun v1.4.3 发布说明）。回退版本前先确认上游 issue 状态；
+      # 本地用 `bun upgrade` 跟到同一版本，`precheck` 才与 CI 同口径。
       - uses: oven-sh/setup-bun@v2
         with:
-          bun-version: "1.3.14"
+          bun-version: "1.4.3"
 
       - name: Install dependencies
         run: bun install --frozen-lockfile
@@ -36,6 +40,54 @@ jobs:
       - name: Typecheck (frontend)
         run: bun run typecheck:web
 
+      # 前两步都从宿主入口出发、**顺 import** 覆盖包源码，没有消费方的包/文件因此天然落在检查之外
+      # （14 个包此前连 tsconfig 都没有）。这一步以每个包自己的 tsconfig 为入口逐个检查。
+      - name: Typecheck (packages)
+        run: bun run typecheck:packages
+
+      # 装配相关的四项检查必须与 precheck 走同一入口：registry、web contributions 与根源码归属清单
+      # 都是生成物，架构门禁与依赖边界门禁共用同一份例外台账，只在本机生效等于没有门禁。
+      - name: Generated module registry is up to date
+        run: bun run generate:module-registry --check
+
+      - name: Generated web contributions are up to date
+        run: bun run generate:web-contributions --check
+
+      - name: Root source owner inventory is up to date
+        run: bun run check:root-owner-inventory
+
+      # 表搬迁只搬位置、不改结构：`drizzle.config.ts` 声明的 schema 集合与已发布迁移链必须零
+      # DDL 差异。这一步本地 `precheck`（scripts/ci.ts）已有，CI 此前缺它，等于 PR 阶段对
+      # 「表定义换手时顺手改了 DDL」没有门禁。
+      - name: Schema DDL drift
+        run: bun run check:schema-ddl-drift
+
+      - name: Architecture boundaries
+        run: bun run architecture:check
+
+      - name: Workspace dependency boundaries
+        run: bun run check:dependencies
+
+  build:
+    name: Web production build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: "1.4.3"
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+
+      # 后端从 `apps/web/dist/` 挂载静态资源；「包被浏览器 bundle 拉进 server-only 依赖」
+      # 这类事故只在真实构建下暴露（vite 的解析与外置规则和 `bun test` 不同），此前只有
+      # `Dockerfile` 在镜像构建时才跑，PR 阶段没有构建级门禁。`build:web` 只依赖已安装依赖
+      # 与仓库内已提交的生成物，不需要 env（`Dockerfile` 同样在 install 之后直接执行）。
+      - name: Web production build
+        run: bun run build:web
+
   test:
     name: Test
     runs-on: ubuntu-latest
@@ -44,18 +96,23 @@ jobs:
 
       - uses: oven-sh/setup-bun@v2
         with:
-          bun-version: "1.3.14"
+          bun-version: "1.4.3"
 
       - name: Install dependencies
         run: bun install --frozen-lockfile
 
-      - name: Backend tests
-        run: bun test $(find src/__tests__ -name '*.test.ts' -o -name '*.test.tsx') --verbose --bail=1
+      # 三条命令必须与 `scripts/lib/check-gates.ts` 的 `TEST_BATCHES` 逐字一致：本机 `precheck`
+      # 与 CI 跑的是同一份口径，本地绿而 CI 红才算「同一批测试不一致」。
+      #
+      # `--isolate` 不是可选加速项：bun 1.4 默认让所有测试文件共享同一个全局与模块注册表，
+      # `mock.module()` / `globalThis` 覆写 / 平台替身会泄漏给之后加载的文件，而加载顺序由文件系统的
+      # 目录枚举顺序决定（Linux 与 macOS 不同）。缺它时同一份代码会本机全绿、这里成片失败。
+      # 跑这三条命令的 bun 必须 ≥ 1.4.3：1.4.2 的 isolate 路径在大套件下会间歇 abort（见上方版本注释）。
+      - name: Server, script, and platform SDK tests
+        run: bun test apps/server/src/__tests__/ scripts/__tests__/ packages/platform/platform-sdk/src/__tests__/ --isolate
 
-      # workspace 包测试（orchestration / workflow-engine / acp-server 等）：
-      # 独立于 src/__tests__ 运行，防止包级回归只在本地 precheck 中被发现
       - name: Package tests
-        run: bun test packages/ --verbose --bail=1
+        run: bun test packages/ --path-ignore-patterns 'tmp/**' --isolate
 
-      - name: Frontend tests
-        run: bun test $(find web/src/__tests__ -name '*.test.ts' -o -name '*.test.tsx') --verbose --bail=1
+      - name: Web app tests
+        run: bun test apps/web/src/__tests__/ --isolate

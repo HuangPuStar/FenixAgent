@@ -1,0 +1,4 @@
+.button svg {
+  pointer-events: none;
+  flex-shrink: 0;
+}

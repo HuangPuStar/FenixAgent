@@ -15,13 +15,14 @@ import {
   setSessionInfo,
 } from "../state/chat-writer";
 import { DocManager } from "../state/doc-manager";
+import type { SharedRelay } from "./connection-types";
 import { SessionChannel, type SessionChannelDependencies, type SessionConnection } from "./index";
+import { failPendingSessionMutations, waitForSessionMutation } from "./session-mutation";
 import type { ActionAck, ActionError } from "./types";
 
 interface TestHarness {
   channel: SessionChannel;
   docManager: DocManager;
-  prepareCalls: number;
   refreshCalls: string[];
   syncCalls: string[];
   errors: Array<{ message: string; error: unknown }>;
@@ -31,7 +32,6 @@ interface TestHarness {
 
 function createHarness(overrides: Partial<SessionChannelDependencies> = {}): TestHarness {
   const state = {
-    prepareCalls: 0,
     refreshCalls: [] as string[],
     syncCalls: [] as string[],
     errors: [] as Array<{ message: string; error: unknown }>,
@@ -44,9 +44,6 @@ function createHarness(overrides: Partial<SessionChannelDependencies> = {}): Tes
     refreshInstanceEnvironment: async (connection) => {
       state.refreshCalls.push(connection.instanceId);
     },
-    prepareClearSessionSnapshot: async () => {
-      state.prepareCalls += 1;
-    },
     replaceProjection: () => {},
     syncSessionId: (_connection, newSessionId) => {
       state.syncCalls.push(newSessionId);
@@ -56,13 +53,9 @@ function createHarness(overrides: Partial<SessionChannelDependencies> = {}): Tes
     },
     ...overrides,
   });
-  // prepareCalls 用 getter 返回实时值：spread 会拷贝原始值导致断言读到 0
   return {
     channel,
     docManager,
-    get prepareCalls() {
-      return state.prepareCalls;
-    },
     refreshCalls: state.refreshCalls,
     syncCalls: state.syncCalls,
     errors: state.errors,
@@ -73,6 +66,7 @@ function createHarness(overrides: Partial<SessionChannelDependencies> = {}): Tes
 
 interface RelayRecord {
   jsonrpc: string;
+  id: number;
   method: string;
   params: Record<string, unknown>;
 }
@@ -136,6 +130,88 @@ async function waitForTurnStatus(
 }
 
 describe("SessionChannel action flow", () => {
+  // Agent 确认删除后才提交命令并刷新权威列表。
+  test("delete refreshes the session list only after Agent success", async () => {
+    const harness = createHarness();
+    const shared = { pendingSessionMutations: new Map() } as SharedRelay;
+    const { connection, relayMessages } = createConnection({
+      awaitSessionMutation: (rpcId) => waitForSessionMutation(shared, rpcId),
+    });
+    await harness.docManager.openChat("rcs-1");
+    await harness.docManager.openSession("user-1", "agent-1", "rcs-1");
+
+    const action = harness.channel.handleAction(
+      connection,
+      { action: "delete_session", sessionId: "ses-target", commandId: "cmd-delete" },
+      createSinks(harness),
+    );
+    await Promise.resolve();
+    expect(relayMessages.map((message) => message.method)).toEqual(["session/delete"]);
+    expect(harness.acks.map((ack) => ack.status)).toEqual(["accepted"]);
+    shared.pendingSessionMutations?.get(relayMessages[0].id as number)?.(true);
+    await action;
+    expect(relayMessages.map((message) => message.method)).toEqual(["session/delete", "session/list"]);
+    expect(harness.acks.map((ack) => ack.status)).toEqual(["accepted", "committed"]);
+  });
+
+  // Agent 返回失败时不刷新列表也不向浏览器发送 committed。
+  test("delete failure keeps the list unchanged", async () => {
+    const harness = createHarness();
+    const shared = { pendingSessionMutations: new Map() } as SharedRelay;
+    const { connection, relayMessages } = createConnection({
+      awaitSessionMutation: (rpcId) => waitForSessionMutation(shared, rpcId),
+    });
+    await harness.docManager.openChat("rcs-1");
+    const action = harness.channel.handleAction(
+      connection,
+      { action: "delete_session", sessionId: "ses-target", commandId: "cmd-failed" },
+      createSinks(harness),
+    );
+    await Promise.resolve();
+    shared.pendingSessionMutations?.get(relayMessages[0].id as number)?.(false);
+    await action;
+    expect(relayMessages.map((message) => message.method)).toEqual(["session/delete"]);
+    expect(harness.acks.map((ack) => ack.status)).toEqual(["accepted"]);
+    expect(harness.errorFrames[0]).toMatchObject({ error: { type: "ACTION.AGENT_UNAVAILABLE" } });
+  });
+
+  // Agent 无响应时超时释放登记，禁止提前刷新历史列表。
+  test("delete timeout does not refresh the session list", async () => {
+    const harness = createHarness();
+    const shared = { pendingSessionMutations: new Map() } as SharedRelay;
+    const { connection, relayMessages } = createConnection({
+      awaitSessionMutation: (rpcId) => waitForSessionMutation(shared, rpcId, 1),
+    });
+    await harness.docManager.openChat("rcs-1");
+    await harness.channel.handleAction(
+      connection,
+      { action: "delete_session", sessionId: "ses-target", commandId: "cmd-timeout" },
+      createSinks(harness),
+    );
+    expect(relayMessages.map((message) => message.method)).toEqual(["session/delete"]);
+    expect(shared.pendingSessionMutations?.size).toBe(0);
+    expect(harness.errorFrames[0]).toMatchObject({ error: { type: "ACTION.AGENT_UNAVAILABLE" } });
+  });
+
+  // 共享 relay 断开会使在途删除失败，不得继续刷新。
+  test("relay disconnection does not refresh the session list", async () => {
+    const harness = createHarness();
+    const shared = { pendingSessionMutations: new Map() } as SharedRelay;
+    const { connection, relayMessages } = createConnection({
+      awaitSessionMutation: (rpcId) => waitForSessionMutation(shared, rpcId),
+    });
+    await harness.docManager.openChat("rcs-1");
+    const action = harness.channel.handleAction(
+      connection,
+      { action: "delete_session", sessionId: "ses-target", commandId: "cmd-disconnect" },
+      createSinks(harness),
+    );
+    await Promise.resolve();
+    failPendingSessionMutations(shared);
+    await action;
+    expect(relayMessages.map((message) => message.method)).toEqual(["session/delete"]);
+    expect(harness.errorFrames[0]).toMatchObject({ error: { type: "ACTION.AGENT_UNAVAILABLE" } });
+  });
   // create_session 必须先刷新当前实例环境，随后才发送 session/new，让 Peri 冻结最新 Skills。
   test("refreshes the instance environment before forwarding session/new", async () => {
     const callOrder: string[] = [];
@@ -376,7 +452,8 @@ describe("SessionChannel action flow", () => {
     );
 
     expect(harness.acks.map((a) => a.status)).toEqual(["accepted", "committed"]);
-    expect(harness.prepareCalls).toBe(0);
+    // 旧「清空快照持久化」端口（prepareClearSessionSnapshot）已随换代口径删除，此处只保留
+    // 可观察的外部行为：既有的 acpSessionId 一致时既不转发 relay 也不重放清理。
     expect(relayMessages).toHaveLength(0);
   });
 

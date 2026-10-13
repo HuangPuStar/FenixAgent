@@ -1,0 +1,12 @@
+.chat-interaction-cards {
+  width: min(756px, calc(100% - 64px));
+}
+@media (width < 48rem) {
+  .chat-interaction-cards {
+    width: calc(100% - 52px);
+  }
+}
+
+.chat-interaction-card {
+  box-shadow: 0 12px 34px rgb(30 64 120 / 8%);
+}

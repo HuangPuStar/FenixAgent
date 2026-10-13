@@ -1,0 +1,23 @@
+{
+  "panel": {
+    "title": "Trace",
+    "refresh": "Refresh",
+    "close": "Close",
+    "graphLoadFailed": "Failed to load the call graph",
+    "graphEmpty": "This run has no plottable nodes",
+    "detailLoadFailed": "Failed to load node details"
+  },
+  "list": {
+    "heading": "Runs in this session",
+    "total": "{{total}} total",
+    "loading": "Loading runs…",
+    "empty": "No runs in this session yet",
+    "loadFailed": "Failed to load runs",
+    "retry": "Retry",
+    "notConfiguredTitle": "Trace reading is not enabled",
+    "notConfiguredHint": "This deployment has no LANGFUSE_* connection configured, so the console cannot read observations for this session.",
+    "noSessionTitle": "No agent session yet",
+    "noSessionHint": "This conversation has not created an ACP session, so there are no runs to read.",
+    "selectHint": "Select a run on the left to see its call graph"
+  }
+}

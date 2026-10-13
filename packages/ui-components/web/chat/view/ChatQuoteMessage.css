@@ -1,0 +1,12 @@
+.chat-quote-summary::-webkit-details-marker {
+  display: none;
+}
+.chat-quote-summary > svg {
+  width: calc(var(--spacing) * 3.5);
+}
+
+.chat-quote-preview {
+  top: calc(100% + 6px);
+  width: min(340px, calc(100vw - 48px));
+  box-shadow: 0 8px 24px rgb(38 52 77 / 14%);
+}

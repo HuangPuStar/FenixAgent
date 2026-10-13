@@ -1,0 +1,32 @@
+{
+  "name": "@fenix/web-app",
+  "description": "控制台装配应用",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
+  "dependencies": {
+    "@fenix/agent-config": "workspace:*",
+    "@fenix/agent-runtime": "workspace:*",
+    "@fenix/chat-channel": "workspace:*",
+    "@fenix/identity": "workspace:*",
+    "@fenix/model-management": "workspace:*",
+    "@fenix/platform-sdk": "workspace:*",
+    "@fenix/resource-channel": "workspace:*",
+    "@fenix/resource-knowledge": "workspace:*",
+    "@fenix/resource-machine": "workspace:*",
+    "@fenix/resource-mcp": "workspace:*",
+    "@fenix/resource-memory": "workspace:*",
+    "@fenix/resource-observer": "workspace:*",
+    "@fenix/resource-plugin-market": "workspace:*",
+    "@fenix/resource-prod-view": "workspace:*",
+    "@fenix/resource-sandbox": "workspace:*",
+    "@fenix/resource-skill": "workspace:*",
+    "@fenix/resource-task": "workspace:*",
+    "@fenix/resource-trace": "workspace:*",
+    "@fenix/resource-workflow-v2": "workspace:*",
+    "@fenix/ui-components": "workspace:*",
+    "@fenix/web-runtime": "workspace:*"
+  }
+}

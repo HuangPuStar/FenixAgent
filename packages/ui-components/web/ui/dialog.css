@@ -1,0 +1,7 @@
+.dialog-close svg {
+  pointer-events: none;
+  flex-shrink: 0;
+}
+.dialog-content {
+  --dialog-content-max-width: calc(100% - calc(var(--spacing) * 8));
+}

@@ -1,0 +1,21 @@
+.input-group:has(> [data-align="inline-start"]) > input {
+  padding-left: calc(var(--spacing) * 2);
+}
+
+.input-group:has(> [data-align="inline-end"]) > input {
+  padding-right: calc(var(--spacing) * 2);
+}
+
+.input-group:has(> [data-align="block-start"]) > input {
+  padding-bottom: calc(var(--spacing) * 3);
+}
+
+.input-group:has(> [data-align="block-end"]) > input {
+  padding-top: calc(var(--spacing) * 3);
+}
+.input-group-addon > kbd {
+  border-radius: var(--radius-3);
+}
+.input-group-text svg {
+  pointer-events: none;
+}

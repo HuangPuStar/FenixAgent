@@ -116,6 +116,31 @@ describe("spawnAcpAgent round48 内存 ACP 管道", () => {
     expect(harness.calls[0]?.options.env).not.toBe(process.env);
   });
 
+  // 宿主密钥（数据库连接串、API Key、langfuse secret）不得经继承进入第三方 Agent 进程。
+  test("宿主密钥不外传给 Agent 进程", async () => {
+    const previous = {
+      DATABASE_URL: process.env.DATABASE_URL,
+      RCS_API_KEYS: process.env.RCS_API_KEYS,
+      LANGFUSE_SECRET_KEY: process.env.LANGFUSE_SECRET_KEY,
+    };
+    process.env.DATABASE_URL = "postgres://host/leak";
+    process.env.RCS_API_KEYS = "host-api-keys";
+    process.env.LANGFUSE_SECRET_KEY = "host-langfuse-secret";
+    try {
+      const { harness } = await start(undefined);
+      const env = harness.calls[0]?.options.env as NodeJS.ProcessEnv;
+
+      expect(env).not.toHaveProperty("DATABASE_URL");
+      expect(env).not.toHaveProperty("RCS_API_KEYS");
+      expect(env).not.toHaveProperty("LANGFUSE_SECRET_KEY");
+    } finally {
+      for (const [key, value] of Object.entries(previous)) {
+        if (value === undefined) delete process.env[key];
+        else process.env[key] = value;
+      }
+    }
+  });
+
   // initialize 返回的 agent 能力应暴露给调用方。
   test("返回初始化后的 agent capabilities", async () => {
     const { result } = await start();

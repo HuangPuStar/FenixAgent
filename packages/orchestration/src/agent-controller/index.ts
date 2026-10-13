@@ -2,8 +2,8 @@
  * AgentController：编排域的统一入口。
  *
  * 职责：
- *   - `spawnInstance` 串联全部子域（环境校验 → LaunchSpec 构建 →
- *     AgentNode 获取 → Instance 工厂），为外部提供统一的实例创建入口
+ *   - `spawnInstance` 串联全部子域（环境校验 → AgentNode 获取 → Instance 工厂），
+ *     为外部提供统一的实例创建入口
  *   - `stopInstance` / `listInstances` 管理内存中的活跃实例表（纯运行时，无 DB 持久化）
  *
  * 错误映射（I3 设计文档）：
@@ -11,8 +11,8 @@
  *   |---------------------------|-----------------------------|
  *   | envId 不存在              | EnvironmentNotFoundError    |
  *   | Machine 未连接            | AgentNodeUnavailableError   |
- *   | LaunchSpec 缺失字段       | LaunchSpecBuildError        |
  *   | 环境未配置 machineId      | LaunchSpecBuildError        |
+ *   | 环境未绑定 Agent 配置     | LaunchSpecBuildError        |
  *   | stopInstance 目标不存在   | OrchestrationError          |
  *
  * 并发配额统一由宿主 `src/services/agent-concurrency.ts` 的 reservation 管理；
@@ -22,31 +22,27 @@
 import type { AgentNodeServicePort } from "../agent-node/types";
 import { EnvironmentNotFoundError, LaunchSpecBuildError, OrchestrationError } from "../errors";
 import type { Instance } from "../instance/instance";
-import type { LaunchSpecBuilder } from "../launch-spec/launch-spec-builder";
 import type { EnvironmentRepo } from "../types/deps";
 
 /** AgentController 构造依赖（全部由宿主注入，保证可单测）。 */
 export interface AgentControllerDeps {
   agentNodeService: AgentNodeServicePort;
-  launchSpecBuilder: LaunchSpecBuilder;
   environmentRepo: EnvironmentRepo;
 }
 
 /** 编排域统一入口：创建 / 查询 / 停止 Agent 运行实例。 */
 export class AgentController {
   readonly #agentNodeService: AgentNodeServicePort;
-  readonly #launchSpecBuilder: LaunchSpecBuilder;
   readonly #environmentRepo: EnvironmentRepo;
   /** 活跃实例表（instanceId → Instance），停止后移除。 */
   readonly #instances = new Map<string, Instance>();
 
   constructor(deps: AgentControllerDeps) {
     this.#agentNodeService = deps.agentNodeService;
-    this.#launchSpecBuilder = deps.launchSpecBuilder;
     this.#environmentRepo = deps.environmentRepo;
   }
 
-  /** 创建 Agent 运行实例（完整 6 步流程，见类注释错误映射）。 */
+  /** 创建 Agent 运行实例（完整流程，见类注释错误映射）。 */
   async spawnInstance(envId: string, userId: string, instanceUid: string): Promise<Instance> {
     // 1. 环境校验（透传 userId：宿主 Repo 解析 machineId 时可能按用户归属
     //    准备执行节点，如 sandbox 实例按 pool + userId 复用）
@@ -55,10 +51,16 @@ export class AgentController {
       throw new EnvironmentNotFoundError(`Environment '${envId}' not found`);
     }
 
-    // 2. 构建 LaunchSpec（缺失字段抛 LaunchSpecBuildError）
-    const launchSpec = await this.#launchSpecBuilder.build(envId, userId);
+    // 2. 环境必须绑定 Agent 配置：本域只保证「有配置可启动」，配置内容的缺失由组装方
+    //    在启动前报错（CE 1.4 W4 起 LaunchSpec 组装已迁出编排域）。
+    //    错误类型保持 LaunchSpecBuildError（LAUNCH_SPEC_BUILD_FAILED，宿主按 422 映射，
+    //    chat-channel 的错误分类依赖该码判定「配置性永久失败」）。
+    const agentConfigId = environment.agentConfigId;
+    if (!agentConfigId) {
+      throw new LaunchSpecBuildError(`Cannot spawn instance: environment '${envId}' has no agentConfigId configured`);
+    }
 
-    // 4. 获取 AgentNode；环境须解析出有效 machineId（宿主 Repo 负责默认值 fallback，
+    // 3. 获取 AgentNode；环境须解析出有效 machineId（宿主 Repo 负责默认值 fallback，
     //    编排域不读取环境变量，缺失视为配置错误）。
     //    ensureNode 在节点不存在或已关闭时抛 AgentNodeUnavailableError。
     const machineId = environment.machineId;
@@ -71,8 +73,8 @@ export class AgentController {
       throw new OrchestrationError(`Instance '${instanceUid}' is already active`, "INSTANCE_ALREADY_ACTIVE");
     }
 
-    // 5. 使用宿主持久化 uid 创建 Instance（AgentNode 不再生成第二套身份）
-    const instance = agentNode._spawnInstance(launchSpec, instanceUid);
+    // 4. 使用宿主持久化 uid 创建 Instance（AgentNode 不再生成第二套身份）
+    const instance = agentNode._spawnInstance({ environmentId: envId, agentConfigId }, instanceUid);
 
     // 5. 注册并返回引用
     this.#instances.set(instance.instanceId, instance);

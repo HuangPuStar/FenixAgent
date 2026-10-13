@@ -1,35 +1,30 @@
 // packages/chat-channel/src/persist/snapshot-config.ts
-// 快照持久化的节流 / TTL 配置（SP-A1 / SP-C1）与 SP-0 服务端打点。
+// 快照持久化的节流 / TTL 参数契约（SP-A1 / SP-C1）与 SP-0 服务端打点。
 //
-// 配置默认值与 src/env.ts 的 schema 声明保持一致（env.ts 是类型/默认值/部署文档的
-// 真相来源）。provider 在包内 factory 深处创建、当前无宿主 DI 通道，因此这里直读
-// 同名环境变量；宿主后续把校验后的值经 ChatChannelDependencies 注入 options 时，
-// 应删除此直读并仅保留 options 通道。非法值（非正整数）回落默认，不阻塞启动。
+// 参数值的真相来源是 agent-runtime 模块 `fenix.module.ts` 的 `envDefinitions` 声明
+// （`RCS_YJS_SNAPSHOT_INTERVAL_MS` / `RCS_YJS_SNAPSHOT_IDLE_MS` / `RCS_YJS_SNAPSHOT_TTL_SECONDS`）：
+// 宿主在启动期完成校验与投影，再经 `ChatChannelDependencies.snapshotPersist` 装入 DocManager，
+// 最终落在 provider options 上（见 `state/factory.ts` 的 `safeProvider`）。
+//
+// 包内**不保留同名默认值，也不读 process.env**：直读拿到的是部署进程的原始字符串，与宿主启动期校验、
+// 归一后投影进模块配置的那一份是两个来源；默认值再留一份，两处漂移会在部署后静默生效。
+// 宿主未注入时由 `safeProvider` 明确失败。
 
-const DEFAULT_SNAPSHOT_INTERVAL_MS = 2000;
-const DEFAULT_SNAPSHOT_IDLE_MS = 500;
-const DEFAULT_SNAPSHOT_TTL_SECONDS = 7 * 24 * 60 * 60;
-
-export type SnapshotEnvConfig = { intervalMs: number; idleMs: number; ttlSeconds: number };
-
-function readPositiveIntEnv(name: string, fallback: number): number {
-  const raw = process.env[name];
-  if (!raw) return fallback;
-  const parsed = Number.parseInt(raw, 10);
-  return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
+/** 快照节流 / TTL 参数（`RCS_YJS_SNAPSHOT_*` 三项的装配投影值）。 */
+export interface SnapshotPersistConfig {
+  /** trailing 节流窗口：距上次成功 CAS 的最小间隔（毫秒） */
+  intervalMs: number;
+  /** 静默期：持续无新 update 该时长后提前 flush（毫秒） */
+  idleMs: number;
+  /** 快照滑动 TTL（秒），每次成功 CAS 续期 */
+  ttlSeconds: number;
 }
 
-let cachedEnvConfig: SnapshotEnvConfig | null = null;
-
-/** 解析快照节流 / TTL 环境配置（进程内缓存一次；options 显式传入优先于此值）。 */
-export function getSnapshotEnvConfig(): SnapshotEnvConfig {
-  cachedEnvConfig ??= {
-    intervalMs: readPositiveIntEnv("RCS_YJS_SNAPSHOT_INTERVAL_MS", DEFAULT_SNAPSHOT_INTERVAL_MS),
-    idleMs: readPositiveIntEnv("RCS_YJS_SNAPSHOT_IDLE_MS", DEFAULT_SNAPSHOT_IDLE_MS),
-    ttlSeconds: readPositiveIntEnv("RCS_YJS_SNAPSHOT_TTL_SECONDS", DEFAULT_SNAPSHOT_TTL_SECONDS),
-  };
-  return cachedEnvConfig;
-}
+/**
+ * 参数来源函数。惰性求值不是风格选择：宿主模块配置在应用基础设施初始化完成前不可读，
+ * 而 DocManager 单例在文件加载期就已构造。
+ */
+export type SnapshotPersistConfigSource = () => SnapshotPersistConfig;
 
 // ── SP-0 打点 ──
 // 仅尺寸/耗时/标识（docName），绝不包含会话内容。测试环境静默避免污染输出；

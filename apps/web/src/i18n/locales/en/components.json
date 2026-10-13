@@ -1,0 +1,65 @@
+{
+  "marketTabs": {
+    "label": "Marketplace categories"
+  },
+  "panelMode": {
+    "panelTabs": "Right workspace",
+    "files": "Files",
+    "sites": "Sites",
+    "sitesEmptyTitle": "No sites bound",
+    "sitesEmptyHint": "Bind a site in Agent config to preview it here.",
+    "pendingDiff": "{{count}} new file change(s) pending in Files",
+    "pendingDiffOverflow": "99+",
+    "unmountConfirmTitle": "Unmount site?",
+    "unmountConfirm": "Unmount \"{{name}}\" from this agent?",
+    "tasks": "Tasks",
+    "views": "Views",
+    "trace": "Trace",
+    "floating": "Floating",
+    "docked": "Docked",
+    "dock": "Dock right workspace",
+    "float": "Float right workspace",
+    "close": "Close right workspace"
+  },
+  "siteFrame": {
+    "loadingSites": "Loading agent sites...",
+    "loadFailed": "Failed to load sites: {{message}}"
+  },
+  "fileTree": {
+    "emptyState": "No files in workspace",
+    "emptyHint": "Use the toolbar or drag files here to upload",
+    "userEmptyState": "No files",
+    "retry": "Retry",
+    "staleBanner": "File service temporarily unavailable, reconnecting...",
+    "dropToUpload": "Drop files to upload",
+    "uploadTo": "Upload to: {{path}}"
+  },
+  "tree": {
+    "showMore": "+{{count}} more",
+    "loading": "Loading...",
+    "loadError": "Failed to load",
+    "retry": "Retry",
+    "empty": "No items"
+  },
+  "chatComposer": {
+    "fileTooLarge": "A file cannot exceed 100 MB",
+    "filesTooLarge": "The total upload cannot exceed 100 MB"
+  },
+  "confirmDialog": {
+    "confirm": "Confirm"
+  },
+  "formDialog": {
+    "save": "Save",
+    "cancel": "Cancel",
+    "saving": "Saving..."
+  },
+  "toolCallRow": {
+    "openFile": "Open File"
+  },
+  "askUser": {
+    "submit": "Submit",
+    "previous": "Previous question",
+    "next": "Next",
+    "nextQuestion": "Next question"
+  }
+}

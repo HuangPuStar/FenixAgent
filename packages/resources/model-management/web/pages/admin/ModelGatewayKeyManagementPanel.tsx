@@ -1,0 +1,180 @@
+import { ConfirmDialog } from "@fenix/ui-components/config/ConfirmDialog";
+import { EmptyState } from "@fenix/ui-components/config/EmptyState";
+import { Badge } from "@fenix/ui-components/ui/badge";
+import { Button } from "@fenix/ui-components/ui/button";
+import { Card, CardContent, CardHeader, CardTitle } from "@fenix/ui-components/ui/card";
+import { Checkbox } from "@fenix/ui-components/ui/checkbox";
+import { Pagination } from "@fenix/ui-components/ui/pagination";
+import { Spinner } from "@fenix/ui-components/ui/spinner";
+import { ApiError } from "@fenix/web-runtime/api/request";
+import { useRequest } from "ahooks";
+import { Trash2 } from "lucide-react";
+import { useCallback, useMemo, useState } from "react";
+import { useTranslation } from "react-i18next";
+import { toast } from "sonner";
+import { type ModelGatewayManagedKey, modelGatewayApi } from "../../api/model-gateway.ts";
+import { MODELS_NS } from "../../i18n/namespace";
+import { GATEWAY_LOADING_CLASS, GatewayRefreshButton, ModelGatewayTable } from "./model-gateway-shared";
+
+function keyReason(key: ModelGatewayManagedKey): string {
+  return key.usable ? "usable" : (key.invalidReason ?? "unusable");
+}
+
+/** 管理 Fenix 创建的 Virtual Key；密钥明文从不返回浏览器。 */
+export function ModelGatewayKeyManagementPanel({ onAuthFailure }: { onAuthFailure: () => void }) {
+  const { t } = useTranslation(MODELS_NS);
+  const [page, setPage] = useState(1);
+  const [selectedIds, setSelectedIds] = useState<string[]>([]);
+  const [confirmOpen, setConfirmOpen] = useState(false);
+  const reportError = useCallback(
+    (error: unknown) => {
+      console.error("[model-gateway] 密钥列表请求失败", error);
+      // 只有系统 API 明确返回未授权才回 Master Key 门；网关或数据库故障按普通失败上屏。
+      if (error instanceof ApiError && error.code === "UNAUTHORIZED") onAuthFailure();
+      // 服务端 `message` 优先上屏（`unwrap` 抛出的 `ApiError.message` 即错误信封原文）；字典文案兜底。
+      else toast.error(error instanceof Error && error.message ? error.message : t("modelGateway.keysPage.loadError"));
+    },
+    [onAuthFailure, t],
+  );
+  const keysRequest = useRequest(() => modelGatewayApi.listKeys(page), {
+    refreshDeps: [page],
+    onError: reportError,
+  });
+  const removeRequest = useRequest(() => modelGatewayApi.removeKeys(selectedIds), {
+    manual: true,
+    onSuccess: (result) => {
+      setConfirmOpen(false);
+      setSelectedIds([]);
+      toast.success(t("modelGateway.keysPage.removeSuccess", { count: result.deletedIds.length }));
+      if (result.skipped.length > 0)
+        toast.info(t("modelGateway.keysPage.removeSkipped", { count: result.skipped.length }));
+      if (result.failed.length > 0)
+        toast.error(t("modelGateway.keysPage.removeFailed", { count: result.failed.length }));
+      void keysRequest.run();
+    },
+    onError: reportError,
+  });
+
+  const selectedKeys = useMemo(
+    () => selectedIds.filter((id) => (keysRequest.data?.items ?? []).some((item) => item.id === id)),
+    [keysRequest.data, selectedIds],
+  );
+  const totalPages = Math.max(1, Math.ceil((keysRequest.data?.total ?? 0) / (keysRequest.data?.pageSize ?? 20)));
+
+  function toggle(id: string, checked: boolean) {
+    setSelectedIds((current) => (checked ? [...new Set([...current, id])] : current.filter((item) => item !== id)));
+  }
+
+  return (
+    <Card>
+      <CardHeader className="flex flex-row items-center justify-between gap-4">
+        <div>
+          <CardTitle className="text-sm">{t("modelGateway.keysPage.title")}</CardTitle>
+          <p className="mt-1 text-xs text-text-muted">{t("modelGateway.keysPage.description")}</p>
+        </div>
+        <div className="flex gap-2">
+          <GatewayRefreshButton loading={keysRequest.loading} onClick={() => keysRequest.run()}>
+            {t("modelGateway.keysPage.refresh")}
+          </GatewayRefreshButton>
+          <Button
+            size="sm"
+            variant="destructive"
+            disabled={selectedKeys.length === 0}
+            onClick={() => setConfirmOpen(true)}
+          >
+            <Trash2 className="size-3.5" />
+            {t("modelGateway.keysPage.remove")}
+          </Button>
+        </div>
+      </CardHeader>
+      <CardContent>
+        {keysRequest.error ? (
+          // 失败态不再给重试按钮：本卡片头部常驻的「刷新」就是同一个动作，`keysRequest.run` 是它的入口。
+          // 标题取服务端 `message`（失败原因必须上屏），字典文案只在它为空的兜底。
+          <EmptyState
+            tone="danger"
+            role="alert"
+            title={keysRequest.error.message || t("modelGateway.keysPage.loadError")}
+            className="py-8"
+          />
+        ) : keysRequest.loading && !keysRequest.data ? (
+          <Spinner label={t("admin.loading")} className={GATEWAY_LOADING_CLASS} />
+        ) : (keysRequest.data?.items.length ?? 0) === 0 ? (
+          <EmptyState title={t("modelGateway.keysPage.empty")} className="py-8" />
+        ) : (
+          <>
+            <ModelGatewayTable
+              head={
+                <>
+                  <th className="w-10 px-3 py-2" />
+                  <th className="px-3 py-2">{t("modelGateway.keysPage.columns.id")}</th>
+                  <th className="px-3 py-2">{t("modelGateway.keysPage.columns.subject")}</th>
+                  <th className="px-3 py-2">{t("modelGateway.keysPage.columns.key")}</th>
+                  <th className="px-3 py-2">{t("modelGateway.keysPage.columns.availability")}</th>
+                  <th className="px-3 py-2">{t("modelGateway.keysPage.columns.createdAt")}</th>
+                </>
+              }
+            >
+              {keysRequest.data?.items.map((item) => (
+                <tr key={item.id}>
+                  <td className="px-3 py-2">
+                    <Checkbox
+                      checked={selectedIds.includes(item.id)}
+                      onCheckedChange={(value) => toggle(item.id, value === true)}
+                      aria-label={t("modelGateway.keysPage.select", { id: item.externalCredentialId })}
+                    />
+                  </td>
+                  <td className="px-3 py-2 font-mono text-xs">{item.id}</td>
+                  <td className="px-3 py-2 text-xs align-top">
+                    <div>
+                      <span className="font-semibold">{t("modelGateway.keysPage.subjectLabels.organization")}：</span>
+                      {item.organizationName ?? t("modelGateway.keysPage.unknownSubject")}（{item.organizationId}）
+                    </div>
+                    <div>
+                      <span className="font-semibold">{t("modelGateway.keysPage.subjectLabels.user")}：</span>
+                      {item.userName ?? t("modelGateway.keysPage.unknownSubject")}（{item.userId}）
+                    </div>
+                    <div>
+                      <span className="font-semibold">{t("modelGateway.keysPage.subjectLabels.agent")}：</span>
+                      {item.agentName ?? t("modelGateway.keysPage.unknownSubject")}（{item.agentConfigId}）
+                    </div>
+                  </td>
+                  <td className="px-3 py-2 font-mono text-xs">
+                    <div className="w-[20ch] truncate" title={item.externalCredentialId}>
+                      {item.externalCredentialId}
+                    </div>
+                  </td>
+                  <td className="px-3 py-2">
+                    <Badge variant={item.usable ? "secondary" : "destructive"}>
+                      {t(`modelGateway.keysPage.reasons.${keyReason(item)}`)}
+                    </Badge>
+                  </td>
+                  <td className="px-3 py-2 text-xs text-text-muted">{new Date(item.createdAt).toLocaleString()}</td>
+                </tr>
+              ))}
+            </ModelGatewayTable>
+            <Pagination
+              page={page}
+              totalPages={totalPages}
+              total={keysRequest.data?.total ?? 0}
+              pageSize={keysRequest.data?.pageSize ?? 20}
+              onPageChange={setPage}
+              translationPrefix="modelGateway.keysPage"
+              t={t}
+            />
+          </>
+        )}
+      </CardContent>
+      <ConfirmDialog
+        open={confirmOpen}
+        onOpenChange={setConfirmOpen}
+        variant="destructive"
+        loading={removeRequest.loading}
+        title={t("modelGateway.keysPage.removeTitle")}
+        description={t("modelGateway.keysPage.removeDescription", { count: selectedKeys.length })}
+        confirmLabel={t("modelGateway.keysPage.remove")}
+        onConfirm={() => removeRequest.run()}
+      />
+    </Card>
+  );
+}

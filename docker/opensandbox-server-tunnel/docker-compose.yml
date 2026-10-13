@@ -1,26 +1,52 @@
-services:
-  opensandbox-server:
-    build:
-      context: ../opensandbox-server
-      dockerfile: Dockerfile
-    image: ${OPENSANDBOX_SERVER_IMAGE:-aos/opensandbox-server:latest}
-    command: ["opensandbox-server", "--config", "/etc/opensandbox/sandbox.toml"]
-    privileged: true
-    cgroup: host
-    healthcheck:
-      test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://127.0.0.1:8080/health', timeout=2)\""]
-      interval: 5s
-      timeout: 3s
-      retries: 30
-      start_period: 10s
-    volumes:
-      - docker-data:/var/lib/docker
-      - ./workspace:/workspace
-      - ./offline:/offline:ro
-      - ./sandbox.toml:/etc/opensandbox/sandbox.toml:ro
-      - ./data:/root/.opensandbox
-      - ./frpc.toml:/etc/frp/frpc.toml:ro
-    restart: unless-stopped
+# docker/opensandbox-server-tunnel/ —— OpenSandbox Server 执行节点（FRP tunnel 模式）
+#
+# 权威文档：docs/operations/docker-topology.md（§3 网络分层、§6 依赖目录契约、§8 env 规范）
+#
+# 与 ../opensandbox-server/ 的区别只有隧道方向：节点内的 frpc 主动连 Cluster 的 frps，
+# 因此本目录不发布任何宿主端口，也不需要接入 fenix-server（没有任何入站流量）。
+#
+# 独立项目启动（不与顶层 -f 叠加）：
+#   cd docker/opensandbox-server-tunnel
+#   cp ../opensandbox-server/sandbox.toml.example sandbox.toml   # 编辑 api_key / port_range_*
+#   chmod 600 frpc.toml                                          # 从 Cluster 下载，见本目录 README
+#   或由 ./docker/deploy.sh 按 FENIX_FEATURE_OPENSANDBOX_SERVER_TUNNEL=true 启动
+#
+# 本目录没有 compose 插值键，因此不提供 .env.example（配置全在 sandbox.toml 与 frpc.toml）。
+# 数据落点：bind 到本文件同级的 ./data/ 与 ./workspace/（§13.8）。
 
-volumes:
-  docker-data:
+services:
+
+    opensandbox-server:
+        # 发布版本（固定 tag）：发布时更新此行。禁止环境变量插值与 latest（§13.7）。
+        # 本目录不自带 build：镜像与 ../opensandbox-server/ 同源，自建时在那边 build 后按此 tag 打标（§6.1 目录自包含）。
+        image: ghcr.io/huangpustar/fenixagent-opensandbox-server:v0.2.0
+        command:
+            - opensandbox-server
+            - --config
+            - /etc/opensandbox/sandbox.toml
+        # DinD 需要容器内的独立 Docker daemon；不要挂载宿主机 /var/run/docker.sock。
+        privileged: true
+        cgroup: host
+        restart: unless-stopped
+        volumes:
+            # DinD 的内部 Docker 状态（镜像、容器、卷）。
+            - ./data/docker:/var/lib/docker
+            # 沙盒运行的 Workspace 数据；须与 sandbox.toml 的 storage.allowed_host_paths 一致。
+            - ./workspace:/workspace
+            # 离线沙盒镜像包：docker compose exec 进容器后 docker load -i /offline/*.tar。
+            - ./offline:/offline:ro
+            - ./sandbox.toml:/etc/opensandbox/sandbox.toml:ro
+            # Server 自身的状态目录（server.db 等）。
+            - ./data/opensandbox:/root/.opensandbox
+            # 隧道凭证：从 Cluster 的 GET /api/v1/servers/:id/tunnel/frpc.toml 下载，权限须为 0600（entrypoint 校验）。
+            - ./frpc.toml:/etc/frp/frpc.toml:ro
+        healthcheck:
+            test:
+                - CMD-SHELL
+                - >-
+                    python -c "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8080/health', timeout=2)"
+            interval: 5s
+            timeout: 3s
+            retries: 30
+            start_period: 10s
+        # 不声明 networks：留在项目默认网络，不接入主服务层。

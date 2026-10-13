@@ -1,0 +1,5 @@
+.select-trigger svg,
+.select-item svg {
+  pointer-events: none;
+  flex-shrink: 0;
+}

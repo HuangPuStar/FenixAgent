@@ -10,4 +10,6 @@
 export * from "./channel";
 export * from "./index";
 export * from "./persist";
+export * from "./server/services/chat-channel-error-classify";
+export * from "./server/services/doc-manager-instance";
 export * from "./state";

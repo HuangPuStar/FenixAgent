@@ -1,0 +1,45 @@
+/* biome-ignore-all lint/complexity/noImportantStyles: 本表未分层，靠 `!important` 复刻源类串里 `!` 前缀
+ * 工具类的胜负语义；尤其窄屏块与基础块必须同级 importance，少一个 `!` 整块失效（2026-09 实测踩坑）。
+ * 口径见 docs/developer/guide/forbidden-code-patterns.md「两个层叠陷阱」。 */
+
+.agent-editor-chrome-eyebrow {
+  font-weight: 750;
+}
+
+.agent-editor-chrome-close-button:hover {
+  background-color: var(--color-slate-100) !important;
+  color: var(--color-blue-900) !important;
+}
+
+.agent-editor-template-card:hover,
+.agent-editor-template-card:focus-visible {
+  border-color: var(--color-indigo-300) !important;
+  background-color: var(--color-indigo-50) !important;
+  color: var(--color-blue-800) !important;
+}
+
+.agent-editor-chrome-logo {
+  background-image: linear-gradient(145deg, #367cf1, #1749b3);
+  box-shadow: 0 8px 20px rgb(39 100 231 / 24%);
+}
+
+.agent-editor-chrome-title {
+  font-weight: 720;
+}
+
+.agent-editor-template-count {
+  font-weight: 680;
+}
+
+@media (width < 48rem) {
+  .agent-editor-chrome-header {
+    padding-top: max(calc(var(--spacing) * 3), env(safe-area-inset-top));
+  }
+}
+
+@media (min-width: 760px) and (max-height: 700px) {
+  .agent-editor-chrome-header {
+    flex-basis: calc(var(--spacing) * 14.5);
+    min-height: calc(var(--spacing) * 14.5);
+  }
+}

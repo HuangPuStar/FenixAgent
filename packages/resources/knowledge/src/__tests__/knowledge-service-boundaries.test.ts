@@ -1,0 +1,151 @@
+import { beforeEach, describe, expect, mock, test } from "bun:test";
+import { stubDb } from "@fenix/platform-sdk/testing";
+import { createKnowledgeAccess } from "../server/facades/knowledge-access";
+import { createKnowledgeResourceFacade } from "../server/facades/knowledge-resource-facade";
+import {
+  createKnowledgeBaseRecord,
+  resolveKnowledgeTenantIdentity,
+  sanitizeKnowledgeBase,
+} from "../server/services/knowledge-base";
+import { listKnowledgeResources } from "../server/services/knowledge-upload";
+import { initializeKnowledgeModuleConfig } from "../server/testing";
+
+describe("知识库服务边界", () => {
+  beforeEach(() => {
+    // 服务经仓储落库，仓储句柄来自 platform-sdk 基础设施（未初始化即抛错）；
+    // 这里初始化转发到 `stubDb()` 的 DB 代理，用例内再按需替换替身。
+    initializeKnowledgeModuleConfig();
+  });
+
+  // 创建请求缺少有效名称时必须在访问数据库和 provider 前返回输入校验错误。
+  test("空白知识库名称被本地校验拒绝", async () => {
+    const result = await createKnowledgeBaseRecord("org-1", { name: "   " }, "user-1");
+
+    expect(result).toEqual({
+      success: false,
+      error: { code: "VALIDATION_ERROR", message: "知识库名称不能为空" },
+    });
+  });
+
+  // slug 含有非法字符时必须在创建远端数据集前被拒绝，避免产生孤儿资源。
+  test("非法 slug 被本地校验拒绝", async () => {
+    const result = await createKnowledgeBaseRecord("org-1", { name: "文档", slug: "invalid slug!" }, "user-1");
+
+    expect(result).toEqual({
+      success: false,
+      error: { code: "VALIDATION_ERROR", message: "slug 只能包含字母、数字和连字符" },
+    });
+  });
+
+  // 组织不匹配的知识库不得暴露其资源列表，也不得继续解析 provider 凭据——归属判定在门面，
+  // 跨组织与不存在同码（协议层 404，与「返回空结果」的既有对外口径一致）。
+  test("跨组织读取资源列表返回空结果", async () => {
+    const select = mock(() => ({
+      from: () => ({
+        where: () => ({
+          limit: () =>
+            Promise.resolve([
+              {
+                id: "kb-foreign",
+                organizationId: "org-foreign",
+                userId: "user-foreign",
+                remoteId: "remote-foreign",
+              },
+            ]),
+        }),
+      }),
+    }));
+    stubDb({ select });
+    // 凭据一旦被解析就抛错：这条路径在迁移前后都不该走到「取远端凭据」那一步。
+    const facade = createKnowledgeResourceFacade(
+      createKnowledgeAccess(() => async () => {
+        throw new Error("跨组织路径不应解析凭据");
+      }),
+    );
+
+    await expect(facade.list({ organizationId: "org-1", userId: "user-1" }, "kb-foreign")).resolves.toEqual({
+      ok: false,
+      error: { kind: "not-found", code: "NOT_FOUND", message: "知识库不存在" },
+    });
+    expect(select).toHaveBeenCalledTimes(1);
+  });
+
+  // 已授权知识库的本地资源读取不再需要组织参数（归属判定在门面）。
+  test("已授权知识库按行读取资源列表", async () => {
+    const select = mock(() => ({
+      from: () => ({
+        where: () => ({
+          orderBy: () => ({ limit: () => Promise.resolve([]) }),
+        }),
+      }),
+    }));
+    stubDb({ select });
+
+    await expect(
+      listKnowledgeResources({
+        id: "kb-1",
+        userId: "user-1",
+        organizationId: "org-1",
+        name: "产品文档",
+        slug: "product-docs",
+        description: null,
+        provider: "ragflow",
+        remoteId: "remote-kb-1",
+        remoteAccountId: null,
+        remoteUserId: null,
+        metadata: null,
+        status: "ready",
+        lastError: null,
+        createdAt: new Date("2026-01-01T00:00:00.000Z"),
+        updatedAt: new Date("2026-01-01T00:00:00.000Z"),
+      }),
+    ).resolves.toEqual([]);
+  });
+
+  // 远端租户标识为空白时必须回退到知识库所有者，避免向上游传递无效身份。
+  test("远端租户标识空白时回退到知识库所有者", () => {
+    expect(
+      resolveKnowledgeTenantIdentity({
+        userId: " owner-1 ",
+        remoteAccountId: "   ",
+        remoteUserId: null,
+      }),
+    ).toEqual({ remoteAccountId: "owner-1", remoteUserId: "owner-1" });
+  });
+
+  // 知识库响应必须将可选持久化字段标准化为 null 和秒级时间戳，保持 API DTO 稳定。
+  test("知识库响应映射标准化可选字段与时间", () => {
+    const result = sanitizeKnowledgeBase({
+      id: "kb-1",
+      userId: "user-1",
+      organizationId: "org-1",
+      name: "产品文档",
+      slug: "product-docs",
+      description: null,
+      provider: null as never,
+      remoteId: null,
+      remoteAccountId: null,
+      remoteUserId: null,
+      metadata: null,
+      status: "empty",
+      lastError: null,
+      createdAt: new Date("2026-01-01T00:00:00.999Z"),
+      updatedAt: new Date("2026-01-01T00:00:01.001Z"),
+    });
+
+    expect(result).toMatchObject({
+      description: null,
+      provider: null,
+      remoteId: null,
+      embeddingModel: null,
+      parseMethod: null,
+      chunkMethod: null,
+      createdAt: 1767225600,
+      updatedAt: 1767225601,
+      bindingsCount: 0,
+      resourcesCount: 0,
+      remoteExists: true,
+      recentResources: [],
+    });
+  });
+});

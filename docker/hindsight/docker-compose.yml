@@ -1,35 +1,55 @@
-# Hindsight — AI 记忆/知识库服务
-# Usage: docker compose -f docker/hindsight/docker-compose.yml up -d
-# 或与主 compose 一起: docker compose -f docker-compose.yml -f docker/hindsight/docker-compose.yml up -d
+# docker/hindsight/ —— Hindsight 长期记忆服务（memory 模块使用）
+# 权威文档：docs/operations/docker-topology.md §6（依赖目录契约）
+#
+# 独立项目启动：
+#   cp docker/hindsight/.env.example docker/hindsight/.env      # 填 DASHSCOPE_API_KEY
+#   docker compose -f docker/hindsight/docker-compose.yml up -d
+# 随主服务一键启动：docker/deploy.env 里 FENIX_FEATURE_HINDSIGHT=true。
+#
+# 网络：接入 fenix-server（主服务按 HINDSIGHT_MCP_URL=http://hindsight:8888 访问容器内 API）；
+# 宿主端口只绑回环，供本地源码运行（bun run dev）与管理员浏览器访问控制台。
+#
+# 镜像定版：latest 在 2026-10-08 解析为 0.10.2（`docker buildx imagetools inspect` 的 index digest 与镜像
+# config 标签 org.opencontainers.image.version 一致），这里写死版本号；升级改这一行（见 README）。
 
 services:
+
     hindsight:
-        image: ghcr.io/vectorize-io/hindsight:latest
+        image: ghcr.io/vectorize-io/hindsight:0.10.2
         container_name: fenix-hindsight
         restart: none
+        networks:
+            - fenix-server
         ports:
-            - "9999:9999"
-            - "8888:8888"
+            # API（= 平台 HINDSIGHT_MCP_URL 指向的端口，REST 路径为 /v1/default/banks/**）与控制台：
+            # 都只绑回环，容器之间走 fenix-server 的 8888。
+            - "127.0.0.1:${HINDSIGHT_API_HOST_PORT:-8888}:8888"
+            - "127.0.0.1:${HINDSIGHT_CP_HOST_PORT:-9999}:9999"
         environment:
             # LLM: 阿里云百炼（OpenAI 兼容格式）
             HINDSIGHT_API_LLM_PROVIDER: openai
-            HINDSIGHT_API_LLM_API_KEY: ${DASHSCOPE_API_KEY}
+            HINDSIGHT_API_LLM_API_KEY: ${DASHSCOPE_API_KEY:?DASHSCOPE_API_KEY 未设置：请在 docker/hindsight/.env 配置（阿里云百炼 API Key，LLM/Embedding/Reranker 三处共用）}
             HINDSIGHT_API_LLM_MODEL: qwen3.6-flash
             HINDSIGHT_API_LLM_BASE_URL: https://dashscope.aliyuncs.com/compatible-mode/v1
 
-            # Embedding: 阿里云百炼 text-embedding-v3
-            ENV_EMBEDDINGS_OPENAI_BATCH_SIZE: 64,
+            # Embedding: 阿里云百炼 text-embedding-v4
+            # （原值末尾误带一个逗号，会让它变成字符串 "64,"，这里修正为 "64"）
+            ENV_EMBEDDINGS_OPENAI_BATCH_SIZE: "64"
             HINDSIGHT_API_EMBEDDINGS_PROVIDER: openai
-            HINDSIGHT_API_EMBEDDINGS_OPENAI_API_KEY: ${DASHSCOPE_API_KEY}
+            HINDSIGHT_API_EMBEDDINGS_OPENAI_API_KEY: ${DASHSCOPE_API_KEY:?DASHSCOPE_API_KEY 未设置：请在 docker/hindsight/.env 配置（阿里云百炼 API Key，LLM/Embedding/Reranker 三处共用）}
             HINDSIGHT_API_EMBEDDINGS_OPENAI_MODEL: text-embedding-v4
             HINDSIGHT_API_EMBEDDINGS_OPENAI_BASE_URL: https://dashscope.aliyuncs.com/compatible-mode/v1
 
             # Reranker: 阿里云百炼 qwen3-rerank
             HINDSIGHT_API_RERANKER_PROVIDER: alibaba
-            HINDSIGHT_API_RERANKER_ALIBABA_API_KEY: ${DASHSCOPE_API_KEY}
+            HINDSIGHT_API_RERANKER_ALIBABA_API_KEY: ${DASHSCOPE_API_KEY:?DASHSCOPE_API_KEY 未设置：请在 docker/hindsight/.env 配置（阿里云百炼 API Key，LLM/Embedding/Reranker 三处共用）}
             HINDSIGHT_API_RERANKER_ALIBABA_MODEL: qwen3-rerank
         volumes:
-            - ~/.hindsight-docker:/home/hindsight/.pg0
+            # 内嵌 PostgreSQL（pg0）数据目录：bind 到本目录 ./data/（契约 §6.5：禁止命名卷）。
+            # 容器以 UID 1000 的 hindsight 用户 rootless 运行，mount 目录属主不是 1000 时启动脚本会直接退出
+            # （镜像内 check_pg0_writable），处理办法见 README「数据与迁移」。
+            - ./data/pg0:/home/hindsight/.pg0
 
-volumes:
-    hindsight-data:
+networks:
+    fenix-server:
+        external: true

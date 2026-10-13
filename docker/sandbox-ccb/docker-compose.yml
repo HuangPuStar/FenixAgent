@@ -1,21 +1,40 @@
-# Sandbox CCB 镜像 — 独立启动 Claude Code Bridge，连接远程 RCS 主服务器
-# Usage:
-#   docker compose -f docker/sandbox-ccb/docker-compose.yml build
+# docker/sandbox-ccb/ —— CCB 执行节点（AGENT_TYPE=ccb，Claude Code Bridge），连接主服务
+# 权威文档：docs/operations/docker-topology.md §6（依赖目录契约）、§11.3（执行节点独立部署）
+#
+# 独立项目启动：
 #   docker compose -f docker/sandbox-ccb/docker-compose.yml up -d
+# 随主服务一键启动：docker/deploy.env 里 FENIX_FEATURE_SANDBOX_CCB=true
+#
+# 网络：接入 fenix-server（external）——节点是主动出网的一方（不需要被反向访问），但要按服务名直连主服务：
+#       同机由脚本注入 ws://rcs:3000，依赖该网络的 DNS。独立节点机器上先 docker network create fenix-server；
+#       若不复用该网络，请在 .env 填宿主可达的 RCS_URL（如 ws://192.168.1.10:3001）并删掉本文件的 networks 段。
+# 必填连接配置：RCS_URL、RCS_SECRET（与主服务一致）、RCS_MACHINE_ID（控制台预创建或自动创建）
+# 模型配置：主服务上为 Agent 绑定模型后自动下发，容器内无需配置
 
 services:
     sandbox-ccb:
-        build:
-            context: ../../
-            dockerfile: docker/sandbox-ccb/Dockerfile
-        container_name: rcs-sandbox-ccb
+        # 发布版本（固定 tag）：发布时更新此行；禁止环境变量插值（§13.7）。
+        # 本地自建（可选）：在仓库根执行
+        #   docker build -f docker/sandbox-ccb/Dockerfile -t ghcr.io/huangpustar/fenixagent-sandbox-ccb:v0.7.0-beta.1-ccb .
+        image: ghcr.io/huangpustar/fenixagent-sandbox-ccb:v0.7.0-beta.1-ccb
+        container_name: fenix-sandbox-ccb
         restart: unless-stopped
         environment:
+            TZ: ${TZ:-Asia/Shanghai}
             RCS_URL: ${RCS_URL:?RCS_URL is required}
             RCS_SECRET: ${RCS_SECRET:?RCS_SECRET is required}
             RCS_MACHINE_ID: ${RCS_MACHINE_ID:?RCS_MACHINE_ID is required}
         volumes:
-            - sandbox-ccb-workspaces:/app/workspaces
+            # 数据一律 bind 到本文件同级的 ./data/（文档 §6.5，不用命名卷）：随交付面整体搬迁/备份。
+            # 容器内工作目录（Dockerfile 的 WORKDIR，也是 acp-runtime 的 cwd）。
+            # 容器以 root 运行，其创建的文件属主为 root。
+            - ./data/workspaces:/app/workspaces
+        networks:
+            - fenix-server
 
-volumes:
-    sandbox-ccb-workspaces:
+networks:
+    # 由顶层项目创建（文档 §3）：同机按 feature 开关启动时它已存在；
+    # 独立节点机器上先 docker network create fenix-server，否则 external 网络缺失会让本文件无法启动。
+    fenix-server:
+        external: true
+        name: fenix-server

@@ -21,7 +21,7 @@
 
 ```mermaid
 flowchart TB
-    subgraph FE["前端 web/"]
+    subgraph FE["前端 apps/web/"]
         direction LR
         REACT["React 19"]
         VITE["Vite"]
@@ -30,7 +30,7 @@ flowchart TB
         I18N["i18n"]
     end
 
-    subgraph BE["后端 src/"]
+    subgraph BE["后端 apps/server/src/"]
         ELYSIA["Elysia"]
         AUTH["better-auth"]
         PLUGINS["Plugins<br/>CORS·日志·限流·静态"]
@@ -91,7 +91,7 @@ flowchart LR
 | 外部服务 | 对接模块 | 关系说明 |
 |---------|---------|---------|
 | [RagFlow](https://ragflow.io) | 知识库 | 知识库通过 Provider 抽象层委托给 RagFlow 做索引与检索，RagFlow 是当前唯一实现 |
-| Hindsight | 配置中心 | Agent 配置时自动绑定 Hindsight，Agent 会话产生的长期记忆由 Hindsight 存储与召回 |
+| Hindsight | 配置中心 | 启用记忆的 Agent 经启动参数注入 Hindsight 插件（不写 `mcp_server` 表），会话产生的长期记忆由 Hindsight 存储与召回 |
 | Agent Sites | 机器注册 | Agent 生成的 Web 应用托管在 Agent Sites，控制平面通过机器注册表路由转发 |
 
 ### 2.3 层级职责
@@ -153,7 +153,7 @@ flowchart LR
 
 | 现状 | 问题 | 方向 |
 |------|------|------|
-| 单体 schema 文件过大 | DB schema 定义集中在一个文件，随业务增长维护困难 | 按业务域拆分 schema |
+| ~~单体 schema 文件过大~~ **已解决（2026-09-22）** | DB schema 定义曾集中在一个文件 | 任务 1.7 的 B1–B13 已把业务表按 owner 包拆分到 `packages/**/db/schema.ts`，宿主只剩身份表转出、`data_migrate_record` 与三张经裁定的旧授权栈表 |
 | workspace 包无版本管理 | 内部 `@fenix/*` 包全部 `private`、版本号固定，改接口需手动确认所有消费方 | 引入 changeset 或内部版本号 |
 | Redis 可选 | 无缓存层下高频查询直接打 DB | Instance 状态缓存、Session 元数据热数据 |
 | 路由级懒加载未启用 | Vite 仅有 vendor chunk 拆分，无 TanStack Router lazy 加载 | 推进路由级 code splitting |

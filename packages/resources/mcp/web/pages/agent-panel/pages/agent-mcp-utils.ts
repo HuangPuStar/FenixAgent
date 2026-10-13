@@ -1,0 +1,238 @@
+import { ApiError } from "@fenix/web-runtime/api/request";
+import type { McpServerConfig, McpServerInfo } from "@fenix/web-runtime/types/config";
+import * as z from "zod/v4";
+import { getMcpDisplayName, isExternalMcp } from "../../../lib/mcp-resource-access";
+
+export type McpCatalogScope = "all" | "organization" | "public";
+export type KeyValueEntry = { key: string; value: string };
+export type McpImportEntry = { name: string; config: McpServerConfig };
+export type McpImportErrorKey =
+  | "validation.importInvalidJson"
+  | "validation.importInvalidRoot"
+  | "validation.importEmpty"
+  | "validation.importInvalidName"
+  | "validation.importInvalidConfig";
+
+export class McpImportError extends Error {
+  constructor(readonly key: McpImportErrorKey) {
+    super(key);
+    this.name = "McpImportError";
+  }
+}
+
+const StringRecordSchema = z.record(z.string(), z.string());
+const ImportServerSchema = z
+  .object({
+    command: z.string().min(1).optional(),
+    args: z.array(z.string()).optional(),
+    env: StringRecordSchema.optional(),
+    environment: StringRecordSchema.optional(),
+    url: z.url().optional(),
+    headers: StringRecordSchema.optional(),
+    oauth: z
+      .object({
+        clientId: z.string().optional(),
+        clientSecret: z.string().optional(),
+        scope: z.string().optional(),
+        redirectUri: z.string().optional(),
+      })
+      .optional(),
+    timeout: z.number().int().positive().optional(),
+    type: z.enum(["stdio", "sse", "http", "streamable-http", "local", "remote"]).optional(),
+  })
+  .strict();
+
+/** 解析标准 mcp.json，并在边界处转换为平台内部 MCP 配置。 */
+export function parseMcpJson(input: string): McpImportEntry[] {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(input);
+  } catch {
+    throw new McpImportError("validation.importInvalidJson");
+  }
+  if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+    throw new McpImportError("validation.importInvalidRoot");
+  }
+
+  const root = parsed as Record<string, unknown>;
+  const rawServers = "mcpServers" in root ? root.mcpServers : root;
+  if (!rawServers || typeof rawServers !== "object" || Array.isArray(rawServers)) {
+    throw new McpImportError("validation.importInvalidRoot");
+  }
+
+  const entries = Object.entries(rawServers);
+  if (entries.length === 0) throw new McpImportError("validation.importEmpty");
+  return entries.map(([name, rawConfig]) => {
+    if (!/^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?$/.test(name) || name.length > 64) {
+      throw new McpImportError("validation.importInvalidName");
+    }
+    const result = ImportServerSchema.safeParse(rawConfig);
+    if (!result.success) throw new McpImportError("validation.importInvalidConfig");
+    const config = result.data;
+
+    if (config.command) {
+      if (config.url || (config.type && !["stdio", "local"].includes(config.type))) {
+        throw new McpImportError("validation.importInvalidConfig");
+      }
+      return {
+        name,
+        config: {
+          type: "local",
+          command: [config.command, ...(config.args ?? [])],
+          ...(config.env || config.environment ? { environment: config.env ?? config.environment } : {}),
+          ...(config.timeout ? { timeout: config.timeout } : {}),
+        },
+      };
+    }
+
+    if (!config.url || (config.type && ["stdio", "local"].includes(config.type))) {
+      throw new McpImportError("validation.importInvalidConfig");
+    }
+    const type = config.type === "http" || config.type === "streamable-http" ? "streamable-http" : "remote";
+    return {
+      name,
+      config: {
+        type,
+        url: config.url,
+        ...(config.headers ? { headers: config.headers } : {}),
+        ...(config.oauth ? { oauth: config.oauth } : {}),
+        ...(config.timeout ? { timeout: config.timeout } : {}),
+      },
+    };
+  });
+}
+
+/** 校验 MCP 编辑器字段，保留各字段的 i18n key 供表单同时展示。 */
+export function validateMcpEditor(input: {
+  name: string;
+  type: "local" | "remote";
+  command: string;
+  url: string;
+}): Partial<Record<"name" | "command" | "url", string>> {
+  const errors: Partial<Record<"name" | "command" | "url", string>> = {};
+  if (!input.name.trim()) errors.name = "validation.nameRequired";
+  else if (/--/.test(input.name)) errors.name = "validation.nameNoDoubleHyphen";
+  else if (!/^[\p{L}0-9](?:[\p{L}0-9-]*[\p{L}0-9])?$/u.test(input.name)) errors.name = "validation.namePattern";
+  else if (input.name.length > 64) errors.name = "validation.nameTooLong";
+  if (input.type === "local" && parseMcpCommand(input.command).length === 0) {
+    errors.command = "validation.commandRequired";
+  }
+  if (input.type === "remote") {
+    if (!input.url.trim()) errors.url = "validation.urlRequired";
+    else {
+      try {
+        new URL(input.url);
+      } catch {
+        errors.url = "validation.urlInvalid";
+      }
+    }
+  }
+  return errors;
+}
+
+/** 将命令行展示值拆成 MCP local config 使用的 argv。 */
+export function parseMcpCommand(input: string): string[] {
+  const tokens: string[] = [];
+  const regex = /(?:[^\s"]+|"[^"]*")+/g;
+  let match: RegExpExecArray | null;
+  // biome-ignore lint/suspicious/noAssignInExpressions: 正则迭代需要保留 match 供循环体读取。
+  while ((match = regex.exec(input)) !== null) tokens.push(match[0].replace(/^"|"$/g, ""));
+  return tokens;
+}
+
+/** 将 argv 转为可编辑且可逆的命令行展示值。 */
+export function stringifyMcpCommand(command: string[]): string {
+  return command.map((part) => (/\s/.test(part) ? `"${part}"` : part)).join(" ");
+}
+
+/** 在提交边界把编辑器视图模型转换为真实 MCP 配置。 */
+export function buildMcpPayload(input: {
+  type: "local" | "remote";
+  command: string;
+  url: string;
+  environment: KeyValueEntry[];
+  headers: KeyValueEntry[];
+  oauthClientId: string;
+  oauthClientSecret: string;
+  oauthScope: string;
+  oauthRedirectUri: string;
+  timeout: string;
+}): McpServerConfig {
+  const timeout = input.timeout ? Number.parseInt(input.timeout, 10) : undefined;
+  const environment = entriesToRecord(input.environment);
+  const headers = entriesToRecord(input.headers);
+  if (input.type === "local") {
+    return {
+      type: "local",
+      command: parseMcpCommand(input.command),
+      ...(environment ? { environment } : {}),
+      ...(timeout ? { timeout } : {}),
+    };
+  }
+  const oauth =
+    input.oauthClientId || input.oauthClientSecret || input.oauthScope || input.oauthRedirectUri
+      ? {
+          clientId: input.oauthClientId || undefined,
+          clientSecret: input.oauthClientSecret || undefined,
+          scope: input.oauthScope || undefined,
+          redirectUri: input.oauthRedirectUri || undefined,
+        }
+      : undefined;
+  return {
+    type: "remote",
+    url: input.url,
+    ...(headers ? { headers } : {}),
+    ...(oauth ? { oauth } : {}),
+    ...(timeout ? { timeout } : {}),
+  };
+}
+
+/**
+ * 依据真实资源归属、公开授权状态和查询条件筛选插件。
+ *
+ * 判定依据已从旧栈的 `resourceAccess` 换成新授权视图：归属看 `scope.organizationId` 是否等于当前
+ * 组织（不等即外部资源），公开状态看 `scope.visibility`。`activeOrganizationId` 缺失时按本组织
+ * 视角处理，避免未加载组织上下文时把外部资源误判为本组织资源。
+ */
+export function filterMcpServers(
+  servers: McpServerInfo[],
+  query: string,
+  scope: McpCatalogScope,
+  activeOrganizationId?: string,
+): McpServerInfo[] {
+  const keyword = query.trim().toLowerCase();
+  return servers.filter((server) => {
+    if (scope === "organization" && isExternalMcp(server, activeOrganizationId)) return false;
+    if (scope === "public" && server.scope?.visibility !== "public") return false;
+    if (!keyword) return true;
+    return [getMcpDisplayName(server), server.name, server.summary, server.type]
+      .filter(Boolean)
+      .join(" ")
+      .toLowerCase()
+      .includes(keyword);
+  });
+}
+
+/** 返回插件目录中本组织与公开资源的数量；判定依据同 {@link filterMcpServers}。 */
+export function countMcpScopes(servers: McpServerInfo[], activeOrganizationId?: string) {
+  return {
+    organization: servers.filter((server) => !isExternalMcp(server, activeOrganizationId)).length,
+    public: servers.filter((server) => server.scope?.visibility === "public").length,
+  };
+}
+
+/**
+ * 判断目录加载失败是否属于「无权限」。
+ *
+ * 依据是错误**码**而不是状态码：`@fenix/web-runtime/api/request` 把 401 与 403 一并归一为
+ * `UNAUTHORIZED`，页面据此把它与网络/服务端故障分开渲染——403 是永久拒绝、401 需要重新登录，
+ * 两者都不会因为再点一次重试而改变，所以无权限分支不给重试按钮，避免把用户引向无意义的重复请求。
+ */
+export function isUnauthorizedError(error: unknown): boolean {
+  return error instanceof ApiError && error.code === "UNAUTHORIZED";
+}
+
+function entriesToRecord(entries: KeyValueEntry[]): Record<string, string> | undefined {
+  const valid = entries.filter((entry) => entry.key.trim());
+  return valid.length > 0 ? Object.fromEntries(valid.map((entry) => [entry.key, entry.value])) : undefined;
+}

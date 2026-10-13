@@ -1,0 +1,406 @@
+import { modelApi } from "@fenix/model-management/web";
+import type { KnowledgeBaseInfo } from "@fenix/resource-knowledge/web";
+import { kbApi } from "@fenix/resource-knowledge/web";
+import { registryApi } from "@fenix/resource-machine/web";
+import { isExternalMcp, mcpApi } from "@fenix/resource-mcp/web";
+import { hindsightApi } from "@fenix/resource-memory/web";
+import { sandboxPoolApi } from "@fenix/resource-sandbox/web";
+import {
+  getSkillOptionValue,
+  isExternalSkill,
+  normalizeSkillOptionsPayload,
+  skillConfigApi,
+} from "@fenix/resource-skill/web";
+import { unwrap } from "@fenix/web-runtime/api/request";
+import { useOrgSession } from "@fenix/web-runtime/contexts/org-session";
+import { dispatchConfigChange } from "@fenix/web-runtime/lib/config-events";
+import type { AgentDetail, ResourceAccessActions, ResourceScopeView } from "@fenix/web-runtime/types/config";
+import { useRequest } from "ahooks";
+import { useCallback, useMemo, useState } from "react";
+import { toast } from "sonner";
+import { agentApi } from "../../../api/agents";
+import { agentSitesApi } from "../../../api/sites";
+import {
+  type AgentEditorOption,
+  type AgentEditorValues,
+  type AgentRelatedResources,
+  type AgentTemplate,
+  agentDetailToEditorValues,
+  buildAgentEditorPayload,
+  createAgentEditorDefaults,
+  filterValidKnowledgeIds,
+  mapMcpOptions,
+  mapModelOptions,
+  mergeSelectedOptions,
+} from "./agent-editor-model";
+
+export interface AgentEditorData {
+  initialValues: AgentEditorValues;
+  agentId: string | null;
+  /** 归属范围；缺失按本组织私有保守降级。 */
+  scope?: ResourceScopeView;
+  /** 当前主体对该 Agent 的有效动作；缺失按不可写保守降级。 */
+  access?: { actions?: ResourceAccessActions };
+  /** 归属组织展示名；身份名录不可用时后端整字段省略，视图回退到「当前组织」文案。 */
+  organizationName?: string;
+  relatedResources?: AgentRelatedResources;
+  hindsightEnabled: boolean;
+  sandboxEnabled: boolean;
+  models: AgentEditorOption[];
+  skills: AgentEditorOption[];
+  mcps: AgentEditorOption[];
+  sites: AgentEditorOption[];
+  knowledgeBases: AgentEditorOption[];
+  nodes: AgentEditorOption[];
+  templates: AgentTemplate[];
+  resourceErrors: string[];
+}
+
+export type UseAgentEditorOptions =
+  | {
+      open: boolean;
+      mode: "create";
+      defaultName?: string;
+      onOpenChange: (open: boolean) => void;
+      onSuccess?: (agentConfigId?: string) => void;
+      translate: (key: string, options?: Record<string, unknown>) => string;
+      translatePanel: (key: string, options?: Record<string, unknown>) => string;
+    }
+  | {
+      open: boolean;
+      mode: "edit";
+      agentName: string;
+      onOpenChange: (open: boolean) => void;
+      onSuccess?: never;
+      defaultName?: never;
+      translate: (key: string, options?: Record<string, unknown>) => string;
+      translatePanel: (key: string, options?: Record<string, unknown>) => string;
+    };
+
+/** 可在自身 realm 创建并派发 CustomEvent 的事件目标。 */
+interface AgentReconnectEventTarget {
+  CustomEvent: typeof CustomEvent;
+  dispatchEvent(event: Event): boolean;
+}
+
+/** 每个重启成功的 environment 都按现有事件契约单独通知。 */
+export function dispatchAgentReconnect(
+  environmentIds: string[],
+  target: AgentReconnectEventTarget = window as unknown as AgentReconnectEventTarget,
+): void {
+  for (const envId of new Set(environmentIds)) {
+    target.dispatchEvent(new target.CustomEvent("agent:reconnect", { detail: { envId } }));
+  }
+}
+
+/** 保留当前已绑定但不可见的执行节点，避免选择器回退到默认调度。 */
+export function appendUnavailableNodeOption(
+  nodes: AgentEditorOption[],
+  selectedNode: AgentDetail["agentNode"] | undefined,
+  label?: string | null,
+): void {
+  if (!selectedNode || (selectedNode.kind !== "machine" && selectedNode.kind !== "sandbox")) return;
+  const resourceId = selectedNode.kind === "machine" ? selectedNode.machineId : selectedNode.sandboxPoolId;
+  const id = `${selectedNode.kind}:${resourceId}`;
+  if (nodes.some((item) => item.id === id)) return;
+  nodes.push({ id, label: label?.trim() || resourceId, unavailable: true });
+}
+
+/** 集中处理编辑器加载、保存及实例重启，视图不直接消费协议 DTO。 */
+export function useAgentEditor(options: UseAgentEditorOptions) {
+  const agentName = options.mode === "edit" ? options.agentName : undefined;
+  const defaultName = options.mode === "create" ? options.defaultName : undefined;
+  const { open, mode, onOpenChange, onSuccess, translate: t, translatePanel: tp } = options;
+  const [loadError, setLoadError] = useState<Error | null>(null);
+  const [progressiveData, setProgressiveData] = useState<AgentEditorData | null>(null);
+  const [restartDialogOpen, setRestartDialogOpen] = useState(false);
+  // MCP 选项分组要区分本组织与共享来源，而 `/web` 视图只返回 scope，必须与当前组织 id 比对。
+  // 取值经 `@fenix/web-runtime` 的 org/session 契约（§1.6 T7），实现方是身份包的 `OrgProvider`。
+  const { organizationId } = useOrgSession();
+  // 契约用 `null` 表示「无活动组织」，本包比较函数与子组件的入参口径是 `string | undefined`：
+  // 在取值处一次归一，调用点保持既有形状，避免把 `| null` 扩散进各处签名。
+  const activeOrganizationId = organizationId ?? undefined;
+
+  const loadService = useCallback(async (): Promise<AgentEditorData> => {
+    if (mode === "edit" && !agentName) throw new Error(t("editor.missingTarget"));
+    setLoadError(null);
+    const detail = mode === "edit" ? ((await unwrap(agentApi.get(agentName!))) as AgentDetail) : null;
+    const initialValues = detail ? agentDetailToEditorValues(detail) : createAgentEditorDefaults(defaultName);
+    setProgressiveData({
+      initialValues,
+      agentId: detail?.id ?? null,
+      scope: detail?.scope,
+      access: detail?.access,
+      organizationName: detail?.organizationName,
+      relatedResources: detail?.relatedResources,
+      hindsightEnabled: false,
+      sandboxEnabled: false,
+      models: mergeSelectedOptions(
+        [],
+        detail?.modelId && detail.relatedResources?.modelLabel
+          ? [{ id: detail.modelId, label: detail.relatedResources.modelLabel }]
+          : undefined,
+        false,
+      ),
+      skills: mergeSelectedOptions([], detail?.relatedResources?.skills, false),
+      mcps: mergeSelectedOptions([], detail?.relatedResources?.mcps, false),
+      sites: mergeSelectedOptions([], detail?.relatedResources?.siteApps, false),
+      knowledgeBases: mergeSelectedOptions([], detail?.relatedResources?.knowledgeBases, false),
+      nodes: [],
+      templates: [],
+      resourceErrors: [],
+    });
+
+    const resourceErrors: string[] = [];
+    const optional = async <T>(promise: Promise<T>, fallback: T, label: string): Promise<T> => {
+      try {
+        return await promise;
+      } catch {
+        resourceErrors.push(label);
+        return fallback;
+      }
+    };
+
+    const [modelData, kbData, skillsData, mcpsData, machinesData, poolsData, sitesData, templatesData, hindsight] =
+      await Promise.all([
+        unwrap(modelApi.get()),
+        unwrap(kbApi.list()),
+        unwrap(skillConfigApi.list()),
+        unwrap(mcpApi.list()),
+        (async () => {
+          const first = await unwrap(registryApi.list({ status: "online", limit: 100, offset: 0 }));
+          const items = [...first.items];
+          while (items.length < first.total) {
+            const page = await unwrap(registryApi.list({ status: "online", limit: 100, offset: items.length }));
+            if (!page.items.length) break;
+            items.push(...page.items);
+          }
+          return { ...first, items };
+        })(),
+        optional(unwrap(sandboxPoolApi.list()), { enabled: false, pools: [] }, "sandbox pools unavailable"),
+        optional(unwrap(agentSitesApi.list()), [], "sites unavailable"),
+        optional(
+          agentApi.templates().then(async (response) => unwrap(Promise.resolve(response))),
+          { templates: [] },
+          "templates unavailable",
+        ),
+        optional(hindsightApi.getStatus(), null, "hindsight unavailable"),
+      ]);
+
+    const typedDetail = detail;
+    const related = typedDetail?.relatedResources;
+    const rawModelOptions = mapModelOptions(modelData.available ?? [], activeOrganizationId);
+    const modelOptions = rawModelOptions.map((option) => ({
+      id: option.value,
+      label: option.label,
+      iconKey: option.modelId,
+      group: option.group,
+    }));
+    const skillViews = normalizeSkillOptionsPayload(skillsData);
+    const knowledge = (Array.isArray(kbData) ? kbData : []) as KnowledgeBaseInfo[];
+    const machineItems = machinesData?.items ?? [];
+    const nodes: AgentEditorOption[] = [
+      {
+        id: "default",
+        label: poolsData.enabled ? t("form.sandboxDefault") : t("form.machineDefault"),
+        description: t("editor.defaultRuntime"),
+      },
+      ...(poolsData.enabled
+        ? poolsData.pools.map((pool) => ({
+            id: `sandbox:${pool.id}`,
+            label: pool.name,
+            description: t("form.sandboxPool"),
+            meta: pool.id,
+          }))
+        : []),
+      ...machineItems.map((machine) => ({
+        id: `machine:${machine.id}`,
+        label: machine.name || String(machine.machineInfo?.hostname ?? machine.agentName),
+        description: t("form.machine"),
+        meta: machine.id,
+      })),
+    ];
+    const selectedNode = typedDetail?.agentNode;
+    const selectedNodeLabel =
+      selectedNode?.kind === "machine"
+        ? related?.machineLabel
+        : selectedNode?.kind === "sandbox"
+          ? poolsData.pools.find((pool) => pool.id === selectedNode.sandboxPoolId)?.name
+          : undefined;
+    appendUnavailableNodeOption(nodes, selectedNode, selectedNodeLabel);
+
+    const resolvedInitialValues = typedDetail
+      ? initialValues
+      : { ...initialValues, modelId: modelOptions[0]?.id ?? "" };
+
+    return {
+      initialValues: resolvedInitialValues,
+      agentId: typedDetail?.id ?? null,
+      scope: typedDetail?.scope,
+      access: typedDetail?.access,
+      organizationName: typedDetail?.organizationName,
+      relatedResources: related,
+      hindsightEnabled: Boolean(hindsight?.enabled),
+      sandboxEnabled: poolsData.enabled,
+      models: mergeSelectedOptions(
+        modelOptions,
+        typedDetail?.modelId && related?.modelLabel
+          ? [{ id: typedDetail.modelId, label: related.modelLabel }]
+          : undefined,
+      ),
+      skills: mergeSelectedOptions(
+        skillViews.map((skill) => ({
+          id: getSkillOptionValue(skill),
+          label: skill.name,
+          description: skill.description,
+          meta: skill.key,
+          group: {
+            id: skill.scope?.organizationId ?? "organization",
+            label: skill.organizationName ?? t("editor.currentOrganization"),
+            // 归属其他组织的 Skill 标记为共享来源；判定依据是新授权视图的 scope，不再读取旧 resourceAccess。
+            scope: isExternalSkill(skill, activeOrganizationId) ? ("shared" as const) : ("organization" as const),
+          },
+        })),
+        related?.skills,
+      ),
+      mcps: mergeSelectedOptions(
+        mapMcpOptions(mcpsData.servers).map((mcp) => ({
+          id: mcp.id,
+          label: mcp.name,
+          meta: mcp.key,
+          group: {
+            id: mcp.scope?.organizationId ?? "organization",
+            label: mcp.organizationName ?? t("editor.currentOrganization"),
+            // 归属其他组织的 MCP 标记为共享来源；判定依据是新授权视图的 scope，不再读取旧 resourceAccess。
+            scope: isExternalMcp(mcp, activeOrganizationId) ? ("shared" as const) : ("organization" as const),
+          },
+        })),
+        related?.mcps,
+      ),
+      sites: mergeSelectedOptions(
+        sitesData.map((site) => ({
+          id: site.id,
+          label: site.name,
+          description: site.description ?? undefined,
+          meta: site.remoteAppId,
+          group: {
+            id: `visibility:${site.visibility}`,
+            label: t(`editor.siteVisibility.${site.visibility}`),
+          },
+        })),
+        related?.siteApps,
+      ),
+      knowledgeBases: mergeSelectedOptions(
+        knowledge.map((item) => ({
+          id: item.id,
+          label: item.name,
+          description: item.description ?? undefined,
+          meta: item.slug,
+        })),
+        related?.knowledgeBases,
+      ),
+      nodes,
+      templates: templatesData.templates,
+      resourceErrors,
+    };
+  }, [agentName, defaultName, mode, t, activeOrganizationId]);
+
+  const loadRequest = useRequest(loadService, {
+    ready: open && (mode === "create" || !!agentName),
+    refreshDeps: [open, mode, agentName, defaultName],
+    onBefore: () => {
+      setLoadError(null);
+      setProgressiveData(null);
+    },
+    onSuccess: (data) => setProgressiveData(data),
+    onError: (error) => {
+      // 原始 error 同时进日志：它的 message 会原样出现在编辑器的失败说明里（`agent-editor-body.tsx`
+      // 的 `editor.loadError.message`），日志留一份可查的诊断上下文。
+      console.error("Failed to load agent configuration", error);
+      setLoadError(error instanceof Error ? error : new Error(String(error)));
+    },
+  });
+
+  const saveRequest = useRequest(
+    async (values: AgentEditorValues) => {
+      if (loadError || !loadRequest.data) throw new Error(t("editor.loadRequired"));
+      const cleanValues = { ...values };
+      const latest = (await unwrap(kbApi.list())) as KnowledgeBaseInfo[];
+      cleanValues.knowledgeBaseIds = filterValidKnowledgeIds(values.knowledgeBaseIds, latest);
+      const payload = buildAgentEditorPayload(cleanValues, mode);
+      if (mode === "create") {
+        const result = await unwrap(agentApi.create(values.name.trim(), payload));
+        toast.success(t("save.successCreate"));
+        dispatchConfigChange("agents");
+        onOpenChange(false);
+        onSuccess?.(result.id);
+        return;
+      }
+      if (options.mode !== "edit") return;
+      await unwrap(agentApi.set(options.agentName, payload));
+      toast.success(t("save.successUpdate"));
+      dispatchConfigChange("agents");
+      setRestartDialogOpen(true);
+    },
+    {
+      manual: true,
+      onError: (error) => {
+        console.error("Failed to save agent configuration", error);
+        toast.error(t("save.errorGeneric", { message: error instanceof Error ? error.message : t("unknownError") }));
+      },
+    },
+  );
+
+  const restartRequest = useRequest(
+    async () => {
+      if (options.mode !== "edit") return;
+      const result = await unwrap(agentApi.restart(options.agentName));
+      if (!result.restartedInstanceIds.length) {
+        toast.info(tp("noInstancesToRestart"));
+        setRestartDialogOpen(false);
+        onOpenChange(false);
+        return;
+      }
+      dispatchAgentReconnect(result.environmentIds);
+      toast.success(tp("restartSuccess"));
+      setRestartDialogOpen(false);
+      onOpenChange(false);
+    },
+    {
+      manual: true,
+      onError: (error) => {
+        console.error("Failed to restart agent after save", error);
+        toast.error(tp("restartFailedSaved", { message: error instanceof Error ? error.message : String(error) }));
+      },
+    },
+  );
+
+  return useMemo(
+    () => ({
+      data: progressiveData ?? (!loadRequest.loading ? loadRequest.data : undefined),
+      loading: loadRequest.loading,
+      loadError: loadError ?? (open && mode === "edit" && !agentName ? new Error(t("editor.missingTarget")) : null),
+      retry: loadRequest.refresh,
+      save: saveRequest.runAsync,
+      saving: saveRequest.loading,
+      restartDialogOpen,
+      setRestartDialogOpen,
+      restart: restartRequest.run,
+      restarting: restartRequest.loading,
+    }),
+    [
+      agentName,
+      loadError,
+      loadRequest,
+      mode,
+      open,
+      progressiveData,
+      restartDialogOpen,
+      restartRequest.loading,
+      restartRequest.run,
+      saveRequest.loading,
+      saveRequest.runAsync,
+      t,
+    ],
+  );
+}

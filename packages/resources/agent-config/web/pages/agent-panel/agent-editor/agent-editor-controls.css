@@ -1,0 +1,20 @@
+.agent-editor-section__intro > span {
+  font-weight: 750;
+}
+
+.agent-editor-section__intro > h3 {
+  font-weight: 730;
+}
+@media (width >= 48rem) and (width < 64rem) {
+  .agent-editor-section__intro > p {
+    max-width: 52ch;
+  }
+}
+
+.agent-editor-option-row--model {
+  grid-template-columns: 32px minmax(0, 1fr) 16px;
+}
+
+.agent-editor-option-row--node {
+  grid-template-columns: 34px minmax(0, 1fr) 18px;
+}

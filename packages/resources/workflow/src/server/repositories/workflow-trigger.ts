@@ -1,0 +1,70 @@
+import { workflowTrigger } from "@fenix/resource-workflow/db";
+import { desc, eq } from "drizzle-orm";
+import { getWorkflowDatabase } from "../db";
+
+export type WorkflowTriggerRow = typeof workflowTrigger.$inferSelect;
+export type WorkflowTriggerInsert = typeof workflowTrigger.$inferInsert;
+
+export interface IWorkflowTriggerRepo {
+  getByHash(publicHash: string): Promise<WorkflowTriggerRow | null>;
+  getById(id: string): Promise<WorkflowTriggerRow | null>;
+  create(data: WorkflowTriggerInsert): Promise<WorkflowTriggerRow>;
+  delete(id: string): Promise<boolean>;
+  update(id: string, data: Partial<WorkflowTriggerInsert>): Promise<void>;
+  listByWorkflow(workflowId: string): Promise<WorkflowTriggerRow[]>;
+  listByOrg(organizationId: string): Promise<WorkflowTriggerRow[]>;
+}
+
+class PgWorkflowTriggerRepo implements IWorkflowTriggerRepo {
+  async getByHash(publicHash: string): Promise<WorkflowTriggerRow | null> {
+    const db = getWorkflowDatabase();
+    const [row] = await db.select().from(workflowTrigger).where(eq(workflowTrigger.publicHash, publicHash)).limit(1);
+    return row ?? null;
+  }
+
+  async getById(id: string): Promise<WorkflowTriggerRow | null> {
+    const db = getWorkflowDatabase();
+    const [row] = await db.select().from(workflowTrigger).where(eq(workflowTrigger.id, id)).limit(1);
+    return row ?? null;
+  }
+
+  async create(data: WorkflowTriggerInsert): Promise<WorkflowTriggerRow> {
+    const db = getWorkflowDatabase();
+    const [row] = await db.insert(workflowTrigger).values(data).returning();
+    return row;
+  }
+
+  async delete(id: string): Promise<boolean> {
+    const db = getWorkflowDatabase();
+    const result = await db
+      .delete(workflowTrigger)
+      .where(eq(workflowTrigger.id, id))
+      .returning({ id: workflowTrigger.id });
+    return result.length > 0;
+  }
+
+  async update(id: string, data: Partial<WorkflowTriggerInsert>): Promise<void> {
+    const db = getWorkflowDatabase();
+    await db.update(workflowTrigger).set(data).where(eq(workflowTrigger.id, id));
+  }
+
+  async listByWorkflow(workflowId: string): Promise<WorkflowTriggerRow[]> {
+    const db = getWorkflowDatabase();
+    return db
+      .select()
+      .from(workflowTrigger)
+      .where(eq(workflowTrigger.workflowId, workflowId))
+      .orderBy(desc(workflowTrigger.createdAt));
+  }
+
+  async listByOrg(organizationId: string): Promise<WorkflowTriggerRow[]> {
+    const db = getWorkflowDatabase();
+    return db
+      .select()
+      .from(workflowTrigger)
+      .where(eq(workflowTrigger.organizationId, organizationId))
+      .orderBy(desc(workflowTrigger.createdAt));
+  }
+}
+
+export const workflowTriggerRepo = new PgWorkflowTriggerRepo();

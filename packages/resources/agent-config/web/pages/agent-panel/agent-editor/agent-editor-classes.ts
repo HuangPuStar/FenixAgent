@@ -1,0 +1,182 @@
+/**
+ * 「新建 Agent」面板的 Tailwind 类串常量（A2 迁移：`agent-editor.css` + `-design.css` + `-responsive.css`）。
+ *
+ * 为什么集中在这里：同一个视觉构件会在多处渲染（面板外壳同时用于桌面 `<section>` 与移动端 `SheetContent`；
+ * 三栏工作区/左栏导航/中栏内容/右栏模板面板/页脚在加载壳与完成态各渲染一次）。类串写两份必然漂移，而源 CSS 里
+ * 它们本来就是同一个选择器——集中一处才是等价表达。
+ *
+ * 命名口径：常量名对应源选择器去掉 `agent-editor-` 前缀后的语义；注释里标出各断点/层级的来源，便于与
+ * `/tmp/agent-editor-effective-spec.md` 的生效值逐条核对。
+ *
+ * 深层样式（子代选择器、复合值、手写媒体查询）在同目录 `agent-editor-classes.css`：类串里只留扁平工具类，
+ * 需要选择器层级或 `[@media(...)]` 才能表达的声明按常量分节写在那份样式表里（类名与本节注释逐条对应）。
+ *
+ * 媒体查询写法：base 工具类总在媒体变体之前生成，因此「base vs 变体」的冲突是安全的；但**变体之间**若条件
+ * 有重叠，胜负就落到生成顺序上（不可控）。所以凡同一属性有多个断点覆盖的（内容区内边距、分区说明块下边距），
+ * 一律写成互斥条件的组合——这几条已在 CSS 侧，由同名样式表按类串里的书写顺序落成媒体查询。
+ */
+import "./agent-editor-classes.css";
+
+/** 面板外壳：`gap:0 / overflow:hidden / padding:0`（描边色、底色、阴影由 `.agent-editor-panel` 决定）。 */
+export const PANEL_SHELL = "gap-0 overflow-hidden p-0";
+/**
+ * 桌面：绝对定位，四周留 12px；圆角/描边/底色取 design 层生效值。
+ * 宽度 `min(1180px, calc(100% - 24px))`、阴影与「高度上限 = 视口高 − 上下内缩」见
+ * `agent-editor-classes.css` 的 `.agent-editor-panel`（该类名同时是 `AgentFormDialog` 焦点恢复选择器
+ * `.agent-editor-panel[role='dialog']` 的钩子）。**高度取自 portal 宿主盒子**（`top-3` + `bottom-3`），
+ * 所以宿主必须撑满可视区，由调用方保证（见 `pages/AgentManagementPage.tsx` 渲染处注释）。
+ */
+export const PANEL_DESKTOP =
+  "agent-editor-panel absolute z-40 top-3 right-auto bottom-3 left-3 h-auto max-w-none " +
+  "border border-slate-200 rounded-lg text-slate-800 bg-slate-50";
+/** 移动端 SheetContent：覆盖组件自带的定位/尺寸/圆角/底色等，再叠上面板基座（阴影与桌面同源，见同名 CSS）。 */
+export const PANEL_SHEET =
+  "agent-editor-mobile !fixed !inset-0 !z-40 !h-dvh !w-screen !max-w-none !border-0 !rounded-none !gap-0 !overflow-hidden !p-0 " +
+  "!text-slate-800 !bg-slate-50";
+/** 编辑器根：列布局 + 面板内表单控件继承字体（源里 `font-family: inherit` 的组选择器整组在 CSS 侧）。 */
+export const EDITOR_ROOT = "agent-editor-root flex h-full min-h-0 flex-col";
+/** 三栏工作区（纯 DOM 载体）：≤759 纵向 flex；三段列宽（216/430/216 与两段窄桌面）见同名 CSS。 */
+export const WORKSPACE = "agent-editor-workspace grid min-h-0 flex-1 overflow-hidden max-md:flex max-md:flex-col";
+/** 三栏工作区（Tabs 根节点）：同上，但需 `!` 压过组件的 `display:flex`。 */
+export const WORKSPACE_TABS =
+  "agent-editor-workspace !grid min-h-0 flex-1 overflow-hidden max-md:!flex max-md:!flex-col";
+/**
+ * 左栏导航：列布局 + 右分隔线；≤759 变成横向滚动条带。
+ *
+ * **本栏与右栏（下方 `TEMPLATE_PANEL`）一律不带 `overscroll-contain`**（2026-09-23 裁定；结构守卫见
+ * `__tests__/agent-editor-overscroll-chain.test.ts`）：
+ *
+ * - 机制：三栏都是工作区里的常规流列，且位于**更长可滚祖先**之内——宿主是智能体管理页时，祖先链上
+ *   唯一可被用户滚动的容器是 `AppPage` 的 `main`（headless Chrome 复刻实测 1440×900：clientH 900 /
+ *   scrollH 1955）；列自身 `overflow-y-auto` 但内容通常不溢出（实测列高 787px，左栏内容 ≈254px、
+ *   右栏 ≈481px）。指针停在列上时浏览器判定滚轮由本列消费 → 本列没得滚、也不链式上溯，形成
+ *   **随指针位置移动的滚轮死区**：实测含类时向下 3×120 自身 0→0 且 `main` 0→0，向上（`main` 已滚
+ *   300）同为 300→300（双向都死）。
+ * - 为什么选「都不带」：同一面板的头部、页脚、中栏 `CONTENT` 都会链式上溯滚 `main`（实测 0→120 /
+ *   0→360 / 中栏贴底后 0→240），只有左右两列例外——去掉是**与已成立的行为对齐**，不是引入新行为。
+ * - 迁移遗留：旧 `agent-editor.css` 的组选择器
+ *   `.agent-editor-map, .agent-editor-content, .agent-editor-summary { … overscroll-behavior: contain }`
+ *   三栏都有，迁移时只有中栏丢了这一行，三栏本就不一致；这次把左右两栏也去掉。
+ * - 收益：面板是 `top-3 bottom-3` **锚在宿主盒子上**（高度由宿主决定、可高过视口，见
+ *   `agent-editor-classes.css` 里 `.agent-editor-panel` 的 `max-height` 注记与 `AgentManagementPage.tsx`
+ *   的宿主注释）。管理页可滚时点「编辑」会把面板顶部留在视口外，含类时指针若落在左右两列上，
+ *   一个滚轮都动不了、没法把面板滚回来。
+ * - 代价（有意取舍）：去掉后指针在左右列上滚轮会链式上溯，**被非模态浮层遮住的管理页会跟着动**
+ *   （面板随页面移动）。要改回 `overscroll-contain`，先读这条与守卫用例。
+ *
+ * 例外：`≤759px` 的 `max-md:` 变体把本栏改成横向条带（`overflow-y-hidden`），此时面板是 Radix Sheet
+ * （modal、无祖先可滚），含类与去掉的实测读数一致，故该变体保持原样。
+ */
+export const CONFIG_MAP =
+  "flex min-h-0 flex-col overflow-y-auto border-r border-slate-200 bg-gray-50 px-2 pt-2.5 pb-2 " +
+  "lg:max-2xl:px-1.75 lg:max-2xl:pt-2 lg:max-2xl:pb-1.75 " +
+  "md:max-lg:px-1.5 md:max-lg:pt-2 md:max-lg:pb-1.75 " +
+  "max-md:flex-none max-md:overflow-x-auto max-md:overflow-y-hidden " +
+  "max-md:border-r-0 max-md:border-b max-md:px-2 max-md:py-1.5";
+/** 导航分组标签：design 层 10px/0.14em/#9aa5b6，≤759 隐藏。 */
+export const MAP_LABEL = "px-2 pt-0 pb-1.25 text-3xs [font-weight:700] tracking-widest text-gray-400 max-md:hidden";
+/** 导航列表（TabsList）：design 层改 grid 并撑满；≤759 只收窄宽度（`flex-direction` 在 grid 容器里不生效，按源保留）。 */
+export const MAP_TABS_LIST =
+  "!grid !h-auto !w-full [align-content:start] !justify-stretch !gap-0.75 !border-0 !bg-transparent !p-0 " +
+  "max-md:!w-max max-md:flex-row";
+/** 导航条目（TabsTrigger）：design 层 58px 高 / 9px×7px 内边距 / #56657c；列定义与窄桌面覆盖见同名 CSS。 */
+export const MAP_TRIGGER =
+  "agent-editor-map-trigger group/maprow !relative !grid !w-full !min-h-14.5 !items-center " +
+  "!justify-stretch !gap-2.5 !rounded-lg !border-0 !bg-transparent !px-2.25 !py-1.75 !text-left !text-gray-500 " +
+  "data-[state=active]:!bg-indigo-50 data-[state=active]:!text-blue-800 " +
+  "data-[state=active]:before:absolute data-[state=active]:before:-left-2 data-[state=active]:before:h-6 " +
+  "data-[state=active]:before:w-0.75 data-[state=active]:before:rounded-r-xs data-[state=active]:before:bg-blue-600 " +
+  "data-[state=active]:before:content-[''] " +
+  "lg:max-2xl:!min-h-11 lg:max-2xl:!gap-1.75 lg:max-2xl:!px-1.75 lg:max-2xl:!py-1 " +
+  "md:max-lg:!min-h-11 md:max-lg:!gap-1.75 md:max-lg:!px-1.5 md:max-lg:!py-1 " +
+  "max-md:!w-34 max-md:!min-h-10.5";
+/** 导航图标底：32px（760–1399 压到 26px）；选中行里变白底蓝字（父级 `group/maprow`）；图标尺寸在图标上（`w-3.5`，2026-09-28 自伴随表撤回）。 */
+export const MAP_ICON =
+  "grid size-8 place-items-center rounded-md bg-slate-100 text-slate-500 " +
+  "md:max-2xl:size-6.5 " +
+  "group-data-[state=active]/maprow:bg-white group-data-[state=active]/maprow:text-blue-600";
+/** 导航条目状态徽标：刻度与配色归 `ui/badge`（`variant="secondary"`），此处只保留两档窄桌面的隐藏，
+ * 并把字号在库内 `text-xs`（12px）基础上下调一档到 `text-3xs`（10px）——本面板七档刻度里的下一档
+ * （见 `__tests__/agent-editor-font-scale.test.ts` 的 `TIER_PX`）。 */
+export const MAP_BADGE = "text-3xs md:max-lg:hidden max-md:hidden";
+/** 两类缺失态（待完善 / 未配置）的徽标配色：淡红底 + 深红字，经 `cn` 覆盖 `variant="secondary"` 的底色与文字色。 */
+export const MAP_BADGE_MISSING = "bg-red-50 text-red-700";
+/**
+ * 导航条目文案：标题继承行色（design 层 `color: inherit`），说明固定灰。
+ * 行高、字重、单行省略与 760–1119 隐藏说明仍在同名 CSS 的 `.agent-editor-map-copy > strong / small`；
+ * 字号 2026-09-28 从该表撤回（`0.75rem`→`text-xs`、`10px`→`text-3xs`），挂在下面两个常量上——
+ * 加载壳与加载完成态两处渲染点共用同一常量，字号才不会在两种状态间漂移。
+ */
+export const MAP_COPY = "agent-editor-map-copy flex min-w-0 flex-col";
+/** 左栏条目标题：字号 12px（原 CSS `font-size: 0.75rem` 在 13px 根字号下渲染 9.75px，撤回后归一设计值）
+ * + 行高 `leading-snug`（1.375，2026-09-28 第三波从同名 CSS 撤回）。 */
+export const MAP_COPY_TITLE = "text-xs leading-snug";
+/** 左栏条目说明：字号 10px（`text-3xs` 是「只给字号」的自有档，与原 `font-size: 10px` 等价）+ 行高、
+ * 单行省略（`truncate` = overflow / text-overflow / white-space 三条）、字重、灰色与窄桌面隐藏，
+ * 2026-09-28 第三波一并从同名 CSS 撤回（原 `md:max-lg` 媒体块 `display: none` 即 `md:max-lg:hidden`）。 */
+export const MAP_COPY_CAPTION = "text-3xs truncate leading-snug font-normal text-gray-400 md:max-lg:hidden";
+/**
+ * 中栏内容区：白底 + base 内边距（原 `.agent-editor-content` 的 `padding: 16px 20px 20px`，
+ * 2026-09-28 第三波撤回为 `pt-4 px-5 pb-5`）。其余内边距按「宽度档 × 高度档」写成互斥条件
+ * （避免同属性多值看生成顺序），仍在同名 CSS 的 `.agent-editor-content` 里（值用 `calc(var(--spacing) * N)`）；
+ * `≤759px` 的纵向伸缩仍由这里的 `max-md:flex-1` 表达。
+ *
+ * 本栏是上方 `CONFIG_MAP` 注记里那条「三栏滚动链」的**基准**：迁移后本栏就不带 `overscroll-contain`，
+ * 左右两栏已于 2026-09-23 对齐到本栏（实测本栏贴底后滚轮会继续滚 `main`）。
+ */
+export const CONTENT = "agent-editor-content overflow-x-hidden bg-white max-md:flex-1 pt-4 px-5 pb-5";
+/**
+ * 右栏模板面板：左分隔线 + 淡灰底，整列滚动。
+ *
+ * 加载壳（`AgentEditorLoadingShell`）与完成态的模板面板共用本常量——2026-10-09 之前右栏是「当前配置」
+ * 汇总，加载壳与完成态各写一份类串（完成态那份缺窄桌面的内边距覆盖，两处本就不一致）；改名后只剩
+ * 这一个来源。与左栏 `CONFIG_MAP`、中栏 `CONTENT` 一样**不带 `overscroll-contain`**——机制、实测读数
+ * 与代价见上方 `CONFIG_MAP` 注记，改回前先读那条。
+ *
+ * `max-md`：≤759px 工作区是纵向 flex 列，面板钉住固定高并 `flex-none`。中栏是 `flex-1`（`flex-basis: 0`），
+ * 负剩余空间里它的收缩权重为 0、一分都拿不到——面板若按内容高度撑开，中栏会被压成 0（headless Chrome
+ * 实测 390×844：面板内容 900px 时中栏 0px / 面板 658px；钉住 320px 后中栏 338px / 面板 320px）。
+ * `h-80`（320px）与旧模板对话框列表的上限同值；面板整列可滚，列表照常翻到底。
+ */
+export const TEMPLATE_PANEL =
+  "min-h-0 overflow-y-auto border-l border-slate-200 bg-slate-50 " +
+  "px-3 pt-4 pb-3.5 " +
+  "lg:max-2xl:[padding:12px_10px_10px] " +
+  "md:max-lg:[padding:10px_8px_8px] " +
+  "max-md:h-80 max-md:flex-none max-md:border-l-0 max-md:border-t";
+/**
+ * 无模板面板时的工作区变体：只读态或 `data.templates` 为空时右列不渲染（不留空壳），列数随渲染事实回落
+ * 两列——三列定义下留一个空列会白占 216px（760–1119px 190px / 1120–1399px 220px）。列定义见同名 CSS，
+ * 三个断点各一份并与 `.agent-editor-workspace` 逐条对应。
+ */
+export const NO_TEMPLATE_PANEL = "agent-editor-workspace--no-template-panel";
+/** 页脚：上分隔线；≤759 改纵向并留 safe-area 下边距（上方投影与 safe-area 下边距见同名 CSS）。 */
+export const FOOTER =
+  "agent-editor-footer relative z-[4] flex flex-none items-center justify-between gap-2.5 border-t border-slate-200 " +
+  "bg-white/97 basis-14 min-h-14 py-0 pl-4.5 pr-3.5 " +
+  "md:max-2xl:basis-13 md:max-2xl:min-h-13 " +
+  "max-md:flex-col max-md:items-stretch max-md:px-3 " +
+  "max-md:pt-2.25";
+/** 页脚状态块：28px 圆角数字格 + 标题/说明两行（两条子规则的声明见同名 CSS）。 */
+export const FOOTER_STATE = "agent-editor-footer__state flex min-w-0 items-center gap-2.25";
+/** 页脚按钮组：32px 高 / 9px 圆角 / 11px 横内边距 / 13px（760–1399 收到 30px 高）。 */
+export const FOOTER_ACTIONS =
+  "flex items-center gap-1.75 ml-auto " +
+  "[&>[data-slot=button]]:!h-8 [&>[data-slot=button]]:!rounded-md [&>[data-slot=button]]:!px-2.75 [&>[data-slot=button]]:!text-xs " +
+  "md:max-2xl:[&>[data-slot=button]]:!h-7.5";
+/** 只读 / 资源失败提示条：共用 1px 下分隔线 + 8px×18px 内边距 + 11px 字号。 */
+export const NOTICE_BAR = "border-b border-border-subtle px-4.5 py-2 text-3xs";
+/** 加载失败态容器定位：居中列 + 300px 最小高度。内容排版（图标 / 标题 / 说明 / 重试）归 `config/EmptyState`，
+ * 原 `agent-editor-state` 语义类随其两条子代规则一起删除——已没有样式表定义它，留着只是空钩子。 */
+export const ERROR_STATE =
+  "flex h-full min-h-75 flex-col items-center justify-center gap-2.5 p-6 text-center text-text-muted";
+/** 分区说明块：底部间距在 760–1399 收到 20px、短视口（≤700h）收到 12px（互斥条件组合，三段覆盖见同名 CSS）。 */
+export const SECTION_INTRO = "agent-editor-section__intro mb-6.5";
+/** 分区容器：720px 居中 + 入场动画（宽度、动画与关键帧定义都在同名 CSS，关键帧于 2026-09-28 从
+ * `agent-editor-retained.css` 迁入）。 */
+export const SECTION = "agent-editor-section mx-auto p-0";
+/** 加载壳导航行：与左栏条目同构（46px 行高 / 27px 图标列，列定义见同名 CSS）。 */
+export const LOADING_MAP_ROW =
+  "agent-editor-loading-map-row grid min-h-11.5 items-center gap-2 rounded-lg px-2 py-1.25 text-gray-500";
+/** 加载壳选中态行：颜色与底色覆盖基行（twMerge 保留后者）。 */
+export const LOADING_MAP_ROW_ACTIVE = "text-blue-800 bg-indigo-50";

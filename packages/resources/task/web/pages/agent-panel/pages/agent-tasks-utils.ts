@@ -1,0 +1,369 @@
+import type { StatusTone } from "@fenix/ui-components/config/StatusBadge";
+import { ApiError } from "@fenix/web-runtime/api/request";
+import { parseExpression } from "cron-parser";
+import { z } from "zod/v4";
+import type { AgentDefinition, HttpDefinition, TaskV2Info } from "../../../api/tasks-v2";
+import type { TaskFormValues } from "../components/TaskForm";
+
+/**
+ * 任务表单的校验文案键。**本模块只产出键、不产出文案**（§9.1：文案一律经 `t()` 取，译文才会随语言切换）：
+ * 三种消费者各自把键交给 `t`——`CronEditor` 的防抖错误行、`TaskForm` 的字段错误行（两者都在视图里）、
+ * 以及 zod schema 的 `message`。键集写成联合类型而不是 `string`，写错的键在 TS 阶段就能看出来。
+ */
+export type TaskValidationKey =
+  | "error.nameRequired"
+  | "error.nameTooLong"
+  | "error.cronRequired"
+  | "error.cronFieldCount"
+  | "error.cronInvalid"
+  | "error.timezoneInvalid"
+  | "error.timeoutNotNumber"
+  | "error.timeoutNotInteger"
+  | "error.timeoutMin"
+  | "error.timeoutMax"
+  | "error.descriptionTooLong"
+  | "error.urlInvalid"
+  | "error.headersNotObject"
+  | "error.headersTooLong"
+  | "error.bodyTooLong"
+  | "error.agentRequired"
+  | "error.promptRequired"
+  | "error.promptTooLong";
+
+/**
+ * 授权类错误码：`forbidden` 是宿主 `/web/*` 守卫与组织归属校验（`requireTeamScope`）的后端值，
+ * `UNAUTHORIZED` 是 request 层对**没有** code 的 401/403 归一后的值——`normalizeErrorCode` 只在响应
+ * 未携带 code 时才按 HTTP 状态映射，带 code 的响应原样透传。两种都认，否则「无权限」会退化成通用失败。
+ */
+const UNAUTHORIZED_CODES: ReadonlySet<string> = new Set(["forbidden", "UNAUTHORIZED"]);
+
+/**
+ * 判断加载失败是否属于「无权限」（401/403）。
+ *
+ * 用途是把它从通用加载失败里拆出来：授权是持久状态，再点一次重试只会拿到同一个 403，
+ * 因此调用方对它只展示原因、不给重试入口（通用失败分支必须保留重试）。
+ */
+export function isUnauthorizedError(error: unknown): boolean {
+  return error instanceof ApiError && UNAUTHORIZED_CODES.has(error.code);
+}
+
+/**
+ * Cron 表达式校验的**唯一实现**：5 个字段 + `parseExpression`（时区非空时才带 `tz`）。
+ *
+ * 为什么返回文案键而不是布尔：`CronEditor` 要把失败原因显示在输入框下方，三种失败（空 / 字段数不对 /
+ * 解析不通过）措辞不同，只有它能给出「差在哪」——键由视图层的 `t()` 译出，本模块不碰字典（§9.3）。
+ * 布尔形态由它派生（下面的 `isValidCronExpression`），供 zod `superRefine` 用——那条路径的文案由自己给。
+ *
+ * 2026-09-22 去重：此前 `CronEditor` 与模块内各写一份同样的「切 5 段 + parseExpression」，
+ * cron-parser 的口径变更要改两处；文案与分支原样保留（空值优先判、字段数其次、解析最后）。
+ * 2026-09-23：返回值由中文文案改成字典键（第 19 轮），分支顺序与判定逐例不变。
+ */
+export function validateCronExpression(cron: string, timezone: string): TaskValidationKey | undefined {
+  const parts = cron.trim().split(/\s+/);
+  if (!cron.trim()) return "error.cronRequired";
+  if (parts.length !== 5) return "error.cronFieldCount";
+  try {
+    parseExpression(cron, timezone.trim() ? { tz: timezone.trim() } : undefined);
+    return;
+  } catch {
+    return "error.cronInvalid";
+  }
+}
+
+/**
+ * 布尔形态，由文案形态派生：`superRefine` 只关心对错。
+ *
+ * 等价性：文案形态只在「空值 / 字段数 ≠ 5 / 解析抛错」三种情况下返回字符串，而这三种情况在
+ * 原布尔实现里同样是 `false`（空值 `""` 切出 `[""]`，长度 1 ≠ 5），因此
+ * `=== undefined` 与原实现逐例同值。
+ */
+function isValidCronExpression(cron: string, timezone: string): boolean {
+  return validateCronExpression(cron, timezone) === undefined;
+}
+
+function isValidTimezone(timezone: string): boolean {
+  if (timezone.trim().length === 0) return true;
+  try {
+    new Intl.DateTimeFormat("en-US", { timeZone: timezone }).format();
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * zod 的 `message` 是裸 `string`：包一层把键收进联合类型，写错的键在 `tsc` 阶段就报错
+ * （否则只有运行时把键名显示给用户才发现）。
+ */
+function message(key: TaskValidationKey): TaskValidationKey {
+  return key;
+}
+
+/**
+ * 任务表单校验。**schema 里放的是 i18n 键、不是文案**：`TaskForm` 的错误行经 `t(errors.x.message)` 取值
+ * （与 §4.3 的「错误文案在视图边界转换」同口径）。带中文 message 会让文案绕过 `t()`（§9.1），
+ * 译文也不再随语言切换——本文件 2026-09-23（第 19 轮）之前就是那种形态。
+ */
+export const taskFormSchema = z
+  .object({
+    type: z.enum(["http", "agent"]),
+    name: z.string().trim().min(1, message("error.nameRequired")).max(128, message("error.nameTooLong")),
+    cron: z.string().trim().min(1, message("error.cronRequired")),
+    timezone: z.string().trim().refine(isValidTimezone, message("error.timezoneInvalid")).optional().default(""),
+    timeoutSeconds: z.coerce
+      .number()
+      .finite(message("error.timeoutNotNumber"))
+      .int(message("error.timeoutNotInteger"))
+      .min(1, message("error.timeoutMin"))
+      .max(3600, message("error.timeoutMax")),
+    description: z.string().max(2000, message("error.descriptionTooLong")).optional().default(""),
+    url: z.string().trim().optional().default(""),
+    method: z.enum(["GET", "POST", "PUT", "DELETE", "PATCH"]).optional().default("POST"),
+    headers: z.string().max(10000, message("error.headersTooLong")).optional().default(""),
+    body: z.string().max(100000, message("error.bodyTooLong")).optional().default(""),
+    agentId: z.string().trim().optional().default(""),
+    prompt: z.string().max(100000, message("error.promptTooLong")).optional().default(""),
+  })
+  .superRefine((data, context) => {
+    if (!isValidCronExpression(data.cron, data.timezone)) {
+      context.addIssue({ code: "custom", path: ["cron"], message: message("error.cronInvalid") });
+    }
+    if (data.type === "http") {
+      try {
+        const parsedUrl = new URL(data.url.trim());
+        if (parsedUrl.protocol !== "http:" && parsedUrl.protocol !== "https:") throw new Error();
+        if (!parsedUrl.hostname) throw new Error();
+      } catch {
+        context.addIssue({ code: "custom", path: ["url"], message: message("error.urlInvalid") });
+      }
+      if (data.headers.trim()) {
+        try {
+          const parsed: unknown = JSON.parse(data.headers);
+          if (parsed === null || typeof parsed !== "object" || Array.isArray(parsed)) throw new Error();
+          if (Object.values(parsed).some((value) => typeof value !== "string")) throw new Error();
+        } catch {
+          context.addIssue({ code: "custom", path: ["headers"], message: message("error.headersNotObject") });
+        }
+      }
+    }
+    if (data.type === "agent") {
+      if (!data.agentId.trim())
+        context.addIssue({ code: "custom", path: ["agentId"], message: message("error.agentRequired") });
+      if (!data.prompt.trim())
+        context.addIssue({ code: "custom", path: ["prompt"], message: message("error.promptRequired") });
+    }
+  });
+
+export const INITIAL_TASK_FORM_VALUES: TaskFormValues = {
+  type: "http",
+  name: "",
+  cron: "*/5 * * * *",
+  timezone: "",
+  timeoutSeconds: 300,
+  description: "",
+  url: "",
+  method: "POST",
+  headers: "",
+  body: "",
+  agentId: "",
+  prompt: "",
+};
+
+/**
+ * 执行日志状态 → 色调 / 文案 key。
+ *
+ * 内联日志面板（`TasksPanel`）与日志弹窗（`TaskLogDialog`）此前各持一份，
+ * 靠肉眼保持「timeout 也算失败」这类判断一致；归一到这里后，新增状态只改一处。
+ */
+export const LOG_STATUS_TONES: Record<string, StatusTone> = {
+  success: "success",
+  failed: "danger",
+  timeout: "danger",
+  skipped: "neutral",
+  pending: "warning",
+};
+
+/**
+ * 任务启用状态 → 色调。`enabled` / `disabled` 虽已在内置词表里，这里仍显式声明：
+ * 「停用」是本包语义下的**中性**状态（用户自己关的，不是坏消息），本包自己承担这个判断，
+ * 库侧日后调整内置映射时侧栏配色不会跟着漂移。
+ */
+export const TASK_ENABLED_TONES: Record<string, StatusTone> = {
+  enabled: "success",
+  disabled: "neutral",
+};
+
+const LOG_STATUS_LABEL_KEYS: Record<string, string> = {
+  success: "status.success",
+  failed: "status.failed",
+  timeout: "status.timeout",
+  skipped: "status.skipped",
+  pending: "status.pending",
+};
+
+/**
+ * 日志状态对应的文案 key；未知状态按 `pending` 展示，与去重前的回退口径一致
+ * （后端新增状态时先落到「等待中」，而不是露出原始英文状态码）。
+ */
+export function logStatusLabelKey(status: string): string {
+  return LOG_STATUS_LABEL_KEYS[status] ?? LOG_STATUS_LABEL_KEYS.pending;
+}
+
+/**
+ * 日志时间戳（Unix 秒）格式化为 `MM-DD HH:mm`。
+ * 不用 `toLocaleString`：日志表格列宽固定，本地化格式的长度不稳定。
+ */
+export function formatTaskLogTime(timestamp: number): string {
+  const d = new Date(timestamp * 1000);
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return `${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
+
+/** 将任务表单转换为后端 definition 联合类型。 */
+export function buildTaskDefinition(values: TaskFormValues): HttpDefinition | AgentDefinition {
+  if (values.type === "http") {
+    return {
+      url: values.url,
+      method: values.method,
+      headers: values.headers.trim() ? JSON.parse(values.headers) : undefined,
+      body: values.body.trim() || undefined,
+    };
+  }
+  return { prompt: values.prompt };
+}
+
+/** 将真实任务 DTO 转为编辑器视图模型。 */
+export function taskToFormValues(task: TaskV2Info): TaskFormValues {
+  const definition = task.definition as unknown as Record<string, unknown> | null;
+  return {
+    type: task.type,
+    name: task.name,
+    cron: task.cron,
+    timezone: task.timezone ?? "",
+    timeoutSeconds: task.timeoutSeconds,
+    description: task.description ?? "",
+    url: (definition?.url as string) ?? "",
+    method: ((definition?.method as string) ?? "POST") as TaskFormValues["method"],
+    headers: definition?.headers ? JSON.stringify(definition.headers) : "",
+    body: (definition?.body as string) ?? "",
+    agentId: task.agentId ?? "",
+    prompt: (definition?.prompt as string) ?? "",
+  };
+}
+
+/** 相对时间展示的可选口径；两处消费方（表格单元格 / 行内窄栏）各自的行差见各字段说明。 */
+export interface TaskRelativeTimeOptions {
+  /** 空值回退文案：表格单元格用 `—`（默认），行内列表用空串表示「整段不渲染」。 */
+  fallback?: string;
+  /**
+   * 日期分支的格式：`locale` 走 `Intl` 本地化（默认，表格列），
+   * `compact` 用定长 `MM-DD HH:mm`（行内窄栏，长度稳定，与日志时间列同口径）。
+   */
+  dateFormat?: "locale" | "compact";
+}
+
+/**
+ * Unix 秒级时间戳的紧凑相对时间展示。
+ *
+ * 两个口径合成一份（2026-09-22 去重）：`TasksPanel` 曾有一份同名实现——前 3 个分支逐字相同，
+ * 只有空值回退与日期分支不同，i18n key 却重复了两份。差异保留为 `fallback` / `dateFormat` 两个参数，
+ * 两处渲染逐字不变；`compact` 分支复用 `formatTaskLogTime`，第三份「手写 pad + 同一模板」随之消失。
+ */
+export function formatTaskRelativeTime(
+  timestamp: number | null | undefined,
+  t: (key: string, options?: Record<string, unknown>) => string,
+  options: TaskRelativeTimeOptions = {},
+): string {
+  const { fallback = "—", dateFormat = "locale" } = options;
+  if (timestamp == null) return fallback;
+  const diff = Date.now() - timestamp * 1000;
+  if (diff < 60_000) return t("relativeTime.justNow");
+  if (diff < 3_600_000) return t("relativeTime.minutesAgo", { count: Math.floor(diff / 60_000) });
+  if (diff < 86_400_000) return t("relativeTime.hoursAgo", { count: Math.floor(diff / 3_600_000) });
+  if (dateFormat === "compact") return formatTaskLogTime(timestamp);
+  return new Intl.DateTimeFormat(undefined, {
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+  }).format(new Date(timestamp * 1000));
+}
+
+/**
+ * 从 `Set` 状态里移除一个 id 并返回**新实例**（`Set.delete` 原地改，直接返回旧引用不会触发重渲染）。
+ * 同一段 4 行 reducer 此前在三个请求收尾块里各写一份（面板的「执行」/「启停」、页面的「执行」）。
+ */
+export function removeIdFromSet(prev: ReadonlySet<string>, id: string): Set<string> {
+  const next = new Set(prev);
+  next.delete(id);
+  return next;
+}
+
+/** 将绝对时间投影到从当前时刻开始的可选未来时间窗。 */
+export function projectTaskTime(timestamp: number | null, now = Date.now(), windowHours = 24): number | null {
+  if (timestamp == null) return null;
+  const duration = windowHours * 3_600_000;
+  const position = ((timestamp * 1000 - now) / duration) * 100;
+  return position >= 0 && position <= 100 ? position : null;
+}
+
+/**
+ * 展开当前时刻起指定时间窗口内的未来 cron 触发点，并转换为时间轴百分比。
+ * 返回空数组代表计划无效或窗口内没有触发点；调用方可回退到后端 nextRunAt。
+ */
+export function projectCronOccurrences(
+  cron: string,
+  timezone: string | null | undefined,
+  now = Date.now(),
+  nextRunAt?: number | null,
+  windowHours = 24,
+): number[] {
+  const duration = windowHours * 3_600_000;
+  const end = new Date(now + duration);
+
+  const fixedMinutes = /^\*\/([1-9]\d*) \* \* \* \*$/.exec(cron.trim());
+  if (fixedMinutes) {
+    const interval = Number(fixedMinutes[1]) * 60_000;
+    let occurrence: number;
+    if (nextRunAt != null) {
+      occurrence = nextRunAt * 1000;
+    } else {
+      try {
+        occurrence = parseExpression(cron, {
+          currentDate: new Date(now),
+          endDate: end,
+          tz: timezone?.trim() || undefined,
+        })
+          .next()
+          .getTime();
+      } catch (error) {
+        console.warn("[task-runtime] unable to project fixed-minute cron expression", { cron, error });
+        return [];
+      }
+    }
+    if (occurrence < now) occurrence += Math.ceil((now - occurrence) / interval) * interval;
+    const positions: number[] = [];
+    for (; occurrence <= end.getTime(); occurrence += interval) {
+      positions.push(((occurrence - now) / duration) * 100);
+    }
+    return positions;
+  }
+
+  try {
+    const schedule = parseExpression(cron, {
+      currentDate: new Date(now),
+      endDate: end,
+      tz: timezone?.trim() || undefined,
+    });
+    const positions: number[] = [];
+    while (schedule.hasNext()) {
+      const occurrence = schedule.next();
+      const position = ((occurrence.getTime() - now) / duration) * 100;
+      if (position >= 0 && position <= 100) positions.push(position);
+    }
+    return positions;
+  } catch (error) {
+    console.warn("[task-runtime] unable to project cron expression", { cron, error });
+    return [];
+  }
+}

@@ -2,12 +2,13 @@ import type { ChildProcess } from "node:child_process";
 import { mkdir } from "node:fs/promises";
 import { join } from "node:path";
 import type * as acp from "@agentclientprotocol/sdk";
-import type { AgentLaunchSpec } from "@fenix/plugin-sdk";
+import { type AgentLaunchSpec, bindWorkspaceFiles } from "@fenix/plugin-sdk";
 import { type AcpDispatcher, type AcpSessionState, createAcpSessionState } from "../acp-dispatcher.js";
+import { stopAgentProcess } from "../stop-agent-process.js";
 import { registerWorkspace, unregisterWorkspace } from "./workspace-registry.js";
 
-// 三种引擎类型
-export type AgentType = "opencode" | "ccb" | "claude-code";
+// 四种引擎类型
+export type AgentType = "opencode" | "ccb" | "claude-code" | "peri";
 
 // ── EngineHandler 接口 ────────────────────────────────────────
 
@@ -21,7 +22,7 @@ export interface EngineStartContext {
 
 /**
  * 引擎 handler：每种引擎类型提供自己的 prepare / start / stop 实现。
- * 实现类放在各自的 plugin 包中（@fenix/opencode、@fenix/ccb、@fenix/claude-code），
+ * 实现类放在各自的 plugin 包中（@fenix/opencode、@fenix/ccb、@fenix/claude-code、@fenix/peri），
  * InstanceManager 只做调度，不感知具体引擎逻辑。
  */
 export interface EngineHandler {
@@ -68,11 +69,11 @@ export class InstanceManager {
   private readonly handlers: Map<string, EngineHandler>;
 
   /**
-   * @param handlers 引擎类型 → EngineHandler 的映射，如 { opencode: ..., ccb: ..., "claude-code": ... }
+   * @param handlers 引擎类型 → EngineHandler 的映射，如 { opencode: ..., ccb: ..., "claude-code": ..., peri: ... }
    * @param workspaceRoot workspace 根目录
    * @param defaultEngine 默认引擎类型（未指定 engineType 时使用）
    */
-  constructor(handlers: Record<string, EngineHandler>, workspaceRoot: string, defaultEngine = "opencode") {
+  constructor(handlers: Record<string, EngineHandler>, workspaceRoot: string, defaultEngine = "peri") {
     this.handlers = new Map(Object.entries(handlers));
     this.workspaceRoot = workspaceRoot;
     this.defaultEngine = defaultEngine;
@@ -97,6 +98,8 @@ export class InstanceManager {
     const effectiveType = (engineType ?? this.defaultEngine) as AgentType;
     const handler = this.getHandler(effectiveType);
     const workspace = this.resolveWorkspace(launchSpec);
+    // 传输 DTO 在机器边界重定位，start 与 refresh 保存的都是实际 workspace 的环境快照。
+    launchSpec = bindWorkspaceFiles(launchSpec, workspace);
     const existing = this.instances.get(instanceId);
     if (existing && (existing.runtimeGeneration !== runtimeGeneration || existing.serverEpoch !== serverEpoch)) {
       await this.stop(instanceId, existing.runtimeGeneration, existing.serverEpoch);
@@ -162,16 +165,15 @@ export class InstanceManager {
       runtimeGeneration !== undefined &&
       (state.runtimeGeneration !== runtimeGeneration || state.serverEpoch !== serverEpoch)
     ) {
-      return;
+      throw new Error("Agent runtime fence mismatch; stop cannot be confirmed");
     }
 
+    // 先完成公共 ACP EOF 收尾，handler 不得抢先杀父进程而跳过派生进程清理。
+    await state.dispatcher?.handleMessage({ type: "cancel_pending_permissions" });
+    if (state.process) await stopAgentProcess(state.process);
     const handler = this.handlers.get(state.agentType);
     if (handler?.stopInstance) {
       await handler.stopInstance(state);
-    }
-
-    if (state.process && !state.process.killed) {
-      state.process.kill("SIGTERM");
     }
 
     if (state.launchSpec?.environmentId) {

@@ -1,0 +1,4 @@
+.switch-thumb[data-state="checked"] {
+  --tw-translate-x: calc(100% - calc(var(--spacing) * 0.5));
+  translate: var(--tw-translate-x) var(--tw-translate-y);
+}

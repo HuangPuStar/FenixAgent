@@ -18,6 +18,8 @@ FenixAgent 面向三种客户端场景提供服务，每种的安全约束和认
 
 认证系统基于 [better-auth](https://www.better-auth.com) 构建，复用其 Session、Organization、API Key 等标准插件能力，在此之上封装多通道认证调度和组织上下文解析。
 
+实现归属：本条链路的唯一 owner 是 `packages/platform/identity`（better-auth 实例、可信来源推导、API Key 组织恢复、组织上下文解析、身份表 schema）。`apps/server` 只保留薄认证 adapter 与守卫实例，`/web/*` 路由以工厂形式接收该守卫；其它模块需要身份数据时经 `@fenix/platform-sdk` 的 `IdentityDirectory` 窄契约，不得导入 identity 的内部路径。
+
 ### 1. Session 认证
 
 标准的用户名密码认证。
@@ -64,22 +66,38 @@ Machine → ws://<host>/acp/ws?secret=<REGISTRY_SECRET>
 
 ### 多凭证支持
 
-Session 认证路由（`sessionAuth: true`）实际上接受两种凭证，决定先后尝试：
+用户级认证路由实际上**按固定顺序尝试三种凭证**，任一命中即停止（顺序与判定是契约的一部分，
+唯一实现在 `packages/platform/identity/src/services/request-authentication.ts`）：
 
-1. 先检查 session cookie
-2. cookie 不存在或失效时，尝试 API Key
+1. 先检查 better-auth session cookie
+2. 无 session 时尝试 **Environment Secret**——命中后以 environment 属主为审计主体，组织上下文取
+   该 environment 绑定的组织（未绑定组织的个人 environment 回落为属主 ID）
+3. 仍未命中时尝试 better-auth API Key——从 key metadata 恢复**组织入口**（key 字符串本身不携带组织信息）
+
+**角色与成员关系一律回成员表读当前值**：凭据自带的角色（API key metadata 的 `role`、Environment
+Secret 所属的环境记录）是创建期快照，不参与判定。命中凭据后按 `userId` 读全量成员关系，凭据声明的
+组织必须出现在其中，否则保守拒绝；成员关系不可验证（存储故障）时同样拒绝——认证失败与存储故障对外
+不可区分，不得在授权事实未知时放行。这样用户被降级或移出组织后，旧凭据不会按旧角色继续授权。
+
+> 兼容性：历史遗留的「个人 environment」（`organization_id == userId`）不在任何成员关系中，其
+> Environment Secret 从该口径生效起会被拒绝；当前三种创建路径（控制台、`/api` 自动创建、prod-view）
+> 都要求显式 `organizationId`，不会再产生此类行。
 
 ```mermaid
 flowchart TD
     REQ["请求到达"] --> COOKIE{"session cookie 有效?"}
     COOKIE -->|是| CTX["构建认证上下文<br/>用户 + 组织ID + 角色"]
     CTX --> PASS["放行"]
-    COOKIE -->|否| APIKEY["尝试 API Key 认证"]
+    COOKIE -->|否| ENVSECRET{"Environment Secret 命中?"}
+    ENVSECRET -->|是| CTX2["按 environment 属主与所属组织<br/>构建认证上下文"]
+    CTX2 --> PASS
+    ENVSECRET -->|否| APIKEY["尝试 API Key 认证"]
     APIKEY -->|成功| PASS2["放行"]
     APIKEY -->|失败| NULL["拒绝（401）"]
 ```
 
-**设计意图**：同一套 `/web/*` 和 `/api/*` 路由同时支持浏览器（cookie）和 CLI 工具（API Key）两种客户端，无需维护两套认证入口。
+**设计意图**：同一套 `/web/*` 和 `/api/*` 路由同时支持浏览器（cookie）、Agent 进程
+（Environment Secret）与 CLI 工具（API Key）三类客户端，无需维护多套认证入口。
 
 ### 组织上下文解析
 

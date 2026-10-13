@@ -1,0 +1,44 @@
+{
+  "graph": {
+    "header": {
+      "observation": "观测 / Agent 输出",
+      "modelTokens": "模型 / Token",
+      "duration": "耗时",
+      "time": "时间"
+    },
+    "control": {
+      "showRows": "逐行展开",
+      "groupTools": "合并连续的工具调用",
+      "rows": "逐行",
+      "compact": "合并"
+    },
+    "empty": {
+      "title": "还没有生成或工具调用",
+      "hint": "生成与工具调用会作为图中的节点出现。"
+    },
+    "node": {
+      "generation": "生成",
+      "tool": "工具",
+      "subagent": "子 Agent"
+    },
+    "branch": {
+      "background": "后台执行",
+      "synchronous": "同步执行",
+      "returned": "已返回",
+      "backgroundShort": "后台",
+      "syncShort": "同步"
+    },
+    "running": "运行中",
+    "tokens": "{{amount}} tok",
+    "row": {
+      "startedAt": "开始于 +{{offset}}",
+      "relativeTime": "相对 Trace 起点的时间"
+    },
+    "footer": {
+      "timeOrder": "按时间排序",
+      "grouped": "已合并连续工具与同级分支",
+      "individual": "每个事件单独一行",
+      "hiddenSpans": "已隐藏 {{hidden}} 个普通 span"
+    }
+  }
+}

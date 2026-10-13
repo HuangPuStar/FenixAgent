@@ -9,52 +9,47 @@
 5. **面向并发与故障设计**：后端应主动考虑幂等性、竞态、事务边界、超时、取消、重试、背压和资源释放；不得通过无边界重试、吞错或隐式共享状态掩盖问题。
 6. **保障完整前端体验**：前端应控制渲染成本、异步状态和并发请求，保持清晰的 UI 结构；用户流程必须覆盖加载、空状态、错误、重试、反馈和可访问性。
 7. **复用稳定的业务语义**：优先复用已有模块和能力，但不要仅因代码外形相似而过早抽象；确需重复时，必须注释说明其独立演进或暂不抽象的原因。新增依赖前先核查项目已有依赖（根 `package.json` 与 `packages/` workspace）能否满足需求，不得臆断已有库缺少功能——先查阅文档和类型定义；确需引入时优先成熟且维护良好的库，不重复实现通用功能。
-8. **为未来维护者保留上下文**：代码、注释、测试和架构文档是跨越时间的协作媒介。非显然的设计决策、兼容约束、已知缺陷和临时方案，必须记录原因、影响范围、潜在风险及移除条件；技术债务应关联可追踪任务，关键架构决策应同步到 ADR，禁止留下缺少上下文的 `TODO`。
+8. **克制地为未来维护者保留上下文**：代码、注释、测试和架构文档是跨越时间的协作媒介。非显然的设计决策、兼容约束、已知缺陷和临时方案，必须记录原因、影响范围、潜在风险及移除条件；技术债务应关联可追踪任务，关键架构决策应同步到 ADR，禁止留下缺少上下文的 `TODO`。文风克制，言简意赅，一般 2 句话内写完。
 9. **确保变更可验证、可观测、可回滚**：每项改动都应行为可测试、运行状态可观测、故障可定位，并兼顾向后兼容和回滚路径；错误与日志必须保留诊断上下文，但不得泄露敏感信息。
 10. **删除优于兼容**：内部路径重构时直接删除过时实现，禁止新增兼容层、deprecated shim 或双写逻辑；对外契约（`/api/*` 等稳定接口、数据库迁移）的兼容性按协议契约单独评估，属于合同义务而非迁就旧代码。
 
-> **变更速查**：提交前运行 `bun run precheck`；修改前端后额外运行 `bun run build:web`；修改 schema 后运行 `bun run db:generate --name <name>` 和 `bun run db:migrate`。
+> **变更速查**：单任务收尾跑 `bun run fastcheck`（静态门禁 + 受影响测试的快速验证），提交前跑 `bun run precheck`（预发布全量门禁）；修改前端后额外运行 `bun run build:web`；修改 schema 后运行 `bun run db:generate --name <module>-<change>` 和 `bun run db:migrate`；涉及存量数据搬迁、修复或回填时，DDL 后还要运行 `bun run run-data-migrations`。
 
 ## 文档使用与规范入口
 
+- 汇报风格：用户有阅读障碍，需要你减少汇报字数，多多使用 order list 结构化表达。
 - 前端开发规范：`docs/developer/guide/frontend-development.md`
   - 覆盖目录结构、路由、状态管理、组件、API、i18n、样式和安全规范。
+  - 前端标准使用 tailwind CSS 标准类名，不得自造，不得额外使用非必须 CSS 文件。
 - 后端开发规范：`docs/developer/guide/backend-development.md`
   - 覆盖目录分层、数据库、API、注释、日志和架构文档规范。
-- 架构说明：`docs/arch/`；设计方案：`docs/design/`；关键且长期有效的架构决策应记录为 ADR（`docs/adr/` 不存在时，在实际产生首个 ADR 时再创建）。
+- 架构说明：`docs/arch/`；设计方案：`docs/design/`；运维说明：`docs/operations/`（部署、升级、迁移、备份、排障）；关键且长期有效的架构决策应记录为 ADR（`docs/adr/`）。
 - 本文件只维护跨模块工程原则、关键工作流、架构契约和项目特有不变量，具体实现细则应下沉到离代码更近的规范。
-- 规则冲突时，以离代码更近、约束更具体且与当前实现一致的文档为准；若文档与代码不一致，先核实设计意图并同步修正文档，不得静默沿用冲突规则。
+- 与 `docs/design/ce-ee-refactoring/ce-ee-engineering-standards.md` 冲突时，以该目标架构规范为准；其他规则以离代码更近、约束更具体者为准。若文档与代码不一致，先核实设计意图并同步修正文档，不得静默沿用冲突规则。
 
 ## 项目与架构地图
 
 FenixAgent 是基于 Elysia + Bun 的多租户 ACP Agent 平台，前端使用 React 19 + Vite，数据层使用 PostgreSQL + Drizzle ORM。
 
 - 主要能力：组织与多租户、Agent 配置、ACP 实时通信、工作流、知识库、定时任务和 IM 通道。
-- 根目录 `package.json` 是前后端统一依赖清单；`web/` 没有独立 `package.json`。
-- `packages/` 是 Bun workspace，当前包含 11 个内部包；跨包能力应通过包导出的稳定接口复用，不得依赖包内实现细节。
+- 根目录 `package.json` 是前后端统一依赖清单；`apps/web/` 是前端应用入口、Vite 配置、前端业务实现与构建产物。
+- `packages/` 是 Bun workspace，按职责分为四类：`platform/*`（`platform-sdk` 稳定契约 + `identity` / `access-control` 两个有状态平台实现）、`agent-runtime`、`resources/*`、以及独立 SDK/插件包。跨包能力应通过包导出的稳定接口复用，不得依赖包内实现细节；类别之间的允许方向见 `docs/design/ce-ee-refactoring/ce-ee-engineering-standards.md` §2.3 的依赖矩阵，由 `bun run check:dependencies` 与 `bun run architecture:check` 强制。
 
 ### 后端地图
 
-- `src/index.ts`：服务入口和装配层。
-- `src/routes/web/`：控制台内部 API。
-- `src/routes/api/`：对外稳定 API / OpenAPI。
-- `src/routes/acp/`、`src/routes/mcp/`、`src/routes/hooks.ts`：内部协议和 Webhook 入口。
-- `src/services/`：领域规则、业务编排、事务边界和外部能力调用。
-- `src/repositories/`：数据访问层。
-- `src/schemas/`：请求、响应和配置 schema。
-- `src/transport/`：WebSocket、SSE、relay 和 EventBus。
-- `src/db/schema.ts`：数据库 schema 真相来源。
-- `src/__tests__/`、`src/test-utils/`：后端测试和测试基础设施。
+- `apps/server/src/`：唯一进程宿主，只保留入口、协议聚合、认证 adapter、OpenAPI、横切能力、应用基础设施初始化与装配；不得承载资源领域规则。
+- `packages/platform/*`、`packages/agent-runtime`、`packages/resources/*`：各自 owner 持有资源 Facade、Domain Service、Repository、route contribution、schema、测试和 Web contribution。
+- 外部资源动作遵循 `route → Resource Facade → Domain Service / Repository`；跨包只经公开 export，详细分层与目录规则见后端开发规范。
+- `apps/server/src/db/schema.ts` 仅保留身份表转出、`data_migrate_record` 与经裁定暂留的旧授权表；业务表定义在各自 owner 包的 `db/schema.ts`。
 
 ### 前端地图
 
-- `web/src/routes/`：TanStack Router 文件路由；Agent 面板页面位于 `web/src/routes/agent/_panel/`；`routeTree.gen.ts` 为生成文件，严禁手改。
-- `web/src/pages/`：页面和业务容器。
-- `web/components/`：通用 UI 与业务组件。
-- `web/src/api/`：前端 API 建模层。
-- `web/src/acp/`：ACP 客户端。
-- `web/src/i18n/`：国际化配置与语言资源。
-- `web/src/__tests__/`：前端关键流程测试。
+- `apps/web/src/routes/`：TanStack Router 文件路由；`routeTree.gen.ts` 为生成文件，严禁手改。
+- `apps/web/src/pages/`：页面和业务容器。
+- `apps/web/src/shell/`：本版本最终 Shell（布局、导航容器、Provider、鉴权后壳）；通用 UI 与业务组件归 `@fenix/ui-components`，宿主不再保留副本。
+- `packages/web-runtime/web/api/`：前端请求基建（`request<T>()` / `unwrap` / `ApiError`，经 `@fenix/web-runtime/api/*` 出口引用）。**API 建模层不在这里**——域模块按资源归属放在各 owner 包的 `web/api/`；宿主 `apps/web/src/api/` 只剩 `branding.ts` 一个宿主专有域（`file-events.ts` 与 `fs.ts` 归 `@fenix/resource-machine` 的 `web/api/`、`instances.ts` 归 `@fenix/agent-runtime`、`peri-task-details.ts` 归 `@fenix/model-management`、`helpers.ts` 已删除）。
+- `apps/web/src/i18n/`：国际化配置与语言资源。
+- `apps/web/src/__tests__/`：前端关键流程测试。
 
 ## 开发工作流
 
@@ -69,6 +64,10 @@ FenixAgent 是基于 Elysia + Bun 的多租户 ACP Agent 平台，前端使用 R
 5. 涉及长期架构决策时同步规划 `docs/arch/`、`docs/design/` 或 ADR 更新。
 6. 大功能按可运行的垂直切片分阶段交付：每层从最小端到端版本起步，保持可测试、可观测、可回滚，不一次性铺完整层再联调。
 
+### 任务范围
+
+1. 变更只覆盖已确认目标；不提前实现后续阶段能力，也不夹带无关重构、框架或通用抽象。
+
 ### 常用命令
 
 ```bash
@@ -77,31 +76,27 @@ bun run dev:web                     # 前端开发
 bun run build:web                   # 前端生产构建
 bun run docs:dev                    # 文档开发
 bun run docs:build                  # 文档构建
-bun run precheck                    # format、import-sort、architecture、server/web tsc、lint、后端测试
-bun run db:generate --name <name>   # 生成 Drizzle 迁移
+bun run precheck                    # 预发布全量门禁；实际步骤以 scripts/ci.ts 为准
+bun run fastcheck                   # 单任务收尾快检（tsc-rs 类型检查 + 受影响测试）；不替代 precheck
+bun run db:generate --name <module>-<change> # 生成 Drizzle 迁移
 bun run db:migrate                  # 执行迁移
+bun run run-data-migrations         # 执行已登记的存量数据迁移
 ```
 
 ### 按变更类型验证
 
-- 后端改动：运行相关 `bun test src/__tests__/<file>.test.ts`，完成后运行 `bun run precheck`。
-- 前端改动：运行相关 `bun test web/src/__tests__/<file>.test.ts` 和 `bun run build:web`，完成后运行 `bun run precheck`；生产构建不可省略，因为后端从 `web/dist/` 挂载静态资源。
-- 数据库改动：生成并审查迁移，执行 `bun run db:migrate`，再运行相关测试和 `bun run precheck`。
+- 后端改动：运行相关 `bun test apps/server/src/__tests__/<file>.test.ts`，完成后运行 `bun run precheck`。
+- 前端改动：运行相关 `bun test apps/web/src/__tests__/<file>.test.ts` 和 `bun run build:web`，完成后运行 `bun run precheck`；生产构建不可省略，因为后端从 `apps/web/dist/` 挂载静态资源。
+- 数据库改动：生成并审查迁移，执行 `bun run db:migrate`；涉及存量数据变更时再执行 `bun run run-data-migrations`，然后运行相关测试和 `bun run precheck`。
 - 文档站点改动：运行 `bun run docs:build`。
-- `precheck` 必须全绿才能提交；它目前只运行 `src/__tests__/`，不能替代前端测试和前端生产构建。
+- 迭代中可用 `bun run fastcheck` 快检（静态门禁与 precheck 同源，类型检查用 `tsc-rs`，探活失败自动回退官方 `tsc`；测试只跑本次改动影响到的范围）；它不替代 `precheck`：宿主侧集成回归只有三批全量测试能覆盖。
+- 常规任务提交前 `precheck` 必须全绿。`precheck` 已覆盖 server、script、package 与 web 测试，但不能替代前端生产构建。
 
 ## 架构边界与模块契约
 
 ### 后端分层
 
-默认依赖方向：`routes -> services -> repositories -> db`，`services -> packages/*`，`routes -> schemas`。
-
-- route 只负责协议接入、鉴权、参数校验和响应映射，不得直接访问 `db`。
-- service 负责领域规则、业务编排、事务边界、跨表操作和外部调用。
-- repository 只负责持久化和查询条件封装，不承载业务规则。
-- 新增数据库操作应收敛到 repository；历史 service 直连 DB 的写法不得继续扩散。
-- 禁止反向依赖和跨层复用内部实现，例如 repository 调用 service/route，或一个 route 导入另一个 route 的业务逻辑。
-- schema 放在 `src/schemas/`，复杂请求/响应结构不得内联在 route 中。
+新增与重写后端代码以 `docs/developer/guide/backend-development.md` 为准：外部动作经 Resource Facade 完成授权、状态校验与编排；Domain Service 不接收 actor；Repository 只封装持久化与事务原语；route 仅作协议适配且不直接访问 db。资源 schema 与 route 归各自 owner 包，宿主仅聚合协议入口。
 
 ### API 与数据模型边界
 
@@ -115,14 +110,14 @@ bun run db:migrate                  # 执行迁移
 
 ### 前端边界与体验
 
-- 导航只使用 `<Link to>`、`useNavigate()` 和 `router.invalidate()`；禁止 `window.location.href`、`window.location.replace`、`window.location.reload` 和 `window.history.pushState`。Sidebar 导航项必须提供 `to`。
-- 请求统一通过 `web/src/api/request.ts`；`request<T>()` 已处理路径参数、query、JSON、错误标准化和响应解包。
+- 导航只使用 `<Link to>` 和 `useNavigate()`；禁止 `window.location.href`、`window.location.replace`、`window.location.reload` 和 `window.history.pushState`。Sidebar 导航项由各包 contribution 声明 `id`（`id` 即路由目标，Shell 拼成 `/agent/<id>`），没有 `to` 字段（见前端规范 §2.6）。
+- 请求统一通过 `@fenix/web-runtime/api/request`（真身 `packages/web-runtime/web/api/request.ts`）；`request<T>()` 处理路径参数、query、JSON、超时与错误标准化，但**返回 `ApiResponse` 而非已解包数据**——失败时返回 `{ success: false }` 而不 throw，调用方必须 `unwrap()` 或显式判断 `success`；直接 `await` 并依赖 `catch`/`onError` 会把 4xx/5xx 当成成功（目标为单一异常语义，登记见 `docs/design/ce-ee-refactoring/ce-ee-engineering-standards.md` §11「优化项」）。
 - 数据获取优先遵循前端规范和现有 `ahooks` / `useRequest` 模式，避免重复请求与竞态覆盖。
 - 用户可见字符串必须通过 `t()`；i18n 插值使用 `{{var}}`，单花括号 `{var}` 会被当作字面文本。
-- 基础组件优先复用 `web/components/ui/`；通用图标使用 `lucide-react`；模型品牌图标使用 `web/components/model-icon/ModelIcon.tsx`。
+- 基础组件优先复用 `@fenix/ui-components/ui/<name>`（该包无根出口，逐文件子路径）；通用图标使用 `lucide-react`；模型品牌图标使用 `packages/resources/model-management/web/components/model-icon/ModelIcon.tsx`。
 - 纯逻辑模块不得依赖 UI 图标包；特别是不得让后端或纯逻辑测试间接加载 `@lobehub/icons`。
 - 页面流程必须覆盖 loading、empty、error、retry、success feedback 和可访问性状态。
-- 路径别名：`@/src` → `web/src`，`@/components` → `web/components`，`@server` → `../src`。
+- 路径别名只保留宿主自有条目（`@/src/*` → `apps/web/src/*`、`@server/*` → `apps/server/src/*`，含 `@/src/i18n`、`@/src/i18n/locales`、`@/src/lib/random-uuid-polyfill` 等细粒度项）；跨包引用一律经各包 `exports`，禁止再新增指向 `packages/**` 的别名。`apps/web/vite.config.ts` 与根 `tsconfig.json` 两张表必须逐条一致（dependency-cruiser 读根表）。
 
 ### Agent 通信权威路径
 
@@ -130,14 +125,14 @@ Agent 通信分为三种明确场景，底层 relay 与 ACP 消息规则必须�
 
 | 场景 | 权威实现 | 生命周期 |
 |------|----------|----------|
-| HTTP / 程序化单轮调用 | `src/routes/api/openai-chat.ts` → `src/services/agent-chat-service.ts` | route 调用 `openAgentSession`；service 执行 `createAgentSession` → `startPromptTurn`，每次创建独立实例并在 dispose 时销毁 |
-| Workflow | `src/services/workflow/agent-chat-transport.ts` | 通过 `ensureRunning`、`connectAgentRelay` 复用实例，再适配 `agent-chat-service` 的 `PromptTurn` |
-| 前端交互式 Chat | `packages/chat-channel/src/channel/`（宿主装配 `src/services/chat-channel-bootstrap.ts`） | 使用共享 relay、Y.Doc 状态和独立 session 生命周期；复用 `connectAgentRelay` 与 `@fenix/chat-channel` translator |
+| HTTP / 程序化单轮调用 | `packages/agent-runtime/src/routes/api/openai-chat.ts` → `packages/agent-runtime/src/services/agent-chat-service.ts` | `openAgentSession` 解析并确保当前用户的持久 `api/primary` Instance runtime；每次请求创建独立 relay/ACP session/turn，dispose 只释放请求资源，不停止 runtime |
+| Workflow | `packages/resources/workflow/src/server/services/workflow/agent-chat-transport.ts` | 解析并确保当前用户的持久 `workflow/primary` Instance runtime，通过 lease 保护并发 run；每个节点使用独立 relay/ACP session/turn |
+| 前端交互式 Chat | `packages/chat-channel/src/channel/`（`@fenix/agent-runtime` 装配 `packages/agent-runtime/src/server/services/chat-channel-bootstrap.ts`） | 使用共享 relay、Y.Doc 状态和独立 session 生命周期；复用 `connectAgentRelay` 与 `@fenix/chat-channel` translator |
 
 - relay JSON-RPC 必须兼容原始 `{ jsonrpc: "2.0", ... }` 和包裹 `{ type, payload: { jsonrpc: "2.0", ... } }` 两种格式，统一使用现有 `extractJsonRpc()` 模式。
 - `session/update` 的事件类型位于 `params.update.sessionUpdate`，事件载荷位于同一 `update` 对象，文本内容通常在 `update.content`；禁止读取不存在的 `update.agent_message_chunk` 或把 `sessionUpdate` 当作文本。
-- 实例策略不可混用：Workflow / 交互式路径通过 `ensureRunning(...)` 复用实例；`openAgentSession` 通过 `spawnInstanceViaController(...)`（`src/services/orchestration-instance.ts`）创建独立实例并负责销毁。
-- 不得恢复已删除的独立 `acp-transport.ts` 或在新入口中复制 session/new、session/load、session/prompt 的完整协议流程。
+- 实例策略不可混用：HTTP 自动选择 `api/primary`，Workflow 自动选择 `workflow/primary`；交互式 Chat 通常连接前端显式携带且重新校验归属的持久 Instance，未指定时才自动选择 `chat/default`。三者均通过 `AgentInstanceRuntimeCoordinator` 确保 runtime，但请求/session 不拥有共享 runtime 生命周期。
+- 新入口不得新建独立 `acp-transport.ts`，也不得复制 session/new、session/load、session/prompt 的完整协议流程。
 
 ## 领域不变量与高风险约束
 
@@ -146,7 +141,7 @@ Agent 通信分为三种明确场景，底层 relay 与 ACP 消息规则必须�
 - 普通 HTTP / WebSocket 请求先尝试 better-auth session cookie；无 session 时依次尝试 Environment Secret 和 better-auth API Key。
 - 系统 API 使用独立的 `RCS_SYSTEM_API_KEYS`；`RCS_API_KEYS` 当前用于 skill 下载 token 的 HMAC 签名，不得混作普通请求认证规则。
 - active organization 提取优先级：`x-active-org-id` header → `activeOrganizationId` query → `active_org_id` cookie。
-- API Key 的组织上下文必须由 key metadata 恢复并重新校验成员关系；校验异常时保守拒绝。
+- API Key 的组织上下文必须由 key metadata 恢复并重新校验成员关系；组织入口取自凭据，**角色取成员表当前值**，凭据里的创建期快照不参与判定；校验异常时保守拒绝。
 - 测试可使用 `setTestAuth()`、`setTestOrgContext()` 注入上下文，测试结束必须 reset，避免状态泄漏。
 - 密钥、token、密码和连接串不得写入源码、fixture、日志或错误响应。
 
@@ -173,7 +168,7 @@ Agent 通信分为三种明确场景，底层 relay 与 ACP 消息规则必须�
 - 服务重启不会自动清理旧 `acp-link` 进程；排查 `EADDRINUSE` 时先确认残留进程和端口归属。
 - relay 断连只关闭连接，不等于终止 Agent 子进程；实例释放必须走对应生命周期管理。
 - relay 必须传递 Agent `status`，前端依赖 `status.capabilities` 决定可用能力。
-- ID 体系不可混用：ACP session ID 为 `ses_*`；RCS session ID 由 `createDeterministicRcsSessionId(agentId, userId[, sessionId])` 生成，格式为 `rcs_*`。多实例场景下应传入 DB 会话 ID（`sessionId`）以实现 YJS doc 隔离。
+- ID 体系不可混用：ACP session ID 为 `ses_*`；RCS session ID 由 `createDeterministicRcsSessionId(agentId, userId, instanceUid?)` 生成，格式为 `rcs_*`（第三段实参是 `instanceUid`，形参名 `sessionId` 为历史遗留叫法）。多实例隔离靠该确定性 key：不同实例 → 不同 `rcsSessionId` → 不同 YJS doc；前端路由段 `/agent/chat/{agentId}/{sessionId}` 承载的同样是 `instanceUid`，不存在可用的 DB 会话 id（详见 `docs/arch/19-yjs-chat-streaming.md` §3.2 / §4.1）。
 
 ### YJS / Chat
 
@@ -185,16 +180,20 @@ Agent 通信分为三种明确场景，底层 relay 与 ACP 消息规则必须�
 4. `session/list`、`session/new`、`session/load` 和 `session/resume` 的 `cwd` 必须由服务端 translator 注入；Agent status 到达前不得发送 `list_sessions`。
 5. Y.Doc 名称使用 `chat:{rcsSessionId}` / `session:{rcsSessionId}`，广播必须按 `rcsSessionId` 隔离，禁止全局广播会话数据。
 6. 用户消息只由后端写入 Y.Doc；前端不得维护第二份 `localUserEntries`，否则 Agent 回显会造成双写。
-7. 清理会话内容使用 `clearSessionDocContent` 在原 Y.Doc 事务中完成；禁止通过 destroy + recreate 制造异步竞态。`create_session` 同样必须先清空旧 Session Doc。
+7. 会话切换与内容清理走"换代"：由 `DocManager.replaceProjection` 完成；不得通过 destroy + recreate 制造异步竞态。`chat-writer.ts` 的 `clearSessionDocContent`（及专用的 `clearPeriTaskViews`）已删除，不要恢复旧的清空流程（`docs/arch/19-yjs-chat-streaming.md` §4.2 / 前端规范 §8.5 第 7 条）；`create_session` 同样走换代。
 8. 同一 `instanceId + userId` 的多标签页共享一个 relay handle；引用计数归零后才释放，切换 session 时同步同组客户端的 `acpSessionId`。
 9. WebSocket 发送背压阈值为 64 KB，默认连接上限为 200（`YJS_MAX_CLIENTS`）；修改时必须保留限流、资源释放和单连接故障隔离。
 10. `ChatView` 与 `EntryRenderer` 使用 `React.memo`；comparator 必须与调用方 prop 稳定性保持一致，修改 props 时同步更新 comparator 和相关渲染测试。
-11. `@fenix/chat-channel` 根入口必须浏览器安全：只导出类型、schema、`chat-writer`、`yjs-store`、`protocol`、`transport`、`util`；服务端能力（`channel` 控制面、`persist` 持久化、`state` 聚合层 DocManager/factory/aggregator 等）必须经 `@fenix/chat-channel/server` 子路径导出。前端 vite alias 直连根入口，从根入口 re-export 服务端模块会把 node 依赖打进浏览器 bundle（2026-08-17 事故：`node:crypto` 外置桩致整包加载崩溃）；边界由 `src/__tests__/chat-channel-browser-surface.test.ts` 静态走值导入图守护。
+11. `@fenix/chat-channel` 根入口必须浏览器安全：只导出类型、schema、`chat-writer`、`yjs-store`、`protocol`、`transport`、`util`；服务端能力（`channel` 控制面、`persist` 持久化、`state` 聚合层 DocManager/factory/aggregator 等）必须经 `@fenix/chat-channel/server` 子路径导出。前端消费方经包 `exports` 直连根入口；从根入口 re-export 服务端模块会把 Node 依赖打进浏览器 bundle 并导致加载失败，边界由 `packages/chat-channel/src/__tests__/chat-channel-browser-surface.test.ts` 静态走值导入图守护。
 
 ## 数据库与迁移
 
-- Schema 真相来源是 `src/db/schema.ts`。
-- 标准流程：修改 schema → `bun run db:generate --name <name>` → 审查 `drizzle/*.sql` 与 `drizzle/meta/*` → `bun run db:migrate` → 运行相关测试和 `bun run precheck`。
+- **一张表的定义只在一个 owner 手里**：业务表定义在所属模块的 `packages/**/db/schema.ts`（经该包 `exports["./db"]` 公开，如 `@fenix/resource-task/db`），身份表在 `packages/platform/identity/db/schema.ts`；宿主 `apps/server/src/db/schema.ts` 只保留身份表转出、`data_migrate_record` 与仍在清理中的旧授权表。改哪张表就到它的 owner 包改，不得在宿主或别的包复制一份。`drizzle.config.ts` 的 `schema` 必须声明**全部** owner 包路径与宿主 schema，否则 `db:generate` 会把漏声明的一族误判为已删除。
+- 表定义换手不得改变 DDL：`bun run check:schema-ddl-drift` 比对「`drizzle.config.ts` 声明的 schema 集合 → 最新 snapshot」的差异，必须为零。
+- 跨包外键（表 A 的列引用别包表 B 的主键）只允许在 `db/**` 的**组装期**导入 B 的表对象（Drizzle `.references()` 只接受列对象），例外口径见 `docs/design/ce-ee-refactoring/ce-ee-engineering-standards.md` §6.1；`src/**`、`web/**` 的调用期跨包读表一律违规，必须改经该 owner 的公开服务端入口或宿主注入端口。
+- 标准流程：修改 schema → `bun run db:generate --name <module>-<change>` → 审查 `drizzle/*.sql` 与 `drizzle/meta/*` → `bun run db:migrate` → 存量数据变更时执行 `bun run run-data-migrations` → 运行相关测试和 `bun run precheck`。
+- 跨组织可见性由五张受控资源主表（`agent_config` / `skill` / `mcp_server` / `provider` / `plugin_market_package`）的 `visibility varchar(20) NOT NULL` 表达（前四张默认 `'private'`；`plugin_market_package` 默认 `'public'`，因为市场条目存在的意义就是被所有已认证用户看到，照抄 `private` 会让整个目录静默消失）；授权判断与查询谓词一律由 `@fenix/access-control` 产出，资源包只声明「资源类型 + 表 + 归属列 + 业务条件」。
+  - `agent_site_app` 是第六个受控资源注册（`accessControlBindings`），但**它的 `visibility` 不是平台受众列**：该列是站点自身的发布范围（`private` / `org` / `authenticated` / `public`，决定谁能访问对外部署的站点），注册因此只声明归属列（`organizationId` / `ownerUserId`），发布范围的读过滤作为业务条件与平台谓词同条 SQL 下推。把它绑成平台受众列会同时破坏两端：`org` / `authenticated` 被按「非 public 即 private」处理（同组织成员读不到他人发布的站点），而 `public` 会给任意已认证用户开出跨组织读路径（站点行带 `platform_token`）。理由见 `packages/resources/agent-config/src/server/access/agent-site-app-resource.ts`。
 - 提交迁移时必须提交完整 `drizzle/` 迁移链，不能遗漏 `drizzle/meta/*`。
 - 禁止手写 SQL 迁移绕过 Drizzle，禁止在生产环境使用 `db:push`。
 - 迁移设计必须考虑已有数据、锁范围、回滚或补偿策略，以及多实例并发启动时的幂等性。
@@ -204,8 +203,8 @@ Agent 通信分为三种明确场景，底层 relay 与 ACP 消息规则必须�
 
 ### 测试
 
-- 后端测试位于 `src/__tests__/`，前端测试位于 `web/src/__tests__/`。
-- 优先复用 `src/test-utils/`，测试文件禁止直接调用 `mock.module()`。
+- 后端测试位于 `apps/server/src/__tests__/`，前端测试位于 `apps/web/src/__tests__/`。
+- 优先复用 `apps/server/src/test-utils/`，测试文件禁止直接调用 `mock.module()`。
 - 每个 `test(...)` 上方添加一行中文注释，说明行为和业务意图。
 - 前端只测试关键交互、状态和数据流，不编写纯 UI 结构断言或仅重复类型检查的测试。
 - 并发、重连、权限、租户隔离、迁移和失败回滚必须覆盖关键边界测试。
@@ -224,7 +223,7 @@ Agent 通信分为三种明确场景，底层 relay 与 ACP 消息规则必须�
 
 - 文件使用 kebab-case，组件使用 PascalCase，函数使用 camelCase，常量使用 UPPER_SNAKE_CASE。
 - 提交信息使用 Angular 风格：`feat:` / `fix:` / `refactor:` / `test:` / `chore:` / `docs:`，标题使用中文。
-- 未经明确要求不得创建 commit；代码改动提交前必须运行 `bun run precheck`，前端改动还必须运行 `bun run build:web`。
+- 未经明确要求不得创建 commit；代码改动提交前通常须运行 `bun run precheck`，前端改动还须运行 `bun run build:web`。
 
 ### 质量红线
 
@@ -235,7 +234,7 @@ Agent 通信分为三种明确场景，底层 relay 与 ACP 消息规则必须�
 
 ## 环境变量
 
-环境变量的类型、默认值和必填性以 `src/env.ts` 为准；新增变量必须同步 schema、部署配置和相关文档。`YJS_MAX_CLIENTS` 是 YJS transport 中直接读取的兼容变量；`RCS_YJS_SNAPSHOT_*` 三项在 `src/env.ts` 声明校验、由 `packages/chat-channel` 持久层直读（provider 收敛到宿主 DI 后应改为经 options 注入）。关键变量：
+环境变量的类型、默认值和必填性有两处真相来源：**宿主自有变量与多模块共享键**以 `apps/server/src/env.ts` 为准；**有唯一模块 owner 的部署变量**以其 owner 模块的 `fenix.module.ts` 里的 `envDefinitions` 为准（如 agent-runtime 的运行态旋钮与 `WORKSPACE_ROOT`、knowledge 的 RAGFlow/Gotenberg、sandbox 与 model-management 的整族配置）。同名键不得两处声明——`assertNoHostKeyOverride()` 会在启动期直接拒绝。新增变量必须同步 schema、部署配置和相关文档，并改在它的 owner 模块。`RCS_YJS_SNAPSHOT_*` 三项由 agent-runtime 模块的 `envDefinitions` 声明，经宿主装配投影与 `ChatChannelDependencies.snapshotPersist` 注入 chat-channel 持久层；包内不再直读 `process.env`，也不再自带默认值（Redis 模式下缺注入即失败）。关键变量：
 
 - 必填：`DATABASE_URL`、`RCS_API_KEYS`。
 - 系统 API：`RCS_SYSTEM_API_KEYS`。
@@ -244,4 +243,4 @@ Agent 通信分为三种明确场景，底层 relay 与 ACP 消息规则必须�
 - Agent 路由：`RCS_DEFAULT_MACHINE_ID`、`RCS_DEFAULT_ENGINE_TYPE`、`RCS_DISABLE_LOCAL_EXECUTION`。
 - 观测透传：`LANGFUSE_PUBLIC_KEY`、`LANGFUSE_SECRET_KEY`、`LANGFUSE_BASE_URL` 由主服务声明，经 `launchSpec.env` 统一透传到 machine 上 agent 进程（peri 的 langfuse-client 直读同名变量）；未设置则不注入，`extraEnv` 同名变量仍优先。动态 user 维度：`LANGFUSE_USER_ID` 由 `buildAgentLaunchSpecForCore` 的 platformEnv 按实例注入（与 `USER_META_USER_ID` 同源：environment 属主优先，fallback 到实例用户），peri 的 langfuse tracer 写入 `TraceBody.user_id`。
 - 并发与生命周期：`RCS_AGENT_MAX_CONCURRENCY`、`RCS_USER_AGENT_MAX_CONCURRENCY`、`RCS_SCHEDULED_AGENT_MAX_CONCURRENCY`、`RCS_ACP_IDLE_TIMEOUT_SECONDS`、`RCS_ACP_IDLE_SWEEP_INTERVAL_SECONDS`、`RCS_ACP_ACTIVITY_TIMEOUT_SECONDS`。Environment 不再持有独立并发配额；禁止在 `AgentController` 按 Environment 内存实例数重新引入限流。
-- YJS：`YJS_MAX_CLIENTS`（代码默认 200）；快照持久化：`RCS_YJS_SNAPSHOT_INTERVAL_MS`（节流窗口，默认 2000）、`RCS_YJS_SNAPSHOT_IDLE_MS`（静默期，默认 500）、`RCS_YJS_SNAPSHOT_TTL_SECONDS`（快照滑动 TTL，默认 7 天）。
+- YJS：`YJS_MAX_CLIENTS`（默认 200；由 agent-runtime 模块声明并经 `AgentRuntimeModuleConfig.yjsMaxClients` 注入 chat-channel 装配）；快照持久化：`RCS_YJS_SNAPSHOT_INTERVAL_MS`（节流窗口，默认 2000）、`RCS_YJS_SNAPSHOT_IDLE_MS`（静默期，默认 500）、`RCS_YJS_SNAPSHOT_TTL_SECONDS`（快照滑动 TTL，默认 7 天）——三项同由 agent-runtime 模块声明，经 `AgentRuntimeModuleConfig.yjsSnapshot*` 投影进 `ChatChannelDependencies.snapshotPersist`。

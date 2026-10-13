@@ -1,0 +1,12 @@
+.chat-tool-call-shell {
+  grid-template-columns: minmax(0, 1fr) auto;
+}
+
+.chat-tool-call-grid {
+  grid-template-columns: 22px minmax(0, 1fr) auto auto;
+}
+
+.chat-tool-call-icon > svg {
+  width: calc(var(--spacing) * 3.75);
+  height: calc(var(--spacing) * 3.75);
+}

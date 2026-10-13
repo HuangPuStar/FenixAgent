@@ -1,0 +1,39 @@
+@import "tailwindcss";
+@import "../web/styles/theme.css";
+@import "tw-animate-css";
+html,
+body,
+#root {
+  min-height: 100%;
+}
+
+html {
+  background-color: var(--color-surface-0);
+}
+
+body {
+  margin: 0;
+  background-color: var(--color-surface-0);
+  color: var(--color-text-primary);
+  font-family: var(--font-body);
+  font-size: 13px;
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+}
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--color-surface-3);
+  border-radius: 3px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--color-text-muted);
+}

@@ -2,7 +2,12 @@ import { afterEach, describe, expect, test } from "bun:test";
 import { mkdir, mkdtemp, readFile, rename, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { handleFileOp, setUploadBeforeWriteHookForTest, setZipBeforeSpawnHookForTest } from "../client/file-operations";
+import {
+  handleFileOp,
+  setDirectoryRenameBeforeMoveHookForTest,
+  setUploadBeforeWriteHookForTest,
+  setZipBeforeSpawnHookForTest,
+} from "../client/file-operations";
 import { initRegistry, registerWorkspace } from "../client/workspace-registry";
 
 interface FileOpData {
@@ -34,12 +39,98 @@ async function createWorkspace(): Promise<{ workspace: string; environmentId: st
 }
 
 afterEach(async () => {
+  setDirectoryRenameBeforeMoveHookForTest();
   setUploadBeforeWriteHookForTest();
   setZipBeforeSpawnHookForTest();
   await Promise.all(temporaryDirectories.splice(0).map((directory) => rm(directory, { recursive: true, force: true })));
 });
 
 describe("handleFileOp", () => {
+  // 机器端搬迁前故障只清理自己的空占位，绝不能删除源目录或其内容。
+  test("远程目录搬迁失败清理自己的空占位", async () => {
+    const { workspace, environmentId } = await createWorkspace();
+    await mkdir(join(workspace, "source"));
+    await writeFile(join(workspace, "source/item.txt"), "source");
+    setDirectoryRenameBeforeMoveHookForTest(async () => {
+      throw new Error("injected before-move failure");
+    });
+    expect(
+      await handleFileOp(createMessage(environmentId, "rename", { oldPath: "source", newPath: "target" })),
+    ).toMatchObject({ status: "error" });
+    expect(await readFile(join(workspace, "source/item.txt"), "utf8")).toBe("source");
+    await expect(readFile(join(workspace, "target"))).rejects.toMatchObject({ code: "ENOENT" });
+  });
+
+  // 目录占位被并发写入时必须409且不能递归删除目标或丢失源目录内容。
+  test("远程目录占位被填入内容后保留双方", async () => {
+    const { workspace, environmentId } = await createWorkspace();
+    await mkdir(join(workspace, "source"));
+    await writeFile(join(workspace, "source/item.txt"), "source");
+    setDirectoryRenameBeforeMoveHookForTest(async (destination) => {
+      await writeFile(join(destination, "concurrent.txt"), "concurrent");
+    });
+    const result = await handleFileOp(createMessage(environmentId, "rename", { oldPath: "source", newPath: "target" }));
+    expect(result).toMatchObject({ status: "error", error_code: "path_conflict", status_code: 409 });
+    expect(await readFile(join(workspace, "source/item.txt"), "utf8")).toBe("source");
+    expect(await readFile(join(workspace, "target/concurrent.txt"), "utf8")).toBe("concurrent");
+  });
+
+  // 机器端重命名不能覆盖同名文件，协议应明确返回409且源目标保持完整。
+  test("远程 rename 冲突保留双方内容", async () => {
+    const { workspace, environmentId } = await createWorkspace();
+    await writeFile(join(workspace, "source.txt"), "source");
+    await writeFile(join(workspace, "target.txt"), "target");
+    const result = await handleFileOp(
+      createMessage(environmentId, "rename", { oldPath: "source.txt", newPath: "target.txt" }),
+    );
+    expect(result).toMatchObject({ status: "error", error_code: "path_conflict", status_code: 409 });
+    expect(await readFile(join(workspace, "source.txt"), "utf8")).toBe("source");
+    expect(await readFile(join(workspace, "target.txt"), "utf8")).toBe("target");
+  });
+
+  // 远程目录排他占用目标，已有空目录也拒绝覆盖，并允许移动到全新路径。
+  test("远程目录 rename 拒绝已有目标且可移动到新目标", async () => {
+    const { workspace, environmentId } = await createWorkspace();
+    await mkdir(join(workspace, "source"));
+    await writeFile(join(workspace, "source/item.txt"), "source");
+    await mkdir(join(workspace, "target"));
+    const result = await handleFileOp(createMessage(environmentId, "rename", { oldPath: "source", newPath: "target" }));
+    expect(result).toMatchObject({ status: "error", error_code: "path_conflict", status_code: 409 });
+    expect(await readFile(join(workspace, "source/item.txt"), "utf8")).toBe("source");
+    expect(await Bun.file(join(workspace, "target/item.txt")).exists()).toBe(false);
+    expect(
+      await handleFileOp(createMessage(environmentId, "rename", { oldPath: "source", newPath: "new-parent/moved" })),
+    ).toMatchObject({ status: "ok" });
+    expect(await readFile(join(workspace, "new-parent/moved/item.txt"), "utf8")).toBe("source");
+    expect(await Bun.file(join(workspace, "source/item.txt")).exists()).toBe(false);
+  });
+
+  // 远程上传同名文件使用排他创建，并发赢家之后的重传不能改变已写字节。
+  test("远程并发上传只能一个成功且重复上传返回409", async () => {
+    const { workspace, environmentId } = await createWorkspace();
+    const upload = (content: string, requestId: string) =>
+      handleFileOp({
+        ...createMessage(environmentId, "upload", {
+          files: [{ name: "same.txt", content: Buffer.from(content).toString("base64") }],
+        }),
+        request_id: requestId,
+      });
+    const results = await Promise.all([upload("first", "first"), upload("second", "second")]);
+    expect(results.filter((result) => result.status === "ok")).toHaveLength(1);
+    expect(results.find((result) => result.status === "error")).toMatchObject({
+      error_code: "path_conflict",
+      status_code: 409,
+    });
+    const original = await readFile(join(workspace, "same.txt"), "utf8");
+    expect(["first", "second"]).toContain(original);
+    expect(await upload("replacement", "third")).toMatchObject({
+      status: "error",
+      error_code: "path_conflict",
+      status_code: 409,
+    });
+    expect(await readFile(join(workspace, "same.txt"), "utf8")).toBe(original);
+  });
+
   // 未注册环境不得访问文件系统，并且未知操作必须返回协议错误而非抛出异常
   test("拒绝未知 workspace 与未知操作", async () => {
     const missingWorkspace = await handleFileOp(createMessage("missing-environment", "list"));

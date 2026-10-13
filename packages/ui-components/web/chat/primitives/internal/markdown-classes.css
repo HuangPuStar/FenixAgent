@@ -1,0 +1,253 @@
+.chat-markdown-content-styles {
+  color: var(--color-slate-700);
+  font-size: var(--text-sm);
+  overflow-wrap: anywhere;
+  white-space: normal;
+  word-break: normal;
+}
+
+.chat-markdown-content-styles h1,
+.chat-markdown-content-styles h2,
+.chat-markdown-content-styles h3,
+.chat-markdown-content-styles h4 {
+  margin-top: 1.35em;
+  margin-bottom: 0.55em;
+  font-weight: 700;
+  letter-spacing: var(--tracking-neg2);
+  color: var(--color-slate-800);
+}
+
+.chat-markdown-content-styles h1 {
+  font-size: var(--text-22);
+  line-height: 1.35;
+}
+
+.chat-markdown-content-styles h2 {
+  font-size: var(--text-lg);
+  line-height: 1.45;
+}
+
+.chat-markdown-content-styles h3 {
+  font-size: var(--text-15);
+  line-height: 1.5;
+}
+
+.chat-markdown-content-styles h4 {
+  font-size: var(--text-sm);
+  line-height: 1.55;
+}
+
+.chat-markdown-content-styles p {
+  margin-top: 0;
+  margin-bottom: 0.85em;
+}
+
+.chat-markdown-content-styles p,
+.chat-markdown-content-styles li,
+.chat-markdown-content-styles blockquote,
+.chat-markdown-content-styles td,
+.chat-markdown-content-styles th,
+.chat-markdown-content-styles a {
+  overflow-wrap: anywhere;
+  word-break: normal;
+}
+
+.chat-markdown-content-styles ul {
+  margin-top: 0.65em;
+  margin-bottom: 0.95em;
+  list-style-position: outside;
+  list-style-type: disc;
+  padding-left: calc(var(--spacing) * 5.4);
+}
+
+.chat-markdown-content-styles ol {
+  margin-top: 0.65em;
+  margin-bottom: 0.95em;
+  list-style-position: outside;
+  list-style-type: decimal;
+  padding-left: calc(var(--spacing) * 5.4);
+}
+
+.chat-markdown-content-styles ul ul {
+  list-style-type: circle;
+}
+
+.chat-markdown-content-styles ol ol {
+  list-style-type: lower-alpha;
+}
+
+.chat-markdown-content-styles li {
+  display: list-item;
+  margin-top: 0.3em;
+  margin-bottom: 0.3em;
+  padding-left: calc(var(--spacing) * 0.4);
+}
+
+.chat-markdown-content-styles li::marker {
+  font-weight: 600;
+  color: var(--color-slate-500);
+}
+
+.chat-markdown-content-styles li > ul,
+.chat-markdown-content-styles li > ol {
+  margin-top: 0.3em;
+  margin-bottom: 0.25em;
+}
+
+.chat-markdown-content-styles blockquote {
+  margin-top: 0.9em;
+  margin-bottom: 1em;
+  margin-left: 0;
+  padding-left: 0;
+  padding-right: calc(var(--spacing) * 3.2);
+  border: 0;
+  background-color: transparent;
+  color: var(--color-slate-500);
+  font-style: italic;
+}
+
+.chat-markdown-content-styles :not(pre) > code {
+  border-radius: var(--radius-sm);
+  border-width: 1px;
+  border-style: solid;
+  border-color: var(--color-slate-200);
+  background-color: var(--color-slate-100);
+  padding-left: 0.34em;
+  padding-right: 0.34em;
+  padding-top: 0.12em;
+  padding-bottom: 0.12em;
+  font-size: 0.9em;
+  color: var(--color-slate-600);
+  overflow-wrap: anywhere;
+}
+
+.chat-markdown-content-styles pre {
+  margin-top: 0.8em;
+  margin-bottom: 1em;
+  max-width: 100%;
+  overflow-x: auto;
+  border-radius: 0;
+  border: 0;
+  background-color: transparent;
+}
+
+.chat-markdown-content-styles pre code {
+  display: block;
+  min-width: max-content;
+  border: 0;
+  background-color: transparent;
+  padding-left: calc(var(--spacing) * 4);
+  padding-right: calc(var(--spacing) * 4);
+  padding-top: calc(var(--spacing) * 3.6);
+  padding-bottom: calc(var(--spacing) * 3.6);
+  white-space: pre;
+  overflow-wrap: normal;
+  word-break: normal;
+}
+
+.chat-markdown-content-styles [data-streamdown="code-block"] {
+  margin-top: 0.8em;
+  margin-bottom: 1em;
+  gap: 0;
+  overflow: hidden;
+  border-radius: var(--radius);
+  border-width: 1px;
+  border-style: solid;
+  border-color: var(--color-slate-200);
+  background-color: var(--color-white);
+  padding: 0;
+}
+
+.chat-markdown-content-styles [data-streamdown="code-block-header"] {
+  display: none;
+  height: calc(var(--spacing) * 7.5);
+  border-bottom-width: 1px;
+  border-bottom-style: solid;
+  border-bottom-color: var(--color-slate-100);
+  padding-left: calc(var(--spacing) * 2);
+  padding-right: calc(var(--spacing) * 2);
+}
+
+.chat-markdown-content-styles [data-streamdown="code-block-actions"] {
+  gap: calc(var(--spacing) * 0.5);
+  border: 0;
+  background-color: color-mix(in srgb, var(--color-white) 88%, transparent);
+  box-shadow: none;
+  pointer-events: auto;
+}
+
+.chat-markdown-content-styles [data-streamdown="mermaid-block-actions"] {
+  pointer-events: auto;
+}
+
+.chat-markdown-content-styles [data-streamdown="code-block-body"] {
+  border-radius: 0;
+  border: 0;
+  background-color: transparent;
+  padding: 0;
+}
+
+.chat-markdown-content-styles [data-streamdown="code-block-body"] pre {
+  margin: 0;
+}
+
+.chat-markdown-content-styles table {
+  width: max-content;
+  min-width: 100%;
+  border-collapse: collapse;
+  background-color: var(--color-white);
+  font-size: var(--text-13);
+}
+
+.chat-markdown-content-styles th,
+.chat-markdown-content-styles td {
+  border-bottom-width: 1px;
+  border-bottom-style: solid;
+  border-bottom-color: var(--color-slate-200);
+  padding-left: calc(var(--spacing) * 2.8);
+  padding-right: calc(var(--spacing) * 2.8);
+  padding-top: calc(var(--spacing) * 2.2);
+  padding-bottom: calc(var(--spacing) * 2.2);
+  text-align: left;
+  vertical-align: top;
+}
+
+.chat-markdown-content-styles th {
+  font-weight: 650;
+  color: var(--color-slate-500);
+}
+
+.chat-markdown-content-styles table,
+.chat-markdown-content-styles img,
+.chat-markdown-content-styles video,
+.chat-markdown-content-styles iframe {
+  max-width: 100%;
+}
+
+.chat-markdown-content-styles [data-streamdown="table-wrapper"] table {
+  max-width: none;
+}
+
+.chat-markdown-content-styles [data-streamdown="table-wrapper"] > div:first-child > div > div {
+  min-width: calc(var(--spacing) * 30);
+}
+
+.chat-markdown-content-styles [data-streamdown="table-wrapper"] > div:first-child > div > div > button {
+  white-space: nowrap;
+  overflow-wrap: normal;
+}
+
+.chat-markdown-content-styles img {
+  margin-left: auto;
+  margin-right: auto;
+  display: block;
+  height: auto;
+}
+
+.chat-markdown-content-styles hr {
+  margin-top: calc(var(--spacing) * 5.6);
+  margin-bottom: calc(var(--spacing) * 5.6);
+  height: calc(var(--spacing) * 0.25);
+  border: 0;
+  background-color: var(--color-slate-200);
+}

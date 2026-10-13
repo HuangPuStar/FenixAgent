@@ -12,6 +12,9 @@
   "dependencies": {
     "@fenix/plugin-sdk": "workspace:*"
   },
+  "devDependencies": {
+    "@fenix/opencode": "workspace:*"
+  },
   "scripts": {
     "build": "bun build src/index.ts --outdir dist --format esm",
     "typecheck": "tsc -p tsconfig.json --noEmit",

@@ -1,0 +1,211 @@
+// DefaultAppShell.tsx
+// 默认 WebShell：控制台外壳的品牌区、侧栏、内容槽与聊天保活。
+//
+// **为什么落 `apps/web/src/shell/`**：全局布局属于应用壳而不属于任何资源模块（standards §4.1），
+// 浏览器产物 `apps/generated/web-contributions.ts` 与 `apps/web/fenix.module.ts` 的
+// `kind: "web-shell"` 又要求壳的实现有一个确定落点。本文件与 `AgentSidebar*` 在 §1.6 T11d 从
+// `pages/agent-panel/` 迁入本目录：它们只做品牌、布局、导航与容器，不含任何资源模块的业务语义，留在
+// `pages/` 会与真正的资源页面混同。同批迁入的 `shell/agent-panel.css` 与两份侧栏伴随表
+// （`AgentSidebar.css` / `ShellNavigation.css`）已于 2026-09-28 退役——前者唯一存续的职责（把 chat
+// 关键帧挂进初始静态包）改由 `src/index.css` 顶部的 `@import` 承担，本文件因此不再导入样式表。
+// （同批迁入的 `ArtifactsPanel` 一簇是**页面级**的跨资源包装配，2026-09-28 已按「跟着唯一生产消费者走」
+// 归位 `apps/web/src/pages/agent-panel/artifacts/`。）
+//
+// **与 `packages/*/web` 的边界**：外壳不实现业务能力，只消费各包贡献的导航声明（见
+// `./shell-navigation.ts`）与路由目标。业务页面经 TanStack 文件路由挂在 `<Outlet/>` 上。
+
+import { AgentFormDialog } from "@fenix/agent-config/web";
+import { resolveCreatedAgentChatTarget } from "@fenix/agent-config/web/lib/agent-create-navigation";
+import { envApi } from "@fenix/agent-runtime/web/api/environments";
+import { unwrap } from "@fenix/web-runtime/api/request";
+import { dispatchConfigChange } from "@fenix/web-runtime/lib/config-events";
+import type { AbsoluteToPath, RegisteredRouter } from "@tanstack/react-router";
+import { Outlet, useNavigate, useRouter, useRouterState } from "@tanstack/react-router";
+import { useCallback, useRef, useState } from "react";
+import { useTranslation } from "react-i18next";
+import { toast } from "sonner";
+import { NS } from "@/src/i18n";
+import { ChatArea } from "@/src/pages/agent-panel/ChatArea";
+import { AgentSidebar } from "./AgentSidebar";
+import { PANEL_ROUTE_PREFIX, panelRoutePath } from "./shell-navigation";
+
+/**
+ * 侧栏能落到的路由目标类型：`/agent/<id>` 形态的面板页路径。
+ *
+ * 联合来自**注册的 router**（`main.tsx` 的 `Register` 声明，即 `routeTree.gen`）而不是手写清单：
+ * 路由壳改名或删除时类型跟着变，指向不存在页面的目标就通不过类型检查。
+ */
+type PanelRoutePath = Extract<AbsoluteToPath<RegisteredRouter, "/">, `${typeof PANEL_ROUTE_PREFIX}${string}`>;
+
+/**
+ * `path` 是否真是当前路由表里的面板页路径。
+ *
+ * 判据取自 `router.routesByPath`（router 的公开字段）——与 `PanelRoutePath` 出自同一份路由产物，
+ * 因此这里不会出现「类型断言说合法、路由表里其实没有」的漂移。
+ */
+function isPanelRoutePath(router: RegisteredRouter, path: string): path is PanelRoutePath {
+  return path.startsWith(PANEL_ROUTE_PREFIX) && path in router.routesByPath;
+}
+
+export function DefaultAppShell() {
+  const navigate = useNavigate();
+  const router = useRouter();
+  const { t } = useTranslation(NS.AGENT_PANEL);
+  // 仅订阅 pathname：避免 useRouterState() 无选择器订阅全部路由状态
+  // 导致每次 search/hash/loader 变动都触发级联重渲染
+  const pathname = useRouterState({ select: (s) => s.location.pathname });
+  const pathParts = pathname
+    .replace(/^\/agent\/?/, "")
+    .split("/")
+    .filter(Boolean);
+
+  const [panelHost, setPanelHost] = useState<HTMLDivElement | null>(null);
+  const [createDialogOpen, setCreateDialogOpen] = useState(false);
+  const [deletedEnvironmentIds, setDeletedEnvironmentIds] = useState<ReadonlySet<string>>(() => new Set());
+  const [configDialog, setConfigDialog] = useState<{ open: boolean; agentName: string }>({
+    open: false,
+    agentName: "",
+  });
+
+  const activeNav = (() => {
+    const segment = pathParts[0] ?? "";
+    if (segment === "" || segment === "home" || pathname === "/agent") return "home";
+    if (segment === "chat") return null;
+    return segment;
+  })();
+  const selectedEnvironmentId = pathParts[0] === "chat" ? (pathParts[1] ?? null) : null;
+
+  /**
+   * 侧栏导航：`id` 即路由目标（§2.6），目标路径为 `/agent/<id>`。
+   *
+   * 旧写法 `navigate({ to: `/agent/${pageId}` as never })` 用 `as never` 把路径直接塞给 TanStack，
+   * 既不进类型检查，也没有任何地方保证这个 id 有对应路由。现在先让路径过一遍**当前路由表**
+   * （`router.routesByPath`，与 `PanelRoutePath` 同源）再导航，类型与运行时用的是同一份路由产物。
+   *
+   * 命不中的分支在正确构建下不可达——`apps/web/src/__tests__/shell-navigation-routes.test.ts` 用的是**同一
+   * 字段与同一拼法**（`router.routesByPath` + `panelRoutePath()`），每个导航 id 都有路由、字段与键也没变
+   * 形，它都断言过；真走到这里只可能是「包声明了导航却没建路由壳」的装配漂移，此时不导航，把问题留在
+   * 装配期而不是把用户丢进空白页。
+   */
+  const handleNavigate = useCallback(
+    (pageId: string) => {
+      const to = panelRoutePath(pageId);
+      if (!isPanelRoutePath(router, to)) return;
+      void navigate({ to });
+    },
+    [navigate, router],
+  );
+
+  const handleSelectInstance = useCallback(
+    (_instanceId: string, envId: string, sessionId: string | null) => {
+      if (sessionId) {
+        void navigate({
+          to: "/agent/chat/$agentId/$sessionId",
+          params: { agentId: envId, sessionId },
+        });
+      } else {
+        void navigate({
+          to: "/agent/chat/$agentId",
+          params: { agentId: envId },
+        });
+      }
+    },
+    [navigate],
+  );
+
+  // 新建智能体成功后，确保进入真实实例并导航到聊天页
+  const handleCreateSuccess = useCallback(
+    async (agentConfigId?: string) => {
+      if (!agentConfigId) return;
+      try {
+        const target = await resolveCreatedAgentChatTarget(agentConfigId, {
+          list: async () => {
+            const environments = await unwrap(envApi.list());
+            return Array.isArray(environments) ? environments : [];
+          },
+          create: async (body) => unwrap(envApi.create(body)),
+          enter: async (environmentId) => unwrap(envApi.enter({ id: environmentId })),
+        });
+        void navigate({
+          to: "/agent/chat/$agentId/$sessionId",
+          params: { agentId: target.environmentId, sessionId: target.instanceUid },
+        });
+        dispatchConfigChange("agents");
+      } catch (e) {
+        console.error("创建智能体后导航失败:", e);
+        // 智能体此时已经创建成功，失败的是「进入实例并打开会话」这一步。
+        // 不提示的话用户停在列表页，会以为创建整体失败而重复创建；提示带上服务端 message 以便定位。
+        toast.error(e instanceof Error ? e.message : t("agentCreatedNavFailed"));
+      }
+    },
+    [navigate, t],
+  );
+
+  // ── Chat keep-alive：始终渲染 ChatArea，仅通过 CSS 切换可见性 ──
+  //   从 URL 解析 agentId/sessionId，仅在用户主动进入 chat 路由时更新；
+  //   切到非 chat 页面时保留上次的 agentId，ChatPanel 保持挂载/连接。
+  const isChatRoute = pathParts[0] === "chat";
+  const chatAgentId = isChatRoute ? (pathParts[1] ?? null) : null;
+  const chatSessionId = isChatRoute ? (pathParts[2] ?? null) : null;
+
+  const lastChatAgentRef = useRef<string | null>(null);
+  const lastChatSessionRef = useRef<string | null>(null);
+  if (chatAgentId) {
+    lastChatAgentRef.current = chatAgentId;
+    lastChatSessionRef.current = chatSessionId;
+  }
+
+  const handleDeleteAgentEnvironments = useCallback(
+    (environmentIds: string[]) => {
+      if (environmentIds.length === 0) return;
+      setDeletedEnvironmentIds((current) => new Set([...current, ...environmentIds]));
+      if (selectedEnvironmentId && environmentIds.includes(selectedEnvironmentId)) {
+        lastChatAgentRef.current = null;
+        lastChatSessionRef.current = null;
+        void navigate({ to: "/agent/home" });
+      }
+    },
+    [navigate, selectedEnvironmentId],
+  );
+
+  return (
+    <div className="agent-panel-layout flex h-dvh w-full overflow-visible">
+      <AgentSidebar
+        activeNav={activeNav}
+        selectedEnvironmentId={selectedEnvironmentId}
+        selectedInstanceId={isChatRoute ? chatSessionId : lastChatSessionRef.current}
+        onSelectInstance={handleSelectInstance}
+        onNavigate={handleNavigate}
+        onCreateAgent={() => setCreateDialogOpen(true)}
+        onEditAgent={(agentName) => setConfigDialog({ open: true, agentName })}
+        onDeleteAgentEnvironments={handleDeleteAgentEnvironments}
+      />
+      <div
+        className="agent-panel-body flex min-w-0 min-h-0 flex-1 flex-col overflow-hidden bg-(--color-canvas)"
+        ref={setPanelHost}
+      >
+        <Outlet />
+        <ChatArea
+          agentId={lastChatAgentRef.current}
+          sessionId={lastChatSessionRef.current}
+          visible={isChatRoute}
+          deletedEnvironmentIds={deletedEnvironmentIds}
+        />
+      </div>
+      <AgentFormDialog
+        open={createDialogOpen}
+        onOpenChange={setCreateDialogOpen}
+        mode="create"
+        portalContainer={panelHost}
+        onSuccess={handleCreateSuccess}
+      />
+      <AgentFormDialog
+        open={configDialog.open}
+        onOpenChange={(open) => setConfigDialog((prev) => ({ ...prev, open }))}
+        mode="edit"
+        agentName={configDialog.agentName}
+        portalContainer={panelHost}
+      />
+    </div>
+  );
+}

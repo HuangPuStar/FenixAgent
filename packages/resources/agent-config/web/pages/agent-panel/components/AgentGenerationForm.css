@@ -1,0 +1,8 @@
+.agent-generation-form-submit {
+  box-shadow:
+    var(--tw-inset-shadow, 0 0 #0000),
+    var(--tw-inset-ring-shadow, 0 0 #0000),
+    var(--tw-ring-offset-shadow, 0 0 #0000),
+    var(--tw-ring-shadow, 0 0 #0000),
+    0 4px 14px rgba(15, 107, 255, 0.3);
+}

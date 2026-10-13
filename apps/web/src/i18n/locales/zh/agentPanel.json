@@ -1,0 +1,7 @@
+{
+  "showArtifacts": "显示内容面板",
+  "resizeArtifacts": "调整右侧工作区宽度",
+  "connecting": "正在连接...",
+  "loading_agent_panel": "加载智能体面板...",
+  "agentCreatedNavFailed": "智能体已创建，但打开会话失败，请从列表重新进入"
+}

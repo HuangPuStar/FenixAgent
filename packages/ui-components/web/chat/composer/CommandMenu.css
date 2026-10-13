@@ -1,0 +1,21 @@
+.chat-command-surface {
+  box-shadow: 0 8px 28px rgb(41 58 88 / 10%);
+}
+.chat-command-surface--panel {
+  box-shadow: 0 5px 20px rgb(41 58 88 / 5%);
+}
+.chat-command-row {
+  grid-template-columns: 16px minmax(120px, max-content) minmax(0, 1fr) auto;
+}
+.chat-command-row--panel {
+  grid-template-columns: 16px minmax(150px, max-content) minmax(0, 1fr) auto;
+}
+.chat-command-row--mcp {
+  grid-template-columns: 16px minmax(120px, 220px) minmax(0, 1fr) auto;
+}
+.chat-command-scroll {
+  height: min(322px, 46vh);
+}
+.chat-command-scroll--panel {
+  height: min(210px, 34vh);
+}

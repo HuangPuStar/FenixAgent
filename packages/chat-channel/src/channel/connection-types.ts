@@ -84,6 +84,17 @@ export interface SharedRelay {
    * 被 clobber、绑定校验丢弃当前会话增量、误开回放窗口）。请求出口登记、响应消费后删除。
    */
   pendingSessionSyncIds?: Set<number | string>;
+  /** 会话变更按 RPC id 等待 Agent 结果，避免发送成功被误报为持久化成功。 */
+  pendingSessionMutations?: Map<number | string, (succeeded: boolean) => void>;
+  /**
+   * 最近一次发出的会话同步请求 rpcId（create/load/resume）。
+   * 同一 relay 上可能同时存在多个在途会话同步请求（用户在响应到达前再次切换会话，
+   * 或引导流程的自动恢复与用户点击重叠）。响应帧只有 id，无法区分「最新目标」与
+   * 「已被用户切走的旧目标」：迟到的旧响应若照常提交，会把 registry 活跃会话回绑到
+   * 旧 ACP session 并改写投影 sessionId，此后当前会话的回放/流式增量全部被绑定校验
+   * 丢弃——客户端消息区空白。因此只有该 id 的响应才允许提交会话同步结果。
+   */
+  latestSessionSyncRpcId?: number | string | null;
   /**
    * 在途 prompt 请求（send_prompt）的 rpcId 集合。Agent 子进程死亡等场景下 acp-link
    * 以 JSON-RPC error 响应（-32000 No active session / -32603 Prompt failed）拒绝
@@ -105,7 +116,9 @@ export interface SharedRelay {
    * load_session 回放窗口截止时间戳（ms）。load_session 成功后短暂开启，
    * 期间到达的无 turnId user_message 由 relay-event-handler 分配回放 turnId，
    * 使 Agent 全量回放的历史增量能够投影为时间线（无持久化快照时的历史恢复来源）；
-   * 窗口外到达的无 turnId user_message（实时回显）保持原语义丢弃。
+   * 窗口外到达的无 turnId user_message 由 relay-event-handler 分类：文档已有同文本
+   * user entry（实时回显 / 迟到回放）丢弃，否则按真异步回调建立独立条目
+   * （见 callbackAssistantEntryId / callbackBindingTurnId）。
    */
   replayWindowUntil: number | null;
   /**
@@ -125,6 +138,28 @@ export interface SharedRelay {
    * 开启时判定一次：空 doc（冷启动/切换清空）→ 允许合成；有内容（重连）→ 跳过。
    */
   replaySkipSynthesis?: boolean;
-  /** 未结束 callback 的独立 assistant 历史 entry，禁止无头 chunk 回退到主 active turn。 */
+  /**
+   * 未结束 callback 的独立 assistant 历史 entry，禁止无头 chunk 回退到主 active turn。
+   * 绑定在消费端按事实校验（见下方两个代际字段），不在 openReplayWindow 里清空。
+   */
   callbackAssistantEntryId?: string | null;
+  /**
+   * callback 绑定的代际之一：建立 `callbackAssistantEntryId` 时的 activeTurnId
+   * （无活动 turn 时为 null）。无 turnId 增量到达时若当前 activeTurnId 已变，
+   * 说明绑定属于上一轮/更早的回调流，必须失效——否则新 turn 的回答会被追加进
+   * 遥远的旧 callback assistant entry（2026-09-24 聚合错位根因）。
+   * 依赖「turn 终态后 activeTurnId 不被清空」（收敛只改状态，全仓库无置 null 调用点）：
+   * 若将来引入活动 turn 清空，跨代判定会把回调流整体误判为跨代。
+   */
+  callbackBindingTurnId?: string | null;
+  /**
+   * callback 绑定的代际之二：建立 `callbackAssistantEntryId` 时的投影 generation
+   * （`DocManager.getProjectionGeneration`，投影尚未完整打开时为 null）。
+   * 无 turnId 增量到达时若当前 generation 与记录不一致，说明投影已被替换
+   * （load/resume 换代），绑定指向的 `callback_*` entry 在新投影中不存在，
+   * 继续按绑定归属会被聚合层以 "callback assistant entry not found" 拒绝（静默丢内容）。
+   * 按事实判定而非在 openReplayWindow 里清空：同会话 load（刷新页面恢复）不换代、
+   * 绑定仍有效，清空会让在途回调的尾部增量全部失去归属。
+   */
+  callbackBindingGeneration?: string | null;
 }

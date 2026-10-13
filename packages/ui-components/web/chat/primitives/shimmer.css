@@ -1,0 +1,21 @@
+.shimmer-cascade-char {
+  background-image: linear-gradient(
+    90deg,
+    var(--color-text-muted) 0%,
+    var(--color-brand-light) 50%,
+    var(--color-text-muted) 100%
+  );
+  background-size: 200% 100%;
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+  animation: shimmerSlide 2s ease-in-out infinite;
+  animation-delay: var(--shimmer-sweep-delay, 0s);
+}
+@media (prefers-reduced-motion: reduce) {
+  .shimmer-cascade-char {
+    animation: none;
+    background-image: none;
+    -webkit-text-fill-color: currentcolor;
+  }
+}

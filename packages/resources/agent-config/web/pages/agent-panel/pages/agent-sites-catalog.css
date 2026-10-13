@@ -1,0 +1,28 @@
+/* biome-ignore-all lint/style/noDescendingSpecificity: 站点卡片按容器、卡头、正文、页脚层级组织。 */
+.agent-sites-page {
+  color: var(--color-slate-800);
+}
+.site-search-field {
+  width: min(560px, 100%);
+}
+.site-directory-heading {
+  box-shadow: inset 0 -1px var(--color-slate-200);
+}
+.site-deployment-card {
+  box-shadow: 0 5px 18px rgb(36 57 92 / 5%);
+}
+.site-deployment-card > header {
+  grid-template-columns: 38px minmax(0, 1fr) 30px;
+}
+
+@media (max-width: 950px) {
+  .site-commandbar {
+    align-items: stretch;
+    flex-direction: column;
+  }
+  .site-visibility-filter {
+    width: max-content;
+    max-width: 100%;
+    overflow-x: auto;
+  }
+}

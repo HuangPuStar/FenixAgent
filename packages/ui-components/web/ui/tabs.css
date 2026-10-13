@@ -1,0 +1,7 @@
+.tabs-trigger {
+  --tabs-trigger-height: calc(100% - 1px);
+}
+.tabs-trigger svg {
+  pointer-events: none;
+  flex-shrink: 0;
+}

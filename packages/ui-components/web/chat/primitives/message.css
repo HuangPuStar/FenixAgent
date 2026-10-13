@@ -1,0 +1,22 @@
+.message-branch > div,
+.message-branch-content > div {
+  padding-bottom: 0;
+}
+
+.message-branch-selector > *:not(:first-child) {
+  border-top-left-radius: var(--radius-md);
+  border-bottom-left-radius: var(--radius-md);
+}
+
+.message-branch-selector > *:not(:last-child) {
+  border-top-right-radius: var(--radius-md);
+  border-bottom-right-radius: var(--radius-md);
+}
+
+.message-response > *:first-child {
+  margin-top: 0;
+}
+
+.message-response > *:last-child {
+  margin-bottom: 0;
+}

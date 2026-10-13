@@ -1,0 +1,172 @@
+/**
+ * HTML 文件预览插件（从 apps/web 的 `agent-panel/preview/html-plugin.ts` 逐字复制）。
+ *
+ * 纯化取舍：
+ * 1. 唯一依赖是 `@open-file-viewer/core` 的类型；不读取宿主 i18n、不引用宿主样式表。
+ * 2. 标签「渲染预览」/「源码」、兜底串「源码加载失败」与 `setError` 的两条中文提示为**硬编码中文**，
+ *    刻意不消费宿主字典：该插件直接操作 DOM（非 React 树），接入 i18n 需要在插件工厂上新增标签参数，
+ *    属契约扩张。这条偏离登记在包 README「已知限制」第 12 条（含影响范围与移除条件），
+ *    需要多语言的宿主可自行派生插件或传入自定义文案。
+ * 3. 插件名 `fenix-html-preview` 与源实现保持一致，避免宿主按插件名做排序/去重时行为分叉。
+ * 4. 「源码」页的正文取数由调用方注入（`htmlPreviewPlugin(fetchPreview)`）：源实现直接调全局 `fetch`
+ *    读宿主文件代理路由，那是组件直连后端（§5.8）。本插件在 DOM 里跑、不在 React 树内，取数只能经
+ *    参数注入 —— 宿主实现是 `apps/web/src/api/fs.ts` 的 `readPreviewSource`。
+ */
+
+import type { PreviewContext, PreviewInstance, PreviewPlugin } from "@open-file-viewer/core";
+import { PREVIEW_FRAME_CONTAINER_STYLE, PREVIEW_FRAME_IFRAME_STYLE } from "./internal/frame-styles";
+import type { PreviewFetch } from "./preview-source";
+
+/**
+ * HTML 文件预览插件。
+ *
+ * 与 textPlugin 不同：textPlugin 将 HTML 作为纯文本代码展示，
+ * 本插件用 iframe 渲染 HTML 的实际页面效果。
+ *
+ * 安全策略：iframe 固定 `sandbox="allow-scripts"`（§6.2 / §6.1）。文件正文是用户上传或 Agent 产出的
+ * UGC，与 `src` 同源，因此**必须去掉 `allow-same-origin`**——`allow-scripts` + `allow-same-origin`
+ * 的组合下，脚本能自行摘掉 sandbox、读写宿主页面的 DOM 与存储；去掉后脚本仍能跑，但工作在 opaque
+ * origin 里。allow-scripts 保留是刻意的：HTML 预览的意义就是看页面实际效果。同批加 `referrerpolicy`
+ * 为 `no-referrer`，避免预览内容向第三方泄露宿主地址。
+ *
+ * 插件位置应在 textPlugin 之前，避免被 textPlugin 优先匹配。
+ *
+ * @param fetchPreview - 注入的取数函数（「源码」页读正文用）；见 `PreviewFetch` 的说明。
+ */
+export function htmlPreviewPlugin(fetchPreview: PreviewFetch): PreviewPlugin {
+  /** iframe 加载超时（毫秒），超时后强制隐藏 loading */
+  const LOAD_TIMEOUT_MS = 15000;
+
+  return {
+    name: "fenix-html-preview",
+
+    match(file) {
+      const ext = file.extension?.toLowerCase();
+      return ext === "html" || ext === "htm";
+    },
+
+    render(ctx: PreviewContext): PreviewInstance {
+      const { viewport, file, setLoading, setError } = ctx;
+      const src = file.url ?? (typeof file.source === "string" ? file.source : undefined);
+
+      if (!src) {
+        setError("无法获取 HTML 文件的预览地址");
+        return { destroy: () => {} };
+      }
+
+      setLoading(true);
+
+      // 加载超时兜底：15 秒后无论是否加载完成都结束 loading
+      const loadTimer = setTimeout(() => setLoading(false), LOAD_TIMEOUT_MS);
+
+      // 创建 iframe 容器
+      const container = document.createElement("div");
+      container.style.cssText = PREVIEW_FRAME_CONTAINER_STYLE;
+
+      // 源码 / 预览 切换标签栏
+      // 标签文案硬编码中文（见文件头注释第 2 条）；style 与源实现一致，依赖 ofv-* 变量回退到源配色。
+      const tabBar = document.createElement("div");
+      tabBar.style.cssText =
+        "display:flex;align-items:center;gap:8px;padding:4px 8px;border-bottom:1px solid var(--ofv-border, #d1d5db);background:var(--ofv-surface, #fff);flex-shrink:0;";
+      tabBar.id = "fenix-html-tabbar";
+
+      const previewTab = document.createElement("span");
+      previewTab.textContent = "渲染预览";
+      previewTab.style.cssText = "font-size:12px;cursor:pointer;padding:2px 6px;border-radius:4px;";
+      const sourceTab = document.createElement("span");
+      sourceTab.textContent = "源码";
+      sourceTab.style.cssText = "font-size:12px;cursor:pointer;padding:2px 6px;border-radius:4px;";
+
+      // 激活样式：浅色模式下的高亮
+      const activeCSS = "background:var(--ofv-surface-muted, #f5f5f5);font-weight:600;color:var(--ofv-text, #1e1e1e);";
+      const inactiveCSS = "color:var(--ofv-text-muted, #888);";
+
+      previewTab.setAttribute("style", inactiveCSS);
+      sourceTab.setAttribute("style", inactiveCSS);
+
+      // iframe 预览区
+      const iframe = document.createElement("iframe");
+      iframe.src = src;
+      // 仅允许脚本执行，禁止 allow-same-origin 以防止访问父页面 DOM
+      iframe.setAttribute("sandbox", "allow-scripts");
+      iframe.setAttribute("referrerpolicy", "no-referrer");
+      iframe.style.cssText = PREVIEW_FRAME_IFRAME_STYLE;
+      iframe.title = file.name;
+
+      // 源码预览区（初始隐藏）
+      const srcView = document.createElement("div");
+      srcView.style.cssText = "flex:1;width:100%;display:none;overflow:auto;";
+      srcView.className = "fenix-html-source-view";
+
+      // 切换函数
+      function showPreview() {
+        previewTab.setAttribute("style", activeCSS);
+        sourceTab.setAttribute("style", inactiveCSS);
+        iframe.style.display = "";
+        srcView.style.display = "none";
+      }
+      function showSource() {
+        previewTab.setAttribute("style", inactiveCSS);
+        sourceTab.setAttribute("style", activeCSS);
+        iframe.style.display = "none";
+        srcView.style.display = "";
+      }
+      showPreview();
+
+      previewTab.addEventListener("click", showPreview);
+      sourceTab.addEventListener("click", showSource);
+
+      tabBar.appendChild(previewTab);
+      tabBar.appendChild(sourceTab);
+      container.appendChild(tabBar);
+      container.appendChild(iframe);
+      container.appendChild(srcView);
+
+      // 异步加载 HTML 文本内容用于源码展示（取数函数由宿主注入，插件不自持 fetch）
+      void fetchPreview(src)
+        .then((r) => {
+          if (!r.ok) throw new Error(`HTTP ${r.status}`);
+          return r.text();
+        })
+        .then((text) => {
+          const pre = document.createElement("pre");
+          pre.style.cssText =
+            "margin:0;padding:12px;font:12px/1.5 ui-monospace,monospace;white-space:pre-wrap;word-break:break-all;";
+          pre.textContent = text;
+          srcView.appendChild(pre);
+        })
+        .catch(() => {
+          // 硬编码中文兜底文案（见文件头注释第 2 条）
+          srcView.innerHTML =
+            '<div style="padding:16px;color:var(--ofv-text-muted,#6b7280);font-size:13px;">源码加载失败</div>';
+        });
+
+      // iframe 加载完成或错误时结束 loading
+      const finish = () => {
+        clearTimeout(loadTimer);
+        setLoading(false);
+      };
+      iframe.addEventListener("load", finish, { once: true });
+      iframe.addEventListener(
+        "error",
+        () => {
+          finish();
+          setError("HTML 预览加载失败");
+        },
+        { once: true },
+      );
+
+      viewport.appendChild(container);
+
+      return {
+        resize(_size) {
+          // iframe 自适应，无需额外处理
+        },
+        destroy() {
+          clearTimeout(loadTimer);
+          container.remove();
+        },
+      };
+    },
+  };
+}

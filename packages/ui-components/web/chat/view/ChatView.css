@@ -1,0 +1,30 @@
+.chat-empty-heading {
+  font-family: Georgia, "Songti SC", serif;
+}
+
+.chat-empty-prompt-list {
+  width: min(460px, 100%);
+}
+
+.chat-empty-prompt-button:hover {
+  box-shadow: 0 6px 18px rgb(36 99 235 / 8%);
+}
+.chat-active-prompt-entry[data-active-prompt] {
+  animation: chat-active-prompt-flash 900ms ease-out;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .chat-active-prompt-entry[data-active-prompt] {
+    animation: none;
+  }
+}
+.chat-loading-beam {
+  animation: chat-loading-sweep 1.8s ease-in-out infinite;
+}
+@media (prefers-reduced-motion: reduce) {
+  .chat-loading-beam {
+    animation: none;
+    opacity: 1;
+    transform: translateX(100%);
+  }
+}

@@ -1,0 +1,27 @@
+{
+  // 包内类型检查入口：**自包含**，不 extends 任何包外 tsconfig —— 包的编译设置不得由宿主应用决定。
+  // 本包 `exports` 指向 `src/*.ts`，消费方直接编译本包源码，因此必须能独立通过类型检查。
+  // 门禁：`scripts/typecheck-packages.ts`（`bun run typecheck:packages`，已接入 precheck 与 CI）。
+  // - `db/**` 是本包 owner 的表定义，纳入检查（跨包外键的组装期导入见工程标准 §6.1）；
+  // - 无 `paths`：跨包一律走各包 `exports`；
+  // - 末条 include 是各包自带的类型垫片，保证经 `exports` 引到的对端文件在本程序内解析自己的 import。
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "lib": ["ES2022", "DOM", "DOM.Iterable"],
+    "jsx": "react-jsx",
+    "types": ["bun"],
+    "strict": true,
+    "esModuleInterop": true,
+    "skipLibCheck": true,
+    "forceConsistentCasingInFileNames": true,
+    "resolveJsonModule": true,
+    "isolatedModules": true,
+    "verbatimModuleSyntax": true,
+    "allowImportingTsExtensions": true,
+    "noEmit": true,
+    "rootDir": "../../.."
+  },
+  "include": ["fenix.module.ts", "src/**/*.ts", "db/**/*.ts", "../../*/web/**/*.d.ts", "../../*/*/web/**/*.d.ts"]
+}

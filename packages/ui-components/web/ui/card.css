@@ -1,0 +1,6 @@
+.card-header {
+  grid-template-rows: auto auto;
+}
+.card-header:has([data-slot="card-action"]) {
+  grid-template-columns: 1fr auto;
+}

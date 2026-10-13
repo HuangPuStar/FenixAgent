@@ -1,0 +1,3 @@
+.memory-detail-panel-card {
+  max-height: calc(100vh - 120px);
+}

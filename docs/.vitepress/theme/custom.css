@@ -1,8 +1,3 @@
-/* ============================================
-   FenixAgent — Custom Theme
-   ============================================ */
-
-/* ====== Design Tokens ====== */
 
 :root {
   --rcs-brand: #1677ff;
@@ -22,8 +17,6 @@
     system-ui, -apple-system, "Segoe UI", Roboto, "Noto Sans SC", "PingFang SC", "Microsoft YaHei", sans-serif;
   --rcs-sidebar-w: 200px;
   --rcs-outline-w: 180px;
-
-  /* VitePress overrides */
   --vp-c-brand-1: var(--rcs-brand);
   --vp-c-brand-2: var(--rcs-brand-light);
   --vp-c-brand-3: var(--rcs-brand-dark);
@@ -86,8 +79,6 @@
   --vp-code-lang-color: #64748b;
 }
 
-/* ====== Global ====== */
-
 ::selection {
   background: rgba(22, 119, 255, 0.2);
 }
@@ -96,12 +87,6 @@ body {
   font-family: var(--rcs-sans);
   -webkit-font-smoothing: antialiased;
 }
-
-/* =============================================
-   DOC PAGE LAYOUT
-   ============================================= */
-
-/* ---- Sidebar ---- */
 
 .VPSidebar {
   width: var(--vp-sidebar-width);
@@ -117,8 +102,6 @@ body {
 .VPSidebar .cur-section {
   border-left: none;
 }
-
-/* group label */
 .VPSidebarGroup .group-text {
   font-size: 10.5px;
   font-weight: 600;
@@ -132,8 +115,6 @@ body {
 .VPSidebarGroup .group-items {
   padding-bottom: 0;
 }
-
-/* each sidebar item */
 .VPSidebarItem {
   padding: 0;
 }
@@ -150,15 +131,11 @@ body {
 .VPSidebarItem .item:hover {
   background: var(--rcs-bg-mute);
 }
-
-/* left indicator bar */
 .VPSidebarItem.is-active > .item > .indicator {
   width: 3px;
   border-radius: 2px;
   background-color: var(--rcs-brand);
 }
-
-/* item text — default */
 .VPSidebarItem .text {
   font-size: 13px;
   font-weight: 450;
@@ -170,27 +147,19 @@ body {
 .VPSidebarItem .item:hover .text {
   color: var(--rcs-text);
 }
-
-/* item text — active */
 .VPSidebarItem.is-active > .item > .link > .text {
   color: var(--rcs-brand);
   font-weight: 600;
 }
-
-/* nested items (level-1) — slight indent */
 .VPSidebarItem .items {
   margin-left: 2px;
 }
 
-
-/* sidebar footer separator (GitHub link area) */
 .VPSidebar .sidebar-footer {
   margin-top: 4px;
   padding-top: 8px;
   border-top: 1px solid var(--rcs-border);
 }
-
-/* ---- Content Area ---- */
 
 .VPDoc .content-container {
   max-width: 100%;
@@ -199,8 +168,6 @@ body {
 .vp-doc {
   max-width: 100%;
 }
-
-/* -- Page Title (h1) -- */
 
 .vp-doc > div > h1 {
   font-size: 28px;
@@ -213,8 +180,6 @@ body {
   border-bottom: 1px solid var(--rcs-border);
   color: var(--rcs-text);
 }
-
-/* -- Headings -- */
 
 .vp-doc h2 {
   font-size: 20px;
@@ -247,16 +212,12 @@ body {
   margin-bottom: 4px;
 }
 
-/* -- Paragraphs -- */
-
 .vp-doc p {
   font-size: 14px;
   line-height: 1.7;
   color: var(--rcs-text-2);
   margin-bottom: 16px;
 }
-
-/* -- Links -- */
 
 .vp-doc a {
   color: var(--rcs-brand);
@@ -273,8 +234,6 @@ body {
   border-bottom-color: var(--rcs-brand);
 }
 
-/* -- Inline Code -- */
-
 .vp-doc :not(div):not(pre) > code {
   font-family: var(--rcs-mono);
   font-size: 0.88em;
@@ -285,8 +244,6 @@ body {
   border-radius: 5px;
   border: 1px solid rgba(22, 119, 255, 0.12);
 }
-
-/* -- Code Blocks -- */
 
 .vp-doc div[class*="language-"] {
   border-radius: 12px;
@@ -316,8 +273,6 @@ body {
   line-height: 1.6;
 }
 
-/* -- Lists -- */
-
 .vp-doc ul,
 .vp-doc ol {
   padding-left: 22px;
@@ -342,8 +297,6 @@ body {
   margin-bottom: 4px;
 }
 
-/* -- Blockquotes -- */
-
 .vp-doc blockquote {
   margin: 20px 0;
   padding: 12px 18px;
@@ -358,8 +311,6 @@ body {
 .vp-doc blockquote p {
   margin-bottom: 0;
 }
-
-/* -- Tables -- */
 
 .vp-doc table {
   display: table;
@@ -404,8 +355,6 @@ body {
 .vp-doc table tr:hover td {
   background: var(--rcs-brand-glow);
 }
-
-/* -- Custom Blocks (tip/warning/danger/info) -- */
 
 .vp-doc .custom-block {
   margin: 20px 0;
@@ -456,8 +405,6 @@ body {
   color: #3b82f6;
 }
 
-/* -- HR -- */
-
 .vp-doc hr {
   border: none;
   height: 1px;
@@ -465,22 +412,16 @@ body {
   margin: 40px 0;
 }
 
-/* -- Breadcrumb -- */
-
 .vp-doc .breadcrumb {
   font-size: 13px;
   letter-spacing: 0.01em;
   margin-bottom: 4px;
 }
 
-/* -- Last Updated -- */
-
 .vp-doc .last-updated {
   font-size: 12px;
   color: var(--rcs-text-3);
 }
-
-/* -- Edit Link -- */
 
 .vp-doc .edit-link {
   font-size: 13px;
@@ -492,8 +433,6 @@ body {
 .vp-doc .edit-link a:hover {
   color: var(--rcs-brand);
 }
-
-/* -- Pager (prev/next) -- */
 
 .vp-doc .pager {
   margin-top: 48px;
@@ -526,8 +465,6 @@ body {
   font-weight: 600;
   color: var(--rcs-text);
 }
-
-/* ---- Outline (Right TOC) ---- */
 
 .VPDocAsideOutline {
   width: var(--rcs-outline-w);
@@ -574,8 +511,6 @@ body {
   font-size: 12px;
 }
 
-/* ---- Nav Bar ---- */
-
 .VPNav {
   background: var(--rcs-bg);
 }
@@ -592,13 +527,9 @@ body {
   position: relative;
 }
 
-/* ---- Footer Override ---- */
-
 .VPFooter {
   display: none;
 }
-
-/* ---- Search ---- */
 
 .VPLocalSearchBox .shell {
   border-radius: 12px;
@@ -606,15 +537,9 @@ body {
   box-shadow: var(--vp-shadow-3);
 }
 
-/* =============================================
-   HOME PAGE
-   ============================================= */
-
 .home {
   padding-top: var(--vp-nav-height);
 }
-
-/* -- Hero -- */
 
 .hero {
   padding: 80px 24px 64px;
@@ -716,8 +641,6 @@ body {
   text-decoration: none;
 }
 
-/* -- Terminal -- */
-
 .terminal {
   background: var(--rcs-bg-soft);
   border: 1px solid var(--rcs-border);
@@ -812,8 +735,6 @@ body {
   }
 }
 
-/* -- Stack Bar -- */
-
 .stack-bar {
   border-top: 1px solid var(--rcs-border);
   border-bottom: 1px solid var(--rcs-border);
@@ -864,8 +785,6 @@ body {
   border-radius: 50%;
   flex-shrink: 0;
 }
-
-/* -- Bento Grid -- */
 
 .features {
   padding: 96px 24px;
@@ -952,8 +871,6 @@ body {
   margin: 0;
 }
 
-/* -- CTA -- */
-
 .cta {
   padding: 96px 24px;
   border-top: 1px solid var(--rcs-border);
@@ -995,10 +912,6 @@ body {
 .cta-code code {
   color: var(--rcs-brand);
 }
-
-/* =============================================
-   RESPONSIVE
-   ============================================= */
 
 @media (max-width: 960px) {
   .hero-inner {

@@ -1,0 +1,197 @@
+// 本文件覆盖 agent-config 的编辑器表单模型（`agent-editor-model`）与模型选项映射——被测实现属对方域，
+// 按跨包规则从包根 `@fenix/agent-config/web` 消费。文件落在本包目录是任务 1.2 按目录整体迁移的残留，
+// 归宿应为 agent-config 的 `web/__tests__/`（见 README 已知项）。
+//
+// 历史（2026-09-20，已解除）：本链一度整文件 0 断言执行，两个原因都在宿主侧——`apps/web/src/i18n/index.ts`
+// 曾按 observer 的旧布局深链 `web/i18n/{en,zh}/observer.json`（该包已迁到 `web/i18n/locales/**`），以及
+// preload 把 `globalThis.window` 置成 globalThis，触发 `antd-style` 的 SSR 守卫裸调 `matchMedia`。宿主
+// i18n 改指各包 `@fenix/*/web/i18n` 后本链已在无 DOM 的 `bun test` 进程里正常求值：实测本文件与
+// `web/__tests__/provider-model-resource-access-flow.test.ts` 合计 32 pass / 0 fail。
+import { describe, expect, test } from "bun:test";
+import {
+  agentDetailToEditorValues,
+  agentEditorSchema,
+  buildAgentEditorPayload,
+  createAgentEditorDefaults,
+  filterAgentEditorOptions,
+  filterValidKnowledgeIds,
+  mapModelOptions,
+  mergeSelectedOptions,
+} from "@fenix/agent-config/web";
+import type { AgentDetail } from "@fenix/web-runtime/types/config";
+
+const detail: AgentDetail = {
+  id: "agent-1",
+  name: "writer",
+  builtIn: false,
+  model: null,
+  modelId: "model-1",
+  prompt: "old prompt",
+  description: "old description",
+  extra: { feature: true },
+  knowledge: null,
+  skillIds: ["skill-hidden"],
+  mcpIds: [],
+  siteAppIds: ["site-hidden"],
+  agentNode: {},
+  enableMemory: true,
+  scope: { organizationId: "org-1", visibility: "private" },
+  access: { actions: ["read", "update", "delete"] },
+};
+
+describe("Agent 编辑器表单模型", () => {
+  // 编辑详情必须完整转换为独立草稿，避免上一位 Agent 的字段残留。
+  test("从详情构建完整编辑草稿", () => {
+    expect(agentDetailToEditorValues(detail)).toEqual({
+      name: "writer",
+      modelId: "model-1",
+      prompt: "old prompt",
+      description: "old description",
+      skillIds: ["skill-hidden"],
+      mcpIds: [],
+      siteAppIds: ["site-hidden"],
+      knowledgeBaseIds: [],
+      defaultNamespaces: "",
+      searchFirst: true,
+      maxResults: "5",
+      agentNode: { kind: "default" },
+      enableMemory: true,
+      publicReadable: false,
+      extra: '{\n  "feature": true\n}',
+    });
+  });
+
+  // knowledge.policy.defaultNamespaces 必须从详情回填并按行提交，保存不能静默丢失。
+  test("完整往返默认命名空间", () => {
+    const values = agentDetailToEditorValues({
+      ...detail,
+      knowledge: {
+        knowledgeBaseIds: ["kb-1"],
+        policy: { searchFirst: false, maxResults: 8, defaultNamespaces: ["docs", "team/private"] },
+      },
+    });
+    expect(values.defaultNamespaces).toBe("docs\nteam/private");
+    expect(buildAgentEditorPayload(values, "edit")).toMatchObject({
+      knowledge: { policy: { defaultNamespaces: ["docs", "team/private"] } },
+    });
+  });
+
+  // 编辑态清空模型、Prompt、描述和 extra 必须显式发送 null，真正清除服务端旧值。
+  test("更新 payload 保留显式清空语义", () => {
+    const values = { ...createAgentEditorDefaults("writer"), prompt: "", description: "", modelId: "", extra: "" };
+    expect(buildAgentEditorPayload(values, "edit")).toMatchObject({
+      modelId: null,
+      prompt: null,
+      description: null,
+      extra: null,
+    });
+  });
+
+  // 创建态空可选字段应被省略，保持当前创建 API 契约。
+  test("创建 payload 省略空可选字段", () => {
+    const payload = buildAgentEditorPayload(createAgentEditorDefaults("writer"), "create");
+    expect("modelId" in payload).toBe(false);
+    expect("prompt" in payload).toBe(false);
+    expect("description" in payload).toBe(false);
+    expect("extra" in payload).toBe(false);
+  });
+
+  // 名称和模型是可提交 Agent 配置的必填项，创建与编辑都不得保存空值或纯空白。
+  test("拒绝缺少名称或模型的配置", () => {
+    const base = { ...createAgentEditorDefaults("writer"), modelId: "model-1" };
+    expect(agentEditorSchema.safeParse(base).success).toBe(true);
+    expect(agentEditorSchema.safeParse({ ...base, name: "   " }).success).toBe(false);
+    expect(agentEditorSchema.safeParse({ ...base, modelId: "" }).success).toBe(false);
+    expect(agentEditorSchema.safeParse({ ...base, modelId: "   " }).success).toBe(false);
+  });
+
+  // maxResults 必须是 1–20 的十进制整数，不能接受小数或科学计数法。
+  test("拒绝非整数知识库检索条数", () => {
+    const base = { ...createAgentEditorDefaults("writer"), modelId: "model-1" };
+    expect(agentEditorSchema.safeParse({ ...base, maxResults: "1.5" }).success).toBe(false);
+    expect(agentEditorSchema.safeParse({ ...base, maxResults: "1e2" }).success).toBe(false);
+    expect(agentEditorSchema.safeParse({ ...base, maxResults: "20" }).success).toBe(true);
+  });
+
+  // extra 只接受 JSON object，数组和标量不得越过前端校验后再由后端拒绝。
+  test("扩展配置仅接受 JSON object", () => {
+    const base = { ...createAgentEditorDefaults("writer"), modelId: "model-1" };
+    expect(agentEditorSchema.safeParse({ ...base, extra: "[]" }).success).toBe(false);
+    expect(agentEditorSchema.safeParse({ ...base, extra: '"text"' }).success).toBe(false);
+    expect(agentEditorSchema.safeParse({ ...base, extra: '{"ok":true}' }).success).toBe(true);
+  });
+
+  // 模型卡片只显示短名称，Provider 与品牌图标键必须保留在结构化字段中。
+  test("模型选项拆分 Provider 和短名称", () => {
+    expect(
+      mapModelOptions(
+        [
+          {
+            id: "model-uuid",
+            modelId: "mimo-v2.5",
+            displayName: "mimo-v2.5",
+            provider: "provider-id",
+            providerId: "provider-uid",
+            providerDisplayName: "mimo",
+            scope: { organizationId: "org-personal", visibility: "private" },
+            access: { actions: ["read"] },
+            contextLimit: null,
+            outputLimit: null,
+          },
+        ],
+        "org-1",
+      ),
+    ).toEqual([
+      {
+        value: "model-uuid",
+        label: "mimo-v2.5",
+        modelId: "mimo-v2.5",
+        group: { id: "org-personal/provider-uid", label: "mimo", scope: "shared" },
+      },
+    ]);
+  });
+
+  // 渐进加载阶段尚无完整目录时，已绑定资源只能视为待校验，不能提前显示为不可用。
+  test("基础数据阶段合并已选资源但不标记不可用", () => {
+    expect(mergeSelectedOptions([], [{ id: "selected", label: "Selected" }], false)).toEqual([
+      { id: "selected", label: "Selected" },
+    ]);
+  });
+
+  // 完整资源目录加载后，已绑定但不可见的共享资源必须补入选项并标记不可用，不能静默解绑。
+  test("合并已选不可见资源", () => {
+    expect(
+      mergeSelectedOptions([{ id: "visible", label: "Visible" }], [{ id: "hidden", label: "Source/Hidden" }]),
+    ).toEqual([
+      { id: "visible", label: "Visible" },
+      { id: "hidden", label: "Source/Hidden", unavailable: true },
+    ]);
+  });
+
+  // 两层过滤应按真实来源筛选，并让搜索只作用于当前匹配资源。
+  test("按来源和关键词过滤资源", () => {
+    const options = [
+      { id: "a", label: "Alpha", group: { id: "provider-a", label: "Provider A" } },
+      { id: "b", label: "Beta", group: { id: "provider-b", label: "Provider B" } },
+    ];
+    const result = filterAgentEditorOptions(options, "alpha", "provider-a");
+    expect(result.activeGroup).toBe("provider-a");
+    expect(result.visible.map((item) => item.id)).toEqual(["a"]);
+  });
+
+  // 搜索后当前来源无匹配项时必须回退全部来源，避免第二层出现空白假象。
+  test("失效来源过滤自动回退", () => {
+    const options = [
+      { id: "a", label: "Alpha", group: { id: "provider-a", label: "Provider A" } },
+      { id: "b", label: "Beta", group: { id: "provider-b", label: "Provider B" } },
+    ];
+    const result = filterAgentEditorOptions(options, "beta", "provider-a");
+    expect(result.activeGroup).toBe("all");
+    expect(result.visible.map((item) => item.id)).toEqual(["b"]);
+  });
+
+  // 保存只信任最新可访问列表；relatedResources 中历史可见的绑定不应被当作仍有效。
+  test("仅保留最新可访问的知识库 ID", () => {
+    expect(filterValidKnowledgeIds(["kb-current", "kb-history"], [{ id: "kb-current" }])).toEqual(["kb-current"]);
+  });
+});

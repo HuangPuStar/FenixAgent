@@ -64,8 +64,11 @@ export function resolveExecutable(command: string): string {
       encoding: "utf-8",
       stdio: ["pipe", "pipe", "ignore"],
     }).trim();
-    if (result) {
-      return result.split(/\r?\n/, 1)[0].trim();
+    // `[0]` 在 noUncheckedIndexedAccess（调用方 acp-link 的 tsconfig 开着）下是 `string | undefined`；
+    // 首行为空按「未找到」处理，与下方统一失败路径一致。
+    const firstLine = result.split(/\r?\n/, 1).at(0)?.trim();
+    if (firstLine) {
+      return firstLine;
     }
   } catch {
     // 忽略 which/where 失败，统一在下方抛出缺失错误。

@@ -1,0 +1,10 @@
+.calendar-caption-label > svg {
+  width: calc(var(--spacing) * 3.5);
+  height: calc(var(--spacing) * 3.5);
+  color: var(--color-muted-foreground);
+}
+.calendar-day-button > span {
+  font-size: var(--text-xs);
+  line-height: var(--tw-leading, var(--text-xs--line-height));
+  opacity: 0.7;
+}

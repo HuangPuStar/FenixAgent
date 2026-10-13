@@ -2,6 +2,10 @@
   "extends": "../../tsconfig.json",
   "include": ["src"],
   "compilerOptions": {
-    "paths": {}
+    "paths": {
+      "@server/*": ["../../apps/server/src/*"],
+      "@fenix/chat-channel": ["./src/index.ts"],
+      "@fenix/chat-channel/server": ["./src/server.ts"]
+    }
   }
 }
