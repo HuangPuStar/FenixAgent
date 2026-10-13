@@ -44,6 +44,8 @@ CMD ["bun", "migrate.js"]
 FROM deps AS data-migrate-build
 COPY db ./db
 COPY apps/server ./apps/server
+COPY apps/generated ./apps/generated
+COPY apps/web/fenix.module.ts ./apps/web/fenix.module.ts
 RUN bun build db/data-migration-runner.ts --target=bun --outdir /tmp/data-migrate-bundle
 
 FROM oven/bun:1 AS data-migrate
