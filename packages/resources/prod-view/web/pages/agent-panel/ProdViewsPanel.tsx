@@ -48,8 +48,11 @@ export function ProdViewsPanel({ agentId }: ProdViewsPanelProps) {
     },
     {
       ready: !!agentId,
-      onError: () => {
-        toast.error(t("panel.loadFailed"));
+      onError: (error) => {
+        // 服务端 `message` 优先上屏（`unwrap` 抛出的 `ApiError.message` 即错误信封原文）；字典文案只在
+        // 它是空串时兜底——固定文案会让用户与测试都定位不到后端故障。
+        console.error("[ProdViewsPanel] 加载绑定视图失败", error);
+        toast.error(error.message || t("panel.loadFailed"));
       },
     },
   );
@@ -72,18 +75,10 @@ export function ProdViewsPanel({ agentId }: ProdViewsPanelProps) {
   // 因此打开创建弹窗时把当前 agent 名预填进名称，弹窗里不再有 agent 选择器。
   const editor = useProdViewEditor({
     boundAgentId: agentId,
-    messages: {
-      createSuccess: t("panel.createSuccess"),
-      updateSuccess: t("panel.updateSuccess"),
-      saveFailed: t("panel.saveFailed"),
-    },
+    messages: { createSuccess: t("panel.createSuccess"), updateSuccess: t("panel.updateSuccess") },
     onSaved: refresh,
   });
-  const deletion = useProdViewDelete({
-    successMessage: t("panel.deleteSuccess"),
-    failureMessage: t("panel.deleteFailed"),
-    onDeleted: refresh,
-  });
+  const deletion = useProdViewDelete({ successMessage: t("panel.deleteSuccess"), onDeleted: refresh });
 
   const copyLink = (id: string) =>
     copyProdViewLink(id, { copied: t("panel.linkCopied"), failed: t("panel.copyFailed") });
@@ -96,8 +91,9 @@ export function ProdViewsPanel({ agentId }: ProdViewsPanelProps) {
     try {
       await unwrap(prodViewApi.update(view.id, { enabled: !view.enabled }));
       refresh();
-    } catch {
-      toast.error(t("panel.toggleFailed"));
+    } catch (error) {
+      console.error("[ProdViewsPanel] 切换视图状态失败", error);
+      toast.error(error instanceof Error && error.message ? error.message : t("panel.toggleFailed"));
     } finally {
       setTogglingIds((prev) => {
         const next = new Set(prev);
@@ -133,7 +129,7 @@ export function ProdViewsPanel({ agentId }: ProdViewsPanelProps) {
         <EmptyState
           tone="danger"
           role="alert"
-          title={unauthorized ? t("noPermission") : t("panel.loadFailed")}
+          title={unauthorized ? t("noPermission") : error.message || t("panel.loadFailed")}
           action={unauthorized ? undefined : { label: t("retry"), onClick: refresh }}
           className="flex flex-1 flex-col justify-center px-4"
         />

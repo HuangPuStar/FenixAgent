@@ -71,7 +71,7 @@ export function AgentOrganizationsPage({ machineRegistry }: AgentOrganizationsPa
   } = useRequest(() => unwrap(orgApi.list()), {
     onError: (error) => {
       console.error("Failed to load organizations", error);
-      toast.error(t("toast.loadDetailFailed"));
+      toast.error(error instanceof Error ? error.message : t("toast.loadDetailFailed"));
     },
   });
   const organizations = organizationsRaw as OrganizationListItem[];
@@ -84,7 +84,7 @@ export function AgentOrganizationsPage({ machineRegistry }: AgentOrganizationsPa
     refreshDeps: [selectedOrgId],
     onError: (error) => {
       console.error("Failed to load organization detail", error);
-      toast.error(t("toast.loadDetailFailed"));
+      toast.error(error instanceof Error ? error.message : t("toast.loadDetailFailed"));
     },
   });
   const {
@@ -99,7 +99,7 @@ export function AgentOrganizationsPage({ machineRegistry }: AgentOrganizationsPa
       // 机器区在组织页里是次要内容（与组织本身同页），本轮只补诊断日志与瞬时提示，
       // 持久失败块需要把状态透进 `OrganizationsWorkspace`，见 §3.6 的现状偏离。
       console.error("Failed to load machines", error);
-      toast.error(t("toast.machinesLoadFailed"));
+      toast.error(error instanceof Error ? error.message : t("toast.machinesLoadFailed"));
     },
   });
   const machines = machinesResponse?.items ?? [];
@@ -152,7 +152,7 @@ export function AgentOrganizationsPage({ machineRegistry }: AgentOrganizationsPa
       },
       onError: (error) => {
         console.error("Failed to create organization", error);
-        toast.error(t("toast.createFailed"));
+        toast.error(error instanceof Error ? error.message : t("toast.createFailed"));
       },
     },
   );
@@ -168,7 +168,7 @@ export function AgentOrganizationsPage({ machineRegistry }: AgentOrganizationsPa
       },
       onError: (error) => {
         console.error("Failed to update organization", error);
-        toast.error(t("toast.updateFailed"));
+        toast.error(error instanceof Error ? error.message : t("toast.updateFailed"));
       },
     },
   );
@@ -181,7 +181,7 @@ export function AgentOrganizationsPage({ machineRegistry }: AgentOrganizationsPa
         // 候选查询此前完全静默：失败时候选停在空数组，弹窗会显示「没有匹配的成员」——与「关键词确实
         // 没匹配到」同形（§3.4）。这是用户输入触发的查询，按 §5.8 补可见反馈与诊断日志。
         console.error("Failed to load member candidates", error);
-        toast.error(t("toast.candidatesLoadFailed"));
+        toast.error(error instanceof Error ? error.message : t("toast.candidatesLoadFailed"));
       },
     },
   );
@@ -198,9 +198,7 @@ export function AgentOrganizationsPage({ machineRegistry }: AgentOrganizationsPa
       },
       onError: (error) => {
         console.error("Failed to add organization members", error);
-        // 上屏只取字典（§9.3）：`error.message` 是 `unwrap` 抛出的 `ApiError.message`（后端信封原文），
-        // 只进上面的日志；此前的 `err.message || 字典兜底` 等价于直接回显。
-        toast.error(t("toast.inviteFailed"));
+        toast.error(error instanceof Error ? error.message : t("toast.inviteFailed"));
       },
     },
   );
@@ -214,7 +212,7 @@ export function AgentOrganizationsPage({ machineRegistry }: AgentOrganizationsPa
       },
       onError: (error) => {
         console.error("Failed to remove member", error);
-        toast.error(t("toast.removeFailed"));
+        toast.error(error instanceof Error ? error.message : t("toast.removeFailed"));
       },
     },
   );
@@ -225,7 +223,7 @@ export function AgentOrganizationsPage({ machineRegistry }: AgentOrganizationsPa
       onSuccess: refreshDetail,
       onError: (error) => {
         console.error("Failed to update member role", error);
-        toast.error(t("toast.roleUpdateFailed"));
+        toast.error(error instanceof Error ? error.message : t("toast.roleUpdateFailed"));
       },
     },
   );
@@ -239,7 +237,7 @@ export function AgentOrganizationsPage({ machineRegistry }: AgentOrganizationsPa
     },
     onError: (error) => {
       console.error("Failed to delete organization", error);
-      toast.error(t("toast.deleteFailed"));
+      toast.error(error instanceof Error ? error.message : t("toast.deleteFailed"));
     },
   });
 
@@ -256,7 +254,7 @@ export function AgentOrganizationsPage({ machineRegistry }: AgentOrganizationsPa
       },
       onError: (error) => {
         console.error("Failed to create machine", error);
-        toast.error(t("toast.machineCreateFailed"));
+        toast.error(error instanceof Error ? error.message : t("toast.machineCreateFailed"));
       },
     },
   );
@@ -279,7 +277,7 @@ export function AgentOrganizationsPage({ machineRegistry }: AgentOrganizationsPa
       },
       onError: (error) => {
         console.error("Failed to update machine", error);
-        toast.error(t("toast.machineUpdateFailed"));
+        toast.error(error instanceof Error ? error.message : t("toast.machineUpdateFailed"));
       },
     },
   );
@@ -294,7 +292,7 @@ export function AgentOrganizationsPage({ machineRegistry }: AgentOrganizationsPa
       },
       onError: (error) => {
         console.error("Failed to delete machine", error);
-        toast.error(t("toast.machineDeleteFailed"));
+        toast.error(error instanceof Error ? error.message : t("toast.machineDeleteFailed"));
       },
     },
   );
@@ -318,7 +316,7 @@ export function AgentOrganizationsPage({ machineRegistry }: AgentOrganizationsPa
       refreshDetail();
     } catch (error) {
       console.error("Failed to update default engine", error);
-      toast.error(t("toast.updateFailed"));
+      toast.error(error instanceof Error ? error.message : t("toast.updateFailed"));
     } finally {
       setSavingEngine(false);
     }

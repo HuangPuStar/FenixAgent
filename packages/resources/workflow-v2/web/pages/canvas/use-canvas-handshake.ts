@@ -116,7 +116,7 @@ export function useCanvasHandshake(options: CanvasHandshakeOptions): CanvasHands
       setPhase("interactive");
     } catch {
       // 失败原因不细分的理由：三种失败（签发被拒 / code 过期或已消费 / 上游不可达）对用户的下一步动作相同，
-      // 都是「重试」；具体原因进不了界面（§9.3 不展示 raw message），细分只会变成死代码。
+      // 都是「重试」，状态块给的也是同一个重试入口；细分只会变成死代码。
       if (disposedRef.current || generationRef.current !== generation) return;
       setRetryable(true);
       setPhase("handshake-failed");

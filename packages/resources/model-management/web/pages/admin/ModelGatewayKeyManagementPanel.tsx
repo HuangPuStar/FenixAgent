@@ -28,8 +28,11 @@ export function ModelGatewayKeyManagementPanel({ onAuthFailure }: { onAuthFailur
   const [confirmOpen, setConfirmOpen] = useState(false);
   const reportError = useCallback(
     (error: unknown) => {
+      console.error("[model-gateway] 密钥列表请求失败", error);
+      // 只有系统 API 明确返回未授权才回 Master Key 门；网关或数据库故障按普通失败上屏。
       if (error instanceof ApiError && error.code === "UNAUTHORIZED") onAuthFailure();
-      else toast.error(t("modelGateway.keysPage.loadError"));
+      // 服务端 `message` 优先上屏（`unwrap` 抛出的 `ApiError.message` 即错误信封原文）；字典文案兜底。
+      else toast.error(error instanceof Error && error.message ? error.message : t("modelGateway.keysPage.loadError"));
     },
     [onAuthFailure, t],
   );
@@ -87,7 +90,13 @@ export function ModelGatewayKeyManagementPanel({ onAuthFailure }: { onAuthFailur
       <CardContent>
         {keysRequest.error ? (
           // 失败态不再给重试按钮：本卡片头部常驻的「刷新」就是同一个动作，`keysRequest.run` 是它的入口。
-          <EmptyState tone="danger" role="alert" title={t("modelGateway.keysPage.loadError")} className="py-8" />
+          // 标题取服务端 `message`（失败原因必须上屏），字典文案只在它为空的兜底。
+          <EmptyState
+            tone="danger"
+            role="alert"
+            title={keysRequest.error.message || t("modelGateway.keysPage.loadError")}
+            className="py-8"
+          />
         ) : keysRequest.loading && !keysRequest.data ? (
           <Spinner label={t("admin.loading")} className={GATEWAY_LOADING_CLASS} />
         ) : (keysRequest.data?.items.length ?? 0) === 0 ? (

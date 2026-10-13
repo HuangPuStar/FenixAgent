@@ -6,7 +6,7 @@
 //      空态——失败时 `data` 停在 `undefined`、`providerCount` 同样是 0，两条分支的输入一模一样，
 //      只有渲染出来才看得出走了哪一支；
 //   2. 点重试真的重新发起 `POST /web/knowledgeBases/models`（不是只重置本地状态），成功后回到空态；
-//   3. 失败只上屏字典文案：诊断上下文仍留在 `console.error` 里，界面不回显错误信封原文（§9.3）。
+//   3. 失败把服务端错误信封原文带上屏（失败块的标题槽位 + toast），诊断上下文仍留在 `console.error` 里。
 //
 // 环境：happy-dom + react-dom/client（与本包两个既有组件用例同款）。跨包依赖只 mock 会把外部副作用
 // 或单例带进用例的东西：
@@ -188,14 +188,14 @@ describe("EmbeddingModelManager 的取数失败分支", () => {
     listResponses = [{ status: 500, body: { success: false, error: { code: "INTERNAL", message: "boom" } } }];
     await render();
 
-    expect(text()).toContain(TEXT.embeddingModel.listLoadFailed);
+    expect(text()).toContain(TEXT.embeddingModel.listLoadFailed.replace("{{message}}", "boom"));
     expect(text()).not.toContain(TEXT.embeddingModel.emptyTitle);
     expect(container.querySelectorAll('[role="alert"]').length).toBeGreaterThan(0);
     expect(buttonByText(TEXT.embeddingModel.retry)).toBeDefined();
-    // 界面只给字典文案，原始信封原文回到诊断通道（§9.3）。
-    expect(text()).not.toContain("boom");
+    // 失败原因必须上屏服务端原文——换成固定文案会让用户与测试都定位不到后端故障。
+    expect(text()).toContain("boom");
     expect(consoleErrorCalls.length).toBeGreaterThan(0);
-    expect(toastErrors).toContain(TEXT.embeddingModel.listLoadFailed);
+    expect(toastErrors).toContain("boom");
   });
 
   // 重试必须真的重新发起请求：成功后失败块消失、回到「确实没有供应商」的空态。
@@ -212,7 +212,7 @@ describe("EmbeddingModelManager 的取数失败分支", () => {
     await click(retry as HTMLButtonElement);
 
     expect(listCalls).toBe(2);
-    expect(text()).not.toContain(TEXT.embeddingModel.listLoadFailed);
+    expect(text()).not.toContain(TEXT.embeddingModel.listLoadFailed.replace("{{message}}", "boom"));
     expect(text()).toContain(TEXT.embeddingModel.emptyTitle);
   });
 
@@ -222,7 +222,7 @@ describe("EmbeddingModelManager 的取数失败分支", () => {
     await render();
 
     expect(text()).toContain(TEXT.embeddingModel.emptyTitle);
-    expect(text()).not.toContain(TEXT.embeddingModel.listLoadFailed);
+    expect(text()).not.toContain(TEXT.embeddingModel.listLoadFailed.replace("{{message}}", "boom"));
     expect(container.querySelectorAll('[role="alert"]').length).toBe(0);
   });
 });

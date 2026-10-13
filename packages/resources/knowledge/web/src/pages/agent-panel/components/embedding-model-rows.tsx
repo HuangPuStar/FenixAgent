@@ -108,7 +108,7 @@ function InstanceRow({ instance, canManage, onDelete, onModelsChanged }: Instanc
       onModelsChanged?.();
     } catch (err) {
       console.error("Failed to toggle embedding model status", err);
-      toast.error(t("embeddingModel.actionFailed"));
+      toast.error(err instanceof Error && err.message ? err.message : t("embeddingModel.actionFailed"));
     } finally {
       setTogglingModel(null);
     }

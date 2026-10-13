@@ -1,21 +1,24 @@
 // web/__tests__/workflow-run-log-dialog.test.tsx
 // 「运行日志」主从两栏的关键数据流：打开即取清单并自动选中第一条执行记录、只按当前选中项取**一次**出入参数
 // （不随记录条数增长）、点击左栏另一条换详情、上游无记录是空态、读取失败给重试且重试真的重新发请求、失败文案按
-// 稳定错误码取（不回显服务端原文）、筛选切换真的改请求参数并让选中回落到新一批，以及关闭态不取数。
+// 稳定错误码取（未登记的失败回显服务端信封原文）、筛选切换真的改请求参数并让选中回落到新一批，以及关闭态不取数。
 //
 // 为什么必须真实渲染：这些区别全在 `useRequest` 的状态流转与分支顺序上（失败**不得**退化成空态、重试必须真的
 // 再发一笔请求、切换记录必须换掉详情而不是把上一条的数据留下来），源码里出现对应字样不等于运行时走到了那一行
 // （§11.1）。
 //
 // 两处替身：`@fenix/ui-components/ui/dialog` 的 Radix 内容在 happy-dom 下不挂载（portal 建好、内容为空），
-// 换成直通替身把数据流暴露出来；`react-i18next` 用真实实例但 `resources: {}`，断言按 **i18n 键**回显做
-// （字典完整性由 `workflow-v2-i18n.test.ts` 静态守护）。DOM 装配与 fetch 桩复用 `./canvas-host-harness`。
-// 筛选器是原生 `<select>`（非 portal），因此筛选用例可以走真实的 change 事件。
+// 换成直通替身把数据流暴露出来；`react-i18next` 用真实实例，字典默认留空（断言按 **i18n 键**回显做，字典完整性
+// 由 `workflow-v2-i18n.test.ts` 静态守护），只有带 `{{message}}` 槽位的键登记真实取值——「未登记的失败回显服务端
+// 信封原文」这条性质，只有插值真的发生才看得见（见 `MESSAGE_SLOT_RESOURCES`）。DOM 装配与 fetch 桩复用
+// `./canvas-host-harness`。筛选器是原生 `<select>`（非 portal），因此筛选用例可以走真实的 change 事件。
 
 import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
 import { createInstance } from "i18next";
 import { act, createElement, type ReactNode } from "react";
 import { I18nextProvider } from "react-i18next";
+import zhWorkflows from "../i18n/locales/zh/workflows.json";
+import { WORKFLOW_NS } from "../i18n/namespace";
 import {
   type FetchCall,
   type FetchRoute,
@@ -54,8 +57,26 @@ afterEach(() => {
 
 const { WorkflowRunLogDialog } = await import("../pages/list/workflow-run-log-dialog");
 
+/**
+ * 只登记带 `{{message}}` 槽位的键：字典留空时 i18next 回显键名，`t(key, { message })` 里的服务端原文不会出现在
+ * DOM 上，「未登记的失败必须回显原文」这条性质就无从断言。取值直接读本包 zh 字典——用例里不出现第二份文案；
+ * 字典哪天把槽位丢掉（原文被固定文案吞掉，正是本次要防的方向），这条断言会立刻失败。
+ */
+const MESSAGE_SLOT_RESOURCES = {
+  zh: {
+    [WORKFLOW_NS]: {
+      run: { failed: zhWorkflows.run.failed },
+    },
+  },
+};
+
+/** 槽位替换：断言取「字典那句话 + 服务端原文」的实际结果，不必另抄一份文案。 */
+function withMessage(template: string, message: string): string {
+  return template.replace("{{message}}", message);
+}
+
 const i18n = createInstance();
-void i18n.init({ lng: "zh", fallbackLng: "zh", initAsync: false, resources: {} });
+void i18n.init({ lng: "zh", fallbackLng: "zh", initAsync: false, resources: MESSAGE_SLOT_RESOURCES });
 
 /** 本地主键 + 名称：筛选选项由服务端随记录同批返回。 */
 const WORKFLOW_A = { id: "wf-local-a", name: "客服问答流程" };
@@ -315,14 +336,23 @@ describe("运行日志弹窗的取数与三态", () => {
     expect(textOf(mount.container)).toContain("run.record_execute_id");
   });
 
-  // 失败文案按**稳定错误码**取字典键，且不回显服务端原文（`ApiError.message` 是后端信封原文，含上游措辞）。
-  test("失败文案按稳定错误码取键且不回显服务端原文", async () => {
+  // 失败文案按**稳定错误码**取字典键（这些码的下一步动作不同，比服务端原文更好用）；未登记的码则必须把
+  // 服务端信封原文带上屏，用户与测试才定位得到后端故障。
+  test("稳定错误码取字典键，未登记的失败回显服务端原文", async () => {
     runRoute = webErr("ORG_APP_NOT_BOUND", "当前组织尚未初始化工作流空间", 409);
     await mount.render(dialog());
 
     expect(textOf(mount.container)).toContain("run.failed_unbound");
-    // 服务端原文只进日志：它不该出现在界面上（字典为空时键会原样回显，正文不会出现上游措辞）。
+    // 有稳定码的档位只给字典文案：该码的下一步动作已确定（先去列表页初始化），原文由日志承载。
     expect(textOf(mount.container)).not.toContain("当前组织尚未初始化工作流空间");
+
+    // 换一个未登记的失败重试一次（同一实例的重渲染不会重新取数，重试按钮才是真正再发一笔的动作）。
+    runRoute = webErr("SERVER_ERROR", "RAW-UPSTREAM-TEXT", 500);
+    await click(buttonByText("run.retry"));
+
+    expect(textOf(mount.container)).toContain(withMessage(zhWorkflows.run.failed, "RAW-UPSTREAM-TEXT"));
+    // 未登记的档位不再给码专用文案（`run.failed_unbound` 是上一笔的键）。
+    expect(textOf(mount.container)).not.toContain("run.failed_unbound");
   });
 
   // 筛选是「按工作流查询」这条上游约束的界面出口：切换后请求必须带上该本地主键，且列表换成新一批结果。
@@ -541,7 +571,7 @@ describe("主从两栏：左栏选中与右栏详情", () => {
     expect(textOf(mount.container)).toContain("run.io_input");
   });
 
-  // 详情失败是**右栏分支**：按稳定错误码取文案（不回显服务端原文）、右栏重试真的再取一次，且清单不受影响
+  // 详情失败是**右栏分支**：按稳定错误码取文案（未登记的失败回显服务端原文）、右栏重试真的再取一次，且清单不受影响
   // ——把一条记录的详情读取失败升级成整页错误，会让用户为了看别的记录而重试整个列表。
   test("详情失败给错误与重试，重试成功后就地显示", async () => {
     ioRoute = webErr("UPSTREAM_TIMEOUT", "upstream timeout", 504);

@@ -47,7 +47,7 @@ export function useResourcePreview({ kbId, resourceId, sourceName, category }: U
     onSuccess: setFetchedContent,
     onError: (err) => {
       console.error("Failed to fetch preview content", err);
-      toast.error(t("preview.loadError"));
+      toast.error(err instanceof Error ? err.message : t("preview.loadError"));
     },
   });
 

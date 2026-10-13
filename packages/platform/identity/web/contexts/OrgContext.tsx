@@ -125,9 +125,8 @@ export function OrgProvider({ children }: { children: ReactNode }) {
             setRole(oldTarget.role ?? "");
           }
         }
-        // 上屏只取字典（§9.3）：`err.message` 是 `unwrap` 抛出的 `ApiError.message`（后端信封原文），
-        // 只进上面的日志。字典里本就没有 `{{message}}` 槽位，传进去的插值参数一直是死参。
-        toast.error(t("orgSwitchFailed"));
+        // 字典带 `{{message}}` 槽位：把服务端错误信封的 `message` 一并上屏，日志保留完整诊断。
+        toast.error(t("orgSwitchFailed", { message: (err as Error).message }));
       }
     },
     [navigate, orgs, org, role, t],

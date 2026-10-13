@@ -33,7 +33,7 @@ const MOCK_TRANSLATIONS: Record<string, string> = {
   create: "创建 ProdView",
   noViews: "暂无 ProdView",
   namePlaceholder: "输入视图名称",
-  loadError: "加载失败",
+  loadError: "加载失败：{{message}}",
   noPermission: "无权访问发布视图",
   noPermissionHint: "当前账号未被授权管理该组织的发布视图，请联系组织管理员开通权限。",
   retry: "重试",
@@ -256,11 +256,9 @@ describe("AgentProdViewsPage 列表加载状态", () => {
     viewResponses = [failure("SERVER_ERROR", "boom", 500), successViews()];
     await render(createElement(AgentProdViewsPage));
 
-    // 失败后：错误分支可见，并且不能退化成「暂无 ProdView」空态。
-    // 文案只来自字典：后端信封原文（"boom"）是服务端措辞，不该出现在界面上（§9.3）
+    // 失败后：错误分支可见（含失败原因），并且不能退化成「暂无 ProdView」空态
     expect(alertRegion()).not.toBeNull();
-    expect(text()).toContain("加载失败");
-    expect(text()).not.toContain("boom");
+    expect(text()).toContain("加载失败：boom");
     expect(text()).not.toContain("暂无 ProdView");
 
     const retry = buttonByText("重试");
@@ -298,7 +296,8 @@ describe("ProdViewsPanel 列表加载状态", () => {
     await render(createElement(ProdViewsPanel, { agentId: "agent-1" }));
 
     expect(alertRegion()).not.toBeNull();
-    expect(text()).toContain("加载视图失败");
+    // 失败原因上屏服务端 message（`panel.loadFailed` 只在无 message 时兜底），否则用户与测试都无法定位
+    expect(text()).toContain("boom");
     // 关键回归点：失败响应（5xx 与 200 + success:false 两种形态）都不允许落进「点击 + 创建」空态
     expect(text()).not.toContain("点击 + 创建发布视图");
 

@@ -120,7 +120,7 @@ export function AgentMcpDialog({ target, onClose, onSaved }: Props) {
       })
       .catch((error: Error) => {
         console.error(t("toast.loadDetailFailed"), error);
-        toast.error(t("toast.loadDetailFailed"));
+        toast.error(error.message || t("toast.loadDetailFailed"));
         // 只弹 toast 会让编辑窗口停在空表单上（保存时再报「名称必填」），因此同时进入持久错误态，
         // 由渲染层给出 role="alert" 的说明与重试入口；弹窗关闭或换目标时错误态自然作废。
         if (active) setDetailError(error);
@@ -173,8 +173,7 @@ export function AgentMcpDialog({ target, onClose, onSaved }: Props) {
       },
       onError: (error) => {
         console.error(t("toast.saveFailed"), error);
-        // 上屏只给字典文案（§9.3）：`error.message` 是 `unwrap` 抛出的 `ApiError.message`（后端信封原文）
-        toast.error(t("toast.saveFailed"));
+        toast.error(error.message || t("toast.saveFailed"));
       },
     },
   );
@@ -197,11 +196,7 @@ export function AgentMcpDialog({ target, onClose, onSaved }: Props) {
         else if (result.reachable) toast.warning(t("toast.testReachable", { message: result.message ?? "" }));
         else toast.error(t("toast.testFailed", { message: result.message ?? t("toast.saveFailed") }));
       },
-      onError: (error) => {
-        // 请求本身失败（探测没跑起来）：上屏只给字典文案，信封原文进这里（§9.3）。
-        console.error(t("toast.testFailedRequest"), error);
-        toast.error(t("toast.testFailedRequest"));
-      },
+      onError: (error) => toast.error(t("toast.testFailedWith", { message: error.message })),
     },
   );
 

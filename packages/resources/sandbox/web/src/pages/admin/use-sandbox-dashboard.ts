@@ -92,10 +92,7 @@ export function useSandboxDashboard(onAuthFailure: () => void) {
       await load.refresh();
       return true;
     } catch (error) {
-      // 上屏只给字典文案（§9.3）：`error.message` 是 `unwrap` 抛出的 `ApiError.message`（后端信封
-      // 原文），原先塞进 toast 的 description，与直接回显等价；原始对象只进这里。
-      console.error(t("actionError"), error);
-      toast.error(t("actionError"));
+      toast.error(t("actionError"), { description: error instanceof Error ? error.message : undefined });
       return false;
     }
   };
@@ -114,10 +111,7 @@ export function useSandboxDashboard(onAuthFailure: () => void) {
       await clusterLoad.refresh();
       return true;
     } catch (error) {
-      // 上屏只给字典文案（§9.3）：`error.message` 是 `unwrap` 抛出的 `ApiError.message`（后端信封
-      // 原文），原先塞进 toast 的 description，与直接回显等价；原始对象只进这里。
-      console.error(t("actionError"), error);
-      toast.error(t("actionError"));
+      toast.error(t("actionError"), { description: error instanceof Error ? error.message : undefined });
       return false;
     }
   };
@@ -166,10 +160,7 @@ export function useSandboxDashboard(onAuthFailure: () => void) {
       );
       setPoolFormOpen(false);
     } catch (error) {
-      // 这里的 `error` 是本地 JSON.parse 的异常，但同一条 toast 也接 `createPool/updatePool` 的信封
-      // 异常，无法逐条分流，故一律只上屏「配置 JSON 格式不正确」（§9.3）；原文进日志。
-      console.error(t("invalidJson"), error);
-      toast.error(t("invalidJson"));
+      toast.error(t("invalidJson"), { description: error instanceof Error ? error.message : undefined });
     }
   };
 

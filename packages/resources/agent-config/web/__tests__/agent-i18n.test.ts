@@ -60,6 +60,12 @@ const WEB_ROOT = resolve(import.meta.dir, "..");
  * 上调到 313（2026-10-09，模板应用确认弹窗）：模板卡点击由「直接应用」改为经 `AlertDialog` 确认，
  * 新增 `applyTemplateTitle`（`{{name}}` 插值）与 `applyTemplateConfirm` 两键；描述复用
  * `templateDescription`、取消复用 `dialog.cancel`，不复制同义键。311 + 2 = 313，下界不变。
+ *
+ * 2026-10-12（失败提示回显服务端 message 的回滚批次）：`siteDeployment.errors` 恢复三个带 `{{message}}`
+ * 槽位的 `*With` 变体（`AgentSitesPage` 的列表 / 删除 / 重签失败 toast 要带后端信封原文），同时删除唯一
+ * 消费点消失的 `loadHint`（目录失败块的说明改回 `error.message`）——`siteDeployment` 组 48 → 50；另有
+ * `enterFailed` / `restartFailed` / `stopInstanceFailed` / `deleteFailed` / `restartFailedSaved` 五个键恢复
+ * `{{message}}` 槽位（槽位不参与键数，计数不变）。净增 2 键，下界 311 不动。
  */
 const MIGRATED_KEY_BASELINE = 311;
 
@@ -129,7 +135,9 @@ const UI_COMPONENTS_BINDING_FILES: readonly string[] = [
  * 逐个点名而不是只断言总数，因为「少迁一个键」在宿主删除后同样只会让界面静默回显 key。
  */
 const MIGRATED_GROUPS: ReadonlyArray<readonly [string, number]> = [
-  ["siteDeployment", 48],
+  // siteDeployment 2026-10-12 由 48 调到 50：恢复 loadWith / deleteWith / rotateWith 三个 *With 键、
+  // 删除失去消费点的 loadHint（见上方键数说明）。
+  ["siteDeployment", 50],
   ["panelMode", 15],
   ["siteFrame", 11],
 ];

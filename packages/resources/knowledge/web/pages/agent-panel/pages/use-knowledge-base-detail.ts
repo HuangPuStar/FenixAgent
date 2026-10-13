@@ -71,10 +71,10 @@ export function useKnowledgeBaseDetail({ kbId, pushKbId }: UseKnowledgeBaseDetai
         console.error("Failed to load detail", err);
         setSelectedDetail(null);
         setResources([]);
-        // 详情失败块的说明同样只取字典（§9.3）：这个状态会渲染进 `KnowledgeLoadFailure` 的失败区，
-        // 塞服务端原文等于换了个位置铺内部措辞。
-        setDetailError(t("loadDetailError"));
-        toast.error(t("loadDetailError"));
+        // 详情失败块的说明取服务端 message——换成固定文案会让用户与测试都定位不到后端故障；
+        // 字典文案只在 message 为空时兜底。
+        setDetailError(err.message || t("loadDetailError"));
+        toast.error(err.message || t("loadDetailError"));
       },
     },
   );
@@ -103,7 +103,7 @@ export function useKnowledgeBaseDetail({ kbId, pushKbId }: UseKnowledgeBaseDetai
       },
       onError: (err) => {
         console.error("Upload failed", err);
-        toast.error(t("toast.uploadFailed"));
+        toast.error(err.message || t("toast.uploadFailed"));
       },
     },
   );
@@ -148,7 +148,7 @@ export function useKnowledgeBaseDetail({ kbId, pushKbId }: UseKnowledgeBaseDetai
       onError: (err) => {
         console.error("Delete resource failed", err);
         setDeletingResourceId(null);
-        toast.error(t("toast.deleteResourceFailed"));
+        toast.error(err.message || t("toast.deleteResourceFailed"));
       },
     },
   );
@@ -249,7 +249,7 @@ export function useKnowledgeBaseDetail({ kbId, pushKbId }: UseKnowledgeBaseDetai
       .then(() => runLoadDetail(kbId))
       .catch((error) => {
         console.error("Failed to toggle resource enabled", error);
-        toast.error(t("toast.toggleResourceFailed"));
+        toast.error(error instanceof Error && error.message ? error.message : t("toast.toggleResourceFailed"));
         runLoadDetail(kbId);
       });
   };
@@ -274,7 +274,7 @@ export function useKnowledgeBaseDetail({ kbId, pushKbId }: UseKnowledgeBaseDetai
         setReparseDeleteOld(false);
       })
       .catch((err) => {
-        // 服务端原文（含 RAGFlow 异常）只进 console，界面按错误码取文案（§9.3）。
+        // 已知稳定码给可操作文案，其余失败回显服务端 message（`getReparseErrorMessage`）；原始 error 留日志。
         console.error("Reparse failed", err);
         toast.error(getReparseErrorMessage(err, t));
         setReparsingResourceId(null);

@@ -40,14 +40,7 @@ const MOCK_TRANSLATIONS: Record<string, string> = {
   "panelMode.tasksListTitle": "任务列表",
   "panelMode.tasksLoadFailed": "加载任务列表失败",
   "panelMode.tasksManage": "前往管理",
-  "loadState.failed": "任务加载失败",
-  // mutation 失败提示：自本批起一律走字典文案，取键方式与页面上的 `t()` 调用逐字对应
-  "toast.loadFailed": "任务加载失败",
-  "toast.saveFailed": "保存失败",
-  "toast.toggleFailed": "任务状态切换失败",
-  "toast.triggerFailed": "触发任务失败",
-  "toast.deleteFailed": "删除任务失败",
-  "toast.clearLogsFailed": "清空日志失败",
+  "loadState.failed": "任务加载失败：{{message}}",
   "loadState.unauthorizedTitle": "无权访问定时任务",
   "loadState.unauthorizedHint": "当前账号未被授权查看该组织的定时任务，请联系组织管理员开通权限。",
   "loadState.retry": "重试",
@@ -84,8 +77,8 @@ mock.module("react-i18next", () => ({
 
 // 替身给的是跨包并集（success / error / info / warning / message）：bun 1.4.2 下 `mock.module`
 // 的命名空间会被同进程后续文件复用，只给本用例用到的两个方法会让之后加载的组件取到 undefined。
-// `toast.error` 的文案额外落进 `toastErrors`：本批要钉住「mutation 失败只上屏字典文案」，
-// 而这条行为只体现在 toast 内容里（页面上没有它的 DOM 落点）。
+// `toast.error` 的入参额外落进 `toastErrors`：mutation 失败在页面上没有 DOM 落点，只能从 toast
+// 这一侧钉住「失败提示必须带服务端原始 message」。
 const toastErrors: string[] = [];
 mock.module("sonner", () => ({
   toast: {
@@ -322,15 +315,14 @@ function alertRegions(): Element[] {
 
 describe("AgentTasksPage 列表加载状态", () => {
   // 失败必须停住（持久错误分支 + 原因 + 重试），不能只弹 toast 后退回「暂无任务」空态；
-  // 且失败原因只能来自字典——服务端信封里的原文（`boom`）不得出现在界面上（§9.3）
-  test("加载失败落在持久错误分支而不是空态，且不回显服务端原始 message", async () => {
+  // 且原因必须是服务端信封里的原文——固定文案会把后端故障在接口侧屏蔽掉，用户与测试都无从定位。
+  test("加载失败落在持久错误分支并回显服务端原始 message，且重试真的重新发起请求", async () => {
     listResponses = [failure("SERVER_ERROR", "boom", 500), successList()];
     await render(createElement(AgentTasksPage));
 
     expect(alertRegions().length).toBe(1);
-    expect(text()).toContain("任务加载失败");
-    // 原始 message 只允许进 console.error：它在界面上出现就等于把后端内部措辞透给了用户
-    expect(text()).not.toContain("boom");
+    // `boom` 是服务端信封里的 raw message：它必须出现在界面上，才谈得上「用户与测试都能定位故障」
+    expect(text()).toContain("任务加载失败：boom");
     expect(text()).not.toContain("暂无定时任务");
 
     await click(buttonByText("重试") as HTMLButtonElement);
@@ -351,7 +343,7 @@ describe("AgentTasksPage 列表加载状态", () => {
     expect(buttonByText("重试")).toBeUndefined();
   });
 
-  // 行内图标操作必须有可访问名：下拉触发器曾只有三个点，读屏与测试都定位不到它
+  // 行内纯图标控件必须有可访问名：下拉触发器曾只有三个点，读屏与测试都定位不到它
   test("行内图标操作有可访问名（执行 / 更多操作）", async () => {
     listResponses = [successList()];
     await render(createElement(AgentTasksPage));
@@ -360,24 +352,25 @@ describe("AgentTasksPage 列表加载状态", () => {
     expect(buttonByLabel("更多操作")).toBeDefined();
   });
 
-  // mutation 失败（启停切换）的提示同样只取字典文案：服务端信封原文（`boom`）不得进 toast。
-  // 这条落在 `onError` 里，页面上没有 DOM 落点，只能断言 toast 的入参——它是「后端内部措辞被
-  // 透给用户」最直接的出口（§9.3：改动前此处直接回显服务端原文，不经字典）。
-  test("启停切换失败只上屏字典文案，不回显服务端原始 message", async () => {
+  // mutation 失败（启停切换）的提示同样必须带服务端原始 message：这条落在 `onError` 里，页面上没有
+  // DOM 落点，只能断言 toast 的入参——它是「后端故障被接口侧屏蔽」最直接的出口，也是本次要恢复的行为。
+  test("启停切换失败把服务端原始 message 上屏", async () => {
     listResponses = [successList()];
     toggleResponses = [failure("SERVER_ERROR", "boom", 500)];
     await render(createElement(AgentTasksPage));
 
     await click(buttonByLabel("停用") as HTMLButtonElement);
 
+    // 一次失败一条提示，且提示里含服务端原文（字典文案兜底时才会退化成固定文案）
     expect(toggleCalls).toBe(1);
-    expect(toastErrors).toEqual(["任务状态切换失败"]);
-    expect(toastErrors.join("")).not.toContain("boom");
+    expect(toastErrors.length).toBe(1);
+    expect(toastErrors[0]).toContain("boom");
   });
 });
 
 describe("TasksPanel 列表加载状态", () => {
-  // 侧栏面板同样要能区分「加载失败」与「没有绑定任务」，并给出重试入口
+  // 侧栏面板同样要能区分「加载失败」与「没有绑定任务」，并给出重试入口。
+  // 说明行必须带上服务端信封原文（标题仍是本包字典文案）：toast 会被错过，失败块才是持久的失败解释。
   test("加载失败显示持久错误分支与重试，重试成功后渲染列表", async () => {
     listResponses = [failure("SERVER_ERROR", "boom", 500), successList()];
     logResponses = [successLogs()];
@@ -385,6 +378,7 @@ describe("TasksPanel 列表加载状态", () => {
 
     expect(alertRegions().length).toBe(1);
     expect(text()).toContain("加载任务列表失败");
+    expect(text()).toContain("boom");
     expect(text()).not.toContain("暂无绑定的定时任务");
 
     await click(buttonByText("重试") as HTMLButtonElement);
@@ -392,6 +386,20 @@ describe("TasksPanel 列表加载状态", () => {
     expect(listCalls).toBe(2);
     expect(text()).toContain("每日备份");
     expect(alertRegions().length).toBe(0);
+  });
+
+  // 侧栏面板的启停失败与整页同口径：提示必须带服务端原始 message（页面上没有 DOM 落点，只能断言 toast 入参）
+  test("侧栏启停失败把服务端原始 message 上屏", async () => {
+    listResponses = [successList()];
+    logResponses = [successLogs()];
+    toggleResponses = [failure("SERVER_ERROR", "boom", 500)];
+    await render(createElement(TasksPanel, { agentId: "agent-1" }));
+
+    await click(buttonByLabel("停用") as HTMLButtonElement);
+
+    expect(toggleCalls).toBe(1);
+    expect(toastErrors.length).toBe(1);
+    expect(toastErrors[0]).toContain("boom");
   });
 
   // 无权限分支在侧栏同样不给重试：再点一次只会拿到同一个 403
@@ -429,16 +437,14 @@ describe("TasksPanel 列表加载状态", () => {
     expect(rowButtons()[1].getAttribute("aria-pressed")).toBe("true");
   });
 
-  // 日志区失败同样要有可恢复入口：给出原因并允许重发同页请求；原因同样只取字典文案，
-  // 不把服务端信封原文（`boom`）渲染出来（§9.3）
-  test("日志区加载失败给出原因与重试，重试后渲染日志行，且不回显原始 message", async () => {
+  // 日志区失败同样要有可恢复入口：给出原因并允许重发同页请求
+  test("日志区加载失败给出原因与重试，重试后渲染日志行", async () => {
     listResponses = [successList()];
     logResponses = [failure("SERVER_ERROR", "boom", 500), successLogs()];
     await render(createElement(TasksPanel, { agentId: "agent-1" }));
 
     expect(alertRegions().length).toBe(1);
-    expect(text()).toContain("任务加载失败");
-    expect(text()).not.toContain("boom");
+    expect(text()).toContain("任务加载失败：boom");
     expect(text()).not.toContain("ok-summary");
 
     await click(buttonByText("重试") as HTMLButtonElement);
@@ -460,7 +466,7 @@ describe("TasksPanel 列表加载状态", () => {
     expect(text()).toContain("无权访问定时任务");
     expect(text()).toContain("当前账号未被授权查看该组织的定时任务");
     // 授权失败不得退化成通用失败分支（那是给瞬时故障 + 重试准备的）
-    expect(text()).not.toContain("任务加载失败");
+    expect(text()).not.toContain("任务加载失败：forbidden");
     expect(buttonByText("重试")).toBeUndefined();
   });
 });

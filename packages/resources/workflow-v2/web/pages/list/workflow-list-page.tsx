@@ -54,6 +54,7 @@ import {
   type WorkflowV2WorkflowItem,
 } from "../../api/workflows";
 import { WORKFLOW_NS } from "../../i18n/namespace";
+import { errorMessage } from "./error-message";
 import { WorkflowApiDialog } from "./workflow-api-dialog";
 import { WorkflowListCards } from "./workflow-list-cards";
 import {
@@ -85,9 +86,13 @@ type ListNotice =
   | { readonly kind: "deleted"; readonly name: string }
   | { readonly kind: "renamed" }
   | { readonly kind: "delete_refused"; readonly strategyKey: string }
-  | { readonly kind: "delete_failed" }
-  /** 初始化失败：文案按**稳定错误码**取字典键（`initializeErrorKey`），不带上屏的服务端原文。 */
-  | { readonly kind: "initialize_failed"; readonly messageKey: string };
+  /** 删除失败：`message` 是服务端错误信封原文；取不到时为 null，回落到字典文案。 */
+  | { readonly kind: "delete_failed"; readonly message: string | null }
+  /**
+   * 初始化失败：文案按**稳定错误码**取字典键（`initializeErrorKey`），通用档的键带 `{{message}}` 槽位，
+   * 由 `message`（服务端信封原文）插值——未登记失败没有可执行的下一步动作，原文是唯一的定位线索。
+   */
+  | { readonly kind: "initialize_failed"; readonly messageKey: string; readonly message: string | null };
 
 /**
  * 运行日志弹窗的目标（见 `WorkflowRunLogDialog` 的两种模式）。
@@ -113,8 +118,10 @@ function ListNoticeBar({ notice, onDismiss }: { readonly notice: ListNotice; rea
   if (notice.kind === "deleted") text = t("list.delete_success", { name: notice.name });
   else if (notice.kind === "renamed") text = t("list.rename_success");
   else if (notice.kind === "delete_refused") text = t(notice.strategyKey);
-  else if (notice.kind === "initialize_failed") text = t(notice.messageKey);
-  else text = t("list.delete_failed");
+  else if (notice.kind === "initialize_failed") {
+    // 稳定码的键没有 `{{message}}` 槽位（多传插值参数无副作用），通用键靠它把服务端原文带上屏。
+    text = t(notice.messageKey, { message: notice.message ?? "" });
+  } else text = notice.message ?? t("list.delete_failed");
 
   return (
     <div
@@ -191,9 +198,9 @@ export function WorkflowListPage() {
         void navigate({ to: "/agent/workflow/$id/edit", params: { id: created.upstreamWorkflowId } });
       },
       onError: (error) => {
-        // `ApiError.message` 是后端信封原文，只进日志；上屏走字典文案（§9.3）。
         console.error(t("list.create_error"), error);
-        setCreateError(t("list.create_error"));
+        // 服务端信封原文优先上屏，字典文案只在取不到时兜底。
+        setCreateError(errorMessage(error) ?? t("list.create_error"));
       },
     },
   );
@@ -208,9 +215,8 @@ export function WorkflowListPage() {
       list.refresh();
     },
     onError: (error) => {
-      // `ApiError.message` 是后端信封原文（含上游措辞），只进日志；上屏按稳定错误码取字典键（§9.3）。
-      console.error(t("list.initialize_failed"), error);
-      setNotice({ kind: "initialize_failed", messageKey: initializeErrorKey(error) });
+      console.error("Failed to initialize workflow space", error);
+      setNotice({ kind: "initialize_failed", messageKey: initializeErrorKey(error), message: errorMessage(error) });
     },
   });
 
@@ -227,7 +233,7 @@ export function WorkflowListPage() {
       },
       onError: (error) => {
         console.error(t("list.rename_failed"), error);
-        setRenameError(t("list.rename_failed"));
+        setRenameError(errorMessage(error) ?? t("list.rename_failed"));
       },
     },
   );
@@ -249,7 +255,7 @@ export function WorkflowListPage() {
     onError: (error) => {
       console.error(t("list.delete_failed"), error);
       setDeleteTarget(null);
-      setNotice({ kind: "delete_failed" });
+      setNotice({ kind: "delete_failed", message: errorMessage(error) });
     },
   });
 

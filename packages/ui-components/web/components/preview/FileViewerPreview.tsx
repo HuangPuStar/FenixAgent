@@ -23,8 +23,9 @@
  * 7. 取数函数 `fetchPreview` 为**必填 prop**（源实现在组件内直调全局 `fetch` 读宿主文件代理路由，
  *    并用 `= fetch` 作 `preview-source` 的默认参数）：本包不得依赖 `@fenix/web-runtime`，因此取数只能
  *    由宿主注入，且刻意不保留全局 `fetch` 兜底——兜底会让组件重新直连后端并自行拼 URL（§5.8）。
- * 8. 失败态不再回显原始错误（§9.3）：`preview-source` 抛的是结构化的 `PreviewSourceError`（带 `status`），
- *    文案按当前语言取 `fileTree.preview.loadFailed` / `loadFailedUnknown`，原始错误只进 `console.error`。
+ * 8. 失败态只上屏本地化文案：`preview-source` 抛的是结构化的 `PreviewSourceError`，只带 `status`，
+ *    其 `message` 是本地构造的诊断串（不是服务端错误信封），文案按当前语言取
+ *    `fileTree.preview.loadFailed` / `loadFailedUnknown`，原始错误只进 `console.error`。
  */
 
 import type { PreviewLocale, PreviewMessages } from "@open-file-viewer/core";
@@ -173,9 +174,10 @@ export function FileViewerPreview({
   const mimeType = useMemo(() => getPreviewMimeType(filePath), [filePath]);
   const loadAsBlob = useMemo(() => shouldLoadPreviewAsBlob(filePath), [filePath]);
   const [previewSource, setPreviewSource] = useState<string | Blob | null>(() => (loadAsBlob ? null : previewUrl));
-  // 失败态只留结构（有状态码 / 无状态码），文案在渲染时按当前语言取——原始错误只进 console（§9.3：
-  // 不展示 raw message）。此前这里存的是 `error.message` 并原样上屏，界面因此会出现
-  // 「文件预览加载失败 (500)」这类写死中文，或宿主域模块的内部错误串。
+  // 失败态只留结构（有状态码 / 无状态码），文案在渲染时按当前语言取：这里能拿到的错误要么是只带 `status`
+  // 的 `PreviewSourceError`（`message` 是本地诊断串，不是服务端信封），要么是宿主域模块的异常，两类都没有
+  // 可直接上屏的本地化正文。此前这里存的是 `error.message` 并原样上屏，界面因此会出现
+  // 「文件预览加载失败 (500)」这类写死中文。
   const [loadError, setLoadError] = useState<{ status?: number } | null>(null);
   const [reloadKey, setReloadKey] = useState(0);
 

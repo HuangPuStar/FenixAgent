@@ -1,16 +1,15 @@
 // web/__tests__/agent-sites-error-text.test.tsx
-// 守护站点目录失败态的**文案来源**：`EmptyState` 的说明只能取本包 `agents` 命名空间的键，不得回显
-// `error.message`。
+// 守护站点目录失败态的**文案来源**：`EmptyState` 的说明必须取 `error.message`，即 `unwrap()` 抛出的
+// `ApiError.message`（后端错误信封原文）。
 //
-// 为什么必须钉住：`AgentSitesPage` 用 `unwrap()` 取列表，抛出的 `ApiError.message` 就是后端错误信封
-// 的原文（服务端措辞、SQL 片段、内部路径都可能出现）。改动前这里写的是
-// `description={props.error.message}`，于是标题已经是「应用列表加载失败」，说明又把后端实现细节铺了
-// 一层——用户读到的是别人系统的内部措辞（§9.3「未知错误使用安全通用文案，不展示 raw message」）。
+// 为什么必须钉住：`AgentSitesPage` 用 `unwrap()` 取列表，只上屏固定字典文案会把后端故障在接口侧屏蔽
+// 掉——用户与测试都拿不到服务端给出的原因（2026-10-12 回滚「错误文案收口」后确立的口径）。这里同时钉住
+// 失败块仍可恢复：说明与后端原文一起出现，`role="alert"` 与重试入口不因错误来源变化而失效。
 //
-// 为什么用真实渲染 + 真实 i18next：被钉住的行为是「原始 message 不出现在渲染结果里」+「失败块仍是
-// 可恢复的 `role="alert"` + 重试」，两者都取决于分支顺序与最终落到哪个元素。`siteDeployment.*` 的键
-// 随台账 D4 从宿主 `agentPanel` 字典迁入本包 `agents`（消费方即本包页面），因此此处直接按本包命名空间
-// 声明夹具资源：断言的是接线（说明取哪个键、不取 error.message），文案本身由夹具给。
+// 为什么用真实渲染 + 真实 i18next：被钉住的行为是「原始 message 出现在渲染结果里」+「失败块仍是可恢复的
+// `role="alert"` + 重试」，两者都取决于分支顺序与最终落到哪个元素。`siteDeployment.*` 的键随台账 D4 从宿主
+// `agentPanel` 字典迁入本包 `agents`（消费方即本包页面），因此此处直接按本包命名空间声明夹具资源：断言的是
+// 接线（说明取 error.message），文案本身由夹具给。
 //
 // 不用 `mock.module`：本包 `src/__tests__/agent-config-source-migration.test.ts` 的「包内测试不直接
 // mock 模块」是零容忍守卫（CLAUDE.md 测试红线），替身一律走真实库或平台 `/testing`。
@@ -33,7 +32,7 @@ globals.window = win;
 globals.document = win.document;
 globals.navigator = win.navigator;
 
-/** 服务端原始异常文本：正常渲染路径下它只该出现在 `AgentSitesPage` 的 `console.error` 里。 */
+/** 服务端原始异常文本：它必须出现在失败块的说明里，同时另有一份进 `AgentSitesPage` 的 `console.error`。 */
 const RAW_SERVER_MESSAGE = 'relation "site_app" does not exist (hint: run migrations)';
 
 await i18next.use(initReactI18next).init({
@@ -48,10 +47,7 @@ await i18next.use(initReactI18next).init({
           title: "站点部署",
           subtitle: "把智能体发布成可访问的应用",
           actions: { retry: "重试" },
-          errors: {
-            load: "应用列表加载失败",
-            loadHint: "请重试；若持续失败，请联系组织管理员。",
-          },
+          errors: { load: "应用列表加载失败" },
         },
       },
     },
@@ -91,9 +87,9 @@ function renderCatalog(node: ReactElement): void {
 const noop = () => {};
 
 describe("站点目录失败态的文案来源", () => {
-  // 失败块必须停住（`role="alert"` + 可执行提示 + 重试），且说明文案只来自字典：
-  // 后端信封原文出现在界面上等于把服务端内部措辞透给用户（§9.3）
-  test("失败块不回显 error.message，只上屏字典文案并保留重试入口", () => {
+  // 失败块必须停住（`role="alert"` + 可执行提示 + 重试），且说明里能看到服务端原始 message：
+  // 只上屏固定文案会让后端故障在界面与测试里同时消失（2026-10-12 口径）
+  test("失败块回显 error.message，并保留 role=alert 与重试入口", () => {
     renderCatalog(
       createElement(AgentSitesCatalog, {
         apps: [],
@@ -116,15 +112,12 @@ describe("站点目录失败态的文案来源", () => {
     );
 
     const text = container.textContent ?? "";
-    // 标题与说明槽位取的都是字典键：i18n 命中时渲染译文，未命中时回显键本身。**断言不能依赖命中状态**
+    // 标题仍取字典键：i18n 命中时渲染译文，未命中时回显键本身。**断言不能依赖命中状态**
     // ——`bun test packages/` 在同一进程内跑完全部文件，同进程别处对 `react-i18next` 的模块替身会
     // 让本文件的 `t()` 也退回键回显（2026-09-23 实测：单独跑本文件渲染译文，跑整包渲染键）。
-    expect(text).toMatch(/siteDeployment\.errors\.loadHint|请重试；若持续失败，请联系组织管理员。/);
     expect(text).toMatch(/siteDeployment\.errors\.load|应用列表加载失败/);
-    // 而服务端原始 message 在任何一种 i18n 状态下都不该出现：它只能进 `AgentSitesPage` 的
-    // `console.error`（§9.3）
-    expect(text).not.toContain(RAW_SERVER_MESSAGE);
-    expect(text).not.toContain("relation");
+    // 说明必须是服务端信封原文：任何 i18n 状态下它都该原样出现
+    expect(text).toContain(RAW_SERVER_MESSAGE);
     // 失败仍是可恢复的持久态：`role="alert"` + 重试入口
     expect(container.querySelectorAll('[role="alert"]').length).toBe(1);
     expect(text).toMatch(/siteDeployment\.actions\.retry|重试/);

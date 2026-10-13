@@ -8,6 +8,7 @@ import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
 
 import { AGENT_HOME_NS } from "../../../i18n/namespace";
+import { errorMessage } from "../../../lib/error-message";
 import "./AgentGenerationForm.css";
 
 export interface SkillItem {
@@ -54,8 +55,9 @@ export function AgentGenerationForm({ initialData, onCreate, loading }: AgentGen
     try {
       await onCreate({ name, systemPrompt, skills });
     } catch (err) {
-      toast.error(t("createFailed"));
-      console.error(err);
+      // 失败原因取服务端信封原文：固定文案会让用户与测试都定位不到后端故障。
+      console.error("[agent-home] Create agent failed:", err);
+      toast.error(errorMessage(err) ?? t("createFailed"));
     }
   }, [name, systemPrompt, skills, onCreate, t]);
 

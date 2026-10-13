@@ -19,7 +19,8 @@
 // 请求刻意不做 `unwrap`——409 冲突体必须原样交到这里；代价是凭据失效只能按**信封里的码**识别（见两处
 // `onAuthFailure` 的调用点）。
 //
-// 上屏文案一律取本包字典（§9.3）：`ApiError.message` / 错误信封原文是后端文案，只进 `console.error`。
+// 上屏文案把信封 message 暴露出来（`response.error?.message` 优先，字典文案只在它是空串时兜底）；
+// 原始 error 对象仍进 `console.error` 保留诊断上下文。
 
 import { FormDialog } from "@fenix/ui-components/config/FormDialog";
 import { Button } from "@fenix/ui-components/ui/button";
@@ -70,7 +71,7 @@ export function PluginMarketPublishDialog({ open, onOpenChange, onPublished, onA
             onAuthFailure();
             return;
           }
-          setActionError(t("dialog.previewFailed"));
+          setActionError(response.error?.message || t("dialog.previewFailed"));
           return;
         }
         setPreview(response.data?.preview ?? null);
@@ -110,7 +111,8 @@ export function PluginMarketPublishDialog({ open, onOpenChange, onPublished, onA
         return;
       }
       console.error(t("dialog.publishFailed"), response.error);
-      setActionError(t("dialog.publishFailed"));
+      // 弹窗里的失败说明取信封 message：固定文案会让用户与测试都定位不到后端故障；字典文案兜底。
+      setActionError(response.error?.message || t("dialog.publishFailed"));
     } finally {
       setPublishing(false);
     }

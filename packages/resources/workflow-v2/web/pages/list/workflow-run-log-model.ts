@@ -2,9 +2,10 @@
 // 「运行日志」视图的纯派生：错误码 → 文案键、状态 → 文案键、记录的视图模型与格式化，以及左栏（主从两栏的
 // 索引列）选中项的解析。
 //
-// 为什么错误映射必须走稳定码：`unwrap()` 抛出的 `ApiError.message` 是后端信封原文（`UPSTREAM_*` 分支带上游
-// 措辞），上屏等于把不是我方写的句子当产品文案——与列表页初始化失败同一口径
-// （`workflow-list-model.ts` 的 `initializeErrorKey`）。
+// 为什么错误映射必须走稳定码：稳定码的**下一步动作不同**（未绑定要去列表页初始化、会话/降级要找管理员、
+// 超时与上游不可达重试即可），字典里的句子直接给出对应动作。其余失败没有确定动作，回落通用键 `run.failed`
+// ——它带 `{{message}}` 槽位，由调用方把 `unwrap()` 抛出的 `ApiError.message`（服务端信封原文）插进去，
+// 否则用户与测试都无从定位后端故障（与列表页 `initializeErrorKey` 同一口径）。
 // 分支按「用户下一步动作不同」划分：未绑定要去列表页初始化、会话/降级要找管理员、超时与上游不可达重试即可。
 //
 // 返回 i18n **键**而不是文案（键是有限枚举，可被包内 i18n 用例逐个查字典）；文案取值属视图层（§9.1）。
@@ -16,8 +17,8 @@ import type { WorkflowV2PlatformRun, WorkflowV2RunRecord } from "../../api/workf
 /**
  * 控制面读取运行记录失败的「稳定错误码 → 字典键」映射。
  *
- * 其余（含请求层归一出的 `NETWORK_ERROR` / `SERVER_ERROR` 与将来新增的码）一律走通用文案——不认识的失败
- * 不该被翻译成一句看似精确的承诺。
+ * 其余（含请求层归一出的 `NETWORK_ERROR` / `SERVER_ERROR` 与将来新增的码）一律走通用键 `run.failed`：
+ * 它带 `{{message}}` 槽位，调用方要把服务端信封原文传进去（见 `error-message.ts`）。
  */
 export function runErrorKey(error: unknown): string {
   const code = error instanceof ApiError ? error.code : null;

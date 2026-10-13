@@ -4,12 +4,16 @@ import type { ApiKeyInfo } from "../../../api/api-keys";
 
 /**
  * 将创建 API key 的错误转换为用户可理解的提示文案。
+ *
+ * `DUPLICATE_API_KEY_NAME` 是稳定业务码，用户下一步动作固定是「改名重试」，用本包文案；
+ * 其余错误回显服务端 message（`unwrap` 抛出的 `ApiError.message` 即错误信封原文），
+ * 让用户与测试都能定位后端故障。
  */
 export function getApiKeyCreateErrorMessage(err: unknown, t: (key: string) => string): string {
   if (err instanceof ApiError && err.code === "DUPLICATE_API_KEY_NAME") {
     return t("toast.duplicateName");
   }
-  return t("toast.createFailed");
+  return err instanceof Error ? err.message : t("toast.createFailed");
 }
 
 /** Filter only fields exposed by the API key list contract. */

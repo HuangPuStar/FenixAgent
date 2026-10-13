@@ -60,6 +60,7 @@
     },
     "loading": "Loading...",
     "load_failed": "Failed to load workflows",
+    "load_failed_with": "Failed to load workflows: {{message}}",
     "load_failed_hint": "Please retry; if it keeps failing, contact your organization administrator.",
     "retry": "Retry",
     "unauthorized_title": "No permission to view workflows",
@@ -78,7 +79,7 @@
         "description": "The workflow app bound to this organization is marked unavailable upstream, so workflows cannot be read right now. Contact an administrator, then retry."
       }
     },
-    "initialize_failed": "Could not initialize the workflow space. Please retry; if it keeps failing, contact your organization administrator.",
+    "initialize_failed": "Could not initialize the workflow space: {{message}}. Please retry; if it keeps failing, contact your organization administrator.",
     "initialize_failed_session": "The platform workflow account is unavailable right now, so initialization did not finish. Please retry later or contact your organization administrator.",
     "initialize_failed_upstream": "The upstream service is temporarily unavailable and initialization did not finish. Please retry later.",
     "initialize_failed_unauthorized": "This session is not allowed to initialize a workflow space. Sign in again, then retry.",
@@ -203,7 +204,7 @@
     "failed_session": "The platform workflow account is unavailable right now and run records could not be read. Please retry later or contact your organization administrator.",
     "failed_timeout": "The upstream service timed out and run records could not be read. Please retry later.",
     "failed_upstream": "The upstream service rejected this read. Please retry later; if it keeps failing, contact your organization administrator.",
-    "failed": "Could not load run records. Please retry.",
+    "failed": "Could not load run records: {{message}}",
     "retry": "Retry",
     "records_title": "Executions",
     "empty_title": "No run records for this workflow yet",

@@ -23,7 +23,7 @@
   },
   "siteFrame": {
     "loadingSites": "Loading agent sites...",
-    "loadFailed": "Failed to load sites"
+    "loadFailed": "Failed to load sites: {{message}}"
   },
   "fileTree": {
     "emptyState": "No files in workspace",

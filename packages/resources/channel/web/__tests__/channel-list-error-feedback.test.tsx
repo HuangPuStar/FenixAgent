@@ -321,8 +321,9 @@ describe("AgentChannelsPage 列表失败的反馈次数", () => {
     expect(deleteCalls).toBe(1);
     expect(listCalls).toBe(2);
 
-    // 第 1 次反馈：toast 告知本次刷新失败；且没有第 2 次（不渲染持久错误页）
-    expect(toastErrors).toEqual(["加载通道绑定失败"]);
+    // 第 1 次反馈：toast 告知本次刷新失败并回显服务端错误信封原文，用户不必翻日志就能定位后端故障；
+    // 且没有第 2 次（不渲染持久错误页）
+    expect(toastErrors).toEqual(["boom"]);
     expect(alertRegions().length).toBe(0);
     // 列表与删除成功的反馈都保留
     expect(text()).toContain("wechat");

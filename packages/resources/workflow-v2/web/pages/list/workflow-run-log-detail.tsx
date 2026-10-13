@@ -9,7 +9,8 @@
 // execute id 单独取一次；一次弹窗因此最多两条上游请求（清单 + 当前选中项），不随记录条数增长。
 //
 // 三态（§3.4）：在途 → 骨架 + 加载文案；失败 → `EmptyState` + 重试（`role="alert"`，文案按稳定错误码取字典
-// 键，不回显服务端原文）；就绪 → 输入 / 输出两块。空值（上游未提供）**不是**失败，也不与失败共用呈现。
+// 键，未登记的失败把服务端信封原文插进通用键的 `{{message}}` 槽位）；就绪 → 输入 / 输出两块。空值（上游未
+// 提供）**不是**失败，也不与失败共用呈现。
 //
 // 平台侧记录没有输入输出可看（它只有平台自己的调用流水）：右栏对它展示已有字段并**显式说明**这一点，
 // 不留白板，也不摆两个空块——那会被读成「上游这次没给」。
@@ -23,6 +24,7 @@ import { Info, RefreshCw, TriangleAlert } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { fetchRunIo } from "../../api/workflow-runs";
 import { WORKFLOW_NS } from "../../i18n/namespace";
+import { errorMessage } from "./error-message";
 import {
   formatRunIoValue,
   PLATFORM_RUN_RESULT_KEYS,
@@ -122,7 +124,7 @@ export function RunIoDetail({
         <EmptyState
           icon={<TriangleAlert className={ICON_CLASS} />}
           title={t("run.io_failed_title")}
-          description={t(runErrorKey(io.error))}
+          description={t(runErrorKey(io.error), { message: errorMessage(io.error) ?? "" })}
           tone="danger"
           className="py-6"
           role="alert"

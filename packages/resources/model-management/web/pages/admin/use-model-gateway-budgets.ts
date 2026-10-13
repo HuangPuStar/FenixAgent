@@ -75,7 +75,8 @@ export function useModelGatewayBudgets({ active, onAuthFailure }: { active: bool
     onError: (error) => {
       // 只有系统 API 明确返回未授权时才清理 Master Key；网关或数据库故障不能被误判为鉴权失败。
       if (error instanceof ApiError && error.code === "UNAUTHORIZED") onAuthFailure();
-      toast.error(t("modelGateway.budgetsPage.resetError"));
+      console.error("[model-gateway] 重置预算失败", error);
+      toast.error(error instanceof Error && error.message ? error.message : t("modelGateway.budgetsPage.resetError"));
     },
   });
 

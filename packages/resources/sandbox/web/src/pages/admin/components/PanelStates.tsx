@@ -30,7 +30,10 @@ export function PanelLoadingState() {
 }
 
 export interface PanelErrorStateProps {
-  /** 错误说明文案，由调用方经 i18n 提供——各面板的失败语境不同（如 `t("clusterError")` / `t("error")`）。 */
+  /**
+   * 错误说明文案，由调用方拼装：优先服务端返回的 `error.message`（否则失败原因不可诊断），
+   * 字典文案（如 `t("clusterError")` / `t("error")`）只在 message 为空时兜底。
+   */
   message: string;
   /** 重试回调：重新拉取该面板的数据。 */
   onRetry: () => void;
