@@ -36,6 +36,27 @@ function shellNode(command: string, overrides?: Partial<ShellNodeDef>): ShellNod
   };
 }
 
+/**
+ * 等待进程组彻底从进程表消失（`kill(-pgid, 0)` 返回 ESRCH）。
+ *
+ * 组 SIGKILL 只保证信号已投递：组内进程要先在内核里退出、孤儿进程再由 init 回收，之后进程组
+ * 才真正消失。CI（Linux）上这个窗口比 macOS 明显（实测 2026-10-13 run 38372470159 曾因「组仍
+ * 存在」偶发失败），故轮询到消失为止；超时未消失返回 false，由调用方断言失败。
+ */
+async function waitForProcessGroupExit(processId: number, timeoutMs: number): Promise<boolean> {
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    try {
+      process.kill(-processId, 0);
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code === "ESRCH") return true;
+      throw error;
+    }
+    await Bun.sleep(20);
+  }
+  return false;
+}
+
 // ========== ProcessExecutor 测试 ==========
 
 describe("ProcessExecutor", () => {
@@ -81,7 +102,7 @@ describe("ProcessExecutor", () => {
     const events = await ctx.storage.getEvents(ctx.runId, { nodeId: "test-node" });
     const processId = Number(events.find((event) => event.type === "node.started")?.metadata?.pid);
     expect(processId).toBeGreaterThan(0);
-    expect(() => process.kill(-processId, 0)).toThrow();
+    expect(await waitForProcessGroupExit(processId, 2000)).toBe(true);
   });
 
   // node.failed 事件
