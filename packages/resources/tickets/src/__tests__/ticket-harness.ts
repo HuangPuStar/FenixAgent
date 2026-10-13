@@ -20,6 +20,8 @@ import type {
   EditCommentInput,
   EditIssueInput,
   EditLabelInput,
+  GitAttachment,
+  GitAttachmentDownload,
   GitComment,
   GitIssue,
   GitIssueListQuery,
@@ -29,6 +31,7 @@ import type {
   GitRepository,
   GitScopedClient,
   GitService,
+  UploadAttachmentInput,
 } from "@fenix/git/server";
 import {
   type AccessControlModule,
@@ -42,8 +45,12 @@ import {
 } from "@fenix/platform-sdk";
 import { getDatabase, getIdentityDirectory } from "@fenix/platform-sdk/server";
 import { stubIdentityDirectory } from "@fenix/platform-sdk/testing";
-import { Elysia } from "elysia";
+import { Elysia, ValidationError as ElysiaValidationError } from "elysia";
 import { ticketProjectResource } from "../server/access/ticket-project-resource";
+import {
+  createTicketAttachmentFacade,
+  type TicketAttachmentFacadeApi,
+} from "../server/facades/ticket-attachment-facade";
 import { createTicketCommentFacade, type TicketCommentFacadeApi } from "../server/facades/ticket-comment-facade";
 import { createTicketFacade, type TicketFacadeApi } from "../server/facades/ticket-facade";
 import { createTicketLabelFacade, type TicketLabelFacadeApi } from "../server/facades/ticket-label-facade";
@@ -59,6 +66,10 @@ import type {
 import { createWebTicketRoutes } from "../server/routes/web/index";
 import { installTicketsServerModule } from "../server/runtime";
 import { buildTicketBody, hashBody } from "../server/services/identity-header";
+import {
+  createTicketAttachmentService,
+  type TicketAttachmentService,
+} from "../server/services/ticket-attachment-service";
 import { createTicketCommentService, type TicketCommentService } from "../server/services/ticket-comment-service";
 import { createTicketEditService, type TicketEditService } from "../server/services/ticket-edit-service";
 import { createTicketLabelService, type TicketLabelService } from "../server/services/ticket-label-service";
@@ -755,6 +766,11 @@ export function gitLabel(overrides: Partial<GitLabel> = {}): GitLabel {
   return { id: "1", name: "bug", color: "ff0000", description: null, ...overrides };
 }
 
+/** 附件 fixture：`size` 是字节数（恢复核对按文件名 + 字节数认领未定的上传）。 */
+export function gitAttachment(overrides: Partial<GitAttachment> = {}): GitAttachment {
+  return { id: "8", name: "截图.png", size: 1024, createdAt: null, ...overrides };
+}
+
 /**
  * 带可信身份头的远端正文（用例侧的 fixture 工厂）。
  *
@@ -831,6 +847,9 @@ export interface TicketGitBehaviour {
   listLabels?: () => Promise<readonly GitLabel[]>;
   createLabel?: (input: CreateLabelInput) => Promise<GitLabel>;
   editLabel?: (labelId: string, input: EditLabelInput) => Promise<GitLabel>;
+  listAttachments?: (issueNumber: string) => Promise<readonly GitAttachment[]>;
+  uploadAttachment?: (issueNumber: string, input: UploadAttachmentInput) => Promise<GitAttachment>;
+  downloadAttachment?: (issueNumber: string, attachmentId: string) => Promise<GitAttachmentDownload>;
   /** 非 null 时 `createScopedClient` 用它抛错（模拟绑定不可用）。 */
   scopedClientError: unknown;
 }
@@ -849,7 +868,14 @@ export type TicketGitCall =
   | { readonly op: "comments.edit"; readonly commentId: string; readonly input: EditCommentInput }
   | { readonly op: "labels.list" }
   | { readonly op: "labels.create"; readonly input: CreateLabelInput }
-  | { readonly op: "labels.edit"; readonly labelId: string; readonly input: EditLabelInput };
+  | { readonly op: "labels.edit"; readonly labelId: string; readonly input: EditLabelInput }
+  | { readonly op: "attachments.list"; readonly issueNumber: string }
+  | { readonly op: "attachments.upload"; readonly issueNumber: string; readonly input: UploadAttachmentInput }
+  | {
+      readonly op: "attachments.download";
+      readonly issueNumber: string;
+      readonly attachmentId: string;
+    };
 
 /** 会改变远端状态的调用；「零写入」类断言一律用它而不是逐 op 数。 */
 const GIT_WRITE_OPS: ReadonlySet<TicketGitCall["op"]> = new Set([
@@ -860,6 +886,7 @@ const GIT_WRITE_OPS: ReadonlySet<TicketGitCall["op"]> = new Set([
   "comments.edit",
   "labels.create",
   "labels.edit",
+  "attachments.upload",
 ]);
 
 export interface GitHarness {
@@ -945,6 +972,20 @@ export function createGitHarness(): GitHarness {
         return await required(behaviour.editLabel, "labels.edit")(labelId, input);
       },
     },
+    attachments: {
+      async list(issueNumber) {
+        calls.push({ op: "attachments.list", issueNumber });
+        return await required(behaviour.listAttachments, "attachments.list")(issueNumber);
+      },
+      async upload(issueNumber, input) {
+        calls.push({ op: "attachments.upload", issueNumber, input });
+        return await required(behaviour.uploadAttachment, "attachments.upload")(issueNumber, input);
+      },
+      async download(issueNumber, attachmentId) {
+        calls.push({ op: "attachments.download", issueNumber, attachmentId });
+        return await required(behaviour.downloadAttachment, "attachments.download")(issueNumber, attachmentId);
+      },
+    },
   };
   const service: GitService = {
     connectionIds: ["primary"],
@@ -1014,6 +1055,7 @@ export interface TicketHarness {
     readonly edit: TicketEditService;
     readonly comments: TicketCommentService;
     readonly labels: TicketLabelService;
+    readonly attachments: TicketAttachmentService;
     readonly operations: TicketOperationService;
     readonly recovery: TicketRecoveryService;
   };
@@ -1022,6 +1064,7 @@ export interface TicketHarness {
     readonly tickets: TicketFacadeApi;
     readonly comments: TicketCommentFacadeApi;
     readonly labels: TicketLabelFacadeApi;
+    readonly attachments: TicketAttachmentFacadeApi;
   };
 }
 
@@ -1066,6 +1109,7 @@ export function createTicketHarness(options: { readonly withRecovery?: boolean }
     git: git.service,
   });
   const labelService = createTicketLabelService({ operations, git: git.service });
+  const attachmentService = createTicketAttachmentService({ operations, git: git.service });
   const recoveryService = createTicketRecoveryService({
     git: git.service,
     projects: projectStore.repository,
@@ -1088,6 +1132,7 @@ export function createTicketHarness(options: { readonly withRecovery?: boolean }
       edit: editService,
       comments: commentService,
       labels: labelService,
+      attachments: attachmentService,
       operations,
       recovery: recoveryService,
     },
@@ -1121,6 +1166,12 @@ export function createTicketHarness(options: { readonly withRecovery?: boolean }
         scopeStore,
         projects: projectService,
         labels: labelService,
+      }),
+      attachments: createTicketAttachmentFacade({
+        accessControl,
+        scopeStore,
+        projects: projectService,
+        attachments: attachmentService,
       }),
     },
   };
@@ -1157,7 +1208,15 @@ export function createStubSessionAuthGuardPlugin(actor: ActorContext | null) {
     });
 }
 
-/** 装配 `/web/tickets*` 路由（相对路径注册，与宿主 `/web` 前缀无关）并装入进程级模块槽位。 */
+/**
+ * 装配 `/web/tickets*` 路由（相对路径注册，与宿主 `/web` 前缀无关）并装入进程级模块槽位。
+ *
+ * 另挂宿主 error-handler 的**参数校验映射**：Elysia 对 schema 校验失败默认回 422 纯文本
+ * （`{ status, message }` 之类），宿主 `apps/server/src/plugins/error-handler.ts` 会把它改写成
+ * 400 + `{ error: { type: "VALIDATION_ERROR" } }`。包内不挂这段映射时，路径参数非法类的用例
+ * 只能断言一个线上永远不会出现的 422；这里只映射这一条，不复制宿主的 AppError 分支——那部分
+ * 由路由自己的错误映射表覆盖（`web-error.ts` 的文件头边界）。
+ */
 export function installTicketRoutes(harness: TicketHarness, actor: ActorContext | null) {
   installTicketsServerModule({
     resource: ticketProjectResource,
@@ -1165,7 +1224,14 @@ export function installTicketRoutes(harness: TicketHarness, actor: ActorContext 
     tickets: harness.api.tickets,
     comments: harness.api.comments,
     labels: harness.api.labels,
+    attachments: harness.api.attachments,
     identity: getIdentityDirectory(),
   });
-  return createWebTicketRoutes({ authGuardPlugin: createStubSessionAuthGuardPlugin(actor) });
+  return new Elysia()
+    .onError({ as: "global" }, ({ error, set }) => {
+      if (!(error instanceof ElysiaValidationError)) return;
+      set.status = 400;
+      return { error: { type: "VALIDATION_ERROR", message: "validation failed" } };
+    })
+    .use(createWebTicketRoutes({ authGuardPlugin: createStubSessionAuthGuardPlugin(actor) }));
 }

@@ -70,9 +70,9 @@ export interface TicketWriteUncertain {
 export function localWriteFailed(input: {
   readonly operationId: string;
   readonly projectId: string;
-  /** 远端对象坐标：工单号 / 评论 ID / 标签 ID。 */
+  /** 远端对象坐标：工单号 / 评论 ID / 标签 ID / 附件编号。 */
   readonly targetId: string;
-  readonly targetKind: "issue" | "comment" | "label";
+  readonly targetKind: "issue" | "comment" | "label" | "attachment";
   readonly error: unknown;
 }): TicketWriteUncertain {
   logError("远端已写入，本地终态写入失败：转 202 待恢复核对", {

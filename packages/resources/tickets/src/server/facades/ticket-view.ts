@@ -18,6 +18,7 @@ import type { OrganizationMemberRef, UserDisplayInfo } from "@fenix/platform-sdk
 import { TICKET_OPERATION_KINDS } from "../../schemas/ticket-operation.schema";
 import type { TicketIndexRow } from "../repositories/ticket-index";
 import type { TicketOperationRow } from "../repositories/ticket-operations";
+import type { TicketAttachmentFacts } from "../services/ticket-attachment-service";
 import { type AuthorResolution, FALLBACK_ACTOR_NAME } from "../services/ticket-author";
 import type { TicketCommentFacts } from "../services/ticket-comment-service";
 import type { TicketLabelFacts } from "../services/ticket-label-service";
@@ -97,6 +98,23 @@ export interface TicketProjectLabelView {
   readonly name: string;
   readonly color: string | null;
   readonly description: string | null;
+}
+
+/**
+ * 附件视图（T05）：工单上的一个附件。
+ *
+ * 刻意**不含下载地址**：上游的 `browser_download_url` 带服务账号凭据（无凭据直接 404），把任何形式的
+ * 上游 URL 发给浏览器等于泄凭据或给出一条必然失败的链接；下载地址由前端按 `attachmentId` 拼本服务的
+ * 代理路由（`/web/tickets/:projectId/:number/attachments/:attachmentId`）。
+ *
+ * `size` 是字节数（上游 int64）：它是**大小**而不是标识，超过 2^53 的附件不存在，因此不退化成字符串。
+ */
+export interface TicketAttachmentView {
+  /** 附件编号：外部数字 ID，按字符串承载（与工单号、评论 ID 同口径）。 */
+  readonly attachmentId: string;
+  readonly name: string;
+  readonly size: number;
+  readonly createdAt: string | null;
 }
 
 /**
@@ -258,6 +276,11 @@ export function toTicketCommentView(facts: TicketCommentFacts, displayNames: Dis
 /** 标签事实（上游投影）→ 目录视图；字段同名同义，不做任何加工。 */
 export function toTicketProjectLabelView(facts: TicketLabelFacts): TicketProjectLabelView {
   return { id: facts.id, name: facts.name, color: facts.color, description: facts.description };
+}
+
+/** 附件事实（上游投影）→ 附件视图；`id` 换名为 `attachmentId`，其余字段同名同义。 */
+export function toTicketAttachmentView(facts: TicketAttachmentFacts): TicketAttachmentView {
+  return { attachmentId: facts.id, name: facts.name, size: facts.size, createdAt: facts.createdAt };
 }
 
 /**

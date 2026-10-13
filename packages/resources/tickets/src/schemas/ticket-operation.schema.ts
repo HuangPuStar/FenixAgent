@@ -18,6 +18,7 @@ export const TICKET_OPERATION_KINDS = [
   "comment.update",
   "label.create",
   "label.update",
+  "attachment.upload",
 ] as const;
 
 /**

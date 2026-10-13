@@ -61,6 +61,8 @@ export const TICKET_OPERATION_STEP = {
   upstreamApplied: "upstream_applied",
   /** 评论归属已写（成功终态，对应工单侧的 `index_written`，T03）。 */
   ownershipWritten: "ownership_written",
+  /** 附件已上传（成功终态；附件没有本地行，走到这里即终局，T05）。 */
+  attachmentUploaded: "attachment_uploaded",
   /** 恢复核对发现多个匹配或超窗口，等待运维（方案 §9.6，T03）。 */
   needsReview: "needs_review",
   /** 恢复核对确认远端未落库，可安全重提（T03）。 */

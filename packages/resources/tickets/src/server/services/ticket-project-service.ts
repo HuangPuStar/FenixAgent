@@ -50,7 +50,11 @@ const TICKET_CREDENTIAL_REF = "{env:AOS_GIT_SERVICE_TOKEN}";
  *
  * 这份清单是**持久化契约**：名字与 `@fenix/git` 的受控操作名逐字对齐，漏一项不会报错，只会让对应动作在
  * 运行期变成 `FORBIDDEN`。T02 实际用到 `repositories.read`（开通报错时回读）与 `issues.write`（建工单），
- * 其余为 T03/T04 的评论与标签预留——绑定是运维动作，收紧容易放宽难，因此一次给全。
+ * 其余为 T03/T04/T05 的评论、标签与附件预留——绑定是运维动作，收紧容易放宽难，因此一次给全。
+ *
+ * 已存量的绑定行不会因为这里加了两项就自动获得附件权限：`attachments.*` 只在重新绑定（或运维显式刷新
+ * 授权集合）后生效，旧行上的上传/下载会以 `FORBIDDEN` 失败——这是「授权集合是持久化契约」的应有形态，
+ * 不做运行期自动放宽（那等于让代码替运维改权限）。
  */
 const TICKET_CONSUMER_GRANTS: Readonly<Record<string, readonly string[]>> = {
   [TICKET_CONSUMER_ID]: [
@@ -61,6 +65,8 @@ const TICKET_CONSUMER_GRANTS: Readonly<Record<string, readonly string[]>> = {
     "comments.write",
     "labels.read",
     "labels.write",
+    "attachments.read",
+    "attachments.write",
   ],
 };
 

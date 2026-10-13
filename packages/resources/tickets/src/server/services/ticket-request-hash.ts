@@ -49,6 +49,16 @@ export function commentUpdateTargetPath(projectId: string, issueNumber: string, 
   return `/web/tickets/${projectId}/${issueNumber}/comments/${commentId}`;
 }
 
+/**
+ * 上传附件的目标路径。
+ *
+ * 附件挂在**工单**上（上游的附件端点以 Issue 为坐标），因此路径到工单为止：同一工单的两次上传靠
+ * `payload` 里的文件名与内容摘要区分，不同工单则天然不同路径。
+ */
+export function attachmentUploadTargetPath(projectId: string, issueNumber: string): string {
+  return `/web/tickets/${projectId}/${issueNumber}/attachments`;
+}
+
 /** 新建项目标签的目标路径。 */
 export function labelCreateTargetPath(projectId: string): string {
   return `/web/ticket-projects/${projectId}/labels`;

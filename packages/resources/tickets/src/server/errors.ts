@@ -14,7 +14,7 @@
  * 是这一对映射的唯一实现处，读写的字段名必须同时改。
  */
 
-import { AppError, ConflictError, ForbiddenError, NotFoundError } from "@fenix/platform-sdk";
+import { AppError, ConflictError, ForbiddenError, NotFoundError, ValidationError } from "@fenix/platform-sdk";
 
 /** 工单写路径被组织级暂停拦下（项目 `status = "paused"`）：读仍可用，写一律 503。 */
 export class TicketsPausedError extends AppError {
@@ -132,8 +132,8 @@ export class RepositoryOwnerMismatchError extends AppError {
  * 为什么要还原**类**而不只是 `code`/`statusCode`：路由层按 `instanceof` 把错误映射成 `/web` 信封
  * （§9.1 的映射表），同一个幂等键第二次请求若拿到一个通用 `AppError`，就会绕过那张表落到宿主兜底错误
  * 处理器上，同一个失败在首次与重放时得到两种响应体。表里只列本模块**会持久化**的错误码
- * （`toProvisionError` / `toIssueWriteError` 的产出），新增持久化错误码时必须同步这里，否则重放会退化
- * 成通用 `AppError`——状态码与错误码仍正确，只是路由层的分支不再命中。
+ * （`toProvisionError` / `toIssueWriteError` 与 T05 附件路径的 `toWriteError` 的产出），新增持久化错误码
+ * 时必须同步这里，否则重放会退化成通用 `AppError`——状态码与错误码仍正确，只是路由层的分支不再命中。
  */
 const OPERATION_FAILURE_REHYDRATION: Readonly<Record<string, (message: string) => AppError>> = {
   NOT_FOUND: (message) => new NotFoundError(message),
@@ -150,6 +150,8 @@ const OPERATION_FAILURE_REHYDRATION: Readonly<Record<string, (message: string) =
   ASSIGNEE_NOT_MEMBER: (message) => new AssigneeNotMemberError(message),
   LABEL_UNKNOWN: (message) => new UnknownLabelError(message),
   TICKET_OPERATION_PENDING: (message) => new TicketChangeInFlightError(message),
+  /** T05：附件上传被上游**确定拒绝**（413/422：大小上限、扩展名白名单）后写下的终态。 */
+  VALIDATION_ERROR: (message) => new ValidationError(message),
   /** 同义码（合同 §1.4 的命名）：本批不产出，仅用于还原人工改库或早期版本写下的行。 */
   TICKET_CHANGE_IN_FLIGHT: (message) => new TicketChangeInFlightError(message),
 };

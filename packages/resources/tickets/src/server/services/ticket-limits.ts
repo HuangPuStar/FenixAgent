@@ -35,6 +35,15 @@ export const TICKET_ATTACHMENT_MAX_BYTES = 10 * 1024 * 1024;
 /** 每条消息单次提交的附件数上限。 */
 export const TICKET_ATTACHMENT_MAX_COUNT = 5;
 
+/**
+ * 附件文件名的字符上限（200）。
+ *
+ * 上游对文件名没有硬上限，这条限制来自本端：文件名会进 UI 的列表行，也会进下载响应的
+ * `Content-Disposition` 头——过长的头会被中间层（反代、网关）截断或直接拒绝，而一个被截断的
+ * `filename*` 会让浏览器存下一个错名字。与上传路径的校验同一处收口。
+ */
+export const TICKET_ATTACHMENT_NAME_MAX_LENGTH = 200;
+
 /** 列表默认页大小。 */
 export const TICKET_LIST_DEFAULT_LIMIT = 30;
 

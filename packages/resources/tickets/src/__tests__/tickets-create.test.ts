@@ -386,6 +386,12 @@ function createGitHarness(): GitHarness {
       create: async () => unused("labels.create"),
       edit: async () => unused("labels.edit"),
     },
+    // 附件不在本文件的被测面内（T05 的用例在 `ticket-attachments.test.ts`）；这里只补形状。
+    attachments: {
+      list: async () => unused("attachments.list"),
+      upload: async () => unused("attachments.upload"),
+      download: async () => unused("attachments.download"),
+    },
   };
   return {
     calls,

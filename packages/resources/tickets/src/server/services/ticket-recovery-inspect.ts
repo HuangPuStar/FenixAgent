@@ -18,6 +18,7 @@ import type { TicketMessageRepository } from "../repositories/ticket-messages";
 import type { TicketOperationRow } from "../repositories/ticket-operations";
 import type { TicketProjectRepository } from "../repositories/ticket-projects";
 import { connectTicketGitClient } from "./ticket-git-client";
+import { inspectAttachmentUpload } from "./ticket-recovery-attachment";
 import { inspectCommentCreate, inspectCommentUpdate } from "./ticket-recovery-comment";
 import { inspectIssueCreate, inspectIssueLabels, inspectIssueUpdate } from "./ticket-recovery-issue";
 import { inspectLabel } from "./ticket-recovery-label";
@@ -50,7 +51,12 @@ export function createTicketRecoveryInspector(deps: TicketRecoveryInspectDeps): 
         projectId,
         bindingId: project.repositoryRef,
       });
-      const remote: RecoveryRemote = { issues: client.issues, comments: client.comments, labels: client.labels };
+      const remote: RecoveryRemote = {
+        issues: client.issues,
+        comments: client.comments,
+        labels: client.labels,
+        attachments: client.attachments,
+      };
       const issueCtx = { index: deps.index, messages: deps.messages, identity: deps.identity };
       const commentCtx = { messages: deps.messages, identity: deps.identity };
       switch (row.kind) {
@@ -67,6 +73,8 @@ export function createTicketRecoveryInspector(deps: TicketRecoveryInspectDeps): 
         case "label.create":
         case "label.update":
           return await inspectLabel(row, remote);
+        case "attachment.upload":
+          return await inspectAttachmentUpload(row, remote);
         default:
           return { kind: "unmatched" };
       }

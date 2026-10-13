@@ -17,8 +17,8 @@
  * 为什么显式收窄 Elysia 上下文：守卫经 `AnyElysia` 注入，跨包边界上 Elysia 把上下文类型退化成
  * `{ [x: string]: any }`，仓内既有写法要在每处 handler 上写 `: any` + `biome-ignore`。这里让 handler 收
  * `Record<string, unknown>`（对该上下文类型可赋值，不需要 `any`），再用 {@link TicketRouteContext} 把本包
- * 真正用到的字段声明一次——「route 只用 store / status / params / query / body / headers」这条边界因此
- * 在类型上可见，收窄点也只剩一处。
+ * 真正用到的字段声明一次——「route 只用 store / status / params / query / body / headers / request」这条边界
+ * 因此可见，收窄点也只剩一处。
  */
 
 import { type GitError, isGitError } from "@fenix/git/server";
@@ -50,7 +50,22 @@ export type TicketRouteContext<TParams = unknown, TQuery = unknown, TBody = unkn
   readonly body: TBody;
   readonly headers: TicketRequestHeaders;
   readonly status: TicketStatusWriter;
+  /** 原始请求：只有附件上传要读它（multipart 必须交给 `formData()`，见附件路由的文件头）。 */
+  readonly request: TicketUploadRequest;
 };
+
+/**
+ * 上传表单的读取面，取自 `Request.formData()`。
+ *
+ * 不直接写全局 `FormData`：运行环境里 DOM lib 与 undici 各声明了一份同名结构，用全局名会把运行时拿到
+ * 的那一份判成不可赋值（与 `skill-upload-form.ts` 同口径）。本包只用到 `get`，因此只声明它。
+ */
+export type TicketUploadFormData = Awaited<ReturnType<Request["formData"]>>;
+
+/** 路由用到的请求面：附件上传需要 `formData()`，其余方法一律不出现（边界可见）。 */
+export interface TicketUploadRequest {
+  readonly formData: () => Promise<TicketUploadFormData>;
+}
 
 /** 成功载荷：写路径的 201/202 显式给出状态码，其余默认 200。 */
 export interface TicketSuccess {
@@ -72,6 +87,9 @@ const GIT_ERROR_STATUS: Partial<Record<GitError["code"], number>> = {
   NOT_FOUND: 404,
   FORBIDDEN: 403,
   CONFLICT: 409,
+  // 上游**确定拒绝**本次请求（附件上传的 413/422：超出上游大小上限、扩展名不在白名单）。
+  // 它不是「结果未定」：映射成 400 让用户改文件名/换小文件重试，而不是去核对一个从未发生的写入。
+  INVALID_REQUEST: 400,
   RATE_LIMITED: 503,
   UNAVAILABLE: 503,
   INVALID_RESPONSE: 503,
@@ -162,6 +180,31 @@ export function ticketHandler<TParams = unknown, TQuery = unknown, TBody = unkno
     try {
       const result = await run(route, actor);
       return route.status(result.status ?? 200, { success: true as const, data: result.data });
+    } catch (error) {
+      return mapTicketError(error, route.status);
+    }
+  };
+}
+
+/**
+ * 构造一条**流式**工单路由的 handler：与 {@link ticketHandler} 只差成功分支——返回 `Response` 本身而不是
+ * `/web` 信封。
+ *
+ * 只服务附件下载（唯一会返回字节流的端点）：把二进制内容塞进 `{ success, data }` 会让浏览器拿到一段 JSON
+ * 而文件名与长度都得另开一趟请求。两者的收窄与错误映射必须共用同一实现——各写一份时，下载路径会先长出
+ * 自己的 401 文案，接着长出自己的一套错误映射表，最终「同一个上游故障在列表与下载上得到不同状态码」。
+ */
+export function ticketStreamHandler<TParams = unknown, TQuery = unknown>(
+  run: (route: TicketRouteContext<TParams, TQuery, unknown>, actor: ActorContext) => Promise<Response>,
+): (context: TicketRawContext) => Promise<unknown> {
+  return async (context) => {
+    const route = context as TicketRouteContext<TParams, TQuery, unknown>;
+    const actor = route.store.actor as ActorContext | null;
+    if (actor === null) {
+      return route.status(401, buildTicketErrorBody("UNAUTHORIZED", "请求缺少组织上下文"));
+    }
+    try {
+      return await run(route, actor);
     } catch (error) {
       return mapTicketError(error, route.status);
     }

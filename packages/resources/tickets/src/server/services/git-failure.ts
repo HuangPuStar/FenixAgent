@@ -1,5 +1,5 @@
 /**
- * Git 失败的分类：把 `@fenix/git` 的七个错误码收敛成工单侧只需处理的两类情形。
+ * Git 失败的分类：把 `@fenix/git` 的错误码收敛成工单侧只需处理的两类情形。
  *
  * 分类**不**在这里决定对外状态码，因为同一个码在不同调用点含义不同：绑定不可用（`FORBIDDEN`/`NOT_FOUND`）
  * 在建工单与开通项目里是**装配/数据故障**，按 §8.3 要报 503 而不是伪装成「工单不存在」的 404；而同一个
@@ -21,7 +21,16 @@ import { isGitError } from "@fenix/git/server";
 export type GitFailureKind =
   | {
       readonly kind: "definite";
-      readonly code: "NOT_FOUND" | "FORBIDDEN" | "CONFLICT" | "UNAVAILABLE" | "RATE_LIMITED" | "INVALID_RESPONSE";
+      readonly code:
+        | "NOT_FOUND"
+        | "FORBIDDEN"
+        | "CONFLICT"
+        | "UNAVAILABLE"
+        | "RATE_LIMITED"
+        | "INVALID_RESPONSE"
+        // 上游**确定拒绝**本次请求（附件上传的 413/422：超出上游大小上限、扩展名不在白名单）。
+        // 它是确定失败而不是未定：绝不能让它进恢复核对去等一个从未发生的写入。
+        | "INVALID_REQUEST";
     }
   | { readonly kind: "uncertain" };
 

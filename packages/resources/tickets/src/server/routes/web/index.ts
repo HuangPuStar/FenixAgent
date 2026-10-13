@@ -17,6 +17,7 @@
 
 import Elysia from "elysia";
 import type { WebTicketRouteDependencies } from "../dependencies";
+import { registerTicketAttachmentRoutes } from "./ticket-attachments";
 import { registerTicketCommentRoutes } from "./ticket-comments";
 import { registerTicketLabelRoutes } from "./ticket-labels";
 import { registerTicketOperationRoutes } from "./ticket-operations";
@@ -29,6 +30,7 @@ export function createWebTicketRoutes(deps: WebTicketRouteDependencies) {
   registerTicketProjectRoutes(app);
   registerTicketRoutes(app);
   registerTicketCommentRoutes(app);
+  registerTicketAttachmentRoutes(app);
   registerTicketLabelRoutes(app);
   registerTicketOperationRoutes(app);
   return app;

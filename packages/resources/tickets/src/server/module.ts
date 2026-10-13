@@ -7,6 +7,7 @@ import {
   type ResourceScopeStore,
 } from "@fenix/platform-sdk";
 import { ticketProjectResource } from "./access/ticket-project-resource";
+import { createTicketAttachmentFacade, type TicketAttachmentFacadeApi } from "./facades/ticket-attachment-facade";
 import { createTicketCommentFacade, type TicketCommentFacadeApi } from "./facades/ticket-comment-facade";
 import { createTicketFacade, type TicketFacadeApi } from "./facades/ticket-facade";
 import { createTicketLabelFacade, type TicketLabelFacadeApi } from "./facades/ticket-label-facade";
@@ -15,6 +16,7 @@ import { createTicketIndexRepository } from "./repositories/ticket-index";
 import { createTicketMessageRepository } from "./repositories/ticket-messages";
 import { createTicketOperationRepository } from "./repositories/ticket-operations";
 import { createTicketProjectRepository, type TicketProjectQueryStorage } from "./repositories/ticket-projects";
+import { createTicketAttachmentService } from "./services/ticket-attachment-service";
 import { createTicketCommentService } from "./services/ticket-comment-service";
 import { createTicketEditService } from "./services/ticket-edit-service";
 import { createTicketLabelService } from "./services/ticket-label-service";
@@ -58,6 +60,7 @@ export interface TicketsServerModule {
   readonly tickets: TicketFacadeApi;
   readonly comments: TicketCommentFacadeApi;
   readonly labels: TicketLabelFacadeApi;
+  readonly attachments: TicketAttachmentFacadeApi;
   readonly identity: IdentityDirectory;
 }
 
@@ -74,6 +77,7 @@ export function createTicketsServerModule(deps: TicketsModuleDeps): TicketsServe
   const edit = createTicketEditService({ messages, index, operations, git: deps.git, identity: deps.identity });
   const comments = createTicketCommentService({ messages, operations, git: deps.git });
   const labels = createTicketLabelService({ operations, git: deps.git });
+  const attachments = createTicketAttachmentService({ operations, git: deps.git });
   // 恢复核对（§8.1）只在 `GET /ticket-operations/:operationId` 命中未定状态时跑一次；它读账本与远端，
   // 不写远端。装配在组合根而不是 Facade 里，Facade 因此只依赖一个「取结论」的窄端口。
   const recovery = createTicketRecoveryService({
@@ -116,6 +120,12 @@ export function createTicketsServerModule(deps: TicketsModuleDeps): TicketsServe
       scopeStore: deps.scopeStore,
       projects,
       labels,
+    }),
+    attachments: createTicketAttachmentFacade({
+      accessControl: deps.accessControl,
+      scopeStore: deps.scopeStore,
+      projects,
+      attachments,
     }),
     identity: deps.identity,
   };

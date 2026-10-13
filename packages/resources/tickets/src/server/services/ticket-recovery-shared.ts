@@ -14,6 +14,7 @@ import type {
   GitComment,
   GitIssue,
   GitPage,
+  GitScopedAttachmentOperations,
   GitScopedCommentOperations,
   GitScopedIssueOperations,
   GitScopedLabelOperations,
@@ -37,6 +38,7 @@ export interface RecoveryRemote {
   readonly issues: Pick<GitScopedIssueOperations, "list" | "get">;
   readonly comments: Pick<GitScopedCommentOperations, "list" | "get">;
   readonly labels: Pick<GitScopedLabelOperations, "list">;
+  readonly attachments: Pick<GitScopedAttachmentOperations, "list">;
 }
 
 /**
@@ -66,6 +68,12 @@ export function intentOf(row: TicketOperationRow): Record<string, unknown> {
 export function intentString(row: TicketOperationRow, key: string): string | null {
   const value = intentOf(row)[key];
   return typeof value === "string" ? value : null;
+}
+
+/** 数值型 `intent` 字段（附件字节数）；非安全整数一律按缺失处理，绝不拿一个坏值去比对远端。 */
+export function intentNumber(row: TicketOperationRow, key: string): number | null {
+  const value = intentOf(row)[key];
+  return typeof value === "number" && Number.isSafeInteger(value) && value >= 0 ? value : null;
 }
 
 export function intentNames(row: TicketOperationRow, key: string): readonly string[] | null {
