@@ -188,7 +188,7 @@ The control service decides who can use which agent, with which resources, and w
 - [Knowledge base guide](docs/developer/guide/knowledge-base.md)
 - [Agent memory architecture (Hindsight)](docs/arch/06-config-hindsight.md)
 - [Sandbox architecture](docs/arch/19-sandbox.md)
-- [Model gateway architecture](docs/design/2026-08-26-model-gateway-design.md)
+- [Model and provider architecture](docs/arch/06-config-provider.md)
 - [Workflow V2 architecture](docs/arch/25-workflow-v2.md)
 - [Agent Sites architecture](docs/arch/18-agent-sites.md)
 - [Agent Instance and Runtime Architecture](docs/arch/22-agent-instance-management.md)

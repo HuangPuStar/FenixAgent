@@ -6,7 +6,7 @@
 // 默认 500ms 无新 update）才执行一次全量 CAS 合并；destroy()（closeChat/closeSession
 // 的统一收口）强制 flush 未落盘快照。节流窗口内进程崩溃会丢失窗口内更新，但快照本就
 // 不是权威——权威是 Agent 侧 ACP session 历史，可经 load_session 回放重建（见
-// docs/design/2026-08-04-yjs-chat-streaming-prd.md「兼容与演进」）。Pub/Sub 增量路径
+// docs/arch/19-yjs-chat-streaming.md §5.4「Schema 演进」）。Pub/Sub 增量路径
 // 不节流，实时性不受影响。
 //
 // 三个参数经 `options.snapshot` 注入（宿主模块配置的投影），包内不读 `process.env`、不留默认值：

@@ -189,7 +189,7 @@ Console / External API / Workflow / Scheduler
 - [知识库使用](docs/developer/guide/knowledge-base.md)
 - [Agent 记忆架构（Hindsight）](docs/arch/06-config-hindsight.md)
 - [沙盒架构](docs/arch/19-sandbox.md)
-- [模型网关架构](docs/design/2026-08-26-model-gateway-design.md)
+- [模型与 Provider 架构](docs/arch/06-config-provider.md)
 - [工作流 V2 架构](docs/arch/25-workflow-v2.md)
 - [Agent Sites 架构](docs/arch/18-agent-sites.md)
 - [Agent Instance 与运行时架构](docs/arch/22-agent-instance-management.md)

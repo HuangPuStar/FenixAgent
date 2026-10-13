@@ -69,7 +69,7 @@ flowchart TB
 
 - 空间 ID 由 `space/list` 选出个人空间（`space_type === 1`）后落 `workflow_v2_platform_account`，是建 App 与建 workflow 的 `space_id` 注入源。
 - 登录面 `POST /api/passport/web/email/login/`：`session_key` **只出现在 `Set-Cookie`**，必须解析响应头而非 body；同一账号同时只有一个有效会话，重登即踢旧键——多副本各自登录会互相踢键，4B 起由共享存储 + 登录租约规避（见 §6 第 6 条）。
-- **账号供给（2026-09-30 补记）**：账号由**引导路径自助注册**——`bootstrapPlatformAccount()` 在登录前调一次上游注册端点（`POST /api/passport/web/email/register/v2/`，邮箱已存在按成功处理，故顺次重复执行幂等），部署方只需注入 `WORKFLOW_V2_PLATFORM_ACCOUNT_EMAIL` / `WORKFLOW_V2_PLATFORM_ACCOUNT_PASSWORD`，**不必先人工建号**。注册**只**发生在「台账无行、需要现场确定账号身份」的引导路径，常规登录失败路径（`login()` / `ensureCookie()` / 鉴权失败重登）不触达——否则 env 邮箱写错会凭空造号。边界：账号必须按**保留账号**管理（任何人用同一邮箱在上游 UI 登录都会覆盖 `user.session_key` 并踢掉我方会话）；上游注册白名单存在缺陷（读错 env 变量），**不可依赖**。详见[平台账号供给设计](../design/2026-09-29-workflow-v2-account-provisioning.md)。
+- **账号供给（2026-09-30 补记）**：账号由**引导路径自助注册**——`bootstrapPlatformAccount()` 在登录前调一次上游注册端点（`POST /api/passport/web/email/register/v2/`，邮箱已存在按成功处理，故顺次重复执行幂等），部署方只需注入 `WORKFLOW_V2_PLATFORM_ACCOUNT_EMAIL` / `WORKFLOW_V2_PLATFORM_ACCOUNT_PASSWORD`，**不必先人工建号**。注册**只**发生在「台账无行、需要现场确定账号身份」的引导路径，常规登录失败路径（`login()` / `ensureCookie()` / 鉴权失败重登）不触达——否则 env 邮箱写错会凭空造号。边界：账号必须按**保留账号**管理（任何人用同一邮箱在上游 UI 登录都会覆盖 `user.session_key` 并踢掉我方会话）；上游注册白名单存在缺陷（读错 env 变量），**不可依赖**。
 
 ## 4. 归属真相源（本设计的核心安全约束）
 
@@ -202,8 +202,6 @@ flowchart TB
 - **降级标记曾是无 `where` 的全表更新，已于 2026-10-09 收敛**：`platform-account-bootstrap.markPlatformAccountDegraded` 早先是一条不带 `where` 的 UPDATE，会把 `workflow_v2_platform_account` 的**所有行**（含其它部署/共享库里的真实行、以及测试用例自己的行）一并标成 `degraded`。台账按部署只应有一行，但存储层只保证 `platform_user_id` 唯一，改邮箱、换账号、多部署共库都会留下多行，因此必须按主键定位：现改为先读「读路径认定的那一行」（`findPlatformAccountRow`，与 `findTenantBinding` 同口径）再按 `id` 更新，台账本来没有行时不写任何东西（纯首次引导失败只记日志）。
 - **上游仓侧**（外部仓库，工作区未提交）：`frontend/**` 的宿主桥与 axios 注入、rsbuild 资源前缀与路由 basename、画布注桩、头部裁剪与埋点静默已改（清单见[前端改造记录](../design/2026-09-29-workflow-v2-upstream-frontend-changes.md)）。
 - **存储出站改道键（2026-10-12）**：新增可选 env `WORKFLOW_V2_STORAGE_UPSTREAM_URL`（无默认值，键集累计十四枚；未设置＝直连直链 origin）。起因见 §5 末条——宿主源码运行的部署解析不到直链内网别名，图片路由成片 502；改道只换连接基址，凭据边界不变（存储面依旧不发平台会话）。本键与 4A/4B 起累计的五枚追加键**尚未回写进冻结 §2.2**（`docs/design/**` 由设计 owner 维护）。
-
-阶段划分与任务编号见 [任务清单](../design/2026-09-29-workflow-v2-task-list.md)。
 
 ## 9. 相关文档
 
