@@ -71,7 +71,8 @@ export function AgentModelsPage() {
     }
   }, [selectedKey, selectedProvider]);
 
-  if (data.catalog.loading) return <ModelsLoading />;
+  // 保存失败后的目录刷新会短暂置 loading；已有目录数据时必须保留编辑弹窗，避免草稿因整页卸载丢失。
+  if (data.catalog.loading && !data.catalog.data) return <ModelsLoading />;
   if (data.catalog.error && !data.catalog.data) {
     // 页面级失败态与目录态用同一套壳：原来这里是一段只有自己的背景与内边距的裸 div，
     // 与 AppPage（`bg-surface-0` + 页面留白）对不齐；现在统一走 AppPage + EmptyState。
