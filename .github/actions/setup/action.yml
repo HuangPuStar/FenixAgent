@@ -1,0 +1,36 @@
+# CI 各 job 共用的前置步骤：装 bun、恢复依赖缓存、安装依赖。
+#
+# **为什么单独成一个 action**：4 个 job 的 bun 版本、缓存键与安装命令必须逐字一致。缓存键一旦分叉，
+# 各 job 会各自写一份互不复用的缓存，命中率归零还互相挤占仓库的 10GB 缓存配额；bun 版本分叉则会让
+# 同一次运行里两套 `--isolate` 语义混跑（下方便是版本 pin 的理由）。
+#
+# **缓存为什么值钱**：`~/.bun/install/cache` 是 bun 的内容寻址下载缓存（`<hash>.npm` 单文件，包相同即
+# 文件相同，因此锁文件微调也能靠 `restore-keys` 前缀吃到大部分条目）。而 `bun.lock` 里 1499 条
+# tarball URL 写死为 `registry.npmmirror.com`，`--frozen-lockfile` 只按这些 URL 取包（`.npmrc` 的
+# registry 与 `NPM_CONFIG_REGISTRY` 都覆盖不动，2026-10-13 实测：把 lock 里的主机改成无效域名即 DNS
+# 失败，改 `.npmrc` 无效），而 runner 在 us-northcentralus——不缓存就是每个 job 每次从国内镜像跨太平洋
+# 拉 1266 个包。要根治得让 `bun.lock` 记录官方源 URL，那是另一件事（会改变国内开发者的冷装体验）。
+name: Setup workspace
+description: 安装固定版本的 bun、恢复依赖缓存并安装依赖
+
+runs:
+  using: composite
+  steps:
+    # 版本不是随手定的：bun 1.4.2 的 `bun test --isolate` 在 Linux x64 大套件下会间歇
+    # `panic(main thread): abort() called`（oven-sh/bun#44599；本仓实测同一提交两次运行崩一次），
+    # 1.4.3 修掉了这一类 isolate 崩溃（见 Bun v1.4.3 发布说明）。回退版本前先确认上游 issue 状态；
+    # 本地用 `bun upgrade` 跟到同一版本，`precheck` 才与 CI 同口径。
+    - uses: oven-sh/setup-bun@v2
+      with:
+        bun-version: "1.4.3"
+
+    - uses: actions/cache@v4
+      with:
+        path: ~/.bun/install/cache
+        key: bun-install-${{ runner.os }}-${{ hashFiles('bun.lock') }}
+        restore-keys: |
+          bun-install-${{ runner.os }}-
+
+    - name: Install dependencies
+      shell: bash
+      run: bun install --frozen-lockfile
