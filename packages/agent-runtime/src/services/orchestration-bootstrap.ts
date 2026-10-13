@@ -151,10 +151,16 @@ export function createExecutionNodeResolver(
     // `initializeApplicationInfrastructure()` 注入，模块加载期读取会抛错。若在工厂里冻结默认值，
     // 解析器会永久拿到构造那一刻的值，导致默认沙盒策略在运行时失效（2026-08-17 事故：resolver
     // 冻结 sandboxEnabled=false，spawn 静默回退 local-default）。deps 显式注入（测试）优先。
-    const sandboxConfig = getSandboxConfig();
-    const sandboxEnabled = deps.sandboxEnabled ?? sandboxConfig.sandboxEnabled;
-    const defaultSandboxPoolId =
-      deps.defaultSandboxPoolId === undefined ? sandboxConfig.defaultSandboxPoolId : deps.defaultSandboxPoolId;
+    //
+    // 只为缺省值而读：两项都由 deps 给全时不进配置读取面。模块配置是「随宿主装配而变的进程级状态」，
+    // 纯逻辑用例（只验显式节点解析）不该因为同进程其它用例已用不含 sandbox 的配置初始化过基础设施而失败。
+    let sandboxEnabled = deps.sandboxEnabled;
+    let defaultSandboxPoolId = deps.defaultSandboxPoolId;
+    if (sandboxEnabled === undefined || defaultSandboxPoolId === undefined) {
+      const sandboxConfig = getSandboxConfig();
+      sandboxEnabled ??= sandboxConfig.sandboxEnabled;
+      defaultSandboxPoolId ??= sandboxConfig.defaultSandboxPoolId;
+    }
     const { sandboxPoolId: explicitSandboxPoolId, machineId: explicitMachineId } = readExplicitNode({
       agentNode: input.agentNode,
       configMachineId: input.configMachineId,

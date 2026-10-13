@@ -74,12 +74,16 @@ async function assemble(contributions: readonly ModuleContribution[]): Promise<v
 }
 
 /**
- * 真实 profile 里 workflow-v2 的三枚必填声明；值只为通过 schema，不参与任何断言。
+ * 真实 profile 装配所需的必填键：宿主 `env.ts` 两枚（DATABASE_URL / RCS_API_KEYS）+ workflow-v2 三枚；
+ * 值与 `assembly-env.test.ts` 的 `baseInput` 同口径，只为通过 schema，不参与任何断言。
  *
- * 「不预设进程环境」是刻意的：本仓的 `.env` 不保证含上游账号（联调方自己注入），若这里依赖进程环境，
- * 门禁的通过与否就取决于开发者本机文件，而不是代码。
+ * 「不读进程环境」是刻意的：本仓的 `.env` 不保证含上游账号（联调方自己注入），宿主必填键也可能只在本机
+ * 存在。依赖进程环境会让门禁的通过与否取决于开发者本机文件——`bun test` 在本机自动读 `.env`、CI 没有，
+ * 同一份代码两边得出相反结论。
  */
-const REQUIRED_WORKFLOW_V2_ENV = {
+const REQUIRED_ASSEMBLY_ENV = {
+  DATABASE_URL: "postgres://127.0.0.1:5432/fenix",
+  RCS_API_KEYS: "test-api-keys",
   WORKFLOW_V2_PLATFORM_ACCOUNT_EMAIL: "workflow-v2@example.test",
   WORKFLOW_V2_PLATFORM_ACCOUNT_PASSWORD: "test-password",
   WORKFLOW_V2_TICKET_SECRET: "test-ticket-secret",
@@ -169,11 +173,11 @@ test("构造函数未返回 Elysia 实例时拒绝装配", async () => {
 test("真实 profile 装配后各包的路由进入对应槽", async () => {
   initializeTestApplicationInfrastructure();
 
-  // workflow-v2 声明了三枚无默认值的必填键（上游邮箱/密码、票据签名密钥）；本文件不预设进程环境里有它们，
-  // 按 `assembly-env.test.ts` 的同一口径经 `loadEnv` 注入，其余键仍取真实进程环境。
+  // 宿主与 workflow-v2 的必填键都不预设进程环境里有，按 `assembly-env.test.ts` 的同一口径经 `loadEnv`
+  // 注入（fixture 在后，覆盖进程环境里的同名值），其余键仍取真实进程环境。
   await bootstrapServerAssembly({
     mountContribution: mountServerRouteContribution,
-    loadEnv: (definitions) => loadServerEnv(definitions, { ...process.env, ...REQUIRED_WORKFLOW_V2_ENV }),
+    loadEnv: (definitions) => loadServerEnv(definitions, { ...process.env, ...REQUIRED_ASSEMBLY_ENV }),
   });
 
   // 直接检查真实装配后的路由表，防止已退役端点从其它贡献重新挂入。
