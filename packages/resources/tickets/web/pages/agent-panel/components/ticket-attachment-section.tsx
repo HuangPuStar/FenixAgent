@@ -8,6 +8,9 @@
  *
  * 文件类型不做前端白名单：托管平台的白名单是权威（扩展名不在白名单时服务端 400 并给出原因），前端抢先
  * 过滤只会把「为什么这个文件选不了」变成一处没有文案的静默。
+ *
+ * 图片附件的缩略图与放大预览由 `ticket-attachment-preview.tsx` 负责，列表行只决定「这一行要不要渲染缩略图」：
+ * 行内不额外取图，缩略图直接复用该行的下载地址。
  */
 
 import { EmptyState } from "@fenix/ui-components/config/EmptyState";
@@ -16,7 +19,7 @@ import { Skeleton } from "@fenix/ui-components/ui/skeleton";
 import { AlertTriangle, Download, Loader2, Paperclip, RefreshCw, RotateCw, X } from "lucide-react";
 import { useRef } from "react";
 import { useTranslation } from "react-i18next";
-import type { TicketAttachment } from "../../../api/ticket-attachments";
+import { type TicketAttachment, ticketAttachmentDownloadPath } from "../../../api/ticket-attachments";
 import type { TicketAttachmentsState, TicketAttachmentUpload } from "../../../hooks/use-ticket-attachments";
 import { TICKETS_NS } from "../../../i18n/namespace";
 import {
@@ -24,6 +27,7 @@ import {
   TICKET_ATTACHMENT_MAX_BYTES,
   TICKET_ATTACHMENT_MAX_COUNT,
 } from "../../../lib/ticket-attachment-limits";
+import { isImageAttachmentName, TicketAttachmentThumb } from "./ticket-attachment-preview";
 import { formatTicketTime } from "./ticket-format";
 
 export interface TicketAttachmentPickerProps {
@@ -65,10 +69,13 @@ export interface TicketAttachmentSectionProps {
   attachments: TicketAttachmentsState;
   /** 当前界面语言，用于时间与文件大小格式化。 */
   locale: string;
+  /** 详情页路由坐标：缩略图要拼本服务的下载地址（组件不自行读路由，保持可独立渲染）。 */
+  number: string;
+  projectId: string;
 }
 
 /** 工单附件区：上传队列（过程）+ 已上传列表（结果），四个状态分支齐备。 */
-export function TicketAttachmentSection({ attachments, locale }: TicketAttachmentSectionProps) {
+export function TicketAttachmentSection({ attachments, locale, number, projectId }: TicketAttachmentSectionProps) {
   const { t } = useTranslation(TICKETS_NS);
   const hint = t("attachment.hint", {
     size: formatAttachmentSize(TICKET_ATTACHMENT_MAX_BYTES, locale),
@@ -122,6 +129,7 @@ export function TicketAttachmentSection({ attachments, locale }: TicketAttachmen
           {attachments.attachments.map((attachment) => (
             <AttachmentRow
               attachment={attachment}
+              downloadUrl={ticketAttachmentDownloadPath(projectId, number, attachment.attachmentId)}
               downloading={attachments.downloadingId === attachment.attachmentId}
               key={attachment.attachmentId}
               locale={locale}
@@ -196,14 +204,17 @@ function UploadRow({
   );
 }
 
-/** 列表行：名称、大小、时间与下载按钮（下载中禁用并显示转圈）。 */
+/** 列表行：图片附件带缩略图，其余为名称、大小、时间与下载按钮（下载中禁用并显示转圈）。 */
 function AttachmentRow({
   attachment,
+  downloadUrl,
   locale,
   downloading,
   onDownload,
 }: {
   attachment: TicketAttachment;
+  /** 本服务的下载地址：缩略图与下载按钮共用同一份内容，不额外多发元数据请求。 */
+  downloadUrl: string;
   locale: string;
   downloading: boolean;
   onDownload: () => void;
@@ -212,6 +223,9 @@ function AttachmentRow({
 
   return (
     <li className="flex flex-wrap items-center gap-2 rounded-md border border-border bg-surface-1 px-3 py-2">
+      {isImageAttachmentName(attachment.name) ? (
+        <TicketAttachmentThumb name={attachment.name} url={downloadUrl} />
+      ) : null}
       <span className="min-w-0 flex-1 truncate text-xs text-text-primary">{attachment.name}</span>
       <span className="text-xs text-text-dim">{formatAttachmentSize(attachment.size, locale)}</span>
       <span className="text-xs text-text-dim">{formatTicketTime(attachment.createdAt, locale)}</span>

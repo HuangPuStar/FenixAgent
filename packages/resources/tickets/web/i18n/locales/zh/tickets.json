@@ -116,6 +116,7 @@
     "rejectedTooLarge": "{{name}} 超过 {{size}}，未加入上传",
     "rejectedTooMany": "一次最多上传 {{max}} 个文件，其余未加入",
     "rejectedEmpty": "{{name}} 是空文件，未加入上传",
+    "preview": "预览图片",
     "download": "下载",
     "downloadFailed": "下载附件失败"
   },

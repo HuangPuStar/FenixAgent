@@ -11,7 +11,7 @@
 
 import { afterAll, afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
-import { join, resolve } from "node:path";
+import { resolve } from "node:path";
 import { UI_COMPONENTS_NS, uiComponentsResources } from "@fenix/ui-components/i18n";
 import { initializeHappyDomWindow } from "@fenix/ui-components/testing";
 import { OrgSessionProvider } from "@fenix/web-runtime/contexts/org-session";
@@ -438,7 +438,9 @@ describe("附件上传（页面级）", () => {
     // 逐个放行直到队列清空：每完成一个，队列补一个，全程在飞数量保持 2（并发上限靠「完成一个补一个」维持）。
     for (let round = 0; round < 5; round += 1) {
       await act(async () => {
-        release.splice(0).forEach((fn) => fn());
+        release.splice(0).forEach((fn) => {
+          fn();
+        });
         await new Promise((resolve) => setTimeout(resolve, 0));
       });
       await flush(2);
@@ -524,7 +526,7 @@ describe("附件下载", () => {
       if (download === undefined) throw new Error("附件行未渲染下载按钮");
       await click(download);
 
-      expect(downloadCalls).toEqual([attachmentsPath() + "/8"]);
+      expect(downloadCalls).toEqual([`${attachmentsPath()}/8`]);
       expect(clicked.length).toBe(1);
       expect(clicked[0]?.download).toBe("复现截图.png");
       expect(clicked[0]?.href).toBe("blob:test");
@@ -533,6 +535,24 @@ describe("附件下载", () => {
       URL.createObjectURL = originalCreateObjectUrl;
       URL.revokeObjectURL = originalRevokeObjectUrl;
     }
+  });
+});
+
+describe("图片预览", () => {
+  // 列表视图没有 MIME，只有扩展名可判：图片名给缩略图并直接指向本服务的下载端点（同源、走会话 cookie），
+  // 非图片名不渲染缩略图（判定说错的两种情况都退回普通文件行，下载按钮始终还在）。
+  test("图片名渲染指向下载端点的缩略图，非图片名不渲染", async () => {
+    attachmentListResponses = [
+      attachmentPage([attachment("8", "复现截图.PNG", 3), attachment("9", "运行日志.txt", 4)]),
+    ];
+    await renderDetail();
+
+    const thumbs = container.querySelectorAll(`button[aria-label="${TEXT.attachment.preview}"]`);
+    expect(thumbs.length).toBe(1);
+    const image = thumbs[0]?.querySelector("img");
+    expect(image?.getAttribute("src")).toBe(`${attachmentsPath()}/8`);
+    expect(image?.getAttribute("alt")).toBe("复现截图.PNG");
+    expect(text()).toContain("运行日志.txt");
   });
 });
 

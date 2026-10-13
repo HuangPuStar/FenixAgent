@@ -221,7 +221,7 @@ export function AgentTicketDetailPage({ projectId, number }: AgentTicketDetailPa
 
       {/* 附件是工单级的（上游端点以工单号为坐标），因此列表放在评论区之外、之上：贴着评论渲染会让读者
           以为附件属于紧邻的那条评论。上传入口则贴着输入框（见下），两者共享同一个 hook 实例。 */}
-      <TicketAttachmentSection attachments={attachments} locale={i18n.language} />
+      <TicketAttachmentSection attachments={attachments} locale={i18n.language} number={number} projectId={projectId} />
 
       <TicketCommentSection
         attachmentPicker={

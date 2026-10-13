@@ -145,6 +145,7 @@ describe("tickets web 入口浏览器可达面", () => {
       "pages/agent-panel/pages/AgentTicketDetailPage.tsx",
       "pages/agent-panel/components/field-error.tsx",
       "pages/agent-panel/components/ticket-assignee-picker.tsx",
+      "pages/agent-panel/components/ticket-attachment-preview.tsx",
       "pages/agent-panel/components/ticket-attachment-section.tsx",
       "pages/agent-panel/components/ticket-comment-composer.tsx",
       "pages/agent-panel/components/ticket-comment-item.tsx",
