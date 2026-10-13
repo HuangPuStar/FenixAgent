@@ -1,7 +1,7 @@
 import { expect, test } from "bun:test";
 import { createModuleRegistry, loadDeclaredEnv, type ModuleManifest } from "@fenix/platform-sdk";
 import { generatedModuleManifests } from "../../../generated/module-registry";
-import { loadAssemblyProfile } from "../assembly-config";
+import { CE_ASSEMBLY_PROFILE_PATH, loadAssemblyProfile } from "../assembly-config";
 import { bootstrapServerAssembly } from "../bootstrap";
 
 /**
@@ -59,7 +59,9 @@ const contractManifests: readonly ModuleManifest[] = generatedModuleManifests;
 
 // 真实 ce.json 必须能被真实生成的 registry 解析，否则发布组合在启动前就不可用。
 test("真实 profile 与生成的 registry 可解析", async () => {
-  const profile = await loadAssemblyProfile();
+  // 显式钉住 ce.json：缺省参数会跟随部署面的 `RCS_ASSEMBLY_PROFILE_PATH`（本地被覆盖成 ce-tickets 时，
+  // 下面这份按 ce.json 写死的期待会整体错位，且错在环境而不是发布组合上）。其它 profile 由 tickets-assembly 覆盖。
+  const profile = await loadAssemblyProfile(CE_ASSEMBLY_PROFILE_PATH);
   const resolved = createModuleRegistry(generatedModuleManifests).resolveProfile(profile);
 
   expect(resolved.modules.map((manifest) => [manifest.id, manifest.kind])).toEqual(EXPECTED_SERVER_MODULES);
