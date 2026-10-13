@@ -43,7 +43,7 @@
 
 - 应用容器自身的启动命令仍会跑一次 `bun migrate.js`，多副本同时启动由 `pg_advisory_lock` 串行化（锁 key 是 `scripts/migrate.ts` 里的常量），因此第 2 步与容器启动重叠也不会互相撞车；把迁移单独跑出来的价值是**让迁移失败早于流量切换暴露**。
 - 核对本机实际版本用 `./docker/deploy.sh ps`（镜像 tag/digest 可见）。
-- 离线交付：`build-image.sh` 构建 runtime 镜像并 `docker save` 成 tar（脚本末尾打印目标机 `docker load` 命令）。
+- 离线交付：`docker/build-image.sh` 构建 runtime 镜像并 `docker save` 成 tar（脚本末尾打印目标机 `docker load` 命令）。
 - 依赖（litellm / hindsight / ragflow / sandbox 节点等）与主服务是独立升级单元：默认只在 `deploy` 时 `pull` 并收敛主服务，依赖按自己的目录单独 `docker compose up -d`。Hindsight 一类需要经 `fenix-server` 访问主服务的依赖，重建顺序仍要先主后附。
 - **共享实例口径**（2026-10-08 起，同日修正一次）：依赖的库已不在自己的目录里——网关库（`litellm`）在共享 `postgres`、workflow 的库（`opencoze`）与 ragflow 的库（`rag_flow`）在共享 `mysql`；**对象存储分两处**：workflow 的桶在共享 `rustfs`（`FENIX_FEATURE_S3`），ragflow 的桶在它**自带**的实例 `ragflow-rustfs`（`docker/ragflow/data/rustfs`，不受该开关影响）。升级这类依赖时会先跑它们各自的一次性初始化服务（幂等：只建缺失的库 / 桶、只同步口令，不动既有数据；ragflow 侧不预建桶——多桶模式下桶由 RAGFlow 按知识库 / 文件目录运行期自建，它的 `ragflow-s3-init` 只对自带实例做能力探测），失败则该栈的主服务不启动；判定看 `docker ps -a` 里的 `Exited (0)` 与日志末行的完成行（[排障](./troubleshooting.md) §15）。
 - **回滚到旧编排要多读一件事**：回退到共享化之前的编排（各栈自带 `litellm-postgres` / `mysql` / `minio`）时，数据仍在**旧数据目录**里（`docker/ragflow/ragflow_mysql_data`、`ragflow_minio_data`、`${WORKFLOW_STUDIO_DIR}/docker/data/minio`、litellm 旧实例的 bind 目录），所以旧目录在那次迁移验收通过并跑过一个业务周期之前不删——删了就只能从备份恢复（保留与可删条件见[备份与恢复](./backup-and-restore.md) §2 与各目录 README）；不存在「把共享实例里的数据搬回去」的自动路径。

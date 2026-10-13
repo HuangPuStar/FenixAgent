@@ -5,7 +5,7 @@
 单机离线部署和日常运维请参考：
 
 - [`deploy/fenix-integration.md`](deploy/fenix-integration.md)
-- [`fenix-sandbox-ops.sh`](../../fenix-sandbox-ops.sh)
+- [`scripts/operations/fenix-sandbox-ops.sh`](../../scripts/operations/fenix-sandbox-ops.sh)
 
 契约与边界见 [`docs/operations/docker-topology.md`](../../docs/operations/docker-topology.md)（§3 网络分层、§6 依赖目录契约）。
 

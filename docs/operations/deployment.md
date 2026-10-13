@@ -120,4 +120,4 @@ curl -s http://<host>:<port>/health
 
 ## 6. 静态资源与前端产物
 
-后端从 `apps/web/dist/` 挂载控制台静态资源。只改前端源码而不执行 `bun run build:web`，运行的仍是旧产物——这是本地与生产都容易踩的坑，也是「构建镜像前先 `build:web`」的原因（`build-image.sh` 已把它放进构建流程）。
+后端从 `apps/web/dist/` 挂载控制台静态资源。只改前端源码而不执行 `bun run build:web`，运行的仍是旧产物——这是本地与生产都容易踩的坑，也是「构建镜像前先 `build:web`」的原因（`docker/build-image.sh` 已把它放进构建流程）。

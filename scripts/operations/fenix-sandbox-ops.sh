@@ -5,6 +5,7 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+REPO_ROOT="$(cd -- "${SCRIPT_DIR}/../.." && pwd)"
 
 load_dotenv() {
   local env_file="$1"
@@ -38,7 +39,7 @@ load_dotenv() {
   done < "$env_file"
 }
 
-load_dotenv "$SCRIPT_DIR/.env"
+load_dotenv "$REPO_ROOT/.env"
 
 RCS_SANDBOX_CLUSTER_URL="${RCS_SANDBOX_CLUSTER_URL:-http://127.0.0.1:8080}"
 RCS_BASE_URL="${RCS_BASE_URL:-http://127.0.0.1:3000}"

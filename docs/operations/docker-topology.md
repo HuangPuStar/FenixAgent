@@ -600,7 +600,7 @@ TZ=Asia/Shanghai
 镜像来源三种，与 `docs/operations/upgrade.md` 口径一致：
 
 - GHCR 发布（`.github/workflows/docker-publish.yml`，main 与 `v*` tag）；
-- 离线交付（`build-image.sh` 产出 tar，目标机 `docker load`）；
+- 离线交付（`docker/build-image.sh` 产出 tar，目标机 `docker load`）；
 - dev 本地构建（仓库根编排的 `build:` 段；`--build` 构建出的镜像占用同一个 tag，之后走生产入口时
   `deploy.sh` 会先 `pull` 覆盖回发布镜像）。
 
@@ -737,7 +737,7 @@ docker compose up -d
   各 `packages/resources/*/fenix.module.ts`、`packages/platform/platform-sdk/src/__tests__/dependency-services.test.ts`。
 - 容器名：旧 prod 用固定 `container_name: fenix-ver` / `fenix-postgres-ver`；主服务不再设 `container_name`
   （名称由项目名 + 服务名生成），需要稳定名字的依赖目录统一 `fenix-<name>` 前缀。
-- 发布链：`.github/workflows/docker-publish.yml`（推送 GHCR 的 tag 规则）与 `build-image.sh`（离线 tar）
+- 发布链：`.github/workflows/docker-publish.yml`（推送 GHCR 的 tag 规则）与 `docker/build-image.sh`（离线 tar）
   需在「固定 tag 写进两份编排的 `image:` 行」后复核，确认 tag 命名与文档写法一致。
 - 环境变量模板：`scripts/generate-env-example.ts` 从声明面同批产出根 `.env.example`、
   `docker/main/.env.example` 与 `docker/deploy.env.example`；基础服务凭据键（`POSTGRES_PASSWORD`、`RUSTFS_ACCESS_KEY` / `RUSTFS_SECRET_KEY`）

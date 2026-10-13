@@ -20,7 +20,7 @@
 2. 从 Cluster 下载该 Server 专属的配置：
 
    ```bash
-   ./fenix-sandbox-ops.sh cluster server tunnel \
+   ./scripts/operations/fenix-sandbox-ops.sh cluster server tunnel \
      <server-id> /path/to/aos-sandbox/docker/opensandbox-server-tunnel/frpc.toml
    ```
 

@@ -71,7 +71,7 @@ docker compose logs --tail=200 rcs | grep -i "file-ws"
 
 **背景**：后端从 `apps/web/dist/` 挂载控制台静态资源，前端源码改动必须重新构建才生效。
 
-**处置**：`bun run build:web` 后重启服务（`bash restart-server.sh` 已包含 `build:web`）；镜像构建流程同样先构建前端（`build-image.sh`）。
+**处置**：`bun run build:web` 后重启服务（`bash restart-server.sh` 已包含 `build:web`）；镜像构建流程同样先构建前端（`docker/build-image.sh`）。
 
 ## 6. 数据迁移没有执行 / 被跳过
 

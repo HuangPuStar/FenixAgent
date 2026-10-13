@@ -40,6 +40,9 @@ if [[ "$OUTPUT_SPECIFIED" != "1" ]]; then
 fi
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+REPO_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
+cd "$REPO_ROOT"
+
 echo "=> Building frontend..."
 bun run build:web
 
