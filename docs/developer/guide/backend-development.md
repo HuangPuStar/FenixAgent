@@ -463,7 +463,7 @@ DDL 迁移与数据迁移必须分离：结构变更走 `drizzle/`，存量数�
 - 新表与新字段是否满足 §6.1 的主标识、时间字段、租户字段与枚举约束。
 - 注释、日志、测试、i18n 与架构文档是否同步更新。
 
-自动化门禁（`bun run precheck`，即 `scripts/ci.ts`）分三波执行：`biome check --write`（格式化 + import 排序 + 安全修复，写盘）→ 静态门禁（module-registry、web-contributions、owner-inventory、schema-ddl-drift、env-example、architecture、web-style、tsc（server / web / packages）、dependency-boundaries，波内受限并发）→ 三批 `bun test`（server-and-script-tests、package-tests、web-app-tests）。三批均带 `--isolate`（每个测试文件独占全局与模块注册表）：默认模式下 `mock.module()` 与平台替身会按文件系统的枚举顺序泄漏给之后加载的文件，Linux 与 macOS 顺序不同，同一份代码会本机绿、CI 红；命令以 `scripts/lib/check-gates.ts` 为准，且与 CI 的 Test job 逐字一致。跑这三批的 bun 需 ≥ 1.4.3：1.4.2 的 isolate 路径在大套件下会间歇崩溃，版本 pin 与理由见 `.github/workflows/ci.yml`。
+自动化门禁（`bun run precheck`，即 `scripts/ci.ts`）分三波执行：`biome check --write`（格式化 + import 排序 + 安全修复，写盘）→ 静态门禁（module-registry、web-contributions、owner-inventory、schema-ddl-drift、env-example、architecture、web-style、tsc（server / web / packages）、dependency-boundaries，波内受限并发）→ 三批 `bun test`（server-and-script-tests、package-tests、web-app-tests）。三批均带 `--isolate`（每个测试文件独占全局与模块注册表）：默认模式下 `mock.module()` 与平台替身会按文件系统的枚举顺序泄漏给之后加载的文件，Linux 与 macOS 顺序不同，同一份代码会本机绿、CI 红；命令以 `scripts/lib/check-gates.ts` 为准（全量口径，precheck 与 CI 跑同一批文件与同一批参数）。CI 额外的差别只有「谁跑哪一片」：packages 批用 bun 原生 `--shard=i/N` 切到 3 个 runner、两条小批拆成独立 job，分片由 bun 自己切分，各片并集恒等于该批全量，判定一致。跑这三批的 bun 需 ≥ 1.4.3：1.4.2 的 isolate 路径在大套件下会间歇崩溃，版本 pin、依赖缓存与理由见 `.github/actions/setup/action.yml`（CI 各 job 共用的前置步骤）。
 
 单任务收尾用 `bun run fastcheck`（`scripts/fastcheck.ts`，静态步骤与 precheck 同源，类型检查改用 `tsc-rs` 加速、探活失败回退官方 `tsc`，测试按改动路径只跑受影响范围）；它不替代 precheck：宿主侧集成回归只有全量三批测试能覆盖。
 

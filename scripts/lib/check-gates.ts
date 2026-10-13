@@ -181,8 +181,9 @@ export const FAST_STATIC_GATES: readonly Step[] = staticGates(FAST_TYPE_CHECKER)
  * 全量测试批次（预发布语义）。三批的划分口径是**测试根目录的归属**而非耗时：改动其中一个根目录即可
  * 单独重跑该批；快检按变更影响范围只取其中若干批，见 `scripts/lib/affected-tests.ts`。
  *
- * 三批都带 `--isolate`，且必须与 `.github/workflows/ci.yml` 的 Test job 逐字一致（`--isolate` 也不例外）；
- * 运行版本同样要跟上那里的 bun pin（≥ 1.4.3，理由见该文件版本注释）。
+ * 三批都带 `--isolate`，且以**全量口径**与 `.github/workflows/ci.yml` 的测试命令对齐（`--isolate` 也不例外，
+ * 那里是把同一批文件按 bun 原生 `--shard=i/N` 切到多个 runner，并集恒等于全量，判定不变）；
+ * 运行版本同样要跟上 `.github/actions/setup/action.yml` 的 bun pin（≥ 1.4.3，理由见该文件注释）。
  * bun 1.4 默认让**所有测试文件共享同一个全局与模块注册表**：某文件里 `mock.module()` 的注册、
  * `globalThis` 覆写、平台替身（`stubDb()` / 模块配置 / 应用基础设施）都会泄漏给**之后加载**的文件，而
  * 「谁先加载」由文件系统的目录枚举顺序决定——macOS 本机与 CI 的 Linux 顺序不同，于是同一份代码本机全绿、

@@ -33,6 +33,11 @@
  * **检查器**：`--bin <name>` 指定 `node_modules/.bin/` 下的检查器，默认 `tsc`；快检传 `--bin tsc-rs`
  * （取舍见 `scripts/lib/check-gates.ts` 头部）。`tsc-rs` 不走增量缓存——两套工具链的 tsbuildinfo 格式
  * 不同，共用同名缓存会互相误判；它冷跑 38 包（8 路并发）实测约 3s，缓存收益可忽略，且不写盘更干净。
+ *
+ * **分片**：`--shard <i>/<n>` 只检查第 i 片（1-based）。本门禁是全套静态门禁里最重的一步（CI 实测
+ * 187s），分片供 CI 摊到多个 runner；本地 `precheck` 不传，仍是全量一次跑完。口径与测试批次的
+ * `--shard` 相同：各片并集恒等于全量清单，判定不变。切片依据是**排序后的目录名**，不能用发现顺序——
+ * `readdirSync` 的顺序取决于文件系统，跨机器切出的分片会漂移（漏检或重复检查）。
  */
 
 import { existsSync, mkdirSync, readdirSync } from "node:fs";
@@ -46,9 +51,25 @@ const repositoryRoot = resolve(import.meta.dir, "..");
 const binArgIndex = process.argv.indexOf("--bin");
 const checkerName = binArgIndex >= 0 ? process.argv[binArgIndex + 1] : "tsc";
 if (checkerName === undefined || checkerName === "--bin") {
-  console.error("用法：bun run scripts/typecheck-packages.ts [--bin <name>]（默认 tsc）");
+  console.error("用法：bun run scripts/typecheck-packages.ts [--bin <name>] [--shard <i>/<n>]（默认 tsc / 全量）");
   process.exit(1);
 }
+
+/** 解析 `--shard` 的 `i/n`：格式或范围不对一律按用法错误退出，避免 CI 悄悄少检查一片。 */
+function parseShard(value: string | undefined): { index: number; total: number } {
+  const matched = /^(\d+)\/(\d+)$/.exec(value ?? "");
+  const index = Number(matched?.[1]);
+  const total = Number(matched?.[2]);
+  if (matched === null || index < 1 || total < 1 || index > total) {
+    console.error(`--shard 需要 <i>/<n>（1 ≤ i ≤ n），收到：${value ?? "(缺值)"}`);
+    process.exit(1);
+  }
+  return { index, total };
+}
+
+/** `--shard <i>/<n>`：只跑第 i 片；本地 precheck 不传，即全量。 */
+const shardArgIndex = process.argv.indexOf("--shard");
+const shard = shardArgIndex >= 0 ? parseShard(process.argv[shardArgIndex + 1]) : undefined;
 const checkerBin = join(repositoryRoot, "node_modules", ".bin", checkerName);
 /** 只有 `tsc` 用增量缓存：`tsc-rs` 的 tsbuildinfo 格式不同，共用同名缓存会互相误判。 */
 const useIncrementalCache = checkerName === "tsc";
@@ -176,12 +197,19 @@ export async function checkPackageTypecheck(): Promise<number> {
     return 1;
   }
 
-  const { entries, missing } = collectPackages();
+  const { entries: discovered, missing } = collectPackages();
   if (missing.length > 0) {
     console.error(`以下 workspace 包没有包级 tsconfig，本门禁覆盖不到它们（每包都必须有）：`);
     for (const dir of missing) console.error(`  ${dir}/tsconfig.json`);
     return 1;
   }
+
+  // 结构检查对全量清单做（分片只影响这次检查哪些包，不影响「配置是否齐全」）；随后按目录名排序再切片，
+  // 保证同一提交在任何机器上切出同一批包——发现顺序来自 `readdirSync`，不能当分片依据。
+  const ordered = discovered.sort((a, b) => (a.dir < b.dir ? -1 : a.dir > b.dir ? 1 : 0));
+  const entries =
+    shard === undefined ? ordered : ordered.filter((_, position) => position % shard.total === shard.index - 1);
+  const scope = shard === undefined ? "" : ` shard=${shard.index}/${shard.total}`;
 
   // tsBuildInfoFile 的父目录必须存在，否则 tsc 报 TS5033（无法写入缓存）——门禁不该因为缓存路径缺失而红。
   if (useIncrementalCache) mkdirSync(TSC_BUILD_INFO_DIR, { recursive: true });
@@ -191,7 +219,7 @@ export async function checkPackageTypecheck(): Promise<number> {
   const ignored = findings.length - production.length;
 
   if (production.length > 0) {
-    console.error(`包级类型检查失败：${production.length} 条生产源码诊断（已忽略测试文件 ${ignored} 条）`);
+    console.error(`包级类型检查失败${scope}：${production.length} 条生产源码诊断（已忽略测试文件 ${ignored} 条）`);
     for (const { file, line, code, message, packages } of production) {
       console.error(`  ${file}:${line} ${code}: ${message}`);
       console.error(`    [程序: ${packages.join(", ")}]`);
@@ -200,7 +228,7 @@ export async function checkPackageTypecheck(): Promise<number> {
   }
 
   console.log(
-    `✓ typecheck-packages (checker=${checkerName} pkg=${entries.length} errors=0 ignored-tests=${ignored})` +
+    `✓ typecheck-packages (checker=${checkerName}${scope} pkg=${entries.length} errors=0 ignored-tests=${ignored})` +
       `\n  测试文件的既有错误按脚本头部登记的移除条件豁免，见 scripts/typecheck-packages.ts。`,
   );
   return 0;

@@ -10,23 +10,22 @@ concurrency:
   group: ci-${{ github.ref }}
   cancel-in-progress: true
 
+# 墙钟时间由两个事实决定（2026-10-13 run 38360225752 的 step 实测）：
+#   1. 重活只有两个，各约 200s——静态检查里的 `typecheck:packages` 187s、测试里的 packages 批 205s
+#      （9559 用例 / 815 文件）——两者分属两个 job 并行跑，总时长 = 较长那条 ≈ 5min；
+#   2. 每个 job 自己装一次依赖（33-40s），而 `bun.lock` 把 tarball URL 写死在国内镜像上（理由见
+#      `.github/actions/setup/action.yml`），runner 却在 us-northcentralus。
+# 所以本文件只做两件事：把两个重活用 bun 原生 `--shard=i/N` 摊到多台 runner；用缓存免掉冷装。
+# 分片不改变口径——bun 自己切分文件集，各片并集恒等于该批全量，`--isolate` 一字不动，参数与
+# `scripts/lib/check-gates.ts` 的全量命令只差一个 `--shard`（precheck 仍跑全量命令，见该文件注释）。
 jobs:
-  check:
-    name: Lint & Typecheck
+  static:
+    name: Lint, typecheck & build
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
 
-      # 版本不是随手定的：bun 1.4.2 的 `bun test --isolate` 在 Linux x64 大套件下会间歇
-      # `panic(main thread): abort() called`（oven-sh/bun#44599；本仓实测同一提交两次运行崩一次），
-      # 1.4.3 修掉了这一类 isolate 崩溃（见 Bun v1.4.3 发布说明）。回退版本前先确认上游 issue 状态；
-      # 本地用 `bun upgrade` 跟到同一版本，`precheck` 才与 CI 同口径。
-      - uses: oven-sh/setup-bun@v2
-        with:
-          bun-version: "1.4.3"
-
-      - name: Install dependencies
-        run: bun install --frozen-lockfile
+      - uses: ./.github/actions/setup
 
       - name: Format check
         run: bun run format:check
@@ -39,11 +38,6 @@ jobs:
 
       - name: Typecheck (frontend)
         run: bun run typecheck:web
-
-      # 前两步都从宿主入口出发、**顺 import** 覆盖包源码，没有消费方的包/文件因此天然落在检查之外
-      # （14 个包此前连 tsconfig 都没有）。这一步以每个包自己的 tsconfig 为入口逐个检查。
-      - name: Typecheck (packages)
-        run: bun run typecheck:packages
 
       # 装配相关的四项检查必须与 precheck 走同一入口：registry、web contributions 与根源码归属清单
       # 都是生成物，架构门禁与依赖边界门禁共用同一份例外台账，只在本机生效等于没有门禁。
@@ -68,51 +62,83 @@ jobs:
       - name: Workspace dependency boundaries
         run: bun run check:dependencies
 
-  build:
-    name: Web production build
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-
-      - uses: oven-sh/setup-bun@v2
-        with:
-          bun-version: "1.4.3"
-
-      - name: Install dependencies
-        run: bun install --frozen-lockfile
-
       # 后端从 `apps/web/dist/` 挂载静态资源；「包被浏览器 bundle 拉进 server-only 依赖」
       # 这类事故只在真实构建下暴露（vite 的解析与外置规则和 `bun test` 不同），此前只有
       # `Dockerfile` 在镜像构建时才跑，PR 阶段没有构建级门禁。`build:web` 只依赖已安装依赖
       # 与仓库内已提交的生成物，不需要 env（`Dockerfile` 同样在 install 之后直接执行）。
+      # 原先是独立 job：那个 job 46s 里有 33s 是 install，为 9s 的构建付一整套安装不划算，并到这里。
       - name: Web production build
         run: bun run build:web
 
-  test:
-    name: Test
+  # 包级类型检查是全套静态门禁里最重的一步（CI 实测 187s），单独成 job 才能分片并行。
+  # 前两步都从宿主入口出发、**顺 import** 覆盖包源码，没有消费方的包/文件因此天然落在检查之外
+  # （14 个包此前连 tsconfig 都没有）。本 job 以每个包自己的 tsconfig 为入口逐个检查。
+  typecheck-packages:
+    name: Typecheck (packages ${{ matrix.shard }}/2)
+    runs-on: ubuntu-latest
+    strategy:
+      # 分片之间没有依赖：一片红不该让另一片的结果被取消（谁错了都要看全）。
+      fail-fast: false
+      matrix:
+        shard: [1, 2]
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: ./.github/actions/setup
+
+      # tsc 增量缓存：`node_modules/.cache/fenix-precheck/*.tsbuildinfo` 的 fileInfos 版本号是内容
+      # sha256（不是 mtime，故可跨 runner 复用）——命中时 tsc 只复核文件哈希并跳过未变文件的类型检查。
+      # 每片只写自己那几个包的 buildinfo（`pkg-<dir>.tsbuildinfo`），所以键里带 shard：两片共用同一个
+      # 键会因缓存条目不可变而互相丢写。key 带 sha（每次写新条目）+ restore-keys 前缀（读最近一条）：
+      # key 若固定，缓存不可变会让它永久陈旧。缓存落在 node_modules 内部，必须放在 install 之后。
+      - uses: actions/cache@v4
+        with:
+          path: node_modules/.cache/fenix-precheck
+          key: tsc-buildinfo-${{ runner.os }}-${{ hashFiles('bun.lock') }}-shard${{ matrix.shard }}-${{ github.sha }}
+          restore-keys: |
+            tsc-buildinfo-${{ runner.os }}-${{ hashFiles('bun.lock') }}-shard${{ matrix.shard }}-
+
+      - name: Typecheck (packages)
+        run: bun run typecheck:packages --shard ${{ matrix.shard }}/2
+
+  # 两条小批次（26s + 9s）原本挤在 Test job 里排在 205s 的 packages 批之后串行等待；独立成 job 后
+  # 它们与分片并行，也不再压 Test job 的墙钟。
+  test-apps:
+    name: Test (apps, scripts & SDK)
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
 
-      - uses: oven-sh/setup-bun@v2
-        with:
-          bun-version: "1.4.3"
+      - uses: ./.github/actions/setup
 
-      - name: Install dependencies
-        run: bun install --frozen-lockfile
-
-      # 三条命令必须与 `scripts/lib/check-gates.ts` 的 `TEST_BATCHES` 逐字一致：本机 `precheck`
-      # 与 CI 跑的是同一份口径，本地绿而 CI 红才算「同一批测试不一致」。
+      # 这两条命令与 `scripts/lib/check-gates.ts` 的 `TEST_BATCHES` 逐字一致（不带 `--shard`，
+      # 全量口径）：本机 `precheck` 与 CI 跑的是同一份口径，本地绿而 CI 红才算「同一批测试不一致」。
       #
       # `--isolate` 不是可选加速项：bun 1.4 默认让所有测试文件共享同一个全局与模块注册表，
       # `mock.module()` / `globalThis` 覆写 / 平台替身会泄漏给之后加载的文件，而加载顺序由文件系统的
       # 目录枚举顺序决定（Linux 与 macOS 不同）。缺它时同一份代码会本机全绿、这里成片失败。
-      # 跑这三条命令的 bun 必须 ≥ 1.4.3：1.4.2 的 isolate 路径在大套件下会间歇 abort（见上方版本注释）。
+      # 跑这三批的 bun 必须 ≥ 1.4.3：1.4.2 的 isolate 路径在大套件下会间歇 abort（见 setup action 注释）。
       - name: Server, script, and platform SDK tests
         run: bun test apps/server/src/__tests__/ scripts/__tests__/ packages/platform/platform-sdk/src/__tests__/ --isolate
 
-      - name: Package tests
-        run: bun test packages/ --path-ignore-patterns 'tmp/**' --isolate
-
       - name: Web app tests
         run: bun test apps/web/src/__tests__/ --isolate
+
+  # packages 批是另一条 205s 的墙钟：815 个文件、9559 个用例，`--isolate` 下每个文件重新求值一次
+  # 依赖图，实测并不随核数线性缩短（本机 10 核与 CI 4 核的墙钟接近），所以只能靠分片摊到多台 runner。
+  test-packages:
+    name: Test (packages ${{ matrix.shard }}/3)
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [1, 2, 3]
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: ./.github/actions/setup
+
+      # 与 `TEST_BATCHES` 的 packages 批同一条命令，只多一个 bun 原生的 `--shard`：切分由 bun 自己做，
+      # 各片并集恒等于该批全量（无重复、无遗漏），因此 precheck 跑全量与 CI 跑分片得到同一判定。
+      - name: Package tests
+        run: bun test packages/ --path-ignore-patterns 'tmp/**' --isolate --shard=${{ matrix.shard }}/3
