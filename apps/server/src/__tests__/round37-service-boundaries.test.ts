@@ -168,6 +168,14 @@ const executionCases = Array.from(
   (_, index) => `sandbox-boundary-${String(index + 1).padStart(2, "0")}`,
 );
 
+/**
+ * 补偿边界用例的连接等待超时：首次等待必须超时（readOnline 初始 false），重启/恢复后的等待必须成功。
+ * 两次等待共用此值——取 1ms 时"成功"那次只剩 1ms 判定窗口，负载下被调度抖动吃掉会让补偿多走一级
+ * （recover 被意外调用）而断言失败，即 `scripts/ci.ts` 记录的已知偶发；50ms 足以覆盖判定路径
+ * （入口检查 + 一次 readOnline 微任务）。
+ */
+const BOUNDARY_CONNECT_TIMEOUT_MS = 50;
+
 describe("Sandbox ACP 错误补偿边界", () => {
   for (const sandboxId of executionCases) {
     test(`Sandbox ${sandboxId} 首次等待失败后重启资源并补偿为可连接状态`, async () => {
@@ -178,7 +186,7 @@ describe("Sandbox ACP 错误补偿边界", () => {
           sandboxId,
           sandboxPoolId: "pool-boundary",
           userId: "user-a",
-          runtimeConnectTimeoutMs: 1,
+          runtimeConnectTimeoutMs: BOUNDARY_CONNECT_TIMEOUT_MS,
         }),
       ).resolves.toEqual({ nodeId: `mach_sandbox_${sandboxId}`, source: "sandbox", sandboxId });
       expect(fixture.calls).toEqual({ restart: 1, recover: 0, markError: 0 });
@@ -194,7 +202,7 @@ describe("Sandbox ACP 错误补偿边界", () => {
           sandboxId,
           sandboxPoolId: "pool-boundary",
           userId: "user-a",
-          runtimeConnectTimeoutMs: 1,
+          runtimeConnectTimeoutMs: BOUNDARY_CONNECT_TIMEOUT_MS,
         }),
       ).resolves.toEqual({ nodeId: `mach_sandbox_${sandboxId}`, source: "sandbox", sandboxId });
       expect(fixture.calls).toEqual({ restart: 1, recover: 1, markError: 0 });
@@ -210,7 +218,7 @@ describe("Sandbox ACP 错误补偿边界", () => {
           sandboxId,
           sandboxPoolId: "pool-boundary",
           userId: "user-a",
-          runtimeConnectTimeoutMs: 1,
+          runtimeConnectTimeoutMs: BOUNDARY_CONNECT_TIMEOUT_MS,
         }),
       ).rejects.toThrow(sandboxId);
       expect(fixture.calls).toEqual({ restart: 1, recover: 1, markError: 1 });
