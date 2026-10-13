@@ -5,6 +5,8 @@ import type {
   EditCommentInput,
   EditIssueInput,
   EditLabelInput,
+  GitAttachment,
+  GitAttachmentDownload,
   GitComment,
   GitIssue,
   GitIssueListQuery,
@@ -13,6 +15,7 @@ import type {
   GitPage,
   GitRepository,
   RepositoryRef,
+  UploadAttachmentInput,
 } from "./types";
 
 /**
@@ -67,6 +70,27 @@ export interface GitScopedLabelOperations {
 }
 
 /**
+ * 附件操作。
+ *
+ * 三个动作都**按工单寻址**（`issueNumber` 是路径的一部分）：附件不是独立资源，上游的列表/上传/下载端点
+ * 都挂在 Issue 下，下载按工单 + 附件编号定位，跨工单取另一个工单的附件因此在上游就是 404——归属校验
+ * 不靠本端比对字段，而是由寻址本身保证。
+ */
+export interface GitScopedAttachmentOperations {
+  /** 该工单的全部附件；上游不提供筛选，返回的是完整集合（适配器按 `Link` 头翻完）。 */
+  list(issueNumber: string): Promise<readonly GitAttachment[]>;
+  /**
+   * 上传一个附件。
+   *
+   * 上游对文件扩展名有白名单（`[]` 不在名单内会 422），这类拒绝是**确定**失败（`INVALID_REQUEST`），
+   * 不是 `WRITE_UNCERTAIN`——绝不能进恢复核对去等一个从未发生的写入。超过上游大小上限同理（413）。
+   */
+  upload(issueNumber: string, input: UploadAttachmentInput): Promise<GitAttachment>;
+  /** 下载附件内容：先按附件编号回读元数据（同时完成归属校验），再打开内容流。 */
+  download(issueNumber: string, attachmentId: string): Promise<GitAttachmentDownload>;
+}
+
+/**
  * 已绑定作用域的 Git 客户端。
  *
  * 所有方法失败时抛 {@link GitError}（`src/contracts/errors.ts`）；写操作的 `WRITE_UNCERTAIN` 语义
@@ -82,6 +106,7 @@ export interface GitScopedClient {
   readonly issues: GitScopedIssueOperations;
   readonly comments: GitScopedCommentOperations;
   readonly labels: GitScopedLabelOperations;
+  readonly attachments: GitScopedAttachmentOperations;
 }
 
 /** 创建作用域客户端的输入；由宿主在服务端组装，值不来自请求正文。 */

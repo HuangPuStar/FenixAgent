@@ -74,6 +74,43 @@ export interface GitComment {
   readonly providerUpdatedAt: string | null;
 }
 
+/**
+ * Issue 附件投影。
+ *
+ * 刻意**不**带 `browser_download_url`：那是托管平台上带凭据才可读的地址，一旦外露，消费方很容易把
+ * 「服务账号可用」的链接交给浏览器——下载必须经本包代理（`attachments.download`），凭据不出网。
+ * `contentType` 也不在这里：列表响应不含 MIME，只有下载响应头有，故只做进 {@link GitAttachmentDownload}。
+ */
+export interface GitAttachment {
+  readonly id: GitObjectId;
+  readonly name: string;
+  /** 字节数（上游 int64，超过 2^53 的附件不存在；这里用 number 表达「大小」而不是标识）。 */
+  readonly size: number;
+  readonly createdAt: string | null;
+}
+
+/** 上传一个附件的输入；`content` 是原始字节，文件名与 MIME 由调用方给出。 */
+export interface UploadAttachmentInput {
+  /** 原始文件名；上游用它做 `Content-Disposition`，也是恢复核对时的匹配依据。 */
+  readonly name: string;
+  readonly content: Uint8Array;
+  /** 缺省 `application/octet-stream`；上游对**文件扩展名**另有白名单，见 `docs/arch/28-common-git.md`。 */
+  readonly contentType?: string;
+}
+
+/**
+ * 附件下载结果：元数据 + 上游字节流。
+ *
+ * `stream` 的生命周期归调用方：必须消费到底或显式取消，否则在途请求的名额不会归还（`http.ts` 的并发闸）。
+ * 内容超时（`attachmentTimeoutMs`）覆盖**整条流**，不是只覆盖响应头。
+ */
+export interface GitAttachmentDownload {
+  readonly attachment: GitAttachment;
+  readonly contentType: string | null;
+  readonly contentLength: number | null;
+  readonly stream: ReadableStream<Uint8Array> | null;
+}
+
 /** 统一分页信封：`nextCursor` 为 null 表示已到末页。 */
 export interface GitPage<TItem> {
   readonly items: readonly TItem[];

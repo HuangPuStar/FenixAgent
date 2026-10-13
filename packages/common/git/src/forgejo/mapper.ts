@@ -16,6 +16,7 @@
 import { GitError } from "../contracts/errors";
 import type {
   GitActor,
+  GitAttachment,
   GitComment,
   GitIssue,
   GitLabel,
@@ -24,7 +25,14 @@ import type {
   IssueState,
   RepositoryRef,
 } from "../contracts/types";
-import type { ForgejoCommentDto, ForgejoIssueDto, ForgejoLabelDto, ForgejoRepositoryDto, ForgejoUserDto } from "./dto";
+import type {
+  ForgejoAttachmentDto,
+  ForgejoCommentDto,
+  ForgejoIssueDto,
+  ForgejoLabelDto,
+  ForgejoRepositoryDto,
+  ForgejoUserDto,
+} from "./dto";
 
 function invalidResponse(detail: string): GitError {
   return new GitError("INVALID_RESPONSE", `Forgejo 响应不符合适配器合同：${detail}`);
@@ -61,6 +69,10 @@ function asCommentDto(value: unknown): ForgejoCommentDto {
   return asObject(value, "comment");
 }
 
+function asAttachmentDto(value: unknown): ForgejoAttachmentDto {
+  return asObject(value, "attachment");
+}
+
 /** 数字 ID（字符串承载）。接受 number 与字符串两种上游形态，其它类型拒绝。 */
 function requireId(value: unknown, field: string): GitObjectId {
   if (typeof value === "number" && Number.isInteger(value)) return String(value);
@@ -93,6 +105,19 @@ function readBodyText(value: unknown, field: string): string {
 function readFlag(value: unknown, field: string): boolean {
   if (value === undefined || value === null) return false;
   if (typeof value !== "boolean") throw invalidResponse(`字段 ${field} 不是布尔值`);
+  return value;
+}
+
+/**
+ * 附件大小：上游是 int64 字节数。
+ *
+ * 非整数、负数或超出安全整数范围一律拒绝——一个负的字节数会让前端渲染出「-1 B」，而一个被截断的巨值会
+ * 让「文件大小」与真实对象不符；两者都是静默错误，宁可让这次读取失败。
+ */
+function requireSize(value: unknown): number {
+  if (typeof value !== "number" || !Number.isSafeInteger(value) || value < 0) {
+    throw invalidResponse("字段 attachment.size 不是合法的字节数");
+  }
   return value;
 }
 
@@ -208,4 +233,32 @@ export function toGitComment(dto: unknown, issueNumber?: string | null): GitComm
     author: toGitActor(comment.user),
     providerUpdatedAt: toIsoOrNull(comment.updated_at),
   };
+}
+
+/**
+ * 附件投影。
+ *
+ * `size` 是唯一一个**不以字符串承载**的外部数字：它表达字节数而不是标识，2^53 字节的附件不存在；而把它
+ * 写成字符串只会让每个消费方各转一次，转错一次就是展示成 0 字节。
+ */
+export function toGitAttachment(dto: unknown): GitAttachment {
+  const attachment = asAttachmentDto(dto);
+  return {
+    id: requireId(attachment.id, "attachment.id"),
+    name: requireText(attachment.name, "attachment.name"),
+    size: requireSize(attachment.size),
+    createdAt: toIsoOrNull(attachment.created_at),
+  };
+}
+
+/**
+ * 附件内容地址的坐标（`/attachments/{uuid}` 的后半段）。
+ *
+ * 只认 `uuid`，**不认** `browser_download_url`：那是上游给的任意 URL，采用它等于让上游决定本进程带着凭据
+ * 去访问哪个地址。UUID 形状在上游是 36 位十六进制加短横线，这里只做「非空字符串」这一层校验，路径安全
+ * 由传输层的字符白名单兜底。
+ */
+export function toAttachmentUuid(dto: unknown): string {
+  const attachment = asAttachmentDto(dto);
+  return requireText(attachment.uuid, "attachment.uuid");
 }

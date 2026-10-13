@@ -21,6 +21,8 @@ import type {
   CreateRepositoryInput,
   EditIssueInput,
   EditLabelInput,
+  GitAttachment,
+  GitAttachmentDownload,
   GitComment,
   GitIssue,
   GitIssueListQuery,
@@ -29,9 +31,10 @@ import type {
   GitPage,
   GitRepository,
   RepositoryRef,
+  UploadAttachmentInput,
 } from "../contracts/types";
 import { type FetchLike, ForgejoHttpClient, type ForgejoRequestContext } from "./http";
-import { toGitComment, toGitIssue, toGitLabel, toGitRepository } from "./mapper";
+import { toAttachmentUuid, toGitAttachment, toGitComment, toGitIssue, toGitLabel, toGitRepository } from "./mapper";
 
 export interface ForgejoClientOptions {
   readonly baseUrl: string;
@@ -49,6 +52,8 @@ const DEFAULT_PAGE_LIMIT = 30;
 const MAX_PAGE_LIMIT = 100;
 /** 标签翻页上限：1000 个标签已远超运营约定，达到上限只告警不继续，避免上游忽略 page 参数时死循环。 */
 const MAX_LABEL_PAGES = 10;
+/** 附件翻页上限：与标签同理，1000 个附件同样远超单工单的正常规模。 */
+const MAX_ATTACHMENT_PAGES = 10;
 const DECIMAL_PAGE = /^[1-9]\d*$/;
 const DECIMAL_ID = /^\d+$/;
 const DOTS_ONLY = /^\.+$/;
@@ -170,13 +175,32 @@ function pageFromLink(linkHeader: string, pattern: RegExp, rel: string): string 
 /**
  * 下一页游标。
  *
- * 头存在时以它为准（没有 `rel="next"` 即末页）；头整体缺失（中间代理剥离）时退化为「本页非空就有下
- * 一页」——宁可多读一个空页，也不静默截断列表。
+ * 头存在时以它为准（没有 `rel="next"` 即末页）；头**整体缺失**时按 {@link MissingLinkPolicy} 退避：
+ * Forgejo 的端点并不都发 `Link` 头（见该类型的说明），一律按「本页非空即有下一页」处理会把同一页重复
+ * 计入——`/labels` 与 `/issues/{index}/assets` 每次读取都会返回上限内的重复集合。
  */
-function resolveNextCursor(linkHeader: string | null, page: number, receivedCount: number): string | null {
+function resolveNextCursor(
+  linkHeader: string | null,
+  page: number,
+  receivedCount: number,
+  policy: MissingLinkPolicy,
+): string | null {
   if (linkHeader !== null) return nextPageFromLink(linkHeader);
+  if (policy === "last-page") return null;
   return receivedCount > 0 ? String(page + 1) : null;
 }
+
+/**
+ * `Link` 头缺失时的退化策略（实测口径：Forgejo 15.0.9）。
+ *
+ * 分页事实源是 `Link` 头，但**不是所有端点都会发它**：`/issues` 与 `/issues/{index}/comments` 会带
+ * （末页与否从 `rel` 直接读出），而 `/labels` 与 `/issues/{index}/assets` 会按 `page`/`limit` 切页却
+ * 从不带 `Link`。两种情形只能各自退避：
+ * - `next-page`：当成「代理剥掉了头」，本页非空就继续读——代价最多是多读一个空页；
+ * - `last-page`：当成「端点本来就不分页」——代价是上游某天开始发 `Link` 前，超过一页上限（100 条）的
+ *   集合会被截断；反过来按 `next-page` 处理则会把同一页**重复计入**到翻页上限，这是更坏的失败。
+ */
+type MissingLinkPolicy = "next-page" | "last-page";
 
 /** 列表响应必须是数组；单条元素的字段级校验由各自 mapper 完成。 */
 function mapItems<TItem>(payload: unknown, field: string, map: (item: unknown) => TItem): readonly TItem[] {
@@ -195,6 +219,7 @@ export class ForgejoClient {
       baseUrl: options.baseUrl,
       token: options.token,
       requestTimeoutMs: options.requestTimeoutMs,
+      attachmentTimeoutMs: options.attachmentTimeoutMs,
       maxConcurrentRequests: options.maxConcurrentRequests,
       readRetryDelayMs: options.readRetryDelayMs,
       fetchImpl: options.fetchImpl,
@@ -268,7 +293,7 @@ export class ForgejoClient {
     const items = mapItems(body, "工单列表", toGitIssue);
     return {
       items,
-      nextCursor: resolveNextCursor(headers.get("link"), page, items.length),
+      nextCursor: resolveNextCursor(headers.get("link"), page, items.length, "next-page"),
       lastCursor: lastPageFromLink(headers.get("link")),
     };
   }
@@ -350,7 +375,7 @@ export class ForgejoClient {
     const items = mapItems(body, "评论列表", (item) => toGitComment(item, issueNumber));
     return {
       items,
-      nextCursor: resolveNextCursor(headers.get("link"), page, items.length),
+      nextCursor: resolveNextCursor(headers.get("link"), page, items.length, "next-page"),
       lastCursor: lastPageFromLink(headers.get("link")),
     };
   }
@@ -392,7 +417,9 @@ export class ForgejoClient {
    * 取仓库的全部标签。
    *
    * 接口本身没有游标参数，但调用方期望拿到完整集合（标签选择器少一项就是静默丢数据），因此按 `Link`
-   * 头翻页；`MAX_LABEL_PAGES` 只兜「上游忽略 page 参数」这类故障。
+   * 头翻页。上游（15.0.9 实测）会按 `limit` 切页却**从不发** `Link`，故缺失时按末页处理：早先按
+   * 「本页非空即有下一页」处理，会把同一页重复计入到 `MAX_LABEL_PAGES`，仓库里的 2 个标签在上层看来是
+   * 20 个。`MAX_LABEL_PAGES` 仍兜「上游忽略 page 参数」这类故障。
    */
   async listLabels(ref: RepositoryRef): Promise<readonly GitLabel[]> {
     const operationId = newOperationId();
@@ -405,7 +432,7 @@ export class ForgejoClient {
       );
       const items = mapItems(body, "标签列表", toGitLabel);
       collected.push(...items);
-      if (resolveNextCursor(headers.get("link"), page, items.length) === null) return collected;
+      if (resolveNextCursor(headers.get("link"), page, items.length, "last-page") === null) return collected;
     }
     logger.warn("git.forgejo.labels_page_limit_reached", {
       connectionId: ref.connectionId,
@@ -446,6 +473,95 @@ export class ForgejoClient {
       );
       return toGitLabel(payload);
     });
+  }
+
+  /**
+   * 工单附件集合。
+   *
+   * 端点没有分页参数，实测（15.0.9）也不发 `Link` 头，因此正常路径就是**一次请求**；循环与页码参数只为
+   * 兜「上游某天开始分页」——那时 `Link` 头会先出现，本方法随之自动跟上（`last-page` 策略见
+   * {@link MissingLinkPolicy}；按「本页非空即有下一页」处理会把同一页重复计入到翻页上限）。
+   */
+  async listIssueAttachments(ref: RepositoryRef, issueNumber: string): Promise<readonly GitAttachment[]> {
+    const operationId = newOperationId();
+    const context = operationContext(ref, operationId);
+    const collected: GitAttachment[] = [];
+    for (let page = 1; page <= MAX_ATTACHMENT_PAGES; page += 1) {
+      const { body, headers } = await this.#http.getJsonWithHeaders(
+        `${issueBase(ref, issueNumber)}/assets?${pageQuery(page, MAX_PAGE_LIMIT)}`,
+        context,
+      );
+      const items = mapItems(body, "附件列表", toGitAttachment);
+      collected.push(...items);
+      if (resolveNextCursor(headers.get("link"), page, items.length, "last-page") === null) return collected;
+    }
+    logger.warn("git.forgejo.attachments_page_limit_reached", {
+      connectionId: ref.connectionId,
+      repositoryRef: `${ref.owner}/${ref.name}`,
+      pages: MAX_ATTACHMENT_PAGES,
+    });
+    return collected;
+  }
+
+  /**
+   * 上传附件。
+   *
+   * 表单字段名固定为 `attachment`，文件名同时写进表单 part 与 `?name=` 查询参数：上游对**文件名**的
+   * 判定（扩展名白名单）以查询参数为准，只给 part 的 filename 时会被当成无名上传。
+   */
+  async uploadIssueAttachment(
+    ref: RepositoryRef,
+    issueNumber: string,
+    input: UploadAttachmentInput,
+  ): Promise<GitAttachment> {
+    const operationId = newOperationId();
+    return this.#guardWrite(async () => {
+      const form = new FormData();
+      // `Blob` 的 TS 声明只接受 `ArrayBuffer` 支撑的视图，而 `Uint8Array<ArrayBufferLike>`（含 Node/Bun 的
+      // `Buffer`）在运行期就是合法的 Blob 部件——这是声明与运行时的差异，按真实类型收窄一次，不复制字节。
+      const blob = new Blob([input.content as BlobPart], { type: input.contentType ?? "application/octet-stream" });
+      form.append("attachment", blob, input.name);
+      const payload = await this.#http.postMultipart(
+        `${issueBase(ref, issueNumber)}/assets?name=${encodeURIComponent(input.name)}`,
+        form,
+        operationContext(ref, operationId),
+      );
+      return toGitAttachment(payload);
+    });
+  }
+
+  /**
+   * 下载附件内容：两步走。
+   *
+   * 1. 按附件编号回读元数据（`GET .../assets/{id}`）：这一步同时完成**归属校验**——附件不属于该工单时
+   *    上游直接 404，本端不必比对任何字段；
+   * 2. 用元数据里的 `uuid` 打开内容流（`/attachments/{uuid}`，API 前缀之外）。内容地址由 uuid 重建而不是
+   *    采用上游返回的 `browser_download_url`：后者是上游可控的完整 URL，采用它等于把凭据交给上游决定。
+   */
+  async downloadIssueAttachment(
+    ref: RepositoryRef,
+    issueNumber: string,
+    attachmentId: string,
+  ): Promise<GitAttachmentDownload> {
+    const operationId = newOperationId();
+    const context = operationContext(ref, operationId);
+    const payload = await this.#http.getJson(
+      `${issueBase(ref, issueNumber)}/assets/${decimalId(attachmentId, "附件编号")}`,
+      context,
+    );
+    const attachment = toGitAttachment(payload);
+    const uuid = toAttachmentUuid(payload);
+    const content = await this.#http.getAttachmentStream(uuid, context);
+    if (content.stream === null) {
+      // 上游给了 2xx 但没有正文：附件在存储上不存在（例如被清理）。这不是「空文件」，报读失败。
+      throw new GitError("INVALID_RESPONSE", "Forgejo 附件内容为空");
+    }
+    return {
+      attachment,
+      contentType: content.contentType,
+      contentLength: content.contentLength,
+      stream: content.stream,
+    };
   }
 
   /**

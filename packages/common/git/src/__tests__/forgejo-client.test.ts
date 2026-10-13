@@ -555,3 +555,28 @@ describe("并发闸", () => {
     expect(peak).toBe(2);
   });
 });
+
+describe("不发 Link 头的端点", () => {
+  // 标签端点会按 limit 切页却从不带 Link（15.0.9 实测）：头缺失必须按末页处理，否则同一页会被重复
+  // 计入到翻页上限——仓库里 2 个标签会变成 20 个。
+  test("标签列表在缺少 Link 头时只读一页", async () => {
+    const { calls, fetchImpl } = createStub(() => jsonResponse([{ id: 3, name: "bug", color: "ff0000" }]));
+    const labels = await client(fetchImpl).listLabels(REF);
+
+    expect(calls).toHaveLength(1);
+    expect(labels.map((label) => label.name)).toEqual(["bug"]);
+  });
+
+  // 发 Link 的端点仍按页翻完：退化策略只影响「头缺失」这一种情形。
+  test("标签列表在带 Link 头时继续翻页", async () => {
+    const { calls, fetchImpl } = createStub((_call, index) =>
+      jsonResponse([{ id: 3 + index, name: `bug-${index}`, color: "ff0000" }], {
+        headers: index === 0 ? { link: `<${BASE_URL}/api/v1/repos/acme/demo/labels?page=2>; rel="next"` } : {},
+      }),
+    );
+    const labels = await client(fetchImpl).listLabels(REF);
+
+    expect(calls).toHaveLength(2);
+    expect(labels.map((label) => label.name)).toEqual(["bug-0", "bug-1"]);
+  });
+});

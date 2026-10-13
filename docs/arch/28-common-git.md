@@ -1,8 +1,8 @@
 # 公共 Git 模块架构（common-git）
 
-> 状态：实现基线（2026-10-12；接入层已交付，并补入评论单条读取、列表 `since` 与末页游标；消费它的工单侧已接入组织项目初始化、工单创建/列表/详情/修改、评论读取与创建/改写、标签读写，`since` / `lastCursor` 各有真实消费点；事件消费与附件见 §7）
-> 范围：`@fenix/git` 的定位与边界、接口面与作用域语义（含 `comments.get` / `since` / `lastCursor` 的边界）、错误模型、四张账本表、安全约束、可选装配与运行参数。
-> 定位：本文是 `packages/common/git` 的**实现基线**，只描述已落地的事实。事件分发与附件在本文范围之外，未实现部分逐条列在 §7；工单模块自身的架构见 [工单模块架构](./29-tickets.md)。
+> 状态：实现基线（2026-10-12；接入层已交付，并补入评论单条读取、列表 `since`、末页游标与附件（列表/上传/下载）；消费它的工单侧已接入组织项目初始化、工单创建/列表/详情/修改、评论读取与创建/改写、标签读写与附件上传/下载，`since` / `lastCursor` 各有真实消费点；事件消费见 §7）
+> 范围：`@fenix/git` 的定位与边界、接口面与作用域语义（含 `comments.get` / `since` / `lastCursor` 与附件三条边界）、错误模型、四张账本表、安全约束、可选装配与运行参数。
+> 定位：本文是 `packages/common/git` 的**实现基线**，只描述已落地的事实。事件分发在本文范围之外，未实现部分逐条列在 §7；工单模块自身的架构见 [工单模块架构](./29-tickets.md)。
 > 约定：代码演进偏离本文档时，先更新文档再改代码。部署与运维步骤（Forgejo 编排、连接配置样例、排障）见 [运维说明](../operations/common-git.md)，目录契约见 [Docker 编排体系](../operations/docker-topology.md)。
 
 ## 0. 硬边界
@@ -22,7 +22,7 @@
 
 **为什么需要独立类别**：这份能力被宿主装配、被多个上层业务消费者共用（工单是第一个，见下），而它自己不依赖任何资源包。把它放进某个资源包会迫使其他消费者反向依赖那个包的领域实现，直接闭合出环；放进 `platform/*` 又不对——它不是平台契约，也不提供授权/身份语义。因此新增 `common` 类别并**只允许指向平台契约与独立工具包**：`scripts/lib/architecture-boundary-rules.ts` 中 `common` 的禁则为 `platform-impl` / `agent-runtime` / `machine` / `sandbox` / `resource` / `apps-server` / `apps-web`，任意一条指向这些上层的边都会立刻闭合出环。
 
-**与工单的单向依赖**：工单模块（`@fenix/resource-tickets`，`packages/resources/tickets`）是第一个消费者，已接入组织项目初始化、建工单、查列表与详情、工单修改（标题/描述/负责人/状态）、标签挂载、评论读取与创建/改写与项目标签读写；它的 `dependsOn` 含 `git`，经 `GitService.createScopedClient` 取得受控作用域。git 不依赖工单，也不理解工单与通知语义；装配校验在产生副作用前拒绝「声明了 tickets 却没有 git」的组合，反向不存在。工单侧的能力范围与未实现清单见 [工单模块架构](./29-tickets.md)。
+**与工单的单向依赖**：工单模块（`@fenix/resource-tickets`，`packages/resources/tickets`）是第一个消费者，已接入组织项目初始化、建工单、查列表与详情、工单修改（标题/描述/负责人/状态）、标签挂载、评论读取与创建/改写、项目标签读写与附件上传/下载；它的 `dependsOn` 含 `git`，经 `GitService.createScopedClient` 取得受控作用域。git 不依赖工单，也不理解工单与通知语义；装配校验在产生副作用前拒绝「声明了 tickets 却没有 git」的组合，反向不存在。工单侧的能力范围与未实现清单见 [工单模块架构](./29-tickets.md)。
 
 跨包依赖只有 `@fenix/platform-sdk`（`getDatabase()` 与 `ModuleFactoryContext`）与 `@fenix/logger`；包内不读 `process.env`、不 import `apps/**`、不 import 其他资源包的 `src/**`，跨包只走公开 `exports`。
 
@@ -34,7 +34,7 @@
 
 | 接口 | 调用方 | 凭据 | 能做什么 |
 |---|---|---|---|
-| `createScopedClient({ consumerId, organizationId, bindingId })` | 普通消费者（工单等业务） | 绑定 `credentialRef` 指向的受限服务账号 | 仓库读、Issue 读/写、评论读/写、标签读/写 |
+| `createScopedClient({ consumerId, organizationId, bindingId })` | 普通消费者（工单等业务） | 绑定 `credentialRef` 指向的受限服务账号 | 仓库读、Issue 读/写、评论读/写、标签读/写、附件读/写 |
 | `GitAdminService`（`createPrivateRepository` / `getRepository` / `ensureIssuesEnabled` / `bindExistingRepository` / `getBinding`） | 初始化脚本与宿主管理接口 | 连接的 `provisionToken` | 建私有仓库、开 Issues、注册与读取绑定 |
 
 管理能力**不在**作用域客户端上：把 `createPrivateRepository` 交给普通工单写入路径，等于每次写工单都持有能建仓库的凭据。管理服务自身不做调用方授权（那是宿主管理接口的职责），只判定包内能判定的事——凭据引用是否合法且已声明、上游仓库是否真的存在、同一仓库是否已归属别的组织。
@@ -43,7 +43,7 @@
 
 复查用内存快照、不重查库，这是刻意的：绑定只在创建作用域客户端时读一次，包内再加一层缓存只会制造两份互相不一致的授权视图；**跨进程的撤销**（另一副本改的绑定）不在本层生效范围，由事件同步（§7 未实现）与后续验证覆盖。拒绝一律 `FORBIDDEN`——「你无权做这件事」与「这个对象不存在」对调用方是不同的结论。
 
-操作名（`repositories.read`、`issues.read` / `issues.write`、`comments.read` / `comments.write`、`labels.read` / `labels.write`）是**持久化契约**：它们写在 `git_repository_bindings.allowed_consumers` 里，改名不会报错，只会让存量授权静默失效。只能追加新名字。`ensureIssuesEnabled` 按 `issues.write` 判定。
+操作名（`repositories.read`、`issues.read` / `issues.write`、`comments.read` / `comments.write`、`labels.read` / `labels.write`、`attachments.read` / `attachments.write`）是**持久化契约**：它们写在 `git_repository_bindings.allowed_consumers` 里，改名不会报错，只会让存量授权静默失效。只能追加新名字（附件两项即 T05 追加；存量绑定未补授权时，读接口表现为 503、上传为 403，见 [工单运维说明](../operations/tickets.md) §6）。`ensureIssuesEnabled` 按 `issues.write` 判定。
 
 分页统一为 `{ items, nextCursor, lastCursor? }`，`nextCursor` 为 null 表示末页；适配器把 `cursor` 定义为「下一页页码的十进制字符串」，`limit` 默认 30、最大 100。所有外部数字 ID（仓库、Issue、评论、标签）在协议与领域层一律以**字符串**承载：Forgejo 侧是 int64，退化成 number 后序列化与比较会静默出错。
 
@@ -53,18 +53,27 @@
 - **`lastCursor`（`GitPage.lastCursor`，`Link` 头 `rel="last"` 的页码）** 让消费方能一次定位到末页，不必从头翻完整个讨论串。它是**头信息的透出，不是分页事实源**：`nextCursor` 仍只按 `rel="next"` 判定末页（头整体缺失时退化为「本页非空即有下一页」，宁可多读一个空页也不截断列表）；头缺失、无 `last` 或分页参数被上游忽略时 `lastCursor` 为 null，此时消费方必须退化为「只读第一页」，并如实表达「没有更早的页」——编造一个末页页码会让调用方读到一页并非最新的数据。
 - **`comments.get(commentId)`** 是**写入之前**唯一能同时拿到评论当前正文与所属工单编号的入口（`GET /repos/{o}/{r}/issues/comments/{id}`）：调用方据此核验「评论确属该工单」并算出它的当前版本，不必在长讨论串里逐页找一条。`issueNumber` 由响应体的 `issue_url` 解析；评论不存在、不在该仓库或编号不是十进制正整数一律 `NOT_FOUND`，且**不触发读重试**（编号非法时零出站）。它走 `comments.read`，与 `list` 同一授权。
 
+**附件三条边界**（`attachments.list` / `attachments.upload` / `attachments.download`，T05 追加）：
+
+- 三个动作都**按工单寻址**：上游附件端点挂在 Issue 下（`/issues/{n}/assets`），因此跨工单取另一个工单的附件在上游就是 404——归属校验由寻址本身保证，本层不比对字段。列表不提供筛选，返回完整集合（适配器按 `Link` 头翻页；达到 `MAX_ATTACHMENT_PAGES` 仍未翻完时截断并告警，不无限翻）。
+- **上传是 multipart 单文件**：字段 `attachment`，文件名同时写进表单 part 与 `?name=`（上游对扩展名白名单的判定以查询参数为准，只给 part 的 filename 会被当成无名上传）。超时用 `attachmentTimeoutMs` 而不是请求默认值（MB 级上传在 15 s 内常传不完），写语义与 `postJson` 完全一致——**不重放**，结果未定同样是 `WRITE_UNCERTAIN`；上游 413/422 映射 `INVALID_REQUEST`（确定拒绝，见 §3）。
+- **下载两步走且必须归还流**：先按附件编号回读元数据（`GET .../assets/{id}`，同时完成归属校验并取得 `uuid`），再打开 API 前缀之外的 `/attachments/{uuid}` 内容流——路径由本层用**校验过的 `uuid`** 拼出，调用方无法提供 URL，也不采用上游的 `browser_download_url`（那是上游可控的完整地址）。这条读入口**不做 1 MiB 响应上限**：附件本来就是 MB 级字节，套用同一条上限等于让功能不可用，安全边界改为「校验过的 uuid + 路径内拼 + 按块交付」，进程内存不随附件大小增长。`stream` 的生命周期归调用方，必须消费到底或显式取消，否则占用的并发名额不会归还；内容超时覆盖整条流，不是只覆盖响应头。
+
 ## 3. 错误模型
 
-对外的失败面只有七个码（`src/contracts/errors.ts`），上层按码决策，不解读 Forgejo 的响应文本：
+对外的失败面只有八个码（`src/contracts/errors.ts`），上层按码决策，不解读 Forgejo 的响应文本：
 
 | 码 | 语义 | 可重试 |
 |---|---|---|
 | `NOT_FOUND` / `FORBIDDEN` / `CONFLICT` | 上游给出的**确定**拒绝，成败已定（含本地授权拒绝与跨组织冲突） | 否 |
+| `INVALID_REQUEST` | 上游**确定拒绝**了这次输入（附件上传的 413 过大 / 422 扩展名不在白名单） | 否 |
 | `RATE_LIMITED` / `UNAVAILABLE` | 确定失败且可重试（429；其余 5xx 与网络故障） | 读：是；写：否 |
 | `WRITE_UNCERTAIN` | 写请求超时、连接中断、或收到成功状态但返回体无法解析——远端**是否落库未知** | 只能走恢复核对 |
 | `INVALID_RESPONSE` | 上游返回成功状态但响应体不符合适配器合同（缺字段、类型不符、响应体超过 1 MiB） | 读：否；写：按 `WRITE_UNCERTAIN` 处理 |
 
-**读重试与写不重放的边界**：读请求由 HTTP 层自动重试（首次之外的 2 次，只针对 `UNAVAILABLE` / `RATE_LIMITED`，退避按尝试次数线性放大）——GET 可安全重放，把重试留给每个调用方只会写漏。写请求**一次都不重放**：`postJson` / `patchJson` / `putJson` 把 `UNAVAILABLE` 与 `INVALID_RESPONSE` 提升为 `WRITE_UNCERTAIN`（`toWriteUncertain`），调用方必须按 `operationId` / 消息标识回源核对，**绝不能当作失败直接重发**——重放会造出第二份对象。上游明确返回的 4xx/5xx 是确定结果，**保持原码**：把确定失败也标成 uncertain 会让恢复流程去核对一个从未发生的写入，把运维噪音当成保护。
+`INVALID_REQUEST` 与 `UNAVAILABLE` 必须分开：后者会把写请求提升成 `WRITE_UNCERTAIN`，让恢复流程去核对一次从未发生的写入——把上游「这个文件我不收」的确定答复伪装成「结果未知」，用户会在「确认中」里等一个不存在的结论。
+
+**读重试与写不重放的边界**：读请求由 HTTP 层自动重试（首次之外的 2 次，只针对 `UNAVAILABLE` / `RATE_LIMITED`，退避按尝试次数线性放大）——GET 可安全重放，把重试留给每个调用方只会写漏。写请求**一次都不重放**：`postJson` / `patchJson` / `putJson` 把 `UNAVAILABLE` 与 `INVALID_RESPONSE` 提升为 `WRITE_UNCERTAIN`（`toWriteUncertain`），调用方必须按 `operationId` / 消息标识回源核对，**绝不能当作失败直接重发**——重放会造出第二份对象。上游明确返回的 4xx/5xx 是确定结果，**保持原码**：把确定失败也标成 uncertain 会让恢复流程去核对一个从未发生的写入，把运维噪音当成保护（附件上传的 413/422 是这条规则单独编码的一例，见上表）。
 
 ## 4. 数据模型：四张账本
 
@@ -128,16 +137,16 @@ profile 位置由部署面给出：不带 `RCS_ASSEMBLY_PROFILE_PATH` 时是应�
 以下能力在方案范围内但**本版没有代码**，不要按已存在处理：
 
 1. **事件消费与 Webhook 接收**：没有接收入口、验签、事件分发与投递消费循环，也没有 §4 的清理任务与租约调度；订阅与投递两类表的形状已定型，但没有任何进程写它们。
-2. **附件**：`repositories` / `issues` / `comments` / `labels` 之外没有附件接口（上传、列表、下载），领域类型中也不含附件形状。
-3. **`scripts/git-bootstrap.ts` 与 `bun run git:bootstrap`**：仓库内不存在该脚本与对应 npm script；仓库创建与绑定登记目前只能经宿主进程内的 `GitAdminService`，启用工单后由 `POST /web/ticket-projects/default` 驱动，没有工单时只能先在 Forgejo 侧手工建仓库与令牌（见运维说明）。
-4. **宿主管理接口**：`GitAdminService` 没有对外路由，manifest 也未声明任何 route contribution 或 web contribution；本模块自身不暴露 `/web/*` 或 `/api/*` 面，Git 能力目前只经工单的路由间接使用（§1）。
-5. **事件同步与附件的消费方仍缺**：`@fenix/resource-tickets` 已交付五张表、十六条路由、页面与 `ce-tickets.json`，经作用域客户端实际用到的能力为仓库创建/绑定、Issue 读/写（创建、列表、详情、修改正文与标签挂载）、评论读/写（`comments.list` / `comments.get` / `comments.create` / `comments.edit`）、标签读/写（`labels.list` / `labels.create` / `labels.edit`）；两个判分能力各有消费点——`since`（RFC3339）收窄恢复核对的扫描窗口（`intent.since`），`lastCursor` 支撑评论倒序分页的首屏定位（`ticket-comment-page.ts` 先探末页再取末页）。**仍没有代码**的是事件接收/分发/投递循环与附件（§7.1、§7.2），因此工单列表索引只由工单自身的创建与修改路径写入，Forgejo 侧的后续改动不会同步进来；工单侧完整未实现清单见 [工单模块架构](./29-tickets.md) §10。
-6. **preflight 探活执行器**：宿主装配支持 `preflight` 选项，但生产启动路径没有传入具体实现，因此 `dependencyServices` 的声明目前不产生任何探活动作（`AOS_GIT_FORGEJO_URL` 也因此只作为部署面约定存在）。
+2. **`scripts/git-bootstrap.ts` 与 `bun run git:bootstrap`**：仓库内不存在该脚本与对应 npm script；仓库创建与绑定登记目前只能经宿主进程内的 `GitAdminService`，启用工单后由 `POST /web/ticket-projects/default` 驱动，没有工单时只能先在 Forgejo 侧手工建仓库与令牌（见运维说明）。
+3. **宿主管理接口**：`GitAdminService` 没有对外路由，manifest 也未声明任何 route contribution 或 web contribution；本模块自身不暴露 `/web/*` 或 `/api/*` 面，Git 能力目前只经工单的路由间接使用（§1）。
+4. **事件同步的消费方仍缺**：`@fenix/resource-tickets` 已交付五张表、十九条路由、页面与 `ce-tickets.json`，经作用域客户端实际用到的能力为仓库创建/绑定、Issue 读/写（创建、列表、详情、修改正文与标签挂载）、评论读/写（`comments.list` / `comments.get` / `comments.create` / `comments.edit`）、标签读/写（`labels.list` / `labels.create` / `labels.edit`）与附件读/写（`attachments.list` / `attachments.upload` / `attachments.download`）；两个判分能力各有消费点——`since`（RFC3339）收窄恢复核对的扫描窗口（`intent.since`），`lastCursor` 支撑评论倒序分页的首屏定位（`ticket-comment-page.ts` 先探末页再取末页）。**仍没有代码**的是事件接收/分发/投递循环（§7.1），因此工单列表索引只由工单自身的创建与修改路径写入，Forgejo 侧的后续改动不会同步进来；工单侧完整未实现清单见 [工单模块架构](./29-tickets.md) §10。
+5. **preflight 探活执行器**：宿主装配支持 `preflight` 选项，但生产启动路径没有传入具体实现，因此 `dependencyServices` 的声明目前不产生任何探活动作（`AOS_GIT_FORGEJO_URL` 也因此只作为部署面约定存在）。
 
 ## 8. 验证
 
 - `packages/common/git/src/__tests__/config.test.ts`：连接解析（合法形状、缺 `connections`、非法 `baseUrl`、空引用与未声明的密钥引用、默认值、越界值拒绝）。
 - `packages/common/git/src/__tests__/forgejo-client.test.ts`、`forgejo-mapper.test.ts`：URL 拼接与 token 头、分页游标、错误码映射、写方法提升为 `WRITE_UNCERTAIN`、同源重定向限制、DTO → 领域类型的严格校验；`since` 落 Issue 与评论列表的 query（缺省与空串不下发）、`comments.get` 的路径与 DTO → 领域映射（`issueNumber` 取自 `issue_url`）、非法评论编号零出站。
-- `packages/common/git/src/__tests__/scoped-client.test.ts`：未授权 consumer、操作不在授权集合、绑定 `paused` 一律 `FORBIDDEN`。
+- `packages/common/git/src/__tests__/forgejo-attachments.test.ts`：附件——列表的 DTO → 领域映射与 `Link` 头翻页、非法响应报合同错误；上传的 multipart 形状与回执映射、上游 413/422 是确定拒绝（不提升为 `WRITE_UNCERTAIN`）、网络故障仍提升为 `WRITE_UNCERTAIN`；下载的两步走（先回读元数据、再取内容）、附件不属于该工单时 404 且不再取内容、非法 `uuid` 零出站、超过 1 MiB 的内容可整段读完、内容端点失败不返回流、流读完后归还并发名额。
+- `packages/common/git/src/__tests__/scoped-client.test.ts`：未授权 consumer、操作不在授权集合、绑定 `paused` 一律 `FORBIDDEN`（含附件三项的授权判定）。
 - `apps/server/src/__tests__/git-tickets-assembly.test.ts`：`ce.json` 不含 git、`ce-git.json` 只多一个模块、未配置时 create 阶段失败且错误消息不回显凭据、`dispose()` 可重复调用。用例不读进程环境、不触网，「装配成功」本身就是「没有出站请求」的证据。
 - 工单侧（含 `tickets-assembly.test.ts`）只在其包内以桩件替换 `GitService`，不覆盖真实 Forgejo 交互；用例清单见 [工单模块架构](./29-tickets.md) §11。

@@ -21,6 +21,8 @@ import type {
   EditCommentInput,
   EditIssueInput,
   EditLabelInput,
+  GitAttachment,
+  GitAttachmentDownload,
   GitComment,
   GitIssue,
   GitIssueListQuery,
@@ -29,6 +31,7 @@ import type {
   GitPage,
   GitRepository,
   RepositoryRef,
+  UploadAttachmentInput,
 } from "../contracts/types";
 import type { ForgejoClient } from "../forgejo/client";
 import type { GitConnectionConfig } from "./config";
@@ -50,6 +53,8 @@ const OPERATIONS = {
   commentsWrite: "comments.write",
   labelsRead: "labels.read",
   labelsWrite: "labels.write",
+  attachmentsRead: "attachments.read",
+  attachmentsWrite: "attachments.write",
 } as const;
 
 /** 创建作用域客户端的输入；全部字段由服务端装配链提供，值不来自请求正文。 */
@@ -170,6 +175,21 @@ export function createScopedClientFromBinding(input: CreateScopedClientFromBindi
       async edit(labelId: string, labelInput: EditLabelInput): Promise<GitLabel> {
         guard(OPERATIONS.labelsWrite);
         return client.editLabel(repository, labelId, labelInput);
+      },
+    },
+    attachments: {
+      async list(issueNumber: string): Promise<readonly GitAttachment[]> {
+        guard(OPERATIONS.attachmentsRead);
+        return client.listIssueAttachments(repository, issueNumber);
+      },
+      async upload(issueNumber: string, attachmentInput: UploadAttachmentInput): Promise<GitAttachment> {
+        guard(OPERATIONS.attachmentsWrite);
+        return client.uploadIssueAttachment(repository, issueNumber, attachmentInput);
+      },
+      async download(issueNumber: string, attachmentId: string): Promise<GitAttachmentDownload> {
+        // 下载含一次元数据读取与一次内容流打开，两者都是 `attachments.read`：读权限不该按调用次数判定。
+        guard(OPERATIONS.attachmentsRead);
+        return client.downloadIssueAttachment(repository, issueNumber, attachmentId);
       },
     },
   };

@@ -287,7 +287,29 @@ describe("已授权时的透传", () => {
     await expectForbidden(() => client.comments.get("9"), "comments.read");
     await expectForbidden(() => client.comments.create("7", { body: "hi" }), "comments.write");
     await expectForbidden(() => client.comments.edit("9", { body: "hi" }), "comments.write");
+    await expectForbidden(() => client.attachments.list("7"), "attachments.read");
+    await expectForbidden(
+      () => client.attachments.upload("7", { name: "a.txt", content: new Uint8Array([1]) }),
+      "attachments.write",
+    );
+    await expectForbidden(() => client.attachments.download("7", "4"), "attachments.read");
     expect(calls).toHaveLength(0);
+  });
+
+  // 附件读写是两组独立授权：只有 attachments.read 的消费者能列出/下载，但不得上传。
+  test("附件读写按各自集合判定", async () => {
+    const { calls, fetchImpl } = createFetchStub([
+      [{ id: 4, name: "a.txt", size: 1, uuid: "0b40be6a-f96b-4e19-8326-9acabdbc28f4" }],
+    ]);
+    const reader = scopedFor(bindingOf({ allowedConsumers: { tickets: ["attachments.read"] } }), "tickets", fetchImpl);
+
+    const attachments = await reader.attachments.list("7");
+    expect(attachments.map((item) => item.id)).toEqual(["4"]);
+    await expectForbidden(
+      () => reader.attachments.upload("7", { name: "a.txt", content: new Uint8Array([1]) }),
+      "attachments.write",
+    );
+    expect(calls).toHaveLength(1);
   });
 
   // 单条评论读取按绑定坐标与评论 ID 拼仓库作用域路径，工单编号来自响应的 issue_url（写入前的核验依据）。

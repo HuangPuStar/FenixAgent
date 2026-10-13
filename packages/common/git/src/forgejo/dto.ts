@@ -61,3 +61,18 @@ export interface ForgejoCommentDto {
   readonly issue_url?: unknown;
   readonly updated_at?: unknown;
 }
+
+/**
+ * 附件（issue asset）。
+ *
+ * `uuid` 是**内容地址的唯一来源**：字节不在 API 前缀下，只能经 `/attachments/{uuid}` 取，而
+ * `browser_download_url` 是上游给的完整 URL，本适配器不采信（见 `client.ts` 的附件下载）。
+ */
+export interface ForgejoAttachmentDto {
+  readonly id?: unknown;
+  readonly name?: unknown;
+  readonly size?: unknown;
+  readonly created_at?: unknown;
+  readonly uuid?: unknown;
+  readonly type?: unknown;
+}
