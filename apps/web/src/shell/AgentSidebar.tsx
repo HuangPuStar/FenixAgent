@@ -15,6 +15,7 @@ import { ErrorBoundary } from "react-error-boundary";
 import { useTranslation } from "react-i18next";
 import { NS } from "@/src/i18n";
 import { ShellNavigation } from "./ShellNavigation";
+import { useShellNavigation } from "./use-shell-navigation";
 
 interface AgentSidebarProps {
   activeNav: string | null;
@@ -66,6 +67,8 @@ function AgentSidebarView({
   const { t: tSidebar } = useTranslation(NS.SIDEBAR);
   const { data: session } = useSession();
   const { org, orgs, switchOrg } = useOrg();
+  // 导航取数只在这里发生一次：分组喂给 `ShellNavigation`，底栏入口（如工单）与组织行同行渲染。
+  const { footer: footerEntries, groups: navGroups } = useShellNavigation();
   const [userMenuOpen, setUserMenuOpen] = useState(false);
   const [orgMenuOpen, setOrgMenuOpen] = useState(false);
   const [changePasswordOpen, setChangePasswordOpen] = useState(false);
@@ -126,7 +129,7 @@ function AgentSidebarView({
         <ResizablePanel defaultSize="44%" minSize="120px">
           {/* 快捷导航：项来自各资源包的 web contribution，分组与组序由 Shell 声明 */}
           <div className="agent-sidebar-nav-wrap h-full min-h-0 overflow-hidden">
-            <ShellNavigation onNavigate={onNavigate} activeNav={activeNav} collapsed={collapsed} />
+            <ShellNavigation activeNav={activeNav} collapsed={collapsed} groups={navGroups} onNavigate={onNavigate} />
           </div>
         </ResizablePanel>
         <ResizableHandle
@@ -162,7 +165,8 @@ function AgentSidebarView({
         </ResizablePanel>
       </ResizablePanelGroup>
 
-      {/* 底部：用户 + 组织（折叠态只留头像，行内其余元素与整条组织行都不渲染） */}
+      {/* 底部：用户 + 组织行（左侧是底栏入口，右侧是组织切换；折叠态只留头像，行内其余元素与整条组织行
+          都不渲染） */}
       <div
         className={[
           "agent-sidebar-footer shrink-0 border-t border-white/10",
@@ -231,40 +235,66 @@ function AgentSidebarView({
             </DropdownMenu>
 
             {!collapsed && org && (
-              <DropdownMenu open={orgMenuOpen} onOpenChange={setOrgMenuOpen}>
-                <DropdownMenuTrigger asChild>
-                  <button
-                    type="button"
-                    onClick={() => setUserMenuOpen(false)}
-                    className="agent-sidebar-org-row flex min-h-10 px-3 w-full items-center bg-transparent cursor-pointer text-white/55 text-11 hover:bg-white/6"
-                  >
-                    <div className="agent-sidebar-org-icon-wrap w-8 h-6.5 flex shrink-0 items-center justify-center">
-                      <Building2 className="agent-sidebar-org-icon size-4 shrink-0 text-white/45" />
-                    </div>
-                    <span className="agent-sidebar-org-name truncate flex-1 min-w-0 pl-2.5 text-left text-11 font-normal">
-                      {org.name}
-                    </span>
-                    <ChevronRight
-                      className="agent-sidebar-org-chevron size-3.5 shrink-0 text-white/30"
-                      strokeWidth={2.2}
-                    />
-                  </button>
-                </DropdownMenuTrigger>
-                <DropdownMenuContent side="right" align="end" sideOffset={4} className="min-w-48 p-1.5">
-                  <div className="px-3 py-2 text-xs text-muted-foreground font-medium">{tSidebar("switchOrgHint")}</div>
-                  {orgs.map((item) => (
-                    <DropdownMenuItem
-                      key={item.id}
-                      onClick={() => void handleSwitchOrg(item.id)}
-                      className="px-3 py-2.5 focus:outline-none focus-visible:ring-0"
+              <div className="agent-sidebar-org-row flex min-h-10 w-full items-center">
+                {/* 底栏入口（工单声明在 `FOOTER_NAV_GROUP_ID` 名下）：版位归 Shell，文案与图标仍来自各包
+                    贡献；折叠态随整条组织行一起不渲染——底栏只留头像，这与「整行不渲染」同一条口径。 */}
+                {footerEntries.map((entry) => {
+                  const Icon = entry.icon;
+                  const isActive = activeNav === entry.id;
+                  return (
+                    <button
+                      key={entry.id}
+                      type="button"
+                      aria-current={isActive ? "page" : undefined}
+                      onClick={() => onNavigate(entry.id)}
+                      title={entry.label}
+                      className={[
+                        "agent-sidebar-footer-entry flex min-h-10 shrink-0 cursor-pointer items-center gap-2 px-3 text-11",
+                        isActive ? "text-white bg-white/10" : "text-white/55 hover:bg-white/6",
+                      ].join(" ")}
                     >
-                      <Building2 className="w-4 h-4" />
-                      <span className="truncate">{item.name}</span>
-                      {item.id === org?.id && <Check className="ml-auto w-4 h-4" />}
-                    </DropdownMenuItem>
-                  ))}
-                </DropdownMenuContent>
-              </DropdownMenu>
+                      <Icon className="size-4 shrink-0" strokeWidth={1.7} />
+                      <span className="truncate">{entry.label}</span>
+                    </button>
+                  );
+                })}
+                <DropdownMenu open={orgMenuOpen} onOpenChange={setOrgMenuOpen}>
+                  <DropdownMenuTrigger asChild>
+                    <button
+                      type="button"
+                      onClick={() => setUserMenuOpen(false)}
+                      className="agent-sidebar-org-trigger flex min-h-10 min-w-0 flex-1 items-center bg-transparent cursor-pointer text-white/55 text-11 hover:bg-white/6"
+                    >
+                      <div className="agent-sidebar-org-icon-wrap w-8 h-6.5 flex shrink-0 items-center justify-center">
+                        <Building2 className="agent-sidebar-org-icon size-4 shrink-0 text-white/45" />
+                      </div>
+                      <span className="agent-sidebar-org-name truncate flex-1 min-w-0 pl-2.5 text-left text-11 font-normal">
+                        {org.name}
+                      </span>
+                      <ChevronRight
+                        className="agent-sidebar-org-chevron size-3.5 shrink-0 text-white/30"
+                        strokeWidth={2.2}
+                      />
+                    </button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent side="right" align="end" sideOffset={4} className="min-w-48 p-1.5">
+                    <div className="px-3 py-2 text-xs text-muted-foreground font-medium">
+                      {tSidebar("switchOrgHint")}
+                    </div>
+                    {orgs.map((item) => (
+                      <DropdownMenuItem
+                        key={item.id}
+                        onClick={() => void handleSwitchOrg(item.id)}
+                        className="px-3 py-2.5 focus:outline-none focus-visible:ring-0"
+                      >
+                        <Building2 className="w-4 h-4" />
+                        <span className="truncate">{item.name}</span>
+                        {item.id === org?.id && <Check className="ml-auto w-4 h-4" />}
+                      </DropdownMenuItem>
+                    ))}
+                  </DropdownMenuContent>
+                </DropdownMenu>
+              </div>
             )}
           </div>
         </div>

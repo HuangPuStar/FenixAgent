@@ -377,7 +377,8 @@ html [data-sonner-toaster] [data-sonner-toast][data-styled="true"] [data-close-b
   background: var(--agent-sidebar-cyan);
 }
 .agent-sidebar-user-button,
-.agent-sidebar-org-row {
+.agent-sidebar-footer-entry,
+.agent-sidebar-org-trigger {
   transition: background 0.15s;
 }
 .agent-sidebar-avatar {

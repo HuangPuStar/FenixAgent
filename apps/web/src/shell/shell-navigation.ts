@@ -27,6 +27,16 @@ export const SHELL_NAV_GROUPS = [
 ] as const;
 
 /**
+ * 底栏入口的版位 id：声明在它名下的导航项**不进入侧栏分组**，改由 `AgentSidebar` 的底栏渲染（当前摆在
+ * 组织行左侧）。
+ *
+ * 它是版位而不是分组：分组会渲染标题与整行列，底栏只画一个紧凑入口。载荷仍属贡献方（`id` / `labelKey` /
+ * `ns` / `icon` / `order` 照旧从 `navigation` 里读），Shell 只决定画在哪——与分组归属同一条所有权口径
+ * （standards §4.1：全局布局属应用壳）。
+ */
+export const FOOTER_NAV_GROUP_ID = "footer";
+
+/**
  * 侧栏项 id 拼成路由目标的**唯一入口**（§2.6 契约：`id` 同时是路由目标，Shell 组装成 `/agent/<id>`）。
  *
  * 前缀与拼法在这里只写一份：`DefaultAppShell` 的导航与
@@ -62,6 +72,12 @@ export interface ShellNavGroup {
   readonly items: readonly ShellNavEntry[];
 }
 
+/** 装配结果的两个版位：侧栏分组（有序）与底栏入口（有序）。 */
+export interface AssembledNavigation {
+  readonly footer: readonly ShellNavEntry[];
+  readonly groups: readonly ShellNavGroupDefinition[];
+}
+
 /** 组内声明的 `order` 与其项。 */
 interface OrderedEntry {
   readonly order: number;
@@ -69,7 +85,8 @@ interface OrderedEntry {
 }
 
 /**
- * 把产物里的导航声明按 Shell 的分组表归并、组内按 `order` 升序排列。
+ * 把产物里的导航声明按 Shell 的分组表归并、组内按 `order` 升序排列；版位声明为 {@link FOOTER_NAV_GROUP_ID}
+ * 的项不进分组，单独作为底栏入口返回。
  *
  * 两处失败条件都是**构建期就该发现**的声明错误，而不是运行期可恢复状态：
  *
@@ -80,14 +97,19 @@ interface OrderedEntry {
  * 出错时抛异常而不是降级：控制台在装配期就停摆，比少一项导航（页面不可达且无任何提示）更容易定位。
  * 这两条不变量同时由 `shell-navigation.test.ts` 按真实产物断言，正常构建下这里的抛错不可达。
  */
-export function assembleNavGroups(contributions: readonly WebAppContribution[]): readonly ShellNavGroupDefinition[] {
+export function assembleNavigation(contributions: readonly WebAppContribution[]): AssembledNavigation {
   const grouped = new Map<string, OrderedEntry[]>();
+  const footer: OrderedEntry[] = [];
   for (const contribution of contributions) {
     for (const item of contribution.navigation ?? []) {
       const ordered: OrderedEntry = {
         order: item.order,
         entry: { icon: item.icon, id: item.id, labelKey: item.labelKey, ns: item.ns },
       };
+      if (item.groupId === FOOTER_NAV_GROUP_ID) {
+        footer.push(ordered);
+        continue;
+      }
       const bucket = grouped.get(item.groupId);
       if (bucket) {
         bucket.push(ordered);
@@ -102,34 +124,44 @@ export function assembleNavGroups(contributions: readonly WebAppContribution[]):
     if (!knownGroupIds.has(groupId)) {
       throw new Error(
         `WebShell 收到未声明的导航分组 "${groupId}"：分组由 Shell 持有（SHELL_NAV_GROUPS），` +
-          "资源包的 contribution 不得自行引入新分组",
+          `资源包的 contribution 不得自行引入新分组（底栏版位写 "${FOOTER_NAV_GROUP_ID}"）`,
       );
     }
   }
 
-  return SHELL_NAV_GROUPS.map((group) => {
-    const ordered = [...(grouped.get(group.id) ?? [])].sort((left, right) => left.order - right.order);
-    for (let index = 1; index < ordered.length; index += 1) {
-      const previous = ordered[index - 1];
-      const current = ordered[index];
-      if (previous && current && previous.order === current.order) {
-        throw new Error(
-          `导航项 ${previous.entry.id} 与 ${current.entry.id} 在分组 "${group.id}" 内声明了相同的 order ` +
-            `${current.order}：同组内 order 必须唯一`,
-        );
-      }
+  return {
+    footer: sortByOrder(footer, FOOTER_NAV_GROUP_ID).map((item) => item.entry),
+    groups: SHELL_NAV_GROUPS.map((group) => ({
+      id: group.id,
+      items: sortByOrder(grouped.get(group.id) ?? [], group.id).map((item) => item.entry),
+      labelKey: group.labelKey,
+    })),
+  };
+}
+
+/** 按 `order` 升序排列并校验唯一：`order` 是同一版位内的唯一排序键，重复即声明漂移。 */
+function sortByOrder(entries: readonly OrderedEntry[], scope: string): OrderedEntry[] {
+  const sorted = [...entries].sort((left, right) => left.order - right.order);
+  for (let index = 1; index < sorted.length; index += 1) {
+    const previous = sorted[index - 1];
+    const current = sorted[index];
+    if (previous && current && previous.order === current.order) {
+      throw new Error(
+        `导航项 ${previous.entry.id} 与 ${current.entry.id} 在 "${scope}" 内声明了相同的 order ` +
+          `${current.order}：同一版位内 order 必须唯一`,
+      );
     }
-    return { id: group.id, items: ordered.map((item) => item.entry), labelKey: group.labelKey };
-  });
+  }
+  return sorted;
 }
 
 /**
- * 当前装配 profile 选定的导航分组（模块加载时算一次）。
+ * 当前装配 profile 选定的导航版位（模块加载时算一次）。
  *
  * 产物是构建期常量（`apps/generated/web-contributions.ts` 只含静态 import），因此装配结果同样是常量：
  * 每个页面渲染都重算一次既无收益，也会让「未声明分组」这类声明错误被推迟到用户点击时才暴露。
  */
-export const ASSEMBLED_NAV_GROUPS: readonly ShellNavGroupDefinition[] = assembleNavGroups(generatedWebContributions);
+export const ASSEMBLED_NAVIGATION: AssembledNavigation = assembleNavigation(generatedWebContributions);
 
 /**
  * 按隐藏列表（`sidebarConfigApi` 的 `hiddenTabs`）裁剪导航项，并移除因此变空的分组。
@@ -151,4 +183,10 @@ export function filterNavGroups<T extends { id: string; items: readonly { id: st
       items: group.items.filter((item) => !hiddenTabSet.has(item.id)),
     })) as T[]
   ).filter((group) => group.items.length > 0);
+}
+
+/** 底栏入口的同口径裁剪：只按 `id` 删项，不得改序（版位顺序是版式契约）。 */
+export function filterNavEntries<T extends { id: string }>(entries: readonly T[], hiddenTabs: readonly string[]): T[] {
+  const hiddenTabSet = new Set(hiddenTabs);
+  return entries.filter((entry) => !hiddenTabSet.has(entry.id));
 }

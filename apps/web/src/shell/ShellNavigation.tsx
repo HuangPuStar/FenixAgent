@@ -17,7 +17,7 @@
 // 仍留在 CSS 的（见 `src/index.css` 的「宿主壳残余样式」段）：滚动条覆写与指示条伪元素两类。
 
 import { useTranslation } from "react-i18next";
-import { useShellNavigation } from "./use-shell-navigation";
+import type { ShellNavGroup } from "./shell-navigation";
 
 interface ShellNavigationProps {
   /** 当前激活的导航项 id（来自路由状态）。 */
@@ -25,11 +25,17 @@ interface ShellNavigationProps {
   onNavigate: (pageId: string) => void;
   /** 侧栏折叠态（状态归 `AgentSidebar`）：标签整体不渲染，条目改成一列图标并居中。 */
   collapsed: boolean;
+  /**
+   * 已翻译并裁剪的分组。
+   *
+   * 取数（`useShellNavigation`）留在 `AgentSidebar`：底栏入口与分组共用同一次取数与同一条隐藏列表，
+   * 两个组件各调一次 hook 会让同一份偏好出现两份订阅。
+   */
+  groups: readonly ShellNavGroup[];
 }
 
-export function ShellNavigation({ activeNav, onNavigate, collapsed }: ShellNavigationProps) {
+export function ShellNavigation({ activeNav, onNavigate, collapsed, groups: navGroups }: ShellNavigationProps) {
   const { t } = useTranslation();
-  const navGroups = useShellNavigation();
 
   return (
     <div className="agent-sidebar-nav h-full max-h-none overflow-y-auto overflow-x-hidden">
