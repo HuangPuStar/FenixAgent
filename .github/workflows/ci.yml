@@ -97,11 +97,17 @@ jobs:
       - name: Install dependencies
         run: bun install --frozen-lockfile
 
+      # 三条命令必须与 `scripts/lib/check-gates.ts` 的 `TEST_BATCHES` 逐字一致：本机 `precheck`
+      # 与 CI 跑的是同一份口径，本地绿而 CI 红才算「同一批测试不一致」。
+      #
+      # `--isolate` 不是可选加速项：bun 1.4.2 默认让所有测试文件共享同一个全局与模块注册表，
+      # `mock.module()` / `globalThis` 覆写 / 平台替身会泄漏给之后加载的文件，而加载顺序由文件系统的
+      # 目录枚举顺序决定（Linux 与 macOS 不同）。缺它时同一份代码会本机全绿、这里成片失败。
       - name: Server, script, and platform SDK tests
-        run: bun test apps/server/src/__tests__/ scripts/__tests__/ packages/platform/platform-sdk/src/__tests__/
+        run: bun test apps/server/src/__tests__/ scripts/__tests__/ packages/platform/platform-sdk/src/__tests__/ --isolate
 
       - name: Package tests
-        run: bun test packages/ --path-ignore-patterns 'tmp/**'
+        run: bun test packages/ --path-ignore-patterns 'tmp/**' --isolate
 
       - name: Web app tests
-        run: bun test apps/web/src/__tests__/
+        run: bun test apps/web/src/__tests__/ --isolate

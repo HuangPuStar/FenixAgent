@@ -284,10 +284,12 @@ test("质量脚本使用 apps server 源码目录", () => {
     expect(packageJson.scripts[script]).toContain("apps/server/src/");
     expect(packageJson.scripts[script]).not.toMatch(/(?:^|\s)src\//);
   }
+  // `--isolate` 属于同一条不变量：去掉它，测试文件的执行顺序（文件系统枚举顺序，Linux 与 macOS 不同）
+  // 会重新决定用例成败，本机绿而 CI 红。
   const testEntries = [
-    "bun test apps/server/src/__tests__/ scripts/__tests__/ packages/platform/platform-sdk/src/__tests__/",
-    "bun test packages/",
-    "bun test apps/web/src/__tests__/",
+    "bun test apps/server/src/__tests__/ scripts/__tests__/ packages/platform/platform-sdk/src/__tests__/ --isolate",
+    "bun test packages/ --path-ignore-patterns 'tmp/**' --isolate",
+    "bun test apps/web/src/__tests__/ --isolate",
   ];
   for (const entry of testEntries) {
     expect(gatesScript).toContain(entry);

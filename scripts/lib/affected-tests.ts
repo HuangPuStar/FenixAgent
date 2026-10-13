@@ -84,11 +84,11 @@ const WEB_BATCH = TEST_BATCHES[2] as Step;
 /** 归入宿主测试批的包：与 `check-gates.ts` 里该批的测试根一一对应，避免重复执行同一批测试。 */
 const HOST_BATCH_PACKAGE_DIRS = new Set(["packages/platform/platform-sdk"]);
 
-/** 单个包的测试步骤：按包目录整体跑，与全量 `packages/` 批用同一个忽略口径。 */
+/** 单个包的测试步骤：按包目录整体跑，与全量 `packages/` 批用同一个忽略口径与隔离口径。 */
 function packageTestStep(dir: string): Step {
   return {
     name: `tests (${dir})`,
-    cmd: `bun test ${dir}/ --path-ignore-patterns 'tmp/**' 2>&1`,
+    cmd: `bun test ${dir}/ --path-ignore-patterns 'tmp/**' --isolate 2>&1`,
     filter: filterTestSummary,
     weight: 20_000,
   };
