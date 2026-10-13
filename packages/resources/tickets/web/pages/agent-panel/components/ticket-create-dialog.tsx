@@ -93,9 +93,9 @@ export function TicketCreateDialog({ open, onOpenChange, projectId, onCreated, o
         onCreated(result.ticket);
       },
       onError: (error: Error) => {
-        // 只上屏字典文案：`ApiError.message` 是后端信封原文（可能含 SQL 与内部措辞），只进 console。
+        // 服务端 `message` 优先上屏（含唯一键冲突这类可定位的原因），字典文案只在它是空串时兜底。
         console.error("ticket create failed", error);
-        toast.error(t("toast.createFailed"));
+        toast.error(error.message || t("toast.createFailed"));
       },
     },
   );

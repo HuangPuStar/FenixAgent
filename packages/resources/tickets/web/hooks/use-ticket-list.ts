@@ -60,9 +60,9 @@ export function useTicketList() {
     refresh: refreshProjects,
   } = useRequest(async () => unwrap(ticketProjectsApi.overview()), {
     onError: (err: Error) => {
-      // 只上屏字典文案：`err.message` 是后端信封原文，进 console 供排障，不上屏。
+      // 服务端 `message` 优先上屏（它才是可定位的失败原因），字典文案只在它是空串时兜底。
       console.error("ticket projects load failed", err);
-      toast.error(t("toast.projectsLoadFailed"));
+      toast.error(err.message || t("toast.projectsLoadFailed"));
     },
   });
 
@@ -90,9 +90,10 @@ export function useTicketList() {
       ready: listReady,
       refreshDeps: [projectId, cursor, debouncedQuery, stateFilter],
       onError: (err: Error) => {
-        // 列表失败的主反馈是页面里持久的 `role="alert"` 分支（带重试），这条 toast 只补一个即时信号。
+        // 列表失败的主反馈是页面里持久的 `role="alert"` 分支（带重试），这条 toast 只补一个即时信号；
+        // 两者都直接上屏服务端 `message`，字典文案只在它是空串时兜底。
         console.error("ticket list load failed", err);
-        toast.error(t("toast.loadFailed"));
+        toast.error(err.message || t("toast.loadFailed"));
       },
     },
   );

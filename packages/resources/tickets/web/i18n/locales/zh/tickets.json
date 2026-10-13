@@ -137,7 +137,7 @@
     "paused": "工单写入当前不可用（组织暂停或上游故障），请稍后再试。"
   },
   "loadState": {
-    "failed": "工单加载失败",
+    "failed": "工单加载失败：{{message}}",
     "unauthorizedTitle": "无权访问工单",
     "unauthorizedHint": "当前账号未被授权查看该组织的工单，请联系组织管理员开通权限。",
     "notFoundTitle": "工单不存在",

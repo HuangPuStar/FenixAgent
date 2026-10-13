@@ -100,12 +100,13 @@ export function AgentTicketDetailPage({ projectId, number }: AgentTicketDetailPa
     const unauthorized = isUnauthorizedError(detail.error);
     const notFound = isNotFoundError(detail.error);
     // 三条失败路径都不给同一个界面：无权限与「不存在或无权访问」是持久结论（重试只会再拿一次同样的
-    // 状态码），其余失败才保留重试入口。
+    // 状态码），其余失败才保留重试入口。通用失败直接上屏服务端 `message`——换成固定文案会让用户与
+    // 测试都定位不到后端故障。
     const title = unauthorized
       ? t("loadState.unauthorizedTitle")
       : notFound
         ? t("loadState.notFoundTitle")
-        : t("loadState.failed");
+        : t("loadState.failed", { message: detail.error.message });
     const description = unauthorized
       ? t("loadState.unauthorizedHint")
       : notFound

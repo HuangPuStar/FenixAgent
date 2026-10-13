@@ -137,7 +137,7 @@
     "paused": "Ticket writes are currently unavailable (organization paused or upstream failure); try again later."
   },
   "loadState": {
-    "failed": "Failed to load tickets",
+    "failed": "Failed to load tickets: {{message}}",
     "unauthorizedTitle": "No access to tickets",
     "unauthorizedHint": "Your account is not authorized to view this organization's tickets. Ask an organization admin for access.",
     "notFoundTitle": "Ticket not found",

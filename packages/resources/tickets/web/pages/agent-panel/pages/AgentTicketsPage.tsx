@@ -112,7 +112,11 @@ export function AgentTicketsPage() {
           description={unauthorized ? t("loadState.unauthorizedHint") : undefined}
           icon={<AlertTriangle className="size-6" />}
           role="alert"
-          title={unauthorized ? t("loadState.unauthorizedTitle") : t("loadState.failed")}
+          title={
+            unauthorized
+              ? t("loadState.unauthorizedTitle")
+              : t("loadState.failed", { message: list.projectsError.message })
+          }
           tone="danger"
         />
       </AppPage>
@@ -154,7 +158,9 @@ export function AgentTicketsPage() {
           description={unauthorized ? t("loadState.unauthorizedHint") : undefined}
           icon={<AlertTriangle className="size-6" />}
           role="alert"
-          title={unauthorized ? t("loadState.unauthorizedTitle") : t("loadState.failed")}
+          title={
+            unauthorized ? t("loadState.unauthorizedTitle") : t("loadState.failed", { message: list.error.message })
+          }
           tone="danger"
         />
       </AppPage>

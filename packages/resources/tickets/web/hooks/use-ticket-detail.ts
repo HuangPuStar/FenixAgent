@@ -89,9 +89,9 @@ export function useTicketDetail(projectId: string, number: string): UseTicketDet
   const detail = useRequest(async () => unwrap(ticketApi.get(projectId, number)), {
     refreshDeps: [projectId, number],
     onError: (err: Error) => {
-      // 只上屏字典文案：`ApiError.message` 是后端信封原文（可能含内部措辞），只进 console（§9.3）。
+      // 服务端 `message` 优先上屏（它才是可定位的失败原因），字典文案只在它是空串时兜底。
       console.error("ticket detail load failed", err);
-      toast.error(t("toast.detailLoadFailed"));
+      toast.error(err.message || t("toast.detailLoadFailed"));
     },
   });
 

@@ -371,16 +371,14 @@ function listRequests(): RecordedCall[] {
 
 describe("AgentTicketsPage 列表状态", () => {
   // 失败必须停住（持久错误分支 + 重试），不能只弹 toast 后退回「暂无工单」——那会让用户把「请求挂了」
-  // 读成「确实没有工单」；同时服务端信封原文不得上屏（§9.3）。
-  test("列表加载失败渲染持久 role=alert 分支且不显示空态，点重试重新发起请求", async () => {
+  // 读成「确实没有工单」；失败提示必须带上服务端信封原文，固定文案会让用户与测试都定位不到后端故障。
+  test("列表加载失败渲染持久 role=alert 分支并回显服务端原因，点重试重新发起请求", async () => {
     listResponses = [failure("SERVER_ERROR", "boom", 500), listPage([row("42")])];
     await renderPage();
 
     expect(alertRegions().length).toBe(1);
-    expect(text()).toContain(TEXT.loadState.failed);
+    expect(text()).toContain(TEXT.loadState.failed.replace("{{message}}", "boom"));
     expect(text()).not.toContain(TEXT.empty.title);
-    // 原始 message 只允许进 console.error：它在界面上出现就等于把后端内部措辞透给了用户。
-    expect(text()).not.toContain("boom");
 
     await click(buttonByText(TEXT.loadState.retry) as HTMLButtonElement);
 

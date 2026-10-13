@@ -380,21 +380,20 @@ describe("AgentTicketDetailPage 详情状态", () => {
     expect(buttonByText(TEXT.loadState.retry)).toBeUndefined();
   });
 
-  // 其余失败（网络、5xx、503 暂停）是可恢复的：必须给出重试入口，且点它要真的重新发请求并回到成功态。
-  test("通用失败给重试，点重试重新请求后恢复到成功态", async () => {
+  // 其余失败（网络、5xx、503 暂停）是可恢复的：必须给出重试入口、把服务端原因带上屏，且点重试要真的
+  // 重新发请求并回到成功态。
+  test("通用失败回显服务端原因并给重试，点重试重新请求后恢复到成功态", async () => {
     detailResponses = [failure("SERVER_ERROR", 500), detailSuccess()];
     await renderDetail();
 
-    expect(text()).toContain(TEXT.loadState.failed);
+    expect(text()).toContain(TEXT.loadState.failed.replace("{{message}}", "boom"));
     expect(text()).not.toContain(TEXT.loadState.notFoundTitle);
-    // 服务端信封原文只允许进 console.error，不得上屏（§9.3）。
-    expect(text()).not.toContain("boom");
 
     await click(buttonByText(TEXT.loadState.retry) as HTMLButtonElement);
 
     expect(detailCalls).toBe(2);
     expect(text()).toContain("复现步骤：点击登录后页面空白。");
-    expect(text()).not.toContain(TEXT.loadState.failed);
+    expect(text()).not.toContain(TEXT.loadState.failed.replace("{{message}}", "boom"));
   });
 
   // 作者归属未经受信记录核验（`source === "external"`）时必须明说「待核对」：外部自填的身份不能被
