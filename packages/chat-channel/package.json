@@ -26,8 +26,5 @@
     "acp-link": "workspace:*",
     "yjs": "^13.6.21",
     "ioredis": "^5.10.1"
-  },
-  "devDependencies": {
-    "@types/node": "^22.0.0"
   }
 }
