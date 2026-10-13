@@ -4,7 +4,7 @@
     "门禁（scripts/check-dependency-boundaries.ts）只阻断未登记的**新增**违规，并在某条不再违规时报错要求删除。",
     "owner 取值：在排任务的编号（如 1.6 / 1.7），或 `EX-<n>（责任条目）`——EX-n 是本文件 exceptions 数组的序号",
     "（增删条目时同步重排），责任条目写明「关闭这条违规要做的那件事」。**不得留「未排期」这类无承接方的占位**：",
-    "读表人无从判断谁在管。逐条核查结论与裁定记录见 `docs/design/ce-ee-refactoring/ce-standards-todo.md`。",
+    "读表人无从判断谁在管。逐条核查结论与裁定记录见 `docs/developer/architecture/engineering-debt.md`。",
     "禁止把 from / to 写成通配（加载器会直接拒绝）：通配会让整类边界静默失效。",
     "【环的代表边与 owner 归属】no-circular 的粒度为「每环一条」：环上每条边不逐条上报，from / to 只是该环上被挑中的一条",
     "**真实边**（相邻两点），不是环的参与者全集。被挑中的边若落在包内，包对指纹就会把跨包环显示成包内自环",

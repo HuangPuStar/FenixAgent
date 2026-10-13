@@ -728,7 +728,7 @@ docker compose up -d
 ### 12.3 退役已同步的文件（核对清单）
 
 - 文档：`docs/operations/{deployment,index,upgrade,backup-and-restore,troubleshooting}.md`、`README.md`、
-  `docs/developer/guide/backend-development.md`、`docs/design/ce-ee-refactoring/ce-ee-engineering-standards.md`、`docker/*/README.md`。
+  `docs/developer/guide/backend-development.md`、`docs/developer/architecture/engineering-standards.md`、`docker/*/README.md`。
   `docs/arch/25-workflow-v2.md` 与 `docs/design/2026-09-29-workflow-v2-*.md` 里的 `deploy/manifests` 属历史记录，保留原样。
 - 代码：`package.json` 的 `release` script（已删）、`biome.json` 的部署产物格式化排除项（已删）、
   `scripts/generate-env-example.ts` 与其测试（已改造）、`scripts/__tests__/app-entry-paths.test.ts`（断言已删）。

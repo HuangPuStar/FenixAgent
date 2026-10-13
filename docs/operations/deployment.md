@@ -115,7 +115,7 @@ curl -s http://<host>:<port>/health
 
 - `commitId` 来自构建期注入的 `GIT_COMMIT_SHA`（本地调试回退 `git rev-parse HEAD`）。用它比对部署的到底是哪个提交：`git rev-parse HEAD`。
 - 容器编排的健康检查就是 `GET /health`（编排文件与 `Dockerfile` 的 `HEALTHCHECK` 一致），`docker compose ... ps` 显示 health 状态即可。
-- `/health` **只表达进程存活**，不区分「依赖就绪」；当前仓没有 readiness 端点，这一点在 `docs/design/ce-ee-refactoring/ce-ee-engineering-standards.md` §11 中登记为优化项。需要确认依赖可用时，改为观察启动日志中各阶段的 `startupLog` 输出与首个业务请求。
+- `/health` **只表达进程存活**，不区分「依赖就绪」；当前仓没有 readiness 端点，这一点在 `docs/developer/architecture/engineering-standards.md` §11 中登记为优化项。需要确认依赖可用时，改为观察启动日志中各阶段的 `startupLog` 输出与首个业务请求。
 - 首次启动会创建系统管理员 `admin@fenix.com`，初始口令写入 `RCS_SYSTEM_ADMIN_PASSWORD_FILE`（默认 `./data/password.txt`）。该文件是敏感产物：读取后应立即改密并按密钥材料保管，不要进日志或普通备份包。
 
 ## 6. 静态资源与前端产物

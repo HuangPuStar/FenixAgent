@@ -4,7 +4,7 @@
 
 ## 定位与 owner
 
-本包是「发布视图」这一能力的唯一 owner：领域规则、持久化、HTTP 交付物、浏览器面与文案都在包内，宿主只做装配与注入。分层上属 `resources` 类别的 **L1（叶子）**：`fenix.module.ts` 的 `dependsOn: []`，实测依据是服务端生产代码对**已注册资源模块**没有任何值导入。唯一需要参与装配依赖判定的跨包值导入是 `src/server/services/prod-view.ts` 的 `@fenix/agent-runtime/runtime`（属固定启用的基础模块，该跨类别边由 `docs/design/ce-ee-refactoring/ce-ee-engineering-standards.md` §2.3 依赖矩阵约束）；另有 3 处 `@fenix/platform-sdk` 值导入（`src/server/db.ts` 的 `getDatabase`、`src/server/routes/web/prod-views.ts` 与 `.../config/prod-views.ts` 的 `WebErrSchema`）——platform-sdk 是契约包、没有模块 ID 可声明，不进入 `dependsOn`（实测命令见「边界残留」末条）。
+本包是「发布视图」这一能力的唯一 owner：领域规则、持久化、HTTP 交付物、浏览器面与文案都在包内，宿主只做装配与注入。分层上属 `resources` 类别的 **L1（叶子）**：`fenix.module.ts` 的 `dependsOn: []`，实测依据是服务端生产代码对**已注册资源模块**没有任何值导入。唯一需要参与装配依赖判定的跨包值导入是 `src/server/services/prod-view.ts` 的 `@fenix/agent-runtime/runtime`（属固定启用的基础模块，该跨类别边由 `docs/developer/architecture/engineering-standards.md` §2.3 依赖矩阵约束）；另有 3 处 `@fenix/platform-sdk` 值导入（`src/server/db.ts` 的 `getDatabase`、`src/server/routes/web/prod-views.ts` 与 `.../config/prod-views.ts` 的 `WebErrSchema`）——platform-sdk 是契约包、没有模块 ID 可声明，不进入 `dependsOn`（实测命令见「边界残留」末条）。
 
 判定方式以静态条件为准（可 grep，不依赖「测试全绿」），八条条件的逐条断言落在 `src/__tests__/prod-view-package-contract.test.ts`；浏览器面的可达性单独由 `web/__tests__/prod-view-browser-surface.test.ts` 守护（该守卫递归进入跨包 exports，故其结论覆盖 agent-config 的 `web/index.ts` 全量索引能到达的那一层，详见测试文件头）。包内自测命令：`bun test packages/resources/prod-view`（2026-09-22 从仓库根实测 116 pass / 0 fail / 10 文件；此前的红见「已知项」）。
 

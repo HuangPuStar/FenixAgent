@@ -42,7 +42,7 @@
   - 覆盖目录分层、数据库、API、注释、日志和架构文档规范。
 - 当前架构事实、稳定契约与长期约束：`docs/arch/`；设计方案：`docs/design/`；运维说明：`docs/operations/`（部署、升级、迁移、备份、排障）。
 - 本文件只维护跨模块工程原则、关键工作流、架构契约和项目特有不变量，具体实现细则应下沉到离代码更近的规范。
-- 与 `docs/design/ce-ee-refactoring/ce-ee-engineering-standards.md` 冲突时，以该目标架构规范为准；其他规则以离代码更近、约束更具体者为准。若文档与代码不一致，先核实设计意图并同步修正文档，不得静默沿用冲突规则。
+- 与 `docs/developer/architecture/engineering-standards.md` 冲突时，以该工程架构规范为准；其他规则以离代码更近、约束更具体者为准。若文档与代码不一致，先核实设计意图并同步修正文档，不得静默沿用冲突规则。
 
 ## 项目与架构地图
 
@@ -50,7 +50,7 @@ FenixAgent 是基于 Elysia + Bun 的多租户 ACP Agent 平台，前端使用 R
 
 - 主要能力：组织与多租户、Agent 配置、ACP 实时通信、工作流、知识库、定时任务和 IM 通道。
 - 根目录 `package.json` 是前后端统一依赖清单；`apps/web/` 是前端应用入口、Vite 配置、前端业务实现与构建产物。
-- `packages/` 是 Bun workspace，按职责分为四类：`platform/*`（`platform-sdk` 稳定契约 + `identity` / `access-control` 两个有状态平台实现）、`agent-runtime`、`resources/*`、以及独立 SDK/插件包。跨包能力应通过包导出的稳定接口复用，不得依赖包内实现细节；类别之间的允许方向见 `docs/design/ce-ee-refactoring/ce-ee-engineering-standards.md` §2.3 的依赖矩阵，由 `bun run check:dependencies` 与 `bun run architecture:check` 强制。
+- `packages/` 是 Bun workspace，按职责分为四类：`platform/*`（`platform-sdk` 稳定契约 + `identity` / `access-control` 两个有状态平台实现）、`agent-runtime`、`resources/*`、以及独立 SDK/插件包。跨包能力应通过包导出的稳定接口复用，不得依赖包内实现细节；类别之间的允许方向见 `docs/developer/architecture/engineering-standards.md` §2.3 的依赖矩阵，由 `bun run check:dependencies` 与 `bun run architecture:check` 强制。
 
 ### 后端地图
 
@@ -128,7 +128,7 @@ bun run run-data-migrations         # 执行已登记的存量数据迁移
 ### 前端边界与体验
 
 - 导航只使用 `<Link to>` 和 `useNavigate()`；禁止 `window.location.href`、`window.location.replace`、`window.location.reload` 和 `window.history.pushState`。Sidebar 导航项由各包 contribution 声明 `id`（`id` 即路由目标，Shell 拼成 `/agent/<id>`），没有 `to` 字段（见前端规范 §2.6）。
-- 请求统一通过 `@fenix/web-runtime/api/request`（真身 `packages/web-runtime/web/api/request.ts`）；`request<T>()` 处理路径参数、query、JSON、超时与错误标准化，但**返回 `ApiResponse` 而非已解包数据**——失败时返回 `{ success: false }` 而不 throw，调用方必须 `unwrap()` 或显式判断 `success`；直接 `await` 并依赖 `catch`/`onError` 会把 4xx/5xx 当成成功（目标为单一异常语义，登记见 `docs/design/ce-ee-refactoring/ce-ee-engineering-standards.md` §11「优化项」）。
+- 请求统一通过 `@fenix/web-runtime/api/request`（真身 `packages/web-runtime/web/api/request.ts`）；`request<T>()` 处理路径参数、query、JSON、超时与错误标准化，但**返回 `ApiResponse` 而非已解包数据**——失败时返回 `{ success: false }` 而不 throw，调用方必须 `unwrap()` 或显式判断 `success`；直接 `await` 并依赖 `catch`/`onError` 会把 4xx/5xx 当成成功（目标为单一异常语义，登记见 `docs/developer/architecture/engineering-standards.md` §11「优化项」）。
 - 数据获取优先遵循前端规范和现有 `ahooks` / `useRequest` 模式，避免重复请求与竞态覆盖。
 - 用户可见字符串必须通过 `t()`；i18n 插值使用 `{{var}}`，单花括号 `{var}` 会被当作字面文本。
 - 基础组件优先复用 `@fenix/ui-components/ui/<name>`（该包无根出口，逐文件子路径）；通用图标使用 `lucide-react`；模型品牌图标使用 `packages/resources/model-management/web/components/model-icon/ModelIcon.tsx`。
@@ -207,7 +207,7 @@ Agent 通信分为三种明确场景，底层 relay 与 ACP 消息规则必须�
 
 - **一张表的定义只在一个 owner 手里**：业务表定义在所属模块的 `packages/**/db/schema.ts`（经该包 `exports["./db"]` 公开，如 `@fenix/resource-task/db`），身份表在 `packages/platform/identity/db/schema.ts`；宿主 `apps/server/src/db/schema.ts` 只保留身份表转出、`data_migrate_record` 与仍在清理中的旧授权表。改哪张表就到它的 owner 包改，不得在宿主或别的包复制一份。`drizzle.config.ts` 的 `schema` 必须声明**全部** owner 包路径与宿主 schema，否则 `db:generate` 会把漏声明的一族误判为已删除。
 - 表定义换手不得改变 DDL：`bun run check:schema-ddl-drift` 比对「`drizzle.config.ts` 声明的 schema 集合 → 最新 snapshot」的差异，必须为零。
-- 跨包外键（表 A 的列引用别包表 B 的主键）只允许在 `db/**` 的**组装期**导入 B 的表对象（Drizzle `.references()` 只接受列对象），例外口径见 `docs/design/ce-ee-refactoring/ce-ee-engineering-standards.md` §6.1；`src/**`、`web/**` 的调用期跨包读表一律违规，必须改经该 owner 的公开服务端入口或宿主注入端口。
+- 跨包外键（表 A 的列引用别包表 B 的主键）只允许在 `db/**` 的**组装期**导入 B 的表对象（Drizzle `.references()` 只接受列对象），例外口径见 `docs/developer/architecture/engineering-standards.md` §6.1；`src/**`、`web/**` 的调用期跨包读表一律违规，必须改经该 owner 的公开服务端入口或宿主注入端口。
 - 标准流程：修改 schema → `bun run db:generate --name <module>-<change>` → 审查 `drizzle/*.sql` 与 `drizzle/meta/*` → `bun run db:migrate` → 存量数据变更时执行 `bun run run-data-migrations` → 运行相关测试和 `bun run precheck`。
 - 跨组织可见性由五张受控资源主表（`agent_config` / `skill` / `mcp_server` / `provider` / `plugin_market_package`）的 `visibility varchar(20) NOT NULL` 表达（前四张默认 `'private'`；`plugin_market_package` 默认 `'public'`，因为市场条目存在的意义就是被所有已认证用户看到，照抄 `private` 会让整个目录静默消失）；授权判断与查询谓词一律由 `@fenix/access-control` 产出，资源包只声明「资源类型 + 表 + 归属列 + 业务条件」。
   - `agent_site_app` 是第六个受控资源注册（`accessControlBindings`），但**它的 `visibility` 不是平台受众列**：该列是站点自身的发布范围（`private` / `org` / `authenticated` / `public`，决定谁能访问对外部署的站点），注册因此只声明归属列（`organizationId` / `ownerUserId`），发布范围的读过滤作为业务条件与平台谓词同条 SQL 下推。把它绑成平台受众列会同时破坏两端：`org` / `authenticated` 被按「非 public 即 private」处理（同组织成员读不到他人发布的站点），而 `public` 会给任意已认证用户开出跨组织读路径（站点行带 `platform_token`）。理由见 `packages/resources/agent-config/src/server/access/agent-site-app-resource.ts`。

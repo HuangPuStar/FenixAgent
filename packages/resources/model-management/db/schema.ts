@@ -15,7 +15,7 @@ import { index, jsonb, pgEnum, pgTable, text, timestamp, uniqueIndex, uuid, varc
  * `user` 是唯一的跨包外键目标：身份表归 `@fenix/identity/db`（任务 1.2），这里只导入表对象表达
  * `provider.user_id` 的级联删除，不复制定义。`model.provider_id` 指向同文件的 `provider`，因此本文件
  * 不需要导入第二个跨包表对象。跨模块外键的组装期例外口径见
- * `docs/design/ce-ee-refactoring/ce-ee-engineering-standards.md` §6.1。
+ * `docs/developer/architecture/engineering-standards.md` §6.1。
  *
  * `agent_config.model_id` 的外键由宿主经 `@fenix/model-management/db` 表达；`model_gateway_credential`
  * 的三条关联列（`gateway_provider_id` / `user_id` / `agent_config_id`）历史 DDL 上就没有外键约束，

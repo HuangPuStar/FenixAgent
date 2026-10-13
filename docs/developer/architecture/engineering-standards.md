@@ -1,6 +1,6 @@
-# CE 目标架构与开发规范（待评审）
+# 工程架构与开发规范
 
-> 本文定义目标架构与开发规范；目录结构与文件归属另见[目录设计](./ce-ee-engineering-directory-structure.md)。
+> 本文定义工程架构与开发规范；目录结构与文件归属另见[目录设计](./directory-structure.md)。
 
 ## 1. 目标与基本决策
 
@@ -40,7 +40,7 @@ ResourceModule = domain + services + repositories/adapters + schemas
                + web contribution + capability declaration + tests + README
 ```
 
-资源包的物理子目录见[目录设计](./ce-ee-engineering-directory-structure.md)。`web/` 与 `src/` 物理就近，但通过 package subpath export 和依赖规则隔离：根入口只导出后端能力，`@fenix/agent-config/web` 才导出浏览器能力。
+资源包的物理子目录见[目录设计](./directory-structure.md)。`web/` 与 `src/` 物理就近，但通过 package subpath export 和依赖规则隔离：根入口只导出后端能力，`@fenix/agent-config/web` 才导出浏览器能力。
 
 一个模块只在第二个真实用例出现后再抽象额外 SDK。
 
@@ -247,7 +247,7 @@ apps/server/src/
 
 `AuthorizedResourceQuery` 是声明在 `platform-sdk` 的端口（用存储类型包参数化，默认槽位为 `unknown`，因此不导入 Drizzle），Drizzle 实现在 `access-control`；资源包只依赖端口。`ResourceQueryConstraint` 对资源模块保持不透明，其内部载荷由产出它的授权实现私有，条件编译器与动作推导在同一实现包内共享同一份策略函数。
 
-当前授权查询以资源主表为驱动，使用归属列、`visibility` 与成员角色策略过滤资源；不得先查询全量资源再在应用层过滤。完整接口和迁移边界见 [CE 用户、组织与资源权限模型设计](./ce-access-control-design.md)。
+当前授权查询以资源主表为驱动，使用归属列、`visibility` 与成员角色策略过滤资源；不得先查询全量资源再在应用层过滤。完整接口和迁移边界见[Access Control 开发指引](./access-control.md)。
 
 ## 4. 前端与控制台组织
 
@@ -458,7 +458,7 @@ packages/resources/agent-config/db/data-migrations/
 
 ### 10.1 目录与模块所有权
 
-1. 所有源码、DB schema、数据迁移、route、Web 页面和生命周期实现均位于[目录归属说明](./ce-ee-engineering-directory-structure.md)指定的唯一 owner，不存在 app 与 package、旧包与新包之间的重复实现。
+1. 所有源码、DB schema、数据迁移、route、Web 页面和生命周期实现均位于[目录归属说明](./directory-structure.md)指定的唯一 owner，不存在 app 与 package、旧包与新包之间的重复实现。
 2. `packages/resources/identity-admin` 已按职责拆分并删除：身份、组织、成员、认证/API Key 进入 `packages/platform/identity`；跨模块控制流进入 app use case 或实际动作 owner；观察能力进入 Observer；不得保留兼容包或 re-export shim。
 3. 每个有状态平台/资源模块都完整拥有实际需要的 domain/service/repository/adapter/schema、DB、route/Web contribution、manifest、测试和 README；没有真实用例的目录或抽象不因模板而创建。
 
@@ -504,7 +504,7 @@ packages/resources/agent-config/db/data-migrations/
 1. 关键数据迁移重试/verify/compensation、生产镜像启动与关闭均通过。
 2. 关键用户流程、稳定协议、多租户授权、三条 Agent 通信路径、YJS、Machine/File/Sandbox、Task/Workflow 均有自动化回归证据。
 3. `bun run precheck`、`bun run build:web`、`bun run docs:build` 和关键 E2E 全部通过，且没有 error 或 warning。
-4. 旧实现、兼容 shim、双写和待决设计矛盾为零；边界豁免与依赖残留必须逐条登记并写明 owner 与移除条件，**未登记的**残留为零（登记处：`docs/design/ce-ee-refactoring/boundary-exemptions.md`，代码文件头的登记段是摘要而非登记本身）；实际架构、开发指南与运维说明和代码一致。
+4. 旧实现、兼容 shim、双写和待决设计矛盾为零；边界豁免与依赖残留必须逐条登记并写明 owner 与移除条件，**未登记的**残留为零（登记处：`docs/developer/architecture/boundary-exemptions.md`，代码文件头的登记段是摘要而非登记本身）；实际架构、开发指南与运维说明和代码一致。
 
 ## 11. 优化项（非必须）
 

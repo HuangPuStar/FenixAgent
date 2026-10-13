@@ -89,6 +89,18 @@ export default defineConfig({
             { text: "Remote Machine Registry", link: "/developer/arch/remote-machine-registry" },
           ],
         },
+        {
+          text: "系统架构开发",
+          items: [
+            { text: "索引", link: "/developer/architecture/" },
+            { text: "工程架构与开发规范", link: "/developer/architecture/engineering-standards" },
+            { text: "目录结构与归属", link: "/developer/architecture/directory-structure" },
+            { text: "Access Control 开发指引", link: "/developer/architecture/access-control" },
+            { text: "边界豁免与依赖残留", link: "/developer/architecture/boundary-exemptions" },
+            { text: "工程债务与优化项", link: "/developer/architecture/engineering-debt" },
+            { text: "EE 扩展架构", link: "/developer/architecture/ee-extension-architecture" },
+          ],
+        },
       ],
       "/arch/": [
         {
@@ -144,29 +156,7 @@ export default defineConfig({
             { text: "插件市场", link: "/arch/24-plugin-market" },
           ],
         },
-        {
-          text: "附录",
-          items: [
-            { text: "改动清单", link: "/arch/changes" },
-          ],
-        },
-      ],
-      // CE/EE 重构文档集（`docs/design/ce-ee-refactoring/`）同样落在手工清单之外，理由同上：
-      // 侧栏不按目录收集，整目录必须在这里登记，否则页面既进不了导航、打开后也没有侧栏。
-      // 其中「边界豁免与依赖残留登记」是规范 §10.7 完成证据第 4 条的登记处，必须可被找到。
-      "/design/": [
-        {
-          text: "CE/EE 重构",
-          items: [
-            { text: "架构设计索引", link: "/design/ce-ee-refactoring/ce-ee-engineering-architecture" },
-            { text: "目标架构与开发规范", link: "/design/ce-ee-refactoring/ce-ee-engineering-standards" },
-            { text: "目录结构与归属", link: "/design/ce-ee-refactoring/ce-ee-engineering-directory-structure" },
-            { text: "待整改项", link: "/design/ce-ee-refactoring/ce-standards-todo" },
-            { text: "边界豁免与依赖残留登记", link: "/design/ce-ee-refactoring/boundary-exemptions" },
-            { text: "CE 权限模型设计", link: "/design/ce-ee-refactoring/ce-access-control-design" },
-            { text: "EE 扩展架构", link: "/design/ce-ee-refactoring/ee-extension-architecture" },
-          ],
-        },
+        { text: "Access Control", link: "/arch/29-access-control" },
       ],
       // 运维文档（`docs/operations/`）同样落在手工清单之外：侧栏不按目录收集，新增目录必须在
       // 这里登记，否则页面既进不了导航、打开后也没有侧栏。分组按目录职责（部署、升级、迁移、

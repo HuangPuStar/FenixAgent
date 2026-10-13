@@ -1,6 +1,6 @@
 # EE 扩展架构
 
-> 本文只面向 EE 和客户化扩展的设计与评审。CE 重构只需遵循[CE 目标架构与开发规范](./ce-ee-engineering-standards.md)，不需要阅读本文。
+> 本文只面向 EE 和客户化扩展的设计与评审。通用约束见[工程架构与开发规范](./engineering-standards.md)。
 
 ## 1. Git submodule 版本依赖边界
 

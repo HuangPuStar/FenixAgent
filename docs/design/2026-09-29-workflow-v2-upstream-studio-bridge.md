@@ -3,7 +3,7 @@
 > 状态：设计草案（待评审）
 > 日期：2026-09-29
 > 关联仓库：`/Users/konghayao/code/ai/workflow-studio`（上游工作流引擎，下文简称 **上游**）
-> 关联文档：`docs/design/ce-ee-refactoring/ce-ee-engineering-standards.md`、`docs/developer/guide/backend-development.md`
+> 关联文档：`docs/developer/architecture/engineering-standards.md`、`docs/developer/guide/backend-development.md`
 
 ## 1. 背景、目标与非目标
 

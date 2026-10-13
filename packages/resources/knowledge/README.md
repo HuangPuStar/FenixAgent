@@ -94,7 +94,7 @@
 
 ## 前端状态补齐与死副本清理（2026-09-20，§1.3(6) 缺口修复）
 
-口径来源：`docs/design/ce-ee-refactoring/ce-ee-engineering-standards.md` §10.5.3（资源 Web 流程覆盖 loading、empty、error、retry、无权限、成功反馈和可访问性）。本轮只动 `web/**`，未改服务端与 schema。
+口径来源：`docs/developer/architecture/engineering-standards.md` §10.5.3（资源 Web 流程覆盖 loading、empty、error、retry、无权限、成功反馈和可访问性）。本轮只动 `web/**`，未改服务端与 schema。
 
 - **删除死副本 `web/pages/agent-panel/agent-editor-knowledge.css`**：删除前复核（`grep -rn "agent-editor-knowledge" .` 排除 `node_modules`）全仓只有 `@fenix/resource-agent-config` 的 `AgentFormDialog.tsx:43` 一处 `import "./agent-editor-knowledge.css"`，且解析到它**自己**的 `web/pages/agent-panel/agent-editor/agent-editor-knowledge.css`；两份正文逐字相同（仅 agent-config 那份多一段归属说明注释），全部选择器都挂在 `.agent-editor-root` 下、22 个 `agent-knowledge-*` 类名的唯一消费方也是 agent-config 的知识库分区组件，故 knowledge 侧零消费者。删除后上面的 grep 只剩 agent-config 的两处命中（自身 import + 自身注释里的历史路径说明）。
 - **新增无权限分支**：`web/pages/agent-panel/pages/agent-knowledge-access-denied.tsx` 提供 `isKnowledgeAccessDenied(error)` 与 `AgentKnowledgeAccessDenied`，页面在列表请求失败且错误码为 `UNAUTHORIZED` 时**整页接管**。判定按错误码而非 HTTP 状态：`request()` 的 `statusToCode` 已把 401/403 归一为 `UNAUTHORIZED`，前端拿不到原始状态码；`instanceof ApiError` 是主路径，另留结构判定（`code` 字段）兜底宿主重复打包 `@fenix/web-runtime` 导致 `instanceof` 跨实例失效的场景。**刻意不提供重试按钮**：无权限下重试不会改变结果，真正的动作是重新登录或联系组织管理员；这也是它与目录面板里「带重试的行内错误」分开成两个分支的原因（后者保留原样）。

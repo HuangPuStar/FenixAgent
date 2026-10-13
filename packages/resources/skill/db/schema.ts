@@ -15,7 +15,7 @@ import { index, jsonb, pgTable, text, timestamp, uniqueIndex, uuid, varchar } fr
  * `agent_config_skill.skill_id` 的外键由 `@fenix/agent-config/db` 表达：该关联表随 `agent_config` 聚合
  * 归 agent-config（任务 1.7 B7 的 join 表裁定，理由见该包 `db/schema.ts` 文件头），它在自己的 `db/schema.ts` 导入本包
  * 的 `skill` 表对象表达级联语义，本包不再声明该关联表、也不再持有它的读写。跨模块外键的组装期例外口径见
- * `docs/design/ce-ee-refactoring/ce-ee-engineering-standards.md` §6.1。
+ * `docs/developer/architecture/engineering-standards.md` §6.1。
  */
 
 // 技能元数据（全局技能库，内容保留在文件系统）

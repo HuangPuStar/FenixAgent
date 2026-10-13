@@ -2,13 +2,13 @@
 
 本文档面向 FenixAgent 后端开发，约束模块归属、依赖方向、分层职责、授权与租户隔离、模块装配、数据库与迁移、API 设计、日志、注释和文档同步。
 
-规范依据与冲突口径：与[目标架构与开发规范](../../design/ce-ee-refactoring/ce-ee-engineering-standards.md)冲突时，以该文档为准；其余规则以离代码更近、约束更具体者为准。
+规范依据与冲突口径：与[工程架构与开发规范](../architecture/engineering-standards.md)冲突时，以该文档为准；其余规则以离代码更近、约束更具体者为准。
 
 | 文档 | 说明 |
 | --- | --- |
-| [目标架构与开发规范](../../design/ce-ee-refactoring/ce-ee-engineering-standards.md) | 长期架构目标与最终一致性验收的权威依据 |
-| [目录结构与归属说明](../../design/ce-ee-refactoring/ce-ee-engineering-directory-structure.md) | 目录与文件的物理 owner |
-| [用户、组织与资源权限模型](../../design/ce-ee-refactoring/ce-access-control-design.md) | 授权接口与迁移边界 |
+| [工程架构与开发规范](../architecture/engineering-standards.md) | 长期架构目标与最终一致性验收的权威依据 |
+| [目录结构与归属说明](../architecture/directory-structure.md) | 目录与文件的物理 owner |
+| [用户、组织与资源权限开发指引](../architecture/access-control.md) | 授权接口与迁移边界 |
 | `CLAUDE.md`、本文件 | 项目特有的落地细则 |
 
 > 本文是后端开发的规范条文，约束新增与重构的代码，**不以仓库现状为准**：现存代码中不符合本文的地方属整改项，
