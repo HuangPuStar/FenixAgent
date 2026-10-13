@@ -8,6 +8,10 @@
  * - 去掉源文件 `export { _isHindsightTool as isHindsightTool }` 的向后兼容再导出——
  *   `isHindsightTool` 的真相来源是 `../lib/tool-call-utils`，包内消费方直接从这里导入。
  * - 中文摘要文案（"搜索记忆"等）为源内硬编码，逐字保留。
+ *
+ * 工具名归一化（MEM-BUG-001）：源实现只认 opencode 插件的 `hindsight_recall`，MCP 路径的记忆工具
+ * （如 `mcp__hindsight__agent_knowledge_recall`，见 `../lib/tool-call-utils` 的 `isHindsightTool`）
+ * 会被原样拼成徽标与摘要，现由 `normalizeActionName` 归一到同一动作词集合。
  */
 
 import { Brain, ChevronRight, Loader2 } from "lucide-react";
@@ -128,36 +132,53 @@ export function HindsightToolCard({ tool }: HindsightToolCardProps) {
 // 工具函数
 // =============================================================================
 
-/** 从 "hindsight_recall" 提取 "Recall" */
+/**
+ * 归一化记忆工具名到动作词（`recall` / `retain` / …）。
+ *
+ * 三种形态都归到同一动作词集合，供 `getAction`（徽标）与 `getSummary`（摘要）共用：
+ * opencode 插件 `hindsight_recall`、MCP 工具 `mcp__hindsight__agent_knowledge_recall`
+ * （插件注册的 server 段可能带命名空间，如 `mcp__plugin_<plugin>_hindsight__…`）、
+ * 剥掉命名空间的 `agent_knowledge_recall`。取 `__` 末段即为工具名本身。
+ */
+function normalizeActionName(title: string): string {
+  const toolName = title.toLowerCase().split("__").pop() ?? "";
+  return toolName.replace(/^(?:agent_knowledge_|hindsight_)+/, "");
+}
+
+/** 从 "hindsight_recall" / "mcp__hindsight__agent_knowledge_recall" 提取 "Recall" */
 function getAction(title: string): string {
-  const action = title.replace(/^hindsight_/, "").replace(/_/g, " ");
+  const action = normalizeActionName(title).replace(/_/g, " ");
   return action.charAt(0).toUpperCase() + action.slice(1);
 }
 
 /** 根据 hindsight 子类型生成摘要信息 */
 function getSummary(tool: ToolCallData): string {
-  const action = tool.title.replace(/^hindsight_/, "").toLowerCase();
+  const action = normalizeActionName(tool.title);
 
   switch (action) {
     case "recall": {
       const query = tool.rawInput?.query;
       const count = parseRecallCount(tool);
-      const parts: string[] = [];
+      // 首段固定说明工具用途：记忆检索落在此卡片而非普通工具行，摘要需要自带语义
+      const parts: string[] = ["搜索记忆"];
       if (query) parts.push(`"${truncate(String(query), 60)}"`);
       if (count > 0) parts.push(`${count} 条相关记忆`);
-      return parts.length > 0 ? parts.join(" · ") : "搜索记忆";
+      return parts.join(" · ");
     }
 
-    case "get_bank": {
+    case "get_bank":
+    case "get_current_bank": {
       const parsed = parseJsonOutput(tool);
-      if (parsed?.name && parsed.name !== tool.title.replace(/^hindsight_/, "")) {
+      if (parsed?.name && parsed.name !== normalizeActionName(tool.title)) {
         return `Memory Bank · ${String(parsed.name)}`;
       }
       return "获取 Memory Bank 信息";
     }
 
     case "retain":
-    case "sync_retain": {
+    case "sync_retain":
+    case "ingest":
+    case "ingest_file": {
       const content = tool.rawInput?.content ?? tool.rawInput?.text;
       if (typeof content === "string" && content) return truncate(content, 100);
       return "存储记忆";
@@ -169,14 +190,20 @@ function getSummary(tool: ToolCallData): string {
       return "深度反思分析";
     }
 
-    case "mental_model": {
-      const content = tool.rawInput?.content ?? tool.rawInput?.text;
-      if (typeof content === "string") return truncate(content, 80);
+    // 心理模型（Hindsight 侧的 knowledge page）的读写：优先展示页名 / 页 ID
+    case "mental_model":
+    case "list_pages":
+    case "get_page":
+    case "create_page":
+    case "update_page":
+    case "delete_page": {
+      const page = tool.rawInput?.name ?? tool.rawInput?.page_id ?? tool.rawInput?.content ?? tool.rawInput?.text;
+      if (typeof page === "string" && page) return truncate(page, 80);
       return "更新心理模型";
     }
 
     default:
-      return action;
+      return action.replace(/_/g, " ");
   }
 }
 

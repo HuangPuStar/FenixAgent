@@ -119,9 +119,20 @@ describe("tool-call-utils", () => {
     expect(isHindsightTool("HINDSIGHT_LOOKUP")).toBe(true);
   });
 
+  // MCP 路径的记忆工具（ccb / peri / claude-code 的市场插件）必须与 opencode 插件同判，
+  // 否则会被普通工具行的 rawInput 兜底误标成“搜索网页”。
+  test("识别 MCP 命名空间与裸工具名形态的记忆工具", () => {
+    expect(isHindsightTool("mcp__hindsight__agent_knowledge_recall")).toBe(true);
+    expect(isHindsightTool("MCP__HINDSIGHT__AGENT_KNOWLEDGE_RECALL")).toBe(true);
+    // peri 把插件注册的 MCP server 拼成 plugin_<plugin>_<server>，server 段仍以 hindsight 标识
+    expect(isHindsightTool("mcp__plugin_hindsight-memory_hindsight__agent_knowledge_recall")).toBe(true);
+    expect(isHindsightTool("agent_knowledge_ingest")).toBe(true);
+  });
+
   // 仅包含相似单词但不以前缀开头的工具不能被误判为 Hindsight。
   test("非 Hindsight 前缀不被误判", () => {
     expect(isHindsightTool("search_hindsight")).toBe(false);
+    expect(isHindsightTool("mcp__other__agent_knowledge_recall")).toBe(false);
   });
 
   // content 中的文本块优先于 rawOutput，且多个文本块按原顺序以换行拼接。

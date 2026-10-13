@@ -83,7 +83,7 @@ describe("ACPMain 依赖的工具调用纯逻辑", () => {
     expect(kindLabel("web-search")).toBe("Search");
   });
 
-  // 只有精确 hindsight_ 前缀才属于 Hindsight 工具。
+  // 只有精确的 hindsight_ / mcp__hindsight__ / agent_knowledge_ 前缀才属于 Hindsight 工具。
   test("hindsight 前缀缺少下划线时不匹配", () => {
     expect(isHindsightTool("hindsightSearch")).toBe(false);
   });
