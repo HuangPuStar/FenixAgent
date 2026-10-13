@@ -1,6 +1,6 @@
 # 工单模块架构（tickets）
 
-> 状态：实现基线（2026-10-12）。**服务端已注册全部 16 条路由**：创建/列表/详情、工单修改（标题/描述/负责人/状态）、标签挂载、评论列表/创建/编辑、项目标签读取/新建/修改、可指派成员分页、操作查询与单次恢复核对都已落地；在途互斥（409 `TICKET_OPERATION_PENDING`）与版本冲突（409 `VERSION_CONFLICT`）已由写路径真实产生。剩余缺口集中在**周期扫描、事件同步、附件与站内通知**，以及评论倒序分页在上游不发 `Link` 头时的退化（§10 逐条列出）。
+> 状态：实现基线（2026-10-12）。**服务端已注册全部 19 条路由**：创建/列表/详情、工单修改（标题/描述/负责人/状态）、标签挂载、评论列表/创建/编辑、项目标签读取/新建/修改、可指派成员分页、附件上传/列表/下载、操作查询与单次恢复核对都已落地；在途互斥（409 `TICKET_OPERATION_PENDING`）与版本冲突（409 `VERSION_CONFLICT`）已由写路径真实产生。剩余缺口集中在**周期扫描、事件同步与站内通知**，以及评论倒序分页在上游不发 `Link` 头时的退化（§10 逐条列出）。
 > 范围：`@fenix/resource-tickets` 的定位与依赖方向、五张表与所有权、协议面、授权落点、项目开通、身份头、幂等与 202 语义、可选装配与已知偏离。
 > 定位：本文是 `packages/resources/tickets` 的实现基线，只描述已落地的事实；仓库与 Issue 的事实源在 Forgejo，本模块只持有 AOS 侧的索引、归属与操作账本。
 > 约定：代码演进偏离本文档时，先更新文档再改代码。运维步骤（启用、开通、关闭与排障）见 [工单运维说明](../operations/tickets.md)，公共 Git 的契约与安全边界见 [公共 Git 模块架构](./28-common-git.md)。
@@ -55,8 +55,11 @@
 | 14 | `POST /ticket-projects/:projectId/labels` | 头 `Idempotency-Key`；body `{ name, color?, description? }` | 201 `{ label, operationId }` 或 202 | 400/403/404/409/503 |
 | 15 | `PATCH /ticket-projects/:projectId/labels/:labelId` | 头 `Idempotency-Key`；body `{ name?, color?, description? }`（至少一项） | 200 `{ label, operationId }` 或 202 | 400/403/404/409/503 |
 | 16 | `GET /ticket-operations/:operationId` | 路径 `operationId` 为 uuid | 200 `{ operation }`（返回前对未定状态触发一次核对） | 400/404/503 |
+| 17 | `GET /tickets/:projectId/:number/attachments` | 无参数 | 200 `{ items }`（附件视图，不含任何下载地址） | 400/401/404/503 |
+| 18 | `POST /tickets/:projectId/:number/attachments` | 头 `Idempotency-Key`；multipart 单文件（字段 `file`） | 201 `{ attachment, operationId }` 或 202 | 400/401/403/404/409/503 |
+| 19 | `GET /tickets/:projectId/:number/attachments/:attachmentId` | 路径 `attachmentId` 为正整数串 | 200 字节流（`Content-Disposition: attachment` + `nosniff` + `private, no-store`） | 400/401/404/503 |
 
-上表是本版**全部**已注册路由（十六条，分五组注册函数：项目 1–4、工单 5–9、评论 10–12、标签 13–15、操作账本 16）。写响应统一为 `{ ticket|comment|label|operation, operationId }`（202 只带 `operationId` 与 `status: "uncertain"`）；`GET` 类不写账本。
+上表是本版**全部**已注册路由（十九条，分六组注册函数：项目 1–4、工单 5–9、评论 10–12、标签 13–15、操作账本 16、附件 17–19）。写响应统一为 `{ ticket|comment|label|operation, operationId }`（202 只带 `operationId` 与 `status: "uncertain"`）；`GET` 类不写账本。
 
 要点：
 
@@ -66,6 +69,7 @@
 - **详情回源**：正文从 Forgejo 读取并剥离身份头，作者归属经归属账本核验；上游不可用报 503，绝不返回空正文或伪装 404。返回的 `pendingOperationId` 是该工单上未终结的 `issue.update` / `issue.labels` 操作 ID（与写路径的在途互斥同谓词），非空即表示该工单的写入口应被禁用（§7）。
 - **评论同样回源**：列表按时间倒序返回（首屏即最新一页，页内最新在前），作者归属核验口径与工单一致；评论视图带 `version`（评论内容指纹），编辑 `PATCH` 以它为 `expectedVersion`。倒序分页的机制与退化见 §9.4。
 - **操作查询只认本人**：仅操作的发起者可查，其余（含管理员）与不存在同形返回 404；账本行仍在 `dispatching` / `uncertain` 时，返回前会执行一次回源核对（§7），核对失败报 503 而不是停留在「进行中」。
+- **附件挂在工单上，内容只经本服务流转**：上传是 multipart **单文件**（一次请求 = 一次远端写 = 一个幂等键，多文件由前端拆请求），文件名由服务端归一（取基名、去控制字符、≤200 字符）；上游的大小上限与扩展名白名单拒绝（413/422）是**确定拒绝**，映射 400 并落 `failed` 账本，不升级为未定。响应视图只到 `attachmentId` 为止——上游内容地址带服务账号凭据，绝不发给浏览器；下载由本服务代理，归属校验只有一处（附件编号在该工单的元数据端点下读取，不属于即上游 404）。
 
 ## 3. 五张表与所有权
 
@@ -133,7 +137,7 @@
 
 **核验口径**：身份头、`ticket_messages` 归属记录、正文摘要（`sha256`，规范化正文）与组织四处同时吻合才算 AOS 作者；作者 ID 与显示名取归属记录，不取头部自填值。对不上号即按 `external` 处理，展示名取托管平台账号名——那是真实执行写入的账号，伪造不了。核验函数（`ticket-author.ts`）按「多条路径共用」抽出：调用方按「项目 + 对象类型 + 对象 ID」取归属行后传入；工单详情与评论列表/创建/编辑四条路径共用它，评论作者核验因此与工单同源（`ticket_messages.object_kind = "comment"` 已有读写方）。对象类型传错时对象 ID 与 `message_id` 会同时对不上，结论保守地落在 `external`。
 
-业务上限集中在 `src/server/services/ticket-limits.ts`（协议层与写入路径共用一份）：标题 200 字符、正文（含身份头的最终 UTF-8 串）64 KiB、列表默认 30 / 上限 100、幂等键 8–128 位 URL 安全字符。T03 新增的一组常量都有消费方：评论列表默认 30（上限沿用 100）、项目标签名 1–50 与描述 ≤ 200、工单标签上限 20（协议层 `labelIds` 校验）、恢复核对的有界扫描上限 5 页 × 100 条、扫描窗口回拨 1 分钟、15 分钟的人工介入窗口（超过仍未找到匹配即转 `needs_review`，而不是继续全量回放）。仍无消费方的是负责人 1 与附件 10 MiB × 5（附件接口未实现，见 §10）。
+业务上限集中在 `src/server/services/ticket-limits.ts`（协议层与写入路径共用一份）：标题 200 字符、正文（含身份头的最终 UTF-8 串）64 KiB、列表默认 30 / 上限 100、幂等键 8–128 位 URL 安全字符。T03 新增的一组常量都有消费方：评论列表默认 30（上限沿用 100）、项目标签名 1–50 与描述 ≤ 200、工单标签上限 20（协议层 `labelIds` 校验）、恢复核对的有界扫描上限 5 页 × 100 条、扫描窗口回拨 1 分钟、15 分钟的人工介入窗口（超过仍未找到匹配即转 `needs_review`，而不是继续全量回放）。T05 落地后附件常量已全部有消费方（10 MiB 在路由与领域服务各判一次，5 个是单次提交的组合规则）；仍无消费方的是负责人 1。
 
 ## 7. 幂等、版本与 202
 
@@ -176,7 +180,7 @@
 
 - **两层开关不自动映射**：assembly profile 决定模块是否加载，`FENIX_FEATURE_GIT` 只决定 Forgejo 容器是否启动。关掉工单不等于可以停 Forgejo（其他消费者可能仍在用）。
 - **bundle 是上界、运行期只能收窄**：工单页面要先用 `bun run generate:web-contributions --profile deploy/assembly/ce-tickets.json` 生成贡献、再 `bun run build:web` 构建；部署期换 profile 不会重新打包浏览器产物。运行期 `/web/system/modules` 的 `data.web` 不含 `tickets` 时，入口隐藏、`/agent/tickets/*` 被拦截。
-- **前端落点**：列表 `/agent/tickets`、详情 `/agent/tickets/$projectId/$number`；筛选与分页是会话内状态，不落 URL，详情链接用显式 `projectId` 保证默认项目切换后依然稳定。列表页的筛选只有关键词与状态两项（负责人/标签筛选见 §10.4）；详情页已交付评论区（倒序分页、新建与内联编辑）、负责人指派、标签多选与全量提交、关闭/重开确认、冲突与「待确认」呈现，写状态机由 `useTicketDetail` 唯一持有——同一工单只允许一笔未确认的写，多个入口共享同一个禁用口径，待确认 id 有两个来源（本地 202 与详情快照的 `pendingOperationId`，后者跨刷新可见）。导航项 id `tickets` 归 Shell 的 `config` 组，组内序号 110（组内 10–100 已被既有项占满，重复 `order` 会让 Shell 装配期直接抛错）。
+- **前端落点**：列表 `/agent/tickets`、详情 `/agent/tickets/$projectId/$number`；筛选与分页是会话内状态，不落 URL，详情链接用显式 `projectId` 保证默认项目切换后依然稳定。列表页的筛选只有关键词与状态两项（负责人/标签筛选见 §10.4）；详情页已交付评论区（倒序分页、新建与内联编辑）、负责人指派、标签多选与全量提交、关闭/重开确认、冲突与「待确认」呈现、附件区（列表 + 上传队列）与输入框旁的添加入口，写状态机由 `useTicketDetail` 唯一持有——同一工单只允许一笔未确认的写，多个入口共享同一个禁用口径，待确认 id 有两个来源（本地 202 与详情快照的 `pendingOperationId`，后者跨刷新可见）。导航项 id `tickets` 归 Shell 的 `config` 组，组内序号 110（组内 10–100 已被既有项占满，重复 `order` 会让 Shell 装配期直接抛错）。
 - **关闭路径行为**：默认产物下，两个宿主薄路由在懒加载子树之前按 `useAssemblyCapabilities()` 判 `"tickets"`，未启用时不挂载页面、不发请求，展示与根守卫相同的「未启用」界面。服务端未装配时对应路由不存在（404），前端入口隐藏与后端 404 由同一份 `/web/system/modules` 对齐——「入口可见但服务端 404」或「服务端可用但入口被隐藏」都算缺陷。
 
 ## 9. 已知偏离
@@ -184,7 +188,7 @@
 1. **advisory lock 不跨外部调用**（对设计方案「独立受限连接持锁、覆盖约 15 秒外部调用」的偏离）。理由：`DATABASE_URL` 只由宿主持有，包内无法自建第二条受限连接；而在共享业务连接池上按外部调用的时长占住一条连接，正是方案同一句禁止的行为。等价保护由三件事共同给出：`withTicketLock` 只覆盖事务内「读改写」这一段；`ticket_operations` 的 `pending → dispatching` 条件更新保证同一幂等键只有一个执行者；远端对象内嵌 `message_id`，恢复核对据此回源。锁键只由 `src/server/repositories/advisory-lock.ts` 构造（组织级 `fenix:tickets:project:<orgId>` 与工单级 `ticketsIssueLockKey` 都已使用），并用 `pg_advisory_xact_lock` 让锁随事务释放，不给连接池留未释放的锁。
 2. **关闭路径的守卫落点**：根守卫 `AssemblyRouteGate` 只按**构建期贡献条目**判定归属，默认 bundle 里没有 tickets 贡献，薄路由的归属判定返回 `undefined`，根守卫会放行。为满足「关闭时手工输入地址显示未启用且不发请求」，宿主在两个薄路由文件内各加了一层本地能力判定，未启用时不挂载懒加载子树（连 chunk 都不会去取）。这是临时落点：把「产物内存在薄路由但贡献缺席」的情形统一纳入路由边界是后续工作，完成前任何新增的同类薄路由都必须自带这层守卫。
 3. **评论编辑入口只认作者**：设计上组织管理员可以编辑他人评论，但会话投影只有 `isOwner`（`@fenix/web-runtime/contexts/org-session` 刻意不外泄角色枚举），非 owner 的管理员在界面上拿不到编辑入口。服务端仍按规则放行管理员，所以这是**可见性缺口、不是越权**。解除条件：会话投影补 `isAdmin`，或详情视图返回 `viewerPermissions`；两者出现任一后把管理员并进 `web/lib/ticket-permissions.ts` 的判定。该判定另有两条边界：来源不可信的作者 `id` 恒为 `null`，天然判否；会话未就绪（`userId === null`）同样判否——宁可少显示一个入口。
-4. **评论倒序分页的机制与退化**（已落地）：「首屏最新 30 条」不允许「全量读入再截断」。机制在 `ticket-comment-page.ts`：首屏先用一页请求探出适配器从 `Link` 头透出的末页页码（`GitPage.lastCursor`，见 [公共 Git 模块架构](./28-common-git.md) §2），再直接取末页——两次请求、只读两页，绝不整串扫描；`nextCursor` 是更早一页的页码，逐页递减到第 1 页；页内顺序反转成「最新在前」，前端据此把整串渲染成时间正序。**退化点**：上游不返回 `Link` 头（`lastCursor` 为 null）时只能读第一页，并如实表达「没有更早的页」——此时若仓库实际有多页评论，首屏会显示**最旧的一页**而不是最新 30 条，违反「首屏最新 30 条」的验收门槛；是否处于该退化只能由上游是否透出 `Link` 头判定，实现里不得编造末页页码。（`since` 与单条评论读取 `comments.get` 按公开 API 文档实现，**未在目标版本的实例上验证**，见 §10.11；上游不支持时按显式失败收敛，不伪造空结果。首屏那两次请求里的探页请求可以用上游返回的 `X-Total-Count` 省掉，本版未做，属可选优化。）
+4. **评论倒序分页的机制与退化**（已落地）：「首屏最新 30 条」不允许「全量读入再截断」。机制在 `ticket-comment-page.ts`：首屏先用一页请求探出适配器从 `Link` 头透出的末页页码（`GitPage.lastCursor`，见 [公共 Git 模块架构](./28-common-git.md) §2），再直接取末页——两次请求、只读两页，绝不整串扫描；`nextCursor` 是更早一页的页码，逐页递减到第 1 页；页内顺序反转成「最新在前」，前端据此把整串渲染成时间正序。**退化点**：上游不返回 `Link` 头（`lastCursor` 为 null）时只能读第一页，并如实表达「没有更早的页」——此时若仓库实际有多页评论，首屏会显示**最旧的一页**而不是最新 30 条，违反「首屏最新 30 条」的验收门槛；是否处于该退化只能由上游是否透出 `Link` 头判定，实现里不得编造末页页码。（`since` 与单条评论读取 `comments.get` 已在目标实例上探活通过；**但该实例的评论端点忽略 `page` / `limit` 且不返回 `Link` 头**，所以退化不是例外而是常态：第 1 页就是全量，反转后仍是最新在前，「更早一页」不存在——界面因此不会出现「加载更早的评论」，代价是每次读取都传输整串（结论与实测数据见 §10.11）。首屏那两次请求里的探页请求可以用上游返回的 `X-Total-Count` 省掉，本版未做，属可选优化。）
 5. **同类失败在两条路径上的响应仍不一致**：`issue.create` 在「远端已成功、本地终态写入失败」时返回 202（§7），`project.provision` 的同类失败仍上抛、经宿主兜底成 500（账本同样保持 `dispatching`，不会自动重发）。恢复核对没有开通场景的口径（`project.provision` 属 unmatched），因此该行超过 15 分钟窗口后会被转成 `needs_review` 而不会自动补齐。解除条件：把开通路径的同形失败也收敛成 202 并同步其用例；在此之前运维不要把它当作「可重试的失败」重发。
 6. **uncertain 的 `intent` 原文没有 7 天清理**：设计方案要求未决操作保留的正文原文有保留上限。本模块对「成功或明确失败」的行立即改写为摘要，但 `dispatching` / `uncertain` / `needs_review` 行会一直保留正文原文与 `message_id`（恢复核对依赖它）。**7 天清理任务在本版没有代码**（需要生命周期定时器，后续批次才有），因此这些行既不清理也不归档。影响：未决行会长期保存原文；处置前不要手工删除，否则恢复核对失去依据（见 [工单运维说明](../operations/tickets.md) §7）。
 
@@ -194,7 +198,7 @@
 
 1. **恢复核对的周期扫描**：单次核对与 `getOperation` 的核对钩子已落地（§7），但**没有定时扫描**——`findUnsettled` 只有仓储实现与测试，没有生产调用方，因此没有被查询的 `dispatching` / `uncertain` 行不会自动收尾，`needs_review` 也只会在这条被动路径上产生。缺的能力是「按 `(status, updated_at)` 调度、批量调用 `reconcile` 的生命周期任务」（`RECOVERY_*` 窗口常量已按它收口）。见 [工单运维说明](../operations/tickets.md) §6。
 2. **事件同步**：没有 Webhook 接收、事件去重、事件分发与投递消费；列表只反映创建与修改路径写入的索引行，因此列表行的 `sync_status` 长驻 `ready`（`stale` 没有写入方，只有详情在索引行缺失时才兜底给出 `stale`）。缺的能力是「接收 Forgejo 事件 → 更新 `ticket_index` / 归属 → 触发通知」的消费链路。
-3. **附件与站内通知**：附件接口（上传、列表、下载）不存在，`TICKET_ATTACHMENT_*` 常量因此没有消费方；`ticket_notifications` 表已建，但没有写入与读取路径。缺的能力是附件三类路由与通知的产生/已读流程。
+3. **站内通知**：`ticket_notifications` 表已建，但没有写入与读取路径；缺的能力是通知的产生与已读流程。（附件三类路由已实现，见 §2。）
 4. **列表的负责人/标签筛选**：接口参数（`assigneeId` / `labelId`）与索引查询已支持，列表页只有关键词与状态两个控件（`ticket-filter-bar.tsx`）。缺的能力是前端两个筛选控件与查询接线，后端无需改动。
 5. **控制台的管理面**：没有开通、切换默认项目与暂停的页面入口，这些动作只能用管理员接口完成（见 [工单运维说明](../operations/tickets.md) §3）。
 6. **检索能力**：`q` 只匹配标题；评论全文检索与跨项目检索未实现。
@@ -202,7 +206,11 @@
 8. **初始化脚本**：`scripts/git-bootstrap.ts` 与 `bun run git:bootstrap` 不存在（公共 Git 侧同样未交付）；仓库绑定与项目只能经 `POST /web/ticket-projects/default` 由服务端创建。
 9. **评论编辑的管理员 UI 入口**：服务端按规则放行管理员，但会话投影缺角色信息，界面上非 owner 的管理员拿不到编辑入口，见 §9.3。
 10. **项目标签删除**：`DELETE` 路由不存在，标签只能新建与修改（方案 §5 的刻意收口，不是欠账）。
-11. **目标 Forgejo 实例的能力探活**：`since`（工单与评论列表的增量过滤）、分页 `Link` 头里的 `rel="last"`、`GET /repos/{o}/{r}/issues/comments/{id}` 三者都按公开 API 文档实现，**没有在目标版本的实例上验证过**（本版交付全程未接真实实例）。缺的能力是「部署后用真实实例探活这三项并回填结论」。退化后果分别是：`since` 无效会让恢复核对退化为全量扫描（仍正确、代价变大）；`rel="last"` 缺失触发 §9.4 的首屏退化；`comments.get` 不可用会让评论编辑与挂载前的核验失败（显式报错，不静默）。
+11. **目标 Forgejo 实例的能力探活（已在 Forgejo 15.0.9 上完成，实测结论）**：三项按公开 API 文档实现的能力都接真实实例验证过，结论如下，其余不再按「未验证」处理。
+    - `since`（工单与评论列表的增量过滤）：**有效**，时间窗按期望收窄。实测同一仓库：全部 35 条评论里 `since=02:05:00Z` 返回 35 条、`since=02:06:00Z` 返回 0 条（评论实际创建于 02:05:18–02:05:31）；工单列表 `since=02:06:00Z` 由 2 条收窄到 1 条。恢复核对依赖它做时间窗，不需要退化成全量扫描。
+    - 分页 `Link` 头里的 `rel="last"`：**该实例的评论端点（`/issues/{n}/comments`）不返回 `Link` 头，且忽略 `page` / `limit`**——`?limit=5`、`?page=2&limit=30` 与不带参数一样返回全量 35 条，只带 `X-Total-Count: 35`。于是 §9.4 的退化在本实例上是**常态而非例外**：`lastCursor` 恒为 null，评论读取恒为「一次读回整串、没有更早的页」，界面不会出现「加载更早的评论」。输出仍然正确（第 1 页即全量，反转后最新在前），代价是长讨论串的工单每次读取都传输整串——「按上游能力自行切页」应作为后续工作（`X-Total-Count` 已可用）。工单（`/issues`）端点的分页正常：`limit` 生效且返回 `Link` 头，因此 `issues.list` 的有界扫描不受影响。
+    - `GET /repos/{o}/{r}/issues/comments/{id}`：**可用**，返回 200 且响应含 `issue_url`（适配器据此取工单号），评论编辑与挂载前核验不需要降级路径。
+    - 未验证项：评论端点的 `before` 参数（本模块未使用）；上游日后若修好评论分页并透出 `Link` 头，`ticket-comment-page.ts` 的探页逻辑会自然启用，无需改代码。
 
 ## 11. 验证
 
@@ -217,11 +225,12 @@
 - `packages/resources/tickets/src/__tests__/ticket-update.test.ts`：工单修改——标题/描述/指派/状态各自的远端与索引落点（含取消指派、关闭与重开）、两次版本比较（同版本两路只有一路写入）、幂等重放与 `IDEMPOTENCY_CONFLICT`、`WRITE_UNCERTAIN` 与「远端已写、本地失败」的 202、指派非成员、跨组织 404、`pendingOperationId` 暴露。
 - `packages/resources/tickets/src/__tests__/ticket-comments.test.ts`：评论——首屏取末页与游标递减、末页页码缺失时按单页退化、作者核验两路、创建/编辑的幂等与 202、原作者与管理员放行、他人 403、评论不属于该工单 404、路由层 202/503。
 - `packages/resources/tickets/src/__tests__/ticket-labels.test.ts`：标签——挂载（ID→名称映射、清空、未知标签 400、上限、权限与跨组织）与项目标签 CRUD（管理员动作、同名冲突、颜色归一）。
+- `packages/resources/tickets/src/__tests__/ticket-attachments.test.ts`：附件——上传的 multipart 形状与账本落点（`attachment_uploaded`）、上游 413/422 是确定拒绝（落 `failed` 与 400，不升级未定）、超限与空内容在发请求前本地拒绝、同名同内容的幂等重放与换内容 409、列表/下载的上游失败 503、跨组织 404、项目暂停 503 且零上游调用、恢复核对的三条匹配结论、下载响应头（`Content-Disposition` 两个值 + `nosniff`）与路由层参数校验。
 - `packages/resources/tickets/src/__tests__/ticket-members.test.ts`：成员分页（`page`/`pageSize`/`q` 透传与总数回显）、跨组织 404 且身份目录零调用、投影只含 `userId` 与 `name`。
 - `packages/resources/tickets/src/__tests__/ticket-recovery.test.ts`：单次核对的三条结论与边界（唯一命中补齐、同一 `message_id` 多命中、窗口内外、上游读失败 503 不改状态、评论坐标替换、并发核对只落一次终态、非本人 404、`getOperation` 的触发条件）。
 - `apps/server/src/__tests__/tickets-assembly.test.ts`：装配面——三份 profile 的差集、缺 `git` 时在副作用前失败、默认 profile 零出站、`git` 先于 `tickets` 构造。
 - `apps/web/src/__tests__/web-contributions.test.ts`：宿主侧贡献与 `tickets` 字典注册（漏登记的症状是文案整片回退成 key 回显）。
-- `packages/resources/tickets/web/__tests__/`：浏览器面守卫（`tickets-browser-surface`：值导入图里不出现 `node:*`、`@server/*`、宿主别名，跨包说明符都能经对方 `exports` 解析，外部依赖白名单逐条登记）、字典自持（`tickets-i18n`）、失败码分类（`ticket-errors`：版本冲突 / 幂等冲突 / 在途互斥 / 404 各归哪一类）、写入结果判别与幂等键持有者（`ticket-write-outcome`）、列表与详情页的状态分支（`agent-tickets-page-states` / `agent-ticket-detail-states`：错误与重试、空态、未开通、行级 `stale` 降级）、评论与写动作的 hook 级数据流（`ticket-comments` / `agent-ticket-write-actions`：分页方向、草稿保留、冲突刷新、202 短路、标签全量提交）。
+- `packages/resources/tickets/web/__tests__/`：浏览器面守卫（`tickets-browser-surface`：值导入图里不出现 `node:*`、`@server/*`、宿主别名，跨包说明符都能经对方 `exports` 解析，外部依赖白名单逐条登记）、字典自持（`tickets-i18n`）、失败码分类（`ticket-errors`：版本冲突 / 幂等冲突 / 在途互斥 / 404 各归哪一类）、写入结果判别与幂等键持有者（`ticket-write-outcome`）、列表与详情页的状态分支（`agent-tickets-page-states` / `agent-ticket-detail-states`：错误与重试、空态、未开通、行级 `stale` 降级）、评论与写动作的 hook 级数据流（`ticket-comments` / `agent-ticket-write-actions`：分页方向、草稿保留、冲突刷新、202 短路、标签全量提交）、附件的预检与队列（`ticket-attachments`：逐文件拒绝原因、并发上限 2、幂等键跨重试复用、202 转待确认、下载经本服务端点）。
 
 需要注意：评论、工单修改、标签与恢复核对的用例是**路由级 + Facade 级**（`installTicketRoutes` 装真实路由，Git 与身份目录用替身），覆盖的是协议形状、状态码与账本落点；**不覆盖**真实 Forgejo 交互与浏览器到服务端的端到端链路，后者不在本包测试范围内（两份装配用例只验证装配差集与零出站）。
 
