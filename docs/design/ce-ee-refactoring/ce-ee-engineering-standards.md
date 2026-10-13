@@ -227,7 +227,7 @@ apps/server/src/
 
 非 CRUD 动作使用资源动作后缀，如 `POST /web/agent-configs/:id/run`、`POST /web/agent-configs/:id/publish`。动作始终进入资源 services 层，再经端口调用 runtime。
 
-资源模块不得新增或扩展 `/api/*` 外部 API。`/web/*` 允许 session、服务账号或受控内部 API Key 等认证方式，但只有 CE 官方 Web 和可同步升级的内部调用方可以依赖其契约；第三方、用户脚本和 SDK 必须使用版本化的 `/api/*`。当前已经发布的 `/api/agents` CRUD、Instance connect 与 OpenAI-compatible endpoint 属于外部合同，保留为调用同一 Facade 的薄协议 adapter，不是第二套业务实现；其变更或退役必须经独立 ADR、消费者盘点和迁移窗口，资源模块不得复制这些 route。
+资源模块不得新增或扩展 `/api/*` 外部 API。`/web/*` 允许 session、服务账号或受控内部 API Key 等认证方式，但只有 CE 官方 Web 和可同步升级的内部调用方可以依赖其契约；第三方、用户脚本和 SDK 必须使用版本化的 `/api/*`。当前已经发布的 `/api/agents` CRUD、Instance connect 与 OpenAI-compatible endpoint 属于外部合同，保留为调用同一 Facade 的薄协议 adapter，不是第二套业务实现；其变更或退役必须经独立评审、消费者盘点和迁移窗口，资源模块不得复制这些 route。
 
 ### 3.2 服务与 repository
 
@@ -504,7 +504,7 @@ packages/resources/agent-config/db/data-migrations/
 1. 关键数据迁移重试/verify/compensation、生产镜像启动与关闭均通过。
 2. 关键用户流程、稳定协议、多租户授权、三条 Agent 通信路径、YJS、Machine/File/Sandbox、Task/Workflow 均有自动化回归证据。
 3. `bun run precheck`、`bun run build:web`、`bun run docs:build` 和关键 E2E 全部通过，且没有 error 或 warning。
-4. 旧实现、兼容 shim、双写和待决设计矛盾为零；边界豁免与依赖残留必须逐条登记并写明 owner 与移除条件，**未登记的**残留为零（登记处：`docs/design/ce-ee-refactoring/boundary-exemptions.md`，代码文件头的登记段是摘要而非登记本身）；实际架构、开发指南、运维说明和必要 ADR 与代码一致。
+4. 旧实现、兼容 shim、双写和待决设计矛盾为零；边界豁免与依赖残留必须逐条登记并写明 owner 与移除条件，**未登记的**残留为零（登记处：`docs/design/ce-ee-refactoring/boundary-exemptions.md`，代码文件头的登记段是摘要而非登记本身）；实际架构、开发指南与运维说明和代码一致。
 
 ## 11. 优化项（非必须）
 

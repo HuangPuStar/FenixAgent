@@ -276,6 +276,7 @@ flowchart LR
 - 密钥只进 `.env`：不进 `deploy.env`、不进 compose 文件、不进 git。
 - 必填项的真相只在 compose 的 `${VAR:?}`；`up` / `deploy` 在动任何容器前先过这道校验；`init` 只创建缺失文件，绝不覆盖已有 `.env`。
 - 两层开关不得混淆：应用装配 profile（`deploy/assembly/<profile>.json`，`RCS_ASSEMBLY_PROFILE_PATH` 覆盖）决定启动期**加载哪些模块**；部署 feature 开关决定**启动哪些依赖服务**。两者按能力名对齐但不做自动映射。
+- 控制台模块能力以 assembly profile 为唯一启用来源：浏览器运行期只使用构建时已包含且服务端清单声明的交集；清单加载失败可回退构建集以保持可用，但不改变服务端授权或模块装配。
 
 ## 6. 数据落点与交付面
 

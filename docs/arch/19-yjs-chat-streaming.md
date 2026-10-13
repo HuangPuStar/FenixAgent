@@ -202,6 +202,7 @@ classDiagram
 - `rcsSessionId`：由 `createDeterministicRcsSessionId(agentId, userId, instanceUid?)` 确定性生成的前端 Agent 实例标识，前后端共用同一实现（`packages/chat-channel/src/util/id.ts`），格式 `rcs_<base64url(agentId)>.<base64url(userId)>[.<base64url(instanceUid)>]`——第三段的形参名 `sessionId` 是历史遗留叫法，实际传入 `instanceUid`。服务端在建连时用同一函数反推校验（不一致即 `close(4003)`）。它是 YJS Doc、relay handle、广播频道、缓存及会话级资源隔离的唯一命名空间。
 - `instanceId`：编排域（AgentController，见 20 号文档）记账的运行实例标识；对外字段名是 `instanceUid`（WS query、`/web/environments/:id/enter` 响应、控制台 API），chat-channel 内部同值字段名为 `instanceId`——两者是同一个值，不得当作两个标识。宿主 `ensureRunning(ownerUserId, agentId, requestedInstanceUid?)` 返回它，gateway 以 `instanceId + userId + rcsSessionId` 建立共享 relay，仅用于命令投递和实例生命周期；不是前端 Agent 实例或 YJS 隔离键。
 - `acpSessionId`：Agent Engine 的 ACP 协议会话标识，仅用于 ACPChannel/relay 链接中的会话定位与消息投递；不可充当平台或 YJS 隔离标识。
+- 用户自定义会话标题是 Fenix 元数据，不写回 ACP 历史；它按认证绑定的 `rcsSessionId` 与 `acpSessionId` 隔离持久化，并在 Session Doc 重投影时重新叠加。
 - `connectionId`：单个 WebSocket 连接标识；仅用于诊断和连接级限流。
 - `clientId`：浏览器安装或标签页实例标识；不具备授权能力。
 - `commandId`：客户端为一次 Action 生成的幂等键；同一会话内唯一。

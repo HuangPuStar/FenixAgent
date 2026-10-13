@@ -116,8 +116,8 @@
       用例：`src/__tests__/upstream-session-multi-replica.test.ts`（11 条：共享读写、租约等待与接手、等待窗口耗尽抛
       `busy`、失效清共享存储、无 Redis / 命令失败降级、并发只登录一次）与 `src/__tests__/rate-limit.test.ts`
       （6 条：容量与等待秒数、等待后恢复、键间隔离、键数上限回收、新键必放行、`reset` 回满桶）。
-- [x] 4C `[文档]` 更新 `docs/arch/` 或 ADR，登记开放问题（设计 §9.3）：`docs/arch/17-workflow.md`、
-      `docs/arch/25-workflow-v2.md`（§8 列已落盘/未落地）与 [ADR](../adr/2026-09-29-workflow-v2-upstream-bridge.md) 已就位
+- [x] 4C `[文档]` 更新 `docs/arch/`，登记开放问题（设计 §9.3）：`docs/arch/17-workflow.md`、
+      `docs/arch/25-workflow-v2.md`（§8 列已落盘/未落地）已就位
 - [x] 4D `[A]` 平台账号自助注册：引导层在登录前调上游注册端点（幂等），部署方不再需要人工建号
       —— **已落地（2026-09-30，`54831be59`）**：注册报文、业务码判定（`700000001` 已存在按成功、
       `700000008` 关注册、其余归 `failed`）与四态归一在 `src/server/services/platform-account-registration.ts`；

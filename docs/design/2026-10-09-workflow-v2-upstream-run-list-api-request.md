@@ -121,13 +121,13 @@ POST /api/workflow_api/list_executions        # 或按原设计补全 list_spans
 
 ## 5. 平台侧过渡与切换条件
 
-上游接口就绪前，FenixAgent 采用**只读直连 `workflow_execution`** 的过渡方案（见本仓 ADR
-`docs/adr/2026-10-09-workflow-v2-upstream-db-read.md`，含最小权限与隔离措施）。该 ADR 记录：上游实现本需求的
+上游接口就绪前，FenixAgent 曾采用**只读直连 `workflow_execution`** 的过渡方案（当前 HTTP 读取口径见
+`docs/arch/25-workflow-v2.md`）。上游实现本需求的
 列表接口后，平台把读路径切回 HTTP 并移除数据库直连——届时本需求即该过渡方案的移除条件。
 
-> **移除条件已满足（2026-10-09）**：§7 的接口就是 ADR「移除条件」所说的「`list_spans` 补实现」。
+> **移除条件已满足（2026-10-09）**：§7 的接口已补齐 `list_spans` 实现。
 > 平台侧可执行切换：读路径换成该端点，并按下文删除只读适配器与 `WORKFLOW_V2_UPSTREAM_DB_*` 配置
-> （ADR 预设的退场路径）。**注意**：`get_trace` 未实现，切换后「详情」仍按 ADR 第 2 条走上游既有 HTTP
+> （既定退场路径）。**注意**：`get_trace` 未实现，切换后「详情」仍走上游既有 HTTP
 > （`get_process`），不做改动。迁移清单与字段映射见 §8。
 
 ## 6. 只读取证复现步骤
@@ -346,7 +346,7 @@ space 成员列表）。跨 space 沿用了既有接口口径：`checkUserSpace`
 2. **一次请求一个 `workflow_id`**：DB 版是 `workflow_id IN (…)`（多目标一次取回），HTTP 版只接受单个 id ⇒
    对多目标逐个请求后在平台侧归并（按 `start_time` 降序、同刻用 `span_id`/execute id 兜底），或先确认目标集是否真会 >1。
 3. **`space_id` 不再由平台传**：DB 版的 `space_id` 谓词是纵深防御；HTTP 版服务端按工作流反查 space 并做成员校验。
-4. **移除只读账号**：切换后按 ADR「移除条件」删掉直连适配器与
+4. **移除只读账号**：切换后按既定移除条件删掉直连适配器与
    `WORKFLOW_V2_UPSTREAM_DB_{HOST,PORT,USER,PASSWORD,NAME}`，运维文档同步删除只读账号。
 5. **契约快照更新**：`docs/design/2026-09-29-workflow-v2-upstream-contract-snapshot.md` 中 list_spans 相关行
    （29/29b/29c）应从「桩」改为「已实现」，并登记 §7 契约。

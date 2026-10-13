@@ -53,6 +53,8 @@ Agent 运行时
 
 创建知识库时，同步在远程 Provider 那边也创建一个对应的索引。删除时同步删除远程资源。
 
+已发布的 `GET /api/knowledge-bases` 以单一可见集合返回结果：同一知识库在 `items` 中至多一次，`total` 与分页均基于该去重集合。
+
 ### KnowledgeUpload（文件上传）
 
 处理文件上传。把用户上传的文件提交给 KnowledgeProvider 建索引。在 `knowledge_resource` 表中跟踪每个资源的状态（pending → processing → ready / error），记录字段包括来源类型（文件/URL）、来源名称、来源路径、远程资源 ID、最近错误。

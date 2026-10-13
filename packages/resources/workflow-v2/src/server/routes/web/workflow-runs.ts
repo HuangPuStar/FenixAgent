@@ -7,7 +7,7 @@
  *
  * 两段数据（细节见 `services/workflow-run-records.ts` 文件头）：
  * - **上游运行清单**：转发 `POST /api/workflow_api/list_spans`（上游 2026-10-09 `3a028cf1` 起为真实实现；
- *   在此之前平台曾临时只读直连上游库，已按 ADR `2026-10-09-workflow-v2-upstream-db-read.md` 的移除条件删除）。
+ *   在此之前平台曾临时只读直连上游库，现已删除）。
  *   `workflow_id` 是上游必填，因此「全部工作流」是**有限扇出 + 平台侧合并**（上界见 `RUN_LOG_WORKFLOW_LIMIT`）；
  *   查询窗口（最近 7 天）与 `limit` 由服务端显式传，客户端不能自定义。
  * - **平台侧记录**（`platformRuns`）：平台触发的运行在本地审计流水里的留痕（永远不抛错，读不到只降级）。

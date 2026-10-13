@@ -37,10 +37,10 @@ fenix/ 或 fenix-ee/
 ├── scripts/                             # 开发、校验、构建、迁移、发布的薄命令入口
 ├── docs/
 │   ├── arch/                            # 当前真实架构与模块边界
-│   ├── adr/                             # 不轻易改变的架构决定
 │   ├── developer/                       # 开发、测试、模块创建规范
 │   ├── operations/                      # 部署、升级、迁移、备份、排障
-│   └── design/                          # 待评审设计，不是真相来源
+│   ├── design/                          # 尚未完成或待评审的设计，不是真相来源
+│   └── user/                            # 面向用户的使用说明、白皮书与产品文档
 └── upstream/fenix/                      # 仅 EE：Git submodule
 ```
 
@@ -58,6 +58,7 @@ fenix/ 或 fenix-ee/
 - `packages/agent-runtime` 持有运行组合；LaunchSpec 中的业务资源解析归所属资源，Workflow 仍归自身业务 owner。Machine 与 Sandbox 保持独立资源包及各自 DB/Web owner，但作为 Runtime 的固定基础资源，允许 `agent-runtime → sandbox → machine` 及 `agent-runtime → machine` 的公开入口依赖；Machine/Sandbox 不得反向依赖 Runtime。
 - `packages/resources/<resource>/web` 是该业务页面、API client、i18n 和专有前端组件的物理归属；共同的全局壳与通用组件归 `apps/web`。
 - `db/`、`deploy/` 与 `docker/` 是仓库级交付物，不属于任意业务模块；模块通过显式贡献接入它们。
+- `docs/arch/` 只记录长期有效的架构事实、稳定契约与约束；不再保留独立 `docs/adr/`，也不归档决策过程。`docs/developer/` 只放开发、测试与模块创建文档；`docs/operations/` 归档跨交付方式的部署、升级、迁移、备份与排障文档；`docs/design/` 只保留未完成或待评审设计，已经落地的设计应删除或归并其仍有效的事实到真实归属；`docs/user/` 放面向用户的使用说明、白皮书与产品文档。
 
 ### 1.2 资源包内部目录示例
 

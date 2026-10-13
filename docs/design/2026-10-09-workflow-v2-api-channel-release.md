@@ -2,7 +2,7 @@
 
 - **日期**：2026-10-09
 - **状态**：✅ 已实现并端到端实测通过
-- **关联**：`.peri/plans/workflow-v2-external-run-diagnosis.md`（根因诊断）、`docs/arch/25-workflow-v2.md`、ADR `2026-09-29-workflow-v2-upstream-bridge.md`（**追加决策 2** 修订其「租户 App（bot）」口径）
+- **关联**：`.peri/plans/workflow-v2-external-run-diagnosis.md`（根因诊断）、`docs/arch/25-workflow-v2.md`（租户 App 映射与对外触发面）
 
 ## 1. 问题与根因
 
