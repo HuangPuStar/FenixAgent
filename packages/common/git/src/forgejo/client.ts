@@ -517,9 +517,12 @@ export class ForgejoClient {
     const operationId = newOperationId();
     return this.#guardWrite(async () => {
       const form = new FormData();
-      // `Blob` 的 TS 声明只接受 `ArrayBuffer` 支撑的视图，而 `Uint8Array<ArrayBufferLike>`（含 Node/Bun 的
-      // `Buffer`）在运行期就是合法的 Blob 部件——这是声明与运行时的差异，按真实类型收窄一次，不复制字节。
-      const blob = new Blob([input.content as BlobPart], { type: input.contentType ?? "application/octet-stream" });
+      // `BlobPart`（DOM lib）只接受 `ArrayBuffer` 支撑的视图，而 `Uint8Array<ArrayBufferLike>`（含 Node/Bun 的
+      // `Buffer`）在运行期就是合法的 Blob 部件——按真实类型收窄一次，不复制字节。写 `Uint8Array<ArrayBuffer>`
+      // 而非 `BlobPart`：宿主 tsconfig 的 `lib` 不含 DOM，那里的 `BlobPart` 根本不存在。
+      const blob = new Blob([input.content as Uint8Array<ArrayBuffer>], {
+        type: input.contentType ?? "application/octet-stream",
+      });
       form.append("attachment", blob, input.name);
       const payload = await this.#http.postMultipart(
         `${issueBase(ref, issueNumber)}/assets?name=${encodeURIComponent(input.name)}`,

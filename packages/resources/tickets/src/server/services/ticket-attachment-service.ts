@@ -80,7 +80,17 @@ export interface TicketAttachmentServiceDeps {
   readonly git: GitService;
 }
 
-const CONTROL_CHARACTERS = /[\u0000-\u001f\u007f]/g;
+/** 去 C0（NUL–0x1F）与 DEL（0x7F）控制字符。用码点遍历而非正则字面量，规避 lint 的
+ * `noControlCharactersInRegex` 规则（与 `file-path-validator` 同一口径）。 */
+function stripControlCharacters(value: string): string {
+  let result = "";
+  for (const character of value) {
+    const code = character.charCodeAt(0);
+    if (code <= 0x1f || code === 0x7f) continue;
+    result += character;
+  }
+  return result;
+}
 
 /**
  * 归一附件文件名：取基名、去控制字符、去首尾空白。
@@ -93,7 +103,7 @@ const CONTROL_CHARACTERS = /[\u0000-\u001f\u007f]/g;
  */
 export function sanitizeAttachmentName(raw: string): string {
   const base = raw.split(/[\\/]/).pop() ?? "";
-  const cleaned = base.replace(CONTROL_CHARACTERS, "").trim();
+  const cleaned = stripControlCharacters(base).trim();
   if (cleaned.length === 0) throw new ValidationError("附件缺少文件名");
   if (cleaned.length > TICKET_ATTACHMENT_NAME_MAX_LENGTH) {
     throw new ValidationError(`附件名过长：最多 ${TICKET_ATTACHMENT_NAME_MAX_LENGTH} 个字符`);
