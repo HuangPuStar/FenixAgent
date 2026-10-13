@@ -69,7 +69,7 @@ export function MountSiteDialog({
   } = useRequest(() => unwrap(agentSitesApi.list()), {
     ready: open,
     onError: (err) => {
-      // 原始错误只进日志（§9.3：错误信封原文不上屏），界面上的失败块取字典文案。
+      // 保留完整异常作诊断；失败块通过 listError 优先展示服务端错误信封的 message。
       console.error("[MountSiteDialog] 加载 site 列表失败", err);
     },
   });
@@ -162,6 +162,7 @@ export function MountSiteDialog({
             <EmptyState
               icon={<TriangleAlert />}
               title={t("panelMode.sitesLoadFailed")}
+              description={errorMessage(listError)}
               tone="danger"
               role="alert"
               action={{ label: t("panelMode.retry"), onClick: refreshSites, icon: <RefreshCw />, disabled: loading }}

@@ -165,8 +165,8 @@ export function AgentManagementPage() {
       manual: true,
       onError: (err) => {
         console.error("Failed to enter agent:", err);
-        // 与侧栏树同一键：提示必须带服务端信封原文（`unwrap()` 抛出的 `ApiError.message`），只进日志
-        // 或只上屏固定文案都会让用户与测试定位不到后端故障。
+        // 与侧栏树同一键：提示必须带服务端信封原文（`unwrap()` 抛出的 `ApiError.message`）；
+        // 只记录日志或只上屏固定文案都会让用户与测试定位不到后端故障。
         toast.error(t("enterFailed", { message: (err as Error).message }));
       },
       onFinally: () => setEnteringId(null),
@@ -235,11 +235,11 @@ export function AgentManagementPage() {
         ) : listError && filteredNodes.length === 0 ? (
           // 首次取数失败：`nodes` 停在 `undefined`，若照旧往下走只会渲染「暂无智能体」空态——
           // 与「确实还没有智能体」同形（§3.4）。判据带 `filteredNodes.length === 0`：刷新失败时
-          // 保留已经渲染的列表，不让一次失败掀掉用户正在看的内容。文案走本包字典，原始错误只进日志。
+          // 保留已经渲染的列表，不让一次失败掀掉用户正在看的内容。服务端 message 优先上屏，字典仅兜底。
           <EmptyState
             icon={<AlertTriangle />}
             title={t("management.loadFailedTitle")}
-            description={t("management.loadFailedDescription")}
+            description={errorMessage(listError) ?? t("management.loadFailedDescription")}
             tone="danger"
             role="alert"
             className="flex h-72 flex-col items-center justify-center rounded-xl border border-dashed border-border bg-background/65"
