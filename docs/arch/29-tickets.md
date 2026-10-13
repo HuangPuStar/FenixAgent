@@ -73,7 +73,7 @@
 
 ## 3. 五张表与所有权
 
-五张表定义在 `packages/resources/tickets/db/schema.ts`（唯一 owner，经 `@fenix/resource-tickets/db` 出口），迁移有两次：`drizzle/0034_tickets-tables.sql`（五张表、索引与约束）与 `drizzle/0035_tickets-operations-inflight-index.sql`（在途互斥的部分索引）；`drizzle.config.ts` 必须同时声明本文件与其余 owner schema。
+五张表定义在 `packages/resources/tickets/db/schema.ts`（唯一 owner，经 `@fenix/resource-tickets/db` 出口），迁移 `drizzle/0033_common-git-tickets-tables.sql`（与公共 Git 四张表同批一次交付，含五张表、索引、约束与在途互斥的部分索引）；`drizzle.config.ts` 必须同时声明本文件与其余 owner schema。
 
 | 表 | 职责 | 关键约束 |
 |---|---|---|

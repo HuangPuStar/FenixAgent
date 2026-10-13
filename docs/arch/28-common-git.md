@@ -77,7 +77,7 @@
 
 ## 4. 数据模型：四张账本
 
-四张表定义在 `packages/common/git/db/schema.ts`（唯一 owner，经 `@fenix/git/db` 出口），迁移 `drizzle/0033_common-git-tables.sql`。表间外键都是包内引用，无跨包导入。
+四张表定义在 `packages/common/git/db/schema.ts`（唯一 owner，经 `@fenix/git/db` 出口），迁移 `drizzle/0033_common-git-tickets-tables.sql`（与工单五张表同批一次交付）。表间外键都是包内引用，无跨包导入。
 
 | 表 | 职责 | 关键约束 |
 |---|---|---|

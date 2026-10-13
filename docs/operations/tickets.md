@@ -62,11 +62,11 @@ curl -fsS -X POST "https://<host>/web/ticket-projects/default" \
 
 ## 4. 迁移
 
-- 本模块的迁移有两次，都随主服务迁移链交付：`drizzle/0034_tickets-tables.sql`（五张表、索引与约束）与 `drizzle/0035_tickets-operations-inflight-index.sql`（在途互斥查询用的部分索引，`where status NOT IN ('succeeded','failed')`）。第二次是纯索引、无回填，对存量数据无影响。
-- `0035` 用的是普通 `CREATE INDEX`（不是 `CONCURRENTLY`），执行期间会对 `ticket_operations` 取写锁。表小、索引还是部分索引，正常窗口可忽略；若在已积累大量账本行的库上执行，请在低峰窗口跑或先评估锁等待。
+- 本模块的迁移随主服务迁移链交付：`drizzle/0033_common-git-tickets-tables.sql`（与公共 Git 四张表同批一次交付，含五张表、索引与约束，以及在途互斥查询用的部分索引 `where status NOT IN ('succeeded','failed')`）。纯 DDL、无回填，对存量数据无影响。
+- 索引用普通 `CREATE INDEX`（不是 `CONCURRENTLY`），执行期间会对 `ticket_operations` 取写锁；五张表随同一迁移新建、执行时为空，锁窗口可忽略。
 - 执行：`bun run db:migrate`；生产入口是 `scripts/migrate.ts` 构建出的 `migrate.js`。迁移走 drizzle journal，对多实例并发启动幂等。
 - 未启用工单的部署同样要执行这一步：表属于主服务的库，与装配无关；不迁移只会在启用后集中报错。
-- 两次迁移都是纯 DDL、无存量回填，**不跑** `bun run run-data-migrations`。
+- 本次迁移是纯 DDL、无存量回填，**不跑** `bun run run-data-migrations`。
 - 发布顺序固定 DDL → 数据 → 应用，不得颠倒。
 
 ## 5. 关闭与回滚约束

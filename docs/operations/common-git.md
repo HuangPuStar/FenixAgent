@@ -61,7 +61,7 @@
 
 1. **部署 Forgejo**：`cp docker/git/.env.example docker/git/.env` 并填 `FORGEJO_DB_PASSWORD`（与库里的口令同值），`docker compose -f docker/git/docker-compose.yml up -d`；就绪判定 `curl -fsS http://127.0.0.1:3210/api/healthz` 返回 200、`docker compose ... ps` 为 healthy。库不可达时容器会反复重启（日志里是 `InitDBEngine` 的连接失败重试）。**接入已有实例时跳过本步**，只配主服务侧连接。
 2. **首次初始化 Forgejo**：建首个管理员（`INSTALL_LOCK` 已开，不会有网页安装向导）、在 Forgejo 里建 AOS 用的服务账号与访问令牌（按最小权限），细节见 `docker/git/README.md`「首次初始化」。
-3. **应用 DDL 迁移**：`bun run db:migrate`（本次是 `drizzle/0033_common-git-tables.sql`）；有存量数据搬迁时再跑 `bun run run-data-migrations`（本批没有数据迁移）。发布顺序固定 DDL → 数据 → 应用，不得颠倒；未启用 git 的部署同样要执行这一步（表属于主服务的库，与装配无关）。
+3. **应用 DDL 迁移**：`bun run db:migrate`（本次是 `drizzle/0033_common-git-tickets-tables.sql`）；有存量数据搬迁时再跑 `bun run run-data-migrations`（本批没有数据迁移）。发布顺序固定 DDL → 数据 → 应用，不得颠倒；未启用 git 的部署同样要执行这一步（表属于主服务的库，与装配无关）。
 4. **配置主服务**：设 `AOS_GIT_CONFIG_FILE`（绝对路径，指向 §2 的 JSON）、`AOS_GIT_PROVISION_TOKEN`、`AOS_GIT_SERVICE_TOKEN`、`AOS_GIT_FORGEJO_URL`。
 5. **用启用了 git 的装配启动主服务**：profile 换成 `deploy/assembly/ce-git.json`（`RCS_ASSEMBLY_PROFILE_PATH` 传绝对路径，或由发布入口固定），启动主服务。启用 git 却没有任何连接时，模块在产生副作用前报错并指向 `AOS_GIT_CONFIG_FILE`——这是配置缺失的判定信号，不是「没有 Git 能力」的降级。
 6. **初始化绑定**：`bun run scripts/git-bootstrap.ts` 与 `bun run git:bootstrap` **尚未实现**，Git 自身也没有对外路由，绑定的唯一外部入口是工单的项目开通 `POST /web/ticket-projects/default`（`mode:"create"` 建私有仓库并开启 Issues，`mode:"bind"` 按 owner/name 回源解析已有仓库），两者都经 `GitAdminService` 写 `git_repository_bindings`。没有工单时只能先在 Forgejo 侧手工建仓库与令牌，再等绑定入口接通（开通步骤见[工单运维说明](./tickets.md) §3）。
