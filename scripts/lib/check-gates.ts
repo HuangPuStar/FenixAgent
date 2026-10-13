@@ -5,16 +5,18 @@
  * 分叉，快检就会对同一改动给出与预发布不同的结论（例如某条门禁只在 precheck 里接线）。它也不能放进
  * 任一入口文件：入口的模块顶层会执行门禁，`import` 它会连带触发整轮运行。
  *
- * **类型检查器只有一个：`tsc-rs`**（`tsc-rs@0.1.0`，TypeScript 7 编译器的 Rust 移植）。2026-10 全量切换，
+ * **类型检查器只有一个：`tsc-rs`**（`tsc-rs@0.6.0`，TypeScript 7 编译器的 Rust 移植）。2026-10 全量切换，
  * 实测依据：本仓 server / web / 包级三种程序上，它与官方 `tsc`（`typescript@6.0.3`）的诊断逐条一致
- * （含被豁免的测试文件计数 `ignored-tests=292`），而 CPU 时间是后者的约 1/5（包级 316s → 61s），
+ * （含被豁免的测试文件计数 `ignored-tests=292`），而 CPU 时间远低于后者（包级 316s → 43s），
  * 含 4 处错误的样例上两边输出逐字相同。官方 `tsc` 自此只作为 `typescript` 包的副产物存在——供 6 个门禁
  * 脚本与 1 个测试文件解析 AST（`ts.createSourceFile`，见 check-architecture / web-style /
  * import-references / module-manifest-source / generate-module-registry），不再有任何门禁调用 `tsc`。
  *
- * **代价（写在这里，免得以后当成 bug 排查）**：`tsc-rs` 只发布 linux-x64 与 macOS-arm64 两种平台二进制，
- * bun 还会拦截它的 postinstall——「装了」不等于「能用」，所以入口先探活（`typeCheckerIssue`），
- * 其他平台直接失败退出而不是静默回退到别的编译器（口径随机器变比不可用更危险）；CI 跑 linux-x64，不受影响。
+ * **代价（写在这里，免得以后当成 bug 排查）**：`tsc-rs@0.6.0` 只发布 linux / macOS / Windows × x64 / arm64
+ * 六个平台的二进制包，之外没有原生二进制；bun 还会拦截它的 postinstall，bin 停在 JS launcher——这不
+ * 妨碍可用（launcher 自己解析平台包再 exec 原生二进制，每次调用多一次约 50ms 的 Node 启动），但
+ * 「装了」不等于「能跑」，所以入口先探活（`typeCheckerIssue`），探活失败即失败退出而不是静默回退到
+ * 别的编译器（口径随机器变比不可用更危险）；CI 跑 linux-x64，不受影响。
  * 升级/移除条件：`typescript@7` 的根导出不再提供 `ts.createSourceFile` 等 AST API（本仓 7 处仍在用），
  * 官方编译器因此暂时覆盖不了 AST 面；等它能同时覆盖类型检查与 AST 时，改用它并删掉 `tsc-rs` 与 `typescript`。
  *
@@ -32,8 +34,8 @@ export const TYPE_CHECKER = "tsc-rs";
 
 /**
  * 探活类型检查器：可用返回 null，否则返回给用户看的失败原因。只跑一次 `--version`——`node_modules/.bin/tsc-rs`
- * 由 bun install 从包的 `bin` 字段生成，「文件在」只说明装了包，不说明平台二进制可用（bun 拦截 postinstall，
- * 且只发布 linux-x64 / macOS-arm64 两个平台包）。
+ * 由 bun install 从包的 `bin` 字段生成，「文件在」只说明装了包，不说明平台二进制可用（只发布六个平台的
+ * 二进制包，其余平台装得上也跑不起来）。
  */
 export async function typeCheckerIssue(): Promise<string | null> {
   const bin = join(REPOSITORY_ROOT, "node_modules", ".bin", TYPE_CHECKER);
@@ -43,7 +45,7 @@ export async function typeCheckerIssue(): Promise<string | null> {
   try {
     const proc = Bun.spawn([bin, "--version"], { cwd: REPOSITORY_ROOT, stdout: "ignore", stderr: "ignore" });
     if ((await proc.exited) === 0) return null;
-    return `${TYPE_CHECKER} 无法运行：它只发布 linux-x64 与 macOS-arm64 两种平台二进制，当前平台 ${process.platform}-${process.arch} 没有。`;
+    return `${TYPE_CHECKER} 无法运行：它只发布 linux / macOS / Windows × x64 / arm64 六个平台的二进制，当前平台 ${process.platform}-${process.arch} 不在其中。`;
   } catch (error) {
     return `${TYPE_CHECKER} 启动失败：${error instanceof Error ? error.message : String(error)}`;
   }
@@ -126,7 +128,7 @@ export const STATIC_GATES: readonly Step[] = [
 /**
  * 类型检查三步。目标是三份 tsconfig（根 / web / 逐包），检查器只有 `tsc-rs` 一个（取舍见本文件头部）。
  * 三步都显式 `--incremental false`：`tsc` 时代的 tsbuildinfo 与它格式不同、不能沿用，而它冷跑本就很快
- * （39 包 8 路并发实测约 3s），显式关掉顺带保证门禁不往仓库写任何缓存文件。
+ * （40 包 8 路并发的 CPU 时间约 43s），显式关掉顺带保证门禁不往仓库写任何缓存文件。
  */
 function typecheckGates(): readonly Step[] {
   return [

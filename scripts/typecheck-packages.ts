@@ -28,7 +28,7 @@
  * **只读**：不改任何源码，逐包执行 `tsc-rs -p <pkg>/tsconfig.json --noEmit`，不写任何文件。
  *
  * **检查器**：`tsc-rs`（唯一检查器，取舍与平台限制见 `scripts/lib/check-gates.ts` 头部）。逐包冷跑
- * 40 个包（8 路并发）CPU 实测约 50s，不需要增量缓存；`--incremental` 也显式关掉，避免任何写盘。
+ * 40 个包（8 路并发，0.6.0 本机实测）CPU 约 43s，不需要增量缓存；`--incremental` 也显式关掉，避免任何写盘。
  *
  * **分片**：`--shard <i>/<n>` 只检查第 i 片（1-based）。`tsc` 时代本门禁是全套静态门禁里最重的一步
  * （CI 实测 187s），分片供 CI 摊到多个 runner；本地 `precheck` 不传，仍是全量一次跑完。口径与测试批次的
