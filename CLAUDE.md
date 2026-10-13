@@ -35,10 +35,10 @@
 ## 文档使用与规范入口
 
 - 汇报风格：用户有阅读障碍，需要你减少汇报字数，多多使用 order list 结构化表达。
-- 前端开发规范：`docs/developer/guide/frontend-development.md`
+- 前端开发规范：`docs/developer/system/frontend-development.md`
   - 覆盖目录结构、路由、状态管理、组件、API、i18n、样式和安全规范。
   - 前端标准使用 tailwind CSS 标准类名，不得自造，不得额外使用非必须 CSS 文件。
-- 后端开发规范：`docs/developer/guide/backend-development.md`
+- 后端开发规范：`docs/developer/system/backend-development.md`
   - 覆盖目录分层、数据库、API、注释、日志和架构文档规范。
 - 当前架构事实、稳定契约与长期约束：`docs/arch/`；设计方案：`docs/design/`；运维说明：`docs/operations/`（部署、升级、迁移、备份、排障）。
 - 本文件只维护跨模块工程原则、关键工作流、架构契约和项目特有不变量，具体实现细则应下沉到离代码更近的规范。
@@ -113,7 +113,7 @@ bun run run-data-migrations         # 执行已登记的存量数据迁移
 
 ### 后端分层
 
-新增与重写后端代码以 `docs/developer/guide/backend-development.md` 为准：外部动作经 Resource Facade 完成授权、状态校验与编排；Domain Service 不接收 actor；Repository 只封装持久化与事务原语；route 仅作协议适配且不直接访问 db。资源 schema 与 route 归各自 owner 包，宿主仅聚合协议入口。
+新增与重写后端代码以 `docs/developer/system/backend-development.md` 为准：外部动作经 Resource Facade 完成授权、状态校验与编排；Domain Service 不接收 actor；Repository 只封装持久化与事务原语；route 仅作协议适配且不直接访问 db。资源 schema 与 route 归各自 owner 包，宿主仅聚合协议入口。
 
 ### API 与数据模型边界
 

@@ -2,7 +2,7 @@
  * `FCP-WEB-07/08` 的检测核心：伴随表（`.css`）声明值里的长度 / 颜色字面量。
  *
  * 与 `web-style-rules.ts`（扫 className 里的字符串字面量）是两种输入，规则同由
- * `docs/developer/guide/forbidden-code-patterns.md` 定义。本模块只负责「从一段 CSS 里找出命中的字面量」：
+ * `docs/developer/system/forbidden-code-patterns.md` 定义。本模块只负责「从一段 CSS 里找出命中的字面量」：
  * 不判断文件是否属于伴随表、不遍历目录、不读台账——「哪些 `.css` 要扫」是门禁入口
  * （`check-web-style.ts`）的职责。
  *

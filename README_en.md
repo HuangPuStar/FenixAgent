@@ -180,12 +180,12 @@ The control service decides who can use which agent, with which resources, and w
 ## Documentation and examples
 
 - [Contributing and local development](CONTRIBUTING.md)
-- [External API guide](docs/developer/guide/external-api.md)
-- [External agent engine session integration](docs/developer/guide/external-agent-session-guide.md)
-- [MCP integration](docs/developer/guide/mcp-integration.md)
-- [Skill development](docs/developer/guide/skill-development.md)
+- [External API guide](docs/developer/system/external-api.md)
+- [External agent engine session integration](docs/developer/system/external-agent-session-guide.md)
+- [MCP integration](docs/developer/agent/mcp-integration.md)
+- [Skill development](docs/developer/agent/skill-development.md)
 - [Engine plugin development](packages/plugin-sdk/README.md)
-- [Knowledge base guide](docs/developer/guide/knowledge-base.md)
+- [Knowledge base guide](docs/developer/agent/knowledge-base.md)
 - [Agent memory architecture (Hindsight)](docs/arch/06-config-hindsight.md)
 - [Sandbox architecture](docs/arch/19-sandbox.md)
 - [Model and provider architecture](docs/arch/06-config-provider.md)

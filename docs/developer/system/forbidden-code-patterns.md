@@ -344,7 +344,7 @@ bun run check:web-style --write-baseline --force   # 首次建基线；抬高基
 
 **为什么要 `--force` 才能抬高基线**：生成器若默认接受当前状态，一条命令就能把新增违规洗成存量；安全方向（下降）零摩擦，危险方向（上升）留痕。
 
-**改规则的正确顺序**：先改 `docs/developer/guide/forbidden-code-patterns.md`（口径）→ 再改 `scripts/lib/web-style-rules.ts`（判定）→ 再改 `scripts/__tests__/web-style-rules.test.ts`（反例锚点）→ 最后重跑 `--write-baseline` 同步计数。跳过测试那一步等于偷偷放宽门禁。
+**改规则的正确顺序**：先改 `docs/developer/system/forbidden-code-patterns.md`（口径）→ 再改 `scripts/lib/web-style-rules.ts`（判定）→ 再改 `scripts/__tests__/web-style-rules.test.ts`（反例锚点）→ 最后重跑 `--write-baseline` 同步计数。跳过测试那一步等于偷偷放宽门禁。
 
 ---
 
@@ -410,4 +410,4 @@ bun run check:web-style --write-baseline --force   # 首次建基线；抬高基
 等价换算」也在**设计值**意义上重新成立（`px ÷ 4` 取到的就是设计值）。
 
 
-**与前端规范的关系**：本清单是 `docs/developer/guide/frontend-development.md` §10「样式」的**可执行子集**；该节讲「优先用什么」，这里讲「什么绝对不行 + 由谁拦」。
+**与前端规范的关系**：本清单是 `docs/developer/system/frontend-development.md` §10「样式」的**可执行子集**；该节讲「优先用什么」，这里讲「什么绝对不行 + 由谁拦」。

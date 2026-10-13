@@ -2,7 +2,7 @@
 
 > 状态：实现基线（2026-09-23；2026-09-24 管理动作迁入管理台，见 §7 / §8）
 > 范围：受控资源「市场条目」的领域模型、数据模型、写路径状态分派、并发与事务、授权模型、外部 npm 私有源的读取边界、`/web/config/plugin-market/*` 与 `/api/system/plugin-market/*` 两条面的契约、前端页面契约，以及模块在主服务里的装配与登记。
-> 定位：本文档是插件市场模块的**实现基线**。模块由 `/Users/konghayao/code/ai/open-mcp-market` 的 `packages/mcp-market` 移植而来，领域规则与安全边界以源项目为权威来源，差异逐条登记在 §10 与本包 `README.md`。授权机制的通用语义见[Access Control](./29-access-control.md)，开发接口见 `docs/developer/architecture/access-control.md`；目录页共享构件集见 `docs/developer/guide/frontend-development.md`。
+> 定位：本文档是插件市场模块的**实现基线**。模块由 `/Users/konghayao/code/ai/open-mcp-market` 的 `packages/mcp-market` 移植而来，领域规则与安全边界以源项目为权威来源，差异逐条登记在 §10 与本包 `README.md`。授权机制的通用语义见[Access Control](./29-access-control.md)，开发接口见 `docs/developer/architecture/access-control.md`；目录页共享构件集见 `docs/developer/system/frontend-development.md`。
 > 约定：代码演进偏离本文档时，先更新文档再改代码。本文不定义插件安装、绑定到 Agent 配置或对外 `/api` 契约——那三项明确不在本期范围。
 
 ## 0. 硬边界

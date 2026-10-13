@@ -2,7 +2,7 @@
 
 > 性质：**已发生错误与纠正的复盘登记**——每条记「现象 / 根因 / 正确口径 / 落实位置」；只记已证实的事实，未决项归入 §五。
 > 范围：2026-09-28 的 CSS 收口全程（14 份类别④归位 → 全仓 dimensional 撤回 → `@theme` 补档与颜色 / 布局 / 伪元素收口 → 全仓 css 逐文件字面量收尾与复核），含此前批次遗留、本轮才暴露或撤销的问题。
-> 与规范的关系：规范本身是 `docs/developer/guide/frontend-development.md` §10 与 `docs/developer/guide/forbidden-code-patterns.md`；本页只记录「踩过的坑」，供同类任务开工前通读。行号仅作定位辅助。
+> 与规范的关系：规范本身是 `docs/developer/system/frontend-development.md` §10 与 `docs/developer/system/forbidden-code-patterns.md`；本页只记录「踩过的坑」，供同类任务开工前通读。行号仅作定位辅助。
 
 ## 一、口径错误
 

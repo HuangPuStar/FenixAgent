@@ -77,7 +77,7 @@ describe("yjs websocket adapter", () => {
     expect(getTerminalYjsWsErrorCode(4500)).toBe("machine_unavailable");
     expect(getTerminalYjsWsErrorCode(4501)).toBe("client_keepalive_timeout");
     expect(getTerminalYjsWsErrorCode(4502)).toBe("spawn_rejected");
-    // 4503 返回 null 是**已知缺口**（docs/developer/guide/frontend-development.md §8.3/§8.6）：
+    // 4503 返回 null 是**已知缺口**（docs/developer/system/frontend-development.md §8.3/§8.6）：
     // 传输层停重连但 UI 拿不到可展示语义。补语义会让该场景出现新的用户可见提示 = 行为变化，
     // 本测试固定现状，改动此处必须先改文档并单独评估。
     expect(getTerminalYjsWsErrorCode(4503)).toBeNull();

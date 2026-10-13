@@ -6,7 +6,7 @@
  * 页面只消费结果，不拼后端 URL、不写 fetch；服务端错误消息原样回传，i18n 兜底文案由页面决定。
  *
  * `/api/auth/*` 属 better-auth 协议面（非 `{ success, data }` 包装），相关例外登记见
- * docs/developer/guide/frontend-development.md §5.3。
+ * docs/developer/system/frontend-development.md §5.3。
  *
  * 迁入本包后两处 import 由「经宿主别名 / 经包根桶出口」改为包内相对路径：加密与客户端实现就在
  * `web/lib/`，走 `@fenix/identity/web` 会绕回桶出口（该出口又转导本页），多一条自引用环且把整张

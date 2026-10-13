@@ -147,5 +147,5 @@ curl -X POST 'https://rcs.example.com/api/workflow-v2/workflows/9f1c2f9e-0d3a-4c
 更多接口的使用方式，请直接参考：
 
 - 交互式文档：`http://server/docs/openapi/external`
-- Agent 管理与会话说明：`/developer/guide/external-agent-session-guide`
+- Agent 管理与会话说明：`/developer/system/external-agent-session-guide`
 - 代码示例：`/docs/developer/api-demo`

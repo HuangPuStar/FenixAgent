@@ -5,7 +5,7 @@
 // 旧值基准是迁移前逐字快照（`/tmp/agent-editor-css-baseline/`，随本次迁移报告归档），本文件的冻结值
 // 即该快照按 import 顺序求解层叠后的**生效值**——不是某一层的中间值。
 //
-// 2026-09 的 Web 样式禁令整改（`docs/developer/guide/forbidden-code-patterns.md`）把这批工具类里
+// 2026-09 的 Web 样式禁令整改（`docs/developer/system/forbidden-code-patterns.md`）把这批工具类里
 // **无法用扁平工具类表达**的部分（子代选择器、伪态、复合值、任意媒体查询）又下沉成了同目录同名的
 // 伴随 CSS（`AgentEditorChrome.tsx` ↔ `AgentEditorChrome.css`）。于是字号变成**两处来源**：扁平处仍是
 // `className` 里的刻度类，深层处（`> strong` / `> h3` 这类）写在伴随 CSS 里。守卫必须两处都看——
@@ -321,7 +321,7 @@ const RETAINED_HOST_HOOK = ".agent-panel-body";
  * 面板允许的 Tailwind 文字刻度类 → px。
  *
  * 口径在 2026-09 整改后由「一律显式 px 写死」改为「就近取标准档，只允许白名单刻度」
- * （见 `docs/developer/guide/forbidden-code-patterns.md` 的连带影响）。`text-3xs` / `text-13` / `text-16`
+ * （见 `docs/developer/system/forbidden-code-patterns.md` 的连带影响）。`text-3xs` / `text-13` / `text-16`
  * 是仓库在 `@theme` 自补的 10 / 13 / 16px 档（`packages/ui-components/web/styles/theme.css`，三者都
  * **只给字号、不给行高**），其余取 Tailwind 默认主题。2026-09-28 的 dimensional 撤回把伴随表里的
  * `font-size` 搬回 `className`，`text-13` / `text-16` 因此进入本白名单。
@@ -947,7 +947,7 @@ describe("Agent Editor：Tailwind 迁移与字号刻度", () => {
   // 压在 `@layer utilities`，伴随表的 `:hover` 覆盖写在未分层——hover 变色整条失效。
   // 定点冻结而非通用规则：机械判定「工具类 `!` 与 CSS `!important` 是否同属性」需要把 Tailwind 类名
   // 反解成 CSS 属性（`text-slate-500` 与 `text-xs` 同前缀不同属性），误报率高；这里只钉住已踩雷的
-  // 一处，其余同类风险靠改样式时的层叠自查（`docs/developer/guide/forbidden-code-patterns.md` 的 02 下沉约定）。
+  // 一处，其余同类风险靠改样式时的层叠自查（`docs/developer/system/forbidden-code-patterns.md` 的 02 下沉约定）。
   test("关闭按钮的基础底色/文字色不带 `!`（否则伴随表的 hover 覆盖恒输）", () => {
     const declaration = readEditorFile("AgentEditorChrome.tsx").match(/const CLOSE_BUTTON = (?:"([^"]*)"|`([^`]*)`)/);
     expect(declaration).not.toBeNull();

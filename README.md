@@ -181,12 +181,12 @@ Console / External API / Workflow / Scheduler
 ## 文档与示例
 
 - [贡献与本地开发](CONTRIBUTING.md)
-- [外部 API 指南](docs/developer/guide/external-api.md)
-- [外部 Agent 引擎会话接入](docs/developer/guide/external-agent-session-guide.md)
-- [MCP 集成](docs/developer/guide/mcp-integration.md)
-- [Skill 开发](docs/developer/guide/skill-development.md)
+- [外部 API 指南](docs/developer/system/external-api.md)
+- [外部 Agent 引擎会话接入](docs/developer/system/external-agent-session-guide.md)
+- [MCP 集成](docs/developer/agent/mcp-integration.md)
+- [Skill 开发](docs/developer/agent/skill-development.md)
 - [Engine Plugin 开发](packages/plugin-sdk/README.md)
-- [知识库使用](docs/developer/guide/knowledge-base.md)
+- [知识库使用](docs/developer/agent/knowledge-base.md)
 - [Agent 记忆架构（Hindsight）](docs/arch/06-config-hindsight.md)
 - [沙盒架构](docs/arch/19-sandbox.md)
 - [模型与 Provider 架构](docs/arch/06-config-provider.md)

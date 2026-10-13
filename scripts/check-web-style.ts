@@ -1,7 +1,7 @@
 /**
  * Web 样式禁止行为门禁（`FCP-WEB-01..08`）。
  *
- * 规则与反例见 `docs/developer/guide/forbidden-code-patterns.md`，检测核心在
+ * 规则与反例见 `docs/developer/system/forbidden-code-patterns.md`，检测核心在
  * `scripts/lib/web-style-rules.ts`（className 字符串）与 `scripts/lib/web-style-css-rules.ts`（伴随表字面量）。
  * 本文件只负责：遍历扫描范围 → 加载存量台账 → 阻断新增 → 输出证据。
  *

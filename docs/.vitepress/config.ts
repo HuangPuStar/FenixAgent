@@ -68,16 +68,24 @@ export default defineConfig({
           items: [{ text: "开发者指南", link: "/developer/" }],
         },
         {
-          text: "使用指南",
+          text: "系统开发",
           items: [
-            { text: "后端开发规范", link: "/developer/guide/backend-development" },
-            { text: "External API", link: "/developer/guide/external-api" },
-            { text: "Agent 管理与会话说明", link: "/developer/guide/external-agent-session-guide" },
-            { text: "系统提示词", link: "/developer/guide/system-prompt" },
-            { text: "Skill 开发", link: "/developer/guide/skill-development" },
-            { text: "多智能体协作", link: "/developer/guide/multi-agent" },
-            { text: "MCP 工具集成", link: "/developer/guide/mcp-integration" },
-            { text: "知识库", link: "/developer/guide/knowledge-base" },
+            { text: "后端开发规范", link: "/developer/system/backend-development" },
+            { text: "前端开发规范", link: "/developer/system/frontend-development" },
+            { text: "代码行为门禁", link: "/developer/system/forbidden-code-patterns" },
+            { text: "ACP 会话重命名", link: "/developer/system/acp-session-rename" },
+            { text: "External API", link: "/developer/system/external-api" },
+            { text: "Agent 管理与会话说明", link: "/developer/system/external-agent-session-guide" },
+          ],
+        },
+        {
+          text: "Agent 开发",
+          items: [
+            { text: "系统提示词", link: "/developer/agent/system-prompt" },
+            { text: "Skill 开发", link: "/developer/agent/skill-development" },
+            { text: "多智能体协作", link: "/developer/agent/multi-agent" },
+            { text: "MCP 工具集成", link: "/developer/agent/mcp-integration" },
+            { text: "知识库", link: "/developer/agent/knowledge-base" },
           ],
         },
         {

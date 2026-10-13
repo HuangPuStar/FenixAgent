@@ -3,7 +3,7 @@
  *
  * 机制最小化：**只做「写一段文本 + 回传成功与否」**——不含 i18n、不含 toast、不绑定任何 UI。
  * 反馈形态（toast / 图标或文案的 2 秒回落 / 静默）是调用方的选择：库内不直接调宿主 `toast`
- * （见 docs/developer/guide/frontend-development.md §5.8），文案由调用方翻译后自己拼。
+ * （见 docs/developer/system/frontend-development.md §5.8），文案由调用方翻译后自己拼。
  *
  * `navigator.clipboard` 只在**安全上下文**（https / localhost）由浏览器提供，http 下为 `undefined`；
  * 宿主 `apps/web` 在 `main.tsx` 里最先执行 `lib/clipboard-polyfill.ts`，用隐藏 textarea +
