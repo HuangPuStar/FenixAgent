@@ -48,7 +48,6 @@ export interface AffectedTests {
 const IGNORED_PATH_PATTERNS: readonly RegExp[] = [
   /^docs\//,
   /^e2e\//,
-  /^ui-sandbox\//,
   /^tmp\//,
   /^logs\//,
   /^images\//,

@@ -45,7 +45,7 @@ return { items: rows.slice(start, start + pageSize), total, page, pageSize };
 
 ### 消费者盘点
 
-- **仓库内无消费方**：实测 `git grep -n "api/knowledge-bases"` 全仓 45 处命中里**没有一处是 HTTP 调用方**——分别是本包的路由工厂、`src/server.ts` / `src/server/assembly.ts` 的导出、`fenix.module.ts` 与 README 及各处文档字符串、包内用例，宿主的两处（`apps/server/src/main.ts` 的聚合槽注释、`apps/server/src/__tests__/route-contributions.test.ts` 的端点清单断言），以及开发者文档对前端 client 文件名的引用。真实 HTTP 请求只出现在本包路由用例里（`git grep -nE '"(/)?api/knowledge-bases'` 命中的调用点全部在 `src/__tests__/api-knowledge-bases-routes.test.ts`）：前端只调 `/web/knowledgeBases`（`packages/resources/knowledge/web/api/knowledge-bases.ts` 虽与端点同名，实为控制台 client）；`e2e/`、`scripts/`、`tools/`、`side-project/`、`docker/`、`ui-sandbox/` 均无调用。
+- **仓库内无消费方**：实测 `git grep -n "api/knowledge-bases"` 全仓 45 处命中里**没有一处是 HTTP 调用方**——分别是本包的路由工厂、`src/server.ts` / `src/server/assembly.ts` 的导出、`fenix.module.ts` 与 README 及各处文档字符串、包内用例，宿主的两处（`apps/server/src/main.ts` 的聚合槽注释、`apps/server/src/__tests__/route-contributions.test.ts` 的端点清单断言），以及开发者文档对前端 client 文件名的引用。真实 HTTP 请求只出现在本包路由用例里（`git grep -nE '"(/)?api/knowledge-bases'` 命中的调用点全部在 `src/__tests__/api-knowledge-bases-routes.test.ts`）：前端只调 `/web/knowledgeBases`（`packages/resources/knowledge/web/api/knowledge-bases.ts` 虽与端点同名，实为控制台 client）；`e2e/`、`scripts/`、`tools/`、`side-project/`、`docker/` 均无调用。
 - **对外发布面**：该端点由 `@elysiajs/openapi` 发布在 `/docs/openapi/external/json`，供仓库外的 SDK、脚本与第三方集成读取；这些调用方无法在仓库内枚举，因此以本 ADR 作为语义变更与生效窗口的留痕，供发布说明引用。
 
 ## 考虑过的替代方案
