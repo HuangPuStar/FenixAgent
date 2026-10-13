@@ -1,11 +1,11 @@
 /**
  * 包级类型检查门禁。
  *
- * **为什么需要它**：`tsc --noEmit`（根 `typecheck`）只以 `apps/server/src/**`、`db/**`、`scripts/**`
- * 为入口，`tsc -p apps/web/tsconfig.json`（`typecheck:web`）只从宿主前端入口出发——两者都**顺着 import**
- * 覆盖包源码，于是「没有任何消费方的包 / 文件」天然落在检查之外。本批实测的代价：14 个包此前连
+ * **为什么需要它**：`bun run typecheck`（根 tsconfig）只以 `apps/server/src/**`、`db/**`、`scripts/**`
+ * 为入口，`bun run typecheck:web`（`tsc-rs -p apps/web/tsconfig.json`）只从宿主前端入口出发——两者都
+ * **顺着 import** 覆盖包源码，于是「没有任何消费方的包 / 文件」天然落在检查之外。本批实测的代价：14 个包此前连
  * `tsconfig.json` 都没有（`packages/platform` 3 个 + `packages/resources` 11 个），而
- * `packages/agent-runtime` 那一条配置级错误（TS5101 `baseUrl` 弃用）会让 tsc **跳过整个程序的语义检查**，
+ * `packages/agent-runtime` 那一条配置级错误（TS5101 `baseUrl` 弃用）会让编译器 **跳过整个程序的语义检查**，
  * 把同一个程序里 6 条真实类型错误一起藏住。本门禁以**每个包自己的 tsconfig** 为入口逐个检查，
  * 覆盖范围不再取决于「谁 import 了它」。
  *
@@ -25,35 +25,23 @@
  * - 判定：按 `文件:行:错误码` 去重后仍有非测试诊断即失败（同一文件可能被多个包的程序各报一次，
  *   去重后仍逐条列出「哪些包的程序报了它」）。
  *
- * **只读**：不改任何源码，逐包执行 `<checker> -p <pkg>/tsconfig.json --noEmit`。唯一的写盘是 `tsc` 的
- * 增量缓存（`--incremental` + `--tsBuildInfoFile`，落在 `node_modules/.cache/fenix-precheck/`）：本门禁
- * 是全套 precheck 里最重的一步（35 个包，冷启动实测 ~24s），增量缓存让「连续多次改动后复跑」只需
- * 重新检查受影响的包。缓存只影响速度，正确性由 tsc 按文件版本与配置哈希判定；删掉该目录即可回到冷启动。
+ * **只读**：不改任何源码，逐包执行 `tsc-rs -p <pkg>/tsconfig.json --noEmit`，不写任何文件。
  *
- * **检查器**：`--bin <name>` 指定 `node_modules/.bin/` 下的检查器，默认 `tsc`；快检传 `--bin tsc-rs`
- * （取舍见 `scripts/lib/check-gates.ts` 头部）。`tsc-rs` 不走增量缓存——两套工具链的 tsbuildinfo 格式
- * 不同，共用同名缓存会互相误判；它冷跑 38 包（8 路并发）实测约 3s，缓存收益可忽略，且不写盘更干净。
+ * **检查器**：`tsc-rs`（唯一检查器，取舍与平台限制见 `scripts/lib/check-gates.ts` 头部）。逐包冷跑
+ * 40 个包（8 路并发，0.6.0 本机实测）CPU 约 43s，不需要增量缓存；`--incremental` 也显式关掉，避免任何写盘。
  *
- * **分片**：`--shard <i>/<n>` 只检查第 i 片（1-based）。本门禁是全套静态门禁里最重的一步（CI 实测
- * 187s），分片供 CI 摊到多个 runner；本地 `precheck` 不传，仍是全量一次跑完。口径与测试批次的
+ * **分片**：`--shard <i>/<n>` 只检查第 i 片（1-based）。`tsc` 时代本门禁是全套静态门禁里最重的一步
+ * （CI 实测 187s），分片供 CI 摊到多个 runner；本地 `precheck` 不传，仍是全量一次跑完。口径与测试批次的
  * `--shard` 相同：各片并集恒等于全量清单，判定不变。切片依据是**排序后的目录名**，不能用发现顺序——
  * `readdirSync` 的顺序取决于文件系统，跨机器切出的分片会漂移（漏检或重复检查）。
  */
 
-import { existsSync, mkdirSync, readdirSync } from "node:fs";
+import { existsSync, readdirSync } from "node:fs";
 import { join, resolve } from "node:path";
 
-import { TSC_BUILD_INFO_DIR } from "./lib/check-runner";
+import { TYPE_CHECKER } from "./lib/check-gates";
 
 const repositoryRoot = resolve(import.meta.dir, "..");
-
-/** `--bin <name>`：`node_modules/.bin/` 下的检查器名，默认官方 `tsc`（发布门禁口径）。 */
-const binArgIndex = process.argv.indexOf("--bin");
-const checkerName = binArgIndex >= 0 ? process.argv[binArgIndex + 1] : "tsc";
-if (checkerName === undefined || checkerName === "--bin") {
-  console.error("用法：bun run scripts/typecheck-packages.ts [--bin <name>] [--shard <i>/<n>]（默认 tsc / 全量）");
-  process.exit(1);
-}
 
 /** 解析 `--shard` 的 `i/n`：格式或范围不对一律按用法错误退出，避免 CI 悄悄少检查一片。 */
 function parseShard(value: string | undefined): { index: number; total: number } {
@@ -70,9 +58,7 @@ function parseShard(value: string | undefined): { index: number; total: number }
 /** `--shard <i>/<n>`：只跑第 i 片；本地 precheck 不传，即全量。 */
 const shardArgIndex = process.argv.indexOf("--shard");
 const shard = shardArgIndex >= 0 ? parseShard(process.argv[shardArgIndex + 1]) : undefined;
-const checkerBin = join(repositoryRoot, "node_modules", ".bin", checkerName);
-/** 只有 `tsc` 用增量缓存：`tsc-rs` 的 tsbuildinfo 格式不同，共用同名缓存会互相误判。 */
-const useIncrementalCache = checkerName === "tsc";
+const checkerBin = join(repositoryRoot, "node_modules", ".bin", TYPE_CHECKER);
 
 /**
  * 并发上限。实测（10 核机、35 个包）：总 CPU 约 280s，8 路并发后 wall 约 35s；
@@ -80,7 +66,7 @@ const useIncrementalCache = checkerName === "tsc";
  */
 const CONCURRENCY = 8;
 
-/** tsc 诊断行形如 `packages/x/src/y.ts(12,3): error TS1234: <message>`（路径相对进程工作目录）。 */
+/** 类型检查诊断行形如 `packages/x/src/y.ts(12,3): error TS1234: <message>`（路径相对进程工作目录）。 */
 const DIAGNOSTIC_PATTERN = /^(.*?)\((\d+),(\d+)\): error (TS\d+): (.*)$/;
 
 /**
@@ -130,17 +116,9 @@ function collectPackages(): { entries: PackageEntry[]; missing: string[] } {
   return { entries, missing };
 }
 
-/** 增量缓存文件路径：按包目录命名，避免同一包在不同分组下重名。 */
-function buildInfoPath(entry: PackageEntry): string {
-  return join(TSC_BUILD_INFO_DIR, `pkg-${entry.dir.replaceAll("/", "-")}.tsbuildinfo`);
-}
-
 /** 跑一次包级类型检查，只回传诊断行（退出码对「有错误」与「配置坏」都可能非零，故以诊断行判定）。 */
-async function runTsc(entry: PackageEntry): Promise<string[]> {
-  const args = ["-p", entry.config, "--noEmit"];
-  if (useIncrementalCache) {
-    args.push("--incremental", "--tsBuildInfoFile", buildInfoPath(entry));
-  }
+async function runTypeCheck(entry: PackageEntry): Promise<string[]> {
+  const args = ["-p", entry.config, "--noEmit", "--incremental", "false"];
   const proc = Bun.spawn([checkerBin, ...args], {
     cwd: repositoryRoot,
     stdout: "pipe",
@@ -159,7 +137,7 @@ async function runAll(entries: readonly PackageEntry[]): Promise<Map<string, str
     while (cursor < entries.length) {
       const entry = entries[cursor++];
       if (!entry) continue;
-      results.set(entry.dir, await runTsc(entry));
+      results.set(entry.dir, await runTypeCheck(entry));
     }
   };
   await Promise.all(Array.from({ length: Math.min(CONCURRENCY, entries.length) }, worker));
@@ -193,7 +171,7 @@ function mergeFindings(results: ReadonlyMap<string, string[]>): Finding[] {
 /** 执行门禁并返回进程退出码。 */
 export async function checkPackageTypecheck(): Promise<number> {
   if (!existsSync(checkerBin)) {
-    console.error(`找不到类型检查器 ${checkerBin}（由 --bin 指定，默认 tsc；tsc-rs 需先 bun install）`);
+    console.error(`找不到类型检查器 ${checkerBin}（${TYPE_CHECKER} 由根 devDependencies 提供，先 bun install）`);
     return 1;
   }
 
@@ -211,9 +189,6 @@ export async function checkPackageTypecheck(): Promise<number> {
     shard === undefined ? ordered : ordered.filter((_, position) => position % shard.total === shard.index - 1);
   const scope = shard === undefined ? "" : ` shard=${shard.index}/${shard.total}`;
 
-  // tsBuildInfoFile 的父目录必须存在，否则 tsc 报 TS5033（无法写入缓存）——门禁不该因为缓存路径缺失而红。
-  if (useIncrementalCache) mkdirSync(TSC_BUILD_INFO_DIR, { recursive: true });
-
   const findings = mergeFindings(await runAll(entries));
   const production = findings.filter((finding) => !TEST_FILE_PATTERN.test(finding.file));
   const ignored = findings.length - production.length;
@@ -228,7 +203,7 @@ export async function checkPackageTypecheck(): Promise<number> {
   }
 
   console.log(
-    `✓ typecheck-packages (checker=${checkerName}${scope} pkg=${entries.length} errors=0 ignored-tests=${ignored})` +
+    `✓ typecheck-packages (checker=${TYPE_CHECKER}${scope} pkg=${entries.length} errors=0 ignored-tests=${ignored})` +
       `\n  测试文件的既有错误按脚本头部登记的移除条件豁免，见 scripts/typecheck-packages.ts。`,
   );
   return 0;

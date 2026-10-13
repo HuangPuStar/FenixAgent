@@ -4,12 +4,11 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "typecheck": "tsc -p tsconfig.json --noEmit"
+    "typecheck": "tsc-rs -p tsconfig.json --noEmit --incremental false"
   },
   "dependencies": {
     "@fenix/agent-config": "workspace:*",
     "@fenix/agent-runtime": "workspace:*",
-    "@fenix/chat-channel": "workspace:*",
     "@fenix/identity": "workspace:*",
     "@fenix/model-management": "workspace:*",
     "@fenix/platform-sdk": "workspace:*",
@@ -28,5 +27,8 @@
     "@fenix/resource-workflow-v2": "workspace:*",
     "@fenix/ui-components": "workspace:*",
     "@fenix/web-runtime": "workspace:*"
+  },
+  "devDependencies": {
+    "@fenix/chat-channel": "workspace:*"
   }
 }

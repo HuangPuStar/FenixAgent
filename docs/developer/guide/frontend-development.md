@@ -486,12 +486,12 @@ import 顺序由 Biome 的 import-sort 统一（`precheck` 会跑），形态是
 ### 11.2 自动化检测
 `bun run precheck` = `scripts/ci.ts` 的 15 步，**分三波执行**（波内受限并发；步骤定义与取消合并的理由见脚本头部注释）：
 1. `biome`：`biome check --write`，一次完成格式化、import 排序与安全修复（写盘，故须独占先行）；
-2. 静态门禁：`generate:module-registry --check`、`generate:web-contributions --check`、`check:root-owner-inventory`、`check:schema-ddl-drift`、`env-example --check`、`architecture`、`check:web-style`、tsc(server)、tsc(web)、tsc(packages)、`check:dependencies`；
+2. 静态门禁：`generate:module-registry --check`、`generate:web-contributions --check`、`check:root-owner-inventory`、`check:schema-ddl-drift`、`env-example --check`、`architecture`、`check:web-style`、tsc-rs(server)、tsc-rs(web)、tsc-rs(packages)、`check:dependencies`；
 3. 三批 `bun test`：`apps/server/src/__tests__/ scripts/__tests__/ packages/platform/platform-sdk/src/__tests__/`、`packages/`、`apps/web/src/__tests__/`。
 
-三步 tsc 均带 `--incremental`，`tsbuildinfo` 落在 `node_modules/.cache/fenix-precheck/`：它是可随时删除的加速缓存，不参与门禁判定。
+三条类型检查都用 `tsc-rs`（本仓唯一的类型检查器）且带 `--incremental false`：门禁不往仓库写任何缓存；它只发布 linux / macOS / Windows × x64 / arm64 六个平台的二进制，其他平台会直接失败退出，不回退官方 `tsc`（取舍见 `scripts/lib/check-gates.ts` 头部）。
 
-单任务收尾用 `bun run fastcheck`（`scripts/fastcheck.ts`）：静态部分与 precheck 共用 `scripts/lib/check-gates.ts` 的同一份步骤定义（三条生成物门禁同样是 `--check` 只读形态，不会替你把生成物写最新），类型检查改用 `tsc-rs` 加速且不带增量缓存（探活失败回退官方 `tsc`；发布门禁 precheck 始终用官方 `tsc`），测试只跑 `scripts/lib/affected-tests.ts` 判定的受影响范围（按改动路径命中宿主 / web / 具体包，包改动再沿反向依赖纳入消费方包）；`--no-tests` 退化为纯静态快检。它不替代 precheck：反向依赖闭包不含 `apps/server` / `apps/web` 两个宿主消费方，宿主侧集成回归只有全量三批测试能覆盖。
+单任务收尾用 `bun run fastcheck`（`scripts/fastcheck.ts`）：静态部分与 precheck 共用 `scripts/lib/check-gates.ts` 的同一份步骤定义（三条生成物门禁同样是 `--check` 只读形态，不会替你写最新），类型检查与 precheck 是同一个 `tsc-rs` 口径，测试只跑 `scripts/lib/affected-tests.ts` 判定的受影响范围（按改动路径命中宿主 / web / 具体包，包改动再沿反向依赖纳入消费方包）；`--no-tests` 退化为纯静态快检。它不替代 precheck：反向依赖闭包不含 `apps/server` / `apps/web` 两个宿主消费方，宿主侧集成回归只有全量三批测试能覆盖。
 
 #### 硬红线（`scripts/check-architecture.ts`，零容忍）
 - `browser-entry-server-import`：浏览器生产代码（`apps/web/src/**`、各包 `web/**`）不得导入 `node:*`、`@server/*`、`@fenix/chat-channel/server`（测试代码可用服务端测试工具）；`package-no-internal-imports`：跨 workspace 包不得绕过公开导出访问 `@fenix/*/src/*`、`@fenix/*/web/src/*`，也不得用相对路径越界到其他包的 `src/`、`web/src/`、`db/`。

@@ -14,17 +14,9 @@
  * - 波内按 `weight` 降序启动（重的先占槽位），`--list` 与打印仍按声明顺序。
  */
 
-import { mkdirSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 
 export const REPOSITORY_ROOT = resolve(import.meta.dir, "../..");
-
-/**
- * tsc 增量缓存目录。放在 `node_modules/` 下有三个原因：天然被 git 忽略（无需新 .gitignore 条目）、
- * 不落在任何生成物门禁的扫描面内、被视为可随时丢弃的构建缓存。缓存有效性由 tsc 按文件版本
- * （mtime + size）与配置哈希判定：删掉整个目录只会让下一次运行变慢，不会造成漏检。
- */
-export const TSC_BUILD_INFO_DIR = join(REPOSITORY_ROOT, "node_modules", ".cache", "fenix-precheck");
 
 /** 单个步骤的超时上限；到达后终止该步骤并按失败处理，避免门禁整体挂死。 */
 const STEP_TIMEOUT_MS = 300_000;
@@ -63,11 +55,6 @@ export interface StepResult {
   readonly ms: number;
 }
 
-/** `--noEmit --incremental` 的公共参数：缓存文件按调用方给定的名字落进 `TSC_BUILD_INFO_DIR`。 */
-export function tscIncrementalArgs(name: string): string {
-  return `--incremental --tsBuildInfoFile ${join(TSC_BUILD_INFO_DIR, `${name}.tsbuildinfo`)}`;
-}
-
 /** 写盘修复步骤：`biome check --write` 一次完成格式化、import 排序与安全修复。 */
 export const BIOME_STEP: Step = {
   name: "biome",
@@ -76,7 +63,7 @@ export const BIOME_STEP: Step = {
   weight: 800,
 };
 
-/** tsc 诊断行过滤：只保留错误行（`path(12,3): error TS1234` 或 `path:12:3 - error TS1234`）。 */
+/** 类型检查诊断行过滤：只保留错误行（`path(12,3): error TS1234` 或 `path:12:3 - error TS1234`）。 */
 export function filterTsc(out: string): string | null {
   const errors = out.split("\n").filter((line) => line.includes("error TS"));
   return errors.length > 0 ? errors.join("\n") : null;
@@ -133,7 +120,7 @@ export async function runStep(step: Step): Promise<StepResult> {
   const started = Date.now();
   const proc = Bun.spawn(["sh", "-c", step.cmd], {
     cwd: REPOSITORY_ROOT,
-    // 显式前置 `node_modules/.bin`（biome / tsc）与 bun 自身所在目录：`bun run precheck` 会注入这两项，
+    // 显式前置 `node_modules/.bin`（biome / tsc-rs）与 bun 自身所在目录：`bun run precheck` 会注入这两项，
     // 但 `bun scripts/ci.ts` 直接调用时不会，命令写法两边都要能用。
     env: {
       ...process.env,
@@ -217,8 +204,6 @@ export async function runWave(wave: Wave): Promise<boolean> {
 
 /** 顺序跑完全部波次并打印总耗时；返回是否全绿（调用方据此决定退出码）。 */
 export async function runWaves(waves: readonly Wave[]): Promise<boolean> {
-  mkdirSync(TSC_BUILD_INFO_DIR, { recursive: true });
-
   const totalStart = Date.now();
   let allPassed = true;
   for (const wave of waves) {

@@ -18,6 +18,8 @@ concurrency:
 # 所以本文件只做两件事：把两个重活用 bun 原生 `--shard=i/N` 摊到多台 runner；用缓存免掉冷装。
 # 分片不改变口径——bun 自己切分文件集，各片并集恒等于该批全量，`--isolate` 一字不动，参数与
 # `scripts/lib/check-gates.ts` 的全量命令只差一个 `--shard`（precheck 仍跑全量命令，见该文件注释）。
+# 上面的 187s 是 `tsc` 时代的数：三处类型检查改用 `tsc-rs` 后（取舍见 `scripts/lib/check-gates.ts` 头部），
+# 包级检查本机 40 包 CPU 约 43s，重活只剩测试里的 packages 批。
 jobs:
   static:
     name: Lint, typecheck & build
@@ -33,6 +35,9 @@ jobs:
       - name: Lint
         run: bun run lint
 
+      # 三条类型检查都用 `tsc-rs`（`scripts/lib/check-gates.ts` 里与本机 precheck 同源的那一份定义）。
+      # 它只发布 linux / macOS / Windows × x64 / arm64 六个平台的二进制，本 job 的 ubuntu-latest（linux-x64）
+      # 在其中；换成这六者之外的 runner 平台会让这三步直接失败（脚本探活后即退出，不回退官方 tsc）。
       - name: Typecheck (backend)
         run: bun run typecheck
 
@@ -70,9 +75,10 @@ jobs:
       - name: Web production build
         run: bun run build:web
 
-  # 包级类型检查是全套静态门禁里最重的一步（CI 实测 187s），单独成 job 才能分片并行。
-  # 前两步都从宿主入口出发、**顺 import** 覆盖包源码，没有消费方的包/文件因此天然落在检查之外
-  # （14 个包此前连 tsconfig 都没有）。本 job 以每个包自己的 tsconfig 为入口逐个检查。
+  # 包级类型检查逐个走各包自己的 tsconfig：前两步都从宿主入口出发、**顺 import** 覆盖包源码，
+  # 没有消费方的包/文件因此天然落在检查之外（14 个包此前连 tsconfig 都没有）。
+  # 本 job 原先是墙钟主项（`tsc` 时代 CI 实测 187s），切 `tsc-rs` 后本机 40 包 CPU 约 43s、墙钟十几秒——
+  # 分片、`--shard` 与判定口径一字不变，保留独立 job 是为了不把这十几秒压回 static job 的串行段。
   typecheck-packages:
     name: Typecheck (packages ${{ matrix.shard }}/2)
     runs-on: ubuntu-latest
@@ -86,18 +92,9 @@ jobs:
 
       - uses: ./.github/actions/setup
 
-      # tsc 增量缓存：`node_modules/.cache/fenix-precheck/*.tsbuildinfo` 的 fileInfos 版本号是内容
-      # sha256（不是 mtime，故可跨 runner 复用）——命中时 tsc 只复核文件哈希并跳过未变文件的类型检查。
-      # 每片只写自己那几个包的 buildinfo（`pkg-<dir>.tsbuildinfo`），所以键里带 shard：两片共用同一个
-      # 键会因缓存条目不可变而互相丢写。key 带 sha（每次写新条目）+ restore-keys 前缀（读最近一条）：
-      # key 若固定，缓存不可变会让它永久陈旧。缓存落在 node_modules 内部，必须放在 install 之后。
-      - uses: actions/cache@v4
-        with:
-          path: node_modules/.cache/fenix-precheck
-          key: tsc-buildinfo-${{ runner.os }}-${{ hashFiles('bun.lock') }}-shard${{ matrix.shard }}-${{ github.sha }}
-          restore-keys: |
-            tsc-buildinfo-${{ runner.os }}-${{ hashFiles('bun.lock') }}-shard${{ matrix.shard }}-
-
+      # 这里原先缓存 `node_modules/.cache/fenix-precheck/*.tsbuildinfo`（`tsc` 的增量缓存）。改用
+      # `tsc-rs` 后三处类型检查都带 `--incremental false`，不再有任何进程写这个目录，故整步删除：
+      # 留着的唯一效果是每个分片多出一次无用的缓存恢复。
       - name: Typecheck (packages)
         run: bun run typecheck:packages --shard ${{ matrix.shard }}/2
 

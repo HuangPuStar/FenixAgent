@@ -15,7 +15,7 @@
   },
   "scripts": {
     "build": "bun build src/index.ts --outdir dist --format esm",
-    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "typecheck": "tsc-rs -p tsconfig.json --noEmit --incremental false",
     "test": "bun test"
   }
 }
