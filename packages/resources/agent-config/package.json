@@ -26,7 +26,7 @@
     "./server/config": "./src/server/services/config/agent-config.ts"
   },
   "scripts": {
-    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "typecheck": "tsc-rs -p tsconfig.json --noEmit --incremental false",
     "test": "bun test"
   },
   "dependencies": {

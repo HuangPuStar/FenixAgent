@@ -5,15 +5,18 @@
  * 分叉，快检就会对同一改动给出与预发布不同的结论（例如某条门禁只在 precheck 里接线）。它也不能放进
  * 任一入口文件：入口的模块顶层会执行门禁，`import` 它会连带触发整轮运行。
  *
- * **唯一允许的差异是类型检查器**（见 `staticGates(checker)`）：precheck 用官方 `tsc`——发布门禁要的是
- * 稳定、与编辑器同版本；fastcheck 用 `tsc-rs`——同一批 tsconfig、同一批目标，本仓实测诊断逐字一致
- * （38 包报错位置集合相同），而冷启动耗时 4.8s / 7.8s / 19.9s → 0.7s / 0.8s / 3.0s，迭代时手感差别很大。
+ * **类型检查器只有一个：`tsc-rs`**（`tsc-rs@0.1.0`，TypeScript 7 编译器的 Rust 移植）。2026-10 全量切换，
+ * 实测依据：本仓 server / web / 包级三种程序上，它与官方 `tsc`（`typescript@6.0.3`）的诊断逐条一致
+ * （含被豁免的测试文件计数 `ignored-tests=292`），而 CPU 时间是后者的约 1/5（包级 316s → 61s），
+ * 含 4 处错误的样例上两边输出逐字相同。官方 `tsc` 自此只作为 `typescript` 包的副产物存在——供 6 个门禁
+ * 脚本与 1 个测试文件解析 AST（`ts.createSourceFile`，见 check-architecture / web-style /
+ * import-references / module-manifest-source / generate-module-registry），不再有任何门禁调用 `tsc`。
  *
- * **tsc-rs 的临时性**（`tsc-rs@0.1.0`）：它是 TypeScript 7 编译器（Go）的 Rust 移植，实验性质、只发布
- * linux-x64 与 macOS-arm64 两种平台二进制，bun 还会拦截它的 postinstall——所以「装了」不等于「能用」，
- * 只能试运行探活，失败即回退 `tsc`（`hasFastTypeChecker`）。移除条件：官方 `typescript@7` 的编译器 API
- * 稳定（本仓 7 处门禁脚本依赖 `ts.createSourceFile` 等 AST API，7.0.2 已不再从根导出）后改用官方原生
- * 编译器，并删掉 `tsc-rs` 依赖。
+ * **代价（写在这里，免得以后当成 bug 排查）**：`tsc-rs` 只发布 linux-x64 与 macOS-arm64 两种平台二进制，
+ * bun 还会拦截它的 postinstall——「装了」不等于「能用」，所以入口先探活（`typeCheckerIssue`），
+ * 其他平台直接失败退出而不是静默回退到别的编译器（口径随机器变比不可用更危险）；CI 跑 linux-x64，不受影响。
+ * 升级/移除条件：`typescript@7` 的根导出不再提供 `ts.createSourceFile` 等 AST API（本仓 7 处仍在用），
+ * 官方编译器因此暂时覆盖不了 AST 面；等它能同时覆盖类型检查与 AST 时，改用它并删掉 `tsc-rs` 与 `typescript`。
  *
  * 步骤的执行语义（并发、超时、输出上限、失败诊断）见 `scripts/lib/check-runner.ts`。
  */
@@ -22,32 +25,39 @@ import { existsSync } from "node:fs";
 import { join } from "node:path";
 
 import { filterTestSummary } from "../ci-output";
-import { filterTsc, filterVerified, REPOSITORY_ROOT, type Step, tscIncrementalArgs } from "./check-runner";
+import { filterTsc, filterVerified, REPOSITORY_ROOT, type Step } from "./check-runner";
 
-/** 类型检查器：官方 `tsc` 与快检用的 `tsc-rs`。 */
-export type TypeChecker = "tsc" | "tsc-rs";
-
-const FAST_TYPE_CHECKER = "tsc-rs";
+/** 类型检查器二进制名（`node_modules/.bin/` 下），同时也是 `scripts/typecheck-packages.ts` 用的那一个。 */
+export const TYPE_CHECKER = "tsc-rs";
 
 /**
- * `node_modules/.bin/tsc-rs`：由 bun install 从包的 `bin` 字段生成，因此「文件在」只说明装了包，
- * 不说明平台二进制可用（tsc-rs 只发布 linux-x64 / macOS-arm64，且其 postinstall 会被 bun 拦截）。
+ * 探活类型检查器：可用返回 null，否则返回给用户看的失败原因。只跑一次 `--version`——`node_modules/.bin/tsc-rs`
+ * 由 bun install 从包的 `bin` 字段生成，「文件在」只说明装了包，不说明平台二进制可用（bun 拦截 postinstall，
+ * 且只发布 linux-x64 / macOS-arm64 两个平台包）。
  */
-const FAST_TYPE_CHECKER_BIN = join(REPOSITORY_ROOT, "node_modules", ".bin", FAST_TYPE_CHECKER);
-
-/** 探活快检检查器：真正跑一次 `--version`，能退出 0 才认为可用；失败（缺包 / 平台无二进制）即回退。 */
-export async function hasFastTypeChecker(): Promise<boolean> {
-  if (!existsSync(FAST_TYPE_CHECKER_BIN)) return false;
-  try {
-    const proc = Bun.spawn([FAST_TYPE_CHECKER_BIN, "--version"], {
-      cwd: REPOSITORY_ROOT,
-      stdout: "ignore",
-      stderr: "ignore",
-    });
-    return (await proc.exited) === 0;
-  } catch {
-    return false;
+export async function typeCheckerIssue(): Promise<string | null> {
+  const bin = join(REPOSITORY_ROOT, "node_modules", ".bin", TYPE_CHECKER);
+  if (!existsSync(bin)) {
+    return `找不到类型检查器 ${bin}（先运行 bun install）。`;
   }
+  try {
+    const proc = Bun.spawn([bin, "--version"], { cwd: REPOSITORY_ROOT, stdout: "ignore", stderr: "ignore" });
+    if ((await proc.exited) === 0) return null;
+    return `${TYPE_CHECKER} 无法运行：它只发布 linux-x64 与 macOS-arm64 两种平台二进制，当前平台 ${process.platform}-${process.arch} 没有。`;
+  } catch (error) {
+    return `${TYPE_CHECKER} 启动失败：${error instanceof Error ? error.message : String(error)}`;
+  }
+}
+
+/**
+ * 两个入口共用的前置检查：探活失败即打印原因并以 1 退出。放在跑任何步骤之前——否则三步类型检查会各自失败，
+ * 真实原因（当前平台没有对应二进制）会被淹没在步骤诊断里。**不回退官方 `tsc`**：口径随机器变比不可用更危险。
+ */
+export async function exitIfTypeCheckerUnavailable(): Promise<void> {
+  const issue = await typeCheckerIssue();
+  if (issue === null) return;
+  console.error(`${issue}\n类型检查是门禁的一部分，探活失败即失败退出（不回退官方 tsc）。`);
+  process.exit(1);
 }
 
 /**
@@ -55,127 +65,93 @@ export async function hasFastTypeChecker(): Promise<boolean> {
  *
  * 声明顺序即 `--list` 与文档的阅读顺序（按职责分组）；实际启动顺序按 `weight` 降序，见 `runWave`。
  */
-export function staticGates(checker: TypeChecker): readonly Step[] {
-  return [
-    {
-      name: "module-registry",
-      cmd: "bun run generate:module-registry --check",
-      filter: filterVerified("已验证"),
-      weight: 460,
-    },
-    {
-      name: "web-contributions",
-      cmd: "bun run generate:web-contributions --check",
-      filter: filterVerified("已验证"),
-      weight: 250,
-    },
-    {
-      // 根源码归属清单同样是「文档 == 规则表产出」的生成物门禁，必须与 CI 走同一入口。
-      name: "owner-inventory",
-      cmd: "bun run check:root-owner-inventory",
-      filter: filterVerified("unowned=0 ambiguous=0"),
-      weight: 525,
-    },
-    {
-      // 表搬迁只搬位置、不改结构：schema 聚合结果与已发布迁移链必须零 DDL 差异（§6.1 / §10.6.1）。
-      name: "schema-ddl-drift",
-      cmd: "bun run check:schema-ddl-drift",
-      filter: filterVerified("✓ schema-ddl-drift"),
-      weight: 190,
-    },
-    {
-      // 部署模板是生成物：各份 `.example` 与声明面（宿主 env.ts + 模块 envDefinitions）零差异，
-      // 否则「部署能不能配全某个旋钮」只能靠人肉比对（§5.4）。
-      name: "env-example",
-      cmd: "bun run scripts/generate-env-example.ts --check",
-      filter: filterVerified("✓ env-example"),
-      weight: 60,
-    },
-    {
-      name: "architecture",
-      cmd: "bun run architecture:check",
-      filter: filterVerified("✓ architecture-check"),
-      weight: 1330,
-    },
-    {
-      // Web 样式禁止行为（FCP-WEB-01..06）：台账登记存量，只阻断新增；规则与反例见
-      // docs/developer/guide/forbidden-code-patterns.md。
-      name: "web-style",
-      cmd: "bun run check:web-style",
-      filter: filterVerified("✓ web-style"),
-      weight: 630,
-    },
-    ...typecheckGates(checker),
-    {
-      name: "dependency-boundaries",
-      cmd: "bun run check:dependencies",
-      filter: filterVerified("✓ dependency-boundaries"),
-      weight: 8300,
-    },
-  ];
-}
+export const STATIC_GATES: readonly Step[] = [
+  {
+    name: "module-registry",
+    cmd: "bun run generate:module-registry --check",
+    filter: filterVerified("已验证"),
+    weight: 460,
+  },
+  {
+    name: "web-contributions",
+    cmd: "bun run generate:web-contributions --check",
+    filter: filterVerified("已验证"),
+    weight: 250,
+  },
+  {
+    // 根源码归属清单同样是「文档 == 规则表产出」的生成物门禁，必须与 CI 走同一入口。
+    name: "owner-inventory",
+    cmd: "bun run check:root-owner-inventory",
+    filter: filterVerified("unowned=0 ambiguous=0"),
+    weight: 525,
+  },
+  {
+    // 表搬迁只搬位置、不改结构：schema 聚合结果与已发布迁移链必须零 DDL 差异（§6.1 / §10.6.1）。
+    name: "schema-ddl-drift",
+    cmd: "bun run check:schema-ddl-drift",
+    filter: filterVerified("✓ schema-ddl-drift"),
+    weight: 190,
+  },
+  {
+    // 部署模板是生成物：各份 `.example` 与声明面（宿主 env.ts + 模块 envDefinitions）零差异，
+    // 否则「部署能不能配全某个旋钮」只能靠人肉比对（§5.4）。
+    name: "env-example",
+    cmd: "bun run scripts/generate-env-example.ts --check",
+    filter: filterVerified("✓ env-example"),
+    weight: 60,
+  },
+  {
+    name: "architecture",
+    cmd: "bun run architecture:check",
+    filter: filterVerified("✓ architecture-check"),
+    weight: 1330,
+  },
+  {
+    // Web 样式禁止行为（FCP-WEB-01..06）：台账登记存量，只阻断新增；规则与反例见
+    // docs/developer/guide/forbidden-code-patterns.md。
+    name: "web-style",
+    cmd: "bun run check:web-style",
+    filter: filterVerified("✓ web-style"),
+    weight: 630,
+  },
+  ...typecheckGates(),
+  {
+    name: "dependency-boundaries",
+    cmd: "bun run check:dependencies",
+    filter: filterVerified("✓ dependency-boundaries"),
+    weight: 8300,
+  },
+];
 
 /**
- * 类型检查三步。两种检查器的目标、判定与失败口径完全一致，只有二进制与缓存策略不同：
- * `tsc` 走 `--incremental`（缓存落在 `TSC_BUILD_INFO_DIR`，warm 后三步合计约 20s）；`tsc-rs` 冷启动
- * 就比它快一个量级，且两套工具链的 tsbuildinfo 格式不同、不能共用同名缓存文件，故显式关掉增量——
- * 顺带保证快检不往仓库写任何缓存。
+ * 类型检查三步。目标是三份 tsconfig（根 / web / 逐包），检查器只有 `tsc-rs` 一个（取舍见本文件头部）。
+ * 三步都显式 `--incremental false`：`tsc` 时代的 tsbuildinfo 与它格式不同、不能沿用，而它冷跑本就很快
+ * （39 包 8 路并发实测约 3s），显式关掉顺带保证门禁不往仓库写任何缓存文件。
  */
-function typecheckGates(checker: TypeChecker): readonly Step[] {
-  if (checker === FAST_TYPE_CHECKER) {
-    return [
-      {
-        name: "tsc-rs (server)",
-        cmd: `${FAST_TYPE_CHECKER} --noEmit --incremental false`,
-        filter: filterTsc,
-        weight: 900,
-      },
-      {
-        name: "tsc-rs (web)",
-        cmd: `${FAST_TYPE_CHECKER} -p apps/web/tsconfig.json --noEmit --incremental false`,
-        filter: filterTsc,
-        weight: 1_200,
-      },
-      {
-        // 包级 tsconfig 逐个检查：根 `tsc` 与 web `tsc` 都**顺 import** 走，没有消费方的包/文件天然
-        // 落在检查之外。口径、并发与测试文件豁免的移除条件见 `scripts/typecheck-packages.ts` 头部。
-        name: "tsc-rs (packages)",
-        cmd: `bun run scripts/typecheck-packages.ts --bin ${FAST_TYPE_CHECKER}`,
-        filter: filterVerified("✓ typecheck-packages"),
-        weight: 4_000,
-      },
-    ];
-  }
-
+function typecheckGates(): readonly Step[] {
   return [
     {
-      name: "tsc (server)",
-      cmd: `tsc --noEmit ${tscIncrementalArgs("tsc-server")}`,
+      name: "tsc-rs (server)",
+      cmd: `${TYPE_CHECKER} --noEmit --incremental false`,
       filter: filterTsc,
-      weight: 8500,
+      weight: 900,
     },
     {
-      name: "tsc (web)",
-      cmd: `tsc -p apps/web/tsconfig.json --noEmit ${tscIncrementalArgs("tsc-web")}`,
+      name: "tsc-rs (web)",
+      cmd: `${TYPE_CHECKER} -p apps/web/tsconfig.json --noEmit --incremental false`,
       filter: filterTsc,
-      weight: 18_000,
+      weight: 1_200,
     },
     {
-      // 包级 tsconfig 逐个检查：根 `tsc` 与 web `tsc` 都**顺 import** 走，没有消费方的包/文件天然
+      // 包级 tsconfig 逐个检查：根与 web 两份程序都**顺 import** 走，没有消费方的包/文件天然
       // 落在检查之外。口径、并发与测试文件豁免的移除条件见 `scripts/typecheck-packages.ts` 头部。
-      name: "tsc (packages)",
+      name: "tsc-rs (packages)",
       cmd: "bun run typecheck:packages",
       filter: filterVerified("✓ typecheck-packages"),
-      weight: 24_000,
+      weight: 4_000,
     },
   ];
 }
-
-/** 预发布门禁的静态步骤（官方 `tsc`）。 */
-export const STATIC_GATES: readonly Step[] = staticGates("tsc");
-
-/** 快检的静态步骤（`tsc-rs`，探活失败时调用方回退到 `STATIC_GATES`）。 */
-export const FAST_STATIC_GATES: readonly Step[] = staticGates(FAST_TYPE_CHECKER);
 
 /**
  * 全量测试批次（预发布语义）。三批的划分口径是**测试根目录的归属**而非耗时：改动其中一个根目录即可

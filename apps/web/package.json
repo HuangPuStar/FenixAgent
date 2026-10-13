@@ -4,7 +4,7 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "typecheck": "tsc -p tsconfig.json --noEmit"
+    "typecheck": "tsc-rs -p tsconfig.json --noEmit --incremental false"
   },
   "dependencies": {
     "@fenix/agent-config": "workspace:*",

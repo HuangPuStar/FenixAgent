@@ -258,6 +258,6 @@ chat 簇的手写 CSS + 语义类名已全部迁成组件 `className` 里的 Tai
 bun run dev        # 启动 demo（固定端口 49917，strictPort：端口被占用时直接失败而不改端口）
 bun run build      # 构建 demo 到 dist/
 bun run preview    # 预览 demo 构建产物
-bun run typecheck  # tsc -p tsconfig.json --noEmit
+bun run typecheck  # tsc-rs -p tsconfig.json --noEmit --incremental false
 bun run test       # bun test
 ```
