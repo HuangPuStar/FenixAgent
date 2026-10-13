@@ -448,9 +448,9 @@ packages/resources/agent-config/db/data-migrations/
 | 控制台壳、导航、业务页面、品牌 | apps/web 壳 + resources 模块内的 `web/`；静态 contribution |
 | 其中「导航」的分工 | 分组定义与组间顺序归 **Shell**；导航项（id / groupId / order / i18n 命名空间 / labelKey / icon）与其文案归**各资源模块的 `web/contribution.ts`**——资源模块不得反向决定全局布局 |
 | 应用 HTTP、MCP/ACP/Webhook/SSE/WS | 模块 server route contribution + app 协议聚合 |
-| DB、数据迁移、日志、部署、系统管理 | 仓库级 `db/`、`deploy/`、`@fenix/logger` 与应用日志入口；模块显式贡献 |
+| DB、数据迁移、日志、部署、系统管理 | 仓库级 `db/`、`deploy/assembly/`、`docker/`、`@fenix/logger` 与应用日志入口；模块显式贡献 |
 
-因此，当前已知切面均有归属：领域能力走 resources/console，身份与授权走 platform，Agent 运行能力走单一 `@fenix/agent-runtime`，执行 adapter/provider 走对应模块，交付与治理走 apps/db/deploy/docs。最终结果必须满足下列一致性验收标准。
+因此，当前已知切面均有归属：领域能力走 resources/console，身份与授权走 platform，Agent 运行能力走单一 `@fenix/agent-runtime`，执行 adapter/provider 走对应模块，交付与治理走 apps/db/deploy/docker/docs。最终结果必须满足下列一致性验收标准。
 
 ## 10. 最终架构一致性验收标准
 
