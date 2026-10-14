@@ -27,6 +27,7 @@
 
 include:
     - path: docker/dev/docker-compose.litellm.yml
+    - path: docker/dev/docker-compose.hindsight.yml
 
 name: fenix
 

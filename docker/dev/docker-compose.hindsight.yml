@@ -1,0 +1,70 @@
+# docker/dev/ —— Hindsight 长期记忆服务（memory 模块使用）
+#
+# 本文件是**本地开发编排**，由仓库根 docker-compose.yml 通过 include 复制进同一个项目（fenix），
+# 用 `docker compose --profile hindsight up -d` 启动。生产形态是 docker/hindsight/。
+#
+# 与生产形态的差异只有两处：DASHSCOPE_API_KEY 由 `${VAR:?}` 改为 `${VAR:-}`（留空默认值），
+# 数据落 docker/dev/data/hindsight/pg0。模型 / 地址 / 批大小一字不改。
+# 为什么不是 `${VAR:?}`：**插值发生在 profile 过滤之前**，可选组件里的必填项会让整个项目解析失败，
+# 连「只起 rcs」的 `docker compose up -d` 都跑不动（已实测）。留空既保住默认启动，
+# 又不在 compose 里留下可填真值的形状（详见 docker/dev/README.md「密钥不要写进本目录」）。
+#
+# 网络：接入 fenix-server（rcs 按 HINDSIGHT_MCP_URL=http://hindsight:8888 访问容器内 API）。
+# 宿主端口只绑回环，供 bun run dev 与管理员浏览器访问控制台。
+#
+# 镜像定版：latest 在 2026-10-08 解析为 0.10.2；升级时与 docker/hindsight/ 一起改这一行。
+
+services:
+
+    hindsight:
+        image: ghcr.io/vectorize-io/hindsight:0.10.2
+        container_name: fenix-hindsight
+        profiles: ["hindsight"]
+        # 与生产一致（restart: none）：进程退出后不自动拉起，便于看到崩溃现场。
+        restart: none
+        networks:
+            - fenix-server
+        ports:
+            # API（= 平台 HINDSIGHT_MCP_URL 指向的端口，REST 路径为 /v1/default/banks/**）与控制台：
+            # 都只绑回环，容器之间走 fenix-server 的 8888。
+            - "127.0.0.1:${HINDSIGHT_API_HOST_PORT:-8888}:8888"
+            - "127.0.0.1:${HINDSIGHT_CP_HOST_PORT:-9999}:9999"
+        environment:
+            # LLM: 阿里云百炼（OpenAI 兼容格式）
+            HINDSIGHT_API_LLM_PROVIDER: openai
+            # 本行**故意留空**，不给假 Key 兜底：这是全部组件里唯一必须填真值的键，
+            # 留空就没有「可填真值的形状」，不会被顺手填进这里、随本文件推上去。
+            # 真 Key 写**仓库根 .env** 的 DASHSCOPE_API_KEY（被 .gitignore 忽略），插值会取到它。
+            # 不填的后果：hindsight 启动即报缺少 API Key（不会拿着假 Key 去撞 401）。
+            HINDSIGHT_API_LLM_API_KEY: ${DASHSCOPE_API_KEY:-}
+            HINDSIGHT_API_LLM_MODEL: qwen3.6-flash
+            HINDSIGHT_API_LLM_BASE_URL: https://dashscope.aliyuncs.com/compatible-mode/v1
+
+            # Embedding: 阿里云百炼 text-embedding-v4
+            # （原值末尾误带一个逗号，会让它变成字符串 "64,"，这里修正为 "64"）
+            ENV_EMBEDDINGS_OPENAI_BATCH_SIZE: "64"
+            HINDSIGHT_API_EMBEDDINGS_PROVIDER: openai
+            # 同上：真 Key 只写仓库根 .env 的 DASHSCOPE_API_KEY，本行不改。
+            HINDSIGHT_API_EMBEDDINGS_OPENAI_API_KEY: ${DASHSCOPE_API_KEY:-}
+            HINDSIGHT_API_EMBEDDINGS_OPENAI_MODEL: text-embedding-v4
+            HINDSIGHT_API_EMBEDDINGS_OPENAI_BASE_URL: https://dashscope.aliyuncs.com/compatible-mode/v1
+
+            # Reranker: 阿里云百炼 qwen3-rerank
+            HINDSIGHT_API_RERANKER_PROVIDER: alibaba
+            # 同上：真 Key 只写仓库根 .env 的 DASHSCOPE_API_KEY，本行不改。
+            HINDSIGHT_API_RERANKER_ALIBABA_API_KEY: ${DASHSCOPE_API_KEY:-}
+            HINDSIGHT_API_RERANKER_ALIBABA_MODEL: qwen3-rerank
+        volumes:
+            # 内嵌 PostgreSQL（pg0）数据目录：bind 到本文件同级的 ./data/（文档 §13 硬约束 8）。
+            # 容器以 UID 1000 的 hindsight 用户 rootless 运行，mount 目录属主不是 1000 时启动脚本会直接退出
+            # （镜像内 check_pg0_writable）。容器首次启动前先 `mkdir -p docker/dev/data/hindsight/pg0`；
+            # 若启动报这个错，见 docker/dev/README.md「排障」的属主处理。
+            - ./data/hindsight/pg0:/home/hindsight/.pg0
+
+networks:
+    # 网络名与仓库根编排逐字一致，且**不写 `external: true`**：include 是字段级合并，根文件声明了
+    # `name` 却没声明 `external`，子文件里的 `external: true` 会原样保留下来，`up` 直接报
+    # `network fenix-server declared as external, but could not be found`（已实测）。
+    # 本写法两边都成立：合并进根文件时与根文件的定义等价，单独解析时自己创建这张网。
+    fenix-server:
+        name: fenix-server
