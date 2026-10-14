@@ -41,6 +41,7 @@ export const NS = {
    */
   UI_COMPONENTS: "uiComponents",
   TRACE: "trace",
+  TICKETS: "tickets",
 } as const;
 
 export type Namespace = (typeof NS)[keyof typeof NS];

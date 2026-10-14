@@ -73,6 +73,7 @@ import { PROD_VIEWS_NS, prodViewsResources } from "@fenix/resource-prod-view/web
 import { SANDBOX_NS, sandboxResources } from "@fenix/resource-sandbox/web/i18n";
 import { SKILL_NS, skillResources } from "@fenix/resource-skill/web/i18n";
 import { TASKS_V2_NS, tasksV2Resources } from "@fenix/resource-task/web/i18n";
+import { TICKETS_NS, ticketsResources } from "@fenix/resource-tickets/web/i18n";
 import { TRACE_NS, traceResources } from "@fenix/resource-trace/web/i18n";
 import { WORKFLOW_NS, workflowResources } from "@fenix/resource-workflow-v2/web/i18n";
 import { uiComponentsResources } from "@fenix/ui-components/i18n";
@@ -144,6 +145,7 @@ const packageResources = {
     [SKILL_NS]: skillResources.en,
     [MCP_NS]: mcpResources.en,
     [TASKS_V2_NS]: tasksV2Resources.en,
+    [TICKETS_NS]: ticketsResources.en,
     [TRACE_NS]: traceResources.en,
     [WORKFLOW_NS]: workflowResources.en,
     [CHANNELS_NS]: channelsResources.en,
@@ -169,6 +171,7 @@ const packageResources = {
     [SKILL_NS]: skillResources.zh,
     [MCP_NS]: mcpResources.zh,
     [TASKS_V2_NS]: tasksV2Resources.zh,
+    [TICKETS_NS]: ticketsResources.zh,
     [TRACE_NS]: traceResources.zh,
     [WORKFLOW_NS]: workflowResources.zh,
     [CHANNELS_NS]: channelsResources.zh,

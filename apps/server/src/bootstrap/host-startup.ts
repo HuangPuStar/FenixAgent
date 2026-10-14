@@ -8,6 +8,7 @@ import {
   findModelLabelsByIds,
   getModelManagementModule,
 } from "@fenix/model-management/server";
+import type { BootstrapResult } from "@fenix/platform-sdk";
 import type { AssemblyProfile } from "@fenix/platform-sdk/assembly";
 import { getHermesClient, initHermesClient } from "@fenix/resource-channel/server";
 import { checkRagFlowHealth } from "@fenix/resource-knowledge/server";
@@ -69,6 +70,15 @@ const startupLog = createLogger("rcs");
 const SHUTDOWN_DEADLINE_MS = 10_000;
 
 /**
+ * 本次启动装配的结果句柄。
+ *
+ * 模块在 `create` 与贡献挂载期登记的 cleanup 只有 `dispose()` 能触发，而**宿主是唯一知道进程何时结束的
+ * 一方**：此前 `bootstrapServerAssembly()` 的返回值被丢弃，清理永不执行（T01 修复的缺口）。句柄在这里
+ * 落地后由两个调用点共享——正常关闭序与启动失败清理。
+ */
+let hostAssembly: BootstrapResult | undefined;
+
+/**
  * 把 `promise` 限制在 `deadline` 之前完成；超时记日志并放行后续阶段。
  *
  * 关闭不是「必须全部成功」的流程：一个阶段卡住时，继续关掉其它资源比整体挂死更有价值（进程仍会退出）。
@@ -87,12 +97,50 @@ function withShutdownDeadline<T>(promise: Promise<T>, phase: string, deadline: n
 }
 
 /**
+ * 释放本次启动装配登记的模块资源（按登记逆序、幂等）。
+ *
+ * 两个调用点共用它：正常关闭序与 {@link startHostRuntime} 的失败清理。`dispose` 在 platform-sdk 里用
+ * `??=` 缓存同一个 promise，因此两边都命中也只真正清理一次。
+ *
+ * 失败只记日志、不外抛——启动失败路径上外抛会顶掉原始错误，关闭序里外抛会跳过其后所有关闭步骤
+ * （缓存与 DB 都关不掉）。`deadline` 由调用方给出：关闭序与其余阶段共用同一份总预算。
+ */
+async function disposeHostAssembly(deadline: number): Promise<void> {
+  if (!hostAssembly) return;
+  try {
+    await withShutdownDeadline(hostAssembly.dispose(), "assembly", deadline);
+  } catch (error) {
+    startupLog.error("Failed to dispose module assembly", error instanceof Error ? error : undefined);
+  }
+}
+
+/**
  * 按关键序列与启动后编排完成全部启动步骤。
+ *
+ * 本函数是薄壳：工作都在 {@link runStartupSteps}，这里只保证**中途失败也释放已经建好的装配**。
+ * 启动失败时 `main.ts` 的顶层 await 直接抛出并退出进程，不会再走 `shutdownHostRuntime`，不在这里清理
+ * 就等于把模块登记的连接与定时器随进程一起丢弃。
+ */
+export async function startHostRuntime(
+  env: ServerEnv,
+  agentRuntime: AgentRuntimeHandles,
+  profile: AssemblyProfile,
+): Promise<void> {
+  try {
+    await runStartupSteps(env, agentRuntime, profile);
+  } catch (error) {
+    await disposeHostAssembly(Date.now() + SHUTDOWN_DEADLINE_MS);
+    throw error;
+  }
+}
+
+/**
+ * 启动步骤本体（与关闭序严格反向冻结）。
  *
  * `agentRuntime` 来自 `wireHostRuntime()`；`profile` 来自 `resolveAssemblyEnv()`，与 `env` 同一次解析，
  * 透传进装配避免重复读文件（profile 路径由发布入口固定，两侧解析结果必然相同）。
  */
-export async function startHostRuntime(
+async function runStartupSteps(
   env: ServerEnv,
   agentRuntime: AgentRuntimeHandles,
   profile: AssemblyProfile,
@@ -115,7 +163,10 @@ export async function startHostRuntime(
       //
       // 时机不变：模型网关与 builtin 都会查询资源授权，装配必须在业务资源初始化前完成；本步骤仍在关键
       // 启动序列内、`initDb` 之后（`getDatabase()` 此时可用）。
-      await bootstrapServerAssembly({ profile, mountContribution: mountServerRouteContribution });
+      //
+      // 返回值必须落在 `hostAssembly` 上：模块登记的 cleanup 只有它的 `dispose()` 能触发，关闭序与启动
+      // 失败清理都经那个句柄释放；丢弃返回值等于这些资源永远不释放。
+      hostAssembly = await bootstrapServerAssembly({ profile, mountContribution: mountServerRouteContribution });
     },
     initModelGateway: async () => {
       registerConfiguredSandboxProviders();
@@ -266,6 +317,9 @@ export async function shutdownHostRuntime(agentRuntime: AgentRuntimeHandles): Pr
   stopFileWsSweep();
   closeAllFileWsConnections();
   await withShutdownDeadline(runtimeDrain, "runtimes", deadline);
+  // 装配释放的时机：晚于 runtime drain（在途会话先结束，避免模块在仍有调用时空转），早于 cache 与 DB
+  // ——模块 cleanup 可能仍要读写这两者。
+  await disposeHostAssembly(deadline);
   await withShutdownDeadline(closeCache(), "cache", deadline);
   await withShutdownDeadline(pgClient.end(), "database", deadline);
 }

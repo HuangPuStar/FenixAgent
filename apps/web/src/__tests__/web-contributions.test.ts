@@ -20,6 +20,7 @@ import { MCP_NS, mcpResources } from "@fenix/resource-mcp/web/i18n";
 import { HINDSIGHT_NS, hindsightResources } from "@fenix/resource-memory/web/i18n";
 import { SKILL_NS, skillResources } from "@fenix/resource-skill/web/i18n";
 import { TASKS_V2_NS, tasksV2Resources } from "@fenix/resource-task/web/i18n";
+import { TICKETS_NS, ticketsResources } from "@fenix/resource-tickets/web/i18n";
 import { WORKFLOW_NS, workflowResources } from "@fenix/resource-workflow-v2/web/i18n";
 import { generatedWebContributions } from "../../../generated/web-contributions";
 
@@ -35,6 +36,9 @@ const DICTIONARIES = new Map<string, { readonly en: unknown; readonly zh: unknow
   [MCP_NS, mcpResources],
   [TASKS_V2_NS, tasksV2Resources],
   [HINDSIGHT_NS, hindsightResources],
+  // tickets 的导航只出现在含工单的装配产物里（`deploy/assembly/ce-tickets.json`），默认产物下这条
+  // 登记不参与断言；漏登记时症状是工单构建下文案整片回退成 key，而默认构建看不见。
+  [TICKETS_NS, ticketsResources],
 ]);
 
 /** 把嵌套字典摊平成点号路径，与各包 `*-i18n.test.ts` 的口径一致。 */

@@ -22,7 +22,7 @@ import { PLUGIN_MARKET_NS, pluginMarketResources } from "@fenix/resource-plugin-
 import { createMemoryHistory, createRouter } from "@tanstack/react-router";
 
 import { routeTree } from "../routeTree.gen";
-import { ASSEMBLED_NAV_GROUPS, panelRoutePath } from "../shell/shell-navigation";
+import { ASSEMBLED_NAVIGATION, panelRoutePath } from "../shell/shell-navigation";
 
 const HOST = resolve(import.meta.dir, "..");
 
@@ -37,7 +37,10 @@ const router = createRouter({
 });
 
 /** 侧栏全部导航项的 id。 */
-const NAV_IDS = ASSEMBLED_NAV_GROUPS.flatMap((group) => group.items.map((item) => item.id));
+const NAV_IDS = [
+  ...ASSEMBLED_NAVIGATION.groups.flatMap((group) => group.items.map((item) => item.id)),
+  ...ASSEMBLED_NAVIGATION.footer.map((entry) => entry.id),
+];
 
 /** 合并后的页面（宿主路由壳）。 */
 const MERGED_ROUTE_SOURCE = readFileSync(join(HOST, "routes/agent/_panel/mcp.tsx"), "utf8");
