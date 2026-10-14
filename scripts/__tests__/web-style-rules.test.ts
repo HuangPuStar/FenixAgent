@@ -5,7 +5,7 @@ import { classifyClassToken, findWebStyleViolations, splitTopLevel } from "../li
 /**
  * 规则口径的自测。
  *
- * 规则由 `docs/developer/guide/forbidden-code-patterns.md` 定义，这里是它的执行锚点：
+ * 规则由 `docs/developer/system/forbidden-code-patterns.md` 定义，这里是它的执行锚点：
  * 反例、正例、优先级、扫描单位（字符串字面量而非整文件）四条都锁住，
  * 任何一次「放宽判定」都必须先改这些用例，改不动就说明是在放松门禁。
  */

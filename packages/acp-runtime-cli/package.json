@@ -17,7 +17,7 @@
   ],
   "scripts": {
     "build": "bun build src/bin.ts --outfile dist/bin.js --target=bun --minify",
-    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "typecheck": "tsc-rs -p tsconfig.json --noEmit --incremental false",
     "prepublishOnly": "bun run build"
   },
   "devDependencies": {

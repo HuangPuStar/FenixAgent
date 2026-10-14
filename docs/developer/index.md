@@ -22,8 +22,12 @@ graph LR
     D --> E[知识库]
 ```
 
-1. **[系统提示词](./guide/system-prompt)** — 学会通过 prompt 和指令文件塑造 Agent 行为
-2. **[Skill 开发](./guide/skill-development)** — 编写自定义 Skill，让 Agent 掌握新的工作流程
-3. **[多智能体协作](./guide/multi-agent)** — 配置主 Agent 和子 Agent，让多个角色协同工作
-4. **[MCP 工具集成](./guide/mcp-integration)** — 通过 MCP 协议连接外部工具和服务
-5. **[知识库](./guide/knowledge-base)** — 为 Agent 构建私有知识检索能力
+1. **[系统提示词](./agent/system-prompt)** — 学会通过 prompt 和指令文件塑造 Agent 行为
+2. **[Skill 开发](./agent/skill-development)** — 编写自定义 Skill，让 Agent 掌握新的工作流程
+3. **[多智能体协作](./agent/multi-agent)** — 配置主 Agent 和子 Agent，让多个角色协同工作
+4. **[MCP 工具集成](./agent/mcp-integration)** — 通过 MCP 协议连接外部工具和服务
+5. **[知识库](./agent/knowledge-base)** — 为 Agent 构建私有知识检索能力
+## 系统开发与集成
+
+- [后端开发规范](./system/backend-development) 与[前端开发规范](./system/frontend-development)：开发和维护 FenixAgent 本身。
+- [External API](./system/external-api) 与[Agent 管理与会话说明](./system/external-agent-session-guide)：将外部系统接入 FenixAgent。

@@ -34,7 +34,7 @@
 
 例如关闭新工作流：从部署 profile 的 `resources` 移除 `workflow-v2`，同时从 `web` 移除 `workflow`（两种 ID 不同），重启服务。未移除 web 引用会按既有 registry 规则启动失败，而非悄悄修正。`apps/server/src/__tests__/fixtures/assembly-without-workflow.json` 用于前后端测试示范，默认 `ce.json` 不变；旧 `workflow` 资源模块与新 `workflow-v2` 是独立模块，本机制不改变旧 API。关闭工单同理：`data.web` 不再含 `tickets`，含工单的 bundle 据此隐藏入口并拦截 `/agent/tickets/*`；默认 bundle 里没有该贡献，自然也没有入口。
 
-`docker/deploy.env` 的 `FENIX_FEATURE_*` 仍属于部署服务开关，不自动映射装配 profile。长期决策见 `docs/adr/2026-10-08-assembly-capability-gate.md`。
+`docker/deploy.env` 的 `FENIX_FEATURE_*` 仍属于部署服务开关，不自动映射装配 profile。长期架构约束见 `docs/arch/26-deployment-topology.md`。
 
 ## 与生成 registry 的关系
 

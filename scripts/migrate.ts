@@ -16,7 +16,7 @@ import { Client, Pool } from "pg";
  *
  * 历史 db:push 建立的库（没有 `drizzle."__drizzle_migrations"` 记录）需要一次显式的基线化，前置步骤见
  * `drizzle/README.md` 场景五。本脚本不做自动基线化：判断「库结构与迁移链是否真的等价」需要结构比对，
- * 而脚本按 `docs/design/ce-ee-refactoring/ce-ee-engineering-standards.md` §8 只做薄编排——猜错方向会把
+ * 而脚本按 `docs/developer/architecture/engineering-standards.md` §8 只做薄编排——猜错方向会把
  * 缺失的结构当成已应用。
  */
 

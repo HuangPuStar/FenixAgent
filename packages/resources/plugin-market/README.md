@@ -18,7 +18,7 @@
 
 ## 依赖边界
 
-本包属 `resources` 类别，依赖矩阵禁止 `resources → platform-impl`：源码里的 `@fenix/*` 说明符**实测只有** `@fenix/platform-sdk`（含 `/server`、`/testing`）、本包 `./db`、`@fenix/ui-components/*`（10 个子路径）与 `@fenix/web-runtime/{api/request,types/config}`——不导入 `@fenix/identity/*` 或 `@fenix/access-control/*`，授权走注入端口、身份展示经窄契约。`db/schema.ts` 按外键目标导入 `@fenix/identity/db` 的 `user` 表对象，属迁移链层面的列对象来源（组装期例外，口径见 `docs/design/ce-ee-refactoring/ce-ee-engineering-standards.md` §6.1），因此 `package.json` 必须声明 `@fenix/identity` 但不进 `dependsOn`。实测 `grep -rn 'from "@server/' src web fenix.module.ts` → **0 条**，包内不读 `process.env`（`grep -rn "process\.env"` → 仅 1 条注释）。
+本包属 `resources` 类别，依赖矩阵禁止 `resources → platform-impl`：源码里的 `@fenix/*` 说明符**实测只有** `@fenix/platform-sdk`（含 `/server`、`/testing`）、本包 `./db`、`@fenix/ui-components/*`（10 个子路径）与 `@fenix/web-runtime/{api/request,types/config}`——不导入 `@fenix/identity/*` 或 `@fenix/access-control/*`，授权走注入端口、身份展示经窄契约。`db/schema.ts` 按外键目标导入 `@fenix/identity/db` 的 `user` 表对象，属迁移链层面的列对象来源（组装期例外，口径见 `docs/developer/architecture/engineering-standards.md` §6.1），因此 `package.json` 必须声明 `@fenix/identity` 但不进 `dependsOn`。实测 `grep -rn 'from "@server/' src web fenix.module.ts` → **0 条**，包内不读 `process.env`（`grep -rn "process\.env"` → 仅 1 条注释）。
 
 ## 环境变量
 

@@ -12,7 +12,7 @@
 
 | 功能 | 简述 | 状态 | 相关链接 |
 | --- | --- | --- | --- |
-| 工程架构重构（模块化与静态装配） | 按领域模块收敛依赖，并以静态装配完成应用组合与启动校验。 | 推进中 | [CE / EE 工程架构设计](./docs/design/ce-ee-refactoring/ce-ee-engineering-architecture.md) |
+| 工程架构重构（模块化与静态装配） | 按领域模块收敛依赖，并以静态装配完成应用组合与启动校验。 | 推进中 | [系统架构开发指引](./docs/developer/architecture/index.md) |
 | Coze 工作流引擎切换 | 接入 Coze 工作流画布与引擎，并保持平台身份、权限和运行时边界。 | 推进中 | [Workflow V2 架构](./docs/arch/25-workflow-v2.md) |
 | Langfuse 接入 | 建立 Agent 与 Workflow 的端到端运行观测能力。 | 下一阶段 | — |
 | Langfuse 可视化 | 在控制台提供观测数据的查看与排障入口。 | 下一阶段 | — |

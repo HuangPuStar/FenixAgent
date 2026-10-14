@@ -51,4 +51,4 @@ CE 默认的资源范围与动作授权实现，以及把授权条件下推到 S
 升级库静默丢失公开共享语义，因此 DROP 推迟到下一个发布
 （回填记入 `data_migrate_record` 之后）。
 
-理由与执行条件见 `docs/design/ce-ee-refactoring/ce-access-control-design.md` §6.2。
+理由与执行条件见 `docs/developer/architecture/access-control.md` §6.2。

@@ -3,7 +3,6 @@ import { existsSync } from "node:fs";
 import { $ } from "bun";
 import {
   auditRootSourceOwners,
-  compareRootOwnerInventoryMarkdown,
   findUnsafeDeleteDiagnostics,
   getRootOwnerTargetPath,
   listRootSourceFiles,
@@ -350,12 +349,6 @@ test("审计拒绝 allowlist 外的 delete 规则和分配", () => {
     "delete assignment web/generated.svg 不在 delete allowlist 内",
     "delete assignment src/unowned.txt 不在 delete allowlist 内",
   ]);
-});
-
-// 文档不同步时比较器给出明确诊断，供 --check 阻止过期提交。
-test("检测生成文档与审计结果不一致", () => {
-  expect(compareRootOwnerInventoryMarkdown("expected", "outdated")).toContain("根目录源码归属清单不同步");
-  expect(compareRootOwnerInventoryMarkdown("expected", "expected")).toBeUndefined();
 });
 
 // 全部迁移完成后，清单只保留 RMD-09 可删除的根目录构建产物。

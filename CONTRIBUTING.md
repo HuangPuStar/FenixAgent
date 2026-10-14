@@ -24,8 +24,8 @@
 - [README.md](README.md)：项目介绍与快速开始
 - [CLAUDE.md](CLAUDE.md)：全局补充约束与项目级细节说明
 - [DESIGN.md](DESIGN.md)：更高层的产品与设计背景
-- [前端开发规范](docs/developer/guide/frontend-development.md)：前端目录结构、路由导航、状态管理、组件、API、i18n 和样式规范
-- [后端开发规范](docs/developer/guide/backend-development.md)：后端目录分层、数据库、API、注释和日志规范
+- [前端开发规范](docs/developer/system/frontend-development.md)：前端目录结构、路由导航、状态管理、组件、API、i18n 和样式规范
+- [后端开发规范](docs/developer/system/backend-development.md)：后端目录分层、数据库、API、注释和日志规范
 - [drizzle/README.md](drizzle/README.md)：Drizzle 迁移合并、冲突处理与数据迁移边界说明
 
 ## 开发前准备
@@ -168,12 +168,12 @@ MCP 服务器资源管理使用控制台 `/web/config/mcp` 与已发布的 `/api
 
 ### 前端
 
-- 详细规范参考 [前端开发规范](docs/developer/guide/frontend-development.md)。
+- 详细规范参考 [前端开发规范](docs/developer/system/frontend-development.md)。
 - 涉及页面结构、交互语义和产品设计背景时，补充参考 [DESIGN.md](DESIGN.md)。
 
 ### 后端
 
-- 详细规范参考 [后端开发规范](docs/developer/guide/backend-development.md)。
+- 详细规范参考 [后端开发规范](docs/developer/system/backend-development.md)。
 - 迁移合并、节点压缩、生产冲突处理和数据迁移边界，补充参考 [drizzle/README.md](drizzle/README.md)。
 
 ## 测试与质量检查
@@ -184,7 +184,7 @@ MCP 服务器资源管理使用控制台 `/web/config/mcp` 与已发布的 `/api
 bun run precheck
 ```
 
-`bun run fastcheck` 是同一套静态门禁 + 仅受影响测试的快检，供改一处跑一次的迭代节奏使用：类型检查用 `tsc-rs` 加速（探活失败自动回退官方 `tsc`；发布门禁 `precheck` 始终用官方 `tsc`），加 `--no-tests` 可退化为纯静态快检。它**不替代** `bun run precheck`——宿主侧集成回归只有全量三批测试能覆盖。
+`bun run fastcheck` 是同一套静态门禁 + 仅受影响测试的快检，供改一处跑一次的迭代节奏使用：类型检查与 `precheck` 共用同一个 `tsc-rs`（本仓唯一的类型检查器，只发布 linux / macOS / Windows × x64 / arm64 六个平台的二进制），加 `--no-tests` 可退化为纯静态快检。它**不替代** `bun run precheck`——宿主侧集成回归只有全量三批测试能覆盖。
 
 如开发环境提供 `fenix-code-review` 等审查能力，可作为提交前的可选辅助；它不能替代 `bun run precheck`、受影响前端的 `bun run build:web`、数据库迁移或文档构建验证。
 

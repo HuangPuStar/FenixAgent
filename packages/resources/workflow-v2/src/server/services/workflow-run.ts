@@ -7,7 +7,7 @@
  * `execute_id`/`token`/`cost`，异步只返回 `execute_id`/`debug_url`。
  *
  * 为什么归属没有在这里判：上游 `checkUserSpace` 只校验「PAT 所属用户属于该 workflow 的 space」，**不校验
- * workflow ↔ App/组织的归属**——多租户隔离完全由本地注册表在路由层兜住（ADR §4）。本模块只负责「怎么调、
+ * workflow ↔ App/组织的归属**——多租户隔离完全由本地注册表在路由层兜住。本模块只负责「怎么调、
  * 怎么归一化」，输入里的上游 workflow ID 已由调用方按组织谓词解析过。
  *
  * 响应口径：`/api/*` 面归一化为**域形状**（`{ executeId, data, token, cost, debugUrl }`，字段缺失为 null 不省略

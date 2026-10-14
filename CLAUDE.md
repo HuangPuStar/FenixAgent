@@ -1,31 +1,48 @@
 # CLAUDE.md
 
-## 核心工程原则
+## 核心工程原则 v1.6
+
+架构设计关注点
 
 1. **架构与领域优先**：计划阶段应以理想架构为目标，明确业务目标、领域边界、模块职责、依赖方向和数据流，形成符合领域规律、面向长期维护且可持续演进的设计后再进入编码；不得以短期实现便利牺牲整体设计。设计必须完整，实现应当克制：不做推测性抽象，抽象延迟到第二个真实用例出现时才引入，单一场景直接实现。
 2. **追求优雅的代码模块**：模块应高内聚、低耦合，通过精简且稳定的接口封装内部复杂度，使职责、命名、依赖和扩展方式清晰自然；代码按单一职责拆分，单个文件不得超过 500 行，接近上限时应优先重构模块边界。
-3. **保持边界与数据流清晰**：协议模型、领域模型、持久化模型和视图模型不得相互泄漏；数据必须在边界处完成校验和独立转换，避免跨层共享可变状态。
-4. **安全与隔离默认开启**：所有功能均按多租户、多用户场景设计，明确认证、授权和数据隔离边界；遵循最小权限原则，任何外部输入均视为不可信，敏感信息不得进入代码、日志或响应。
-5. **面向并发与故障设计**：后端应主动考虑幂等性、竞态、事务边界、超时、取消、重试、背压和资源释放；不得通过无边界重试、吞错或隐式共享状态掩盖问题。
-6. **保障完整前端体验**：前端应控制渲染成本、异步状态和并发请求，保持清晰的 UI 结构；用户流程必须覆盖加载、空状态、错误、重试、反馈和可访问性。
-7. **复用稳定的业务语义**：优先复用已有模块和能力，但不要仅因代码外形相似而过早抽象；确需重复时，必须注释说明其独立演进或暂不抽象的原因。新增依赖前先核查项目已有依赖（根 `package.json` 与 `packages/` workspace）能否满足需求，不得臆断已有库缺少功能——先查阅文档和类型定义；确需引入时优先成熟且维护良好的库，不重复实现通用功能。
-8. **克制地为未来维护者保留上下文**：代码、注释、测试和架构文档是跨越时间的协作媒介。非显然的设计决策、兼容约束、已知缺陷和临时方案，必须记录原因、影响范围、潜在风险及移除条件；技术债务应关联可追踪任务，关键架构决策应同步到 ADR，禁止留下缺少上下文的 `TODO`。文风克制，言简意赅，一般 2 句话内写完。
-9. **确保变更可验证、可观测、可回滚**：每项改动都应行为可测试、运行状态可观测、故障可定位，并兼顾向后兼容和回滚路径；错误与日志必须保留诊断上下文，但不得泄露敏感信息。
-10. **删除优于兼容**：内部路径重构时直接删除过时实现，禁止新增兼容层、deprecated shim 或双写逻辑；对外契约（`/api/*` 等稳定接口、数据库迁移）的兼容性按协议契约单独评估，属于合同义务而非迁就旧代码。
+3. **业务规则单一权威，保持边界与数据流清晰**：协议模型、领域模型、持久化模型和视图模型不得相互泄漏；数据必须在边界处完成校验和独立转换，避免跨层共享可变状态。
+4. **设计架构灵活性，而非强耦合**：同一领域规则只维护一份设计 interface，使用多个 adapter 封装适配差异，共用业务规则与契约。
+5. **数据库表结构须经用户明确批准**：设计变更需要说明表及结构的合理性，由用户裁决。减少不必要的表结构字段设计。
+6. **异常处理：暴露异常优于简单掩盖**：默认的错误处理方式都是抛出原始错误，不加掩饰更不可替换，由上层处理，并在日志中留下记录。
+
+开发关注点
+
+1. **面向并发与故障设计**：后端应主动考虑幂等性、竞态、事务边界、超时、取消、重试、背压和资源释放；不得通过无边界重试、吞错或隐式共享状态掩盖问题。
+2. **复用已有组件，而非自己开发**：严格复用项目中已有组件及模块，在需要新增模块或者组件时，考虑开源生态中的常用解决方案，向用户提出，准许后执行。
+3. **优先验证完整行为，保障完整前端体验**：先验证用户可观察的行为，再按风险补齐回归、失败和生命周期测试。前端应控制渲染成本、异步状态和并发请求，保持清晰的 UI 结构；用户流程必须覆盖加载、空状态、错误、重试、反馈和可访问性。
+4. **克制地为未来维护者保留上下文**：代码、注释、测试和架构文档是跨越时间的协作媒介。非显然的设计决策、兼容约束、已知缺陷和临时方案，必须记录原因、影响范围、潜在风险及移除条件；技术债务应关联可追踪任务，落地后仍有效的架构事实、契约与约束应同步到 `docs/arch/`，禁止留下缺少上下文的 `TODO`。文风克制，言简意赅，一般 2 句话内写完。
+5. **安全与隔离默认开启**：所有功能均按多租户、多用户场景设计，明确认证、授权和数据隔离边界；遵循最小权限原则，任何外部输入均视为不可信，敏感信息不得进入代码、日志或响应。
+
+测试关注点
+
+1. **测试顺序是快速验证为先，集成测试为后**：先测局部，后测全局。
+2. **确保变更可验证、可观测、可回滚**：每项改动都应行为可测试、运行状态可观测、故障可定位，并兼顾向后兼容和回滚路径；错误与日志必须保留诊断上下文，但不得泄露敏感信息。
+3. **修复一类问题，而不是一个问题**：当反馈问题时，首先应该思考这类型的原因触发的位置，快速定位错误方向，手术刀式解决问题。
+4. **用户反馈的问题，需要特别注意留存文档**
+
+重构关注点
+
+1. **删除优于兼容**：内部路径重构时直接删除过时实现，禁止新增兼容层、deprecated shim 或双写逻辑；对外契约的兼容性按协议契约单独评估，属于合同义务而非迁就旧代码。
 
 > **变更速查**：单任务收尾跑 `bun run fastcheck`（静态门禁 + 受影响测试的快速验证），提交前跑 `bun run precheck`（预发布全量门禁）；修改前端后额外运行 `bun run build:web`；修改 schema 后运行 `bun run db:generate --name <module>-<change>` 和 `bun run db:migrate`；涉及存量数据搬迁、修复或回填时，DDL 后还要运行 `bun run run-data-migrations`。
 
 ## 文档使用与规范入口
 
 - 汇报风格：用户有阅读障碍，需要你减少汇报字数，多多使用 order list 结构化表达。
-- 前端开发规范：`docs/developer/guide/frontend-development.md`
+- 前端开发规范：`docs/developer/system/frontend-development.md`
   - 覆盖目录结构、路由、状态管理、组件、API、i18n、样式和安全规范。
   - 前端标准使用 tailwind CSS 标准类名，不得自造，不得额外使用非必须 CSS 文件。
-- 后端开发规范：`docs/developer/guide/backend-development.md`
+- 后端开发规范：`docs/developer/system/backend-development.md`
   - 覆盖目录分层、数据库、API、注释、日志和架构文档规范。
-- 架构说明：`docs/arch/`；设计方案：`docs/design/`；运维说明：`docs/operations/`（部署、升级、迁移、备份、排障）；关键且长期有效的架构决策应记录为 ADR（`docs/adr/`）。
+- 当前架构事实、稳定契约与长期约束：`docs/arch/`；设计方案：`docs/design/`；运维说明：`docs/operations/`（部署、升级、迁移、备份、排障）。
 - 本文件只维护跨模块工程原则、关键工作流、架构契约和项目特有不变量，具体实现细则应下沉到离代码更近的规范。
-- 与 `docs/design/ce-ee-refactoring/ce-ee-engineering-standards.md` 冲突时，以该目标架构规范为准；其他规则以离代码更近、约束更具体者为准。若文档与代码不一致，先核实设计意图并同步修正文档，不得静默沿用冲突规则。
+- 与 `docs/developer/architecture/engineering-standards.md` 冲突时，以该工程架构规范为准；其他规则以离代码更近、约束更具体者为准。若文档与代码不一致，先核实设计意图并同步修正文档，不得静默沿用冲突规则。
 
 ## 项目与架构地图
 
@@ -33,7 +50,7 @@ FenixAgent 是基于 Elysia + Bun 的多租户 ACP Agent 平台，前端使用 R
 
 - 主要能力：组织与多租户、Agent 配置、ACP 实时通信、工作流、知识库、定时任务和 IM 通道。
 - 根目录 `package.json` 是前后端统一依赖清单；`apps/web/` 是前端应用入口、Vite 配置、前端业务实现与构建产物。
-- `packages/` 是 Bun workspace，按职责分为四类：`platform/*`（`platform-sdk` 稳定契约 + `identity` / `access-control` 两个有状态平台实现）、`agent-runtime`、`resources/*`、以及独立 SDK/插件包。跨包能力应通过包导出的稳定接口复用，不得依赖包内实现细节；类别之间的允许方向见 `docs/design/ce-ee-refactoring/ce-ee-engineering-standards.md` §2.3 的依赖矩阵，由 `bun run check:dependencies` 与 `bun run architecture:check` 强制。
+- `packages/` 是 Bun workspace，按职责分为四类：`platform/*`（`platform-sdk` 稳定契约 + `identity` / `access-control` 两个有状态平台实现）、`agent-runtime`、`resources/*`、以及独立 SDK/插件包。跨包能力应通过包导出的稳定接口复用，不得依赖包内实现细节；类别之间的允许方向见 `docs/developer/architecture/engineering-standards.md` §2.3 的依赖矩阵，由 `bun run check:dependencies` 与 `bun run architecture:check` 强制。
 
 ### 后端地图
 
@@ -61,7 +78,7 @@ FenixAgent 是基于 Elysia + Bun 的多租户 ACP Agent 平台，前端使用 R
 2. 查找已有实现、公共接口和相邻模块，优先深化现有模块，不并行创建第二套能力。
 3. 明确多租户隔离、权限校验、并发与失败路径。
 4. 定义验证方式、可观测信号和回滚路径。
-5. 涉及长期架构决策时同步规划 `docs/arch/`、`docs/design/` 或 ADR 更新。
+5. 涉及长期架构变更时，同步规划其落地后仍有效的事实、契约与约束到 `docs/arch/`；未完成或待评审方案放入 `docs/design/`。
 6. 大功能按可运行的垂直切片分阶段交付：每层从最小端到端版本起步，保持可测试、可观测、可回滚，不一次性铺完整层再联调。
 
 ### 任务范围
@@ -89,14 +106,14 @@ bun run run-data-migrations         # 执行已登记的存量数据迁移
 - 前端改动：运行相关 `bun test apps/web/src/__tests__/<file>.test.ts` 和 `bun run build:web`，完成后运行 `bun run precheck`；生产构建不可省略，因为后端从 `apps/web/dist/` 挂载静态资源。
 - 数据库改动：生成并审查迁移，执行 `bun run db:migrate`；涉及存量数据变更时再执行 `bun run run-data-migrations`，然后运行相关测试和 `bun run precheck`。
 - 文档站点改动：运行 `bun run docs:build`。
-- 迭代中可用 `bun run fastcheck` 快检（静态门禁与 precheck 同源，类型检查用 `tsc-rs`，探活失败自动回退官方 `tsc`；测试只跑本次改动影响到的范围）；它不替代 `precheck`：宿主侧集成回归只有三批全量测试能覆盖。
+- 迭代中可用 `bun run fastcheck` 快检（静态门禁与 precheck 同源、同一个 `tsc-rs` 类型检查器；测试只跑本次改动影响到的范围）；它不替代 `precheck`：宿主侧集成回归只有三批全量测试能覆盖。
 - 常规任务提交前 `precheck` 必须全绿。`precheck` 已覆盖 server、script、package 与 web 测试，但不能替代前端生产构建。
 
 ## 架构边界与模块契约
 
 ### 后端分层
 
-新增与重写后端代码以 `docs/developer/guide/backend-development.md` 为准：外部动作经 Resource Facade 完成授权、状态校验与编排；Domain Service 不接收 actor；Repository 只封装持久化与事务原语；route 仅作协议适配且不直接访问 db。资源 schema 与 route 归各自 owner 包，宿主仅聚合协议入口。
+新增与重写后端代码以 `docs/developer/system/backend-development.md` 为准：外部动作经 Resource Facade 完成授权、状态校验与编排；Domain Service 不接收 actor；Repository 只封装持久化与事务原语；route 仅作协议适配且不直接访问 db。资源 schema 与 route 归各自 owner 包，宿主仅聚合协议入口。
 
 ### API 与数据模型边界
 
@@ -111,7 +128,7 @@ bun run run-data-migrations         # 执行已登记的存量数据迁移
 ### 前端边界与体验
 
 - 导航只使用 `<Link to>` 和 `useNavigate()`；禁止 `window.location.href`、`window.location.replace`、`window.location.reload` 和 `window.history.pushState`。Sidebar 导航项由各包 contribution 声明 `id`（`id` 即路由目标，Shell 拼成 `/agent/<id>`），没有 `to` 字段（见前端规范 §2.6）。
-- 请求统一通过 `@fenix/web-runtime/api/request`（真身 `packages/web-runtime/web/api/request.ts`）；`request<T>()` 处理路径参数、query、JSON、超时与错误标准化，但**返回 `ApiResponse` 而非已解包数据**——失败时返回 `{ success: false }` 而不 throw，调用方必须 `unwrap()` 或显式判断 `success`；直接 `await` 并依赖 `catch`/`onError` 会把 4xx/5xx 当成成功（目标为单一异常语义，登记见 `docs/design/ce-ee-refactoring/ce-ee-engineering-standards.md` §11「优化项」）。
+- 请求统一通过 `@fenix/web-runtime/api/request`（真身 `packages/web-runtime/web/api/request.ts`）；`request<T>()` 处理路径参数、query、JSON、超时与错误标准化，但**返回 `ApiResponse` 而非已解包数据**——失败时返回 `{ success: false }` 而不 throw，调用方必须 `unwrap()` 或显式判断 `success`；直接 `await` 并依赖 `catch`/`onError` 会把 4xx/5xx 当成成功（目标为单一异常语义，登记见 `docs/developer/architecture/engineering-standards.md` §11「优化项」）。
 - 数据获取优先遵循前端规范和现有 `ahooks` / `useRequest` 模式，避免重复请求与竞态覆盖。
 - 用户可见字符串必须通过 `t()`；i18n 插值使用 `{{var}}`，单花括号 `{var}` 会被当作字面文本。
 - 基础组件优先复用 `@fenix/ui-components/ui/<name>`（该包无根出口，逐文件子路径）；通用图标使用 `lucide-react`；模型品牌图标使用 `packages/resources/model-management/web/components/model-icon/ModelIcon.tsx`。
@@ -124,7 +141,7 @@ bun run run-data-migrations         # 执行已登记的存量数据迁移
 Agent 通信分为三种明确场景，底层 relay 与 ACP 消息规则必须复用，不得再创建独立 JSON-RPC 协议栈。
 
 | 场景 | 权威实现 | 生命周期 |
-|------|----------|----------|
+| ------ | ---------- | ---------- |
 | HTTP / 程序化单轮调用 | `packages/agent-runtime/src/routes/api/openai-chat.ts` → `packages/agent-runtime/src/services/agent-chat-service.ts` | `openAgentSession` 解析并确保当前用户的持久 `api/primary` Instance runtime；每次请求创建独立 relay/ACP session/turn，dispose 只释放请求资源，不停止 runtime |
 | Workflow | `packages/resources/workflow/src/server/services/workflow/agent-chat-transport.ts` | 解析并确保当前用户的持久 `workflow/primary` Instance runtime，通过 lease 保护并发 run；每个节点使用独立 relay/ACP session/turn |
 | 前端交互式 Chat | `packages/chat-channel/src/channel/`（`@fenix/agent-runtime` 装配 `packages/agent-runtime/src/server/services/chat-channel-bootstrap.ts`） | 使用共享 relay、Y.Doc 状态和独立 session 生命周期；复用 `connectAgentRelay` 与 `@fenix/chat-channel` translator |
@@ -190,7 +207,7 @@ Agent 通信分为三种明确场景，底层 relay 与 ACP 消息规则必须�
 
 - **一张表的定义只在一个 owner 手里**：业务表定义在所属模块的 `packages/**/db/schema.ts`（经该包 `exports["./db"]` 公开，如 `@fenix/resource-task/db`），身份表在 `packages/platform/identity/db/schema.ts`；宿主 `apps/server/src/db/schema.ts` 只保留身份表转出、`data_migrate_record` 与仍在清理中的旧授权表。改哪张表就到它的 owner 包改，不得在宿主或别的包复制一份。`drizzle.config.ts` 的 `schema` 必须声明**全部** owner 包路径与宿主 schema，否则 `db:generate` 会把漏声明的一族误判为已删除。
 - 表定义换手不得改变 DDL：`bun run check:schema-ddl-drift` 比对「`drizzle.config.ts` 声明的 schema 集合 → 最新 snapshot」的差异，必须为零。
-- 跨包外键（表 A 的列引用别包表 B 的主键）只允许在 `db/**` 的**组装期**导入 B 的表对象（Drizzle `.references()` 只接受列对象），例外口径见 `docs/design/ce-ee-refactoring/ce-ee-engineering-standards.md` §6.1；`src/**`、`web/**` 的调用期跨包读表一律违规，必须改经该 owner 的公开服务端入口或宿主注入端口。
+- 跨包外键（表 A 的列引用别包表 B 的主键）只允许在 `db/**` 的**组装期**导入 B 的表对象（Drizzle `.references()` 只接受列对象），例外口径见 `docs/developer/architecture/engineering-standards.md` §6.1；`src/**`、`web/**` 的调用期跨包读表一律违规，必须改经该 owner 的公开服务端入口或宿主注入端口。
 - 标准流程：修改 schema → `bun run db:generate --name <module>-<change>` → 审查 `drizzle/*.sql` 与 `drizzle/meta/*` → `bun run db:migrate` → 存量数据变更时执行 `bun run run-data-migrations` → 运行相关测试和 `bun run precheck`。
 - 跨组织可见性由五张受控资源主表（`agent_config` / `skill` / `mcp_server` / `provider` / `plugin_market_package`）的 `visibility varchar(20) NOT NULL` 表达（前四张默认 `'private'`；`plugin_market_package` 默认 `'public'`，因为市场条目存在的意义就是被所有已认证用户看到，照抄 `private` 会让整个目录静默消失）；授权判断与查询谓词一律由 `@fenix/access-control` 产出，资源包只声明「资源类型 + 表 + 归属列 + 业务条件」。
   - `agent_site_app` 是第六个受控资源注册（`accessControlBindings`），但**它的 `visibility` 不是平台受众列**：该列是站点自身的发布范围（`private` / `org` / `authenticated` / `public`，决定谁能访问对外部署的站点），注册因此只声明归属列（`organizationId` / `ownerUserId`），发布范围的读过滤作为业务条件与平台谓词同条 SQL 下推。把它绑成平台受众列会同时破坏两端：`org` / `authenticated` 被按「非 public 即 private」处理（同组织成员读不到他人发布的站点），而 `public` 会给任意已认证用户开出跨组织读路径（站点行带 `platform_token`）。理由见 `packages/resources/agent-config/src/server/access/agent-site-app-resource.ts`。
@@ -217,7 +234,7 @@ Agent 通信分为三种明确场景，底层 relay 与 ACP 消息规则必须�
 - `catch` 必须保留诊断上下文，不得吞错；对外错误不得泄露敏感信息或内部实现。
 - 公共函数、公共方法、导出工具和类型定义应有清晰文档注释。
 - 注释解释设计原因、边界条件、兼容约束、风险和临时取舍，不重复代码表面行为。
-- 已知缺陷或临时方案必须记录影响范围、风险、移除条件和可追踪任务；关键架构选择同步到架构文档或 ADR。
+- 已知缺陷或临时方案必须记录影响范围、风险、移除条件和可追踪任务；关键架构变更同步其仍有效的事实与约束到对应架构文档。
 
 ### 命名与 Git
 

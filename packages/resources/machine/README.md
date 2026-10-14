@@ -329,7 +329,7 @@ const webFileEvents = createWebFileEventsRoutes({ authenticateRequest });
     `agent-file-service.ts` + `file-backends.ts`）；其中 `/api` 一面是已发布的外部合同。
   - **现状依据**：`docs/arch/12-files.md` §2.4 表注明「`/api/*` 文件面（`api-workspace.ts`）收敛到本契约时
     另行评估」、§10 二期清单列「`/api/*` 第三套实现的收敛评估」；按 §3.1，已发布 `/api` 合同的变更或退役必须
-    经独立 ADR、消费者盘点和迁移窗口，因此当前不做收敛，证据与建议已交主控裁定。
+    经独立评审、消费者盘点和迁移窗口，因此当前不做收敛，证据与建议已交主控裁定。
   - **移除条件**：主控给出「并入文件域 Facade」的裁定与迁移窗口后，`routes/api/workspaces.ts` 改为调用
     `machine-file-facade`（协议形状与错误码在 adapter 内保持），`services/api-workspace.ts` 的第二套写入、
     校验与上限逻辑整体删除；届时本条与 `workspace-fs.ts` 里 `isUserPath` / `normalizeUserRoutePath` 的
@@ -342,11 +342,13 @@ const webFileEvents = createWebFileEventsRoutes({ authenticateRequest });
   （文件树容器、tab 栏、文件工作区）迁入后，生产代码经该包公开入口取用文件树视图、预览 tab、分栏与基础原语。
   同批新增的普通浏览器库（`ahooks` / `lucide-react` / `sonner` / `react-resizable-panels`）与既有测试用
   `@fenix/resource-mcp` 的分工不变：前者进 `dependencies`，后两者（`@fenix/resource-mcp`）只在 `devDependencies`。
-- **`@fenix/agent-config` 仍是 `dependencies` 里的未引用项**：E1（2026-09-24）把本包的取数改为宿主注入的
+- **（历史）`@fenix/agent-config` 曾是 `dependencies` 里的未引用项**：E1（2026-09-24）把本包的取数改为宿主注入的
   `MachineAgentConfigPort` 后，`src/**` 与 `web/**` 已零导入（`src/__tests__/machine-package-contract.test.ts`
-  的「包内不引用 agent-config 的入口」断言把这一点钉住）；按 §2.1「`dependencies` 里没有任何导入的条目必须删除」
-  应删除，但本包的 `dependsOn: ["agent-config"]`（装配顺序需要它在先）是另一条独立声明，删除依赖声明与它无关，
-  属台账未列出的收尾项，**移除条件**：确认无消费方依赖本包携带该编译期边后删除。
+  的「包内不引用 agent-config 的入口」断言把这一点钉住）。2026-10 复核时确认**该声明不能删**：`generate-module-registry`
+  的 `assertDependsOnDeclared` 要求 manifest 的每个 `dependsOn` 条目都必须是本包显式声明的 `workspace:*`
+  编译依赖，而 `dependsOn: ["agent-config"]` 是装配顺序所需的保留项（见 `fenix.module.ts` 头部），删声明会直接
+  让 `bun run generate:module-registry --check` 失败。故本条目由「待删收尾项」改为「门禁强制的成对声明」：零导入是真的，
+  但声明由装配契约支撑，不属冗余依赖。
 - **`@fenix/resource-mcp` 是 `devDependencies`（仅测试用）**：`file-picker-round49-pure` 断言的是对方授权视图
   助手的消费面，不是本包生产依赖。
 - **`src/server/__tests__/file-ws-events.test.ts` 首例存在约 0.2%/次的既存竞态**（非本次引入：该断言与

@@ -9,9 +9,8 @@
 // `file-events-subscribe-auth.test.ts` 在路由/连接层验证同一判据的协议表现，两份用例合起来才能说明
 // 「路由不再自行判定」没有把跨组织与跨属主的环境放进来。
 //
-// 归属校验的实现（`getOwnedEnvironment`）在生产由 agent-runtime 提供，它自己的 member → 403 规则由
-// `agent-runtime/src/__tests__/registry-environment-isolation-coverage.test.ts` 覆盖；本文件用替身表达
-// 同一份契约，只证明门面把 actor 的四个维度原样交给它、并把失败映射成文件域错误信封。
+// 归属校验的实现（`getOwnedEnvironment`）在生产由 agent-runtime 提供。文件门面仅证明文件操作以
+// 组织与 Environment 属主为边界，不把组织内角色升级为额外门槛。
 
 import { afterEach, describe, expect, test } from "bun:test";
 import { ForbiddenError, NotFoundError } from "@fenix/platform-sdk";
@@ -27,7 +26,7 @@ const ENV_ID = "env-1";
 /** 调用方 actor：组织 + 属主 + 角色（与宿主 `store.authContext` 的形状一致）。 */
 const ACTOR: MachineFileActor = { organizationId: ORG_ID, userId: USER_ID, role: "owner" };
 
-/** 每次归属校验收到的完整入参；门面把它们原样下传，用例据此断言。 */
+/** 每次归属校验收到的完整入参；门面将文件操作收敛为属主范围，用例据此断言。 */
 let ownershipCalls: unknown[][] = [];
 
 /** 用一条「属于当前 actor」的环境记录替换归属校验，并记录调用入参。 */
@@ -47,14 +46,13 @@ describe("Machine 文件域门面的授权判据", () => {
     resetAllStubs();
   });
 
-  // 环境、组织、用户与角色四项都必须来自 actor：少传角色会让「member」这类门槛静默失效，
-  // 少传组织/用户则让跨组织与跨属主的环境变得可达。
-  test("门面把 actor 的组织、用户与角色都交给环境归属校验", async () => {
+  // 文件操作只以组织与 workspace 属主为范围；成员拥有本人 Environment 的文件访问权，不应由组织角色拦截。
+  test("member 可打开本人 Environment 的文件执行面", async () => {
     recordOwnership();
 
-    await machineFileFacade.open({ organizationId: ORG_ID, userId: USER_ID, role: "admin" }, ENV_ID);
+    await machineFileFacade.open({ organizationId: ORG_ID, userId: USER_ID, role: "member" }, ENV_ID);
 
-    expect(ownershipCalls).toEqual([[ENV_ID, ORG_ID, USER_ID, "admin"]]);
+    expect(ownershipCalls).toEqual([[ENV_ID, ORG_ID, USER_ID, undefined]]);
   });
 
   // 未声明角色时不猜一个默认角色：未声明与「声明了 owner」在归属校验里是两种语义。
@@ -66,17 +64,15 @@ describe("Machine 文件域门面的授权判据", () => {
     expect(ownershipCalls).toEqual([[ENV_ID, ORG_ID, USER_ID, undefined]]);
   });
 
-  // 角色门槛的拒绝语义由门面映射成文件域信封：`member` 被归属校验拒绝后按 `forbidden` + 403 上抛
-  // （fail-closed），且不构造执行面——授权失败时调用方拿不到任何后端句柄。
-  test("member 角色被归属校验拒绝 → 403 forbidden", async () => {
+  // 即使归属服务保留 member 的管理写操作门槛，文件门面也必须按 workspace 属主范围打开，
+  // 否则共享 Agent 的成员无法使用本人实例的文件。
+  test("member 文件操作不向归属校验下传角色", async () => {
     recordOwnership((role) => {
       if (role === "member") throw new ForbiddenError("成员无权操作该环境的文件");
     });
 
-    await expect(machineFileFacade.open({ ...ACTOR, role: "member" }, ENV_ID)).rejects.toMatchObject({
-      type: "forbidden",
-      statusCode: 403,
-    });
+    await machineFileFacade.open({ ...ACTOR, role: "member" }, ENV_ID);
+    expect(ownershipCalls).toEqual([[ENV_ID, ORG_ID, USER_ID, undefined]]);
   });
 });
 

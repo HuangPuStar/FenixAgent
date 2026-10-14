@@ -31,8 +31,8 @@ import { z } from "zod/v4";
  * 未设置＝沿用直连直链 origin 的原行为，对容器内网可达的部署零影响。
  *
  * 历史：2026-10-09 曾为「运行日志执行列表」临时增加五枚上游库只读连接键
- * （`WORKFLOW_V2_UPSTREAM_DB_*`）；上游于同日（commit `3a028cf1`）实现 `list_spans` 后按 ADR
- * `2026-10-09-workflow-v2-upstream-db-read.md` 的移除条件整体删除，运行列表已切回 HTTP。这些键的唯一运行期消费者是本包
+ * （`WORKFLOW_V2_UPSTREAM_DB_*`）；上游于同日（commit `3a028cf1`）实现 `list_spans` 后整体删除，运行列表已切回 HTTP。
+ * 这些键的唯一运行期消费者是本包
  * `src/server/config.ts` 的 `getWorkflowV2Config()`，宿主经 `module-configs.ts` 投影（路线 A，与 workflow
  * 模块同形）；宿主 `apps/server/src/env.ts` 不得重复声明（同名即启动期失败，见 `env-loader.ts` 的
  * `assertNoHostKeyOverride`）。`secret` / `restartRequired` 按声明语义填写，供 preflight / readiness 消费。

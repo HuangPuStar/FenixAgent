@@ -1,5 +1,5 @@
 /**
- * 部署期数据迁移入口（权威依据：`docs/design/ce-ee-refactoring/ce-ee-engineering-standards.md` §6.3）。
+ * 部署期数据迁移入口（权威依据：`docs/developer/architecture/engineering-standards.md` §6.3）。
  *
  * §6.3 末段与 §10.6.2 要求「一次性业务数据迁移只由部署发布任务执行，不在每个应用进程启动时自动执行」。
  * 本文件就是那个发布期入口：宿主启动序（`apps/server/src/bootstrap/host-startup.ts`）不再调用

@@ -545,7 +545,7 @@ sequenceDiagram
 
 > 旧版路由体系 **文档与代码均已下线**（`src/routes/web/files.ts` 与 `user-file.ts` 不再注册在 `routes/web/index.ts`——该文件现只挂 `branding` 与 `/web/config` 聚合；Chat 拖拽上传改经 `@fenix/resource-machine` 的 `web/api/fs.ts`，宿主 `web/src/api/files.ts` 已删除）。本附录保留历史 deprecation 映射。
 
-**deprecation 策略（运营修订）**：① 继续服务，响应加 `Deprecation: true` 头；② 删除条件：替代端点稳定 ≥ 2 个版本且遥测显示零调用；③ 代码下线前必须先在本文档与 changes.md 记录；④ 新前端代码一律走 `/fs/*`，`/user`、`/user-file` 前端调用（files.ts / useDragUpload）迁移到 `fsApi` 列为待办（与 §10 P1 前端配套同批）。
+**deprecation 策略（运营修订）**：① 继续服务，响应加 `Deprecation: true` 头；② 删除条件：替代端点稳定 ≥ 2 个版本且遥测显示零调用；③ 代码下线前必须更新本文档中的当前路由事实；④ 新前端代码一律走 `/fs/*`，`/user`、`/user-file` 前端调用（files.ts / useDragUpload）迁移到 `fsApi` 列为待办（与 §10 P1 前端配套同批）。
 
 ### A.1 废弃路由表（含正确迁移映射）
 

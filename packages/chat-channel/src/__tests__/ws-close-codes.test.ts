@@ -20,7 +20,7 @@ const BASELINE_UI_CODES = new Map<number, string | null>([
   [4500, "machine_unavailable"],
   [4501, "client_keepalive_timeout"],
   [4502, "spawn_rejected"],
-  // 4503：停重连但无 UI 语义——已知缺口，见 docs/developer/guide/frontend-development.md §8.3/§8.6
+  // 4503：停重连但无 UI 语义——已知缺口，见 docs/developer/system/frontend-development.md §8.3/§8.6
   [4503, null],
   [1013, "too_many_connections"],
 ]);

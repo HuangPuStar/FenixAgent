@@ -1,5 +1,7 @@
 # FenixAgent
 
+[中文](README.md) | [English](README_en.md)
+
 **集中接入、运行与治理企业 AI Agent 的统一控制平台。**
 
 FenixAgent 面向企业的多团队协作场景，基于 Agent Client Protocol（ACP）集中接入和运行不同的 Agent 引擎。它统一编排企业 Agent 资源与治理策略，包括模型、Skills、MCP 服务配置、权限与运行配置，并通过交互式 Chat、工作流、定时任务和开放 API，将 Agent 能力安全地交付到业务系统。
@@ -75,7 +77,7 @@ Agent 引擎可以在平台所在机器或独立的远端节点执行。平台�
 | Peri | 支持 | 支持 | 支持 | 内置 Agent 引擎（rust实现，兼容Claude Code生态，资源占用极低，建议生产使用）；**本地执行（平台所在机器）默认引擎** |
 | Claude Code | 支持 | 支持 | 支持 | 内置 Agent 引擎 |
 | claude-code-best（ccb） | 支持 | 支持 | 支持 | 内置 Agent 引擎 |
-| DeepSeek Harness（DSH） | 原生支持 | 支持 | 支持 | 内置 Agent 引擎（接入详见 [DSH 文档](docker/sandbox-dsh/README.md)） |
+| DeepSeek Harness（DSH） | 原生支持 | 支持 | 支持 | 经 CCB 兼容槽位接入（接入详见 [DSH 文档](docker/sandbox-dsh/README.md)） |
 
 除内置引擎外，其他支持 ACP 协议的 Agent 引擎可通过开发 Plugin 接入。开发与注册 Engine Plugin 的方式见 [`@fenix/plugin-sdk`](packages/plugin-sdk/README.md)。
 
@@ -84,6 +86,9 @@ Agent 引擎可以在平台所在机器或独立的远端节点执行。平台�
 ### Docker Compose（推荐）
 
 ```bash
+# 创建本地配置，并至少为 RCS_API_KEYS 填入随机值
+cp .env.example .env
+
 docker compose up --build -d
 ```
 
@@ -132,7 +137,7 @@ FenixAgent Control Plane                    Remote Machine
 └────────────────────────┘                 └──────────────────────────┘
 ```
 
-Linux 环境可用 Peri 沙盒镜像启动远端节点：
+Linux 环境可用 Peri 沙盒镜像启动远端节点。以下示例适用于控制服务通过 `bun run dev` 在宿主机的 3000 端口运行：
 
 ```bash
 docker build -f docker/sandbox-peri/Dockerfile -t fenix-sandbox .
@@ -146,7 +151,7 @@ docker run -d \
   fenix-sandbox
 ```
 
-`RCS_URL`、`RCS_SECRET` 与 `RCS_MACHINE_ID` 均为必填项。其他引擎请使用对应的 `docker/sandbox-opencode/`（OpenCode）、`docker/sandbox-ccb/` 或 `docker/sandbox-dsh/` 镜像。远端节点的程序接口与 ACP 桥接能力见 [`packages/acp-link`](packages/acp-link/README.md)。
+`RCS_URL`、`RCS_SECRET` 与 `RCS_MACHINE_ID` 均为必填项。若控制服务按上文的 Docker Compose 方式运行，`RCS_URL` 应改为 `ws://host.docker.internal:3001`。其他引擎请使用对应的 `docker/sandbox-opencode/`（OpenCode）、`docker/sandbox-ccb/` 或 `docker/sandbox-dsh/` 镜像。远端节点的程序接口与 ACP 桥接能力见 [`packages/acp-link`](packages/acp-link/README.md)。
 
 ### DeepSeek Harness（DSH）
 
@@ -171,25 +176,23 @@ Console / External API / Workflow / Scheduler
  Local Agent Runtime      Remote Agent Runtime
 ```
 
-控制服务决定“谁能使用什么 Agent、使用哪些资源、在哪里运行”；执行节点负责启动 Agent、转发 ACP 消息并执行实际任务。三层执行引擎的职责与数据流见[执行引擎架构](docs/developer/arch/execution-engine-architecture.md)。
+控制服务决定“谁能使用什么 Agent、使用哪些资源、在哪里运行”；执行节点负责启动 Agent、转发 ACP 消息并执行实际任务。实例生命周期与运行时职责见 [Agent Instance 与运行时架构](docs/arch/22-agent-instance-management.md)。
 
 ## 文档与示例
 
 - [贡献与本地开发](CONTRIBUTING.md)
-- [外部 API 指南](docs/developer/guide/external-api.md)
-- [外部 Agent 引擎会话接入](docs/developer/guide/external-agent-session-guide.md)
-- [MCP 集成](docs/developer/guide/mcp-integration.md)
-- [Skill 开发](docs/developer/guide/skill-development.md)
+- [外部 API 指南](docs/developer/system/external-api.md)
+- [外部 Agent 引擎会话接入](docs/developer/system/external-agent-session-guide.md)
+- [MCP 集成](docs/developer/agent/mcp-integration.md)
+- [Skill 开发](docs/developer/agent/skill-development.md)
 - [Engine Plugin 开发](packages/plugin-sdk/README.md)
-- [知识库使用](docs/developer/guide/knowledge-base.md)
-- [Agent 记忆架构（Hindsight）](docs/developer/arch/hindsight-memory-architecture.md)
+- [知识库使用](docs/developer/agent/knowledge-base.md)
+- [Agent 记忆架构（Hindsight）](docs/arch/06-config-hindsight.md)
 - [沙盒架构](docs/arch/19-sandbox.md)
-- [模型网关架构](docs/design/2026-08-26-model-gateway-design.md)
-- [工作流架构](docs/developer/arch/workflow-architecture.md)
-- [Agent Sites 架构](docs/developer/arch/agent-sites-architecture.md)
-- [执行引擎架构](docs/developer/arch/execution-engine-architecture.md)
-- [Agent API 示例](docs/developer/api-demo/agent/README.md)
-- [系统 API 示例](docs/developer/api-demo/system/README.md)
+- [模型与 Provider 架构](docs/arch/06-config-provider.md)
+- [工作流 V2 架构](docs/arch/25-workflow-v2.md)
+- [Agent Sites 架构](docs/arch/18-agent-sites.md)
+- [Agent Instance 与运行时架构](docs/arch/22-agent-instance-management.md)
 
 ## 贡献
 
@@ -198,6 +201,10 @@ Console / External API / Workflow / Scheduler
 ```bash
 bun run precheck
 ```
+
+## Star History
+
+[![Star History Chart](https://api.star-history.com/svg?repos=HuangPuStar/FenixAgent&type=Date)](https://www.star-history.com/#HuangPuStar/FenixAgent&Date)
 
 ## 许可证
 

@@ -69,7 +69,7 @@ flowchart TB
 
 - 空间 ID 由 `space/list` 选出个人空间（`space_type === 1`）后落 `workflow_v2_platform_account`，是建 App 与建 workflow 的 `space_id` 注入源。
 - 登录面 `POST /api/passport/web/email/login/`：`session_key` **只出现在 `Set-Cookie`**，必须解析响应头而非 body；同一账号同时只有一个有效会话，重登即踢旧键——多副本各自登录会互相踢键，4B 起由共享存储 + 登录租约规避（见 §6 第 6 条）。
-- **账号供给（2026-09-30 补记）**：账号由**引导路径自助注册**——`bootstrapPlatformAccount()` 在登录前调一次上游注册端点（`POST /api/passport/web/email/register/v2/`，邮箱已存在按成功处理，故顺次重复执行幂等），部署方只需注入 `WORKFLOW_V2_PLATFORM_ACCOUNT_EMAIL` / `WORKFLOW_V2_PLATFORM_ACCOUNT_PASSWORD`，**不必先人工建号**。注册**只**发生在「台账无行、需要现场确定账号身份」的引导路径，常规登录失败路径（`login()` / `ensureCookie()` / 鉴权失败重登）不触达——否则 env 邮箱写错会凭空造号。边界：账号必须按**保留账号**管理（任何人用同一邮箱在上游 UI 登录都会覆盖 `user.session_key` 并踢掉我方会话）；上游注册白名单存在缺陷（读错 env 变量），**不可依赖**。详见[平台账号供给设计](../design/2026-09-29-workflow-v2-account-provisioning.md)。
+- **账号供给（2026-09-30 补记）**：账号由**引导路径自助注册**——`bootstrapPlatformAccount()` 在登录前调一次上游注册端点（`POST /api/passport/web/email/register/v2/`，邮箱已存在按成功处理，故顺次重复执行幂等），部署方只需注入 `WORKFLOW_V2_PLATFORM_ACCOUNT_EMAIL` / `WORKFLOW_V2_PLATFORM_ACCOUNT_PASSWORD`，**不必先人工建号**。注册**只**发生在「台账无行、需要现场确定账号身份」的引导路径，常规登录失败路径（`login()` / `ensureCookie()` / 鉴权失败重登）不触达——否则 env 邮箱写错会凭空造号。边界：账号必须按**保留账号**管理（任何人用同一邮箱在上游 UI 登录都会覆盖 `user.session_key` 并踢掉我方会话）；上游注册白名单存在缺陷（读错 env 变量），**不可依赖**。
 
 ## 4. 归属真相源（本设计的核心安全约束）
 
@@ -115,7 +115,7 @@ flowchart TB
 
 外部系统按控制台的工作流主键触发**已发布版本**的运行，平台只做鉴权、归属校验与转发（不做业务处理、不解释入参语义）。
 
-- **身份与归属**：调用方用控制台 API Key（`rcs_*`，Bearer），与面板会话共用宿主的同一份守卫实例（`slot: "api"` 的贡献注入 `authGuardPlugin`）；`:id` 是**本地主键**（UUID，非 UUID 在边界即 422），归属用 `findWorkflowById(orgId, id)` 判定，跨组织与不存在同形 404（不泄漏存在性）。上游的 `checkUserSpace` 只证明「PAT 所属用户属于该 space」，**不构成租户隔离**（ADR §4），隔离完全由本地注册表兜住。
+- **身份与归属**：调用方用控制台 API Key（`rcs_*`，Bearer），与面板会话共用宿主的同一份守卫实例（`slot: "api"` 的贡献注入 `authGuardPlugin`）；`:id` 是**本地主键**（UUID，非 UUID 在边界即 422），归属用 `findWorkflowById(orgId, id)` 判定，跨组织与不存在同形 404（不泄漏存在性）。上游的 `checkUserSpace` 只证明「PAT 所属用户属于该 space」，**不构成租户隔离**；隔离完全由本地注册表兜住。
 - **请求体**：`parameters`（JSON 对象或它的 JSON 字符串）、`isAsync`（默认 false）、`ext.user_id`（受控透传，作为上游运行时用户）。`parameters` 在本地先判一次（必须是 JSON 对象），必然失败的请求不打到上游。
 - **响应**：成功归一化为 `{ executeId, data, token, cost, debugUrl }`（字段缺失为 null，不省略键；`data` 是上游原样的 JSON 字符串），**不**原样回传上游信封；失败 `{ error: { code, message } }`。上游业务码 `6031`（未发布）→ 409 `WORKFLOW_NOT_PUBLISHED`，`4000`（参数不合法）→ 422 `INVALID_PARAMETERS`，其余非 0（含 panic `777777775`）→ 502 `UPSTREAM_REJECTED`（上游 `msg` 绝不进响应）；传输与会话失败沿用控制面同一张表（504 / 502 / 503），熔断打开同样 503。
 - **上游凭据是 PAT，不是会话**：`/v1/*` 只接受 `Authorization: Bearer pat_*`（会话 cookie 被 OpenAPI 中间件拒绝）。PAT 由平台账号会话换取（`POST /api/permission_api/pat/create_personal_access_token_and_permission`，`duration_day` 是**字符串天数**，取 30 天，不用 `permanent`），权威副本与登录态一样放共享存储（Redis）并以跨副本租约收口换取，进程内 5s 缓存；剩余不足 1/3 主动重建，重建成功后**尽力吊销**被替换的旧令牌（失败只告警——不让一次清理失败把可用的新令牌判死）；上游判定失效（HTTP 401 或业务码 `700012006`）时 `invalidate()` + 单飞重建 + **重放一次**。PAT 与 `session_key` 同等对待：不落库、不进日志/响应/错误文案。
@@ -168,10 +168,10 @@ flowchart TB
 - **技术债：`src/server/services/canvas-passthrough.ts` 605 行**，超出「单文件 ≤ 500 行」指引（既有状况，4A/4B 本轮未拆）。影响范围：透传面是租户隔离的唯一权威，该文件同时住着「票据与归属校验、上游路径分类、panic 脱敏、节点白名单调用、`get_process` 轮询预算、三个会话端点、限流取值」；风险是安全关键逻辑继续在同一文件里增长，后续改动容易被无关段落淹没、review 难以聚焦。移除条件：把「调试运行的轮询预算（`get_process`）」与「会话端点（`handleSessionExchange` / `handleSessionRefresh` / `handleSessionRevoke`）」两段各拆成独立模块即可回到阈值内（两段合计约 150 行，拆出后约 455 行）。
 - **运行日志：列表走 HTTP `list_spans`（上游 2026-10-09 已实现），平台侧补一段审计记录**。历史脉络与口径：
   - 该端点在上游曾是**桩实现**（只 bind 后返回空），平台当时的穷尽核对确认「无可列举的读出口」，因此曾短暂
-    采用「只读直连上游库」的过渡方案（ADR `2026-10-09-workflow-v2-upstream-db-read.md`）。
+    采用「只读直连上游库」的过渡方案。
   - 上游随后以 commit `3a028cf1` 补实现（仓储 `ListRootExecutions` 只取根执行 `parent_node_id IS NULL OR = ''`、
     支持时间窗/状态/模式/input 过滤、排序带 id 兜底、select 不含大字段；应用层做窗口默认值与 `limit` 钳制并组装
-    tags；handler 返回扁平 `{code,msg,spans}`，非法参数 400）。**平台已按 ADR 的移除条件整体删除直连实现**
+    tags；handler 返回扁平 `{code,msg,spans}`，非法参数 400）。**平台已按既定移除条件整体删除直连实现**
     （适配器、五枚 `WORKFLOW_V2_UPSTREAM_DB_*`、运维文档与相关测试），当前口径如下。
   - 请求：`workflow_id` 必填 → 一个工作流一次调用，「全部工作流」= 有限扇出（`RUN_LOG_WORKFLOW_LIMIT` = 10）
     后平台合并；窗口 `start_at = now − 7d`、`end_at = now`（毫秒，**服务端显式传**，不依赖上游默认值）、
@@ -203,13 +203,10 @@ flowchart TB
 - **上游仓侧**（外部仓库，工作区未提交）：`frontend/**` 的宿主桥与 axios 注入、rsbuild 资源前缀与路由 basename、画布注桩、头部裁剪与埋点静默已改（清单见[前端改造记录](../design/2026-09-29-workflow-v2-upstream-frontend-changes.md)）。
 - **存储出站改道键（2026-10-12）**：新增可选 env `WORKFLOW_V2_STORAGE_UPSTREAM_URL`（无默认值，键集累计十四枚；未设置＝直连直链 origin）。起因见 §5 末条——宿主源码运行的部署解析不到直链内网别名，图片路由成片 502；改道只换连接基址，凭据边界不变（存储面依旧不发平台会话）。本键与 4A/4B 起累计的五枚追加键**尚未回写进冻结 §2.2**（`docs/design/**` 由设计 owner 维护）。
 
-阶段划分与任务编号见 [任务清单](../design/2026-09-29-workflow-v2-task-list.md)。
-
 ## 9. 相关文档
 
 - 设计：[Workflow V2：接入上游工作流引擎画布与工作流平台设计](../design/2026-09-29-workflow-v2-upstream-studio-bridge.md)
 - 契约：[接口冻结](../design/2026-09-29-workflow-v2-interface-freeze.md)、[上游契约快照基线](../design/2026-09-29-workflow-v2-upstream-contract-snapshot.md)、[上游前端改造记录](../design/2026-09-29-workflow-v2-upstream-frontend-changes.md)
-- 决策：[ADR: workflow-v2 以 iframe + BFF 票据接入上游工作流引擎](../adr/2026-09-29-workflow-v2-upstream-bridge.md)
 - 相邻：[17-workflow](./17-workflow.md)（自研引擎）、[14-user-org](./14-user-org.md)（租户）、[03-auth](./03-auth.md)（控制台会话）
 
 ## 10. 命名边界：有意保留的上游契约

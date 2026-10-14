@@ -60,7 +60,7 @@ export default defineConfig({
           if (id.includes("node_modules/ai/") || id.includes("node_modules/@ai-sdk/")) {
             return "ai-sdk";
           }
-          if (id.includes("node_modules/qrcode") || id.includes("node_modules/jsqr")) {
+          if (id.includes("node_modules/qrcode")) {
             return "qr";
           }
           if (id.includes("node_modules/@radix-ui")) {

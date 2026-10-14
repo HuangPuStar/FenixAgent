@@ -10,7 +10,7 @@ import { boolean, index, jsonb, pgTable, text, timestamp, uniqueIndex, uuid, var
  *
  * `user` 是唯一的跨包外键目标：身份表归 `@fenix/identity/db`（任务 1.2），这里只导入表对象表达
  * `mcp_server.user_id` 的级联删除，不复制定义。跨模块外键的组装期例外口径见
- * `docs/design/ce-ee-refactoring/ce-ee-engineering-standards.md` §6.1。
+ * `docs/developer/architecture/engineering-standards.md` §6.1。
  *
  * `agent_config_mcp` **不在**这里：它是 Agent 配置聚合的关联边，表定义归 `@fenix/agent-config/db`
  * （任务 1.7 B7 随 `agent_config` 一起迁出）。`agent_config_mcp.mcp_server_id` 的外键由那边组装期导入

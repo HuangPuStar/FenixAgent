@@ -24,7 +24,7 @@ import {
  * **两条跨包外键**：`environment.agent_config_id → agent_config.id`（owner `@fenix/agent-config`）与
  * 两张表的 `user_id` / `owner_user_id` / `created_by_user_id → user.id`（owner `@fenix/identity`）。Drizzle 的
  * `.references()` 只接受列对象、没有字符串形式，因此这两个包必须在**组装期**被导入——例外口径见
- * `docs/design/ce-ee-refactoring/ce-ee-engineering-standards.md` §6.1：只允许 `db/**` 路径，`src/**` 的调用期
+ * `docs/developer/architecture/engineering-standards.md` §6.1：只允许 `db/**` 路径，`src/**` 的调用期
  * 跨包表访问仍按 §2.3 判定。`@fenix/agent-config` 与 `@fenix/identity` 因此都声明在 `package.json`。
  *
  * `.dependency-cruiser.cjs` 的 `agent-runtime-not-to-resources`（禁止本包反向依赖资源包）**已显式豁免

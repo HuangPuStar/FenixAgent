@@ -13,7 +13,7 @@
     "@fenix/model-gateway-sdk": "workspace:*"
   },
   "scripts": {
-    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "typecheck": "tsc-rs -p tsconfig.json --noEmit --incremental false",
     "test": "bun test"
   }
 }

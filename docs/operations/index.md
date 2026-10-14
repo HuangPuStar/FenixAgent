@@ -19,5 +19,5 @@
 - 部署结构、方式与拓扑：[Docker 部署架构与拓扑](../arch/26-deployment-topology.md)
 - 编排与可选集成的细节：[Docker 编排体系](./docker-topology.md)
 - DDL 迁移链异常的处置场景（生产冲突、迁移记录异常、历史 `db:push` 库基线化）：`drizzle/README.md`
-- 当前真实架构与模块边界：`docs/arch/`；长期架构目标与发布证据要求：`docs/design/ce-ee-refactoring/ce-ee-engineering-standards.md`
-- 工程约定与门禁：`CLAUDE.md`、`docs/developer/guide/backend-development.md`
+- 当前真实架构与模块边界：`docs/arch/`；工程约束与发布证据要求：`docs/developer/architecture/engineering-standards.md`
+- 工程约定与门禁：`CLAUDE.md`、`docs/developer/system/backend-development.md`
