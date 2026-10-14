@@ -13,7 +13,7 @@
  */
 
 export { TICKET_PROJECT_RESOURCE_TYPE, ticketProjectResource } from "./server/access/ticket-project-resource";
-export { createTicketsWebRoutes } from "./server/assembly";
+export { createTicketsApiSystemTicketsRoutes, createTicketsWebRoutes } from "./server/assembly";
 export {
   AssigneeNotMemberError,
   GitUnavailableError,
@@ -47,6 +47,11 @@ export type {
   TicketLabelWriteOutcomeView,
 } from "./server/facades/ticket-label-facade";
 export type {
+  TicketPlatformFacadeApi,
+  TicketPlatformListPage,
+  TicketPlatformSummaryView,
+} from "./server/facades/ticket-platform-facade";
+export type {
   TicketProjectFacadeApi,
   TicketProjectOverview,
   TicketProjectView,
@@ -61,5 +66,9 @@ export type {
   TicketProjectLabelView,
 } from "./server/facades/ticket-view";
 export { createTicketsServerModule, type TicketsModuleDeps, type TicketsServerModule } from "./server/module";
-export type { WebTicketRouteDependencies } from "./server/routes/dependencies";
+export { createApiSystemTicketsRoutes } from "./server/routes/api/system-tickets";
+export type {
+  SystemApiTicketRouteDependencies,
+  WebTicketRouteDependencies,
+} from "./server/routes/dependencies";
 export { getTicketsServerModule, installTicketsServerModule, resetTicketsServerModule } from "./server/runtime";

@@ -1,6 +1,6 @@
 # 工单模块架构（tickets）
 
-> 状态：实现基线（2026-10-12）。**服务端已注册全部 19 条路由**：创建/列表/详情、工单修改（标题/描述/负责人/状态）、标签挂载、评论列表/创建/编辑、项目标签读取/新建/修改、可指派成员分页、附件上传/列表/下载、操作查询与单次恢复核对都已落地；在途互斥（409 `TICKET_OPERATION_PENDING`）与版本冲突（409 `VERSION_CONFLICT`）已由写路径真实产生。剩余缺口集中在**周期扫描、事件同步与站内通知**，以及评论倒序分页在上游不发 `Link` 头时的退化（§10 逐条列出）。
+> 状态：实现基线（2026-10-12，2026-10-14 追加平台管理面 §12）。**服务端已注册 19 条 `/web` 路由 + 1 条系统路由**（`GET /api/system/tickets`，跨组织只读，见 §12）：创建/列表/详情、工单修改（标题/描述/负责人/状态）、标签挂载、评论列表/创建/编辑、项目标签读取/新建/修改、可指派成员分页、附件上传/列表/下载、操作查询与单次恢复核对都已落地；在途互斥（409 `TICKET_OPERATION_PENDING`）与版本冲突（409 `VERSION_CONFLICT`）已由写路径真实产生。剩余缺口集中在**周期扫描、事件同步与站内通知**，以及评论倒序分页在上游不发 `Link` 头时的退化（§10 逐条列出）。
 > 范围：`@fenix/resource-tickets` 的定位与依赖方向、五张表与所有权、协议面、授权落点、项目开通、身份头、幂等与 202 语义、可选装配与已知偏离。
 > 定位：本文是 `packages/resources/tickets` 的实现基线，只描述已落地的事实；仓库与 Issue 的事实源在 Forgejo，本模块只持有 AOS 侧的索引、归属与操作账本。
 > 约定：代码演进偏离本文档时，先更新文档再改代码。运维步骤（启用、开通、关闭与排障）见 [工单运维说明](../operations/tickets.md)，公共 Git 的契约与安全边界见 [公共 Git 模块架构](./28-common-git.md)。
@@ -59,7 +59,9 @@
 | 18 | `POST /tickets/:projectId/:number/attachments` | 头 `Idempotency-Key`；multipart 单文件（字段 `file`） | 201 `{ attachment, operationId }` 或 202 | 400/401/403/404/409/503 |
 | 19 | `GET /tickets/:projectId/:number/attachments/:attachmentId` | 路径 `attachmentId` 为正整数串 | 200 字节流（`Content-Disposition: attachment` + `nosniff` + `private, no-store`） | 400/401/404/503 |
 
-上表是本版**全部**已注册路由（十九条，分六组注册函数：项目 1–4、工单 5–9、评论 10–12、标签 13–15、操作账本 16、附件 17–19）。写响应统一为 `{ ticket|comment|label|operation, operationId }`（202 只带 `operationId` 与 `status: "uncertain"`）；`GET` 类不写账本。
+上表是本版**全部** `/web` 路由（十九条，分六组注册函数：项目 1–4、工单 5–9、评论 10–12、标签 13–15、操作账本 16、附件 17–19）。写响应统一为 `{ ticket|comment|label|operation, operationId }`（202 只带 `operationId` 与 `status: "uncertain"`）；`GET` 类不写账本。
+
+除这十九条之外还有**一条系统路由**：`GET /api/system/tickets`（跨组织只读列表，宿主 `api` 槽，凭据是 `RCS_SYSTEM_API_KEYS`）。它不在这张表里——信封（`{ success, data }` / `{ error }`）、分页口径（页码）与判据（系统 key 而不是 actor）都与 `/web` 面不同，单独见 §12。
 
 要点：
 
@@ -180,14 +182,14 @@
 
 - **两层开关不自动映射**：assembly profile 决定模块是否加载，`FENIX_FEATURE_GIT` 只决定 Forgejo 容器是否启动。关掉工单不等于可以停 Forgejo（其他消费者可能仍在用）。
 - **bundle 是上界、运行期只能收窄**：工单页面要先用 `bun run generate:web-contributions --profile deploy/assembly/ce-tickets.json` 生成贡献、再 `bun run build:web` 构建；部署期换 profile 不会重新打包浏览器产物。运行期 `/web/system/modules` 的 `data.web` 不含 `tickets` 时，入口隐藏、`/agent/tickets/*` 被拦截。本地只改 `.env` 的 `RCS_ASSEMBLY_PROFILE_PATH` 而没重生成产物时，症状是**导航里完全没有工单项**（构建期上界里就没有它，运行期补不出来）；反过来，按 ce-tickets 生成后 `bun run precheck` 的 `web-contributions` 门禁会按默认 `ce.json` 判「产物已过期」，提交前用 `bun run generate:web-contributions` 生成回默认。
-- **前端落点**：列表 `/agent/tickets`、详情 `/agent/tickets/$projectId/$number`；筛选与分页是会话内状态，不落 URL，详情链接用显式 `projectId` 保证默认项目切换后依然稳定。列表页的筛选只有关键词与状态两项（负责人/标签筛选见 §10.4）；详情页已交付评论区（倒序分页、新建与内联编辑）、负责人指派、标签多选与全量提交、关闭/重开确认、冲突与「待确认」呈现、附件区（列表 + 上传队列 + 图片缩略图与点击放大）与输入框旁的添加入口（也可直接粘贴图片，仅新建评论时生效；粘贴的图片换成带时间戳的唯一文件名——恢复核对按「文件名 + 字节数」认领结果，重名会让它转人工），写状态机由 `useTicketDetail` 唯一持有——同一工单只允许一笔未确认的写，多个入口共享同一个禁用口径，待确认 id 有两个来源（本地 202 与详情快照的 `pendingOperationId`，后者跨刷新可见）。导航项 id `tickets` 声明在**底栏版位**（`groupId: "footer"`，版位内序号 10），由 Shell 画在侧栏底部组织行左侧，折叠态随整行不渲染（同版位内重复 `order` 会让 Shell 装配期直接抛错）。
+- **前端落点**：列表 `/agent/tickets`、详情 `/agent/tickets/$projectId/$number`；平台管理台的跨组织列表 `/admin/tickets`（系统 key 面，见 §12）；筛选与分页是会话内状态，不落 URL，详情链接用显式 `projectId` 保证默认项目切换后依然稳定。列表页的筛选只有关键词与状态两项（负责人/标签筛选见 §10.4）；详情页已交付评论区（倒序分页、新建与内联编辑）、负责人指派、标签多选与全量提交、关闭/重开确认、冲突与「待确认」呈现、附件区（列表 + 上传队列 + 图片缩略图与点击放大）与输入框旁的添加入口（也可直接粘贴图片，仅新建评论时生效；粘贴的图片换成带时间戳的唯一文件名——恢复核对按「文件名 + 字节数」认领结果，重名会让它转人工），写状态机由 `useTicketDetail` 唯一持有——同一工单只允许一笔未确认的写，多个入口共享同一个禁用口径，待确认 id 有两个来源（本地 202 与详情快照的 `pendingOperationId`，后者跨刷新可见）。导航项 id `tickets` 声明在**底栏版位**（`groupId: "footer"`，版位内序号 10），由 Shell 画在侧栏底部组织行左侧，折叠态随整行不渲染（同版位内重复 `order` 会让 Shell 装配期直接抛错）。
 - **新建弹窗的附件两段式提交**：附件上传以工单号为坐标，创建成功前没有落点，因此新建工单弹窗的粘贴与「添加附件」入口（描述框，与详情页评论框同构、共用预检与拒绝文案）只把文件暂存在本地（`useTicketStagedAttachments`）；201 拿到工单号后弹窗进入上传阶段（`ticket-create-upload-stage`，表单折叠、弹窗不可关闭），把暂存文件按单批上限分批移交共享的 `useTicketAttachments` 队列，全部任务终结（成功 / 受理 / 失败被移除，「前往工单」即放弃剩余）后才关闭并进入工单；202 时工单号未知、暂存文件无落点，明确提示未上传而不是静默丢弃。
 - **关闭路径行为**：默认产物下，两个宿主薄路由在懒加载子树之前按 `useAssemblyCapabilities()` 判 `"tickets"`，未启用时不挂载页面、不发请求，展示与根守卫相同的「未启用」界面。服务端未装配时对应路由不存在（404），前端入口隐藏与后端 404 由同一份 `/web/system/modules` 对齐——「入口可见但服务端 404」或「服务端可用但入口被隐藏」都算缺陷。
 
 ## 9. 已知偏离
 
 1. **advisory lock 不跨外部调用**（对设计方案「独立受限连接持锁、覆盖约 15 秒外部调用」的偏离）。理由：`DATABASE_URL` 只由宿主持有，包内无法自建第二条受限连接；而在共享业务连接池上按外部调用的时长占住一条连接，正是方案同一句禁止的行为。等价保护由三件事共同给出：`withTicketLock` 只覆盖事务内「读改写」这一段；`ticket_operations` 的 `pending → dispatching` 条件更新保证同一幂等键只有一个执行者；远端对象内嵌 `message_id`，恢复核对据此回源。锁键只由 `src/server/repositories/advisory-lock.ts` 构造（组织级 `fenix:tickets:project:<orgId>` 与工单级 `ticketsIssueLockKey` 都已使用），并用 `pg_advisory_xact_lock` 让锁随事务释放，不给连接池留未释放的锁。
-2. **关闭路径的守卫落点**：根守卫 `AssemblyRouteGate` 只按**构建期贡献条目**判定归属，默认 bundle 里没有 tickets 贡献，薄路由的归属判定返回 `undefined`，根守卫会放行。为满足「关闭时手工输入地址显示未启用且不发请求」，宿主在两个薄路由文件内各加了一层本地能力判定，未启用时不挂载懒加载子树（连 chunk 都不会去取）。这是临时落点：把「产物内存在薄路由但贡献缺席」的情形统一纳入路由边界是后续工作，完成前任何新增的同类薄路由都必须自带这层守卫。
+2. **关闭路径的守卫落点**：根守卫 `AssemblyRouteGate` 只按**构建期贡献条目**判定归属，默认 bundle 里没有 tickets 贡献，薄路由的归属判定返回 `undefined`，根守卫会放行。为满足「关闭时手工输入地址显示未启用且不发请求」，宿主在三个薄路由文件（`/agent/tickets`、`/agent/tickets/$projectId/$number`、`/admin/tickets`）内各加了一层本地能力判定，未启用时不挂载懒加载子树（连 chunk 都不会去取）；`/admin/*` 尤其需要这层——它不在任何贡献的 `routePrefixes` 里，根守卫对它的归属判定恒为 `undefined`。这是临时落点：把「产物内存在薄路由但贡献缺席」的情形统一纳入路由边界是后续工作，完成前任何新增的同类薄路由都必须自带这层守卫。
 3. **评论编辑入口只认作者**：设计上组织管理员可以编辑他人评论，但会话投影只有 `isOwner`（`@fenix/web-runtime/contexts/org-session` 刻意不外泄角色枚举），非 owner 的管理员在界面上拿不到编辑入口。服务端仍按规则放行管理员，所以这是**可见性缺口、不是越权**。解除条件：会话投影补 `isAdmin`，或详情视图返回 `viewerPermissions`；两者出现任一后把管理员并进 `web/lib/ticket-permissions.ts` 的判定。该判定另有两条边界：来源不可信的作者 `id` 恒为 `null`，天然判否；会话未就绪（`userId === null`）同样判否——宁可少显示一个入口。
 4. **评论倒序分页的机制与退化**（已落地）：「首屏最新 30 条」不允许「全量读入再截断」。机制在 `ticket-comment-page.ts`：首屏先用一页请求探出适配器从 `Link` 头透出的末页页码（`GitPage.lastCursor`，见 [公共 Git 模块架构](./28-common-git.md) §2），再直接取末页——两次请求、只读两页，绝不整串扫描；`nextCursor` 是更早一页的页码，逐页递减到第 1 页；页内顺序反转成「最新在前」，前端据此把整串渲染成时间正序。**退化点**：上游不返回 `Link` 头（`lastCursor` 为 null）时只能读第一页，并如实表达「没有更早的页」——此时若仓库实际有多页评论，首屏会显示**最旧的一页**而不是最新 30 条，违反「首屏最新 30 条」的验收门槛；是否处于该退化只能由上游是否透出 `Link` 头判定，实现里不得编造末页页码。（`since` 与单条评论读取 `comments.get` 已在目标实例上探活通过；**但该实例的评论端点忽略 `page` / `limit` 且不返回 `Link` 头**，所以退化不是例外而是常态：第 1 页就是全量，反转后仍是最新在前，「更早一页」不存在——界面因此不会出现「加载更早的评论」，代价是每次读取都传输整串（结论与实测数据见 §10.11）。首屏那两次请求里的探页请求可以用上游返回的 `X-Total-Count` 省掉，本版未做，属可选优化。）
 5. **同类失败在两条路径上的响应仍不一致**：`issue.create` 在「远端已成功、本地终态写入失败」时返回 202（§7），`project.provision` 的同类失败仍上抛、经宿主兜底成 500（账本同样保持 `dispatching`，不会自动重发）。恢复核对没有开通场景的口径（`project.provision` 属 unmatched），因此该行超过 15 分钟窗口后会被转成 `needs_review` 而不会自动补齐。解除条件：把开通路径的同形失败也收敛成 202 并同步其用例；在此之前运维不要把它当作「可重试的失败」重发。
@@ -238,3 +240,27 @@
 **存储侧的验证边界（务必连同这条一起维护）**：`repositories.test.ts` 断言的是**生成的语句**（列名、谓词、`FOR UPDATE`、参数类型标注），工单其余用例走记录型仓储替身、**不执行任何 SQL**。这个边界漏过一次真实缺陷：`checkpoint` 的 `jsonb_build_object('step', $1, …)` 缺 `::text`，在真实 Postgres 上必然 42P18，259 条替身用例全绿也发现不了。因此新增仓储原语时必须同步在 `repositories.test.ts` 补语句断言，并单独在临时库上跑一次真实执行；替身只负责复刻形状，不构成 SQL 可执行的证据。
 
 **未覆盖（同进程测试环境的硬约束）**：所有挂在 Radix 覆盖层里的页面级断言——创建弹窗（202 持久提示条与不跳转、201 跳转参数、空正文不发请求）与详情页的字段编辑弹窗、标签多选、关闭确认。原因是覆盖层在 `bun test packages/` 的同进程里不挂载（先加载过 `packages/ui-components` 的同类测试后，`@radix-ui/react-portal` 的挂载 effect 不执行，且不报错）；仓库既有做法是对 `config/FormDialog` 与 `ui/dialog` 开模块替身，这里不采用，以免跨文件替身污染同进程的其它包测试。这些动作改由 hook 级与纯逻辑级用例覆盖（写状态机与幂等键换代、冲突与待确认分支、权限判定、错误码分类），页面层只断言不需要覆盖层的分支（加载 / 空态 / 错误与重试 / 未开通 / 行级 `stale`）。
+
+## 12. 平台管理面（跨组织工单列表）
+
+**能力**：系统管理员（平台运维者）跨组织查看全部组织的工单。工单事实源与索引都不变，本面只加一条只读系统路径与一个宿主管理页。
+
+| 项 | 落点 |
+|---|---|
+| 路由 | `GET /api/system/tickets`（`src/server/routes/api/system-tickets.ts`，贡献 `tickets.api-system-tickets`，挂宿主 `api` 槽） |
+| 查询 | `page` / `pageSize`（`ApiSystemPaginationQuerySchema`：默认 1/20、上限 200）+ 筛选 `q` / `state` / `organizationId` / `projectId` |
+| 响应 | 成功 `{ success: true, data: { items, total, page, pageSize } }`；失败 `{ error: { code, message } }`（`/api/system/*` 的既有信封，不是 `/web` 的 `{ success: false, error }`） |
+| 行字段 | `/web` 列表行（同源同义，仍投影自 `ticket_index`）+ 归属坐标 `organizationId` / `organizationName` / `projectId` / `projectName` / `projectOwner` |
+| 页面 | 宿主 `/admin/tickets` → `@fenix/resource-tickets/web` 的 `AdminTicketsPage`，列表容器 `web/pages/admin/components/platform-ticket-list.tsx`（四态齐全，复用状态角标与时间格式） |
+
+**权限口径（凭据即判据）**：本面声明 `systemApiKeyAuth: true`，判据是宿主 `RCS_SYSTEM_API_KEYS`（`apps/server/src/plugins/system-api-auth.ts`）。该守卫刻意不恢复用户 / 组织上下文，因此 route → `TicketPlatformFacade` → `TicketService` 全链**不接收 actor**：管理面方法只做跨组织读取与视图组装（展示名取身份目录当前值，缺名回退写入期快照或 ID）。无 key、错误 key、未配置 key 一律 401 fail-closed，且不产生任何读取。
+
+**为什么不接线 super-admin 旁路（决策 D8）**：平台旁路契约（`ActorContext.systemRole: "super-admin"` 与授权谓词的 bypass 分支）已实现，但按 D8 没有生产赋值点（`apps/server/src/plugins/auth.ts` 的 `toActorContext` 不写该字段）。要在这里用它，就得为一个系统凭据**合成一个不存在的 actor**：哪个用户、哪个组织都无从回答，而合成出来的主体还会被 `listConstraint` 当作真实主体的可见范围参与判定——那既扩大了授权面，又把「凭据即判据」偷换成「凭据伪造主体」。因此管理面走独立 Facade 方法 + 独立路由守卫（与 observer / sandbox / plugin-market 的系统面同一口径），D8 保持不变。
+
+**跨组织读取的唯一落点**：`TicketIndexRepository.listPlatformPage`（`src/server/repositories/ticket-index.ts`）是包内唯一 join `ticket_projects` 补组织维度的读取，且**不接受任何授权条件**——调用方必须是本面的系统路径。组织内可见性因此零改动：`ticket_project` 仍 `ownershipMode: "organization"`、无 `visibility` 列（平台受众模型对工单项目不成立），`/web` 面继续经 `listConstraint(actor, "read")` 表达，「跨组织与不存在同形 404」不变。列表与计数共用同一份谓词（同一处条件构造），避免「最后一页是空的」这类分页/计数漂移。
+
+**排序与分页**：跨项目时工单号不构成全局序（两个项目各有 #1），因此按「最后同步时间降序 + 主键降序」排、用页码分页。工单号游标只对「单项目内的时间无关序列」成立，不搬到这一面。
+
+**装配与前端收窄**：默认 `ce.json` 不含 tickets，路由贡献不存在（404）；`ce-tickets.json` 下启用。宿主页面在懒加载子树之前按 `useAssemblyCapabilities()` 判 `tickets`，未启用时不挂载、不发请求；侧栏导航项 `/admin/tickets` 同样只在该能力可用时渲染（`apps/web/src/routes/admin.tsx` 的 `moduleId` 字段，未声明该字段的既有条目行为不变）。凭据是系统 master key（`RCS_SYSTEM_API_KEYS` 的值，存储口径见 `@fenix/web-runtime/lib/admin-key` 的 sessionStorage 例外），401 时清 key 回门。
+
+**测试覆盖**：路由级用例 `src/__tests__/system-tickets.test.ts`（缺失 / 错误 key 拒绝且不产生读取、跨组织列出两个组织的行与坐标、组织筛选、页码分页）；SQL 形状与「列表计数同谓词」用例在 `src/__tests__/repositories.test.ts` 的 `listPlatformPage`；前端状态与数据流用例 `web/__tests__/admin-tickets-page-states.test.tsx`（凭据注入、加载不落空态、失败可重试、401 回门、筛选空态与翻页）。**未覆盖**：宿主守卫 `RCS_SYSTEM_API_KEYS` 的读取策略（多 key、未配置即全拒）对这条路由的端到端验证——与 observer / plugin-market / sandbox 的系统面同属既有缺口（见 `packages/resources/observer/src/__tests__/guard-stubs.ts` 的说明）。

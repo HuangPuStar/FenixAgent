@@ -25,7 +25,7 @@ import { error as logError } from "@fenix/logger";
 import { ConflictError, ForbiddenError, NotFoundError } from "@fenix/platform-sdk";
 import { runInTransaction } from "@fenix/platform-sdk/server";
 import { appErrorFromOperationResult, GitUnavailableError, toOperationFailureResult } from "../errors";
-import type { TicketIndexRepository, TicketIndexRow } from "../repositories/ticket-index";
+import type { TicketIndexPlatformRow, TicketIndexRepository, TicketIndexRow } from "../repositories/ticket-index";
 import type { TicketMessageRepository } from "../repositories/ticket-messages";
 import { computeContentVersion } from "./content-version";
 import { classifyGitFailure } from "./git-failure";
@@ -84,6 +84,27 @@ export interface TicketListResult {
   readonly nextCursor: string | null;
 }
 
+/**
+ * 平台管理面（`/api/system/tickets`）的跨组织列表入参。
+ *
+ * 与 {@link TicketListInput} 的差别就是这条路径的语义本身：**没有 `projectId` 必需项**，且分页是
+ * 「页码 + 每页条数」而不是工单号游标——跨项目时工单号不构成全局序（排序理由见仓储的 `listPlatformPage`）。
+ * `organizationId` / `projectId` 在这里是**筛选条件**而不是范围强制：调用方已由系统路由守卫认证。
+ */
+export interface TicketPlatformListInput {
+  readonly limit: number;
+  readonly offset: number;
+  readonly q?: string;
+  readonly state?: "open" | "closed" | "all";
+  readonly organizationId?: string;
+  readonly projectId?: string;
+}
+
+export interface TicketPlatformListResult {
+  readonly items: readonly TicketIndexPlatformRow[];
+  readonly total: number;
+}
+
 export interface TicketCreateIssueInput {
   readonly organizationId: string;
   readonly projectId: string;
@@ -103,6 +124,13 @@ export type TicketCreateIssueOutcome =
 
 export interface TicketService {
   listPage(input: TicketListInput): Promise<TicketListResult>;
+  /**
+   * 平台管理面的跨组织分页读取（系统路径专用，见 {@link TicketPlatformListInput}）。
+   *
+   * 本方法不做授权判定也不做范围收敛：跨组织读取正是它的语义，判据在系统路由守卫（凭据即判据）。组织内
+   * 可见性仍只由 `Facade.list` 的受控查询表达，两条读路径的谓词互不影响。
+   */
+  listPlatformPage(input: TicketPlatformListInput): Promise<TicketPlatformListResult>;
   /** 详情：回源读取远端正文并按 §7.3 核验作者；上游不可用时报 503，绝不返回空内容。 */
   getIssue(input: {
     readonly organizationId: string;
@@ -167,6 +195,23 @@ export function createTicketService(deps: TicketServiceDeps): TicketService {
       const last = rows.at(-1);
       const nextCursor = rows.length === input.limit && last !== undefined ? last.issueNumber : null;
       return { items: rows, nextCursor };
+    },
+
+    /**
+     * 平台管理面的跨组织列表：只做入参映射。
+     *
+     * 排序、谓词与计数全在仓储一处（跨组织读取的唯一定义），本层不复述组织条件——把范围收敛写两遍，正是
+     * 「某一处漏改就悄悄放行另一个组织」的来源。
+     */
+    async listPlatformPage(input) {
+      return index.listPlatformPage({
+        limit: input.limit,
+        offset: input.offset,
+        ...(input.q === undefined ? {} : { q: input.q }),
+        ...(input.state === undefined ? {} : { state: input.state }),
+        ...(input.organizationId === undefined ? {} : { organizationId: input.organizationId }),
+        ...(input.projectId === undefined ? {} : { projectId: input.projectId }),
+      });
     },
 
     async getIssue(input) {

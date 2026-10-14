@@ -1,4 +1,21 @@
 {
+  "admin": {
+    "nav": "All tickets",
+    "title": "Tickets across all organizations",
+    "subtitle": "Platform admin view: ticket index across organizations (read-only)",
+    "loadFailedTitle": "Ticket list failed to load",
+    "emptyTitle": "No tickets on this platform yet",
+    "emptyHint": "Tickets appear here once an organization enables a ticket project and creates one.",
+    "searchPlaceholder": "Search ticket titles",
+    "columnOrganization": "Organization",
+    "columnRepository": "Repository",
+    "pageIndicator": "Page {{page}} / {{totalPages}} ({{total}} in total)",
+    "gateTitle": "System administrator key",
+    "gateDescription": "Enter the system API key (RCS_SYSTEM_API_KEYS) to review tickets of every organization. It is kept in this tab session only.",
+    "gateInputPlaceholder": "System API key",
+    "gateSubmit": "Unlock",
+    "gateAuthFailed": "The key is invalid or expired; enter it again."
+  },
   "nav": { "tickets": "Tickets" },
   "title": "Tickets",
   "subtitle": "Create and review tickets in your organization",

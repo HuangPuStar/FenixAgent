@@ -1,4 +1,21 @@
 {
+  "admin": {
+    "nav": "全部工单",
+    "title": "全部组织的工单",
+    "subtitle": "平台管理面：跨组织查看工单索引（只读）",
+    "loadFailedTitle": "工单列表加载失败",
+    "emptyTitle": "平台内还没有工单",
+    "emptyHint": "等任一组织开通工单项目并创建工单后，这里会出现它们。",
+    "searchPlaceholder": "搜索工单标题",
+    "columnOrganization": "组织",
+    "columnRepository": "仓库",
+    "pageIndicator": "第 {{page}} / {{totalPages}} 页（共 {{total}} 条）",
+    "gateTitle": "系统管理员凭据",
+    "gateDescription": "输入系统 API Key（RCS_SYSTEM_API_KEYS）以查看全部组织的工单。凭据只保存在当前标签页会话。",
+    "gateInputPlaceholder": "系统 API Key",
+    "gateSubmit": "解锁",
+    "gateAuthFailed": "凭据无效或已失效，请重新输入。"
+  },
   "nav": { "tickets": "工单" },
   "title": "工单",
   "subtitle": "创建并查看组织内的工单",

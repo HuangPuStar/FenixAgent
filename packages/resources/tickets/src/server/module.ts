@@ -11,6 +11,7 @@ import { createTicketAttachmentFacade, type TicketAttachmentFacadeApi } from "./
 import { createTicketCommentFacade, type TicketCommentFacadeApi } from "./facades/ticket-comment-facade";
 import { createTicketFacade, type TicketFacadeApi } from "./facades/ticket-facade";
 import { createTicketLabelFacade, type TicketLabelFacadeApi } from "./facades/ticket-label-facade";
+import { createTicketPlatformFacade, type TicketPlatformFacadeApi } from "./facades/ticket-platform-facade";
 import { createTicketProjectFacade, type TicketProjectFacadeApi } from "./facades/ticket-project-facade";
 import { createTicketIndexRepository } from "./repositories/ticket-index";
 import { createTicketMessageRepository } from "./repositories/ticket-messages";
@@ -61,6 +62,13 @@ export interface TicketsServerModule {
   readonly comments: TicketCommentFacadeApi;
   readonly labels: TicketLabelFacadeApi;
   readonly attachments: TicketAttachmentFacadeApi;
+  /**
+   * 平台管理面（`/api/system/tickets`）：跨组织只读列表，服务系统 API Key 路径。
+   *
+   * 与上面五个 Facade 并列而不是合并进 `tickets`：它们的判据是 actor（组织内可见性），本面的判据是系统
+   * 凭据（路由守卫），合在一起会让「这条路径没有走授权」需要读完整个类才能确认。
+   */
+  readonly platform: TicketPlatformFacadeApi;
   readonly identity: IdentityDirectory;
 }
 
@@ -127,6 +135,9 @@ export function createTicketsServerModule(deps: TicketsModuleDeps): TicketsServe
       projects,
       attachments,
     }),
+    // 平台管理面（`/api/system/tickets`）：不吃 actor 与 accessControl，判据在系统路由守卫；复用同一个
+    // 工单领域服务实例，因此跨组织读取走的仍是与 `/web` 列表同一份索引查询实现。
+    platform: createTicketPlatformFacade({ tickets, identity: deps.identity }),
     identity: deps.identity,
   };
 }

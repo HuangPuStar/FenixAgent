@@ -18,3 +18,14 @@ export interface WebTicketRouteDependencies {
   /** 会话认证守卫；`/web/*` 靠它写入 `sessionAuth` 宏与 `store.actor`（工单路由读后者作为主体）。 */
   readonly authGuardPlugin: AnyElysia;
 }
+
+/**
+ * `/api/system/tickets` 平台管理面路由的宿主注入依赖（与 `SystemApiObserverRouteDependencies` 同形）。
+ *
+ * 系统 key 守卫（`RCS_SYSTEM_API_KEYS`）必须由宿主注入：它与普通请求认证互不相关，且刻意不恢复用户 /
+ * 组织上下文——本面的判据就是「持有系统 key」，没有 actor 可传。
+ */
+export interface SystemApiTicketRouteDependencies {
+  /** 系统 API key 守卫；`systemApiKeyAuth` 宏由它提供。 */
+  readonly systemApiGuardPlugin: AnyElysia;
+}

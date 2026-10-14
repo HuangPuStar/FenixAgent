@@ -30,6 +30,10 @@ import { ticketProjectResource } from "./src/server/access/ticket-project-resour
  * 不执行它，故必须是字符串字面量）；它不进服务端装配图，`lucide-react` 与 React 只存在于该入口导出的值里。
  * `create` 与 `contributions.value` 都是惰性 import：registry 会被大量位置导入，不能在索引层就把
  * Drizzle、Elysia 或 gray-matter 拖进模块图。
+ *
+ * `contributions` 两条：`tickets.web`（控制台 `/web` 面，会话守卫）与 `tickets.api-system-tickets`
+ * （平台管理面 `/api/system/tickets`，系统 key 守卫，跨组织只读）。两个面的组织口径互不影响——系统面存在的
+ * 前提是凭据，不是把工单项目变成跨组织可见资源（`ticket_project` 仍无平台受众列）。
  */
 export const moduleManifest = {
   id: "tickets",
@@ -48,6 +52,20 @@ export const moduleManifest = {
       slot: "web",
       value: (host: ServerRouteHost) =>
         import("./src/server/assembly").then((assembly) => assembly.createTicketsWebRoutes(host)),
+    },
+    {
+      /**
+       * 平台管理面（`/api/system/tickets`）：跨组织只读列出全部组织的工单。
+       *
+       * 与 `tickets.web` 同因——贡献实例是惰性构造的 Elysia，registry 会被大量位置导入，不能在索引层就把
+       * Elysia 拖进模块图。挂 `api` 槽而不是 `web`：路径自带 `/api/system` 前缀（对外合同的一部分），
+       * 认证口径是宿主系统 key 守卫，与 `/web` 的会话守卫互不相关。
+       */
+      id: "tickets.api-system-tickets",
+      kind: "app-route",
+      slot: "api",
+      value: (host: ServerRouteHost) =>
+        import("./src/server/assembly").then((assembly) => assembly.createTicketsApiSystemTicketsRoutes(host)),
     },
   ],
   create: (context) => import("./src/module").then((module) => module.createTicketsModule(context)),

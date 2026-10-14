@@ -54,6 +54,7 @@ import {
 import { createTicketCommentFacade, type TicketCommentFacadeApi } from "../server/facades/ticket-comment-facade";
 import { createTicketFacade, type TicketFacadeApi } from "../server/facades/ticket-facade";
 import { createTicketLabelFacade, type TicketLabelFacadeApi } from "../server/facades/ticket-label-facade";
+import { createTicketPlatformFacade, type TicketPlatformFacadeApi } from "../server/facades/ticket-platform-facade";
 import { createTicketProjectFacade, type TicketProjectFacadeApi } from "../server/facades/ticket-project-facade";
 import type { TicketIndexRepository, TicketIndexRow } from "../server/repositories/ticket-index";
 import type { TicketMessageRepository, TicketMessageRow } from "../server/repositories/ticket-messages";
@@ -622,14 +623,29 @@ export interface IndexStore {
   }>;
   /** 故障注入：非 null 时 `upsertIssue` 直接抛出（模拟「远端已写、本地终态写失败」的 202 分支）。 */
   failUpsert: Error | null;
+  /** 平台管理面（跨组织）读取的入参；用于断言「未认证时一次读取都没发生」。 */
+  readonly platformQueries: Array<{
+    readonly limit: number;
+    readonly offset: number;
+    readonly q?: string;
+    readonly state?: "open" | "closed" | "all";
+    readonly organizationId?: string;
+    readonly projectId?: string;
+  }>;
   readonly repository: TicketIndexRepository;
   seed(input: Partial<TicketIndexRow> & { readonly projectId: string; readonly issueNumber: string }): TicketIndexRow;
 }
 
-/** 记录型索引仓储：排序与游标语义照生产（工单号数值降序、游标为排他上界）。 */
-export function createIndexStore(): IndexStore {
+/** 记录型索引仓储：排序与游标语义照生产（工单号数值降序、游标为排他上界）。
+ *
+ * `projectById` 供平台管理面的跨组织读取补归属坐标（生产实现是 join `ticket_projects`，见
+ * `repositories/ticket-index.ts`）：替身不做 join，改由调用方交入同一个项目行集合的查法，避免替身内再造一份
+ * 项目表。
+ */
+export function createIndexStore(projectById: (projectId: string) => TicketProjectRow | undefined): IndexStore {
   const rows: TicketIndexRow[] = [];
   const queries: IndexStore["queries"] = [];
+  const platformQueries: IndexStore["platformQueries"] = [];
   const seed = (input: Partial<TicketIndexRow> & { readonly projectId: string; readonly issueNumber: string }) => {
     const row: TicketIndexRow = {
       id: randomUUID(),
@@ -652,6 +668,7 @@ export function createIndexStore(): IndexStore {
   const store: IndexStore = {
     rows,
     queries,
+    platformQueries,
     failUpsert: null,
     seed,
     repository: {
@@ -712,6 +729,42 @@ export function createIndexStore(): IndexStore {
       },
       async findByIssueNumber({ projectId, issueNumber }) {
         return rows.find((row) => row.projectId === projectId && row.issueNumber === issueNumber);
+      },
+      // 平台管理面的跨组织读取：筛选、排序与分页口径照生产 SQL（`syncedAt` 降序 + 主键降序兜底），
+      // 只是「项目坐标来自 join」这一点由注入的查法代替。索引行找不到项目行时跳过（生产是 inner join）。
+      async listPlatformPage(input) {
+        platformQueries.push({
+          limit: input.limit,
+          offset: input.offset,
+          ...(input.q === undefined ? {} : { q: input.q }),
+          ...(input.state === undefined ? {} : { state: input.state }),
+          ...(input.organizationId === undefined ? {} : { organizationId: input.organizationId }),
+          ...(input.projectId === undefined ? {} : { projectId: input.projectId }),
+        });
+        const joined = rows.flatMap((row) => {
+          const project = projectById(row.projectId);
+          if (project === undefined) return [];
+          return [
+            {
+              issue: row,
+              organizationId: project.organizationId,
+              projectId: project.id,
+              projectName: project.name,
+              projectOwner: project.owner,
+            },
+          ];
+        });
+        const matched = joined
+          .filter((row) => input.state === undefined || input.state === "all" || row.issue.state === input.state)
+          .filter((row) => input.q === undefined || row.issue.title.includes(input.q))
+          .filter((row) => input.organizationId === undefined || row.organizationId === input.organizationId)
+          .filter((row) => input.projectId === undefined || row.projectId === input.projectId)
+          .sort((left, right) => {
+            const delta = right.issue.syncedAt.getTime() - left.issue.syncedAt.getTime();
+            if (delta !== 0) return delta;
+            return right.issue.id < left.issue.id ? -1 : 1;
+          });
+        return { items: matched.slice(input.offset, input.offset + input.limit), total: matched.length };
       },
       async countByProject(projectId) {
         return rows.filter((row) => row.projectId === projectId).length;
@@ -1065,6 +1118,7 @@ export interface TicketHarness {
     readonly comments: TicketCommentFacadeApi;
     readonly labels: TicketLabelFacadeApi;
     readonly attachments: TicketAttachmentFacadeApi;
+    readonly platform: TicketPlatformFacadeApi;
   };
 }
 
@@ -1083,7 +1137,7 @@ export function createTicketHarness(options: { readonly withRecovery?: boolean }
   const projectStore = createProjectStore();
   const operationStore = createOperationStore();
   const messageStore = createMessageStore();
-  const indexStore = createIndexStore();
+  const indexStore = createIndexStore((projectId) => projectStore.rows.find((row) => row.id === projectId));
   const operations = createTicketOperationService(operationStore.repository);
   const projectService = createTicketProjectService({
     projects: projectStore.repository,
@@ -1173,6 +1227,8 @@ export function createTicketHarness(options: { readonly withRecovery?: boolean }
         projects: projectService,
         attachments: attachmentService,
       }),
+      // 平台管理面：不吃 actor 与 accessControl（判据在系统路由守卫），因此只接领域服务与身份目录。
+      platform: createTicketPlatformFacade({ tickets: ticketService, identity }),
     },
   };
 }
@@ -1209,6 +1265,49 @@ export function createStubSessionAuthGuardPlugin(actor: ActorContext | null) {
 }
 
 /**
+ * 平台管理面路由用例的系统 key 守卫替身。
+ *
+ * 与上面那个会话守卫替身的分工：本替身**必须真的判凭据**——「缺失 / 错误 key 被拒」正是这个面唯一的安全
+ * 合同，放行的替身会让那两条用例退化成永真。它只复刻守卫的**对外可观察契约**：读 `Authorization: Bearer`
+ * 或 `?token`，未命中即 401 + `{ error: { code: "UNAUTHORIZED", message } }`（与宿主
+ * `apps/server/src/plugins/system-api-auth.ts` 同形）。`RCS_SYSTEM_API_KEYS` 的读取、多 key 与「未配置即
+ * 全拒」这些宿主策略**不在这里复刻**，包内用例注入的是显式给出的单个 key；宿主策略的覆盖缺口见
+ * `docs/arch/29-tickets.md` 的管理面小节。
+ *
+ * 插件名刻意与宿主守卫不同：Elysia 按 plugin `name` 去重，同名会让先构造的一方静默生效。
+ */
+export function createStubSystemApiGuardPlugin(allowedKey: string) {
+  return new Elysia({ name: "test-tickets-system-api-auth" })
+    .decorate({
+      error(code: number, response: unknown) {
+        return new Response(JSON.stringify(response), {
+          status: code,
+          headers: { "Content-Type": "application/json" },
+        });
+      },
+    })
+    .state({ systemAuth: null as { token: string } | null })
+    .macro({
+      systemApiKeyAuth(enabled: boolean) {
+        if (!enabled) return {};
+        return {
+          // biome-ignore lint/suspicious/noExplicitAny: Elysia macro 上下文在跨包注入下退化成索引签名
+          beforeHandle: ({ request, error, store }: any) => {
+            const header = request.headers.get("Authorization") as string | null;
+            const token = header?.startsWith("Bearer ")
+              ? header.slice("Bearer ".length).trim()
+              : (new URL(request.url).searchParams.get("token") ?? "");
+            if (token.length === 0 || token !== allowedKey) {
+              return error(401, { error: { code: "UNAUTHORIZED", message: "Invalid system API key" } });
+            }
+            store.systemAuth = { token };
+          },
+        };
+      },
+    });
+}
+
+/**
  * 装配 `/web/tickets*` 路由（相对路径注册，与宿主 `/web` 前缀无关）并装入进程级模块槽位。
  *
  * 另挂宿主 error-handler 的**参数校验映射**：Elysia 对 schema 校验失败默认回 422 纯文本
@@ -1218,15 +1317,7 @@ export function createStubSessionAuthGuardPlugin(actor: ActorContext | null) {
  * 由路由自己的错误映射表覆盖（`web-error.ts` 的文件头边界）。
  */
 export function installTicketRoutes(harness: TicketHarness, actor: ActorContext | null) {
-  installTicketsServerModule({
-    resource: ticketProjectResource,
-    projects: harness.api.projects,
-    tickets: harness.api.tickets,
-    comments: harness.api.comments,
-    labels: harness.api.labels,
-    attachments: harness.api.attachments,
-    identity: getIdentityDirectory(),
-  });
+  installTicketModule(harness);
   return new Elysia()
     .onError({ as: "global" }, ({ error, set }) => {
       if (!(error instanceof ElysiaValidationError)) return;
@@ -1234,4 +1325,23 @@ export function installTicketRoutes(harness: TicketHarness, actor: ActorContext 
       return { error: { type: "VALIDATION_ERROR", message: "validation failed" } };
     })
     .use(createWebTicketRoutes({ authGuardPlugin: createStubSessionAuthGuardPlugin(actor) }));
+}
+
+/**
+ * 把 harness 的 Facade 装入进程级模块槽位（`/web` 与 `/api/system` 两个面的路由工厂都从这里取）。
+ *
+ * 单独成函数是因为两个面各自构造 app（一条注入会话守卫、一条注入系统 key 守卫），但读的必须是同一份装配
+ * 结果——槽位是请求期唯一的交汇点。
+ */
+export function installTicketModule(harness: TicketHarness): void {
+  installTicketsServerModule({
+    resource: ticketProjectResource,
+    projects: harness.api.projects,
+    tickets: harness.api.tickets,
+    comments: harness.api.comments,
+    labels: harness.api.labels,
+    attachments: harness.api.attachments,
+    platform: harness.api.platform,
+    identity: getIdentityDirectory(),
+  });
 }

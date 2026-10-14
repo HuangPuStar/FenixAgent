@@ -40,6 +40,8 @@ type Row = Record<string, unknown>;
 interface RecordedSelect {
   readonly kind: "select";
   readonly table: string;
+  /** `innerJoin` 的调用序列（表名 + ON 条件）；跨组织读取要 join 项目表补归属坐标。 */
+  readonly joins?: Array<{ readonly table: string; readonly on?: unknown }>;
   where?: unknown;
   orderBy?: readonly unknown[];
   limit?: number;
@@ -72,6 +74,7 @@ type RecordedCall =
  * 链式替身：生产代码的链式调用顺序任意，因此每个方法都返回自身，末端的 `returning`/`await` 给出预制行。
  */
 interface Chainable {
+  innerJoin(table: unknown, condition: unknown): Chainable;
   where(condition: unknown): Chainable;
   orderBy(...order: readonly unknown[]): Chainable;
   limit(value: number): Chainable;
@@ -90,6 +93,12 @@ interface Chainable {
 /** 记录调用并可被 await 的链式替身；记录字段随调用点赋值，故对象本身在 `calls` 里保持可见。 */
 function createChainable(call: RecordedCall, rows: () => readonly Row[]): Chainable {
   const builder: Chainable = {
+    innerJoin: (table, condition) => {
+      if (call.kind === "select") {
+        call.joins = [...(call.joins ?? []), { table: getTableName(table as never), on: condition }];
+      }
+      return builder;
+    },
     where: (condition) => {
       if (call.kind === "select" || call.kind === "update") call.where = condition;
       return builder;
@@ -142,12 +151,16 @@ type RecordingDatabase = {
 function createRecordingDatabase(
   options: {
     readonly selectRows?: Record<string, readonly Row[]>;
+    /** 同一张表的多次 select 需要不同结果时按调用顺序取（最后一条重复使用）：列表与计数各自查一次时用它。 */
+    readonly selectRowQueues?: Record<string, readonly (readonly Row[])[]>;
     readonly insertRows?: readonly Row[];
     readonly updateRows?: readonly Row[];
   } = {},
 ): RecordingDatabase {
   const calls: RecordedCall[] = [];
   const selectRows = options.selectRows ?? {};
+  const selectRowQueues = options.selectRowQueues ?? {};
+  const selectCallsPerTable = new Map<string, number>();
   const insertRows = options.insertRows ?? [];
   const updateRows = options.updateRows ?? [];
 
@@ -161,7 +174,13 @@ function createRecordingDatabase(
       from: (table) => {
         const call: RecordedSelect = { kind: "select", table: getTableName(table as never) };
         calls.push(call);
-        return createChainable(call, () => selectRows[call.table] ?? []);
+        return createChainable(call, () => {
+          const queue = selectRowQueues[call.table];
+          if (queue === undefined) return selectRows[call.table] ?? [];
+          const index = selectCallsPerTable.get(call.table) ?? 0;
+          selectCallsPerTable.set(call.table, index + 1);
+          return queue[Math.min(index, queue.length - 1)] ?? [];
+        });
       },
     }),
     insert: (table) => ({
@@ -959,5 +978,56 @@ describe("ticket_index 仓储", () => {
 
     expect(await repository.countByProject("project-1")).toBe(3);
     expect(whereColumns(selectsOf(database.calls)[0] ?? {})).toEqual(["project_id"]);
+  });
+
+  // 平台管理面的跨组织读取：唯一一处出现 join 的索引查询（组织列只在 ticket_projects 上），
+  // 谓词、排序与分页都必须下推到 SQL，而不是取回一批行再在内存里筛。
+  test("listPlatformPage join 项目表补组织并按同步时间分页", async () => {
+    const database = useDatabase({
+      selectRowQueues: {
+        // 先列表后计数：列表带回 join 出来的归属坐标，计数是同一谓词下的命中数。
+        ticket_index: [
+          [
+            {
+              issue: FIXTURE_INDEX_ROW,
+              organizationId: "org-1",
+              projectId: "project-1",
+              projectName: "aos-tickets-alpha",
+              projectOwner: "aos-bot",
+            },
+          ],
+          [{ total: 1 }],
+        ],
+      },
+    });
+    const repository = createTicketIndexRepository();
+
+    const page = await repository.listPlatformPage({
+      limit: 20,
+      offset: 40,
+      q: "100%",
+      state: "open",
+      organizationId: "org-1",
+      projectId: "project-1",
+    });
+
+    expect(page.total).toBe(1);
+    const [list, count] = selectsOf(database.calls);
+    expect(list?.table).toBe("ticket_index");
+    expect(list?.joins?.map((join) => join.table)).toEqual(["ticket_projects"]);
+    // join 条件必须是「项目行的主键 = 索引行的项目」，否则会把别的组织的数据挂到这一行上。
+    expect(renderSql(list?.joins?.[0]?.on)).toBe('"ticket_projects"."id" = "ticket_index"."project_id"');
+    expect(list?.limit).toBe(20);
+    expect(list?.offset).toBe(40);
+    expect(whereColumns(list ?? {})).toEqual(
+      expect.arrayContaining(["state", "title", "organization_id", "project_id"]),
+    );
+    expect(renderSql(list?.orderBy?.[0])).toContain("synced_at");
+    expect(renderSql(list?.orderBy?.[0]).toLowerCase()).toContain("desc");
+    expect(renderSql(list?.orderBy?.[1])).toContain("id");
+    // 计数与列表共用同一份谓词（列表多出的 limit / offset 不进计数）。
+    expect(renderSql(count?.where)).toBe(renderSql(list?.where));
+    expect(count?.limit).toBeUndefined();
+    expect(count?.joins?.map((join) => join.table)).toEqual(["ticket_projects"]);
   });
 });

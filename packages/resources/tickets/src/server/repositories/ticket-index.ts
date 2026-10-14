@@ -1,5 +1,5 @@
-import { ticketIndex } from "@fenix/resource-tickets/db";
-import { and, eq, ilike, type SQL, sql } from "drizzle-orm";
+import { ticketIndex, ticketProjects } from "@fenix/resource-tickets/db";
+import { and, desc, eq, ilike, type SQL, sql } from "drizzle-orm";
 import { getTicketsDatabase } from "../db";
 
 /**
@@ -12,6 +12,10 @@ import { getTicketsDatabase } from "../db";
  *
  * `q` 只匹配 `title`（不承诺评论全文检索），并把 LIKE 元字符转义掉：不加转义时用户输入的 `%` 会变成
  * 「任意串」，`_` 会变成「任意单字符」，同一关键词在不同位置给出不同结果集。
+ *
+ * **唯一的跨组织读取**是 {@link TicketIndexRepository.listPlatformPage}：它服务平台管理面（`/api/system/tickets`），
+ * 需要 join 项目表补出归属组织——`ticket_index` 只有 `project_id`，组织维度在 `ticket_projects` 上。它不接受
+ * 任何授权条件，调用方必须是已完成平台凭据校验的系统路径；组织内可见性（受控查询）不经过它。
  */
 
 export type TicketIndexRow = typeof ticketIndex.$inferSelect;
@@ -24,6 +28,31 @@ export interface TicketIndexQuery {
   readonly state?: "open" | "closed" | "all";
   readonly assigneeId?: string;
   readonly labelId?: string; // label_ids @> [labelId]
+}
+
+/** 平台管理面的跨组织查询（页码语义在 Facade 已换算成 `limit` / `offset`）。 */
+export interface TicketIndexPlatformQuery {
+  readonly limit: number;
+  readonly offset: number;
+  readonly q?: string;
+  readonly state?: "open" | "closed" | "all";
+  readonly organizationId?: string;
+  readonly projectId?: string;
+}
+
+/** 跨组织读取的一行：索引行本体 + 从项目表带出的归属坐标（视图组装需要，仓储不做展示加工）。 */
+export interface TicketIndexPlatformRow {
+  readonly issue: TicketIndexRow;
+  readonly organizationId: string;
+  readonly projectId: string;
+  readonly projectName: string;
+  readonly projectOwner: string;
+}
+
+export interface TicketIndexPlatformPage {
+  readonly items: readonly TicketIndexPlatformRow[];
+  /** 同一谓词下的命中总数（跨页），界面据此判断还有没有下一页。 */
+  readonly total: number;
 }
 
 export interface TicketIndexRepository {
@@ -41,6 +70,8 @@ export interface TicketIndexRepository {
     syncStatus?: "ready" | "stale";
   }): Promise<TicketIndexRow>;
   listPage(input: TicketIndexQuery): Promise<TicketIndexRow[]>;
+  /** 平台管理面的跨组织分页读取（见文件头）：不接受授权条件，调用方必须是系统路径。 */
+  listPlatformPage(input: TicketIndexPlatformQuery): Promise<TicketIndexPlatformPage>;
   findByIssueNumber(input: { projectId: string; issueNumber: string }): Promise<TicketIndexRow | undefined>;
   countByProject(projectId: string): Promise<number>;
 }
@@ -105,6 +136,52 @@ export function createTicketIndexRepository(): TicketIndexRepository {
         .where(and(...conditions))
         .orderBy(sql`${ticketIndex.issueNumber}::bigint desc`)
         .limit(input.limit);
+    },
+
+    /**
+     * 平台管理面的跨组织分页读取。
+     *
+     * 排序**不用工单号**：跨项目时工单号只在项目内有意义（两个项目各有 #1），拿它做全局序会得到随机交错
+     * 的列表。这里按「最后一次同步时间降序 + 主键降序」排：前者是「最近有动静的工单在前」的近似，后者是
+     * 唯一的兜底——没有它，同一 `synced_at` 的行在不同页请求之间顺序不定，翻页会重复或漏行。
+     *
+     * 计数与列表共用同一份谓词：分页与总数不得建立在不同的可见集合上（`total` 与分页口径漂移时，界面会
+     * 出现「最后一页是空的」或「翻不到最后一页」）。
+     */
+    async listPlatformPage(input) {
+      const conditions: SQL[] = [];
+      if (input.state !== undefined && input.state !== "all") conditions.push(eq(ticketIndex.state, input.state));
+      if (input.q !== undefined) conditions.push(ilike(ticketIndex.title, `%${escapeLikePattern(input.q)}%`));
+      if (input.organizationId !== undefined) {
+        conditions.push(eq(ticketProjects.organizationId, input.organizationId));
+      }
+      if (input.projectId !== undefined) conditions.push(eq(ticketIndex.projectId, input.projectId));
+      const where = conditions.length === 0 ? undefined : and(...conditions);
+
+      const db = getTicketsDatabase();
+      const items = await db
+        .select({
+          issue: ticketIndex,
+          organizationId: ticketProjects.organizationId,
+          projectId: ticketProjects.id,
+          projectName: ticketProjects.name,
+          projectOwner: ticketProjects.owner,
+        })
+        .from(ticketIndex)
+        // inner join：项目行被删除时索引行随外键 cascade 一起消失，不存在的项目不会留下孤儿索引行。
+        .innerJoin(ticketProjects, eq(ticketProjects.id, ticketIndex.projectId))
+        .where(where)
+        .orderBy(desc(ticketIndex.syncedAt), desc(ticketIndex.id))
+        .limit(input.limit)
+        .offset(input.offset);
+
+      const [counted] = await db
+        .select({ total: sql<number>`count(*)::int` })
+        .from(ticketIndex)
+        .innerJoin(ticketProjects, eq(ticketProjects.id, ticketIndex.projectId))
+        .where(where);
+
+      return { items, total: counted?.total ?? 0 };
     },
 
     async findByIssueNumber(input) {

@@ -327,6 +327,11 @@ function createIndexStore(): IndexStore {
       async findByIssueNumber({ projectId, issueNumber }) {
         return rows.find((row) => row.projectId === projectId && row.issueNumber === issueNumber);
       },
+      // T02 用例不覆盖平台管理面的跨组织读取（那是 `/api/system/tickets` 的路径）；显式抛错而不是返回空页，
+      // 免得将来误用时得到一份「看起来正常」的空结果。
+      async listPlatformPage() {
+        throw new Error("平台管理面读取不在本文件的覆盖范围内");
+      },
       async countByProject(projectId) {
         return rows.filter((row) => row.projectId === projectId).length;
       },
