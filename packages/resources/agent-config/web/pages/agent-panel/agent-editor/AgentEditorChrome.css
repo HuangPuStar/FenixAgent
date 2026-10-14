@@ -1,6 +1,6 @@
 /* biome-ignore-all lint/complexity/noImportantStyles: 本表未分层，靠 `!important` 复刻源类串里 `!` 前缀
  * 工具类的胜负语义；尤其窄屏块与基础块必须同级 importance，少一个 `!` 整块失效（2026-09 实测踩坑）。
- * 口径见 docs/developer/guide/forbidden-code-patterns.md「两个层叠陷阱」。 */
+ * 口径见 docs/developer/system/forbidden-code-patterns.md「两个层叠陷阱」。 */
 
 .agent-editor-chrome-eyebrow {
   font-weight: 750;

@@ -3,7 +3,7 @@
 >
 > **本版要点**：撤销「错误文案收口」，失败提示重新暴露服务端错误信封的 `message`（§9.3）。
 >
-> 只记**当前规则**与**尚未收口的偏离**；变更日志与已收口条目已删，历史见 `git log --follow -- docs/developer/guide/frontend-development.md`。
+> 只记**当前规则**与**尚未收口的偏离**；变更日志与已收口条目已删，历史见 `git log --follow -- docs/developer/system/frontend-development.md`。
 
 本文档约束 FenixAgent 主控制台前端。与 `CLAUDE.md` / `CONTRIBUTING.md` 冲突时以本文档为准，并同批修正另外两处。
 

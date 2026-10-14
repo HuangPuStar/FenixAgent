@@ -55,7 +55,7 @@ export const WEB_STYLE_DEBT_COMMENT = [
   "条目移除条件：该目录在该规则下的命中清零后删除该条（重跑 --write-baseline 会自动归零）。",
   "生成方式：bun run check:web-style --write-baseline（只允许调低计数或删条目）。",
   "抬高基线必须显式加 --force，用于首次建基线或录入新纳入扫描范围的存量，须在 review 中说明理由。",
-  "规则定义与真实反例：docs/developer/guide/forbidden-code-patterns.md。",
+  "规则定义与真实反例：docs/developer/system/forbidden-code-patterns.md。",
 ] as const;
 
 /** 违规指纹：同一规则下同一目录只登记一次。 */

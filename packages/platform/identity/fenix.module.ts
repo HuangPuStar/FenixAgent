@@ -13,7 +13,7 @@ import { z } from "zod/v4";
  * 唯一的例外在 **schema 组装期**：其他模块的 `db/schema.ts` 会导入这里的表对象表达跨模块外键
  * （Drizzle 的 `.references()` 只接受列对象，没有字符串形式）。该例外仅限各模块 `db/` 子目录下的文件，
  * `src/` 与 `web/` 的跨包导入仍按 §2.3 判定为违规；口径与边界见
- * `docs/design/ce-ee-refactoring/ce-ee-engineering-standards.md` §6.1。
+ * `docs/developer/architecture/engineering-standards.md` §6.1。
  *
  * 本模块声明的运行期依赖只有应用基础设施中的 DB（经 `@fenix/platform-sdk/server` 读取）。部署值走
  * **两条互不重叠的通道**：`envDefinitions`（见下）声明形状与默认值，供启动期统一校验与汇总；值的传递

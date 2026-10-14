@@ -25,7 +25,7 @@ import {
  * `workflow_board.user_id`、`workflow_job.user_id` 四条级联删除）：身份表归 `@fenix/identity/db`
  * （任务 1.2），这里只导入表对象表达外键，不复制定义。`organization_id` 各列在历史 DDL 上都是**无
  * 外键约束**的 text 列，因此不导入 `organization`。跨模块外键的组装期例外口径见
- * `docs/design/ce-ee-refactoring/ce-ee-engineering-standards.md` §6.1。
+ * `docs/developer/architecture/engineering-standards.md` §6.1。
  *
  * 表间外键（`workflow_version` / `workflow_run` / `workflow_job` / `workflow_trigger` → `workflow`，
  * `workflow_job` → `workflow_board`）在本文件内闭合，因此没有任何别的包需要为了表达外键而导入它们

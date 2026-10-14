@@ -6,7 +6,7 @@
 
 ## 编排域
 
-机制细节见 [`20-orchestration-management.md`](./20-orchestration-management.md)；关键决策见 [`docs/adr/2026-08-03-orchestration-package-design.md`](../adr/2026-08-03-orchestration-package-design.md)。
+当前机制、边界与约束见 [`20-orchestration-management.md`](./20-orchestration-management.md)。
 
 | 术语 | 定义 | DB 表 | 备注 |
 |------|------|-------|------|
@@ -22,7 +22,7 @@
 
 ## Chat 域
 
-机制细节见 [`19-yjs-chat-streaming.md`](./19-yjs-chat-streaming.md)；关键决策见 [`docs/adr/2026-08-04-chat-channel-package-design.md`](../adr/2026-08-04-chat-channel-package-design.md)。
+当前机制、边界与约束见 [`19-yjs-chat-streaming.md`](./19-yjs-chat-streaming.md)。
 
 | 术语 | 定义 | 备注 |
 |------|------|------|

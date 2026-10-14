@@ -110,7 +110,7 @@ export const STATIC_GATES: readonly Step[] = [
   },
   {
     // Web 样式禁止行为（FCP-WEB-01..06）：台账登记存量，只阻断新增；规则与反例见
-    // docs/developer/guide/forbidden-code-patterns.md。
+    // docs/developer/system/forbidden-code-patterns.md。
     name: "web-style",
     cmd: "bun run check:web-style",
     filter: filterVerified("✓ web-style"),

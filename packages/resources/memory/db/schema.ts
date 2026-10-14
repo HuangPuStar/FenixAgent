@@ -17,7 +17,7 @@ import { boolean, pgTable, timestamp, uuid } from "drizzle-orm/pg-core";
  * 记忆开关的**读写**只在本包 `src/server/repositories/agent-memory-config.ts`（唯一数据访问点）；
  * 跨包消费方（`@fenix/agent-config` 的记忆开关判定与写入）走本包 `./server` 出口的
  * `isAgentMemoryEnabled` / `setEnabled`，不直接取表对象。跨模块外键的组装期例外口径见
- * `docs/design/ce-ee-refactoring/ce-ee-engineering-standards.md` §6.1。
+ * `docs/developer/architecture/engineering-standards.md` §6.1。
  */
 
 // Agent 记忆配置（独立表，承载记忆开关状态，为后续扩展预留）

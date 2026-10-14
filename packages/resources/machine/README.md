@@ -329,7 +329,7 @@ const webFileEvents = createWebFileEventsRoutes({ authenticateRequest });
     `agent-file-service.ts` + `file-backends.ts`）；其中 `/api` 一面是已发布的外部合同。
   - **现状依据**：`docs/arch/12-files.md` §2.4 表注明「`/api/*` 文件面（`api-workspace.ts`）收敛到本契约时
     另行评估」、§10 二期清单列「`/api/*` 第三套实现的收敛评估」；按 §3.1，已发布 `/api` 合同的变更或退役必须
-    经独立 ADR、消费者盘点和迁移窗口，因此当前不做收敛，证据与建议已交主控裁定。
+    经独立评审、消费者盘点和迁移窗口，因此当前不做收敛，证据与建议已交主控裁定。
   - **移除条件**：主控给出「并入文件域 Facade」的裁定与迁移窗口后，`routes/api/workspaces.ts` 改为调用
     `machine-file-facade`（协议形状与错误码在 adapter 内保持），`services/api-workspace.ts` 的第二套写入、
     校验与上限逻辑整体删除；届时本条与 `workspace-fs.ts` 里 `isUserPath` / `normalizeUserRoutePath` 的

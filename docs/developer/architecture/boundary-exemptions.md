@@ -7,7 +7,7 @@
 ## 登记规则
 
 - **一行一条**：写明豁免内容、位置、依据（引 §原文）、owner、移除条件。
-- **详述留在近处**：本文只给结论与定位；理由、替代方案与证据放在代码文件头的登记段或 ADR 里，本文负责指路。
+- **详述留在近处**：本文只给结论与定位；理由与证据放在代码文件头的登记段或对应架构文档里，本文负责指路。
 - **只在代码里写不算登记**：仅在文件头写明与本文的要求冲突（读代码的人不该靠翻文件才知道这是被批准的例外）；
   文件头的登记段是**摘要**，本文才是登记本身。
 - **新增即登记**：改动引入新的绕行时同批补行；移除条件一旦成立，先删代码再删本行。
@@ -23,7 +23,7 @@
 | 依据 | §3.3 第一段末句（匿名访问由 Site 等资源专属发布字段或发布实体表达）；§10.3 第 2 条管的是「外部资源动作」，而访客打开已部署站点不是资源动作——发布面没有 actor，也不构造 `ResourceQueryConstraint` |
 | owner | `@fenix/agent-config` 的站点发布面（`src/server/routes/agent-sites-proxy.ts`） |
 | 移除条件 | 平台出现一等「发布实体」（发布范围随发布记录持久化、由平台统一裁决）时，发布面改为委托该实体，本地判定整体删除 |
-| 详述 | `docs/adr/2026-09-25-agent-sites-publish-face-visibility.md`（含替代方案与边界不外溢条款） |
+| 详述 | `docs/arch/18-agent-sites.md`（发布范围与资源授权的边界） |
 
 管理面（`/web/agent-sites` 的读写）与本文无关：它一律经 `facades/agent-site-app-facade.ts` 授权，
 `agent_site_app` 也已在 `access/agent-site-app-resource.ts` 注册为受控资源。
@@ -45,7 +45,7 @@
 | --- | --- |
 | 豁免内容 | 「把 multipart 文件写进某个 environment 的 workspace」这一个业务动作存在两条独立实现：`/api` 面经 `machine-workspace-facade → services/api-workspace`，`/web` 面经 `machine-file-facade → services/agent-file-service`，与 §3.1「已发布的 `/api` 保留为调用同一 Facade 的薄协议 adapter」不符 |
 | 位置 | `packages/resources/machine/src/server/routes/api/workspaces.ts`、`src/server/services/api-workspace.ts`（`/api` 面）与 `src/server/routes/web/fs.ts`、`src/server/services/agent-file-service.ts`（`/web` 面） |
-| 依据 | 两面**不是同一份语义**：路径作用域（`user/` 子树 vs workspace 根）、远程落点（剥 / 不剥 `user/` 前缀）、单文件上限（50MB vs 100MB / 远程 20MB）、授权口径（组织 + 属主 vs 另加 `member` 403）、幂等与副作用（`opId` / `If-Match` / `file_changed` 事件）、相对路径校验集合、错误信封（`{error:{code,message}}` vs `{error:{type,message}}`）共 7 处实质差异。其中 `/api` 一面是**已发布的外部合同**，按 §3.1 其变更或退役须经独立 ADR、消费者盘点与迁移窗口，因此不与 `/web` 面强行合并 |
+| 依据 | 两面**不是同一份语义**：路径作用域（`user/` 子树 vs workspace 根）、远程落点（剥 / 不剥 `user/` 前缀）、单文件上限（50MB vs 100MB / 远程 20MB）、授权口径（组织 + 属主 vs 另加 `member` 403）、幂等与副作用（`opId` / `If-Match` / `file_changed` 事件）、相对路径校验集合、错误信封（`{error:{code,message}}` vs `{error:{type,message}}`）共 7 处实质差异。其中 `/api` 一面是**已发布的外部合同**，按 §3.1 其变更或退役须经独立评审、消费者盘点与迁移窗口，因此不与 `/web` 面强行合并 |
 | owner | 两面都在 `@fenix/resource-machine`（`services/api-workspace.ts` 与 `agent-file-service.ts` + `file-backends.ts`） |
 | 移除条件 | 给出「并入文件域 Facade」的裁定与迁移窗口后：`routes/api/workspaces.ts` 改调 `machine-file-facade`（协议形状与错误码在 adapter 内保持），`services/api-workspace.ts` 的第二套写入 / 校验 / 上限逻辑整体删除 |
 | 详述 | `packages/resources/machine/README.md` 的「已知项」节（7 条差异逐条列证据与现状依据） |

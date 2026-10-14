@@ -1,23 +1,5 @@
 import { defineConfig } from "vitepress";
 
-/**
- * ADR（`docs/adr/`）的侧栏分组。
- *
- * 侧栏是手工清单而不是按目录收集，所以落在 `docs/` 树内的 ADR 默认没有入口；而两篇 ADR 原先在
- * `spec/global/adr/`（`spec/` 不在 `docs/` 这棵站点源里），落点 2026-09-24 统一到 `docs/adr/` 后
- * 它们开始随站点构建，必须补上入口，否则既进不了导航、打开的页面也没有侧栏。同一条目挂两处：
- * 读者从 `/arch/` 进来（架构文档里的 ADR 引用都在这一支），打开 ADR 页时自身也有导航。
- */
-const ADR_SIDEBAR_GROUP = {
-  text: "架构决策（ADR）",
-  items: [
-    { text: "编排域独立包设计", link: "/adr/2026-08-03-orchestration-package-design" },
-    { text: "Chat 域独立包设计（chat-channel）", link: "/adr/2026-08-04-chat-channel-package-design" },
-    { text: "知识库 /api 列表合同变更", link: "/adr/2026-09-24-knowledge-bases-api-list-contract" },
-    { text: "Agent Sites 发布面可见性解释权", link: "/adr/2026-09-25-agent-sites-publish-face-visibility" },
-  ],
-};
-
 export default defineConfig({
   base: "/FenixAgent/",
   title: "FenixAgent",
@@ -86,16 +68,24 @@ export default defineConfig({
           items: [{ text: "开发者指南", link: "/developer/" }],
         },
         {
-          text: "使用指南",
+          text: "系统开发",
           items: [
-            { text: "后端开发规范", link: "/developer/guide/backend-development" },
-            { text: "External API", link: "/developer/guide/external-api" },
-            { text: "Agent 管理与会话说明", link: "/developer/guide/external-agent-session-guide" },
-            { text: "系统提示词", link: "/developer/guide/system-prompt" },
-            { text: "Skill 开发", link: "/developer/guide/skill-development" },
-            { text: "多智能体协作", link: "/developer/guide/multi-agent" },
-            { text: "MCP 工具集成", link: "/developer/guide/mcp-integration" },
-            { text: "知识库", link: "/developer/guide/knowledge-base" },
+            { text: "后端开发规范", link: "/developer/system/backend-development" },
+            { text: "前端开发规范", link: "/developer/system/frontend-development" },
+            { text: "代码行为门禁", link: "/developer/system/forbidden-code-patterns" },
+            { text: "ACP 会话重命名", link: "/developer/system/acp-session-rename" },
+            { text: "External API", link: "/developer/system/external-api" },
+            { text: "Agent 管理与会话说明", link: "/developer/system/external-agent-session-guide" },
+          ],
+        },
+        {
+          text: "Agent 开发",
+          items: [
+            { text: "系统提示词", link: "/developer/agent/system-prompt" },
+            { text: "Skill 开发", link: "/developer/agent/skill-development" },
+            { text: "多智能体协作", link: "/developer/agent/multi-agent" },
+            { text: "MCP 工具集成", link: "/developer/agent/mcp-integration" },
+            { text: "知识库", link: "/developer/agent/knowledge-base" },
           ],
         },
         {
@@ -105,6 +95,18 @@ export default defineConfig({
             { text: "Agent Sites 架构", link: "/developer/arch/agent-sites-architecture" },
             { text: "Workflow 架构", link: "/developer/arch/workflow-architecture" },
             { text: "Remote Machine Registry", link: "/developer/arch/remote-machine-registry" },
+          ],
+        },
+        {
+          text: "系统架构开发",
+          items: [
+            { text: "索引", link: "/developer/architecture/" },
+            { text: "工程架构与开发规范", link: "/developer/architecture/engineering-standards" },
+            { text: "目录结构与归属", link: "/developer/architecture/directory-structure" },
+            { text: "Access Control 开发指引", link: "/developer/architecture/access-control" },
+            { text: "边界豁免与依赖残留", link: "/developer/architecture/boundary-exemptions" },
+            { text: "工程债务与优化项", link: "/developer/architecture/engineering-debt" },
+            { text: "EE 扩展架构", link: "/developer/architecture/ee-extension-architecture" },
           ],
         },
       ],
@@ -162,31 +164,7 @@ export default defineConfig({
             { text: "插件市场", link: "/arch/24-plugin-market" },
           ],
         },
-        {
-          text: "附录",
-          items: [
-            { text: "改动清单", link: "/arch/changes" },
-          ],
-        },
-        ADR_SIDEBAR_GROUP,
-      ],
-      "/adr/": [ADR_SIDEBAR_GROUP],
-      // CE/EE 重构文档集（`docs/design/ce-ee-refactoring/`）同样落在手工清单之外，理由同上：
-      // 侧栏不按目录收集，整目录必须在这里登记，否则页面既进不了导航、打开后也没有侧栏。
-      // 其中「边界豁免与依赖残留登记」是规范 §10.7 完成证据第 4 条的登记处，必须可被找到。
-      "/design/": [
-        {
-          text: "CE/EE 重构",
-          items: [
-            { text: "架构设计索引", link: "/design/ce-ee-refactoring/ce-ee-engineering-architecture" },
-            { text: "目标架构与开发规范", link: "/design/ce-ee-refactoring/ce-ee-engineering-standards" },
-            { text: "目录结构与归属", link: "/design/ce-ee-refactoring/ce-ee-engineering-directory-structure" },
-            { text: "待整改项", link: "/design/ce-ee-refactoring/ce-standards-todo" },
-            { text: "边界豁免与依赖残留登记", link: "/design/ce-ee-refactoring/boundary-exemptions" },
-            { text: "CE 权限模型设计", link: "/design/ce-ee-refactoring/ce-access-control-design" },
-            { text: "EE 扩展架构", link: "/design/ce-ee-refactoring/ee-extension-architecture" },
-          ],
-        },
+        { text: "Access Control", link: "/arch/29-access-control" },
       ],
       // 运维文档（`docs/operations/`）同样落在手工清单之外：侧栏不按目录收集，新增目录必须在
       // 这里登记，否则页面既进不了导航、打开后也没有侧栏。分组按目录职责（部署、升级、迁移、

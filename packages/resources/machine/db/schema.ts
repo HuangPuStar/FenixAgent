@@ -8,7 +8,7 @@ import { index, integer, jsonb, pgTable, text, timestamp, varchar } from "drizzl
  * （由 `bun run check:schema-ddl-drift` 门禁强制）。
  *
  * 其他模块（含宿主 `apps/server/src/db/schema.ts`）只导入这里的表对象表达外键，不复制定义——
- * 跨模块外键的组装期例外口径见 `docs/design/ce-ee-refactoring/ce-ee-engineering-standards.md` §6.1。
+ * 跨模块外键的组装期例外口径见 `docs/developer/architecture/engineering-standards.md` §6.1。
  */
 
 /** 已注册的机器（acp-link 客户端）。除 `id` 主键外只有 `machine_info` jsonb 是稳定字段。 */

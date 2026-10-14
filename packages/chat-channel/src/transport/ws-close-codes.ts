@@ -87,7 +87,7 @@ export const WS_CLOSE_CODE_POLICY: readonly WsCloseCodePolicyEntry[] = [
     uiCode: "spawn_rejected",
   },
   // 4503：服务端已明确不可恢复（同 machine 已有连接），传输层停重连；`uiCode` 为空是
-  // **已知缺口**而非设计决定（docs/developer/guide/frontend-development.md §8.3 / §8.6）。
+  // **已知缺口**而非设计决定（docs/developer/system/frontend-development.md §8.3 / §8.6）。
   // 补齐它会让原先「连接停了但用户没有任何提示」的场景出现新的错误提示 = 行为变化，
   // 必须单独一批处理，本批只做收敛、不补语义。
   {

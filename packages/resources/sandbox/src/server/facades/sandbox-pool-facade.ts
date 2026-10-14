@@ -43,7 +43,7 @@
  *   ① 这些端点改为面向普通用户会话（必带 actor，也必然要判归属）；② 平台定下「系统面与用户面共用同一门面」的
  *   统一契约。在此之前，系统面新增的每一条范围解释都要回到本条复核。
  *
- * 本节是代码侧的裁定摘要；§10.7.4 要求的登记正文在 `docs/design/ce-ee-refactoring/boundary-exemptions.md`
+ * 本节是代码侧的裁定摘要；§10.7.4 要求的登记正文在 `docs/developer/architecture/boundary-exemptions.md`
  * 第 2 行「Sandbox `/api/system/*` 系统管理面绕过本包 Facade」。改本节的结论时必须同步那一行——代码文件头
  * 只是摘要，不是登记本身。
  *

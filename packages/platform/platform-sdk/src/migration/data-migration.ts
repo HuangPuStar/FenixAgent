@@ -1,5 +1,5 @@
 /**
- * 一次性数据迁移的跨包契约（权威依据：`docs/design/ce-ee-refactoring/ce-ee-engineering-standards.md` §6.3）。
+ * 一次性数据迁移的跨包契约（权威依据：`docs/developer/architecture/engineering-standards.md` §6.3）。
  *
  * 迁移代码按模块就近维护（`<owner>/db/data-migrations/`），由仓库级 runner 静态汇总后统一执行；两者
  * 之间只有本文件这一份契约。放在 platform-sdk 而不是宿主 `apps/server/src/services/data-migrate.ts`：

@@ -18,7 +18,7 @@ import { boolean, index, jsonb, pgTable, text, timestamp, uuid, varchar } from "
  *
  * 本表的**读写**只在本包 `src/server/repositories/prod-view.ts`（唯一数据访问点）；消费方走本包
  * `./server` 出口的路由，不直接取表对象。跨模块外键的组装期例外口径见
- * `docs/design/ce-ee-refactoring/ce-ee-engineering-standards.md` §6.1。
+ * `docs/developer/architecture/engineering-standards.md` §6.1。
  */
 
 // ProdView 智能体发布视图

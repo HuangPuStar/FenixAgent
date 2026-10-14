@@ -24,8 +24,8 @@
 - [README.md](README.md)：项目介绍与快速开始
 - [CLAUDE.md](CLAUDE.md)：全局补充约束与项目级细节说明
 - [DESIGN.md](DESIGN.md)：更高层的产品与设计背景
-- [前端开发规范](docs/developer/guide/frontend-development.md)：前端目录结构、路由导航、状态管理、组件、API、i18n 和样式规范
-- [后端开发规范](docs/developer/guide/backend-development.md)：后端目录分层、数据库、API、注释和日志规范
+- [前端开发规范](docs/developer/system/frontend-development.md)：前端目录结构、路由导航、状态管理、组件、API、i18n 和样式规范
+- [后端开发规范](docs/developer/system/backend-development.md)：后端目录分层、数据库、API、注释和日志规范
 - [drizzle/README.md](drizzle/README.md)：Drizzle 迁移合并、冲突处理与数据迁移边界说明
 
 ## 开发前准备
@@ -168,12 +168,12 @@ MCP 服务器资源管理使用控制台 `/web/config/mcp` 与已发布的 `/api
 
 ### 前端
 
-- 详细规范参考 [前端开发规范](docs/developer/guide/frontend-development.md)。
+- 详细规范参考 [前端开发规范](docs/developer/system/frontend-development.md)。
 - 涉及页面结构、交互语义和产品设计背景时，补充参考 [DESIGN.md](DESIGN.md)。
 
 ### 后端
 
-- 详细规范参考 [后端开发规范](docs/developer/guide/backend-development.md)。
+- 详细规范参考 [后端开发规范](docs/developer/system/backend-development.md)。
 - 迁移合并、节点压缩、生产冲突处理和数据迁移边界，补充参考 [drizzle/README.md](drizzle/README.md)。
 
 ## 测试与质量检查

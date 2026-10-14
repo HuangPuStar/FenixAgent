@@ -2,7 +2,6 @@
 
 > 日期：2026-09-29 · 状态：**冻结**（实现必须与本文件一致；偏离必须先改本文件并说明原因）
 > 设计依据：[2026-09-29-workflow-v2-upstream-studio-bridge.md](./2026-09-29-workflow-v2-upstream-studio-bridge.md)
-> 任务清单：[2026-09-29-workflow-v2-task-list.md](./2026-09-29-workflow-v2-task-list.md)
 
 ## 1. 文件与 owner（并行开发边界）
 

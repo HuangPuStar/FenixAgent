@@ -1,6 +1,6 @@
-# CE 用户、组织与资源权限模型设计
+# 用户、组织与资源权限开发指引
 
-> 状态：已确定采用「资源主表归属列 + `visibility` 默认受众」方案。归属复用资源主表现有 `organization_id` 与 `user_id`，并与 `visibility` 一起由 `ResourceScope` 对资源领域输出；CE 的公开范围由资源主表字段表达。不使用 `resource_context JSONB` 或 `resource_access_grant`。
+> 当前权限架构事实见 [Access Control](../../arch/29-access-control.md)。本文说明开发接口、迁移边界与实现约束。
 
 ## 1. 已确定的边界
 

@@ -1,7 +1,7 @@
 /**
  * Web 样式禁止行为（`FCP-WEB-*`）的规则表与检测核心。
  *
- * 规则由 `docs/developer/guide/forbidden-code-patterns.md` 定义，本模块是它的**可执行实现**：
+ * 规则由 `docs/developer/system/forbidden-code-patterns.md` 定义，本模块是它的**可执行实现**：
  * 只负责「从一段源码里找出命中的类名 token」，不遍历文件、不读台账，因此单测可以直接喂代码片段，
  * 也能反过来用同一份反例锁住规则口径（规则改了、文档没改，或反之，都会在测试里露出来）。
  *
@@ -97,7 +97,7 @@ export type WebStyleRuleId =
   | "FCP-WEB-08";
 
 /** 默认文档路径，失败输出里指回规则定义处。 */
-export const WEB_STYLE_RULES_DOC = "docs/developer/guide/forbidden-code-patterns.md";
+export const WEB_STYLE_RULES_DOC = "docs/developer/system/forbidden-code-patterns.md";
 
 /** 一处命中。`token` 是原始类名 token，失败输出直接引用，不需要读源码回查。 */
 export interface WebStyleViolation {

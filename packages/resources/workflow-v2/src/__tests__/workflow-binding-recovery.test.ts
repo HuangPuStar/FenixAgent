@@ -218,7 +218,7 @@ describe.skipIf(!databaseReachable)("台账缺行但绑定还在时的绑定解�
 
     expect(response.status).toBe(200);
     expect(body.success).toBe(true);
-    // 运行清单由平台转发上游 `list_spans`（上游已实现；曾短暂改走只读直连库，已按 ADR 的移除条件删除）。
+    // 运行清单由平台转发上游 `list_spans`（上游已实现；曾短暂改走只读直连库，已按既定移除条件删除）。
     // 归属与耗时取自查询主体与 span 本身（本用例的 fixture 不带 tags，因此 log/execute 身份为 null，
     // 这是映射的既定行为：上游没给就不造值）。
     expect(body.data?.items?.[0]).toMatchObject({

@@ -42,7 +42,6 @@ export interface RootOwnerAudit {
 
 type RootOwnerRuleSelector = (path: string) => RootOwnerRule | undefined;
 
-const INVENTORY_DOCUMENT_PATH = "docs/arch/root-source-owner-inventory.md";
 const ROOT_SOURCE_DIRECTORIES = ["src", "web"] as const;
 const REPOSITORY_SOURCE_DIRECTORIES = ["apps", "packages", "src", "web"] as const;
 const IMPORTER_EXTENSIONS = [".ts", ".tsx", ".js", ".jsx", ".mjs", ".cjs"] as const;
@@ -250,14 +249,7 @@ export async function auditRootSourceOwners(
   };
 }
 
-/** 比较期望和已提交的 Markdown 字节内容；不同步时返回可操作诊断。 */
-export function compareRootOwnerInventoryMarkdown(expected: string, actual: string): string | undefined {
-  return expected === actual
-    ? undefined
-    : `根目录源码归属清单不同步：请运行 bun run scripts/check-root-source-owner-inventory.ts --markdown > ${INVENTORY_DOCUMENT_PATH}`;
-}
-
-/** 将审计结果渲染为可提交至架构文档的完整 Markdown 清单。 */
+/** 将审计结果渲染为临时查看用的 Markdown 摘要，不作为仓库文档提交。 */
 export function renderRootOwnerInventoryMarkdown(audit: RootOwnerAudit): string {
   const summaryRows = audit.summary.map((entry) => `| ${entry.task} | ${entry.owner} | ${entry.count} |`).join("\n");
   const ruleRows = ROOT_OWNER_RULES.map(
@@ -283,7 +275,7 @@ export function renderRootOwnerInventoryMarkdown(audit: RootOwnerAudit): string 
 
   return `# 根目录源码最终归属清单
 
-此文件由 \`bun run scripts/check-root-source-owner-inventory.ts --markdown > docs/arch/root-source-owner-inventory.md\` 生成。请修改规则后重新生成，不要手工编辑。
+此摘要由 \`bun run scripts/check-root-source-owner-inventory.ts --markdown\` 输出，仅供审计时临时查看，不作为仓库文档提交。
 
 > **历史快照**：「完整规则」表是 RMD-01 ~ RMD-09 的**声明式迁移规则**（\`Prefix\` → \`Target prefix\` / owner / 任务），记录各批次当时的判定与落点。根目录 \`src/\`、\`web/\` 迁移后已不存在（审计 \`files=0\`），且部分目标前缀在后续任务中被再次移动，故表中路径**不作为现状依据**；当前落位以各包内代码与各包 \`README.md\` 为准。
 
@@ -338,7 +330,6 @@ function printAuditDiagnostics(audit: RootOwnerAudit): void {
 async function main(): Promise<void> {
   const audit = await auditRootSourceOwners();
   const markdown = process.argv.includes("--markdown");
-  const check = process.argv.includes("--check") || !markdown;
   const renderedMarkdown = renderRootOwnerInventoryMarkdown(audit);
   const hasAuditFailures = audit.unowned.length > 0 || audit.ambiguous.length > 0 || audit.unsafeDeletes.length > 0;
 
@@ -354,16 +345,6 @@ async function main(): Promise<void> {
   if (hasAuditFailures) {
     printAuditDiagnostics(audit);
     process.exitCode = 1;
-  }
-
-  if (check) {
-    const document = Bun.file(INVENTORY_DOCUMENT_PATH);
-    const existingMarkdown = (await document.exists()) ? await document.text() : "";
-    const diagnostic = compareRootOwnerInventoryMarkdown(renderedMarkdown, existingMarkdown);
-    if (diagnostic) {
-      console.error(diagnostic);
-      process.exitCode = 1;
-    }
   }
 }
 

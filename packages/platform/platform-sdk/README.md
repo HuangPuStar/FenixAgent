@@ -30,7 +30,7 @@ bun run generate:module-registry
 
 ## 授权查询契约
 
-`AccessControlModule.createListConstraint()` 返回 `Promise<ResourceQueryConstraint>`。异步是权威设计（见 `ce-access-control-design.md`）的要求：约束可能需要进行 DB 查询才能确定，调用方必须先 `await` 再构造查询入参。实现方不得为省一次 `await` 退回同步签名。
+`AccessControlModule.createListConstraint()` 返回 `Promise<ResourceQueryConstraint>`。异步是[Access Control 开发指引](../../../docs/developer/architecture/access-control.md)规定的要求：约束可能需要进行 DB 查询才能确定，调用方必须先 `await` 再构造查询入参。实现方不得为省一次 `await` 退回同步签名。
 
 ## 当前状态
 

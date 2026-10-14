@@ -135,7 +135,7 @@ RUN mkdir -p /root/.peri /app/data /app/workflow /app/workspaces
 RUN mkdir -p /app/data/skills /app/.agents/agents /app/.agents/skills
 COPY .agents/agents/ /app/.agents/agents/
 COPY .agents/skills/ /app/.agents/skills/
-COPY fenix-sandbox-ops.sh /app/fenix-sandbox-ops.sh
+COPY scripts/operations/fenix-sandbox-ops.sh /app/fenix-sandbox-ops.sh
 RUN chmod +x /app/fenix-sandbox-ops.sh
 
 VOLUME ["/root/.peri", "/app/data", "/app/workflow", "/app/workspaces"]

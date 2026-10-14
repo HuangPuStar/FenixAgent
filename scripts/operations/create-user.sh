@@ -13,7 +13,7 @@ PHONE_NUMBER_VERIFIED=""
 usage() {
   cat <<'EOF'
 Usage:
-  ./create-user.sh --system-api-key <key> --name <name> --password <password> [--email <email>] [--phone-number <phone>] [--email-verified true|false] [--phone-number-verified true|false] [--base-url <url>]
+  ./scripts/operations/create-user.sh --system-api-key <key> --name <name> --password <password> [--email <email>] [--phone-number <phone>] [--email-verified true|false] [--phone-number-verified true|false] [--base-url <url>]
 
 Required args:
   --system-api-key
@@ -38,7 +38,7 @@ Optional args:
     查看帮助
 
 Example:
-  ./create-user.sh \
+  ./scripts/operations/create-user.sh \
     --system-api-key 123456 \
     --base-url http://localhost:3000 \
     --email system-demo@example.com \
@@ -46,7 +46,7 @@ Example:
     --password supersecret123
 
 Phone example:
-  ./create-user.sh \
+  ./scripts/operations/create-user.sh \
     --system-api-key 123456 \
     --base-url http://localhost:3000 \
     --phone-number 18826480215 \

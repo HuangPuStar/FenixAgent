@@ -1,7 +1,7 @@
 /**
  * 依赖边界类架构规则的实现。
  *
- * 判定依据是 `ce-ee-engineering-standards.md` §2.1-§2.3 的依赖矩阵，不是当前的实现现状。
+ * 判定依据是 `docs/developer/architecture/engineering-standards.md` §2.1-§2.3 的依赖矩阵，不是当前的实现现状。
  * 与 dependency-cruiser 的分工：`.dependency-cruiser.cjs` 用路径正则表达「包类别之间」的方向
  * 性禁则，这里表达它表达不了的三类——`package.json` 声明与导入是否一致、矩阵中依赖
  * **具体模块**而非类别的禁则、以及浏览器入口的边界。两者不重叠，避免同一违规被登记两次。

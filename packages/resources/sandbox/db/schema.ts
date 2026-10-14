@@ -14,7 +14,7 @@ import { index, jsonb, pgTable, text, timestamp, uniqueIndex, varchar } from "dr
  * `sandbox_instance.machine_id` 在历史 DDL 上就是**无外键约束的列**（机器可被删除而实例行保留，机器的
  * 回收由 `@fenix/resource-machine` 侧驱动），本次照原样保留——因此本文件不导入 `@fenix/resource-machine/db`。
  * 跨模块外键的组装期例外口径见
- * `docs/design/ce-ee-refactoring/ce-ee-engineering-standards.md` §6.1。
+ * `docs/developer/architecture/engineering-standards.md` §6.1。
  */
 
 export const sandboxPool = pgTable(

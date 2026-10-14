@@ -30,7 +30,7 @@
 | # | 接口 | 方法 + 路径 | 请求最小必填字段 | 成功响应关键字段 | 失败码样本 | 备注 |
 |---|---|---|---|---|---|---|
 | 1 | 平台账号登录 | `POST /api/passport/web/email/login/` | `email`,`password` | `data.user_id_str`,`data.email`,`data.name` | — | `session_key` **只在 `Set-Cookie`**；`domain` 带端口（非法），cookie jar 拒收，须手工解析后用 `Cookie: session_key=…` 回传 |
-| 2 | 平台账号注册 | `POST /api/passport/web/email/register/v2/` | `email`,`password` | 同登录（`data.user_id_str`） | — | 注册自动创建个人空间；**登录不会自动注册**（邮箱不存在 → `700000003`，与密码错误同码）。**接入口径（2026-09-30 校准）**：我方在**登录之前**的引导路径上先调注册（幂等），不是「登录失败后回退」——本行原文的后半句写于采集当日、与实现不符，已按实现改正，详见[平台账号供给设计](./2026-09-29-workflow-v2-account-provisioning.md) |
+| 2 | 平台账号注册 | `POST /api/passport/web/email/register/v2/` | `email`,`password` | 同登录（`data.user_id_str`） | — | 注册自动创建个人空间；**登录不会自动注册**（邮箱不存在 → `700000003`，与密码错误同码）。**接入口径（2026-09-30 校准）**：我方在**登录之前**的引导路径上先调注册（幂等），不是「登录失败后回退」；当前实现见 [Workflow V2 架构](../arch/25-workflow-v2.md)。 |
 | 3 | 空间列表 | `POST /api/playground_api/space/list` | `{}` | `data.bot_space_list[].id`,`data.has_personal_space` | — | 个人空间的 `app_ids` 恒为 `null`，**拿不到「空间下的 App 列表」**（见 F9） |
 | 4 | App 详情 | `POST /api/playground_api/draftbot/get_draft_bot_info` | `bot_id` | `data.bot_info.bot_id/name/description/icon_uri`,`data.space_id` | `100000000`：`invalid parameter : agent <id> not found` | 唯一能按 id 校验租户 App 是否存活的入口 |
 | 5 | 建 App（租户载体） | `POST /api/draftbot/create` | `space_id`,`name`,`description`,`icon_uri` | `data.bot_id`,`data.check_not_pass` | — | `icon_uri` 必填，用 `default_icon/default_app_icon.png` |

@@ -28,7 +28,7 @@ import {
  * - `plugin_market_admin_operation`：审计流水。只追加不修改。
  *
  * `user` 是唯一的跨包外键目标：身份表归 `@fenix/identity/db`，这里只导入表对象表达级联删除，不复制
- * 定义。跨模块外键的组装期例外口径见 `docs/design/ce-ee-refactoring/ce-ee-engineering-standards.md` §6.1。
+ * 定义。跨模块外键的组装期例外口径见 `docs/developer/architecture/engineering-standards.md` §6.1。
  * `organization_id` 刻意不加外键——与 `mcp_server` 等四张受控资源主表保持一致，组织删除的级联由身份
  * 模块负责，资源包不重复声明。
  *
