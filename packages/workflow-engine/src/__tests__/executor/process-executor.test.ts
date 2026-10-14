@@ -36,6 +36,25 @@ function shellNode(command: string, overrides?: Partial<ShellNodeDef>): ShellNod
   };
 }
 
+/** 在有界时间内等待 Unix 进程组被内核回收，避免把 SIGKILL 的异步生效误判为残留。 */
+async function waitForProcessGroupExit(processId: number): Promise<void> {
+  const deadline = Date.now() + 5_000;
+
+  while (true) {
+    try {
+      process.kill(-processId, 0);
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code === "ESRCH") return;
+      throw error;
+    }
+
+    if (Date.now() >= deadline) {
+      throw new Error(`进程组 ${processId} 在 5 秒内未退出`);
+    }
+    await new Promise<void>((resolve) => setTimeout(resolve, 500));
+  }
+}
+
 // ========== ProcessExecutor 测试 ==========
 
 describe("ProcessExecutor", () => {
@@ -81,7 +100,7 @@ describe("ProcessExecutor", () => {
     const events = await ctx.storage.getEvents(ctx.runId, { nodeId: "test-node" });
     const processId = Number(events.find((event) => event.type === "node.started")?.metadata?.pid);
     expect(processId).toBeGreaterThan(0);
-    expect(() => process.kill(-processId, 0)).toThrow();
+    await waitForProcessGroupExit(processId);
   });
 
   // node.failed 事件
