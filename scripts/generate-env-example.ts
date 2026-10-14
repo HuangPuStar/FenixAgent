@@ -179,14 +179,12 @@ export function collectEnvEntries(): EnvEntry[] {
 }
 
 /**
- * 部署面的发现来源：主服务的两份编排（dev 用仓库根文件、生产用 docker/main/）与 common。
- * 依赖目录的键走各自 .env，不在部署模板的范围内。两份主服务编排的插值键必须一致（同一应用）。
+ * 部署面的发现来源：主服务的生产编排与 common。
+ * dev 形态（仓库根 `docker-compose.yml`）**不在扫描面内**：它此后内联 `postgres`/`redis` 并 include
+ * `docker/dev/` 下的可选组件，插值语义与生产不同（内联默认值、含组件专用键），
+ * 「两份主服务编排的插值键必须一致」这一前提不再成立。dev 面的键因此不受本生成器约束。
  */
-const DEPLOY_SURFACE_FILES = [
-  "docker-compose.yml",
-  "docker/main/docker-compose.yml",
-  "docker/common/docker-compose.yml",
-] as const;
+const DEPLOY_SURFACE_FILES = ["docker/main/docker-compose.yml", "docker/common/docker-compose.yml"] as const;
 
 /**
  * 不参与依赖发现的目录，与 docker/deploy.sh 的 EXCLUDED_DIRS 同一规则：
