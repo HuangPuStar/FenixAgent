@@ -330,6 +330,7 @@ function printAuditDiagnostics(audit: RootOwnerAudit): void {
 async function main(): Promise<void> {
   const audit = await auditRootSourceOwners();
   const markdown = process.argv.includes("--markdown");
+  const renderedMarkdown = renderRootOwnerInventoryMarkdown(audit);
   const hasAuditFailures = audit.unowned.length > 0 || audit.ambiguous.length > 0 || audit.unsafeDeletes.length > 0;
 
   if (markdown) {
