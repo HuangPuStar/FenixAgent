@@ -25,6 +25,9 @@
 # 基础服务（postgres / redis）就地内联在下方：它们随本文件恒启动，不再经 docker/common/ include
 # （docker/common/ 此后只被 docker/main/ include）。
 
+include:
+    - path: docker/dev/docker-compose.litellm.yml
+
 name: fenix
 
 networks:

@@ -1,0 +1,78 @@
+# docker/dev/ —— LiteLLM 模型网关（model-management 模块使用）
+#
+# 本文件是**本地开发编排**，不进生产交付面：由仓库根 docker-compose.yml 通过 include 复制进同一个
+# 项目（fenix），用 `docker compose --profile litellm up -d` 启动。生产形态是 docker/litellm/。
+#
+# 与生产形态的两处差异（只为少敲命令，不改任何业务语义）：
+#   1. 自带 `litellm-postgres` 实例（生产消费 docker/common/ 的共享 postgres，并靠一次性服务
+#      litellm-db-init 建库建角色）。自带实例后库与角色由 postgres 镜像初始化时直接建好。
+#   2. 全部键写成 ${VAR:-默认值}，**没有** docker/dev/.env.litellm；要改就在**仓库根 .env** 写同名键。
+#      默认值只服务本地，生产必须覆盖（生产走 docker/litellm/.env，键名与必填性见该目录 .env.example）。
+#
+# 网络：接入 fenix-server（rcs 按 RCS_MODEL_GATEWAY_BASE_URL=http://litellm:4000/litellm 直连它）。
+# 宿主端口只绑回环，供 bun run dev 与管理控制台访问。
+
+services:
+
+    litellm-postgres:
+        # 本组件的私有实例：dev 各组件自带数据库、互不干扰。服务名带组件前缀，避开全局保留名
+        # postgres（文档 §13 硬约束 1）。
+        image: postgres:16-alpine
+        profiles: ["litellm"]
+        restart: unless-stopped
+        environment:
+            POSTGRES_USER: litellm
+            POSTGRES_DB: litellm
+            # 只服务本地，生产必须覆盖。
+            POSTGRES_PASSWORD: ${LITELLM_DB_PASSWORD:-litellm123}
+        volumes:
+            # 相对本文件解析，落 docker/dev/data/litellm/postgres
+            # （文档 §13 硬约束 8：一律 bind，不用命名卷）。
+            - ./data/litellm/postgres:/var/lib/postgresql/data
+        healthcheck:
+            test: ["CMD-SHELL", "pg_isready -U litellm"]
+            interval: 5s
+            timeout: 5s
+            retries: 5
+        networks:
+            - fenix-server
+
+    litellm:
+        # 发布版本（固定 tag）：升级时更新本行，与 docker/litellm/ 的同名服务保持一致（文档 §13 硬约束 7）。
+        image: ghcr.io/berriai/litellm:v1.93.0
+        container_name: fenix-litellm
+        profiles: ["litellm"]
+        restart: unless-stopped
+        depends_on:
+            # 库与角色由 litellm-postgres 初始化时直接就绪，健康检查保证顺序。
+            litellm-postgres:
+                condition: service_healthy
+        networks:
+            - fenix-server
+        ports:
+            # 只绑回环：宿主上的 curl 与浏览器控制台用；平台容器走 fenix-server 内的 4000。
+            - "127.0.0.1:${LITELLM_PORT:-4000}:4000"
+        environment:
+            # 容器内地址写显式值（不插值同名宿主键，文档 §8.4）：litellm-postgres 是本文件的服务名。
+            DATABASE_URL: "postgresql://litellm:${LITELLM_DB_PASSWORD:-litellm123}@litellm-postgres:5432/litellm"
+            # 网关管理密钥：rcs 侧用**同一个插值键名**引用（RCS_MODEL_GATEWAY_ADMIN_KEY: ${LITELLM_MASTER_KEY:-…}），
+            # 两处自动同值、零人工同步。默认值只服务本地，生产必须覆盖。
+            LITELLM_MASTER_KEY: ${LITELLM_MASTER_KEY:-litellm-master-key-123}
+            # 库内 Provider 凭据的加密盐：换值后已有凭据解不开。本地开发无需在意，生产必须覆盖。
+            LITELLM_SALT_KEY: ${LITELLM_SALT_KEY:-litellm-salt-key-123}
+            # 丢弃上游模型不支持的请求参数，例如当前模型不接受的 thinking。
+            LITELLM_DROP_PARAMS: "True"
+            STORE_MODEL_IN_DB: "True"
+            # 全部路由挂在 /litellm 下：平台基址因此要带这个前缀（README 的 RCS_MODEL_GATEWAY_BASE_URL）。
+            SERVER_ROOT_PATH: "/litellm"
+            UI_USERNAME: admin
+            # 只服务本地，生产必须覆盖。
+            UI_PASSWORD: ${LITELLM_UI_PASSWORD:-admin123}
+
+networks:
+    # 网络名与仓库根编排逐字一致，且**不写 `external: true`**：include 是字段级合并，根文件声明了
+    # `name` 却没声明 `external`，子文件里的 `external: true` 会原样保留下来，`up` 直接报
+    # `network fenix-server declared as external, but could not be found`（已实测）。
+    # 本写法两边都成立：合并进根文件时与根文件的定义等价，单独解析时自己创建这张网。
+    fenix-server:
+        name: fenix-server
