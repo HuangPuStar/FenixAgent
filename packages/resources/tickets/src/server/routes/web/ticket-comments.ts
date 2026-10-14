@@ -26,7 +26,8 @@ import {
   TicketCommentUpdateRequestSchema,
 } from "../../../schemas/ticket-comment.schema";
 import { getTicketsServerModule } from "../../runtime";
-import { requireTicketIdempotencyKey, TicketIdempotencyHeadersSchema, ticketHandler } from "./web-error";
+import { requireTicketIdempotencyKey, TicketIdempotencyHeadersSchema } from "../ticket-request-protocol";
+import { ticketHandler } from "./web-error";
 
 export function registerTicketCommentRoutes(app: AnyElysia): void {
   // ── GET /tickets/:projectId/:number/comments ──

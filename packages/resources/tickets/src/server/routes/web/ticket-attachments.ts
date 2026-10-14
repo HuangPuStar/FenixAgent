@@ -1,23 +1,15 @@
 /**
  * `/web/tickets/:projectId/:number/attachments*` 协议层：列出、上传与流式下载（方案 §8 的路由表，T05）。
  *
- * 三条只有附件才有的协议事实：
+ * 附件独有的三条协议事实（multipart 无 body schema、文件名归一在领域服务、下载是字节流而不是信封）以及
+ * 上限、`Content-Disposition`、`nosniff` 的口径，都写在 `../ticket-attachment-protocol.ts` 的文件头——那份
+ * 实现被 `/web` 与管理面（`routes/api/system-ticket-attachments.ts`）共用，两个面不得各写一份。
  *
- * 1. **上传是 multipart，没有 body schema**。字段名固定 `file`，一次请求**只收一个文件**：一次请求对应一次
- *    远端写入与一个幂等键（账本的不变量），多文件必须先拆成多请求——否则「第 3 个文件被上游拒绝」会让前两个
- *    的落库状态无处安放（既不是全成功也不是全失败）。每次最多 5 个、并发最多 2 个是**前端**的组合规则
- *    （`ticket-limits.ts` 的两个常量），服务端只把住单次请求的形状与单文件大小。
- * 2. **文件名由服务端归一**（`sanitizeAttachmentName`）：multipart 的 filename 是客户端输入，它会进上游的
- *    `?name=` 与下载响应的 `Content-Disposition`。路由只做搬运，归一与上限都在领域服务里。
- * 3. **下载是字节流而不是 `/web` 信封**：`Content-Disposition` 在这里组装（附件名可能来自上游、含引号或
- *    中文），并把上游的 `Content-Type` 原样透传 + `nosniff`，让浏览器按真实类型保存文件而不是按我们
- *    猜的类型；`Content-Disposition: attachment` 同时封死「在站点源上内联渲染用户上传的 HTML」这条路。
- *
- * 归属校验不在本层：附件编号在**该工单的**元数据端点下读取（上游对不属于该工单的编号直接 404），因此
- * 「越权下载」在协议层无分支可写，判据只有一处。
+ * 本文件只做：把已校验的路径参数交给附件 Facade、把结果映射成 `/web` 信封或字节流响应。**授权一律不在这里**
+ * ——能不能读写附件由项目可见性决定（跨组织/不存在同形 404），项目暂停在写路径报 503。
  */
 
-import { ValidationError, WebErrSchema } from "@fenix/platform-sdk";
+import { WebErrSchema } from "@fenix/platform-sdk";
 import type { AnyElysia } from "elysia";
 import type * as z from "zod/v4";
 import { TicketDetailParamsSchema, TicketUncertainResponseSchema } from "../../../schemas/ticket.schema";
@@ -27,78 +19,15 @@ import {
   TicketAttachmentResponseSchema,
 } from "../../../schemas/ticket-attachment.schema";
 import { getTicketsServerModule } from "../../runtime";
-import { TICKET_ATTACHMENT_MAX_BYTES } from "../../services/ticket-limits";
 import {
-  requireTicketIdempotencyKey,
-  TicketIdempotencyHeadersSchema,
-  type TicketUploadFormData,
-  type TicketUploadRequest,
-  ticketHandler,
-  ticketStreamHandler,
-} from "./web-error";
-
-/** 表单字段名（与前端约定，也是本路由唯一接受的字段）。 */
-const UPLOAD_FIELD = "file";
-
-/** 给用户看的大小上限文案；由字节上限推导，避免两处各写一个「10」。 */
-const MAX_SIZE_MB = Math.floor(TICKET_ATTACHMENT_MAX_BYTES / (1024 * 1024));
-
-/** 单文件上传的领域输入；`contentType` 缺席表示上游 multipart 没给类型（浏览器可以不给）。 */
-interface AttachmentUploadInput {
-  readonly name: string;
-  readonly content: Uint8Array;
-  readonly contentType?: string;
-}
-
-/**
- * 读取上传表单：恰好一个 `file` 部件。
- *
- * 读文件字节**之前**先按 `size` 判上限：超限时立即拒绝，不把 10 MiB 以上的内容读进内存再判——上限的意义
- * 一半就在这里。表单缺字段、多文件、出现纯字符串部件都当场 400（不猜用户意图）。
- */
-async function readAttachmentUpload(request: TicketUploadRequest): Promise<AttachmentUploadInput> {
-  let form: TicketUploadFormData;
-  try {
-    form = await request.formData();
-  } catch {
-    throw new ValidationError("上传表单解析失败：请以 multipart/form-data 提交");
-  }
-
-  const files = form.getAll(UPLOAD_FIELD).filter((item) => typeof item !== "string");
-  if (files.length === 0) throw new ValidationError(`缺少上传字段 ${UPLOAD_FIELD}`);
-  if (files.length > 1) throw new ValidationError(`一次请求只能上传一个文件（字段 ${UPLOAD_FIELD}）`);
-
-  const file = files[0];
-  if (file.size > TICKET_ATTACHMENT_MAX_BYTES) {
-    throw new ValidationError(`附件超过大小上限（${MAX_SIZE_MB} MB）`);
-  }
-  // Bun 对空 multipart filename 返回 undefined（而非空串），兜底为空串让服务的归一校验给出 400 而不是 500。
-  const name = file.name ?? "";
-  const contentType = file.type.length > 0 ? file.type : undefined;
-  return {
-    name,
-    content: new Uint8Array(await file.arrayBuffer()),
-    ...(contentType === undefined ? {} : { contentType }),
-  };
-}
-
-/**
- * 下载响应的 `Content-Disposition`：ASCII 回退 + RFC 5987 的 UTF-8 形式。
- *
- * 两个值都给的理由：只给 `filename*` 时老客户端会存成 URL 编码的乱码，只给 ASCII 回退时中文名会变成一串
- * 下划线。附件名来自上游（可能是别人直接在托管平台上挂的），因此这里按不可信输入处理：控制字符与非 ASCII
- * 在回退值里一律替换，`filename*` 走 `encodeURIComponent`（它会把 CR/LF 也编码掉，响应头注入随之封死）。
- */
-function contentDispositionAttachment(name: string): string {
-  const fallback = name.replace(/[^\x20-\x7e]/g, "_").replace(/["\\]/g, "_");
-  return `attachment; filename="${fallback.length === 0 ? "attachment" : fallback}"; filename*=UTF-8''${encodeURIComponent(name)}`;
-}
-
-/** 上游给的 MIME 只透传「像媒体类型」的值：头值里出现控制字符会让 `Headers.set` 直接抛错（500）。 */
-function safeContentType(value: string | null): string {
-  if (value === null || !/^[\x20-\x7e]+$/.test(value)) return "application/octet-stream";
-  return value;
-}
+  attachmentContentDisposition,
+  MAX_SIZE_MB,
+  readAttachmentUpload,
+  safeContentType,
+  UPLOAD_FIELD,
+} from "../ticket-attachment-protocol";
+import { requireTicketIdempotencyKey, TicketIdempotencyHeadersSchema } from "../ticket-request-protocol";
+import { ticketHandler, ticketStreamHandler } from "./web-error";
 
 export function registerTicketAttachmentRoutes(app: AnyElysia): void {
   // ── GET /tickets/:projectId/:number/attachments ──
@@ -177,7 +106,7 @@ export function registerTicketAttachmentRoutes(app: AnyElysia): void {
         route.params.attachmentId,
       );
       const headers = new Headers({
-        "Content-Disposition": contentDispositionAttachment(download.attachment.name),
+        "Content-Disposition": attachmentContentDisposition(download.attachment.name, "attachment"),
         "Content-Type": safeContentType(download.contentType),
         // 附件是用户内容：禁止浏览器按内容嗅探类型，也禁止中间层缓存带凭据取得的字节。
         "X-Content-Type-Options": "nosniff",

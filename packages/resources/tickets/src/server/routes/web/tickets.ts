@@ -25,7 +25,8 @@ import {
 } from "../../../schemas/ticket.schema";
 import { TicketLabelSetRequestSchema } from "../../../schemas/ticket-label.schema";
 import { getTicketsServerModule } from "../../runtime";
-import { requireTicketIdempotencyKey, TicketIdempotencyHeadersSchema, ticketHandler } from "./web-error";
+import { requireTicketIdempotencyKey, TicketIdempotencyHeadersSchema } from "../ticket-request-protocol";
+import { ticketHandler } from "./web-error";
 
 export function registerTicketRoutes(app: AnyElysia): void {
   // ── GET /tickets/:projectId ──
