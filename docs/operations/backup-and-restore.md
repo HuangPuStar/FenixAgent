@@ -25,7 +25,7 @@
 
 敏感项：`data/password.txt`（系统管理员初始口令，路径由 `RCS_SYSTEM_ADMIN_PASSWORD_FILE` 指定）与任何含密钥的 `.env`。它们必须按密钥材料保管，不得随普通备份包分发、不得进日志。备份 `./data` 时如需排除，请在打包命令里显式排除。
 
-**旧数据目录（共享化之前的落点）**：`docker/ragflow/ragflow_mysql_data`（旧元数据库）、`docker/ragflow/ragflow_minio_data`（旧对象存储）、`${WORKFLOW_STUDIO_DIR}/docker/data/minio`（Workflow 旧对象存储）、LiteLLM 旧自带实例的 bind 目录。它们**不再被任何服务读写**，但在搬迁验收通过并跑过一个业务周期之前**不要删**——那之前的回滚路径依赖它们（[升级](./upgrade.md) §2）。可删条件与各自的操作步骤写在 `docker/ragflow/README.md`「数据搬迁」与 `docker/workflow/README.md` §8；`./docker/deploy.sh down --purge-data` **不会**清理它们（脚本只清各依赖目录的 `./data/`），要删得手动删，删前先 `tar` 留一份。
+**旧数据目录（共享化与交付面搬迁之前的落点）**：`docker/ragflow/ragflow_mysql_data`（旧元数据库）、`docker/ragflow/ragflow_minio_data`（旧对象存储）、`<上游源码目录>/docker/data/minio`（Workflow 旧对象存储；`<上游源码目录>` 指旧部署里的上游源码 clone，若沿用旧文档口径即 `/opt/workflow-studio`）、LiteLLM 旧自带实例的 bind 目录，以及 **Workflow 栈内服务的旧数据目录**`<上游源码目录>/docker/data/` 下的 `bitnami/{elasticsearch,redis,etcd}` 与 `milvus`（2026-10-14 起改为 `docker/workflow/data/`，见下一段与 [docker/workflow/README.md](../../docker/workflow/README.md) §8）。它们**不再被任何服务读写**，但在搬迁验收通过并跑过一个业务周期之前**不要删**——那之前的回滚路径依赖它们（[升级](./upgrade.md) §2）。可删条件与各自的操作步骤写在 `docker/ragflow/README.md`「数据搬迁」与 `docker/workflow/README.md` §8；`./docker/deploy.sh down --purge-data` **不会**清理它们（脚本只清各依赖目录的 `./data/`），要删得手动删，删前先 `tar` 留一份。
 
 ## 3. 编排实际挂了什么（决定数据是否落在宿主机上）
 

@@ -12,8 +12,9 @@
 #         原生支持 --aws-sigv4，不需要新增任何镜像来源。
 # 环境变量（由 compose 显式注入；凭据只来自主服务 env（生产 docker/main/.env、dev 仓库根 .env）的 RUSTFS_*）：S3_ENDPOINT / S3_ACCESS_KEY /
 #         S3_SECRET_KEY / S3_REGION。
-# 只读输入：/seed/default_icon、/seed/official_plugin_icon（上游 docker/volumes/minio/ 下的静态图标；
-#         原先由栈内 minio 容器的 entrypoint 用 `mc cp --recursive` 播种）。
+# 只读输入：/seed/default_icon、/seed/official_plugin_icon（上游 docker/volumes/minio/ 下的静态图标，
+#         由 assets-init 从镜像展开到宿主 ./assets 后挂入；原先由栈内 minio 容器的 entrypoint 用
+#         `mc cp --recursive` 播种）。
 #
 # 幂等：可重复执行，重跑不动桶里任何对象。
 #   - 建桶是 PUT /<bucket>：200 表示本次创建，409 表示已存在（BucketAlreadyOwnedByYou / BucketAlreadyExists）
@@ -65,13 +66,13 @@ seed_tree() {
     SRC_DIR="$1"
     DST_PREFIX="$2"
     if [ ! -d "$SRC_DIR" ]; then
-        echo "   ${SRC_DIR} 未挂载，跳过（交付时别漏了上游 docker/volumes/minio/ 下的图标目录）" >&2
+        echo "   ${SRC_DIR} 未挂载，跳过（assets-init 是否成功？宿主 ./assets/volumes/minio/ 下应有图标目录）" >&2
         return 1
     fi
     # 空目录同样要报出来：bind 挂载在源目录缺失时会被 docker 建成空目录，只看「目录存在」会静默少播种。
     file_count="$(find "$SRC_DIR" -type f | wc -l)"
     if [ "$file_count" -eq 0 ]; then
-        echo "   ${SRC_DIR} 里没有文件，跳过（上游图标目录是否完整？）" >&2
+        echo "   ${SRC_DIR} 里没有文件，跳过（assets-init 展开的图标目录是否完整？）" >&2
         return 1
     fi
     # 逐文件上传。用 find | while read 而不是 for f in $(find ...)：后者按空白切词，文件名带空格时会传错对象。
@@ -178,9 +179,8 @@ seed_tree /seed/official_plugin_icon official_plugin_icon || seed_failed=1
 
 if [ "$seed_failed" -ne 0 ]; then
     echo '初始化完成，但图标播种有失败项（桶已就绪，coze-server 不受影响）。重跑办法：' >&2
-    echo '  docker compose --env-file "$WORKFLOW_STUDIO_DIR/docker/.env" --env-file docker/workflow/.env \' >&2
-    echo '    -f docker/workflow/docker-compose.yml up -d --force-recreate s3-init' >&2
-    echo '排查方向：源目录是否挂载、上游 docker/volumes/minio/ 下是否还有这些图标文件、上游目录是否被清理过。' >&2
+    echo '  docker compose -f docker/workflow/docker-compose.yml up -d --force-recreate assets-init s3-init' >&2
+    echo '排查方向：assets-init 是否成功（宿主 ./assets/volumes/minio/ 下应有两棵图标树）、镜像 tag 是否带资产。' >&2
 fi
 
 echo "初始化完成：${BUCKETS} 已就绪，凭据与主服务 env 一致。"

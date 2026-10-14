@@ -97,7 +97,9 @@ services:
 
 **共享实例的初始化归消费方**（2026-10-08 起，MySQL 从 `docker/workflow/` 上移、LiteLLM / RAGFlow / Workflow 的
 辅助服务随之收敛过来）：common 只提供实例与账号，不含任何业务 schema / 桶初始化，库、账号、桶由消费方自己的
-**一次性初始化服务**创建（`litellm-db-init`、`ragflow-mysql-init` + `ragflow-s3-init`、`mysql-init` + `s3-init`）。
+**一次性初始化服务**创建（`litellm-db-init`、`ragflow-mysql-init` + `ragflow-s3-init`、`assets-init` + `atlas-init` +
+`mysql-init` + `s3-init`——workflow 的前两个把随 server 镜像交付的初始化资产展开到宿主、再做 Atlas schema 收敛，
+2026-10-14 起它的部署不再需要 clone 上游源码）。
 因此这些依赖目录都**不自足**：它们依赖主服务项目先起，消费方容器要接入 `fenix-server` 才能按名访问共享实例。
 已知代价：消费方同时挂在两个网络上，与栈内同名服务会解析歧义（`docker/workflow/` 的 `redis`；RAGFlow 的栈内
 Valkey 已改名 `ragflow-redis` 做保留名避让），判定与处理见 `docker/workflow/README.md` §9、

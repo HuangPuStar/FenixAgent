@@ -8,17 +8,20 @@
 #         YAML 折叠规则悄悄改写（折行会把注释与后续语句并到同一行）。
 # 环境变量（由 compose 显式注入，值来自主服务 env（生产 docker/main/.env、dev 仓库根 .env）/ 部署 env）：
 #         MYSQL_HOST / MYSQL_DATABASE / MYSQL_USER / MYSQL_PASSWORD / MYSQL_ROOT_PASSWORD
-# 只读输入：/schema.sql（上游 docker/volumes/mysql/schema.sql）
-#         /opencoze_latest_schema.hcl（上游 docker/atlas/opencoze_latest_schema.hcl）
+# 只读输入：/schema.sql（上游 docker/volumes/mysql/schema.sql，由 assets-init 从镜像展开到宿主 ./assets 后挂入）
+#
+# 边界：Atlas HCL 的收敛**不在本脚本**——它由同目录的 atlas-init 服务用固定版本的 Atlas 镜像执行，
+#         顺序上本脚本先成功退出（见 docker-compose.yml 的 depends_on）。拆开是为了去掉原先运行期
+#         `curl -sSf https://atlasgo.sh | sh` 安装 Atlas CLI 的网络依赖。
 #
 # 幂等：可重复执行，重跑不覆盖既有库 / 账号 / 表。
 #   - CREATE DATABASE / CREATE USER 都用 IF NOT EXISTS：MySQL 8 原生支持，比「先查 information_schema 再建」
 #     少一次往返、也没有 TOCTOU 窗口（同一版本的上游 schema.sql 也用了这个写法）。
 #   - 账号已存在时 MySQL 只发 warning、不改其口令（这正是「不覆盖既有对象」要的行为）；口令与配置漂移
 #     由第 ③ 步的自检当场暴露。
-#   - Atlas apply 与上游 mysql 容器原先的调用完全一致（同样的 --to / --exclude），重复执行即空操作。
+#   - schema.sql 自身是幂等的（CREATE ... IF NOT EXISTS 写法），重复执行即空操作。
 # 失败可诊断：连接失败 / root 认证失败 / 应用账号口令漂移 / schema 未生效，各自有独立文案与非零退出码；
-#         退出码会被 compose 的 depends_on: service_completed_successfully 反映到 coze-server 上。
+#         退出码会被 compose 的 depends_on: service_completed_successfully 反映到 atlas-init 与 coze-server 上。
 
 set -e
 
@@ -50,11 +53,11 @@ mysql -h "$MYSQL_HOST" -u root -p"$MYSQL_ROOT_PASSWORD" -e 'FLUSH PRIVILEGES;'
 echo '③ 用应用账号自检（口令与配置不一致时当场失败，不拖到 coze-server 连不上才查）...'
 if ! mysql -h "$MYSQL_HOST" -u "$MYSQL_USER" -p"$MYSQL_PASSWORD" -e 'SELECT 1' >/dev/null 2>&1; then
   echo '应用账号认证失败：账号已存在但口令与 MYSQL_PASSWORD 不一致（本脚本不覆盖已有账号的口令）。' >&2
-  echo '处理：要么把主服务 env / 上游 docker/.env 的 MYSQL_PASSWORD 改回实例里的旧口令，要么在实例里 ALTER USER 改口令（会同时影响其他消费方）。' >&2
+  echo '处理：要么把主服务 env 的 MYSQL_PASSWORD 改回实例里的旧口令，要么在实例里 ALTER USER 改口令（会同时影响其他消费方）。' >&2
   exit 1
 fi
 
-echo '④ 应用上游 schema（schema.sql + Atlas）...'
+echo '④ 应用上游 schema.sql（库表结构；Atlas 收敛由 atlas-init 随后执行）...'
 mysql -h "$MYSQL_HOST" -u root -p"$MYSQL_ROOT_PASSWORD" < /schema.sql
 
 if ! mysql -h "$MYSQL_HOST" -u root -p"$MYSQL_ROOT_PASSWORD" "$MYSQL_DATABASE" \
@@ -63,13 +66,4 @@ if ! mysql -h "$MYSQL_HOST" -u root -p"$MYSQL_ROOT_PASSWORD" "$MYSQL_DATABASE" \
   exit 1
 fi
 
-echo 'Installing Atlas CLI...'
-curl -sSf https://atlasgo.sh | sh -s -- -y --community
-PATH="$PATH:/root/.local/bin"
-export PATH
-
-echo 'Running Atlas migrations...'
-atlas schema apply -u "mysql://$MYSQL_USER:$MYSQL_PASSWORD@$MYSQL_HOST:3306/$MYSQL_DATABASE" \
-  --to "file:///opencoze_latest_schema.hcl" --exclude "atlas_schema_revisions,table_*" --auto-approve
-
-echo 'mysql-init 完成：库 / 账号 / schema 均已就绪'
+echo 'mysql-init 完成：库 / 账号 / schema.sql 均已就绪（Atlas 收敛见 atlas-init 服务）'
