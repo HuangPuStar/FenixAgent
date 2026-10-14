@@ -1,7 +1,8 @@
 # docker/common/ —— 平台基础服务（PostgreSQL / Redis / RustFS / MySQL）
 #
 # 权威文档：docs/operations/docker-topology.md §5
-# 由顶层 docker-compose.yml 通过 include 引入，随主服务一起启停；本文件不单独运行。
+# 由 docker/main/docker-compose.yml（生产形态）通过 include 引入，随主服务一起启停；本文件不单独运行。
+# dev 形态（仓库根 docker-compose.yml）**不再消费本文件**：它把 postgres / redis 就地内联了。
 #
 # 服务名（postgres / redis / rustfs / mysql）是 fenix-server 网络上的跨项目 DNS 名，
 # 属全局保留名：其他编排不得使用同名服务。fenix-server 网络由顶层项目定义（本文件只引用）。

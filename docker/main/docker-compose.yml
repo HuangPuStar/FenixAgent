@@ -4,7 +4,8 @@
 #
 # 与仓库根 `docker-compose.yml`（dev 形态，带 `build:`）的关系：
 #   - 两者同项目名 `fenix`、同网络 `fenix-server`：**二选一运行**，同时执行会互相接管容器；
-#   - dev（本地构建）：仓库根文件 `docker compose up -d --build`；
+#   - dev（本地构建）：仓库根文件 `docker compose up -d --build`。它就地内联 `postgres` / `redis`，
+#     并 include `docker/dev/` 下的可选组件（各用 `--profile <组件名>` 启动，见 docker/dev/README.md）；
 #   - 生产/模拟生产：本文件，镜像一律来自 GHCR 固定 tag，不构建。
 #
 # 用法（官方入口，/部署到目标机时随 `docker/` 目录整体交付）：
