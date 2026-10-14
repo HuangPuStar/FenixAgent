@@ -35,7 +35,12 @@
     "titleLabel": "标题",
     "titlePlaceholder": "一句话描述问题",
     "bodyLabel": "描述",
-    "bodyPlaceholder": "补充复现步骤与期望结果（支持 Markdown）"
+    "bodyPlaceholder": "补充复现步骤与期望结果（支持 Markdown）",
+    "attachmentHint": "创建工单后自动上传；单个不超过 {{size}}，每次最多 {{max}} 个，也可直接在描述框粘贴图片",
+    "uploadTitle": "正在上传附件",
+    "uploadHint": "工单已创建，{{total}} 个附件上传完成后将自动进入工单。",
+    "goToTicket": "前往工单",
+    "attachmentsNotUploaded": "提交结果确认中：附件未上传，请在工单确认后重新添加。"
   },
   "detail": {
     "authorLabel": "作者",

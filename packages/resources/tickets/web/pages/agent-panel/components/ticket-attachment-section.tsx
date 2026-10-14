@@ -1,10 +1,13 @@
 /**
- * 附件的两个视图：选择入口（给评论输入框用）与附件区（队列 + 已上传列表）。
+ * 附件的三个视图：选择入口（给评论输入框用）、附件区（队列 + 已上传列表）与上传队列列表。
  *
  * **为什么上传入口在评论框、附件列表却在评论区上方**：附件挂在工单上（上游端点以工单号为坐标），不是挂在
  * 某条评论上。用户的心智是「写评论时顺手带个截图」，因此入口贴着输入框；而列表若不与评论分开，读者会以为
  * 附件属于紧邻的那条评论。两者共享同一个 `useTicketAttachments` 实例（由详情页装配），组件本身保持纯受控：
  * 组件不持有第二份队列状态——双份状态必然在取消/重试两条路径上分叉。
+ *
+ * 上传队列列表（`TicketAttachmentUploadList`）另有一个消费者：新建弹窗「创建成功后上传」阶段的队列。
+ * 该场景不渲染已上传列表（列表回源上游、落在详情页），因此队列与列表是两个可独立复用的视图。
  *
  * 文件类型不做前端白名单：托管平台的白名单是权威（扩展名不在白名单时服务端 400 并给出原因），前端抢先
  * 过滤只会把「为什么这个文件选不了」变成一处没有文案的静默。
@@ -90,18 +93,15 @@ export function TicketAttachmentSection({ attachments, locale, number, projectId
       </div>
 
       {attachments.uploads.length === 0 ? null : (
-        <ul className="mt-3 flex flex-col gap-2">
-          {attachments.uploads.map((task) => (
-            <UploadRow
-              key={task.id}
-              locale={locale}
-              onCancel={() => attachments.cancelUpload(task.id)}
-              onRemove={() => attachments.removeUpload(task.id)}
-              onRetry={() => attachments.retryUpload(task.id)}
-              task={task}
-            />
-          ))}
-        </ul>
+        <div className="mt-3">
+          <TicketAttachmentUploadList
+            locale={locale}
+            onCancel={attachments.cancelUpload}
+            onRemove={attachments.removeUpload}
+            onRetry={attachments.retryUpload}
+            uploads={attachments.uploads}
+          />
+        </div>
       )}
 
       {attachments.loading ? (
@@ -139,6 +139,43 @@ export function TicketAttachmentSection({ attachments, locale, number, projectId
         </ul>
       )}
     </section>
+  );
+}
+
+export interface TicketAttachmentUploadListProps {
+  uploads: readonly TicketAttachmentUpload[];
+  /** 当前界面语言，用于文件大小格式化。 */
+  locale: string;
+  onCancel: (id: string) => void;
+  onRetry: (id: string) => void;
+  onRemove: (id: string) => void;
+}
+
+/**
+ * 上传队列列表（过程态）：详情页附件区与新建弹窗的上传阶段共用同一份渲染与动作语义——「取消 / 重试 /
+ * 移除」的含义与可用条件只有一处定义。空队列渲染为 `null`，调用方不必再写「有没有队列」的条件。
+ */
+export function TicketAttachmentUploadList({
+  uploads,
+  locale,
+  onCancel,
+  onRetry,
+  onRemove,
+}: TicketAttachmentUploadListProps) {
+  if (uploads.length === 0) return null;
+  return (
+    <ul className="flex flex-col gap-2">
+      {uploads.map((task) => (
+        <UploadRow
+          key={task.id}
+          locale={locale}
+          onCancel={() => onCancel(task.id)}
+          onRemove={() => onRemove(task.id)}
+          onRetry={() => onRetry(task.id)}
+          task={task}
+        />
+      ))}
+    </ul>
   );
 }
 

@@ -28,8 +28,7 @@ import {
   planTicketAttachmentSelection,
   TICKET_ATTACHMENT_CONCURRENCY,
   TICKET_ATTACHMENT_MAX_BYTES,
-  TICKET_ATTACHMENT_MAX_COUNT,
-  type TicketAttachmentRejectionReason,
+  ticketAttachmentRejectionMessage,
 } from "../lib/ticket-attachment-limits";
 import { settleTicketWriteFailure } from "../lib/ticket-write-failure";
 import {
@@ -104,18 +103,6 @@ function toUploadView(task: UploadTask): TicketAttachmentUpload {
     status: task.status,
     ...(task.errorMessage === undefined ? {} : { errorMessage: task.errorMessage }),
   };
-}
-
-/** 预检拒绝的文案：按文件名 + 原因逐条给出，用户才知道是哪一个文件有问题。 */
-function rejectionMessage(
-  t: (key: string, options?: { name?: string; size?: string; max?: number }) => string,
-  file: File,
-  reason: TicketAttachmentRejectionReason,
-  maxSize: string,
-): string {
-  if (reason === "tooLarge") return t("attachment.rejectedTooLarge", { name: file.name, size: maxSize });
-  if (reason === "empty") return t("attachment.rejectedEmpty", { name: file.name });
-  return t("attachment.rejectedTooMany", { max: TICKET_ATTACHMENT_MAX_COUNT });
 }
 
 export function useTicketAttachments(
@@ -231,7 +218,7 @@ export function useTicketAttachments(
       const plan = planTicketAttachmentSelection(files);
       const maxSize = formatAttachmentSize(TICKET_ATTACHMENT_MAX_BYTES, language);
       for (const rejection of plan.rejected) {
-        toast.error(rejectionMessage(t, rejection.file, rejection.reason, maxSize));
+        toast.error(ticketAttachmentRejectionMessage(t, rejection.file, rejection.reason, maxSize));
       }
       if (plan.accepted.length === 0) return;
       for (const file of plan.accepted) {

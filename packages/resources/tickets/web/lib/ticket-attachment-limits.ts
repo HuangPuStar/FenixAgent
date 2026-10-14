@@ -84,3 +84,20 @@ export function planTicketAttachmentSelection(files: readonly File[]): TicketAtt
   }
   return { accepted, rejected };
 }
+
+/**
+ * 预检拒绝的文案：按文件名 + 原因逐条给出，用户才知道是哪一个文件有问题。
+ *
+ * 两个入队入口（详情页附件队列、新建弹窗的暂存列表）共用这一份映射：各写一份文案会让同一次拒绝在
+ * 两处给出不同解释。`t` 由调用方注入，本模块保持不依赖 i18n。
+ */
+export function ticketAttachmentRejectionMessage(
+  t: (key: string, options?: { name?: string; size?: string; max?: number }) => string,
+  file: File,
+  reason: TicketAttachmentRejectionReason,
+  maxSize: string,
+): string {
+  if (reason === "tooLarge") return t("attachment.rejectedTooLarge", { name: file.name, size: maxSize });
+  if (reason === "empty") return t("attachment.rejectedEmpty", { name: file.name });
+  return t("attachment.rejectedTooMany", { max: TICKET_ATTACHMENT_MAX_COUNT });
+}

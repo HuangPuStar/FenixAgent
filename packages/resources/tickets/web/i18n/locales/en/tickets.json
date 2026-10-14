@@ -35,7 +35,12 @@
     "titleLabel": "Title",
     "titlePlaceholder": "Describe the problem in one line",
     "bodyLabel": "Description",
-    "bodyPlaceholder": "Add steps to reproduce and the expected result (Markdown supported)"
+    "bodyPlaceholder": "Add steps to reproduce and the expected result (Markdown supported)",
+    "attachmentHint": "Uploaded automatically after creation; up to {{size}} per file, {{max}} files per selection. You can also paste images into the description",
+    "uploadTitle": "Uploading attachments",
+    "uploadHint": "Ticket created. You'll be taken to it once {{total}} attachment(s) finish uploading.",
+    "goToTicket": "Go to ticket",
+    "attachmentsNotUploaded": "The submission is being confirmed: attachments were not uploaded. Please add them from the ticket once it is confirmed."
   },
   "detail": {
     "authorLabel": "Author",

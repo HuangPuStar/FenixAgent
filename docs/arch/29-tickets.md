@@ -180,7 +180,8 @@
 
 - **两层开关不自动映射**：assembly profile 决定模块是否加载，`FENIX_FEATURE_GIT` 只决定 Forgejo 容器是否启动。关掉工单不等于可以停 Forgejo（其他消费者可能仍在用）。
 - **bundle 是上界、运行期只能收窄**：工单页面要先用 `bun run generate:web-contributions --profile deploy/assembly/ce-tickets.json` 生成贡献、再 `bun run build:web` 构建；部署期换 profile 不会重新打包浏览器产物。运行期 `/web/system/modules` 的 `data.web` 不含 `tickets` 时，入口隐藏、`/agent/tickets/*` 被拦截。
-- **前端落点**：列表 `/agent/tickets`、详情 `/agent/tickets/$projectId/$number`；筛选与分页是会话内状态，不落 URL，详情链接用显式 `projectId` 保证默认项目切换后依然稳定。列表页的筛选只有关键词与状态两项（负责人/标签筛选见 §10.4）；详情页已交付评论区（倒序分页、新建与内联编辑）、负责人指派、标签多选与全量提交、关闭/重开确认、冲突与「待确认」呈现、附件区（列表 + 上传队列 + 图片缩略图与点击放大）与输入框旁的添加入口（也可直接粘贴图片，仅新建评论时生效，粘贴的图片换成带时间戳的唯一文件名——恢复核对按「文件名 + 字节数」认领结果，重名会让它转人工），写状态机由 `useTicketDetail` 唯一持有——同一工单只允许一笔未确认的写，多个入口共享同一个禁用口径，待确认 id 有两个来源（本地 202 与详情快照的 `pendingOperationId`，后者跨刷新可见）。导航项 id `tickets` 归 Shell 的 `config` 组，组内序号 110（组内 10–100 已被既有项占满，重复 `order` 会让 Shell 装配期直接抛错）。
+- **前端落点**：列表 `/agent/tickets`、详情 `/agent/tickets/$projectId/$number`；筛选与分页是会话内状态，不落 URL，详情链接用显式 `projectId` 保证默认项目切换后依然稳定。列表页的筛选只有关键词与状态两项（负责人/标签筛选见 §10.4）；详情页已交付评论区（倒序分页、新建与内联编辑）、负责人指派、标签多选与全量提交、关闭/重开确认、冲突与「待确认」呈现、附件区（列表 + 上传队列 + 图片缩略图与点击放大）与输入框旁的添加入口（也可直接粘贴图片，仅新建评论时生效；粘贴的图片换成带时间戳的唯一文件名——恢复核对按「文件名 + 字节数」认领结果，重名会让它转人工），写状态机由 `useTicketDetail` 唯一持有——同一工单只允许一笔未确认的写，多个入口共享同一个禁用口径，待确认 id 有两个来源（本地 202 与详情快照的 `pendingOperationId`，后者跨刷新可见）。导航项 id `tickets` 归 Shell 的 `config` 组，组内序号 110（组内 10–100 已被既有项占满，重复 `order` 会让 Shell 装配期直接抛错）。
+- **新建弹窗的附件两段式提交**：附件上传以工单号为坐标，创建成功前没有落点，因此新建工单弹窗的粘贴与「添加附件」入口（描述框，与详情页评论框同构、共用预检与拒绝文案）只把文件暂存在本地（`useTicketStagedAttachments`）；201 拿到工单号后弹窗进入上传阶段（`ticket-create-upload-stage`，表单折叠、弹窗不可关闭），把暂存文件按单批上限分批移交共享的 `useTicketAttachments` 队列，全部任务终结（成功 / 受理 / 失败被移除，「前往工单」即放弃剩余）后才关闭并进入工单；202 时工单号未知、暂存文件无落点，明确提示未上传而不是静默丢弃。
 - **关闭路径行为**：默认产物下，两个宿主薄路由在懒加载子树之前按 `useAssemblyCapabilities()` 判 `"tickets"`，未启用时不挂载页面、不发请求，展示与根守卫相同的「未启用」界面。服务端未装配时对应路由不存在（404），前端入口隐藏与后端 404 由同一份 `/web/system/modules` 对齐——「入口可见但服务端 404」或「服务端可用但入口被隐藏」都算缺陷。
 
 ## 9. 已知偏离
@@ -230,7 +231,7 @@
 - `packages/resources/tickets/src/__tests__/ticket-recovery.test.ts`：单次核对的三条结论与边界（唯一命中补齐、同一 `message_id` 多命中、窗口内外、上游读失败 503 不改状态、评论坐标替换、并发核对只落一次终态、非本人 404、`getOperation` 的触发条件）。
 - `apps/server/src/__tests__/tickets-assembly.test.ts`：装配面——三份 profile 的差集、缺 `git` 时在副作用前失败、默认 profile 零出站、`git` 先于 `tickets` 构造。
 - `apps/web/src/__tests__/web-contributions.test.ts`：宿主侧贡献与 `tickets` 字典注册（漏登记的症状是文案整片回退成 key 回显）。
-- `packages/resources/tickets/web/__tests__/`：浏览器面守卫（`tickets-browser-surface`：值导入图里不出现 `node:*`、`@server/*`、宿主别名，跨包说明符都能经对方 `exports` 解析，外部依赖白名单逐条登记）、字典自持（`tickets-i18n`）、失败码分类（`ticket-errors`：版本冲突 / 幂等冲突 / 在途互斥 / 404 各归哪一类）、写入结果判别与幂等键持有者（`ticket-write-outcome`）、列表与详情页的状态分支（`agent-tickets-page-states` / `agent-ticket-detail-states`：错误与重试、空态、未开通、行级 `stale` 降级）、评论与写动作的 hook 级数据流（`ticket-comments` / `agent-ticket-write-actions`：分页方向、草稿保留、冲突刷新、202 短路、标签全量提交）、附件的预检与队列（`ticket-attachments`：逐文件拒绝原因、并发上限 2、幂等键跨重试复用、202 转待确认、下载经本服务端点）。
+- `packages/resources/tickets/web/__tests__/`：浏览器面守卫（`tickets-browser-surface`：值导入图里不出现 `node:*`、`@server/*`、宿主别名，跨包说明符都能经对方 `exports` 解析，外部依赖白名单逐条登记）、字典自持（`tickets-i18n`）、失败码分类（`ticket-errors`：版本冲突 / 幂等冲突 / 在途互斥 / 404 各归哪一类）、写入结果判别与幂等键持有者（`ticket-write-outcome`）、列表与详情页的状态分支（`agent-tickets-page-states` / `agent-ticket-detail-states`：错误与重试、空态、未开通、行级 `stale` 降级）、评论与写动作的 hook 级数据流（`ticket-comments` / `agent-ticket-write-actions`：分页方向、草稿保留、冲突刷新、202 短路、标签全量提交）、附件的预检与队列（`ticket-attachments`：逐文件拒绝原因、并发上限 2、幂等键跨重试复用、202 转待确认、下载经本服务端点）、新建弹窗的附件编排（`ticket-create-attachments`：粘贴换名与纯文本放行、暂存预检与逐项移除、创建后按工单坐标分批移交、成功/失败重试/202 三条终结路径）。
 
 需要注意：评论、工单修改、标签与恢复核对的用例是**路由级 + Facade 级**（`installTicketRoutes` 装真实路由，Git 与身份目录用替身），覆盖的是协议形状、状态码与账本落点；**不覆盖**真实 Forgejo 交互与浏览器到服务端的端到端链路，后者不在本包测试范围内（两份装配用例只验证装配差集与零出站）。
 
