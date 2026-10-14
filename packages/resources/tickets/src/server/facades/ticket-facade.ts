@@ -39,7 +39,11 @@ import type {
   TicketUpdateIssueInput,
 } from "../services/ticket-edit-service";
 import { TICKET_LIST_DEFAULT_LIMIT, TICKET_LIST_MAX_LIMIT } from "../services/ticket-limits";
-import { ISSUE_CHANGE_KINDS, type TicketOperationService } from "../services/ticket-operation-service";
+import {
+  ISSUE_CHANGE_KINDS,
+  RECONCILABLE_OPERATION_STATUSES,
+  type TicketOperationService,
+} from "../services/ticket-operation-service";
 import {
   canChangeIssueStateOrAssignee,
   canEditTicketContent,
@@ -148,7 +152,6 @@ export interface TicketOperationRecoveryPort {
 }
 
 /** 需要核对的状态（§8.1）：`dispatching` 是崩溃/在途残留，`uncertain` 是结果未定；终态一律不触发。 */
-const RECONCILABLE_STATUSES: ReadonlySet<string> = new Set(["dispatching", "uncertain"]);
 
 export interface TicketFacadeDeps {
   readonly accessControl: AccessControlModule;
@@ -340,7 +343,7 @@ class TicketFacade extends AuthorizedResourceFacade implements TicketFacadeApi {
     // §8.1：未定状态在返回前执行一次核对（只回源读取、绝不重放写入），核对结果直接作为响应——前端据此
     // 从「确认中」转到终态，不需要第二条路由。核对自身失败（上游不可用）按 503 上抛：宁可让客户端稍后重查，
     // 也不把一次读故障伪装成「仍在进行中」。
-    if (this.recovery !== undefined && RECONCILABLE_STATUSES.has(row.status)) {
+    if (this.recovery !== undefined && RECONCILABLE_OPERATION_STATUSES.has(row.status)) {
       const outcome = await this.recovery.reconcile({ organizationId, actorId: actor.userId, operationId });
       return toTicketOperationView(outcome.operation);
     }

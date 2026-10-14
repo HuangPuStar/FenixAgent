@@ -1,11 +1,14 @@
 /**
- * 平台工单列表（管理面）：跨组织工单索引的只读渲染与取数编排。
+ * 平台工单列表（管理面）：跨组织工单索引的渲染、筛选、分页与打开动作。
  *
  * 与 `/agent/tickets` 的列表页是三处刻意的不同，其余（状态角标、时间格式、空/错误文案）全部复用：
  * 1. **凭据**：这里走 `/api/system/tickets`（系统 master key）。凭据失效（401）不回「无权查看」的稳定结论页，
  *    而是清 key 并由 `AdminTicketsPage` 的门请人重输——结论页在这里只会让人以为是平台坏了。
  * 2. **范围**：没有「当前组织」这个概念，因此没有项目总览、没有创建入口；筛选只有「标题关键词 + 状态」。
  * 3. **分页**：页码语义（上一页/下一页 + 总数），不是工单号游标——跨项目时工单号不构成全局序。
+ *
+ * 行可点开详情（`onOpen`）：详情是管理面内的就地视图，不是宿主路由，因此列表的筛选与页码天然保留（见
+ * `AdminTicketsPage` 的视图切换）。
  *
  * 状态落点与列表页同口径（顺序即优先级）：首屏骨架 → 失败（带重试）→ 空态（无筛选 / 有筛选两种文案）→ 表格。
  * 请求失败**不得**落进空态：那会让人以为平台里确实没有工单。
@@ -48,9 +51,16 @@ const STATE_FILTERS: readonly { readonly value: TicketStateFilter; readonly labe
 export interface PlatformTicketListProps {
   /** 凭据失效（401）时回门；由 `AdminTicketsPage` 接 `useAdminKeyGate().fail`。 */
   onAuthFailure: () => void;
+  /**
+   * 打开某一行（就地切到详情视图）。
+   *
+   * 传整行而不是只传 `projectId`：详情视图要显示归属坐标，而 `/web` 面的详情响应里没有它们（坐标是列表
+   * join 出来的服务端字段），管理面的详情只能从行里带过去。
+   */
+  onOpen: (row: SystemTicketSummary) => void;
 }
 
-export function PlatformTicketList({ onAuthFailure }: PlatformTicketListProps) {
+export function PlatformTicketList({ onAuthFailure, onOpen }: PlatformTicketListProps) {
   const { t, i18n } = useTranslation(TICKETS_NS);
   const [page, setPage] = useState(1);
   const [keyword, setKeyword] = useState("");
@@ -155,7 +165,7 @@ export function PlatformTicketList({ onAuthFailure }: PlatformTicketListProps) {
               title={filtering ? t("empty.searchTitle") : t("admin.emptyTitle")}
             />
           ) : (
-            <PlatformTicketTable items={items} locale={i18n.language} />
+            <PlatformTicketTable items={items} locale={i18n.language} onOpen={onOpen} />
           )
         ) : null}
 
@@ -189,13 +199,21 @@ function TicketListSkeleton() {
   );
 }
 
-/** 列表行的只读渲染。坐标列是管理面独有的信息：没有它，两个组织的同名工单号无法区分。 */
+/**
+ * 列表行的渲染与打开动作。
+ *
+ * 可点击性做两处：标题是**焦点控件**（`<button>`，键盘 Tab + Enter 可达，也是读屏的入口），行上的
+ * `onClick` 只是鼠标便利——两者走同一个回调，行内任意位置点击都进同一张详情。没有第二个目的地，
+ * 因此不需要「行内还有别的按钮」时要做的 `stopPropagation` 处理。
+ */
 function PlatformTicketTable({
   items,
   locale,
+  onOpen,
 }: {
   readonly items: readonly SystemTicketSummary[];
   readonly locale: string;
+  readonly onOpen: (row: SystemTicketSummary) => void;
 }) {
   const { t } = useTranslation(TICKETS_NS);
   return (
@@ -209,14 +227,24 @@ function PlatformTicketTable({
             <TableHead className="w-40">{t("admin.columnOrganization")}</TableHead>
             <TableHead className="w-48">{t("admin.columnRepository")}</TableHead>
             <TableHead className="w-40">{t("list.columnAuthor")}</TableHead>
-            <TableHead className="w-44">{t("detail.syncedAtLabel")}</TableHead>
+            {/* 表头是**列名**，不能复用带插值的 `detail.syncedAtLabel`（「同步于 {{time}}」）：那个键的
+                `{{time}}` 由详情页传入，表头没有可传的值，复用它只会把占位符原样印在列头上。 */}
+            <TableHead className="w-44">{t("admin.columnSyncedAt")}</TableHead>
           </TableRow>
         </TableHeader>
         <TableBody>
           {items.map((item) => (
-            <TableRow key={`${item.projectId}:${item.issueNumber}`}>
+            <TableRow
+              className="cursor-pointer"
+              key={`${item.projectId}:${item.issueNumber}`}
+              onClick={() => onOpen(item)}
+            >
               <TableCell className="text-text-muted tabular-nums">#{item.issueNumber}</TableCell>
-              <TableCell className="text-text-primary">{item.title}</TableCell>
+              <TableCell>
+                <button className="text-left text-brand hover:underline" onClick={() => onOpen(item)} type="button">
+                  {item.title}
+                </button>
+              </TableCell>
               <TableCell>
                 <TicketStateBadge state={item.state} />
               </TableCell>

@@ -14,6 +14,7 @@ import type { ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import type { TicketDetail } from "../../../api/tickets";
 import type { TicketLabelsState } from "../../../hooks/use-ticket-labels";
+import type { TicketMembersState } from "../../../hooks/use-ticket-members";
 import { TICKETS_NS } from "../../../i18n/namespace";
 import { TicketAssigneePicker } from "./ticket-assignee-picker";
 import { formatTicketTime } from "./ticket-format";
@@ -30,6 +31,10 @@ export interface TicketDetailMetaProps {
   labels: TicketLabelsState;
   labelsOpen: boolean;
   onLabelsOpenChange: (open: boolean) => void;
+  /** 负责人候选的外部注入（平台管理面用）；省略即由选择器按控制台面自己取数。 */
+  members?: TicketMembersState;
+  /** 负责人选择器的开合通知；注入 `members` 时必须一并传（候选只在展开时请求）。 */
+  onAssigneeOpenChange?: (open: boolean) => void;
 }
 
 export function TicketDetailMeta({
@@ -41,6 +46,8 @@ export function TicketDetailMeta({
   labels,
   labelsOpen,
   onLabelsOpenChange,
+  members,
+  onAssigneeOpenChange,
 }: TicketDetailMetaProps) {
   const { t } = useTranslation(TICKETS_NS);
   return (
@@ -58,6 +65,8 @@ export function TicketDetailMeta({
           <TicketAssigneePicker
             assignee={ticket.assignee}
             disabled={disabled}
+            members={members}
+            onOpenChange={onAssigneeOpenChange}
             onSelect={onAssign}
             projectId={projectId}
           />

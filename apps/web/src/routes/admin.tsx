@@ -41,7 +41,7 @@ const NAV_ITEMS: {
   // 插件市场的管理面（发布 / 下架 / 恢复）：控制台那一份是只读浏览（`/agent/mcp?tab=npm`），
   // 写入口只在这里——两处不是同一个页面的两个入口，而是两种凭据下的两种能力。
   { to: "/admin/plugin-market", labelKey: "admin.nav", ns: PLUGIN_MARKET_NS, icon: Package },
-  // 工单的跨组织只读列表（系统 key 面）：控制台那一份按当前组织过滤，两种凭据对应两种可见范围。
+  // 工单的跨组织面（列表 + 详情与全部写入口，系统 key 面）：控制台那一份按当前组织过滤，两种凭据对应两种可见范围。
   { to: "/admin/tickets", labelKey: "admin.nav", ns: TICKETS_NS, icon: Ticket, moduleId: "tickets" },
   { to: "/admin/logs", labelKey: "logs.nav", icon: FileText },
 ];

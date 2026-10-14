@@ -32,9 +32,10 @@ export function createTicketsWebRoutes(host: ServerRouteHost) {
 }
 
 /**
- * `/api/system/tickets` 跨组织只读列表（挂宿主 `api` 聚合槽）。
+ * `/api/system/tickets` 平台管理面（跨组织列表、详情与写路径；挂宿主 `api` 聚合槽）。
  *
- * 路径自带 `/api/system` 前缀（对外合同的一部分），不由宿主拼接。
+ * 路径自带 `/api/system` 前缀（对外合同的一部分），不由宿主拼接；能力清单见
+ * `docs/arch/29-tickets.md` §12.1。
  */
 export function createTicketsApiSystemTicketsRoutes(host: ServerRouteHost) {
   return createApiSystemTicketsRoutes(systemRouteDependencies(host));

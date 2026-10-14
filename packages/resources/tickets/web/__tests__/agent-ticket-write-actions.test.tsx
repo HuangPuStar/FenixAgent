@@ -17,7 +17,7 @@ import { createInstance } from "i18next";
 import { act, createElement, useState } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { I18nextProvider } from "react-i18next";
-
+import { webTicketDataSource } from "../api/ticket-data-source";
 import type { TicketDetail } from "../api/tickets";
 import { useTicketDetail } from "../hooks/use-ticket-detail";
 import { useTicketLabels } from "../hooks/use-ticket-labels";
@@ -248,7 +248,7 @@ function track(promise: Promise<TicketWriteOutcome>): void {
 
 /** 详情写动作 harness：按钮触发 hook 的动作，`<pre>` 探针暴露状态机。 */
 function DetailHarness() {
-  const detail = useTicketDetail(PROJECT_ID, NUMBER);
+  const detail = useTicketDetail(PROJECT_ID, NUMBER, webTicketDataSource);
   return (
     <div>
       <pre data-probe="detail">
@@ -292,7 +292,7 @@ function DetailHarness() {
 /** 标签 harness：`ticket` 由 harness 持有并交给 `applyTicket` 回填——这正是「成功后草稿回到服务端集合」的路径。 */
 function LabelsHarness() {
   const [ticket, setTicket] = useState<TicketDetail>({ ...ticketDto(), projectId: PROJECT_ID });
-  const labels = useTicketLabels(PROJECT_ID, NUMBER, {
+  const labels = useTicketLabels(PROJECT_ID, NUMBER, webTicketDataSource, {
     enabled: true,
     ticket,
     blocked: false,
@@ -324,7 +324,7 @@ function LabelsHarness() {
 
 /** 成员 harness：输入框上报关键词（防抖由 hook 承担），按钮触发翻页。 */
 function MembersHarness() {
-  const members = useTicketMembers(PROJECT_ID, { open: true });
+  const members = useTicketMembers(PROJECT_ID, webTicketDataSource, { open: true });
   return (
     <div>
       <pre data-probe="members">

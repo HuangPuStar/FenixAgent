@@ -1,6 +1,6 @@
 # 工单模块架构（tickets）
 
-> 状态：实现基线（2026-10-12，2026-10-14 追加平台管理面 §12）。**服务端已注册 19 条 `/web` 路由 + 1 条系统路由**（`GET /api/system/tickets`，跨组织只读，见 §12）：创建/列表/详情、工单修改（标题/描述/负责人/状态）、标签挂载、评论列表/创建/编辑、项目标签读取/新建/修改、可指派成员分页、附件上传/列表/下载、操作查询与单次恢复核对都已落地；在途互斥（409 `TICKET_OPERATION_PENDING`）与版本冲突（409 `VERSION_CONFLICT`）已由写路径真实产生。剩余缺口集中在**周期扫描、事件同步与站内通知**，以及评论倒序分页在上游不发 `Link` 头时的退化（§10 逐条列出）。
+> 状态：实现基线（2026-10-12，2026-10-14 追加平台管理面 §12，并把该面从「只读列表」扩到与工单页面等价的能力）。**服务端已注册 19 条 `/web` 路由 + 13 条系统路由**（`/api/system/tickets/**`，跨组织，见 §12）：创建/列表/详情、工单修改（标题/描述/负责人/状态）、标签挂载、评论列表/创建/编辑、项目标签读取/新建/修改、可指派成员分页、附件上传/列表/下载、操作查询与单次恢复核对都已落地，管理面按同一批 schema 与视图镜像其中的详情与写路径。在途互斥（409 `TICKET_OPERATION_PENDING`）与版本冲突（409 `VERSION_CONFLICT`）已由写路径真实产生。剩余缺口集中在**周期扫描、事件同步与站内通知**，以及评论倒序分页在上游不发 `Link` 头时的退化（§10 逐条列出）。
 > 范围：`@fenix/resource-tickets` 的定位与依赖方向、五张表与所有权、协议面、授权落点、项目开通、身份头、幂等与 202 语义、可选装配与已知偏离。
 > 定位：本文是 `packages/resources/tickets` 的实现基线，只描述已落地的事实；仓库与 Issue 的事实源在 Forgejo，本模块只持有 AOS 侧的索引、归属与操作账本。
 > 约定：代码演进偏离本文档时，先更新文档再改代码。运维步骤（启用、开通、关闭与排障）见 [工单运维说明](../operations/tickets.md)，公共 Git 的契约与安全边界见 [公共 Git 模块架构](./28-common-git.md)。
@@ -26,7 +26,9 @@
 | 层 | 文件 | 职责 |
 |---|---|---|
 | 协议适配 | `src/server/routes/web/*` | 十六条路由只做参数校验、取主体与状态码/信封映射，不解释组织、角色或项目状态 |
+| 协议适配（管理面） | `src/server/routes/api/*` | 十三条系统路由，只做参数校验与信封映射；不取主体（判据是系统 key）。两平面共用的协议设施在 `routes/ticket-error-mapping.ts` / `routes/ticket-request-protocol.ts` / `routes/ticket-attachment-protocol.ts` |
 | 应用 Facade | `src/server/facades/*` | 授权判定（404/403 的唯一落点）、协议视图组装、项目开通编排；授权的 403 收窄与管理员判定共用 `ticket-action-guard.ts` |
+| 应用 Facade（管理面） | `src/server/facades/ticket-platform-*.ts` | 不做角色判定（凭据即判据）：项目坐标解析、审计主体（系统托管租户）、视图组装；复用同一批领域服务 |
 | 领域服务 | `src/server/services/*` | 幂等裁决、身份头读写、作者核验、内容指纹、失败分类、恢复核对；不接收 `ActorContext`。`ticket-permission.ts` 是动作权限矩阵的唯一实现处（纯函数，四个入口共用） |
 | 仓储 | `src/server/repositories/*` | 受控查询与写原语、事务内咨询锁；不做领域裁决 |
 | 资源注册 | `src/server/access/ticket-project-resource.ts` | `ticket_project` 的动作声明与存储绑定 |
@@ -61,11 +63,11 @@
 
 上表是本版**全部** `/web` 路由（十九条，分六组注册函数：项目 1–4、工单 5–9、评论 10–12、标签 13–15、操作账本 16、附件 17–19）。写响应统一为 `{ ticket|comment|label|operation, operationId }`（202 只带 `operationId` 与 `status: "uncertain"`）；`GET` 类不写账本。
 
-除这十九条之外还有**一条系统路由**：`GET /api/system/tickets`（跨组织只读列表，宿主 `api` 槽，凭据是 `RCS_SYSTEM_API_KEYS`）。它不在这张表里——信封（`{ success, data }` / `{ error }`）、分页口径（页码）与判据（系统 key 而不是 actor）都与 `/web` 面不同，单独见 §12。
+除这十九条之外还有**十三条系统路由**（`/api/system/tickets/**`，宿主 `api` 槽，凭据是 `RCS_SYSTEM_API_KEYS`）。它们不在这张表里——信封（`{ success, data }` / `{ error }`）、分页口径（页码）、判据（系统 key 而不是 actor）与 `403` 的有无都与 `/web` 面不同，逐条见 §12 的管理面操作清单。
 
 要点：
 
-- **错误映射只有一处**（`routes/web/web-error.ts`），按错误自带的状态码判定：`404` = 不存在或不可见，`403` = 角色不足或上游明确拒绝，`409` = 幂等冲突（`IDEMPOTENCY_CONFLICT`）/ 仓库归属冲突 / 版本冲突（`VERSION_CONFLICT`）/ 在途未确认变更（`TICKET_OPERATION_PENDING`），`503` = 暂停、上游不可用、绑定不可写或核对时上游不可用。`GitError` 的 `WRITE_UNCERTAIN` 刻意不映射——它是「结果未定」，由 Facade 转成 202 分支。未命中映射表的异常原样上抛，交宿主兜底 500，不伪装成协议错误。
+- **错误映射只有一处**（分类在 `routes/ticket-error-mapping.ts`，两个面的信封各自包装），按错误自带的状态码判定：`404` = 不存在或不可见，`403` = 角色不足或上游明确拒绝（仅 `/web` 面产出），`409` = 幂等冲突（`IDEMPOTENCY_CONFLICT`）/ 仓库归属冲突 / 版本冲突（`VERSION_CONFLICT`）/ 在途未确认变更（`TICKET_OPERATION_PENDING`），`503` = 暂停、上游不可用、绑定不可写或核对时上游不可用。`GitError` 的 `WRITE_UNCERTAIN` 刻意不映射——它是「结果未定」，由 Facade 转成 202 分支。未命中映射表的异常原样上抛，交宿主兜底 500，不伪装成协议错误。
 - **幂等键覆盖全部外部写路径**（`PATCH /ticket-projects/default` 除外：它是事务内本地变更，不触远端）：缺失与格式非法分别返回 `IDEMPOTENCY_KEY_REQUIRED` / `IDEMPOTENCY_KEY_INVALID`（400）；同键不同内容 409；同键同内容重放返回首次结果，不重发远端写入。
 - **列表只读索引**：按工单号倒序，游标是本页末条工单号，`limit` 默认 30、上限 100；`q` 只匹配标题，`labelId` 按集合包含匹配。索引由创建与修改路径同步刷新（`assigneeId` / `labelIds` 会被写入），事件同步未实现因此仓库侧的直改仍不同步；索引未同步到最新时行级 `syncStatus` 为 `stale`，页面据此提示而不拦截。
 - **详情回源**：正文从 Forgejo 读取并剥离身份头，作者归属经归属账本核验；上游不可用报 503，绝不返回空正文或伪装 404。返回的 `pendingOperationId` 是该工单上未终结的 `issue.update` / `issue.labels` 操作 ID（与写路径的在途互斥同谓词），非空即表示该工单的写入口应被禁用（§7）。
@@ -231,6 +233,7 @@
 - `packages/resources/tickets/src/__tests__/ticket-attachments.test.ts`：附件——上传的 multipart 形状与账本落点（`attachment_uploaded`）、上游 413/422 是确定拒绝（落 `failed` 与 400，不升级未定）、超限与空内容在发请求前本地拒绝、同名同内容的幂等重放与换内容 409、列表/下载的上游失败 503、跨组织 404、项目暂停 503 且零上游调用、恢复核对的三条匹配结论、下载响应头（`Content-Disposition` 两个值 + `nosniff`）与路由层参数校验。
 - `packages/resources/tickets/src/__tests__/ticket-members.test.ts`：成员分页（`page`/`pageSize`/`q` 透传与总数回显）、跨组织 404 且身份目录零调用、投影只含 `userId` 与 `name`。
 - `packages/resources/tickets/src/__tests__/ticket-recovery.test.ts`：单次核对的三条结论与边界（唯一命中补齐、同一 `message_id` 多命中、窗口内外、上游读失败 503 不改状态、评论坐标替换、并发核对只落一次终态、非本人 404、`getOperation` 的触发条件）。
+- `packages/resources/tickets/src/__tests__/system-tickets.test.ts` / `system-ticket-detail.test.ts` / `system-ticket-support.test.ts` / `system-ticket-comments.test.ts` / `system-ticket-attachments.test.ts`：平台管理面的路由级用例（§12 的清单逐条对应；`system-tickets.test.ts` 另钉住十三条路由的清单本身，表格与实现漂移时会失败）。三类断言贯穿全部文件——凭据缺失/错误时 401 且**零读取零写入**、参数非法与跨组织坐标、写路径的审计主体与账本落点；`/web` 面与共享领域服务的规则不在这里重复。共用装配在 `system-ticket-fixtures.ts`（请求构造 + 两个组织的种子 + 系统租户身份替身）。
 - `apps/server/src/__tests__/tickets-assembly.test.ts`：装配面——三份 profile 的差集、缺 `git` 时在副作用前失败、默认 profile 零出站、`git` 先于 `tickets` 构造。
 - `apps/web/src/__tests__/web-contributions.test.ts`：宿主侧贡献与 `tickets` 字典注册（漏登记的症状是文案整片回退成 key 回显）。
 - `packages/resources/tickets/web/__tests__/`：浏览器面守卫（`tickets-browser-surface`：值导入图里不出现 `node:*`、`@server/*`、宿主别名，跨包说明符都能经对方 `exports` 解析，外部依赖白名单逐条登记）、字典自持（`tickets-i18n`）、失败码分类（`ticket-errors`：版本冲突 / 幂等冲突 / 在途互斥 / 404 各归哪一类）、写入结果判别与幂等键持有者（`ticket-write-outcome`）、列表与详情页的状态分支（`agent-tickets-page-states` / `agent-ticket-detail-states`：错误与重试、空态、未开通、行级 `stale` 降级）、评论与写动作的 hook 级数据流（`ticket-comments` / `agent-ticket-write-actions`：分页方向、草稿保留、冲突刷新、202 短路、标签全量提交）、附件的预检与队列（`ticket-attachments`：逐文件拒绝原因、并发上限 2、幂等键跨重试复用、202 转待确认、下载经本服务端点）、新建弹窗的附件编排（`ticket-create-attachments`：粘贴换名与纯文本放行、暂存预检与逐项移除、创建后按工单坐标分批移交、成功/失败重试/202 三条终结路径）。
@@ -241,26 +244,78 @@
 
 **未覆盖（同进程测试环境的硬约束）**：所有挂在 Radix 覆盖层里的页面级断言——创建弹窗（202 持久提示条与不跳转、201 跳转参数、空正文不发请求）与详情页的字段编辑弹窗、标签多选、关闭确认。原因是覆盖层在 `bun test packages/` 的同进程里不挂载（先加载过 `packages/ui-components` 的同类测试后，`@radix-ui/react-portal` 的挂载 effect 不执行，且不报错）；仓库既有做法是对 `config/FormDialog` 与 `ui/dialog` 开模块替身，这里不采用，以免跨文件替身污染同进程的其它包测试。这些动作改由 hook 级与纯逻辑级用例覆盖（写状态机与幂等键换代、冲突与待确认分支、权限判定、错误码分类），页面层只断言不需要覆盖层的分支（加载 / 空态 / 错误与重试 / 未开通 / 行级 `stale`）。
 
-## 12. 平台管理面（跨组织工单列表）
+## 12. 平台管理面（跨组织工单：列表、详情与写路径）
 
-**能力**：系统管理员（平台运维者）跨组织查看全部组织的工单。工单事实源与索引都不变，本面只加一条只读系统路径与一个宿主管理页。
+**能力**：系统管理员（平台运维者）跨组织查看全部组织的工单，并完成与工单页面等价的写操作。工单事实源与索引都不变，本面只加系统路径与宿主管理页。
+
+### 12.1 管理面操作清单与路径表（前端契约）
+
+**镜像规则**：管理面端点与 `/web/tickets/:projectId/:number/**` 面**逐字对齐**——同名操作、同一批 zod schema（本表「载荷 schema」列即 `/web` 面的原名）、同一响应视图类型（本表「响应 schema」列即 `/web` 面的原 schema，成功信封同为 `{ success: true, data }`），路径前缀替换为 `/api/system/tickets`。**唯一的信封差异**在失败分支：`{ error: { code, message } }`（`ApiSystemErrorResponseSchema`，不带 `success`）。契约冻结于本次交付，形状不再变更；若必须改，先改本表并同步前端。
+
+| # | 方法 / 路径（管理面） | 载荷 schema（与 `/web` 同源） | 响应 schema | 对应的 web 面操作 |
+| --- | --- | --- | --- | --- |
+| 1 | `GET /api/system/tickets` | query `SystemTicketListQuerySchema`（页码分页 + `q`/`state`/`organizationId`/`projectId` 筛选） | `SystemTicketListResponseSchema` | `GET /web/tickets/:projectId`（**差异**：本面跨组织、按页码分页且不按项目强制过滤） |
+| 2 | `GET /api/system/tickets/:projectId/:number` | 路径 `TicketDetailParamsSchema` | `TicketDetailResponseSchema` | `GET /web/tickets/:projectId/:number` |
+| 3 | `PATCH /api/system/tickets/:projectId/:number` | 头 `TicketIdempotencyHeadersSchema`；体 `TicketUpdateRequestSchema` | 200/202 `TicketResponseSchema` / `TicketUncertainResponseSchema` | `PATCH /web/tickets/:projectId/:number` |
+| 4 | `PUT /api/system/tickets/:projectId/:number/labels` | 头 `TicketIdempotencyHeadersSchema`；体 `TicketLabelSetRequestSchema` | 200/202 `TicketResponseSchema` / `TicketUncertainResponseSchema` | `PUT /web/tickets/:projectId/:number/labels` |
+| 5 | `GET /api/system/tickets/:projectId/:number/comments` | 路径 `TicketDetailParamsSchema`；query `TicketCommentListQuerySchema` | `TicketCommentListResponseSchema` | `GET /web/tickets/:projectId/:number/comments` |
+| 6 | `POST /api/system/tickets/:projectId/:number/comments` | 头 `TicketIdempotencyHeadersSchema`；体 `TicketCommentCreateRequestSchema` | 201/202 `TicketCommentResponseSchema` / `TicketUncertainResponseSchema` | `POST /web/tickets/:projectId/:number/comments` |
+| 7 | `PATCH /api/system/tickets/:projectId/:number/comments/:commentId` | 头 `TicketIdempotencyHeadersSchema`；体 `TicketCommentUpdateRequestSchema` | 200/202 `TicketCommentResponseSchema` / `TicketUncertainResponseSchema` | `PATCH /web/tickets/:projectId/:number/comments/:commentId` |
+| 8 | `GET /api/system/tickets/:projectId/:number/attachments` | 路径 `TicketDetailParamsSchema` | `TicketAttachmentListResponseSchema` | `GET /web/tickets/:projectId/:number/attachments` |
+| 9 | `POST /api/system/tickets/:projectId/:number/attachments` | 头 `TicketIdempotencyHeadersSchema`；multipart 单文件（字段 `file`） | 201/202 `TicketAttachmentResponseSchema` / `TicketUncertainResponseSchema` | `POST /web/tickets/:projectId/:number/attachments` |
+| 10 | `GET /api/system/tickets/:projectId/:number/attachments/:attachmentId` | 路径 `TicketAttachmentParamsSchema`；query `SystemTicketAttachmentDownloadQuerySchema`（`disposition=attachment\|inline`，**默认 `attachment`**） | 字节流（`Content-Disposition` + `Content-Type` 透传 + `nosniff` + `private, no-store`） | `GET /web/tickets/:projectId/:number/attachments/:attachmentId`（**新增参数**：`disposition`，`/web` 面没有；见下方偏离清单第 4 条） |
+| 11 | `GET /api/system/tickets/:projectId/labels` | 路径 `TicketProjectParamsSchema` | `TicketLabelListResponseSchema` | `GET /web/ticket-projects/:projectId/labels`（**路径差异**：宿主 `app-route` 贡献只能返回单个 Elysia 实例，实例前缀无法逃到另一个根，故收进 `/api/system/tickets` 之下；原因见下方偏离清单第 2 条） |
+| 12 | `GET /api/system/tickets/:projectId/members` | 路径 `TicketProjectParamsSchema`；query `TicketMemberQuerySchema` | `TicketMemberListResponseSchema` | `GET /web/ticket-projects/:projectId/members`（**路径差异**，同上） |
+| 13 | `GET /api/system/tickets/operations/:operationId` | 路径 `TicketOperationParamsSchema` | `TicketOperationResponseSchema` | `GET /web/ticket-operations/:operationId`（**路径差异**，同上；挂在静态段 `/operations` 下，与 `/:projectId/:number` 不冲突） |
+
+失败面：`400`（参数形状 / 幂等键 / `VERSION_CONFLICT` 之外的确定拒绝）、`401`（无 key / 错 key）、`404`（项目、工单、评论、附件、账本行不存在）、`409`（`VERSION_CONFLICT` / `IDEMPOTENCY_CONFLICT` / `TICKET_OPERATION_PENDING`）、`503`（`TICKETS_PAUSED` / 上游不可用 / 绑定不可写 / 核对时上游不可用），全部为 `ApiSystemErrorResponseSchema`。**本面没有 `403`**：没有角色判定，能进路由即被授权（见 12.3）。
+
+**显式标注的偏离（逐条给出原因）**：
+
+1. **列表不是镜像**（#1）：`/web` 的列表是「单项目 + 工单号游标 + 组织可见性」，而跨项目时工单号不构成全局序（两个项目各有 #1），因此本面保留成立即有的页码分页与跨组织口径，形状不变。
+2. **#11–#13 的路径收敛到 `/api/system/tickets` 之下**：`/web` 面把标签目录、成员与账本放在 `/web/ticket-projects/**` 与 `/web/ticket-operations/**`。管理面把它们收进同一个前缀，原因是宿主 `app-route` 贡献只能返回**单个** Elysia 实例，实例前缀是实例级属性（嵌套插件的前缀相对父级，实测无法逃到另一个根），新增第二个贡献需要改 `fenix.module.ts`。账本因此挂在 `/operations` 静态段下（与 `/:projectId/:number` 的动态段不冲突，静态优先）。
+3. **未镜像的操作**（本版刻意不做，做了要先改本表）：
+   - `POST /web/tickets/:projectId`（**创建工单**）：作者语义不成立——平台凭据没有组织成员身份，写出来的工单只能归属系统托管租户；管理台目前也没有创建入口（前端枚举的是详情/编辑/状态/负责人/标签/评论/附件/冲突处理）。若管理台需要「以管理员身份建单」，要先裁定归属主体再实现。
+   - `GET /web/ticket-projects`、`POST|PATCH /web/ticket-projects/default`（项目总览、开通、切换与启停）：那是组织内的开通动作，管理台没有入口，且平台列表行已自带归属坐标。
+   - `POST|PATCH /web/ticket-projects/:projectId/labels`（标签目录的新建与改名）：仓库级目录的组织内管理动作，不属于工单页面能力（工单页面的标签编辑器只从目录里勾选）。若管理台要「就地新建标签」，先扩本表再实现。
+4. **`/api/system/*` 的失败信封**不是 `/web` 的 `{ success: false, error }`（既有合同，见 §12.1 开头）；未映射的异常由宿主兜底 500，形状不属于本模块合同。
+5. **附件读取多一个 `disposition` 参数**（#10）：`/web` 面靠同源 cookie 鉴权，`<img src>` 直接可用；管理面的凭据是 `Authorization` 头，标签与 `<img>` 都带不上，前端只能 `fetch` 成 `Blob` 再展示。因此读取端点接受 `?disposition=inline`，让同一份字节以「不强制下载」的处置返回。**默认值 `attachment` 与 `/web` 面逐字同形**，`Content-Type` 透传与 `nosniff` 两种处置完全一致；取值封在枚举里（响应头不得由请求传入任意字符串）。
+
+### 12.2 管理面的权限、主体与坐标
 
 | 项 | 落点 |
 |---|---|
-| 路由 | `GET /api/system/tickets`（`src/server/routes/api/system-tickets.ts`，贡献 `tickets.api-system-tickets`，挂宿主 `api` 槽） |
-| 查询 | `page` / `pageSize`（`ApiSystemPaginationQuerySchema`：默认 1/20、上限 200）+ 筛选 `q` / `state` / `organizationId` / `projectId` |
-| 响应 | 成功 `{ success: true, data: { items, total, page, pageSize } }`；失败 `{ error: { code, message } }`（`/api/system/*` 的既有信封，不是 `/web` 的 `{ success: false, error }`） |
-| 行字段 | `/web` 列表行（同源同义，仍投影自 `ticket_index`）+ 归属坐标 `organizationId` / `organizationName` / `projectId` / `projectName` / `projectOwner` |
+| 路由 | `src/server/routes/api/system-tickets.ts` 是**唯一实例与唯一前缀**（`/api/system/tickets`）：列表在本文件，详情与写路径（`system-ticket-detail.ts`）、评论（`system-ticket-comments.ts`）、附件（`system-ticket-attachments.ts`）、目录（`system-ticket-catalog.ts`）、账本（`system-ticket-operations.ts`）各由一个注册函数挂到同一实例 |
+| 协议设施 | `system-error.ts`（handler 工厂 + 失败信封）、`../ticket-error-mapping.ts`（错误分类，两平面共用）、`../ticket-request-protocol.ts`（幂等键与请求上下文，两平面共用）、`../ticket-attachment-protocol.ts`（multipart 与下载响应头，两平面共用） |
+| 应用层 | `facades/ticket-platform-facade.ts`（列表 + 详情 + 修改 + 标签挂载 + 账本）、`facades/ticket-platform-content-facade.ts`（评论 / 附件 / 标签目录 / 成员）、`facades/ticket-platform-context.ts`（项目坐标、审计主体、展示名、复核） |
+| 查询 | 列表：`page` / `pageSize`（`ApiSystemPaginationQuerySchema`：默认 1/20、上限 200）+ 筛选 `q` / `state` / `organizationId` / `projectId`；其余端点逐条见 §12.1 |
+| 响应 | 成功 `{ success: true, data }`（与 `/web` 同形，视图 schema 直接复用）；失败 `{ error: { code, message } }`（`/api/system/*` 的既有信封，不是 `/web` 的 `{ success: false, error }`） |
+| 列表行字段 | `/web` 列表行（同源同义，仍投影自 `ticket_index`）+ 归属坐标 `organizationId` / `organizationName` / `projectId` / `projectName` / `projectOwner` |
 | 页面 | 宿主 `/admin/tickets` → `@fenix/resource-tickets/web` 的 `AdminTicketsPage`，列表容器 `web/pages/admin/components/platform-ticket-list.tsx`（四态齐全，复用状态角标与时间格式） |
 
-**权限口径（凭据即判据）**：本面声明 `systemApiKeyAuth: true`，判据是宿主 `RCS_SYSTEM_API_KEYS`（`apps/server/src/plugins/system-api-auth.ts`）。该守卫刻意不恢复用户 / 组织上下文，因此 route → `TicketPlatformFacade` → `TicketService` 全链**不接收 actor**：管理面方法只做跨组织读取与视图组装（展示名取身份目录当前值，缺名回退写入期快照或 ID）。无 key、错误 key、未配置 key 一律 401 fail-closed，且不产生任何读取。
+**权限口径（凭据即判据）**：本面声明 `systemApiKeyAuth: true`，判据是宿主 `RCS_SYSTEM_API_KEYS`（`apps/server/src/plugins/system-api-auth.ts`）。该守卫刻意不恢复用户 / 组织上下文，因此 route → `TicketPlatformFacade` → 领域服务全链**不接收 actor**：管理面方法只做跨组织读取、写编排与视图组装（展示名取身份目录当前值，缺名回退写入期快照或 ID）。无 key、错误 key、未配置 key 一律 401 fail-closed，且不产生任何读取或写入。
+
+**没有第二遍角色判定**：`ticket-permission.ts` 的三条规则（创建者/管理员改内容、创建者/负责人/管理员改状态与指派、评论原作者/管理员）**不适用于管理面**——它的调用方不是用户。Facade 因此只解析坐标与审计主体，不做「这个主体是否有权」的判定；两处各判一次正是「按钮按旧规则显示、写入按新规则拒绝」这类漂移的来源（与 plugin-market 管理面同口径）。领域规则本身一条不放宽：负责人仍必须是项目所属组织的有效成员、标签必须是该仓库已定义的标签、项目暂停仍然拦写、版本与在途互斥照旧。
+
+**审计主体**：写路径的 `actor_id`（账本）、`author_id`（归属行）与身份头里的 `author.id` 取**系统托管租户的 `userId`**（`IdentityDirectory.resolveSystemTenant()`，见 `facades/ticket-platform-context.ts`）——系统托管资源的 `user_id` 必须写真实用户 ID，不得伪造 actor，因此管理面不产生「匿名写入」。副作用是刻意的且已验证：管理台发的评论在控制台里显示为该系统用户（展示名取身份目录当前值，例如「平台系统管理员」）；再次编辑它遵循同一套作者规则（非系统用户本人只能由组织管理员改）。租户未引导时 `resolveSystemTenant()` 抛错 → 500（部署故障，不伪装成业务错误）。
+
+**评论编辑的主体与规则**（#7，与 §12.1 的「谁可以编辑」裁定）：
+
+- **谁可以编辑**：持有系统 key 的调用方可以编辑**任何**工单下的任何评论。`/web` 面的「原作者或组织管理员」规则（`ticket-permission.canEditComment`）在管理面**不适用**——那一面判的是一个用户，本面判的是凭据（与 plugin-market 管理面同口径）。
+- **编辑主体记什么**：账本行的 `actor_id` 与归属行的 `last_editor_id` 都是**系统托管租户的 `userId`**（即「平台系统管理员」这个真实账号，不伪装成组织成员）。**作者不转移**：身份头与 `ticket_messages.author_id` 沿用归属行里的原始作者（§3.5 的评论侧口径），因此一次平台编辑不会把「这条评论是谁写的」改写成管理员。
+- **外部来源评论**（没有归属行，例如别人直接在 Forgejo 上挂的评论）：平台侧编辑会新落一条归属行，其 `author_id` / `author_name_snapshot` 就是系统租户（展示名取身份目录当前值），即「以平台管理员身份认领这一版」——这是 §3.4「无归属行时新落一行」的既有口径，不是新规则。
+- **可见性**：编辑结果直接返回该评论的视图（与 `/web` 面同形），因此管理台不需要额外的「我能不能改」探测接口。
+
+**项目坐标校验**：`projectId` 必须真实存在（`findByIdUnscoped` → 不存在给 404），其归属组织、仓库绑定与状态**一律取自项目行**，绝不从请求推断；`projectId` 既不是「筛选」也不是「提示」。跨组织的数据因此天然互不串：一次请求只能碰到一个项目行指向的那一个组织、那一个仓库绑定与那一个组织的账本（用例 `src/__tests__/system-ticket-detail.test.ts` 的「跨组织坐标」两条）。
 
 **为什么不接线 super-admin 旁路（决策 D8）**：平台旁路契约（`ActorContext.systemRole: "super-admin"` 与授权谓词的 bypass 分支）已实现，但按 D8 没有生产赋值点（`apps/server/src/plugins/auth.ts` 的 `toActorContext` 不写该字段）。要在这里用它，就得为一个系统凭据**合成一个不存在的 actor**：哪个用户、哪个组织都无从回答，而合成出来的主体还会被 `listConstraint` 当作真实主体的可见范围参与判定——那既扩大了授权面，又把「凭据即判据」偷换成「凭据伪造主体」。因此管理面走独立 Facade 方法 + 独立路由守卫（与 observer / sandbox / plugin-market 的系统面同一口径），D8 保持不变。
 
 **跨组织读取的唯一落点**：`TicketIndexRepository.listPlatformPage`（`src/server/repositories/ticket-index.ts`）是包内唯一 join `ticket_projects` 补组织维度的读取，且**不接受任何授权条件**——调用方必须是本面的系统路径。组织内可见性因此零改动：`ticket_project` 仍 `ownershipMode: "organization"`、无 `visibility` 列（平台受众模型对工单项目不成立），`/web` 面继续经 `listConstraint(actor, "read")` 表达，「跨组织与不存在同形 404」不变。列表与计数共用同一份谓词（同一处条件构造），避免「最后一页是空的」这类分页/计数漂移。
 
+**幂等、冲突与复核（与 `/web` 面同语义）**：写路径照样要 `Idempotency-Key`（缺失/非法 = 两个稳定 400），同键不同内容 409 `IDEMPOTENCY_CONFLICT`，版本不符 409 `VERSION_CONFLICT`，同工单已有未确认变更 409 `TICKET_OPERATION_PENDING`，上游结果未定 202 `{ operationId, status: "uncertain" }`。账本的幂等唯一键是 `(organizationId, actorId=系统租户, idempotencyKey)`，因此同一把键在**不同组织**上是两条独立操作（跨组织不会互相重放）。复核入口 `GET /api/system/tickets/operations/:operationId` 与 `/web` 面用**同一个** `RECONCILABLE_OPERATION_STATUSES`（`dispatching` / `uncertain` 返回前回源核对一次），差异只在可见性：本面按 ID 直读、不要求是发起人本人（管理台要复核的账本行可能由组织成员发起），核对时用**账本行自身**的组织与发起人坐标读回那一行。
+
 **排序与分页**：跨项目时工单号不构成全局序（两个项目各有 #1），因此按「最后同步时间降序 + 主键降序」排、用页码分页。工单号游标只对「单项目内的时间无关序列」成立，不搬到这一面。
 
 **装配与前端收窄**：默认 `ce.json` 不含 tickets，路由贡献不存在（404）；`ce-tickets.json` 下启用。宿主页面在懒加载子树之前按 `useAssemblyCapabilities()` 判 `tickets`，未启用时不挂载、不发请求；侧栏导航项 `/admin/tickets` 同样只在该能力可用时渲染（`apps/web/src/routes/admin.tsx` 的 `moduleId` 字段，未声明该字段的既有条目行为不变）。凭据是系统 master key（`RCS_SYSTEM_API_KEYS` 的值，存储口径见 `@fenix/web-runtime/lib/admin-key` 的 sessionStorage 例外），401 时清 key 回门。
 
-**测试覆盖**：路由级用例 `src/__tests__/system-tickets.test.ts`（缺失 / 错误 key 拒绝且不产生读取、跨组织列出两个组织的行与坐标、组织筛选、页码分页）；SQL 形状与「列表计数同谓词」用例在 `src/__tests__/repositories.test.ts` 的 `listPlatformPage`；前端状态与数据流用例 `web/__tests__/admin-tickets-page-states.test.tsx`（凭据注入、加载不落空态、失败可重试、401 回门、筛选空态与翻页）。**未覆盖**：宿主守卫 `RCS_SYSTEM_API_KEYS` 的读取策略（多 key、未配置即全拒）对这条路由的端到端验证——与 observer / plugin-market / sandbox 的系统面同属既有缺口（见 `packages/resources/observer/src/__tests__/guard-stubs.ts` 的说明）。
+**测试覆盖**：路由级用例 `src/__tests__/system-tickets.test.ts`（列表：缺失 / 错误 key 拒绝且不产生读取、跨组织列出两个组织的行与坐标、组织筛选、页码分页；外加十三条路由的清单断言）、`system-ticket-detail.test.ts`（详情 / 修改 / 标签挂载：成功路径、参数非法、401 且零读写、跨组织坐标互不串、暂停 503、在途互斥 409、未定 202、版本冲突 409）、`system-ticket-support.test.ts`（标签目录 / 成员 / 账本：成功、404、参数非法、未定复核触发）、`system-ticket-comments.test.ts`（列表倒序与 503、发表 201/202 与审计主体、编辑主体与作者不转移、外部评论认领、版本冲突、评论不属于该工单 404）、`system-ticket-attachments.test.ts`（列表 / 上传 201 与账本落点 / 单文件形状 / 缺幂等键 / 下载与 inline 两种处置的响应头 / 非法处置 400 / 附件不属于该工单 404）；SQL 形状用例在 `src/__tests__/repositories.test.ts`（`listPlatformPage` 的 join 与计数同谓词、`findByIdUnscoped` 只按主键）；前端状态与数据流用例 `web/__tests__/admin-tickets-page-states.test.tsx`（凭据注入、加载不落空态、失败可重试、401 回门、筛选空态与翻页）。**未覆盖**：宿主守卫 `RCS_SYSTEM_API_KEYS` 的读取策略（多 key、未配置即全拒）对这条路由的端到端验证——与 observer / plugin-market / sandbox 的系统面同属既有缺口（见 `packages/resources/observer/src/__tests__/guard-stubs.ts` 的说明）；管理台尚未实现的前端写路径（§12.1 表格是它们的契约依据，前端用例由该 owner 补齐）。

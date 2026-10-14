@@ -22,7 +22,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
 import type { TicketComment, TicketCommentPage } from "../api/ticket-comments";
-import { ticketCommentsApi } from "../api/ticket-comments";
+import type { TicketDataSource } from "../api/ticket-data-source";
 import { TICKETS_NS } from "../i18n/namespace";
 import { settleTicketWriteFailure } from "../lib/ticket-write-failure";
 import type { IdempotencyKeyHolder, TicketWriteOutcome } from "../lib/ticket-write-outcome";
@@ -92,9 +92,16 @@ function findComment(pages: TicketCommentPage[], commentId: string): TicketComme
   return pages.flatMap((page) => page.items).find((comment) => comment.commentId === commentId);
 }
 
+/**
+ * 评论区编排层。
+ *
+ * `source` 是**依赖**而不是行为开关：控制台面与控制台管理面共用同一套取数、写状态机与失败分类，
+ * 差别只在请求打到哪个协议面（见 `api/ticket-data-source`）。
+ */
 export function useTicketComments(
   projectId: string,
   number: string,
+  source: TicketDataSource,
   options: TicketCommentsOptions,
 ): TicketCommentsState {
   const { t } = useTranslation(TICKETS_NS);
@@ -105,21 +112,18 @@ export function useTicketComments(
   const [editConflict, setEditConflict] = useState(false);
   const blocked = options.blocked;
 
-  const first = useRequest(
-    async () => unwrap(ticketCommentsApi.list(projectId, number, { limit: COMMENT_PAGE_LIMIT })),
-    {
-      ready: options.enabled,
-      refreshDeps: [projectId, number, options.enabled],
-      onSuccess: (page) => setPages([page]),
-      onError: (err: Error) => {
-        console.error("ticket comments load failed", err);
-        toast.error(err.message || t("comment.loadFailed"));
-      },
+  const first = useRequest(async () => unwrap(source.comments.list(projectId, number, { limit: COMMENT_PAGE_LIMIT })), {
+    ready: options.enabled,
+    refreshDeps: [projectId, number, options.enabled],
+    onSuccess: (page) => setPages([page]),
+    onError: (err: Error) => {
+      console.error("ticket comments load failed", err);
+      toast.error(err.message || t("comment.loadFailed"));
     },
-  );
+  });
 
   const older = useRequest(
-    async (cursor: string) => unwrap(ticketCommentsApi.list(projectId, number, { cursor, limit: COMMENT_PAGE_LIMIT })),
+    async (cursor: string) => unwrap(source.comments.list(projectId, number, { cursor, limit: COMMENT_PAGE_LIMIT })),
     {
       manual: true,
       onSuccess: (page) => setPages((prev) => [...prev, page]),
@@ -139,7 +143,7 @@ export function useTicketComments(
       let cursor: string | undefined;
       for (let index = 0; index < depth; index += 1) {
         const page = await unwrap(
-          ticketCommentsApi.list(projectId, number, {
+          source.comments.list(projectId, number, {
             ...(cursor === undefined ? {} : { cursor }),
             limit: COMMENT_PAGE_LIMIT,
           }),
@@ -177,13 +181,13 @@ export function useTicketComments(
 
   const createRequest = useRequest(
     async (payload: { body: string; key: string }) =>
-      unwrap(ticketCommentsApi.create(projectId, number, { body: payload.body }, payload.key)),
+      unwrap(source.comments.create(projectId, number, { body: payload.body }, payload.key)),
     { manual: true },
   );
   const updateRequest = useRequest(
     async (payload: { commentId: string; body: string; expectedVersion: string; key: string }) =>
       unwrap(
-        ticketCommentsApi.update(
+        source.comments.update(
           projectId,
           number,
           payload.commentId,

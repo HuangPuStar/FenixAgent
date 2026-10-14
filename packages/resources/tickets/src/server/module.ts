@@ -63,10 +63,11 @@ export interface TicketsServerModule {
   readonly labels: TicketLabelFacadeApi;
   readonly attachments: TicketAttachmentFacadeApi;
   /**
-   * 平台管理面（`/api/system/tickets`）：跨组织只读列表，服务系统 API Key 路径。
+   * 平台管理面（`/api/system/tickets`）：跨组织的列表、详情与写路径，服务系统 API Key 路径。
    *
    * 与上面五个 Facade 并列而不是合并进 `tickets`：它们的判据是 actor（组织内可见性），本面的判据是系统
-   * 凭据（路由守卫），合在一起会让「这条路径没有走授权」需要读完整个类才能确认。
+   * 凭据（路由守卫），合在一起会让「这条路径没有走授权」需要读完整个类才能确认。能力清单见
+   * `docs/arch/29-tickets.md` §12.1。
    */
   readonly platform: TicketPlatformFacadeApi;
   readonly identity: IdentityDirectory;
@@ -135,9 +136,19 @@ export function createTicketsServerModule(deps: TicketsModuleDeps): TicketsServe
       projects,
       attachments,
     }),
-    // 平台管理面（`/api/system/tickets`）：不吃 actor 与 accessControl，判据在系统路由守卫；复用同一个
-    // 工单领域服务实例，因此跨组织读取走的仍是与 `/web` 列表同一份索引查询实现。
-    platform: createTicketPlatformFacade({ tickets, identity: deps.identity }),
+    // 平台管理面（`/api/system/tickets`）：不吃 actor 与 accessControl，判据在系统路由守卫；复用同一批
+    // 领域服务实例，因此跨组织读取与写路径走的仍是与 `/web` 面同一份索引查询与写编排。
+    platform: createTicketPlatformFacade({
+      tickets,
+      projects,
+      edit,
+      comments,
+      labels,
+      attachments,
+      operations,
+      recovery,
+      identity: deps.identity,
+    }),
     identity: deps.identity,
   };
 }

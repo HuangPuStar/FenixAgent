@@ -20,8 +20,8 @@ import { useRequest } from "ahooks";
 import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
+import type { TicketDataSource } from "../api/ticket-data-source";
 import type { TicketProjectMember, TicketProjectMemberPage } from "../api/ticket-projects";
-import { ticketProjectsApi } from "../api/ticket-projects";
 import { TICKETS_NS } from "../i18n/namespace";
 
 /** 服务端默认 20、上限 100：一页 20 条足够铺满弹层，其余由「加载更多成员」显式请求。 */
@@ -51,7 +51,17 @@ export interface TicketMembersState {
   setQuery: (value: string) => void;
 }
 
-export function useTicketMembers(projectId: string, options: TicketMembersOptions): TicketMembersState {
+/**
+ * 成员候选编排层。
+ *
+ * `source` 是**依赖**而不是行为开关：控制台面与平台管理面的候选都来自「项目可指派成员」这一条收窄投影，
+ * 差别只在请求打到哪个协议面（见 `api/ticket-data-source`）。
+ */
+export function useTicketMembers(
+  projectId: string,
+  source: TicketDataSource,
+  options: TicketMembersOptions,
+): TicketMembersState {
   const { t } = useTranslation(TICKETS_NS);
   const [query, setQuery] = useState("");
   const [debouncedQuery, setDebouncedQuery] = useState("");
@@ -59,7 +69,7 @@ export function useTicketMembers(projectId: string, options: TicketMembersOption
 
   const fetchPage = async (params: { q: string; page: number }) =>
     unwrap(
-      ticketProjectsApi.members(projectId, {
+      source.projects.members(projectId, {
         q: params.q.trim() || undefined,
         page: params.page,
         pageSize: MEMBER_PAGE_SIZE,

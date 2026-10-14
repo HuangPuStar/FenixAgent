@@ -374,6 +374,10 @@ function createOperationStore(): OperationStore {
           (row) => row.id === operationId && row.organizationId === organizationId && row.actorId === actorId,
         );
       },
+      // 平台管理面的无授权读取：只按主键（本文件不覆盖那一面，替身只补齐接口形状）。
+      async findByIdUnscoped({ operationId }) {
+        return rows.find((row) => row.id === operationId);
+      },
       async findByMessageId(messageId) {
         return rows.find((row) => row.messageId === messageId);
       },

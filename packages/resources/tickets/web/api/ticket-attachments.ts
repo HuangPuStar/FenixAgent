@@ -100,10 +100,27 @@ export async function downloadTicketAttachment(
   attachmentId: string,
   signal?: AbortSignal,
 ): Promise<Blob> {
+  return downloadTicketBytes(ticketAttachmentDownloadPath(projectId, number, attachmentId), { signal });
+}
+
+/**
+ * 下载工单字节端点的通用实现：`downloadTicketAttachment`（控制台面，会话 cookie）与平台管理面的镜像端点
+ * （系统 master key，`Authorization` 头）共用它——`<img>` / `<a>` 带不上 `Authorization`，两个面都只能走
+ * fetch 拿 `Blob`，因此「怎么取字节、失败怎么报」必须只有一份。
+ *
+ * `request()` 只处理信封与 JSON（二进制没有落点），这里是本包唯一绕过它发裸 fetch 的地方。
+ */
+export async function downloadTicketBytes(
+  url: string,
+  options: { signal?: AbortSignal; bearerToken?: string } = {},
+): Promise<Blob> {
   const timeoutSignal = AbortSignal.timeout(TICKET_ATTACHMENT_TIMEOUT_MS);
-  const response = await fetch(ticketAttachmentDownloadPath(projectId, number, attachmentId), {
+  const headers = new Headers();
+  if (options.bearerToken !== undefined) headers.set("authorization", `Bearer ${options.bearerToken}`);
+  const response = await fetch(url, {
     credentials: "include",
-    signal: signal === undefined ? timeoutSignal : AbortSignal.any([signal, timeoutSignal]),
+    headers,
+    signal: options.signal === undefined ? timeoutSignal : AbortSignal.any([options.signal, timeoutSignal]),
   });
   if (!response.ok) {
     let message = `下载失败 (${response.status})`;

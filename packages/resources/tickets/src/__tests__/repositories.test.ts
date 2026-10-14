@@ -671,6 +671,18 @@ describe("ticket_operations 仓储", () => {
     ).toBeUndefined();
   });
 
+  // 平台管理面的账本读取只按主键：调用方不是用户（判据在系统路由守卫），因此**不得**出现组织或 actor 条件——
+  // 多一个条件就会让「管理台复核一条由组织成员发起的操作」查不到行，少一个条件在别处就等于越权读。
+  test("findByIdUnscoped 只按主键读且不带组织与 actor 条件", async () => {
+    const database = useDatabase({ selectRows: { ticket_operations: [FIXTURE_OPERATION] } });
+    const repository = createTicketOperationRepository();
+
+    const row = await repository.findByIdUnscoped({ operationId: "operation-1" });
+
+    expect(row?.id).toBe("operation-1");
+    expect(whereColumns(selectsOf(database.calls)[0] ?? {})).toEqual(["id"]);
+  });
+
   // 恢复入口按身份头里的 message_id 定位操作（T03 的接口冻结项，T02 先落地）。
   test("findByMessageId 按消息 ID 定位操作", async () => {
     const database = useDatabase({ selectRows: { ticket_operations: [FIXTURE_OPERATION] } });

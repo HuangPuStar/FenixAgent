@@ -11,6 +11,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
+import { webTicketDataSource } from "../api/ticket-data-source";
 import { TICKETS_NS } from "../i18n/namespace";
 import {
   formatAttachmentSize,
@@ -102,7 +103,8 @@ export function useTicketUploadHandoff({
   onFinished,
   projectId,
 }: TicketUploadHandoffOptions): TicketUploadHandoffState {
-  const attachments = useTicketAttachments(projectId, number, {
+  // 新建工单只存在于控制台面（管理面不创建工单），数据源固定为 `/web` 面。
+  const attachments = useTicketAttachments(projectId, number, webTicketDataSource, {
     // 弹窗不渲染已上传列表（列表回源上游、渲染在详情页），因此不请求列表。
     enabled: false,
     // 附件上传 202：hook 已 toast「结果确认中」并把任务移出队列；详情页的待确认横幅只由工单级变更

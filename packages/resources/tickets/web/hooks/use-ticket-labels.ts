@@ -25,10 +25,9 @@ import { useRequest } from "ahooks";
 import { useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
+import type { TicketDataSource } from "../api/ticket-data-source";
 import type { TicketProjectLabel } from "../api/ticket-projects";
-import { ticketProjectsApi } from "../api/ticket-projects";
 import type { TicketDetail } from "../api/tickets";
-import { ticketApi } from "../api/tickets";
 import { TICKETS_NS } from "../i18n/namespace";
 import { settleTicketWriteFailure } from "../lib/ticket-write-failure";
 import type { TicketWriteOutcome } from "../lib/ticket-write-outcome";
@@ -67,13 +66,24 @@ export interface TicketLabelsState {
   save: () => Promise<TicketWriteOutcome>;
 }
 
-export function useTicketLabels(projectId: string, number: string, options: TicketLabelsOptions): TicketLabelsState {
+/**
+ * 标签编排层。
+ *
+ * `source` 是**依赖**而不是行为开关：控制台面与平台管理面共用同一套「全量集合提交 + 草稿按版本重置」规则，
+ * 差别只在请求打到哪个协议面（见 `api/ticket-data-source`）。
+ */
+export function useTicketLabels(
+  projectId: string,
+  number: string,
+  source: TicketDataSource,
+  options: TicketLabelsOptions,
+): TicketLabelsState {
   const { t } = useTranslation(TICKETS_NS);
   const [draft, setDraft] = useState<{ version: string; ids: string[] } | null>(null);
   const holder = useMemo(() => createIdempotencyKeyHolder(), []);
   const { blocked, ticket } = options;
 
-  const catalogRequest = useRequest(async () => unwrap(ticketProjectsApi.labels(projectId)), {
+  const catalogRequest = useRequest(async () => unwrap(source.projects.labels(projectId)), {
     ready: options.enabled,
     refreshDeps: [projectId, options.enabled],
     onError: (err: Error) => {
@@ -85,7 +95,7 @@ export function useTicketLabels(projectId: string, number: string, options: Tick
   const saveRequest = useRequest(
     async (payload: { labelIds: string[]; expectedVersion: string; key: string }) =>
       unwrap(
-        ticketApi.setLabels(
+        source.tickets.setLabels(
           projectId,
           number,
           { labelIds: payload.labelIds, expectedVersion: payload.expectedVersion },

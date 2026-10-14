@@ -196,6 +196,10 @@ function createOperationStore(): OperationStore {
           (row) => row.id === operationId && row.organizationId === organizationId && row.actorId === actorId,
         );
       },
+      // 平台管理面的无授权读取：本文件不覆盖那一面，替身只补齐接口形状。
+      async findByIdUnscoped({ operationId }) {
+        return rows.find((row) => row.id === operationId);
+      },
       async findByMessageId(messageId) {
         return rows.find((row) => row.messageId === messageId);
       },
@@ -488,6 +492,8 @@ function createFacadeWith(harness: Harness): TicketFacadeApi {
   const projects: TicketProjectService = {
     listReadable: async () => [PROJECT_ROW],
     findReadable: async () => PROJECT_ROW,
+    // 平台管理面的项目解析：本文件不覆盖那一面，替身只补齐接口形状。
+    findByIdUnscoped: async () => PROJECT_ROW,
     provision: unused,
     setDefault: unused,
     setStatus: unused,

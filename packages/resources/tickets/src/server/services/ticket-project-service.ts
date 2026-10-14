@@ -118,6 +118,14 @@ export interface TicketProjectService {
     readonly access: ResourceQueryConstraint;
     readonly projectId: string;
   }): Promise<TicketProjectRow | undefined>;
+  /**
+   * 平台管理面的项目解析（`/api/system/tickets/:projectId/**`）：按 ID 直读，跨组织、不做授权判定。
+   *
+   * 与 {@link findReadable} 并存而不是复用后者的空约束：管理面的调用方不是用户，判据是系统路由守卫
+   * （凭据即判据），而它拿到的 `projectId` 来自平台列表行——**必须真实存在**，其归属组织 / 绑定 / 状态
+   * 一律以本行的事实为准，绝不从请求参数推断。命名带 `Unscoped` 与仓储同口径，评审时一眼可见。
+   */
+  findByIdUnscoped(projectId: string): Promise<TicketProjectRow | undefined>;
   provision(input: TicketProjectProvisionInput): Promise<TicketProjectProvisionOutcome>;
   /** 切换默认并把状态调整一并纳入同一把组织锁；`status` 省略表示只切换默认。 */
   setDefault(input: {
@@ -241,6 +249,10 @@ export function createTicketProjectService(deps: TicketProjectServiceDeps): Tick
 
     async findReadable(input) {
       return projects.findReadableById({ access: input.access, projectId: input.projectId });
+    },
+
+    async findByIdUnscoped(projectId) {
+      return projects.findByIdUnscoped(projectId);
     },
 
     async provision(input) {

@@ -9,7 +9,8 @@
  *    已经有这份快照，不需要为它造占位符或额外请求。
  *
  * 候选取数在组件内（`useTicketMembers` 只在展开时请求）：它没有任何写动作，混进页面的写状态机只会让页面
- * 多背一份与它无关的状态。
+ * 多背一份与它无关的状态。**例外是平台管理面**：那里的候选来自系统端点，由页面经 `members` 注入；此时
+ * 内层 hook 以 `open: false` 挂载（不发任何请求），同一次渲染里仍然只有一份候选状态。
  */
 
 import { Button } from "@fenix/ui-components/ui/button";
@@ -19,7 +20,9 @@ import { Skeleton } from "@fenix/ui-components/ui/skeleton";
 import { Check, ChevronsUpDown, RefreshCw } from "lucide-react";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
+import { webTicketDataSource } from "../../../api/ticket-data-source";
 import type { TicketActor } from "../../../api/tickets";
+import type { TicketMembersState } from "../../../hooks/use-ticket-members";
 import { useTicketMembers } from "../../../hooks/use-ticket-members";
 import { TICKETS_NS } from "../../../i18n/namespace";
 
@@ -32,21 +35,44 @@ export interface TicketAssigneePickerProps {
   onSelect: (userId: string | null) => void;
   /** 有待确认的写、或**任何**写动作进行中（含本次指派）：不准改。 */
   disabled: boolean;
+  /**
+   * 候选状态的外部注入（平台管理面用，见文件头）。省略即在组件内按控制台面取数（默认路径）；
+   * 注入时内层 hook 以 `open: false` 挂载：它不发请求，只是为了不违反 hook 调用规则而存在。
+   */
+  members?: TicketMembersState;
+  /**
+   * 弹层开合的对外通知：注入 `members` 的一方靠它决定「什么时候才去取候选」（候选只在展开时请求）。
+   * 省略即弹层开合完全由组件自持（控制台面的默认路径）。
+   */
+  onOpenChange?: (open: boolean) => void;
 }
 
-export function TicketAssigneePicker({ projectId, assignee, onSelect, disabled }: TicketAssigneePickerProps) {
+export function TicketAssigneePicker({
+  projectId,
+  assignee,
+  onSelect,
+  disabled,
+  members: injectedMembers,
+  onOpenChange,
+}: TicketAssigneePickerProps) {
   const { t } = useTranslation(TICKETS_NS);
   const [open, setOpen] = useState(false);
-  const members = useTicketMembers(projectId, { open });
+  const webMembers = useTicketMembers(projectId, webTicketDataSource, { open: open && injectedMembers === undefined });
+  const members = injectedMembers ?? webMembers;
   const label = assignee === null ? t("list.unassigned") : assignee.name;
 
+  const handleOpenChange = (next: boolean): void => {
+    setOpen(next);
+    onOpenChange?.(next);
+  };
+
   const select = (userId: string | null): void => {
-    setOpen(false);
+    handleOpenChange(false);
     onSelect(userId);
   };
 
   return (
-    <Popover onOpenChange={setOpen} open={open}>
+    <Popover onOpenChange={handleOpenChange} open={open}>
       <PopoverTrigger asChild>
         <Button
           aria-expanded={open}

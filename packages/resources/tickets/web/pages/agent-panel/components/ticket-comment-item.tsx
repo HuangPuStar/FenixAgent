@@ -2,7 +2,8 @@
  * 单条评论：作者（含外部来源标注）、时间、Markdown 正文与编辑入口。
  *
  * 编辑入口的可见性由 `lib/ticket-permissions.ts` 的 `canEditComment` 判定（作者本人 + 归属账本核验通过），
- * 服务端仍会独立判定一次——前端隐藏只是不把用户引向一次注定 403 的往返。
+ * 服务端仍会独立判定一次——前端隐藏只是不把用户引向一次注定 403 的往返。**规则可由调用方覆盖**（`canEdit`）：
+ * 平台管理面不做原作者判定（凭据即判据），那里的每一条评论都可编辑。
  *
  * 正文复用 `MessageResponse mode="static"`（与工单正文同一条 Markdown 链路，原始 HTML 会被标签白名单剥离）；
  * 编辑态时用 `editor` 节点替换正文，而不是把输入框塞进另一个位置——用户的视点不该因为「改一条评论」而跳动。
@@ -32,6 +33,11 @@ export interface TicketCommentItemProps {
   /** 编辑入口是否不可用（有待确认的写、或别的写动作进行中）。 */
   editDisabled: boolean;
   onEdit: (comment: TicketComment) => void;
+  /**
+   * 编辑入口的可见性规则；省略即控制台面的「作者本人 + 归属已核验」（见文件头）。
+   * 平台管理面传 `() => true`：那一面的判据是系统凭据，服务端的评论编辑端点也不做原作者判定。
+   */
+  canEdit?: (comment: TicketComment) => boolean;
 }
 
 export function TicketCommentItem({
@@ -42,9 +48,10 @@ export function TicketCommentItem({
   editor,
   editDisabled,
   onEdit,
+  canEdit,
 }: TicketCommentItemProps) {
   const { t } = useTranslation(TICKETS_NS);
-  const editable = canEditComment(comment, { userId: viewerUserId });
+  const editable = canEdit === undefined ? canEditComment(comment, { userId: viewerUserId }) : canEdit(comment);
 
   return (
     <li className="rounded-md border border-border bg-surface-1 p-3">

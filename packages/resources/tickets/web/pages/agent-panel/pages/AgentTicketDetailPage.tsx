@@ -29,6 +29,7 @@ import { Link } from "@tanstack/react-router";
 import { AlertTriangle, ArrowLeft, CircleCheck, CircleSlash, Pencil, RefreshCw } from "lucide-react";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
+import { webTicketDataSource } from "../../../api/ticket-data-source";
 import { useTicketAttachments } from "../../../hooks/use-ticket-attachments";
 import { useTicketComments } from "../../../hooks/use-ticket-comments";
 import { useTicketDetail } from "../../../hooks/use-ticket-detail";
@@ -52,14 +53,15 @@ export interface AgentTicketDetailPageProps {
 export function AgentTicketDetailPage({ projectId, number }: AgentTicketDetailPageProps) {
   const { t, i18n } = useTranslation(TICKETS_NS);
   const session = useOrgSession();
-  const detail = useTicketDetail(projectId, number);
+  // 数据源是控制台面（`/web` + 会话 cookie）：本页的所有写动作与取数都经它，管理面另有自己的数据源。
+  const detail = useTicketDetail(projectId, number, webTicketDataSource);
   const [fieldsOpen, setFieldsOpen] = useState(false);
   /** 每次打开递增：`FormDialog` 在自身组件体里建 `useForm`，只改 `open` 会让上一次的输入留到下一次。 */
   const [fieldsFormKey, setFieldsFormKey] = useState(0);
   const [closeConfirmOpen, setCloseConfirmOpen] = useState(false);
   const [labelsOpen, setLabelsOpen] = useState(false);
 
-  const comments = useTicketComments(projectId, number, {
+  const comments = useTicketComments(projectId, number, webTicketDataSource, {
     blocked: detail.blocked,
     // 详情拿到之前不取评论：404/403 时评论区不会渲染，为它多发一次注定失败的请求只会多一条 toast。
     enabled: detail.data !== undefined,
@@ -67,7 +69,7 @@ export function AgentTicketDetailPage({ projectId, number }: AgentTicketDetailPa
     // 兜底通道：本次写被服务端以「已有在途变更」拒绝时，刷新详情把快照里的 pendingOperationId 取回来。
     onOperationPending: detail.refresh,
   });
-  const labels = useTicketLabels(projectId, number, {
+  const labels = useTicketLabels(projectId, number, webTicketDataSource, {
     applyTicket: detail.applyTicket,
     blocked: detail.blocked,
     enabled: labelsOpen,
@@ -77,7 +79,7 @@ export function AgentTicketDetailPage({ projectId, number }: AgentTicketDetailPa
   });
 
   // 附件与评论同层装配（附件区挂在详情页，输入框旁的入口经 props 注入评论表单）。
-  const attachments = useTicketAttachments(projectId, number, {
+  const attachments = useTicketAttachments(projectId, number, webTicketDataSource, {
     enabled: detail.data !== undefined,
     onUncertain: detail.reportUncertain,
   });

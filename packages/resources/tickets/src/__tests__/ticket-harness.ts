@@ -64,6 +64,7 @@ import type {
   TicketProjectRepository,
   TicketProjectRow,
 } from "../server/repositories/ticket-projects";
+import { createApiSystemTicketsRoutes } from "../server/routes/api/system-tickets";
 import { createWebTicketRoutes } from "../server/routes/web/index";
 import { installTicketsServerModule } from "../server/runtime";
 import { buildTicketBody, hashBody } from "../server/services/identity-header";
@@ -505,6 +506,10 @@ export function createOperationStore(): OperationStore {
         return rows.find(
           (row) => row.id === operationId && row.organizationId === organizationId && row.actorId === actorId,
         );
+      },
+      // 平台管理面的无授权读取：只按主键（判据在系统路由守卫，替身不复刻守卫）。
+      async findByIdUnscoped({ operationId }) {
+        return rows.find((row) => row.id === operationId);
       },
       async findByMessageId(messageId) {
         return rows.find((row) => row.messageId === messageId);
@@ -1228,7 +1233,17 @@ export function createTicketHarness(options: { readonly withRecovery?: boolean }
         attachments: attachmentService,
       }),
       // 平台管理面：不吃 actor 与 accessControl（判据在系统路由守卫），因此只接领域服务与身份目录。
-      platform: createTicketPlatformFacade({ tickets: ticketService, identity }),
+      platform: createTicketPlatformFacade({
+        tickets: ticketService,
+        projects: projectService,
+        edit: editService,
+        comments: commentService,
+        labels: labelService,
+        attachments: attachmentService,
+        operations,
+        ...(withRecovery ? { recovery: recoveryService } : {}),
+        identity,
+      }),
     },
   };
 }
@@ -1325,6 +1340,27 @@ export function installTicketRoutes(harness: TicketHarness, actor: ActorContext 
       return { error: { type: "VALIDATION_ERROR", message: "validation failed" } };
     })
     .use(createWebTicketRoutes({ authGuardPlugin: createStubSessionAuthGuardPlugin(actor) }));
+}
+
+/**
+ * 装配 `/api/system/tickets*` 路由（平台管理面）并装入进程级模块槽位。
+ *
+ * 与 {@link installTicketRoutes} 的分工：那个装 `/web` 面（会话守卫替身），本函数装管理面（系统 key 守卫替身，
+ * 见 {@link createStubSystemApiGuardPlugin}）。两者读**同一份**模块槽位，因此用例可以断言「同一批领域服务在
+ * 两个面上的行为差异只在判据」。
+ *
+ * 同样另挂宿主 error-handler 的参数校验映射（理由见 {@link installTicketRoutes}）：路径参数非法在线上是
+ * 400 + `{ error: { type: "VALIDATION_ERROR" } }`，而不是 Elysia 默认的 422 纯文本。
+ */
+export function installSystemTicketRoutes(harness: TicketHarness, allowedKey: string) {
+  installTicketModule(harness);
+  return new Elysia()
+    .onError({ as: "global" }, ({ error, set }) => {
+      if (!(error instanceof ElysiaValidationError)) return;
+      set.status = 400;
+      return { error: { type: "VALIDATION_ERROR", message: "validation failed" } };
+    })
+    .use(createApiSystemTicketsRoutes({ systemApiGuardPlugin: createStubSystemApiGuardPlugin(allowedKey) }));
 }
 
 /**

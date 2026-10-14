@@ -15,6 +15,7 @@ import { Skeleton } from "@fenix/ui-components/ui/skeleton";
 import { AlertTriangle, ChevronUp, RefreshCw } from "lucide-react";
 import type { ReactNode } from "react";
 import { useTranslation } from "react-i18next";
+import type { TicketComment } from "../../../api/ticket-comments";
 import type { TicketCommentsState } from "../../../hooks/use-ticket-comments";
 import { TICKETS_NS } from "../../../i18n/namespace";
 import { TicketCommentComposer } from "./ticket-comment-composer";
@@ -32,6 +33,11 @@ export interface TicketCommentSectionProps {
   attachmentPicker?: ReactNode;
   /** 粘贴图片的出口，与 `attachmentPicker` 同传（编辑态粘贴保持浏览器默认行为）。 */
   onPasteFiles?: (files: File[]) => void;
+  /**
+   * 编辑入口的可见性规则，透传给每条评论；省略即控制台面的「作者本人」规则。
+   * 平台管理面传 `() => true`（那一面凭据即判据，见 `ticket-comment-item` 的文件头）。
+   */
+  canEdit?: (comment: TicketComment) => boolean;
 }
 
 export function TicketCommentSection({
@@ -41,6 +47,7 @@ export function TicketCommentSection({
   busy,
   attachmentPicker,
   onPasteFiles,
+  canEdit,
 }: TicketCommentSectionProps) {
   const { t } = useTranslation(TICKETS_NS);
   const writeDisabled = busy || comments.blocked;
@@ -105,6 +112,7 @@ export function TicketCommentSection({
               const isEditing = editing !== null && editing.commentId === comment.commentId;
               return (
                 <TicketCommentItem
+                  canEdit={canEdit}
                   comment={comment}
                   editDisabled={writeDisabled}
                   editing={isEditing}

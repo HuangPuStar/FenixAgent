@@ -165,8 +165,10 @@ export type TicketWriteResult = { ticket: TicketDetail; operationId: string } | 
  * 后端写响应（200/201）：`{ ticket, operationId }`，`ticket` 尚未回填 `projectId`。
  * 创建、修改、标签三条路径的后端形状完全一致，共用一份私有 DTO——各写一份会让「202 与 200 靠
  * `status` 的存在性区分」这个前提在三条路径上各自漂移。
+ *
+ * 导出给第二个真实消费者：平台管理面的镜像端点（`./system-tickets`）返回同一形状，判别规则必须只有一份。
  */
-interface TicketWriteOutcomeDto {
+export interface TicketWriteOutcomeDto {
   ticket: TicketDetailDto;
   operationId: string;
 }
@@ -181,7 +183,8 @@ function attachProjectId(projectId: string, ticket: TicketSummaryDto): TicketSum
   return { ...ticket, projectId };
 }
 
-function attachDetailProjectId(projectId: string, ticket: TicketDetailDto): TicketDetail {
+/** 详情响应里的工单视图：把服务端返回的 `ticket` 回填 `projectId`（控制台面与系统面镜像都用它）。 */
+export function attachDetailProjectId(projectId: string, ticket: TicketDetailDto): TicketDetail {
   return { ...ticket, projectId };
 }
 
@@ -195,8 +198,13 @@ function passthroughFailure(response: ApiResponse<unknown>): { success: false; e
  *
  * 两种形状靠 `status` 的**存在性**区分：202 受理体带 `status`，工单本体只有 `state`（各自的 schema 已把
  * 这个区分钉死在类型上，故不需要额外的值判别）；调用方对拿到手的结果用 `isUncertainAccepted` 再判别一次。
+ *
+ * 导出理由同 {@link TicketWriteOutcomeDto}：平台管理面的镜像写端点共用这一条判别规则。
  */
-function toWriteResult(projectId: string, outcome: TicketWriteOutcomeDto | TicketWriteAccepted): TicketWriteResult {
+export function toTicketWriteResult(
+  projectId: string,
+  outcome: TicketWriteOutcomeDto | TicketWriteAccepted,
+): TicketWriteResult {
   if ("status" in outcome) return outcome;
   return { operationId: outcome.operationId, ticket: attachDetailProjectId(projectId, outcome.ticket) };
 }
@@ -240,7 +248,7 @@ export const ticketApi = {
       headers: { "Idempotency-Key": idempotencyKey },
     });
     if (!response.success || response.data === undefined) return passthroughFailure(response);
-    return { success: true, data: toWriteResult(projectId, response.data) };
+    return { success: true, data: toTicketWriteResult(projectId, response.data) };
   },
 
   /**
@@ -260,7 +268,7 @@ export const ticketApi = {
       headers: { "Idempotency-Key": idempotencyKey },
     });
     if (!response.success || response.data === undefined) return passthroughFailure(response);
-    return { success: true, data: toWriteResult(projectId, response.data) };
+    return { success: true, data: toTicketWriteResult(projectId, response.data) };
   },
 
   /**
@@ -283,6 +291,6 @@ export const ticketApi = {
       },
     );
     if (!response.success || response.data === undefined) return passthroughFailure(response);
-    return { success: true, data: toWriteResult(projectId, response.data) };
+    return { success: true, data: toTicketWriteResult(projectId, response.data) };
   },
 };

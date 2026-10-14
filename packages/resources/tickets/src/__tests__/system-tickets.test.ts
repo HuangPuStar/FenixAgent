@@ -83,6 +83,28 @@ beforeEach(() => {
 });
 
 describe("系统工单管理面路由", () => {
+  // 业务意图：这十三条路由是前端契约（docs/arch/29-tickets.md §12.1 的路径表），清单本身要被钉住——
+  // 少一条等于管理台某个动作 404，多一条或改名会让已对齐的前端静默调错端点。
+  test("路由清单与 §12.1 的路径表逐条一致", () => {
+    const app = createApiSystemTicketsRoutes({ systemApiGuardPlugin: createStubSystemApiGuardPlugin(SYSTEM_KEY) });
+
+    expect(app.routes.map((route) => `${route.method} ${route.path}`)).toEqual([
+      "GET /api/system/tickets/",
+      "GET /api/system/tickets/:projectId/:number",
+      "PATCH /api/system/tickets/:projectId/:number",
+      "PUT /api/system/tickets/:projectId/:number/labels",
+      "GET /api/system/tickets/:projectId/:number/comments",
+      "POST /api/system/tickets/:projectId/:number/comments",
+      "PATCH /api/system/tickets/:projectId/:number/comments/:commentId",
+      "GET /api/system/tickets/:projectId/:number/attachments",
+      "POST /api/system/tickets/:projectId/:number/attachments",
+      "GET /api/system/tickets/:projectId/:number/attachments/:attachmentId",
+      "GET /api/system/tickets/:projectId/labels",
+      "GET /api/system/tickets/:projectId/members",
+      "GET /api/system/tickets/operations/:operationId",
+    ]);
+  });
+
   // 业务意图：系统面是跨租户读取，凭据缺失时必须 fail-closed——一个放行的空 key 就等于把全部组织的工单开放给匿名调用方。
   test("缺少系统 key 时 401，且不进入读取路径", async () => {
     seedTwoOrganizations(harness);

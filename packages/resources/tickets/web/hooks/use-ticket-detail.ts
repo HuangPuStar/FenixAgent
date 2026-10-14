@@ -22,10 +22,9 @@ import { useRequest } from "ahooks";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
+import type { TicketDataSource } from "../api/ticket-data-source";
 import type { TicketOperationStatus } from "../api/ticket-operations";
-import { ticketOperationsApi } from "../api/ticket-operations";
 import type { TicketDetail, TicketState, TicketUpdateBody, TicketWriteResult } from "../api/tickets";
-import { ticketApi } from "../api/tickets";
 import { TICKETS_NS } from "../i18n/namespace";
 import { settleTicketWriteFailure } from "../lib/ticket-write-failure";
 import type { IdempotencyKeyHolder, TicketWriteOutcome } from "../lib/ticket-write-outcome";
@@ -79,14 +78,24 @@ interface UpdatePayload {
   key: string;
 }
 
-export function useTicketDetail(projectId: string, number: string): UseTicketDetailResult {
+/**
+ * 详情与写路径的编排层。
+ *
+ * `source` 是**依赖**而不是行为开关：同一个工单功能有两个协议面（控制台会话面 / 平台管理面系统 key），
+ * 业务规则、状态机与失败分类完全共用，只有「请求打到哪个面」不同（见 `api/ticket-data-source`）。
+ *
+ * @param projectId 工单所属项目（所有工单资源 URL 都显式带它）。
+ * @param number 工单号，按字符串承载。
+ * @param source 协议面数据源：控制台面传 `webTicketDataSource`，平台管理面传 `systemTicketDataSource`。
+ */
+export function useTicketDetail(projectId: string, number: string, source: TicketDataSource): UseTicketDetailResult {
   const { t } = useTranslation(TICKETS_NS);
   const [acceptedOperationId, setAcceptedOperationId] = useState<string | null>(null);
   const [settledOperationId, setSettledOperationId] = useState<string | null>(null);
   const [fieldsConflict, setFieldsConflict] = useState(false);
   const [resolution, setResolution] = useState<TicketResolution>(null);
 
-  const detail = useRequest(async () => unwrap(ticketApi.get(projectId, number)), {
+  const detail = useRequest(async () => unwrap(source.tickets.get(projectId, number)), {
     refreshDeps: [projectId, number],
     onError: (err: Error) => {
       // 服务端 `message` 优先上屏（它才是可定位的失败原因），字典文案只在它是空串时兜底。
@@ -133,7 +142,7 @@ export function useTicketDetail(projectId: string, number: string): UseTicketDet
 
   /** 三个动作表面打的是同一个 HTTP 调用（`PATCH /tickets/:projectId/:number`），差别只在各自的幂等键。 */
   const writeTicket = async (body: TicketUpdateBody, key: string) =>
-    unwrap(ticketApi.update(projectId, number, body, key));
+    unwrap(source.tickets.update(projectId, number, body, key));
   // 各动作仍各持一个 request 实例：`runAsync` 在「同一实例上后到的请求」会把先到的 promise 挂起
   //（ahooks 的取消语义），共用实例会让两个动作互相吞掉对方的终局。
   const fieldsRequest = useRequest(async (payload: UpdatePayload) => writeTicket(payload.body, payload.key), {
@@ -145,7 +154,7 @@ export function useTicketDetail(projectId: string, number: string): UseTicketDet
   const stateRequest = useRequest(async (payload: UpdatePayload) => writeTicket(payload.body, payload.key), {
     manual: true,
   });
-  const resolveRequest = useRequest(async (operationId: string) => unwrap(ticketOperationsApi.get(operationId)), {
+  const resolveRequest = useRequest(async (operationId: string) => unwrap(source.operations.get(operationId)), {
     manual: true,
   });
 

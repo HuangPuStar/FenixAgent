@@ -9,7 +9,11 @@ const AdminTicketsPage = lazy(() =>
 );
 
 /**
- * `/admin/tickets`：平台管理面的跨组织工单列表，路由壳只做懒加载与能力边界。
+ * `/admin/tickets`：平台管理面的跨组织工单页（列表 + 就地打开的详情与全部写入口）。
+ *
+ * 路由壳的职责只有懒加载与装配能力边界：视图切换（列表 ⇄ 详情）、凭据门与写状态机都在
+ * `@fenix/resource-tickets/web` 的 `AdminTicketsPage` 里（详情是同一路由内的就地视图，不是子路由——
+ * 列表的筛选与页码因此不经过 URL 也不会丢）。
  *
  * 为什么除根守卫外还要在这里判一次部署能力：本文件在**任何**装配 profile 下都进路由表（TanStack 扫
  * `routes/`，与 profile 无关），而 `/admin/*` 不在任何贡献的 `routePrefixes` 里，`routeWebId` 对它返回

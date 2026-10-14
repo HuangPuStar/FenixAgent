@@ -75,10 +75,32 @@ export interface TicketAttachmentSectionProps {
   /** 详情页路由坐标：缩略图要拼本服务的下载地址（组件不自行读路由，保持可独立渲染）。 */
   number: string;
   projectId: string;
+  /**
+   * 缩略图与放大预览的图源。默认拼控制台面的 `/web` 下载地址（同源、浏览器自带会话 cookie）。
+   *
+   * 平台管理面必须覆盖它：那里的凭据是 `Authorization` 头，`<img src>` 带不上，给缩略图另造一条
+   * 「先 fetch 成 blob 再 objectURL」的通道要多一份手工释放的生命周期，而它只影响预览——附件行与
+   * 下载按钮都不依赖它（下载走带凭据的 `Blob`）。返回 `undefined` 即不渲染缩略图。
+   */
+  thumbnailUrlFor?: (attachmentId: string) => string | undefined;
+  /**
+   * 「打开附件」入口。传了就**文件名本身变成按钮**（键盘可达、读屏可读），点击交给调用方决定语义：
+   * 平台管理面用它做「图片预览 / 其余下载」（那里的图源要带 `Authorization` 取字节，见
+   * `web/pages/admin/hooks/use-platform-attachment-preview.ts`）。省略即文件名保持纯文本（控制台面：
+   * 预览入口在缩略图上，下载入口在行尾按钮）。
+   */
+  onOpen?: (attachment: TicketAttachment) => void;
 }
 
 /** 工单附件区：上传队列（过程）+ 已上传列表（结果），四个状态分支齐备。 */
-export function TicketAttachmentSection({ attachments, locale, number, projectId }: TicketAttachmentSectionProps) {
+export function TicketAttachmentSection({
+  attachments,
+  locale,
+  number,
+  projectId,
+  thumbnailUrlFor = (attachmentId) => ticketAttachmentDownloadPath(projectId, number, attachmentId),
+  onOpen,
+}: TicketAttachmentSectionProps) {
   const { t } = useTranslation(TICKETS_NS);
   const hint = t("attachment.hint", {
     size: formatAttachmentSize(TICKET_ATTACHMENT_MAX_BYTES, locale),
@@ -129,11 +151,12 @@ export function TicketAttachmentSection({ attachments, locale, number, projectId
           {attachments.attachments.map((attachment) => (
             <AttachmentRow
               attachment={attachment}
-              downloadUrl={ticketAttachmentDownloadPath(projectId, number, attachment.attachmentId)}
+              downloadUrl={thumbnailUrlFor(attachment.attachmentId)}
               downloading={attachments.downloadingId === attachment.attachmentId}
               key={attachment.attachmentId}
               locale={locale}
               onDownload={() => attachments.download(attachment)}
+              onOpen={onOpen}
             />
           ))}
         </ul>
@@ -248,22 +271,37 @@ function AttachmentRow({
   locale,
   downloading,
   onDownload,
+  onOpen,
 }: {
   attachment: TicketAttachment;
-  /** 本服务的下载地址：缩略图与下载按钮共用同一份内容，不额外多发元数据请求。 */
-  downloadUrl: string;
+  /** 缩略图的图源；`undefined` 表示这个面取不到可内联的地址（管理面），此时不渲染缩略图。 */
+  downloadUrl: string | undefined;
   locale: string;
   downloading: boolean;
   onDownload: () => void;
+  onOpen?: (attachment: TicketAttachment) => void;
 }) {
   const { t } = useTranslation(TICKETS_NS);
 
   return (
     <li className="flex flex-wrap items-center gap-2 rounded-md border border-border bg-surface-1 px-3 py-2">
-      {isImageAttachmentName(attachment.name) ? (
+      {downloadUrl !== undefined && isImageAttachmentName(attachment.name) ? (
         <TicketAttachmentThumb name={attachment.name} url={downloadUrl} />
       ) : null}
-      <span className="min-w-0 flex-1 truncate text-xs text-text-primary">{attachment.name}</span>
+      <span className="min-w-0 flex-1 truncate text-xs text-text-primary">
+        {onOpen === undefined ? (
+          attachment.name
+        ) : (
+          <button
+            aria-label={t("attachment.open", { name: attachment.name })}
+            className="max-w-full truncate text-left text-brand hover:underline"
+            onClick={() => onOpen(attachment)}
+            type="button"
+          >
+            {attachment.name}
+          </button>
+        )}
+      </span>
       <span className="text-xs text-text-dim">{formatAttachmentSize(attachment.size, locale)}</span>
       <span className="text-xs text-text-dim">{formatTicketTime(attachment.createdAt, locale)}</span>
       <Button disabled={downloading} onClick={onDownload} size="sm" type="button" variant="outline">

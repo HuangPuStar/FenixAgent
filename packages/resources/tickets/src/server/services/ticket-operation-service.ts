@@ -80,6 +80,15 @@ export const ISSUE_CHANGE_KINDS: readonly TicketOperationKind[] = ["issue.update
 /** 会改写同一条评论的操作：只与该评论的另一条在途修改互斥。 */
 export const COMMENT_CHANGE_KINDS: readonly TicketOperationKind[] = ["comment.update"];
 
+/**
+ * 需要（且允许）触发一次恢复核对的状态：`dispatching` 是崩溃 / 在途残留，`uncertain` 是结果未定；
+ * `needs_review` 等人处理，终态保持原样。
+ *
+ * 定义在这里而不是各调用点：`/web` 面的 `getOperation` 与管理面的同类入口必须对「哪些状态要回源核对」
+ * 给出同一个答复，两处各写一份集合就会分叉成「一个面自动收尾、另一个面一直显示待确认」。
+ */
+export const RECONCILABLE_OPERATION_STATUSES: ReadonlySet<string> = new Set(["dispatching", "uncertain"]);
+
 /** `begin` 的输入；`intent` 是待发送内容的原文，成功/明确失败后由仓储改写为摘要。 */
 export interface TicketOperationBeginInput {
   readonly organizationId: string;
@@ -171,6 +180,15 @@ export interface TicketOperationService {
     readonly actorId: string;
     readonly operationId: string;
   }): Promise<TicketOperationRow | undefined>;
+  /**
+   * 平台管理面的账本读取（`/api/system/ticket-operations/:operationId`）：按 ID 直读，**不看发起人与组织**。
+   *
+   * 与 {@link findForActor} 的可见性口径刻意不同：那个方法回答「这个主体能不能看这条操作」，本方法服务的
+   * 调用方不是用户——判据是系统路由守卫（凭据即判据），而它要复核的操作可能由组织成员在 `/web` 面发起
+   * （详情视图的 `pendingOperationId` 就是这种情况）。两条方法并存而不是加一个开关参数：可见性分支留在
+   * 参数里，评审时看不出「哪条路径没有范围收敛」。
+   */
+  findByIdUnscoped(input: { readonly operationId: string }): Promise<TicketOperationRow | undefined>;
   /**
    * 未确认变更的定位（裁定三.15）：同一对象上最新一条非终态修改操作的 ID，没有则 `undefined`。
    *
@@ -272,6 +290,10 @@ export function createTicketOperationService(operations: TicketOperationReposito
 
     async findForActor(input) {
       return operations.findForActor(input);
+    },
+
+    async findByIdUnscoped(input) {
+      return operations.findByIdUnscoped(input);
     },
 
     async findInFlightTarget(input) {

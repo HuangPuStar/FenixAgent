@@ -46,3 +46,14 @@ export const SystemTicketListResponseSchema = WebOkSchema(
     pageSize: z.number().int().positive(),
   }),
 );
+
+/**
+ * 管理面附件下载的查询参数：`disposition` 决定响应头，**默认 `attachment`**（与 `/web` 面逐字同形）。
+ *
+ * 为什么需要 `inline`：管理面的凭据是 `Authorization` 头，`<img src>` / `<a href>` 都带不上，前端只能先
+ * 取回字节再展示（`fetch` → `Blob` → objectURL）。那条路径需要「不强制下载」的语义，否则浏览器在直接打开
+ * 该地址时会保存文件而不是渲染。取值钉死在枚举里：响应头不得由请求传入任意字符串（响应头注入面）。
+ */
+export const SystemTicketAttachmentDownloadQuerySchema = z.object({
+  disposition: z.enum(["attachment", "inline"]).default("attachment").describe("响应头处置方式；默认 attachment。"),
+});

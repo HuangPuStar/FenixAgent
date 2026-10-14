@@ -107,6 +107,11 @@ export interface TicketOperationRepository {
     actorId: string;
     operationId: string;
   }): Promise<TicketOperationRow | undefined>;
+  /**
+   * 无授权读取（**仅限平台管理面** `/api/system/ticket-operations/:operationId`）：按主键直读，不带组织与
+   * 发起人条件。命名带 `Unscoped` 便于评审一眼识别（与项目仓储同口径）；本面的判据是系统路由守卫。
+   */
+  findByIdUnscoped(input: { operationId: string }): Promise<TicketOperationRow | undefined>;
   findByMessageId(messageId: string): Promise<TicketOperationRow | undefined>; // T03 恢复用，T02 先落地
   /**
    * 按主键加锁读一行（`SELECT ... FOR UPDATE`），供恢复核对在事务内复查状态后落终态（§8.2）。
@@ -315,6 +320,16 @@ export function createTicketOperationRepository(): TicketOperationRepository {
             eq(ticketOperations.id, input.operationId),
           ),
         )
+        .limit(1);
+      return rows[0];
+    },
+
+    async findByIdUnscoped(input) {
+      // 只按主键读：平台管理面的调用方不是某个组织里的某个用户，因此没有组织 / 发起人可带（见接口注释）。
+      const rows = await getTicketsDatabase()
+        .select()
+        .from(ticketOperations)
+        .where(eq(ticketOperations.id, input.operationId))
         .limit(1);
       return rows[0];
     },

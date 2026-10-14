@@ -23,7 +23,7 @@ import type { TicketMessageRepository } from "../repositories/ticket-messages";
 import type { TicketOperationRepository, TicketOperationRow } from "../repositories/ticket-operations";
 import type { TicketProjectRepository } from "../repositories/ticket-projects";
 import { RECOVERY_NEEDS_REVIEW_AFTER_MS } from "./ticket-limits";
-import { TICKET_OPERATION_STEP } from "./ticket-operation-service";
+import { RECONCILABLE_OPERATION_STATUSES, TICKET_OPERATION_STEP } from "./ticket-operation-service";
 import { createTicketRecoveryInspector } from "./ticket-recovery-inspect";
 
 /** 恢复核对的结果（§8.2 冻结给 T04）；三种结论都携带核对后的账本行，供 `GET /ticket-operations/:id` 直接投影。 */
@@ -55,8 +55,7 @@ export interface TicketRecoveryServiceDeps {
   readonly identity: IdentityDirectory;
 }
 
-/** 需要核对的状态：`dispatching` 是崩溃/在途残留，`uncertain` 是结果未定；`needs_review` 等人处理。 */
-const RECONCILABLE_STATUSES: ReadonlySet<string> = new Set(["dispatching", "uncertain"]);
+/** 需要核对的状态由账本服务收口（`RECONCILABLE_OPERATION_STATUSES`）：管理面与 `/web` 面必须同答复。 */
 
 export function createTicketRecoveryService(deps: TicketRecoveryServiceDeps): TicketRecoveryService {
   const inspector = createTicketRecoveryInspector({
@@ -71,14 +70,14 @@ export function createTicketRecoveryService(deps: TicketRecoveryServiceDeps): Ti
     async reconcile(input) {
       const row = await deps.operations.findForActor(input);
       if (row === undefined) throw new OperationNotFoundError();
-      if (!RECONCILABLE_STATUSES.has(row.status)) return outcomeFor(row);
+      if (!RECONCILABLE_OPERATION_STATUSES.has(row.status)) return outcomeFor(row);
 
       const verdict = await inspector.inspect(row);
       return await runInTransaction(async () => {
         const current = await deps.operations.findByIdForUpdate({ operationId: row.id });
         if (current === undefined) throw new OperationNotFoundError();
         // 复查状态：并发的另一次核对可能已经把这一行落成终态，此时不得再写第二次结论。
-        if (!RECONCILABLE_STATUSES.has(current.status)) return outcomeFor(current);
+        if (!RECONCILABLE_OPERATION_STATUSES.has(current.status)) return outcomeFor(current);
 
         if (verdict.kind === "applied") {
           await verdict.apply?.();

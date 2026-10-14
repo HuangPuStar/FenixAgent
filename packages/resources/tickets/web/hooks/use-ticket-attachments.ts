@@ -21,7 +21,8 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
 import type { TicketAttachment } from "../api/ticket-attachments";
-import { downloadTicketAttachment, saveBlobAsFile, ticketAttachmentsApi } from "../api/ticket-attachments";
+import { saveBlobAsFile } from "../api/ticket-attachments";
+import type { TicketDataSource } from "../api/ticket-data-source";
 import { TICKETS_NS } from "../i18n/namespace";
 import {
   formatAttachmentSize,
@@ -105,14 +106,25 @@ function toUploadView(task: UploadTask): TicketAttachmentUpload {
   };
 }
 
+/**
+ * 附件编排层。
+ *
+ * `source` 是**依赖**而不是行为开关：控制台面与平台管理面共用同一套上传队列、并发调度、幂等键与失败分类，
+ * 差别只在请求打到哪个协议面（见 `api/ticket-data-source`）。下载同理由数据源给出——管理面的凭据是
+ * `Authorization` 头，取字节的通道本来就不同。
+ */
 export function useTicketAttachments(
   projectId: string,
   number: string,
+  source: TicketDataSource,
   options: TicketAttachmentsOptions,
 ): TicketAttachmentsState {
   const { t, i18n } = useTranslation(TICKETS_NS);
   const language = i18n.language;
   const { onUncertain } = options;
+  // 数据源的两个写/下载动作先解构出来：它们在 useCallback 里被引用，解构出的引用（而不是嵌套属性路径）
+  // 既是稳定的，也能让依赖表如实列出真正被用到的那个函数。
+  const { download: downloadAttachment, upload: uploadAttachment } = source.attachments;
   const [attachments, setAttachments] = useState<TicketAttachment[]>([]);
   const [uploads, setUploads] = useState<TicketAttachmentUpload[]>([]);
   const [downloadingId, setDownloadingId] = useState<string | null>(null);
@@ -126,7 +138,7 @@ export function useTicketAttachments(
     setUploads(tasksRef.current.map(toUploadView));
   }, []);
 
-  const list = useRequest(async () => unwrap(ticketAttachmentsApi.list(projectId, number)), {
+  const list = useRequest(async () => unwrap(source.attachments.list(projectId, number)), {
     ready: options.enabled,
     refreshDeps: [projectId, number, options.enabled],
     onSuccess: (page) => {
@@ -152,7 +164,7 @@ export function useTicketAttachments(
       task.controller = new AbortController();
       try {
         const result = await unwrap(
-          ticketAttachmentsApi.upload(
+          uploadAttachment(
             projectId,
             number,
             task.file,
@@ -194,7 +206,7 @@ export function useTicketAttachments(
         pumpRef.current();
       }
     },
-    [dropTask, number, onUncertain, projectId, syncUploads, t],
+    [dropTask, number, onUncertain, projectId, syncUploads, t, uploadAttachment],
   );
 
   /** 补满并发：从队首取 `queued` 的任务启动，直到达到并发上限或没有可启动的任务。 */
@@ -282,7 +294,7 @@ export function useTicketAttachments(
       setDownloadingId(attachment.attachmentId);
       void (async () => {
         try {
-          const blob = await downloadTicketAttachment(projectId, number, attachment.attachmentId, controller.signal);
+          const blob = await downloadAttachment(projectId, number, attachment.attachmentId, controller.signal);
           if (controller.signal.aborted) return;
           saveBlobAsFile(blob, attachment.name);
         } catch (error) {
@@ -299,7 +311,7 @@ export function useTicketAttachments(
         }
       })();
     },
-    [number, projectId, t],
+    [downloadAttachment, number, projectId, t],
   );
 
   // 换工单：在途上传的坐标是旧工单，结果已无意义，一并取消并清空队列与列表。

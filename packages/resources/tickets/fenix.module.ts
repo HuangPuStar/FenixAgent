@@ -32,8 +32,9 @@ import { ticketProjectResource } from "./src/server/access/ticket-project-resour
  * Drizzle、Elysia 或 gray-matter 拖进模块图。
  *
  * `contributions` 两条：`tickets.web`（控制台 `/web` 面，会话守卫）与 `tickets.api-system-tickets`
- * （平台管理面 `/api/system/tickets`，系统 key 守卫，跨组织只读）。两个面的组织口径互不影响——系统面存在的
- * 前提是凭据，不是把工单项目变成跨组织可见资源（`ticket_project` 仍无平台受众列）。
+ * （平台管理面 `/api/system/tickets`，系统 key 守卫，**跨组织管理与只读查询**——列表、详情、写路径、目录与
+ * 待确认账本，清单见 `docs/arch/29-tickets.md` §12.1）。两个面的组织口径互不影响——系统面存在的前提是凭据，
+ * 不是把工单项目变成跨组织可见资源（`ticket_project` 仍无平台受众列）。
  */
 export const moduleManifest = {
   id: "tickets",
@@ -55,7 +56,9 @@ export const moduleManifest = {
     },
     {
       /**
-       * 平台管理面（`/api/system/tickets`）：跨组织只读列出全部组织的工单。
+       * 平台管理面（`/api/system/tickets`）：跨组织的列表与只读查询，加上工单详情与**全部写路径**（改字段与
+       * 状态、标签挂载、评论发表与编辑、附件上传与读取、待确认账本复核）。能力清单与路径表见
+       * `docs/arch/29-tickets.md` §12.1；判据是系统 key（凭据即判据），无角色判定与范围收敛。
        *
        * 与 `tickets.web` 同因——贡献实例是惰性构造的 Elysia，registry 会被大量位置导入，不能在索引层就把
        * Elysia 拖进模块图。挂 `api` 槽而不是 `web`：路径自带 `/api/system` 前缀（对外合同的一部分），
