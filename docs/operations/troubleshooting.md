@@ -162,8 +162,9 @@ grep -n "MIGRATIONS" -A 6 apps/server/src/services/data-migrate.ts    # 本次�
 主服务侧调用对应能力（知识库、工作流、模型网关）失败。
 
 **背景**：`docker/common/` 的四个服务是**共享实例**（`postgres` / `redis` / `rustfs` / `mysql`），只提供实例、不做
-任何栈的业务初始化；库、账号、桶由消费方**栈内的一次性初始化服务**创建（`docker/workflow/` 的 `mysql-init` /
-`s3-init`、`docker/ragflow/` 的 `ragflow-mysql-init` / `ragflow-s3-init`、`docker/litellm/` 的 `litellm-db-init`）。
+任何栈的业务初始化；库、账号、桶由消费方**栈内的一次性初始化服务**创建（`docker/workflow/` 的 `assets-init`
+（把随 server 镜像交付的初始化资产展开到宿主，失败时下游服务都不启动）、`atlas-init`、`mysql-init` / `s3-init`、
+`docker/ragflow/` 的 `ragflow-mysql-init` / `ragflow-s3-init`、`docker/litellm/` 的 `litellm-db-init`）。
 `docker/ragflow/` 有一处不同：它的对象存储是**本栈自带实例** `ragflow-rustfs`（不接 `fenix-server`、不受
 `FENIX_FEATURE_S3` 影响），它的 `ragflow-s3-init` 探测的是这个实例，就绪由同项目的 `service_healthy` 保证——
 见[编排体系](./docker-topology.md) §5。初始化非 0 退出时，依赖它的主服务不会启动——这是设计行为，不是
@@ -174,7 +175,7 @@ grep -n "MIGRATIONS" -A 6 apps/server/src/services/data-migrate.ts    # 本次�
 
 ```bash
 docker ps -a                      # 一次性服务必须 Exited (0)；非 0 时它依赖的栈内主服务会缺位或反复重启
-docker compose -f docker/workflow/docker-compose.yml ps -a mysql-init s3-init
+docker compose -f docker/workflow/docker-compose.yml ps -a assets-init atlas-init mysql-init s3-init
 docker compose -f docker/litellm/docker-compose.yml ps -a litellm-db-init
 docker compose --env-file docker/ragflow/.env --env-file ./.env \
   -f docker/ragflow/docker-compose.yml ps -a            # 两个初始化服务 + ragflow
@@ -184,7 +185,8 @@ docker compose -f docker/litellm/docker-compose.yml logs --tail=50 litellm-db-in
 # ragflow 的两个初始化服务还要共享键：dev 用仓库根 .env，生产用 docker/main/.env（下同）
 docker compose --env-file docker/ragflow/.env --env-file ./.env \
   -f docker/ragflow/docker-compose.yml logs --tail=50 ragflow-mysql-init ragflow-s3-init
-# workflow 要带上游 .env，命令照该目录 README §6
+# workflow 的初始化日志（含资产展开与 Atlas 收敛），命令与验收口径见该目录 README §6
+docker compose -f docker/workflow/docker-compose.yml logs --tail=30 assets-init atlas-init mysql-init s3-init
 
 # 共享实例自己：开关没开时它直接缺位（postgres 恒启动，其余看 FENIX_FEATURE_*）
 docker compose ps postgres mysql rustfs redis                  # dev（仓库根编排）

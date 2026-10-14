@@ -11,6 +11,8 @@ docker/agent-sites/public/
 # （data / workspaces 由上面的通用规则忽略，workflow 需要单独一条）
 /workflow/
 docker/main/workflow/
+# workflow 的初始化资产展开目录（assets-init 从 server 镜像展开，可随时重建）
+docker/workflow/assets/
 *.log
 .idea
 .vscode

@@ -16,7 +16,8 @@
 # 再起一套 MySQL。放这里的两个直接后果，必须先看懂再改：
 #   1) 它是通用实例，**不含任何栈的业务初始化**（建业务库、应用 schema 迁移）。初始化归持有 schema 的那一方：
 #      `docker/workflow/` 与 `docker/ragflow/` 各用自己的初始化服务承担（见各目录 README）。本文件因此不引用任何依赖目录或
-#      `WORKFLOW_STUDIO_DIR` —— 顶层 include 的插值环境在**没装任何依赖**的机器上也要成立
+#      依赖目录的变量（历史上 workflow 侧有一个 `WORKFLOW_STUDIO_DIR`，已随资产改由镜像交付而删除，2026-10-14）——
+#      顶层 include 的插值环境在**没装任何依赖**的机器上也要成立
 #      （`docker compose -f docker-compose.yml config` 必须能跑）。
 #   2) 消费方必须接入 fenix-server 才能按服务名解析到它；代价是消费方也暴露在该网络里（文档 §3）。
 #

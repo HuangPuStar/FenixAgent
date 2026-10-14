@@ -13,18 +13,15 @@
 #   - 启动顺序：**先起顶层项目**（./docker/deploy.sh up，或至少
 #     docker compose -f docker-compose.yml --profile mysql --profile s3 up -d），再起本目录；
 #     独立部署时也必须带上 common（见 README §1）。
-#   - 地址不变：容器内仍按服务名 mysql:3306 访问（上游 .env 的 MYSQL_HOST / MYSQL_PORT 不需要改），
-#     因为服务名与端口在 common 里保持原值。
+#   - 地址不变：容器内仍按服务名 mysql:3306 访问共享实例，因为它保持原服务名与端口；
+#     指向由本文件的 environment 显式注入（Compose 里 environment 优先于 env_file），不需要任何上游配置文件。
 #   - 对象存储地址：容器内按服务名 rustfs:9000 访问（S3 API），凭据取主服务 env
 #     （生产 docker/main/.env、dev 仓库根 .env）的 RUSTFS_*。
-#     上游 .env 里的 MINIO_ENDPOINT / MINIO_API_HOST / MINIO_AK / MINIO_SK **不需要改**：本文件在
-#     coze-server 上用 environment 显式覆盖（Compose 里 environment 优先于 env_file）。
 #   - 代价：coze-server、milvus 与 s3-init 必须接入 external 网络 fenix-server 才能解析到共享实例，
 #     因此这三个容器也暴露在该网络里；且当共享 redis（FENIX_FEATURE_REDIS=true）同时启用时，共享网络的
 #     `redis` 与栈内 `redis` 同名，解析会歧义——见 README「已知冲突」。
 #   - 数据落点：MySQL 在 docker/common/data/mysql、对象存储在 docker/common/data/rustfs（都是 bind）；
-#     Elasticsearch、redis、etcd、milvus 的数据仍在 `${WORKFLOW_STUDIO_DIR}/docker/data/` 下。
-#     旧的对象数据目录 `${WORKFLOW_STUDIO_DIR}/docker/data/minio` 已不再被任何服务挂载，处置见 README §8。
+#     本栈自己的数据（Elasticsearch / redis / etcd / Milvus）在 `./data/` 下，随本目录交付面搬迁。
 #
 # 只有出口 coze-web、以及需要访问共享 mysql / rustfs 的 coze-server / mysql-init / s3-init / milvus
 # 接入 external 网络 fenix-server；其余服务使用 Compose 默认网络。
@@ -37,28 +34,99 @@
 #     external: true
 #     name: fenix-server
 # workflow-upstream 与 workflow-storage 都指向 coze-web；存储经只读代理，**不直连共享 rustfs**。
-# 上游 .env 里仍保留 MINIO_ENDPOINT / MINIO_API_HOST / STORAGE_BUCKET；本文件在 coze-server 上覆盖成
-# rustfs:9000 / http://rustfs:9000 / opencoze（environment 覆盖 env_file），上游那份不需要改。
 # 控制台与 /workflow-canvas/* 均经 RCS 同源入口，不直接将 BFF 反代到上游。
 # RCS 需包含 workflow-v2 模块、控制台产物与完整 DDL / 数据迁移。
 # 当前画布票据状态仍在 RCS 进程内；Redis 不解决跨副本票据校验，先按单进程部署。
-# 上游画布改由 `-web-canvas` 变体镜像交付（构建期已注入 WORKFLOW_CANVAS_BASE=/workflow-canvas/，
-# 资源前缀与 router basename 都是 /workflow-canvas），不再需要 clone 源码构建 dist；
-# 镜像只在根路径 / 提供 SPA，「/workflow-canvas/<rest> 剥离前缀」与 SPA 回退由平台静态反代与本站负责。
-# 启动前创建共享网络，并同时加载上游 docker/.env 与本目录 .env：
-# docker network create fenix-server
-# docker compose --env-file "$WORKFLOW_STUDIO_DIR/docker/.env" \
-#   --env-file docker/workflow/.env -f docker/workflow/docker-compose.yml up -d
+#
+# 上游交付面只有三个镜像（同一 tag 同一 commit）：
+#   ghcr.io/konghayao/workflow-studio-server:<tag>      # coze-server；**初始化资产也在这里**（/app/upstream-assets）
+#   ghcr.io/konghayao/workflow-studio-web-canvas:<tag>  # 画布子路径变体（构建期注入 WORKFLOW_CANVAS_BASE=/workflow-canvas/）
+# 资产（mysql schema.sql / Atlas HCL / ES 四件 / etcd 配置 / 画布图标）随 server 镜像交付，由本目录的
+# 一次性服务 assets-init 展开到宿主 `./assets/`；**本目录不再引用任何上游源码目录**，也不需要 clone。
+#
+# 启动（随主服务一键启动，推荐）：
+#   docker/deploy.env 打开 FENIX_FEATURE_WORKFLOW（并确保 FENIX_FEATURE_MYSQL / FENIX_FEATURE_S3 已打开）
+#   ./docker/deploy.sh up
+# 独立启动（共享实例已在同机）：本目录 .env 由 ./docker/deploy.sh init 或手工从 .env.example 物化；
+# 指定 --env-file 后 compose **不再**自动读项目目录 .env，所以两个都要给、后者优先（共享键只在主服务 env 定义）：
+#   docker compose --env-file docker/workflow/.env --env-file docker/main/.env \
+#     -f docker/workflow/docker-compose.yml up -d
+# 宿主诊断入口 WEB_LISTEN_ADDR 默认 127.0.0.1:18081（避让同机 ragflow 的 18080，见 .env.example）。
 
 name: fenix-workflow
 services:
+  assets-init:
+    # 一次性资产展开（job 语义：执行完即退出，不常驻、不 restart）：把镜像内 /app/upstream-assets/docker
+    # 下的初始化资产拷到宿主 ./assets/（本目录生成目录，不进版本控制）。为什么必须经这一跳：docker 不能把
+    # 镜像里的路径直接挂进别的容器，而消费方（atlas-init / mysql-init / s3-init / elasticsearch / etcd）
+    # 需要的是宿主上的真实文件；展开后它们按普通 bind 挂载读取，路径与原先挂上游源码目录时逐一对应。
+    # 为什么用 server 镜像而不是新制品：资产与二进制同 commit、同 tag，天然对齐；该镜像 coze-server 本来
+    # 就要拉取，这里不新增任何拉取面。代价是运行时镜像多约 6MB（README §2 记录了这个取舍）。
+    image: ghcr.io/konghayao/workflow-studio-server:${WORKFLOW_STUDIO_TAG:?Set WORKFLOW_STUDIO_TAG（docker/workflow/.env，见 .env.example）}
+    # 上游只发布 amd64（与 coze-server 同因）：写死平台，否则 arm64 主机（Mac）拉取直接报 no matching manifest。
+    platform: linux/amd64
+    restart: "no"
+    environment:
+      WORKFLOW_STUDIO_TAG: ${WORKFLOW_STUDIO_TAG:?Set WORKFLOW_STUDIO_TAG（docker/workflow/.env，见 .env.example）}
+    entrypoint: ["/bin/sh", "-c"]
+    # 幂等：先清空目标目录再整体拷贝，tag 变更时不会残留上一版文件；不是纯覆盖写，见 README §2 的重跑口径。
+    # 显式覆盖 entrypoint：镜像自带的是 /app/opencoze，不覆盖会去启动应用。
+    command:
+      - |
+        set -e
+        if [ ! -d /app/upstream-assets/docker ]; then
+          echo "当前 tag 的镜像里没有 /app/upstream-assets：它早于「初始化资产随镜像交付」的发布。" >&2
+          echo "处理：把 WORKFLOW_STUDIO_TAG 换成带资产的新 tag（见 docker/workflow/README.md §2），再重跑本服务。" >&2
+          exit 1
+        fi
+        find /out -mindepth 1 -maxdepth 1 -exec rm -rf {} +
+        cp -a /app/upstream-assets/docker/. /out/
+        printf 'workflow-studio@%s\n' "$WORKFLOW_STUDIO_TAG" > /out/.source
+        echo "资产已展开：$(find /out -type f | wc -l) 个文件，来源 $WORKFLOW_STUDIO_TAG"
+    volumes:
+      # 短语法 + 默认 create_host_path：首次运行时宿主的 ./assets 还不存在，需要 docker 建出来（所以这里
+      # **不能**用 create_host_path: false——那会让首跑直接失败）。
+      - ./assets:/out
+    # 只做本地文件拷贝，不需要任何网络：显式 none，避免它挂上项目默认网络（最小权限）。
+    network_mode: none
+  atlas-init:
+    # 一次性 schema 迁移（job 语义），顺序与上游 mysql 容器原先的 entrypoint 一致：schema.sql 先落地
+    # （见下面的 mysql-init ④），Atlas 再按 HCL 收敛差异。拆成独立服务是为了用固定版本的 Atlas 镜像
+    # 替掉运行期 `curl -sSf https://atlasgo.sh | sh`（那是离线部署的最后一个出网点）。
+    # 镜像 is distroless：没有 shell，command 直接给参数（entrypoint 是 /atlas）。
+    image: arigaio/atlas:1.3.3-community
+    restart: "no"
+    depends_on:
+      # 库、账号与 schema.sql 都由 mysql-init 落定；它成功退出即代表可以连、可以 apply。
+      mysql-init:
+        condition: service_completed_successfully
+    command:
+      - schema
+      - apply
+      # DSN 由本编排拼（与 coze-server 的 MYSQL_DSN 同源同值），凭据来自主服务 env。
+      - "mysql://${MYSQL_USER:-coze}:${MYSQL_PASSWORD:-coze123}@mysql:3306/${MYSQL_DATABASE:-opencoze}?charset=utf8mb4&parseTime=True"
+      - --to
+      - file:///opencoze_latest_schema.hcl
+      # 与上游 mysql 容器原先的调用逐字一致（同一个 --exclude 集合）。
+      - --exclude
+      - atlas_schema_revisions,table_*
+      - --auto-approve
+    volumes:
+      - type: bind
+        source: ./assets/atlas/opencoze_latest_schema.hcl
+        target: /opencoze_latest_schema.hcl
+        read_only: true
+        bind:
+          create_host_path: false
+    networks:
+      - fenix-server
   mysql-init:
     # 一次性初始化（job 语义：执行完即退出，不常驻、不 restart），按顺序做完才放 coze-server 起来：
-    #   等共享实例可用并可认证 → 幂等创建本栈的库与账号 → 应用账号自检 → 应用上游 schema.sql / Atlas。
-    # 具体分支与报错文案见 docker/workflow/init-mysql.sh（本目录的交付面文件，随目录一起交付）。
+    #   等共享实例可用并可认证 → 幂等创建本栈的库与账号 → 应用账号自检 → 应用上游 schema.sql。
+    #   具体分支与报错文案见 docker/workflow/init-mysql.sh（本目录的交付面文件，随目录一起交付）。
     # 为什么不用共享实例的 MYSQL_DATABASE / MYSQL_USER 代劳：那两个键只在共享实例的**数据目录首次初始化**
     # 时生效，对已经存在的实例（别的栈先起过）完全无效——本栈不能把「库和账号存在」寄托在别人的首启上。
-    # 幂等：CREATE ... IF NOT EXISTS / GRANT / Atlas apply 都可重复执行，重跑不覆盖既有数据（见脚本头注释）。
+    # 幂等：CREATE ... IF NOT EXISTS / GRANT 都可重复执行，重跑不覆盖既有数据（见脚本头注释）。
     # 镜像复用本目录已有的 mysql:8.4.5（自带 mysql 客户端与 curl，原 mysql 服务同款），不新增镜像来源。
     image: mysql:8.4.5
     restart: "no"
@@ -66,32 +134,36 @@ services:
     environment:
       # 容器内地址写显式值（不插值同名宿主键，文档 §8.4）：mysql 是共享 MySQL 在 fenix-server 上的服务名。
       MYSQL_HOST: mysql
-      # 凭据是共享键（主服务 env）；缺省值与 common 的默认值一致，独立部署按上游 .env 的值填。
+      # 凭据是共享键（主服务 env）；缺省值与 common 的默认值一致，独立部署按同一份主服务 env 填。
       MYSQL_DATABASE: ${MYSQL_DATABASE:-opencoze}
       MYSQL_USER: ${MYSQL_USER:-coze}
       MYSQL_PASSWORD: ${MYSQL_PASSWORD:-coze123}
       MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:-root}
+    depends_on:
+      # 资产由 assets-init 展开到 ./assets；文件是否齐备由下面的 create_host_path: false 显式兜底。
+      assets-init:
+        condition: service_completed_successfully
     volumes:
-      # create_host_path: false → 脚本缺失时直接报错，而不是被 docker 静默建成一个同名目录
+      # create_host_path: false → 脚本或资产缺失时直接报错，而不是被 docker 静默建成一个同名目录
       - type: bind
         source: ./init-mysql.sh
         target: /init/init-mysql.sh
         read_only: true
         bind:
           create_host_path: false
-      - >-
-        ${WORKFLOW_STUDIO_DIR:?Set an absolute
-        WORKFLOW_STUDIO_DIR}/docker/volumes/mysql/schema.sql:/schema.sql:ro
-      - >-
-        ${WORKFLOW_STUDIO_DIR:?Set an absolute
-        WORKFLOW_STUDIO_DIR}/docker/atlas/opencoze_latest_schema.hcl:/opencoze_latest_schema.hcl:ro
+      - type: bind
+        source: ./assets/volumes/mysql/schema.sql
+        target: /schema.sql
+        read_only: true
+        bind:
+          create_host_path: false
     # 初始化逻辑单独成文件（docker/workflow/init-mysql.sh），只读挂载后由 /bin/sh 解释执行：
     # compose 里保持「哪些服务、什么顺序、挂什么」可读，分支与报错文案留给脚本。
     # 必须显式覆盖 entrypoint：镜像自带的 entrypoint 会把参数当 mysqld 启动参数劫持掉。
     entrypoint: ["/bin/sh", "/init/init-mysql.sh"]
-    # 没有 depends_on：共享 MySQL 属于另一个 Compose 项目，Compose 只允许依赖本项目内已定义的服务
+    # 没有 depends_on 共享 MySQL：它属于另一个 Compose 项目，Compose 只允许依赖本项目内已定义的服务
     # （写 mysql 会直接报 "depends on undefined service"）；顶层项目先起是启动顺序不变量（README §1），
-    # 就绪判定与失败诊断都在脚本里，非零退出码由 depends_on 它的 coze-server 反映出来。
+    # 就绪判定与失败诊断都在脚本里，非零退出码由 depends_on 它的 atlas-init / coze-server 反映出来。
     networks:
       - fenix-server
   s3-init:
@@ -115,6 +187,9 @@ services:
       S3_SECRET_KEY: ${RUSTFS_SECRET_KEY:-fenix-local-dev}
       # SigV4 签名域：RustFS 的默认 region。共享实例若改了 RUSTFS_REGION，这里必须同步（脚本头有说明）。
       S3_REGION: ${RUSTFS_REGION:-us-east-1}
+    depends_on:
+      assets-init:
+        condition: service_completed_successfully
     volumes:
       # create_host_path: false → 脚本缺失时直接报错，而不是被 docker 静默建成一个同名目录
       - type: bind
@@ -123,19 +198,15 @@ services:
         read_only: true
         bind:
           create_host_path: false
-      # 图标播种源：仍是上游 volumes/minio 下的静态图标目录（原 minio 容器挂的就是这两份，路径不变）。
+      # 图标播种源：assets-init 从镜像展开的静态图标目录（原先挂的是上游 volumes/minio 下同样的两份）。
       # 这里用短语法（不设 create_host_path: false）：目录缺失时 docker 会建空的，脚本第 ④ 步会以
       # 「里面没有文件」出声——图标不是就绪前提，不该把整个栈卡死（见脚本头「例外」一段）。
-      - ${WORKFLOW_STUDIO_DIR:?Set an absolute WORKFLOW_STUDIO_DIR}/docker/volumes/minio/default_icon:/seed/default_icon:ro
-      - >-
-        ${WORKFLOW_STUDIO_DIR:?Set an absolute
-        WORKFLOW_STUDIO_DIR}/docker/volumes/minio/official_plugin_icon:/seed/official_plugin_icon:ro
+      - ./assets/volumes/minio/default_icon:/seed/default_icon:ro
+      - ./assets/volumes/minio/official_plugin_icon:/seed/official_plugin_icon:ro
     # 初始化逻辑单独成文件（docker/workflow/init-s3.sh），只读挂载后由 /bin/sh 解释执行。
     # 必须显式覆盖 entrypoint：镜像自带的 entrypoint 会把参数当成 rustfs 启动参数劫持掉。
     entrypoint: ["/bin/sh", "/init/init-s3.sh"]
-    # 没有 depends_on：共享 rustfs 属于另一个 Compose 项目，Compose 只允许依赖本项目内已定义的服务
-    # （写 rustfs 会直接报 "depends on undefined service"）；就绪判定与失败诊断都在脚本里，
-    # 非零退出码由 depends_on 它的 coze-server 与 milvus 反映出来。
+    # 没有 depends_on 共享 rustfs：理由同 mysql-init（跨项目依赖不成立）。
     networks:
       - fenix-server
   redis:
@@ -144,15 +215,15 @@ services:
     restart: always
     user: root
     privileged: true
-    env_file:
-      - ${WORKFLOW_STUDIO_DIR:?Set an absolute WORKFLOW_STUDIO_DIR}/docker/.env
     environment:
+      # 栈内服务的配置只由本编排显式给出：原先给这些服务喂的是上游整份 docker/.env（上游单机形态的取值，
+      # 其中 REDIS_* / ALLOW_EMPTY_PASSWORD 一类键会与这里的取值重叠、形成二义），随资产改造一起去掉。
       - REDIS_AOF_ENABLED=${REDIS_AOF_ENABLED:-no}
       - REDIS_PORT_NUMBER=${REDIS_PORT_NUMBER:-6379}
       - REDIS_IO_THREADS=${REDIS_IO_THREADS:-4}
       - ALLOW_EMPTY_PASSWORD=${ALLOW_EMPTY_PASSWORD:-yes}
     volumes:
-      - ${WORKFLOW_STUDIO_DIR:?Set an absolute WORKFLOW_STUDIO_DIR}/docker/data/bitnami/redis:/bitnami/redis/data:rw,Z
+      - ./data/redis:/bitnami/redis/data:rw,Z
     command: |
       bash -c "
         /opt/bitnami/scripts/redis/setup.sh
@@ -177,26 +248,20 @@ services:
     restart: always
     user: root
     privileged: true
-    env_file:
-      - ${WORKFLOW_STUDIO_DIR:?Set an absolute WORKFLOW_STUDIO_DIR}/docker/.env
     environment:
       - TEST=1
+    depends_on:
+      assets-init:
+        condition: service_completed_successfully
     volumes:
+      - ./data/elasticsearch:/bitnami/elasticsearch/data
+      # 下面四件全部由 assets-init 从镜像展开（路径与原先挂上游 volumes/elasticsearch 时逐一对应）：
       - >-
-        ${WORKFLOW_STUDIO_DIR:?Set an absolute
-        WORKFLOW_STUDIO_DIR}/docker/data/bitnami/elasticsearch:/bitnami/elasticsearch/data
+        ./assets/volumes/elasticsearch/elasticsearch.yml:/opt/bitnami/elasticsearch/config/my_elasticsearch.yml
       - >-
-        ${WORKFLOW_STUDIO_DIR:?Set an absolute
-        WORKFLOW_STUDIO_DIR}/docker/volumes/elasticsearch/elasticsearch.yml:/opt/bitnami/elasticsearch/config/my_elasticsearch.yml
-      - >-
-        ${WORKFLOW_STUDIO_DIR:?Set an absolute
-        WORKFLOW_STUDIO_DIR}/docker/volumes/elasticsearch/analysis-smartcn.zip:/opt/bitnami/elasticsearch/analysis-smartcn.zip:rw,Z
-      - >-
-        ${WORKFLOW_STUDIO_DIR:?Set an absolute
-        WORKFLOW_STUDIO_DIR}/docker/volumes/elasticsearch/setup_es.sh:/setup_es.sh
-      - >-
-        ${WORKFLOW_STUDIO_DIR:?Set an absolute
-        WORKFLOW_STUDIO_DIR}/docker/volumes/elasticsearch/es_index_schema:/es_index_schema
+        ./assets/volumes/elasticsearch/analysis-smartcn.zip:/opt/bitnami/elasticsearch/analysis-smartcn.zip:rw,Z
+      - ./assets/volumes/elasticsearch/setup_es.sh:/setup_es.sh
+      - ./assets/volumes/elasticsearch/es_index_schema:/es_index_schema
     healthcheck:
       test:
         - CMD-SHELL
@@ -265,18 +330,19 @@ services:
     user: root
     restart: always
     privileged: true
-    env_file:
-      - ${WORKFLOW_STUDIO_DIR:?Set an absolute WORKFLOW_STUDIO_DIR}/docker/.env
     environment:
       - ETCD_AUTO_COMPACTION_MODE=revision
       - ETCD_AUTO_COMPACTION_RETENTION=1000
       - ETCD_QUOTA_BACKEND_BYTES=4294967296
       - ALLOW_NONE_AUTHENTICATION=yes
+    depends_on:
+      assets-init:
+        condition: service_completed_successfully
     volumes:
-      - ${WORKFLOW_STUDIO_DIR:?Set an absolute WORKFLOW_STUDIO_DIR}/docker/data/bitnami/etcd:/bitnami/etcd:rw,Z
-      - >-
-        ${WORKFLOW_STUDIO_DIR:?Set an absolute
-        WORKFLOW_STUDIO_DIR}/docker/volumes/etcd/etcd.conf.yml:/opt/bitnami/etcd/conf/etcd.conf.yml:ro,Z
+      - ./data/etcd:/bitnami/etcd:rw,Z
+      # 上游这份配置是**空文件**（0 字节）：挂它等于「覆盖掉镜像自带的同名配置」，行为要按空配置理解，
+      # 不要当成可编辑项。文件由 assets-init 展开，内容与上游逐字节一致。
+      - ./assets/volumes/etcd/etcd.conf.yml:/opt/bitnami/etcd/conf/etcd.conf.yml:ro,Z
     command: |
       bash -c "
         /opt/bitnami/scripts/etcd/setup.sh
@@ -302,8 +368,6 @@ services:
     user: root
     privileged: true
     restart: always
-    env_file:
-      - ${WORKFLOW_STUDIO_DIR:?Set an absolute WORKFLOW_STUDIO_DIR}/docker/.env
     command: |
       bash -c "
         # Set proper permissions for data directories
@@ -325,7 +389,7 @@ services:
       MINIO_USE_SSL: false
       LOG_LEVEL: debug
     volumes:
-      - ${WORKFLOW_STUDIO_DIR:?Set an absolute WORKFLOW_STUDIO_DIR}/docker/data/milvus:/var/lib/milvus:rw,Z
+      - ./data/milvus:/var/lib/milvus:rw,Z
     healthcheck:
       test:
         - CMD
@@ -388,17 +452,33 @@ services:
   coze-server:
     # 上游只发布 amd64（GHCR 上无 arm64 变体）：写死平台，否则 arm64 主机（Mac）拉取直接报
     # no matching manifest；上游补发 arm64 后与 coze-web 一起删除本行。
-    image: ghcr.io/konghayao/workflow-studio-server:${WORKFLOW_STUDIO_TAG:?Set WORKFLOW_STUDIO_TAG}
+    image: ghcr.io/konghayao/workflow-studio-server:${WORKFLOW_STUDIO_TAG:?Set WORKFLOW_STUDIO_TAG（docker/workflow/.env，见 .env.example）}
     platform: linux/amd64
     restart: always
     container_name: coze-server
+    # 应用配置只来自本目录 .env（业务面 + 编排参数）。它是**叠加层**：镜像内 /app/.env 已带全部上游默认值，
+    # 这里只覆盖改动过的键；因此不再有「把上游 docker/.env 整份挂进 /app/.env」这一步，也不存在两处配置漂移。
     env_file:
-      - ${WORKFLOW_STUDIO_DIR:?Set an absolute WORKFLOW_STUDIO_DIR}/docker/.env
-    # 对象存储改指共享 rustfs（栈内 minio 已删除）。这些键**覆盖**上面 env_file 里的上游同名值——
-    # Compose 里 environment 优先于 env_file，所以上游 docker/.env 不需要为这次收敛改一个字。
-    # 上游那份里的 MINIO_ROOT_USER / MINIO_ROOT_PASSWORD / MINIO_DEFAULT_BUCKETS 从此没人读：
-    # 它们是 minio 服务端自己的键，留着无害，但不要再当成生效配置。
+      - ./.env
+    # 指向共享实例与栈内服务的键全部由本编排显式注入（Compose 里 environment 优先于 env_file），
+    # 让「这个栈连到哪里」在评审时集中可见，并避免 .env 被误编辑后指向别处。
     environment:
+      # --- 共享 MySQL：库/账号由 mysql-init 幂等创建，凭据与主服务 env 同源 ---
+      MYSQL_HOST: mysql
+      MYSQL_PORT: "3306"
+      MYSQL_DATABASE: ${MYSQL_DATABASE:-opencoze}
+      MYSQL_USER: ${MYSQL_USER:-coze}
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD:-coze123}
+      # 应用直接读 MYSQL_DSN（godotenv 不展开 ${}），所以这里拼好整条，与 atlas-init 的 --url 同源同值。
+      MYSQL_DSN: "${MYSQL_USER:-coze}:${MYSQL_PASSWORD:-coze123}@tcp(mysql:3306)/${MYSQL_DATABASE:-opencoze}?charset=utf8mb4&parseTime=True"
+      # --- 栈内服务：服务名与端口写显式值，取值与上游默认一致，写出来是为了可评审 ---
+      REDIS_ADDR: redis:6379
+      ES_ADDR: http://elasticsearch:9200
+      MILVUS_ADDR: milvus:19530
+      MQ_NAME_SERVER: nsqd:4150
+      COZE_MQ_TYPE: nsq
+      VECTOR_STORE_TYPE: milvus
+      # --- 对象存储：共享 rustfs（栈内 minio 已删除）。这些键**覆盖** env_file 里的同名值 ---
       # 地址写显式服务名，不插值同名宿主键（文档 §8.4）；rustfs 在 fenix-server 上。
       MINIO_ENDPOINT: rustfs:9000
       # 预签名 URL 的签名域：必须同时满足两件事——① 出口代理能把它改写成 workflow-storage
@@ -408,18 +488,19 @@ services:
       MINIO_SK: ${RUSTFS_SECRET_KEY:-fenix-local-dev}
       # 字符串形式的 "false"：Compose 的 environment 只收字符串，写裸 false 会被当成布尔值。
       MINIO_USE_SSL: "false"
+      STORAGE_TYPE: minio
+      FILE_UPLOAD_COMPONENT_TYPE: storage
       # 桶名显式写死（上游默认也是它）：平台按 `/opencoze/` 前缀识别存储直链
       # （packages/resources/workflow-v2/src/server/services/canvas-passthrough.ts），且 s3-init 建的就是这个桶。
       # 写在这里是为了让「谁读哪个桶」在评审时一眼可比，改名要三处一起改。
       STORAGE_BUCKET: opencoze
-    volumes:
-      - ${WORKFLOW_STUDIO_DIR:?Set an absolute WORKFLOW_STUDIO_DIR}/docker/.env:/app/.env
-      - ${WORKFLOW_STUDIO_DIR:?Set an absolute WORKFLOW_STUDIO_DIR}/backend/conf:/app/resources/conf
     depends_on:
       # 共享 MySQL / rustfs 都在顶层项目（另一个 Compose 项目）里，跨项目不能声明健康依赖：改由本栈的
-      # 一次性初始化服务承担——mysql-init 成功退出即代表共享实例可用且上游 schema 已应用；s3-init 成功
-      # 退出即代表共享 rustfs 可用且 opencoze / milvus 两个桶都已就绪。
+      # 一次性初始化服务承担——mysql-init 成功退出即代表共享实例可用且 schema.sql 已应用；atlas-init 成功
+      # 退出即代表 Atlas 收敛完成；s3-init 成功退出即代表共享 rustfs 可用且 opencoze / milvus 两个桶都已就绪。
       mysql-init:
+        condition: service_completed_successfully
+      atlas-init:
         condition: service_completed_successfully
       s3-init:
         condition: service_completed_successfully
@@ -431,8 +512,7 @@ services:
         condition: service_healthy
     networks:
       # 默认网络：redis / elasticsearch / milvus / nsq 等服务名在这里解析。
-      # fenix-server：按服务名 mysql 访问共享实例（上游 .env 里的 MYSQL_HOST 因此不需要改），
-      # 并按服务名 rustfs 访问共享对象存储。
+      # fenix-server：按服务名 mysql 访问共享实例，并按服务名 rustfs 访问共享对象存储。
       # 代价：本容器对 fenix-server 上的一切可见——共享 redis 同时启用时，`redis` 在两个网络同名，
       # 解析会歧义（见 README「已知冲突」）。
       default: {}
@@ -444,18 +524,17 @@ services:
     # WORKFLOW_CANVAS_BASE=/workflow-canvas/（资源前缀与 router basename 都是它）。镜像内 nginx 只在
     # 根路径 / 提供 SPA，dist 未下沉，**不提供 /workflow-canvas/ location、也不做 SPA 回退**：前缀剥离
     # 与回退分别由平台静态反代（RCS workflow-v2）与本目录 nginx.conf 负责。
-    # 它替代了原先「clone 上游源码 + 本地构建 + 只读挂载 dist」的画布交付方式，因此下面的挂载里
-    # 不再有 ${WORKFLOW_STUDIO_DIR}/frontend/apps/coze-studio/dist；上游目录只继续提供
-    # docker/.env、backend/conf、docker/nginx/nginx.conf 与初始化资产（schema / Atlas / 图标）。
+    # 它替代了原先「clone 上游源码 + 本地构建 + 只读挂载 dist」的画布交付方式。
+    # 主 nginx.conf 也不再挂上游那份：镜像自带 nginx:1.25-alpine 的默认主配置（已 include
+    # /etc/nginx/conf.d/*.conf），唯一有行为差异的 client_max_body_size 由本目录站点配置就地声明。
     # 与 coze-server 同因：上游只发布 amd64，写死平台，arm64 主机（Mac）才拉得到。
-    image: ghcr.io/konghayao/workflow-studio-web-canvas:${WORKFLOW_STUDIO_TAG:?Set WORKFLOW_STUDIO_TAG}
+    image: ghcr.io/konghayao/workflow-studio-web-canvas:${WORKFLOW_STUDIO_TAG:?Set WORKFLOW_STUDIO_TAG（docker/workflow/.env，见 .env.example）}
     platform: linux/amd64
     container_name: coze-web
     restart: always
     ports:
-      - ${WEB_LISTEN_ADDR:?Set WEB_LISTEN_ADDR}:80
+      - ${WEB_LISTEN_ADDR:?Set WEB_LISTEN_ADDR（docker/workflow/.env，见 .env.example）}:80
     volumes:
-      - ${WORKFLOW_STUDIO_DIR:?Set an absolute WORKFLOW_STUDIO_DIR}/docker/nginx/nginx.conf:/etc/nginx/nginx.conf:ro
       - type: bind
         source: ./nginx.conf
         target: /etc/nginx/conf.d/default.conf
