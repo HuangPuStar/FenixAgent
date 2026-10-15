@@ -29,6 +29,7 @@ include:
     - path: docker/dev/docker-compose.litellm.yml
     - path: docker/dev/docker-compose.hindsight.yml
     - path: docker/dev/docker-compose.agent-sites.yml
+    - path: docker/dev/docker-compose.ragflow.yml
 
 name: fenix
 
