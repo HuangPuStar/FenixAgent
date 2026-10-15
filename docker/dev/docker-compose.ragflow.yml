@@ -89,6 +89,7 @@ services:
         restart: unless-stopped
         environment:
             RUSTFS_VOLUMES: /data
+            # 默认值只服务本地，生产必须覆盖。
             RUSTFS_ACCESS_KEY: ${RAGFLOW_S3_ACCESS_KEY:-ragflow}
             RUSTFS_SECRET_KEY: ${RAGFLOW_S3_SECRET_KEY:-ragflow123}
             RUSTFS_CONSOLE_ENABLE: "true"

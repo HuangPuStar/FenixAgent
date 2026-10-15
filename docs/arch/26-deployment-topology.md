@@ -10,9 +10,10 @@
 1. **主服务与基础服务只有一处归属**：主服务编排——dev 是仓库根 `docker-compose.yml`、生产是 `docker/main/docker-compose.yml`；每个可选能力 / 执行节点对应 `docker/<name>/` 一个独立 Compose 项目。
 2. **dev / prod 各一份主服务编排**：dev 带 `build:`（本地构建），prod 不构建、只用固定 tag 的 `image:`；两份同项目名 `fenix`、同网络 `fenix-server`，**二选一运行**。
 3. **网络两层**：各 Compose 项目的默认网络 + 唯一的共享网络 `fenix-server`；共享网络成员是最小必要集。
-4. **基础服务收敛在 `docker/common/`**：PostgreSQL 必需，Redis / RustFS / MySQL 由开关启停；四个服务都是**共享实例**
+4. **基础服务收敛在 `docker/common/`**（生产形态）：PostgreSQL 必需，Redis / RustFS / MySQL 由开关启停；四个服务都是**共享实例**
    （多个栈共用一套，消费方须接入 `fenix-server`；消费方清单见 §2.4 与 §3）。共享实例只提供实例，库 / 账号 / 桶
-   由消费方自己的一次性初始化服务创建。
+   由消费方自己的一次性初始化服务创建。dev 形态例外：`postgres` / `redis` 就地内联在仓库根编排、不引入本目录，
+   `rustfs` / `mysql` 只在生产形态存在（见 §2.1 与 [编排体系](../operations/docker-topology.md) §4）。
 5. **一个开关对应一个目录**：`docker/deploy.env` 的 `FENIX_FEATURE_<NAME>` 决定依赖项目是否启动；未知开关是错误。
 6. **一键入口 `./docker/deploy.sh`**：`init` / `validate` / `up` / `deploy` / `down` / `ps` / `logs`，任意机器只需 Docker + bash + 一份配置。
 7. **数据一律 bind 挂载在各编排同级的 `./data/`**（不用命名卷）：备份 = 打包交付目录，搬迁 = 整目录拷走。
@@ -26,7 +27,7 @@
 
 | 层 | 内容 | 生命周期 |
 | --- | --- | --- |
-| 主服务项目 | 主服务 `rcs` + 基础服务（dev 内联 `postgres` / `redis`，生产经 `include` 引入 `docker/common/`）；生产用 `docker/main/docker-compose.yml`（无 `build:`），dev 裸 `docker compose up -d`（仓库根文件）即最小可用集（rcs + postgres） | 与部署同生共死 |
+| 主服务项目 | 主服务 `rcs` + 基础服务（dev 内联 `postgres` / `redis`，生产经 `include` 引入 `docker/common/`）；生产用 `docker/main/docker-compose.yml`（无 `build:`），dev 备好仓库根 `.env`（填 `RCS_API_KEYS`）后 `docker compose up -d`（仓库根文件；组件零配置）即最小可用集（rcs + postgres） | 与部署同生共死 |
 | 依赖目录 | 可选能力与执行节点（`docker/<name>/`，一个目录一个独立 Compose 项目） | 独立起停、独立升级 |
 | 交付面 | `docker/deploy.sh` + `docker/deploy.env` + 上述文件 | 随版本发布 |
 
@@ -91,7 +92,9 @@ services:
 
 四者都接入 `fenix-server`，也都是**共享实例**（服务名是 `fenix-server` 上的跨项目 DNS 名，属全局保留名）；
 `redis` / `rustfs` 默认不发布宿主端口，`postgres` / `mysql` 的宿主端口分别由 `POSTGRES_PORT` / `MYSQL_HOST_PORT`
-控制（只绑回环，供本地源码开发与运维排查）。数据 bind 到 `docker/common/data/**`。消费方清单：`postgres` 只被
+控制（只绑回环，供本地源码开发与运维排查）。数据 bind 到 `docker/common/data/**`。
+以上是**生产形态**的成员；dev 形态（仓库根编排）只内联 `postgres` / `redis`（数据落仓库根），且不提供
+`rustfs` / `mysql`（见 §2.1 与 [编排体系](../operations/docker-topology.md) §4）。消费方清单：`postgres` 只被
 `rcs` 使用（另有 `docker/litellm/` 的库 `litellm`）、`redis` 只被 `rcs` 使用、`rustfs` 只被 `docker/workflow/` 使用
 （`docker/ragflow/` 的桶在它**自带**的实例 `ragflow-rustfs` 里）、`mysql` 被 `docker/workflow/` 与 `docker/ragflow/` 使用
 （逐项对照表与数据落点见 [Docker 编排体系](../operations/docker-topology.md) §5.1）。
@@ -172,7 +175,8 @@ flowchart LR
     RCS -.->|"profile redis"| REDIS[("redis")]
 ```
 
-`docker compose up -d --build` 即最小可用集（rcs + postgres）；`--profile redis` 附加可选缓存。dev 根编排
+先备好仓库根 `.env`（填 `RCS_API_KEYS`），`docker compose up -d --build` 即最小可用集（rcs + postgres）；
+`--profile redis` 附加可选缓存。dev 根编排
 **不再提供** `rustfs` / `mysql`（它们只在生产形态经 `docker/common/` 引入）。与生产单机是**同项目名、同网络的两份文件**（dev 根文件 / 生产 `docker/main/`），二选一运行。
 
 ### 4.2 生产单机

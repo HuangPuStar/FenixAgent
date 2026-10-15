@@ -7,7 +7,8 @@
 >
 > **状态：阶段 1、2、4 已完成；阶段 3 已跑通「启动 → down」，整机 prod 的迁移/健康自检待复跑**。已建：主服务编排——
 > dev 形态是仓库根 `docker-compose.yml`、生产形态是 `docker/main/docker-compose.yml`（2026-10-08 拆分：dev 带 `build:`，
-> 生产不构建、只用发布镜像、数据自包含；两者都 include common、`name: fenix` + `fenix-server` + 固定版本镜像）、
+> 生产不构建、只用发布镜像、数据自包含；同 `name: fenix` + `fenix-server` + 固定版本镜像，基础服务 dev 就地内联
+> `postgres` / `redis`、生产经 `include` 引入 `docker/common/`）、
 > `docker/common/`（postgres / redis / rustfs / mysql 四个基础服务，全部是共享实例）、
 > `docker/deploy.sh` + `docker/lib/config.sh`
 > （含 `init` 与启动前必填项校验）、`docker/deploy.env.example`；`docker/` 下各依赖目录（含 `sandbox-opencode/`、
@@ -53,7 +54,7 @@
 | dev / prod 分离 | 两份文件同项目名 `fenix`、同网络 `fenix-server`，**二选一运行**；生产入口是 `./docker/deploy.sh`（操作 docker/main 那份），dev 用根文件的裸 `docker compose` 命令 |
 | 镜像 | 固定版本、写在 compose 文件里，不用环境变量插值；发布时同步更新两份编排的 `rcs` `image` 行（§4.2） |
 | 网络 | 两层：依赖各自的**项目内网络** + 唯一的**主服务网络 `fenix-server`**（只让必要服务接入，§3） |
-| 基础服务 | `docker/common/`：PostgreSQL（必需）+ RustFS（S3 兼容，不用 MinIO）+ Redis + MySQL；后三者由开关控制，四者都是**共享实例**（消费方与保留名见 §5.1） |
+| 基础服务 | `docker/common/`：PostgreSQL（必需）+ RustFS（S3 兼容，不用 MinIO）+ Redis + MySQL；后三者由开关控制，四者都是**共享实例**（消费方与保留名见 §5.1）；dev 形态只就地内联 `postgres` / `redis`、不引入本目录（§4） |
 | feature 开关 | 配置文件 `docker/deploy.env` 驱动；一个开关对应一个依赖目录（即“sub 插件 docker”） |
 | 一键启动 | `./docker/deploy.sh up`：任意机器，只需要 docker + bash + 一份配置 |
 | env 规范 | **每份编排的 env 就是它自己目录下的 `.env`**（主服务：生产 `docker/main/.env`、dev 仓库根 `.env`），模板 `.env.example` 与它同目录；文件内按「必需 → 可调 → 默认」三段排序；共享键只在主服务 env（§8） |
@@ -104,7 +105,7 @@
 
 | 层 | 内容 | 生命周期 |
 | --- | --- | --- |
-| 主服务项目 | 主服务 + 基础服务；部署入口 `./docker/deploy.sh`（操作 `docker/main/`），dev 裸 `docker compose up -d`（根文件）即最小可用集（rcs + postgres） | 与部署同生共死 |
+| 主服务项目 | 主服务 + 基础服务；部署入口 `./docker/deploy.sh`（操作 `docker/main/`），dev 备好仓库根 `.env`（填 `RCS_API_KEYS`）后 `docker compose up -d`（根文件；组件零配置）即最小可用集（rcs + postgres） | 与部署同生共死 |
 | 依赖目录 | 可选能力的外部依赖（第三方栈或独立部署单元），即“sub 插件 docker” | 独立项目，可单独起停、单独升级 |
 | 交付面 | `deploy.sh` + `deploy.env` + 上述文件 | 随版本发布 |
 
@@ -720,7 +721,7 @@ docker compose up -d
 
 | 旧资产 | 去向 |
 | --- | --- |
-| 根 `docker-compose.yml` | **已改造**为 dev 形态编排（include common、网络统一、固定项目名与镜像；`build:` 只服务 dev） |
+| 根 `docker-compose.yml` | **已改造**为 dev 形态编排（内联 `postgres` / `redis`、`include` `docker/dev/` 组件、网络统一、固定项目名与镜像；`build:` 只服务 dev） |
 | `docker/main/docker-compose.yml` | **2026-10-08 新增**：主服务**生产形态**编排——无 `build:`、只用发布镜像、数据自包含在 `docker/main/` 下；`docker/deploy.sh` 的操作对象 |
 | `docker/prod/docker-compose.yml` | **已退役并删除**：主服务并入主服务编排，`agent-sites` 落 `docker/agent-sites/`，`postgres` 落 `docker/common/` |
 | `docker/prod/docker-compose.{litellm,hindsight,ragflow}.yml` | **已退役并删除**；编排内容搬到 `docker/{litellm,hindsight,ragflow}/` |

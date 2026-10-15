@@ -14,9 +14,13 @@
 
 ## 命令
 
+> **前置**：仓库根 `cp .env.example .env` 并为 `RCS_API_KEYS` 填入随机值（只有主服务需要这一步，与仓库根
+> `README.md` 的口径一致）——`rcs` 里写的是 `${RCS_API_KEYS:?}`（无默认值），插值先于 profile 过滤，缺它连
+> `docker compose config` 都过不去。
+
 ```bash
 docker compose up -d                                        # postgres + rcs
-docker compose --profile redis up -d                        # 加缓存
+docker compose --profile redis up -d                        # 加缓存（另需在仓库根 .env 写 RCS_REDIS_URL=redis://redis:6379）
 docker compose --profile litellm --profile ragflow up -d    # 加两套组件
 docker compose stop litellm litellm-postgres                # 停单组（容器留着）；要连容器一起删用 rm -sf
 docker compose config                                       # 只解析、不起容器，随时可跑
@@ -29,10 +33,12 @@ docker compose config                                       # 只解析、不起
 
 ## 准备
 
-只有两项：
+只有三项：
 
-1. hindsight 的模型 Key：在**仓库根 `.env`** 里填 `DASHSCOPE_API_KEY`（阿里云百炼 Key）。
-2. opensandbox 的节点配置（`host_ip` 依赖机器与组网形态；模板给的是 macOS / Windows 桌面 Docker 的取值，
+1. 主服务的 `RCS_API_KEYS`：仓库根 `cp .env.example .env` 后，在**仓库根 `.env`** 里填入随机值（`rcs` 里写的是
+   `${RCS_API_KEYS:?}`，无默认值；插值先于 profile 过滤，缺它连 `docker compose config` 都过不去）。
+2. hindsight 的模型 Key：在**仓库根 `.env`** 里填 `DASHSCOPE_API_KEY`（阿里云百炼 Key）。
+3. opensandbox 的节点配置（`host_ip` 依赖机器与组网形态；模板给的是 macOS / Windows 桌面 Docker 的取值，
    Linux 或跨机组网需按模板注释改这一项）：
 
 ```bash
@@ -42,8 +48,8 @@ cp docker/dev/sandbox.toml.example docker/dev/sandbox.toml
 其余组件 `git clone` 后直接可用。默认值只服务本地、**不安全**，生产必须覆盖。
 
 > **界面入口**：litellm 控制台的平台入口（`RCS_MODEL_GATEWAY_ADMIN_UI_URL`）**没有**在 dev 编排里给值——
-> `.env.example` 的默认形状是 `http://localhost:4000/ui/`，与本编排的 `/litellm` 前缀不符，本计划未裁定
-> 该取值。要用控制台就直接访问 <http://127.0.0.1:4000/litellm/ui>；要让 rcs 侧也拿到入口，在仓库根 `.env`
+> `.env.example` 的默认形状是 `http://localhost:4000/ui/`，与本编排的 `/litellm` 前缀不符，照抄会指向错误路径，
+> 故不预置。要用控制台就直接访问 <http://127.0.0.1:4000/litellm/ui>；要让 rcs 侧也拿到入口，在仓库根 `.env`
 > 里自己写一个正确的值。
 
 ## 密钥不要写进本目录
@@ -144,8 +150,10 @@ cp docker/dev/sandbox.toml.example docker/dev/sandbox.toml
   docker compose --profile opensandbox up -d
   ```
   改了 `SANDBOX_PORT_*` 就要同步 `docker/dev/sandbox.toml` 的 `port_range_min/max`。
-- **端口冲突**：本目录的默认回环端口（`4000` / `18080` / `19380` / `3200` / `8888` / `9999` / `7000` / `8080` / `8090`）
+- **端口冲突**：本目录的默认回环端口（`4000` / `18080` / `19380` / `3200` / `8888` / `9999` / `8080` / `8090`）
   与生产依赖目录的默认值相同。dev 与生产**二选一运行**不冲突；同机并存两套会撞。
+  另有 `FRP_BIND_PORT`（默认 `7000`）：它是 frps 的隧道入口，发布到**全部接口**（不带 `127.0.0.1` 前缀），
+  沙盒节点按 `FRP_PUBLIC_ADDRESS` 回连它——它不在上面的回环清单里，暴露面按全接口计。
 - **hindsight 启动即退出**：日志出现 `check_pg0_writable` 说明数据目录属主不是容器内的 UID 1000。
   `docker compose --profile hindsight down && sudo chown -R 1000:1000 docker/dev/data/hindsight/pg0` 后重起
   （macOS 的 Docker Desktop 通常不需要）。
@@ -154,8 +162,10 @@ cp docker/dev/sandbox.toml.example docker/dev/sandbox.toml
 - **`ragflow-s3-init` 退出码非 0**：ragflow 会因此**一直不启动**（这是设计，不是故障——探测的就是
   RAGFlow 首次上传会走的那条路）。`docker compose logs ragflow-s3-init` 看是端点不可达还是凭据不对；
   若是凭据，检查 `RAGFLOW_S3_ACCESS_KEY` / `RAGFLOW_S3_SECRET_KEY` 是否被只改了 `ragflow-rustfs` 那一处。
-- **opensandbox-server 一直 not healthy**：它在容器内起 Docker（DinD），首次要拉 `opensandbox/execd:v1.0.18`
-  镜像；`start_period` 后才转 healthy，`docker compose logs opensandbox-server` 看进度。
+- **opensandbox-server 一直 not healthy**：它在容器内起 Docker（DinD），首次要把预打包的
+  `opensandbox/execd:v1.0.18` 镜像 `docker load` 进容器内 DinD（该镜像已在构建镜像时经 skopeo 打进
+  `/opt/opensandbox/seed-images/`，Server 启动时自动 load，不需要联网拉取）；`start_period` 后才转 healthy，
+  `docker compose logs opensandbox-server` 看进度。
   **若日志里出现 `error changing permissions on file for metacopy check` 或 `read-only file system`**，
   那不是启动慢而是启动失败：DinD 的 `/var/lib/docker` 落在 macOS 的 virtiofs bind 上时 dockerd 无法 chmod。
   本编排已把它改用命名卷 `fenix_opensandbox-server-dind-docker`（见该文件头第 5 条偏离）——若仍复现，
@@ -171,7 +181,7 @@ cp docker/dev/sandbox.toml.example docker/dev/sandbox.toml
 | 组件消费方 | 本目录（`include` 进同一项目） | `docker/<组件>/`（各自独立项目，`deploy.sh` 启动） |
 | 基础服务 | 根文件内联 | `docker/common/`（`include`） |
 | 键来源 | compose 内联默认值 + 仓库根 `.env` | 各目录 `.env`（`deploy.sh init` 生成） |
-| 数据 | 仓库根 `./data`、本目录 `data/`、`docker/common/data/` | `docker/main/` 下、`docker/common/data/` |
+| 数据 | 仓库根 `./data`、本目录 `data/` | `docker/main/` 下、`docker/common/data/` |
 
 两者同项目名 `fenix`、同网络 `fenix-server`：**二选一运行**。
 

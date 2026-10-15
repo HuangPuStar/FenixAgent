@@ -53,6 +53,7 @@ services:
         environment:
             POSTGRES_USER: rcs
             POSTGRES_DB: rcs
+            # 默认值只服务本地，生产必须覆盖。
             POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-rcs}
         ports:
             # 只绑回环：本地源码开发（bun run dev）需要，不对外暴露。
@@ -71,6 +72,9 @@ services:
     redis:
         # 可选（--profile redis）：未启用时缓存回退进程内 Map（apps/server/src/services/cache.ts），
         # Y.Doc 快照不做持久化。与 docker/common/ 的同名服务逐字同参。
+        # **起它不等于接上**：本块刻意不内联 `RCS_REDIS_URL`——给了默认值会让「没起 redis」的默认启动
+        # 也拿到 `redis://redis:6379` 去连一个不存在的服务。要用缓存，在仓库根 .env 写
+        # `RCS_REDIS_URL=redis://redis:6379`。
         image: redis:7-alpine
         profiles: ["redis"]
         restart: unless-stopped
@@ -125,13 +129,17 @@ services:
             APP_BRAND_NAME: ${APP_BRAND_NAME:-Fenix}
             APP_LOGO_PATH: ${APP_LOGO_PATH:-}
             RCS_SECRET_ENCRYPTION_KEY: ${RCS_SECRET_ENCRYPTION_KEY:-}
-            # —— 组件接线：地址由「同项目同网络」决定，不属于部署配置，故写显式值（规格 §2.3）；
+            # —— 组件接线：地址由「同项目同网络」决定（组件与 rcs 同属本项目、同一张 fenix-server 网，
+            #    按服务名直连），不属于部署配置，故写显式值；
             #    密钥用与组件侧**同一个插值键名**，两处自动同值、零人工同步。
             RCS_MODEL_GATEWAY_BASE_URL: http://litellm:4000/litellm
             RCS_MODEL_GATEWAY_ADMIN_KEY: ${LITELLM_MASTER_KEY:-litellm-master-key-123}
             AGENT_SITES_BASE_URL: http://agent-sites:3000
             AGENT_SITES_MASTER_KEY: ${AGENT_SITES_MASTER_KEY:-agent-sites-master-key-123}
+            # GOTENBERG_URL 与 RAGFLOW_API_URL 同属 knowledge 的文档链路（先转 PDF、再解析），一并写容器内地址：
+            # 若留给 .env 的宿主默认值 http://127.0.0.1:3200，容器里的 127.0.0.1 会指向 rcs 自己。
             RAGFLOW_API_URL: http://ragflow:9380
+            GOTENBERG_URL: http://gotenberg:3000
             HINDSIGHT_MCP_URL: http://hindsight:8888
             RCS_SANDBOX_CLUSTER_URL: http://opensandbox-cluster:8080
             RCS_SANDBOX_CLUSTER_API_KEY: ${CLUSTER_SERVICE_API_KEY:-clustersvc123}
