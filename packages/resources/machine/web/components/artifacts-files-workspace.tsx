@@ -1,11 +1,13 @@
 import type { ChangedFile } from "@fenix/ui-components/chat/lib/extract-changed-files";
 import { PreviewTab } from "@fenix/ui-components/components/PreviewTab";
-import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from "@fenix/ui-components/ui/resizable";
-import { type RefObject, useEffect, useRef } from "react";
-import type { PanelImperativeHandle } from "react-resizable-panels";
+import { type RefObject, useCallback, useRef, useState } from "react";
 import { buildPreviewSourceUrl, readPreviewSource } from "../api/fs";
+import { useFileTreeLayout } from "../hooks/use-file-tree-layout";
+import { FILE_TREE_DEFAULT_WIDTH, FILE_TREE_MIN_WIDTH } from "../lib/file-tree-layout";
 import { FileTabsBar } from "./FileTabsBar";
 import { FileTreeTab, type FileTreeTabHandle } from "./FileTreeTab";
+import { FileTreeLayoutControls } from "./file-tree-layout-controls";
+import { FileTreeWorkbench } from "./file-tree-workbench";
 
 interface ArtifactsFilesWorkspaceProps {
   envId: string | null;
@@ -19,20 +21,22 @@ interface ArtifactsFilesWorkspaceProps {
   onReferenceFile: (path: string, name: string) => void;
 }
 
-const FILE_TREE_MIN_WIDTH = 176;
-const PREVIEW_MIN_WIDTH = 160;
-
 function readFileTreeWidth(): number {
   try {
     const width = Number(localStorage.getItem("fenix:file-tree-width"));
-    return Number.isFinite(width) && width >= FILE_TREE_MIN_WIDTH ? width : 184;
+    return Number.isFinite(width) && width >= FILE_TREE_MIN_WIDTH ? width : FILE_TREE_DEFAULT_WIDTH;
   } catch {
-    return 184;
+    return FILE_TREE_DEFAULT_WIDTH;
   }
 }
 
 /**
  * Files mode keeps the explorer and preview in one VS Code-like workbench.
+ *
+ * 布局（2026-10-15）：文件树有「浮动 / 固定」两种模式，几何归 `FileTreeWorkbench`，本组件只做装配——
+ * - 模式判定与持久化（`fenix:file-tree-layout`）：`useFileTreeLayout`，未手动选择时小屏浮动、大屏固定；
+ * - 切换控件放进树的面板标题栏（`FileTreeTab` → `FileTreeView` 的 `headerActions` 槽），两种模式下都在同一处；
+ * - 浮层开合是本地状态：浮动模式下关闭后由工作台左缘的常驻按钮重开。
  *
  * 归属（2026-09-24，台账 `ce-standards-todo.md` D2）：由宿主
  * `apps/web/src/shell/artifacts/artifacts-files-workspace.tsx` 迁入（该簇 2026-09-28 归位到
@@ -51,87 +55,64 @@ export function ArtifactsFilesWorkspace({
   onOpenFile,
   onReferenceFile,
 }: ArtifactsFilesWorkspaceProps) {
+  const { mode: treeLayout, toggleMode } = useFileTreeLayout();
+  const [overlayOpen, setOverlayOpen] = useState(true);
   const initialFileTreeWidthRef = useRef(readFileTreeWidth());
-  const panelGroupRef = useRef<HTMLDivElement>(null);
-  const fileTreePanelRef = useRef<PanelImperativeHandle>(null);
 
-  // react-resizable-panels v4 在父 Group 缩放时会按比例重算 layout，且该路径不会重新应用
-  // panel 的 min/max 约束。外侧右栏变化后主动校正，确保文件树始终处于 176px..50%。
-  useEffect(() => {
-    const panelGroup = panelGroupRef.current;
-    if (!panelGroup) return;
-
-    let animationFrame = 0;
-    const observer = new ResizeObserver(() => {
-      cancelAnimationFrame(animationFrame);
-      animationFrame = requestAnimationFrame(() => {
-        const panel = fileTreePanelRef.current;
-        if (!panel) return;
-
-        const groupWidth = panelGroup.clientWidth;
-        const currentWidth = panel.getSize().inPixels;
-        const maxWidth = groupWidth * 0.5;
-        const nextWidth = Math.max(FILE_TREE_MIN_WIDTH, Math.min(currentWidth, maxWidth));
-        if (Math.abs(currentWidth - nextWidth) >= 1) panel.resize(`${nextWidth}px`);
-      });
-    });
-    observer.observe(panelGroup);
-
-    return () => {
-      observer.disconnect();
-      cancelAnimationFrame(animationFrame);
-    };
+  const handleTreeWidthChange = useCallback((width: number) => {
+    try {
+      localStorage.setItem("fenix:file-tree-width", String(width));
+    } catch {
+      // Width persistence is optional.
+    }
   }, []);
 
+  const openOverlay = useCallback(() => setOverlayOpen(true), []);
+  const closeOverlay = useCallback(() => setOverlayOpen(false), []);
+
   return (
-    <div ref={panelGroupRef} className="flex-1 min-h-0 min-w-0">
-      <ResizablePanelGroup orientation="horizontal">
-        <ResizablePanel
-          panelRef={fileTreePanelRef}
-          defaultSize={`${initialFileTreeWidthRef.current}px`}
-          minSize={`${FILE_TREE_MIN_WIDTH}px`}
-          maxSize="50%"
-          groupResizeBehavior="preserve-pixel-size"
-          onResize={(size) => {
-            if (size.inPixels == null || !Number.isFinite(size.inPixels)) return;
-            const width = Math.max(FILE_TREE_MIN_WIDTH, size.inPixels);
-            try {
-              localStorage.setItem("fenix:file-tree-width", String(width));
-            } catch {
-              // Width persistence is optional.
-            }
-          }}
-        >
-          {/* 文件树面板底色：原 `artifacts-files-workspace.css`（伴随表，2026-09-28 第四波随最后一条声明
-              撤回而删除）里的 `background: #fbfcff`，按色阶口径归一到最近档 `slate-50`（#f8fafc，
-              ΔE2000 = 0.94，肉眼不可辨；与 `--color-surface-0` 同值，取色阶类与同批其他页一致）。
-              该表只剩这一条规则，故文件与 import 一并删除，`artifacts-explorer` 留作语义钩子。 */}
-          <div className="artifacts-explorer h-full min-h-0 flex flex-col overflow-hidden bg-slate-50">
-            <FileTreeTab ref={fileTreeRef} envId={envId} onPreviewFile={onOpenFile} onReferenceFile={onReferenceFile} />
-          </div>
-        </ResizablePanel>
-        <ResizableHandle className="artifacts-workbench-divider bg-border-subtle" />
-        <ResizablePanel minSize={`${PREVIEW_MIN_WIDTH}px`}>
-          <div className="h-full min-h-0 min-w-0 flex flex-col">
-            <FileTabsBar
-              openFiles={openFiles}
-              activeFile={activeFile}
-              changedFiles={changedFiles}
-              onSelectFile={onSelectFile}
-              onCloseFile={onCloseFile}
-              onPreviewChangedFile={onOpenFile}
+    <FileTreeWorkbench
+      layout={treeLayout}
+      initialTreeWidth={initialFileTreeWidthRef.current}
+      onTreeWidthChange={handleTreeWidthChange}
+      overlayOpen={overlayOpen}
+      onOpenOverlay={openOverlay}
+      tree={
+        <FileTreeTab
+          ref={fileTreeRef}
+          envId={envId}
+          onPreviewFile={onOpenFile}
+          onReferenceFile={onReferenceFile}
+          headerActions={
+            <FileTreeLayoutControls
+              mode={treeLayout}
+              onToggleMode={toggleMode}
+              // 只有「浮动且打开」时才有可关闭的浮层；固定模式下树是布局的一列。
+              onCloseOverlay={treeLayout === "floating" && overlayOpen ? closeOverlay : undefined}
             />
-            {/* 预览源文件的 URL 与取数都注入自本包的 fs 客户端（§5.8：组件不拼后端 URL、不裸调 fetch）；
-                预览 tab 内不再有全局 fetch 兜底，两个 prop 必须一起给。 */}
-            <PreviewTab
-              envId={envId}
-              filePath={activeFile}
-              buildPreviewUrl={buildPreviewSourceUrl}
-              fetchPreview={readPreviewSource}
-            />
-          </div>
-        </ResizablePanel>
-      </ResizablePanelGroup>
-    </div>
+          }
+        />
+      }
+      preview={
+        <>
+          <FileTabsBar
+            openFiles={openFiles}
+            activeFile={activeFile}
+            changedFiles={changedFiles}
+            onSelectFile={onSelectFile}
+            onCloseFile={onCloseFile}
+            onPreviewChangedFile={onOpenFile}
+          />
+          {/* 预览源文件的 URL 与取数都注入自本包的 fs 客户端（§5.8：组件不拼后端 URL、不裸调 fetch）；
+              预览 tab 内不再有全局 fetch 兜底，两个 prop 必须一起给。 */}
+          <PreviewTab
+            envId={envId}
+            filePath={activeFile}
+            buildPreviewUrl={buildPreviewSourceUrl}
+            fetchPreview={readPreviewSource}
+          />
+        </>
+      }
+    />
   );
 }

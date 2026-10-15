@@ -11,7 +11,16 @@ import { FileTreeView } from "@fenix/ui-components/components/file-tree-view";
 import { unwrap } from "@fenix/web-runtime/api/request";
 import { NS } from "@fenix/web-runtime/i18n/namespace";
 import { useRequest } from "ahooks";
-import { forwardRef, useCallback, useEffect, useImperativeHandle, useMemo, useRef, useState } from "react";
+import {
+  forwardRef,
+  type ReactNode,
+  useCallback,
+  useEffect,
+  useImperativeHandle,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
 import { downloadWorkspacePath, fsApi } from "../api/fs";
@@ -49,6 +58,8 @@ interface FileTreeTabProps {
   envId: string | null;
   onPreviewFile: (path: string) => void;
   onReferenceFile: (path: string, name: string) => void;
+  /** 追加到树的面板标题栏的控件（本包用 `FileTreeLayoutControls` 放布局切换）；视图侧由调用方决定内容。 */
+  headerActions?: ReactNode;
 }
 
 export interface FileTreeTabHandle {
@@ -65,7 +76,7 @@ export interface FileTreeTabHandle {
  * `@fenix/ui-components` 的公开入口。文案改绑本包命名空间（键的最终所在地 = 包的 owner）。
  */
 export const FileTreeTab = forwardRef<FileTreeTabHandle, FileTreeTabProps>(function FileTreeTab(
-  { envId, onPreviewFile, onReferenceFile },
+  { envId, onPreviewFile, onReferenceFile, headerActions },
   ref,
 ) {
   const { t } = useTranslation(MACHINE_NS);
@@ -432,6 +443,7 @@ export const FileTreeTab = forwardRef<FileTreeTabHandle, FileTreeTabProps>(funct
       <FileTreeView
         // 源实现用 `envId` 表达「能否改动远端」；包内契约改为语义化的 `canMutate`（§1.6 T8c）。
         canMutate={!!envId}
+        headerActions={headerActions}
         loading={loading && treeDataRef.current.length === 0}
         stale={stale}
         uploading={uploading}
