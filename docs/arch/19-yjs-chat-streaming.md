@@ -1,7 +1,7 @@
 # Chat 流式对话全链路架构
 # YJS Chat Streaming 实现基线
 
-> 状态：实现基线（2026-08-18 修订，对齐 `feature/chat-task` 当前实现；`bun run precheck` 与前端生产构建全绿；2026-09-23 按实现核对会话标识链路——rcs key 第三段为 `instanceUid`，订正 §3.2 标识规则与 §4.1 多实例隔离/locator 校验，未重跑 precheck 与前端构建）
+> 状态：实现基线（2026-08-18 修订，对齐 `feature/chat-task` 当前实现；`bun run precheck` 与前端生产构建全绿；2026-09-23 按实现核对会话标识链路——rcs key 第三段为 `instanceUid`，订正 §3.2 标识规则与 §4.1 多实例隔离/locator 校验，未重跑 precheck 与前端构建；2026-10-15 增补 §5.7 前端时间线渲染窗口——只作用于渲染层，Y.Doc、协议与广播不变）
 > 范围：浏览器 → 主服务 → Machine 的流式对话链路、关键实体生命周期、数据归属与隔离、典型用户场景。
 > 定位：本文档描述**已验证实现**，是前端交互式 Chat（YJS 路径）的权威架构契约。代码演进偏离时，先更新本文档再改代码；关键实现文件以相对路径引用（行号不维护，以语义为准）。
 > 约定：Chat 域实现集中在 `packages/chat-channel`（协议基础 + 聚合层 + 控制面），宿主仅保留桥接（`packages/agent-runtime/src/server/services/chat-channel-bootstrap.ts` 装配单例 + `packages/agent-runtime/src/routes/acp/index.ts` WS 端点）；模块归属见 §2.3 实现位置列。
@@ -585,6 +585,19 @@ yjs:{docName}:{generation}:updates  -> generation-scoped Pub/Sub
 `protocol/update-frame.ts` 定义三类 generation-aware 二进制帧：`update`、`state-vector`、`replace`。新协议使用双字节 magic + version，与旧 update 帧明确区分；出现新 magic 但版本不支持或帧不完整时直接拒绝，不降级成 legacy 解码。
 
 前端 `DocHub` 维护每个 docName 的当前 generation，并丢弃旧 generation 的晚到 update。收到 replacement 时，Chat/Session 分别暂存；相同 generation 的两份 update 都验证并应用到候选 Y.Doc 后，才原子交换共享 doc pair、销毁旧 Doc，并通过 replacement version 促使 `useChatState` / `useSessionState` 重绑。该边界保证 UI 不观察到跨 generation 的混合视图。
+
+### 5.7 时间线渲染窗口（只影响渲染）
+
+超长上下文下时间线的 DOM 规模等于消息条数，流式 chunk 又会反复触发整条时间线的协调。浏览器侧因此在**渲染层**加一层滑动窗口：只决定「渲染哪些块」。数据链路（Y.Doc、聚合层、广播、`chat-writer`、投影 `structuredMessages → ThreadEntry[]`）不参与，窗口外的条目照常接收 chunk 与广播、完整进 Y.Doc，本窗口既不读也不写 Y.Doc。实现位于 `packages/ui-components/web/chat/view/internal/`：`chat-window.ts`（纯计算）、`use-chat-timeline-window.ts`（滚动触发与锚定补偿）、`ChatTimelineWindow.tsx`（渲染切片）。
+
+- **单位是渲染块，不是条目**：`buildChatRenderBlocks` 已把相邻工具调用与纯思考条目并成活动链，切口落在链中间会打断工具轨与链首对齐补偿。块对齐天然等于条目对齐，因此**绝不截断单条消息**；预算（100 条目）装不下整块时整块让位，窗口可能略少于预算，但不存在半块。
+- **块必须先切到预算内**（`splitOversizedBlocks`）：预算只约束块的**个数**，块自身的条目数是构造成来的——相邻工具调用会并成一个 `tool_group`，一次压测式长跑（数千次连续调用）就是**一块数千条目**。不切的话「整块让位」规则会把这块整体收下，首屏直接退回全量渲染（实测 4636 条会话尾部连续工具链：一块覆盖 3971 条，首屏 3971 行 / 55648 个 DOM 节点）。切分只改分组不改数据：工具组按条目切（工具行本就逐条渲染，切开仍不截断任何一条），消息条目是原子单位；普通会话没有超预算的块，块列表逐字不变。代价是超大块会出现极小的视觉接缝（工具组之间多 6px 间距、活动链各自的竖线收口）。
+- **首屏即受约束**：初始态是 `tail`，第一次提交渲染的就是尾部窗口（实测同一条 4636 条会话：首屏 71 条 / 1047 个节点）。进会话时「先看到开头再滚到末尾」的观感来自两件事：修复前的巨块让首屏等于全量渲染（首屏顶端远在历史深处），以及 `use-stick-to-bottom` 的 `initial="instant"` 在首帧后把视口贴到最新——后者与窗口无关，是既有的「打开即最新」行为。
+- **两个状态**：`tail`（尾部锚定最新块，新内容到达时最旧的一块滑出）与 `free`（按块下标滑动的窗口）。向上滚动滑入更早的块、远端块滑出；回到底部恢复最新窗口（`tail`）。渲染量为原列表的连续切片，块对象原样引用。
+- **进行中的条目不滑出**：`loading` 期间窗口结束下标恒为列表尾部，流式条目因此始终在渲染集合内，不会 unmount/remount 造成闪烁。代价是此时「向上滑入更早条目」只能让窗口变长：`CHAT_WINDOW_LIVE_ENTRY_CEILING`（400 条目）约束的是**能往回滑多远**，不是窗口实时体量。**刻意不做「超限就裁掉窗口顶部」**——裁剪发生在数据到达时而非用户滚动时，没有可做锚定补偿的前后测量点，等于在用户眼皮底下搬走内容，正是本模块要避免的跳动；浏览期间窗口随新条目变长，回到最新或本轮结束即收回预算窗口。
+- **滚动锚定**：滑动前记下参考块（滑动前后都存在的块）的视口位置，提交后在 `useLayoutEffect` 里反向补偿 `scrollTop`，可见区域在绘制前回到原位。贴底跟随仍由 `use-stick-to-bottom` 负责，本窗口只在「不是滑到底部」时写 `scrollTop`，两者不争同一帧。
+- **窗口外的更新不丢也不重**：窗口只决定渲染集合，滑入时按当时的数据完整呈现（不存本地副本、不缓冲、不去重）。同一会话内的追加不改变窗口位置，换代（`replaceProjection`）由会话 id + 首条目 id 组成的换代键触发，窗口回到最新。
+- **副作用面**：提示词导航轨点击的条目若在窗口外，先由窗口把它滑进渲染集合再定位（`PromptJumpRail.onRequestEntry`）；点「回到最新」仍走既有 `use-stick-to-bottom` 语义。多标签页一致性、`rcsSessionId` 确定性与「用户消息只由后端写入 Y.Doc」等约束不受影响。
 
 ## 6. ACP 到 YJS 状态聚合
 

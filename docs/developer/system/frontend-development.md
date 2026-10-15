@@ -427,6 +427,7 @@ import 顺序由 Biome 的 import-sort 统一（`precheck` 会跑），形态是
 9. **连接上限与容量**：`YJS_MAX_CLIENTS` 默认 200，由 agent-runtime 模块声明并经 `AgentRuntimeModuleConfig.yjsMaxClients` 注入 chat-channel 装配（不要直读 env）；修改时必须保留限流、资源释放与单连接故障隔离。
 10. **`ChatView` 与 `EntryRenderer` 使用 `React.memo`**，comparator 必须与调用方 prop 稳定性保持一致（`ChatView.tsx`、`EntryRenderer` 有显式逐 prop 比较，`MessageResponse` 比较 `children` + `envId`）；改动 props 时同步更新 comparator 与渲染测试。
 11. **`@fenix/chat-channel` 根入口必须浏览器安全**：根入口只导出类型（`./types`）、schema、`public-error`、`chat-writer`、`yjs-store`、`protocol`、`transport`、`util`；服务端能力（channel 控制面、persist 持久化、state 聚合层）必须经 `@fenix/chat-channel/server` 导出；边界由 `packages/chat-channel/src/__tests__/chat-channel-browser-surface.test.ts` 静态走值导入图守护，`scripts/check-architecture.ts` 的 `browser-entry-server-import` 同时静态拦截 `@fenix/chat-channel/server`。
+12. **时间线只渲染约 100 条**（`packages/ui-components/web/chat/view/internal/chat-window.ts`）：滑动窗口**只在渲染层**决定渲染哪些块，数据侧（Y.Doc、聚合层、广播、`chat-writer`、投影）一律不参与；窗口外的条目照常接收流式 chunk 与广播、滑入时完整呈现，进行中的条目在 `loading` 期间恒在渲染集合内。相邻工具调用会并成一个可覆盖数千条目的 `tool_group`，因此块进入窗口前必须先经 `splitOversizedBlocks` 切到预算内——漏掉这一步「整块收下」会让首屏退回全量渲染。语义、常量与取舍见 `docs/arch/19-yjs-chat-streaming.md` §5.7。
 
 ### 8.6 现状偏离
 - `chat-channel/src/transport/ws-close-codes.ts` 的 4503 行（`stopReconnect: true` + `uiCode: null`，用户会看到「连接停了但没有任何提示」）— 补齐 `uiCode` 是**行为变化**，必须单独一批、单独授权，不得以「消缺口」为由顺手补；裁定前保持 `null`，并在策略表注释里保留指向本节的位置（§8.3）。
