@@ -143,6 +143,7 @@ function ChatPanelView({
     sessionState,
     periTasks,
     periTasksLoaded,
+    userInputQueue,
     derivedState,
     callbacks,
   } = useChatPanelRuntime({
@@ -238,6 +239,9 @@ function ChatPanelView({
           availableModes={derivedState.availableModes}
           currentModeId={derivedState.currentModeId}
           supportsModeSelection={derivedState.supportsModeSelection}
+          // 待发送队列（peri steer）：能力位 + Session Doc userInputQueue 投影；出站回调经 {...callbacks}
+          supportsUserInputQueue={derivedState.supportsUserInputQueue}
+          userInputQueue={userInputQueue}
           boundMcps={hostPorts.boundMcps}
           {...callbacks}
           {...ports}

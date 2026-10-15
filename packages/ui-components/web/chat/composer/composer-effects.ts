@@ -17,12 +17,20 @@ import { useEffect, useRef } from "react";
 export type ComposerExternalEvent =
   | { type: "suggested-prompt"; prompt: string }
   | { type: "file-reference"; file: { name: string; path: string } }
-  | { type: "quote"; quote: { text: string } };
+  | { type: "quote"; quote: { text: string } }
+  /**
+   * 回填草稿（待发送队列「取回」用）：**只在草稿为空时**写入。
+   *
+   * 与 `suggested-prompt`（无条件替换正文）分开的原因：取回是「把退回的内容还给用户」，
+   * 覆盖用户已经重新打的字等于丢草稿；判定必须发生在持有草稿的一侧（输入岛），调用方
+   * 无法读到半受控草稿。
+   */
+  | { type: "restore-draft"; prompt: string };
 
 /** 订阅函数：注册处理器并返回取消订阅函数（宿主实现通常桥接 window 事件或消息通道）。 */
 export type ComposerExternalSubscribe = (handler: (event: ComposerExternalEvent) => void) => () => void;
 
-/** 三类外部事件的处理回调。 */
+/** 四类外部事件的处理回调。 */
 export interface ComposerExternalHandlers {
   /** 建议提示词（源 `chat:apply-suggested-prompt`）：替换草稿正文。 */
   onSuggestedPrompt: (prompt: string) => void;
@@ -30,6 +38,8 @@ export interface ComposerExternalHandlers {
   onFileReference: (file: { name: string; path: string }) => void;
   /** 聊天引用（源 `chat:quote`）：追加一条待发送引用，超限时按配额回调提示。 */
   onQuote: (quote: { text: string }) => void;
+  /** 回填草稿（待发送队列「取回」）：草稿非空时不覆盖。 */
+  onRestoreDraft: (prompt: string) => void;
 }
 
 /**
@@ -54,6 +64,7 @@ export function useComposerExternalInput(
       const current = handlersRef.current;
       if (event.type === "suggested-prompt") current.onSuggestedPrompt(event.prompt);
       else if (event.type === "file-reference") current.onFileReference(event.file);
+      else if (event.type === "restore-draft") current.onRestoreDraft(event.prompt);
       else current.onQuote(event.quote);
     });
   }, [subscribe]);

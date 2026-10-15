@@ -60,6 +60,7 @@ export {
   type NormalizedEvent,
   type NormalizedEventType,
   type NormalizedPeriTaskEvent,
+  type NormalizedUserInputQueueEvent,
   normalizeQuestionAnswers,
   PERI_AGENT_EVENT_CAPABILITY,
   PERI_AGENT_EVENT_METHOD,
@@ -73,6 +74,7 @@ export {
   PERI_UNSTABLE_EVENT_CAPABILITY,
   PERI_UNSTABLE_EVENT_METHOD,
   PERI_UNSTABLE_EVENT_NAMES,
+  PERI_USER_INPUT_QUEUE_CAPABILITY,
   type PeriTaskDetailAvailability,
   type PeriTaskKind,
   type PeriTaskStatus,
@@ -97,10 +99,22 @@ export {
   TURN_TERMINAL_STATUSES,
   type TurnStatus,
   truncateUtf8Safe,
+  USER_INPUT_CONTENT_MAX,
+  USER_INPUT_DRAFT_MAX,
+  USER_INPUT_IMAGE_PLACEHOLDER,
+  USER_INPUT_QUEUE_EVENT_TYPES,
+  USER_INPUT_QUEUE_MAX_ITEMS,
+  USER_INPUT_STATES,
+  type UserInputQueueItemProjection,
+  type UserInputQueueProjection,
+  type UserInputQueueSnapshot,
+  type UserInputState,
 } from "./schema";
 // ── state 浏览器安全子集（聚合层 DocManager/factory/aggregator 等服务端模块
 // 见 @fenix/chat-channel/server）──
 export * from "./state/chat-writer";
+// 待发送队列投影：纯 yjs 读写 + 读取辅助，前端直接消费 readUserInputQueue
+export * from "./state/user-input-queue";
 export * from "./state/yjs-store";
 export * from "./transport";
 export * from "./types";

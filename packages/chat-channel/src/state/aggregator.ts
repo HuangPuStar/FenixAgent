@@ -15,6 +15,7 @@ import {
   DEFAULT_QUESTION_TIMEOUT_MS,
   type NormalizedEvent,
   type NormalizedPeriTaskEvent,
+  type NormalizedUserInputQueueEvent,
   normalizeQuestionAnswers,
   type PeriTaskStatus,
   type PeriTaskViewProjection,
@@ -45,6 +46,7 @@ import {
   setSessionInfo,
   setSessionModelState,
   setSessionModeState,
+  setUserInputQueueState,
   upsertPendingPermission,
   upsertPendingQuestion,
   upsertPeriTaskView,
@@ -54,6 +56,7 @@ import { applyPermissionExpiration, applyPermissionResolution, type DocPair } fr
 import { respondQuestion } from "./question";
 import { applySessionList } from "./session-list";
 import { convergeTurnExit, turnAssistantEntryId } from "./turn-machine";
+import { applyUserInputQueueEvent, readUserInputQueue } from "./user-input-queue";
 
 export type { DocPair } from "./permission";
 
@@ -132,8 +135,14 @@ function extractToolCallId(event: NormalizedEvent): string | null {
   return null;
 }
 
-/** 处理用户消息：创建新 turn（幂等：同 turnId 重放跳过），终结未完成的旧 turn */
-function applyUserMessage(pair: DocPair, event: NormalizedEvent): ApplyResult {
+/**
+ * 处理用户消息：创建新 turn（幂等：同 turnId 重放跳过），终结未完成的旧 turn。
+ *
+ * entryIdOverride：steer 投递（user_input_delivered）以 input_id 作为用户 entry 的
+ * entryId——同一输入在 live 投递与历史回放两条路径上派生出同一个键，去重不再依赖
+ * turnId（回放 turn 与实时 turn 的 turnId 天然不同，按 turnId 去重会写出两条用户消息）。
+ */
+function applyUserMessage(pair: DocPair, event: NormalizedEvent, entryIdOverride?: string): ApplyResult {
   const turnId = event.turnId;
   if (!turnId && !event.callbackEntryId) return { applied: false, reason: "user_message missing turnId" };
   if (!turnId) {
@@ -146,11 +155,12 @@ function applyUserMessage(pair: DocPair, event: NormalizedEvent): ApplyResult {
     return { applied: true };
   }
 
-  // M2 重放保护：按 user entry 存在性判定（同 turnId 已投影过 → 跳过）。
+  // M2 重放保护：按 user entry 存在性判定（同一 entryId 已投影过 → 跳过）。
   // 不能按 active.turnId === turnId 判定：历史回放/乱序下 active 可能已被更新
   // turn 接管，按 active 判定会把旧 turn 的历史消息重新投影一遍并把 active
   // 顶回旧 turn（状态聚合错乱）。
-  if (getEntry(pair.chat, USER_ENTRY(turnId))) {
+  const userEntryId = entryIdOverride ?? USER_ENTRY(turnId);
+  if (getEntry(pair.chat, userEntryId)) {
     return { applied: false, reason: "duplicate turn" };
   }
 
@@ -175,13 +185,13 @@ function applyUserMessage(pair: DocPair, event: NormalizedEvent): ApplyResult {
 
   const text = extractText(event);
   ensureEntry(pair.chat, {
-    entryId: USER_ENTRY(turnId),
+    entryId: userEntryId,
     turnId,
     kind: "message",
     role: "user",
   });
-  setEntryStatus(pair.chat, USER_ENTRY(turnId), "completed");
-  if (text) appendEntryText(pair.chat, USER_ENTRY(turnId), "text", "text", text);
+  setEntryStatus(pair.chat, userEntryId, "completed");
+  if (text) appendEntryText(pair.chat, userEntryId, "text", "text", text);
 
   // assistant entry 先置 pending，首个增量到达时转 streaming
   ensureEntry(pair.chat, {
@@ -493,6 +503,7 @@ function applyTurnTerminal(
 
   const active = readActiveTurn(pair.session);
   if (!active.turnId) return { applied: false, reason: "terminal without active turn" };
+
   // 终态归属校验：事件携带 turnId 且与当前 active turn 不一致时，视为旧 turn 的
   // 迟到终态（新 turn 已由下一条 user_message 创建，旧 turn 已被终结）——不得
   // 终结新 turn，否则连续 prompt 时前一条的终态会提前终结后一条（后一条增量
@@ -501,6 +512,18 @@ function applyTurnTerminal(
   if (event.turnId && active.turnId && event.turnId !== active.turnId) {
     return { applied: false, reason: "terminal for stale turn" };
   }
+  // run 归属校验（steer）：peri 的 steer run 由内部队列驱动、不经过 session/prompt，
+  // 终态只由携带 requestId 的 peri/agent_event_done 投递；反向也成立——该 run 期间
+  // 任何无 requestId 的终态（被打断的旧 prompt 响应在 relay 重连后丢失 pendingPromptTurns
+  // 映射时正是无 turnId 形态）都不属于它。若放行，新 turn 会被旧 turn 的迟到终态提前
+  // 终结，后续增量被 canWriteToTurn 全部丢弃、回答永不出现。
+  const steerRunId = readUserInputQueue(pair.session).activeRequestId;
+  if (event.requestId) {
+    if (steerRunId !== event.requestId) return { applied: false, reason: "terminal requestId mismatch" };
+  } else if (steerRunId) {
+    return { applied: false, reason: "terminal without requestId during steer run" };
+  }
+
   // 终态幂等：已终结的同 turn 再次收到终态事件 → 跳过（不重复写）
   if (TURN_TERMINAL_STATUSES.has(active.turnStatus ?? "accepting")) {
     return { applied: false, reason: "duplicate terminal" };
@@ -527,6 +550,9 @@ function applyTurnTerminal(
       usage: status === "completed" ? (event.update.usage as Record<string, unknown> | null) : null,
     },
   });
+  // steer run 终态已消费：立即清空 run 身份。残留会让下一个普通 turn 的终态被
+  // 上面的归属校验判为 mismatch 而拒绝（loading 卡死）。
+  if (event.requestId) setUserInputQueueState(pair.session, { activeRequestId: null });
   return { applied: true };
 }
 
@@ -550,11 +576,30 @@ function applyPlan(pair: DocPair, event: NormalizedEvent): ApplyResult {
   return { applied: true };
 }
 
+/**
+ * 扁平化 Agent 能力：peri 的扩展能力回显在 `agentCapabilities._meta`（原样回显
+ * clientCapabilities._meta），而能力消费方按顶层键读取（前端 steer 入口读
+ * `caps["peri.userInputQueue"]`，待发送队列 enabled 兜底同理）。
+ * 只提取 `_meta` 中 `peri.` 前缀的布尔值：不整体展开 _meta（display 等非能力元数据
+ * 不得混进能力集），也不覆盖同名顶层键；其余键保持既有 Boolean 投影，纯增量。
+ */
+function flattenCapabilities(capabilities: Record<string, unknown>): Record<string, boolean> {
+  const flat: Record<string, boolean> = {};
+  for (const [key, value] of Object.entries(capabilities)) {
+    flat[key] = Boolean(value);
+    if (key !== "_meta" || typeof value !== "object" || value === null) continue;
+    for (const [metaKey, metaValue] of Object.entries(value as Record<string, unknown>)) {
+      if (metaKey.startsWith("peri.") && typeof metaValue === "boolean") flat[metaKey] = metaValue;
+    }
+  }
+  return flat;
+}
+
 /** 处理 session_updated / agent_status：覆盖式写 Session Doc 元信息 */
 function applySessionControl(pair: DocPair, event: NormalizedEvent): ApplyResult {
   if (event.type === "agent_status") {
     const update = event.update;
-    const caps = update.capabilities as Record<string, boolean> | undefined;
+    const caps = update.capabilities as Record<string, unknown> | undefined;
     // 空/缺失 capabilities 不覆盖已有能力：status 可能先于能力就绪到达（实例
     // start 竞态，acp-link 侧以 connect 帧缓存补发兜底），覆盖会永久清空前端
     // 能力信息（表现为 "Loading or resuming sessions is not supported"）
@@ -562,7 +607,8 @@ function applySessionControl(pair: DocPair, event: NormalizedEvent): ApplyResult
       instanceId: typeof update.instanceId === "string" ? update.instanceId : null,
       acpSessionId: typeof update.acpSessionId === "string" ? update.acpSessionId : null,
       status: typeof update.status === "string" ? update.status : "ready",
-      capabilities: caps && typeof caps === "object" && Object.keys(caps).length > 0 ? caps : undefined,
+      capabilities:
+        caps && typeof caps === "object" && Object.keys(caps).length > 0 ? flattenCapabilities(caps) : undefined,
       lastActivityAt: typeof update.lastActivityAt === "string" ? update.lastActivityAt : new Date().toISOString(),
     });
     return { applied: true };
@@ -735,6 +781,56 @@ function buildPeriTaskView(
 }
 
 /**
+ * 把 user_input_delivered 表征的用户输入写入 Chat Doc（canonical transcript 的唯一写入点，
+ * 也是聊天区去重的依据：entryId 固定为 inputId，live 投递与历史回放/重复投递共用同一键）。
+ *
+ * 复用的 applyUserMessage 语义：未终结的旧 turn 收敛为 cancelled（steer 已打断它）、
+ * 用户 entry 直接 completed、新 turn 成为 active turn 供后续增量/终态事件收敛；
+ * 新 turn id 由控制面注入（NormalizedEvent.turnId），缺省在此生成。
+ *
+ * 控制面接线：收到 delivered 事件时可自行注入 turnId 后调用本函数；
+ * 聚合层 switch 的 delivered 分支已调用同一实现，重复调用因 entryId 去重而无副作用。
+ */
+export function applyUserInputDeliveredMessage(
+  pair: DocPair,
+  input: { inputId: string; content: string; turnId?: string | null },
+): ApplyResult {
+  return applyUserMessage(
+    pair,
+    {
+      type: "user_message",
+      update: {},
+      content: { type: "text", text: input.content },
+      turnId: input.turnId ?? createTurnId(),
+    },
+    input.inputId,
+  );
+}
+
+/** 新 turn id（与 DocManager.registerUserMessage 同形）：turn 必须新建，不得复用已终结 turn */
+function createTurnId(): string {
+  return `turn_${Date.now()}_${Math.random().toString(36).slice(2, 10)}`;
+}
+
+/**
+ * delivered 规范化事件：队列侧摘除待发送项 + 用户消息写入 Chat Doc。
+ * 两步都可能因幂等（项已摘除 / entry 已存在）而 no-op，全部 no-op 才算拒绝。
+ */
+function applyUserInputDeliveredEvent(pair: DocPair, event: NormalizedEvent): ApplyResult {
+  const delivered = event as Extract<NormalizedUserInputQueueEvent, { type: "user_input_delivered" }>;
+  const queued = applyUserInputQueueEvent(pair.session, event);
+  const written = applyUserInputDeliveredMessage(pair, {
+    inputId: delivered.input_id,
+    content: extractText(event),
+    turnId: event.turnId ?? null,
+  });
+  if (!written.applied && !queued.applied) {
+    return { applied: false, reason: written.reason ?? queued.reason };
+  }
+  return { applied: true };
+}
+
+/**
  * 应用单个规范化事件到两份 Y.Doc。
  * 每份 Doc 一个 transaction（YJS 嵌套事务会合并到各自 Doc 的事务栈，
  * 跨 Doc 顺序由调用方保证，不依赖跨 Doc transaction）。
@@ -836,6 +932,15 @@ export function applyNormalizedEvent(pair: DocPair, event: NormalizedEvent): App
           // Peri Task 生命周期投影：独立于 turn 状态机（无 active turn 也可写入）；
           // 状态收敛/终态保护/冲突计数见 applyPeriTaskEvent
           result = applyPeriTaskEvent(pair, event);
+          break;
+        case "user_input_queue_changed":
+        case "user_input_run_started":
+          // Peri 待发送队列投影：独立于 turn 状态机；换代/revision 单调收敛见 user-input-queue.ts
+          result = applyUserInputQueueEvent(pair.session, event);
+          break;
+        case "user_input_delivered":
+          // 待发送项摘除 + 用户消息写入 canonical transcript（entryId = input_id）
+          result = applyUserInputDeliveredEvent(pair, event);
           break;
         default: {
           // 防御：新加的规范化类型未实现处理时拒绝，不静默吞掉

@@ -148,7 +148,7 @@ describe("spawnAcpAgent round48 内存 ACP 管道", () => {
     expect(result.capabilities).toEqual({ loadSession: true, sessionCapabilities: { list: {} } });
   });
 
-  // client initialize 必须声明文件、elicitation 及 Peri 事件能力。
+  // client initialize 必须声明文件、elicitation 及 Peri 事件/用户输入队列能力。
   test("initialize 声明客户端能力", async () => {
     const harness = createHarness();
     const initialize = spyOn(TestAgent.prototype, "initialize");
@@ -159,7 +159,12 @@ describe("spawnAcpAgent round48 内存 ACP 管道", () => {
         clientCapabilities: expect.objectContaining({
           fs: { readTextFile: true, writeTextFile: true },
           elicitation: { form: {} },
-          _meta: { "peri.agentEvent": true, "peri.tokenStats": true, "peri.unstableEvent": true },
+          _meta: {
+            "peri.agentEvent": true,
+            "peri.tokenStats": true,
+            "peri.unstableEvent": true,
+            "peri.userInputQueue": true,
+          },
         }),
       }),
     );

@@ -6,8 +6,22 @@
 export const PERI_TOKEN_STATS_CAPABILITY = "peri.tokenStats";
 export const PERI_AGENT_EVENT_CAPABILITY = "peri.agentEvent";
 export const PERI_UNSTABLE_EVENT_CAPABILITY = "peri.unstableEvent";
+/**
+ * 用户输入队列（steer）扩展能力。acp-link 只做 session/input/* 原样透传，
+ * 未声明时 peri 对四个方法返回 -32601 且不发射 user_input_* 事件。
+ */
+export const PERI_USER_INPUT_QUEUE_CAPABILITY = "peri.userInputQueue";
 export const PERI_AGENT_EVENT_METHOD = "peri/agent_event";
 export const PERI_UNSTABLE_EVENT_METHOD = "peri/unstable_event";
+/**
+ * turn 结束（TurnDone）transport 通知，payload 为 { sessionId, stopReason, requestId? }。
+ *
+ * ACP v1 没有 turn_done 的 SessionUpdate tag，peri 用它承载 turn 终态；只要协商了
+ * `peri.userInputQueue` 就会发送（event_sink：caps.agent_event_done || caps.user_input_queue）。
+ * steer run 由 peri 内部队列驱动、不经过 session/prompt，该通知是它唯一的终态来源——
+ * 丢弃会让新 turn 永久停在 loading。普通 prompt 场景的终态仍以响应帧为准，收到也不冲突。
+ */
+export const PERI_AGENT_EVENT_DONE_METHOD = "peri/agent_event_done";
 
 /** 返回 acp-link 实际支持的 Peri capability。 */
 export function buildPeriCapabilityMeta(): Record<string, true> {
@@ -15,10 +29,15 @@ export function buildPeriCapabilityMeta(): Record<string, true> {
     [PERI_TOKEN_STATS_CAPABILITY]: true,
     [PERI_AGENT_EVENT_CAPABILITY]: true,
     [PERI_UNSTABLE_EVENT_CAPABILITY]: true,
+    [PERI_USER_INPUT_QUEUE_CAPABILITY]: true,
   };
 }
 
 /** 仅放行 acp-link 已实现并由主服务规范化的扩展 notification。 */
 export function isPeriTaskNotificationMethod(method: string): boolean {
-  return method === PERI_AGENT_EVENT_METHOD || method === PERI_UNSTABLE_EVENT_METHOD;
+  return (
+    method === PERI_AGENT_EVENT_METHOD ||
+    method === PERI_UNSTABLE_EVENT_METHOD ||
+    method === PERI_AGENT_EVENT_DONE_METHOD
+  );
 }

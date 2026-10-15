@@ -19,7 +19,50 @@ export const KNOWN_ACTION_TYPES = [
   "respond_permission",
   "respond_question",
   "set_session_mode",
+  // Peri 待发送队列（steer）：能力 `peri.userInputQueue` 协商后才可用，出站方法为
+  // session/input/{enqueue,dispatch,takeback}（见 protocol/translator.ts）
+  "enqueue_user_input",
+  "dispatch_user_inputs",
+  "takeback_user_input",
 ] as const;
+
+/** Peri 待发送队列（steer）三类 Action 名 */
+export type UserInputQueueActionType = "enqueue_user_input" | "dispatch_user_inputs" | "takeback_user_input";
+
+/** steer Action 清单（唯一权威：SessionChannel 的前置校验与 translator 的出站分支共用，不得各写一份） */
+export const USER_INPUT_QUEUE_ACTION_TYPES: ReadonlySet<string> = new Set<UserInputQueueActionType>([
+  "enqueue_user_input",
+  "dispatch_user_inputs",
+  "takeback_user_input",
+]);
+
+/** steer Action 判定（含类型收窄） */
+export function isUserInputQueueAction(action: unknown): action is UserInputQueueActionType {
+  return typeof action === "string" && USER_INPUT_QUEUE_ACTION_TYPES.has(action);
+}
+
+/**
+ * enqueue 的业务字段（前端帧形态）：content 是聊天区内容块，出站前必须转成 peri 的
+ * MessageContent（见 protocol/translator.ts 的 toPeriMessageContent）。
+ */
+export interface EnqueueUserInputPayload {
+  /** 队列项标识（前端生成的 UUID，同时是 peri 侧的项键） */
+  inputId: string;
+  /** 聊天区内容块（ACP ContentBlock[]，图片为 {type:'image', mimeType, data}） */
+  content: unknown;
+  /** 用户原始草稿（纯文本）；空草稿缺省——出站补空串，取回回填时与缺省等价 */
+  originalDraft?: string;
+}
+
+/** dispatch 的业务字段：空数组/非法项在 validateUserInputQueueAction 拒绝（不做空转往返） */
+export interface DispatchUserInputsPayload {
+  inputIds: string[];
+}
+
+/** takeback 的业务字段 */
+export interface TakebackUserInputPayload {
+  inputId: string;
+}
 
 export const ACTION_ACK_STATUSES = ["accepted", "committed", "duplicate"] as const;
 export type ActionAckStatus = (typeof ACTION_ACK_STATUSES)[number];

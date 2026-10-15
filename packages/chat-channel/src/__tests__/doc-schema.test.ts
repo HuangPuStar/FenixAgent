@@ -82,6 +82,7 @@ test("session doc root contains only metadata fields", () => {
     "sessions",
     "taskOrder",
     "tasks",
+    "userInputQueue",
   ]);
   expect(getSessionRoot(pair.session).get("schemaVersion")).toBe(SESSION_DOC_SCHEMA_VERSION);
 });
@@ -418,6 +419,7 @@ test("clearChatDocContent resets the chat doc keeping schema skeleton and bumpin
     "sessions",
     "taskOrder",
     "tasks",
+    "userInputQueue",
   ]);
 });
 
@@ -475,6 +477,7 @@ test("session_list syncs sessions map with idempotent full sync", () => {
     "sessions",
     "taskOrder",
     "tasks",
+    "userInputQueue",
   ]);
 });
 
