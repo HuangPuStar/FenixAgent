@@ -51,6 +51,7 @@ const BROWSER_SAFE_EXTERNAL: ReadonlyMap<string, string> = new Map([
   ["lucide-react", "SVG 图标库（本包 dependencies）"],
   ["mammoth", "docx 文本提取（本包 dependencies），纯 JS"],
   ["react-markdown", "Markdown 渲染（本包 dependencies）"],
+  ["katex", "数学排版（经 ui-components components/preview 进入：markdown 数学与 `.tex` 渲染），纯浏览器实现"],
   ["rehype-sanitize", "Markdown 渲染前的 hast 清洗（本包 dependencies），纯函数"],
   ["remark-gfm", "GFM 插件（本包 dependencies），纯函数"],
   ["sonner", "Toast 渲染（本包 dependencies）"],

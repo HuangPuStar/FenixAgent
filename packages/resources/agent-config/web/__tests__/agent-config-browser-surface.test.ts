@@ -101,6 +101,11 @@ const BROWSER_SAFE_EXTERNAL: ReadonlyMap<string, string> = new Map([
   ["react-resizable-panels", "可拖拽分栏（ui-components ui/resizable 传递依赖），纯浏览器实现"],
   ["@open-file-viewer/core", "文件预览内核（ui-components components/preview/* 传递依赖），纯浏览器实现"],
   ["@open-file-viewer/react", "文件预览 React 绑定（同上）"],
+  ["katex", "数学排版（ui-components components/preview 的 markdown 数学与 LaTeX 渲染），纯浏览器实现"],
+  [
+    "@streamdown/math",
+    "数学渲染插件（ui-components lib/katex-math 经聊天渲染链引入：remark-math + rehype-katex + katex），纯浏览器实现",
+  ],
   // 经 @fenix/model-management/web 子路径传递进入（编辑器模型选择器的品牌图标）
   // `@lobehub/icons` 的 dependencies 里还有 `antd-style`，后者在 import 期就求值
   // `window.matchMedia`：浏览器构建无影响（window 齐备），但无 DOM 的 `bun test` 进程只要被宿主

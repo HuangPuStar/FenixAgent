@@ -369,6 +369,12 @@
       "loadFailed": "文件预览加载失败（HTTP {{status}}）",
       "loadFailedUnknown": "文件预览加载失败",
       "componentError": "预览组件加载失败",
+      "renderTab": "渲染预览",
+      "sourceTab": "源码",
+      "emptyFile": "文件为空",
+      "tooLarge": "文件过大，已改为源码展示",
+      "mathUnsupported": "公式包含 KaTeX 不支持的宏",
+      "mathRenderFailed": "公式渲染失败，已显示源码",
       "messages": {
         "loading": "加载中...",
         "unsupportedTitle": "暂不支持此格式",

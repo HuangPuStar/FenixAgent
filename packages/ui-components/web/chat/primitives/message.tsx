@@ -37,7 +37,6 @@ import { Button } from "../../ui/button";
 import { ButtonGroup, ButtonGroupText } from "../../ui/button-group";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "../../ui/tooltip";
 import { repairUnclosedUISpecFence } from "../ui-spec/fence-repair";
-import { UI_SPEC_PLUGINS } from "../ui-spec/plugins";
 import { UISpecHostProvider } from "../ui-spec/UISpecHostContext";
 import { IframePreview } from "./iframe-preview";
 import { MARKDOWN_CONTENT_CLASS } from "./internal/markdown-classes";
@@ -71,7 +70,21 @@ class StreamdownErrorBoundary extends Component<{ children: ReactElement; fallba
   }
 }
 
-const LazyStreamdown = lazy(() => import("streamdown").then((m) => ({ default: m.Streamdown })));
+/**
+ * 正文渲染器：streamdown 与**插件配置**一起在这条惰性边界上取。
+ *
+ * 为什么插件配置也要动态取：`UI_SPEC_PLUGINS` 含数学插件，而数学插件静态拉起 `@streamdown/math` →
+ * `rehype-katex` → KaTeX。若本模块静态引入它，KaTeX 会顺着 barrel 进入口 chunk（2026-10-15 实测到
+ * `index.html` 里出现 `modulepreload katex-*.js`）；两者同源加载后，KaTeX 与 streamdown 一样只在
+ * 真正渲染正文时才下载。
+ */
+const LazyStreamdown = lazy(async () => {
+  const [streamdown, { UI_SPEC_PLUGINS }] = await Promise.all([import("streamdown"), import("../ui-spec/plugins")]);
+  const StreamdownWithPlugins = (props: ComponentProps<typeof streamdown.Streamdown>) => (
+    <streamdown.Streamdown {...props} plugins={UI_SPEC_PLUGINS} />
+  );
+  return { default: StreamdownWithPlugins };
+});
 
 export type MessageProps = HTMLAttributes<HTMLDivElement> & {
   from: UIMessage["role"];
@@ -435,7 +448,6 @@ export const MessageResponse = memo(
               allowedTags={allowedTags}
               components={components}
               urlTransform={urlTransform}
-              plugins={UI_SPEC_PLUGINS}
               mode={mode}
               isAnimating={isStreaming}
               // markdown 排版（标题/列表/引用/代码块/表格与 streamdown 内部 DOM）全部挂在容器上：

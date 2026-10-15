@@ -22,7 +22,8 @@
     "react-i18next": "^17.0.8"
   },
   "devDependencies": {
-    "@fenix/resource-mcp": "workspace:*"
+    "@fenix/resource-mcp": "workspace:*",
+    "happy-dom": "^20.9.0"
   },
   "exports": {
     ".": "./src/index.ts",

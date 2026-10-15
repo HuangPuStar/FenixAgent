@@ -369,6 +369,12 @@
       "loadFailed": "Failed to load preview (HTTP {{status}})",
       "loadFailedUnknown": "Failed to load preview",
       "componentError": "Failed to load the preview component",
+      "renderTab": "Preview",
+      "sourceTab": "Source",
+      "emptyFile": "The file is empty",
+      "tooLarge": "File is too large — showing source instead",
+      "mathUnsupported": "Formula uses macros KaTeX does not support",
+      "mathRenderFailed": "Formula failed to render; showing source",
       "messages": {
         "loading": "Loading...",
         "unsupportedTitle": "Preview not supported for this format",

@@ -26,6 +26,10 @@
  * 8. 失败态只上屏本地化文案：`preview-source` 抛的是结构化的 `PreviewSourceError`，只带 `status`，
  *    其 `message` 是本地构造的诊断串（不是服务端错误信封），文案按当前语言取
  *    `fileTree.preview.loadFailed` / `loadFailedUnknown`，原始错误只进 `console.error`。
+ * 9. 文档类（markdown / LaTeX）另行分流（2026-10-15）：markdown 仍走本预览器，但在
+ *    `textPlugin` 之前插一层 `markdownMathPlugin()`（复用既有 markdown 渲染 + KaTeX 自动渲染）；
+ *    `.tex` 交给 `DocumentPreview` → `latex-content.tsx`（`@open-file-viewer` 只把它当高亮源码，
+ *    没有 LaTeX 结构渲染能力）。两者共用同一份状态边界（空文件 / 字节上限 / 源码回退）。
  */
 
 import type { PreviewLocale, PreviewMessages } from "@open-file-viewer/core";
@@ -37,10 +41,14 @@ import { Component, useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { UI_COMPONENTS_NS } from "../../i18n/namespace";
 import { ErrorFallback } from "../../ui/error-fallback";
+import { DocumentPreview } from "./DocumentPreview";
 import { htmlPreviewPlugin } from "./html-plugin";
+import { markdownMathPlugin } from "./markdown-math-plugin";
 import { nativePdfPlugin } from "./native-pdf-plugin";
 import {
+  classifyFile,
   getPreviewMimeType,
+  isDocumentCategory,
   loadByteAccuratePreviewSource,
   type PreviewFetch,
   PreviewSourceError,
@@ -173,6 +181,10 @@ export function FileViewerPreview({
   const fileName = useMemo(() => filePath.split("/").pop() ?? filePath, [filePath]);
   const mimeType = useMemo(() => getPreviewMimeType(filePath), [filePath]);
   const loadAsBlob = useMemo(() => shouldLoadPreviewAsBlob(filePath), [filePath]);
+  // 文档类（markdown / LaTeX）在拿到字节后另走 `DocumentPreview`：markdown 复用本预览器渲染，
+  // LaTeX 交给包内的结构渲染器。分类只算一次，分流与插件链共用同一份口径。
+  const category = useMemo(() => classifyFile(filePath), [filePath]);
+  const isDocument = isDocumentCategory(category);
   const [previewSource, setPreviewSource] = useState<string | Blob | null>(() => (loadAsBlob ? null : previewUrl));
   // 失败态只留结构（有状态码 / 无状态码），文案在渲染时按当前语言取：这里能拿到的错误要么是只带 `status`
   // 的 `PreviewSourceError`（`message` 是本地诊断串，不是服务端信封），要么是宿主域模块的异常，两类都没有
@@ -220,7 +232,15 @@ export function FileViewerPreview({
   );
 
   const plugins = useMemo(
-    () => [imagePlugin(), nativePdfPlugin(), officePlugin(), htmlPreviewPlugin(fetchPreview), textPlugin()],
+    () => [
+      imagePlugin(),
+      nativePdfPlugin(),
+      officePlugin(),
+      htmlPreviewPlugin(fetchPreview),
+      // markdown 数学渲染：只匹配 markdown 扩展名，插在 textPlugin 之前接管它的渲染 + KaTeX 二次处理
+      markdownMathPlugin(),
+      textPlugin(),
+    ],
     [fetchPreview],
   );
 
@@ -252,7 +272,7 @@ export function FileViewerPreview({
     );
   }
 
-  return (
+  const viewer = (
     <FileViewerErrorBoundary fallbackText={t("fileTree.preview.componentError")}>
       <FileViewer
         file={previewSource}
@@ -268,4 +288,17 @@ export function FileViewerPreview({
       />
     </FileViewerErrorBoundary>
   );
+
+  // 文档类按 Blob 加载（`shouldLoadPreviewAsBlob`）：拿到字节后交给文档容器统一处理
+  // 空文件 / 字节上限 / 源码回退；markdown 的渲染模式仍交给上面这个既有预览器。
+  // 同样套错误边界：LaTeX 渲染层或按需 chunk 出错时降级范围止于预览面板，不牵连整个 artifacts 面板。
+  if (isDocument && previewSource instanceof Blob) {
+    return (
+      <FileViewerErrorBoundary fallbackText={t("fileTree.preview.componentError")}>
+        <DocumentPreview kind={category} blob={previewSource} markdownView={viewer} />
+      </FileViewerErrorBoundary>
+    );
+  }
+
+  return viewer;
 }
