@@ -13,7 +13,7 @@
 #   dev（仅数据库）  docker compose up -d postgres               # 配合 bun run dev
 #   dev（加缓存）    docker compose --profile redis up -d
 #   dev（加组件）    docker compose --profile litellm --profile ragflow up -d
-#   dev（停一组）    docker compose --profile litellm down
+#   dev（停单组）    docker compose stop litellm litellm-postgres    # 容器留着；要连容器一起删用 rm -sf 同参数
 #
 # 可选组件在 docker/dev/（见 docker/dev/README.md）：每个组件一份 docker-compose.<组件>.yml，
 # 全部经下方 include 复制进**同一个项目**，服务间按服务名直连；各自用 --profile <组件名> 启动。
@@ -30,6 +30,7 @@ include:
     - path: docker/dev/docker-compose.hindsight.yml
     - path: docker/dev/docker-compose.agent-sites.yml
     - path: docker/dev/docker-compose.ragflow.yml
+    - path: docker/dev/docker-compose.opensandbox.yml
 
 name: fenix
 
@@ -124,6 +125,16 @@ services:
             APP_BRAND_NAME: ${APP_BRAND_NAME:-Fenix}
             APP_LOGO_PATH: ${APP_LOGO_PATH:-}
             RCS_SECRET_ENCRYPTION_KEY: ${RCS_SECRET_ENCRYPTION_KEY:-}
+            # —— 组件接线：地址由「同项目同网络」决定，不属于部署配置，故写显式值（规格 §2.3）；
+            #    密钥用与组件侧**同一个插值键名**，两处自动同值、零人工同步。
+            RCS_MODEL_GATEWAY_BASE_URL: http://litellm:4000/litellm
+            RCS_MODEL_GATEWAY_ADMIN_KEY: ${LITELLM_MASTER_KEY:-litellm-master-key-123}
+            AGENT_SITES_BASE_URL: http://agent-sites:3000
+            AGENT_SITES_MASTER_KEY: ${AGENT_SITES_MASTER_KEY:-agent-sites-master-key-123}
+            RAGFLOW_API_URL: http://ragflow:9380
+            HINDSIGHT_MCP_URL: http://hindsight:8888
+            RCS_SANDBOX_CLUSTER_URL: http://opensandbox-cluster:8080
+            RCS_SANDBOX_CLUSTER_API_KEY: ${CLUSTER_SERVICE_API_KEY:-clustersvc123}
         volumes:
             # dev 数据落点：bind 到本文件同级的 ./ 下（不用命名卷），随目录整体搬迁/备份。
             # 生产形态（docker/main/）用 docker/main/ 下的同名目录，两套数据互不影响。

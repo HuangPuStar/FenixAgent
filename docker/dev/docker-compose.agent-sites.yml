@@ -3,8 +3,10 @@
 # 本文件是**本地开发编排**，由仓库根 docker-compose.yml 通过 include 复制进同一个项目（fenix），
 # 用 `docker compose --profile agent-sites up -d` 启动。生产形态是 docker/agent-sites/。
 #
-# 与生产形态的差异只有两处：AGENT_SITES_MASTER_KEY 由 `${VAR:?}` 改为带默认值，数据落
-# docker/dev/data/agent-sites/。站点运行参数一字不改。
+# 与生产形态的差异有四处：① 新增 profiles（默认不启动）；② 网络由 `external: true` 改为
+# `{name: fenix-server}`（同项目同网，按服务名直连）；③ 密钥由 `${VAR:?}` 改为带默认值
+# （AGENT_SITES_MASTER_KEY）；④ 数据落 docker/dev/data/agent-sites/。
+# 站点运行参数一字不改。
 #
 # 网络：接入 fenix-server（rcs 按 http://agent-sites:3000 访问）；
 # 宿主端口对外发布——站点本身要供外部访问。

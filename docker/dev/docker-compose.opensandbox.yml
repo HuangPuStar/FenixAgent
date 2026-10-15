@@ -1,0 +1,132 @@
+# docker/dev/ —— OpenSandbox 管理面与执行节点三合一（sandbox 模块使用）
+#
+# 本文件以 docker/opensandbox-cluster/deploy/docker-compose.yml（独立沙盒机的三合一编排）为蓝本，
+# 由仓库根 docker-compose.yml 通过 include 复制进同一个项目（fenix），
+# 用 `docker compose --profile opensandbox up -d` 启动。
+#
+# 相对蓝本的五点偏离：
+#   1. 网络：删掉自建的 `opensandbox` 网络，三个服务全部接入 `fenix-server`（dev 同网互通）。
+#   2. 删掉 `./offline:/offline:ro`（离线部署专用，本地开发无意义）。
+#   3. 数据挂载点改到 docker/dev/data/opensandbox/。
+#   4. 全部键写成 ${VAR:-默认值}，**没有** docker/dev/.env.opensandbox；要改就在**仓库根 .env** 写同名键。
+#   5. DinD 状态目录（/var/lib/docker）用命名卷而不是蓝本的 bind——macOS 上 bind 会让 dockerd 起不来，
+#      见文件末尾 `volumes:` 节的注释。蓝本虽记为「已在 macOS 实测可用」，但该结论不含这一处：
+#      本机在用的节点同样用命名卷；生产侧同款 bind 在 macOS 上亦不可用，属本分支范围外的事实，不在本次修改范围。
+# `privileged: true` 与 `cgroup: host` 照抄蓝本，不要删：沙盒节点容器内要起 Docker（DinD），
+# 两行一起决定它能否工作（蓝本在 macOS 上的可用结论同样不含第 5 点那处）。
+#
+# 使用前先 `cp docker/dev/sandbox.toml.example docker/dev/sandbox.toml`——sandbox.toml 里的
+# docker.host_ip 依赖机器与组网形态（example 给的是 macOS / Windows 桌面 Docker 的取值，其余形态按
+# example 里的注释改），是本组件唯一的准备步骤（见 README）。
+
+services:
+
+    opensandbox-cluster:
+        image: ghcr.io/huangpustar/fenixagent-opensandbox-cluster:v0.2.0
+        profiles: ["opensandbox"]
+        restart: unless-stopped
+        environment:
+            HOST: 0.0.0.0
+            PORT: 8080
+            DATABASE_PATH: /data/opensandbox-cluster.db
+            # 沙盒集群 API Key：rcs 侧用**同一个插值键名**引用（RCS_SANDBOX_CLUSTER_API_KEY），
+            # 两处自动同值、零人工同步。默认值只服务本地，生产必须覆盖。
+            CLUSTER_SERVICE_API_KEY: ${CLUSTER_SERVICE_API_KEY:-clustersvc123}
+            # 加密密钥的默认值恰好 32 个 ASCII 字符——长度不对时 cluster 启动直接失败。
+            # 只服务本地，生产必须换（`openssl rand -hex 32` 是 64 个字符，会失败，别照搬）。
+            SERVER_API_KEY_ENCRYPTION_KEY: ${SERVER_API_KEY_ENCRYPTION_KEY:-opensandbox-dev-encrypt-key-0001}
+            # cluster 告诉节点「去哪里连 frps」的地址——从**节点容器**看必须可达，所以不能写 127.0.0.1
+            # （容器内的 127.0.0.1 是容器自己）。与 sandbox.toml 的 host_ip 取同一种形态：
+            # macOS / Windows 的 Docker Desktop 与 OrbStack 用 host.docker.internal，Linux 用宿主在容器网络内的地址。
+            # 默认值只服务本地，生产必须覆盖。
+            FRP_PUBLIC_ADDRESS: ${FRP_PUBLIC_ADDRESS:-host.docker.internal}
+            FRP_BIND_PORT: ${FRP_BIND_PORT:-7000}
+            # 只允许 [A-Za-z0-9_-]，不能含 `@`。默认值只服务本地，生产必须覆盖。
+            FRP_TOKEN: ${FRP_TOKEN:-frp123}
+            PROXY_CONNECT_TIMEOUT_MS: ${PROXY_CONNECT_TIMEOUT_MS:-3000}
+            PROXY_RESPONSE_TIMEOUT_MS: ${PROXY_RESPONSE_TIMEOUT_MS:-120000}
+        ports:
+            # 只绑回环：宿主上的 curl 与健康检查；平台容器走 fenix-server 内的 8080。
+            - "127.0.0.1:${OPENSANDBOX_CLUSTER_PORT:-8080}:8080"
+        volumes:
+            - ./data/opensandbox/cluster:/data
+        networks:
+            - fenix-server
+
+    frps:
+        image: ghcr.io/fatedier/frps:v0.69.0
+        profiles: ["opensandbox"]
+        command: ["-c", "/etc/frp/frps.toml"]
+        restart: unless-stopped
+        environment:
+            # 与 cluster 侧同键同源；默认值只服务本地，生产必须覆盖。
+            FRP_TOKEN: ${FRP_TOKEN:-frp123}
+        ports:
+            # 沙盒节点主动连入的隧道入口。它按 FRP_PUBLIC_ADDRESS + FRP_BIND_PORT 回连，因此宿主侧
+            # 不能只绑回环——默认发布到全部接口，跨机调试时把 FRP_PUBLIC_ADDRESS 换成可达地址即可。
+            - "${FRP_BIND_PORT:-7000}:7000"
+        expose:
+            - "7080"
+        volumes:
+            # 配置不复制：只读挂载生产目录里的那一份（相对本文件解析 = docker/opensandbox-cluster/frps.toml）。
+            # 它从环境变量读 FRP_TOKEN，因此本文件的 FRP_TOKEN 与 cluster 侧自动同值。
+            - ../opensandbox-cluster/frps.toml:/etc/frp/frps.toml:ro
+        depends_on:
+            - opensandbox-cluster
+        networks:
+            - fenix-server
+
+    opensandbox-server:
+        image: ghcr.io/huangpustar/fenixagent-opensandbox-server:v0.2.0
+        profiles: ["opensandbox"]
+        command:
+            - opensandbox-server
+            - --config
+            - /etc/opensandbox/sandbox.toml
+        # 沙盒节点要在容器内起 Docker（DinD）：这两行照抄蓝本，见文件头。
+        privileged: true
+        cgroup: host
+        ports:
+            - "127.0.0.1:${OPENSANDBOX_SERVER_PORT:-8090}:8080"
+            # 沙盒实例端口范围：必须与 sandbox.toml 的 port_range_min/max 一致（默认 10000-10100）。
+            - "${SANDBOX_PORT_MIN:-10000}-${SANDBOX_PORT_MAX:-10100}:${SANDBOX_PORT_MIN:-10000}-${SANDBOX_PORT_MAX:-10100}"
+        healthcheck:
+            test:
+                - CMD-SHELL
+                - >-
+                  python -c "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8080/health', timeout=2)"
+            interval: 5s
+            timeout: 3s
+            retries: 30
+            start_period: 10s
+        volumes:
+            # DinD 的内部 Docker 状态（镜像 / 容器 / 卷）用命名卷，是本文件**唯一的有意例外**，
+            # 理由见文件末尾 `volumes:` 节。
+            - opensandbox-server-dind-docker:/var/lib/docker
+            - ./data/opensandbox/server/workspace:/workspace
+            # 配置文件由 sandbox.toml.example 复制而来（见文件头）；只读挂载。
+            - ./sandbox.toml:/etc/opensandbox/sandbox.toml:ro
+            - ./data/opensandbox/server/data:/root/.opensandbox
+        restart: unless-stopped
+        networks:
+            - fenix-server
+
+networks:
+    # 网络名与仓库根编排逐字一致，且**不写 `external: true`**：include 是字段级合并，根文件声明了
+    # `name` 却没声明 `external`，子文件里的 `external: true` 会原样保留下来，`up` 直接报
+    # `network fenix-server declared as external, but could not be found`（已实测）。
+    # 本写法两边都成立：合并进根文件时与根文件的定义等价，单独解析时自己创建这张网。
+    fenix-server:
+        name: fenix-server
+
+volumes:
+    # 全局约束「数据一律 bind 到 ./data/...，禁止命名卷」的**唯一有意例外**（就地记理由，不要推广到别处）：
+    # DinD 的内部 Docker 状态（镜像 / 容器 / 卷）不需要搬迁或备份，不是那条约束要保护的「用户数据」；
+    # 而 macOS 上把它 bind 进去会让 dockerd 在 overlay2 的 metacopy 检查处 chmod 只读文件系统而失败，
+    # 容器陷入崩溃循环（`failed to start daemon: error initializing graphdriver: … read-only file system`，
+    # 已实测；同一镜像换成命名卷即正常 `API listen`）。本机在用的节点也是命名卷。
+    # 本卷随 `docker compose down` 保留（不做 -v），需要彻底重置 DinD 时：
+    #   docker volume rm fenix_opensandbox-server-dind-docker
+    # 移除条件：① 平台文件共享开始支持 dockerd 需要的 chmod（macOS 上用 bind 不再崩），或
+    # ② 节点改为非 DinD 形态（不再需要在容器内跑 Docker）。二者任一时机成熟即可回到 bind。
+    opensandbox-server-dind-docker:

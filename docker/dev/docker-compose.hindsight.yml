@@ -3,8 +3,10 @@
 # 本文件是**本地开发编排**，由仓库根 docker-compose.yml 通过 include 复制进同一个项目（fenix），
 # 用 `docker compose --profile hindsight up -d` 启动。生产形态是 docker/hindsight/。
 #
-# 与生产形态的差异只有两处：DASHSCOPE_API_KEY 由 `${VAR:?}` 改为 `${VAR:-}`（留空默认值），
-# 数据落 docker/dev/data/hindsight/pg0。模型 / 地址 / 批大小一字不改。
+# 与生产形态的差异有四处：① 新增 profiles（默认不启动）；② 网络由 `external: true` 改为
+# `{name: fenix-server}`（同项目同网，按服务名直连）；③ 密钥由 `${VAR:?}` 改为带默认值/留空
+# （DASHSCOPE_API_KEY 留空）；④ 数据落 docker/dev/data/hindsight/pg0。
+# 模型 / 地址 / 批大小一字不改。
 # 为什么不是 `${VAR:?}`：**插值发生在 profile 过滤之前**，可选组件里的必填项会让整个项目解析失败，
 # 连「只起 rcs」的 `docker compose up -d` 都跑不动（已实测）。留空既保住默认启动，
 # 又不在 compose 里留下可填真值的形状（详见 docker/dev/README.md「密钥不要写进本目录」）。

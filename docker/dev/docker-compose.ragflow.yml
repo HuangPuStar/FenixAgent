@@ -12,6 +12,10 @@
 #      （服务名 `ragflow-redis` / `ragflow-rustfs` 仍带前缀：它们不得与保留名 redis / rustfs 撞车。）
 #   3. 全部键写成 ${VAR:-默认值}，**没有** docker/dev/.env.ragflow；要改就在**仓库根 .env** 写同名键。
 #   4. infinity_conf.toml 不复制，只读挂载生产目录里的那一份。
+#   5. 每个服务加 `profiles: ["ragflow"]`：生产里这栈是独立项目、恒启动，dev 里靠 profile 按需拉起。
+#   6. 数据落点从 docker/ragflow/ 下的散点（./data/rustfs、./ragflow_logs、./ragflow_data、
+#      ./ragflow_redis_data、./ragflow_infinity_data）统一到 ./data/ragflow/<子目录>，并删掉 `expose:` 段：
+#      dev 全部服务同处 fenix-server，栈内网络里才需要的 expose 声明多余。
 #
 # 网络：ragflow 与 gotenberg 接入 fenix-server（rcs 按 http://ragflow:9380 与 http://gotenberg:3000 访问）。
 # 宿主端口只绑回环（18080 / 19380 / 3200），仅供本地源码调试。
