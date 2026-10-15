@@ -113,8 +113,10 @@ agent-config 再反向声明 `dependsOn: ["machine"]` 会在模块
   （宿主 i18n 引导在启动期求值，根入口会把整个 web 面拉进首屏）。当前 29 键：`filePicker.fileTooLarge` 与
   `fileTree.{uploadFailed,uploadPartialIndeterminate}` 随上传 hook 迁入；`fileTree.{renameFailed,moveFailed,
   mkdirFailed,newFileFailed,downloadFailed,closeTab,moreTabs,dialog.*,contextMenu.delete}` 与
-  `changedFiles.title` 随文件树容器与 tab 栏迁入（中文键的消费方只剩本包）；`fileTree.layout.{dock,float,close,open}`
-  是文件树浮动/固定布局的键（消费方 `web/components/file-tree-layout-controls.tsx` 与 `file-tree-workbench.tsx`）。宿主 `components.fileTree` 保留的
+  `changedFiles.title` 随文件树容器与 tab 栏迁入（中文键的消费方只剩本包）；`fileTree.layout.{dock,float}`
+  是树的面板标题栏里「浮动 / 固定」切换控件的键（`web/components/file-tree-layout-toggle.tsx`），
+  `fileTree.layout.{open,close}` 是预览区左缘常驻开合按钮的键（`web/components/file-tree-workbench.tsx`）。
+  宿主 `components.fileTree` 保留的
   `emptyState` / `emptyHint` / `userEmptyState` / `retry` / `staleBanner` 是同名键在 `uiComponents` 命名空间
   已另有一份（消费方是 `@fenix/ui-components` 的文件树视图），`dropToUpload` / `uploadTo` 的消费方是宿主面板
   自己的拖拽遮罩——它们不随迁，否则会在包字典里变成死键（`web/__tests__/machine-i18n.test.ts` 双向断言）。

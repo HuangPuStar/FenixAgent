@@ -6,7 +6,7 @@ import { useFileTreeLayout } from "../hooks/use-file-tree-layout";
 import { FILE_TREE_DEFAULT_WIDTH, FILE_TREE_MIN_WIDTH } from "../lib/file-tree-layout";
 import { FileTabsBar } from "./FileTabsBar";
 import { FileTreeTab, type FileTreeTabHandle } from "./FileTreeTab";
-import { FileTreeLayoutControls } from "./file-tree-layout-controls";
+import { FileTreeLayoutToggle } from "./file-tree-layout-toggle";
 import { FileTreeWorkbench } from "./file-tree-workbench";
 
 interface ArtifactsFilesWorkspaceProps {
@@ -34,9 +34,10 @@ function readFileTreeWidth(): number {
  * Files mode keeps the explorer and preview in one VS Code-like workbench.
  *
  * 布局（2026-10-15）：文件树有「浮动 / 固定」两种模式，几何归 `FileTreeWorkbench`，本组件只做装配——
+ * - 两种模式共用一棵 DOM（切模式不重建预览与树，见 `file-tree-workbench.tsx` 的说明）；
  * - 模式判定与持久化（`fenix:file-tree-layout`）：`useFileTreeLayout`，未手动选择时小屏浮动、大屏固定；
- * - 切换控件放进树的面板标题栏（`FileTreeTab` → `FileTreeView` 的 `headerActions` 槽），两种模式下都在同一处；
- * - 浮层开合是本地状态：浮动模式下关闭后由工作台左缘的常驻按钮重开。
+ * - 模式切换控件在树的面板标题栏（`FileTreeTab` → `FileTreeView` 的 `headerActions` 槽）；
+ * - 浮动模式下树的显隐由预览区左缘的常驻切换按钮负责（工作台渲染），首屏在小屏默认收起。
  *
  * 归属（2026-09-24，台账 `ce-standards-todo.md` D2）：由宿主
  * `apps/web/src/shell/artifacts/artifacts-files-workspace.tsx` 迁入（该簇 2026-09-28 归位到
@@ -55,9 +56,13 @@ export function ArtifactsFilesWorkspace({
   onOpenFile,
   onReferenceFile,
 }: ArtifactsFilesWorkspaceProps) {
-  const { mode: treeLayout, toggleMode } = useFileTreeLayout();
-  const [overlayOpen, setOverlayOpen] = useState(true);
+  const { mode: treeLayout, isWideViewport, toggleMode } = useFileTreeLayout();
+  // 首屏：小屏（<1024px）默认浮动 → 收起，只露切换按钮、内容区最大化；大屏维持「固定 + 展开」。
+  // 用惰性初值而不是 effect：首帧就该是最终形态，否则会闪一下展开态。
+  const [treeOpen, setTreeOpen] = useState(() => treeLayout === "docked" || isWideViewport);
   const initialFileTreeWidthRef = useRef(readFileTreeWidth());
+
+  const overlayOpen = treeLayout === "floating" && treeOpen;
 
   const handleTreeWidthChange = useCallback((width: number) => {
     try {
@@ -67,30 +72,29 @@ export function ArtifactsFilesWorkspace({
     }
   }, []);
 
-  const openOverlay = useCallback(() => setOverlayOpen(true), []);
-  const closeOverlay = useCallback(() => setOverlayOpen(false), []);
+  const toggleTree = useCallback(() => setTreeOpen((open) => !open), []);
+  const closeTree = useCallback(() => setTreeOpen(false), []);
+
+  // 手选切模式后必须保持可见：从固定切到浮动却看不到树，等于点了没有反馈（用户逐条确认过）。
+  const switchLayoutMode = useCallback(() => {
+    setTreeOpen(true);
+    toggleMode();
+  }, [toggleMode]);
 
   return (
     <FileTreeWorkbench
       layout={treeLayout}
       initialTreeWidth={initialFileTreeWidthRef.current}
       onTreeWidthChange={handleTreeWidthChange}
-      overlayOpen={overlayOpen}
-      onOpenOverlay={openOverlay}
+      treeOpen={treeOpen}
+      onToggleTree={toggleTree}
       tree={
         <FileTreeTab
           ref={fileTreeRef}
           envId={envId}
           onPreviewFile={onOpenFile}
           onReferenceFile={onReferenceFile}
-          headerActions={
-            <FileTreeLayoutControls
-              mode={treeLayout}
-              onToggleMode={toggleMode}
-              // 只有「浮动且打开」时才有可关闭的浮层；固定模式下树是布局的一列。
-              onCloseOverlay={treeLayout === "floating" && overlayOpen ? closeOverlay : undefined}
-            />
-          }
+          headerActions={<FileTreeLayoutToggle mode={treeLayout} onToggleMode={switchLayoutMode} />}
         />
       }
       preview={
@@ -103,14 +107,21 @@ export function ArtifactsFilesWorkspace({
             onCloseFile={onCloseFile}
             onPreviewChangedFile={onOpenFile}
           />
-          {/* 预览源文件的 URL 与取数都注入自本包的 fs 客户端（§5.8：组件不拼后端 URL、不裸调 fetch）；
-              预览 tab 内不再有全局 fetch 兜底，两个 prop 必须一起给。 */}
-          <PreviewTab
-            envId={envId}
-            filePath={activeFile}
-            buildPreviewUrl={buildPreviewSourceUrl}
-            fetchPreview={readPreviewSource}
-          />
+          {/* 点预览区收起浮层：遮罩只盖预览内容区（不含 tab 栏），既满足「点文件树以外区域收起」，
+              又不至于让带浮层时连 tab 都点不动。不做 Esc 关闭、也不做选中文件后自动收起。 */}
+          <div className="relative flex-1 min-h-0 min-w-0">
+            {/* 预览源文件的 URL 与取数都注入自本包的 fs 客户端（§5.8：组件不拼后端 URL、不裸调 fetch）；
+                预览 tab 内不再有全局 fetch 兜底，两个 prop 必须一起给。 */}
+            <PreviewTab
+              envId={envId}
+              filePath={activeFile}
+              buildPreviewUrl={buildPreviewSourceUrl}
+              fetchPreview={readPreviewSource}
+            />
+            {overlayOpen && (
+              <div data-slot="file-tree-overlay-backdrop" className="absolute inset-0 z-10" onClick={closeTree} />
+            )}
+          </div>
         </>
       }
     />

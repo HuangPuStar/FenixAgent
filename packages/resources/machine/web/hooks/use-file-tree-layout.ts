@@ -35,6 +35,8 @@ function matchesWideViewport(): boolean {
 export interface FileTreeLayoutState {
   /** 生效模式：显式选择优先，否则按屏宽（小屏浮动、大屏固定）。 */
   mode: FileTreeLayoutMode;
+  /** 屏宽是否达到大屏断点。消费方用它决定**首屏**是否收起树（小屏浮动默认收起，大屏维持展开）。 */
+  isWideViewport: boolean;
   /** 切换控件回调：记为**显式选择**并持久化，此后不再随屏宽变化（用户已明确要求记住选择）。 */
   toggleMode: () => void;
 }
@@ -65,5 +67,5 @@ export function useFileTreeLayout(): FileTreeLayoutState {
     persistLayout(next);
   }, [mode]);
 
-  return { mode, toggleMode };
+  return { mode, isWideViewport, toggleMode };
 }

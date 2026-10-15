@@ -1,9 +1,9 @@
 // web/__tests__/file-tree-layout-switch.test.tsx
-// 文件树「浮动 / 固定」的接线行为：默认值来自屏宽还是已存偏好、切换控件写不写 localStorage、
-// 浮动浮层的开合与重开入口。
+// 文件树「浮动 / 固定」的接线行为：首屏默认（按屏宽）、模式切换与持久化、浮动模式下树的开合
+// （常驻切换按钮 / 点预览区收起）。
 //
 // 为什么必须渲染而不是扫源码：默认判定是**两步**（未手动选择 → 屏宽；已手动选择 → 用户意志），
-// 每一步都跨 hook / 控件 / 容器三层接线；浮层开合是本地状态。两者都只有真跑一遍才看得到。
+// 开合与切换跨 hook / 工作台 / 控件三层接线；两者都只有真跑一遍才看得到。
 //
 // 环境：happy-dom + react-dom/client（与同批包的组件用例同款）。被测组件以 `envId=null` 挂载——
 // 该环境下不拉文件树、不开 `/web/file-events`，布局行为与远端状态无关，用例因此不碰网络。
@@ -146,8 +146,17 @@ function layoutOf(container: HTMLElement): string | null {
   return container.querySelector("[data-tree-layout]")?.getAttribute("data-tree-layout") ?? null;
 }
 
-function buttonByLabel(container: HTMLElement, label: string): HTMLButtonElement | null {
+function bySlot(container: HTMLElement, slot: string): HTMLElement | null {
+  return container.querySelector<HTMLElement>(`[data-slot="${slot}"]`);
+}
+
+function byLabel(container: HTMLElement, label: string): HTMLButtonElement | null {
   return container.querySelector<HTMLButtonElement>(`button[aria-label="${label}"]`);
+}
+
+/** 浮动模式的常驻切换按钮（工作台渲染，收起态也可点）。 */
+function overlayToggle(container: HTMLElement): HTMLButtonElement | null {
+  return bySlot(container, "file-tree-overlay-toggle") as HTMLButtonElement | null;
 }
 
 let mounted: Root | null = null;
@@ -173,51 +182,72 @@ afterAll(() => {
 });
 
 describe("文件树浮动 / 固定接线", () => {
-  // 业务意图：未手动选择 + 大屏 → 固定（保持现有占位行为），且不因渲染就写偏好（「没选过」必须可辨）。
-  test("未手动选择：大屏默认固定，且不写偏好", () => {
+  // 业务意图：未手动选择 + 大屏 → 固定且展开（保持现有占位行为），且不因渲染就写偏好（「没选过」必须可辨）。
+  test("未手动选择：大屏默认固定且展开，不写偏好", () => {
     const { container, root } = renderWorkspace();
     mounted = root;
 
     expect(layoutOf(container)).toBe("docked");
-    expect(container.querySelector('[data-slot="file-tree-overlay"]')).toBeNull();
-    // 大屏默认固定 → 控件给出的动作是「浮动文件树」（当前状态与动作互斥，与面板的 `panelMode.*` 同款口径）。
-    expect(buttonByLabel(container, "浮动文件树")).not.toBeNull();
+    expect(bySlot(container, "file-tree-overlay")).toBeNull();
+    // 浮动模式的常驻切换按钮只在浮动模式下存在；大屏固定时切模式的动作在树的面板标题栏里。
+    expect(overlayToggle(container)).toBeNull();
+    expect(byLabel(container, "浮动文件树")).not.toBeNull();
     expect(dockedQuery.questions).toContain(FILE_TREE_DOCKED_MEDIA_QUERY);
     expect(win.localStorage.getItem(FILE_TREE_LAYOUT_STORAGE_KEY)).toBeNull();
   });
 
-  // 业务意图：未手动选择 + 小屏 → 浮动浮层呈现，主内容宽度不再被切走，且浮层可关闭。
-  test("未手动选择：小屏默认浮动，浮层与关闭入口都在", () => {
+  // 业务意图：未手动选择 + 小屏 → 浮动且**收起**：只露切换按钮，内容区最大化。
+  test("未手动选择：小屏默认浮动且收起，只露切换按钮", () => {
     dockedQuery = installDockedQuery(false);
     const { container, root } = renderWorkspace();
     mounted = root;
 
     expect(layoutOf(container)).toBe("floating");
-    expect(container.querySelector('[data-slot="file-tree-overlay"]')).not.toBeNull();
-    expect(buttonByLabel(container, "固定文件树")).not.toBeNull();
-    expect(buttonByLabel(container, "关闭文件树")).not.toBeNull();
+    expect(bySlot(container, "file-tree-overlay")).toBeNull();
+    const toggle = overlayToggle(container);
+    expect(toggle).not.toBeNull();
+    expect(toggle?.getAttribute("aria-expanded")).toBe("false");
+    expect(toggle?.getAttribute("aria-label")).toBe("显示文件树");
     expect(win.localStorage.getItem(FILE_TREE_LAYOUT_STORAGE_KEY)).toBeNull();
   });
 
-  // 业务意图：没选过的用户缩放窗口时布局要跟着断点走（否则「按屏宽默认」只在刷新那一刻成立）。
-  test("未手动选择：跨断点缩放跟随屏宽", () => {
+  // 业务意图：切换按钮是浮动模式下树的唯一开合入口——点开露出浮层，再点收起（键盘可达由 aria-expanded 表达）。
+  test("切换按钮开合浮层", () => {
+    dockedQuery = installDockedQuery(false);
     const { container, root } = renderWorkspace();
     mounted = root;
-    expect(layoutOf(container)).toBe("docked");
 
-    act(() => dockedQuery.emit(false));
-    expect(layoutOf(container)).toBe("floating");
+    act(() => overlayToggle(container)?.click());
+    expect(bySlot(container, "file-tree-overlay")).not.toBeNull();
+    expect(overlayToggle(container)?.getAttribute("aria-expanded")).toBe("true");
+    expect(overlayToggle(container)?.getAttribute("aria-label")).toBe("关闭文件树");
 
-    act(() => dockedQuery.emit(true));
-    expect(layoutOf(container)).toBe("docked");
+    act(() => overlayToggle(container)?.click());
+    expect(bySlot(container, "file-tree-overlay")).toBeNull();
+    expect(overlayToggle(container)?.getAttribute("aria-expanded")).toBe("false");
   });
 
-  // 业务意图：点切换控件 → 立刻换版式并记为显式选择（持久化）；此后缩放不再覆盖用户意志。
-  test("切换控件：写入 localStorage 后屏宽不再覆盖", () => {
+  // 业务意图：浮层展开时点预览区（遮罩）应收起树，且不改变模式偏好（收起是显示态，不是模式选择）。
+  test("点预览区收起浮层", () => {
+    dockedQuery = installDockedQuery(false);
     const { container, root } = renderWorkspace();
     mounted = root;
 
-    const toggle = buttonByLabel(container, "浮动文件树");
+    act(() => overlayToggle(container)?.click());
+    expect(bySlot(container, "file-tree-overlay-backdrop")).not.toBeNull();
+
+    act(() => bySlot(container, "file-tree-overlay-backdrop")?.click());
+    expect(bySlot(container, "file-tree-overlay")).toBeNull();
+    expect(layoutOf(container)).toBe("floating");
+    expect(win.localStorage.getItem(FILE_TREE_LAYOUT_STORAGE_KEY)).toBeNull();
+  });
+
+  // 业务意图：点模式切换控件 → 立刻换版式并记为显式选择（持久化）；此后缩放不再覆盖用户意志。
+  test("模式切换：写入 localStorage 后屏宽不再覆盖", () => {
+    const { container, root } = renderWorkspace();
+    mounted = root;
+
+    const toggle = byLabel(container, "浮动文件树");
     expect(toggle).not.toBeNull();
     act(() => toggle?.click());
 
@@ -231,30 +261,46 @@ describe("文件树浮动 / 固定接线", () => {
     expect(layoutOf(container)).toBe("floating");
   });
 
-  // 业务意图：浮动模式下关掉浮层后主内容完全露出，且必须有重开入口（否则用户无法再找回文件树）。
-  test("浮动模式下关闭浮层后可重开", () => {
-    dockedQuery = installDockedQuery(false);
+  // 业务意图：从固定切到浮动必须**看得到树**——否则用户点了却没有任何可见反馈。
+  test("从固定切到浮动保持展开", () => {
     const { container, root } = renderWorkspace();
     mounted = root;
+    expect(layoutOf(container)).toBe("docked");
 
-    const close = buttonByLabel(container, "关闭文件树");
-    act(() => close?.click());
-    expect(container.querySelector('[data-slot="file-tree-overlay"]')).toBeNull();
-
-    const reopen = buttonByLabel(container, "显示文件树");
-    expect(reopen).not.toBeNull();
-    act(() => reopen?.click());
-    expect(container.querySelector('[data-slot="file-tree-overlay"]')).not.toBeNull();
+    act(() => byLabel(container, "浮动文件树")?.click());
+    expect(layoutOf(container)).toBe("floating");
+    expect(bySlot(container, "file-tree-overlay")).not.toBeNull();
+    expect(overlayToggle(container)?.getAttribute("aria-expanded")).toBe("true");
   });
 
-  // 业务意图：用户已明确要求记住选择——已存的「固定」在小屏下也必须生效（默认值不得盖掉偏好）。
-  test("已存偏好优先于屏宽默认", () => {
-    win.localStorage.setItem(FILE_TREE_LAYOUT_STORAGE_KEY, "docked");
+  // 业务意图：收起态切到固定再切回浮动同样要展开（小屏用户常见的往返路径，最容易留下「点了没反应」）。
+  test("收起态往返切换：切回浮动仍展开", () => {
     dockedQuery = installDockedQuery(false);
     const { container, root } = renderWorkspace();
     mounted = root;
+    expect(bySlot(container, "file-tree-overlay")).toBeNull();
 
+    // 先展开（模式控件在树的面板标题栏里，收起时不可见），再切固定、切回浮动。
+    act(() => overlayToggle(container)?.click());
+    act(() => byLabel(container, "固定文件树")?.click());
     expect(layoutOf(container)).toBe("docked");
-    expect(container.querySelector('[data-slot="file-tree-overlay"]')).toBeNull();
+    act(() => byLabel(container, "浮动文件树")?.click());
+    expect(layoutOf(container)).toBe("floating");
+    expect(bySlot(container, "file-tree-overlay")).not.toBeNull();
+  });
+
+  // 业务意图：没手选过的用户缩放窗口时模式跟着断点走，但**收起态不被自动改写**（不做跨断点自动开合）。
+  test("未手动选择：跨断点缩放跟随屏宽但不自动开合", () => {
+    const { container, root } = renderWorkspace();
+    mounted = root;
+    expect(layoutOf(container)).toBe("docked");
+
+    act(() => dockedQuery.emit(false));
+    expect(layoutOf(container)).toBe("floating");
+    // 大屏首屏是展开的，跨到小屏后保持展开——用户没点过切换按钮。
+    expect(bySlot(container, "file-tree-overlay")).not.toBeNull();
+
+    act(() => dockedQuery.emit(true));
+    expect(layoutOf(container)).toBe("docked");
   });
 });

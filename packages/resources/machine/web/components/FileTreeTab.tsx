@@ -58,7 +58,7 @@ interface FileTreeTabProps {
   envId: string | null;
   onPreviewFile: (path: string) => void;
   onReferenceFile: (path: string, name: string) => void;
-  /** 追加到树的面板标题栏的控件（本包用 `FileTreeLayoutControls` 放布局切换）；视图侧由调用方决定内容。 */
+  /** 追加到树的面板标题栏的控件（本包用 `FileTreeLayoutToggle` 放布局切换）；视图侧由调用方决定内容。 */
   headerActions?: ReactNode;
 }
 
