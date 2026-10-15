@@ -114,7 +114,7 @@ For production deployment, where the target host does not need source code or Do
 
 ### Local development
 
-Prerequisites: Bun, Docker, Docker Compose, and a usable Peri agent engine (the default for local execution) on your `PATH`. To use another engine, install its CLI yourself; OpenCode version `opencode-ai@1.17.12` is recommended because newer versions may have compatibility issues.
+Prerequisites: Bun, Docker, Docker Compose, and a usable Peri agent engine (the default for local execution) on your `PATH`. Install it using the [Peri installation guide](https://github.com/KonghaYao/peri). To use another engine, install its CLI and explicitly set `RCS_DEFAULT_ENGINE_TYPE` in `.env`, for example `RCS_DEFAULT_ENGINE_TYPE=opencode`; OpenCode version `opencode-ai@1.17.12` is recommended because newer versions may have compatibility issues.
 
 ```bash
 # Start only PostgreSQL.
