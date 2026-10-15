@@ -26,7 +26,7 @@
 
 | 层 | 内容 | 生命周期 |
 | --- | --- | --- |
-| 主服务项目 | 主服务 `rcs` + 基础服务（`include docker/common/`）；生产用 `docker/main/docker-compose.yml`（无 `build:`），dev 裸 `docker compose up -d`（仓库根文件）即最小可用集（rcs + postgres） | 与部署同生共死 |
+| 主服务项目 | 主服务 `rcs` + 基础服务（dev 内联 `postgres` / `redis`，生产经 `include` 引入 `docker/common/`）；生产用 `docker/main/docker-compose.yml`（无 `build:`），dev 裸 `docker compose up -d`（仓库根文件）即最小可用集（rcs + postgres） | 与部署同生共死 |
 | 依赖目录 | 可选能力与执行节点（`docker/<name>/`，一个目录一个独立 Compose 项目） | 独立起停、独立升级 |
 | 交付面 | `docker/deploy.sh` + `docker/deploy.env` + 上述文件 | 随版本发布 |
 
@@ -68,9 +68,10 @@ services:
 要点：
 
 - `rcs` 的启动命令为 `bun migrate.js && exec bun --no-install run dist/index.js`——DDL 迁移先于应用进程。
-- **两份文件的差异只有 `build:` 与数据落点**：dev 文件（仓库根）带 `build: { context: ., dockerfile: Dockerfile }`
-  并挂仓库根的 `./data`、`./workflow`、`./workspaces`；生产文件不声明 `build:`（目标机没有源码与 Dockerfile），
-  挂 `docker/main/` 下的同名目录。
+- **两份文件的差异有三处**：`build:` 段（仅 dev，文件在仓库根、带 `build: { context: ., dockerfile: Dockerfile }`；
+  生产文件不声明，目标机没有源码与 Dockerfile）、基础服务的引入方式（dev 就地内联 `postgres` / `redis`；生产经
+  `include` 引入 `docker/common/`）、数据落点（dev 挂仓库根的 `./data`、`./workflow`、`./workspaces`；
+  生产挂 `docker/main/` 下的同名目录）。
 - **手动执行生产文件读同目录的 env**：compose 的项目目录是 `docker/main/`，插值与 `env_file` 都读那里（`docker/main/.env`），
   所以在任意工作目录执行 `docker compose -f docker/main/docker-compose.yml …` 即可，不需要 `--env-file`；经
   `./docker/deploy.sh` 时读的是同一份文件（脚本读入后连 `docker/deploy.env` 一起导出为 shell 环境）。
@@ -169,10 +170,10 @@ flowchart LR
     Dev["浏览器 :3001"] --> RCS["rcs 容器（dev 走 build:）"]
     RCS --> PG[("postgres 必需")]
     RCS -.->|"profile redis"| REDIS[("redis")]
-    RCS -.->|"profile s3"| RUSTFS[("rustfs")]
 ```
 
-`docker compose up -d --build` 即最小可用集（rcs + postgres）；`--profile redis` / `--profile s3` 附加可选基础服务。与生产单机是**同项目名、同网络的两份文件**（dev 根文件 / 生产 `docker/main/`），二选一运行。
+`docker compose up -d --build` 即最小可用集（rcs + postgres）；`--profile redis` 附加可选缓存。dev 根编排
+**不再提供** `rustfs` / `mysql`（它们只在生产形态经 `docker/common/` 引入）。与生产单机是**同项目名、同网络的两份文件**（dev 根文件 / 生产 `docker/main/`），二选一运行。
 
 ### 4.2 生产单机
 

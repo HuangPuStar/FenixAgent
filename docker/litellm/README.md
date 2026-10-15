@@ -44,7 +44,7 @@ docker compose --env-file docker/litellm/.env --env-file "$MAIN_ENV" \
   docker compose -f docker-compose.yml up -d postgres                          # dev（仓库根编排）
   docker compose -f docker/main/docker-compose.yml up -d postgres   # 生产（自动读 docker/main/.env）
   ```
-  `postgres` 是主服务项目（dev 是仓库根 `docker-compose.yml`，生产是 `docker/main/docker-compose.yml`；两份都 `include docker/common/`）的服务名。它不在时本目录的
+  `postgres` 是主服务项目（dev 是仓库根 `docker-compose.yml`，生产是 `docker/main/docker-compose.yml`；dev 就地内联 `postgres`，生产经 `include` 引入 `docker/common/`）的服务名。它不在时本目录的
   初始化服务会等待 360 秒后带判定退出，`litellm` 不会被拉起（见「共享 PostgreSQL」）。
 - `LITELLM_MASTER_KEY` / `LITELLM_SALT_KEY` 已填（缺失即启动失败）；共享键 `LITELLM_DB_PASSWORD` 在主服务 env。
 - 宿主可拉取 `ghcr.io/berriai/litellm:v1.93.0` 与 `postgres:16-alpine`（后者是初始化服务用的镜像）。

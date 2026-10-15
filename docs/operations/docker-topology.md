@@ -170,7 +170,7 @@
 dev 形态另外用 `include` 引入 `docker/dev/` 下的可选组件（litellm / ragflow / hindsight / agent-sites /
 opensandbox），每份子文件的服务都带 `profiles: ["<组件名>"]`，因此裸 `docker compose up -d` 仍只起
 `postgres` + `rcs`，加组件用 `docker compose --profile <组件名> up -d`。组件的键是**第三种 env 形态**
-（§8），dev 根文件不在部署面 env 发现范围内（§8 第 1 条）。
+（§8），dev 根文件不在部署面 env 发现范围内（见 §8 与 `scripts/generate-env-example.ts`）。
 
 ### 4.1 结构（以生产形态 `docker/main/` 为例）
 
@@ -650,7 +650,9 @@ TZ=Asia/Shanghai
 
 ### 11.1 本地开发
 
-- 容器全栈（dev 形态）：**零配置准备**，`docker compose up -d`（**裸命令**，用仓库根编排，
+- 容器全栈（dev 形态）：先备好仓库根 `.env` 的**唯一必填项**——`cp .env.example .env` 并填 `RCS_API_KEYS`
+  （`rcs` 里写的是 `${RCS_API_KEYS:?}`，无默认值；插值先于 profile 过滤，缺它连 `docker compose config`
+  都过不去）。这一步做完后**组件零配置**，`docker compose up -d`（**裸命令**，用仓库根编排，
   最小集 `postgres` + `rcs`；数据落仓库根）。组件按需追加：
   ```bash
   docker compose --profile redis up -d                          # 缓存
