@@ -52,6 +52,8 @@ export function DataView({
   onExpandToggle,
 }: DataViewProps) {
   const { t } = useTranslation(NS.HINDSIGHT);
+  // 图片在 vite base（/ctrl/）下分发：绝对路径必须以 BASE_URL 开头，缺前缀会落到后端非路由路径而加载失败。
+  const assetBase = import.meta.env.BASE_URL;
   const [viewMode, setViewMode] = useState<ViewMode>("constellation");
   const [compactMode, setCompactMode] = useState(compact);
   const [currentPage, setCurrentPage] = useState(1);
@@ -143,7 +145,7 @@ export function DataView({
           <p className="text-sm font-semibold text-foreground">{t("dataView.emptyTitle")}</p>
           <p className="mt-1 text-xs text-muted-foreground">{t("dataView.emptyHint")}</p>
           <img
-            src="/images/memories-empty.webp"
+            src={`${assetBase}images/memories-empty.webp`}
             alt={t("dataView.emptyTitle")}
             className="w-[70%] max-w-full mt-6 mb-4 opacity-80"
           />
