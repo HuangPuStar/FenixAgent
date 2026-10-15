@@ -307,7 +307,7 @@ flowchart LR
 5. 发布顺序 DDL → 数据 → 应用，不得颠倒；数据迁移不进容器启动命令。
 6. 密钥只进 `.env`。
 7. 镜像 tag 与 Compose 项目名写死在文件里，不做环境变量插值，不用 `latest`（版本键例外见 §1 决策 8）。
-8. 数据一律 bind 挂载在交付目录内，禁止命名卷与匿名卷。
+8. 数据一律 bind 挂载在交付目录内，禁止命名卷与匿名卷。**已知例外**（完整清单与理由见 [编排体系](../operations/docker-topology.md) §13 硬约束 8）：`docker/dev/docker-compose.opensandbox.yml` 的 `opensandbox-server` 把 DinD 状态目录 `/var/lib/docker` 挂成命名卷 `fenix_opensandbox-server-dind-docker`——DinD 内部状态（镜像 / 容器 / 卷）不需搬迁或备份，且 macOS 上 bind 进去会让 dockerd 在 overlay2 的 metacopy 检查处 chmod 只读文件系统而崩溃循环。移除条件：平台文件共享支持 dockerd 所需的 chmod，或节点改为非 DinD 形态。
 9. Compose ≥ 2.20；include 与独立启动文件的相对路径均相对其自身目录解析。
 10. 每个依赖目录必须有 README 与 `.env.example`；新增依赖 = 新目录 + 开关登记。
 

@@ -79,7 +79,7 @@
 
 仓库根
 ├── docker-compose.yml          # dev 形态编排（带 build，本地构建；数据落仓库根 data/ 等）
-├── .env / .env.example         # dev 形态的应用配置与密钥（根编排 include 的 common 也读这一份）
+├── .env / .env.example         # dev 形态的应用配置与密钥（根编排 include 的 docker/dev/ 组件也读这一份）
 ├── data/ workflow/ workspaces/ # dev 运行期数据（bind 挂载点，不进版本控制）
 └── docker/
     ├── main/                   # 生产形态编排（无 build，只用发布镜像；env 为同目录 .env，数据落 main/ 下的同名目录）
@@ -162,9 +162,15 @@
 
 ## 4. 主服务编排（dev：仓库根 `docker-compose.yml`；生产：`docker/main/docker-compose.yml`）
 
-两份文件的差异只有两处：`build:` 段（仅 dev，用于本地构建）与数据挂载路径（dev 落仓库根，生产落 `docker/main/`
-下）。`env_file` 两边都指向**同目录**的 `.env`（§8）——compose 的项目目录就是编排文件所在目录，所以这类相对
+两份文件的差异有三处：`build:` 段（仅 dev，用于本地构建）、基础服务的引入方式（dev 把 `postgres` / `redis`
+就地内联；生产经 `include` 引入 `docker/common/`）、数据挂载路径（dev 落仓库根，生产落 `docker/main/` 下）。
+`env_file` 两边都指向**同目录**的 `.env`（§8）——compose 的项目目录就是编排文件所在目录，所以这类相对
 路径不需要区分 dev / prod。项目名、网络与服务定义保持一致，因此两者**二选一运行**——同项目名会互相接管容器。
+
+dev 形态另外用 `include` 引入 `docker/dev/` 下的可选组件（litellm / ragflow / hindsight / agent-sites /
+opensandbox），每份子文件的服务都带 `profiles: ["<组件名>"]`，因此裸 `docker compose up -d` 仍只起
+`postgres` + `rcs`，加组件用 `docker compose --profile <组件名> up -d`。组件的键是**第三种 env 形态**
+（§8），dev 根文件不在部署面 env 发现范围内（§8 第 1 条）。
 
 ### 4.1 结构（以生产形态 `docker/main/` 为例）
 
@@ -193,6 +199,10 @@ services:
 - 网络定义在主服务编排（网络属于主服务层）；common 文件内的服务引用同名网络，随主服务编排一起启动，不单独运行。
 - common 里的共享服务**不得引用 `docker/<依赖>/` 下的任何文件**：主服务编排 include 的插值环境在没装依赖的机器上也要成立
   （在没装任何依赖的机器上，`docker compose -f <主服务编排> config` 必须能跑通）。这条约束决定了「业务初始化归消费方」的形态（§5）。
+- dev 形态的 `include` 引的是 `docker/dev/` 下的组件子编排，方向相反：那些文件**可以**引用 `docker/<依赖>/`
+  下的只读配置文件（`../ragflow/infinity_conf.toml`、`../opensandbox-cluster/frps.toml`），因为 dev 编排
+  本来就只在仓库内使用、不随交付面外发。生产 `include` 的这条约束（本文件解析不依赖任何依赖目录）不受影响：
+  它约束的是 `docker/common/`，那份编排至今未引用任何依赖目录。
 
 ### 4.2 dev / prod 分离机制
 
@@ -233,6 +243,8 @@ services:
   mysql:          # profiles: ["mysql"]          共享关系库；消费方 docker/workflow/ 与 docker/ragflow/
 ```
 
+- **消费方只剩 `docker/main/`**：dev 形态（仓库根文件）把 `postgres` / `redis` 就地内联了，不再 include 本目录。
+  因此本目录的改动只影响生产形态。
 - 四个服务都接入 `fenix-server`（§3）：主服务必需，且服务名是跨项目 DNS 名（全局保留名）。
 - `redis` / `rustfs` 默认不发布宿主端口，仅网络内互通；`postgres` 的宿主端口由 `POSTGRES_PORT` 控制（本地源码开发需要，prod 可关）；
   `mysql` 的宿主端口由 `MYSQL_HOST_PORT`（默认 3306）控制，同样只绑回环、供宿主运维工具与排查用。
@@ -274,8 +286,8 @@ services:
 
 | 服务 | 开关 | 容器内地址（宿主端口） | 消费方 | 数据落点 |
 | --- | --- | --- | --- | --- |
-| `postgres` | 恒启动 | `postgres:5432`（`POSTGRES_PORT`，回环） | `rcs`（`DATABASE_URL`，库 `rcs`）；`docker/litellm/` 的库 `litellm` 与角色 `litellm`（由 `litellm-db-init` 建） | `docker/common/data/postgres` |
-| `redis` | `FENIX_FEATURE_REDIS` | `redis:6379`（不发布宿主端口） | 只有 `rcs`（`RCS_REDIS_URL`）；两个依赖栈各自保留栈内实例（见下） | `docker/common/data/redis` |
+| `postgres` | 恒启动 | `postgres:5432`（`POSTGRES_PORT`，回环） | `rcs`（`DATABASE_URL`，库 `rcs`）；`docker/litellm/` 的库 `litellm` 与角色 `litellm`（由 `litellm-db-init` 建） | `docker/common/data/postgres`（dev 形态另有一份：仓库根 `./data/postgres`） |
+| `redis` | `FENIX_FEATURE_REDIS` | `redis:6379`（不发布宿主端口） | 只有 `rcs`（`RCS_REDIS_URL`）；两个依赖栈各自保留栈内实例（见下） | `docker/common/data/redis`（dev 形态另有一份：仓库根 `./data/redis`） |
 | `rustfs` | `FENIX_FEATURE_S3` | `rustfs:9000`（S3 API）/ `9001`（控制台），默认不发布宿主端口 | 只有 `docker/workflow/`（桶 `opencoze`、`milvus`，由 `s3-init` 建）。`docker/ragflow/` **已改为自带实例**（`ragflow-rustfs`，只在它的项目网络里，见 §5），不消费本实例、也不受 `FENIX_FEATURE_S3` 影响 | `docker/common/data/rustfs` |
 | `mysql` | `FENIX_FEATURE_MYSQL` | `mysql:3306`（`MYSQL_HOST_PORT`，回环） | `docker/workflow/`（库 `opencoze`，由 `mysql-init` 建）；`docker/ragflow/`（库 `rag_flow`、账号 `ragflow`，由 `ragflow-mysql-init` 建） | `docker/common/data/mysql` |
 
@@ -475,8 +487,20 @@ compose 的项目目录 = 该 compose 文件所在目录，变量插值与 `env_
 | --- | --- | --- | --- |
 | `docker/deploy.env` | 部署开关与部署参数（端口等，主服务） | `docker/deploy.env.example` | `docker/deploy.env` |
 | `docker/main/.env` | 主服务（rcs）的应用配置与密钥 + **跨服务共享键**（含基础服务凭据 `POSTGRES_PASSWORD`、`MYSQL_*`）；也是主服务编排的插值来源 | `docker/main/.env.example` | `docker/main/.env` |
-| 根 `.env` | 只服务 dev 形态：根 `docker-compose.yml`（含它 include 的 common）与 `bun run dev`（Bun 自动读仓库根） | `.env.example` | `.env` |
+| 根 `.env` | 只服务 dev 形态：根 `docker-compose.yml`（含它 include 的 `docker/dev/` 组件）与 `bun run dev`（Bun 自动读仓库根） | `.env.example` | `.env` |
 | `docker/<name>/.env` | 该依赖的私有键 | `docker/<name>/.env.example` | 同目录 `.env` |
+
+**dev 组件（`docker/dev/docker-compose.<组件>.yml`）是上表之外的另一种形态：它不设任何 env 文件。**
+键全部写成 `${VAR:-默认值}` 内联在编排里，
+**没有** `.env.<组件名>` 文件，也没有 `cp` 步骤。插值来源仍是**项目目录的 `.env`**（= 仓库根 `.env`）——
+所以想改任何组件的默认值，都在仓库根 `.env` 写同名键，一个入口。默认值只服务本地、不安全，
+compose 注释里逐条注明生产必须覆盖。这一形态不适用于依赖目录与主服务编排：那两处按 §8 的
+三段式与 `${VAR:?}` 执行。
+
+dev 根文件**不在部署面 env 发现范围内**（`scripts/generate-env-example.ts` 的 `DEPLOY_SURFACE_FILES`）：
+它内联默认值、含组件专用键，「两份主服务编排的插值键必须一致」这一前提对它不再成立；
+移出后 dev 面新增、改名、删除键都不需要登记或重新生成。生产面（`docker/main/` + `docker/common/`）
+覆盖 `DEPLOY_KEY_NOTES` 的全量键，`docker/deploy.env.example` 的产出不受影响。
 
 `docker/common/`（基础服务）不设自己的 env 文件：它随主服务 `include` 启动，插值由主服务那一次 `docker compose`
 调用决定（dev 读仓库根 `.env`，生产读 `docker/main/.env`；经 `deploy.sh` 时由脚本把主服务 env 导出为 shell 环境），
@@ -626,8 +650,17 @@ TZ=Asia/Shanghai
 
 ### 11.1 本地开发
 
-- 容器全栈（dev 形态）：`./docker/deploy.sh init`（生成配置）→ 按需开开关 → `docker compose up -d`（**裸命令**，
-  用仓库根编排，最小集 rcs + postgres；数据落仓库根）。
+- 容器全栈（dev 形态）：**零配置准备**，`docker compose up -d`（**裸命令**，用仓库根编排，
+  最小集 `postgres` + `rcs`；数据落仓库根）。组件按需追加：
+  ```bash
+  docker compose --profile redis up -d                          # 缓存
+  docker compose --profile litellm --profile ragflow up -d      # 模型网关 + 知识库
+  docker compose --profile hindsight --profile agent-sites --profile opensandbox up -d
+  docker compose --profile ragflow down                         # 停一组，不影响其他
+  ```
+  除 opensandbox 需 `cp docker/dev/sandbox.toml.example docker/dev/sandbox.toml`（它的 `host_ip`
+  依赖机器与组网形态）外，各组件的默认值直接可用；要改就写**仓库根 `.env`** 的同名键。
+  可覆盖键与默认值对照表见 `docker/dev/README.md`。
 - 源码运行（保持现状）：
   ```bash
   docker compose up -d postgres     # 仅数据库
@@ -774,7 +807,10 @@ docker compose up -d
    （四个都是共享实例的服务名 / 全局保留名，见 §5.1）。**已知例外一处**：`docker/ragflow/` 的 `ragflow-rustfs`
    （本栈自带对象存储，服务名刻意避开 `rustfs`、也不接 `fenix-server`）——用户裁定，理由与边界见 §5；
    加新的例外需要同样明确的裁定与理由，不要因为「它俩形态像」就照抄。
+   dev 形态（仓库根文件）内联了 `postgres` / `redis`，它不是依赖目录、只是保留名的另一个合法归属（§4）。
 2. 网络只有两层（§3）；共享网络名唯一 `fenix-server`；接入它的服务名必须全局唯一，辅助服务不得接入。
+   dev 形态的组件子编排（`docker/dev/`）不受本条约束：它们不是依赖目录，与主服务同属一个项目，
+   全部服务同处 `fenix-server`。
 3. 依赖目录以独立项目启动，禁止与主服务 `-f` 叠加；依赖启动前主服务必须已启动（网络存在性由主服务保证）。
 4. feature 开关与依赖目录一一对应；未知开关报错。
 5. 发布顺序 DDL → 数据 → 应用，任何路径不得颠倒；数据迁移不写进容器启动命令。
@@ -784,10 +820,15 @@ docker compose up -d
 8. **数据一律 bind 挂载**：相对 compose 文件写成 `./data/...`，禁止命名卷与匿名卷——数据必须留在交付面内，
    能整体打包/搬迁/备份，并在 `ls` 里看得出归属。代价见 §14。唯一例外是 `docker/sandbox-peri/` 的工作区
    （多绑一条仓库根 `workspaces/`，见 §6.5 与 §14.17）。
+   **另一处已批准的有意例外**：`docker/dev/docker-compose.opensandbox.yml` 的 `opensandbox-server` 把 DinD
+   状态目录 `/var/lib/docker` 挂成命名卷 `fenix_opensandbox-server-dind-docker`。理由：DinD 内部状态（镜像 /
+   容器 / 卷）不需要搬迁或备份，本就不是本条要保护的「用户数据」；而 macOS 上 bind 进去会让 dockerd 在
+   overlay2 的 metacopy 检查处 chmod 只读文件系统而崩溃循环。移除条件：平台文件共享支持 dockerd 所需的
+   chmod，或节点改为非 DinD 形态。理由与命令同在 `docker/dev/docker-compose.opensandbox.yml` 的 `volumes:` 节。
 9. Compose ≥ 2.20；include 与独立启动文件的相对路径均相对其自身目录解析。
 10. 每个依赖目录必须有 README（含网络接入清单）；新增依赖 = 新目录 + feature 对照表登记 + 契约自检（§6）。
 11. env 按 §8 执行：三段式排序；共享键只在主服务 env 定义；必需项一律 `${VAR:?}`；容器内地址不做同名插值；
-    `docker/common/` 不设自己的 env 文件。
+    `docker/common/` 不设自己的 env 文件；dev 组件是例外形态（内联默认值、不设 env 文件，见 §8），且已移出部署面 env 发现。
 12. 必填项的真相只在 compose 的 `${VAR:?}`（脚本不另存清单）；`up` / `deploy` 在动任何容器前先过这道校验；
     `init` 只创建缺失文件，**绝不覆盖**已有 `.env`（那里面可能已经是生产配置）。唯一需要脚本落值的是模块声明键
     `WORKFLOW_V2_PLATFORM_ACCOUNT_EMAIL`——compose 里没有它（由 rcs 启动期校验），脚本在缺失时按主机名生成并固化
