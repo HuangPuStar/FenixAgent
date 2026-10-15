@@ -83,6 +83,11 @@ export interface FileTreeViewProps {
   userNodes: ParsedFileNode[];
   /** false 时禁用全部改动远端文件的操作（源实现以「有无 envId」表达）。 */
   canMutate?: boolean;
+  /**
+   * 追加在面板标题栏动作区末尾的额外控件。视图本身不定义这些控件的语义（它只负责把位置让出来），
+   * 由消费方决定内容——例如 `@fenix/resource-machine` 的浮动/固定布局切换。
+   */
+  headerActions?: ReactNode;
   onSelect: (node: ParsedFileNode) => void;
   onToggle: (nodeId: string, expanded: boolean) => void;
   onSearchChange: (query: string) => void;
@@ -159,6 +164,7 @@ export function FileTreeView(props: FileTreeViewProps) {
           >
             <FolderInput className="size-3.5" aria-hidden />
           </button>
+          {props.headerActions}
           <input ref={props.fileInputRef} type="file" multiple hidden onChange={props.onFileInputChange} />
           <input
             ref={props.folderInputRef}

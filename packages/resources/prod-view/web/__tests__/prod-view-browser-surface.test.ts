@@ -123,6 +123,11 @@ const BROWSER_SAFE_EXTERNAL: ReadonlyMap<string, string> = new Map([
     "文件预览内核（ui-components components/preview/* 传递依赖，随样式表一起被浏览器加载），纯浏览器实现",
   ],
   ["@open-file-viewer/react", "文件预览 React 绑定（ui-components components/preview/FileViewerPreview 的生产路径）"],
+  ["katex", "数学排版（ui-components components/preview 的 markdown 数学与 LaTeX 渲染），纯浏览器实现"],
+  [
+    "@streamdown/math",
+    "数学渲染插件（ui-components lib/katex-math 经聊天渲染链引入：remark-math + rehype-katex + katex），纯浏览器实现",
+  ],
 ]);
 
 // 曾有一张 `PENDING_MIGRATION_DIRS` 登记表：迁移期允许「跨包宿主别名只来自已登记目录」，被登记的包迁完后

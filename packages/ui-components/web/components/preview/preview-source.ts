@@ -24,7 +24,10 @@
  */
 export type PreviewFetch = (url: string, init?: RequestInit) => Promise<Response>;
 
-export type FileCategory = "code" | "image" | "pdf" | "binary" | "table" | "markdown" | "html" | "office";
+export type FileCategory = "code" | "image" | "pdf" | "binary" | "table" | "markdown" | "html" | "office" | "latex";
+
+/** 需要「渲染而非原样展示」的文档类别（预览走 `DocumentPreview`，见其文件头注释）。 */
+export type DocumentCategory = Extract<FileCategory, "markdown" | "latex">;
 
 const CODE_EXTENSIONS = new Set([
   "ts",
@@ -129,7 +132,50 @@ const OFFICE_EXTENSIONS = new Set(["docx", "doc", "pptx", "ppt", "odt", "odp", "
 
 const MARKDOWN_EXTENSIONS = new Set(["md", "mdx", "markdown"]);
 
+/**
+ * LaTeX 扩展名。`.tex` 是正文，`.latex` / `.ltx` 是同族写法。
+ *
+ * 这三个扩展名在 `@open-file-viewer` 里只会落到 Prism 高亮的源码视图（它的
+ * `mimeLangMap` 把 `application/x-tex` 映射为 `latex`），本包因此把 latex 单独分类，
+ * 交给 `DocumentPreview` 的 LaTeX 渲染分支，不再转交 `FileViewer`。
+ */
+const LATEX_EXTENSIONS = new Set(["tex", "latex", "ltx"]);
+
 const HTML_EXTENSIONS = new Set(["html", "htm"]);
+
+/**
+ * 文档类预览（markdown / LaTeX）的渲染字节上限，超过后只做源码展示。
+ *
+ * 取 512 KB 的理由：这两类渲染都是「整篇同步解析」（markdown 交给 previewer 的 marked，
+ * LaTeX 走本包的结构解析 + 逐条 KaTeX），没有增量窗口；正常文档远小于该值，再往上只会让
+ * 预览面板长时间无响应。上限按**字节**判定（预览源是 Blob，保留响应原始字节数）。
+ */
+export const PREVIEW_MAX_DOCUMENT_BYTES = 512 * 1024;
+
+/** 文档是否按渲染模式展示；超出 `PREVIEW_MAX_DOCUMENT_BYTES` 时退回源码展示。 */
+export function shouldRenderDocumentContent(byteLength: number): boolean {
+  return byteLength <= PREVIEW_MAX_DOCUMENT_BYTES;
+}
+
+/**
+ * 扩展名是否为 markdown。
+ *
+ * 导出给 markdown 数学插件复用：插件的 `match` 拿到的是 `@open-file-viewer` 归一化后的
+ * `file.extension`（无点、已小写），口径必须与本模块的分类表一致，不能再维护第二份清单。
+ */
+export function isMarkdownExtension(extension: string): boolean {
+  return MARKDOWN_EXTENSIONS.has(extension.toLowerCase());
+}
+
+/** 扩展名是否为 LaTeX（口径同上，与 `classifyFile` 共用一份清单）。 */
+export function isLatexExtension(extension: string): boolean {
+  return LATEX_EXTENSIONS.has(extension.toLowerCase());
+}
+
+/** `classifyFile` 的类别是否为文档类（markdown / LaTeX）。 */
+export function isDocumentCategory(category: FileCategory): category is DocumentCategory {
+  return category === "markdown" || category === "latex";
+}
 
 function getExtension(filePath: string): string {
   const segments = filePath.split("/");
@@ -147,6 +193,7 @@ export function classifyFile(filePath: string): FileCategory {
   if (OFFICE_EXTENSIONS.has(ext)) return "office"; // officePlugin 支持，不属于 binary
   if (HTML_EXTENSIONS.has(ext)) return "html";
   if (MARKDOWN_EXTENSIONS.has(ext)) return "markdown";
+  if (LATEX_EXTENSIONS.has(ext)) return "latex";
   if (CODE_EXTENSIONS.has(ext)) return "code";
   return "binary";
 }
@@ -155,6 +202,8 @@ export function classifyFile(filePath: string): FileCategory {
  * 获取预览组件使用的文本 MIME 类型。
  * @open-file-viewer 会把文件名中的 # 当作 URL fragment，导致 #123.txt 的扩展名丢失；
  * 显式传入文本 MIME 后仍能匹配 textPlugin，同时不需要修改用户看到的原始文件名。
+ *
+ * LaTeX 不在其中：它不走 `FileViewer`（见 `DocumentPreview` 的 LaTeX 分支），预览器不消费它的 MIME。
  */
 export function getPreviewMimeType(filePath: string): string | undefined {
   const ext = getExtension(filePath);
@@ -167,10 +216,13 @@ export function getPreviewMimeType(filePath: string): string | undefined {
 /**
  * URL 形式的文本源会让 @open-file-viewer 在元数据缺失时退化为 `text.length`，
  * 把字符数误显示为字节数。HTML 需要保留 URL 供 sandbox iframe 渲染，因此不在此转换。
+ *
+ * 文档类（markdown / LaTeX）也按 Blob 加载：文档预览需要用**响应原始字节数**判定大小上限与空文件，
+ * 这两个判定都要在渲染前完成。
  */
 export function shouldLoadPreviewAsBlob(filePath: string): boolean {
   const category = classifyFile(filePath);
-  return category === "code" || category === "markdown";
+  return category === "code" || category === "markdown" || category === "latex";
 }
 
 /**
@@ -204,4 +256,20 @@ export async function loadByteAccuratePreviewSource(
   const response = await fetchPreview(previewUrl, init);
   if (!response.ok) throw new PreviewSourceError(response.status);
   return response.blob();
+}
+
+/**
+ * 把文档字节解码为文本（`DocumentPreview` 的源码视图与 LaTeX 渲染都用它）。
+ *
+ * 为什么不用 `Blob.text()`：它固定按 UTF-8 解码，UTF-16 的 `.md` / `.tex`（Windows 记事本另存为的
+ * 常见形态）会整篇乱码，而这里拿到的正是未经解析的响应字节。按 BOM 分流；
+ * UTF-8 分支依赖 `TextDecoder` 的默认行为剥掉 BOM（否则首行会出现一个零宽字符）。
+ */
+export async function decodePreviewText(blob: Blob): Promise<string> {
+  const bytes = new Uint8Array(await blob.arrayBuffer());
+  if (bytes.length >= 2) {
+    if (bytes[0] === 0xff && bytes[1] === 0xfe) return new TextDecoder("utf-16le").decode(bytes.subarray(2));
+    if (bytes[0] === 0xfe && bytes[1] === 0xff) return new TextDecoder("utf-16be").decode(bytes.subarray(2));
+  }
+  return new TextDecoder("utf-8").decode(bytes);
 }

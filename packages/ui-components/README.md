@@ -41,7 +41,9 @@ demo/                     Vite 展示页（非库产物）
 | `web/components/preview/FileViewerPreview.tsx` 错误边界内的提示 | 「预览组件加载失败」等提示硬编码中文 | 改由调用方按当前语言注入（`fallbackText`，键 `fileTree.preview.componentError`）：它是给用户看的提示，与工具栏文案同属 i18n 范围，不再随源实现固定中文（见「已知限制」第 9 条） |
 | `web/components/preview/html-plugin.ts`、`web/components/preview/native-pdf-plugin.ts` | 标签「渲染预览」/「源码」、兜底串「源码加载失败」「无法获取 HTML / PDF 文件的预览地址」「HTML / PDF 预览加载失败」 | 逐字保留硬编码中文：插件直接操作 DOM、不在 React 树内，接文案要在契约上新增参数；需要多语言的宿主应自行派生插件。`preview-source.ts` 的「文件预览加载失败 (<status>)」**已不在本条**（2026-09-23 第 19 轮改为抛结构化的 `PreviewSourceError`，文案由 `FileViewerPreview` 按语言取——见「已知限制」第 13 条） |
 | `web/components/preview/overrides.css` | 宿主页面样式表里的预览工具栏修正（工具栏置底等） | 随组件收进包内，且必须与 `FileViewerPreview` 同目录并被其 `import`；缺失会导致预览工具栏回到顶部 |
-| `web/components/preview/preview-source.ts` | `agent-panel/preview/utils.ts` 全量（含 `encodePathSegment`、`buildPreviewUrl`、`normalizeToUserPath`、`formatFileSize`） | 只取 L1–167 的分类表与源加载子集：URL 构建/路径规范化属宿主路由与展示约定。宿主 `ArtifactsPanel.tsx` 与 `preview-utils-normalize.test.ts` 仍引用原文件，故原文件保持不动 |
+| `web/components/preview/preview-source.ts` | `agent-panel/preview/utils.ts` 全量（含 `encodePathSegment`、`buildPreviewUrl`、`normalizeToUserPath`、`formatFileSize`） | 只取 L1–167 的分类表与源加载子集：URL 构建/路径规范化属宿主路由与展示约定。宿主 `ArtifactsPanel.tsx` 与 `preview-utils-normalize.test.ts` 仍引用原文件，故原文件保持不动。2026-10-15 在其上扩了文档类口径：`latex` 类别、`PREVIEW_MAX_DOCUMENT_BYTES` 上限、按 BOM 的 `decodePreviewText`（见「已知限制」第 15 条） |
+| `web/components/preview/{markdown-math-plugin,DocumentPreview,latex-document,latex-inline,latex-parse-utils,latex-content}.*` | —（2026-10-15 新增能力，无源实现可搬） | markdown 的数学渲染包在既有 markdown 渲染链外层（`markdown-math-plugin` 复用 `@open-file-viewer` 的 `textPlugin` 产物 + KaTeX 自动渲染），不引入第二套 markdown 实现；`.tex` 的**结构**渲染没有可复用件，落在 `latex-document`（纯解析）+ `latex-content`（React + KaTeX，`DocumentPreview` 动态导入）。状态边界（空文件 / 字节上限 / 源码回退）统一由 `DocumentPreview` 提供，文案全走包内字典（见「已知限制」第 15 条） |
+| `web/lib/katex-math.ts`、`web/chat/ui-spec/plugins.ts` 的 `math` 注册 | —（2026-10-15 数学渲染批次，接入 `@streamdown/math`） | 聊天正文的数学走官方插件（`createMathPlugin`），单 `$` 判定、错误色、auto-render 定界符、`renderToString` 选项与 KaTeX 样式表引入点收敛到 `lib/katex-math.ts`，聊天与预览共用同一份（见「已知限制」第 15 条）；KaTeX 版本按 `rehype-katex` 的可支持范围统一在 0.16.47，全仓一份、无 overrides |
 | `web/components/PreviewTab.tsx` | 宿主 tab 的占位容器，仅换 i18n 命名空间 | `messages` / `locale` 仍不透传（需要预览定制时直接使用 `FileViewerPreview`），但 `buildPreviewUrl` 与 `fetchPreview` 必须原样转交：本组件不取数、不拼后端 URL（前端开发规范 §5.8），只是宿主域模块实现到预览器之间的通道（见「已知限制」第 14 条） |
 | `web/chat/timeline/ToolCallRow.tsx` | 完成态右侧显示状态词（`Done` / `已完成`）；运行中只有 `Loader2` 转圈 + 静态标题；错误信息内联在标题行内，长错误会把标题挤到看不见；另有 `publicError` 块（message + Type + ID）落在卡片右侧 | 完成态不渲染状态词（默认结果的噪音，其余状态词保留）；运行中标题文字套包内 `Shimmer` 基元做载入微光（图标位仍转圈）；错误信息独占第二行，随之为 `.tool-call-row-error` 补 `display: block`（否则该选择器的 `text-overflow: ellipsis` 对行内盒子失效）；移除右侧 `publicError` 块——其 message 与第二行同源（`narrate` 的 `errorDetail` 优先取 `publicError.message`），脱敏错误的 Type / ID 因此不再出现在卡片上 |
 | `web/chat/timeline/TodoChanges.tsx` | 每条待办右侧带变更标签（`新增` / `已完成` / `进行中` 等底色 badge） | 去掉该标签：变更语义由左侧图标与文案样式表达，右侧标签是重复信息；随之删除 `CHANGE_STYLES.labelClassName` 与两个语言包里仅此处使用的 `chat.components.todoChanges.*` 文案 |
@@ -221,6 +223,40 @@ i18n.addResourceBundle("zh", UI_COMPONENTS_NS, zh, true, true);
     - 包内用例：`web/__tests__/preview-fetch-injection.test.ts`（注入生效 + 源码里无兜底形态）。
     - 移除条件：宿主能把文件代理路由提升为包可依赖的取数契约（或 `request()` 补上 blob 能力后由
       注入方整体替换），届时可改回由包内直接取数；在那之前不得移除本契约。
+15. **数学渲染（KaTeX）的能力边界与单点策略**（2026-10-15 新增；同日接入聊天侧 `@streamdown/math`）：
+    - **策略只有一个来源**：`web/lib/katex-math.ts`。单 `$` 开关（`KATEX_SINGLE_DOLLAR_TEXT_MATH`）、
+      错误色（`KATEX_ERROR_COLOR`）、auto-render 定界符、`renderToString` 选项与 KaTeX 样式表引入点
+      （`loadKatexStyles`，全仓唯一的 `katex/dist/katex.min.css` 引入）都在那里；聊天正文（streamdown +
+      `@streamdown/math` 的 `createMathPlugin`）与文件预览（`.md` 的 auto-render、`.tex` 的 renderToString）
+      都从它取值，`web/__tests__/katex-math.test.ts` 静态钉住「不得在别处再写一份」。
+    - **首屏边界**：KaTeX 本体只在 `plugins-*` / `latex-content-*` / `auto-render-*` 三个惰性 chunk 里静态可达
+      （分别由 `message.tsx`、`DocumentPreview`、`markdown-math-plugin` 的 `import()` 触发），构建产物里
+      `index.html` 只预载 760 B 的策略模块（`katex-math-*`）、不含 KaTeX 运行时与样式表。为此
+      `UI_SPEC_PLUGINS` **不再经 barrel 转出**（`web/index.ts` / `chat/index.ts` 只转出 `UI_SPEC_LANGUAGE`）：
+      静态转出会把 KaTeX 拖进入口 chunk，2026-10-15 实测到 `index.html` 出现 `modulepreload katex-*.js`。
+    - **单 `$` 是显式启用的**（KaTeX 的 auto-render 与 remark-math 默认都关）：两条链都认 `$…$` 行内公式。
+      代价是正文里成对的 `$`（美元金额之类）可能被判为公式并按错误色渲染——内容不丢，但会变色。
+    - **AMS 环境的写法两条链不同**：预览的 `.md` 由 auto-render 处理，裸写的 `\begin{equation}…` 能识别；
+      聊天由 remark-math 解析，AMS 环境必须写在 `$$…$$` 内（`$$\begin{aligned}…\end{aligned}$$`）。
+      这是解析器语义差异，不是配置问题。
+    - `.md` 预览的渲染仍由 `@open-file-viewer` 的 markdown 分支承担（本包不新增 markdown 实现），
+      渲染完成后补一层 KaTeX 自动渲染（`markdown-math-plugin`）；`\(`、`\[` 定界符不列——markdown 的
+      转义规则会吃掉反斜杠，定界符到不了 DOM。
+    - `.tex` 预览：只还原「常见文档结构」——标题元信息、章节层级、段落、列表、公式（行内 / 行间 / 数学环境）、
+      表格、逐字环境。**不做**宏展开、交叉引用编号、浮动体位置、`\input` / `\include`；未知识别为
+      「丢宏名、留正文」，未知环境透传内部块，因此渲染结果不保证与编译产物逐字一致。
+    - 大小与空态：文档类预览按字节加载，0 字节给空态；超过 `PREVIEW_MAX_DOCUMENT_BYTES`（512 KB）只提供
+      源码展示并禁用渲染标签——两类渲染都是整篇同步解析，没有增量窗口。
+    - 降级：三条链语义一致（探错 → 错误色就地渲染 → 源码回退），实现分属两侧——聊天由 rehype-katex 完成
+      （`throwOnError: true` → 记 vfile 消息 → `throwOnError: false, strict: ignore` → 自造 `katex-error`
+      节点），预览由 `latex-content.tsx` 的 `renderMath` 完成（`.tex` 额外补本地化提示 `mathUnsupported` /
+      `mathRenderFailed`；`.md` 侧那段 DOM 由预览器生成，插件拿不到 React 上下文，只有错误色，没有本地化提示）。
+    - **KaTeX 版本统一在 0.16 线（`^0.16.47`）**：`rehype-katex@7.0.1`（其最新版）声明 `katex: ^0.16.0`，
+      不在 0.19 的范围内，因此按上游可支持范围统一到 0.16.47——该版本已在 lockfile 里（`@lobehub/ui`、
+      `mermaid`、`micromark-extension-math` 同款），全仓只解析出一份 katex，且**不需要任何 overrides**。
+    - 影响范围：数学只在聊天正文与预览面板内生效；`.tex` 预览排版保真度低于编译产物属既定取舍。
+    - 移除条件：宿主引入完整的 LaTeX 渲染服务（服务端编译或 web 端 TeX 引擎）时，`.tex` 分支整体替换；
+      `rehype-katex` 若发布支持 katex 0.19+ 的版本，可整体升到 0.19 线并删掉本条里的版本说明。
 
 ## chat 样式现状（阶段一至五迁移台账）
 

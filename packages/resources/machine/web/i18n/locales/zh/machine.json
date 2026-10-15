@@ -16,6 +16,12 @@
     "downloadFailed": "下载失败",
     "closeTab": "关闭标签",
     "moreTabs": "还有 {{count}} 个标签",
+    "layout": {
+      "dock": "固定文件树",
+      "float": "浮动文件树",
+      "close": "关闭文件树",
+      "open": "显示文件树"
+    },
     "dialog": {
       "renameTitle": "重命名",
       "renameDescription": "输入新的文件或文件夹名称",

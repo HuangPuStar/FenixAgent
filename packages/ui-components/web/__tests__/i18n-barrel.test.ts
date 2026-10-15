@@ -45,8 +45,10 @@ const PKG_ROOT = resolve(WEB_ROOT, "..");
  * 2026-10-10 trace 面板下沉批次：`JsonViewer` 从 `@fenix/resource-trace` 的 `web/components/detail/`
  *   迁入本包 `web/ui/json-view.tsx`（键的最终所在地 = 包的 owner），它的 6 条文案落在 `jsonViewer.*`
  *   （空值、循环引用、嵌套过深、条目截断、展开/收起），341 → 347。
+ * 2026-10-15 文档预览批次（markdown 数学 + `.tex` 结构渲染）：`fileTree.preview.*` 加 6 键——
+ *   渲染/源码标签、空文件、超上限提示、两条 KaTeX 降级提示，347 → 353。
  */
-const KEY_BASELINE = 347;
+const KEY_BASELINE = 353;
 
 const EN = JSON.parse(readFileSync(join(WEB_ROOT, "i18n/locales/en/uiComponents.json"), "utf8")) as Record<
   string,

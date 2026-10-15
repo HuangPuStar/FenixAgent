@@ -88,6 +88,14 @@ const BROWSER_SAFE_EXTERNAL: ReadonlyMap<string, string> = new Map([
   ["react-resizable-panels", "可拖拽分栏（ui/resizable，文件树 / 预览分栏；本包同时以类型导入其句柄类型）"],
   ["@open-file-viewer/core", "预览内核（components/preview/* 的渲染器；随样式表一起被浏览器加载）"],
   ["@open-file-viewer/react", "预览 React 绑定（components/preview/FileViewerPreview 的生产路径）"],
+  [
+    "katex",
+    "数学排版（components/preview 的 markdown 数学插件与 `.tex` 渲染层；`react-markdown` 之外的公式渲染），纯浏览器实现",
+  ],
+  [
+    "@streamdown/math",
+    "数学渲染插件（ui-components lib/katex-math 经聊天渲染链引入：remark-math + rehype-katex + katex），纯浏览器实现",
+  ],
 ]);
 
 const graph = walkValueGraph(WEB_ENTRY);

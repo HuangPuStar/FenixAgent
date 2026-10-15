@@ -48,7 +48,15 @@ const ERROR_CONSTRUCTORS = [
   "URIError",
 ] as const;
 
-/** 补齐 happy-dom Window 缺失的标准错误构造器，并修正空 origin 的 location。 */
+/**
+ * 补齐 happy-dom Window 缺失的标准错误构造器，修正空 origin 的 location，并补上 `compatMode`。
+ *
+ * `compatMode`（2026-10-15 预览链批次）：KaTeX 在**模块求值期**读 `document.compatMode`，取值不是
+ * `"CSS1Compat"` 就把自己的 DOM 渲染函数换成直接抛错的桩（`renderToString` 不受影响）。happy-dom 的
+ * Document 根本没定义该属性（`undefined`，类型上也没有），于是任何在装着 happy-dom 的进程里求值 KaTeX 的
+ * 用例，都会让后续所有走 DOM 渲染的用例（markdown 预览的 KaTeX 自动渲染）拿到那个桩——失败点与出错用例
+ * 相隔若干文件，极难定位。补成非 quirks 的取值后，行为与真实浏览器一致。
+ */
 export function initializeHappyDomWindow<T extends Window>(window: T): T {
   if (window.location.origin === "null") {
     window.location.href = "http://localhost/";
@@ -57,6 +65,11 @@ export function initializeHappyDomWindow<T extends Window>(window: T): T {
   const record = window as unknown as Record<string, unknown>;
   for (const key of ERROR_CONSTRUCTORS) {
     record[key] = globalThis[key];
+  }
+  // `compatMode` 不在 happy-dom 的类型里，与上面的错误构造器一样按「补齐缺失属性」处理
+  const documentRecord = window.document as unknown as Record<string, unknown>;
+  if (documentRecord.compatMode !== "CSS1Compat") {
+    Object.defineProperty(documentRecord, "compatMode", { configurable: true, value: "CSS1Compat" });
   }
   return window;
 }

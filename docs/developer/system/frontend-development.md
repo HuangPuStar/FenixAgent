@@ -348,6 +348,7 @@ import 顺序由 Biome 的 import-sort 统一（`precheck` 会跑），形态是
 - **禁止**直接拼接 HTML 字符串注入 DOM；清洗放在**域模块内**，组件只接清洗后的值。
 - 用户生成内容（UGC）与 **Agent / LLM 输出**同等对待：都是不可信输入。
 - Markdown 以 `streamdown` 为**唯一渲染器**（`MessageResponse`，懒加载，经 `allowedTags` 白名单 + `urlTransform` 收口），新增场景复用该链路、不得另起；唯一例外是 `react-markdown` 只剩 knowledge 预览一处（`ResourcePreviewContent.tsx`，输入是用户上传的文件正文，已接 `rehype-sanitize` 的 GitHub 默认 schema，且不渲染原始 HTML）。
+- 数学渲染（KaTeX）**策略单点**在 `packages/ui-components/web/lib/katex-math.ts`：聊天正文（`streamdown` + `@streamdown/math`）与文件预览（`.md` 的 auto-render、`.tex` 的 `renderToString`）都从它取单 `$` 判定、错误色、降级选项与样式表引入（`loadKatexStyles`，全仓唯一的 `katex/dist/katex.min.css` 引入点，动态导入保持首屏体积）。禁止在别处再写一份选项或再 `import` 该 CSS——两条链分叉不会报错，只会让同一条公式在聊天与预览里表现不一致。
 
 ### 6.2 iframe 沙箱
 - **Markdown / Agent 输出里的 `<iframe>`**：**必须**去掉 `allow-same-origin`（它与 `allow-scripts` 同开时 iframe 内脚本可读写父页面 DOM 与存储——**等价于没有沙箱**），且对 `src` 做协议与域名校验；现为 `ui-components` 的 `IframePreview` 两处 `sandbox="allow-scripts allow-popups"`，`src` 过协议白名单（`http:` / `https:` / 相对地址 / `data:`），模型自带的 `sandbox` 被剔除，并有包内用例。
@@ -358,7 +359,7 @@ import 顺序由 Biome 的 import-sort 统一（`precheck` 会跑），形态是
 ### 6.3 凭据与本地存储
 - **禁止**将 API Key、Token、Secret 存入 `localStorage` 或 `sessionStorage`；认证 Token 仅通过 HttpOnly Cookie 传输，前端不直接读写；配置中的密钥占位符（如 `{env:RCS_SECRET_xxx}`）**不得**在前端代码中展开或替换；API Key 创建成功后仅展示一次，前端**不得**将明文 Key 持久化到任何本地存储。
 - **唯一凭据类例外**（用户裁定保留，不得作为新代码先例）：系统 Master Key 存 `sessionStorage`（键 `rcs_admin_master_key`；实现 `packages/web-runtime/web/lib/admin-key.ts`，写入点 `@fenix/web-runtime/hooks/use-admin-key-gate` 的 `unlock()`，门组件 `@fenix/ui-components/config/AdminKeyGate`，5 处消费：sandbox / observer ×3 / model-management；经 `request()` 的 `bearerToken` 注入 `Authorization`，401 时调用方经 `fail()` 清 key 回门）；**只允许服务系统管理员页**，不得用于普通用户凭据，XSS 面由 §6.1 与 §6.2 控制 —— master key 改由服务端 HttpOnly Cookie 或仅内存态承载后，删除 `admin-key.ts` 及其全部消费方并同步删除本条登记。
-- `localStorage` 合法用途白名单（除 `active_org_id` 与 master key 外，生产代码只碰这些键，表里是**全量**）：UI 维度与布局偏好 `fenix:artifacts-width` / `fenix:artifacts-layout`（`ChatArea`）、`fenix:file-tree-width`（`artifacts-files-workspace`）；面板开合 `acp-sidebar-open`（`chat-panel-ports.tsx`）；侧栏折叠 `agent-panel:sidebar-collapsed`（`AgentSidebar`，`AgentSidebarTree` 同属该折叠态）；语言 `rcs-lang`（i18n 检测器托管）；登录页偏好 `auth-preferred-method`（identity `web/lib/auth-preference.ts`）；主题无（全局强制亮色，见 §3.2，`theme` 键已不再被读写）。
+- `localStorage` 合法用途白名单（除 `active_org_id` 与 master key 外，生产代码只碰这些键，表里是**全量**）：UI 维度与布局偏好 `fenix:artifacts-width` / `fenix:artifacts-layout`（`ChatArea`）、`fenix:file-tree-width`（`artifacts-files-workspace`）、`fenix:file-tree-layout`（machine 包 `web/hooks/use-file-tree-layout.ts`，文件树浮动/固定的显式选择；键不存在 = 未手动选择，按屏宽取默认）；面板开合 `acp-sidebar-open`（`chat-panel-ports.tsx`）；侧栏折叠 `agent-panel:sidebar-collapsed`（`AgentSidebar`，`AgentSidebarTree` 同属该折叠态）；语言 `rcs-lang`（i18n 检测器托管）；登录页偏好 `auth-preferred-method`（identity `web/lib/auth-preference.ts`）；主题无（全局强制亮色，见 §3.2，`theme` 键已不再被读写）。
 - **组织 id（`active_org_id`）不在「便利」的范畴**：它决定请求归属哪租户，只允许经上下文读取（见 §3.3）——读点只有契约模块 `@fenix/web-runtime/lib/active-org`，写点只有身份的 `OrgContext.tsx`（`switchOrg` / `refreshOrgs` 的乐观写与回滚），两侧都有静态守卫钉住（`apps/web/src/__tests__/file-events-org-contract.test.ts`）。
 
 ### 6.4 敏感操作
@@ -426,6 +427,7 @@ import 顺序由 Biome 的 import-sort 统一（`precheck` 会跑），形态是
 9. **连接上限与容量**：`YJS_MAX_CLIENTS` 默认 200，由 agent-runtime 模块声明并经 `AgentRuntimeModuleConfig.yjsMaxClients` 注入 chat-channel 装配（不要直读 env）；修改时必须保留限流、资源释放与单连接故障隔离。
 10. **`ChatView` 与 `EntryRenderer` 使用 `React.memo`**，comparator 必须与调用方 prop 稳定性保持一致（`ChatView.tsx`、`EntryRenderer` 有显式逐 prop 比较，`MessageResponse` 比较 `children` + `envId`）；改动 props 时同步更新 comparator 与渲染测试。
 11. **`@fenix/chat-channel` 根入口必须浏览器安全**：根入口只导出类型（`./types`）、schema、`public-error`、`chat-writer`、`yjs-store`、`protocol`、`transport`、`util`；服务端能力（channel 控制面、persist 持久化、state 聚合层）必须经 `@fenix/chat-channel/server` 导出；边界由 `packages/chat-channel/src/__tests__/chat-channel-browser-surface.test.ts` 静态走值导入图守护，`scripts/check-architecture.ts` 的 `browser-entry-server-import` 同时静态拦截 `@fenix/chat-channel/server`。
+12. **时间线只渲染约 100 条**（`packages/ui-components/web/chat/view/internal/chat-window.ts`）：滑动窗口**只在渲染层**决定渲染哪些块，数据侧（Y.Doc、聚合层、广播、`chat-writer`、投影）一律不参与；窗口外的条目照常接收流式 chunk 与广播、滑入时完整呈现，进行中的条目在 `loading` 期间恒在渲染集合内。相邻工具调用会并成一个可覆盖数千条目的 `tool_group`，因此块进入窗口前必须先经 `splitOversizedBlocks` 切到预算内——漏掉这一步「整块收下」会让首屏退回全量渲染。语义、常量与取舍见 `docs/arch/19-yjs-chat-streaming.md` §5.7。
 
 ### 8.6 现状偏离
 - `chat-channel/src/transport/ws-close-codes.ts` 的 4503 行（`stopReconnect: true` + `uiCode: null`，用户会看到「连接停了但没有任何提示」）— 补齐 `uiCode` 是**行为变化**，必须单独一批、单独授权，不得以「消缺口」为由顺手补；裁定前保持 `null`，并在策略表注释里保留指向本节的位置（§8.3）。

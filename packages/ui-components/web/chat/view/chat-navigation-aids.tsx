@@ -52,6 +52,14 @@ function summarizePrompt(content: string, untitled: string): string {
 
 interface PromptJumpRailProps {
   entries: UserMessageEntry[];
+  /**
+   * 点击刻度的定位出口。
+   *
+   * 时间线只渲染约 100 条（见 `./internal/chat-window.ts`），目标提示词可能落在窗口外、不在 DOM 里，
+   * 此时 `getElementById` 定位不到；注入本出口后由窗口先把它滑进窗口再定位。未注入时回落为直接
+   * `scrollIntoView`（demo 与单测里没有窗口）。
+   */
+  onRequestEntry?: (entryId: string) => void;
 }
 
 /**
@@ -64,7 +72,7 @@ interface PromptJumpRailProps {
  * 点击定位、`data-active-prompt` 跨组件契约，以及用自己的外层元素承载浮层定位
  * （beui 的根是「轨道 + 内容」并排的容器，这里是浮在会话之上的轨道，故不把 ConversationContent 塞成它的 children）。
  */
-export function PromptJumpRail({ entries }: PromptJumpRailProps) {
+export function PromptJumpRail({ entries, onRequestEntry }: PromptJumpRailProps) {
   const { t } = useTranslation(UI_COMPONENTS_NS);
   const anchorRef = useRef<HTMLDivElement>(null);
   const promptEntries = useMemo(() => entries.filter((entry) => !isSystemReminderPrompt(entry)), [entries]);
@@ -179,8 +187,13 @@ export function PromptJumpRail({ entries }: PromptJumpRailProps) {
         label={railLabel}
         activeId={activeId}
         onActiveChange={setActiveId}
-        // 点击刻度沿用浏览器平滑定位，不修改会话消息或 Conversation 的滚动实现。
+        // 点击刻度沿用浏览器平滑定位，不修改会话消息或 Conversation 的滚动实现；
+        // 目标不在渲染窗口内时由窗口出口接管（没注入时保持原来的直接定位）。
         onItemSelect={(item) => {
+          if (onRequestEntry) {
+            onRequestEntry(item.id);
+            return;
+          }
           document.getElementById(`chat-entry-${item.id}`)?.scrollIntoView({ behavior: "smooth", block: "center" });
         }}
         highlightActive

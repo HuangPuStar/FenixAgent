@@ -1,8 +1,18 @@
 import { describe, expect, test } from "bun:test";
 
-const { getPreviewMimeType, loadByteAccuratePreviewSource, PreviewSourceError, shouldLoadPreviewAsBlob } = await import(
-  "../components/preview/preview-source"
-);
+const {
+  classifyFile,
+  decodePreviewText,
+  getPreviewMimeType,
+  isDocumentCategory,
+  isLatexExtension,
+  isMarkdownExtension,
+  loadByteAccuratePreviewSource,
+  PREVIEW_MAX_DOCUMENT_BYTES,
+  PreviewSourceError,
+  shouldLoadPreviewAsBlob,
+  shouldRenderDocumentContent,
+} = await import("../components/preview/preview-source");
 
 // 本文件是 `preview-source.ts` 的唯一守护：这些用例原先挂在宿主
 // `apps/web/src/__tests__/preview-utils-normalize.test.ts`，而被测实现两处各有一份逐字副本
@@ -70,5 +80,61 @@ describe("文本预览源 — 保留响应的真实字节大小", () => {
     expect((error as PreviewSourceError).status).toBe(500);
     // 消息是英文技术串，只供日志；界面文案由调用方按 status 取（不得把这条 message 直接上屏）
     expect((error as PreviewSourceError).message).not.toMatch(/[\u4e00-\u9fff]/);
+  });
+});
+
+describe("文档类（markdown / LaTeX）分类", () => {
+  // `.tex` 必须自成一类：@open-file-viewer 只把它当 Prism 高亮的源码，结构渲染由包内 LaTeX 分支承担
+  test("tex / latex / ltx 归类为 latex，不再落到 code", () => {
+    expect(classifyFile("user/paper.tex")).toBe("latex");
+    expect(classifyFile("user/paper.latex")).toBe("latex");
+    expect(classifyFile("user/paper.ltx")).toBe("latex");
+  });
+
+  // 分类口径要与扩展名判定函数一致：预览器的插件匹配复用同一份清单
+  test("扩展名判定与分类同源", () => {
+    expect(isLatexExtension("TEX")).toBe(true);
+    expect(isLatexExtension("txt")).toBe(false);
+    expect(isMarkdownExtension("Markdown")).toBe(true);
+    expect(isMarkdownExtension("tex")).toBe(false);
+    expect(isDocumentCategory(classifyFile("user/a.md"))).toBe(true);
+    expect(isDocumentCategory(classifyFile("user/a.tex"))).toBe(true);
+    expect(isDocumentCategory(classifyFile("user/a.ts"))).toBe(false);
+  });
+
+  // 文档类也要按 Blob 加载：大小上限与空文件判定都基于响应原始字节数
+  test("文档类按 Blob 加载，字节数在渲染前可用", () => {
+    expect(shouldLoadPreviewAsBlob("user/a.md")).toBe(true);
+    expect(shouldLoadPreviewAsBlob("user/a.tex")).toBe(true);
+  });
+
+  // 上限是「不超过即渲染」：边界值本身仍走渲染，避免 off-by-one 把刚好达标的文档降级成源码
+  test("字节上限按闭区间判定", () => {
+    expect(shouldRenderDocumentContent(0)).toBe(true);
+    expect(shouldRenderDocumentContent(PREVIEW_MAX_DOCUMENT_BYTES)).toBe(true);
+    expect(shouldRenderDocumentContent(PREVIEW_MAX_DOCUMENT_BYTES + 1)).toBe(false);
+  });
+});
+
+describe("文档正文解码（按 BOM 分流）", () => {
+  // BOM 落在正文里会渲染成零宽字符，UTF-8 文档必须剥掉
+  test("UTF-8 BOM 被剥掉", async () => {
+    const bytes = new Uint8Array([0xef, 0xbb, 0xbf, ...new TextEncoder().encode("\\section{标题}")]);
+
+    expect(await decodePreviewText(new Blob([bytes]))).toBe("\\section{标题}");
+  });
+
+  // Windows 记事本另存的 .tex 是 UTF-16LE：按 UTF-8 解会整篇乱码
+  test("UTF-16LE 文本按双字节解码", async () => {
+    const bytes = new Uint8Array([0xff, 0xfe, 0x2d, 0x4e, 0x87, 0x65]);
+
+    expect(await decodePreviewText(new Blob([bytes]))).toBe("中文");
+  });
+
+  // UTF-16BE 的 BOM 相反，字节序也要跟着换，否则两个字会被拆成乱码
+  test("UTF-16BE 文本按双字节解码", async () => {
+    const bytes = new Uint8Array([0xfe, 0xff, 0x4e, 0x2d, 0x65, 0x87]);
+
+    expect(await decodePreviewText(new Blob([bytes]))).toBe("中文");
   });
 });

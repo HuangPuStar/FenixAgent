@@ -63,6 +63,11 @@ const BROWSER_SAFE_EXTERNAL: ReadonlyMap<string, string> = new Map([
   ["@radix-ui/react-scroll-area", "无样式原语（ui/scroll-area 传递依赖，详情滚动区）"],
   ["@radix-ui/react-separator", "无样式原语（ui/separator 传递依赖）"],
   ["streamdown", "Markdown 流式渲染（ui-components chat/primitives/message 的依赖，宿主浏览器已在用同一组件）"],
+  [
+    "@streamdown/math",
+    "数学渲染插件（ui-components lib/katex-math 经聊天渲染链引入：remark-math + rehype-katex + katex），纯浏览器实现",
+  ],
+  ["katex", "数学排版（ui-components lib/katex-math 的 CSS 引入点经聊天/预览链到达），纯浏览器实现"],
   ["class-variance-authority", "类名变体工具（ui/* 传递依赖），纯函数"],
   ["clsx", "类名拼接工具（lib/cn 传递依赖），纯函数"],
   ["tailwind-merge", "Tailwind 类名去重（lib/cn 传递依赖），纯函数"],
