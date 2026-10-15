@@ -70,7 +70,7 @@ services:
         volumes:
             # 配置不复制：只读挂载生产目录里的那一份（相对本文件解析 = docker/opensandbox-cluster/frps.toml）。
             # 它从环境变量读 FRP_TOKEN，因此本文件的 FRP_TOKEN 与 cluster 侧自动同值。
-            - ../opensandbox-cluster/frps.toml:/etc/frp/frps.toml:ro
+            - ./frps.toml:/etc/frp/frps.toml:ro
         depends_on:
             - opensandbox-cluster
         networks:

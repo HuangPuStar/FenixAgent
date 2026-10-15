@@ -15,7 +15,7 @@ execd_image = "opensandbox/execd:v1.0.18"
 
 [docker]
 # 沙盒容器使用的 Docker 网络模式。
-network_mode = "bridge"
+network_mode = "host"
 # Cluster 和沙盒调用方可以访问的**节点**地址——从消费方容器看必须可达，所以不能写 127.0.0.1
 # （容器内的 127.0.0.1 指向容器自己）。按组网形态选值：
 #   · macOS / Windows 的 Docker Desktop 与 OrbStack：host.docker.internal

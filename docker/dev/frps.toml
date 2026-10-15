@@ -1,0 +1,14 @@
+bindPort = 7000
+vhostHTTPPort = 7080
+
+[auth]
+  method = "token"
+  token = "{{ .Envs.FRP_TOKEN }}"
+  additionalScopes = ["HeartBeats", "NewWorkConns"]
+
+[[httpPlugins]]
+name = "opensandbox-cluster"
+addr = "opensandbox-cluster:8081"
+path = "/internal/frp/plugin/{{ .Envs.FRP_TOKEN }}"
+ops = ["Login", "NewProxy", "Ping", "CloseProxy"]
+tlsVerify = false

@@ -70,7 +70,7 @@ export function ClusterPanel({ data, loading, error, onRefresh, onAction }: Clus
       pool_id: poolId,
       name: "",
       base_url: "",
-      workspace_root: "/workspaces",
+      workspace_root: "/workspace",
       max_sandboxes: 10,
       status: "active",
       transport_mode: "direct",
