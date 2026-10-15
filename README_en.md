@@ -90,7 +90,7 @@ Besides the built-in engines, other ACP-compatible engines can be integrated by 
 # (only the main service needs this step).
 cp .env.example .env
 
-# Starts PostgreSQL and rcs only; components are added with --profile and need no config files.
+# Starts PostgreSQL and rcs only; components are added with --profile and need no .env of their own.
 docker compose up --build -d
 ```
 
@@ -100,8 +100,10 @@ Add optional components (litellm / ragflow / hindsight / agent-sites / opensandb
 docker compose --profile litellm --profile ragflow up -d
 ```
 
-Each component ships with its own database and cache instance, and all defaults work out of the box
-(local-only and insecure by design). To change a default, set the same key in the repository-root `.env`.
+Components bring their own datastore and cache, and their defaults work out of the box (local-only and
+insecure by design). To change a default, set the same key in the repository-root `.env` (hindsight
+additionally requires `DASHSCOPE_API_KEY` in the same file). The only component needing a `cp` is
+opensandbox's node config `sandbox.toml`: `cp docker/dev/sandbox.toml.example docker/dev/sandbox.toml`.
 See [docker/dev/README.md](docker/dev/README.md) for the overridable keys and their defaults.
 
 The service is available at <http://localhost:3001/> by default, with the built-in Peri agent engine as the default for local execution.

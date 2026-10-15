@@ -89,7 +89,7 @@ Agent 引擎可以在平台所在机器或独立的远端节点执行。平台�
 # 创建本地配置，并至少为 RCS_API_KEYS 填入随机值（只有主服务需要这一步）
 cp .env.example .env
 
-# 默认只起 PostgreSQL 与 rcs；组件按需用 --profile 追加，无需任何额外配置文件
+# 默认只起 PostgreSQL 与 rcs；组件按需用 --profile 追加，起服务前不再需要为组件准备 .env
 docker compose up --build -d
 ```
 
@@ -99,8 +99,9 @@ docker compose up --build -d
 docker compose --profile litellm --profile ragflow up -d
 ```
 
-组件自带数据库与缓存实例，默认值开箱可用（只服务本地、不安全）；要改就在仓库根 `.env` 写同名键
-（hindsight 还需在同一文件里填 `DASHSCOPE_API_KEY`）。可覆盖键与默认值对照表见
+组件自带所需的数据存储与缓存，默认值开箱可用（只服务本地、不安全）；要改就在仓库根 `.env` 写同名键
+（hindsight 还需在同一文件里填 `DASHSCOPE_API_KEY`）。唯一需要 `cp` 的是 opensandbox 的节点配置
+`sandbox.toml`：`cp docker/dev/sandbox.toml.example docker/dev/sandbox.toml`。可覆盖键与默认值对照表见
 [docker/dev/README.md](docker/dev/README.md)。
 
 默认服务地址为 <http://localhost:3001/>，并内置 Peri Agent 引擎（本地执行的默认引擎）。
