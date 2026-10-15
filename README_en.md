@@ -86,11 +86,23 @@ Besides the built-in engines, other ACP-compatible engines can be integrated by 
 ### Docker Compose (recommended)
 
 ```bash
-# Create local configuration and set RCS_API_KEYS to at least a random value.
+# Create local configuration and set RCS_API_KEYS to at least a random value
+# (only the main service needs this step).
 cp .env.example .env
 
+# Starts PostgreSQL and rcs only; components are added with --profile and need no config files.
 docker compose up --build -d
 ```
+
+Add optional components (litellm / ragflow / hindsight / agent-sites / opensandbox) on demand:
+
+```bash
+docker compose --profile litellm --profile ragflow up -d
+```
+
+Each component ships with its own database and cache instance, and all defaults work out of the box
+(local-only and insecure by design). To change a default, set the same key in the repository-root `.env`.
+See [docker/dev/README.md](docker/dev/README.md) for the overridable keys and their defaults.
 
 The service is available at <http://localhost:3001/> by default, with the built-in Peri agent engine as the default for local execution.
 
