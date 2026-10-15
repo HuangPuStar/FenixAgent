@@ -68,6 +68,9 @@ services:
             UI_USERNAME: admin
             # 只服务本地，生产必须覆盖。
             UI_PASSWORD: ${LITELLM_UI_PASSWORD:-admin123}
+        volumes:
+            - ./litellm-config.yaml:/app/config.yaml:ro
+        command: ["--config", "/app/config.yaml", "--port", "4000"]
 
 networks:
     # 网络名与仓库根编排逐字一致，且**不写 `external: true`**：include 是字段级合并，根文件声明了
