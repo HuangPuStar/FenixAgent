@@ -76,7 +76,7 @@ docker compose --profile litellm --profile ragflow up -d    # 模型网关 + 知
 docker compose config                                       # 只解析、不起容器
 ```
 
-组件清单、可覆盖的配置键、数据落点与排障见 [`docker/dev/README.md`](docker/dev/README.md)。
+组件需要做接入配置，详情见 [`docker/dev/README.md`](docker/dev/README.md)。
 
 ### 4. 初始化数据库
 

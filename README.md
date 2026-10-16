@@ -99,10 +99,7 @@ docker compose up --build -d
 docker compose --profile litellm --profile ragflow up -d
 ```
 
-组件自带所需的数据存储与缓存，默认值开箱可用（只服务本地、不安全）；要改就在仓库根 `.env` 写同名键
-（hindsight 还需在同一文件里填 `DASHSCOPE_API_KEY`）。唯一需要 `cp` 的是 opensandbox 的节点配置
-`sandbox.toml`：`cp docker/dev/sandbox.toml.example docker/dev/sandbox.toml`。可覆盖键与默认值对照表见
-[docker/dev/README.md](docker/dev/README.md)。
+组件需要做接入配置，详情见 [docker/dev/README.md](docker/dev/README.md)。
 
 默认服务地址为 <http://localhost:3001/>，并内置 Peri Agent 引擎（本地执行的默认引擎）。
 
